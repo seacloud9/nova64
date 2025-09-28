@@ -1,0 +1,443 @@
+// examples/3d-advanced/code.js
+// Epic space battle scene with capital ships, fighters, and spectacular effects
+
+let capitalShips = [];
+let fighters = [];
+let projectiles = [];
+let explosions = [];
+let stars = [];
+let nebula = [];
+let time = 0;
+let battleIntensity = 0;
+let cameraTarget = { x: 0, y: 0, z: 0 };
+
+export async function init() {
+  clearScene();
+  
+  // Cinematic camera setup
+  setCameraPosition(0, 15, 30);
+  setCameraTarget(0, 0, 0);
+  setCameraFOV(80); // Wide cinematic FOV
+  
+  // Space atmosphere
+  enablePixelation(1.1);
+  enableDithering(true);
+  setFog(0x000511, 40, 120); // Deep space fog
+  
+  // Create the epic space battle
+  createStarfield();
+  createNebula();
+  createCapitalShips();
+  createFighterSquadrons();
+  createBattleEffects();
+  
+  // Dramatic space lighting
+  setLightDirection(1, 0.5, -2);
+  
+  console.log('Epic Space Battle initialized');
+}
+
+function createStarfield() {
+  // Dense, beautiful starfield
+  for (let i = 0; i < 200; i++) {
+    const distance = 50 + Math.random() * 100;
+    const angle1 = Math.random() * Math.PI * 2;
+    const angle2 = (Math.random() - 0.5) * Math.PI;
+    
+    const x = Math.cos(angle1) * Math.cos(angle2) * distance;
+    const y = Math.sin(angle2) * distance;
+    const z = Math.sin(angle1) * Math.cos(angle2) * distance;
+    
+    const brightness = Math.random();
+    const color = brightness > 0.8 ? 0xaaffff : brightness > 0.6 ? 0xffaaaa : 0xffffaa;
+    const size = brightness > 0.9 ? 0.3 : 0.1;
+    
+    const star = createCube(size, color);
+    setPosition(star, x, y, z);
+    stars.push({ 
+      mesh: star, 
+      brightness, 
+      twinkle: Math.random() * Math.PI * 2,
+      originalPos: [x, y, z]
+    });
+  }
+}
+
+function createNebula() {
+  // Colorful nebula clouds for visual depth
+  for (let i = 0; i < 15; i++) {
+    const x = (Math.random() - 0.5) * 120;
+    const y = (Math.random() - 0.5) * 60;
+    const z = (Math.random() - 0.5) * 120;
+    
+    const colors = [0x4a0e4e, 0x0e4a4e, 0x4e4a0e, 0x4e0e4a, 0x0e4e4a];
+    const cloud = createSphere(8 + Math.random() * 12, colors[i % colors.length], [0, 0, 0], 6);
+    setPosition(cloud, x, y, z);
+    
+    nebula.push({
+      mesh: cloud,
+      drift: [(Math.random() - 0.5) * 0.1, (Math.random() - 0.5) * 0.05, (Math.random() - 0.5) * 0.1],
+      rotation: [(Math.random() - 0.5) * 0.01, (Math.random() - 0.5) * 0.01, (Math.random() - 0.5) * 0.01],
+      originalPos: [x, y, z]
+    });
+  }
+}
+
+function createCapitalShips() {
+  // Massive capital ships engaged in battle
+  const shipConfigs = [
+    { pos: [-25, 5, -15], color: 0x0066cc, faction: 'blue', size: [8, 3, 15] },
+    { pos: [20, -3, 10], color: 0xcc0066, faction: 'red', size: [6, 2, 12] },
+    { pos: [-15, 8, 25], color: 0x0066cc, faction: 'blue', size: [10, 4, 18] },
+    { pos: [30, -5, -20], color: 0xcc0066, faction: 'red', size: [7, 3, 14] }
+  ];
+  
+  shipConfigs.forEach((config, i) => {
+    // Main hull
+    const hull = createCube(1, config.color);
+    setScale(hull, ...config.size);
+    setPosition(hull, ...config.pos);
+    setRotation(hull, 0, Math.random() * Math.PI * 2, Math.sin(i) * 0.1);
+    
+    // Command bridge
+    const bridge = createCube(1, config.color + 0x111111);
+    setScale(bridge, config.size[0] * 0.3, config.size[1] * 1.5, config.size[2] * 0.2);
+    setPosition(bridge, config.pos[0], config.pos[1] + config.size[1] * 0.8, config.pos[2]);
+    
+    // Engine glow
+    const engine = createCube(1, 0x00ffff);
+    setScale(engine, config.size[0] * 0.6, config.size[1] * 0.4, config.size[2] * 0.1);
+    setPosition(engine, config.pos[0], config.pos[1], config.pos[2] - config.size[2] * 0.6);
+    
+    // Weapon turrets
+    for (let t = 0; t < 4; t++) {
+      const turret = createSphere(0.8, 0x666666, [0, 0, 0], 8);
+      const offsetX = (t % 2 === 0 ? -1 : 1) * config.size[0] * 0.4;
+      const offsetZ = (t < 2 ? -1 : 1) * config.size[2] * 0.3;
+      setPosition(turret, config.pos[0] + offsetX, config.pos[1] + config.size[1] * 0.6, config.pos[2] + offsetZ);
+      
+      capitalShips.push({ mesh: turret, parent: hull, type: 'turret', targetAngle: Math.random() * Math.PI * 2 });
+    }
+    
+    capitalShips.push({ 
+      mesh: hull, 
+      bridge, 
+      engine, 
+      faction: config.faction,
+      pos: config.pos,
+      size: config.size,
+      health: 100,
+      fireTimer: Math.random() * 3,
+      type: 'capital'
+    });
+  });
+}
+
+function createFighterSquadrons() {
+  // Swarms of small fighters
+  for (let squad = 0; squad < 4; squad++) {
+    const squadColor = squad % 2 === 0 ? 0x0088ff : 0xff0088;
+    const squadCenter = [
+      (Math.random() - 0.5) * 60,
+      (Math.random() - 0.5) * 20,
+      (Math.random() - 0.5) * 60
+    ];
+    
+    for (let f = 0; f < 8; f++) {
+      const fighter = createCube(0.3, squadColor);
+      setScale(fighter, 1.5, 0.4, 2);
+      
+      const angle = (f / 8) * Math.PI * 2;
+      const radius = 3;
+      const x = squadCenter[0] + Math.cos(angle) * radius;
+      const y = squadCenter[1] + Math.sin(f * 0.5) * 2;
+      const z = squadCenter[2] + Math.sin(angle) * radius;
+      
+      setPosition(fighter, x, y, z);
+      setRotation(fighter, 0, angle, 0);
+      
+      // Engine trail
+      const trail = createCube(0.1, 0x00aaff);
+      setScale(trail, 0.3, 0.1, 1);
+      setPosition(trail, x - Math.cos(angle) * 1.2, y, z - Math.sin(angle) * 1.2);
+      
+      fighters.push({
+        mesh: fighter,
+        trail,
+        squad,
+        formation: { angle, radius },
+        speed: 0.5 + Math.random() * 0.3,
+        squadCenter,
+        dodgeTimer: Math.random() * 2,
+        fireTimer: Math.random() * 1.5
+      });
+    }
+  }
+}
+
+function createBattleEffects() {
+  // Weapon fire and explosions
+  for (let i = 0; i < 50; i++) {
+    const projectile = createCube(0.1, 0xffff00);
+    setPosition(projectile, Math.random() * 100 - 50, Math.random() * 40 - 20, Math.random() * 100 - 50);
+    
+    projectiles.push({
+      mesh: projectile,
+      velocity: [(Math.random() - 0.5) * 20, (Math.random() - 0.5) * 10, (Math.random() - 0.5) * 20],
+      life: Math.random() * 2,
+      maxLife: 0.5 + Math.random(),
+      type: Math.random() > 0.7 ? 'torpedo' : 'laser'
+    });
+  }
+}
+
+export function update(dt) {
+  time += dt;
+  battleIntensity = 0.5 + Math.sin(time * 0.3) * 0.5;
+  
+  // Twinkling stars
+  stars.forEach((star, i) => {
+    star.twinkle += dt * 2;
+    const twinkleIntensity = (Math.sin(star.twinkle) + 1) * 0.5;
+    const scale = star.brightness * (0.8 + twinkleIntensity * 0.4);
+    setScale(star.mesh, scale);
+  });
+  
+  // Drifting nebula clouds
+  nebula.forEach(cloud => {
+    const pos = getPosition(cloud.mesh);
+    setPosition(cloud.mesh, 
+      pos[0] + cloud.drift[0] * dt,
+      pos[1] + cloud.drift[1] * dt,
+      pos[2] + cloud.drift[2] * dt
+    );
+    rotateMesh(cloud.mesh, cloud.rotation[0] * dt, cloud.rotation[1] * dt, cloud.rotation[2] * dt);
+  });
+  
+  // Capital ship battle animations
+  capitalShips.forEach((ship, i) => {
+    if (ship.type === 'capital') {
+      // Ship movement and combat
+      ship.fireTimer -= dt;
+      if (ship.fireTimer <= 0) {
+        ship.fireTimer = 2 + Math.random() * 3;
+        spawnWeaponFire(ship.pos, ship.faction);
+      }
+      
+      // Ship rocking from battle damage
+      const rockIntensity = (100 - ship.health) / 100;
+      const rock = Math.sin(time * 2 + i) * rockIntensity * 0.1;
+      setRotation(ship.mesh, rock * 0.5, getRotation(ship.mesh)[1], rock);
+      
+      // Engine pulse
+      const enginePulse = 0.8 + Math.sin(time * 5 + i) * 0.2;
+      setScale(ship.engine, ship.size[0] * 0.6, ship.size[1] * 0.4, ship.size[2] * 0.1 * enginePulse);
+      
+    } else if (ship.type === 'turret') {
+      // Turret tracking and rotation
+      ship.targetAngle += dt * 0.5;
+      rotateMesh(ship.mesh, 0, dt * 0.3, 0);
+    }
+  });
+  
+  // Fighter squadron maneuvers
+  fighters.forEach((fighter, i) => {
+    fighter.dodgeTimer -= dt;
+    fighter.fireTimer -= dt;
+    
+    // Formation flying with evasive maneuvers
+    const formationAngle = fighter.formation.angle + time * fighter.speed;
+    const evasion = fighter.dodgeTimer > 0 ? Math.sin(time * 10 + i) * 2 : 0;
+    
+    const targetX = fighter.squadCenter[0] + Math.cos(formationAngle) * (fighter.formation.radius + evasion);
+    const targetY = fighter.squadCenter[1] + Math.sin(time * 2 + i) * 3 + evasion * 0.5;
+    const targetZ = fighter.squadCenter[2] + Math.sin(formationAngle) * (fighter.formation.radius + evasion);
+    
+    setPosition(fighter.mesh, targetX, targetY, targetZ);
+    setRotation(fighter.mesh, evasion * 0.1, formationAngle + Math.PI/2, evasion * 0.05);
+    
+    // Engine trail follows
+    setPosition(fighter.trail, 
+      targetX - Math.cos(formationAngle + Math.PI/2) * 1.5,
+      targetY,
+      targetZ - Math.sin(formationAngle + Math.PI/2) * 1.5
+    );
+    
+    // Random evasive maneuvers
+    if (Math.random() < 0.02) {
+      fighter.dodgeTimer = 1 + Math.random();
+    }
+    
+    // Weapon fire
+    if (fighter.fireTimer <= 0) {
+      fighter.fireTimer = 0.5 + Math.random() * 1.5;
+      spawnProjectile([targetX, targetY, targetZ], 'fighter');
+    }
+  });
+  
+  // Projectile physics and combat
+  projectiles.forEach((proj, i) => {
+    proj.life -= dt;
+    if (proj.life <= 0) {
+      proj.life = proj.maxLife;
+      // Respawn projectile from random ship position
+      const randomShip = capitalShips[Math.floor(Math.random() * capitalShips.length)];
+      if (randomShip && randomShip.pos) {
+        setPosition(proj.mesh, ...randomShip.pos);
+        proj.velocity = [(Math.random() - 0.5) * 15, (Math.random() - 0.5) * 8, (Math.random() - 0.5) * 15];
+      }
+    }
+    
+    const pos = getPosition(proj.mesh);
+    setPosition(proj.mesh,
+      pos[0] + proj.velocity[0] * dt,
+      pos[1] + proj.velocity[1] * dt,
+      pos[2] + proj.velocity[2] * dt
+    );
+    
+    // Projectile glow effect
+    const glowIntensity = proj.life / proj.maxLife;
+    setScale(proj.mesh, glowIntensity * (proj.type === 'torpedo' ? 0.3 : 0.1));
+    
+    // Spin torpedoes
+    if (proj.type === 'torpedo') {
+      rotateMesh(proj.mesh, dt * 5, dt * 3, 0);
+    }
+  });
+  
+  // Dynamic cinematic camera
+  const cameraDistance = 35 + Math.sin(time * 0.1) * 15;
+  const cameraHeight = 8 + Math.sin(time * 0.15) * 12;
+  const cameraAngle = time * 0.08 + Math.sin(time * 0.05) * 0.5;
+  
+  const camX = Math.cos(cameraAngle) * cameraDistance;
+  const camY = cameraHeight;
+  const camZ = Math.sin(cameraAngle) * cameraDistance;
+  
+  setCameraPosition(camX, camY, camZ);
+  
+  // Camera focuses on different parts of the battle
+  const focusTarget = Math.floor(time * 0.1) % 3;
+  switch (focusTarget) {
+    case 0:
+      cameraTarget = { x: 0, y: 0, z: 0 }; // Center of battle
+      break;
+    case 1:
+      if (capitalShips.length > 0) {
+        cameraTarget = { x: capitalShips[0].pos[0], y: capitalShips[0].pos[1], z: capitalShips[0].pos[2] };
+      }
+      break;
+    case 2:
+      if (fighters.length > 0) {
+        cameraTarget = { x: fighters[0].squadCenter[0], y: fighters[0].squadCenter[1], z: fighters[0].squadCenter[2] };
+      }
+      break;
+  }
+  
+  setCameraTarget(cameraTarget.x, cameraTarget.y, cameraTarget.z);
+  
+  // Dynamic lighting effects
+  const lightIntensity = battleIntensity;
+  const lightX = Math.cos(time * 0.3) * lightIntensity * 3;
+  const lightY = 1 + Math.sin(time * 0.4) * lightIntensity;
+  const lightZ = Math.sin(time * 0.2) * lightIntensity * 2;
+  setLightDirection(lightX, lightY, lightZ);
+  
+  // Battle fog effects
+  const fogIntensity = 40 + battleIntensity * 20;
+  const fogColor = Math.floor(0x000511 + battleIntensity * 0x001122);
+  setFog(fogColor, fogIntensity, fogIntensity * 2.5);
+}
+
+function spawnWeaponFire(pos, faction) {
+  // Create muzzle flash effect
+  const flash = createCube(0.5, 0xffaa00);
+  setPosition(flash, pos[0], pos[1], pos[2]);
+  setTimeout(() => destroyMesh(flash), 100);
+}
+
+function spawnProjectile(pos, type) {
+  // Find available projectile to reuse
+  const availableProj = projectiles.find(p => p.life <= 0);
+  if (availableProj) {
+    availableProj.life = availableProj.maxLife;
+    setPosition(availableProj.mesh, ...pos);
+    availableProj.velocity = [(Math.random() - 0.5) * 12, (Math.random() - 0.5) * 6, (Math.random() - 0.5) * 12];
+  }
+}
+
+export function draw() {
+  cls();
+  
+  // Epic space battle HUD
+  const hudColor = rgba8(0, 255, 100, 255);
+  const warningColor = rgba8(255, 50, 50, 255);
+  const infoColor = rgba8(100, 200, 255, 255);
+  
+  // Battle status
+  print('GALACTIC BATTLE COMMAND', 8, 8, hudColor);
+  
+  const battlePhase = Math.floor(time / 10) % 3;
+  const phases = ['ENGAGEMENT', 'HEAVY COMBAT', 'CRITICAL PHASE'];
+  print(`STATUS: ${phases[battlePhase]}`, 8, 24, battlePhase === 2 ? warningColor : hudColor);
+  
+  // Fleet status
+  const blueFleet = capitalShips.filter(s => s.faction === 'blue').length;
+  const redFleet = capitalShips.filter(s => s.faction === 'red').length;
+  print(`BLUE FLEET: ${blueFleet} SHIPS`, 8, 40, rgba8(100, 150, 255, 255));
+  print(`RED FLEET: ${redFleet} SHIPS`, 8, 56, rgba8(255, 100, 150, 255));
+  
+  // Fighter status
+  const activeFighters = fighters.length;
+  print(`FIGHTERS: ${activeFighters} ACTIVE`, 8, 72, rgba8(255, 255, 100, 255));
+  
+  // Battle intensity
+  const intensity = Math.floor(battleIntensity * 100);
+  const intensityColor = intensity > 70 ? warningColor : intensity > 40 ? rgba8(255, 200, 0, 255) : hudColor;
+  print(`INTENSITY: ${intensity}%`, 8, 88, intensityColor);
+  
+  // Tactical display (mini radar)
+  const radarX = 220, radarY = 20, radarSize = 80;
+  rect(radarX, radarY, radarSize, radarSize, rgba8(0, 50, 0, 150), true);
+  rect(radarX, radarY, radarSize, radarSize, hudColor, false);
+  
+  // Grid lines
+  for (let i = 1; i < 4; i++) {
+    const gridPos = radarX + (radarSize / 4) * i;
+    line(gridPos, radarY, gridPos, radarY + radarSize, rgba8(0, 100, 0, 100));
+    line(radarX, radarY + (radarSize / 4) * i, radarX + radarSize, radarY + (radarSize / 4) * i, rgba8(0, 100, 0, 100));
+  }
+  
+  // Radar blips for capital ships
+  capitalShips.forEach(ship => {
+    if (ship.type === 'capital') {
+      const radarPosX = radarX + radarSize/2 + (ship.pos[0] / 60) * radarSize/2;
+      const radarPosY = radarY + radarSize/2 + (ship.pos[2] / 60) * radarSize/2;
+      const color = ship.faction === 'blue' ? rgba8(100, 150, 255, 255) : rgba8(255, 100, 150, 255);
+      rect(radarPosX - 2, radarPosY - 2, 4, 4, color, true);
+    }
+  });
+  
+  // Radar sweep
+  const sweepAngle = time * 2;
+  const sweepX = radarX + radarSize/2 + Math.cos(sweepAngle) * radarSize/2;
+  const sweepY = radarY + radarSize/2 + Math.sin(sweepAngle) * radarSize/2;
+  line(radarX + radarSize/2, radarY + radarSize/2, sweepX, sweepY, rgba8(0, 255, 0, 150));
+  
+  // Performance stats
+  if (typeof get3DStats === 'function') {
+    const stats = get3DStats();
+    if (stats.render) {
+      print(`OBJECTS: ${stats.render.geometries}`, 8, 120, infoColor);
+      print(`TRIANGLES: ${stats.render.triangles}`, 8, 136, infoColor);
+      print(`DRAW CALLS: ${stats.render.calls}`, 8, 152, infoColor);
+    }
+  }
+  
+  // Mission briefing
+  print('MISSION: Secure the sector', 8, 172, rgba8(255, 255, 255, 200));
+  
+  // Stardate
+  const stardate = (2387 + time * 0.1).toFixed(1);
+  print(`STARDATE: ${stardate}`, 200, 172, rgba8(200, 200, 200, 200));
+}

@@ -1,0 +1,9 @@
+LIBRETRO_COMM_DIR := $(CORE_DIR)
+INCFLAGS := -I$(LIBRETRO_COMM_DIR)
+
+SOURCES_C := \
+	$(CORE_DIR)/nova64_libretro.c
+
+ifneq (,$(findstring msvc2003,$(platform)))
+INCFLAGS += -I$(LIBRETRO_COMM_DIR)/include/compat/msvc
+endif

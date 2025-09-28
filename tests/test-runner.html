@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nova64 Test Suite</title>
+    <style>
+        body {
+            font-family: 'Courier New', monospace;
+            background: #000;
+            color: #00ff00;
+            margin: 0;
+            padding: 20px;
+            line-height: 1.4;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        h1 {
+            text-align: center;
+            color: #ff6b35;
+            text-shadow: 0 0 10px #ff6b35;
+            margin-bottom: 30px;
+        }
+        
+        .test-section {
+            background: #111;
+            border: 2px solid #333;
+            border-radius: 8px;
+            margin: 20px 0;
+            padding: 20px;
+        }
+        
+        .test-section h2 {
+            color: #00ffff;
+            border-bottom: 1px solid #333;
+            padding-bottom: 10px;
+        }
+        
+        .test-result {
+            margin: 10px 0;
+            padding: 8px;
+            border-radius: 4px;
+        }
+        
+        .test-pass {
+            background: #003300;
+            border-left: 4px solid #00ff00;
+        }
+        
+        .test-fail {
+            background: #330000;
+            border-left: 4px solid #ff0000;
+            color: #ffaaaa;
+        }
+        
+        .test-error {
+            background: #331100;
+            border-left: 4px solid #ffaa00;
+            color: #ffddaa;
+        }
+        
+        .stats {
+            background: #001122;
+            border: 2px solid #0066cc;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        
+        .stats h3 {
+            color: #00ccff;
+            margin-top: 0;
+        }
+        
+        .progress-bar {
+            width: 100%;
+            height: 20px;
+            background: #333;
+            border-radius: 10px;
+            overflow: hidden;
+            margin: 10px 0;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #00ff00, #00cc00);
+            transition: width 0.3s ease;
+        }
+        
+        .controls {
+            text-align: center;
+            margin: 20px 0;
+        }
+        
+        button {
+            background: #ff6b35;
+            color: #fff;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            font-family: 'Courier New', monospace;
+            margin: 0 10px;
+            transition: background 0.3s ease;
+        }
+        
+        button:hover {
+            background: #ff8555;
+        }
+        
+        button:disabled {
+            background: #666;
+            cursor: not-allowed;
+        }
+        
+        .log {
+            background: #000;
+            border: 1px solid #333;
+            border-radius: 4px;
+            padding: 15px;
+            max-height: 400px;
+            overflow-y: auto;
+            font-size: 12px;
+            white-space: pre-wrap;
+        }
+        
+        .performance-metrics {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 15px;
+            margin: 20px 0;
+        }
+        
+        .metric {
+            background: #112211;
+            border: 1px solid #44aa44;
+            border-radius: 6px;
+            padding: 15px;
+            text-align: center;
+        }
+        
+        .metric-value {
+            font-size: 24px;
+            color: #00ff00;
+            font-weight: bold;
+        }
+        
+        .metric-label {
+            color: #888;
+            font-size: 12px;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 Nova64 Fantasy Console Test Suite</h1>
+        
+        <div class="controls">
+            <button id="runTests" onclick="runTests()">Run All Tests</button>
+            <button id="runQuick" onclick="runQuickTests()">Quick Test</button>
+            <button id="clearResults" onclick="clearResults()">Clear Results</button>
+        </div>
+        
+        <div class="stats" id="stats" style="display: none;">
+            <h3>📊 Test Results</h3>
+            <div class="progress-bar">
+                <div class="progress-fill" id="progressFill" style="width: 0%;"></div>
+            </div>
+            <div id="statsContent"></div>
+        </div>
+        
+        <div class="performance-metrics" id="performanceMetrics" style="display: none;">
+            <div class="metric">
+                <div class="metric-value" id="meshCreationTime">-</div>
+                <div class="metric-label">Mesh Creation (ms)</div>
+            </div>
+            <div class="metric">
+                <div class="metric-value" id="sceneOpsTime">-</div>
+                <div class="metric-label">Scene Operations (ms)</div>
+            </div>
+            <div class="metric">
+                <div class="metric-value" id="transformTime">-</div>
+                <div class="metric-label">Transform Operations (ms)</div>
+            </div>
+        </div>
+        
+        <div class="test-section" id="testResults" style="display: none;">
+            <h2>🧪 Test Results</h2>
+            <div id="testOutput"></div>
+        </div>
+        
+        <div class="test-section" id="console" style="display: none;">
+            <h2>📝 Console Output</h2>
+            <div class="log" id="consoleLog"></div>
+        </div>
+    </div>
+
+    <script type="module">
+        // Import test modules
+        import { TestRunner, Assert, Performance, MockGPU } from './test-runner.js';
+        
+        let testResults = [];
+        let consoleOutput = [];
+        
+        // Override console.log to capture output
+        const originalConsoleLog = console.log;
+        console.log = function(...args) {
+            consoleOutput.push(args.join(' '));
+            updateConsoleDisplay();
+            originalConsoleLog.apply(console, args);
+        };
+        
+        function updateUI() {
+            const stats = document.getElementById('stats');
+            const results = document.getElementById('testResults');
+            const consoleDiv = document.getElementById('console');
+            
+            if (testResults.length > 0) {
+                stats.style.display = 'block';
+                results.style.display = 'block';
+                consoleDiv.style.display = 'block';
+                
+                updateStats();
+                updateTestResults();
+            }
+        }
+        
+        function updateStats() {
+            const total = testResults.length;
+            const passed = testResults.filter(t => t.passed).length;
+            const failed = total - passed;
+            const passRate = total > 0 ? (passed / total * 100).toFixed(1) : 0;
+            
+            const progressFill = document.getElementById('progressFill');
+            const statsContent = document.getElementById('statsContent');
+            
+            progressFill.style.width = passRate + '%';
+            
+            statsContent.innerHTML = `
+                <p><strong>Total Tests:</strong> ${total}</p>
+                <p><strong>✅ Passed:</strong> ${passed}</p>
+                <p><strong>❌ Failed:</strong> ${failed}</p>
+                <p><strong>📈 Pass Rate:</strong> ${passRate}%</p>
+            `;
+        }
+        
+        function updateTestResults() {
+            const output = document.getElementById('testOutput');
+            output.innerHTML = '';
+            
+            testResults.forEach(test => {
+                const div = document.createElement('div');
+                div.className = `test-result ${test.passed ? 'test-pass' : 'test-fail'}`;
+                div.innerHTML = `
+                    <strong>${test.passed ? '✅' : '❌'} ${test.name}</strong>
+                    ${test.error ? `<br><em>${test.error}</em>` : ''}
+                    <br><small>Duration: ${test.duration}ms</small>
+                `;
+                output.appendChild(div);
+            });
+        }
+        
+        function updateConsoleDisplay() {
+            const consoleLog = document.getElementById('consoleLog');
+            consoleLog.textContent = consoleOutput.join('\n');
+            consoleLog.scrollTop = consoleLog.scrollHeight;
+        }
+        
+        function updatePerformanceMetrics(metrics) {
+            if (!metrics) return;
+            
+            const performanceDiv = document.getElementById('performanceMetrics');
+            performanceDiv.style.display = 'grid';
+            
+            document.getElementById('meshCreationTime').textContent = 
+                metrics.meshCreation ? metrics.meshCreation.toFixed(3) : '-';
+            document.getElementById('sceneOpsTime').textContent = 
+                metrics.sceneOperations ? metrics.sceneOperations.toFixed(3) : '-';
+            document.getElementById('transformTime').textContent = 
+                metrics.transformOperations ? metrics.transformOperations.toFixed(3) : '-';
+        }
+        
+        // Basic 3D API Tests
+        async function run3DAPITests() {
+            const runner = new TestRunner();
+            const mockGPU = new MockGPU();
+            
+            console.log('🧪 Running 3D API Tests...');
+            
+            // Test cube creation
+            runner.test('createCube - basic functionality', () => {
+                const cubeId = mockGPU.createMesh({ geometry: 'cube', material: 'basic' });
+                Assert.isNotNull(cubeId, 'Cube should be created');
+            });
+            
+            // Test sphere creation
+            runner.test('createSphere - basic functionality', () => {
+                const sphereId = mockGPU.createMesh({ geometry: 'sphere', material: 'basic' });
+                Assert.isNotNull(sphereId, 'Sphere should be created');
+            });
+            
+            // Test plane creation
+            runner.test('createPlane - basic functionality', () => {
+                const planeId = mockGPU.createMesh({ geometry: 'plane', material: 'basic' });
+                Assert.isNotNull(planeId, 'Plane should be created');
+            });
+            
+            // Test transforms
+            runner.test('Transform operations', () => {
+                const mesh = mockGPU.createMesh({ geometry: 'cube', material: 'basic' });
+                
+                const result1 = mockGPU.setPosition(mesh, 1, 2, 3);
+                const result2 = mockGPU.setRotation(mesh, 0.5, 1.0, 1.5);
+                const result3 = mockGPU.setScale(mesh, 2, 2, 2);
+                
+                Assert.isTrue(result1, 'setPosition should work');
+                Assert.isTrue(result2, 'setRotation should work');
+                Assert.isTrue(result3, 'setScale should work');
+            });
+            
+            // Test error handling
+            runner.test('Error handling - invalid parameters', () => {
+                Assert.doesNotThrow(() => {
+                    mockGPU.setPosition(null, 1, 2, 3);
+                    mockGPU.setRotation(999, 0, 0, 0);
+                    mockGPU.setScale(undefined, 1, 1, 1);
+                }, 'Should handle invalid parameters gracefully');
+            });
+            
+            return await runner.runAll();
+        }
+        
+        // Performance tests
+        async function runPerformanceTests() {
+            console.log('⚡ Running Performance Tests...');
+            
+            const mockGPU = new MockGPU();
+            
+            // Mesh creation performance
+            const { average: meshAvg } = await Performance.benchmark('Mesh Creation', () => {
+                mockGPU.createMesh({ geometry: 'cube', material: 'basic' });
+            }, 100);
+            
+            // Transform performance
+            const mesh = mockGPU.createMesh({ geometry: 'cube', material: 'basic' });
+            const { average: transformAvg } = await Performance.benchmark('Transform Operations', () => {
+                mockGPU.setPosition(mesh, Math.random(), Math.random(), Math.random());
+            }, 1000);
+            
+            // Scene operations performance
+            const { average: sceneAvg } = await Performance.benchmark('Scene Operations', () => {
+                const scene = mockGPU.createScene();
+                const mesh = mockGPU.createMesh({ geometry: 'cube', material: 'basic' });
+                mockGPU.addToScene(scene, mesh);
+            }, 50);
+            
+            return {
+                meshCreation: meshAvg,
+                transformOperations: transformAvg,
+                sceneOperations: sceneAvg
+            };
+        }
+        
+        // Quick tests for immediate feedback
+        async function runQuickTests() {
+            console.log('🏃 Running Quick Tests...');
+            clearResults();
+            
+            const button = document.getElementById('runQuick');
+            button.disabled = true;
+            button.textContent = 'Running...';
+            
+            try {
+                const results = await run3DAPITests();
+                testResults = results.tests || [];
+                updateUI();
+                
+                console.log(`✅ Quick tests completed: ${results.passed}/${results.total} passed`);
+            } catch (error) {
+                console.error('❌ Quick test error:', error);
+            } finally {
+                button.disabled = false;
+                button.textContent = 'Quick Test';
+            }
+        }
+        
+        // Full test suite
+        async function runTests() {
+            console.log('🚀 Running Full Test Suite...');
+            clearResults();
+            
+            const button = document.getElementById('runTests');
+            button.disabled = true;
+            button.textContent = 'Running...';
+            
+            try {
+                // Run 3D API tests
+                const apiResults = await run3DAPITests();
+                testResults = apiResults.tests || [];
+                updateUI();
+                
+                // Run performance tests
+                const perfMetrics = await runPerformanceTests();
+                updatePerformanceMetrics(perfMetrics);
+                
+                console.log(`🏁 Full test suite completed: ${apiResults.passed}/${apiResults.total} passed`);
+                
+                if (apiResults.failed === 0) {
+                    console.log('🎉 All tests passed! Nova64 is ready for action!');
+                } else {
+                    console.log('🔧 Some tests failed. Check the results above.');
+                }
+                
+            } catch (error) {
+                console.error('❌ Test suite error:', error);
+                testResults.push({
+                    name: 'Test Suite Error',
+                    passed: false,
+                    error: error.message,
+                    duration: 0
+                });
+                updateUI();
+            } finally {
+                button.disabled = false;
+                button.textContent = 'Run All Tests';
+            }
+        }
+        
+        function clearResults() {
+            testResults = [];
+            consoleOutput = [];
+            
+            document.getElementById('stats').style.display = 'none';
+            document.getElementById('testResults').style.display = 'none';
+            document.getElementById('console').style.display = 'none';
+            document.getElementById('performanceMetrics').style.display = 'none';
+            
+            updateConsoleDisplay();
+        }
+        
+        // Make functions globally available
+        window.runTests = runTests;
+        window.runQuickTests = runQuickTests;
+        window.clearResults = clearResults;
+        
+        // Auto-run quick tests on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            console.log('🎮 Nova64 Test Suite Ready!');
+            console.log('Click "Quick Test" for basic validation or "Run All Tests" for comprehensive testing.');
+        });
+        
+    </script>
+</body>
+</html>

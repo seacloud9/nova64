@@ -10,6 +10,7 @@ import { aabb, circle, raycastTilemap } from '../runtime/collision.js';
 import { audioApi } from '../runtime/audio.js';
 import { inputApi } from '../runtime/input.js';
 import { storageApi } from '../runtime/storage.js';
+import { screenApi } from '../runtime/screens.js';
 
 const canvas = document.getElementById('screen');
 
@@ -33,6 +34,7 @@ const tApi = textInputApi();
 const aApi = audioApi();
 const iApi = inputApi();
 const stApi = storageApi('nova64');
+const scrApi = screenApi();
 
 // gather and expose to global
 const g = {};
@@ -46,6 +48,7 @@ Object.assign(g, { aabb, circle, raycastTilemap });
 aApi.exposeTo(g);
 iApi.exposeTo(g);
 stApi.exposeTo(g);
+scrApi.exposeTo(g);
 Object.assign(globalThis, g);
 // inject camera ref into sprite system
 if (g.getCamera) sApi.setCameraRef(g.getCamera());
@@ -98,13 +101,25 @@ function loop() {
   if (!paused || stepOnce) {
     iApi.step();
     const u0 = performance.now();
+    
+    // Update cart first (for manual screen management)
     nova.cart.update?.(dt);
+    
+    // Then update screen manager (for automatic screen management)
+    scrApi.manager.update(dt);
+    
     const u1 = performance.now();
     uMs = u1 - u0;
 
     gpu.beginFrame();
     const d0 = performance.now();
+    
+    // Draw cart first (for manual rendering)
     nova.cart.draw?.();
+    
+    // Then draw screen manager (for automatic screen rendering)
+    scrApi.manager.draw();
+    
     const d1 = performance.now();
     dMs = d1 - d0;
     gpu.endFrame();

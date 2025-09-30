@@ -1,7 +1,12 @@
 // runtime/api.js
 // Helpers to pack/unpack 64-bit color (RGBA64)
 function packRGBA64(r16, g16, b16, a16) {
-  return (BigInt(r16) << 48n) | (BigInt(g16) << 32n) | (BigInt(b16) << 16n) | BigInt(a16);
+  // Ensure all values are integers before converting to BigInt
+  const r = BigInt(Math.floor(r16));
+  const g = BigInt(Math.floor(g16));
+  const b = BigInt(Math.floor(b16));
+  const a = BigInt(Math.floor(a16));
+  return (r << 48n) | (g << 32n) | (b << 16n) | a;
 }
 function unpackRGBA64(c) {
   // Handle both BigInt and regular number inputs
@@ -14,7 +19,7 @@ function unpackRGBA64(c) {
     };
   } else {
     // Handle regular number input - convert to BigInt first
-    const bigC = BigInt(c);
+    const bigC = BigInt(Math.floor(c));
     return {
       r: Number((bigC >> 48n) & 0xffffn),
       g: Number((bigC >> 32n) & 0xffffn),
@@ -24,8 +29,14 @@ function unpackRGBA64(c) {
   }
 }
 function rgba8(r, g, b, a=255) {
+  // Clamp input values to 0-255 range and ensure they're integers
+  const clampedR = Math.max(0, Math.min(255, Math.floor(r)));
+  const clampedG = Math.max(0, Math.min(255, Math.floor(g)));
+  const clampedB = Math.max(0, Math.min(255, Math.floor(b)));
+  const clampedA = Math.max(0, Math.min(255, Math.floor(a)));
+  
   const s = 257;
-  return packRGBA64(r*s, g*s, b*s, a*s);
+  return packRGBA64(clampedR * s, clampedG * s, clampedB * s, clampedA * s);
 }
 
 import { BitmapFont } from './font.js';

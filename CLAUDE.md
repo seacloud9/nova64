@@ -4,22 +4,32 @@ This file provides comprehensive guidance for AI assistants working with the **N
 
 ## 🚀 **Development Commands**
 
+**⚡ Always use `pnpm` for all package management and development tasks:**
+
 ```bash
-# 📦 Install dependencies
-npm install
+# 📦 Install dependencies (ALWAYS use pnpm)
+pnpm install
 
-# 🔥 Start development server with hot reloading
-npm run dev          # Usually http://localhost:5173
+# 🔥 Start development server with hot reloading (ALWAYS use pnpm)
+pnpm dev            # Usually http://localhost:5173
 
-# 🏗️ Build for production (optimized)
-npm run build
+# 🏗️ Build for production (optimized) (ALWAYS use pnpm)
+pnpm build
 
-# 👁️ Preview production build
-npm run preview
+# 👁️ Preview production build (ALWAYS use pnpm)
+pnpm preview
 
-# 🧪 Run complete test suite (35/35 tests passing)
-npm test
+# 🧪 Run complete test suite (35/35 tests passing) (ALWAYS use pnpm)
+pnpm test
+
+# 🎯 Run specific test suites (ALWAYS use pnpm)
+pnpm test:api
+pnpm test:input
+pnpm test:starfox
+pnpm test:integration
 ```
+
+**🚨 CRITICAL: Never use `npm` or `yarn` - Always use `pnpm` for consistency and performance.**
 
 ## 🏗️ **Architecture Overview**
 

@@ -3,6 +3,7 @@
 
 import { TestRunner, Assert, Performance, MockGPU } from './test-runner.js';
 import { threeDApi } from '../runtime/api-3d.js';
+import { runScreenSystemTests } from './test-screen-system.js';
 
 export async function run3DAPITests() {
   const runner = new TestRunner();

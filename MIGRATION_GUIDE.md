@@ -2,6 +2,19 @@
 
 Transform your Nova64 experiences into **spectacular 3D fantasy console adventures** with advanced materials, cinematic lighting, and Nintendo 64/PlayStation aesthetics!
 
+## 🌟 **Migration to v0.2.0**
+
+### 🎯 **Breaking Changes**
+- **Three.js Only**: Nova64 now exclusively uses Three.js for maximum 3D performance
+- **Enhanced API**: New 3D functions with improved parameter structure
+- **Material System**: Advanced material options with new configuration format
+- **Camera Controls**: Improved camera system with smooth interpolation
+
+### ✅ **Backward Compatibility**
+- **100% 2D Compatibility**: All existing 2D carts work without modification
+- **Gradual Migration**: Add 3D elements incrementally to existing projects
+- **API Preservation**: Core 2D functions remain unchanged
+
 ## 🌟 **Revolutionary 3D Transformation**
 
 ### 🎪 **Advanced Rendering Pipeline**

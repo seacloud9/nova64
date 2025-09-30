@@ -1,6 +1,13 @@
-# 🎮 Nova64 Ultimate 3D Fantasy Console - RetroArch Core v2.0
+# 🎮 Nova64 Ultimate 3D Fantasy Console - RetroArch Core v0.2.0
 
 Revolutionary RetroArch/libretro core implementation for the **Nova64 Ultimate 3D Fantasy Console** featuring spectacular Nintendo 64/PlayStation-style graphics with modern performance.
+
+## 🚀 **New in v0.2.0**
+- **Three.js Core Integration**: Full 3D graphics pipeline in RetroArch
+- **Enhanced Performance**: Optimized rendering for 60 FPS gameplay
+- **Advanced Materials**: Holographic, metallic, and emissive surface effects
+- **Spatial Audio**: 3D positioned sound with environmental effects
+- **Professional Lighting**: Dynamic shadows and atmospheric rendering
 
 ## 🌟 **What is Nova64 RetroArch Core?**
 

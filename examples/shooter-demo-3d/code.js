@@ -1,40 +1,35 @@
 // STAR COMBAT 64 - True 3D Space Fighter
 // Nintendo 64 / PlayStation style 3D space combat with full GPU acceleration
 
-// Game state
-let gameTime = 0;
-let gameState = 'playing';
-let score = 0;
-let level = 1;
-let lives = 3;
-
-// 3D Game objects
-let playerShip = null;
-let playerBullets = [];
-let enemies = [];
-let enemyBullets = [];
-let powerups = [];
-let explosions = [];
-let stars = [];
-
-// Player state
-let player = {
-  x: 0, y: 0, z: -5,
-  health: 100,
-  shield: 100,
-  energy: 100,
-  fireCooldown: 0,
-  weaponLevel: 1
-};
-
-// Input tracking
-let inputState = {
-  left: false, right: false, up: false, down: false,
-  fire: false, charge: false
+// Game data with screen management
+let gameData = {
+  time: 0,
+  score: 0,
+  level: 1,
+  lives: 3,
+  playerShip: null,
+  playerBullets: [],
+  enemies: [],
+  enemyBullets: [],
+  powerups: [],
+  explosions: [],
+  stars: [],
+  player: {
+    x: 0, y: 0, z: -5,
+    health: 100,
+    shield: 100,
+    energy: 100,
+    fireCooldown: 0,
+    weaponLevel: 1
+  },
+  inputState: {
+    left: false, right: false, up: false, down: false,
+    fire: false, charge: false
+  }
 };
 
 export async function init() {
-  cls();
+  console.log('🚀 Star Combat 64 - 3D Space Fighter with Screen Management');
   
   // Setup 3D scene with N64-style aesthetics
   setCameraPosition(0, 2, 0);
@@ -49,8 +44,86 @@ export async function init() {
   enablePixelation(1);
   enableDithering(true);
   
+  // Setup screen management
+  addScreen('title', {
+    draw: drawTitleScreen,
+    update: updateTitleScreen
+  });
+  
+  addScreen('game', {
+    draw: drawGameScreen,
+    update: updateGameScreen,
+    enter: enterGameScreen,
+    exit: exitGameScreen
+  });
+  
+  addScreen('gameover', {
+    draw: drawGameOverScreen,
+    update: updateGameOverScreen
+  });
+  
+  // Start with title screen
+  switchToScreen('title');
+  
+  console.log('✅ Star Combat 64 Screen System Ready!');
+}
+
+// === TITLE SCREEN ===
+function drawTitleScreen() {
+  cls(0x000011);
+  
+  fill(0xFF6600);
+  textSize(36);
+  textAlign('center');
+  text('STAR COMBAT 64', width()/2, height()/2 - 60);
+  
+  fill(0x00FFFF);
+  textSize(20);
+  text('3D Space Fighter', width()/2, height()/2 - 20);
+  
+  fill(0xFFFF00);
+  textSize(18);
+  text('Press SPACE to Launch', width()/2, height()/2 + 20);
+  
+  fill(0xFFFFFF);
+  textSize(14);
+  text('ARROWS: Move • Z: Fire • X: Charge Shot', width()/2, height()/2 + 60);
+}
+
+function updateTitleScreen() {
+  if (isKeyPressed(' ')) {
+    switchToScreen('game');
+  }
+}
+
+// === GAME SCREEN ===
+async function enterGameScreen() {
+  // Reset game state
+  gameData.score = 0;
+  gameData.level = 1;
+  gameData.lives = 3;
+  gameData.time = 0;
+  
+  // Reset player
+  gameData.player = {
+    x: 0, y: 0, z: -5,
+    health: 100,
+    shield: 100,
+    energy: 100,
+    fireCooldown: 0,
+    weaponLevel: 1
+  };
+  
+  // Clear arrays
+  gameData.playerBullets = [];
+  gameData.enemies = [];
+  gameData.enemyBullets = [];
+  gameData.powerups = [];
+  gameData.explosions = [];
+  gameData.stars = [];
+  
   // Create player ship - sleek fighter
-  playerShip = createPlayerShip();
+  gameData.playerShip = createPlayerShip();
   
   // Create star field environment
   await createStarField();
@@ -60,45 +133,95 @@ export async function init() {
   
   // Spawn initial wave
   spawnEnemyWave();
-  
-  console.log('Star Combat 64 - 3D Space Fighter initialized');
-  console.log('Use ARROWS to move, Z to fire, X to charge shot');
 }
 
-export function update(dt) {
-  gameTime += dt;
-  
-  if (gameState === 'playing') {
-    updateInput(dt);
-    updatePlayer(dt);
-    updateBullets(dt);
-    updateEnemies(dt);
-    updatePowerups(dt);
-    updateExplosions(dt);
-    updateStarField(dt);
-    checkCollisions(dt);
-    updateGameLogic(dt);
-  }
-  
-  updateCamera(dt);
-}
-
-export function draw() {
+function drawGameScreen() {
   // 3D scene is automatically rendered by GPU backend
   // Draw UI overlay using 2D API
   drawUI();
 }
 
+function updateGameScreen(dt) {
+  gameData.time += dt;
+  
+  updateInput(dt);
+  updatePlayer(dt);
+  updateBullets(dt);
+  updateEnemies(dt);
+  updatePowerups(dt);
+  updateExplosions(dt);
+  updateStarField(dt);
+  checkCollisions(dt);
+  updateGameLogic(dt);
+  
+  updateCamera(dt);
+  
+  // Check game over
+  if (gameData.lives <= 0 || gameData.player.health <= 0) {
+    switchToScreen('gameover');
+  }
+}
+
+function exitGameScreen() {
+  // Clean up 3D objects
+  if (gameData.playerShip) {
+    remove3D(gameData.playerShip);
+  }
+  
+  // Clean up all other 3D objects
+  [...gameData.playerBullets, ...gameData.enemies, ...gameData.enemyBullets, 
+   ...gameData.powerups, ...gameData.explosions, ...gameData.stars].forEach(obj => {
+    if (obj.mesh) remove3D(obj.mesh);
+  });
+}
+
+// === GAME OVER SCREEN ===
+function drawGameOverScreen() {
+  cls(0x220000);
+  
+  fill(0xFF0000);
+  textSize(32);
+  textAlign('center');
+  text('MISSION FAILED', width()/2, height()/2 - 60);
+  
+  fill(0xFFFFFF);
+  textSize(20);
+  text(`Final Score: ${gameData.score}`, width()/2, height()/2 - 10);
+  text(`Level Reached: ${gameData.level}`, width()/2, height()/2 + 20);
+  
+  fill(0x00FFFF);
+  textSize(16);
+  text('Press SPACE to try again', width()/2, height()/2 + 80);
+  text('Press ESC for title screen', width()/2, height()/2 + 110);
+}
+
+function updateGameOverScreen() {
+  if (isKeyPressed(' ')) {
+    switchToScreen('game');
+  } else if (isKeyPressed('Escape')) {
+    switchToScreen('title');
+  }
+}
+
+export function update(dt) {
+  // Screen management handles updates
+}
+
+export function draw() {
+  // Screen management handles drawing
+}
+
 function createPlayerShip() {
   // Create main body
-  const body = createCube(0.8, 0x4488ff, [0, 0, -5]);
-  setScale(body, 1.5, 0.6, 2.5);
+  const body = addCube(1.5, 0.6, 2.5, 0x4488ff);
+  position3D(body, 0, 0, -5);
   
   // Create wings
-  const leftWing = createCube(0.4, 0x2266dd, [-1.2, 0, -5]);
-  setScale(leftWing, 1.8, 0.3, 1.2);
+  const leftWing = addCube(1.8, 0.3, 1.2, 0x2266dd);
+  position3D(leftWing, -1.2, 0, -5);
   
-  const rightWing = createCube(0.4, 0x2266dd, [1.2, 0, -5]);
+  const rightWing = addCube(1.8, 0.3, 1.2, 0x2266dd);
+  position3D(rightWing, 1.2, 0, -5);
   setScale(rightWing, 1.8, 0.3, 1.2);
   
   // Create cockpit

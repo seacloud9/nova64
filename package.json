@@ -6,7 +6,13 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "node tests/test-cli.js",
+    "test:api": "node tests/test-cli.js api",
+    "test:input": "node tests/test-cli.js input",
+    "test:starfox": "node tests/test-cli.js starfox",
+    "test:integration": "node tests/test-cli.js integration",
+    "test:web": "open tests/test-runner.html || xdg-open tests/test-runner.html || start tests/test-runner.html"
   },
   "dependencies": {
     "three": "^0.157.0"

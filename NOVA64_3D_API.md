@@ -4,6 +4,13 @@
 
 Nova64 delivers **spectacular Nintendo 64/PlayStation-style 3D graphics** with modern performance, featuring advanced materials, cinematic lighting, and 100% test coverage (35/35 tests passing).
 
+### 🚀 **What's New in v0.2.0**
+- **Complete Three.js Integration**: Hardware-accelerated 3D rendering with professional quality
+- **Advanced Material System**: 4 material types with real-time animation capabilities
+- **Enhanced Performance**: Optimized rendering pipeline with automatic LOD and culling
+- **Professional Lighting**: Multi-light setup with dynamic shadows and atmospheric effects
+- **Model Loading**: GLTF/GLB support with automatic material conversion
+
 ### ✨ **Key Features**
 - **🚀 Three.js Integration**: Hardware-accelerated 3D rendering with WebGL2
 - **🎨 Advanced Materials**: Holographic, metallic, emissive, and animated surfaces  

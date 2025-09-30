@@ -28,6 +28,25 @@ class Input {
   btn(i) { return !!this.keys.get(KEYMAP[i|0] || ''); }
   btnp(i) { const code = KEYMAP[i|0] || ''; return !!this.keys.get(code) && !this.prev.get(code); }
   key(code) { return !!this.keys.get(code); } // Direct key code checking
+  
+  // Helper functions for easier key checking
+  isKeyDown(keyCode) { 
+    // Handle single character keys by converting to KeyCode format
+    if (keyCode.length === 1) {
+      keyCode = 'Key' + keyCode.toUpperCase();
+    }
+    return !!this.keys.get(keyCode); 
+  }
+  
+  isKeyPressed(keyCode) { 
+    // Handle single character keys by converting to KeyCode format
+    if (keyCode.length === 1) {
+      keyCode = 'Key' + keyCode.toUpperCase();
+    }
+    // Handle space key specially
+    if (keyCode === ' ') keyCode = 'Space';
+    return !!this.keys.get(keyCode) && !this.prev.get(keyCode); 
+  }
 }
 
 export const input = new Input();
@@ -38,7 +57,9 @@ export function inputApi() {
       Object.assign(target, {
         btn: (i)=>input.btn(i),
         btnp: (i)=>input.btnp(i),
-        key: (code)=>input.key(code)
+        key: (code)=>input.key(code),
+        isKeyDown: (code)=>input.isKeyDown(code),
+        isKeyPressed: (code)=>input.isKeyPressed(code)
       });
     },
     step() { input.step(); }

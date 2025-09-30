@@ -163,7 +163,10 @@
         
         <div class="controls">
             <button id="runTests" onclick="runTests()">Run All Tests</button>
-            <button id="runQuick" onclick="runQuickTests()">Quick Test</button>
+            <button id="runAPI" onclick="runAPITests()">3D API Tests</button>
+            <button id="runScreen" onclick="runScreenTests()">Screen Tests</button>
+            <button id="runInput" onclick="runInputTests()">Input Tests</button>
+            <button id="runIntegration" onclick="runIntegrationOnlyTests()">Integration Tests</button>
             <button id="clearResults" onclick="clearResults()">Clear Results</button>
         </div>
         
@@ -204,6 +207,10 @@
     <script type="module">
         // Import test modules
         import { TestRunner, Assert, Performance, MockGPU } from './test-runner.js';
+        import { run3DAPITests } from './test-3d-api.js';
+        import { runScreenSystemTests } from './test-screen-system.js';
+        import { runIntegrationTests } from './test-integration.js';
+        import { runInputSystemTests } from './test-input-system.js';
         
         let testResults = [];
         let consoleOutput = [];
@@ -286,54 +293,93 @@
                 metrics.transformOperations ? metrics.transformOperations.toFixed(3) : '-';
         }
         
-        // Basic 3D API Tests
-        async function run3DAPITests() {
-            const runner = new TestRunner();
-            const mockGPU = new MockGPU();
+        // Individual test suite runners
+        async function runAPITests() {
+            console.log('🔧 Running 3D API Tests...');
+            clearResults();
             
-            console.log('🧪 Running 3D API Tests...');
+            const button = document.getElementById('runAPI');
+            button.disabled = true;
+            button.textContent = 'Running...';
             
-            // Test cube creation
-            runner.test('createCube - basic functionality', () => {
-                const cubeId = mockGPU.createMesh({ geometry: 'cube', material: 'basic' });
-                Assert.isNotNull(cubeId, 'Cube should be created');
-            });
-            
-            // Test sphere creation
-            runner.test('createSphere - basic functionality', () => {
-                const sphereId = mockGPU.createMesh({ geometry: 'sphere', material: 'basic' });
-                Assert.isNotNull(sphereId, 'Sphere should be created');
-            });
-            
-            // Test plane creation
-            runner.test('createPlane - basic functionality', () => {
-                const planeId = mockGPU.createMesh({ geometry: 'plane', material: 'basic' });
-                Assert.isNotNull(planeId, 'Plane should be created');
-            });
-            
-            // Test transforms
-            runner.test('Transform operations', () => {
-                const mesh = mockGPU.createMesh({ geometry: 'cube', material: 'basic' });
+            try {
+                const results = await run3DAPITests();
+                testResults = results.tests || [];
+                updateUI();
                 
-                const result1 = mockGPU.setPosition(mesh, 1, 2, 3);
-                const result2 = mockGPU.setRotation(mesh, 0.5, 1.0, 1.5);
-                const result3 = mockGPU.setScale(mesh, 2, 2, 2);
+                console.log(`✅ 3D API tests completed: ${results.passed}/${results.total} passed`);
+            } catch (error) {
+                console.error('❌ 3D API test error:', error);
+            } finally {
+                button.disabled = false;
+                button.textContent = '3D API Tests';
+            }
+        }
+        
+        async function runScreenTests() {
+            console.log('🖥️  Running Screen System Tests...');
+            clearResults();
+            
+            const button = document.getElementById('runScreen');
+            button.disabled = true;
+            button.textContent = 'Running...';
+            
+            try {
+                const results = await runScreenSystemTests();
+                testResults = results.tests || [];
+                updateUI();
                 
-                Assert.isTrue(result1, 'setPosition should work');
-                Assert.isTrue(result2, 'setRotation should work');
-                Assert.isTrue(result3, 'setScale should work');
-            });
+                console.log(`✅ Screen system tests completed: ${results.passed}/${results.total} passed`);
+            } catch (error) {
+                console.error('❌ Screen system test error:', error);
+            } finally {
+                button.disabled = false;
+                button.textContent = 'Screen Tests';
+            }
+        }
+        
+        async function runInputTests() {
+            console.log('🎮 Running Input System Tests...');
+            clearResults();
             
-            // Test error handling
-            runner.test('Error handling - invalid parameters', () => {
-                Assert.doesNotThrow(() => {
-                    mockGPU.setPosition(null, 1, 2, 3);
-                    mockGPU.setRotation(999, 0, 0, 0);
-                    mockGPU.setScale(undefined, 1, 1, 1);
-                }, 'Should handle invalid parameters gracefully');
-            });
+            const button = document.getElementById('runInput');
+            button.disabled = true;
+            button.textContent = 'Running...';
             
-            return await runner.runAll();
+            try {
+                const results = await runInputSystemTests();
+                testResults = results.tests || [];
+                updateUI();
+                
+                console.log(`✅ Input system tests completed: ${results.passed}/${results.total} passed`);
+            } catch (error) {
+                console.error('❌ Input system test error:', error);
+            } finally {
+                button.disabled = false;
+                button.textContent = 'Input Tests';
+            }
+        }
+        
+        async function runIntegrationOnlyTests() {
+            console.log('🔗 Running Integration Tests...');
+            clearResults();
+            
+            const button = document.getElementById('runIntegration');
+            button.disabled = true;
+            button.textContent = 'Running...';
+            
+            try {
+                const results = await runIntegrationTests();
+                testResults = results.tests || [];
+                updateUI();
+                
+                console.log(`✅ Integration tests completed: ${results.passed}/${results.total} passed`);
+            } catch (error) {
+                console.error('❌ Integration test error:', error);
+            } finally {
+                button.disabled = false;
+                button.textContent = 'Integration Tests';
+            }
         }
         
         // Performance tests
@@ -367,32 +413,11 @@
             };
         }
         
-        // Quick tests for immediate feedback
-        async function runQuickTests() {
-            console.log('🏃 Running Quick Tests...');
-            clearResults();
-            
-            const button = document.getElementById('runQuick');
-            button.disabled = true;
-            button.textContent = 'Running...';
-            
-            try {
-                const results = await run3DAPITests();
-                testResults = results.tests || [];
-                updateUI();
-                
-                console.log(`✅ Quick tests completed: ${results.passed}/${results.total} passed`);
-            } catch (error) {
-                console.error('❌ Quick test error:', error);
-            } finally {
-                button.disabled = false;
-                button.textContent = 'Quick Test';
-            }
-        }
+
         
         // Full test suite
         async function runTests() {
-            console.log('🚀 Running Full Test Suite...');
+            console.log('🚀 Running Complete Nova64 Test Suite...');
             clearResults();
             
             const button = document.getElementById('runTests');
@@ -400,21 +425,52 @@
             button.textContent = 'Running...';
             
             try {
+                let allTests = [];
+                
                 // Run 3D API tests
+                console.log('1️⃣ Running 3D API Tests...');
                 const apiResults = await run3DAPITests();
-                testResults = apiResults.tests || [];
-                updateUI();
+                allTests = allTests.concat(apiResults.tests || []);
+                
+                // Run Screen System tests
+                console.log('2️⃣ Running Screen System Tests...');
+                const screenResults = await runScreenSystemTests();
+                allTests = allTests.concat(screenResults.tests || []);
+                
+                // Run Input System tests
+                console.log('3️⃣ Running Input System Tests...');
+                const inputResults = await runInputSystemTests();
+                allTests = allTests.concat(inputResults.tests || []);
+                
+                // Run Integration tests
+                console.log('4️⃣ Running Integration Tests...');
+                const integrationResults = await runIntegrationTests();
+                allTests = allTests.concat(integrationResults.tests || []);
                 
                 // Run performance tests
+                console.log('5️⃣ Running Performance Tests...');
                 const perfMetrics = await runPerformanceTests();
                 updatePerformanceMetrics(perfMetrics);
                 
-                console.log(`🏁 Full test suite completed: ${apiResults.passed}/${apiResults.total} passed`);
+                // Combine all results
+                testResults = allTests;
+                updateUI();
                 
-                if (apiResults.failed === 0) {
+                const totalPassed = apiResults.passed + screenResults.passed + inputResults.passed + integrationResults.passed;
+                const totalCount = apiResults.total + screenResults.total + inputResults.total + integrationResults.total;
+                const totalFailed = totalCount - totalPassed;
+                
+                console.log(`🏁 Complete test suite finished:`);
+                console.log(`   3D API: ${apiResults.passed}/${apiResults.total} passed`);
+                console.log(`   Screen System: ${screenResults.passed}/${screenResults.total} passed`);
+                console.log(`   Input System: ${inputResults.passed}/${inputResults.total} passed`);
+                console.log(`   Integration: ${integrationResults.passed}/${integrationResults.total} passed`);
+                console.log(`   TOTAL: ${totalPassed}/${totalCount} passed`);
+                
+                if (totalFailed === 0) {
                     console.log('🎉 All tests passed! Nova64 is ready for action!');
                 } else {
-                    console.log('🔧 Some tests failed. Check the results above.');
+                    console.log(`🔧 ${totalFailed} tests failed. Check the results above.`);
                 }
                 
             } catch (error) {
@@ -446,13 +502,21 @@
         
         // Make functions globally available
         window.runTests = runTests;
-        window.runQuickTests = runQuickTests;
+        window.runAPITests = runAPITests;
+        window.runScreenTests = runScreenTests;
+        window.runInputTests = runInputTests;
+        window.runIntegrationOnlyTests = runIntegrationOnlyTests;
         window.clearResults = clearResults;
         
-        // Auto-run quick tests on page load
+        // Auto-run when page loads
         document.addEventListener('DOMContentLoaded', () => {
-            console.log('🎮 Nova64 Test Suite Ready!');
-            console.log('Click "Quick Test" for basic validation or "Run All Tests" for comprehensive testing.');
+            console.log('🎮 Nova64 Complete Test Suite Ready!');
+            console.log('Choose from:');
+            console.log('  • "Run All Tests" - Complete test suite with performance metrics');
+            console.log('  • "3D API Tests" - Test 3D rendering functions');
+            console.log('  • "Screen Tests" - Test screen management system');
+            console.log('  • "Input Tests" - Test enhanced input system');
+            console.log('  • "Integration Tests" - Test system integration and demos');
         });
         
     </script>

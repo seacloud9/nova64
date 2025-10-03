@@ -183,11 +183,11 @@ export class GpuThreeJS {
     // Update animations
     this.update(0.016);
     
-    // Render 3D scene only
+    // Render 3D scene first
     this.renderer.render(this.scene, this.camera);
     
-    // Note: 2D overlay rendering removed for now to avoid complexity
-    // The 3D demos don't need 2D overlay functionality
+    // RENDER 2D HUD OVERLAY!
+    this.update2DOverlay();
   }
 
   update2DOverlay() {
@@ -197,12 +197,27 @@ export class GpuThreeJS {
     const textureData = new Uint8Array(this.fb.width * this.fb.height * 4);
     
     for (let i = 0; i < fb.length; i++) {
-      // Convert from 16-bit to 8-bit
-      textureData[i] = Math.floor(fb[i] / 256);
+      // Convert from 16-bit to 8-bit RGBA
+      const idx = i * 4;
+      const color16 = fb[i];
+      const r = ((color16 >> 11) & 0x1F) * 8;
+      const g = ((color16 >> 5) & 0x3F) * 4;
+      const b = (color16 & 0x1F) * 8;
+      const a = ((color16 >> 16) & 0xFF);
+      
+      textureData[idx] = r;
+      textureData[idx + 1] = g;
+      textureData[idx + 2] = b;
+      textureData[idx + 3] = a;
     }
     
     this.overlay2D.texture.image.data = textureData;
     this.overlay2D.texture.needsUpdate = true;
+    
+    // Render 2D overlay on top of 3D scene
+    this.renderer.autoClear = false;
+    this.renderer.render(this.overlay2D.scene, this.overlay2D.camera);
+    this.renderer.autoClear = true;
   }
 
   updateCameraPosition() {

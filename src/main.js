@@ -6,11 +6,12 @@ import { threeDApi } from '../runtime/api-3d.js';
 import { editorApi } from '../runtime/editor.js';
 import { physicsApi } from '../runtime/physics.js';
 import { textInputApi } from '../runtime/textinput.js';
-import { aabb, circle, raycastTilemap } from '../runtime/collision.js';
+import { aabb, circle as circleCollision, raycastTilemap } from '../runtime/collision.js';
 import { audioApi } from '../runtime/audio.js';
 import { inputApi } from '../runtime/input.js';
 import { storageApi } from '../runtime/storage.js';
 import { screenApi } from '../runtime/screens.js';
+import { skyboxApi } from '../runtime/api-skybox.js';
 
 const canvas = document.getElementById('screen');
 
@@ -35,6 +36,7 @@ const aApi = audioApi();
 const iApi = inputApi();
 const stApi = storageApi('nova64');
 const scrApi = screenApi();
+const skyApi = skyboxApi(gpu);
 
 // gather and expose to global
 const g = {};
@@ -44,11 +46,12 @@ threeDApi_instance.exposeTo(g);
 eApi.exposeTo(g);
 pApi.exposeTo(g);
 tApi.exposeTo(g);
-Object.assign(g, { aabb, circle, raycastTilemap });
+Object.assign(g, { aabb, circleCollision, raycastTilemap });
 aApi.exposeTo(g);
 iApi.exposeTo(g);
 stApi.exposeTo(g);
 scrApi.exposeTo(g);
+skyApi.exposeTo(g);
 Object.assign(globalThis, g);
 // inject camera ref into sprite system
 if (g.getCamera) sApi.setCameraRef(g.getCamera());

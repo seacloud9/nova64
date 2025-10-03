@@ -98,13 +98,62 @@ export function stdApi(gpu) {
     }
   }
 
-  function print(text, x, y, color=rgba8(255,255,255,255)) {
-    BitmapFont.draw(fb, text, (x|0)-camRef.x, (y|0)-camRef.y, color);
+  function circle(x, y, radius, color, fill = false) {
+    const { r, g, b, a } = _colorToRGBA16(color);
+    x = (x|0)-camRef.x; y = (y|0)-camRef.y; radius|=0;
+    
+    if (fill) {
+      // Filled circle using scanline algorithm
+      for (let dy = -radius; dy <= radius; dy++) {
+        const dx = Math.floor(Math.sqrt(radius * radius - dy * dy));
+        for (let xx = x - dx; xx <= x + dx; xx++) {
+          const yy = y + dy;
+          if (xx >= 0 && xx < fb.width && yy >= 0 && yy < fb.height) {
+            fb.pset(xx, yy, r, g, b, a);
+          }
+        }
+      }
+    } else {
+      // Midpoint circle algorithm (Bresenham)
+      let dx = radius, dy = 0, err = 0;
+      while (dx >= dy) {
+        const plots = [
+          [x + dx, y + dy], [x + dy, y + dx],
+          [x - dy, y + dx], [x - dx, y + dy],
+          [x - dx, y - dy], [x - dy, y - dx],
+          [x + dy, y - dx], [x + dx, y - dy]
+        ];
+        for (const [px, py] of plots) {
+          if (px >= 0 && px < fb.width && py >= 0 && py < fb.height) {
+            fb.pset(px, py, r, g, b, a);
+          }
+        }
+        if (err <= 0) {
+          dy += 1;
+          err += 2 * dy + 1;
+        }
+        if (err > 0) {
+          dx -= 1;
+          err -= 2 * dx + 1;
+        }
+      }
+    }
+  }
+
+  function print(text, x, y, color=rgba8(255,255,255,255), scale=1) {
+    // Support text scaling
+    if (scale === 1) {
+      BitmapFont.draw(fb, text, (x|0)-camRef.x, (y|0)-camRef.y, color);
+    } else {
+      // For larger text, we'll need to draw each character scaled
+      // For now, just draw normally
+      BitmapFont.draw(fb, text, (x|0)-camRef.x, (y|0)-camRef.y, color);
+    }
   }
 
   return {
     exposeTo(target) {
-      Object.assign(target, { cls, pset, line, rect, print, packRGBA64, rgba8, setCamera, getCamera });
+      Object.assign(target, { cls, pset, line, rect, circle, print, packRGBA64, rgba8, setCamera, getCamera });
     }
   };
 }

@@ -1,690 +1,635 @@
-// ⭐ STAR FOX NOVA 64 ⭐
-// Epic space combat with proper environment switching support
+// ⭐ STAR FOX NOVA 64 - DESERTED SPACE QUALITY ⭐
+// Smooth physics-based movement with motion effects
 
-let gameData = {
+let game = {
+  // Player with velocity-based movement
+  player: { 
+    x: 0, y: 0, z: 0, 
+    vx: 0, vy: 0, // Velocity for smooth gliding
+    mesh: null 
+  },
+  
+  // Game objects
+  enemies: [],
+  bullets: [],
+  particles: [],
+  debris: [], // Moving space debris for motion sense!
+  gridLines: [], // Moving floor grid like Deserted Space!
+  
+  // Game state
   score: 0,
   health: 100,
+  maxHealth: 100,
   wave: 1,
   kills: 0,
-  arwing: { x: 0, y: 0, z: 0, mesh: null },
-  enemies: [],
-  projectiles: [],
   time: 0,
-  initialized: false
+  gameOver: false,
+  
+  // Spawn timers
+  enemySpawnTimer: 0,
+  enemySpawnRate: 3.5,
+  
+  // Camera
+  cameraShake: 0,
+  
+  // Motion effects
+  baseSpeed: 40 // Background motion speed
 };
-
-let uiData = {
-  time: 0,
-  startButtonHover: false,
-  mouseX: 0,
-  mouseY: 0
-};
-
-// Track all created meshes for cleanup
-let allMeshes = [];
-
-function trackMesh(mesh) {
-  if (mesh && !allMeshes.includes(mesh)) {
-    allMeshes.push(mesh);
-  }
-  return mesh;
-}
-
-function cleanupAllMeshes() {
-  allMeshes.forEach(mesh => {
-    if (mesh && typeof destroyMesh === 'function') {
-      destroyMesh(mesh);
-    }
-  });
-  allMeshes = [];
-}
 
 export async function init() {
-  console.log('🚀 Initializing STAR FOX NOVA 64...');
+  console.log('🚀 STAR FOX NOVA 64 - Loading...');
   
-  // Clean up any existing meshes from previous loads
-  cleanupAllMeshes();
+  // Setup 3D camera like Deserted Space - behind and above ship
+  setCameraPosition(0, 6, 25);
+  setCameraTarget(0, 0, -20); // Look ahead into the distance
+  setCameraFOV(75);
   
-  // Reset all game state
-  gameData = {
-    score: 0,
-    health: 100,
-    wave: 1,
-    kills: 0,
-    arwing: { x: 0, y: 0, z: 0, mesh: null },
-    enemies: [],
-    projectiles: [],
-    time: 0,
-    initialized: true
-  };
-  
-  uiData = {
-    time: 0,
-    startButtonHover: false,
-    mouseX: 0,
-    mouseY: 0
-  };
-  
-  // Add mouse event listeners for button clicks
-  setupMouseHandlers();
-  
-  // Title Screen with clickable start button
-  addScreen('start', {
-    enter: function() {
-      // Setup safe 3D environment for title
-      if (typeof setCameraPosition === 'function') {
-        setCameraPosition(0, 2, 8);
-        setCameraTarget(0, 0, 0);
-        setCameraFOV(75);
-      }
-    },
-    draw: function() {
-      drawStartScreen();
-    },
-    update: function(dt) {
-      updateStartScreen(dt);
-    }
+  // Create beautiful space skybox like Deserted Space
+  createSpaceSkybox({
+    starCount: 2000,
+    starSize: 2.5,
+    nebulae: true,
+    nebulaColor: 0x1a0033
   });
   
-  // Game Screen
-  addScreen('game', {
-    enter: function() {
-      startGame();
-      // Create player ship
-      gameData.arwing.mesh = createCube(1.5, 0x0099FF, [0, 0, 0]);
-      spawnEnemyWave();
-    },
-    draw: function() {
-      cls(0x000022);
-      drawHUD();
-    },
-    update: function(dt) {
-      gameData.time += dt;
-      updateArwing(dt);
-      updateEnemies(dt);
-      updateProjectiles(dt);
-      
-      // Check for next wave
-      if (gameData.enemies.length === 0) {
-        gameData.wave++;
-        spawnEnemyWave();
-      }
-      
-      // Check game over
-      if (gameData.health <= 0) {
-        switchToScreen('gameover');
-      }
-      
-      if (isKeyPressed('Escape')) {
-        switchToScreen('gameover');
-      }
-    }
-  });
+  // Add dramatic lighting
+  setLightDirection(-0.3, -1, -0.5);
+  setLightColor(0xffffff);
+  setAmbientLight(0x404060);
   
-  // Game Over Screen
-  addScreen('gameover', {
-    enter: function() {
-      uiData.time = 0; // Reset for animations
-    },
-    draw: function() {
-      drawGameOverScreen();
-    },
-    update: function(dt) {
-      uiData.time += dt;
-      if (isKeyPressed(' ')) {
-        switchToScreen('game');
-      } else if (isKeyPressed('Escape')) {
-        switchToScreen('start');
-      }
-    }
-  });
+  // Space fog for depth
+  setFog(0x000511, 50, 300);
   
-  // Start with start screen
-  switchToScreen('start');
-  console.log('✅ STAR FOX NOVA 64 Ready - Click START to begin!');
-}
-
-// === MOUSE HANDLING ===
-function setupMouseHandlers() {
-  // Add mouse move handler for button hover detection
-  if (typeof document !== 'undefined') {
-    const canvas = document.getElementById('screen');
-    if (canvas) {
-      canvas.addEventListener('mousemove', (e) => {
-        const rect = canvas.getBoundingClientRect();
-        uiData.mouseX = ((e.clientX - rect.left) / rect.width) * 640;
-        uiData.mouseY = ((e.clientY - rect.top) / rect.height) * 360;
-        
-        // Check if mouse is over start button (300x200, 160x40 size)
-        const buttonX = 300, buttonY = 200, buttonW = 160, buttonH = 40;
-        uiData.startButtonHover = (
-          uiData.mouseX >= buttonX && uiData.mouseX <= buttonX + buttonW &&
-          uiData.mouseY >= buttonY && uiData.mouseY <= buttonY + buttonH
-        );
-      });
-      
-      canvas.addEventListener('click', (e) => {
-        if (uiData.startButtonHover && getCurrentScreen && getCurrentScreen() === 'start') {
-          switchToScreen('game');
-        }
-      });
-    }
-  }
-}
-
-// === START SCREEN ===
-function drawStartScreen() {
-  cls(0x000033);
-  
-  uiData.time += 0.016; // Approximate delta time
-  
-  // Animated background
-  for (let i = 0; i < 8; i++) {
-    let alpha = Math.sin(uiData.time * 0.5 + i * 0.8) * 0.1 + 0.1;
-    let color = rgba8(10, 20, 50, Math.floor(alpha * 255));
-    rect(i * 80, 0, 80, 360, color, true);
-  }
-  
-  // Main title with glow effect
-  let titleGlow = Math.sin(uiData.time * 2) * 0.3 + 0.7;
-  let titleColor = rgba8(0, Math.floor(titleGlow * 255), 255, 255);
-  
-  // Title shadow for glow effect
-  print('STAR FOX NOVA 64', 262, 122, rgba8(0, 50, 100, 150));
-  print('STAR FOX NOVA 64', 258, 118, rgba8(0, 80, 150, 150));
-  print('STAR FOX NOVA 64', 260, 120, titleColor);
-  
-  // Subtitle
-  print('Ultimate 3D Space Combat', 245, 150, rgba8(150, 200, 255, 200));
-  
-  // Clickable START button
-  let buttonX = 300, buttonY = 200, buttonW = 160, buttonH = 40;
-  let buttonHover = uiData.startButtonHover;
-  
-  // Button background with hover effect
-  let buttonBgColor = buttonHover ? rgba8(80, 80, 0, 200) : rgba8(50, 50, 0, 150);
-  let buttonBorderColor = buttonHover ? rgba8(255, 255, 0, 255) : rgba8(200, 200, 0, 200);
-  let buttonTextColor = buttonHover ? rgba8(255, 255, 255, 255) : rgba8(200, 200, 0, 255);
-  
-  // Button with border
-  rect(buttonX, buttonY, buttonW, buttonH, buttonBgColor, true);
-  rect(buttonX, buttonY, buttonW, buttonH, buttonBorderColor, false);
-  
-  // Button text
-  print('START MISSION', buttonX + 20, buttonY + 15, buttonTextColor);
-  
-  // Instructions
-  print('Click START button above or press SPACE', 220, 270, rgba8(150, 150, 150, 255));
-  
-  // Controls info
-  print('CONTROLS:', 50, 300, rgba8(100, 200, 255, 255));
-  print('WASD/Arrows: Move  |  SPACE: Fire  |  ESC: Menu', 50, 320, rgba8(200, 200, 200, 255));
-  
-  // Mission info
-  print('MISSION: Defend against enemy invasion!', 300, 320, rgba8(255, 150, 100, 255));
-  
-  // Animated corner decorations
-  drawCornerDecorations();
-}
-
-function updateStartScreen(dt) {
-  // Check for keyboard start
-  if (isKeyPressed(' ') || isKeyPressed('Enter')) {
-    switchToScreen('game');
-  }
-}
-
-function drawCornerDecorations() {
-  let pulse = Math.sin(uiData.time * 3) * 0.3 + 0.7;
-  let cornerColor = rgba8(0, Math.floor(pulse * 200), 255, 150);
-  
-  // Animated corner brackets
-  line(20, 20, 60, 20, cornerColor);
-  line(20, 20, 20, 60, cornerColor);
-  line(580, 20, 620, 20, cornerColor);
-  line(620, 20, 620, 60, cornerColor);
-  line(20, 300, 60, 300, cornerColor);
-  line(20, 300, 20, 340, cornerColor);
-  line(580, 300, 620, 300, cornerColor);
-  line(620, 300, 620, 340, cornerColor);
-}
-
-// === GAME LOGIC ===
-function resetGame() {
-  // Clean up existing game
-  cleanupGame();
-  
-  // Reset all game data
-  gameData.score = 0;
-  gameData.health = 100;
-  gameData.wave = 1;
-  gameData.kills = 0;
-  gameData.time = 0;
-  gameData.enemies = [];
-  gameData.projectiles = [];
-  gameData.arwing = { x: 0, y: 0, z: 0, mesh: null };
-}
-
-function startGame() {
-  // Clean up any existing game objects
-  cleanupGame();
-  
-  // Setup 3D environment for gameplay
-  if (typeof setCameraPosition === 'function') {
-    setCameraPosition(0, 2, 8);
-    setCameraTarget(0, 0, 0);
-    setCameraFOV(75);
-    setLightDirection(-0.3, -0.8, -0.5);
-  }
-  
-  // Reset game state
-  gameData.score = 0;
-  gameData.health = 100;
-  gameData.wave = 1;
-  gameData.kills = 0;
-  gameData.time = 0;
-  gameData.enemies = [];
-  gameData.projectiles = [];
+  // Enable N64 retro effects
+  enablePixelation(1);
+  enableDithering(true);
   
   // Create player ship
-  if (typeof createCube === 'function') {
-    gameData.arwing.mesh = trackMesh(createCube(1.5, 0x0099FF, [0, 0, 0]));
-  }
+  createPlayerShip();
   
-  // Spawn first wave
-  spawnEnemyWave();
+  // Create moving debris for sense of MOTION!
+  createDebrisField();
+  
+  // Create moving floor grid like Deserted Space!
+  createFloorGrid();
+  
+  console.log('✅ Star Fox Nova 64 Ready!');
+  console.log('🎮 Press WASD to move, SPACE to fire');
+  console.log('🎮 Controls: Arrow Keys or WASD = Move, SPACE = Fire!');
 }
 
-function cleanupGame() {
-  // Clean up all game meshes
-  if (gameData.arwing.mesh) {
-    destroyMesh(gameData.arwing.mesh);
-    gameData.arwing.mesh = null;
-  }
-  
-  gameData.enemies.forEach(enemy => {
-    if (enemy.mesh) destroyMesh(enemy.mesh);
-  });
-  
-  gameData.projectiles.forEach(proj => {
-    if (proj.mesh) destroyMesh(proj.mesh);
-  });
-  
-  gameData.enemies = [];
-  gameData.projectiles = [];
-}
-function resetGame() {
-  gameData.score = 0;
-  gameData.health = 100;
-  gameData.wave = 1;
-  gameData.kills = 0;
-  gameData.arwing = { x: 0, y: 0, z: 0, mesh: null };
-  gameData.enemies = [];
-  gameData.projectiles = [];
-  gameData.time = 0;
-}
-
-function updateArwing(dt) {
-  let arwing = gameData.arwing;
-  
-  // Movement controls
-  if (isKeyDown('ArrowLeft') || isKeyDown('a')) {
-    arwing.x = Math.max(-10, arwing.x - 8 * dt);
-  }
-  if (isKeyDown('ArrowRight') || isKeyDown('d')) {
-    arwing.x = Math.min(10, arwing.x + 8 * dt);
-  }
-  if (isKeyDown('ArrowUp') || isKeyDown('w')) {
-    arwing.y = Math.min(8, arwing.y + 8 * dt);
-  }
-  if (isKeyDown('ArrowDown') || isKeyDown('s')) {
-    arwing.y = Math.max(-5, arwing.y - 8 * dt);
-  }
-  
-  // Shooting
-  if (isKeyPressed(' ')) {
-    firePlayerLaser();
-  }
-  
-  // Update mesh position
-  if (arwing.mesh) {
-    setPosition(arwing.mesh, arwing.x, arwing.y, arwing.z);
-  }
-}
-
-function firePlayerLaser() {
-  if (typeof createSphere === 'function') {
-    let laser = trackMesh(createSphere(0.1, 0x00FF00, [gameData.arwing.x, gameData.arwing.y, gameData.arwing.z + 1]));
+function createDebrisField() {
+  // Create 100 moving space debris objects for motion sense
+  for (let i = 0; i < 100; i++) {
+    const x = (Math.random() - 0.5) * 200;
+    const y = (Math.random() - 0.5) * 100;
+    const z = -Math.random() * 300;
     
-    gameData.projectiles.push({
-      mesh: laser,
-      x: gameData.arwing.x,
-      y: gameData.arwing.y,
-      z: gameData.arwing.z + 1,
-      speed: 25,
-      friendly: true
+    const size = 0.3 + Math.random() * 0.8;
+    const debris = createCube(size, 0x444466, [x, y, z]);
+    
+    game.debris.push({
+      mesh: debris,
+      x, y, z,
+      speed: 30 + Math.random() * 40,
+      spinX: Math.random() * 2,
+      spinY: Math.random() * 2,
+      rot: 0
+    });
+  }
+  console.log('🌌 Created debris field for motion sense');
+}
+
+function createFloorGrid() {
+  // Create moving floor grid lines like Deserted Space!
+  const gridSize = 20;
+  const gridSpacing = 20;
+  const gridColor = 0x0066ff;
+  
+  // Create grid lines along X axis
+  for (let i = -gridSize; i <= gridSize; i++) {
+    const x = i * gridSpacing;
+    for (let j = 0; j < 20; j++) {
+      const z = -j * gridSpacing;
+      const line = createCube(0.2, gridColor, [x, -15, z]);
+      setScale(line, 0.3, 0.3, gridSpacing);
+      
+      game.gridLines.push({
+        mesh: line,
+        x: x,
+        y: -15,
+        z: z,
+        type: 'x'
+      });
+    }
+  }
+  
+  // Create grid lines along Z axis
+  for (let j = 0; j < 20; j++) {
+    const z = -j * gridSpacing;
+    for (let i = -gridSize; i <= gridSize; i++) {
+      const x = i * gridSpacing;
+      const line = createCube(0.2, gridColor, [x, -15, z]);
+      setScale(line, gridSpacing, 0.3, 0.3);
+      
+      game.gridLines.push({
+        mesh: line,
+        x: x,
+        y: -15,
+        z: z,
+        type: 'z'
+      });
+    }
+  }
+  
+  console.log('🌐 Created floor grid with', game.gridLines.length, 'lines');
+}
+
+function createPlayerShip() {
+  // Create awesome Arwing-style ship with WINGS!
+  const ship = createCube(2, 0x00aaff, [0, 0, 0]);
+  setScale(ship, 2, 1, 5); // Long and sleek
+  game.player.mesh = ship;
+  
+  // Add wings (visual only, stored for reference)
+  const leftWing = createCube(1, 0x0088cc, [-3, 0, 0]);
+  setScale(leftWing, 4, 0.3, 2);
+  
+  const rightWing = createCube(1, 0x0088cc, [3, 0, 0]);
+  setScale(rightWing, 4, 0.3, 2);
+  
+  game.player.x = 0;
+  game.player.y = 0;
+  game.player.z = 0;
+  game.player.wings = [leftWing, rightWing];
+}
+
+export function update(dt) {
+  game.time += dt;
+  
+  // Update player
+  updatePlayer(dt);
+  
+  // Update debris for MOTION sense
+  updateDebris(dt);
+  
+  // Update floor grid for MOTION
+  updateFloorGrid(dt);
+  
+  // Update enemies
+  updateEnemies(dt);
+  
+  // Update bullets
+  updateBullets(dt);
+  
+  // Update particles
+  updateParticles(dt);
+  
+  // Spawn enemies
+  spawnEnemies(dt);
+  
+  // Check collisions
+  checkCollisions();
+  
+  // Update camera shake
+  if (game.cameraShake > 0) {
+    game.cameraShake *= 0.9;
+    const shakeX = (Math.random() - 0.5) * game.cameraShake;
+    const shakeY = (Math.random() - 0.5) * game.cameraShake;
+    setCameraPosition(shakeX, 6 + shakeY, 25);
+  }
+  
+  // Animate skybox
+  animateSkybox(dt * 0.5);
+  
+  // Game over check (only log once)
+  if (game.health <= 0 && !game.gameOver) {
+    game.gameOver = true;
+    game.health = 0;
+    console.log('💀 GAME OVER! Final Score:', game.score);
+  }
+}
+
+function updateDebris(dt) {
+  // Move debris toward camera for MOTION sense
+  for (let i = 0; i < game.debris.length; i++) {
+    const d = game.debris[i];
+    
+    // Move toward camera with base speed
+    d.z += (game.baseSpeed + game.player.vx * 0.5) * dt;
+    d.rot += dt * 2;
+    
+    // Recycle when passed camera
+    if (d.z > 30) {
+      d.z = -300 - Math.random() * 50;
+      d.x = (Math.random() - 0.5) * 200;
+      d.y = (Math.random() - 0.5) * 100;
+    }
+    
+    setPosition(d.mesh, d.x, d.y, d.z);
+    setRotation(d.mesh, d.rot * d.spinX, d.rot * d.spinY, 0);
+  }
+}
+
+function updateFloorGrid(dt) {
+  // Move floor grid toward camera like Deserted Space!
+  const gridSpeed = game.baseSpeed;
+  const gridSpacing = 20;
+  
+  for (let i = 0; i < game.gridLines.length; i++) {
+    const line = game.gridLines[i];
+    
+    // Move toward camera
+    line.z += gridSpeed * dt;
+    
+    // Recycle when passed camera
+    if (line.z > 20) {
+      line.z -= gridSpacing * 20;
+    }
+    
+    setPosition(line.mesh, line.x, line.y, line.z);
+  }
+}
+
+function updatePlayer(dt) {
+  // Smooth physics-based movement like Deserted Space
+  const acceleration = 80;
+  const maxSpeed = 35;
+  const friction = 0.88; // Gliding friction
+  
+  // Apply acceleration from input
+  if (isKeyDown('a') || isKeyDown('arrowleft')) {
+    game.player.vx -= acceleration * dt;
+  }
+  if (isKeyDown('d') || isKeyDown('arrowright')) {
+    game.player.vx += acceleration * dt;
+  }
+  if (isKeyDown('w') || isKeyDown('arrowup')) {
+    game.player.vy += acceleration * dt;
+  }
+  if (isKeyDown('s') || isKeyDown('arrowdown')) {
+    game.player.vy -= acceleration * dt;
+  }
+  
+  // Apply friction for smooth gliding
+  game.player.vx *= friction;
+  game.player.vy *= friction;
+  
+  // Clamp velocity
+  const speed = Math.sqrt(game.player.vx * game.player.vx + game.player.vy * game.player.vy);
+  if (speed > maxSpeed) {
+    game.player.vx = (game.player.vx / speed) * maxSpeed;
+    game.player.vy = (game.player.vy / speed) * maxSpeed;
+  }
+  
+  // Update position
+  game.player.x += game.player.vx * dt;
+  game.player.y += game.player.vy * dt;
+  
+  // Soft boundaries with bounce
+  if (game.player.x < -35) {
+    game.player.x = -35;
+    game.player.vx *= -0.3;
+  }
+  if (game.player.x > 35) {
+    game.player.x = 35;
+    game.player.vx *= -0.3;
+  }
+  if (game.player.y < -18) {
+    game.player.y = -18;
+    game.player.vy *= -0.3;
+  }
+  if (game.player.y > 18) {
+    game.player.y = 18;
+    game.player.vy *= -0.3;
+  }
+  
+  // Update mesh with smooth tilting based on velocity
+  if (game.player.mesh) {
+    setPosition(game.player.mesh, game.player.x, game.player.y, game.player.z);
+    
+    // Dynamic tilt based on velocity (looks way cooler!)
+    const tiltX = -game.player.vy * 0.02; // Pitch with vertical movement
+    const tiltZ = -game.player.vx * 0.03; // Roll with horizontal movement
+    const tiltY = game.player.vx * 0.01;  // Slight yaw
+    setRotation(game.player.mesh, tiltX, tiltY, tiltZ);
+    
+    // Update wings to follow ship
+    if (game.player.wings) {
+      game.player.wings.forEach((wing, i) => {
+        const offset = i === 0 ? -3 : 3;
+        setPosition(wing, game.player.x + offset, game.player.y, game.player.z);
+        setRotation(wing, tiltX, tiltY, tiltZ);
+      });
+    }
+  }
+  
+  // Shooting - Try multiple key codes for space bar!
+  if (isKeyDown('space') || isKeyDown(' ') || isKeyDown('Space')) {
+    if (!game.lastShot || game.time - game.lastShot > 0.15) {
+      fireBullet();
+      game.lastShot = game.time;
+      console.log('🔫 PEW PEW! Firing lasers!');
+    }
+  }
+}
+
+function fireBullet() {
+  // Dual lasers with glow
+  for (const offset of [-2, 2]) {
+    const bullet = createCube(0.8, 0x00ff00, [ // Bright green lasers
+      game.player.x + offset,
+      game.player.y,
+      game.player.z - 3
+    ]);
+    setScale(bullet, 0.3, 0.3, 2.5);
+    
+    game.bullets.push({
+      mesh: bullet,
+      x: game.player.x + offset,
+      y: game.player.y,
+      z: game.player.z - 3,
+      speed: 150
     });
   }
 }
 
-function spawnEnemyWave() {
-  let count = 3 + Math.floor(gameData.wave / 2);
+function spawnEnemies(dt) {
+  // Don't spawn if game over
+  if (game.gameOver) return;
   
-  for (let i = 0; i < count; i++) {
-    if (typeof createCube === 'function') {
-      let x = (Math.random() - 0.5) * 16;
-      let y = (Math.random() - 0.5) * 10;
-      let z = -30 - Math.random() * 10;
-      
-      let enemy = trackMesh(createCube(1, 0xFF3030, [x, y, z]));
-      
-      gameData.enemies.push({
-        mesh: enemy,
-        x: x,
-        y: y,
-        z: z,
-        speed: 1 + Math.random(),
-        health: 1
-      });
-    }
+  game.enemySpawnTimer += dt;
+  
+  // Progressive difficulty
+  const spawnRate = Math.max(1.2, game.enemySpawnRate / (1 + game.wave * 0.15));
+  
+  if (game.enemySpawnTimer >= spawnRate) {
+    game.enemySpawnTimer = 0;
+    
+    // Spawn further away so player can react
+    const x = (Math.random() - 0.5) * 50;
+    const y = (Math.random() - 0.5) * 25;
+    const z = -150 - Math.random() * 50; // Much further away!
+    
+    // BIG BRIGHT VISIBLE ENEMIES!
+    const enemy = createCube(3, 0xff0000, [x, y, z]); // Bright red, bigger
+    setScale(enemy, 4, 4, 4); // MUCH BIGGER!
+    
+    game.enemies.push({
+      mesh: enemy,
+      x, y, z,
+      speed: 35 + game.wave * 3, // Speed toward player
+      spin: Math.random() * 2
+    });
   }
 }
 
 function updateEnemies(dt) {
-  for (let i = gameData.enemies.length - 1; i >= 0; i--) {
-    let enemy = gameData.enemies[i];
+  for (let i = game.enemies.length - 1; i >= 0; i--) {
+    const enemy = game.enemies[i];
     
-    // Move toward player
-    enemy.z += enemy.speed * 8 * dt;
+    // Move toward player (coming from behind camera)
+    enemy.z += enemy.speed * dt;
+    enemy.spin += dt * enemy.spin;
     
-    // Simple AI
-    if (enemy.x < gameData.arwing.x) enemy.x += 2 * dt;
-    if (enemy.x > gameData.arwing.x) enemy.x -= 2 * dt;
-    if (enemy.y < gameData.arwing.y) enemy.y += 2 * dt;
-    if (enemy.y > gameData.arwing.y) enemy.y -= 2 * dt;
-    
+    // Update mesh
     setPosition(enemy.mesh, enemy.x, enemy.y, enemy.z);
+    setRotation(enemy.mesh, 0, enemy.spin, 0);
     
-    // Remove if too close
-    if (enemy.z > 10) {
+    // Remove if passed player
+    if (enemy.z > 30) {
+      if (!game.gameOver) {
+        game.health -= 15;
+        game.cameraShake = 1.0;
+        console.log('💥 Enemy got through! Health:', game.health);
+      }
       destroyMesh(enemy.mesh);
-      gameData.enemies.splice(i, 1);
-      gameData.health -= 10;
+      game.enemies.splice(i, 1);
     }
   }
 }
 
-function updateProjectiles(dt) {
-  for (let i = gameData.projectiles.length - 1; i >= 0; i--) {
-    let proj = gameData.projectiles[i];
+function updateBullets(dt) {
+  for (let i = game.bullets.length - 1; i >= 0; i--) {
+    const bullet = game.bullets[i];
     
-    if (proj.friendly) {
-      proj.z -= proj.speed * dt;
-    } else {
-      proj.z += proj.speed * dt;
+    // Travel away from camera (toward enemies)
+    bullet.z -= bullet.speed * dt;
+    setPosition(bullet.mesh, bullet.x, bullet.y, bullet.z);
+    
+    // Remove if too far
+    if (bullet.z < -200) {
+      destroyMesh(bullet.mesh);
+      game.bullets.splice(i, 1);
     }
+  }
+}
+
+function checkCollisions() {
+  for (let i = game.bullets.length - 1; i >= 0; i--) {
+    const bullet = game.bullets[i];
     
-    setPosition(proj.mesh, proj.x, proj.y, proj.z);
-    
-    // Check collisions with enemies
-    if (proj.friendly) {
-      for (let j = gameData.enemies.length - 1; j >= 0; j--) {
-        let enemy = gameData.enemies[j];
-        if (distance3D(proj, enemy) < 1.5) {
-          // Hit!
-          destroyMesh(proj.mesh);
-          destroyMesh(enemy.mesh);
-          gameData.projectiles.splice(i, 1);
-          gameData.enemies.splice(j, 1);
-          gameData.score += 100;
-          gameData.kills++;
-          break;
+    for (let j = game.enemies.length - 1; j >= 0; j--) {
+      const enemy = game.enemies[j];
+      
+      const dx = bullet.x - enemy.x;
+      const dy = bullet.y - enemy.y;
+      const dz = bullet.z - enemy.z;
+      const dist = Math.sqrt(dx*dx + dy*dy + dz*dz);
+      
+      if (dist < 4) {
+        // HIT!
+        createExplosion(enemy.x, enemy.y, enemy.z);
+        
+        // Remove bullet
+        destroyMesh(bullet.mesh);
+        game.bullets.splice(i, 1);
+        
+        // Remove enemy
+        destroyMesh(enemy.mesh);
+        game.enemies.splice(j, 1);
+        
+        // Update score
+        game.score += 100;
+        game.kills++;
+        game.cameraShake = 0.3;
+        
+        // Wave progression
+        if (game.kills >= game.wave * 10) {
+          game.wave++;
+          console.log(`🌊 Wave ${game.wave}!`);
         }
+        
+        break;
       }
     }
+  }
+}
+
+function createExplosion(x, y, z) {
+  const colors = [0xff6600, 0xff3300, 0xffaa00];
+  
+  for (let i = 0; i < 12; i++) {
+    const angle = (i / 12) * Math.PI * 2;
+    const speed = 15 + Math.random() * 15;
     
-    // Remove if out of bounds
-    if (proj.z < -50 || proj.z > 20) {
-      destroyMesh(proj.mesh);
-      gameData.projectiles.splice(i, 1);
+    const particle = createCube(0.8, colors[i % 3], [x, y, z]);
+    
+    game.particles.push({
+      mesh: particle,
+      x, y, z,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      vz: (Math.random() - 0.5) * 20,
+      life: 0.8,
+      maxLife: 0.8
+    });
+  }
+}
+
+function updateParticles(dt) {
+  for (let i = game.particles.length - 1; i >= 0; i--) {
+    const p = game.particles[i];
+    
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.z += p.vz * dt;
+    p.life -= dt;
+    
+    const scale = p.life / p.maxLife;
+    setPosition(p.mesh, p.x, p.y, p.z);
+    setScale(p.mesh, scale, scale, scale);
+    
+    if (p.life <= 0) {
+      destroyMesh(p.mesh);
+      game.particles.splice(i, 1);
     }
   }
 }
 
-function distance3D(obj1, obj2) {
-  let dx = obj1.x - obj2.x;
-  let dy = obj1.y - obj2.y;
-  let dz = obj1.z - obj2.z;
-  return Math.sqrt(dx*dx + dy*dy + dz*dz);
-}
-
-function drawHUD() {
-  // Enhanced HUD with better styling
+function drawSpeedLines() {
+  // Draw motion speed lines like Deserted Space!
+  const numLines = 30;
+  const speed = Math.abs(game.player.vx) + Math.abs(game.player.vy) + game.baseSpeed;
+  const lineAlpha = Math.min(200, speed * 3);
   
-  // Health bar with frame
-  rect(18, 18, 154, 24, rgba8(100, 100, 100, 200), true);
-  rect(20, 20, 150, 20, rgba8(80, 0, 0, 255), true);
-  
-  let healthWidth = (gameData.health / 100) * 150;
-  let healthColor = gameData.health > 50 ? rgba8(0, 255, 0, 255) : 
-                   gameData.health > 25 ? rgba8(255, 255, 0, 255) : rgba8(255, 0, 0, 255);
-  rect(20, 20, healthWidth, 20, healthColor, true);
-  
-  // Health bar outline
-  rect(18, 18, 154, 24, rgba8(0, 255, 255, 150), false);
-  
-  // Game stats with better formatting
-  print('SHIELDS', 22, 12, rgba8(0, 255, 255, 255));
-  
-  // Score display
-  rect(18, 50, 120, 60, rgba8(0, 0, 50, 180), true);
-  rect(18, 50, 120, 60, rgba8(0, 255, 255, 100), false);
-  
-  print('SCORE', 22, 55, rgba8(0, 255, 255, 255));
-  print(gameData.score.toString(), 22, 70, rgba8(255, 255, 0, 255));
-  
-  print('WAVE', 22, 85, rgba8(0, 255, 255, 255));
-  print(gameData.wave.toString(), 22, 100, rgba8(255, 255, 255, 255));
-  
-  // Enhanced crosshair with animation
-  let crosshairPulse = Math.sin(gameData.time * 8) * 0.3 + 0.7;
-  let crosshairAlpha = Math.floor(crosshairPulse * 255);
-  let crosshairColor = rgba8(0, 255, 255, crosshairAlpha);
-  
-  // Crosshair
-  line(310, 180, 330, 180, crosshairColor);
-  line(320, 170, 320, 190, crosshairColor);
-  
-  // Crosshair center dot
-  rect(318, 178, 4, 4, rgba8(255, 0, 0, crosshairAlpha), true);
-  
-  // Targeting brackets (animated)
-  let bracketOffset = Math.sin(gameData.time * 6) * 2;
-  let bracketColor = rgba8(255, 255, 0, Math.floor(crosshairPulse * 200));
-  
-  // Top-left bracket
-  line(305 - bracketOffset, 165 - bracketOffset, 315 - bracketOffset, 165 - bracketOffset, bracketColor);
-  line(305 - bracketOffset, 165 - bracketOffset, 305 - bracketOffset, 175 - bracketOffset, bracketColor);
-  
-  // Top-right bracket
-  line(325 + bracketOffset, 165 - bracketOffset, 335 + bracketOffset, 165 - bracketOffset, bracketColor);
-  line(335 + bracketOffset, 165 - bracketOffset, 335 + bracketOffset, 175 - bracketOffset, bracketColor);
-  
-  // Bottom-left bracket
-  line(305 - bracketOffset, 185 + bracketOffset, 315 - bracketOffset, 185 + bracketOffset, bracketColor);
-  line(305 - bracketOffset, 185 + bracketOffset, 305 - bracketOffset, 195 + bracketOffset, bracketColor);
-  
-  // Bottom-right bracket
-  line(325 + bracketOffset, 185 + bracketOffset, 335 + bracketOffset, 185 + bracketOffset, bracketColor);
-  line(335 + bracketOffset, 185 + bracketOffset, 335 + bracketOffset, 195 + bracketOffset, bracketColor);
-  
-  // Radar display
-  drawMiniRadar();
-  
-  // Status messages
-  if (gameData.enemies.length === 0 && gameData.wave > 1) {
-    print('WAVE COMPLETE!', 280, 250, rgba8(0, 255, 0, 255));
-    print('Next wave incoming...', 270, 270, rgba8(255, 255, 0, 200));
-  }
-  
-  if (gameData.health <= 25) {
-    let warningPulse = Math.sin(gameData.time * 12) > 0 ? 255 : 100;
-    print('SHIELDS CRITICAL!', 250, 60, rgba8(255, 0, 0, warningPulse));
-  }
-  
-  // Instructions (smaller and less intrusive)
-  print('WASD: Move | SPACE: Fire | ESC: Menu', 200, 345, rgba8(150, 150, 150, 150));
-}
-
-function drawMiniRadar() {
-  let radarX = 550;
-  let radarY = 70;
-  let radarSize = 60;
-  
-  // Radar background
-  rect(radarX - radarSize/2, radarY - radarSize/2, radarSize, radarSize, rgba8(0, 20, 0, 200), true);
-  
-  // Radar circle
-  for (let i = 0; i < 32; i++) {
-    let angle = (i / 32) * Math.PI * 2;
-    let x1 = radarX + Math.cos(angle) * (radarSize/2 - 2);
-    let y1 = radarY + Math.sin(angle) * (radarSize/2 - 2);
-    let x2 = radarX + Math.cos(angle) * (radarSize/2);
-    let y2 = radarY + Math.sin(angle) * (radarSize/2);
+  for (let i = 0; i < numLines; i++) {
+    const x = Math.random() * 640;
+    const y = Math.random() * 360;
+    const length = 20 + speed * 0.5;
     
-    if (i % 8 === 0) {
-      line(x1, y1, x2, y2, rgba8(0, 255, 0, 255));
-    } else {
-      line(x1, y1, x2, y2, rgba8(0, 255, 0, 100));
-    }
-  }
-  
-  // Center dot (player)
-  rect(radarX - 1, radarY - 1, 3, 3, rgba8(0, 255, 255, 255), true);
-  
-  // Enemy dots
-  gameData.enemies.forEach(enemy => {
-    let relX = enemy.x / 20 * (radarSize/2);
-    let relZ = enemy.z / 50 * (radarSize/2);
-    let dotX = radarX + relX;
-    let dotY = radarY + relZ;
+    const angle = Math.atan2(
+      180 - y + game.player.vy * 10,
+      320 - x + game.player.vx * 10
+    );
     
-    if (Math.abs(relX) < radarSize/2 && Math.abs(relZ) < radarSize/2) {
-      rect(dotX - 1, dotY - 1, 2, 2, rgba8(255, 0, 0, 255), true);
-    }
-  });
-  
-  // Sweep line
-  let sweepAngle = gameData.time * 2;
-  let sweepX = radarX + Math.cos(sweepAngle) * (radarSize/2 - 5);
-  let sweepY = radarY + Math.sin(sweepAngle) * (radarSize/2 - 5);
-  line(radarX, radarY, sweepX, sweepY, rgba8(0, 255, 0, 150));
-  
-  print('RADAR', radarX - 15, radarY - radarSize/2 - 15, rgba8(0, 255, 0, 200));
-}
-
-function drawGameOverScreen() {
-  // Dramatic red background with fade effect
-  cls(0x220000);
-  
-  // Animated warning stripes
-  let stripePhase = uiData.time * 2;
-  for (let i = 0; i < 10; i++) {
-    let alpha = (Math.sin(stripePhase + i * 0.5) + 1) * 0.1 + 0.05;
-    let color = rgba8(100, 0, 0, Math.floor(alpha * 255));
-    rect(i * 64, 0, 64, 360, color, true);
+    const x2 = x + Math.cos(angle) * length;
+    const y2 = y + Math.sin(angle) * length;
+    
+    line(x, y, x2, y2, rgba8(100, 150, 255, lineAlpha));
   }
-  
-  // Dramatic title with glitch effect
-  let glitchOffset = Math.sin(uiData.time * 20) * 2;
-  let titleFlash = Math.sin(uiData.time * 8) > 0.5 ? 255 : 180;
-  
-  // Glitch shadow
-  print('MISSION FAILED', 280 + glitchOffset, 100, rgba8(255, 0, 0, 100));
-  
-  // Main title
-  print('MISSION FAILED', 280, 100, rgba8(255, 0, 48, titleFlash));
-  
-  // Damage report
-  print('DAMAGE REPORT:', 200, 140, rgba8(255, 100, 100, 255));
-  
-  // Stats with better formatting
-  let statsColor = rgba8(255, 255, 255, 255);
-  let numberColor = rgba8(255, 255, 0, 255);
-  
-  print('Final Score:', 250, 170, statsColor);
-  print(gameData.score.toString(), 380, 170, numberColor);
-  
-  print('Wave Reached:', 250, 190, statsColor);
-  print(gameData.wave.toString(), 380, 190, numberColor);
-  
-  print('Enemies Destroyed:', 250, 210, statsColor);
-  print(gameData.kills.toString(), 380, 210, numberColor);
-  
-  print('Accuracy:', 250, 230, statsColor);
-  let accuracy = gameData.kills > 0 ? Math.floor((gameData.kills / (gameData.kills + Math.max(1, gameData.wave * 3))) * 100) : 0;
-  print(accuracy + '%', 380, 230, numberColor);
-  
-  // Performance rating
-  let rating = 'ROOKIE';
-  let ratingColor = rgba8(100, 100, 100, 255);
-  
-  if (gameData.score > 2000) {
-    rating = 'ACE PILOT';
-    ratingColor = rgba8(255, 215, 0, 255); // Gold
-  } else if (gameData.score > 1000) {
-    rating = 'VETERAN';
-    ratingColor = rgba8(192, 192, 192, 255); // Silver
-  } else if (gameData.score > 500) {
-    rating = 'PILOT';
-    ratingColor = rgba8(205, 127, 50, 255); // Bronze
-  }
-  
-  print('PILOT RATING:', 250, 250, statsColor);
-  print(rating, 360, 250, ratingColor);
-  
-  // Animated buttons
-  let buttonPulse = Math.sin(uiData.time * 4) * 0.3 + 0.7;
-  let buttonAlpha = Math.floor(buttonPulse * 255);
-  
-  // Retry button
-  rect(200, 285, 120, 25, rgba8(0, 50, 0, 150), true);
-  rect(200, 285, 120, 25, rgba8(0, 255, 0, buttonAlpha), false);
-  print('SPACE - RETRY', 210, 292, rgba8(0, 255, 0, buttonAlpha));
-  
-  // Menu button
-  rect(340, 285, 120, 25, rgba8(50, 50, 0, 150), true);
-  rect(340, 285, 120, 25, rgba8(255, 255, 0, buttonAlpha), false);
-  print('ESC - MAIN MENU', 350, 292, rgba8(255, 255, 0, buttonAlpha));
-  
-  // Motivational message
-  let messages = [
-    'Better luck next time, pilot!',
-    'The galaxy needs you!',
-    'Never give up!',
-    'Learn from your mistakes!',
-    'Trust your instincts!'
-  ];
-  let messageIndex = Math.floor(uiData.time) % messages.length;
-  print(messages[messageIndex], 220, 330, rgba8(150, 150, 255, 200));
-}
-
-export function update(dt) {
-  // Screen management handles updates automatically
 }
 
 export function draw() {
-  // Screen management handles drawing automatically
-}
-
-// Clean up function called when switching away from this environment
-export function cleanup() {
-  console.log('🧹 Cleaning up STAR FOX NOVA 64...');
-  cleanupAllMeshes();
+  // Draw SPEED LINES for motion sense!
+  drawSpeedLines();
   
-  // Reset game state
-  gameData.initialized = false;
-  gameData.enemies = [];
-  gameData.projectiles = [];
-  gameData.arwing.mesh = null;
+  // Draw 2D HUD overlay
+  
+  // Health bar panel (BIGGER AND MORE VISIBLE)
+  rect(10, 10, 300, 95, rgba8(0, 0, 0, 200), true);
+  rect(10, 10, 300, 95, rgba8(0, 255, 255, 200), false);
+  
+  // Health bar - BIGGER!
+  print('SHIELD', 20, 22, rgba8(0, 255, 255, 255), 1);
+  const healthPct = game.health / game.maxHealth;
+  const healthWidth = Math.floor(healthPct * 220);
+  const healthColor = healthPct > 0.5 ? rgba8(0, 255, 0, 255) :
+                      healthPct > 0.25 ? rgba8(255, 255, 0, 255) :
+                      rgba8(255, 0, 0, 255);
+  
+  rect(20, 40, 220, 18, rgba8(40, 40, 40, 255), true);
+  if (healthWidth > 0) {
+    rect(20, 40, healthWidth, 18, healthColor, true);
+  }
+  rect(20, 40, 220, 18, rgba8(255, 255, 255, 200), false);
+  
+  // Score - BIGGER!
+  const scoreStr = game.score.toString().padStart(6, '0');
+  print('SCORE: ' + scoreStr, 20, 65, rgba8(255, 255, 0, 255), 1);
+  
+  // Wave - BIGGER!
+  print('WAVE: ' + game.wave, 20, 80, rgba8(255, 180, 0, 255), 1);
+  
+  // BIGGER BRIGHTER CROSSHAIR
+  const cx = 320, cy = 180;
+  line(cx - 20, cy, cx + 20, cy, rgba8(0, 255, 0, 255));
+  line(cx, cy - 20, cx, cy + 20, rgba8(0, 255, 0, 255));
+  circle(cx, cy, 25, rgba8(0, 255, 0, 200), false);
+  circle(cx, cy, 5, rgba8(255, 255, 0, 255), true); // Center dot
+  
+  // BIGGER RADAR
+  const rx = 520, ry = 10, rs = 100;
+  rect(rx, ry, rs, rs, rgba8(0, 0, 0, 200), true);
+  rect(rx, ry, rs, rs, rgba8(0, 255, 0, 200), false);
+  
+  // Radar grid
+  line(rx + rs/2, ry, rx + rs/2, ry + rs, rgba8(0, 120, 0, 150));
+  line(rx, ry + rs/2, rx + rs, ry + rs/2, rgba8(0, 120, 0, 150));
+  
+  // Player dot - BIGGER
+  rect(rx + rs/2 - 2, ry + rs/2 - 2, 5, 5, rgba8(0, 255, 255, 255), true);
+  
+  // Enemy dots
+  game.enemies.forEach(e => {
+    const relX = (e.x / 80) * (rs / 2);
+    const relZ = (e.z / 150) * (rs / 2);
+    const dx = Math.floor(rx + rs/2 + relX);
+    const dy = Math.floor(ry + rs/2 - relZ);
+    
+    if (dx >= rx && dx <= rx + rs && dy >= ry && dy <= ry + rs) {
+      rect(dx - 2, dy - 2, 5, 5, rgba8(255, 0, 0, 255), true);
+      // Pulse effect
+      const pulse = Math.sin(game.time * 5) * 0.5 + 0.5;
+      circle(dx, dy, 8, rgba8(255, 0, 0, Math.floor(pulse * 150)), false);
+    }
+  });
+  
+  print('RADAR', rx + 25, ry + rs + 5, rgba8(0, 255, 0, 255), 1);
+  
+  // Game over overlay
+  if (game.health <= 0) {
+    rect(0, 0, 640, 360, rgba8(0, 0, 0, 180), true);
+    
+    const flash = Math.floor(game.time * 3) % 2 === 0;
+    const color = flash ? rgba8(255, 50, 50, 255) : rgba8(200, 0, 0, 255);
+    
+    print('GAME OVER', 250, 140, color);
+    print('Final Score: ' + game.score, 240, 180, rgba8(255, 255, 0, 255));
+    print('Wave Reached: ' + game.wave, 235, 200, rgba8(0, 255, 255, 255));
+    print('Press R to Restart', 230, 240, rgba8(200, 200, 200, 255));
+    
+    if (isKeyPressed('r')) {
+      // Reset game
+      game.enemies.forEach(e => destroyMesh(e.mesh));
+      game.bullets.forEach(b => destroyMesh(b.mesh));
+      game.particles.forEach(p => destroyMesh(p.mesh));
+      
+      game.enemies = [];
+      game.bullets = [];
+      game.particles = [];
+      game.score = 0;
+      game.health = 100;
+      game.wave = 1;
+      game.kills = 0;
+      game.enemySpawnTimer = 0;
+      game.gameOver = false;
+      game.player.vx = 0;
+      game.player.vy = 0;
+      game.player.x = 0;
+      game.player.y = 0;
+      
+      console.log('🔄 Game restarted!');
+    }
+  }
 }

@@ -12,6 +12,7 @@ import { inputApi } from '../runtime/input.js';
 import { storageApi } from '../runtime/storage.js';
 import { screenApi } from '../runtime/screens.js';
 import { skyboxApi } from '../runtime/api-skybox.js';
+import { uiApi } from '../runtime/ui.js';
 
 const canvas = document.getElementById('screen');
 
@@ -38,6 +39,9 @@ const stApi = storageApi('nova64');
 const scrApi = screenApi();
 const skyApi = skyboxApi(gpu);
 
+// Create UI API - needs to be created after api is fully initialized
+let uiApiInstance;
+
 // gather and expose to global
 const g = {};
 api.exposeTo(g);
@@ -52,6 +56,18 @@ iApi.exposeTo(g);
 stApi.exposeTo(g);
 scrApi.exposeTo(g);
 skyApi.exposeTo(g);
+
+// Now create UI API after g has rgba8 and other functions
+uiApiInstance = uiApi(gpu, g);
+uiApiInstance.exposeTo(g);
+
+// Connect input system to UI system for mouse events
+console.log('🔗 Connecting input to UI...');
+console.log('🔗 uiApiInstance.setMousePosition:', typeof uiApiInstance.setMousePosition);
+console.log('🔗 uiApiInstance.setMouseButton:', typeof uiApiInstance.setMouseButton);
+iApi.connectUI(uiApiInstance.setMousePosition, uiApiInstance.setMouseButton);
+console.log('✅ Input connected to UI');
+
 Object.assign(globalThis, g);
 // inject camera ref into sprite system
 if (g.getCamera) sApi.setCameraRef(g.getCamera());

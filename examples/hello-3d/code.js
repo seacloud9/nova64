@@ -6,6 +6,11 @@ let spheres = [];
 let time = 0;
 let cameraAngle = 0;
 
+// Screen management
+let gameState = 'start'; // 'start', 'playing'
+let startScreenTime = 0;
+let uiButtons = [];
+
 export async function init() {
   cls();
   
@@ -25,7 +30,38 @@ export async function init() {
   // Create some basic 3D objects
   createScene();
   
+  // Initialize start screen
+  initStartScreen();
+  
   console.log('🎮 Hello 3D World - Nintendo 64/PlayStation style demo loaded!');
+}
+
+function initStartScreen() {
+  uiButtons = [];
+  
+  // Start button - positioned higher for easier clicking
+  uiButtons.push(
+    createButton(centerX(220), 150, 220, 55, '▶ START DEMO', () => {
+      console.log('🎯 START BUTTON CLICKED! Changing gameState to playing...');
+      gameState = 'playing';
+      console.log('✅ gameState is now:', gameState);
+    }, {
+      normalColor: rgba8(50, 180, 255, 255),
+      hoverColor: rgba8(80, 200, 255, 255),
+      pressedColor: rgba8(20, 140, 220, 255)
+    })
+  );
+  
+  // Info button
+  uiButtons.push(
+    createButton(centerX(200), 350, 200, 45, 'ℹ INFO', () => {
+      console.log('Hello 3D World - Basic 3D demo with GPU acceleration');
+    }, {
+      normalColor: rgba8(100, 100, 255, 255),
+      hoverColor: rgba8(130, 130, 255, 255),
+      pressedColor: rgba8(70, 70, 220, 255)
+    })
+  );
 }
 
 function createScene() {
@@ -78,6 +114,34 @@ function createScene() {
 export function update(dt) {
   time += dt;
   
+  if (gameState === 'start') {
+    startScreenTime += dt;
+    updateAllButtons();
+    
+    // KEYBOARD FALLBACK: Press ENTER or SPACE to start
+    if (isKeyPressed('Enter') || isKeyPressed(' ') || isKeyPressed('Space')) {
+      console.log('🎮 Keyboard start pressed!');
+      gameState = 'playing';
+      return;
+    }
+    
+    // Still animate 3D scene in background
+    cubes.forEach(cube => {
+      cube.bobPhase += dt * 2;
+      const bobY = Math.sin(cube.bobPhase) * 2;
+      setPosition(cube.mesh, cube.x, bobY, cube.z);
+      rotateMesh(cube.mesh, dt * cube.rotationSpeed, dt * cube.rotationSpeed * 0.7, 0);
+    });
+    
+    cameraAngle += dt * 0.2;
+    const camX = Math.cos(cameraAngle) * 15;
+    const camZ = Math.sin(cameraAngle) * 15;
+    setCameraPosition(camX, 8, camZ);
+    setCameraTarget(0, 0, 0);
+    return;
+  }
+  
+  // Playing state
   // Rotate cubes
   cubes.forEach(cube => {
     cube.bobPhase += dt * 2;
@@ -125,7 +189,12 @@ export function update(dt) {
 }
 
 export function draw() {
-  // Simple HUD
+  if (gameState === 'start') {
+    drawStartScreen();
+    return;
+  }
+  
+  // Playing - Simple HUD
   print('🎮 HELLO 3D WORLD', 8, 8, rgba8(0, 255, 255, 255));
   print('Nintendo 64 / PlayStation Style', 8, 24, rgba8(255, 200, 0, 255));
   print(`Time: ${time.toFixed(1)}s`, 8, 40, rgba8(255, 255, 255, 255));
@@ -140,4 +209,85 @@ export function draw() {
   
   print('WASD: Move camera manually', 8, 320, rgba8(200, 200, 200, 200));
   print('Full GPU 3D acceleration with Three.js!', 8, 340, rgba8(100, 255, 100, 180));
+}
+
+function drawStartScreen() {
+  // Bright gradient background
+  drawGradientRect(0, 0, 640, 360,
+    rgba8(30, 60, 120, 230),
+    rgba8(10, 30, 80, 240),
+    true
+  );
+  
+  // Animated title with rainbow glow
+  const rainbow = [
+    rgba8(255, 0, 0, 255),
+    rgba8(255, 127, 0, 255),
+    rgba8(255, 255, 0, 255),
+    rgba8(0, 255, 0, 255),
+    rgba8(0, 0, 255, 255),
+    rgba8(148, 0, 211, 255)
+  ];
+  const colorIndex = Math.floor(startScreenTime * 2) % rainbow.length;
+  
+  setFont('huge');
+  setTextAlign('center');
+  const bounce = Math.sin(startScreenTime * 3) * 8;
+  drawTextShadow('HELLO', 320, 60 + bounce, rainbow[colorIndex], rgba8(0, 0, 0, 255), 5, 1);
+  drawTextShadow('3D WORLD', 320, 110 + bounce, rgba8(0, 255, 255, 255), rgba8(0, 0, 0, 255), 5, 1);
+  
+  // Subtitle
+  setFont('large');
+  const pulse = Math.sin(startScreenTime * 4) * 0.3 + 0.7;
+  drawTextOutline('Nintendo 64 / PlayStation Style', 320, 160, 
+    rgba8(255, 200, 0, Math.floor(pulse * 255)), 
+    rgba8(0, 0, 0, 255), 1);
+  
+  // Info panel
+  const panel = createPanel(centerX(450), 200, 450, 180, {
+    bgColor: rgba8(20, 40, 80, 200),
+    borderColor: rgba8(50, 180, 255, 255),
+    borderWidth: 3,
+    shadow: true,
+    gradient: true,
+    gradientColor: rgba8(30, 50, 100, 200)
+  });
+  drawPanel(panel);
+  
+  setFont('normal');
+  setTextAlign('center');
+  drawText('BASIC 3D RENDERING DEMO', 320, 220, rgba8(0, 255, 255, 255), 1);
+  
+  setFont('small');
+  drawText('Experience GPU-accelerated 3D graphics with Three.js', 320, 245, uiColors.light, 1);
+  drawText('Watch spinning cubes and bouncing spheres', 320, 260, uiColors.light, 1);
+  drawText('Full retro Nintendo 64 visual effects enabled', 320, 275, uiColors.light, 1);
+  
+  setFont('tiny');
+  drawText('Camera rotates automatically around the scene', 320, 300, uiColors.secondary, 1);
+  
+  // Draw buttons
+  drawAllButtons();
+  
+  // DEBUG: Show mouse position and button bounds
+  const mx = mouseX();
+  const my = mouseY();
+  if (mx >= 0 && my >= 0) {
+    setFont('tiny');
+    setTextAlign('left');
+    drawText(`Mouse: ${mx}, ${my}`, 10, 10, rgba8(255, 255, 0, 255), 1);
+    // Draw crosshair at mouse position
+    line(mx - 10, my, mx + 10, my, rgba8(0, 255, 0, 255));
+    line(mx, my - 10, mx, my + 10, rgba8(0, 255, 0, 255));
+  }
+  
+  // Pulsing start prompt
+  const alpha = Math.floor((Math.sin(startScreenTime * 6) * 0.5 + 0.5) * 255);
+  setFont('normal');
+  setTextAlign('center');
+  drawText('▶ PRESS START DEMO ◀', 320, 425, rgba8(50, 200, 255, alpha), 1);
+  
+  // Nova64 branding
+  setFont('tiny');
+  drawText('Nova64 v0.2.0 - Fantasy Console', 320, 345, rgba8(150, 150, 200, 150), 1);
 }

@@ -3,7 +3,9 @@
 
 // Game state
 let gameTime = 0;
-let gameState = 'playing';
+let gameState = 'start'; // 'start', 'playing'
+let startScreenTime = 0;
+let uiButtons = [];
 let score = 0;
 let level = 1;
 
@@ -66,12 +68,52 @@ export async function init() {
   spawnEnemies();
   spawnCoins();
   
+  // Initialize start screen
+  initStartScreen();
+  
   console.log('Cyber Knight 3D - 3D Platformer initialized');
   console.log('Use ARROWS to move, UP to jump, Z to attack');
 }
 
+function initStartScreen() {
+  uiButtons = [];
+  
+  uiButtons.push(
+    createButton(centerX(240), 150, 240, 60, '⚔ BEGIN QUEST', () => {
+      console.log('🎯 BEGIN QUEST CLICKED! Changing gameState to playing...');
+      gameState = 'playing';
+      console.log('✅ gameState is now:', gameState);
+    }, {
+      normalColor: rgba8(255, 100, 50, 255),
+      hoverColor: rgba8(255, 130, 80, 255),
+      pressedColor: rgba8(220, 70, 30, 255)
+    })
+  );
+  
+  uiButtons.push(
+    createButton(centerX(200), 355, 200, 45, '🎮 CONTROLS', () => {
+      console.log('Controls: Arrows=Move, UP=Jump, Z=Attack');
+    }, {
+      normalColor: rgba8(100, 150, 255, 255),
+      hoverColor: rgba8(130, 180, 255, 255),
+      pressedColor: rgba8(70, 120, 220, 255)
+    })
+  );
+}
+
 export function update(dt) {
   gameTime += dt;
+  
+  if (gameState === 'start') {
+    startScreenTime += dt;
+    updateAllButtons();
+    
+    // Animate scene in background
+    updateEnemies(dt);
+    updateCoins(dt);
+    updateParticles(dt);
+    return;
+  }
   
   if (gameState === 'playing') {
     updateInput(dt);
@@ -86,9 +128,81 @@ export function update(dt) {
 }
 
 export function draw() {
+  if (gameState === 'start') {
+    drawStartScreen();
+    return;
+  }
+  
   // 3D scene is automatically rendered by GPU backend
   // Draw UI overlay using 2D API
   drawUI();
+}
+
+function drawStartScreen() {
+  // Action gradient background
+  drawGradientRect(0, 0, 640, 360,
+    rgba8(60, 30, 20, 230),
+    rgba8(30, 15, 10, 245),
+    true
+  );
+  
+  // Animated title
+  setFont('huge');
+  setTextAlign('center');
+  const flash = Math.sin(startScreenTime * 4) * 0.4 + 0.6;
+  const actionColor = rgba8(
+    255,
+    Math.floor(flash * 150),
+    Math.floor(flash * 50),
+    255
+  );
+  
+  const shake = Math.sin(startScreenTime * 10) * 3;
+  drawTextShadow('CYBER', 320 + shake, 50, actionColor, rgba8(0, 0, 0, 255), 7, 1);
+  drawTextShadow('KNIGHT 3D', 320, 105, rgba8(150, 200, 255, 255), rgba8(0, 0, 0, 255), 7, 1);
+  
+  // Subtitle
+  setFont('large');
+  const pulse = Math.sin(startScreenTime * 3) * 0.2 + 0.8;
+  drawTextOutline('⚔ 3D Platformer Adventure ⚔', 320, 165, 
+    rgba8(255, 200, 100, Math.floor(pulse * 255)), 
+    rgba8(0, 0, 0, 255), 1);
+  
+  // Info panel
+  const panel = createPanel(centerX(480), 210, 480, 190, {
+    bgColor: rgba8(40, 20, 15, 210),
+    borderColor: rgba8(255, 100, 50, 255),
+    borderWidth: 3,
+    shadow: true,
+    gradient: true,
+    gradientColor: rgba8(60, 30, 20, 210)
+  });
+  drawPanel(panel);
+  
+  setFont('normal');
+  setTextAlign('center');
+  drawText('KNIGHT\'S MISSION', 320, 230, rgba8(255, 200, 100, 255), 1);
+  
+  setFont('small');
+  drawText('⚔ Jump across platforms and defeat enemies', 320, 255, uiColors.light, 1);
+  drawText('⚔ Collect coins and power-ups', 320, 270, uiColors.light, 1);
+  drawText('⚔ Double jump and combat abilities', 320, 285, uiColors.light, 1);
+  drawText('⚔ Nintendo 64 / PlayStation style graphics', 320, 300, uiColors.light, 1);
+  
+  setFont('tiny');
+  drawText('Arrows: Move | UP: Jump | Z: Attack', 320, 320, uiColors.secondary, 1);
+  
+  // Draw buttons
+  drawAllButtons();
+  
+  // Pulsing prompt
+  const alpha = Math.floor((Math.sin(startScreenTime * 6) * 0.5 + 0.5) * 255);
+  setFont('normal');
+  drawText('⚔ EMBARK ON YOUR QUEST ⚔', 320, 430, rgba8(255, 150, 50, alpha), 1);
+  
+  // Info
+  setFont('tiny');
+  drawText('True 3D Platforming Action', 320, 345, rgba8(200, 150, 100, 150), 1);
 }
 
 function createPlayerKnight() {

@@ -11,6 +11,11 @@ let time = 0;
 let battleIntensity = 0;
 let cameraTarget = { x: 0, y: 0, z: 0 };
 
+// Screen management
+let gameState = 'start'; // 'start', 'battle'
+let startScreenTime = 0;
+let uiButtons = [];
+
 export async function init() {
   clearScene();
   
@@ -34,7 +39,36 @@ export async function init() {
   // Dramatic space lighting
   setLightDirection(1, 0.5, -2);
   
+  // Initialize start screen
+  initStartScreen();
+  
   console.log('Epic Space Battle initialized');
+}
+
+function initStartScreen() {
+  uiButtons = [];
+  
+  uiButtons.push(
+    createButton(centerX(240), 150, 240, 60, '▶ START BATTLE', () => {
+      console.log('🎯 START BATTLE CLICKED! Changing gameState to battle...');
+      gameState = 'battle';
+      console.log('✅ gameState is now:', gameState);
+    }, {
+      normalColor: rgba8(200, 50, 50, 255),
+      hoverColor: rgba8(230, 80, 80, 255),
+      pressedColor: rgba8(170, 30, 30, 255)
+    })
+  );
+  
+  uiButtons.push(
+    createButton(centerX(200), 355, 200, 45, '⚡ INFO', () => {
+      console.log('3D Advanced - Epic space battle with advanced effects');
+    }, {
+      normalColor: rgba8(100, 150, 255, 255),
+      hoverColor: rgba8(130, 180, 255, 255),
+      pressedColor: rgba8(70, 120, 220, 255)
+    })
+  );
 }
 
 function createStarfield() {
@@ -194,6 +228,25 @@ function createBattleEffects() {
 export function update(dt) {
   time += dt;
   battleIntensity = 0.5 + Math.sin(time * 0.3) * 0.5;
+  
+  if (gameState === 'start') {
+    startScreenTime += dt;
+    updateAllButtons();
+    
+    // Animate scene in background
+    stars.forEach((star, i) => {
+      star.twinkle += dt * 2;
+      const twinkleIntensity = (Math.sin(star.twinkle) + 1) * 0.5;
+      const scale = star.brightness * (0.8 + twinkleIntensity * 0.4);
+      setScale(star.mesh, scale);
+    });
+    
+    // Slow camera orbit
+    const angle = time * 0.15;
+    setCameraPosition(Math.cos(angle) * 35, 20, Math.sin(angle) * 35);
+    setCameraTarget(0, 0, 0);
+    return;
+  }
   
   // Twinkling stars
   stars.forEach((star, i) => {
@@ -367,6 +420,11 @@ function spawnProjectile(pos, type) {
 }
 
 export function draw() {
+  if (gameState === 'start') {
+    drawStartScreen();
+    return;
+  }
+  
   cls();
   
   // Epic space battle HUD
@@ -440,4 +498,71 @@ export function draw() {
   // Stardate
   const stardate = (2387 + time * 0.1).toFixed(1);
   print(`STARDATE: ${stardate}`, 200, 172, rgba8(200, 200, 200, 200));
+}
+
+function drawStartScreen() {
+  // Deep space gradient background
+  drawGradientRect(0, 0, 640, 360,
+    rgba8(10, 5, 20, 235),
+    rgba8(5, 2, 10, 250),
+    true
+  );
+  
+  // Animated title
+  setFont('huge');
+  setTextAlign('center');
+  const pulse = Math.sin(startScreenTime * 3) * 0.4 + 0.6;
+  const combatColor = rgba8(
+    Math.floor(pulse * 255),
+    Math.floor(pulse * 100),
+    Math.floor(pulse * 50),
+    255
+  );
+  
+  const shake = Math.random() > 0.9 ? Math.floor(Math.random() * 6) - 3 : 0;
+  drawTextShadow('3D ADVANCED', 320 + shake, 50, combatColor, rgba8(0, 0, 0, 255), 7, 1);
+  drawTextShadow('SPACE BATTLE', 320, 105, rgba8(100, 150, 255, 255), rgba8(0, 0, 0, 255), 7, 1);
+  
+  // Subtitle
+  setFont('large');
+  const glow = Math.sin(startScreenTime * 4) * 0.2 + 0.8;
+  drawTextOutline('⚡ Epic Capital Ship Combat ⚡', 320, 165, 
+    rgba8(255, 200, 100, Math.floor(glow * 255)), 
+    rgba8(0, 0, 0, 255), 1);
+  
+  // Info panel
+  const panel = createPanel(centerX(480), 210, 480, 190, {
+    bgColor: rgba8(15, 10, 25, 215),
+    borderColor: rgba8(200, 50, 50, 255),
+    borderWidth: 3,
+    shadow: true,
+    gradient: true,
+    gradientColor: rgba8(25, 15, 35, 215)
+  });
+  drawPanel(panel);
+  
+  setFont('normal');
+  setTextAlign('center');
+  drawText('GALACTIC WAR SIMULATION', 320, 230, rgba8(255, 100, 100, 255), 1);
+  
+  setFont('small');
+  drawText('⚡ Capital Ships + Fighter Squadrons', 320, 255, uiColors.light, 1);
+  drawText('⚡ Real-time Combat with Projectiles & Explosions', 320, 270, uiColors.light, 1);
+  drawText('⚡ 200+ Stars + Nebula Backgrounds', 320, 285, uiColors.light, 1);
+  drawText('⚡ Advanced 3D Effects & Cinematic Camera', 320, 300, uiColors.light, 1);
+  
+  setFont('tiny');
+  drawText('Demonstrates advanced Three.js features', 320, 320, uiColors.secondary, 1);
+  
+  // Draw buttons
+  drawAllButtons();
+  
+  // Pulsing prompt
+  const alpha = Math.floor((Math.sin(startScreenTime * 6) * 0.5 + 0.5) * 255);
+  setFont('normal');
+  drawText('⚡ PREPARE FOR BATTLE ⚡', 320, 430, rgba8(255, 100, 50, alpha), 1);
+  
+  // Info
+  setFont('tiny');
+  drawText('Full GPU-Accelerated 3D Combat', 320, 345, rgba8(150, 100, 150, 150), 1);
 }

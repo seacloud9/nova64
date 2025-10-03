@@ -20,6 +20,11 @@ let time = 0;
 let musicTime = 0;
 let atmosphereIntensity = 0;
 
+// Screen management
+let gameState = 'start'; // 'start', 'viewing'
+let startScreenTime = 0;
+let uiButtons = [];
+
 export async function init() {
   cls();
   
@@ -47,7 +52,38 @@ export async function init() {
   setAmbientLight(0x202040);
   setFog(0x000011, 40, 120);
   
+  // Initialize start screen
+  initStartScreen();
+  
   console.log('✨ Crystal Cathedral loaded - Experience ultimate 3D graphics!');
+}
+
+function initStartScreen() {
+  uiButtons = [];
+  
+  // Enter cathedral button
+  uiButtons.push(
+    createButton(centerX(240), 150, 240, 60, '◆ ENTER CATHEDRAL ◆', () => {
+      console.log('🎯 ENTER CATHEDRAL CLICKED! Changing gameState to viewing...');
+      gameState = 'viewing';
+      console.log('✅ gameState is now:', gameState);
+    }, {
+      normalColor: rgba8(70, 150, 255, 255),
+      hoverColor: rgba8(100, 180, 255, 255),
+      pressedColor: rgba8(40, 120, 220, 255)
+    })
+  );
+  
+  // Features button
+  uiButtons.push(
+    createButton(centerX(200), 355, 200, 45, '✨ FEATURES', () => {
+      console.log('Crystal Cathedral - Advanced graphics showcase');
+    }, {
+      normalColor: rgba8(100, 200, 255, 255),
+      hoverColor: rgba8(130, 220, 255, 255),
+      pressedColor: rgba8(70, 170, 230, 255)
+    })
+  );
 }
 
 async function buildCathedral() {
@@ -258,6 +294,20 @@ export function update(dt) {
   musicTime += dt * 0.5; // Slower for atmospheric effect
   atmosphereIntensity = (Math.sin(musicTime) + 1) * 0.5;
   
+  if (gameState === 'start') {
+    startScreenTime += dt;
+    updateAllButtons();
+    
+    // Still animate scene in background
+    updateCamera(dt);
+    updatePillars(dt);
+    updateFloatingElements(dt);
+    updateMasterCrystal(dt);
+    updateSpiral(dt);
+    return;
+  }
+  
+  // Viewing state
   // Update camera orbit
   updateCamera(dt);
   
@@ -388,7 +438,12 @@ function hslToHex(h, s, l) {
 }
 
 export function draw() {
-  // Atmospheric UI with dynamic colors
+  if (gameState === 'start') {
+    drawStartScreen();
+    return;
+  }
+  
+  // Viewing - Atmospheric UI with dynamic colors
   const titleColor = hslToHex(time * 50 % 360, 80, 70);
   const accentColor = hslToHex((time * 30 + 180) % 360, 70, 60);
   
@@ -423,4 +478,89 @@ export function draw() {
   // Dynamic status indicators
   const pulseAlpha = Math.floor((Math.sin(time * 8) + 1) * 127 + 128);
   print('🔮 TRANSCENDENT EXPERIENCE ACTIVE 🔮', 200, 8, rgba8(255, 100, 255, pulseAlpha));
+}
+
+function drawStartScreen() {
+  // Holographic cyan gradient background
+  drawGradientRect(0, 0, 640, 360,
+    rgba8(10, 30, 60, 230),
+    rgba8(5, 15, 40, 245),
+    true
+  );
+  
+  // Animated holographic title
+  const hologramGlow = Math.sin(startScreenTime * 3) * 0.4 + 0.6;
+  const hueShift = (startScreenTime * 50) % 360;
+  const hologramColor = hslToRgba8(hueShift, 80, Math.floor(hologramGlow * 80), 255);
+  
+  setFont('huge');
+  setTextAlign('center');
+  const float = Math.sin(startScreenTime * 2) * 10;
+  drawTextShadow('CRYSTAL', 320, 50 + float, hologramColor, rgba8(0, 0, 0, 255), 6, 1);
+  drawTextShadow('CATHEDRAL', 320, 105 + float, rgba8(100, 200, 255, 255), rgba8(0, 0, 0, 255), 6, 1);
+  
+  // Holographic subtitle
+  setFont('large');
+  const pulse = Math.sin(startScreenTime * 4) * 0.2 + 0.8;
+  drawTextOutline('◆ Ultimate Graphics Showcase ◆', 320, 165, 
+    rgba8(150, 220, 255, Math.floor(pulse * 255)), 
+    rgba8(0, 0, 0, 255), 1);
+  
+  // Info panel with holographic border
+  const panel = createPanel(centerX(480), 210, 480, 190, {
+    bgColor: rgba8(10, 25, 50, 210),
+    borderColor: rgba8(70, 150, 255, 255),
+    borderWidth: 3,
+    shadow: true,
+    gradient: true,
+    gradientColor: rgba8(20, 40, 80, 210)
+  });
+  drawPanel(panel);
+  
+  setFont('normal');
+  setTextAlign('center');
+  drawText('ADVANCED FEATURES', 320, 230, rgba8(100, 200, 255, 255), 1);
+  
+  setFont('small');
+  drawText('◆ Holographic Materials & Dynamic Lighting', 320, 255, uiColors.light, 1);
+  drawText('◆ Motion Blur, Bloom & Atmospheric Effects', 320, 270, uiColors.light, 1);
+  drawText('◆ 12 Sacred Pillars + Floating Crystal Array', 320, 285, uiColors.light, 1);
+  drawText('◆ Nintendo 64 / PlayStation Retro Aesthetics', 320, 300, uiColors.light, 1);
+  
+  setFont('tiny');
+  drawText('Camera orbits automatically - Pure visual experience', 320, 320, uiColors.secondary, 1);
+  
+  // Draw buttons
+  drawAllButtons();
+  
+  // Pulsing crystal prompt
+  const alpha = Math.floor((Math.sin(startScreenTime * 5) * 0.5 + 0.5) * 255);
+  setFont('normal');
+  drawText('◆ WITNESS THE ULTIMATE 3D GRAPHICS ◆', 320, 430, rgba8(100, 200, 255, alpha), 1);
+  
+  // Tech info
+  setFont('tiny');
+  drawText('Powered by Three.js + WebGL 2.0', 320, 345, rgba8(120, 160, 200, 150), 1);
+}
+
+// Helper to convert HSL to rgba8
+function hslToRgba8(h, s, l, a) {
+  const c = (1 - Math.abs(2 * l / 100 - 1)) * s / 100;
+  const x = c * (1 - Math.abs((h / 60) % 2 - 1));
+  const m = l / 100 - c / 2;
+  
+  let r, g, b;
+  if (h < 60) { r = c; g = x; b = 0; }
+  else if (h < 120) { r = x; g = c; b = 0; }
+  else if (h < 180) { r = 0; g = c; b = x; }
+  else if (h < 240) { r = 0; g = x; b = c; }
+  else if (h < 300) { r = x; g = 0; b = c; }
+  else { r = c; g = 0; b = x; }
+  
+  return rgba8(
+    Math.floor((r + m) * 255),
+    Math.floor((g + m) * 255),
+    Math.floor((b + m) * 255),
+    a
+  );
 }

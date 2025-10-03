@@ -6,6 +6,11 @@ let gameTime = 0;
 let selectedDemo = 0;
 let showDebugInfo = true;
 
+// Screen management
+let gameState = 'start'; // 'start', 'simulating'
+let startScreenTime = 0;
+let uiButtons = [];
+
 // 3D Physics objects
 let physicsObjects = [];
 let particles = [];
@@ -48,12 +53,52 @@ export async function init() {
   // Start with first demo
   demos[selectedDemo].setup();
   
+  // Initialize start screen
+  initStartScreen();
+  
   console.log('Physics Lab 3D - 3D Physics Simulation initialized');
   console.log('Use LEFT/RIGHT to change demos, UP to toggle debug, X to interact');
 }
 
+function initStartScreen() {
+  uiButtons = [];
+  
+  uiButtons.push(
+    createButton(centerX(240), 150, 240, 60, '⚛ START SIMULATION', () => {
+      console.log('🎯 START SIMULATION CLICKED! Changing gameState to simulating...');
+      gameState = 'simulating';
+      console.log('✅ gameState is now:', gameState);
+    }, {
+      normalColor: rgba8(50, 200, 100, 255),
+      hoverColor: rgba8(80, 230, 130, 255),
+      pressedColor: rgba8(30, 170, 80, 255)
+    })
+  );
+  
+  uiButtons.push(
+    createButton(centerX(200), 355, 200, 45, '📊 DEMOS', () => {
+      console.log('Physics demos: Bouncing, Pendulum, Fountain, Gravity, Cascade');
+    }, {
+      normalColor: rgba8(100, 150, 255, 255),
+      hoverColor: rgba8(130, 180, 255, 255),
+      pressedColor: rgba8(70, 120, 220, 255)
+    })
+  );
+}
+
 export function update(dt) {
   gameTime += dt;
+  
+  if (gameState === 'start') {
+    startScreenTime += dt;
+    updateAllButtons();
+    
+    // Animate physics in background
+    updatePhysics(dt);
+    updateParticles(dt);
+    updateForceFields(dt);
+    return;
+  }
   
   handleInput(dt);
   updatePhysics(dt);
@@ -63,9 +108,81 @@ export function update(dt) {
 }
 
 export function draw() {
+  if (gameState === 'start') {
+    drawStartScreen();
+    return;
+  }
+  
   // 3D scene is automatically rendered by GPU backend
   // Draw UI overlay using 2D API
   drawUI();
+}
+
+function drawStartScreen() {
+  // Scientific gradient background
+  drawGradientRect(0, 0, 640, 360,
+    rgba8(20, 40, 30, 230),
+    rgba8(10, 20, 15, 245),
+    true
+  );
+  
+  // Animated title
+  setFont('huge');
+  setTextAlign('center');
+  const pulse = Math.sin(startScreenTime * 3) * 0.3 + 0.7;
+  const sciColor = rgba8(
+    Math.floor(pulse * 100),
+    Math.floor(pulse * 255),
+    Math.floor(pulse * 150),
+    255
+  );
+  
+  const bounce = Math.abs(Math.sin(startScreenTime * 4)) * 15;
+  drawTextShadow('PHYSICS', 320, 50 + bounce, sciColor, rgba8(0, 0, 0, 255), 6, 1);
+  drawTextShadow('LAB 3D', 320, 105, rgba8(255, 255, 255, 255), rgba8(0, 0, 0, 255), 6, 1);
+  
+  // Subtitle
+  setFont('large');
+  const glow = Math.sin(startScreenTime * 4) * 0.2 + 0.8;
+  drawTextOutline('Advanced 3D Physics Simulation', 320, 165, 
+    rgba8(100, 255, 150, Math.floor(glow * 255)), 
+    rgba8(0, 0, 0, 255), 1);
+  
+  // Info panel
+  const panel = createPanel(centerX(480), 210, 480, 190, {
+    bgColor: rgba8(20, 35, 25, 210),
+    borderColor: rgba8(50, 200, 100, 255),
+    borderWidth: 3,
+    shadow: true,
+    gradient: true,
+    gradientColor: rgba8(30, 50, 35, 210)
+  });
+  drawPanel(panel);
+  
+  setFont('normal');
+  setTextAlign('center');
+  drawText('5 PHYSICS SIMULATIONS', 320, 230, rgba8(100, 255, 150, 255), 1);
+  
+  setFont('small');
+  drawText('⚛ Bouncing Spheres - Realistic collision physics', 320, 255, uiColors.light, 1);
+  drawText('⚛ Pendulum Chain - Connected body dynamics', 320, 270, uiColors.light, 1);
+  drawText('⚛ Particle Fountain - Mass particle system', 320, 285, uiColors.light, 1);
+  drawText('⚛ Gravity Well - Force field simulation', 320, 300, uiColors.light, 1);
+  
+  setFont('tiny');
+  drawText('Use LEFT/RIGHT arrows to cycle demos', 320, 320, uiColors.secondary, 1);
+  
+  // Draw buttons
+  drawAllButtons();
+  
+  // Pulsing prompt
+  const alpha = Math.floor((Math.sin(startScreenTime * 6) * 0.5 + 0.5) * 255);
+  setFont('normal');
+  drawText('⚛ EXPERIENCE REAL-TIME 3D PHYSICS ⚛', 320, 430, rgba8(100, 255, 150, alpha), 1);
+  
+  // Tech info
+  setFont('tiny');
+  drawText('Nintendo 64 / PlayStation Style Rendering', 320, 345, rgba8(150, 200, 150, 150), 1);
 }
 
 async function createWorld() {

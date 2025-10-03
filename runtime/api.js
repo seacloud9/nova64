@@ -158,4 +158,4 @@ export function stdApi(gpu) {
   };
 }
 
-export { packRGBA64, rgba8 };
+export { packRGBA64, rgba8, unpackRGBA64 };

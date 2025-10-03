@@ -6,6 +6,11 @@ if (typeof get3DStats === 'undefined') {
   globalThis.get3DStats = () => ({ meshes: 0, renderer: 'Unknown' });
 }
 
+// Screen management
+let gameState = 'start'; // 'start', 'racing'
+let startScreenTime = 0;
+let uiButtons = [];
+
 let gameTime = 0;
 let raceTrack = [];
 let player = null;
@@ -61,6 +66,9 @@ export async function init() {
     spawnPowerUps();
     initRaceParticles();
     
+    // Initialize start screen
+    initStartScreen();
+    
     console.log("✅ F-ZERO NOVA - Initialization complete!");
   } catch (error) {
     console.error("❌ F-ZERO NOVA - Initialization failed:", error);
@@ -71,8 +79,57 @@ export async function init() {
   }
 }
 
+function initStartScreen() {
+  uiButtons = [];
+  
+  uiButtons.push(
+    createButton(centerX(240), 150, 240, 60, '🏁 START RACE', () => {
+      console.log('🎯 START RACE CLICKED! Changing gameState to racing...');
+      gameState = 'racing';
+      // Reset race state
+      currentLap = 1;
+      lapTime = 0;
+      speed = 0;
+      health = 100;
+      console.log('✅ gameState is now:', gameState);
+    }, {
+      normalColor: rgba8(255, 150, 0, 255),
+      hoverColor: rgba8(255, 180, 30, 255),
+      pressedColor: rgba8(220, 120, 0, 255)
+    })
+  );
+  
+  uiButtons.push(
+    createButton(centerX(200), 355, 200, 45, '🎮 CONTROLS', () => {
+      console.log('Controls: ARROWS=Steer/Accelerate, SPACE=Boost, Z=Brake');
+    }, {
+      normalColor: rgba8(100, 200, 255, 255),
+      hoverColor: rgba8(130, 220, 255, 255),
+      pressedColor: rgba8(70, 170, 230, 255)
+    })
+  );
+}
+
 export function update(dt) {
   gameTime += dt;
+  
+  if (gameState === 'start') {
+    startScreenTime += dt;
+    updateAllButtons();
+    
+    // Animate scene in background
+    updateOpponents(dt);
+    updateTrack(dt);
+    updateParticles(dt);
+    updateAdvancedLighting(dt);
+    
+    // Cinematic camera orbit
+    const angle = gameTime * 0.3;
+    setCameraPosition(Math.cos(angle) * 30, 18, Math.sin(angle) * 30);
+    setCameraTarget(0, 2, 0);
+    return;
+  }
+  
   lapTime += dt;
   
   handleInput(dt);
@@ -91,6 +148,11 @@ export function update(dt) {
 }
 
 export function draw() {
+  if (gameState === 'start') {
+    drawStartScreen();
+    return;
+  }
+  
   // 3D scene automatically rendered
   try {
     drawRacingHUD();
@@ -101,6 +163,73 @@ export function draw() {
     print('F-ZERO NOVA', 10, 10, rgba8(255, 255, 255, 255));
     print('Error: Reloading...', 10, 30, rgba8(255, 0, 0, 255));
   }
+}
+
+function drawStartScreen() {
+  // Racing gradient background (orange to red)
+  drawGradientRect(0, 0, 640, 360,
+    rgba8(80, 30, 10, 235),
+    rgba8(40, 15, 5, 250),
+    true
+  );
+  
+  // Animated title with speed effect
+  setFont('huge');
+  setTextAlign('center');
+  const speed = Math.sin(startScreenTime * 5) * 0.4 + 0.6;
+  const speedColor = rgba8(
+    255,
+    Math.floor(speed * 180),
+    0,
+    255
+  );
+  
+  const offset = Math.sin(startScreenTime * 8) * 5;
+  drawTextShadow('F-ZERO', 320 + offset, 50, speedColor, rgba8(0, 0, 0, 255), 8, 1);
+  drawTextShadow('NOVA', 320, 110, rgba8(100, 200, 255, 255), rgba8(0, 0, 0, 255), 8, 1);
+  
+  // Subtitle
+  setFont('large');
+  const pulse = Math.sin(startScreenTime * 6) * 0.2 + 0.8;
+  drawTextOutline('🏁 Extreme 3D Racing 🏁', 320, 170, 
+    rgba8(255, 255, 0, Math.floor(pulse * 255)), 
+    rgba8(0, 0, 0, 255), 1);
+  
+  // Info panel
+  const panel = createPanel(centerX(480), 215, 480, 185, {
+    bgColor: rgba8(30, 15, 10, 220),
+    borderColor: rgba8(255, 150, 0, 255),
+    borderWidth: 3,
+    shadow: true,
+    gradient: true,
+    gradientColor: rgba8(50, 25, 15, 220)
+  });
+  drawPanel(panel);
+  
+  setFont('normal');
+  setTextAlign('center');
+  drawText('RACE SPECIFICATIONS', 320, 235, rgba8(255, 150, 0, 255), 1);
+  
+  setFont('small');
+  drawText('🏁 High-speed futuristic racing', 320, 260, uiColors.light, 1);
+  drawText('🏁 Maximum speed: 120 km/h with boost', 320, 275, uiColors.light, 1);
+  drawText('🏁 3 laps against 7 AI opponents', 320, 290, uiColors.light, 1);
+  drawText('🏁 Nintendo 64 F-Zero inspired graphics', 320, 305, uiColors.light, 1);
+  
+  setFont('tiny');
+  drawText('ARROWS: Steer/Accelerate | SPACE: Boost | Z: Brake', 320, 325, uiColors.secondary, 1);
+  
+  // Draw buttons
+  drawAllButtons();
+  
+  // Pulsing prompt
+  const alpha = Math.floor((Math.sin(startScreenTime * 7) * 0.5 + 0.5) * 255);
+  setFont('normal');
+  drawText('🏁 PREPARE FOR MAXIMUM VELOCITY 🏁', 320, 435, rgba8(255, 200, 0, alpha), 1);
+  
+  // Info
+  setFont('tiny');
+  drawText('Advanced 3D Racing Engine', 320, 350, rgba8(200, 150, 100, 150), 1);
 }
 
 async function buildRaceTrack() {

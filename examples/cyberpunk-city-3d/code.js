@@ -13,6 +13,11 @@ let neonSigns = [];
 let flying = false;
 let speed = 0;
 
+// Screen management
+let gameState = 'start'; // 'start', 'exploring'
+let startScreenTime = 0;
+let uiButtons = [];
+
 // City configuration
 const CITY_SIZE = 100;
 const BUILDING_COUNT = 50;
@@ -53,12 +58,60 @@ export async function init() {
   spawnVehicles();
   initParticleSystem();
   
+  // Initialize start screen
+  initStartScreen();
+  
   console.log('🌃 CYBERPUNK CITY 3D - Ultimate retro 3D experience loaded!');
   console.log('WASD: Move | SHIFT: Fly Mode | SPACE: Boost | X: Switch Vehicle');
 }
 
+function initStartScreen() {
+  uiButtons = [];
+  
+  uiButtons.push(
+    createButton(centerX(240), 150, 240, 60, '▶ ENTER THE CITY ▶', () => {
+      console.log('🎯 ENTER THE CITY CLICKED! Changing gameState to exploring...');
+      gameState = 'exploring';
+      console.log('✅ gameState is now:', gameState);
+    }, {
+      normalColor: rgba8(255, 0, 100, 255),
+      hoverColor: rgba8(255, 60, 150, 255),
+      pressedColor: rgba8(200, 0, 80, 255)
+    })
+  );
+  
+  uiButtons.push(
+    createButton(centerX(200), 355, 200, 45, '🎮 CONTROLS', () => {
+      console.log('Cyberpunk City - WASD: Move, SHIFT: Fly, SPACE: Boost');
+    }, {
+      normalColor: rgba8(0, 255, 255, 255),
+      hoverColor: rgba8(60, 255, 255, 255),
+      pressedColor: rgba8(0, 200, 200, 255)
+    })
+  );
+}
+
 export function update(dt) {
   gameTime += dt;
+  
+  if (gameState === 'start') {
+    startScreenTime += dt;
+    updateAllButtons();
+    
+    // Animate scene in background
+    updateVehicles(dt);
+    updateParticles(dt);
+    updateCityLights(dt);
+    updateNeonSigns(dt);
+    
+    // Slow camera orbit
+    camera.x = Math.cos(gameTime * 0.2) * 40;
+    camera.z = Math.sin(gameTime * 0.2) * 40;
+    camera.y = 25;
+    setCameraPosition(camera.x, camera.y, camera.z);
+    setCameraTarget(0, 10, 0);
+    return;
+  }
   
   handleInput(dt);
   updatePlayer(dt);
@@ -70,8 +123,81 @@ export function update(dt) {
 }
 
 export function draw() {
+  if (gameState === 'start') {
+    drawStartScreen();
+    return;
+  }
+  
   // 3D scene automatically rendered by GPU
   drawHUD();
+}
+
+function drawStartScreen() {
+  // Neon gradient background
+  drawGradientRect(0, 0, 640, 360,
+    rgba8(50, 10, 50, 230),
+    rgba8(10, 5, 20, 245),
+    true
+  );
+  
+  // Neon title with glow
+  const neonPulse = Math.sin(startScreenTime * 4) * 0.3 + 0.7;
+  const pinkNeon = rgba8(
+    255,
+    Math.floor(neonPulse * 100),
+    Math.floor(neonPulse * 200),
+    255
+  );
+  const cyanNeon = rgba8(0, Math.floor(neonPulse * 255), 255, 255);
+  
+  setFont('huge');
+  setTextAlign('center');
+  const flicker = Math.random() > 0.95 ? -2 : 0;
+  drawTextShadow('CYBERPUNK', 320, 50 + flicker, pinkNeon, rgba8(0, 0, 0, 255), 7, 1);
+  drawTextShadow('CITY 3D', 320, 105 + flicker, cyanNeon, rgba8(0, 0, 0, 255), 7, 1);
+  
+  // Subtitle
+  setFont('large');
+  const glitch = Math.random() > 0.97 ? Math.floor(Math.random() * 4) - 2 : 0;
+  drawTextOutline('▶ Nintendo 64 / PlayStation Style ◀', 320 + glitch, 165, 
+    rgba8(255, 255, 0, 255), 
+    rgba8(0, 0, 0, 255), 1);
+  
+  // Info panel
+  const panel = createPanel(centerX(480), 210, 480, 190, {
+    bgColor: rgba8(30, 10, 30, 210),
+    borderColor: rgba8(255, 0, 100, 255),
+    borderWidth: 3,
+    shadow: true,
+    gradient: true,
+    gradientColor: rgba8(50, 20, 50, 210)
+  });
+  drawPanel(panel);
+  
+  setFont('normal');
+  setTextAlign('center');
+  drawText('EXPLORE THE NEON METROPOLIS', 320, 230, rgba8(255, 0, 255, 255), 1);
+  
+  setFont('small');
+  drawText('▶ 50+ Procedural Buildings with Neon Lights', 320, 255, uiColors.light, 1);
+  drawText('▶ Flying Vehicles & Dynamic Particle System', 320, 270, uiColors.light, 1);
+  drawText('▶ Full Player Control + Flying Mode', 320, 285, uiColors.light, 1);
+  drawText('▶ Retro N64 Effects: Pixelation, Dithering, Bloom', 320, 300, uiColors.light, 1);
+  
+  setFont('tiny');
+  drawText('WASD: Move | SHIFT: Fly | SPACE: Boost', 320, 320, uiColors.secondary, 1);
+  
+  // Draw buttons
+  drawAllButtons();
+  
+  // Pulsing neon prompt
+  const alpha = Math.floor((Math.sin(startScreenTime * 6) * 0.5 + 0.5) * 255);
+  setFont('normal');
+  drawText('▶ WELCOME TO THE FUTURE ◀', 320, 430, rgba8(255, 0, 255, alpha), 1);
+  
+  // Build info
+  setFont('tiny');
+  drawText('GPU-Accelerated 3D City Simulation', 320, 345, rgba8(150, 100, 200, 150), 1);
 }
 
 async function buildCyberpunkCity() {

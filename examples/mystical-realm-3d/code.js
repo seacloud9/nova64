@@ -1,6 +1,14 @@
 // MYSTICAL REALM 3D - Creative Nintendo 64/PlayStation style fantasy world
 // Showcases advanced 3D features: dynamic lighting, particle systems, procedural generation
 
+// Game state management
+let gameState = 'start'; // 'start', 'playing', 'paused', 'gameover'
+let startScreenTime = 0;
+let uiButtons = [];
+let score = 0;
+let crystalsCollected = 0;
+let playTime = 0;
+
 let world = {
   terrain: [],
   crystals: [],
@@ -14,7 +22,9 @@ let player = {
   rotation: 0,
   speed: 8,
   jumpVelocity: 0,
-  onGround: false
+  onGround: false,
+  health: 100,
+  maxHealth: 100
 };
 
 let camera = {
@@ -50,7 +60,42 @@ export async function init() {
   // Set initial lighting
   updateLighting();
   
+  // Initialize start screen
+  initStartScreen();
+  
   console.log('✨ Mystical Realm 3D loaded! Explore the fantasy world!');
+}
+
+function initStartScreen() {
+  uiButtons = [];
+  
+  // START button
+  uiButtons.push(
+    createButton(centerX(220), 150, 220, 55, '▶ BEGIN QUEST', () => {
+      console.log('🎯 BEGIN QUEST CLICKED! Changing gameState to playing...');
+      gameState = 'playing';
+      playTime = 0;
+      score = 0;
+      crystalsCollected = 0;
+      console.log('✅ gameState is now:', gameState);
+      console.log('🏰 Quest begun!');
+    }, {
+      normalColor: rgba8(100, 50, 200, 255),
+      hoverColor: rgba8(130, 70, 230, 255),
+      pressedColor: rgba8(70, 30, 160, 255)
+    })
+  );
+  
+  // CONTROLS button
+  uiButtons.push(
+    createButton(centerX(220), 290, 220, 45, '? CONTROLS', () => {
+      console.log('🎮 WASD/Arrows = Move, SPACE = Jump, Collect crystals!');
+    }, {
+      normalColor: uiColors.primary,
+      hoverColor: rgba8(50, 150, 255, 255),
+      pressedColor: rgba8(20, 100, 200, 255)
+    })
+  );
 }
 
 async function generateTerrain() {
@@ -193,8 +238,29 @@ async function createCreatures() {
 }
 
 export function update(dt) {
+  // Handle start screen
+  if (gameState === 'start') {
+    startScreenTime += dt;
+    updateAllButtons();
+    // Still update world animations in background
+    time += dt;
+    dayNightCycle += dt * 0.1;
+    updateTerrain(dt);
+    updateCrystals(dt);
+    updateLighting();
+    return;
+  }
+  
+  // Handle game over
+  if (gameState === 'gameover') {
+    updateAllButtons();
+    return;
+  }
+  
+  // Playing state
   time += dt;
   dayNightCycle += dt * 0.1;
+  playTime += dt;
   
   // Update player movement
   updatePlayer(dt);
@@ -216,6 +282,12 @@ export function update(dt) {
   
   // Check for crystal collection
   checkCrystalCollection();
+  
+  // Check game over
+  if (player.health <= 0 && gameState === 'playing') {
+    gameState = 'gameover';
+    initGameOverScreen();
+  }
 }
 
 function updatePlayer(dt) {
@@ -466,7 +538,19 @@ function checkCrystalCollection() {
 }
 
 export function draw() {
-  // Atmospheric UI
+  // Handle start screen
+  if (gameState === 'start') {
+    drawStartScreen();
+    return;
+  }
+  
+  // Handle game over
+  if (gameState === 'gameover') {
+    drawGameOverScreen();
+    return;
+  }
+  
+  // Playing state - Atmospheric UI
   const dayPhase = (Math.sin(dayNightCycle) + 1) * 0.5;
   let timeOfDay = 'Day';
   if (dayPhase < 0.3) timeOfDay = 'Night';
@@ -501,4 +585,162 @@ export function draw() {
   } else if (world.weather.type === 'mystical') {
     print('✨ Mystical energies swirl... ✨', 200, 8, rgba8(255, 100, 255, 255));
   }
+  
+  // Health bar
+  const healthPanel = createPanel(10, 140, 220, 50, {
+    bgColor: rgba8(0, 0, 0, 180),
+    borderColor: rgba8(100, 50, 200, 255),
+    borderWidth: 2
+  });
+  drawPanel(healthPanel);
+  drawProgressBar(20, 160, 200, 20, player.health, player.maxHealth, {
+    fillColor: player.health > 50 ? uiColors.success : player.health > 25 ? uiColors.warning : uiColors.danger
+  });
+}
+
+function drawStartScreen() {
+  // Mystical gradient background
+  drawGradientRect(0, 0, 640, 360,
+    rgba8(20, 10, 40, 220),
+    rgba8(50, 20, 80, 240),
+    true
+  );
+  
+  // Animated title with magical glow
+  const glow = Math.sin(startScreenTime * 2) * 0.3 + 0.7;
+  const glowColor = rgba8(
+    Math.floor(200 * glow),
+    Math.floor(100 * glow),
+    Math.floor(255 * glow),
+    255
+  );
+  
+  setFont('huge');
+  setTextAlign('center');
+  const bounce = Math.sin(startScreenTime * 2) * 12;
+  drawTextShadow('MYSTICAL', 320, 50 + bounce, glowColor, rgba8(0, 0, 0, 255), 5, 1);
+  drawTextShadow('REALM', 320, 100 + bounce, rgba8(255, 215, 0, 255), rgba8(0, 0, 0, 255), 5, 1);
+  
+  // Subtitle with pulse
+  setFont('large');
+  const pulse = Math.sin(startScreenTime * 3) * 0.2 + 0.8;
+  drawTextOutline('3D Fantasy Adventure', 320, 150, 
+    rgba8(150, 100, 255, Math.floor(pulse * 255)), 
+    rgba8(0, 0, 0, 255), 1);
+  
+  // Info panel
+  const panel = createPanel(centerX(420), 340, 420, 200, {
+    bgColor: rgba8(20, 10, 40, 200),
+    borderColor: rgba8(100, 50, 200, 255),
+    borderWidth: 3,
+    shadow: true,
+    gradient: true,
+    gradientColor: rgba8(40, 20, 60, 200)
+  });
+  drawPanel(panel);
+  
+  // Quest description
+  setFont('normal');
+  setTextAlign('center');
+  drawText('QUEST BRIEFING', 320, 185, rgba8(255, 215, 0, 255), 1);
+  
+  setFont('small');
+  drawText('A mystical realm awaits exploration', 320, 210, uiColors.light, 1);
+  drawText('Collect magical crystals scattered across the land', 320, 225, uiColors.light, 1);
+  drawText('Navigate through day, night, and mystical storms', 320, 240, uiColors.light, 1);
+  
+  setFont('tiny');
+  drawText('CONTROLS: WASD/Arrows = Move  |  Space = Jump', 320, 270, uiColors.secondary, 1);
+  
+  // Draw buttons
+  drawAllButtons();
+  
+  // Pulsing start prompt
+  const alpha = Math.floor((Math.sin(startScreenTime * 5) * 0.5 + 0.5) * 255);
+  setFont('normal');
+  drawText('▶ PRESS BEGIN QUEST TO START ◀', 320, 305, rgba8(200, 100, 255, alpha), 1);
+  
+  // Mystical particles hint
+  setFont('tiny');
+  drawText('Nintendo 64 / PlayStation Style Graphics', 320, 340, rgba8(150, 150, 200, 150), 1);
+}
+
+function drawGameOverScreen() {
+  // Dark mystical overlay
+  rect(0, 0, 640, 360, rgba8(10, 5, 20, 220), true);
+  
+  // Game over title
+  setFont('huge');
+  setTextAlign('center');
+  const flash = Math.floor(time * 2) % 2 === 0;
+  const color = flash ? rgba8(200, 100, 255, 255) : rgba8(150, 50, 200, 255);
+  drawTextShadow('QUEST ENDED', 320, 80, color, rgba8(0, 0, 0, 255), 5, 1);
+  
+  // Stats panel
+  const statsPanel = createPanel(centerX(420), centerY(220), 420, 220, {
+    bgColor: rgba8(20, 10, 40, 220),
+    borderColor: rgba8(100, 50, 200, 255),
+    borderWidth: 3,
+    shadow: true,
+    title: 'FINAL STATISTICS',
+    titleBgColor: rgba8(100, 50, 200, 255)
+  });
+  drawPanel(statsPanel);
+  
+  // Stats
+  setFont('large');
+  setTextAlign('center');
+  drawText(`Crystals Collected: ${crystalsCollected}`, 320, 200, rgba8(255, 215, 0, 255), 1);
+  
+  setFont('normal');
+  const minutes = Math.floor(playTime / 60);
+  const seconds = Math.floor(playTime % 60);
+  drawText(`Time Played: ${minutes}m ${seconds}s`, 320, 235, uiColors.secondary, 1);
+  drawText(`Score: ${score}`, 320, 260, uiColors.success, 1);
+  
+  // Draw buttons
+  drawAllButtons();
+}
+
+function initGameOverScreen() {
+  uiButtons = [];
+  
+  // Try again button
+  uiButtons.push(
+    createButton(centerX(200), 310, 200, 50, '↻ TRY AGAIN', () => {
+      resetGame();
+      gameState = 'playing';
+    }, {
+      normalColor: uiColors.success,
+      hoverColor: rgba8(60, 220, 120, 255),
+      pressedColor: rgba8(30, 160, 80, 255)
+    })
+  );
+  
+  // Main menu button
+  uiButtons.push(
+    createButton(centerX(200), 375, 200, 45, '← MAIN MENU', () => {
+      resetGame();
+      gameState = 'start';
+      initStartScreen();
+    }, {
+      normalColor: uiColors.primary,
+      hoverColor: rgba8(50, 150, 255, 255),
+      pressedColor: rgba8(20, 100, 200, 255)
+    })
+  );
+}
+
+function resetGame() {
+  player.health = player.maxHealth;
+  player.x = 0;
+  player.y = 5;
+  player.z = 0;
+  player.jumpVelocity = 0;
+  playTime = 0;
+  score = 0;
+  crystalsCollected = 0;
+  
+  // Reset crystals
+  world.crystals.forEach(c => c.collected = false);
 }

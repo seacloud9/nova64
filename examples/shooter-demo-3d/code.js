@@ -1,6 +1,11 @@
 // STAR COMBAT 64 - True 3D Space Fighter
 // Nintendo 64 / PlayStation style 3D space combat with full GPU acceleration
 
+// Screen management
+let gameState = 'start'; // 'start', 'playing', 'gameOver'
+let startScreenTime = 0;
+let uiButtons = [];
+
 // Game data with screen management
 let gameData = {
   time: 0,
@@ -44,6 +49,9 @@ export async function init() {
   enablePixelation(1);
   enableDithering(true);
   
+  // Initialize start screen
+  initStartScreen();
+  
   // Setup screen management
   addScreen('title', {
     draw: drawTitleScreen,
@@ -70,24 +78,29 @@ export async function init() {
 
 // === TITLE SCREEN ===
 function drawTitleScreen() {
-  cls(0x000011);
+  // Background gradient
+  drawGradientRect(0, 0, 640, 360, 
+    rgba8(0, 10, 40, 255), 
+    rgba8(0, 0, 20, 255), 
+    true);
   
-  fill(0xFF6600);
-  textSize(36);
-  textAlign('center');
-  text('STAR COMBAT 64', width()/2, height()/2 - 60);
+  // Title
+  setFont('huge');
+  setTextAlign('center');
+  drawTextShadow('STAR COMBAT 64', 320, 120, rgba8(255, 102, 0, 255), rgba8(0, 0, 0, 255), 4, 1);
   
-  fill(0x00FFFF);
-  textSize(20);
-  text('3D Space Fighter', width()/2, height()/2 - 20);
+  // Subtitle
+  setFont('large');
+  drawText('3D Space Fighter', 320, 160, rgba8(0, 255, 255, 255), 1);
   
-  fill(0xFFFF00);
-  textSize(18);
-  text('Press SPACE to Launch', width()/2, height()/2 + 20);
+  // Prompt
+  setFont('normal');
+  const pulse = Math.sin(Date.now() * 0.005) * 0.5 + 0.5;
+  drawText('Press SPACE to Launch', 320, 200, rgba8(255, 255, 0, Math.floor(pulse * 255)), 1);
   
-  fill(0xFFFFFF);
-  textSize(14);
-  text('ARROWS: Move • Z: Fire • X: Charge Shot', width()/2, height()/2 + 60);
+  // Controls
+  setFont('small');
+  drawText('ARROWS: Move • Z: Fire • X: Charge Shot', 320, 240, rgba8(255, 255, 255, 255), 1);
 }
 
 function updateTitleScreen() {
@@ -177,22 +190,27 @@ function exitGameScreen() {
 
 // === GAME OVER SCREEN ===
 function drawGameOverScreen() {
-  cls(0x220000);
+  // Dark red background
+  drawGradientRect(0, 0, 640, 360, 
+    rgba8(40, 0, 0, 255), 
+    rgba8(20, 0, 0, 255), 
+    true);
   
-  fill(0xFF0000);
-  textSize(32);
-  textAlign('center');
-  text('MISSION FAILED', width()/2, height()/2 - 60);
+  // Mission Failed
+  setFont('huge');
+  setTextAlign('center');
+  drawTextShadow('MISSION FAILED', 320, 120, rgba8(255, 0, 0, 255), rgba8(100, 0, 0, 255), 4, 1);
   
-  fill(0xFFFFFF);
-  textSize(20);
-  text(`Final Score: ${gameData.score}`, width()/2, height()/2 - 10);
-  text(`Level Reached: ${gameData.level}`, width()/2, height()/2 + 20);
+  // Stats
+  setFont('large');
+  drawText(`Final Score: ${gameData.score}`, 320, 170, rgba8(255, 255, 255, 255), 1);
+  drawText(`Level Reached: ${gameData.level}`, 320, 200, rgba8(255, 255, 255, 255), 1);
   
-  fill(0x00FFFF);
-  textSize(16);
-  text('Press SPACE to try again', width()/2, height()/2 + 80);
-  text('Press ESC for title screen', width()/2, height()/2 + 110);
+  // Prompts
+  setFont('normal');
+  const pulse = Math.sin(Date.now() * 0.005) * 0.5 + 0.5;
+  drawText('Press SPACE to try again', 320, 260, rgba8(0, 255, 255, Math.floor(pulse * 255)), 1);
+  drawText('Press ESC for title screen', 320, 290, rgba8(0, 255, 255, 200), 1);
 }
 
 function updateGameOverScreen() {
@@ -203,12 +221,115 @@ function updateGameOverScreen() {
   }
 }
 
+function initStartScreen() {
+  uiButtons = [];
+  
+  uiButtons.push(
+    createButton(centerX(240), 150, 240, 60, '🚀 LAUNCH FIGHTER', () => {
+      console.log('🎯 LAUNCH FIGHTER CLICKED! Changing gameState to playing...');
+      gameState = 'playing';
+      switchToScreen('game');
+      console.log('✅ gameState is now:', gameState);
+    }, {
+      normalColor: rgba8(255, 100, 0, 255),
+      hoverColor: rgba8(255, 130, 30, 255),
+      pressedColor: rgba8(220, 70, 0, 255)
+    })
+  );
+  
+  uiButtons.push(
+    createButton(centerX(200), 355, 200, 45, '🎮 CONTROLS', () => {
+      console.log('Controls: ARROWS=Move, Z=Fire, X=Charge Shot');
+    }, {
+      normalColor: rgba8(0, 255, 255, 255),
+      hoverColor: rgba8(60, 255, 255, 255),
+      pressedColor: rgba8(0, 220, 220, 255)
+    })
+  );
+}
+
 export function update(dt) {
+  if (gameState === 'start') {
+    startScreenTime += dt;
+    updateAllButtons();
+    return;
+  }
   // Screen management handles updates
 }
 
 export function draw() {
+  if (gameState === 'start') {
+    drawStartScreen();
+    return;
+  }
   // Screen management handles drawing
+}
+
+function drawStartScreen() {
+  // Space gradient background
+  drawGradientRect(0, 0, 640, 360,
+    rgba8(10, 5, 25, 235),
+    rgba8(5, 2, 12, 250),
+    true
+  );
+  
+  // Animated title
+  setFont('huge');
+  setTextAlign('center');
+  const pulse = Math.sin(startScreenTime * 4) * 0.3 + 0.7;
+  const fireColor = rgba8(
+    255,
+    Math.floor(pulse * 150),
+    0,
+    255
+  );
+  
+  const shake = Math.sin(startScreenTime * 15) * 2;
+  drawTextShadow('STAR', 320 + shake, 50, fireColor, rgba8(0, 0, 0, 255), 7, 1);
+  drawTextShadow('COMBAT 64', 320, 105, rgba8(0, 255, 255, 255), rgba8(0, 0, 0, 255), 7, 1);
+  
+  // Subtitle
+  setFont('large');
+  const glow = Math.sin(startScreenTime * 5) * 0.2 + 0.8;
+  drawTextOutline('🚀 3D Space Fighter 🚀', 320, 165, 
+    rgba8(255, 255, 0, Math.floor(glow * 255)), 
+    rgba8(0, 0, 0, 255), 1);
+  
+  // Info panel
+  const panel = createPanel(centerX(480), 210, 480, 190, {
+    bgColor: rgba8(15, 10, 30, 215),
+    borderColor: rgba8(255, 100, 0, 255),
+    borderWidth: 3,
+    shadow: true,
+    gradient: true,
+    gradientColor: rgba8(25, 15, 45, 215)
+  });
+  drawPanel(panel);
+  
+  setFont('normal');
+  setTextAlign('center');
+  drawText('MISSION BRIEFING', 320, 230, rgba8(255, 100, 0, 255), 1);
+  
+  setFont('small');
+  drawText('🚀 Pilot advanced fighter spacecraft', 320, 255, uiColors.light, 1);
+  drawText('🚀 Destroy enemy forces and collect powerups', 320, 270, uiColors.light, 1);
+  drawText('🚀 Use charge shots for devastating attacks', 320, 285, uiColors.light, 1);
+  drawText('🚀 Nintendo 64 / PlayStation style combat', 320, 300, uiColors.light, 1);
+  
+  setFont('tiny');
+  drawText('ARROWS: Move | Z: Fire | X: Charge Shot', 320, 320, uiColors.secondary, 1);
+  
+  // Draw buttons
+  drawAllButtons();
+  
+  // Pulsing prompt
+  const alpha = Math.floor((Math.sin(startScreenTime * 6) * 0.5 + 0.5) * 255);
+  setFont('normal');
+  drawText('🚀 PREPARE FOR COMBAT 🚀', 320, 430, rgba8(255, 150, 0, alpha), 1);
+  
+  // Info
+  setFont('tiny');
+  drawText('3D Space Combat Simulator', 320, 345, rgba8(150, 150, 200, 150), 1);
 }
 
 function createPlayerShip() {
@@ -728,24 +849,24 @@ function drawUI() {
   rect(16, 16, 400, 70, rgba8(0, 100, 200, 100), false);
   
   // Score and Level
-  print(`SCORE: ${score.toString().padStart(8, '0')}`, 24, 24, rgba8(255, 255, 0, 255));
-  print(`LEVEL: ${level}`, 24, 40, rgba8(0, 255, 255, 255));
-  print(`LIVES: ${lives}`, 24, 56, rgba8(255, 100, 100, 255));
+  print(`SCORE: ${gameData.score.toString().padStart(8, '0')}`, 24, 24, rgba8(255, 255, 0, 255));
+  print(`LEVEL: ${gameData.level}`, 24, 40, rgba8(0, 255, 255, 255));
+  print(`LIVES: ${gameData.lives}`, 24, 56, rgba8(255, 100, 100, 255));
   
   // Health bar
   print('HULL:', 200, 24, rgba8(255, 255, 255, 255));
   rect(240, 22, 100, 8, rgba8(100, 0, 0, 255), true);
-  rect(240, 22, Math.floor((player.health / 100) * 100), 8, rgba8(255, 0, 0, 255), true);
+  rect(240, 22, Math.floor((gameData.player.health / 100) * 100), 8, rgba8(255, 0, 0, 255), true);
   
   // Shield bar  
   print('SHIELD:', 200, 40, rgba8(255, 255, 255, 255));
   rect(260, 38, 100, 8, rgba8(0, 0, 100, 255), true);
-  rect(260, 38, Math.floor((player.shield / 100) * 100), 8, rgba8(0, 100, 255, 255), true);
+  rect(260, 38, Math.floor((gameData.player.shield / 100) * 100), 8, rgba8(0, 100, 255, 255), true);
   
   // Energy bar
   print('ENERGY:', 200, 56, rgba8(255, 255, 255, 255));
   rect(260, 54, 100, 8, rgba8(100, 0, 100, 255), true);
-  rect(260, 54, Math.floor((player.energy / 100) * 100), 8, rgba8(255, 0, 255, 255), true);
+  rect(260, 54, Math.floor((gameData.player.energy / 100) * 100), 8, rgba8(255, 0, 255, 255), true);
   
   // 3D Stats
   const stats = get3DStats();
@@ -756,25 +877,4 @@ function drawUI() {
   
   // Controls
   print('ARROWS=MOVE  X=FIRE  Z=CHARGE', 24, 340, rgba8(150, 150, 150, 200));
-  
-  if (gameState === 'gameOver') {
-    rect(0, 0, 640, 360, rgba8(0, 0, 0, 200), true);
-    print('GAME OVER', 260, 150, rgba8(255, 50, 50, 255));
-    print(`FINAL SCORE: ${score}`, 230, 180, rgba8(255, 255, 0, 255));
-    print(`LEVEL REACHED: ${level}`, 230, 200, rgba8(0, 255, 255, 255));
-    print('PRESS R TO RESTART', 220, 240, rgba8(255, 255, 255, 255));
-    
-    if (btnp(17)) { // R key
-      // Reset game
-      score = 0;
-      level = 1;
-      lives = 3;
-      player.health = 100;
-      player.shield = 100;
-      player.energy = 100;
-      gameState = 'playing';
-      clearScene();
-      init();
-    }
-  }
 }

@@ -192,23 +192,20 @@ export class GpuThreeJS {
 
   update2DOverlay() {
     // Update 2D overlay texture from framebuffer
-    // Convert Uint16Array framebuffer to Uint8Array for texture
+    // Framebuffer is Uint16Array with R,G,B,A as separate 16-bit values
     const fb = this.fb.pixels;
     const textureData = new Uint8Array(this.fb.width * this.fb.height * 4);
     
-    for (let i = 0; i < fb.length; i++) {
-      // Convert from 16-bit to 8-bit RGBA
-      const idx = i * 4;
-      const color16 = fb[i];
-      const r = ((color16 >> 11) & 0x1F) * 8;
-      const g = ((color16 >> 5) & 0x3F) * 4;
-      const b = (color16 & 0x1F) * 8;
-      const a = ((color16 >> 16) & 0xFF);
+    // fb.pixels stores: [r16, g16, b16, a16, r16, g16, b16, a16, ...]
+    // We need to convert to: [r8, g8, b8, a8, r8, g8, b8, a8, ...]
+    for (let i = 0; i < fb.length; i += 4) {
+      const idx = (i / 4) * 4; // Output index
       
-      textureData[idx] = r;
-      textureData[idx + 1] = g;
-      textureData[idx + 2] = b;
-      textureData[idx + 3] = a;
+      // Convert 16-bit (0-65535) to 8-bit (0-255) by dividing by 257
+      textureData[idx]     = fb[i]     / 257; // R
+      textureData[idx + 1] = fb[i + 1] / 257; // G
+      textureData[idx + 2] = fb[i + 2] / 257; // B
+      textureData[idx + 3] = fb[i + 3] / 257; // A
     }
     
     this.overlay2D.texture.image.data = textureData;

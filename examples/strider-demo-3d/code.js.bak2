@@ -1,13 +1,6 @@
-// SHADOW NINJA 3D - True 3.5D Ninja Platformer  
+// SHADOW NINJA 3D - True 3.5D Ninja Platformer
 // Nintendo 64 / PlayStation style 3D ninja action with parkour and stealth
 // Inspired by Strider, Shinobi, and Ninja Gaiden
-// VERSION: 2024-10-06-CACHE-BUST-FINAL-001-REFRESH-NOW
-// 🚨 CACHE BUSTER: If you see old single emoji (🎯) logs, HARD RELOAD!
-
-// Helper function for 3D vectors
-function vec3(x, y, z) {
-  return { x: x, y: y, z: z };
-}
 
 // Game state
 let gameTime = 0;
@@ -18,15 +11,6 @@ let score = 0;
 let level = 1;
 let combo = 0;
 let comboTimer = 0;
-
-// 🔥 DEFINE BUTTON CALLBACK AT MODULE LEVEL TO AVOID SCOPE ISSUES
-const startGameCallback = () => {
-  console.log('🎯🎯🎯 START BUTTON CLICKED AT', Date.now());
-  console.log('📊 BEFORE: gameState =', gameState);
-  gameState = 'playing';
-  console.log('📊 AFTER: gameState =', gameState);
-  console.log('✅✅✅ CALLBACK COMPLETE - gameState should be playing');
-};
 
 // 3D Game objects
 let playerKnight = null;
@@ -73,8 +57,6 @@ let camera = {
 };
 
 export function init() {
-  console.log('🔧 init() called - clearing arrays. Current particles:', particles.length);
-  
   // Clear all arrays to prevent mesh errors
   enemies = []
   coins = []
@@ -110,22 +92,11 @@ export function init() {
   
   score = 0
   combo = 0
-  comboTimer = 0
+  comboTime = 0
   gameTime = 0
   level = 1
   gameState = 'start'
   startScreenTime = 0
-  
-  // Create start button - callback is defined at module level
-  uiButtons = [];
-  
-  uiButtons.push(
-    createButton(210, 310, 220, 50, '▶ START GAME', startGameCallback, {
-      normalColor: rgba8(150, 80, 255, 255),
-      hoverColor: rgba8(180, 110, 255, 255),
-      pressedColor: rgba8(120, 60, 220, 255)
-    })
-  );
   
   // Force canvas focus for keyboard events
   console.log('🎮 Focusing canvas for input...')
@@ -135,15 +106,12 @@ export function init() {
     canvas.tabIndex = 1
   }
   
-  // Create game objects and store references
-  playerKnight = createNinjaPlayer()
+  createNinjaPlayer()
   createNinjaWorld()
   createPlatforms()
   createGrapplePoints()
   spawnEnemies()
   spawnCoins()
-  
-  console.log('🥷 Shadow Ninja 3D initialized!');
 }
 
 function initStartScreen() {
@@ -154,68 +122,30 @@ function initStartScreen() {
 export function update() {
   const dt = 1/60;
   
-  console.log('🔄 UPDATE called - gameState:', gameState, 'playerKnight:', playerKnight ? 'exists' : 'null');
-  
-  // Safety check: Don't update if game objects aren't initialized yet
-  if (playerKnight === null) {
-    // Game not initialized yet, skip this frame
-    console.log('⚠️ UPDATE: playerKnight is null, returning early');
-    return;
-  }
-  
   // Handle start screen
   if (gameState === 'start') {
-    console.log('📺 UPDATE: Start screen mode');
     startScreenTime += dt;
     
-    // Update UI buttons (may change gameState via callback)
-    updateAllButtons();
-    console.log('🔍 AFTER updateAllButtons() - gameState:', gameState);
+    // KEYBOARD FALLBACK: Press ENTER or SPACE to start
+    if (isKeyPressed('Enter') || isKeyPressed(' ') || isKeyPressed('Space')) {
+      console.log('🥷 Starting Shadow Ninja 3D via keyboard!');
+      gameState = 'playing';
+      return;
+    }
     
-    // ✨ CRITICAL: Re-check gameState IMMEDIATELY after updateAllButtons()
-    // The button callback executes SYNCHRONOUSLY and may have changed gameState
-    if (gameState !== 'start') {
-      console.log('🎮 Button changed gameState to:', gameState, '- continuing to game loop!');
-      // DON'T return - fall through to playing state below
-    } else {
-      console.log('⚠️  gameState is STILL "start" after updateAllButtons()');
-
-      // Still on start screen - check for keyboard/gamepad input
-      // KEYBOARD FALLBACK: Press ENTER or SPACE to start
-      if (isKeyPressed('Enter') || isKeyPressed(' ') || isKeyPressed('Space')) {
-        console.log('🥷 Starting Shadow Ninja 3D via keyboard!');
+    // Check for any button press to start
+    for (let i = 0; i < 10; i++) {
+      if (btnp(i)) {
+        console.log(`🥷 Starting Shadow Ninja 3D via button ${i}!`);
         gameState = 'playing';
-        console.log('🎮 Game started! State:', gameState);
-        // Fall through to playing state
-      } else {
-        // Check for any button press to start
-        let buttonPressed = false;
-        for (let i = 0; i < 10; i++) {
-          if (btnp(i)) {
-            console.log(`🥷 Starting Shadow Ninja 3D via button ${i}!`);
-            gameState = 'playing';
-            console.log('🎮 Game started! State:', gameState);
-            buttonPressed = true;
-            break;
-          }
-        }
-        
-        // ✨ CRITICAL FIX: Only return if STILL on start screen after all checks
-        if (!buttonPressed && gameState === 'start') {
-          console.log('📺 UPDATE: Start screen done, returning');
-          return;
-        }
+        return;
       }
     }
-  }
-  
-  // If we reach here and still on start screen somehow, return
-  if (gameState === 'start') {
+    
     return;
   }
   
   // Playing state - main game loop
-  console.log('🎮 UPDATE: Playing mode - starting game loop');
   gameTime += dt;
   
   // Update input
@@ -234,9 +164,9 @@ export function update() {
   updateParticles(dt);
   
   // Update combo timer
-  if (comboTimer > 0) {
-    comboTimer -= dt;
-    if (comboTimer <= 0) {
+  if (comboTime > 0) {
+    comboTime -= dt;
+    if (comboTime <= 0) {
       combo = 0;
     }
   }
@@ -247,6 +177,9 @@ export function update() {
     console.log('💀 Game Over! Final Score:', score);
   }
 }
+
+export function draw() {
+  if (gameState === 'start') {
 
 export function draw() {
   if (gameState === 'start') {
@@ -290,8 +223,14 @@ function drawStartScreen() {
   print('Combo System', 340, 240, rgba8(255, 255, 150, 255));
   print('Energy Management', 340, 260, rgba8(150, 200, 255, 255));
   
-  // Draw start button
-  drawAllButtons();
+  // Pulsing prompt - larger and centered
+  const alpha = Math.floor((Math.sin(startScreenTime * 5) * 0.5 + 0.5) * 255);
+  print('CLICK SCREEN OR PRESS ANY KEY', 180, 320, rgba8(255, 180, 255, alpha));
+  
+  // Debug helper - show if keys are being detected
+  if (startScreenTime > 1) {
+    print('(Click on game screen to focus)', 190, 335, rgba8(150, 150, 150, 200));
+  }
 }
 
 function createNinjaPlayer() {
@@ -833,18 +772,16 @@ function updateEnemies(dt) {
         setPosition(enemy.mesh, enemy.x, enemy.y, enemy.z);
         
         // Attack player if close
-        {
-          const distToPlayer = Math.sqrt(
-            Math.pow(enemy.x - player.x, 2) + 
-            Math.pow(enemy.z - player.z, 2)
-          );
-          
-          if (distToPlayer < 4 && enemy.attackCooldown <= 0) {
-            // Simple attack - damage player
-            if (distToPlayer < 2) {
-              player.health -= 10;
-              enemy.attackCooldown = 2;
-            }
+        const distToPlayer = Math.sqrt(
+          Math.pow(enemy.x - player.x, 2) + 
+          Math.pow(enemy.z - player.z, 2)
+        );
+        
+        if (distToPlayer < 4 && enemy.attackCooldown <= 0) {
+          // Simple attack - damage player
+          if (distToPlayer < 2) {
+            player.health -= 10;
+            enemy.attackCooldown = 2;
           }
         }
         break;
@@ -898,20 +835,9 @@ function updateCoins(dt) {
 function updateParticles(dt) {
   for (let i = particles.length - 1; i >= 0; i--) {
     const particle = particles[i];
-    if (!particle || !particle.mesh) {
-      particles.splice(i, 1);
-      continue;
-    }
-    
     particle.life -= dt;
     
     const pos = getPosition(particle.mesh);
-    if (!pos) {
-      // Mesh doesn't exist anymore, remove particle
-      particles.splice(i, 1);
-      continue;
-    }
-    
     pos[0] += particle.vx * dt;
     pos[1] += particle.vy * dt;
     pos[2] += particle.vz * dt;

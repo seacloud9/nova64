@@ -5,6 +5,7 @@ let cubes = [];
 let spheres = [];
 let time = 0;
 let cameraAngle = 0;
+let initialized = false; // Prevents update() from running during scene transitions
 
 // Screen management
 let gameState = 'start'; // 'start', 'playing'
@@ -12,6 +13,11 @@ let startScreenTime = 0;
 let uiButtons = [];
 
 export async function init() {
+  // Clear arrays immediately to prevent update() from accessing deleted meshes
+  initialized = false; // Mark as not ready during initialization
+  cubes = [];
+  spheres = [];
+  
   cls();
   
   // Setup 3D scene
@@ -33,6 +39,7 @@ export async function init() {
   // Initialize start screen
   initStartScreen();
   
+  initialized = true; // Now safe to update
   console.log('🎮 Hello 3D World - Nintendo 64/PlayStation style demo loaded!');
 }
 
@@ -112,6 +119,12 @@ function createScene() {
 }
 
 export function update(dt) {
+  // Safety check: Don't update if not initialized OR if arrays are empty (prevents errors during scene transitions)
+  // When scene is cleared, arrays are emptied on next init() call
+  if (!initialized || cubes.length === 0) {
+    return;
+  }
+  
   time += dt;
   
   if (gameState === 'start') {

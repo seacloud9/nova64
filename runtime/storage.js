@@ -13,7 +13,7 @@ export function storageApi(namespace='nova64') {
       return s ? JSON.parse(s) : fallback;
     } catch(e) { return fallback; }
   }
-  function remove(key) { try { localStorage.removeItem(_k(key)); } catch(e){} }
+  function remove(key) { try { localStorage.removeItem(_k(key)); } catch(e){ /* ignore */ } }
   return {
     exposeTo(target) { Object.assign(target, { saveJSON, loadJSON, remove }); }
   };

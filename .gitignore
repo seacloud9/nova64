@@ -20,6 +20,9 @@
 .env.test.local
 .env.production.local
 
+# commit messages
+COMMIT_MESSAGE.txt
+
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*

@@ -378,29 +378,55 @@ export function threeDApi(gpu) {
   }
 
   function clearScene() {
-    // Remove all user-created meshes but keep lights
+    console.log('🧹 Clearing 3D scene... Current meshes:', meshes.size);
+    
+    // Remove ALL meshes including lights - complete clean slate
     for (const [id, mesh] of meshes) {
-      if (mesh.type !== 'Light') {
-        scene.remove(mesh);
-        if (mesh.geometry) mesh.geometry.dispose();
-        if (mesh.material) {
+      scene.remove(mesh);
+      if (mesh.geometry) {
+        mesh.geometry.dispose();
+      }
+      if (mesh.material) {
+        // Handle both single materials and material arrays
+        if (Array.isArray(mesh.material)) {
+          mesh.material.forEach(mat => {
+            if (mat.map) mat.map.dispose();
+            mat.dispose();
+          });
+        } else {
           if (mesh.material.map) mesh.material.map.dispose();
           mesh.material.dispose();
         }
       }
     }
     meshes.clear();
+    
+    // Clear all children from scene (in case anything was added directly)
+    while (scene.children.length > 0) {
+      const child = scene.children[0];
+      scene.remove(child);
+      if (child.geometry) child.geometry.dispose();
+      if (child.material) {
+        if (Array.isArray(child.material)) {
+          child.material.forEach(mat => mat.dispose());
+        } else {
+          child.material.dispose();
+        }
+      }
+    }
+    
+    // Re-add basic lighting so scenes aren't completely dark
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+    scene.add(ambientLight);
+    
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    directionalLight.position.set(5, 10, 7.5);
+    scene.add(directionalLight);
+    
+    console.log('✅ Scene cleared completely');
   }
 
-  // Animation helpers
-  function rotateMesh(meshId, x, y, z) {
-    const mesh = getMesh(meshId);
-    if (mesh) {
-      mesh.rotation.x += x;
-      mesh.rotation.y += y;
-      mesh.rotation.z += z;
-    }
-  }
+  // Animation helpers (duplicate removed - already defined above)
 
   function moveMesh(meshId, x, y, z) {
     const mesh = getMesh(meshId);

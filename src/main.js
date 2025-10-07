@@ -122,7 +122,10 @@ function loop() {
     const u0 = performance.now();
     
     // Update cart first (for manual screen management)
-    nova.cart.update?.(dt);
+    // Check if cart exists to prevent errors during scene transitions
+    if (nova.cart && nova.cart.update) {
+      nova.cart.update(dt);
+    }
     
     // Then update screen manager (for automatic screen management)
     scrApi.manager.update(dt);
@@ -134,7 +137,10 @@ function loop() {
     const d0 = performance.now();
     
     // Draw cart first (for manual rendering)
-    nova.cart.draw?.();
+    // Check if cart exists to prevent errors during scene transitions
+    if (nova.cart && nova.cart.draw) {
+      nova.cart.draw();
+    }
     
     // Then draw screen manager (for automatic screen rendering)
     scrApi.manager.draw();

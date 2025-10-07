@@ -69,6 +69,7 @@ export function stdApi(gpu) {
     let dx = Math.abs(x1-x0), sx = x0<x1 ? 1 : -1;
     let dy = -Math.abs(y1-y0), sy = y0<y1 ? 1 : -1;
     let err = dx + dy;
+    // eslint-disable-next-line no-constant-condition
     while (true) {
       if (x0>=0 && y0>=0 && x0<fb.width && y0<fb.height) fb.pset(x0, y0, r,g,b,a);
       if (x0 === x1 && y0 === y1) break;

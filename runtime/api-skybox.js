@@ -132,13 +132,36 @@ export function skyboxApi(gpu) {
     }
   }
   
+  function clearSkybox() {
+    console.log('🧹 Clearing skybox...');
+    
+    // Remove skybox mesh
+    if (skyboxMesh) {
+      gpu.scene.remove(skyboxMesh);
+      if (skyboxMesh.geometry) skyboxMesh.geometry.dispose();
+      if (skyboxMesh.material) skyboxMesh.material.dispose();
+      skyboxMesh = null;
+    }
+    
+    // Remove star field
+    if (starField) {
+      gpu.scene.remove(starField);
+      if (starField.geometry) starField.geometry.dispose();
+      if (starField.material) starField.material.dispose();
+      starField = null;
+    }
+    
+    console.log('✅ Skybox cleared');
+  }
+  
   return {
     exposeTo(target) {
       Object.assign(target, {
         createSpaceSkybox,
         setFog,
         clearFog,
-        animateSkybox
+        animateSkybox,
+        clearSkybox
       });
     }
   };

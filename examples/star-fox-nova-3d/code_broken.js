@@ -491,7 +491,7 @@ function createAdvancedEnemyFighter(x, y, z, type = 'fighter') {
   
   try {
     switch(type) {
-      case 'fighter':
+      case 'fighter': {
         // Aggressive angular fighter
         const body = trackMesh(createCube(1.2, 0xFF3030, [x, y, z]));
         setScale(body, 1.5, 1, 2.5);
@@ -508,19 +508,22 @@ function createAdvancedEnemyFighter(x, y, z, type = 'fighter') {
         setRotation(rightWing, 0, 0, 0.3);
         enemyParts.push(rightWing);
         break;
+      }
         
-      case 'bomber':
+      case 'bomber': {
         // Large, slow bomber
         const bomberBody = trackMesh(createCube(2, 0xFF6600, [x, y, z]));
         setScale(bomberBody, 2, 1.5, 3);
         enemyParts.push(bomberBody);
         break;
+      }
         
-      case 'interceptor':
+      case 'interceptor': {
         // Fast, small interceptor
         const interceptorBody = trackMesh(createSphere(0.8, 0xFF8888, [x, y, z]));
         enemyParts.push(interceptorBody);
         break;
+      }
     }
     
     // Engine glow for all types
@@ -1248,22 +1251,11 @@ function updateParticles(dt) {
   }
 }
 
-function updateStarfield(dt) {
-  for (let star of gameData.stars) {
-    star.z += star.speed * 25 * dt;
-    
-    if (star.z > 30) {
-      star.z = star.originalZ - 100;
-      star.x = (Math.random() - 0.5) * 400;
-      star.y = (Math.random() - 0.5) * 200;
-    }
-  }
-}
+// updateStarfield duplicate removed - already defined above at line 385
 
 function updateSpaceFloor(dt) {
   // Simple, stable starfield update - no more crashes!
   updateStarfield(dt);
-}
   
   // Animate all space elements with Crystal Cathedral effects!
   for (let element of gameData.spaceFloor) {
@@ -1299,8 +1291,6 @@ function updateSpaceFloor(dt) {
         // Change color cycling
         const intensity = Math.sin(element.glowPhase * 2) * 0.5 + 0.5;
         // Note: We can't easily change mesh colors in real-time, but the bobbing looks great
-      } else if (element.type === 'pillar') {
-        y = -40; // Pillars are taller
       }
       
       setPosition(element.mesh, x, y, element.customZ);

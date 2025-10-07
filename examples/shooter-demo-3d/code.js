@@ -497,18 +497,20 @@ function spawnEnemyWave() {
         y = 6 - Math.abs(i - waveSize/2) * 0.5;
         z = -25;
         break;
-      case 'diamond':
+      case 'diamond': {
         const angle = (i / waveSize) * Math.PI * 2;
         x = Math.cos(angle) * 8;
         y = Math.sin(angle) * 4 + 6;
         z = -25;
         break;
-      case 'circle':
+      }
+      case 'circle': {
         const circleAngle = (i / waveSize) * Math.PI * 2;
         x = Math.cos(circleAngle) * 6;
         y = Math.sin(circleAngle) * 3 + 6;
         z = -25;
         break;
+      }
     }
     
     spawnEnemy(x, y, z, formation);

@@ -282,7 +282,9 @@ export function uiApi(gpu, g) {
     // Trigger callback only on press (not hold)
     if (over && mousePressed) {
       if (button.callback) {
+        console.log('🔧 UI SYSTEM: About to call button callback');
         button.callback();
+        console.log('🔧 UI SYSTEM: Button callback returned');
       }
       return true;
     }
@@ -335,12 +337,18 @@ export function uiApi(gpu, g) {
   }
   
   function updateAllButtons() {
+    console.log('🔧 UI SYSTEM: updateAllButtons() START - checking', buttons.length, 'buttons');
     let anyClicked = false;
     buttons.forEach(button => {
       if (updateButton(button)) {
+        console.log('🔧 UI SYSTEM: Button clicked!', button.text);
         anyClicked = true;
       }
     });
+    console.log('🔧 UI SYSTEM: Resetting mousePressed');
+    // Reset mousePressed after checking all buttons (prevents multiple triggers per frame)
+    mousePressed = false;
+    console.log('🔧 UI SYSTEM: updateAllButtons() END - anyClicked =', anyClicked);
     return anyClicked;
   }
   

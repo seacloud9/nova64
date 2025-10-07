@@ -12,12 +12,123 @@
     "test:input": "node tests/test-cli.js input",
     "test:starfox": "node tests/test-cli.js starfox",
     "test:integration": "node tests/test-cli.js integration",
-    "test:web": "open tests/test-runner.html || xdg-open tests/test-runner.html || start tests/test-runner.html"
+    "test:web": "open tests/test-runner.html || xdg-open tests/test-runner.html || start tests/test-runner.html",
+    "test:all": "npm run test && npm run test:api && npm run test:input && npm run test:starfox && npm run test:integration",
+    "test:watch": "nodemon --watch runtime --watch tests --watch examples --exec 'npm run test'",
+    "lint": "eslint runtime/**/*.js examples/**/*.js src/**/*.js --max-warnings=0",
+    "lint:fix": "eslint runtime/**/*.js examples/**/*.js src/**/*.js --fix",
+    "format": "prettier --write \"**/*.{js,json,md}\"",
+    "format:check": "prettier --check \"**/*.{js,json,md}\"",
+    "validate": "npm run format:check && npm run lint && npm run test:all",
+    "clean": "rm -rf dist node_modules",
+    "reinstall": "npm run clean && npm install"
   },
   "dependencies": {
     "three": "^0.157.0"
   },
   "devDependencies": {
+    "eslint": "^8.57.1",
+    "nodemon": "^3.1.10",
+    "prettier": "^3.6.2",
     "vite": "^5.4.0"
+  },
+  "eslintConfig": {
+    "env": {
+      "browser": true,
+      "es2021": true,
+      "node": true
+    },
+    "extends": "eslint:recommended",
+    "parserOptions": {
+      "ecmaVersion": "latest",
+      "sourceType": "module"
+    },
+    "rules": {
+      "no-unused-vars": [
+        "warn",
+        {
+          "argsIgnorePattern": "^_"
+        }
+      ],
+      "no-console": "off",
+      "no-undef": "warn"
+    },
+    "globals": {
+      "THREE": "readonly",
+      "vec3": "readonly",
+      "rect": "readonly",
+      "rgba8": "readonly",
+      "print": "readonly",
+      "cls": "readonly",
+      "line": "readonly",
+      "circle": "readonly",
+      "btn": "readonly",
+      "btnp": "readonly",
+      "isKeyDown": "readonly",
+      "isKeyPressed": "readonly",
+      "isMouseDown": "readonly",
+      "getMousePosition": "readonly",
+      "setMousePosition": "readonly",
+      "setMouseButton": "readonly",
+      "createCube": "readonly",
+      "createSphere": "readonly",
+      "createPlane": "readonly",
+      "destroyMesh": "readonly",
+      "setPosition": "readonly",
+      "getPosition": "readonly",
+      "setRotation": "readonly",
+      "setScale": "readonly",
+      "rotateMesh": "readonly",
+      "moveMesh": "readonly",
+      "setCameraPosition": "readonly",
+      "setCameraTarget": "readonly",
+      "setCameraFOV": "readonly",
+      "setLightDirection": "readonly",
+      "setLightColor": "readonly",
+      "setAmbientLight": "readonly",
+      "setFog": "readonly",
+      "enablePixelation": "readonly",
+      "enableDithering": "readonly",
+      "get3DStats": "readonly",
+      "clearScene": "readonly",
+      "createSpaceSkybox": "readonly",
+      "animateSkybox": "readonly",
+      "clearSkybox": "readonly",
+      "createButton": "readonly",
+      "createPanel": "readonly",
+      "updateAllButtons": "readonly",
+      "drawAllButtons": "readonly",
+      "clearButtons": "readonly",
+      "drawAllPanels": "readonly",
+      "drawPanel": "readonly",
+      "centerX": "readonly",
+      "centerY": "readonly",
+      "uiColors": "readonly",
+      "drawGradientRect": "readonly",
+      "drawProgressBar": "readonly",
+      "drawText": "readonly",
+      "drawTextShadow": "readonly",
+      "drawTextOutline": "readonly",
+      "setFont": "readonly",
+      "setTextAlign": "readonly",
+      "setTextBaseline": "readonly",
+      "initScreens": "readonly",
+      "addScreen": "readonly",
+      "switchToScreen": "readonly",
+      "switchScreen": "readonly",
+      "color": "readonly",
+      "text": "readonly",
+      "saveJSON": "readonly",
+      "loadJSON": "readonly",
+      "openSpriteEditor": "readonly"
+    }
+  },
+  "prettier": {
+    "semi": true,
+    "singleQuote": true,
+    "tabWidth": 2,
+    "trailingComma": "es5",
+    "printWidth": 100,
+    "arrowParens": "avoid"
   }
 }

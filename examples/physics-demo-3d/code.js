@@ -659,7 +659,7 @@ function updateCamera(dt) {
 
 function interactWithDemo() {
   switch (selectedDemo) {
-    case 0: // Bouncing spheres - add a new sphere
+    case 0: { // Bouncing spheres - add a new sphere
       const sphere = createPhysicsObject({
         mesh: createSphere(1, 0xffffff, [0, 15, 0]),
         x: 0, y: 15, z: 0,
@@ -673,6 +673,7 @@ function interactWithDemo() {
       });
       physicsObjects.push(sphere);
       break;
+    }
       
     case 3: // Gravity well - add impulse
       physicsObjects.forEach(obj => {
@@ -683,7 +684,7 @@ function interactWithDemo() {
       });
       break;
       
-    case 4: // Collision cascade - reset impulse
+    case 4: { // Collision cascade - reset impulse
       const impulseObj = physicsObjects.find(obj => obj.type === 'impulse');
       if (impulseObj) {
         impulseObj.x = -20;
@@ -695,6 +696,7 @@ function interactWithDemo() {
         setPosition(impulseObj.mesh, impulseObj.x, impulseObj.y, impulseObj.z);
       }
       break;
+    }
   }
 }
 

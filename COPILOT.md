@@ -782,6 +782,63 @@ export default defineConfig({
 - Take advantage of the hot reloading for rapid iteration
 - Study the example carts for best practice patterns
 
+## 📝 **Commit Message Guidelines**
+
+### 🎯 **Format Rules**
+When creating commit messages for this project:
+
+1. **NO single quotes (') or double quotes (")** in commit messages
+2. Use descriptive headers with emojis where appropriate
+3. Break down changes into clear sections
+4. List specific files modified
+5. Include impact and testing information
+6. Keep line length reasonable (70-80 chars for header)
+
+### ✅ **Good Commit Message Example**
+```
+feat: Add complete lowercase alphabet and emoji handling to font system
+
+SUMMARY
+-------
+Fixed text rendering issue where lowercase letters, arrows, and emojis 
+were displaying as question marks. The bitmap font now supports 95+ 
+characters with smart emoji handling.
+
+CHANGES
+-------
+- Added complete lowercase alphabet (a-z) with 5x7 pixel bitmaps
+- Added 25+ special characters and punctuation marks
+- Added Unicode arrow characters (←→↑↓↔↕) as ASCII art
+- Implemented smart emoji replacement/filtering system
+- Created cleanText() function to preprocess strings before rendering
+
+FILES MODIFIED
+--------------
+- runtime/font.js - Extended character set and emoji handling
+- examples/test-font/code.js - Comprehensive character test demo
+- FONT_FIX_COMPLETE.md - Complete fix documentation
+- FONT_CHARACTER_REFERENCE.md - Character reference guide
+
+IMPACT
+------
+- All demos now render text correctly without question marks
+- Star Fox, F-Zero, Mystical Realm demos display arrows properly
+- Emoji characters are gracefully handled across all examples
+- Font now supports uppercase, lowercase, numbers, and symbols
+
+TESTING
+-------
+- Verified across all example demos
+- Created dedicated test-font demo
+- Tested with mixed case text, arrows, and emoji characters
+- All 95+ characters render correctly
+```
+
+### ❌ **Avoid**
+```
+Fix: Added 'lowercase' letters and "emoji" handling
+```
+
 ---
 
 **🤖 This guide provides GitHub Copilot with comprehensive context for Nova64 development. The fantasy console combines retro gaming nostalgia with cutting-edge 3D technology, creating an unparalleled development experience for modern web-based gaming.**

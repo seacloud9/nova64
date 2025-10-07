@@ -1,8 +1,11 @@
 // SHADOW NINJA 3D - True 3.5D Ninja Platformer  
 // Nintendo 64 / PlayStation style 3D ninja action with parkour and stealth
 // Inspired by Strider, Shinobi, and Ninja Gaiden
-// VERSION: 2024-10-06-CACHE-BUST-FINAL-001-REFRESH-NOW
-// 🚨 CACHE BUSTER: If you see old single emoji (🎯) logs, HARD RELOAD!
+// VERSION: v006-NUCLEAR-CACHE-BUST-${Date.now()}
+
+// 🚨 CACHE DETECTION: If you see logs repeating in console, browser cache is stuck!
+const CACHE_BUSTER_V006 = 'FRESH_CODE_LOADED_' + Date.now();
+console.log('🚀🚀🚀 CACHE BUSTER V006 LOADED:', CACHE_BUSTER_V006);
 
 // Helper function for 3D vectors
 function vec3(x, y, z) {
@@ -21,11 +24,11 @@ let comboTimer = 0;
 
 // 🔥 DEFINE BUTTON CALLBACK AT MODULE LEVEL TO AVOID SCOPE ISSUES
 const startGameCallback = () => {
-  console.log('🎯🎯🎯 START BUTTON CLICKED AT', Date.now());
+  console.log('🎯🎯🎯 START BUTTON CLICKED V006! FRESH CODE! 🎯🎯🎯');
   console.log('📊 BEFORE: gameState =', gameState);
   gameState = 'playing';
   console.log('📊 AFTER: gameState =', gameState);
-  console.log('✅✅✅ CALLBACK COMPLETE - gameState should be playing');
+  console.log('✅✅✅ STATE CHANGED TO PLAYING! ✅✅✅');
 };
 
 // 3D Game objects
@@ -73,7 +76,9 @@ let camera = {
 };
 
 export function init() {
-  console.log('🔧 init() called - clearing arrays. Current particles:', particles.length);
+  console.log('��� KNIGHT PLATFORMER V006 INIT START 🚀🚀🚀');
+  console.log('📦 gameState BEFORE init:', gameState);
+  console.log('�️ Clearing arrays. Current particles:', particles.length);
   
   // Clear all arrays to prevent mesh errors
   enemies = []
@@ -113,7 +118,8 @@ export function init() {
   comboTimer = 0
   gameTime = 0
   level = 1
-  gameState = 'start'
+  // 🔥 DON'T RESET gameState HERE - button callback may have already changed it!
+  // gameState = 'start'  // ← REMOVED - was resetting state after button click!
   startScreenTime = 0
   
   // Create start button - callback is defined at module level
@@ -143,7 +149,8 @@ export function init() {
   spawnEnemies()
   spawnCoins()
   
-  console.log('🥷 Shadow Ninja 3D initialized!');
+  console.log('✅✅✅ KNIGHT PLATFORMER V006 INIT COMPLETE ✅✅✅');
+  console.log('📦 gameState AFTER init:', gameState);
 }
 
 function initStartScreen() {
@@ -165,45 +172,49 @@ export function update() {
   
   // Handle start screen
   if (gameState === 'start') {
-    console.log('📺 UPDATE: Start screen mode');
     startScreenTime += dt;
+    
+    // DEBUG: Log keyboard state
+    const enterDown = isKeyDown('Enter');
+    const spaceDown = isKeyDown('Space');
+    if (enterDown || spaceDown) {
+      console.log('⌨️ Keyboard detected! Enter:', enterDown, 'Space:', spaceDown);
+    }
     
     // Update UI buttons (may change gameState via callback)
     updateAllButtons();
-    console.log('🔍 AFTER updateAllButtons() - gameState:', gameState);
     
     // ✨ CRITICAL: Re-check gameState IMMEDIATELY after updateAllButtons()
     // The button callback executes SYNCHRONOUSLY and may have changed gameState
     if (gameState !== 'start') {
-      console.log('🎮 Button changed gameState to:', gameState, '- continuing to game loop!');
+      console.log('🎮🎮🎮 Button changed gameState to:', gameState, '- starting game!');
       // DON'T return - fall through to playing state below
     } else {
-      console.log('⚠️  gameState is STILL "start" after updateAllButtons()');
-
       // Still on start screen - check for keyboard/gamepad input
       // KEYBOARD FALLBACK: Press ENTER or SPACE to start
-      if (isKeyPressed('Enter') || isKeyPressed(' ') || isKeyPressed('Space')) {
-        console.log('🥷 Starting Shadow Ninja 3D via keyboard!');
+      // Use isKeyDown (held) instead of isKeyPressed (transition) for more reliable detection
+      if (isKeyDown('Enter') || isKeyDown(' ') || isKeyDown('Space') || btnp(0) || btnp(1)) {
+        console.log('🥷🥷🥷 Starting Shadow Ninja 3D via keyboard or button!');
         gameState = 'playing';
-        console.log('🎮 Game started! State:', gameState);
+        console.log('🎮🎮🎮 Game started! State:', gameState);
         // Fall through to playing state
       } else {
-        // Check for any button press to start
-        let buttonPressed = false;
-        for (let i = 0; i < 10; i++) {
+        // Check for any OTHER button press to start
+        for (let i = 2; i < 10; i++) {
           if (btnp(i)) {
             console.log(`🥷 Starting Shadow Ninja 3D via button ${i}!`);
             gameState = 'playing';
             console.log('🎮 Game started! State:', gameState);
-            buttonPressed = true;
             break;
           }
         }
         
-        // ✨ CRITICAL FIX: Only return if STILL on start screen after all checks
-        if (!buttonPressed && gameState === 'start') {
+        // ✨ CRITICAL FIX: Only return if STILL on start screen after ALL checks (including UI button callback)
+        if (gameState === 'start') {
           console.log('📺 UPDATE: Start screen done, returning');
           return;
+        } else {
+          console.log('🚀 gameState changed to:', gameState, '- continuing to game!');
         }
       }
     }
@@ -269,6 +280,10 @@ function drawStartScreen() {
   // Subtitle
   const pulse = Math.sin(startScreenTime * 3) * 0.25 + 0.75;
   print('Strider-Style 3.5D Ninja Platformer', 160, 100, rgba8(200, 150, 255, Math.floor(pulse * 255)));
+  
+  // START PROMPT - Make it obvious
+  const promptPulse = Math.sin(startScreenTime * 5) * 0.5 + 0.5;
+  print('PRESS ENTER OR SPACE TO START', 190, 120, rgba8(255, 255, 100, Math.floor(promptPulse * 255)));
   
   // Controls panel
   rect(100, 140, 440, 160, rgba8(20, 10, 40, 220), true);

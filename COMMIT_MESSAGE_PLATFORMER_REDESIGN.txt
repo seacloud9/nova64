@@ -1,0 +1,145 @@
+fix: Complete overhaul of Knight Platformer with proper game mechanics
+
+## Summary
+Replaced broken Knight Platformer implementation with professionally designed
+version featuring proper collision detection, quality-of-life mechanics, and
+progressive level design. Game is now actually playable and fun.
+
+## Problems Fixed
+
+### Critical Gameplay Issues (code-old.js)
+- ❌ Unreliable collision detection causing player to fall through platforms
+- ❌ No coyote time making jumps feel unresponsive
+- ❌ No jump buffering causing missed inputs
+- ❌ Platforms at random Z positions creating confusing 3D navigation
+- ❌ Poor level design with no progression or tutorial
+- ❌ Dark graphics hiding gameplay elements
+- ❌ Broken physics using wrong player properties (player.x vs player.pos.x)
+- ❌ Camera not updating in game loop despite function existing
+
+### New Implementation (code-fixed.js)
+- ✅ Proper AABB collision detection with overlap resolution
+- ✅ Coyote time (150ms grace period after leaving platform)
+- ✅ Jump buffering (100ms early jump window)
+- ✅ All platforms on Z=0 for true 2D side-scroller feel
+- ✅ Progressive difficulty: tutorial → easy → medium → hard → victory
+- ✅ Bright, visible graphics with clear character design
+- ✅ Reliable physics with proper gravity and friction
+- ✅ Smooth camera following with configurable parameters
+
+## Files Changed
+
+### New Files
+- `examples/strider-demo-3d/code-fixed.js` (800+ lines)
+  Complete rewrite implementing proper platformer mechanics
+  
+- `examples/strider-demo-3d/IMPROVEMENT_OPTIONS.md`
+  Comprehensive guide for future enhancements including:
+  - Free GLB model sources (Poly Pizza, Kenney, Quaternius)
+  - How to use loadModel() API for better graphics
+  - Feature additions (double jump, dash, particles)
+  - Procedural level generation examples
+  
+- `examples/strider-demo-3d/fix-game.sh`
+  Automated script to backup old version and install fixed version
+
+### Documentation Files
+- `KNIGHT_PLATFORMER_START_FIX.md`
+  Documents START button fix (isKeyPressed → isKeyDown)
+  
+- `KNIGHT_BLACK_SCREEN_FIX.md`
+  Documents black screen issues:
+  - Missing camera update in game loop
+  - No lighting setup
+  - Wrong player property access (player.x vs player.pos.x)
+
+### Renamed
+- `examples/strider-demo-3d/code.js` → `code-old.js` (backup)
+- `examples/strider-demo-3d/code-fixed.js` → `code.js` (activated)
+
+## Technical Details
+
+### Physics Implementation
+```javascript
+// Proper gravity application
+player.vel.y -= CONFIG.GRAVITY * dt;
+
+// Coyote time for forgiving jumps
+if (player.grounded) {
+  player.coyoteTime = 0.15;
+} else {
+  player.coyoteTime -= dt;
+}
+
+// Jump buffering for early presses
+if (player.jumpBufferTime > 0 && player.coyoteTime > 0) {
+  player.vel.y = CONFIG.JUMP_POWER;
+  player.coyoteTime = 0;
+  player.jumpBufferTime = 0;
+}
+```
+
+### Level Design Philosophy
+- Tutorial section (X: 0-20): Easy jumps to teach mechanics
+- Easy section (X: 20-40): Build player confidence
+- Medium section (X: 40-60): Introduce challenges and enemies
+- Hard section (X: 60-80): Test player skills
+- Victory platform (X: 80+): Reward completion
+
+### Camera System
+```javascript
+// Side-scroller camera with smooth following
+camera.target.x += (targetX - camera.target.x) * CONFIG.CAMERA_SMOOTH;
+camera.pos.x = camera.target.x - 5;
+camera.pos.y = camera.target.y + CONFIG.CAMERA_HEIGHT;
+camera.pos.z = CONFIG.CAMERA_DISTANCE;
+```
+
+## Configuration
+All game parameters now in centralized CONFIG object:
+- PLAYER_SPEED: 8 (movement speed)
+- JUMP_POWER: 12 (jump height)
+- GRAVITY: 30 (gravity strength)
+- CAMERA_DISTANCE: 15 (camera zoom)
+- CAMERA_SMOOTH: 0.08 (camera follow smoothing)
+
+## Testing Results
+
+### Before (code-old.js)
+- Player falls through platforms randomly
+- Jumps feel unresponsive and unreliable
+- Confusing 3D depth navigation
+- Dark colors hide gameplay
+- No clear progression
+- Not fun to play
+
+### After (code-fixed.js)
+- Reliable collision on all platforms
+- Jumps feel responsive and forgiving
+- True 2D side-scroller experience
+- Bright, visible graphics
+- Clear level progression from easy to hard
+- Actually fun and playable!
+
+## Future Enhancements
+See IMPROVEMENT_OPTIONS.md for detailed roadmap:
+1. Add free GLB models for professional graphics
+2. Implement double jump and dash abilities
+3. Add particle effects for visual feedback
+4. Create procedural level generation
+5. Add sound effects and music
+
+## Notes
+- Maintains retro N64/PlayStation aesthetic
+- All mechanics tested and tuned for fun gameplay
+- Code is well-commented for future modifications
+- Follows established game design best practices
+
+## Credits
+Original concept: Strider/Shinobi-style ninja platformer
+Implementation: Complete ground-up rewrite
+Focus: Gameplay first, polish second
+
+---
+
+Co-authored-by: GitHub Copilot <copilot@github.com>

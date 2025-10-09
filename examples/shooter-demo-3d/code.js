@@ -34,8 +34,6 @@ let gameData = {
 };
 
 export async function init() {
-  console.log('🚀 Star Combat 64 - 3D Space Fighter with Screen Management');
-  
   // Setup 3D scene with N64-style aesthetics
   setCameraPosition(0, 2, 0);
   setCameraTarget(0, 0, -10);
@@ -72,8 +70,6 @@ export async function init() {
   
   // Start with title screen
   switchToScreen('title');
-  
-  console.log('✅ Star Combat 64 Screen System Ready!');
 }
 
 // === TITLE SCREEN ===
@@ -178,13 +174,16 @@ function updateGameScreen(dt) {
 function exitGameScreen() {
   // Clean up 3D objects
   if (gameData.playerShip) {
-    remove3D(gameData.playerShip);
+    if (gameData.playerShip.body) destroyMesh(gameData.playerShip.body);
+    if (gameData.playerShip.leftWing) destroyMesh(gameData.playerShip.leftWing);
+    if (gameData.playerShip.rightWing) destroyMesh(gameData.playerShip.rightWing);
+    if (gameData.playerShip.cockpit) destroyMesh(gameData.playerShip.cockpit);
   }
   
   // Clean up all other 3D objects
   [...gameData.playerBullets, ...gameData.enemies, ...gameData.enemyBullets, 
    ...gameData.powerups, ...gameData.explosions, ...gameData.stars].forEach(obj => {
-    if (obj.mesh) remove3D(obj.mesh);
+    if (obj.mesh) destroyMesh(obj.mesh);
   });
 }
 
@@ -226,10 +225,8 @@ function initStartScreen() {
   
   uiButtons.push(
     createButton(centerX(240), 150, 240, 60, '🚀 LAUNCH FIGHTER', () => {
-      console.log('🎯 LAUNCH FIGHTER CLICKED! Changing gameState to playing...');
       gameState = 'playing';
       switchToScreen('game');
-      console.log('✅ gameState is now:', gameState);
     }, {
       normalColor: rgba8(255, 100, 0, 255),
       hoverColor: rgba8(255, 130, 30, 255),
@@ -239,7 +236,7 @@ function initStartScreen() {
   
   uiButtons.push(
     createButton(centerX(200), 355, 200, 45, '🎮 CONTROLS', () => {
-      console.log('Controls: ARROWS=Move, Z=Fire, X=Charge Shot');
+      // Controls info shown on screen
     }, {
       normalColor: rgba8(0, 255, 255, 255),
       hoverColor: rgba8(60, 255, 255, 255),
@@ -334,15 +331,14 @@ function drawStartScreen() {
 
 function createPlayerShip() {
   // Create main body
-  const body = addCube(1.5, 0.6, 2.5, 0x4488ff);
-  position3D(body, 0, 0, -5);
+  const body = createCube(1.5, 0x4488ff, [0, 0, -5]);
+  setScale(body, 1.5, 0.6, 2.5);
   
   // Create wings
-  const leftWing = addCube(1.8, 0.3, 1.2, 0x2266dd);
-  position3D(leftWing, -1.2, 0, -5);
+  const leftWing = createCube(1.8, 0x2266dd, [-1.2, 0, -5]);
+  setScale(leftWing, 1.8, 0.3, 1.2);
   
-  const rightWing = addCube(1.8, 0.3, 1.2, 0x2266dd);
-  position3D(rightWing, 1.2, 0, -5);
+  const rightWing = createCube(1.8, 0x2266dd, [1.2, 0, -5]);
   setScale(rightWing, 1.8, 0.3, 1.2);
   
   // Create cockpit
@@ -353,7 +349,8 @@ function createPlayerShip() {
 }
 
 async function createStarField() {
-  stars = [];
+  gameData.stars = [];
+  const stars = gameData.stars;
   
   // Create 3D starfield
   for (let i = 0; i < 200; i++) {
@@ -364,8 +361,6 @@ async function createStarField() {
     ]);
     
     const brightness = Math.random();
-    const color = brightness > 0.8 ? 0xffffaa : 
-                  brightness > 0.6 ? 0xaaaaff : 0xffffff;
     
     // Vary star sizes and colors
     setScale(star, brightness * 2 + 0.5);
@@ -391,7 +386,7 @@ async function createSpaceEnvironment() {
   }
   
   // Create space station or planet in distance
-  const planet = createSphere(8, 0x664422, [30, -15, -70]);
+  createSphere(8, 0x664422, [30, -15, -70]);
   
   // Add some space debris
   for (let i = 0; i < 10; i++) {
@@ -404,7 +399,8 @@ async function createSpaceEnvironment() {
   }
 }
 
-function updateInput(dt) {
+function updateInput(_dt) {
+  const inputState = gameData.inputState;
   inputState.left = btn(0);
   inputState.right = btn(1);
   inputState.up = btn(2);
@@ -416,11 +412,14 @@ function updateInput(dt) {
 function updatePlayer(dt) {
   // Update player position
   const speed = 12 * dt;
+  const inputState = gameData.inputState;
+  const player = gameData.player;
+  const playerShip = gameData.playerShip;
   
   if (inputState.left && player.x > -12) player.x -= speed;
   if (inputState.right && player.x < 12) player.x += speed;
   if (inputState.up && player.y < 8) player.y += speed;
-  if (inputState.down && player.y > -6) player.y += speed;
+  if (inputState.down && player.y > -6) player.y -= speed;
   
   // Update ship positions
   setPosition(playerShip.body, player.x, player.y, player.z);
@@ -455,10 +454,14 @@ function updatePlayer(dt) {
   if (player.shield < 100) player.shield += 15 * dt;
   
   // Engine glow effect - animate engine exhaust
+  const gameTime = gameData.time;
   rotateMesh(playerShip.body, 0, 0, Math.sin(gameTime * 20) * 0.02);
 }
 
 function fireBullet(type) {
+  const player = gameData.player;
+  const playerBullets = gameData.playerBullets;
+  
   const bullet = {
     type: type,
     damage: type === 'charged' ? 3 : 1,
@@ -479,6 +482,8 @@ function fireBullet(type) {
 }
 
 function spawnEnemyWave() {
+  const level = gameData.level;
+  
   const waveSize = 4 + level * 2;
   const formations = ['line', 'V', 'diamond', 'circle'];
   const formation = formations[level % formations.length];
@@ -518,6 +523,9 @@ function spawnEnemyWave() {
 }
 
 function spawnEnemy(x, y, z, type) {
+  const level = gameData.level;
+  const enemies = gameData.enemies;
+  
   // Create enemy ship geometry
   const body = createCube(0.6, 0xff4444, [x, y, z]);
   const engine = createSphere(0.3, 0xff8800, [x, y, z - 0.5]);
@@ -537,6 +545,10 @@ function spawnEnemy(x, y, z, type) {
 }
 
 function updateBullets(dt) {
+  const playerBullets = gameData.playerBullets;
+  const enemyBullets = gameData.enemyBullets;
+  const gameTime = gameData.time;
+  
   // Update player bullets
   for (let i = playerBullets.length - 1; i >= 0; i--) {
     const bullet = playerBullets[i];
@@ -575,6 +587,10 @@ function updateBullets(dt) {
 }
 
 function updateEnemies(dt) {
+  const enemies = gameData.enemies;
+  const gameTime = gameData.time;
+  let lives = gameData.lives;
+  
   for (let i = enemies.length - 1; i >= 0; i--) {
     const enemy = enemies[i];
     if (!enemy.alive) continue;
@@ -623,9 +639,13 @@ function updateEnemies(dt) {
       lives--; // Lose life when enemy escapes
     }
   }
+  
+  gameData.lives = lives;
 }
 
 function fireEnemyBullet(x, y, z) {
+  const enemyBullets = gameData.enemyBullets;
+  
   const bullet = {
     speed: 25 * 0.7,
     mesh: createCube(0.08, 0xff4444, [x, y, z]),
@@ -637,6 +657,8 @@ function fireEnemyBullet(x, y, z) {
 }
 
 function updatePowerups(dt) {
+  const powerups = gameData.powerups;
+  
   // Spawn random powerups
   if (Math.random() < 0.01 * dt && powerups.length < 3) {
     spawnPowerup();
@@ -658,6 +680,8 @@ function updatePowerups(dt) {
 }
 
 function spawnPowerup() {
+  const powerups = gameData.powerups;
+  
   const types = ['health', 'shield', 'weapon', 'energy'];
   const type = types[Math.floor(Math.random() * types.length)];
   
@@ -682,6 +706,8 @@ function spawnPowerup() {
 }
 
 function updateExplosions(dt) {
+  const explosions = gameData.explosions;
+  
   for (let i = explosions.length - 1; i >= 0; i--) {
     const explosion = explosions[i];
     explosion.life -= dt;
@@ -697,6 +723,8 @@ function updateExplosions(dt) {
 }
 
 function createExplosion(x, y, z) {
+  const explosions = gameData.explosions;
+  
   const explosion = {
     mesh: createSphere(0.5, 0xff6600, [x, y, z]),
     life: 0.5,
@@ -707,6 +735,8 @@ function createExplosion(x, y, z) {
 }
 
 function updateStarField(dt) {
+  const stars = gameData.stars;
+  
   for (const star of stars) {
     const pos = getPosition(star.mesh);
     pos[2] += star.speed * dt;
@@ -724,7 +754,14 @@ function updateStarField(dt) {
   }
 }
 
-function checkCollisions(dt) {
+function checkCollisions(_dt) {
+  const playerBullets = gameData.playerBullets;
+  const enemyBullets = gameData.enemyBullets;
+  const enemies = gameData.enemies;
+  const player = gameData.player;
+  let score = gameData.score;
+  let lives = gameData.lives;
+  
   // Player bullets vs enemies
   for (let i = playerBullets.length - 1; i >= 0; i--) {
     const bullet = playerBullets[i];
@@ -791,6 +828,7 @@ function checkCollisions(dt) {
   }
   
   // Player vs powerups
+  const powerups = gameData.powerups;
   for (let i = powerups.length - 1; i >= 0; i--) {
     const powerup = powerups[i];
     const distance = Math.sqrt(
@@ -821,12 +859,20 @@ function checkCollisions(dt) {
       score += 50;
     }
   }
+  
+  gameData.score = score;
+  gameData.lives = lives;
 }
 
-function updateGameLogic(dt) {
+function updateGameLogic(_dt) {
+  const enemies = gameData.enemies;
+  let level = gameData.level;
+  const lives = gameData.lives;
+  
   // Spawn new wave when all enemies are cleared
   if (enemies.length === 0) {
     level++;
+    gameData.level = level;
     spawnEnemyWave();
   }
   
@@ -836,7 +882,9 @@ function updateGameLogic(dt) {
   }
 }
 
-function updateCamera(dt) {
+function updateCamera(_dt) {
+  const player = gameData.player;
+  
   // Dynamic camera movement based on player position
   const targetX = player.x * 0.1;
   const targetY = 2 + player.y * 0.05;

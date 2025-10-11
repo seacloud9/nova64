@@ -92,16 +92,27 @@ function drawTitleScreen() {
   // Prompt
   setFont('normal');
   const pulse = Math.sin(Date.now() * 0.005) * 0.5 + 0.5;
-  drawText('Press SPACE to Launch', 320, 200, rgba8(255, 255, 0, Math.floor(pulse * 255)), 1);
+  drawText('Press SPACE, ENTER, or A Button', 320, 200, rgba8(255, 255, 0, Math.floor(pulse * 255)), 1);
   
   // Controls
   setFont('small');
   drawText('ARROWS: Move • Z: Fire • X: Charge Shot', 320, 240, rgba8(255, 255, 255, 255), 1);
+  
+  // Draw buttons if they exist
+  if (uiButtons && uiButtons.length > 0) {
+    drawAllButtons();
+  }
 }
 
 function updateTitleScreen() {
-  if (isKeyPressed(' ')) {
+  // Check for Space key, Enter, or gamepad button
+  if (isKeyPressed('Space') || isKeyPressed('Enter') || btnp(4) || btnp(12)) {
     switchToScreen('game');
+  }
+  
+  // Also update buttons if they exist
+  if (uiButtons && uiButtons.length > 0) {
+    updateAllButtons();
   }
 }
 

@@ -24,12 +24,14 @@ const BUILDING_COUNT = 50;
 const VEHICLE_COUNT = 12;
 const PARTICLE_COUNT = 200;
 
-// Colors (N64 palette)
+// 🌈 NEON COLORS - Bright and vibrant!
 const COLORS = {
-  building: [0x2a2a4a, 0x3a3a5a, 0x4a4a6a, 0x1a1a3a],
-  neon: [0xff0066, 0x00ff66, 0x6600ff, 0xffff00, 0x00ffff, 0xff6600],
-  vehicle: [0xff4444, 0x44ff44, 0x4444ff, 0xffff44, 0xff00ff],
-  particle: [0xff8800, 0x8800ff, 0x00ff88, 0xff0088]
+  building: [0x4a4a7a, 0x5a5a8a, 0x6a6a9a, 0x3a3a6a], // Brighter buildings
+  neon: [0xff0099, 0x00ff99, 0x9900ff, 0xffff00, 0x00ffff, 0xff6600], // Intense neons
+  neonGlow: [0xff55cc, 0x55ffcc, 0xcc55ff, 0xffffaa, 0xaaffff, 0xffaa66], // Glow halos
+  vehicle: [0xff6666, 0x66ff66, 0x6666ff, 0xffff66, 0xff66ff], // Brighter vehicles
+  particle: [0xffaa00, 0xaa00ff, 0x00ffaa, 0xff00aa, 0xaaffff, 0xffaaff], // Glowing particles
+  underglow: [0x00ffff, 0xff00ff, 0xffff00, 0x00ff00, 0xff0000] // Vehicle underglows
 };
 
 export async function init() {
@@ -40,18 +42,27 @@ export async function init() {
   setCameraTarget(0, 10, 0);
   setCameraFOV(75);
   
-  // Cyberpunk lighting
+  // 🌈 BRIGHT NEON LIGHTING - Make it pop!
   setLightDirection(-0.3, -0.7, -0.4);
-  setLightColor(0x9966ff);
-  setAmbientLight(0x220044);
+  setLightColor(0xffaaff); // Bright magenta/pink key light
+  setAmbientLight(0x664488); // Much brighter purple ambient
   
-  // Atmospheric fog
-  setFog(0x110022, 30, 200);
+  // 🌫️ Atmospheric fog with neon tint
+  setFog(0x441166, 30, 180); // Purple/magenta fog
   
-  // Enable N64-style effects
+  // 🎨 Enable ALL visual effects for maximum impact
   enablePixelation(1);
   enableDithering(true);
-  enableBloom(true);
+  enableBloom(true); // Critical for neon glow!
+  
+  // 🎆 Add post-processing effects if available
+  try {
+    enableChromaticAberration && enableChromaticAberration(0.002);
+    enableVignette && enableVignette(0.3);
+    enableScanlines && enableScanlines(0.15);
+  } catch (e) {
+    // Effects not available, continue
+  }
   
   await buildCyberpunkCity();
   createPlayer();
@@ -61,7 +72,7 @@ export async function init() {
   // Initialize start screen
   initStartScreen();
   
-  console.log('🌃 CYBERPUNK CITY 3D - Ultimate retro 3D experience loaded!');
+  console.log('🌃 CYBERPUNK CITY 3D - NEON ENHANCED!');
   console.log('WASD: Move | SHIFT: Fly Mode | SPACE: Boost | X: Switch Vehicle');
 }
 
@@ -201,16 +212,28 @@ function drawStartScreen() {
 }
 
 async function buildCyberpunkCity() {
-  // Create ground with grid pattern
-  const ground = createPlane(CITY_SIZE * 2, CITY_SIZE * 2, 0x111133, [0, 0, 0]);
+  // 🌃 Create ground with brighter base
+  const ground = createPlane(CITY_SIZE * 2, CITY_SIZE * 2, 0x2a2a55, [0, 0, 0]);
   setRotation(ground, -Math.PI/2, 0, 0);
   
-  // Add grid lines for cyberpunk aesthetic
+  // ⚡ Add BRIGHT NEON grid lines for cyberpunk aesthetic
   for (let i = -CITY_SIZE; i <= CITY_SIZE; i += 10) {
-    // Horizontal lines
-    const lineH = createCube(CITY_SIZE * 2, 0.1, 0.2, 0x004466, [0, 0.1, i]);
-    // Vertical lines  
-    const lineV = createCube(0.2, 0.1, CITY_SIZE * 2, 0x004466, [i, 0.1, 0]);
+    // Horizontal lines - CYAN neon
+    createCube(CITY_SIZE * 2, 0.15, 0.3, 0x00ffff, [0, 0.15, i]);
+    // Vertical lines - MAGENTA neon
+    createCube(0.3, 0.15, CITY_SIZE * 2, 0xff00ff, [i, 0.15, 0]);
+    
+    // Add glow effect underneath
+    createCube(CITY_SIZE * 2, 0.05, 0.5, 0x0088aa, [0, 0.05, i]);
+    createCube(0.5, 0.05, CITY_SIZE * 2, 0xaa0088, [i, 0.05, 0]);
+  }
+  
+  // ✨ Add intersection glow points
+  for (let i = -CITY_SIZE; i <= CITY_SIZE; i += 20) {
+    for (let j = -CITY_SIZE; j <= CITY_SIZE; j += 20) {
+      const glowColor = COLORS.neon[Math.floor(Math.random() * COLORS.neon.length)];
+      createSphere(0.5, glowColor, [i, 0.5, j]);
+    }
   }
   
   // Generate procedural buildings
@@ -256,11 +279,13 @@ async function createBuilding(index) {
   // Main building
   const building = createCube(width, height, depth, COLORS.building[index % COLORS.building.length], [x, height/2, z]);
   
-  // Add detail layers
-  const detail1 = createCube(width * 0.9, height * 0.3, depth * 0.9, 0x555577, [x, height * 0.15, z]);
-  const detail2 = createCube(width * 0.8, height * 0.2, depth * 0.8, 0x666688, [x, height * 0.9, z]);
+  // 🎨 Add COLORFUL detail layers (no more black blocks!)
+  const detailColor1 = COLORS.neon[index % COLORS.neon.length];
+  const detailColor2 = COLORS.neonGlow[(index + 2) % COLORS.neonGlow.length];
+  const detail1 = createCube(width * 0.9, height * 0.3, depth * 0.9, detailColor1, [x, height * 0.15, z]);
+  const detail2 = createCube(width * 0.8, height * 0.2, depth * 0.8, detailColor2, [x, height * 0.9, z]);
   
-  // Windows with animated lighting
+  // 💡 Windows with BRIGHT NEON animated lighting
   const windowRows = Math.floor(height / 3);
   const windows = [];
   
@@ -270,23 +295,38 @@ async function createBuilding(index) {
       const windowY = 2 + row * 3;
       const windowZ = z + depth * 0.51;
       
-      const window = createCube(0.8, 0.8, 0.1, 0xffffaa, [windowX, windowY, windowZ]);
+      // Use BRIGHT neon glow colors for windows
+      const windowColor = COLORS.neonGlow[(row * 3 + col) % COLORS.neonGlow.length];
+      const window = createCube(0.8, 0.8, 0.1, windowColor, [windowX, windowY, windowZ]);
+      
+      // Add window glow halo (brighter larger cube behind)
+      createCube(1.2, 1.2, 0.05, windowColor, [windowX, windowY, windowZ - 0.1]);
+      
       windows.push({ 
         mesh: window, 
         flickerTime: Math.random() * 10,
-        baseColor: 0xffffaa,
-        dimColor: 0x444422
+        baseColor: windowColor,
+        dimColor: windowColor & 0x555555 // Dim by masking bits
       });
     }
   }
   
-  // Neon sign on top
-  if (Math.random() < 0.3) {
+  // ⚡ Neon sign on top (50% chance, BRIGHT)
+  if (Math.random() < 0.5) {
     const signColor = COLORS.neon[Math.floor(Math.random() * COLORS.neon.length)];
+    const glowColor = COLORS.neonGlow[Math.floor(Math.random() * COLORS.neonGlow.length)];
+    
+    // Main sign
     const sign = createCube(width * 1.2, 1, 0.2, signColor, [x, height + 1, z]);
+    
+    // Glow halo around sign (larger, behind)
+    const signGlow = createCube(width * 1.4, 1.5, 0.1, glowColor, [x, height + 1, z - 0.2]);
+    
     neonSigns.push({
       mesh: sign,
+      glow: signGlow,
       color: signColor,
+      glowColor: glowColor,
       pulsePhase: Math.random() * Math.PI * 2
     });
   }
@@ -300,17 +340,28 @@ async function createBuilding(index) {
 }
 
 async function createMegaStructure() {
-  // Central tower
-  const tower = createCube(12, 60, 12, 0x2d2d4d, [0, 30, 0]);
+  // 🏙️ Central tower (BRIGHT PURPLE with neon accents)
+  createCube(12, 60, 12, 0x8855cc, [0, 30, 0]);
   
-  // Connecting bridges
+  // Add colorful stripes to tower
+  for (let i = 0; i < 10; i++) {
+    const stripeColor = COLORS.neon[i % COLORS.neon.length];
+    createCube(12.5, 2, 12.5, stripeColor, [0, 6 + i * 6, 0]);
+  }
+  
+  // 🌉 Connecting bridges (BRIGHT CYAN)
   for (let i = 0; i < 4; i++) {
     const angle = (i / 4) * Math.PI * 2;
     const bridgeX = Math.cos(angle) * 20;
     const bridgeZ = Math.sin(angle) * 20;
     
-    const bridge = createCube(16, 2, 4, 0x444466, [bridgeX/2, 25, bridgeZ/2]);
+    const bridgeColor = COLORS.neonGlow[i % COLORS.neonGlow.length];
+    const bridge = createCube(16, 2, 4, bridgeColor, [bridgeX/2, 25, bridgeZ/2]);
     setRotation(bridge, 0, angle, 0);
+    
+    // Add underglow to bridges
+    const bridgeGlow = createCube(17, 0.5, 4.5, COLORS.underglow[i % COLORS.underglow.length], [bridgeX/2, 24, bridgeZ/2]);
+    setRotation(bridgeGlow, 0, angle, 0);
   }
   
   // Antenna array on top
@@ -374,12 +425,22 @@ function createTrafficVehicle(index) {
   const y = 1.5 + Math.random() * 8;
   
   const color = COLORS.vehicle[index % COLORS.vehicle.length];
+  
+  // 🚗 Main vehicle body
   const body = createCube(2.5, 0.6, 1.2, color, [x, y, z]);
-  const glow = createCube(2.8, 0.2, 1.5, color + 0x222222, [x, y - 0.5, z]);
+  
+  // ⚡ BRIGHT NEON UNDERGLOW (use underglow colors)
+  const underglowColor = COLORS.underglow[index % COLORS.underglow.length];
+  const glow = createCube(3.2, 0.3, 1.8, underglowColor, [x, y - 0.5, z]);
+  
+  // ✨ Add second glow layer for extra brightness
+  const glow2 = createCube(3.5, 0.15, 2.0, underglowColor, [x, y - 0.6, z]);
   
   return {
     body: body,
     glow: glow,
+    glow2: glow2,
+    underglowColor: underglowColor,
     x: x, y: y, z: z,
     vx: (Math.random() - 0.5) * 8,
     vy: 0,
@@ -418,70 +479,112 @@ function createAmbientParticle() {
 }
 
 function handleInput(dt) {
-  const moveSpeed = flying ? 25 : 15;
-  const turnSpeed = 3;
+  // 🚀 IMPROVED CONTROLS - Much more responsive!
+  const moveSpeed = flying ? 40 : 25; // Faster base speed
+  const accel = flying ? 60 : 45; // Snappy acceleration
+  const maxSpeed = flying ? 35 : 25; // Higher max speed
   
-  // Movement
+  let inputX = 0;
+  let inputZ = 0;
+  
+  // ⬅️➡️ Horizontal movement with smooth acceleration
   if (btn(0)) { // Left
-    player.vx -= moveSpeed * dt;
-    player.tilt = Math.max(player.tilt - dt * 2, -0.3);
+    inputX = -1;
+    player.tilt = Math.max(player.tilt - dt * 3, -0.4);
   }
   if (btn(1)) { // Right  
-    player.vx += moveSpeed * dt;
-    player.tilt = Math.min(player.tilt + dt * 2, 0.3);
+    inputX = 1;
+    player.tilt = Math.min(player.tilt + dt * 3, 0.4);
   }
+  
+  // ⬆️⬇️ Forward/backward movement
   if (btn(2)) { // Up
-    player.vz -= moveSpeed * dt;
+    inputZ = -1;
   }
   if (btn(3)) { // Down
-    player.vz += moveSpeed * dt;
+    inputZ = 1;
   }
   
-  // Vertical movement
+  // Apply acceleration with max speed cap
+  if (inputX !== 0) {
+    player.vx += inputX * accel * dt;
+    player.vx = Math.max(-maxSpeed, Math.min(maxSpeed, player.vx));
+  }
+  if (inputZ !== 0) {
+    player.vz += inputZ * accel * dt;
+    player.vz = Math.max(-maxSpeed, Math.min(maxSpeed, player.vz));
+  }
+  
+  // 🎮 Vertical movement (much more responsive)
   if (btn(4)) { // Z - Down
-    player.vy -= moveSpeed * dt * 0.5;
+    player.vy -= moveSpeed * dt * 0.8; // Faster vertical
   }
   if (btn(5)) { // X - Up
-    player.vy += moveSpeed * dt * 0.5;
+    player.vy += moveSpeed * dt * 0.8; // Faster vertical
   }
   
-  // Boost
+  // 💨 BOOST - More powerful!
   if (btnp(6)) { // Space
-    player.boost = 3;
+    player.boost = 4; // Stronger boost
+    const boostDir = { x: player.vx, z: player.vz };
+    const mag = Math.sqrt(boostDir.x * boostDir.x + boostDir.z * boostDir.z);
+    if (mag > 0) {
+      player.vx += (boostDir.x / mag) * 15; // Add velocity in current direction
+      player.vz += (boostDir.z / mag) * 15;
+    }
     createBoostParticles();
   }
   
-  // Flight mode toggle
+  // ✈️ Flight mode toggle
   if (btnp(7)) { // Shift
     flying = !flying;
+  }
+  
+  // 🎯 Return tilt to center when not turning
+  if (inputX === 0) {
+    player.tilt *= 0.9; // Smooth return to center
   }
 }
 
 function updatePlayer(dt) {
-  // Apply boost
+  // 💨 Apply boost multiplier (decays smoothly)
+  let boostMult = 1;
   if (player.boost > 1) {
-    player.vx *= player.boost;
-    player.vz *= player.boost;
-    player.boost = Math.max(1, player.boost - dt * 3);
+    boostMult = player.boost;
+    player.boost = Math.max(1, player.boost - dt * 4);
   }
   
-  // Physics
-  player.x += player.vx * dt;
+  // 🌍 Physics - Apply velocity to position
+  player.x += player.vx * boostMult * dt;
   player.y += player.vy * dt;
-  player.z += player.vz * dt;
+  player.z += player.vz * boostMult * dt;
   
-  // Hover physics
+  // ✈️ Hover physics (auto-stabilize height when not flying)
   if (!flying) {
-    const groundHeight = 2;
-    const hoverForce = (groundHeight - player.y) * 5;
+    const groundHeight = 2.5;
+    const hoverForce = (groundHeight - player.y) * 8; // Stronger hover
     player.vy += hoverForce * dt;
+    
+    // Clamp vertical position
+    if (player.y < groundHeight - 0.5) {
+      player.y = groundHeight - 0.5;
+      player.vy = Math.max(0, player.vy);
+    }
+  } else {
+    // In flight mode, add slight upward drift
+    player.vy += dt * 0.5;
   }
   
-  // Damping
-  player.vx *= 0.9;
-  player.vy *= 0.95;
-  player.vz *= 0.9;
-  player.tilt *= 0.9;
+  // 🎮 IMPROVED DAMPING - Smoother deceleration
+  const dampFactor = flying ? 0.92 : 0.88; // More aggressive damping
+  player.vx *= dampFactor;
+  player.vz *= dampFactor;
+  player.vy *= 0.94; // Vertical damping
+  
+  // Stop tiny movements (dead zone)
+  if (Math.abs(player.vx) < 0.1) player.vx = 0;
+  if (Math.abs(player.vz) < 0.1) player.vz = 0;
+  if (Math.abs(player.vy) < 0.1) player.vy = 0;
   
   // Update rotation based on movement
   if (Math.abs(player.vx) > 0.1 || Math.abs(player.vz) > 0.1) {
@@ -546,9 +649,10 @@ function updateVehicles(dt) {
     vehicle.vy *= 0.98;
     vehicle.vz *= 0.95;
     
-    // Update mesh positions
+    // Update mesh positions (body + both glow layers)
     setPosition(vehicle.body, vehicle.x, vehicle.y, vehicle.z);
     setPosition(vehicle.glow, vehicle.x, vehicle.y - 0.5, vehicle.z);
+    setPosition(vehicle.glow2, vehicle.x, vehicle.y - 0.6, vehicle.z);
     
     // Occasional thruster particles
     if (Math.random() < 0.1) {
@@ -610,9 +714,8 @@ function updateCityLights(dt) {
     building.windows.forEach(window => {
       window.flickerTime -= dt;
       if (window.flickerTime <= 0) {
-        // Random flicker
-        const isOn = Math.random() < 0.8;
-        // Note: In real implementation, you'd change material color
+        // 💡 Random flicker effect - future enhancement: change mesh color
+        // const _isOn = Math.random() < 0.8; // Would toggle window brightness
         window.flickerTime = 0.5 + Math.random() * 3;
       }
     });
@@ -640,8 +743,7 @@ function updateCamera(dt) {
 function updateNeonSigns(dt) {
   neonSigns.forEach(sign => {
     sign.pulsePhase += dt * 4;
-    const intensity = 0.7 + 0.3 * Math.sin(sign.pulsePhase);
-    // Note: In real implementation, you'd modify material emission
+    // ⚡ Future enhancement: Use Math.sin(sign.pulsePhase) to pulse glow intensity
   });
   
   // Update floating platforms
@@ -663,30 +765,34 @@ function updateNeonSigns(dt) {
 }
 
 function createBoostParticles() {
-  for (let i = 0; i < 20; i++) {
-    const particle = createSphere(0.2, 0x00ffff, [
-      player.x + (Math.random() - 0.5) * 4,
-      player.y + (Math.random() - 0.5) * 2,
-      player.z + (Math.random() - 0.5) * 4
+  // 💨 BRIGHTER BOOST PARTICLES - More visual impact!
+  for (let i = 0; i < 30; i++) {
+    const boostColors = [0x00ffff, 0xff00ff, 0xffff00, 0x00ff00];
+    const particle = createSphere(0.25, boostColors[i % boostColors.length], [
+      player.x + (Math.random() - 0.5) * 5,
+      player.y + (Math.random() - 0.5) * 2.5,
+      player.z + (Math.random() - 0.5) * 5
     ]);
     
     particles.push({
       mesh: particle,
       x: player.x, y: player.y, z: player.z,
-      vx: (Math.random() - 0.5) * 15,
-      vy: (Math.random() - 0.5) * 5,
-      vz: (Math.random() - 0.5) * 15,
-      life: 1.5,
-      maxLife: 1.5,
+      vx: (Math.random() - 0.5) * 20,
+      vy: (Math.random() - 0.5) * 8,
+      vz: (Math.random() - 0.5) * 20,
+      life: 2.0,
+      maxLife: 2.0,
       type: 'boost'
     });
   }
 }
 
 function createThrusterParticles() {
-  for (let i = 0; i < 2; i++) {
+  // 🔥 BRIGHTER THRUSTER TRAIL - Alternating colors
+  const thrusterColors = [0xff6600, 0xffaa00, 0xff00ff, 0x00ffff];
+  for (let i = 0; i < 3; i++) {
     const thrusterX = player.x + (i === 0 ? -1.2 : 1.2);
-    const particle = createSphere(0.15, 0xff4400, [
+    const particle = createSphere(0.2, thrusterColors[Math.floor(Math.random() * thrusterColors.length)], [
       thrusterX,
       player.y - 0.5,
       player.z - 1
@@ -695,11 +801,11 @@ function createThrusterParticles() {
     particles.push({
       mesh: particle,
       x: thrusterX, y: player.y - 0.5, z: player.z - 1,
-      vx: (Math.random() - 0.5) * 3,
-      vy: -Math.random() * 2,
-      vz: Math.random() * 8 + 5,
-      life: 0.8,
-      maxLife: 0.8,
+      vx: (Math.random() - 0.5) * 4,
+      vy: -Math.random() * 3,
+      vz: Math.random() * 10 + 6,
+      life: 1.0,
+      maxLife: 1.0,
       type: 'thruster'
     });
   }
@@ -767,15 +873,15 @@ function drawHUD() {
   rect(radarX - radarSize/2, radarY - radarSize/2, radarSize, radarSize, rgba8(0, 50, 0, 150), true);
   rect(radarX - radarSize/2, radarY - radarSize/2, radarSize, radarSize, rgba8(0, 255, 0, 100), false);
   
-  // Player dot
-  pset(radarX, radarY, rgba8(255, 255, 255, 255));
+  // 📍 Player dot (bright white)
+  rect(radarX - 1, radarY - 1, 2, 2, rgba8(255, 255, 255, 255), true);
   
-  // Vehicle dots
+  // 📍 Vehicle dots (magenta)
   vehicles.forEach(vehicle => {
     const relX = (vehicle.x - player.x) / CITY_SIZE * radarSize * 0.4;
     const relZ = (vehicle.z - player.z) / CITY_SIZE * radarSize * 0.4;
     if (Math.abs(relX) < radarSize/2 && Math.abs(relZ) < radarSize/2) {
-      pset(radarX + relX, radarY + relZ, rgba8(255, 100, 100, 200));
+      rect(radarX + relX - 1, radarY + relZ - 1, 2, 2, rgba8(255, 0, 255, 200), true);
     }
   });
   

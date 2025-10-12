@@ -787,12 +787,43 @@ export default defineConfig({
 ### 🎯 **Format Rules**
 When creating commit messages for this project:
 
-1. **NO single quotes (') or double quotes (")** in commit messages
+1. **NO single quotes, double quotes, OR BACKTICKS** in commit messages
+   - Remove all ' (single quotes)
+   - Remove all " (double quotes)  
+   - Remove all ` (backticks)
+   - This applies to ALL text: code examples, function names, file paths, variables
 2. Use descriptive headers with emojis where appropriate
 3. Break down changes into clear sections
 4. List specific files modified
 5. Include impact and testing information
 6. Keep line length reasonable (70-80 chars for header)
+
+### 🚫 **Critical: Quote Removal Process**
+When updating COMMIT_MESSAGE.txt or creating commit messages:
+
+Step 1: Write content normally
+Step 2: Remove ALL quotes using this command:
+```bash
+sed "s/[\`'\"']//g" COMMIT_MESSAGE.txt > /tmp/commit_clean.txt
+mv /tmp/commit_clean.txt COMMIT_MESSAGE.txt
+```
+
+Step 3: Verify quotes are removed before committing
+
+Note: This removes all single quotes, double quotes, and backticks safely
+without triggering zsh history expansion or other shell issues
+
+### ❌ **WRONG Examples**
+- Fixed the 'player.pos' variable
+- Updated "COMMIT_MESSAGE.txt" file
+- Changed `createCube()` function signature
+- Added 'holographic' material type
+
+### ✅ **CORRECT Examples**
+- Fixed the player.pos variable
+- Updated COMMIT_MESSAGE.txt file
+- Changed createCube() function signature
+- Added holographic material type
 
 ### ✅ **Good Commit Message Example**
 ```

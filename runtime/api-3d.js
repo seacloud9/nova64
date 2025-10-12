@@ -377,11 +377,50 @@ export function threeDApi(gpu) {
     }
   }
 
+  function setDirectionalLight(direction, color = 0xffffff, intensity = 1.0) {
+    // Remove existing directional lights
+    const lightsToRemove = [];
+    scene.children.forEach(child => {
+      if (child.type === 'DirectionalLight') {
+        lightsToRemove.push(child);
+      }
+    });
+    lightsToRemove.forEach(light => scene.remove(light));
+    
+    // Add new directional light
+    const directionalLight = new THREE.DirectionalLight(color, intensity);
+    if (Array.isArray(direction) && direction.length >= 3) {
+      directionalLight.position.set(direction[0], direction[1], direction[2]);
+    } else {
+      directionalLight.position.set(1, 2, 1);
+    }
+    scene.add(directionalLight);
+  }
+
+  function setCameraLookAt(direction) {
+    // Set camera to look in a specific direction (for first-person view)
+    if (Array.isArray(direction) && direction.length >= 3) {
+      const lookTarget = {
+        x: camera.position.x + direction[0],
+        y: camera.position.y + direction[1],
+        z: camera.position.z + direction[2]
+      };
+      camera.lookAt(lookTarget.x, lookTarget.y, lookTarget.z);
+    } else if (typeof direction === 'object' && direction.x !== undefined) {
+      const lookTarget = {
+        x: camera.position.x + direction.x,
+        y: camera.position.y + direction.y,
+        z: camera.position.z + direction.z
+      };
+      camera.lookAt(lookTarget.x, lookTarget.y, lookTarget.z);
+    }
+  }
+
   function clearScene() {
     console.log('🧹 Clearing 3D scene... Current meshes:', meshes.size);
     
     // Remove ALL meshes including lights - complete clean slate
-    for (const [id, mesh] of meshes) {
+    for (const [, mesh] of meshes) {
       scene.remove(mesh);
       if (mesh.geometry) {
         mesh.geometry.dispose();
@@ -524,6 +563,7 @@ export function threeDApi(gpu) {
         // Camera
         setCameraPosition,
         setCameraTarget,
+        setCameraLookAt,
         setCameraFOV,
         
         // Scene
@@ -531,6 +571,7 @@ export function threeDApi(gpu) {
         setLightDirection,
         setLightColor,
         setAmbientLight,
+        setDirectionalLight,
         clearScene,
         
         // Effects

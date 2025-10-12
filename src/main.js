@@ -14,6 +14,7 @@ import { screenApi } from '../runtime/screens.js';
 import { skyboxApi } from '../runtime/api-skybox.js';
 import { uiApi } from '../runtime/ui.js';
 import { effectsApi } from '../runtime/api-effects.js';
+import { voxelApi } from '../runtime/api-voxel.js';
 
 const canvas = document.getElementById('screen');
 
@@ -40,6 +41,7 @@ const stApi = storageApi('nova64');
 const scrApi = screenApi();
 const skyApi = skyboxApi(gpu);
 const fxApi = effectsApi(gpu);
+const vxApi = voxelApi(gpu);
 
 // Create UI API - needs to be created after api is fully initialized
 let uiApiInstance;
@@ -59,6 +61,7 @@ stApi.exposeTo(g);
 scrApi.exposeTo(g);
 skyApi.exposeTo(g);
 fxApi.exposeTo(g);
+vxApi.exposeTo(g);
 
 // Now create UI API after g has rgba8 and other functions
 uiApiInstance = uiApi(gpu, g);
@@ -111,9 +114,16 @@ function attachUI() {
 
 let last = performance.now();
 let uMs=0, dMs=0, fps=0;
+let currentDt = 0;
+
+// Expose timing functions globally
+globalThis.getDeltaTime = () => currentDt;
+globalThis.getFPS = () => fps;
+
 function loop() {
   const now = performance.now();
   const dt = Math.min(0.1, (now - last)/1000);
+  currentDt = dt;
   last = now;
 
   if (!paused || stepOnce) {

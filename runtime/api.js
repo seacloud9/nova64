@@ -141,6 +141,10 @@ export function stdApi(gpu) {
     }
   }
 
+  function rectfill(x, y, w, h, color) {
+    rect(x, y, w, h, color, true);
+  }
+
   function print(text, x, y, color=rgba8(255,255,255,255), scale=1) {
     // Support text scaling
     if (scale === 1) {
@@ -154,7 +158,7 @@ export function stdApi(gpu) {
 
   return {
     exposeTo(target) {
-      Object.assign(target, { cls, pset, line, rect, circle, print, packRGBA64, rgba8, setCamera, getCamera });
+      Object.assign(target, { cls, pset, line, rect, rectfill, circle, print, packRGBA64, rgba8, setCamera, getCamera });
     }
   };
 }

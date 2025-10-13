@@ -183,8 +183,18 @@ export class GpuThreeJS {
     // Update animations
     this.update(0.016);
     
-    // Render 3D scene first
-    this.renderer.render(this.scene, this.camera);
+    // Render 3D scene first - check if post-processing effects are enabled
+    if (typeof globalThis.isEffectsEnabled === 'function' && globalThis.isEffectsEnabled()) {
+      // Use post-processing composer
+      if (typeof globalThis.renderEffects === 'function') {
+        globalThis.renderEffects();
+      } else {
+        this.renderer.render(this.scene, this.camera);
+      }
+    } else {
+      // Standard rendering
+      this.renderer.render(this.scene, this.camera);
+    }
     
     // RENDER 2D HUD OVERLAY!
     this.update2DOverlay();

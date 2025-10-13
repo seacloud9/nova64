@@ -65,9 +65,17 @@ export async function init() {
   setCameraTarget(0, 0, 0);
   setCameraFOV(camera.fov);
   
-  // Enable ALL post-processing effects
-  enableBloom(2.5, 0.8, 0.6); // Strong bloom for neon glow
+  // Enable post-processing effects with BALANCED settings
+  console.log('🎨 Enabling post-processing effects...');
+  const bloomEnabled = enableBloom(1.2, 0.6, 0.3); // Balanced bloom: visible glow without washing out
+  console.log('✨ Bloom enabled:', bloomEnabled);
   enableFXAA(); // Smooth edges
+  console.log('✨ FXAA enabled');
+  
+  // Verify effects are enabled
+  if (typeof isEffectsEnabled === 'function') {
+    console.log('✅ Effects system active:', isEffectsEnabled());
+  }
   
   // Additional effects if available
   try {
@@ -81,12 +89,12 @@ export async function init() {
     console.log('Advanced effects not available, continuing...');
   }
   
-  // Scene lighting - dramatic and moody
+  // Scene lighting - Balanced for visibility with neon contrast
   setLightDirection(-0.5, -0.8, -0.3);
-  setAmbientLight(0x222244);
+  setAmbientLight(0x1a1a2a); // Darker but not pitch black - you can see objects
   
-  // Dark space fog
-  setFog(0x000011, 20, 120);
+  // Dark fog for TRON aesthetic
+  setFog(0x000020, 30, 150);
   
   // Build initial scene
   await buildStartScene();
@@ -135,24 +143,43 @@ function initStartScreen() {
 }
 
 async function buildStartScene() {
-  // Create a simple but stunning intro scene
-  // Glowing grid floor
+  // Create a VIBRANT neon intro scene
+  // Glowing grid floor - subtle base glow
   const gridSize = 80;
-  gridFloor = createPlane(gridSize, gridSize, COLORS.neonCyan, [0, 0, 0]);
-  setRotation(gridFloor, -Math.PI/2, 0, 0);
+  gridFloor = createAdvancedCube(gridSize, {
+    color: COLORS.neonCyan,
+    emissive: COLORS.neonCyan,
+    emissiveIntensity: 0.3, // Reduced from 0.8 - subtle foundation
+    flatShading: true
+  }, [0, -0.5, 0]);
+  setScale(gridFloor, 1, 0.01, 1); // Make it flat
   
-  // Grid lines
+  // Grid lines with moderate emissive glow
   for (let i = -40; i <= 40; i += 5) {
-    // Horizontal
-    const hLine = createCube(gridSize, 0.1, 0.2, COLORS.electric, [0, 0.1, i]);
+    // Horizontal - alternating cyan and magenta
+    const hColor = i % 10 === 0 ? COLORS.neonCyan : COLORS.electric;
+    const hLine = createAdvancedCube(1, {
+      color: hColor,
+      emissive: hColor,
+      emissiveIntensity: 0.6, // Reduced from 1.2
+      flatShading: true
+    }, [0, 0.1, i]);
+    setScale(hLine, gridSize, 0.15, 0.3);
     tunnelSegments.push(hLine);
     
-    // Vertical
-    const vLine = createCube(0.2, 0.1, gridSize, COLORS.electric, [i, 0.1, 0]);
+    // Vertical - alternating colors
+    const vColor = i % 10 === 0 ? COLORS.neonMagenta : COLORS.neonPink;
+    const vLine = createAdvancedCube(1, {
+      color: vColor,
+      emissive: vColor,
+      emissiveIntensity: 0.6, // Reduced from 1.2
+      flatShading: true
+    }, [i, 0.1, 0]);
+    setScale(vLine, 0.3, 0.15, gridSize);
     tunnelSegments.push(vLine);
   }
   
-  // Floating crystalline structures
+  // Floating GLOWING crystalline structures - much brighter
   for (let i = 0; i < 8; i++) {
     const angle = (i / 8) * Math.PI * 2;
     const radius = 25;
@@ -160,7 +187,16 @@ async function buildStartScene() {
     const z = Math.sin(angle) * radius;
     const size = 2 + Math.random() * 3;
     
-    const crystal = createCube(size, size * 2, size, COLORS.neonMagenta, [x, size, z]);
+    // Rainbow of colors for crystals
+    const crystalColors = [COLORS.neonCyan, COLORS.neonMagenta, COLORS.neonYellow, COLORS.neonPink, COLORS.neonGreen];
+    const crystalColor = crystalColors[i % crystalColors.length];
+    
+    const crystal = createAdvancedCube(size, {
+      color: crystalColor,
+      emissive: crystalColor,
+      emissiveIntensity: 0.8, // Reduced from 1.5 - bright but not blinding
+      flatShading: true
+    }, [x, size, z]);
     setRotation(crystal, Math.PI/4, angle, Math.PI/6);
     digitalTowers.push({ mesh: crystal, x, z, angle, rotSpeed: 0.5 + Math.random() });
   }
@@ -170,16 +206,19 @@ async function buildStartScene() {
 }
 
 async function createParticleField() {
-  // Ambient floating particles
-  for (let i = 0; i < 100; i++) {
+  // Ambient floating particles - BRIGHT and GLOWING
+  for (let i = 0; i < 150; i++) { // More particles!
     const x = (Math.random() - 0.5) * 100;
     const y = Math.random() * 30;
     const z = (Math.random() - 0.5) * 100;
     
-    const colors = [COLORS.neonCyan, COLORS.neonMagenta, COLORS.neonYellow, COLORS.neonPink];
+    const colors = [COLORS.neonCyan, COLORS.neonMagenta, COLORS.neonYellow, COLORS.neonPink, COLORS.neonGreen, COLORS.neonOrange];
     const color = colors[Math.floor(Math.random() * colors.length)];
     
-    const particle = createSphere(0.2, color, [x, y, z]);
+    const particle = createSphere(0.3, color, [x, y, z], 6, {
+      emissive: color,
+      emissiveIntensity: 0.7 // Reduced from 2.0 - visible sparkle without blinding
+    });
     
     particleSystems.push({
       mesh: particle,
@@ -204,14 +243,22 @@ export function update(dt) {
     const clicked = updateAllButtons();
     if (clicked) {
       console.log('🖱️ A button was clicked!');
+      // Extra safety: force state change if button was clicked but callback didn't fire
+      if (gameState === 'start') {
+        console.log('💡 Button clicked but state not changed, forcing...');
+        gameState = 'playing';
+        currentScene = 0;
+        sceneTime = 0;
+      }
     }
     
-    // KEYBOARD SUPPORT: Press SPACE or ENTER to start
-    if (isKeyPressed('Space') || isKeyPressed(' ') || isKeyPressed('Enter')) {
+    // KEYBOARD SUPPORT: Press SPACE or ENTER to start (use isKeyDown for continuous detection)
+    if (isKeyDown('Space') || isKeyDown('Enter')) {
       console.log('⌨️ Keyboard pressed! Starting demoscene journey...');
       gameState = 'playing';
       currentScene = 0;
       sceneTime = 0;
+      clearButtons(); // Clear buttons when starting
     }
     
     // Animated camera orbit on start screen
@@ -359,12 +406,14 @@ function updateDigitalCity(dt, progress) {
     createDigitalTower();
   }
   
-  // Animate towers
+  // Animate towers with pulsing effect
   digitalTowers.forEach(tower => {
     if (tower.pulsePhase !== undefined) {
       tower.pulsePhase += dt * 3;
-      const scale = 1 + Math.sin(tower.pulsePhase) * 0.1;
-      setScale(tower.mesh, tower.baseScale * scale, tower.baseScale * tower.height * scale, tower.baseScale * scale);
+      const scale = 1 + Math.sin(tower.pulsePhase) * 0.15;
+      const width = tower.width || 3;
+      const height = tower.height || 15;
+      setScale(tower.mesh, width * scale, height * scale, width * scale);
     }
   });
   
@@ -410,8 +459,8 @@ function updateEnergyCore(dt, progress) {
   camera.z = Math.sin(spiralAngle) * spiralRadius;
   camera.y = spiralHeight;
   
-  // Increase bloom for core intensity
-  setBloomStrength(2.5 + progress * 2);
+  // Increase bloom intensity for energy core climax
+  setBloomStrength(1.2 + progress * 1.0); // Goes from 1.2 to 2.2 - dramatic but visible
 }
 
 // Scene 4: THE VOID
@@ -429,18 +478,25 @@ function updateTheVoid(dt, progress) {
   camera.z = -20 + progress * 60;
   camera.y = 5 + progress * 30;
   
-  // Reduce bloom
-  setBloomStrength(2.5 - progress * 2);
+  // Gradually reduce bloom as we fade to void
+  setBloomStrength(1.2 - progress * 1.0); // Fades from 1.2 to 0.2
 }
 
 // Helper functions for creating scene elements
 function createPulseRing() {
-  const ring = createSphere(1, COLORS.pulse, [0, 0.2, 0]);
+  const ringColors = [COLORS.neonCyan, COLORS.neonMagenta, COLORS.neonYellow];
+  const color = ringColors[Math.floor(Math.random() * ringColors.length)];
+  
+  const ring = createSphere(1, color, [0, 0.2, 0], 8, {
+    emissive: color,
+    emissiveIntensity: 1.0 // Reduced from 2.5 - noticeable pulse without washing out
+  });
   pulseRings.push({
     mesh: ring,
     scale: 1,
     life: 2,
-    maxLife: 2
+    maxLife: 2,
+    color
   });
 }
 
@@ -462,6 +518,7 @@ function updatePulseRings(dt) {
 function createTunnelSegment() {
   const z = -50 - Math.random() * 20;
   const segments = 8;
+  const tunnelColors = [COLORS.neonCyan, COLORS.neonMagenta, COLORS.neonYellow, COLORS.neonPink];
   
   for (let i = 0; i < segments; i++) {
     const angle = (i / segments) * Math.PI * 2;
@@ -469,8 +526,14 @@ function createTunnelSegment() {
     const x = Math.cos(angle) * radius;
     const y = Math.sin(angle) * radius;
     
-    const color = i % 2 === 0 ? COLORS.neonCyan : COLORS.neonMagenta;
-    const seg = createCube(1, 1, 2, color, [x, y, z]);
+    const color = tunnelColors[i % tunnelColors.length];
+    const seg = createAdvancedCube(1, {
+      color: color,
+      emissive: color,
+      emissiveIntensity: 0.8, // Reduced from 1.5
+      flatShading: true
+    }, [x, y, z]);
+    setScale(seg, 1, 1, 2);
     
     tunnelSegments.push({
       mesh: seg,
@@ -485,15 +548,22 @@ function createDataStream() {
   const x = Math.cos(angle) * radius;
   const y = Math.sin(angle) * radius;
   
-  const colors = [COLORS.neonCyan, COLORS.neonMagenta, COLORS.neonYellow];
+  const colors = [COLORS.neonCyan, COLORS.neonMagenta, COLORS.neonYellow, COLORS.neonGreen, COLORS.neonOrange];
   const color = colors[Math.floor(Math.random() * colors.length)];
   
-  const stream = createCube(0.3, 0.3, 3, color, [x, y, -60]);
+  const stream = createAdvancedCube(1, {
+    color: color,
+    emissive: color,
+    emissiveIntensity: 0.9, // Reduced from 1.8
+    flatShading: true
+  }, [x, y, -60]);
+  setScale(stream, 0.4, 0.4, 4);
   
   dataStreams.push({
     mesh: stream,
     x, y, z: -60,
-    speed: 30 + Math.random() * 20
+    speed: 30 + Math.random() * 20,
+    color
   });
 }
 
@@ -520,17 +590,25 @@ function createDigitalTower() {
   const width = 2 + Math.random() * 3;
   const height = 10 + Math.random() * 20;
   
-  const colors = [COLORS.neonCyan, COLORS.neonMagenta, COLORS.neonYellow, COLORS.neonPink];
+  const colors = [COLORS.neonCyan, COLORS.neonMagenta, COLORS.neonYellow, COLORS.neonPink, COLORS.neonGreen, COLORS.neonOrange];
   const color = colors[Math.floor(Math.random() * colors.length)];
   
-  const tower = createCube(width, height, width, color, [x, height / 2, z]);
+  const tower = createAdvancedCube(1, {
+    color: color,
+    emissive: color,
+    emissiveIntensity: 0.7, // Reduced from 1.3
+    flatShading: true
+  }, [x, height / 2, z]);
+  setScale(tower, width, height, width);
   
   digitalTowers.push({
     mesh: tower,
     x, z,
     height,
-    baseScale: width / 2,
-    pulsePhase: Math.random() * Math.PI * 2
+    width,
+    baseScale: 1,
+    pulsePhase: Math.random() * Math.PI * 2,
+    color
   });
 }
 
@@ -540,15 +618,33 @@ function createLightCycle() {
   const x = Math.cos(angle) * radius;
   const z = Math.sin(angle) * radius;
   
-  const body = createCube(2, 0.5, 1, COLORS.neonCyan, [x, 1, z]);
-  const trail = createCube(0.5, 0.5, 8, COLORS.electric, [x, 1, z]);
+  const cycleColors = [COLORS.neonCyan, COLORS.neonMagenta, COLORS.neonYellow, COLORS.neonOrange];
+  const bodyColor = cycleColors[Math.floor(Math.random() * cycleColors.length)];
+  const trailColor = bodyColor; // Matching trail
+  
+  const body = createAdvancedCube(1, {
+    color: bodyColor,
+    emissive: bodyColor,
+    emissiveIntensity: 0.8, // Reduced from 1.5
+    flatShading: true
+  }, [x, 1, z]);
+  setScale(body, 2, 0.5, 1);
+  
+  const trail = createAdvancedCube(1, {
+    color: trailColor,
+    emissive: trailColor,
+    emissiveIntensity: 0.6, // Reduced from 1.2
+    flatShading: true
+  }, [x, 1, z]);
+  setScale(trail, 0.5, 0.5, 8);
   
   lightCycles.push({
     body,
     trail,
     x, z,
     angle,
-    speed: 2 + Math.random()
+    speed: 2 + Math.random(),
+    color: bodyColor
   });
 }
 
@@ -576,16 +672,20 @@ function createEnergyField() {
   const z = (Math.random() - 0.5) * 20;
   
   const size = 1 + Math.random() * 2;
-  const colors = [COLORS.neonMagenta, COLORS.neonYellow, COLORS.neonPink];
+  const colors = [COLORS.neonMagenta, COLORS.neonYellow, COLORS.neonPink, COLORS.neonCyan, COLORS.neonGreen];
   const color = colors[Math.floor(Math.random() * colors.length)];
   
-  const field = createSphere(size, color, [x, y, z]);
+  const field = createSphere(size, color, [x, y, z], 10, {
+    emissive: color,
+    emissiveIntensity: 1.0 // Reduced from 2.0 - bright but not blinding
+  });
   
   energyFields.push({
     mesh: field,
     rotation: 0,
     rotSpeed: 0.5 + Math.random(),
-    pulsePhase: Math.random() * Math.PI * 2
+    pulsePhase: Math.random() * Math.PI * 2,
+    color
   });
 }
 
@@ -597,7 +697,10 @@ function createExplosionParticle() {
   const colors = Object.values(COLORS);
   const color = colors[Math.floor(Math.random() * colors.length)];
   
-  const particle = createSphere(0.3, color, [x, y, z]);
+  const particle = createSphere(0.5, color, [x, y, z], 6, {
+    emissive: color,
+    emissiveIntensity: 1.2 // Reduced from 2.5 - bright explosion without washing out
+  });
   
   particleSystems.push({
     mesh: particle,
@@ -689,9 +792,9 @@ function cleanupScene() {
 }
 
 function setupScene(_sceneIndex) {
-  // Set theme lighting based on scene
-  setFog(0x000011, 20, 120);
-  setBloomStrength(2.5);
+  // Set theme lighting based on scene - balanced darkness
+  setFog(0x000020, 30, 150);
+  setBloomStrength(1.2); // Balanced bloom setting
   
   // Reset camera for new scene
   camera.roll = 0;

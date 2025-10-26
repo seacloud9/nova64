@@ -15,8 +15,12 @@ import { skyboxApi } from '../runtime/api-skybox.js';
 import { uiApi } from '../runtime/ui.js';
 import { effectsApi } from '../runtime/api-effects.js';
 import { voxelApi } from '../runtime/api-voxel.js';
+import { createFullscreenButton } from '../runtime/fullscreen-button.js';
 
 const canvas = document.getElementById('screen');
+
+// Create fullscreen button - stored globally for cleanup if needed
+globalThis.fullscreenButton = createFullscreenButton(canvas);
 
 // ONLY use Three.js renderer - Nintendo 64/PlayStation style 3D console
 let gpu;

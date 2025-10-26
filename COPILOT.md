@@ -23,7 +23,7 @@ ES2022 Modules          // Modern JavaScript features
 
 // Development tools
 Node.js 18+             // Runtime environment
-npm/yarn                // Package management
+pnpm                    // Package management (required)
 VS Code                 // Recommended editor
 ```
 
@@ -31,19 +31,19 @@ VS Code                 // Recommended editor
 
 ```bash
 # 🔥 Start development server (hot reloading)
-npm run dev             # Usually http://localhost:5173
+pnpm dev                # Usually http://localhost:5173
 
 # 🏗️ Build optimized production version
-npm run build
+pnpm build
 
 # 👁️ Preview production build locally
-npm run preview
+pnpm preview
 
 # ✅ Run complete test suite (35/35 tests)
-npm test
+pnpm test
 
 # 📦 Install dependencies
-npm install
+pnpm install
 ```
 
 ## 🏗️ **Project Structure**

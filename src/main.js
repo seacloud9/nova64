@@ -182,8 +182,34 @@ function loop() {
 }
 
 attachUI();
-// default cart - load simple 3D demo first
+
+// Check for game parameter in URL
+const urlParams = new URLSearchParams(window.location.search);
+const gameParam = urlParams.get('game');
+const gamePathParam = urlParams.get('path'); // Allow direct path parameter
+
+// Map game IDs to their paths
+const gameMap = {
+  'fzero': '/examples/f-zero-nova-3d/code.js',
+  'knight': '/examples/strider-demo-3d/code.js',
+  'cyberpunk': '/examples/cyberpunk-city-3d/code.js',
+  'strider': '/examples/strider-demo-3d/code.js',
+  'demoscene': '/examples/demoscene/code.js',
+  'space-combat': '/examples/star-fox-nova-3d/code.js',
+  'minecraft': '/examples/minecraft-demo/code.js',
+};
+
+// default cart - load from URL param or default to hello-3d
 (async () => {
-  await loadCart('/examples/hello-3d/code.js');
+  let gamePath = '/examples/hello-3d/code.js';
+  
+  if (gamePathParam) {
+    gamePath = gamePathParam;
+  } else if (gameParam && gameMap[gameParam]) {
+    gamePath = gameMap[gameParam];
+  }
+  
+  console.log(`🎮 Loading game: ${gamePath}`);
+  await loadCart(gamePath);
   requestAnimationFrame(loop);
 })();

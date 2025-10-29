@@ -1,6 +1,180 @@
 import { useState, useEffect } from 'react';
 import { filesystem } from '../os/filesystem';
 
+const DEMO_EXAMPLES = {
+  'hello-3d': {
+    name: '👋 Hello 3D World',
+    code: `// Hello 3D World - Basic 3D Demo
+// Press arrow keys to move, Z/X to jump
+
+let player = { x: 0, y: 0, z: 0, speed: 0.1 };
+
+function update() {
+  // Movement controls
+  if (btn(0)) player.x -= player.speed; // Left
+  if (btn(1)) player.x += player.speed; // Right
+  if (btn(2)) player.z -= player.speed; // Up
+  if (btn(3)) player.z += player.speed; // Down
+  
+  setCamera(player.x, 2, player.z + 5);
+  lookAt(player.x, 0, player.z);
+}
+
+function draw() {
+  cls(rgba8(20, 20, 40));
+  
+  // Draw ground
+  for (let x = -10; x <= 10; x++) {
+    for (let z = -10; z <= 10; z++) {
+      rect3d(x, -0.5, z, 1, 0.1, 1, rgba8(50, 150, 50));
+    }
+  }
+  
+  // Draw player
+  rect3d(player.x, 0, player.z, 0.5, 1, 0.5, rgba8(255, 100, 100));
+  
+  // Draw some cubes
+  rect3d(3, 0, -3, 1, 2, 1, rgba8(100, 100, 255));
+  rect3d(-3, 0, 3, 1, 1.5, 1, rgba8(255, 255, 100));
+  
+  print("3D DEMO - Arrow keys to move!", 10, 10, rgba8(255, 255, 255), 1);
+}`,
+  },
+  'platformer': {
+    name: '🏃 Platformer Demo',
+    code: `// Simple Platformer Demo
+let player = { x: 100, y: 100, vx: 0, vy: 0, grounded: false };
+const GRAVITY = 0.5;
+const JUMP = -10;
+
+const platforms = [
+  { x: 0, y: 300, w: 640, h: 60 },
+  { x: 150, y: 220, w: 100, h: 20 },
+  { x: 300, y: 180, w: 120, h: 20 },
+  { x: 480, y: 140, w: 100, h: 20 },
+];
+
+function update() {
+  // Horizontal movement
+  if (btn(0)) player.vx = -3;
+  else if (btn(1)) player.vx = 3;
+  else player.vx *= 0.8;
+  
+  // Jump
+  if (btnp(4) && player.grounded) player.vy = JUMP;
+  
+  // Apply gravity
+  player.vy += GRAVITY;
+  
+  // Update position
+  player.x += player.vx;
+  player.y += player.vy;
+  
+  // Collision
+  player.grounded = false;
+  platforms.forEach(p => {
+    if (player.x + 16 > p.x && player.x < p.x + p.w &&
+        player.y + 16 > p.y && player.y < p.y + p.h) {
+      if (player.vy > 0) {
+        player.y = p.y - 16;
+        player.vy = 0;
+        player.grounded = true;
+      }
+    }
+  });
+}
+
+function draw() {
+  cls(rgba8(100, 150, 200));
+  
+  // Draw platforms
+  platforms.forEach(p => {
+    rectfill(p.x, p.y, p.w, p.h, rgba8(80, 200, 80));
+    rect(p.x, p.y, p.w, p.h, rgba8(60, 150, 60));
+  });
+  
+  // Draw player
+  rectfill(player.x, player.y, 16, 16, rgba8(255, 100, 100));
+  
+  print("Platformer Demo", 10, 10, rgba8(255, 255, 255));
+  print("Arrows: Move | Z: Jump", 10, 25, rgba8(255, 255, 255));
+}`,
+  },
+  'space-shooter': {
+    name: '🚀 Space Shooter',
+    code: `// Space Shooter Demo
+let player = { x: 320, y: 280, speed: 4 };
+let bullets = [];
+let enemies = [];
+let score = 0;
+
+function update() {
+  // Player movement
+  if (btn(0) && player.x > 0) player.x -= player.speed;
+  if (btn(1) && player.x < 620) player.x += player.speed;
+  if (btn(2) && player.y > 0) player.y -= player.speed;
+  if (btn(3) && player.y < 340) player.y += player.speed;
+  
+  // Shoot
+  if (btnp(4)) {
+    bullets.push({ x: player.x + 10, y: player.y, vy: -8 });
+  }
+  
+  // Update bullets
+  bullets = bullets.filter(b => {
+    b.y += b.vy;
+    return b.y > 0;
+  });
+  
+  // Spawn enemies
+  if (Math.random() < 0.02) {
+    enemies.push({ x: Math.random() * 600, y: -20, vy: 2 });
+  }
+  
+  // Update enemies
+  enemies = enemies.filter(e => {
+    e.y += e.vy;
+    return e.y < 400;
+  });
+  
+  // Collision
+  bullets.forEach((b, bi) => {
+    enemies.forEach((e, ei) => {
+      if (Math.abs(b.x - e.x) < 20 && Math.abs(b.y - e.y) < 20) {
+        bullets.splice(bi, 1);
+        enemies.splice(ei, 1);
+        score += 10;
+      }
+    });
+  });
+}
+
+function draw() {
+  cls(rgba8(0, 0, 20));
+  
+  // Stars
+  for (let i = 0; i < 50; i++) {
+    pset(Math.random() * 640, Math.random() * 360, rgba8(255, 255, 255));
+  }
+  
+  // Player
+  rectfill(player.x, player.y, 20, 20, rgba8(100, 200, 255));
+  
+  // Bullets
+  bullets.forEach(b => {
+    rectfill(b.x, b.y, 4, 12, rgba8(255, 255, 0));
+  });
+  
+  // Enemies
+  enemies.forEach(e => {
+    rectfill(e.x, e.y, 20, 20, rgba8(255, 100, 100));
+  });
+  
+  print(\`SCORE: \${score}\`, 10, 10, rgba8(255, 255, 255), 2);
+}`,
+  },
+};
+
 const STARTER_CODE = `// nova64 Game Template
 // Learn more: https://github.com/seacloud9/nova64
 
@@ -45,6 +219,9 @@ export function GameStudio() {
   const [fileName, setFileName] = useState('my-game.js');
   const [output, setOutput] = useState<string[]>([]);
   const [isSaved, setIsSaved] = useState(false);
+  const [showDemos, setShowDemos] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState('');
 
   useEffect(() => {
     // Load saved game if exists
@@ -69,33 +246,28 @@ export function GameStudio() {
   };
 
   const runGame = () => {
-    setOutput([]);
+    setOutput(['🎮 Launching game preview...']);
     
-    // Intercept console.log
-    const oldLog = console.log;
-    const logs: string[] = [];
+    // Check if we're in dev mode or production
+    const isDev = window.location.hostname === 'localhost' && 
+                  (window.location.port === '3000' || window.location.port === '3001');
+    const baseUrl = window.location.origin;
+    const mainConsoleUrl = isDev ? 'http://localhost:5174' : baseUrl;
     
-    console.log = (...args) => {
-      logs.push(args.join(' '));
-      oldLog(...args);
-    };
+    // Show embedded preview
+    setPreviewUrl(mainConsoleUrl);
+    setShowPreview(true);
+    setOutput(prev => [...prev, '✅ Game preview loaded!']);
+    setOutput(prev => [...prev, '💡 TIP: Copy your code into the console and run it']);
+  };
 
-    try {
-      // Create a sandboxed function
-      const gameFunction = new Function('novaContext', code);
-      
-      // Run the game code
-      if (typeof window !== 'undefined' && (window as any).novaContext) {
-        gameFunction((window as any).novaContext);
-      } else {
-        gameFunction({});
-      }
-      
-      setOutput(['🎮 Game started!', ...logs]);
-    } catch (error: any) {
-      setOutput(['❌ Error: ' + error.message]);
-    } finally {
-      console.log = oldLog;
+  const loadDemo = (demoKey: string) => {
+    const demo = DEMO_EXAMPLES[demoKey as keyof typeof DEMO_EXAMPLES];
+    if (demo) {
+      setCode(demo.code);
+      setFileName(`${demoKey}.js`);
+      setShowDemos(false);
+      setOutput([`📚 Loaded demo: ${demo.name}`]);
     }
   };
 
@@ -144,6 +316,29 @@ export function GameStudio() {
           }}
         />
         <div style={{ flex: 1 }} />
+        <button
+          onClick={() => setShowDemos(!showDemos)}
+          style={{
+            padding: '6px 16px',
+            background: 'linear-gradient(180deg, #9B59B6 0%, #8E44AD 100%)',
+            border: '2px solid #000',
+            borderRadius: 6,
+            cursor: 'pointer',
+            fontSize: 12,
+            color: '#FFFFFF',
+            fontWeight: 'bold',
+            boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.2), 0 2px 4px rgba(0,0,0,0.3)',
+            transition: 'all 0.15s',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = 'linear-gradient(180deg, #A569BD 0%, #9B59B6 100%)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = 'linear-gradient(180deg, #9B59B6 0%, #8E44AD 100%)';
+          }}
+        >
+          📚 Demos
+        </button>
         <button
           onClick={newGame}
           style={{
@@ -221,6 +416,51 @@ export function GameStudio() {
         </button>
       </div>
 
+      {/* Demo Selector */}
+      {showDemos && (
+        <div
+          style={{
+            background: 'linear-gradient(180deg, #2A2A2A 0%, #1A1A1A 100%)',
+            borderBottom: '2px solid #000',
+            padding: '12px 16px',
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: 10,
+            boxShadow: 'inset 0 4px 8px rgba(0,0,0,0.4)',
+          }}
+        >
+          {Object.entries(DEMO_EXAMPLES).map(([key, demo]) => (
+            <button
+              key={key}
+              onClick={() => loadDemo(key)}
+              style={{
+                padding: '8px 16px',
+                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                border: '2px solid #000',
+                borderRadius: 8,
+                cursor: 'pointer',
+                fontSize: 12,
+                fontWeight: 'bold',
+                color: '#FFFFFF',
+                textShadow: '0 1px 2px rgba(0,0,0,0.4)',
+                boxShadow: '0 2px 6px rgba(0,0,0,0.3)',
+                transition: 'all 0.2s',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = 'translateY(-2px)';
+                e.currentTarget.style.boxShadow = '0 4px 12px rgba(102,126,234,0.5)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = 'translateY(0)';
+                e.currentTarget.style.boxShadow = '0 2px 6px rgba(0,0,0,0.3)';
+              }}
+            >
+              {demo.name}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Code Editor */}
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
         <textarea
@@ -242,52 +482,168 @@ export function GameStudio() {
           }}
         />
         
-        {/* Output Console */}
+        {/* Right Panel - Preview/Console */}
         <div
           style={{
-            width: 320,
+            width: 480,
             borderLeft: '3px solid #000',
             background: 'linear-gradient(180deg, #1a1a1a 0%, #0a0a0a 100%)',
-            color: '#00FF00',
-            fontFamily: 'Monaco, Menlo, monospace',
-            fontSize: 12,
-            padding: 16,
-            overflow: 'auto',
+            display: 'flex',
+            flexDirection: 'column',
             boxShadow: 'inset 4px 0 8px rgba(0,0,0,0.5)',
           }}
         >
-          <div style={{ 
-            fontWeight: 'bold', 
-            marginBottom: 12, 
-            color: '#00FF00',
-            fontSize: 14,
-            textShadow: '0 0 10px #00FF00',
-            borderBottom: '2px solid #003300',
-            paddingBottom: 8,
+          {/* Tabs */}
+          <div style={{
+            display: 'flex',
+            borderBottom: '2px solid #000',
+            background: '#0a0a0a',
           }}>
-            📟 CONSOLE OUTPUT
+            <button
+              onClick={() => setShowPreview(true)}
+              style={{
+                flex: 1,
+                padding: '10px 16px',
+                background: showPreview 
+                  ? 'linear-gradient(180deg, #2A2A2A 0%, #1A1A1A 100%)'
+                  : 'transparent',
+                border: 'none',
+                borderRight: '1px solid #000',
+                borderBottom: showPreview ? '3px solid #00FFFF' : 'none',
+                color: showPreview ? '#00FFFF' : '#666666',
+                fontSize: 12,
+                fontWeight: 'bold',
+                cursor: 'pointer',
+                transition: 'all 0.2s',
+                textShadow: showPreview ? '0 0 10px #00FFFF' : 'none',
+              }}
+            >
+              🎮 PREVIEW
+            </button>
+            <button
+              onClick={() => setShowPreview(false)}
+              style={{
+                flex: 1,
+                padding: '10px 16px',
+                background: !showPreview 
+                  ? 'linear-gradient(180deg, #2A2A2A 0%, #1A1A1A 100%)'
+                  : 'transparent',
+                border: 'none',
+                borderBottom: !showPreview ? '3px solid #00FF00' : 'none',
+                color: !showPreview ? '#00FF00' : '#666666',
+                fontSize: 12,
+                fontWeight: 'bold',
+                cursor: 'pointer',
+                transition: 'all 0.2s',
+                textShadow: !showPreview ? '0 0 10px #00FF00' : 'none',
+              }}
+            >
+              📟 CONSOLE
+            </button>
           </div>
-          {output.length === 0 ? (
-            <div style={{ 
-              color: '#006600',
-              fontStyle: 'italic',
-              animation: 'pulse 2s ease-in-out infinite',
-            }}>
-              &gt; Ready. Click "RUN GAME" to execute...
-            </div>
-          ) : (
-            output.map((line, i) => (
-              <div key={i} style={{ 
-                marginBottom: 6,
-                paddingLeft: 8,
-                borderLeft: '2px solid #003300',
-                animation: `slideIn 0.3s ease-out ${i * 0.05}s both`,
-              }}>
-                <span style={{ color: '#00AA00', marginRight: 8 }}>&gt;</span>
-                {line}
+
+          {/* Content Area */}
+          <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+            {showPreview ? (
+              // Preview Panel
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: 12 }}>
+                {previewUrl ? (
+                  <>
+                    <div style={{
+                      marginBottom: 8,
+                      padding: 8,
+                      background: 'rgba(0,255,255,0.1)',
+                      border: '2px solid #00FFFF',
+                      borderRadius: 6,
+                      color: '#00FFFF',
+                      fontSize: 11,
+                      textAlign: 'center',
+                    }}>
+                      🎮 LIVE PREVIEW - Copy your code into the console below to run it
+                    </div>
+                    <iframe
+                      src={previewUrl}
+                      style={{
+                        flex: 1,
+                        border: '3px solid #00FFFF',
+                        borderRadius: 8,
+                        background: '#000',
+                        boxShadow: '0 0 20px rgba(0,255,255,0.3)',
+                      }}
+                      title="Game Preview"
+                    />
+                  </>
+                ) : (
+                  <div style={{
+                    flex: 1,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: '#006666',
+                    textAlign: 'center',
+                    padding: 40,
+                  }}>
+                    <div style={{ fontSize: 64, marginBottom: 20 }}>🎮</div>
+                    <div style={{ fontSize: 16, fontWeight: 'bold', color: '#00AAAA', marginBottom: 12 }}>
+                      No Preview Running
+                    </div>
+                    <div style={{ fontSize: 12, lineHeight: 1.6 }}>
+                      Click <strong style={{ color: '#FF6B6B' }}>▶️ RUN GAME</strong> to launch the preview
+                    </div>
+                  </div>
+                )}
               </div>
-            ))
-          )}
+            ) : (
+              // Console Panel
+              <div
+                style={{
+                  flex: 1,
+                  color: '#00FF00',
+                  fontFamily: 'Monaco, Menlo, monospace',
+                  fontSize: 12,
+                  padding: 16,
+                  overflow: 'auto',
+                }}
+              >
+                {output.length === 0 ? (
+                  <div style={{ color: '#006600' }}>
+                    <div style={{ marginBottom: 12, fontStyle: 'italic' }}>
+                      &gt; Game Studio Ready
+                    </div>
+                    <div style={{ marginBottom: 8, color: '#00AAAA' }}>
+                      💡 Click <strong>📚 Demos</strong> to load example games
+                    </div>
+                    <div style={{ marginBottom: 8, color: '#00AAAA' }}>
+                      💡 Edit your code in the editor
+                    </div>
+                    <div style={{ marginBottom: 8, color: '#00AAAA' }}>
+                      💡 Click <strong>▶️ RUN GAME</strong> to preview
+                    </div>
+                    <div style={{ marginTop: 16, padding: 12, background: 'rgba(0,255,0,0.05)', border: '1px solid #003300', borderRadius: 4 }}>
+                      <div style={{ color: '#00FF00', fontWeight: 'bold', marginBottom: 6 }}>🎮 AVAILABLE DEMOS:</div>
+                      <div style={{ color: '#00AA00', fontSize: 11, lineHeight: 1.6 }}>
+                        • 👋 Hello 3D World<br/>
+                        • 🏃 Platformer Demo<br/>
+                        • 🚀 Space Shooter
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  output.map((line, i) => (
+                    <div key={i} style={{ 
+                      marginBottom: 6,
+                      paddingLeft: 8,
+                      borderLeft: '2px solid #003300',
+                    }}>
+                      <span style={{ color: '#00AA00', marginRight: 8 }}>&gt;</span>
+                      {line}
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 

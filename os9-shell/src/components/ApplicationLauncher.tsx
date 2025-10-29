@@ -21,8 +21,22 @@ const APPS: AppItem[] = [
     id: 'studio',
     name: 'Game Studio',
     icon: '💻',
-    description: 'Code editor for creating games',
+    description: 'Code editor with live preview',
     category: 'Development',
+  },
+  {
+    id: 'paint',
+    name: 'Paint',
+    icon: '🎨',
+    description: 'Pixel art editor',
+    category: 'Graphics',
+  },
+  {
+    id: 'notes',
+    name: 'Notes',
+    icon: '📝',
+    description: 'Text editor and notepad',
+    category: 'Productivity',
   },
   {
     id: 'docs',

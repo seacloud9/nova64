@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import type { MenuTemplate, MenuItem } from '../types';
+import { ApplicationLauncher } from './ApplicationLauncher';
 
 interface MenuBarProps {
   appMenus?: MenuTemplate[];
@@ -8,6 +9,7 @@ interface MenuBarProps {
 
 export function MenuBar({ appMenus = [], onCommand }: MenuBarProps) {
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
+  const [showAppLauncher, setShowAppLauncher] = useState(false);
   const [time, setTime] = useState(new Date());
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -150,36 +152,49 @@ export function MenuBar({ appMenus = [], onCommand }: MenuBarProps) {
   };
 
   return (
-    <div className="menubar" ref={menuRef}>
-      <div className="menubar-left">
-        {allMenus.map((menu, index) => (
-          <div key={index}>
-            <div
-              className={`menu-item ${activeMenu === menu.label ? 'active' : ''}`}
-              onClick={() => handleMenuClick(menu.label)}
-            >
-              {menu.label}
-            </div>
-            {activeMenu === menu.label && (
-              <div className="menu-dropdown">
-                {menu.submenu.map((item, itemIndex) => (
-                  <MenuDropdownItem
-                    key={itemIndex}
-                    item={item}
-                    onClick={() => handleMenuItemClick(item)}
-                  />
-                ))}
+    <>
+      <div className="menubar" ref={menuRef}>
+        <div className="menubar-left">
+          <button 
+            className="activities-button"
+            onClick={() => setShowAppLauncher(true)}
+          >
+            Activities
+          </button>
+          {allMenus.map((menu, index) => (
+            <div key={index}>
+              <div
+                className={`menu-item ${activeMenu === menu.label ? 'active' : ''}`}
+                onClick={() => handleMenuClick(menu.label)}
+              >
+                {menu.label}
               </div>
-            )}
-          </div>
-        ))}
+              {activeMenu === menu.label && (
+                <div className="menu-dropdown">
+                  {menu.submenu.map((item, itemIndex) => (
+                    <MenuDropdownItem
+                      key={itemIndex}
+                      item={item}
+                      onClick={() => handleMenuItemClick(item)}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+        <div className="menubar-right">
+          <div className="menu-status-icon" title="Network">📶</div>
+          <div className="menu-status-icon" title="Volume">�</div>
+          <div className="menu-status-icon" title="Battery">�🔋</div>
+          <div className="menu-time">{formatTime(time)}</div>
+        </div>
       </div>
-      <div className="menubar-right">
-        <div className="menu-status-icon">📶</div>
-        <div className="menu-status-icon">🔋</div>
-        <div className="menu-time">{formatTime(time)}</div>
-      </div>
-    </div>
+      
+      {showAppLauncher && (
+        <ApplicationLauncher onClose={() => setShowAppLauncher(false)} />
+      )}
+    </>
   );
 }
 

@@ -260,7 +260,7 @@ export function GameStudio() {
       view.destroy();
       editorViewRef.current = null;
     };
-  }, [code]);
+  }, []);
 
   // Update editor content when code changes externally (e.g., loading demos)
   useEffect(() => {
@@ -299,183 +299,34 @@ export function GameStudio() {
   };
 
   const runGame = async () => {
-    console.log('🎮 runGame called');
-    setOutput(['Starting game preview...']);
+    setOutput(['🎮 Starting game preview...']);
     setShowPreview(true);
 
-    setTimeout(async () => {
-      console.log('🎮 setTimeout callback starting');
-      const canvas = document.getElementById('game-preview-canvas') as HTMLCanvasElement;
-      console.log('🎮 Canvas element:', canvas);
-      
-      if (!canvas) {
-        const msg = 'Canvas not ready';
-        console.error('❌', msg);
-        setOutput(prev => [...prev, msg]);
+    // Wait a bit for iframe to be mounted
+    setTimeout(() => {
+      const iframe = previewIframeRef.current;
+      if (!iframe || !iframe.contentWindow) {
+        setOutput(prev => [...prev, '❌ Preview not ready']);
         return;
       }
 
       try {
-        console.log('🎮 Starting module loading...');
-        setOutput(prev => [...prev, 'Loading Nova64 runtime...']);
+        setOutput(prev => [...prev, '� Executing your code in preview...']);
         
-        const baseUrl = window.location.origin;
-        console.log('🎮 Base URL:', baseUrl);
+        // Send message to the iframe to execute the code
+        iframe.contentWindow.postMessage({
+          type: 'EXECUTE_CODE',
+          code: code
+        }, '*');
         
-        // Load all required modules
-        console.log('🎮 Importing modules...');
-        const [
-          gpuModule,
-          apiModule,
-          api3dModule,
-          inputModule,
-        ] = await Promise.all([
-          import(/* @vite-ignore */ `${baseUrl}/runtime/gpu-threejs.js`),
-          import(/* @vite-ignore */ `${baseUrl}/runtime/api.js`),
-          import(/* @vite-ignore */ `${baseUrl}/runtime/api-3d.js`),
-          import(/* @vite-ignore */ `${baseUrl}/runtime/input.js`),
-        ]);
-
-        console.log('✅ Modules loaded:', { gpuModule, apiModule, api3dModule, inputModule });
-
-        const { GpuThreeJS } = gpuModule;
-        const { stdApi } = apiModule;
-        const { threeDApi } = api3dModule;
-        const { inputApi } = inputModule;
-
-        setOutput(prev => [...prev, 'Runtime loaded']);
-        setOutput(prev => [...prev, 'Initializing graphics...']);
-
-        console.log('🎨 Initializing GPU...');
-        // Initialize GPU
-        const gpu = new GpuThreeJS(canvas, 640, 360);
-        console.log('✅ GPU initialized:', gpu);
-
-        // Initialize APIs
-        console.log('🎨 Initializing APIs...');
-        const api = stdApi(gpu);
-        const threeDApi_instance = threeDApi(gpu);
-        const iApi = inputApi();
-        console.log('✅ APIs initialized');
-
-        setOutput(prev => [...prev, 'Graphics initialized']);
-        setOutput(prev => [...prev, 'Setting up API functions...']);
-
-        // Make API functions available globally for the game code
-        const gameContext = {
-          // 2D Drawing API
-          cls: api.cls,
-          pset: api.pset,
-          pget: api.pget,
-          line: api.line,
-          rect: api.rect,
-          rectfill: api.rectfill,
-          circ: api.circ,
-          circfill: api.circfill,
-          print: api.print,
-          rgba8: api.rgba8,
-          
-          // 3D API
-          rect3d: threeDApi_instance.rect3d,
-          setCamera: threeDApi_instance.setCamera,
-          lookAt: threeDApi_instance.lookAt,
-          
-          // Input API
-          btn: iApi.btn,
-          btnp: iApi.btnp,
-        };
-
-        // Make functions available globally
-        console.log('🌍 Setting up global API functions...');
-        Object.assign(window, gameContext);
-        console.log('✅ Global API functions ready');
-
-        setOutput(prev => [...prev, 'Executing your code...']);
-
-        console.log('📝 User code length:', code.length);
-        console.log('📝 User code preview:', code.substring(0, 200));
-
-        // Execute the user's code in the global context
-        // Use indirect eval to execute in global scope
-        console.log('⚡ Executing code in global scope...');
-        (0, eval)(code);
-        console.log('✅ Code executed');
-
-        setOutput(prev => [...prev, 'Code executed successfully!']);
-        setOutput(prev => [...prev, 'Starting game loop...']);
-
-        // Check if update and draw functions were defined
-        const w = window as { update?: (dt: number) => void; draw?: () => void };
-        const update = w.update;
-        const draw = w.draw;
-
-        console.log('🔍 Checking for game functions:', { 
-          hasUpdate: !!update, 
-          hasDrawFunc: !!draw,
-          updateType: typeof update,
-          drawType: typeof draw
-        });
-
-        if (!update && !draw) {
-          const msg = '⚠️ Warning: No update() or draw() functions found';
-          console.warn(msg);
-          setOutput(prev => [...prev, msg]);
-        }
-
-        // Start the game loop
-        console.log('🔄 Starting game loop...');
-        let lastTime = performance.now();
-        let frameCount = 0;
-
-        const gameLoop = () => {
-          const now = performance.now();
-          const dt = Math.min(0.1, (now - lastTime) / 1000);
-          lastTime = now;
-          frameCount++;
-
-          if (frameCount === 1) {
-            console.log('🎬 First frame rendering...');
-          }
-
-          // Call update if it exists
-          if (update && typeof update === 'function') {
-            try {
-              update(dt);
-            } catch (e) {
-              console.error('❌ Error in update():', e);
-            }
-          }
-
-          // Render frame
-          try {
-            gpu.beginFrame();
-            if (draw && typeof draw === 'function') {
-              draw();
-            }
-            gpu.endFrame();
-          } catch (e) {
-            console.error('❌ Error in draw():', e);
-          }
-
-          if (frameCount === 1) {
-            console.log('✅ First frame rendered');
-          }
-
-          requestAnimationFrame(gameLoop);
-        };
-
-        gameLoop();
-        setOutput(prev => [...prev, '✅ Game is running!']);
-        console.log('✅ Game loop started!');
+        setOutput(prev => [...prev, '✅ Code sent to preview!']);
 
       } catch (error) {
         const err = error as Error;
-        const msg = `❌ Error: ${err.message}`;
-        console.error('💥 Game execution error:', error);
-        console.error('Stack:', err.stack);
-        setOutput(prev => [...prev, msg]);
+        setOutput(prev => [...prev, `❌ Error: ${err.message}`]);
+        console.error('Game execution error:', error);
       }
-    }, 100);
+    }, 500); // Give iframe more time to load
   };
 
   const loadDemo = (demoKey: string) => {

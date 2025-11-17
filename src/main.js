@@ -211,3 +211,107 @@ const gameMap = {
   await loadCart(gamePath);
   requestAnimationFrame(loop);
 })();
+
+// Listen for messages from Game Studio to execute code
+window.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'EXECUTE_CODE') {
+    console.log('🎮 Game Studio: Executing code...');
+    console.log('📝 Code to execute:', event.data.code.substring(0, 200) + '...');
+    console.log('🔧 Available APIs:', {
+      api: typeof api,
+      iApi: typeof iApi,
+      threeDApi_instance: typeof threeDApi_instance,
+    });
+    
+    try {
+      // Stop current game loop if running
+      console.log('⏸️ Pausing game...');
+      paused = true;
+      
+      // Reset the 3D scene
+      console.log('🧹 Clearing 3D scene...');
+      if (threeDApi_instance && typeof threeDApi_instance.clearScene === 'function') {
+        threeDApi_instance.clearScene();
+        console.log('✅ Scene cleared');
+      } else {
+        console.warn('⚠️ clearScene not available');
+      }
+      
+      // Execute the new code
+      const userCode = event.data.code;
+      
+      console.log('🔨 Creating game function...');
+      // Create a function from the code and execute it
+      const gameFunction = new Function(
+        'cls', 'pset', 'pget', 'rectfill', 'rect', 'circfill', 'circ', 'line', 'print',
+        'btn', 'btnp', 'rgba8', 'spr', 'map', 'mset', 'mget',
+        'rect3d', 'cube3d', 'sphere3d', 'cylinder3d', 'cone3d', 'model3d', 'light3d',
+        'setCamera', 'lookAt', 'fog3d', 'clearScene', 'updateModel',
+        'createSkybox', 'updateSkybox', 'removeSkybox',
+        'bloom', 'chromaticAberration', 'vignette', 'scanlines', 'crt', 'glitch',
+        'createVoxelEngine', 'voxelSet', 'voxelGet', 'voxelClear', 'voxelRender',
+        'console', 'Math', 'Date', 'Array', 'Object', 'String', 'Number',
+        userCode + '\n; return { update: typeof update !== "undefined" ? update : null, draw: typeof draw !== "undefined" ? draw : null, render: typeof render !== "undefined" ? render : null };'
+      );
+      
+      console.log('🚀 Executing game function...');
+      // Call with the API functions and capture the returned functions
+      const gameFunctions = gameFunction(
+        api.cls, api.pset, api.pget, api.rectfill, api.rect, api.circfill, api.circ, api.line, api.print,
+        iApi.btn, iApi.btnp, api.rgba8, sApi.spr, sApi.map, sApi.mset, sApi.mget,
+        threeDApi_instance.rect3d, threeDApi_instance.cube3d, threeDApi_instance.sphere3d, 
+        threeDApi_instance.cylinder3d, threeDApi_instance.cone3d, threeDApi_instance.model3d, threeDApi_instance.light3d,
+        threeDApi_instance.setCamera, threeDApi_instance.lookAt, threeDApi_instance.fog3d, 
+        threeDApi_instance.clearScene, threeDApi_instance.updateModel,
+        skyApi.createSkybox, skyApi.updateSkybox, skyApi.removeSkybox,
+        fxApi.bloom, fxApi.chromaticAberration, fxApi.vignette, fxApi.scanlines, fxApi.crt, fxApi.glitch,
+        vxApi.createVoxelEngine, vxApi.voxelSet, vxApi.voxelGet, vxApi.voxelClear, vxApi.voxelRender,
+        console, Math, Date, Array, Object, String, Number
+      );
+      
+      console.log('📋 Game functions:', gameFunctions);
+      
+      // Replace the cart's update/draw functions with the new ones
+      if (gameFunctions.update || gameFunctions.draw || gameFunctions.render) {
+        console.log('🔄 Replacing cart functions...');
+        if (!nova.cart) {
+          nova.cart = {};
+        }
+        if (gameFunctions.update) {
+          nova.cart.update = gameFunctions.update;
+          console.log('✅ Replaced update function');
+        }
+        if (gameFunctions.draw) {
+          nova.cart.draw = gameFunctions.draw;
+          console.log('✅ Replaced draw function');
+        } else if (gameFunctions.render) {
+          // Support both draw() and render() naming conventions
+          nova.cart.draw = gameFunctions.render;
+          console.log('✅ Replaced draw function (from render)');
+        }
+      } else {
+        console.log('ℹ️ No update/draw functions found in code');
+      }
+      
+      // Resume the game loop
+      console.log('▶️ Resuming game loop...');
+      paused = false;
+      
+      console.log('✅ Game Studio: Code executed successfully!');
+      
+      // Send success message back
+      if (event.source) {
+        event.source.postMessage({ type: 'EXECUTE_SUCCESS' }, event.origin);
+      }
+    } catch (error) {
+      console.error('❌ Game Studio: Error executing code:', error);
+      console.error('Stack trace:', error.stack);
+      if (event.source) {
+        event.source.postMessage({ 
+          type: 'EXECUTE_ERROR', 
+          error: error.message 
+        }, event.origin);
+      }
+    }
+  }
+});

@@ -1,0 +1,72 @@
+  const runGame = async () => {
+    setOutput(['Starting game preview...']);
+    setShowPreview(true);
+
+    setTimeout(async () => {
+      const canvas = document.getElementById('game-preview-canvas') as HTMLCanvasElement;
+      if (!canvas) {
+        setOutput(prev => [...prev, 'Canvas not ready']);
+        return;
+      }
+
+      try {
+        setOutput(prev => [...prev, 'Loading Nova64 runtime...']);
+        
+        const baseUrl = window.location.origin;
+        const [consoleModule, gpuModule] = await Promise.all([
+          import(/* @vite-ignore */ `${baseUrl}/runtime/console.js`),
+          import(/* @vite-ignore */ `${baseUrl}/runtime/gpu-threejs.js`),
+        ]);
+
+        const { Nova64 } = consoleModule;
+        const { GpuThreeJS } = gpuModule;
+
+        setOutput(prev => [...prev, 'Runtime loaded']);
+        setOutput(prev => [...prev, 'Initializing graphics...']);
+
+        const gpu = new GpuThreeJS(canvas, 640, 360);
+        const nova = new Nova64(gpu);
+
+        setOutput(prev => [...prev, 'Graphics initialized']);
+        setOutput(prev => [...prev, 'Loading your code as a cart...']);
+
+        const codeBlob = new Blob([code], { type: 'text/javascript' });
+        const codeUrl = URL.createObjectURL(codeBlob);
+        
+        await nova.loadCart(codeUrl);
+        
+        URL.revokeObjectURL(codeUrl);
+
+        setOutput(prev => [...prev, 'Cart loaded successfully!']);
+        setOutput(prev => [...prev, 'Starting game loop...']);
+
+        let lastTime = performance.now();
+
+        const gameLoop = () => {
+          const now = performance.now();
+          const dt = Math.min(0.1, (now - lastTime) / 1000);
+          lastTime = now;
+
+          if (nova.cart && typeof nova.cart.update === 'function') {
+            nova.cart.update(dt);
+          }
+
+          gpu.beginFrame();
+          if (nova.cart && typeof nova.cart.draw === 'function') {
+            nova.cart.draw();
+          }
+          gpu.endFrame();
+
+          requestAnimationFrame(gameLoop);
+        };
+
+        gameLoop();
+        setOutput(prev => [...prev, 'Game is running!']);
+
+      } catch (error) {
+        const err = error as Error;
+        setOutput(prev => [...prev, `Error: ${err.message}`]);
+        console.error('Game execution error:', error);
+      }
+    }, 100);
+  };

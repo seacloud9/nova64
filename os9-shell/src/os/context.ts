@@ -9,6 +9,9 @@ import type {
   MenuTemplate,
   ControlStripItem,
   AlertOptions,
+  EventHandler,
+  NovaEvent,
+  WindowState,
 } from '../types';
 
 class NovaContextImpl implements NovaContext {
@@ -66,7 +69,7 @@ class NovaContextImpl implements NovaContext {
     eventBus.emit(createEvent('app:registered', { appId: app.id }));
   }
 
-  async launchApp(appId: string, args?: any): Promise<void> {
+  async launchApp(appId: string, args?: unknown): Promise<void> {
     console.log(`🚀 launchApp called with appId: ${appId}`);
     const app = useAppStore.getState().apps.get(appId);
     
@@ -149,16 +152,16 @@ class NovaContextImpl implements NovaContext {
   }
 
   // Event system
-  on(type: string, handler: (evt: any) => void): () => void {
+  on(type: string, handler: EventHandler): () => void {
     return eventBus.on(type, handler);
   }
 
-  emit(evt: any): void {
+  emit(evt: NovaEvent): void {
     eventBus.emit(evt);
   }
 
   // Window management
-  createWindow(opts: any): string {
+  createWindow(opts: Partial<WindowState>): string {
     return useWindowStore.getState().createWindow(opts);
   }
 
@@ -171,7 +174,7 @@ class NovaContextImpl implements NovaContext {
   }
 
   // Preferences
-  async getPref(key: string): Promise<any> {
+  async getPref(key: string): Promise<unknown> {
     try {
       const prefs = await this.read('/Users/Player/Library/Preferences/com.nova64.shell.json');
       const prefsObj = JSON.parse(prefs as string);
@@ -181,9 +184,9 @@ class NovaContextImpl implements NovaContext {
     }
   }
 
-  async setPref(key: string, value: any): Promise<void> {
+  async setPref(key: string, value: unknown): Promise<void> {
     try {
-      let prefs: any = {};
+      let prefs: Record<string, unknown> = {};
       try {
         const prefsData = await this.read('/Users/Player/Library/Preferences/com.nova64.shell.json');
         prefs = JSON.parse(prefsData as string);
@@ -205,5 +208,5 @@ export const novaContext = new NovaContextImpl();
 
 // Make it available globally for external integration
 if (typeof window !== 'undefined') {
-  (window as any).novaContext = novaContext;
+  (window as unknown as { novaContext: NovaContext }).novaContext = novaContext;
 }

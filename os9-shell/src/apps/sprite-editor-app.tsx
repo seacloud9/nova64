@@ -8,7 +8,7 @@ const spriteEditorApp: Nova64App = {
   name: 'Sprite Editor',
   icon: '🎨',
   
-  mount(container, _ctx) {
+  mount(container) {
     const root = createRoot(container);
     root.render(<SpriteEditor />);
     

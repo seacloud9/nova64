@@ -112,7 +112,7 @@ export interface ControlStripItem {
 
 export interface NovaEvent {
   type: string;
-  payload?: any;
+  payload?: unknown;
   timestamp: number;
 }
 
@@ -165,7 +165,7 @@ export interface NovaContext {
 
   // Application lifecycle
   registerApp(app: Nova64App): void;
-  launchApp(appId: string, args?: any): Promise<void>;
+  launchApp(appId: string, args?: unknown): Promise<void>;
   quitApp(appId: string): void;
   getRunningApps(): string[];
 
@@ -188,8 +188,8 @@ export interface NovaContext {
   focusWindow(windowId: string): void;
 
   // Preferences
-  getPref(key: string): Promise<any>;
-  setPref(key: string, value: any): Promise<void>;
+  getPref(key: string): Promise<unknown>;
+  setPref(key: string, value: unknown): Promise<void>;
 }
 
 // ============================================================================

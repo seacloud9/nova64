@@ -7,6 +7,7 @@ import { ControlStrip } from './ControlStrip';
 import { AlertModal } from './AlertModal';
 import { BootScreen } from './BootScreen';
 import { FPSCounter } from './FPSCounter';
+import { novaContext } from '../os/context';
 import '../theme/platinum.css';
 
 export function App() {
@@ -16,8 +17,26 @@ export function App() {
 
   const handleBootComplete = () => {
     setBooted(true);
-    // Play startup chime (optional)
     console.log('🔊 Startup chime!');
+    
+    // Check URL immediately after boot and launch app if parameter is present
+    const params = new URLSearchParams(window.location.search);
+    const appParam = params.get('app');
+    
+    if (appParam) {
+      console.log('� URL parameter detected:', appParam);
+      console.log('🚀 Auto-launching app:', appParam);
+      
+      // Launch app after a brief delay to ensure everything is initialized
+      setTimeout(() => {
+        try {
+          novaContext.launchApp(appParam);
+          console.log('✅ App launched successfully');
+        } catch (error) {
+          console.error('❌ Failed to launch app:', error);
+        }
+      }, 500);
+    }
   };
 
   const handleMenuCommand = (commandId: string) => {

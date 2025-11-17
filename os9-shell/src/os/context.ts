@@ -62,15 +62,22 @@ class NovaContextImpl implements NovaContext {
   // Application lifecycle
   registerApp(app: Nova64App): void {
     useAppStore.getState().registerApp(app);
+    console.log(`✅ Registered app: ${app.id} (${app.name})`);
     eventBus.emit(createEvent('app:registered', { appId: app.id }));
   }
 
   async launchApp(appId: string, args?: any): Promise<void> {
+    console.log(`🚀 launchApp called with appId: ${appId}`);
     const app = useAppStore.getState().apps.get(appId);
+    
     if (!app) {
-      throw new Error(`App not found: ${appId}`);
+      const availableApps = Array.from(useAppStore.getState().apps.keys());
+      console.error(`❌ App not found: ${appId}`);
+      console.error(`Available apps:`, availableApps);
+      throw new Error(`App not found: ${appId}. Available: ${availableApps.join(', ')}`);
     }
 
+    console.log(`✅ Found app:`, app.name);
     useAppStore.getState().launchApp(appId);
     
     // Create a window for the app

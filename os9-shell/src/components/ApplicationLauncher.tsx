@@ -32,6 +32,13 @@ const APPS: AppItem[] = [
     category: 'Graphics',
   },
   {
+    id: 'sprite-editor',
+    name: 'Sprite Editor',
+    icon: '🖼️',
+    description: 'Create and export pixel sprites',
+    category: 'Graphics',
+  },
+  {
     id: 'notes',
     name: 'Notes',
     icon: '📝',

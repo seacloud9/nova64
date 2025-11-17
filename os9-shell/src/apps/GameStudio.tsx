@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { filesystem } from '../os/filesystem';
 
 const DEMO_EXAMPLES = {
@@ -222,6 +222,42 @@ export function GameStudio() {
   const [showDemos, setShowDemos] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const [previewUrl, setPreviewUrl] = useState('');
+
+  // Refs for editor sync
+  const taRef = useRef<HTMLTextAreaElement | null>(null);
+  const highRef = useRef<HTMLPreElement | null>(null);
+
+  const escapeHtml = (str: string) =>
+    str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+  const highlightJS = useCallback((src: string) => {
+    let s = escapeHtml(src);
+
+    // Multi-line comments
+    s = s.replace(/\/\*[\s\S]*?\*\//g, (m) => `<span class="tok-comment">${m}</span>`);
+    // Single-line comments
+    s = s.replace(/\/\/.*$/gm, (m) => `<span class="tok-comment">${m}</span>`);
+
+    // Strings (`, ", ')
+    s = s.replace(/(`(?:\\[\s\S]|[^`])*`|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*)/g, (m) => `<span class="tok-string">${m}</span>`);
+
+    // Numbers
+    s = s.replace(/\b(0x[0-9a-fA-F]+|\d+(?:\.\d+)?)\b/g, (m) => `<span class="tok-number">${m}</span>`);
+
+    // Keywords
+    const kw = '\\b(?:await|async|break|case|catch|class|const|continue|debugger|default|delete|do|else|export|extends|finally|for|function|if|import|in|instanceof|let|new|return|super|switch|throw|try|typeof|var|void|while|with|yield)\\b';
+    s = s.replace(new RegExp(kw, 'g'), (m) => `<span class="tok-keyword">${m}</span>`);
+
+    if (s.startsWith('\n')) s = s.slice(1);
+    return s;
+  }, []);
+
+  useEffect(() => {
+    const codeEl = highRef.current?.querySelector('#highlighted-code') as HTMLElement | null;
+    if (codeEl) {
+      codeEl.innerHTML = highlightJS(code);
+    }
+  }, [code, highlightJS]);
 
   useEffect(() => {
     // Load saved game if exists
@@ -463,24 +499,69 @@ export function GameStudio() {
 
       {/* Code Editor */}
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
-        <textarea
-          value={code}
-          onChange={(e) => setCode(e.target.value)}
-          spellCheck={false}
-          style={{
-            flex: 1,
-            padding: 12,
-            fontFamily: 'Monaco, Menlo, "Courier New", monospace',
-            fontSize: 13,
-            lineHeight: 1.5,
-            border: 'none',
-            outline: 'none',
-            resize: 'none',
-            background: '#1E1E1E',
-            color: '#D4D4D4',
-            caretColor: '#FFFFFF',
-          }}
-        />
+        <div style={{ position: 'relative', flex: 1, overflow: 'hidden' }}>
+          {/* Highlighted code layer */}
+          <pre
+            aria-hidden
+            ref={highRef}
+            style={{
+              margin: 0,
+              padding: 12,
+              fontFamily: 'Monaco, Menlo, "Courier New", monospace',
+              fontSize: 13,
+              lineHeight: 1.5,
+              whiteSpace: 'pre',
+              wordBreak: 'normal',
+              overflow: 'auto',
+              height: '100%',
+              color: 'transparent',
+              background: '#1E1E1E',
+            }}
+          >
+            <code
+              id="highlighted-code"
+              style={{ display: 'block', width: '100%', height: '100%' }}
+              dangerouslySetInnerHTML={{ __html: '' }}
+            />
+          </pre>
+
+          {/* Editable textarea on top */}
+          <textarea
+            value={code}
+            onChange={(e) => setCode(e.target.value)}
+            spellCheck={false}
+            ref={taRef}
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              width: '100%',
+              height: '100%',
+              margin: 0,
+              padding: 12,
+              fontFamily: 'Monaco, Menlo, "Courier New", monospace',
+              fontSize: 13,
+              lineHeight: 1.5,
+              border: 'none',
+              outline: 'none',
+              resize: 'none',
+              background: 'transparent',
+              color: '#D4D4D4',
+              caretColor: '#FFFFFF',
+              zIndex: 2,
+            }}
+            onScroll={(e) => {
+              const ta = e.currentTarget;
+              const high = highRef.current as HTMLElement | null;
+              if (high) {
+                high.scrollTop = ta.scrollTop;
+                high.scrollLeft = ta.scrollLeft;
+              }
+            }}
+          />
+        </div>
         
         {/* Right Panel - Preview/Console */}
         <div

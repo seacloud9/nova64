@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
+  "osBuild": "cd os9-shell && pnpm install && pnpm build && rm -rf ../public/os9-shell/* && mkdir -p ../public/os9-shell && cp -r dist/* ../public/os9-shell/",
     "test": "node tests/test-cli.js",
     "test:api": "node tests/test-cli.js api",
     "test:input": "node tests/test-cli.js input",

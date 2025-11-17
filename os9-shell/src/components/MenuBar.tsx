@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import type { MenuTemplate, MenuItem } from '../types';
 import { ApplicationLauncher } from './ApplicationLauncher';
+import { novaContext } from '../os/context';
 
 interface MenuBarProps {
   appMenus?: MenuTemplate[];
@@ -64,6 +65,14 @@ export function MenuBar({ appMenus = [], onCommand }: MenuBarProps) {
   };
 
   const finderMenus: MenuTemplate[] = [
+    {
+      label: 'Applications',
+      submenu: [
+        { label: 'Sprite Editor', id: 'sprite-editor', click: () => novaContext.launchApp('sprite-editor') },
+        { label: 'Game Studio', id: 'studio', click: () => novaContext.launchApp('studio') },
+        { label: 'Game Launcher', id: 'game-launcher', click: () => novaContext.launchApp('game-launcher') },
+      ],
+    },
     {
       label: 'File',
       submenu: [
@@ -159,10 +168,10 @@ export function MenuBar({ appMenus = [], onCommand }: MenuBarProps) {
             className="activities-button"
             onClick={() => setShowAppLauncher(true)}
           >
-            Activities
+            ⚡ Activities
           </button>
           {allMenus.map((menu, index) => (
-            <div key={index}>
+            <div key={index} style={{ position: 'relative' }}>
               <div
                 className={`menu-item ${activeMenu === menu.label ? 'active' : ''}`}
                 onClick={() => handleMenuClick(menu.label)}

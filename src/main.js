@@ -93,7 +93,6 @@ function attachUI() {
   const pauseBtn = document.getElementById('pause');
   const stepBtn = document.getElementById('step');
   const shotBtn = document.getElementById('shot');
-  const editorBtn = document.getElementById('editor');
 
   sel.addEventListener('change', async () => {
     paused = false; pauseBtn.textContent = 'Pause';
@@ -101,8 +100,7 @@ function attachUI() {
   });
   
   // Renderer is now fixed to Three.js only - no UI controls needed
-  
-  editorBtn.addEventListener('click', () => { openSpriteEditor(); });
+  // Editor button now handled by inline onclick in HTML to open OS9 shell
 
   pauseBtn.addEventListener('click', () => {
     paused = !paused;

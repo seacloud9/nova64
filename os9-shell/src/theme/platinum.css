@@ -998,3 +998,25 @@ button:focus-visible {
     box-shadow: 0 0 20px rgba(0, 102, 255, 0.8);
   }
 }
+
+/* ============================================================================
+   Code Syntax Highlighting (GameStudio)
+   ============================================================================ */
+
+.tok-comment {
+  color: #6A9955;
+  font-style: italic;
+}
+
+.tok-string {
+  color: #CE9178;
+}
+
+.tok-number {
+  color: #B5CEA8;
+}
+
+.tok-keyword {
+  color: #569CD6;
+  font-weight: 500;
+}

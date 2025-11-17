@@ -1,5 +1,9 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { filesystem } from '../os/filesystem';
+import { EditorView, basicSetup } from 'codemirror';
+import { EditorState } from '@codemirror/state';
+import { javascript } from '@codemirror/lang-javascript';
+import { oneDark } from '@codemirror/theme-one-dark';
 
 const DEMO_EXAMPLES = {
   'hello-3d': {
@@ -223,41 +227,55 @@ export function GameStudio() {
   const [showPreview, setShowPreview] = useState(false);
   const [previewUrl, setPreviewUrl] = useState('');
 
-  // Refs for editor sync
-  const taRef = useRef<HTMLTextAreaElement | null>(null);
-  const highRef = useRef<HTMLPreElement | null>(null);
+  // Refs for editor
+  const editorRef = useRef<HTMLDivElement | null>(null);
+  const editorViewRef = useRef<EditorView | null>(null);
 
-  const escapeHtml = (str: string) =>
-    str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  // Initialize CodeMirror
+  useEffect(() => {
+    if (!editorRef.current || editorViewRef.current) return;
 
-  const highlightJS = useCallback((src: string) => {
-    let s = escapeHtml(src);
+    const startState = EditorState.create({
+      doc: code,
+      extensions: [
+        basicSetup,
+        javascript(),
+        oneDark,
+        EditorView.updateListener.of((update) => {
+          if (update.docChanged) {
+            setCode(update.state.doc.toString());
+            setIsSaved(false);
+          }
+        }),
+      ],
+    });
 
-    // Multi-line comments
-    s = s.replace(/\/\*[\s\S]*?\*\//g, (m) => `<span class="tok-comment">${m}</span>`);
-    // Single-line comments
-    s = s.replace(/\/\/.*$/gm, (m) => `<span class="tok-comment">${m}</span>`);
+    const view = new EditorView({
+      state: startState,
+      parent: editorRef.current,
+    });
 
-    // Strings (`, ", ')
-    s = s.replace(/(`(?:\\[\s\S]|[^`])*`|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*)/g, (m) => `<span class="tok-string">${m}</span>`);
+    editorViewRef.current = view;
 
-    // Numbers
-    s = s.replace(/\b(0x[0-9a-fA-F]+|\d+(?:\.\d+)?)\b/g, (m) => `<span class="tok-number">${m}</span>`);
-
-    // Keywords
-    const kw = '\\b(?:await|async|break|case|catch|class|const|continue|debugger|default|delete|do|else|export|extends|finally|for|function|if|import|in|instanceof|let|new|return|super|switch|throw|try|typeof|var|void|while|with|yield)\\b';
-    s = s.replace(new RegExp(kw, 'g'), (m) => `<span class="tok-keyword">${m}</span>`);
-
-    if (s.startsWith('\n')) s = s.slice(1);
-    return s;
+    return () => {
+      view.destroy();
+      editorViewRef.current = null;
+    };
   }, []);
 
+  // Update editor content when code changes externally (e.g., loading demos)
   useEffect(() => {
-    const codeEl = highRef.current?.querySelector('#highlighted-code') as HTMLElement | null;
-    if (codeEl) {
-      codeEl.innerHTML = highlightJS(code);
+    const view = editorViewRef.current;
+    if (view && view.state.doc.toString() !== code) {
+      view.dispatch({
+        changes: {
+          from: 0,
+          to: view.state.doc.length,
+          insert: code,
+        },
+      });
     }
-  }, [code, highlightJS]);
+  }, [code]);
 
   useEffect(() => {
     // Load saved game if exists
@@ -317,6 +335,23 @@ export function GameStudio() {
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: '#1E1E1E' }}>
+      <style>{`
+        .cm-editor {
+          height: 100%;
+          font-size: 13px;
+        }
+        .cm-scroller {
+          overflow: auto;
+          font-family: Monaco, Menlo, "Courier New", monospace;
+        }
+        .cm-content {
+          padding: 12px;
+        }
+        .cm-gutters {
+          background: #1E1E1E;
+          border-right: 1px solid #333;
+        }
+      `}</style>
       {/* Toolbar */}
       <div
         style={{
@@ -499,69 +534,16 @@ export function GameStudio() {
 
       {/* Code Editor */}
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
-        <div style={{ position: 'relative', flex: 1, overflow: 'hidden' }}>
-          {/* Highlighted code layer */}
-          <pre
-            aria-hidden
-            ref={highRef}
-            style={{
-              margin: 0,
-              padding: 12,
-              fontFamily: 'Monaco, Menlo, "Courier New", monospace',
-              fontSize: 13,
-              lineHeight: 1.5,
-              whiteSpace: 'pre',
-              wordBreak: 'normal',
-              overflow: 'auto',
-              height: '100%',
-              color: 'transparent',
-              background: '#1E1E1E',
-            }}
-          >
-            <code
-              id="highlighted-code"
-              style={{ display: 'block', width: '100%', height: '100%' }}
-              dangerouslySetInnerHTML={{ __html: '' }}
-            />
-          </pre>
-
-          {/* Editable textarea on top */}
-          <textarea
-            value={code}
-            onChange={(e) => setCode(e.target.value)}
-            spellCheck={false}
-            ref={taRef}
-            style={{
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              width: '100%',
-              height: '100%',
-              margin: 0,
-              padding: 12,
-              fontFamily: 'Monaco, Menlo, "Courier New", monospace',
-              fontSize: 13,
-              lineHeight: 1.5,
-              border: 'none',
-              outline: 'none',
-              resize: 'none',
-              background: 'transparent',
-              color: '#D4D4D4',
-              caretColor: '#FFFFFF',
-              zIndex: 2,
-            }}
-            onScroll={(e) => {
-              const ta = e.currentTarget;
-              const high = highRef.current as HTMLElement | null;
-              if (high) {
-                high.scrollTop = ta.scrollTop;
-                high.scrollLeft = ta.scrollLeft;
-              }
-            }}
-          />
-        </div>
+        <div 
+          ref={editorRef}
+          style={{ 
+            flex: 1, 
+            overflow: 'auto', 
+            background: '#1E1E1E',
+            fontSize: 13,
+            fontFamily: 'Monaco, Menlo, "Courier New", monospace',
+          }} 
+        />
         
         {/* Right Panel - Preview/Console */}
         <div

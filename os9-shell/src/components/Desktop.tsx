@@ -23,13 +23,22 @@ export function Desktop() {
       y: 140,
     },
     {
+      id: 'sprite-editor',
+      name: 'Sprite Editor',
+      path: '/Applications/SpriteEditor.app',
+      type: 'app',
+      icon: '🎨',
+      x: window.innerWidth - 100,
+      y: 240,
+    },
+    {
       id: 'studio',
       name: 'Game Studio',
       path: '/Applications/GameStudio.app',
       type: 'app',
       icon: '💻',
       x: window.innerWidth - 100,
-      y: 240,
+      y: 340,
     },
     {
       id: 'docs',
@@ -38,7 +47,7 @@ export function Desktop() {
       type: 'app',
       icon: '📚',
       x: window.innerWidth - 100,
-      y: 340,
+      y: 440,
     },
     {
       id: 'trash',

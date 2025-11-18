@@ -5,177 +5,42 @@ import { EditorState } from '@codemirror/state';
 import { javascript } from '@codemirror/lang-javascript';
 import { oneDark } from '@codemirror/theme-one-dark';
 
-const DEMO_EXAMPLES = {
-  'hello-3d': {
-    name: '👋 Hello 3D World',
-    code: `// Hello 3D World - Basic 3D Demo
-// Press arrow keys to move, Z/X to jump
-
-let player = { x: 0, y: 0, z: 0, speed: 0.1 };
-
-function update() {
-  // Movement controls
-  if (btn(0)) player.x -= player.speed; // Left
-  if (btn(1)) player.x += player.speed; // Right
-  if (btn(2)) player.z -= player.speed; // Up
-  if (btn(3)) player.z += player.speed; // Down
-  
-  setCamera(player.x, 2, player.z + 5);
-  lookAt(player.x, 0, player.z);
+interface DemoWithPath {
+  name: string;
+  path: string;
 }
 
-function draw() {
-  cls(rgba8(20, 20, 40));
-  
-  // Draw ground
-  for (let x = -10; x <= 10; x++) {
-    for (let z = -10; z <= 10; z++) {
-      rect3d(x, -0.5, z, 1, 0.1, 1, rgba8(50, 150, 50));
-    }
-  }
-  
-  // Draw player
-  rect3d(player.x, 0, player.z, 0.5, 1, 0.5, rgba8(255, 100, 100));
-  
-  // Draw some cubes
-  rect3d(3, 0, -3, 1, 2, 1, rgba8(100, 100, 255));
-  rect3d(-3, 0, 3, 1, 1.5, 1, rgba8(255, 255, 100));
-  
-  print("3D DEMO - Arrow keys to move!", 10, 10, rgba8(255, 255, 255), 1);
-}`,
+interface DemoWithCode {
+  name: string;
+  code: string;
+}
+
+type DemoExample = DemoWithPath | DemoWithCode;
+
+const DEMO_EXAMPLES: Record<string, DemoExample> = {
+  'fzero': {
+    name: '🏎️ F-ZERO Racing',
+    path: '/examples/f-zero-nova-3d/code.js',
   },
-  'platformer': {
-    name: '🏃 Platformer Demo',
-    code: `// Simple Platformer Demo
-let player = { x: 100, y: 100, vx: 0, vy: 0, grounded: false };
-const GRAVITY = 0.5;
-const JUMP = -10;
-
-const platforms = [
-  { x: 0, y: 300, w: 640, h: 60 },
-  { x: 150, y: 220, w: 100, h: 20 },
-  { x: 300, y: 180, w: 120, h: 20 },
-  { x: 480, y: 140, w: 100, h: 20 },
-];
-
-function update() {
-  // Horizontal movement
-  if (btn(0)) player.vx = -3;
-  else if (btn(1)) player.vx = 3;
-  else player.vx *= 0.8;
-  
-  // Jump
-  if (btnp(4) && player.grounded) player.vy = JUMP;
-  
-  // Apply gravity
-  player.vy += GRAVITY;
-  
-  // Update position
-  player.x += player.vx;
-  player.y += player.vy;
-  
-  // Collision
-  player.grounded = false;
-  platforms.forEach(p => {
-    if (player.x + 16 > p.x && player.x < p.x + p.w &&
-        player.y + 16 > p.y && player.y < p.y + p.h) {
-      if (player.vy > 0) {
-        player.y = p.y - 16;
-        player.vy = 0;
-        player.grounded = true;
-      }
-    }
-  });
-}
-
-function draw() {
-  cls(rgba8(100, 150, 200));
-  
-  // Draw platforms
-  platforms.forEach(p => {
-    rectfill(p.x, p.y, p.w, p.h, rgba8(80, 200, 80));
-    rect(p.x, p.y, p.w, p.h, rgba8(60, 150, 60));
-  });
-  
-  // Draw player
-  rectfill(player.x, player.y, 16, 16, rgba8(255, 100, 100));
-  
-  print("Platformer Demo", 10, 10, rgba8(255, 255, 255));
-  print("Arrows: Move | Z: Jump", 10, 25, rgba8(255, 255, 255));
-}`,
+  'knight': {
+    name: '⚔️ Knight Platformer',
+    path: '/examples/strider-demo-3d/code.js',
   },
-  'space-shooter': {
-    name: '🚀 Space Shooter',
-    code: `// Space Shooter Demo
-let player = { x: 320, y: 280, speed: 4 };
-let bullets = [];
-let enemies = [];
-let score = 0;
-
-function update() {
-  // Player movement
-  if (btn(0) && player.x > 0) player.x -= player.speed;
-  if (btn(1) && player.x < 620) player.x += player.speed;
-  if (btn(2) && player.y > 0) player.y -= player.speed;
-  if (btn(3) && player.y < 340) player.y += player.speed;
-  
-  // Shoot
-  if (btnp(4)) {
-    bullets.push({ x: player.x + 10, y: player.y, vy: -8 });
-  }
-  
-  // Update bullets
-  bullets = bullets.filter(b => {
-    b.y += b.vy;
-    return b.y > 0;
-  });
-  
-  // Spawn enemies
-  if (Math.random() < 0.02) {
-    enemies.push({ x: Math.random() * 600, y: -20, vy: 2 });
-  }
-  
-  // Update enemies
-  enemies = enemies.filter(e => {
-    e.y += e.vy;
-    return e.y < 400;
-  });
-  
-  // Collision
-  bullets.forEach((b, bi) => {
-    enemies.forEach((e, ei) => {
-      if (Math.abs(b.x - e.x) < 20 && Math.abs(b.y - e.y) < 20) {
-        bullets.splice(bi, 1);
-        enemies.splice(ei, 1);
-        score += 10;
-      }
-    });
-  });
-}
-
-function draw() {
-  cls(rgba8(0, 0, 20));
-  
-  // Stars
-  for (let i = 0; i < 50; i++) {
-    pset(Math.random() * 640, Math.random() * 360, rgba8(255, 255, 255));
-  }
-  
-  // Player
-  rectfill(player.x, player.y, 20, 20, rgba8(100, 200, 255));
-  
-  // Bullets
-  bullets.forEach(b => {
-    rectfill(b.x, b.y, 4, 12, rgba8(255, 255, 0));
-  });
-  
-  // Enemies
-  enemies.forEach(e => {
-    rectfill(e.x, e.y, 20, 20, rgba8(255, 100, 100));
-  });
-  
-  print(\`SCORE: \${score}\`, 10, 10, rgba8(255, 255, 255), 2);
-}`,
+  'demoscene': {
+    name: '✨ Demoscene',
+    path: '/examples/demoscene/code.js',
+  },
+  'space-combat': {
+    name: '🚀 Space Combat',
+    path: '/examples/star-fox-nova-3d/code.js',
+  },
+  'minecraft': {
+    name: '⛏️ Voxel Realm',
+    path: '/examples/minecraft-demo/code.js',
+  },
+  'cyberpunk': {
+    name: '🌆 Cyberpunk City',
+    path: '/examples/cyberpunk-city-3d/code.js',
   },
 };
 
@@ -329,19 +194,25 @@ export function GameStudio() {
           apiModule,
           api3dModule,
           inputModule,
+          uiModule,
+          skyboxModule,
         ] = await Promise.all([
           import(/* @vite-ignore */ `${baseUrl}/runtime/gpu-threejs.js`),
           import(/* @vite-ignore */ `${baseUrl}/runtime/api.js`),
           import(/* @vite-ignore */ `${baseUrl}/runtime/api-3d.js`),
           import(/* @vite-ignore */ `${baseUrl}/runtime/input.js`),
+          import(/* @vite-ignore */ `${baseUrl}/runtime/ui.js`),
+          import(/* @vite-ignore */ `${baseUrl}/runtime/api-skybox.js`),
         ]);
 
-        console.log('✅ Modules loaded:', { gpuModule, apiModule, api3dModule, inputModule });
+        console.log('✅ Modules loaded:', { gpuModule, apiModule, api3dModule, inputModule, uiModule, skyboxModule });
 
         const { GpuThreeJS } = gpuModule;
         const { stdApi } = apiModule;
         const { threeDApi } = api3dModule;
         const { inputApi } = inputModule;
+        const { uiApi } = uiModule;
+        const { skyboxApi } = skyboxModule;
 
         setOutput(prev => [...prev, 'Runtime loaded']);
         setOutput(prev => [...prev, 'Initializing graphics...']);
@@ -356,38 +227,90 @@ export function GameStudio() {
         const api = stdApi(gpu);
         const threeDApi_instance = threeDApi(gpu);
         const iApi = inputApi();
+        const skybox = skyboxApi(gpu);
+        
+        // Create a temporary object to hold API functions for UI initialization
+        const g: Record<string, unknown> = {};
+        api.exposeTo(g);
+        
+        // Now initialize UI with the g object that has rgba8 and other functions
+        const ui = uiApi(gpu, g);
         console.log('✅ APIs initialized');
 
         setOutput(prev => [...prev, 'Graphics initialized']);
         setOutput(prev => [...prev, 'Setting up API functions...']);
 
         // Make API functions available globally for the game code
-        const gameContext = {
-          // 2D Drawing API
-          cls: api.cls,
-          pset: api.pset,
-          pget: api.pget,
-          line: api.line,
-          rect: api.rect,
-          rectfill: api.rectfill,
-          circ: api.circ,
-          circfill: api.circfill,
-          print: api.print,
-          rgba8: api.rgba8,
-          
-          // 3D API
-          rect3d: threeDApi_instance.rect3d,
-          setCamera: threeDApi_instance.setCamera,
-          lookAt: threeDApi_instance.lookAt,
-          
-          // Input API
-          btn: iApi.btn,
-          btnp: iApi.btnp,
-        };
-
-        // Make functions available globally
+        // Use the exposeTo method that each API provides
         console.log('🌍 Setting up global API functions...');
-        Object.assign(window, gameContext);
+        api.exposeTo(window);
+        threeDApi_instance.exposeTo(window);
+        iApi.exposeTo(window);
+        ui.exposeTo(window);
+        skybox.exposeTo(window);
+        
+        // Create simplified 3D API wrappers for easier use in demos
+        // These provide a simpler interface similar to PICO-8 3D functions
+        interface GameWindow extends Window {
+          rect3d?: (x: number, y: number, z: number, w: number, h: number, d: number, color: bigint | number) => void;
+          setCamera?: (x: number, y: number, z: number) => void;
+          lookAt?: (x: number, y: number, z: number) => void;
+          createCube?: (size: number, color: number, position: number[], options?: unknown) => number;
+          setCameraPosition?: (x: number, y: number, z: number) => void;
+          setCameraTarget?: (x: number, y: number, z: number) => void;
+          clearScene?: () => void;
+          setPosition?: (meshId: number, x: number, y: number, z: number) => void;
+          setScale?: (meshId: number, x: number, y: number, z: number) => void;
+        }
+        
+        const win = window as GameWindow;
+        
+        win.rect3d = (x: number, y: number, z: number, w: number, h: number, d: number, color: bigint | number) => {
+          // For immediate mode rendering, we create cubes each frame
+          // Convert bigint color to hex number if needed
+          let hexColor = 0xffffff;
+          if (typeof color === 'bigint') {
+            // Extract RGB from rgba8 format (simplified)
+            hexColor = Number((color >> 32n) & 0xffffffn);
+          } else {
+            hexColor = color;
+          }
+          
+          if (win.createCube && win.setPosition && win.setScale) {
+            const meshId = win.createCube(1, hexColor, [x, y, z]);
+            if (meshId !== null && meshId !== undefined) {
+              win.setScale(meshId, w, h, d);
+            }
+          }
+        };
+        
+        win.setCamera = (x: number, y: number, z: number) => {
+          if (win.setCameraPosition) {
+            win.setCameraPosition(x, y, z);
+          }
+        };
+        
+        win.lookAt = (x: number, y: number, z: number) => {
+          if (win.setCameraTarget) {
+            win.setCameraTarget(x, y, z);
+          }
+        };
+        
+        // Add circfill wrapper for filled circles (used in demoscene)
+        interface CircleWindow extends Window {
+          circle?: (x: number, y: number, r: number, color: bigint | number, fill?: boolean) => void;
+          circfill?: (x: number, y: number, r: number, color: bigint | number) => void;
+        }
+        const circWin = window as CircleWindow;
+        
+        if (circWin.circle) {
+          circWin.circfill = (x: number, y: number, r: number, color: bigint | number) => {
+            if (circWin.circle) {
+              circWin.circle(x, y, r, color, true);
+            }
+          };
+        }
+        
         console.log('✅ Global API functions ready');
 
         setOutput(prev => [...prev, 'Executing your code...']);
@@ -395,26 +318,68 @@ export function GameStudio() {
         console.log('📝 User code length:', code.length);
         console.log('📝 User code preview:', code.substring(0, 200));
 
+        // Process the code to handle ES6 modules
+        // Remove export statements and make functions available globally
+        let processedCode = code;
+        
+        // Remove 'export async function' and 'export function' - convert to regular functions
+        processedCode = processedCode.replace(/export\s+async\s+function/g, 'async function');
+        processedCode = processedCode.replace(/export\s+function/g, 'function');
+        
+        // Remove 'export const' and 'export let' - convert to regular declarations
+        processedCode = processedCode.replace(/export\s+const/g, 'const');
+        processedCode = processedCode.replace(/export\s+let/g, 'let');
+        
+        // Remove any standalone 'export default' or 'export { ... }'
+        processedCode = processedCode.replace(/export\s+default\s+/g, '');
+        processedCode = processedCode.replace(/export\s*\{[^}]*\}\s*;?/g, '');
+        
         // Execute the user's code in the global context
         // Use indirect eval to execute in global scope
         console.log('⚡ Executing code in global scope...');
-        (0, eval)(code);
+        (0, eval)(processedCode);
         console.log('✅ Code executed');
 
         setOutput(prev => [...prev, 'Code executed successfully!']);
         setOutput(prev => [...prev, 'Starting game loop...']);
 
-        // Check if update and draw functions were defined
-        const w = window as { update?: (dt: number) => void; draw?: () => void };
+        // Check if update, draw, and init functions were defined
+        const w = window as { 
+          init?: () => void | Promise<void>; 
+          update?: (dt: number) => void; 
+          draw?: () => void;
+        };
+        const init = w.init;
         const update = w.update;
         const draw = w.draw;
 
         console.log('🔍 Checking for game functions:', { 
+          hasInit: !!init,
           hasUpdate: !!update, 
           hasDrawFunc: !!draw,
+          initType: typeof init,
           updateType: typeof update,
           drawType: typeof draw
         });
+
+        // Call init if it exists
+        if (init && typeof init === 'function') {
+          console.log('🎬 Calling init()...');
+          setOutput(prev => [...prev, 'Initializing game...']);
+          try {
+            const initResult = init();
+            if (initResult instanceof Promise) {
+              await initResult;
+              console.log('✅ Async init() completed');
+            } else {
+              console.log('✅ Init() completed');
+            }
+            setOutput(prev => [...prev, 'Game initialized!']);
+          } catch (e) {
+            console.error('❌ Error in init():', e);
+            setOutput(prev => [...prev, `❌ Init error: ${(e as Error).message}`]);
+          }
+        }
 
         if (!update && !draw) {
           const msg = '⚠️ Warning: No update() or draw() functions found';
@@ -437,6 +402,9 @@ export function GameStudio() {
             console.log('🎬 First frame rendering...');
           }
 
+          // Step input system to update button states
+          iApi.step();
+
           // Call update if it exists
           if (update && typeof update === 'function') {
             try {
@@ -448,6 +416,9 @@ export function GameStudio() {
 
           // Render frame
           try {
+            // Note: 3D scenes are persistent - meshes stay until explicitly removed
+            // 2D canvas is cleared automatically by gpu.beginFrame()
+            
             gpu.beginFrame();
             if (draw && typeof draw === 'function') {
               draw();
@@ -478,13 +449,34 @@ export function GameStudio() {
     }, 100);
   };
 
-  const loadDemo = (demoKey: string) => {
-    const demo = DEMO_EXAMPLES[demoKey as keyof typeof DEMO_EXAMPLES];
+  const loadDemo = async (demoKey: string) => {
+    const demo = DEMO_EXAMPLES[demoKey];
     if (demo) {
-      setCode(demo.code);
-      setFileName(`${demoKey}.js`);
+      setOutput([`📚 Loading demo: ${demo.name}...`]);
       setShowDemos(false);
-      setOutput([`📚 Loaded demo: ${demo.name}`]);
+      
+      // Check if demo has inline code or needs to be fetched
+      if ('code' in demo) {
+        setCode(demo.code as string);
+        setFileName(`${demoKey}.js`);
+        setOutput([`📚 Loaded demo: ${demo.name}`]);
+      } else if ('path' in demo) {
+        try {
+          // Fetch the code from the path
+          const response = await fetch(demo.path as string);
+          if (!response.ok) {
+            throw new Error(`Failed to load: ${response.statusText}`);
+          }
+          const gameCode = await response.text();
+          setCode(gameCode);
+          setFileName(`${demoKey}.js`);
+          setOutput([`📚 Loaded demo: ${demo.name}`]);
+        } catch (error) {
+          const err = error as Error;
+          setOutput([`❌ Failed to load demo: ${err.message}`]);
+          console.error('Failed to load demo:', error);
+        }
+      }
     }
   };
 

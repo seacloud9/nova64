@@ -84,7 +84,11 @@ export function Desktop() {
     if (item.type === 'app') {
       novaContext.launchApp(item.id);
     }
-    // TODO: Open Finder window for directories
+    // Launch demoscene if it's the Nova HD disk
+    else if (item.id === 'hd') {
+      novaContext.launchApp('demoscene');
+    }
+    // TODO: Open Finder window for other directories/disks
   };
 
   const handleDesktopClick = (e: React.MouseEvent) => {

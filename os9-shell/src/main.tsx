@@ -14,6 +14,7 @@ import './apps/game-launcher-app';
 import './apps/game-studio-app';
 import './apps/docs-app';
 import './apps/sprite-editor-app';
+import './apps/demoscene-app';
 
 // Initialize the OS
 const root = ReactDOM.createRoot(document.getElementById('root')!);

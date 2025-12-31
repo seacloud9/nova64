@@ -30,7 +30,8 @@ export class GpuThreeJS {
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.6;
     this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    // Note: PCFSoftShadowMap is deprecated in r182, PCFShadowMap now provides soft shadows
+    this.renderer.shadowMap.type = THREE.PCFShadowMap;
     this.renderer.shadowMap.autoUpdate = true;
     
     // Enable advanced rendering features (using modern Three.js approach)

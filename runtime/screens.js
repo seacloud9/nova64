@@ -91,6 +91,24 @@ export class ScreenManager {
   getCurrentScreenObject() {
     return this.currentScreen ? this.screens.get(this.currentScreen) : null;
   }
+
+  // Reset the screen manager to initial state (called when loading a new cart)
+  reset() {
+    // Exit current screen if any
+    if (this.currentScreen) {
+      const currentScreenObj = this.screens.get(this.currentScreen);
+      if (currentScreenObj && typeof currentScreenObj.exit === 'function') {
+        currentScreenObj.exit();
+      }
+    }
+    
+    // Clear all screens and state
+    this.screens = new Map();
+    this.currentScreen = null;
+    this.nextScreen = null;
+    this.transition = null;
+    this.defaultScreen = null;
+  }
 }
 
 // Base Screen class for inheritance

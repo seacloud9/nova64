@@ -10,6 +10,19 @@ export class Nova64 {
     // CRITICAL: Null out cart FIRST to prevent old update() from running during transition
     this.cart = null;
     
+    // Clear UI buttons and panels from previous cart
+    if (typeof globalThis.clearButtons === 'function') {
+      globalThis.clearButtons();
+    }
+    if (typeof globalThis.clearPanels === 'function') {
+      globalThis.clearPanels();
+    }
+    
+    // Reset screen manager to clear registered screens from previous cart
+    if (globalThis.screens && typeof globalThis.screens.reset === 'function') {
+      globalThis.screens.reset();
+    }
+    
     // Clear the 3D scene completely before loading new cart
     if (typeof globalThis.clearScene === 'function') {
       globalThis.clearScene();

@@ -2,7 +2,24 @@
 
 This file provides comprehensive guidance for AI assistants working with the **Nova64 Ultimate 3D Fantasy Console** codebase.
 
-## 🚀 **Development Commands**
+## �️ **Windows Development Environment**
+
+**⚠️ IMPORTANT: On Windows machines, always use WSL (Windows Subsystem for Linux):**
+
+```bash
+# First, open WSL terminal, then set Node.js version
+nvm use 20
+
+# Now you can run pnpm commands
+pnpm dev
+```
+
+**Key points:**
+- Always use **WSL** on Windows (not PowerShell or CMD)
+- Run `nvm use 20` before any pnpm commands
+- All pnpm commands should be executed inside WSL
+
+## �🚀 **Development Commands**
 
 **⚡ Always use `pnpm` for all package management and development tasks:**
 

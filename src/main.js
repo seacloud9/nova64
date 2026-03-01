@@ -188,6 +188,7 @@ const gamePathParam = urlParams.get('path'); // Allow direct path parameter
 
 // Map game IDs to their paths
 const gameMap = {
+  'space-harrier': '/examples/space-harrier-3d/code.js',
   'fzero': '/examples/f-zero-nova-3d/code.js',
   'knight': '/examples/strider-demo-3d/code.js',
   'cyberpunk': '/examples/cyberpunk-city-3d/code.js',
@@ -199,7 +200,7 @@ const gameMap = {
 
 // default cart - load from URL param or default to hello-3d
 (async () => {
-  let gamePath = '/examples/hello-3d/code.js';
+  let gamePath = '/examples/space-harrier-3d/code.js';
   
   if (gamePathParam) {
     gamePath = gamePathParam;

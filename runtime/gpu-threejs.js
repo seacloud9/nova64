@@ -232,14 +232,15 @@ export class GpuThreeJS {
     // Modify the persistent pixel buffer in-place (more reliable than replacing ref)
     const textureData = this.overlay2D.pixels;
     
-    // fb row 0 = top of screen, but WebGL textures have row 0 at bottom.
-    // We flip vertically so the image renders correctly on screen.
+    // fb row 0 = top of screen; WebGL textures have row 0 at bottom (flipY=false).
+    // Flip Y only: fb row y → texture row (H-1-y) so the image appears right-side-up.
+    // No X flip: fb col x → texture col x → UV u=x/W → screen position x (left→right). 
     for (let y = 0; y < H; y++) {
-      const srcRow = y * W * 4;          // framebuffer row (top=0)
-      const dstRow = (H - 1 - y) * W * 4; // texture row (bottom=0)
+      const srcRow = y * W * 4;            // framebuffer row (y=0 = top of screen)
+      const dstRow = (H - 1 - y) * W * 4; // texture row  (row 0 = GL bottom = UV v=0)
       for (let x = 0; x < W; x++) {
         const src = srcRow + x * 4;
-        const dst = dstRow + x * 4;
+        const dst = dstRow + x * 4;        // same column — no X flip
         textureData[dst]     = fb[src]     / 257; // R
         textureData[dst + 1] = fb[src + 1] / 257; // G
         textureData[dst + 2] = fb[src + 2] / 257; // B

@@ -164,9 +164,9 @@ export function api2d(gpu) {
     const p = fb.pixels;
     const af = a / 255;
     const bf = 1 - af;
-    p[i]   = Math.round(r * af * 257 + (p[i]   / 257) * bf) * 257 | 0;
-    p[i+1] = Math.round(g * af * 257 + (p[i+1] / 257) * bf) * 257 | 0;
-    p[i+2] = Math.round(b * af * 257 + (p[i+2] / 257) * bf) * 257 | 0;
+    p[i]   = Math.round(r * af + (p[i]   / 257) * bf) * 257;
+    p[i+1] = Math.round(g * af + (p[i+1] / 257) * bf) * 257;
+    p[i+2] = Math.round(b * af + (p[i+2] / 257) * bf) * 257;
     p[i+3] = 65535;
   }
 

@@ -139,12 +139,13 @@
     </div>
     <script type="module" src="/src/main.js"></script>
     <script>
-      // Check for demo parameter in URL
+      // Check for demo parameter in URL and sync the dropdown
+      // NOTE: main.js already handles ?demo= and loads the correct cart directly,
+      // so we only need to update the <select> to reflect the active demo.
       const urlParams = new URLSearchParams(window.location.search);
       const demoParam = urlParams.get('demo');
       if (demoParam) {
-        // Wait for the page to fully load before setting the select value
-        window.addEventListener('DOMContentLoaded', () => {
+        window.addEventListener('load', () => {
           const select = document.getElementById('cart');
           const demoMap = {
             'crystal-cathedral-3d': '/examples/crystal-cathedral-3d/code.js',
@@ -155,12 +156,17 @@
             'cyberpunk-city-3d': '/examples/cyberpunk-city-3d/code.js',
             'strider-demo-3d': '/examples/strider-demo-3d/code.js',
             'demoscene': '/examples/demoscene/code.js',
+            'space-harrier-3d': '/examples/space-harrier-3d/code.js',
+            'hello-3d': '/examples/hello-3d/code.js',
+            'mystical-realm-3d': '/examples/mystical-realm-3d/code.js',
+            'physics-demo-3d': '/examples/physics-demo-3d/code.js',
+            'shooter-demo-3d': '/examples/shooter-demo-3d/code.js',
+            'hello-skybox': '/examples/hello-skybox/code.js',
           };
           if (demoMap[demoParam]) {
+            // Just sync the dropdown — do NOT dispatch a change event
+            // because main.js already loaded this cart directly
             select.value = demoMap[demoParam];
-            // Trigger change event to load the demo
-            const event = new Event('change', { bubbles: true });
-            select.dispatchEvent(event);
           }
         });
       }

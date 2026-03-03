@@ -58,6 +58,69 @@ function hexColor(hex, alpha = 255) {
   return rgba8((hex >> 16) & 0xff, (hex >> 8) & 0xff, hex & 0xff, alpha);
 }
 
+/** Convert HSL(0-360, 0-1, 0-1) to rgba8 */
+function hslColor(h, s = 1, l = 0.5, alpha = 255) {
+  h = ((h % 360) + 360) % 360;
+  const c = (1 - Math.abs(2 * l - 1)) * s;
+  const x = c * (1 - Math.abs((h / 60) % 2 - 1));
+  const m = l - c / 2;
+  let r, g, b;
+  if      (h < 60)  { r = c; g = x; b = 0; }
+  else if (h < 120) { r = x; g = c; b = 0; }
+  else if (h < 180) { r = 0; g = c; b = x; }
+  else if (h < 240) { r = 0; g = x; b = c; }
+  else if (h < 300) { r = x; g = 0; b = c; }
+  else              { r = c; g = 0; b = x; }
+  return rgba8(
+    Math.round((r + m) * 255),
+    Math.round((g + m) * 255),
+    Math.round((b + m) * 255),
+    alpha,
+  );
+}
+
+// ─── Math utilities ──────────────────────────────────────────────────────────
+
+/** Linear interpolation: lerp(a, b, t) → a + (b - a) * t */
+function lerp(a, b, t) { return a + (b - a) * t; }
+
+/** Clamp value between min and max */
+function clamp(v, min = 0, max = 1) { return v < min ? min : v > max ? max : v; }
+
+/** Random float in [min, max) */
+function randRange(min, max) { return min + Math.random() * (max - min); }
+
+/** Random integer in [min, max] inclusive */
+function randInt(min, max) { return (min + Math.random() * (max - min + 1)) | 0; }
+
+/** Distance between two 2D points */
+function dist(x1, y1, x2, y2) {
+  const dx = x2 - x1, dy = y2 - y1;
+  return Math.sqrt(dx * dx + dy * dy);
+}
+
+/** Distance between two 3D points */
+function dist3d(x1, y1, z1, x2, y2, z2) {
+  const dx = x2 - x1, dy = y2 - y1, dz = z2 - z1;
+  return Math.sqrt(dx * dx + dy * dy + dz * dz);
+}
+
+/** Map a value from one range to another */
+function remap(value, inMin, inMax, outMin, outMax) {
+  return outMin + (value - inMin) * (outMax - outMin) / (inMax - inMin);
+}
+
+/** Smooth pulse: returns 0-1-0 based on time with given frequency */
+function pulse(time, frequency = 1) {
+  return Math.sin(time * frequency * Math.PI * 2) * 0.5 + 0.5;
+}
+
+/** Convert degrees to radians */
+function deg2rad(d) { return d * Math.PI / 180; }
+
+/** Convert radians to degrees */
+function rad2deg(r) { return r * 180 / Math.PI; }
+
 // ─── Classic N64 / PS1 limited palette ───────────────────────────────────────
 const n64Palette = {
   black:   rgba8(0,   0,   0),
@@ -352,6 +415,25 @@ export function api2d(gpu) {
     drawGlowText(text, (cx - w / 2) | 0, y, color, glowColor, scale);
   }
 
+  /**
+   * drawPulsingText(text, cx, y, color, time, opts)
+   * Centered text that pulses opacity and/or scale over time.
+   * opts: { frequency, minAlpha, glowColor, scale }
+   */
+  function drawPulsingText(text, cx, y, color, time, opts = {}) {
+    const freq = opts.frequency ?? 3;
+    const minAlpha = opts.minAlpha ?? 120;
+    const scale = opts.scale ?? 1;
+    const alpha = Math.floor(((Math.sin(time * freq) * 0.5 + 0.5) * (255 - minAlpha)) + minAlpha);
+    const { r, g, b } = _unpack(color);
+    const pulsedColor = rgba8(r, g, b, alpha);
+    if (opts.glowColor) {
+      drawGlowTextCentered(text, cx, y, pulsedColor, opts.glowColor, scale);
+    } else {
+      printCentered(text, cx, y, pulsedColor, scale);
+    }
+  }
+
   // ── Screen overlays ──────────────────────────────────────────────────────────
 
   /**
@@ -613,7 +695,20 @@ export function api2d(gpu) {
         colorLerp,
         colorMix,
         hexColor,
+        hslColor,
         n64Palette,
+
+        // Math utilities
+        lerp,
+        clamp,
+        randRange,
+        randInt,
+        dist,
+        dist3d,
+        remap,
+        pulse,
+        deg2rad,
+        rad2deg,
 
         // Gradient fills
         drawGradient,
@@ -637,6 +732,7 @@ export function api2d(gpu) {
         printRight,
         drawGlowText,
         drawGlowTextCentered,
+        drawPulsingText,
 
         // Overlays
         drawScanlines,

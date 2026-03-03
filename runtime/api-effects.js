@@ -619,6 +619,75 @@ export function effectsApi(gpu) {
     particleSystem.geometry.attributes.position.needsUpdate = true;
   }
 
+  // === CONVENIENCE: enable a full retro N64/PS1 post-processing stack in one call ===
+  /**
+   * enableRetroEffects(opts)
+   * One-call setup for bloom + FXAA + vignette + optional chromatic aberration.
+   * opts: {
+   *   bloom:     { strength, radius, threshold }   | false to skip  (default: {1.5, 0.4, 0.1})
+   *   fxaa:      true | false                                        (default: true)
+   *   vignette:  { darkness, offset }               | false to skip  (default: {1.3, 0.9})
+   *   chromatic: number (amount) | false to skip                     (default: false)
+   *   pixelation: number (factor) | false to skip                    (default: 1)
+   *   dithering: boolean                                              (default: true)
+   * }
+   * Call with no args for sensible defaults that match Star Fox / Crystal Cathedral look.
+   */
+  function enableRetroEffects(opts = {}) {
+    // Pixelation — delegated to gpu (api-3d)
+    const pixelFactor = opts.pixelation !== undefined ? opts.pixelation : 1;
+    if (pixelFactor !== false && typeof globalThis.enablePixelation === 'function') {
+      globalThis.enablePixelation(pixelFactor);
+    }
+
+    // Dithering — delegated to gpu (api-3d)
+    const dither = opts.dithering !== undefined ? opts.dithering : true;
+    if (dither !== false && typeof globalThis.enableDithering === 'function') {
+      globalThis.enableDithering(dither);
+    }
+
+    // Bloom
+    const bloom = opts.bloom !== undefined ? opts.bloom : {};
+    if (bloom !== false) {
+      const b = typeof bloom === 'object' ? bloom : {};
+      enableBloom(b.strength ?? 1.5, b.radius ?? 0.4, b.threshold ?? 0.1);
+    }
+
+    // FXAA
+    const fxaa = opts.fxaa !== undefined ? opts.fxaa : true;
+    if (fxaa !== false) {
+      enableFXAA();
+    }
+
+    // Vignette
+    const vig = opts.vignette !== undefined ? opts.vignette : {};
+    if (vig !== false) {
+      const v = typeof vig === 'object' ? vig : {};
+      enableVignette(v.darkness ?? 1.3, v.offset ?? 0.9);
+    }
+
+    // Chromatic aberration (off by default — slight colour fringing)
+    const chrom = opts.chromatic !== undefined ? opts.chromatic : false;
+    if (chrom !== false) {
+      enableChromaticAberration(typeof chrom === 'number' ? chrom : 0.002);
+    }
+
+    return true;
+  }
+
+  /**
+   * disableRetroEffects()
+   * Tear down everything enableRetroEffects() set up.
+   */
+  function disableRetroEffects() {
+    disableBloom();
+    disableFXAA();
+    disableVignette();
+    disableChromaticAberration();
+    if (typeof globalThis.enablePixelation === 'function') globalThis.enablePixelation(0);
+    if (typeof globalThis.enableDithering === 'function') globalThis.enableDithering(false);
+  }
+
   // === RENDERING ===
   function renderEffects() {
     if (effectsEnabled && composer) {
@@ -649,6 +718,10 @@ export function effectsApi(gpu) {
         disableChromaticAberration: disableChromaticAberration,
         enableVignette: enableVignette,
         disableVignette: disableVignette,
+
+        // Convenience
+        enableRetroEffects: enableRetroEffects,
+        disableRetroEffects: disableRetroEffects,
 
         // Custom shaders
         createShaderMaterial: createShaderMaterial,

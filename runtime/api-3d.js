@@ -375,6 +375,10 @@ export function threeDApi(gpu) {
     gpu.setFog(color, near, far);
   }
 
+  function clearFog() {
+    if (scene) scene.fog = null;
+  }
+
   function setLightDirection(x, y, z) {
     gpu.setLightDirection(x, y, z);
   }
@@ -630,6 +634,49 @@ export function threeDApi(gpu) {
     return gpu.getStats();
   }
 
+  /**
+   * setupScene(opts)
+   * One-call to configure camera, lighting, fog, and skybox.
+   * opts: {
+   *   camera:  { x, y, z, targetX, targetY, targetZ, fov } (default: 0,5,10 looking at 0,0,0)
+   *   light:   { direction: [x,y,z], color: hex, ambient: hex } (default: directional white + grey ambient)
+   *   fog:     { color: hex, near, far } | false               (default: false)
+   *   skybox:  { starCount, starSize, nebulae, nebulaColor } | false (default: false)
+   *   effects: opts for enableRetroEffects() | false            (default: false)
+   * }
+   */
+  function setupScene(opts = {}) {
+    // Camera
+    const cam = opts.camera ?? {};
+    setCameraPosition(cam.x ?? 0, cam.y ?? 5, cam.z ?? 10);
+    setCameraTarget(cam.targetX ?? 0, cam.targetY ?? 0, cam.targetZ ?? 0);
+    if (cam.fov) setCameraFOV(cam.fov);
+
+    // Lighting
+    const light = opts.light ?? {};
+    if (light.direction) {
+      const d = light.direction;
+      setLightDirection(d[0] ?? -0.3, d[1] ?? -1, d[2] ?? -0.5);
+    }
+    if (light.color !== undefined) setLightColor(light.color);
+    if (light.ambient !== undefined) setAmbientLight(light.ambient);
+
+    // Fog
+    if (opts.fog && opts.fog !== false) {
+      setFog(opts.fog.color ?? 0x000000, opts.fog.near ?? 10, opts.fog.far ?? 50);
+    }
+
+    // Skybox — delegate to globalThis if available
+    if (opts.skybox && opts.skybox !== false && typeof globalThis.createSpaceSkybox === 'function') {
+      globalThis.createSpaceSkybox(opts.skybox);
+    }
+
+    // Effects — delegate to globalThis if available
+    if (opts.effects && opts.effects !== false && typeof globalThis.enableRetroEffects === 'function') {
+      globalThis.enableRetroEffects(typeof opts.effects === 'object' ? opts.effects : {});
+    }
+  }
+
   return {
     exposeTo(target) {
       Object.assign(target, {
@@ -667,6 +714,7 @@ export function threeDApi(gpu) {
         
         // Scene
         setFog,
+        clearFog,
         setLightDirection,
         setLightColor,
         setAmbientLight,
@@ -698,6 +746,9 @@ export function threeDApi(gpu) {
         
         // Stats
         get3DStats,
+
+        // Convenience
+        setupScene,
 
         // Direct Three.js access for advanced users
         getScene: () => scene,

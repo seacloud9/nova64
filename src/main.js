@@ -175,7 +175,11 @@ function loop() {
     
     const d1 = performance.now();
     dMs = d1 - d0;
-    gpu.endFrame();
+    try {
+      gpu.endFrame();
+    } catch (e) {
+      console.error('❌ gpu.endFrame() error:', e.message, e.stack);
+    }
   }
   if (stepOnce) { stepOnce = false; }
 
@@ -202,6 +206,7 @@ attachUI();
 const urlParams = new URLSearchParams(window.location.search);
 const gameParam = urlParams.get('game');
 const gamePathParam = urlParams.get('path'); // Allow direct path parameter
+const demoParam = urlParams.get('demo'); // Also handle ?demo= from console.html links
 
 // Map game IDs to their paths
 const gameMap = {
@@ -215,12 +220,36 @@ const gameMap = {
   'minecraft': '/examples/minecraft-demo/code.js',
 };
 
-// default cart - load from URL param or default to hello-3d
+// Map demo names (from ?demo= URL param) to paths
+const demoMap = {
+  'crystal-cathedral-3d': '/examples/crystal-cathedral-3d/code.js',
+  'f-zero-nova-3d': '/examples/f-zero-nova-3d/code.js',
+  'star-fox-nova-3d': '/examples/star-fox-nova-3d/code.js',
+  'minecraft-demo': '/examples/minecraft-demo/code.js',
+  'super-plumber-64': '/examples/super-plumber-64/code.js',
+  'cyberpunk-city-3d': '/examples/cyberpunk-city-3d/code.js',
+  'strider-demo-3d': '/examples/strider-demo-3d/code.js',
+  'demoscene': '/examples/demoscene/code.js',
+  'space-harrier-3d': '/examples/space-harrier-3d/code.js',
+  'hello-3d': '/examples/hello-3d/code.js',
+  'mystical-realm-3d': '/examples/mystical-realm-3d/code.js',
+  'physics-demo-3d': '/examples/physics-demo-3d/code.js',
+  'shooter-demo-3d': '/examples/shooter-demo-3d/code.js',
+  'hello-skybox': '/examples/hello-skybox/code.js',
+};
+
+// default cart - load from URL param or default to space-harrier-3d
 (async () => {
   let gamePath = '/examples/space-harrier-3d/code.js';
   
   if (gamePathParam) {
     gamePath = gamePathParam;
+  } else if (demoParam && demoMap[demoParam]) {
+    // Handle ?demo= parameter (from console.html links / index.html demo cards)
+    gamePath = demoMap[demoParam];
+  } else if (demoParam) {
+    // Fallback: try constructing path from demo name directly
+    gamePath = `/examples/${demoParam}/code.js`;
   } else if (gameParam && gameMap[gameParam]) {
     gamePath = gameMap[gameParam];
   }

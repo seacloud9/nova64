@@ -16,6 +16,8 @@ import { uiApi } from '../runtime/ui.js';
 import { effectsApi } from '../runtime/api-effects.js';
 import { voxelApi } from '../runtime/api-voxel.js';
 import { createFullscreenButton } from '../runtime/fullscreen-button.js';
+import { storeApi } from '../runtime/store.js';
+import { api2d } from '../runtime/api-2d.js';
 
 const canvas = document.getElementById('screen');
 
@@ -46,6 +48,8 @@ const scrApi = screenApi();
 const skyApi = skyboxApi(gpu);
 const fxApi = effectsApi(gpu);
 const vxApi = voxelApi(gpu);
+const storeApiInst = storeApi();
+const api2dInst = api2d(gpu);
 
 // Create UI API - needs to be created after api is fully initialized
 let uiApiInstance;
@@ -66,6 +70,8 @@ scrApi.exposeTo(g);
 skyApi.exposeTo(g);
 fxApi.exposeTo(g);
 vxApi.exposeTo(g);
+storeApiInst.exposeTo(g);
+api2dInst.exposeTo(g);
 
 // Now create UI API after g has rgba8 and other functions
 uiApiInstance = uiApi(gpu, g);
@@ -132,10 +138,17 @@ function loop() {
     iApi.step();
     const u0 = performance.now();
     
+    // Tick the global novaStore time counter
+    storeApiInst.tick(dt);
+
     // Update cart first (for manual screen management)
     // Check if cart exists to prevent errors during scene transitions
     if (nova.cart && nova.cart.update) {
-      nova.cart.update(dt);
+      try {
+        nova.cart.update(dt);
+      } catch (e) {
+        console.error('❌ Cart update() error:', e.message);
+      }
     }
     
     // Then update screen manager (for automatic screen management)
@@ -150,7 +163,11 @@ function loop() {
     // Draw cart first (for manual rendering)
     // Check if cart exists to prevent errors during scene transitions
     if (nova.cart && nova.cart.draw) {
-      nova.cart.draw();
+      try {
+        nova.cart.draw();
+      } catch (e) {
+        console.error('❌ Cart draw() error:', e.message, e.stack);
+      }
     }
     
     // Then draw screen manager (for automatic screen rendering)

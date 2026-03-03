@@ -2,6 +2,7 @@
 
 let gameState = 'start';
 let gameTime = 0;
+let inputLockout = 0.6; // seconds to wait before accepting 'start' input
 
 
 // Colors
@@ -60,6 +61,9 @@ export async function init() {
   // Retro presentation with modern shader touch
   if (typeof enablePixelation === 'function') enablePixelation(1);
   if (typeof enableDithering === 'function') enableDithering(true);
+  enableBloom(1.2, 0.5, 0.1); // Alien sky & bullet glow
+  enableFXAA();
+  enableVignette(1.3, 0.9);
 
   createCheckeredFloor();
   createPlayer();
@@ -86,11 +90,7 @@ function createCheckeredFloor() {
       const z = startZ - r * size - (size/2);
       const y = -2;
 
-      const plane = createPlane(x, y, z, size, size, {
-        material: 'standard',
-        color: color,
-        roughness: 1.0
-      });
+      const plane = createPlane(size, size, color, [x, y, z]);
       rotateMesh(plane, -Math.PI/2, 0, 0);
 
       game.gridPlanes.push({
@@ -148,10 +148,8 @@ function spawnScenery(randomZ = false) {
         opacity: 0.8,
         transparent: true
     };
-    // Safe to use standard signature with array or the object signature
-    const pillar = typeof createCube === 'function' && createCube.length > 3 ?
-       createCube(x, y + pHeight/2, z, 1, pillarOptions) :
-       createCube(1, PALETTE.pillar, [x, y + pHeight/2, z]);
+    // Use createAdvancedCube for holographic/emissive material support
+    const pillar = createAdvancedCube(1, pillarOptions, [x, y + pHeight/2, z]);
 
     setScale(pillar, 2, pHeight, 2);
     parts.push({mesh: pillar, oy: y + pHeight/2});
@@ -245,13 +243,14 @@ export function update(dt) {
   gameTime += dt;
 
   if (gameState === 'start' || gameState === 'gameover') {
+    if (inputLockout > 0) inputLockout -= dt;
     updateAllButtons();
     updateGrid(dt * 0.4);
-    
+
     // Animate player idly
     updatePlayer(dt, true);
 
-    if (key('Space')) startGame();
+    if (inputLockout <= 0 && isKeyPressed('Space')) startGame();
     return;
   }
 
@@ -270,6 +269,7 @@ export function update(dt) {
 
 function startGame() {
   if (gameState === 'playing') return;
+  inputLockout = 0.3; // brief lockout after start too
   gameState = 'playing';
   game.score = 0;
   game.player.health = 100;
@@ -481,15 +481,95 @@ function updateParticles(dt) {
 
 function initStartScreen() {
   clearButtons();
-  createButton(centerX(220), 200, 220, 50, "▶ START MISSION", () => {
+  createButton(centerX(240), 252, 240, 52, "▶ START MISSION", () => {
     startGame();
   }, { normalColor: uiColors.success, hoverColor: rgba8(60, 220, 120, 255) });
+}
+
+function drawStartScreen() {
+  // Solid opaque base — guaranteed to cover the 3D scene
+  cls(rgba8(5, 0, 15, 255));
+
+  // Rich alien-world gradient layered on top
+  drawGradient(0, 0, 640, 360, rgba8(20, 5, 55, 255), rgba8(4, 0, 18, 255), 'v');
+
+  // Radial spotlight glow behind title
+  drawRadialGradient(320, 105, 230, rgba8(200, 60, 255, 48), rgba8(0, 0, 0, 0));
+
+  // Cosmic starfield noise
+  drawNoise(0, 0, 640, 360, 22, Math.floor(gameTime * 6));
+
+  // Distant planet arc at horizon
+  drawRadialGradient(320, 440, 280, rgba8(80, 0, 160, 70), rgba8(0, 0, 0, 0));
+
+  // Corner starbursts — pulsing
+  const sp = Math.sin(gameTime * 2) * 0.5 + 0.5;
+  drawStarburst(30, 30, 18, 7, 6, rgba8(255, 140, 0, Math.floor(sp * 210)), true);
+  drawStarburst(610, 30, 18, 7, 6, rgba8(255, 140, 0, Math.floor(sp * 210)), true);
+  drawStarburst(30, 330, 12, 5, 5, rgba8(180, 0, 255, Math.floor((1 - sp) * 180)), true);
+  drawStarburst(610, 330, 12, 5, 5, rgba8(180, 0, 255, Math.floor((1 - sp) * 180)), true);
+
+  // More scattered star shots across the sky
+  drawStarburst(90, 70, 7, 3, 4, rgba8(255, 255, 180, Math.floor(sp * 160)), true);
+  drawStarburst(550, 55, 6, 2, 4, rgba8(200, 180, 255, Math.floor((1 - sp) * 150)), true);
+  drawStarburst(480, 80, 5, 2, 5, rgba8(255, 200, 100, Math.floor(sp * 130)), true);
+
+  // Energy wave at the horizon line
+  drawWave(0, 185, 640, 6, 0.028, gameTime * 2.2, rgba8(180, 0, 255, 100), 2);
+  drawWave(0, 190, 640, 4, 0.042, gameTime * 2.8 + 1.0, rgba8(255, 100, 0, 75), 2);
+
+  // Main title — SPACE HARRIER with orange/flame glow
+  const titleBob = Math.sin(gameTime * 1.8) * 7;
+  drawGlowTextCentered('SPACE', 320, 44 + titleBob,
+    rgba8(255, 160, 0, 255), rgba8(160, 50, 0, 170), 2);
+  drawGlowTextCentered('HARRIER', 320, 98 + titleBob,
+    rgba8(255, 80, 20, 255), rgba8(120, 20, 0, 160), 2);
+
+  // Subtitle
+  const subPulse = Math.sin(gameTime * 3) * 0.25 + 0.75;
+  setFont('large');
+  setTextAlign('center');
+  drawText('NOVA 64 EDITION', 320, 152, rgba8(120, 200, 255, Math.floor(subPulse * 255)), 1);
+
+  // Tagline
+  setFont('normal');
+  drawText('THE LEGENDARY RAIL SHOOTER RETURNS', 320, 174, rgba8(200, 150, 255, 200), 1);
+
+  // Info panel
+  const panel = createPanel(centerX(440), 200, 440, 92, {
+    bgColor: rgba8(15, 5, 35, 215),
+    borderColor: rgba8(180, 60, 255, 255),
+    borderWidth: 2,
+    shadow: true
+  });
+  drawPanel(panel);
+
+  setFont('small');
+  setTextAlign('center');
+  drawText('◆ Blast through waves of alien enemies', 320, 218, uiColors.light, 1);
+  drawText('◆ Dodge projectiles & collect power-ups', 320, 233, uiColors.light, 1);
+  drawText('◆ Retro N64 rail-shooter with 3D visuals', 320, 248, uiColors.light, 1);
+
+  // Buttons
+  drawAllButtons();
+
+  // Controls hint
+  setFont('tiny');
+  drawText('WASD / Arrows: Move  ◆  Space: Shoot', 320, 318, uiColors.secondary, 1);
+
+  // Pulsing prompt
+  const alpha = Math.floor((Math.sin(gameTime * 5) * 0.5 + 0.5) * 255);
+  drawText('◆ PRESS SPACE TO LAUNCH ◆', 320, 334, rgba8(255, 160, 0, alpha), 1);
+
+  // CRT scanlines
+  drawScanlines(45, 2);
 }
 
 function initGameOverScreen() {
   clearButtons();
   createButton(centerX(220), 260, 220, 50, "↻ RETRY", () => {
     gameState = 'start';
+    inputLockout = 0.6;
     initStartScreen();
   }, { normalColor: uiColors.danger, hoverColor: rgba8(250, 60, 60, 255) });
 }
@@ -497,17 +577,7 @@ function initGameOverScreen() {
 
 export function draw() {
   if (gameState === 'start') {
-    rect(0, 0, 640, 360, rgba8(0, 0, 0, 150), true);
-    setFont('huge');
-    setTextAlign('center');
-    drawTextShadow('SPACE HARRIER', 320, 100, uiColors.warning, rgba8(0,0,0,255), 4, 1);
-    setFont('large');
-    drawText('NOVA 64 EDITION', 320, 140, uiColors.primary, 1);
-    
-    drawAllButtons();
-    
-    setFont('tiny');
-    drawText('WASD/Arrows to Move  |  Space to Shoot', 320, 320, uiColors.light, 1);
+    drawStartScreen();
     return;
   }
 

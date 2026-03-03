@@ -7,6 +7,63 @@ import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPa
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { FXAAShader } from 'three/examples/jsm/shaders/FXAAShader.js';
 
+// Chromatic Aberration shader
+const ChromaticAberrationShader = {
+  uniforms: {
+    tDiffuse: { value: null },
+    amount: { value: 0.002 }
+  },
+  vertexShader: `
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `,
+  fragmentShader: `
+    uniform sampler2D tDiffuse;
+    uniform float amount;
+    varying vec2 vUv;
+    void main() {
+      vec2 dir = vUv - 0.5;
+      float dist = length(dir);
+      vec2 offset = normalize(dir) * dist * amount;
+      float r = texture2D(tDiffuse, vUv + offset).r;
+      float g = texture2D(tDiffuse, vUv).g;
+      float b = texture2D(tDiffuse, vUv - offset).b;
+      gl_FragColor = vec4(r, g, b, 1.0);
+    }
+  `
+};
+
+// Vignette shader
+const VignetteShader = {
+  uniforms: {
+    tDiffuse: { value: null },
+    darkness: { value: 1.5 },
+    offset: { value: 0.95 }
+  },
+  vertexShader: `
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `,
+  fragmentShader: `
+    uniform sampler2D tDiffuse;
+    uniform float darkness;
+    uniform float offset;
+    varying vec2 vUv;
+    void main() {
+      vec4 texel = texture2D(tDiffuse, vUv);
+      vec2 uv = (vUv - vec2(0.5)) * vec2(offset);
+      float vignette = 1.0 - dot(uv, uv) * darkness;
+      gl_FragColor = vec4(texel.rgb * clamp(vignette, 0.0, 1.0), texel.a);
+    }
+  `
+};
+
 export function effectsApi(gpu) {
   if (!gpu.getScene || !gpu.getCamera || !gpu.getRenderer) {
     return { exposeTo: () => {} };
@@ -21,6 +78,8 @@ export function effectsApi(gpu) {
   let renderPass = null;
   let bloomPass = null;
   let fxaaPass = null;
+  let chromaticAberrationPass = null;
+  let vignettePass = null;
 
   // Effect states
   let effectsEnabled = false;
@@ -104,6 +163,46 @@ export function effectsApi(gpu) {
     if (fxaaPass && composer) {
       composer.removePass(fxaaPass);
       fxaaPass = null;
+    }
+  }
+
+  // === CHROMATIC ABERRATION ===
+  function enableChromaticAberration(amount = 0.002) {
+    initPostProcessing();
+    if (chromaticAberrationPass) {
+      chromaticAberrationPass.uniforms['amount'].value = amount;
+      return;
+    }
+    chromaticAberrationPass = new ShaderPass(ChromaticAberrationShader);
+    chromaticAberrationPass.uniforms['amount'].value = amount;
+    composer.addPass(chromaticAberrationPass);
+  }
+
+  function disableChromaticAberration() {
+    if (chromaticAberrationPass && composer) {
+      composer.removePass(chromaticAberrationPass);
+      chromaticAberrationPass = null;
+    }
+  }
+
+  // === VIGNETTE ===
+  function enableVignette(darkness = 1.5, offset = 0.95) {
+    initPostProcessing();
+    if (vignettePass) {
+      vignettePass.uniforms['darkness'].value = darkness;
+      vignettePass.uniforms['offset'].value = offset;
+      return;
+    }
+    vignettePass = new ShaderPass(VignetteShader);
+    vignettePass.uniforms['darkness'].value = darkness;
+    vignettePass.uniforms['offset'].value = offset;
+    composer.addPass(vignettePass);
+  }
+
+  function disableVignette() {
+    if (vignettePass && composer) {
+      composer.removePass(vignettePass);
+      vignettePass = null;
     }
   }
 
@@ -546,6 +645,10 @@ export function effectsApi(gpu) {
         setBloomThreshold: setBloomThreshold,
         enableFXAA: enableFXAA,
         disableFXAA: disableFXAA,
+        enableChromaticAberration: enableChromaticAberration,
+        disableChromaticAberration: disableChromaticAberration,
+        enableVignette: enableVignette,
+        disableVignette: disableVignette,
 
         // Custom shaders
         createShaderMaterial: createShaderMaterial,

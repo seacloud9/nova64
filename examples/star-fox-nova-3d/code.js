@@ -75,9 +75,12 @@ export async function init() {
   // Space fog for depth
   setFog(0x000511, 50, 300);
   
-  // Enable N64 retro effects
+  // Enable N64 retro effects + real post-processing
   enablePixelation(1);
   enableDithering(true);
+  enableBloom(1.5, 0.4, 0.1); // Weapon fire & engine glow
+  enableFXAA();               // Smooth edges
+  enableVignette(1.3, 0.9);   // Cinematic feel
   
   // Create player ship
   createPlayerShip();
@@ -748,6 +751,15 @@ function checkCollisions() {
         // Remove enemy if dead
         if (enemy.health <= 0) {
           createExplosion(enemy.x, enemy.y, enemy.z);
+          // GPU particle burst for death explosion
+          const burst = createParticleSystem(40, {
+            color: 0xff6600, size: 0.4, speed: 18, lifetime: 0.8,
+            spread: 2, gravity: 0
+          });
+          if (burst) {
+            burst.position.set(enemy.x, enemy.y, enemy.z);
+            setTimeout(() => { try { burst.parent && burst.parent.remove(burst); } catch(e){} }, 900);
+          }
           destroyMesh(enemy.mesh);
           game.enemies.splice(j, 1);
           
@@ -973,58 +985,73 @@ export function draw() {
 }
 
 function drawStartScreen() {
-  // Gradient background overlay
-  drawGradientRect(0, 0, 640, 360,
-    rgba8(10, 10, 30, 200),
-    rgba8(30, 10, 50, 220),
-    true
-  );
-  
+  // Deep space gradient background
+  drawGradient(0, 0, 640, 360, rgba8(5, 5, 20, 215), rgba8(20, 8, 45, 228), 'v');
+
+  // Starfield noise grain — subtle shimmer
+  drawNoise(0, 0, 640, 360, 18, Math.floor(startScreenTime * 5));
+
+  // Arwing silhouette polygon (fighter jet seen from above)
+  const ax = 320, ay = 148;
+  const wingFlare = Math.sin(startScreenTime * 1.8) * 3;
+  poly([
+    [ax, ay - 30], [ax + 52, ay + 14 + wingFlare],
+    [ax + 22, ay + 9], [ax + 24, ay + 24],
+    [ax, ay + 16], [ax - 24, ay + 24],
+    [ax - 22, ay + 9], [ax - 52, ay + 14 + wingFlare]
+  ], rgba8(40, 140, 255, 170), true);
+  poly([
+    [ax, ay - 30], [ax + 52, ay + 14 + wingFlare],
+    [ax + 22, ay + 9], [ax + 24, ay + 24],
+    [ax, ay + 16], [ax - 24, ay + 24],
+    [ax - 22, ay + 9], [ax - 52, ay + 14 + wingFlare]
+  ], rgba8(120, 220, 255, 255), false);
+
+  // Laser-burst starbursts on wing tips
+  const shotPulse = Math.sin(startScreenTime * 8) * 0.5 + 0.5;
+  drawStarburst(ax + 60, ay + 10, 9, 4, 4, rgba8(255, 220, 50, Math.floor(shotPulse * 230)), true);
+  drawStarburst(ax - 60, ay + 10, 9, 4, 4, rgba8(255, 220, 50, Math.floor(shotPulse * 230)), true);
+  drawStarburst(ax + 92, ay + 2, 6, 2, 4, rgba8(255, 255, 100, Math.floor((1 - shotPulse) * 190)), true);
+  drawStarburst(ax - 92, ay + 2, 6, 2, 4, rgba8(255, 255, 100, Math.floor((1 - shotPulse) * 190)), true);
+
   // Animated title
   const bounce = Math.sin(startScreenTime * 2) * 10;
-  setFont('huge');
-  setTextAlign('center');
-  drawTextShadow('STAR FOX', 320, 50 + bounce, uiColors.primary, rgba8(0, 0, 0, 255), 4, 1);
-  
-  setFont('large');
+  drawGlowTextCentered('STAR FOX', 320, 38 + bounce, uiColors.primary, rgba8(60, 60, 200, 160), 2);
+
   const pulse = Math.sin(startScreenTime * 3) * 0.3 + 0.7;
-  const pulseColor = rgba8(
-    Math.floor(255 * pulse),
-    Math.floor(180 * pulse),
-    50,
-    255
-  );
-  drawTextOutline('NOVA 64', 320, 110, pulseColor, rgba8(0, 0, 0, 255), 1);
-  
-  // Info panel
-  const panel = createPanel(centerX(400), 330, 400, 180, {
-    bgColor: rgba8(0, 0, 0, 180),
+  const pulseColor = rgba8(Math.floor(255 * pulse), Math.floor(180 * pulse), 50, 255);
+  drawGlowTextCentered('NOVA 64', 320, 88 + bounce, pulseColor, rgba8(120, 60, 0, 130), 2);
+
+  // Mission briefing panel
+  const panel = createPanel(centerX(400), 192, 400, 120, {
+    bgColor: rgba8(0, 0, 0, 185),
     borderColor: uiColors.primary,
     borderWidth: 2,
     shadow: true
   });
   drawPanel(panel);
-  
-  // Mission briefing
+
   setFont('normal');
   setTextAlign('center');
-  drawText('MISSION BRIEFING', 320, 160, uiColors.warning, 1);
-  
+  drawText('MISSION BRIEFING', 320, 208, uiColors.warning, 1);
+
   setFont('small');
-  drawText('Hostile forces detected in Sector 7', 320, 185, uiColors.light, 1);
-  drawText('Eliminate all enemy fighters', 320, 200, uiColors.light, 1);
-  drawText('', 320, 215, uiColors.light, 1);
-  
+  drawText('Hostile forces detected in Sector 7', 320, 232, uiColors.light, 1);
+  drawText('Eliminate all enemy fighters', 320, 247, uiColors.light, 1);
+
   setFont('tiny');
-  drawText('CONTROLS: WASD/Arrows = Move  |  Space = Fire', 320, 240, uiColors.secondary, 1);
-  
+  drawText('CONTROLS: WASD/Arrows = Move  |  Space = Fire', 320, 268, uiColors.secondary, 1);
+
   // Draw buttons
   drawAllButtons();
-  
+
   // Pulsing "press start" indicator
   const alpha = Math.floor((Math.sin(startScreenTime * 4) * 0.5 + 0.5) * 255);
   setFont('normal');
-  drawText('▶ PRESS START TO BEGIN ◀', 320, 280, rgba8(0, 255, 100, alpha), 1);
+  drawText('▶ PRESS START TO BEGIN ◀', 320, 338, rgba8(0, 255, 100, alpha), 1);
+
+  // CRT scanlines
+  drawScanlines(35, 2);
 }
 
 function drawGameOverScreen() {

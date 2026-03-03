@@ -87,6 +87,20 @@ export function threeDApi(gpu) {
   }
 
   // Primitive creation functions with error handling
+  function createCylinder(radiusTop = 1, radiusBottom = 1, height = 1, color = 0xffffff, position = [0, 0, 0], options = {}) {
+    try {
+      const geometry = gpu.createCylinderGeometry ? gpu.createCylinderGeometry(radiusTop, radiusBottom, height, options.segments || 16) : gpu.createBoxGeometry(radiusTop, height, radiusTop);
+      
+      const materialOptions = { ...options, color };
+      const material = gpu.createN64Material(materialOptions);
+      
+      return createMesh(geometry, material, position);
+    } catch (e) {
+      console.error('createCylinder err', e);
+      return createCube(radiusTop*2, color, position);
+    }
+  }
+
   function createCube(size = 1, color = 0xffffff, position = [0, 0, 0], options = {}) {
     try {
       // Validate inputs
@@ -371,9 +385,9 @@ export function threeDApi(gpu) {
     }
   }
 
-  function setAmbientLight(color) {
+  function setAmbientLight(color, intensity) {
     if (gpu.setAmbientLight) {
-      gpu.setAmbientLight(color);
+      gpu.setAmbientLight(color, intensity);
     }
   }
 
@@ -485,16 +499,100 @@ export function threeDApi(gpu) {
     gpu.enableDithering(enabled);
   }
 
-  function enableBloom(enabled = true) {
-    if (gpu.enableBloom) {
-      gpu.enableBloom(enabled);
+  // NOTE: enableBloom is intentionally NOT defined here.
+  // The real UnrealBloomPass implementation lives in api-effects.js and
+  // is exposed to globalThis by that module. Defining a stub here would
+  // only overwrite the real one depending on init order.
+
+  // === NEW: flat shading ===
+  function setFlatShading(meshId, enabled = true) {
+    const mesh = getMesh(meshId);
+    if (!mesh) return false;
+    if (mesh.material) {
+      mesh.material.flatShading = enabled;
+      mesh.material.needsUpdate = true;
+    }
+    return true;
+  }
+
+  // === NEW: visibility / opacity / shadow per-mesh ===
+  function setMeshVisible(meshId, visible) {
+    const mesh = getMesh(meshId);
+    if (!mesh) return false;
+    mesh.visible = visible;
+    return true;
+  }
+
+  function setMeshOpacity(meshId, opacity) {
+    const mesh = getMesh(meshId);
+    if (!mesh) return false;
+    if (mesh.material) {
+      mesh.material.transparent = opacity < 1;
+      mesh.material.opacity = opacity;
+      mesh.material.needsUpdate = true;
+    }
+    return true;
+  }
+
+  function setCastShadow(meshId, cast) {
+    const mesh = getMesh(meshId);
+    if (!mesh) return false;
+    mesh.castShadow = cast;
+    return true;
+  }
+
+  function setReceiveShadow(meshId, receive) {
+    const mesh = getMesh(meshId);
+    if (!mesh) return false;
+    mesh.receiveShadow = receive;
+    return true;
+  }
+
+  // === NEW: createTorus ===
+  function createTorus(x = 0, y = 0, z = 0, radius = 1, tube = 0.3, color = 0xffffff, options = {}) {
+    try {
+      const geometry = new THREE.TorusGeometry(radius, tube, options.radialSegments || 8, options.tubularSegments || 16);
+      const material = gpu.createN64Material({ color, ...options });
+      return createMesh(geometry, material, [x, y, z]);
+    } catch (e) {
+      console.error('createTorus failed:', e);
+      return null;
     }
   }
 
-  function enableMotionBlur(factor = 0.5) {
-    if (gpu.enableMotionBlur) {
-      gpu.enableMotionBlur(factor);
-    }
+  // === NEW: dynamic point lights from carts ===
+  const cartLights = new Map();
+  let lightIdCounter = 0;
+
+  function createPointLight(color = 0xffffff, intensity = 2, distance = 20, x = 0, y = 0, z = 0) {
+    const light = new THREE.PointLight(color, intensity, distance);
+    light.position.set(x, y, z);
+    scene.add(light);
+    const id = ++lightIdCounter;
+    cartLights.set(id, light);
+    return id;
+  }
+
+  function setPointLightPosition(lightId, x, y, z) {
+    const light = cartLights.get(lightId);
+    if (!light) return false;
+    light.position.set(x, y, z);
+    return true;
+  }
+
+  function setPointLightColor(lightId, color) {
+    const light = cartLights.get(lightId);
+    if (!light) return false;
+    light.color.setHex(color);
+    return true;
+  }
+
+  function removeLight(lightId) {
+    const light = cartLights.get(lightId);
+    if (!light) return false;
+    scene.remove(light);
+    cartLights.delete(lightId);
+    return true;
   }
 
   // Raycasting for object picking
@@ -538,6 +636,7 @@ export function threeDApi(gpu) {
         // Primitive creation
         createCube,
         createSphere, 
+        createCylinder,
         createPlane,
         
         // Advanced primitive creation with material options
@@ -577,9 +676,23 @@ export function threeDApi(gpu) {
         // Effects
         enablePixelation,
         enableDithering,
-        enableBloom,
-        enableMotionBlur,
-        
+
+        // Mesh helpers
+        setFlatShading,
+        setMeshVisible,
+        setMeshOpacity,
+        setCastShadow,
+        setReceiveShadow,
+
+        // Extra primitives
+        createTorus,
+
+        // Dynamic lights
+        createPointLight,
+        setPointLightPosition,
+        setPointLightColor,
+        removeLight,
+
         // Interaction
         raycastFromCamera,
         

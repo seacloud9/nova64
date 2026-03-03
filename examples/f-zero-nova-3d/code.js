@@ -59,6 +59,11 @@ export async function init() {
   // VERY bright lighting - almost daylight
   setAmbientLight(0xffffff, 2.0);
   setFog(0x002040, 150, 500);
+  // Post-processing for high-speed feel
+  enableBloom(1.5, 0.3, 0.1); // Track edge & engine glow
+  enableFXAA();
+  enableVignette(1.4, 0.88);  // Speed tunnel effect
+  enableChromaticAberration(0.002); // Visual speed blur
   
   // Add space skybox for better visibility
   createSpaceSkybox();
@@ -706,23 +711,46 @@ export function draw() {
 }
 
 function drawMenu() {
-  setTextAlign('center');
-  setFont('huge');
+  // Sky gradient — deep night to racing blue
+  drawGradient(0, 0, 640, 215, rgba8(0, 0, 30, 235), rgba8(10, 15, 80, 242), 'v');
+
+  // Checkerboard racing track floor
+  drawCheckerboard(0, 215, 640, 145, rgba8(14, 14, 55, 225), rgba8(26, 26, 88, 225), 22);
+
+  // Radial horizon glow
+  drawRadialGradient(320, 215, 280, rgba8(0, 140, 255, 50), rgba8(0, 0, 0, 0));
+
+  // Animated energy waves on the horizon line
+  drawWave(0, 212, 640, 8, 0.033, gameTime * 3.0, rgba8(0, 200, 255, 130), 2);
+  drawWave(0, 218, 640, 6, 0.052, gameTime * 3.5 + 1.4, rgba8(255, 140, 0, 90), 2);
+
+  // Speed stripes (horizontal gradient bands)
+  drawGradient(0, 190, 640, 28, rgba8(0, 0, 0, 0), rgba8(0, 120, 255, 70), 'v');
+
+  // F-ZERO NOVA 64 titles with multi-colour glow
   const titlePulse = Math.sin(gameTime * 3) * 0.3 + 0.7;
-  drawTextShadow('F-ZERO', 320, 60, rgba8(255, 100, 0, Math.floor(titlePulse * 255)), 
-                 rgba8(0, 0, 0, 255), 4, 1);
-  drawTextShadow('NOVA 64', 320, 120, rgba8(0, 200, 255, 255), rgba8(0, 0, 0, 255), 4, 1);
-  
+  drawGlowTextCentered('F-ZERO', 320, 46,
+    rgba8(255, Math.floor(titlePulse * 160), 0, 255),
+    rgba8(180, 58, 0, 160), 2);
+  drawGlowTextCentered('NOVA 64', 320, 104,
+    rgba8(0, 200, 255, 255),
+    rgba8(0, 80, 160, 145), 2);
+
   setFont('large');
-  drawText('ANTI-GRAVITY RACING', 320, 180, rgba8(255, 255, 255, 255), 1);
-  
+  setTextAlign('center');
+  drawText('ANTI-GRAVITY RACING', 320, 164, rgba8(255, 255, 255, 255), 1);
+
   // Draw start button
   drawButtons(startButtons);
-  
+
   setFont('small');
-  drawText('ARROW KEYS or WASD: Steer and Accelerate', 320, 300, rgba8(200, 200, 200, 255), 1);
-  drawText('SPACE: Boost', 320, 320, rgba8(200, 200, 200, 255), 1);
-  drawText('DOWN or S: Brake', 320, 340, rgba8(200, 200, 200, 255), 1);
+  setTextAlign('center');
+  drawText('ARROW KEYS or WASD: Steer and Accelerate', 320, 278, rgba8(200, 200, 200, 255), 1);
+  drawText('SPACE: Boost', 320, 296, rgba8(200, 200, 200, 255), 1);
+  drawText('DOWN or S: Brake', 320, 314, rgba8(200, 200, 200, 255), 1);
+
+  // CRT scanlines
+  drawScanlines(42, 2);
 }
 
 function drawCountdown() {
@@ -861,7 +889,7 @@ function updateButtons(buttons, dt) {
     btn.pressed = inBounds && isPressed;
     
     if (inBounds && isPressed && !btn.wasPressed) {
-      btn.onClick();
+      btn.onClick && btn.onClick();
     }
     
     btn.wasPressed = isPressed;

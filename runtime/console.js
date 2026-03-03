@@ -54,6 +54,11 @@ export class Nova64 {
       update: mod.update || (()=>{}),
       draw: mod.draw || (()=>{})
     };
-    this.cart.init();
+    try {
+      await this.cart.init();
+      console.log('✅ Cart init() complete:', modulePath);
+    } catch (e) {
+      console.error('❌ Cart init() threw:', e.message, e.stack);
+    }
   }
 }

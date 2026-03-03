@@ -52,6 +52,11 @@ export function init() {
   // Setup fog for distance
   setFog(0x87ceeb, 80, 200);
   
+  // Subtle bloom for sun-drenched voxel look
+  enableBloom(0.4, 0.3, 0.7);
+  enableFXAA();
+  enableVignette(1.1, 0.92);
+
   // Setup camera with wide FOV for full-screen immersive first-person view
   setCameraFOV(95); // Wide angle like Minecraft (default is 75)
   setCameraPosition(player.pos[0], player.pos[1] + 1.6, player.pos[2]);

@@ -159,6 +159,8 @@ export function init() {
   // Enable bloom for shiny collectibles
   enableBloom(1.0, 0.6, 0.4);
   enableFXAA();
+  enableVignette(1.2, 0.9);
+  enableChromaticAberration(0.001);
 }
 
 export function update(dt) {

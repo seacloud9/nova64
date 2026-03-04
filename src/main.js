@@ -145,6 +145,9 @@ function loop() {
     // Check if cart exists to prevent errors during scene transitions
     if (nova.cart && nova.cart.update) {
       try {
+        if (typeof globalThis.updateAnimations === "function") {
+          globalThis.updateAnimations(dt);
+        }
         nova.cart.update(dt);
       } catch (e) {
         console.error('❌ Cart update() error:', e.message);

@@ -16,6 +16,8 @@ export function threeDApi(gpu) {
   // Mesh management
   const meshes = new Map();
   let meshIdCounter = 0;
+  const mixers = new Map();
+  const modelAnimations = new Map();
 
   // Material cache
   const materials = new Map();
@@ -79,6 +81,8 @@ export function threeDApi(gpu) {
       if (mesh.material.map) mesh.material.map.dispose();
       mesh.material.dispose();
       meshes.delete(id);
+      mixers.delete(id);
+      modelAnimations.delete(id);
     }
   }
 
@@ -229,6 +233,13 @@ export function threeDApi(gpu) {
           scene.add(model);
           const id = ++meshIdCounter;
           meshes.set(id, model);
+          if (gltf.animations && gltf.animations.length > 0) {
+            const mixer = new THREE.AnimationMixer(model);
+            mixers.set(id, mixer);
+            modelAnimations.set(id, gltf.animations);
+            const action = mixer.clipAction(gltf.animations[0]);
+            action.play();
+          }
           resolve(id);
         },
         undefined,
@@ -238,6 +249,31 @@ export function threeDApi(gpu) {
   }
 
   // Texture loading
+
+  function playAnimation(meshId, nameOrIndex = 0, loop = true, timeScale = 1.0) {
+    const mixer = mixers.get(meshId);
+    if (!mixer) return;
+    const animations = modelAnimations.get(meshId);
+    if (!animations) return;
+    let clip = null;
+    if (typeof nameOrIndex === "number") {
+      clip = animations[nameOrIndex];
+    } else {
+      clip = THREE.AnimationClip.findByName(animations, nameOrIndex);
+    }
+    if (clip) {
+      mixer.stopAllAction();
+      const action = mixer.clipAction(clip);
+      action.setLoop(loop ? THREE.LoopRepeat : THREE.LoopOnce);
+      action.timeScale = timeScale;
+      action.play();
+    }
+  }
+
+  function updateAnimations(dt) {
+    mixers.forEach(mixer => mixer.update(dt));
+  }
+
   function loadTexture(url) {
     return new Promise((resolve, reject) => {
       const loader = new THREE.TextureLoader();
@@ -695,6 +731,8 @@ export function threeDApi(gpu) {
         
         // Model and texture loading
         loadModel,
+        playAnimation,
+        updateAnimations,
         loadTexture,
         
         // Transforms

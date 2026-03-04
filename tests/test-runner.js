@@ -1,3 +1,5 @@
+const { performance } = require("perf_hooks");
+
 // tests/test-runner.js
 // Comprehensive unit testing system for Nova64 3D Fantasy Console
 

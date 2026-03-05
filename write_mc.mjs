@@ -1,4 +1,8 @@
-// Minecraft Demo - Ultimate Edition
+import fs from 'fs';
+
+const code = `// Minecraft Demo - Ultimate Edition
+// Featuring procedural textures, smooth shadows, Day/Night cycle, and loading UI
+
 let player = {
     x: 0, y: 30, z: 0,
     vx: 0, vy: 0, vz: 0,
@@ -11,10 +15,11 @@ let player = {
 
 let selectedBlock = 1; // 1 = Grass
 let time = 0;
-let loadState = 0;
 let isLoaded = false;
 let loadProgress = 0;
+let initialChunks = 9;
 
+// Generate a procedural retro 16x16 noise texture atlas
 function createVoxelTexture() {
     const canvas = document.createElement('canvas');
     canvas.width = 64; 
@@ -23,19 +28,21 @@ function createVoxelTexture() {
     
     for(let y = 0; y < 64; y++) {
         for(let x = 0; x < 64; x++) {
-            let noise = Math.random() * 60 - 30;
+            let noise = Math.random() * 60 - 30; // Contrast
             let isBorder = (x % 16 === 0 || y % 16 === 0) ? -20 : 0;
             let val = 180 + noise + isBorder;
-            ctx.fillStyle = `rgb(${val}, ${val}, ${val})`;
+            ctx.fillStyle = \\\`rgb(\\\${val}, \\\${val}, \\\${val})\\\`;
             ctx.fillRect(x, y, 1, 1);
         }
     }
     
-    const tex = new globalThis.THREE.CanvasTexture(canvas);
-    tex.magFilter = globalThis.THREE.NearestFilter;
-    tex.minFilter = globalThis.THREE.NearestFilter;
+    // In browser context we can access THREE via globalThis.THREE or directly because engine loads it
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.magFilter = THREE.NearestFilter;
+    tex.minFilter = THREE.NearestFilter;
     
-    globalThis.window.VOXEL_MATERIAL = new globalThis.THREE.MeshStandardMaterial({
+    // Create global voxel material for the engine
+    globalThis.window.VOXEL_MATERIAL = new THREE.MeshStandardMaterial({
         vertexColors: true,
         map: tex,
         flatShading: true,
@@ -44,43 +51,43 @@ function createVoxelTexture() {
     });
 }
 
-function getHighestBlockAlt(hx, hz) {
-    for(let i = 60; i > 0; i--) {
-        if(getVoxelBlock(hx, i, hz) !== 0) return i;
-    }
-    return 30;
-}
-
 export function init() {
     createVoxelTexture();
+    
     setCameraPosition(0, 30, 0);
     setFog(0x87CEEB, 10, 60);
     
-    // We don't block here, we let the update/draw loop handle state
+    // Async chunk loading simulation to not block main thread completely and show UI
+    setTimeout(generateWorld, 100);
+}
+
+function generateWorld() {
+    // Generate 3x3 initial chunks
+    let chunksGenerated = 0;
+    
+    for (let cx = -1; cx <= 1; cx++) {
+        for (let cz = -1; cz <= 1; cz++) {
+            setTimeout(() => {
+                generateChunk(cx, cz);
+                chunksGenerated++;
+                loadProgress = (chunksGenerated / initialChunks) * 100;
+                
+                if (chunksGenerated === initialChunks) {
+                    isLoaded = true;
+                    // Position player on highest block
+                    player.y = getHighestBlock(0, 0) + 2;
+                }
+            }, chunksGenerated * 150);
+        }
+    }
 }
 
 export function update() {
-    if (loadState === 0) {
-        loadState = 1;
-        return;
-    } else if (loadState === 1) {
-        // Wait a few frames for the canvas to present the loading text
-        loadState = 2;
-        return;
-    } else if (loadState === 2) {
-        if(typeof updateVoxelWorld === 'function') {
-           updateVoxelWorld(0, 0); // Gen initial chunks
-        }
-        player.y = getHighestBlockAlt(Math.floor(player.x), Math.floor(player.z)) + 2;
-        if (player.y < 5) player.y = 40; // Fallback
-        loadState = 3;
-        isLoaded = true;
-        return;
-    }
-    
     if (!isLoaded) return;
     
     time += 0.005;
+    
+    // Day/Night sky cycle
     let skyR = Math.sin(time) > 0 ? 135 : 10;
     let skyG = Math.sin(time) > 0 ? 206 : 10;
     let skyB = Math.sin(time) > 0 ? 235 : 20;
@@ -90,13 +97,10 @@ export function update() {
     updatePhysics();
     updateCamera();
     handleBlockInteraction();
-
-    if(typeof updateVoxelWorld === 'function') {
-        updateVoxelWorld(player.x, player.z);
-    }
 }
 
 function handleInput() {
+    // Look
     if (key('ArrowLeft')) player.yaw -= 0.05;
     if (key('ArrowRight')) player.yaw += 0.05;
     if (key('ArrowUp') && player.pitch < Math.PI/2) player.pitch += 0.05;
@@ -152,19 +156,10 @@ function updatePhysics() {
     }
     
     player.x = nx; player.y = ny; player.z = nz;
-    
-    // Antifall fallback
-    if (player.y < -10) {
-        player.y = 40;
-        player.vy = 0;
-    }
 }
 
 function checkCollision(x, y, z) {
-    if (typeof checkVoxelCollision === 'function') {
-        return checkVoxelCollision([x, y, z], player.size);
-    }
-    const block = getVoxelBlock(Math.floor(x), Math.floor(y), Math.floor(z));
+    const block = getBlock(Math.floor(x), Math.floor(y), Math.floor(z));
     return block !== 0 && block !== undefined;
 }
 
@@ -177,35 +172,47 @@ function updateCamera() {
 }
 
 function handleBlockInteraction() {
-    if (typeof raycastVoxelBlock === 'function') {
-        const targetX = player.x - Math.sin(player.yaw) * Math.cos(player.pitch);
-        const targetY = (player.y + 0.8) + Math.sin(player.pitch);
-        const targetZ = player.z - Math.cos(player.yaw) * Math.cos(player.pitch);
+    let dist = 0;
+    let rx = player.x, ry = player.y + 0.8, rz = player.z;
+    const dx = -Math.sin(player.yaw) * Math.cos(player.pitch);
+    const dy = Math.sin(player.pitch);
+    const dz = -Math.cos(player.yaw) * Math.cos(player.pitch);
+    
+    let lastEmpty = null;
+    let hitBlock = null;
+    
+    while(dist < 5) {
+        rx += dx * 0.1; ry += dy * 0.1; rz += dz * 0.1;
+        let bx = Math.floor(rx), by = Math.floor(ry), bz = Math.floor(rz);
         
-        const dx = targetX - player.x;
-        const dy = targetY - (player.y + 0.8);
-        const dz = targetZ - player.z;
-        const len = Math.sqrt(dx*dx + dy*dy + dz*dz);
-        
-        const rayStr = raycastVoxelBlock(player.x, player.y + 0.8, player.z, dx/len, dy/len, dz/len, 5);
-        if (rayStr) {
-            if (btnp(4)) setVoxelBlock(rayStr.hit.x, rayStr.hit.y, rayStr.hit.z, 0); // break
-            if (btnp(5)) setVoxelBlock(rayStr.prev.x, rayStr.prev.y, rayStr.prev.z, selectedBlock); // place
+        if (getBlock(bx, by, bz)) {
+            hitBlock = {x: bx, y: by, z: bz}; break;
         }
-        return;
+        lastEmpty = {x: bx, y: by, z: bz};
+        dist += 0.1;
     }
+    
+    if (hitBlock && btnp(4)) setBlock(hitBlock.x, hitBlock.y, hitBlock.z, 0);
+    if (lastEmpty && hitBlock && btnp(5)) setBlock(lastEmpty.x, lastEmpty.y, lastEmpty.z, selectedBlock);
 }
 
 export function draw() {
+    draw3d(() => {});
+    
     if (!isLoaded) {
         print('NOVA64 MINECRAFT EDITION', 20, 40, 0x55cc33);
         print('GENERATING WORLD...', 20, 60, 0xffffff);
+        print(\`[\${'='.repeat(Math.floor(loadProgress/10))}\${' '.repeat(10-Math.floor(loadProgress/10))}] \${Math.floor(loadProgress)}%\`, 20, 75, 0xffaa00);
         return;
     }
     
     print('MINECRAFT ULTIMATE 64', 5, 5, 0xffdd88);
-    print(`Block: ${selectedBlock}`, 5, 20, 0xffffff);
+    print(\`Block: \${selectedBlock}\`, 5, 20, 0xffffff);
     print('L-Click: Break | R-Click: Place', 5, 35, 0xaaaaaa);
     
     print('+', 156, 116, 0xffffff);
 }
+`;
+
+fs.writeFileSync('examples/minecraft-demo/code.js', code);
+console.log('wrote minecraft');

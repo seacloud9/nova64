@@ -1,4 +1,6 @@
-// Minecraft Demo - Ultimate Edition
+import fs from 'fs';
+
+const code = `// Minecraft Demo - Ultimate Edition
 let player = {
     x: 0, y: 30, z: 0,
     vx: 0, vy: 0, vz: 0,
@@ -11,7 +13,6 @@ let player = {
 
 let selectedBlock = 1; // 1 = Grass
 let time = 0;
-let loadState = 0;
 let isLoaded = false;
 let loadProgress = 0;
 
@@ -26,7 +27,7 @@ function createVoxelTexture() {
             let noise = Math.random() * 60 - 30;
             let isBorder = (x % 16 === 0 || y % 16 === 0) ? -20 : 0;
             let val = 180 + noise + isBorder;
-            ctx.fillStyle = `rgb(${val}, ${val}, ${val})`;
+            ctx.fillStyle = \\\`rgb(\\\${val}, \\\${val}, \\\${val})\\\`;
             ctx.fillRect(x, y, 1, 1);
         }
     }
@@ -55,29 +56,18 @@ export function init() {
     createVoxelTexture();
     setCameraPosition(0, 30, 0);
     setFog(0x87CEEB, 10, 60);
-    
-    // We don't block here, we let the update/draw loop handle state
+
+    setTimeout(() => {
+        // Just trigger one updateVoxelWorld to build immediate chunks around 0,0
+        if(typeof updateVoxelWorld === 'function') {
+           updateVoxelWorld(0, 0);
+        }
+        player.y = getHighestBlockAlt(Math.floor(player.x), Math.floor(player.z)) + 2;
+        isLoaded = true;
+    }, 1000);
 }
 
 export function update() {
-    if (loadState === 0) {
-        loadState = 1;
-        return;
-    } else if (loadState === 1) {
-        // Wait a few frames for the canvas to present the loading text
-        loadState = 2;
-        return;
-    } else if (loadState === 2) {
-        if(typeof updateVoxelWorld === 'function') {
-           updateVoxelWorld(0, 0); // Gen initial chunks
-        }
-        player.y = getHighestBlockAlt(Math.floor(player.x), Math.floor(player.z)) + 2;
-        if (player.y < 5) player.y = 40; // Fallback
-        loadState = 3;
-        isLoaded = true;
-        return;
-    }
-    
     if (!isLoaded) return;
     
     time += 0.005;
@@ -152,17 +142,11 @@ function updatePhysics() {
     }
     
     player.x = nx; player.y = ny; player.z = nz;
-    
-    // Antifall fallback
-    if (player.y < -10) {
-        player.y = 40;
-        player.vy = 0;
-    }
 }
 
 function checkCollision(x, y, z) {
     if (typeof checkVoxelCollision === 'function') {
-        return checkVoxelCollision([x, y, z], player.size);
+        return checkVoxelCollision(x, y, z);
     }
     const block = getVoxelBlock(Math.floor(x), Math.floor(y), Math.floor(z));
     return block !== 0 && block !== undefined;
@@ -204,8 +188,12 @@ export function draw() {
     }
     
     print('MINECRAFT ULTIMATE 64', 5, 5, 0xffdd88);
-    print(`Block: ${selectedBlock}`, 5, 20, 0xffffff);
+    print(\`Block: \${selectedBlock}\`, 5, 20, 0xffffff);
     print('L-Click: Break | R-Click: Place', 5, 35, 0xaaaaaa);
     
     print('+', 156, 116, 0xffffff);
 }
+`;
+
+fs.writeFileSync('examples/minecraft-demo/code.js', code);
+console.log('patched code!');

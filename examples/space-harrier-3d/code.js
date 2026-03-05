@@ -109,14 +109,29 @@ function createPlayer() {
 
   p.meshes.head = createSphere(0.6, PALETTE.playerHead, [bx, by + 1.2, bz], 8);
   
+  p.meshes.hair = createCube(0.7, 0x5a2d0c, [bx, by + 1.5, bz + 0.1]);
+  setScale(p.meshes.hair, 1.1, 0.4, 1.1);
+  
+  p.meshes.jetpack = createCube(0.8, 0x888888, [bx, by + 0.2, bz + 0.6]);
+  setScale(p.meshes.jetpack, 1.2, 1.5, 0.5);
+
   p.meshes.gun = createCube(0.5, PALETTE.gun, [bx + 0.8, by, bz - 1.5]);
-  setScale(p.meshes.gun, 0.5, 0.5, 3.0);
+  setScale(p.meshes.gun, 0.6, 0.6, 3.5);
+
+  p.meshes.armL = createCube(0.4, PALETTE.playerBody, [bx - 0.8, by + 0.2, bz]);
+  setScale(p.meshes.armL, 0.7, 1.8, 0.7);
+
+  p.meshes.armR = createCube(0.4, PALETTE.playerBody, [bx + 0.8, by + 0.2, bz]);
+  setScale(p.meshes.armR, 0.7, 1.8, 0.7);
 
   p.meshes.legL = createCube(0.4, PALETTE.playerBody, [bx - 0.4, by - 1.0, bz]);
   setScale(p.meshes.legL, 0.8, 2.0, 0.8);
 
   p.meshes.legR = createCube(0.4, PALETTE.playerBody, [bx + 0.4, by - 1.0, bz]);
   setScale(p.meshes.legR, 0.8, 2.0, 0.8);
+  
+  p.meshes.flameL = createCube(0.3, 0xffaa00, [bx - 0.3, by - 0.6, bz + 0.6]);
+  p.meshes.flameR = createCube(0.3, 0xffaa00, [bx + 0.3, by - 0.6, bz + 0.6]);
 }
 
 function spawnScenery(randomZ = false) {

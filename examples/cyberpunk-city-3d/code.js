@@ -18,6 +18,20 @@ let gameState = 'start'; // 'start', 'exploring'
 let startScreenTime = 0;
 let uiButtons = [];
 
+
+let dataPackets = [];
+let playerScore = 0;
+
+function spawnPackets() {
+  for (let i = 0; i < 20; i++) {
+    const x = (Math.random() - 0.5) * CITY_SIZE * 1.5;
+    const y = 3 + Math.random() * 20;
+    const z = (Math.random() - 0.5) * CITY_SIZE * 1.5;
+    const mesh = createAdvancedCube(2, { material: 'emissive', emissive: 0x00ff00, intensity: 3 }, [x, y, z]);
+    dataPackets.push({ mesh, x, y, z, active: true, offset: Math.random() * 10 });
+  }
+}
+
 // City configuration
 const CITY_SIZE = 100;
 const BUILDING_COUNT = 50;
@@ -106,6 +120,7 @@ export function update(dt) {
     // Animate scene in background
     updateVehicles(dt);
     updateParticles(dt);
+    updatePackets(dt);
     updateCityLights(dt);
     updateNeonSigns(dt);
     
@@ -656,6 +671,32 @@ function updateVehicles(dt) {
       createVehicleThrusterParticles(vehicle.x, vehicle.y, vehicle.z);
     }
   });
+}
+
+
+function updatePackets(dt) {
+  for (let i = dataPackets.length - 1; i >= 0; i--) {
+    let p = dataPackets[i];
+    if (!p.active) continue;
+    
+    // Rotate and hover
+    p.offset += dt * 3;
+    setRotation(p.mesh, p.offset, p.offset * 0.5, p.offset * 0.2);
+    setPosition(p.mesh, p.x, p.y + Math.sin(p.offset) * 0.5, p.z);
+    
+    // Collision with player
+    const dx = player.x - p.x;
+    const dy = player.y - p.y;
+    const dz = player.z - p.z;
+    const dist = Math.sqrt(dx*dx + dy*dy + dz*dz);
+    
+    if (dist < 4.0) {
+      p.active = false;
+      playerScore += 100;
+      setScale(p.mesh, 0, 0, 0); // Hide
+      setFog(0x00ff00, 0, 50); // green flash
+    }
+  }
 }
 
 function updateParticles(dt) {

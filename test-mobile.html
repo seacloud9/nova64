@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+.shell { display: flex; flex-direction: column; width: 100vw; }
+.stage { padding: 10px; flex: 0 0 auto; background: red; }
+.hardware-bezel { width: 100%; max-width: 100%; background: blue; padding: 15px 15px 40px 15px; box-sizing: border-box; }
+.screen-container { background: black; }
+canvas { width: 1280px; height: 720px; max-width: 100%; height: auto; display: block; background: green; }
+</style>
+</head>
+<body>
+<div class="shell">
+  <div class="stage">
+    <div class="hardware-bezel">
+      <div class="screen-container">
+        <canvas></canvas>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

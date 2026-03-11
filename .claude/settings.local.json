@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(wc:*)",
+      "Bash(ls:*)",
+      "Bash(grep:*)",
+      "Bash(cat:*)",
+      "Bash(git -C /Users/brendonsmith/exp/nova64 diff --stat)",
+      "Bash(pnpm install:*)",
+      "Bash(npm --version:*)"
+    ]
+  }
+}

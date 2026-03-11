@@ -23,6 +23,9 @@
 # commit messages
 COMMIT_MESSAGE.txt
 
+# old patch scripts
+scripts/old-patches/
+
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*

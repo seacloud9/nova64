@@ -165,6 +165,15 @@ function spawnSpeedLine() {
   g.speedLines.push({ mesh, x, y, z });
 }
 
+
+function spawnMine() {
+  const x = (Math.random() - 0.5) * 45;
+  const z = -400 - Math.random() * 200;
+  
+  const mesh = createAdvancedCube(3, { material: 'emissive', emissive: 0xff0000, intensity: 2 }, [x, 0, z]);
+  g.props.push({ type: 'mine', mesh, x: x, z: z, active: true, throb: 0 });
+}
+
 function spawnBoostPad() {
   const x = (Math.random() - 0.5) * (g.trackWidth - 10);
   const z = -350;
@@ -348,7 +357,10 @@ function updateRoad(distMovement) {
 function updateTrackSpawns(dt) {
   g.propTimer -= dt;
   if(g.propTimer <= 0) {
+    
     if(Math.random() < 0.6) spawnBoostPad();
+    else if(Math.random() < 0.8) spawnMine();
+
     g.propTimer = 1.0 + Math.random() * 2.0;
   }
 }

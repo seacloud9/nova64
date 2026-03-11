@@ -56,6 +56,8 @@ let game = {
   enemyBullets: [],
   particles: [],
   rings: [],
+  boss: null,
+  bossSpawned: false,
   trails: [],
 
   enemySpawnTimer: 0,
@@ -192,6 +194,48 @@ function spawnEnemy() {
     vy: (Math.random() - 0.5) * 10,
     vz: 40 + Math.random() * 30,
     timer: 0,
+  });
+}
+
+
+function spawnBoss() {
+  const x = 0; const y = 8; const z = -150;
+  const core = createCube(6, 0xff0000, [x, y, z], { material: 'metallic', metalness: 0.9, roughness: 0.1 });
+  const eyeL = createSphere(1.5, 0xffffff, [x - 2, y + 1, z + 3], 8, { material: 'emissive', emissive: 0xffffff, intensity: 2 });
+  const eyeR = createSphere(1.5, 0xffffff, [x + 2, y + 1, z + 3], 8, { material: 'emissive', emissive: 0xffffff, intensity: 2 });
+  const mouth = createCube(3, 0x000000, [x, y - 2, z + 2.5], { material: 'standard' });
+  setScale(mouth, 1, 0.2, 1);
+
+  game.boss = {
+    parts: [
+      { mesh: core, ox: 0, oy: 0, oz: 0 },
+      { mesh: eyeL, ox: -2, oy: 1, oz: 3 },
+      { mesh: eyeR, ox: 2, oy: 1, oz: 3 },
+      { mesh: mouth, ox: 0, oy: -2, oz: 2.5 }
+    ],
+    x, y, z, hp: 50, maxHp: 50, vx: 0, vy: 0, vz: 10, timer: 0
+  };
+  game.bossSpawned = true;
+}
+
+function updateBoss(dt) {
+  if (!game.boss) return;
+  const b = game.boss;
+  b.timer += dt;
+
+  if (b.z < -40) b.z += b.vz * dt;
+  else {
+    b.x = Math.sin(b.timer * 0.5) * 15;
+    b.y = 8 + Math.cos(b.timer * 0.7) * 5;
+    
+    if (b.timer > 2 && Math.random() < 0.05) {
+      fireEnemyShot(b.x - 2, b.y + 1, b.z + 3);
+      fireEnemyShot(b.x + 2, b.y + 1, b.z + 3);
+    }
+  }
+
+  b.parts.forEach(part => {
+    setPosition(part.mesh, b.x + part.ox, b.y + part.oy, b.z + part.oz);
   });
 }
 
@@ -343,6 +387,8 @@ function startGame() {
   game.player.invuln = 0;
   game.enemySpawnTimer = 0;
   game.ringSpawnTimer = 0;
+  game.bossSpawned = false;
+  if (game.boss) { game.boss.parts.forEach(p => destroyMesh(p.mesh)); game.boss = null; }
 
   // Clean up old objects
   game.enemies.forEach(e => e.parts.forEach(p => destroyMesh(p.mesh)));
@@ -507,6 +553,8 @@ function updateAsteroids(dt) {
 }
 
 function updateEnemies(dt) {
+  if (game.wave >= 3 && !game.bossSpawned && game.enemies.length === 0) spawnBoss();
+  if (game.boss) updateBoss(dt);
   game.enemySpawnTimer -= dt;
   if (game.enemySpawnTimer <= 0 && game.enemies.length < 10) {
     spawnEnemy();
@@ -563,6 +611,25 @@ function updateBullets(dt) {
     }
 
     let hit = false;
+
+    // Boss Collision
+    if (game.boss) {
+      const b = game.boss;
+      const dist = Math.hypot(bul.x - b.x, bul.z - b.z);
+      if (dist < 5 && Math.abs(bul.y - b.y) < 5) {
+        b.hp -= 10;
+        hit = true;
+        createExplosion(bul.x, bul.y, bul.z, C.spark, 3);
+        if (b.hp <= 0) {
+          game.score += 5000;
+          createExplosion(b.x, b.y, b.z, 0xffffff, 50);
+          b.parts.forEach(p => destroyMesh(p.mesh));
+          game.boss = null;
+          game.wave++;
+        }
+      }
+    }
+
     for (let j = game.enemies.length - 1; j >= 0; j--) {
       const e = game.enemies[j];
       if (Math.abs(b.x - e.x) < 3.5 && Math.abs(b.y - e.y) < 3.0 && Math.abs(b.z - e.z) < 4.5) {

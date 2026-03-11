@@ -239,11 +239,13 @@ const demoMap = {
   'physics-demo-3d': '/examples/physics-demo-3d/code.js',
   'shooter-demo-3d': '/examples/shooter-demo-3d/code.js',
   'hello-skybox': '/examples/hello-skybox/code.js',
+  'fps-demo-3d': '/examples/fps-demo-3d/code.js',
+  'adventure-comic-3d': '/examples/adventure-comic-3d/code.js',
 };
 
 // default cart - load from URL param or default to space-harrier-3d
 (async () => {
-  let gamePath = '/examples/space-harrier-3d/code.js';
+  let gamePath = '/examples/adventure-comic-3d/code.js';
   
   if (gamePathParam) {
     gamePath = gamePathParam;

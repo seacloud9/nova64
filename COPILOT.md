@@ -889,6 +889,980 @@ Fix: Added 'lowercase' letters and "emoji" handling
 
 ---
 
+## 🚀 **Nova64 Systematic Improvement Plan**
+
+This section documents a comprehensive plan for systematically enhancing Nova64 across all areas: performance, code quality, features, and demo coverage.
+
+### 📊 **Current State Assessment**
+
+**Project Metrics (as of analysis date):**
+- **Total Codebase**: 278MB (6,238 LOC runtime, 12,949 LOC examples, 3,140 LOC tests)
+- **Architecture Quality**: A- (Strong foundation with minor organizational issues)
+- **Test Coverage**: 35/35 tests passing (100% core API coverage)
+- **Demo Portfolio**: 25 spectacular 3D carts across 10+ genres
+- **Performance**: Good but unoptimized (no instancing, no frustum culling)
+- **Documentation**: Excellent (15+ comprehensive guides)
+
+**Critical Issues Identified:**
+1. pnpm-lock.yaml merge conflict (blocks dependency resolution)
+2. Memory leaks in light/material cleanup systems
+3. 20+ untracked patch files in repository
+4. Large monolithic modules (api-3d.js: 850 LOC, ui.js: 400 LOC)
+5. Missing vite.config.js for explicit build configuration
+
+---
+
+### 🎯 **Phase 1: Critical Fixes & Stability** (Priority: URGENT)
+
+#### 1.1 Resolve Dependency Conflicts
+**File**: pnpm-lock.yaml
+**Issue**: Merge conflict between Three.js v0.182 and v0.157
+**Impact**: Dependency installation may be unreliable
+
+**Actions**:
+```bash
+# Step 1: Resolve merge conflict in pnpm-lock.yaml
+# Choose Three.js v0.182 (latest version)
+git checkout --ours pnpm-lock.yaml
+
+# Step 2: Regenerate lock file cleanly
+rm pnpm-lock.yaml
+pnpm install
+
+# Step 3: Verify all dependencies resolve
+pnpm list
+```
+
+**Files Modified**: pnpm-lock.yaml
+**Testing**: Run pnpm install && pnpm test to verify stability
+
+---
+
+#### 1.2 Fix Memory Leaks in Light System
+**File**: runtime/api-3d.js (lines 604-637)
+**Issue**: removeLight() doesn't dispose light objects, cartLights Map grows unbounded
+
+**Current Code Problem**:
+```javascript
+function removeLight(id) {
+  const light = cartLights.get(id);
+  if (light) {
+    scene.remove(light);  // ❌ Doesn't dispose light object
+    cartLights.delete(id);
+  }
+}
+```
+
+**Fixed Implementation**:
+```javascript
+function removeLight(id) {
+  const light = cartLights.get(id);
+  if (light) {
+    scene.remove(light);
+
+    // Dispose shadow map if it exists
+    if (light.shadow && light.shadow.map) {
+      light.shadow.map.dispose();
+    }
+
+    // Dispose light object
+    if (light.dispose) {
+      light.dispose();
+    }
+
+    cartLights.delete(id);
+  }
+}
+
+// Also add cleanup in clearScene()
+function clearScene() {
+  // ... existing mesh cleanup ...
+
+  // Clean up all lights
+  cartLights.forEach((light, id) => {
+    removeLight(id);
+  });
+  cartLights.clear();
+}
+```
+
+**Files Modified**: runtime/api-3d.js
+**Testing**: Create/remove 1000 lights in loop, verify no memory growth
+
+---
+
+#### 1.3 Fix Incomplete Material Cleanup
+**File**: runtime/api-3d.js (lines 474-521)
+**Issue**: clearScene() only disposes material.map, misses normalMap, roughnessMap, metalnessMap, etc.
+
+**Current Code Problem**:
+```javascript
+if (mesh.material.map) {
+  mesh.material.map.dispose();  // ❌ Only disposes diffuse texture
+}
+```
+
+**Fixed Implementation**:
+```javascript
+function disposeMaterial(material) {
+  // Dispose all texture types
+  const textureProps = ['map', 'normalMap', 'roughnessMap', 'metalnessMap',
+                        'aoMap', 'emissiveMap', 'bumpMap', 'displacementMap',
+                        'alphaMap', 'lightMap', 'envMap'];
+
+  textureProps.forEach(prop => {
+    if (material[prop]) {
+      material[prop].dispose();
+    }
+  });
+
+  material.dispose();
+}
+
+function clearScene() {
+  scene.children.forEach(child => {
+    if (child.isMesh) {
+      scene.remove(child);
+
+      if (child.geometry) {
+        child.geometry.dispose();
+      }
+
+      // Handle both single material and array of materials
+      if (Array.isArray(child.material)) {
+        child.material.forEach(mat => disposeMaterial(mat));
+      } else if (child.material) {
+        disposeMaterial(child.material);
+      }
+    }
+  });
+
+  meshes.clear();
+}
+```
+
+**Files Modified**: runtime/api-3d.js
+**Testing**: Load/unload carts 100 times, monitor memory usage
+
+---
+
+#### 1.4 Clean Up Repository
+**Files**: 20+ untracked patch/fix scripts
+**Issue**: Cluttered repository with do_patch.js, fix.js, patch_*.cjs files
+
+**Actions**:
+```bash
+# Step 1: Review each patch file to understand purpose
+ls -la *.js *.cjs *.mjs | grep -E "patch|fix|do_"
+
+# Step 2: If patches are needed, move to scripts/ directory
+mkdir -p scripts/patches
+mv patch_*.cjs scripts/patches/
+mv fix*.js scripts/patches/
+mv do_patch.js scripts/patches/
+
+# Step 3: If patches are obsolete, remove them
+git clean -fd -n  # Preview what will be removed
+git clean -fd     # Actually remove untracked files
+
+# Step 4: Add .gitignore entry
+echo "scripts/patches/" >> .gitignore
+```
+
+**Files Affected**: 20+ patch files, .gitignore
+**Testing**: Verify no required functionality is lost
+
+---
+
+#### 1.5 Create Explicit Build Configuration
+**File**: vite.config.js (NEW)
+**Issue**: No explicit Vite configuration, relies on defaults
+
+**Implementation**:
+```javascript
+import { defineConfig } from 'vite';
+import { resolve } from 'path';
+
+export default defineConfig({
+  // Base path for deployment
+  base: './',
+
+  // Build configuration
+  build: {
+    target: 'es2022',
+    outDir: 'dist',
+    assetsDir: 'assets',
+    sourcemap: true,
+
+    // Optimize output
+    minify: 'terser',
+    terserOptions: {
+      compress: {
+        drop_console: false,  // Keep console for debugging
+        drop_debugger: true
+      }
+    },
+
+    // Chunk size warnings
+    chunkSizeWarningLimit: 1000,
+
+    // Rollup options
+    rollupOptions: {
+      input: {
+        main: resolve(__dirname, 'index.html'),
+        console: resolve(__dirname, 'console.html')
+      }
+    }
+  },
+
+  // Dev server configuration
+  server: {
+    port: 5173,
+    open: true,
+    host: true,  // Allow network access
+
+    // Hot module replacement
+    hmr: {
+      overlay: true
+    }
+  },
+
+  // Optimizations
+  optimizeDeps: {
+    include: ['three', 'zustand']
+  },
+
+  // Plugin configuration
+  plugins: [],
+
+  // Resolve configuration
+  resolve: {
+    alias: {
+      '@runtime': resolve(__dirname, 'runtime'),
+      '@examples': resolve(__dirname, 'examples')
+    }
+  }
+});
+```
+
+**Files Created**: vite.config.js
+**Testing**: Run pnpm build && pnpm preview
+
+---
+
+### ⚡ **Phase 2: Performance Optimization** (Priority: HIGH)
+
+#### 2.1 Implement GPU Instancing
+**File**: runtime/gpu-threejs.js (NEW section)
+**Impact**: 10-100x draw call reduction for repeated geometries
+
+**Implementation Strategy**:
+```javascript
+// Add to gpu-threejs.js
+
+class InstancedMeshManager {
+  constructor(scene) {
+    this.scene = scene;
+    this.instances = new Map(); // geometryKey -> InstancedMesh
+    this.nextIndex = new Map(); // geometryKey -> next available index
+  }
+
+  createInstance(geometry, material, maxCount = 1000) {
+    const key = this.getGeometryKey(geometry, material);
+
+    if (!this.instances.has(key)) {
+      const instancedMesh = new THREE.InstancedMesh(geometry, material, maxCount);
+      instancedMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      this.scene.add(instancedMesh);
+
+      this.instances.set(key, instancedMesh);
+      this.nextIndex.set(key, 0);
+    }
+
+    return this.instances.get(key);
+  }
+
+  addInstance(geometry, material, matrix) {
+    const instancedMesh = this.createInstance(geometry, material);
+    const index = this.nextIndex.get(this.getGeometryKey(geometry, material));
+
+    instancedMesh.setMatrixAt(index, matrix);
+    instancedMesh.instanceMatrix.needsUpdate = true;
+
+    this.nextIndex.set(this.getGeometryKey(geometry, material), index + 1);
+    return { instancedMesh, index };
+  }
+
+  getGeometryKey(geometry, material) {
+    return `${geometry.type}_${material.uuid}`;
+  }
+
+  clear() {
+    this.instances.forEach(mesh => {
+      this.scene.remove(mesh);
+      mesh.dispose();
+    });
+    this.instances.clear();
+    this.nextIndex.clear();
+  }
+}
+
+// Expose for API usage
+const instanceManager = new InstancedMeshManager(scene);
+```
+
+**API Changes** (runtime/api-3d.js):
+```javascript
+// Add new function for instanced objects
+function createInstancedCubes(positions, size, options) {
+  const geometry = new THREE.BoxGeometry(size, size, size);
+  const material = createN64Material(options);
+
+  positions.forEach(pos => {
+    const matrix = new THREE.Matrix4();
+    matrix.setPosition(pos.x, pos.y, pos.z);
+    instanceManager.addInstance(geometry, material, matrix);
+  });
+}
+
+// Usage in demos:
+// Instead of: for (let i = 0; i < 100; i++) createCube(...)
+// Use: createInstancedCubes(positions, 1, { material: 'holographic' })
+```
+
+**Files Modified**: runtime/gpu-threejs.js, runtime/api-3d.js
+**Testing**: Create 10,000 cubes, measure FPS improvement
+**Expected Gain**: 50-100x fewer draw calls
+
+---
+
+#### 2.2 Add Frustum Culling
+**File**: runtime/gpu-threejs.js (update render loop)
+**Impact**: Eliminate rendering of off-screen objects
+
+**Implementation**:
+```javascript
+// Add to gpu-threejs.js
+
+const frustum = new THREE.Frustum();
+const cameraViewProjectionMatrix = new THREE.Matrix4();
+
+function updateFrustum() {
+  camera.updateMatrixWorld();
+  cameraViewProjectionMatrix.multiplyMatrices(
+    camera.projectionMatrix,
+    camera.matrixWorldInverse
+  );
+  frustum.setFromProjectionMatrix(cameraViewProjectionMatrix);
+}
+
+function endFrame(framebuffer) {
+  // Update frustum culling
+  updateFrustum();
+
+  // Cull objects outside view
+  let culledCount = 0;
+  scene.traverse(object => {
+    if (object.isMesh) {
+      // Check if object is in frustum
+      object.visible = frustum.intersectsObject(object);
+      if (!object.visible) culledCount++;
+    }
+  });
+
+  // Render scene
+  renderer.render(scene, camera);
+
+  // Update 2D overlay
+  update2DOverlay(framebuffer);
+
+  // Return stats
+  return { culledObjects: culledCount };
+}
+```
+
+**Files Modified**: runtime/gpu-threejs.js
+**Testing**: Create scene with 1000 objects spread over large area, measure FPS
+**Expected Gain**: 2-5x FPS improvement in large scenes
+
+---
+
+#### 2.3 Implement Material Caching
+**File**: runtime/api-3d.js
+**Impact**: Eliminate redundant material allocations
+
+**Implementation**:
+```javascript
+// Add to api-3d.js
+
+const materialCache = new Map();
+
+function getMaterialKey(options) {
+  return JSON.stringify({
+    material: options.material || 'standard',
+    color: options.color || 0xffffff,
+    emissive: options.emissive || 0x000000,
+    metalness: options.metalness,
+    roughness: options.roughness,
+    transparent: options.transparent,
+    opacity: options.opacity
+  });
+}
+
+function getCachedMaterial(options) {
+  const key = getMaterialKey(options);
+
+  if (materialCache.has(key)) {
+    return materialCache.get(key);
+  }
+
+  const material = createN64Material(options);
+  materialCache.set(key, material);
+  return material;
+}
+
+// Update all create functions to use cache:
+function createCube(x, y, z, size, options = {}) {
+  const geometry = new THREE.BoxGeometry(size, size, size);
+  const material = getCachedMaterial(options);  // Use cached material
+  const mesh = new THREE.Mesh(geometry, material);
+  // ... rest of function
+}
+```
+
+**Files Modified**: runtime/api-3d.js
+**Testing**: Create 1000 cubes with same material, verify only 1 material created
+**Expected Gain**: 10-50x reduction in material allocations
+
+---
+
+#### 2.4 Optimize Scene Traversal
+**File**: runtime/gpu-threejs.js (lines 494-510)
+**Impact**: Eliminate expensive scene.traverse() every frame
+
+**Current Problem**:
+```javascript
+// Called every frame - expensive!
+scene.traverse(child => {
+  if (child.userData.animateTexture && child.material.map) {
+    // Animate texture
+  }
+  if (child.userData.animateEmissive) {
+    // Animate emissive
+  }
+});
+```
+
+**Optimized Implementation**:
+```javascript
+// Add to gpu-threejs.js
+
+const animatedObjects = {
+  textures: [],
+  emissive: []
+};
+
+function registerAnimatedObject(mesh, type) {
+  if (type === 'texture') {
+    animatedObjects.textures.push(mesh);
+  } else if (type === 'emissive') {
+    animatedObjects.emissive.push(mesh);
+  }
+}
+
+function update(deltaTime) {
+  // Only iterate registered animated objects
+  animatedObjects.textures.forEach(mesh => {
+    if (mesh.material.map) {
+      mesh.material.map.offset.x += deltaTime * 0.1;
+      mesh.material.map.offset.y += deltaTime * 0.05;
+    }
+  });
+
+  animatedObjects.emissive.forEach(mesh => {
+    if (mesh.material.emissive) {
+      const pulse = Math.sin(Date.now() * 0.002) * 0.3 + 0.7;
+      mesh.material.emissiveIntensity = pulse;
+    }
+  });
+
+  // Clean up disposed objects
+  animatedObjects.textures = animatedObjects.textures.filter(m => m.parent);
+  animatedObjects.emissive = animatedObjects.emissive.filter(m => m.parent);
+}
+```
+
+**Files Modified**: runtime/gpu-threejs.js, runtime/api-3d.js
+**Testing**: Measure frame time with 1000 objects
+**Expected Gain**: 2-10ms per frame reduction
+
+---
+
+### 🎨 **Phase 3: Code Quality & Architecture** (Priority: MEDIUM)
+
+#### 3.1 Refactor Large Modules
+**Files**: runtime/api-3d.js (850 LOC), runtime/ui.js (400 LOC)
+**Goal**: Break into smaller, focused modules
+
+**Proposed Structure**:
+```
+runtime/
+├── api-3d/
+│   ├── primitives.js       # createCube, createSphere, createPlane
+│   ├── transforms.js       # setPosition, rotateMesh, setScale
+│   ├── materials.js        # Material creation and management
+│   ├── lighting.js         # Light creation and control
+│   ├── camera.js           # Camera positioning and animation
+│   └── index.js            # Exports all functions
+├── ui/
+│   ├── buttons.js          # Button creation and interaction
+│   ├── panels.js           # Panel and container UI
+│   ├── text.js             # Text rendering utilities
+│   ├── progress.js         # Progress bars and indicators
+│   └── index.js            # Exports all functions
+```
+
+**Implementation Pattern**:
+```javascript
+// runtime/api-3d/primitives.js
+export function createCube(x, y, z, size, options) {
+  // Implementation
+}
+
+export function createSphere(x, y, z, radius, options) {
+  // Implementation
+}
+
+// runtime/api-3d/index.js
+export * from './primitives.js';
+export * from './transforms.js';
+export * from './materials.js';
+export * from './lighting.js';
+export * from './camera.js';
+
+// src/main.js - No API changes
+import * as api3d from '../runtime/api-3d/index.js';
+```
+
+**Files Created**: 10+ new module files
+**Files Modified**: src/main.js (updated imports)
+**Testing**: Run full test suite, verify no regressions
+
+---
+
+#### 3.2 Implement Logging System
+**File**: runtime/logger.js (NEW)
+**Goal**: Replace console.log with configurable logging
+
+**Implementation**:
+```javascript
+// runtime/logger.js
+
+const LogLevel = {
+  DEBUG: 0,
+  INFO: 1,
+  WARN: 2,
+  ERROR: 3,
+  NONE: 4
+};
+
+class Logger {
+  constructor(level = LogLevel.INFO) {
+    this.level = level;
+    this.history = [];
+    this.maxHistory = 100;
+  }
+
+  debug(...args) {
+    if (this.level <= LogLevel.DEBUG) {
+      console.log('[DEBUG]', ...args);
+      this.addToHistory('DEBUG', args);
+    }
+  }
+
+  info(...args) {
+    if (this.level <= LogLevel.INFO) {
+      console.log('[INFO]', ...args);
+      this.addToHistory('INFO', args);
+    }
+  }
+
+  warn(...args) {
+    if (this.level <= LogLevel.WARN) {
+      console.warn('[WARN]', ...args);
+      this.addToHistory('WARN', args);
+    }
+  }
+
+  error(...args) {
+    if (this.level <= LogLevel.ERROR) {
+      console.error('[ERROR]', ...args);
+      this.addToHistory('ERROR', args);
+    }
+  }
+
+  addToHistory(level, args) {
+    this.history.push({
+      level,
+      message: args,
+      timestamp: Date.now()
+    });
+
+    if (this.history.length > this.maxHistory) {
+      this.history.shift();
+    }
+  }
+
+  getHistory() {
+    return this.history;
+  }
+
+  setLevel(level) {
+    this.level = level;
+  }
+}
+
+const logger = new Logger();
+
+// In production builds, set to WARN
+if (import.meta.env.PROD) {
+  logger.setLevel(LogLevel.WARN);
+}
+
+export { logger, LogLevel };
+```
+
+**Usage Throughout Codebase**:
+```javascript
+// Replace: console.log('Loading cart...');
+// With: logger.info('Loading cart...');
+
+// Replace: console.error('Failed to load:', err);
+// With: logger.error('Failed to load:', err);
+```
+
+**Files Created**: runtime/logger.js
+**Files Modified**: All runtime/*.js files
+**Testing**: Verify log output in dev vs prod builds
+
+---
+
+#### 3.3 Add Pre-commit Hooks
+**File**: .husky/pre-commit (NEW)
+**Goal**: Enforce code quality before commits
+
+**Implementation**:
+```bash
+# Step 1: Install husky
+pnpm add -D husky lint-staged
+
+# Step 2: Initialize husky
+npx husky install
+
+# Step 3: Create pre-commit hook
+cat > .husky/pre-commit << 'EOF'
+#!/bin/sh
+. "$(dirname "$0")/_/husky.sh"
+
+# Run linting
+pnpm lint
+
+# Run tests
+pnpm test
+
+# Check for TODOs in committed files
+git diff --cached --name-only | xargs grep -l 'TODO\|FIXME\|HACK' && {
+  echo "Error: Commit contains TODO/FIXME/HACK comments"
+  exit 1
+}
+EOF
+
+chmod +x .husky/pre-commit
+```
+
+**Package.json updates**:
+```json
+{
+  "scripts": {
+    "prepare": "husky install"
+  },
+  "lint-staged": {
+    "*.js": ["prettier --write", "eslint --fix"]
+  }
+}
+```
+
+**Files Created**: .husky/pre-commit, .husky/_/husky.sh
+**Files Modified**: package.json
+**Testing**: Make commit, verify hooks run
+
+---
+
+### 🚀 **Phase 4: New Features** (Priority: MEDIUM)
+
+#### 4.1 Add Level of Detail (LOD) System
+**File**: runtime/api-3d/lod.js (NEW)
+**Impact**: Automatic quality reduction for distant objects
+
+**Implementation**:
+```javascript
+// runtime/api-3d/lod.js
+
+import * as THREE from 'three';
+
+function createLOD(x, y, z, options) {
+  const lod = new THREE.LOD();
+
+  // High detail (close up)
+  const highDetail = createHighDetailMesh(options);
+  lod.addLevel(highDetail, 0);
+
+  // Medium detail (medium distance)
+  const mediumDetail = createMediumDetailMesh(options);
+  lod.addLevel(mediumDetail, 10);
+
+  // Low detail (far away)
+  const lowDetail = createLowDetailMesh(options);
+  lod.addLevel(lowDetail, 30);
+
+  lod.position.set(x, y, z);
+  scene.add(lod);
+
+  return lod;
+}
+
+function createHighDetailMesh(options) {
+  // Full geometry complexity
+  return new THREE.SphereGeometry(1, 32, 32);
+}
+
+function createMediumDetailMesh(options) {
+  // Reduced complexity
+  return new THREE.SphereGeometry(1, 16, 16);
+}
+
+function createLowDetailMesh(options) {
+  // Minimal complexity
+  return new THREE.SphereGeometry(1, 8, 8);
+}
+
+export { createLOD };
+```
+
+**API Function**:
+```javascript
+// Add to global API
+function createLODSphere(x, y, z, radius, options) {
+  return createLOD(x, y, z, { ...options, type: 'sphere', radius });
+}
+```
+
+**Files Created**: runtime/api-3d/lod.js
+**Files Modified**: runtime/api-3d/index.js, src/main.js
+**Testing**: Create 100 LOD objects, verify detail changes with camera distance
+
+---
+
+#### 4.2 Add Normal Mapping Support
+**File**: runtime/api-3d/materials.js
+**Impact**: High-detail surfaces without geometry complexity
+
+**Implementation**:
+```javascript
+// Update material creation to support normal maps
+
+function createN64Material(options) {
+  const matOptions = {
+    color: options.color || 0xffffff,
+    emissive: options.emissive || 0x000000,
+    // ... existing options
+  };
+
+  // Add normal map support
+  if (options.normalMap) {
+    matOptions.normalMap = loadTexture(options.normalMap);
+    matOptions.normalScale = new THREE.Vector2(
+      options.normalScale || 1,
+      options.normalScale || 1
+    );
+  }
+
+  // Add roughness map
+  if (options.roughnessMap) {
+    matOptions.roughnessMap = loadTexture(options.roughnessMap);
+  }
+
+  // Add metalness map
+  if (options.metalnessMap) {
+    matOptions.metalnessMap = loadTexture(options.metalnessMap);
+  }
+
+  let material;
+  switch (options.material) {
+    case 'standard':
+    case 'metallic':
+    case 'holographic':
+      material = new THREE.MeshStandardMaterial(matOptions);
+      break;
+    default:
+      material = new THREE.MeshPhongMaterial(matOptions);
+  }
+
+  return material;
+}
+```
+
+**API Usage**:
+```javascript
+// Enhanced material options
+const wall = createCube(0, 0, -5, 2, {
+  material: 'standard',
+  color: 0x888888,
+  normalMap: 'assets/textures/brick-normal.png',
+  roughnessMap: 'assets/textures/brick-roughness.png',
+  normalScale: 0.5
+});
+```
+
+**Files Modified**: runtime/api-3d/materials.js
+**Testing**: Load model with normal maps, verify lighting detail
+
+---
+
+### 🎮 **Phase 5: Demo Enhancement** (Priority: LOW)
+
+#### 5.1 Create Input Showcase Demo
+**File**: examples/input-showcase/code.js (NEW)
+**Goal**: Demonstrate all input methods
+
+**Content**:
+- Keyboard visualization (WASD, arrows, all keys)
+- Gamepad button mapping display
+- Mouse position and click detection
+- Touch controls for mobile
+- Input rebinding UI
+
+**Files Created**: examples/input-showcase/
+**Testing**: Test on desktop + mobile + gamepad
+
+---
+
+#### 5.2 Create Audio Lab Demo
+**File**: examples/audio-lab/code.js (NEW)
+**Goal**: Demonstrate spatial 3D audio system
+
+**Content**:
+- 3D positioned sound sources
+- Sound effect triggering
+- Music loops and mixing
+- Volume controls and panning
+- Doppler effect demonstration
+
+**Files Created**: examples/audio-lab/
+**Testing**: Verify audio positioning and effects
+
+---
+
+#### 5.3 Create Storage Quest Demo
+**File**: examples/storage-quest/code.js (NEW)
+**Goal**: Demonstrate persistent storage APIs
+
+**Content**:
+- Save/load game progress
+- High score persistence
+- Player profile customization
+- Settings storage
+- Data export/import
+
+**Files Created**: examples/storage-quest/
+**Testing**: Verify data persists across sessions
+
+---
+
+### 📋 **Implementation Checklist**
+
+#### Phase 1: Critical Fixes (Week 1)
+- [ ] Resolve pnpm-lock.yaml merge conflict
+- [ ] Fix light memory leaks (removeLight disposal)
+- [ ] Fix material cleanup (all texture types)
+- [ ] Clean up untracked patch files
+- [ ] Create vite.config.js
+
+#### Phase 2: Performance (Week 2-3)
+- [ ] Implement GPU instancing system
+- [ ] Add frustum culling to render loop
+- [ ] Implement material caching
+- [ ] Optimize scene traversal (animated objects)
+- [ ] Benchmark and document improvements
+
+#### Phase 3: Code Quality (Week 4)
+- [ ] Refactor api-3d.js into modules
+- [ ] Refactor ui.js into modules
+- [ ] Implement logging system
+- [ ] Add pre-commit hooks
+- [ ] Update all console.log to logger
+
+#### Phase 4: New Features (Week 5-6)
+- [ ] Add LOD system
+- [ ] Add normal mapping support
+- [ ] Add deferred rendering (optional)
+- [ ] Add GPGPU particle system (optional)
+
+#### Phase 5: Demo Enhancement (Week 7)
+- [ ] Create input-showcase demo
+- [ ] Create audio-lab demo
+- [ ] Create storage-quest demo
+- [ ] Update all demos to use new features
+
+---
+
+### 📊 **Expected Outcomes**
+
+**Performance Improvements**:
+- 10-100x draw call reduction (instancing)
+- 2-5x FPS improvement (frustum culling)
+- 10-50x fewer material allocations (caching)
+- 2-10ms per frame reduction (traversal optimization)
+
+**Code Quality Improvements**:
+- 850 LOC api-3d.js → 5 modules of ~170 LOC each
+- 400 LOC ui.js → 4 modules of ~100 LOC each
+- Configurable logging with history
+- Automated code quality enforcement
+
+**Feature Additions**:
+- LOD system for automatic optimization
+- Normal mapping for high-detail surfaces
+- Complete API coverage in demos (100%)
+
+**Stability Improvements**:
+- Zero memory leaks
+- Clean dependency resolution
+- Explicit build configuration
+- Proper git history
+
+---
+
+### 🎯 **Success Metrics**
+
+**Performance**:
+- 60 FPS maintained with 10,000+ objects
+- Memory usage stable over 1 hour runtime
+- Build size < 2MB (optimized)
+
+**Code Quality**:
+- No files > 300 LOC
+- ESLint 0 warnings/errors
+- Prettier 100% formatted
+- All tests passing
+
+**Coverage**:
+- 100% API demonstrated in examples
+- 100% documentation coverage
+- Zero untracked files in repo
+
+---
+
 **🤖 This guide provides GitHub Copilot with comprehensive context for Nova64 development. The fantasy console combines retro gaming nostalgia with cutting-edge 3D technology, creating an unparalleled development experience for modern web-based gaming.**
 
 **🎮 Happy coding with Nova64 - where retro meets the future!**

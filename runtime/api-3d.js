@@ -20,8 +20,39 @@ export function threeDApi(gpu) {
   const mixers = new Map();
   const modelAnimations = new Map();
 
-  // Material cache
+  // Material cache for performance optimization
   const materials = new Map();
+  const materialCache = new Map();
+
+  // Helper function to generate material cache key
+  function getMaterialKey(options) {
+    // Create a stable key from material options
+    const key = JSON.stringify({
+      material: options.material || 'standard',
+      color: options.color || 0xffffff,
+      emissive: options.emissive || 0x000000,
+      metalness: options.metalness,
+      roughness: options.roughness,
+      transparent: options.transparent,
+      opacity: options.opacity,
+      wireframe: options.wireframe
+    });
+    return key;
+  }
+
+  // Get or create cached material
+  function getCachedMaterial(options) {
+    const key = getMaterialKey(options);
+
+    if (materialCache.has(key)) {
+      return materialCache.get(key);
+    }
+
+    // Create new material and cache it
+    const material = gpu.createN64Material(options);
+    materialCache.set(key, material);
+    return material;
+  }
 
   function createMesh(geometry, material, position = [0, 0, 0]) {
     if (!geometry || !material) {
@@ -95,10 +126,10 @@ export function threeDApi(gpu) {
   function createCylinder(radiusTop = 1, radiusBottom = 1, height = 1, color = 0xffffff, position = [0, 0, 0], options = {}) {
     try {
       const geometry = gpu.createCylinderGeometry ? gpu.createCylinderGeometry(radiusTop, radiusBottom, height, options.segments || 16) : gpu.createBoxGeometry(radiusTop, height, radiusTop);
-      
+
       const materialOptions = { ...options, color };
-      const material = gpu.createN64Material(materialOptions);
-      
+      const material = getCachedMaterial(materialOptions);
+
       return createMesh(geometry, material, position);
     } catch (e) {
       console.error('createCylinder err', e);
@@ -117,9 +148,9 @@ export function threeDApi(gpu) {
         console.warn('createCube: invalid color, using white');
         color = 0xffffff;
       }
-      
+
       const geometry = gpu.createBoxGeometry(size, size, size);
-      const material = gpu.createN64Material({ color, ...options });
+      const material = getCachedMaterial({ color, ...options });
       return createMesh(geometry, material, position);
     } catch (error) {
       console.error('createCube failed:', error);
@@ -133,9 +164,9 @@ export function threeDApi(gpu) {
       if (typeof size !== 'number' || size <= 0) {
         size = 1;
       }
-      
+
       const geometry = gpu.createBoxGeometry(size, size, size);
-      const material = gpu.createN64Material(materialOptions);
+      const material = getCachedMaterial(materialOptions);
       return createMesh(geometry, material, position);
     } catch (error) {
       console.error('createAdvancedCube failed:', error);
@@ -154,9 +185,9 @@ export function threeDApi(gpu) {
         console.warn('createSphere: invalid segments, using default');
         segments = 8;
       }
-      
+
       const geometry = gpu.createSphereGeometry(radius, segments);
-      const material = gpu.createN64Material({ color, ...options });
+      const material = getCachedMaterial({ color, ...options });
       return createMesh(geometry, material, position);
     } catch (error) {
       console.error('createSphere failed:', error);
@@ -173,9 +204,9 @@ export function threeDApi(gpu) {
       if (typeof segments !== 'number' || segments < 3) {
         segments = 16;
       }
-      
+
       const geometry = gpu.createSphereGeometry(radius, segments);
-      const material = gpu.createN64Material(materialOptions);
+      const material = getCachedMaterial(materialOptions);
       return createMesh(geometry, material, position);
     } catch (error) {
       console.error('createAdvancedSphere failed:', error);
@@ -194,9 +225,9 @@ export function threeDApi(gpu) {
         console.warn('createPlane: invalid height, using default');
         height = 1;
       }
-      
+
       const geometry = gpu.createPlaneGeometry(width, height);
-      const material = gpu.createN64Material({ color });
+      const material = getCachedMaterial({ color });
       return createMesh(geometry, material, position);
     } catch (error) {
       console.error('createPlane failed:', error);
@@ -471,10 +502,26 @@ export function threeDApi(gpu) {
     }
   }
 
+  // Helper function to completely dispose a material and all its textures
+  function disposeMaterial(material) {
+    // Dispose all texture types
+    const textureProps = ['map', 'normalMap', 'roughnessMap', 'metalnessMap',
+                          'aoMap', 'emissiveMap', 'bumpMap', 'displacementMap',
+                          'alphaMap', 'lightMap', 'envMap'];
+
+    textureProps.forEach(prop => {
+      if (material[prop] && material[prop].dispose) {
+        material[prop].dispose();
+      }
+    });
+
+    material.dispose();
+  }
+
   function clearScene() {
-    console.log('🧹 Clearing 3D scene... Current meshes:', meshes.size);
-    
-    // Remove ALL meshes including lights - complete clean slate
+    console.log('🧹 Clearing 3D scene... Current meshes:', meshes.size, 'lights:', cartLights.size, 'cached materials:', materialCache.size);
+
+    // Remove ALL meshes with complete texture disposal
     for (const [, mesh] of meshes) {
       scene.remove(mesh);
       if (mesh.geometry) {
@@ -483,18 +530,26 @@ export function threeDApi(gpu) {
       if (mesh.material) {
         // Handle both single materials and material arrays
         if (Array.isArray(mesh.material)) {
-          mesh.material.forEach(mat => {
-            if (mat.map) mat.map.dispose();
-            mat.dispose();
-          });
+          mesh.material.forEach(mat => disposeMaterial(mat));
         } else {
-          if (mesh.material.map) mesh.material.map.dispose();
-          mesh.material.dispose();
+          disposeMaterial(mesh.material);
         }
       }
     }
     meshes.clear();
-    
+
+    // Clear all dynamic lights created by carts
+    cartLights.forEach((light, id) => {
+      removeLight(id);
+    });
+    cartLights.clear();
+
+    // Clear material cache to prevent memory buildup
+    materialCache.forEach((material) => {
+      disposeMaterial(material);
+    });
+    materialCache.clear();
+
     // Clear all children from scene (in case anything was added directly)
     while (scene.children.length > 0) {
       const child = scene.children[0];
@@ -502,21 +557,21 @@ export function threeDApi(gpu) {
       if (child.geometry) child.geometry.dispose();
       if (child.material) {
         if (Array.isArray(child.material)) {
-          child.material.forEach(mat => mat.dispose());
+          child.material.forEach(mat => disposeMaterial(mat));
         } else {
-          child.material.dispose();
+          disposeMaterial(child.material);
         }
       }
     }
-    
+
     // Re-add basic lighting so scenes aren't completely dark
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
     scene.add(ambientLight);
-    
+
     const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
     directionalLight.position.set(5, 10, 7.5);
     scene.add(directionalLight);
-    
+
     console.log('✅ Scene cleared completely');
   }
 
@@ -632,6 +687,17 @@ export function threeDApi(gpu) {
     const light = cartLights.get(lightId);
     if (!light) return false;
     scene.remove(light);
+
+    // Dispose shadow map if it exists
+    if (light.shadow && light.shadow.map) {
+      light.shadow.map.dispose();
+    }
+
+    // Dispose light object (Three.js lights have dispose method)
+    if (light.dispose) {
+      light.dispose();
+    }
+
     cartLights.delete(lightId);
     return true;
   }

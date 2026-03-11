@@ -137,6 +137,10 @@ async function enterGameScreen() {
     weaponLevel: 1
   };
   
+  gameData.flags = { bossActive: false, waveSpawning: false, bossPhase: 0 };
+  gameData.combo = 0;
+  gameData.comboTimer = 0;
+  
   // Clear arrays
   gameData.playerBullets = [];
   gameData.enemies = [];
@@ -476,27 +480,51 @@ function fireBullet(type) {
   const player = gameData.player;
   const playerBullets = gameData.playerBullets;
   
-  const bullet = {
-    type: type,
-    damage: type === 'charged' ? 3 : 1,
-    speed: 25,
-    mesh: null,
-    life: 3.0
-  };
-  
   if (type === 'charged') {
-    bullet.mesh = createSphere(0.15, 0x00ffff, [player.x, player.y, player.z + 1]);
+    const bullet = {
+      type: type, damage: 3, speed: 25, life: 3.0,
+      mesh: createSphere(0.15, 0x00ffff, [player.x, player.y, player.z + 1])
+    };
     setScale(bullet.mesh, 1.5);
-  } else {
-    bullet.mesh = createCube(0.1, 0xffff00, [player.x, player.y, player.z + 1]);
-    setScale(bullet.mesh, 0.3, 0.3, 1.0);
+    playerBullets.push(bullet);
+    return;
   }
   
-  playerBullets.push(bullet);
+  const level = player.weaponLevel;
+  const positions = [];
+  
+  if (level === 1) {
+    positions.push([player.x, player.y, player.z + 1]);
+  } else if (level === 2) {
+    positions.push([player.x - 0.5, player.y, player.z + 1]);
+    positions.push([player.x + 0.5, player.y, player.z + 1]);
+  } else {
+    positions.push([player.x, player.y, player.z + 1.2]);
+    positions.push([player.x - 0.8, player.y, player.z + 0.8]);
+    positions.push([player.x + 0.8, player.y, player.z + 0.8]);
+  }
+  
+  positions.forEach(pos => {
+    const bullet = {
+      type: type, damage: 1, speed: 25, life: 3.0,
+      mesh: createCube(0.1, 0xffff00, pos)
+    };
+    setScale(bullet.mesh, 0.3, 0.3, 1.0);
+    playerBullets.push(bullet);
+  });
 }
 
 function spawnEnemyWave() {
   const level = gameData.level;
+  
+  if (level > 0 && level % 5 === 0 && !gameData.flags.bossActive) {
+    // Boss wave!
+    spawnEnemy(0, 6, -35, 'boss');
+    gameData.flags.bossActive = true;
+    gameData.flags.bossPhase = 0;
+    return;
+  }
+  gameData.flags.bossActive = false;
   
   const waveSize = 4 + level * 2;
   const formations = ['line', 'V', 'diamond', 'circle'];
@@ -532,7 +560,14 @@ function spawnEnemyWave() {
       }
     }
     
-    spawnEnemy(x, y, z, formation);
+    let typeToSpawn = formation;
+    if (level >= 2 && Math.random() < 0.25) {
+      typeToSpawn = 'fast';
+    } else if (level >= 3 && Math.random() < 0.15) {
+      typeToSpawn = 'tank';
+    }
+    
+    spawnEnemy(x, y, z, typeToSpawn);
   }
 }
 
@@ -540,19 +575,49 @@ function spawnEnemy(x, y, z, type) {
   const level = gameData.level;
   const enemies = gameData.enemies;
   
-  // Create enemy ship geometry
-  const body = createCube(0.6, 0xff4444, [x, y, z]);
-  const engine = createSphere(0.3, 0xff8800, [x, y, z - 0.5]);
+  let body, engine, parts = null;
+  let health = 2 + level;
+  let vz = 8;
+  let vy = 0;
+  let vx = 0;
+  let fireCooldown = Math.random() * 2;
+  
+  if (type === 'boss') {
+    health = 50 + (level * 10);
+    vz = 2; // Slow incoming speed
+    body = createCube(3.0, 0xff0000, [x, y, z]);
+    const wingL = createCube(1.5, 0x333333, [x-2, y, z]);
+    const wingR = createCube(1.5, 0x333333, [x+2, y, z]);
+    parts = { body, wingL, wingR };
+  } else if (type === 'fast') {
+    health = 1 + Math.floor(level / 2);
+    vz = 14;
+    body = createCube(0.4, 0xffaa00, [x, y, z]);
+    engine = createSphere(0.2, 0xffffff, [x, y, z - 0.5]);
+    parts = { body, engine };
+  } else if (type === 'tank') {
+    health = 10 + level * 3;
+    vz = 4;
+    body = createCube(1.2, 0xff00ff, [x, y, z]);
+    engine = createSphere(0.5, 0x5500aa, [x, y, z - 0.8]);
+    parts = { body, engine };
+  } else {
+    // Normal / formations
+    body = createCube(0.6, 0xff4444, [x, y, z]);
+    engine = createSphere(0.3, 0xff8800, [x, y, z - 0.5]);
+    parts = { body, engine };
+  }
   
   const enemy = {
     type: type,
-    health: 2 + level,
-    mesh: { body, engine },
+    health: health,
+    mesh: parts,
     x: x, y: y, z: z,
-    vx: 0, vy: 0, vz: 8,
-    fireCooldown: Math.random() * 2,
+    vx: vx, vy: vy, vz: vz,
+    fireCooldown: fireCooldown,
     behavior: type,
-    alive: true
+    alive: true,
+    timer: 0
   };
   
   enemies.push(enemy);
@@ -609,48 +674,83 @@ function updateEnemies(dt) {
     const enemy = enemies[i];
     if (!enemy.alive) continue;
     
-    // Update enemy AI and movement
+    enemy.timer += dt;
     enemy.fireCooldown -= dt;
     enemy.z += enemy.vz * dt;
     
-    // Simple AI behaviors
-    switch (enemy.behavior) {
-      case 'line':
-        enemy.vx = Math.sin(gameTime + i) * 2;
-        break;
-      case 'V':
-        enemy.vx = Math.sin(gameTime * 2 + i) * 3;
-        enemy.vy = Math.cos(gameTime + i) * 1;
-        break;
-      case 'circle':
-        enemy.vx = Math.cos(gameTime + i * 2) * 4;
-        enemy.vy = Math.sin(gameTime + i * 2) * 2;
-        break;
-    }
-    
-    enemy.x += enemy.vx * dt;
-    enemy.y += enemy.vy * dt;
-    
-    // Update mesh positions
-    setPosition(enemy.mesh.body, enemy.x, enemy.y, enemy.z);
-    setPosition(enemy.mesh.engine, enemy.x, enemy.y, enemy.z - 0.5);
-    
-    // Rotate enemy ships
-    rotateMesh(enemy.mesh.body, 0, dt * 2, 0);
-    rotateMesh(enemy.mesh.engine, 0, dt * 4, 0);
-    
-    // Enemy firing
-    if (enemy.fireCooldown <= 0 && enemy.z > -20 && Math.random() < 0.3 * dt) {
-      fireEnemyBullet(enemy.x, enemy.y, enemy.z);
-      enemy.fireCooldown = 1.5 + Math.random();
+    if (enemy.type === 'boss') {
+      if (enemy.z > -15) {
+        enemy.vz = 0; // stop moving forward
+        enemy.x = Math.sin(enemy.timer * 0.5) * 8;
+        if (enemy.fireCooldown <= 0) {
+            for (let a = -1; a <= 1; a+=1) {
+                fireEnemyBullet(enemy.x + a * 2, enemy.y, enemy.z + 2);
+            }
+            enemy.fireCooldown = 1.0;
+        }
+      }
+      
+      setPosition(enemy.mesh.body, enemy.x, enemy.y, enemy.z);
+      setPosition(enemy.mesh.wingL, enemy.x - 2, enemy.y, enemy.z);
+      setPosition(enemy.mesh.wingR, enemy.x + 2, enemy.y, enemy.z);
+      
+      setRotation(enemy.mesh.body, enemy.timer * 0.5, enemy.timer, 0);
+    } else {
+        // Simple AI behaviors
+        switch (enemy.behavior) {
+          case 'line':
+            enemy.vx = Math.sin(gameTime + i) * 2;
+            break;
+          case 'V':
+            enemy.vx = Math.sin(gameTime * 2 + i) * 3;
+            enemy.vy = Math.cos(gameTime + i) * 1;
+            break;
+          case 'circle':
+            enemy.vx = Math.cos(gameTime + i * 2) * 4;
+            enemy.vy = Math.sin(gameTime + i * 2) * 2;
+            break;
+        }
+        
+        if (enemy.type === 'fast') {
+            enemy.vx = Math.sin(gameTime * 5 + i) * 5;
+        }
+        
+        enemy.x += enemy.vx * dt;
+        enemy.y += enemy.vy * dt;
+        
+        // Update mesh positions
+        if (enemy.mesh.body) setPosition(enemy.mesh.body, enemy.x, enemy.y, enemy.z);
+        if (enemy.mesh.engine) setPosition(enemy.mesh.engine, enemy.x, enemy.y, enemy.z - 0.5);
+        
+        // Rotate enemy ships
+        if (enemy.type === 'fast') {
+             if (enemy.mesh.body) rotateMesh(enemy.mesh.body, 0, dt * 5, dt * 5);
+        } else {
+             if (enemy.mesh.body) rotateMesh(enemy.mesh.body, 0, dt * 2, 0);
+        }
+        if (enemy.mesh.engine) rotateMesh(enemy.mesh.engine, 0, dt * 4, 0);
+        
+        // Enemy firing
+        if (enemy.fireCooldown <= 0 && enemy.z > -20 && Math.random() < 0.3 * dt) {
+          fireEnemyBullet(enemy.x, enemy.y, enemy.z);
+          enemy.fireCooldown = 1.5 + Math.random();
+        }
     }
     
     // Remove enemies that passed player
     if (enemy.z > 5) {
-      destroyMesh(enemy.mesh.body);
-      destroyMesh(enemy.mesh.engine);
+      if (enemy.mesh.body) destroyMesh(enemy.mesh.body);
+      if (enemy.mesh.engine) destroyMesh(enemy.mesh.engine);
+      if (enemy.mesh.wingL) destroyMesh(enemy.mesh.wingL);
+      if (enemy.mesh.wingR) destroyMesh(enemy.mesh.wingR);
+      
       enemies.splice(i, 1);
-      lives--; // Lose life when enemy escapes
+      
+      if (enemy.type === 'boss') {
+          gameData.flags.bossActive = false; // should not drop behind, but just in case
+      } else {
+          lives--; // Lose life when enemy escapes
+      }
     }
   }
   
@@ -791,19 +891,37 @@ function checkCollisions(_dt) {
         Math.pow(bulletPos[2] - enemy.z, 2)
       );
       
-      if (distance < 1.5) {
+      let collisionRadius = enemy.type === 'boss' ? 4.0 : 1.5;
+      if (distance < collisionRadius) {
         // Hit!
         enemy.health -= bullet.damage;
         destroyMesh(bullet.mesh);
         playerBullets.splice(i, 1);
         
         if (enemy.health <= 0) {
+          gameData.combo++;
+          gameData.comboTimer = 2.0;
+          let multiplier = Math.min(gameData.combo, 10);
+          
           // Enemy destroyed
-          createExplosion(enemy.x, enemy.y, enemy.z);
-          destroyMesh(enemy.mesh.body);
-          destroyMesh(enemy.mesh.engine);
+          if (enemy.type === 'boss') {
+              createExplosion(enemy.x, enemy.y, enemy.z);
+              createExplosion(enemy.x - 2, enemy.y, enemy.z);
+              createExplosion(enemy.x + 2, enemy.y, enemy.z);
+              createExplosion(enemy.x, enemy.y + 2, enemy.z);
+              if (enemy.mesh.body) destroyMesh(enemy.mesh.body);
+              if (enemy.mesh.wingL) destroyMesh(enemy.mesh.wingL);
+              if (enemy.mesh.wingR) destroyMesh(enemy.mesh.wingR);
+              score += 5000 * multiplier;
+              gameData.flags.bossActive = false;
+          } else {
+              createExplosion(enemy.x, enemy.y, enemy.z);
+              if (enemy.mesh.body) destroyMesh(enemy.mesh.body);
+              if (enemy.mesh.engine) destroyMesh(enemy.mesh.engine);
+              let baseScore = (enemy.type === 'tank' ? 300 : (enemy.type === 'fast' ? 200 : 100));
+              score += baseScore * multiplier;
+          }
           enemies.splice(j, 1);
-          score += 100;
         }
         break;
       }
@@ -878,10 +996,18 @@ function checkCollisions(_dt) {
   gameData.lives = lives;
 }
 
-function updateGameLogic(_dt) {
+function updateGameLogic(dt) {
   const enemies = gameData.enemies;
   let level = gameData.level;
   const lives = gameData.lives;
+  
+  if (gameData.comboTimer > 0) {
+    gameData.comboTimer -= dt;
+    if (gameData.comboTimer <= 0) {
+      gameData.comboTimer = 0;
+      gameData.combo = 0;
+    }
+  }
   
   // Spawn new wave when all enemies are cleared
   if (enemies.length === 0) {
@@ -909,13 +1035,18 @@ function updateCamera(_dt) {
 
 function drawUI() {
   // HUD Background
-  rect(16, 16, 400, 70, rgba8(0, 0, 0, 150), true);
-  rect(16, 16, 400, 70, rgba8(0, 100, 200, 100), false);
+  rect(16, 16, 400, 80, rgba8(0, 0, 0, 150), true);
+  rect(16, 16, 400, 80, rgba8(0, 100, 200, 100), false);
   
   // Score and Level
   print(`SCORE: ${gameData.score.toString().padStart(8, '0')}`, 24, 24, rgba8(255, 255, 0, 255));
   print(`LEVEL: ${gameData.level}`, 24, 40, rgba8(0, 255, 255, 255));
   print(`LIVES: ${gameData.lives}`, 24, 56, rgba8(255, 100, 100, 255));
+  
+  if (gameData.combo > 1) {
+      let c = Math.min(gameData.combo, 10);
+      print(`COMBO x${c}`, 24, 72, rgba8(255, 150, 0, 255));
+  }
   
   // Health bar
   print('HULL:', 200, 24, rgba8(255, 255, 255, 255));

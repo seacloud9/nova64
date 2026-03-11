@@ -21,10 +21,11 @@
       html, body {
         background: var(--bg);
         margin: 0;
-        height: 100vh;
+        min-height: 100vh;
         color: var(--text);
         font-family: 'Inter', sans-serif;
-        overflow: hidden;
+        overflow-x: hidden;
+        overflow-y: auto;
         background-image: 
           radial-gradient(circle at 50% 0%, rgba(14, 165, 233, 0.1) 0%, transparent 50%),
           radial-gradient(circle at 100% 100%, rgba(244, 63, 94, 0.05) 0%, transparent 50%);
@@ -34,7 +35,7 @@
         display: grid; 
         grid-template-columns: 1fr 340px; 
         gap: 0; 
-        height: 100%; 
+        min-height: 100vh; 
         box-sizing: border-box; 
       }
       
@@ -346,7 +347,81 @@
         canvas {
           max-height: 50vh;
         }
+
+        /* Show mobile controls */
+        .mobile-controls {
+          display: flex !important;
+        }
       }
+
+      /* Mobile Controls Styling */
+      .mobile-controls {
+        display: none; /* hidden on desktop */
+        width: 100%;
+        max-width: 1280px;
+        margin-top: 20px;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0 10px;
+        user-select: none;
+        -webkit-user-select: none;
+        touch-action: none;
+      }
+
+      .d-pad, .action-buttons {
+        display: grid;
+        gap: 8px;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .d-pad {
+        grid-template-columns: repeat(3, 50px);
+        grid-template-rows: repeat(3, 50px);
+      }
+
+      .action-buttons {
+        grid-template-columns: repeat(2, 60px);
+        grid-template-rows: repeat(2, 60px);
+        transform: rotate(-15deg);
+      }
+
+      .btn-touch {
+        background: rgba(255, 255, 255, 0.1);
+        border: 2px solid rgba(255, 255, 255, 0.2);
+        border-radius: 12px;
+        color: rgba(255, 255, 255, 0.8);
+        font-family: 'Inter', sans-serif;
+        font-weight: bold;
+        font-size: 16px;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.4), inset 0 2px 4px rgba(255,255,255,0.1);
+        cursor: pointer;
+        /* Touch specific */
+        user-select: none;
+        -webkit-user-select: none;
+        touch-action: none;
+      }
+
+      .btn-touch:active, .btn-touch.active {
+        background: rgba(14, 165, 233, 0.4);
+        border-color: rgba(14, 165, 233, 0.8);
+        transform: translateY(2px);
+        box-shadow: 0 1px 2px rgba(0,0,0,0.4), inset 0 2px 4px rgba(0,0,0,0.6);
+      }
+
+      .btn-up { grid-column: 2; grid-row: 1; border-radius: 8px 8px 4px 4px; }
+      .btn-down { grid-column: 2; grid-row: 3; border-radius: 4px 4px 8px 8px; }
+      .btn-left { grid-column: 1; grid-row: 2; border-radius: 8px 4px 4px 8px; }
+      .btn-right { grid-column: 3; grid-row: 2; border-radius: 4px 8px 8px 4px; }
+      .btn-center { grid-column: 2; grid-row: 2; border-radius: 4px; border: none; background: rgba(255,255,255,0.05); }
+
+      .btn-a { grid-column: 2; grid-row: 1; border-radius: 50%; font-size: 20px; background: rgba(244, 63, 94, 0.2); border-color: rgba(244, 63, 94, 0.4); }
+      .btn-a:active, .btn-a.active { background: rgba(244, 63, 94, 0.5); }
+      .btn-b { grid-column: 1; grid-row: 2; border-radius: 50%; font-size: 20px; background: rgba(168, 85, 247, 0.2); border-color: rgba(168, 85, 247, 0.4); }
+      .btn-b:active, .btn-b.active { background: rgba(168, 85, 247, 0.5); }
     </style>
   </head>
   <body>
@@ -359,6 +434,21 @@
             <div class="screen-glare"></div>
           </div>
           <div class="hardware-brand">NOVA-64</div>
+        </div>
+
+        <!-- Mobile Virtual Controls -->
+        <div class="mobile-controls">
+          <div class="d-pad">
+            <div class="btn-touch btn-up" data-keys='["ArrowUp", "KeyW"]'>▲</div>
+            <div class="btn-touch btn-left" data-keys='["ArrowLeft", "KeyA"]'>◀</div>
+            <div class="btn-center"></div>
+            <div class="btn-touch btn-right" data-keys='["ArrowRight", "KeyD"]'>▶</div>
+            <div class="btn-touch btn-down" data-keys='["ArrowDown", "KeyS"]'>▼</div>
+          </div>
+          <div class="action-buttons">
+            <div class="btn-touch btn-a" data-keys='["Space", "Enter"]'>A</div>
+            <div class="btn-touch btn-b" data-keys='["KeyZ", "KeyX"]'>B</div>
+          </div>
         </div>
       </div>
       <div class="panel">
@@ -445,6 +535,61 @@
     
     <script type="module" src="/src/main.js"></script>
     <script>
+      // Virtual controls code mapper
+      function handleVirtualButton(element, isDown) {
+        if (!element || !element.dataset || !element.dataset.keys) return;
+        try {
+          const keys = JSON.parse(element.dataset.keys);
+          keys.forEach(code => {
+            window.dispatchEvent(new KeyboardEvent(isDown ? 'keydown' : 'keyup', { code, bubbles: true }));
+          });
+          if (isDown) {
+            element.classList.add('active');
+          } else {
+            element.classList.remove('active');
+          }
+        } catch(e) {
+          console.error("Virtual input error:", e);
+        }
+      }
+
+      // Bind touch events to on-screen buttons
+      document.querySelectorAll('.btn-touch').forEach(btn => {
+        // Prevent default double-tap zoom or context menus
+        btn.addEventListener('contextmenu', e => e.preventDefault());
+        
+        btn.addEventListener('touchstart', e => {
+          e.preventDefault(); // Stop mouse fallback events
+          handleVirtualButton(e.currentTarget, true);
+        }, { passive: false });
+        
+        btn.addEventListener('touchend', e => {
+          e.preventDefault();
+          handleVirtualButton(e.currentTarget, false);
+        }, { passive: false });
+
+        btn.addEventListener('touchcancel', e => {
+          e.preventDefault();
+          handleVirtualButton(e.currentTarget, false);
+        }, { passive: false });
+
+        // Add mouse support just in case someone clicks them on desktop to test
+        btn.addEventListener('mousedown', e => {
+          e.preventDefault();
+          handleVirtualButton(e.currentTarget, true);
+        });
+        btn.addEventListener('mouseup', e => {
+          e.preventDefault();
+          handleVirtualButton(e.currentTarget, false);
+        });
+        btn.addEventListener('mouseleave', e => {
+          e.preventDefault();
+          if (btn.classList.contains('active')) {
+            handleVirtualButton(e.currentTarget, false);
+          }
+        });
+      });
+
       const urlParams = new URLSearchParams(window.location.search);
       const demoParam = urlParams.get('demo');
       if (demoParam) {

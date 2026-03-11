@@ -55,7 +55,7 @@ export function init() {
   
   // Strong lighting so things are actually visible!
   setAmbientLight(0xffffff, 0.6);
-  createLight('directional', 0xffffee, [-1, -2, -1], 1.2);
+  setDirectionalLight([-1, -2, -1], 0xffffee, 1.2);
   
   // Bright checkerboard/neon floor
   let floor = createPlane(200, 200, 0x112233, [0, 0, 0], MAT.floor);
@@ -86,10 +86,10 @@ export function init() {
 }
 
 function cleanupLevel() {
-  for (let w of entities.walls) removeMesh(w.m);
-  for (let e of entities.enemies) { removeMesh(e.m1); removeMesh(e.m2); }
-  for (let b of entities.bullets) removeMesh(b.m);
-  for (let p of entities.particles) removeMesh(p.m);
+  for (let w of entities.walls) destroyMesh(w.m);
+  for (let e of entities.enemies) { destroyMesh(e.m1); destroyMesh(e.m2); }
+  for (let b of entities.bullets) destroyMesh(b.m);
+  for (let p of entities.particles) destroyMesh(p.m);
   entities = { walls: [], enemies: [], bullets: [], particles: [] };
 }
 
@@ -119,9 +119,9 @@ function startGame() {
     }
   }
   
-  player.x = -8 * SIZE;
-  player.z = 0;
-  player.yaw = Math.PI / 2;
+  player.x = -11 * SIZE; // Safe spawn point (x=1)
+  player.z = -6 * SIZE;  // Safe spawn point (z=1)
+  player.yaw = Math.PI / 4;
   player.pitch = 0;
 }
 
@@ -171,9 +171,10 @@ export function update() {
   gameTime++;
   
   if (gameState !== 'playing') {
-    // Look around idle animation
-    setCameraPosition(0, 5, 10);
-    setCameraTarget(Math.sin(gameTime*0.01)*10, 5, Math.cos(gameTime*0.01)*10);
+    // Look around idle animation - high up to avoid clipping walls
+    let r = 40;
+    setCameraPosition(Math.sin(gameTime*0.005)*r, 30, Math.cos(gameTime*0.005)*r);
+    setCameraTarget(0, 0, 0);
     return;
   }
 
@@ -236,7 +237,7 @@ export function update() {
         e.health -= 1;
         spawnGibs(b.x, b.y, b.z, 0xffaa00, 3); // sparks
         if (e.health <= 0) {
-          removeMesh(e.m1); removeMesh(e.m2);
+          destroyMesh(e.m1); destroyMesh(e.m2);
           entities.enemies.splice(j, 1);
           player.score += 100;
           spawnGibs(e.x, e.y, e.z, MAT.enemy.color, 15); // blood
@@ -251,7 +252,7 @@ export function update() {
     }
 
     if (b.life <= 0 || hit) {
-      removeMesh(b.m);
+      destroyMesh(b.m);
       entities.bullets.splice(i, 1);
     }
   }
@@ -302,14 +303,14 @@ export function update() {
     let s = p.life / 20;
     setScale(p.m, s, s, s);
     if (p.life <= 0) {
-      removeMesh(p.m);
+      destroyMesh(p.m);
       entities.particles.splice(i, 1);
     }
   }
 
   // Random enemy respawn
   if (gameTime % 120 === 0 && entities.enemies.length < 15) {
-    let rs = SIZE;
+    let rs = 4; // SIZE constant used in init
     spawnEnemy((Math.random()-0.5)*10*rs, (Math.random()-0.5)*10*rs);
   }
   
@@ -319,23 +320,23 @@ export function update() {
 
 export function draw() {
   if (gameState === 'start') {
-    rectfill(0, 0, 640, 360, 0x000000bb);
-    print("NEO-DOOM", 180, 120, 0x00ffcc);
-    print("CLICK ANYWHERE TO START AND LOCK MOUSE", 70, 170, 0xffffff);
-    print("WASD to Move  |  Mouse to Aim  |  Click to Shoot", 40, 220, 0xaaaaaa);
+    rectfill(0, 0, 640, 360, rgba8(0, 0, 0, 187));
+    print("NEO-DOOM", 180, 120, rgba8(0, 255, 204, 255));
+    print("CLICK ANYWHERE TO START AND LOCK MOUSE", 70, 170, rgba8(255, 255, 255, 255));
+    print("WASD to Move  |  Mouse to Aim  |  Click to Shoot", 40, 220, rgba8(170, 170, 170, 255));
   } else if (gameState === 'gameover') {
-    rectfill(0, 0, 640, 360, 0xbb0000bb);
-    print("YOU DIED", 200, 120, 0xffffff);
-    print(`FINAL SCORE: ${player.score}`, 160, 160, 0xffaa00);
-    print("CLICK TO RESTART", 140, 220, 0xaaaaaa);
+    rectfill(0, 0, 640, 360, rgba8(187, 0, 0, 187));
+    print("YOU DIED", 200, 120, rgba8(255, 255, 255, 255));
+    print(`FINAL SCORE: ${player.score}`, 160, 160, rgba8(255, 170, 0, 255));
+    print("CLICK TO RESTART", 140, 220, rgba8(170, 170, 170, 255));
   } else {
     // HUD
-    let hColor = player.health > 30 ? 0x00ffcc : 0xff0000;
+    let hColor = player.health > 30 ? rgba8(0, 255, 204, 255) : rgba8(255, 0, 0, 255);
     print(`HP: ${player.health}%`, 20, 320, hColor);
-    print(`SCORE: ${player.score}`, 200, 320, 0xffaa00);
+    print(`SCORE: ${player.score}`, 200, 320, rgba8(255, 170, 0, 255));
     
     // Crosshair
-    rectfill(159, 119, 3, 3, 0xffffff);
+    rectfill(159, 119, 3, 3, rgba8(255, 255, 255, 255));
     
     // Fast DOOM-style animated gun bob
     let isMoving = (key('KeyW') || key('KeyS') || key('KeyA') || key('KeyD'));
@@ -347,13 +348,13 @@ export function draw() {
     let gy = 260 + bobY + recoil;
     
     // Gun graphics
-    rectfill(gx - 15, gy - 60, 30, 100, 0x333333); // Barrel
-    rectfill(gx - 20, gy - 20, 40, 80, 0x555555); // Stock
-    rectfill(gx - 5, gy - 70, 10, 60, 0x00ffcc); // Glow
+    rectfill(gx - 15, gy - 60, 30, 100, rgba8(51, 51, 51, 255)); // Barrel
+    rectfill(gx - 20, gy - 20, 40, 80, rgba8(85, 85, 85, 255)); // Stock
+    rectfill(gx - 5, gy - 70, 10, 60, rgba8(0, 255, 204, 255)); // Glow
     
     if (recoil) {
-      rectfill(gx - 25, gy - 90, 50, 40, 0x00ffccaa); // Muzzle flash
-      rectfill(gx - 10, gy - 80, 20, 20, 0xffffff);
+      rectfill(gx - 25, gy - 90, 50, 40, rgba8(0, 255, 204, 170)); // Muzzle flash
+      rectfill(gx - 10, gy - 80, 20, 20, rgba8(255, 255, 255, 255));
     }
   }
 }

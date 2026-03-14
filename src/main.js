@@ -18,6 +18,7 @@ import { voxelApi } from '../runtime/api-voxel.js';
 import { createFullscreenButton } from '../runtime/fullscreen-button.js';
 import { storeApi } from '../runtime/store.js';
 import { api2d } from '../runtime/api-2d.js';
+import { presetsApi } from '../runtime/api-presets.js';
 
 const canvas = document.getElementById('screen');
 
@@ -50,6 +51,7 @@ const fxApi = effectsApi(gpu);
 const vxApi = voxelApi(gpu);
 const storeApiInst = storeApi();
 const api2dInst = api2d(gpu);
+const presetsInst = presetsApi(gpu);
 
 // Create UI API - needs to be created after api is fully initialized
 let uiApiInstance;
@@ -72,6 +74,7 @@ fxApi.exposeTo(g);
 vxApi.exposeTo(g);
 storeApiInst.exposeTo(g);
 api2dInst.exposeTo(g);
+presetsInst.exposeTo(g);
 
 // Now create UI API after g has rgba8 and other functions
 uiApiInstance = uiApi(gpu, g);
@@ -140,6 +143,10 @@ function loop() {
     
     // Tick the global novaStore time counter
     storeApiInst.tick(dt);
+    // Auto-animate skybox if enabled
+    skyApi._tick(dt);
+    // Update post-processing shader uniforms (time, etc.)
+    fxApi.update(dt);
 
     // Update cart first (for manual screen management)
     // Check if cart exists to prevent errors during scene transitions
@@ -225,6 +232,7 @@ const gameMap = {
 
 // Map demo names (from ?demo= URL param) to paths
 const demoMap = {
+  'hello-world': '/examples/hello-world/code.js',
   'crystal-cathedral-3d': '/examples/crystal-cathedral-3d/code.js',
   'f-zero-nova-3d': '/examples/f-zero-nova-3d/code.js',
   'star-fox-nova-3d': '/examples/star-fox-nova-3d/code.js',
@@ -245,7 +253,7 @@ const demoMap = {
 
 // default cart - load from URL param or default to space-harrier-3d
 (async () => {
-  let gamePath = '/examples/adventure-comic-3d/code.js';
+  let gamePath = document.getElementById('cart')?.value || '/examples/space-harrier-3d/code.js';
   
   if (gamePathParam) {
     gamePath = gamePathParam;
@@ -299,7 +307,7 @@ window.addEventListener('message', (event) => {
         'btn', 'btnp', 'rgba8', 'spr', 'map', 'mset', 'mget',
         'rect3d', 'cube3d', 'sphere3d', 'cylinder3d', 'cone3d', 'model3d', 'light3d',
         'setCamera', 'lookAt', 'fog3d', 'clearScene', 'updateModel',
-        'createSkybox', 'updateSkybox', 'removeSkybox',
+        'createSpaceSkybox', 'animateSkybox', 'clearSkybox',
         'bloom', 'chromaticAberration', 'vignette', 'scanlines', 'crt', 'glitch',
         'createVoxelEngine', 'voxelSet', 'voxelGet', 'voxelClear', 'voxelRender',
         'console', 'Math', 'Date', 'Array', 'Object', 'String', 'Number',
@@ -315,7 +323,7 @@ window.addEventListener('message', (event) => {
         threeDApi_instance.cylinder3d, threeDApi_instance.cone3d, threeDApi_instance.model3d, threeDApi_instance.light3d,
         threeDApi_instance.setCamera, threeDApi_instance.lookAt, threeDApi_instance.fog3d, 
         threeDApi_instance.clearScene, threeDApi_instance.updateModel,
-        skyApi.createSkybox, skyApi.updateSkybox, skyApi.removeSkybox,
+        g.createSpaceSkybox, g.animateSkybox, g.clearSkybox,
         fxApi.bloom, fxApi.chromaticAberration, fxApi.vignette, fxApi.scanlines, fxApi.crt, fxApi.glitch,
         vxApi.createVoxelEngine, vxApi.voxelSet, vxApi.voxelGet, vxApi.voxelClear, vxApi.voxelRender,
         console, Math, Date, Array, Object, String, Number

@@ -85,23 +85,23 @@ Nova64 is a revolutionary **JavaScript 3D Fantasy Console** featuring:
 Nova64 carts are **ES modules** that create immersive 3D experiences:
 ```javascript
 // 🌟 Complete 3D cart structure
+let cube;
+
 export function init() {
-    // 🏗️ Initialize 3D scene, load assets, setup lighting
+    // 🏗️ Create 3D objects ONCE here — never inside draw()
+    cube = createCube(2, 0x0088ff, [0, 0, -5], { material: 'holographic' });
     setCameraPosition(0, 5, 10);
     setFog(0x1a1a2e, 10, 30);
 }
 
-export function update() {
+export function update(dt) {
     // 🎮 Handle input, update game logic, animate objects
-    if (key('KeyW')) player.z -= 0.1;
-    rotateMesh(cube, 0, 0.02, 0);
+    if (key('KeyW')) player.z -= 5 * dt;
+    rotateMesh(cube, 0, dt, 0);
 }
 
 export function draw() {
-    // 🎨 3D scene renders automatically, draw 2D HUD overlay
-    draw3d(() => {
-        const cube = createCube(0, 0, -5, 2, { material: 'holographic' });
-    });
+    // 🎨 3D scene renders automatically — just draw 2D HUD here
     print('Score: 1000', 10, 10, 0xffffff);
 }
 ```
@@ -136,19 +136,21 @@ export function draw() {
 1. **🏗️ Setup**: Create `examples/your-amazing-3d-world/code.js` with complete 3D structure
 2. **⚡ Loading**: Update cart path in `src/main.js:109` for hot reloading
 3. **🎮 Testing**: Use control panel dropdown to switch between spectacular demos
-4. **🧪 Validation**: Run `npm test` to ensure 100% compatibility (35/35 tests)
+4. **🧪 Validation**: Run `pnpm test` to ensure 100% compatibility (35/35 tests)
 
 ### 🎯 **Complete Global API** (35+ Functions):
-- **🎪 3D Graphics**: createCube(), createSphere(), createPlane(), draw3d()
+- **🎪 3D Graphics**: createCube(size,color,[x,y,z],opts), createSphere(), createPlane(), createCylinder(), createCone(), createCapsule(), createTorus()
 - **📷 Camera Control**: setCameraPosition(), setCameraTarget(), setCameraFOV()
 - **🎨 Materials**: Advanced holographic, metallic, emissive, and standard materials
-- **⚡ Transforms**: rotateMesh(), setPosition(), setScale(), removeMesh()
-- **🌫️ Atmospherics**: setFog(), clearFog(), dynamic lighting systems
-- **🎮 Enhanced Input**: key(), btn(), btnp() with WASD + gamepad + mouse support
-- **🔊 Spatial Audio**: 3D positioned sound effects and ambient audio
-- **💾 Storage**: Persistent game data with saveData(), loadData()
-- **⚛️ Physics**: Collision detection, gravity, and realistic object interactions
-- **✍️ Text**: Professional text rendering with print() and font systems
+- **⚡ Transforms**: rotateMesh(), setPosition(), setScale(), removeMesh() (also destroyMesh)
+- **🌫️ Atmospherics**: setFog(), clearFog(), setAmbientLight(), createPointLight()
+- **🎮 Enhanced Input**: key(code), keyp(code), btn(i), btnp(i) — WASD + gamepad + mouse
+- **🌌 Skybox**: createSpaceSkybox(), createGradientSkybox(), createSolidSkybox(), enableSkyboxAutoAnimate()
+- **✨ Effects**: enableBloom(), enableVignette(), enableN64Mode(), enablePSXMode(), enableLowPolyMode()
+- **🔊 Audio**: sfx(preset), sfx({wave,freq,dur}), setVolume() — named presets: 'jump','coin','explosion',…
+- **💾 Storage**: saveData(key,val), loadData(key,fallback), deleteData(key)
+- **⚛️ Physics**: createBody(), stepPhysics(dt), setGravity(), setCollisionMap(fn)
+- **✍️ Text**: print(), printCentered(), drawGlowText(), drawCrosshair(), drawProgressBar()
 
 ## 🏗️ **Project Structure & Features**
 

@@ -731,12 +731,11 @@ export function effectsApi(gpu) {
         createParticleSystem: createParticleSystem,
         updateParticles: updateParticles,
 
-        // Rendering
-        renderEffects: renderEffects,
-        updateEffects: updateEffects,
-
         // Utility
-        isEffectsEnabled: () => effectsEnabled
+        isEffectsEnabled: () => effectsEnabled,
+
+        // Called by gpu-threejs.js endFrame() to apply the effect composer
+        renderEffects: renderEffects,
       });
     },
 

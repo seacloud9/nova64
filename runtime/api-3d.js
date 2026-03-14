@@ -117,6 +117,7 @@ export function threeDApi(gpu) {
       modelAnimations.delete(id);
     }
   }
+  const removeMesh = destroyMesh; // alias used in docs and demos
 
   function getMesh(id) {
     return meshes.get(id);
@@ -645,13 +646,37 @@ export function threeDApi(gpu) {
   }
 
   // === NEW: createTorus ===
-  function createTorus(x = 0, y = 0, z = 0, radius = 1, tube = 0.3, color = 0xffffff, options = {}) {
+  function createTorus(radius = 1, tube = 0.3, color = 0xffffff, position = [0, 0, 0], options = {}) {
     try {
       const geometry = new THREE.TorusGeometry(radius, tube, options.radialSegments || 8, options.tubularSegments || 16);
       const material = gpu.createN64Material({ color, ...options });
-      return createMesh(geometry, material, [x, y, z]);
+      return createMesh(geometry, material, position);
     } catch (e) {
       console.error('createTorus failed:', e);
+      return null;
+    }
+  }
+
+  // === createCone ===
+  function createCone(radius = 1, height = 2, color = 0xffffff, position = [0, 0, 0], options = {}) {
+    try {
+      const geometry = gpu.createConeGeometry(radius, height, options.segments || 16);
+      const material = getCachedMaterial({ color, ...options });
+      return createMesh(geometry, material, position);
+    } catch (e) {
+      console.error('createCone failed:', e);
+      return null;
+    }
+  }
+
+  // === createCapsule ===
+  function createCapsule(radius = 0.5, height = 1, color = 0xffffff, position = [0, 0, 0], options = {}) {
+    try {
+      const geometry = gpu.createCapsuleGeometry(radius, height, options.segments || 8);
+      const material = getCachedMaterial({ color, ...options });
+      return createMesh(geometry, material, position);
+    } catch (e) {
+      console.error('createCapsule failed:', e);
       return null;
     }
   }
@@ -660,6 +685,16 @@ export function threeDApi(gpu) {
   const cartLights = new Map();
   let lightIdCounter = 0;
 
+  /**
+   * Creates a dynamic point light in the 3D scene.
+   * @param {number} [color=0xffffff] - Light color as hex (e.g. 0xff8800)
+   * @param {number} [intensity=2] - Light brightness multiplier
+   * @param {number} [distance=20] - Maximum range of the light (0 = infinite)
+   * @param {number} [x=0] - World X position
+   * @param {number} [y=0] - World Y position
+   * @param {number} [z=0] - World Z position
+   * @returns {number} Light ID, pass to setPointLightPosition() or removePointLight()
+   */
   function createPointLight(color = 0xffffff, intensity = 2, distance = 20, x = 0, y = 0, z = 0) {
     const light = new THREE.PointLight(color, intensity, distance);
     light.position.set(x, y, z);
@@ -785,16 +820,15 @@ export function threeDApi(gpu) {
       Object.assign(target, {
         // Primitive creation
         createCube,
-        createSphere, 
+        createSphere,
         createCylinder,
         createPlane,
-        
-        // Advanced primitive creation with material options
         createAdvancedCube,
         createAdvancedSphere,
-        
+
         // Mesh management
         destroyMesh,
+        removeMesh,
         
         // Model and texture loading
         loadModel,
@@ -839,6 +873,8 @@ export function threeDApi(gpu) {
 
         // Extra primitives
         createTorus,
+        createCone,
+        createCapsule,
 
         // Dynamic lights
         createPointLight,

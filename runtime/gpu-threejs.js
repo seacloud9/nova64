@@ -409,6 +409,19 @@ export class GpuThreeJS {
     return new THREE.PlaneGeometry(width, height);
   }
 
+  createCylinderGeometry(radiusTop = 1, radiusBottom = 1, height = 1, segments = 16) {
+    return new THREE.CylinderGeometry(radiusTop, radiusBottom, height, segments);
+  }
+
+  createConeGeometry(radius = 1, height = 2, segments = 16) {
+    return new THREE.ConeGeometry(radius, height, segments);
+  }
+
+  createCapsuleGeometry(radius = 0.5, height = 1, segments = 8) {
+    // Capsule = cylinder + two hemisphere caps
+    return new THREE.CapsuleGeometry(radius, height, segments, segments * 2);
+  }
+
   // 2D compatibility methods
   getFramebuffer() { return this.fb; }
   supportsSpriteBatch() { return true; }

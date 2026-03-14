@@ -378,8 +378,9 @@ export function api2d(gpu) {
   }
 
   function measureText(text, scale = 1) {
-    // Nova64 bitmap font is 4px wide, 1px gap, so ~5px per char
-    return { width: text.length * 5 * scale, height: 7 * scale };
+    // 5px glyph + 1px spacing = 6px per character; 7px tall
+    const s = Math.max(1, Math.round(scale));
+    return { width: text.length * 6 * s, height: 7 * s };
   }
 
   /** printCentered(text, cx, y, color, scale=1) — centre on x */
@@ -687,6 +688,38 @@ export function api2d(gpu) {
         _blend(px, py, r, g, b, a);
   }
 
+  /**
+   * Draw a crosshair / reticle at (cx, cy).
+   * @param {number} cx - centre X in screen pixels
+   * @param {number} cy - centre Y in screen pixels
+   * @param {number} [size=8] - half-length of each arm in pixels
+   * @param {number} [color=0xffffffff] - rgba8 or 0xRRGGBB colour
+   * @param {'cross'|'dot'|'circle'} [style='cross'] - reticle style
+   */
+  function drawCrosshair(cx, cy, size = 8, color = 0xffffffff, style = 'cross') {
+    if (style === 'cross' || style === 'dot') {
+      // Horizontal arm
+      for (let x = cx - size; x <= cx + size; x++) _pset(x, cy, color);
+      // Vertical arm
+      for (let y = cy - size; y <= cy + size; y++) _pset(cx, y, color);
+    }
+    if (style === 'circle') {
+      // Thin circle
+      const steps = Math.max(32, size * 4);
+      for (let i = 0; i < steps; i++) {
+        const a = (i / steps) * Math.PI * 2;
+        _pset(Math.round(cx + Math.cos(a) * size), Math.round(cy + Math.sin(a) * size), color);
+      }
+    }
+    if (style === 'dot') {
+      // Centre dot (extra pixels around the intersection)
+      _pset(cx - 1, cy, color);
+      _pset(cx + 1, cy, color);
+      _pset(cx, cy - 1, color);
+      _pset(cx, cy + 1, color);
+    }
+  }
+
   // ─── expose ──────────────────────────────────────────────────────────────────
   return {
     exposeTo(target) {
@@ -743,6 +776,7 @@ export function api2d(gpu) {
         drawHealthBar,
         drawPixelBorder,
         drawPanel,
+        drawCrosshair,
         drawMinimap,
         scrollingText,
       });

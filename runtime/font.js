@@ -170,23 +170,33 @@ function cleanText(text) {
 
 export const BitmapFont = {
   w: FONT_W, h: FONT_H, spacing: FONT_SPACING,
-  draw(fb, text, x, y, colorBigInt) {
+  draw(fb, text, x, y, colorBigInt, scale = 1) {
     // Clean the text first to remove unsupported characters
     text = cleanText(text);
-    
+
     const { r, g, b, a } = unpackRGBA64(colorBigInt);
+    const s = Math.max(1, Math.round(scale));
     let cx = x|0, cy = y|0;
     for (let i=0;i<text.length;i++) {
       const ch = text[i];
-      if (ch === '\n') { cy += FONT_H+FONT_SPACING; cx = x|0; continue; }
+      if (ch === '\n') { cy += (FONT_H + FONT_SPACING) * s; cx = x|0; continue; }
       const rows = GLYPHS.get(ch) || GLYPHS.get('?');
       for (let yy=0; yy<FONT_H; yy++) {
         const row = rows[yy]; // top-down: row 0 = top of glyph = smallest y on screen
         for (let xx=0; xx<FONT_W; xx++) {
-          if (row[xx] !== ' ') fb.pset(cx+xx, cy+yy, r,g,b,a);
+          if (row[xx] !== ' ') {
+            if (s === 1) {
+              fb.pset(cx+xx, cy+yy, r,g,b,a);
+            } else {
+              // Each bitmap pixel becomes an s×s block
+              for (let sy=0; sy<s; sy++)
+                for (let sx=0; sx<s; sx++)
+                  fb.pset(cx + xx*s + sx, cy + yy*s + sy, r,g,b,a);
+            }
+          }
         }
       }
-      cx += FONT_W + FONT_SPACING;
+      cx += (FONT_W + FONT_SPACING) * s;
     }
   }
 };

@@ -146,14 +146,7 @@ export function stdApi(gpu) {
   }
 
   function print(text, x, y, color=rgba8(255,255,255,255), scale=1) {
-    // Support text scaling
-    if (scale === 1) {
-      BitmapFont.draw(fb, text, (x|0)-camRef.x, (y|0)-camRef.y, color);
-    } else {
-      // For larger text, we'll need to draw each character scaled
-      // For now, just draw normally
-      BitmapFont.draw(fb, text, (x|0)-camRef.x, (y|0)-camRef.y, color);
-    }
+    BitmapFont.draw(fb, text, (x|0)-camRef.x, (y|0)-camRef.y, color, scale);
   }
 
   return {

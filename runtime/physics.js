@@ -10,6 +10,7 @@ export function physicsApi() {
   function setGravity(g){ gravity = g; }
   function setTileSize(ts){ tileSize = ts|0; }
   function setTileSolidFn(fn){ solidFn = fn; }
+  const setCollisionMap = setTileSolidFn; // friendlier alias
 
   function createBody(x,y,w,h, opts={}) {
     const b = Object.assign({ x,y,w,h, vx:0, vy:0, restitution:0, friction:0.9, onGround:false }, opts);
@@ -81,7 +82,7 @@ export function physicsApi() {
   return {
     exposeTo(target) {
       Object.assign(target, {
-        createBody, destroyBody, stepPhysics: step, setGravity, setTileSize, setTileSolidFn
+        createBody, destroyBody, stepPhysics: step, setGravity, setTileSize, setTileSolidFn, setCollisionMap
       });
     }
   };

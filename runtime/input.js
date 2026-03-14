@@ -139,7 +139,8 @@ class Input {
     const gamepadPressed = !!this.gamepadButtons.get(i|0) && !this.gamepadPrev.get(i|0);
     return keyPressed || gamepadPressed;
   }
-  key(code) { return !!this.keys.get(code); } // Direct key code checking
+  key(code) { return !!this.keys.get(code); } // Direct key code checking — is currently held
+  keyp(code) { return !!this.keys.get(code) && !this.prev.get(code); } // just-pressed this frame
   
   // Gamepad-specific functions
   getGamepadAxis(axisName) {
@@ -182,6 +183,7 @@ export function inputApi() {
         btn: (i)=>input.btn(i),
         btnp: (i)=>input.btnp(i),
         key: (code)=>input.key(code),
+        keyp: (code)=>input.keyp(code),
         isKeyDown: (code)=>input.isKeyDown(code),
         isKeyPressed: (code)=>input.isKeyPressed(code),
         // Mouse functions

@@ -115,8 +115,8 @@
 ### 🏁 **Launch Your 3D Fantasy Console**
 ```bash
 # Method 1: Development Server (Recommended)
-npm install
-npm run dev
+pnpm install
+pnpm dev
 # Visit the printed URL (typically http://localhost:5173)
 
 # Method 2: Direct Browser Launch
@@ -168,103 +168,57 @@ Create `examples/your-amazing-3d-world/code.js`:
 // 🌟 Your First 3D World - Complete Starter Template
 
 let player = { x: 0, y: 1, z: 0 };
+let playerMesh, groundMesh;
 let crystals = [];
 let score = 0;
 
 export function init() {
-    console.log("🚀 Initializing your amazing 3D world...");
-    
-    // Create magical floating crystals
+    // ⚠️ Create ALL objects here — never inside draw()
+    groundMesh = createPlane(50, 50, 0x2a4d3a, [0, 0, 0]);
+    rotateMesh(groundMesh, -Math.PI/2, 0, 0);
+
+    playerMesh = createCube(1, 0x0088ff, [0, 1, 0], { material: 'metallic' });
+
+    // 💎 Scatter crystals
     for (let i = 0; i < 10; i++) {
+        const cx = (Math.random() - 0.5) * 20;
+        const cz = (Math.random() - 0.5) * 20;
         crystals.push({
-            x: (Math.random() - 0.5) * 20,
-            y: Math.random() * 5 + 1,
-            z: (Math.random() - 0.5) * 20,
-            collected: false,
-            spin: 0
+            x: cx, y: 1.5, z: cz,
+            mesh: createCube(0.5, 0xff0088, [cx, 1.5, cz], { material: 'holographic' }),
+            spin: 0, collected: false
         });
     }
+
+    setFog(0x1a1a2e, 10, 30);
+    setAmbientLight(0x334466, 1.0);
 }
 
-export function update() {
+export function update(dt) {
     // 🎮 Smooth WASD movement
-    if (key('KeyW')) player.z -= 0.1;
-    if (key('KeyS')) player.z += 0.1;
-    if (key('KeyA')) player.x -= 0.1;
-    if (key('KeyD')) player.x += 0.1;
-    if (key('Space')) player.y += 0.05;
-    
-    // Apply gravity
-    player.y -= 0.02;
-    if (player.y < 1) player.y = 1; // Ground level
-    
-    // 💎 Crystal collection system
-    crystals.forEach(crystal => {
-        if (!crystal.collected) {
-            crystal.spin += 0.05;
-            const dist = Math.sqrt(
-                (player.x - crystal.x) ** 2 + 
-                (player.y - crystal.y) ** 2 + 
-                (player.z - crystal.z) ** 2
-            );
-            if (dist < 1.5) {
-                crystal.collected = true;
-                score += 100;
-                console.log(`✨ Crystal collected! Score: ${score}`);
-            }
-        }
+    if (key('KeyW')) player.z -= 5 * dt;
+    if (key('KeyS')) player.z += 5 * dt;
+    if (key('KeyA')) player.x -= 5 * dt;
+    if (key('KeyD')) player.x += 5 * dt;
+
+    setPosition(playerMesh, player.x, player.y, player.z);
+
+    // 💎 Crystal collection + spin
+    crystals.forEach(c => {
+        if (c.collected) return;
+        c.spin += dt;
+        rotateMesh(c.mesh, 0, dt, dt * 1.3);
+        const dist = Math.hypot(player.x - c.x, player.z - c.z);
+        if (dist < 1.5) { c.collected = true; removeMesh(c.mesh); score += 100; }
     });
+
+    // 📷 Camera follows player
+    setCameraPosition(player.x + 5, player.y + 3, player.z + 5);
+    setCameraTarget(player.x, player.y, player.z);
 }
 
 export function draw() {
-    // 🎨 Create the magical 3D world
-    draw3d(() => {
-        // 🌍 Create ground plane
-        const ground = createPlane(0, 0, 0, 50, 50, {
-            material: 'standard',
-            color: 0x2a4d3a,
-            wireframe: false
-        });
-        rotateMesh(ground, -Math.PI/2, 0, 0);
-        
-        // 👤 Player cube with metallic material
-        const playerCube = createCube(player.x, player.y, player.z, 1, {
-            material: 'metallic',
-            color: 0x0088ff,
-            emissive: 0x002244
-        });
-        
-        // 💎 Magical floating crystals
-        crystals.forEach(crystal => {
-            if (!crystal.collected) {
-                const crystalMesh = createCube(
-                    crystal.x, 
-                    crystal.y + Math.sin(crystal.spin) * 0.3, 
-                    crystal.z, 
-                    0.5,
-                    { 
-                        material: 'holographic',
-                        color: 0xff0088,
-                        emissive: 0x440022
-                    }
-                );
-                rotateMesh(crystalMesh, crystal.spin, crystal.spin * 1.3, 0);
-            }
-        });
-        
-        // 🎪 Atmospheric effects
-        setFog(0x1a1a2e, 10, 30);
-        
-        // 📷 Camera follows player smoothly
-        setCameraPosition(
-            player.x + 5, 
-            player.y + 3, 
-            player.z + 5
-        );
-        setCameraTarget(player.x, player.y, player.z);
-    });
-    
-    // 📊 HUD overlay
+    // 📊 HUD overlay — 3D renders automatically
     print(`Score: ${score}`, 10, 10, 0xffffff);
     print(`Crystals: ${crystals.filter(c => !c.collected).length}`, 10, 25, 0x00ff88);
     print("WASD + Space to move", 10, 165, 0x888888);
@@ -275,73 +229,56 @@ export function draw() {
 ```javascript
 // 🌟 Ultimate 3D effects demonstration
 
-let meshes = [];
+const MATS = ['standard', 'metallic', 'holographic', 'emissive'];
+const COLORS = [0x4488ff, 0xff8844, 0x88ff44, 0xff4488];
+let showcases = [];
 let lightCycle = 0;
+let time = 0;
 
 export function init() {
-    console.log("🎪 Loading advanced 3D showcase...");
+    // ⚠️ Create objects ONCE here
+    for (let i = 0; i < 4; i++) {
+        showcases.push(createCube(1.5, COLORS[i], [0, 0, 0], {
+            material: MATS[i],
+            emissive: i === 3 ? 0x440022 : 0x000000,
+            metalness: i === 1 ? 0.9 : 0.1,
+            roughness: i === 1 ? 0.1 : 0.8
+        }));
+    }
+    enableBloom(1.2, 0.5, 0.2);
+    enableFXAA();
 }
 
-export function update() {
-    lightCycle += 0.03;
+export function update(dt) {
+    time += dt;
+    lightCycle += dt * 0.5;
+
+    // 🎨 Orbit + bob each cube
+    for (let i = 0; i < 4; i++) {
+        const angle = time + i * Math.PI * 0.5;
+        setPosition(showcases[i],
+            Math.cos(angle) * 5,
+            Math.sin(time + i) * 2,
+            Math.sin(angle) * 5
+        );
+        rotateMesh(showcases[i], dt * 0.5, dt * 0.8, dt * 0.3);
+    }
+
+    // 🌅 Cycle fog color
+    const r = Math.floor((Math.sin(lightCycle) * 0.5 + 0.5) * 50);
+    const g = Math.floor((Math.sin(lightCycle + 2.09) * 0.5 + 0.5) * 50);
+    const b = Math.floor((Math.sin(lightCycle + 4.19) * 0.5 + 0.5) * 50);
+    setFog((r << 16) | (g << 8) | b, 8, 25);
+
+    // 📷 Orbiting camera
+    setCameraPosition(Math.cos(time * 0.3) * 8, 3 + Math.sin(time * 0.2) * 2, Math.sin(time * 0.3) * 8);
+    setCameraTarget(0, 0, 0);
 }
 
 export function draw() {
-    draw3d(() => {
-        // 🎨 Dynamic material showcase
-        const materials = ['standard', 'metallic', 'holographic', 'emissive'];
-        
-        for (let i = 0; i < 4; i++) {
-            const angle = (time * 0.01) + (i * Math.PI * 0.5);
-            const x = Math.cos(angle) * 5;
-            const z = Math.sin(angle) * 5;
-            const y = Math.sin(time * 0.02 + i) * 2;
-            
-            // Create showcases for each material type
-            const showcase = createCube(x, y, z, 1.5, {
-                material: materials[i],
-                color: i === 0 ? 0x4488ff : i === 1 ? 0xff8844 : i === 2 ? 0x88ff44 : 0xff4488,
-                emissive: i === 3 ? 0x440022 : 0x000000,
-                metalness: i === 1 ? 0.9 : 0.1,
-                roughness: i === 1 ? 0.1 : 0.8
-            });
-            
-            rotateMesh(showcase, time * 0.01, time * 0.015, time * 0.007);
-        }
-        
-        // 🌅 Dynamic lighting demonstration
-        const lightColor = {
-            r: Math.sin(lightCycle) * 0.5 + 0.5,
-            g: Math.sin(lightCycle + Math.PI * 0.666) * 0.5 + 0.5,
-            b: Math.sin(lightCycle + Math.PI * 1.333) * 0.5 + 0.5
-        };
-        
-        // 🌫️ Animated fog effects
-        setFog(
-            (Math.floor(lightColor.r * 50) << 16) + 
-            (Math.floor(lightColor.g * 50) << 8) + 
-            Math.floor(lightColor.b * 50), 
-            8, 25
-        );
-        
-        // 📷 Cinematic camera work
-        const cameraRadius = 8;
-        const cameraHeight = 3 + Math.sin(time * 0.005) * 2;
-        const cameraAngle = time * 0.008;
-        
-        setCameraPosition(
-            Math.cos(cameraAngle) * cameraRadius,
-            cameraHeight,
-            Math.sin(cameraAngle) * cameraRadius
-        );
-        setCameraTarget(0, 0, 0);
-    });
-    
-    // 📊 Advanced HUD with performance metrics
-    print("🎪 Advanced 3D Features Demo", 10, 10, 0xffffff);
-    print(`Materials: Standard • Metallic • Holographic • Emissive`, 10, 25, 0x88ff88);
-    print(`Dynamic Lighting • Atmospheric Fog • Cinematic Camera`, 10, 40, 0xff8888);
-    print(`Frame: ${Math.floor(time)}`, 10, 160, 0x888888);
+    // 📊 HUD — 3D renders automatically
+    print("Advanced 3D Features Demo", 10, 10, 0xffffff);
+    print("Standard  Metallic  Holographic  Emissive", 10, 25, 0x88ff88);
 }
 ```
 
@@ -355,9 +292,6 @@ export function draw() {
 
 ### 🎨 **3D Scene Management**
 ```javascript
-// 🎪 Main 3D rendering function
-draw3d(renderCallback)              // Execute 3D rendering pipeline
-
 // 📷 Camera control system
 setCameraPosition(x, y, z)          // Set camera world position
 setCameraTarget(x, y, z)            // Set camera look-at target
@@ -368,12 +302,15 @@ setFog(color, near, far)            // Add distance-based fog
 clearFog()                          // Remove fog effects
 ```
 
+> 💡 **3D renders automatically** — create objects in `init()`, move them in `update(dt)`. The `draw()` function is for 2D HUD overlay only.
+
 ### 🎯 **3D Object Creation**
 ```javascript
 // 📦 Primitive creation with advanced materials
-createCube(x, y, z, size, options)
-createSphere(x, y, z, radius, options)
-createPlane(x, y, z, width, height, options)
+// Signature: createCube(size, color, [x,y,z], options)
+createCube(1, 0x0088ff, [0, 0, -5])
+createSphere(1, 0xff0000, [0, 0, 0])
+createPlane(10, 10, 0x2a4d3a, [0, 0, 0])
 
 // 🎨 Material options object:
 {
@@ -540,12 +477,9 @@ getMemoryUsage()                   // Memory statistics
 ### ✅ **Enhanced Test Coverage**
 ```bash
 # Command-line test suite
-npm test                    # Run all tests
-npm run test:api           # 3D API functions only
-npm run test:integration   # Integration tests only
-
-# Interactive web test runner
-npm run test:web           # Open browser-based test suite
+pnpm test                    # Run all tests
+pnpm test:api               # 3D API functions only
+pnpm test:integration       # Integration tests only
 ```
 
 **🎯 Test Results**: 100% pass rate across all test suites
@@ -576,13 +510,10 @@ npm run test:web           # Open browser-based test suite
 ### 📦 **Build System**
 ```bash
 # Development server with hot reloading
-npm run dev
+pnpm dev
 
 # Production build with optimization
-npm run build
-
-# Deploy to static hosting
-npm run deploy
+pnpm build
 ```
 
 ### 🌐 **Platform Compatibility**

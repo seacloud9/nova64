@@ -15,12 +15,12 @@ Nova64 now includes a complete testing framework with:
 ### Command Line Tests
 ```bash
 # Run all tests
-npm test
+pnpm test
 
 # Run specific test suites
-npm run test:api         # 3D API tests only
-npm run test:input       # Input system tests only
-npm run test:integration # Integration tests only
+pnpm test:api         # 3D API tests only
+pnpm test:input       # Input system tests only
+pnpm test:integration # Integration tests only
 
 # Direct CLI usage
 node tests/test-cli.js           # All tests
@@ -32,10 +32,10 @@ node tests/test-cli.js integration # Integration tests only
 ### Web-Based Test Runner
 ```bash
 # Open interactive test runner in browser
-npm run test:web
+pnpm test:web
 
 # Or manually start dev server and navigate to:
-npm run dev
+pnpm dev
 # Then open: http://localhost:5173/tests/test-runner.html
 ```
 
@@ -179,9 +179,9 @@ The web test runner provides:
 # Example GitHub Actions workflow
 - name: Run Tests
   run: |
-    npm install
-    npm test
-    npm run build  # Ensure demos still work after build
+    pnpm install
+    pnpm test
+    pnpm build  # Ensure demos still work after build
 ```
 
 ### Exit Codes

@@ -444,7 +444,7 @@ drawProgressBar(10, 30, 200, 20, score, maxScore, {
 
 ```bash
 # Start dev server
-npm run dev
+pnpm dev
 
 # Open browser
 http://localhost:5173/?demo=ui-demo

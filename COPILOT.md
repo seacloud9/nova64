@@ -525,7 +525,7 @@ const player = new Entity()
 ### ✅ **Test Coverage (35/35 Tests Passing)**
 ```bash
 # Run complete test suite
-npm test
+pnpm test
 
 # Test categories:
 # - 3D API functions: 15/15 ✅
@@ -1781,37 +1781,39 @@ const wall = createCube(0, 0, -5, 2, {
 
 ### 📋 **Implementation Checklist**
 
-#### Phase 1: Critical Fixes (Week 1)
-- [ ] Resolve pnpm-lock.yaml merge conflict
-- [ ] Fix light memory leaks (removeLight disposal)
-- [ ] Fix material cleanup (all texture types)
-- [ ] Clean up untracked patch files
-- [ ] Create vite.config.js
+#### Phase 1: Critical Fixes
+- [x] Resolve pnpm-lock.yaml merge conflict (no conflict found — already clean)
+- [x] Fix light memory leaks (removeLight disposal — implemented in api-3d.js)
+- [x] Fix material cleanup (all texture types — disposeMaterial covers all maps)
+- [x] Clean up untracked patch files (no patch files found in root)
+- [x] Create vite.config.js (already exists with full config)
+- [x] Fix npm→pnpm across all scripts, docs, and source files
 
-#### Phase 2: Performance (Week 2-3)
-- [ ] Implement GPU instancing system
-- [ ] Add frustum culling to render loop
-- [ ] Implement material caching
-- [ ] Optimize scene traversal (animated objects)
+#### Phase 2: Performance
+- [x] Implement GPU instancing system (createInstancedMesh, setInstanceTransform, setInstanceColor, finalizeInstances, removeInstancedMesh)
+- [x] Add frustum culling to render loop (animated mesh updates skip off-screen objects in gpu-threejs.js)
+- [x] Implement material caching (materialCache in api-3d.js)
+- [x] Optimize scene traversal — animatedMeshes registry in gpu-threejs.js (skips scene.traverse)
 - [ ] Benchmark and document improvements
 
-#### Phase 3: Code Quality (Week 4)
-- [ ] Refactor api-3d.js into modules
-- [ ] Refactor ui.js into modules
-- [ ] Implement logging system
-- [ ] Add pre-commit hooks
-- [ ] Update all console.log to logger
+#### Phase 3: Code Quality
+- [x] Refactor api-3d.js into modules (runtime/api-3d/: materials, primitives, transforms, camera, lights, models, instancing, pbr, scene)
+- [x] Refactor ui.js into modules (runtime/ui/: text, panels, buttons, widgets)
+- [x] Implement logging system (runtime/logger.js — leveled, history-tracked, prod-safe)
+- [x] Add pre-commit hooks (husky + lint-staged — runs ESLint + Prettier on staged files)
+- [x] Update runtime files to use logger instead of console.log (api-3d.js, console.js, screens.js, store.js, api-effects.js)
 
-#### Phase 4: New Features (Week 5-6)
-- [ ] Add LOD system
-- [ ] Add normal mapping support
+#### Phase 4: New Features
+- [x] Add LOD system (createLODMesh, setLODPosition, removeLODMesh — auto-updates in endFrame)
+- [x] Add normal mapping support (loadNormalMap, setNormalMap, setPBRMaps — MeshPhong auto-upgrades to MeshStandard)
+- [x] Implement GPU instancing (createInstancedMesh, setInstanceTransform, setInstanceColor, finalizeInstances, removeInstancedMesh)
 - [ ] Add deferred rendering (optional)
 - [ ] Add GPGPU particle system (optional)
 
-#### Phase 5: Demo Enhancement (Week 7)
-- [ ] Create input-showcase demo
-- [ ] Create audio-lab demo
-- [ ] Create storage-quest demo
+#### Phase 5: Demo Enhancement
+- [x] Create input-showcase demo (examples/input-showcase/code.js)
+- [x] Create audio-lab demo (examples/audio-lab/code.js)
+- [x] Create storage-quest demo (examples/storage-quest/code.js)
 - [ ] Update all demos to use new features
 
 ---

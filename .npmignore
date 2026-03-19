@@ -1,0 +1,35 @@
+# Development and CI
+.github/
+.husky/
+tests/
+docs/
+examples/
+scripts/
+retroarch/
+os9-shell/
+
+# Config / generated
+dist/
+node_modules/
+*.local
+*.log
+
+# Test / doc generation helpers
+generate_all_docs.cjs
+generate_docs.py
+generate-docs.js
+generate-internal-docs.js
+generate-*.js
+validate-*.js
+validate-*.sh
+write_mc.mjs
+writer.mjs
+update_mc.js
+test_*.mjs
+test_*.js
+test-*.html
+
+# Editor / OS
+.DS_Store
+.vscode/
+*.swp

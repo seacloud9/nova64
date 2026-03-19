@@ -1,8 +1,35 @@
 {
   "name": "nova64",
-  "version": "0.2.0",
-  "private": true,
+  "version": "0.0.1",
+  "description": "Nova64 — Ultimate 3D Fantasy Console runtime for JavaScript games powered by Three.js",
+  "keywords": ["fantasy-console", "3d", "game-engine", "threejs", "retro", "games"],
+  "license": "MIT",
+  "author": "Nova64 Contributors",
+  "homepage": "https://github.com/nova64/nova64#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nova64/nova64.git"
+  },
+  "bugs": {
+    "url": "https://github.com/nova64/nova64/issues"
+  },
   "type": "module",
+  "main": "./runtime/index.js",
+  "exports": {
+    ".": "./runtime/index.js",
+    "./runtime/*": "./runtime/*.js",
+    "./runtime/api-3d/*": "./runtime/api-3d/*.js",
+    "./runtime/ui/*": "./runtime/ui/*.js"
+  },
+  "files": [
+    "runtime/",
+    "src/",
+    "public/",
+    "index.html",
+    "vite.config.js",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "dev": "vite",
     "build": "vite build",
@@ -14,15 +41,20 @@
     "test:starfox": "node tests/test-cli.js starfox",
     "test:integration": "node tests/test-cli.js integration",
     "test:web": "open tests/test-runner.html || xdg-open tests/test-runner.html || start tests/test-runner.html",
-    "test:all": "npm run test && npm run test:api && npm run test:input && npm run test:starfox && npm run test:integration",
-    "test:watch": "nodemon --watch runtime --watch tests --watch examples --exec 'npm run test'",
+    "test:all": "pnpm run test && pnpm run test:api && pnpm run test:input && pnpm run test:starfox && pnpm run test:integration",
+    "test:watch": "nodemon --watch runtime --watch tests --watch examples --exec 'pnpm run test'",
     "lint": "eslint runtime/**/*.js examples/**/*.js src/**/*.js --max-warnings=0",
     "lint:fix": "eslint runtime/**/*.js examples/**/*.js src/**/*.js --fix",
     "format": "prettier --write \"**/*.{js,json,md}\"",
     "format:check": "prettier --check \"**/*.{js,json,md}\"",
-    "validate": "npm run format:check && npm run lint && npm run test:all",
+    "validate": "pnpm run format:check && pnpm run lint && pnpm run test:all",
     "clean": "rm -rf dist node_modules",
-    "reinstall": "npm run clean && npm install"
+    "reinstall": "pnpm run clean && pnpm install",
+    "prepare": "husky",
+    "prepublishOnly": "pnpm run validate && pnpm run build",
+    "release:patch": "pnpm version patch && git push && git push --tags",
+    "release:minor": "pnpm version minor && git push && git push --tags",
+    "release:major": "pnpm version major && git push && git push --tags"
   },
   "dependencies": {
     "three": "^0.182.0",
@@ -30,10 +62,17 @@
   },
   "devDependencies": {
     "eslint": "^8.57.1",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.4.0",
     "nodemon": "^3.1.10",
     "prettier": "^3.6.2",
     "terser": "^5.46.0",
     "vite": "^5.4.0"
+  },
+  "lint-staged": {
+    "runtime/**/*.js": ["eslint --max-warnings=0", "prettier --write"],
+    "src/**/*.js": ["eslint --max-warnings=0", "prettier --write"],
+    "examples/**/*.js": ["prettier --write"]
   },
   "eslintConfig": {
     "env": {

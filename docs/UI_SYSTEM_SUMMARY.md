@@ -251,14 +251,14 @@ function drawStartScreen() {
 
 ### Run All Tests
 ```bash
-npm test
+pnpm test
 # Or specifically:
 node tests/test-cli.js all
 ```
 
 ### Test in Browser
 ```bash
-npm run dev
+pnpm dev
 
 # Then open:
 http://localhost:5173/?demo=ui-demo

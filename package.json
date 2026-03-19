@@ -1,8 +1,15 @@
 {
   "name": "nova64",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "Nova64 — Ultimate 3D Fantasy Console runtime for JavaScript games powered by Three.js",
-  "keywords": ["fantasy-console", "3d", "game-engine", "threejs", "retro", "games"],
+  "keywords": [
+    "fantasy-console",
+    "3d",
+    "game-engine",
+    "threejs",
+    "retro",
+    "games"
+  ],
   "license": "MIT",
   "author": "Nova64 Contributors",
   "homepage": "https://github.com/nova64/nova64#readme",
@@ -70,9 +77,17 @@
     "vite": "^5.4.0"
   },
   "lint-staged": {
-    "runtime/**/*.js": ["eslint --max-warnings=0", "prettier --write"],
-    "src/**/*.js": ["eslint --max-warnings=0", "prettier --write"],
-    "examples/**/*.js": ["prettier --write"]
+    "runtime/**/*.js": [
+      "eslint --max-warnings=0",
+      "prettier --write"
+    ],
+    "src/**/*.js": [
+      "eslint --max-warnings=0",
+      "prettier --write"
+    ],
+    "examples/**/*.js": [
+      "prettier --write"
+    ]
   },
   "eslintConfig": {
     "env": {

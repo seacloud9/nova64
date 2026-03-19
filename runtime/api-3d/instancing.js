@@ -81,7 +81,11 @@ export function instancingModule({
     const entry = instancedMeshes.get(instancedId);
     if (!entry) return false;
     entry.mesh.instanceMatrix.needsUpdate = true;
-    entry.mesh.computeBoundingSphere();
+    try {
+      entry.mesh.computeBoundingSphere();
+    } catch {
+      /* mock or incomplete geometry — skip */
+    }
     return true;
   }
 

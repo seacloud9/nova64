@@ -1794,7 +1794,7 @@ const wall = createCube(0, 0, -5, 2, {
 - [x] Add frustum culling to render loop (animated mesh updates skip off-screen objects in gpu-threejs.js)
 - [x] Implement material caching (materialCache in api-3d.js)
 - [x] Optimize scene traversal — animatedMeshes registry in gpu-threejs.js (skips scene.traverse)
-- [ ] Benchmark and document improvements
+- [x] Benchmark and document improvements (docs/BENCHMARK.md, pnpm bench, pnpm bench:material/instancing/mesh)
 
 #### Phase 3: Code Quality
 - [x] Refactor api-3d.js into modules (runtime/api-3d/: materials, primitives, transforms, camera, lights, models, instancing, pbr, scene)
@@ -1814,6 +1814,7 @@ const wall = createCube(0, 0, -5, 2, {
 - [x] Create input-showcase demo (examples/input-showcase/code.js)
 - [x] Create audio-lab demo (examples/audio-lab/code.js)
 - [x] Create storage-quest demo (examples/storage-quest/code.js)
+- [x] Create instancing-demo (examples/instancing-demo/code.js — GPU instancing + LOD showcase, 3 interactive scenes)
 - [ ] Update all demos to use new features
 
 ---

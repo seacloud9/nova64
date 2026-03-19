@@ -1,1 +1,6 @@
+#!/usr/bin/env bash
+# Ensure Node 20 / pnpm are on PATH regardless of shell environment
+export PATH="$HOME/.nvm/versions/node/v20.18.1/bin:$PATH"
+
 pnpm exec lint-staged
+

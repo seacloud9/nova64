@@ -22,8 +22,12 @@
   },
   "type": "module",
   "main": "./runtime/index.js",
+  "types": "./runtime/index.d.ts",
   "exports": {
-    ".": "./runtime/index.js",
+    ".": {
+      "types": "./runtime/index.d.ts",
+      "default": "./runtime/index.js"
+    },
     "./runtime/*": "./runtime/*.js",
     "./runtime/api-3d/*": "./runtime/api-3d/*.js",
     "./runtime/ui/*": "./runtime/ui/*.js"

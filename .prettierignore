@@ -1,0 +1,4 @@
+dist/
+node_modules/
+public/os9-shell/
+pnpm-lock.yaml

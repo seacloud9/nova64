@@ -25,14 +25,17 @@ export async function init() {
     update(dt) {
       this.animTime += dt;
 
-      if (isKeyPressed('w') && this.selectedOption > 0) {
+      if ((isKeyPressed('w') || isKeyPressed('ArrowUp')) && this.selectedOption > 0) {
         this.selectedOption--;
       }
-      if (isKeyPressed('s') && this.selectedOption < this.options.length - 1) {
+      if (
+        (isKeyPressed('s') || isKeyPressed('ArrowDown')) &&
+        this.selectedOption < this.options.length - 1
+      ) {
         this.selectedOption++;
       }
 
-      if (isKeyPressed(' ')) {
+      if (isKeyPressed(' ') || isKeyPressed('Enter')) {
         switch (this.selectedOption) {
           case 0:
             switchToScreen('game', { level: 1 });
@@ -88,7 +91,7 @@ export async function init() {
         }
       });
 
-      printCentered('W/S  Navigate    Space  Select', cx, 192, rgba8(110, 115, 135, 255));
+      printCentered('W/S/↑↓  Navigate    Space/Enter  Select', cx, 192, rgba8(110, 115, 135, 255));
 
       // CRT scanlines overlay
       drawScanlines(48, 2);

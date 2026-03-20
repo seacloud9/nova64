@@ -146,7 +146,6 @@ function loop() {
   last = now;
 
   if (!paused || stepOnce) {
-    iApi.step();
     const u0 = performance.now();
 
     // Tick the global novaStore time counter
@@ -198,6 +197,10 @@ function loop() {
     } catch (e) {
       console.error('❌ gpu.endFrame() error:', e.message, e.stack);
     }
+
+    // Snapshot input state at END of frame so keyp/isKeyPressed correctly
+    // detect transitions on the next frame (key pressed between frames).
+    iApi.step();
   }
   if (stepOnce) {
     stepOnce = false;

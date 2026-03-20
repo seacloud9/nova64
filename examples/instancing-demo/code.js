@@ -17,6 +17,7 @@ let showHUD = true;
 // Instanced mesh handles (crystalId/dustId checked in update)
 let crystalId = null;
 let dustId = null;
+let crystalLightId = null;
 
 // Camera orbit
 let camAngle = 0;
@@ -27,7 +28,7 @@ let camHeight = 12;
 export async function init() {
   setCameraFOV(60);
   setAmbientLight(0x223344, 0.4);
-  setDirectionalLight(0xffffff, 1.2, [-1, -2, -1]);
+  setDirectionalLight([-1, -2, -1], 0xffffff, 1.2);
   setFog(0x0a0a1a, 30, 120);
   enableBloom(0.8, 0.3, 0.5);
   enableVignette(1.0, 0.85);
@@ -38,7 +39,7 @@ export async function init() {
 // ── Scene loader ─────────────────────────────────────────────────────────────
 async function loadScene(id) {
   clearScene();
-  crystalId = dustId = null;
+  crystalId = dustId = crystalLightId = null;
 
   // Ground plane — shared across scenes
   createPlane(200, 200, 0x1a2a1a, [0, 0, 0]);
@@ -121,8 +122,8 @@ async function buildForestScene() {
 async function buildCrystalScene() {
   setFog(0x0a0020, 30, 100);
   setAmbientLight(0x100030, 0.3);
-  createPointLight(0x6644ff, 4, [0, 8, 0]);
-  createPointLight(0xff44aa, 3, [10, 5, -10]);
+  crystalLightId = createPointLight(0x6644ff, 4, 20, 0, 8, 0);
+  createPointLight(0xff44aa, 3, 20, 10, 5, -10);
 
   const CRYSTAL_COUNT = 300;
   crystalId = createInstancedMesh('cone', CRYSTAL_COUNT, 0x8855ff, {
@@ -166,7 +167,7 @@ async function buildCrystalScene() {
 async function buildLODScene() {
   setFog(0x1a1208, 40, 120);
   setAmbientLight(0x302010, 0.6);
-  setDirectionalLight(0xffd090, 1.4, [-1, -2, 0.5]);
+  setDirectionalLight([-1, -2, 0.5], 0xffd090, 1.4);
 
   // One LOD rock model: high-poly close, low-poly far
   createLODMesh(
@@ -267,10 +268,10 @@ export function update(dt) {
   }
 
   // Animate crystals — subtle pulse
-  if (scene === 2 && crystalId !== null) {
+  if (scene === 2 && crystalId !== null && crystalLightId !== null) {
     // Update point light position to orbit
     setPointLightPosition(
-      1,
+      crystalLightId,
       Math.cos(time * 0.5) * 8,
       6 + Math.sin(time * 0.7) * 2,
       Math.sin(time * 0.5) * 8
@@ -297,13 +298,13 @@ export function draw() {
   const DIM = rgba8(180, 180, 180, 200);
 
   // Title bar
-  drawRect(0, 0, 320, 18, rgba8(0, 0, 0, 160));
-  printCentered('NOVA64 — INSTANCING SHOWCASE', 4, WHITE);
+  drawRoundedRect(0, 0, 320, 18, 0, rgba8(0, 0, 0, 160));
+  printCentered('NOVA64 — INSTANCING SHOWCASE', 160, 4, WHITE);
 
   // Scene name
-  drawRect(0, 210, 320, 30, rgba8(0, 0, 0, 140));
-  printCentered(sceneNames[scene] ?? '', 217, YELLOW);
-  printCentered('1=Forest  2=Crystals  3=LOD  F=HUD  WASD=Orbit  QE=Zoom', 225, DIM);
+  drawRoundedRect(0, 210, 320, 30, 0, rgba8(0, 0, 0, 140));
+  printCentered(sceneNames[scene] ?? '', 160, 217, YELLOW);
+  printCentered('1=Forest  2=Crystals  3=LOD  F=HUD  WASD=Orbit  QE=Zoom', 160, 225, DIM);
 
   // Scene-specific stats
   let statLine = '';

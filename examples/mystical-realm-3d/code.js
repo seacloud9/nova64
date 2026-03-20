@@ -39,6 +39,11 @@ let time = 0;
 let dayNightCycle = 0;
 let lightningTimer = 0;
 
+// GPU instancing for trees (new feature)
+let treeTrunkInstanceId = null;
+let treeCrownInstanceId = null;
+let treeMeta = []; // [{x, z, swayPhase}]
+
 export async function init() {
   cls();
 
@@ -175,24 +180,19 @@ async function generateTerrain() {
     }
   }
 
-  // Ancient trees
+  // Ancient trees — GPU instanced (30 draw calls → 2)
+  treeTrunkInstanceId = createInstancedMesh('cube', 15, 0x4a3a2a, { size: 1 });
+  treeCrownInstanceId = createInstancedMesh('sphere', 15, 0x2a5a2a, { size: 4, segments: 8 });
+  treeMeta = [];
   for (let i = 0; i < 15; i++) {
     const x = (Math.random() - 0.5) * 90;
     const z = (Math.random() - 0.5) * 90;
-
-    // Tree trunk
-    const trunk = createCube(1, 8, 1, 0x4a3a2a, [x, 4, z]);
-    world.terrain.push({ mesh: trunk, type: 'tree_trunk' });
-
-    // Tree crown
-    const crown = createSphere(4, 0x2a5a2a, [x, 10, z]);
-    world.terrain.push({
-      mesh: crown,
-      type: 'tree_crown',
-      originalY: 10,
-      swayPhase: Math.random() * Math.PI * 2,
-    });
+    treeMeta.push({ x, z, swayPhase: Math.random() * Math.PI * 2 });
+    setInstanceTransform(treeTrunkInstanceId, i, x, 4, z, 0, 0, 0, 1, 8, 1);
+    setInstanceTransform(treeCrownInstanceId, i, x, 10, z);
   }
+  finalizeInstances(treeTrunkInstanceId);
+  finalizeInstances(treeCrownInstanceId);
 }
 
 async function spawnCrystals() {
@@ -399,16 +399,6 @@ function updateTerrain(dt) {
         element.originalY + bobY,
         getPosition(element.mesh)[2]
       );
-    } else if (element.type === 'tree_crown') {
-      // Tree swaying
-      element.swayPhase += dt * 2;
-      const swayX = Math.sin(element.swayPhase) * 0.3;
-      setPosition(
-        element.mesh,
-        getPosition(element.mesh)[0] + swayX,
-        element.originalY,
-        getPosition(element.mesh)[2]
-      );
     } else if (element.type === 'monolith') {
       // Mysterious glowing
       element.glowPhase += dt * 3;
@@ -416,6 +406,17 @@ function updateTerrain(dt) {
       // Color intensity varies
     }
   });
+
+  // Animate instanced tree crowns (sway in wind)
+  if (treeCrownInstanceId !== null && treeMeta.length > 0) {
+    for (let i = 0; i < treeMeta.length; i++) {
+      const t = treeMeta[i];
+      t.swayPhase += dt * 2;
+      const swayX = Math.sin(t.swayPhase) * 0.3;
+      setInstanceTransform(treeCrownInstanceId, i, t.x + swayX, 10, t.z);
+    }
+    finalizeInstances(treeCrownInstanceId);
+  }
 }
 
 function updateCrystals(dt) {

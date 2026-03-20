@@ -20,6 +20,60 @@ export type InstancedMeshId = number;
 /** LOD identifier returned by createLODMesh. */
 export type LODId = number;
 
+/** Particle system identifier returned by createParticleSystem. */
+export type ParticleSystemId = number;
+
+export interface ParticleSystemOptions {
+  shape?: 'sphere' | 'cube';
+  size?: number;
+  segments?: number;
+  color?: Color;
+  emissive?: Color;
+  emissiveIntensity?: number;
+  gravity?: number;
+  drag?: number;
+  emitterX?: number;
+  emitterY?: number;
+  emitterZ?: number;
+  emitRate?: number;
+  minLife?: number;
+  maxLife?: number;
+  minSpeed?: number;
+  maxSpeed?: number;
+  spread?: number;
+  minSize?: number;
+  maxSize?: number;
+  startColor?: Color;
+  endColor?: Color;
+}
+
+export interface ParticleEmitter {
+  x: number;
+  y: number;
+  z: number;
+  emitRate: number;
+  minLife: number;
+  maxLife: number;
+  minSpeed: number;
+  maxSpeed: number;
+  spread: number;
+  minSize: number;
+  maxSize: number;
+}
+
+export interface ParticleOverrides {
+  x: number;
+  y: number;
+  z: number;
+  vx: number;
+  vy: number;
+  vz: number;
+  spread: number;
+  r: number;
+  g: number;
+  b: number;
+}
+
 /** Panel object returned by createPanel. */
 export interface Panel {
   x: number;
@@ -320,6 +374,21 @@ export interface ThreeDApiInstance {
   finalizeInstances(instancedId: InstancedMeshId): boolean;
   removeInstancedMesh(instancedId: InstancedMeshId): boolean;
 
+  // GPU particle system
+  createParticleSystem(maxParticles?: number, options?: ParticleSystemOptions): ParticleSystemId;
+  setParticleEmitter(systemId: ParticleSystemId, emitter: Partial<ParticleEmitter>): void;
+  emitParticle(systemId: ParticleSystemId, overrides?: Partial<ParticleOverrides>): void;
+  burstParticles(
+    systemId: ParticleSystemId,
+    count?: number,
+    overrides?: Partial<ParticleOverrides>
+  ): void;
+  updateParticles(dt: number): void;
+  removeParticleSystem(systemId: ParticleSystemId): boolean;
+  getParticleStats(
+    systemId: ParticleSystemId
+  ): { active: number; max: number; free: number } | null;
+
   // LOD system
   createLODMesh(levels?: LODLevel[], position?: [number, number, number]): LODId;
   setLODPosition(lodId: LODId, x: number, y: number, z: number): void;
@@ -533,6 +602,13 @@ export interface Nova64CartGlobals {
   setInstanceColor: ThreeDApiInstance['setInstanceColor'];
   finalizeInstances: ThreeDApiInstance['finalizeInstances'];
   removeInstancedMesh: ThreeDApiInstance['removeInstancedMesh'];
+  createParticleSystem: ThreeDApiInstance['createParticleSystem'];
+  setParticleEmitter: ThreeDApiInstance['setParticleEmitter'];
+  emitParticle: ThreeDApiInstance['emitParticle'];
+  burstParticles: ThreeDApiInstance['burstParticles'];
+  updateParticles: ThreeDApiInstance['updateParticles'];
+  removeParticleSystem: ThreeDApiInstance['removeParticleSystem'];
+  getParticleStats: ThreeDApiInstance['getParticleStats'];
   createLODMesh: ThreeDApiInstance['createLODMesh'];
   setLODPosition: ThreeDApiInstance['setLODPosition'];
   removeLODMesh: ThreeDApiInstance['removeLODMesh'];

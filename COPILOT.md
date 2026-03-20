@@ -1886,7 +1886,7 @@ const wall = createCube(0, 0, -5, 2, {
 - [x] Add normal mapping support (loadNormalMap, setNormalMap, setPBRMaps — MeshPhong auto-upgrades to MeshStandard)
 - [x] Implement GPU instancing (createInstancedMesh, setInstanceTransform, setInstanceColor, finalizeInstances, removeInstancedMesh)
 - [ ] Add deferred rendering (optional)
-- [ ] Add GPGPU particle system (optional)
+- [x] Add GPGPU particle system (optional — createParticleSystem, setParticleEmitter, emitParticle, burstParticles, updateParticles; typed-array physics, single InstancedMesh draw call)
 
 #### Phase 5: Demo Enhancement
 
@@ -1894,7 +1894,7 @@ const wall = createCube(0, 0, -5, 2, {
 - [x] Create audio-lab demo (examples/audio-lab/code.js)
 - [x] Create storage-quest demo (examples/storage-quest/code.js)
 - [x] Create instancing-demo (examples/instancing-demo/code.js — GPU instancing + LOD showcase, 3 interactive scenes)
-- [ ] Update all demos to use new features
+- [x] Update all demos to use new features (mystical-realm trees, cyberpunk glow spheres, star-fox grid floor, f-zero speed lines all converted to instanced meshes; added particles-demo)
 
 ---
 

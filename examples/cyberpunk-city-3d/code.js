@@ -38,6 +38,8 @@ function spawnPackets() {
 // City configuration
 const CITY_SIZE = 100;
 const BUILDING_COUNT = 50;
+// GPU instancing for city grid elements
+let glowSphereInstanceId = null;
 const VEHICLE_COUNT = 12;
 const PARTICLE_COUNT = 200;
 
@@ -258,13 +260,25 @@ async function buildCyberpunkCity() {
     createCube(0.5, 0.05, CITY_SIZE * 2, 0xaa0088, [i, 0.05, 0]);
   }
 
-  // ✨ Add intersection glow points
+  // ✨ Intersection glow points — GPU instanced (121 spheres → 1 draw call)
+  const gridCount = Math.ceil((CITY_SIZE * 2) / 20 + 1);
+  const totalGlows = gridCount * gridCount;
+  glowSphereInstanceId = createInstancedMesh('sphere', totalGlows, 0x00ffff, {
+    size: 0.5,
+    segments: 6,
+    emissive: 0x008888,
+    emissiveIntensity: 1.0,
+  });
+  let glowIdx = 0;
   for (let i = -CITY_SIZE; i <= CITY_SIZE; i += 20) {
     for (let j = -CITY_SIZE; j <= CITY_SIZE; j += 20) {
-      const glowColor = COLORS.neon[Math.floor(Math.random() * COLORS.neon.length)];
-      createSphere(0.5, glowColor, [i, 0.5, j]);
+      const neonIdx = Math.floor(Math.random() * COLORS.neon.length);
+      setInstanceTransform(glowSphereInstanceId, glowIdx, i, 0.5, j);
+      setInstanceColor(glowSphereInstanceId, glowIdx, COLORS.neon[neonIdx]);
+      glowIdx++;
     }
   }
+  finalizeInstances(glowSphereInstanceId);
 
   // Generate procedural buildings
   for (let i = 0; i < BUILDING_COUNT; i++) {

@@ -23,6 +23,7 @@ const C = {
 let gameState = 'start'; // 'start', 'playing', 'crashed', 'finished'
 let t = 0; // global time
 let inputLock = 0;
+let speedLineInstanceId = null; // GPU instanced speed lines
 
 // ── Game State ─────────────────────────────────────────────
 let g = {
@@ -88,7 +89,15 @@ export async function init() {
   initTrack();
 
   // Pre-fill track props & speed lines
-  for (let i = 0; i < 40; i++) spawnSpeedLine();
+  // Speed lines use GPU instancing (40 cubes → 1 instanced mesh)
+  speedLineInstanceId = createInstancedMesh('cube', 40, 0xaabbff, {
+    size: 1,
+    material: 'emissive',
+    emissive: 0xaabbff,
+    emissiveIntensity: 1.0,
+  });
+  for (let i = 0; i < 40; i++) spawnSpeedLine(i);
+  finalizeInstances(speedLineInstanceId);
   for (let i = 0; i < 5; i++) {
     g.propTimer += 0.5;
     updateTrackSpawns(1);
@@ -192,14 +201,17 @@ function spawnRival(isFar = false) {
   });
 }
 
-function spawnSpeedLine() {
+function spawnSpeedLine(instanceIdx = -1) {
   const x = (Math.random() - 0.5) * g.trackWidth * 1.4;
   const y = 1 + Math.random() * 8;
   const z = -400 + Math.random() * 450;
+  const len = 8.0 + Math.random() * 12;
 
-  const mesh = createCube(0.5, 0xffffff, [x, y, z], { material: 'emissive', emissive: 0xaabbff });
-  setScale(mesh, 0.1, 0.1, 8.0 + Math.random() * 12);
-  g.speedLines.push({ mesh, x, y, z });
+  const idx = instanceIdx >= 0 ? instanceIdx : g.speedLines.length;
+  if (speedLineInstanceId !== null) {
+    setInstanceTransform(speedLineInstanceId, idx, x, y, z, 0, 0, 0, 0.1, 0.1, len);
+  }
+  g.speedLines.push({ idx, x, y, z, len });
 }
 
 function spawnMine() {
@@ -505,11 +517,28 @@ function updateProps(dt) {
 
 function updateParticles(dt, ds) {
   // Environmental speed stars/lines
+  let linesUpdated = false;
   g.speedLines.forEach(sl => {
     sl.z += ds * 1.5; // lines fly past faster
-    setPosition(sl.mesh, sl.x, sl.y, sl.z);
     if (sl.z > 40) sl.z -= 500;
+    if (speedLineInstanceId !== null) {
+      setInstanceTransform(
+        speedLineInstanceId,
+        sl.idx,
+        sl.x,
+        sl.y,
+        sl.z,
+        0,
+        0,
+        0,
+        0.1,
+        0.1,
+        sl.len
+      );
+      linesUpdated = true;
+    }
   });
+  if (linesUpdated && speedLineInstanceId !== null) finalizeInstances(speedLineInstanceId);
 
   // Active sparks
   for (let i = g.particles.length - 1; i >= 0; i--) {

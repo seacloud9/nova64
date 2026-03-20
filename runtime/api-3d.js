@@ -11,6 +11,7 @@ import { modelsModule } from './api-3d/models.js';
 import { instancingModule } from './api-3d/instancing.js';
 import { pbrModule } from './api-3d/pbr.js';
 import { sceneModule } from './api-3d/scene.js';
+import { particlesModule } from './api-3d/particles.js';
 
 export function threeDApi(gpu) {
   if (!gpu.getScene) return { exposeTo: () => {} };
@@ -53,6 +54,7 @@ export function threeDApi(gpu) {
   Object.assign(ctx, modelsModule(ctx));
   Object.assign(ctx, instancingModule(ctx));
   Object.assign(ctx, pbrModule(ctx));
+  Object.assign(ctx, particlesModule(ctx));
   Object.assign(ctx, sceneModule(ctx)); // last: uses late binding to call other modules
 
   return {
@@ -137,6 +139,15 @@ export function threeDApi(gpu) {
         loadNormalMap: ctx.loadNormalMap,
         setNormalMap: ctx.setNormalMap,
         setPBRMaps: ctx.setPBRMaps,
+
+        // GPU particle system
+        createParticleSystem: ctx.createParticleSystem,
+        setParticleEmitter: ctx.setParticleEmitter,
+        emitParticle: ctx.emitParticle,
+        burstParticles: ctx.burstParticles,
+        updateParticles: ctx.updateParticles,
+        removeParticleSystem: ctx.removeParticleSystem,
+        getParticleStats: ctx.getParticleStats,
 
         // Interaction / stats / convenience
         raycastFromCamera: ctx.raycastFromCamera,

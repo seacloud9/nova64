@@ -103,6 +103,10 @@ export async function init() {
   console.log('✅ STAR FOX NOVA 64 — Ready!');
 }
 
+// GPU instancing for grid floor tiles
+let gridInstanceA = null; // dark tiles
+let gridInstanceB = null; // lighter tiles
+
 // ── World Building ─────────────────────────────────────
 function createGridFloor() {
   const cols = 20,
@@ -110,22 +114,41 @@ function createGridFloor() {
     size = 5;
   const startX = -(cols * size) / 2;
 
+  // 700 planes → 2 instanced meshes (350 each)
+  const halfCount = (cols * rows) / 2;
+  gridInstanceA = createInstancedMesh('plane', halfCount, 0x050a14, {
+    width: size,
+    height: size,
+    material: 'standard',
+    roughness: 0.8,
+  });
+  gridInstanceB = createInstancedMesh('plane', halfCount, 0x081020, {
+    width: size,
+    height: size,
+    material: 'standard',
+    roughness: 0.8,
+  });
+
+  let idxA = 0,
+    idxB = 0;
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
       const alt = (r + c) % 2 === 0;
-      const color = alt ? 0x050a14 : 0x081020;
       const x = startX + c * size + size / 2;
       const z = 15 - r * size - size / 2;
-
-      // Make lines pop slightly
-      const plane = createPlane(size, size, color, [x, -4, z], {
-        material: 'standard',
-        roughness: 0.8,
-      });
-      rotateMesh(plane, -Math.PI / 2, 0, 0);
-      game.gridPlanes.push({ mesh: plane, x, z });
+      if (alt) {
+        setInstanceTransform(gridInstanceA, idxA, x, -4, z, -Math.PI / 2, 0, 0);
+        game.gridPlanes.push({ instanceId: gridInstanceA, index: idxA, x, z });
+        idxA++;
+      } else {
+        setInstanceTransform(gridInstanceB, idxB, x, -4, z, -Math.PI / 2, 0, 0);
+        game.gridPlanes.push({ instanceId: gridInstanceB, index: idxB, x, z });
+        idxB++;
+      }
     }
   }
+  finalizeInstances(gridInstanceA);
+  finalizeInstances(gridInstanceB);
 }
 
 function createArwing() {
@@ -630,8 +653,10 @@ function updateGrid(dt) {
   game.gridPlanes.forEach(g => {
     g.z += game.speed * dt;
     if (g.z > 15) g.z -= total;
-    setPosition(g.mesh, g.x, -4, g.z);
+    setInstanceTransform(g.instanceId, g.index, g.x, -4, g.z, -Math.PI / 2, 0, 0);
   });
+  if (gridInstanceA) finalizeInstances(gridInstanceA);
+  if (gridInstanceB) finalizeInstances(gridInstanceB);
 }
 
 function updateAsteroids(dt) {

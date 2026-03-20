@@ -12,6 +12,7 @@
 ## 🌟 **Recent Updates (v0.2.0)**
 
 ### 🎨 **NEW: First-Class UI System** ⭐
+
 - **Professional UI Components**: Buttons, panels, fonts, progress bars, and more!
 - **Interactive Buttons**: Hover/press states with callback functions
 - **Advanced Text Rendering**: 5 font sizes, alignment, shadows, outlines
@@ -23,6 +24,7 @@
 - **Full Documentation**: Complete API reference and implementation guides
 
 ### 🚀 **Major Three.js Integration**
+
 - **Complete 3D Transformation**: Full Three.js rendering pipeline with Nintendo 64/PlayStation aesthetics
 - **Advanced Material System**: Holographic, metallic, emissive materials with real-time animation
 - **Cinematic Post-Processing**: ACES tone mapping, bloom effects, motion blur, and depth of field
@@ -30,6 +32,7 @@
 - **Professional Graphics**: Volumetric fog, particle systems, and atmospheric effects
 
 ### 🎯 **Enhanced Development Experience**
+
 - **Hot Reloading**: Instant cart updates without losing game state
 - **100% Test Coverage**: All 35+ API functions thoroughly tested and validated
 - **Performance Monitoring**: Real-time FPS, triangle count, and memory analytics
@@ -39,6 +42,7 @@
 ## 🌟 Spectacular Features
 
 ### 🎯 **Pure 3D Graphics Engine**
+
 - **🚀 GPU Acceleration**: Full Three.js integration with WebGL2 backend
 - **🎨 Nintendo 64/PlayStation Aesthetics**: Authentic retro rendering with modern quality
 - **✨ Advanced Materials**: Holographic, metallic, emissive, and animated surface effects
@@ -48,6 +52,7 @@
 - **🎪 Post-Processing**: ACES tone mapping, bloom effects, and motion blur
 
 ### 🎮 **Spectacular 3D Demos**
+
 - **🏰 Mystical Realm**: Fantasy world with day/night cycles, weather systems, and crystal collection
 - **🏛️ Crystal Cathedral**: Ultimate graphics showcase with holographic architecture and energy effects
 - **🚀 Star Fox Nova**: Epic space combat with professional start screen and game over flow
@@ -58,6 +63,7 @@
 - **🎨 UI Demo**: Interactive showcase of the complete UI system with all components
 
 ### 🎨 **First-Class UI System**
+
 - **🔘 Button System**: Interactive buttons with hover, press, and disabled states
 - **📋 Panel System**: Customizable panels with borders, shadows, gradients, and titles
 - **✏️ Font System**: 5 font sizes (tiny, small, normal, large, huge) with alignment
@@ -68,6 +74,7 @@
 - **✨ Text Effects**: Shadows, outlines, and advanced text rendering
 
 ### � **Advanced Visual Systems**
+
 - **📦 Primitive Creation**: Cubes, spheres, planes with advanced material options
 - **🎭 Material System**: PBR materials, texture mapping, and shader-based effects
 - **📷 Dynamic Camera**: Smooth camera controls, FOV adjustment, and cinematic targeting
@@ -76,12 +83,14 @@
 - **🎯 Performance Optimized**: Frustum culling, batched rendering, and GPU optimization
 
 ### 🕹️ **Complete Input System**
+
 - **⌨️ Keyboard Support**: Full WASD+Arrow key mapping with customizable controls
 - **🎮 Gamepad Integration**: Standard gamepad support with button mapping
 - **🖱️ Mouse Input**: Precise mouse controls with raycasting for 3D interaction
 - **📱 Touch Support**: Mobile-friendly touch controls for all platforms
 
 ### 🧪 **Development Excellence**
+
 - **✅ 100% Test Coverage**: Comprehensive unit testing with 35/35 tests passing
 - **⚡ Hot Reloading**: Instant code updates without losing game state
 - **📊 Performance Analytics**: Real-time FPS, triangle count, and memory monitoring
@@ -91,6 +100,7 @@
 ## 🚀 **What's New in v0.2.0**
 
 ### 🎪 **Revolutionary 3D Integration**
+
 - **Pure Three.js Pipeline**: Complete transition to Three.js for ultimate 3D performance
 - **Nintendo 64/PlayStation Aesthetics**: Authentic retro rendering with modern quality
 - **Advanced Material System**: 4 material types (standard, metallic, holographic, emissive)
@@ -98,6 +108,7 @@
 - **Cinematic Post-Processing**: ACES tone mapping, bloom effects, motion blur
 
 ### ⚡ **Enhanced Development Experience**
+
 - **100% Test Coverage**: All 35+ API functions thoroughly validated
 - **Hot Reloading**: Instant cart updates without losing game state
 - **Performance Analytics**: Real-time FPS, triangle count, memory monitoring
@@ -105,6 +116,7 @@
 - **Comprehensive Documentation**: COPILOT.md and enhanced API references
 
 ### 🌟 **Spectacular Demo Gallery**
+
 - **8 Complete 3D Experiences**: From fantasy realms to cyberpunk cities
 - **Advanced Graphics Showcase**: Holographic architecture and particle systems
 - **Space Combat Simulation**: Epic battles with cinematic camera work
@@ -113,6 +125,7 @@
 ## 🚀 Quick Start Guide
 
 ### 🏁 **Launch Your 3D Fantasy Console**
+
 ```bash
 # Method 1: Development Server (Recommended)
 pnpm install
@@ -162,6 +175,7 @@ nova64/                          # 🏰 Ultimate 3D Fantasy Console
 ## 🎨 **Creating Your First 3D Cart**
 
 ### 🌟 **Basic 3D Scene Setup**
+
 Create `examples/your-amazing-3d-world/code.js`:
 
 ```javascript
@@ -173,59 +187,67 @@ let crystals = [];
 let score = 0;
 
 export function init() {
-    // ⚠️ Create ALL objects here — never inside draw()
-    groundMesh = createPlane(50, 50, 0x2a4d3a, [0, 0, 0]);
-    rotateMesh(groundMesh, -Math.PI/2, 0, 0);
+  // ⚠️ Create ALL objects here — never inside draw()
+  groundMesh = createPlane(50, 50, 0x2a4d3a, [0, 0, 0]);
+  rotateMesh(groundMesh, -Math.PI / 2, 0, 0);
 
-    playerMesh = createCube(1, 0x0088ff, [0, 1, 0], { material: 'metallic' });
+  playerMesh = createCube(1, 0x0088ff, [0, 1, 0], { material: 'metallic' });
 
-    // 💎 Scatter crystals
-    for (let i = 0; i < 10; i++) {
-        const cx = (Math.random() - 0.5) * 20;
-        const cz = (Math.random() - 0.5) * 20;
-        crystals.push({
-            x: cx, y: 1.5, z: cz,
-            mesh: createCube(0.5, 0xff0088, [cx, 1.5, cz], { material: 'holographic' }),
-            spin: 0, collected: false
-        });
-    }
+  // 💎 Scatter crystals
+  for (let i = 0; i < 10; i++) {
+    const cx = (Math.random() - 0.5) * 20;
+    const cz = (Math.random() - 0.5) * 20;
+    crystals.push({
+      x: cx,
+      y: 1.5,
+      z: cz,
+      mesh: createCube(0.5, 0xff0088, [cx, 1.5, cz], { material: 'holographic' }),
+      spin: 0,
+      collected: false,
+    });
+  }
 
-    setFog(0x1a1a2e, 10, 30);
-    setAmbientLight(0x334466, 1.0);
+  setFog(0x1a1a2e, 10, 30);
+  setAmbientLight(0x334466, 1.0);
 }
 
 export function update(dt) {
-    // 🎮 Smooth WASD movement
-    if (key('KeyW')) player.z -= 5 * dt;
-    if (key('KeyS')) player.z += 5 * dt;
-    if (key('KeyA')) player.x -= 5 * dt;
-    if (key('KeyD')) player.x += 5 * dt;
+  // 🎮 Smooth WASD movement
+  if (key('KeyW')) player.z -= 5 * dt;
+  if (key('KeyS')) player.z += 5 * dt;
+  if (key('KeyA')) player.x -= 5 * dt;
+  if (key('KeyD')) player.x += 5 * dt;
 
-    setPosition(playerMesh, player.x, player.y, player.z);
+  setPosition(playerMesh, player.x, player.y, player.z);
 
-    // 💎 Crystal collection + spin
-    crystals.forEach(c => {
-        if (c.collected) return;
-        c.spin += dt;
-        rotateMesh(c.mesh, 0, dt, dt * 1.3);
-        const dist = Math.hypot(player.x - c.x, player.z - c.z);
-        if (dist < 1.5) { c.collected = true; removeMesh(c.mesh); score += 100; }
-    });
+  // 💎 Crystal collection + spin
+  crystals.forEach(c => {
+    if (c.collected) return;
+    c.spin += dt;
+    rotateMesh(c.mesh, 0, dt, dt * 1.3);
+    const dist = Math.hypot(player.x - c.x, player.z - c.z);
+    if (dist < 1.5) {
+      c.collected = true;
+      removeMesh(c.mesh);
+      score += 100;
+    }
+  });
 
-    // 📷 Camera follows player
-    setCameraPosition(player.x + 5, player.y + 3, player.z + 5);
-    setCameraTarget(player.x, player.y, player.z);
+  // 📷 Camera follows player
+  setCameraPosition(player.x + 5, player.y + 3, player.z + 5);
+  setCameraTarget(player.x, player.y, player.z);
 }
 
 export function draw() {
-    // 📊 HUD overlay — 3D renders automatically
-    print(`Score: ${score}`, 10, 10, 0xffffff);
-    print(`Crystals: ${crystals.filter(c => !c.collected).length}`, 10, 25, 0x00ff88);
-    print("WASD + Space to move", 10, 165, 0x888888);
+  // 📊 HUD overlay — 3D renders automatically
+  print(`Score: ${score}`, 10, 10, 0xffffff);
+  print(`Crystals: ${crystals.filter(c => !c.collected).length}`, 10, 25, 0x00ff88);
+  print('WASD + Space to move', 10, 165, 0x888888);
 }
 ```
 
 ### 🎯 **Advanced 3D Features Showcase**
+
 ```javascript
 // 🌟 Ultimate 3D effects demonstration
 
@@ -236,49 +258,51 @@ let lightCycle = 0;
 let time = 0;
 
 export function init() {
-    // ⚠️ Create objects ONCE here
-    for (let i = 0; i < 4; i++) {
-        showcases.push(createCube(1.5, COLORS[i], [0, 0, 0], {
-            material: MATS[i],
-            emissive: i === 3 ? 0x440022 : 0x000000,
-            metalness: i === 1 ? 0.9 : 0.1,
-            roughness: i === 1 ? 0.1 : 0.8
-        }));
-    }
-    enableBloom(1.2, 0.5, 0.2);
-    enableFXAA();
+  // ⚠️ Create objects ONCE here
+  for (let i = 0; i < 4; i++) {
+    showcases.push(
+      createCube(1.5, COLORS[i], [0, 0, 0], {
+        material: MATS[i],
+        emissive: i === 3 ? 0x440022 : 0x000000,
+        metalness: i === 1 ? 0.9 : 0.1,
+        roughness: i === 1 ? 0.1 : 0.8,
+      })
+    );
+  }
+  enableBloom(1.2, 0.5, 0.2);
+  enableFXAA();
 }
 
 export function update(dt) {
-    time += dt;
-    lightCycle += dt * 0.5;
+  time += dt;
+  lightCycle += dt * 0.5;
 
-    // 🎨 Orbit + bob each cube
-    for (let i = 0; i < 4; i++) {
-        const angle = time + i * Math.PI * 0.5;
-        setPosition(showcases[i],
-            Math.cos(angle) * 5,
-            Math.sin(time + i) * 2,
-            Math.sin(angle) * 5
-        );
-        rotateMesh(showcases[i], dt * 0.5, dt * 0.8, dt * 0.3);
-    }
+  // 🎨 Orbit + bob each cube
+  for (let i = 0; i < 4; i++) {
+    const angle = time + i * Math.PI * 0.5;
+    setPosition(showcases[i], Math.cos(angle) * 5, Math.sin(time + i) * 2, Math.sin(angle) * 5);
+    rotateMesh(showcases[i], dt * 0.5, dt * 0.8, dt * 0.3);
+  }
 
-    // 🌅 Cycle fog color
-    const r = Math.floor((Math.sin(lightCycle) * 0.5 + 0.5) * 50);
-    const g = Math.floor((Math.sin(lightCycle + 2.09) * 0.5 + 0.5) * 50);
-    const b = Math.floor((Math.sin(lightCycle + 4.19) * 0.5 + 0.5) * 50);
-    setFog((r << 16) | (g << 8) | b, 8, 25);
+  // 🌅 Cycle fog color
+  const r = Math.floor((Math.sin(lightCycle) * 0.5 + 0.5) * 50);
+  const g = Math.floor((Math.sin(lightCycle + 2.09) * 0.5 + 0.5) * 50);
+  const b = Math.floor((Math.sin(lightCycle + 4.19) * 0.5 + 0.5) * 50);
+  setFog((r << 16) | (g << 8) | b, 8, 25);
 
-    // 📷 Orbiting camera
-    setCameraPosition(Math.cos(time * 0.3) * 8, 3 + Math.sin(time * 0.2) * 2, Math.sin(time * 0.3) * 8);
-    setCameraTarget(0, 0, 0);
+  // 📷 Orbiting camera
+  setCameraPosition(
+    Math.cos(time * 0.3) * 8,
+    3 + Math.sin(time * 0.2) * 2,
+    Math.sin(time * 0.3) * 8
+  );
+  setCameraTarget(0, 0, 0);
 }
 
 export function draw() {
-    // 📊 HUD — 3D renders automatically
-    print("Advanced 3D Features Demo", 10, 10, 0xffffff);
-    print("Standard  Metallic  Holographic  Emissive", 10, 25, 0x88ff88);
+  // 📊 HUD — 3D renders automatically
+  print('Advanced 3D Features Demo', 10, 10, 0xffffff);
+  print('Standard  Metallic  Holographic  Emissive', 10, 25, 0x88ff88);
 }
 ```
 
@@ -291,20 +315,22 @@ export function draw() {
 > 🚀 **100% Test Coverage**: All 35+ API functions are thoroughly tested and validated!
 
 ### 🎨 **3D Scene Management**
+
 ```javascript
 // 📷 Camera control system
-setCameraPosition(x, y, z)          // Set camera world position
-setCameraTarget(x, y, z)            // Set camera look-at target
-setCameraFOV(degrees)               // Set field of view (default: 75°)
+setCameraPosition(x, y, z); // Set camera world position
+setCameraTarget(x, y, z); // Set camera look-at target
+setCameraFOV(degrees); // Set field of view (default: 75°)
 
 // 🌫️ Atmospheric effects
-setFog(color, near, far)            // Add distance-based fog
-clearFog()                          // Remove fog effects
+setFog(color, near, far); // Add distance-based fog
+clearFog(); // Remove fog effects
 ```
 
 > 💡 **3D renders automatically** — create objects in `init()`, move them in `update(dt)`. The `draw()` function is for 2D HUD overlay only.
 
 ### 🎯 **3D Object Creation**
+
 ```javascript
 // 📦 Primitive creation with advanced materials
 // Signature: createCube(size, color, [x,y,z], options)
@@ -326,40 +352,43 @@ createPlane(10, 10, 0x2a4d3a, [0, 0, 0])
 ```
 
 ### ⚡ **3D Object Manipulation**
+
 ```javascript
 // 🔄 Transform operations
-rotateMesh(mesh, x, y, z)          // Set rotation in radians
-setPosition(mesh, x, y, z)         // Set world position
-setScale(mesh, x, y, z)            // Set scale factors
-removeMesh(mesh)                   // Remove from scene
+rotateMesh(mesh, x, y, z); // Set rotation in radians
+setPosition(mesh, x, y, z); // Set world position
+setScale(mesh, x, y, z); // Set scale factors
+removeMesh(mesh); // Remove from scene
 
 // 🎪 Advanced operations
-getMeshPosition(mesh)              // Get current position
-getMeshRotation(mesh)              // Get current rotation
-getMeshScale(mesh)                 // Get current scale
+getMeshPosition(mesh); // Get current position
+getMeshRotation(mesh); // Get current rotation
+getMeshScale(mesh); // Get current scale
 ```
 
 ### 🎮 **Input System (Enhanced)**
+
 ```javascript
 // ⌨️ Keyboard input
-key(keyCode)                       // Check if key is currently pressed
-btn(buttonIndex)                   // Check gamepad button state
-btnp(buttonIndex)                  // Check gamepad button just pressed
+key(keyCode); // Check if key is currently pressed
+btn(buttonIndex); // Check gamepad button state
+btnp(buttonIndex); // Check gamepad button just pressed
 
 // 🖱️ Mouse input
-mouseX(), mouseY()                 // Get mouse coordinates
-mouseButton(index)                 // Check mouse button state
+(mouseX(), mouseY()); // Get mouse coordinates
+mouseButton(index); // Check mouse button state
 
 // 📱 Touch input
-touchX(), touchY()                 // Get touch coordinates
-touchCount()                       // Number of active touches
+(touchX(), touchY()); // Get touch coordinates
+touchCount(); // Number of active touches
 
 // 🎮 Gamepad support
-gamepadConnected(index)            // Check if gamepad is connected
-gamepadAxis(index, axis)           // Get analog stick values
+gamepadConnected(index); // Check if gamepad is connected
+gamepadAxis(index, axis); // Get analog stick values
 ```
 
 ### 🎨 **2D Overlay System**
+
 ```javascript
 // 🖼️ Screen drawing (overlays on 3D)
 cls(color?)                        // Clear screen to color
@@ -375,6 +404,7 @@ unpackRGBA64(color)                // Unpack to RGBA object
 ```
 
 ### 🔊 **Audio System**
+
 ```javascript
 // 🎵 Sound effects and music
 playSound(audioData, options)      // Play sound effect
@@ -385,7 +415,8 @@ setVolume(level)                   // Set master volume (0.0-1.0)
 ```
 
 ### 💾 **Storage & Data**
-```javascript  
+
+```javascript
 // 💾 Persistent game data
 saveData(key, value)               // Save game state
 loadData(key, defaultValue?)       // Load game state
@@ -394,13 +425,14 @@ listDataKeys()                     // List all saved keys
 ```
 
 ### 🔧 **Debug & Performance**
+
 ```javascript
 // 🐛 Development utilities
-console.log(message)               // Debug logging
-performance.now()                  // High-precision timing
-getFrameRate()                     // Current FPS
-getTriangleCount()                 // Rendered triangles
-getMemoryUsage()                   // Memory statistics
+console.log(message); // Debug logging
+performance.now(); // High-precision timing
+getFrameRate(); // Current FPS
+getTriangleCount(); // Rendered triangles
+getMemoryUsage(); // Memory statistics
 ```
 
 ---
@@ -408,41 +440,49 @@ getMemoryUsage()                   // Memory statistics
 ## 🎪 **Spectacular Demo Gallery**
 
 ### 🏰 **Mystical Realm** - Fantasy Adventure
+
 - **🌟 Features**: Day/night cycles, weather systems, crystal collection
 - **🎮 Controls**: WASD + Space for magical exploration
 - **✨ Highlights**: Dynamic lighting, particle effects, atmospheric sound
 
-### 🏛️ **Crystal Cathedral** - Ultimate Graphics Showcase  
+### 🏛️ **Crystal Cathedral** - Ultimate Graphics Showcase
+
 - **🌟 Features**: Holographic architecture, energy effects, reflective surfaces
 - **🎮 Controls**: Automatic cinematic camera tour
 - **✨ Highlights**: Advanced materials, volumetric fog, ACES tone mapping
 
 ### 🚀 **Star Fox Nova** - Epic Space Combat
+
 - **🌟 Features**: Squadron battles, barrel rolls, boss encounters
 - **🎮 Controls**: WASD for flight, Space for boost, Z for weapons
 - **✨ Highlights**: Particle trails, explosion effects, 3D audio
 
 ### 🏁 **F-Zero Nova** - High-Speed Racing
+
 - **🌟 Features**: Futuristic circuits, speed boost pads, time trials
 - **🎮 Controls**: WASD for steering, Space for turbo boost
 - **✨ Highlights**: Motion blur, neon trails, physics simulation
 
 ### 🌃 **Cyberpunk City** - Neon Metropolis
+
 - **🌟 Features**: Flying cars, holographic ads, rain effects
 - **🎮 Controls**: WASD for movement, mouse for camera
 - **✨ Highlights**: Neon lighting, reflective wet surfaces, fog effects
 
 ### ⚛️ **Physics Demo** - Advanced Simulation
+
 - **🌟 Features**: Realistic collisions, gravity, bouncing objects
 - **🎮 Controls**: Mouse to interact, Space to spawn objects
 - **✨ Highlights**: Real-time physics, material properties, constraint systems
 
 ### 🔫 **Space Shooter** - Intense Combat
+
 - **🌟 Features**: Wave-based enemies, power-ups, boss battles
 - **🎮 Controls**: WASD for movement, Space to fire, mouse to aim
 - **✨ Highlights**: Particle explosions, dynamic lighting, screen shake
 
 ### ⚔️ **Strider Knight** - Fantasy Platformer
+
 - **🌟 Features**: Magical environments, enemy AI, collectible gems
 - **🎮 Controls**: WASD for movement, Space to jump, Z to attack
 - **✨ Highlights**: Animated sprites, particle magic, atmospheric music
@@ -452,12 +492,14 @@ getMemoryUsage()                   // Memory statistics
 ## 🔧 **Performance & Optimization**
 
 ### 📊 **Real-Time Metrics**
+
 - **FPS Monitoring**: 60 FPS target with automatic quality scaling
-- **Triangle Count**: Efficient mesh management and LOD systems  
+- **Triangle Count**: Efficient mesh management and LOD systems
 - **Memory Usage**: Automatic garbage collection and resource pooling
 - **GPU Utilization**: Optimized shader compilation and batch rendering
 
 ### ⚡ **Optimization Features**
+
 - **Frustum Culling**: Only render visible objects
 - **LOD System**: Automatic level-of-detail based on distance
 - **Texture Compression**: Efficient memory usage for materials
@@ -465,8 +507,9 @@ getMemoryUsage()                   // Memory statistics
 - **Object Pooling**: Reuse objects to minimize garbage collection
 
 ### 🎯 **Quality Settings**
+
 - **High**: 4K shadows, full effects, maximum particles
-- **Medium**: 2K shadows, standard effects, reduced particles  
+- **Medium**: 2K shadows, standard effects, reduced particles
 - **Low**: 1K shadows, minimal effects, basic particles
 - **Auto**: Dynamic quality scaling based on performance
 
@@ -475,6 +518,7 @@ getMemoryUsage()                   // Memory statistics
 ## 🧪 **Testing & Quality Assurance**
 
 ### ✅ **Enhanced Test Coverage**
+
 ```bash
 # Command-line test suite
 pnpm test                    # Run all tests
@@ -483,12 +527,14 @@ pnpm test:integration       # Integration tests only
 ```
 
 **🎯 Test Results**: 100% pass rate across all test suites
+
 - **3D API Tests**: 15+ functions validated with MockGPU
-- **Screen System Tests**: Complete lifecycle and state management  
+- **Screen System Tests**: Complete lifecycle and state management
 - **Integration Tests**: Demo compatibility and API exposure
 - **Performance Tests**: Benchmarking and optimization validation
 
 ### 🎪 **Test Features**
+
 - **Comprehensive Coverage**: All core systems thoroughly tested
 - **Interactive Web Runner**: Real-time test execution with progress tracking
 - **Performance Benchmarks**: GPU operation timing and optimization metrics
@@ -496,6 +542,7 @@ pnpm test:integration       # Integration tests only
 - **CLI Integration**: Perfect for CI/CD pipelines and automated testing
 
 ### 🐛 **Error Handling & Quality**
+
 - **Build Error Prevention**: Fixed init3D undefined errors in demos
 - **Shader Compilation**: Automatic fallback to simpler shaders
 - **WebGL Context**: Graceful degradation to Canvas2D
@@ -508,6 +555,7 @@ pnpm test:integration       # Integration tests only
 ## 🚀 **Deployment & Distribution**
 
 ### 📦 **Build System**
+
 ```bash
 # Development server with hot reloading
 pnpm dev
@@ -517,35 +565,41 @@ pnpm build
 ```
 
 ### 🌐 **Platform Compatibility**
+
 - **🖥️ Desktop**: Windows, macOS, Linux (Chrome, Firefox, Safari, Edge)
 - **📱 Mobile**: iOS Safari, Android Chrome, responsive touch controls
 - **🎮 Consoles**: RetroArch core for homebrew gaming systems
 - **☁️ Cloud**: WebAssembly ready, service worker caching
 
 ### 📤 **Distribution Options**
+
 - **Static Hosting**: GitHub Pages, Netlify, Vercel deployment
 - **Progressive Web App**: Offline capability, app-like experience
-- **Electron Wrapper**: Desktop application with native features  
+- **Electron Wrapper**: Desktop application with native features
 - **RetroArch Core**: Integration with retro gaming ecosystem
+
 ---
 
 ## 🎓 **Learning Resources**
 
 ### 📖 **Comprehensive Documentation**
+
 - **📋 COPILOT.md**: Complete GitHub Copilot development guide with advanced patterns
-- **📚 CLAUDE.md**: Detailed AI assistant context for development workflows  
+- **📚 CLAUDE.md**: Detailed AI assistant context for development workflows
 - **🎯 NOVA64_3D_API.md**: Full 3D API reference with 35+ functions
 - **🚀 MIGRATION_GUIDE.md**: Step-by-step 2D to 3D upgrade guide
 - **🎮 retroarch/README_RETROARCH.md**: RetroArch libretro core implementation
 
 ### 📖 **Getting Started Guides**
+
 1. **🌟 Your First 3D World**: Step-by-step tutorial for beginners
-2. **🎨 Advanced Materials**: Mastering holographic and metallic effects  
+2. **🎨 Advanced Materials**: Mastering holographic and metallic effects
 3. **🎮 Input Systems**: Complete keyboard, mouse, and gamepad handling
 4. **📷 Camera Control**: Cinematic techniques and smooth transitions
 5. **🌫️ Atmospheric Effects**: Fog, lighting, and environmental design
 
 ### 💡 **Best Practices**
+
 - **Performance**: Keep triangle counts reasonable for 60 FPS gameplay
 - **Materials**: Use emissive materials sparingly for maximum impact
 - **Lighting**: Balance ambient and directional lighting for mood
@@ -553,6 +607,7 @@ pnpm build
 - **User Experience**: Clear controls and visual feedback
 
 ### 🔗 **Community & Support**
+
 - **📚 Documentation**: Complete API reference with examples
 - **🐛 Issue Tracker**: Report bugs and request features
 - **💬 Discussions**: Share your creations and get help
@@ -564,8 +619,9 @@ pnpm build
 ## 🏆 **Nova64 Achievement System**
 
 ### 🌟 **Developer Badges**
+
 - **🎯 First Steps**: Create your first 3D scene
-- **🎨 Material Master**: Use all 4 material types in one project  
+- **🎨 Material Master**: Use all 4 material types in one project
 - **📷 Cinematographer**: Implement smooth camera transitions
 - **🎮 Input Expert**: Handle keyboard, mouse, and gamepad input
 - **⚡ Performance Pro**: Maintain 60 FPS with 100+ objects
@@ -574,6 +630,7 @@ pnpm build
 - **🌍 World Builder**: Create large explorable environments
 
 ### 🚀 **Technical Milestones**
+
 - **💎 Shader Specialist**: Create custom material effects
 - **🔊 Audio Engineer**: Implement spatial 3D audio
 - **🎯 Physics Master**: Advanced collision and simulation systems
@@ -586,13 +643,15 @@ pnpm build
 ## 🙏 **Credits & Acknowledgments**
 
 ### 🎨 **Technology Stack**
+
 - **Three.js**: Advanced 3D graphics and WebGL rendering
 - **JavaScript ES6+**: Modern language features and modules
-- **WebGL 2.0**: Hardware-accelerated GPU computing  
+- **WebGL 2.0**: Hardware-accelerated GPU computing
 - **Canvas 2D**: Fallback rendering and overlay systems
 - **Web Audio API**: Spatial audio and sound synthesis
 
 ### 🎪 **Inspiration**
+
 - **Nintendo 64**: Pioneering 3D console gaming aesthetics
 - **Sony PlayStation**: Advanced 3D graphics and atmosphere
 - **Arcade Golden Age**: Fast-paced action and visual spectacle
@@ -600,8 +659,9 @@ pnpm build
 - **RetroArch**: Multi-platform retro gaming ecosystem
 
 ### 🌟 **Special Thanks**
+
 - Open source community for tools and libraries
-- Beta testers for feedback and bug reports  
+- Beta testers for feedback and bug reports
 - Content creators for amazing demo experiences
 - Education community for learning resource feedback
 - Retro gaming enthusiasts for preservation efforts
@@ -616,33 +676,38 @@ Nova64 is released under the **MIT License** - see `LICENSE` file for details.
 
 ---
 
-*⭐ Star this project if Nova64 brings back those magical 3D gaming memories! ⭐*
+_⭐ Star this project if Nova64 brings back those magical 3D gaming memories! ⭐_
 
 ## Advanced Features
 
 ### Sprite System
+
 - **Sprite Editor**: In-browser pixel art editor. Click "Sprite Editor" in the panel
 - **Batched Rendering**: GPU-accelerated sprite rendering with automatic batching
 - **Animation**: Frame-based sprite animation with configurable timing
 - **Tilemaps**: Level data loading from JSON with collision detection
 
 ### Physics Integration
+
 - **2D Physics**: Full rigid body physics with Box2D-style API
 - **Collision Detection**: AABB, circle, and tilemap collision helpers
 - **Spatial Queries**: Raycasting and broad-phase collision detection
 
 ### Audio System
+
 - **WebAudio Integration**: Real-time audio synthesis and effects
 - **Sound Effects**: Built-in sound presets and custom audio generation
 - **Music Support**: Background music and audio streaming
 
 ### Development Tools
+
 - **Live Reloading**: Hot reload cart code without losing state
 - **Performance Monitoring**: Real-time FPS, draw call, and memory stats
 - **Screenshot Capture**: Save game screenshots as PNG files
 - **Debug Console**: Runtime debugging and cart inspection
 
 ### Input and Storage
+
 - **Gamepad Support**: Standard gamepad mapping with customizable controls
 - **Keyboard Input**: Full keyboard input with text entry support
 - **Local Storage**: Persistent save data with JSON serialization
@@ -674,29 +739,34 @@ The system automatically detects capabilities and selects the best available ren
 ## Performance Optimization
 
 ### 3D Performance
+
 - Keep polygon counts under 1000 triangles per object
 - Use object pooling for dynamic objects
 - Leverage GPU instancing for repeated geometry
 - Enable frustum culling and occlusion culling
 
-### 2D Performance  
+### 2D Performance
+
 - Batch sprite renders by texture atlas
 - Use power-of-2 texture dimensions
 - Minimize state changes during rendering
 - Cache computed sprite positions when possible
 
 ### General Performance
+
 - Profile using built-in performance stats
 - Use requestAnimationFrame for smooth animation
 - Implement level-of-detail (LOD) systems for complex scenes
 - Consider using Web Workers for heavy computation
 
 ## License
+
 MIT
 
 ## Version History
 
 ### v0.2.0 - Ultimate 3D Revolution (Current)
+
 - **🚀 Complete Three.js Integration**: Pure Three.js rendering pipeline with Nintendo 64/PlayStation aesthetics
 - **🎨 Advanced Material System**: Holographic, metallic, emissive materials with real-time animation
 - **💡 Professional Lighting**: Multi-layered ambient, directional, point lighting with 4K shadows
@@ -706,7 +776,8 @@ MIT
 - **🔊 Spatial Audio**: 3D positioned sound effects and environmental audio
 - **📚 Comprehensive Documentation**: COPILOT.md, enhanced API references, migration guides
 
-### v0.1.0 - Foundation Release  
+### v0.1.0 - Foundation Release
+
 - **Core 2D API**: Pixel-perfect graphics with RGBA64 precision
 - **WebGL2 Backend**: Hardware-accelerated rendering with tone mapping
 - **Sprite System**: Batched sprite rendering with animation support

@@ -8,15 +8,19 @@ A complete, production-ready Mac OS 9 "Platinum" style GUI shell for the nova64 
 ## 🚀 Quick Start
 
 **To use OS shell with main nova64 server:**
+
 ```bash
 ./build-and-copy.sh
 ```
+
 Then open: http://localhost:5174/os9-shell/index.html
 
 **For standalone development:**
+
 ```bash
 pnpm dev
 ```
+
 Opens at: http://localhost:3000
 
 ## 🌟 Features
@@ -45,7 +49,7 @@ Opens at: http://localhost:3000
   - **Notes**: Simple text editor with auto-save
   - **Paint**: Canvas-based drawing tool with color picker and brush sizes
   - **System Profiler**: Displays hardware and system information
-  
+
 ### Developer Experience
 
 - **TypeScript**: Fully typed with comprehensive interfaces
@@ -57,7 +61,7 @@ Opens at: http://localhost:3000
 
 ### Prerequisites
 
-- Node.js 18+ 
+- Node.js 18+
 - pnpm (or npm/yarn)
 
 ### Installation
@@ -133,7 +137,7 @@ const result = await ctx.alert({
   title: 'Confirm Action',
   message: 'Are you sure you want to continue?',
   buttons: ['Cancel', 'OK'],
-  icon: 'question'
+  icon: 'question',
 });
 
 // Show toast notification
@@ -144,7 +148,7 @@ ctx.registerControlStrip({
   id: 'my-widget',
   icon: '🎮',
   label: 'Game',
-  onClick: () => console.log('Clicked!')
+  onClick: () => console.log('Clicked!'),
 });
 ```
 
@@ -154,7 +158,7 @@ ctx.registerControlStrip({
 const ctx = window.novaContext;
 
 // Listen for events
-const unsubscribe = ctx.on('app:launched', (evt) => {
+const unsubscribe = ctx.on('app:launched', evt => {
   console.log('App launched:', evt.payload.appId);
 });
 
@@ -162,7 +166,7 @@ const unsubscribe = ctx.on('app:launched', (evt) => {
 ctx.emit({
   type: 'custom:event',
   payload: { data: 'example' },
-  timestamp: Date.now()
+  timestamp: Date.now(),
 });
 
 // Cleanup
@@ -205,7 +209,7 @@ const calculatorApp: Nova64App = {
         <!-- Add calculator buttons here -->
       </div>
     `;
-    
+
     // Add event listeners, initialize state, etc.
   },
 
@@ -253,10 +257,10 @@ The Platinum theme is defined in `src/theme/platinum.css` using CSS variables:
 
 ```css
 :root {
-  --platinum-gray: #CCCCCC;
+  --platinum-gray: #cccccc;
   --platinum-gray-dark: #707070;
-  --platinum-blue: #0000DD;
-  --window-title-active: linear-gradient(to bottom, #CCCCCC, #999999);
+  --platinum-blue: #0000dd;
+  --window-title-active: linear-gradient(to bottom, #cccccc, #999999);
   --desktop-bg: #008080;
   /* ... more variables */
 }
@@ -468,4 +472,4 @@ MIT License - feel free to use in your projects!
 
 **Built with ❤️ for retro computing enthusiasts**
 
-*nova64 OS - Bringing the classic Mac experience to modern web browsers*
+_nova64 OS - Bringing the classic Mac experience to modern web browsers_

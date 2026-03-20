@@ -4,7 +4,7 @@
 export async function runStarFoxGameTests() {
   // Import classes dynamically to work in different environments
   let TestRunner, Assert, Performance;
-  
+
   if (typeof window === 'undefined') {
     // CLI environment - import from test-cli
     const { TestRunner: CLITestRunner, Assert: CLIAssert } = await import('./test-cli.js');
@@ -16,7 +16,7 @@ export async function runStarFoxGameTests() {
         for (let i = 0; i < iterations; i++) fn();
         const total = Date.now() - start;
         return { average: total / iterations, min: 0, max: total, total };
-      }
+      },
     };
   } else {
     // Web environment - import from test-runner
@@ -25,7 +25,7 @@ export async function runStarFoxGameTests() {
     Assert = imports.Assert;
     Performance = imports.Performance;
   }
-  
+
   const runner = new TestRunner();
 
   // Mock game state for testing
@@ -33,15 +33,17 @@ export async function runStarFoxGameTests() {
     gameState: 'title',
     arwing: {
       mesh: null,
-      x: 0, y: 0, z: 0,
+      x: 0,
+      y: 0,
+      z: 0,
       health: 100,
       energy: 100,
-      boost: false
+      boost: false,
     },
     enemies: [],
     projectiles: [],
     score: 0,
-    wave: 1
+    wave: 1,
   };
 
   // Test game state management
@@ -65,10 +67,16 @@ export async function runStarFoxGameTests() {
   runner.test('Star Fox - Game Mechanics Available', () => {
     // Test that expected game functions would be available
     const expectedFunctions = [
-      'createStarField', 'createTitleScene', 'startGame', 'spawnEnemyWave',
-      'updatePlayer', 'updateEnemies', 'fireLaser', 'createExplosion'
+      'createStarField',
+      'createTitleScene',
+      'startGame',
+      'spawnEnemyWave',
+      'updatePlayer',
+      'updateEnemies',
+      'fireLaser',
+      'createExplosion',
     ];
-    
+
     // In a real game, these would be actual functions
     // Here we just verify the concept works
     expectedFunctions.forEach(funcName => {
@@ -80,8 +88,8 @@ export async function runStarFoxGameTests() {
   runner.test('Star Fox - Input Pattern Compatibility', () => {
     // Simulate the input patterns used in Star Fox
     const mockInput = {
-      isKeyDown: (key) => ['w', 'a', 's', 'd', 'z'].includes(key),
-      isKeyPressed: (key) => [' ', 'r', 'l', 'Enter'].includes(key)
+      isKeyDown: key => ['w', 'a', 's', 'd', 'z'].includes(key),
+      isKeyPressed: key => [' ', 'r', 'l', 'Enter'].includes(key),
     };
 
     // Test movement controls
@@ -105,7 +113,7 @@ export async function runStarFoxGameTests() {
       const dx = obj1.x - obj2.x;
       const dy = obj1.y - obj2.y;
       const dz = obj1.z - obj2.z;
-      return Math.sqrt(dx*dx + dy*dy + dz*dz) < threshold;
+      return Math.sqrt(dx * dx + dy * dy + dz * dz) < threshold;
     }
 
     // Test collision scenarios
@@ -114,7 +122,10 @@ export async function runStarFoxGameTests() {
     const enemy2 = { x: 10, y: 10, z: 10 }; // Far
 
     Assert.isTrue(checkCollision(player, enemy1), 'Should detect collision with close enemy');
-    Assert.isFalse(checkCollision(player, enemy2), 'Should not detect collision with distant enemy');
+    Assert.isFalse(
+      checkCollision(player, enemy2),
+      'Should not detect collision with distant enemy'
+    );
   });
 
   // Test game progression logic
@@ -145,7 +156,7 @@ export async function runStarFoxGameTests() {
       return {
         particleCount: sizes[size] || 4,
         lifetime: size === 'large' ? 1.2 : 0.8,
-        colors: ['0xff6600', '0xffaa00']
+        colors: ['0xff6600', '0xffaa00'],
       };
     }
 
@@ -154,7 +165,10 @@ export async function runStarFoxGameTests() {
 
     Assert.isEqual(smallExplosion.particleCount, 4, 'Small explosion should have 4 particles');
     Assert.isEqual(largeExplosion.particleCount, 12, 'Large explosion should have 12 particles');
-    Assert.isTrue(largeExplosion.lifetime > smallExplosion.lifetime, 'Large explosion should last longer');
+    Assert.isTrue(
+      largeExplosion.lifetime > smallExplosion.lifetime,
+      'Large explosion should last longer'
+    );
   });
 
   // Performance test for game loop
@@ -164,19 +178,19 @@ export async function runStarFoxGameTests() {
       // Simulate typical game update operations
       const dt = 0.016; // 60 FPS
       let operations = 0;
-      
+
       // Simulate player update
       operations += 10;
-      
+
       // Simulate enemy updates (up to 20 enemies)
       operations += 20 * 5;
-      
-      // Simulate projectile updates (up to 50 projectiles)  
+
+      // Simulate projectile updates (up to 50 projectiles)
       operations += 50 * 3;
-      
+
       // Simulate collision checks
       operations += 20 * 50; // enemies × projectiles
-      
+
       return operations;
     };
 

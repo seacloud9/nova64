@@ -87,6 +87,7 @@ The console supports direct demo loading via URL parameters:
 ### Humor & Personality
 
 The copy is intentionally funny and relatable:
+
 - "Because JavaScript Deserves a GPU That Doesn't Suck"
 - "It's like if the Nintendo 64 had a baby with modern web tech"
 - "We promise it's easier than reading Three.js docs at 3 AM"
@@ -133,6 +134,7 @@ All text content is in the HTML and can be easily modified. Key sections:
 ### Animations
 
 Main animations:
+
 - `glow` - Logo pulsing effect
 - `gridScroll` - Background grid movement
 - `slideInLeft/Right` - Hero text entrance
@@ -146,8 +148,12 @@ The page is fully responsive with breakpoints for mobile devices:
 
 ```css
 @media (max-width: 768px) {
-  .logo { font-size: 3rem; }
-  .tagline { font-size: 1.3rem; }
+  .logo {
+    font-size: 3rem;
+  }
+  .tagline {
+    font-size: 1.3rem;
+  }
   /* ... more responsive adjustments */
 }
 ```
@@ -162,6 +168,7 @@ The page is fully responsive with breakpoints for mobile devices:
 ## Future Enhancements
 
 Potential additions:
+
 - Video demo previews on hover
 - Live FPS counter from actual demos
 - User testimonials section
@@ -176,6 +183,7 @@ Potential additions:
 To test the homepage:
 
 1. Start the development server:
+
    ```bash
    pnpm dev
    # or
@@ -198,6 +206,7 @@ To test the homepage:
 ## Integration
 
 The homepage integrates with:
+
 - **Console** (`console.html`) - Main game player
 - **OS 9 Shell** (`/os9-shell/`) - Mac OS interface
 - **Documentation** (`/docs/`) - API reference
@@ -210,6 +219,7 @@ All paths are relative and work with any base URL.
 Built with vanilla HTML, CSS, and minimal JavaScript. No framework dependencies on the homepage itself (though the console and OS shell use React/Three.js).
 
 Design inspired by:
+
 - 80s/90s video game aesthetics
 - Synthwave/retrowave art style
 - Classic computer terminals

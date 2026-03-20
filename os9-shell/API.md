@@ -3,6 +3,7 @@
 ## NovaContext Methods
 
 ### Filesystem
+
 ```typescript
 ctx.read(path: string): Promise<ArrayBuffer | string>
 ctx.write(path: string, data: ArrayBuffer | string): Promise<void>
@@ -16,6 +17,7 @@ ctx.resolveAlias(path: string): Promise<string>
 ```
 
 ### Applications
+
 ```typescript
 ctx.registerApp(app: Nova64App): void
 ctx.launchApp(appId: string, args?: any): Promise<void>
@@ -24,6 +26,7 @@ ctx.getRunningApps(): string[]
 ```
 
 ### UI
+
 ```typescript
 ctx.alert(opts: AlertOptions): Promise<string>
 ctx.toast(msg: string): void
@@ -31,12 +34,14 @@ ctx.registerControlStrip(item: ControlStripItem): void
 ```
 
 ### Events
+
 ```typescript
 ctx.on(type: string, handler: EventHandler): () => void
 ctx.emit(evt: NovaEvent): void
 ```
 
 ### Windows
+
 ```typescript
 ctx.createWindow(opts: Partial<WindowState>): string
 ctx.closeWindow(windowId: string): void
@@ -44,6 +49,7 @@ ctx.focusWindow(windowId: string): void
 ```
 
 ### Preferences
+
 ```typescript
 ctx.getPref(key: string): Promise<any>
 ctx.setPref(key: string, value: any): Promise<void>
@@ -68,14 +74,14 @@ const myApp: Nova64App = {
   id: 'com.example.myapp',
   name: 'My App',
   icon: '🚀',
-  
+
   mount(el, ctx) {
     el.innerHTML = '<h1>Hello, nova64!</h1>';
   },
-  
+
   unmount() {
     // Cleanup
-  }
+  },
 };
 
 novaContext.registerApp(myApp);

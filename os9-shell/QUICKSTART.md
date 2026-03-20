@@ -13,11 +13,13 @@ Open browser to http://localhost:3000
 ## 🎯 First Steps
 
 ### 1. Watch the Boot Sequence
+
 - Gray splash screen with nova64 logo
 - Extensions load with icon animation
 - Desktop appears with icons
 
 ### 2. Open Browser Console
+
 Press F12 or Cmd+Option+I
 
 ### 3. Launch Your First App
@@ -36,6 +38,7 @@ await novaContext.launchApp('com.nova64.profiler');
 ```
 
 ### 5. Interact with Windows
+
 - **Drag** the title bar to move
 - **Double-click** title bar to windowshade (roll up/down)
 - **Click close box** (left button) to close
@@ -43,7 +46,9 @@ await novaContext.launchApp('com.nova64.profiler');
 - **Drag corner** to resize
 
 ### 6. Explore the Control Strip
+
 At the bottom of the screen:
+
 - Toggle collapse/expand
 - Adjust volume (mock)
 - Adjust brightness (works!)
@@ -71,7 +76,7 @@ console.log(files);
 await novaContext.alert({
   title: 'My Alert',
   message: 'This is a classic OS 9 alert!',
-  buttons: ['OK']
+  buttons: ['OK'],
 });
 ```
 
@@ -84,17 +89,20 @@ novaContext.toast('Hello from nova64!');
 ## 🎨 Explore Features
 
 ### Desktop Icons
+
 - Click to select
 - Double-click to open (stub)
 - Trash in bottom-right
 - Disk icons in top-right
 
 ### Menu Bar
+
 - Clock updates in real-time
 - Nova menu (left) has system options
 - App menus change based on foreground app
 
 ### Classic Features
+
 - ✅ Windowshade (double-click title)
 - ✅ Draggable windows
 - ✅ Resizable windows
@@ -150,4 +158,4 @@ A: Yes! See USAGE_EXAMPLES.md for full tutorial
 
 **Enjoy exploring nova64 OS!** 🌟
 
-*Classic Mac OS 9 experience in your browser*
+_Classic Mac OS 9 experience in your browser_

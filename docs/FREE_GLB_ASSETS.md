@@ -11,32 +11,31 @@ This document lists **MIT, CC0, and Creative Commons** licensed GLB/glTF models 
 ### Recommended Models for Games:
 
 #### Characters & Creatures
+
 - **Fox** - CC0 & CC-BY 4.0 - Animated low-poly fox
   - `2.0/Fox/glTF-Binary/Fox.glb`
   - Perfect for platformers, includes walk/run animations
-  
 - **Cesium Man** - CC-BY 4.0 - Animated character
   - `2.0/CesiumMan/glTF-Binary/CesiumMan.glb`
   - Good for testing character animations
-  
 - **Rigged Simple** - CC-BY 4.0 - Basic rigged character
   - `2.0/RiggedSimple/glTF-Binary/RiggedSimple.glb`
   - Great for learning skinning/animation
 
 #### Vehicles
+
 - **Cesium Milk Truck** - CC-BY 4.0
   - `2.0/CesiumMilkTruck/glTF-Binary/CesiumMilkTruck.glb`
   - Retro style truck with texture
 
 #### Objects & Props
+
 - **Avocado** - CC-BY 4.0
   - `2.0/Avocado/glTF-Binary/Avocado.glb`
   - Food prop with PBR textures
-  
 - **Water Bottle** - CC0 (Public Domain)
   - `2.0/WaterBottle/glTF-Binary/WaterBottle.glb`
   - Photorealistic bottle
-  
 - **Flight Helmet** - CC0 (Public Domain)
   - `2.0/FlightHelmet/glTF-Binary/FlightHelmet.glb`
   - High quality prop
@@ -46,6 +45,7 @@ This document lists **MIT, CC0, and Creative Commons** licensed GLB/glTF models 
   - Classic COLLADA duck model
 
 #### Environment
+
 - **Sponza** - CC-BY 4.0
   - `2.0/Sponza/glTF-Binary/Sponza.glb`
   - Building interior for testing lighting
@@ -55,12 +55,14 @@ This document lists **MIT, CC0, and Creative Commons** licensed GLB/glTF models 
   - Chess set with PBR materials
 
 #### Basic Shapes (CC-BY 4.0 / CC0)
+
 - **Box** - `2.0/Box/glTF-Binary/Box.glb`
 - **Box Textured** - `2.0/BoxTextured/glTF-Binary/BoxTextured.glb`
 - **Cube** - `2.0/Cube/glTF-Binary/Cube.glb`
 - **Suzanne** (Blender Monkey) - `2.0/Suzanne/glTF-Binary/Suzanne.glb`
 
 ### How to Download:
+
 ```bash
 # Clone the entire repository
 git clone https://github.com/KhronosGroup/glTF-Sample-Models.git
@@ -80,6 +82,7 @@ git clone https://github.com/KhronosGroup/glTF-Sample-Models.git
 Kenney offers **hundreds of themed game assets**, all free with CC0 license:
 
 ### Asset Packs (with glTF/GLB support):
+
 - **Pirate Kit** (30+ models) - Ships, cannons, treasure
 - **Racing Kit** - Cars, tracks, obstacles
 - **Space Kit** - Spaceships, asteroids, planets
@@ -103,6 +106,7 @@ Kenney offers **hundreds of themed game assets**, all free with CC0 license:
 High-quality photorealistic 3D models, all CC0:
 
 ### Categories:
+
 - **Furniture** - Chairs, tables, lamps
 - **Plants** - Trees, bushes, flowers
 - **Rocks & Nature** - Photoscanned rocks, terrain
@@ -122,6 +126,7 @@ High-quality photorealistic 3D models, all CC0:
 **Massive collection** of low-poly game-ready assets:
 
 ### Popular Packs:
+
 - **Ultimate Animated Animals** - 100+ animated creatures
 - **Ultimate Platformer Pack** - Platforms, enemies, collectibles
 - **Ultimate Space Pack** - Spaceships, aliens, stations
@@ -155,6 +160,7 @@ Archive of Google Poly models (before it shut down):
 **License**: Various (filter by Creative Commons)
 
 ### How to Find Free Models:
+
 1. Go to https://sketchfab.com/
 2. Search for models
 3. Filter by:
@@ -175,6 +181,7 @@ Archive of Google Poly models (before it shut down):
 Community-contributed game assets:
 
 ### Search Tips:
+
 - Filter by "3D Art"
 - Check "glTF" or "GLB" in search
 - Verify license before use
@@ -199,17 +206,18 @@ Historical artifacts and specimens:
 
 ## 📋 Quick Reference: License Comparison
 
-| License | Commercial Use | Attribution Required | Modifications OK |
-|---------|---------------|---------------------|------------------|
-| **CC0** | ✅ Yes | ❌ No | ✅ Yes |
-| **CC-BY 4.0** | ✅ Yes | ✅ **Yes** | ✅ Yes |
-| **MIT** | ✅ Yes | ✅ **Yes** (in code) | ✅ Yes |
+| License       | Commercial Use | Attribution Required | Modifications OK |
+| ------------- | -------------- | -------------------- | ---------------- |
+| **CC0**       | ✅ Yes         | ❌ No                | ✅ Yes           |
+| **CC-BY 4.0** | ✅ Yes         | ✅ **Yes**           | ✅ Yes           |
+| **MIT**       | ✅ Yes         | ✅ **Yes** (in code) | ✅ Yes           |
 
 ---
 
 ## 🔧 How to Use GLB Files in Nova64
 
 1. **Download** GLB files to your project:
+
    ```bash
    mkdir -p /path/to/nova64/models
    cd /path/to/nova64/models
@@ -217,15 +225,17 @@ Historical artifacts and specimens:
    ```
 
 2. **Load in Nova64 code**:
+
    ```javascript
    export async function init() {
      // Load GLB model
      const fox = await loadModel('/models/Fox.glb', [0, 0, 0], 1.0);
-     
+
      // Or with options
-     const player = await loadModel('/models/character.glb', 
-       [0, 2, 0],  // position
-       2.0         // scale
+     const player = await loadModel(
+       '/models/character.glb',
+       [0, 2, 0], // position
+       2.0 // scale
      );
    }
    ```
@@ -243,19 +253,23 @@ Historical artifacts and specimens:
 ## 📥 Recommended Downloads for Nova64
 
 ### For Platformers:
+
 - Fox (animated character) - CC-BY 4.0
 - Kenney Platformer Kit - CC0
 - Quaternius Ultimate Platformer Pack - CC0
 
 ### For Racing Games:
+
 - Kenney Racing Kit - CC0
 - Kenney Car Kit - CC0
 
 ### For Space Games:
+
 - Kenney Space Kit - CC0
 - Quaternius Ultimate Space Pack - CC0
 
 ### For RPG/Adventure:
+
 - Quaternius Ultimate Fantasy Pack - CC0
 - Kenney Castle Kit - CC0
 
@@ -281,20 +295,22 @@ mkdir -p models
 ## ⚖️ License Compliance
 
 ### When using CC-BY 4.0 models:
+
 Add attribution to your game credits or README:
 
 ```markdown
 ## Credits
 
 3D Models:
+
 - Fox by PixelMannen (CC0) and @tomkranis (CC-BY 4.0)
   https://sketchfab.com/models/371dea88d7e04a76af5763f2a36866bc
-  
 - [Model Name] by [Author] (CC-BY 4.0)
   [Source URL]
 ```
 
 ### When using CC0 models:
+
 No attribution required, but it's nice to credit creators!
 
 ---
@@ -302,7 +318,7 @@ No attribution required, but it's nice to credit creators!
 ## 🚀 Next Steps
 
 1. Choose a model pack based on your game genre
-2. Download GLB files to your `models/` directory  
+2. Download GLB files to your `models/` directory
 3. Load them in your Nova64 game using `loadModel()`
 4. Add proper attribution for CC-BY licensed models
 5. Have fun making games! 🎮

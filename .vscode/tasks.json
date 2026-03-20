@@ -1,12 +1,12 @@
 {
-	"version": "2.0.0",
-	"tasks": [
-		{
-			"label": "Nova64 Dev Server",
-			"type": "shell",
-			"command": "source ~/.nvm/nvm.sh && nvm use 20 && node_modules/.bin/vite --port 5173",
-			"isBackground": true,
-			"problemMatcher": []
-		}
-	]
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Nova64 Dev Server",
+      "type": "shell",
+      "command": "source ~/.nvm/nvm.sh && nvm use 20 && node_modules/.bin/vite --port 5173",
+      "isBackground": true,
+      "problemMatcher": []
+    }
+  ]
 }

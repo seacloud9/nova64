@@ -16,9 +16,9 @@ export default defineConfig({
     minify: 'terser',
     terserOptions: {
       compress: {
-        drop_console: false,  // Keep console for debugging
-        drop_debugger: true
-      }
+        drop_console: false, // Keep console for debugging
+        drop_debugger: true,
+      },
     },
 
     // Chunk size warnings
@@ -28,26 +28,26 @@ export default defineConfig({
     rollupOptions: {
       input: {
         main: resolve(__dirname, 'index.html'),
-        console: resolve(__dirname, 'console.html')
-      }
-    }
+        console: resolve(__dirname, 'console.html'),
+      },
+    },
   },
 
   // Dev server configuration
   server: {
     port: 5173,
     open: true,
-    host: true,  // Allow network access
+    host: true, // Allow network access
 
     // Hot module replacement
     hmr: {
-      overlay: true
-    }
+      overlay: true,
+    },
   },
 
   // Optimizations
   optimizeDeps: {
-    include: ['three', 'zustand']
+    include: ['three', 'zustand'],
   },
 
   // Plugin configuration
@@ -57,7 +57,7 @@ export default defineConfig({
   resolve: {
     alias: {
       '@runtime': resolve(__dirname, 'runtime'),
-      '@examples': resolve(__dirname, 'examples')
-    }
-  }
+      '@examples': resolve(__dirname, 'examples'),
+    },
+  },
 });

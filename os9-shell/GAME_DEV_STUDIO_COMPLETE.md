@@ -7,6 +7,7 @@ Transformed the boring Mac OS 9 shell into a **complete game development environ
 ## 🆕 New Applications
 
 ### 1. **Game Launcher** 🎮
+
 - **Location**: Desktop icon (top right)
 - **Features**:
   - Browse all 7 existing nova64 games
@@ -16,6 +17,7 @@ Transformed the boring Mac OS 9 shell into a **complete game development environ
   - Quick access to Game Studio
 
 #### Games Included:
+
 - 🏎️ F-Zero Racing
 - ⚔️ Knight Platformer
 - 🌆 Cyberpunk City
@@ -25,6 +27,7 @@ Transformed the boring Mac OS 9 shell into a **complete game development environ
 - ⛏️ Minecraft Clone
 
 ### 2. **Game Studio** 💻
+
 - **Location**: Desktop icon (middle right)
 - **Features**:
   - Full JavaScript code editor with dark theme
@@ -37,6 +40,7 @@ Transformed the boring Mac OS 9 shell into a **complete game development environ
   - Auto-save functionality
 
 #### Template Includes:
+
 ```javascript
 // nova64 Game Template
 // Ready to use init(), update(), and render() functions
@@ -44,6 +48,7 @@ Transformed the boring Mac OS 9 shell into a **complete game development environ
 ```
 
 ### 3. **Documentation Viewer** 📚
+
 - **Location**: Desktop icon (lower right)
 - **Features**:
   - Complete nova64 API documentation
@@ -53,6 +58,7 @@ Transformed the boring Mac OS 9 shell into a **complete game development environ
   - Formatted markdown rendering
 
 #### Documentation Sections:
+
 - 🎮 Getting Started - Quick start guide
 - 🎨 3D Graphics API - WebGL 3D rendering
 - ✏️ 2D Drawing API - Classic 2D graphics
@@ -63,12 +69,14 @@ Transformed the boring Mac OS 9 shell into a **complete game development environ
 ## How to Use
 
 ### 1. Launch Game Launcher
+
 - Double-click **Game Launcher** icon on desktop
 - Browse your games library
 - Click any game to play in a new tab
 - Click "Create New Game" to open Game Studio
 
 ### 2. Create a Game in Game Studio
+
 - Double-click **Game Studio** icon
 - Write your game code using nova64 API
 - Click **▶️ Run** to test
@@ -76,6 +84,7 @@ Transformed the boring Mac OS 9 shell into a **complete game development environ
 - Games are saved in `/Games/` directory
 
 ### 3. Learn from Documentation
+
 - Double-click **Documentation** icon
 - Search for specific APIs
 - Follow tutorials and examples
@@ -84,6 +93,7 @@ Transformed the boring Mac OS 9 shell into a **complete game development environ
 ## Technical Details
 
 ### Architecture
+
 - **React Components**: GameLauncher.tsx, GameStudio.tsx, DocsViewer.tsx
 - **App Registration**: Proper Nova64App interfaces
 - **Filesystem Integration**: Games saved via IndexedDB
@@ -91,6 +101,7 @@ Transformed the boring Mac OS 9 shell into a **complete game development environ
 - **Window Management**: Apps run in OS 9 windows
 
 ### File Structure
+
 ```
 os9-shell/src/apps/
 ├── GameLauncher.tsx       # Game library browser
@@ -102,6 +113,7 @@ os9-shell/src/apps/
 ```
 
 ### APIs Used
+
 - `novaContext.registerApp()` - Register applications
 - `novaContext.launchApp()` - Launch applications
 - `filesystem.write()` - Save game files
@@ -138,6 +150,7 @@ os9-shell/src/apps/
 **Result**: A complete, usable, FUN game development studio wrapped in a nostalgic Mac OS 9 interface! 🎉
 
 Now developers can:
+
 - ✨ Play all existing nova64 games
 - 💻 Create new games with live coding
 - 📚 Learn from comprehensive documentation

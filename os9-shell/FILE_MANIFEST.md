@@ -62,6 +62,7 @@ os9-shell/
 ## 📊 File Statistics
 
 ### Source Code
+
 - **Total TypeScript/React files**: 20
 - **Components**: 8 React components
 - **Applications**: 3 demo apps
@@ -70,6 +71,7 @@ os9-shell/
 - **CSS files**: 1 theme file
 
 ### Documentation
+
 - **README.md**: 450+ lines
 - **USAGE_EXAMPLES.md**: 450+ lines
 - **API.md**: 100+ lines
@@ -77,6 +79,7 @@ os9-shell/
 - **PROJECT_SUMMARY.md**: 200+ lines
 
 ### Configuration
+
 - **package.json**: Complete project setup
 - **TypeScript configs**: 2 files (main + build)
 - **Vite config**: Development & production settings
@@ -87,11 +90,13 @@ os9-shell/
 ### Entry Points
 
 **`index.html`**
+
 - HTML shell that loads the React application
 - Includes root div and module script tag
 - Minimal, clean structure
 
 **`src/main.tsx`**
+
 - React application bootstrap
 - Initializes NovaContext
 - Imports and registers demo apps
@@ -100,12 +105,14 @@ os9-shell/
 ### Core Components
 
 **`src/components/App.tsx`**
+
 - Root application component
 - Manages boot sequence
 - Orchestrates all UI elements
 - Handles scanlines and FPS counter
 
 **`src/components/Window.tsx`**
+
 - Draggable window implementation
 - Resizable from corner
 - Windowshade (roll-up) on double-click
@@ -113,6 +120,7 @@ os9-shell/
 - Z-order management
 
 **`src/components/MenuBar.tsx`**
+
 - Always-on-top menu bar
 - Dynamic app menu system
 - Nova menu (system menu)
@@ -120,12 +128,14 @@ os9-shell/
 - Dropdown menus with submenus
 
 **`src/components/Desktop.tsx`**
+
 - Icon grid desktop
 - Drag-to-select (stub)
 - Desktop item rendering
 - Trash, disks, aliases
 
 **`src/components/ControlStrip.tsx`**
+
 - Bottom collapsible panel
 - Volume control
 - Brightness adjustment
@@ -134,23 +144,27 @@ os9-shell/
 - Extensible widget system
 
 **`src/components/AlertModal.tsx`**
+
 - Classic OS 9 alert dialogs
 - Customizable buttons
 - Icon support (warning, error, info, question)
 - Modal overlay
 
 **`src/components/BootScreen.tsx`**
+
 - Gray splash screen
 - Extension loading animation
 - Smooth transitions
 
 **`src/components/FPSCounter.tsx`**
+
 - Real-time FPS display
 - Uses requestAnimationFrame
 
 ### Operating System Core
 
 **`src/os/filesystem.ts`**
+
 - POSIX-like virtual filesystem
 - IndexedDB storage via idb-keyval
 - Directory operations (mkdir, rm, readdir)
@@ -161,6 +175,7 @@ os9-shell/
 - ~350 lines
 
 **`src/os/events.ts`**
+
 - Pub/sub event bus
 - Type-safe event creation
 - Wildcard event handlers
@@ -169,6 +184,7 @@ os9-shell/
 - ~80 lines
 
 **`src/os/stores.ts`**
+
 - Zustand state management
 - WindowStore (window management)
 - AppStore (application lifecycle)
@@ -178,6 +194,7 @@ os9-shell/
 - ~280 lines
 
 **`src/os/context.ts`**
+
 - NovaContext API implementation
 - Bridges all OS subsystems
 - Global window.novaContext exposure
@@ -192,6 +209,7 @@ os9-shell/
 ### Applications
 
 **`src/apps/notes.ts`**
+
 - Text editor with textarea
 - Auto-loads from Documents
 - Character counter
@@ -199,6 +217,7 @@ os9-shell/
 - ~100 lines
 
 **`src/apps/paint.ts`**
+
 - HTML5 canvas drawing
 - Color picker
 - Brush size control
@@ -207,6 +226,7 @@ os9-shell/
 - ~140 lines
 
 **`src/apps/profiler.ts`**
+
 - System information display
 - Hardware detection
 - Browser info
@@ -217,6 +237,7 @@ os9-shell/
 ### Theme
 
 **`src/theme/platinum.css`**
+
 - Complete Mac OS 9 Platinum theme
 - CSS variables for colors
 - Window styles (bevels, borders)
@@ -231,6 +252,7 @@ os9-shell/
 ### Types
 
 **`src/types/index.ts`**
+
 - Comprehensive TypeScript definitions
 - Filesystem types (FileStat, AliasData, etc.)
 - Menu types (MenuItem, MenuTemplate)
@@ -244,6 +266,7 @@ os9-shell/
 ## 📈 Code Metrics
 
 ### Total Lines of Code
+
 - **TypeScript/TSX**: ~2,500+ lines
 - **CSS**: ~700 lines
 - **Documentation**: ~1,500+ lines
@@ -251,6 +274,7 @@ os9-shell/
 - **Total**: ~4,800+ lines
 
 ### Complexity
+
 - **Components**: 8 React components (simple to moderate complexity)
 - **Stores**: 5 Zustand stores with clear separation of concerns
 - **API surface**: 25+ public methods in NovaContext
@@ -258,6 +282,7 @@ os9-shell/
 - **Dependencies**: 6 runtime, 10 dev dependencies
 
 ### Test Coverage
+
 - Build: ✅ Zero TypeScript errors
 - Linting: ✅ ESLint configured
 - Runtime: ✅ Successfully runs in dev mode
@@ -266,12 +291,14 @@ os9-shell/
 ## 🔧 Build Artifacts
 
 ### Development
+
 - Hot module replacement enabled
 - Source maps included
 - React strict mode
 - Dev server on port 3000
 
 ### Production (`pnpm build`)
+
 - Minified JavaScript: ~176 KB (56 KB gzipped)
 - Minified CSS: ~8.5 KB (2.2 KB gzipped)
 - Source maps: Generated
@@ -281,12 +308,14 @@ os9-shell/
 ## 📦 Dependencies
 
 ### Runtime Dependencies (6)
+
 - `react` - UI framework
 - `react-dom` - React DOM renderer
 - `zustand` - State management
 - `idb-keyval` - IndexedDB wrapper
 
 ### Development Dependencies (10)
+
 - `@vitejs/plugin-react` - Vite React plugin
 - `typescript` - Type checking
 - `vite` - Build tool
@@ -296,19 +325,19 @@ os9-shell/
 
 ## 🎯 Key Features by File
 
-| Feature | Primary Files |
-|---------|--------------|
-| Window Management | `Window.tsx`, `stores.ts` |
-| Filesystem | `filesystem.ts`, `context.ts` |
-| Boot Sequence | `BootScreen.tsx`, `App.tsx` |
-| Menu System | `MenuBar.tsx`, `stores.ts` |
-| Desktop | `Desktop.tsx` |
-| Control Strip | `ControlStrip.tsx`, `stores.ts` |
-| Alerts | `AlertModal.tsx`, `stores.ts` |
-| Events | `events.ts`, `context.ts` |
-| Applications | `apps/*.ts`, `context.ts` |
-| Theming | `platinum.css` |
-| Types | `types/index.ts` |
+| Feature           | Primary Files                   |
+| ----------------- | ------------------------------- |
+| Window Management | `Window.tsx`, `stores.ts`       |
+| Filesystem        | `filesystem.ts`, `context.ts`   |
+| Boot Sequence     | `BootScreen.tsx`, `App.tsx`     |
+| Menu System       | `MenuBar.tsx`, `stores.ts`      |
+| Desktop           | `Desktop.tsx`                   |
+| Control Strip     | `ControlStrip.tsx`, `stores.ts` |
+| Alerts            | `AlertModal.tsx`, `stores.ts`   |
+| Events            | `events.ts`, `context.ts`       |
+| Applications      | `apps/*.ts`, `context.ts`       |
+| Theming           | `platinum.css`                  |
+| Types             | `types/index.ts`                |
 
 ## ✅ Completeness Checklist
 

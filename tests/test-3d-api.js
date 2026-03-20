@@ -9,7 +9,7 @@ export async function run3DAPITests() {
   const runner = new TestRunner();
   const mockGPU = new MockGPU();
   const api = threeDApi(mockGPU);
-  
+
   // Create test globals object
   const testGlobals = {};
   api.exposeTo(testGlobals);
@@ -25,7 +25,7 @@ export async function run3DAPITests() {
     // Should handle invalid size gracefully
     const cubeId = testGlobals.createCube(-1, 0xff0000, [0, 0, 0]);
     Assert.isNotNull(cubeId, 'Should create cube even with invalid size');
-    
+
     // Should handle invalid color gracefully
     const cubeId2 = testGlobals.createCube(1, 'invalid', [0, 0, 0]);
     Assert.isNotNull(cubeId2, 'Should create cube even with invalid color');
@@ -35,11 +35,11 @@ export async function run3DAPITests() {
     // Should handle non-array position
     const cubeId1 = testGlobals.createCube(1, 0xff0000, 'invalid');
     Assert.isNotNull(cubeId1, 'Should handle non-array position');
-    
+
     // Should handle short array
     const cubeId2 = testGlobals.createCube(1, 0xff0000, [1, 2]);
     Assert.isNotNull(cubeId2, 'Should handle short position array');
-    
+
     // Should handle object position
     const cubeId3 = testGlobals.createCube(1, 0xff0000, { x: 1, y: 2, z: 3 });
     Assert.isNotNull(cubeId3, 'Should handle object position');
@@ -55,7 +55,7 @@ export async function run3DAPITests() {
     // Should handle invalid radius
     const sphereId = testGlobals.createSphere(-1, 0x00ff00, [0, 0, 0], 8);
     Assert.isNotNull(sphereId, 'Should create sphere even with invalid radius');
-    
+
     // Should handle invalid segments
     const sphereId2 = testGlobals.createSphere(1, 0x00ff00, [0, 0, 0], 2);
     Assert.isNotNull(sphereId2, 'Should create sphere even with invalid segments');
@@ -93,7 +93,7 @@ export async function run3DAPITests() {
 
   runner.test('setRotation - valid parameters', () => {
     const cubeId = testGlobals.createCube(1, 0xffffff, [0, 0, 0]);
-    const result = testGlobals.setRotation(cubeId, Math.PI/4, Math.PI/2, Math.PI);
+    const result = testGlobals.setRotation(cubeId, Math.PI / 4, Math.PI / 2, Math.PI);
     Assert.isTrue(result, 'setRotation should return true for valid parameters');
   });
 
@@ -234,20 +234,28 @@ export async function run3DAPITests() {
 
   // Performance tests
   runner.test('Performance - createCube batch', async () => {
-    const { average } = await Performance.benchmark('createCube', () => {
-      testGlobals.createCube(1, 0xffffff, [0, 0, 0]);
-    }, 100);
-    
+    const { average } = await Performance.benchmark(
+      'createCube',
+      () => {
+        testGlobals.createCube(1, 0xffffff, [0, 0, 0]);
+      },
+      100
+    );
+
     Assert.isTrue(average < 1, `createCube should be fast (${average.toFixed(3)}ms avg)`);
   });
 
   runner.test('Performance - setPosition batch', async () => {
     const cubeId = testGlobals.createCube(1, 0xffffff, [0, 0, 0]);
-    
-    const { average } = await Performance.benchmark('setPosition', () => {
-      testGlobals.setPosition(cubeId, Math.random() * 10, Math.random() * 10, Math.random() * 10);
-    }, 1000);
-    
+
+    const { average } = await Performance.benchmark(
+      'setPosition',
+      () => {
+        testGlobals.setPosition(cubeId, Math.random() * 10, Math.random() * 10, Math.random() * 10);
+      },
+      1000
+    );
+
     Assert.isTrue(average < 0.1, `setPosition should be very fast (${average.toFixed(3)}ms avg)`);
   });
 

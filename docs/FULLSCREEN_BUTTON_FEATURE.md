@@ -44,6 +44,7 @@ globalThis.fullscreenButton = createFullscreenButton(canvas);
 ### File: `runtime/fullscreen-button.js`
 
 The fullscreen button:
+
 - Creates a floating button element
 - Positions it at `bottom: 20px`, `right: 20px`
 - Uses fixed positioning (visible in all demos)
@@ -66,6 +67,7 @@ Z-index: 9999 (always on top)
 ### Browser Compatibility
 
 Uses standard Fullscreen API with fallbacks:
+
 - `requestFullscreen()` - Standard
 - `webkitRequestFullscreen()` - Safari
 - `mozRequestFullScreen()` - Firefox
@@ -92,10 +94,11 @@ class FullscreenButton {
 ### State Management
 
 ```javascript
-this.isFullscreen = false;  // Tracks current state
+this.isFullscreen = false; // Tracks current state
 ```
 
 State is automatically synchronized when:
+
 - User clicks button
 - User presses ESC
 - User presses F11
@@ -136,6 +139,7 @@ Both work together to ensure ESC always exits fullscreen mode.
 ### Button in Different States
 
 **Normal Mode**:
+
 ```
 ┌──────────────────┐
 │        ⛶         │  ← Expand icon
@@ -143,6 +147,7 @@ Both work together to ensure ESC always exits fullscreen mode.
 ```
 
 **Fullscreen Mode**:
+
 ```
 ┌──────────────────┐
 │        ⛉         │  ← Compress icon
@@ -150,6 +155,7 @@ Both work together to ensure ESC always exits fullscreen mode.
 ```
 
 ### Hover Effect
+
 - Scale: 1.0 → 1.1
 - Background: Darker → Cyan tint
 - Shadow: Subtle → Bright glow
@@ -172,6 +178,7 @@ Both work together to ensure ESC always exits fullscreen mode.
 ### Browser Testing
 
 Test in:
+
 - ✅ Chrome/Edge
 - ✅ Firefox
 - ✅ Safari
@@ -180,6 +187,7 @@ Test in:
 ## Canvas Behavior in Fullscreen
 
 When entering fullscreen:
+
 - Canvas expands to fill entire screen
 - Maintains aspect ratio (letterboxing/pillarboxing)
 - Image rendering stays pixelated for retro look
@@ -202,20 +210,24 @@ When entering fullscreen:
 ## Troubleshooting
 
 ### Button doesn't appear
+
 - Check browser console for errors
 - Verify `fullscreen-button.js` is loaded
 - Check z-index conflicts with other UI
 
 ### Fullscreen doesn't work
+
 - Check browser permissions (some block fullscreen)
 - Verify canvas element exists
 - Try F11 as alternative
 
 ### ESC doesn't exit fullscreen
+
 - Check for conflicting ESC handlers in demos
 - Verify fullscreen API is supported
 
 ### Button blocked by game UI
+
 - Adjust z-index (default: 9999)
 - Move position if needed
 - Check demo's custom UI elements
@@ -223,6 +235,7 @@ When entering fullscreen:
 ## Future Enhancements
 
 Potential additions:
+
 - [ ] Customizable position (corners)
 - [ ] Hide button in fullscreen (auto-show on mouse move)
 - [ ] Keyboard shortcut display
@@ -276,7 +289,7 @@ fsBtn.toggleFullscreen();
 ✅ **Modern UI** with neon effects matching Nova64 theme  
 ✅ **Zero configuration** needed in individual demos  
 ✅ **Cross-browser compatible** with fallbacks  
-✅ **Performance optimized** with minimal overhead  
+✅ **Performance optimized** with minimal overhead
 
 **Status**: ✅ Production Ready  
 **Last Updated**: October 26, 2025  

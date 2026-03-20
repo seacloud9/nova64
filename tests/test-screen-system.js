@@ -25,7 +25,7 @@ const mockGlobals = {
   setCameraFOV: jest.fn(),
   setLightDirection: jest.fn(),
   setFog: jest.fn(),
-  cls: jest.fn()
+  cls: jest.fn(),
 };
 
 // Setup global mocks
@@ -47,20 +47,20 @@ describe('ScreenManager', () => {
         enter: jest.fn(),
         update: jest.fn(),
         draw: jest.fn(),
-        exit: jest.fn()
+        exit: jest.fn(),
       };
 
       screenManager.addScreen('test', screenDef);
-      
+
       expect(screenManager.screens.has('test')).toBe(true);
       expect(screenManager.defaultScreen).toBe('test');
     });
 
     test('should register a screen with class definition', () => {
       class TestScreen extends Screen {}
-      
+
       screenManager.addScreen('test', TestScreen);
-      
+
       expect(screenManager.screens.has('test')).toBe(true);
       expect(screenManager.screens.get('test')).toBeInstanceOf(TestScreen);
     });
@@ -68,7 +68,7 @@ describe('ScreenManager', () => {
     test('should set first screen as default', () => {
       screenManager.addScreen('first', {});
       screenManager.addScreen('second', {});
-      
+
       expect(screenManager.defaultScreen).toBe('first');
     });
   });
@@ -80,7 +80,7 @@ describe('ScreenManager', () => {
 
       screenManager.addScreen('screen1', screen1);
       screenManager.addScreen('screen2', screen2);
-      
+
       screenManager.switchTo('screen1');
       expect(screen1.enter).toHaveBeenCalled();
       expect(screenManager.currentScreen).toBe('screen1');
@@ -108,10 +108,10 @@ describe('ScreenManager', () => {
 
     test('should handle screen without enter/exit methods', () => {
       const screen = { update: jest.fn() };
-      
+
       screenManager.addScreen('test', screen);
       const result = screenManager.switchTo('test');
-      
+
       expect(result).toBe(true);
       expect(screenManager.currentScreen).toBe('test');
     });
@@ -120,7 +120,7 @@ describe('ScreenManager', () => {
   describe('Screen Lifecycle', () => {
     test('should call update on current screen', () => {
       const screen = { update: jest.fn() };
-      
+
       screenManager.addScreen('test', screen);
       screenManager.switchTo('test');
       screenManager.update(0.016);
@@ -130,7 +130,7 @@ describe('ScreenManager', () => {
 
     test('should call draw on current screen', () => {
       const screen = { draw: jest.fn() };
-      
+
       screenManager.addScreen('test', screen);
       screenManager.switchTo('test');
       screenManager.draw();
@@ -140,10 +140,10 @@ describe('ScreenManager', () => {
 
     test('should handle screens without update/draw methods', () => {
       const screen = {};
-      
+
       screenManager.addScreen('test', screen);
       screenManager.switchTo('test');
-      
+
       expect(() => screenManager.update(0.016)).not.toThrow();
       expect(() => screenManager.draw()).not.toThrow();
     });
@@ -158,7 +158,7 @@ describe('ScreenManager', () => {
     test('should return current screen name', () => {
       screenManager.addScreen('test', {});
       screenManager.switchTo('test');
-      
+
       expect(screenManager.getCurrentScreen()).toBe('test');
     });
 
@@ -166,7 +166,7 @@ describe('ScreenManager', () => {
       const screen = { name: 'test' };
       screenManager.addScreen('test', screen);
       screenManager.switchTo('test');
-      
+
       expect(screenManager.getCurrentScreenObject()).toBe(screen);
     });
 
@@ -180,9 +180,9 @@ describe('ScreenManager', () => {
     test('should start with default screen', () => {
       const screen = { enter: jest.fn() };
       screenManager.addScreen('default', screen);
-      
+
       screenManager.start();
-      
+
       expect(screen.enter).toHaveBeenCalled();
       expect(screenManager.currentScreen).toBe('default');
     });
@@ -190,12 +190,12 @@ describe('ScreenManager', () => {
     test('should start with specified screen', () => {
       const screen1 = { enter: jest.fn() };
       const screen2 = { enter: jest.fn() };
-      
+
       screenManager.addScreen('screen1', screen1);
       screenManager.addScreen('screen2', screen2);
-      
+
       screenManager.start('screen2');
-      
+
       expect(screen2.enter).toHaveBeenCalled();
       expect(screen1.enter).not.toHaveBeenCalled();
       expect(screenManager.currentScreen).toBe('screen2');
@@ -217,9 +217,9 @@ describe('Screen Base Class', () => {
   test('should merge data in enter method', () => {
     const newData = { score: 100, level: 5 };
     screen.data = { level: 1, lives: 3 };
-    
+
     screen.enter(newData);
-    
+
     expect(screen.data).toEqual({ level: 5, lives: 3, score: 100 });
   });
 
@@ -236,9 +236,9 @@ describe('Screen API Integration', () => {
     const { screenApi } = require('../runtime/screens.js');
     const api = screenApi();
     const target = {};
-    
+
     api.exposeTo(target);
-    
+
     expect(target.ScreenManager).toBeDefined();
     expect(target.Screen).toBeDefined();
     expect(target.screens).toBeInstanceOf(ScreenManager);
@@ -252,12 +252,12 @@ describe('Screen API Integration', () => {
     const { screenApi } = require('../runtime/screens.js');
     const api = screenApi();
     const target = {};
-    
+
     api.exposeTo(target);
-    
+
     const screenDef = { enter: jest.fn() };
     target.addScreen('test', screenDef);
-    
+
     expect(api.manager.screens.has('test')).toBe(true);
   });
 });
@@ -272,7 +272,12 @@ describe('Real-world Screen Scenarios', () => {
   test('should handle game menu flow', () => {
     const titleScreen = { enter: jest.fn(), update: jest.fn(), draw: jest.fn(), exit: jest.fn() };
     const gameScreen = { enter: jest.fn(), update: jest.fn(), draw: jest.fn(), exit: jest.fn() };
-    const gameOverScreen = { enter: jest.fn(), update: jest.fn(), draw: jest.fn(), exit: jest.fn() };
+    const gameOverScreen = {
+      enter: jest.fn(),
+      update: jest.fn(),
+      draw: jest.fn(),
+      exit: jest.fn(),
+    };
 
     screenManager.addScreen('title', titleScreen);
     screenManager.addScreen('game', gameScreen);
@@ -301,7 +306,7 @@ describe('Real-world Screen Scenarios', () => {
 
   test('should handle cleanup on screen exit', () => {
     let mockMesh = { id: 'test-mesh' };
-    
+
     const gameScreen = {
       enter() {
         this.mesh = mockMesh;
@@ -311,7 +316,7 @@ describe('Real-world Screen Scenarios', () => {
           global.destroyMesh(this.mesh);
           this.mesh = null;
         }
-      }
+      },
     };
 
     screenManager.addScreen('game', gameScreen);
@@ -364,33 +369,39 @@ describe('Error Handling', () => {
 
   test('should handle screen with throwing enter method', () => {
     const faultyScreen = {
-      enter() { throw new Error('Enter failed'); }
+      enter() {
+        throw new Error('Enter failed');
+      },
     };
 
     screenManager.addScreen('faulty', faultyScreen);
-    
+
     expect(() => screenManager.switchTo('faulty')).toThrow('Enter failed');
   });
 
   test('should handle screen with throwing update method', () => {
     const faultyScreen = {
-      update() { throw new Error('Update failed'); }
+      update() {
+        throw new Error('Update failed');
+      },
     };
 
     screenManager.addScreen('faulty', faultyScreen);
     screenManager.switchTo('faulty');
-    
+
     expect(() => screenManager.update(0.016)).toThrow('Update failed');
   });
 
   test('should handle screen with throwing draw method', () => {
     const faultyScreen = {
-      draw() { throw new Error('Draw failed'); }
+      draw() {
+        throw new Error('Draw failed');
+      },
     };
 
     screenManager.addScreen('faulty', faultyScreen);
     screenManager.switchTo('faulty');
-    
+
     expect(() => screenManager.draw()).toThrow('Draw failed');
   });
 });
@@ -409,7 +420,7 @@ describe('Performance Tests', () => {
         enter: jest.fn(),
         update: jest.fn(),
         draw: jest.fn(),
-        exit: jest.fn()
+        exit: jest.fn(),
       };
       screenManager.addScreen(`screen${i}`, screens[`screen${i}`]);
     }
@@ -434,7 +445,7 @@ describe('Performance Tests', () => {
 
     // Simulate 60 FPS for 1 second
     for (let i = 0; i < 60; i++) {
-      screenManager.update(1/60);
+      screenManager.update(1 / 60);
     }
 
     expect(screen.update).toHaveBeenCalledTimes(60);
@@ -448,7 +459,7 @@ export async function runScreenSystemTests() {
   runner.test('ScreenManager - basic screen registration', () => {
     const manager = new ScreenManager();
     const screen = { enter: () => {}, update: () => {}, draw: () => {}, exit: () => {} };
-    
+
     manager.addScreen('test', screen);
     Assert.isTrue(manager.screens.has('test'), 'Screen should be registered');
     Assert.equals(manager.defaultScreen, 'test', 'First screen should be default');
@@ -458,20 +469,24 @@ export async function runScreenSystemTests() {
     const manager = new ScreenManager();
     let enterCalled = false;
     let exitCalled = false;
-    
-    const screen1 = { 
-      enter: () => { enterCalled = true; },
-      exit: () => { exitCalled = true; } 
+
+    const screen1 = {
+      enter: () => {
+        enterCalled = true;
+      },
+      exit: () => {
+        exitCalled = true;
+      },
     };
     const screen2 = { enter: () => {} };
-    
+
     manager.addScreen('screen1', screen1);
     manager.addScreen('screen2', screen2);
-    
+
     manager.switchTo('screen1');
     Assert.isTrue(enterCalled, 'Enter should be called');
     Assert.equals(manager.currentScreen, 'screen1', 'Current screen should be set');
-    
+
     manager.switchTo('screen2');
     Assert.isTrue(exitCalled, 'Exit should be called when switching');
   });
@@ -479,7 +494,7 @@ export async function runScreenSystemTests() {
   runner.test('Screen base class - data handling', () => {
     const screen = new Screen();
     Assert.isObject(screen.data, 'Screen should have data object');
-    
+
     screen.enter({ score: 100, level: 5 });
     Assert.equals(screen.data.score, 100, 'Data should be merged');
     Assert.equals(screen.data.level, 5, 'Data should be merged');
@@ -488,9 +503,9 @@ export async function runScreenSystemTests() {
   runner.test('screenApi - global exposure', () => {
     const api = screenApi();
     const target = {};
-    
+
     api.exposeTo(target);
-    
+
     Assert.isFunction(target.addScreen, 'addScreen should be exposed');
     Assert.isFunction(target.switchToScreen, 'switchToScreen should be exposed');
     Assert.isFunction(target.getCurrentScreen, 'getCurrentScreen should be exposed');

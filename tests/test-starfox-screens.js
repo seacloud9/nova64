@@ -12,14 +12,14 @@ const mockCanvas = {
     clearRect: () => {},
     fillRect: () => {},
     fillText: () => {},
-    drawImage: () => {}
-  })
+    drawImage: () => {},
+  }),
 };
 
 const mockGPU = {
   getFramebuffer: () => new Uint16Array(640 * 360),
   beginFrame: () => {},
-  endFrame: () => {}
+  endFrame: () => {},
 };
 
 // Setup APIs
@@ -59,8 +59,8 @@ g.time = () => Date.now() / 1000;
 g.worldToScreen = (x, y, z) => ({ x: 320 + x * 10, y: 180 + y * 10, z: 1 });
 
 // Mock input functions
-g.isKeyPressed = (key) => false;
-g.isKeyDown = (key) => false;
+g.isKeyPressed = key => false;
+g.isKeyDown = key => false;
 
 // Apply to global
 Object.assign(globalThis, g);
@@ -71,38 +71,37 @@ async function testStarFoxScreens() {
   try {
     // Import the Star Fox module
     const starFoxModule = await import('../examples/star-fox-nova-3d/code.js');
-    
+
     console.log('✅ Star Fox module loaded successfully');
-    
+
     // Initialize the game
     await starFoxModule.init();
-    
+
     console.log('✅ Star Fox initialized with screen management');
-    
+
     // Check if screens were registered
     const currentScreen = g.getCurrentScreen();
     console.log(`✅ Current screen: ${currentScreen}`);
-    
+
     if (currentScreen === 'title') {
       console.log('✅ Started with title screen as expected');
     } else {
       console.log('❌ Expected to start with title screen');
     }
-    
+
     // Test screen manager functions exist
     console.log(`✅ addScreen function: ${typeof g.addScreen}`);
     console.log(`✅ switchToScreen function: ${typeof g.switchToScreen}`);
     console.log(`✅ getCurrentScreen function: ${typeof g.getCurrentScreen}`);
-    
+
     // Test update and draw
     const screenManager = g.screens;
-    screenManager.update(1/60);
+    screenManager.update(1 / 60);
     screenManager.draw();
-    
+
     console.log('✅ Screen manager update and draw work correctly');
-    
+
     console.log('🎉 All Star Fox screen management tests passed!');
-    
   } catch (error) {
     console.error('❌ Star Fox screen management test failed:', error);
   }

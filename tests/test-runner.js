@@ -8,7 +8,7 @@ export class TestRunner {
       passed: 0,
       failed: 0,
       total: 0,
-      errors: []
+      errors: [],
     };
   }
 
@@ -21,13 +21,13 @@ export class TestRunner {
   // Run all tests
   async runAll() {
     console.log('🧪 Starting Nova64 Test Suite...\n');
-    
+
     this.results = { passed: 0, failed: 0, total: 0, errors: [] };
-    
+
     for (const test of this.tests) {
       await this.runTest(test);
     }
-    
+
     this.printResults();
     return this.results;
   }
@@ -35,7 +35,7 @@ export class TestRunner {
   // Run a single test
   async runTest(test) {
     this.results.total++;
-    
+
     try {
       console.log(`🔍 Testing: ${test.name}`);
       await test.testFunction();
@@ -48,7 +48,7 @@ export class TestRunner {
       this.results.errors.push({
         test: test.name,
         error: error.message,
-        stack: error.stack
+        stack: error.stack,
       });
     }
   }
@@ -59,8 +59,10 @@ export class TestRunner {
     console.log(`   Total: ${this.results.total}`);
     console.log(`   Passed: ${this.results.passed} ✅`);
     console.log(`   Failed: ${this.results.failed} ❌`);
-    console.log(`   Success Rate: ${((this.results.passed / this.results.total) * 100).toFixed(1)}%`);
-    
+    console.log(
+      `   Success Rate: ${((this.results.passed / this.results.total) * 100).toFixed(1)}%`
+    );
+
     if (this.results.failed > 0) {
       console.log('\n🚨 Failed Tests:');
       this.results.errors.forEach(error => {
@@ -173,7 +175,9 @@ export class Assert {
   static approximately(actual, expected, tolerance = 0.001, message = '') {
     const diff = Math.abs(actual - expected);
     if (diff > tolerance) {
-      throw new Error(`${message} Expected ${actual} to be approximately ${expected} (tolerance: ${tolerance})`);
+      throw new Error(
+        `${message} Expected ${actual} to be approximately ${expected} (tolerance: ${tolerance})`
+      );
     }
   }
 
@@ -205,12 +209,12 @@ export class Performance {
 
   static async benchmark(name, fn, iterations = 1000) {
     const times = [];
-    
+
     // Warmup
     for (let i = 0; i < 10; i++) {
       await fn();
     }
-    
+
     // Actual benchmark
     for (let i = 0; i < iterations; i++) {
       const start = performance.now();
@@ -218,19 +222,19 @@ export class Performance {
       const end = performance.now();
       times.push(end - start);
     }
-    
+
     const total = times.reduce((a, b) => a + b, 0);
     const average = total / iterations;
     const min = Math.min(...times);
     const max = Math.max(...times);
-    
+
     console.log(`🏃 Benchmark: ${name}`);
     console.log(`   Iterations: ${iterations}`);
     console.log(`   Average: ${average.toFixed(3)}ms`);
     console.log(`   Min: ${min.toFixed(3)}ms`);
     console.log(`   Max: ${max.toFixed(3)}ms`);
     console.log(`   Total: ${total.toFixed(3)}ms`);
-    
+
     return { average, min, max, total, times };
   }
 }
@@ -238,59 +242,65 @@ export class Performance {
 // Mock GPU for testing
 export class MockGPU {
   constructor() {
-    this.scene = { 
-      children: [], 
-      add: (mesh) => { 
+    this.scene = {
+      children: [],
+      add: mesh => {
         this.scene.children.push(mesh);
         this.meshes.set(mesh.id || this.meshes.size, mesh);
-      }, 
-      remove: (mesh) => {
+      },
+      remove: mesh => {
         const index = this.scene.children.indexOf(mesh);
         if (index > -1) this.scene.children.splice(index, 1);
-      } 
+      },
     };
     this.camera = { position: { set: () => {} }, lookAt: () => {} };
     this.renderer = { render: () => {}, setSize: () => {} };
     this.meshes = new Map();
   }
 
-  getScene() { return this.scene; }
-  getCamera() { return this.camera; }
-  getRenderer() { return this.renderer; }
+  getScene() {
+    return this.scene;
+  }
+  getCamera() {
+    return this.camera;
+  }
+  getRenderer() {
+    return this.renderer;
+  }
 
   createBoxGeometry(w, h, d) {
-    return { 
-      type: 'BoxGeometry', 
-      width: w, 
-      height: h, 
+    return {
+      type: 'BoxGeometry',
+      width: w,
+      height: h,
       depth: d,
-      dispose: () => {} 
+      dispose: () => {},
     };
   }
 
   createSphereGeometry(radius, segments) {
-    return { 
-      type: 'SphereGeometry', 
-      radius, 
+    return {
+      type: 'SphereGeometry',
+      radius,
       segments,
-      dispose: () => {} 
+      dispose: () => {},
     };
   }
 
   createPlaneGeometry(w, h) {
-    return { 
-      type: 'PlaneGeometry', 
-      width: w, 
+    return {
+      type: 'PlaneGeometry',
+      width: w,
       height: h,
-      dispose: () => {} 
+      dispose: () => {},
     };
   }
 
   createN64Material(options) {
-    return { 
-      type: 'N64Material', 
+    return {
+      type: 'N64Material',
       ...options,
-      dispose: () => {} 
+      dispose: () => {},
     };
   }
 
@@ -310,7 +320,7 @@ export class MockGPU {
     return {
       meshes: this.meshes.size,
       renderer: 'MockGPU',
-      render: { triangles: 0, calls: 0 }
+      render: { triangles: 0, calls: 0 },
     };
   }
 }

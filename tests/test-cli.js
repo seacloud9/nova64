@@ -23,7 +23,7 @@ class TestRunner {
 
   async runAll() {
     console.log(`Running ${this.tests.length} tests...\n`);
-    
+
     for (const test of this.tests) {
       const startTime = Date.now();
       let passed = false;
@@ -39,11 +39,11 @@ class TestRunner {
       }
 
       const duration = Date.now() - startTime;
-      this.results.push({ 
-        name: test.name, 
-        passed, 
-        error, 
-        duration 
+      this.results.push({
+        name: test.name,
+        passed,
+        error,
+        duration,
       });
     }
 
@@ -51,13 +51,13 @@ class TestRunner {
     const failed = this.results.length - passed;
 
     console.log(`\n📊 Results: ${passed}/${this.results.length} passed`);
-    
+
     return {
       total: this.results.length,
       passed,
       failed,
       tests: this.results,
-      errors: this.results.filter(r => !r.passed).map(r => ({ test: r.name, error: r.error }))
+      errors: this.results.filter(r => !r.passed).map(r => ({ test: r.name, error: r.error })),
     };
   }
 }
@@ -151,9 +151,15 @@ async function runBasicAPITests() {
 
   runner.test('API Structure - Global functions should be available', () => {
     const expectedFunctions = [
-      'createCube', 'createSphere', 'createPlane',
-      'setCameraPosition', 'setCameraTarget', 'setCameraFOV',
-      'addScreen', 'switchToScreen', 'startScreens'
+      'createCube',
+      'createSphere',
+      'createPlane',
+      'setCameraPosition',
+      'setCameraTarget',
+      'setCameraFOV',
+      'addScreen',
+      'switchToScreen',
+      'startScreens',
     ];
 
     // In a real environment these would be global, here we just test the concept
@@ -173,7 +179,7 @@ async function runBasicAPITests() {
 
   runner.test('Screen System - Screen base class', () => {
     const screen = new MockScreen();
-    
+
     Assert.isFunction(screen.enter, 'Screen should have enter method');
     Assert.isFunction(screen.update, 'Screen should have update method');
     Assert.isFunction(screen.draw, 'Screen should have draw method');
@@ -196,17 +202,22 @@ async function runIntegrationTests() {
   runner.test('Integration - Nova64 initialization pattern', () => {
     // Test that we can simulate the Nova64 initialization without init3D
     const mockGlobal = {};
-    
+
     // Simulate API exposure
-    mockGlobal.createCube = (size, color, position) => ({ id: Math.random(), size, color, position });
+    mockGlobal.createCube = (size, color, position) => ({
+      id: Math.random(),
+      size,
+      color,
+      position,
+    });
     mockGlobal.setCameraPosition = (x, y, z) => true;
     mockGlobal.setCameraTarget = (x, y, z) => true;
     mockGlobal.addScreen = (name, screen) => true;
-    
+
     Assert.isFunction(mockGlobal.createCube, 'createCube should be available');
     Assert.isFunction(mockGlobal.setCameraPosition, 'setCameraPosition should be available');
     Assert.isFunction(mockGlobal.addScreen, 'addScreen should be available');
-    
+
     // Test Star Fox style initialization (no init3D)
     Assert.doesNotThrow(() => {
       mockGlobal.setCameraPosition(0, 5, 15);
@@ -221,9 +232,9 @@ async function runIntegrationTests() {
     const api = {
       createCube: (size, color, pos) => ({ size, color, pos }),
       setCameraPosition: () => true,
-      addScreen: () => true
+      addScreen: () => true,
     };
-    
+
     // Simulate Star Fox demo initialization
     Assert.doesNotThrow(() => {
       api.setCameraPosition(0, 5, 15);
@@ -231,7 +242,7 @@ async function runIntegrationTests() {
       api.addScreen('title', {
         enter: () => {},
         update: () => {},
-        draw: () => {}
+        draw: () => {},
       });
     }, 'Demo should initialize without errors');
   });
@@ -254,7 +265,7 @@ async function main() {
         console.log('🔧 Running Basic API Tests...');
         results.push(await runBasicAPITests());
         break;
-        
+
       case 'input':
         console.log('🎮 Running Input System Tests...');
         try {
@@ -264,7 +275,7 @@ async function main() {
           console.log('⚠️  Input tests not available in CLI mode');
         }
         break;
-        
+
       case 'starfox':
         console.log('🚀 Running Star Fox Game Tests...');
         try {
@@ -274,22 +285,22 @@ async function main() {
           console.log('⚠️  Star Fox tests not available in CLI mode');
         }
         break;
-        
+
       case 'integration':
         console.log('🔗 Running Integration Tests...');
         results.push(await runIntegrationTests());
         break;
-        
+
       case 'all':
       default:
         console.log('🚀 Running All Tests...\n');
-        
+
         console.log('1️⃣ Basic API Tests:');
         results.push(await runBasicAPITests());
-        
+
         console.log('\n2️⃣ Integration Tests:');
         results.push(await runIntegrationTests());
-        
+
         console.log('\n3️⃣ Input System Tests:');
         try {
           const { runInputSystemTests } = await import('./test-input-system.js');
@@ -297,7 +308,7 @@ async function main() {
         } catch (error) {
           console.log('⚠️  Input tests not available in CLI mode');
         }
-        
+
         console.log('\n4️⃣ Star Fox Game Tests:');
         try {
           const { runStarFoxGameTests } = await import('./test-starfox-game.js');
@@ -331,7 +342,6 @@ async function main() {
     }
 
     process.exit(totalFailed > 0 ? 1 : 0);
-
   } catch (error) {
     console.error('❌ Test runner error:', error.message);
     process.exit(1);

@@ -3,6 +3,7 @@
 ## ✅ Completed Features
 
 ### Core Operating System
+
 - ✅ **Platinum Theme**: Complete Mac OS 9-style UI with beveled windows, gray palette, authentic visual design
 - ✅ **Boot Sequence**: Gray splash screen with "Welcome to nova64 OS" and extension marching animation
 - ✅ **Desktop**: Icon-based interface with Trash, disk icons, and application aliases
@@ -26,6 +27,7 @@
 - ✅ **Alert Dialogs**: Classic modal alerts with customizable buttons and icons
 
 ### Filesystem
+
 - ✅ **Virtual Filesystem**: POSIX-like filesystem backed by IndexedDB
 - ✅ **Directory Structure**: Pre-seeded with /System, /Applications, /Users, /Trash
 - ✅ **Aliases**: Full symbolic link support with circular reference detection
@@ -33,6 +35,7 @@
 - ✅ **Persistence**: All data persists across browser sessions
 
 ### Application Framework
+
 - ✅ **Nova64App Interface**: Clean, well-documented API for building apps
 - ✅ **App Lifecycle**: mount(), unmount(), onEvent() hooks
 - ✅ **Demo Applications**:
@@ -43,6 +46,7 @@
 - ✅ **Menu Integration**: Apps can define custom menus that merge into menu bar
 
 ### State Management
+
 - ✅ **Zustand Stores**: Organized state management with separate stores for:
   - Windows (positions, z-order, active window)
   - Applications (registered apps, running apps)
@@ -53,6 +57,7 @@
 - ✅ **Preferences**: Persistent user preferences via filesystem
 
 ### Developer Experience
+
 - ✅ **TypeScript**: Fully typed with comprehensive interfaces
 - ✅ **Vite**: Fast development with HMR
 - ✅ **React**: Modern component architecture
@@ -61,6 +66,7 @@
 ## 🏗️ Architecture Highlights
 
 ### File Structure
+
 ```
 os9-shell/
 ├── src/
@@ -76,6 +82,7 @@ os9-shell/
 ```
 
 ### Technology Stack
+
 - **React 18**: UI framework
 - **TypeScript 5**: Type safety
 - **Vite 5**: Build tool
@@ -83,6 +90,7 @@ os9-shell/
 - **IndexedDB**: Persistent storage (via idb-keyval)
 
 ### Design Patterns
+
 - **Context API**: NovaContext provides unified interface to all OS services
 - **Event-Driven**: Event bus enables loose coupling between components
 - **Store Pattern**: Zustand stores for reactive state management
@@ -91,6 +99,7 @@ os9-shell/
 ## 🎨 Visual Fidelity
 
 The theme closely recreates Mac OS 9 Platinum:
+
 - Mid-gray palette (#CCCCCC, #DDDDDD)
 - Beveled window frames with 1px highlights
 - Classic button styles with inset/outset borders
@@ -101,6 +110,7 @@ The theme closely recreates Mac OS 9 Platinum:
 ## 🔌 Integration Points
 
 ### For nova64 Runtime
+
 The shell exposes a global `window.novaContext` object that provides:
 
 ```typescript
@@ -116,10 +126,13 @@ await novaContext.alert({ title: 'Alert', message: 'Message', buttons: ['OK'] })
 novaContext.toast('Notification message');
 
 // Event handling
-novaContext.on('app:launched', (evt) => { /* handle */ });
+novaContext.on('app:launched', evt => {
+  /* handle */
+});
 ```
 
 ### For App Developers
+
 Create apps by implementing the `Nova64App` interface:
 
 ```typescript
@@ -127,8 +140,12 @@ const myApp: Nova64App = {
   id: 'com.example.myapp',
   name: 'My App',
   icon: '🚀',
-  mount(el, ctx) { /* Initialize UI */ },
-  unmount() { /* Cleanup */ }
+  mount(el, ctx) {
+    /* Initialize UI */
+  },
+  unmount() {
+    /* Cleanup */
+  },
 };
 
 novaContext.registerApp(myApp);
@@ -167,17 +184,18 @@ pnpm build      # Build for production
 Build successful with zero TypeScript errors. All core features implemented and functional.
 
 To test:
+
 1. Run `pnpm dev`
 2. Open http://localhost:3000
 3. Watch boot sequence
 4. Open browser console and type:
    ```javascript
-   await novaContext.launchApp('com.nova64.notes')
-   await novaContext.launchApp('com.nova64.paint')
-   await novaContext.launchApp('com.nova64.profiler')
+   await novaContext.launchApp('com.nova64.notes');
+   await novaContext.launchApp('com.nova64.paint');
+   await novaContext.launchApp('com.nova64.profiler');
    ```
-4. Interact with windows (drag, resize, windowshade)
-5. Try control strip features (scanlines, FPS counter)
+5. Interact with windows (drag, resize, windowshade)
+6. Try control strip features (scanlines, FPS counter)
 
 ## 💡 Future Enhancements
 
@@ -203,6 +221,7 @@ While the core shell is complete, these features could be added:
 ## ✨ Highlights
 
 This project delivers a **complete, functional OS 9-style shell** that:
+
 - Looks and feels like classic Mac OS 9
 - Provides a clean API for the nova64 runtime
 - Supports extensible application development

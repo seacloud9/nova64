@@ -10,14 +10,15 @@ Nova64 now has full support for video game controllers (gamepads) with automatic
 ✅ **Standard Mapping**: Uses the standard gamepad button layout (Xbox/PlayStation compatible)  
 ✅ **Analog Sticks**: Full support for both left and right analog sticks with deadzone  
 ✅ **Button States**: Both held (btn) and pressed (btnp) states supported  
-✅ **Dual Input**: Keyboard and gamepad work simultaneously - use either or both!  
+✅ **Dual Input**: Keyboard and gamepad work simultaneously - use either or both!
 
 ## Button Mapping
 
 ### D-Pad and Face Buttons
+
 ```
 btn(0)  - D-pad Up    / Arrow Up
-btn(1)  - D-pad Left  / Arrow Left  
+btn(1)  - D-pad Left  / Arrow Left
 btn(2)  - D-pad Right / Arrow Right
 btn(3)  - D-pad Down  / Arrow Down
 btn(4)  - X button    / Z key
@@ -36,12 +37,12 @@ Access analog stick values directly:
 
 ```javascript
 // Left analog stick
-const leftX = leftStickX();  // -1.0 to 1.0 (left to right)
-const leftY = leftStickY();  // -1.0 to 1.0 (up to down)
+const leftX = leftStickX(); // -1.0 to 1.0 (left to right)
+const leftY = leftStickY(); // -1.0 to 1.0 (up to down)
 
 // Right analog stick
-const rightX = rightStickX();  // -1.0 to 1.0 (left to right)
-const rightY = rightStickY();  // -1.0 to 1.0 (up to down)
+const rightX = rightStickX(); // -1.0 to 1.0 (left to right)
+const rightY = rightStickY(); // -1.0 to 1.0 (up to down)
 
 // Or use the gamepadAxis function
 const lx = gamepadAxis('leftX');
@@ -76,7 +77,7 @@ if (btnp(4)) {
 export function update(dt) {
   const moveX = leftStickX();
   const moveY = leftStickY();
-  
+
   if (Math.abs(moveX) > 0 || Math.abs(moveY) > 0) {
     player.x += moveX * speed * dt;
     player.y += moveY * speed * dt;
@@ -87,7 +88,7 @@ export function update(dt) {
 export function update(dt) {
   const camX = rightStickX();
   const camY = rightStickY();
-  
+
   camera.rotation += camX * sensitivity * dt;
   camera.pitch += camY * sensitivity * dt;
 }
@@ -121,7 +122,7 @@ export function update(dt) {
   if (btn(2) || leftStickX() > 0.3) {
     player.x += speed * dt; // Move right
   }
-  
+
   // Action buttons
   if (btnp(4)) {
     jump();
@@ -139,15 +140,17 @@ export function update(dt) {
   // Use left stick for steering
   const steer = leftStickX();
   car.angle += steer * turnSpeed * dt;
-  
+
   // RT for accelerate, LT for brake
-  if (btn(9)) { // RT
+  if (btn(9)) {
+    // RT
     car.speed += acceleration * dt;
   }
-  if (btn(8)) { // LT
+  if (btn(8)) {
+    // LT
     car.speed -= braking * dt;
   }
-  
+
   // A button for boost
   if (btnp(4)) {
     activateBoost();
@@ -163,13 +166,13 @@ const menuItems = ['Start Game', 'Options', 'Quit'];
 
 export function update(dt) {
   // Navigate menu with D-pad or left stick
-  if (btnp(3) || (leftStickY() > 0.7)) {
+  if (btnp(3) || leftStickY() > 0.7) {
     menuIndex = (menuIndex + 1) % menuItems.length;
   }
-  if (btnp(0) || (leftStickY() < -0.7)) {
+  if (btnp(0) || leftStickY() < -0.7) {
     menuIndex = (menuIndex - 1 + menuItems.length) % menuItems.length;
   }
-  
+
   // Select with A button or Start
   if (btnp(4) || btnp(12)) {
     selectMenuItem(menuIndex);
@@ -184,14 +187,14 @@ export function update(dt) {
   // Left stick for player movement
   const moveX = leftStickX();
   const moveZ = leftStickY();
-  
+
   player.x += moveX * speed * dt;
   player.z += moveZ * speed * dt;
-  
+
   // Right stick for camera rotation
   const camX = rightStickX();
   const camY = rightStickY();
-  
+
   camera.yaw += camX * sensitivity * dt;
   camera.pitch += camY * sensitivity * dt;
 }
@@ -258,6 +261,7 @@ export function draw() {
 ### 5. Test With Multiple Controllers
 
 Different gamepads may have slightly different button mappings. Test with:
+
 - Xbox controllers
 - PlayStation controllers
 - Generic USB gamepads
@@ -281,6 +285,7 @@ Different gamepads may have slightly different button mappings. Test with:
 ### Stick Drift
 
 If you experience stick drift:
+
 1. The default deadzone is 0.15
 2. Increase it in your game code with custom thresholds
 3. Consider calibrating the physical controller
@@ -328,6 +333,7 @@ if (gamepadConnected()) {
 ## Future Enhancements
 
 Planned features:
+
 - [ ] Rumble/vibration support
 - [ ] Multiple gamepad support (local multiplayer)
 - [ ] Button remapping

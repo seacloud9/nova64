@@ -45,7 +45,9 @@ await ctx.write('/Users/Player/Documents/log.txt', 'Line 1\n');
 await ctx.write('/Users/Player/Documents/log.txt', 'Line 2\n', { append: true });
 
 // Read binary data (ArrayBuffer)
-const imageData = new Uint8Array([/* image bytes */]);
+const imageData = new Uint8Array([
+  /* image bytes */
+]);
 await ctx.write('/Users/Player/Pictures/photo.png', imageData.buffer);
 ```
 
@@ -106,7 +108,7 @@ const windowId = ctx.createWindow({
   y: 100,
   width: 500,
   height: 400,
-  content: '<h1>Hello from custom window!</h1>'
+  content: '<h1>Hello from custom window!</h1>',
 });
 
 // Focus a window
@@ -170,7 +172,7 @@ ctx.registerControlStrip({
   label: 'Game',
   onClick: () => {
     console.log('Game widget clicked!');
-  }
+  },
 });
 
 // Add a widget with custom rendering
@@ -178,11 +180,11 @@ ctx.registerControlStrip({
   id: 'com.example.timer',
   icon: '⏱️',
   label: 'Timer',
-  render: (container) => {
+  render: container => {
     const display = document.createElement('span');
     display.textContent = '00:00';
     container.appendChild(display);
-    
+
     let seconds = 0;
     setInterval(() => {
       seconds++;
@@ -190,7 +192,7 @@ ctx.registerControlStrip({
       const secs = seconds % 60;
       display.textContent = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
     }, 1000);
-  }
+  },
 });
 ```
 
@@ -200,27 +202,27 @@ ctx.registerControlStrip({
 
 ```javascript
 // Listen for app launches
-ctx.on('app:launched', (evt) => {
+ctx.on('app:launched', evt => {
   console.log('App launched:', evt.payload.appId);
   ctx.toast(`${evt.payload.appId} started`);
 });
 
 // Listen for filesystem changes
-ctx.on('fs:changed', (evt) => {
+ctx.on('fs:changed', evt => {
   console.log('File changed:', evt.payload.path);
 });
 
 // Listen for window events
-ctx.on('window:created', (evt) => {
+ctx.on('window:created', evt => {
   console.log('New window:', evt.payload);
 });
 
-ctx.on('window:focused', (evt) => {
+ctx.on('window:focused', evt => {
   console.log('Window focused:', evt.payload.windowId);
 });
 
 // Listen to all events (wildcard)
-ctx.on('*', (evt) => {
+ctx.on('*', evt => {
   console.log('Event:', evt.type, evt.payload);
 });
 ```
@@ -232,11 +234,11 @@ ctx.on('*', (evt) => {
 ctx.emit({
   type: 'game:score',
   payload: { score: 1000, level: 5 },
-  timestamp: Date.now()
+  timestamp: Date.now(),
 });
 
 // Another component listens
-ctx.on('game:score', (evt) => {
+ctx.on('game:score', evt => {
   console.log(`Score: ${evt.payload.score}, Level: ${evt.payload.level}`);
 });
 ```
@@ -280,9 +282,9 @@ const todoApp: Nova64App = {
       <div style="height: 100%; display: flex; flex-direction: column; padding: 16px;">
         <h2 style="margin-bottom: 12px;">My Todos</h2>
         <div style="display: flex; gap: 8px; margin-bottom: 12px;">
-          <input 
-            id="todo-input" 
-            type="text" 
+          <input
+            id="todo-input"
+            type="text"
             placeholder="Add a new todo..."
             style="flex: 1; padding: 4px 8px; font-size: 13px;"
           />
@@ -409,27 +411,27 @@ Open browser console at http://localhost:3000 and paste these examples to see th
 // Full demo script
 (async () => {
   const ctx = window.novaContext;
-  
+
   // 1. Create some files
   await ctx.write('/Users/Player/Documents/welcome.txt', 'Welcome to nova64!');
   await ctx.mkdir('/Users/Player/Projects');
   await ctx.write('/Users/Player/Projects/README.md', '# My Project\n\nThis is amazing!');
-  
+
   // 2. Launch apps
   ctx.toast('Launching applications...');
   await ctx.launchApp('com.nova64.notes');
   await ctx.launchApp('com.nova64.paint');
-  
+
   // 3. Show alert
   setTimeout(async () => {
     const result = await ctx.alert({
       title: 'Welcome!',
       message: 'Welcome to nova64 OS. Explore the filesystem and applications!',
       buttons: ['Got it!'],
-      icon: 'info'
+      icon: 'info',
     });
   }, 2000);
-  
+
   // 4. List files
   const files = await ctx.readdir('/Users/Player/Documents');
   console.log('Documents:', files);
@@ -450,7 +452,7 @@ Open browser console at http://localhost:3000 and paste these examples to see th
 
 ```javascript
 // Enable verbose logging
-ctx.on('*', (evt) => console.log(evt));
+ctx.on('*', evt => console.log(evt));
 
 // Check running apps
 console.log(ctx.getRunningApps());

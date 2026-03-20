@@ -3,9 +3,9 @@ import * as THREE from 'three';
 
 export function skyboxApi(gpu) {
   let skyboxMesh = null;
-  let starField   = null;
-  let _rotSpeed   = 1.0;   // multiplier for animateSkybox speed
-  let _auto       = false; // enableSkyboxAutoAnimate flag
+  let starField = null;
+  let _rotSpeed = 1.0; // multiplier for animateSkybox speed
+  let _auto = false; // enableSkyboxAutoAnimate flag
 
   // ── Space skybox ────────────────────────────────────────────────────────────
   /**
@@ -17,41 +17,43 @@ export function skyboxApi(gpu) {
    * @param {number} [options.nebulaColor=0x4422aa]
    */
   function createSpaceSkybox(options = {}) {
-    const {
-      starCount   = 1000,
-      starSize    = 2,
-      nebulae     = true,
-      nebulaColor = 0x4422aa,
-    } = options;
+    const { starCount = 1000, starSize = 2, nebulae = true, nebulaColor = 0x4422aa } = options;
 
     _clearSky();
 
-    const starGeometry  = new THREE.BufferGeometry();
+    const starGeometry = new THREE.BufferGeometry();
     const starPositions = [];
-    const starColors    = [];
+    const starColors = [];
 
     for (let i = 0; i < starCount; i++) {
       const radius = 500 + Math.random() * 500;
-      const theta  = Math.random() * Math.PI * 2;
-      const phi    = Math.acos(2 * Math.random() - 1);
+      const theta = Math.random() * Math.PI * 2;
+      const phi = Math.acos(2 * Math.random() - 1);
       starPositions.push(
         radius * Math.sin(phi) * Math.cos(theta),
         radius * Math.sin(phi) * Math.sin(theta),
         radius * Math.cos(phi)
       );
       const c = Math.random();
-      if      (c < 0.70) starColors.push(1, 1, 1);
+      if (c < 0.7) starColors.push(1, 1, 1);
       else if (c < 0.85) starColors.push(0.7, 0.8, 1);
       else if (c < 0.95) starColors.push(1, 1, 0.7);
-      else               starColors.push(1, 0.7, 0.6);
+      else starColors.push(1, 0.7, 0.6);
     }
 
     starGeometry.setAttribute('position', new THREE.Float32BufferAttribute(starPositions, 3));
-    starGeometry.setAttribute('color',    new THREE.Float32BufferAttribute(starColors,    3));
+    starGeometry.setAttribute('color', new THREE.Float32BufferAttribute(starColors, 3));
 
-    starField = new THREE.Points(starGeometry, new THREE.PointsMaterial({
-      size: starSize, vertexColors: true, transparent: true, opacity: 0.8, sizeAttenuation: true
-    }));
+    starField = new THREE.Points(
+      starGeometry,
+      new THREE.PointsMaterial({
+        size: starSize,
+        vertexColors: true,
+        transparent: true,
+        opacity: 0.8,
+        sizeAttenuation: true,
+      })
+    );
     gpu.scene.add(starField);
 
     if (nebulae) {
@@ -86,7 +88,7 @@ export function skyboxApi(gpu) {
     const geo = new THREE.SphereGeometry(800, 32, 32);
     const mat = new THREE.ShaderMaterial({
       uniforms: {
-        topColor:    { value: new THREE.Color(topColor)    },
+        topColor: { value: new THREE.Color(topColor) },
         bottomColor: { value: new THREE.Color(bottomColor) },
       },
       vertexShader: `
@@ -136,16 +138,27 @@ export function skyboxApi(gpu) {
   }
 
   /** Control star rotation speed (0 = frozen, 1 = default, -1 = reverse). */
-  function setSkyboxSpeed(multiplier) { _rotSpeed = multiplier; }
+  function setSkyboxSpeed(multiplier) {
+    _rotSpeed = multiplier;
+  }
 
   /** Auto-animate skybox in the engine loop — no need to call animateSkybox manually. */
-  function enableSkyboxAutoAnimate(speed = 1) { _auto = true; _rotSpeed = speed; }
-  function disableSkyboxAutoAnimate()          { _auto = false; }
+  function enableSkyboxAutoAnimate(speed = 1) {
+    _auto = true;
+    _rotSpeed = speed;
+  }
+  function disableSkyboxAutoAnimate() {
+    _auto = false;
+  }
 
-  function clearSkybox() { _clearSky(); }
+  function clearSkybox() {
+    _clearSky();
+  }
 
   // Internal: called by src/main.js every frame
-  function _tick(dt) { if (_auto) animateSkybox(dt); }
+  function _tick(dt) {
+    if (_auto) animateSkybox(dt);
+  }
 
   return {
     _tick,
@@ -160,6 +173,6 @@ export function skyboxApi(gpu) {
         disableSkyboxAutoAnimate,
         clearSkybox,
       });
-    }
+    },
   };
 }

@@ -30,9 +30,9 @@ export function presetsApi(gpu) {
    */
   function enableN64Mode() {
     const g = globalThis;
-    if (typeof g.disableBloom       === 'function') g.disableBloom();
-    if (typeof g.enableFXAA         === 'function') g.enableFXAA();
-    if (typeof g.disableVignette    === 'function') g.disableVignette();
+    if (typeof g.disableBloom === 'function') g.disableBloom();
+    if (typeof g.enableFXAA === 'function') g.enableFXAA();
+    if (typeof g.disableVignette === 'function') g.disableVignette();
     if (typeof g.disableChromaticAberration === 'function') g.disableChromaticAberration();
     _flatShadeMeshes();
   }
@@ -43,10 +43,10 @@ export function presetsApi(gpu) {
    */
   function enablePSXMode() {
     const g = globalThis;
-    if (typeof g.enableBloom               === 'function') g.enableBloom(0.8, 0.6, 0.4);
-    if (typeof g.enableVignette            === 'function') g.enableVignette(2.0, 0.75);
+    if (typeof g.enableBloom === 'function') g.enableBloom(0.8, 0.6, 0.4);
+    if (typeof g.enableVignette === 'function') g.enableVignette(2.0, 0.75);
     if (typeof g.enableChromaticAberration === 'function') g.enableChromaticAberration();
-    if (typeof g.enableFXAA                === 'function') g.enableFXAA();
+    if (typeof g.enableFXAA === 'function') g.enableFXAA();
     _flatShadeMeshes();
   }
 
@@ -57,17 +57,17 @@ export function presetsApi(gpu) {
   function enableLowPolyMode() {
     const g = globalThis;
     if (typeof g.disableChromaticAberration === 'function') g.disableChromaticAberration();
-    if (typeof g.enableBloom                === 'function') g.enableBloom(0.4, 0.3, 0.7);
-    if (typeof g.enableVignette             === 'function') g.enableVignette(0.8, 0.95);
-    if (typeof g.enableFXAA                 === 'function') g.enableFXAA();
+    if (typeof g.enableBloom === 'function') g.enableBloom(0.4, 0.3, 0.7);
+    if (typeof g.enableVignette === 'function') g.enableVignette(0.8, 0.95);
+    if (typeof g.enableFXAA === 'function') g.enableFXAA();
     _flatShadeMeshes();
   }
 
   /** Restore default smooth shading and disable visual presets. */
   function disablePresetMode() {
     const g = globalThis;
-    if (typeof g.disableBloom               === 'function') g.disableBloom();
-    if (typeof g.disableVignette            === 'function') g.disableVignette();
+    if (typeof g.disableBloom === 'function') g.disableBloom();
+    if (typeof g.disableVignette === 'function') g.disableVignette();
     if (typeof g.disableChromaticAberration === 'function') g.disableChromaticAberration();
     _smoothShadeMeshes();
   }
@@ -80,6 +80,6 @@ export function presetsApi(gpu) {
         enableLowPolyMode,
         disablePresetMode,
       });
-    }
+    },
   };
 }

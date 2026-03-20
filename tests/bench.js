@@ -18,8 +18,8 @@ import { MockGPU } from './test-runner.js';
 const args = Object.fromEntries(
   process.argv
     .slice(2)
-    .filter((a) => a.startsWith('--'))
-    .map((a) => {
+    .filter(a => a.startsWith('--'))
+    .map(a => {
       const [k, v] = a.slice(2).split('=');
       return [k, v ?? true];
     })
@@ -67,7 +67,9 @@ function header(title) {
 
 function ratio(a, b) {
   const r = b.avg / a.avg;
-  return r >= 1 ? `${YELLOW}${r.toFixed(1)}x slower${RESET}` : `${GREEN}${(1 / r).toFixed(1)}x faster${RESET}`;
+  return r >= 1
+    ? `${YELLOW}${r.toFixed(1)}x slower${RESET}`
+    : `${GREEN}${(1 / r).toFixed(1)}x faster${RESET}`;
 }
 
 // --- Build a fresh API instance ---
@@ -162,7 +164,9 @@ function suiteInstancing() {
     Math.max(10, Math.floor(ITERATIONS / 20))
   );
 
-  console.log(`\n  Instanced setup is ${ratio(individual, instanced)} vs ${COUNT} individual cubes`);
+  console.log(
+    `\n  Instanced setup is ${ratio(individual, instanced)} vs ${COUNT} individual cubes`
+  );
 
   header('Instancing — Per-Instance Transform Update');
 
@@ -211,7 +215,12 @@ function suiteCleanup() {
 // =============================================================================
 // Main
 // =============================================================================
-const suites = { material: suiteMaterial, mesh: suiteMesh, instancing: suiteInstancing, cleanup: suiteCleanup };
+const suites = {
+  material: suiteMaterial,
+  mesh: suiteMesh,
+  instancing: suiteInstancing,
+  cleanup: suiteCleanup,
+};
 
 // Note: LOD benchmarking requires a real WebGL context (THREE.LOD builds real
 // Mesh objects that need BufferGeometry). Run examples/instancing-demo in the

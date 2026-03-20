@@ -15,8 +15,8 @@ export async function runInputSystemTests() {
       this.prev = new Map(this.keys);
     }
 
-    key(code) { 
-      return !!this.keys.get(code); 
+    key(code) {
+      return !!this.keys.get(code);
     }
 
     isKeyDown(keyCode) {
@@ -47,12 +47,12 @@ export async function runInputSystemTests() {
   // Test key code normalization
   runner.test('Input - Key Code Normalization', () => {
     const input = new MockInput();
-    
+
     // Test single character to KeyCode conversion
     input.simulateKeyDown('KeyA');
     Assert.isTrue(input.isKeyDown('a'), 'Should convert single char to KeyCode');
     Assert.isTrue(input.isKeyDown('A'), 'Should handle uppercase conversion');
-    
+
     // Test space key handling
     input.step(); // Clear previous state first
     input.simulateKeyDown('Space');
@@ -62,20 +62,20 @@ export async function runInputSystemTests() {
   // Test key press vs key down behavior
   runner.test('Input - Press vs Down Behavior', () => {
     const input = new MockInput();
-    
+
     // Simulate key press sequence
     input.step(); // Clear previous state
     input.simulateKeyDown('KeyW');
-    
+
     // First frame - both should be true
     Assert.isTrue(input.isKeyDown('w'), 'isKeyDown should be true on press');
     Assert.isTrue(input.isKeyPressed('w'), 'isKeyPressed should be true on first press');
-    
+
     // Next frame - only down should be true
     input.step();
     Assert.isTrue(input.isKeyDown('w'), 'isKeyDown should remain true while held');
     Assert.isFalse(input.isKeyPressed('w'), 'isKeyPressed should be false on second frame');
-    
+
     // Release key
     input.simulateKeyUp('KeyW');
     Assert.isFalse(input.isKeyDown('w'), 'isKeyDown should be false after release');
@@ -85,14 +85,14 @@ export async function runInputSystemTests() {
   // Test multiple key combinations
   runner.test('Input - Multiple Key Handling', () => {
     const input = new MockInput();
-    
+
     // Simulate WASD keys and space
     input.simulateKeyDown('KeyW');
     input.simulateKeyDown('KeyA');
     input.simulateKeyDown('KeyS');
     input.simulateKeyDown('KeyD');
     input.simulateKeyDown('Space'); // Use correct key code
-    
+
     Assert.isTrue(input.isKeyDown('w'), 'W key should be down');
     Assert.isTrue(input.isKeyDown('a'), 'A key should be down');
     Assert.isTrue(input.isKeyDown('s'), 'S key should be down');
@@ -110,13 +110,13 @@ export async function runInputSystemTests() {
           btnp: () => false,
           key: () => false,
           isKeyDown: () => false,
-          isKeyPressed: () => false
+          isKeyPressed: () => false,
         });
-      }
+      },
     };
-    
+
     mockInputApi.exposeTo(target);
-    
+
     Assert.isFunction(target.btn, 'btn should be exposed');
     Assert.isFunction(target.btnp, 'btnp should be exposed');
     Assert.isFunction(target.key, 'key should be exposed');
@@ -127,22 +127,22 @@ export async function runInputSystemTests() {
   // Test Star Fox input patterns
   runner.test('Input - Star Fox Demo Compatibility', () => {
     const input = new MockInput();
-    
+
     // Clear initial state
     input.step();
-    
+
     // Simulate Star Fox player input
     input.simulateKeyDown('KeyA'); // Move left
     input.simulateKeyDown('KeyW'); // Move up
     input.simulateKeyDown('Space'); // Shoot
-    
+
     // Test movement input (continuous)
     Assert.isTrue(input.isKeyDown('a'), 'Player should move left with A key');
     Assert.isTrue(input.isKeyDown('w'), 'Player should move up with W key');
-    
+
     // Test action input (single press)
     Assert.isTrue(input.isKeyPressed(' '), 'Player should shoot with Space key');
-    
+
     // Next frame - movement continues, shooting stops
     input.step();
     Assert.isTrue(input.isKeyDown('a'), 'Movement should continue');
@@ -158,18 +158,22 @@ export async function runInputSystemTests() {
     input.simulateKeyDown('KeyS');
     input.simulateKeyDown('KeyD');
     input.simulateKeyDown('Space');
-    
-    const { average } = await Performance.benchmark('Input checking', () => {
-      // Simulate typical game input checking
-      const up = input.isKeyDown('w');
-      const left = input.isKeyDown('a');
-      const down = input.isKeyDown('s');
-      const right = input.isKeyDown('d');
-      const shoot = input.isKeyPressed(' ');
-      
-      return up || left || down || right || shoot;
-    }, 1000);
-    
+
+    const { average } = await Performance.benchmark(
+      'Input checking',
+      () => {
+        // Simulate typical game input checking
+        const up = input.isKeyDown('w');
+        const left = input.isKeyDown('a');
+        const down = input.isKeyDown('s');
+        const right = input.isKeyDown('d');
+        const shoot = input.isKeyPressed(' ');
+
+        return up || left || down || right || shoot;
+      },
+      1000
+    );
+
     Assert.isTrue(average < 0.01, `Input checking should be fast (${average.toFixed(4)}ms avg)`);
   });
 

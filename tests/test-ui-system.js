@@ -17,7 +17,7 @@ describe('UI System Tests', () => {
       rect: () => {},
       line: () => {},
       pset: () => {},
-      rgba8: (r, g, b, a) => ({ r, g, b, a })
+      rgba8: (r, g, b, a) => ({ r, g, b, a }),
     };
 
     // Mock input
@@ -25,7 +25,7 @@ describe('UI System Tests', () => {
       mouseX: 0,
       mouseY: 0,
       mouseDown: false,
-      mousePressed: false
+      mousePressed: false,
     };
 
     // Create UI API instance
@@ -87,7 +87,7 @@ describe('UI System Tests', () => {
         title: 'Test Panel',
         borderWidth: 3,
         shadow: true,
-        visible: false
+        visible: false,
       });
       expect(panel.title).toBe('Test Panel');
       expect(panel.borderWidth).toBe(3);
@@ -117,7 +117,7 @@ describe('UI System Tests', () => {
       const button = uiApi.createButton(10, 20, 80, 30, 'Click', () => {
         clicked = true;
       });
-      
+
       expect(button).toBeDefined();
       expect(button.x).toBe(10);
       expect(button.y).toBe(20);
@@ -130,7 +130,7 @@ describe('UI System Tests', () => {
 
     it('should detect hover state', () => {
       const button = uiApi.createButton(10, 10, 100, 40, 'Test', () => {});
-      
+
       // Mouse outside button
       uiApi.setMousePosition(0, 0);
       uiApi.updateButton(button);
@@ -152,23 +152,31 @@ describe('UI System Tests', () => {
       uiApi.setMousePosition(50, 25);
       uiApi.setMouseButton(false);
       uiApi.updateButton(button);
-      
+
       uiApi.setMouseButton(true);
       uiApi.updateButton(button);
-      
+
       expect(clickCount).toBe(1);
     });
 
     it('should not click when disabled', () => {
       let clicked = false;
-      const button = uiApi.createButton(10, 10, 100, 40, 'Test', () => {
-        clicked = true;
-      }, { enabled: false });
+      const button = uiApi.createButton(
+        10,
+        10,
+        100,
+        40,
+        'Test',
+        () => {
+          clicked = true;
+        },
+        { enabled: false }
+      );
 
       uiApi.setMousePosition(50, 25);
       uiApi.setMouseButton(true);
       uiApi.updateButton(button);
-      
+
       expect(clicked).toBe(false);
     });
 
@@ -202,13 +210,13 @@ describe('UI System Tests', () => {
     it('should create grid layout', () => {
       const cells = uiApi.grid(3, 2, 80, 40, 10, 5);
       expect(cells.length).toBe(6); // 3 cols * 2 rows
-      
+
       // Check first cell
       expect(cells[0].col).toBe(0);
       expect(cells[0].row).toBe(0);
       expect(cells[0].width).toBe(80);
       expect(cells[0].height).toBe(40);
-      
+
       // Check spacing
       expect(cells[1].x).toBe(cells[0].x + 80 + 10);
       expect(cells[3].y).toBe(cells[0].y + 40 + 5);
@@ -248,7 +256,7 @@ describe('UI System Tests', () => {
     it('should detect mouse down state', () => {
       uiApi.setMouseButton(true);
       expect(uiApi.isMouseDown()).toBe(true);
-      
+
       uiApi.setMouseButton(false);
       expect(uiApi.isMouseDown()).toBe(false);
     });
@@ -257,11 +265,11 @@ describe('UI System Tests', () => {
       // First frame - pressed
       uiApi.setMouseButton(true);
       expect(uiApi.isMousePressed()).toBe(true);
-      
+
       // Second frame - still down, but not pressed
       uiApi.setMouseButton(true);
       expect(uiApi.isMousePressed()).toBe(false);
-      
+
       // Release and press again
       uiApi.setMouseButton(false);
       uiApi.setMouseButton(true);
@@ -285,13 +293,19 @@ function createMockUiApi(api2d, input) {
 
   return {
     // Font system
-    setFont: (size) => { currentFont = size; },
+    setFont: size => {
+      currentFont = size;
+    },
     getCurrentFont: () => currentFont,
-    setTextAlign: (align) => { textAlign = align; },
+    setTextAlign: align => {
+      textAlign = align;
+    },
     getTextAlign: () => textAlign,
-    setTextBaseline: (baseline) => { textBaseline = baseline; },
+    setTextBaseline: baseline => {
+      textBaseline = baseline;
+    },
     getTextBaseline: () => textBaseline,
-    
+
     measureText: (text, scale = 1) => {
       const charWidth = 6;
       const charHeight = 8;
@@ -299,52 +313,60 @@ function createMockUiApi(api2d, input) {
       if (currentFont === 'large') multiplier = 3;
       else if (currentFont === 'huge') multiplier = 4;
       else if (currentFont === 'normal') multiplier = 2;
-      
+
       return {
         width: text.length * charWidth * multiplier * scale,
-        height: charHeight * multiplier * scale
+        height: charHeight * multiplier * scale,
       };
     },
 
     // Panel system
     createPanel: (x, y, width, height, options = {}) => {
       const panel = {
-        x, y, width, height,
+        x,
+        y,
+        width,
+        height,
         visible: options.visible !== false,
         title: options.title || '',
         borderWidth: options.borderWidth || 1,
         shadow: options.shadow || false,
-        ...options
+        ...options,
       };
       panels.push(panel);
       return panel;
     },
-    
-    removePanel: (panel) => {
+
+    removePanel: panel => {
       panels = panels.filter(p => p !== panel);
     },
-    
+
     clearPanels: () => {
       panels = [];
     },
-    
+
     getPanelCount: () => panels.length,
 
     // Button system
     createButton: (x, y, width, height, label, callback, options = {}) => {
       const button = {
-        x, y, width, height, label, callback,
+        x,
+        y,
+        width,
+        height,
+        label,
+        callback,
         enabled: options.enabled !== false,
         visible: options.visible !== false,
         hovered: false,
         pressed: false,
-        ...options
+        ...options,
       };
       buttons.push(button);
       return button;
     },
-    
-    updateButton: (button) => {
+
+    updateButton: button => {
       if (!button.enabled || !button.visible) {
         button.hovered = false;
         button.pressed = false;
@@ -352,8 +374,11 @@ function createMockUiApi(api2d, input) {
       }
 
       // Check hover
-      const isInside = mouseX >= button.x && mouseX <= button.x + button.width &&
-                      mouseY >= button.y && mouseY <= button.y + button.height;
+      const isInside =
+        mouseX >= button.x &&
+        mouseX <= button.x + button.width &&
+        mouseY >= button.y &&
+        mouseY <= button.y + button.height;
       button.hovered = isInside;
 
       // Check click
@@ -366,26 +391,26 @@ function createMockUiApi(api2d, input) {
         button.pressed = false;
       }
     },
-    
-    removeButton: (button) => {
+
+    removeButton: button => {
       buttons = buttons.filter(b => b !== button);
     },
-    
+
     clearButtons: () => {
       buttons = [];
     },
-    
+
     getButtonCount: () => buttons.length,
 
     // Layout helpers
     centerX: (width, screenWidth = 640) => {
       return (screenWidth - width) / 2;
     },
-    
+
     centerY: (height, screenHeight = 360) => {
       return (screenHeight - height) / 2;
     },
-    
+
     grid: (cols, rows, cellWidth, cellHeight, paddingX = 0, paddingY = 0) => {
       const cells = [];
       for (let row = 0; row < rows; row++) {
@@ -396,7 +421,7 @@ function createMockUiApi(api2d, input) {
             width: cellWidth,
             height: cellHeight,
             col,
-            row
+            row,
           });
         }
       }
@@ -413,7 +438,7 @@ function createMockUiApi(api2d, input) {
       dark: api2d.rgba8(40, 40, 40, 255),
       light: api2d.rgba8(200, 200, 200, 255),
       white: api2d.rgba8(255, 255, 255, 255),
-      black: api2d.rgba8(0, 0, 0, 255)
+      black: api2d.rgba8(0, 0, 0, 255),
     },
 
     // Mouse input
@@ -421,21 +446,21 @@ function createMockUiApi(api2d, input) {
       mouseX = x;
       mouseY = y;
     },
-    
+
     getMousePosition: () => ({ x: mouseX, y: mouseY }),
-    
-    setMouseButton: (down) => {
+
+    setMouseButton: down => {
       prevMouseDown = mouseDown;
       mouseDown = down;
       mousePressed = down && !prevMouseDown;
     },
-    
+
     isMouseDown: () => mouseDown,
-    isMousePressed: () => mousePressed
+    isMousePressed: () => mousePressed,
   };
 }
 
 export default {
   name: 'UI System Tests',
-  tests: []
+  tests: [],
 };

@@ -139,6 +139,7 @@ export function threeDApi(gpu) {
         loadNormalMap: ctx.loadNormalMap,
         setNormalMap: ctx.setNormalMap,
         setPBRMaps: ctx.setPBRMaps,
+        setPBRProperties: ctx.setPBRProperties,
 
         // GPU particle system
         createParticleSystem: ctx.createParticleSystem,

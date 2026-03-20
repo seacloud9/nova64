@@ -11,6 +11,13 @@ interface AppItem {
 
 const APPS: AppItem[] = [
   {
+    id: 'hypernova',
+    name: 'hyperNova',
+    icon: '🃏',
+    description: 'HyperCard-like stack editor — build interactive cards & mini-apps',
+    category: 'Creativity',
+  },
+  {
     id: 'game-launcher',
     name: 'Game Launcher',
     icon: '🎮',

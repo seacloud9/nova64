@@ -68,6 +68,8 @@ export function MenuBar({ appMenus = [], onCommand }: MenuBarProps) {
     {
       label: 'Applications',
       submenu: [
+        { label: '🃏 hyperNova', id: 'hypernova', click: () => novaContext.launchApp('hypernova') },
+        { type: 'separator', label: '' },
         { label: 'Sprite Editor', id: 'sprite-editor', click: () => novaContext.launchApp('sprite-editor') },
         { label: 'Game Studio', id: 'studio', click: () => novaContext.launchApp('studio') },
         { label: 'Game Launcher', id: 'game-launcher', click: () => novaContext.launchApp('game-launcher') },

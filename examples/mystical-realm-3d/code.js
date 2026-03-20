@@ -7,7 +7,9 @@ let startScreenTime = 0;
 let uiButtons = [];
 let score = 0;
 let crystalsCollected = 0;
+let creaturesKept = 0;
 let playTime = 0;
+let magicBolts = []; // { mesh, x, y, z, vx, vy, vz, life }
 
 let world = {
   terrain: [],
@@ -27,6 +29,10 @@ let player = {
   onGround: false,
   health: 100,
   maxHealth: 100,
+  magicCooldown: 0,
+  magicCharges: 3,
+  maxMagicCharges: 3,
+  magicRechargeTimer: 0,
 };
 
 let camera = {
@@ -269,6 +275,8 @@ async function createCreatures() {
       vz: (Math.random() - 0.5) * 2,
       glowPhase: Math.random() * Math.PI * 2,
       trail: [],
+      stunTimer: 0,
+      caught: false,
     });
   }
 }
@@ -289,6 +297,13 @@ export function update(dt) {
 
   // Handle game over
   if (gameState === 'gameover') {
+    updateAllButtons();
+    return;
+  }
+
+  // Handle win
+  if (gameState === 'win') {
+    time += dt;
     updateAllButtons();
     return;
   }
@@ -318,6 +333,11 @@ export function update(dt) {
 
   // Check for crystal collection
   checkCrystalCollection();
+
+  // Magic bolts and creature catching
+  updateMagicBolts(dt);
+  checkCreatureCollection();
+  checkWinCondition();
 
   // Check game over
   if (player.health <= 0 && gameState === 'playing') {
@@ -366,9 +386,185 @@ function updatePlayer(dt) {
     }
   }
 
+  // Magic recharge
+  if (player.magicCooldown > 0) player.magicCooldown -= dt;
+  player.magicRechargeTimer -= dt;
+  if (player.magicRechargeTimer <= 0 && player.magicCharges < player.maxMagicCharges) {
+    player.magicCharges++;
+    player.magicRechargeTimer = 3;
+  }
+
+  // Cast magic bolt
+  if (keyp('KeyE') && player.magicCooldown <= 0 && player.magicCharges > 0) {
+    fireMagicBolt();
+  }
+
   // Keep player in bounds
   player.x = Math.max(-45, Math.min(45, player.x));
   player.z = Math.max(-45, Math.min(45, player.z));
+}
+
+function fireMagicBolt() {
+  const dx = -Math.sin(player.rotation);
+  const dz = -Math.cos(player.rotation);
+  const speed = 28;
+  magicBolts.push({
+    mesh: createSphere(0.35, 0xff44ff, [player.x + dx, player.y + 1.5, player.z + dz]),
+    x: player.x + dx,
+    y: player.y + 1.5,
+    z: player.z + dz,
+    vx: dx * speed,
+    vy: 1.5,
+    vz: dz * speed,
+    life: 2.5,
+  });
+  player.magicCharges--;
+  player.magicCooldown = 0.35;
+  camera.shake = 0.8;
+}
+
+function updateMagicBolts(dt) {
+  for (let i = magicBolts.length - 1; i >= 0; i--) {
+    const bolt = magicBolts[i];
+    bolt.life -= dt;
+    if (bolt.life <= 0) {
+      removeMesh(bolt.mesh);
+      magicBolts.splice(i, 1);
+      continue;
+    }
+    bolt.x += bolt.vx * dt;
+    bolt.y += bolt.vy * dt;
+    bolt.z += bolt.vz * dt;
+    bolt.vy -= 4 * dt; // gentle arc
+    setPosition(bolt.mesh, bolt.x, bolt.y, bolt.z);
+
+    // Check hit on creatures
+    world.creatures.forEach(creature => {
+      if (creature.caught || creature.stunTimer > 0) return;
+      const dx = bolt.x - creature.x;
+      const dy = bolt.y - creature.y;
+      const dz = bolt.z - creature.z;
+      if (Math.sqrt(dx * dx + dy * dy + dz * dz) < 2.5) {
+        creature.stunTimer = 5;
+        creature.vx = 0;
+        creature.vy = 0;
+        creature.vz = 0;
+        removeMesh(bolt.mesh);
+        magicBolts.splice(i, 1);
+        score += 10;
+        camera.shake = 1.5;
+      }
+    });
+  }
+}
+
+function checkCreatureCollection() {
+  world.creatures.forEach(creature => {
+    if (creature.caught || creature.stunTimer <= 0) return;
+    const dx = player.x - creature.x;
+    const dy = player.y - creature.y;
+    const dz = player.z - creature.z;
+    if (Math.sqrt(dx * dx + dy * dy + dz * dz) < 3) {
+      creature.caught = true;
+      setMeshVisible(creature.mesh, false);
+      creaturesKept++;
+      score += 50;
+      camera.shake = 2;
+      // Particle burst
+      for (let i = 0; i < 8; i++) spawnParticle(creature.x, creature.y, creature.z, 0xff88ff);
+    }
+  });
+}
+
+function checkWinCondition() {
+  if (gameState !== 'playing') return;
+  const allCrystals = world.crystals.every(c => c.collected);
+  const allCreatures = world.creatures.every(c => c.caught);
+  if (allCrystals && allCreatures) {
+    gameState = 'win';
+    initWinScreen();
+  }
+}
+
+function initWinScreen() {
+  uiButtons = [];
+  uiButtons.push(
+    createButton(
+      centerX(200),
+      340,
+      200,
+      50,
+      '↻ PLAY AGAIN',
+      () => {
+        resetGame();
+        gameState = 'playing';
+      },
+      {
+        normalColor: uiColors.success,
+        hoverColor: rgba8(60, 220, 120, 255),
+        pressedColor: rgba8(30, 160, 80, 255),
+      }
+    )
+  );
+  uiButtons.push(
+    createButton(
+      centerX(200),
+      405,
+      200,
+      45,
+      '← MAIN MENU',
+      () => {
+        resetGame();
+        gameState = 'start';
+        initStartScreen();
+      },
+      {
+        normalColor: uiColors.primary,
+        hoverColor: rgba8(50, 150, 255, 255),
+        pressedColor: rgba8(20, 100, 200, 255),
+      }
+    )
+  );
+}
+
+function drawWinScreen() {
+  drawGradientRect(0, 0, 640, 480, rgba8(10, 30, 10, 220), rgba8(20, 80, 20, 240), true);
+  const glow = (Math.sin(time * 3) + 1) * 0.5;
+  setFont('huge');
+  setTextAlign('center');
+  drawTextShadow('QUEST COMPLETE!', 320, 60, rgba8(255, 215, 0, 255), rgba8(0, 0, 0, 255), 5, 1);
+  setFont('large');
+  drawText('The realm is saved!', 320, 130, rgba8(Math.floor(100 + 155 * glow), 255, 100, 255), 1);
+  const panel = createPanel(centerX(420), 170, 420, 140, {
+    bgColor: rgba8(20, 40, 20, 220),
+    borderColor: rgba8(100, 200, 100, 255),
+    borderWidth: 3,
+    shadow: true,
+    title: 'FINAL SCORE',
+    titleBgColor: rgba8(60, 160, 60, 255),
+  });
+  drawPanel(panel);
+  setFont('normal');
+  setTextAlign('center');
+  const minutes = Math.floor(playTime / 60);
+  const seconds = Math.floor(playTime % 60);
+  drawText(`Score: ${score}`, 320, 215, rgba8(255, 215, 0, 255), 1);
+  drawText(
+    `Crystals: ${crystalsCollected} / ${world.crystals.length}`,
+    320,
+    240,
+    uiColors.light,
+    1
+  );
+  drawText(
+    `Creatures caught: ${creaturesKept} / ${world.creatures.length}`,
+    320,
+    265,
+    uiColors.light,
+    1
+  );
+  drawText(`Time: ${minutes}m ${seconds}s`, 320, 290, uiColors.secondary, 1);
+  drawAllButtons();
 }
 
 function updateCamera(dt) {
@@ -438,6 +634,21 @@ function updateCrystals(dt) {
 
 function updateCreatures(dt) {
   world.creatures.forEach(creature => {
+    if (creature.caught) return;
+
+    if (creature.stunTimer > 0) {
+      // Stunned — blink and drift toward ground
+      creature.stunTimer -= dt;
+      creature.glowPhase += dt * 20;
+      setMeshVisible(creature.mesh, Math.sin(creature.glowPhase * 5) > 0);
+      creature.y = Math.max(4, creature.y - 4 * dt);
+      setPosition(creature.mesh, creature.x, creature.y, creature.z);
+      return;
+    }
+
+    // Normal visible state
+    setMeshVisible(creature.mesh, true);
+
     if (creature.type === 'orb') {
       // Flying movement
       creature.x += creature.vx * dt;
@@ -592,6 +803,12 @@ export function draw() {
     return;
   }
 
+  // Handle win
+  if (gameState === 'win') {
+    drawWinScreen();
+    return;
+  }
+
   // Playing state - Atmospheric UI
   const dayPhase = (Math.sin(dayNightCycle) + 1) * 0.5;
   let timeOfDay = 'Day';
@@ -612,10 +829,12 @@ export function draw() {
     66,
     rgba8(255, 200, 100, 255)
   );
+  const caughtCount = world.creatures.filter(c => c.caught).length;
+  print(`Creatures: ${caughtCount}/${world.creatures.length}`, 8, 82, rgba8(255, 150, 255, 255));
   print(
     `Position: ${player.x.toFixed(1)}, ${player.y.toFixed(1)}, ${player.z.toFixed(1)}`,
     8,
-    82,
+    98,
     rgba8(100, 255, 150, 255)
   );
 
@@ -625,21 +844,33 @@ export function draw() {
     print(
       `3D Objects: ${world.terrain.length + world.crystals.length + world.creatures.length}`,
       8,
-      108,
+      114,
       rgba8(150, 150, 255, 255)
     );
     print(
       `GPU: ${stats.renderer || 'Three.js'} | Effects: Bloom+Dither+Pixel`,
       8,
-      124,
+      130,
       rgba8(150, 150, 255, 255)
     );
   }
 
+  // Magic charge indicator
+  print('Magic:', 8, 148, rgba8(255, 100, 255, 255));
+  for (let i = 0; i < player.maxMagicCharges; i++) {
+    const filled = i < player.magicCharges;
+    print(
+      filled ? '✦' : '✧',
+      60 + i * 18,
+      148,
+      filled ? rgba8(255, 100, 255, 255) : rgba8(100, 50, 100, 180)
+    );
+  }
+
   // Controls
-  print('WASD/Arrows: Move | Space: Jump', 8, 300, rgba8(200, 200, 200, 180));
-  print('Explore the mystical realm and collect crystals!', 8, 316, rgba8(255, 255, 100, 200));
-  print('Experience Nintendo 64/PlayStation nostalgia!', 8, 332, rgba8(100, 255, 100, 180));
+  print('WASD: Move | Space: Jump | E: Magic Bolt', 8, 300, rgba8(200, 200, 200, 180));
+  print('Stun creatures with magic, walk into them to catch!', 8, 316, rgba8(255, 255, 100, 200));
+  print('Collect all crystals + catch all creatures to win!', 8, 332, rgba8(100, 255, 100, 180));
 
   // Weather indicator
   if (world.weather.type === 'storm') {
@@ -649,7 +880,7 @@ export function draw() {
   }
 
   // Health bar
-  const healthPanel = createPanel(10, 140, 220, 50, {
+  const healthPanel = createPanel(10, 165, 220, 50, {
     bgColor: rgba8(0, 0, 0, 180),
     borderColor: rgba8(100, 50, 200, 255),
     borderWidth: 2,
@@ -718,7 +949,14 @@ function drawStartScreen() {
   drawText('Navigate through day, night, and mystical storms', 320, 240, uiColors.light, 1);
 
   setFont('tiny');
-  drawText('CONTROLS: WASD/Arrows = Move  |  Space = Jump', 320, 270, uiColors.secondary, 1);
+  drawText('WASD = Move  |  Space = Jump  |  E = Magic Bolt', 320, 270, uiColors.secondary, 1);
+  drawText(
+    'Stun creatures • Catch them • Collect all crystals to WIN!',
+    320,
+    284,
+    rgba8(255, 100, 255, 180),
+    1
+  );
 
   // Draw buttons
   drawAllButtons();
@@ -821,10 +1059,25 @@ function resetGame() {
   player.y = 5;
   player.z = 0;
   player.jumpVelocity = 0;
+  player.magicCharges = player.maxMagicCharges;
+  player.magicCooldown = 0;
+  player.magicRechargeTimer = 0;
   playTime = 0;
   score = 0;
   crystalsCollected = 0;
+  creaturesKept = 0;
 
   // Reset crystals
   world.crystals.forEach(c => (c.collected = false));
+
+  // Reset creatures
+  world.creatures.forEach(c => {
+    c.stunTimer = 0;
+    c.caught = false;
+    setMeshVisible(c.mesh, true);
+  });
+
+  // Remove stray magic bolts
+  magicBolts.forEach(b => removeMesh(b.mesh));
+  magicBolts = [];
 }

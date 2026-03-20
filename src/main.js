@@ -262,6 +262,14 @@ const demoMap = {
   'input-showcase': '/examples/input-showcase/code.js',
   'audio-lab': '/examples/audio-lab/code.js',
   'storage-quest': '/examples/storage-quest/code.js',
+  'instancing-demo': '/examples/instancing-demo/code.js',
+  'particles-demo': '/examples/particles-demo/code.js',
+  'screen-demo': '/examples/screen-demo/code.js',
+  'ui-demo': '/examples/ui-demo/code.js',
+  'wing-commander-space': '/examples/wing-commander-space/code.js',
+  'space-combat-3d': '/examples/space-combat-3d/code.js',
+  'model-viewer-3d': '/examples/model-viewer-3d/code.js',
+  '3d-advanced': '/examples/3d-advanced/code.js',
 };
 
 // default cart - load from URL param or default to space-harrier-3d

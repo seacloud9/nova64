@@ -4,13 +4,15 @@
 
 Nova64 delivers **spectacular Nintendo 64/PlayStation-style 3D graphics** with modern performance, featuring advanced materials, cinematic lighting, and 100% test coverage (35/35 tests passing).
 
-### 🚀 **What's New in v0.2.0**
+### 🚀 **What's New in v0.2.5**
 
-- **Complete Three.js Integration**: Hardware-accelerated 3D rendering with professional quality
-- **Advanced Material System**: 4 material types with real-time animation capabilities
-- **Enhanced Performance**: Optimized rendering pipeline with automatic LOD and culling
-- **Professional Lighting**: Multi-light setup with dynamic shadows and atmospheric effects
-- **Model Loading**: GLTF/GLB support with automatic material conversion
+- **New Primitives**: `createCone`, `createCapsule`, `createTorus` — expands the primitive library to 7 shapes
+- **PBR Material Control**: `setPBRProperties(meshId, {metalness, roughness, envMapIntensity})` — tune materials at runtime
+- **Image Skybox + IBL**: `createImageSkybox([6 urls])` — cube-map backgrounds with image-based lighting
+- **Gradient & Solid Skyboxes**: `createGradientSkybox(top, bottom)`, `createSolidSkybox(color)`
+- **Skybox Animation API**: `setSkyboxSpeed()`, `enableSkyboxAutoAnimate()`, `disableSkyboxAutoAnimate()`
+- **`removeMesh` Alias**: `removeMesh()` is now identical to `destroyMesh()` — both work
+- **Cylinder Fixed**: `createCylinder()` now correctly produces a cylinder, not a box
 
 ### ✨ **Key Features**
 
@@ -35,93 +37,73 @@ Nova64's intelligent renderer system ensures maximum compatibility:
 
 ### 🎨 **Advanced Object Creation**
 
-#### `createCube(x, y, z, size, options)` ⭐
+#### `createCube(size, color, position, options?)` ⭐
 
-Creates spectacular cubes with professional materials and lighting.
+Creates a cube mesh.
 
-- `x, y, z` (numbers): World position coordinates
-- `size` (number): Cube dimensions (default: 1)
-- `options` (object): Advanced material configuration
-- **Returns**: mesh reference for animation and manipulation
+- `size` (number): Cube side length (default: 1)
+- `color` (hex): Colour, e.g. `0xff4488`
+- `position` (array): `[x, y, z]` world position (default: `[0, 0, 0]`)
+- `options` (object): Material options — see Material Options table
+- **Returns**: mesh ID (number)
 
 ```javascript
-// 🌟 Basic cube with advanced materials
-const basicCube = createCube(0, 0, -5, 2, {
-  material: 'standard',
-  color: 0xff4488,
-});
+// Basic cube
+const box = createCube(2, 0xff4488, [0, 1, 0]);
 
-// ✨ Holographic cube with glow effects
-const holoCube = createCube(3, 1, -3, 1.5, {
-  material: 'holographic', // Ultimate visual effect
-  color: 0x00ff88, // Base color
-  emissive: 0x004400, // Glow color
-  metalness: 0.8, // Metallic reflection
-  roughness: 0.2, // Surface smoothness
-  transparent: true, // Enable transparency
-  opacity: 0.9, // Transparency level
+// Holographic cube
+const holoCube = createCube(1.5, 0x00ff88, [3, 1, -3], {
+  material: 'holographic',
+  emissive: 0x004400,
+  metalness: 0.8,
+  roughness: 0.2,
 });
 ```
 
-#### `createSphere(x, y, z, radius, options)` ⭐
+#### `createSphere(radius, color, position, options?)` ⭐
 
-Creates stunning spheres with authentic Nintendo 64 low-poly aesthetics.
+Creates a sphere mesh.
 
-- `x, y, z` (numbers): World position coordinates
 - `radius` (number): Sphere radius (default: 1)
-- `options` (object): Material and geometry configuration
-- **Returns**: mesh reference for dynamic manipulation
+- `color` (hex): Colour
+- `position` (array): `[x, y, z]`
+- `options` (object): Material options; also accepts `segments` (default: 8)
+- **Returns**: mesh ID (number)
 
 ```javascript
-// 🪐 Metallic planet with atmospheric glow
-const planet = createSphere(0, 2, -8, 2, {
+// Metallic planet
+const planet = createSphere(2, 0x4488ff, [0, 2, -8], {
   material: 'metallic',
-  color: 0x4488ff,
-  emissive: 0x001144,
   metalness: 0.9,
   roughness: 0.1,
-  segments: 12, // Higher detail for smooth curves
 });
 
-// ⚡ Energy orb with particle effects
-const energyOrb = createSphere(-4, 1, -5, 0.8, {
+// Low-poly N64 orb
+const orb = createSphere(0.8, 0xffff00, [-4, 1, -5], {
   material: 'emissive',
-  color: 0xffff00,
-  emissive: 0x888800,
-  segments: 8, // Authentic N64 low-poly look
-  wireframe: false,
-  pulsate: true, // Custom animation flag
+  segments: 8,
 });
 ```
 
-#### `createPlane(x, y, z, width, height, options)` ⭐
+#### `createPlane(width, height, color, position, options?)` ⭐
 
-Creates versatile planes for terrain, walls, and architectural elements.
+Creates a flat plane — ground, walls, ceilings.
 
-- `x, y, z` (numbers): World position coordinates
 - `width, height` (numbers): Plane dimensions
-- `options` (object): Material and rendering configuration
-- **Returns**: mesh reference for transformation and animation
+- `color` (hex): Colour
+- `position` (array): `[x, y, z]`
+- `options` (object): Material options
+- **Returns**: mesh ID (number)
 
 ```javascript
-// 🌍 Textured ground plane with realistic materials
-const terrain = createPlane(0, -1, 0, 30, 30, {
-  material: 'standard',
-  color: 0x2a4d3a, // Forest green
-  roughness: 0.8, // Natural surface texture
-  receiveShadows: true, // Accept shadows from objects
-  segments: 4, // Subdivision for detail
-});
-rotateMesh(terrain, -Math.PI / 2, 0, 0); // Make horizontal
+// Ground plane
+const ground = createPlane(100, 100, 0x228b22, [0, 0, 0]);
 
-// 🏢 Holographic building wall
-const holoWall = createPlane(5, 0, -10, 8, 6, {
+// Holographic wall
+const wall = createPlane(8, 6, 0x00ffff, [5, 3, -10], {
   material: 'holographic',
-  color: 0x00ffff,
-  emissive: 0x004444,
   transparent: true,
   opacity: 0.7,
-  doubleSided: true, // Visible from both sides
 });
 ```
 

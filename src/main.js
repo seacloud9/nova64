@@ -273,6 +273,7 @@ const demoMap = {
   'space-combat-3d': '/examples/space-combat-3d/code.js',
   'model-viewer-3d': '/examples/model-viewer-3d/code.js',
   '3d-advanced': '/examples/3d-advanced/code.js',
+  'pbr-showcase': '/examples/pbr-showcase/code.js',
 };
 
 // default cart - load from URL param or default to space-harrier-3d

@@ -24,6 +24,7 @@ const demos = [
   { name: 'PARTICLE FOUNTAIN', setup: setupParticleFountain },
   { name: 'GRAVITY WELL', setup: setupGravityWell },
   { name: 'COLLISION CASCADE', setup: setupCollisionCascade },
+  { name: 'SANDBOX', setup: setupSandbox },
 ];
 
 // Physics constants
@@ -255,9 +256,14 @@ function handleInput(dt) {
   }
 
   // Interact with current demo
-  if (btnp(5)) {
-    // X
+  if (btnp(5) || keyp('Space')) {
+    // X or SPACE
     interactWithDemo();
+  }
+
+  // Chaos mode (G key) — only in sandbox
+  if (keyp('KeyG') && selectedDemo === 5) {
+    spawnChaosBurst();
   }
 
   // Reset demo
@@ -445,6 +451,56 @@ function setupCollisionCascade() {
   });
 
   physicsObjects.push(impulse);
+}
+
+function setupSandbox() {
+  // Empty playfield — player spawns objects with SPACE / X
+}
+
+const SANDBOX_SHAPES = ['sphere', 'cube', 'cone', 'cylinder'];
+const SANDBOX_COLORS = [
+  0xff4444, 0x44ff44, 0x4488ff, 0xffff44, 0xff88ff, 0x44ffff, 0xff8800, 0x88ff00,
+];
+
+function sandboxSpawnObject() {
+  if (physicsObjects.length >= 40) return; // cap to avoid slowdown
+  const shape = SANDBOX_SHAPES[Math.floor(Math.random() * SANDBOX_SHAPES.length)];
+  const color = SANDBOX_COLORS[Math.floor(Math.random() * SANDBOX_COLORS.length)];
+  const size = 0.5 + Math.random() * 1.5;
+  const sx = (Math.random() - 0.5) * 16;
+  const sy = 12 + Math.random() * 8;
+  const sz = (Math.random() - 0.5) * 16;
+  let mesh;
+  if (shape === 'sphere') mesh = createSphere(size, color, [sx, sy, sz]);
+  else if (shape === 'cube') mesh = createCube(size, color, [sx, sy, sz]);
+  else if (shape === 'cone') mesh = createCone(size, size * 2, color, [sx, sy, sz]);
+  else mesh = createCylinder(size * 0.5, size * 1.5, color, [sx, sy, sz]);
+
+  physicsObjects.push(
+    createPhysicsObject({
+      mesh,
+      x: sx,
+      y: sy,
+      z: sz,
+      vx: (Math.random() - 0.5) * 8,
+      vy: (Math.random() - 0.5) * 4,
+      vz: (Math.random() - 0.5) * 8,
+      radius: size * 0.8,
+      bounce: 0.5 + Math.random() * 0.5,
+      mass: size,
+      type: 'sandbox',
+    })
+  );
+}
+
+function spawnChaosBurst() {
+  for (let i = 0; i < 6; i++) sandboxSpawnObject();
+  // Also kick existing objects
+  physicsObjects.forEach(obj => {
+    obj.vx += (Math.random() - 0.5) * 20;
+    obj.vy += Math.random() * 15;
+    obj.vz += (Math.random() - 0.5) * 20;
+  });
 }
 
 function createPhysicsObject(props) {
@@ -730,6 +786,12 @@ function interactWithDemo() {
       }
       break;
     }
+
+    case 5: {
+      // Sandbox — spawn a random object
+      sandboxSpawnObject();
+      break;
+    }
   }
 }
 
@@ -814,5 +876,10 @@ function drawUI() {
   }
 
   // Controls
-  print('←→ CHANGE DEMO  ↑ DEBUG  X INTERACT  Z RESET', 24, 340, rgba8(150, 150, 150, 200));
+  print(
+    '←→ CHANGE DEMO  ↑ DEBUG  SPC/X INTERACT  Z RESET  G CHAOS(sandbox)',
+    24,
+    340,
+    rgba8(150, 150, 150, 200)
+  );
 }

@@ -83,6 +83,59 @@ export function skyboxApi(gpu) {
     gpu.scene.background = new THREE.Color(color);
   }
 
+  // ── Image-based (cube map) skybox ────────────────────────────────────────────
+  /**
+   * Load a cube-map skybox from six image URLs.
+   * The cube map is also wired up as the scene environment map so PBR metallic
+   * surfaces automatically reflect the sky.
+   *
+   * @param {string[]} urls - Six face URLs in order: [+X, -X, +Y, -Y, +Z, -Z]
+   *                          i.e. [right, left, top, bottom, front, back]
+   * @returns {Promise<THREE.CubeTexture>} Resolves when all six faces are loaded.
+   *
+   * @example
+   * await createImageSkybox([
+   *   '/assets/sky/px.jpg', '/assets/sky/nx.jpg',
+   *   '/assets/sky/py.jpg', '/assets/sky/ny.jpg',
+   *   '/assets/sky/pz.jpg', '/assets/sky/nz.jpg',
+   * ]);
+   */
+  function createImageSkybox(urls) {
+    return new Promise((resolve, reject) => {
+      if (!Array.isArray(urls) || urls.length !== 6) {
+        reject(
+          new Error('createImageSkybox: requires exactly 6 face URLs [+X, -X, +Y, -Y, +Z, -Z]')
+        );
+        return;
+      }
+
+      _clearSky();
+
+      const loader = new THREE.CubeTextureLoader();
+      loader.load(
+        urls,
+        cubeTexture => {
+          cubeTexture.colorSpace = THREE.SRGBColorSpace;
+          gpu.scene.background = cubeTexture;
+
+          // Process through PMREMGenerator so metallic/PBR surfaces reflect the sky
+          try {
+            const pmrem = new THREE.PMREMGenerator(gpu.renderer);
+            pmrem.compileCubemapShader();
+            gpu.scene.environment = pmrem.fromCubemap(cubeTexture).texture;
+            pmrem.dispose();
+          } catch (_) {
+            // PMREM is optional; the skybox still renders without env reflections
+          }
+
+          resolve(cubeTexture);
+        },
+        undefined,
+        err => reject(err)
+      );
+    });
+  }
+
   // ── Shared gradient-sphere helper ────────────────────────────────────────────
   function _gradientSphere(topColor, bottomColor) {
     const geo = new THREE.SphereGeometry(800, 32, 32);
@@ -167,6 +220,7 @@ export function skyboxApi(gpu) {
         createSpaceSkybox,
         createGradientSkybox,
         createSolidSkybox,
+        createImageSkybox,
         animateSkybox,
         setSkyboxSpeed,
         enableSkyboxAutoAnimate,

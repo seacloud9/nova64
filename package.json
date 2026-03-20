@@ -1,6 +1,6 @@
 {
   "name": "nova64",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Nova64 — Ultimate 3D Fantasy Console runtime for JavaScript games powered by Three.js",
   "keywords": [
     "fantasy-console",

@@ -1,7 +1,7 @@
 # 🎮 NOVA64 API REFERENCE
 
-**Version:** 1.0  
-**Date:** October 13, 2025  
+**Version:** 0.2.5  
+**Date:** March 20, 2026  
 **Resolution:** 640×360 pixels  
 **Target:** Nintendo 64 / PlayStation aesthetic
 
@@ -381,18 +381,28 @@ setAmbientLight(0x1a1a2a); // Dark blue ambient
 
 #### `setLightDirection(x, y, z)`
 
-Set directional light vector.
+Set the main directional light direction vector.
 
 ```javascript
 setLightDirection(-0.5, -1, -0.3); // From top-left
+setLightDirection(1, 1, 0.5);      // From upper-right
 ```
 
-#### `setDirectionalLight(hexColor, intensity)`
+#### `setLightColor(hexColor, intensity?)`
 
-Configure directional light.
+Configure directional light colour and intensity.
 
 ```javascript
-setDirectionalLight(0xffffff, 1.0); // White light, full intensity
+setLightColor(0xffffff, 1.0); // White light, full intensity
+setLightColor(0xffd4a0, 0.8); // Warm sunset light
+```
+
+#### `createPointLight(hexColor, intensity, [x, y, z], distance?)`
+
+Add a point light at a world-space position.
+
+```javascript
+const lamp = createPointLight(0xff8800, 2.0, [5, 3, 0], 20);
 ```
 
 ### Fog
@@ -494,20 +504,77 @@ destroyMesh(cube);
 
 ### Skybox
 
-#### `setSkyboxColor(topColor, bottomColor)`
+#### `createSpaceSkybox(options?)`
 
-Gradient sky background.
+Procedural starfield and nebulae — the default Nova64 space look.
 
 ```javascript
-setSkyboxColor(0x0077ff, 0x004488); // Blue sky
+createSpaceSkybox(); // Default stars + nebulae
+createSpaceSkybox({ starCount: 2000, nebulaCount: 4 });
 ```
 
-#### `setSkyboxStars(count, size, brightness)`
+#### `createGradientSkybox(topColor, bottomColor)`
 
-Add starfield.
+Two-colour gradient sky — great for outdoor scenes and sunsets.
 
 ```javascript
-setSkyboxStars(1000, 2, 1); // 1000 stars, size 2, full brightness
+createGradientSkybox(0x0077ff, 0x004488); // Blue sky
+createGradientSkybox(0xff6a00, 0x1a0033); // Sunset
+```
+
+#### `createSolidSkybox(color)`
+
+Flat solid colour sky — good for caves or indoor scenes.
+
+```javascript
+createSolidSkybox(0x000000); // Pure black
+```
+
+#### `createImageSkybox([px, nx, py, ny, pz, nz])`
+
+Cube-map skybox from 6 image URLs. Also enables image-based lighting (IBL).
+
+```javascript
+createImageSkybox([
+  '/assets/sky_px.jpg', '/assets/sky_nx.jpg',
+  '/assets/sky_py.jpg', '/assets/sky_ny.jpg',
+  '/assets/sky_pz.jpg', '/assets/sky_nz.jpg',
+]);
+```
+
+#### `clearSkybox()`
+
+Remove the current skybox.
+
+```javascript
+clearSkybox();
+```
+
+#### `enableSkyboxAutoAnimate(speed?)` / `disableSkyboxAutoAnimate()`
+
+Auto-rotate the skybox every frame.
+
+```javascript
+enableSkyboxAutoAnimate(0.5); // Slow drift
+disableSkyboxAutoAnimate();
+```
+
+#### `animateSkybox(dt)`
+
+Manually advance skybox animation by delta-time (call in `update`).
+
+```javascript
+export function update(dt) {
+  animateSkybox(dt);
+}
+```
+
+#### `setSkyboxSpeed(multiplier)`
+
+Scale the auto-animation speed.
+
+```javascript
+setSkyboxSpeed(2.0); // Double speed
 ```
 
 ---

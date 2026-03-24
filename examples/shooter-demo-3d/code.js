@@ -611,6 +611,7 @@ function spawnEnemy(x, y, z, type) {
     engine,
     parts = null;
   let health = 2 + level;
+  let maxHealth = health;
   let vz = 8;
   let vy = 0;
   let vx = 0;
@@ -618,6 +619,7 @@ function spawnEnemy(x, y, z, type) {
 
   if (type === 'boss') {
     health = 50 + level * 10;
+    maxHealth = health;
     vz = 2; // Slow incoming speed
     body = createCube(3.0, 0xff0000, [x, y, z]);
     const wingL = createCube(1.5, 0x333333, [x - 2, y, z]);
@@ -656,6 +658,8 @@ function spawnEnemy(x, y, z, type) {
     behavior: type,
     alive: true,
     timer: 0,
+    hitFlash: 0,
+    maxHealth: maxHealth,
   };
 
   enemies.push(enemy);
@@ -694,6 +698,7 @@ function updateBullets(dt) {
 
     const pos = getPosition(bullet.mesh);
     pos[2] += bullet.speed * dt;
+    pos[0] += (bullet.vx || 0) * bullet.speed * dt;
     setPosition(bullet.mesh, pos[0], pos[1], pos[2]);
 
     if (bullet.life <= 0 || pos[2] > 5) {
@@ -706,6 +711,7 @@ function updateBullets(dt) {
 function updateEnemies(dt) {
   const enemies = gameData.enemies;
   const gameTime = gameData.time;
+  const player = gameData.player;
   let lives = gameData.lives;
 
   for (let i = enemies.length - 1; i >= 0; i--) {
@@ -714,47 +720,57 @@ function updateEnemies(dt) {
 
     enemy.timer += dt;
     enemy.fireCooldown -= dt;
-    enemy.z += enemy.vz * dt;
+
+    // Hit flash decay
+    if (enemy.hitFlash > 0) enemy.hitFlash -= dt * 4;
 
     if (enemy.type === 'boss') {
-      if (enemy.z > -15) {
-        enemy.vz = 0; // stop moving forward
-        enemy.x = Math.sin(enemy.timer * 0.5) * 8;
-        if (enemy.fireCooldown <= 0) {
-          for (let a = -1; a <= 1; a += 1) {
-            fireEnemyBullet(enemy.x + a * 2, enemy.y, enemy.z + 2);
-          }
-          enemy.fireCooldown = 1.0;
-        }
-      }
-
-      setPosition(enemy.mesh.body, enemy.x, enemy.y, enemy.z);
-      setPosition(enemy.mesh.wingL, enemy.x - 2, enemy.y, enemy.z);
-      setPosition(enemy.mesh.wingR, enemy.x + 2, enemy.y, enemy.z);
-
-      setRotation(enemy.mesh.body, enemy.timer * 0.5, enemy.timer, 0);
+      _updateBoss(enemy, dt, player, gameTime);
     } else {
-      // Simple AI behaviors
-      switch (enemy.behavior) {
-        case 'line':
-          enemy.vx = Math.sin(gameTime + i) * 2;
-          break;
-        case 'V':
-          enemy.vx = Math.sin(gameTime * 2 + i) * 3;
-          enemy.vy = Math.cos(gameTime + i) * 1;
-          break;
-        case 'circle':
-          enemy.vx = Math.cos(gameTime + i * 2) * 4;
-          enemy.vy = Math.sin(gameTime + i * 2) * 2;
-          break;
-      }
+      // Advance toward player
+      enemy.z += enemy.vz * dt;
 
+      // Smart AI behaviors based on type
       if (enemy.type === 'fast') {
-        enemy.vx = Math.sin(gameTime * 5 + i) * 5;
+        // Fast enemies: strafe toward player, then dodge away
+        const dx = player.x - enemy.x;
+        const approach = enemy.z > -18 ? 1 : 0;
+        enemy.vx += (dx * 0.8 + Math.sin(gameTime * 6 + i * 3) * 4) * dt * 3;
+        enemy.vx *= 0.95; // Damping
+        enemy.vy = Math.sin(gameTime * 4 + i) * 2 * approach;
+      } else if (enemy.type === 'tank') {
+        // Tank enemies: slow, steady advance, aim at player, fire often
+        const dx = player.x - enemy.x;
+        enemy.vx = dx * 0.3;
+        enemy.vy = Math.sin(gameTime * 0.5 + i) * 0.5;
+      } else {
+        // Formation enemies: follow formation but drift toward player
+        const dx = player.x - enemy.x;
+        switch (enemy.behavior) {
+          case 'line':
+            enemy.vx = Math.sin(gameTime + i) * 2 + dx * 0.1;
+            break;
+          case 'V':
+            enemy.vx = Math.sin(gameTime * 2 + i) * 3 + dx * 0.15;
+            enemy.vy = Math.cos(gameTime + i) * 1;
+            break;
+          case 'circle':
+            enemy.vx = Math.cos(gameTime + i * 2) * 4;
+            enemy.vy = Math.sin(gameTime + i * 2) * 2;
+            break;
+          case 'diamond':
+            enemy.vx = Math.sin(gameTime * 1.5 + i) * 3 + dx * 0.2;
+            enemy.vy = Math.cos(gameTime * 0.8 + i) * 1.5;
+            break;
+        }
       }
 
       enemy.x += enemy.vx * dt;
       enemy.y += enemy.vy * dt;
+
+      // Clamp to play area
+      enemy.x = Math.max(-14, Math.min(14, enemy.x));
+      enemy.y = Math.max(-8, Math.min(10, enemy.y));
 
       // Update mesh positions
       if (enemy.mesh.body) setPosition(enemy.mesh.body, enemy.x, enemy.y, enemy.z);
@@ -768,10 +784,16 @@ function updateEnemies(dt) {
       }
       if (enemy.mesh.engine) rotateMesh(enemy.mesh.engine, 0, dt * 4, 0);
 
-      // Enemy firing
-      if (enemy.fireCooldown <= 0 && enemy.z > -20 && Math.random() < 0.3 * dt) {
-        fireEnemyBullet(enemy.x, enemy.y, enemy.z);
-        enemy.fireCooldown = 1.5 + Math.random();
+      // Enemy firing — smarter targeting
+      if (enemy.fireCooldown <= 0 && enemy.z > -20) {
+        const fireChance = enemy.type === 'tank' ? 0.8 : 0.3;
+        if (Math.random() < fireChance * dt) {
+          // Aim toward player with some spread
+          const spread = enemy.type === 'tank' ? 0.5 : 1.5;
+          fireEnemyBullet(enemy.x, enemy.y, enemy.z, player.x + (Math.random() - 0.5) * spread);
+          enemy.fireCooldown =
+            enemy.type === 'tank' ? 0.8 + Math.random() * 0.5 : 1.5 + Math.random();
+        }
       }
     }
 
@@ -785,9 +807,9 @@ function updateEnemies(dt) {
       enemies.splice(i, 1);
 
       if (enemy.type === 'boss') {
-        gameData.flags.bossActive = false; // should not drop behind, but just in case
+        gameData.flags.bossActive = false;
       } else {
-        lives--; // Lose life when enemy escapes
+        lives--;
       }
     }
   }
@@ -795,11 +817,77 @@ function updateEnemies(dt) {
   gameData.lives = lives;
 }
 
-function fireEnemyBullet(x, y, z) {
+// Boss with multi-phase attack patterns
+function _updateBoss(boss, dt, player, gameTime) {
+  boss.z += boss.vz * dt;
+
+  if (boss.z > -15) {
+    boss.vz = 0;
+
+    // Phase transitions based on health percentage
+    const healthPct = boss.health / boss.maxHealth;
+    let phase = 0;
+    if (healthPct < 0.33) phase = 2;
+    else if (healthPct < 0.66) phase = 1;
+    gameData.flags.bossPhase = phase;
+
+    switch (phase) {
+      case 0: // Phase 1: Slow strafe, triple shot
+        boss.x = Math.sin(boss.timer * 0.5) * 8;
+        boss.y = 6 + Math.sin(boss.timer * 0.3) * 2;
+        if (boss.fireCooldown <= 0) {
+          for (let a = -1; a <= 1; a++) {
+            fireEnemyBullet(boss.x + a * 2, boss.y, boss.z + 2, player.x);
+          }
+          boss.fireCooldown = 1.0;
+        }
+        break;
+
+      case 1: // Phase 2: Fast strafe, spread shot + aimed shot
+        boss.x = Math.sin(boss.timer * 1.2) * 10;
+        boss.y = 6 + Math.cos(boss.timer * 0.8) * 3;
+        if (boss.fireCooldown <= 0) {
+          // Spread fan
+          for (let a = -2; a <= 2; a++) {
+            fireEnemyBullet(boss.x + a * 1.5, boss.y, boss.z + 2, player.x + a * 3);
+          }
+          // Aimed shot
+          fireEnemyBullet(boss.x, boss.y - 1, boss.z + 2, player.x);
+          boss.fireCooldown = 0.7;
+        }
+        break;
+
+      case 2: // Phase 3: Erratic movement, rapid fire + sweep
+        boss.x = Math.sin(boss.timer * 2) * 8 + Math.cos(boss.timer * 3.7) * 3;
+        boss.y = 5 + Math.sin(boss.timer * 1.5) * 4;
+        if (boss.fireCooldown <= 0) {
+          // Sweep pattern
+          const sweepAngle = boss.timer * 4;
+          for (let a = 0; a < 3; a++) {
+            const sx = boss.x + Math.cos(sweepAngle + a * 2) * 4;
+            fireEnemyBullet(sx, boss.y, boss.z + 2, player.x);
+          }
+          boss.fireCooldown = 0.4;
+        }
+        break;
+    }
+  }
+
+  setPosition(boss.mesh.body, boss.x, boss.y, boss.z);
+  setPosition(boss.mesh.wingL, boss.x - 2, boss.y, boss.z);
+  setPosition(boss.mesh.wingR, boss.x + 2, boss.y, boss.z);
+  setRotation(boss.mesh.body, boss.timer * 0.5, boss.timer, 0);
+}
+
+function fireEnemyBullet(x, y, z, targetX) {
   const enemyBullets = gameData.enemyBullets;
+
+  // Slight horizontal tracking toward target
+  const dx = targetX !== undefined ? (targetX - x) * 0.05 : 0;
 
   const bullet = {
     speed: 25 * 0.7,
+    vx: dx,
     mesh: createCube(0.08, 0xff4444, [x, y, z]),
     life: 2.0,
   };
@@ -933,6 +1021,7 @@ function checkCollisions(_dt) {
       if (distance < collisionRadius) {
         // Hit!
         enemy.health -= bullet.damage;
+        enemy.hitFlash = 1.0; // Flash white on hit
         destroyMesh(bullet.mesh);
         playerBullets.splice(i, 1);
 
@@ -1047,10 +1136,15 @@ function updateGameLogic(dt) {
     }
   }
 
+  // Wave warning timer
+  if (gameData.waveWarning === undefined) gameData.waveWarning = 0;
+  if (gameData.waveWarning > 0) gameData.waveWarning -= dt;
+
   // Spawn new wave when all enemies are cleared
   if (enemies.length === 0) {
     level++;
     gameData.level = level;
+    gameData.waveWarning = 2.0; // Show warning for 2 seconds
     spawnEnemyWave();
   }
 
@@ -1107,6 +1201,41 @@ function drawUI() {
     print(`3D: ${stats.meshes || 0} meshes`, 450, 24, rgba8(150, 150, 150, 255));
     print(`GPU: ${stats.renderer || 'ThreeJS'}`, 450, 40, rgba8(150, 150, 150, 255));
   }
+
+  // Boss health bar
+  if (gameData.flags.bossActive) {
+    const boss = gameData.enemies.find(e => e.type === 'boss');
+    if (boss) {
+      const bw = 300;
+      const bx = (640 - bw) / 2;
+      const phaseName = ['PHASE 1', 'PHASE 2 - ENRAGED', 'PHASE 3 - DESPERATE'][
+        gameData.flags.bossPhase || 0
+      ];
+      print('BOSS', bx, 96, rgba8(255, 50, 50));
+      print(phaseName, bx + 50, 96, rgba8(255, 200, 50));
+      rect(bx, 108, bw, 10, rgba8(80, 0, 0), true);
+      const hp = Math.max(0, boss.health / boss.maxHealth);
+      rect(bx, 108, Math.floor(hp * bw), 10, rgba8(255, 0, 0), true);
+      rect(bx, 108, bw, 10, rgba8(200, 100, 100), false);
+    }
+  }
+
+  // Wave warning
+  if (gameData.waveWarning > 0) {
+    const alpha = Math.floor(Math.min(1, gameData.waveWarning) * 255);
+    const warnText =
+      gameData.level % 5 === 0 ? 'WARNING: BOSS INCOMING!' : `WAVE ${gameData.level}`;
+    printCentered(warnText, 320, 180, rgba8(255, 100, 0, alpha), 2);
+  }
+
+  // Weapon level indicator
+  const wpnColors = [rgba8(255, 255, 0), rgba8(0, 255, 255), rgba8(255, 100, 255)];
+  print(
+    `WPN LV${gameData.player.weaponLevel}`,
+    24,
+    80,
+    wpnColors[gameData.player.weaponLevel - 1] || rgba8(255, 255, 255)
+  );
 
   // Controls
   print('ARROWS=MOVE  X=FIRE  Z=CHARGE', 24, 340, rgba8(150, 150, 150, 200));

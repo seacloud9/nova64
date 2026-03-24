@@ -196,6 +196,7 @@ export function GameStudio() {
           inputModule,
           uiModule,
           skyboxModule,
+          api2dModule,
         ] = await Promise.all([
           import(/* @vite-ignore */ `${baseUrl}/runtime/gpu-threejs.js`),
           import(/* @vite-ignore */ `${baseUrl}/runtime/api.js`),
@@ -203,9 +204,10 @@ export function GameStudio() {
           import(/* @vite-ignore */ `${baseUrl}/runtime/input.js`),
           import(/* @vite-ignore */ `${baseUrl}/runtime/ui.js`),
           import(/* @vite-ignore */ `${baseUrl}/runtime/api-skybox.js`),
+          import(/* @vite-ignore */ `${baseUrl}/runtime/api-2d.js`),
         ]);
 
-        console.log('✅ Modules loaded:', { gpuModule, apiModule, api3dModule, inputModule, uiModule, skyboxModule });
+        console.log('✅ Modules loaded:', { gpuModule, apiModule, api3dModule, inputModule, uiModule, skyboxModule, api2dModule });
 
         const { GpuThreeJS } = gpuModule;
         const { stdApi } = apiModule;
@@ -213,6 +215,7 @@ export function GameStudio() {
         const { inputApi } = inputModule;
         const { uiApi } = uiModule;
         const { skyboxApi } = skyboxModule;
+        const { api2d } = api2dModule;
 
         setOutput(prev => [...prev, 'Runtime loaded']);
         setOutput(prev => [...prev, 'Initializing graphics...']);
@@ -228,6 +231,7 @@ export function GameStudio() {
         const threeDApi_instance = threeDApi(gpu);
         const iApi = inputApi();
         const skybox = skyboxApi(gpu);
+        const api2d_instance = api2d(gpu);
         
         // Create a temporary object to hold API functions for UI initialization
         const g: Record<string, unknown> = {};
@@ -248,6 +252,7 @@ export function GameStudio() {
         iApi.exposeTo(window);
         ui.exposeTo(window);
         skybox.exposeTo(window);
+        api2d_instance.exposeTo(window);
         
         // Create simplified 3D API wrappers for easier use in demos
         // These provide a simpler interface similar to PICO-8 3D functions

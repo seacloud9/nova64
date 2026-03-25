@@ -277,9 +277,13 @@ function shoot() {
   let fy = Math.sin(player.pitch);
   let fz = Math.cos(player.yaw) * Math.cos(player.pitch);
 
-  let bx = player.x + fx;
-  let by = player.y + fy + 0.2;
-  let bz = player.z + fz;
+  // Spawn bullet from camera/head height, offset slightly down and right for gun position
+  let headY = player.y + 1.0;
+  let rx = Math.cos(player.yaw);
+  let rz = -Math.sin(player.yaw);
+  let bx = player.x + fx * 1.5 + rx * 0.3;
+  let by = headY + fy * 1.5 - 0.3;
+  let bz = player.z + fz * 1.5 + rz * 0.3;
 
   let m = createCube(0.2, MAT.bullet.color, [bx, by, bz], MAT.bullet);
   setScale(m, 1, 1, 6);

@@ -205,7 +205,6 @@ function handleInput() {
   if (key('Space') && player.onGround) {
     player.vy = player.jump;
     player.onGround = false;
-    sfx('jump');
   }
 
   // Number keys for block selection
@@ -220,6 +219,18 @@ function handleInput() {
   if (btnp(1)) selectedBlock = 2; // Dirt
   if (btnp(2)) selectedBlock = 3; // Stone
   if (btnp(3)) selectedBlock = 8; // Planks
+
+  // B key = respawn with new biome
+  if (keyp('KeyB') && typeof resetVoxelWorld === 'function') {
+    resetVoxelWorld();
+    player.x = 0;
+    player.z = 0;
+    updateVoxelWorld(0, 0);
+    player.y = getHighestBlockAlt(0, 0) + 2;
+    if (player.y < 5) player.y = 40;
+    player.vy = 0;
+    player.onGround = false;
+  }
 }
 
 function updatePhysics() {
@@ -235,7 +246,6 @@ function updatePhysics() {
     checkCollision(player.x, ny - player.size, player.z) ||
     checkCollision(player.x, ny + 0.2, player.z)
   ) {
-    if (player.vy < 0 && !player.onGround) sfx('land');
     if (player.vy < 0) player.onGround = true;
     player.vy = 0;
     ny = player.y;
@@ -311,11 +321,9 @@ function handleBlockInteraction() {
     if (rayStr) {
       if (btnp(4)) {
         setVoxelBlock(rayStr.hit.x, rayStr.hit.y, rayStr.hit.z, 0); // break
-        sfx('hit');
       }
       if (btnp(5)) {
         setVoxelBlock(rayStr.prev.x, rayStr.prev.y, rayStr.prev.z, selectedBlock); // place
-        sfx('blip');
       }
     }
     return;
@@ -324,7 +332,7 @@ function handleBlockInteraction() {
 
 export function draw() {
   if (!isLoaded) {
-    print('NOVA64 MINECRAFT EDITION', 20, 40, 0x55cc33);
+    print('NOVA64 MINECRAFT EDITION', 20, 40, 0xffffff);
     print('GENERATING WORLD...', 20, 60, 0xffffff);
     return;
   }
@@ -367,9 +375,9 @@ export function draw() {
 
   // Controls hint
   print(
-    'WASD=Move  Space=Jump  Arrows=Look  L/R Click=Break/Place  1-6=Block',
+    'WASD=Move  Space=Jump  Arrows=Look  L/R Click=Break/Place  1-6=Block  B=New Biome',
     30,
     20,
-    rgba8(150, 150, 150, 150)
+    rgba8(255, 255, 255, 200)
   );
 }

@@ -58,6 +58,7 @@ export function voxelApi(gpu) {
   // World data
   const chunks = new Map(); // key: "x,z" -> Chunk
   const chunkMeshes = new Map(); // key: "x,z" -> THREE.Mesh
+  let worldSeed = 0; // offset added to noise coordinates for biome variety
 
   // Noise function for terrain generation (simple Perlin-like)
   function noise2D(x, z) {
@@ -169,8 +170,13 @@ export function voxelApi(gpu) {
         const worldZ = baseZ + z;
 
         // Biome selection via temperature + moisture noise
-        const temperature = perlinNoise(worldX * 0.5, worldZ * 0.5, 2, 0.5);
-        const moisture = perlinNoise(worldX * 0.3 + 1000, worldZ * 0.3 + 1000, 2, 0.5);
+        const temperature = perlinNoise(worldX * 0.5 + worldSeed, worldZ * 0.5 + worldSeed, 2, 0.5);
+        const moisture = perlinNoise(
+          worldX * 0.3 + 1000 + worldSeed,
+          worldZ * 0.3 + 1000 + worldSeed,
+          2,
+          0.5
+        );
 
         // Per-biome height profile
         let heightScale = 20;
@@ -583,6 +589,18 @@ export function voxelApi(gpu) {
     keysToRemove.forEach(key => chunkMeshes.delete(key));
   }
 
+  // Reset entire world (clear all chunks and meshes)
+  function resetWorld() {
+    for (const mesh of chunkMeshes.values()) {
+      gpu.scene.remove(mesh);
+      mesh.geometry.dispose();
+      mesh.material.dispose();
+    }
+    chunkMeshes.clear();
+    chunks.clear();
+    worldSeed += 5000 + Math.floor(Math.random() * 10000);
+  }
+
   // Raycast to find block player is looking at
   function raycastBlock(origin, direction, maxDistance = 10) {
     const step = 0.1;
@@ -676,6 +694,9 @@ export function voxelApi(gpu) {
     // Structures
     placeTree,
 
+    // World reset
+    resetWorld,
+
     // Expose to global game context
     exposeTo: function (g) {
       g.BLOCK_TYPES = BLOCK_TYPES;
@@ -685,6 +706,7 @@ export function voxelApi(gpu) {
       g.raycastVoxelBlock = raycastBlock;
       g.checkVoxelCollision = checkCollision;
       g.placeVoxelTree = placeTree;
+      g.resetVoxelWorld = resetWorld;
     },
   };
 }

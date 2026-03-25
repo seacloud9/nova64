@@ -277,7 +277,7 @@ function drawComicPanel(x, y, w, h) {
   rectfill(x, y, w, h, 0x110e0eee);
   // Double border (comic book style)
   rect(x, y, w, h, 0xffffff);
-  rect(x + 2, y + 2, w - 4, h - 4, 0xaaaaaa);
+  rect(x + 2, y + 2, w - 4, h - 4, 0xcccccc);
 }
 
 // ── Draw ──────────────────────────────────────────────────────────────────────
@@ -306,8 +306,12 @@ export function draw() {
     }
 
     // Status
-    print('WASD — Move', 6, 6, 0xffffff);
-    if (hasEvidence) print('EVIDENCE COLLECTED', 6, 20, rgba8(255, 255, 255, 200));
+    rectfill(2, 2, 100, 14, rgba8(0, 0, 0, 180));
+    print('WASD \x97 Move', 6, 6, 0xffffff);
+    if (hasEvidence) {
+      rectfill(2, 16, 150, 14, rgba8(0, 0, 0, 180));
+      print('EVIDENCE COLLECTED', 6, 20, rgba8(255, 255, 255, 200));
+    }
   } else if (state === 'dialogue') {
     // Cinematic letterbox bars
     rectfill(0, 0, W, 28, 0x000000);
@@ -315,7 +319,7 @@ export function draw() {
 
     // Speaker badge
     const speakerColor =
-      speaker === 'Detective' ? 0x3355cc : speaker === 'Suspect' ? 0xcc2222 : 0x228844;
+      speaker === 'Detective' ? 0x4466dd : speaker === 'Suspect' ? 0xdd3333 : 0x33aa55;
     const badgeX = speaker === 'Suspect' ? W - 92 : 8;
     rectfill(badgeX, H - 82, 84, 18, speakerColor);
     print(speaker.toUpperCase(), badgeX + 4, H - 77, 0xffffff);

@@ -74,6 +74,8 @@ let combatTurn; // 0..party.length-1 or 'enemy'
 let combatAction; // current action selection state
 let selectedTarget;
 let animTimer; // for transitions
+let enemyDelay; // separate timer for enemy turn delay
+let autoPlay; // auto-combat mode
 let stepAnim; // walking bob
 let turnAnim; // rotation tween
 let targetYaw, currentYaw;
@@ -502,7 +504,7 @@ function advanceCombatTurn() {
   if (combatTurn >= party.length) {
     // Enemy turn
     combatAction = 'enemyTurn';
-    animTimer = 0.5;
+    enemyDelay = 0.5;
   } else {
     combatAction = 'choose';
     selectedTarget = enemies.findIndex(e => e.hp > 0);
@@ -664,6 +666,8 @@ function updateCamera3D() {
 export function init() {
   gameState = 'title';
   animTimer = 0;
+  enemyDelay = 0;
+  autoPlay = false;
 
   setAmbientLight(0x221111, 0.4);
   setLightDirection(0, -1, 0);
@@ -787,8 +791,8 @@ function updateExplore(dt) {
 
 function updateCombat(dt) {
   if (combatAction === 'enemyTurn') {
-    animTimer -= dt;
-    if (animTimer <= 0) {
+    enemyDelay -= dt;
+    if (enemyDelay <= 0) {
       doEnemyTurn();
     }
     return;
@@ -807,9 +811,34 @@ function updateCombat(dt) {
     return;
   }
 
+  // Toggle auto-play
+  if (keyp('KeyA')) {
+    autoPlay = !autoPlay;
+    combatLog.push(autoPlay ? 'AUTO-COMBAT ON' : 'AUTO-COMBAT OFF');
+  }
+
   if (combatAction === 'choose' && cooldownReady(inputCD)) {
     const member = party[combatTurn];
-    if (keyp('Digit1') || keyp('KeyZ')) {
+
+    // Auto-play: automatically attack a random living enemy
+    if (autoPlay) {
+      useCooldown(inputCD);
+      const target = enemies.filter(e => e.hp > 0);
+      if (target.length > 0) {
+        const t = target[Math.floor(Math.random() * target.length)];
+        const dmg = doAttack(member, t);
+        combatLog.push(`${member.name} hits ${t.name} for ${dmg}!`);
+        triggerShake(shake, 0.2);
+        if (t.hp <= 0) {
+          combatLog.push(`${t.name} defeated!`);
+          if (t.meshBody) {
+            destroyMesh(t.meshBody);
+            t.meshBody = null;
+          }
+        }
+      }
+      advanceCombatTurn();
+    } else if (keyp('Digit1') || keyp('KeyZ')) {
       useCooldown(inputCD);
       // Attack
       combatAction = 'target';
@@ -1172,6 +1201,12 @@ function drawCombatUI() {
         print(`[2/X] Magic (${member.mp} MP)`, 20, H - 48, rgba8(120, 140, 255, 255));
       }
       print('[3/C] Defend', 20, H - 34, rgba8(180, 180, 140, 255));
+      print(
+        `[A] Auto ${autoPlay ? 'ON' : 'OFF'}`,
+        20,
+        H - 20,
+        autoPlay ? rgba8(100, 255, 100, 255) : rgba8(120, 120, 140, 180)
+      );
     } else if (combatAction === 'target') {
       print(
         'Select target: W/S = cycle, Z/Space = confirm, Esc = back',

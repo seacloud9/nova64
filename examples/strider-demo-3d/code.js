@@ -41,6 +41,7 @@ let spawnTimers;
 let shake;
 let cooldowns;
 let playerHit;
+let boss; // current boss reference (null if no boss)
 
 // player classes
 const CLASSES = [
@@ -184,6 +185,12 @@ function startLevel() {
   cooldowns = createCooldownSet({ dash: DASH_CD, attack: PLAYER_ATK_CD });
   playerHit = createHitState({ invulnDuration: 0.8, blinkRate: 25 });
   spawnEnemies();
+
+  // Boss on every 3rd floor (floor 3, 6, 9...)
+  boss = null;
+  if ((level + 1) % 3 === 0) {
+    spawnBoss();
+  }
 
   const th = theme();
   setFog(th.fog, 15, 50);
@@ -559,6 +566,7 @@ export function update() {
   updatePlayerProjectiles(dt);
   updatePickups(dt);
   updateParticles(dt);
+  updateBoss(dt);
   floats.update(dt);
   updateShake(shake, dt);
   updateCamera(dt);
@@ -705,10 +713,10 @@ function updatePlayer(dt) {
     sfx('coin');
   }
 
-  // Check exit
+  // Check exit (boss must be dead first)
   const ptx = Math.floor(player.x / TILE),
     ptz = Math.floor(player.z / TILE);
-  if (ptx === exitPos.x && ptz === exitPos.y) {
+  if (ptx === exitPos.x && ptz === exitPos.y && (!boss || !boss.alive)) {
     state = 'levelComplete';
     score += 200 + level * 50;
   }
@@ -866,6 +874,21 @@ function damageEnemy(e, dmg) {
     if (Math.random() < 0.15) {
       const m = createSphere(0.2, 0x44cc44, [e.x, 0.4, e.z]);
       pickups.push({ x: e.x, z: e.z, type: 'food', mesh: m, bob: Math.random() * 6 });
+    }
+    // If this was the boss, mark it dead
+    if (boss && e === boss) {
+      boss.alive = false;
+      floats.spawn('BOSS SLAIN!', e.x, 3, { z: e.z, duration: 2, color: 0xffdd00 });
+      sfx('explosion');
+      triggerShake(shake, 8);
+      score += 500 + level * 100;
+      // Drop extra loot
+      for (let k = 0; k < 5; k++) {
+        const ox = e.x + (Math.random() - 0.5) * 3;
+        const oz = e.z + (Math.random() - 0.5) * 3;
+        const m2 = createCylinder(0.25, 0.15, 0xffdd00, [ox, 0.3, oz]);
+        pickups.push({ x: ox, z: oz, type: 'gold', mesh: m2, bob: Math.random() * 6 });
+      }
     }
   } else {
     floats.spawn('HIT', e.x, 1.5, { z: e.z, duration: 0.3, color: 0xffff64 });
@@ -1047,6 +1070,121 @@ function updateCamera(dt) {
 }
 
 // ========================================================================
+// BOSS SYSTEM
+// ========================================================================
+const BOSS_TYPES = [
+  { name: 'FOREST GUARDIAN', color: 0x228844, hp: 200, atk: 20, spd: 2.5, score: 500 },
+  { name: 'CRYPT LORD', color: 0x445588, hp: 300, atk: 28, spd: 2.2, score: 700 },
+  { name: 'RUIN TITAN', color: 0x886633, hp: 400, atk: 35, spd: 2.8, score: 900 },
+  { name: 'WASTELAND BEAST', color: 0xaa4422, hp: 500, atk: 42, spd: 3.0, score: 1100 },
+  { name: 'DEMON KING', color: 0xcc1133, hp: 700, atk: 50, spd: 3.5, score: 1500 },
+];
+
+function spawnBoss() {
+  const bossIdx = Math.min(Math.floor(level / 3), BOSS_TYPES.length - 1);
+  const bt = BOSS_TYPES[bossIdx];
+  // Place boss near center of map
+  const cx = Math.floor(MAP_W / 2) * TILE + 1;
+  const cz = Math.floor(MAP_H / 2) * TILE + 1;
+  const scaledHp = Math.floor(bt.hp * (1 + level * 0.1));
+  const scaledAtk = Math.floor(bt.atk * (1 + level * 0.08));
+  const m = createCube(1.4, bt.color, [cx, 1.2, cz]);
+  setScale(m, 1.5, 2.0, 1.5);
+  const bossEnemy = {
+    x: cx,
+    z: cz,
+    y: 0,
+    hp: scaledHp,
+    maxHp: scaledHp,
+    atk: scaledAtk,
+    spd: bt.spd,
+    xp: 100 + level * 20,
+    scorePts: bt.score,
+    type: ENEMY_TYPES.length - 1, // use Death-tier visuals
+    shoots: true,
+    mesh: m,
+    flash: 0,
+    deathT: 0,
+    alive: true,
+    shotCD: 1.5,
+    moveT: 0,
+    facing: 0,
+    // Boss-specific
+    isBoss: true,
+    bossName: bt.name,
+    chargeCD: 4,
+    charging: false,
+    chargeTimer: 0,
+    chargeDx: 0,
+    chargeDz: 0,
+    slamCD: 6,
+    slamTimer: 0,
+  };
+  enemies.push(bossEnemy);
+  boss = bossEnemy;
+  floats.spawn(`⚠ ${bt.name} ⚠`, cx, 4, { z: cz, duration: 2.5, color: 0xff4444 });
+  sfx('explosion');
+  triggerShake(shake, 5);
+}
+
+function updateBoss(dt) {
+  if (!boss || !boss.alive) return;
+  const dx = player.x - boss.x;
+  const dz = player.z - boss.z;
+  const dist = Math.sqrt(dx * dx + dz * dz);
+
+  // Charge attack — rush toward player
+  boss.chargeCD -= dt;
+  if (boss.charging) {
+    boss.chargeTimer -= dt;
+    boss.x += boss.chargeDx * 25 * dt;
+    boss.z += boss.chargeDz * 25 * dt;
+    // Bounds
+    boss.x = Math.max(TILE, Math.min((MAP_W - 1) * TILE, boss.x));
+    boss.z = Math.max(TILE, Math.min((MAP_H - 1) * TILE, boss.z));
+    setPosition(boss.mesh, boss.x, 1.2, boss.z);
+    // Damage on contact during charge
+    if (dist < 2.5) {
+      hurtPlayer(boss.atk);
+      boss.charging = false;
+    }
+    if (boss.chargeTimer <= 0) {
+      boss.charging = false;
+      // Slam on landing
+      triggerShake(shake, 4);
+      spawnParts(boss.x, 0.5, boss.z, 15, 0xff4400);
+      sfx('explosion');
+      // AoE damage near landing
+      if (dist < 4) hurtPlayer(Math.floor(boss.atk * 0.6));
+    }
+  } else if (boss.chargeCD <= 0 && dist < 18 && dist > 5) {
+    // Start charging toward player
+    boss.charging = true;
+    boss.chargeTimer = 0.4;
+    const d = Math.sqrt(dx * dx + dz * dz);
+    boss.chargeDx = dx / d;
+    boss.chargeDz = dz / d;
+    boss.chargeCD = 4 + Math.random() * 2;
+    floats.spawn('CHARGE!', boss.x, 3, { z: boss.z, duration: 0.5, color: 0xff0000 });
+  }
+
+  // AoE slam — periodic ground pound
+  boss.slamCD -= dt;
+  if (boss.slamCD <= 0 && !boss.charging && dist < 6) {
+    boss.slamCD = 5 + Math.random() * 3;
+    triggerShake(shake, 6);
+    spawnParts(boss.x, 0.5, boss.z, 20, 0xffaa00);
+    sfx('explosion');
+    if (dist < 5) hurtPlayer(Math.floor(boss.atk * 0.8));
+    floats.spawn('SLAM!', boss.x, 3, { z: boss.z, duration: 0.6, color: 0xff6600 });
+  }
+
+  // Boss bob animation
+  const bob3 = Math.sin(t * 2) * 0.15 + (boss.charging ? 0.3 : 0);
+  setPosition(boss.mesh, boss.x, 1.2 + bob3, boss.z);
+}
+
+// ========================================================================
 // CLEANUP between levels
 // ========================================================================
 function cleanupLevel() {
@@ -1116,6 +1254,27 @@ export function draw() {
   const th = theme();
   print(`FLOOR ${level + 1}: ${th.name}`, 440, 14, rgba8(180, 180, 220, 200));
   print(`KILLS ${kills}`, 550, 28, rgba8(200, 120, 120));
+
+  // Boss HP bar (big, prominent at top center)
+  if (boss && boss.alive) {
+    const bossHpP = boss.hp / boss.maxHp;
+    const bossBarW = 240;
+    const bossBarX = 320 - bossBarW / 2;
+    rect(bossBarX - 2, 6, bossBarW + 4, 18, rgba8(0, 0, 0, 200), true);
+    rect(bossBarX, 8, bossBarW, 14, rgba8(40, 10, 10), true);
+    rect(bossBarX, 8, Math.floor(bossBarW * bossHpP), 14, rgba8(220, 40, 40), true);
+    rect(bossBarX - 2, 6, bossBarW + 4, 18, rgba8(200, 100, 50), false);
+    printCentered(`⚔ ${boss.bossName} ⚔`, 320, 10, rgba8(255, 200, 100));
+  }
+
+  // Exit locked warning
+  if (boss && boss.alive) {
+    const ptx2 = Math.floor(player.x / TILE),
+      ptz2 = Math.floor(player.z / TILE);
+    if (ptx2 === exitPos.x && ptz2 === exitPos.y) {
+      printCentered('EXIT LOCKED — DEFEAT THE BOSS!', 320, 180, rgba8(255, 80, 80));
+    }
+  }
 
   // Enemy count
   const alive = enemies.filter(e => e.alive).length;
@@ -1281,7 +1440,13 @@ function drawLevelComplete() {
   printCentered(`${CLASSES[classIdx].name}  Level ${player.lvl}`, 320, 160, rgba8(180, 180, 220));
 
   if (level < THEMES.length - 1) {
-    printCentered(`Next: ${THEMES[level + 1].name}`, 320, 200, rgba8(200, 180, 140));
+    const nextIsBoss = (level + 2) % 3 === 0;
+    printCentered(
+      `Next: ${THEMES[level + 1].name}${nextIsBoss ? ' ⚔ BOSS FLOOR ⚔' : ''}`,
+      320,
+      200,
+      nextIsBoss ? rgba8(255, 100, 100) : rgba8(200, 180, 140)
+    );
   } else {
     printCentered('The depths grow darker...', 320, 200, rgba8(200, 100, 100));
   }

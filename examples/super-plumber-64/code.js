@@ -515,7 +515,7 @@ function drawHUD() {
   setTextAlign('left');
 
   // Coin UI
-  drawCircle(30, 25, 12, rgba8(255, 200, 0, 255));
+  circle(30, 25, 12, rgba8(255, 200, 0, 255), true);
   drawTextShadow(
     `x ${g.coins.toString().padStart(2, '0')}`,
     50,
@@ -539,7 +539,7 @@ function drawHUD() {
   // Health
   for (let i = 0; i < 3; i++) {
     const c = i < g.health ? rgba8(255, 50, 50, 255) : rgba8(50, 50, 50, 150);
-    drawCircle(30 + i * 30, 60, 10, c);
+    circle(30 + i * 30, 60, 10, c, true);
   }
 }
 

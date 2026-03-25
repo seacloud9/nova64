@@ -252,8 +252,8 @@ async function spawnCrystals() {
 async function createCreatures() {
   console.log('🦋 Creating mystical creatures...');
 
-  // Flying magical orbs with stunning visuals
-  for (let i = 0; i < 12; i++) {
+  // Flying magical orbs — passive, high altitude
+  for (let i = 0; i < 8; i++) {
     const orb = createAdvancedSphere(
       0.5,
       {
@@ -282,6 +282,84 @@ async function createCreatures() {
       trail: [],
       stunTimer: 0,
       caught: false,
+      aggressive: false,
+      atk: 0,
+    });
+  }
+
+  // Shadow wisps — ground-level, aggressive, chase the player
+  for (let i = 0; i < 6; i++) {
+    const wisp = createAdvancedSphere(
+      0.6,
+      {
+        color: 0x9933cc,
+        emissive: 0x440066,
+        emissiveIntensity: 0.9,
+        holographic: true,
+        animated: true,
+        transparent: true,
+        opacity: 0.85,
+      },
+      [0, 3, 0],
+      12
+    );
+
+    world.creatures.push({
+      mesh: wisp,
+      type: 'wisp',
+      x: (Math.random() - 0.5) * 70,
+      y: 3,
+      z: (Math.random() - 0.5) * 70,
+      vx: 0,
+      vy: 0,
+      vz: 0,
+      glowPhase: Math.random() * Math.PI * 2,
+      trail: [],
+      stunTimer: 0,
+      caught: false,
+      aggressive: true,
+      atk: 8,
+      aggroRange: 18,
+      speed: 5 + Math.random() * 3,
+      attackCD: 0,
+    });
+  }
+
+  // Fire sprites — fast, aggressive, appear near monoliths
+  for (let i = 0; i < 4; i++) {
+    const sprite = createAdvancedSphere(
+      0.4,
+      {
+        color: 0xff4400,
+        emissive: 0x882200,
+        emissiveIntensity: 1.0,
+        holographic: true,
+        animated: true,
+        transparent: true,
+        opacity: 0.9,
+      },
+      [0, 4, 0],
+      10
+    );
+
+    world.creatures.push({
+      mesh: sprite,
+      type: 'fire',
+      x: (Math.random() - 0.5) * 50,
+      y: 4,
+      z: (Math.random() - 0.5) * 50,
+      vx: 0,
+      vy: 0,
+      vz: 0,
+      glowPhase: Math.random() * Math.PI * 2,
+      trail: [],
+      stunTimer: 0,
+      caught: false,
+      aggressive: true,
+      atk: 12,
+      aggroRange: 14,
+      speed: 8 + Math.random() * 3,
+      attackCD: 0,
     });
   }
 }
@@ -402,6 +480,7 @@ function updatePlayer(dt) {
   // Cast magic bolt
   if (keyp('KeyE') && player.magicCharges > 0 && useCooldown(magicCD)) {
     fireMagicBolt();
+    sfx('jump');
   }
 
   // Keep player in bounds
@@ -457,6 +536,7 @@ function updateMagicBolts(dt) {
         magicBolts.splice(i, 1);
         score += 10;
         triggerShake(shake, 1.5);
+        sfx('explosion');
       }
     });
   }
@@ -474,6 +554,7 @@ function checkCreatureCollection() {
       creaturesKept++;
       score += 50;
       triggerShake(shake, 2);
+      sfx('coin');
       // Particle burst
       for (let i = 0; i < 8; i++) spawnParticle(creature.x, creature.y, creature.z, 0xff88ff);
     }
@@ -643,37 +724,77 @@ function updateCreatures(dt) {
       creature.stunTimer -= dt;
       creature.glowPhase += dt * 20;
       setMeshVisible(creature.mesh, Math.sin(creature.glowPhase * 5) > 0);
-      creature.y = Math.max(4, creature.y - 4 * dt);
+      const groundY = creature.type === 'orb' ? 4 : 2;
+      creature.y = Math.max(groundY, creature.y - 4 * dt);
       setPosition(creature.mesh, creature.x, creature.y, creature.z);
       return;
     }
 
     // Normal visible state
     setMeshVisible(creature.mesh, true);
+    creature.glowPhase += dt * 5;
+
+    // Aggressive creatures chase and attack player
+    if (creature.aggressive && creature.attackCD > 0) {
+      creature.attackCD -= dt;
+    }
 
     if (creature.type === 'orb') {
-      // Flying movement
+      // Flying movement — passive
       creature.x += creature.vx * dt;
       creature.y += creature.vy * dt;
       creature.z += creature.vz * dt;
 
-      // Bounds checking with gentle turning
       if (Math.abs(creature.x) > 40) creature.vx *= -0.8;
       if (creature.y < 10 || creature.y > 25) creature.vy *= -0.8;
       if (Math.abs(creature.z) > 40) creature.vz *= -0.8;
 
-      // Random direction changes
       if (Math.random() < 0.01) {
         creature.vx += (Math.random() - 0.5) * 2;
         creature.vy += (Math.random() - 0.5) * 1;
         creature.vz += (Math.random() - 0.5) * 2;
       }
+    } else if (creature.type === 'wisp' || creature.type === 'fire') {
+      // Aggressive ground creatures — chase player when in range
+      const dx = player.x - creature.x;
+      const dz = player.z - creature.z;
+      const dist = Math.sqrt(dx * dx + dz * dz);
 
-      // Glowing effect
-      creature.glowPhase += dt * 5;
+      if (dist < creature.aggroRange && dist > 1.5) {
+        const spd = creature.speed * dt;
+        creature.x += (dx / dist) * spd;
+        creature.z += (dz / dist) * spd;
+      } else if (dist >= creature.aggroRange) {
+        // Idle wander
+        if (Math.random() < 0.02) {
+          creature.vx = (Math.random() - 0.5) * 3;
+          creature.vz = (Math.random() - 0.5) * 3;
+        }
+        creature.x += creature.vx * dt;
+        creature.z += creature.vz * dt;
+        creature.vx *= 0.98;
+        creature.vz *= 0.98;
+      }
 
-      setPosition(creature.mesh, creature.x, creature.y, creature.z);
+      // Hover bob
+      const baseY = creature.type === 'wisp' ? 3 : 4;
+      creature.y = baseY + Math.sin(creature.glowPhase) * 0.5;
+
+      // Deal damage on contact
+      if (dist < 2.5 && creature.attackCD <= 0) {
+        player.health -= creature.atk;
+        creature.attackCD = 1.2;
+        triggerShake(shake, 2);
+        sfx('explosion');
+        for (let i = 0; i < 4; i++) spawnParticle(player.x, player.y + 1, player.z, 0xff2222);
+      }
+
+      // Keep in bounds
+      creature.x = Math.max(-44, Math.min(44, creature.x));
+      creature.z = Math.max(-44, Math.min(44, creature.z));
     }
+
+    setPosition(creature.mesh, creature.x, creature.y, creature.z);
   });
 }
 
@@ -774,8 +895,10 @@ function checkCrystalCollection() {
 
     if (distance < 3) {
       crystal.collected = true;
-      // Hide crystal (in a real engine we'd remove it)
+      crystalsCollected++;
+      score += 25;
       setPosition(crystal.mesh, -1000, -1000, -1000);
+      sfx('coin');
 
       // Particle burst effect
       for (let i = 0; i < 10; i++) {
@@ -882,20 +1005,15 @@ export function draw() {
   }
 
   // Health bar
-  const healthPanel = createPanel(10, 165, 220, 50, {
-    bgColor: rgba8(0, 0, 0, 180),
-    borderColor: rgba8(100, 50, 200, 255),
-    borderWidth: 2,
-  });
-  drawPanel(healthPanel);
-  drawProgressBar(20, 160, 200, 20, player.health, player.maxHealth, {
-    fillColor:
-      player.health > 50
-        ? uiColors.success
-        : player.health > 25
-          ? uiColors.warning
-          : uiColors.danger,
-  });
+  const healthPct = player.health / player.maxHealth;
+  const hpColor =
+    healthPct > 0.5
+      ? rgba8(50, 200, 50, 255)
+      : healthPct > 0.25
+        ? rgba8(220, 180, 30, 255)
+        : rgba8(200, 40, 40, 255);
+  drawProgressBar(16, 168, 160, 10, healthPct, hpColor, rgba8(20, 10, 30, 220));
+  print(`HP ${player.health}/${player.maxHealth}`, 16, 158, rgba8(255, 200, 255, 220));
 }
 
 function drawStartScreen() {

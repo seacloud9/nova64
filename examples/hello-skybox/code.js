@@ -150,6 +150,8 @@ export function update(dt) {
       c.active = false;
       collected++;
       score += 100;
+      sfx('coin');
+      if (collected >= TOTAL) sfx('powerup');
     }
   }
 

@@ -274,6 +274,7 @@ function handlePlayerInput(dt) {
     p.vy = 22; // Boing!
     p.isGrounded = false;
     p.jumpTimer = 0.2;
+    sfx('jump');
     createFX(p.x, p.y, p.z, 0xffffff, 5, 2); // Dust jump
   }
   if (p.jumpTimer > 0) p.jumpTimer -= dt;
@@ -330,6 +331,7 @@ function handleCollisions(axis) {
           if (plat.isBrick) {
             createFX(plat.x, plat.y, plat.z, C.brick, 15, 10);
             g.score += 50;
+            sfx('explosion');
             destroyMesh(plat.mesh);
             plat.destroyed = true; // Mark for cleanup
           }
@@ -407,6 +409,7 @@ function updateCoins(dt) {
       g.score += 100;
       g.coins++;
       createFX(c.x, c.y, c.z, C.coin, 8, 8);
+      sfx('coin');
       destroyMesh(c.mesh);
       g.coinsList.splice(i, 1);
 
@@ -414,6 +417,7 @@ function updateCoins(dt) {
       if (g.coinsList.length === 0) {
         gameState = 'win';
         inputLock = 1.0;
+        sfx('powerup');
         initWinScreen();
       }
     }
@@ -448,6 +452,7 @@ function updateEnemies(dt) {
         p.vy = 15; // Bounce off enemy
         e.alive = false;
         createFX(e.x, e.y + 0.5, e.z, C.enemyBody, 15);
+        sfx('hit');
         e.meshes.forEach(m => destroyMesh(m));
         g.enemies.splice(i, 1);
         g.score += 200;
@@ -462,12 +467,14 @@ function takeDamage() {
   if (!triggerHit(playerHit)) return;
   g.health--;
   g.p.vy = 12; // knockback
+  sfx('hit');
   createFX(g.p.x, g.p.y + 1, g.p.z, C.plumberFace, 15);
 
   if (g.health <= 0) {
     gameState = 'gameover';
     inputLock = 1.0;
     g.p.meshGroup.forEach(part => setPosition(part.m, 0, -100, 0));
+    sfx('death');
     initGameOverScreen();
   }
 }
@@ -630,6 +637,7 @@ function startGame() {
   g.p.vz = 0;
   playerHit.invulnTimer = 0;
 
+  sfx('confirm');
   clearButtons();
 }
 

@@ -40,6 +40,14 @@ export function init() {
 
   playerMesh = createCube(0.6, 0xffffff, [0, 1, 0], { material: 'emissive', emissive: 0xffffff });
   if (typeof setVolume === 'function') setVolume(volume);
+
+  // Initialize cooldowns for sound triggers
+  const cdDefs = {};
+  PRESETS.forEach(p => {
+    cdDefs[p.key] = 0.15;
+  });
+  sfxCDs = createCooldownSet(cdDefs);
+  spawnCD = createCooldown(0.5);
 }
 
 export function update(dt) {

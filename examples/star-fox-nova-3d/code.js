@@ -364,6 +364,7 @@ function fireLaser() {
     setScale(mesh, 0.3, 0.3, 5.0);
     game.bullets.push({ mesh, x: bx, y: by, z: bz, vz: -240, life: 2.0 });
   }
+  sfx('laser');
 }
 
 function fireEnemyShot(ex, ey, ez) {
@@ -526,9 +527,11 @@ function updateArwing(dt) {
   if (p.health <= 0) {
     createExplosion(p.x, p.y, p.z, C.explosion, 30);
     createExplosion(p.x, p.y, p.z, 0xffffff, 10);
-    game.player.meshes.body && setPosition(game.player.meshes.body, 1000, 0, 0); // Hide ship
+    // Hide all ship parts
+    Object.values(game.player.meshes).forEach(m => m && setPosition(m, 1000, 0, 0));
     gameState = 'gameover';
     inputLockout = 1.0;
+    sfx('death');
     initGameOverScreen();
     return;
   }
@@ -540,6 +543,7 @@ function updateArwing(dt) {
     p.isBarrelRolling = true;
     p.rollSpeed = isKeyPressed('KeyE') ? -Math.PI * 6 : Math.PI * 6; // Fast spin
     playerHit.invulnTimer = Math.max(playerHit.invulnTimer, 0.5); // Invincible during roll!
+    sfx('jump');
   }
 
   if (p.isBarrelRolling) {
@@ -741,18 +745,20 @@ function updateBullets(dt) {
 
     // Boss Collision
     if (game.boss) {
-      const b = game.boss;
-      const dist = Math.hypot(bul.x - b.x, bul.z - b.z);
-      if (dist < 5 && Math.abs(bul.y - b.y) < 5) {
-        b.hp -= 10;
+      const boss = game.boss;
+      const dist = Math.hypot(b.x - boss.x, b.z - boss.z);
+      if (dist < 5 && Math.abs(b.y - boss.y) < 5) {
+        boss.hp -= 10;
         hit = true;
-        createExplosion(bul.x, bul.y, bul.z, C.spark, 3);
-        if (b.hp <= 0) {
+        createExplosion(b.x, b.y, b.z, C.spark, 3);
+        sfx('hit');
+        if (boss.hp <= 0) {
           game.score += 5000;
-          createExplosion(b.x, b.y, b.z, 0xffffff, 50);
-          b.parts.forEach(p => destroyMesh(p.mesh));
+          createExplosion(boss.x, boss.y, boss.z, 0xffffff, 50);
+          boss.parts.forEach(p => destroyMesh(p.mesh));
           game.boss = null;
           game.wave++;
+          sfx('explosion');
         }
       }
     }
@@ -767,10 +773,12 @@ function updateBullets(dt) {
           createExplosion(e.x, e.y, e.z, 0xffbb00, 8); // secondary burst
           game.score += 500;
           game.kills++;
+          sfx('explosion');
           e.parts.forEach(part => destroyMesh(part.mesh));
           game.enemies.splice(j, 1);
         } else {
           createExplosion(b.x, b.y, b.z, C.spark, 4); // hit spark
+          sfx('hit');
         }
         break;
       }
@@ -830,6 +838,7 @@ function updateEnemyBullets(dt) {
     ) {
       p.health -= 25;
       triggerHit(playerHit);
+      sfx('hit');
       createExplosion(p.x, p.y, p.z, C.explosion, 8);
       destroyMesh(b.mesh);
       game.enemyBullets.splice(i, 1);
@@ -886,6 +895,7 @@ function updateRings(dt) {
       game.score += 1000;
       game.player.health = Math.min(100, game.player.health + 10); // Heal
       createExplosion(r.x, r.y, r.z, C.ring, 12);
+      sfx('coin');
       destroyMesh(r.mesh);
       game.rings.splice(i, 1);
       continue;

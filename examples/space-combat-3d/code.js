@@ -37,11 +37,15 @@ const CONFIG = {
 // ============================================
 // GAME STATE
 // ============================================
-let gameState = 'start'; // 'start', 'playing', 'paused', 'gameover'
+let gameState = 'start'; // 'start', 'playing', 'paused', 'gameover', 'waveclear'
 let gameTime = 0;
 let score = 0;
 let kills = 0;
 let wave = 1;
+let waveClearTimer = 0;
+let bossAlive = false;
+let pickups = [];
+let totalWaveEnemies = 0;
 
 // Player ship state
 let player = {
@@ -131,6 +135,10 @@ export async function init() {
   projectiles = [];
   explosions = [];
   stars = [];
+  pickups = [];
+  bossAlive = false;
+  totalWaveEnemies = 0;
+  waveClearTimer = 0;
 
   // Create starfield
   createStarfield();
@@ -267,42 +275,98 @@ function createCrosshair() {
 }
 
 function spawnWave(waveNum) {
-  const enemyCount = 3 + waveNum * 2;
+  const baseCount = 3 + waveNum * 2;
+  let types = [];
 
-  for (let i = 0; i < enemyCount; i++) {
-    setTimeout(() => spawnEnemy(), i * 1000);
+  // Boss wave every 5 waves
+  if (waveNum % 5 === 0) {
+    types.push('boss');
+    bossAlive = true;
+  }
+
+  for (let i = 0; i < baseCount; i++) {
+    let type = 'fighter';
+    if (waveNum >= 3 && Math.random() < 0.3) type = 'bomber';
+    if (waveNum >= 5 && Math.random() < 0.2) type = 'ace';
+    types.push(type);
+  }
+
+  totalWaveEnemies = types.length;
+  for (let i = 0; i < types.length; i++) {
+    const t = types[i];
+    setTimeout(() => spawnEnemy(t), i * 800);
   }
 }
 
-function spawnEnemy() {
+function spawnEnemy(type) {
   const distance = CONFIG.ENEMY_SPAWN_DISTANCE;
   const angle = Math.random() * Math.PI * 2;
+  let hp, spd, color, size, score_val;
+
+  switch (type) {
+    case 'bomber':
+      hp = 6 + wave;
+      spd = 12;
+      color = 0xff8800;
+      size = 4;
+      score_val = 250;
+      break;
+    case 'ace':
+      hp = 4 + wave;
+      spd = 30;
+      color = 0x00ccff;
+      size = 2.5;
+      score_val = 400;
+      break;
+    case 'boss':
+      hp = 30 + wave * 5;
+      spd = 10;
+      color = 0xffcc00;
+      size = 8;
+      score_val = 2000;
+      break;
+    default: // fighter
+      hp = CONFIG.ENEMY_HEALTH + Math.floor(wave / 3);
+      spd = CONFIG.ENEMY_SPEED;
+      color = 0xff3333;
+      size = 2;
+      score_val = 100;
+      break;
+  }
+
+  const body = createCube(size, color, [0, 0, 0], {
+    material: 'emissive',
+    color,
+    intensity: type === 'boss' ? 2.5 : 1.5,
+  });
+  setScale(
+    body,
+    type === 'boss' ? 1.5 : 1.5,
+    type === 'boss' ? 0.6 : 0.5,
+    type === 'boss' ? 1.5 : 1.5
+  );
 
   const enemy = {
     pos: {
-      x: Math.cos(angle) * distance,
-      y: (Math.random() - 0.5) * 50,
-      z: Math.sin(angle) * distance,
+      x: player.pos.x + Math.cos(angle) * distance,
+      y: player.pos.y + (Math.random() - 0.5) * 50,
+      z: player.pos.z + Math.sin(angle) * distance,
     },
     vel: { x: 0, y: 0, z: 0 },
     yaw: 0,
     pitch: 0,
-    health: CONFIG.ENEMY_HEALTH,
-    maxHealth: CONFIG.ENEMY_HEALTH,
-    shootCooldown: 0,
+    health: hp,
+    maxHealth: hp,
+    shootCooldown: Math.random() * 2,
     aiState: 'approach',
-    mesh: createEnemyShip(),
+    mesh: body,
+    type,
+    speed: spd,
+    size,
+    score_val,
   };
 
   enemies.push(enemy);
-}
-
-function createEnemyShip() {
-  // Simple enemy ship - red diamond shape
-  const body = createCube(2, 0xff3333, [0, 0, 0]);
-  setScale(body, 3, 1, 3);
-
-  return body;
 }
 
 // ============================================
@@ -312,9 +376,22 @@ export function update() {
   const dt = 1 / 60;
 
   if (gameState === 'start') {
-    // Check for start input - FIXED: Use isKeyDown instead of isKeyPressed
     if (isKeyDown('Enter') || isKeyDown('Space') || isKeyDown(' ')) {
       gameState = 'playing';
+    }
+    return;
+  }
+
+  // Wave clear transition
+  if (gameState === 'waveclear') {
+    waveClearTimer -= dt;
+    updateCamera(dt);
+    updateExplosions(dt);
+    updatePickups(dt);
+    if (waveClearTimer <= 0) {
+      wave++;
+      gameState = 'playing';
+      spawnWave(wave);
     }
     return;
   }
@@ -354,16 +431,22 @@ export function update() {
   // Cooldowns
   updateCooldowns(cooldowns, dt);
 
+  // Update pickups
+  updatePickups(dt);
+
   // Check for wave completion
-  if (enemies.length === 0) {
-    wave++;
+  if (enemies.length === 0 && gameState === 'playing') {
+    gameState = 'waveclear';
+    waveClearTimer = 3.0;
     score += 1000 * wave;
-    spawnWave(wave);
+    player.missiles = Math.min(player.missiles + 3, 20);
+    sfx('powerup');
   }
 
   // Check game over
   if (player.health <= 0) {
     gameState = 'gameover';
+    sfx('death');
   }
 }
 
@@ -418,12 +501,14 @@ function updateInput(dt) {
   ) {
     fireLasers();
     player.energy -= 5;
+    sfx('laser');
   }
 
   // Fire missile - M or Right Click
   if (isKeyPressed('KeyM') && useCooldown(cooldowns.missile) && player.missiles > 0) {
     fireMissile();
     player.missiles--;
+    sfx('explosion');
   }
 
   // Target lock - T
@@ -606,7 +691,6 @@ function updateTargeting() {
 // ============================================
 function updateEnemies(dt) {
   enemies.forEach(enemy => {
-    // Simple AI - approach and circle player
     const toPlayer = {
       x: player.pos.x - enemy.pos.x,
       y: player.pos.y - enemy.pos.y,
@@ -614,57 +698,160 @@ function updateEnemies(dt) {
     };
 
     const dist = Math.sqrt(toPlayer.x ** 2 + toPlayer.y ** 2 + toPlayer.z ** 2);
+    const spd = enemy.speed * dt;
 
-    if (dist > 80) {
-      // Approach
-      enemy.vel.x = (toPlayer.x / dist) * CONFIG.ENEMY_SPEED * dt;
-      enemy.vel.y = (toPlayer.y / dist) * CONFIG.ENEMY_SPEED * dt;
-      enemy.vel.z = (toPlayer.z / dist) * CONFIG.ENEMY_SPEED * dt;
-    } else if (dist > 30) {
-      // Circle
-      const perpendicular = {
-        x: -toPlayer.z,
-        y: 0,
-        z: toPlayer.x,
-      };
-      const perpLen = Math.sqrt(perpendicular.x ** 2 + perpendicular.z ** 2);
-
-      enemy.vel.x = (perpendicular.x / perpLen) * CONFIG.ENEMY_SPEED * dt;
-      enemy.vel.z = (perpendicular.z / perpLen) * CONFIG.ENEMY_SPEED * dt;
+    // Type-specific AI
+    if (enemy.type === 'ace') {
+      // Ace: fast evasive strafing
+      if (dist > 60) {
+        enemy.vel.x = (toPlayer.x / dist) * spd;
+        enemy.vel.y = (toPlayer.y / dist) * spd;
+        enemy.vel.z = (toPlayer.z / dist) * spd;
+      } else {
+        const perpendicular = { x: -toPlayer.z, y: 0, z: toPlayer.x };
+        const perpLen = Math.sqrt(perpendicular.x ** 2 + perpendicular.z ** 2) || 1;
+        let weave = Math.sin(gameTime * 3 + enemies.indexOf(enemy)) * 0.5;
+        enemy.vel.x = (perpendicular.x / perpLen) * spd + weave * spd * 0.3;
+        enemy.vel.z = (perpendicular.z / perpLen) * spd + weave * spd * 0.3;
+        enemy.vel.y = Math.sin(gameTime * 2) * spd * 0.2;
+      }
+    } else if (enemy.type === 'bomber') {
+      // Bomber: slow steady approach, stays at range
+      if (dist > 50) {
+        enemy.vel.x = (toPlayer.x / dist) * spd;
+        enemy.vel.y = (toPlayer.y / dist) * spd;
+        enemy.vel.z = (toPlayer.z / dist) * spd;
+      } else {
+        enemy.vel.x *= 0.95;
+        enemy.vel.y *= 0.95;
+        enemy.vel.z *= 0.95;
+      }
+    } else if (enemy.type === 'boss') {
+      // Boss: circles slowly, always faces player
+      if (dist > 40) {
+        enemy.vel.x = (toPlayer.x / dist) * spd;
+        enemy.vel.y = (toPlayer.y / dist) * spd;
+        enemy.vel.z = (toPlayer.z / dist) * spd;
+      } else {
+        const perpendicular = { x: -toPlayer.z, y: 0, z: toPlayer.x };
+        const perpLen = Math.sqrt(perpendicular.x ** 2 + perpendicular.z ** 2) || 1;
+        enemy.vel.x = (perpendicular.x / perpLen) * spd;
+        enemy.vel.z = (perpendicular.z / perpLen) * spd;
+      }
     } else {
-      // Retreat
-      enemy.vel.x = -(toPlayer.x / dist) * CONFIG.ENEMY_SPEED * dt;
-      enemy.vel.y = -(toPlayer.y / dist) * CONFIG.ENEMY_SPEED * dt;
-      enemy.vel.z = -(toPlayer.z / dist) * CONFIG.ENEMY_SPEED * dt;
+      // Fighter: default approach/circle/retreat
+      if (dist > 80) {
+        enemy.vel.x = (toPlayer.x / dist) * spd;
+        enemy.vel.y = (toPlayer.y / dist) * spd;
+        enemy.vel.z = (toPlayer.z / dist) * spd;
+      } else if (dist > 30) {
+        const perpendicular = { x: -toPlayer.z, y: 0, z: toPlayer.x };
+        const perpLen = Math.sqrt(perpendicular.x ** 2 + perpendicular.z ** 2) || 1;
+        enemy.vel.x = (perpendicular.x / perpLen) * spd;
+        enemy.vel.z = (perpendicular.z / perpLen) * spd;
+      } else {
+        enemy.vel.x = -(toPlayer.x / dist) * spd;
+        enemy.vel.y = -(toPlayer.y / dist) * spd;
+        enemy.vel.z = -(toPlayer.z / dist) * spd;
+      }
     }
 
-    // Update position
     enemy.pos.x += enemy.vel.x;
     enemy.pos.y += enemy.vel.y;
     enemy.pos.z += enemy.vel.z;
 
-    // Update mesh
     setPosition(enemy.mesh, enemy.pos.x, enemy.pos.y, enemy.pos.z);
 
-    // Shoot at player
+    // Shoot at player - different fire rates per type
     enemy.shootCooldown -= dt;
-    if (enemy.shootCooldown <= 0 && dist < 100) {
+    let fireRate =
+      enemy.type === 'boss'
+        ? 1.0
+        : enemy.type === 'ace'
+          ? 1.5
+          : enemy.type === 'bomber'
+            ? 2.5
+            : 2 + Math.random();
+    if (enemy.shootCooldown <= 0 && dist < 120) {
       enemyShoot(enemy, toPlayer, dist);
-      enemy.shootCooldown = 2 + Math.random();
+      enemy.shootCooldown = fireRate;
     }
   });
 }
 
 function enemyShoot(enemy, toPlayer, dist) {
-  createLaser(
-    enemy.pos.x,
-    enemy.pos.y,
-    enemy.pos.z,
-    toPlayer.x / dist,
-    toPlayer.y / dist,
-    toPlayer.z / dist,
-    'enemy'
-  );
+  if (enemy.type === 'boss') {
+    // Boss fires spread of 3
+    for (let a = -0.1; a <= 0.1; a += 0.1) {
+      let dx = toPlayer.x / dist + a;
+      let dy = toPlayer.y / dist;
+      let dz = toPlayer.z / dist + a;
+      createLaser(enemy.pos.x, enemy.pos.y, enemy.pos.z, dx, dy, dz, 'enemy');
+    }
+  } else {
+    createLaser(
+      enemy.pos.x,
+      enemy.pos.y,
+      enemy.pos.z,
+      toPlayer.x / dist,
+      toPlayer.y / dist,
+      toPlayer.z / dist,
+      'enemy'
+    );
+  }
+}
+
+function spawnPickup(x, y, z) {
+  let r = Math.random();
+  let type, color;
+  if (r < 0.4) {
+    type = 'missile';
+    color = 0xffff00;
+  } else if (r < 0.7) {
+    type = 'shield';
+    color = 0x0088ff;
+  } else {
+    type = 'energy';
+    color = 0x00ff88;
+  }
+
+  let mesh = createSphere(1.5, color, [x, y, z], { material: 'emissive', color, intensity: 3 });
+  pickups.push({ pos: { x, y, z }, mesh, type, life: 15 });
+}
+
+function updatePickups(dt) {
+  for (let i = pickups.length - 1; i >= 0; i--) {
+    let p = pickups[i];
+    p.life -= dt;
+    // Spin pickup
+    setRotation(p.mesh, 0, gameTime * 2, 0);
+    let py = p.pos.y + Math.sin(gameTime * 3 + i) * 0.5;
+    setPosition(p.mesh, p.pos.x, py, p.pos.z);
+
+    // Check player proximity
+    let dist = Math.sqrt(
+      (p.pos.x - player.pos.x) ** 2 + (p.pos.y - player.pos.y) ** 2 + (p.pos.z - player.pos.z) ** 2
+    );
+    if (dist < 8) {
+      if (p.type === 'missile') {
+        player.missiles = Math.min(player.missiles + 3, 20);
+        sfx('coin');
+      } else if (p.type === 'shield') {
+        player.shields = Math.min(player.maxShields, player.shields + 30);
+        sfx('powerup');
+      } else if (p.type === 'energy') {
+        player.energy = Math.min(player.maxEnergy, player.energy + 40);
+        sfx('powerup');
+      }
+      destroyMesh(p.mesh);
+      pickups.splice(i, 1);
+      continue;
+    }
+    if (p.life <= 0) {
+      destroyMesh(p.mesh);
+      pickups.splice(i, 1);
+    }
+  }
 }
 
 // ============================================
@@ -717,16 +904,24 @@ function updateProjectiles(dt) {
             (proj.pos.z - enemy.pos.z) ** 2
         );
 
-        if (dist < 3) {
+        if (dist < enemy.size + 1) {
           enemy.health -= proj.damage;
           hit = true;
+          sfx('hit');
 
           if (enemy.health <= 0) {
-            createExplosion(enemy.pos.x, enemy.pos.y, enemy.pos.z, 5);
+            let expSize = enemy.type === 'boss' ? 12 : enemy.type === 'bomber' ? 7 : 5;
+            createExplosion(enemy.pos.x, enemy.pos.y, enemy.pos.z, expSize);
             destroyMesh(enemy.mesh);
             enemies.splice(ei, 1);
-            score += 100;
+            score += enemy.score_val;
             kills++;
+            sfx('explosion');
+            if (enemy.type === 'boss') bossAlive = false;
+            // Drop pickup (40% chance, 80% for boss)
+            if (Math.random() < (enemy.type === 'boss' ? 0.8 : 0.4)) {
+              spawnPickup(enemy.pos.x, enemy.pos.y, enemy.pos.z);
+            }
           }
         }
       });
@@ -752,6 +947,7 @@ function updateProjectiles(dt) {
         }
         hit = true;
         triggerShake(shake, 0.3);
+        sfx('hit');
       }
     }
 
@@ -925,6 +1121,11 @@ export function draw() {
 
   if (gameState === 'playing') {
     drawHUD();
+  } else if (gameState === 'waveclear') {
+    drawHUD();
+    rect(120, 100, 400, 60, rgba8(0, 0, 0, 200), true);
+    print(`WAVE ${wave} CLEAR!`, 230, 110, rgba8(0, 255, 100, 255));
+    print(`+${1000 * wave} BONUS  +3 MISSILES`, 190, 135, rgba8(255, 200, 0, 255));
   } else if (gameState === 'paused') {
     drawHUD();
     drawPauseScreen();
@@ -973,6 +1174,24 @@ function drawHUD() {
 
   print(`WAVE: ${wave}`, 250, 10, rgba8(255, 255, 0, 255));
   print(`ENEMIES: ${enemies.length}`, 250, 25, rgba8(255, 100, 100, 255));
+
+  // Boss health bar
+  if (bossAlive) {
+    let boss = enemies.find(e => e.type === 'boss');
+    if (boss) {
+      print('BOSS', 220, 45, rgba8(255, 204, 0, 255));
+      rect(260, 43, 120, 10, rgba8(50, 50, 0, 255), true);
+      rect(
+        260,
+        43,
+        Math.floor((boss.health / boss.maxHealth) * 120),
+        10,
+        rgba8(255, 204, 0, 255),
+        true
+      );
+      rect(260, 43, 120, 10, rgba8(255, 204, 0, 100), false);
+    }
+  }
 
   // Health bar
   print('HULL:', 400, 10, rgba8(255, 255, 255, 255));
@@ -1074,9 +1293,18 @@ function drawRadar() {
       const x = radarX + dx * scale;
       const y = radarY + dz * scale;
 
+      let dotSize = enemy.type === 'boss' ? 4 : 2;
       const color =
-        enemy === player.targetLocked ? rgba8(255, 0, 0, 255) : rgba8(255, 100, 100, 255);
-      rect(Math.floor(x) - 1, Math.floor(y) - 1, 2, 2, color, true);
+        enemy === player.targetLocked
+          ? rgba8(255, 0, 0, 255)
+          : enemy.type === 'boss'
+            ? rgba8(255, 204, 0, 255)
+            : enemy.type === 'ace'
+              ? rgba8(0, 204, 255, 255)
+              : enemy.type === 'bomber'
+                ? rgba8(255, 136, 0, 255)
+                : rgba8(255, 100, 100, 255);
+      rect(Math.floor(x) - dotSize / 2, Math.floor(y) - dotSize / 2, dotSize, dotSize, color, true);
     }
   });
 }

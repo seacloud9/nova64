@@ -516,6 +516,7 @@ function fireBullet(type) {
     };
     setScale(bullet.mesh, 1.5);
     playerBullets.push(bullet);
+    sfx('explosion');
     return;
   }
 
@@ -544,6 +545,7 @@ function fireBullet(type) {
     setScale(bullet.mesh, 0.3, 0.3, 1.0);
     playerBullets.push(bullet);
   });
+  sfx('laser');
 }
 
 function spawnEnemyWave() {
@@ -919,29 +921,30 @@ function updatePowerups(dt) {
   }
 }
 
-function spawnPowerup() {
-  const powerups = gameData.powerups;
+const powerupColors = {
+  health: 0x00ff00,
+  shield: 0x0088ff,
+  weapon: 0xffff00,
+  energy: 0xff00ff,
+};
 
+function spawnPowerup() {
   const types = ['health', 'shield', 'weapon', 'energy'];
   const type = types[Math.floor(Math.random() * types.length)];
+  spawnPowerupAt((Math.random() - 0.5) * 20, (Math.random() - 0.5) * 12, -30, type);
+}
 
-  const colors = {
-    health: 0x00ff00,
-    shield: 0x0088ff,
-    weapon: 0xffff00,
-    energy: 0xff00ff,
-  };
-
+function spawnPowerupAt(x, y, z, type) {
+  const powerups = gameData.powerups;
   const powerup = {
     type: type,
-    x: (Math.random() - 0.5) * 20,
-    y: (Math.random() - 0.5) * 12,
-    z: -30,
+    x: x,
+    y: y,
+    z: z,
     speed: 8 * 0.5,
     rotationY: 0,
-    mesh: createCube(0.8, colors[type], [0, 0, 0]),
+    mesh: createCube(0.8, powerupColors[type] || 0xffffff, [x, y, z]),
   };
-
   powerups.push(powerup);
 }
 
@@ -1022,6 +1025,7 @@ function checkCollisions(_dt) {
         // Hit!
         enemy.health -= bullet.damage;
         enemy.hitFlash = 1.0; // Flash white on hit
+        sfx('hit');
         destroyMesh(bullet.mesh);
         playerBullets.splice(i, 1);
 
@@ -1031,6 +1035,7 @@ function checkCollisions(_dt) {
           let multiplier = Math.min(gameData.combo, 10);
 
           // Enemy destroyed
+          sfx('explosion');
           if (enemy.type === 'boss') {
             createExplosion(enemy.x, enemy.y, enemy.z);
             createExplosion(enemy.x - 2, enemy.y, enemy.z);
@@ -1041,12 +1046,25 @@ function checkCollisions(_dt) {
             if (enemy.mesh.wingR) destroyMesh(enemy.mesh.wingR);
             score += 5000 * multiplier;
             gameData.flags.bossActive = false;
+            // Boss always drops weapon upgrade
+            spawnPowerupAt(enemy.x, enemy.y, enemy.z, 'weapon');
           } else {
             createExplosion(enemy.x, enemy.y, enemy.z);
             if (enemy.mesh.body) destroyMesh(enemy.mesh.body);
             if (enemy.mesh.engine) destroyMesh(enemy.mesh.engine);
             let baseScore = enemy.type === 'tank' ? 300 : enemy.type === 'fast' ? 200 : 100;
             score += baseScore * multiplier;
+            // Chance to drop powerup on kill
+            let dropChance = enemy.type === 'tank' ? 0.4 : enemy.type === 'fast' ? 0.25 : 0.15;
+            if (Math.random() < dropChance) {
+              const dropTypes = ['health', 'shield', 'weapon', 'energy'];
+              spawnPowerupAt(
+                enemy.x,
+                enemy.y,
+                enemy.z,
+                dropTypes[Math.floor(Math.random() * dropTypes.length)]
+              );
+            }
           }
           enemies.splice(j, 1);
         }
@@ -1069,8 +1087,10 @@ function checkCollisions(_dt) {
     if (distance < 2.0) {
       if (player.shield > 0) {
         player.shield -= 15;
+        sfx('hit');
       } else {
         player.health -= 25;
+        sfx('hit');
       }
 
       destroyMesh(bullet.mesh);
@@ -1079,6 +1099,7 @@ function checkCollisions(_dt) {
       if (player.health <= 0) {
         lives--;
         player.health = 100;
+        sfx('death');
         if (lives <= 0) {
           gameState = 'gameOver';
         }
@@ -1116,6 +1137,7 @@ function checkCollisions(_dt) {
       destroyMesh(powerup.mesh);
       powerups.splice(i, 1);
       score += 50;
+      sfx(powerup.type === 'weapon' ? 'powerup' : 'coin');
     }
   }
 
@@ -1141,11 +1163,26 @@ function updateGameLogic(dt) {
   if (gameData.waveWarning > 0) gameData.waveWarning -= dt;
 
   // Spawn new wave when all enemies are cleared
-  if (enemies.length === 0) {
-    level++;
-    gameData.level = level;
-    gameData.waveWarning = 2.0; // Show warning for 2 seconds
-    spawnEnemyWave();
+  if (enemies.length === 0 && !gameData.waveClearPause) {
+    gameData.waveClearPause = true;
+    gameData.waveClearTimer = 2.0;
+    // Wave clear bonus
+    if (level > 0) {
+      gameData.score += level * 500;
+      sfx('powerup');
+    }
+  }
+
+  if (gameData.waveClearPause) {
+    gameData.waveClearTimer -= dt;
+    if (gameData.waveClearTimer <= 0) {
+      gameData.waveClearPause = false;
+      level++;
+      gameData.level = level;
+      gameData.waveWarning = 2.0;
+      spawnEnemyWave();
+    }
+    return;
   }
 
   // Game over check
@@ -1218,6 +1255,13 @@ function drawUI() {
       rect(bx, 108, Math.floor(hp * bw), 10, rgba8(255, 0, 0), true);
       rect(bx, 108, bw, 10, rgba8(200, 100, 100), false);
     }
+  }
+
+  // Wave clear bonus display
+  if (gameData.waveClearPause && gameData.level > 0) {
+    const alpha = Math.floor(Math.min(1, gameData.waveClearTimer) * 255);
+    printCentered(`WAVE ${gameData.level} CLEAR!`, 320, 160, rgba8(0, 255, 100, alpha), 2);
+    printCentered(`+${gameData.level * 500} BONUS`, 320, 190, rgba8(255, 255, 0, alpha));
   }
 
   // Wave warning

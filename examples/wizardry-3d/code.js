@@ -651,7 +651,6 @@ function updateCamera3D() {
   const bob = Math.sin(stepAnim * Math.PI * 4) * 0.1 * Math.max(0, stepAnim);
   const eyeY = 1.6 + bob;
 
-  updateShake(shake, 0.016);
   const [shakeX, shakeY] = getShakeOffset(shake);
 
   setCameraPosition(wx + shakeX * 0.02, eyeY + shakeY * 0.02, wz);
@@ -768,13 +767,15 @@ function updateExplore(dt) {
     moved = tryMove(-dz, dx);
   }
 
-  // Turning
-  if (key('ArrowLeft') || key('KeyQ')) {
+  // Turning (keyp for discrete 90° snaps)
+  if (keyp('ArrowLeft') || keyp('KeyQ')) {
     facing = (facing + 3) % 4; // turn left
     targetYaw = (facing * Math.PI) / 2;
-  } else if (key('ArrowRight') || key('KeyE')) {
+    moveCD.remaining = moveCD.duration;
+  } else if (keyp('ArrowRight') || keyp('KeyE')) {
     facing = (facing + 1) % 4; // turn right
     targetYaw = (facing * Math.PI) / 2;
+    moveCD.remaining = moveCD.duration;
   }
 
   if (keyp('KeyI') || keyp('Tab')) gameState = 'inventory';
@@ -806,18 +807,21 @@ function updateCombat(dt) {
     return;
   }
 
-  if (combatAction === 'choose' && useCooldown(inputCD)) {
+  if (combatAction === 'choose' && cooldownReady(inputCD)) {
     const member = party[combatTurn];
     if (keyp('Digit1') || keyp('KeyZ')) {
+      useCooldown(inputCD);
       // Attack
       combatAction = 'target';
       selectedTarget = enemies.findIndex(e => e.hp > 0);
     } else if (keyp('Digit2') || keyp('KeyX')) {
+      useCooldown(inputCD);
       // Cast spell (if caster)
       if (member.maxMp > 0) {
         combatAction = 'spell';
       }
     } else if (keyp('Digit3') || keyp('KeyC')) {
+      useCooldown(inputCD);
       // Defend — skip turn, boost def temporarily
       member.def += 3;
       combatLog.push(`${member.name} defends.`);
@@ -825,8 +829,9 @@ function updateCombat(dt) {
     }
   }
 
-  if (combatAction === 'target' && useCooldown(inputCD)) {
+  if (combatAction === 'target' && cooldownReady(inputCD)) {
     if (keyp('ArrowUp') || keyp('KeyW')) {
+      useCooldown(inputCD);
       // Prev enemy
       for (let i = selectedTarget - 1; i >= 0; i--) {
         if (enemies[i].hp > 0) {
@@ -835,6 +840,7 @@ function updateCombat(dt) {
         }
       }
     } else if (keyp('ArrowDown') || keyp('KeyS')) {
+      useCooldown(inputCD);
       // Next enemy
       for (let i = selectedTarget + 1; i < enemies.length; i++) {
         if (enemies[i].hp > 0) {
@@ -843,6 +849,7 @@ function updateCombat(dt) {
         }
       }
     } else if (keyp('Space') || keyp('Enter') || keyp('KeyZ')) {
+      useCooldown(inputCD);
       // Confirm attack
       const member = party[combatTurn];
       const target = enemies[selectedTarget];
@@ -859,17 +866,19 @@ function updateCombat(dt) {
       }
       advanceCombatTurn();
     } else if (keyp('Escape') || keyp('Backspace')) {
+      useCooldown(inputCD);
       combatAction = 'choose';
     }
   }
 
-  if (combatAction === 'spell' && useCooldown(inputCD)) {
+  if (combatAction === 'spell' && cooldownReady(inputCD)) {
     const member = party[combatTurn];
     const available = Object.values(SPELLS).filter(
       s => s.class === member.class && member.mp >= s.cost
     );
 
     if (keyp('Digit1') && available.length > 0) {
+      useCooldown(inputCD);
       const spell = available[0];
       if (spell.type === 'heal') {
         // Heal lowest HP ally
@@ -892,6 +901,7 @@ function updateCombat(dt) {
       }
       advanceCombatTurn();
     } else if (keyp('Digit2') && available.length > 1) {
+      useCooldown(inputCD);
       const spell = available[1];
       if (spell.type === 'heal') {
         const target = party
@@ -913,6 +923,7 @@ function updateCombat(dt) {
       }
       advanceCombatTurn();
     } else if (keyp('Escape') || keyp('Backspace')) {
+      useCooldown(inputCD);
       combatAction = 'choose';
     }
   }

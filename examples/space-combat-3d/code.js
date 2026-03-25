@@ -80,6 +80,8 @@ let explosions = [];
 let stars = [];
 let cockpitMesh = null;
 let crosshairMesh = null;
+let shake;
+let cooldowns;
 
 // ============================================
 // INITIALIZATION
@@ -118,8 +120,10 @@ export async function init() {
     pitch: 0,
     yaw: 0,
     roll: 0,
-    shake: 0,
   };
+
+  shake = createShake({ decay: 3 });
+  cooldowns = createCooldownSet({ laser: CONFIG.LASER_COOLDOWN, missile: CONFIG.MISSILE_COOLDOWN });
 
   // Clear arrays
   asteroids = [];
@@ -153,7 +157,7 @@ export async function init() {
   setLightDirection(0.5, -0.5, 0.5);
 
   // Post-processing: cinematic space look
-  enableBloom(1.0, 0.4, 0.2);
+  enableBloom(0.8, 0.4, 0.45);
   enableFXAA();
   enableVignette(1.3, 0.9);
 
@@ -348,8 +352,7 @@ export function update() {
   }
 
   // Cooldowns
-  if (player.laserCooldown > 0) player.laserCooldown -= dt;
-  if (player.missileCooldown > 0) player.missileCooldown -= dt;
+  updateCooldowns(cooldowns, dt);
 
   // Check for wave completion
   if (enemies.length === 0) {
@@ -408,16 +411,18 @@ function updateInput(dt) {
   }
 
   // Fire lasers - Space or Left Click
-  if ((isKeyDown('Space') || isKeyDown(' ')) && player.laserCooldown <= 0 && player.energy >= 5) {
+  if (
+    (isKeyDown('Space') || isKeyDown(' ')) &&
+    useCooldown(cooldowns.laser) &&
+    player.energy >= 5
+  ) {
     fireLasers();
-    player.laserCooldown = CONFIG.LASER_COOLDOWN;
     player.energy -= 5;
   }
 
   // Fire missile - M or Right Click
-  if (isKeyPressed('KeyM') && player.missileCooldown <= 0 && player.missiles > 0) {
+  if (isKeyPressed('KeyM') && useCooldown(cooldowns.missile) && player.missiles > 0) {
     fireMissile();
-    player.missileCooldown = CONFIG.MISSILE_COOLDOWN;
     player.missiles--;
   }
 
@@ -505,7 +510,7 @@ function fireLasers() {
   );
 
   // Camera shake
-  camera.shake = 0.1;
+  triggerShake(shake, 0.1);
 }
 
 function createLaser(x, y, z, dx, dy, dz, owner) {
@@ -746,7 +751,7 @@ function updateProjectiles(dt) {
           player.health -= proj.damage * 10;
         }
         hit = true;
-        camera.shake = 0.3;
+        triggerShake(shake, 0.3);
       }
     }
 
@@ -865,11 +870,10 @@ function updateCamera(dt) {
   camera.roll = player.roll;
 
   // Camera shake
-  if (camera.shake > 0) {
-    camera.shake -= dt * 3;
-    camera.pos.x += (Math.random() - 0.5) * camera.shake;
-    camera.pos.y += (Math.random() - 0.5) * camera.shake;
-  }
+  updateShake(shake, dt);
+  const [shakeX, shakeY] = getShakeOffset(shake);
+  camera.pos.x += shakeX;
+  camera.pos.y += shakeY;
 
   // Calculate look direction
   const forward = {

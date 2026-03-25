@@ -72,7 +72,7 @@ export async function init() {
   // 🎨 Enable ALL visual effects for maximum impact
   enablePixelation(1);
   enableDithering(true);
-  enableBloom(2.0, 0.3, 0.0); // Strong neon glow
+  enableBloom(1.5, 0.3, 0.25); // Strong neon glow
   enableFXAA(); // Anti-aliasing
   enableChromaticAberration(0.003); // Cyberpunk lens distortion
   enableVignette(1.6, 0.85); // Dark vignette for immersion

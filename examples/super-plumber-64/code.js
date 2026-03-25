@@ -18,6 +18,7 @@ const C = {
 let gameState = 'start'; // start, playing, gameover, win
 let t = 0;
 let inputLock = 0;
+let playerHit;
 
 let g = {
   score: 0,
@@ -61,13 +62,14 @@ export async function init() {
 
   setFog(C.sky, 50, 150);
 
-  if (typeof enableBloom === 'function') enableBloom(0.6, 0.8, 0.2);
+  if (typeof enableBloom === 'function') enableBloom(0.5, 0.6, 0.45);
   if (typeof enableFXAA === 'function') enableFXAA();
   if (typeof createSkybox === 'function') {
     createSkybox({ colorTop: 0x44bbff, colorBottom: 0xcceeaa });
   }
 
   buildLevel();
+  playerHit = createHitState({ invulnDuration: 1.5, blinkRate: 47 });
   buildPlumber();
 
   initStartScreen();
@@ -209,7 +211,7 @@ export function update(dt) {
   }
 
   const p = g.p;
-  if (p.invuln > 0) p.invuln -= dt;
+  updateHitState(playerHit, dt);
 
   // Falling out of bounds
   if (p.y < -10) {
@@ -361,7 +363,7 @@ function handleCollisions(axis) {
 function updatePlayerMeshes() {
   const p = g.p;
   // Make invisible if hit/flashing
-  const visible = p.invuln <= 0 || Math.floor(t * 15) % 2 === 0;
+  const visible = isVisible(playerHit, t);
 
   const cr = Math.cos(p.rotY),
     sr = Math.sin(p.rotY);
@@ -449,7 +451,7 @@ function updateEnemies(dt) {
         e.meshes.forEach(m => destroyMesh(m));
         g.enemies.splice(i, 1);
         g.score += 200;
-      } else if (p.invuln <= 0) {
+      } else if (!isInvulnerable(playerHit)) {
         takeDamage();
       }
     }
@@ -457,9 +459,8 @@ function updateEnemies(dt) {
 }
 
 function takeDamage() {
-  if (g.p.invuln > 0) return;
+  if (!triggerHit(playerHit)) return;
   g.health--;
-  g.p.invuln = 1.5;
   g.p.vy = 12; // knockback
   createFX(g.p.x, g.p.y + 1, g.p.z, C.plumberFace, 15);
 
@@ -627,7 +628,7 @@ function startGame() {
   g.p.vx = 0;
   g.p.vy = 0;
   g.p.vz = 0;
-  g.p.invuln = 0;
+  playerHit.invulnTimer = 0;
 
   clearButtons();
 }

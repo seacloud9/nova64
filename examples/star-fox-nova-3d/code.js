@@ -5,6 +5,8 @@
 let gameState = 'start'; // 'start' | 'playing' | 'gameover'
 let gameTime = 0;
 let inputLockout = 0.6;
+let playerHit;
+let weaponCD;
 
 const C = {
   // Ship (Modern Metallic)
@@ -89,13 +91,15 @@ export async function init() {
   }
 
   // Post-processing — cinematic space feel
-  enableBloom(1.8, 0.5, 0.15); // Intense bloom for lasers/engines
+  enableBloom(1.2, 0.4, 0.4); // Intense bloom for lasers/engines
   if (typeof enableFXAA === 'function') enableFXAA();
   if (typeof enableVignette === 'function') enableVignette(1.2, 0.92);
 
   // Build world
   createGridFloor();
   createArwing();
+  playerHit = createHitState({ invulnDuration: 1.0, blinkRate: 30 });
+  weaponCD = createCooldown(0.1);
   for (let i = 0; i < 25; i++) spawnAsteroid(true);
 
   // Start screen
@@ -490,7 +494,8 @@ function startGame() {
   game.wave = 1;
   game.speed = 60;
   game.player.health = 100;
-  game.player.invuln = 0;
+  playerHit.invulnTimer = 0;
+  weaponCD.remaining = 0;
   game.enemySpawnTimer = 0;
   game.ringSpawnTimer = 0;
   game.bossSpawned = false;
@@ -528,13 +533,13 @@ function updateArwing(dt) {
     return;
   }
 
-  if (p.invuln > 0) p.invuln -= dt;
+  updateHitState(playerHit, dt);
 
   // Barrel Roll Logic (Press Q/E or trigger dynamically)
   if (!p.isBarrelRolling && (isKeyPressed('KeyQ') || isKeyPressed('KeyE') || btnp(1) || btnp(2))) {
     p.isBarrelRolling = true;
     p.rollSpeed = isKeyPressed('KeyE') ? -Math.PI * 6 : Math.PI * 6; // Fast spin
-    p.invuln = 0.5; // Invincible during roll!
+    playerHit.invulnTimer = Math.max(playerHit.invulnTimer, 0.5); // Invincible during roll!
   }
 
   if (p.isBarrelRolling) {
@@ -593,10 +598,9 @@ function updateArwing(dt) {
   if (Math.random() < 0.6) spawnTrail();
 
   // Shooting
-  p.weaponTimer -= dt;
-  if ((key('Space') || btn(0)) && p.weaponTimer <= 0) {
+  updateCooldown(weaponCD, dt);
+  if ((key('Space') || btn(0)) && useCooldown(weaponCD)) {
     fireLaser();
-    p.weaponTimer = 0.1; // Faster fire rate
   }
 }
 
@@ -819,13 +823,13 @@ function updateEnemyBullets(dt) {
     setPosition(b.mesh, b.x, b.y, b.z);
 
     if (
-      p.invuln <= 0 &&
+      isInvulnerable(playerHit) === false &&
       Math.abs(b.x - p.x) < 2.0 &&
       Math.abs(b.y - p.y) < 1.8 &&
       Math.abs(b.z - p.z) < 2.5
     ) {
       p.health -= 25;
-      p.invuln = 1.0;
+      triggerHit(playerHit);
       createExplosion(p.x, p.y, p.z, C.explosion, 8);
       destroyMesh(b.mesh);
       game.enemyBullets.splice(i, 1);
@@ -1090,7 +1094,7 @@ function drawHUD() {
   rect(cx - 1, cy - 1, 3, 3, rgba8(255, 0, 0, 200), true);
 
   // Invuln flash / barrel roll glow
-  if (game.player.invuln > 0) {
+  if (isInvulnerable(playerHit)) {
     if (game.player.isBarrelRolling) {
       const rollAlpha = Math.floor(Math.sin(gameTime * 40) * 30 + 30);
       rect(0, 0, 640, 360, rgba8(0, 180, 255, rollAlpha), true);

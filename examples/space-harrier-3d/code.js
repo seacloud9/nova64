@@ -2,7 +2,8 @@
 
 let gameState = 'start';
 let gameTime = 0;
-let inputLockout = 0.6; // seconds to wait before accepting 'start' input
+let inputLockoutCD;
+let weaponCD;
 
 // Colors
 const PALETTE = {
@@ -28,7 +29,6 @@ let game = {
     y: 0,
     z: -5,
     health: 100,
-    weaponTimer: 0,
     meshes: {},
     animPhase: 0,
     bobPhase: 0,
@@ -62,9 +62,9 @@ export async function init() {
   // Retro presentation with modern shader touch
   if (typeof enablePixelation === 'function') enablePixelation(1);
   if (typeof enableDithering === 'function') enableDithering(true);
-  enableBloom(1.2, 0.5, 0.1); // Alien sky & bullet glow
+  enableBloom(1.0, 0.5, 0.3); // Alien sky & bullet glow
   enableFXAA();
-  enableVignette(1.3, 0.9);
+  enableVignette(1.0, 0.95);
 
   createCheckeredFloor();
   createPlayer();
@@ -72,6 +72,10 @@ export async function init() {
   for (let i = 0; i < 40; i++) {
     spawnScenery(true);
   }
+
+  inputLockoutCD = createCooldown(0.6);
+  inputLockoutCD.timer = 0.6; // start locked out
+  weaponCD = createCooldown(0.12);
 
   initStartScreen();
 }
@@ -281,14 +285,14 @@ export function update(dt) {
   gameTime += dt;
 
   if (gameState === 'start' || gameState === 'gameover') {
-    if (inputLockout > 0) inputLockout -= dt;
+    updateCooldown(inputLockoutCD, dt);
     updateAllButtons();
     updateGrid(dt * 0.4);
 
     // Animate player idly
     updatePlayer(dt, true);
 
-    if (inputLockout <= 0 && isKeyPressed('Space')) startGame();
+    if (cooldownReady(inputLockoutCD) && isKeyPressed('Space')) startGame();
     return;
   }
 
@@ -307,7 +311,7 @@ export function update(dt) {
 
 function startGame() {
   if (gameState === 'playing') return;
-  inputLockout = 0.3; // brief lockout after start too
+  inputLockoutCD.timer = 0.3; // brief lockout after start too
   gameState = 'playing';
   game.score = 0;
   game.player.health = 100;
@@ -370,10 +374,9 @@ function updatePlayer(dt, isIdle) {
     setPosition(p.meshes.legR, p.x + 0.4, bY - 1.0, p.z + 0.5);
   }
 
-  p.weaponTimer -= dt;
-  if (!isIdle && key('Space') && p.weaponTimer <= 0) {
+  updateCooldown(weaponCD, dt);
+  if (!isIdle && key('Space') && useCooldown(weaponCD)) {
     firePlayerBullet();
-    p.weaponTimer = 0.12;
   }
 }
 
@@ -634,7 +637,7 @@ function initGameOverScreen() {
     '↻ RETRY',
     () => {
       gameState = 'start';
-      inputLockout = 0.6;
+      inputLockoutCD.timer = 0.6;
       initStartScreen();
     },
     { normalColor: uiColors.danger, hoverColor: rgba8(250, 60, 60, 255) }

@@ -73,7 +73,8 @@ let cockpit = {
 };
 
 // Camera shake
-let cameraShake = { x: 0, y: 0, z: 0, intensity: 0 };
+let shake;
+let cooldowns;
 
 // UI
 let uiButtons = [];
@@ -103,6 +104,9 @@ export async function init() {
     missileCooldown: 0,
     missileCount: 20,
   };
+
+  shake = createShake({ decay: 3 });
+  cooldowns = createCooldownSet({ laser: CONFIG.LASER_COOLDOWN, missile: CONFIG.MISSILE_COOLDOWN });
 
   // Clear arrays
   asteroids = [];
@@ -147,7 +151,7 @@ function setupLighting() {
   setLightColor(0xffffee);
   setLightDirection(0.3, -0.5, -0.8);
   // Post-processing for cinematic cockpit feel
-  enableBloom(1.0, 0.4, 0.2); // Engine glow & weapon flash
+  enableBloom(0.8, 0.4, 0.45); // Engine glow & weapon flash
   enableFXAA(); // Smooth starfield
   enableVignette(1.8, 0.85); // Cockpit-style dark border
   enableChromaticAberration(0.0015); // Subtle lens dispersion
@@ -286,7 +290,7 @@ function spawnEnemy() {
 }
 
 function firePlayerLaser() {
-  if (player.laserCooldown > 0) return;
+  if (!useCooldown(cooldowns.laser)) return;
 
   // Fire two lasers from wing positions
   for (let i = -1; i <= 1; i += 2) {
@@ -301,12 +305,11 @@ function firePlayerLaser() {
     playerLasers.push(laser);
   }
 
-  player.laserCooldown = CONFIG.LASER_COOLDOWN;
   player.energy -= 2;
 }
 
 function fireMissile() {
-  if (player.missileCooldown > 0 || player.missileCount <= 0) return;
+  if (player.missileCount <= 0 || !useCooldown(cooldowns.missile)) return;
 
   const missile = {
     mesh: createCube(0.3, 0xffaa00, [0, 0, -2]),
@@ -321,7 +324,6 @@ function fireMissile() {
   setScale(missile.mesh, 0.3, 0.3, 1);
   missiles.push(missile);
 
-  player.missileCooldown = CONFIG.MISSILE_COOLDOWN;
   player.missileCount--;
 }
 
@@ -426,8 +428,7 @@ function updateInput(dt) {
   }
 
   // Cooldowns
-  if (player.laserCooldown > 0) player.laserCooldown -= dt;
-  if (player.missileCooldown > 0) player.missileCooldown -= dt;
+  updateCooldowns(cooldowns, dt);
 
   // Energy regeneration
   if (player.energy < 100 && !player.boosting) {
@@ -709,12 +710,8 @@ function updateParticles(dt) {
 
 function updateCamera(dt) {
   // First person camera - apply rotation but stay at origin
-  const shake = cameraShake.intensity;
-  const shakeX = (Math.random() - 0.5) * shake;
-  const shakeY = (Math.random() - 0.5) * shake;
-
-  // Reduce shake over time
-  cameraShake.intensity *= 0.9;
+  updateShake(shake, dt);
+  const [shakeX, shakeY] = getShakeOffset(shake);
 
   // Set camera position with shake
   setCameraPosition(shakeX, shakeY, 0);
@@ -746,7 +743,7 @@ function checkCollisions(dt) {
         playerLasers.splice(i, 1);
 
         createParticle(laser.pos, 0xffaa00, 0.3);
-        cameraShake.intensity = 0.2;
+        triggerShake(shake, 0.2);
         break;
       }
     }
@@ -766,7 +763,7 @@ function checkCollisions(dt) {
         playerLasers.splice(i, 1);
 
         createParticle(laser.pos, 0xff0000, 0.3);
-        cameraShake.intensity = 0.3;
+        triggerShake(shake, 0.3);
         break;
       }
     }
@@ -786,7 +783,7 @@ function checkCollisions(dt) {
         destroyMesh(missile.mesh);
         missiles.splice(i, 1);
 
-        cameraShake.intensity = 0.8;
+        triggerShake(shake, 0.8);
         break;
       }
     }
@@ -808,7 +805,7 @@ function checkCollisions(dt) {
 
       destroyMesh(laser.mesh);
       enemyLasers.splice(i, 1);
-      cameraShake.intensity = 0.5;
+      triggerShake(shake, 0.5);
     }
   }
 
@@ -831,7 +828,7 @@ function checkCollisions(dt) {
       createExplosion(asteroid.pos, asteroid.size);
       destroyMesh(asteroid.mesh);
       asteroids.splice(i, 1);
-      cameraShake.intensity = 1.0;
+      triggerShake(shake, 1.0);
     }
   }
 
@@ -955,11 +952,14 @@ function drawHUD() {
   rect(330, 10, 180, 50, rgba8(0, 0, 0, 180), true);
   print('WEAPONS', 370, 20, rgba8(255, 255, 255, 255));
 
-  const laserColor = player.laserCooldown > 0 ? rgba8(100, 100, 100, 255) : rgba8(0, 255, 0, 255);
+  const laserColor = !cooldownReady(cooldowns.laser)
+    ? rgba8(100, 100, 100, 255)
+    : rgba8(0, 255, 0, 255);
   print(`LASER: READY`, 340, 35, laserColor);
 
-  const missileColor =
-    player.missileCooldown > 0 ? rgba8(100, 100, 100, 255) : rgba8(255, 150, 0, 255);
+  const missileColor = !cooldownReady(cooldowns.missile)
+    ? rgba8(100, 100, 100, 255)
+    : rgba8(255, 150, 0, 255);
   print(`MISSILE: ${player.missileCount}`, 340, 50, missileColor);
 
   // Speed indicator

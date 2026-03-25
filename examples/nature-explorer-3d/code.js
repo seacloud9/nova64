@@ -147,7 +147,7 @@ export async function init() {
   setAmbientLight(0xffeedd, 0.5);
   setLightDirection(0.5, -1, 0.3);
   setFog(0x88bbdd, 40, 120);
-  enableBloom(0.4, 0.3, 0.2);
+  enableBloom(0.4, 0.3, 0.5);
   enableVignette(1.0, 0.85);
 
   if (typeof createGradientSkybox === 'function') {

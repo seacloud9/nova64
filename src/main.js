@@ -22,6 +22,7 @@ import { storeApi } from '../runtime/store.js';
 import { api2d } from '../runtime/api-2d.js';
 import { presetsApi } from '../runtime/api-presets.js';
 import { generativeApi } from '../runtime/api-generative.js';
+import { gameUtilsApi } from '../runtime/api-gameutils.js';
 
 const canvas = document.getElementById('screen');
 
@@ -55,6 +56,7 @@ const storeApiInst = storeApi();
 const api2dInst = api2d(gpu);
 const presetsInst = presetsApi(gpu);
 const genArtInst = generativeApi(gpu);
+const gameUtilsInst = gameUtilsApi();
 
 // Create UI API - needs to be created after api is fully initialized
 let uiApiInstance;
@@ -79,6 +81,7 @@ storeApiInst.exposeTo(g);
 api2dInst.exposeTo(g);
 presetsInst.exposeTo(g);
 genArtInst.exposeTo(g);
+gameUtilsInst.exposeTo(g);
 
 // Now create UI API after g has rgba8 and other functions
 uiApiInstance = uiApi(gpu, g);
@@ -250,6 +253,7 @@ const gameMap = {
   'game-of-life': '/examples/game-of-life-3d/code.js',
   nature: '/examples/nature-explorer-3d/code.js',
   dungeon: '/examples/dungeon-crawler-3d/code.js',
+  wizardry: '/examples/wizardry-3d/code.js',
 };
 
 // Map demo names (from ?demo= URL param) to paths
@@ -288,6 +292,7 @@ const demoMap = {
   'game-of-life-3d': '/examples/game-of-life-3d/code.js',
   'nature-explorer-3d': '/examples/nature-explorer-3d/code.js',
   'dungeon-crawler-3d': '/examples/dungeon-crawler-3d/code.js',
+  'wizardry-3d': '/examples/wizardry-3d/code.js',
 };
 
 // default cart - load from URL param or default to space-harrier-3d

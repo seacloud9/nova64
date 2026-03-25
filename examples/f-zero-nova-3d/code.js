@@ -23,6 +23,7 @@ const C = {
 let gameState = 'start'; // 'start', 'playing', 'crashed', 'finished'
 let t = 0; // global time
 let inputLock = 0;
+let playerHit;
 let speedLineInstanceId = null; // GPU instanced speed lines
 
 // ── Game State ─────────────────────────────────────────────
@@ -82,10 +83,11 @@ export async function init() {
   }
 
   // Neon over-glow
-  enableBloom(1.5, 0.4, 0.2);
+  enableBloom(1.0, 0.4, 0.4);
   if (typeof enableFXAA === 'function') enableFXAA();
 
   buildPlayerShip();
+  playerHit = createHitState({ invulnDuration: 0.5, blinkRate: 40 });
   initTrack();
 
   // Pre-fill track props & speed lines
@@ -275,7 +277,7 @@ export function update(dt) {
 
   // Ship logic
   const p = g.p;
-  if (p.invuln > 0) p.invuln -= dt;
+  updateHitState(playerHit, dt);
   if (g.health <= 0) {
     createSparks(p.x, p.y, p.z, 40);
     p.meshes.body && setPosition(p.meshes.body, 1000, 0, 0);
@@ -371,7 +373,7 @@ export function update(dt) {
 function hitWall(xPos) {
   g.health -= 5;
   g.speed *= 0.6; // heavy slow down
-  g.p.invuln = 0.2;
+  playerHit.invulnTimer = 0.2;
   createSparks(g.p.x + (xPos < 0 ? -1.5 : 1.5), g.p.y, g.p.z, 8);
 }
 
@@ -472,10 +474,10 @@ function updateRivals(dt) {
     }
 
     // Collision with player
-    if (p.invuln <= 0 && Math.abs(r.z - p.z) < 3.5 && Math.abs(r.x - p.x) < 2.5) {
+    if (!isInvulnerable(playerHit) && Math.abs(r.z - p.z) < 3.5 && Math.abs(r.x - p.x) < 2.5) {
       g.health -= 15;
       g.speed *= 0.7; // lose heavy momentum
-      p.invuln = 0.5;
+      triggerHit(playerHit);
       r.vx = r.x > p.x ? 15 : -15; // knock away
       createSparks((r.x + p.x) / 2, 1.5, p.z, 15);
     }
@@ -646,7 +648,7 @@ function drawHUD() {
   }
 
   // Invuln and Damage Effects
-  if (g.p.invuln > 0) {
+  if (isInvulnerable(playerHit)) {
     rect(0, 0, 640, 360, rgba8(255, 0, 0, Math.floor(Math.sin(t * 40) * 50 + 50)), true);
   }
   if (g.speed > 350) {

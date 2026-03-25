@@ -38,8 +38,10 @@ let player = {
 let camera = {
   offset: { x: 0, y: 12, z: 20 },
   target: { x: 0, y: 0, z: 0 },
-  shake: 0,
 };
+
+let shake;
+let magicCD;
 
 let time = 0;
 let dayNightCycle = 0;
@@ -55,6 +57,9 @@ export async function init() {
 
   console.log('🏰 Initializing Mystical Realm 3D...');
 
+  shake = createShake({ decay: 5 });
+  magicCD = createCooldown(0.35);
+
   // Setup camera
   setCameraPosition(camera.offset.x, camera.offset.y, camera.offset.z);
   setCameraTarget(0, 0, 0);
@@ -63,7 +68,7 @@ export async function init() {
   // Enable all retro effects for maximum N64/PSX nostalgia
   enablePixelation(1);
   enableDithering(true);
-  enableBloom(0.9, 0.6, 0.1); // Soft magical glow
+  enableBloom(0.7, 0.5, 0.5); // Soft magical glow
   enableFXAA(); // Smooth edges
   enableVignette(1.2, 0.9); // Cinematic border
 
@@ -387,7 +392,7 @@ function updatePlayer(dt) {
   }
 
   // Magic recharge
-  if (player.magicCooldown > 0) player.magicCooldown -= dt;
+  updateCooldown(magicCD, dt);
   player.magicRechargeTimer -= dt;
   if (player.magicRechargeTimer <= 0 && player.magicCharges < player.maxMagicCharges) {
     player.magicCharges++;
@@ -395,7 +400,7 @@ function updatePlayer(dt) {
   }
 
   // Cast magic bolt
-  if (keyp('KeyE') && player.magicCooldown <= 0 && player.magicCharges > 0) {
+  if (keyp('KeyE') && player.magicCharges > 0 && useCooldown(magicCD)) {
     fireMagicBolt();
   }
 
@@ -419,8 +424,7 @@ function fireMagicBolt() {
     life: 2.5,
   });
   player.magicCharges--;
-  player.magicCooldown = 0.35;
-  camera.shake = 0.8;
+  triggerShake(shake, 0.8);
 }
 
 function updateMagicBolts(dt) {
@@ -452,7 +456,7 @@ function updateMagicBolts(dt) {
         removeMesh(bolt.mesh);
         magicBolts.splice(i, 1);
         score += 10;
-        camera.shake = 1.5;
+        triggerShake(shake, 1.5);
       }
     });
   }
@@ -469,7 +473,7 @@ function checkCreatureCollection() {
       setMeshVisible(creature.mesh, false);
       creaturesKept++;
       score += 50;
-      camera.shake = 2;
+      triggerShake(shake, 2);
       // Particle burst
       for (let i = 0; i < 8; i++) spawnParticle(creature.x, creature.y, creature.z, 0xff88ff);
     }
@@ -574,12 +578,10 @@ function updateCamera(dt) {
   const targetZ = player.z + camera.offset.z;
 
   // Add camera shake for dramatic effect
-  camera.shake = Math.max(0, camera.shake - dt * 5);
-  const shakeX = (Math.random() - 0.5) * camera.shake;
-  const shakeY = (Math.random() - 0.5) * camera.shake;
-  const shakeZ = (Math.random() - 0.5) * camera.shake;
+  updateShake(shake, dt);
+  const [shakeX, shakeY] = getShakeOffset(shake);
 
-  setCameraPosition(targetX + shakeX, targetY + shakeY, targetZ + shakeZ);
+  setCameraPosition(targetX + shakeX, targetY + shakeY, targetZ);
   setCameraTarget(player.x, player.y + 2, player.z);
 }
 
@@ -690,7 +692,7 @@ function updateWeather(dt) {
     if (lightningTimer > 2 + Math.random() * 3) {
       // Lightning flash
       setLightColor(0xffffff);
-      camera.shake = 3;
+      triggerShake(shake, 3);
       lightningTimer = 0;
     }
   }
@@ -785,7 +787,7 @@ function checkCrystalCollection() {
         );
       }
 
-      camera.shake = 1;
+      triggerShake(shake, 1);
     }
   });
 }
@@ -1060,7 +1062,7 @@ function resetGame() {
   player.z = 0;
   player.jumpVelocity = 0;
   player.magicCharges = player.maxMagicCharges;
-  player.magicCooldown = 0;
+  magicCD.remaining = 0;
   player.magicRechargeTimer = 0;
   playTime = 0;
   score = 0;

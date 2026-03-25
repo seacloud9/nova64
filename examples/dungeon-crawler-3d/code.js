@@ -56,6 +56,7 @@ let messageTimer = 0;
 let combatTarget = null;
 let combatAnim = 0;
 let screenFlash = 0;
+let floatingTexts;
 
 // Camera
 let camTarget = { x: 0, y: 0 };
@@ -211,10 +212,10 @@ function generateDungeon() {
 
 function buildMapMeshes() {
   // Environment
-  setAmbientLight(0xffeedd, 0.2);
+  setAmbientLight(0xffeedd, 0.15);
   setLightDirection(0, -1, 0.2);
-  setFog(0x0a0a15, 8, 25);
-  enableBloom(0.6, 0.3, 0.2);
+  setFog(0x0a0a15, 5, 18);
+  enableBloom(0.5, 0.3, 0.45);
 
   // Create wall and floor meshes
   for (let y = 0; y < MAP_H; y++) {
@@ -303,6 +304,11 @@ function tryMove(dx, dy) {
     screenFlash = 0.15;
     combatAnim = 0.3;
     addMessage(`You hit ${enemy.name} for ${dmg} dmg!`, 0xffaa44);
+    floatingTexts.spawn(`-${dmg}`, enemy.x * TILE_SIZE, 2.5, {
+      z: enemy.y * TILE_SIZE,
+      duration: 0.8,
+      color: 0xff8844,
+    });
 
     if (enemy.hp <= 0) {
       enemy.alive = false;
@@ -381,6 +387,11 @@ function enemyTurn() {
       const dmg = attack(e, hero);
       screenFlash = 0.1;
       addMessage(`${e.name} hits you for ${dmg}!`, 0xff4444);
+      floatingTexts.spawn(`-${dmg}`, hero.x * TILE_SIZE, 2.5, {
+        z: hero.y * TILE_SIZE,
+        duration: 0.8,
+        color: 0xff4444,
+      });
       if (hero.hp <= 0) {
         gameState = 'dead';
         addMessage('You have been slain!', 0xff0000);
@@ -461,6 +472,7 @@ export function init() {
   };
   floor = 1;
   messages = [];
+  floatingTexts = createFloatingTextSystem();
   enemies = [];
   items = [];
   mapMeshes = [];
@@ -519,6 +531,12 @@ export function update(dt) {
   // Use potion
   if (keyp('KeyP') || keyp('KeyQ')) usePotion();
 
+  // Wait / skip turn (Space when not on start screen)
+  if (keyp('Space')) {
+    enemyTurn();
+    addMessage('Waiting...', 0x888899);
+  }
+
   // Animate
   if (combatAnim > 0) combatAnim -= dt;
   if (screenFlash > 0) screenFlash -= dt;
@@ -526,6 +544,9 @@ export function update(dt) {
   // Update messages
   for (const m of messages) m.timer -= dt;
   messages = messages.filter(m => m.timer > 0);
+
+  // Update floating texts
+  floatingTexts.update(dt);
 
   // Animate enemy meshes (bob)
   for (const e of enemies) {
@@ -549,10 +570,10 @@ export function update(dt) {
 function updateCamera(dt) {
   const tx = hero.x * TILE_SIZE;
   const tz = hero.y * TILE_SIZE;
-  camCurrent.x += (tx - camCurrent.x) * 0.1;
-  camCurrent.y += (tz - camCurrent.y) * 0.1;
+  camCurrent.x += (tx - camCurrent.x) * 0.12;
+  camCurrent.y += (tz - camCurrent.y) * 0.12;
 
-  setCameraPosition(camCurrent.x + 2, 18, camCurrent.y + 14);
+  setCameraPosition(camCurrent.x + 1.5, 14, camCurrent.y + 11);
   setCameraTarget(camCurrent.x, 0, camCurrent.y);
 }
 
@@ -669,13 +690,22 @@ export function draw() {
     rgba8(50, 150, 255),
     true
   );
-  // Enemies on minimap
+  // Enemies on minimap (only within 8 tiles of player — fog of war)
   for (const e of enemies) {
     if (e.alive) {
-      rect(mmX + e.x * mmSize, mmY + e.y * mmSize, mmSize, mmSize, rgba8(255, 50, 50), true);
+      const dist = Math.abs(e.x - hero.x) + Math.abs(e.y - hero.y);
+      if (dist <= 8) {
+        rect(mmX + e.x * mmSize, mmY + e.y * mmSize, mmSize, mmSize, rgba8(255, 50, 50), true);
+      }
     }
   }
 
+  // Floating damage numbers (3D world-space → isometric screen projection)
+  drawFloatingTexts3D(floatingTexts, (x, y, z) => [
+    Math.floor(320 + (x - hero.x * TILE_SIZE) * 8),
+    Math.floor(180 - y * 6 - (z - hero.y * TILE_SIZE) * 4),
+  ]);
+
   // Controls hint
-  print('WASD=Move  P=Potion  Walk into enemies to attack!', 10, 348, rgba8(100, 100, 130, 180));
+  print('WASD=Move  P=Potion  SPC=Wait  Walk into enemies!', 10, 348, rgba8(100, 100, 130, 180));
 }

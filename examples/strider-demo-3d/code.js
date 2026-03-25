@@ -20,20 +20,27 @@ const T_FLOOR = 0,
   T_SPAWNER = 5;
 
 // Gameplay
-const PLAYER_SPD = 7;
-const PLAYER_ATK_CD = 0.3;
+const PLAYER_SPD = 9;
+const PLAYER_ATK_CD = 0.25;
 const PLAYER_ATK_RANGE = 2.2;
 const PLAYER_ATK_ARC = Math.PI * 0.6;
 const ENEMY_SPD = 3;
+const DASH_SPD = 28;
+const DASH_DUR = 0.15;
+const DASH_CD = 0.6;
 
 // ---- STATE ----
 let state, t, level;
 let map, mapMeshes, treeMeshes, waterMeshes;
 let player, enemies, pickups, projectiles, particles, floats;
+let playerProjectiles;
 let exitPos;
 let score, kills, totalKills;
 let camX, camZ;
 let spawnTimers;
+let shake;
+let cooldowns;
+let playerHit;
 
 // player classes
 const CLASSES = [
@@ -62,6 +69,9 @@ const CLASSES = [
     atk: 22,
     spd: 0.9,
     atkRange: 3.0,
+    ranged: true,
+    projColor: 0xbb66ff,
+    projSpd: 16,
     desc: 'Powerful ranged magic',
   },
   {
@@ -71,6 +81,9 @@ const CLASSES = [
     atk: 12,
     spd: 1.3,
     atkRange: 2.8,
+    ranged: true,
+    projColor: 0x88ff44,
+    projSpd: 22,
     desc: 'Fastest, ranged arrows',
   },
 ];
@@ -140,6 +153,7 @@ export function init() {
   kills = 0;
   totalKills = 0;
   classIdx = 0;
+  shake = createShake();
 
   // Set up isometric camera
   setCameraFOV(45);
@@ -159,13 +173,16 @@ function startLevel() {
   enemies = [];
   pickups = [];
   projectiles = [];
+  playerProjectiles = [];
   particles = [];
-  floats = [];
+  floats = createFloatingTextSystem();
   spawnTimers = [];
 
   generateMap();
   buildMapMeshes();
   createPlayer();
+  cooldowns = createCooldownSet({ dash: DASH_CD, attack: PLAYER_ATK_CD });
+  playerHit = createHitState({ invulnDuration: 0.8, blinkRate: 25 });
   spawnEnemies();
 
   const th = theme();
@@ -391,15 +408,15 @@ function createPlayer() {
     atk: cls.atk,
     spdMul: cls.spd,
     facing: 0, // angle in radians
-    atkCD: 0,
     atkAnim: 0,
-    invuln: 0,
-    flash: 0,
     potions: 2,
     xp: 0,
     lvl: 1,
     xpNext: 50,
     keys: 0,
+    dashTimer: 0,
+    dashDX: 0,
+    dashDZ: 0,
     meshBody: null,
     meshHead: null,
     meshWeapon: null,
@@ -539,9 +556,11 @@ export function update() {
   updateEnemies(dt);
   updateSpawners(dt);
   updateProjectiles(dt);
+  updatePlayerProjectiles(dt);
   updatePickups(dt);
   updateParticles(dt);
-  updateFloats(dt);
+  floats.update(dt);
+  updateShake(shake, dt);
   updateCamera(dt);
 }
 
@@ -553,6 +572,17 @@ function updatePlayer(dt) {
   const spd = PLAYER_SPD * player.spdMul;
   let mx = 0,
     mz = 0;
+
+  // Cooldown & dash update
+  updateCooldowns(cooldowns, dt);
+  if (player.dashTimer > 0) {
+    player.dashTimer -= dt;
+    const nx = player.x + player.dashDX * DASH_SPD * dt;
+    const nz = player.z + player.dashDZ * DASH_SPD * dt;
+    if (!tileBlocking(Math.floor(nx / TILE), Math.floor(player.z / TILE))) player.x = nx;
+    if (!tileBlocking(Math.floor(player.x / TILE), Math.floor(nz / TILE))) player.z = nz;
+    playerHit.invulnTimer = Math.max(playerHit.invulnTimer, 0.05);
+  }
 
   // 8-directional movement
   if (key('ArrowUp') || key('KeyW')) mz = -1;
@@ -570,67 +600,100 @@ function updatePlayer(dt) {
     player.facing = Math.atan2(mx, -mz);
   }
 
-  // Move with collision
-  const nx = player.x + mx * spd * dt;
-  const nz = player.z + mz * spd * dt;
-  // Check tile collision
-  const tx1 = Math.floor(nx / TILE),
-    tz1 = Math.floor(nz / TILE);
-  if (!tileBlocking(Math.floor(nx / TILE), Math.floor(player.z / TILE))) player.x = nx;
-  if (!tileBlocking(Math.floor(player.x / TILE), Math.floor(nz / TILE))) player.z = nz;
+  // Dash trigger
+  if ((keyp('ShiftLeft') || keyp('ShiftRight') || keyp('KeyK')) && useCooldown(cooldowns.dash)) {
+    player.dashTimer = DASH_DUR;
+    player.dashDX = mx !== 0 || mz !== 0 ? mx : Math.sin(player.facing);
+    player.dashDZ = mx !== 0 || mz !== 0 ? mz : -Math.cos(player.facing);
+    spawnParts(player.x, 0.3, player.z, 6, 0xaaddff);
+    sfx('jump');
+  }
+
+  // Normal movement (skip during dash)
+  if (player.dashTimer <= 0) {
+    const nx = player.x + mx * spd * dt;
+    const nz = player.z + mz * spd * dt;
+    if (!tileBlocking(Math.floor(nx / TILE), Math.floor(player.z / TILE))) player.x = nx;
+    if (!tileBlocking(Math.floor(player.x / TILE), Math.floor(nz / TILE))) player.z = nz;
+  }
 
   // Attack
-  if (player.atkCD > 0) player.atkCD -= dt;
-  if (player.invuln > 0) player.invuln -= dt;
+  updateHitState(playerHit, dt);
   if (player.atkAnim > 0) player.atkAnim -= dt;
 
-  if ((keyp('Space') || keyp('KeyZ') || keyp('KeyX') || keyp('KeyJ')) && player.atkCD <= 0) {
-    player.atkCD = PLAYER_ATK_CD;
+  if (
+    (keyp('Space') || keyp('KeyZ') || keyp('KeyX') || keyp('KeyJ')) &&
+    useCooldown(cooldowns.attack)
+  ) {
     player.atkAnim = 0.2;
-    sfx('explosion');
 
-    // Hit enemies in arc
-    const range = cls.atkRange;
-    for (const e of enemies) {
-      if (!e.alive) continue;
-      const dx = e.x - player.x,
-        dz2 = e.z - player.z;
-      const dist = Math.sqrt(dx * dx + dz2 * dz2);
-      if (dist > range) continue;
-      const angleToE = Math.atan2(dx, -dz2);
-      let angleDiff = angleToE - player.facing;
-      while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
-      while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
-      if (Math.abs(angleDiff) < PLAYER_ATK_ARC / 2) {
-        damageEnemy(e, player.atk);
-      }
-    }
-    // Hit spawners
-    for (const sp of spawnTimers) {
-      if (!sp.alive) continue;
-      const sx = sp.x * TILE + 1,
-        sz = sp.y * TILE + 1;
-      const dx = sx - player.x,
-        dz2 = sz - player.z;
-      if (Math.sqrt(dx * dx + dz2 * dz2) < range) {
-        sp.hp -= player.atk;
-        if (sp.hp <= 0) {
-          sp.alive = false;
-          destroyMesh(sp.mesh);
-          destroyMesh(sp.skullMesh);
-          setTile(sp.x, sp.y, T_FLOOR);
-          score += 100;
-          spawnParts(sx, 0.5, sz, 10, 0xff4444);
-          floats.push({ x: sx, y: 2, z: sz, text: 'DESTROYED +100', timer: 1 });
-          sfx('coin');
+    if (cls.ranged) {
+      // Ranged attack: fire a projectile
+      sfx('jump');
+      const pm = createSphere(0.18, cls.projColor, [player.x, 0.9, player.z]);
+      playerProjectiles.push({
+        x: player.x,
+        z: player.z,
+        y: 0.9,
+        vx: Math.sin(player.facing) * cls.projSpd,
+        vz: -Math.cos(player.facing) * cls.projSpd,
+        mesh: pm,
+        timer: 1.5,
+        dmg: player.atk,
+      });
+      spawnParts(
+        player.x + Math.sin(player.facing) * 0.5,
+        0.9,
+        player.z - Math.cos(player.facing) * 0.5,
+        3,
+        cls.projColor
+      );
+    } else {
+      // Melee attack: hit enemies in arc
+      sfx('explosion');
+      triggerShake(shake, 0.3);
+      const range = cls.atkRange;
+      for (const e of enemies) {
+        if (!e.alive) continue;
+        const dx = e.x - player.x,
+          dz2 = e.z - player.z;
+        const dist = Math.sqrt(dx * dx + dz2 * dz2);
+        if (dist > range) continue;
+        const angleToE = Math.atan2(dx, -dz2);
+        let angleDiff = angleToE - player.facing;
+        while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+        while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+        if (Math.abs(angleDiff) < PLAYER_ATK_ARC / 2) {
+          damageEnemy(e, player.atk);
         }
       }
-    }
+      // Hit spawners
+      for (const sp of spawnTimers) {
+        if (!sp.alive) continue;
+        const sx = sp.x * TILE + 1,
+          sz = sp.y * TILE + 1;
+        const dx = sx - player.x,
+          dz2 = sz - player.z;
+        if (Math.sqrt(dx * dx + dz2 * dz2) < range) {
+          sp.hp -= player.atk;
+          if (sp.hp <= 0) {
+            sp.alive = false;
+            destroyMesh(sp.mesh);
+            destroyMesh(sp.skullMesh);
+            setTile(sp.x, sp.y, T_FLOOR);
+            score += 100;
+            spawnParts(sx, 0.5, sz, 10, 0xff4444);
+            floats.spawn('DESTROYED +100', sx, 2, { z: sz, duration: 1, color: 0xffff64 });
+            sfx('coin');
+          }
+        }
+      }
 
-    // Attack visual particles
-    const ax = player.x + Math.sin(player.facing) * 1.5;
-    const az = player.z - Math.cos(player.facing) * 1.5;
-    spawnParts(ax, 0.8, az, 5, cls.color);
+      // Attack visual particles
+      const ax = player.x + Math.sin(player.facing) * 1.5;
+      const az = player.z - Math.cos(player.facing) * 1.5;
+      spawnParts(ax, 0.8, az, 5, cls.color);
+    }
   }
 
   // Use potion
@@ -638,7 +701,7 @@ function updatePlayer(dt) {
     player.potions--;
     player.hp = Math.min(player.hp + 40, player.maxHp);
     spawnParts(player.x, 1, player.z, 8, 0x44ff44);
-    floats.push({ x: player.x, y: 2, z: player.z, text: 'HEALED!', timer: 0.8 });
+    floats.spawn('HEALED!', player.x, 2, { z: player.z, duration: 0.8, color: 0xffff64 });
     sfx('coin');
   }
 
@@ -651,7 +714,7 @@ function updatePlayer(dt) {
   }
 
   // Sync player mesh
-  const vis = player.invuln <= 0 || Math.sin(t * 25) > 0;
+  const vis = isVisible(playerHit, t);
   const bob = (mx !== 0 || mz !== 0) && player.y === 0 ? Math.abs(Math.sin(t * 10)) * 0.15 : 0;
   setPosition(player.meshBody, player.x, 0.7 + bob, player.z);
   setPosition(player.meshHead, player.x, 1.6 + bob, player.z);
@@ -681,13 +744,13 @@ function updatePlayer(dt) {
 }
 
 function hurtPlayer(dmg) {
-  if (player.invuln > 0) return;
+  if (!triggerHit(playerHit)) return;
   player.hp -= dmg;
-  player.invuln = 0.8;
-  player.flash = 0.15;
+  triggerShake(shake, 0.5);
   sfx('explosion');
   if (player.hp <= 0) {
     state = 'dead';
+    triggerShake(shake, 1.0);
     spawnParts(player.x, 1, player.z, 20, 0xff4444);
   }
 }
@@ -701,7 +764,11 @@ function gainXP(amount) {
     player.maxHp += 10;
     player.hp = Math.min(player.hp + 20, player.maxHp);
     player.atk += 2;
-    floats.push({ x: player.x, y: 3, z: player.z, text: `LEVEL UP! LVL ${player.lvl}`, timer: 2 });
+    floats.spawn(`LEVEL UP! LVL ${player.lvl}`, player.x, 3, {
+      z: player.z,
+      duration: 2,
+      color: 0xffff64,
+    });
     spawnParts(player.x, 1, player.z, 15, 0xffdd44);
     sfx('coin');
   }
@@ -793,7 +860,7 @@ function damageEnemy(e, dmg) {
     score += e.scorePts;
     gainXP(e.xp);
     spawnParts(e.x, 0.5, e.z, 8, 0xff8844);
-    floats.push({ x: e.x, y: 1.5, z: e.z, text: `+${e.scorePts}`, timer: 0.7 });
+    floats.spawn(`+${e.scorePts}`, e.x, 1.5, { z: e.z, duration: 0.7, color: 0xffff64 });
     sfx('coin');
     // Random drops
     if (Math.random() < 0.15) {
@@ -801,7 +868,7 @@ function damageEnemy(e, dmg) {
       pickups.push({ x: e.x, z: e.z, type: 'food', mesh: m, bob: Math.random() * 6 });
     }
   } else {
-    floats.push({ x: e.x, y: 1.5, z: e.z, text: 'HIT', timer: 0.3 });
+    floats.spawn('HIT', e.x, 1.5, { z: e.z, duration: 0.3, color: 0xffff64 });
   }
 }
 
@@ -854,6 +921,58 @@ function updateProjectiles(dt) {
   }
 }
 
+function updatePlayerProjectiles(dt) {
+  for (let i = playerProjectiles.length - 1; i >= 0; i--) {
+    const p = playerProjectiles[i];
+    p.x += p.vx * dt;
+    p.z += p.vz * dt;
+    p.timer -= dt;
+    setPosition(p.mesh, p.x, p.y, p.z);
+    // Hit enemies
+    let hit = false;
+    for (const e of enemies) {
+      if (!e.alive) continue;
+      const dx = p.x - e.x,
+        dz = p.z - e.z;
+      if (Math.sqrt(dx * dx + dz * dz) < 1.0) {
+        damageEnemy(e, p.dmg);
+        hit = true;
+        break;
+      }
+    }
+    // Hit spawners
+    if (!hit) {
+      for (const sp of spawnTimers) {
+        if (!sp.alive) continue;
+        const sx = sp.x * TILE + 1,
+          sz = sp.y * TILE + 1;
+        const dx = p.x - sx,
+          dz = p.z - sz;
+        if (Math.sqrt(dx * dx + dz * dz) < 1.2) {
+          sp.hp -= p.dmg;
+          hit = true;
+          if (sp.hp <= 0) {
+            sp.alive = false;
+            destroyMesh(sp.mesh);
+            destroyMesh(sp.skullMesh);
+            setTile(sp.x, sp.y, T_FLOOR);
+            score += 100;
+            spawnParts(sx, 0.5, sz, 10, 0xff4444);
+            floats.spawn('DESTROYED +100', sx, 2, { z: sz, duration: 1, color: 0xffff64 });
+            sfx('coin');
+          }
+          break;
+        }
+      }
+    }
+    if (hit || tileBlocking(Math.floor(p.x / TILE), Math.floor(p.z / TILE)) || p.timer <= 0) {
+      if (hit) spawnParts(p.x, p.y, p.z, 4, 0xffdd44);
+      destroyMesh(p.mesh);
+      playerProjectiles.splice(i, 1);
+    }
+  }
+}
+
 function updatePickups(dt) {
   for (let i = pickups.length - 1; i >= 0; i--) {
     const p = pickups[i];
@@ -867,13 +986,13 @@ function updatePickups(dt) {
       pickups.splice(i, 1);
       if (p.type === 'food') {
         player.hp = Math.min(player.hp + 15, player.maxHp);
-        floats.push({ x: p.x, y: 1, z: p.z, text: 'FOOD +15HP', timer: 0.8 });
+        floats.spawn('FOOD +15HP', p.x, 1, { z: p.z, duration: 0.8, color: 0xffff64 });
       } else if (p.type === 'potion') {
         player.potions++;
-        floats.push({ x: p.x, y: 1, z: p.z, text: 'POTION', timer: 0.8 });
+        floats.spawn('POTION', p.x, 1, { z: p.z, duration: 0.8, color: 0xffff64 });
       } else if (p.type === 'gold') {
         score += 25;
-        floats.push({ x: p.x, y: 1, z: p.z, text: '+25 GOLD', timer: 0.8 });
+        floats.spawn('+25 GOLD', p.x, 1, { z: p.z, duration: 0.8, color: 0xffff64 });
       }
       sfx('coin');
       spawnParts(p.x, 0.5, p.z, 4, 0xffdd00);
@@ -915,23 +1034,16 @@ function updateParticles(dt) {
   }
 }
 
-function updateFloats(dt) {
-  floats = floats.filter(f => {
-    f.timer -= dt;
-    f.y += dt * 2;
-    return f.timer > 0;
-  });
-}
-
 // ========================================================================
 // CAMERA (isometric top-down)
 // ========================================================================
 function updateCamera(dt) {
-  camX += (player.x - camX) * 0.08;
-  camZ += (player.z - camZ) * 0.08;
-  // Isometric: elevated, angled view
-  setCameraPosition(camX - 8, 22, camZ + 18);
-  setCameraTarget(camX, 0, camZ);
+  camX += (player.x - camX) * 0.12;
+  camZ += (player.z - camZ) * 0.12;
+  // Isometric: elevated, angled view — closer for better action feel
+  const [sx, sy] = getShakeOffset(shake);
+  setCameraPosition(camX - 6 + sx, 18 + sy, camZ + 14);
+  setCameraTarget(camX + sx * 0.5, 0, camZ + sy * 0.5);
 }
 
 // ========================================================================
@@ -953,6 +1065,9 @@ function cleanupLevel() {
   particles.forEach(p => {
     if (p.mesh) destroyMesh(p.mesh);
   });
+  playerProjectiles.forEach(p => {
+    if (p.mesh) destroyMesh(p.mesh);
+  });
   if (player.meshBody) destroyMesh(player.meshBody);
   if (player.meshHead) destroyMesh(player.meshHead);
   if (player.meshWeapon) destroyMesh(player.meshWeapon);
@@ -962,6 +1077,7 @@ function cleanupLevel() {
   enemies = [];
   pickups = [];
   projectiles = [];
+  playerProjectiles = [];
   particles = [];
 }
 
@@ -974,8 +1090,8 @@ export function draw() {
   if (state === 'levelComplete') return drawLevelComplete();
 
   // ── HUD panel ──
-  rect(8, 8, 200, 68, rgba8(0, 0, 0, 180), true);
-  rect(8, 8, 200, 68, rgba8(100, 150, 200, 100), false);
+  rect(8, 8, 200, 82, rgba8(0, 0, 0, 180), true);
+  rect(8, 8, 200, 82, rgba8(100, 150, 200, 100), false);
 
   // HP bar
   const hpP = player.hp / player.maxHp;
@@ -1006,24 +1122,42 @@ export function draw() {
   const spawners = spawnTimers.filter(s => s.alive).length;
   print(`ENEMIES ${alive}  SPAWNERS ${spawners}`, 400, 344, rgba8(180, 130, 130, 160));
 
+  // Enemy HP bars (drawn above enemies on screen)
+  for (const e of enemies) {
+    if (!e.alive || e.hp >= e.maxHp) continue;
+    const dx = e.x - camX,
+      dz = e.z - camZ;
+    if (Math.abs(dx) > 20 || Math.abs(dz) > 20) continue;
+    const sx = Math.floor(320 + (e.x - player.x) * 12);
+    const sy = Math.floor(150 - (e.z - player.z) * 6);
+    const bw = 20,
+      bh = 3;
+    const hp = e.hp / e.maxHp;
+    rect(sx - bw / 2, sy, bw, bh, rgba8(40, 0, 0, 180), true);
+    rect(sx - bw / 2, sy, Math.floor(bw * hp), bh, rgba8(220, 50, 50), true);
+  }
+
+  // Dash cooldown indicator
+  if (!cooldownReady(cooldowns.dash)) {
+    const dP = cooldownProgress(cooldowns.dash);
+    print('DASH', 14, 78, rgba8(120, 160, 220, 120));
+    rect(50, 78, 40, 5, rgba8(30, 30, 50), true);
+    rect(50, 78, Math.floor(40 * dP), 5, rgba8(100, 180, 255), true);
+  } else {
+    print('DASH RDY', 14, 78, rgba8(100, 200, 255, 180));
+  }
+
   // Minimap
   drawMinimap();
 
-  // Floating texts
-  for (const f of floats) {
-    const sx = Math.floor(320 + (f.x - player.x) * 12);
-    const sy = Math.floor(180 - (f.y - 0) * 12 - (f.z - player.z) * 6);
-    const a = Math.min(255, Math.floor(f.timer * 300));
-    print(f.text, sx, sy, rgba8(255, 255, 100, a));
-  }
+  // Floating texts (3D world-space → isometric screen projection)
+  drawFloatingTexts3D(floats, (x, y, z) => [
+    Math.floor(320 + (x - player.x) * 12),
+    Math.floor(180 - y * 12 - (z - player.z) * 6),
+  ]);
 
   // Controls hint
-  print(
-    'WASD Move  SPC/Z Attack  P Potion  Find the exit portal!',
-    80,
-    352,
-    rgba8(80, 80, 110, 110)
-  );
+  print('WASD Move  SPC/Z Attack  SHIFT Dash  P Potion', 100, 352, rgba8(80, 80, 110, 110));
 }
 
 // ---- MINIMAP ----
@@ -1100,7 +1234,7 @@ function drawClassSelect() {
     270,
     rgba8(255, 255, 100, Math.floor(100 + pulse * 155))
   );
-  printCentered('WASD = Move  |  SPACE/Z = Attack  |  P = Potion', 320, 300, rgba8(140, 140, 170));
+  printCentered('WASD Move | SPC/Z Attack | SHIFT Dash | P Potion', 320, 300, rgba8(140, 140, 170));
   printCentered('Destroy spawners! Find the exit portal!', 320, 320, rgba8(120, 160, 140));
 }
 

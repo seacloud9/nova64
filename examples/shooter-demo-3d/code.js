@@ -52,7 +52,7 @@ export async function init() {
   // Enable retro effects + post-processing
   enablePixelation(1);
   enableDithering(true);
-  enableBloom(1.5, 0.4, 0.1); // Weapon fire & engine trail
+  enableBloom(1.0, 0.4, 0.4); // Weapon fire & engine trail
   enableFXAA();
   enableVignette(1.4, 0.88);
 

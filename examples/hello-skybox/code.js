@@ -38,7 +38,7 @@ export async function init() {
   setLightColor(0xaaaaff);
 
   // Post-processing
-  enableBloom(1.4, 0.6, 0.3);
+  enableBloom(1.0, 0.5, 0.5);
   enableFXAA();
   enableVignette(1.0, 0.85);
 

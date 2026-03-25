@@ -285,13 +285,13 @@ export function draw() {
   if (state === 'title') {
     // Title card
     drawComicPanel(20, 18, 280, 88);
-    print('THE VERDICT', 90, 38, 0xffbb00);
+    print('THE VERDICT', 90, 38, 0xffffff);
     print('A 3D Noir Comic Adventure', 46, 58, 0xffffff);
-    print('Uncover the truth...', 90, 76, 0xaaaaaa);
+    print('Uncover the truth...', 90, 76, 0xffffff);
 
     // Pulsing prompt
     const pulse = Math.floor((Math.sin(sceneTime * 5) * 0.5 + 0.5) * 200 + 55);
-    print('SPACE to begin investigation', 50, 210, rgba8(180, 180, 180, pulse));
+    print('SPACE to begin investigation', 50, 210, rgba8(255, 255, 255, pulse));
   } else if (state === 'explore') {
     const distToDesk = Math.hypot(playerPos.x, playerPos.z);
     const distToSuspect = Math.hypot(playerPos.x - 3, playerPos.z + 2);
@@ -306,8 +306,8 @@ export function draw() {
     }
 
     // Status
-    print('WASD — Move', 6, 6, 0x666666);
-    if (hasEvidence) print('EVIDENCE COLLECTED', 6, 20, rgba8(0, 255, 136, 200));
+    print('WASD — Move', 6, 6, 0xffffff);
+    if (hasEvidence) print('EVIDENCE COLLECTED', 6, 20, rgba8(255, 255, 255, 200));
   } else if (state === 'dialogue') {
     // Cinematic letterbox bars
     rectfill(0, 0, W, 28, 0x000000);
@@ -327,7 +327,7 @@ export function draw() {
     // Advance prompt
     if (textScroll >= currentText.length) {
       const blink = Math.floor(sceneTime * 4) % 2 === 0;
-      if (blink) print('▼ SPACE', W - 50, H - 18, 0xcccccc);
+      if (blink) print('▼ SPACE', W - 50, H - 18, 0xffffff);
     }
   }
 }

@@ -163,6 +163,8 @@ export function draw() {
 - **💾 Storage**: saveData(key,val), loadData(key,fallback), deleteData(key)
 - **⚛️ Physics**: createBody(), stepPhysics(dt), setGravity(), setCollisionMap(fn)
 - **✍️ Text**: print(), printCentered(), drawGlowText(), drawCrosshair(), drawProgressBar()
+- **🗺️ Minimap**: createMinimap(opts), drawMinimap(mm,time) — tile maps, entity dots, fog of war, radar sweep, circle/rect shapes
+- **🎮 Game Utils**: createShake/triggerShake/updateShake, createCooldown/useCooldown/updateCooldowns, createHitState/triggerHit/isInvulnerable/isVisible, createSpawner/updateSpawner, createPool, createFloatingTextSystem/drawFloatingTexts/drawFloatingTexts3D, createStateMachine, createTimer
 
 ## 🏗️ **Project Structure & Features**
 

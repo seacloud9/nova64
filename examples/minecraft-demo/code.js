@@ -1,4 +1,4 @@
-// Minecraft Demo - Ultimate Edition
+// Minecraft Demo - Ultimate Edition with Biomes
 let player = {
   x: 0,
   y: 30,
@@ -19,6 +19,7 @@ let time = 0;
 let loadState = 0;
 let isLoaded = false;
 let loadProgress = 0;
+let currentBiome = 'Plains';
 
 const BLOCK_NAMES = {
   1: 'GRASS',
@@ -41,6 +42,44 @@ const BLOCK_COLORS = {
   8: 0xccaa66,
 };
 const HOTBAR_BLOCKS = [1, 2, 3, 8, 6, 4];
+
+// Biome detection (mirrors runtime terrain gen noise)
+function detectBiome(px, pz) {
+  // Use same perlinNoise-based logic as runtime generateChunkTerrain
+  // We approximate using sin-based hash since we don't have perlinNoise exposed
+  const tx = px * 0.5,
+    tz = pz * 0.5;
+  const temperature =
+    Math.sin(tx * 0.01 * 3.7 + tz * 0.01 * 2.3) * 0.3 +
+    Math.sin(tx * 0.01 * 7.1 + tz * 0.01 * 5.9) * 0.15 +
+    0.5;
+  const mx = px * 0.3 + 1000,
+    mz = pz * 0.3 + 1000;
+  const moisture =
+    Math.sin(mx * 0.01 * 3.7 + mz * 0.01 * 2.3) * 0.3 +
+    Math.sin(mx * 0.01 * 7.1 + mz * 0.01 * 5.9) * 0.15 +
+    0.5;
+
+  if (temperature < 0.2) return 'Frozen Tundra';
+  if (temperature < 0.35 && moisture > 0.5) return 'Taiga';
+  if (temperature > 0.7 && moisture < 0.25) return 'Desert';
+  if (temperature > 0.6 && moisture > 0.6) return 'Jungle';
+  if (moisture < 0.3) return 'Savanna';
+  if (temperature > 0.4 && moisture > 0.4) return 'Forest';
+  if (temperature < 0.35) return 'Snowy Hills';
+  return 'Plains';
+}
+
+const BIOME_COLORS = {
+  'Frozen Tundra': rgba8(200, 220, 255),
+  Taiga: rgba8(100, 180, 140),
+  Desert: rgba8(255, 220, 130),
+  Jungle: rgba8(80, 220, 80),
+  Savanna: rgba8(220, 180, 100),
+  Forest: rgba8(100, 200, 100),
+  'Snowy Hills': rgba8(220, 230, 255),
+  Plains: rgba8(150, 220, 150),
+};
 
 function createVoxelTexture() {
   const canvas = document.createElement('canvas');
@@ -112,6 +151,9 @@ export function update() {
   let skyG = Math.sin(time) > 0 ? 206 : 10;
   let skyB = Math.sin(time) > 0 ? 235 : 20;
   setFog((skyR << 16) | (skyG << 8) | skyB, 20, 80);
+
+  // Detect current biome
+  currentBiome = detectBiome(player.x, player.z);
 
   handleInput();
   updatePhysics();
@@ -292,6 +334,10 @@ export function draw() {
   print('MINECRAFT ULTIMATE 64', 5, 4, 0xffdd88);
   const pos = `${Math.floor(player.x)}, ${Math.floor(player.y)}, ${Math.floor(player.z)}`;
   print(pos, 560, 4, rgba8(200, 200, 200, 200));
+
+  // Biome indicator
+  const biomeCol = BIOME_COLORS[currentBiome] || rgba8(200, 200, 200);
+  print(currentBiome, 220, 4, biomeCol);
 
   // Crosshair
   const cx = 320,

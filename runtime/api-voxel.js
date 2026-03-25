@@ -160,39 +160,96 @@ export function voxelApi(gpu) {
     const baseX = chunk.chunkX * CHUNK_SIZE;
     const baseZ = chunk.chunkZ * CHUNK_SIZE;
 
+    // Pending trees to place after terrain fill (avoid overwriting terrain)
+    const pendingTrees = [];
+
     for (let x = 0; x < CHUNK_SIZE; x++) {
       for (let z = 0; z < CHUNK_SIZE; z++) {
         const worldX = baseX + x;
         const worldZ = baseZ + z;
 
-        // Generate height using Perlin noise
-        const height = Math.floor(perlinNoise(worldX, worldZ, 4, 0.5) * 20 + 32);
-
-        // Biome selection
+        // Biome selection via temperature + moisture noise
         const temperature = perlinNoise(worldX * 0.5, worldZ * 0.5, 2, 0.5);
         const moisture = perlinNoise(worldX * 0.3 + 1000, worldZ * 0.3 + 1000, 2, 0.5);
 
+        // Per-biome height profile
+        let heightScale = 20;
+        let heightBase = 32;
+        let surfaceBlock = BLOCK_TYPES.GRASS;
+        let subBlock = BLOCK_TYPES.DIRT;
+        let treeChance = 0;
+        let waterLevel = 30;
+
+        if (temperature < 0.2) {
+          // ── Frozen Tundra ──
+          surfaceBlock = BLOCK_TYPES.SNOW;
+          subBlock = BLOCK_TYPES.ICE;
+          heightScale = 12;
+          heightBase = 33;
+          treeChance = 0.01;
+        } else if (temperature < 0.35 && moisture > 0.5) {
+          // ── Taiga (cold forest) ──
+          surfaceBlock = BLOCK_TYPES.GRASS;
+          subBlock = BLOCK_TYPES.DIRT;
+          heightScale = 16;
+          heightBase = 34;
+          treeChance = 0.08;
+        } else if (temperature > 0.7 && moisture < 0.25) {
+          // ── Desert ──
+          surfaceBlock = BLOCK_TYPES.SAND;
+          subBlock = BLOCK_TYPES.SAND;
+          heightScale = 8;
+          heightBase = 31;
+          treeChance = 0;
+        } else if (temperature > 0.6 && moisture > 0.6) {
+          // ── Jungle ──
+          surfaceBlock = BLOCK_TYPES.GRASS;
+          subBlock = BLOCK_TYPES.DIRT;
+          heightScale = 25;
+          heightBase = 30;
+          treeChance = 0.12;
+        } else if (moisture < 0.3) {
+          // ── Savanna ──
+          surfaceBlock = BLOCK_TYPES.SAND;
+          subBlock = BLOCK_TYPES.DIRT;
+          heightScale = 10;
+          heightBase = 33;
+          treeChance = 0.02;
+        } else if (temperature > 0.4 && moisture > 0.4) {
+          // ── Forest ──
+          surfaceBlock = BLOCK_TYPES.GRASS;
+          subBlock = BLOCK_TYPES.DIRT;
+          heightScale = 18;
+          heightBase = 32;
+          treeChance = 0.06;
+        } else if (temperature < 0.35) {
+          // ── Snowy Hills ──
+          surfaceBlock = BLOCK_TYPES.SNOW;
+          subBlock = BLOCK_TYPES.STONE;
+          heightScale = 28;
+          heightBase = 35;
+          treeChance = 0.02;
+        } else {
+          // ── Plains ──
+          surfaceBlock = BLOCK_TYPES.GRASS;
+          subBlock = BLOCK_TYPES.DIRT;
+          heightScale = 14;
+          heightBase = 32;
+          treeChance = 0.015;
+        }
+
+        const height = Math.floor(perlinNoise(worldX, worldZ, 4, 0.5) * heightScale + heightBase);
+
         for (let y = 0; y < CHUNK_HEIGHT; y++) {
           if (y === 0) {
-            // Bedrock layer
             chunk.setBlock(x, y, z, BLOCK_TYPES.BEDROCK);
           } else if (y < height - 3) {
-            // Stone layer
             chunk.setBlock(x, y, z, BLOCK_TYPES.STONE);
           } else if (y < height - 1) {
-            // Dirt layer
-            chunk.setBlock(x, y, z, BLOCK_TYPES.DIRT);
+            chunk.setBlock(x, y, z, subBlock);
           } else if (y === height - 1) {
-            // Top layer based on biome
-            if (temperature < 0.3) {
-              chunk.setBlock(x, y, z, BLOCK_TYPES.SNOW);
-            } else if (moisture < 0.3) {
-              chunk.setBlock(x, y, z, BLOCK_TYPES.SAND);
-            } else {
-              chunk.setBlock(x, y, z, BLOCK_TYPES.GRASS);
-            }
-          } else if (y < 30 && y >= height) {
-            // Water level
+            chunk.setBlock(x, y, z, surfaceBlock);
+          } else if (y < waterLevel && y >= height) {
             chunk.setBlock(x, y, z, BLOCK_TYPES.WATER);
           }
 
@@ -201,6 +258,38 @@ export function voxelApi(gpu) {
             const cave = perlinNoise(worldX * 0.5, y * 0.5, worldZ * 0.5, 3, 0.5);
             if (cave > 0.6) {
               chunk.setBlock(x, y, z, BLOCK_TYPES.AIR);
+            }
+          }
+        }
+
+        // Random tree placement (seeded by world position)
+        if (height > waterLevel && treeChance > 0) {
+          const treeSeed = Math.sin(worldX * 12.9898 + worldZ * 78.233) * 43758.5453;
+          const treeRoll = treeSeed - Math.floor(treeSeed);
+          if (treeRoll < treeChance && x > 2 && x < CHUNK_SIZE - 3 && z > 2 && z < CHUNK_SIZE - 3) {
+            pendingTrees.push({ x, y: height, z });
+          }
+        }
+      }
+    }
+
+    // Place trees after terrain is fully generated
+    for (const t of pendingTrees) {
+      const trunkHeight = 4 + Math.floor(Math.abs(Math.sin(t.x * 7 + t.z * 13)) * 3);
+      for (let i = 0; i < trunkHeight; i++) {
+        chunk.setBlock(t.x, t.y + i, t.z, BLOCK_TYPES.WOOD);
+      }
+      const leafY = t.y + trunkHeight;
+      for (let dx = -2; dx <= 2; dx++) {
+        for (let dy = -2; dy <= 2; dy++) {
+          for (let dz = -2; dz <= 2; dz++) {
+            if (Math.abs(dx) + Math.abs(dy) + Math.abs(dz) < 4) {
+              const lx = t.x + dx,
+                ly = leafY + dy,
+                lz = t.z + dz;
+              if (lx >= 0 && lx < CHUNK_SIZE && lz >= 0 && lz < CHUNK_SIZE && ly < CHUNK_HEIGHT) {
+                chunk.setBlock(lx, ly, lz, BLOCK_TYPES.LEAVES);
+              }
             }
           }
         }

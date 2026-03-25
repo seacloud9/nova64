@@ -6,6 +6,8 @@
 let state = 'title'; // 'title' | 'explore' | 'dialogue'
 let sceneTime = 0; // seconds since last state enter
 let textScroll = 0;
+let lastCharCount = 0; // for typewriter sfx
+let tickTimer = 0;
 
 let currentText = '';
 let speaker = '';
@@ -197,6 +199,7 @@ export function update(dt) {
 
     if (key('Space') || btn('A')) {
       state = 'explore';
+      sfx('confirm');
       hasEvidence = false;
       gameFinished = false;
       playerPos = { x: 0, z: 6 };
@@ -230,6 +233,7 @@ export function update(dt) {
         dialogStage = 0;
         processDialog();
         sceneTime = 0;
+        sfx('coin');
       } else if (distToSuspect < 2.5) {
         state = 'dialogue';
         currentScript = hasEvidence ? SCRIPT_CONFRONT : SCRIPT_SUSPECT;
@@ -237,10 +241,22 @@ export function update(dt) {
         dialogStage = 0;
         processDialog();
         sceneTime = 0;
+        sfx('select');
       }
     }
   } else if (state === 'dialogue') {
     textScroll += 30 * dt; // ~30 chars/sec typewriter
+
+    // Typewriter tick sound
+    const charCount = Math.floor(textScroll);
+    if (charCount > lastCharCount && charCount <= currentText.length) {
+      tickTimer -= dt;
+      if (tickTimer <= 0) {
+        sfx('blip');
+        tickTimer = 0.06;
+      }
+    }
+    lastCharCount = charCount;
 
     if (sceneTime > 0.25 && (key('Space') || btn('A'))) {
       if (textScroll < currentText.length) {
@@ -250,6 +266,7 @@ export function update(dt) {
         dialogStage++;
         processDialog();
         sceneTime = 0;
+        sfx('select');
       }
     }
   }

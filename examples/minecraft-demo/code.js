@@ -20,6 +20,28 @@ let loadState = 0;
 let isLoaded = false;
 let loadProgress = 0;
 
+const BLOCK_NAMES = {
+  1: 'GRASS',
+  2: 'DIRT',
+  3: 'STONE',
+  4: 'SAND',
+  5: 'WATER',
+  6: 'WOOD',
+  7: 'LEAVES',
+  8: 'PLANKS',
+};
+const BLOCK_COLORS = {
+  1: 0x55cc33,
+  2: 0x886644,
+  3: 0x888888,
+  4: 0xddcc88,
+  5: 0x3388ff,
+  6: 0x664422,
+  7: 0x228833,
+  8: 0xccaa66,
+};
+const HOTBAR_BLOCKS = [1, 2, 3, 8, 6, 4];
+
 function createVoxelTexture() {
   const canvas = document.createElement('canvas');
   canvas.width = 64;
@@ -141,7 +163,16 @@ function handleInput() {
   if (key('Space') && player.onGround) {
     player.vy = player.jump;
     player.onGround = false;
+    sfx('jump');
   }
+
+  // Number keys for block selection
+  if (keyp('Digit1')) selectedBlock = HOTBAR_BLOCKS[0];
+  if (keyp('Digit2')) selectedBlock = HOTBAR_BLOCKS[1];
+  if (keyp('Digit3')) selectedBlock = HOTBAR_BLOCKS[2];
+  if (keyp('Digit4')) selectedBlock = HOTBAR_BLOCKS[3];
+  if (keyp('Digit5')) selectedBlock = HOTBAR_BLOCKS[4];
+  if (keyp('Digit6')) selectedBlock = HOTBAR_BLOCKS[5];
 
   if (btnp(0)) selectedBlock = 1; // Grass
   if (btnp(1)) selectedBlock = 2; // Dirt
@@ -162,6 +193,7 @@ function updatePhysics() {
     checkCollision(player.x, ny - player.size, player.z) ||
     checkCollision(player.x, ny + 0.2, player.z)
   ) {
+    if (player.vy < 0 && !player.onGround) sfx('land');
     if (player.vy < 0) player.onGround = true;
     player.vy = 0;
     ny = player.y;
@@ -235,8 +267,14 @@ function handleBlockInteraction() {
       5
     );
     if (rayStr) {
-      if (btnp(4)) setVoxelBlock(rayStr.hit.x, rayStr.hit.y, rayStr.hit.z, 0); // break
-      if (btnp(5)) setVoxelBlock(rayStr.prev.x, rayStr.prev.y, rayStr.prev.z, selectedBlock); // place
+      if (btnp(4)) {
+        setVoxelBlock(rayStr.hit.x, rayStr.hit.y, rayStr.hit.z, 0); // break
+        sfx('hit');
+      }
+      if (btnp(5)) {
+        setVoxelBlock(rayStr.prev.x, rayStr.prev.y, rayStr.prev.z, selectedBlock); // place
+        sfx('blip');
+      }
     }
     return;
   }
@@ -249,9 +287,43 @@ export function draw() {
     return;
   }
 
-  print('MINECRAFT ULTIMATE 64', 5, 5, 0xffdd88);
-  print(`Block: ${selectedBlock}`, 5, 20, 0xffffff);
-  print('L-Click: Break | R-Click: Place', 5, 35, 0xaaaaaa);
+  // Title bar
+  rect(0, 0, 640, 16, rgba8(0, 0, 0, 150), true);
+  print('MINECRAFT ULTIMATE 64', 5, 4, 0xffdd88);
+  const pos = `${Math.floor(player.x)}, ${Math.floor(player.y)}, ${Math.floor(player.z)}`;
+  print(pos, 560, 4, rgba8(200, 200, 200, 200));
 
-  print('+', 156, 116, 0xffffff);
+  // Crosshair
+  const cx = 320,
+    cy = 180;
+  rect(cx - 1, cy - 8, 2, 16, rgba8(255, 255, 255, 200), true);
+  rect(cx - 8, cy - 1, 16, 2, rgba8(255, 255, 255, 200), true);
+
+  // Hotbar
+  const hbY = 340;
+  const hbW = HOTBAR_BLOCKS.length * 32 + 8;
+  const hbX = (640 - hbW) / 2;
+  rect(hbX, hbY, hbW, 20, rgba8(0, 0, 0, 180), true);
+  rect(hbX, hbY, hbW, 20, rgba8(100, 100, 100, 150), false);
+  for (let i = 0; i < HOTBAR_BLOCKS.length; i++) {
+    const bx = hbX + 4 + i * 32;
+    const bid = HOTBAR_BLOCKS[i];
+    const col = BLOCK_COLORS[bid] || 0xffffff;
+    if (bid === selectedBlock) {
+      rect(bx - 1, hbY - 1, 30, 22, rgba8(255, 255, 255, 255), false);
+    }
+    rect(bx + 2, hbY + 2, 24, 16, col, true);
+    print(`${i + 1}`, bx + 10, hbY + 4, rgba8(255, 255, 255, 220));
+  }
+  // Block name below hotbar
+  const bname = BLOCK_NAMES[selectedBlock] || 'UNKNOWN';
+  print(bname, (640 - bname.length * 8) / 2, hbY - 14, rgba8(255, 255, 255, 200));
+
+  // Controls hint
+  print(
+    'WASD=Move  Space=Jump  Arrows=Look  L/R Click=Break/Place  1-6=Block',
+    30,
+    20,
+    rgba8(150, 150, 150, 150)
+  );
 }

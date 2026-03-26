@@ -338,6 +338,12 @@ let floorNoiseMap; // Float32Array for deep floor atmospheric overlay
 // Game over restart button (createButton API)
 let restartButton;
 
+// Game statistics store (createGameStore API)
+let gameStats;
+
+// LOD torch decorations (createLODMesh API)
+let lodTorches;
+
 // 3D mesh tracking
 let currentLevelMeshes = [];
 let monsterMeshes = [];
@@ -508,6 +514,11 @@ function clearLevel() {
     instancedDecor = null;
   }
   floorNoiseMap = null; // regenerate noiseMap fog per floor
+  // Clean up LOD torches
+  if (lodTorches) {
+    for (const id of lodTorches) removeLODMesh(id);
+  }
+  lodTorches = [];
   waterShaders = [];
   clearMonsterMeshes();
 }
@@ -678,25 +689,39 @@ function buildLevel() {
           currentLevelMeshes.push(rune);
           animatedMeshes.push({ id: rune, type: 'spin', speed: 1 });
         } else if (tile === T.BOSS) {
-          // Boss marker — ominous pillar with glow
-          const pillar = createCylinder(0.4, 2.5, 0x440022, 6, [wx, 1.25, wz]);
+          // Boss marker — advanced pillar with full PBR (createAdvancedCube)
+          const pillar = createAdvancedCube(
+            0.8,
+            { color: 0x440022, metalness: 0.7, roughness: 0.3 },
+            [wx, 1.25, wz]
+          );
+          setScale(pillar, 0.5, 3.1, 0.5);
           currentLevelMeshes.push(pillar);
-          const orb = createSphere(0.3, 0xff0044, [wx, 2.6, wz], 8, {
-            material: 'emissive',
-            emissive: 0xff0044,
-            emissiveIntensity: 1.2,
-          });
+          const orb = createAdvancedSphere(
+            0.3,
+            { color: 0xff0044, emissive: 0xff0044, emissiveIntensity: 1.2 },
+            [wx, 2.6, wz],
+            8
+          );
           currentLevelMeshes.push(orb);
           animatedMeshes.push({ id: orb, type: 'pulse', baseScale: 1, speed: 2, range: 0.4 });
-          setPBRProperties(pillar, { metalness: 0.7, roughness: 0.3 });
           const l = createPointLight(0xff0044, 2, 10, wx, 2, wz);
           torchLights.push(l);
         }
 
-        // Scatter torches with particle fire
+        // Scatter torches with particle fire + LOD variants
         if (tile === T.FLOOR && Math.random() < 0.04) {
           const l = createPointLight(0xff8833, 1.2, 10, wx, 2.2, wz);
           torchLights.push({ lightId: l, baseIntensity: 1.2, wx, wz });
+          // Create LOD torch: high detail close, low detail far
+          const lod = createLODMesh(
+            [
+              { shape: 'cone', size: 0.3, color: 0xff6600, distance: 0 },
+              { shape: 'cube', size: 0.15, color: 0xff6600, distance: 12 },
+            ],
+            [wx, 2.5, wz]
+          );
+          if (lod) lodTorches.push(lod);
           const torch = createCone(0.1, 0.3, 0xff6600, [wx, 2.5, wz], {
             material: 'emissive',
             emissive: 0xff6600,
@@ -1465,6 +1490,8 @@ function tryMove(dx, dz) {
   py = nz;
   stepAnim = 1.0;
   revealAround(px, py);
+  // Track steps in game store
+  if (gameStats) gameStats.setState({ steps: gameStats.getState().steps + 1 });
 
   // Interact with special tiles
   if (tile === T.DOOR) {
@@ -1882,6 +1909,8 @@ export function init() {
       rounded: true,
     }
   );
+  gameStats = createGameStore({ kills: 0, steps: 0, chestsOpened: 0, fountainsUsed: 0 });
+  lodTorches = [];
   waterShaders = [];
   currentLevelMeshes = [];
   monsterMeshes = [];
@@ -1895,6 +1924,10 @@ export function update(dt) {
   if (floatingTexts3D) floatingTexts3D.update(dt);
   updateShake(shake, dt);
   updateParticles(dt);
+  // Manually animate skybox rotation (animateSkybox API)
+  animateSkybox(dt);
+  // Update LOD levels based on camera distance
+  updateLODs();
 
   // Tick hit state timers (invulnerability + flash)
   if (hitStates) {
@@ -2163,6 +2196,7 @@ function updateCombat(dt) {
         });
         if (t.hp <= 0) {
           combatLog.push(`${t.name} defeated!`);
+          if (gameStats) gameStats.setState({ kills: gameStats.getState().kills + 1 });
           if (t.allMeshes) {
             for (const id of t.allMeshes) setMeshVisible(id, false);
             const meshesToDestroy = [...t.allMeshes];
@@ -2262,6 +2296,7 @@ function updateCombat(dt) {
         combatLog.push(`${target.name} defeated!`);
         sfx('explosion');
         triggerScreenFlash(255, 200, 50, 120);
+        if (gameStats) gameStats.setState({ kills: gameStats.getState().kills + 1 });
         if (target.allMeshes) {
           // Blink out death animation: hide meshes, then destroy after delay
           for (const id of target.allMeshes) setMeshVisible(id, false);
@@ -2460,11 +2495,16 @@ function updateShop(dt) {
     return;
   }
 
-  // Browsing items
-  if (keyp('ArrowUp') || keyp('KeyW')) {
+  // Browsing items (keyboard + gamepad via gamepadAxis)
+  const shopStickY = gamepadAxis('leftY');
+  if (keyp('ArrowUp') || keyp('KeyW') || (shopStickY < -0.5 && cooldownReady(cooldowns.input))) {
     useCooldown(cooldowns.input);
     shopCursor = (shopCursor + shopItems.length - 1) % shopItems.length;
-  } else if (keyp('ArrowDown') || keyp('KeyS')) {
+  } else if (
+    keyp('ArrowDown') ||
+    keyp('KeyS') ||
+    (shopStickY > 0.5 && cooldownReady(cooldowns.input))
+  ) {
     useCooldown(cooldowns.input);
     shopCursor = (shopCursor + 1) % shopItems.length;
   } else if (keyp('Space') || keyp('Enter') || keyp('KeyZ')) {
@@ -2639,14 +2679,12 @@ export function draw() {
     const alpha = Math.min(1, spellVFX.timer * 3);
     if (spellVFX.type === 'star') {
       const r = 30 + (1 - alpha) * 40;
-      // HSB hue-cycling glow ring around spell impact using hsb()
-      const hueShift = animTimer * 200 + spellVFX.timer * 400;
-      circle(
-        spellVFX.x,
-        spellVFX.y,
-        Math.floor(r + 8),
-        hsb(hueShift, 0.8, 0.6, Math.floor(alpha * 100))
-      );
+      // HSB hue-cycling glow ring using colorMode + color API
+      colorMode('hsb', 360, 100, 100);
+      const ringHue = (animTimer * 200 + spellVFX.timer * 400) % 360;
+      const ringColor = color(ringHue, 80, 60, Math.floor(alpha * 100));
+      colorMode('rgb', 255); // restore RGB mode
+      circle(spellVFX.x, spellVFX.y, Math.floor(r + 8), ringColor);
       drawStarburst(spellVFX.x, spellVFX.y, r, r * 0.4, 8, spellVFX.color);
       // Bezier arc spell trail — curved energy arc from caster to impact
       const arcProgress = 1 - alpha;
@@ -3277,7 +3315,7 @@ function drawInventoryUI() {
     printRight(`Bosses slain: ${bossDefeated.size}`, 560, H - 90, n64Palette.red);
   }
 
-  // Render stats debug info using get3DStats + getParticleStats
+  // Render stats debug info using get3DStats + getParticleStats + getRenderer
   const stats = get3DStats();
   if (stats) {
     let debugStr = `Tris:${stats.triangles || 0}  Draws:${stats.drawCalls || 0}  Meshes:${stats.meshes || 0}`;
@@ -3287,7 +3325,16 @@ function drawInventoryUI() {
       if (pStats) debugStr += `  Particles:${pStats.active}/${pStats.max}`;
     }
     debugStr += `  Frame:${frameCount}`;
+    // Show renderer type from getRenderer()
+    const renderer = getRenderer();
+    if (renderer && renderer.info)
+      debugStr += `  GL:${renderer.info.programs ? renderer.info.programs.length : '?'}prg`;
     print(debugStr, 60, H - 55, rgba8(80, 80, 100, 120));
+  }
+  // Game stats from createGameStore
+  if (gameStats) {
+    const gs = gameStats.getState();
+    print(`Steps:${gs.steps}  Kills:${gs.kills}`, 60, H - 42, rgba8(70, 70, 90, 100));
   }
   // Restore font after inventory rendering
   if (prevFont) setFont(prevFont.name || 'default');

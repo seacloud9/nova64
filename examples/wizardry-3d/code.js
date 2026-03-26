@@ -503,9 +503,10 @@ function buildLevel() {
           currentLevelMeshes.push(m);
         }
       } else {
-        // Floor
+        // Floor — receives shadows from walls, objects, and monsters
         const f = createPlane(TILE, TILE, theme.floorColor, [wx, 0.01, wz]);
         rotateMesh(f, -Math.PI / 2, 0, 0);
+        setReceiveShadow(f, true);
         currentLevelMeshes.push(f);
 
         // Ceiling
@@ -632,7 +633,7 @@ function buildLevel() {
         // Scatter torches with particle fire
         if (tile === T.FLOOR && Math.random() < 0.04) {
           const l = createPointLight(0xff8833, 1.2, 10, wx, 2.2, wz);
-          torchLights.push(l);
+          torchLights.push({ lightId: l, baseIntensity: 1.2, wx, wz });
           const torch = createCone(0.1, 0.3, 0xff6600, [wx, 2.5, wz], {
             material: 'emissive',
             emissive: 0xff6600,
@@ -820,6 +821,9 @@ function startCombat(isBoss) {
     triggerScreenFlash(255, 0, 50, 200);
     enableChromaticAberration(0.006);
     setBloomStrength(1.8); // intensify bloom for boss encounter
+    setBloomRadius(0.6); // wider bloom spread for boss drama
+    // Burst particles on all visible particle systems for boss entrance
+    for (const psId of particleSystems) burstParticles(psId, 12);
   }
 }
 
@@ -1202,6 +1206,8 @@ function castSpellInCombat(member, spell) {
     if (result) {
       combatLog.push(`${member.name} casts ${spell.name}! ${result.dmg} damage!`);
       setBloomStrength(2.0); // spike bloom during spell VFX
+      // Burst particles for spell visual impact
+      for (const psId of particleSystems) burstParticles(psId, 6);
       // Starburst VFX for attack spells
       if (spell.name === 'Fireball') {
         spellVFX = { type: 'star', x: 320, y: 80, timer: 0.8, color: rgba8(255, 120, 30, 220) };
@@ -1235,6 +1241,7 @@ function advanceCombatTurn() {
       disableChromaticAberration();
     }
     setBloomStrength(1.0); // restore normal bloom after combat
+    setBloomRadius(0.4); // restore normal bloom radius
 
     // Distribute XP and check level ups
     for (const m of party) {
@@ -1386,6 +1393,10 @@ function tryMove(dx, dz) {
     return true;
   } else if (tile === T.CHEST) {
     dungeon[nz][nx] = T.FLOOR;
+    // Burst particles on chest open for satisfying feedback
+    if (particleSystems.length > 0) {
+      burstParticles(particleSystems[0], 8, { position: [nx * TILE, 1, nz * TILE] });
+    }
     // Chance for equipment drop based on floor tier
     if (Math.random() < 0.4) {
       const tierItems = EQUIPMENT.filter(e => e.tier <= Math.ceil(floor / 2));
@@ -1470,8 +1481,10 @@ function tryMove(dx, dz) {
     return true;
   }
 
-  // Random encounter
-  encounterChance += 0.08 + floor * 0.02;
+  // Random encounter — use dist() for distance-based scaling from start
+  const startDist = dist(px, py, dungeonW / 2, dungeonH / 2);
+  const distFactor = remap(Math.min(startDist, 15), 0, 15, 0.5, 1.5);
+  encounterChance += (0.08 + floor * 0.02) * distFactor;
   if (Math.random() < encounterChance) {
     encounterChance = 0;
     startCombat(false);
@@ -1503,6 +1516,12 @@ function enterFloor(newFloor) {
   if (floor >= 4) enablePixelation(2);
   else if (floor >= 3) enablePixelation(1);
   else enablePixelation(0); // disabled on early floors
+
+  // Dynamic bloom tuning per floor — deeper = tighter, more intense bloom
+  const bloomRad = remap(floor, 1, 5, 0.5, 0.25);
+  const bloomThresh = remap(floor, 1, 5, 0.3, 0.15);
+  setBloomRadius(bloomRad);
+  setBloomThreshold(bloomThresh);
   targetYaw = (facing * Math.PI) / 2;
   currentYaw = targetYaw;
   updateCamera3D();
@@ -1703,6 +1722,9 @@ export function init() {
     fxaa: true,
     dithering: true,
   });
+  // Fine-tune bloom per init (will be adjusted per floor in enterFloor)
+  setBloomRadius(0.4);
+  setBloomThreshold(0.25);
   createGradientSkybox(0x110808, 0x050303);
   enableSkyboxAutoAnimate(0.3); // slow atmospheric skybox rotation
 
@@ -1805,12 +1827,16 @@ export function update(dt) {
     }
   }
 
-  // Torch light flicker
+  // Torch light flicker + position sway using setPointLightPosition
   if (torchLights) {
     for (const t of torchLights) {
       if (t && t.lightId) {
         // Flicker by randomly varying color temperature
         setPointLightColor(t.lightId, Math.random() > 0.9 ? 0xff6600 : 0xff8833);
+        // Subtle position sway for living flame feel
+        const swayX = t.wx + Math.sin(animTimer * 3 + t.wz) * 0.08;
+        const swayZ = t.wz + Math.cos(animTimer * 2.5 + t.wx) * 0.08;
+        setPointLightPosition(t.lightId, swayX, 2.2 + Math.sin(animTimer * 4) * 0.05, swayZ);
       }
     }
   }
@@ -2115,6 +2141,8 @@ function openShop(nextFloor) {
   shopTarget = -1; // -1 = browsing, 0+ = selecting party member
   switchState('shop');
   setVolume(0.5); // quieter in shop
+  setBloomRadius(0.6); // softer bloom in shop atmosphere
+  setBloomThreshold(0.35);
   sfx('coin');
 }
 
@@ -2216,6 +2244,8 @@ function updateShop(dt) {
     useCooldown(cooldowns.input);
     // Leave shop → continue to next floor
     setVolume(0.6); // restore exploration volume
+    setBloomRadius(0.4); // restore exploration bloom
+    setBloomThreshold(0.25);
     const nextFloor = floor + 1;
     enterFloor(nextFloor);
     switchState('explore');
@@ -2361,6 +2391,10 @@ function drawTitle() {
   const fadeIn = smoothstep(0, 1.5, stateElapsed());
   const fade = Math.floor(fadeIn * 220);
   drawGradient(0, 0, W, H, rgba8(5, 2, 15, fade), rgba8(20, 10, 5, fade));
+
+  // Decorative ellipse aura behind title
+  ellipse(320, 105, 200, 40, rgba8(180, 120, 40, Math.floor(fade * 0.15)), true);
+  ellipse(320, 105, 200, 40, rgba8(180, 120, 40, Math.floor(fade * 0.25)), false);
 
   // Decorative spinning spirals
   const spiralColor = hslColor(animTimer * 30, 0.4, 0.3, 60);
@@ -2511,9 +2545,11 @@ function drawExploreHUD() {
   drawDiamond(534, 352, 4, 5, rgba8(220, 180, 50, 200));
   print(`${totalGold}g`, 542, 348, rgba8(220, 180, 50, 200));
 
-  // Floor transition checkerboard wipe
+  // Floor transition checkerboard wipe — use ease() for smooth in/out
   if (floorTransition > 0) {
-    const alpha = Math.floor(clamp(floorTransition / 0.6, 0, 1) * 200);
+    const rawT = clamp(floorTransition / 0.6, 0, 1);
+    const easedT = ease(rawT, 'easeInOutQuad');
+    const alpha = Math.floor(easedT * 200);
     drawCheckerboard(
       0,
       0,
@@ -2630,6 +2666,8 @@ function drawCombatUI() {
         const pulse = Math.sin(animTimer * 6) * 0.3 + 0.7;
         const crossColor = rgba8(255, 60, 60, Math.floor(200 * pulse));
         drawCrosshair(x + 60, 14, 10, crossColor, 'cross');
+        // Magic targeting circle around crosshair
+        circle(x + 60, 14, 14, rgba8(255, 100, 80, Math.floor(120 * pulse)));
       }
     } else {
       print('DEAD', x + 10, 20, rgba8(100, 40, 40, 150));
@@ -2715,7 +2753,12 @@ function drawCombatUI() {
   if (combatAction === 'result') {
     const won = enemies.every(e => e.hp <= 0);
     if (won) {
-      printCentered('VICTORY!', 320, H - 70, rgba8(255, 220, 50, 255), 2);
+      // Eased slide-in for victory text
+      const t = ease(Math.min(1, stateElapsed() / 0.5), 'easeOutBack');
+      const yOff = Math.floor((1 - t) * -30);
+      printCentered('VICTORY!', 320, H - 70 + yOff, rgba8(255, 220, 50, 255), 2);
+      // Victory circle burst decoration
+      circle(320, H - 60 + yOff, Math.floor(t * 40), rgba8(255, 200, 50, Math.floor(t * 60)));
     } else {
       printCentered('DEFEAT', 320, H - 70, rgba8(200, 40, 40, 255), 2);
     }
@@ -2846,13 +2889,29 @@ function drawInventoryUI() {
 }
 
 function drawGameOver() {
-  // Smooth fade-in using smoothstep for game over
-  const fadeIn = smoothstep(0, 1.0, stateElapsed());
+  // Smooth fade-in using ease() for polished game over transition
+  const fadeRaw = Math.min(1, stateElapsed() / 1.0);
+  const fadeIn = ease(fadeRaw, 'easeOutCubic');
   const fade = Math.floor(fadeIn * 220);
   drawGradient(0, 0, W, H, rgba8(15, 0, 0, fade), rgba8(0, 0, 0, fade));
   // Pulsing red radial glow behind text
   drawRadialGradient(320, 140, 120, hslColor(0, 0.8, 0.2, 60), rgba8(0, 0, 0, 0));
+  // Decorative ellipse frame behind title
+  ellipse(320, 130, 160, 50, rgba8(120, 20, 20, Math.floor(fade * 0.3)), false);
   drawTextOutline('GAME OVER', 320, 120, hexColor(0xcc2828, 255), rgba8(80, 0, 0, 200), 3);
+  // Skull polygon icon above text
+  const skullAlpha = Math.floor(pulse(animTimer, 2) * 100 + 155);
+  poly(
+    [
+      [310, 85],
+      [320, 75],
+      [330, 85],
+      [325, 95],
+      [315, 95],
+    ],
+    rgba8(200, 50, 50, skullAlpha),
+    true
+  );
   printCentered(`Your party fell on Floor ${floor}`, 320, 180, rgba8(180, 150, 130, 200));
   drawDiamond(270, 204, 4, 5, hexColor(0xc8b432, 200));
   printCentered(`${totalGold} Gold collected`, 320, 200, hexColor(0xc8b432, 200));
@@ -2864,6 +2923,40 @@ function drawGameOver() {
 
 function drawVictory() {
   drawGradient(0, 0, W, H, rgba8(10, 8, 2, 200), rgba8(2, 2, 10, 200));
+
+  // Victory crown polygon
+  const crownColor = rgba8(
+    255,
+    220,
+    50,
+    Math.floor(ease(Math.min(1, stateElapsed() / 1.5), 'easeOutBack') * 255)
+  );
+  poly(
+    [
+      [280, 55],
+      [290, 35],
+      [305, 50],
+      [320, 25],
+      [335, 50],
+      [350, 35],
+      [360, 55],
+    ],
+    crownColor,
+    true
+  );
+  poly(
+    [
+      [280, 55],
+      [290, 35],
+      [305, 50],
+      [320, 25],
+      [335, 50],
+      [350, 35],
+      [360, 55],
+    ],
+    rgba8(180, 120, 0, 200),
+    false
+  );
 
   // Celebratory starbursts using hslColor for rainbow cycling
   for (let i = 0; i < 5; i++) {

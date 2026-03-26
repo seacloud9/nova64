@@ -558,13 +558,13 @@ function buildLevel() {
       } else {
         // Floor — receives shadows from walls, objects, and monsters
         const f = createPlane(TILE, TILE, theme.floorColor, [wx, 0.01, wz]);
-        rotateMesh(f, -Math.PI / 2, 0, 0);
+        rotateMesh(f, -HALF_PI, 0, 0);
         setReceiveShadow(f, true);
         currentLevelMeshes.push(f);
 
         // Ceiling
         const c = createPlane(TILE, TILE, theme.ceilColor, [wx, TILE, wz]);
-        rotateMesh(c, Math.PI / 2, 0, 0);
+        rotateMesh(c, HALF_PI, 0, 0);
         currentLevelMeshes.push(c);
 
         // Special tiles
@@ -667,11 +667,11 @@ function buildLevel() {
         } else if (tile === T.TRAP) {
           // Trap - subtle floor glyph
           const trap = createPlane(1.2, 1.2, 0x662222, [wx, 0.02, wz]);
-          rotateMesh(trap, -Math.PI / 2, 0, 0);
+          rotateMesh(trap, -HALF_PI, 0, 0);
           currentLevelMeshes.push(trap);
           // Warning rune
           const rune = createTorus(0.3, 0.04, 0x881111, 6, [wx, 0.03, wz]);
-          rotateMesh(rune, Math.PI / 2, 0, 0);
+          rotateMesh(rune, HALF_PI, 0, 0);
           currentLevelMeshes.push(rune);
           animatedMeshes.push({ id: rune, type: 'spin', speed: 1 });
         } else if (tile === T.BOSS) {
@@ -738,7 +738,7 @@ function buildLevel() {
     });
     for (let i = 0; i < crystalPositions.length; i++) {
       const [cx, cy, cz] = crystalPositions[i];
-      const rot = Math.random() * Math.PI * 2;
+      const rot = Math.random() * TWO_PI;
       setInstanceTransform(instancedDecor, i, cx, cy, cz, 0, rot, 0, 0.12, 0.25, 0.12);
       setInstanceColor(instancedDecor, i, theme.ambColor);
     }
@@ -1178,7 +1178,7 @@ function doAttack(attacker, defender) {
 function spawnSparks(x, y, color, count) {
   if (!sparkPool) return;
   for (let i = 0; i < count; i++) {
-    const ang = Math.random() * Math.PI * 2;
+    const ang = Math.random() * TWO_PI;
     const spd = 30 + Math.random() * 60;
     sparkPool.spawn(s => {
       s.x = x + (Math.random() - 0.5) * 10;
@@ -1621,7 +1621,7 @@ function enterFloor(newFloor) {
   const bloomThresh = remap(floor, 1, 5, 0.3, 0.15);
   setBloomRadius(bloomRad);
   setBloomThreshold(bloomThresh);
-  targetYaw = (facing * Math.PI) / 2;
+  targetYaw = facing * HALF_PI;
   currentYaw = targetYaw;
   updateCamera3D();
   revealAround(px, py); // reveal starting area
@@ -1765,7 +1765,7 @@ function loadGameSave() {
   explored = new Set(data.explored || []);
   encounterChance = data.encounterChance || 0;
 
-  targetYaw = (facing * Math.PI) / 2;
+  targetYaw = facing * HALF_PI;
   currentYaw = targetYaw;
   buildLevel();
   updateCamera3D();
@@ -1788,7 +1788,7 @@ function updateCamera3D() {
   const [dx, dz] = DIRS[facing];
   const wx = px * TILE,
     wz = py * TILE;
-  const bob = Math.sin(stepAnim * Math.PI * 4) * 0.1 * Math.max(0, stepAnim);
+  const bob = Math.sin(stepAnim * TWO_PI * 2) * 0.1 * Math.max(0, stepAnim);
   const eyeY = 1.6 + bob;
 
   const [shakeX, shakeY] = getShakeOffset(shake);
@@ -1931,7 +1931,7 @@ export function update(dt) {
         rotateMesh(am.id, 0, dt * am.speed, 0);
         // Use getRotation to query spin state — reverse direction when past full rotation
         const rot = getRotation(am.id);
-        if (rot && rot.y > Math.PI * 2) setRotation(am.id, rot.x, 0, rot.z);
+        if (rot && rot.y > TWO_PI) setRotation(am.id, rot.x, 0, rot.z);
       }
     }
   }
@@ -2051,11 +2051,11 @@ function updateExplore(dt) {
   // Turning (keyp for discrete 90° snaps)
   if (keyp('ArrowLeft') || keyp('KeyQ')) {
     facing = (facing + 3) % 4; // turn left
-    targetYaw = (facing * Math.PI) / 2;
+    targetYaw = facing * HALF_PI;
     cooldowns.move.remaining = cooldowns.move.duration;
   } else if (keyp('ArrowRight') || keyp('KeyE')) {
     facing = (facing + 1) % 4; // turn right
-    targetYaw = (facing * Math.PI) / 2;
+    targetYaw = facing * HALF_PI;
     cooldowns.move.remaining = cooldowns.move.duration;
   }
 
@@ -2150,6 +2150,20 @@ function updateCombat(dt) {
   }
 
   if (combatAction === 'target' && cooldownReady(cooldowns.input)) {
+    // Mouse click targeting — click on enemy name area at top
+    if (mousePressed()) {
+      const mx = mouseX(),
+        my = mouseY();
+      if (my < 40) {
+        for (let i = 0; i < enemies.length; i++) {
+          const ex = 20 + i * 200;
+          if (enemies[i].hp > 0 && mx >= ex && mx < ex + 180) {
+            selectedTarget = i;
+            break;
+          }
+        }
+      }
+    }
     if (keyp('ArrowUp') || keyp('KeyW')) {
       useCooldown(cooldowns.input);
       // Prev enemy
@@ -2280,7 +2294,13 @@ function updateInventory(dt) {
       enableFXAA();
       showFloorMessage('Low-Poly Mode enabled');
     } else if (visualPreset === 'lowpoly') {
+      visualPreset = 'dithered';
+      disablePresetMode();
+      enableDithering(true);
+      showFloorMessage('Dithered Mode enabled');
+    } else if (visualPreset === 'dithered') {
       visualPreset = 'minimal';
+      enableDithering(false);
       disablePresetMode();
       disableBloom();
       disableFXAA();
@@ -2442,7 +2462,10 @@ function drawShopUI() {
 
   drawGlowText('MERCHANT', 320, 32, rgba8(220, 180, 50, 255), rgba8(140, 100, 0, 100), 3);
   drawDiamond(472, 40, 4, 5, rgba8(255, 220, 50, 255));
-  printRight(`${totalGold}g`, 560, 36, rgba8(255, 220, 50, 255));
+  // Use setTextAlign + drawText for gold display
+  setTextAlign('right');
+  drawText(`${totalGold}g`, 560, 36, rgba8(255, 220, 50, 255));
+  setTextAlign('left');
   printCentered(`Floor ${floor} → ${floor + 1}`, 320, 68, rgba8(150, 140, 120, 200));
 
   // Item list with gradient rect backgrounds
@@ -2714,7 +2737,7 @@ function drawTitle() {
     );
   }
 
-  // Party preview
+  // Party preview — use pushMatrix/translate/rotate/scale2d for rotated class icon emblems
   printCentered('Your Party:', 320, 280, rgba8(180, 180, 200, 255));
   for (let i = 0; i < 4; i++) {
     const m = party[i];
@@ -2723,6 +2746,13 @@ function drawTitle() {
     const r = (c >> 16) & 0xff,
       g = (c >> 8) & 0xff,
       b = c & 0xff;
+    // Rotated diamond emblem behind class icon using matrix transforms
+    pushMatrix();
+    translate(x, 304);
+    rotate(QUARTER_PI + Math.sin(animTimer * 1.5 + i) * 0.15);
+    scale2d(1.2);
+    rect(-5, -5, 10, 10, rgba8(r, g, b, Math.floor(fade * 0.3)));
+    popMatrix();
     printCentered(CLASS_ICONS[m.class], x, 300, rgba8(r, g, b, 255), 2);
     printCentered(m.name, x, 320, rgba8(r, g, b, 200));
     printCentered(m.class, x, 332, rgba8(140, 140, 160, 180));
@@ -3161,6 +3191,12 @@ function drawInventoryUI() {
     const totalDef = getEffectiveDef(m);
     print(`ATK:${totalAtk}  DEF:${totalDef}  SPD:${m.spd}`, 80, y + 28, rgba8(150, 150, 170, 180));
     printRight(`XP: ${m.xp}/${m.xpNext}`, 560, y + 28, rgba8(150, 150, 170, 180));
+    // XP progress bar using uiProgressBar (UI widget variant)
+    uiProgressBar(430, y + 30, 80, 4, m.xp, m.xpNext, {
+      fillColor: rgba8(180, 150, 50, 200),
+      bgColor: rgba8(30, 25, 15, 180),
+      showText: false,
+    });
 
     // Equipment
     if (m.weapon) {

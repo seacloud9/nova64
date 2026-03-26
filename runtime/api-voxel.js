@@ -37,28 +37,28 @@ export function voxelApi(gpu) {
     BEDROCK: 14,
   };
 
-  // Block colors (for texture-less rendering)
+  // Block colors (for texture-less rendering) — tuned for visual biome distinction
   const BLOCK_COLORS = {
-    [BLOCK_TYPES.GRASS]: 0x44aa22,
-    [BLOCK_TYPES.DIRT]: 0x885533,
-    [BLOCK_TYPES.STONE]: 0x999999,
+    [BLOCK_TYPES.GRASS]: 0x55cc33,
+    [BLOCK_TYPES.DIRT]: 0x996644,
+    [BLOCK_TYPES.STONE]: 0xaaaaaa,
     [BLOCK_TYPES.SAND]: 0xffdd88,
-    [BLOCK_TYPES.WATER]: 0x33aaff,
+    [BLOCK_TYPES.WATER]: 0x2288dd,
     [BLOCK_TYPES.WOOD]: 0x774422,
-    [BLOCK_TYPES.LEAVES]: 0x228822,
-    [BLOCK_TYPES.COBBLESTONE]: 0x888888,
+    [BLOCK_TYPES.LEAVES]: 0x116622,
+    [BLOCK_TYPES.COBBLESTONE]: 0x667788,
     [BLOCK_TYPES.PLANKS]: 0xddaa55,
     [BLOCK_TYPES.GLASS]: 0xccffff,
     [BLOCK_TYPES.BRICK]: 0xcc4433,
-    [BLOCK_TYPES.SNOW]: 0xffffff,
-    [BLOCK_TYPES.ICE]: 0xbbffff,
+    [BLOCK_TYPES.SNOW]: 0xeeeeff,
+    [BLOCK_TYPES.ICE]: 0x99ddff,
     [BLOCK_TYPES.BEDROCK]: 0x333333,
   };
 
   // World data
   const chunks = new Map(); // key: "x,z" -> Chunk
   const chunkMeshes = new Map(); // key: "x,z" -> THREE.Mesh
-  let worldSeed = 0; // offset added to noise coordinates for biome variety
+  let worldSeed = Math.floor(Math.random() * 50000); // random start for biome variety
 
   // Noise function for terrain generation (simple Perlin-like)
   function noise2D(x, z) {

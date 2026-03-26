@@ -220,16 +220,19 @@ function handleInput() {
   if (btnp(2)) selectedBlock = 3; // Stone
   if (btnp(3)) selectedBlock = 8; // Planks
 
-  // B key = respawn with new biome
+  // B key = respawn with new biome (random world + random position)
   if (keyp('KeyB') && typeof resetVoxelWorld === 'function') {
     resetVoxelWorld();
-    player.x = 0;
-    player.z = 0;
-    updateVoxelWorld(0, 0);
-    player.y = getHighestBlockAlt(0, 0) + 2;
+    // Scatter to a random position so we land in a different biome
+    player.x = (Math.random() - 0.5) * 400;
+    player.z = (Math.random() - 0.5) * 400;
+    updateVoxelWorld(player.x, player.z);
+    player.y = getHighestBlockAlt(Math.floor(player.x), Math.floor(player.z)) + 2;
     if (player.y < 5) player.y = 40;
     player.vy = 0;
     player.onGround = false;
+    player.yaw = 0;
+    player.pitch = 0;
   }
 }
 

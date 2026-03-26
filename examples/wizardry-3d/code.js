@@ -326,6 +326,15 @@ let waterShaders; // array of { shaderId, meshId } for animated fountain water
 // 3D floating damage texts (drawFloatingTexts3D API)
 let floatingTexts3D; // separate system for world-space damage numbers
 
+// Instanced dungeon decorations (createInstancedMesh API)
+let instancedDecor; // instanced mesh ID for floor crystal decorations
+
+// Boss flow field energy pattern (flowField API)
+let bossFlowField; // Float32Array of angles for boss room visualization
+
+// Procedural floor fog texture (noiseMap API)
+let floorNoiseMap; // Float32Array for deep floor atmospheric overlay
+
 // 3D mesh tracking
 let currentLevelMeshes = [];
 let monsterMeshes = [];
@@ -490,8 +499,13 @@ function clearLevel() {
     for (const id of particleSystems) removeParticleSystem(id);
   }
   particleSystems = [];
+  // Clean up instanced decorations before rebuilding
+  if (instancedDecor) {
+    removeInstancedMesh(instancedDecor);
+    instancedDecor = null;
+  }
+  floorNoiseMap = null; // regenerate noiseMap fog per floor
   waterShaders = [];
-  animatedMeshes = [];
   clearMonsterMeshes();
 }
 
@@ -708,6 +722,28 @@ function buildLevel() {
       }
     }
   }
+
+  // Instanced crystal decorations scattered on floors (createInstancedMesh)
+  const crystalPositions = [];
+  for (let y = 0; y < dungeonH; y++) {
+    for (let x = 0; x < dungeonW; x++) {
+      if (dungeon[y][x] === T.FLOOR && Math.random() < 0.025) {
+        crystalPositions.push([x * TILE, 0.15, y * TILE]);
+      }
+    }
+  }
+  if (crystalPositions.length > 0) {
+    instancedDecor = createInstancedMesh('cone', crystalPositions.length, theme.wallColor, {
+      size: 0.2,
+    });
+    for (let i = 0; i < crystalPositions.length; i++) {
+      const [cx, cy, cz] = crystalPositions[i];
+      const rot = Math.random() * Math.PI * 2;
+      setInstanceTransform(instancedDecor, i, cx, cy, cz, 0, rot, 0, 0.12, 0.25, 0.12);
+      setInstanceColor(instancedDecor, i, theme.ambColor);
+    }
+    finalizeInstances(instancedDecor);
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -874,6 +910,8 @@ function startCombat(isBoss) {
     setBloomRadius(0.6); // wider bloom spread for boss drama
     // Burst particles on all visible particle systems for boss entrance
     for (const psId of particleSystems) burstParticles(psId, 12);
+    // Generate flow field energy pattern for boss room visualization
+    bossFlowField = flowField(16, 12, 0.08, animTimer);
   }
 }
 
@@ -1295,6 +1333,7 @@ function advanceCombatTurn() {
       bossDefeated.add(floor);
       combatLog.push('The boss has been slain!');
       disableChromaticAberration();
+      bossFlowField = null; // clear boss energy field
     }
     setBloomStrength(1.0); // restore normal bloom after combat
     setBloomRadius(0.4); // restore normal bloom radius
@@ -1817,6 +1856,9 @@ export function init() {
   msgTimer.done = true; // start inactive
   sparkPool = createPool(30, () => ({ x: 0, y: 0, vx: 0, vy: 0, life: 0, color: 0 }));
   floatingTexts3D = createFloatingTextSystem();
+  instancedDecor = null;
+  bossFlowField = null;
+  floorNoiseMap = null;
   waterShaders = [];
   currentLevelMeshes = [];
   monsterMeshes = [];
@@ -2485,6 +2527,41 @@ export function draw() {
     drawVictory();
   }
 
+  // Boss flow field energy overlay (flowField API)
+  if (
+    bossFlowField &&
+    gameState === 'combat' &&
+    enemies &&
+    enemies.length > 0 &&
+    enemies[0].isBoss &&
+    enemies[0].hp > 0
+  ) {
+    const cols = 16,
+      rows = 12;
+    const cellW = W / cols,
+      cellH = H / rows;
+    // Regenerate flow field with time for flowing animation
+    bossFlowField = flowField(cols, rows, 0.08, animTimer * 0.5);
+    for (let i = 0; i < cols * rows; i++) {
+      const col = i % cols,
+        row = Math.floor(i / cols);
+      const cx = col * cellW + cellW / 2;
+      const cy = row * cellH + cellH / 2;
+      const angle = bossFlowField[i];
+      const len = 8;
+      const ex = cx + Math.cos(angle) * len;
+      const ey = cy + Math.sin(angle) * len;
+      const alpha = Math.floor(20 + Math.sin(animTimer * 3 + i * 0.3) * 10);
+      line(
+        Math.floor(cx),
+        Math.floor(cy),
+        Math.floor(ex),
+        Math.floor(ey),
+        rgba8(200, 50, 80, alpha)
+      );
+    }
+  }
+
   // Spell VFX overlay (starburst for attacks, radial gradient for buffs/heals)
   if (spellVFX) {
     const alpha = Math.min(1, spellVFX.timer * 3);
@@ -2568,6 +2645,28 @@ export function draw() {
         ellipse(Math.floor(nx), Math.floor(ny), 40 + i * 10, 8, rgba8(80, 70, 60, alpha), true);
       }
     }
+    // Procedural noiseMap fog overlay on deeper floors (floor 3+)
+    if (floor >= 3) {
+      if (!floorNoiseMap) floorNoiseMap = noiseMap(32, 18, 0.12, floor * 10, 0);
+      const nCols = 32,
+        nRows = 18;
+      const cw = W / nCols,
+        ch = H / nRows;
+      for (let r = nRows - 4; r < nRows; r++) {
+        for (let c = 0; c < nCols; c++) {
+          const v = floorNoiseMap[r * nCols + c];
+          const a = Math.floor(Math.max(0, v) * 18 * (floor - 2));
+          if (a > 2)
+            rectfill(
+              Math.floor(c * cw),
+              Math.floor(r * ch),
+              Math.ceil(cw),
+              Math.ceil(ch),
+              rgba8(30, 20, 40, a)
+            );
+        }
+      }
+    }
   }
 }
 
@@ -2581,8 +2680,9 @@ function drawTitle() {
   ellipse(320, 105, 200, 40, rgba8(180, 120, 40, Math.floor(fade * 0.15)), true);
   ellipse(320, 105, 200, 40, rgba8(180, 120, 40, Math.floor(fade * 0.25)), false);
 
-  // Decorative spinning spirals
-  const spiralColor = hslColor(animTimer * 30, 0.4, 0.3, 60);
+  // Decorative spinning spirals — phase offset using frameCount for smooth animation
+  const spiralPhase = frameCount * 0.02;
+  const spiralColor = hslColor(animTimer * 30 + spiralPhase, 0.4, 0.3, 60);
   drawSpiral(100, 180, 3, 12, spiralColor);
   drawSpiral(540, 180, 3, 12, spiralColor);
 
@@ -2927,12 +3027,15 @@ function drawCombatUI() {
       const available = Object.values(SPELLS).filter(
         s => s.class === member.class && member.mp >= s.cost
       );
+      // Use grid layout helper for spell list positioning
+      const spellCells = grid(1, Math.max(available.length, 1), 360, 14, 0, 0);
       for (let i = 0; i < available.length; i++) {
         const sp = available[i];
+        const cell = spellCells[i];
         print(
           `[${i + 1}] ${sp.name} (${sp.cost} MP) — ${sp.desc}`,
-          20,
-          H - 62 + i * 14,
+          20 + cell.x,
+          H - 62 + cell.y,
           rgba8(140, 160, 255, 255)
         );
       }
@@ -3001,11 +3104,15 @@ function drawCombatUI() {
 }
 
 function drawInventoryUI() {
-  drawPanel(40, 30, W - 80, H - 60, {
+  const panelW = W - 80,
+    panelH = H - 60;
+  drawPanel(centerX(panelW), centerY(panelH), panelW, panelH, {
     bgColor: rgba8(10, 8, 20, 240),
     borderLight: rgba8(80, 70, 50, 255),
     borderDark: rgba8(30, 25, 20, 255),
   });
+  // Save current font, use default for inventory title
+  const prevFont = getFont();
   printCentered('═══ PARTY STATUS ═══', 320, 40, rgba8(200, 180, 120, 255), 2);
 
   for (let i = 0; i < party.length; i++) {
@@ -3078,16 +3185,20 @@ function drawInventoryUI() {
     printRight(`Bosses slain: ${bossDefeated.size}`, 560, H - 90, n64Palette.red);
   }
 
-  // Render stats debug info using get3DStats
+  // Render stats debug info using get3DStats + getParticleStats
   const stats = get3DStats();
   if (stats) {
-    print(
-      `Tris:${stats.triangles || 0}  Draws:${stats.drawCalls || 0}  Meshes:${stats.meshes || 0}`,
-      60,
-      H - 55,
-      rgba8(80, 80, 100, 120)
-    );
+    let debugStr = `Tris:${stats.triangles || 0}  Draws:${stats.drawCalls || 0}  Meshes:${stats.meshes || 0}`;
+    // Append particle stats if any systems are active
+    if (particleSystems.length > 0) {
+      const pStats = getParticleStats(particleSystems[0]);
+      if (pStats) debugStr += `  Particles:${pStats.active}/${pStats.max}`;
+    }
+    debugStr += `  Frame:${frameCount}`;
+    print(debugStr, 60, H - 55, rgba8(80, 80, 100, 120));
   }
+  // Restore font after inventory rendering
+  if (prevFont) setFont(prevFont.name || 'default');
 
   print('[S] Save Game', 60, H - 72, rgba8(100, 200, 100, 200));
   // Visual preset toggle hint

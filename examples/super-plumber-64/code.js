@@ -73,8 +73,8 @@ let g = {
 // ── Initialization ─────────────────────────────────────────
 export function init() {
   setCameraFOV(60);
-  setCameraPosition(0, 15, 20);
-  setCameraTarget(0, 0, 0);
+  setCameraPosition(0, 12, 18);
+  setCameraTarget(0, 2, -5);
 
   setAmbientLight(0xffffff, 0.75);
   setLightDirection(1, 2, 1);
@@ -123,7 +123,7 @@ function resetGame() {
   g.p.vx = 0;
   g.p.vy = 0;
   g.p.vz = 0;
-  g.p.rotY = 0;
+  g.p.rotY = Math.PI;
   g.p.isGrounded = false;
   g.p.jumpTimer = 0;
   g.p.jumpsLeft = 1;
@@ -149,7 +149,7 @@ function resetGame() {
 // ── World Building ─────────────────────────────────────────
 function buildWorld() {
   // Water plane
-  const water = createPlane(500, 500, C.water, [0, -3, 0], {
+  const water = createPlane(500, 500, C.water, [0, -8, 0], {
     material: 'standard',
     transparent: true,
     opacity: 0.5,
@@ -597,8 +597,8 @@ export function update(dt) {
   if (g.starTimer > 0) g.starTimer -= dt;
   if (g.speedTimer > 0) g.speedTimer -= dt;
 
-  // Falling check
-  if (p.y < -10) respawnPlayer();
+  // Falling check — generous threshold so falls feel recoverable
+  if (p.y < -20) respawnPlayer();
 
   handlePlayerInput(dt);
   updateMovingPlatforms(dt);
@@ -620,8 +620,8 @@ export function update(dt) {
   // Camera
   const sx = shake.offsetX || 0;
   const sy = shake.offsetY || 0;
-  setCameraPosition(p.x + sx * 0.03, p.y + 8 + sy * 0.03, p.z + 14);
-  setCameraTarget(p.x, p.y + 2, p.z);
+  setCameraPosition(p.x + sx * 0.03, p.y + 6 + sy * 0.03, p.z + 12);
+  setCameraTarget(p.x, p.y + 1, p.z - 4);
 }
 
 function getZone(z) {
@@ -654,27 +654,27 @@ function handlePlayerInput(dt) {
   if (key('ArrowDown') || key('KeyS') || btn(13)) az = 1;
 
   const speedMult = g.speedTimer > 0 ? 1.6 : 1.0;
-  const moveSpd = 30 * speedMult;
+  const moveSpd = 32 * speedMult;
   p.vx += ax * moveSpd * dt;
   p.vz += az * moveSpd * dt;
 
-  // Friction (less on ice)
+  // Friction — generous air control for fun platforming
   const zone = getZone(p.z);
   const isIce = zone === 2;
   const fricMult = isIce ? 0.4 : 1.0;
-  const fric = p.isGrounded ? 8 * fricMult : 2;
+  const fric = p.isGrounded ? 6 * fricMult : 0.8;
   p.vx *= 1 - fric * dt;
   p.vz *= 1 - fric * dt;
 
   if (Math.abs(p.vx) > 0.1 || Math.abs(p.vz) > 0.1) p.rotY = Math.atan2(p.vx, p.vz);
 
-  // Jump / double jump
+  // Jump / double jump — floaty Mario-style arcs
   const maxJumps = g.hasDoubleJump ? 2 : 1;
   if ((keyp('Space') || btnp(0)) && p.jumpsLeft > 0 && p.jumpTimer <= 0) {
-    p.vy = p.jumpsLeft === maxJumps ? 22 : 18;
+    p.vy = p.jumpsLeft === maxJumps ? 18 : 14;
     p.isGrounded = false;
     p.jumpsLeft--;
-    p.jumpTimer = 0.15;
+    p.jumpTimer = 0.12;
     sfx('jump');
     createFX(p.x, p.y, p.z, 0xffffff, 5, 2);
   }
@@ -703,7 +703,10 @@ function updateMovingPlatforms(dt) {
 
 function updatePhysics(dt) {
   const p = g.p;
-  p.vy -= 60 * dt;
+  // Lighter gravity = floaty fun jumps (35 vs Mario's ~38)
+  // Variable: fall faster than rise for snappy-yet-floaty feel
+  const grav = p.vy > 0 ? 35 : 45;
+  p.vy -= grav * dt;
   p.isGrounded = false;
 
   p.y += p.vy * dt;
@@ -736,7 +739,7 @@ function handleCollisions(axis) {
           p.isGrounded = true;
           p.jumpsLeft = g.hasDoubleJump ? 2 : 1;
           if (plat.isTrampoline) {
-            p.vy = 30;
+            p.vy = 25;
             p.isGrounded = false;
             p.jumpsLeft = g.hasDoubleJump ? 2 : 1;
             sfx('jump');
@@ -964,7 +967,7 @@ function updateEnemies(dt) {
       if (p.vy < 0 && p.y > e.y + eHeight - 0.5) {
         // Stomp!
         e.hp--;
-        p.vy = 15;
+        p.vy = 14;
         triggerShake(shake, e.type === 'chomp' ? 5 : 2);
         sfx('hit');
         g.score += e.type === 'chomp' ? 500 : 200;
@@ -1014,7 +1017,7 @@ function updateEnemies(dt) {
 function takeDamage() {
   if (!triggerHit(playerHit)) return;
   g.health--;
-  g.p.vy = 12;
+  g.p.vy = 10;
   triggerShake(shake, 4);
   sfx('hit');
   createFX(g.p.x, g.p.y + 1, g.p.z, C.plumberFace, 15);
@@ -1044,7 +1047,7 @@ function updateParticles(dt) {
     p.x += p.vx * dt;
     p.y += p.vy * dt;
     p.z += p.vz * dt;
-    p.vy -= 30 * dt;
+    p.vy -= 15 * dt;
     p.life -= dt;
     const a = Math.max(0.01, p.life);
     setScale(p.mesh, a, a, a);

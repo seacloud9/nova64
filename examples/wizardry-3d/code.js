@@ -310,6 +310,9 @@ let spellVFX; // { type, x, y, timer, color } for drawStarburst/drawRadialGradie
 // Floor message timer (createTimer API)
 let msgTimer; // createTimer object for floor messages
 
+// Combat spark pool (createPool API)
+let sparkPool; // pool of {x, y, vx, vy, life, color} for hit sparks
+
 // 3D mesh tracking
 let currentLevelMeshes = [];
 let monsterMeshes = [];
@@ -1041,6 +1044,23 @@ function doAttack(attacker, defender) {
   return dmg;
 }
 
+// Spawn hit sparks at a screen position using createPool
+function spawnSparks(x, y, color, count) {
+  if (!sparkPool) return;
+  for (let i = 0; i < count; i++) {
+    const ang = Math.random() * Math.PI * 2;
+    const spd = 30 + Math.random() * 60;
+    sparkPool.spawn(s => {
+      s.x = x + (Math.random() - 0.5) * 10;
+      s.y = y + (Math.random() - 0.5) * 10;
+      s.vx = Math.cos(ang) * spd;
+      s.vy = Math.sin(ang) * spd;
+      s.life = 0.4 + Math.random() * 0.3;
+      s.color = color;
+    });
+  }
+}
+
 function doSpell(caster, spell, target) {
   if (caster.mp < spell.cost) return null;
   caster.mp -= spell.cost;
@@ -1635,6 +1655,7 @@ export function init() {
   spellVFX = null;
   msgTimer = createTimer(3.0);
   msgTimer.done = true; // start inactive
+  sparkPool = createPool(30, () => ({ x: 0, y: 0, vx: 0, vy: 0, life: 0, color: 0 }));
   currentLevelMeshes = [];
   monsterMeshes = [];
 }
@@ -1646,6 +1667,17 @@ export function update(dt) {
   floatingTexts.update(dt);
   updateShake(shake, dt);
   updateParticles(dt);
+
+  // Update spark pool (combat hit sparks)
+  if (sparkPool) {
+    sparkPool.forEach(s => {
+      s.x += s.vx * dt;
+      s.y += s.vy * dt;
+      s.vy += 80 * dt; // gravity
+      s.life -= dt;
+      if (s.life <= 0) sparkPool.kill(s);
+    });
+  }
 
   if (stepAnim > 0) stepAnim = Math.max(0, stepAnim - dt * 3);
 
@@ -1832,7 +1864,9 @@ function updateCombat(dt) {
         const dmg = doAttack(member, t);
         combatLog.push(`${member.name} hits ${t.name} for ${dmg}!`);
         triggerShake(shake, 0.2);
-        floatingTexts.spawn(`-${dmg}`, 100 + t.id * 160, 40, {
+        const sparkX = 100 + t.id * 160;
+        spawnSparks(sparkX, 30, rgba8(255, 200, 80, 255), 5);
+        floatingTexts.spawn(`-${dmg}`, sparkX, 40, {
           color: rgba8(255, 80, 80, 255),
           scale: 2,
           vy: -40,
@@ -1896,7 +1930,9 @@ function updateCombat(dt) {
       combatLog.push(`${member.name} hits ${target.name} for ${dmg}!`);
       triggerShake(shake, 0.2);
       sfx('hit');
-      floatingTexts.spawn(`-${dmg}`, 100 + selectedTarget * 160, 40, {
+      const tgtX = 100 + selectedTarget * 160;
+      spawnSparks(tgtX, 30, rgba8(255, 200, 80, 255), 6);
+      floatingTexts.spawn(`-${dmg}`, tgtX, 40, {
         color: rgba8(255, 80, 80, 255),
         scale: 2,
         vy: -40,
@@ -2197,6 +2233,14 @@ export function draw() {
   // Floating texts
   drawFloatingTexts(floatingTexts);
 
+  // Combat hit sparks (createPool)
+  if (sparkPool && sparkPool.count > 0) {
+    sparkPool.forEach(s => {
+      const a = Math.floor((s.life / 0.5) * 255);
+      rectfill(Math.floor(s.x), Math.floor(s.y), 2, 2, colorMix(s.color, s.life * 2));
+    });
+  }
+
   // Subtle noise grain + CRT scanlines for retro feel
   drawNoise(0, 0, W, H, 12, Math.floor(animTimer * 10));
   drawScanlines(25, 3);
@@ -2214,6 +2258,9 @@ function drawTitle() {
   printCentered('N O V A  6 4', 320, 130, rgba8(200, 160, 80, 255), 2);
 
   printCentered('Proving Grounds of the Dark Tower', 320, 170, rgba8(150, 130, 110, 255));
+
+  // Mystical energy wave under subtitle
+  drawWave(120, 186, 400, 3, 0.05, animTimer * 2, rgba8(180, 120, 40, 60), 1);
 
   if (hasSave()) {
     drawPulsingText('Press C to Continue', 320, 228, rgba8(100, 200, 255, 255), animTimer, {
@@ -2262,6 +2309,18 @@ function drawExploreHUD() {
   printCentered(`Facing ${DIR_NAMES[facing]}`, 320, 8, rgba8(200, 200, 220, 255));
   printCentered(`Floor ${floor}`, 320, 24, hslColor(floorHue, 0.4, 0.5, 200));
 
+  // Directional arrow indicator using drawTriangle
+  const arrowColor = hslColor(floorHue, 0.5, 0.6, 200);
+  const ax = 362,
+    ay = 20; // right side of compass panel
+  if (facing === 0)
+    drawTriangle(ax, ay - 5, ax - 4, ay + 3, ax + 4, ay + 3, arrowColor, true); // N ▲
+  else if (facing === 1)
+    drawTriangle(ax + 5, ay, ax - 3, ay - 4, ax - 3, ay + 4, arrowColor, true); // E ►
+  else if (facing === 2)
+    drawTriangle(ax, ay + 5, ax - 4, ay - 3, ax + 4, ay - 3, arrowColor, true); // S ▼
+  else drawTriangle(ax - 5, ay, ax + 3, ay - 4, ax + 3, ay + 4, arrowColor, true); // W ◄
+
   // Mini party status (bottom)
   drawPartyBar();
 
@@ -2278,6 +2337,10 @@ function drawExploreHUD() {
     });
     printCentered(floorMessage, 320, 166, rgba8(255, 220, 100, alpha));
   }
+
+  // Magic energy wave divider above party bar — color shifts per floor
+  const waveHue = floor > 0 ? (floor - 1) * 60 : 30;
+  drawWave(0, H - 56, W, 4, 0.04, animTimer * 3, hslColor(waveHue, 0.5, 0.4, 80), 2);
 
   // Controls hint
   print('WASD/Arrows=Move  Q/E=Turn  I=Inventory', 10, 348, rgba8(80, 80, 100, 150));
@@ -2386,6 +2449,12 @@ function drawCombatUI() {
         backgroundColor: rgba8(40, 20, 20, 255),
       });
       print(`${e.hp}/${e.maxHp}`, x + 124, 18, rgba8(180, 140, 140, 200));
+      // Pulsing crosshair on selected target
+      if (sel) {
+        const pulse = Math.sin(animTimer * 6) * 0.3 + 0.7;
+        const crossColor = rgba8(255, 60, 60, Math.floor(200 * pulse));
+        drawCrosshair(x + 60, 14, 10, crossColor, 'cross');
+      }
     } else {
       print('DEAD', x + 10, 20, rgba8(100, 40, 40, 150));
     }
@@ -2487,14 +2556,19 @@ function drawCombatUI() {
       : rgba8(80, 80, 80, 150);
     print(`${isCurrent ? '►' : ' '} ${m.name}`, W - 200, y, labelColor);
     if (m.alive) {
+      // Buff indicator: brighten HP text when buffed using colorMix
+      const buffed = (m.buffAtk > 0 || m.buffDef > 0) && m.buffTimer > 0;
+      const hpTextColor = buffed
+        ? colorMix(rgba8(220, 220, 100, 255), 1.5)
+        : rgba8(180, 180, 180, 200);
       // Use colorLerp for smooth HP bar color: green → yellow → red
       const hpRatio = m.hp / m.maxHp;
       const hpColor = colorLerp(rgba8(200, 40, 40, 255), rgba8(50, 180, 50, 255), hpRatio);
       drawHealthBar(W - 95, y + 2, 60, 5, m.hp, m.maxHp, {
-        barColor: hpColor,
+        barColor: buffed ? colorMix(hpColor, 1.3) : hpColor,
         backgroundColor: rgba8(30, 20, 20, 255),
       });
-      print(`${m.hp}`, W - 30, y, rgba8(180, 180, 180, 200));
+      print(`${m.hp}`, W - 30, y, hpTextColor);
     }
   }
 }
@@ -2569,8 +2643,10 @@ function drawInventoryUI() {
 
   // Gold + Floor info
   drawDiamond(72, H - 86, 4, 5, rgba8(220, 180, 50, 230));
-  print(`${totalGold}g`, 80, H - 90, rgba8(220, 180, 50, 230));
-  print(`Floor: ${floor}`, 160, H - 90, rgba8(150, 150, 170, 200));
+  const goldStr = `${totalGold}g`;
+  const goldMetrics = measureText(goldStr, 1);
+  print(goldStr, 80, H - 90, rgba8(220, 180, 50, 230));
+  print(`Floor: ${floor}`, 80 + goldMetrics.width + 12, H - 90, rgba8(150, 150, 170, 200));
   if (bossDefeated.size > 0) {
     printRight(`Bosses slain: ${bossDefeated.size}`, 560, H - 90, rgba8(200, 100, 100, 200));
   }
@@ -2583,10 +2659,10 @@ function drawGameOver() {
   drawGradient(0, 0, W, H, rgba8(15, 0, 0, 220), rgba8(0, 0, 0, 220));
   // Pulsing red radial glow behind text
   drawRadialGradient(320, 140, 120, hslColor(0, 0.8, 0.2, 60), rgba8(0, 0, 0, 0));
-  drawGlowText('GAME OVER', 320, 120, rgba8(200, 40, 40, 255), rgba8(100, 0, 0, 150), 3);
+  drawGlowText('GAME OVER', 320, 120, hexColor(0xcc2828, 255), rgba8(100, 0, 0, 150), 3);
   printCentered(`Your party fell on Floor ${floor}`, 320, 180, rgba8(180, 150, 130, 200));
-  drawDiamond(270, 204, 4, 5, rgba8(200, 180, 50, 200));
-  printCentered(`${totalGold} Gold collected`, 320, 200, rgba8(200, 180, 50, 200));
+  drawDiamond(270, 204, 4, 5, hexColor(0xc8b432, 200));
+  printCentered(`${totalGold} Gold collected`, 320, 200, hexColor(0xc8b432, 200));
 
   drawPulsingText('Press SPACE to try again', 320, 260, rgba8(255, 255, 255, 255), animTimer, {
     frequency: 3,
@@ -2614,16 +2690,13 @@ function drawVictory() {
 
   for (let i = 0; i < party.length; i++) {
     const m = party[i];
-    const c = CLASS_COLORS[m.class];
-    const cr = (c >> 16) & 0xff,
-      cg = (c >> 8) & 0xff,
-      cb = c & 0xff;
     const y = 200 + i * 16;
+    // Use hexColor to convert CLASS_COLORS directly to rgba8
     printCentered(
       `${m.name} — Lv${m.level} ${m.class} ${m.alive ? '✓' : '☠'}`,
       320,
       y,
-      rgba8(cr, cg, cb, 220)
+      hexColor(CLASS_COLORS[m.class], 220)
     );
   }
 

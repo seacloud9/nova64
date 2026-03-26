@@ -1105,6 +1105,7 @@ function advanceCombatTurn() {
       }
     }
 
+    saveGame();
     combatAction = 'result';
     return;
   }
@@ -1324,6 +1325,7 @@ function enterFloor(newFloor) {
   revealAround(px, py); // reveal starting area
   const theme = FLOOR_THEMES[Math.min(floor - 1, FLOOR_THEMES.length - 1)];
   showFloorMessage(`Floor ${floor} — ${theme.name}`);
+  saveGame();
 }
 
 function revealAround(cx, cy) {
@@ -1341,6 +1343,81 @@ function revealAround(cx, cy) {
 function showFloorMessage(msg) {
   floorMessage = msg;
   floorMessageTimer = 3.0;
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// SAVE / LOAD
+// ═══════════════════════════════════════════════════════════════════════
+
+function hasSave() {
+  return loadData('wizardry-save') !== null;
+}
+
+function saveGame() {
+  const data = {
+    party: party.map(m => ({
+      name: m.name,
+      class: m.class,
+      hp: m.hp,
+      maxHp: m.maxHp,
+      mp: m.mp,
+      maxMp: m.maxMp,
+      atk: m.atk,
+      def: m.def,
+      spd: m.spd,
+      level: m.level,
+      xp: m.xp,
+      xpNext: m.xpNext,
+      alive: m.alive,
+      buffAtk: m.buffAtk,
+      buffDef: m.buffDef,
+      buffTimer: m.buffTimer,
+      weapon: m.weapon ? { ...m.weapon } : null,
+      armor: m.armor ? { ...m.armor } : null,
+    })),
+    floor,
+    px,
+    py,
+    facing,
+    totalGold,
+    bossDefeated: [...bossDefeated],
+    dungeon,
+    dungeonW,
+    dungeonH,
+    explored: [...explored],
+    encounterChance,
+  };
+  saveData('wizardry-save', data);
+}
+
+function loadGameSave() {
+  const data = loadData('wizardry-save');
+  if (!data) return false;
+  party = data.party;
+  floor = data.floor;
+  px = data.px;
+  py = data.py;
+  facing = data.facing;
+  totalGold = data.totalGold;
+  bossDefeated = new Set(data.bossDefeated || []);
+  dungeon = data.dungeon;
+  dungeonW = data.dungeonW;
+  dungeonH = data.dungeonH;
+  explored = new Set(data.explored || []);
+  encounterChance = data.encounterChance || 0;
+
+  targetYaw = (facing * Math.PI) / 2;
+  currentYaw = targetYaw;
+  buildLevel();
+  updateCamera3D();
+  gameState = 'explore';
+  showFloorMessage(`Floor ${floor} — Game Loaded`);
+  sfx('confirm');
+  return true;
+}
+
+function deleteSave() {
+  deleteData('wizardry-save');
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -1482,7 +1559,10 @@ function updateTitle(dt) {
   setCameraPosition(Math.sin(a) * 8, 3, Math.cos(a) * 8);
   setCameraTarget(0, 1, 0);
 
-  if (keyp('Space') || keyp('Enter')) {
+  if (keyp('KeyC') && hasSave()) {
+    loadGameSave();
+  } else if (keyp('Space') || keyp('Enter')) {
+    deleteSave();
     enterFloor(1);
     gameState = 'explore';
     sfx('confirm');
@@ -1683,6 +1763,11 @@ function updateInventory(dt) {
   if (keyp('KeyI') || keyp('Tab') || keyp('Escape')) {
     gameState = 'explore';
   }
+  if (keyp('KeyS')) {
+    saveGame();
+    showFloorMessage('Game saved!');
+    sfx('confirm');
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -1717,6 +1802,9 @@ export function draw() {
 
   // Floating texts
   drawFloatingTexts(floatingTexts);
+
+  // CRT scanline overlay for retro feel
+  drawScanlines(25, 3);
 }
 
 function drawTitle() {
@@ -1727,8 +1815,25 @@ function drawTitle() {
 
   printCentered('Proving Grounds of the Dark Tower', 320, 170, rgba8(150, 130, 110, 255));
 
-  const pulse = Math.floor(Math.sin(animTimer * 3) * 60 + 195);
-  printCentered('Press SPACE to begin your quest', 320, 240, rgba8(pulse, pulse, pulse, 255));
+  if (hasSave()) {
+    drawPulsingText('Press C to Continue', 320, 228, rgba8(100, 200, 255, 255), animTimer, {
+      frequency: 2,
+      minAlpha: 140,
+    });
+    drawPulsingText('Press SPACE for New Game', 320, 250, rgba8(200, 200, 200, 255), animTimer, {
+      frequency: 3,
+      minAlpha: 120,
+    });
+  } else {
+    drawPulsingText(
+      'Press SPACE to begin your quest',
+      320,
+      240,
+      rgba8(255, 255, 255, 255),
+      animTimer,
+      { frequency: 3, minAlpha: 135 }
+    );
+  }
 
   // Party preview
   printCentered('Your Party:', 320, 280, rgba8(180, 180, 200, 255));
@@ -1919,15 +2024,11 @@ function drawCombatUI() {
 
     print(`${sel ? '► ' : '  '}${e.name}`, x, 6, nameColor);
     if (alive) {
-      drawProgressBar(
-        x,
-        20,
-        120,
-        6,
-        e.hp / e.maxHp,
-        rgba8(200, 40, 40, 255),
-        rgba8(40, 20, 20, 255)
-      );
+      drawHealthBar(x, 20, 120, 6, e.hp, e.maxHp, {
+        barColor: rgba8(200, 40, 40, 255),
+        dangerColor: rgba8(255, 100, 60, 255),
+        backgroundColor: rgba8(40, 20, 20, 255),
+      });
       print(`${e.hp}/${e.maxHp}`, x + 124, 18, rgba8(180, 140, 140, 200));
     } else {
       print('DEAD', x + 10, 20, rgba8(100, 40, 40, 150));
@@ -2026,24 +2127,22 @@ function drawCombatUI() {
       : rgba8(80, 80, 80, 150);
     print(`${isCurrent ? '►' : ' '} ${m.name}`, W - 200, y, labelColor);
     if (m.alive) {
-      drawProgressBar(
-        W - 95,
-        y + 2,
-        60,
-        5,
-        m.hp / m.maxHp,
-        m.hp / m.maxHp > 0.25 ? rgba8(50, 180, 50, 255) : rgba8(200, 40, 40, 255),
-        rgba8(30, 20, 20, 255)
-      );
+      drawHealthBar(W - 95, y + 2, 60, 5, m.hp, m.maxHp, {
+        barColor: rgba8(50, 180, 50, 255),
+        dangerColor: rgba8(200, 40, 40, 255),
+        backgroundColor: rgba8(30, 20, 20, 255),
+      });
       print(`${m.hp}`, W - 30, y, rgba8(180, 180, 180, 200));
     }
   }
 }
 
 function drawInventoryUI() {
-  rectfill(40, 30, W - 80, H - 60, rgba8(10, 8, 20, 240));
-  drawPixelBorder(40, 30, W - 80, H - 60, rgba8(80, 70, 50, 255), rgba8(30, 25, 20, 255));
-
+  drawPanel(40, 30, W - 80, H - 60, {
+    bgColor: rgba8(10, 8, 20, 240),
+    borderLight: rgba8(80, 70, 50, 255),
+    borderDark: rgba8(30, 25, 20, 255),
+  });
   printCentered('═══ PARTY STATUS ═══', 320, 40, rgba8(200, 180, 120, 255), 2);
 
   for (let i = 0; i < party.length; i++) {
@@ -2113,6 +2212,7 @@ function drawInventoryUI() {
     print(`Bosses slain: ${bossDefeated.size}`, 300, H - 90, rgba8(200, 100, 100, 200));
   }
 
+  print('[S] Save Game', 60, H - 72, rgba8(100, 200, 100, 200));
   printCentered('Press I / TAB / ESC to close', 320, H - 55, rgba8(120, 120, 150, 180));
 }
 
@@ -2122,8 +2222,10 @@ function drawGameOver() {
   printCentered(`Your party fell on Floor ${floor}`, 320, 180, rgba8(180, 150, 130, 200));
   printCentered(`Gold collected: ${totalGold}`, 320, 200, rgba8(200, 180, 50, 200));
 
-  const pulse = Math.floor(Math.sin(animTimer * 3) * 60 + 195);
-  printCentered('Press SPACE to try again', 320, 260, rgba8(pulse, pulse, pulse, 255));
+  drawPulsingText('Press SPACE to try again', 320, 260, rgba8(255, 255, 255, 255), animTimer, {
+    frequency: 3,
+    minAlpha: 135,
+  });
 }
 
 function drawVictory() {
@@ -2147,6 +2249,8 @@ function drawVictory() {
     );
   }
 
-  const pulse = Math.floor(Math.sin(animTimer * 3) * 60 + 195);
-  printCentered('Press SPACE to play again', 320, 300, rgba8(pulse, pulse, pulse, 255));
+  drawPulsingText('Press SPACE to play again', 320, 300, rgba8(255, 255, 255, 255), animTimer, {
+    frequency: 3,
+    minAlpha: 135,
+  });
 }

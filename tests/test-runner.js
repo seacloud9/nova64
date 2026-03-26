@@ -1,6 +1,16 @@
 // tests/test-runner.js
 // Comprehensive unit testing system for Nova64 3D Fantasy Console
 
+// Polyfill performance for older Node versions
+if (typeof globalThis.performance === 'undefined') {
+  try {
+    const { performance: perf } = await import('perf_hooks');
+    globalThis.performance = perf;
+  } catch {
+    globalThis.performance = { now: () => Date.now() };
+  }
+}
+
 export class TestRunner {
   constructor() {
     this.tests = [];

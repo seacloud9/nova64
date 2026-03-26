@@ -281,8 +281,6 @@ let totalGold;
 let dungeonsCleared;
 let floatingTexts;
 let shake;
-let inputCD;
-let moveCD;
 let floorMessage;
 let floorMessageTimer;
 
@@ -305,6 +303,7 @@ let hitStates; // array of createHitState per party member
 let chromaTimer; // timer for chromatic aberration effect on boss hits
 let combatFOV; // smooth FOV lerp for combat zoom
 let floorTransition; // checkerboard wipe timer when entering floors
+let cooldowns; // createCooldownSet for input + movement
 
 // Spell VFX overlay
 let spellVFX; // { type, x, y, timer, color } for drawStarburst/drawRadialGradient
@@ -954,6 +953,8 @@ function createMonsterMesh(e, mx, mz, dx, dz) {
       }
     );
     ids.push(body, tail, eye1, eye2);
+    // Ghosts shouldn't cast shadows — ethereal beings
+    for (const id of ids) setCastShadow(id, false);
     animatedMeshes.push({ id: body, type: 'bob', baseY: 1.2 * s, speed: 1.5, range: 0.3 });
   } else if (shape === 'caster') {
     // Robed figure with glowing staff
@@ -1706,8 +1707,7 @@ export function init() {
   enableSkyboxAutoAnimate(0.3); // slow atmospheric skybox rotation
 
   shake = createShake({ decay: 5 });
-  inputCD = createCooldown(0.15);
-  moveCD = createCooldown(0.18);
+  cooldowns = createCooldownSet({ input: 0.15, move: 0.18 });
   floatingTexts = createFloatingTextSystem();
 
   // Start new game data but stay on title
@@ -1740,8 +1740,7 @@ export function init() {
 export function update(dt) {
   animTimer += dt;
   if (stateMachine) stateMachine.update(dt);
-  updateCooldown(inputCD, dt);
-  updateCooldown(moveCD, dt);
+  updateCooldowns(cooldowns, dt);
   floatingTexts.update(dt);
   updateShake(shake, dt);
   updateParticles(dt);
@@ -1834,13 +1833,13 @@ export function update(dt) {
   } else if (gameState === 'shop') {
     updateShop(dt);
   } else if (gameState === 'gameover') {
-    if (keyp('Space') && cooldownReady(inputCD)) {
-      useCooldown(inputCD);
+    if (keyp('Space') && cooldownReady(cooldowns.input)) {
+      useCooldown(cooldowns.input);
       init();
     }
   } else if (gameState === 'victory') {
-    if (keyp('Space') && cooldownReady(inputCD)) {
-      useCooldown(inputCD);
+    if (keyp('Space') && cooldownReady(cooldowns.input)) {
+      useCooldown(cooldowns.input);
       init();
     }
   }
@@ -1877,7 +1876,7 @@ function updateTitle(dt) {
 }
 
 function updateExplore(dt) {
-  if (!cooldownReady(moveCD)) {
+  if (!cooldownReady(cooldowns.move)) {
     // still in cooldown, but check non-move inputs
     if (keyp('KeyI') || keyp('Tab')) switchState('inventory');
     updateCamera3D();
@@ -1904,16 +1903,16 @@ function updateExplore(dt) {
   if (keyp('ArrowLeft') || keyp('KeyQ')) {
     facing = (facing + 3) % 4; // turn left
     targetYaw = (facing * Math.PI) / 2;
-    moveCD.remaining = moveCD.duration;
+    cooldowns.move.remaining = cooldowns.move.duration;
   } else if (keyp('ArrowRight') || keyp('KeyE')) {
     facing = (facing + 1) % 4; // turn right
     targetYaw = (facing * Math.PI) / 2;
-    moveCD.remaining = moveCD.duration;
+    cooldowns.move.remaining = cooldowns.move.duration;
   }
 
   if (keyp('KeyI') || keyp('Tab')) switchState('inventory');
 
-  if (moved) moveCD.remaining = moveCD.duration; // reset move cooldown
+  if (moved) cooldowns.move.remaining = cooldowns.move.duration; // reset move cooldown
 
   updateCamera3D();
 }
@@ -1928,7 +1927,7 @@ function updateCombat(dt) {
   }
 
   if (combatAction === 'result') {
-    if (keyp('Space') && useCooldown(inputCD)) {
+    if (keyp('Space') && useCooldown(cooldowns.input)) {
       clearMonsterMeshes();
       setVolume(0.6); // quieter in exploration
       if (party.every(m => !m.alive)) {
@@ -1947,12 +1946,12 @@ function updateCombat(dt) {
     combatLog.push(autoPlay ? 'AUTO-COMBAT ON' : 'AUTO-COMBAT OFF');
   }
 
-  if (combatAction === 'choose' && cooldownReady(inputCD)) {
+  if (combatAction === 'choose' && cooldownReady(cooldowns.input)) {
     const member = party[combatTurn];
 
     // Auto-play: automatically attack a random living enemy
     if (autoPlay) {
-      useCooldown(inputCD);
+      useCooldown(cooldowns.input);
       const target = enemies.filter(e => e.hp > 0);
       if (target.length > 0) {
         const t = target[Math.floor(Math.random() * target.length)];
@@ -1981,18 +1980,18 @@ function updateCombat(dt) {
       }
       advanceCombatTurn();
     } else if (keyp('Digit1') || keyp('KeyZ')) {
-      useCooldown(inputCD);
+      useCooldown(cooldowns.input);
       // Attack
       combatAction = 'target';
       selectedTarget = enemies.findIndex(e => e.hp > 0);
     } else if (keyp('Digit2') || keyp('KeyX')) {
-      useCooldown(inputCD);
+      useCooldown(cooldowns.input);
       // Cast spell (if caster)
       if (member.maxMp > 0) {
         combatAction = 'spell';
       }
     } else if (keyp('Digit3') || keyp('KeyC')) {
-      useCooldown(inputCD);
+      useCooldown(cooldowns.input);
       // Defend — skip turn, boost def temporarily
       member.buffDef += 3;
       member.buffTimer = Math.max(member.buffTimer, 2);
@@ -2001,9 +2000,9 @@ function updateCombat(dt) {
     }
   }
 
-  if (combatAction === 'target' && cooldownReady(inputCD)) {
+  if (combatAction === 'target' && cooldownReady(cooldowns.input)) {
     if (keyp('ArrowUp') || keyp('KeyW')) {
-      useCooldown(inputCD);
+      useCooldown(cooldowns.input);
       // Prev enemy
       for (let i = selectedTarget - 1; i >= 0; i--) {
         if (enemies[i].hp > 0) {
@@ -2012,7 +2011,7 @@ function updateCombat(dt) {
         }
       }
     } else if (keyp('ArrowDown') || keyp('KeyS')) {
-      useCooldown(inputCD);
+      useCooldown(cooldowns.input);
       // Next enemy
       for (let i = selectedTarget + 1; i < enemies.length; i++) {
         if (enemies[i].hp > 0) {
@@ -2021,7 +2020,7 @@ function updateCombat(dt) {
         }
       }
     } else if (keyp('Space') || keyp('Enter') || keyp('KeyZ')) {
-      useCooldown(inputCD);
+      useCooldown(cooldowns.input);
       // Confirm attack
       const member = party[combatTurn];
       const target = enemies[selectedTarget];
@@ -2054,37 +2053,37 @@ function updateCombat(dt) {
       }
       advanceCombatTurn();
     } else if (keyp('Escape') || keyp('Backspace')) {
-      useCooldown(inputCD);
+      useCooldown(cooldowns.input);
       combatAction = 'choose';
     }
   }
 
-  if (combatAction === 'spell' && cooldownReady(inputCD)) {
+  if (combatAction === 'spell' && cooldownReady(cooldowns.input)) {
     const member = party[combatTurn];
     const available = Object.values(SPELLS).filter(
       s => s.class === member.class && member.mp >= s.cost
     );
 
     if (keyp('Digit1') && available.length > 0) {
-      useCooldown(inputCD);
+      useCooldown(cooldowns.input);
       const spell = available[0];
       sfx('laser');
       castSpellInCombat(member, spell);
       advanceCombatTurn();
     } else if (keyp('Digit2') && available.length > 1) {
-      useCooldown(inputCD);
+      useCooldown(cooldowns.input);
       const spell = available[1];
       sfx('laser');
       castSpellInCombat(member, spell);
       advanceCombatTurn();
     } else if (keyp('Digit3') && available.length > 2) {
-      useCooldown(inputCD);
+      useCooldown(cooldowns.input);
       const spell = available[2];
       sfx('laser');
       castSpellInCombat(member, spell);
       advanceCombatTurn();
     } else if (keyp('Escape') || keyp('Backspace')) {
-      useCooldown(inputCD);
+      useCooldown(cooldowns.input);
       combatAction = 'choose';
     }
   }
@@ -2153,18 +2152,18 @@ function applyShopItem(item, target) {
 }
 
 function updateShop(dt) {
-  if (!cooldownReady(inputCD)) return;
+  if (!cooldownReady(cooldowns.input)) return;
 
   if (shopTarget >= 0) {
     // Selecting party member target
     if (keyp('ArrowUp') || keyp('KeyW')) {
-      useCooldown(inputCD);
+      useCooldown(cooldowns.input);
       shopTarget = (shopTarget + party.length - 1) % party.length;
     } else if (keyp('ArrowDown') || keyp('KeyS')) {
-      useCooldown(inputCD);
+      useCooldown(cooldowns.input);
       shopTarget = (shopTarget + 1) % party.length;
     } else if (keyp('Space') || keyp('Enter') || keyp('KeyZ')) {
-      useCooldown(inputCD);
+      useCooldown(cooldowns.input);
       const item = shopItems[shopCursor];
       const target = party[shopTarget];
       // Validate: revive only on dead, hp/mp/buff only on alive
@@ -2183,7 +2182,7 @@ function updateShop(dt) {
       }
       shopTarget = -1;
     } else if (keyp('Escape') || keyp('Backspace')) {
-      useCooldown(inputCD);
+      useCooldown(cooldowns.input);
       shopTarget = -1;
     }
     return;
@@ -2191,13 +2190,13 @@ function updateShop(dt) {
 
   // Browsing items
   if (keyp('ArrowUp') || keyp('KeyW')) {
-    useCooldown(inputCD);
+    useCooldown(cooldowns.input);
     shopCursor = (shopCursor + shopItems.length - 1) % shopItems.length;
   } else if (keyp('ArrowDown') || keyp('KeyS')) {
-    useCooldown(inputCD);
+    useCooldown(cooldowns.input);
     shopCursor = (shopCursor + 1) % shopItems.length;
   } else if (keyp('Space') || keyp('Enter') || keyp('KeyZ')) {
-    useCooldown(inputCD);
+    useCooldown(cooldowns.input);
     const item = shopItems[shopCursor];
     if (totalGold < item.cost) {
       showFloorMessage('Not enough gold!');
@@ -2214,7 +2213,7 @@ function updateShop(dt) {
       shopTarget = 0;
     }
   } else if (keyp('Escape') || keyp('Backspace') || keyp('KeyX')) {
-    useCooldown(inputCD);
+    useCooldown(cooldowns.input);
     // Leave shop → continue to next floor
     setVolume(0.6); // restore exploration volume
     const nextFloor = floor + 1;
@@ -2358,8 +2357,8 @@ export function draw() {
 }
 
 function drawTitle() {
-  // Smooth fade-in using state machine elapsed tracking
-  const fadeIn = Math.min(1, stateElapsed() / 1.5);
+  // Smooth fade-in using smoothstep for title screen
+  const fadeIn = smoothstep(0, 1.5, stateElapsed());
   const fade = Math.floor(fadeIn * 220);
   drawGradient(0, 0, W, H, rgba8(5, 2, 15, fade), rgba8(20, 10, 5, fade));
 
@@ -2449,7 +2448,14 @@ function drawExploreHUD() {
       borderLight: rgba8(100, 80, 40, Math.floor(alpha * 0.4)),
       borderDark: rgba8(30, 20, 10, Math.floor(alpha * 0.4)),
     });
-    printCentered(floorMessage, 320, 166, rgba8(255, 220, 100, alpha));
+    drawTextShadow(
+      floorMessage,
+      320,
+      166,
+      rgba8(255, 220, 100, alpha),
+      rgba8(0, 0, 0, Math.floor(alpha * 0.5)),
+      1
+    );
   }
 
   // Magic energy wave divider above party bar — color shifts per floor
@@ -2457,7 +2463,7 @@ function drawExploreHUD() {
   drawWave(0, H - 56, W, 4, 0.04, animTimer * 3, hslColor(waveHue, 0.5, 0.4, 80), 2);
 
   // Move cooldown indicator (shows when movement is on cooldown)
-  const moveProg = cooldownProgress(moveCD);
+  const moveProg = cooldownProgress(cooldowns.move);
   if (moveProg < 1) {
     const barW = 40;
     const bx = 310,
@@ -2474,6 +2480,32 @@ function drawExploreHUD() {
 
   // Controls hint
   print('WASD/Arrows=Move  Q/E=Turn  I=Inventory', 10, 348, rgba8(80, 80, 100, 150));
+
+  // Thief trap proximity warning using aabb() collision check
+  const thief = party.find(m => m.alive && m.class === 'Thief');
+  if (thief) {
+    let trapNear = false;
+    for (let dy = -2; dy <= 2; dy++) {
+      for (let dx = -2; dx <= 2; dx++) {
+        const tx = px + dx,
+          ty = py + dy;
+        if (tx >= 0 && tx < dungeonW && ty >= 0 && ty < dungeonH && dungeon[ty][tx] === T.TRAP) {
+          if (aabb(px - 1.5, py - 1.5, 3, 3, tx - 0.5, ty - 0.5, 1, 1)) trapNear = true;
+        }
+      }
+    }
+    if (trapNear) {
+      const warnAlpha = Math.floor(pulse(animTimer, 3) * 100 + 155);
+      drawTextShadow(
+        '⚠ Trap nearby!',
+        270,
+        44,
+        rgba8(255, 80, 60, warnAlpha),
+        rgba8(0, 0, 0, 180),
+        1
+      );
+    }
+  }
 
   // Gold with diamond icon
   drawDiamond(534, 352, 4, 5, rgba8(220, 180, 50, 200));
@@ -2609,7 +2641,14 @@ function drawCombatUI() {
   const logLines = combatLog.slice(-5);
   for (let i = 0; i < logLines.length; i++) {
     const alpha = Math.floor(255 - (5 - i - 1) * 30);
-    print(logLines[i], 20, logY + i * 12, rgba8(200, 200, 210, Math.max(80, alpha)));
+    drawTextShadow(
+      logLines[i],
+      20,
+      logY + i * 12,
+      rgba8(200, 200, 210, Math.max(80, alpha)),
+      rgba8(0, 0, 0, Math.max(60, alpha)),
+      1
+    );
   }
 
   // Separator
@@ -2807,13 +2846,13 @@ function drawInventoryUI() {
 }
 
 function drawGameOver() {
-  // Fade-in using state machine elapsed time
-  const fadeIn = Math.min(1, stateElapsed() / 1.0);
+  // Smooth fade-in using smoothstep for game over
+  const fadeIn = smoothstep(0, 1.0, stateElapsed());
   const fade = Math.floor(fadeIn * 220);
   drawGradient(0, 0, W, H, rgba8(15, 0, 0, fade), rgba8(0, 0, 0, fade));
   // Pulsing red radial glow behind text
   drawRadialGradient(320, 140, 120, hslColor(0, 0.8, 0.2, 60), rgba8(0, 0, 0, 0));
-  drawGlowText('GAME OVER', 320, 120, hexColor(0xcc2828, 255), rgba8(100, 0, 0, 150), 3);
+  drawTextOutline('GAME OVER', 320, 120, hexColor(0xcc2828, 255), rgba8(80, 0, 0, 200), 3);
   printCentered(`Your party fell on Floor ${floor}`, 320, 180, rgba8(180, 150, 130, 200));
   drawDiamond(270, 204, 4, 5, hexColor(0xc8b432, 200));
   printCentered(`${totalGold} Gold collected`, 320, 200, hexColor(0xc8b432, 200));

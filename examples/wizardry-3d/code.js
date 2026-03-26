@@ -304,6 +304,12 @@ let shopTarget; // which party member to apply item to
 let hitStates; // array of createHitState per party member
 let chromaTimer; // timer for chromatic aberration effect on boss hits
 
+// Spell VFX overlay
+let spellVFX; // { type, x, y, timer, color } for drawStarburst/drawRadialGradient
+
+// Floor message timer (createTimer API)
+let msgTimer; // createTimer object for floor messages
+
 // 3D mesh tracking
 let currentLevelMeshes = [];
 let monsterMeshes = [];
@@ -1103,15 +1109,18 @@ function castSpellInCombat(member, spell) {
     if (result) {
       combatLog.push(`${member.name} casts ${spell.name} on ${target.name}! +${spell.amount} HP`);
       triggerScreenFlash(50, 255, 100, 80);
+      spellVFX = { type: 'radial', x: 320, y: 180, timer: 0.5, color: rgba8(50, 255, 100, 160) };
     }
   } else if (spell.type === 'buff') {
     const result = doSpell(member, spell, null);
     if (result) combatLog.push(`${member.name} casts ${spell.name}! Party ATK +${spell.amount}`);
     triggerScreenFlash(255, 220, 80, 80);
+    spellVFX = { type: 'radial', x: 320, y: 100, timer: 0.6, color: rgba8(255, 220, 80, 180) };
   } else if (spell.type === 'buff_def') {
     const result = doSpell(member, spell, null);
     if (result) combatLog.push(`${member.name} casts ${spell.name}! Party DEF +${spell.amount}`);
     triggerScreenFlash(80, 150, 255, 80);
+    spellVFX = { type: 'radial', x: 320, y: 100, timer: 0.6, color: rgba8(80, 150, 255, 180) };
   } else if (spell.type === 'revive') {
     const result = doSpell(member, spell, null);
     if (result) {
@@ -1124,7 +1133,17 @@ function castSpellInCombat(member, spell) {
   } else {
     const target = enemies.find(e => e.hp > 0);
     const result = doSpell(member, spell, target);
-    if (result) combatLog.push(`${member.name} casts ${spell.name}! ${result.dmg} damage!`);
+    if (result) {
+      combatLog.push(`${member.name} casts ${spell.name}! ${result.dmg} damage!`);
+      // Starburst VFX for attack spells
+      if (spell.name === 'Fireball') {
+        spellVFX = { type: 'star', x: 320, y: 80, timer: 0.8, color: rgba8(255, 120, 30, 220) };
+      } else if (spell.name === 'Ice Bolt') {
+        spellVFX = { type: 'star', x: 200, y: 80, timer: 0.6, color: rgba8(80, 180, 255, 220) };
+      } else if (spell.name === 'Turn Undead') {
+        spellVFX = { type: 'star', x: 320, y: 80, timer: 0.7, color: rgba8(255, 255, 180, 220) };
+      }
+    }
   }
 }
 
@@ -1583,8 +1602,12 @@ export function init() {
   setFog(0x000000, 2, 18);
   setCameraFOV(75);
 
-  enableBloom(1.0, 0.4, 0.25);
-  enableVignette(1.4, 0.8);
+  enableRetroEffects({
+    bloom: { strength: 1.0, radius: 0.4, threshold: 0.25 },
+    vignette: { darkness: 1.4, offset: 0.8 },
+    fxaa: true,
+    dithering: true,
+  });
   createGradientSkybox(0x110808, 0x050303);
 
   shake = createShake({ decay: 5 });
@@ -1609,6 +1632,9 @@ export function init() {
   bossDefeated = new Set();
   hitStates = party.map(() => createHitState({ invulnDuration: 0.6, flashRate: 8 }));
   chromaTimer = 0;
+  spellVFX = null;
+  msgTimer = createTimer(3.0);
+  msgTimer.done = true; // start inactive
   currentLevelMeshes = [];
   monsterMeshes = [];
 }
@@ -1697,6 +1723,15 @@ export function update(dt) {
   }
 
   if (floorMessageTimer > 0) floorMessageTimer -= dt;
+
+  // Update spell VFX timer
+  if (spellVFX) {
+    spellVFX.timer -= dt;
+    if (spellVFX.timer <= 0) spellVFX = null;
+  }
+
+  // Update message timer
+  if (msgTimer && !msgTimer.done) msgTimer.update(dt);
 }
 
 function updateTitle(dt) {
@@ -2056,7 +2091,8 @@ function drawShopUI() {
   });
 
   drawGlowText('MERCHANT', 320, 32, rgba8(220, 180, 50, 255), rgba8(140, 100, 0, 100), 3);
-  print(`Gold: ${totalGold}`, 480, 36, rgba8(255, 220, 50, 255));
+  drawDiamond(472, 40, 4, 5, rgba8(255, 220, 50, 255));
+  printRight(`${totalGold}g`, 560, 36, rgba8(255, 220, 50, 255));
   printCentered(`Floor ${floor} → ${floor + 1}`, 320, 68, rgba8(150, 140, 120, 200));
 
   // Item list
@@ -2135,6 +2171,18 @@ export function draw() {
     drawVictory();
   }
 
+  // Spell VFX overlay (starburst for attacks, radial gradient for buffs/heals)
+  if (spellVFX) {
+    const alpha = Math.min(1, spellVFX.timer * 3);
+    if (spellVFX.type === 'star') {
+      const r = 30 + (1 - alpha) * 40;
+      drawStarburst(spellVFX.x, spellVFX.y, r, r * 0.4, 8, spellVFX.color);
+    } else if (spellVFX.type === 'radial') {
+      const r = 40 + (1 - alpha) * 60;
+      drawRadialGradient(spellVFX.x, spellVFX.y, r, spellVFX.color, rgba8(0, 0, 0, 0));
+    }
+  }
+
   // Screen flash overlay (damage, magic, discoveries)
   if (screenFlash && screenFlash.alpha > 0) {
     rectfill(
@@ -2156,6 +2204,11 @@ export function draw() {
 
 function drawTitle() {
   drawGradient(0, 0, W, H, rgba8(5, 2, 15, 220), rgba8(20, 10, 5, 220));
+
+  // Decorative spinning spirals
+  const spiralColor = hslColor(animTimer * 30, 0.4, 0.3, 60);
+  drawSpiral(100, 180, 3, 12, spiralColor);
+  drawSpiral(540, 180, 3, 12, spiralColor);
 
   drawGlowText('WIZARDRY', 320, 80, rgba8(255, 200, 50, 255), rgba8(180, 100, 0, 150), 4);
   printCentered('N O V A  6 4', 320, 130, rgba8(200, 160, 80, 255), 2);
@@ -2199,13 +2252,15 @@ function drawTitle() {
 
 function drawExploreHUD() {
   // Compass panel
+  // Floor-themed compass border using hslColor (hue shifts per floor)
+  const floorHue = floor > 0 ? (floor - 1) * 60 : 30; // warm → cool per floor
   drawPanel(270, 2, 100, 38, {
     bgColor: rgba8(0, 0, 0, 160),
-    borderLight: rgba8(60, 50, 40, 180),
-    borderDark: rgba8(20, 15, 10, 180),
+    borderLight: hslColor(floorHue, 0.3, 0.25, 180),
+    borderDark: hslColor(floorHue, 0.3, 0.1, 180),
   });
   printCentered(`Facing ${DIR_NAMES[facing]}`, 320, 8, rgba8(200, 200, 220, 255));
-  printCentered(`Floor ${floor}`, 320, 24, rgba8(150, 130, 100, 200));
+  printCentered(`Floor ${floor}`, 320, 24, hslColor(floorHue, 0.4, 0.5, 200));
 
   // Mini party status (bottom)
   drawPartyBar();
@@ -2227,8 +2282,9 @@ function drawExploreHUD() {
   // Controls hint
   print('WASD/Arrows=Move  Q/E=Turn  I=Inventory', 10, 348, rgba8(80, 80, 100, 150));
 
-  // Gold
-  print(`Gold: ${totalGold}`, 540, 348, rgba8(220, 180, 50, 200));
+  // Gold with diamond icon
+  drawDiamond(534, 352, 4, 5, rgba8(220, 180, 50, 200));
+  print(`${totalGold}g`, 542, 348, rgba8(220, 180, 50, 200));
 }
 
 function drawPartyBar() {
@@ -2496,7 +2552,7 @@ function drawInventoryUI() {
     const totalAtk = getEffectiveAtk(m);
     const totalDef = getEffectiveDef(m);
     print(`ATK:${totalAtk}  DEF:${totalDef}  SPD:${m.spd}`, 80, y + 28, rgba8(150, 150, 170, 180));
-    print(`XP: ${m.xp}/${m.xpNext}`, 320, y + 28, rgba8(150, 150, 170, 180));
+    printRight(`XP: ${m.xp}/${m.xpNext}`, 560, y + 28, rgba8(150, 150, 170, 180));
 
     // Equipment
     if (m.weapon) {
@@ -2512,10 +2568,11 @@ function drawInventoryUI() {
   }
 
   // Gold + Floor info
-  print(`Gold: ${totalGold}`, 60, H - 90, rgba8(220, 180, 50, 230));
-  print(`Floor: ${floor}`, 200, H - 90, rgba8(150, 150, 170, 200));
+  drawDiamond(72, H - 86, 4, 5, rgba8(220, 180, 50, 230));
+  print(`${totalGold}g`, 80, H - 90, rgba8(220, 180, 50, 230));
+  print(`Floor: ${floor}`, 160, H - 90, rgba8(150, 150, 170, 200));
   if (bossDefeated.size > 0) {
-    print(`Bosses slain: ${bossDefeated.size}`, 300, H - 90, rgba8(200, 100, 100, 200));
+    printRight(`Bosses slain: ${bossDefeated.size}`, 560, H - 90, rgba8(200, 100, 100, 200));
   }
 
   print('[S] Save Game', 60, H - 72, rgba8(100, 200, 100, 200));
@@ -2524,9 +2581,12 @@ function drawInventoryUI() {
 
 function drawGameOver() {
   drawGradient(0, 0, W, H, rgba8(15, 0, 0, 220), rgba8(0, 0, 0, 220));
+  // Pulsing red radial glow behind text
+  drawRadialGradient(320, 140, 120, hslColor(0, 0.8, 0.2, 60), rgba8(0, 0, 0, 0));
   drawGlowText('GAME OVER', 320, 120, rgba8(200, 40, 40, 255), rgba8(100, 0, 0, 150), 3);
   printCentered(`Your party fell on Floor ${floor}`, 320, 180, rgba8(180, 150, 130, 200));
-  printCentered(`Gold collected: ${totalGold}`, 320, 200, rgba8(200, 180, 50, 200));
+  drawDiamond(270, 204, 4, 5, rgba8(200, 180, 50, 200));
+  printCentered(`${totalGold} Gold collected`, 320, 200, rgba8(200, 180, 50, 200));
 
   drawPulsingText('Press SPACE to try again', 320, 260, rgba8(255, 255, 255, 255), animTimer, {
     frequency: 3,
@@ -2536,9 +2596,21 @@ function drawGameOver() {
 
 function drawVictory() {
   drawGradient(0, 0, W, H, rgba8(10, 8, 2, 200), rgba8(2, 2, 10, 200));
+
+  // Celebratory starbursts using hslColor for rainbow cycling
+  for (let i = 0; i < 5; i++) {
+    const sx = 80 + i * 130;
+    const sy = 50 + Math.sin(animTimer * 2 + i) * 15;
+    const starColor = hslColor(animTimer * 60 + i * 72, 0.7, 0.5, 120);
+    drawStarburst(sx, sy, 20, 8, 6, starColor);
+  }
+
   drawGlowText('VICTORY!', 320, 80, rgba8(255, 220, 50, 255), rgba8(180, 120, 0, 150), 3);
   printCentered('You conquered the Dark Tower!', 320, 140, rgba8(200, 200, 220, 255));
-  printCentered(`Gold: ${totalGold}`, 320, 170, rgba8(220, 180, 50, 230));
+
+  // Gold with diamond
+  drawDiamond(290, 174, 4, 5, rgba8(220, 180, 50, 230));
+  printCentered(`${totalGold} Gold`, 320, 170, rgba8(220, 180, 50, 230));
 
   for (let i = 0; i < party.length; i++) {
     const m = party[i];

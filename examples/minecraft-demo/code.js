@@ -332,8 +332,9 @@ function handleBlockInteraction() {
 
 export function draw() {
   if (!isLoaded) {
-    print('NOVA64 MINECRAFT EDITION', 20, 40, 0xffffff);
-    print('GENERATING WORLD...', 20, 60, 0xffffff);
+    rectfill(0, 0, 640, 360, rgba8(10, 10, 20, 255));
+    print('NOVA64 MINECRAFT EDITION', 20, 40, rgba8(255, 255, 255, 255));
+    print('GENERATING WORLD...', 20, 60, rgba8(255, 255, 255, 255));
     return;
   }
 

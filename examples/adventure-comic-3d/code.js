@@ -274,10 +274,10 @@ export function update(dt) {
 
 // ── Draw helpers ──────────────────────────────────────────────────────────────
 function drawComicPanel(x, y, w, h) {
-  rectfill(x, y, w, h, 0x110e0eee);
+  rectfill(x, y, w, h, rgba8(10, 10, 15, 255));
   // Double border (comic book style)
-  rect(x, y, w, h, 0xffffff);
-  rect(x + 2, y + 2, w - 4, h - 4, 0xcccccc);
+  rect(x, y, w, h, rgba8(255, 255, 255, 255));
+  rect(x + 2, y + 2, w - 4, h - 4, rgba8(200, 200, 200, 255));
 }
 
 // ── Draw ──────────────────────────────────────────────────────────────────────
@@ -285,11 +285,12 @@ export function draw() {
   if (state === 'title') {
     // Title card
     drawComicPanel(20, 18, 280, 88);
-    print('THE VERDICT', 90, 38, 0xffffff);
-    print('A 3D Noir Comic Adventure', 46, 58, 0xffffff);
-    print('Uncover the truth...', 90, 76, 0xffffff);
+    print('THE VERDICT', 90, 38, rgba8(255, 255, 255, 255));
+    print('A 3D Noir Comic Adventure', 46, 58, rgba8(255, 255, 255, 255));
+    print('Uncover the truth...', 90, 76, rgba8(255, 255, 255, 255));
 
-    // Pulsing prompt
+    // Pulsing prompt — with dark bg for visibility
+    rectfill(40, 205, 240, 18, rgba8(0, 0, 0, 220));
     const pulse = Math.floor((Math.sin(sceneTime * 5) * 0.5 + 0.5) * 200 + 55);
     print('SPACE to begin investigation', 50, 210, rgba8(255, 255, 255, pulse));
   } else if (state === 'explore') {
@@ -299,18 +300,18 @@ export function draw() {
     // Context prompt
     if (distToDesk < 2.5 && !hasEvidence) {
       drawComicPanel(93, 198, 134, 22);
-      print('[SPACE] Inspect Desk', 98, 204, 0xffffff);
+      print('[SPACE] Inspect Desk', 98, 204, rgba8(255, 255, 255, 255));
     } else if (distToSuspect < 2.5) {
       drawComicPanel(85, 198, 150, 22);
-      print('[SPACE] Talk to Suspect', 90, 204, 0xffffff);
+      print('[SPACE] Talk to Suspect', 90, 204, rgba8(255, 255, 255, 255));
     }
 
     // Status
-    rectfill(2, 2, 100, 14, rgba8(0, 0, 0, 180));
-    print('WASD \x97 Move', 6, 6, 0xffffff);
+    rectfill(2, 2, 100, 14, rgba8(0, 0, 0, 220));
+    print('WASD \x97 Move', 6, 6, rgba8(255, 255, 255, 255));
     if (hasEvidence) {
-      rectfill(2, 16, 150, 14, rgba8(0, 0, 0, 180));
-      print('EVIDENCE COLLECTED', 6, 20, rgba8(255, 255, 255, 200));
+      rectfill(2, 16, 150, 14, rgba8(0, 0, 0, 220));
+      print('EVIDENCE COLLECTED', 6, 20, rgba8(255, 255, 255, 255));
     }
   } else if (state === 'dialogue') {
     // Cinematic letterbox bars
@@ -319,19 +320,23 @@ export function draw() {
 
     // Speaker badge
     const speakerColor =
-      speaker === 'Detective' ? 0x4466dd : speaker === 'Suspect' ? 0xdd3333 : 0x33aa55;
+      speaker === 'Detective'
+        ? rgba8(68, 102, 221, 255)
+        : speaker === 'Suspect'
+          ? rgba8(221, 51, 51, 255)
+          : rgba8(51, 170, 85, 255);
     const badgeX = speaker === 'Suspect' ? W - 92 : 8;
     rectfill(badgeX, H - 82, 84, 18, speakerColor);
-    print(speaker.toUpperCase(), badgeX + 4, H - 77, 0xffffff);
+    print(speaker.toUpperCase(), badgeX + 4, H - 77, rgba8(255, 255, 255, 255));
 
     // Dialogue text
     const display = currentText.substring(0, Math.floor(textScroll));
-    print(display, 14, H - 56, 0xf0f0f0);
+    print(display, 14, H - 56, rgba8(255, 255, 255, 255));
 
     // Advance prompt
     if (textScroll >= currentText.length) {
       const blink = Math.floor(sceneTime * 4) % 2 === 0;
-      if (blink) print('▼ SPACE', W - 50, H - 18, 0xffffff);
+      if (blink) print('\u25BC SPACE', W - 50, H - 18, rgba8(255, 255, 255, 255));
     }
   }
 }

@@ -178,7 +178,7 @@ export function voxelApi(gpu) {
           0.5
         );
 
-        // Per-biome height profile
+        // Per-biome height profile — each biome has unique surface, terrain shape, and density
         let heightScale = 20;
         let heightBase = 32;
         let surfaceBlock = BLOCK_TYPES.GRASS;
@@ -187,59 +187,59 @@ export function voxelApi(gpu) {
         let waterLevel = 30;
 
         if (temperature < 0.2) {
-          // ── Frozen Tundra ──
+          // ── Frozen Tundra ── flat icy plains
           surfaceBlock = BLOCK_TYPES.SNOW;
           subBlock = BLOCK_TYPES.ICE;
-          heightScale = 12;
+          heightScale = 6;
           heightBase = 33;
-          treeChance = 0.01;
+          treeChance = 0;
         } else if (temperature < 0.35 && moisture > 0.5) {
-          // ── Taiga (cold forest) ──
-          surfaceBlock = BLOCK_TYPES.GRASS;
-          subBlock = BLOCK_TYPES.DIRT;
-          heightScale = 16;
+          // ── Taiga ── gray rocky forest
+          surfaceBlock = BLOCK_TYPES.COBBLESTONE;
+          subBlock = BLOCK_TYPES.STONE;
+          heightScale = 18;
           heightBase = 34;
-          treeChance = 0.08;
+          treeChance = 0.06;
         } else if (temperature > 0.7 && moisture < 0.25) {
-          // ── Desert ──
+          // ── Desert ── flat sand dunes
           surfaceBlock = BLOCK_TYPES.SAND;
           subBlock = BLOCK_TYPES.SAND;
-          heightScale = 8;
+          heightScale = 4;
           heightBase = 31;
           treeChance = 0;
         } else if (temperature > 0.6 && moisture > 0.6) {
-          // ── Jungle ──
-          surfaceBlock = BLOCK_TYPES.GRASS;
+          // ── Jungle ── dense dark-green valleys
+          surfaceBlock = BLOCK_TYPES.LEAVES;
           subBlock = BLOCK_TYPES.DIRT;
-          heightScale = 25;
-          heightBase = 30;
-          treeChance = 0.12;
+          heightScale = 22;
+          heightBase = 28;
+          treeChance = 0.15;
         } else if (moisture < 0.3) {
-          // ── Savanna ──
-          surfaceBlock = BLOCK_TYPES.SAND;
-          subBlock = BLOCK_TYPES.DIRT;
-          heightScale = 10;
+          // ── Savanna ── dry brown earth
+          surfaceBlock = BLOCK_TYPES.DIRT;
+          subBlock = BLOCK_TYPES.SAND;
+          heightScale = 5;
           heightBase = 33;
-          treeChance = 0.02;
+          treeChance = 0.005;
         } else if (temperature > 0.4 && moisture > 0.4) {
-          // ── Forest ──
-          surfaceBlock = BLOCK_TYPES.GRASS;
-          subBlock = BLOCK_TYPES.DIRT;
-          heightScale = 18;
-          heightBase = 32;
-          treeChance = 0.06;
-        } else if (temperature < 0.35) {
-          // ── Snowy Hills ──
-          surfaceBlock = BLOCK_TYPES.SNOW;
-          subBlock = BLOCK_TYPES.STONE;
-          heightScale = 28;
-          heightBase = 35;
-          treeChance = 0.02;
-        } else {
-          // ── Plains ──
+          // ── Forest ── classic green hills
           surfaceBlock = BLOCK_TYPES.GRASS;
           subBlock = BLOCK_TYPES.DIRT;
           heightScale = 14;
+          heightBase = 32;
+          treeChance = 0.08;
+        } else if (temperature < 0.35) {
+          // ── Snowy Hills ── tall snowy mountains
+          surfaceBlock = BLOCK_TYPES.SNOW;
+          subBlock = BLOCK_TYPES.STONE;
+          heightScale = 35;
+          heightBase = 30;
+          treeChance = 0.02;
+        } else {
+          // ── Plains ── gentle rolling grassland
+          surfaceBlock = BLOCK_TYPES.GRASS;
+          subBlock = BLOCK_TYPES.DIRT;
+          heightScale = 6;
           heightBase = 32;
           treeChance = 0.015;
         }

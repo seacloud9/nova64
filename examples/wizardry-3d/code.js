@@ -527,6 +527,7 @@ function buildLevel() {
             emissiveIntensity: 0.3,
           });
           currentLevelMeshes.push(handle);
+          setPBRProperties(handle, { metalness: 0.9, roughness: 0.2 });
         } else if (tile === T.STAIRS_DOWN) {
           const s = createCone(0.5, 1, 0x44aaff, [wx, 0.5, wz], {
             material: 'emissive',
@@ -573,6 +574,7 @@ function buildLevel() {
             emissiveIntensity: 0.6,
           });
           currentLevelMeshes.push(lock);
+          setPBRProperties(lock, { metalness: 1.0, roughness: 0.1 });
           animatedMeshes.push({ id: lock, type: 'pulse', baseScale: 1, speed: 3, range: 0.3 });
         } else if (tile === T.FOUNTAIN) {
           const fb = createCylinder(0.6, 0.6, 0x667788, 8, [wx, 0.2, wz]);
@@ -623,6 +625,7 @@ function buildLevel() {
           });
           currentLevelMeshes.push(orb);
           animatedMeshes.push({ id: orb, type: 'pulse', baseScale: 1, speed: 2, range: 0.4 });
+          setPBRProperties(pillar, { metalness: 0.7, roughness: 0.3 });
           const l = createPointLight(0xff0044, 2, 10, wx, 2, wz);
           torchLights.push(l);
         }
@@ -817,6 +820,7 @@ function startCombat(isBoss) {
     triggerShake(shake, 0.8);
     triggerScreenFlash(255, 0, 50, 200);
     enableChromaticAberration(0.006);
+    setBloomStrength(1.8); // intensify bloom for boss encounter
   }
 }
 
@@ -1056,6 +1060,9 @@ function createMonsterMesh(e, mx, mz, dx, dz) {
     ids.push(body, head, eye1, eye2);
   }
 
+  // Apply N64-style flat shading to monster body mesh for retro low-poly look
+  if (ids.length > 0) setFlatShading(ids[0], true);
+
   return ids;
 }
 
@@ -1131,6 +1138,7 @@ function doSpell(caster, spell, target) {
       const dmg = spell.dmg + Math.floor(Math.random() * 4);
       target.hp = Math.max(0, target.hp - dmg);
       triggerScreenFlash(80, 150, 255, 150);
+      sfx({ wave: 'triangle', freq: 800, dur: 0.3, sweep: -400 }); // icy descend
       return { type: 'damage', dmg, targets: [target] };
     }
     // AoE
@@ -1141,8 +1149,13 @@ function doSpell(caster, spell, target) {
       e.hp = Math.max(0, e.hp - dmg);
       totalDmg += dmg;
     }
-    if (spell.name === 'Fireball') triggerScreenFlash(255, 120, 30, 180);
-    else if (spell.name === 'Turn Undead') triggerScreenFlash(255, 255, 180, 150);
+    if (spell.name === 'Fireball') {
+      triggerScreenFlash(255, 120, 30, 180);
+      sfx({ wave: 'sawtooth', freq: 200, dur: 0.5, sweep: 100 }); // fire roar
+    } else if (spell.name === 'Turn Undead') {
+      triggerScreenFlash(255, 255, 180, 150);
+      sfx({ wave: 'sine', freq: 600, dur: 0.4, sweep: 200 }); // holy chime
+    }
     return { type: 'damage', dmg: totalDmg, targets };
   }
   return null;
@@ -1159,12 +1172,14 @@ function castSpellInCombat(member, spell) {
     if (result) {
       combatLog.push(`${member.name} casts ${spell.name} on ${target.name}! +${spell.amount} HP`);
       triggerScreenFlash(50, 255, 100, 80);
+      sfx({ wave: 'sine', freq: 400, dur: 0.5, sweep: 200 }); // gentle heal chime
       spellVFX = { type: 'radial', x: 320, y: 180, timer: 0.5, color: rgba8(50, 255, 100, 160) };
     }
   } else if (spell.type === 'buff') {
     const result = doSpell(member, spell, null);
     if (result) combatLog.push(`${member.name} casts ${spell.name}! Party ATK +${spell.amount}`);
     triggerScreenFlash(255, 220, 80, 80);
+    sfx({ wave: 'square', freq: 300, dur: 0.3, sweep: 150 }); // power-up buff
     spellVFX = { type: 'radial', x: 320, y: 100, timer: 0.6, color: rgba8(255, 220, 80, 180) };
   } else if (spell.type === 'buff_def') {
     const result = doSpell(member, spell, null);
@@ -1185,6 +1200,7 @@ function castSpellInCombat(member, spell) {
     const result = doSpell(member, spell, target);
     if (result) {
       combatLog.push(`${member.name} casts ${spell.name}! ${result.dmg} damage!`);
+      setBloomStrength(2.0); // spike bloom during spell VFX
       // Starburst VFX for attack spells
       if (spell.name === 'Fireball') {
         spellVFX = { type: 'star', x: 320, y: 80, timer: 0.8, color: rgba8(255, 120, 30, 220) };
@@ -1217,6 +1233,7 @@ function advanceCombatTurn() {
       combatLog.push('The boss has been slain!');
       disableChromaticAberration();
     }
+    setBloomStrength(1.0); // restore normal bloom after combat
 
     // Distribute XP and check level ups
     for (const m of party) {
@@ -1266,8 +1283,11 @@ function advanceCombatTurn() {
 }
 
 function doEnemyTurn() {
+  const [dx, dz] = DIRS[facing];
   for (const e of enemies) {
     if (e.hp <= 0) continue;
+    // Lunge forward animation using moveMesh
+    if (e.meshBody) moveMesh(e.meshBody, -dx * 0.5, 0, -dz * 0.5);
     // Pick random alive party member
     const alive = party.filter(m => m.alive);
     if (alive.length === 0) break;
@@ -1296,6 +1316,8 @@ function doEnemyTurn() {
       combatLog.push(`${target.name} falls!`);
       sfx('death');
     }
+    // Lunge back after attack
+    if (e.meshBody) moveMesh(e.meshBody, dx * 0.5, 0, dz * 0.5);
   }
 
   // Tick buffs
@@ -1413,6 +1435,9 @@ function tryMove(dx, dz) {
         m.mp = m.maxMp;
       }
     }
+    // Fountain cleansing — briefly disable vignette for a "refreshed" visual
+    disableVignette();
+    setTimeout(() => enableVignette(1.4, 0.8), 1200);
     showFloorMessage(
       revived ? 'Fountain revives and restores the party!' : 'Fountain restores the party!'
     );
@@ -1825,7 +1850,10 @@ export function update(dt) {
   // Update spell VFX timer
   if (spellVFX) {
     spellVFX.timer -= dt;
-    if (spellVFX.timer <= 0) spellVFX = null;
+    if (spellVFX.timer <= 0) {
+      spellVFX = null;
+      setBloomStrength(1.0); // restore bloom after spell VFX fades
+    }
   }
 
   // Update message timer
@@ -1941,7 +1969,11 @@ function updateCombat(dt) {
         if (t.hp <= 0) {
           combatLog.push(`${t.name} defeated!`);
           if (t.allMeshes) {
-            for (const id of t.allMeshes) destroyMesh(id);
+            for (const id of t.allMeshes) setMeshVisible(id, false);
+            const meshesToDestroy = [...t.allMeshes];
+            setTimeout(() => {
+              for (const id of meshesToDestroy) destroyMesh(id);
+            }, 400);
             t.allMeshes = null;
             t.meshBody = null;
           }
@@ -2010,7 +2042,12 @@ function updateCombat(dt) {
         sfx('explosion');
         triggerScreenFlash(255, 200, 50, 120);
         if (target.allMeshes) {
-          for (const id of target.allMeshes) destroyMesh(id);
+          // Blink out death animation: hide meshes, then destroy after delay
+          for (const id of target.allMeshes) setMeshVisible(id, false);
+          const meshesToDestroy = [...target.allMeshes];
+          setTimeout(() => {
+            for (const id of meshesToDestroy) destroyMesh(id);
+          }, 400);
           target.allMeshes = null;
           target.meshBody = null;
         }

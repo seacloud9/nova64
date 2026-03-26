@@ -648,10 +648,10 @@ function handlePlayerInput(dt) {
   let ax = 0,
     az = 0;
 
-  if (key('ArrowLeft') || key('KeyA') || btn(14)) ax = -1;
-  if (key('ArrowRight') || key('KeyD') || btn(15)) ax = 1;
-  if (key('ArrowUp') || key('KeyW') || btn(12)) az = -1;
-  if (key('ArrowDown') || key('KeyS') || btn(13)) az = 1;
+  if (key('ArrowLeft') || key('KeyA') || btn(0)) ax = -1;
+  if (key('ArrowRight') || key('KeyD') || btn(1)) ax = 1;
+  if (key('ArrowUp') || key('KeyW') || btn(2)) az = -1;
+  if (key('ArrowDown') || key('KeyS') || btn(3)) az = 1;
 
   const speedMult = g.speedTimer > 0 ? 1.6 : 1.0;
   const moveSpd = 32 * speedMult;
@@ -670,7 +670,7 @@ function handlePlayerInput(dt) {
 
   // Jump / double jump — floaty Mario-style arcs
   const maxJumps = g.hasDoubleJump ? 2 : 1;
-  if ((keyp('Space') || btnp(0)) && p.jumpsLeft > 0 && p.jumpTimer <= 0) {
+  if ((keyp('Space') || keyp('KeyZ')) && p.jumpsLeft > 0 && p.jumpTimer <= 0) {
     p.vy = p.jumpsLeft === maxJumps ? 18 : 14;
     p.isGrounded = false;
     p.jumpsLeft--;

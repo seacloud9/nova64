@@ -356,6 +356,8 @@ let monsterMeshes = [];
 function switchState(newState) {
   gameState = newState;
   if (stateMachine) stateMachine.switchTo(newState);
+  // Track state in global novaStore for cross-system awareness
+  novaStore.setState({ gameState: newState, floor: floor || 0 });
 }
 
 // State elapsed time (seconds in current state)
@@ -1661,13 +1663,13 @@ function enterFloor(newFloor) {
 
   // Create encounter spawner for this floor (scales enemy count per wave)
   encounterSpawner = createSpawner({
-    waveInterval: 999, // we trigger manually via steps, not time
+    waveInterval: 999, // wave count scales encounters, timer is supplemental
     baseCount: 1 + Math.floor(floor / 2),
     countGrowth: 1,
     maxCount: 3 + floor,
     spawnFn: null, // we read .wave to scale encounters
   });
-  encounterSpawner.active = false; // triggered manually on combat start
+  encounterSpawner.active = true; // ticked via updateSpawner each frame
 
   saveGame();
 }
@@ -1928,6 +1930,10 @@ export function update(dt) {
   animateSkybox(dt);
   // Update LOD levels based on camera distance
   updateLODs();
+  // Tick encounter spawner timer (updateSpawner API)
+  if (encounterSpawner && gameState === 'explore') {
+    updateSpawner(encounterSpawner, dt);
+  }
 
   // Tick hit state timers (invulnerability + flash)
   if (hitStates) {
@@ -2094,9 +2100,9 @@ function updateExplore(dt) {
   let moved = false;
   const stickY = leftStickY();
   const stickX = leftStickX();
-  if (key('KeyW') || key('ArrowUp') || stickY < -0.5) {
+  if (key('KeyW') || key('ArrowUp') || stickY < -0.5 || btn(2)) {
     moved = tryMove(dx, dz);
-  } else if (key('KeyS') || key('ArrowDown') || stickY > 0.5) {
+  } else if (key('KeyS') || key('ArrowDown') || stickY > 0.5 || btn(3)) {
     moved = tryMove(-dx, -dz);
   } else if (key('KeyA') || stickX < -0.5) {
     // Strafe left
@@ -2209,18 +2215,18 @@ function updateCombat(dt) {
         }
       }
       advanceCombatTurn();
-    } else if (keyp('Digit1') || keyp('KeyZ')) {
+    } else if (keyp('Digit1') || keyp('KeyZ') || btnp(4)) {
       useCooldown(cooldowns.input);
       // Attack
       combatAction = 'target';
       selectedTarget = enemies.findIndex(e => e.hp > 0);
-    } else if (keyp('Digit2') || keyp('KeyX')) {
+    } else if (keyp('Digit2') || keyp('KeyX') || btnp(5)) {
       useCooldown(cooldowns.input);
       // Cast spell (if caster)
       if (member.maxMp > 0) {
         combatAction = 'spell';
       }
-    } else if (keyp('Digit3') || keyp('KeyC')) {
+    } else if (keyp('Digit3') || keyp('KeyC') || btnp(6)) {
       useCooldown(cooldowns.input);
       // Defend — skip turn, boost def temporarily
       member.buffDef += 3;
@@ -2391,6 +2397,7 @@ function updateInventory(dt) {
     } else {
       visualPreset = null;
       disablePresetMode();
+      enableBloom(1.0, 0.4, 0.25); // explicitly re-enable bloom
       enableRetroEffects({
         bloom: { strength: 1.0, radius: 0.4, threshold: 0.25 },
         vignette: { darkness: 1.4, offset: 0.8 },
@@ -2462,11 +2469,16 @@ function updateShop(dt) {
   if (!cooldownReady(cooldowns.input)) return;
 
   if (shopTarget >= 0) {
-    // Selecting party member target
-    if (keyp('ArrowUp') || keyp('KeyW')) {
+    // Selecting party member target (keyboard + right stick Y)
+    const tgtStickY = rightStickY();
+    if (keyp('ArrowUp') || keyp('KeyW') || (tgtStickY < -0.5 && cooldownReady(cooldowns.input))) {
       useCooldown(cooldowns.input);
       shopTarget = (shopTarget + party.length - 1) % party.length;
-    } else if (keyp('ArrowDown') || keyp('KeyS')) {
+    } else if (
+      keyp('ArrowDown') ||
+      keyp('KeyS') ||
+      (tgtStickY > 0.5 && cooldownReady(cooldowns.input))
+    ) {
       useCooldown(cooldowns.input);
       shopTarget = (shopTarget + 1) % party.length;
     } else if (keyp('Space') || keyp('Enter') || keyp('KeyZ')) {
@@ -2623,6 +2635,12 @@ function drawShopUI() {
 // ═══════════════════════════════════════════════════════════════════════
 
 export function draw() {
+  // Apply 2D camera shake offset (setCamera API) for full-screen shake
+  const [shakeOX, shakeOY] = getShakeOffset(shake);
+  if (shakeOX !== 0 || shakeOY !== 0) {
+    setCamera(Math.floor(shakeOX * 2), Math.floor(shakeOY * 2));
+  }
+
   if (gameState === 'title') {
     drawTitle();
   } else if (gameState === 'explore') {
@@ -2744,6 +2762,9 @@ export function draw() {
     drawNoise(0, 0, W, H, 12, Math.floor(animTimer * 10));
     drawScanlines(25, 3);
   }
+
+  // Reset 2D camera offset after all drawing
+  setCamera(0, 0);
 
   // Perlin noise atmospheric fog wisps in explore/combat (subtle 2D overlay)
   if (gameState === 'explore' || gameState === 'combat') {
@@ -3208,6 +3229,10 @@ function drawCombatUI() {
           ? rgba8(255, 255, 200, labelAlpha)
           : rgba8(cr, cg, cb, Math.min(200, labelAlpha))
       : rgba8(80, 80, 80, 150);
+    // Show invulnerability shield indicator (isInvulnerable API)
+    if (hitStates && hitStates[i] && isInvulnerable(hitStates[i])) {
+      print('🛡', W - 214, y, rgba8(100, 200, 255, 200));
+    }
     print(`${isCurrent ? '►' : ' '} ${m.name}`, W - 200, y, labelColor);
     if (m.alive) {
       // Buff indicator: brighten HP text when buffed using colorMix
@@ -3329,6 +3354,9 @@ function drawInventoryUI() {
     const renderer = getRenderer();
     if (renderer && renderer.info)
       debugStr += `  GL:${renderer.info.programs ? renderer.info.programs.length : '?'}prg`;
+    // Show scene object count from getScene()
+    const scene = getScene();
+    if (scene && scene.children) debugStr += `  Obj:${scene.children.length}`;
     print(debugStr, 60, H - 55, rgba8(80, 80, 100, 120));
   }
   // Game stats from createGameStore
@@ -3446,6 +3474,13 @@ function drawVictory() {
       y,
       hexColor(CLASS_COLORS[m.class], 220)
     );
+  }
+
+  // Pixel confetti sparkles (pset API)
+  for (let i = 0; i < 30; i++) {
+    const sx = (Math.sin(animTimer * 2 + i * 1.7) * 0.5 + 0.5) * W;
+    const sy = (animTimer * 40 + i * 37) % H;
+    pset(Math.floor(sx), Math.floor(sy), hslColor(i * 36 + animTimer * 60, 0.7, 0.6, 200));
   }
 
   // Pulsing restart prompt using pulse() for smooth oscillation

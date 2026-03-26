@@ -240,6 +240,7 @@ let animatedMeshes; // meshes that bob/rotate
 let particleSystems; // track active particle system IDs
 let explored; // Set of "x,y" strings for fog-of-war minimap
 let bossDefeated; // Set of floor numbers where boss was killed
+let minimap; // createMinimap() object for dungeon map
 
 // 3D mesh tracking
 let currentLevelMeshes = [];
@@ -1143,6 +1144,12 @@ function doEnemyTurn() {
     triggerShake(shake, 0.3);
     triggerScreenFlash(255, 50, 50, 100);
     sfx('hit');
+    const ti = party.indexOf(target);
+    floatingTexts.spawn(`-${dmg}`, W - 180 + ti * 10, H - 80 + ti * 18, {
+      color: rgba8(255, 50, 50, 255),
+      scale: 2,
+      vy: -30,
+    });
 
     if (target.hp <= 0) {
       target.alive = false;
@@ -1323,9 +1330,55 @@ function enterFloor(newFloor) {
   currentYaw = targetYaw;
   updateCamera3D();
   revealAround(px, py); // reveal starting area
+  rebuildMinimap();
   const theme = FLOOR_THEMES[Math.min(floor - 1, FLOOR_THEMES.length - 1)];
   showFloorMessage(`Floor ${floor} — ${theme.name}`);
   saveGame();
+}
+
+function rebuildMinimap() {
+  minimap = createMinimap({
+    x: W - 90,
+    y: 4,
+    width: 82,
+    height: 82,
+    tileW: dungeonW,
+    tileH: dungeonH,
+    tileScale: Math.max(1, Math.floor(80 / Math.max(dungeonW, dungeonH))),
+    bgColor: rgba8(0, 0, 0, 200),
+    borderLight: rgba8(50, 40, 30, 200),
+    borderDark: rgba8(20, 15, 10, 200),
+    fogOfWar: 4,
+    follow: {
+      get x() {
+        return px;
+      },
+      get y() {
+        return py;
+      },
+    },
+    player: {
+      get x() {
+        return px;
+      },
+      get y() {
+        return py;
+      },
+      color: rgba8(255, 60, 60, 255),
+      blink: true,
+    },
+    tiles(tx, ty) {
+      if (!explored.has(`${tx},${ty}`)) return null;
+      const tile = dungeon[ty][tx];
+      if (tile === T.WALL) return rgba8(60, 50, 40, 220);
+      if (tile === T.STAIRS_DOWN) return rgba8(50, 100, 200, 255);
+      if (tile === T.STAIRS_UP) return rgba8(200, 150, 50, 255);
+      if (tile === T.CHEST) return rgba8(200, 180, 50, 255);
+      if (tile === T.FOUNTAIN) return rgba8(50, 120, 255, 255);
+      if (tile === T.BOSS) return rgba8(200, 0, 50, 255);
+      return rgba8(30, 28, 22, 180);
+    },
+  });
 }
 
 function revealAround(cx, cy) {
@@ -1410,6 +1463,7 @@ function loadGameSave() {
   currentYaw = targetYaw;
   buildLevel();
   updateCamera3D();
+  rebuildMinimap();
   gameState = 'explore';
   showFloorMessage(`Floor ${floor} — Game Loaded`);
   sfx('confirm');
@@ -1651,6 +1705,11 @@ function updateCombat(dt) {
         const dmg = doAttack(member, t);
         combatLog.push(`${member.name} hits ${t.name} for ${dmg}!`);
         triggerShake(shake, 0.2);
+        floatingTexts.spawn(`-${dmg}`, 100 + t.id * 160, 40, {
+          color: rgba8(255, 80, 80, 255),
+          scale: 2,
+          vy: -40,
+        });
         if (t.hp <= 0) {
           combatLog.push(`${t.name} defeated!`);
           if (t.allMeshes) {
@@ -1710,6 +1769,11 @@ function updateCombat(dt) {
       combatLog.push(`${member.name} hits ${target.name} for ${dmg}!`);
       triggerShake(shake, 0.2);
       sfx('hit');
+      floatingTexts.spawn(`-${dmg}`, 100 + selectedTarget * 160, 40, {
+        color: rgba8(255, 80, 80, 255),
+        scale: 2,
+        vy: -40,
+      });
 
       if (target.hp <= 0) {
         combatLog.push(`${target.name} defeated!`);
@@ -1803,12 +1867,13 @@ export function draw() {
   // Floating texts
   drawFloatingTexts(floatingTexts);
 
-  // CRT scanline overlay for retro feel
+  // Subtle noise grain + CRT scanlines for retro feel
+  drawNoise(0, 0, W, H, 12, Math.floor(animTimer * 10));
   drawScanlines(25, 3);
 }
 
 function drawTitle() {
-  rectfill(0, 0, W, H, rgba8(0, 0, 0, 180));
+  drawGradient(0, 0, W, H, rgba8(5, 2, 15, 220), rgba8(20, 10, 5, 220));
 
   drawGlowText('WIZARDRY', 320, 80, rgba8(255, 200, 50, 255), rgba8(180, 100, 0, 150), 4);
   printCentered('N O V A  6 4', 320, 130, rgba8(200, 160, 80, 255), 2);
@@ -1851,24 +1916,29 @@ function drawTitle() {
 }
 
 function drawExploreHUD() {
-  // Compass
-  const compassBg = rgba8(0, 0, 0, 160);
-  rectfill(280, 4, 80, 18, compassBg);
+  // Compass panel
+  drawPanel(270, 2, 100, 38, {
+    bgColor: rgba8(0, 0, 0, 160),
+    borderLight: rgba8(60, 50, 40, 180),
+    borderDark: rgba8(20, 15, 10, 180),
+  });
   printCentered(`Facing ${DIR_NAMES[facing]}`, 320, 8, rgba8(200, 200, 220, 255));
-
-  // Floor indicator
   printCentered(`Floor ${floor}`, 320, 24, rgba8(150, 130, 100, 200));
 
   // Mini party status (bottom)
   drawPartyBar();
 
-  // Minimap (top-right)
-  drawDungeonMinimap();
+  // Minimap (top-right) using createMinimap API
+  if (minimap) drawMinimap(minimap, animTimer);
 
   // Floor message
   if (floorMessageTimer > 0) {
     const alpha = Math.min(255, Math.floor(floorMessageTimer * 200));
-    rectfill(120, 160, 400, 28, rgba8(0, 0, 0, Math.floor(alpha * 0.7)));
+    drawPanel(120, 158, 400, 28, {
+      bgColor: rgba8(0, 0, 0, Math.floor(alpha * 0.7)),
+      borderLight: rgba8(100, 80, 40, Math.floor(alpha * 0.4)),
+      borderDark: rgba8(30, 20, 10, Math.floor(alpha * 0.4)),
+    });
     printCentered(floorMessage, 320, 166, rgba8(255, 220, 100, alpha));
   }
 
@@ -1881,8 +1951,11 @@ function drawExploreHUD() {
 
 function drawPartyBar() {
   const barY = H - 52;
-  rectfill(0, barY, W, 52, rgba8(10, 8, 15, 220));
-  line(0, barY, W, barY, rgba8(60, 50, 40, 200));
+  drawPanel(0, barY, W, 52, {
+    bgColor: rgba8(10, 8, 15, 220),
+    borderLight: rgba8(60, 50, 40, 200),
+    borderDark: rgba8(20, 15, 10, 200),
+  });
 
   for (let i = 0; i < party.length; i++) {
     const m = party[i];
@@ -1902,14 +1975,12 @@ function drawPartyBar() {
 
     // HP bar
     if (m.alive) {
-      const hpPct = m.hp / m.maxHp;
-      const barColor =
-        hpPct > 0.5
-          ? rgba8(50, 180, 50, 255)
-          : hpPct > 0.25
-            ? rgba8(200, 180, 30, 255)
-            : rgba8(200, 40, 40, 255);
-      drawProgressBar(bx, barY + 16, 100, 6, hpPct, barColor, rgba8(30, 20, 20, 255));
+      drawHealthBar(bx, barY + 16, 100, 6, m.hp, m.maxHp, {
+        barColor: rgba8(50, 180, 50, 255),
+        dangerColor: rgba8(200, 40, 40, 255),
+        dangerThreshold: 0.25,
+        backgroundColor: rgba8(30, 20, 20, 255),
+      });
       print(`${m.hp}/${m.maxHp}`, bx + 104, barY + 14, rgba8(180, 180, 180, 200));
     } else {
       print('DEAD', bx, barY + 16, rgba8(150, 40, 40, 200));
@@ -1934,79 +2005,18 @@ function drawPartyBar() {
   }
 }
 
-function drawDungeonMinimap() {
-  if (!dungeon) return;
-  const mmSize = 80;
-  const mmX = W - mmSize - 8;
-  const mmY = 4;
-  const cellSize = Math.max(1, Math.floor(mmSize / Math.max(dungeonW, dungeonH)));
-
-  rectfill(mmX - 2, mmY - 2, mmSize + 4, mmSize + 4, rgba8(0, 0, 0, 200));
-  drawPixelBorder(
-    mmX - 2,
-    mmY - 2,
-    mmSize + 4,
-    mmSize + 4,
-    rgba8(50, 40, 30, 200),
-    rgba8(20, 15, 10, 200)
-  );
-
-  const offsetX = mmX + Math.floor((mmSize - dungeonW * cellSize) / 2);
-  const offsetY = mmY + Math.floor((mmSize - dungeonH * cellSize) / 2);
-
-  for (let y = 0; y < dungeonH; y++) {
-    for (let x = 0; x < dungeonW; x++) {
-      // Fog of war — only show explored tiles
-      if (!explored.has(`${x},${y}`)) continue;
-
-      const tile = dungeon[y][x];
-      const sx = offsetX + x * cellSize;
-      const sy = offsetY + y * cellSize;
-
-      // Dim tiles far from player
-      const dist = Math.abs(x - px) + Math.abs(y - py);
-      const nearAlpha = dist <= 6 ? 220 : 120;
-
-      if (tile === T.WALL) {
-        rectfill(sx, sy, cellSize, cellSize, rgba8(60, 50, 40, nearAlpha));
-      } else if (tile === T.FLOOR || tile === T.DOOR) {
-        rectfill(sx, sy, cellSize, cellSize, rgba8(30, 28, 22, nearAlpha));
-      } else if (tile === T.STAIRS_DOWN) {
-        rectfill(sx, sy, cellSize, cellSize, rgba8(50, 100, 200, 255));
-      } else if (tile === T.STAIRS_UP) {
-        rectfill(sx, sy, cellSize, cellSize, rgba8(200, 150, 50, 255));
-      } else if (tile === T.CHEST) {
-        rectfill(sx, sy, cellSize, cellSize, rgba8(200, 180, 50, 255));
-      } else if (tile === T.FOUNTAIN) {
-        rectfill(sx, sy, cellSize, cellSize, rgba8(50, 120, 255, 255));
-      } else if (tile === T.TRAP && dist <= 3) {
-        // Only show nearby traps (thief awareness)
-        rectfill(sx, sy, cellSize, cellSize, rgba8(150, 40, 40, 200));
-      } else if (tile === T.BOSS) {
-        const pulse = Math.floor(Math.sin(animTimer * 4) * 50 + 200);
-        rectfill(sx, sy, cellSize, cellSize, rgba8(pulse, 0, 50, 255));
-      } else if (tile === T.TRAP) {
-        rectfill(sx, sy, cellSize, cellSize, rgba8(30, 28, 22, nearAlpha)); // hidden trap
-      }
-    }
-  }
-
-  // Player dot with facing indicator
-  const ppx = offsetX + px * cellSize;
-  const ppy = offsetY + py * cellSize;
-  rectfill(ppx, ppy, cellSize, cellSize, rgba8(255, 60, 60, 255));
-
-  // Facing arrow
-  const [fdx, fdy] = DIRS[facing];
-  const fx = ppx + fdx * cellSize + Math.floor(cellSize / 2);
-  const fy = ppy + fdy * cellSize + Math.floor(cellSize / 2);
-  rectfill(fx, fy, Math.max(1, cellSize - 1), Math.max(1, cellSize - 1), rgba8(255, 200, 50, 255));
-}
-
 function drawCombatUI() {
-  // Dark overlay
-  rectfill(0, 0, W, 40, rgba8(10, 5, 15, 200));
-  rectfill(0, H - 160, W, 160, rgba8(10, 5, 15, 220));
+  // Dark overlay panels
+  drawPanel(0, 0, W, 40, {
+    bgColor: rgba8(10, 5, 15, 200),
+    borderLight: rgba8(50, 30, 50, 150),
+    borderDark: rgba8(10, 5, 15, 150),
+  });
+  drawPanel(0, H - 160, W, 160, {
+    bgColor: rgba8(10, 5, 15, 220),
+    borderLight: rgba8(50, 30, 50, 150),
+    borderDark: rgba8(10, 5, 15, 150),
+  });
 
   // Boss indicator
   if (enemies.length > 0 && enemies[0].isBoss) {
@@ -2217,7 +2227,7 @@ function drawInventoryUI() {
 }
 
 function drawGameOver() {
-  rectfill(0, 0, W, H, rgba8(0, 0, 0, 200));
+  drawGradient(0, 0, W, H, rgba8(15, 0, 0, 220), rgba8(0, 0, 0, 220));
   drawGlowText('GAME OVER', 320, 120, rgba8(200, 40, 40, 255), rgba8(100, 0, 0, 150), 3);
   printCentered(`Your party fell on Floor ${floor}`, 320, 180, rgba8(180, 150, 130, 200));
   printCentered(`Gold collected: ${totalGold}`, 320, 200, rgba8(200, 180, 50, 200));
@@ -2229,7 +2239,7 @@ function drawGameOver() {
 }
 
 function drawVictory() {
-  rectfill(0, 0, W, H, rgba8(0, 0, 0, 180));
+  drawGradient(0, 0, W, H, rgba8(10, 8, 2, 200), rgba8(2, 2, 10, 200));
   drawGlowText('VICTORY!', 320, 80, rgba8(255, 220, 50, 255), rgba8(180, 120, 0, 150), 3);
   printCentered('You conquered the Dark Tower!', 320, 140, rgba8(200, 200, 220, 255));
   printCentered(`Gold: ${totalGold}`, 320, 170, rgba8(220, 180, 50, 230));

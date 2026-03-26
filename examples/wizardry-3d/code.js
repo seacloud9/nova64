@@ -320,6 +320,9 @@ let encounterSpawner;
 // Combat spark pool (createPool API)
 let sparkPool; // pool of {x, y, vx, vy, life, color} for hit sparks
 
+// Water shader tracking (createShaderMaterial API)
+let waterShaders; // array of { shaderId, meshId } for animated fountain water
+
 // 3D mesh tracking
 let currentLevelMeshes = [];
 let monsterMeshes = [];
@@ -465,6 +468,7 @@ function clearLevel() {
     for (const id of particleSystems) removeParticleSystem(id);
   }
   particleSystems = [];
+  waterShaders = [];
   animatedMeshes = [];
   clearMonsterMeshes();
 }
@@ -599,6 +603,13 @@ function buildLevel() {
           });
           currentLevelMeshes.push(fw);
           animatedMeshes.push({ id: fw, type: 'bob', baseY: 0.5, speed: 1.5, range: 0.15 });
+          // Apply animated water shader via createShaderMaterial
+          const wShader = createShaderMaterial('water');
+          if (wShader) {
+            const rawMesh = getMesh(fw);
+            if (rawMesh) rawMesh.material = wShader.material;
+            waterShaders.push({ shaderId: wShader.id, meshId: fw });
+          }
           // Water particles
           const ps = createParticleSystem(15, {
             size: 0.05,
@@ -1540,6 +1551,9 @@ function enterFloor(newFloor) {
   else if (floor >= 3) enablePixelation(1);
   else enablePixelation(0); // disabled on early floors
 
+  // Richer noise detail on deeper floors for more complex fog wisps
+  noiseDetail(Math.min(2 + floor, 6), 0.5);
+
   // Dynamic bloom tuning per floor — deeper = tighter, more intense bloom
   const bloomRad = remap(floor, 1, 5, 0.5, 0.25);
   const bloomThresh = remap(floor, 1, 5, 0.3, 0.15);
@@ -1779,6 +1793,7 @@ export function init() {
   msgTimer = createTimer(3.0);
   msgTimer.done = true; // start inactive
   sparkPool = createPool(30, () => ({ x: 0, y: 0, vx: 0, vy: 0, life: 0, color: 0 }));
+  waterShaders = [];
   currentLevelMeshes = [];
   monsterMeshes = [];
 }
@@ -1865,6 +1880,13 @@ export function update(dt) {
         const swayZ = t.wz + Math.cos(animTimer * 2.5 + t.wx) * 0.08;
         setPointLightPosition(t.lightId, swayX, 2.2 + Math.sin(animTimer * 4) * 0.05, swayZ);
       }
+    }
+  }
+
+  // Animate water shader uniforms (createShaderMaterial + updateShaderUniform)
+  if (waterShaders) {
+    for (const ws of waterShaders) {
+      updateShaderUniform(ws.shaderId, 'time', animTimer);
     }
   }
 
@@ -2159,17 +2181,25 @@ function updateInventory(dt) {
     showFloorMessage('Game saved!');
     sfx('confirm');
   }
-  // Toggle visual preset mode: V cycles null → n64 → psx → null
+  // Toggle visual preset mode: V cycles null → n64 → psx → minimal → null
   if (keyp('KeyV')) {
     if (!visualPreset) {
       visualPreset = 'n64';
       enableN64Mode();
+      enableFXAA();
       showFloorMessage('N64 Mode enabled');
     } else if (visualPreset === 'n64') {
       visualPreset = 'psx';
       disablePresetMode();
       enablePSXMode();
+      enableFXAA();
       showFloorMessage('PSX Mode enabled');
+    } else if (visualPreset === 'psx') {
+      visualPreset = 'minimal';
+      disablePresetMode();
+      disableBloom();
+      disableFXAA();
+      showFloorMessage('Minimal Mode — no post-FX');
     } else {
       visualPreset = null;
       disablePresetMode();
@@ -2414,6 +2444,14 @@ export function draw() {
     const alpha = Math.min(1, spellVFX.timer * 3);
     if (spellVFX.type === 'star') {
       const r = 30 + (1 - alpha) * 40;
+      // HSB hue-cycling glow ring around spell impact using hsb()
+      const hueShift = animTimer * 200 + spellVFX.timer * 400;
+      circle(
+        spellVFX.x,
+        spellVFX.y,
+        Math.floor(r + 8),
+        hsb(hueShift, 0.8, 0.6, Math.floor(alpha * 100))
+      );
       drawStarburst(spellVFX.x, spellVFX.y, r, r * 0.4, 8, spellVFX.color);
       // Bezier arc spell trail — curved energy arc from caster to impact
       const arcProgress = 1 - alpha;
@@ -2432,6 +2470,18 @@ export function draw() {
     } else if (spellVFX.type === 'radial') {
       const r = 40 + (1 - alpha) * 60;
       drawRadialGradient(spellVFX.x, spellVFX.y, r, spellVFX.color, rgba8(0, 0, 0, 0));
+      // Quadratic bezier energy arc for buff/heal spells (quadCurve)
+      const arcAlpha = Math.floor(alpha * 180);
+      quadCurve(
+        100,
+        H - 100,
+        spellVFX.x,
+        spellVFX.y - 60 * alpha,
+        spellVFX.x,
+        spellVFX.y,
+        lerpColor(spellVFX.color, hsb(120, 0.6, 1, arcAlpha), 0.4),
+        20
+      );
     }
   }
 
@@ -2540,7 +2590,12 @@ function drawExploreHUD() {
     borderDark: hslColor(floorHue, 0.3, 0.1, 180),
   });
   printCentered(`Facing ${DIR_NAMES[facing]}`, 320, 8, rgba8(200, 200, 220, 255));
-  printCentered(`Floor ${floor}`, 320, 24, hslColor(floorHue, 0.4, 0.5, 200));
+  printCentered(
+    `Floor ${floor} (${rad2deg(currentYaw).toFixed(0)}°)`,
+    320,
+    24,
+    hslColor(floorHue, 0.4, 0.5, 200)
+  );
 
   // Directional arrow indicator using drawTriangle
   const arrowColor = hslColor(floorHue, 0.5, 0.6, 200);

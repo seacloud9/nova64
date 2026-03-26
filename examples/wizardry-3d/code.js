@@ -323,6 +323,9 @@ let sparkPool; // pool of {x, y, vx, vy, life, color} for hit sparks
 // Water shader tracking (createShaderMaterial API)
 let waterShaders; // array of { shaderId, meshId } for animated fountain water
 
+// 3D floating damage texts (drawFloatingTexts3D API)
+let floatingTexts3D; // separate system for world-space damage numbers
+
 // 3D mesh tracking
 let currentLevelMeshes = [];
 let monsterMeshes = [];
@@ -340,6 +343,24 @@ function switchState(newState) {
 // State elapsed time (seconds in current state)
 function stateElapsed() {
   return stateMachine ? stateMachine.getElapsed() : animTimer;
+}
+
+// Project 3D world coordinates to 2D screen for drawFloatingTexts3D
+function worldToScreen(wx, wy, wz) {
+  const cx = px * TILE,
+    cz = py * TILE,
+    cy = 1.6;
+  const [fdx, fdz] = DIRS[facing];
+  const dx = wx - cx,
+    dy = wy - cy,
+    dz = wz - cz;
+  const depth = dx * fdx + dz * fdz;
+  if (depth <= 0.1) return [W / 2, H / 2];
+  const right = dx * -fdz + dz * fdx;
+  const halfFOV = Math.tan(((combatFOV || 75) * Math.PI) / 360);
+  const sx = W / 2 + (right / (depth * halfFOV)) * (W / 2);
+  const sy = H / 2 - (dy / (depth * halfFOV * (H / W))) * (H / 2);
+  return [sx, sy];
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -459,6 +480,7 @@ function generateDungeon(w, h) {
 function clearLevel() {
   for (const id of currentLevelMeshes) destroyMesh(id);
   currentLevelMeshes = [];
+  clearSkybox(); // clean up old skybox before rebuilding
   if (torchLights) {
     for (const id of torchLights) removeLight(id);
   }
@@ -1543,6 +1565,7 @@ function enterFloor(newFloor) {
   }
 
   floorTransition = 1.2; // checkerboard wipe effect when entering new floor
+  noiseSeed(floor * 42 + 7); // consistent noise patterns per floor
   dungeon = generateDungeon(18 + floor * 2, 18 + floor * 2);
   buildLevel();
 
@@ -1793,6 +1816,7 @@ export function init() {
   msgTimer = createTimer(3.0);
   msgTimer.done = true; // start inactive
   sparkPool = createPool(30, () => ({ x: 0, y: 0, vx: 0, vy: 0, life: 0, color: 0 }));
+  floatingTexts3D = createFloatingTextSystem();
   waterShaders = [];
   currentLevelMeshes = [];
   monsterMeshes = [];
@@ -1803,6 +1827,7 @@ export function update(dt) {
   if (stateMachine) stateMachine.update(dt);
   updateCooldowns(cooldowns, dt);
   floatingTexts.update(dt);
+  if (floatingTexts3D) floatingTexts3D.update(dt);
   updateShake(shake, dt);
   updateParticles(dt);
 
@@ -2117,6 +2142,18 @@ function updateCombat(dt) {
         scale: 2,
         vy: -40,
       });
+      // 3D floating damage above monster in world space (drawFloatingTexts3D)
+      if (floatingTexts3D && target.meshBody) {
+        const mpos = getPosition(target.meshBody);
+        if (mpos) {
+          floatingTexts3D.spawn(`-${dmg}`, mpos[0], mpos[1] + 1.5, {
+            z: mpos[2],
+            color: 0xff5533,
+            scale: 2,
+            vy: 2,
+          });
+        }
+      }
 
       if (target.hp <= 0) {
         combatLog.push(`${target.name} defeated!`);
@@ -2195,11 +2232,18 @@ function updateInventory(dt) {
       enableFXAA();
       showFloorMessage('PSX Mode enabled');
     } else if (visualPreset === 'psx') {
+      visualPreset = 'lowpoly';
+      disablePresetMode();
+      enableLowPolyMode();
+      enableFXAA();
+      showFloorMessage('Low-Poly Mode enabled');
+    } else if (visualPreset === 'lowpoly') {
       visualPreset = 'minimal';
       disablePresetMode();
       disableBloom();
       disableFXAA();
-      showFloorMessage('Minimal Mode — no post-FX');
+      if (isEffectsEnabled()) showFloorMessage('Minimal Mode — effects disabled');
+      else showFloorMessage('Minimal Mode — no post-FX');
     } else {
       visualPreset = null;
       disablePresetMode();
@@ -2232,6 +2276,8 @@ function openShop(nextFloor) {
   setBloomRadius(0.6); // softer bloom in shop atmosphere
   setBloomThreshold(0.35);
   clearFog(); // no fog in the merchant area — bright and welcoming
+  createSolidSkybox(0x1a1020); // dark merchant atmosphere
+  disableSkyboxAutoAnimate(); // still skybox in shop
   sfx('coin');
 }
 
@@ -2490,8 +2536,11 @@ export function draw() {
     drawFlash(rgba8(screenFlash.r, screenFlash.g, screenFlash.b, Math.floor(screenFlash.alpha)));
   }
 
-  // Floating texts
+  // Floating texts (2D screen-space + 3D world-space via drawFloatingTexts3D)
   drawFloatingTexts(floatingTexts);
+  if (floatingTexts3D && (gameState === 'combat' || gameState === 'explore')) {
+    drawFloatingTexts3D(floatingTexts3D, worldToScreen);
+  }
 
   // Combat hit sparks (createPool)
   if (sparkPool && sparkPool.count > 0) {
@@ -2526,7 +2575,7 @@ function drawTitle() {
   // Smooth fade-in using smoothstep for title screen
   const fadeIn = smoothstep(0, 1.5, stateElapsed());
   const fade = Math.floor(fadeIn * 220);
-  drawGradient(0, 0, W, H, rgba8(5, 2, 15, fade), rgba8(20, 10, 5, fade));
+  drawSkyGradient(rgba8(5, 2, 15, fade), rgba8(20, 10, 5, fade));
 
   // Decorative ellipse aura behind title
   ellipse(320, 105, 200, 40, rgba8(180, 120, 40, Math.floor(fade * 0.15)), true);
@@ -3052,7 +3101,7 @@ function drawGameOver() {
   const fadeRaw = Math.min(1, stateElapsed() / 1.0);
   const fadeIn = ease(fadeRaw, 'easeOutCubic');
   const fade = Math.floor(fadeIn * 220);
-  drawGradient(0, 0, W, H, rgba8(15, 0, 0, fade), rgba8(0, 0, 0, fade));
+  drawSkyGradient(rgba8(15, 0, 0, fade), rgba8(0, 0, 0, fade));
   // Pulsing red radial glow behind text
   drawRadialGradient(320, 140, 120, hslColor(0, 0.8, 0.2, 60), rgba8(0, 0, 0, 0));
   // Decorative ellipse frame behind title

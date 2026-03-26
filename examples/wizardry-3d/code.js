@@ -303,6 +303,8 @@ let shopTarget; // which party member to apply item to
 // Hit/invulnerability state for party
 let hitStates; // array of createHitState per party member
 let chromaTimer; // timer for chromatic aberration effect on boss hits
+let combatFOV; // smooth FOV lerp for combat zoom
+let floorTransition; // checkerboard wipe timer when entering floors
 
 // Spell VFX overlay
 let spellVFX; // { type, x, y, timer, color } for drawStarburst/drawRadialGradient
@@ -809,6 +811,7 @@ function startCombat(isBoss) {
   combatAction = 'choose';
   selectedTarget = 0;
   switchState('combat');
+  setVolume(0.8); // louder for combat intensity
 
   if (enemies[0].isBoss) {
     triggerShake(shake, 0.8);
@@ -1466,6 +1469,7 @@ function enterFloor(newFloor) {
     return;
   }
 
+  floorTransition = 1.2; // checkerboard wipe effect when entering new floor
   dungeon = generateDungeon(18 + floor * 2, 18 + floor * 2);
   buildLevel();
 
@@ -1666,6 +1670,7 @@ export function init() {
   setFog(0x000000, 2, 18);
   setCameraFOV(75);
 
+  setVolume(0.6); // default exploration volume
   enableRetroEffects({
     bloom: { strength: 1.0, radius: 0.4, threshold: 0.25 },
     vignette: { darkness: 1.4, offset: 0.8 },
@@ -1695,7 +1700,9 @@ export function init() {
   particleSystems = [];
   explored = new Set();
   bossDefeated = new Set();
-  hitStates = party.map(() => createHitState({ invulnDuration: 0.6, flashRate: 8 }));
+  hitStates = party.map(() => createHitState({ invulnDuration: 0.6, blinkRate: 8 }));
+  combatFOV = 75; // smooth FOV for combat zoom
+  floorTransition = 0; // timer for checkerboard floor entry effect
   chromaTimer = 0;
   spellVFX = null;
   msgTimer = createTimer(3.0);
@@ -1713,6 +1720,19 @@ export function update(dt) {
   floatingTexts.update(dt);
   updateShake(shake, dt);
   updateParticles(dt);
+
+  // Tick hit state timers (invulnerability + flash)
+  if (hitStates) {
+    for (const hs of hitStates) updateHitState(hs, dt);
+  }
+
+  // Smooth FOV transitions (lerp toward target)
+  const targetFOV = gameState === 'combat' && enemies && enemies[0] && enemies[0].isBoss ? 65 : 75;
+  combatFOV = lerp(combatFOV, targetFOV, Math.min(1, dt * 3));
+  setCameraFOV(combatFOV);
+
+  // Floor transition timer
+  if (floorTransition > 0) floorTransition -= dt;
 
   // Update spark pool (combat hit sparks)
   if (sparkPool) {
@@ -1882,6 +1902,7 @@ function updateCombat(dt) {
   if (combatAction === 'result') {
     if (keyp('Space') && useCooldown(inputCD)) {
       clearMonsterMeshes();
+      setVolume(0.6); // quieter in exploration
       if (party.every(m => !m.alive)) {
         switchState('gameover');
       } else {
@@ -2034,6 +2055,7 @@ function updateCombat(dt) {
 
 function updateInventory(dt) {
   if (keyp('KeyI') || keyp('Tab') || keyp('Escape')) {
+    setVolume(0.6); // restore exploration volume
     switchState('explore');
   }
   if (keyp('KeyS')) {
@@ -2056,6 +2078,7 @@ function openShop(nextFloor) {
   shopCursor = 0;
   shopTarget = -1; // -1 = browsing, 0+ = selecting party member
   switchState('shop');
+  setVolume(0.5); // quieter in shop
   sfx('coin');
 }
 
@@ -2156,6 +2179,7 @@ function updateShop(dt) {
   } else if (keyp('Escape') || keyp('Backspace') || keyp('KeyX')) {
     useCooldown(inputCD);
     // Leave shop → continue to next floor
+    setVolume(0.6); // restore exploration volume
     const nextFloor = floor + 1;
     enterFloor(nextFloor);
     switchState('explore');
@@ -2395,12 +2419,42 @@ function drawExploreHUD() {
   const waveHue = floor > 0 ? (floor - 1) * 60 : 30;
   drawWave(0, H - 56, W, 4, 0.04, animTimer * 3, hslColor(waveHue, 0.5, 0.4, 80), 2);
 
+  // Move cooldown indicator (shows when movement is on cooldown)
+  const moveProg = cooldownProgress(moveCD);
+  if (moveProg < 1) {
+    const barW = 40;
+    const bx = 310,
+      by = H - 58;
+    drawRoundedRect(bx - 1, by - 1, barW + 2, 6, 2, rgba8(20, 20, 30, 180));
+    rectfill(
+      bx,
+      by,
+      Math.floor(barW * moveProg),
+      4,
+      rgba8(100, 180, 255, Math.floor(200 * (1 - moveProg)))
+    );
+  }
+
   // Controls hint
   print('WASD/Arrows=Move  Q/E=Turn  I=Inventory', 10, 348, rgba8(80, 80, 100, 150));
 
   // Gold with diamond icon
   drawDiamond(534, 352, 4, 5, rgba8(220, 180, 50, 200));
   print(`${totalGold}g`, 542, 348, rgba8(220, 180, 50, 200));
+
+  // Floor transition checkerboard wipe
+  if (floorTransition > 0) {
+    const alpha = Math.floor(clamp(floorTransition / 0.6, 0, 1) * 200);
+    drawCheckerboard(
+      0,
+      0,
+      W,
+      H,
+      rgba8(0, 0, 0, alpha),
+      rgba8(10, 5, 20, Math.floor(alpha * 0.5)),
+      24
+    );
+  }
 }
 
 function drawPartyBar() {
@@ -2535,16 +2589,20 @@ function drawCombatUI() {
     print(`${CLASS_ICONS[member.class]} ${member.name}'s turn`, 20, H - 82, rgba8(cr, cg, cb, 255));
 
     if (combatAction === 'choose') {
-      print('[1/Z] Attack', 20, H - 62, rgba8(220, 200, 180, 255));
+      // Action menu with rounded highlight
+      const menuItems = ['[1/Z] Attack', '[2/X] Magic', '[3/C] Defend'];
+      drawRoundedRect(14, H - 68, 200, 54, 4, rgba8(20, 15, 30, 120));
+      print(menuItems[0], 20, H - 62, rgba8(220, 200, 180, 255));
       if (member.maxMp > 0) {
-        print(`[2/X] Magic (${member.mp} MP)`, 20, H - 48, rgba8(120, 140, 255, 255));
+        print(`${menuItems[1]} (${member.mp} MP)`, 20, H - 48, rgba8(120, 140, 255, 255));
       }
-      print('[3/C] Defend', 20, H - 34, rgba8(180, 180, 140, 255));
+      print(menuItems[2], 20, H - 34, rgba8(180, 180, 140, 255));
+      const autoAlpha = Math.floor(pulse(animTimer, 1.5) * 75 + 180);
       print(
         `[A] Auto ${autoPlay ? 'ON' : 'OFF'}`,
         20,
         H - 20,
-        autoPlay ? rgba8(100, 255, 100, 255) : rgba8(120, 120, 140, 180)
+        autoPlay ? rgba8(100, 255, 100, autoAlpha) : rgba8(120, 120, 140, 180)
       );
       // Show equipped weapon
       if (member.weapon) {
@@ -2599,13 +2657,16 @@ function drawCombatUI() {
       cb = c & 0xff;
 
     // Flash when recently hit (invulnerability frames)
-    const hitVisible = !hitStates || !hitStates[i] || isVisible(hitStates[i]);
+    const hitVisible = !hitStates || !hitStates[i] || isVisible(hitStates[i], animTimer);
+    const hitFlash = hitStates && hitStates[i] && isFlashing(hitStates[i]);
     const labelAlpha = hitVisible ? 255 : 80;
 
     const labelColor = m.alive
-      ? isCurrent
-        ? rgba8(255, 255, 200, labelAlpha)
-        : rgba8(cr, cg, cb, Math.min(200, labelAlpha))
+      ? hitFlash
+        ? rgba8(255, 255, 255, 255)
+        : isCurrent
+          ? rgba8(255, 255, 200, labelAlpha)
+          : rgba8(cr, cg, cb, Math.min(200, labelAlpha))
       : rgba8(80, 80, 80, 150);
     print(`${isCurrent ? '►' : ' '} ${m.name}`, W - 200, y, labelColor);
     if (m.alive) {
@@ -2720,10 +2781,9 @@ function drawGameOver() {
   drawDiamond(270, 204, 4, 5, hexColor(0xc8b432, 200));
   printCentered(`${totalGold} Gold collected`, 320, 200, hexColor(0xc8b432, 200));
 
-  drawPulsingText('Press SPACE to try again', 320, 260, rgba8(255, 255, 255, 255), animTimer, {
-    frequency: 3,
-    minAlpha: 135,
-  });
+  // Pulsing restart prompt using pulse() for smooth oscillation
+  const restartAlpha = Math.floor(pulse(animTimer, 1.5) * 120 + 135);
+  printCentered('Press SPACE to try again', 320, 260, rgba8(255, 255, 255, restartAlpha));
 }
 
 function drawVictory() {
@@ -2756,8 +2816,7 @@ function drawVictory() {
     );
   }
 
-  drawPulsingText('Press SPACE to play again', 320, 300, rgba8(255, 255, 255, 255), animTimer, {
-    frequency: 3,
-    minAlpha: 135,
-  });
+  // Pulsing restart prompt using pulse() for smooth oscillation
+  const replayAlpha = Math.floor(pulse(animTimer, 1.5) * 120 + 135);
+  printCentered('Press SPACE to play again', 320, 300, rgba8(255, 255, 255, replayAlpha));
 }

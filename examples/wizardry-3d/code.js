@@ -310,12 +310,30 @@ let spellVFX; // { type, x, y, timer, color } for drawStarburst/drawRadialGradie
 // Floor message timer (createTimer API)
 let msgTimer; // createTimer object for floor messages
 
+// Encounter spawner (createSpawner API) — scales encounter count per floor
+let encounterSpawner;
+
 // Combat spark pool (createPool API)
 let sparkPool; // pool of {x, y, vx, vy, life, color} for hit sparks
 
 // 3D mesh tracking
 let currentLevelMeshes = [];
 let monsterMeshes = [];
+
+// ═══════════════════════════════════════════════════════════════════════
+// HELPERS
+// ═══════════════════════════════════════════════════════════════════════
+
+// Transition game state via state machine for elapsed tracking
+function switchState(newState) {
+  gameState = newState;
+  if (stateMachine) stateMachine.switchTo(newState);
+}
+
+// State elapsed time (seconds in current state)
+function stateElapsed() {
+  return stateMachine ? stateMachine.getElapsed() : animTimer;
+}
 
 // ═══════════════════════════════════════════════════════════════════════
 // DUNGEON GENERATION
@@ -741,7 +759,14 @@ function startCombat(isBoss) {
   } else {
     const tier = Math.min(Math.floor((floor - 1) / 2), MONSTERS.length - 1);
     pool = MONSTERS[tier];
-    count = 1 + Math.floor(Math.random() * Math.min(3, floor));
+    // Use spawner wave count to scale encounters as player explores
+    if (encounterSpawner) {
+      encounterSpawner.wave++;
+      encounterSpawner.totalSpawned++;
+    }
+    const waveBonus = encounterSpawner ? Math.min(encounterSpawner.wave, 3) : 0;
+    count = 1 + Math.floor(Math.random() * Math.min(3, floor)) + Math.floor(waveBonus / 2);
+    count = Math.min(count, 4); // cap at 4 enemies
     enemies = [];
     for (let i = 0; i < count; i++) {
       const template = pool[Math.floor(Math.random() * pool.length)];
@@ -773,15 +798,17 @@ function startCombat(isBoss) {
     e.allMeshes = meshIds;
   }
 
+  const waveLabel =
+    encounterSpawner && encounterSpawner.wave > 1 ? ` [Wave ${encounterSpawner.wave}]` : '';
   combatLog = [
     enemies[0].isBoss
       ? `BOSS: ${enemies[0].name} blocks your path!`
-      : `${enemies.length} ${enemies.length > 1 ? 'monsters appear' : enemies[0].name + ' appears'}!`,
+      : `${enemies.length} ${enemies.length > 1 ? 'monsters appear' : enemies[0].name + ' appears'}!${waveLabel}`,
   ];
   combatTurn = 0;
   combatAction = 'choose';
   selectedTarget = 0;
-  gameState = 'combat';
+  switchState('combat');
 
   if (enemies[0].isBoss) {
     triggerShake(shake, 0.8);
@@ -1433,7 +1460,7 @@ function enterFloor(newFloor) {
 
   if (floor > 5) {
     // Victory!
-    gameState = 'victory';
+    switchState('victory');
     showFloorMessage('You conquered the dungeon!');
     sfx('powerup');
     return;
@@ -1441,6 +1468,11 @@ function enterFloor(newFloor) {
 
   dungeon = generateDungeon(18 + floor * 2, 18 + floor * 2);
   buildLevel();
+
+  // Deeper floors get retro pixelation for a more ominous, degraded look
+  if (floor >= 4) enablePixelation(2);
+  else if (floor >= 3) enablePixelation(1);
+  else enablePixelation(0); // disabled on early floors
   targetYaw = (facing * Math.PI) / 2;
   currentYaw = targetYaw;
   updateCamera3D();
@@ -1448,6 +1480,17 @@ function enterFloor(newFloor) {
   rebuildMinimap();
   const theme = FLOOR_THEMES[Math.min(floor - 1, FLOOR_THEMES.length - 1)];
   showFloorMessage(`Floor ${floor} — ${theme.name}`);
+
+  // Create encounter spawner for this floor (scales enemy count per wave)
+  encounterSpawner = createSpawner({
+    waveInterval: 999, // we trigger manually via steps, not time
+    baseCount: 1 + Math.floor(floor / 2),
+    countGrowth: 1,
+    maxCount: 3 + floor,
+    spawnFn: null, // we read .wave to scale encounters
+  });
+  encounterSpawner.active = false; // triggered manually on combat start
+
   saveGame();
 }
 
@@ -1579,7 +1622,7 @@ function loadGameSave() {
   buildLevel();
   updateCamera3D();
   rebuildMinimap();
-  gameState = 'explore';
+  switchState('explore');
   showFloorMessage(`Floor ${floor} — Game Loaded`);
   sfx('confirm');
   return true;
@@ -1612,6 +1655,7 @@ function updateCamera3D() {
 
 export function init() {
   gameState = 'title';
+  stateMachine = createStateMachine('title');
   animTimer = 0;
   enemyDelay = 0;
   autoPlay = false;
@@ -1629,6 +1673,7 @@ export function init() {
     dithering: true,
   });
   createGradientSkybox(0x110808, 0x050303);
+  enableSkyboxAutoAnimate(0.3); // slow atmospheric skybox rotation
 
   shake = createShake({ decay: 5 });
   inputCD = createCooldown(0.15);
@@ -1662,6 +1707,7 @@ export function init() {
 
 export function update(dt) {
   animTimer += dt;
+  if (stateMachine) stateMachine.update(dt);
   updateCooldown(inputCD, dt);
   updateCooldown(moveCD, dt);
   floatingTexts.update(dt);
@@ -1777,7 +1823,7 @@ function updateTitle(dt) {
   } else if (keyp('Space') || keyp('Enter')) {
     deleteSave();
     enterFloor(1);
-    gameState = 'explore';
+    switchState('explore');
     sfx('confirm');
   }
 }
@@ -1785,7 +1831,7 @@ function updateTitle(dt) {
 function updateExplore(dt) {
   if (!cooldownReady(moveCD)) {
     // still in cooldown, but check non-move inputs
-    if (keyp('KeyI') || keyp('Tab')) gameState = 'inventory';
+    if (keyp('KeyI') || keyp('Tab')) switchState('inventory');
     updateCamera3D();
     return;
   }
@@ -1817,7 +1863,7 @@ function updateExplore(dt) {
     moveCD.remaining = moveCD.duration;
   }
 
-  if (keyp('KeyI') || keyp('Tab')) gameState = 'inventory';
+  if (keyp('KeyI') || keyp('Tab')) switchState('inventory');
 
   if (moved) moveCD.remaining = moveCD.duration; // reset move cooldown
 
@@ -1837,9 +1883,9 @@ function updateCombat(dt) {
     if (keyp('Space') && useCooldown(inputCD)) {
       clearMonsterMeshes();
       if (party.every(m => !m.alive)) {
-        gameState = 'gameover';
+        switchState('gameover');
       } else {
-        gameState = 'explore';
+        switchState('explore');
         enemies = [];
       }
     }
@@ -1988,7 +2034,7 @@ function updateCombat(dt) {
 
 function updateInventory(dt) {
   if (keyp('KeyI') || keyp('Tab') || keyp('Escape')) {
-    gameState = 'explore';
+    switchState('explore');
   }
   if (keyp('KeyS')) {
     saveGame();
@@ -2009,7 +2055,7 @@ function openShop(nextFloor) {
   }));
   shopCursor = 0;
   shopTarget = -1; // -1 = browsing, 0+ = selecting party member
-  gameState = 'shop';
+  switchState('shop');
   sfx('coin');
 }
 
@@ -2112,7 +2158,7 @@ function updateShop(dt) {
     // Leave shop → continue to next floor
     const nextFloor = floor + 1;
     enterFloor(nextFloor);
-    gameState = 'explore';
+    switchState('explore');
     sfx('confirm');
   }
 }
@@ -2247,7 +2293,10 @@ export function draw() {
 }
 
 function drawTitle() {
-  drawGradient(0, 0, W, H, rgba8(5, 2, 15, 220), rgba8(20, 10, 5, 220));
+  // Smooth fade-in using state machine elapsed tracking
+  const fadeIn = Math.min(1, stateElapsed() / 1.5);
+  const fade = Math.floor(fadeIn * 220);
+  drawGradient(0, 0, W, H, rgba8(5, 2, 15, fade), rgba8(20, 10, 5, fade));
 
   // Decorative spinning spirals
   const spiralColor = hslColor(animTimer * 30, 0.4, 0.3, 60);
@@ -2656,7 +2705,10 @@ function drawInventoryUI() {
 }
 
 function drawGameOver() {
-  drawGradient(0, 0, W, H, rgba8(15, 0, 0, 220), rgba8(0, 0, 0, 220));
+  // Fade-in using state machine elapsed time
+  const fadeIn = Math.min(1, stateElapsed() / 1.0);
+  const fade = Math.floor(fadeIn * 220);
+  drawGradient(0, 0, W, H, rgba8(15, 0, 0, fade), rgba8(0, 0, 0, fade));
   // Pulsing red radial glow behind text
   drawRadialGradient(320, 140, 120, hslColor(0, 0.8, 0.2, 60), rgba8(0, 0, 0, 0));
   drawGlowText('GAME OVER', 320, 120, hexColor(0xcc2828, 255), rgba8(100, 0, 0, 150), 3);

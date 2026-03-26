@@ -482,10 +482,17 @@ function buildLevel() {
   // Update atmosphere per floor
   setAmbientLight(theme.ambColor, theme.ambInt);
   setFog(theme.fogColor, 2, 20 - floor);
-  createGradientSkybox(theme.skyTop, theme.skyBot);
+  // Dragon's Lair gets a dramatic space skybox; other floors use gradient
+  if (floor === 5) {
+    createSpaceSkybox({ starCount: 600, nebula: true });
+  } else {
+    createGradientSkybox(theme.skyTop, theme.skyBot);
+  }
   // Set directional light angle per floor for varied shadow casting
   const lightAngle = -0.8 - floor * 0.1;
   setDirectionalLight([0.3, lightAngle, -0.5], theme.ambColor, 0.6 + floor * 0.08);
+  // Vary skybox rotation speed per floor depth
+  setSkyboxSpeed(0.2 + floor * 0.1);
 
   for (let y = 0; y < dungeonH; y++) {
     for (let x = 0; x < dungeonW; x++) {
@@ -776,12 +783,12 @@ function startCombat(isBoss) {
       encounterSpawner.totalSpawned++;
     }
     const waveBonus = encounterSpawner ? Math.min(encounterSpawner.wave, 3) : 0;
-    count = 1 + Math.floor(Math.random() * Math.min(3, floor)) + Math.floor(waveBonus / 2);
+    count = 1 + randInt(0, Math.min(3, floor) - 1) + Math.floor(waveBonus / 2);
     count = Math.min(count, 4); // cap at 4 enemies
     enemies = [];
     for (let i = 0; i < count; i++) {
-      const template = pool[Math.floor(Math.random() * pool.length)];
-      const scale = 0.8 + Math.random() * 0.4;
+      const template = pool[randInt(0, pool.length - 1)];
+      const scale = randRange(0.8, 1.2);
       enemies.push({
         ...template,
         hp: Math.floor(template.hp * scale * (1 + floor * 0.1)),
@@ -803,6 +810,10 @@ function startCombat(isBoss) {
       perpZ = dx; // perpendicular
     const mx = px * TILE + dx * 4 + perpX * offset;
     const mz = py * TILE + dz * 4 + perpZ * offset;
+
+    // Use dist3d to compute monster distance from player for combat info
+    e.distFromPlayer = dist3d(px * TILE, 1.6, py * TILE, mx, 1, mz);
+
     const meshIds = createMonsterMesh(e, mx, mz, dx, dz);
     monsterMeshes.push(...meshIds);
     e.meshBody = meshIds[0];
@@ -1857,6 +1868,13 @@ export function update(dt) {
     }
   }
 
+  // Ambient single-particle emission — occasional dust motes near player
+  if (gameState === 'explore' && particleSystems.length > 0 && Math.random() < 0.03) {
+    emitParticle(particleSystems[0], {
+      position: [px * TILE + randRange(-2, 2), randRange(0.5, 2.5), py * TILE + randRange(-2, 2)],
+    });
+  }
+
   // Smooth turning
   if (currentYaw !== targetYaw) {
     const diff = targetYaw - currentYaw;
@@ -2536,6 +2554,10 @@ function drawExploreHUD() {
     drawTriangle(ax, ay + 5, ax - 4, ay - 3, ax + 4, ay - 3, arrowColor, true); // S ▼
   else drawTriangle(ax - 5, ay, ax + 3, ay - 4, ax + 3, ay + 4, arrowColor, true); // W ◄
 
+  // Compass arc — sweeping arc around facing direction using deg2rad
+  const arcAngle = deg2rad(facing * 90);
+  arc(320, 18, 28, 14, arcAngle - 0.4, arcAngle + 0.4, hslColor(floorHue, 0.6, 0.5, 100), false);
+
   // Mini party status (bottom)
   drawPartyBar();
 
@@ -2949,13 +2971,24 @@ function drawInventoryUI() {
   print(goldStr, 80, H - 90, rgba8(220, 180, 50, 230));
   print(`Floor: ${floor}`, 80 + goldMetrics.width + 12, H - 90, rgba8(150, 150, 170, 200));
   if (bossDefeated.size > 0) {
-    printRight(`Bosses slain: ${bossDefeated.size}`, 560, H - 90, rgba8(200, 100, 100, 200));
+    printRight(`Bosses slain: ${bossDefeated.size}`, 560, H - 90, n64Palette.red);
+  }
+
+  // Render stats debug info using get3DStats
+  const stats = get3DStats();
+  if (stats) {
+    print(
+      `Tris:${stats.triangles || 0}  Draws:${stats.drawCalls || 0}  Meshes:${stats.meshes || 0}`,
+      60,
+      H - 55,
+      rgba8(80, 80, 100, 120)
+    );
   }
 
   print('[S] Save Game', 60, H - 72, rgba8(100, 200, 100, 200));
   // Visual preset toggle hint
   const presetLabel = visualPreset ? `[V] Mode: ${visualPreset.toUpperCase()}` : '[V] Visual Mode';
-  print(presetLabel, 250, H - 72, rgba8(140, 120, 180, 200));
+  print(presetLabel, 250, H - 72, n64Palette.cyan);
   printCentered('Press I / TAB / ESC to close', 320, H - 55, rgba8(120, 120, 150, 180));
 }
 
@@ -3037,12 +3070,12 @@ function drawVictory() {
     drawStarburst(sx, sy, 20, 8, 6, starColor);
   }
 
-  drawGlowText('VICTORY!', 320, 80, rgba8(255, 220, 50, 255), rgba8(180, 120, 0, 150), 3);
+  drawGlowTextCentered('VICTORY!', 320, 80, rgba8(255, 220, 50, 255), rgba8(180, 120, 0, 150), 3);
   printCentered('You conquered the Dark Tower!', 320, 140, rgba8(200, 200, 220, 255));
 
-  // Gold with diamond
-  drawDiamond(290, 174, 4, 5, rgba8(220, 180, 50, 230));
-  printCentered(`${totalGold} Gold`, 320, 170, rgba8(220, 180, 50, 230));
+  // Gold with diamond — use n64Palette for classic gold tone
+  drawDiamond(290, 174, 4, 5, n64Palette.yellow);
+  printCentered(`${totalGold} Gold`, 320, 170, n64Palette.yellow);
 
   for (let i = 0; i < party.length; i++) {
     const m = party[i];

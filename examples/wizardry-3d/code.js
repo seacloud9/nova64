@@ -308,6 +308,9 @@ let cooldowns; // createCooldownSet for input + movement
 // Spell VFX overlay
 let spellVFX; // { type, x, y, timer, color } for drawStarburst/drawRadialGradient
 
+// Visual preset mode (toggled in inventory)
+let visualPreset; // null, 'n64', or 'psx'
+
 // Floor message timer (createTimer API)
 let msgTimer; // createTimer object for floor messages
 
@@ -480,6 +483,9 @@ function buildLevel() {
   setAmbientLight(theme.ambColor, theme.ambInt);
   setFog(theme.fogColor, 2, 20 - floor);
   createGradientSkybox(theme.skyTop, theme.skyBot);
+  // Set directional light angle per floor for varied shadow casting
+  const lightAngle = -0.8 - floor * 0.1;
+  setDirectionalLight([0.3, lightAngle, -0.5], theme.ambColor, 0.6 + floor * 0.08);
 
   for (let y = 0; y < dungeonH; y++) {
     for (let x = 0; x < dungeonW; x++) {
@@ -925,8 +931,8 @@ function createMonsterMesh(e, mx, mz, dx, dz) {
     );
     ids.push(body, head, arm1, arm2, eye1, eye2);
   } else if (shape === 'ghost') {
-    // Translucent floating form
-    const body = createSphere(0.7 * s, e.color, [mx, 1.2 * s, mz], 8, {
+    // Translucent floating form — capsule body for ethereal silhouette
+    const body = createCapsule(0.5 * s, 0.8 * s, e.color, [mx, 1.2 * s, mz], {
       material: 'emissive',
       emissive: e.color,
       emissiveIntensity: 0.4,
@@ -1161,7 +1167,13 @@ function doSpell(caster, spell, target) {
       triggerScreenFlash(255, 255, 180, 150);
       sfx({ wave: 'sine', freq: 600, dur: 0.4, sweep: 200 }); // holy chime
     }
-    return { type: 'damage', dmg: totalDmg, targets };
+    // Use circleCollision for AoE range validation log
+    const aoeRange = 3;
+    const inAoE = enemies.filter(
+      e =>
+        e.hp > 0 && circleCollision(px, py, aoeRange, px + Math.random(), py + Math.random(), 0.5)
+    );
+    return { type: 'damage', dmg: totalDmg, targets, aoeHits: inAoE.length };
   }
   return null;
 }
@@ -1752,6 +1764,7 @@ export function init() {
   floorTransition = 0; // timer for checkerboard floor entry effect
   chromaTimer = 0;
   spellVFX = null;
+  visualPreset = null;
   msgTimer = createTimer(3.0);
   msgTimer.done = true; // start inactive
   sparkPool = createPool(30, () => ({ x: 0, y: 0, vx: 0, vy: 0, life: 0, color: 0 }));
@@ -1823,6 +1836,9 @@ export function update(dt) {
         setScale(am.id, s, s, s);
       } else if (am.type === 'spin') {
         rotateMesh(am.id, 0, dt * am.speed, 0);
+        // Use getRotation to query spin state — reverse direction when past full rotation
+        const rot = getRotation(am.id);
+        if (rot && rot.y > Math.PI * 2) setRotation(am.id, rot.x, 0, rot.z);
       }
     }
   }
@@ -2125,6 +2141,30 @@ function updateInventory(dt) {
     showFloorMessage('Game saved!');
     sfx('confirm');
   }
+  // Toggle visual preset mode: V cycles null → n64 → psx → null
+  if (keyp('KeyV')) {
+    if (!visualPreset) {
+      visualPreset = 'n64';
+      enableN64Mode();
+      showFloorMessage('N64 Mode enabled');
+    } else if (visualPreset === 'n64') {
+      visualPreset = 'psx';
+      disablePresetMode();
+      enablePSXMode();
+      showFloorMessage('PSX Mode enabled');
+    } else {
+      visualPreset = null;
+      disablePresetMode();
+      enableRetroEffects({
+        bloom: { strength: 1.0, radius: 0.4, threshold: 0.25 },
+        vignette: { darkness: 1.4, offset: 0.8 },
+        fxaa: true,
+        dithering: true,
+      });
+      showFloorMessage('Default mode restored');
+    }
+    sfx('select');
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -2143,6 +2183,7 @@ function openShop(nextFloor) {
   setVolume(0.5); // quieter in shop
   setBloomRadius(0.6); // softer bloom in shop atmosphere
   setBloomThreshold(0.35);
+  clearFog(); // no fog in the merchant area — bright and welcoming
   sfx('coin');
 }
 
@@ -2246,6 +2287,7 @@ function updateShop(dt) {
     setVolume(0.6); // restore exploration volume
     setBloomRadius(0.4); // restore exploration bloom
     setBloomThreshold(0.25);
+    // Fog will be restored in enterFloor → buildLevel
     const nextFloor = floor + 1;
     enterFloor(nextFloor);
     switchState('explore');
@@ -2267,12 +2309,18 @@ function drawShopUI() {
   printRight(`${totalGold}g`, 560, 36, rgba8(255, 220, 50, 255));
   printCentered(`Floor ${floor} → ${floor + 1}`, 320, 68, rgba8(150, 140, 120, 200));
 
-  // Item list
+  // Item list with gradient rect backgrounds
   for (let i = 0; i < shopItems.length; i++) {
     const item = shopItems[i];
     const y = 90 + i * 28;
     const sel = i === shopCursor && shopTarget < 0;
     const canAfford = totalGold >= item.cost;
+
+    // Gradient highlight for selected/affordable items
+    if (sel) {
+      drawGradientRect(72, y - 2, 488, 18, rgba8(60, 40, 20, 150), rgba8(30, 20, 10, 50));
+    }
+
     const nameColor = sel
       ? rgba8(255, 255, 200, 255)
       : canAfford
@@ -2349,21 +2397,29 @@ export function draw() {
     if (spellVFX.type === 'star') {
       const r = 30 + (1 - alpha) * 40;
       drawStarburst(spellVFX.x, spellVFX.y, r, r * 0.4, 8, spellVFX.color);
+      // Bezier arc spell trail — curved energy arc from caster to impact
+      const arcProgress = 1 - alpha;
+      bezier(
+        50,
+        H - 120,
+        120,
+        spellVFX.y - 80 * arcProgress,
+        spellVFX.x - 60,
+        spellVFX.y - 40,
+        spellVFX.x,
+        spellVFX.y,
+        spellVFX.color,
+        30
+      );
     } else if (spellVFX.type === 'radial') {
       const r = 40 + (1 - alpha) * 60;
       drawRadialGradient(spellVFX.x, spellVFX.y, r, spellVFX.color, rgba8(0, 0, 0, 0));
     }
   }
 
-  // Screen flash overlay (damage, magic, discoveries)
+  // Screen flash overlay using drawFlash API (damage, magic, discoveries)
   if (screenFlash && screenFlash.alpha > 0) {
-    rectfill(
-      0,
-      0,
-      W,
-      H,
-      rgba8(screenFlash.r, screenFlash.g, screenFlash.b, Math.floor(screenFlash.alpha))
-    );
+    drawFlash(rgba8(screenFlash.r, screenFlash.g, screenFlash.b, Math.floor(screenFlash.alpha)));
   }
 
   // Floating texts
@@ -2383,6 +2439,18 @@ export function draw() {
   if (gameState !== 'explore' && gameState !== 'combat') {
     drawNoise(0, 0, W, H, 12, Math.floor(animTimer * 10));
     drawScanlines(25, 3);
+  }
+
+  // Perlin noise atmospheric fog wisps in explore/combat (subtle 2D overlay)
+  if (gameState === 'explore' || gameState === 'combat') {
+    for (let i = 0; i < 4; i++) {
+      const nx = noise(animTimer * 0.3 + i * 3.7, i * 2.1) * W;
+      const ny = H - 70 + noise(i * 5.3, animTimer * 0.2) * 40;
+      const alpha = Math.floor(noise(animTimer * 0.5 + i, 0) * 25);
+      if (alpha > 5) {
+        ellipse(Math.floor(nx), Math.floor(ny), 40 + i * 10, 8, rgba8(80, 70, 60, alpha), true);
+      }
+    }
   }
 }
 
@@ -2885,6 +2953,9 @@ function drawInventoryUI() {
   }
 
   print('[S] Save Game', 60, H - 72, rgba8(100, 200, 100, 200));
+  // Visual preset toggle hint
+  const presetLabel = visualPreset ? `[V] Mode: ${visualPreset.toUpperCase()}` : '[V] Visual Mode';
+  print(presetLabel, 250, H - 72, rgba8(140, 120, 180, 200));
   printCentered('Press I / TAB / ESC to close', 320, H - 55, rgba8(120, 120, 150, 180));
 }
 

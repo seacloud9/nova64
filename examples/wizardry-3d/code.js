@@ -2288,8 +2288,12 @@ export function draw() {
   }
 
   // Subtle noise grain + CRT scanlines for retro feel
-  drawNoise(0, 0, W, H, 12, Math.floor(animTimer * 10));
-  drawScanlines(25, 3);
+  // Only apply full-screen noise on states with 2D backgrounds;
+  // in explore/combat the 3D scene must show through the overlay.
+  if (gameState !== 'explore' && gameState !== 'combat') {
+    drawNoise(0, 0, W, H, 12, Math.floor(animTimer * 10));
+    drawScanlines(25, 3);
+  }
 }
 
 function drawTitle() {

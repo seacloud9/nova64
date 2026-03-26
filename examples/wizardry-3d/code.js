@@ -335,6 +335,9 @@ let bossFlowField; // Float32Array of angles for boss room visualization
 // Procedural floor fog texture (noiseMap API)
 let floorNoiseMap; // Float32Array for deep floor atmospheric overlay
 
+// Game over restart button (createButton API)
+let restartButton;
+
 // 3D mesh tracking
 let currentLevelMeshes = [];
 let monsterMeshes = [];
@@ -1794,7 +1797,8 @@ function updateCamera3D() {
   const [shakeX, shakeY] = getShakeOffset(shake);
 
   setCameraPosition(wx + shakeX * 0.02, eyeY + shakeY * 0.02, wz);
-  setCameraTarget(wx + dx * 10, eyeY, wz + dz * 10);
+  // Use setCameraLookAt for view direction instead of setCameraTarget
+  setCameraLookAt([dx * 10, 0, dz * 10]);
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -1859,6 +1863,25 @@ export function init() {
   instancedDecor = null;
   bossFlowField = null;
   floorNoiseMap = null;
+  restartButton = createButton(
+    centerX(160),
+    250,
+    160,
+    24,
+    'Try Again',
+    () => {
+      init();
+      enterFloor(1);
+      switchState('explore');
+    },
+    {
+      normalColor: rgba8(120, 30, 30, 200),
+      hoverColor: rgba8(180, 50, 50, 220),
+      textColor: rgba8(255, 220, 200, 255),
+      borderColor: rgba8(200, 80, 80, 200),
+      rounded: true,
+    }
+  );
   waterShaders = [];
   currentLevelMeshes = [];
   monsterMeshes = [];
@@ -2034,32 +2057,56 @@ function updateExplore(dt) {
 
   const [dx, dz] = DIRS[facing];
 
-  // Movement
+  // Movement (keyboard + gamepad left stick)
   let moved = false;
-  if (key('KeyW') || key('ArrowUp')) {
+  const stickY = leftStickY();
+  const stickX = leftStickX();
+  if (key('KeyW') || key('ArrowUp') || stickY < -0.5) {
     moved = tryMove(dx, dz);
-  } else if (key('KeyS') || key('ArrowDown')) {
+  } else if (key('KeyS') || key('ArrowDown') || stickY > 0.5) {
     moved = tryMove(-dx, -dz);
-  } else if (key('KeyA')) {
+  } else if (key('KeyA') || stickX < -0.5) {
     // Strafe left
     moved = tryMove(dz, -dx);
-  } else if (key('KeyD')) {
+  } else if (key('KeyD') || stickX > 0.5) {
     // Strafe right
     moved = tryMove(-dz, dx);
   }
 
-  // Turning (keyp for discrete 90° snaps)
-  if (keyp('ArrowLeft') || keyp('KeyQ')) {
+  // Turning (keyp for discrete 90° snaps, or right stick for gamepad)
+  const rStickX = rightStickX();
+  if (keyp('ArrowLeft') || keyp('KeyQ') || (rStickX < -0.5 && cooldownReady(cooldowns.input))) {
     facing = (facing + 3) % 4; // turn left
     targetYaw = facing * HALF_PI;
     cooldowns.move.remaining = cooldowns.move.duration;
-  } else if (keyp('ArrowRight') || keyp('KeyE')) {
+    if (rStickX < -0.5) useCooldown(cooldowns.input);
+  } else if (
+    keyp('ArrowRight') ||
+    keyp('KeyE') ||
+    (rStickX > 0.5 && cooldownReady(cooldowns.input))
+  ) {
     facing = (facing + 1) % 4; // turn right
     targetYaw = facing * HALF_PI;
     cooldowns.move.remaining = cooldowns.move.duration;
+    if (rStickX > 0.5) useCooldown(cooldowns.input);
   }
 
   if (keyp('KeyI') || keyp('Tab')) switchState('inventory');
+
+  // Click-to-inspect: raycast from camera on mouse click to identify tile ahead
+  if (mousePressed() && mouseDown()) {
+    const hit = raycastFromCamera(mouseX(), mouseY());
+    if (hit && hit.distance < TILE * 3) {
+      const tileX = Math.round(hit.point.x / TILE);
+      const tileZ = Math.round(hit.point.z / TILE);
+      if (tileX >= 0 && tileX < dungeonW && tileZ >= 0 && tileZ < dungeonH) {
+        const tile = dungeon[tileZ][tileX];
+        if (tile === T.CHEST) showFloorMessage('A treasure chest...');
+        else if (tile === T.FOUNTAIN) showFloorMessage('A healing fountain');
+        else if (tile === T.BOSS) showFloorMessage('Dark energy radiates here...');
+      }
+    }
+  }
 
   if (moved) cooldowns.move.remaining = cooldowns.move.duration; // reset move cooldown
 
@@ -2462,10 +2509,12 @@ function drawShopUI() {
 
   drawGlowText('MERCHANT', 320, 32, rgba8(220, 180, 50, 255), rgba8(140, 100, 0, 100), 3);
   drawDiamond(472, 40, 4, 5, rgba8(255, 220, 50, 255));
-  // Use setTextAlign + drawText for gold display
+  // Use setTextAlign + setTextBaseline + drawText for gold display
   setTextAlign('right');
+  setTextBaseline('top');
   drawText(`${totalGold}g`, 560, 36, rgba8(255, 220, 50, 255));
   setTextAlign('left');
+  setTextBaseline('top');
   printCentered(`Floor ${floor} → ${floor + 1}`, 320, 68, rgba8(150, 140, 120, 200));
 
   // Item list with gradient rect backgrounds
@@ -2706,6 +2755,8 @@ function drawTitle() {
   // Decorative spinning spirals — phase offset using frameCount for smooth animation
   const spiralPhase = frameCount * 0.02;
   const spiralColor = hslColor(animTimer * 30 + spiralPhase, 0.4, 0.3, 60);
+  // Use matrix transforms with resetMatrix to ensure clean state
+  resetMatrix();
   drawSpiral(100, 180, 3, 12, spiralColor);
   drawSpiral(540, 180, 3, 12, spiralColor);
 
@@ -2794,6 +2845,11 @@ function drawExploreHUD() {
 
   // Mini party status (bottom)
   drawPartyBar();
+
+  // Gamepad connected indicator on explore HUD
+  if (gamepadConnected()) {
+    print('🎮', W - 108, 8, rgba8(100, 200, 100, 180));
+  }
 
   // Minimap (top-right) using createMinimap API
   if (minimap) drawMinimap(minimap, animTimer);
@@ -3273,7 +3329,12 @@ function drawGameOver() {
 
   // Pulsing restart prompt using pulse() for smooth oscillation
   const restartAlpha = Math.floor(pulse(animTimer, 1.5) * 120 + 135);
-  printCentered('Press SPACE to try again', 320, 260, rgba8(255, 255, 255, restartAlpha));
+  printCentered('Press SPACE to try again', 320, 280, rgba8(255, 255, 255, restartAlpha));
+  // Interactive restart button (createButton/updateButton/drawButton)
+  if (restartButton) {
+    updateButton(restartButton);
+    drawButton(restartButton);
+  }
 }
 
 function drawVictory() {

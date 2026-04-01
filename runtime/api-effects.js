@@ -102,7 +102,7 @@ export function effectsApi(gpu) {
   }
 
   // === BLOOM EFFECTS ===
-  function enableBloom(strength = 1.0, radius = 0.5, threshold = 0.85) {
+  function enableBloom(strength = 1.0, radius = 0.5, threshold = 0.6) {
     initPostProcessing();
 
     if (bloomPass) {
@@ -187,7 +187,7 @@ export function effectsApi(gpu) {
   }
 
   // === VIGNETTE ===
-  function enableVignette(darkness = 1.5, offset = 0.95) {
+  function enableVignette(darkness = 1.0, offset = 0.9) {
     initPostProcessing();
     if (vignettePass) {
       vignettePass.uniforms['darkness'].value = darkness;

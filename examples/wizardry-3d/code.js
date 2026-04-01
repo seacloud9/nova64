@@ -204,58 +204,58 @@ const SHOP_ITEMS = [
 const FLOOR_THEMES = [
   {
     name: 'Musty Cellars',
-    wallColor: 0x554433,
-    floorColor: 0x332211,
-    ceilColor: 0x221100,
-    fogColor: 0x0a0805,
-    skyTop: 0x110808,
-    skyBot: 0x050303,
-    ambColor: 0x332211,
-    ambInt: 0.3,
+    wallColor: 0x887766,
+    floorColor: 0x554433,
+    ceilColor: 0x443322,
+    fogColor: 0x1a1510,
+    skyTop: 0x221510,
+    skyBot: 0x0a0805,
+    ambColor: 0x665544,
+    ambInt: 0.55,
   },
   {
     name: 'Flooded Crypts',
-    wallColor: 0x334455,
-    floorColor: 0x1a2233,
-    ceilColor: 0x0a1122,
-    fogColor: 0x050a10,
-    skyTop: 0x081018,
-    skyBot: 0x030508,
-    ambColor: 0x223344,
-    ambInt: 0.25,
+    wallColor: 0x556677,
+    floorColor: 0x334455,
+    ceilColor: 0x1a2233,
+    fogColor: 0x0a1520,
+    skyTop: 0x102030,
+    skyBot: 0x080c10,
+    ambColor: 0x445566,
+    ambInt: 0.5,
   },
   {
     name: 'Fungal Warrens',
-    wallColor: 0x335533,
-    floorColor: 0x1a331a,
-    ceilColor: 0x0a220a,
-    fogColor: 0x050a05,
-    skyTop: 0x0a180a,
-    skyBot: 0x030803,
-    ambColor: 0x224422,
-    ambInt: 0.3,
+    wallColor: 0x558855,
+    floorColor: 0x336633,
+    ceilColor: 0x1a441a,
+    fogColor: 0x0a1a0a,
+    skyTop: 0x153015,
+    skyBot: 0x081008,
+    ambColor: 0x447744,
+    ambInt: 0.55,
   },
   {
     name: 'Obsidian Vaults',
-    wallColor: 0x222233,
-    floorColor: 0x111122,
-    ceilColor: 0x0a0a18,
-    fogColor: 0x050510,
-    skyTop: 0x0a0a1a,
-    skyBot: 0x030308,
-    ambColor: 0x1a1a33,
-    ambInt: 0.2,
+    wallColor: 0x445566,
+    floorColor: 0x223344,
+    ceilColor: 0x151530,
+    fogColor: 0x0a0a1a,
+    skyTop: 0x151530,
+    skyBot: 0x080810,
+    ambColor: 0x334466,
+    ambInt: 0.45,
   },
   {
     name: "The Dragon's Lair",
-    wallColor: 0x553322,
-    floorColor: 0x331a0a,
-    ceilColor: 0x220a00,
-    fogColor: 0x100500,
-    skyTop: 0x1a0800,
-    skyBot: 0x080300,
-    ambColor: 0x442211,
-    ambInt: 0.35,
+    wallColor: 0x885533,
+    floorColor: 0x663318,
+    ceilColor: 0x441a08,
+    fogColor: 0x200a00,
+    skyTop: 0x301500,
+    skyBot: 0x100800,
+    ambColor: 0x774422,
+    ambInt: 0.5,
   },
 ];
 
@@ -807,8 +807,8 @@ function buildLevel() {
         }
 
         // Scatter torches with particle fire + LOD variants
-        if (tile === T.FLOOR && Math.random() < 0.04) {
-          const l = createPointLight(0xff8833, 1.2, 10, wx, 2.2, wz);
+        if (tile === T.FLOOR && Math.random() < 0.08) {
+          const l = createPointLight(0xffaa44, 2.5, 12, wx, 2.2, wz);
           torchLights.push({ lightId: l, baseIntensity: 1.2, wx, wz });
           // Create LOD torch: high detail close, low detail far
           const lod = createLODMesh(
@@ -1522,9 +1522,22 @@ function doEnemyTurn() {
     const target = alive[Math.floor(Math.random() * alive.length)];
     const dmg = doAttack(e, target);
     combatLog.push(`${e.name} hits ${target.name} for ${dmg}!`);
-    triggerShake(shake, 0.3);
-    triggerScreenFlash(255, 50, 50, 100);
-    sfx('hit');
+    triggerShake(shake, e.isBoss ? 0.5 : 0.3);
+    // Varied screen flash and sfx based on monster type
+    const shape = e.shape || 'brute';
+    if (shape === 'caster' || shape === 'ghost') {
+      triggerScreenFlash(120, 50, 255, 120); // purple for magic
+      sfx({ wave: 'sine', freq: 250, dur: 0.2, sweep: -100 });
+    } else if (shape === 'dragon') {
+      triggerScreenFlash(255, 120, 30, 140); // orange for fire breath
+      sfx({ wave: 'sawtooth', freq: 100, dur: 0.3, vol: 0.4 });
+    } else if (shape === 'undead') {
+      triggerScreenFlash(100, 200, 100, 100); // sickly green for undead
+      sfx('hit');
+    } else {
+      triggerScreenFlash(255, 50, 50, 100); // red for physical
+      sfx('hit');
+    }
     const ti = party.indexOf(target);
     // Trigger hit state (invulnerability flash)
     if (hitStates && hitStates[ti]) triggerHit(hitStates[ti]);
@@ -1586,6 +1599,7 @@ function tryMove(dx, dz) {
   px = nx;
   py = nz;
   stepAnim = 1.0;
+  sfx({ wave: 'noise', freq: 80, dur: 0.08, vol: 0.15 });
   revealAround(px, py);
   // Track steps in game store
   if (gameStats) gameStats.setState({ steps: gameStats.getState().steps + 1 });
@@ -1735,10 +1749,9 @@ function enterFloor(newFloor) {
   dungeon = generateDungeon(18 + floor * 2, 18 + floor * 2);
   buildLevel();
 
-  // Deeper floors get retro pixelation for a more ominous, degraded look
-  if (floor >= 4) enablePixelation(2);
-  else if (floor >= 3) enablePixelation(1);
-  else enablePixelation(0); // disabled on early floors
+  // Subtle pixelation effect on deep floors only
+  if (floor >= 5) enablePixelation(1);
+  else enablePixelation(0);
 
   // Richer noise detail on deeper floors for more complex fog wisps
   noiseDetail(Math.min(2 + floor, 6), 0.5);
@@ -1915,13 +1928,18 @@ function updateCamera3D() {
   const [dx, dz] = DIRS[facing];
   const wx = px * TILE,
     wz = py * TILE;
-  const bob = Math.sin(stepAnim * TWO_PI * 2) * 0.1 * Math.max(0, stepAnim);
-  const eyeY = 1.6 + bob;
+  // Enhanced camera bob: vertical + slight lateral sway on footsteps
+  const bobAmt = Math.max(0, stepAnim);
+  const bobY = Math.sin(stepAnim * TWO_PI * 2) * 0.12 * bobAmt;
+  const bobX = Math.cos(stepAnim * TWO_PI) * 0.04 * bobAmt;
+  const eyeY = 1.6 + bobY;
 
   const [shakeX, shakeY] = getShakeOffset(shake);
 
-  setCameraPosition(wx + shakeX * 0.02, eyeY + shakeY * 0.02, wz);
-  // Use setCameraLookAt for view direction instead of setCameraTarget
+  // Apply lateral bob perpendicular to facing direction
+  const perpX = -dz * bobX;
+  const perpZ = dx * bobX;
+  setCameraPosition(wx + perpX + shakeX * 0.02, eyeY + shakeY * 0.02, wz + perpZ);
   setCameraLookAt([dx * 10, 0, dz * 10]);
 }
 
@@ -2276,6 +2294,13 @@ function updateExplore(dt) {
 
   if (moved) cooldowns.move.remaining = cooldowns.move.duration; // reset move cooldown
 
+  // Ambient dungeon sounds (occasional drips and distant rumbles)
+  if (Math.random() < 0.004) {
+    sfx({ wave: 'sine', freq: 800 + Math.random() * 400, dur: 0.06, vol: 0.08 }); // water drip
+  } else if (Math.random() < 0.002) {
+    sfx({ wave: 'noise', freq: 40, dur: 0.3, vol: 0.06 }); // distant rumble
+  }
+
   updateCamera3D();
 }
 
@@ -2402,14 +2427,24 @@ function updateCombat(dt) {
       const member = party[combatTurn];
       const target = enemies[selectedTarget];
       const dmg = doAttack(member, target);
-      combatLog.push(`${member.name} hits ${target.name} for ${dmg}!`);
-      triggerShake(shake, 0.2);
-      sfx('hit');
+      const isCrit = dmg >= member.atk * 1.2; // high roll = critical
+      combatLog.push(
+        isCrit
+          ? `${member.name} CRITS ${target.name} for ${dmg}!`
+          : `${member.name} hits ${target.name} for ${dmg}!`
+      );
+      triggerShake(shake, isCrit ? 0.35 : 0.2);
+      sfx(isCrit ? 'explosion' : 'hit');
       const tgtX = 100 + selectedTarget * 160;
-      spawnSparks(tgtX, 30, rgba8(255, 200, 80, 255), 6);
-      floatingTexts.spawn(`-${dmg}`, tgtX, 40, {
-        color: rgba8(255, 80, 80, 255),
-        scale: 2,
+      spawnSparks(
+        tgtX,
+        30,
+        isCrit ? rgba8(255, 255, 100, 255) : rgba8(255, 200, 80, 255),
+        isCrit ? 10 : 6
+      );
+      floatingTexts.spawn(isCrit ? `CRIT -${dmg}` : `-${dmg}`, tgtX, 40, {
+        color: isCrit ? rgba8(255, 255, 80, 255) : rgba8(255, 80, 80, 255),
+        scale: isCrit ? 3 : 2,
         vy: -40,
       });
       // 3D floating damage above monster in world space (drawFloatingTexts3D)

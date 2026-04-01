@@ -95,7 +95,8 @@ function buildMockGlobal() {
   for (const fn of ['enableRetroEffects','enableBloom','disableBloom','enableVignette','disableVignette',
     'enableChromaticAberration','disableChromaticAberration','enablePixelation',
     'enableFXAA','disableFXAA','enableDithering','enableN64Mode','enablePSXMode',
-    'disablePresetMode','enableLowPolyMode','setBloomStrength','setBloomRadius','setBloomThreshold']) g[fn] = stub(fn);
+    'disablePresetMode','enableLowPolyMode','setBloomStrength','setBloomRadius','setBloomThreshold',
+    'enableGlitch','disableGlitch','setGlitchIntensity']) g[fn] = stub(fn);
   g.isEffectsEnabled = stub('isEffectsEnabled', retBool);
   g.getRenderer = stub('getRenderer', () => ({ info: { programs: [] } }));
 

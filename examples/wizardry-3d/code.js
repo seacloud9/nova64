@@ -444,6 +444,7 @@ let shopTarget; // which party member to apply item to
 // Hit/invulnerability state for party
 let hitStates; // array of createHitState per party member
 let chromaTimer; // timer for chromatic aberration effect on boss hits
+let glitchTimer; // timer for screen glitch effect on player damage
 let combatFOV; // smooth FOV lerp for combat zoom
 let floorTransition; // checkerboard wipe timer when entering floors
 let cooldowns; // createCooldownSet for input + movement
@@ -1728,6 +1729,9 @@ function doEnemyTurn() {
     const dmg = doAttack(e, target);
     combatLog.push(`${e.name} hits ${target.name} for ${dmg}!`);
     triggerShake(shake, e.isBoss ? 0.5 : 0.3);
+    // Glitch effect on all damage hits (stronger for bosses)
+    enableGlitch(e.isBoss ? 0.7 : 0.4);
+    glitchTimer = e.isBoss ? 0.5 : 0.25;
     // Varied screen flash and sfx based on monster type
     const shape = e.shape || 'brute';
     if (shape === 'caster' || shape === 'ghost') {
@@ -2200,6 +2204,7 @@ export function init() {
   combatFOV = 75; // smooth FOV for combat zoom
   floorTransition = 0; // timer for checkerboard floor entry effect
   chromaTimer = 0;
+  glitchTimer = 0;
   spellVFX = null;
   visualPreset = null;
   msgTimer = createTimer(3.0);
@@ -2296,6 +2301,18 @@ export function update(dt) {
       if (gameState !== 'combat' || !enemies || !enemies.some(e => e.isBoss && e.hp > 0)) {
         disableChromaticAberration();
       }
+    }
+  }
+
+  // Glitch timer (damage hit effect — decays intensity then disables)
+  if (glitchTimer > 0) {
+    glitchTimer -= dt;
+    if (glitchTimer <= 0) {
+      glitchTimer = 0;
+      disableGlitch();
+    } else {
+      // Fade intensity as timer runs down for smooth decay
+      setGlitchIntensity(glitchTimer * 2.0);
     }
   }
 

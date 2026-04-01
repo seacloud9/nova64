@@ -158,7 +158,7 @@ export function draw() {
 - **🌫️ Atmospherics**: setFog(), clearFog(), setAmbientLight(), createPointLight()
 - **🎮 Enhanced Input**: key(code), keyp(code), btn(i), btnp(i) — WASD + gamepad + mouse
 - **🌌 Skybox**: createSpaceSkybox(), createGradientSkybox(), createSolidSkybox(), enableSkyboxAutoAnimate()
-- **✨ Effects**: enableBloom(), enableVignette(), enableN64Mode(), enablePSXMode(), enableLowPolyMode()
+- **✨ Effects**: enableBloom(), enableVignette(), enableGlitch(), enableChromaticAberration(), enableN64Mode(), enablePSXMode(), enableLowPolyMode()
 - **🔊 Audio**: sfx(preset), sfx({wave,freq,dur}), setVolume() — named presets: 'jump','coin','explosion',…
 - **💾 Storage**: saveData(key,val), loadData(key,fallback), deleteData(key)
 - **⚛️ Physics**: createBody(), stepPhysics(dt), setGravity(), setCollisionMap(fn)

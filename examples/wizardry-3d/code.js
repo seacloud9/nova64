@@ -357,7 +357,9 @@ function switchState(newState) {
   gameState = newState;
   if (stateMachine) stateMachine.switchTo(newState);
   // Track state in global novaStore for cross-system awareness
-  novaStore.setState({ gameState: newState, floor: floor || 0 });
+  if (typeof novaStore !== 'undefined' && novaStore) {
+    novaStore.setState({ gameState: newState, floor: floor || 0 });
+  }
 }
 
 // State elapsed time (seconds in current state)
@@ -2763,9 +2765,6 @@ export function draw() {
     drawScanlines(25, 3);
   }
 
-  // Reset 2D camera offset after all drawing
-  setCamera(0, 0);
-
   // Perlin noise atmospheric fog wisps in explore/combat (subtle 2D overlay)
   if (gameState === 'explore' || gameState === 'combat') {
     for (let i = 0; i < 4; i++) {
@@ -2799,6 +2798,9 @@ export function draw() {
       }
     }
   }
+
+  // Reset 2D camera offset after ALL drawing (must be last)
+  setCamera(0, 0);
 }
 
 function drawTitle() {

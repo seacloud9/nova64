@@ -805,6 +805,14 @@ async function main() {
 
         console.log('\n6️⃣ Game Utils API Tests:');
         results.push(await runGameUtilsTests());
+
+        console.log('\n7️⃣ Wizardry-3D Cart Tests:');
+        try {
+          const { runWizardryTests } = await import('./test-wizardry.js');
+          results.push(await runWizardryTests());
+        } catch (error) {
+          console.log('⚠️  Wizardry tests not available:', error.message);
+        }
         break;
     }
 

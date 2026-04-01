@@ -344,6 +344,11 @@ let gameStats;
 // LOD torch decorations (createLODMesh API)
 let lodTorches;
 
+// Title screen 3D scene
+let titleMeshes = [];
+let titleLights = [];
+let titleParticles = [];
+
 // 3D mesh tracking
 let currentLevelMeshes = [];
 let monsterMeshes = [];
@@ -493,6 +498,94 @@ function generateDungeon(w, h) {
   }
 
   return map;
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// TITLE SCREEN 3D SCENE
+// ═══════════════════════════════════════════════════════════════════════
+
+function buildTitleScene() {
+  clearTitleScene();
+  const wallColor = 0x665544;
+  const floorColor = 0x443322;
+  const ceilColor = 0x2a1a0a;
+
+  // Stone corridor walls (left and right, extending into the distance)
+  for (let i = 0; i < 8; i++) {
+    const z = -3 - i * 3;
+    const wL = createCube(TILE, wallColor, [-TILE, 0, z], { roughness: 0.9 });
+    const wR = createCube(TILE, wallColor, [TILE, 0, z], { roughness: 0.9 });
+    setCastShadow(wL, true);
+    setCastShadow(wR, true);
+    setReceiveShadow(wL, true);
+    setReceiveShadow(wR, true);
+    titleMeshes.push(wL, wR);
+  }
+
+  // Floor and ceiling planes
+  const fl = createPlane(TILE * 2.2, 30, floorColor, [0, -1.5, -14]);
+  setReceiveShadow(fl, true);
+  titleMeshes.push(fl);
+  const ceil = createPlane(TILE * 2.2, 30, ceilColor, [0, 1.5, -14]);
+  setRotation(ceil, Math.PI, 0, 0);
+  titleMeshes.push(ceil);
+
+  // Torches along the corridor (alternating left/right)
+  const torchPositions = [
+    [-2.4, 1.0, -5],
+    [2.4, 1.0, -8],
+    [-2.4, 1.0, -11],
+    [2.4, 1.0, -14],
+    [-2.4, 1.0, -17],
+    [2.4, 1.0, -20],
+  ];
+  for (const [tx, ty, tz] of torchPositions) {
+    // Torch cone (emissive flame)
+    const torch = createCone(0.12, 0.35, 0xffaa33, [tx, ty, tz], {
+      material: 'emissive',
+      emissive: 0xff8800,
+      intensity: 2,
+    });
+    titleMeshes.push(torch);
+    // Warm point light
+    const light = createPointLight(0xff8833, 2.5, 10, tx, ty + 0.5, tz);
+    titleLights.push(light);
+  }
+
+  // Glowing portal at the far end
+  const portal = createTorus(1.5, 0.12, 0x8844ff, [0, 0, -24], {
+    material: 'emissive',
+    emissive: 0x8844ff,
+    intensity: 3,
+  });
+  titleMeshes.push(portal);
+  const portalGlow = createSphere(0.7, 0x6622cc, [0, 0, -24], {
+    material: 'emissive',
+    emissive: 0x6622ff,
+    intensity: 2,
+  });
+  titleMeshes.push(portalGlow);
+  // Portal light
+  const portalLight = createPointLight(0x7733ff, 3, 12, 0, 0, -24);
+  titleLights.push(portalLight);
+
+  // Particle system for floating embers
+  const ps = createParticleSystem({
+    max: 60,
+    size: 0.08,
+    color: 0xffaa44,
+    emissive: true,
+  });
+  titleParticles.push(ps);
+}
+
+function clearTitleScene() {
+  for (const id of titleMeshes) destroyMesh(id);
+  for (const id of titleLights) removeLight(id);
+  for (const id of titleParticles) removeParticleSystem(id);
+  titleMeshes = [];
+  titleLights = [];
+  titleParticles = [];
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -1843,24 +1936,23 @@ export function init() {
   enemyDelay = 0;
   autoPlay = false;
 
-  setAmbientLight(0x221111, 0.4);
+  setAmbientLight(0x332222, 0.5);
   setLightDirection(0, -1, 0);
-  setLightColor(0x443322);
-  setFog(0x000000, 2, 18);
+  setLightColor(0xaa8866);
+  setFog(0x050308, 3, 25);
   setCameraFOV(75);
 
-  setVolume(0.6); // default exploration volume
+  setVolume(0.6);
   enableRetroEffects({
-    bloom: { strength: 1.0, radius: 0.4, threshold: 0.25 },
-    vignette: { darkness: 1.4, offset: 0.8 },
+    bloom: { strength: 1.2, radius: 0.5, threshold: 0.2 },
+    vignette: { darkness: 0.9, offset: 0.85 },
     fxaa: true,
     dithering: true,
   });
-  // Fine-tune bloom per init (will be adjusted per floor in enterFloor)
-  setBloomRadius(0.4);
-  setBloomThreshold(0.25);
-  createGradientSkybox(0x110808, 0x050303);
-  enableSkyboxAutoAnimate(0.3); // slow atmospheric skybox rotation
+  setBloomRadius(0.5);
+  setBloomThreshold(0.2);
+  createGradientSkybox(0x0a0515, 0x020108);
+  enableSkyboxAutoAnimate(0.3);
 
   shake = createShake({ decay: 5 });
   cooldowns = createCooldownSet({ input: 0.15, move: 0.18 });
@@ -1918,6 +2010,9 @@ export function init() {
   waterShaders = [];
   currentLevelMeshes = [];
   monsterMeshes = [];
+
+  // Build the 3D title corridor scene
+  buildTitleScene();
 }
 
 export function update(dt) {
@@ -2073,14 +2168,44 @@ export function update(dt) {
 }
 
 function updateTitle(dt) {
-  // Slowly spin camera for title
-  const a = animTimer * 0.3;
-  setCameraPosition(Math.sin(a) * 8, 3, Math.cos(a) * 8);
-  setCameraTarget(0, 1, 0);
+  const t = stateElapsed();
+
+  // Cinematic camera: gentle forward drift + sinusoidal sway through corridor
+  const camZ = -2 + Math.sin(t * 0.15) * -8;
+  const camX = Math.sin(t * 0.4) * 1.2;
+  const camY = 0.8 + Math.sin(t * 0.6) * 0.25;
+  setCameraPosition(camX, camY, camZ);
+  setCameraTarget(Math.sin(t * 0.2) * 0.5, 0.6, camZ - 8);
+
+  // Animate portal (spin the torus — second-to-last title mesh)
+  if (titleMeshes.length >= 2) {
+    const portalId = titleMeshes[titleMeshes.length - 2];
+    rotateMesh(portalId, dt * 0.3, dt * 0.7, 0);
+    // Pulse the glow sphere
+    const glowId = titleMeshes[titleMeshes.length - 1];
+    const s = 0.7 + Math.sin(t * 2) * 0.15;
+    setScale(glowId, s, s, s);
+  }
+
+  // Flickering torch lights
+  for (let i = 0; i < titleLights.length - 1; i++) {
+    setPointLightColor(titleLights[i], Math.random() > 0.85 ? 0xff6600 : 0xff8833);
+  }
+
+  // Emit floating ember particles from torch positions
+  if (titleParticles.length > 0 && Math.random() < 0.15) {
+    const side = Math.random() > 0.5 ? 2.2 : -2.2;
+    const z = -4 - Math.random() * 16;
+    emitParticle(titleParticles[0], {
+      position: [side + (Math.random() - 0.5) * 0.5, 0.3 + Math.random() * 1.5, z],
+    });
+  }
 
   if (keyp('KeyC') && hasSave()) {
+    clearTitleScene();
     loadGameSave();
   } else if (keyp('Space') || keyp('Enter')) {
+    clearTitleScene();
     deleteSave();
     enterFloor(1);
     switchState('explore');
@@ -2804,70 +2929,113 @@ export function draw() {
 }
 
 function drawTitle() {
-  // Smooth fade-in using smoothstep for title screen
-  const fadeIn = smoothstep(0, 1.5, stateElapsed());
-  const fade = Math.floor(fadeIn * 220);
-  drawSkyGradient(rgba8(5, 2, 15, fade), rgba8(20, 10, 5, fade));
+  const t = stateElapsed();
+  const fadeIn = smoothstep(0, 2.0, t);
+  const fade = Math.floor(fadeIn * 255);
 
-  // Decorative ellipse aura behind title
-  ellipse(320, 105, 200, 40, rgba8(180, 120, 40, Math.floor(fade * 0.15)), true);
-  ellipse(320, 105, 200, 40, rgba8(180, 120, 40, Math.floor(fade * 0.25)), false);
+  // Semi-transparent overlays for text readability (3D scene shows through)
+  drawGradient(0, 0, W, 160, rgba8(0, 0, 10, Math.floor(fade * 0.7)), rgba8(0, 0, 5, 0), 'v');
+  drawGradient(0, 240, W, 120, rgba8(0, 0, 5, 0), rgba8(0, 0, 10, Math.floor(fade * 0.55)), 'v');
 
-  // Decorative spinning spirals — phase offset using frameCount for smooth animation
-  const spiralPhase = frameCount * 0.02;
-  const spiralColor = hslColor(animTimer * 30 + spiralPhase, 0.4, 0.3, 60);
-  // Use matrix transforms with resetMatrix to ensure clean state
-  resetMatrix();
-  drawSpiral(100, 180, 3, 12, spiralColor);
-  drawSpiral(540, 180, 3, 12, spiralColor);
+  // Animated starburst glow behind title text
+  const burstAlpha = Math.floor(pulse(t, 0.8) * 40 + 20);
+  drawStarburst(320, 65, 120, 40, 12, rgba8(255, 180, 50, burstAlpha));
+  drawRadialGradient(320, 65, 100, rgba8(180, 120, 40, Math.floor(fade * 0.2)), rgba8(0, 0, 0, 0));
 
-  drawGlowText('WIZARDRY', 320, 80, rgba8(255, 200, 50, 255), rgba8(180, 100, 0, 150), 4);
-  printCentered('N O V A  6 4', 320, 130, rgba8(200, 160, 80, 255), 2);
+  // Main title with large glow radius
+  drawGlowText(
+    'WIZARDRY',
+    320,
+    50,
+    rgba8(255, 210, 60, fade),
+    rgba8(200, 120, 0, Math.floor(fade * 0.6)),
+    6
+  );
 
-  printCentered('Proving Grounds of the Dark Tower', 320, 170, rgba8(150, 130, 110, 255));
+  // Subtitle
+  const subAlpha = Math.floor(smoothstep(0.5, 1.5, t) * 255);
+  printCentered('N O V A  6 4', 320, 100, rgba8(220, 180, 100, subAlpha), 2);
 
-  // Mystical energy wave under subtitle
-  drawWave(120, 186, 400, 3, 0.05, animTimer * 2, rgba8(180, 120, 40, 60), 1);
+  // Tagline
+  const tagAlpha = Math.floor(smoothstep(1.0, 2.0, t) * 200);
+  printCentered('Proving Grounds of the Dark Tower', 320, 130, rgba8(170, 150, 130, tagAlpha));
 
-  if (hasSave()) {
-    drawPulsingText('Press C to Continue', 320, 228, rgba8(100, 200, 255, 255), animTimer, {
-      frequency: 2,
-      minAlpha: 140,
-    });
-    drawPulsingText('Press SPACE for New Game', 320, 250, rgba8(200, 200, 200, 255), animTimer, {
-      frequency: 3,
-      minAlpha: 120,
-    });
-  } else {
-    drawPulsingText(
-      'Press SPACE to begin your quest',
-      320,
-      240,
-      rgba8(255, 255, 255, 255),
-      animTimer,
-      { frequency: 3, minAlpha: 135 }
+  // Wave separator
+  if (t > 1.0) {
+    drawWave(
+      100,
+      147,
+      440,
+      4,
+      0.04,
+      animTimer * 2.5,
+      rgba8(200, 140, 50, Math.floor(tagAlpha * 0.3)),
+      2
     );
   }
 
-  // Party preview — use pushMatrix/translate/rotate/scale2d for rotated class icon emblems
-  printCentered('Your Party:', 320, 280, rgba8(180, 180, 200, 255));
-  for (let i = 0; i < 4; i++) {
-    const m = party[i];
-    const x = 130 + i * 110;
-    const c = CLASS_COLORS[m.class];
-    const r = (c >> 16) & 0xff,
-      g = (c >> 8) & 0xff,
-      b = c & 0xff;
-    // Rotated diamond emblem behind class icon using matrix transforms
-    pushMatrix();
-    translate(x, 304);
-    rotate(QUARTER_PI + Math.sin(animTimer * 1.5 + i) * 0.15);
-    scale2d(1.2);
-    rect(-5, -5, 10, 10, rgba8(r, g, b, Math.floor(fade * 0.3)));
-    popMatrix();
-    printCentered(CLASS_ICONS[m.class], x, 300, rgba8(r, g, b, 255), 2);
-    printCentered(m.name, x, 320, rgba8(r, g, b, 200));
-    printCentered(m.class, x, 332, rgba8(140, 140, 160, 180));
+  // Action prompt (staggered)
+  if (t > 1.5) {
+    const promptFade = smoothstep(1.5, 2.5, t);
+    if (hasSave()) {
+      drawPulsingText(
+        'Press C to Continue',
+        320,
+        255,
+        rgba8(100, 200, 255, Math.floor(promptFade * 255)),
+        animTimer,
+        {
+          frequency: 2,
+          minAlpha: 160,
+        }
+      );
+      drawPulsingText(
+        'Press SPACE for New Game',
+        320,
+        275,
+        rgba8(200, 200, 200, Math.floor(promptFade * 220)),
+        animTimer,
+        {
+          frequency: 3,
+          minAlpha: 140,
+        }
+      );
+    } else {
+      drawPulsingText(
+        'Press SPACE to begin your quest',
+        320,
+        260,
+        rgba8(255, 255, 255, Math.floor(promptFade * 255)),
+        animTimer,
+        {
+          frequency: 2.5,
+          minAlpha: 160,
+        }
+      );
+    }
+  }
+
+  // Party preview (bottom, appears last)
+  if (t > 2.0) {
+    const partyFade = Math.floor(smoothstep(2.0, 3.0, t) * 255);
+    printCentered('Your Party:', 320, 298, rgba8(180, 180, 200, partyFade));
+    for (let i = 0; i < 4; i++) {
+      const m = party[i];
+      const x = 130 + i * 130;
+      const c = CLASS_COLORS[m.class];
+      const r = (c >> 16) & 0xff,
+        g = (c >> 8) & 0xff,
+        b = c & 0xff;
+      pushMatrix();
+      translate(x, 320);
+      rotate(QUARTER_PI + Math.sin(animTimer * 1.5 + i) * 0.2);
+      scale2d(1.3);
+      rectfill(-6, -6, 12, 12, rgba8(r, g, b, Math.floor(partyFade * 0.2)));
+      rect(-6, -6, 12, 12, rgba8(r, g, b, Math.floor(partyFade * 0.4)));
+      popMatrix();
+      printCentered(CLASS_ICONS[m.class], x, 316, rgba8(r, g, b, partyFade), 2);
+      printCentered(m.name, x, 336, rgba8(r, g, b, Math.floor(partyFade * 0.8)));
+    }
   }
 }
 

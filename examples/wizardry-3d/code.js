@@ -37,6 +37,8 @@ const MONSTERS = [
     { name: 'Kobold', hp: 8, atk: 3, def: 1, xp: 5, gold: 3, color: 0x886644, shape: 'small' },
     { name: 'Giant Rat', hp: 6, atk: 2, def: 0, xp: 3, gold: 1, color: 0x666655, shape: 'beast' },
     { name: 'Skeleton', hp: 12, atk: 4, def: 2, xp: 8, gold: 5, color: 0xccccaa, shape: 'undead' },
+    { name: 'Bat Swarm', hp: 5, atk: 2, def: 0, xp: 4, gold: 2, color: 0x554444, shape: 'beast' },
+    { name: 'Goblin', hp: 10, atk: 3, def: 1, xp: 6, gold: 4, color: 0x668844, shape: 'small' },
   ],
   // Floor 3-4
   [
@@ -52,17 +54,75 @@ const MONSTERS = [
       color: 0x443366,
       shape: 'caster',
     },
+    { name: 'Gargoyle', hp: 25, atk: 7, def: 5, xp: 18, gold: 12, color: 0x888888, shape: 'brute' },
+    { name: 'Mimic', hp: 20, atk: 9, def: 3, xp: 22, gold: 25, color: 0x886633, shape: 'small' },
+    { name: 'Specter', hp: 16, atk: 7, def: 2, xp: 16, gold: 8, color: 0x6666aa, shape: 'ghost' },
   ],
-  // Floor 5+
+  // Floor 5-6
   [
     { name: 'Troll', hp: 35, atk: 10, def: 5, xp: 30, gold: 20, color: 0x336633, shape: 'brute' },
     { name: 'Wraith', hp: 25, atk: 12, def: 3, xp: 35, gold: 25, color: 0x333355, shape: 'ghost' },
     { name: 'Dragon', hp: 60, atk: 15, def: 8, xp: 80, gold: 50, color: 0xcc4422, shape: 'dragon' },
+    {
+      name: 'Fire Elemental',
+      hp: 30,
+      atk: 14,
+      def: 4,
+      xp: 40,
+      gold: 30,
+      color: 0xff4400,
+      shape: 'caster',
+    },
+    { name: 'Medusa', hp: 28, atk: 11, def: 6, xp: 45, gold: 35, color: 0x448844, shape: 'caster' },
+    {
+      name: 'Iron Golem',
+      hp: 50,
+      atk: 9,
+      def: 10,
+      xp: 50,
+      gold: 40,
+      color: 0x777788,
+      shape: 'brute',
+    },
+  ],
+  // Floor 7+
+  [
+    {
+      name: 'Demon Lord',
+      hp: 70,
+      atk: 18,
+      def: 8,
+      xp: 100,
+      gold: 60,
+      color: 0xaa2222,
+      shape: 'dragon',
+    },
+    { name: 'Lich', hp: 45, atk: 20, def: 5, xp: 90, gold: 55, color: 0x6644aa, shape: 'caster' },
+    {
+      name: 'Death Knight',
+      hp: 55,
+      atk: 16,
+      def: 9,
+      xp: 85,
+      gold: 50,
+      color: 0x333344,
+      shape: 'undead',
+    },
   ],
 ];
 
 // Boss monsters (floor 3 and 5)
 const BOSSES = {
+  1: {
+    name: 'Goblin Chieftain',
+    hp: 40,
+    atk: 6,
+    def: 3,
+    xp: 30,
+    gold: 25,
+    color: 0x668833,
+    shape: 'brute',
+  },
   3: {
     name: 'Lich King',
     hp: 80,
@@ -83,6 +143,26 @@ const BOSSES = {
     color: 0xff3300,
     shape: 'dragon',
   },
+  6: {
+    name: 'Frost Titan',
+    hp: 120,
+    atk: 18,
+    def: 12,
+    xp: 180,
+    gold: 90,
+    color: 0x88bbff,
+    shape: 'brute',
+  },
+  7: {
+    name: 'Infernal Archon',
+    hp: 200,
+    atk: 25,
+    def: 12,
+    xp: 300,
+    gold: 150,
+    color: 0xff2200,
+    shape: 'dragon',
+  },
 };
 
 // Equipment that can drop from chests
@@ -96,6 +176,9 @@ const EQUIPMENT = [
   { name: 'Flame Blade', slot: 'weapon', atk: 5, def: 0, class: 'Fighter', tier: 3 },
   { name: 'Staff of Power', slot: 'weapon', atk: 2, def: 0, class: 'Mage', tier: 3, mpBonus: 6 },
   { name: 'Vorpal Dagger', slot: 'weapon', atk: 6, def: 0, class: 'Thief', tier: 3 },
+  { name: 'Blessed Hammer', slot: 'weapon', atk: 4, def: 1, class: 'Priest', tier: 2 },
+  { name: 'Frost Brand', slot: 'weapon', atk: 4, def: 0, class: 'Fighter', tier: 2, mpBonus: 1 },
+  { name: 'Wand of Lightning', slot: 'weapon', atk: 3, def: 0, class: 'Mage', tier: 2, mpBonus: 4 },
   // Armor
   { name: 'Chain Mail', slot: 'armor', atk: 0, def: 2, class: 'Fighter', tier: 1 },
   { name: 'Leather Armor', slot: 'armor', atk: 0, def: 1, class: 'Thief', tier: 1 },
@@ -112,6 +195,10 @@ const EQUIPMENT = [
   },
   { name: 'Dragon Scale', slot: 'armor', atk: 1, def: 6, class: 'Fighter', tier: 3 },
   { name: 'Shadow Cloak', slot: 'armor', atk: 1, def: 3, class: 'Thief', tier: 3 },
+  { name: 'Frost Mail', slot: 'armor', atk: 0, def: 5, class: 'Fighter', tier: 3 },
+  { name: 'Archmage Robe', slot: 'armor', atk: 0, def: 2, class: 'Mage', tier: 3, mpBonus: 5 },
+  { name: 'Holy Plate', slot: 'armor', atk: 0, def: 4, class: 'Priest', tier: 3, mpBonus: 4 },
+  { name: 'Assassin Garb', slot: 'armor', atk: 2, def: 2, class: 'Thief', tier: 2 },
 ];
 
 // Spells
@@ -126,6 +213,22 @@ const SPELLS = {
     type: 'buff_def',
     class: 'Mage',
     desc: '+DEF party',
+  },
+  LIGHTNING: {
+    name: 'Lightning Bolt',
+    cost: 4,
+    dmg: 15,
+    type: 'attack',
+    class: 'Mage',
+    desc: 'Chain lightning',
+  },
+  SLOW: {
+    name: 'Slow',
+    cost: 3,
+    amount: 3,
+    type: 'debuff_def',
+    class: 'Mage',
+    desc: '-DEF enemies',
   },
   // Priest spells
   HEAL: { name: 'Heal', cost: 2, amount: 15, type: 'heal', class: 'Priest', desc: 'Heal one ally' },
@@ -145,6 +248,24 @@ const SPELLS = {
     type: 'revive',
     class: 'Priest',
     desc: 'Revive ally',
+  },
+  GROUP_HEAL: {
+    name: 'Group Heal',
+    cost: 5,
+    amount: 10,
+    type: 'group_heal',
+    class: 'Priest',
+    desc: 'Heal all allies',
+  },
+  SMITE: { name: 'Smite', cost: 3, dmg: 10, type: 'attack', class: 'Priest', desc: 'Holy damage' },
+  // Thief spells
+  BACKSTAB: {
+    name: 'Backstab',
+    cost: 2,
+    dmg: 18,
+    type: 'attack',
+    class: 'Thief',
+    desc: 'Bonus damage',
   },
 };
 
@@ -256,6 +377,28 @@ const FLOOR_THEMES = [
     skyBot: 0x100800,
     ambColor: 0x774422,
     ambInt: 0.5,
+  },
+  {
+    name: 'Frozen Catacombs',
+    wallColor: 0x667788,
+    floorColor: 0x445566,
+    ceilColor: 0x334455,
+    fogColor: 0x1a2535,
+    skyTop: 0x203040,
+    skyBot: 0x101820,
+    ambColor: 0x5577aa,
+    ambInt: 0.5,
+  },
+  {
+    name: 'Infernal Pit',
+    wallColor: 0x884422,
+    floorColor: 0x661a00,
+    ceilColor: 0x441100,
+    fogColor: 0x300800,
+    skyTop: 0x401000,
+    skyBot: 0x200500,
+    ambColor: 0x883311,
+    ambInt: 0.45,
   },
 ];
 
@@ -1350,6 +1493,18 @@ function doSpell(caster, spell, target) {
     dead.hp = spell.amount;
     return { type: 'revive', target: dead };
   }
+  if (spell.type === 'group_heal') {
+    for (const m of party) {
+      if (m.alive) m.hp = Math.min(m.hp + spell.amount, m.maxHp);
+    }
+    return { type: 'group_heal', amount: spell.amount };
+  }
+  if (spell.type === 'debuff_def') {
+    for (const e of enemies) {
+      if (e.hp > 0) e.def = Math.max(0, e.def - spell.amount);
+    }
+    return { type: 'debuff_def', amount: spell.amount };
+  }
   if (spell.type === 'attack' || spell.type === 'undead') {
     if (spell.name === 'Ice Bolt') {
       // Single target
@@ -1357,6 +1512,34 @@ function doSpell(caster, spell, target) {
       target.hp = Math.max(0, target.hp - dmg);
       triggerScreenFlash(80, 150, 255, 150);
       sfx({ wave: 'triangle', freq: 800, dur: 0.3, sweep: -400 }); // icy descend
+      return { type: 'damage', dmg, targets: [target] };
+    }
+    if (spell.name === 'Lightning Bolt') {
+      // Chain lightning: hits primary target hard, then chain to others for half
+      const dmg = spell.dmg + Math.floor(Math.random() * 5);
+      target.hp = Math.max(0, target.hp - dmg);
+      let totalDmg = dmg;
+      const others = enemies.filter(e => e.hp > 0 && e !== target);
+      for (const e of others) {
+        const chain = Math.floor(dmg * 0.5);
+        e.hp = Math.max(0, e.hp - chain);
+        totalDmg += chain;
+      }
+      triggerScreenFlash(200, 200, 255, 180);
+      sfx({ wave: 'square', freq: 1200, dur: 0.15, sweep: -800 }); // electric zap
+      return { type: 'damage', dmg: totalDmg, targets: [target, ...others] };
+    }
+    if (spell.name === 'Backstab' || spell.name === 'Smite') {
+      // Single target high damage
+      const dmg = spell.dmg + Math.floor(Math.random() * 6);
+      target.hp = Math.max(0, target.hp - dmg);
+      triggerScreenFlash(
+        spell.name === 'Smite' ? 255 : 180,
+        spell.name === 'Smite' ? 255 : 80,
+        spell.name === 'Smite' ? 180 : 200,
+        140
+      );
+      sfx(spell.name === 'Smite' ? { wave: 'sine', freq: 500, dur: 0.3, sweep: 300 } : 'hit');
       return { type: 'damage', dmg, targets: [target] };
     }
     // AoE
@@ -1419,6 +1602,22 @@ function castSpellInCombat(member, spell) {
       combatLog.push('No fallen allies to revive.');
       member.mp += spell.cost; // refund
     }
+  } else if (spell.type === 'group_heal') {
+    const result = doSpell(member, spell, null);
+    if (result) {
+      combatLog.push(`${member.name} casts ${spell.name}! All allies +${spell.amount} HP`);
+      triggerScreenFlash(80, 255, 150, 100);
+      sfx({ wave: 'sine', freq: 500, dur: 0.6, sweep: 250 });
+      spellVFX = { type: 'radial', x: 320, y: 180, timer: 0.7, color: rgba8(80, 255, 150, 180) };
+    }
+  } else if (spell.type === 'debuff_def') {
+    const result = doSpell(member, spell, null);
+    if (result) {
+      combatLog.push(`${member.name} casts ${spell.name}! Enemy DEF -${spell.amount}`);
+      triggerScreenFlash(150, 100, 255, 80);
+      sfx({ wave: 'triangle', freq: 300, dur: 0.3, sweep: -150 });
+      spellVFX = { type: 'radial', x: 320, y: 80, timer: 0.5, color: rgba8(150, 100, 255, 160) };
+    }
   } else {
     const target = enemies.find(e => e.hp > 0);
     const result = doSpell(member, spell, target);
@@ -1434,6 +1633,12 @@ function castSpellInCombat(member, spell) {
         spellVFX = { type: 'star', x: 200, y: 80, timer: 0.6, color: rgba8(80, 180, 255, 220) };
       } else if (spell.name === 'Turn Undead') {
         spellVFX = { type: 'star', x: 320, y: 80, timer: 0.7, color: rgba8(255, 255, 180, 220) };
+      } else if (spell.name === 'Lightning Bolt') {
+        spellVFX = { type: 'star', x: 320, y: 80, timer: 0.6, color: rgba8(200, 200, 255, 230) };
+      } else if (spell.name === 'Backstab') {
+        spellVFX = { type: 'star', x: 280, y: 80, timer: 0.4, color: rgba8(180, 80, 200, 200) };
+      } else if (spell.name === 'Smite') {
+        spellVFX = { type: 'star', x: 320, y: 80, timer: 0.6, color: rgba8(255, 255, 200, 220) };
       }
     }
   }
@@ -1736,7 +1941,7 @@ function enterFloor(newFloor) {
   encounterChance = 0;
   explored = new Set(); // reset fog of war per floor
 
-  if (floor > 5) {
+  if (floor > 7) {
     // Victory!
     switchState('victory');
     showFloorMessage('You conquered the dungeon!');
@@ -1750,7 +1955,7 @@ function enterFloor(newFloor) {
   buildLevel();
 
   // Subtle pixelation effect on deep floors only
-  if (floor >= 5) enablePixelation(1);
+  if (floor >= 7) enablePixelation(1);
   else enablePixelation(0);
 
   // Richer noise detail on deeper floors for more complex fog wisps
@@ -2504,6 +2709,18 @@ function updateCombat(dt) {
     } else if (keyp('Digit3') && available.length > 2) {
       useCooldown(cooldowns.input);
       const spell = available[2];
+      sfx('laser');
+      castSpellInCombat(member, spell);
+      advanceCombatTurn();
+    } else if (keyp('Digit4') && available.length > 3) {
+      useCooldown(cooldowns.input);
+      const spell = available[3];
+      sfx('laser');
+      castSpellInCombat(member, spell);
+      advanceCombatTurn();
+    } else if (keyp('Digit5') && available.length > 4) {
+      useCooldown(cooldowns.input);
+      const spell = available[4];
       sfx('laser');
       castSpellInCombat(member, spell);
       advanceCombatTurn();

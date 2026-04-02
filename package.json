@@ -1,6 +1,6 @@
 {
   "name": "nova64",
-  "version": "0.2.5",
+  "version": "0.2.6",
   "description": "Nova64 — Ultimate 3D Fantasy Console runtime for JavaScript games powered by Three.js",
   "keywords": [
     "fantasy-console",
@@ -21,6 +21,9 @@
     "url": "https://github.com/nova64/nova64/issues"
   },
   "type": "module",
+  "bin": {
+    "nova64": "./bin/nova64.js"
+  },
   "main": "./runtime/index.js",
   "types": "./runtime/index.d.ts",
   "exports": {
@@ -33,6 +36,8 @@
     "./runtime/ui/*": "./runtime/ui/*.js"
   },
   "files": [
+    "bin/",
+    "dist/",
     "runtime/",
     "src/",
     "public/",
@@ -43,7 +48,7 @@
   ],
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "vite build && node scripts/postbuild.js",
     "preview": "vite preview",
     "osBuild": "cd os9-shell && pnpm install && pnpm build && rm -rf ../public/os9-shell/* && mkdir -p ../public/os9-shell && cp -r dist/* ../public/os9-shell/",
     "deployToStarcade9": "bash scripts/deploy-starcade9.sh",

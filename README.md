@@ -124,20 +124,36 @@
 
 ## 🚀 Quick Start Guide
 
-### 🏁 **Launch Your 3D Fantasy Console**
+### � **Install & Play (Recommended)**
 
 ```bash
-# Method 1: Development Server (Recommended)
+# Install globally
+pnpm add -g nova64
+
+# Launch the console with 20+ playable demos
+nova64 --start-demo
+```
+
+That's it! Your browser opens to the Nova64 console at `http://localhost:3000/console.html` with all demos ready to play.
+
+### 🏁 **Development Setup**
+
+```bash
+# Clone and set up for development
+git clone https://github.com/seacloud9/nova64.git
+cd nova64
 pnpm install
 pnpm dev
-# Visit the printed URL (typically http://localhost:5173)
+# Visit http://localhost:5173
+```
 
-# Method 2: Direct Browser Launch
-open index.html
+### 🔧 **CLI Options**
 
-# Method 3: Simple HTTP Server
-python -m http.server 8000
-# Visit: http://localhost:8000
+```bash
+nova64 --start-demo              # Launch console with demos
+nova64 --start-demo -p 8080      # Use a custom port
+nova64 --start-demo --no-open    # Don't auto-open browser
+nova64 --help                    # Show all options
 ```
 
 🎉 **You should see spectacular 3D demos running instantly!**
@@ -148,6 +164,7 @@ python -m http.server 8000
 nova64/                          # 🏰 Ultimate 3D Fantasy Console
 ├── 📄 index.html               # Main console launcher
 ├── 📦 package.json             # Dependencies & scripts
+├── 🎮 bin/nova64.js            # CLI entry point (nova64 --start-demo)
 ├── 🔧 src/main.js              # Core engine bootstrap
 ├── ⚡ runtime/                 # 💎 Advanced 3D Engine
 │   ├── 🎨 gpu-threejs.js       # Three.js GPU backend with advanced materials

@@ -257,12 +257,27 @@ async function runMinimapTests() {
   runner.test('Minimap - createMinimap returns object with defaults', () => {
     // Import and test createMinimap logic by simulating
     const mm = {
-      x: 640 - 90, y: 10, width: 80, height: 80,
-      bgColor: null, borderLight: null, borderDark: null,
-      shape: 'rect', follow: null, worldW: 100, worldH: 100,
-      tileW: 0, tileH: 0, tileScale: 2, tiles: null,
-      fogOfWar: 0, entities: [], player: null,
-      sweep: null, gridLines: 0, gridColor: null,
+      x: 640 - 90,
+      y: 10,
+      width: 80,
+      height: 80,
+      bgColor: null,
+      borderLight: null,
+      borderDark: null,
+      shape: 'rect',
+      follow: null,
+      worldW: 100,
+      worldH: 100,
+      tileW: 0,
+      tileH: 0,
+      tileScale: 2,
+      tiles: null,
+      fogOfWar: 0,
+      entities: [],
+      player: null,
+      sweep: null,
+      gridLines: 0,
+      gridColor: null,
     };
     Assert.isObject(mm, 'createMinimap should return an object');
     Assert.isEqual(mm.width, 80, 'Default width should be 80');
@@ -276,10 +291,18 @@ async function runMinimapTests() {
 
   runner.test('Minimap - createMinimap accepts custom options', () => {
     const mm = {
-      x: 10, y: 20, width: 120, height: 100,
-      shape: 'circle', worldW: 500, worldH: 500,
-      tileW: 25, tileH: 25, tileScale: 3,
-      fogOfWar: 8, gridLines: 4,
+      x: 10,
+      y: 20,
+      width: 120,
+      height: 100,
+      shape: 'circle',
+      worldW: 500,
+      worldH: 500,
+      tileW: 25,
+      tileH: 25,
+      tileScale: 3,
+      fogOfWar: 8,
+      gridLines: 4,
     };
     Assert.isEqual(mm.x, 10, 'Should set x');
     Assert.isEqual(mm.y, 20, 'Should set y');
@@ -294,16 +317,22 @@ async function runMinimapTests() {
   });
 
   runner.test('Minimap - tile-based configuration', () => {
-    const MAP_W = 25, MAP_H = 25;
+    const MAP_W = 25,
+      MAP_H = 25;
     const tileColors = Array.from({ length: MAP_H }, () =>
       Array.from({ length: MAP_W }, () => null)
     );
     tileColors[5][5] = 0x3c3c50; // Floor tile
 
     const mm = {
-      x: 10, y: 10, width: MAP_W * 2, height: MAP_H * 2,
-      tileW: MAP_W, tileH: MAP_H, tileScale: 2,
-      tiles: (tx, ty) => tileColors[ty] ? tileColors[ty][tx] : null,
+      x: 10,
+      y: 10,
+      width: MAP_W * 2,
+      height: MAP_H * 2,
+      tileW: MAP_W,
+      tileH: MAP_H,
+      tileScale: 2,
+      tiles: (tx, ty) => (tileColors[ty] ? tileColors[ty][tx] : null),
       player: { x: 5, y: 5, blink: true },
       entities: [{ x: 10, y: 10, color: 0xff3232, size: 2 }],
       fogOfWar: 8,
@@ -319,9 +348,13 @@ async function runMinimapTests() {
 
   runner.test('Minimap - radar configuration', () => {
     const mm = {
-      x: 550, y: 10, width: 80, height: 80,
+      x: 550,
+      y: 10,
+      width: 80,
+      height: 80,
       shape: 'circle',
-      worldW: 200, worldH: 200,
+      worldW: 200,
+      worldH: 200,
       follow: { x: 100, y: 100 },
       gridLines: 3,
       sweep: { speed: 2, color: 0x00ff0064 },
@@ -357,7 +390,8 @@ async function runMinimapTests() {
   runner.test('Minimap - fog of war distance calculation', () => {
     // Verify Manhattan distance filtering logic
     const fogRadius = 8;
-    const playerTX = 12, playerTY = 12;
+    const playerTX = 12,
+      playerTY = 12;
 
     // Tile within range
     const dist1 = Math.abs(10 - playerTX) + Math.abs(10 - playerTY);
@@ -449,7 +483,8 @@ async function runGameUtilsTests() {
   // ── Hit State ──
 
   runner.test('HitState - invulnerability flow', () => {
-    const { createHitState, triggerHit, isInvulnerable, updateHitState, isFlashing } = await_gameutils();
+    const { createHitState, triggerHit, isInvulnerable, updateHitState, isFlashing } =
+      await_gameutils();
     const hs = createHitState({ invulnDuration: 0.5 });
     Assert.isFalse(isInvulnerable(hs), 'Should not start invuln');
     Assert.isTrue(triggerHit(hs), 'First hit should land');
@@ -467,7 +502,8 @@ async function runGameUtilsTests() {
     Assert.isTrue(isVisible(hs, 0), 'Should be visible before hit');
     triggerHit(hs);
     // During invuln, visibility depends on sin(time * blinkRate)
-    let seenTrue = false, seenFalse = false;
+    let seenTrue = false,
+      seenFalse = false;
     for (let t = 0; t < 1; t += 0.01) {
       if (isVisible(hs, t)) seenTrue = true;
       else seenFalse = true;
@@ -485,7 +521,9 @@ async function runGameUtilsTests() {
       initialDelay: 0.5,
       baseCount: 3,
       countGrowth: 2,
-      spawnFn: () => { spawned++; },
+      spawnFn: () => {
+        spawned++;
+      },
     });
     Assert.isEqual(getSpawnerWave(sp), 0, 'Should start at wave 0');
     updateSpawner(sp, 0.6);
@@ -502,25 +540,39 @@ async function runGameUtilsTests() {
     const { createPool } = await_gameutils();
     const pool = createPool(5, () => ({ x: 0, y: 0, vx: 0 }));
     Assert.isEqual(pool.count, 0, 'Should start empty');
-    pool.spawn(obj => { obj.x = 10; obj.vx = 1; });
-    pool.spawn(obj => { obj.x = 20; obj.vx = -1; });
+    pool.spawn(obj => {
+      obj.x = 10;
+      obj.vx = 1;
+    });
+    pool.spawn(obj => {
+      obj.x = 20;
+      obj.vx = -1;
+    });
     Assert.isEqual(pool.count, 2, 'Should have 2 alive');
     let sum = 0;
-    pool.forEach(obj => { sum += obj.x; });
+    pool.forEach(obj => {
+      sum += obj.x;
+    });
     Assert.isEqual(sum, 30, 'Should iterate alive objects');
   });
 
   runner.test('Pool - kill and recycle', () => {
     const { createPool } = await_gameutils();
     const pool = createPool(3);
-    const a = pool.spawn(o => { o.id = 'a'; });
-    const b = pool.spawn(o => { o.id = 'b'; });
+    const a = pool.spawn(o => {
+      o.id = 'a';
+    });
+    const b = pool.spawn(o => {
+      o.id = 'b';
+    });
     pool.kill(a);
     Assert.isEqual(pool.count, 1, 'Should have 1 after kill');
     pool.recycle();
     Assert.isEqual(pool.count, 0, 'Should have 0 after recycle');
     // Can re-spawn after recycle
-    pool.spawn(o => { o.id = 'c'; });
+    pool.spawn(o => {
+      o.id = 'c';
+    });
     Assert.isEqual(pool.count, 1, 'Should reuse pool slots');
   });
 
@@ -536,10 +588,18 @@ async function runGameUtilsTests() {
   runner.test('Pool - forEach return false kills', () => {
     const { createPool } = await_gameutils();
     const pool = createPool(5);
-    pool.spawn(o => { o.life = 3; });
-    pool.spawn(o => { o.life = 0; });
-    pool.spawn(o => { o.life = 1; });
-    pool.forEach(obj => { if (obj.life <= 0) return false; });
+    pool.spawn(o => {
+      o.life = 3;
+    });
+    pool.spawn(o => {
+      o.life = 0;
+    });
+    pool.spawn(o => {
+      o.life = 1;
+    });
+    pool.forEach(obj => {
+      if (obj.life <= 0) return false;
+    });
     Assert.isEqual(pool.count, 2, 'Should kill objects returning false');
   });
 
@@ -576,11 +636,17 @@ async function runGameUtilsTests() {
     let exited = '';
     const sm = createStateMachine('title');
     sm.on('title', {
-      enter: () => { entered = 'title'; },
-      exit: () => { exited = 'title'; },
+      enter: () => {
+        entered = 'title';
+      },
+      exit: () => {
+        exited = 'title';
+      },
     });
     sm.on('playing', {
-      enter: () => { entered = 'playing'; },
+      enter: () => {
+        entered = 'playing';
+      },
     });
     Assert.isTrue(sm.is('title'), 'Should start in title');
     sm.switchTo('playing');
@@ -605,7 +671,11 @@ async function runGameUtilsTests() {
   runner.test('Timer - progress and completion', () => {
     const { createTimer } = await_gameutils();
     let completed = false;
-    const t = createTimer(1.0, { onComplete: () => { completed = true; } });
+    const t = createTimer(1.0, {
+      onComplete: () => {
+        completed = true;
+      },
+    });
     Assert.isEqual(t.progress(), 0, 'Should start at 0');
     t.update(0.5);
     Assert.isTrue(Math.abs(t.progress() - 0.5) < 0.001, 'Should be at 0.5');
@@ -619,7 +689,12 @@ async function runGameUtilsTests() {
   runner.test('Timer - loop mode', () => {
     const { createTimer } = await_gameutils();
     let count = 0;
-    const t = createTimer(0.5, { loop: true, onComplete: () => { count++; } });
+    const t = createTimer(0.5, {
+      loop: true,
+      onComplete: () => {
+        count++;
+      },
+    });
     t.update(0.6);
     Assert.isEqual(count, 1, 'Should fire once');
     Assert.isFalse(t.done, 'Loop timer should not be done');
@@ -637,44 +712,77 @@ function await_gameutils() {
   // Inline the creation since it's a pure module
   return {
     createShake: (opts = {}) => ({
-      mag: 0, x: 0, y: 0,
+      mag: 0,
+      x: 0,
+      y: 0,
       decay: opts.decay ?? 4,
       maxMag: opts.maxMag ?? 20,
     }),
-    triggerShake: (s, mag) => { s.mag = Math.min(s.mag + mag, s.maxMag); },
+    triggerShake: (s, mag) => {
+      s.mag = Math.min(s.mag + mag, s.maxMag);
+    },
     updateShake: (s, dt) => {
       if (s.mag > 0.01) {
         s.x = (Math.random() - 0.5) * s.mag * 1.5;
         s.y = (Math.random() - 0.5) * s.mag * 1.5;
         s.mag -= s.decay * dt;
-      } else { s.mag = 0; s.x = 0; s.y = 0; }
+      } else {
+        s.mag = 0;
+        s.x = 0;
+        s.y = 0;
+      }
     },
-    getShakeOffset: (s) => [s.x, s.y],
-    createCooldown: (dur) => ({ remaining: 0, duration: dur }),
-    useCooldown: (cd) => { if (cd.remaining > 0) return false; cd.remaining = cd.duration; return true; },
-    cooldownReady: (cd) => cd.remaining <= 0,
-    cooldownProgress: (cd) => cd.duration <= 0 ? 1 : Math.max(0, 1 - cd.remaining / cd.duration),
-    updateCooldown: (cd, dt) => { if (cd.remaining > 0) cd.remaining = Math.max(0, cd.remaining - dt); },
-    createCooldownSet: (defs) => {
+    getShakeOffset: s => [s.x, s.y],
+    createCooldown: dur => ({ remaining: 0, duration: dur }),
+    useCooldown: cd => {
+      if (cd.remaining > 0) return false;
+      cd.remaining = cd.duration;
+      return true;
+    },
+    cooldownReady: cd => cd.remaining <= 0,
+    cooldownProgress: cd => (cd.duration <= 0 ? 1 : Math.max(0, 1 - cd.remaining / cd.duration)),
+    updateCooldown: (cd, dt) => {
+      if (cd.remaining > 0) cd.remaining = Math.max(0, cd.remaining - dt);
+    },
+    createCooldownSet: defs => {
       const set = {};
       for (const [name, dur] of Object.entries(defs)) set[name] = { remaining: 0, duration: dur };
       return set;
     },
-    updateCooldowns: (set, dt) => { for (const k in set) { if (set[k].remaining > 0) set[k].remaining = Math.max(0, set[k].remaining - dt); } },
+    updateCooldowns: (set, dt) => {
+      for (const k in set) {
+        if (set[k].remaining > 0) set[k].remaining = Math.max(0, set[k].remaining - dt);
+      }
+    },
     createHitState: (opts = {}) => ({
-      invulnTimer: 0, invulnDuration: opts.invulnDuration ?? 0.8,
-      blinkRate: opts.blinkRate ?? 25, flashTimer: 0,
+      invulnTimer: 0,
+      invulnDuration: opts.invulnDuration ?? 0.8,
+      blinkRate: opts.blinkRate ?? 25,
+      flashTimer: 0,
     }),
-    triggerHit: (hs) => { if (hs.invulnTimer > 0) return false; hs.invulnTimer = hs.invulnDuration; hs.flashTimer = 0.1; return true; },
-    isInvulnerable: (hs) => hs.invulnTimer > 0,
-    isVisible: (hs, t) => hs.invulnTimer <= 0 ? true : Math.sin(t * hs.blinkRate) > 0,
-    isFlashing: (hs) => hs.flashTimer > 0,
-    updateHitState: (hs, dt) => { if (hs.invulnTimer > 0) hs.invulnTimer = Math.max(0, hs.invulnTimer - dt); if (hs.flashTimer > 0) hs.flashTimer = Math.max(0, hs.flashTimer - dt); },
+    triggerHit: hs => {
+      if (hs.invulnTimer > 0) return false;
+      hs.invulnTimer = hs.invulnDuration;
+      hs.flashTimer = 0.1;
+      return true;
+    },
+    isInvulnerable: hs => hs.invulnTimer > 0,
+    isVisible: (hs, t) => (hs.invulnTimer <= 0 ? true : Math.sin(t * hs.blinkRate) > 0),
+    isFlashing: hs => hs.flashTimer > 0,
+    updateHitState: (hs, dt) => {
+      if (hs.invulnTimer > 0) hs.invulnTimer = Math.max(0, hs.invulnTimer - dt);
+      if (hs.flashTimer > 0) hs.flashTimer = Math.max(0, hs.flashTimer - dt);
+    },
     createSpawner: (opts = {}) => ({
-      wave: 0, timer: opts.initialDelay ?? (opts.waveInterval ?? 10),
-      waveInterval: opts.waveInterval ?? 10, baseCount: opts.baseCount ?? 3,
-      countGrowth: opts.countGrowth ?? 1, maxCount: opts.maxCount ?? 20,
-      spawnFn: opts.spawnFn ?? null, active: true, totalSpawned: 0,
+      wave: 0,
+      timer: opts.initialDelay ?? opts.waveInterval ?? 10,
+      waveInterval: opts.waveInterval ?? 10,
+      baseCount: opts.baseCount ?? 3,
+      countGrowth: opts.countGrowth ?? 1,
+      maxCount: opts.maxCount ?? 20,
+      spawnFn: opts.spawnFn ?? null,
+      active: true,
+      totalSpawned: 0,
     }),
     updateSpawner: (sp, dt) => {
       if (!sp.active) return;
@@ -683,52 +791,145 @@ function await_gameutils() {
         sp.wave++;
         sp.timer = sp.waveInterval;
         const count = Math.min(sp.baseCount + (sp.wave - 1) * sp.countGrowth, sp.maxCount);
-        if (sp.spawnFn) { for (let i = 0; i < count; i++) { sp.spawnFn(sp.wave, i, count); sp.totalSpawned++; } }
+        if (sp.spawnFn) {
+          for (let i = 0; i < count; i++) {
+            sp.spawnFn(sp.wave, i, count);
+            sp.totalSpawned++;
+          }
+        }
       }
     },
-    getSpawnerWave: (sp) => sp.wave,
+    getSpawnerWave: sp => sp.wave,
     createPool: (maxSize = 100, factory) => {
       const _f = factory ?? (() => ({}));
       const items = [];
-      for (let i = 0; i < maxSize; i++) { const o = _f(); o._poolAlive = false; items.push(o); }
+      for (let i = 0; i < maxSize; i++) {
+        const o = _f();
+        o._poolAlive = false;
+        items.push(o);
+      }
       return {
         items,
-        spawn(initFn) { for (let i = 0; i < items.length; i++) { if (!items[i]._poolAlive) { items[i]._poolAlive = true; if (initFn) initFn(items[i]); return items[i]; } } return null; },
-        forEach(fn) { for (let i = 0; i < items.length; i++) { if (!items[i]._poolAlive) continue; if (fn(items[i], i) === false) items[i]._poolAlive = false; } },
-        kill(obj) { obj._poolAlive = false; },
-        recycle() { for (let i = 0; i < items.length; i++) items[i]._poolAlive = false; },
-        get count() { let n = 0; for (let i = 0; i < items.length; i++) if (items[i]._poolAlive) n++; return n; },
+        spawn(initFn) {
+          for (let i = 0; i < items.length; i++) {
+            if (!items[i]._poolAlive) {
+              items[i]._poolAlive = true;
+              if (initFn) initFn(items[i]);
+              return items[i];
+            }
+          }
+          return null;
+        },
+        forEach(fn) {
+          for (let i = 0; i < items.length; i++) {
+            if (!items[i]._poolAlive) continue;
+            if (fn(items[i], i) === false) items[i]._poolAlive = false;
+          }
+        },
+        kill(obj) {
+          obj._poolAlive = false;
+        },
+        recycle() {
+          for (let i = 0; i < items.length; i++) items[i]._poolAlive = false;
+        },
+        get count() {
+          let n = 0;
+          for (let i = 0; i < items.length; i++) if (items[i]._poolAlive) n++;
+          return n;
+        },
       };
     },
     createFloatingTextSystem: () => {
       const texts = [];
       return {
         spawn(text, x, y, opts = {}) {
-          texts.push({ text: String(text), x, y, vx: opts.vx ?? 0, vy: opts.vy ?? -(opts.riseSpeed ?? 30), timer: opts.duration ?? 1.0, maxTimer: opts.duration ?? 1.0, color: opts.color ?? 0xffffff, scale: opts.scale ?? 1 });
+          texts.push({
+            text: String(text),
+            x,
+            y,
+            vx: opts.vx ?? 0,
+            vy: opts.vy ?? -(opts.riseSpeed ?? 30),
+            timer: opts.duration ?? 1.0,
+            maxTimer: opts.duration ?? 1.0,
+            color: opts.color ?? 0xffffff,
+            scale: opts.scale ?? 1,
+          });
         },
-        update(dt) { for (let i = texts.length - 1; i >= 0; i--) { const t = texts[i]; t.x += t.vx * dt; t.y += t.vy * dt; t.timer -= dt; if (t.timer <= 0) texts.splice(i, 1); } },
-        getTexts() { return texts; },
-        clear() { texts.length = 0; },
-        get count() { return texts.length; },
+        update(dt) {
+          for (let i = texts.length - 1; i >= 0; i--) {
+            const t = texts[i];
+            t.x += t.vx * dt;
+            t.y += t.vy * dt;
+            t.timer -= dt;
+            if (t.timer <= 0) texts.splice(i, 1);
+          }
+        },
+        getTexts() {
+          return texts;
+        },
+        clear() {
+          texts.length = 0;
+        },
+        get count() {
+          return texts.length;
+        },
       };
     },
-    createStateMachine: (initial) => {
-      let current = initial, elapsed = 0;
+    createStateMachine: initial => {
+      let current = initial,
+        elapsed = 0;
       const handlers = {};
       return {
-        on(state, fns) { handlers[state] = fns; return this; },
-        switchTo(state) { if (handlers[current]?.exit) handlers[current].exit(); current = state; elapsed = 0; if (handlers[current]?.enter) handlers[current].enter(); },
-        update(dt) { elapsed += dt; if (handlers[current]?.update) handlers[current].update(dt, elapsed); },
-        getState() { return current; },
-        getElapsed() { return elapsed; },
-        is(state) { return current === state; },
+        on(state, fns) {
+          handlers[state] = fns;
+          return this;
+        },
+        switchTo(state) {
+          if (handlers[current]?.exit) handlers[current].exit();
+          current = state;
+          elapsed = 0;
+          if (handlers[current]?.enter) handlers[current].enter();
+        },
+        update(dt) {
+          elapsed += dt;
+          if (handlers[current]?.update) handlers[current].update(dt, elapsed);
+        },
+        getState() {
+          return current;
+        },
+        getElapsed() {
+          return elapsed;
+        },
+        is(state) {
+          return current === state;
+        },
       };
     },
     createTimer: (duration, opts = {}) => ({
-      elapsed: 0, duration, loop: opts.loop ?? false, onComplete: opts.onComplete ?? null, done: false,
-      update(dt) { if (this.done && !this.loop) return; this.elapsed += dt; if (this.elapsed >= this.duration) { if (this.loop) this.elapsed -= this.duration; else { this.elapsed = this.duration; this.done = true; } if (this.onComplete) this.onComplete(); } },
-      progress() { return Math.min(1, this.elapsed / this.duration); },
-      reset() { this.elapsed = 0; this.done = false; },
+      elapsed: 0,
+      duration,
+      loop: opts.loop ?? false,
+      onComplete: opts.onComplete ?? null,
+      done: false,
+      update(dt) {
+        if (this.done && !this.loop) return;
+        this.elapsed += dt;
+        if (this.elapsed >= this.duration) {
+          if (this.loop) this.elapsed -= this.duration;
+          else {
+            this.elapsed = this.duration;
+            this.done = true;
+          }
+          if (this.onComplete) this.onComplete();
+        }
+      },
+      progress() {
+        return Math.min(1, this.elapsed / this.duration);
+      },
+      reset() {
+        this.elapsed = 0;
+        this.done = false;
+      },
     }),
   };
 }

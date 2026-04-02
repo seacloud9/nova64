@@ -60,12 +60,27 @@ An engaging, animated landing page for the NOVA64 fantasy console that captures 
 ### 🔗 Navigation Flow
 
 ```
+CLI: nova64 --start-demo → Launches local server → Opens /console.html
+
 index.html (Homepage)
 ├── /console.html → Main playable console
 ├── /console.html?demo=NAME → Direct demo loading
 ├── /os9-shell/index.html → Mac OS 9 interface
 └── /docs/index.html → API documentation
 ```
+
+### 🎮 CLI Usage
+
+After installing globally with `pnpm add -g nova64`, users can run:
+
+```bash
+nova64 --start-demo              # Launch console with demos
+nova64 --start-demo -p 8080      # Custom port
+nova64 --start-demo --no-open    # Don't auto-open browser
+nova64 --help                    # Show all options
+```
+
+The CLI starts a local static server serving the built `dist/` directory (which includes the console, examples, docs, and NovaOS) and auto-opens the console in the default browser.
 
 ## URL Parameters
 

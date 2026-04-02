@@ -25,6 +25,9 @@ pnpm dev
 **⚡ Always use `pnpm` for all package management and development tasks:**
 
 ```bash
+# 🎮 Launch console with demos (after global install: pnpm add -g nova64)
+nova64 --start-demo     # Opens http://localhost:3000/console.html
+
 # 📦 Install dependencies (ALWAYS use pnpm)
 pnpm install
 
@@ -37,7 +40,7 @@ pnpm build
 # 👁️ Preview production build (ALWAYS use pnpm)
 pnpm preview
 
-# 🧪 Run complete test suite (35/35 tests passing) (ALWAYS use pnpm)
+# 🧪 Run complete test suite (56/56 tests passing) (ALWAYS use pnpm)
 pnpm test
 
 # 🎯 Run specific test suites (ALWAYS use pnpm)

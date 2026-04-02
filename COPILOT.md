@@ -50,6 +50,9 @@ pnpm dev
 ## 🎮 **Quick Development Commands**
 
 ```bash
+# 🎮 Launch console with demos (after global install: pnpm add -g nova64)
+nova64 --start-demo     # Opens http://localhost:3000/console.html
+
 # 🔥 Start development server (hot reloading)
 pnpm dev                # Usually http://localhost:5173
 

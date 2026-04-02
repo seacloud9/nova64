@@ -1,29 +1,29 @@
 # hyperNova: A HyperCard-like Editor for novaOS
 
-**Executive Summary:** hyperNova is a proposed in-system editor for the *novaOS / nova64* fantasy console, modeled on HyperCard’s “stacks of cards” paradigm【43†L208-L213】.  It will enable users to create interactive card-based interfaces (e.g. presentations, simple apps or games) using visual tools and a built-in scripting language. Users can add cards and stacks, drag-and-drop UI objects (buttons, text fields, images, sprites) onto cards, and attach scripts to define behavior (e.g. navigating between cards, updating fields, playing sounds). The editor will integrate with the existing sprite editor so graphics and assets can be imported directly into cards. Projects will be exported as **cart.js** files (JSON/JS format) that describe the stack structure, objects, scripts, and embedded assets. At runtime, a loader will parse `cart.js`, create NovaOS UI elements, and bind scripts to the fantasy-console API (graphics, input, audio, etc.).  The design emphasizes visual ease-of-use (minimal learning curve, WYSIWYG editing) while leveraging NovaOS’s graphics and sound APIs. Security is handled by sandboxing user scripts within the fantasy-console runtime. We provide a detailed roadmap with milestones, user stories, feature breakdown, schema design, runtime integration plan, code snippets for export and load, comparison of design options, sample cart examples, testing/QA checklist, and mermaid diagrams of architecture and workflow. 
+**Executive Summary:** hyperNova is a proposed in-system editor for the _novaOS / nova64_ fantasy console, modeled on HyperCard’s “stacks of cards” paradigm【43†L208-L213】. It will enable users to create interactive card-based interfaces (e.g. presentations, simple apps or games) using visual tools and a built-in scripting language. Users can add cards and stacks, drag-and-drop UI objects (buttons, text fields, images, sprites) onto cards, and attach scripts to define behavior (e.g. navigating between cards, updating fields, playing sounds). The editor will integrate with the existing sprite editor so graphics and assets can be imported directly into cards. Projects will be exported as **cart.js** files (JSON/JS format) that describe the stack structure, objects, scripts, and embedded assets. At runtime, a loader will parse `cart.js`, create NovaOS UI elements, and bind scripts to the fantasy-console API (graphics, input, audio, etc.). The design emphasizes visual ease-of-use (minimal learning curve, WYSIWYG editing) while leveraging NovaOS’s graphics and sound APIs. Security is handled by sandboxing user scripts within the fantasy-console runtime. We provide a detailed roadmap with milestones, user stories, feature breakdown, schema design, runtime integration plan, code snippets for export and load, comparison of design options, sample cart examples, testing/QA checklist, and mermaid diagrams of architecture and workflow.
 
 This design is inspired by HyperCard’s architecture (HyperCard “combines a flat-file database with a graphical, flexible, user-modifiable interface” and a built-in scripting language【43†L171-L173】) and by modern fantasy consoles (e.g. PICO-8’s text-based cart format【58†L99-L101】). It assumes some NovaOS runtime APIs (graphics drawing, input, asset loading, etc.) – wherever exact NovaOS calls are unknown, we mark them as _unspecified_ and discuss intended behavior. The goal is to make stack-oriented UI creation **visually intuitive** (drag/drop, menus for objects) and to allow at least creating a simple presentation/slideshow with minimal effort, as requested by the team.
 
 ## Project Goals and Scope
 
-- **Create hyperNova**, an in-system HyperCard-like editor integrated into novaOS, with WYSIWYG card and stack editing.  
-- **Export format:** Projects saved as `cart.js` files containing JSON/JS that NovaOS can load and run.  
-- **Ease of Use:** The editor UI should be visually clear and easy, integrating the sprite editor so that creating e.g. a presentation slide deck is straightforward.  
-- **Compatibility:** cart.js must be compatible with novaOS/nova64 APIs; design for future extension and backward compatibility.  
-- **Security:** User scripts run in a sandboxed environment; no unauthorized access to host system.  
-- **Persistence:** Support saving/loading projects (stacks) and allow runtime persistence if needed.  
+- **Create hyperNova**, an in-system HyperCard-like editor integrated into novaOS, with WYSIWYG card and stack editing.
+- **Export format:** Projects saved as `cart.js` files containing JSON/JS that NovaOS can load and run.
+- **Ease of Use:** The editor UI should be visually clear and easy, integrating the sprite editor so that creating e.g. a presentation slide deck is straightforward.
+- **Compatibility:** cart.js must be compatible with novaOS/nova64 APIs; design for future extension and backward compatibility.
+- **Security:** User scripts run in a sandboxed environment; no unauthorized access to host system.
+- **Persistence:** Support saving/loading projects (stacks) and allow runtime persistence if needed.
 - **Sample Output:** Provide example carts, test cases, and QA plan to validate functionality.
 
 ## User Stories
 
-- *As a content creator*, I want to **create new stacks and cards**, giving each a title and background, so that I can organize a series of pages or slides.
-- *As a user*, I want to **add buttons, images/sprites, text labels, and input fields** to a card by dragging icons or using menus, so I can design interactive screens.
-- *As a user*, I want to **drag images from the sprite editor** into my card, so I can reuse existing graphics (sprites, tiles, backgrounds).
-- *As a user*, I want to **write or edit scripts attached to buttons/fields/cards**, using a simple scripting language, to define interactions (e.g. “go to next card” or validate input).
-- *As a user*, I want to **navigate between cards/stacks**, using both built-in navigation (first/last card, go to card by number) and button scripts (e.g. `goToCard("card3")`).
-- *As a user*, I want to **test/play my stack in the novaOS runtime** directly from the editor, to quickly verify behavior.
-- *As a user*, I want to **export** my project as a `cart.js` file and later **import** it back, so I can save/share my work.
-- *As a developer*, I want to **prompt an AI agent via CLI** to implement features (e.g. “build a drag-and-drop UI for cards”), to automate development.
+- _As a content creator_, I want to **create new stacks and cards**, giving each a title and background, so that I can organize a series of pages or slides.
+- _As a user_, I want to **add buttons, images/sprites, text labels, and input fields** to a card by dragging icons or using menus, so I can design interactive screens.
+- _As a user_, I want to **drag images from the sprite editor** into my card, so I can reuse existing graphics (sprites, tiles, backgrounds).
+- _As a user_, I want to **write or edit scripts attached to buttons/fields/cards**, using a simple scripting language, to define interactions (e.g. “go to next card” or validate input).
+- _As a user_, I want to **navigate between cards/stacks**, using both built-in navigation (first/last card, go to card by number) and button scripts (e.g. `goToCard("card3")`).
+- _As a user_, I want to **test/play my stack in the novaOS runtime** directly from the editor, to quickly verify behavior.
+- _As a user_, I want to **export** my project as a `cart.js` file and later **import** it back, so I can save/share my work.
+- _As a developer_, I want to **prompt an AI agent via CLI** to implement features (e.g. “build a drag-and-drop UI for cards”), to automate development.
 
 ## Required Features
 
@@ -32,15 +32,15 @@ This design is inspired by HyperCard’s architecture (HyperCard “combines a f
   - Resizing and positioning of objects with mouse.
   - Editing object properties (label text, font, color, id, target card for navigation, etc.).
 - **Stacks and Cards:** Support multiple stacks and multiple cards per stack. User can create, delete, rename cards/stacks.
-- **Buttons & Fields:** Buttons trigger scripts on click. Text fields allow user input (for interactive demos). 
+- **Buttons & Fields:** Buttons trigger scripts on click. Text fields allow user input (for interactive demos).
 - **Scripting:** A simple scripting editor. Each object and card can have an attached script (event handlers, e.g. `onClick`). Scripting language could be JavaScript or a HyperTalk-like subset. Scripts define logic (navigate cards, update fields, play sounds, etc.).
-- **Assets and Sprite Integration:** Integrate with the existing sprite editor so users can place sprites/images on cards. The editor should list imported assets for use. 
+- **Assets and Sprite Integration:** Integrate with the existing sprite editor so users can place sprites/images on cards. The editor should list imported assets for use.
 - **Navigation:** Built-in commands and UI for navigation (first/last card, stack controls) plus script-based (e.g. `goNextCard()`, `goToCard(id)`).
 - **Export/Import:** Export stacks as a `cart.js` file (or set of files) containing the project data (schema below). Import should read a `cart.js` back into the editor UI.
 - **NovaOS Runtime Bindings:** Map hyperNova objects and events to novaOS/nova64 graphics and input APIs so the cart runs as intended. (Detailed API mapping below.)
 - **Persistence:** Ability to save the cart (in editor) and also store any runtime state if needed (e.g. field contents).
 - **UX/UI:** Clean interface: toolbar/menu for common actions (new card, delete card, export, etc.), properties panel for selected object, and integration with sprite editor panel. It should be easy for even non-coders to create a slideshow or simple app (“slides” = cards).
-  
+
 ## Cart.js Schema (JSON/JS Format)
 
 We define a JSON-based schema for exported carts. A cart file (`cart.js`) contains all stacks, cards, objects, scripts, and assets. For example:
@@ -58,17 +58,33 @@ We define a JSON-based schema for exported carts. A cart file (`cart.js`) contai
           "id": "card1",
           "title": "Welcome Card",
           "objects": [
-            {"type": "text",  "id": "txt1", "x": 10, "y": 10, "text": "Welcome!", "font": "Sans", "size": 16},
-            {"type": "button","id": "btnNext", "x": 50, "y": 100, "width": 100, "height": 40,
-               "label": "Next", "script": "goToCard('card2');"}
+            {
+              "type": "text",
+              "id": "txt1",
+              "x": 10,
+              "y": 10,
+              "text": "Welcome!",
+              "font": "Sans",
+              "size": 16
+            },
+            {
+              "type": "button",
+              "id": "btnNext",
+              "x": 50,
+              "y": 100,
+              "width": 100,
+              "height": 40,
+              "label": "Next",
+              "script": "goToCard('card2');"
+            }
           ]
         },
         {
           "id": "card2",
           "title": "Second Card",
           "objects": [
-            {"type": "text", "id": "txt2", "x": 10, "y": 10, "text": "This is the second card."},
-            {"type": "image","id": "imgLogo","x": 30, "y": 50, "asset": "logo"}
+            { "type": "text", "id": "txt2", "x": 10, "y": 10, "text": "This is the second card." },
+            { "type": "image", "id": "imgLogo", "x": 30, "y": 50, "asset": "logo" }
           ]
         }
       ]
@@ -76,31 +92,31 @@ We define a JSON-based schema for exported carts. A cart file (`cart.js`) contai
   ],
   "assets": {
     "images": {
-      "logo": {"format":"png", "data":"<base64-encoded-image-data>"}
+      "logo": { "format": "png", "data": "<base64-encoded-image-data>" }
     },
     "sounds": {
-      "ping": {"format":"wav", "data":"<base64-audio-data>"}
+      "ping": { "format": "wav", "data": "<base64-audio-data>" }
     }
   }
 }
 ```
 
-- **version:** Schema version number for migration/back-compat checks.  
-- **name:** (Optional) human-readable name of the cart.  
-- **stacks:** Array of stack objects. Each stack has an `id`, `title`, and array of `cards`.  
-- **cards:** Each card has an `id`, optional `title`, and an array of `objects`.  
-- **objects:** Each object on a card has a `type` (e.g. `"text"`, `"button"`, `"field"`, `"image"`), coordinates `x,y`, size (if applicable), and other properties: 
-  - **text object:** `text`, `font`, `size`, `color`.  
-  - **button object:** `label`, and a `script` string (HyperTalk/JS code) to execute on click.  
-  - **field object:** initial `text` value, and a `script` (e.g. onChange).  
-  - **image object:** refers to an asset ID (`"asset": "logo"`) defined in `assets`.  
+- **version:** Schema version number for migration/back-compat checks.
+- **name:** (Optional) human-readable name of the cart.
+- **stacks:** Array of stack objects. Each stack has an `id`, `title`, and array of `cards`.
+- **cards:** Each card has an `id`, optional `title`, and an array of `objects`.
+- **objects:** Each object on a card has a `type` (e.g. `"text"`, `"button"`, `"field"`, `"image"`), coordinates `x,y`, size (if applicable), and other properties:
+  - **text object:** `text`, `font`, `size`, `color`.
+  - **button object:** `label`, and a `script` string (HyperTalk/JS code) to execute on click.
+  - **field object:** initial `text` value, and a `script` (e.g. onChange).
+  - **image object:** refers to an asset ID (`"asset": "logo"`) defined in `assets`.
 - **assets:** Maps for external data. We embed assets directly in the cart for portability. Images and sounds are base64-encoded. The runtime loader will decode and register these. (Alternatively, a URI or filename could be used if NovaOS supports file references.)
 
 This JSON data can be exported as a JS file (e.g. `export default { ... };` or simply setting a global variable) so that the novaOS runtime can load it. The exporter will generate the JSON string (or JS object literal) in a file named `cart.js`. The loader (runtime) will parse this structure to recreate stacks and objects.
 
 ## Runtime API Bindings (to novaOS/nova64)
 
-At runtime, the NovaOS/nova64 system must display cards and handle input based on the cart data. We assume NovaOS provides low-level APIs for graphics, sprites, UI, and input. We list expected bindings (exact call names are *unspecified* since NovaOS docs are not public):
+At runtime, the NovaOS/nova64 system must display cards and handle input based on the cart data. We assume NovaOS provides low-level APIs for graphics, sprites, UI, and input. We list expected bindings (exact call names are _unspecified_ since NovaOS docs are not public):
 
 - **Drawing/Graphics:** To render text, shapes, and sprites.
   - e.g. `novaOS.drawText(x,y,string,font,size,color)` – draw text.
@@ -119,7 +135,7 @@ At runtime, the NovaOS/nova64 system must display cards and handle input based o
   - e.g. after loading an image asset, `novaOS.drawImage(imgData, x,y)` or create a sprite sheet from data.
   - `novaOS.playSound(soundId)` – play a sound asset.
 - **Storage/Persistence:** If needed, saving data.
-  - e.g. `novaOS.saveFile(path, data)` or `novaOS.setUserData(key, value)`, if NovaOS supports persistent storage. (Marked *unspecified* if unknown.)
+  - e.g. `novaOS.saveFile(path, data)` or `novaOS.setUserData(key, value)`, if NovaOS supports persistent storage. (Marked _unspecified_ if unknown.)
 - **Timing/Animation:** Potentially `novaOS.wait(ms)` or an event loop. Scripts might use `wait` or timers (HyperCard had `wait` commands).
 - **Other:** If NovaOS has a message or alert, e.g. `novaOS.alert(msg)` (unspecified), could be used in scripts.
 
@@ -130,16 +146,22 @@ Where exact API calls are unknown, we note them as **(unspecified)**. The hyperN
 function showCard(card) {
   clearScreen();
   card.objects.forEach(obj => {
-    switch(obj.type) {
-      case "text":
+    switch (obj.type) {
+      case 'text':
         novaOS.drawText(obj.x, obj.y, obj.text, obj.font, obj.size);
         break;
-      case "button":
+      case 'button':
         novaOS.drawButton(obj.x, obj.y, obj.width, obj.height, obj.label);
         // register click handler:
-        buttonHandlers.push({x: obj.x,y:obj.y,w:obj.width,h:obj.height, script: obj.script});
+        buttonHandlers.push({
+          x: obj.x,
+          y: obj.y,
+          w: obj.width,
+          h: obj.height,
+          script: obj.script,
+        });
         break;
-      case "image":
+      case 'image':
         let imgData = assets.images[obj.asset];
         novaOS.drawImage(imgData, obj.x, obj.y);
         break;
@@ -154,6 +176,7 @@ Script handlers (like `obj.script`) will be evaluated in a sandboxed interpreter
 ## Security / Sandboxing
 
 User-written scripts must not break the system. The runtime should execute scripts in a controlled sandbox:
+
 - Disallow any file I/O, networking, or arbitrary OS calls from user scripts. They should only interact with the provided NovaOS fantasy-console API (graphics, input).
 - If using JavaScript for scripts, run them in a restricted context (e.g. an isolated VM with only safe APIs exposed). Or, if using a custom script parser, ensure it has no `import` or dangerous operations.
 - Prevent scripts from entering infinite loops: runtime should allow yielding (e.g. `wait`) or preempt after a certain time, to avoid hanging the system.
@@ -166,10 +189,10 @@ In summary, **user scripts run in a NovaOS-provided sandbox**, with only the nee
 
 Persistence in hyperNova has two facets:
 
-1. **Project Persistence (Editor Side):** The editor must save and load the current project (stack of cards) as `cart.js`. The user action “Save” writes out the JSON/JS file; “Load” reads it back into the editor interface. This uses NovaOS’s file APIs or local filesystem (e.g. `novaOS.saveFile("proj.cart.js", data)` – *unspecified*).
-2. **Runtime State (During Play):** If needed, the cart can store transient or game state. For example, text fields on cards naturally retain their content as part of the card state. If longer-term persistence is needed (e.g. saving progress between sessions), hyperNova could use NovaOS’s persistent storage (e.g. saving a small JSON of variables). As a simple solution, we can allow scripts to write to a (sandboxed) `novaOS.setUserData(key, value)` store (unspecified) and `novaOS.getUserData(key)` on reload.  
+1. **Project Persistence (Editor Side):** The editor must save and load the current project (stack of cards) as `cart.js`. The user action “Save” writes out the JSON/JS file; “Load” reads it back into the editor interface. This uses NovaOS’s file APIs or local filesystem (e.g. `novaOS.saveFile("proj.cart.js", data)` – _unspecified_).
+2. **Runtime State (During Play):** If needed, the cart can store transient or game state. For example, text fields on cards naturally retain their content as part of the card state. If longer-term persistence is needed (e.g. saving progress between sessions), hyperNova could use NovaOS’s persistent storage (e.g. saving a small JSON of variables). As a simple solution, we can allow scripts to write to a (sandboxed) `novaOS.setUserData(key, value)` store (unspecified) and `novaOS.getUserData(key)` on reload.
 
-By default, all card data (including field contents if treated as object state) will be in memory; exporting again will capture those values. 
+By default, all card data (including field contents if treated as object state) will be in memory; exporting again will capture those values.
 
 Finally, for backward compatibility, we include a `"version":1` field in `cart.js`. If future updates change the schema, the loader can detect an old version and either migrate it or warn the user to upgrade their editor/stack format.
 
@@ -178,11 +201,12 @@ Finally, for backward compatibility, we include a `"version":1` field in `cart.j
 hyperNova must handle user assets (images, sprites, sounds, music). We outline the pipeline:
 
 - **Importing Assets:** Within the editor, users should be able to import or create assets:
-  - **Sprites/Images:** The sprite editor creates images and sprite sheets. hyperNova can list these in an “Asset Library” panel. Users can drag an image/sprite from the library onto a card, creating an image object.  
+  - **Sprites/Images:** The sprite editor creates images and sprite sheets. hyperNova can list these in an “Asset Library” panel. Users can drag an image/sprite from the library onto a card, creating an image object.
   - **Audio:** If NovaOS supports sound, allow importing audio clips (WAV/OGG). The user might press a “Add Sound” button and select a file.
   - Internally, when an asset is added, hyperNova reads it and stores it as base64 or raw data in the project model.
 
 - **Referencing Assets in Cart:** In the JSON schema above, assets are included under the `"assets"` section. We embed them as base64 strings (or data URIs) so that the cart is self-contained. For example:
+
   ```json
   "assets": {
     "images": {
@@ -193,6 +217,7 @@ hyperNova must handle user assets (images, sprites, sounds, music). We outline t
     }
   }
   ```
+
   The `"asset"` field on an image object (e.g. `"asset": "logo"`) refers to these IDs.
 
 - **Exporting Assets:** The cart.js exporter will take any image objects or audio objects in the stacks and include their data in the assets map. If using base64, this can make the file large for many/huge assets; one could also opt to store just file paths if NovaOS allows bundling, but base64 ensures portability (the entire project is one file). As the PICO-8 forum notes, other systems sometimes store carts as plain text or even embed in PNG images for sharing【58†L99-L101】. We choose JSON/text for simplicity.
@@ -208,7 +233,7 @@ The editor’s user interface should be clear and efficient. A suggested layout:
 │ File | Edit | Stack | Card | Object | Help  (Menu Bar)   │
 ├───────────────────────────────────────────────────────────┤
 │ [Stacks/Slides]                                         ] │  (List of stacks/cards)
-│ [Title: ___________]  [Add Card] [Delete Card] [Copy]   ] │  
+│ [Title: ___________]  [Add Card] [Delete Card] [Copy]   ] │
 │                                                           │
 │ +-------------------------------------------------------+ │
 │ |             Card Canvas (WYSIWYG Editor)             | │  (Canvas shows current card)
@@ -255,99 +280,99 @@ The key UX principle is **WYSIWYG**: what you arrange visually is what runs. Thi
 For each milestone/task, we define prompts that an AI agent (or developer) could use to implement it. Prompts should be precise and actionable.
 
 1. **Setup & API Stubs:**  
-   *Prompt:* “Create a basic project structure for hyperNova. Define placeholder functions for NovaOS API calls (e.g. `drawText`, `drawButton`, `onClick`, `showCard`) so that editor code can call them. Use comments to mark these as unspecified. Write a simple HTML/JS scaffold (or Lua files if novaOS uses Lua) that can display an empty canvas and call `clearScreen()` and `update()`. Ensure the code runs without errors.”
+   _Prompt:_ “Create a basic project structure for hyperNova. Define placeholder functions for NovaOS API calls (e.g. `drawText`, `drawButton`, `onClick`, `showCard`) so that editor code can call them. Use comments to mark these as unspecified. Write a simple HTML/JS scaffold (or Lua files if novaOS uses Lua) that can display an empty canvas and call `clearScreen()` and `update()`. Ensure the code runs without errors.”
 
 2. **Design Cart Schema:**  
-   *Prompt:* “Design the JSON schema for the `cart.js` file. It should include stacks, cards, objects, scripts, and assets as discussed. Implement a JavaScript class or object model in code that can build a cart structure in memory (with methods `addStack`, `addCard`, `addObject`, etc.). Provide code to serialize this structure to JSON or JS text. Include sample code that creates one stack, one card, and one button object.”
+   _Prompt:_ “Design the JSON schema for the `cart.js` file. It should include stacks, cards, objects, scripts, and assets as discussed. Implement a JavaScript class or object model in code that can build a cart structure in memory (with methods `addStack`, `addCard`, `addObject`, etc.). Provide code to serialize this structure to JSON or JS text. Include sample code that creates one stack, one card, and one button object.”
 
 3. **Runtime Loader Prototype:**  
-   *Prompt:* “Write a runtime loader function `loadCart(cartData)` that takes the JSON cart structure (like above) and renders the first card. The loader should interpret objects: for each object, call the NovaOS API stub (e.g. `drawText`, `drawButton`). If objects have scripts, store them in a map. For example, pressing a drawn button should later trigger evaluation of its script. Focus on the rendering logic and navigation: implement `goToCard(cardId)` to switch cards. Write in JS (or the target language). Use simple console logs or placeholder graphics to test functionality.”
+   _Prompt:_ “Write a runtime loader function `loadCart(cartData)` that takes the JSON cart structure (like above) and renders the first card. The loader should interpret objects: for each object, call the NovaOS API stub (e.g. `drawText`, `drawButton`). If objects have scripts, store them in a map. For example, pressing a drawn button should later trigger evaluation of its script. Focus on the rendering logic and navigation: implement `goToCard(cardId)` to switch cards. Write in JS (or the target language). Use simple console logs or placeholder graphics to test functionality.”
 
 4. **Card Editor UI Skeleton:**  
-   *Prompt:* “Create a GUI window for the card editor. Use HTML/CSS/JS or the novaOS UI framework if available. Divide it into a main canvas (for card layout), a side panel (object properties), and a toolbar (for selecting object types to add). Implement the ability to click on the canvas to create a new object: e.g. if ‘Button’ is selected in the toolbar, clicking the canvas adds a new button object at that location. Outline the data model update as well (e.g. adding to the current card’s object list).”  
+   _Prompt:_ “Create a GUI window for the card editor. Use HTML/CSS/JS or the novaOS UI framework if available. Divide it into a main canvas (for card layout), a side panel (object properties), and a toolbar (for selecting object types to add). Implement the ability to click on the canvas to create a new object: e.g. if ‘Button’ is selected in the toolbar, clicking the canvas adds a new button object at that location. Outline the data model update as well (e.g. adding to the current card’s object list).”
 
 5. **Object Manipulation:**  
-   *Prompt:* “Implement dragging and resizing of objects on the card canvas. Users should be able to click and drag an object to move it, and use corner handles to resize. Update the object’s `x,y,width,height` in the model as they move it. Provide code that attaches mouse event handlers to allow these manipulations. Test that object properties update live as the object moves.”
+   _Prompt:_ “Implement dragging and resizing of objects on the card canvas. Users should be able to click and drag an object to move it, and use corner handles to resize. Update the object’s `x,y,width,height` in the model as they move it. Provide code that attaches mouse event handlers to allow these manipulations. Test that object properties update live as the object moves.”
 
 6. **Scripting Editor:**  
-   *Prompt:* “Add a scripting editor UI for objects. When a button or field is selected, provide a multi-line text box for its script. The user can type event code (e.g. JavaScript) into it. On save/blur, update the object’s `script` property in the data model. Show how the loader will later execute this script in context (e.g. using `eval` or a JS Function, assuming sandboxing). Include code that links an object’s `onClick` event to evaluating its script with the NovaOS API context.”
+   _Prompt:_ “Add a scripting editor UI for objects. When a button or field is selected, provide a multi-line text box for its script. The user can type event code (e.g. JavaScript) into it. On save/blur, update the object’s `script` property in the data model. Show how the loader will later execute this script in context (e.g. using `eval` or a JS Function, assuming sandboxing). Include code that links an object’s `onClick` event to evaluating its script with the NovaOS API context.”
 
 7. **Sprite Editor Integration:**  
-   *Prompt:* “Integrate the existing sprite editor. When adding an image object, open a dialog or panel listing available sprites/images. Let the user pick one; the editor then adds an image object with that asset ID. Demonstrate this by mocking a sprite list (e.g. array of names) and allowing drag/drop onto canvas. Ensure the asset is added to the cart’s asset table (base64 data) on export.”
+   _Prompt:_ “Integrate the existing sprite editor. When adding an image object, open a dialog or panel listing available sprites/images. Let the user pick one; the editor then adds an image object with that asset ID. Demonstrate this by mocking a sprite list (e.g. array of names) and allowing drag/drop onto canvas. Ensure the asset is added to the cart’s asset table (base64 data) on export.”
 
 8. **Asset Pipeline Implementation:**  
-   *Prompt:* “Implement the asset embedding in the exporter. Write code in the export function that reads any image or sound objects from the model, loads their file data (e.g. using FileReader or a base64 encoder), and inserts them into the `assets` section of the cart structure. The asset entries should include format and data. Then output the final JSON. Also, in the loader, write code to decode these assets: e.g. create HTML Image objects or Audio objects from the base64 data and store them in a lookup by asset ID.”
+   _Prompt:_ “Implement the asset embedding in the exporter. Write code in the export function that reads any image or sound objects from the model, loads their file data (e.g. using FileReader or a base64 encoder), and inserts them into the `assets` section of the cart structure. The asset entries should include format and data. Then output the final JSON. Also, in the loader, write code to decode these assets: e.g. create HTML Image objects or Audio objects from the base64 data and store them in a lookup by asset ID.”
 
 9. **Export & Import Functionality:**  
-   *Prompt:* “Implement ‘Save’ and ‘Load’ commands in the UI. ‘Save’ should serialize the current project to `cart.js` and prompt the user to download or write to file. ‘Load’ should let the user open an existing `cart.js`, parse the JSON, and populate the editor model (recreate stacks, cards, objects with their properties). Provide code using file input/output APIs.”
+   _Prompt:_ “Implement ‘Save’ and ‘Load’ commands in the UI. ‘Save’ should serialize the current project to `cart.js` and prompt the user to download or write to file. ‘Load’ should let the user open an existing `cart.js`, parse the JSON, and populate the editor model (recreate stacks, cards, objects with their properties). Provide code using file input/output APIs.”
 
 10. **Navigation and Testing Mode:**  
-    *Prompt:* “Add navigation controls: e.g. buttons ‘<<’, ‘<’, ‘>’, ‘>>’ to move between cards in a stack. Implement their actions by calling the loader’s `showCard` with the previous/next card. Also add a ‘Play’ button: when clicked, it switches the interface to runtime mode, rendering the stack as if it were the actual app (or simply calls `loadCart` and hands off control). Provide code to toggle between edit mode and play mode.”
+    _Prompt:_ “Add navigation controls: e.g. buttons ‘<<’, ‘<’, ‘>’, ‘>>’ to move between cards in a stack. Implement their actions by calling the loader’s `showCard` with the previous/next card. Also add a ‘Play’ button: when clicked, it switches the interface to runtime mode, rendering the stack as if it were the actual app (or simply calls `loadCart` and hands off control). Provide code to toggle between edit mode and play mode.”
 
 11. **Testing & QA Automation:**  
-    *Prompt:* “Generate test cases for the features. For example, write a script that programmatically creates a stack with 3 cards, each with a button; set each button’s script to go to the next card. Save this as `cart.js`, then load it and simulate clicks on each button in sequence, verifying that the card advances correctly. Automate checking that properties (positions, labels) match between save and load.”
+    _Prompt:_ “Generate test cases for the features. For example, write a script that programmatically creates a stack with 3 cards, each with a button; set each button’s script to go to the next card. Save this as `cart.js`, then load it and simulate clicks on each button in sequence, verifying that the card advances correctly. Automate checking that properties (positions, labels) match between save and load.”
 
 Each prompt above is meant to be given to a coding assistant or developer to implement that piece of the system.
 
 ## Step-by-Step Implementation Roadmap
 
-| Milestone            | Description                                                                           | Dependencies             | Effort |
-|----------------------|---------------------------------------------------------------------------------------|--------------------------|--------|
-| 1. Define Data Model | Specify `cart.js` schema and internal classes. Create objects for Stack, Card, Objects. | None                     | Low    |
-| 2. Runtime Loader    | Implement function to load a cart (JSON) and render first card. Bind NovaOS API stubs.| (1)                      | Medium |
-| 3. Basic Navigation  | Add card navigation (goNext, goPrev) in loader. Implement `goToCard(id)`.            | (2)                      | Low    |
-| 4. Editor UI Skeleton| Set up the main editor window with canvas, toolbar, and object list.                 | (2)                      | Medium |
-| 5. Object Addition   | Enable adding/moving/resizing objects (button, text, image, field) on the canvas.    | (4)                      | High   |
-| 6. Scripting Editor  | Integrate a script editing pane for selected object. Link script text to model.       | (5)                      | Medium |
-| 7. Sprite Integration| Hook up sprite editor: allow selecting/dragging sprites into cards.                   | (4), (5)                 | High   |
-| 8. Asset Handling    | Implement asset import and embed in cart schema. Base64-encode images/audio on export.| (7)                      | Medium |
-| 9. Export/Import     | Add Save/Load UI. Serialize model to `cart.js`, and parse `cart.js` into model.      | (1),(5),(8)              | Medium |
-| 10. Polish & UX      | Improve UI (alignment, templates, icons), add undo/redo, help text.                   | (5),(6),(9)              | Medium |
-| 11. Testing/QA       | Develop test carts, automated tests, fix bugs.                                       | (1–10)                   | Medium |
-| 12. Documentation    | Write user docs, developer docs (schema, API usage).                                 | (1–11)                   | Low    |
+| Milestone             | Description                                                                             | Dependencies | Effort |
+| --------------------- | --------------------------------------------------------------------------------------- | ------------ | ------ |
+| 1. Define Data Model  | Specify `cart.js` schema and internal classes. Create objects for Stack, Card, Objects. | None         | Low    |
+| 2. Runtime Loader     | Implement function to load a cart (JSON) and render first card. Bind NovaOS API stubs.  | (1)          | Medium |
+| 3. Basic Navigation   | Add card navigation (goNext, goPrev) in loader. Implement `goToCard(id)`.               | (2)          | Low    |
+| 4. Editor UI Skeleton | Set up the main editor window with canvas, toolbar, and object list.                    | (2)          | Medium |
+| 5. Object Addition    | Enable adding/moving/resizing objects (button, text, image, field) on the canvas.       | (4)          | High   |
+| 6. Scripting Editor   | Integrate a script editing pane for selected object. Link script text to model.         | (5)          | Medium |
+| 7. Sprite Integration | Hook up sprite editor: allow selecting/dragging sprites into cards.                     | (4), (5)     | High   |
+| 8. Asset Handling     | Implement asset import and embed in cart schema. Base64-encode images/audio on export.  | (7)          | Medium |
+| 9. Export/Import      | Add Save/Load UI. Serialize model to `cart.js`, and parse `cart.js` into model.         | (1),(5),(8)  | Medium |
+| 10. Polish & UX       | Improve UI (alignment, templates, icons), add undo/redo, help text.                     | (5),(6),(9)  | Medium |
+| 11. Testing/QA        | Develop test carts, automated tests, fix bugs.                                          | (1–10)       | Medium |
+| 12. Documentation     | Write user docs, developer docs (schema, API usage).                                    | (1–11)       | Low    |
 
-- **Effort:** Low/Med/High (development time relative).  
-- **Dependencies:** Some milestones build on prior ones (e.g., Editor UI on having loader, etc.).  
+- **Effort:** Low/Med/High (development time relative).
+- **Dependencies:** Some milestones build on prior ones (e.g., Editor UI on having loader, etc.).
 
 ## Agent Prompts for Each Milestone
 
 For automation or AI-assisted coding, here are example prompts corresponding to the milestones above:
 
 1. **Define Data Model:**  
-   *“Design a JavaScript class structure for stacks, cards, and objects matching the cart schema. Implement methods to add stacks, cards, and objects. Show example creating one stack with a card and button.”*
+   _“Design a JavaScript class structure for stacks, cards, and objects matching the cart schema. Implement methods to add stacks, cards, and objects. Show example creating one stack with a card and button.”_
 
 2. **Runtime Loader:**  
-   *“Write a `loadCart(json)` function that reads the cart JSON and draws the first card on screen. Call NovaOS stubs (e.g. `drawText`, `drawButton`).”*
+   _“Write a `loadCart(json)` function that reads the cart JSON and draws the first card on screen. Call NovaOS stubs (e.g. `drawText`, `drawButton`).”_
 
 3. **Basic Navigation:**  
-   *“Enhance the loader with navigation: implement `goToCard(cardId)` and ‘next’/‘prev’ card functions. Wire them so clicking a button with script `goToCard()` changes the displayed card.”*
+   _“Enhance the loader with navigation: implement `goToCard(cardId)` and ‘next’/‘prev’ card functions. Wire them so clicking a button with script `goToCard()` changes the displayed card.”_
 
 4. **Editor UI Skeleton:**  
-   *“Create the editor window layout in HTML/JS or native: include a main canvas area and toolbar with icons (‘Button’, ‘Text’, ‘Image’, ‘Field’). When an icon is selected, clicking the canvas should create that object type.”*
+   _“Create the editor window layout in HTML/JS or native: include a main canvas area and toolbar with icons (‘Button’, ‘Text’, ‘Image’, ‘Field’). When an icon is selected, clicking the canvas should create that object type.”_
 
 5. **Object Addition:**  
-   *“Enable selecting and moving objects on the canvas: write drag handlers so objects can be repositioned and resized. Update the object’s stored coordinates as it moves.”*
+   _“Enable selecting and moving objects on the canvas: write drag handlers so objects can be repositioned and resized. Update the object’s stored coordinates as it moves.”_
 
 6. **Scripting Editor:**  
-   *“When a user selects an object, display a code editor panel. Bind its contents to the object’s `script` property. For example, if editing a button’s onClick code, the text box should edit `button.script`.”*
+   _“When a user selects an object, display a code editor panel. Bind its contents to the object’s `script` property. For example, if editing a button’s onClick code, the text box should edit `button.script`.”_
 
 7. **Sprite Integration:**  
-   *“Implement an ‘Asset Library’ panel listing available sprites. Allow the user to drag a sprite from this list onto the canvas to create an image object. Ensure the sprite data is added to the project’s assets.”*
+   _“Implement an ‘Asset Library’ panel listing available sprites. Allow the user to drag a sprite from this list onto the canvas to create an image object. Ensure the sprite data is added to the project’s assets.”_
 
 8. **Asset Handling:**  
-   *“In the export function, gather all used images/sounds, read their binary data, and add them to the `assets` section of the cart JSON (base64-encoded). Show code that reads a PNG file as base64 string.”*
+   _“In the export function, gather all used images/sounds, read their binary data, and add them to the `assets` section of the cart JSON (base64-encoded). Show code that reads a PNG file as base64 string.”_
 
 9. **Export/Import:**  
-   *“Add ‘Save’ and ‘Open’ menu items. On Save, call `JSON.stringify` on the cart data and trigger a download of `cart.js`. On Open, read a selected `cart.js` file, parse JSON, and reconstruct the editor model (stacks/cards).”*
+   _“Add ‘Save’ and ‘Open’ menu items. On Save, call `JSON.stringify` on the cart data and trigger a download of `cart.js`. On Open, read a selected `cart.js` file, parse JSON, and reconstruct the editor model (stacks/cards).”_
 
 10. **Polish & UX:**  
-    *“Refine the UI: add undo/redo for object moves, implement confirmation dialogs, and improve object handles. Add a template for default card backgrounds. Style buttons and panels to look consistent.”*
+    _“Refine the UI: add undo/redo for object moves, implement confirmation dialogs, and improve object handles. Add a template for default card backgrounds. Style buttons and panels to look consistent.”_
 
 11. **Testing/QA:**  
-    *“Generate automated tests: e.g. simulate creating a stack with known objects, export and re-import it, and assert that object positions and scripts match. Include tests for clicking a button triggers correct navigation.”*
+    _“Generate automated tests: e.g. simulate creating a stack with known objects, export and re-import it, and assert that object positions and scripts match. Include tests for clicking a button triggers correct navigation.”_
 
 12. **Documentation:**  
-    *“Write markdown documentation summarizing the cart.js format, editor features, and how to use the CLI prompts. Include example code snippets and diagrams.”*
+    _“Write markdown documentation summarizing the cart.js format, editor features, and how to use the CLI prompts. Include example code snippets and diagrams.”_
 
 ## Code Snippets: Cart Exporter and Loader
 
@@ -367,10 +392,11 @@ function exportCart(cart) {
 
   // Save file (using browser download or NovaOS API)
   // e.g. in browser: create a blob and link to download
-  const blob = new Blob([fileContent], {type: 'application/javascript'});
+  const blob = new Blob([fileContent], { type: 'application/javascript' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  a.href = url; a.download = `${cart.name||'project'}.js`;
+  a.href = url;
+  a.download = `${cart.name || 'project'}.js`;
   a.click();
 }
 ```
@@ -381,7 +407,7 @@ This snippet takes an in-memory `cart` object (with stacks, assets, etc.), conve
 
 ```js
 // Example loader: load and run a cart
-import cart from './cart.js';  // or however NovaOS loads the cart module
+import cart from './cart.js'; // or however NovaOS loads the cart module
 
 let currentStack = cart.stacks[0];
 let currentCard = currentStack.cards[0];
@@ -390,7 +416,7 @@ function showCard(card) {
   novaOS.clearScreen(); // clear previous card display
 
   card.objects.forEach(obj => {
-    switch(obj.type) {
+    switch (obj.type) {
       case 'text':
         novaOS.drawText(obj.x, obj.y, obj.text, obj.font, obj.size, obj.color);
         break;
@@ -423,7 +449,7 @@ function goToCard(cardId) {
       return;
     }
   }
-  console.error("Card not found:", cardId);
+  console.error('Card not found:', cardId);
 }
 
 // On a button click, NovaOS will call our handler:
@@ -433,7 +459,7 @@ function handleClick(x, y) {
   const btn = findClickedButton(x, y);
   if (btn) {
     // Evaluate the script text in the context of the loaded cart
-    eval(btn.script);  // *** UNSAFE in real code; use a sandboxed eval
+    eval(btn.script); // *** UNSAFE in real code; use a sandboxed eval
   }
 }
 ```
@@ -446,33 +472,35 @@ We compare major design choices for the cart format and scripting language:
 
 ### Cart Serialization Options
 
-| Option             | Description                                                                                                    | Pros                                                      | Cons                                                         | Recommendation        |
-|--------------------|----------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------|--------------------------------------------------------------|-----------------------|
-| **JSON (text)**    | Use JSON (or JS object literal) for cart data (as above).                                                     | Human-readable, easy to debug. Widespread support.        | No comments allowed.  Large assets (images) must be base64-encoded as strings. | **Recommended**: JSON or JS. It is simple and easily parsed【58†L99-L101】. |
-| **YAML/TOML**      | Use YAML or TOML for cart format.                                                                             | More human-friendly (comments, less quotes).             | Requires a parser. Less common in JS environments. Might not be supported on NovaOS without extra library. | Not recommended due to complexity. |
-| **Binary/archive** | Package cart as a binary or zip containing files (like a manifest + separate assets).                         | More compact. Can separate assets from JSON.             | Complex to implement. Harder to inspect/edit manually.      | Lower priority; only if needed for size (PICO-8 opts for PNG embedding【58†L99-L101】). |
-| **PNG image (.png)** | Encode cart as a custom PNG (like PICO-8’s .p8.png: text data embedded in PNG).                         | Self-contained image file; human-ish (can hide text in metadata). | Complex to implement. Not standard in novaOS (would require a PNG parser/writer). | Not recommended for now; JSON is simpler. |
+| Option               | Description                                                                           | Pros                                                              | Cons                                                                                                       | Recommendation                                                                          |
+| -------------------- | ------------------------------------------------------------------------------------- | ----------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| **JSON (text)**      | Use JSON (or JS object literal) for cart data (as above).                             | Human-readable, easy to debug. Widespread support.                | No comments allowed. Large assets (images) must be base64-encoded as strings.                              | **Recommended**: JSON or JS. It is simple and easily parsed【58†L99-L101】.             |
+| **YAML/TOML**        | Use YAML or TOML for cart format.                                                     | More human-friendly (comments, less quotes).                      | Requires a parser. Less common in JS environments. Might not be supported on NovaOS without extra library. | Not recommended due to complexity.                                                      |
+| **Binary/archive**   | Package cart as a binary or zip containing files (like a manifest + separate assets). | More compact. Can separate assets from JSON.                      | Complex to implement. Harder to inspect/edit manually.                                                     | Lower priority; only if needed for size (PICO-8 opts for PNG embedding【58†L99-L101】). |
+| **PNG image (.png)** | Encode cart as a custom PNG (like PICO-8’s .p8.png: text data embedded in PNG).       | Self-contained image file; human-ish (can hide text in metadata). | Complex to implement. Not standard in novaOS (would require a PNG parser/writer).                          | Not recommended for now; JSON is simpler.                                               |
 
 **Rationale:** We lean toward JSON (possibly wrapped in `.js`) because it is easy to implement and test. The PICO-8 forum notes that carts can be “plain text” for development【58†L99-L101】, which aligns with using JSON. We can compress if needed later, but clarity and editor integration are priorities.
 
 ### Scripting Language Choices
 
-| Language       | Pros                                                           | Cons                                                               | Recommendation        |
-|----------------|----------------------------------------------------------------|--------------------------------------------------------------------|-----------------------|
-| **HyperTalk-like DSL** | Familiar to HyperCard users; simple English-like syntax.      | Would require building or integrating a parser/interpreter. Less widely known now. | **Not recommended**: too much work to implement. |
-| **JavaScript** | Ubiquitous, powerful, likely already part of novaOS (if web-based). Easy to sandbox. | Slightly more complex syntax for novices than HyperTalk. | **Recommended**: Use JS (or a JS subset). NovaOS often uses JS; many fantasy consoles use JS. |
-| **Lua**       | Common in games (e.g. love2d, TIC-80 uses Lua); easy embedding.   | NovaOS may not include Lua by default; would need bundling. | Not chosen if JS is available. |
-| **Custom Mini-Language** | Could design a tiny script language just for cards. | Requires full design and parser work; reinvents wheel. | Not recommended; use JS. |
+| Language                 | Pros                                                                                 | Cons                                                                               | Recommendation                                                                                |
+| ------------------------ | ------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| **HyperTalk-like DSL**   | Familiar to HyperCard users; simple English-like syntax.                             | Would require building or integrating a parser/interpreter. Less widely known now. | **Not recommended**: too much work to implement.                                              |
+| **JavaScript**           | Ubiquitous, powerful, likely already part of novaOS (if web-based). Easy to sandbox. | Slightly more complex syntax for novices than HyperTalk.                           | **Recommended**: Use JS (or a JS subset). NovaOS often uses JS; many fantasy consoles use JS. |
+| **Lua**                  | Common in games (e.g. love2d, TIC-80 uses Lua); easy embedding.                      | NovaOS may not include Lua by default; would need bundling.                        | Not chosen if JS is available.                                                                |
+| **Custom Mini-Language** | Could design a tiny script language just for cards.                                  | Requires full design and parser work; reinvents wheel.                             | Not recommended; use JS.                                                                      |
 
-**Rationale:** Implementing HyperTalk or a new DSL is beyond scope. JavaScript is the most practical. It can be sandboxed easily with existing JS engines, and NovaOS likely already supports JS scripting. HyperCard’s original HyperTalk is cited for context【43†L171-L173】 but we will use standard JS commands for `goToCard`, etc.  
+**Rationale:** Implementing HyperTalk or a new DSL is beyond scope. JavaScript is the most practical. It can be sandboxed easily with existing JS engines, and NovaOS likely already supports JS scripting. HyperCard’s original HyperTalk is cited for context【43†L171-L173】 but we will use standard JS commands for `goToCard`, etc.
 
-We will provide helper functions (`goToCard`, `playSound`, `setFieldText`, etc.) in JS, so the user script can remain fairly simple. For example, a script might read: 
+We will provide helper functions (`goToCard`, `playSound`, `setFieldText`, etc.) in JS, so the user script can remain fairly simple. For example, a script might read:
+
 ```js
 if (currentCardId == 'q1') {
   if (answer == 4) goToCard('correct');
   else goToCard('wrong');
 }
 ```
+
 keeping logic straightforward.
 
 ## Sample Carts
@@ -480,6 +508,7 @@ keeping logic straightforward.
 Below are two example `cart.js` contents (JSON-like) demonstrating UI objects, scripting, and assets:
 
 1. **Simple Presentation (2 cards)** – A “slide show” example:
+
    ```js
    {
      "version": 1,
@@ -503,7 +532,7 @@ Below are two example `cart.js` contents (JSON-like) demonstrating UI objects, s
              "title": "Second Slide",
              "objects": [
                {"type":"text","id":"body1","x":20,"y":20,"text":"This is the second card."},
-               {"type":"image","id":"logoImg","x":150,"y":60,"asset":"logo"} 
+               {"type":"image","id":"logoImg","x":150,"y":60,"asset":"logo"}
              ]
            }
          ]
@@ -511,14 +540,16 @@ Below are two example `cart.js` contents (JSON-like) demonstrating UI objects, s
      ],
      "assets": {
        "images": {
-         "logo": {"format":"png","data":"<base64-image-data>"} 
+         "logo": {"format":"png","data":"<base64-image-data>"}
        }
      }
    }
    ```
-   - **Features shown:** Text objects, a navigation button with `goToCard` script, and an image asset (`logo`) placed on second card. This would run as a 2-slide presentation.  
+
+   - **Features shown:** Text objects, a navigation button with `goToCard` script, and an image asset (`logo`) placed on second card. This would run as a 2-slide presentation.
 
 2. **Quiz Example (3 cards)** – Demonstrating buttons and fields:
+
    ```json
    {
      "version": 1,
@@ -532,27 +563,57 @@ Below are two example `cart.js` contents (JSON-like) demonstrating UI objects, s
              "id": "q1",
              "title": "Question",
              "objects": [
-               {"type":"text","id":"qtext","x":30,"y":30,"text":"What is 2 + 2?"},
-               {"type":"button","id":"btn3","x":50,"y":80,"width":60,"height":30,"label":"3",
-                  "script":"goToCard('wrong');"},
-               {"type":"button","id":"btn4","x":150,"y":80,"width":60,"height":30,"label":"4",
-                  "script":"goToCard('correct');"}
+               { "type": "text", "id": "qtext", "x": 30, "y": 30, "text": "What is 2 + 2?" },
+               {
+                 "type": "button",
+                 "id": "btn3",
+                 "x": 50,
+                 "y": 80,
+                 "width": 60,
+                 "height": 30,
+                 "label": "3",
+                 "script": "goToCard('wrong');"
+               },
+               {
+                 "type": "button",
+                 "id": "btn4",
+                 "x": 150,
+                 "y": 80,
+                 "width": 60,
+                 "height": 30,
+                 "label": "4",
+                 "script": "goToCard('correct');"
+               }
              ]
            },
            {
              "id": "correct",
              "title": "Right Answer",
              "objects": [
-               {"type":"text","id":"correctText","x":50,"y":50,"text":"Correct! 2 + 2 = 4."}
+               {
+                 "type": "text",
+                 "id": "correctText",
+                 "x": 50,
+                 "y": 50,
+                 "text": "Correct! 2 + 2 = 4."
+               }
              ]
            },
            {
              "id": "wrong",
              "title": "Wrong Answer",
              "objects": [
-               {"type":"text","id":"wrongText","x":50,"y":50,"text":"Wrong. Try again."},
-               {"type":"button","id":"btnRetry","x":80,"y":100,"width":80,"height":30,"label":"Retry",
-                  "script":"goToCard('q1');"}
+               { "type": "text", "id": "wrongText", "x": 50, "y": 50, "text": "Wrong. Try again." },
+               {
+                 "type": "button",
+                 "id": "btnRetry",
+                 "x": 80,
+                 "y": 100,
+                 "width": 80,
+                 "height": 30,
+                 "label": "Retry",
+                 "script": "goToCard('q1');"
+               }
              ]
            }
          ]
@@ -560,54 +621,55 @@ Below are two example `cart.js` contents (JSON-like) demonstrating UI objects, s
      ]
    }
    ```
-   - **Features shown:** Three cards in one stack. Card `q1` has two buttons leading to different cards (`correct` or `wrong`). Card `wrong` has a Retry button. This illustrates branching navigation and using buttons for logic.  
 
-These sample carts can be loaded in the hyperNova editor to see the layout, and exported to `cart.js` for execution in novaOS. They include UI elements, basic scripts, and one shows asset usage.  
+   - **Features shown:** Three cards in one stack. Card `q1` has two buttons leading to different cards (`correct` or `wrong`). Card `wrong` has a Retry button. This illustrates branching navigation and using buttons for logic.
+
+These sample carts can be loaded in the hyperNova editor to see the layout, and exported to `cart.js` for execution in novaOS. They include UI elements, basic scripts, and one shows asset usage.
 
 ## Testing Plan & QA Checklist
 
 To ensure robustness, we propose the following tests and checks:
 
-- **Functionality Tests:**  
-  1. *Editor Operations:* Test creating/deleting stacks, cards, and objects. Verify that objects appear on the canvas at correct positions with correct properties.  
-  2. *Properties Panel:* Change object properties (label text, size) and ensure updates reflect on the card.  
-  3. *Navigation:* Add a button with `goToCard(...)` script, export and run; verify clicking it displays the correct card. Test first/last card buttons.  
-  4. *Fields Input:* Add a text field, type into it at runtime, and ensure the text is preserved if returned to edit mode.  
-  5. *Asset Embedding:* Import an image in the editor, export cart.js, and load in runtime; verify the image displays.  
-  6. *Scripting:* Write simple scripts (e.g. `alert("Hi")` or custom functions) and ensure they execute correctly in sandbox.  
-  7. *Export/Import:* After saving a project and reloading it, all stacks/cards/objects/scripts should match original.  
+- **Functionality Tests:**
+  1. _Editor Operations:_ Test creating/deleting stacks, cards, and objects. Verify that objects appear on the canvas at correct positions with correct properties.
+  2. _Properties Panel:_ Change object properties (label text, size) and ensure updates reflect on the card.
+  3. _Navigation:_ Add a button with `goToCard(...)` script, export and run; verify clicking it displays the correct card. Test first/last card buttons.
+  4. _Fields Input:_ Add a text field, type into it at runtime, and ensure the text is preserved if returned to edit mode.
+  5. _Asset Embedding:_ Import an image in the editor, export cart.js, and load in runtime; verify the image displays.
+  6. _Scripting:_ Write simple scripts (e.g. `alert("Hi")` or custom functions) and ensure they execute correctly in sandbox.
+  7. _Export/Import:_ After saving a project and reloading it, all stacks/cards/objects/scripts should match original.
 
-- **API Binding Tests:**  
-  - Ensure that for each object type (button, field, text, image) the corresponding NovaOS draw call is made.  
-  - Test edge cases: no objects on a card, overlapping objects (click should pick topmost).  
+- **API Binding Tests:**
+  - Ensure that for each object type (button, field, text, image) the corresponding NovaOS draw call is made.
+  - Test edge cases: no objects on a card, overlapping objects (click should pick topmost).
 
-- **Security Tests:**  
-  - Attempt to inject disallowed code (e.g. `while(true){}`) in a script; confirm the sandbox/time-limit prevents lock-up.  
-  - Attempt to call nonexistent APIs; ensure failures are caught gracefully.  
+- **Security Tests:**
+  - Attempt to inject disallowed code (e.g. `while(true){}`) in a script; confirm the sandbox/time-limit prevents lock-up.
+  - Attempt to call nonexistent APIs; ensure failures are caught gracefully.
 
-- **Performance Tests:**  
-  - Create a large stack (e.g. 50 cards with 20 objects each); export and load it, measuring load/render time.  
-  - Check memory usage when many images are embedded.  
+- **Performance Tests:**
+  - Create a large stack (e.g. 50 cards with 20 objects each); export and load it, measuring load/render time.
+  - Check memory usage when many images are embedded.
   - Ensure UI remains responsive with many objects.
 
-- **User Experience Checks:**  
-  - UI layout: All controls (buttons, menus) should be labeled and intuitive.  
-  - Undo/Redo: Verify undo works for object moves and edits.  
-  - Help/Tooltips: Tooltips explain buttons (e.g. “Add Button”).  
+- **User Experience Checks:**
+  - UI layout: All controls (buttons, menus) should be labeled and intuitive.
+  - Undo/Redo: Verify undo works for object moves and edits.
+  - Help/Tooltips: Tooltips explain buttons (e.g. “Add Button”).
   - Error Handling: Exporting invalid data (e.g. missing script) should show a clear error message.
 
-- **Regression Tests:**  
+- **Regression Tests:**
   - After changes, re-run core tests (navigation, editing) to ensure nothing broke.
   - If schema version increments, test that older carts either still load or show a migration prompt.
 
-- **QA Checklist (before release):**  
-  - [ ] All user stories have been manually verified at least once.  
-  - [ ] No console errors or uncaught exceptions during normal use.  
-  - [ ] All buttons/fields are reachable via keyboard (accessibility).  
-  - [ ] File saving/loading works on all target platforms (e.g. Windows, Mac, Linux if relevant).  
-  - [ ] Data persists correctly across editor restarts.  
-  - [ ] The `cart.js` format is documented and samples are provided.  
-  - [ ] Code is reviewed for security (especially script evaluation).  
+- **QA Checklist (before release):**
+  - [ ] All user stories have been manually verified at least once.
+  - [ ] No console errors or uncaught exceptions during normal use.
+  - [ ] All buttons/fields are reachable via keyboard (accessibility).
+  - [ ] File saving/loading works on all target platforms (e.g. Windows, Mac, Linux if relevant).
+  - [ ] Data persists correctly across editor restarts.
+  - [ ] The `cart.js` format is documented and samples are provided.
+  - [ ] Code is reviewed for security (especially script evaluation).
   - [ ] Performance is acceptable with typical use.
 
 ## Architecture and Flow Diagrams
@@ -633,7 +695,8 @@ graph LR
     end
     J --> I
 ```
-*Architecture:* The editor (left) manipulates a data model of stacks/cards (`Cart Model`). The Asset Library links to the sprite editor. The Exporter produces `cart.js`. At runtime (right), the Cart Loader reads `cart.js`, uses NovaOS APIs for display, and runs user scripts in a sandbox.
+
+_Architecture:_ The editor (left) manipulates a data model of stacks/cards (`Cart Model`). The Asset Library links to the sprite editor. The Exporter produces `cart.js`. At runtime (right), the Cart Loader reads `cart.js`, uses NovaOS APIs for display, and runs user scripts in a sandbox.
 
 ```mermaid
 flowchart LR
@@ -645,7 +708,8 @@ flowchart LR
     S --> U
     U --> |"Click button"| R
 ```
-*Flow:* The user uses the editor to build a card stack, which is exported as `cart.js`. When loaded in novaOS, the runtime renders the cards on the screen. User interactions (clicks/keys) feed back into the runtime scripts.
+
+_Flow:_ The user uses the editor to build a card stack, which is exported as `cart.js`. When loaded in novaOS, the runtime renders the cards on the screen. User interactions (clicks/keys) feed back into the runtime scripts.
 
 ## Migration / Backward Compatibility
 
@@ -660,8 +724,8 @@ No official NovaOS API documentation means some assumptions were made (see API B
 
 ## Conclusion
 
-The hyperNova system will bring a HyperCard-like experience to the novaOS/nova64 console, enabling users to design card-based interfaces and animations with minimal coding. By carefully defining a flexible cart schema and leveraging NovaOS’s graphics and input APIs, hyperNova can support a wide range of interactive content (slide shows, tutorials, simple games, etc.). The above plan lays out all aspects of the project: goals, user stories, required components, data schemas, runtime integration, UI/UX design, implementation steps, and quality assurance. 
+The hyperNova system will bring a HyperCard-like experience to the novaOS/nova64 console, enabling users to design card-based interfaces and animations with minimal coding. By carefully defining a flexible cart schema and leveraging NovaOS’s graphics and input APIs, hyperNova can support a wide range of interactive content (slide shows, tutorials, simple games, etc.). The above plan lays out all aspects of the project: goals, user stories, required components, data schemas, runtime integration, UI/UX design, implementation steps, and quality assurance.
 
 With iterative development (as per the roadmap) and thorough testing (per the QA plan), hyperNova can be built as an autonomous-agent-guided project. The provided agent prompts can be fed to AI coders to generate each feature. When complete, users should be able to visually create and export `cart.js` stacks that run natively on NovaOS, harnessing its APIs for a seamless creative workflow.
 
-**Sources:** HyperCard’s design is documented in Apple’s records【43†L171-L179】【43†L208-L213】.  The NovaOS project description (an OS simulator) highlights an immersive interface and customizability【40†L13-L17】.  Fantasy-console precedents like Pico-8 save cart data as plain text (JSON-like)【58†L99-L101】, guiding our schema choice. These sources informed hyperNova’s structure and features.
+**Sources:** HyperCard’s design is documented in Apple’s records【43†L171-L179】【43†L208-L213】. The NovaOS project description (an OS simulator) highlights an immersive interface and customizability【40†L13-L17】. Fantasy-console precedents like Pico-8 save cart data as plain text (JSON-like)【58†L99-L101】, guiding our schema choice. These sources informed hyperNova’s structure and features.

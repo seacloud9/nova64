@@ -95,12 +95,12 @@ export function GameLauncher() {
     const isOsShellDevServer = window.location.hostname === 'localhost' && 
                                (window.location.port === '3000' || window.location.port === '3001');
     
-    // If on OS shell dev server, point to main nova64 (5174)
+    // If on OS shell dev server, point to main nova64 dev server (5173)
     // If on main server or production, use root of current origin
-    const baseUrl = isOsShellDevServer ? 'http://localhost:5174' : window.location.origin;
+    const baseUrl = isOsShellDevServer ? 'http://localhost:5173' : window.location.origin;
     
-    // Use the game's path directly for more reliable loading
-    const gameUrl = `${baseUrl}/?path=${encodeURIComponent(game.path)}`;
+    // Open the console page with the game path
+    const gameUrl = `${baseUrl}/console.html?path=${encodeURIComponent(game.path)}`;
     console.log('🎮 Launching game:', game.name, 'at', gameUrl);
     
     window.open(gameUrl, `nova64-${game.id}`, 'width=1400,height=900,menubar=no,toolbar=no,location=no,status=no');

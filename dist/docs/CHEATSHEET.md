@@ -150,9 +150,6 @@ disableBloom();
 enableFXAA(); // anti-aliasing
 enableVignette(darkness, offset);
 enableChromaticAberration();
-enableGlitch(intensity); // screen glitch (scanlines, RGB split, block artifacts)
-disableGlitch();
-setGlitchIntensity(intensity); // adjust live (0-1)
 
 // One-call visual presets
 enableN64Mode(); // flat shading, no bloom, crisp FXAA

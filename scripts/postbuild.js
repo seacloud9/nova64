@@ -23,6 +23,7 @@ function copyDir(src, destName) {
 }
 
 console.log('📦 Nova64 post-build: copying assets into dist/');
+copyDir('runtime', 'runtime');
 copyDir('examples', 'examples');
 copyDir('docs', 'docs');
 console.log('  ✓ Done\n');

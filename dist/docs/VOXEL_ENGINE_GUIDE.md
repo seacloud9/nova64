@@ -4,13 +4,16 @@
 
 The Nova64 Voxel Engine enables Minecraft-style block-based games with infinite procedurally generated worlds. It features:
 
-- **Chunk-based world management** - Efficient memory usage with 16x64x16 chunks
-- **Greedy meshing** - Optimized rendering with minimal draw calls
-- **Procedural terrain generation** - Perlin noise with biomes, caves, and height variation
-- **Multiple block types** - 15 different block materials
-- **Real-time editing** - Place and break blocks instantly
-- **Collision detection** - Full physics support for player and entities
-- **Infinite worlds** - Chunks load/unload dynamically
+- **Chunk-based world management** - Efficient memory usage with 16×128×16 chunks
+- **Simplex noise** - Seeded 2D + 3D simplex noise with fractal Brownian motion (fBm)
+- **True 3D caves** - Winding tunnel networks carved with 3D noise
+- **Per-vertex ambient occlusion** - Smooth corner shadows without lightmaps
+- **DDA voxel raycasting** - Pixel-perfect block targeting (Amanatides & Woo)
+- **Block registry** - Extensible block definitions with solid/transparent/fluid/light properties
+- **26 built-in block types** - Including ores, torches, lava, glowstone
+- **Configurable world generation** - Carts can supply custom terrain generators
+- **Transparent block rendering** - Separate pass for water, glass, ice, leaves
+- **Biome system** - 8 biomes based on temperature/moisture noise
 
 ## Quick Start
 
@@ -51,16 +54,41 @@ BLOCK_TYPES.GRASS; // 1 - Green grass block
 BLOCK_TYPES.DIRT; // 2 - Brown dirt
 BLOCK_TYPES.STONE; // 3 - Gray stone
 BLOCK_TYPES.SAND; // 4 - Yellow sand
-BLOCK_TYPES.WATER; // 5 - Blue water (transparent)
+BLOCK_TYPES.WATER; // 5 - Blue water (transparent, fluid)
 BLOCK_TYPES.WOOD; // 6 - Dark brown wood log
-BLOCK_TYPES.LEAVES; // 7 - Green tree leaves
+BLOCK_TYPES.LEAVES; // 7 - Green tree leaves (transparent)
 BLOCK_TYPES.COBBLESTONE; // 8 - Gray cobblestone
 BLOCK_TYPES.PLANKS; // 9 - Wooden planks
 BLOCK_TYPES.GLASS; // 10 - Light blue glass (transparent)
 BLOCK_TYPES.BRICK; // 11 - Red brick
 BLOCK_TYPES.SNOW; // 12 - White snow
-BLOCK_TYPES.ICE; // 13 - Light blue ice
+BLOCK_TYPES.ICE; // 13 - Light blue ice (transparent)
 BLOCK_TYPES.BEDROCK; // 14 - Dark gray bedrock (bottom layer)
+BLOCK_TYPES.COAL_ORE; // 15 - Coal ore (any depth)
+BLOCK_TYPES.IRON_ORE; // 16 - Iron ore (below y=64)
+BLOCK_TYPES.GOLD_ORE; // 17 - Gold ore (below y=32)
+BLOCK_TYPES.DIAMOND_ORE; // 18 - Diamond ore (below y=16)
+BLOCK_TYPES.GRAVEL; // 19 - Gravel pockets
+BLOCK_TYPES.CLAY; // 20 - Clay (near water)
+BLOCK_TYPES.TORCH; // 21 - Torch (light emitter, non-solid)
+BLOCK_TYPES.GLOWSTONE; // 22 - Glowstone (max light emitter)
+BLOCK_TYPES.LAVA; // 23 - Lava (fluid, light emitter)
+BLOCK_TYPES.OBSIDIAN; // 24 - Obsidian
+BLOCK_TYPES.MOSSY_COBBLESTONE; // 25 - Mossy cobblestone
+```
+
+### Custom Block Registration
+
+```javascript
+// Register a custom block type for your cart
+registerVoxelBlock(30, {
+  name: 'crystal',
+  color: 0xff00ff,
+  solid: true,
+  transparent: true,
+  lightEmit: 10,
+  lightBlock: 0,
+});
 ```
 
 ## World Management
@@ -87,6 +115,74 @@ export function update(dt) {
 
 **Performance:** Automatically loads chunks within render distance (4 chunks = 64 blocks) and unloads distant chunks to manage memory.
 
+### getVoxelHighestBlock(x, z)
+
+Returns the Y coordinate of the highest non-air, non-water block at the given (x, z) position. Useful for spawning players above terrain.
+
+```javascript
+const groundY = getVoxelHighestBlock(Math.floor(player.x), Math.floor(player.z));
+player.y = groundY + 2;
+```
+
+### getVoxelBiome(x, z)
+
+Returns the biome name at the given world position. Biomes include: "Frozen Tundra", "Taiga", "Desert", "Jungle", "Savanna", "Forest", "Snowy Hills", "Plains".
+
+```javascript
+const biome = getVoxelBiome(player.x, player.z);
+print(`Biome: ${biome}`, 10, 10, 0xffffff);
+```
+
+### configureVoxelWorld(options)
+
+Configure world generation parameters. Call before generating any chunks.
+
+```javascript
+configureVoxelWorld({
+  seed: 42,           // World seed (deterministic generation)
+  chunkHeight: 128,   // Vertical chunk size (default: 128)
+  renderDistance: 6,   // Chunks in each direction (default: 4)
+  seaLevel: 62,       // Water level (default: 62)
+  generateTerrain: (chunk, ctx) => {
+    // Custom terrain generator — ctx provides BLOCK_TYPES, noise, CHUNK_SIZE, etc.
+    for (let x = 0; x < ctx.CHUNK_SIZE; x++) {
+      for (let z = 0; z < ctx.CHUNK_SIZE; z++) {
+        const height = Math.floor(ctx.noise.fbm2D(
+          chunk.chunkX * ctx.CHUNK_SIZE + x,
+          chunk.chunkZ * ctx.CHUNK_SIZE + z,
+          4, 0.5, 2.0, 0.01
+        ) * 20 + 64);
+        for (let y = 0; y < height; y++) {
+          chunk.setBlock(x, y, z, ctx.BLOCK_TYPES.STONE);
+        }
+        chunk.setBlock(x, height - 1, z, ctx.BLOCK_TYPES.GRASS);
+      }
+    }
+  },
+});
+```
+
+## Noise Functions
+
+### simplexNoise2D(x, z, octaves, persistence, lacunarity, scale)
+
+Multi-octave 2D fractal noise. Returns values in range 0..1.
+
+```javascript
+const height = simplexNoise2D(worldX, worldZ, 4, 0.5, 2.0, 0.01) * 30 + 60;
+```
+
+### simplexNoise3D(x, y, z, octaves, persistence, lacunarity, scale)
+
+Multi-octave 3D fractal noise. Returns values in range 0..1. Use for caves, ore veins, etc.
+
+```javascript
+const density = simplexNoise3D(x, y, z, 3, 0.5, 2.0, 0.04);
+if (density > 0.7) {
+  // Spawn ore here
+}
+```
+
 ## Block Manipulation
 
 ### getVoxelBlock(x, y, z)
@@ -96,7 +192,7 @@ Returns the block type at the specified world coordinates.
 **Parameters:**
 
 - `x` - World X coordinate
-- `y` - World Y coordinate (0-63)
+- `y` - World Y coordinate (0-127)
 - `z` - World Z coordinate
 
 **Returns:** Block type constant (0-14) or `BLOCK_TYPES.AIR` if out of bounds
@@ -122,7 +218,7 @@ Places or removes a block at the specified world coordinates. Automatically upda
 **Parameters:**
 
 - `x` - World X coordinate
-- `y` - World Y coordinate (0-63)
+- `y` - World Y coordinate (0-127)
 - `z` - World Z coordinate
 - `blockType` - Block type constant (use `BLOCK_TYPES.AIR` to remove)
 
@@ -161,6 +257,8 @@ Casts a ray from a point in a direction to find the first solid block hit. Perfe
 {
   hit: true,              // Whether a block was hit
   position: [x, y, z],    // Block coordinates
+  normal: [nx, ny, nz],   // Face normal of the hit surface
+  adjacent: [x, y, z],    // Block position adjacent to hit face (for placing)
   blockType: 3,           // Type of block hit
   distance: 5.2           // Distance to block
 }
@@ -183,20 +281,14 @@ const result = raycastVoxelBlock(
 );
 
 if (result.hit) {
-  // Left click to break
-  if (isMousePressed(0)) {
-    const [x, y, z] = result.position;
-    setVoxelBlock(x, y, z, BLOCK_TYPES.AIR);
+  // Break block
+  if (isKeyPressed('KeyF')) {
+    setVoxelBlock(result.position[0], result.position[1], result.position[2], BLOCK_TYPES.AIR);
   }
 
-  // Right click to place
-  if (isMousePressed(2)) {
-    // Calculate adjacent block position
-    const placeX = Math.floor(result.position[0] - Math.sign(lookDir[0]) * 0.5);
-    const placeY = Math.floor(result.position[1] - Math.sign(lookDir[1]) * 0.5);
-    const placeZ = Math.floor(result.position[2] - Math.sign(lookDir[2]) * 0.5);
-
-    setVoxelBlock(placeX, placeY, placeZ, BLOCK_TYPES.COBBLESTONE);
+  // Place block on adjacent face
+  if (isKeyPressed('KeyE')) {
+    setVoxelBlock(result.adjacent[0], result.adjacent[1], result.adjacent[2], BLOCK_TYPES.COBBLESTONE);
   }
 }
 ```

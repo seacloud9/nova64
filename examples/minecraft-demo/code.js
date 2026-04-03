@@ -1,7 +1,7 @@
-// Minecraft Demo - Ultimate Edition with Biomes
+// Minecraft Demo - Ultimate Edition with Biomes, Ores, and Caves
 let player = {
   x: 0,
-  y: 30,
+  y: 80,
   z: 0,
   vx: 0,
   vy: 0,
@@ -20,6 +20,7 @@ let loadState = 0;
 let isLoaded = false;
 let loadProgress = 0;
 let currentBiome = 'Plains';
+let selectedHotbarIdx = 0;
 
 const BLOCK_NAMES = {
   1: 'GRASS',
@@ -29,46 +30,31 @@ const BLOCK_NAMES = {
   5: 'WATER',
   6: 'WOOD',
   7: 'LEAVES',
-  8: 'PLANKS',
+  8: 'COBBLESTONE',
+  9: 'PLANKS',
+  11: 'BRICK',
+  15: 'COAL ORE',
+  16: 'IRON ORE',
+  21: 'TORCH',
+  22: 'GLOWSTONE',
 };
 const BLOCK_COLORS = {
   1: 0x55cc33,
-  2: 0x886644,
-  3: 0x888888,
-  4: 0xddcc88,
-  5: 0x3388ff,
-  6: 0x664422,
-  7: 0x228833,
-  8: 0xccaa66,
+  2: 0x996644,
+  3: 0xaaaaaa,
+  4: 0xffdd88,
+  5: 0x2288dd,
+  6: 0x774422,
+  7: 0x116622,
+  8: 0x667788,
+  9: 0xddaa55,
+  11: 0xcc4433,
+  15: 0x444444,
+  16: 0xccaa88,
+  21: 0xffdd44,
+  22: 0xffeeaa,
 };
-const HOTBAR_BLOCKS = [1, 2, 3, 8, 6, 4];
-
-// Biome detection (mirrors runtime terrain gen noise)
-function detectBiome(px, pz) {
-  // Use same perlinNoise-based logic as runtime generateChunkTerrain
-  // We approximate using sin-based hash since we don't have perlinNoise exposed
-  const tx = px * 0.5,
-    tz = pz * 0.5;
-  const temperature =
-    Math.sin(tx * 0.01 * 3.7 + tz * 0.01 * 2.3) * 0.3 +
-    Math.sin(tx * 0.01 * 7.1 + tz * 0.01 * 5.9) * 0.15 +
-    0.5;
-  const mx = px * 0.3 + 1000,
-    mz = pz * 0.3 + 1000;
-  const moisture =
-    Math.sin(mx * 0.01 * 3.7 + mz * 0.01 * 2.3) * 0.3 +
-    Math.sin(mx * 0.01 * 7.1 + mz * 0.01 * 5.9) * 0.15 +
-    0.5;
-
-  if (temperature < 0.2) return 'Frozen Tundra';
-  if (temperature < 0.35 && moisture > 0.5) return 'Taiga';
-  if (temperature > 0.7 && moisture < 0.25) return 'Desert';
-  if (temperature > 0.6 && moisture > 0.6) return 'Jungle';
-  if (moisture < 0.3) return 'Savanna';
-  if (temperature > 0.4 && moisture > 0.4) return 'Forest';
-  if (temperature < 0.35) return 'Snowy Hills';
-  return 'Plains';
-}
+const HOTBAR_BLOCKS = [1, 3, 9, 6, 11, 21, 22, 8, 4];
 
 const BIOME_COLORS = {
   'Frozen Tundra': rgba8(200, 220, 255),
@@ -110,19 +96,10 @@ function createVoxelTexture() {
   });
 }
 
-function getHighestBlockAlt(hx, hz) {
-  for (let i = 60; i > 0; i--) {
-    if (getVoxelBlock(hx, i, hz) !== 0) return i;
-  }
-  return 30;
-}
-
 export function init() {
   createVoxelTexture();
-  setCameraPosition(0, 30, 0);
-  setFog(0x87ceeb, 10, 60);
-
-  // We don't block here, we let the update/draw loop handle state
+  setCameraPosition(0, 80, 0);
+  setFog(0x87ceeb, 20, 80);
 }
 
 export function update() {
@@ -130,15 +107,19 @@ export function update() {
     loadState = 1;
     return;
   } else if (loadState === 1) {
-    // Wait a few frames for the canvas to present the loading text
     loadState = 2;
     return;
   } else if (loadState === 2) {
     if (typeof updateVoxelWorld === 'function') {
-      updateVoxelWorld(0, 0); // Gen initial chunks
+      updateVoxelWorld(0, 0);
     }
-    player.y = getHighestBlockAlt(Math.floor(player.x), Math.floor(player.z)) + 2;
-    if (player.y < 5) player.y = 40; // Fallback
+    // Use the new getVoxelHighestBlock API
+    if (typeof getVoxelHighestBlock === 'function') {
+      player.y = getVoxelHighestBlock(Math.floor(player.x), Math.floor(player.z)) + 2;
+    } else {
+      player.y = 80;
+    }
+    if (player.y < 5) player.y = 80;
     loadState = 3;
     isLoaded = true;
     return;
@@ -152,8 +133,10 @@ export function update() {
   let skyB = Math.sin(time) > 0 ? 235 : 20;
   setFog((skyR << 16) | (skyG << 8) | skyB, 20, 80);
 
-  // Detect current biome
-  currentBiome = detectBiome(player.x, player.z);
+  // Detect current biome using the engine's built-in function
+  if (typeof getVoxelBiome === 'function') {
+    currentBiome = getVoxelBiome(player.x, player.z);
+  }
 
   handleInput();
   updatePhysics();
@@ -208,27 +191,42 @@ function handleInput() {
   }
 
   // Number keys for block selection
-  if (keyp('Digit1')) selectedBlock = HOTBAR_BLOCKS[0];
-  if (keyp('Digit2')) selectedBlock = HOTBAR_BLOCKS[1];
-  if (keyp('Digit3')) selectedBlock = HOTBAR_BLOCKS[2];
-  if (keyp('Digit4')) selectedBlock = HOTBAR_BLOCKS[3];
-  if (keyp('Digit5')) selectedBlock = HOTBAR_BLOCKS[4];
-  if (keyp('Digit6')) selectedBlock = HOTBAR_BLOCKS[5];
+  for (let i = 0; i < HOTBAR_BLOCKS.length && i < 9; i++) {
+    if (keyp(`Digit${i + 1}`)) {
+      selectedHotbarIdx = i;
+      selectedBlock = HOTBAR_BLOCKS[i];
+    }
+  }
 
-  if (btnp(0)) selectedBlock = 1; // Grass
-  if (btnp(1)) selectedBlock = 2; // Dirt
-  if (btnp(2)) selectedBlock = 3; // Stone
-  if (btnp(3)) selectedBlock = 8; // Planks
+  if (btnp(0)) {
+    selectedHotbarIdx = 0;
+    selectedBlock = HOTBAR_BLOCKS[0];
+  }
+  if (btnp(1)) {
+    selectedHotbarIdx = 1;
+    selectedBlock = HOTBAR_BLOCKS[1];
+  }
+  if (btnp(2)) {
+    selectedHotbarIdx = 2;
+    selectedBlock = HOTBAR_BLOCKS[2];
+  }
+  if (btnp(3)) {
+    selectedHotbarIdx = 3;
+    selectedBlock = HOTBAR_BLOCKS[3];
+  }
 
   // B key = respawn with new biome (random world + random position)
   if (keyp('KeyB') && typeof resetVoxelWorld === 'function') {
     resetVoxelWorld();
-    // Scatter to a random position so we land in a different biome
     player.x = (Math.random() - 0.5) * 400;
     player.z = (Math.random() - 0.5) * 400;
     updateVoxelWorld(player.x, player.z);
-    player.y = getHighestBlockAlt(Math.floor(player.x), Math.floor(player.z)) + 2;
-    if (player.y < 5) player.y = 40;
+    if (typeof getVoxelHighestBlock === 'function') {
+      player.y = getVoxelHighestBlock(Math.floor(player.x), Math.floor(player.z)) + 2;
+    } else {
+      player.y = 80;
+    }
+    if (player.y < 5) player.y = 80;
     player.vy = 0;
     player.onGround = false;
     player.yaw = 0;
@@ -303,33 +301,22 @@ function updateCamera() {
 
 function handleBlockInteraction() {
   if (typeof raycastVoxelBlock === 'function') {
-    const targetX = player.x - Math.sin(player.yaw) * Math.cos(player.pitch);
-    const targetY = player.y + 0.8 + Math.sin(player.pitch);
-    const targetZ = player.z - Math.cos(player.yaw) * Math.cos(player.pitch);
+    const dx = -Math.sin(player.yaw) * Math.cos(player.pitch);
+    const dy = Math.sin(player.pitch);
+    const dz = -Math.cos(player.yaw) * Math.cos(player.pitch);
 
-    const dx = targetX - player.x;
-    const dy = targetY - (player.y + 0.8);
-    const dz = targetZ - player.z;
-    const len = Math.sqrt(dx * dx + dy * dy + dz * dz);
+    const result = raycastVoxelBlock([player.x, player.y + 0.8, player.z], [dx, dy, dz], 6);
 
-    const rayStr = raycastVoxelBlock(
-      player.x,
-      player.y + 0.8,
-      player.z,
-      dx / len,
-      dy / len,
-      dz / len,
-      5
-    );
-    if (rayStr) {
-      if (btnp(4)) {
-        setVoxelBlock(rayStr.hit.x, rayStr.hit.y, rayStr.hit.z, 0); // break
+    if (result && result.hit) {
+      if (keyp('KeyF') || keyp('KeyQ')) {
+        // Break block
+        setVoxelBlock(result.position[0], result.position[1], result.position[2], 0);
       }
-      if (btnp(5)) {
-        setVoxelBlock(rayStr.prev.x, rayStr.prev.y, rayStr.prev.z, selectedBlock); // place
+      if (keyp('KeyE') || keyp('KeyR')) {
+        // Place block on adjacent face
+        setVoxelBlock(result.adjacent[0], result.adjacent[1], result.adjacent[2], selectedBlock);
       }
     }
-    return;
   }
 }
 
@@ -379,7 +366,7 @@ export function draw() {
 
   // Controls hint
   print(
-    'WASD=Move  Space=Jump  Arrows=Look  L/R Click=Break/Place  1-6=Block  B=New Biome',
+    'WASD=Move Space=Jump Arrows=Look F=Break E=Place 1-9=Block B=New World',
     30,
     20,
     rgba8(255, 255, 255, 200)

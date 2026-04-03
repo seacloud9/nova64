@@ -168,6 +168,7 @@ export function draw() {
 - **✍️ Text**: print(), printCentered(), drawGlowText(), drawCrosshair(), drawProgressBar()
 - **🗺️ Minimap**: createMinimap(opts), drawMinimap(mm,time) — tile maps, entity dots, fog of war, radar sweep, circle/rect shapes
 - **🎮 Game Utils**: createShake/triggerShake/updateShake, createCooldown/useCooldown/updateCooldowns, createHitState/triggerHit/isInvulnerable/isVisible, createSpawner/updateSpawner, createPool, createFloatingTextSystem/drawFloatingTexts/drawFloatingTexts3D, createStateMachine, createTimer
+- **⛏️ Voxel Engine**: BLOCK_TYPES, updateVoxelWorld(), getVoxelBlock(), setVoxelBlock(), raycastVoxelBlock(), checkVoxelCollision(), checkVoxelFluid(), placeVoxelTree(), resetVoxelWorld(), configureVoxelWorld(), getVoxelHighestBlock(), getVoxelBiome(), registerVoxelBlock(), simplexNoise2D(), simplexNoise3D()
 
 ## 🏗️ **Project Structure & Features**
 

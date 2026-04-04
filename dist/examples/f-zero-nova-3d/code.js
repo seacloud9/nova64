@@ -758,7 +758,14 @@ function drawStartScreen() {
   drawAllButtons();
 
   const fa = Math.floor(Math.sin(t * 6) * 100 + 155);
-  drawTextShadow('PRESS SPACE / TAP TO RACE', 320, 330, rgba8(255, 255, 0, fa), rgba8(0, 0, 0, 255), 2);
+  drawTextShadow(
+    'PRESS SPACE / TAP TO RACE',
+    320,
+    330,
+    rgba8(255, 255, 0, fa),
+    rgba8(0, 0, 0, 255),
+    2
+  );
   drawScanlines(30, 2);
 }
 

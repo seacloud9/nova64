@@ -1,12 +1,14 @@
 // PBR SHOWCASE — Physically Based Rendering Material Gallery
 //
-// 4 scenes demonstrating PBR materials:
-//  [1] Material Grid   — 5×5 metalness × roughness sphere matrix
-//  [2] Metals Gallery   — gold, silver, copper, chrome, titanium, oxidised
-//  [3] Gems & Glass    — gemstones with emissive glow and glass spheres
-//  [4] Mixed Materials — fabric, wood, ceramic, rubber, marble, ice
+// 6 scenes demonstrating PBR materials:
+//  [1] Material Grid  — 5×5 metalness × roughness sphere matrix
+//  [2] Metals Gallery — gold, silver, copper, chrome, titanium, oxidised
+//  [3] Gems & Glass   — gemstones with emissive glow and glass spheres
+//  [4] Mixed Materials — ceramic, rubber, marble, ice, wax, etc.
+//  [5] Emissive       — glowing neon, lava, energy, holographic objects
+//  [6] Shapes         — varied geometry with contrasting PBR properties
 //
-// Controls: 1-4 = scene, WASD = orbit, QE = zoom
+// Controls: 1-6 = scene, WASD = orbit, QE = zoom
 
 const SPACING = 2.4;
 
@@ -18,7 +20,7 @@ let orbitY = 1.5;
 let time = 0;
 let scene = 0;
 
-const SCENE_NAMES = ['Material Grid', 'Metals', 'Gems & Glass', 'Mixed'];
+const SCENE_NAMES = ['Material Grid', 'Metals', 'Gems & Glass', 'Mixed', 'Emissive', 'Shapes'];
 
 // ── Init ────────────────────────────────────────────────────────────────────
 export async function init() {
@@ -90,6 +92,8 @@ function buildScene(idx) {
   else if (idx === 1) buildMetals();
   else if (idx === 2) buildGems();
   else if (idx === 3) buildMixed();
+  else if (idx === 4) buildEmissive();
+  else if (idx === 5) buildShapes();
 
   orbitAngle = Math.PI * 0.15;
   orbitDist = 15.5;
@@ -243,6 +247,144 @@ function buildMixed() {
   }
 }
 
+// ── Scene 4: Emissive — glowing neon, lava, energy objects ──────────────────
+function buildEmissive() {
+  const emissives = [
+    { name: 'Neon Red', color: 0xff0033, emissive: 0xff0033, intensity: 4.0 },
+    { name: 'Neon Blue', color: 0x0066ff, emissive: 0x0066ff, intensity: 4.0 },
+    { name: 'Neon Green', color: 0x00ff44, emissive: 0x00ff44, intensity: 3.5 },
+    { name: 'Neon Pink', color: 0xff00ff, emissive: 0xff00ff, intensity: 3.0 },
+    { name: 'Lava', color: 0xff4400, emissive: 0xff2200, intensity: 5.0 },
+    { name: 'Molten Gold', color: 0xffaa00, emissive: 0xff8800, intensity: 4.0 },
+    { name: 'Plasma', color: 0x4488ff, emissive: 0x2266ff, intensity: 6.0 },
+    { name: 'Radioactive', color: 0x44ff00, emissive: 0x22ff00, intensity: 5.0 },
+    { name: 'White Hot', color: 0xffffff, emissive: 0xffeedd, intensity: 3.0 },
+    { name: 'Void', color: 0x220044, emissive: 0x440088, intensity: 2.0 },
+    { name: 'Energy Core', color: 0x00ffff, emissive: 0x00cccc, intensity: 5.0 },
+    { name: 'Ember', color: 0xcc3300, emissive: 0x881100, intensity: 2.5 },
+  ];
+
+  const cols = 4;
+  for (let i = 0; i < emissives.length; i++) {
+    const e = emissives[i];
+    const col = i % cols;
+    const row = Math.floor(i / cols);
+    const x = (col - (cols - 1) / 2) * 3.0;
+    const y = (1 - row) * 3.0;
+    let id;
+    if (i % 3 === 0) {
+      id = createSphere(0.95, e.color, [x, y, 0], 32, {
+        material: 'standard',
+        emissive: e.emissive,
+        emissiveIntensity: e.intensity,
+      });
+    } else if (i % 3 === 1) {
+      id = createCube(1.5, e.color, [x, y, 0], {
+        material: 'standard',
+        emissive: e.emissive,
+        emissiveIntensity: e.intensity,
+      });
+    } else {
+      id = createTorus(0.7, 0.25, e.color, [x, y, 0], {
+        material: 'standard',
+        emissive: e.emissive,
+        emissiveIntensity: e.intensity,
+      });
+    }
+    setPBRProperties(id, { metalness: 0.3, roughness: 0.2, envMapIntensity: 1.0 });
+    meshIds.push(id);
+  }
+}
+
+// ── Scene 5: Shapes — varied geometry with contrasting PBR ──────────────────
+function buildShapes() {
+  const shapes = [
+    {
+      type: 'sphere',
+      color: 0xffd700,
+      metalness: 1.0,
+      roughness: 0.1,
+      envMap: 2.5,
+      pos: [-4, 2, 0],
+    },
+    {
+      type: 'cube',
+      color: 0xcc2222,
+      metalness: 0.0,
+      roughness: 0.4,
+      envMap: 0.8,
+      pos: [-1.5, 2, 0],
+    },
+    {
+      type: 'cylinder',
+      color: 0x2255cc,
+      metalness: 0.8,
+      roughness: 0.15,
+      envMap: 2.0,
+      pos: [1.5, 2, 0],
+    },
+    {
+      type: 'torus',
+      color: 0x22cc88,
+      metalness: 0.6,
+      roughness: 0.3,
+      envMap: 1.5,
+      pos: [4, 2, 0],
+    },
+    {
+      type: 'cone',
+      color: 0xee8833,
+      metalness: 0.0,
+      roughness: 0.7,
+      envMap: 0.5,
+      pos: [-4, -1.5, 0],
+    },
+    {
+      type: 'capsule',
+      color: 0xcc44cc,
+      metalness: 0.9,
+      roughness: 0.05,
+      envMap: 3.0,
+      pos: [-1.5, -1.5, 0],
+    },
+    {
+      type: 'sphere',
+      color: 0x111111,
+      metalness: 0.0,
+      roughness: 1.0,
+      envMap: 0.1,
+      pos: [1.5, -1.5, 0],
+    },
+    {
+      type: 'cube',
+      color: 0xeeeeff,
+      metalness: 1.0,
+      roughness: 0.0,
+      envMap: 3.5,
+      pos: [4, -1.5, 0],
+    },
+  ];
+
+  for (const s of shapes) {
+    let id;
+    if (s.type === 'sphere') id = createSphere(1.0, s.color, s.pos, 32, { material: 'standard' });
+    else if (s.type === 'cube') id = createCube(1.6, s.color, s.pos, { material: 'standard' });
+    else if (s.type === 'cylinder')
+      id = createCylinder(0.7, 2.0, s.color, s.pos, { material: 'standard' });
+    else if (s.type === 'torus')
+      id = createTorus(0.8, 0.3, s.color, s.pos, { material: 'standard' });
+    else if (s.type === 'cone') id = createCone(0.9, 2.0, s.color, s.pos, { material: 'standard' });
+    else if (s.type === 'capsule')
+      id = createCapsule(0.5, 1.2, s.color, s.pos, { material: 'standard' });
+    setPBRProperties(id, {
+      metalness: s.metalness,
+      roughness: s.roughness,
+      envMapIntensity: s.envMap,
+    });
+    meshIds.push(id);
+  }
+}
+
 // ── Update ───────────────────────────────────────────────────────────────────
 export function update(dt) {
   time += dt;
@@ -256,12 +398,7 @@ export function update(dt) {
   if (key('KeyE')) orbitDist = Math.max(8, orbitDist - dt * 6);
 
   // Slow auto-orbit when no input
-  if (
-    !key('KeyA') &&
-    !key('KeyD') &&
-    !key('ArrowLeft') &&
-    !key('ArrowRight')
-  ) {
+  if (!key('KeyA') && !key('KeyD') && !key('ArrowLeft') && !key('ArrowRight')) {
     orbitAngle += dt * 0.16;
   }
 
@@ -273,7 +410,7 @@ export function update(dt) {
   setCameraTarget(0, 0, 0);
 
   // Scene switch
-  for (let i = 0; i < 4; i++) {
+  for (let i = 0; i < 6; i++) {
     if (keyp('Digit' + (i + 1)) || keyp('Numpad' + (i + 1)) || btnp(13 + i)) {
       if (scene !== i) {
         scene = i;
@@ -287,7 +424,7 @@ export function update(dt) {
 export function draw() {
   drawRoundedRect(0, 0, 320, 14, 0, rgba8(0, 0, 0, 150));
   printCentered(
-    '[1] Grid  [2] Metals  [3] Gems  [4] Mixed',
+    '[1]Grid [2]Metal [3]Gem [4]Mix [5]Glow [6]Shape',
     160,
     2,
     rgba8(220, 200, 150, 255)

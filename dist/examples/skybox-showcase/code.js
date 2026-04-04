@@ -1,7 +1,7 @@
 // Skybox Showcase — Nova64
 // Demonstrates all skybox types with orbiting camera
 //
-// Controls: 1-5 = skybox type, WASD = orbit, QE = zoom, SPACE = toggle auto-rotate
+// Controls: 1-6 = skybox type, WASD = orbit, QE = zoom, SPACE = toggle auto-rotate
 
 let scene = 0;
 let orbitAngle = 0;
@@ -11,7 +11,14 @@ let time = 0;
 let autoRotate = true;
 let propIds = [];
 
-const SCENE_NAMES = ['Deep Space', 'Dense Starfield', 'Sunset Gradient', 'Studio IBL', 'Void'];
+const SCENE_NAMES = [
+  'Deep Space',
+  'Dense Starfield',
+  'Sunset Gradient',
+  'Alien World',
+  'Studio IBL',
+  'Void',
+];
 
 export async function init() {
   setCameraFOV(70);
@@ -33,8 +40,9 @@ function buildScene(idx) {
   if (idx === 0) buildDeepSpace();
   else if (idx === 1) buildDenseStars();
   else if (idx === 2) buildSunset();
-  else if (idx === 3) buildStudio();
-  else if (idx === 4) buildVoid();
+  else if (idx === 3) buildAlien();
+  else if (idx === 4) buildStudio();
+  else if (idx === 5) buildVoid();
 }
 
 // ── Scene 0: Deep Space — sparse stars with nebula ──────────────────────────
@@ -145,7 +153,54 @@ function buildSunset() {
   createPointLight(0xff8844, 6, 40, 0, 4, -25);
 }
 
-// ── Scene 3: Studio IBL — cube-map reflections with PBR objects ─────────────
+// ── Scene 3: Alien World — unusual gradient with exotic objects ──────────────
+function buildAlien() {
+  createGradientSkybox(0x00ff88, 0x220044);
+  setFog(0x0a1a10, 15, 45);
+  setAmbientLight(0x114422, 1.2);
+  setLightColor(0x88ffaa);
+
+  // Alien ground
+  const floor = createPlane(50, 50, 0x112211, [0, -2, 0], {
+    material: 'standard',
+    roughness: 0.7,
+    metalness: 0.3,
+  });
+  setRotation(floor, -Math.PI / 2, 0, 0);
+  propIds.push(floor);
+
+  // Floating crystal pillars
+  const crystalColors = [0x00ffaa, 0xff00ff, 0x44ffff, 0xffff00, 0xff4488];
+  for (let i = 0; i < 5; i++) {
+    const a = (i / 5) * Math.PI * 2;
+    const r = 5;
+    const id = createCylinder(
+      0.3,
+      3 + Math.random() * 2,
+      crystalColors[i],
+      [Math.cos(a) * r, Math.random() * 2, Math.sin(a) * r],
+      {
+        material: 'standard',
+        emissive: crystalColors[i],
+        emissiveIntensity: 2.0,
+      }
+    );
+    setPBRProperties(id, { metalness: 0.5, roughness: 0.1, envMapIntensity: 2.0 });
+    propIds.push(id);
+  }
+
+  // Central alien sphere
+  const core = createSphere(1.5, 0x00ff88, [0, 1, 0], 24, {
+    material: 'standard',
+    emissive: 0x00ff44,
+    emissiveIntensity: 3.0,
+  });
+  setPBRProperties(core, { metalness: 0.6, roughness: 0.05 });
+  propIds.push(core);
+  createPointLight(0x00ff88, 5, 20, 0, 1, 0);
+}
+
+// ── Scene 4: Studio IBL — cube-map reflections with PBR objects ─────────────
 function buildStudio() {
   try {
     createImageSkybox([
@@ -188,7 +243,7 @@ function buildStudio() {
   }
 }
 
-// ── Scene 4: Void — solid black with emissive geometry ──────────────────────
+// ── Scene 5: Void — solid black with emissive geometry ──────────────────────
 function buildVoid() {
   createSolidSkybox(0x000000);
   clearFog();
@@ -271,7 +326,7 @@ export function update(dt) {
   setCameraTarget(0, 0, 0);
 
   // Scene switch
-  for (let i = 0; i < 5; i++) {
+  for (let i = 0; i < 6; i++) {
     if (keyp('Digit' + (i + 1)) || keyp('Numpad' + (i + 1))) {
       if (scene !== i) {
         scene = i;
@@ -288,7 +343,12 @@ export function update(dt) {
 
 export function draw() {
   drawRoundedRect(0, 0, 320, 14, 0, rgba8(0, 0, 0, 150));
-  printCentered('[1]Space [2]Stars [3]Sunset [4]IBL [5]Void', 160, 2, rgba8(220, 200, 150, 255));
+  printCentered(
+    '[1]Space [2]Stars [3]Sunset [4]Alien [5]IBL [6]Void',
+    160,
+    2,
+    rgba8(220, 200, 150, 255)
+  );
 
   drawRoundedRect(0, 222, 320, 18, 0, rgba8(0, 0, 0, 130));
   print('Skybox: ' + SCENE_NAMES[scene], 6, 224, rgba8(180, 255, 180, 255));

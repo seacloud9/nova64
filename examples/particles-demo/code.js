@@ -12,6 +12,9 @@ let orbitY = 4;
 let frameCount = 0;
 let burstCooldown = 0;
 let sceneTime = 0;
+let countMultiplier = 1.0; // 0.25x to 4x particle counts
+const COUNT_STEPS = [0.25, 0.5, 1.0, 1.5, 2.0, 3.0, 4.0];
+let countStepIdx = 2; // default = 1.0x
 
 const SCENES = [
   '\uD83D\uDD25 Inferno',
@@ -34,6 +37,11 @@ function clearSystems() {
   sceneTime = 0;
 }
 
+// Scale particle count by multiplier (minimum 10)
+function pc(base) {
+  return Math.max(10, Math.round(base * countMultiplier));
+}
+
 function buildScene(idx) {
   clearSystems();
   clearScene();
@@ -46,16 +54,16 @@ function buildScene(idx) {
 
 // ── Scene 0: Inferno — massive bonfire with erupting embers ───────────────────
 function buildFire() {
-  setAmbientLight(0x220800, 0.4);
-  setFog(0x080200, 18, 55);
-  enableBloom(3.0, 0.8, 0.15);
+  setAmbientLight(0x331100, 0.5);
+  setFog(0x0a0200, 20, 50);
+  enableBloom(2.0, 0.6, 0.2);
 
   // Charred ground
   const floor = createPlane(50, 50, 0x1a0800, [0, 0, 0], { material: 'standard', roughness: 1 });
   setRotation(floor, -Math.PI / 2, 0, 0);
   propIds.push(floor);
 
-  // Lava pool beneath the fire
+  // Glowing lava pool beneath the fire
   const lava = createCylinder(3.5, 0.15, 0xff4400, [0, 0.08, 0], {
     material: 'standard',
     emissive: 0xff2200,
@@ -73,10 +81,7 @@ function buildFire() {
         0x332211,
         [Math.cos(a) * 3.5, 0.25, Math.sin(a) * 3.5],
         4,
-        {
-          material: 'standard',
-          roughness: 0.95,
-        }
+        { material: 'standard', roughness: 0.95 }
       )
     );
   }
@@ -92,65 +97,71 @@ function buildFire() {
     );
   }
 
-  // --- CORE FLAMES: dense bright fire rising fast ---
+  // --- CORE FLAMES: bright dense fire column ---
   systemIds.push(
-    createParticleSystem(600, {
+    createParticleSystem(pc(800), {
       shape: 'sphere',
       segments: 3,
-      gravity: -6,
+      emissive: 0xffcc44,
+      emissiveIntensity: 3.0,
+      gravity: -5,
       drag: 0.96,
       emitterX: 0,
       emitterY: 0.8,
       emitterZ: 0,
-      emitRate: 160,
-      minLife: 0.5,
-      maxLife: 1.4,
+      emitRate: 200,
+      minLife: 0.4,
+      maxLife: 1.2,
       minSpeed: 3,
-      maxSpeed: 8,
-      spread: 0.4,
-      minSize: 0.08,
-      maxSize: 0.4,
-      startColor: 0xffffaa,
+      maxSpeed: 7,
+      spread: 0.35,
+      minSize: 0.12,
+      maxSize: 0.5,
+      startColor: 0xffffcc,
       endColor: 0xff4400,
     })
   );
-  // --- OUTER FLAMES: wider, orange-red ---
+  // --- OUTER FLAMES: wider, cooler orange ---
   systemIds.push(
-    createParticleSystem(400, {
+    createParticleSystem(pc(500), {
       shape: 'sphere',
       segments: 3,
-      gravity: -4,
+      emissive: 0xff6600,
+      emissiveIntensity: 2.5,
+      gravity: -3.5,
       drag: 0.97,
       emitterX: 0,
-      emitterY: 1.2,
+      emitterY: 1.0,
       emitterZ: 0,
-      emitRate: 100,
-      minLife: 0.8,
-      maxLife: 1.8,
+      emitRate: 120,
+      minLife: 0.6,
+      maxLife: 1.5,
       minSpeed: 2,
-      maxSpeed: 6,
-      spread: 0.7,
-      minSize: 0.06,
-      maxSize: 0.35,
-      startColor: 0xff8800,
-      endColor: 0xaa0000,
+      maxSpeed: 5,
+      spread: 0.6,
+      minSize: 0.1,
+      maxSize: 0.4,
+      startColor: 0xff9933,
+      endColor: 0xaa1100,
     })
   );
-  // --- EMBERS: lots of tiny hot sparks rising and spreading ---
+  // --- EMBERS: hot sparks rising and spreading ---
   systemIds.push(
-    createParticleSystem(500, {
+    createParticleSystem(pc(500), {
       shape: 'sphere',
       segments: 3,
-      gravity: -2,
+      emissive: 0xff4400,
+      emissiveIntensity: 3.5,
+      gravity: -1.5,
       drag: 0.92,
       emitterX: 0,
-      emitterY: 2.5,
+      emitterY: 2.0,
       emitterZ: 0,
       emitRate: 60,
       minLife: 1.0,
       maxLife: 4.0,
       minSpeed: 2,
-      maxSpeed: 12,
+      maxSpeed: 10,
       spread: 1.0,
       minSize: 0.02,
       maxSize: 0.08,
@@ -160,13 +171,15 @@ function buildFire() {
   );
   // --- THICK SMOKE: dark billowing smoke above ---
   systemIds.push(
-    createParticleSystem(250, {
+    createParticleSystem(pc(250), {
       shape: 'sphere',
       segments: 4,
+      emissive: 0x222222,
+      emissiveIntensity: 0.3,
       gravity: -0.5,
       drag: 0.995,
       emitterX: 0,
-      emitterY: 4.5,
+      emitterY: 4.0,
       emitterZ: 0,
       emitRate: 40,
       minLife: 2.5,
@@ -180,11 +193,13 @@ function buildFire() {
       endColor: 0x111111,
     })
   );
-  // --- GROUND HEAT: low particles simmering on lava pool ---
+  // --- GROUND HEAT: low simmering glow on lava pool ---
   systemIds.push(
-    createParticleSystem(200, {
+    createParticleSystem(pc(200), {
       shape: 'sphere',
       segments: 3,
+      emissive: 0xff3300,
+      emissiveIntensity: 2.0,
       gravity: -1,
       drag: 0.98,
       emitterX: 0,
@@ -196,30 +211,30 @@ function buildFire() {
       minSpeed: 0.5,
       maxSpeed: 3,
       spread: Math.PI * 0.9,
-      minSize: 0.04,
-      maxSize: 0.15,
+      minSize: 0.06,
+      maxSize: 0.2,
       startColor: 0xff6600,
       endColor: 0x330000,
     })
   );
 
-  // Multiple warm lights
-  lightIds.push({ id: createPointLight(0xff4400, 10, 25, 0, 3, 0), baseX: 0, baseZ: 0, phase: 0 });
+  // Multiple warm lights for dramatic illumination
+  lightIds.push({ id: createPointLight(0xff4400, 12, 30, 0, 3, 0), baseX: 0, baseZ: 0, phase: 0 });
   lightIds.push({
-    id: createPointLight(0xff8800, 6, 18, -2, 1.5, -2),
+    id: createPointLight(0xff8800, 8, 22, -2, 1.5, -2),
     baseX: -2,
     baseZ: -2,
     phase: 1.5,
   });
   lightIds.push({
-    id: createPointLight(0xff6600, 6, 18, 2, 1.5, 2),
+    id: createPointLight(0xff6600, 8, 22, 2, 1.5, 2),
     baseX: 2,
     baseZ: 2,
     phase: 3.0,
   });
 
-  orbitY = 4;
-  orbitDist = 12;
+  orbitY = 3;
+  orbitDist = 10;
 }
 
 // ── Scene 1: Blizzard — gentle snowfall blanketing the landscape ──────────────
@@ -295,9 +310,11 @@ function buildBlizzard() {
   ];
   for (const [sx, sy, sz] of snowPositions) {
     systemIds.push(
-      createParticleSystem(400, {
+      createParticleSystem(pc(400), {
         shape: 'sphere',
         segments: 3,
+        emissive: 0xccddff,
+        emissiveIntensity: 1.5,
         gravity: -0.4,
         drag: 0.998,
         emitterX: sx,
@@ -319,9 +336,11 @@ function buildBlizzard() {
 
   // --- GENTLE DRIFT: very slow, large flakes close to camera ---
   systemIds.push(
-    createParticleSystem(200, {
+    createParticleSystem(pc(200), {
       shape: 'sphere',
       segments: 3,
+      emissive: 0xddeeff,
+      emissiveIntensity: 1.2,
       gravity: -0.3,
       drag: 0.999,
       emitterX: 0,
@@ -342,9 +361,11 @@ function buildBlizzard() {
 
   // --- GROUND POWDER: disturbed snow near ground level ---
   systemIds.push(
-    createParticleSystem(150, {
+    createParticleSystem(pc(150), {
       shape: 'sphere',
       segments: 3,
+      emissive: 0xaabbcc,
+      emissiveIntensity: 1.0,
       gravity: -3.0,
       drag: 0.96,
       emitterX: 0,
@@ -422,7 +443,7 @@ function buildForge() {
 
   // Gold sparks — burst only
   systemIds.push(
-    createParticleSystem(700, {
+    createParticleSystem(pc(700), {
       shape: 'sphere',
       segments: 3,
       gravity: 18,
@@ -444,7 +465,7 @@ function buildForge() {
   );
   // Blue plasma arcs — burst only
   systemIds.push(
-    createParticleSystem(300, {
+    createParticleSystem(pc(300), {
       shape: 'sphere',
       segments: 3,
       gravity: 8,
@@ -466,7 +487,7 @@ function buildForge() {
   );
   // Constant embers from hot metal
   systemIds.push(
-    createParticleSystem(150, {
+    createParticleSystem(pc(150), {
       shape: 'sphere',
       segments: 3,
       gravity: 5,
@@ -488,7 +509,7 @@ function buildForge() {
   );
   // Lightning streaks — burst only
   systemIds.push(
-    createParticleSystem(120, {
+    createParticleSystem(pc(120), {
       shape: 'sphere',
       segments: 3,
       gravity: 0,
@@ -560,7 +581,7 @@ function buildGalaxy() {
     const armColor = [0x8888ff, 0xff88ff, 0x88ffff][arm];
     const armEnd = [0x2222aa, 0xaa22aa, 0x22aaaa][arm];
     systemIds.push(
-      createParticleSystem(600, {
+      createParticleSystem(pc(600), {
         shape: 'sphere',
         segments: 3,
         gravity: 0,
@@ -584,7 +605,7 @@ function buildGalaxy() {
 
   // Central nebula dust — warm glow
   systemIds.push(
-    createParticleSystem(400, {
+    createParticleSystem(pc(400), {
       shape: 'sphere',
       segments: 4,
       gravity: 0,
@@ -607,7 +628,7 @@ function buildGalaxy() {
 
   // Stellar nursery — bright blue sparks
   systemIds.push(
-    createParticleSystem(200, {
+    createParticleSystem(pc(200), {
       shape: 'sphere',
       segments: 3,
       gravity: 0,
@@ -630,7 +651,7 @@ function buildGalaxy() {
 
   // Distant background stars — slow drift
   systemIds.push(
-    createParticleSystem(500, {
+    createParticleSystem(pc(500), {
       shape: 'sphere',
       segments: 3,
       gravity: 0,
@@ -739,9 +760,11 @@ function buildWaterfall() {
 
   // --- MAIN WATERFALL: dense bright blue-white stream ---
   systemIds.push(
-    createParticleSystem(1200, {
+    createParticleSystem(pc(1200), {
       shape: 'sphere',
       segments: 4,
+      emissive: 0x88bbff,
+      emissiveIntensity: 1.8,
       gravity: 16,
       drag: 0.995,
       emitterX: 0,
@@ -762,9 +785,11 @@ function buildWaterfall() {
 
   // --- SECONDARY STREAM: slightly offset for width ---
   systemIds.push(
-    createParticleSystem(600, {
+    createParticleSystem(pc(600), {
       shape: 'sphere',
       segments: 3,
+      emissive: 0x77aaee,
+      emissiveIntensity: 1.5,
       gravity: 15,
       drag: 0.99,
       emitterX: -0.8,
@@ -785,9 +810,11 @@ function buildWaterfall() {
 
   // --- SPLASH: big dramatic upward spray at impact ---
   systemIds.push(
-    createParticleSystem(800, {
+    createParticleSystem(pc(800), {
       shape: 'sphere',
       segments: 3,
+      emissive: 0xaaddff,
+      emissiveIntensity: 1.5,
       gravity: 10,
       drag: 0.9,
       emitterX: 0,
@@ -808,9 +835,11 @@ function buildWaterfall() {
 
   // --- MIST CLOUD: large soft particles drifting from base ---
   systemIds.push(
-    createParticleSystem(400, {
+    createParticleSystem(pc(400), {
       shape: 'sphere',
       segments: 4,
+      emissive: 0x99bbcc,
+      emissiveIntensity: 0.8,
       gravity: -0.5,
       drag: 0.998,
       emitterX: 0,
@@ -825,15 +854,17 @@ function buildWaterfall() {
       minSize: 0.2,
       maxSize: 0.7,
       startColor: 0xddeeff,
-      endColor: 0x557766,
+      endColor: 0x99bbcc,
     })
   );
 
-  // --- RAINBOW SPRAY: colorful fine droplets catching light ---
+  // --- FINE SPRAY: bright blue-white water droplets ---
   systemIds.push(
-    createParticleSystem(300, {
+    createParticleSystem(pc(300), {
       shape: 'sphere',
       segments: 3,
+      emissive: 0x88ccff,
+      emissiveIntensity: 1.2,
       gravity: 5,
       drag: 0.94,
       emitterX: 2.5,
@@ -847,16 +878,18 @@ function buildWaterfall() {
       spread: 0.8,
       minSize: 0.02,
       maxSize: 0.08,
-      startColor: 0xff8844,
-      endColor: 0x4488ff,
+      startColor: 0xcceeff,
+      endColor: 0x4488cc,
     })
   );
 
   // --- STREAM: water flowing away from pool ---
   systemIds.push(
-    createParticleSystem(300, {
+    createParticleSystem(pc(300), {
       shape: 'sphere',
       segments: 3,
+      emissive: 0x66aacc,
+      emissiveIntensity: 1.0,
       gravity: 2,
       drag: 0.97,
       emitterX: 0,
@@ -871,7 +904,7 @@ function buildWaterfall() {
       minSize: 0.05,
       maxSize: 0.15,
       startColor: 0x88ccee,
-      endColor: 0x337755,
+      endColor: 0x5599aa,
     })
   );
 
@@ -933,6 +966,18 @@ export function update(dt) {
       scene = i;
       buildScene(i);
     }
+  }
+
+  // Particle count controls: [ decrease, ] increase
+  if (keyp('BracketLeft') && countStepIdx > 0) {
+    countStepIdx--;
+    countMultiplier = COUNT_STEPS[countStepIdx];
+    buildScene(scene);
+  }
+  if (keyp('BracketRight') && countStepIdx < COUNT_STEPS.length - 1) {
+    countStepIdx++;
+    countMultiplier = COUNT_STEPS[countStepIdx];
+    buildScene(scene);
   }
 
   // Manual burst
@@ -1097,6 +1142,11 @@ export function draw() {
   );
 
   drawRoundedRect(0, 220, 320, 20, 0, rgba8(0, 0, 0, 130));
-  print('Scene: ' + SCENES[scene] + '   Particles: ' + total, 6, 222, rgba8(180, 255, 180, 255));
-  print('TAP/[SPACE] Burst  [WASD] Orbit  [QE] Zoom', 6, 231, rgba8(110, 110, 110, 220));
+  print(
+    SCENES[scene] + '  ' + total + ' particles  [' + countMultiplier + 'x]',
+    6,
+    222,
+    rgba8(180, 255, 180, 255)
+  );
+  print('[SPACE] Burst  [WASD] Orbit  [\\[\\]] Count', 6, 231, rgba8(110, 110, 110, 220));
 }

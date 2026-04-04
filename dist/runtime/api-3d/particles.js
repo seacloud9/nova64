@@ -33,8 +33,10 @@ export function particlesModule({ scene, counters }) {
       shape = 'sphere',
       size = 1.0,
       segments = 4,
-      color = 0xffaa00,
-      emissive = 0xff6600,
+      color = 0xffffff,
+      startColor = color,
+      endColor = 0x000000,
+      emissive = startColor,
       emissiveIntensity = 2.0,
       gravity = -9.8,
       drag = 0.95,
@@ -50,8 +52,6 @@ export function particlesModule({ scene, counters }) {
       spread = Math.PI, // half-angle cone spread (PI = hemisphere)
       minSize = 0.05,
       maxSize = 0.3,
-      startColor = color,
-      endColor = 0x000000,
     } = options;
 
     // Geometry
@@ -62,9 +62,6 @@ export function particlesModule({ scene, counters }) {
       geometry = new THREE.SphereGeometry(size, segments, segments);
     }
 
-    const material = new THREE.MeshBasicMaterial({ color, vertexColors: false });
-    material.emissive = new THREE.Color(emissive);
-    // MeshBasicMaterial doesn't have emissive — use MeshStandardMaterial instead
     const stdMat = new THREE.MeshStandardMaterial({
       color,
       emissive: new THREE.Color(emissive),

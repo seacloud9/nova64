@@ -288,8 +288,9 @@ function createBlockRegistry() {
     if (!b || !b.textureFaces) return -1;
     const tf = b.textureFaces;
     if (typeof tf === 'number') return tf;
-    if (faceIdx === 4) return tf.top !== undefined ? tf.top : (tf.side !== undefined ? tf.side : -1);
-    if (faceIdx === 5) return tf.bottom !== undefined ? tf.bottom : (tf.side !== undefined ? tf.side : -1);
+    if (faceIdx === 4) return tf.top !== undefined ? tf.top : tf.side !== undefined ? tf.side : -1;
+    if (faceIdx === 5)
+      return tf.bottom !== undefined ? tf.bottom : tf.side !== undefined ? tf.side : -1;
     return tf.side !== undefined ? tf.side : -1;
   }
 
@@ -314,7 +315,13 @@ function createBlockRegistry() {
     textureFaces: 5,
   });
   register(6, { name: 'wood', color: 0x774422, textureFaces: { top: 7, side: 6, bottom: 7 } });
-  register(7, { name: 'leaves', color: 0x116622, transparent: true, lightBlock: 1, textureFaces: 8 });
+  register(7, {
+    name: 'leaves',
+    color: 0x116622,
+    transparent: true,
+    lightBlock: 1,
+    textureFaces: 8,
+  });
   register(8, { name: 'cobblestone', color: 0x667788, textureFaces: 9 });
   register(9, { name: 'planks', color: 0xddaa55, textureFaces: 10 });
   register(10, {
@@ -326,7 +333,13 @@ function createBlockRegistry() {
   });
   register(11, { name: 'brick', color: 0xcc4433, textureFaces: 12 });
   register(12, { name: 'snow', color: 0xeeeeff, textureFaces: 13 });
-  register(13, { name: 'ice', color: 0x99ddff, transparent: true, lightBlock: 1, textureFaces: 14 });
+  register(13, {
+    name: 'ice',
+    color: 0x99ddff,
+    transparent: true,
+    lightBlock: 1,
+    textureFaces: 14,
+  });
   register(14, { name: 'bedrock', color: 0x333333, textureFaces: 15 });
   register(15, { name: 'coal_ore', color: 0x444444, textureFaces: 16 });
   register(16, { name: 'iron_ore', color: 0xccaa88, textureFaces: 17 });
@@ -371,12 +384,12 @@ export function voxelApi(gpu) {
   let SEA_LEVEL = 62;
 
   // Performance feature toggles (all on by default for full quality)
-  let enableAO = true;          // Ambient occlusion — 12 neighbor lookups per visible face
-  let enableLighting = true;    // Per-chunk BFS lighting propagation
-  let enableCaves = true;       // 3D noise cave carving in terrain gen
-  let enableOres = true;        // Ore vein generation in terrain gen
-  let enableTrees = true;       // Tree placement in terrain gen
-  let enableShadows = true;     // castShadow/receiveShadow on chunk meshes
+  let enableAO = true; // Ambient occlusion — 12 neighbor lookups per visible face
+  let enableLighting = true; // Per-chunk BFS lighting propagation
+  let enableCaves = true; // 3D noise cave carving in terrain gen
+  let enableOres = true; // Ore vein generation in terrain gen
+  let enableTrees = true; // Tree placement in terrain gen
+  let enableShadows = true; // castShadow/receiveShadow on chunk meshes
 
   // Block type constants (backward compatible)
   const BLOCK_TYPES = {
@@ -431,7 +444,7 @@ export function voxelApi(gpu) {
     let s = seed | 0;
     return function () {
       s = (s * 1664525 + 1013904223) | 0;
-      return ((s >>> 0) / 4294967296);
+      return (s >>> 0) / 4294967296;
     };
   }
 
@@ -472,8 +485,8 @@ export function voxelApi(gpu) {
       drawNoise(c, x, y, s, s, 0x55cc33, 40, rng);
       // Occasional darker spots
       for (let i = 0; i < 6; i++) {
-        const px = x + (rng() * s) | 0;
-        const py = y + (rng() * s) | 0;
+        const px = (x + rng() * s) | 0;
+        const py = (y + rng() * s) | 0;
         c.fillStyle = '#3a8a22';
         c.fillRect(px, py, 1, 1);
       }
@@ -497,7 +510,7 @@ export function voxelApi(gpu) {
       drawNoise(c, x, y, s, s, 0x996644, 35, rng);
       for (let i = 0; i < 4; i++) {
         c.fillStyle = '#7a5533';
-        c.fillRect(x + (rng() * s) | 0, y + (rng() * s) | 0, 2, 1);
+        c.fillRect((x + rng() * s) | 0, (y + rng() * s) | 0, 2, 1);
       }
     });
 
@@ -506,9 +519,9 @@ export function voxelApi(gpu) {
       drawNoise(c, x, y, s, s, 0xaaaaaa, 25, rng);
       c.fillStyle = '#888888';
       for (let i = 0; i < 3; i++) {
-        const sx = x + (rng() * (s - 4)) | 0;
-        const sy = y + (rng() * (s - 2)) | 0;
-        c.fillRect(sx, sy, 3 + (rng() * 3) | 0, 1);
+        const sx = (x + rng() * (s - 4)) | 0;
+        const sy = (y + rng() * (s - 2)) | 0;
+        c.fillRect(sx, sy, (3 + rng() * 3) | 0, 1);
       }
     });
 
@@ -522,7 +535,7 @@ export function voxelApi(gpu) {
       drawNoise(c, x, y, s, s, 0x2288dd, 15, rng);
       c.fillStyle = 'rgba(180,220,255,0.3)';
       for (let i = 0; i < 3; i++) {
-        c.fillRect(x + (rng() * (s - 5)) | 0, y + (rng() * s) | 0, 4, 1);
+        c.fillRect((x + rng() * (s - 5)) | 0, (y + rng() * s) | 0, 4, 1);
       }
     });
 
@@ -540,7 +553,8 @@ export function voxelApi(gpu) {
     // Tile 7: Wood top — rings
     drawTile(ctx, 7, (c, x, y, s) => {
       drawNoise(c, x, y, s, s, 0x997744, 15, rng);
-      const cx = s / 2, cy = s / 2;
+      const cx = s / 2,
+        cy = s / 2;
       for (let r = 2; r < 7; r += 2) {
         c.strokeStyle = '#664422';
         c.lineWidth = 0.5;
@@ -555,7 +569,7 @@ export function voxelApi(gpu) {
       drawNoise(c, x, y, s, s, 0x116622, 30, rng);
       for (let i = 0; i < 12; i++) {
         c.fillStyle = rng() > 0.5 ? '#0d5518' : '#1a8833';
-        c.fillRect(x + (rng() * s) | 0, y + (rng() * s) | 0, 2, 2);
+        c.fillRect((x + rng() * s) | 0, (y + rng() * s) | 0, 2, 2);
       }
     });
 
@@ -563,9 +577,14 @@ export function voxelApi(gpu) {
     drawTile(ctx, 9, (c, x, y, s) => {
       drawNoise(c, x, y, s, s, 0x667788, 30, rng);
       for (let i = 0; i < 6; i++) {
-        const shade = 80 + (rng() * 60) | 0;
+        const shade = (80 + rng() * 60) | 0;
         c.fillStyle = `rgb(${shade},${shade},${shade + 10})`;
-        c.fillRect(x + (rng() * (s - 3)) | 0, y + (rng() * (s - 3)) | 0, 2 + (rng() * 2) | 0, 2 + (rng() * 2) | 0);
+        c.fillRect(
+          (x + rng() * (s - 3)) | 0,
+          (y + rng() * (s - 3)) | 0,
+          (2 + rng() * 2) | 0,
+          (2 + rng() * 2) | 0
+        );
       }
     });
 
@@ -583,8 +602,10 @@ export function voxelApi(gpu) {
       c.fillStyle = 'rgba(200,240,255,0.3)';
       c.fillRect(x, y, s, s);
       c.fillStyle = '#99bbcc';
-      c.fillRect(x, y, s, 1); c.fillRect(x, y + s - 1, s, 1);
-      c.fillRect(x, y, 1, s); c.fillRect(x + s - 1, y, 1, s);
+      c.fillRect(x, y, s, 1);
+      c.fillRect(x, y + s - 1, s, 1);
+      c.fillRect(x, y, 1, s);
+      c.fillRect(x + s - 1, y, 1, s);
       c.fillRect(x + s / 2, y, 1, s);
       c.fillRect(x, y + s / 2, s, 1);
     });
@@ -595,7 +616,7 @@ export function voxelApi(gpu) {
       c.fillStyle = '#ccbbaa';
       for (let r = 0; r < s; r += 4) {
         c.fillRect(x, y + r, s, 1);
-        const off = (r % 8 === 0) ? 0 : s / 2;
+        const off = r % 8 === 0 ? 0 : s / 2;
         c.fillRect(x + off, y + r, 1, 4);
         c.fillRect(x + off + s / 2, y + r, 1, 4);
       }
@@ -620,14 +641,13 @@ export function voxelApi(gpu) {
     });
 
     // Tile 16-19: Ores (stone base with colored specks)
-    const oreColors = [0x222222, 0xddbb99, 0xffdd44, 0x44ffee]; // coal, iron, gold, diamond
     const oreSpeckColors = ['#111', '#ddaa77', '#ffcc00', '#33ddcc'];
     for (let oi = 0; oi < 4; oi++) {
       drawTile(ctx, 16 + oi, (c, x, y, s) => {
         drawNoise(c, x, y, s, s, 0xaaaaaa, 25, rng);
         c.fillStyle = oreSpeckColors[oi];
         for (let i = 0; i < 5 + oi; i++) {
-          c.fillRect(x + (rng() * (s - 2)) | 0, y + (rng() * (s - 2)) | 0, 2, 2);
+          c.fillRect((x + rng() * (s - 2)) | 0, (y + rng() * (s - 2)) | 0, 2, 2);
         }
       });
     }
@@ -667,7 +687,7 @@ export function voxelApi(gpu) {
       drawNoise(c, x, y, s, s, 0xff4400, 30, rng);
       for (let i = 0; i < 4; i++) {
         c.fillStyle = '#ffaa33';
-        c.fillRect(x + (rng() * (s - 3)) | 0, y + (rng() * (s - 3)) | 0, 3, 2);
+        c.fillRect((x + rng() * (s - 3)) | 0, (y + rng() * (s - 3)) | 0, 3, 2);
       }
     });
 
@@ -681,7 +701,7 @@ export function voxelApi(gpu) {
       drawNoise(c, x, y, s, s, 0x667788, 25, rng);
       c.fillStyle = '#446633';
       for (let i = 0; i < 8; i++) {
-        c.fillRect(x + (rng() * s) | 0, y + (rng() * s) | 0, 2, 2);
+        c.fillRect((x + rng() * s) | 0, (y + rng() * s) | 0, 2, 2);
       }
     });
 
@@ -756,7 +776,7 @@ export function voxelApi(gpu) {
         flatShading: true,
         roughness: 0.8,
         metalness: 0.1,
-        map: (atlasEnabled && atlasTexture) ? atlasTexture : null,
+        map: atlasEnabled && atlasTexture ? atlasTexture : null,
       });
     }
     return sharedOpaqueMaterial;
@@ -773,7 +793,7 @@ export function voxelApi(gpu) {
         opacity: 0.6,
         depthWrite: false,
         side: THREE.DoubleSide,
-        map: (atlasEnabled && atlasTexture) ? atlasTexture : null,
+        map: atlasEnabled && atlasTexture ? atlasTexture : null,
       });
     }
     return sharedTransparentMaterial;
@@ -1036,7 +1056,14 @@ export function voxelApi(gpu) {
       const absHash = Math.abs(hash);
 
       const setIfAir = (bx, by, bz, block) => {
-        if (bx >= 0 && bx < CHUNK_SIZE && bz >= 0 && bz < CHUNK_SIZE && by >= 0 && by < CHUNK_HEIGHT) {
+        if (
+          bx >= 0 &&
+          bx < CHUNK_SIZE &&
+          bz >= 0 &&
+          bz < CHUNK_SIZE &&
+          by >= 0 &&
+          by < CHUNK_HEIGHT
+        ) {
           if (chunk.getBlock(bx, by, bz) === BLOCK_TYPES.AIR) {
             chunk.setBlock(bx, by, bz, block);
           }
@@ -1063,7 +1090,6 @@ export function voxelApi(gpu) {
         // Top point
         setIfAir(t.x, t.y + trunkH, t.z, BLOCK_TYPES.LEAVES);
         setIfAir(t.x, t.y + trunkH + 1, t.z, BLOCK_TYPES.LEAVES);
-
       } else if (t.type === 'birch') {
         // Medium tree with birch-like trunk — temperate forests
         const trunkH = 5 + Math.floor(absHash * 2);
@@ -1080,7 +1106,6 @@ export function voxelApi(gpu) {
             }
           }
         }
-
       } else if (t.type === 'jungle') {
         // Very tall trunk with wide canopy at top
         const trunkH = 8 + Math.floor(absHash * 6);
@@ -1108,7 +1133,6 @@ export function voxelApi(gpu) {
             }
           }
         }
-
       } else if (t.type === 'acacia') {
         // Bent trunk with flat wide canopy — savanna style
         const trunkH = 4 + Math.floor(absHash * 3);
@@ -1128,7 +1152,6 @@ export function voxelApi(gpu) {
             }
           }
         }
-
       } else {
         // Default oak — classic round tree
         const trunkH = 4 + Math.floor(absHash * 3);
@@ -1352,45 +1375,141 @@ export function voxelApi(gpu) {
   const aoOffsets = [
     // +Z face: vertices at z+1 plane
     [
-      [[-1, 0, 1], [0, -1, 1], [-1, -1, 1]],
-      [[1, 0, 1], [0, -1, 1], [1, -1, 1]],
-      [[1, 0, 1], [0, 1, 1], [1, 1, 1]],
-      [[-1, 0, 1], [0, 1, 1], [-1, 1, 1]],
+      [
+        [-1, 0, 1],
+        [0, -1, 1],
+        [-1, -1, 1],
+      ],
+      [
+        [1, 0, 1],
+        [0, -1, 1],
+        [1, -1, 1],
+      ],
+      [
+        [1, 0, 1],
+        [0, 1, 1],
+        [1, 1, 1],
+      ],
+      [
+        [-1, 0, 1],
+        [0, 1, 1],
+        [-1, 1, 1],
+      ],
     ],
     // -Z face
     [
-      [[1, 0, -1], [0, -1, -1], [1, -1, -1]],
-      [[-1, 0, -1], [0, -1, -1], [-1, -1, -1]],
-      [[-1, 0, -1], [0, 1, -1], [-1, 1, -1]],
-      [[1, 0, -1], [0, 1, -1], [1, 1, -1]],
+      [
+        [1, 0, -1],
+        [0, -1, -1],
+        [1, -1, -1],
+      ],
+      [
+        [-1, 0, -1],
+        [0, -1, -1],
+        [-1, -1, -1],
+      ],
+      [
+        [-1, 0, -1],
+        [0, 1, -1],
+        [-1, 1, -1],
+      ],
+      [
+        [1, 0, -1],
+        [0, 1, -1],
+        [1, 1, -1],
+      ],
     ],
     // +X face
     [
-      [[1, 0, 1], [1, -1, 0], [1, -1, 1]],
-      [[1, 0, -1], [1, -1, 0], [1, -1, -1]],
-      [[1, 0, -1], [1, 1, 0], [1, 1, -1]],
-      [[1, 0, 1], [1, 1, 0], [1, 1, 1]],
+      [
+        [1, 0, 1],
+        [1, -1, 0],
+        [1, -1, 1],
+      ],
+      [
+        [1, 0, -1],
+        [1, -1, 0],
+        [1, -1, -1],
+      ],
+      [
+        [1, 0, -1],
+        [1, 1, 0],
+        [1, 1, -1],
+      ],
+      [
+        [1, 0, 1],
+        [1, 1, 0],
+        [1, 1, 1],
+      ],
     ],
     // -X face
     [
-      [[-1, 0, -1], [-1, -1, 0], [-1, -1, -1]],
-      [[-1, 0, 1], [-1, -1, 0], [-1, -1, 1]],
-      [[-1, 0, 1], [-1, 1, 0], [-1, 1, 1]],
-      [[-1, 0, -1], [-1, 1, 0], [-1, 1, -1]],
+      [
+        [-1, 0, -1],
+        [-1, -1, 0],
+        [-1, -1, -1],
+      ],
+      [
+        [-1, 0, 1],
+        [-1, -1, 0],
+        [-1, -1, 1],
+      ],
+      [
+        [-1, 0, 1],
+        [-1, 1, 0],
+        [-1, 1, 1],
+      ],
+      [
+        [-1, 0, -1],
+        [-1, 1, 0],
+        [-1, 1, -1],
+      ],
     ],
     // +Y face
     [
-      [[-1, 1, 0], [0, 1, 1], [-1, 1, 1]],
-      [[1, 1, 0], [0, 1, 1], [1, 1, 1]],
-      [[1, 1, 0], [0, 1, -1], [1, 1, -1]],
-      [[-1, 1, 0], [0, 1, -1], [-1, 1, -1]],
+      [
+        [-1, 1, 0],
+        [0, 1, 1],
+        [-1, 1, 1],
+      ],
+      [
+        [1, 1, 0],
+        [0, 1, 1],
+        [1, 1, 1],
+      ],
+      [
+        [1, 1, 0],
+        [0, 1, -1],
+        [1, 1, -1],
+      ],
+      [
+        [-1, 1, 0],
+        [0, 1, -1],
+        [-1, 1, -1],
+      ],
     ],
     // -Y face
     [
-      [[-1, -1, 0], [0, -1, -1], [-1, -1, -1]],
-      [[1, -1, 0], [0, -1, -1], [1, -1, -1]],
-      [[1, -1, 0], [0, -1, 1], [1, -1, 1]],
-      [[-1, -1, 0], [0, -1, 1], [-1, -1, 1]],
+      [
+        [-1, -1, 0],
+        [0, -1, -1],
+        [-1, -1, -1],
+      ],
+      [
+        [1, -1, 0],
+        [0, -1, -1],
+        [1, -1, -1],
+      ],
+      [
+        [1, -1, 0],
+        [0, -1, 1],
+        [1, -1, 1],
+      ],
+      [
+        [-1, -1, 0],
+        [0, -1, 1],
+        [-1, -1, 1],
+      ],
     ],
   ];
 
@@ -1477,14 +1596,25 @@ export function voxelApi(gpu) {
       for (let d = 0; d < sliceMax; d++) {
         // Build mask for this slice — clear reused buffers
         let hasFaces = false;
-        for (let i = 0; i < maskSize; i++) { _mask[i] = 0; _maskTrans[i] = 0; }
+        for (let i = 0; i < maskSize; i++) {
+          _mask[i] = 0;
+          _maskTrans[i] = 0;
+        }
         for (let vi = 0; vi < vMax; vi++) {
           for (let ui = 0; ui < uMax; ui++) {
             // Map (axis=d, u=ui, v=vi) to (x,y,z) without array allocation
-            let x = 0, y = 0, z = 0;
-            if (axis === 0) x = d; else if (axis === 1) y = d; else z = d;
-            if (uAxis === 0) x = ui; else if (uAxis === 1) y = ui; else z = ui;
-            if (vAxis === 0) x = vi; else if (vAxis === 1) y = vi; else z = vi;
+            let x = 0,
+              y = 0,
+              z = 0;
+            if (axis === 0) x = d;
+            else if (axis === 1) y = d;
+            else z = d;
+            if (uAxis === 0) x = ui;
+            else if (uAxis === 1) y = ui;
+            else z = ui;
+            if (vAxis === 0) x = vi;
+            else if (vAxis === 1) y = vi;
+            else z = vi;
 
             const blockType = chunk.getBlock(x, y, z);
             const mIdx = ui + vi * uMax;
@@ -1513,8 +1643,7 @@ export function voxelApi(gpu) {
                 showFace = true;
               }
             } else {
-              showFace =
-                !registry.isSolid(neighborId) || registry.isTransparent(neighborId);
+              showFace = !registry.isSolid(neighborId) || registry.isTransparent(neighborId);
             }
 
             if (!showFace) {
@@ -1554,10 +1683,13 @@ export function voxelApi(gpu) {
             }
 
             // Sample light
-            const faceLight = enableLighting ? Math.round(sampleLight(chunk, nx, ny, nz)) : MAX_LIGHT;
+            const faceLight = enableLighting
+              ? Math.round(sampleLight(chunk, nx, ny, nz))
+              : MAX_LIGHT;
 
             // Pack face key: blockType | (aoKey << 8) | (faceLight << 16)
-            _mask[mIdx] = (blockType & 0xff) | ((aoKey & 0xff) << 8) | ((faceLight & 0xf) << 16) | (1 << 24);
+            _mask[mIdx] =
+              (blockType & 0xff) | ((aoKey & 0xff) << 8) | ((faceLight & 0xf) << 16) | (1 << 24);
             _maskTrans[mIdx] = blockIsTransparent ? 1 : 0;
             hasFaces = true;
           }
@@ -1579,7 +1711,11 @@ export function voxelApi(gpu) {
             // Extend width (skip greedy merge when atlas enabled — UVs can't tile within atlas tiles)
             let w = 1;
             if (!atlasEnabled) {
-              while (ui + w < uMax && _mask[(ui + w) + vi * uMax] === key && _maskTrans[(ui + w) + vi * uMax] === trans) {
+              while (
+                ui + w < uMax &&
+                _mask[ui + w + vi * uMax] === key &&
+                _maskTrans[ui + w + vi * uMax] === trans
+              ) {
                 w++;
               }
             }
@@ -1590,7 +1726,7 @@ export function voxelApi(gpu) {
               let canExtend = true;
               while (canExtend && vi + h < vMax) {
                 for (let wu = 0; wu < w; wu++) {
-                  const ci = (ui + wu) + (vi + h) * uMax;
+                  const ci = ui + wu + (vi + h) * uMax;
                   if (_mask[ci] !== key || _maskTrans[ci] !== trans) {
                     canExtend = false;
                     break;
@@ -1603,7 +1739,7 @@ export function voxelApi(gpu) {
             // Clear merged region from mask
             for (let dv = 0; dv < h; dv++) {
               for (let du = 0; du < w; du++) {
-                _mask[(ui + du) + (vi + dv) * uMax] = 0;
+                _mask[ui + du + (vi + dv) * uMax] = 0;
               }
             }
 
@@ -1611,7 +1747,10 @@ export function voxelApi(gpu) {
             const blockType = key & 0xff;
             const aoKey = (key >> 8) & 0xff;
             const faceLight = (key >> 16) & 0xf;
-            const ao0 = aoKey & 3, ao1 = (aoKey >> 2) & 3, ao2 = (aoKey >> 4) & 3, ao3 = (aoKey >> 6) & 3;
+            const ao0 = aoKey & 3,
+              ao1 = (aoKey >> 2) & 3,
+              ao2 = (aoKey >> 4) & 3,
+              ao3 = (aoKey >> 6) & 3;
 
             const lightBrightness = 0.05 + (faceLight / MAX_LIGHT) * 0.95;
             const blockColor = registry.getColor(blockType);
@@ -1626,43 +1765,112 @@ export function voxelApi(gpu) {
             // c1 = (slicePos, ui+w, vi)
             // c2 = (slicePos, ui+w, vi+h)
             // c3 = (slicePos, ui, vi+h)
-            let c0x = 0, c0y = 0, c0z = 0;
-            let c1x = 0, c1y = 0, c1z = 0;
-            let c2x = 0, c2y = 0, c2z = 0;
-            let c3x = 0, c3y = 0, c3z = 0;
+            let c0x = 0,
+              c0y = 0,
+              c0z = 0;
+            let c1x = 0,
+              c1y = 0,
+              c1z = 0;
+            let c2x = 0,
+              c2y = 0,
+              c2z = 0;
+            let c3x = 0,
+              c3y = 0,
+              c3z = 0;
 
             // Set axis coordinate
-            if (axis === 0) { c0x = slicePos; c1x = slicePos; c2x = slicePos; c3x = slicePos; }
-            else if (axis === 1) { c0y = slicePos; c1y = slicePos; c2y = slicePos; c3y = slicePos; }
-            else { c0z = slicePos; c1z = slicePos; c2z = slicePos; c3z = slicePos; }
+            if (axis === 0) {
+              c0x = slicePos;
+              c1x = slicePos;
+              c2x = slicePos;
+              c3x = slicePos;
+            } else if (axis === 1) {
+              c0y = slicePos;
+              c1y = slicePos;
+              c2y = slicePos;
+              c3y = slicePos;
+            } else {
+              c0z = slicePos;
+              c1z = slicePos;
+              c2z = slicePos;
+              c3z = slicePos;
+            }
             // Set u coordinate
-            if (uAxis === 0) { c0x = ui; c1x = ui + w; c2x = ui + w; c3x = ui; }
-            else if (uAxis === 1) { c0y = ui; c1y = ui + w; c2y = ui + w; c3y = ui; }
-            else { c0z = ui; c1z = ui + w; c2z = ui + w; c3z = ui; }
+            if (uAxis === 0) {
+              c0x = ui;
+              c1x = ui + w;
+              c2x = ui + w;
+              c3x = ui;
+            } else if (uAxis === 1) {
+              c0y = ui;
+              c1y = ui + w;
+              c2y = ui + w;
+              c3y = ui;
+            } else {
+              c0z = ui;
+              c1z = ui + w;
+              c2z = ui + w;
+              c3z = ui;
+            }
             // Set v coordinate
-            if (vAxis === 0) { c0x = vi; c1x = vi; c2x = vi + h; c3x = vi + h; }
-            else if (vAxis === 1) { c0y = vi; c1y = vi; c2y = vi + h; c3y = vi + h; }
-            else { c0z = vi; c1z = vi; c2z = vi + h; c3z = vi + h; }
+            if (vAxis === 0) {
+              c0x = vi;
+              c1x = vi;
+              c2x = vi + h;
+              c3x = vi + h;
+            } else if (vAxis === 1) {
+              c0y = vi;
+              c1y = vi;
+              c2y = vi + h;
+              c3y = vi + h;
+            } else {
+              c0z = vi;
+              c1z = vi;
+              c2z = vi + h;
+              c3z = vi + h;
+            }
 
             // Correct winding order based on face direction
             let v0x, v0y, v0z, v1x, v1y, v1z, v2x, v2y, v2z, v3x, v3y, v3z;
             let a0, a1, a2, a3;
             if (
-              (faceIdx === 0) || // +Z
-              (faceIdx === 3) || // -X
-              (faceIdx === 5)    // -Y
+              faceIdx === 0 || // +Z
+              faceIdx === 3 || // -X
+              faceIdx === 5 // -Y
             ) {
-              v0x = c0x; v0y = c0y; v0z = c0z;
-              v1x = c1x; v1y = c1y; v1z = c1z;
-              v2x = c2x; v2y = c2y; v2z = c2z;
-              v3x = c3x; v3y = c3y; v3z = c3z;
-              a0 = ao0; a1 = ao1; a2 = ao2; a3 = ao3;
+              v0x = c0x;
+              v0y = c0y;
+              v0z = c0z;
+              v1x = c1x;
+              v1y = c1y;
+              v1z = c1z;
+              v2x = c2x;
+              v2y = c2y;
+              v2z = c2z;
+              v3x = c3x;
+              v3y = c3y;
+              v3z = c3z;
+              a0 = ao0;
+              a1 = ao1;
+              a2 = ao2;
+              a3 = ao3;
             } else {
-              v0x = c1x; v0y = c1y; v0z = c1z;
-              v1x = c0x; v1y = c0y; v1z = c0z;
-              v2x = c3x; v2y = c3y; v2z = c3z;
-              v3x = c2x; v3y = c2y; v3z = c2z;
-              a0 = ao1; a1 = ao0; a2 = ao3; a3 = ao2;
+              v0x = c1x;
+              v0y = c1y;
+              v0z = c1z;
+              v1x = c0x;
+              v1y = c0y;
+              v1z = c0z;
+              v2x = c3x;
+              v2y = c3y;
+              v2z = c3z;
+              v3x = c2x;
+              v3y = c2y;
+              v3z = c2z;
+              a0 = ao1;
+              a1 = ao0;
+              a2 = ao3;
+              a3 = ao2;
             }
 
             const isTransparent = trans === 1;
@@ -1702,10 +1910,14 @@ export function voxelApi(gpu) {
                 // v0=(0,h), v1=(w,h), v2=(w,0), v3=(0,0) in block units
                 // Map each block to one full tile repetition
                 uvArr.push(
-                  tileU, tileV + tileSizeV * h,
-                  tileU + tileSizeU * w, tileV + tileSizeV * h,
-                  tileU + tileSizeU * w, tileV,
-                  tileU, tileV
+                  tileU,
+                  tileV + tileSizeV * h,
+                  tileU + tileSizeU * w,
+                  tileV + tileSizeV * h,
+                  tileU + tileSizeU * w,
+                  tileV,
+                  tileU,
+                  tileV
                 );
               } else {
                 uvArr.push(0, h, w, h, w, 0, 0, 0);
@@ -1876,19 +2088,15 @@ export function voxelApi(gpu) {
   // Instead of generating all chunks synchronously, queue them by priority
   // (distance to player) and process a limited number per frame.
 
-  const chunkQueue = [];        // pending chunk coordinates [{cx, cz, dist}]
+  const chunkQueue = []; // pending chunk coordinates [{cx, cz, dist}]
   const chunkQueueSet = new Set(); // O(1) duplicate check for queue
-  let queueDirty = false;       // only sort when new items added
-  let queuePlayerCX = 0;       // last known player chunk position
-  let queuePlayerCZ = 0;
-  let maxTerrainGenPerFrame = 2;   // max chunks to generate per frame
+  let queueDirty = false; // only sort when new items added
+  let maxTerrainGenPerFrame = 2; // max chunks to generate per frame
   let maxMeshRebuildsPerFrame = 4; // max chunk meshes to rebuild per frame
 
   function updateChunks(playerX, playerZ) {
     const centerChunkX = Math.floor(playerX / CHUNK_SIZE);
     const centerChunkZ = Math.floor(playerZ / CHUNK_SIZE);
-    queuePlayerCX = centerChunkX;
-    queuePlayerCZ = centerChunkZ;
 
     // Phase 1: Queue any missing chunks (fast — just checks hash map + Set)
     for (let dx = -RENDER_DISTANCE; dx <= RENDER_DISTANCE; dx++) {
@@ -1953,8 +2161,16 @@ export function voxelApi(gpu) {
 
     // Phase 3: Rebuild dirty chunk meshes (budget-limited)
     let rebuilt = 0;
-    for (let dx = -RENDER_DISTANCE; dx <= RENDER_DISTANCE && rebuilt < maxMeshRebuildsPerFrame; dx++) {
-      for (let dz = -RENDER_DISTANCE; dz <= RENDER_DISTANCE && rebuilt < maxMeshRebuildsPerFrame; dz++) {
+    for (
+      let dx = -RENDER_DISTANCE;
+      dx <= RENDER_DISTANCE && rebuilt < maxMeshRebuildsPerFrame;
+      dx++
+    ) {
+      for (
+        let dz = -RENDER_DISTANCE;
+        dz <= RENDER_DISTANCE && rebuilt < maxMeshRebuildsPerFrame;
+        dz++
+      ) {
         const cx = centerChunkX + dx;
         const cz = centerChunkZ + dz;
         const key = `${cx},${cz}`;
@@ -2309,7 +2525,8 @@ export function voxelApi(gpu) {
       for (let dx = -3; dx <= 3; dx++) {
         for (let dy = -2; dy <= 2; dy++) {
           for (let dz = -3; dz <= 3; dz++) {
-            if (dx * dx + dy * dy * 2 + dz * dz <= 12) setB(x + dx, leafY + dy, z + dz, BLOCK_TYPES.LEAVES);
+            if (dx * dx + dy * dy * 2 + dz * dz <= 12)
+              setB(x + dx, leafY + dy, z + dz, BLOCK_TYPES.LEAVES);
           }
         }
       }
@@ -2333,7 +2550,8 @@ export function voxelApi(gpu) {
       for (let dx = -2; dx <= 2; dx++) {
         for (let dy = -2; dy <= 2; dy++) {
           for (let dz = -2; dz <= 2; dz++) {
-            if (Math.abs(dx) + Math.abs(dy) + Math.abs(dz) < 4) setB(x + dx, leafY + dy, z + dz, BLOCK_TYPES.LEAVES);
+            if (Math.abs(dx) + Math.abs(dy) + Math.abs(dz) < 4)
+              setB(x + dx, leafY + dy, z + dz, BLOCK_TYPES.LEAVES);
           }
         }
       }
@@ -2554,7 +2772,7 @@ export function voxelApi(gpu) {
   // Entities integrate with the voxel physics system (swept AABB) and have
   // optional AI callbacks, health, and Three.js mesh attachment.
 
-  const entities = new Map();   // id -> entity
+  const entities = new Map(); // id -> entity
   let nextEntityId = 1;
   const ENTITY_GRAVITY = -20;
 
@@ -2869,8 +3087,10 @@ export function voxelApi(gpu) {
     if (opts.seaLevel !== undefined) SEA_LEVEL = opts.seaLevel;
     if (opts.generateTerrain !== undefined) customTerrainGenerator = opts.generateTerrain;
     if (opts.dayTime !== undefined) setDayTime(opts.dayTime);
-    if (opts.maxTerrainGenPerFrame !== undefined) maxTerrainGenPerFrame = opts.maxTerrainGenPerFrame;
-    if (opts.maxMeshRebuildsPerFrame !== undefined) maxMeshRebuildsPerFrame = opts.maxMeshRebuildsPerFrame;
+    if (opts.maxTerrainGenPerFrame !== undefined)
+      maxTerrainGenPerFrame = opts.maxTerrainGenPerFrame;
+    if (opts.maxMeshRebuildsPerFrame !== undefined)
+      maxMeshRebuildsPerFrame = opts.maxMeshRebuildsPerFrame;
     // Performance feature toggles — mark chunks dirty when visual settings change
     let needsRemesh = false;
     if (opts.enableAO !== undefined && opts.enableAO !== enableAO) {

@@ -344,30 +344,34 @@ function handleInput() {
 
   // P key = save world
   if (keyp('KeyP') && typeof saveVoxelWorld === 'function') {
-    saveVoxelWorld('minecraft-demo').then(() => {
-      saveMessage = 'World Saved!';
-      saveMessageTimer = 120;
-    }).catch(() => {
-      saveMessage = 'Save Failed!';
-      saveMessageTimer = 120;
-    });
+    saveVoxelWorld('minecraft-demo')
+      .then(() => {
+        saveMessage = 'World Saved!';
+        saveMessageTimer = 120;
+      })
+      .catch(() => {
+        saveMessage = 'Save Failed!';
+        saveMessageTimer = 120;
+      });
   }
 
   // L key = load world
   if (keyp('KeyL') && typeof loadVoxelWorld === 'function') {
-    loadVoxelWorld('minecraft-demo').then((loaded) => {
-      if (loaded) {
-        saveMessage = 'World Loaded!';
+    loadVoxelWorld('minecraft-demo')
+      .then(loaded => {
+        if (loaded) {
+          saveMessage = 'World Loaded!';
+          saveMessageTimer = 120;
+          updateVoxelWorld(player.x, player.z);
+        } else {
+          saveMessage = 'No Save Found';
+          saveMessageTimer = 120;
+        }
+      })
+      .catch(() => {
+        saveMessage = 'Load Failed!';
         saveMessageTimer = 120;
-        updateVoxelWorld(player.x, player.z);
-      } else {
-        saveMessage = 'No Save Found';
-        saveMessageTimer = 120;
-      }
-    }).catch(() => {
-      saveMessage = 'Load Failed!';
-      saveMessageTimer = 120;
-    });
+      });
   }
 
   // T key = toggle textures

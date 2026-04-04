@@ -7,12 +7,12 @@ let msg = '';
 let msgTimer = 0;
 
 const MOB_DEFS = [
-  { type: 'pig',     color: 0xffaaaa, size: [0.8, 0.8, 0.8],  health: 10 },
-  { type: 'cow',     color: 0x886644, size: [1.0, 1.2, 1.0],  health: 15 },
-  { type: 'chicken', color: 0xffffff, size: [0.5, 0.6, 0.5],  health: 5 },
-  { type: 'sheep',   color: 0xeeeeee, size: [0.8, 0.9, 0.8],  health: 10 },
-  { type: 'zombie',  color: 0x44aa44, size: [0.7, 1.6, 0.7],  health: 20 },
-  { type: 'slime',   color: 0x44ff44, size: [0.6, 0.6, 0.6],  health: 8 },
+  { type: 'pig', color: 0xffaaaa, size: [0.8, 0.8, 0.8], health: 10 },
+  { type: 'cow', color: 0x886644, size: [1.0, 1.2, 1.0], health: 15 },
+  { type: 'chicken', color: 0xffffff, size: [0.5, 0.6, 0.5], health: 5 },
+  { type: 'sheep', color: 0xeeeeee, size: [0.8, 0.9, 0.8], health: 10 },
+  { type: 'zombie', color: 0x44aa44, size: [0.7, 1.6, 0.7], health: 20 },
+  { type: 'slime', color: 0x44ff44, size: [0.6, 0.6, 0.6], health: 8 },
 ];
 
 // Simple wander AI
@@ -121,11 +121,24 @@ export function update(dt) {
   if (key('ArrowUp') && player.pitch < 1.4) player.pitch += 0.04;
   if (key('ArrowDown') && player.pitch > -1.4) player.pitch -= 0.04;
 
-  let dx = 0, dz = 0;
-  if (key('KeyW')) { dx -= sinY; dz -= cosY; }
-  if (key('KeyS')) { dx += sinY; dz += cosY; }
-  if (key('KeyA')) { dx -= cosY; dz += sinY; }
-  if (key('KeyD')) { dx += cosY; dz -= sinY; }
+  let dx = 0,
+    dz = 0;
+  if (key('KeyW')) {
+    dx -= sinY;
+    dz -= cosY;
+  }
+  if (key('KeyS')) {
+    dx += sinY;
+    dz += cosY;
+  }
+  if (key('KeyA')) {
+    dx -= cosY;
+    dz += sinY;
+  }
+  if (key('KeyD')) {
+    dx += cosY;
+    dz -= sinY;
+  }
 
   if (dx !== 0 || dz !== 0) {
     const len = Math.sqrt(dx * dx + dz * dz);
@@ -136,16 +149,30 @@ export function update(dt) {
     player.vz = 0;
   }
 
-  if (key('Space') && player.onGround) { player.vy = 0.35; player.onGround = false; }
+  if (key('Space') && player.onGround) {
+    player.vy = 0.35;
+    player.onGround = false;
+  }
   player.vy -= 0.02;
 
   if (typeof moveVoxelEntity === 'function') {
-    const r = moveVoxelEntity([player.x, player.y, player.z], [player.vx, player.vy, player.vz], [0.6, 1.8, 0.6], 1.0);
-    player.x = r.position[0]; player.y = r.position[1]; player.z = r.position[2];
-    player.vy = r.velocity[1]; player.onGround = r.grounded;
+    const r = moveVoxelEntity(
+      [player.x, player.y, player.z],
+      [player.vx, player.vy, player.vz],
+      [0.6, 1.8, 0.6],
+      1.0
+    );
+    player.x = r.position[0];
+    player.y = r.position[1];
+    player.z = r.position[2];
+    player.vy = r.velocity[1];
+    player.onGround = r.grounded;
   }
 
-  if (player.y < -10) { player.y = 80; player.vy = 0; }
+  if (player.y < -10) {
+    player.y = 80;
+    player.vy = 0;
+  }
 
   // Tab through mob types
   for (let i = 0; i < MOB_DEFS.length; i++) {
@@ -201,7 +228,10 @@ export function update(dt) {
   if (msgTimer > 0) msgTimer--;
 }
 
-function showMsg(text) { msg = text; msgTimer = 120; }
+function showMsg(text) {
+  msg = text;
+  msgTimer = 120;
+}
 
 export function draw() {
   if (!loaded) {

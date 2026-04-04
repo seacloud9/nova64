@@ -3259,7 +3259,7 @@ function drawTitle() {
         }
       );
       drawPulsingText(
-        'Press SPACE for New Game',
+        'Press A / Tap to Start',
         320,
         275,
         rgba8(200, 200, 200, Math.floor(promptFade * 220)),
@@ -3271,7 +3271,7 @@ function drawTitle() {
       );
     } else {
       drawPulsingText(
-        'Press SPACE to begin your quest',
+        'Press A / Tap to begin your quest',
         320,
         260,
         rgba8(255, 255, 255, Math.floor(promptFade * 255)),
@@ -3643,7 +3643,7 @@ function drawCombatUI() {
     } else {
       printCentered('DEFEAT', 320, H - 70, rgba8(200, 40, 40, 255), 2);
     }
-    printCentered('Press SPACE to continue', 320, H - 40, rgba8(180, 180, 200, 200));
+    printCentered('Press A / Tap to continue', 320, H - 40, rgba8(180, 180, 200, 200));
   }
 
   // Party HP along right side
@@ -3843,7 +3843,7 @@ function drawGameOver() {
 
   // Pulsing restart prompt using pulse() for smooth oscillation
   const restartAlpha = Math.floor(pulse(animTimer, 1.5) * 120 + 135);
-  printCentered('Press SPACE to try again', 320, 280, rgba8(255, 255, 255, restartAlpha));
+  printCentered('Press A / Tap to try again', 320, 280, rgba8(255, 255, 255, restartAlpha));
   // Interactive restart button (createButton/updateButton/drawButton)
   if (restartButton) {
     updateButton(restartButton);
@@ -3924,5 +3924,5 @@ function drawVictory() {
 
   // Pulsing restart prompt using pulse() for smooth oscillation
   const replayAlpha = Math.floor(pulse(animTimer, 1.5) * 120 + 135);
-  printCentered('Press SPACE to play again', 320, 300, rgba8(255, 255, 255, replayAlpha));
+  printCentered('Press A / Tap to play again', 320, 300, rgba8(255, 255, 255, replayAlpha));
 }

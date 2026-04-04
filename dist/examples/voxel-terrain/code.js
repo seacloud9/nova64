@@ -75,12 +75,25 @@ export function update(dt) {
   if (key('ArrowUp') && player.pitch < 1.4) player.pitch += 0.04;
   if (key('ArrowDown') && player.pitch > -1.4) player.pitch -= 0.04;
 
-  let dx = 0, dz = 0;
+  let dx = 0,
+    dz = 0;
   const speed = flyMode ? 0.3 : 0.12;
-  if (key('KeyW')) { dx -= sinY; dz -= cosY; }
-  if (key('KeyS')) { dx += sinY; dz += cosY; }
-  if (key('KeyA')) { dx -= cosY; dz += sinY; }
-  if (key('KeyD')) { dx += cosY; dz -= sinY; }
+  if (key('KeyW')) {
+    dx -= sinY;
+    dz -= cosY;
+  }
+  if (key('KeyS')) {
+    dx += sinY;
+    dz += cosY;
+  }
+  if (key('KeyA')) {
+    dx -= cosY;
+    dz += sinY;
+  }
+  if (key('KeyD')) {
+    dx += cosY;
+    dz -= sinY;
+  }
 
   if (dx !== 0 || dz !== 0) {
     const len = Math.sqrt(dx * dx + dz * dz);
@@ -126,17 +139,31 @@ export function update(dt) {
     player.x += player.vx;
     player.z += player.vz;
   } else {
-    if (key('Space') && player.onGround) { player.vy = 0.35; player.onGround = false; }
+    if (key('Space') && player.onGround) {
+      player.vy = 0.35;
+      player.onGround = false;
+    }
     player.vy -= 0.02;
     if (typeof moveVoxelEntity === 'function') {
-      const r = moveVoxelEntity([player.x, player.y, player.z], [player.vx, player.vy, player.vz], [0.6, 1.8, 0.6], 1.0);
-      player.x = r.position[0]; player.y = r.position[1]; player.z = r.position[2];
-      player.vy = r.velocity[1]; player.onGround = r.grounded;
+      const r = moveVoxelEntity(
+        [player.x, player.y, player.z],
+        [player.vx, player.vy, player.vz],
+        [0.6, 1.8, 0.6],
+        1.0
+      );
+      player.x = r.position[0];
+      player.y = r.position[1];
+      player.z = r.position[2];
+      player.vy = r.velocity[1];
+      player.onGround = r.grounded;
       if (r.inWater && key('Space')) player.vy = 0.12;
     }
   }
 
-  if (player.y < -10) { player.y = 80; player.vy = 0; }
+  if (player.y < -10) {
+    player.y = 80;
+    player.vy = 0;
+  }
 
   // Camera
   setCameraPosition(player.x, player.y + 0.8, player.z);
@@ -150,7 +177,11 @@ export function update(dt) {
   if (loadFrame++ % 10 === 0) {
     if (typeof getVoxelBiome === 'function') biome = getVoxelBiome(player.x, player.z);
     if (lightingOn && typeof getVoxelLightLevel === 'function') {
-      lightLevel = getVoxelLightLevel(Math.floor(player.x), Math.floor(player.y + 1), Math.floor(player.z));
+      lightLevel = getVoxelLightLevel(
+        Math.floor(player.x),
+        Math.floor(player.y + 1),
+        Math.floor(player.z)
+      );
     }
   }
 
@@ -191,5 +222,10 @@ export function draw() {
   // Controls
   const mode = flyMode ? '[FLY]' : '[WALK]';
   print(`WASD=Move  Arrows=Look  Space=Jump  G=Fly${mode}`, 10, 330, rgba8(255, 255, 255, 160));
-  print(`T=Tex${texturesOn ? ':ON' : ':OFF'}  O=AO${aoOn ? ':ON' : ':OFF'}  L=Shad${shadowsOn ? ':ON' : ':OFF'}  P=Light${lightingOn ? ':ON' : ':OFF'}`, 10, 345, rgba8(200, 200, 200, 140));
+  print(
+    `T=Tex${texturesOn ? ':ON' : ':OFF'}  O=AO${aoOn ? ':ON' : ':OFF'}  L=Shad${shadowsOn ? ':ON' : ':OFF'}  P=Light${lightingOn ? ':ON' : ':OFF'}`,
+    10,
+    345,
+    rgba8(200, 200, 200, 140)
+  );
 }

@@ -8,15 +8,15 @@ let msgTimer = 0;
 
 // Building palette
 const PALETTE = [
-  { id: 1,  name: 'GRASS',     color: 0x55cc33 },
-  { id: 3,  name: 'STONE',     color: 0xaaaaaa },
-  { id: 9,  name: 'PLANKS',    color: 0xddaa55 },
-  { id: 6,  name: 'WOOD',      color: 0x774422 },
-  { id: 11, name: 'BRICK',     color: 0xcc4433 },
-  { id: 8,  name: 'COBBLE',    color: 0x667788 },
-  { id: 4,  name: 'SAND',      color: 0xffdd88 },
-  { id: 22, name: 'GLOW',      color: 0xffeeaa },
-  { id: 21, name: 'TORCH',     color: 0xffdd44 },
+  { id: 1, name: 'GRASS', color: 0x55cc33 },
+  { id: 3, name: 'STONE', color: 0xaaaaaa },
+  { id: 9, name: 'PLANKS', color: 0xddaa55 },
+  { id: 6, name: 'WOOD', color: 0x774422 },
+  { id: 11, name: 'BRICK', color: 0xcc4433 },
+  { id: 8, name: 'COBBLE', color: 0x667788 },
+  { id: 4, name: 'SAND', color: 0xffdd88 },
+  { id: 22, name: 'GLOW', color: 0xffeeaa },
+  { id: 21, name: 'TORCH', color: 0xffdd44 },
 ];
 
 export function init() {
@@ -51,11 +51,25 @@ export function update(dt) {
   if (key('ArrowUp') && player.pitch < 1.4) player.pitch += 0.04;
   if (key('ArrowDown') && player.pitch > -1.4) player.pitch -= 0.04;
 
-  let dx = 0, dz = 0, dy = 0;
-  if (key('KeyW')) { dx -= sinY; dz -= cosY; }
-  if (key('KeyS')) { dx += sinY; dz += cosY; }
-  if (key('KeyA')) { dx -= cosY; dz += sinY; }
-  if (key('KeyD')) { dx += cosY; dz -= sinY; }
+  let dx = 0,
+    dz = 0,
+    dy = 0;
+  if (key('KeyW')) {
+    dx -= sinY;
+    dz -= cosY;
+  }
+  if (key('KeyS')) {
+    dx += sinY;
+    dz += cosY;
+  }
+  if (key('KeyA')) {
+    dx -= cosY;
+    dz += sinY;
+  }
+  if (key('KeyD')) {
+    dx += cosY;
+    dz -= sinY;
+  }
   if (key('Space')) dy += 1;
   if (key('ShiftLeft')) dy -= 1;
 
@@ -153,10 +167,20 @@ export function draw() {
     print(`${i + 1}`, bx + 10, hbY + 5, rgba8(255, 255, 255, 220));
   }
   // Block name
-  print(PALETTE[selectedIdx].name, (640 - PALETTE[selectedIdx].name.length * 8) / 2, hbY - 14, 0xffffff);
+  print(
+    PALETTE[selectedIdx].name,
+    (640 - PALETTE[selectedIdx].name.length * 8) / 2,
+    hbY - 14,
+    0xffffff
+  );
 
   // Controls
-  print('WASD=Move  Space/Shift=Up/Down  F=Break  E=Place  P=Platform  1-9=Block', 20, 20, rgba8(255, 255, 255, 160));
+  print(
+    'WASD=Move  Space/Shift=Up/Down  F=Break  E=Place  P=Platform  1-9=Block',
+    20,
+    20,
+    rgba8(255, 255, 255, 160)
+  );
 
   // Message
   if (msgTimer > 0) {

@@ -879,7 +879,7 @@ export function update(dt) {
   updateCooldown(potionCd, dt);
 
   if (gameState === 'start') {
-    if (keyp('Space') || keyp('Enter')) {
+    if (keyp('Space') || keyp('Enter') || btnp(13)) {
       gameState = 'playing';
       sfx('confirm');
     }
@@ -888,7 +888,7 @@ export function update(dt) {
   }
 
   if (gameState === 'dead') {
-    if (keyp('Space') || keyp('Enter')) init();
+    if (keyp('Space') || keyp('Enter') || btnp(13)) init();
     return;
   }
 
@@ -990,7 +990,7 @@ export function draw() {
     printCentered('Walk into enemies to attack!', 320, 238, rgba8(200, 200, 160));
     const pulse = Math.sin(time * 3) * 0.5 + 0.5;
     printCentered(
-      'PRESS SPACE TO DELVE',
+      'TAP / PRESS A TO DELVE',
       320,
       280,
       rgba8(255, 255, 100, Math.floor(100 + pulse * 155))
@@ -1021,7 +1021,7 @@ export function draw() {
     drawGlowText(rating, 260, 170, rgba8(255, 215, 0), rgba8(180, 150, 0));
     const pulse = Math.sin(time * 2) * 0.5 + 0.5;
     printCentered(
-      'PRESS SPACE TO TRY AGAIN',
+      'TAP / PRESS A TO TRY AGAIN',
       320,
       240,
       rgba8(200, 150, 150, Math.floor(120 + pulse * 135))

@@ -30,6 +30,8 @@
         font-family: 'Inter', sans-serif;
         overflow-x: hidden;
         overflow-y: auto;
+        overscroll-behavior: none;
+        -webkit-overflow-scrolling: touch;
         background-image:
           radial-gradient(circle at 50% 0%, rgba(14, 165, 233, 0.1) 0%, transparent 50%),
           radial-gradient(circle at 100% 100%, rgba(244, 63, 94, 0.05) 0%, transparent 50%);
@@ -102,6 +104,8 @@
         display: block;
         max-width: 100%;
         height: auto;
+        touch-action: none;
+        -webkit-touch-callout: none;
       }
 
       /* CRT Scanline Overlay */
@@ -413,14 +417,30 @@
       }
 
       .d-pad {
-        grid-template-columns: repeat(3, 50px);
-        grid-template-rows: repeat(3, 50px);
+        grid-template-columns: repeat(3, 58px);
+        grid-template-rows: repeat(3, 58px);
       }
 
       .action-buttons {
-        grid-template-columns: repeat(2, 60px);
-        grid-template-rows: repeat(2, 60px);
+        grid-template-columns: repeat(2, 68px);
+        grid-template-rows: repeat(2, 68px);
         transform: rotate(-15deg);
+      }
+
+      .start-select-buttons {
+        display: flex;
+        justify-content: center;
+        gap: 16px;
+        margin-top: 10px;
+      }
+
+      .btn-start {
+        min-width: 80px;
+        height: 36px;
+        border-radius: 18px;
+        font-size: 13px;
+        letter-spacing: 2px;
+        transform: none;
       }
 
       .btn-touch {
@@ -533,6 +553,10 @@
             <div class="btn-touch btn-a" data-keys='["Space", "Enter"]'>A</div>
             <div class="btn-touch btn-b" data-keys='["KeyZ", "KeyX"]'>B</div>
           </div>
+        </div>
+        <div class="mobile-controls start-select-buttons">
+          <div class="btn-touch btn-start" data-keys='["Enter"]'>START</div>
+          <div class="btn-touch btn-start" data-keys='["Space"]'>SELECT</div>
         </div>
       </div>
       <div class="panel">

@@ -1,4 +1,5 @@
 // Minecraft Demo - Ultimate Edition with Biomes, Ores, and Caves
+let lastDayTime = -1;
 let player = {
   x: 0,
   y: 80,
@@ -21,6 +22,10 @@ let isLoaded = false;
 let loadProgress = 0;
 let currentBiome = 'Plains';
 let selectedHotbarIdx = 0;
+let saveMessage = '';
+let saveMessageTimer = 0;
+let texturesEnabled = true;
+let mobSpawnTimer = 0;
 
 const BLOCK_NAMES = {
   1: 'GRASS',
@@ -67,6 +72,74 @@ const BIOME_COLORS = {
   Plains: rgba8(150, 220, 150),
 };
 
+// AI for wandering mobs — simple random walk with idle pauses
+function wanderAI(ent, dt) {
+  if (!ent.data.nextAction) ent.data.nextAction = 0;
+  if (ent.data.walking === undefined) ent.data.walking = false;
+  if (!ent.data.moveDir) ent.data.moveDir = Math.random() * Math.PI * 2;
+
+  ent.data.nextAction -= dt;
+  if (ent.data.nextAction <= 0) {
+    if (Math.random() < 0.4) {
+      // Idle
+      ent.data.walking = false;
+      ent.vx = 0;
+      ent.vz = 0;
+      ent.data.nextAction = 1.5 + Math.random() * 2;
+    } else {
+      // Walk in a random direction
+      ent.data.walking = true;
+      ent.data.moveDir = Math.random() * Math.PI * 2;
+      ent.data.nextAction = 1 + Math.random() * 3;
+    }
+  }
+
+  if (ent.data.walking) {
+    const speed = ent.type === 'chicken' ? 1.5 : 2.0;
+    ent.vx = Math.sin(ent.data.moveDir) * speed;
+    ent.vz = Math.cos(ent.data.moveDir) * speed;
+
+    // Random jump when on ground
+    if (ent.onGround && Math.random() < 0.01) {
+      ent.vy = 6;
+    }
+  }
+
+  // Rotate mesh to face movement direction
+  if (ent.mesh && (ent.vx !== 0 || ent.vz !== 0)) {
+    ent.mesh.rotation.y = Math.atan2(ent.vx, ent.vz);
+  }
+}
+
+// Spawn a few mobs around a position
+function spawnMobs(cx, cz) {
+  if (typeof spawnVoxelEntity !== 'function') return;
+  if (typeof getVoxelHighestBlock !== 'function') return;
+
+  const MOB_TYPES = [
+    { type: 'pig', color: 0xffaaaa, size: [0.8, 0.8, 0.8], health: 10 },
+    { type: 'cow', color: 0x886644, size: [1.0, 1.2, 1.0], health: 15 },
+    { type: 'chicken', color: 0xffffff, size: [0.5, 0.6, 0.5], health: 5 },
+    { type: 'sheep', color: 0xeeeeee, size: [0.8, 0.9, 0.8], health: 10 },
+  ];
+
+  for (let i = 0; i < 3; i++) {
+    const def = MOB_TYPES[Math.floor(Math.random() * MOB_TYPES.length)];
+    const mx = cx + (Math.random() - 0.5) * 30;
+    const mz = cz + (Math.random() - 0.5) * 30;
+    const my = getVoxelHighestBlock(Math.floor(mx), Math.floor(mz)) + 1;
+    if (my < 5) continue;
+
+    spawnVoxelEntity(def.type, [mx, my, mz], {
+      color: def.color,
+      size: def.size,
+      health: def.health,
+      gravity: true,
+      ai: wanderAI,
+    });
+  }
+}
+
 function createVoxelTexture() {
   const canvas = document.createElement('canvas');
   canvas.width = 64;
@@ -100,6 +173,10 @@ export function init() {
   createVoxelTexture();
   setCameraPosition(0, 80, 0);
   setFog(0x87ceeb, 20, 80);
+  // Enable procedural texture atlas
+  if (typeof enableVoxelTextures === 'function') {
+    enableVoxelTextures(true);
+  }
 }
 
 export function update() {
@@ -110,7 +187,9 @@ export function update() {
     loadState = 2;
     return;
   } else if (loadState === 2) {
-    if (typeof updateVoxelWorld === 'function') {
+    if (typeof forceLoadVoxelChunks === 'function') {
+      forceLoadVoxelChunks(0, 0);
+    } else if (typeof updateVoxelWorld === 'function') {
       updateVoxelWorld(0, 0);
     }
     // Use the new getVoxelHighestBlock API
@@ -122,6 +201,8 @@ export function update() {
     if (player.y < 5) player.y = 80;
     loadState = 3;
     isLoaded = true;
+    // Spawn initial mobs
+    spawnMobs(player.x, player.z);
     return;
   }
 
@@ -132,6 +213,15 @@ export function update() {
   let skyG = Math.sin(time) > 0 ? 206 : 10;
   let skyB = Math.sin(time) > 0 ? 235 : 20;
   setFog((skyR << 16) | (skyG << 8) | skyB, 20, 80);
+
+  // Sync voxel lighting with day/night cycle (throttled)
+  if (typeof setVoxelDayTime === 'function') {
+    const quantized = Math.round((time % 1.0) * 100) / 100;
+    if (quantized !== lastDayTime) {
+      lastDayTime = quantized;
+      setVoxelDayTime(quantized);
+    }
+  }
 
   // Detect current biome using the engine's built-in function
   if (typeof getVoxelBiome === 'function') {
@@ -145,6 +235,24 @@ export function update() {
 
   if (typeof updateVoxelWorld === 'function') {
     updateVoxelWorld(player.x, player.z);
+  }
+
+  // Update entities (physics + AI)
+  if (typeof updateVoxelEntities === 'function') {
+    updateVoxelEntities(1 / 60, [player.x, player.y, player.z]);
+  }
+
+  // Periodically spawn mobs if count is low
+  if (typeof getVoxelEntityCount === 'function') {
+    mobSpawnTimer++;
+    if (mobSpawnTimer > 300 && getVoxelEntityCount() < 12) {
+      spawnMobs(player.x, player.z);
+      mobSpawnTimer = 0;
+    }
+    // Cleanup dead entities
+    if (mobSpawnTimer % 120 === 0 && typeof cleanupVoxelEntities === 'function') {
+      cleanupVoxelEntities();
+    }
   }
 }
 
@@ -198,10 +306,22 @@ function handleInput() {
     }
   }
 
-  if (btnp(0)) { selectedHotbarIdx = 0; selectedBlock = HOTBAR_BLOCKS[0]; }
-  if (btnp(1)) { selectedHotbarIdx = 1; selectedBlock = HOTBAR_BLOCKS[1]; }
-  if (btnp(2)) { selectedHotbarIdx = 2; selectedBlock = HOTBAR_BLOCKS[2]; }
-  if (btnp(3)) { selectedHotbarIdx = 3; selectedBlock = HOTBAR_BLOCKS[3]; }
+  if (btnp(0)) {
+    selectedHotbarIdx = 0;
+    selectedBlock = HOTBAR_BLOCKS[0];
+  }
+  if (btnp(1)) {
+    selectedHotbarIdx = 1;
+    selectedBlock = HOTBAR_BLOCKS[1];
+  }
+  if (btnp(2)) {
+    selectedHotbarIdx = 2;
+    selectedBlock = HOTBAR_BLOCKS[2];
+  }
+  if (btnp(3)) {
+    selectedHotbarIdx = 3;
+    selectedBlock = HOTBAR_BLOCKS[3];
+  }
 
   // B key = respawn with new biome (random world + random position)
   if (keyp('KeyB') && typeof resetVoxelWorld === 'function') {
@@ -219,50 +339,110 @@ function handleInput() {
     player.onGround = false;
     player.yaw = 0;
     player.pitch = 0;
+    spawnMobs(player.x, player.z);
+  }
+
+  // P key = save world
+  if (keyp('KeyP') && typeof saveVoxelWorld === 'function') {
+    saveVoxelWorld('minecraft-demo').then(() => {
+      saveMessage = 'World Saved!';
+      saveMessageTimer = 120;
+    }).catch(() => {
+      saveMessage = 'Save Failed!';
+      saveMessageTimer = 120;
+    });
+  }
+
+  // L key = load world
+  if (keyp('KeyL') && typeof loadVoxelWorld === 'function') {
+    loadVoxelWorld('minecraft-demo').then((loaded) => {
+      if (loaded) {
+        saveMessage = 'World Loaded!';
+        saveMessageTimer = 120;
+        updateVoxelWorld(player.x, player.z);
+      } else {
+        saveMessage = 'No Save Found';
+        saveMessageTimer = 120;
+      }
+    }).catch(() => {
+      saveMessage = 'Load Failed!';
+      saveMessageTimer = 120;
+    });
+  }
+
+  // T key = toggle textures
+  if (keyp('KeyT') && typeof enableVoxelTextures === 'function') {
+    texturesEnabled = !texturesEnabled;
+    enableVoxelTextures(texturesEnabled);
+    saveMessage = texturesEnabled ? 'Textures ON' : 'Textures OFF';
+    saveMessageTimer = 90;
   }
 }
 
 function updatePhysics() {
   player.vy -= 0.02;
 
-  let nx = player.x + player.vx;
-  let ny = player.y + player.vy;
-  let nz = player.z + player.vz;
+  // Use the new swept AABB physics if available
+  if (typeof moveVoxelEntity === 'function') {
+    const result = moveVoxelEntity(
+      [player.x, player.y, player.z],
+      [player.vx, player.vy, player.vz],
+      [0.6, 1.8, 0.6],
+      1.0
+    );
+    player.x = result.position[0];
+    player.y = result.position[1];
+    player.z = result.position[2];
+    player.vx = result.velocity[0];
+    player.vy = result.velocity[1];
+    player.vz = result.velocity[2];
+    player.onGround = result.grounded;
 
-  player.onGround = false;
+    // Water buoyancy
+    if (result.inWater && key('Space')) {
+      player.vy = 0.12;
+    }
+  } else {
+    // Legacy fallback
+    let nx = player.x + player.vx;
+    let ny = player.y + player.vy;
+    let nz = player.z + player.vz;
 
-  if (
-    checkCollision(player.x, ny - player.size, player.z) ||
-    checkCollision(player.x, ny + 0.2, player.z)
-  ) {
-    if (player.vy < 0) player.onGround = true;
-    player.vy = 0;
-    ny = player.y;
-  }
-  if (
-    checkCollision(
-      nx + (player.vx > 0 ? player.size : -player.size),
-      player.y - player.size + 0.1,
-      player.z
-    )
-  ) {
-    player.vx = 0;
-    nx = player.x;
-  }
-  if (
-    checkCollision(
-      player.x,
-      player.y - player.size + 0.1,
-      nz + (player.vz > 0 ? player.size : -player.size)
-    )
-  ) {
-    player.vz = 0;
-    nz = player.z;
-  }
+    player.onGround = false;
 
-  player.x = nx;
-  player.y = ny;
-  player.z = nz;
+    if (
+      checkCollision(player.x, ny - player.size, player.z) ||
+      checkCollision(player.x, ny + 0.2, player.z)
+    ) {
+      if (player.vy < 0) player.onGround = true;
+      player.vy = 0;
+      ny = player.y;
+    }
+    if (
+      checkCollision(
+        nx + (player.vx > 0 ? player.size : -player.size),
+        player.y - player.size + 0.1,
+        player.z
+      )
+    ) {
+      player.vx = 0;
+      nx = player.x;
+    }
+    if (
+      checkCollision(
+        player.x,
+        player.y - player.size + 0.1,
+        nz + (player.vz > 0 ? player.size : -player.size)
+      )
+    ) {
+      player.vz = 0;
+      nz = player.z;
+    }
+
+    player.x = nx;
+    player.y = ny;
+    player.z = nz;
+  }
 
   // Antifall fallback
   if (player.y < -10) {
@@ -293,11 +473,7 @@ function handleBlockInteraction() {
     const dy = Math.sin(player.pitch);
     const dz = -Math.cos(player.yaw) * Math.cos(player.pitch);
 
-    const result = raycastVoxelBlock(
-      [player.x, player.y + 0.8, player.z],
-      [dx, dy, dz],
-      6
-    );
+    const result = raycastVoxelBlock([player.x, player.y + 0.8, player.z], [dx, dy, dz], 6);
 
     if (result && result.hit) {
       if (keyp('KeyF') || keyp('KeyQ')) {
@@ -358,9 +534,23 @@ export function draw() {
 
   // Controls hint
   print(
-    'WASD=Move Space=Jump Arrows=Look F=Break E=Place 1-9=Block B=New World',
-    30,
+    'WASD=Move Space=Jump F=Break E=Place 1-9=Block P=Save L=Load T=Textures',
+    20,
     20,
     rgba8(255, 255, 255, 200)
   );
+
+  // Entity count
+  if (typeof getVoxelEntityCount === 'function') {
+    const ec = getVoxelEntityCount();
+    if (ec > 0) print(`Mobs: ${ec}`, 430, 4, rgba8(180, 255, 180));
+  }
+
+  // Save/load message
+  if (saveMessageTimer > 0) {
+    saveMessageTimer--;
+    const alpha = Math.min(255, saveMessageTimer * 4);
+    const msgX = (640 - saveMessage.length * 8) / 2;
+    print(saveMessage, msgX, 160, rgba8(255, 255, 100, alpha));
+  }
 }

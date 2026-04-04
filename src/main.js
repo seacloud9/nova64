@@ -249,6 +249,9 @@ const gameMap = {
   demoscene: '/examples/demoscene/code.js',
   'space-combat': '/examples/star-fox-nova-3d/code.js',
   minecraft: '/examples/minecraft-demo/code.js',
+  'voxel-terrain': '/examples/voxel-terrain/code.js',
+  'voxel-creative': '/examples/voxel-creative/code.js',
+  'voxel-creatures': '/examples/voxel-creatures/code.js',
   boids: '/examples/boids-flocking/code.js',
   'game-of-life': '/examples/game-of-life-3d/code.js',
   nature: '/examples/nature-explorer-3d/code.js',
@@ -293,6 +296,9 @@ const demoMap = {
   'nature-explorer-3d': '/examples/nature-explorer-3d/code.js',
   'dungeon-crawler-3d': '/examples/dungeon-crawler-3d/code.js',
   'wizardry-3d': '/examples/wizardry-3d/code.js',
+  'voxel-terrain': '/examples/voxel-terrain/code.js',
+  'voxel-creative': '/examples/voxel-creative/code.js',
+  'voxel-creatures': '/examples/voxel-creatures/code.js',
 };
 
 // default cart - load from URL param or default to space-harrier-3d

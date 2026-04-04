@@ -347,18 +347,25 @@ runtime/
 
 ## Implementation Priority
 
-| Phase | Name | Impact | Effort | Priority |
-|-------|------|--------|--------|----------|
-| 1 | Foundation Fixes & Registry | High | Small | **NOW** |
-| 2 | Real Noise & Terrain | High | Small | **NOW** |
-| 3 | Greedy Meshing | Very High | Medium | **NEXT** |
-| 4 | Lighting System | High | Medium-Large | **NEXT** |
-| 5 | DDA Raycast & Physics | Medium | Small | **NEXT** |
-| 6 | Texture Atlas | Medium | Medium | Later |
-| 7 | Chunk Workers | High | Medium | Later |
-| 8 | World Persistence | Medium | Medium | Later |
-| 9 | Entity System | Medium | Large | Future |
+| Phase | Name | Impact | Effort | Status |
+|-------|------|--------|--------|--------|
+| 1 | Foundation Fixes & Registry | High | Small | **DONE** ✅ |
+| 2 | Real Noise & Terrain | High | Small | **DONE** ✅ |
+| 3 | Greedy Meshing + AO + Transparency | Very High | Medium | **DONE** ✅ |
+| 4 | Lighting System (Sky + Block + Day/Night) | High | Medium-Large | **DONE** ✅ |
+| 5 | DDA Raycast & Swept AABB Physics | Medium | Small | **DONE** ✅ |
+| 6 | Texture Atlas | Medium | Medium | **DONE** ✅ |
+| 7 | Chunk Workers | High | Medium | **DONE** ✅ |
+| 8 | World Persistence (IndexedDB) | Medium | Medium | **DONE** ✅ |
+| 9 | Entity System | Medium | Large | **DONE** ✅ |
 | 10 | Advanced (Multiplayer, etc.) | High | Very Large | Future |
+
+### Additional Improvements (Done ✅)
+- **Biome-specific tree variety**: Oak, birch, spruce, jungle, acacia trees placed by biome
+- **All voxel globals registered in eslint config** for cart linting
+- **Procedural texture atlas**: 27 pixel-art tiles generated at runtime, per-face mapping (grass top/side/bottom), toggle with `enableVoxelTextures()`, custom atlas support via `loadVoxelTextureAtlas()`
+- **Async chunk queue with frame budgeting**: Priority queue sorted by distance to player, configurable `maxTerrainGenPerFrame` (default 2) and `maxMeshRebuildsPerFrame` (default 4), `forceLoadVoxelChunks()` for sync initial load
+- **Entity system with spatial hashing**: `spawnVoxelEntity()`, `updateVoxelEntities()`, `damageVoxelEntity()`, `getVoxelEntitiesInRadius()` with swept AABB physics, AI callbacks, auto mesh positioning, and 16-unit spatial hash for O(1) region queries
 
 ---
 

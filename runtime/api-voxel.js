@@ -258,6 +258,8 @@ function createBlockRegistry() {
       fluid: opts.fluid || false,
       lightEmit: opts.lightEmit || 0,
       lightBlock: opts.lightBlock !== undefined ? opts.lightBlock : 15,
+      // Texture atlas tile indices: { top, side, bottom } or single number for all faces
+      textureFaces: opts.textureFaces || null,
     };
   }
 
@@ -280,13 +282,29 @@ function createBlockRegistry() {
     const b = blocks[id];
     return b ? b.color : 0xff00ff;
   }
+  function getTextureFace(id, faceIdx) {
+    // faceIdx: 0=+Z, 1=-Z, 2=+X, 3=-X, 4=+Y(top), 5=-Y(bottom)
+    const b = blocks[id];
+    if (!b || !b.textureFaces) return -1;
+    const tf = b.textureFaces;
+    if (typeof tf === 'number') return tf;
+    if (faceIdx === 4) return tf.top !== undefined ? tf.top : tf.side !== undefined ? tf.side : -1;
+    if (faceIdx === 5)
+      return tf.bottom !== undefined ? tf.bottom : tf.side !== undefined ? tf.side : -1;
+    return tf.side !== undefined ? tf.side : -1;
+  }
 
-  // Register built-in blocks
+  // Register built-in blocks with texture tile indices
+  // Tile layout (8 columns x 4 rows = 32 tiles):
+  //  0=grass_top  1=grass_side  2=dirt  3=stone  4=sand  5=water  6=wood_side  7=wood_top
+  //  8=leaves  9=cobblestone  10=planks  11=glass  12=brick  13=snow  14=ice  15=bedrock
+  // 16=coal_ore  17=iron_ore  18=gold_ore  19=diamond_ore  20=gravel  21=clay  22=torch  23=glowstone
+  // 24=lava  25=obsidian  26=mossy_cobble
   register(0, { name: 'air', color: 0x000000, solid: false, transparent: true, lightBlock: 0 });
-  register(1, { name: 'grass', color: 0x55cc33 });
-  register(2, { name: 'dirt', color: 0x996644 });
-  register(3, { name: 'stone', color: 0xaaaaaa });
-  register(4, { name: 'sand', color: 0xffdd88 });
+  register(1, { name: 'grass', color: 0x55cc33, textureFaces: { top: 0, side: 1, bottom: 2 } });
+  register(2, { name: 'dirt', color: 0x996644, textureFaces: 2 });
+  register(3, { name: 'stone', color: 0xaaaaaa, textureFaces: 3 });
+  register(4, { name: 'sand', color: 0xffdd88, textureFaces: 4 });
   register(5, {
     name: 'water',
     color: 0x2288dd,
@@ -294,28 +312,41 @@ function createBlockRegistry() {
     transparent: true,
     fluid: true,
     lightBlock: 2,
+    textureFaces: 5,
   });
-  register(6, { name: 'wood', color: 0x774422 });
-  register(7, { name: 'leaves', color: 0x116622, transparent: true, lightBlock: 1 });
-  register(8, { name: 'cobblestone', color: 0x667788 });
-  register(9, { name: 'planks', color: 0xddaa55 });
+  register(6, { name: 'wood', color: 0x774422, textureFaces: { top: 7, side: 6, bottom: 7 } });
+  register(7, {
+    name: 'leaves',
+    color: 0x116622,
+    transparent: true,
+    lightBlock: 1,
+    textureFaces: 8,
+  });
+  register(8, { name: 'cobblestone', color: 0x667788, textureFaces: 9 });
+  register(9, { name: 'planks', color: 0xddaa55, textureFaces: 10 });
   register(10, {
     name: 'glass',
     color: 0xccffff,
     transparent: true,
     lightBlock: 0,
+    textureFaces: 11,
   });
-  register(11, { name: 'brick', color: 0xcc4433 });
-  register(12, { name: 'snow', color: 0xeeeeff });
-  register(13, { name: 'ice', color: 0x99ddff, transparent: true, lightBlock: 1 });
-  register(14, { name: 'bedrock', color: 0x333333 });
-  // New blocks (Phase 1)
-  register(15, { name: 'coal_ore', color: 0x444444 });
-  register(16, { name: 'iron_ore', color: 0xccaa88 });
-  register(17, { name: 'gold_ore', color: 0xffcc33 });
-  register(18, { name: 'diamond_ore', color: 0x44ffee });
-  register(19, { name: 'gravel', color: 0x888888 });
-  register(20, { name: 'clay', color: 0xbbaa99 });
+  register(11, { name: 'brick', color: 0xcc4433, textureFaces: 12 });
+  register(12, { name: 'snow', color: 0xeeeeff, textureFaces: 13 });
+  register(13, {
+    name: 'ice',
+    color: 0x99ddff,
+    transparent: true,
+    lightBlock: 1,
+    textureFaces: 14,
+  });
+  register(14, { name: 'bedrock', color: 0x333333, textureFaces: 15 });
+  register(15, { name: 'coal_ore', color: 0x444444, textureFaces: 16 });
+  register(16, { name: 'iron_ore', color: 0xccaa88, textureFaces: 17 });
+  register(17, { name: 'gold_ore', color: 0xffcc33, textureFaces: 18 });
+  register(18, { name: 'diamond_ore', color: 0x44ffee, textureFaces: 19 });
+  register(19, { name: 'gravel', color: 0x888888, textureFaces: 20 });
+  register(20, { name: 'clay', color: 0xbbaa99, textureFaces: 21 });
   register(21, {
     name: 'torch',
     color: 0xffdd44,
@@ -323,8 +354,9 @@ function createBlockRegistry() {
     transparent: true,
     lightEmit: 14,
     lightBlock: 0,
+    textureFaces: 22,
   });
-  register(22, { name: 'glowstone', color: 0xffeeaa, lightEmit: 15 });
+  register(22, { name: 'glowstone', color: 0xffeeaa, lightEmit: 15, textureFaces: 23 });
   register(23, {
     name: 'lava',
     color: 0xff4400,
@@ -332,11 +364,12 @@ function createBlockRegistry() {
     fluid: true,
     lightEmit: 15,
     lightBlock: 0,
+    textureFaces: 24,
   });
-  register(24, { name: 'obsidian', color: 0x220033 });
-  register(25, { name: 'mossy_cobblestone', color: 0x668855 });
+  register(24, { name: 'obsidian', color: 0x220033, textureFaces: 25 });
+  register(25, { name: 'mossy_cobblestone', color: 0x668855, textureFaces: 26 });
 
-  return { register, get, isSolid, isTransparent, isFluid, getColor, blocks };
+  return { register, get, isSolid, isTransparent, isFluid, getColor, getTextureFace, blocks };
 }
 
 // ─── Main Voxel API ─────────────────────────────────────────────────────────
@@ -349,6 +382,14 @@ export function voxelApi(gpu) {
   let CHUNK_HEIGHT = 128;
   let RENDER_DISTANCE = 4;
   let SEA_LEVEL = 62;
+
+  // Performance feature toggles (all on by default for full quality)
+  let enableAO = true; // Ambient occlusion — 12 neighbor lookups per visible face
+  let enableLighting = true; // Per-chunk BFS lighting propagation
+  let enableCaves = true; // 3D noise cave carving in terrain gen
+  let enableOres = true; // Ore vein generation in terrain gen
+  let enableTrees = true; // Tree placement in terrain gen
+  let enableShadows = true; // castShadow/receiveShadow on chunk meshes
 
   // Block type constants (backward compatible)
   const BLOCK_TYPES = {
@@ -389,6 +430,343 @@ export function voxelApi(gpu) {
   // Shared materials (fix material leak — one material for all chunks)
   let sharedOpaqueMaterial = null;
   let sharedTransparentMaterial = null;
+  let atlasTexture = null;
+  let atlasEnabled = false;
+
+  // ─── Texture Atlas System ──────────────────────────────────────────────
+  // Procedurally generates a 16x16 pixel-art texture atlas on a canvas.
+  // Each tile is TILE_PX × TILE_PX pixels, arranged in ATLAS_COLS columns.
+  const TILE_PX = 16;
+  const ATLAS_COLS = 8;
+  const ATLAS_ROWS = 4;
+
+  function seededRandom(seed) {
+    let s = seed | 0;
+    return function () {
+      s = (s * 1664525 + 1013904223) | 0;
+      return (s >>> 0) / 4294967296;
+    };
+  }
+
+  function hexToRgb(hex) {
+    return [(hex >> 16) & 0xff, (hex >> 8) & 0xff, hex & 0xff];
+  }
+
+  function drawNoise(ctx, x, y, w, h, baseColor, variation, rng) {
+    const [br, bg, bb] = hexToRgb(baseColor);
+    for (let py = 0; py < h; py++) {
+      for (let px = 0; px < w; px++) {
+        const v = (rng() - 0.5) * variation;
+        const r = Math.max(0, Math.min(255, br + v));
+        const g = Math.max(0, Math.min(255, bg + v));
+        const b = Math.max(0, Math.min(255, bb + v));
+        ctx.fillStyle = `rgb(${r | 0},${g | 0},${b | 0})`;
+        ctx.fillRect(x + px, y + py, 1, 1);
+      }
+    }
+  }
+
+  function drawTile(ctx, tileIdx, drawFn) {
+    const tx = (tileIdx % ATLAS_COLS) * TILE_PX;
+    const ty = Math.floor(tileIdx / ATLAS_COLS) * TILE_PX;
+    drawFn(ctx, tx, ty, TILE_PX);
+  }
+
+  function generateProceduralAtlas() {
+    if (typeof document === 'undefined') return null;
+    const canvas = document.createElement('canvas');
+    canvas.width = ATLAS_COLS * TILE_PX;
+    canvas.height = ATLAS_ROWS * TILE_PX;
+    const ctx = canvas.getContext('2d');
+    const rng = seededRandom(42);
+
+    // Tile 0: Grass top — green with subtle variation
+    drawTile(ctx, 0, (c, x, y, s) => {
+      drawNoise(c, x, y, s, s, 0x55cc33, 40, rng);
+      // Occasional darker spots
+      for (let i = 0; i < 6; i++) {
+        const px = (x + rng() * s) | 0;
+        const py = (y + rng() * s) | 0;
+        c.fillStyle = '#3a8a22';
+        c.fillRect(px, py, 1, 1);
+      }
+    });
+
+    // Tile 1: Grass side — dirt bottom with grass strip on top
+    drawTile(ctx, 1, (c, x, y, s) => {
+      drawNoise(c, x, y + 4, s, s - 4, 0x996644, 30, rng);
+      drawNoise(c, x, y, s, 4, 0x55cc33, 30, rng);
+      // Edge pixels
+      for (let px = 0; px < s; px++) {
+        if (rng() > 0.5) {
+          c.fillStyle = '#55cc33';
+          c.fillRect(x + px, y + 4, 1, 1);
+        }
+      }
+    });
+
+    // Tile 2: Dirt
+    drawTile(ctx, 2, (c, x, y, s) => {
+      drawNoise(c, x, y, s, s, 0x996644, 35, rng);
+      for (let i = 0; i < 4; i++) {
+        c.fillStyle = '#7a5533';
+        c.fillRect((x + rng() * s) | 0, (y + rng() * s) | 0, 2, 1);
+      }
+    });
+
+    // Tile 3: Stone — grey with cracks
+    drawTile(ctx, 3, (c, x, y, s) => {
+      drawNoise(c, x, y, s, s, 0xaaaaaa, 25, rng);
+      c.fillStyle = '#888888';
+      for (let i = 0; i < 3; i++) {
+        const sx = (x + rng() * (s - 4)) | 0;
+        const sy = (y + rng() * (s - 2)) | 0;
+        c.fillRect(sx, sy, (3 + rng() * 3) | 0, 1);
+      }
+    });
+
+    // Tile 4: Sand
+    drawTile(ctx, 4, (c, x, y, s) => {
+      drawNoise(c, x, y, s, s, 0xffdd88, 20, rng);
+    });
+
+    // Tile 5: Water — blue with wave highlights
+    drawTile(ctx, 5, (c, x, y, s) => {
+      drawNoise(c, x, y, s, s, 0x2288dd, 15, rng);
+      c.fillStyle = 'rgba(180,220,255,0.3)';
+      for (let i = 0; i < 3; i++) {
+        c.fillRect((x + rng() * (s - 5)) | 0, (y + rng() * s) | 0, 4, 1);
+      }
+    });
+
+    // Tile 6: Wood side — bark texture (vertical lines)
+    drawTile(ctx, 6, (c, x, y, s) => {
+      drawNoise(c, x, y, s, s, 0x774422, 20, rng);
+      c.fillStyle = '#5e3518';
+      for (let px = 0; px < s; px += 3 + ((rng() * 2) | 0)) {
+        for (let py = 0; py < s; py++) {
+          if (rng() > 0.3) c.fillRect(x + px, y + py, 1, 1);
+        }
+      }
+    });
+
+    // Tile 7: Wood top — rings
+    drawTile(ctx, 7, (c, x, y, s) => {
+      drawNoise(c, x, y, s, s, 0x997744, 15, rng);
+      const cx = s / 2,
+        cy = s / 2;
+      for (let r = 2; r < 7; r += 2) {
+        c.strokeStyle = '#664422';
+        c.lineWidth = 0.5;
+        c.beginPath();
+        c.arc(x + cx, y + cy, r, 0, Math.PI * 2);
+        c.stroke();
+      }
+    });
+
+    // Tile 8: Leaves — scattered green
+    drawTile(ctx, 8, (c, x, y, s) => {
+      drawNoise(c, x, y, s, s, 0x116622, 30, rng);
+      for (let i = 0; i < 12; i++) {
+        c.fillStyle = rng() > 0.5 ? '#0d5518' : '#1a8833';
+        c.fillRect((x + rng() * s) | 0, (y + rng() * s) | 0, 2, 2);
+      }
+    });
+
+    // Tile 9: Cobblestone — varied grey stones
+    drawTile(ctx, 9, (c, x, y, s) => {
+      drawNoise(c, x, y, s, s, 0x667788, 30, rng);
+      for (let i = 0; i < 6; i++) {
+        const shade = (80 + rng() * 60) | 0;
+        c.fillStyle = `rgb(${shade},${shade},${shade + 10})`;
+        c.fillRect(
+          (x + rng() * (s - 3)) | 0,
+          (y + rng() * (s - 3)) | 0,
+          (2 + rng() * 2) | 0,
+          (2 + rng() * 2) | 0
+        );
+      }
+    });
+
+    // Tile 10: Planks — horizontal wood grain
+    drawTile(ctx, 10, (c, x, y, s) => {
+      drawNoise(c, x, y, s, s, 0xddaa55, 15, rng);
+      c.fillStyle = '#c89940';
+      for (let py = 0; py < s; py += 4) {
+        c.fillRect(x, y + py, s, 1);
+      }
+    });
+
+    // Tile 11: Glass — mostly transparent with frame
+    drawTile(ctx, 11, (c, x, y, s) => {
+      c.fillStyle = 'rgba(200,240,255,0.3)';
+      c.fillRect(x, y, s, s);
+      c.fillStyle = '#99bbcc';
+      c.fillRect(x, y, s, 1);
+      c.fillRect(x, y + s - 1, s, 1);
+      c.fillRect(x, y, 1, s);
+      c.fillRect(x + s - 1, y, 1, s);
+      c.fillRect(x + s / 2, y, 1, s);
+      c.fillRect(x, y + s / 2, s, 1);
+    });
+
+    // Tile 12: Brick — red with mortar lines
+    drawTile(ctx, 12, (c, x, y, s) => {
+      drawNoise(c, x, y, s, s, 0xcc4433, 20, rng);
+      c.fillStyle = '#ccbbaa';
+      for (let r = 0; r < s; r += 4) {
+        c.fillRect(x, y + r, s, 1);
+        const off = r % 8 === 0 ? 0 : s / 2;
+        c.fillRect(x + off, y + r, 1, 4);
+        c.fillRect(x + off + s / 2, y + r, 1, 4);
+      }
+    });
+
+    // Tile 13: Snow
+    drawTile(ctx, 13, (c, x, y, s) => {
+      drawNoise(c, x, y, s, s, 0xeeeeff, 8, rng);
+    });
+
+    // Tile 14: Ice — blue-white with cracks
+    drawTile(ctx, 14, (c, x, y, s) => {
+      drawNoise(c, x, y, s, s, 0x99ddff, 12, rng);
+      c.fillStyle = '#bbeeFF';
+      c.fillRect(x + 3, y + 2, 1, 8);
+      c.fillRect(x + 10, y + 5, 1, 6);
+    });
+
+    // Tile 15: Bedrock — dark grey mottled
+    drawTile(ctx, 15, (c, x, y, s) => {
+      drawNoise(c, x, y, s, s, 0x333333, 30, rng);
+    });
+
+    // Tile 16-19: Ores (stone base with colored specks)
+    const oreSpeckColors = ['#111', '#ddaa77', '#ffcc00', '#33ddcc'];
+    for (let oi = 0; oi < 4; oi++) {
+      drawTile(ctx, 16 + oi, (c, x, y, s) => {
+        drawNoise(c, x, y, s, s, 0xaaaaaa, 25, rng);
+        c.fillStyle = oreSpeckColors[oi];
+        for (let i = 0; i < 5 + oi; i++) {
+          c.fillRect((x + rng() * (s - 2)) | 0, (y + rng() * (s - 2)) | 0, 2, 2);
+        }
+      });
+    }
+
+    // Tile 20: Gravel
+    drawTile(ctx, 20, (c, x, y, s) => {
+      drawNoise(c, x, y, s, s, 0x888888, 40, rng);
+    });
+
+    // Tile 21: Clay
+    drawTile(ctx, 21, (c, x, y, s) => {
+      drawNoise(c, x, y, s, s, 0xbbaa99, 15, rng);
+    });
+
+    // Tile 22: Torch — black background with yellow flame
+    drawTile(ctx, 22, (c, x, y, s) => {
+      c.fillStyle = '#1a1a1a';
+      c.fillRect(x, y, s, s);
+      c.fillStyle = '#774422';
+      c.fillRect(x + 7, y + 6, 2, 10);
+      c.fillStyle = '#ffdd44';
+      c.fillRect(x + 6, y + 3, 4, 4);
+      c.fillStyle = '#ffaa00';
+      c.fillRect(x + 7, y + 2, 2, 2);
+    });
+
+    // Tile 23: Glowstone — warm yellow with cracks
+    drawTile(ctx, 23, (c, x, y, s) => {
+      drawNoise(c, x, y, s, s, 0xffeeaa, 20, rng);
+      c.fillStyle = '#ddcc66';
+      c.fillRect(x + 4, y + 3, 8, 1);
+      c.fillRect(x + 2, y + 9, 6, 1);
+    });
+
+    // Tile 24: Lava — orange-red with bright spots
+    drawTile(ctx, 24, (c, x, y, s) => {
+      drawNoise(c, x, y, s, s, 0xff4400, 30, rng);
+      for (let i = 0; i < 4; i++) {
+        c.fillStyle = '#ffaa33';
+        c.fillRect((x + rng() * (s - 3)) | 0, (y + rng() * (s - 3)) | 0, 3, 2);
+      }
+    });
+
+    // Tile 25: Obsidian — very dark purple
+    drawTile(ctx, 25, (c, x, y, s) => {
+      drawNoise(c, x, y, s, s, 0x220033, 12, rng);
+    });
+
+    // Tile 26: Mossy cobblestone
+    drawTile(ctx, 26, (c, x, y, s) => {
+      drawNoise(c, x, y, s, s, 0x667788, 25, rng);
+      c.fillStyle = '#446633';
+      for (let i = 0; i < 8; i++) {
+        c.fillRect((x + rng() * s) | 0, (y + rng() * s) | 0, 2, 2);
+      }
+    });
+
+    return canvas;
+  }
+
+  function buildAtlasTexture() {
+    const canvas = generateProceduralAtlas();
+    if (!canvas) return null;
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.magFilter = THREE.NearestFilter;
+    tex.minFilter = THREE.NearestFilter;
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.RepeatWrapping;
+    tex.colorSpace = THREE.SRGBColorSpace;
+    return tex;
+  }
+
+  function enableTextureAtlas(enable = true) {
+    atlasEnabled = enable;
+    if (enable && !atlasTexture) {
+      atlasTexture = buildAtlasTexture();
+    }
+    // Rebuild materials with/without atlas
+    rebuildMaterials();
+    // Mark all chunks dirty so they re-mesh with new UVs
+    for (const chunk of chunks.values()) {
+      chunk.dirty = true;
+    }
+  }
+
+  function loadCustomAtlas(imageSrc, tileMapping) {
+    // imageSrc: URL or data URL to a texture atlas image
+    // tileMapping: { blockName: { top, side, bottom } } overrides
+    if (typeof document === 'undefined') return;
+    const img = new Image();
+    img.onload = () => {
+      if (atlasTexture) atlasTexture.dispose();
+      atlasTexture = new THREE.Texture(img);
+      atlasTexture.magFilter = THREE.NearestFilter;
+      atlasTexture.minFilter = THREE.NearestFilter;
+      atlasTexture.wrapS = THREE.RepeatWrapping;
+      atlasTexture.wrapT = THREE.RepeatWrapping;
+      atlasTexture.colorSpace = THREE.SRGBColorSpace;
+      atlasTexture.needsUpdate = true;
+      atlasEnabled = true;
+      // Apply custom tile mappings
+      if (tileMapping) {
+        for (const [name, faces] of Object.entries(tileMapping)) {
+          const block = registry.blocks.find(b => b && b.name === name);
+          if (block) block.textureFaces = faces;
+        }
+      }
+      rebuildMaterials();
+      for (const chunk of chunks.values()) chunk.dirty = true;
+    };
+    img.src = imageSrc;
+  }
+
+  function rebuildMaterials() {
+    if (sharedOpaqueMaterial) sharedOpaqueMaterial.dispose();
+    if (sharedTransparentMaterial) sharedTransparentMaterial.dispose();
+    sharedOpaqueMaterial = null;
+    sharedTransparentMaterial = null;
+  }
 
   function getOpaqueMaterial() {
     if (window.VOXEL_MATERIAL) return window.VOXEL_MATERIAL;
@@ -398,6 +776,7 @@ export function voxelApi(gpu) {
         flatShading: true,
         roughness: 0.8,
         metalness: 0.1,
+        map: atlasEnabled && atlasTexture ? atlasTexture : null,
       });
     }
     return sharedOpaqueMaterial;
@@ -414,6 +793,7 @@ export function voxelApi(gpu) {
         opacity: 0.6,
         depthWrite: false,
         side: THREE.DoubleSide,
+        map: atlasEnabled && atlasTexture ? atlasTexture : null,
       });
     }
     return sharedTransparentMaterial;
@@ -429,7 +809,10 @@ export function voxelApi(gpu) {
       this.chunkX = chunkX;
       this.chunkZ = chunkZ;
       this.blocks = new Uint8Array(CHUNK_SIZE * CHUNK_HEIGHT * CHUNK_SIZE);
+      this.skyLight = new Uint8Array(CHUNK_SIZE * CHUNK_HEIGHT * CHUNK_SIZE);
+      this.blockLight = new Uint8Array(CHUNK_SIZE * CHUNK_HEIGHT * CHUNK_SIZE);
       this.dirty = true;
+      this.lightDirty = true;
     }
 
     getBlock(x, y, z) {
@@ -445,6 +828,19 @@ export function voxelApi(gpu) {
       }
       this.blocks[x + z * CHUNK_SIZE + y * CHUNK_SIZE * CHUNK_SIZE] = blockType;
       this.dirty = true;
+      this.lightDirty = true;
+    }
+
+    getSkyLight(x, y, z) {
+      if (x < 0 || x >= CHUNK_SIZE || y < 0 || y >= CHUNK_HEIGHT || z < 0 || z >= CHUNK_SIZE)
+        return 15;
+      return this.skyLight[x + z * CHUNK_SIZE + y * CHUNK_SIZE * CHUNK_SIZE];
+    }
+
+    getBlockLight(x, y, z) {
+      if (x < 0 || x >= CHUNK_SIZE || y < 0 || y >= CHUNK_HEIGHT || z < 0 || z >= CHUNK_SIZE)
+        return 0;
+      return this.blockLight[x + z * CHUNK_SIZE + y * CHUNK_SIZE * CHUNK_SIZE];
     }
   }
 
@@ -501,6 +897,7 @@ export function voxelApi(gpu) {
         let surfaceBlock = BLOCK_TYPES.GRASS;
         let subBlock = BLOCK_TYPES.DIRT;
         let treeChance = 0;
+        let treeType = 'oak'; // oak, birch, spruce, jungle, acacia
 
         if (temperature < 0.2) {
           surfaceBlock = BLOCK_TYPES.SNOW;
@@ -508,48 +905,56 @@ export function voxelApi(gpu) {
           heightScale = 6;
           heightBase = 65;
           treeChance = 0;
+          treeType = 'spruce';
         } else if (temperature < 0.35 && moisture > 0.5) {
           surfaceBlock = BLOCK_TYPES.COBBLESTONE;
           subBlock = BLOCK_TYPES.STONE;
           heightScale = 18;
           heightBase = 66;
           treeChance = 0.06;
+          treeType = 'spruce';
         } else if (temperature > 0.7 && moisture < 0.25) {
           surfaceBlock = BLOCK_TYPES.SAND;
           subBlock = BLOCK_TYPES.SAND;
           heightScale = 4;
           heightBase = 63;
           treeChance = 0;
+          treeType = 'acacia';
         } else if (temperature > 0.6 && moisture > 0.6) {
           surfaceBlock = BLOCK_TYPES.LEAVES;
           subBlock = BLOCK_TYPES.DIRT;
           heightScale = 22;
           heightBase = 58;
           treeChance = 0.15;
+          treeType = 'jungle';
         } else if (moisture < 0.3) {
           surfaceBlock = BLOCK_TYPES.DIRT;
           subBlock = BLOCK_TYPES.SAND;
           heightScale = 5;
           heightBase = 65;
           treeChance = 0.005;
+          treeType = 'acacia';
         } else if (temperature > 0.4 && moisture > 0.4) {
           surfaceBlock = BLOCK_TYPES.GRASS;
           subBlock = BLOCK_TYPES.DIRT;
           heightScale = 14;
           heightBase = 64;
           treeChance = 0.08;
+          treeType = 'birch';
         } else if (temperature < 0.35) {
           surfaceBlock = BLOCK_TYPES.SNOW;
           subBlock = BLOCK_TYPES.STONE;
           heightScale = 35;
           heightBase = 62;
           treeChance = 0.02;
+          treeType = 'spruce';
         } else {
           surfaceBlock = BLOCK_TYPES.GRASS;
           subBlock = BLOCK_TYPES.DIRT;
           heightScale = 6;
           heightBase = 64;
           treeChance = 0.015;
+          treeType = 'oak';
         }
 
         const height = Math.floor(
@@ -563,27 +968,29 @@ export function voxelApi(gpu) {
             // Stone with ore generation
             let block = BLOCK_TYPES.STONE;
 
-            // Ore veins using 3D noise at different scales per ore type
-            if (y < 16) {
-              const dOre = noise.fbm3D(worldX, y, worldZ, 2, 0.5, 2.0, 0.15);
-              if (dOre > 0.78) block = BLOCK_TYPES.DIAMOND_ORE;
-            }
-            if (y < 32 && block === BLOCK_TYPES.STONE) {
-              const gOre = noise.fbm3D(worldX + 500, y, worldZ + 500, 2, 0.5, 2.0, 0.12);
-              if (gOre > 0.76) block = BLOCK_TYPES.GOLD_ORE;
-            }
-            if (y < 64 && block === BLOCK_TYPES.STONE) {
-              const iOre = noise.fbm3D(worldX + 1000, y, worldZ + 1000, 2, 0.5, 2.0, 0.1);
-              if (iOre > 0.73) block = BLOCK_TYPES.IRON_ORE;
-            }
-            if (block === BLOCK_TYPES.STONE) {
-              const cOre = noise.fbm3D(worldX + 2000, y, worldZ + 2000, 2, 0.5, 2.0, 0.08);
-              if (cOre > 0.72) block = BLOCK_TYPES.COAL_ORE;
-            }
-            // Gravel pockets
-            if (block === BLOCK_TYPES.STONE && y < 40) {
-              const grav = noise.fbm3D(worldX + 3000, y, worldZ + 3000, 1, 0.5, 2.0, 0.06);
-              if (grav > 0.8) block = BLOCK_TYPES.GRAVEL;
+            if (enableOres) {
+              // Ore veins using 3D noise at different scales per ore type
+              if (y < 16) {
+                const dOre = noise.fbm3D(worldX, y, worldZ, 2, 0.5, 2.0, 0.15);
+                if (dOre > 0.78) block = BLOCK_TYPES.DIAMOND_ORE;
+              }
+              if (y < 32 && block === BLOCK_TYPES.STONE) {
+                const gOre = noise.fbm3D(worldX + 500, y, worldZ + 500, 2, 0.5, 2.0, 0.12);
+                if (gOre > 0.76) block = BLOCK_TYPES.GOLD_ORE;
+              }
+              if (y < 64 && block === BLOCK_TYPES.STONE) {
+                const iOre = noise.fbm3D(worldX + 1000, y, worldZ + 1000, 2, 0.5, 2.0, 0.1);
+                if (iOre > 0.73) block = BLOCK_TYPES.IRON_ORE;
+              }
+              if (block === BLOCK_TYPES.STONE) {
+                const cOre = noise.fbm3D(worldX + 2000, y, worldZ + 2000, 2, 0.5, 2.0, 0.08);
+                if (cOre > 0.72) block = BLOCK_TYPES.COAL_ORE;
+              }
+              // Gravel pockets
+              if (block === BLOCK_TYPES.STONE && y < 40) {
+                const grav = noise.fbm3D(worldX + 3000, y, worldZ + 3000, 1, 0.5, 2.0, 0.06);
+                if (grav > 0.8) block = BLOCK_TYPES.GRAVEL;
+              }
             }
 
             chunk.setBlock(x, y, z, block);
@@ -596,7 +1003,7 @@ export function voxelApi(gpu) {
           }
 
           // 3D cave generation using proper 3D simplex noise
-          if (y > 0 && y < height - 5) {
+          if (enableCaves && y > 0 && y < height - 5) {
             // Primary cave network — winding tunnels
             const cave1 = noise.fbm3D(worldX, y, worldZ, 3, 0.5, 2.0, 0.04);
             // Secondary smaller caves
@@ -633,41 +1040,298 @@ export function voxelApi(gpu) {
         }
 
         // Tree placement
-        if (height > SEA_LEVEL && treeChance > 0) {
+        if (enableTrees && height > SEA_LEVEL && treeChance > 0) {
           const treeSeed = noise.noise2D(worldX * 0.7, worldZ * 0.7);
           const treeRoll = (treeSeed + 1.0) * 0.5; // normalize to 0..1
           if (treeRoll < treeChance && x > 2 && x < CHUNK_SIZE - 3 && z > 2 && z < CHUNK_SIZE - 3) {
-            pendingTrees.push({ x, y: height, z });
+            pendingTrees.push({ x, y: height, z, type: treeType });
           }
         }
       }
     }
 
-    // Place trees after terrain is filled
+    // Place trees after terrain is filled — variety per biome
     for (const t of pendingTrees) {
       const hash = noise.noise2D(t.x * 7.1 + baseX, t.z * 13.3 + baseZ);
-      const trunkHeight = 4 + Math.floor(Math.abs(hash) * 3);
-      for (let i = 0; i < trunkHeight; i++) {
-        chunk.setBlock(t.x, t.y + i, t.z, BLOCK_TYPES.WOOD);
-      }
-      const leafY = t.y + trunkHeight;
-      for (let dx = -2; dx <= 2; dx++) {
-        for (let dy = -2; dy <= 2; dy++) {
-          for (let dz = -2; dz <= 2; dz++) {
-            if (Math.abs(dx) + Math.abs(dy) + Math.abs(dz) < 4) {
-              const lx = t.x + dx;
-              const ly = leafY + dy;
-              const lz = t.z + dz;
-              if (lx >= 0 && lx < CHUNK_SIZE && lz >= 0 && lz < CHUNK_SIZE && ly < CHUNK_HEIGHT) {
-                if (chunk.getBlock(lx, ly, lz) === BLOCK_TYPES.AIR) {
-                  chunk.setBlock(lx, ly, lz, BLOCK_TYPES.LEAVES);
-                }
+      const absHash = Math.abs(hash);
+
+      const setIfAir = (bx, by, bz, block) => {
+        if (
+          bx >= 0 &&
+          bx < CHUNK_SIZE &&
+          bz >= 0 &&
+          bz < CHUNK_SIZE &&
+          by >= 0 &&
+          by < CHUNK_HEIGHT
+        ) {
+          if (chunk.getBlock(bx, by, bz) === BLOCK_TYPES.AIR) {
+            chunk.setBlock(bx, by, bz, block);
+          }
+        }
+      };
+
+      if (t.type === 'spruce') {
+        // Tall narrow conifer — taiga/snowy biomes
+        const trunkH = 6 + Math.floor(absHash * 4);
+        for (let i = 0; i < trunkH; i++) chunk.setBlock(t.x, t.y + i, t.z, BLOCK_TYPES.WOOD);
+        // Conical leaf layers (widest at bottom, narrowing to top)
+        for (let layer = 0; layer < trunkH - 2; layer++) {
+          const ly = t.y + 2 + layer;
+          const r = Math.max(1, Math.floor((trunkH - 2 - layer) / 2));
+          for (let dx = -r; dx <= r; dx++) {
+            for (let dz = -r; dz <= r; dz++) {
+              if (dx === 0 && dz === 0) continue;
+              if (Math.abs(dx) + Math.abs(dz) <= r + 1) {
+                setIfAir(t.x + dx, ly, t.z + dz, BLOCK_TYPES.LEAVES);
+              }
+            }
+          }
+        }
+        // Top point
+        setIfAir(t.x, t.y + trunkH, t.z, BLOCK_TYPES.LEAVES);
+        setIfAir(t.x, t.y + trunkH + 1, t.z, BLOCK_TYPES.LEAVES);
+      } else if (t.type === 'birch') {
+        // Medium tree with birch-like trunk — temperate forests
+        const trunkH = 5 + Math.floor(absHash * 2);
+        for (let i = 0; i < trunkH; i++) chunk.setBlock(t.x, t.y + i, t.z, BLOCK_TYPES.WOOD);
+        // Round leaf canopy
+        const leafY = t.y + trunkH;
+        for (let dx = -2; dx <= 2; dx++) {
+          for (let dy = -1; dy <= 2; dy++) {
+            for (let dz = -2; dz <= 2; dz++) {
+              const dist = dx * dx + dy * dy + dz * dz;
+              if (dist <= 5) {
+                setIfAir(t.x + dx, leafY + dy, t.z + dz, BLOCK_TYPES.LEAVES);
+              }
+            }
+          }
+        }
+      } else if (t.type === 'jungle') {
+        // Very tall trunk with wide canopy at top
+        const trunkH = 8 + Math.floor(absHash * 6);
+        for (let i = 0; i < trunkH; i++) chunk.setBlock(t.x, t.y + i, t.z, BLOCK_TYPES.WOOD);
+        // Buttress roots (thick base)
+        for (let dx = -1; dx <= 1; dx++) {
+          for (let dz = -1; dz <= 1; dz++) {
+            if (dx !== 0 || dz !== 0) {
+              if (Math.abs(dx) + Math.abs(dz) < 2) {
+                chunk.setBlock(t.x + dx, t.y, t.z + dz, BLOCK_TYPES.WOOD);
+                chunk.setBlock(t.x + dx, t.y + 1, t.z + dz, BLOCK_TYPES.WOOD);
+              }
+            }
+          }
+        }
+        // Wide canopy
+        const leafY = t.y + trunkH;
+        for (let dx = -3; dx <= 3; dx++) {
+          for (let dy = -2; dy <= 2; dy++) {
+            for (let dz = -3; dz <= 3; dz++) {
+              const dist = dx * dx + dy * dy * 2 + dz * dz;
+              if (dist <= 12) {
+                setIfAir(t.x + dx, leafY + dy, t.z + dz, BLOCK_TYPES.LEAVES);
+              }
+            }
+          }
+        }
+      } else if (t.type === 'acacia') {
+        // Bent trunk with flat wide canopy — savanna style
+        const trunkH = 4 + Math.floor(absHash * 3);
+        const bendDir = hash > 0 ? 1 : -1;
+        let tx = t.x;
+        for (let i = 0; i < trunkH; i++) {
+          chunk.setBlock(tx, t.y + i, t.z, BLOCK_TYPES.WOOD);
+          if (i === Math.floor(trunkH / 2)) tx += bendDir; // trunk bends
+        }
+        // Flat wide leaf canopy (shallow, wide disc)
+        const leafY = t.y + trunkH;
+        for (let dx = -3; dx <= 3; dx++) {
+          for (let dz = -3; dz <= 3; dz++) {
+            if (dx * dx + dz * dz <= 10) {
+              setIfAir(tx + dx, leafY, t.z + dz, BLOCK_TYPES.LEAVES);
+              setIfAir(tx + dx, leafY + 1, t.z + dz, BLOCK_TYPES.LEAVES);
+            }
+          }
+        }
+      } else {
+        // Default oak — classic round tree
+        const trunkH = 4 + Math.floor(absHash * 3);
+        for (let i = 0; i < trunkH; i++) chunk.setBlock(t.x, t.y + i, t.z, BLOCK_TYPES.WOOD);
+        const leafY = t.y + trunkH;
+        for (let dx = -2; dx <= 2; dx++) {
+          for (let dy = -2; dy <= 2; dy++) {
+            for (let dz = -2; dz <= 2; dz++) {
+              if (Math.abs(dx) + Math.abs(dy) + Math.abs(dz) < 4) {
+                setIfAir(t.x + dx, leafY + dy, t.z + dz, BLOCK_TYPES.LEAVES);
               }
             }
           }
         }
       }
     }
+  }
+
+  // ─── Lighting System ────────────────────────────────────────────────────
+  // BFS flood-fill light propagation: sky light (from above) + block light (from emitters)
+
+  const MAX_LIGHT = 15;
+  let dayTimeFactor = 1.0; // 1.0 = full day, 0.0 = night
+
+  function propagateLighting(chunk) {
+    const { skyLight, blockLight } = chunk;
+    skyLight.fill(0);
+    blockLight.fill(0);
+
+    const idx = (x, y, z) => x + z * CHUNK_SIZE + y * CHUNK_SIZE * CHUNK_SIZE;
+
+    // Phase 1: Sky light — propagate straight down from top, track max height per column
+    let maxTerrainY = 0;
+    for (let x = 0; x < CHUNK_SIZE; x++) {
+      for (let z = 0; z < CHUNK_SIZE; z++) {
+        let light = MAX_LIGHT;
+        for (let y = CHUNK_HEIGHT - 1; y >= 0; y--) {
+          const block = chunk.getBlock(x, y, z);
+          const def = registry.get(block);
+          if (def.solid && !def.transparent) {
+            light = 0;
+            if (y > maxTerrainY) maxTerrainY = y;
+          } else {
+            light = Math.max(0, light - def.lightBlock);
+          }
+          skyLight[idx(x, y, z)] = light;
+        }
+      }
+    }
+
+    // Phase 2: Sky light horizontal BFS spread
+    // Only scan up to maxTerrainY + 2 instead of full CHUNK_HEIGHT — huge speedup
+    const scanHeight = Math.min(CHUNK_HEIGHT, maxTerrainY + 2);
+    const dirs = [
+      [1, 0, 0],
+      [-1, 0, 0],
+      [0, 1, 0],
+      [0, -1, 0],
+      [0, 0, 1],
+      [0, 0, -1],
+    ];
+    const queue = [];
+    for (let x = 0; x < CHUNK_SIZE; x++) {
+      for (let z = 0; z < CHUNK_SIZE; z++) {
+        for (let y = 0; y < scanHeight; y++) {
+          if (skyLight[idx(x, y, z)] > 1) {
+            queue.push(x, y, z);
+          }
+        }
+      }
+    }
+
+    let qi = 0;
+    while (qi < queue.length) {
+      const qx = queue[qi++],
+        qy = queue[qi++],
+        qz = queue[qi++];
+      const currentLight = skyLight[idx(qx, qy, qz)];
+
+      for (const [ddx, ddy, ddz] of dirs) {
+        const nx = qx + ddx,
+          ny = qy + ddy,
+          nz = qz + ddz;
+        if (
+          nx < 0 ||
+          nx >= CHUNK_SIZE ||
+          ny < 0 ||
+          ny >= CHUNK_HEIGHT ||
+          nz < 0 ||
+          nz >= CHUNK_SIZE
+        )
+          continue;
+
+        const nBlock = chunk.getBlock(nx, ny, nz);
+        const nDef = registry.get(nBlock);
+        if (nDef.solid && !nDef.transparent) continue;
+
+        const nIdx = idx(nx, ny, nz);
+        const newLight = currentLight - Math.max(1, nDef.lightBlock);
+        if (newLight > skyLight[nIdx]) {
+          skyLight[nIdx] = newLight;
+          queue.push(nx, ny, nz);
+        }
+      }
+    }
+
+    // Phase 3: Block light from emitters (torches, glowstone, lava)
+    // Only scan below terrain height — emitters can't exist in air
+    queue.length = 0;
+    qi = 0;
+    for (let x = 0; x < CHUNK_SIZE; x++) {
+      for (let z = 0; z < CHUNK_SIZE; z++) {
+        for (let y = 0; y < scanHeight; y++) {
+          const block = chunk.getBlock(x, y, z);
+          const def = registry.get(block);
+          if (def.lightEmit > 0) {
+            blockLight[idx(x, y, z)] = def.lightEmit;
+            queue.push(x, y, z);
+          }
+        }
+      }
+    }
+
+    qi = 0;
+    while (qi < queue.length) {
+      const qx = queue[qi++],
+        qy = queue[qi++],
+        qz = queue[qi++];
+      const currentLight = blockLight[idx(qx, qy, qz)];
+
+      for (const [ddx, ddy, ddz] of dirs) {
+        const nx = qx + ddx,
+          ny = qy + ddy,
+          nz = qz + ddz;
+        if (
+          nx < 0 ||
+          nx >= CHUNK_SIZE ||
+          ny < 0 ||
+          ny >= CHUNK_HEIGHT ||
+          nz < 0 ||
+          nz >= CHUNK_SIZE
+        )
+          continue;
+
+        const nBlock = chunk.getBlock(nx, ny, nz);
+        const nDef = registry.get(nBlock);
+        if (nDef.solid && !nDef.transparent) continue;
+
+        const nIdx = idx(nx, ny, nz);
+        const newLight = currentLight - Math.max(1, nDef.lightBlock);
+        if (newLight > blockLight[nIdx]) {
+          blockLight[nIdx] = newLight;
+          queue.push(nx, ny, nz);
+        }
+      }
+    }
+
+    chunk.lightDirty = false;
+  }
+
+  // Sample effective light level at a position (max of sky*dayTime and block light)
+  function sampleLight(chunk, x, y, z) {
+    if (y < 0 || y >= CHUNK_HEIGHT) return MAX_LIGHT;
+
+    if (x >= 0 && x < CHUNK_SIZE && z >= 0 && z < CHUNK_SIZE) {
+      const sky = chunk.getSkyLight(x, y, z) * dayTimeFactor;
+      const block = chunk.getBlockLight(x, y, z);
+      return Math.max(sky, block);
+    }
+
+    // Cross-chunk sampling
+    const ncx = chunk.chunkX + Math.floor(x / CHUNK_SIZE);
+    const ncz = chunk.chunkZ + Math.floor(z / CHUNK_SIZE);
+    const nc = getChunkIfExists(ncx, ncz);
+    if (!nc) return MAX_LIGHT;
+    const lx = ((x % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
+    const lz = ((z % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
+    const sky = nc.getSkyLight(lx, y, lz) * dayTimeFactor;
+    const block = nc.getBlockLight(lx, y, lz);
+    return Math.max(sky, block);
   }
 
   // ─── AO helpers ─────────────────────────────────────────────────────────
@@ -698,7 +1362,203 @@ export function voxelApi(gpu) {
     return 3 - (side1 ? 1 : 0) - (side2 ? 1 : 0) - (corner ? 1 : 0);
   }
 
-  // ─── Meshing ────────────────────────────────────────────────────────────
+  // ─── Meshing (Greedy) ─────────────────────────────────────────────────
+  // True greedy meshing: for each face direction, sweep slices and merge
+  // rectangles of identical face data (block type + AO + light) into single quads.
+  // Produces 5-10× fewer vertices than naive per-face meshing.
+
+  // AO to color multiplier (0=0.4, 1=0.6, 2=0.8, 3=1.0)
+  const aoScale = [0.4, 0.6, 0.8, 1.0];
+
+  // Per-vertex AO sampling offsets for each of the 6 face directions.
+  // Each face has 4 corners, each corner samples 3 neighbor positions: side1, side2, corner.
+  const aoOffsets = [
+    // +Z face: vertices at z+1 plane
+    [
+      [
+        [-1, 0, 1],
+        [0, -1, 1],
+        [-1, -1, 1],
+      ],
+      [
+        [1, 0, 1],
+        [0, -1, 1],
+        [1, -1, 1],
+      ],
+      [
+        [1, 0, 1],
+        [0, 1, 1],
+        [1, 1, 1],
+      ],
+      [
+        [-1, 0, 1],
+        [0, 1, 1],
+        [-1, 1, 1],
+      ],
+    ],
+    // -Z face
+    [
+      [
+        [1, 0, -1],
+        [0, -1, -1],
+        [1, -1, -1],
+      ],
+      [
+        [-1, 0, -1],
+        [0, -1, -1],
+        [-1, -1, -1],
+      ],
+      [
+        [-1, 0, -1],
+        [0, 1, -1],
+        [-1, 1, -1],
+      ],
+      [
+        [1, 0, -1],
+        [0, 1, -1],
+        [1, 1, -1],
+      ],
+    ],
+    // +X face
+    [
+      [
+        [1, 0, 1],
+        [1, -1, 0],
+        [1, -1, 1],
+      ],
+      [
+        [1, 0, -1],
+        [1, -1, 0],
+        [1, -1, -1],
+      ],
+      [
+        [1, 0, -1],
+        [1, 1, 0],
+        [1, 1, -1],
+      ],
+      [
+        [1, 0, 1],
+        [1, 1, 0],
+        [1, 1, 1],
+      ],
+    ],
+    // -X face
+    [
+      [
+        [-1, 0, -1],
+        [-1, -1, 0],
+        [-1, -1, -1],
+      ],
+      [
+        [-1, 0, 1],
+        [-1, -1, 0],
+        [-1, -1, 1],
+      ],
+      [
+        [-1, 0, 1],
+        [-1, 1, 0],
+        [-1, 1, 1],
+      ],
+      [
+        [-1, 0, -1],
+        [-1, 1, 0],
+        [-1, 1, -1],
+      ],
+    ],
+    // +Y face
+    [
+      [
+        [-1, 1, 0],
+        [0, 1, 1],
+        [-1, 1, 1],
+      ],
+      [
+        [1, 1, 0],
+        [0, 1, 1],
+        [1, 1, 1],
+      ],
+      [
+        [1, 1, 0],
+        [0, 1, -1],
+        [1, 1, -1],
+      ],
+      [
+        [-1, 1, 0],
+        [0, 1, -1],
+        [-1, 1, -1],
+      ],
+    ],
+    // -Y face
+    [
+      [
+        [-1, -1, 0],
+        [0, -1, -1],
+        [-1, -1, -1],
+      ],
+      [
+        [1, -1, 0],
+        [0, -1, -1],
+        [1, -1, -1],
+      ],
+      [
+        [1, -1, 0],
+        [0, -1, 1],
+        [1, -1, 1],
+      ],
+      [
+        [-1, -1, 0],
+        [0, -1, 1],
+        [-1, -1, 1],
+      ],
+    ],
+  ];
+
+  // 6 face directions: [axis, sign, u-axis, v-axis]
+  // axis: 0=X, 1=Y, 2=Z. sign: +1 or -1.
+  // u,v: the two axes spanning the face plane
+  const FACE_DIRS = [
+    { axis: 2, sign: 1, u: 0, v: 1 }, // +Z
+    { axis: 2, sign: -1, u: 0, v: 1 }, // -Z
+    { axis: 0, sign: 1, u: 2, v: 1 }, // +X
+    { axis: 0, sign: -1, u: 2, v: 1 }, // -X
+    { axis: 1, sign: 1, u: 0, v: 2 }, // +Y
+    { axis: 1, sign: -1, u: 0, v: 2 }, // -Y
+  ];
+
+  // Pre-computed face normal vectors
+  const FACE_NORMALS = [
+    [0, 0, 1],
+    [0, 0, -1],
+    [1, 0, 0],
+    [-1, 0, 0],
+    [0, 1, 0],
+    [0, -1, 0],
+  ];
+
+  // Size of each axis (u,v dimensions per face direction)
+  function axisSize(a) {
+    return a === 1 ? CHUNK_HEIGHT : CHUNK_SIZE;
+  }
+
+  // Pre-allocated buffers for greedy mesher (avoid per-face TypedArray allocations)
+  const MAX_MASK = 128 * 16; // CHUNK_HEIGHT * CHUNK_SIZE (max possible mask size)
+  const _mask = new Int32Array(MAX_MASK);
+  const _maskTrans = new Uint8Array(MAX_MASK);
+  const _tmpColor = new THREE.Color();
+
+  function getNeighborBlock(chunk, x, y, z) {
+    if (y < 0 || y >= CHUNK_HEIGHT) return BLOCK_TYPES.AIR;
+    if (x >= 0 && x < CHUNK_SIZE && z >= 0 && z < CHUNK_SIZE) {
+      return chunk.getBlock(x, y, z);
+    }
+    const ncx = chunk.chunkX + Math.floor(x / CHUNK_SIZE);
+    const ncz = chunk.chunkZ + Math.floor(z / CHUNK_SIZE);
+    const nc = getChunkIfExists(ncx, ncz);
+    if (!nc) return BLOCK_TYPES.AIR;
+    const lx = ((x % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
+    const lz = ((z % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
+    return nc.getBlock(lx, y, lz);
+  }
 
   function createChunkMesh(chunk) {
     const opaqueVerts = [];
@@ -715,365 +1575,373 @@ export function voxelApi(gpu) {
     const transIdx = [];
     let transVCount = 0;
 
-    // Face normals and vertex offsets for each of the 6 faces
-    // Each face: [normal, v0, v1, v2, v3] where vertices are offsets from block origin
-    // Vertex order: counter-clockwise for front face
-    const faceData = [
-      // +Z (front)
-      {
-        n: [0, 0, 1],
-        v: [
-          [0, 0, 1],
-          [1, 0, 1],
-          [1, 1, 1],
-          [0, 1, 1],
-        ],
-      },
-      // -Z (back)
-      {
-        n: [0, 0, -1],
-        v: [
-          [1, 0, 0],
-          [0, 0, 0],
-          [0, 1, 0],
-          [1, 1, 0],
-        ],
-      },
-      // +X (right)
-      {
-        n: [1, 0, 0],
-        v: [
-          [1, 0, 1],
-          [1, 0, 0],
-          [1, 1, 0],
-          [1, 1, 1],
-        ],
-      },
-      // -X (left)
-      {
-        n: [-1, 0, 0],
-        v: [
-          [0, 0, 0],
-          [0, 0, 1],
-          [0, 1, 1],
-          [0, 1, 0],
-        ],
-      },
-      // +Y (top)
-      {
-        n: [0, 1, 0],
-        v: [
-          [0, 1, 1],
-          [1, 1, 1],
-          [1, 1, 0],
-          [0, 1, 0],
-        ],
-      },
-      // -Y (bottom)
-      {
-        n: [0, -1, 0],
-        v: [
-          [0, 0, 0],
-          [1, 0, 0],
-          [1, 0, 1],
-          [0, 0, 1],
-        ],
-      },
-    ];
+    const baseX = chunk.chunkX * CHUNK_SIZE;
+    const baseZ = chunk.chunkZ * CHUNK_SIZE;
 
-    // AO neighbor offsets per face per vertex: [side1, side2, corner]
-    // For each face direction, for each of 4 vertices, which neighbors to check
-    // These are relative to the face normal direction
-    const aoOffsets = [
-      // +Z face: vertices at z+1 plane
-      [
-        [
-          [-1, 0, 1],
-          [0, -1, 1],
-          [-1, -1, 1],
-        ], // v0 (0,0,1)
-        [
-          [1, 0, 1],
-          [0, -1, 1],
-          [1, -1, 1],
-        ], // v1 (1,0,1)
-        [
-          [1, 0, 1],
-          [0, 1, 1],
-          [1, 1, 1],
-        ], // v2 (1,1,1)
-        [
-          [-1, 0, 1],
-          [0, 1, 1],
-          [-1, 1, 1],
-        ], // v3 (0,1,1)
-      ],
-      // -Z face
-      [
-        [
-          [1, 0, -1],
-          [0, -1, -1],
-          [1, -1, -1],
-        ],
-        [
-          [-1, 0, -1],
-          [0, -1, -1],
-          [-1, -1, -1],
-        ],
-        [
-          [-1, 0, -1],
-          [0, 1, -1],
-          [-1, 1, -1],
-        ],
-        [
-          [1, 0, -1],
-          [0, 1, -1],
-          [1, 1, -1],
-        ],
-      ],
-      // +X face
-      [
-        [
-          [1, 0, 1],
-          [1, -1, 0],
-          [1, -1, 1],
-        ],
-        [
-          [1, 0, -1],
-          [1, -1, 0],
-          [1, -1, -1],
-        ],
-        [
-          [1, 0, -1],
-          [1, 1, 0],
-          [1, 1, -1],
-        ],
-        [
-          [1, 0, 1],
-          [1, 1, 0],
-          [1, 1, 1],
-        ],
-      ],
-      // -X face
-      [
-        [
-          [-1, 0, -1],
-          [-1, -1, 0],
-          [-1, -1, -1],
-        ],
-        [
-          [-1, 0, 1],
-          [-1, -1, 0],
-          [-1, -1, 1],
-        ],
-        [
-          [-1, 0, 1],
-          [-1, 1, 0],
-          [-1, 1, 1],
-        ],
-        [
-          [-1, 0, -1],
-          [-1, 1, 0],
-          [-1, 1, -1],
-        ],
-      ],
-      // +Y face
-      [
-        [
-          [-1, 1, 0],
-          [0, 1, 1],
-          [-1, 1, 1],
-        ],
-        [
-          [1, 1, 0],
-          [0, 1, 1],
-          [1, 1, 1],
-        ],
-        [
-          [1, 1, 0],
-          [0, 1, -1],
-          [1, 1, -1],
-        ],
-        [
-          [-1, 1, 0],
-          [0, 1, -1],
-          [-1, 1, -1],
-        ],
-      ],
-      // -Y face
-      [
-        [
-          [-1, -1, 0],
-          [0, -1, -1],
-          [-1, -1, -1],
-        ],
-        [
-          [1, -1, 0],
-          [0, -1, -1],
-          [1, -1, -1],
-        ],
-        [
-          [1, -1, 0],
-          [0, -1, 1],
-          [1, -1, 1],
-        ],
-        [
-          [-1, -1, 0],
-          [0, -1, 1],
-          [-1, -1, 1],
-        ],
-      ],
-    ];
+    // For each face direction, sweep slices and greedily merge
+    for (let faceIdx = 0; faceIdx < 6; faceIdx++) {
+      const { axis, sign, u: uAxis, v: vAxis } = FACE_DIRS[faceIdx];
+      const normal = FACE_NORMALS[faceIdx];
 
-    function shouldRenderFace(x, y, z, dir) {
-      const nx = x + dir[0];
-      const ny = y + dir[1];
-      const nz = z + dir[2];
+      const sliceMax = axisSize(axis);
+      const uMax = axisSize(uAxis);
+      const vMax = axisSize(vAxis);
 
-      if (
-        nx >= 0 &&
-        nx < CHUNK_SIZE &&
-        ny >= 0 &&
-        ny < CHUNK_HEIGHT &&
-        nz >= 0 &&
-        nz < CHUNK_SIZE
-      ) {
-        const neighbor = chunk.getBlock(nx, ny, nz);
-        return !registry.isSolid(neighbor) || registry.isTransparent(neighbor);
-      }
+      // Mask: for each (u,v) in the slice, store face key or 0
+      // Face key encodes: blockType (8 bits) + ao[0..3] (2 bits each = 8 bits) + light (4 bits) = 20 bits
+      // Plus a separate array for isTransparent
+      // Reuse pre-allocated buffers (cleared per slice)
+      const maskSize = uMax * vMax;
 
-      if (nx < 0 || nx >= CHUNK_SIZE || nz < 0 || nz >= CHUNK_SIZE) {
-        const neighborChunkX = chunk.chunkX + Math.floor(nx / CHUNK_SIZE);
-        const neighborChunkZ = chunk.chunkZ + Math.floor(nz / CHUNK_SIZE);
-        const neighborChunk = getChunkIfExists(neighborChunkX, neighborChunkZ);
-        if (!neighborChunk) return true;
-        const localX = ((nx % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
-        const localZ = ((nz % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
-        const neighbor = neighborChunk.getBlock(localX, ny, localZ);
-        return !registry.isSolid(neighbor) || registry.isTransparent(neighbor);
-      }
+      for (let d = 0; d < sliceMax; d++) {
+        // Build mask for this slice — clear reused buffers
+        let hasFaces = false;
+        for (let i = 0; i < maskSize; i++) {
+          _mask[i] = 0;
+          _maskTrans[i] = 0;
+        }
+        for (let vi = 0; vi < vMax; vi++) {
+          for (let ui = 0; ui < uMax; ui++) {
+            // Map (axis=d, u=ui, v=vi) to (x,y,z) without array allocation
+            let x = 0,
+              y = 0,
+              z = 0;
+            if (axis === 0) x = d;
+            else if (axis === 1) y = d;
+            else z = d;
+            if (uAxis === 0) x = ui;
+            else if (uAxis === 1) y = ui;
+            else z = ui;
+            if (vAxis === 0) x = vi;
+            else if (vAxis === 1) y = vi;
+            else z = vi;
 
-      return ny < 0 || ny >= CHUNK_HEIGHT;
-    }
+            const blockType = chunk.getBlock(x, y, z);
+            const mIdx = ui + vi * uMax;
 
-    function addFace(x, y, z, faceIdx, blockType) {
-      const face = faceData[faceIdx];
-      const isTransparent = registry.isTransparent(blockType);
-      const blockColor = registry.getColor(blockType);
-      const baseColor = new THREE.Color(blockColor);
+            if (blockType === BLOCK_TYPES.AIR) {
+              _mask[mIdx] = 0;
+              _maskTrans[mIdx] = 0;
+              continue;
+            }
 
-      const verts = isTransparent ? transVerts : opaqueVerts;
-      const norms = isTransparent ? transNorms : opaqueNorms;
-      const cols = isTransparent ? transColors : opaqueColors;
-      const uvArr = isTransparent ? transUvs : opaqueUvs;
-      const idxArr = isTransparent ? transIdx : opaqueIdx;
-      let vCount = isTransparent ? transVCount : opaqueVCount;
+            // Neighbor in face direction
+            const nx = x + normal[0],
+              ny = y + normal[1],
+              nz = z + normal[2];
+            const neighborId = getNeighborBlock(chunk, nx, ny, nz);
 
-      const baseX = chunk.chunkX * CHUNK_SIZE;
-      const baseZ = chunk.chunkZ * CHUNK_SIZE;
+            const blockIsTransparent = registry.isTransparent(blockType);
+            let showFace = false;
 
-      // Compute per-vertex AO
-      const ao = [3, 3, 3, 3];
-      const aoOff = aoOffsets[faceIdx];
-      for (let vi = 0; vi < 4; vi++) {
-        const s1 = isBlockOpaqueForAO(
-          chunk,
-          x + aoOff[vi][0][0],
-          y + aoOff[vi][0][1],
-          z + aoOff[vi][0][2]
-        );
-        const s2 = isBlockOpaqueForAO(
-          chunk,
-          x + aoOff[vi][1][0],
-          y + aoOff[vi][1][1],
-          z + aoOff[vi][1][2]
-        );
-        const cn = isBlockOpaqueForAO(
-          chunk,
-          x + aoOff[vi][2][0],
-          y + aoOff[vi][2][1],
-          z + aoOff[vi][2][2]
-        );
-        ao[vi] = vertexAO(s1, s2, cn);
-      }
-
-      // AO to color multiplier (0=0.4, 1=0.6, 2=0.8, 3=1.0)
-      const aoScale = [0.4, 0.6, 0.8, 1.0];
-
-      for (let i = 0; i < 4; i++) {
-        const v = face.v[i];
-        verts.push(v[0] + x + baseX, v[1] + y, v[2] + z + baseZ);
-        norms.push(face.n[0], face.n[1], face.n[2]);
-        const c = baseColor.clone().multiplyScalar(aoScale[ao[i]]);
-        cols.push(c.r, c.g, c.b);
-      }
-      uvArr.push(0, 1, 1, 1, 1, 0, 0, 0);
-
-      // Flip quad triangulation if AO values suggest it (fixes diagonal artifact)
-      if (ao[0] + ao[2] > ao[1] + ao[3]) {
-        idxArr.push(vCount, vCount + 1, vCount + 2);
-        idxArr.push(vCount, vCount + 2, vCount + 3);
-      } else {
-        idxArr.push(vCount + 1, vCount + 2, vCount + 3);
-        idxArr.push(vCount + 1, vCount + 3, vCount);
-      }
-
-      if (isTransparent) {
-        transVCount += 4;
-      } else {
-        opaqueVCount += 4;
-      }
-    }
-
-    // Iterate all blocks
-    for (let y = 0; y < CHUNK_HEIGHT; y++) {
-      for (let z = 0; z < CHUNK_SIZE; z++) {
-        for (let x = 0; x < CHUNK_SIZE; x++) {
-          const blockType = chunk.getBlock(x, y, z);
-          if (blockType === BLOCK_TYPES.AIR) continue;
-
-          const blockIsTransparent = registry.isTransparent(blockType);
-
-          for (let d = 0; d < 6; d++) {
-            const dir = faceData[d].n;
-            const nx = x + dir[0];
-            const ny = y + dir[1];
-            const nz = z + dir[2];
-
-            // For transparent blocks, only render face if neighbor is air or a different transparent block
             if (blockIsTransparent) {
-              let neighborId = BLOCK_TYPES.AIR;
-              if (
-                nx >= 0 &&
-                nx < CHUNK_SIZE &&
-                ny >= 0 &&
-                ny < CHUNK_HEIGHT &&
-                nz >= 0 &&
-                nz < CHUNK_SIZE
-              ) {
-                neighborId = chunk.getBlock(nx, ny, nz);
-              } else if (ny >= 0 && ny < CHUNK_HEIGHT) {
-                if (nx < 0 || nx >= CHUNK_SIZE || nz < 0 || nz >= CHUNK_SIZE) {
-                  const ncx = chunk.chunkX + Math.floor(nx / CHUNK_SIZE);
-                  const ncz = chunk.chunkZ + Math.floor(nz / CHUNK_SIZE);
-                  const nc = getChunkIfExists(ncx, ncz);
-                  if (nc) {
-                    neighborId = nc.getBlock(
-                      ((nx % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE,
-                      ny,
-                      ((nz % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE
-                    );
-                  }
-                }
+              if (neighborId === blockType) {
+                showFace = false;
+              } else if (registry.isSolid(neighborId) && !registry.isTransparent(neighborId)) {
+                showFace = false;
+              } else {
+                showFace = true;
               }
-              if (neighborId === blockType) continue; // skip face between same transparent blocks
-              if (registry.isSolid(neighborId) && !registry.isTransparent(neighborId)) continue;
-              addFace(x, y, z, d, blockType);
             } else {
-              if (shouldRenderFace(x, y, z, dir)) {
-                addFace(x, y, z, d, blockType);
+              showFace = !registry.isSolid(neighborId) || registry.isTransparent(neighborId);
+            }
+
+            if (!showFace) {
+              _mask[mIdx] = 0;
+              _maskTrans[mIdx] = 0;
+              continue;
+            }
+
+            // Compute AO for the 4 corners of this face
+            let aoKey = 0;
+            if (enableAO) {
+              const aoOff = aoOffsets[faceIdx];
+              for (let ci = 0; ci < 4; ci++) {
+                const s1 = isBlockOpaqueForAO(
+                  chunk,
+                  x + aoOff[ci][0][0],
+                  y + aoOff[ci][0][1],
+                  z + aoOff[ci][0][2]
+                );
+                const s2 = isBlockOpaqueForAO(
+                  chunk,
+                  x + aoOff[ci][1][0],
+                  y + aoOff[ci][1][1],
+                  z + aoOff[ci][1][2]
+                );
+                const cn = isBlockOpaqueForAO(
+                  chunk,
+                  x + aoOff[ci][2][0],
+                  y + aoOff[ci][2][1],
+                  z + aoOff[ci][2][2]
+                );
+                const a = vertexAO(s1, s2, cn);
+                aoKey |= a << (ci * 2);
+              }
+            } else {
+              aoKey = 0xff; // all corners = 3 (brightest), no shadows
+            }
+
+            // Sample light
+            const faceLight = enableLighting
+              ? Math.round(sampleLight(chunk, nx, ny, nz))
+              : MAX_LIGHT;
+
+            // Pack face key: blockType | (aoKey << 8) | (faceLight << 16)
+            _mask[mIdx] =
+              (blockType & 0xff) | ((aoKey & 0xff) << 8) | ((faceLight & 0xf) << 16) | (1 << 24);
+            _maskTrans[mIdx] = blockIsTransparent ? 1 : 0;
+            hasFaces = true;
+          }
+        }
+
+        if (!hasFaces) continue;
+
+        // Greedy merge: scan the mask for maximal rectangles
+        for (let vi = 0; vi < vMax; vi++) {
+          for (let ui = 0; ui < uMax; ) {
+            const mIdx = ui + vi * uMax;
+            const key = _mask[mIdx];
+            if (key === 0) {
+              ui++;
+              continue;
+            }
+            const trans = _maskTrans[mIdx];
+
+            // Extend width (skip greedy merge when atlas enabled — UVs can't tile within atlas tiles)
+            let w = 1;
+            if (!atlasEnabled) {
+              while (
+                ui + w < uMax &&
+                _mask[ui + w + vi * uMax] === key &&
+                _maskTrans[ui + w + vi * uMax] === trans
+              ) {
+                w++;
               }
             }
+
+            // Extend height
+            let h = 1;
+            if (!atlasEnabled) {
+              let canExtend = true;
+              while (canExtend && vi + h < vMax) {
+                for (let wu = 0; wu < w; wu++) {
+                  const ci = ui + wu + (vi + h) * uMax;
+                  if (_mask[ci] !== key || _maskTrans[ci] !== trans) {
+                    canExtend = false;
+                    break;
+                  }
+                }
+                if (canExtend) h++;
+              }
+            }
+
+            // Clear merged region from mask
+            for (let dv = 0; dv < h; dv++) {
+              for (let du = 0; du < w; du++) {
+                _mask[ui + du + (vi + dv) * uMax] = 0;
+              }
+            }
+
+            // Decode face key
+            const blockType = key & 0xff;
+            const aoKey = (key >> 8) & 0xff;
+            const faceLight = (key >> 16) & 0xf;
+            const ao0 = aoKey & 3,
+              ao1 = (aoKey >> 2) & 3,
+              ao2 = (aoKey >> 4) & 3,
+              ao3 = (aoKey >> 6) & 3;
+
+            const lightBrightness = 0.05 + (faceLight / MAX_LIGHT) * 0.95;
+            const blockColor = registry.getColor(blockType);
+
+            // Build quad vertices: 4 corners of the merged rectangle
+            // The face sits at d (or d+1 for positive normals) along the axis
+            const slicePos = sign > 0 ? d + 1 : d;
+
+            // Compute corner positions directly without array allocations
+            // Corner (cAxis, cU, cV) → (x, y, z) mapping
+            // c0 = (slicePos, ui, vi)
+            // c1 = (slicePos, ui+w, vi)
+            // c2 = (slicePos, ui+w, vi+h)
+            // c3 = (slicePos, ui, vi+h)
+            let c0x = 0,
+              c0y = 0,
+              c0z = 0;
+            let c1x = 0,
+              c1y = 0,
+              c1z = 0;
+            let c2x = 0,
+              c2y = 0,
+              c2z = 0;
+            let c3x = 0,
+              c3y = 0,
+              c3z = 0;
+
+            // Set axis coordinate
+            if (axis === 0) {
+              c0x = slicePos;
+              c1x = slicePos;
+              c2x = slicePos;
+              c3x = slicePos;
+            } else if (axis === 1) {
+              c0y = slicePos;
+              c1y = slicePos;
+              c2y = slicePos;
+              c3y = slicePos;
+            } else {
+              c0z = slicePos;
+              c1z = slicePos;
+              c2z = slicePos;
+              c3z = slicePos;
+            }
+            // Set u coordinate
+            if (uAxis === 0) {
+              c0x = ui;
+              c1x = ui + w;
+              c2x = ui + w;
+              c3x = ui;
+            } else if (uAxis === 1) {
+              c0y = ui;
+              c1y = ui + w;
+              c2y = ui + w;
+              c3y = ui;
+            } else {
+              c0z = ui;
+              c1z = ui + w;
+              c2z = ui + w;
+              c3z = ui;
+            }
+            // Set v coordinate
+            if (vAxis === 0) {
+              c0x = vi;
+              c1x = vi;
+              c2x = vi + h;
+              c3x = vi + h;
+            } else if (vAxis === 1) {
+              c0y = vi;
+              c1y = vi;
+              c2y = vi + h;
+              c3y = vi + h;
+            } else {
+              c0z = vi;
+              c1z = vi;
+              c2z = vi + h;
+              c3z = vi + h;
+            }
+
+            // Correct winding order based on face direction
+            let v0x, v0y, v0z, v1x, v1y, v1z, v2x, v2y, v2z, v3x, v3y, v3z;
+            let a0, a1, a2, a3;
+            if (
+              faceIdx === 0 || // +Z
+              faceIdx === 3 || // -X
+              faceIdx === 5 // -Y
+            ) {
+              v0x = c0x;
+              v0y = c0y;
+              v0z = c0z;
+              v1x = c1x;
+              v1y = c1y;
+              v1z = c1z;
+              v2x = c2x;
+              v2y = c2y;
+              v2z = c2z;
+              v3x = c3x;
+              v3y = c3y;
+              v3z = c3z;
+              a0 = ao0;
+              a1 = ao1;
+              a2 = ao2;
+              a3 = ao3;
+            } else {
+              v0x = c1x;
+              v0y = c1y;
+              v0z = c1z;
+              v1x = c0x;
+              v1y = c0y;
+              v1z = c0z;
+              v2x = c3x;
+              v2y = c3y;
+              v2z = c3z;
+              v3x = c2x;
+              v3y = c2y;
+              v3z = c2z;
+              a0 = ao1;
+              a1 = ao0;
+              a2 = ao3;
+              a3 = ao2;
+            }
+
+            const isTransparent = trans === 1;
+            const verts = isTransparent ? transVerts : opaqueVerts;
+            const norms = isTransparent ? transNorms : opaqueNorms;
+            const cols = isTransparent ? transColors : opaqueColors;
+            const uvArr = isTransparent ? transUvs : opaqueUvs;
+            const idxArr = isTransparent ? transIdx : opaqueIdx;
+            let vCount = isTransparent ? transVCount : opaqueVCount;
+
+            // Push 4 vertices without intermediate arrays
+            const vxArr = [v0x, v1x, v2x, v3x];
+            const vyArr = [v0y, v1y, v2y, v3y];
+            const vzArr = [v0z, v1z, v2z, v3z];
+            const aoArr = [a0, a1, a2, a3];
+            for (let ci = 0; ci < 4; ci++) {
+              verts.push(vxArr[ci] + baseX, vyArr[ci], vzArr[ci] + baseZ);
+              norms.push(normal[0], normal[1], normal[2]);
+              const aoLight = aoScale[aoArr[ci]] * lightBrightness;
+              if (atlasEnabled) {
+                cols.push(aoLight, aoLight, aoLight);
+              } else {
+                _tmpColor.set(blockColor);
+                cols.push(_tmpColor.r * aoLight, _tmpColor.g * aoLight, _tmpColor.b * aoLight);
+              }
+            }
+
+            // UV coordinates: when atlas enabled, map to the correct tile and tile across merged quads
+            if (atlasEnabled) {
+              const tileIdx = registry.getTextureFace(blockType, faceIdx);
+              if (tileIdx >= 0) {
+                const tileU = (tileIdx % ATLAS_COLS) / ATLAS_COLS;
+                const tileV = 1.0 - (Math.floor(tileIdx / ATLAS_COLS) + 1) / ATLAS_ROWS;
+                const tileSizeU = 1.0 / ATLAS_COLS;
+                const tileSizeV = 1.0 / ATLAS_ROWS;
+                // Tile the texture across the merged quad (w blocks wide, h blocks tall)
+                // v0=(0,h), v1=(w,h), v2=(w,0), v3=(0,0) in block units
+                // Map each block to one full tile repetition
+                uvArr.push(
+                  tileU,
+                  tileV + tileSizeV * h,
+                  tileU + tileSizeU * w,
+                  tileV + tileSizeV * h,
+                  tileU + tileSizeU * w,
+                  tileV,
+                  tileU,
+                  tileV
+                );
+              } else {
+                uvArr.push(0, h, w, h, w, 0, 0, 0);
+              }
+            } else {
+              uvArr.push(0, h, w, h, w, 0, 0, 0);
+            }
+
+            // AO-aware triangulation
+            if (a0 + a2 > a1 + a3) {
+              idxArr.push(vCount, vCount + 1, vCount + 2);
+              idxArr.push(vCount, vCount + 2, vCount + 3);
+            } else {
+              idxArr.push(vCount + 1, vCount + 2, vCount + 3);
+              idxArr.push(vCount + 1, vCount + 3, vCount);
+            }
+
+            if (isTransparent) {
+              transVCount += 4;
+            } else {
+              opaqueVCount += 4;
+            }
+
+            ui += w;
           }
         }
       }
@@ -1109,7 +1977,17 @@ export function voxelApi(gpu) {
   // ─── Chunk mesh update ──────────────────────────────────────────────────
 
   function updateChunkMesh(chunk) {
-    if (!chunk.dirty) return;
+    if (!chunk.dirty && !chunk.lightDirty) return;
+
+    // Propagate lighting if needed (skip when lighting disabled for perf)
+    if (chunk.lightDirty) {
+      if (enableLighting) {
+        propagateLighting(chunk);
+      } else {
+        // Clear the flag so we don't keep re-entering
+        chunk.lightDirty = false;
+      }
+    }
 
     const key = `${chunk.chunkX},${chunk.chunkZ}`;
 
@@ -1132,8 +2010,8 @@ export function voxelApi(gpu) {
 
     if (opaqueGeometry) {
       const mesh = new THREE.Mesh(opaqueGeometry, getOpaqueMaterial());
-      mesh.castShadow = true;
-      mesh.receiveShadow = true;
+      mesh.castShadow = enableShadows;
+      mesh.receiveShadow = enableShadows;
       gpu.scene.add(mesh);
       entry.opaque = mesh;
     }
@@ -1141,7 +2019,7 @@ export function voxelApi(gpu) {
     if (transGeometry) {
       const mesh = new THREE.Mesh(transGeometry, getTransparentMaterial());
       mesh.castShadow = false;
-      mesh.receiveShadow = true;
+      mesh.receiveShadow = enableShadows;
       mesh.renderOrder = 1; // render after opaque
       gpu.scene.add(mesh);
       entry.transparent = mesh;
@@ -1156,13 +2034,15 @@ export function voxelApi(gpu) {
 
   // ─── World coordinates ──────────────────────────────────────────────────
 
+  // Reusable result object for worldToChunk (avoid per-call allocation)
+  const _wtcResult = { chunkX: 0, chunkZ: 0, localX: 0, localZ: 0 };
+
   function worldToChunk(x, z) {
-    return {
-      chunkX: Math.floor(x / CHUNK_SIZE),
-      chunkZ: Math.floor(z / CHUNK_SIZE),
-      localX: ((x % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE,
-      localZ: ((z % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE,
-    };
+    _wtcResult.chunkX = Math.floor(x / CHUNK_SIZE);
+    _wtcResult.chunkZ = Math.floor(z / CHUNK_SIZE);
+    _wtcResult.localX = ((x % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
+    _wtcResult.localZ = ((z % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
+    return _wtcResult;
   }
 
   function getBlock(x, y, z) {
@@ -1177,27 +2057,132 @@ export function voxelApi(gpu) {
     const { chunkX, chunkZ, localX, localZ } = worldToChunk(x, z);
     const chunk = getChunk(chunkX, chunkZ);
     chunk.setBlock(localX, y, localZ, blockType);
+    markChunkModified(chunkX, chunkZ);
 
-    if (localX === 0) getChunk(chunkX - 1, chunkZ).dirty = true;
-    if (localX === CHUNK_SIZE - 1) getChunk(chunkX + 1, chunkZ).dirty = true;
-    if (localZ === 0) getChunk(chunkX, chunkZ - 1).dirty = true;
-    if (localZ === CHUNK_SIZE - 1) getChunk(chunkX, chunkZ + 1).dirty = true;
+    // Mark neighbors dirty for mesh + light re-propagation
+    if (localX === 0) {
+      const nc = getChunk(chunkX - 1, chunkZ);
+      nc.dirty = true;
+      nc.lightDirty = true;
+    }
+    if (localX === CHUNK_SIZE - 1) {
+      const nc = getChunk(chunkX + 1, chunkZ);
+      nc.dirty = true;
+      nc.lightDirty = true;
+    }
+    if (localZ === 0) {
+      const nc = getChunk(chunkX, chunkZ - 1);
+      nc.dirty = true;
+      nc.lightDirty = true;
+    }
+    if (localZ === CHUNK_SIZE - 1) {
+      const nc = getChunk(chunkX, chunkZ + 1);
+      nc.dirty = true;
+      nc.lightDirty = true;
+    }
   }
 
   // ─── Chunk loading / unloading ──────────────────────────────────────────
+
+  // ─── Chunk Queue & Frame Budgeting ──────────────────────────────────────
+  // Instead of generating all chunks synchronously, queue them by priority
+  // (distance to player) and process a limited number per frame.
+
+  const chunkQueue = []; // pending chunk coordinates [{cx, cz, dist}]
+  const chunkQueueSet = new Set(); // O(1) duplicate check for queue
+  let queueDirty = false; // only sort when new items added
+  let maxTerrainGenPerFrame = 2; // max chunks to generate per frame
+  let maxMeshRebuildsPerFrame = 4; // max chunk meshes to rebuild per frame
 
   function updateChunks(playerX, playerZ) {
     const centerChunkX = Math.floor(playerX / CHUNK_SIZE);
     const centerChunkZ = Math.floor(playerZ / CHUNK_SIZE);
 
+    // Phase 1: Queue any missing chunks (fast — just checks hash map + Set)
     for (let dx = -RENDER_DISTANCE; dx <= RENDER_DISTANCE; dx++) {
       for (let dz = -RENDER_DISTANCE; dz <= RENDER_DISTANCE; dz++) {
-        const chunk = getChunk(centerChunkX + dx, centerChunkZ + dz);
-        updateChunkMesh(chunk);
+        const cx = centerChunkX + dx;
+        const cz = centerChunkZ + dz;
+        const key = `${cx},${cz}`;
+        if (!chunks.has(key) && !chunkQueueSet.has(key)) {
+          const dist = dx * dx + dz * dz;
+          chunkQueue.push({ cx, cz, dist, key });
+          chunkQueueSet.add(key);
+          queueDirty = true;
+        }
       }
     }
 
-    // Unload far chunks
+    // Sort queue by distance only when new items were added
+    if (queueDirty) {
+      chunkQueue.sort((a, b) => a.dist - b.dist);
+      queueDirty = false;
+    }
+
+    // Remove items that are now too far away (filter instead of splice)
+    if (chunkQueue.length > 0) {
+      let writeIdx = 0;
+      for (let i = 0; i < chunkQueue.length; i++) {
+        const q = chunkQueue[i];
+        if (
+          Math.abs(q.cx - centerChunkX) <= RENDER_DISTANCE + 1 &&
+          Math.abs(q.cz - centerChunkZ) <= RENDER_DISTANCE + 1
+        ) {
+          chunkQueue[writeIdx++] = q;
+        } else {
+          chunkQueueSet.delete(q.key);
+        }
+      }
+      chunkQueue.length = writeIdx;
+    }
+
+    // Phase 2: Generate terrain for queued chunks (budget-limited)
+    let generated = 0;
+    while (chunkQueue.length > 0 && generated < maxTerrainGenPerFrame) {
+      const item = chunkQueue.shift();
+      chunkQueueSet.delete(item.key);
+      if (chunks.has(item.key)) continue; // already generated
+      const chunk = new Chunk(item.cx, item.cz);
+      if (customTerrainGenerator) {
+        customTerrainGenerator(chunk, {
+          BLOCK_TYPES,
+          noise,
+          CHUNK_SIZE,
+          CHUNK_HEIGHT,
+          SEA_LEVEL,
+          worldSeed,
+        });
+      } else {
+        generateChunkTerrain(chunk);
+      }
+      chunks.set(item.key, chunk);
+      generated++;
+    }
+
+    // Phase 3: Rebuild dirty chunk meshes (budget-limited)
+    let rebuilt = 0;
+    for (
+      let dx = -RENDER_DISTANCE;
+      dx <= RENDER_DISTANCE && rebuilt < maxMeshRebuildsPerFrame;
+      dx++
+    ) {
+      for (
+        let dz = -RENDER_DISTANCE;
+        dz <= RENDER_DISTANCE && rebuilt < maxMeshRebuildsPerFrame;
+        dz++
+      ) {
+        const cx = centerChunkX + dx;
+        const cz = centerChunkZ + dz;
+        const key = `${cx},${cz}`;
+        const chunk = chunks.get(key);
+        if (chunk && (chunk.dirty || chunk.lightDirty)) {
+          updateChunkMesh(chunk);
+          rebuilt++;
+        }
+      }
+    }
+
+    // Phase 4: Unload far chunks
     const keysToRemove = [];
     for (const [key, entry] of chunkMeshes.entries()) {
       const [cx, cz] = key.split(',').map(Number);
@@ -1220,6 +2205,20 @@ export function voxelApi(gpu) {
     keysToRemove.forEach(key => chunkMeshes.delete(key));
   }
 
+  // Force-load all chunks around a position synchronously (for initial load)
+  function forceLoadChunks(playerX, playerZ) {
+    const centerChunkX = Math.floor(playerX / CHUNK_SIZE);
+    const centerChunkZ = Math.floor(playerZ / CHUNK_SIZE);
+    chunkQueue.length = 0; // clear any pending queue
+    chunkQueueSet.clear();
+    for (let dx = -RENDER_DISTANCE; dx <= RENDER_DISTANCE; dx++) {
+      for (let dz = -RENDER_DISTANCE; dz <= RENDER_DISTANCE; dz++) {
+        const chunk = getChunk(centerChunkX + dx, centerChunkZ + dz);
+        updateChunkMesh(chunk);
+      }
+    }
+  }
+
   // ─── World reset ────────────────────────────────────────────────────────
 
   function resetWorld() {
@@ -1235,6 +2234,19 @@ export function voxelApi(gpu) {
     }
     chunkMeshes.clear();
     chunks.clear();
+    chunkQueue.length = 0;
+    chunkQueueSet.clear();
+    modifiedChunks.clear();
+    // Clear all entities
+    for (const ent of entities.values()) {
+      if (ent.mesh && gpu && gpu.scene) {
+        gpu.scene.remove(ent.mesh);
+        if (ent.mesh.geometry) ent.mesh.geometry.dispose();
+      }
+    }
+    entities.clear();
+    spatialHash.clear();
+    nextEntityId = 1;
     worldSeed += 5000 + Math.floor(Math.random() * 10000);
     noise = createSimplexNoise(worldSeed);
   }
@@ -1368,23 +2380,698 @@ export function voxelApi(gpu) {
     return false;
   }
 
+  // ─── Swept AABB Physics ─────────────────────────────────────────────────
+  // Per-axis collision resolution with auto-step, swimming, and ground detection
+
+  function checkAABB(px, py, pz, halfW, height, halfD) {
+    const minX = Math.floor(px - halfW);
+    const maxX = Math.floor(px + halfW);
+    const minY = Math.floor(py);
+    const maxY = Math.floor(py + height);
+    const minZ = Math.floor(pz - halfD);
+    const maxZ = Math.floor(pz + halfD);
+
+    for (let x = minX; x <= maxX; x++) {
+      for (let y = minY; y <= maxY; y++) {
+        for (let z = minZ; z <= maxZ; z++) {
+          const b = getBlock(x, y, z);
+          if (registry.isSolid(b) && !registry.isFluid(b)) return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  function moveEntity(pos, vel, size, dt) {
+    const halfW = (size[0] || 0.6) / 2;
+    const height = size[1] || 1.8;
+    const halfD = (size[2] || 0.6) / 2;
+
+    let px = pos[0];
+    let py = pos[1];
+    let pz = pos[2];
+    let vx = vel[0];
+    let vy = vel[1];
+    let vz = vel[2];
+    let grounded = false;
+    let hitCeiling = false;
+
+    // Check fluid at current position
+    const inWater =
+      registry.isFluid(getBlock(Math.floor(px), Math.floor(py), Math.floor(pz))) ||
+      registry.isFluid(getBlock(Math.floor(px), Math.floor(py + 1), Math.floor(pz)));
+
+    // Apply water drag
+    if (inWater) {
+      vx *= 0.8;
+      vy *= 0.8;
+      vz *= 0.8;
+    }
+
+    // Move X axis
+    const newX = px + vx * dt;
+    if (!checkAABB(newX, py, pz, halfW, height, halfD)) {
+      px = newX;
+    } else {
+      // Try auto-step (step up 0.6 blocks)
+      if (
+        vy <= 0 &&
+        !checkAABB(newX, py + 0.6, pz, halfW, height, halfD) &&
+        !checkAABB(px, py + 0.6, pz, halfW, height, halfD)
+      ) {
+        px = newX;
+        py += 0.6;
+      } else {
+        vx = 0;
+      }
+    }
+
+    // Move Y axis
+    const newY = py + vy * dt;
+    if (!checkAABB(px, newY, pz, halfW, height, halfD)) {
+      py = newY;
+    } else {
+      if (vy < 0) grounded = true;
+      if (vy > 0) hitCeiling = true;
+      vy = 0;
+    }
+
+    // Move Z axis
+    const newZ = pz + vz * dt;
+    if (!checkAABB(px, py, newZ, halfW, height, halfD)) {
+      pz = newZ;
+    } else {
+      // Try auto-step
+      if (
+        vy <= 0 &&
+        !checkAABB(px, py + 0.6, newZ, halfW, height, halfD) &&
+        !checkAABB(px, py + 0.6, pz, halfW, height, halfD)
+      ) {
+        pz = newZ;
+        py += 0.6;
+      } else {
+        vz = 0;
+      }
+    }
+
+    return {
+      position: [px, py, pz],
+      velocity: [vx, vy, vz],
+      grounded,
+      hitCeiling,
+      inWater,
+    };
+  }
+
   // ─── Structures ─────────────────────────────────────────────────────────
 
-  function placeTree(x, y, z) {
-    const trunkHeight = 4 + Math.floor(Math.random() * 3);
-    for (let i = 0; i < trunkHeight; i++) {
-      setBlock(x, y + i, z, BLOCK_TYPES.WOOD);
-    }
-    const leafY = y + trunkHeight;
-    for (let dx = -2; dx <= 2; dx++) {
-      for (let dy = -2; dy <= 2; dy++) {
-        for (let dz = -2; dz <= 2; dz++) {
-          if (Math.abs(dx) + Math.abs(dy) + Math.abs(dz) < 4) {
-            setBlock(x + dx, leafY + dy, z + dz, BLOCK_TYPES.LEAVES);
+  function placeTree(x, y, z, type = 'oak') {
+    const setB = (bx, by, bz, block) => {
+      const cx = Math.floor(bx / CHUNK_SIZE);
+      const cz = Math.floor(bz / CHUNK_SIZE);
+      const key = `${cx},${cz}`;
+      const ch = chunks.get(key);
+      if (!ch) return;
+      const lx = ((bx % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
+      const lz = ((bz % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
+      if (by >= 0 && by < CHUNK_HEIGHT) {
+        if (ch.getBlock(lx, by, lz) === BLOCK_TYPES.AIR) {
+          ch.setBlock(lx, by, lz, block);
+          ch.dirty = true;
+        }
+      }
+    };
+    const setTrunk = (bx, by, bz) => setBlock(bx, by, bz, BLOCK_TYPES.WOOD);
+
+    if (type === 'spruce') {
+      const trunkH = 7 + Math.floor(Math.random() * 4);
+      for (let i = 0; i < trunkH; i++) setTrunk(x, y + i, z);
+      for (let layer = 0; layer < trunkH - 2; layer++) {
+        const ly = y + 2 + layer;
+        const r = Math.max(1, Math.floor((trunkH - 2 - layer) / 2));
+        for (let dx = -r; dx <= r; dx++) {
+          for (let dz = -r; dz <= r; dz++) {
+            if (dx === 0 && dz === 0) continue;
+            if (Math.abs(dx) + Math.abs(dz) <= r + 1) setB(x + dx, ly, z + dz, BLOCK_TYPES.LEAVES);
+          }
+        }
+      }
+      setB(x, y + trunkH, z, BLOCK_TYPES.LEAVES);
+      setB(x, y + trunkH + 1, z, BLOCK_TYPES.LEAVES);
+    } else if (type === 'jungle') {
+      const trunkH = 9 + Math.floor(Math.random() * 5);
+      for (let i = 0; i < trunkH; i++) setTrunk(x, y + i, z);
+      const leafY = y + trunkH;
+      for (let dx = -3; dx <= 3; dx++) {
+        for (let dy = -2; dy <= 2; dy++) {
+          for (let dz = -3; dz <= 3; dz++) {
+            if (dx * dx + dy * dy * 2 + dz * dz <= 12)
+              setB(x + dx, leafY + dy, z + dz, BLOCK_TYPES.LEAVES);
+          }
+        }
+      }
+    } else if (type === 'acacia') {
+      const trunkH = 5 + Math.floor(Math.random() * 3);
+      for (let i = 0; i < trunkH; i++) setTrunk(x, y + i, z);
+      const leafY = y + trunkH;
+      for (let dx = -3; dx <= 3; dx++) {
+        for (let dz = -3; dz <= 3; dz++) {
+          if (dx * dx + dz * dz <= 10) {
+            setB(x + dx, leafY, z + dz, BLOCK_TYPES.LEAVES);
+            setB(x + dx, leafY + 1, z + dz, BLOCK_TYPES.LEAVES);
+          }
+        }
+      }
+    } else {
+      // oak / default
+      const trunkH = 4 + Math.floor(Math.random() * 3);
+      for (let i = 0; i < trunkH; i++) setTrunk(x, y + i, z);
+      const leafY = y + trunkH;
+      for (let dx = -2; dx <= 2; dx++) {
+        for (let dy = -2; dy <= 2; dy++) {
+          for (let dz = -2; dz <= 2; dz++) {
+            if (Math.abs(dx) + Math.abs(dy) + Math.abs(dz) < 4)
+              setB(x + dx, leafY + dy, z + dz, BLOCK_TYPES.LEAVES);
           }
         }
       }
     }
+  }
+
+  // ─── World Persistence (IndexedDB) ────────────────────────────────────
+  // Save/load modified chunks to IndexedDB for persistent worlds.
+  // Only saves chunks that the player has modified (delta compression).
+
+  const DB_NAME = 'nova64_voxel';
+  const DB_VERSION = 1;
+  const STORE_NAME = 'chunks';
+  const modifiedChunks = new Set(); // track which chunks have been modified by player
+
+  function openDB() {
+    return new Promise((resolve, reject) => {
+      if (typeof indexedDB === 'undefined') {
+        reject(new Error('IndexedDB not available'));
+        return;
+      }
+      const req = indexedDB.open(DB_NAME, DB_VERSION);
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        if (!db.objectStoreNames.contains(STORE_NAME)) {
+          db.createObjectStore(STORE_NAME);
+        }
+      };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+  }
+
+  // RLE encode a Uint8Array for space efficiency
+  function rleEncode(data) {
+    const out = [];
+    let i = 0;
+    while (i < data.length) {
+      const val = data[i];
+      let run = 1;
+      while (i + run < data.length && data[i + run] === val && run < 255) run++;
+      out.push(run, val);
+      i += run;
+    }
+    return new Uint8Array(out);
+  }
+
+  function rleDecode(encoded, length) {
+    const out = new Uint8Array(length);
+    let oi = 0;
+    for (let i = 0; i < encoded.length; i += 2) {
+      const run = encoded[i];
+      const val = encoded[i + 1];
+      for (let j = 0; j < run && oi < length; j++) {
+        out[oi++] = val;
+      }
+    }
+    return out;
+  }
+
+  // Mark chunk as modified (called from setBlock for player edits)
+  function markChunkModified(chunkX, chunkZ) {
+    modifiedChunks.add(`${chunkX},${chunkZ}`);
+  }
+
+  async function saveWorld(name) {
+    const db = await openDB();
+    const tx = db.transaction(STORE_NAME, 'readwrite');
+    const store = tx.objectStore(STORE_NAME);
+
+    const worldKey = `world:${name}:seed`;
+    store.put(worldSeed, worldKey);
+
+    for (const key of modifiedChunks) {
+      const chunk = chunks.get(key);
+      if (!chunk) continue;
+      const encoded = rleEncode(chunk.blocks);
+      store.put(encoded, `world:${name}:chunk:${key}`);
+    }
+
+    store.put(Array.from(modifiedChunks), `world:${name}:modified`);
+
+    return new Promise((resolve, reject) => {
+      tx.oncomplete = () => {
+        db.close();
+        resolve();
+      };
+      tx.onerror = () => {
+        db.close();
+        reject(tx.error);
+      };
+    });
+  }
+
+  async function loadWorld(name) {
+    const db = await openDB();
+    const tx = db.transaction(STORE_NAME, 'readonly');
+    const store = tx.objectStore(STORE_NAME);
+
+    const seedReq = store.get(`world:${name}:seed`);
+    const modifiedReq = store.get(`world:${name}:modified`);
+
+    return new Promise((resolve, reject) => {
+      tx.oncomplete = async () => {
+        if (seedReq.result === undefined) {
+          db.close();
+          resolve(false);
+          return;
+        }
+
+        // Reset world with saved seed
+        resetWorld();
+        worldSeed = seedReq.result;
+        noise = createSimplexNoise(worldSeed);
+
+        // Load modified chunk keys
+        const modKeys = modifiedReq.result || [];
+        modifiedChunks.clear();
+
+        if (modKeys.length > 0) {
+          // Load each modified chunk
+          const loadTx = db.transaction(STORE_NAME, 'readonly');
+          const loadStore = loadTx.objectStore(STORE_NAME);
+          const chunkPromises = [];
+
+          for (const key of modKeys) {
+            modifiedChunks.add(key);
+            const chunkReq = loadStore.get(`world:${name}:chunk:${key}`);
+            chunkPromises.push(
+              new Promise(res => {
+                chunkReq.onsuccess = () => res({ key, data: chunkReq.result });
+              })
+            );
+          }
+
+          await new Promise(res => {
+            loadTx.oncomplete = res;
+          });
+
+          const results = await Promise.all(chunkPromises);
+          const blockLen = CHUNK_SIZE * CHUNK_HEIGHT * CHUNK_SIZE;
+
+          for (const { key, data } of results) {
+            if (!data) continue;
+            const [cx, cz] = key.split(',').map(Number);
+            const chunk = getChunk(cx, cz);
+            const decoded = rleDecode(data, blockLen);
+            chunk.blocks.set(decoded);
+            chunk.dirty = true;
+            chunk.lightDirty = true;
+          }
+        }
+
+        db.close();
+        resolve(true);
+      };
+      tx.onerror = () => {
+        db.close();
+        reject(tx.error);
+      };
+    });
+  }
+
+  async function listWorlds() {
+    const db = await openDB();
+    const tx = db.transaction(STORE_NAME, 'readonly');
+    const store = tx.objectStore(STORE_NAME);
+    const req = store.getAllKeys();
+
+    return new Promise((resolve, reject) => {
+      req.onsuccess = () => {
+        const keys = req.result || [];
+        const worlds = new Set();
+        for (const k of keys) {
+          if (typeof k === 'string' && k.startsWith('world:') && k.endsWith(':seed')) {
+            worlds.add(k.slice(6, -5)); // extract name between "world:" and ":seed"
+          }
+        }
+        db.close();
+        resolve(Array.from(worlds));
+      };
+      req.onerror = () => {
+        db.close();
+        reject(req.error);
+      };
+    });
+  }
+
+  async function deleteWorld(name) {
+    const db = await openDB();
+    const tx = db.transaction(STORE_NAME, 'readwrite');
+    const store = tx.objectStore(STORE_NAME);
+
+    // Get all keys for this world
+    const keysReq = store.getAllKeys();
+    return new Promise((resolve, reject) => {
+      keysReq.onsuccess = () => {
+        const prefix = `world:${name}:`;
+        for (const k of keysReq.result) {
+          if (typeof k === 'string' && k.startsWith(prefix)) {
+            store.delete(k);
+          }
+        }
+        tx.oncomplete = () => {
+          db.close();
+          resolve();
+        };
+        tx.onerror = () => {
+          db.close();
+          reject(tx.error);
+        };
+      };
+    });
+  }
+
+  // ─── Entity System ──────────────────────────────────────────────────────
+  // Lightweight entity manager for mobs, items, NPCs, and interactive objects.
+  // Entities integrate with the voxel physics system (swept AABB) and have
+  // optional AI callbacks, health, and Three.js mesh attachment.
+
+  const entities = new Map(); // id -> entity
+  let nextEntityId = 1;
+  const ENTITY_GRAVITY = -20;
+
+  // Spatial hash for fast region queries
+  const SPATIAL_CELL = 16; // matches chunk size
+  const spatialHash = new Map(); // "cx,cy,cz" -> Set<entityId>
+
+  function spatialKey(x, y, z) {
+    return `${Math.floor(x / SPATIAL_CELL)},${Math.floor(y / SPATIAL_CELL)},${Math.floor(z / SPATIAL_CELL)}`;
+  }
+
+  function spatialInsert(ent) {
+    const key = spatialKey(ent.x, ent.y, ent.z);
+    let cell = spatialHash.get(key);
+    if (!cell) {
+      cell = new Set();
+      spatialHash.set(key, cell);
+    }
+    cell.add(ent.id);
+    ent._spatialKey = key;
+  }
+
+  function spatialRemove(ent) {
+    if (ent._spatialKey) {
+      const cell = spatialHash.get(ent._spatialKey);
+      if (cell) {
+        cell.delete(ent.id);
+        if (cell.size === 0) spatialHash.delete(ent._spatialKey);
+      }
+      ent._spatialKey = null;
+    }
+  }
+
+  function spatialUpdate(ent) {
+    const newKey = spatialKey(ent.x, ent.y, ent.z);
+    if (newKey !== ent._spatialKey) {
+      spatialRemove(ent);
+      spatialInsert(ent);
+    }
+  }
+
+  /**
+   * Spawn a voxel entity.
+   * @param {string} type - Entity type name (e.g. 'zombie', 'item', 'npc')
+   * @param {number[]} pos - [x, y, z] world position
+   * @param {object} opts - Options:
+   *   color: number — hex color to auto-create a box mesh (simplest usage)
+   *   mesh: THREE.Mesh — attach a raw THREE.Mesh (not a createCube ID)
+   *   size: [w, h, d] — AABB collision size (default [0.8, 1.8, 0.8])
+   *   health: number — max & current health (default 10)
+   *   gravity: boolean — apply gravity (default true)
+   *   ai: function(entity, dt, context) — AI tick callback
+   *   data: object — custom data for game logic
+   * @returns {object} entity
+   */
+  function spawnEntity(type, pos, opts = {}) {
+    const id = nextEntityId++;
+    const size = opts.size || [0.8, 1.8, 0.8];
+
+    // Resolve mesh: create from color, use provided THREE.Mesh, or none
+    let mesh = null;
+    if (opts.color !== undefined && gpu && gpu.scene) {
+      // Auto-create a simple box mesh from color
+      const geom = new THREE.BoxGeometry(size[0], size[1], size[2]);
+      const mat = new THREE.MeshStandardMaterial({
+        color: opts.color,
+        roughness: 0.8,
+        metalness: 0.1,
+      });
+      mesh = new THREE.Mesh(geom, mat);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+    } else if (opts.mesh && typeof opts.mesh === 'object' && opts.mesh.position) {
+      // Raw THREE.Mesh provided (must have .position)
+      mesh = opts.mesh;
+    }
+    // Ignore numeric mesh IDs — they don't have .position.set()
+
+    const ent = {
+      id,
+      type: type || 'generic',
+      x: pos[0] || 0,
+      y: pos[1] || 0,
+      z: pos[2] || 0,
+      vx: 0,
+      vy: 0,
+      vz: 0,
+      width: size[0],
+      height: size[1],
+      depth: size[2],
+      mesh,
+      health: opts.health !== undefined ? opts.health : 10,
+      maxHealth: opts.health !== undefined ? opts.health : 10,
+      alive: true,
+      gravity: opts.gravity !== undefined ? opts.gravity : true,
+      onGround: false,
+      inWater: false,
+      ai: opts.ai || null,
+      data: opts.data || {},
+      _spatialKey: null,
+    };
+
+    // Position and add mesh to scene
+    if (ent.mesh && gpu && gpu.scene) {
+      ent.mesh.position.set(ent.x, ent.y + ent.height / 2, ent.z);
+      gpu.scene.add(ent.mesh);
+    }
+
+    entities.set(id, ent);
+    spatialInsert(ent);
+    return ent;
+  }
+
+  /**
+   * Remove a voxel entity.
+   */
+  function removeEntity(id) {
+    const ent = entities.get(id);
+    if (!ent) return false;
+    if (ent.mesh && gpu && gpu.scene) {
+      gpu.scene.remove(ent.mesh);
+      if (ent.mesh.geometry) ent.mesh.geometry.dispose();
+      if (ent.mesh.material) ent.mesh.material.dispose();
+    }
+    spatialRemove(ent);
+    entities.delete(id);
+    return true;
+  }
+
+  /**
+   * Get entity by ID.
+   */
+  function getEntity(id) {
+    return entities.get(id) || null;
+  }
+
+  /**
+   * Damage an entity. Removes it when health <= 0.
+   * @returns {boolean} true if entity died
+   */
+  function damageEntity(id, amount) {
+    const ent = entities.get(id);
+    if (!ent || !ent.alive) return false;
+    ent.health = Math.max(0, ent.health - amount);
+    if (ent.health <= 0) {
+      ent.alive = false;
+      if (ent.mesh) ent.mesh.visible = false;
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * Heal an entity.
+   */
+  function healEntity(id, amount) {
+    const ent = entities.get(id);
+    if (!ent || !ent.alive) return;
+    ent.health = Math.min(ent.maxHealth, ent.health + amount);
+  }
+
+  /**
+   * Update all entities — physics + AI. Call once per frame.
+   * @param {number} dt - delta time in seconds
+   * @param {number[]} [playerPos] - optional [x,y,z] to skip far entities (perf)
+   * @param {number} [activeRadius=80] - entities beyond this are paused
+   */
+  function updateEntities(dt, playerPos, activeRadius = 80) {
+    const hasPlayer = playerPos && playerPos.length >= 3;
+    const ar2 = activeRadius * activeRadius;
+
+    for (const ent of entities.values()) {
+      if (!ent.alive) continue;
+
+      // Skip entities far from player for performance
+      if (hasPlayer) {
+        const dx = ent.x - playerPos[0];
+        const dz = ent.z - playerPos[2];
+        if (dx * dx + dz * dz > ar2) continue;
+      }
+
+      // Apply gravity
+      if (ent.gravity) {
+        ent.vy += ENTITY_GRAVITY * dt;
+      }
+
+      // Run AI
+      if (ent.ai) {
+        ent.ai(ent, dt, {
+          getBlock,
+          setBlock,
+          getHighestBlock,
+          entities,
+          getEntitiesInRadius,
+          moveEntity,
+          noise,
+        });
+      }
+
+      // Physics via swept AABB
+      const result = moveEntity(
+        [ent.x, ent.y, ent.z],
+        [ent.vx, ent.vy, ent.vz],
+        [ent.width, ent.height, ent.depth],
+        dt
+      );
+      ent.x = result.position[0];
+      ent.y = result.position[1];
+      ent.z = result.position[2];
+      ent.vx = result.velocity[0];
+      ent.vy = result.velocity[1];
+      ent.vz = result.velocity[2];
+      ent.onGround = result.grounded;
+      ent.inWater = result.inWater;
+
+      // Update mesh position
+      if (ent.mesh) {
+        ent.mesh.position.set(ent.x, ent.y + ent.height / 2, ent.z);
+      }
+
+      // Update spatial hash
+      spatialUpdate(ent);
+
+      // Remove entities that fall out of the world
+      if (ent.y < -64) {
+        ent.alive = false;
+        if (ent.mesh) ent.mesh.visible = false;
+      }
+    }
+  }
+
+  /**
+   * Get all living entities within radius of a point.
+   * Uses spatial hash for broad-phase, then distance check.
+   */
+  function getEntitiesInRadius(x, y, z, radius) {
+    const results = [];
+    const r2 = radius * radius;
+    const cellRange = Math.ceil(radius / SPATIAL_CELL);
+    const cx0 = Math.floor(x / SPATIAL_CELL);
+    const cy0 = Math.floor(y / SPATIAL_CELL);
+    const cz0 = Math.floor(z / SPATIAL_CELL);
+
+    for (let dcx = -cellRange; dcx <= cellRange; dcx++) {
+      for (let dcy = -cellRange; dcy <= cellRange; dcy++) {
+        for (let dcz = -cellRange; dcz <= cellRange; dcz++) {
+          const key = `${cx0 + dcx},${cy0 + dcy},${cz0 + dcz}`;
+          const cell = spatialHash.get(key);
+          if (!cell) continue;
+          for (const id of cell) {
+            const ent = entities.get(id);
+            if (!ent || !ent.alive) continue;
+            const dx = ent.x - x;
+            const dy = ent.y - y;
+            const dz = ent.z - z;
+            if (dx * dx + dy * dy + dz * dz <= r2) {
+              results.push(ent);
+            }
+          }
+        }
+      }
+    }
+    return results;
+  }
+
+  /**
+   * Get all living entities of a specific type.
+   */
+  function getEntitiesByType(type) {
+    const results = [];
+    for (const ent of entities.values()) {
+      if (ent.alive && ent.type === type) results.push(ent);
+    }
+    return results;
+  }
+
+  /**
+   * Get the count of all living entities.
+   */
+  function getEntityCount() {
+    let count = 0;
+    for (const ent of entities.values()) {
+      if (ent.alive) count++;
+    }
+    return count;
+  }
+
+  /**
+   * Remove all dead entities (cleanup pass).
+   */
+  function cleanupEntities() {
+    const toRemove = [];
+    for (const ent of entities.values()) {
+      if (!ent.alive) toRemove.push(ent.id);
+    }
+    for (const id of toRemove) {
+      removeEntity(id);
+    }
+    return toRemove.length;
   }
 
   // ─── Configuration ──────────────────────────────────────────────────────
@@ -1399,6 +3086,86 @@ export function voxelApi(gpu) {
     if (opts.renderDistance !== undefined) RENDER_DISTANCE = opts.renderDistance;
     if (opts.seaLevel !== undefined) SEA_LEVEL = opts.seaLevel;
     if (opts.generateTerrain !== undefined) customTerrainGenerator = opts.generateTerrain;
+    if (opts.dayTime !== undefined) setDayTime(opts.dayTime);
+    if (opts.maxTerrainGenPerFrame !== undefined)
+      maxTerrainGenPerFrame = opts.maxTerrainGenPerFrame;
+    if (opts.maxMeshRebuildsPerFrame !== undefined)
+      maxMeshRebuildsPerFrame = opts.maxMeshRebuildsPerFrame;
+    // Performance feature toggles — mark chunks dirty when visual settings change
+    let needsRemesh = false;
+    if (opts.enableAO !== undefined && opts.enableAO !== enableAO) {
+      enableAO = opts.enableAO;
+      needsRemesh = true;
+    }
+    if (opts.enableLighting !== undefined && opts.enableLighting !== enableLighting) {
+      enableLighting = opts.enableLighting;
+      needsRemesh = true;
+    }
+    if (opts.enableCaves !== undefined) enableCaves = opts.enableCaves;
+    if (opts.enableOres !== undefined) enableOres = opts.enableOres;
+    if (opts.enableTrees !== undefined) enableTrees = opts.enableTrees;
+    if (opts.enableShadows !== undefined && opts.enableShadows !== enableShadows) {
+      enableShadows = opts.enableShadows;
+      needsRemesh = true;
+    }
+    // When visual settings change, mark all loaded chunks for rebuild
+    if (needsRemesh) {
+      for (const chunk of chunks.values()) {
+        chunk.dirty = true;
+        if (enableLighting) chunk.lightDirty = true;
+      }
+    }
+  }
+
+  // Return current world configuration (useful for debug HUDs and perf tuning)
+  function getWorldConfig() {
+    return {
+      chunkSize: CHUNK_SIZE,
+      chunkHeight: CHUNK_HEIGHT,
+      renderDistance: RENDER_DISTANCE,
+      seaLevel: SEA_LEVEL,
+      maxTerrainGenPerFrame,
+      maxMeshRebuildsPerFrame,
+      enableAO,
+      enableLighting,
+      enableCaves,
+      enableOres,
+      enableTrees,
+      enableShadows,
+      atlasEnabled,
+      chunkCount: chunks.size,
+      meshCount: chunkMeshes.size,
+      queueLength: chunkQueue.length,
+    };
+  }
+
+  // Set time of day (0.0 = midnight, 0.5 = noon, 1.0 = midnight)
+  // Affects sky light brightness. Only re-meshes when lighting changes visibly.
+  function setDayTime(t) {
+    // Convert 0..1 cycle to brightness: noon=1.0, midnight=0.15
+    const angle = t * Math.PI * 2;
+    const newFactor = Math.max(0.15, Math.sin(angle) * 0.5 + 0.5);
+    // Only mark chunks dirty if lighting changed enough to be visible
+    if (Math.abs(newFactor - dayTimeFactor) < 0.005) return;
+    dayTimeFactor = newFactor;
+    for (const chunk of chunks.values()) {
+      chunk.dirty = true;
+    }
+  }
+
+  // Get the effective light level at a world position (0-15)
+  function getLightLevel(x, y, z) {
+    if (y < 0 || y >= CHUNK_HEIGHT) return MAX_LIGHT;
+    const { chunkX, chunkZ, localX, localZ } = worldToChunk(x, z);
+    const chunk = getChunkIfExists(chunkX, chunkZ);
+    if (!chunk) return MAX_LIGHT;
+    if (chunk.lightDirty) propagateLighting(chunk);
+    return Math.round(
+      Math.max(
+        chunk.getSkyLight(localX, y, localZ) * dayTimeFactor,
+        chunk.getBlockLight(localX, y, localZ)
+      )
+    );
   }
 
   // Find the highest solid block at a given (x,z) position
@@ -1437,6 +3204,7 @@ export function voxelApi(gpu) {
 
     // World management
     updateChunks,
+    forceLoadChunks,
     getBlock,
     setBlock,
     getHighestBlock,
@@ -1447,8 +3215,37 @@ export function voxelApi(gpu) {
     checkCollision,
     checkFluid,
 
+    // Physics
+    moveEntity,
+
+    // Lighting
+    getLightLevel,
+    setDayTime,
+
     // Structures
     placeTree,
+
+    // Persistence
+    saveWorld,
+    loadWorld,
+    listWorlds,
+    deleteWorld,
+
+    // Texture Atlas
+    enableTextureAtlas,
+    loadCustomAtlas,
+
+    // Entity System
+    spawnEntity,
+    removeEntity,
+    getEntity,
+    damageEntity,
+    healEntity,
+    updateEntities,
+    getEntitiesInRadius,
+    getEntitiesByType,
+    getEntityCount,
+    cleanupEntities,
 
     // World reset & config
     resetWorld,
@@ -1468,17 +3265,38 @@ export function voxelApi(gpu) {
     exposeTo: function (g) {
       g.BLOCK_TYPES = BLOCK_TYPES;
       g.updateVoxelWorld = updateChunks;
+      g.forceLoadVoxelChunks = forceLoadChunks;
       g.getVoxelBlock = getBlock;
       g.setVoxelBlock = setBlock;
       g.raycastVoxelBlock = raycastBlock;
       g.checkVoxelCollision = checkCollision;
       g.checkVoxelFluid = checkFluid;
+      g.moveVoxelEntity = moveEntity;
       g.placeVoxelTree = placeTree;
       g.resetVoxelWorld = resetWorld;
       g.configureVoxelWorld = configureWorld;
+      g.getVoxelConfig = getWorldConfig;
       g.getVoxelHighestBlock = getHighestBlock;
       g.getVoxelBiome = getBiome;
+      g.getVoxelLightLevel = getLightLevel;
+      g.setVoxelDayTime = setDayTime;
+      g.saveVoxelWorld = saveWorld;
+      g.loadVoxelWorld = loadWorld;
+      g.listVoxelWorlds = listWorlds;
+      g.deleteVoxelWorld = deleteWorld;
       g.registerVoxelBlock = registry.register;
+      g.enableVoxelTextures = enableTextureAtlas;
+      g.loadVoxelTextureAtlas = loadCustomAtlas;
+      g.spawnVoxelEntity = spawnEntity;
+      g.removeVoxelEntity = removeEntity;
+      g.getVoxelEntity = getEntity;
+      g.damageVoxelEntity = damageEntity;
+      g.healVoxelEntity = healEntity;
+      g.updateVoxelEntities = updateEntities;
+      g.getVoxelEntitiesInRadius = getEntitiesInRadius;
+      g.getVoxelEntitiesByType = getEntitiesByType;
+      g.getVoxelEntityCount = getEntityCount;
+      g.cleanupVoxelEntities = cleanupEntities;
       g.simplexNoise2D = noise.fbm2D;
       g.simplexNoise3D = noise.fbm3D;
     },

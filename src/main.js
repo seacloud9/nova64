@@ -262,6 +262,7 @@ const gameMap = {
   nature: '/examples/nature-explorer-3d/code.js',
   dungeon: '/examples/dungeon-crawler-3d/code.js',
   wizardry: '/examples/wizardry-3d/code.js',
+  'creative-coding': '/examples/creative-coding/code.js',
 };
 
 // Map demo names (from ?demo= URL param) to paths
@@ -307,6 +308,7 @@ const demoMap = {
   'voxel-creatures': '/examples/voxel-creatures/code.js',
   'nft-worlds': '/examples/nft-worlds/code.js',
   'nft-art-generator': '/examples/nft-art-generator/code.js',
+  'creative-coding': '/examples/creative-coding/code.js',
 };
 
 // default cart - load from URL param or default to space-harrier-3d

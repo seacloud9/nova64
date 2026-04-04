@@ -295,7 +295,14 @@
       "getVoxelEntitiesInRadius": "readonly",
       "getVoxelEntitiesByType": "readonly",
       "getVoxelEntityCount": "readonly",
-      "cleanupVoxelEntities": "readonly"
+      "cleanupVoxelEntities": "readonly",
+      "createSeedFromHash": "readonly",
+      "createSeedRNG": "readonly",
+      "seedToTraits": "readonly",
+      "exportSeedMetadata": "readonly",
+      "setSeed": "readonly",
+      "getSeed": "readonly",
+      "getSeedRNG": "readonly"
     }
   },
   "prettier": {

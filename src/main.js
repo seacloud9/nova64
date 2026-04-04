@@ -23,6 +23,7 @@ import { api2d } from '../runtime/api-2d.js';
 import { presetsApi } from '../runtime/api-presets.js';
 import { generativeApi } from '../runtime/api-generative.js';
 import { gameUtilsApi } from '../runtime/api-gameutils.js';
+import { nftSeedApi } from '../runtime/nft-seed.js';
 
 const canvas = document.getElementById('screen');
 
@@ -57,6 +58,7 @@ const api2dInst = api2d(gpu);
 const presetsInst = presetsApi(gpu);
 const genArtInst = generativeApi(gpu);
 const gameUtilsInst = gameUtilsApi();
+const nftSeedInst = nftSeedApi();
 
 // Create UI API - needs to be created after api is fully initialized
 let uiApiInstance;
@@ -82,6 +84,7 @@ api2dInst.exposeTo(g);
 presetsInst.exposeTo(g);
 genArtInst.exposeTo(g);
 gameUtilsInst.exposeTo(g);
+nftSeedInst.exposeTo(g);
 
 // Now create UI API after g has rgba8 and other functions
 uiApiInstance = uiApi(gpu, g);
@@ -252,6 +255,8 @@ const gameMap = {
   'voxel-terrain': '/examples/voxel-terrain/code.js',
   'voxel-creative': '/examples/voxel-creative/code.js',
   'voxel-creatures': '/examples/voxel-creatures/code.js',
+  'nft-worlds': '/examples/nft-worlds/code.js',
+  'nft-art': '/examples/nft-art-generator/code.js',
   boids: '/examples/boids-flocking/code.js',
   'game-of-life': '/examples/game-of-life-3d/code.js',
   nature: '/examples/nature-explorer-3d/code.js',
@@ -300,6 +305,8 @@ const demoMap = {
   'voxel-terrain': '/examples/voxel-terrain/code.js',
   'voxel-creative': '/examples/voxel-creative/code.js',
   'voxel-creatures': '/examples/voxel-creatures/code.js',
+  'nft-worlds': '/examples/nft-worlds/code.js',
+  'nft-art-generator': '/examples/nft-art-generator/code.js',
 };
 
 // default cart - load from URL param or default to space-harrier-3d

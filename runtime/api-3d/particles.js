@@ -31,7 +31,7 @@ export function particlesModule({ scene, counters }) {
   function createParticleSystem(maxParticles = 200, options = {}) {
     const {
       shape = 'sphere',
-      size = 0.15,
+      size = 1.0,
       segments = 4,
       color = 0xffaa00,
       emissive = 0xff6600,

@@ -7,8 +7,8 @@ let systemIds = [];
 let lightIds = [];
 let propIds = [];
 let orbitAngle = 0.3;
-let orbitDist = 18;
-let orbitY = 8;
+let orbitDist = 12;
+let orbitY = 4;
 let frameCount = 0;
 let burstCooldown = 0;
 let sceneTime = 0;
@@ -217,6 +217,9 @@ function buildFire() {
     baseZ: 2,
     phase: 3.0,
   });
+
+  orbitY = 4;
+  orbitDist = 12;
 }
 
 // ── Scene 1: Blizzard — gentle snowfall blanketing the landscape ──────────────
@@ -285,17 +288,17 @@ function buildBlizzard() {
 
   // --- MAIN SNOWFALL: 4 large-area emitters across the sky, falling DOWN ---
   const snowPositions = [
-    [-5, 18, -5],
-    [5, 20, 5],
-    [-6, 19, 6],
-    [6, 17, -6],
+    [-6, 12, -4],
+    [5, 13, 4],
+    [-4, 11, 5],
+    [7, 12, -5],
   ];
   for (const [sx, sy, sz] of snowPositions) {
     systemIds.push(
       createParticleSystem(400, {
         shape: 'sphere',
         segments: 3,
-        gravity: 1.5,
+        gravity: -0.4,
         drag: 0.998,
         emitterX: sx,
         emitterY: sy,
@@ -319,10 +322,10 @@ function buildBlizzard() {
     createParticleSystem(200, {
       shape: 'sphere',
       segments: 3,
-      gravity: 0.8,
+      gravity: -0.3,
       drag: 0.999,
       emitterX: 0,
-      emitterY: 14,
+      emitterY: 10,
       emitterZ: 0,
       emitRate: 30,
       minLife: 6.0,
@@ -342,7 +345,7 @@ function buildBlizzard() {
     createParticleSystem(150, {
       shape: 'sphere',
       segments: 3,
-      gravity: 2.0,
+      gravity: -3.0,
       drag: 0.96,
       emitterX: 0,
       emitterY: 0.3,
@@ -375,8 +378,8 @@ function buildBlizzard() {
     snow: true,
   });
 
-  orbitY = 6;
-  orbitDist = 18;
+  orbitY = 5;
+  orbitDist = 14;
 }
 
 // ── Scene 2: Forge — electric anvil with sparks and plasma ────────────────────
@@ -521,6 +524,9 @@ function buildForge() {
     electric: true,
   });
   burstCooldown = 0.1; // kick off first hammer blow immediately
+
+  orbitY = 6;
+  orbitDist = 16;
 }
 
 // ── Scene 3: Galaxy — swirling spiral arms with nebula dust and stellar nursery
@@ -899,8 +905,8 @@ function buildWaterfall() {
     waterfall: true,
   });
 
-  orbitY = 7;
-  orbitDist = 22;
+  orbitY = 5;
+  orbitDist = 16;
 }
 
 export function update(dt) {
@@ -985,13 +991,23 @@ export function update(dt) {
     }
   }
 
+  // Fire: breathing emitters for organic movement
+  if (scene === 0) {
+    const sway = Math.sin(sceneTime * 1.5) * 0.4;
+    const breathe = Math.sin(sceneTime * 3) * 0.2;
+    if (systemIds[0])
+      setParticleEmitter(systemIds[0], { emitterX: sway * 0.3, emitterY: 0.8 + breathe });
+    if (systemIds[1])
+      setParticleEmitter(systemIds[1], { emitterX: -sway * 0.4, emitterZ: sway * 0.2 });
+  }
+
   // Blizzard: gently drift snow emitters for natural variation
   if (scene === 1) {
     const windDrift = Math.sin(sceneTime * 0.15) * 3;
     for (let i = 0; i < 4; i++) {
       if (systemIds[i]) {
         setParticleEmitter(systemIds[i], {
-          emitterX: [-5, 5, -6, 6][i] + windDrift,
+          emitterX: [-6, 5, -4, 7][i] + windDrift,
         });
       }
     }

@@ -105,8 +105,10 @@ const nova = new Nova64(gpu, manifestInst);
 let paused = false;
 let stepOnce = false;
 let statsEl = document.getElementById('stats');
+let _currentCartPath = '';
 
 async function loadCart(path) {
+  _currentCartPath = path;
   await nova.loadCart(path);
 }
 
@@ -138,6 +140,26 @@ function attachUI() {
     a.href = url;
     a.download = 'nova64.png';
     a.click();
+  });
+
+  // START button (Enter key) resets the current cart when pressed
+  let _resetPending = false;
+  window.addEventListener('keydown', async e => {
+    if (e.code !== 'Enter') return;
+    // Ignore if typing in a form element
+    const tag = document.activeElement?.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+    // Only reset if a cart is loaded and not already resetting
+    if (!_currentCartPath || _resetPending) return;
+    _resetPending = true;
+    logger.info('🔄 START pressed — resetting cart:', _currentCartPath);
+    paused = false;
+    pauseBtn.textContent = 'Pause';
+    try {
+      await loadCart(_currentCartPath);
+    } finally {
+      _resetPending = false;
+    }
   });
 }
 

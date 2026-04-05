@@ -6,8 +6,8 @@ import { logger } from './logger.js';
 // ── State ────────────────────────────────────────────────────
 let _defaultLocale = 'en';
 let _currentLocale = 'en';
-let _strings = {};       // default locale strings  { key: value }
-let _locales = {};       // { locale: { key: value } }
+let _strings = {}; // default locale strings  { key: value }
+let _locales = {}; // { locale: { key: value } }
 
 // ── Core API ─────────────────────────────────────────────────
 

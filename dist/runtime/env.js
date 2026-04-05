@@ -363,7 +363,8 @@ function renderOverlay() {
   // i18n info
   if (typeof globalThis.getLocale === 'function') {
     const locale = globalThis.getLocale();
-    const locales = typeof globalThis.getAvailableLocales === 'function' ? globalThis.getAvailableLocales() : [];
+    const locales =
+      typeof globalThis.getAvailableLocales === 'function' ? globalThis.getAvailableLocales() : [];
     mhtml += '<h3 style="color:#0f0;font-size:20px;margin:0 0 12px">🌐 i18n</h3>';
     mhtml += `<div style="margin:4px 0">Locale: <span style="color:#ff0">${locale}</span></div>`;
     if (locales.length > 1) {
@@ -426,7 +427,8 @@ function renderOverlay() {
       mhtml += '<h3 style="color:#0f0;font-size:20px;margin:12px 0 8px">📂 ASSETS</h3>';
       mhtml += `<div style="margin:4px 0">Loaded: <span style="color:#ff0">${status.loaded}/${status.total} (${status.percent}%)</span></div>`;
       for (const [name, detail] of Object.entries(status.details)) {
-        const color = detail.status === 'loaded' ? '#0f0' : detail.status === 'error' ? '#f44' : '#ff0';
+        const color =
+          detail.status === 'loaded' ? '#0f0' : detail.status === 'error' ? '#f44' : '#ff0';
         mhtml += `<div style="margin:2px 0;color:#888;font-size:13px">  ${name}: <span style="color:${color}">${detail.status}</span> [${detail.type}]</div>`;
       }
     }
@@ -437,9 +439,11 @@ function renderOverlay() {
     const meta = globalThis.getMeta();
     if (meta) {
       mhtml += '<h3 style="color:#0f0;font-size:20px;margin:12px 0 8px">📋 CART META</h3>';
-      if (meta.name) mhtml += `<div style="margin:4px 0">${meta.name} v${meta.version || '?'}</div>`;
+      if (meta.name)
+        mhtml += `<div style="margin:4px 0">${meta.name} v${meta.version || '?'}</div>`;
       if (meta.author) mhtml += `<div style="margin:4px 0;color:#888">by ${meta.author}</div>`;
-      if (meta.description) mhtml += `<div style="margin:4px 0;color:#888;font-size:13px">${meta.description}</div>`;
+      if (meta.description)
+        mhtml += `<div style="margin:4px 0;color:#888;font-size:13px">${meta.description}</div>`;
     }
   }
 

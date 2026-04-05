@@ -602,7 +602,7 @@ export async function runWizardryTests() {
     const src = loadSource();
     assert(src.length > 1000, 'Source should be substantial');
     // vm.Script doesn't support ESM exports — strip them for syntax check
-    const stripped = src.replace(/export\s+function/g, 'function');
+    const stripped = src.replace(/export\s+(function|const|let|var|async\s+function)/g, '$1');
     const vm = await import('vm');
     new vm.Script(stripped, { filename: 'wizardry-3d/code.js' });
   });

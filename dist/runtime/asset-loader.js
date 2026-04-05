@@ -4,8 +4,8 @@
 import { logger } from './logger.js';
 
 // ── State ────────────────────────────────────────────────────
-let _assets = {};       // { logicalName: { type, path, data, status } }
-let _basePath = '';     // cart directory base path
+let _assets = {}; // { logicalName: { type, path, data, status } }
+let _basePath = ''; // cart directory base path
 let _loaded = 0;
 let _total = 0;
 

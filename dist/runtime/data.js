@@ -5,13 +5,13 @@
 import { logger } from './logger.js';
 
 // ── State ────────────────────────────────────────────────────
-let _enemies = {};     // { id: { ...template } }
+let _enemies = {}; // { id: { ...template } }
 let _npcs = {};
 let _bosses = {};
 let _items = {};
 let _uiConfig = null;
 let _gameplay = null;
-let _tFunc = k => k;   // i18n t() reference, injected at init
+let _tFunc = k => k; // i18n t() reference, injected at init
 
 // ── Helpers ──────────────────────────────────────────────────
 
@@ -21,7 +21,8 @@ function resolve(obj) {
   const copy = JSON.parse(JSON.stringify(obj));
   // Resolve known name/description fields
   if (copy.name && typeof copy.name === 'string') copy.name = _tFunc(copy.name);
-  if (copy.description && typeof copy.description === 'string') copy.description = _tFunc(copy.description);
+  if (copy.description && typeof copy.description === 'string')
+    copy.description = _tFunc(copy.description);
   if (copy.dialog && typeof copy.dialog === 'string') copy.dialog = _tFunc(copy.dialog);
   return copy;
 }
@@ -142,8 +143,11 @@ function _loadData(config, tFunc) {
     _enemies = ent.enemies ? { ...ent.enemies } : {};
     _npcs = ent.npcs ? { ...ent.npcs } : {};
     _bosses = ent.bosses ? { ...ent.bosses } : {};
-    const total = Object.keys(_enemies).length + Object.keys(_npcs).length + Object.keys(_bosses).length;
-    logger.info(`📦 Data loaded: ${total} entities (${Object.keys(_enemies).length} enemies, ${Object.keys(_npcs).length} NPCs, ${Object.keys(_bosses).length} bosses)`);
+    const total =
+      Object.keys(_enemies).length + Object.keys(_npcs).length + Object.keys(_bosses).length;
+    logger.info(
+      `📦 Data loaded: ${total} entities (${Object.keys(_enemies).length} enemies, ${Object.keys(_npcs).length} NPCs, ${Object.keys(_bosses).length} bosses)`
+    );
   }
 
   // Items

@@ -40,7 +40,9 @@ function _loadManifest(config, cartPath) {
   // Meta
   if (config.meta) {
     _meta = { ...config.meta };
-    logger.info(`🎮 Cart: "${_meta.name || 'untitled'}" v${_meta.version || '?'} by ${_meta.author || '?'}`);
+    logger.info(
+      `🎮 Cart: "${_meta.name || 'untitled'}" v${_meta.version || '?'} by ${_meta.author || '?'}`
+    );
   }
 
   // Text / i18n — load BEFORE data so t() is available

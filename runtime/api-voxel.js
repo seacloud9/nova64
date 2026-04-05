@@ -2943,6 +2943,8 @@ export function voxelApi(gpu) {
     entities.clear();
     spatialHash.clear();
     nextEntityId = 1;
+    // Clear ECS component index (archetypes preserved — they're templates)
+    componentIndex.clear();
     // Dispose cached entity materials
     for (const mat of _entityMaterialCache.values()) mat.dispose();
     _entityMaterialCache.clear();
@@ -3700,6 +3702,12 @@ export function voxelApi(gpu) {
   const SPATIAL_CELL = 16; // matches chunk size
   const spatialHash = new Map(); // "cx,cy,cz" -> Set<entityId>
 
+  // ─── ECS Component & Archetype System ────────────────────────────────
+  const archetypes = new Map(); // name -> { components: { compName: defaultData } }
+
+  // Component index: compName -> Set<entityId> for fast queries
+  const componentIndex = new Map();
+
   function spatialKey(x, y, z) {
     return `${Math.floor(x / SPATIAL_CELL)},${Math.floor(y / SPATIAL_CELL)},${Math.floor(z / SPATIAL_CELL)}`;
   }
@@ -3797,6 +3805,7 @@ export function voxelApi(gpu) {
       inWater: false,
       ai: opts.ai || null,
       data: opts.data || {},
+      components: null, // ECS components (Map, created lazily)
       _spatialKey: null,
     };
 
@@ -3823,6 +3832,13 @@ export function voxelApi(gpu) {
       // Only dispose materials NOT in the shared cache
       if (ent.mesh.material && !_entityMaterialCache.has(ent.mesh.material.color?.getHex?.())) {
         ent.mesh.material.dispose();
+      }
+    }
+    // Clean up component index
+    if (ent.components) {
+      for (const name of ent.components.keys()) {
+        const idx = componentIndex.get(name);
+        if (idx) idx.delete(id);
       }
     }
     spatialRemove(ent);
@@ -4000,6 +4016,369 @@ export function voxelApi(gpu) {
       removeEntity(id);
     }
     return toRemove.length;
+  }
+
+  // ─── ECS: Component Management ──────────────────────────────────────
+
+  /**
+   * Set a component on an entity.
+   * @param {number} id - Entity ID
+   * @param {string} name - Component name (e.g. 'inventory', 'pathfind', 'animation')
+   * @param {object} data - Component data
+   */
+  function setEntityComponent(id, name, data) {
+    const ent = entities.get(id);
+    if (!ent) return;
+    if (!ent.components) ent.components = new Map();
+    ent.components.set(name, data);
+    // Update component index
+    let idx = componentIndex.get(name);
+    if (!idx) {
+      idx = new Set();
+      componentIndex.set(name, idx);
+    }
+    idx.add(id);
+  }
+
+  /**
+   * Get a component from an entity.
+   * @returns {object|null} Component data or null
+   */
+  function getEntityComponent(id, name) {
+    const ent = entities.get(id);
+    if (!ent || !ent.components) return null;
+    return ent.components.get(name) || null;
+  }
+
+  /**
+   * Check if an entity has a component.
+   */
+  function hasEntityComponent(id, name) {
+    const ent = entities.get(id);
+    if (!ent || !ent.components) return false;
+    return ent.components.has(name);
+  }
+
+  /**
+   * Remove a component from an entity.
+   */
+  function removeEntityComponent(id, name) {
+    const ent = entities.get(id);
+    if (!ent || !ent.components) return false;
+    const had = ent.components.delete(name);
+    if (had) {
+      const idx = componentIndex.get(name);
+      if (idx) idx.delete(id);
+    }
+    return had;
+  }
+
+  /**
+   * Query entities that have ALL of the specified components.
+   * @param {string[]} required - Array of component names
+   * @param {function} [filter] - Optional filter predicate (entity) => boolean
+   * @returns {object[]} Array of matching entities
+   */
+  function queryEntities(required, filter) {
+    if (!required || required.length === 0) return [];
+    // Start with the smallest index set for perf
+    let smallest = null;
+    let smallestSize = Infinity;
+    for (const name of required) {
+      const idx = componentIndex.get(name);
+      if (!idx || idx.size === 0) return []; // component not used anywhere
+      if (idx.size < smallestSize) {
+        smallest = idx;
+        smallestSize = idx.size;
+      }
+    }
+    const results = [];
+    for (const id of smallest) {
+      const ent = entities.get(id);
+      if (!ent || !ent.alive) continue;
+      // Check all required components
+      let hasAll = true;
+      for (const name of required) {
+        if (!ent.components || !ent.components.has(name)) {
+          hasAll = false;
+          break;
+        }
+      }
+      if (hasAll && (!filter || filter(ent))) {
+        results.push(ent);
+      }
+    }
+    return results;
+  }
+
+  // ─── ECS: Archetypes ────────────────────────────────────────────────
+
+  /**
+   * Register an entity archetype — a named template of default components.
+   * @param {string} name - Archetype name (e.g. 'mob', 'item', 'npc')
+   * @param {object} componentDefaults - { componentName: defaultData, ... }
+   */
+  function createEntityArchetype(name, componentDefaults) {
+    archetypes.set(name, { components: componentDefaults });
+  }
+
+  /**
+   * Spawn an entity from an archetype, applying default components.
+   * @param {string} archetype - Archetype name
+   * @param {number[]} pos - [x, y, z]
+   * @param {object} [opts] - Same as spawnEntity opts
+   * @returns {object} entity
+   */
+  function spawnEntityFromArchetype(archetype, pos, opts = {}) {
+    const arch = archetypes.get(archetype);
+    if (!arch) return spawnEntity(archetype, pos, opts);
+    const ent = spawnEntity(opts.type || archetype, pos, opts);
+    // Apply archetype default components (deep-copy plain objects)
+    for (const [compName, defaultData] of Object.entries(arch.components)) {
+      const data =
+        typeof defaultData === 'object' && defaultData !== null
+          ? JSON.parse(JSON.stringify(defaultData))
+          : defaultData;
+      setEntityComponent(ent.id, compName, data);
+    }
+    return ent;
+  }
+
+  // ─── ECS: Built-in Archetypes ───────────────────────────────────────
+
+  createEntityArchetype('mob', {
+    physics: { gravity: true, friction: 0.8 },
+    health: { current: 10, max: 10 },
+    collider: { width: 0.8, height: 1.8, depth: 0.8 },
+    animation: { state: 'idle', frame: 0, speed: 1 },
+  });
+
+  createEntityArchetype('item', {
+    physics: { gravity: true, friction: 0.9 },
+    collider: { width: 0.4, height: 0.4, depth: 0.4 },
+    pickup: { radius: 1.5, autoPickup: true },
+    bobble: { amplitude: 0.15, speed: 2 },
+  });
+
+  createEntityArchetype('projectile', {
+    physics: { gravity: false, friction: 1.0 },
+    collider: { width: 0.2, height: 0.2, depth: 0.2 },
+    damage: { amount: 5, piercing: false },
+    lifetime: { remaining: 5.0 },
+  });
+
+  createEntityArchetype('npc', {
+    physics: { gravity: true, friction: 0.8 },
+    health: { current: 20, max: 20 },
+    collider: { width: 0.8, height: 1.8, depth: 0.8 },
+    animation: { state: 'idle', frame: 0, speed: 1 },
+    interact: { radius: 3.0, dialogue: null },
+    pathfind: { target: null, path: null, speed: 2.0 },
+  });
+
+  createEntityArchetype('vehicle', {
+    physics: { gravity: true, friction: 0.95 },
+    collider: { width: 2.0, height: 1.5, depth: 4.0 },
+    mount: { rider: null, speed: 10.0, turnSpeed: 2.0 },
+  });
+
+  // ─── A* Pathfinding on Voxel Grid ──────────────────────────────────
+
+  /**
+   * A* pathfinding on the voxel grid. Finds a walkable path between two positions.
+   * Solid blocks are obstacles; entities walk ON top of solid blocks.
+   * @param {number[]} startPos - [x, y, z] start world position
+   * @param {number[]} endPos - [x, y, z] goal world position
+   * @param {object} [opts] - Options:
+   *   maxSteps: number — max nodes to explore (default 1000)
+   *   maxFall: number — max blocks entity can fall (default 3)
+   *   maxJump: number — max blocks entity can jump up (default 1)
+   *   width: number — entity width for clearance checks (default 1)
+   *   height: number — entity height for clearance checks (default 2)
+   * @returns {number[][]|null} Array of [x,y,z] waypoints or null if no path
+   */
+  function findPath(startPos, endPos, opts = {}) {
+    const maxSteps = opts.maxSteps || 1000;
+    const maxFall = opts.maxFall || 3;
+    const maxJump = opts.maxJump || 1;
+    const eWidth = opts.width || 1;
+    const eHeight = opts.height || 2;
+
+    const sx = Math.floor(startPos[0]);
+    const sy = Math.floor(startPos[1]);
+    const sz = Math.floor(startPos[2]);
+    const ex = Math.floor(endPos[0]);
+    const ey = Math.floor(endPos[1]);
+    const ez = Math.floor(endPos[2]);
+
+    // Check if a column at (x,z) is walkable at height y:
+    // Needs solid ground at y-1 and clear space from y to y+eHeight-1
+    function isWalkable(x, y, z) {
+      // Must have solid ground below
+      const ground = getBlock(x, y - 1, z);
+      if (!ground || ground === 0) return false;
+      if (!registry.isSolid(ground)) return false; // water etc not solid ground
+      // Must have clearance above
+      for (let h = 0; h < eHeight; h++) {
+        const above = getBlock(x, y + h, z);
+        if (above && above !== 0) {
+          if (registry.isSolid(above)) return false;
+        }
+      }
+      return true;
+    }
+
+    // Find standing Y at (x,z) near targetY — scan up and down
+    function findStandingY(x, z, targetY) {
+      // Check exact first
+      if (isWalkable(x, targetY, z)) return targetY;
+      // Scan down (falling)
+      for (let dy = 1; dy <= maxFall; dy++) {
+        if (isWalkable(x, targetY - dy, z)) return targetY - dy;
+      }
+      // Scan up (jumping)
+      for (let dy = 1; dy <= maxJump; dy++) {
+        if (isWalkable(x, targetY + dy, z)) return targetY + dy;
+      }
+      return -1;
+    }
+
+    // Start must be walkable — find standing Y
+    const startY = findStandingY(sx, sz, sy);
+    if (startY < 0) return null;
+    const goalY = findStandingY(ex, ez, ey);
+    if (goalY < 0) return null;
+
+    // Node key
+    function nodeKey(x, y, z) {
+      return `${x},${y},${z}`;
+    }
+
+    // Heuristic: Manhattan-ish with Y cost
+    function heuristic(x, y, z) {
+      return Math.abs(x - ex) + Math.abs(y - goalY) * 2 + Math.abs(z - ez);
+    }
+
+    // Priority queue (binary min-heap)
+    const openHeap = [];
+    const openSet = new Map(); // key -> { x, y, z, g, f, parent }
+    const closedSet = new Set();
+
+    function heapPush(node) {
+      openHeap.push(node);
+      let i = openHeap.length - 1;
+      while (i > 0) {
+        const pi = (i - 1) >> 1;
+        if (openHeap[pi].f <= openHeap[i].f) break;
+        [openHeap[pi], openHeap[i]] = [openHeap[i], openHeap[pi]];
+        i = pi;
+      }
+    }
+
+    function heapPop() {
+      const top = openHeap[0];
+      const last = openHeap.pop();
+      if (openHeap.length > 0) {
+        openHeap[0] = last;
+        let i = 0;
+        let swapped = true;
+        while (swapped) {
+          swapped = false;
+          let smallest = i;
+          const l = 2 * i + 1;
+          const r = 2 * i + 2;
+          if (l < openHeap.length && openHeap[l].f < openHeap[smallest].f) smallest = l;
+          if (r < openHeap.length && openHeap[r].f < openHeap[smallest].f) smallest = r;
+          if (smallest !== i) {
+            [openHeap[i], openHeap[smallest]] = [openHeap[smallest], openHeap[i]];
+            i = smallest;
+            swapped = true;
+          }
+        }
+      }
+      return top;
+    }
+
+    // 4-directional neighbors (no diagonal to keep it simple & correct)
+    const dirs = [
+      [1, 0],
+      [-1, 0],
+      [0, 1],
+      [0, -1],
+    ];
+
+    const startKey = nodeKey(sx, startY, sz);
+    const startNode = {
+      x: sx,
+      y: startY,
+      z: sz,
+      g: 0,
+      f: heuristic(sx, startY, sz),
+      parentKey: null,
+    };
+    openSet.set(startKey, startNode);
+    heapPush(startNode);
+
+    let steps = 0;
+    while (openHeap.length > 0 && steps < maxSteps) {
+      steps++;
+      const current = heapPop();
+      const ck = nodeKey(current.x, current.y, current.z);
+
+      if (current.x === ex && current.z === ez && current.y === goalY) {
+        // Reconstruct path
+        const path = [];
+        let node = current;
+        while (node) {
+          path.push([node.x + 0.5, node.y, node.z + 0.5]); // center of block
+          node = node.parentKey
+            ? openSet.get(node.parentKey) || closedSet._nodes?.get(node.parentKey)
+            : null;
+        }
+        path.reverse();
+        return path;
+      }
+
+      closedSet.add(ck);
+      if (!closedSet._nodes) closedSet._nodes = new Map();
+      closedSet._nodes.set(ck, current);
+
+      for (const [dx, dz] of dirs) {
+        const nx = current.x + dx;
+        const nz = current.z + dz;
+        const ny = findStandingY(nx, nz, current.y);
+        if (ny < 0) continue;
+
+        // Check jump/fall limits relative to current
+        const yDiff = ny - current.y;
+        if (yDiff > maxJump || yDiff < -maxFall) continue;
+
+        // Width clearance for wider entities
+        if (eWidth > 1) {
+          let blocked = false;
+          for (let wx = 0; wx < eWidth && !blocked; wx++) {
+            for (let wz = 0; wz < eWidth && !blocked; wz++) {
+              if (wx === 0 && wz === 0) continue;
+              if (!isWalkable(nx + wx, ny, nz + wz)) blocked = true;
+            }
+          }
+          if (blocked) continue;
+        }
+
+        const nk = nodeKey(nx, ny, nz);
+        if (closedSet.has(nk)) continue;
+
+        const g = current.g + 1 + Math.abs(yDiff) * 0.5;
+        const existing = openSet.get(nk);
+        if (existing && existing.g <= g) continue;
+
+        const node = { x: nx, y: ny, z: nz, g, f: g + heuristic(nx, ny, nz), parentKey: ck };
+        openSet.set(nk, node);
+        heapPush(node);
+      }
+    }
+
+    return null; // No path found
   }
 
   // ─── Configuration ──────────────────────────────────────────────────────
@@ -4199,6 +4578,16 @@ export function voxelApi(gpu) {
     getEntityCount,
     cleanupEntities,
 
+    // ECS Components & Archetypes
+    setEntityComponent,
+    getEntityComponent,
+    hasEntityComponent,
+    removeEntityComponent,
+    queryEntities,
+    createEntityArchetype,
+    spawnEntityFromArchetype,
+    findPath,
+
     // Fluids
     setFluidSource,
     removeFluidSource,
@@ -4256,6 +4645,14 @@ export function voxelApi(gpu) {
       g.getVoxelEntitiesByType = getEntitiesByType;
       g.getVoxelEntityCount = getEntityCount;
       g.cleanupVoxelEntities = cleanupEntities;
+      g.setVoxelEntityComponent = setEntityComponent;
+      g.getVoxelEntityComponent = getEntityComponent;
+      g.hasVoxelEntityComponent = hasEntityComponent;
+      g.removeVoxelEntityComponent = removeEntityComponent;
+      g.queryVoxelEntities = queryEntities;
+      g.createVoxelEntityArchetype = createEntityArchetype;
+      g.spawnVoxelEntityFromArchetype = spawnEntityFromArchetype;
+      g.findVoxelPath = findPath;
       g.simplexNoise2D = noise.fbm2D;
       g.simplexNoise3D = noise.fbm3D;
       g.setVoxelFluidSource = setFluidSource;

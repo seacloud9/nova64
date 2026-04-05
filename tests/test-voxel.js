@@ -490,6 +490,140 @@ export async function runVoxelTests() {
   });
 
   // ──────────────────────────────────────────────────────────────────────
+  // ECS Component & Archetype Tests
+  // ──────────────────────────────────────────────────────────────────────
+
+  runner.test('Voxel - setEntityComponent / getEntityComponent', () => {
+    const gpu = createMockGPU();
+    const api = voxelApi(gpu);
+
+    const ent = api.spawnEntity('test', [0, 64, 0]);
+    api.setEntityComponent(ent.id, 'inventory', { slots: 10, items: [] });
+    const inv = api.getEntityComponent(ent.id, 'inventory');
+    assert(inv !== null, 'Should return component');
+    assertEqual(inv.slots, 10, 'Component data preserved');
+  });
+
+  runner.test('Voxel - hasEntityComponent / removeEntityComponent', () => {
+    const gpu = createMockGPU();
+    const api = voxelApi(gpu);
+
+    const ent = api.spawnEntity('test', [0, 64, 0]);
+    assert(!api.hasEntityComponent(ent.id, 'health'), 'Should not have component initially');
+    api.setEntityComponent(ent.id, 'health', { current: 20, max: 20 });
+    assert(api.hasEntityComponent(ent.id, 'health'), 'Should have component after set');
+    api.removeEntityComponent(ent.id, 'health');
+    assert(!api.hasEntityComponent(ent.id, 'health'), 'Should not have component after remove');
+  });
+
+  runner.test('Voxel - queryEntities by components', () => {
+    const gpu = createMockGPU();
+    const api = voxelApi(gpu);
+
+    const e1 = api.spawnEntity('a', [0, 64, 0]);
+    const e2 = api.spawnEntity('b', [5, 64, 5]);
+    const e3 = api.spawnEntity('c', [10, 64, 10]);
+    api.setEntityComponent(e1.id, 'physics', { gravity: true });
+    api.setEntityComponent(e1.id, 'health', { current: 10 });
+    api.setEntityComponent(e2.id, 'physics', { gravity: false });
+    api.setEntityComponent(e3.id, 'health', { current: 5 });
+    // Query for entities with both physics AND health
+    const both = api.queryEntities(['physics', 'health']);
+    assertEqual(both.length, 1, 'Only e1 has both components');
+    assertEqual(both[0].id, e1.id, 'Should be e1');
+  });
+
+  runner.test('Voxel - createEntityArchetype / spawnEntityFromArchetype', () => {
+    const gpu = createMockGPU();
+    const api = voxelApi(gpu);
+
+    api.createEntityArchetype('custom_mob', {
+      health: { current: 50, max: 50 },
+      attack: { damage: 5, range: 2 },
+    });
+    const ent = api.spawnEntityFromArchetype('custom_mob', [0, 64, 0]);
+    assert(ent !== null, 'Should spawn entity');
+    const hp = api.getEntityComponent(ent.id, 'health');
+    assert(hp !== null, 'Should have health component from archetype');
+    assertEqual(hp.max, 50, 'Archetype default data applied');
+    const atk = api.getEntityComponent(ent.id, 'attack');
+    assertEqual(atk.damage, 5, 'Attack component applied');
+  });
+
+  runner.test('Voxel - built-in archetypes have correct components', () => {
+    const gpu = createMockGPU();
+    const api = voxelApi(gpu);
+
+    const mob = api.spawnEntityFromArchetype('mob', [0, 64, 0]);
+    assert(api.hasEntityComponent(mob.id, 'physics'), 'mob has physics');
+    assert(api.hasEntityComponent(mob.id, 'health'), 'mob has health');
+    assert(api.hasEntityComponent(mob.id, 'collider'), 'mob has collider');
+    assert(api.hasEntityComponent(mob.id, 'animation'), 'mob has animation');
+
+    const item = api.spawnEntityFromArchetype('item', [5, 64, 5]);
+    assert(api.hasEntityComponent(item.id, 'pickup'), 'item has pickup');
+    assert(api.hasEntityComponent(item.id, 'bobble'), 'item has bobble');
+  });
+
+  runner.test('Voxel - findPath returns path on flat terrain', () => {
+    const gpu = createMockGPU();
+    const api = voxelApi(gpu);
+
+    // Use empty terrain generator to avoid interference
+    api.configureWorld({ generateTerrain: () => {} });
+    api.resetWorld();
+
+    // Build flat platform
+    for (let x = 0; x < 10; x++) {
+      for (let z = 0; z < 10; z++) {
+        api.setBlock(x, 63, z, api.BLOCK_TYPES.STONE);
+      }
+    }
+    const path = api.findPath([0, 64, 0], [5, 64, 5]);
+    assert(path !== null, 'Should find a path');
+    assert(path.length > 1, 'Path should have waypoints');
+    // First point near start, last near goal
+    assert(Math.abs(path[0][0] - 0.5) < 1, 'Path starts near start');
+    assert(Math.abs(path[path.length - 1][0] - 5.5) < 1, 'Path ends near goal');
+  });
+
+  runner.test('Voxel - findPath returns null when blocked', () => {
+    const gpu = createMockGPU();
+    const api = voxelApi(gpu);
+
+    // Use empty terrain generator to avoid interference
+    api.configureWorld({ generateTerrain: () => {} });
+    api.resetWorld();
+
+    // Build small platform with a wall blocking
+    for (let x = 0; x < 10; x++) {
+      for (let z = 0; z < 10; z++) {
+        api.setBlock(x, 63, z, api.BLOCK_TYPES.STONE);
+      }
+    }
+    // Build solid wall across z=3
+    for (let x = 0; x < 10; x++) {
+      for (let y = 64; y < 68; y++) {
+        api.setBlock(x, y, 3, api.BLOCK_TYPES.STONE);
+      }
+    }
+    const path = api.findPath([0, 64, 0], [0, 64, 6], { maxSteps: 200 });
+    assert(path === null, 'Should not find path through solid wall');
+  });
+
+  runner.test('Voxel - removeEntity cleans up component index', () => {
+    const gpu = createMockGPU();
+    const api = voxelApi(gpu);
+
+    const ent = api.spawnEntity('test', [0, 64, 0]);
+    api.setEntityComponent(ent.id, 'health', { current: 10 });
+    api.removeEntity(ent.id);
+    // After removal, queryEntities should not find it
+    const results = api.queryEntities(['health']);
+    assert(!results.some(e => e.id === ent.id), 'Removed entity should not appear in queries');
+  });
+
+  // ──────────────────────────────────────────────────────────────────────
   // World Reset Tests
   // ──────────────────────────────────────────────────────────────────────
 
@@ -581,6 +715,14 @@ export async function runVoxelTests() {
       'getVoxelEntitiesByType',
       'getVoxelEntityCount',
       'cleanupVoxelEntities',
+      'setVoxelEntityComponent',
+      'getVoxelEntityComponent',
+      'hasVoxelEntityComponent',
+      'removeVoxelEntityComponent',
+      'queryVoxelEntities',
+      'createVoxelEntityArchetype',
+      'spawnVoxelEntityFromArchetype',
+      'findVoxelPath',
       'simplexNoise2D',
       'simplexNoise3D',
       'setVoxelFluidSource',

@@ -24,6 +24,8 @@ interface WindowStore {
   updateWindow: (id: string, updates: Partial<WindowState>) => void;
   toggleShade: (id: string) => void;
   toggleMaximize: (id: string) => void;
+  minimizeWindow: (id: string) => void;
+  restoreWindow: (id: string) => void;
 }
 
 export const useWindowStore = create<WindowStore>((set, get) => ({
@@ -44,6 +46,7 @@ export const useWindowStore = create<WindowStore>((set, get) => ({
       height: 300,
       isShaded: false,
       isMaximized: false,
+      isMinimized: false,
       zIndex: nextZIndex,
       appId: 'unknown',
       closable: true,
@@ -103,6 +106,26 @@ export const useWindowStore = create<WindowStore>((set, get) => ({
       windows: state.windows.map((w) =>
         w.id === id ? { ...w, isMaximized: !w.isMaximized } : w
       ),
+    }));
+  },
+
+  minimizeWindow: (id) => {
+    set((state) => ({
+      windows: state.windows.map((w) =>
+        w.id === id ? { ...w, isMinimized: true } : w
+      ),
+      activeWindowId: state.activeWindowId === id ? null : state.activeWindowId,
+    }));
+  },
+
+  restoreWindow: (id) => {
+    const { nextZIndex } = get();
+    set((state) => ({
+      windows: state.windows.map((w) =>
+        w.id === id ? { ...w, isMinimized: false, zIndex: nextZIndex } : w
+      ),
+      activeWindowId: id,
+      nextZIndex: nextZIndex + 1,
     }));
   },
 }));

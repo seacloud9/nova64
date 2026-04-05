@@ -1,5 +1,5 @@
 // hyperNova – EditorCanvas
-// WYSIWYG card editing canvas with drag-to-move and click-to-add
+// WYSIWYG card editing canvas with drag-to-move, snap-to-grid, and alignment guides
 import React, { useRef, useState, useCallback, useEffect } from 'react'; // React needed for .CSSProperties
 import { useHyperNovaStore, selectCurrentCard } from '../shared/store';
 import type { CardObject } from '../shared/schema';
@@ -12,7 +12,8 @@ import {
 export const CARD_W = 640;
 export const CARD_H = 360;
 
-// ---------------------------------------------------------------------------
+// Snap threshold for smart alignment guides (px)
+const GUIDE_SNAP_THRESHOLD = 6;
 // Object renderer (shared by editor and player)
 // ---------------------------------------------------------------------------
 
@@ -113,6 +114,123 @@ interface DragState {
 }
 
 // ---------------------------------------------------------------------------
+// Smart alignment guides helper
+// ---------------------------------------------------------------------------
+
+interface GuideResult {
+  x: number;
+  y: number;
+  guides: { type: 'h' | 'v'; pos: number }[];
+}
+
+function computeAlignmentGuides(
+  dragged: CardObject,
+  rawX: number,
+  rawY: number,
+  objects: CardObject[],
+  threshold: number
+): GuideResult {
+  const guides: { type: 'h' | 'v'; pos: number }[] = [];
+  let snapX = rawX;
+  let snapY = rawY;
+
+  const dCX = rawX + dragged.width / 2;
+  const dCY = rawY + dragged.height / 2;
+  const dR = rawX + dragged.width;
+  const dB = rawY + dragged.height;
+
+  // Canvas center guides
+  const canvasCX = CARD_W / 2;
+  const canvasCY = CARD_H / 2;
+  if (Math.abs(dCX - canvasCX) < threshold) { snapX = canvasCX - dragged.width / 2; guides.push({ type: 'v', pos: canvasCX }); }
+  if (Math.abs(dCY - canvasCY) < threshold) { snapY = canvasCY - dragged.height / 2; guides.push({ type: 'h', pos: canvasCY }); }
+
+  for (const other of objects) {
+    if (other.id === dragged.id) continue;
+    const oCX = other.x + other.width / 2;
+    const oCY = other.y + other.height / 2;
+    const oR = other.x + other.width;
+    const oB = other.y + other.height;
+
+    // Vertical guides: left-left, right-right, left-right, right-left, center-center
+    if (Math.abs(rawX - other.x) < threshold) { snapX = other.x; guides.push({ type: 'v', pos: other.x }); }
+    else if (Math.abs(dR - oR) < threshold) { snapX = oR - dragged.width; guides.push({ type: 'v', pos: oR }); }
+    else if (Math.abs(rawX - oR) < threshold) { snapX = oR; guides.push({ type: 'v', pos: oR }); }
+    else if (Math.abs(dR - other.x) < threshold) { snapX = other.x - dragged.width; guides.push({ type: 'v', pos: other.x }); }
+    else if (Math.abs(dCX - oCX) < threshold) { snapX = oCX - dragged.width / 2; guides.push({ type: 'v', pos: oCX }); }
+
+    // Horizontal guides: top-top, bottom-bottom, top-bottom, bottom-top, center-center
+    if (Math.abs(rawY - other.y) < threshold) { snapY = other.y; guides.push({ type: 'h', pos: other.y }); }
+    else if (Math.abs(dB - oB) < threshold) { snapY = oB - dragged.height; guides.push({ type: 'h', pos: oB }); }
+    else if (Math.abs(rawY - oB) < threshold) { snapY = oB; guides.push({ type: 'h', pos: oB }); }
+    else if (Math.abs(dB - other.y) < threshold) { snapY = other.y - dragged.height; guides.push({ type: 'h', pos: other.y }); }
+    else if (Math.abs(dCY - oCY) < threshold) { snapY = oCY - dragged.height / 2; guides.push({ type: 'h', pos: oCY }); }
+  }
+
+  return { x: snapX, y: snapY, guides };
+}
+
+// ---------------------------------------------------------------------------
+// Grid overlay component
+// ---------------------------------------------------------------------------
+
+function GridOverlay({ gridSize }: { gridSize: number }) {
+  return (
+    <svg
+      style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 0 }}
+      width={CARD_W}
+      height={CARD_H}
+    >
+      <defs>
+        <pattern id="hn-grid" width={gridSize} height={gridSize} patternUnits="userSpaceOnUse">
+          <path
+            d={`M ${gridSize} 0 L 0 0 0 ${gridSize}`}
+            fill="none"
+            stroke="rgba(100,100,255,0.15)"
+            strokeWidth="0.5"
+          />
+        </pattern>
+      </defs>
+      <rect width="100%" height="100%" fill="url(#hn-grid)" />
+      {/* Center crosshair */}
+      <line x1={CARD_W / 2} y1={0} x2={CARD_W / 2} y2={CARD_H} stroke="rgba(100,100,255,0.25)" strokeWidth="0.5" strokeDasharray="4 4" />
+      <line x1={0} y1={CARD_H / 2} x2={CARD_W} y2={CARD_H / 2} stroke="rgba(100,100,255,0.25)" strokeWidth="0.5" strokeDasharray="4 4" />
+    </svg>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Alignment guide lines component
+// ---------------------------------------------------------------------------
+
+function AlignmentGuides({ guides }: { guides: { type: 'h' | 'v'; pos: number }[] }) {
+  if (guides.length === 0) return null;
+  // Deduplicate
+  const seen = new Set<string>();
+  const unique = guides.filter((g) => {
+    const key = `${g.type}:${g.pos}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  return (
+    <svg
+      style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 9999 }}
+      width={CARD_W}
+      height={CARD_H}
+    >
+      {unique.map((g, i) =>
+        g.type === 'v' ? (
+          <line key={i} x1={g.pos} y1={0} x2={g.pos} y2={CARD_H} stroke="#ff4488" strokeWidth="1" strokeDasharray="3 3" />
+        ) : (
+          <line key={i} x1={0} y1={g.pos} x2={CARD_W} y2={g.pos} stroke="#ff4488" strokeWidth="1" strokeDasharray="3 3" />
+        )
+      )}
+    </svg>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // EditorCanvas
 // ---------------------------------------------------------------------------
 
@@ -122,8 +240,18 @@ export function EditorCanvas() {
   const canvasRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<DragState | null>(null);
 
+  const { showGrid, snapToGrid, gridSize, showGuides } = store.editorSettings;
+
   // Track drag without re-render
   const [isDragging, setIsDragging] = useState(false);
+  // Active alignment guides during drag
+  const [activeGuides, setActiveGuides] = useState<{ type: 'h' | 'v'; pos: number }[]>([]);
+
+  // Snap value to grid
+  const snapToGridFn = useCallback(
+    (v: number) => (snapToGrid ? Math.round(v / gridSize) * gridSize : v),
+    [snapToGrid, gridSize]
+  );
 
   // ---- Canvas click: add object -------------------------------------------
   const handleCanvasClick = useCallback(
@@ -138,8 +266,12 @@ export function EditorCanvas() {
 
       if (!canvasRef.current) return;
       const rect = canvasRef.current.getBoundingClientRect();
-      const x = Math.round(e.clientX - rect.left);
-      const y = Math.round(e.clientY - rect.top);
+      let x = Math.round(e.clientX - rect.left);
+      let y = Math.round(e.clientY - rect.top);
+      if (snapToGrid) {
+        x = snapToGridFn(x);
+        y = snapToGridFn(y);
+      }
 
       let obj: CardObject;
       switch (store.activeTool) {
@@ -154,7 +286,7 @@ export function EditorCanvas() {
       store.addObject(obj);
       store.setActiveTool('select');
     },
-    [store]
+    [store, snapToGrid, snapToGridFn]
   );
 
   // ---- Object mousedown: begin drag ----------------------------------------
@@ -183,8 +315,32 @@ export function EditorCanvas() {
       if (!d) return;
       const dx = e.clientX - d.startMouseX;
       const dy = e.clientY - d.startMouseY;
-      const newX = Math.max(0, Math.min(CARD_W - 10, d.startObjX + dx));
-      const newY = Math.max(0, Math.min(CARD_H - 10, d.startObjY + dy));
+      let newX = d.startObjX + dx;
+      let newY = d.startObjY + dy;
+
+      // Snap to grid
+      const settings = useHyperNovaStore.getState().editorSettings;
+      if (settings.snapToGrid) {
+        newX = Math.round(newX / settings.gridSize) * settings.gridSize;
+        newY = Math.round(newY / settings.gridSize) * settings.gridSize;
+      }
+
+      // Smart alignment guides
+      if (settings.showGuides) {
+        const card = selectCurrentCard(useHyperNovaStore.getState());
+        const dragged = card?.objects.find((o) => o.id === d.objId);
+        if (card && dragged) {
+          const result = computeAlignmentGuides(dragged, newX, newY, card.objects, GUIDE_SNAP_THRESHOLD);
+          newX = result.x;
+          newY = result.y;
+          setActiveGuides(result.guides);
+        }
+      }
+
+      // Clamp to canvas bounds
+      newX = Math.max(0, Math.min(CARD_W - 10, newX));
+      newY = Math.max(0, Math.min(CARD_H - 10, newY));
+
       store.moveObject(d.objId, Math.round(newX), Math.round(newY));
     };
 
@@ -192,6 +348,7 @@ export function EditorCanvas() {
       if (dragRef.current) {
         dragRef.current = null;
         setIsDragging(false);
+        setActiveGuides([]);
       }
     };
 
@@ -230,6 +387,12 @@ export function EditorCanvas() {
       ref={canvasRef}
       onClick={handleCanvasClick}
     >
+      {/* Grid overlay */}
+      {showGrid && <GridOverlay gridSize={gridSize} />}
+
+      {/* Smart alignment guides */}
+      {showGuides && isDragging && <AlignmentGuides guides={activeGuides} />}
+
       {currentCard.objects.map((obj) => {
         const selected = obj.id === store.selectedObjectId;
         const style = renderObjectStyle(obj, selected);
@@ -237,7 +400,7 @@ export function EditorCanvas() {
         return (
           <div
             key={obj.id}
-            style={style}
+            style={{ ...style, zIndex: 1 }}
             onMouseDown={(e) => handleObjMouseDown(e, obj)}
           >
             {obj.type === 'text' && obj.text}
@@ -257,6 +420,9 @@ export function EditorCanvas() {
               ) : (
                 <span>🖼 No asset</span>
               )
+            )}
+            {obj.type === 'symbol-instance' && (
+              <span style={{ color: '#aa88ff', fontSize: 11 }}>⬡ Symbol</span>
             )}
 
             {/* Resize handle hint (bottom-right) */}
@@ -292,6 +458,7 @@ export function EditorCanvas() {
             padding: '2px 8px',
             fontSize: 11,
             pointerEvents: 'none',
+            zIndex: 10,
           }}
         >
           Click to place {store.activeTool}

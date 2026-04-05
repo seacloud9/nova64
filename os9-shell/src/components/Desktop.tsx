@@ -53,6 +53,15 @@ export function Desktop() {
       y: 440,
     },
     {
+      id: 'hypernova',
+      name: 'hyperNova',
+      path: '/Applications/hyperNova.app',
+      type: 'app',
+      icon: '🃏',
+      x: window.innerWidth - 100,
+      y: 540,
+    },
+    {
       id: 'trash',
       name: 'Trash',
       path: '/Trash',

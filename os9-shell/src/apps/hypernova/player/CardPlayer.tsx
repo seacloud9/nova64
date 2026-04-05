@@ -1,10 +1,11 @@
 // hyperNova – CardPlayer
 // Renders a card stack in play mode with full interactivity
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useHyperNovaStore } from '../shared/store';
 import type { CardObject, Stack } from '../shared/schema';
 import { renderObjectStyle, renderCardBackground, CARD_W, CARD_H } from '../editor/EditorCanvas';
 import { runScript, type ScriptAPI } from './ScriptRunner';
+import { MessageDispatcher, isNovaTalkScript, buildNovaTalkAPI } from './novatalk';
 
 // ---------------------------------------------------------------------------
 // CardPlayer
@@ -17,16 +18,19 @@ export function CardPlayer() {
     () => stack?.cards[0]?.id ?? ''
   );
   const [fieldValues, setFieldValues] = useState<Record<string, string>>({});
+  const prevCardIdRef = useRef<string>('');
+  const dispatcherRef = useRef<MessageDispatcher | null>(null);
 
   // Reset to first card when switching to play mode
   useEffect(() => {
     setCurrentCardId(stack?.cards[0]?.id ?? '');
     setFieldValues({});
+    dispatcherRef.current = null;
   }, [store.mode, stack]);
 
   const currentCard = stack?.cards.find((c) => c.id === currentCardId);
 
-  // ---- Build the script execution API ------------------------------------
+  // ---- Build the script execution API (legacy JS) ------------------------
   const buildAPI = useCallback(
     (cardId: string): ScriptAPI => {
       const cards = stack?.cards ?? [];
@@ -56,13 +60,75 @@ export function CardPlayer() {
     [stack, fieldValues]
   );
 
-  const handleButtonClick = useCallback(
-    (obj: CardObject) => {
-      if (obj.type !== 'button') return;
-      const api = buildAPI(currentCardId);
-      runScript(obj.script, api);
+  // ---- NovaTalk message dispatch -----------------------------------------
+  const sendNovaTalkMessage = useCallback(
+    (message: string, targetObj: CardObject | null) => {
+      if (!currentCard || !stack) return;
+      const api = buildNovaTalkAPI(
+        currentCardId,
+        stack.cards,
+        (id: string) => setCurrentCardId(id),
+        fieldValues,
+        (id: string, value: string) =>
+          setFieldValues((prev) => ({ ...prev, [id]: value })),
+        targetObj?.id ?? null,
+      );
+      if (!dispatcherRef.current) {
+        dispatcherRef.current = new MessageDispatcher(api);
+      } else {
+        dispatcherRef.current.updateAPI(api);
+      }
+      dispatcherRef.current.sendMessage(message, targetObj, currentCard, stack);
     },
-    [buildAPI, currentCardId]
+    [currentCard, stack, currentCardId, fieldValues]
+  );
+
+  // ---- Fire openCard / closeCard events ----------------------------------
+  useEffect(() => {
+    if (currentCardId && currentCardId !== prevCardIdRef.current) {
+      // closeCard on previous
+      if (prevCardIdRef.current && stack) {
+        const prevCard = stack.cards.find((c) => c.id === prevCardIdRef.current);
+        if (prevCard?.script && isNovaTalkScript(prevCard.script)) {
+          const api = buildNovaTalkAPI(
+            prevCardIdRef.current, stack.cards,
+            (id) => setCurrentCardId(id), fieldValues,
+            (id, value) => setFieldValues((prev) => ({ ...prev, [id]: value })),
+            null,
+          );
+          if (!dispatcherRef.current) {
+            dispatcherRef.current = new MessageDispatcher(api);
+          } else {
+            dispatcherRef.current.updateAPI(api);
+          }
+          dispatcherRef.current.sendMessage('closeCard', null, prevCard, stack);
+        }
+      }
+      // openCard on new card
+      if (currentCard?.script && isNovaTalkScript(currentCard.script)) {
+        sendNovaTalkMessage('openCard', null);
+      }
+      // Clear interpreter cache on card change
+      dispatcherRef.current?.clearCache();
+      prevCardIdRef.current = currentCardId;
+    }
+  }, [currentCardId]);
+
+  // ---- Handle object clicks (NovaTalk + JS fallback) ---------------------
+  const handleObjectClick = useCallback(
+    (obj: CardObject) => {
+      const script = (obj as { script?: string }).script;
+      if (!script) return;
+
+      if (isNovaTalkScript(script)) {
+        sendNovaTalkMessage('mouseUp', obj);
+      } else {
+        // Legacy JS execution
+        const api = buildAPI(currentCardId);
+        runScript(script, api);
+      }
+    },
+    [sendNovaTalkMessage, buildAPI, currentCardId]
   );
 
   if (!currentCard) {
@@ -158,14 +224,27 @@ export function CardPlayer() {
                   cursor: 'pointer',
                   transition: 'opacity 0.1s, transform 0.1s',
                 }}
-                onClick={() => handleButtonClick(obj)}
+                onClick={() => handleObjectClick(obj)}
                 onMouseDown={(e) => {
                   (e.currentTarget as HTMLElement).style.opacity = '0.8';
                   (e.currentTarget as HTMLElement).style.transform = 'scale(0.97)';
+                  if (isNovaTalkScript(obj.script || '')) {
+                    sendNovaTalkMessage('mouseDown', obj);
+                  }
                 }}
                 onMouseUp={(e) => {
                   (e.currentTarget as HTMLElement).style.opacity = '1';
                   (e.currentTarget as HTMLElement).style.transform = 'scale(1)';
+                }}
+                onMouseEnter={() => {
+                  if (isNovaTalkScript(obj.script || '')) {
+                    sendNovaTalkMessage('mouseEnter', obj);
+                  }
+                }}
+                onMouseLeave={() => {
+                  if (isNovaTalkScript(obj.script || '')) {
+                    sendNovaTalkMessage('mouseLeave', obj);
+                  }
                 }}
               >
                 {obj.label}
@@ -174,8 +253,13 @@ export function CardPlayer() {
           }
 
           if (obj.type === 'text') {
+            const hasScript = !!(obj as { script?: string }).script;
             return (
-              <div key={obj.id} style={style}>
+              <div
+                key={obj.id}
+                style={{ ...style, cursor: hasScript ? 'pointer' : 'default' }}
+                onClick={hasScript ? () => handleObjectClick(obj) : undefined}
+              >
                 {obj.text}
               </div>
             );
@@ -183,6 +267,7 @@ export function CardPlayer() {
 
           if (obj.type === 'image') {
             if (!obj.asset) return null;
+            const hasScript = !!(obj as { script?: string }).script;
             return (
               <img
                 key={obj.id}
@@ -195,13 +280,24 @@ export function CardPlayer() {
                   width: obj.width,
                   height: obj.height,
                   objectFit: 'contain',
+                  cursor: hasScript ? 'pointer' : 'default',
                 }}
+                onClick={hasScript ? () => handleObjectClick(obj) : undefined}
               />
             );
           }
 
           // rect
-          return <div key={obj.id} style={style} />;
+          {
+            const hasScript = !!(obj as { script?: string }).script;
+            return (
+              <div
+                key={obj.id}
+                style={{ ...style, cursor: hasScript ? 'pointer' : 'default' }}
+                onClick={hasScript ? () => handleObjectClick(obj) : undefined}
+              />
+            );
+          }
         })}
       </div>
     </div>

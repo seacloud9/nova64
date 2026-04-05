@@ -23,12 +23,14 @@ export function runScript(script: string, api: ScriptAPI): void {
   const values = keys.map((k) => api[k]);
 
   try {
-    // Construct a function that shadows dangerous globals via parameter names
+    // Construct a function that shadows dangerous globals via parameter names.
+    // Note: 'eval' and 'arguments' cannot be parameter names in strict mode,
+    // so they are intentionally omitted from the shadow list.
     // eslint-disable-next-line @typescript-eslint/no-implied-eval
     const fn = new Function(
       // shadow dangerous globals
       'window', 'document', 'globalThis', 'self', 'top', 'parent',
-      'fetch', 'XMLHttpRequest', 'eval', 'Function',
+      'fetch', 'XMLHttpRequest',
       // inject api names
       ...keys,
       // body
@@ -38,7 +40,7 @@ export function runScript(script: string, api: ScriptAPI): void {
     fn(
       // shadow values (all undefined)
       undefined, undefined, undefined, undefined, undefined, undefined,
-      undefined, undefined, undefined, undefined,
+      undefined, undefined,
       // api values
       ...values
     );

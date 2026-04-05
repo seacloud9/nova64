@@ -1,4 +1,4 @@
-// hyperNova – Toolbar (tool palette)
+// hyperNova – Toolbar (tool palette + editor settings)
 import { useHyperNovaStore } from '../shared/store';
 import type { ToolType } from '../shared/schema';
 
@@ -15,6 +15,7 @@ const TOOLS: Tool[] = [
   { id: 'text', label: 'Text', icon: 'T', hint: 'Click canvas to add a text label' },
   { id: 'field', label: 'Field', icon: '≡', hint: 'Click canvas to add a text input field' },
   { id: 'rect', label: 'Rect', icon: '▭', hint: 'Click canvas to add a rectangle' },
+  { id: 'image', label: 'Image', icon: '🖼', hint: 'Click canvas to add an image placeholder' },
 ];
 
 const S = {
@@ -55,10 +56,21 @@ const S = {
     background: '#2a2a4a',
     margin: '0 4px',
   },
+  toggle: (on: boolean) => ({
+    padding: '3px 8px',
+    borderRadius: 4,
+    cursor: 'pointer',
+    fontSize: 10,
+    border: `1px solid ${on ? '#4466aa' : '#2a2a4a'}`,
+    background: on ? '#1a2a5a' : 'transparent',
+    color: on ? '#88aaff' : '#555588',
+    userSelect: 'none' as const,
+    transition: 'all 0.1s',
+  }),
 };
 
 export function Toolbar() {
-  const { activeTool, setActiveTool, mode } = useHyperNovaStore();
+  const { activeTool, setActiveTool, mode, editorSettings, toggleGrid, toggleSnap, toggleGuides } = useHyperNovaStore();
   if (mode === 'play') return null;
 
   return (
@@ -76,6 +88,17 @@ export function Toolbar() {
         </div>
       ))}
       <div style={S.divider} />
+
+      {/* Editor setting toggles */}
+      <div style={S.toggle(editorSettings.showGrid)} onClick={toggleGrid} title="Toggle grid overlay">
+        ⊞ Grid
+      </div>
+      <div style={S.toggle(editorSettings.snapToGrid)} onClick={toggleSnap} title="Toggle snap-to-grid">
+        ⊡ Snap
+      </div>
+      <div style={S.toggle(editorSettings.showGuides)} onClick={toggleGuides} title="Toggle smart alignment guides">
+        ⫼ Guides
+      </div>
     </div>
   );
 }

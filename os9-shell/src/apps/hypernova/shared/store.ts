@@ -1,11 +1,18 @@
 // hyperNova – Zustand store
 import { create } from 'zustand';
-import type { HyperNovaProject, Card, CardObject, ToolType } from './schema';
+import type { HyperNovaProject, Card, CardObject, ToolType, HNSymbol } from './schema';
 import { createDefaultProject, createDefaultCard, genId } from './schema';
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
+
+interface EditorSettings {
+  showGrid: boolean;
+  snapToGrid: boolean;
+  gridSize: number;        // pixels per grid cell
+  showGuides: boolean;     // smart alignment guides
+}
 
 interface HyperNovaStore {
   // ---- State ---------------------------------------------------------------
@@ -20,10 +27,17 @@ interface HyperNovaStore {
   /** Runtime field values during play mode (keyed by object id) */
   fieldValues: Record<string, string>;
   isDirty: boolean;
+  editorSettings: EditorSettings;
 
   // ---- Mode / tool ---------------------------------------------------------
   setMode(mode: 'edit' | 'play'): void;
   setActiveTool(tool: ToolType): void;
+
+  // ---- Editor settings -----------------------------------------------------
+  toggleGrid(): void;
+  toggleSnap(): void;
+  toggleGuides(): void;
+  setGridSize(size: number): void;
 
   // ---- Navigation ----------------------------------------------------------
   selectCard(cardId: string): void;
@@ -40,6 +54,11 @@ interface HyperNovaStore {
   updateObject(id: string, updates: Partial<CardObject>): void;
   moveObject(id: string, x: number, y: number): void;
   deleteObject(id: string): void;
+
+  // ---- Library operations --------------------------------------------------
+  addSymbol(symbol: HNSymbol): void;
+  updateSymbol(id: string, updates: Partial<HNSymbol>): void;
+  deleteSymbol(id: string): void;
 
   // ---- Undo / redo ---------------------------------------------------------
   undo(): void;
@@ -88,10 +107,22 @@ export const useHyperNovaStore = create<HyperNovaStore>((set, get) => ({
   historyIndex: 0,
   fieldValues: {},
   isDirty: false,
+  editorSettings: {
+    showGrid: false,
+    snapToGrid: true,
+    gridSize: 20,
+    showGuides: true,
+  },
 
   // ---- Mode / tool ---------------------------------------------------------
   setMode: (mode) => set({ mode, selectedObjectId: null }),
   setActiveTool: (tool) => set({ activeTool: tool }),
+
+  // ---- Editor settings -----------------------------------------------------
+  toggleGrid: () => set((s) => ({ editorSettings: { ...s.editorSettings, showGrid: !s.editorSettings.showGrid } })),
+  toggleSnap: () => set((s) => ({ editorSettings: { ...s.editorSettings, snapToGrid: !s.editorSettings.snapToGrid } })),
+  toggleGuides: () => set((s) => ({ editorSettings: { ...s.editorSettings, showGuides: !s.editorSettings.showGuides } })),
+  setGridSize: (size) => set((s) => ({ editorSettings: { ...s.editorSettings, gridSize: size } })),
 
   // ---- Navigation ----------------------------------------------------------
   selectCard: (cardId) => set({ selectedCardId: cardId, selectedObjectId: null }),
@@ -233,6 +264,27 @@ export const useHyperNovaStore = create<HyperNovaStore>((set, get) => ({
     stacks[si] = { ...stack, cards };
     _pushSnap(set, { ...state.project, stacks });
     set({ selectedObjectId: null });
+  },
+
+  // ---- Library operations --------------------------------------------------
+  addSymbol: (symbol) => {
+    const state = get();
+    const library = [...(state.project.library || []), symbol];
+    _pushSnap(set, { ...state.project, library });
+  },
+
+  updateSymbol: (id, updates) => {
+    const state = get();
+    const library = (state.project.library || []).map((s) =>
+      s.id === id ? { ...s, ...updates } : s
+    );
+    _pushSnap(set, { ...state.project, library });
+  },
+
+  deleteSymbol: (id) => {
+    const state = get();
+    const library = (state.project.library || []).filter((s) => s.id !== id);
+    _pushSnap(set, { ...state.project, library });
   },
 
   // ---- Undo / redo ---------------------------------------------------------

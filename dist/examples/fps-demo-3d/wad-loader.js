@@ -302,7 +302,10 @@ export function convertWADMap(map, scale) {
   // Find player start position (thing type 1) to use its sector floor as baseline
   let playerThing = null;
   for (const t of things) {
-    if (t.type === 1) { playerThing = t; break; }
+    if (t.type === 1) {
+      playerThing = t;
+      break;
+    }
   }
 
   // Find player's sector floor height using nearest linedef
@@ -310,14 +313,17 @@ export function convertWADMap(map, scale) {
   if (playerThing) {
     let minDist = Infinity;
     for (const line of linedefs) {
-      const va = vertexes[line.v1], vb = vertexes[line.v2];
+      const va = vertexes[line.v1],
+        vb = vertexes[line.v2];
       if (!va || !vb) continue;
-      const dx = vb.x - va.x, dy = vb.y - va.y;
+      const dx = vb.x - va.x,
+        dy = vb.y - va.y;
       const lenSq = dx * dx + dy * dy;
       if (lenSq < 1) continue;
       let t = ((playerThing.x - va.x) * dx + (playerThing.y - va.y) * dy) / lenSq;
       t = Math.max(0, Math.min(1, t));
-      const px = va.x + t * dx, py = va.y + t * dy;
+      const px = va.x + t * dx,
+        py = va.y + t * dy;
       const d = Math.hypot(playerThing.x - px, playerThing.y - py);
       // Check both sides of the linedef
       const sideIdxs = [];
@@ -327,7 +333,10 @@ export function convertWADMap(map, scale) {
         const side = sidedefs[si];
         if (side && sectors[side.sector]) {
           const sf = sectors[side.sector].floorH;
-          if (d < minDist) { minDist = d; playerSectorFloor = sf; }
+          if (d < minDist) {
+            minDist = d;
+            playerSectorFloor = sf;
+          }
         }
       }
     }

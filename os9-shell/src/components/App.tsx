@@ -14,7 +14,7 @@ import '../theme/platinum.css';
 
 export function App() {
   const [booted, setBooted] = useState(false);
-  const { windows, activeWindowId, focusWindow, closeWindow } = useWindowStore();
+  const { windows, activeWindowId, focusWindow, closeWindow, restoreWindow } = useWindowStore();
   const { showFPS, scanlines } = useUIStore();
 
   const handleBootComplete = () => {
@@ -46,6 +46,8 @@ export function App() {
     // TODO: Handle menu commands
   };
 
+  const minimizedWindows = windows.filter((w) => w.isMinimized);
+
   return (
     <div className={scanlines ? 'scanlines' : ''}>
       {!booted && <BootScreen onComplete={handleBootComplete} />}
@@ -55,15 +57,30 @@ export function App() {
           <MenuBar onCommand={handleMenuCommand} />
           <Desktop />
           
-          {windows.map((window) => (
+          {windows.map((win) => (
             <Window
-              key={window.id}
-              {...window}
-              isActive={window.id === activeWindowId}
-              onFocus={() => focusWindow(window.id)}
-              onClose={() => closeWindow(window.id)}
+              key={win.id}
+              {...win}
+              isActive={win.id === activeWindowId}
+              onFocus={() => focusWindow(win.id)}
+              onClose={() => closeWindow(win.id)}
             />
           ))}
+
+          {minimizedWindows.length > 0 && (
+            <div className="minimized-dock">
+              {minimizedWindows.map((win) => (
+                <button
+                  key={win.id}
+                  className="minimized-dock-item"
+                  onClick={() => restoreWindow(win.id)}
+                  title={win.title}
+                >
+                  {win.title}
+                </button>
+              ))}
+            </div>
+          )}
 
           <ControlStrip />
           <AlertModal />

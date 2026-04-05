@@ -64,6 +64,7 @@ export interface WindowState {
   minHeight?: number;
   isShaded: boolean;
   isMaximized: boolean;
+  isMinimized: boolean;
   zIndex: number;
   appId: string;
   closable?: boolean;

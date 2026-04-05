@@ -2,6 +2,15 @@ import { useState, useRef, useEffect, ReactNode } from 'react';
 import { useWindowStore } from '../os/stores';
 import { UISounds } from '../os/sounds';
 
+type ResizeEdge = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw';
+
+const EDGE_SIZE = 6;
+
+const EDGE_CURSORS: Record<ResizeEdge, string> = {
+  n: 'n-resize', s: 's-resize', e: 'e-resize', w: 'w-resize',
+  ne: 'ne-resize', nw: 'nw-resize', se: 'nwse-resize', sw: 'sw-resize',
+};
+
 interface WindowProps {
   id: string;
   title: string;
@@ -13,6 +22,7 @@ interface WindowProps {
   minHeight?: number;
   isShaded: boolean;
   isMaximized: boolean;
+  isMinimized?: boolean;
   zIndex: number;
   isActive: boolean;
   closable?: boolean;
@@ -33,6 +43,7 @@ export function Window({
   minHeight = 50,
   isShaded,
   isMaximized,
+  isMinimized = false,
   zIndex,
   isActive,
   closable = true,
@@ -43,11 +54,11 @@ export function Window({
 }: WindowProps) {
   const windowRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
-  const [isResizing, setIsResizing] = useState(false);
+  const [resizeEdge, setResizeEdge] = useState<ResizeEdge | null>(null);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
-  const [resizeStart, setResizeStart] = useState({ x: 0, y: 0, width: 0, height: 0 });
+  const [resizeStart, setResizeStart] = useState({ x: 0, y: 0, wx: 0, wy: 0, width: 0, height: 0 });
   
-  const { updateWindow, toggleShade, toggleMaximize } = useWindowStore();
+  const { updateWindow, toggleShade, toggleMaximize, minimizeWindow } = useWindowStore();
 
   // Calculate actual position and size
   const actualX = isMaximized ? 0 : x;
@@ -65,19 +76,41 @@ export function Window({
           y: y + dy,
         });
         setDragStart({ x: e.clientX, y: e.clientY });
-      } else if (isResizing) {
-        const newWidth = Math.max(minWidth, resizeStart.width + (e.clientX - resizeStart.x));
-        const newHeight = Math.max(minHeight, resizeStart.height + (e.clientY - resizeStart.y));
-        updateWindow(id, { width: newWidth, height: newHeight });
+      } else if (resizeEdge) {
+        const dx = e.clientX - resizeStart.x;
+        const dy = e.clientY - resizeStart.y;
+        const updates: Partial<{ x: number; y: number; width: number; height: number }> = {};
+
+        // Horizontal
+        if (resizeEdge.includes('e')) {
+          updates.width = Math.max(minWidth, resizeStart.width + dx);
+        }
+        if (resizeEdge.includes('w')) {
+          const newWidth = Math.max(minWidth, resizeStart.width - dx);
+          updates.width = newWidth;
+          updates.x = resizeStart.wx + (resizeStart.width - newWidth);
+        }
+
+        // Vertical
+        if (resizeEdge.includes('s')) {
+          updates.height = Math.max(minHeight, resizeStart.height + dy);
+        }
+        if (resizeEdge === 'n' || resizeEdge === 'ne' || resizeEdge === 'nw') {
+          const newHeight = Math.max(minHeight, resizeStart.height - dy);
+          updates.height = newHeight;
+          updates.y = resizeStart.wy + (resizeStart.height - newHeight);
+        }
+
+        updateWindow(id, updates);
       }
     };
 
     const handleMouseUp = () => {
       setIsDragging(false);
-      setIsResizing(false);
+      setResizeEdge(null);
     };
 
-    if (isDragging || isResizing) {
+    if (isDragging || resizeEdge) {
       document.addEventListener('mousemove', handleMouseMove);
       document.addEventListener('mouseup', handleMouseUp);
       return () => {
@@ -85,7 +118,7 @@ export function Window({
         document.removeEventListener('mouseup', handleMouseUp);
       };
     }
-  }, [isDragging, isResizing, dragStart, resizeStart, x, y, id, updateWindow, minWidth, minHeight]);
+  }, [isDragging, resizeEdge, dragStart, resizeStart, x, y, id, updateWindow, minWidth, minHeight]);
 
   const handleTitleMouseDown = (e: React.MouseEvent) => {
     if (e.button === 0 && !isMaximized) {
@@ -100,13 +133,15 @@ export function Window({
     toggleShade(id);
   };
 
-  const handleResizeMouseDown = (e: React.MouseEvent) => {
+  const handleEdgeMouseDown = (edge: ResizeEdge) => (e: React.MouseEvent) => {
     if (e.button === 0 && !isMaximized) {
       e.stopPropagation();
-      setIsResizing(true);
+      setResizeEdge(edge);
       setResizeStart({
         x: e.clientX,
         y: e.clientY,
+        wx: x,
+        wy: y,
         width,
         height,
       });
@@ -121,6 +156,11 @@ export function Window({
 
   const handleZoom = () => {
     toggleMaximize(id);
+  };
+
+  const handleMinimize = () => {
+    UISounds.windowShade();
+    minimizeWindow(id);
   };
 
   const handleContentClick = () => {
@@ -138,6 +178,7 @@ export function Window({
         width: actualWidth,
         height: isShaded ? 'auto' : actualHeight,
         zIndex,
+        display: isMinimized ? 'none' : undefined,
       }}
       onClick={handleContentClick}
     >
@@ -147,26 +188,48 @@ export function Window({
         onDoubleClick={handleTitleDoubleClick}
       >
         <div className="window-controls">
+          <div className="window-button window-minimize" onClick={handleMinimize}>
+            —
+          </div>
+          <div className="window-button window-zoom" onClick={handleZoom}>
+            □
+          </div>
           {closable && (
             <div className="window-button window-close" onClick={handleClose}>
-              ▪
+              ✕
             </div>
           )}
         </div>
         <div className="window-title-text">{title}</div>
-        <div className="window-button window-zoom" onClick={handleZoom}>
-          ▪
-        </div>
       </div>
       
       {!isShaded && (
         <>
-          <div className="window-content">{children}</div>
+          <div className="window-content" style={{ overflow: 'auto', flex: 1 }}>
+            {children}
+          </div>
+          {/* 8-edge resize zones */}
           {resizable && !isMaximized && (
-            <div
-              className="window-resize-handle"
-              onMouseDown={handleResizeMouseDown}
-            />
+            <>
+              {/* Edges */}
+              <div style={{ position: 'absolute', top: 0, left: EDGE_SIZE, right: EDGE_SIZE, height: EDGE_SIZE, cursor: EDGE_CURSORS.n }}
+                onMouseDown={handleEdgeMouseDown('n')} />
+              <div style={{ position: 'absolute', bottom: 0, left: EDGE_SIZE, right: EDGE_SIZE, height: EDGE_SIZE, cursor: EDGE_CURSORS.s }}
+                onMouseDown={handleEdgeMouseDown('s')} />
+              <div style={{ position: 'absolute', top: EDGE_SIZE, bottom: EDGE_SIZE, left: 0, width: EDGE_SIZE, cursor: EDGE_CURSORS.w }}
+                onMouseDown={handleEdgeMouseDown('w')} />
+              <div style={{ position: 'absolute', top: EDGE_SIZE, bottom: EDGE_SIZE, right: 0, width: EDGE_SIZE, cursor: EDGE_CURSORS.e }}
+                onMouseDown={handleEdgeMouseDown('e')} />
+              {/* Corners */}
+              <div style={{ position: 'absolute', top: 0, left: 0, width: EDGE_SIZE, height: EDGE_SIZE, cursor: EDGE_CURSORS.nw }}
+                onMouseDown={handleEdgeMouseDown('nw')} />
+              <div style={{ position: 'absolute', top: 0, right: 0, width: EDGE_SIZE, height: EDGE_SIZE, cursor: EDGE_CURSORS.ne }}
+                onMouseDown={handleEdgeMouseDown('ne')} />
+              <div style={{ position: 'absolute', bottom: 0, left: 0, width: EDGE_SIZE, height: EDGE_SIZE, cursor: EDGE_CURSORS.sw }}
+                onMouseDown={handleEdgeMouseDown('sw')} />
+              <div style={{ position: 'absolute', bottom: 0, right: 0, width: EDGE_SIZE, height: EDGE_SIZE, cursor: EDGE_CURSORS.se }}
+                onMouseDown={handleEdgeMouseDown('se')} />
+            </>
           )}
         </>
       )}

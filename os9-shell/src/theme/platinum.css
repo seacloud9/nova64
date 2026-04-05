@@ -338,19 +338,68 @@ body {
   transform: scale(0.95);
 }
 
-.window-close:hover {
-  background: #e74c3c;
-  color: white;
+.window-minimize {
+  background: #f0c040;
+  color: #806000;
+  font-size: 14px;
+  font-weight: bold;
 }
 
-.window-zoom {
-  position: absolute;
-  right: 44px;
+.window-minimize:hover {
+  background: #e8b820;
+  color: #604000;
 }
 
 .window-zoom:hover {
   background: var(--gnome-blue);
   color: white;
+}
+
+.window-close {
+  background: #e74c3c;
+  color: white;
+  font-size: 13px;
+  font-weight: bold;
+}
+
+.window-close:hover {
+  background: #c0392b;
+  color: white;
+}
+
+/* Minimized windows dock */
+.minimized-dock {
+  position: fixed;
+  bottom: 32px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 6px;
+  padding: 4px 8px;
+  background: rgba(30, 30, 40, 0.85);
+  backdrop-filter: blur(10px);
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  z-index: 9990;
+}
+
+.minimized-dock-item {
+  padding: 4px 12px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+  color: #e0e0e0;
+  font-size: 12px;
+  cursor: pointer;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: background 0.15s ease;
+}
+
+.minimized-dock-item:hover {
+  background: rgba(255, 255, 255, 0.2);
 }
 
 .window-content {

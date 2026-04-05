@@ -238,14 +238,15 @@ function ScriptField({ obj }: { obj: CardObject }) {
         value={script}
         rows={6}
         spellCheck={false}
-        placeholder="// goNext();\n// goToCard('card-id');\n// goFirst();"
+        placeholder={'-- NovaTalk:\n-- on mouseUp\n--   goNext()\n-- end mouseUp\n\n// or JavaScript:\n// goNext();'}
         onChange={(e) =>
           updateObject(obj.id, { script: e.target.value } as Partial<CardObject>)
         }
       />
       <div style={{ fontSize: 10, color: '#3a3a7a', marginTop: 4 }}>
-        API: goToCard(id) · goNext() · goPrev() · goFirst() · goLast()
-        · setField(id,val) · getField(id) · alert(msg) · log(…)
+        NovaTalk: on mouseUp · put · set · if/then · repeat
+        <br />
+        JS: goToCard(id) · goNext() · alert(msg) · log(…)
       </div>
     </>
   );
@@ -350,8 +351,13 @@ function CardBgEditor() {
   const currentCard = useHyperNovaStore(selectCurrentCard);
   const updateCard = useHyperNovaStore((s) => s.updateCard);
   const selectedCardId = useHyperNovaStore((s) => s.selectedCardId);
+  const store = useHyperNovaStore();
+  const stack = store.project.stacks[store.selectedStackIndex];
 
   if (!currentCard) return null;
+
+  const cardScript = (currentCard as typeof currentCard & { script?: string }).script ?? '';
+  const stackScript = (stack as typeof stack & { script?: string }).script ?? '';
 
   return (
     <div style={S.cardBgSection}>
@@ -371,8 +377,51 @@ function CardBgEditor() {
             })
           }
         />
+        {/* Card Script */}
+        <div style={S.divider} />
+        <span style={S.scriptLabel}>📜 CARD SCRIPT</span>
+        <textarea
+          style={{ ...S.scriptArea, minHeight: 60 }}
+          value={cardScript}
+          rows={4}
+          spellCheck={false}
+          placeholder={'-- on openCard\n--   put "hello" into field 1\n-- end openCard'}
+          onChange={(e) =>
+            updateCard(selectedCardId, { script: e.target.value } as any)
+          }
+        />
+        <div style={{ fontSize: 10, color: '#3a3a7a', marginTop: 4 }}>
+          Events: openCard · closeCard · keyDown
+        </div>
       </div>
-      <div style={{ color: '#3a3a7a', fontSize: 10 }}>
+
+      {/* Stack Script */}
+      <div style={S.divider} />
+      <div style={S.header}>📚 STACK</div>
+      <div style={{ padding: '6px 0' }}>
+        <span style={S.scriptLabel}>📜 STACK SCRIPT</span>
+        <textarea
+          style={{ ...S.scriptArea, minHeight: 60 }}
+          value={stackScript}
+          rows={4}
+          spellCheck={false}
+          placeholder={'-- Handles unhandled messages from all cards'}
+          onChange={(e) => {
+            // Update stack script via store
+            const newStacks = [...store.project.stacks];
+            newStacks[store.selectedStackIndex] = {
+              ...newStacks[store.selectedStackIndex],
+              script: e.target.value,
+            };
+            store.setProject({
+              ...store.project,
+              stacks: newStacks,
+            });
+          }}
+        />
+      </div>
+
+      <div style={{ color: '#3a3a7a', fontSize: 10, padding: '0 0 8px' }}>
         Select an object on the canvas to edit its properties.
       </div>
     </div>

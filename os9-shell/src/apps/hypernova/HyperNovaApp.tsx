@@ -1,14 +1,16 @@
 // hyperNova – root application component
-import { useCallback } from 'react';
+import { useCallback, useState, useRef, useEffect } from 'react';
 import { useHyperNovaStore } from './shared/store';
 import { CardList } from './editor/CardList';
 import { Toolbar } from './editor/Toolbar';
 import { EditorCanvas } from './editor/EditorCanvas';
 import { PropertiesPanel } from './editor/PropertiesPanel';
+import { LibraryPanel } from './editor/LibraryPanel';
 import { CardPlayer } from './player/CardPlayer';
 import { downloadJson, downloadCart } from './shared/exporter';
 import { loadFromFile } from './shared/importer';
 import { createExampleProject } from './shared/schema';
+import { EXAMPLE_CATALOG } from './shared/examples';
 
 // ---------------------------------------------------------------------------
 // Styles (all inline to avoid collisions with os9-shell CSS)
@@ -160,13 +162,26 @@ export function HyperNovaApp() {
     downloadCart(store.project);
   }, [store.project]);
 
-  const handleExample = useCallback(() => {
-    if (
-      !store.isDirty ||
-      confirm('Load example? Unsaved changes will be lost.')
-    ) {
-      store.setProject(createExampleProject());
+  // Examples dropdown state
+  const [showExamples, setShowExamples] = useState(false);
+  const examplesRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!showExamples) return;
+    const onClickOutside = (e: MouseEvent) => {
+      if (examplesRef.current && !examplesRef.current.contains(e.target as Node)) {
+        setShowExamples(false);
+      }
+    };
+    document.addEventListener('mousedown', onClickOutside);
+    return () => document.removeEventListener('mousedown', onClickOutside);
+  }, [showExamples]);
+
+  const handleLoadExample = useCallback((create: () => ReturnType<typeof createExampleProject>) => {
+    if (!store.isDirty || confirm('Load example? Unsaved changes will be lost.')) {
+      store.setProject(create());
     }
+    setShowExamples(false);
   }, [store]);
 
   return (
@@ -213,8 +228,54 @@ export function HyperNovaApp() {
         <div style={S.actionBtn} onClick={handleExportCart} title="Export as nova64 code.js cart">
           ⬇️ Export Cart
         </div>
-        <div style={S.actionBtn} onClick={handleExample} title="Load built-in example stack">
-          ✨ Example
+        <div ref={examplesRef} style={{ position: 'relative' }}>
+          <div style={S.actionBtn} onClick={() => setShowExamples((v) => !v)} title="Load a built-in example project">
+            ✨ Examples ▾
+          </div>
+          {showExamples && (
+            <div style={{
+              position: 'absolute', top: '100%', right: 0, zIndex: 100,
+              background: '#12122a', border: '1px solid #2a2a5a', borderRadius: 6,
+              padding: 4, minWidth: 280, marginTop: 4,
+              boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+            }}>
+              {/* Original intro example */}
+              <div
+                style={{
+                  padding: '7px 10px', cursor: 'pointer', borderRadius: 4,
+                  display: 'flex', gap: 8, alignItems: 'flex-start',
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = '#1a1a3a')}
+                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                onClick={() => handleLoadExample(createExampleProject)}
+              >
+                <span style={{ fontSize: 18 }}>🃏</span>
+                <div>
+                  <div style={{ fontSize: 12, color: '#e0e0ff', fontWeight: 600 }}>Welcome Tour</div>
+                  <div style={{ fontSize: 10, color: '#5a5a8a' }}>Introduction to hyperNova with navigation demo</div>
+                </div>
+              </div>
+              <div style={{ height: 1, background: '#1a1a3a', margin: '2px 4px' }} />
+              {EXAMPLE_CATALOG.map((ex) => (
+                <div
+                  key={ex.id}
+                  style={{
+                    padding: '7px 10px', cursor: 'pointer', borderRadius: 4,
+                    display: 'flex', gap: 8, alignItems: 'flex-start',
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = '#1a1a3a')}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                  onClick={() => handleLoadExample(ex.create)}
+                >
+                  <span style={{ fontSize: 18 }}>{ex.icon}</span>
+                  <div>
+                    <div style={{ fontSize: 12, color: '#e0e0ff', fontWeight: 600 }}>{ex.name}</div>
+                    <div style={{ fontSize: 10, color: '#5a5a8a' }}>{ex.description}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         <div style={S.spacer} />
@@ -277,7 +338,8 @@ export function HyperNovaApp() {
           </div>
         </div>
 
-        {/* Right sidebar: properties (edit mode only) */}
+        {/* Right sidebar: library + properties (edit mode only) */}
+        {!isPlay && <LibraryPanel />}
         {!isPlay && <PropertiesPanel />}
       </div>
     </div>

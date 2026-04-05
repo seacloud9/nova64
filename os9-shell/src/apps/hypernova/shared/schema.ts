@@ -1,7 +1,7 @@
 // hyperNova – data schema
 // All card stack data structures and factory helpers
 
-export type CardObjectType = 'text' | 'button' | 'field' | 'image' | 'rect';
+export type CardObjectType = 'text' | 'button' | 'field' | 'image' | 'rect' | 'symbol-instance';
 export type ToolType = 'select' | 'button' | 'text' | 'field' | 'image' | 'rect';
 
 // ---------------------------------------------------------------------------
@@ -74,12 +74,26 @@ export interface RectObject {
   script?: string;
 }
 
+export interface SymbolInstanceObject {
+  id: string;
+  type: 'symbol-instance';
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  symbolId: string;         // references Symbol.id in the library
+  overrides: Record<string, unknown>; // per-instance property overrides
+  currentFrame: number;     // for movie clip symbols
+  script?: string;
+}
+
 export type CardObject =
   | TextObject
   | ButtonObject
   | FieldObject
   | ImageObject
-  | RectObject;
+  | RectObject
+  | SymbolInstanceObject;
 
 // ---------------------------------------------------------------------------
 // Card / Stack
@@ -97,12 +111,14 @@ export interface Card {
   title: string;
   background: CardBackground;
   objects: CardObject[];
+  script?: string;
 }
 
 export interface Stack {
   id: string;
   title: string;
   cards: Card[];
+  script?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -120,6 +136,34 @@ export interface Assets {
 }
 
 // ---------------------------------------------------------------------------
+// Symbol / MovieClip (Flash-inspired reusable components)
+// ---------------------------------------------------------------------------
+
+export type SymbolType = 'graphic' | 'movie-clip';
+
+/** A keyframe in a movie clip's timeline */
+export interface Keyframe {
+  frame: number;               // 1-based frame index
+  objects: CardObject[];       // objects visible at this keyframe
+  label?: string;              // optional frame label (for goToFrame("label"))
+  script?: string;             // frame script (runs when playhead enters)
+}
+
+/** A reusable symbol stored in the project library */
+export interface HNSymbol {
+  id: string;
+  name: string;
+  type: SymbolType;
+  width: number;
+  height: number;
+  /** For 'graphic': single frame of objects. For 'movie-clip': timeline. */
+  frames: Keyframe[];
+  /** How many frames per second the movie clip plays at */
+  fps: number;
+  loop: boolean;
+}
+
+// ---------------------------------------------------------------------------
 // Top-level project
 // ---------------------------------------------------------------------------
 
@@ -128,6 +172,7 @@ export interface HyperNovaProject {
   name: string;
   stacks: Stack[];
   assets: Assets;
+  library: HNSymbol[];
 }
 
 // ---------------------------------------------------------------------------
@@ -215,6 +260,46 @@ export function createDefaultImageObj(x: number, y: number): ImageObject {
   };
 }
 
+export function createDefaultSymbol(name: string): HNSymbol {
+  return {
+    id: genId(),
+    name,
+    type: 'graphic',
+    width: 100,
+    height: 100,
+    frames: [{ frame: 1, objects: [] }],
+    fps: 12,
+    loop: false,
+  };
+}
+
+export function createDefaultMovieClip(name: string): HNSymbol {
+  return {
+    id: genId(),
+    name,
+    type: 'movie-clip',
+    width: 100,
+    height: 100,
+    frames: [{ frame: 1, objects: [] }],
+    fps: 12,
+    loop: true,
+  };
+}
+
+export function createSymbolInstance(symbolId: string, x: number, y: number, w: number, h: number): SymbolInstanceObject {
+  return {
+    id: genId(),
+    type: 'symbol-instance',
+    x,
+    y,
+    width: w,
+    height: h,
+    symbolId,
+    overrides: {},
+    currentFrame: 1,
+  };
+}
+
 export function createDefaultCard(index: number): Card {
   return {
     id: genId(),
@@ -235,6 +320,7 @@ export function createDefaultProject(): HyperNovaProject {
     name: 'My Stack',
     stacks: [stack],
     assets: { images: {} },
+    library: [],
   };
 }
 
@@ -375,5 +461,6 @@ export function createExampleProject(): HyperNovaProject {
       },
     ],
     assets: { images: {} },
+    library: [],
   };
 }

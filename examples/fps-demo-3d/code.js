@@ -1,5 +1,7 @@
+import { WADLoader, convertWADMap } from './wad-loader.js';
+
 // NEO-DOOM: FAST, BRIGHT, FUN ARENA SHOOTER
-// 3 levels, 4 enemy types, pickups, boss fights
+// 3 levels, 4 enemy types, pickups, boss fights — now with .WAD file support!
 
 // ── Cart manifest (loaded automatically by console) ──
 export const env = {
@@ -161,6 +163,12 @@ let entities = {
   enemyBullets: [],
 };
 
+// WAD file loading state
+let isWADMode = false;
+let wadLoader = null;
+let wadMapNames = [];
+let wadMapIndex = 0;
+
 // 3 maps with different layouts and enemy compositions
 const MAPS = [
   // Level 1: Classic maze (grunts only)
@@ -283,11 +291,38 @@ export function init() {
         player.pitch = Math.max(-1.0, Math.min(1.0, player.pitch));
       }
     });
+
+    // WAD file drag-and-drop
+    document.addEventListener('dragover', e => e.preventDefault());
+    document.addEventListener('drop', async e => {
+      e.preventDefault();
+      const file = e.dataTransfer?.files[0];
+      if (file && file.name.toLowerCase().endsWith('.wad')) await loadWADFile(file);
+    });
+
+    // 'L' key to open file picker for WAD loading
+    document.addEventListener('keydown', e => {
+      if (e.code === 'KeyL' && gameState === 'start') {
+        const inp = document.createElement('input');
+        inp.type = 'file';
+        inp.accept = '.wad';
+        inp.onchange = async () => {
+          if (inp.files[0]) await loadWADFile(inp.files[0]);
+        };
+        inp.click();
+      }
+      if (e.code === 'KeyR' && gameState === 'start' && isWADMode) {
+        isWADMode = false;
+        wadLoader = null;
+        wadMapNames = [];
+        wadMapIndex = 0;
+      }
+    });
   }
 }
 
 function cleanupLevel() {
-  for (let w of entities.walls) destroyMesh(w.m);
+  for (let w of entities.walls) if (w.m) destroyMesh(w.m);
   for (let e of entities.enemies) {
     destroyMesh(e.body);
     destroyMesh(e.head);
@@ -323,6 +358,11 @@ function startGame(lvl) {
     player.ammo = 50;
   }
   player.ammo += lvl > 1 ? 25 : 0;
+
+  if (isWADMode) {
+    buildWADLevel(wadMapNames[wadMapIndex]);
+    return;
+  }
 
   const map = MAPS[lvl - 1];
   const SIZE = 4;
@@ -431,9 +471,12 @@ function spawnEnemy(x, z, type) {
     setScale(detail, 0.4, 0.4, 2.0); // gun barrel
   }
 
-  // Point light on enemies for dynamic lighting
-  let light = createPointLight(mat.color, 1.2, 12, [x, 3, z]);
-  enemyLights.push(light);
+  // Point light on enemies for dynamic lighting (cap in WAD mode for performance)
+  let light = null;
+  if (!isWADMode || enemyLights.length < 20) {
+    light = createPointLight(mat.color, 1.2, 12, [x, 3, z]);
+    enemyLights.push(light);
+  }
 
   entities.enemies.push({
     body,
@@ -456,6 +499,7 @@ function spawnEnemy(x, z, type) {
 
 function getWallCollision(nx, nz, radius) {
   for (let w of entities.walls) {
+    if (w.r <= 0) continue;
     if (Math.abs(nx - w.x) < w.r + radius && Math.abs(nz - w.z) < w.r + radius) return true;
   }
   return false;
@@ -553,6 +597,90 @@ function spawnPickup(x, y, z) {
   entities.pickups.push({ m, x, y, z, type, life: 15 }); // 15 seconds
 }
 
+// ── WAD File Loading ──
+
+async function loadWADFile(file) {
+  try {
+    const buf = await file.arrayBuffer();
+    wadLoader = new WADLoader();
+    wadLoader.load(buf);
+    wadMapNames = wadLoader.getMapNames();
+    if (wadMapNames.length === 0) {
+      wadLoader = null;
+      return;
+    }
+    isWADMode = true;
+    wadMapIndex = 0;
+    startGame(1);
+  } catch (err) {
+    console.error('WAD load error:', err);
+    wadLoader = null;
+    isWADMode = false;
+  }
+}
+
+function buildWADLevel(mapName) {
+  const mapData = wadLoader.getMap(mapName);
+  if (!mapData) return;
+
+  const converted = convertWADMap(mapData);
+  const accentColors = [0x00aaff, 0xff6600, 0xcc00ff, 0x00ff88, 0xff0066, 0xffaa00];
+  const accent = accentColors[wadMapIndex % accentColors.length];
+
+  // Create wall meshes
+  for (let i = 0; i < converted.walls.length; i++) {
+    const w = converted.walls[i];
+    const isAccent = i % 4 === 0 || w.step;
+    const bri = w.light || 0.5;
+
+    let color, mat;
+    if (w.step) {
+      mat = { material: 'emissive', color: accent, intensity: 0.5 * bri };
+      color = accent;
+    } else if (isAccent) {
+      mat = { material: 'emissive', color: accent, intensity: 0.2 * bri };
+      color = accent;
+    } else {
+      const v = Math.floor(bri * 180 + 40);
+      color = (v << 16) | (v << 8) | v;
+      mat = { material: 'standard', color, roughness: 0.85 };
+    }
+
+    const m = createCube(1, color, [w.x, w.y, w.z], mat);
+    setScale(m, w.len, w.h, 0.35);
+    setRotation(m, 0, w.ang, 0);
+    entities.walls.push({ m, x: w.x, z: w.z, r: 0 });
+  }
+
+  // Collision segments (invisible)
+  for (const seg of converted.colSegs) {
+    entities.walls.push({ m: null, x: seg.x, z: seg.z, r: seg.r });
+  }
+
+  // Spawn enemies (cap at 60 for performance)
+  const maxEnemies = 60;
+  const enemyList = converted.enemies.slice(0, maxEnemies);
+  for (const e of enemyList) {
+    spawnEnemy(e.x, e.z, e.type);
+    totalEnemies++;
+  }
+
+  // Spawn pickups from WAD items
+  for (const item of converted.items) {
+    spawnPickup(item.x, 1, item.z);
+  }
+
+  // Player start
+  player.x = converted.playerStart.x;
+  player.z = converted.playerStart.z;
+  player.yaw = converted.playerStart.angle;
+  player.pitch = 0;
+
+  // Wider fog for WAD levels
+  let fogColors = [0x001122, 0x221100, 0x110022, 0x002211, 0x220011, 0x111122];
+  setFog(fogColors[wadMapIndex % fogColors.length], 12, 100);
+}
+
 function spawnGibs(cx, cy, cz, color, count) {
   for (let i = 0; i < count; i++) {
     let size = 0.15 + Math.random() * 0.25;
@@ -605,7 +733,16 @@ export function update(dt) {
   if (gameState === 'levelclear') {
     levelClearTimer -= dt;
     if (levelClearTimer <= 0) {
-      if (level >= 3) {
+      if (isWADMode) {
+        wadMapIndex++;
+        if (wadMapIndex >= wadMapNames.length) {
+          gameState = 'victory';
+          if (document.pointerLockElement) document.exitPointerLock();
+        } else {
+          level++;
+          startGame(level);
+        }
+      } else if (level >= 3) {
         gameState = 'victory';
         if (document.pointerLockElement) document.exitPointerLock();
       } else {
@@ -938,7 +1075,7 @@ export function update(dt) {
   }
 
   // ── Fog per level ──
-  if (player.health > 0) {
+  if (player.health > 0 && !isWADMode) {
     let fogColor = level === 1 ? 0x001122 : level === 2 ? 0x221100 : 0x110022;
     setFog(fogColor, 8, 60);
   }
@@ -981,12 +1118,24 @@ function drawStartScreen() {
   printCentered('WASD - Move  |  SHIFT - Sprint', W / 2, 125, rgba8(150, 150, 150, 255));
   printCentered('Mouse - Aim  |  Click - Shoot', W / 2, 140, rgba8(150, 150, 150, 255));
 
-  // 3 Levels info
-  printCentered('3 LEVELS  |  4 ENEMY TYPES  |  BOSS FIGHTS', W / 2, 170, rgba8(255, 170, 0, 200));
+  // Game info + WAD status
+  if (isWADMode) {
+    printCentered(`WAD LOADED: ${wadMapNames.length} MAPS`, W / 2, 155, rgba8(0, 255, 100, 255));
+    printCentered(`STARTING: ${wadMapNames[wadMapIndex]}`, W / 2, 170, rgba8(255, 170, 0, 200));
+    printCentered('R - Return to original levels', W / 2, 185, rgba8(120, 120, 120, 200));
+  } else {
+    printCentered(
+      '3 LEVELS  |  4 ENEMY TYPES  |  BOSS FIGHTS',
+      W / 2,
+      155,
+      rgba8(255, 170, 0, 200)
+    );
+    printCentered('DROP .WAD FILE or press L to load', W / 2, 178, rgba8(100, 200, 255, 180));
+  }
 
   // Blinking prompt
   if (Math.sin(gameTime * 5) > 0) {
-    printCentered('>>> CLICK TO BEGIN <<<', W / 2, 200, rgba8(0, 255, 204, 255));
+    printCentered('>>> CLICK TO BEGIN <<<', W / 2, 208, rgba8(0, 255, 204, 255));
   }
 }
 
@@ -1035,9 +1184,18 @@ function drawLevelClear() {
     cy = H / 2;
   rectfill(cx - 80, cy - 30, 160, 55, rgba8(0, 0, 0, 210));
   rectfill(cx - 80, cy - 30, 160, 2, rgba8(0, 255, 100, 200));
-  printCentered(`LEVEL ${level} CLEAR!`, cx, cy - 18, rgba8(0, 255, 100, 255));
+  let clearText = isWADMode ? `${wadMapNames[wadMapIndex]} CLEAR!` : `LEVEL ${level} CLEAR!`;
+  printCentered(clearText, cx, cy - 18, rgba8(0, 255, 100, 255));
   printCentered(`+${level * 500} BONUS`, cx, cy, rgba8(255, 170, 0, 255));
-  let remaining = level < 3 ? `NEXT: LEVEL ${level + 1}` : 'FINAL VICTORY AWAITS';
+  let remaining;
+  if (isWADMode) {
+    remaining =
+      wadMapIndex + 1 < wadMapNames.length
+        ? `NEXT: ${wadMapNames[wadMapIndex + 1]}`
+        : 'FINAL VICTORY AWAITS';
+  } else {
+    remaining = level < 3 ? `NEXT: LEVEL ${level + 1}` : 'FINAL VICTORY AWAITS';
+  }
   printCentered(remaining, cx, cy + 15, rgba8(200, 200, 200, 200));
 }
 

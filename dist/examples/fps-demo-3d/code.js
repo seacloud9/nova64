@@ -1,5 +1,7 @@
+import { WADLoader, convertWADMap } from './wad-loader.js';
+
 // NEO-DOOM: FAST, BRIGHT, FUN ARENA SHOOTER
-// 3 levels, 4 enemy types, pickups, boss fights
+// 3 levels, 4 enemy types, pickups, boss fights — now with .WAD file support!
 
 // ── Cart manifest (loaded automatically by console) ──
 export const env = {
@@ -56,18 +58,53 @@ export const env = {
   entities: {
     enemies: {
       grunt: { name: 'enemy.grunt', hp: 30, speed: 3, damage: 8, xp: 10, color: 0xff3300, tier: 1 },
-      shooter: { name: 'enemy.shooter', hp: 25, speed: 2, damage: 12, xp: 20, color: 0x00ff44, tier: 2, ranged: true },
-      tank: { name: 'enemy.tank', hp: 80, speed: 1.5, damage: 15, xp: 30, color: 0x9933ff, tier: 3 },
+      shooter: {
+        name: 'enemy.shooter',
+        hp: 25,
+        speed: 2,
+        damage: 12,
+        xp: 20,
+        color: 0x00ff44,
+        tier: 2,
+        ranged: true,
+      },
+      tank: {
+        name: 'enemy.tank',
+        hp: 80,
+        speed: 1.5,
+        damage: 15,
+        xp: 30,
+        color: 0x9933ff,
+        tier: 3,
+      },
     },
     bosses: {
-      boss: { name: 'enemy.boss', hp: 200, speed: 2, damage: 20, xp: 100, color: 0xffcc00, tier: 4 },
+      boss: {
+        name: 'enemy.boss',
+        hp: 200,
+        speed: 2,
+        damage: 20,
+        xp: 100,
+        color: 0xffcc00,
+        tier: 4,
+      },
     },
   },
 
   items: {
-    health_pack: { name: 'pickup.health', type: 'consumable', effect: { heal: 25 }, rarity: 'common' },
+    health_pack: {
+      name: 'pickup.health',
+      type: 'consumable',
+      effect: { heal: 25 },
+      rarity: 'common',
+    },
     ammo_crate: { name: 'pickup.ammo', type: 'consumable', effect: { ammo: 20 }, rarity: 'common' },
-    armor_shard: { name: 'pickup.armor', type: 'consumable', effect: { armor: 15 }, rarity: 'uncommon' },
+    armor_shard: {
+      name: 'pickup.armor',
+      type: 'consumable',
+      effect: { armor: 15 },
+      rarity: 'uncommon',
+    },
   },
 
   gameplay: {
@@ -125,6 +162,12 @@ let entities = {
   pickups: [],
   enemyBullets: [],
 };
+
+// WAD file loading state
+let isWADMode = false;
+let wadLoader = null;
+let wadMapNames = [];
+let wadMapIndex = 0;
 
 // 3 maps with different layouts and enemy compositions
 const MAPS = [
@@ -204,14 +247,32 @@ const MAT = {
 };
 
 let mouseInit = false;
+let shake = null;
+let damageFlash = 0;
+let killFlash = 0;
+let muzzleFlash = 0;
+let shootCooldown = 0;
+let ceilingMesh = null;
+let floorMesh = null;
+let enemyLights = [];
 
 export function init() {
-  setFog(0x001122, 5, 80);
-  setAmbientLight(0xffffff, 0.6);
-  setDirectionalLight([-1, -2, -1], 0xffffee, 1.2);
+  shake = createShake({ maxIntensity: 8, decay: 0.88, noiseScale: 0.15 });
 
-  let floor = createPlane(200, 200, 0x112233, [0, 0, 0], MAT.floor);
-  setRotation(floor, -Math.PI / 2, 0, 0);
+  setFog(0x001122, 8, 60);
+  setAmbientLight(0x334466, 0.4);
+  setDirectionalLight([-1, -2, -1], 0xaabbdd, 0.8);
+
+  floorMesh = createPlane(200, 200, 0x112233, [0, 0, 0], MAT.floor);
+  setRotation(floorMesh, -Math.PI / 2, 0, 0);
+
+  // Ceiling
+  ceilingMesh = createPlane(200, 200, 0x0a0a15, [0, 9, 0], {
+    material: 'standard',
+    color: 0x0a0a15,
+    roughness: 1.0,
+  });
+  setRotation(ceilingMesh, Math.PI / 2, 0, 0);
 
   if (!mouseInit) {
     mouseInit = true;
@@ -225,25 +286,53 @@ export function init() {
     });
     document.addEventListener('mousemove', e => {
       if (document.pointerLockElement && gameState === 'playing') {
-        player.yaw -= e.movementX * 0.003;
-        player.pitch -= e.movementY * 0.003;
-        if (player.pitch > 1.2) player.pitch = 1.2;
-        if (player.pitch < -1.2) player.pitch = -1.2;
+        player.yaw -= e.movementX * 0.0025;
+        player.pitch -= e.movementY * 0.0022;
+        player.pitch = Math.max(-1.0, Math.min(1.0, player.pitch));
+      }
+    });
+
+    // WAD file drag-and-drop
+    document.addEventListener('dragover', e => e.preventDefault());
+    document.addEventListener('drop', async e => {
+      e.preventDefault();
+      const file = e.dataTransfer?.files[0];
+      if (file && file.name.toLowerCase().endsWith('.wad')) await loadWADFile(file);
+    });
+
+    // 'L' key to open file picker for WAD loading
+    document.addEventListener('keydown', e => {
+      if (e.code === 'KeyL' && gameState === 'start') {
+        const inp = document.createElement('input');
+        inp.type = 'file';
+        inp.accept = '.wad';
+        inp.onchange = async () => { if (inp.files[0]) await loadWADFile(inp.files[0]); };
+        inp.click();
+      }
+      if (e.code === 'KeyR' && gameState === 'start' && isWADMode) {
+        isWADMode = false;
+        wadLoader = null;
+        wadMapNames = [];
+        wadMapIndex = 0;
       }
     });
   }
 }
 
 function cleanupLevel() {
-  for (let w of entities.walls) destroyMesh(w.m);
+  for (let w of entities.walls) if (w.m) destroyMesh(w.m);
   for (let e of entities.enemies) {
-    destroyMesh(e.m1);
-    destroyMesh(e.m2);
+    destroyMesh(e.body);
+    destroyMesh(e.head);
+    if (e.detail) destroyMesh(e.detail);
+    if (e.light) destroyMesh(e.light);
   }
   for (let b of entities.bullets) destroyMesh(b.m);
   for (let b of entities.enemyBullets) destroyMesh(b.m);
   for (let p of entities.particles) destroyMesh(p.m);
   for (let p of entities.pickups) destroyMesh(p.m);
+  for (let l of enemyLights) destroyMesh(l);
+  enemyLights = [];
   entities = { walls: [], enemies: [], bullets: [], particles: [], pickups: [], enemyBullets: [] };
 }
 
@@ -255,16 +344,23 @@ function startGame(lvl) {
   kills = 0;
   totalEnemies = 0;
   levelClearTimer = 0;
+  damageFlash = 0;
+  killFlash = 0;
+  muzzleFlash = 0;
+  shootCooldown = 0;
 
-  // Full reset on level 1, keep stats on level transitions
   if (lvl === 1) {
     player.health = 100;
     player.armor = 0;
     player.score = 0;
     player.ammo = 50;
   }
-  // Bonus ammo each level
   player.ammo += lvl > 1 ? 25 : 0;
+
+  if (isWADMode) {
+    buildWADLevel(wadMapNames[wadMapIndex]);
+    return;
+  }
 
   const map = MAPS[lvl - 1];
   const SIZE = 4;
@@ -278,14 +374,21 @@ function startGame(lvl) {
 
       if (char === '#') {
         let isColor = (x + z) % 3 === 0;
-        let m = createCube(
-          SIZE,
-          isColor ? accentMat.color : MAT.wall.color,
-          [px, 3, pz],
-          isColor ? accentMat : MAT.wall
-        );
+        let wallMat = isColor ? accentMat : MAT.wall;
+        let m = createCube(SIZE, wallMat.color, [px, 3, pz], wallMat);
         setScale(m, 1, 1.5, 1);
         entities.walls.push({ m, x: px, z: pz, r: SIZE / 2 });
+
+        // Add wall trim along top of colored walls
+        if (isColor) {
+          let trim = createCube(SIZE * 0.95, 0xffffff, [px, 8.5, pz], {
+            material: 'emissive',
+            color: accentMat.color,
+            intensity: 0.5,
+          });
+          setScale(trim, 1, 0.08, 1);
+          entities.walls.push({ m: trim, x: px, z: pz, r: 0 }); // r:0 = decorative only
+        }
       } else if (char === 'E') {
         spawnEnemy(px, pz, 'grunt');
         totalEnemies++;
@@ -309,42 +412,75 @@ function startGame(lvl) {
 }
 
 function spawnEnemy(x, z, type) {
-  let mat, hp, spd, size, dmg;
+  let mat, hp, spd, size, dmg, detailMat;
   switch (type) {
     case 'shooter':
       mat = MAT.shooter;
-      hp = 5;
-      spd = 0.1 + Math.random() * 0.05;
-      size = 1.5;
-      dmg = 8;
+      detailMat = { material: 'emissive', color: 0x88ffaa, intensity: 1.5 };
+      hp = 8;
+      spd = 4.5;
+      size = 1.4;
+      dmg = 10;
       break;
     case 'tank':
       mat = MAT.tank;
-      hp = 12;
-      spd = 0.08;
-      size = 2.2;
+      detailMat = { material: 'emissive', color: 0xcc66ff, intensity: 1.5 };
+      hp = 20;
+      spd = 2.5;
+      size = 2.4;
       dmg = 20;
       break;
     case 'boss':
       mat = MAT.boss;
-      hp = 40 + level * 10;
-      spd = 0.12;
+      detailMat = { material: 'emissive', color: 0xffee88, intensity: 2.0 };
+      hp = 60 + level * 15;
+      spd = 3.5;
       size = 3.5;
-      dmg = 15;
+      dmg = 18;
       break;
     default: // grunt
       mat = MAT.enemy;
-      hp = 3;
-      spd = 0.15 + Math.random() * 0.1;
-      size = 1.5;
-      dmg = 10;
+      detailMat = { material: 'emissive', color: 0xff8844, intensity: 1.5 };
+      hp = 5;
+      spd = 5.5;
+      size = 1.4;
+      dmg = 12;
       break;
   }
-  let m1 = createCube(size, mat.color, [x, 2, z], mat);
-  let m2 = createCube(size * 0.5, MAT.enemyEye.color, [x, 2.5, z + 0.5], MAT.enemyEye);
+
+  // Body
+  let body = createCube(size, mat.color, [x, 2, z], mat);
+  setScale(body, 0.7, 1.2, 0.7);
+
+  // Head (sphere-like with small cube for now — looks like a visor)
+  let head = createCube(size * 0.55, MAT.enemyEye.color, [x, 2 + size * 0.7, z], MAT.enemyEye);
+  setScale(head, 1, 0.6, 0.8);
+
+  // Detail piece (shoulder pads / horns / crown depending on type)
+  let detail = null;
+  if (type === 'tank') {
+    detail = createCube(size * 0.9, detailMat.color, [x, 2, z], detailMat);
+    setScale(detail, 1.3, 0.3, 1.3);
+  } else if (type === 'boss') {
+    detail = createCube(size * 0.6, detailMat.color, [x, 2 + size, z], detailMat);
+    setScale(detail, 1.5, 0.4, 0.5);
+  } else if (type === 'shooter') {
+    detail = createCube(size * 0.2, detailMat.color, [x, 2, z + size * 0.5], detailMat);
+    setScale(detail, 0.4, 0.4, 2.0); // gun barrel
+  }
+
+  // Point light on enemies for dynamic lighting (cap in WAD mode for performance)
+  let light = null;
+  if (!isWADMode || enemyLights.length < 20) {
+    light = createPointLight(mat.color, 1.2, 12, [x, 3, z]);
+    enemyLights.push(light);
+  }
+
   entities.enemies.push({
-    m1,
-    m2,
+    body,
+    head,
+    detail,
+    light,
     x,
     z,
     y: 2,
@@ -354,26 +490,28 @@ function spawnEnemy(x, z, type) {
     type,
     dmg,
     size,
-    fireTimer: 0,
+    fireTimer: Math.random() * 60, // stagger initial fire
+    hitFlash: 0,
   });
 }
 
 function getWallCollision(nx, nz, radius) {
   for (let w of entities.walls) {
+    if (w.r <= 0) continue;
     if (Math.abs(nx - w.x) < w.r + radius && Math.abs(nz - w.z) < w.r + radius) return true;
   }
   return false;
 }
 
 function shoot() {
-  if (player.ammo <= 0) return;
+  if (player.ammo <= 0 || shootCooldown > 0) return;
   player.ammo--;
+  shootCooldown = 0.1; // 10 shots/sec max
 
   let fx = Math.sin(player.yaw) * Math.cos(player.pitch);
   let fy = Math.sin(player.pitch);
   let fz = Math.cos(player.yaw) * Math.cos(player.pitch);
 
-  // Spawn bullet from camera/head height, offset slightly down and right for gun position
   let headY = player.y + 1.0;
   let rx = Math.cos(player.yaw);
   let rz = -Math.sin(player.yaw);
@@ -381,11 +519,32 @@ function shoot() {
   let by = headY + fy * 1.5 - 0.3;
   let bz = player.z + fz * 1.5 + rz * 0.3;
 
-  let m = createCube(0.2, MAT.bullet.color, [bx, by, bz], MAT.bullet);
-  setScale(m, 1, 1, 6);
+  // Faster bullets with slight spread for feel
+  let spread = 0.015;
+  let sx = fx + (Math.random() - 0.5) * spread;
+  let sy = fy + (Math.random() - 0.5) * spread;
+  let sz = fz + (Math.random() - 0.5) * spread;
+  let bulletSpeed = 80;
+
+  let m = createCube(0.15, MAT.bullet.color, [bx, by, bz], MAT.bullet);
+  setScale(m, 0.5, 0.5, 4);
   setRotation(m, -player.pitch, player.yaw, 0);
 
-  entities.bullets.push({ m, x: bx, y: by, z: bz, vx: fx * 3, vy: fy * 3, vz: fz * 3, life: 30 });
+  entities.bullets.push({
+    m,
+    x: bx,
+    y: by,
+    z: bz,
+    vx: sx * bulletSpeed,
+    vy: sy * bulletSpeed,
+    vz: sz * bulletSpeed,
+    life: 1.5,
+  });
+
+  // Gun kick
+  player.pitch += 0.015;
+  muzzleFlash = 0.06;
+  triggerShake(shake, 1.5);
   sfx('laser');
 }
 
@@ -398,11 +557,12 @@ function enemyShoot(e, angleOffset) {
 
   let baseAngle = Math.atan2(dx, dz) + (angleOffset || 0);
   let dist3d = Math.hypot(dx, dy, dz);
-  let spd = e.type === 'boss' ? 2.0 : 1.5;
+  let spd = e.type === 'boss' ? 28 : 22;
   let bx = e.x,
     by = e.y + 0.5,
     bz = e.z;
-  let m = createCube(0.3, MAT.enemyBullet.color, [bx, by, bz], MAT.enemyBullet);
+  let m = createCube(0.25, MAT.enemyBullet.color, [bx, by, bz], MAT.enemyBullet);
+  setScale(m, 0.6, 0.6, 3);
 
   entities.enemyBullets.push({
     m,
@@ -412,8 +572,8 @@ function enemyShoot(e, angleOffset) {
     vx: Math.sin(baseAngle) * spd,
     vy: (dy / dist3d) * spd,
     vz: Math.cos(baseAngle) * spd,
-    life: 60,
-    dmg: e.type === 'boss' ? 12 : 8,
+    life: 3.0,
+    dmg: e.type === 'boss' ? 15 : 10,
   });
 }
 
@@ -432,21 +592,105 @@ function spawnPickup(x, y, z) {
   }
 
   let m = createCube(0.6, mat.color, [x, y, z], mat);
-  entities.pickups.push({ m, x, y, z, type, life: 600 });
+  entities.pickups.push({ m, x, y, z, type, life: 15 }); // 15 seconds
+}
+
+// ── WAD File Loading ──
+
+async function loadWADFile(file) {
+  try {
+    const buf = await file.arrayBuffer();
+    wadLoader = new WADLoader();
+    wadLoader.load(buf);
+    wadMapNames = wadLoader.getMapNames();
+    if (wadMapNames.length === 0) { wadLoader = null; return; }
+    isWADMode = true;
+    wadMapIndex = 0;
+    startGame(1);
+  } catch (err) {
+    console.error('WAD load error:', err);
+    wadLoader = null;
+    isWADMode = false;
+  }
+}
+
+function buildWADLevel(mapName) {
+  const mapData = wadLoader.getMap(mapName);
+  if (!mapData) return;
+
+  const converted = convertWADMap(mapData);
+  const accentColors = [0x00aaff, 0xff6600, 0xcc00ff, 0x00ff88, 0xff0066, 0xffaa00];
+  const accent = accentColors[wadMapIndex % accentColors.length];
+
+  // Create wall meshes
+  for (let i = 0; i < converted.walls.length; i++) {
+    const w = converted.walls[i];
+    const isAccent = (i % 4 === 0) || w.step;
+    const bri = w.light || 0.5;
+
+    let color, mat;
+    if (w.step) {
+      mat = { material: 'emissive', color: accent, intensity: 0.5 * bri };
+      color = accent;
+    } else if (isAccent) {
+      mat = { material: 'emissive', color: accent, intensity: 0.2 * bri };
+      color = accent;
+    } else {
+      const v = Math.floor(bri * 180 + 40);
+      color = (v << 16) | (v << 8) | v;
+      mat = { material: 'standard', color, roughness: 0.85 };
+    }
+
+    const m = createCube(1, color, [w.x, w.y, w.z], mat);
+    setScale(m, w.len, w.h, 0.35);
+    setRotation(m, 0, w.ang, 0);
+    entities.walls.push({ m, x: w.x, z: w.z, r: 0 });
+  }
+
+  // Collision segments (invisible)
+  for (const seg of converted.colSegs) {
+    entities.walls.push({ m: null, x: seg.x, z: seg.z, r: seg.r });
+  }
+
+  // Spawn enemies (cap at 60 for performance)
+  const maxEnemies = 60;
+  const enemyList = converted.enemies.slice(0, maxEnemies);
+  for (const e of enemyList) {
+    spawnEnemy(e.x, e.z, e.type);
+    totalEnemies++;
+  }
+
+  // Spawn pickups from WAD items
+  for (const item of converted.items) {
+    spawnPickup(item.x, 1, item.z);
+  }
+
+  // Player start
+  player.x = converted.playerStart.x;
+  player.z = converted.playerStart.z;
+  player.yaw = converted.playerStart.angle;
+  player.pitch = 0;
+
+  // Wider fog for WAD levels
+  let fogColors = [0x001122, 0x221100, 0x110022, 0x002211, 0x220011, 0x111122];
+  setFog(fogColors[wadMapIndex % fogColors.length], 12, 100);
 }
 
 function spawnGibs(cx, cy, cz, color, count) {
   for (let i = 0; i < count; i++) {
-    let m = createCube(0.3, color, [cx, cy, cz], { material: 'emissive', color, intensity: 2 });
+    let size = 0.15 + Math.random() * 0.25;
+    let m = createCube(size, color, [cx, cy, cz], { material: 'emissive', color, intensity: 2.5 });
+    let life = 0.4 + Math.random() * 0.6;
     entities.particles.push({
       m,
       x: cx,
       y: cy,
       z: cz,
-      vx: (Math.random() - 0.5) * 1.5,
-      vy: Math.random() * 1.5,
-      vz: (Math.random() - 0.5) * 1.5,
-      life: 20 + Math.random() * 10,
+      vx: (Math.random() - 0.5) * 0.4,
+      vy: Math.random() * 0.5,
+      vz: (Math.random() - 0.5) * 0.4,
+      life,
+      maxLife: life,
     });
   }
 }
@@ -458,23 +702,42 @@ function applyDamage(dmg) {
     dmg -= absorbed;
   }
   player.health -= dmg;
-  setFog(0xff0000, 1, 20);
+  damageFlash = 0.25;
+  triggerShake(shake, Math.min(dmg * 0.8, 6));
   sfx('hit');
   if (player.health <= 0) {
     gameState = 'gameover';
+    triggerShake(shake, 10);
     sfx('death');
     if (document.pointerLockElement) document.exitPointerLock();
   }
 }
 
-export function update() {
-  gameTime++;
+export function update(dt) {
+  if (!dt) dt = 1 / 60;
+  gameTime += dt;
+
+  // Timers
+  if (damageFlash > 0) damageFlash -= dt;
+  if (killFlash > 0) killFlash -= dt;
+  if (muzzleFlash > 0) muzzleFlash -= dt;
+  if (shootCooldown > 0) shootCooldown -= dt;
+  updateShake(shake, dt);
 
   // Level clear transition
   if (gameState === 'levelclear') {
-    levelClearTimer--;
+    levelClearTimer -= dt;
     if (levelClearTimer <= 0) {
-      if (level >= 3) {
+      if (isWADMode) {
+        wadMapIndex++;
+        if (wadMapIndex >= wadMapNames.length) {
+          gameState = 'victory';
+          if (document.pointerLockElement) document.exitPointerLock();
+        } else {
+          level++;
+          startGame(level);
+        }
+      } else if (level >= 3) {
         gameState = 'victory';
         if (document.pointerLockElement) document.exitPointerLock();
       } else {
@@ -493,13 +756,16 @@ export function update() {
 
   if (gameState !== 'playing') {
     let r = 40;
-    setCameraPosition(Math.sin(gameTime * 0.005) * r, 30, Math.cos(gameTime * 0.005) * r);
+    setCameraPosition(Math.sin(gameTime * 0.3) * r, 30, Math.cos(gameTime * 0.3) * r);
     setCameraTarget(0, 0, 0);
     return;
   }
 
-  // Player Movement
-  let speed = 0.35;
+  // ── Player Movement (dt-based) ──
+  let isSprinting = key('ShiftLeft') || key('ShiftRight');
+  let baseSpeed = 14;
+  let speed = isSprinting ? baseSpeed * 1.6 : baseSpeed;
+
   let fx = Math.sin(player.yaw);
   let fz = Math.cos(player.yaw);
   let rx = Math.cos(player.yaw);
@@ -526,52 +792,68 @@ export function update() {
 
   let len = Math.hypot(dx, dz);
   if (len > 0) {
-    dx = (dx / len) * speed;
-    dz = (dz / len) * speed;
+    dx = (dx / len) * speed * dt;
+    dz = (dz / len) * speed * dt;
   }
 
-  let plrRadius = 1.0;
+  let plrRadius = 0.8;
   if (!getWallCollision(player.x + dx, player.z, plrRadius)) player.x += dx;
   if (!getWallCollision(player.x, player.z + dz, plrRadius)) player.z += dz;
 
-  if (len > 0) player.y = 1.5 + Math.sin(gameTime * 0.4) * 0.2;
-  else player.y = 1.5 + Math.sin(gameTime * 0.05) * 0.05;
+  // Head bob
+  let isMoving = len > 0;
+  let bobFreq = isSprinting ? 12 : 8;
+  let bobAmp = isSprinting ? 0.25 : 0.15;
+  if (isMoving) player.y = 1.5 + Math.sin(gameTime * bobFreq) * bobAmp;
+  else player.y = 1.5 + Math.sin(gameTime * 1.5) * 0.03;
 
-  // Camera
+  // ── Camera ──
   let headY = player.y + 1.0;
-  let tx = player.x + Math.sin(player.yaw) * Math.cos(player.pitch);
-  let ty = headY + Math.sin(player.pitch);
-  let tz = player.z + Math.cos(player.yaw) * Math.cos(player.pitch);
-  setCameraPosition(player.x, headY, player.z);
-  setCameraTarget(tx, ty, tz);
-  setCameraFOV(100);
+  let shakeOff = shake ? { x: shake.offsetX || 0, y: shake.offsetY || 0 } : { x: 0, y: 0 };
+  let camX = player.x + shakeOff.x * 0.02;
+  let camY = headY + shakeOff.y * 0.02;
+  let camZ = player.z;
+  let tiltFromDamage = damageFlash > 0 ? Math.sin(gameTime * 40) * damageFlash * 0.05 : 0;
+  setCameraPosition(camX, camY, camZ);
+  setCameraTarget(
+    camX + Math.sin(player.yaw) * Math.cos(player.pitch),
+    camY + Math.sin(player.pitch + tiltFromDamage),
+    camZ + Math.cos(player.yaw) * Math.cos(player.pitch)
+  );
+  setCameraFOV(isSprinting ? 95 : 85);
 
-  // Shooting
-  if ((mouseDown() || key('Space') || btn('A')) && gameTime % 4 === 0) {
+  // ── Shooting ──
+  if (mouseDown() || key('Space') || btn('A')) {
     shoot();
-    if (player.ammo > 0) player.pitch += 0.02;
   }
 
-  // Update Player Bullets
+  // ── Update Player Bullets ──
   for (let i = entities.bullets.length - 1; i >= 0; i--) {
     let b = entities.bullets[i];
-    b.x += b.vx;
-    b.y += b.vy;
-    b.z += b.vz;
+    b.x += b.vx * dt;
+    b.y += b.vy * dt;
+    b.z += b.vz * dt;
     setPosition(b.m, b.x, b.y, b.z);
-    b.life--;
+    b.life -= dt;
     let hit = false;
 
     for (let j = entities.enemies.length - 1; j >= 0; j--) {
       let e = entities.enemies[j];
-      let hitR = e.size * 0.6;
-      if (Math.hypot(b.x - e.x, b.z - e.z) < hitR + 0.5 && Math.abs(b.y - e.y) < hitR + 1.0) {
+      let hitR = e.size * 0.55;
+      if (Math.hypot(b.x - e.x, b.z - e.z) < hitR + 0.4 && Math.abs(b.y - e.y) < hitR + 1.0) {
         hit = true;
         e.health -= 1;
+        e.hitFlash = 0.1;
         spawnGibs(b.x, b.y, b.z, 0xffaa00, 3);
         if (e.health <= 0) {
-          destroyMesh(e.m1);
-          destroyMesh(e.m2);
+          destroyMesh(e.body);
+          destroyMesh(e.head);
+          if (e.detail) destroyMesh(e.detail);
+          if (e.light) {
+            destroyMesh(e.light);
+            let li = enemyLights.indexOf(e.light);
+            if (li >= 0) enemyLights.splice(li, 1);
+          }
           entities.enemies.splice(j, 1);
           kills++;
           let pts =
@@ -585,9 +867,11 @@ export function update() {
                 : e.type === 'shooter'
                   ? 0x00ff44
                   : 0xff3300;
-          spawnGibs(e.x, e.y, e.z, gibColor, 15);
+          spawnGibs(e.x, e.y, e.z, gibColor, 18);
+          killFlash = 0.15;
+          triggerShake(shake, 3);
           sfx('explosion');
-          if (Math.random() < 0.6) spawnPickup(e.x, 1, e.z);
+          if (Math.random() < 0.55) spawnPickup(e.x, 1, e.z);
         } else {
           sfx('hit');
         }
@@ -597,7 +881,7 @@ export function update() {
 
     if (!hit && getWallCollision(b.x, b.z, 0)) {
       hit = true;
-      spawnGibs(b.x, b.y, b.z, 0x00ffff, 4);
+      spawnGibs(b.x, b.y, b.z, 0x00ffff, 5);
     }
     if (b.life <= 0 || hit) {
       destroyMesh(b.m);
@@ -605,17 +889,17 @@ export function update() {
     }
   }
 
-  // Update Enemy Bullets
+  // ── Update Enemy Bullets ──
   for (let i = entities.enemyBullets.length - 1; i >= 0; i--) {
     let b = entities.enemyBullets[i];
-    b.x += b.vx;
-    b.y += b.vy;
-    b.z += b.vz;
+    b.x += b.vx * dt;
+    b.y += b.vy * dt;
+    b.z += b.vz * dt;
     setPosition(b.m, b.x, b.y, b.z);
-    b.life--;
+    b.life -= dt;
     let hit = false;
 
-    if (Math.hypot(b.x - player.x, b.z - player.z) < 1.5 && Math.abs(b.y - player.y) < 2.0) {
+    if (Math.hypot(b.x - player.x, b.z - player.z) < 1.3 && Math.abs(b.y - player.y) < 2.0) {
       hit = true;
       applyDamage(b.dmg);
     }
@@ -626,72 +910,109 @@ export function update() {
     }
   }
 
-  // Update Enemies
+  // ── Update Enemies ──
   for (let i = entities.enemies.length - 1; i >= 0; i--) {
     let e = entities.enemies[i];
     let dist = Math.hypot(player.x - e.x, player.z - e.z);
+    if (e.hitFlash > 0) e.hitFlash -= dt;
 
-    // Movement - shooters keep distance, others charge
-    let minDist = e.type === 'shooter' ? 8 : 1.5;
-    if (dist < 30 && dist > minDist) {
-      let ex = e.x + ((player.x - e.x) / dist) * e.speed;
-      let ez = e.z + ((player.z - e.z) / dist) * e.speed;
-      if (!getWallCollision(ex, e.z, 1.2)) e.x = ex;
-      if (!getWallCollision(e.x, ez, 1.2)) e.z = ez;
+    // Movement — dt-based, smarter AI
+    let minDist = e.type === 'shooter' ? 10 : 1.8;
+    let moveSpeed = e.speed * dt;
+
+    if (dist < 35 && dist > minDist) {
+      let moveX = ((player.x - e.x) / dist) * moveSpeed;
+      let moveZ = ((player.z - e.z) / dist) * moveSpeed;
+      // Try to dodge sideways occasionally (strafe)
+      if (e.type !== 'grunt' && Math.sin(gameTime * 3 + i * 7) > 0.7) {
+        let perpX = -moveZ;
+        let perpZ = moveX;
+        moveX += perpX * 0.5;
+        moveZ += perpZ * 0.5;
+      }
+      if (!getWallCollision(e.x + moveX, e.z, 1.1)) e.x += moveX;
+      if (!getWallCollision(e.x, e.z + moveZ, 1.1)) e.z += moveZ;
     }
-    // Shooters retreat if too close
-    if (e.type === 'shooter' && dist < 6 && dist > 0.1) {
-      let ex = e.x - ((player.x - e.x) / dist) * e.speed * 0.5;
-      let ez = e.z - ((player.z - e.z) / dist) * e.speed * 0.5;
-      if (!getWallCollision(ex, e.z, 1.2)) e.x = ex;
-      if (!getWallCollision(e.x, ez, 1.2)) e.z = ez;
+
+    // Shooters retreat
+    if (e.type === 'shooter' && dist < 7 && dist > 0.1) {
+      let ex = e.x - ((player.x - e.x) / dist) * moveSpeed * 0.6;
+      let ez = e.z - ((player.z - e.z) / dist) * moveSpeed * 0.6;
+      if (!getWallCollision(ex, e.z, 1.1)) e.x = ex;
+      if (!getWallCollision(e.x, ez, 1.1)) e.z = ez;
     }
 
-    // Animate
-    let t = gameTime * 0.1 + i;
-    e.y = e.type === 'boss' ? 3 + Math.sin(t) * 0.8 : 2 + Math.sin(t) * 0.5;
-    setPosition(e.m1, e.x, e.y, e.z);
-    setRotation(e.m1, t, t, 0);
+    // Animate — face player, bob smoothly
+    let t = gameTime * 2 + i;
+    e.y = e.type === 'boss' ? 3 + Math.sin(t) * 0.6 : 2 + Math.sin(t * 1.5) * 0.3;
+    let faceYaw = Math.atan2(player.x - e.x, player.z - e.z);
 
-    let eyeYaw = Math.atan2(player.x - e.x, player.z - e.z);
-    let eyeOff = e.size * 0.5;
+    setPosition(e.body, e.x, e.y, e.z);
+    setRotation(e.body, 0, faceYaw, 0);
+
+    let eyeOff = e.size * 0.4;
     setPosition(
-      e.m2,
-      e.x + Math.sin(eyeYaw) * eyeOff,
-      e.y + e.size * 0.3,
-      e.z + Math.cos(eyeYaw) * eyeOff
+      e.head,
+      e.x + Math.sin(faceYaw) * eyeOff,
+      e.y + e.size * 0.55,
+      e.z + Math.cos(faceYaw) * eyeOff
     );
-    setRotation(e.m2, 0, eyeYaw, 0);
+    setRotation(e.head, 0, faceYaw, 0);
 
-    // Ranged attacks (shooters + boss)
-    if ((e.type === 'shooter' || e.type === 'boss') && dist < 25) {
-      e.fireTimer++;
-      let fireRate = e.type === 'boss' ? 45 : 90;
+    if (e.detail) {
+      if (e.type === 'tank') {
+        setPosition(e.detail, e.x, e.y + e.size * 0.2, e.z);
+        setRotation(e.detail, 0, faceYaw, 0);
+      } else if (e.type === 'boss') {
+        setPosition(e.detail, e.x, e.y + e.size * 0.7, e.z);
+        setRotation(e.detail, 0, faceYaw + Math.sin(t) * 0.2, 0);
+      } else if (e.type === 'shooter') {
+        setPosition(
+          e.detail,
+          e.x + Math.sin(faceYaw) * e.size * 0.6,
+          e.y + e.size * 0.1,
+          e.z + Math.cos(faceYaw) * e.size * 0.6
+        );
+        setRotation(e.detail, 0, faceYaw, 0);
+      }
+    }
+
+    if (e.light) {
+      setPosition(e.light, e.x, e.y + 1, e.z);
+    }
+
+    // Ranged attacks (shooters + boss) — dt-based fire rate
+    if ((e.type === 'shooter' || e.type === 'boss') && dist < 28) {
+      e.fireTimer += dt;
+      let fireRate = e.type === 'boss' ? 0.7 : 1.4;
       if (e.fireTimer >= fireRate) {
         e.fireTimer = 0;
         enemyShoot(e, 0);
         if (e.type === 'boss') {
-          enemyShoot(e, -0.15);
-          enemyShoot(e, 0.15);
+          enemyShoot(e, -0.12);
+          enemyShoot(e, 0.12);
         }
       }
     }
 
-    // Melee attack (not shooters)
-    if (e.type !== 'shooter' && dist < 2.0 && gameTime % 15 === 0) {
-      applyDamage(e.dmg);
+    // Melee attack — dt-based cooldown
+    if (e.type !== 'shooter' && dist < 2.2) {
+      e.fireTimer += dt;
+      if (e.fireTimer >= 0.5) {
+        e.fireTimer = 0;
+        applyDamage(e.dmg);
+      }
     }
   }
 
-  // Update Pickups
+  // ── Update Pickups ──
   for (let i = entities.pickups.length - 1; i >= 0; i--) {
     let p = entities.pickups[i];
-    p.life--;
-    let py = p.y + Math.sin(gameTime * 0.1 + i) * 0.3;
+    p.life -= dt;
+    let py = p.y + Math.sin(gameTime * 3 + i) * 0.3;
     setPosition(p.m, p.x, py, p.z);
-    setRotation(p.m, 0, gameTime * 0.05, 0);
+    setRotation(p.m, 0, gameTime * 2, 0);
 
-    // Collect
     if (Math.hypot(player.x - p.x, player.z - p.z) < 2.0) {
       let picked = false;
       if (p.type === 'health' && player.health < 100) {
@@ -719,20 +1040,20 @@ export function update() {
     }
   }
 
-  // Particles
+  // ── Particles ──
   for (let i = entities.particles.length - 1; i >= 0; i--) {
     let p = entities.particles[i];
-    p.x += p.vx;
-    p.y += p.vy;
-    p.z += p.vz;
-    p.vy -= 0.1;
+    p.x += p.vx * dt * 60;
+    p.y += p.vy * dt * 60;
+    p.z += p.vz * dt * 60;
+    p.vy -= 6 * dt;
     if (p.y < 0) {
       p.y = 0;
-      p.vy *= -0.5;
+      p.vy *= -0.4;
     }
-    p.life--;
+    p.life -= dt;
     setPosition(p.m, p.x, p.y, p.z);
-    let s = p.life / 20;
+    let s = Math.max(0, p.life / p.maxLife);
     setScale(p.m, s, s, s);
     if (p.life <= 0) {
       destroyMesh(p.m);
@@ -740,101 +1061,248 @@ export function update() {
     }
   }
 
-  // Level clear check
+  // ── Level clear check ──
   if (entities.enemies.length === 0 && kills >= totalEnemies && totalEnemies > 0) {
     gameState = 'levelclear';
-    levelClearTimer = 180;
+    levelClearTimer = 3.0;
     player.score += level * 500;
     sfx('powerup');
   }
 
-  // Restore fog (color per level)
-  if (player.health > 0) {
+  // ── Fog per level ──
+  if (player.health > 0 && !isWADMode) {
     let fogColor = level === 1 ? 0x001122 : level === 2 ? 0x221100 : 0x110022;
-    setFog(fogColor, 5, 80);
+    setFog(fogColor, 8, 60);
   }
 }
 
 export function draw() {
   if (gameState === 'start') {
-    rectfill(0, 0, 640, 360, rgba8(0, 0, 0, 187));
-    print('NEO-DOOM', 100, 80, rgba8(0, 255, 204, 255));
-    print('3 LEVELS OF DEMON CARNAGE', 60, 110, rgba8(255, 100, 0, 255));
-    print('CLICK TO START AND LOCK MOUSE', 50, 150, rgba8(255, 255, 255, 255));
-    print('WASD Move | Mouse Aim | Click Shoot', 30, 180, rgba8(170, 170, 170, 255));
+    drawStartScreen();
   } else if (gameState === 'gameover') {
-    rectfill(0, 0, 640, 360, rgba8(187, 0, 0, 187));
-    print('YOU DIED', 120, 80, rgba8(255, 255, 255, 255));
-    print(`LEVEL ${level}  KILLS: ${kills}/${totalEnemies}`, 80, 110, rgba8(255, 170, 0, 255));
-    print(`FINAL SCORE: ${player.score}`, 90, 140, rgba8(255, 170, 0, 255));
-    print('CLICK TO RESTART', 90, 190, rgba8(170, 170, 170, 255));
+    drawGameOver();
   } else if (gameState === 'victory') {
-    rectfill(0, 0, 640, 360, rgba8(0, 50, 0, 200));
-    print('VICTORY!', 120, 70, rgba8(0, 255, 100, 255));
-    print('ALL DEMONS SLAIN', 90, 100, rgba8(255, 255, 255, 255));
-    print(`FINAL SCORE: ${player.score}`, 90, 140, rgba8(255, 170, 0, 255));
-    print('CLICK TO PLAY AGAIN', 80, 190, rgba8(170, 170, 170, 255));
+    drawVictory();
   } else if (gameState === 'levelclear') {
     drawHUD();
-    rectfill(60, 90, 200, 50, rgba8(0, 0, 0, 200));
-    print(`LEVEL ${level} CLEAR!`, 95, 100, rgba8(0, 255, 100, 255));
-    print(`+${level * 500} BONUS`, 110, 120, rgba8(255, 170, 0, 255));
+    drawLevelClear();
   } else {
     drawHUD();
   }
 }
 
-function drawHUD() {
-  // Health bar
-  let hColor = player.health > 30 ? rgba8(0, 255, 100, 255) : rgba8(255, 0, 0, 255);
-  drawProgressBar(10, 220, 80, 8, Math.max(0, player.health) / 100, hColor, rgba8(50, 50, 50, 200));
-  print(`HP: ${Math.max(0, player.health)}`, 10, 210, hColor);
+function drawStartScreen() {
+  let W = 320,
+    H = 240;
+  rectfill(0, 0, W, H, rgba8(0, 0, 0, 210));
 
-  // Armor bar
-  if (player.armor > 0) {
-    drawProgressBar(
-      10,
-      200,
-      80,
-      6,
-      player.armor / 100,
-      rgba8(68, 136, 255, 255),
-      rgba8(50, 50, 50, 200)
-    );
-    print(`ARM: ${player.armor}`, 10, 190, rgba8(68, 136, 255, 255));
+  // Title with glow effect
+  let pulse = Math.sin(gameTime * 4) * 0.3 + 0.7;
+  let g = Math.floor(pulse * 255);
+  printCentered('N E O - D O O M', W / 2, 45, rgba8(0, g, 204, 255));
+
+  // Subtitle
+  printCentered('ARENA SHOOTER', W / 2, 65, rgba8(255, 100, 0, 255));
+
+  // Animated separator
+  let sepW = 120 + Math.sin(gameTime * 2) * 20;
+  rectfill(W / 2 - sepW / 2, 80, sepW, 2, rgba8(0, 255, 204, 180));
+
+  // Instructions
+  printCentered('CLICK TO START', W / 2, 100, rgba8(255, 255, 255, 255));
+  printCentered('WASD - Move  |  SHIFT - Sprint', W / 2, 125, rgba8(150, 150, 150, 255));
+  printCentered('Mouse - Aim  |  Click - Shoot', W / 2, 140, rgba8(150, 150, 150, 255));
+
+  // Game info + WAD status
+  if (isWADMode) {
+    printCentered(`WAD LOADED: ${wadMapNames.length} MAPS`, W / 2, 155, rgba8(0, 255, 100, 255));
+    printCentered(`STARTING: ${wadMapNames[wadMapIndex]}`, W / 2, 170, rgba8(255, 170, 0, 200));
+    printCentered('R - Return to original levels', W / 2, 185, rgba8(120, 120, 120, 200));
+  } else {
+    printCentered('3 LEVELS  |  4 ENEMY TYPES  |  BOSS FIGHTS', W / 2, 155, rgba8(255, 170, 0, 200));
+    printCentered('DROP .WAD FILE or press L to load', W / 2, 178, rgba8(100, 200, 255, 180));
   }
 
-  // Ammo
+  // Blinking prompt
+  if (Math.sin(gameTime * 5) > 0) {
+    printCentered('>>> CLICK TO BEGIN <<<', W / 2, 208, rgba8(0, 255, 204, 255));
+  }
+}
+
+function drawGameOver() {
+  let W = 320,
+    H = 240;
+  // Red vignette
+  let a = Math.floor(160 + Math.sin(gameTime * 3) * 30);
+  rectfill(0, 0, W, H, rgba8(120, 0, 0, a));
+
+  printCentered('Y O U   D I E D', W / 2, 50, rgba8(255, 50, 50, 255));
+
+  rectfill(W / 2 - 60, 68, 120, 1, rgba8(255, 50, 50, 150));
+
+  printCentered(`LEVEL ${level}`, W / 2, 85, rgba8(255, 170, 0, 255));
+  printCentered(`KILLS: ${kills} / ${totalEnemies}`, W / 2, 105, rgba8(255, 255, 255, 255));
+  printCentered(`SCORE: ${player.score}`, W / 2, 125, rgba8(255, 204, 0, 255));
+
+  if (Math.sin(gameTime * 5) > 0) {
+    printCentered('CLICK TO RESTART', W / 2, 170, rgba8(200, 200, 200, 255));
+  }
+}
+
+function drawVictory() {
+  let W = 320,
+    H = 240;
+  let a = Math.floor(180 + Math.sin(gameTime * 2) * 20);
+  rectfill(0, 0, W, H, rgba8(0, 30, 0, a));
+
+  printCentered('V I C T O R Y', W / 2, 45, rgba8(0, 255, 100, 255));
+  rectfill(W / 2 - 60, 63, 120, 2, rgba8(0, 255, 100, 150));
+
+  printCentered('ALL DEMONS SLAIN', W / 2, 80, rgba8(255, 255, 255, 255));
+  printCentered(`FINAL SCORE: ${player.score}`, W / 2, 110, rgba8(255, 204, 0, 255));
+  printCentered(`TOTAL KILLS: ${kills}`, W / 2, 130, rgba8(255, 170, 0, 255));
+
+  if (Math.sin(gameTime * 5) > 0) {
+    printCentered('CLICK TO PLAY AGAIN', W / 2, 180, rgba8(200, 200, 200, 255));
+  }
+}
+
+function drawLevelClear() {
+  let W = 320,
+    H = 240;
+  let cx = W / 2,
+    cy = H / 2;
+  rectfill(cx - 80, cy - 30, 160, 55, rgba8(0, 0, 0, 210));
+  rectfill(cx - 80, cy - 30, 160, 2, rgba8(0, 255, 100, 200));
+  let clearText = isWADMode ? `${wadMapNames[wadMapIndex]} CLEAR!` : `LEVEL ${level} CLEAR!`;
+  printCentered(clearText, cx, cy - 18, rgba8(0, 255, 100, 255));
+  printCentered(`+${level * 500} BONUS`, cx, cy, rgba8(255, 170, 0, 255));
+  let remaining;
+  if (isWADMode) {
+    remaining = wadMapIndex + 1 < wadMapNames.length ? `NEXT: ${wadMapNames[wadMapIndex + 1]}` : 'FINAL VICTORY AWAITS';
+  } else {
+    remaining = level < 3 ? `NEXT: LEVEL ${level + 1}` : 'FINAL VICTORY AWAITS';
+  }
+  printCentered(remaining, cx, cy + 15, rgba8(200, 200, 200, 200));
+}
+
+function drawHUD() {
+  let W = 320,
+    H = 240;
+
+  // ── Damage flash overlay ──
+  if (damageFlash > 0) {
+    let a = Math.floor(Math.min(damageFlash * 400, 120));
+    rectfill(0, 0, W, H, rgba8(255, 0, 0, a));
+  }
+
+  // ── Kill flash overlay ──
+  if (killFlash > 0) {
+    let a = Math.floor(Math.min(killFlash * 300, 60));
+    rectfill(0, 0, W, H, rgba8(255, 200, 0, a));
+  }
+
+  // ── Bottom HUD bar ──
+  rectfill(0, H - 32, W, 32, rgba8(0, 0, 0, 180));
+  rectfill(0, H - 32, W, 1, rgba8(0, 255, 204, 80));
+
+  // Health
+  let hp = Math.max(0, player.health);
+  let hColor =
+    hp > 60 ? rgba8(0, 255, 100, 255) : hp > 25 ? rgba8(255, 200, 0, 255) : rgba8(255, 40, 40, 255);
+  let hpFlicker = hp <= 25 && Math.sin(gameTime * 15) > 0 ? rgba8(255, 100, 100, 255) : hColor;
+  drawProgressBar(8, H - 14, 70, 7, hp / 100, hpFlicker, rgba8(40, 40, 40, 200));
+  print(`HP ${hp}`, 8, H - 25, hColor);
+
+  // Armor
+  if (player.armor > 0) {
+    drawProgressBar(
+      8,
+      H - 6,
+      70,
+      4,
+      player.armor / 100,
+      rgba8(68, 136, 255, 255),
+      rgba8(40, 40, 40, 180)
+    );
+  }
+
+  // Ammo — right side
   let ammoColor = player.ammo > 10 ? rgba8(255, 204, 0, 255) : rgba8(255, 50, 50, 255);
-  print(`AMMO: ${player.ammo}`, 260, 218, ammoColor);
-  if (player.ammo <= 0) print('NO AMMO!', 130, 135, rgba8(255, 50, 50, 255));
+  print(`AMMO`, W - 70, H - 25, rgba8(180, 180, 180, 200));
+  print(`${player.ammo}`, W - 33, H - 25, ammoColor);
+  if (player.ammo <= 0) {
+    if (Math.sin(gameTime * 12) > 0)
+      printCentered('NO AMMO!', W / 2, H / 2 + 20, rgba8(255, 50, 50, 255));
+  }
 
-  // Score + Level + Kills
-  print(`SCORE: ${player.score}`, 120, 5, rgba8(255, 170, 0, 255));
-  print(`LEVEL ${level}`, 10, 5, rgba8(0, 255, 204, 255));
-  print(`KILLS: ${kills}/${totalEnemies}`, 240, 5, rgba8(255, 255, 255, 255));
+  // Score — top center
+  printCentered(`SCORE: ${player.score}`, W / 2, 4, rgba8(255, 170, 0, 255));
 
-  // Crosshair
-  rectfill(159, 119, 3, 3, rgba8(255, 255, 255, 200));
-  rectfill(151, 120, 6, 1, rgba8(255, 255, 255, 150));
-  rectfill(164, 120, 6, 1, rgba8(255, 255, 255, 150));
-  rectfill(160, 111, 1, 6, rgba8(255, 255, 255, 150));
-  rectfill(160, 124, 1, 6, rgba8(255, 255, 255, 150));
+  // Level — top left
+  print(`LV${level}`, 4, 4, rgba8(0, 255, 204, 255));
 
-  // Gun
+  // Kills — top right
+  let killStr = `${kills}/${totalEnemies}`;
+  print(killStr, W - 45, 4, rgba8(255, 255, 255, 255));
+
+  // ── Crosshair ──
+  let cx = W / 2,
+    cy = H / 2;
+  let spread = mouseDown() ? 5 : 8;
+  let cAlpha = rgba8(0, 255, 204, 200);
+  rectfill(cx, cy, 1, 1, rgba8(255, 255, 255, 255)); // center dot
+  rectfill(cx - spread - 4, cy, 4, 1, cAlpha); // left
+  rectfill(cx + spread + 1, cy, 4, 1, cAlpha); // right
+  rectfill(cx, cy - spread - 4, 1, 4, cAlpha); // top
+  rectfill(cx, cy + spread + 1, 1, 4, cAlpha); // bottom
+
+  // ── Gun viewmodel ──
   let isMoving = key('KeyW') || key('KeyS') || key('KeyA') || key('KeyD');
-  let bobX = isMoving ? Math.sin(gameTime * 0.3) * 10 : 0;
-  let bobY = isMoving ? Math.abs(Math.sin(gameTime * 0.3)) * 10 : 0;
-  let recoil = mouseDown() && gameTime % 4 < 2 ? 15 : 0;
-  let gx = 160 + bobX;
-  let gy = 260 + bobY + recoil;
+  let isSprinting = key('ShiftLeft') || key('ShiftRight');
+  let bobSpeed = isSprinting ? 14 : 9;
+  let bobAmplitude = isSprinting ? 6 : 3;
+  let bobX = isMoving
+    ? Math.sin(gameTime * bobSpeed) * bobAmplitude
+    : Math.sin(gameTime * 1.5) * 0.5;
+  let bobY = isMoving ? Math.abs(Math.sin(gameTime * bobSpeed)) * bobAmplitude * 0.7 : 0;
+  let recoilKick = muzzleFlash > 0 ? 12 : 0;
 
-  rectfill(gx - 15, gy - 60, 30, 100, rgba8(51, 51, 51, 255));
-  rectfill(gx - 20, gy - 20, 40, 80, rgba8(85, 85, 85, 255));
-  rectfill(gx - 5, gy - 70, 10, 60, rgba8(0, 255, 204, 255));
+  // Gun position — bottom right like a proper FPS
+  let gx = W * 0.65 + bobX;
+  let gy = H - 10 + bobY + recoilKick;
 
-  if (recoil) {
-    rectfill(gx - 25, gy - 90, 50, 40, rgba8(0, 255, 204, 170));
-    rectfill(gx - 10, gy - 80, 20, 20, rgba8(255, 255, 255, 255));
+  // Barrel
+  rectfill(gx - 4, gy - 80, 8, 50, rgba8(60, 60, 70, 255));
+  rectfill(gx - 3, gy - 82, 6, 5, rgba8(80, 80, 90, 255));
+  // Barrel glow stripe
+  rectfill(gx - 1, gy - 78, 2, 45, rgba8(0, 200, 200, 120));
+
+  // Body
+  rectfill(gx - 14, gy - 35, 28, 45, rgba8(55, 55, 65, 255));
+  rectfill(gx - 16, gy - 30, 32, 35, rgba8(70, 70, 80, 255));
+  // Side detail
+  rectfill(gx - 16, gy - 28, 3, 20, rgba8(0, 180, 180, 180));
+  rectfill(gx + 13, gy - 28, 3, 20, rgba8(0, 180, 180, 180));
+
+  // Grip
+  rectfill(gx - 8, gy + 5, 16, 25, rgba8(45, 45, 50, 255));
+
+  // Muzzle flash
+  if (muzzleFlash > 0) {
+    let fa = Math.floor(muzzleFlash * 3000);
+    rectfill(gx - 15, gy - 95, 30, 20, rgba8(0, 255, 255, Math.min(fa, 200)));
+    rectfill(gx - 8, gy - 100, 16, 12, rgba8(255, 255, 255, Math.min(fa, 255)));
+    rectfill(gx - 3, gy - 105, 6, 8, rgba8(255, 255, 200, Math.min(fa, 200)));
+  }
+
+  // Sprint indicator
+  if (isSprinting && isMoving) {
+    print('SPRINT', W / 2 - 15, H - 40, rgba8(255, 200, 0, 180));
+  }
+
+  // Armor indicator
+  if (player.armor > 0) {
+    print(`ARM ${player.armor}`, 8, H - 5, rgba8(68, 136, 255, 200));
   }
 }

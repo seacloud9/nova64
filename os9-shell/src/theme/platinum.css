@@ -1020,3 +1020,12 @@ button:focus-visible {
   color: #569CD6;
   font-weight: 500;
 }
+
+/* ============================================================================
+   Context Menu Styles
+   ============================================================================ */
+
+.context-menu-item:hover {
+  background: var(--gnome-blue) !important;
+  color: #fff !important;
+}

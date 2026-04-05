@@ -7,7 +7,8 @@ export const env = {
     name: 'Mystical Realm 3D',
     version: '1.0.0',
     author: 'Nova64',
-    description: 'Fantasy world with weather systems, crystal collection, and procedural generation',
+    description:
+      'Fantasy world with weather systems, crystal collection, and procedural generation',
   },
 
   text: {

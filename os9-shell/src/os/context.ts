@@ -2,6 +2,7 @@
 import { filesystem } from './filesystem';
 import { eventBus, createEvent } from './events';
 import { useAppStore, useMenuStore, useUIStore, useWindowStore } from './stores';
+import { UISounds } from './sounds';
 import type {
   NovaContext,
   Nova64App,
@@ -81,6 +82,7 @@ class NovaContextImpl implements NovaContext {
     }
 
     console.log(`✅ Found app:`, app.name);
+    UISounds.windowOpen();
     useAppStore.getState().launchApp(appId);
     
     // Create a window for the app

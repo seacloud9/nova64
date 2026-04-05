@@ -313,6 +313,7 @@ const demoMap = {
   'shooter-demo-3d': '/examples/shooter-demo-3d/code.js',
   'hello-skybox': '/examples/hello-skybox/code.js',
   'fps-demo-3d': '/examples/fps-demo-3d/code.js',
+  'wad-demo': '/examples/wad-demo/code.js',
   'adventure-comic-3d': '/examples/adventure-comic-3d/code.js',
   'input-showcase': '/examples/input-showcase/code.js',
   'audio-lab': '/examples/audio-lab/code.js',

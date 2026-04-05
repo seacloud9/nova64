@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, ReactNode } from 'react';
 import { useWindowStore } from '../os/stores';
+import { UISounds } from '../os/sounds';
 
 interface WindowProps {
   id: string;
@@ -95,6 +96,7 @@ export function Window({
   };
 
   const handleTitleDoubleClick = () => {
+    UISounds.windowShade();
     toggleShade(id);
   };
 
@@ -113,6 +115,7 @@ export function Window({
   };
 
   const handleClose = () => {
+    UISounds.windowClose();
     onClose?.();
   };
 

@@ -1,15 +1,28 @@
+import { useEffect } from 'react';
 import { useUIStore } from '../os/stores';
+import { UISounds } from '../os/sounds';
 
 export function AlertModal() {
   const { alerts, dismissAlert } = useUIStore();
 
-  if (alerts.length === 0) {
+  const alert = alerts.length > 0 ? alerts[0] : null;
+
+  useEffect(() => {
+    if (alert) {
+      if (alert.options.icon === 'error' || alert.options.icon === 'warning') {
+        UISounds.error();
+      } else {
+        UISounds.alert();
+      }
+    }
+  }, [alert?.id]);
+
+  if (!alert) {
     return null;
   }
 
-  const alert = alerts[0]; // Show first alert
-
   const handleButtonClick = (button: string) => {
+    UISounds.click();
     dismissAlert(alert.id, button);
   };
 

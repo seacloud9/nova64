@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import type { MenuTemplate, MenuItem } from '../types';
 import { ApplicationLauncher } from './ApplicationLauncher';
 import { novaContext } from '../os/context';
+import { UISounds } from '../os/sounds';
 
 interface MenuBarProps {
   appMenus?: MenuTemplate[];
@@ -145,13 +146,20 @@ export function MenuBar({ appMenus = [], onCommand }: MenuBarProps) {
   };
 
   const handleMenuClick = (menuLabel: string) => {
-    setActiveMenu(activeMenu === menuLabel ? null : menuLabel);
+    if (activeMenu === menuLabel) {
+      setActiveMenu(null);
+    } else {
+      UISounds.menuOpen();
+      setActiveMenu(menuLabel);
+    }
   };
 
   const handleMenuItemClick = (item: MenuItem) => {
     if (item.type === 'separator' || item.enabled === false) {
       return;
     }
+    
+    UISounds.click();
     
     if (item.click) {
       item.click();

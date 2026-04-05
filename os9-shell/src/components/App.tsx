@@ -7,6 +7,8 @@ import { ControlStrip } from './ControlStrip';
 import { AlertModal } from './AlertModal';
 import { BootScreen } from './BootScreen';
 import { FPSCounter } from './FPSCounter';
+import { ContextMenuOverlay } from './ContextMenu';
+import { AppSwitcher } from './AppSwitcher';
 import { novaContext } from '../os/context';
 import '../theme/platinum.css';
 
@@ -65,6 +67,8 @@ export function App() {
 
           <ControlStrip />
           <AlertModal />
+          <ContextMenuOverlay />
+          <AppSwitcher />
           
           {showFPS && <FPSCounter />}
         </>

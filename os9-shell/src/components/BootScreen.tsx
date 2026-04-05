@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { ExtensionManifest } from '../types';
+import { UISounds } from '../os/sounds';
 
 const EXTENSION_DURATION = 200;
 
@@ -21,6 +22,9 @@ export function BootScreen({ onComplete }: BootScreenProps) {
   const [loadedExtensions, setLoadedExtensions] = useState<string[]>([]);
 
   useEffect(() => {
+    // Play startup chime
+    UISounds.startup();
+    
     // Splash screen
     const splashTimer = setTimeout(() => {
       setStage('extensions');

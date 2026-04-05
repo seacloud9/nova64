@@ -16,6 +16,7 @@ import './apps/docs-app';
 import './apps/sprite-editor-app';
 import './apps/demoscene-app';
 import './apps/hypernova';
+import './apps/Finder';
 
 // Initialize the OS
 const root = ReactDOM.createRoot(document.getElementById('root')!);

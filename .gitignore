@@ -29,3 +29,6 @@ scripts/old-patches/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# WAD files (large binary game data)
+*.wad

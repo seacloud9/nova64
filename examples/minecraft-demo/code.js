@@ -26,6 +26,7 @@ let saveMessage = '';
 let saveMessageTimer = 0;
 let texturesEnabled = true;
 let mobSpawnTimer = 0;
+let frameCount = 0;
 
 const BLOCK_NAMES = {
   1: 'GRASS',
@@ -172,7 +173,19 @@ function createVoxelTexture() {
 export function init() {
   createVoxelTexture();
   setCameraPosition(0, 80, 0);
-  setFog(0x87ceeb, 20, 80);
+
+  // Configure world for good performance: smaller render distance = fewer chunks
+  if (typeof configureVoxelWorld === 'function') {
+    configureVoxelWorld({
+      renderDistance: 3, // 49 chunks instead of default 81
+      maxMeshRebuildsPerFrame: 3,
+      enableLOD: true,
+    });
+  }
+
+  // Fog end must match render distance (3 chunks × 16 = 48 blocks)
+  setFog(0x87ceeb, 25, 50);
+
   // Enable procedural texture atlas
   if (typeof enableVoxelTextures === 'function') {
     enableVoxelTextures(true);
@@ -208,23 +221,30 @@ export function update() {
 
   if (!isLoaded) return;
 
-  time += 0.005;
-  let skyR = Math.sin(time) > 0 ? 135 : 10;
-  let skyG = Math.sin(time) > 0 ? 206 : 10;
-  let skyB = Math.sin(time) > 0 ? 235 : 20;
-  setFog((skyR << 16) | (skyG << 8) | skyB, 20, 80);
+  frameCount++;
 
-  // Sync voxel lighting with day/night cycle (throttled)
-  if (typeof setVoxelDayTime === 'function') {
-    const quantized = Math.round((time % 1.0) * 100) / 100;
+  // Day/night cycle: ~10 minute full cycle at 60fps (was 3 seconds!)
+  time += 0.00028;
+  const dayPhase = (Math.sin(time * Math.PI * 2) + 1) * 0.5; // 0=night, 1=day
+  const skyR = Math.round(10 + 125 * dayPhase);
+  const skyG = Math.round(10 + 196 * dayPhase);
+  const skyB = Math.round(20 + 215 * dayPhase);
+  // Only update fog when sky color actually changes
+  if (frameCount % 30 === 0) {
+    setFog((skyR << 16) | (skyG << 8) | skyB, 25, 50);
+  }
+
+  // Sync voxel lighting sparingly — setVoxelDayTime marks ALL chunks dirty
+  if (typeof setVoxelDayTime === 'function' && frameCount % 60 === 0) {
+    const quantized = Math.round((time % 1.0) * 20) / 20; // 20 steps per cycle
     if (quantized !== lastDayTime) {
       lastDayTime = quantized;
       setVoxelDayTime(quantized);
     }
   }
 
-  // Detect current biome using the engine's built-in function
-  if (typeof getVoxelBiome === 'function') {
+  // Detect current biome (throttled — no need every frame)
+  if (typeof getVoxelBiome === 'function' && frameCount % 30 === 0) {
     currentBiome = getVoxelBiome(player.x, player.z);
   }
 
@@ -233,7 +253,8 @@ export function update() {
   updateCamera();
   handleBlockInteraction();
 
-  if (typeof updateVoxelWorld === 'function') {
+  // Update chunks every few frames — budget-limited internally but still has overhead
+  if (typeof updateVoxelWorld === 'function' && frameCount % 5 === 0) {
     updateVoxelWorld(player.x, player.z);
   }
 

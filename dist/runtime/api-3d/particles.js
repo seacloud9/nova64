@@ -300,9 +300,7 @@ export function particlesModule({ scene, counters }) {
         let sizeMul;
         if (config.sizeOverLife) {
           const [s0, s1, s2] = config.sizeOverLife;
-          sizeMul = t < 0.5
-            ? s0 + (s1 - s0) * (t * 2)
-            : s1 + (s2 - s1) * ((t - 0.5) * 2);
+          sizeMul = t < 0.5 ? s0 + (s1 - s0) * (t * 2) : s1 + (s2 - s1) * ((t - 0.5) * 2);
         } else {
           sizeMul = 1 - t * 0.8;
         }
@@ -311,9 +309,7 @@ export function particlesModule({ scene, counters }) {
         // Opacity over life — for transparent/additive particles
         if (config.opacityOverLife && mesh.material.transparent) {
           const [o0, o1, o2] = config.opacityOverLife;
-          const opac = t < 0.5
-            ? o0 + (o1 - o0) * (t * 2)
-            : o1 + (o2 - o1) * ((t - 0.5) * 2);
+          const opac = t < 0.5 ? o0 + (o1 - o0) * (t * 2) : o1 + (o2 - o1) * ((t - 0.5) * 2);
           mesh.material.opacity = opac;
         }
 

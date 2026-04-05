@@ -391,6 +391,10 @@ export function voxelApi(gpu) {
   let enableTrees = true; // Tree placement in terrain gen
   let enableShadows = true; // castShadow/receiveShadow on chunk meshes
 
+  // LOD (Level of Detail) system
+  let enableLOD = false;
+  let lodDistances = [4, 8]; // LOD 0 up to 4 chunks, LOD 1 up to 8, beyond = unloaded
+
   // Block type constants (backward compatible)
   const BLOCK_TYPES = {
     AIR: 0,
@@ -777,7 +781,7 @@ export function voxelApi(gpu) {
 
   function injectAtlasTiling(material) {
     if (!atlasEnabled) return;
-    material.onBeforeCompile = (shader) => {
+    material.onBeforeCompile = shader => {
       shader.uniforms.uTileSize = { value: new THREE.Vector2(TILE_SIZE_U, TILE_SIZE_V) };
       // Declare uv2 attribute (Three.js r152+ no longer auto-declares it)
       shader.vertexShader = shader.vertexShader.replace(
@@ -886,7 +890,7 @@ export function voxelApi(gpu) {
     for (let y = 0; y < CHUNK_HEIGHT; y++) {
       for (let z = 0; z < CHUNK_SIZE; z++) {
         for (let x = 0; x < CHUNK_SIZE; x++) {
-          const pi = (x + 1) + (z + 1) * PW + y * PW * PD;
+          const pi = x + 1 + (z + 1) * PW + y * PW * PD;
           const ci = x + z * CHUNK_SIZE + y * CHUNK_SIZE * CHUNK_SIZE;
           blocks[pi] = chunk.blocks[ci];
           sky[pi] = chunk.skyLight[ci];
@@ -897,7 +901,8 @@ export function voxelApi(gpu) {
     }
 
     // Copy neighbor edges (±X, ±Z borders)
-    const cx = chunk.chunkX, cz = chunk.chunkZ;
+    const cx = chunk.chunkX,
+      cz = chunk.chunkZ;
 
     // -X neighbor (column x=CHUNK_SIZE-1 → padded x=0)
     const nxn = getChunkIfExists(cx - 1, cz);
@@ -905,7 +910,7 @@ export function voxelApi(gpu) {
       for (let y = 0; y < CHUNK_HEIGHT; y++) {
         for (let z = 0; z < CHUNK_SIZE; z++) {
           const pi = 0 + (z + 1) * PW + y * PW * PD;
-          const ci = (CHUNK_SIZE - 1) + z * CHUNK_SIZE + y * CHUNK_SIZE * CHUNK_SIZE;
+          const ci = CHUNK_SIZE - 1 + z * CHUNK_SIZE + y * CHUNK_SIZE * CHUNK_SIZE;
           blocks[pi] = nxn.blocks[ci];
           sky[pi] = nxn.skyLight[ci];
           blk[pi] = nxn.blockLight[ci];
@@ -919,7 +924,7 @@ export function voxelApi(gpu) {
     if (nxp) {
       for (let y = 0; y < CHUNK_HEIGHT; y++) {
         for (let z = 0; z < CHUNK_SIZE; z++) {
-          const pi = (CHUNK_SIZE + 1) + (z + 1) * PW + y * PW * PD;
+          const pi = CHUNK_SIZE + 1 + (z + 1) * PW + y * PW * PD;
           const ci = 0 + z * CHUNK_SIZE + y * CHUNK_SIZE * CHUNK_SIZE;
           blocks[pi] = nxp.blocks[ci];
           sky[pi] = nxp.skyLight[ci];
@@ -934,7 +939,7 @@ export function voxelApi(gpu) {
     if (nzn) {
       for (let y = 0; y < CHUNK_HEIGHT; y++) {
         for (let x = 0; x < CHUNK_SIZE; x++) {
-          const pi = (x + 1) + 0 * PW + y * PW * PD;
+          const pi = x + 1 + 0 * PW + y * PW * PD;
           const ci = x + (CHUNK_SIZE - 1) * CHUNK_SIZE + y * CHUNK_SIZE * CHUNK_SIZE;
           blocks[pi] = nzn.blocks[ci];
           sky[pi] = nzn.skyLight[ci];
@@ -949,7 +954,7 @@ export function voxelApi(gpu) {
     if (nzp) {
       for (let y = 0; y < CHUNK_HEIGHT; y++) {
         for (let x = 0; x < CHUNK_SIZE; x++) {
-          const pi = (x + 1) + (CHUNK_SIZE + 1) * PW + y * PW * PD;
+          const pi = x + 1 + (CHUNK_SIZE + 1) * PW + y * PW * PD;
           const ci = x + 0 * CHUNK_SIZE + y * CHUNK_SIZE * CHUNK_SIZE;
           blocks[pi] = nzp.blocks[ci];
           sky[pi] = nzp.skyLight[ci];
@@ -995,7 +1000,9 @@ export function voxelApi(gpu) {
     try {
       const regData = serializeRegistry();
       for (let i = 0; i < MESH_WORKER_COUNT; i++) {
-        const w = new Worker(new URL('./voxel-mesh-worker.js', import.meta.url), { type: 'module' });
+        const w = new Worker(new URL('./voxel-mesh-worker.js', import.meta.url), {
+          type: 'module',
+        });
         w.onmessage = function (e) {
           handleWorkerResult(i, e.data);
         };
@@ -1004,25 +1011,28 @@ export function voxelApi(gpu) {
           enableAsyncMeshing = false;
         };
         // Send init with registry + config
-        w.postMessage({
-          type: 'init',
-          solidArr: regData.solidArr.buffer,
-          transparentArr: regData.transparentArr.buffer,
-          fluidArr: regData.fluidArr.buffer,
-          colorArr: regData.colorArr.buffer,
-          textureFaceArr: regData.textureFaceArr.buffer,
-          CHUNK_SIZE,
-          CHUNK_HEIGHT,
-          ATLAS_COLS,
-          ATLAS_ROWS,
-          FLUID_MAX_LEVEL: 7,
-        }, [
-          regData.solidArr.buffer,
-          regData.transparentArr.buffer,
-          regData.fluidArr.buffer,
-          regData.colorArr.buffer,
-          regData.textureFaceArr.buffer,
-        ]);
+        w.postMessage(
+          {
+            type: 'init',
+            solidArr: regData.solidArr.buffer,
+            transparentArr: regData.transparentArr.buffer,
+            fluidArr: regData.fluidArr.buffer,
+            colorArr: regData.colorArr.buffer,
+            textureFaceArr: regData.textureFaceArr.buffer,
+            CHUNK_SIZE,
+            CHUNK_HEIGHT,
+            ATLAS_COLS,
+            ATLAS_ROWS,
+            FLUID_MAX_LEVEL: 7,
+          },
+          [
+            regData.solidArr.buffer,
+            regData.transparentArr.buffer,
+            regData.fluidArr.buffer,
+            regData.colorArr.buffer,
+            regData.textureFaceArr.buffer,
+          ]
+        );
         meshWorkers.push(w);
         meshWorkerBusy.push(false);
       }
@@ -1138,8 +1148,14 @@ export function voxelApi(gpu) {
     // Remove old meshes
     if (chunkMeshes.has(key)) {
       const old = chunkMeshes.get(key);
-      if (old.opaque) { gpu.scene.remove(old.opaque); old.opaque.geometry.dispose(); }
-      if (old.transparent) { gpu.scene.remove(old.transparent); old.transparent.geometry.dispose(); }
+      if (old.opaque) {
+        gpu.scene.remove(old.opaque);
+        old.opaque.geometry.dispose();
+      }
+      if (old.transparent) {
+        gpu.scene.remove(old.transparent);
+        old.transparent.geometry.dispose();
+      }
       chunkMeshes.delete(key);
     }
 
@@ -2150,7 +2166,11 @@ export function voxelApi(gpu) {
               while (canExtend && vi + h < vMax) {
                 for (let wu = 0; wu < w; wu++) {
                   const ci = ui + wu + (vi + h) * uMax;
-                  if (_mask[ci] !== key || _maskTrans[ci] !== trans || _maskFluidLvl[ci] !== fluidLvl) {
+                  if (
+                    _mask[ci] !== key ||
+                    _maskTrans[ci] !== trans ||
+                    _maskFluidLvl[ci] !== fluidLvl
+                  ) {
                     canExtend = false;
                     break;
                   }
@@ -2311,9 +2331,10 @@ export function voxelApi(gpu) {
             const vzArr = [v0z, v1z, v2z, v3z];
             const aoArr = [a0, a1, a2, a3];
             // Fluid top face Y offset: lower Y based on fluid level (7=full, 1=thin)
-            const fluidYOff = (faceIdx === 4 && fluidLvl > 0 && fluidLvl < FLUID_MAX_LEVEL)
-              ? -(1.0 - fluidLvl / FLUID_MAX_LEVEL) * 0.875
-              : 0;
+            const fluidYOff =
+              faceIdx === 4 && fluidLvl > 0 && fluidLvl < FLUID_MAX_LEVEL
+                ? -(1.0 - fluidLvl / FLUID_MAX_LEVEL) * 0.875
+                : 0;
             for (let ci = 0; ci < 4; ci++) {
               verts.push(vxArr[ci] + baseX, vyArr[ci] + fluidYOff, vzArr[ci] + baseZ);
               norms.push(normal[0], normal[1], normal[2]);
@@ -2332,7 +2353,8 @@ export function voxelApi(gpu) {
             if (atlasEnabled) {
               const tileIdx = registry.getTextureFace(blockType, faceIdx);
               const tileU = tileIdx >= 0 ? (tileIdx % ATLAS_COLS) / ATLAS_COLS : 0;
-              const tileV = tileIdx >= 0 ? 1.0 - (Math.floor(tileIdx / ATLAS_COLS) + 1) / ATLAS_ROWS : 0;
+              const tileV =
+                tileIdx >= 0 ? 1.0 - (Math.floor(tileIdx / ATLAS_COLS) + 1) / ATLAS_ROWS : 0;
               uv2Arr.push(tileU, tileV, tileU, tileV, tileU, tileV, tileU, tileV);
             } else {
               uv2Arr.push(0, 0, 0, 0, 0, 0, 0, 0);
@@ -2388,9 +2410,138 @@ export function voxelApi(gpu) {
     return { opaqueGeometry, transGeometry };
   }
 
+  // ─── LOD 1 Simplified Chunk Mesher ────────────────────────────────────
+  // Samples every 2nd block (2×2×2 → 1 voxel), no AO, no greedy merge.
+  // Produces ~8× fewer faces than LOD 0 for typical terrain.
+
+  function createChunkMeshLOD1(chunk) {
+    const baseX = chunk.chunkX * CHUNK_SIZE;
+    const baseZ = chunk.chunkZ * CHUNK_SIZE;
+    const STEP = 2; // sample every 2 blocks
+
+    const verts = [], norms = [], cols = [], uvs = [], uv2s = [], indices = [];
+    let vCount = 0;
+
+    const faceNormals = [
+      [0, 0, 1], [0, 0, -1], [1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0],
+    ];
+    const faceOffsets = [
+      [0, 0, 1], [0, 0, -1], [1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0],
+    ];
+
+    // Face vertex offsets for each face direction (quad corners relative to block origin)
+    // Each face has 4 corners: [dx, dy, dz] relative to (x, y, z)
+    const faceQuads = [
+      // +Z: x0,y0,z1 → x1,y0,z1 → x1,y1,z1 → x0,y1,z1
+      [[0,0,1], [1,0,1], [1,1,1], [0,1,1]],
+      // -Z: x1,y0,z0 → x0,y0,z0 → x0,y1,z0 → x1,y1,z0
+      [[1,0,0], [0,0,0], [0,1,0], [1,1,0]],
+      // +X: x1,y0,z1 → x1,y0,z0 → x1,y1,z0 → x1,y1,z1
+      [[1,0,1], [1,0,0], [1,1,0], [1,1,1]],
+      // -X: x0,y0,z0 → x0,y0,z1 → x0,y1,z1 → x0,y1,z0
+      [[0,0,0], [0,0,1], [0,1,1], [0,1,0]],
+      // +Y: x0,y1,z1 → x1,y1,z1 → x1,y1,z0 → x0,y1,z0
+      [[0,1,1], [1,1,1], [1,1,0], [0,1,0]],
+      // -Y: x0,y0,z0 → x1,y0,z0 → x1,y0,z1 → x0,y0,z1
+      [[0,0,0], [1,0,0], [1,0,1], [0,0,1]],
+    ];
+
+    for (let y = 0; y < CHUNK_HEIGHT; y += STEP) {
+      for (let z = 0; z < CHUNK_SIZE; z += STEP) {
+        for (let x = 0; x < CHUNK_SIZE; x += STEP) {
+          const block = chunk.getBlock(x, y, z);
+          if (block === 0) continue; // AIR
+          const isSolid = registry.isSolid(block);
+          if (!isSolid) continue;
+          const isTransparent = registry.isTransparent(block);
+          if (isTransparent) continue; // skip transparent in LOD1
+
+          const color = registry.getColor(block);
+          const cr = ((color >> 16) & 0xff) / 255;
+          const cg = ((color >> 8) & 0xff) / 255;
+          const cb = (color & 0xff) / 255;
+
+          for (let f = 0; f < 6; f++) {
+            const [ox, oy, oz] = faceOffsets[f];
+            const nx = x + ox * STEP, ny = y + oy * STEP, nz = z + oz * STEP;
+
+            // Check neighbor to see if face is visible
+            let neighborSolid = false;
+            if (nx >= 0 && nx < CHUNK_SIZE && ny >= 0 && ny < CHUNK_HEIGHT && nz >= 0 && nz < CHUNK_SIZE) {
+              const nBlock = chunk.getBlock(nx, ny, nz);
+              neighborSolid = registry.isSolid(nBlock) && !registry.isTransparent(nBlock);
+            } else if (ny >= 0 && ny < CHUNK_HEIGHT) {
+              // Cross-chunk neighbor check
+              const nb = getNeighborBlock(chunk, nx, ny, nz);
+              neighborSolid = registry.isSolid(nb) && !registry.isTransparent(nb);
+            }
+            if (neighborSolid) continue;
+
+            // Light sampling (simple — no AO)
+            let lightBrightness = 1.0;
+            if (enableLighting) {
+              const lx = Math.min(Math.max(nx, 0), CHUNK_SIZE - 1);
+              const ly = Math.min(Math.max(ny, 0), CHUNK_HEIGHT - 1);
+              const lz = Math.min(Math.max(nz, 0), CHUNK_SIZE - 1);
+              const sky = chunk.getSkyLight(lx, ly, lz) * dayTimeFactor;
+              const blk = chunk.getBlockLight(lx, ly, lz);
+              const light = Math.max(sky, blk);
+              lightBrightness = 0.05 + (light / MAX_LIGHT) * 0.95;
+            }
+
+            const n = faceNormals[f];
+            const quad = faceQuads[f];
+
+            for (let ci = 0; ci < 4; ci++) {
+              const q = quad[ci];
+              verts.push(
+                baseX + x + q[0] * STEP,
+                y + q[1] * STEP,
+                baseZ + z + q[2] * STEP,
+              );
+              norms.push(n[0], n[1], n[2]);
+              if (atlasEnabled) {
+                cols.push(lightBrightness, lightBrightness, lightBrightness);
+              } else {
+                cols.push(cr * lightBrightness, cg * lightBrightness, cb * lightBrightness);
+              }
+            }
+
+            uvs.push(0, STEP, STEP, STEP, STEP, 0, 0, 0);
+            if (atlasEnabled) {
+              const tileIdx = registry.getTextureFace(block, f);
+              const tileU = tileIdx >= 0 ? (tileIdx % ATLAS_COLS) / ATLAS_COLS : 0;
+              const tileV = tileIdx >= 0 ? 1 - (Math.floor(tileIdx / ATLAS_COLS) + 1) / ATLAS_ROWS : 0;
+              uv2s.push(tileU, tileV, tileU, tileV, tileU, tileV, tileU, tileV);
+            } else {
+              uv2s.push(0, 0, 0, 0, 0, 0, 0, 0);
+            }
+
+            indices.push(vCount, vCount + 1, vCount + 2, vCount, vCount + 2, vCount + 3);
+            vCount += 4;
+          }
+        }
+      }
+    }
+
+    let opaqueGeometry = null;
+    if (verts.length > 0) {
+      opaqueGeometry = new THREE.BufferGeometry();
+      opaqueGeometry.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
+      opaqueGeometry.setAttribute('normal', new THREE.Float32BufferAttribute(norms, 3));
+      opaqueGeometry.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3));
+      opaqueGeometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+      opaqueGeometry.setAttribute('uv2', new THREE.Float32BufferAttribute(uv2s, 2));
+      opaqueGeometry.setIndex(indices);
+      opaqueGeometry.computeBoundingSphere();
+    }
+
+    return { opaqueGeometry, transGeometry: null };
+  }
+
   // ─── Chunk mesh update ──────────────────────────────────────────────────
 
-  function updateChunkMesh(chunk) {
+  function updateChunkMesh(chunk, lodLevel = 0) {
     if (!chunk.dirty && !chunk.lightDirty) return;
 
     // Propagate lighting if needed (skip when lighting disabled for perf)
@@ -2419,8 +2570,10 @@ export function voxelApi(gpu) {
       chunkMeshes.delete(key);
     }
 
-    const { opaqueGeometry, transGeometry } = createChunkMesh(chunk);
-    const entry = { opaque: null, transparent: null };
+    const { opaqueGeometry, transGeometry } = lodLevel >= 1
+      ? createChunkMeshLOD1(chunk)
+      : createChunkMesh(chunk);
+    const entry = { opaque: null, transparent: null, lod: lodLevel };
 
     if (opaqueGeometry) {
       const mesh = new THREE.Mesh(opaqueGeometry, getOpaqueMaterial());
@@ -2595,7 +2748,23 @@ export function voxelApi(gpu) {
         const cz = centerChunkZ + dz;
         const key = `${cx},${cz}`;
         const chunk = chunks.get(key);
-        if (chunk && (chunk.dirty || chunk.lightDirty)) {
+        if (!chunk) continue;
+
+        // Compute LOD level for this chunk
+        const chunkDist = Math.max(Math.abs(dx), Math.abs(dz)); // Chebyshev distance
+        let desiredLOD = 0;
+        if (enableLOD) {
+          if (chunkDist > lodDistances[1]) desiredLOD = 2; // skip (too far)
+          else if (chunkDist > lodDistances[0]) desiredLOD = 1;
+        }
+        if (desiredLOD >= 2) continue; // don't mesh at all
+
+        // Check if LOD level changed (needs remesh even if not dirty)
+        const existingEntry = chunkMeshes.get(key);
+        const currentLOD = existingEntry ? (existingEntry.lod || 0) : -1;
+        const lodChanged = enableLOD && currentLOD !== desiredLOD;
+
+        if (chunk.dirty || chunk.lightDirty || lodChanged) {
           // Propagate lighting on main thread first (modifies chunk data in-place)
           if (chunk.lightDirty) {
             if (enableLighting) {
@@ -2604,13 +2773,13 @@ export function voxelApi(gpu) {
               chunk.lightDirty = false;
             }
           }
-          if (enableAsyncMeshing && meshWorkers.length > 0 && !pendingAsyncMeshes.has(key)) {
-            // Async path: dispatch to worker
+          if (enableAsyncMeshing && meshWorkers.length > 0 && !pendingAsyncMeshes.has(key) && desiredLOD === 0) {
+            // Async path: dispatch to worker (only for full-detail LOD 0)
             chunk.dirty = false;
             dispatchMeshJob(chunk, null);
-          } else if (!enableAsyncMeshing) {
-            // Sync path (original behavior)
-            updateChunkMesh(chunk);
+          } else if (!enableAsyncMeshing || desiredLOD > 0) {
+            // Sync path (original behavior, or LOD1 simplified mesh)
+            updateChunkMesh(chunk, desiredLOD);
           }
           // If async mesh already pending for this chunk, skip (will be rebuilt when result arrives)
           rebuilt++;
@@ -3184,7 +3353,11 @@ export function voxelApi(gpu) {
 
       // Flow downward (infinite, full level)
       const below = getBlock(pos.x, pos.y - 1, pos.z);
-      if (pos.y > 0 && (below === BLOCK_TYPES.AIR || (registry.isFluid(below) && getFluidLevel(pos.x, pos.y - 1, pos.z) < FLUID_MAX_LEVEL))) {
+      if (
+        pos.y > 0 &&
+        (below === BLOCK_TYPES.AIR ||
+          (registry.isFluid(below) && getFluidLevel(pos.x, pos.y - 1, pos.z) < FLUID_MAX_LEVEL))
+      ) {
         // Flowing water/lava meets opposite fluid → obsidian
         if (registry.isFluid(below) && below !== blockId) {
           setBlock(pos.x, pos.y - 1, pos.z, BLOCK_TYPES.OBSIDIAN);
@@ -3812,6 +3985,15 @@ export function voxelApi(gpu) {
       enableAsyncMeshing = !!opts.enableAsyncMeshing;
       if (enableAsyncMeshing) initMeshWorkers();
     }
+    if (opts.enableLOD !== undefined) {
+      const wasLOD = enableLOD;
+      enableLOD = !!opts.enableLOD;
+      if (wasLOD !== enableLOD) needsRemesh = true;
+    }
+    if (opts.lodDistances !== undefined && Array.isArray(opts.lodDistances) && opts.lodDistances.length >= 2) {
+      lodDistances = [opts.lodDistances[0], opts.lodDistances[1]];
+      if (enableLOD) needsRemesh = true;
+    }
     // When visual settings change, mark all loaded chunks for rebuild
     if (needsRemesh && meshWorkers.length > 0) syncRegistryToWorkers();
     if (needsRemesh) {
@@ -3841,6 +4023,8 @@ export function voxelApi(gpu) {
       enableFluids,
       enableAsyncMeshing,
       asyncMeshPending: pendingAsyncMeshes.size,
+      enableLOD,
+      lodDistances: [lodDistances[0], lodDistances[1]],
       chunkCount: chunks.size,
       meshCount: chunkMeshes.size,
       queueLength: chunkQueue.length,

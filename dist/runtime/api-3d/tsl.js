@@ -5,15 +5,42 @@
 // for advanced users who opt into WebGPURenderer.
 import * as THREE from 'three';
 import {
-  Fn, uniform,
-  float, int, vec2, vec3, vec4, color,
-  sin, cos, mix, step, smoothstep, clamp, fract, floor, ceil, abs as tslAbs,
-  pow, sqrt, min as tslMin, max as tslMax,
-  dot, cross, normalize, length, distance, reflect,
+  Fn,
+  uniform,
+  float,
+  int,
+  vec2,
+  vec3,
+  vec4,
+  color,
+  sin,
+  cos,
+  mix,
+  step,
+  smoothstep,
+  clamp,
+  fract,
+  floor,
+  ceil,
+  abs as tslAbs,
+  pow,
+  sqrt,
+  min as tslMin,
+  max as tslMax,
+  dot,
+  cross,
+  normalize,
+  length,
+  distance,
+  reflect,
   hash,
-  uv, time as tslTime,
-  positionLocal, positionWorld, normalLocal, normalWorld, normalView,
-
+  uv,
+  time as tslTime,
+  positionLocal,
+  positionWorld,
+  normalLocal,
+  normalWorld,
+  normalView,
   Loop,
 } from 'three/tsl';
 
@@ -41,7 +68,9 @@ function makePresetMaterial(fragmentGlsl, opts = {}) {
 // ─── GLSL fragment shaders for each preset ───────────────────────────────────
 
 const PRESET_SHADERS = {
-  plasma: (opts) => makePresetMaterial(/* glsl */ `
+  plasma: opts =>
+    makePresetMaterial(
+      /* glsl */ `
     uniform float uTime;
     varying vec2 vUv;
     void main() {
@@ -56,9 +85,13 @@ const PRESET_SHADERS = {
       vec3 col = mix(col1, col2, pattern);
       gl_FragColor = vec4(col, ${(opts.opacity || 0.9).toFixed(4)});
     }
-  `, opts),
+  `,
+      opts
+    ),
 
-  galaxy: (opts) => makePresetMaterial(/* glsl */ `
+  galaxy: opts =>
+    makePresetMaterial(
+      /* glsl */ `
     uniform float uTime;
     varying vec2 vUv;
     // Simple hash for stars
@@ -79,9 +112,13 @@ const PRESET_SHADERS = {
       float alpha = smoothstep(0.5, 0.1, radius);
       gl_FragColor = vec4(r, g, b, alpha * ${(opts.opacity || 0.9).toFixed(4)});
     }
-  `, opts),
+  `,
+      opts
+    ),
 
-  lava: (opts) => makePresetMaterial(/* glsl */ `
+  lava: opts =>
+    makePresetMaterial(
+      /* glsl */ `
     uniform float uTime;
     varying vec2 vUv;
     float hash2(vec2 p) {
@@ -100,11 +137,14 @@ const PRESET_SHADERS = {
       float b = hot * hot * hot * 0.3;
       gl_FragColor = vec4(r, g, b, ${(opts.opacity || 1.0).toFixed(4)});
     }
-  `, opts),
+  `,
+      opts
+    ),
 
-  electricity: (opts) => {
+  electricity: opts => {
     const col = opts.color ? new THREE.Color(opts.color) : new THREE.Color(0x44aaff);
-    return makePresetMaterial(/* glsl */ `
+    return makePresetMaterial(
+      /* glsl */ `
       uniform float uTime;
       varying vec2 vUv;
       float hash2(vec2 p) {
@@ -122,10 +162,14 @@ const PRESET_SHADERS = {
         vec3 baseCol = vec3(${col.r.toFixed(4)}, ${col.g.toFixed(4)}, ${col.b.toFixed(4)});
         gl_FragColor = vec4(baseCol * combined * flicker, combined * ${(opts.opacity || 0.9).toFixed(4)});
       }
-    `, opts);
+    `,
+      opts
+    );
   },
 
-  rainbow: (opts) => makePresetMaterial(/* glsl */ `
+  rainbow: opts =>
+    makePresetMaterial(
+      /* glsl */ `
     uniform float uTime;
     varying vec2 vUv;
     void main() {
@@ -137,9 +181,13 @@ const PRESET_SHADERS = {
       float b = sin(phase + 4.189) * 0.5 + 0.5;
       gl_FragColor = vec4(r, g, b, ${(opts.opacity || 1.0).toFixed(4)});
     }
-  `, opts),
+  `,
+      opts
+    ),
 
-  void: (opts) => makePresetMaterial(/* glsl */ `
+  void: opts =>
+    makePresetMaterial(
+      /* glsl */ `
     uniform float uTime;
     varying vec2 vUv;
     void main() {
@@ -155,7 +203,9 @@ const PRESET_SHADERS = {
       float b = edge * swirl * 0.5 + dark * 0.1;
       gl_FragColor = vec4(r, g, b, ${(opts.opacity || 0.95).toFixed(4)});
     }
-  `, opts),
+  `,
+      opts
+    ),
 };
 
 /** Format a color option to a GLSL vec3 literal. */

@@ -29,10 +29,18 @@ function setupScene(idx) {
   sceneTime = 0;
 
   switch (idx) {
-    case 0: setupGalaxy(); break;
-    case 1: setupTerrain(); break;
-    case 2: setupTornado(); break;
-    case 3: setupMaterialLab(); break;
+    case 0:
+      setupGalaxy();
+      break;
+    case 1:
+      setupTerrain();
+      break;
+    case 2:
+      setupTornado();
+      break;
+    case 3:
+      setupMaterialLab();
+      break;
   }
 }
 
@@ -224,7 +232,9 @@ function setupMaterialLab() {
   }
 
   // Custom shader material — user-style GLSL
-  const customMat = createTSLShaderMaterial(null, /* glsl */ `
+  const customMat = createTSLShaderMaterial(
+    null,
+    /* glsl */ `
     uniform float uTime;
     varying vec2 vUv;
     void main() {
@@ -233,7 +243,8 @@ function setupMaterialLab() {
       float b = sin((vUv.x + vUv.y) * 5.0 + uTime * 0.7) * 0.5 + 0.5;
       gl_FragColor = vec4(r, g, b, 1.0);
     }
-  `);
+  `
+  );
   const customSphere = createSphere(1.5, 0xffffff, [0, 6, -3]);
   customSphere.material = customMat;
   meshes.push(customSphere);
@@ -246,7 +257,7 @@ function setupMaterialLab() {
 
 function hslToHex(h, s, l) {
   const a = s * Math.min(l, 1 - l);
-  const f = (n) => {
+  const f = n => {
     const k = (n + h * 12) % 12;
     const color = l - a * Math.max(Math.min(k - 3, 9 - k, 1), -1);
     return Math.round(255 * Math.max(0, Math.min(1, color)));

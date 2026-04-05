@@ -269,7 +269,7 @@ function createBlockRegistry() {
       transparent: opts.transparent || false,
       fluid: opts.fluid || false,
       lightEmit: opts.lightEmit || 0,
-      lightBlock: opts.lightBlock !== undefined ? opts.lightBlock : (shape !== 'cube' ? 0 : 15),
+      lightBlock: opts.lightBlock !== undefined ? opts.lightBlock : shape !== 'cube' ? 0 : 15,
       // Texture atlas tile indices: { top, side, bottom } or single number for all faces
       textureFaces: opts.textureFaces || null,
       shape,
@@ -2513,23 +2513,7 @@ export function voxelApi(gpu) {
           }
 
           // Helper: emit a single quad (2 triangles, 4 vertices)
-          const emitQuad = (
-            x0,
-            y0,
-            z0,
-            x1,
-            y1,
-            z1,
-            x2,
-            y2,
-            z2,
-            x3,
-            y3,
-            z3,
-            nx,
-            ny,
-            nz
-          ) => {
+          const emitQuad = (x0, y0, z0, x1, y1, z1, x2, y2, z2, x3, y3, z3, nx, ny, nz) => {
             verts.push(x0, y0, z0, x1, y1, z1, x2, y2, z2, x3, y3, z3);
             for (let i = 0; i < 4; i++) norms.push(nx, ny, nz);
             if (atlasEnabled) {

@@ -248,7 +248,19 @@ function createSimplexNoise(seed) {
 function createBlockRegistry() {
   const blocks = [];
 
+  // Block shapes: 'cube' (default), 'slab_bottom', 'slab_top', 'stair', 'cross', 'fence'
+  // boundingBox: [minX, minY, minZ, maxX, maxY, maxZ] relative to block origin (0-1)
+  const SHAPE_BBOXES = {
+    cube: [0, 0, 0, 1, 1, 1],
+    slab_bottom: [0, 0, 0, 1, 0.5, 1],
+    slab_top: [0, 0.5, 0, 1, 1, 1],
+    stair: [0, 0, 0, 1, 1, 1], // full bbox for collision, shape for rendering
+    cross: [0.15, 0, 0.15, 0.85, 1, 0.85],
+    fence: [0.375, 0, 0.375, 0.625, 1, 0.625],
+  };
+
   function register(id, opts) {
+    const shape = opts.shape || 'cube';
     blocks[id] = {
       id,
       name: opts.name || `block_${id}`,
@@ -257,9 +269,11 @@ function createBlockRegistry() {
       transparent: opts.transparent || false,
       fluid: opts.fluid || false,
       lightEmit: opts.lightEmit || 0,
-      lightBlock: opts.lightBlock !== undefined ? opts.lightBlock : 15,
+      lightBlock: opts.lightBlock !== undefined ? opts.lightBlock : shape !== 'cube' ? 0 : 15,
       // Texture atlas tile indices: { top, side, bottom } or single number for all faces
       textureFaces: opts.textureFaces || null,
+      shape,
+      boundingBox: opts.boundingBox || SHAPE_BBOXES[shape] || SHAPE_BBOXES.cube,
     };
   }
 
@@ -281,6 +295,18 @@ function createBlockRegistry() {
   function getColor(id) {
     const b = blocks[id];
     return b ? b.color : 0xff00ff;
+  }
+  function getShape(id) {
+    const b = blocks[id];
+    return b ? b.shape : 'cube';
+  }
+  function getBoundingBox(id) {
+    const b = blocks[id];
+    return b ? b.boundingBox : SHAPE_BBOXES.cube;
+  }
+  function isFullCube(id) {
+    const b = blocks[id];
+    return b ? b.shape === 'cube' : true;
   }
   function getTextureFace(id, faceIdx) {
     // faceIdx: 0=+Z, 1=-Z, 2=+X, 3=-X, 4=+Y(top), 5=-Y(bottom)
@@ -369,7 +395,54 @@ function createBlockRegistry() {
   register(24, { name: 'obsidian', color: 0x220033, textureFaces: 25 });
   register(25, { name: 'mossy_cobblestone', color: 0x668855, textureFaces: 26 });
 
-  return { register, get, isSolid, isTransparent, isFluid, getColor, getTextureFace, blocks };
+  // ─── Shape Blocks ─────────────────────────────────────────────────
+  register(26, { name: 'stone_slab', color: 0xaaaaaa, shape: 'slab_bottom', textureFaces: 3 });
+  register(27, { name: 'stone_slab_top', color: 0xaaaaaa, shape: 'slab_top', textureFaces: 3 });
+  register(28, { name: 'plank_slab', color: 0xbb8844, shape: 'slab_bottom', textureFaces: 10 });
+  register(29, { name: 'stone_stair', color: 0xaaaaaa, shape: 'stair', textureFaces: 3 });
+  register(30, { name: 'plank_stair', color: 0xbb8844, shape: 'stair', textureFaces: 10 });
+  register(31, {
+    name: 'fence',
+    color: 0xbb8844,
+    shape: 'fence',
+    solid: true,
+    transparent: true,
+    lightBlock: 0,
+    textureFaces: 10,
+  });
+  register(32, {
+    name: 'flower',
+    color: 0xff4488,
+    shape: 'cross',
+    solid: false,
+    transparent: true,
+    lightBlock: 0,
+  });
+  register(33, {
+    name: 'tall_grass',
+    color: 0x44bb44,
+    shape: 'cross',
+    solid: false,
+    transparent: true,
+    lightBlock: 0,
+  });
+  register(34, { name: 'brick_slab', color: 0xcc6644, shape: 'slab_bottom', textureFaces: 12 });
+  register(35, { name: 'brick_stair', color: 0xcc6644, shape: 'stair', textureFaces: 12 });
+
+  return {
+    register,
+    get,
+    isSolid,
+    isTransparent,
+    isFluid,
+    getColor,
+    getTextureFace,
+    getShape,
+    getBoundingBox,
+    isFullCube,
+    blocks,
+    SHAPE_BBOXES,
+  };
 }
 
 // ─── Main Voxel API ─────────────────────────────────────────────────────────
@@ -423,6 +496,17 @@ export function voxelApi(gpu) {
     LAVA: 23,
     OBSIDIAN: 24,
     MOSSY_COBBLESTONE: 25,
+    // Shape blocks
+    STONE_SLAB: 26,
+    STONE_SLAB_TOP: 27,
+    PLANK_SLAB: 28,
+    STONE_STAIR: 29,
+    PLANK_STAIR: 30,
+    FENCE: 31,
+    FLOWER: 32,
+    TALL_GRASS: 33,
+    BRICK_SLAB: 34,
+    BRICK_STAIR: 35,
   };
 
   // World data
@@ -2078,10 +2162,21 @@ export function voxelApi(gpu) {
                 showFace = true;
               }
             } else {
-              showFace = !registry.isSolid(neighborId) || registry.isTransparent(neighborId);
+              // Non-cube shapes don't occlude neighbors (treat like transparent for face culling)
+              showFace =
+                !registry.isSolid(neighborId) ||
+                registry.isTransparent(neighborId) ||
+                !registry.isFullCube(neighborId);
             }
 
             if (!showFace) {
+              _mask[mIdx] = 0;
+              _maskTrans[mIdx] = 0;
+              continue;
+            }
+
+            // Non-cube shapes skip greedy merge — custom geometry emitted later
+            if (!registry.isFullCube(blockType)) {
               _mask[mIdx] = 0;
               _maskTrans[mIdx] = 0;
               continue;
@@ -2376,6 +2471,177 @@ export function voxelApi(gpu) {
             }
 
             ui += w;
+          }
+        }
+      }
+    }
+
+    // ─── Emit custom geometry for non-cube shape blocks ─────────────────
+    for (let y = 0; y < CHUNK_HEIGHT; y++) {
+      for (let z = 0; z < CHUNK_SIZE; z++) {
+        for (let x = 0; x < CHUNK_SIZE; x++) {
+          const blockType = chunk.getBlock(x, y, z);
+          if (blockType === 0) continue;
+          const shape = registry.getShape(blockType);
+          if (shape === 'cube') continue;
+          const isTransparent = registry.isTransparent(blockType);
+          const verts = isTransparent ? transVerts : opaqueVerts;
+          const norms = isTransparent ? transNorms : opaqueNorms;
+          const cols = isTransparent ? transColors : opaqueColors;
+          const uvArr = isTransparent ? transUvs : opaqueUvs;
+          const uv2Arr = isTransparent ? transUv2s : opaqueUv2s;
+          const idxArr = isTransparent ? transIdx : opaqueIdx;
+          let vCount = isTransparent ? transVCount : opaqueVCount;
+
+          const blockColor = registry.getColor(blockType);
+          _tmpColor.set(blockColor);
+          const cr = _tmpColor.r,
+            cg = _tmpColor.g,
+            cb = _tmpColor.b;
+          const wx = x + baseX,
+            wz = z + baseZ;
+
+          // Atlas tile info
+          let tileU = 0,
+            tileV = 0;
+          if (atlasEnabled) {
+            const tileIdx = registry.getTextureFace(blockType, 2); // use side face tile
+            if (tileIdx >= 0) {
+              tileU = (tileIdx % ATLAS_COLS) / ATLAS_COLS;
+              tileV = 1.0 - (Math.floor(tileIdx / ATLAS_COLS) + 1) / ATLAS_ROWS;
+            }
+          }
+
+          // Helper: emit a single quad (2 triangles, 4 vertices)
+          const emitQuad = (x0, y0, z0, x1, y1, z1, x2, y2, z2, x3, y3, z3, nx, ny, nz) => {
+            verts.push(x0, y0, z0, x1, y1, z1, x2, y2, z2, x3, y3, z3);
+            for (let i = 0; i < 4; i++) norms.push(nx, ny, nz);
+            if (atlasEnabled) {
+              for (let i = 0; i < 4; i++) cols.push(1, 1, 1);
+            } else {
+              for (let i = 0; i < 4; i++) cols.push(cr, cg, cb);
+            }
+            uvArr.push(0, 1, 1, 1, 1, 0, 0, 0);
+            uv2Arr.push(tileU, tileV, tileU, tileV, tileU, tileV, tileU, tileV);
+            idxArr.push(vCount, vCount + 1, vCount + 2, vCount, vCount + 2, vCount + 3);
+            vCount += 4;
+          };
+
+          // Helper: emit a box from min to max (6 faces)
+          const emitBox = (mnx, mny, mnz, mxx, mxy, mxz) => {
+            const ax = mnx + wx,
+              ay = mny,
+              az = mnz + wz;
+            const bx = mxx + wx,
+              by = mxy,
+              bz = mxz + wz;
+            // +Z face
+            emitQuad(ax, ay, bz, bx, ay, bz, bx, by, bz, ax, by, bz, 0, 0, 1);
+            // -Z face
+            emitQuad(bx, ay, az, ax, ay, az, ax, by, az, bx, by, az, 0, 0, -1);
+            // +X face
+            emitQuad(bx, ay, bz, bx, ay, az, bx, by, az, bx, by, bz, 1, 0, 0);
+            // -X face
+            emitQuad(ax, ay, az, ax, ay, bz, ax, by, bz, ax, by, az, -1, 0, 0);
+            // +Y face
+            emitQuad(ax, by, bz, bx, by, bz, bx, by, az, ax, by, az, 0, 1, 0);
+            // -Y face
+            emitQuad(ax, ay, az, bx, ay, az, bx, ay, bz, ax, ay, bz, 0, -1, 0);
+          };
+
+          if (shape === 'slab_bottom') {
+            emitBox(x, y, z, x + 1, y + 0.5, z + 1);
+          } else if (shape === 'slab_top') {
+            emitBox(x, y + 0.5, z, x + 1, y + 1, z + 1);
+          } else if (shape === 'stair') {
+            // Bottom slab (full width) + back upper half
+            emitBox(x, y, z, x + 1, y + 0.5, z + 1);
+            emitBox(x, y + 0.5, z + 0.5, x + 1, y + 1, z + 1);
+          } else if (shape === 'fence') {
+            // Thin centered post
+            emitBox(x + 0.375, y, z + 0.375, x + 0.625, y + 1, z + 0.625);
+          } else if (shape === 'cross') {
+            // Two intersecting diagonal quads (like flowers/tall grass)
+            const ax0 = x + wx,
+              az0 = z + wz;
+            // Diagonal 1: corner to corner
+            emitQuad(
+              ax0,
+              y,
+              az0,
+              ax0 + 1,
+              y,
+              az0 + 1,
+              ax0 + 1,
+              y + 1,
+              az0 + 1,
+              ax0,
+              y + 1,
+              az0,
+              0.707,
+              0,
+              0.707
+            );
+            // Back face
+            emitQuad(
+              ax0 + 1,
+              y,
+              az0 + 1,
+              ax0,
+              y,
+              az0,
+              ax0,
+              y + 1,
+              az0,
+              ax0 + 1,
+              y + 1,
+              az0 + 1,
+              -0.707,
+              0,
+              -0.707
+            );
+            // Diagonal 2: other corner pair
+            emitQuad(
+              ax0 + 1,
+              y,
+              az0,
+              ax0,
+              y,
+              az0 + 1,
+              ax0,
+              y + 1,
+              az0 + 1,
+              ax0 + 1,
+              y + 1,
+              az0,
+              -0.707,
+              0,
+              0.707
+            );
+            // Back face
+            emitQuad(
+              ax0,
+              y,
+              az0 + 1,
+              ax0 + 1,
+              y,
+              az0,
+              ax0 + 1,
+              y + 1,
+              az0,
+              ax0,
+              y + 1,
+              az0 + 1,
+              0.707,
+              0,
+              -0.707
+            );
+          }
+
+          if (isTransparent) {
+            transVCount = vCount;
+          } else {
+            opaqueVCount = vCount;
           }
         }
       }
@@ -3058,18 +3324,43 @@ export function voxelApi(gpu) {
   // ─── Collision detection ────────────────────────────────────────────────
 
   function checkCollision(pos, size) {
-    const minX = Math.floor(pos[0] - size);
-    const maxX = Math.floor(pos[0] + size);
+    const halfW = size;
+    const height = size * 2;
+    const halfD = size;
+    const minX = Math.floor(pos[0] - halfW);
+    const maxX = Math.floor(pos[0] + halfW);
     const minY = Math.floor(pos[1]);
-    const maxY = Math.floor(pos[1] + size * 2);
-    const minZ = Math.floor(pos[2] - size);
-    const maxZ = Math.floor(pos[2] + size);
+    const maxY = Math.floor(pos[1] + height);
+    const minZ = Math.floor(pos[2] - halfD);
+    const maxZ = Math.floor(pos[2] + halfD);
+
+    const eMinX = pos[0] - halfW,
+      eMaxX = pos[0] + halfW;
+    const eMinY = pos[1],
+      eMaxY = pos[1] + height;
+    const eMinZ = pos[2] - halfD,
+      eMaxZ = pos[2] + halfD;
 
     for (let x = minX; x <= maxX; x++) {
       for (let y = minY; y <= maxY; y++) {
         for (let z = minZ; z <= maxZ; z++) {
           const blockType = getBlock(x, y, z);
-          if (registry.isSolid(blockType) && !registry.isFluid(blockType)) {
+          if (!registry.isSolid(blockType) || registry.isFluid(blockType)) continue;
+          const bb = registry.getBoundingBox(blockType);
+          const bMinX = x + bb[0],
+            bMinY = y + bb[1],
+            bMinZ = z + bb[2];
+          const bMaxX = x + bb[3],
+            bMaxY = y + bb[4],
+            bMaxZ = z + bb[5];
+          if (
+            eMinX < bMaxX &&
+            eMaxX > bMinX &&
+            eMinY < bMaxY &&
+            eMaxY > bMinY &&
+            eMinZ < bMaxZ &&
+            eMaxZ > bMinZ
+          ) {
             return true;
           }
         }
@@ -3101,11 +3392,37 @@ export function voxelApi(gpu) {
     const minZ = Math.floor(pz - halfD);
     const maxZ = Math.floor(pz + halfD);
 
+    // Entity AABB
+    const eMinX = px - halfW,
+      eMaxX = px + halfW;
+    const eMinY = py,
+      eMaxY = py + height;
+    const eMinZ = pz - halfD,
+      eMaxZ = pz + halfD;
+
     for (let x = minX; x <= maxX; x++) {
       for (let y = minY; y <= maxY; y++) {
         for (let z = minZ; z <= maxZ; z++) {
           const b = getBlock(x, y, z);
-          if (registry.isSolid(b) && !registry.isFluid(b)) return true;
+          if (!registry.isSolid(b) || registry.isFluid(b)) continue;
+          // Shape-aware collision: check against block's bounding box
+          const bb = registry.getBoundingBox(b);
+          const bMinX = x + bb[0],
+            bMinY = y + bb[1],
+            bMinZ = z + bb[2];
+          const bMaxX = x + bb[3],
+            bMaxY = y + bb[4],
+            bMaxZ = z + bb[5];
+          if (
+            eMinX < bMaxX &&
+            eMaxX > bMinX &&
+            eMinY < bMaxY &&
+            eMaxY > bMinY &&
+            eMinZ < bMaxZ &&
+            eMaxZ > bMinZ
+          ) {
+            return true;
+          }
         }
       }
     }
@@ -4889,6 +5206,10 @@ export function voxelApi(gpu) {
       g.listVoxelWorlds = listWorlds;
       g.deleteVoxelWorld = deleteWorld;
       g.registerVoxelBlock = registry.register;
+      g.getVoxelBlockShape = registry.getShape;
+      g.getVoxelBlockBoundingBox = registry.getBoundingBox;
+      g.isVoxelBlockFullCube = registry.isFullCube;
+      g.VOXEL_SHAPE_BBOXES = registry.SHAPE_BBOXES;
       g.enableVoxelTextures = enableTextureAtlas;
       g.loadVoxelTextureAtlas = loadCustomAtlas;
       g.spawnVoxelEntity = spawnEntity;

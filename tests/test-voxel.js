@@ -738,6 +738,117 @@ export async function runVoxelTests() {
   });
 
   // ──────────────────────────────────────────────────────────────────────
+  // Custom Block Shapes Tests
+  // ──────────────────────────────────────────────────────────────────────
+
+  runner.test('Voxel - registry stores shape and boundingBox', () => {
+    const gpu = createMockGPU();
+    const api = voxelApi(gpu);
+
+    // Default cube blocks
+    assertEqual(api.registry.getShape(api.BLOCK_TYPES.STONE), 'cube', 'Stone should be cube');
+    assertEqual(api.registry.isFullCube(api.BLOCK_TYPES.STONE), true, 'Stone is full cube');
+
+    // Slab blocks
+    assertEqual(api.registry.getShape(api.BLOCK_TYPES.STONE_SLAB), 'slab_bottom', 'Stone slab should be slab_bottom');
+    assertEqual(api.registry.isFullCube(api.BLOCK_TYPES.STONE_SLAB), false, 'Slab is not full cube');
+    const slabBB = api.registry.getBoundingBox(api.BLOCK_TYPES.STONE_SLAB);
+    assertEqual(slabBB[4], 0.5, 'Slab top Y should be 0.5');
+
+    // Stair blocks
+    assertEqual(api.registry.getShape(api.BLOCK_TYPES.STONE_STAIR), 'stair', 'Stone stair should be stair');
+
+    // Cross blocks
+    assertEqual(api.registry.getShape(api.BLOCK_TYPES.FLOWER), 'cross', 'Flower should be cross');
+    assertEqual(api.registry.isSolid(api.BLOCK_TYPES.FLOWER), false, 'Flower is not solid');
+
+    // Fence blocks
+    assertEqual(api.registry.getShape(api.BLOCK_TYPES.FENCE), 'fence', 'Fence should be fence');
+  });
+
+  runner.test('Voxel - BLOCK_TYPES includes shape blocks', () => {
+    const gpu = createMockGPU();
+    const api = voxelApi(gpu);
+
+    assertEqual(api.BLOCK_TYPES.STONE_SLAB, 26, 'STONE_SLAB = 26');
+    assertEqual(api.BLOCK_TYPES.STONE_SLAB_TOP, 27, 'STONE_SLAB_TOP = 27');
+    assertEqual(api.BLOCK_TYPES.PLANK_SLAB, 28, 'PLANK_SLAB = 28');
+    assertEqual(api.BLOCK_TYPES.STONE_STAIR, 29, 'STONE_STAIR = 29');
+    assertEqual(api.BLOCK_TYPES.PLANK_STAIR, 30, 'PLANK_STAIR = 30');
+    assertEqual(api.BLOCK_TYPES.FENCE, 31, 'FENCE = 31');
+    assertEqual(api.BLOCK_TYPES.FLOWER, 32, 'FLOWER = 32');
+    assertEqual(api.BLOCK_TYPES.TALL_GRASS, 33, 'TALL_GRASS = 33');
+    assertEqual(api.BLOCK_TYPES.BRICK_SLAB, 34, 'BRICK_SLAB = 34');
+    assertEqual(api.BLOCK_TYPES.BRICK_STAIR, 35, 'BRICK_STAIR = 35');
+  });
+
+  runner.test('Voxel - shape collision uses bounding box', () => {
+    const gpu = createMockGPU();
+    const api = voxelApi(gpu);
+
+    api.configureWorld({ generateTerrain: () => {} });
+    api.resetWorld();
+
+    // Place a bottom slab at (5, 60, 5)
+    api.setBlock(5, 60, 5, api.BLOCK_TYPES.STONE_SLAB);
+
+    // Position inside the slab (y=60, lower half) — should collide
+    const collides = api.checkCollision([5.5, 60.0, 5.5], 0.3);
+    assert(collides, 'Should collide with bottom slab');
+
+    // Position above the slab (y=60.6) — should NOT collide (slab only goes to 0.5)
+    const noCollide = api.checkCollision([5.5, 60.6, 5.5], 0.1);
+    assert(!noCollide, 'Should not collide above bottom slab');
+  });
+
+  runner.test('Voxel - cross shapes are non-solid', () => {
+    const gpu = createMockGPU();
+    const api = voxelApi(gpu);
+
+    api.configureWorld({ generateTerrain: () => {} });
+    api.resetWorld();
+
+    // Place a flower
+    api.setBlock(5, 60, 5, api.BLOCK_TYPES.FLOWER);
+
+    // Flowers are non-solid — no collision
+    const collides = api.checkCollision([5.5, 60.0, 5.5], 0.3);
+    assert(!collides, 'Should not collide with cross shape (non-solid)');
+  });
+
+  runner.test('Voxel - custom shape registration', () => {
+    const gpu = createMockGPU();
+    const api = voxelApi(gpu);
+
+    api.registry.register(200, {
+      name: 'custom_wedge',
+      color: 0x00ff00,
+      shape: 'slab_top',
+      solid: true,
+      boundingBox: [0, 0.5, 0, 1, 1, 1],
+    });
+
+    assertEqual(api.registry.getShape(200), 'slab_top', 'Custom block should have slab_top shape');
+    assertEqual(api.registry.isFullCube(200), false, 'Custom non-cube block is not full cube');
+    const bb = api.registry.getBoundingBox(200);
+    assertEqual(bb[1], 0.5, 'Custom bounding box min Y = 0.5');
+  });
+
+  runner.test('Voxel - non-cube blocks do not occlude cube neighbors', () => {
+    const gpu = createMockGPU();
+    const api = voxelApi(gpu);
+
+    // Verify isFullCube returns false for non-cube shapes
+    assert(!api.registry.isFullCube(api.BLOCK_TYPES.STONE_SLAB), 'Slab is not full cube');
+    assert(!api.registry.isFullCube(api.BLOCK_TYPES.FENCE), 'Fence is not full cube');
+    assert(!api.registry.isFullCube(api.BLOCK_TYPES.FLOWER), 'Flower is not full cube');
+
+    // Verify isFullCube returns true for standard cubes
+    assert(api.registry.isFullCube(api.BLOCK_TYPES.STONE), 'Stone is full cube');
+    assert(api.registry.isFullCube(api.BLOCK_TYPES.DIRT), 'Dirt is full cube');
+  });
+
+  // ──────────────────────────────────────────────────────────────────────
   // World Reset Tests
   // ──────────────────────────────────────────────────────────────────────
 
@@ -817,6 +928,10 @@ export async function runVoxelTests() {
       'listVoxelWorlds',
       'deleteVoxelWorld',
       'registerVoxelBlock',
+      'getVoxelBlockShape',
+      'getVoxelBlockBoundingBox',
+      'isVoxelBlockFullCube',
+      'VOXEL_SHAPE_BBOXES',
       'enableVoxelTextures',
       'loadVoxelTextureAtlas',
       'spawnVoxelEntity',
@@ -860,6 +975,7 @@ export async function runVoxelTests() {
     api.exposeTo(globals);
 
     assert(typeof globals.BLOCK_TYPES === 'object', 'BLOCK_TYPES should be an object');
+    assert(typeof globals.VOXEL_SHAPE_BBOXES === 'object', 'VOXEL_SHAPE_BBOXES should be an object');
     assert(typeof globals.updateVoxelWorld === 'function', 'updateVoxelWorld should be a function');
     assert(typeof globals.setVoxelBlock === 'function', 'setVoxelBlock should be a function');
     assert(typeof globals.setVoxelFluidSource === 'function', 'setVoxelFluidSource should be a function');

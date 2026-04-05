@@ -1,4 +1,5 @@
 import { WADLoader, convertWADMap } from './wad-loader.js';
+import { WADTextureManager, setWallUVs } from './wad-textures.js';
 
 // NEO-DOOM: FAST, BRIGHT, FUN ARENA SHOOTER
 // 3 levels, 4 enemy types, pickups, boss fights — now with .WAD file support!
@@ -150,6 +151,7 @@ let player = {
 };
 
 let level = 1;
+let playerFloorBase = 0; // Y offset of the floor the player stands on
 let kills = 0;
 let totalEnemies = 0;
 let levelClearTimer = 0;
@@ -166,6 +168,7 @@ let entities = {
 // WAD file loading state
 let isWADMode = false;
 let wadLoader = null;
+let wadTexMgr = null;
 let wadMapNames = [];
 let wadMapIndex = 0;
 
@@ -327,13 +330,14 @@ function cleanupLevel() {
     destroyMesh(e.body);
     destroyMesh(e.head);
     if (e.detail) destroyMesh(e.detail);
-    if (e.light) destroyMesh(e.light);
+    if (e.sprite) destroyMesh(e.sprite);
+    if (e.light) removeLight(e.light);
   }
   for (let b of entities.bullets) destroyMesh(b.m);
   for (let b of entities.enemyBullets) destroyMesh(b.m);
   for (let p of entities.particles) destroyMesh(p.m);
   for (let p of entities.pickups) destroyMesh(p.m);
-  for (let l of enemyLights) destroyMesh(l);
+  for (let l of enemyLights) removeLight(l);
   enemyLights = [];
   entities = { walls: [], enemies: [], bullets: [], particles: [], pickups: [], enemyBullets: [] };
 }
@@ -413,7 +417,7 @@ function startGame(lvl) {
   player.pitch = 0;
 }
 
-function spawnEnemy(x, z, type) {
+function spawnEnemy(x, z, type, doomType) {
   let mat, hp, spd, size, dmg, detailMat;
   switch (type) {
     case 'shooter':
@@ -478,11 +482,36 @@ function spawnEnemy(x, z, type) {
     enemyLights.push(light);
   }
 
+  // WAD sprite billboard (if available, hide cube meshes)
+  let sprite = null,
+    spriteH = 0;
+  if (wadTexMgr && doomType) {
+    const spriteInfo = wadTexMgr.getSpriteTexture(doomType);
+    if (spriteInfo) {
+      const sc = 1 / 20;
+      spriteH = spriteInfo.height * sc;
+      const sprW = spriteInfo.width * sc;
+      sprite = createPlane(sprW, spriteH, 0xffffff, [x, spriteH / 2, z]);
+      const spriteMesh = getMesh(sprite);
+      spriteMesh.material = new THREE.MeshBasicMaterial({
+        map: spriteInfo.texture,
+        transparent: true,
+        alphaTest: 0.1,
+        side: THREE.DoubleSide,
+      });
+      getMesh(body).visible = false;
+      getMesh(head).visible = false;
+      if (detail) getMesh(detail).visible = false;
+    }
+  }
+
   entities.enemies.push({
     body,
     head,
     detail,
     light,
+    sprite,
+    spriteH,
     x,
     z,
     y: 2,
@@ -609,12 +638,17 @@ async function loadWADFile(file) {
       wadLoader = null;
       return;
     }
+    // Initialize texture manager
+    wadTexMgr = new WADTextureManager(wadLoader);
+    wadTexMgr.init();
+
     isWADMode = true;
     wadMapIndex = 0;
     startGame(1);
   } catch (err) {
     console.error('WAD load error:', err);
     wadLoader = null;
+    wadTexMgr = null;
     isWADMode = false;
   }
 }
@@ -626,30 +660,61 @@ function buildWADLevel(mapName) {
   const converted = convertWADMap(mapData);
   const accentColors = [0x00aaff, 0xff6600, 0xcc00ff, 0x00ff88, 0xff0066, 0xffaa00];
   const accent = accentColors[wadMapIndex % accentColors.length];
+  const SCALE = 1 / 20;
 
   // Create wall meshes
   for (let i = 0; i < converted.walls.length; i++) {
     const w = converted.walls[i];
-    const isAccent = i % 4 === 0 || w.step;
     const bri = w.light || 0.5;
 
-    let color, mat;
-    if (w.step) {
-      mat = { material: 'emissive', color: accent, intensity: 0.5 * bri };
-      color = accent;
-    } else if (isAccent) {
-      mat = { material: 'emissive', color: accent, intensity: 0.2 * bri };
-      color = accent;
-    } else {
-      const v = Math.floor(bri * 180 + 40);
-      color = (v << 16) | (v << 8) | v;
-      mat = { material: 'standard', color, roughness: 0.85 };
+    // Try to apply WAD texture
+    let textured = false;
+    if (wadTexMgr && w.texName) {
+      const tex = wadTexMgr.getWallTexture(w.texName);
+      if (tex) {
+        const m = createCube(1, 0xffffff, [w.x, w.y, w.z], {
+          material: 'standard',
+          roughness: 0.9,
+        });
+        setScale(m, w.len, w.h, 0.5);
+        setRotation(m, 0, w.ang, 0);
+
+        const texDef = wadTexMgr.getTextureDef(w.texName);
+        if (texDef) {
+          setWallUVs(m, w.len / SCALE, w.h / SCALE, texDef.width, texDef.height, w.xoff, w.yoff);
+        }
+
+        const mesh = getMesh(m);
+        mesh.material = new THREE.MeshPhongMaterial({
+          map: tex,
+          color: new THREE.Color(bri, bri, bri),
+        });
+
+        entities.walls.push({ m, x: w.x, z: w.z, r: 0 });
+        textured = true;
+      }
     }
 
-    const m = createCube(1, color, [w.x, w.y, w.z], mat);
-    setScale(m, w.len, w.h, 0.35);
-    setRotation(m, 0, w.ang, 0);
-    entities.walls.push({ m, x: w.x, z: w.z, r: 0 });
+    if (!textured) {
+      const isAccent = i % 4 === 0 || w.step;
+      let color, mat;
+      if (w.step) {
+        mat = { material: 'emissive', color: accent, intensity: 0.5 * bri };
+        color = accent;
+      } else if (isAccent) {
+        mat = { material: 'emissive', color: accent, intensity: 0.2 * bri };
+        color = accent;
+      } else {
+        const v = Math.floor(bri * 180 + 40);
+        color = (v << 16) | (v << 8) | v;
+        mat = { material: 'standard', color, roughness: 0.85 };
+      }
+
+      const m = createCube(1, color, [w.x, w.y, w.z], mat);
+      setScale(m, w.len, w.h, 0.5);
+      setRotation(m, 0, w.ang, 0);
+      entities.walls.push({ m, x: w.x, z: w.z, r: 0 });
+    }
   }
 
   // Collision segments (invisible)
@@ -661,7 +726,7 @@ function buildWADLevel(mapName) {
   const maxEnemies = 60;
   const enemyList = converted.enemies.slice(0, maxEnemies);
   for (const e of enemyList) {
-    spawnEnemy(e.x, e.z, e.type);
+    spawnEnemy(e.x, e.z, e.type, e.doomType);
     totalEnemies++;
   }
 
@@ -670,15 +735,50 @@ function buildWADLevel(mapName) {
     spawnPickup(item.x, 1, item.z);
   }
 
-  // Player start
+  // Player start — set Y to the sector floor height the player starts on
+  playerFloorBase = converted.playerStart.floorH || 0;
   player.x = converted.playerStart.x;
   player.z = converted.playerStart.z;
+  player.y = playerFloorBase + 1.5;
   player.yaw = converted.playerStart.angle;
   player.pitch = 0;
 
   // Wider fog for WAD levels
   let fogColors = [0x001122, 0x221100, 0x110022, 0x002211, 0x220011, 0x111122];
-  setFog(fogColors[wadMapIndex % fogColors.length], 12, 100);
+  setFog(fogColors[wadMapIndex % fogColors.length], 20, 150);
+
+  // Add a floor plane for WAD levels
+  const floorSize = 400;
+  const floor = createPlane(floorSize, floorSize, 0x222222, [0, 0, 0]);
+  setRotation(floor, -Math.PI / 2, 0, 0);
+  entities.walls.push({ m: floor, x: 0, z: 0, r: 0 });
+
+  // Texture the floor with the most common floor flat
+  if (wadTexMgr && converted.sectors) {
+    const flatCounts = {};
+    for (const s of converted.sectors) {
+      if (s.floorFlat && s.floorFlat !== '-' && s.floorFlat !== 'F_SKY1') {
+        flatCounts[s.floorFlat] = (flatCounts[s.floorFlat] || 0) + 1;
+      }
+    }
+    const sorted = Object.entries(flatCounts).sort((a, b) => b[1] - a[1]);
+    if (sorted.length > 0) {
+      const flatTex = wadTexMgr.getFlatTexture(sorted[0][0]);
+      if (flatTex) {
+        const floorTex = flatTex.clone();
+        const tilesPerUnit = 20 / 64;
+        floorTex.repeat.set(floorSize * tilesPerUnit, floorSize * tilesPerUnit);
+        floorTex.wrapS = THREE.RepeatWrapping;
+        floorTex.wrapT = THREE.RepeatWrapping;
+        floorTex.needsUpdate = true;
+        const floorMesh = getMesh(floor);
+        floorMesh.material = new THREE.MeshPhongMaterial({
+          map: floorTex,
+          side: THREE.DoubleSide,
+        });
+      }
+    }
+  }
 }
 
 function spawnGibs(cx, cy, cz, color, count) {
@@ -809,8 +909,8 @@ export function update(dt) {
   let isMoving = len > 0;
   let bobFreq = isSprinting ? 12 : 8;
   let bobAmp = isSprinting ? 0.25 : 0.15;
-  if (isMoving) player.y = 1.5 + Math.sin(gameTime * bobFreq) * bobAmp;
-  else player.y = 1.5 + Math.sin(gameTime * 1.5) * 0.03;
+  if (isMoving) player.y = playerFloorBase + 1.5 + Math.sin(gameTime * bobFreq) * bobAmp;
+  else player.y = playerFloorBase + 1.5 + Math.sin(gameTime * 1.5) * 0.03;
 
   // ── Camera ──
   let headY = player.y + 1.0;
@@ -854,8 +954,9 @@ export function update(dt) {
           destroyMesh(e.body);
           destroyMesh(e.head);
           if (e.detail) destroyMesh(e.detail);
+          if (e.sprite) destroyMesh(e.sprite);
           if (e.light) {
-            destroyMesh(e.light);
+            removeLight(e.light);
             let li = enemyLights.indexOf(e.light);
             if (li >= 0) enemyLights.splice(li, 1);
           }
@@ -983,7 +1084,16 @@ export function update(dt) {
     }
 
     if (e.light) {
-      setPosition(e.light, e.x, e.y + 1, e.z);
+      setPointLightPosition(e.light, e.x, e.y + 1, e.z);
+    }
+
+    // Update sprite billboard
+    if (e.sprite) {
+      setPosition(e.sprite, e.x, e.spriteH / 2, e.z);
+      const cam = getCamera();
+      const sdx = cam.position.x - e.x;
+      const sdz = cam.position.z - e.z;
+      setRotation(e.sprite, 0, Math.atan2(sdx, sdz), 0);
     }
 
     // Ranged attacks (shooters + boss) — dt-based fire rate
@@ -1097,95 +1207,95 @@ export function draw() {
 }
 
 function drawStartScreen() {
-  let W = 320,
-    H = 240;
+  let W = 640,
+    H = 360;
   rectfill(0, 0, W, H, rgba8(0, 0, 0, 210));
 
   // Title with glow effect
   let pulse = Math.sin(gameTime * 4) * 0.3 + 0.7;
   let g = Math.floor(pulse * 255);
-  printCentered('N E O - D O O M', W / 2, 45, rgba8(0, g, 204, 255));
+  printCentered('N E O - D O O M', W / 2, 68, rgba8(0, g, 204, 255));
 
   // Subtitle
-  printCentered('ARENA SHOOTER', W / 2, 65, rgba8(255, 100, 0, 255));
+  printCentered('ARENA SHOOTER', W / 2, 98, rgba8(255, 100, 0, 255));
 
   // Animated separator
-  let sepW = 120 + Math.sin(gameTime * 2) * 20;
-  rectfill(W / 2 - sepW / 2, 80, sepW, 2, rgba8(0, 255, 204, 180));
+  let sepW = 240 + Math.sin(gameTime * 2) * 40;
+  rectfill(W / 2 - sepW / 2, 120, sepW, 3, rgba8(0, 255, 204, 180));
 
   // Instructions
-  printCentered('CLICK TO START', W / 2, 100, rgba8(255, 255, 255, 255));
-  printCentered('WASD - Move  |  SHIFT - Sprint', W / 2, 125, rgba8(150, 150, 150, 255));
-  printCentered('Mouse - Aim  |  Click - Shoot', W / 2, 140, rgba8(150, 150, 150, 255));
+  printCentered('CLICK TO START', W / 2, 150, rgba8(255, 255, 255, 255));
+  printCentered('WASD - Move  |  SHIFT - Sprint', W / 2, 188, rgba8(150, 150, 150, 255));
+  printCentered('Mouse - Aim  |  Click - Shoot', W / 2, 210, rgba8(150, 150, 150, 255));
 
   // Game info + WAD status
   if (isWADMode) {
-    printCentered(`WAD LOADED: ${wadMapNames.length} MAPS`, W / 2, 155, rgba8(0, 255, 100, 255));
-    printCentered(`STARTING: ${wadMapNames[wadMapIndex]}`, W / 2, 170, rgba8(255, 170, 0, 200));
-    printCentered('R - Return to original levels', W / 2, 185, rgba8(120, 120, 120, 200));
+    printCentered(`WAD LOADED: ${wadMapNames.length} MAPS`, W / 2, 233, rgba8(0, 255, 100, 255));
+    printCentered(`STARTING: ${wadMapNames[wadMapIndex]}`, W / 2, 255, rgba8(255, 170, 0, 200));
+    printCentered('R - Return to original levels', W / 2, 278, rgba8(120, 120, 120, 200));
   } else {
     printCentered(
       '3 LEVELS  |  4 ENEMY TYPES  |  BOSS FIGHTS',
       W / 2,
-      155,
+      233,
       rgba8(255, 170, 0, 200)
     );
-    printCentered('DROP .WAD FILE or press L to load', W / 2, 178, rgba8(100, 200, 255, 180));
+    printCentered('DROP .WAD FILE or press L to load', W / 2, 267, rgba8(100, 200, 255, 180));
   }
 
   // Blinking prompt
   if (Math.sin(gameTime * 5) > 0) {
-    printCentered('>>> CLICK TO BEGIN <<<', W / 2, 208, rgba8(0, 255, 204, 255));
+    printCentered('>>> CLICK TO BEGIN <<<', W / 2, 312, rgba8(0, 255, 204, 255));
   }
 }
 
 function drawGameOver() {
-  let W = 320,
-    H = 240;
+  let W = 640,
+    H = 360;
   // Red vignette
   let a = Math.floor(160 + Math.sin(gameTime * 3) * 30);
   rectfill(0, 0, W, H, rgba8(120, 0, 0, a));
 
-  printCentered('Y O U   D I E D', W / 2, 50, rgba8(255, 50, 50, 255));
+  printCentered('Y O U   D I E D', W / 2, 75, rgba8(255, 50, 50, 255));
 
-  rectfill(W / 2 - 60, 68, 120, 1, rgba8(255, 50, 50, 150));
+  rectfill(W / 2 - 120, 102, 240, 2, rgba8(255, 50, 50, 150));
 
-  printCentered(`LEVEL ${level}`, W / 2, 85, rgba8(255, 170, 0, 255));
-  printCentered(`KILLS: ${kills} / ${totalEnemies}`, W / 2, 105, rgba8(255, 255, 255, 255));
-  printCentered(`SCORE: ${player.score}`, W / 2, 125, rgba8(255, 204, 0, 255));
+  printCentered(`LEVEL ${level}`, W / 2, 128, rgba8(255, 170, 0, 255));
+  printCentered(`KILLS: ${kills} / ${totalEnemies}`, W / 2, 158, rgba8(255, 255, 255, 255));
+  printCentered(`SCORE: ${player.score}`, W / 2, 188, rgba8(255, 204, 0, 255));
 
   if (Math.sin(gameTime * 5) > 0) {
-    printCentered('CLICK TO RESTART', W / 2, 170, rgba8(200, 200, 200, 255));
+    printCentered('CLICK TO RESTART', W / 2, 255, rgba8(200, 200, 200, 255));
   }
 }
 
 function drawVictory() {
-  let W = 320,
-    H = 240;
+  let W = 640,
+    H = 360;
   let a = Math.floor(180 + Math.sin(gameTime * 2) * 20);
   rectfill(0, 0, W, H, rgba8(0, 30, 0, a));
 
-  printCentered('V I C T O R Y', W / 2, 45, rgba8(0, 255, 100, 255));
-  rectfill(W / 2 - 60, 63, 120, 2, rgba8(0, 255, 100, 150));
+  printCentered('V I C T O R Y', W / 2, 68, rgba8(0, 255, 100, 255));
+  rectfill(W / 2 - 120, 95, 240, 3, rgba8(0, 255, 100, 150));
 
-  printCentered('ALL DEMONS SLAIN', W / 2, 80, rgba8(255, 255, 255, 255));
-  printCentered(`FINAL SCORE: ${player.score}`, W / 2, 110, rgba8(255, 204, 0, 255));
-  printCentered(`TOTAL KILLS: ${kills}`, W / 2, 130, rgba8(255, 170, 0, 255));
+  printCentered('ALL DEMONS SLAIN', W / 2, 120, rgba8(255, 255, 255, 255));
+  printCentered(`FINAL SCORE: ${player.score}`, W / 2, 165, rgba8(255, 204, 0, 255));
+  printCentered(`TOTAL KILLS: ${kills}`, W / 2, 195, rgba8(255, 170, 0, 255));
 
   if (Math.sin(gameTime * 5) > 0) {
-    printCentered('CLICK TO PLAY AGAIN', W / 2, 180, rgba8(200, 200, 200, 255));
+    printCentered('CLICK TO PLAY AGAIN', W / 2, 270, rgba8(200, 200, 200, 255));
   }
 }
 
 function drawLevelClear() {
-  let W = 320,
-    H = 240;
+  let W = 640,
+    H = 360;
   let cx = W / 2,
     cy = H / 2;
-  rectfill(cx - 80, cy - 30, 160, 55, rgba8(0, 0, 0, 210));
-  rectfill(cx - 80, cy - 30, 160, 2, rgba8(0, 255, 100, 200));
+  rectfill(cx - 160, cy - 45, 320, 83, rgba8(0, 0, 0, 210));
+  rectfill(cx - 160, cy - 45, 320, 3, rgba8(0, 255, 100, 200));
   let clearText = isWADMode ? `${wadMapNames[wadMapIndex]} CLEAR!` : `LEVEL ${level} CLEAR!`;
-  printCentered(clearText, cx, cy - 18, rgba8(0, 255, 100, 255));
+  printCentered(clearText, cx, cy - 27, rgba8(0, 255, 100, 255));
   printCentered(`+${level * 500} BONUS`, cx, cy, rgba8(255, 170, 0, 255));
   let remaining;
   if (isWADMode) {
@@ -1196,12 +1306,12 @@ function drawLevelClear() {
   } else {
     remaining = level < 3 ? `NEXT: LEVEL ${level + 1}` : 'FINAL VICTORY AWAITS';
   }
-  printCentered(remaining, cx, cy + 15, rgba8(200, 200, 200, 200));
+  printCentered(remaining, cx, cy + 23, rgba8(200, 200, 200, 200));
 }
 
 function drawHUD() {
-  let W = 320,
-    H = 240;
+  let W = 640,
+    H = 360;
 
   // ── Damage flash overlay ──
   if (damageFlash > 0) {
@@ -1216,24 +1326,24 @@ function drawHUD() {
   }
 
   // ── Bottom HUD bar ──
-  rectfill(0, H - 32, W, 32, rgba8(0, 0, 0, 180));
-  rectfill(0, H - 32, W, 1, rgba8(0, 255, 204, 80));
+  rectfill(0, H - 48, W, 48, rgba8(0, 0, 0, 180));
+  rectfill(0, H - 48, W, 2, rgba8(0, 255, 204, 80));
 
   // Health
   let hp = Math.max(0, player.health);
   let hColor =
     hp > 60 ? rgba8(0, 255, 100, 255) : hp > 25 ? rgba8(255, 200, 0, 255) : rgba8(255, 40, 40, 255);
   let hpFlicker = hp <= 25 && Math.sin(gameTime * 15) > 0 ? rgba8(255, 100, 100, 255) : hColor;
-  drawProgressBar(8, H - 14, 70, 7, hp / 100, hpFlicker, rgba8(40, 40, 40, 200));
-  print(`HP ${hp}`, 8, H - 25, hColor);
+  drawProgressBar(16, H - 21, 140, 11, hp / 100, hpFlicker, rgba8(40, 40, 40, 200));
+  print(`HP ${hp}`, 16, H - 38, hColor);
 
   // Armor
   if (player.armor > 0) {
     drawProgressBar(
-      8,
-      H - 6,
-      70,
-      4,
+      16,
+      H - 9,
+      140,
+      6,
       player.armor / 100,
       rgba8(68, 136, 255, 255),
       rgba8(40, 40, 40, 180)
@@ -1242,80 +1352,78 @@ function drawHUD() {
 
   // Ammo — right side
   let ammoColor = player.ammo > 10 ? rgba8(255, 204, 0, 255) : rgba8(255, 50, 50, 255);
-  print(`AMMO`, W - 70, H - 25, rgba8(180, 180, 180, 200));
-  print(`${player.ammo}`, W - 33, H - 25, ammoColor);
+  print(`AMMO`, W - 140, H - 38, rgba8(180, 180, 180, 200));
+  print(`${player.ammo}`, W - 66, H - 38, ammoColor);
   if (player.ammo <= 0) {
     if (Math.sin(gameTime * 12) > 0)
-      printCentered('NO AMMO!', W / 2, H / 2 + 20, rgba8(255, 50, 50, 255));
+      printCentered('NO AMMO!', W / 2, H / 2 + 30, rgba8(255, 50, 50, 255));
   }
 
   // Score — top center
-  printCentered(`SCORE: ${player.score}`, W / 2, 4, rgba8(255, 170, 0, 255));
+  printCentered(`SCORE: ${player.score}`, W / 2, 6, rgba8(255, 170, 0, 255));
 
   // Level — top left
-  print(`LV${level}`, 4, 4, rgba8(0, 255, 204, 255));
+  print(`LV${level}`, 8, 6, rgba8(0, 255, 204, 255));
 
   // Kills — top right
   let killStr = `${kills}/${totalEnemies}`;
-  print(killStr, W - 45, 4, rgba8(255, 255, 255, 255));
+  print(killStr, W - 90, 6, rgba8(255, 255, 255, 255));
 
   // ── Crosshair ──
   let cx = W / 2,
     cy = H / 2;
-  let spread = mouseDown() ? 5 : 8;
+  let spread = mouseDown() ? 8 : 12;
   let cAlpha = rgba8(0, 255, 204, 200);
   rectfill(cx, cy, 1, 1, rgba8(255, 255, 255, 255)); // center dot
-  rectfill(cx - spread - 4, cy, 4, 1, cAlpha); // left
-  rectfill(cx + spread + 1, cy, 4, 1, cAlpha); // right
-  rectfill(cx, cy - spread - 4, 1, 4, cAlpha); // top
-  rectfill(cx, cy + spread + 1, 1, 4, cAlpha); // bottom
+  rectfill(cx - spread - 6, cy, 6, 1, cAlpha); // left
+  rectfill(cx + spread + 2, cy, 6, 1, cAlpha); // right
+  rectfill(cx, cy - spread - 6, 1, 6, cAlpha); // top
+  rectfill(cx, cy + spread + 2, 1, 6, cAlpha); // bottom
 
   // ── Gun viewmodel ──
   let isMoving = key('KeyW') || key('KeyS') || key('KeyA') || key('KeyD');
   let isSprinting = key('ShiftLeft') || key('ShiftRight');
   let bobSpeed = isSprinting ? 14 : 9;
-  let bobAmplitude = isSprinting ? 6 : 3;
-  let bobX = isMoving
-    ? Math.sin(gameTime * bobSpeed) * bobAmplitude
-    : Math.sin(gameTime * 1.5) * 0.5;
+  let bobAmplitude = isSprinting ? 9 : 5;
+  let bobX = isMoving ? Math.sin(gameTime * bobSpeed) * bobAmplitude : Math.sin(gameTime * 1.5) * 1;
   let bobY = isMoving ? Math.abs(Math.sin(gameTime * bobSpeed)) * bobAmplitude * 0.7 : 0;
-  let recoilKick = muzzleFlash > 0 ? 12 : 0;
+  let recoilKick = muzzleFlash > 0 ? 18 : 0;
 
   // Gun position — bottom right like a proper FPS
   let gx = W * 0.65 + bobX;
   let gy = H - 10 + bobY + recoilKick;
 
   // Barrel
-  rectfill(gx - 4, gy - 80, 8, 50, rgba8(60, 60, 70, 255));
-  rectfill(gx - 3, gy - 82, 6, 5, rgba8(80, 80, 90, 255));
+  rectfill(gx - 6, gy - 120, 12, 75, rgba8(60, 60, 70, 255));
+  rectfill(gx - 5, gy - 123, 9, 8, rgba8(80, 80, 90, 255));
   // Barrel glow stripe
-  rectfill(gx - 1, gy - 78, 2, 45, rgba8(0, 200, 200, 120));
+  rectfill(gx - 2, gy - 117, 3, 68, rgba8(0, 200, 200, 120));
 
   // Body
-  rectfill(gx - 14, gy - 35, 28, 45, rgba8(55, 55, 65, 255));
-  rectfill(gx - 16, gy - 30, 32, 35, rgba8(70, 70, 80, 255));
+  rectfill(gx - 21, gy - 53, 42, 68, rgba8(55, 55, 65, 255));
+  rectfill(gx - 24, gy - 45, 48, 53, rgba8(70, 70, 80, 255));
   // Side detail
-  rectfill(gx - 16, gy - 28, 3, 20, rgba8(0, 180, 180, 180));
-  rectfill(gx + 13, gy - 28, 3, 20, rgba8(0, 180, 180, 180));
+  rectfill(gx - 24, gy - 42, 5, 30, rgba8(0, 180, 180, 180));
+  rectfill(gx + 20, gy - 42, 5, 30, rgba8(0, 180, 180, 180));
 
   // Grip
-  rectfill(gx - 8, gy + 5, 16, 25, rgba8(45, 45, 50, 255));
+  rectfill(gx - 12, gy + 8, 24, 38, rgba8(45, 45, 50, 255));
 
   // Muzzle flash
   if (muzzleFlash > 0) {
     let fa = Math.floor(muzzleFlash * 3000);
-    rectfill(gx - 15, gy - 95, 30, 20, rgba8(0, 255, 255, Math.min(fa, 200)));
-    rectfill(gx - 8, gy - 100, 16, 12, rgba8(255, 255, 255, Math.min(fa, 255)));
-    rectfill(gx - 3, gy - 105, 6, 8, rgba8(255, 255, 200, Math.min(fa, 200)));
+    rectfill(gx - 23, gy - 143, 45, 30, rgba8(0, 255, 255, Math.min(fa, 200)));
+    rectfill(gx - 12, gy - 150, 24, 18, rgba8(255, 255, 255, Math.min(fa, 255)));
+    rectfill(gx - 5, gy - 158, 9, 12, rgba8(255, 255, 200, Math.min(fa, 200)));
   }
 
   // Sprint indicator
   if (isSprinting && isMoving) {
-    print('SPRINT', W / 2 - 15, H - 40, rgba8(255, 200, 0, 180));
+    print('SPRINT', W / 2 - 30, H - 60, rgba8(255, 200, 0, 180));
   }
 
   // Armor indicator
   if (player.armor > 0) {
-    print(`ARM ${player.armor}`, 8, H - 5, rgba8(68, 136, 255, 200));
+    print(`ARM ${player.armor}`, 16, H - 8, rgba8(68, 136, 255, 200));
   }
 }

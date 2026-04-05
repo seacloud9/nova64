@@ -101,9 +101,115 @@ export class WADLoader {
       things: readThings(lumps.THINGS),
     };
   }
+
+  // Get the first PLAYPAL palette (256 RGB colors = 768 bytes)
+  getPalette() {
+    const lump = this.directory.find(e => e.name === 'PLAYPAL');
+    if (!lump || lump.size < 768) return null;
+    return new Uint8Array(this.buffer, lump.filepos, 768);
+  }
+
+  // Get a raw lump by name
+  getLump(name) {
+    const lump = this.directory.find(e => e.name === name.toUpperCase());
+    if (!lump || lump.size === 0) return null;
+    return { data: new Uint8Array(this.buffer, lump.filepos, lump.size), size: lump.size };
+  }
+
+  // Get flat lumps (floor/ceiling textures) between F_START/F_END
+  getFlatLumps() {
+    const flats = {};
+    let inFlats = false;
+    for (const e of this.directory) {
+      if (e.name === 'F_START' || e.name === 'FF_START') {
+        inFlats = true;
+        continue;
+      }
+      if (e.name === 'F_END' || e.name === 'FF_END') {
+        inFlats = false;
+        continue;
+      }
+      if (inFlats && e.size === 4096) {
+        flats[e.name] = new Uint8Array(this.buffer, e.filepos, 4096);
+      }
+    }
+    return flats;
+  }
+
+  // Parse PNAMES lump (patch name list)
+  getPNames() {
+    const lump = this.getLump('PNAMES');
+    if (!lump) return [];
+    const dv = new DataView(lump.data.buffer, lump.data.byteOffset, lump.data.byteLength);
+    const count = dv.getInt32(0, true);
+    const names = [];
+    for (let i = 0; i < count; i++) {
+      names.push(readStr8(lump.data, 4 + i * 8));
+    }
+    return names;
+  }
+
+  // Parse TEXTURE1 or TEXTURE2 lump (composite wall texture definitions)
+  getTextureDefs(lumpName) {
+    const lump = this.getLump(lumpName);
+    if (!lump) return {};
+    const dv = new DataView(lump.data.buffer, lump.data.byteOffset, lump.data.byteLength);
+    const count = dv.getInt32(0, true);
+    const textures = {};
+    for (let i = 0; i < count; i++) {
+      const offset = dv.getInt32(4 + i * 4, true);
+      if (offset + 22 > lump.size) continue;
+      const name = readStr8(lump.data, offset);
+      const width = dv.getInt16(offset + 12, true);
+      const height = dv.getInt16(offset + 14, true);
+      const patchCount = dv.getInt16(offset + 20, true);
+      const patches = [];
+      for (let j = 0; j < patchCount; j++) {
+        const po = offset + 22 + j * 10;
+        if (po + 6 > lump.size) break;
+        patches.push({
+          originX: dv.getInt16(po, true),
+          originY: dv.getInt16(po + 2, true),
+          patchIdx: dv.getInt16(po + 4, true),
+        });
+      }
+      textures[name] = { name, width, height, patches };
+    }
+    return textures;
+  }
+
+  // Get sprite lumps between S_START/S_END
+  getSpriteLumps() {
+    const sprites = {};
+    let inSprites = false;
+    for (const e of this.directory) {
+      if (e.name === 'S_START' || e.name === 'SS_START') {
+        inSprites = true;
+        continue;
+      }
+      if (e.name === 'S_END' || e.name === 'SS_END') {
+        inSprites = false;
+        continue;
+      }
+      if (inSprites && e.size > 0) {
+        sprites[e.name] = new Uint8Array(this.buffer, e.filepos, e.size);
+      }
+    }
+    return sprites;
+  }
 }
 
 // ── Binary lump parsers ──
+
+function readStr8(bytes, offset) {
+  let s = '';
+  for (let i = 0; i < 8; i++) {
+    const c = bytes[offset + i];
+    if (c === 0) break;
+    s += String.fromCharCode(c);
+  }
+  return s.toUpperCase();
+}
 
 function readVerts(dv) {
   if (!dv) return [];
@@ -129,18 +235,31 @@ function readLines(dv) {
 
 function readSides(dv) {
   if (!dv) return [];
+  const bytes = new Uint8Array(dv.buffer, dv.byteOffset, dv.byteLength);
   const out = [];
-  for (let i = 0; i < dv.byteLength; i += 30) out.push({ sector: dv.getUint16(i + 28, true) });
+  for (let i = 0; i < dv.byteLength; i += 30) {
+    out.push({
+      xoff: dv.getInt16(i, true),
+      yoff: dv.getInt16(i + 2, true),
+      upper: readStr8(bytes, i + 4),
+      lower: readStr8(bytes, i + 12),
+      middle: readStr8(bytes, i + 20),
+      sector: dv.getUint16(i + 28, true),
+    });
+  }
   return out;
 }
 
 function readSectors(dv) {
   if (!dv) return [];
+  const bytes = new Uint8Array(dv.buffer, dv.byteOffset, dv.byteLength);
   const out = [];
   for (let i = 0; i < dv.byteLength; i += 26)
     out.push({
       floorH: dv.getInt16(i, true),
       ceilH: dv.getInt16(i + 2, true),
+      floorFlat: readStr8(bytes, i + 4),
+      ceilFlat: readStr8(bytes, i + 12),
       light: dv.getInt16(i + 20, true),
     });
   return out;
@@ -163,7 +282,7 @@ function readThings(dv) {
 // ── Convert parsed DOOM map data to Nova64 level geometry ──
 
 export function convertWADMap(map, scale) {
-  if (!scale) scale = 1 / 40;
+  if (!scale) scale = 1 / 20;
   const { vertexes, linedefs, sidedefs, sectors, things } = map;
 
   // Find map bounds for centering
@@ -211,32 +330,78 @@ export function convertWADMap(map, scale) {
     if (line.left >= 0 && sidedefs[line.left]) bSec = sectors[sidedefs[line.left].sector] || null;
 
     const fF = fSec ? (fSec.floorH - baseFloor) * scale : 0;
-    const fC = fSec ? (fSec.ceilH - baseFloor) * scale : 5;
+    const fC = fSec ? (fSec.ceilH - baseFloor) * scale : 8;
     const bF = bSec ? (bSec.floorH - baseFloor) * scale : 0;
-    const bC = bSec ? (bSec.ceilH - baseFloor) * scale : 5;
+    const bC = bSec ? (bSec.ceilH - baseFloor) * scale : 8;
     const light = fSec ? Math.max(0.25, fSec.light / 255) : 0.5;
 
     if (!bSec) {
       // One-sided: solid wall
       const h = fC - fF;
       if (h > 0.05) {
-        walls.push({ x: mx, y: fF + h / 2, z: mz, len, h, ang, light });
+        const fSide = line.right >= 0 ? sidedefs[line.right] : null;
+        const texName = fSide && fSide.middle !== '-' ? fSide.middle : null;
+        walls.push({
+          x: mx,
+          y: fF + h / 2,
+          z: mz,
+          len,
+          h,
+          ang,
+          light,
+          texName,
+          xoff: fSide ? fSide.xoff : 0,
+          yoff: fSide ? fSide.yoff : 0,
+        });
         rasterSeg(colSegs, x1, z1, x2, z2, 1.0);
       }
     } else {
       // Two-sided: create geometry for height differences
+      const fSide = line.right >= 0 ? sidedefs[line.right] : null;
+      const bSide = line.left >= 0 ? sidedefs[line.left] : null;
+
       // Lower wall (step / platform edge)
       const loH = Math.abs(bF - fF);
-      if (loH > 0.1) {
+      if (loH > 0.3) {
         const bot = Math.min(fF, bF);
-        walls.push({ x: mx, y: bot + loH / 2, z: mz, len, h: loH, ang, light, step: true });
+        let loTex = null;
+        if (fSide && fSide.lower && fSide.lower !== '-') loTex = fSide.lower;
+        else if (bSide && bSide.lower && bSide.lower !== '-') loTex = bSide.lower;
+        walls.push({
+          x: mx,
+          y: bot + loH / 2,
+          z: mz,
+          len,
+          h: loH,
+          ang,
+          light,
+          step: true,
+          texName: loTex,
+          xoff: fSide ? fSide.xoff : 0,
+          yoff: fSide ? fSide.yoff : 0,
+        });
         if (loH > 1.0) rasterSeg(colSegs, x1, z1, x2, z2, 0.8);
       }
       // Upper wall (ceiling drop)
       const hiH = Math.abs(fC - bC);
-      if (hiH > 0.1) {
+      if (hiH > 0.3) {
         const bot = Math.min(fC, bC);
-        walls.push({ x: mx, y: bot + hiH / 2, z: mz, len, h: hiH, ang, light, upper: true });
+        let upTex = null;
+        if (fSide && fSide.upper && fSide.upper !== '-') upTex = fSide.upper;
+        else if (bSide && bSide.upper && bSide.upper !== '-') upTex = bSide.upper;
+        walls.push({
+          x: mx,
+          y: bot + hiH / 2,
+          z: mz,
+          len,
+          h: hiH,
+          ang,
+          light,
+          upper: true,
+          texName: upTex,
+          xoff: fSide ? fSide.xoff : 0,
+          yoff: fSide ? fSide.yoff : 0,
+        });
       }
       // Impassable two-sided line (blocking flag)
       if (line.flags & 1) rasterSeg(colSegs, x1, z1, x2, z2, 1.0);
@@ -244,9 +409,13 @@ export function convertWADMap(map, scale) {
   }
 
   // Convert things to enemies, items, and player start
-  let playerStart = { x: 0, z: 0, angle: Math.PI / 4 };
+  let playerStart = { x: 0, z: 0, angle: Math.PI / 4, floorH: 0 };
   const enemies = [],
     items = [];
+
+  // Raw player start position (in DOOM coords) for sector lookup
+  let playerRawX = 0,
+    playerRawY = 0;
 
   for (const t of things) {
     const tx = (t.x - cx) * scale,
@@ -254,21 +423,60 @@ export function convertWADMap(map, scale) {
     const ta = ((t.angle - 90) * Math.PI) / 180;
 
     if (t.type === 1) {
-      playerStart = { x: tx, z: tz, angle: ta };
+      playerStart = { x: tx, z: tz, angle: ta, floorH: 0 };
+      playerRawX = t.x;
+      playerRawY = t.y;
     } else if (THING_MONSTERS[t.type]) {
-      enemies.push({ x: tx, z: tz, type: THING_MONSTERS[t.type] });
+      enemies.push({ x: tx, z: tz, type: THING_MONSTERS[t.type], doomType: t.type });
     } else if (THING_ITEMS[t.type]) {
-      items.push({ x: tx, z: tz, type: THING_ITEMS[t.type] });
+      items.push({ x: tx, z: tz, type: THING_ITEMS[t.type], doomType: t.type });
     }
   }
 
-  return { walls, colSegs, enemies, items, playerStart };
+  // Find player's sector floor height using nearest linedef
+  let minDist = Infinity;
+  for (const line of linedefs) {
+    const va = vertexes[line.v1],
+      vb = vertexes[line.v2];
+    if (!va || !vb || line.right < 0) continue;
+    // Distance from player to line segment
+    const dx = vb.x - va.x,
+      dy = vb.y - va.y;
+    const lenSq = dx * dx + dy * dy;
+    if (lenSq < 1) continue;
+    let t = ((playerRawX - va.x) * dx + (playerRawY - va.y) * dy) / lenSq;
+    t = Math.max(0, Math.min(1, t));
+    const px = va.x + t * dx,
+      py = va.y + t * dy;
+    const d = Math.hypot(playerRawX - px, playerRawY - py);
+    if (d < minDist) {
+      const side = sidedefs[line.right];
+      if (side) {
+        const sec = sectors[side.sector];
+        if (sec) {
+          minDist = d;
+          playerStart.floorH = (sec.floorH - baseFloor) * scale;
+        }
+      }
+    }
+  }
+
+  // Prepare sector data with scaled heights and flat names
+  const sectorData = sectors.map(s => ({
+    floorH: (s.floorH - baseFloor) * scale,
+    ceilH: (s.ceilH - baseFloor) * scale,
+    floorFlat: s.floorFlat,
+    ceilFlat: s.ceilFlat,
+    light: Math.max(0.25, s.light / 255),
+  }));
+
+  return { walls, colSegs, enemies, items, playerStart, sectors: sectorData };
 }
 
 // Rasterize a line segment into collision points
 function rasterSeg(out, x1, z1, x2, z2, r) {
   const len = Math.hypot(x2 - x1, z2 - z1);
-  const steps = Math.max(1, Math.ceil(len / 1.5));
+  const steps = Math.max(1, Math.ceil(len / 2.5));
   for (let i = 0; i <= steps; i++) {
     const t = i / steps;
     out.push({ x: x1 + (x2 - x1) * t, z: z1 + (z2 - z1) * t, r });

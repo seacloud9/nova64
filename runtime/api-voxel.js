@@ -4381,6 +4381,256 @@ export function voxelApi(gpu) {
     return null; // No path found
   }
 
+  // ─── Schematics: Region Export / Import ─────────────────────────────
+
+  /**
+   * Export a rectangular region of blocks as an RLE-compressed ArrayBuffer.
+   * Format: [version:u8][sizeX:u16][sizeY:u16][sizeZ:u16] + RLE body
+   * RLE body: pairs of [blockId:u8, runLength:u16] (little-endian)
+   * @param {number} x1 - Start X (inclusive)
+   * @param {number} y1 - Start Y (inclusive)
+   * @param {number} z1 - Start Z (inclusive)
+   * @param {number} x2 - End X (inclusive)
+   * @param {number} y2 - End Y (inclusive)
+   * @param {number} z2 - End Z (inclusive)
+   * @returns {ArrayBuffer} Compressed schematic data
+   */
+  function exportRegion(x1, y1, z1, x2, y2, z2) {
+    // Normalize so min <= max
+    const minX = Math.min(x1, x2);
+    const minY = Math.max(0, Math.min(y1, y2));
+    const minZ = Math.min(z1, z2);
+    const maxX = Math.max(x1, x2);
+    const maxY = Math.min(CHUNK_HEIGHT - 1, Math.max(y1, y2));
+    const maxZ = Math.max(z1, z2);
+    const sizeX = maxX - minX + 1;
+    const sizeY = maxY - minY + 1;
+    const sizeZ = maxZ - minZ + 1;
+
+    // Collect all blocks in X→Z→Y order (matches typical schematic convention)
+    const totalBlocks = sizeX * sizeY * sizeZ;
+    const raw = new Uint8Array(totalBlocks);
+    let idx = 0;
+    for (let y = minY; y <= maxY; y++) {
+      for (let z = minZ; z <= maxZ; z++) {
+        for (let x = minX; x <= maxX; x++) {
+          raw[idx++] = getBlock(x, y, z);
+        }
+      }
+    }
+
+    // RLE encode: [blockId, runLength(u16)] pairs
+    // Max run length = 65535 to fit in u16
+    const rleData = [];
+    let ri = 0;
+    while (ri < totalBlocks) {
+      const block = raw[ri];
+      let run = 1;
+      while (ri + run < totalBlocks && raw[ri + run] === block && run < 65535) {
+        run++;
+      }
+      rleData.push(block, run);
+      ri += run;
+    }
+
+    // Build ArrayBuffer: header(7 bytes) + rle(3 bytes per pair)
+    const headerSize = 7;
+    const buf = new ArrayBuffer(headerSize + (rleData.length / 2) * 3);
+    const view = new DataView(buf);
+    view.setUint8(0, 1); // version
+    view.setUint16(1, sizeX, true);
+    view.setUint16(3, sizeY, true);
+    view.setUint16(5, sizeZ, true);
+
+    let offset = headerSize;
+    for (let i = 0; i < rleData.length; i += 2) {
+      view.setUint8(offset, rleData[i]); // blockId
+      view.setUint16(offset + 1, rleData[i + 1], true); // runLength
+      offset += 3;
+    }
+
+    return buf;
+  }
+
+  /**
+   * Import a schematic (from exportRegion) at a world position.
+   * @param {ArrayBuffer} data - Schematic data from exportRegion
+   * @param {number} x - Paste origin X
+   * @param {number} y - Paste origin Y
+   * @param {number} z - Paste origin Z
+   * @param {object} [opts] - Options:
+   *   skipAir: boolean — don't overwrite with air blocks (default false)
+   * @returns {{ placed: number, sizeX: number, sizeY: number, sizeZ: number }}
+   */
+  function importRegion(data, x, y, z, opts = {}) {
+    const skipAir = opts.skipAir || false;
+    const view = new DataView(data);
+    const version = view.getUint8(0);
+    if (version !== 1) return { placed: 0, sizeX: 0, sizeY: 0, sizeZ: 0 };
+
+    const sizeX = view.getUint16(1, true);
+    const sizeY = view.getUint16(3, true);
+    const sizeZ = view.getUint16(5, true);
+
+    // Decode RLE and place blocks
+    let offset = 7;
+    let placed = 0;
+    let bx = 0;
+    let by = 0;
+    let bz = 0;
+
+    while (offset < data.byteLength) {
+      const blockId = view.getUint8(offset);
+      const runLength = view.getUint16(offset + 1, true);
+      offset += 3;
+
+      for (let r = 0; r < runLength; r++) {
+        if (!(skipAir && blockId === 0)) {
+          const wx = x + bx;
+          const wy = y + by;
+          const wz = z + bz;
+          if (wy >= 0 && wy < CHUNK_HEIGHT) {
+            setBlock(wx, wy, wz, blockId);
+            placed++;
+          }
+        }
+        // Advance in X→Z→Y order
+        bx++;
+        if (bx >= sizeX) {
+          bx = 0;
+          bz++;
+          if (bz >= sizeZ) {
+            bz = 0;
+            by++;
+          }
+        }
+      }
+    }
+
+    return { placed, sizeX, sizeY, sizeZ };
+  }
+
+  /**
+   * Export the entire modified world as a JSON-serializable object.
+   * Only includes chunks that have been loaded/modified.
+   * @returns {object} { version, seed, chunks: [...] }
+   */
+  function exportWorldJSON() {
+    const chunkData = [];
+    for (const [key, chunk] of chunks) {
+      // RLE-encode the chunk's block data
+      const blocks = chunk.blocks;
+      const rle = [];
+      let i = 0;
+      while (i < blocks.length) {
+        const block = blocks[i];
+        let run = 1;
+        while (i + run < blocks.length && blocks[i + run] === block && run < 65535) {
+          run++;
+        }
+        rle.push(block, run);
+        i += run;
+      }
+      // Also encode fluid levels if any non-zero
+      let hasFluid = false;
+      for (let fi = 0; fi < chunk.fluidLevel.length; fi++) {
+        if (chunk.fluidLevel[fi] !== 0) {
+          hasFluid = true;
+          break;
+        }
+      }
+      let fluidRle = null;
+      if (hasFluid) {
+        fluidRle = [];
+        let fi = 0;
+        while (fi < chunk.fluidLevel.length) {
+          const lvl = chunk.fluidLevel[fi];
+          let run = 1;
+          while (
+            fi + run < chunk.fluidLevel.length &&
+            chunk.fluidLevel[fi + run] === lvl &&
+            run < 65535
+          ) {
+            run++;
+          }
+          fluidRle.push(lvl, run);
+          fi += run;
+        }
+      }
+      chunkData.push({
+        key,
+        cx: chunk.chunkX,
+        cz: chunk.chunkZ,
+        rle,
+        fluidRle,
+      });
+    }
+    return {
+      version: 1,
+      seed: worldSeed,
+      chunkSize: CHUNK_SIZE,
+      chunkHeight: CHUNK_HEIGHT,
+      seaLevel: SEA_LEVEL,
+      chunks: chunkData,
+    };
+  }
+
+  /**
+   * Import a world from JSON (from exportWorldJSON).
+   * Replaces all current world data.
+   * @param {object} json - World data from exportWorldJSON
+   * @returns {{ chunksLoaded: number }}
+   */
+  function importWorldJSON(json) {
+    if (!json || json.version !== 1) return { chunksLoaded: 0 };
+
+    // Reset current world state (preserves workers & archetypes)
+    resetWorld();
+
+    // Restore config
+    if (json.seed !== undefined) {
+      worldSeed = json.seed;
+      noise = createSimplexNoise(worldSeed);
+    }
+    if (json.chunkSize !== undefined) CHUNK_SIZE = json.chunkSize;
+    if (json.chunkHeight !== undefined) CHUNK_HEIGHT = json.chunkHeight;
+    if (json.seaLevel !== undefined) SEA_LEVEL = json.seaLevel;
+
+    let chunksLoaded = 0;
+    for (const cd of json.chunks) {
+      const chunk = new Chunk(cd.cx, cd.cz);
+
+      // Decode RLE blocks
+      let bi = 0;
+      for (let ri = 0; ri < cd.rle.length; ri += 2) {
+        const blockId = cd.rle[ri];
+        const run = cd.rle[ri + 1];
+        for (let r = 0; r < run && bi < chunk.blocks.length; r++) {
+          chunk.blocks[bi++] = blockId;
+        }
+      }
+
+      // Decode fluid RLE if present
+      if (cd.fluidRle) {
+        let fi = 0;
+        for (let ri = 0; ri < cd.fluidRle.length; ri += 2) {
+          const lvl = cd.fluidRle[ri];
+          const run = cd.fluidRle[ri + 1];
+          for (let r = 0; r < run && fi < chunk.fluidLevel.length; r++) {
+            chunk.fluidLevel[fi++] = lvl;
+          }
+        }
+      }
+
+      chunk.dirty = true;
+      chunk.lightDirty = true;
+      chunks.set(cd.key, chunk);
+      chunksLoaded++;
+    }
+
+    return { chunksLoaded };
+  }
+
   // ─── Configuration ──────────────────────────────────────────────────────
 
   function configureWorld(opts = {}) {
@@ -4588,6 +4838,12 @@ export function voxelApi(gpu) {
     spawnEntityFromArchetype,
     findPath,
 
+    // Schematics
+    exportRegion,
+    importRegion,
+    exportWorldJSON,
+    importWorldJSON,
+
     // Fluids
     setFluidSource,
     removeFluidSource,
@@ -4653,6 +4909,10 @@ export function voxelApi(gpu) {
       g.createVoxelEntityArchetype = createEntityArchetype;
       g.spawnVoxelEntityFromArchetype = spawnEntityFromArchetype;
       g.findVoxelPath = findPath;
+      g.exportVoxelRegion = exportRegion;
+      g.importVoxelRegion = importRegion;
+      g.exportVoxelWorldJSON = exportWorldJSON;
+      g.importVoxelWorldJSON = importWorldJSON;
       g.simplexNoise2D = noise.fbm2D;
       g.simplexNoise3D = noise.fbm3D;
       g.setVoxelFluidSource = setFluidSource;

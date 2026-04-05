@@ -280,7 +280,13 @@ export async function runVoxelTests() {
   runner.test('Voxel - raycastBlock hits placed block', () => {
     const gpu = createMockGPU();
     const api = voxelApi(gpu);
-    api.configureWorld({ enableCaves: false, enableOres: false, enableTrees: false });
+    api.configureWorld({
+      enableCaves: false,
+      enableOres: false,
+      enableTrees: false,
+      generateTerrain: () => {},
+    });
+    api.resetWorld();
 
     api.setBlock(5, 80, 5, api.BLOCK_TYPES.STONE);
     const result = api.raycastBlock([5.5, 85, 5.5], [0, -1, 0], 10);
@@ -624,6 +630,114 @@ export async function runVoxelTests() {
   });
 
   // ──────────────────────────────────────────────────────────────────────
+  // Schematics Tests
+  // ──────────────────────────────────────────────────────────────────────
+
+  runner.test('Voxel - exportRegion / importRegion round-trip', () => {
+    const gpu = createMockGPU();
+    const api = voxelApi(gpu);
+
+    // Use empty terrain to avoid interference
+    api.configureWorld({ generateTerrain: () => {} });
+    api.resetWorld();
+
+    // Place a small 3x3x3 structure
+    for (let x = 0; x < 3; x++) {
+      for (let y = 60; y < 63; y++) {
+        for (let z = 0; z < 3; z++) {
+          api.setBlock(x, y, z, api.BLOCK_TYPES.STONE);
+        }
+      }
+    }
+    api.setBlock(1, 61, 1, api.BLOCK_TYPES.DIRT);
+
+    // Export
+    const data = api.exportRegion(0, 60, 0, 2, 62, 2);
+    assert(data instanceof ArrayBuffer, 'Should return ArrayBuffer');
+    assert(data.byteLength > 7, 'Should have header + data');
+
+    // Import at a different location
+    const result = api.importRegion(data, 10, 60, 10);
+    assertEqual(result.sizeX, 3, 'Size X');
+    assertEqual(result.sizeY, 3, 'Size Y');
+    assertEqual(result.sizeZ, 3, 'Size Z');
+    assert(result.placed > 0, 'Should have placed blocks');
+
+    // Verify blocks were copied
+    assertEqual(api.getBlock(10, 60, 10), api.BLOCK_TYPES.STONE, 'Corner should be stone');
+    assertEqual(api.getBlock(11, 61, 11), api.BLOCK_TYPES.DIRT, 'Center should be dirt');
+  });
+
+  runner.test('Voxel - importRegion skipAir option', () => {
+    const gpu = createMockGPU();
+    const api = voxelApi(gpu);
+
+    api.configureWorld({ generateTerrain: () => {} });
+    api.resetWorld();
+
+    // Place a block that should survive (at position where air will be imported)
+    api.setBlock(20, 60, 21, api.BLOCK_TYPES.GOLD_ORE);
+
+    // Export a region with some air and some stone
+    api.setBlock(0, 60, 0, api.BLOCK_TYPES.STONE);
+    // (0,60,1) is air
+    const data = api.exportRegion(0, 60, 0, 0, 60, 1);
+
+    // Import with skipAir — should not overwrite existing block with air
+    api.importRegion(data, 20, 60, 20, { skipAir: true });
+    assertEqual(api.getBlock(20, 60, 20), api.BLOCK_TYPES.STONE, 'Stone should be placed');
+    assertEqual(api.getBlock(20, 60, 21), api.BLOCK_TYPES.GOLD_ORE, 'Gold ore should survive (air skipped)');
+  });
+
+  runner.test('Voxel - exportWorldJSON / importWorldJSON round-trip', () => {
+    const gpu = createMockGPU();
+    const api = voxelApi(gpu);
+
+    api.configureWorld({ generateTerrain: () => {} });
+    api.resetWorld();
+
+    // Place some blocks to create chunks
+    api.setBlock(0, 60, 0, api.BLOCK_TYPES.STONE);
+    api.setBlock(5, 65, 5, api.BLOCK_TYPES.DIRT);
+
+    // Export
+    const json = api.exportWorldJSON();
+    assert(json.version === 1, 'Version should be 1');
+    assert(json.chunks.length > 0, 'Should have chunks');
+    assert(typeof json.seed === 'number', 'Should have seed');
+
+    // Save the blocks we placed
+    const savedStone = api.getBlock(0, 60, 0);
+    const savedDirt = api.getBlock(5, 65, 5);
+
+    // Import into fresh state
+    const result = api.importWorldJSON(json);
+    assert(result.chunksLoaded > 0, 'Should load chunks');
+
+    // Verify blocks survived
+    assertEqual(api.getBlock(0, 60, 0), savedStone, 'Stone should be restored');
+    assertEqual(api.getBlock(5, 65, 5), savedDirt, 'Dirt should be restored');
+  });
+
+  runner.test('Voxel - exportRegion RLE compresses repeated blocks', () => {
+    const gpu = createMockGPU();
+    const api = voxelApi(gpu);
+
+    api.configureWorld({ generateTerrain: () => {} });
+    api.resetWorld();
+
+    // Fill a 10x1x10 = 100 block region with same type
+    for (let x = 0; x < 10; x++) {
+      for (let z = 0; z < 10; z++) {
+        api.setBlock(x, 60, z, api.BLOCK_TYPES.STONE);
+      }
+    }
+    const data = api.exportRegion(0, 60, 0, 9, 60, 9);
+    // 100 identical blocks should compress to a single RLE pair (3 bytes) + 7 byte header = 10 bytes
+    assertEqual(data.byteLength, 10, 'Should compress 100 identical blocks to 10 bytes');
+  });
+
+  // ──────────────────────────────────────────────────────────────────────
   // World Reset Tests
   // ──────────────────────────────────────────────────────────────────────
 
@@ -723,6 +837,10 @@ export async function runVoxelTests() {
       'createVoxelEntityArchetype',
       'spawnVoxelEntityFromArchetype',
       'findVoxelPath',
+      'exportVoxelRegion',
+      'importVoxelRegion',
+      'exportVoxelWorldJSON',
+      'importVoxelWorldJSON',
       'simplexNoise2D',
       'simplexNoise3D',
       'setVoxelFluidSource',

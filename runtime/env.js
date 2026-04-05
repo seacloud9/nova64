@@ -244,6 +244,7 @@ function buildOverlay() {
       <p style="color:#888;font-size:14px;margin:0 0 20px">Press <kbd style="color:#ff0">X</kbd> to close</p>
       <div id="nova64-cheat-sections"></div>
       <div id="nova64-env-info" style="margin-top:24px;border-top:1px solid #333;padding-top:16px"></div>
+      <div id="nova64-manifest-info" style="margin-top:16px;border-top:1px solid #333;padding-top:16px"></div>
     </div>
   `;
   document.body.appendChild(el);
@@ -351,6 +352,108 @@ function renderOverlay() {
     btn.onclick = () => {
       const name = btn.getAttribute('data-level');
       setLevel(name);
+      renderOverlay();
+    };
+  }
+
+  // ── Manifest info (entities, items, i18n, assets) ──
+  const manifestEl = _overlayEl.querySelector('#nova64-manifest-info');
+  let mhtml = '';
+
+  // i18n info
+  if (typeof globalThis.getLocale === 'function') {
+    const locale = globalThis.getLocale();
+    const locales =
+      typeof globalThis.getAvailableLocales === 'function' ? globalThis.getAvailableLocales() : [];
+    mhtml += '<h3 style="color:#0f0;font-size:20px;margin:0 0 12px">🌐 i18n</h3>';
+    mhtml += `<div style="margin:4px 0">Locale: <span style="color:#ff0">${locale}</span></div>`;
+    if (locales.length > 1) {
+      mhtml += '<div style="margin:4px 0">Available: ';
+      for (const loc of locales) {
+        const isCurr = loc === locale;
+        mhtml += `<button data-locale="${loc}" style="
+          display:inline-block;margin:2px 4px;padding:2px 8px;
+          background:${isCurr ? '#0ff' : '#222'};color:${isCurr ? '#000' : '#0ff'};
+          border:1px solid #0ff;cursor:pointer;font-family:inherit;font-size:12px
+        ">${loc}</button>`;
+      }
+      mhtml += '</div>';
+    }
+  }
+
+  // Entity summary
+  if (typeof globalThis.getEnemies === 'function') {
+    const enemies = globalThis.getEnemies();
+    const eCount = Object.keys(enemies).length;
+    if (eCount > 0) {
+      mhtml += '<h3 style="color:#0f0;font-size:20px;margin:12px 0 8px">👾 ENTITIES</h3>';
+      mhtml += `<div style="margin:4px 0">Enemies: <span style="color:#ff0">${eCount}</span></div>`;
+      for (const [id, e] of Object.entries(enemies)) {
+        mhtml += `<div style="margin:2px 0;color:#888;font-size:13px">  ${id}: ${e.name || id} (hp=${e.hp ?? '?'} atk=${e.atk ?? '?'} tier=${e.tier ?? '?'})</div>`;
+      }
+    }
+    const bosses = typeof globalThis.getBosses === 'function' ? globalThis.getBosses() : {};
+    const bCount = Object.keys(bosses).length;
+    if (bCount > 0) {
+      mhtml += `<div style="margin:4px 0">Bosses: <span style="color:#ff0">${bCount}</span></div>`;
+      for (const [id, b] of Object.entries(bosses)) {
+        mhtml += `<div style="margin:2px 0;color:#888;font-size:13px">  ${id}: ${b.name || id} (hp=${b.hp ?? '?'})</div>`;
+      }
+    }
+    const npcs = typeof globalThis.getNPCs === 'function' ? globalThis.getNPCs() : {};
+    const nCount = Object.keys(npcs).length;
+    if (nCount > 0) {
+      mhtml += `<div style="margin:4px 0">NPCs: <span style="color:#ff0">${nCount}</span></div>`;
+    }
+  }
+
+  // Item summary
+  if (typeof globalThis.getItems === 'function') {
+    const items = globalThis.getItems();
+    const iCount = Object.keys(items).length;
+    if (iCount > 0) {
+      mhtml += '<h3 style="color:#0f0;font-size:20px;margin:12px 0 8px">🎒 ITEMS</h3>';
+      mhtml += `<div style="margin:4px 0">Total: <span style="color:#ff0">${iCount}</span></div>`;
+      for (const [id, item] of Object.entries(items)) {
+        mhtml += `<div style="margin:2px 0;color:#888;font-size:13px">  ${id}: ${item.name || id} [${item.type || '?'}] ${item.rarity ? `(${item.rarity})` : ''}</div>`;
+      }
+    }
+  }
+
+  // Asset status
+  if (typeof globalThis.getAssetStatus === 'function') {
+    const status = globalThis.getAssetStatus();
+    if (status.total > 0) {
+      mhtml += '<h3 style="color:#0f0;font-size:20px;margin:12px 0 8px">📂 ASSETS</h3>';
+      mhtml += `<div style="margin:4px 0">Loaded: <span style="color:#ff0">${status.loaded}/${status.total} (${status.percent}%)</span></div>`;
+      for (const [name, detail] of Object.entries(status.details)) {
+        const color =
+          detail.status === 'loaded' ? '#0f0' : detail.status === 'error' ? '#f44' : '#ff0';
+        mhtml += `<div style="margin:2px 0;color:#888;font-size:13px">  ${name}: <span style="color:${color}">${detail.status}</span> [${detail.type}]</div>`;
+      }
+    }
+  }
+
+  // Meta
+  if (typeof globalThis.getMeta === 'function') {
+    const meta = globalThis.getMeta();
+    if (meta) {
+      mhtml += '<h3 style="color:#0f0;font-size:20px;margin:12px 0 8px">📋 CART META</h3>';
+      if (meta.name)
+        mhtml += `<div style="margin:4px 0">${meta.name} v${meta.version || '?'}</div>`;
+      if (meta.author) mhtml += `<div style="margin:4px 0;color:#888">by ${meta.author}</div>`;
+      if (meta.description)
+        mhtml += `<div style="margin:4px 0;color:#888;font-size:13px">${meta.description}</div>`;
+    }
+  }
+
+  manifestEl.innerHTML = mhtml;
+
+  // Bind locale buttons
+  for (const btn of _overlayEl.querySelectorAll('[data-locale]')) {
+    btn.onclick = () => {
+      const loc = btn.getAttribute('data-locale');
+      if (typeof globalThis.setLocale === 'function') globalThis.setLocale(loc);
       renderOverlay();
     };
   }

@@ -975,6 +975,16 @@ async function main() {
         results.push(await runIntegrationTests());
         break;
 
+      case 'voxel':
+        console.log('⛏️ Running Voxel Engine Tests...');
+        try {
+          const { runVoxelTests } = await import('./test-voxel.js');
+          results.push(await runVoxelTests());
+        } catch (error) {
+          console.log('⚠️  Voxel tests not available:', error.message);
+        }
+        break;
+
       case 'all':
       default:
         console.log('🚀 Running All Tests...\n');
@@ -1013,6 +1023,14 @@ async function main() {
           results.push(await runWizardryTests());
         } catch (error) {
           console.log('⚠️  Wizardry tests not available:', error.message);
+        }
+
+        console.log('\n8️⃣ Voxel Engine Tests:');
+        try {
+          const { runVoxelTests } = await import('./test-voxel.js');
+          results.push(await runVoxelTests());
+        } catch (error) {
+          console.log('⚠️  Voxel tests not available:', error.message);
         }
         break;
     }

@@ -165,6 +165,10 @@ function loop() {
     genArtInst._advanceFrame();
     // Update post-processing shader uniforms (time, etc.)
     fxApi.update(dt);
+    // Update procedural TSL material time uniforms
+    if (typeof globalThis._updateTSLMaterials === 'function') {
+      globalThis._updateTSLMaterials(dt);
+    }
 
     // Update cart first (for manual screen management)
     // Check if cart exists to prevent errors during scene transitions
@@ -263,6 +267,7 @@ const gameMap = {
   dungeon: '/examples/dungeon-crawler-3d/code.js',
   wizardry: '/examples/wizardry-3d/code.js',
   'creative-coding': '/examples/creative-coding/code.js',
+  'tsl-showcase': '/examples/tsl-showcase/code.js',
 };
 
 // Map demo names (from ?demo= URL param) to paths
@@ -309,6 +314,7 @@ const demoMap = {
   'nft-worlds': '/examples/nft-worlds/code.js',
   'nft-art-generator': '/examples/nft-art-generator/code.js',
   'creative-coding': '/examples/creative-coding/code.js',
+  'tsl-showcase': '/examples/tsl-showcase/code.js',
 };
 
 // default cart - load from URL param or default to space-harrier-3d

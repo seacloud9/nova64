@@ -727,6 +727,8 @@ export function voxelApi(gpu) {
     }
     // Rebuild materials with/without atlas
     rebuildMaterials();
+    // Sync to workers
+    syncRegistryToWorkers();
     // Mark all chunks dirty so they re-mesh with new UVs
     for (const chunk of chunks.values()) {
       chunk.dirty = true;
@@ -768,6 +770,31 @@ export function voxelApi(gpu) {
     sharedTransparentMaterial = null;
   }
 
+  // Inject fract-based atlas tiling into MeshStandardMaterial
+  // UV = block-space tiling coords (0→w, 0→h), UV2 = atlas tile origin
+  const TILE_SIZE_U = 1.0 / ATLAS_COLS;
+  const TILE_SIZE_V = 1.0 / ATLAS_ROWS;
+
+  function injectAtlasTiling(material) {
+    if (!atlasEnabled) return;
+    material.onBeforeCompile = shader => {
+      shader.uniforms.uTileSize = { value: new THREE.Vector2(TILE_SIZE_U, TILE_SIZE_V) };
+      // Declare uv2 attribute (Three.js r152+ no longer auto-declares it)
+      shader.vertexShader = shader.vertexShader.replace(
+        'void main() {',
+        'attribute vec2 uv2;\nvoid main() {'
+      );
+      // Override vMapUv to use uv2 (tile origin) + fract(uv) (tiling within tile)
+      shader.vertexShader = shader.vertexShader.replace(
+        '#include <uv_vertex>',
+        `#include <uv_vertex>
+        #ifdef USE_MAP
+          vMapUv = uv2 + fract(uv) * vec2(${TILE_SIZE_U.toFixed(8)}, ${TILE_SIZE_V.toFixed(8)});
+        #endif`
+      );
+    };
+  }
+
   function getOpaqueMaterial() {
     if (window.VOXEL_MATERIAL) return window.VOXEL_MATERIAL;
     if (!sharedOpaqueMaterial) {
@@ -778,6 +805,7 @@ export function voxelApi(gpu) {
         metalness: 0.1,
         map: atlasEnabled && atlasTexture ? atlasTexture : null,
       });
+      injectAtlasTiling(sharedOpaqueMaterial);
     }
     return sharedOpaqueMaterial;
   }
@@ -795,12 +823,396 @@ export function voxelApi(gpu) {
         side: THREE.DoubleSide,
         map: atlasEnabled && atlasTexture ? atlasTexture : null,
       });
+      injectAtlasTiling(sharedTransparentMaterial);
     }
     return sharedTransparentMaterial;
   }
 
   // Custom terrain generator (carts can override)
   let customTerrainGenerator = null;
+
+  // ─── Async Meshing (Web Worker pool) ────────────────────────────────────
+
+  let enableAsyncMeshing = false; // opt-in via configureWorld
+  let meshWorkers = [];
+  let meshWorkerBusy = []; // true if worker is currently processing a job
+  let meshJobQueue = []; // pending mesh jobs
+  let meshJobCallbacks = new Map(); // jobId → callback(result)
+  let meshJobIdCounter = 0;
+  let pendingAsyncMeshes = new Set(); // chunk keys with jobs in flight
+  const MESH_WORKER_COUNT = 2; // pool size
+
+  /**
+   * Serialize block registry into flat lookup arrays for the worker.
+   */
+  function serializeRegistry() {
+    const solidArr = new Uint8Array(256);
+    const transparentArr = new Uint8Array(256);
+    const fluidArr = new Uint8Array(256);
+    const colorArr = new Uint32Array(256);
+    const textureFaceArr = new Int8Array(256 * 6);
+    textureFaceArr.fill(-1);
+
+    for (let id = 0; id < 256; id++) {
+      const def = registry.get(id);
+      if (!def) continue;
+      solidArr[id] = def.solid ? 1 : 0;
+      transparentArr[id] = def.transparent ? 1 : 0;
+      fluidArr[id] = def.fluid ? 1 : 0;
+      colorArr[id] = def.color || 0;
+      if (def.textureFaces) {
+        for (let f = 0; f < 6; f++) {
+          textureFaceArr[id * 6 + f] = def.textureFaces[f] !== undefined ? def.textureFaces[f] : -1;
+        }
+      }
+    }
+    return { solidArr, transparentArr, fluidArr, colorArr, textureFaceArr };
+  }
+
+  /**
+   * Build padded arrays (CS+2 × CH × CS+2) from chunk + neighbor edges.
+   * The 1-block border provides neighbor data for face culling, AO, and lighting.
+   */
+  function buildPaddedData(chunk) {
+    const PW = CHUNK_SIZE + 2;
+    const PD = CHUNK_SIZE + 2;
+    const total = PW * PD * CHUNK_HEIGHT;
+    const blocks = new Uint8Array(total);
+    const sky = new Uint8Array(total);
+    const blk = new Uint8Array(total);
+    const fluid = new Uint8Array(total);
+
+    // Copy main chunk data
+    for (let y = 0; y < CHUNK_HEIGHT; y++) {
+      for (let z = 0; z < CHUNK_SIZE; z++) {
+        for (let x = 0; x < CHUNK_SIZE; x++) {
+          const pi = x + 1 + (z + 1) * PW + y * PW * PD;
+          const ci = x + z * CHUNK_SIZE + y * CHUNK_SIZE * CHUNK_SIZE;
+          blocks[pi] = chunk.blocks[ci];
+          sky[pi] = chunk.skyLight[ci];
+          blk[pi] = chunk.blockLight[ci];
+          fluid[pi] = chunk.fluidLevel[ci];
+        }
+      }
+    }
+
+    // Copy neighbor edges (±X, ±Z borders)
+    const cx = chunk.chunkX,
+      cz = chunk.chunkZ;
+
+    // -X neighbor (column x=CHUNK_SIZE-1 → padded x=0)
+    const nxn = getChunkIfExists(cx - 1, cz);
+    if (nxn) {
+      for (let y = 0; y < CHUNK_HEIGHT; y++) {
+        for (let z = 0; z < CHUNK_SIZE; z++) {
+          const pi = 0 + (z + 1) * PW + y * PW * PD;
+          const ci = CHUNK_SIZE - 1 + z * CHUNK_SIZE + y * CHUNK_SIZE * CHUNK_SIZE;
+          blocks[pi] = nxn.blocks[ci];
+          sky[pi] = nxn.skyLight[ci];
+          blk[pi] = nxn.blockLight[ci];
+          fluid[pi] = nxn.fluidLevel[ci];
+        }
+      }
+    }
+
+    // +X neighbor (column x=0 → padded x=CHUNK_SIZE+1)
+    const nxp = getChunkIfExists(cx + 1, cz);
+    if (nxp) {
+      for (let y = 0; y < CHUNK_HEIGHT; y++) {
+        for (let z = 0; z < CHUNK_SIZE; z++) {
+          const pi = CHUNK_SIZE + 1 + (z + 1) * PW + y * PW * PD;
+          const ci = 0 + z * CHUNK_SIZE + y * CHUNK_SIZE * CHUNK_SIZE;
+          blocks[pi] = nxp.blocks[ci];
+          sky[pi] = nxp.skyLight[ci];
+          blk[pi] = nxp.blockLight[ci];
+          fluid[pi] = nxp.fluidLevel[ci];
+        }
+      }
+    }
+
+    // -Z neighbor (row z=CHUNK_SIZE-1 → padded z=0)
+    const nzn = getChunkIfExists(cx, cz - 1);
+    if (nzn) {
+      for (let y = 0; y < CHUNK_HEIGHT; y++) {
+        for (let x = 0; x < CHUNK_SIZE; x++) {
+          const pi = x + 1 + 0 * PW + y * PW * PD;
+          const ci = x + (CHUNK_SIZE - 1) * CHUNK_SIZE + y * CHUNK_SIZE * CHUNK_SIZE;
+          blocks[pi] = nzn.blocks[ci];
+          sky[pi] = nzn.skyLight[ci];
+          blk[pi] = nzn.blockLight[ci];
+          fluid[pi] = nzn.fluidLevel[ci];
+        }
+      }
+    }
+
+    // +Z neighbor (row z=0 → padded z=CHUNK_SIZE+1)
+    const nzp = getChunkIfExists(cx, cz + 1);
+    if (nzp) {
+      for (let y = 0; y < CHUNK_HEIGHT; y++) {
+        for (let x = 0; x < CHUNK_SIZE; x++) {
+          const pi = x + 1 + (CHUNK_SIZE + 1) * PW + y * PW * PD;
+          const ci = x + 0 * CHUNK_SIZE + y * CHUNK_SIZE * CHUNK_SIZE;
+          blocks[pi] = nzp.blocks[ci];
+          sky[pi] = nzp.skyLight[ci];
+          blk[pi] = nzp.blockLight[ci];
+          fluid[pi] = nzp.fluidLevel[ci];
+        }
+      }
+    }
+
+    // Corner columns (4 diagonal neighbors — only need 1 column each)
+    const corners = [
+      { dx: -1, dz: -1, px: 0, pz: 0, sx: CHUNK_SIZE - 1, sz: CHUNK_SIZE - 1 },
+      { dx: 1, dz: -1, px: CHUNK_SIZE + 1, pz: 0, sx: 0, sz: CHUNK_SIZE - 1 },
+      { dx: -1, dz: 1, px: 0, pz: CHUNK_SIZE + 1, sx: CHUNK_SIZE - 1, sz: 0 },
+      { dx: 1, dz: 1, px: CHUNK_SIZE + 1, pz: CHUNK_SIZE + 1, sx: 0, sz: 0 },
+    ];
+    for (const c of corners) {
+      const nc = getChunkIfExists(cx + c.dx, cz + c.dz);
+      if (nc) {
+        for (let y = 0; y < CHUNK_HEIGHT; y++) {
+          const pi = c.px + c.pz * PW + y * PW * PD;
+          const ci = c.sx + c.sz * CHUNK_SIZE + y * CHUNK_SIZE * CHUNK_SIZE;
+          blocks[pi] = nc.blocks[ci];
+          sky[pi] = nc.skyLight[ci];
+          blk[pi] = nc.blockLight[ci];
+          fluid[pi] = nc.fluidLevel[ci];
+        }
+      }
+    }
+
+    return { blocks, skyLight: sky, blockLight: blk, fluidLevel: fluid };
+  }
+
+  /**
+   * Initialize the mesh worker pool.
+   */
+  function initMeshWorkers() {
+    if (meshWorkers.length > 0) return; // already initialized
+    if (typeof Worker === 'undefined') {
+      enableAsyncMeshing = false;
+      return;
+    }
+    try {
+      const regData = serializeRegistry();
+      for (let i = 0; i < MESH_WORKER_COUNT; i++) {
+        const w = new Worker(new URL('./voxel-mesh-worker.js', import.meta.url), {
+          type: 'module',
+        });
+        w.onmessage = function (e) {
+          handleWorkerResult(i, e.data);
+        };
+        w.onerror = function (err) {
+          console.warn('[Nova64] Mesh worker error, falling back to sync meshing:', err.message);
+          enableAsyncMeshing = false;
+        };
+        // Send init with registry + config
+        w.postMessage(
+          {
+            type: 'init',
+            solidArr: regData.solidArr.buffer,
+            transparentArr: regData.transparentArr.buffer,
+            fluidArr: regData.fluidArr.buffer,
+            colorArr: regData.colorArr.buffer,
+            textureFaceArr: regData.textureFaceArr.buffer,
+            CHUNK_SIZE,
+            CHUNK_HEIGHT,
+            ATLAS_COLS,
+            ATLAS_ROWS,
+            FLUID_MAX_LEVEL: 7,
+          },
+          [
+            regData.solidArr.buffer,
+            regData.transparentArr.buffer,
+            regData.fluidArr.buffer,
+            regData.colorArr.buffer,
+            regData.textureFaceArr.buffer,
+          ]
+        );
+        meshWorkers.push(w);
+        meshWorkerBusy.push(false);
+      }
+    } catch (err) {
+      console.warn('[Nova64] Failed to create mesh workers, using sync meshing:', err.message);
+      enableAsyncMeshing = false;
+    }
+  }
+
+  /**
+   * Re-send updated registry to all workers (after registerBlock or atlas change).
+   */
+  function syncRegistryToWorkers() {
+    if (meshWorkers.length === 0) return;
+    const regData = serializeRegistry();
+    for (const w of meshWorkers) {
+      // Use non-transferable copy since we send to multiple workers
+      w.postMessage({
+        type: 'registry',
+        solidArr: regData.solidArr.buffer.slice(0),
+        transparentArr: regData.transparentArr.buffer.slice(0),
+        fluidArr: regData.fluidArr.buffer.slice(0),
+        colorArr: regData.colorArr.buffer.slice(0),
+        textureFaceArr: regData.textureFaceArr.buffer.slice(0),
+      });
+    }
+  }
+
+  /**
+   * Dispatch a mesh job to the next free worker, or queue it.
+   */
+  function dispatchMeshJob(chunk, callback) {
+    const key = `${chunk.chunkX},${chunk.chunkZ}`;
+    const jobId = ++meshJobIdCounter;
+    const padded = buildPaddedData(chunk);
+
+    const job = {
+      type: 'mesh',
+      jobId,
+      chunkKey: key,
+      blocks: padded.blocks,
+      skyLight: padded.skyLight,
+      blockLight: padded.blockLight,
+      fluidLevel: padded.fluidLevel,
+      baseX: chunk.chunkX * CHUNK_SIZE,
+      baseZ: chunk.chunkZ * CHUNK_SIZE,
+      enableAO,
+      enableLighting,
+      atlasEnabled,
+      dayTimeFactor,
+    };
+
+    meshJobCallbacks.set(jobId, { callback, key });
+    pendingAsyncMeshes.add(key);
+
+    // Find a free worker
+    for (let i = 0; i < meshWorkers.length; i++) {
+      if (!meshWorkerBusy[i]) {
+        meshWorkerBusy[i] = true;
+        meshWorkers[i].postMessage(job, [
+          padded.blocks.buffer,
+          padded.skyLight.buffer,
+          padded.blockLight.buffer,
+          padded.fluidLevel.buffer,
+        ]);
+        return;
+      }
+    }
+    // All workers busy — queue the job
+    meshJobQueue.push({ job, padded });
+  }
+
+  /**
+   * Handle worker result: build Three.js geometry on main thread.
+   */
+  function handleWorkerResult(workerIdx, result) {
+    meshWorkerBusy[workerIdx] = false;
+
+    // Process result
+    if (result.type === 'result') {
+      const entry = meshJobCallbacks.get(result.jobId);
+      meshJobCallbacks.delete(result.jobId);
+      if (entry) {
+        pendingAsyncMeshes.delete(entry.key);
+        applyMeshResult(entry.key, result);
+      }
+    }
+
+    // Dispatch next queued job to this now-free worker
+    while (meshJobQueue.length > 0) {
+      const next = meshJobQueue.shift();
+      const nextEntry = meshJobCallbacks.get(next.job.jobId);
+      // Skip if chunk was unloaded or superseded
+      if (!nextEntry || !pendingAsyncMeshes.has(nextEntry.key)) {
+        meshJobCallbacks.delete(next.job.jobId);
+        continue;
+      }
+      meshWorkerBusy[workerIdx] = true;
+      meshWorkers[workerIdx].postMessage(next.job, [
+        next.padded.blocks.buffer,
+        next.padded.skyLight.buffer,
+        next.padded.blockLight.buffer,
+        next.padded.fluidLevel.buffer,
+      ]);
+      break;
+    }
+  }
+
+  /**
+   * Apply mesh result from worker — create Three.js BufferGeometry and add to scene.
+   */
+  function applyMeshResult(key, result) {
+    // Remove old meshes
+    if (chunkMeshes.has(key)) {
+      const old = chunkMeshes.get(key);
+      if (old.opaque) {
+        gpu.scene.remove(old.opaque);
+        old.opaque.geometry.dispose();
+      }
+      if (old.transparent) {
+        gpu.scene.remove(old.transparent);
+        old.transparent.geometry.dispose();
+      }
+      chunkMeshes.delete(key);
+    }
+
+    const entry = { opaque: null, transparent: null };
+
+    if (result.hasOpaque && result.opaqueVerts) {
+      const geom = new THREE.BufferGeometry();
+      geom.setAttribute('position', new THREE.BufferAttribute(result.opaqueVerts, 3));
+      geom.setAttribute('normal', new THREE.BufferAttribute(result.opaqueNorms, 3));
+      geom.setAttribute('color', new THREE.BufferAttribute(result.opaqueColors, 3));
+      geom.setAttribute('uv', new THREE.BufferAttribute(result.opaqueUvs, 2));
+      geom.setAttribute('uv2', new THREE.Float32BufferAttribute(result.opaqueUv2s, 2));
+      geom.setIndex(new THREE.BufferAttribute(result.opaqueIdx, 1));
+      geom.computeBoundingSphere();
+      const mesh = new THREE.Mesh(geom, getOpaqueMaterial());
+      mesh.castShadow = enableShadows;
+      mesh.receiveShadow = enableShadows;
+      gpu.scene.add(mesh);
+      entry.opaque = mesh;
+    }
+
+    if (result.hasTrans && result.transVerts) {
+      const geom = new THREE.BufferGeometry();
+      geom.setAttribute('position', new THREE.BufferAttribute(result.transVerts, 3));
+      geom.setAttribute('normal', new THREE.BufferAttribute(result.transNorms, 3));
+      geom.setAttribute('color', new THREE.BufferAttribute(result.transColors, 3));
+      geom.setAttribute('uv', new THREE.BufferAttribute(result.transUvs, 2));
+      geom.setAttribute('uv2', new THREE.Float32BufferAttribute(result.transUv2s, 2));
+      geom.setIndex(new THREE.BufferAttribute(result.transIdx, 1));
+      geom.computeBoundingSphere();
+      const [cxStr, czStr] = key.split(',');
+      const cx = Number(cxStr) * CHUNK_SIZE + CHUNK_SIZE / 2;
+      const cy = CHUNK_HEIGHT / 2;
+      const cz = Number(czStr) * CHUNK_SIZE + CHUNK_SIZE / 2;
+      geom.translate(-cx, -cy, -cz);
+      const mesh = new THREE.Mesh(geom, getTransparentMaterial());
+      mesh.position.set(cx, cy, cz);
+      mesh.castShadow = false;
+      mesh.receiveShadow = enableShadows;
+      mesh.renderOrder = 1;
+      gpu.scene.add(mesh);
+      entry.transparent = mesh;
+    }
+
+    if (entry.opaque || entry.transparent) {
+      chunkMeshes.set(key, entry);
+    }
+  }
+
+  /**
+   * Terminate all mesh workers (called on resetWorld).
+   */
+  function terminateMeshWorkers() {
+    for (const w of meshWorkers) w.terminate();
+    meshWorkers = [];
+    meshWorkerBusy = [];
+    meshJobQueue = [];
+    meshJobCallbacks.clear();
+    pendingAsyncMeshes.clear();
+    meshJobIdCounter = 0;
+  }
 
   // ─── Chunk class ────────────────────────────────────────────────────────
 
@@ -811,6 +1223,7 @@ export function voxelApi(gpu) {
       this.blocks = new Uint8Array(CHUNK_SIZE * CHUNK_HEIGHT * CHUNK_SIZE);
       this.skyLight = new Uint8Array(CHUNK_SIZE * CHUNK_HEIGHT * CHUNK_SIZE);
       this.blockLight = new Uint8Array(CHUNK_SIZE * CHUNK_HEIGHT * CHUNK_SIZE);
+      this.fluidLevel = new Uint8Array(CHUNK_SIZE * CHUNK_HEIGHT * CHUNK_SIZE); // 0-7 (0=empty, 7=source)
       this.dirty = true;
       this.lightDirty = true;
     }
@@ -841,6 +1254,18 @@ export function voxelApi(gpu) {
       if (x < 0 || x >= CHUNK_SIZE || y < 0 || y >= CHUNK_HEIGHT || z < 0 || z >= CHUNK_SIZE)
         return 0;
       return this.blockLight[x + z * CHUNK_SIZE + y * CHUNK_SIZE * CHUNK_SIZE];
+    }
+
+    getFluidLevel(x, y, z) {
+      if (x < 0 || x >= CHUNK_SIZE || y < 0 || y >= CHUNK_HEIGHT || z < 0 || z >= CHUNK_SIZE)
+        return 0;
+      return this.fluidLevel[x + z * CHUNK_SIZE + y * CHUNK_SIZE * CHUNK_SIZE];
+    }
+
+    setFluidLevel(x, y, z, level) {
+      if (x < 0 || x >= CHUNK_SIZE || y < 0 || y >= CHUNK_HEIGHT || z < 0 || z >= CHUNK_SIZE)
+        return;
+      this.fluidLevel[x + z * CHUNK_SIZE + y * CHUNK_SIZE * CHUNK_SIZE] = level;
     }
   }
 
@@ -1000,6 +1425,7 @@ export function voxelApi(gpu) {
             chunk.setBlock(x, y, z, surfaceBlock);
           } else if (y < SEA_LEVEL && y >= height) {
             chunk.setBlock(x, y, z, BLOCK_TYPES.WATER);
+            chunk.setFluidLevel(x, y, z, FLUID_MAX_LEVEL); // terrain water = source level
           }
 
           // 3D cave generation using proper 3D simplex noise
@@ -1024,6 +1450,7 @@ export function voxelApi(gpu) {
             if (y <= 10 && (caveThreshold1 || caveThreshold2)) {
               if (y <= 5 && chunk.getBlock(x, y, z) === BLOCK_TYPES.AIR) {
                 chunk.setBlock(x, y, z, BLOCK_TYPES.LAVA);
+                chunk.setFluidLevel(x, y, z, FLUID_MAX_LEVEL);
               }
             }
           }
@@ -1544,6 +1971,7 @@ export function voxelApi(gpu) {
   const MAX_MASK = 128 * 16; // CHUNK_HEIGHT * CHUNK_SIZE (max possible mask size)
   const _mask = new Int32Array(MAX_MASK);
   const _maskTrans = new Uint8Array(MAX_MASK);
+  const _maskFluidLvl = new Uint8Array(MAX_MASK); // fluid level for top-face Y offset
   const _tmpColor = new THREE.Color();
 
   function getNeighborBlock(chunk, x, y, z) {
@@ -1565,6 +1993,7 @@ export function voxelApi(gpu) {
     const opaqueNorms = [];
     const opaqueColors = [];
     const opaqueUvs = [];
+    const opaqueUv2s = [];
     const opaqueIdx = [];
     let opaqueVCount = 0;
 
@@ -1572,6 +2001,7 @@ export function voxelApi(gpu) {
     const transNorms = [];
     const transColors = [];
     const transUvs = [];
+    const transUv2s = [];
     const transIdx = [];
     let transVCount = 0;
 
@@ -1599,6 +2029,7 @@ export function voxelApi(gpu) {
         for (let i = 0; i < maskSize; i++) {
           _mask[i] = 0;
           _maskTrans[i] = 0;
+          _maskFluidLvl[i] = 0;
         }
         for (let vi = 0; vi < vMax; vi++) {
           for (let ui = 0; ui < uMax; ui++) {
@@ -1691,6 +2122,10 @@ export function voxelApi(gpu) {
             _mask[mIdx] =
               (blockType & 0xff) | ((aoKey & 0xff) << 8) | ((faceLight & 0xf) << 16) | (1 << 24);
             _maskTrans[mIdx] = blockIsTransparent ? 1 : 0;
+            // Store fluid level for top face Y offset (faceIdx 4 = +Y)
+            if (registry.isFluid(blockType)) {
+              _maskFluidLvl[mIdx] = chunk.getFluidLevel(x, y, z) || FLUID_MAX_LEVEL;
+            }
             hasFaces = true;
           }
         }
@@ -1707,27 +2142,31 @@ export function voxelApi(gpu) {
               continue;
             }
             const trans = _maskTrans[mIdx];
+            const fluidLvl = _maskFluidLvl[mIdx];
 
-            // Extend width (skip greedy merge when atlas enabled — UVs can't tile within atlas tiles)
+            // Extend width (greedy merge — works with atlas via fract-based UV tiling)
             let w = 1;
-            if (!atlasEnabled) {
-              while (
-                ui + w < uMax &&
-                _mask[ui + w + vi * uMax] === key &&
-                _maskTrans[ui + w + vi * uMax] === trans
-              ) {
-                w++;
-              }
+            while (
+              ui + w < uMax &&
+              _mask[ui + w + vi * uMax] === key &&
+              _maskTrans[ui + w + vi * uMax] === trans &&
+              _maskFluidLvl[ui + w + vi * uMax] === fluidLvl
+            ) {
+              w++;
             }
 
             // Extend height
             let h = 1;
-            if (!atlasEnabled) {
+            {
               let canExtend = true;
               while (canExtend && vi + h < vMax) {
                 for (let wu = 0; wu < w; wu++) {
                   const ci = ui + wu + (vi + h) * uMax;
-                  if (_mask[ci] !== key || _maskTrans[ci] !== trans) {
+                  if (
+                    _mask[ci] !== key ||
+                    _maskTrans[ci] !== trans ||
+                    _maskFluidLvl[ci] !== fluidLvl
+                  ) {
                     canExtend = false;
                     break;
                   }
@@ -1878,6 +2317,7 @@ export function voxelApi(gpu) {
             const norms = isTransparent ? transNorms : opaqueNorms;
             const cols = isTransparent ? transColors : opaqueColors;
             const uvArr = isTransparent ? transUvs : opaqueUvs;
+            const uv2Arr = isTransparent ? transUv2s : opaqueUv2s;
             const idxArr = isTransparent ? transIdx : opaqueIdx;
             let vCount = isTransparent ? transVCount : opaqueVCount;
 
@@ -1886,8 +2326,13 @@ export function voxelApi(gpu) {
             const vyArr = [v0y, v1y, v2y, v3y];
             const vzArr = [v0z, v1z, v2z, v3z];
             const aoArr = [a0, a1, a2, a3];
+            // Fluid top face Y offset: lower Y based on fluid level (7=full, 1=thin)
+            const fluidYOff =
+              faceIdx === 4 && fluidLvl > 0 && fluidLvl < FLUID_MAX_LEVEL
+                ? -(1.0 - fluidLvl / FLUID_MAX_LEVEL) * 0.875
+                : 0;
             for (let ci = 0; ci < 4; ci++) {
-              verts.push(vxArr[ci] + baseX, vyArr[ci], vzArr[ci] + baseZ);
+              verts.push(vxArr[ci] + baseX, vyArr[ci] + fluidYOff, vzArr[ci] + baseZ);
               norms.push(normal[0], normal[1], normal[2]);
               const aoLight = aoScale[aoArr[ci]] * lightBrightness;
               if (atlasEnabled) {
@@ -1898,32 +2343,17 @@ export function voxelApi(gpu) {
               }
             }
 
-            // UV coordinates: when atlas enabled, map to the correct tile and tile across merged quads
+            // UV coordinates: block-space tiling (0→w, 0→h)
+            // When atlas enabled, uv2 stores tile origin; the shader uses fract(uv) to tile within the tile
+            uvArr.push(0, h, w, h, w, 0, 0, 0);
             if (atlasEnabled) {
               const tileIdx = registry.getTextureFace(blockType, faceIdx);
-              if (tileIdx >= 0) {
-                const tileU = (tileIdx % ATLAS_COLS) / ATLAS_COLS;
-                const tileV = 1.0 - (Math.floor(tileIdx / ATLAS_COLS) + 1) / ATLAS_ROWS;
-                const tileSizeU = 1.0 / ATLAS_COLS;
-                const tileSizeV = 1.0 / ATLAS_ROWS;
-                // Tile the texture across the merged quad (w blocks wide, h blocks tall)
-                // v0=(0,h), v1=(w,h), v2=(w,0), v3=(0,0) in block units
-                // Map each block to one full tile repetition
-                uvArr.push(
-                  tileU,
-                  tileV + tileSizeV * h,
-                  tileU + tileSizeU * w,
-                  tileV + tileSizeV * h,
-                  tileU + tileSizeU * w,
-                  tileV,
-                  tileU,
-                  tileV
-                );
-              } else {
-                uvArr.push(0, h, w, h, w, 0, 0, 0);
-              }
+              const tileU = tileIdx >= 0 ? (tileIdx % ATLAS_COLS) / ATLAS_COLS : 0;
+              const tileV =
+                tileIdx >= 0 ? 1.0 - (Math.floor(tileIdx / ATLAS_COLS) + 1) / ATLAS_ROWS : 0;
+              uv2Arr.push(tileU, tileV, tileU, tileV, tileU, tileV, tileU, tileV);
             } else {
-              uvArr.push(0, h, w, h, w, 0, 0, 0);
+              uv2Arr.push(0, 0, 0, 0, 0, 0, 0, 0);
             }
 
             // AO-aware triangulation
@@ -1955,6 +2385,7 @@ export function voxelApi(gpu) {
       opaqueGeometry.setAttribute('normal', new THREE.Float32BufferAttribute(opaqueNorms, 3));
       opaqueGeometry.setAttribute('color', new THREE.Float32BufferAttribute(opaqueColors, 3));
       opaqueGeometry.setAttribute('uv', new THREE.Float32BufferAttribute(opaqueUvs, 2));
+      opaqueGeometry.setAttribute('uv2', new THREE.Float32BufferAttribute(opaqueUv2s, 2));
       opaqueGeometry.setIndex(opaqueIdx);
       opaqueGeometry.computeBoundingSphere();
     }
@@ -1967,6 +2398,7 @@ export function voxelApi(gpu) {
       transGeometry.setAttribute('normal', new THREE.Float32BufferAttribute(transNorms, 3));
       transGeometry.setAttribute('color', new THREE.Float32BufferAttribute(transColors, 3));
       transGeometry.setAttribute('uv', new THREE.Float32BufferAttribute(transUvs, 2));
+      transGeometry.setAttribute('uv2', new THREE.Float32BufferAttribute(transUv2s, 2));
       transGeometry.setIndex(transIdx);
       transGeometry.computeBoundingSphere();
     }
@@ -2017,7 +2449,13 @@ export function voxelApi(gpu) {
     }
 
     if (transGeometry) {
+      // Translate vertices to chunk-local space so mesh.position enables distance-based sorting
+      const cx = chunk.chunkX * CHUNK_SIZE + CHUNK_SIZE / 2;
+      const cy = CHUNK_HEIGHT / 2;
+      const cz = chunk.chunkZ * CHUNK_SIZE + CHUNK_SIZE / 2;
+      transGeometry.translate(-cx, -cy, -cz);
       const mesh = new THREE.Mesh(transGeometry, getTransparentMaterial());
+      mesh.position.set(cx, cy, cz);
       mesh.castShadow = false;
       mesh.receiveShadow = enableShadows;
       mesh.renderOrder = 1; // render after opaque
@@ -2176,11 +2614,30 @@ export function voxelApi(gpu) {
         const key = `${cx},${cz}`;
         const chunk = chunks.get(key);
         if (chunk && (chunk.dirty || chunk.lightDirty)) {
-          updateChunkMesh(chunk);
+          // Propagate lighting on main thread first (modifies chunk data in-place)
+          if (chunk.lightDirty) {
+            if (enableLighting) {
+              propagateLighting(chunk);
+            } else {
+              chunk.lightDirty = false;
+            }
+          }
+          if (enableAsyncMeshing && meshWorkers.length > 0 && !pendingAsyncMeshes.has(key)) {
+            // Async path: dispatch to worker
+            chunk.dirty = false;
+            dispatchMeshJob(chunk, null);
+          } else if (!enableAsyncMeshing) {
+            // Sync path (original behavior)
+            updateChunkMesh(chunk);
+          }
+          // If async mesh already pending for this chunk, skip (will be rebuilt when result arrives)
           rebuilt++;
         }
       }
     }
+
+    // Phase 3.5: Fluid simulation tick
+    if (enableFluids) fluidTick();
 
     // Phase 4: Unload far chunks
     const keysToRemove = [];
@@ -2202,7 +2659,39 @@ export function voxelApi(gpu) {
         chunks.delete(key);
       }
     }
-    keysToRemove.forEach(key => chunkMeshes.delete(key));
+    keysToRemove.forEach(key => {
+      chunkMeshes.delete(key);
+      pendingAsyncMeshes.delete(key); // cancel any in-flight async mesh jobs
+    });
+
+    // Phase 5: LRU eviction — cap loaded chunks to prevent OOM
+    const maxChunks = (RENDER_DISTANCE * 2 + 3) * (RENDER_DISTANCE * 2 + 3); // generous cap
+    if (chunks.size > maxChunks) {
+      // Build distance list for chunks beyond render distance
+      const evictable = [];
+      for (const [key] of chunks) {
+        const [cx, cz] = key.split(',').map(Number);
+        const dist = (cx - centerChunkX) ** 2 + (cz - centerChunkZ) ** 2;
+        evictable.push({ key, dist });
+      }
+      evictable.sort((a, b) => b.dist - a.dist); // farthest first
+      while (chunks.size > maxChunks && evictable.length > 0) {
+        const { key } = evictable.shift();
+        const entry = chunkMeshes.get(key);
+        if (entry) {
+          if (entry.opaque) {
+            gpu.scene.remove(entry.opaque);
+            entry.opaque.geometry.dispose();
+          }
+          if (entry.transparent) {
+            gpu.scene.remove(entry.transparent);
+            entry.transparent.geometry.dispose();
+          }
+          chunkMeshes.delete(key);
+        }
+        chunks.delete(key);
+      }
+    }
   }
 
   // Force-load all chunks around a position synchronously (for initial load)
@@ -2247,6 +2736,18 @@ export function voxelApi(gpu) {
     entities.clear();
     spatialHash.clear();
     nextEntityId = 1;
+    // Dispose cached entity materials
+    for (const mat of _entityMaterialCache.values()) mat.dispose();
+    _entityMaterialCache.clear();
+    // Clear fluid simulation state
+    fluidUpdateQueue.length = 0;
+    fluidRemoveQueue.length = 0;
+    fluidFrameCounter = 0;
+    // Clear async meshing state (don't terminate workers — they can be reused)
+    meshJobQueue.length = 0;
+    meshJobCallbacks.clear();
+    pendingAsyncMeshes.clear();
+    meshJobIdCounter = 0;
     worldSeed += 5000 + Math.floor(Math.random() * 10000);
     noise = createSimplexNoise(worldSeed);
   }
@@ -2558,6 +3059,217 @@ export function voxelApi(gpu) {
     }
   }
 
+  // ─── Fluid Simulation ────────────────────────────────────────────────────
+  // Water spreads 7 blocks horizontally + infinite downward (tick every 4 frames).
+  // Lava spreads 3 blocks horizontally + infinite downward (tick every 12 frames).
+  // Level 7 = source, 1 = thinnest flow, 0 = empty (not fluid).
+
+  const FLUID_MAX_LEVEL = 7;
+  const FLUID_WATER_SPREAD = 7; // max horizontal spread from source
+  const FLUID_LAVA_SPREAD = 3;
+  const FLUID_WATER_TICK_RATE = 4; // frames between water ticks
+  const FLUID_LAVA_TICK_RATE = 12;
+  let fluidFrameCounter = 0;
+  let enableFluids = true;
+  const fluidUpdateQueue = []; // BFS queue: [{x, y, z}]
+  const fluidRemoveQueue = []; // retraction queue
+
+  function getFluidLevel(x, y, z) {
+    if (y < 0 || y >= CHUNK_HEIGHT) return 0;
+    const { chunkX, chunkZ, localX, localZ } = worldToChunk(x, z);
+    const chunk = getChunkIfExists(chunkX, chunkZ);
+    if (!chunk) return 0;
+    return chunk.getFluidLevel(localX, y, localZ);
+  }
+
+  function setFluidLevel(x, y, z, level) {
+    if (y < 0 || y >= CHUNK_HEIGHT) return;
+    const { chunkX, chunkZ, localX, localZ } = worldToChunk(x, z);
+    const chunk = getChunkIfExists(chunkX, chunkZ);
+    if (!chunk) return;
+    chunk.setFluidLevel(localX, y, localZ, level);
+    chunk.dirty = true;
+  }
+
+  function isFluidBlock(x, y, z) {
+    const b = getBlock(x, y, z);
+    return b === BLOCK_TYPES.WATER || b === BLOCK_TYPES.LAVA;
+  }
+
+  function getFluidType(x, y, z) {
+    const b = getBlock(x, y, z);
+    if (b === BLOCK_TYPES.WATER) return 'water';
+    if (b === BLOCK_TYPES.LAVA) return 'lava';
+    return null;
+  }
+
+  function setFluidSource(x, y, z, fluidType = 'water') {
+    const blockId = fluidType === 'lava' ? BLOCK_TYPES.LAVA : BLOCK_TYPES.WATER;
+    setBlock(x, y, z, blockId);
+    setFluidLevel(x, y, z, FLUID_MAX_LEVEL);
+    fluidUpdateQueue.push({ x, y, z });
+  }
+
+  function removeFluidSource(x, y, z) {
+    if (!isFluidBlock(x, y, z)) return;
+    setBlock(x, y, z, BLOCK_TYPES.AIR);
+    setFluidLevel(x, y, z, 0);
+    // Queue neighbors for retraction
+    const neighbors = [
+      { x: x - 1, y, z },
+      { x: x + 1, y, z },
+      { x, y, z: z - 1 },
+      { x, y, z: z + 1 },
+      { x, y: y - 1, z },
+    ];
+    for (const n of neighbors) {
+      if (isFluidBlock(n.x, n.y, n.z) && getFluidLevel(n.x, n.y, n.z) < FLUID_MAX_LEVEL) {
+        fluidRemoveQueue.push(n);
+      }
+    }
+  }
+
+  function getFluidLevelWorld(x, y, z) {
+    return getFluidLevel(x, y, z);
+  }
+
+  function fluidTick() {
+    if (!enableFluids) return;
+    fluidFrameCounter++;
+
+    const doWater = fluidFrameCounter % FLUID_WATER_TICK_RATE === 0;
+    const doLava = fluidFrameCounter % FLUID_LAVA_TICK_RATE === 0;
+    if (!doWater && !doLava) return;
+
+    // Process retraction first
+    const retractBatch = fluidRemoveQueue.splice(0, 64);
+    const retractVisited = new Set();
+    for (const pos of retractBatch) {
+      const pk = `${pos.x},${pos.y},${pos.z}`;
+      if (retractVisited.has(pk)) continue;
+      retractVisited.add(pk);
+
+      if (!isFluidBlock(pos.x, pos.y, pos.z)) continue;
+      const level = getFluidLevel(pos.x, pos.y, pos.z);
+      if (level >= FLUID_MAX_LEVEL) continue; // don't retract sources
+
+      // Check if this flow still has a valid source feeding it
+      const hasSource = checkFluidFeed(pos.x, pos.y, pos.z);
+      if (!hasSource) {
+        // Remove this flow block and queue its children
+        setBlock(pos.x, pos.y, pos.z, BLOCK_TYPES.AIR);
+        setFluidLevel(pos.x, pos.y, pos.z, 0);
+        const neighbors = [
+          { x: pos.x - 1, y: pos.y, z: pos.z },
+          { x: pos.x + 1, y: pos.y, z: pos.z },
+          { x: pos.x, y: pos.y, z: pos.z - 1 },
+          { x: pos.x, y: pos.y, z: pos.z + 1 },
+          { x: pos.x, y: pos.y - 1, z: pos.z },
+        ];
+        for (const n of neighbors) {
+          if (isFluidBlock(n.x, n.y, n.z) && getFluidLevel(n.x, n.y, n.z) < FLUID_MAX_LEVEL) {
+            fluidRemoveQueue.push(n);
+          }
+        }
+      }
+    }
+
+    // Process spread queue (BFS)
+    const spreadBatch = fluidUpdateQueue.splice(0, 64);
+    const visited = new Set();
+    for (const pos of spreadBatch) {
+      const pk = `${pos.x},${pos.y},${pos.z}`;
+      if (visited.has(pk)) continue;
+      visited.add(pk);
+
+      if (!isFluidBlock(pos.x, pos.y, pos.z)) continue;
+      const level = getFluidLevel(pos.x, pos.y, pos.z);
+      const fluidType = getFluidType(pos.x, pos.y, pos.z);
+      if (!fluidType) continue;
+
+      const isWater = fluidType === 'water';
+      if (isWater && !doWater) {
+        fluidUpdateQueue.push(pos); // re-queue for water tick
+        continue;
+      }
+      if (!isWater && !doLava) {
+        fluidUpdateQueue.push(pos); // re-queue for lava tick
+        continue;
+      }
+
+      const maxSpread = isWater ? FLUID_WATER_SPREAD : FLUID_LAVA_SPREAD;
+      const blockId = isWater ? BLOCK_TYPES.WATER : BLOCK_TYPES.LAVA;
+
+      // Flow downward (infinite, full level)
+      const below = getBlock(pos.x, pos.y - 1, pos.z);
+      if (
+        pos.y > 0 &&
+        (below === BLOCK_TYPES.AIR ||
+          (registry.isFluid(below) && getFluidLevel(pos.x, pos.y - 1, pos.z) < FLUID_MAX_LEVEL))
+      ) {
+        // Flowing water/lava meets opposite fluid → obsidian
+        if (registry.isFluid(below) && below !== blockId) {
+          setBlock(pos.x, pos.y - 1, pos.z, BLOCK_TYPES.OBSIDIAN);
+          setFluidLevel(pos.x, pos.y - 1, pos.z, 0);
+        } else {
+          setBlock(pos.x, pos.y - 1, pos.z, blockId);
+          setFluidLevel(pos.x, pos.y - 1, pos.z, FLUID_MAX_LEVEL);
+          fluidUpdateQueue.push({ x: pos.x, y: pos.y - 1, z: pos.z });
+        }
+        continue; // prioritize downward flow — don't spread horizontally yet
+      }
+
+      // Horizontal spread (only if level > 1)
+      if (level <= 1) continue;
+      const newLevel = level - 1;
+      if (FLUID_MAX_LEVEL - newLevel > maxSpread) continue; // exceeded spread distance
+
+      const horizontalNeighbors = [
+        { x: pos.x - 1, y: pos.y, z: pos.z },
+        { x: pos.x + 1, y: pos.y, z: pos.z },
+        { x: pos.x, y: pos.y, z: pos.z - 1 },
+        { x: pos.x, y: pos.y, z: pos.z + 1 },
+      ];
+
+      for (const n of horizontalNeighbors) {
+        const nb = getBlock(n.x, n.y, n.z);
+        if (nb === BLOCK_TYPES.AIR) {
+          setBlock(n.x, n.y, n.z, blockId);
+          setFluidLevel(n.x, n.y, n.z, newLevel);
+          fluidUpdateQueue.push(n);
+        } else if (registry.isFluid(nb)) {
+          if (nb !== blockId) {
+            // Water meets lava → obsidian (or cobblestone for source lava)
+            setBlock(n.x, n.y, n.z, BLOCK_TYPES.OBSIDIAN);
+            setFluidLevel(n.x, n.y, n.z, 0);
+          } else if (getFluidLevel(n.x, n.y, n.z) < newLevel) {
+            // Strengthen existing flow
+            setFluidLevel(n.x, n.y, n.z, newLevel);
+            fluidUpdateQueue.push(n);
+          }
+        }
+      }
+    }
+  }
+
+  // Check if a flow block has a valid feeding neighbor with higher level
+  function checkFluidFeed(x, y, z) {
+    const level = getFluidLevel(x, y, z);
+    // Above with any level feeds downward flows
+    if (isFluidBlock(x, y + 1, z)) return true;
+    // Horizontal neighbor with higher level
+    const neighbors = [
+      [x - 1, y, z],
+      [x + 1, y, z],
+      [x, y, z - 1],
+      [x, y, z + 1],
+    ];
+    for (const [nx, ny, nz] of neighbors) {
+      if (isFluidBlock(nx, ny, nz) && getFluidLevel(nx, ny, nz) > level) return true;
+    }
+    return false;
+  }
+
   // ─── World Persistence (IndexedDB) ────────────────────────────────────
   // Save/load modified chunks to IndexedDB for persistent worlds.
   // Only saves chunks that the player has modified (delta compression).
@@ -2775,6 +3487,7 @@ export function voxelApi(gpu) {
   const entities = new Map(); // id -> entity
   let nextEntityId = 1;
   const ENTITY_GRAVITY = -20;
+  const _entityMaterialCache = new Map(); // hex color -> MeshStandardMaterial (shared)
 
   // Spatial hash for fast region queries
   const SPATIAL_CELL = 16; // matches chunk size
@@ -2835,13 +3548,18 @@ export function voxelApi(gpu) {
     // Resolve mesh: create from color, use provided THREE.Mesh, or none
     let mesh = null;
     if (opts.color !== undefined && gpu && gpu.scene) {
-      // Auto-create a simple box mesh from color
+      // Auto-create a simple box mesh from color (material shared per color)
       const geom = new THREE.BoxGeometry(size[0], size[1], size[2]);
-      const mat = new THREE.MeshStandardMaterial({
-        color: opts.color,
-        roughness: 0.8,
-        metalness: 0.1,
-      });
+      const colorKey = opts.color & 0xffffff;
+      let mat = _entityMaterialCache.get(colorKey);
+      if (!mat) {
+        mat = new THREE.MeshStandardMaterial({
+          color: colorKey,
+          roughness: 0.8,
+          metalness: 0.1,
+        });
+        _entityMaterialCache.set(colorKey, mat);
+      }
       mesh = new THREE.Mesh(geom, mat);
       mesh.castShadow = true;
       mesh.receiveShadow = true;
@@ -2895,7 +3613,10 @@ export function voxelApi(gpu) {
     if (ent.mesh && gpu && gpu.scene) {
       gpu.scene.remove(ent.mesh);
       if (ent.mesh.geometry) ent.mesh.geometry.dispose();
-      if (ent.mesh.material) ent.mesh.material.dispose();
+      // Only dispose materials NOT in the shared cache
+      if (ent.mesh.material && !_entityMaterialCache.has(ent.mesh.material.color?.getHex?.())) {
+        ent.mesh.material.dispose();
+      }
     }
     spatialRemove(ent);
     entities.delete(id);
@@ -3108,7 +3829,13 @@ export function voxelApi(gpu) {
       enableShadows = opts.enableShadows;
       needsRemesh = true;
     }
+    if (opts.enableFluids !== undefined) enableFluids = opts.enableFluids;
+    if (opts.enableAsyncMeshing !== undefined) {
+      enableAsyncMeshing = !!opts.enableAsyncMeshing;
+      if (enableAsyncMeshing) initMeshWorkers();
+    }
     // When visual settings change, mark all loaded chunks for rebuild
+    if (needsRemesh && meshWorkers.length > 0) syncRegistryToWorkers();
     if (needsRemesh) {
       for (const chunk of chunks.values()) {
         chunk.dirty = true;
@@ -3133,6 +3860,9 @@ export function voxelApi(gpu) {
       enableTrees,
       enableShadows,
       atlasEnabled,
+      enableFluids,
+      enableAsyncMeshing,
+      asyncMeshPending: pendingAsyncMeshes.size,
       chunkCount: chunks.size,
       meshCount: chunkMeshes.size,
       queueLength: chunkQueue.length,
@@ -3247,9 +3977,16 @@ export function voxelApi(gpu) {
     getEntityCount,
     cleanupEntities,
 
+    // Fluids
+    setFluidSource,
+    removeFluidSource,
+    getFluidLevel: getFluidLevelWorld,
+
     // World reset & config
     resetWorld,
     configureWorld,
+    getWorldConfig,
+    terminateMeshWorkers,
 
     // Noise (exposed for carts)
     noise,
@@ -3299,6 +4036,9 @@ export function voxelApi(gpu) {
       g.cleanupVoxelEntities = cleanupEntities;
       g.simplexNoise2D = noise.fbm2D;
       g.simplexNoise3D = noise.fbm3D;
+      g.setVoxelFluidSource = setFluidSource;
+      g.removeVoxelFluidSource = removeFluidSource;
+      g.getVoxelFluidLevel = getFluidLevelWorld;
     },
   };
 }

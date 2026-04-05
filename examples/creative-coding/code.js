@@ -455,25 +455,24 @@ function buildParticleStorm() {
     const angle = (i / 4) * Math.PI * 2;
     const ps = createParticleSystem(300, {
       shape: 'sphere',
-      size: 0.12,
       segments: 4,
       startColor: psColors[i].start,
       endColor: psColors[i].end,
       emissive: psColors[i].start,
-      emissiveIntensity: 2,
+      emissiveIntensity: 3,
       gravity: 0,
       drag: 0.98,
       emitterX: Math.cos(angle) * 5,
       emitterY: 0,
       emitterZ: Math.sin(angle) * 5,
-      emitRate: 40,
+      emitRate: 60,
       minLife: 2,
       maxLife: 5,
       minSpeed: 2,
       maxSpeed: 8,
       spread: Math.PI,
-      minSize: 0.06,
-      maxSize: 0.2,
+      minSize: 0.15,
+      maxSize: 0.6,
     });
     particleSystems.push(ps);
     stormEmitters.push({ id: ps, angle, idx: i });

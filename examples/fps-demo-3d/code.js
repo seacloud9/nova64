@@ -739,7 +739,7 @@ function buildWADLevel(mapName) {
   playerFloorBase = converted.playerStart.floorH || 0;
   player.x = converted.playerStart.x;
   player.z = converted.playerStart.z;
-  player.y = playerFloorBase + 1.5;
+  player.y = playerFloorBase + 1.0;
   player.yaw = converted.playerStart.angle;
   player.pitch = 0;
 
@@ -909,8 +909,8 @@ export function update(dt) {
   let isMoving = len > 0;
   let bobFreq = isSprinting ? 12 : 8;
   let bobAmp = isSprinting ? 0.25 : 0.15;
-  if (isMoving) player.y = playerFloorBase + 1.5 + Math.sin(gameTime * bobFreq) * bobAmp;
-  else player.y = playerFloorBase + 1.5 + Math.sin(gameTime * 1.5) * 0.03;
+  if (isMoving) player.y = playerFloorBase + 1.0 + Math.sin(gameTime * bobFreq) * bobAmp;
+  else player.y = playerFloorBase + 1.0 + Math.sin(gameTime * 1.5) * 0.03;
 
   // ── Camera ──
   let headY = player.y + 1.0;

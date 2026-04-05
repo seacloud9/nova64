@@ -483,7 +483,8 @@ function spawnEnemy(x, z, type, doomType) {
   }
 
   // WAD sprite billboard (if available, hide cube meshes)
-  let sprite = null, spriteH = 0;
+  let sprite = null,
+    spriteH = 0;
   if (wadTexMgr && doomType) {
     const spriteInfo = wadTexMgr.getSpriteTexture(doomType);
     if (spriteInfo) {
@@ -671,7 +672,10 @@ function buildWADLevel(mapName) {
     if (wadTexMgr && w.texName) {
       const tex = wadTexMgr.getWallTexture(w.texName);
       if (tex) {
-        const m = createCube(1, 0xffffff, [w.x, w.y, w.z], { material: 'standard', roughness: 0.9 });
+        const m = createCube(1, 0xffffff, [w.x, w.y, w.z], {
+          material: 'standard',
+          roughness: 0.9,
+        });
         setScale(m, w.len, w.h, 0.5);
         setRotation(m, 0, w.ang, 0);
 
@@ -735,7 +739,7 @@ function buildWADLevel(mapName) {
   playerFloorBase = converted.playerStart.floorH || 0;
   player.x = converted.playerStart.x;
   player.z = converted.playerStart.z;
-  player.y = playerFloorBase + 1.5;
+  player.y = playerFloorBase + 1.0;
   player.yaw = converted.playerStart.angle;
   player.pitch = 0;
 
@@ -905,8 +909,8 @@ export function update(dt) {
   let isMoving = len > 0;
   let bobFreq = isSprinting ? 12 : 8;
   let bobAmp = isSprinting ? 0.25 : 0.15;
-  if (isMoving) player.y = playerFloorBase + 1.5 + Math.sin(gameTime * bobFreq) * bobAmp;
-  else player.y = playerFloorBase + 1.5 + Math.sin(gameTime * 1.5) * 0.03;
+  if (isMoving) player.y = playerFloorBase + 1.0 + Math.sin(gameTime * bobFreq) * bobAmp;
+  else player.y = playerFloorBase + 1.0 + Math.sin(gameTime * 1.5) * 0.03;
 
   // ── Camera ──
   let headY = player.y + 1.0;
@@ -1381,9 +1385,7 @@ function drawHUD() {
   let isSprinting = key('ShiftLeft') || key('ShiftRight');
   let bobSpeed = isSprinting ? 14 : 9;
   let bobAmplitude = isSprinting ? 9 : 5;
-  let bobX = isMoving
-    ? Math.sin(gameTime * bobSpeed) * bobAmplitude
-    : Math.sin(gameTime * 1.5) * 1;
+  let bobX = isMoving ? Math.sin(gameTime * bobSpeed) * bobAmplitude : Math.sin(gameTime * 1.5) * 1;
   let bobY = isMoving ? Math.abs(Math.sin(gameTime * bobSpeed)) * bobAmplitude * 0.7 : 0;
   let recoilKick = muzzleFlash > 0 ? 18 : 0;
 

@@ -121,8 +121,14 @@ export class WADLoader {
     const flats = {};
     let inFlats = false;
     for (const e of this.directory) {
-      if (e.name === 'F_START' || e.name === 'FF_START') { inFlats = true; continue; }
-      if (e.name === 'F_END' || e.name === 'FF_END') { inFlats = false; continue; }
+      if (e.name === 'F_START' || e.name === 'FF_START') {
+        inFlats = true;
+        continue;
+      }
+      if (e.name === 'F_END' || e.name === 'FF_END') {
+        inFlats = false;
+        continue;
+      }
       if (inFlats && e.size === 4096) {
         flats[e.name] = new Uint8Array(this.buffer, e.filepos, 4096);
       }
@@ -177,8 +183,14 @@ export class WADLoader {
     const sprites = {};
     let inSprites = false;
     for (const e of this.directory) {
-      if (e.name === 'S_START' || e.name === 'SS_START') { inSprites = true; continue; }
-      if (e.name === 'S_END' || e.name === 'SS_END') { inSprites = false; continue; }
+      if (e.name === 'S_START' || e.name === 'SS_START') {
+        inSprites = true;
+        continue;
+      }
+      if (e.name === 'S_END' || e.name === 'SS_END') {
+        inSprites = false;
+        continue;
+      }
       if (inSprites && e.size > 0) {
         sprites[e.name] = new Uint8Array(this.buffer, e.filepos, e.size);
       }
@@ -287,9 +299,42 @@ export function convertWADMap(map, scale) {
   const cx = (mnX + mxX) / 2,
     cy = (mnY + mxY) / 2;
 
-  // Find lowest floor as baseline
-  let baseFloor = 0;
-  for (const s of sectors) if (s.floorH < baseFloor) baseFloor = s.floorH;
+  // Find player start position (thing type 1) to use its sector floor as baseline
+  let playerThing = null;
+  for (const t of things) {
+    if (t.type === 1) { playerThing = t; break; }
+  }
+
+  // Find player's sector floor height using nearest linedef
+  let playerSectorFloor = 0;
+  if (playerThing) {
+    let minDist = Infinity;
+    for (const line of linedefs) {
+      const va = vertexes[line.v1], vb = vertexes[line.v2];
+      if (!va || !vb) continue;
+      const dx = vb.x - va.x, dy = vb.y - va.y;
+      const lenSq = dx * dx + dy * dy;
+      if (lenSq < 1) continue;
+      let t = ((playerThing.x - va.x) * dx + (playerThing.y - va.y) * dy) / lenSq;
+      t = Math.max(0, Math.min(1, t));
+      const px = va.x + t * dx, py = va.y + t * dy;
+      const d = Math.hypot(playerThing.x - px, playerThing.y - py);
+      // Check both sides of the linedef
+      const sideIdxs = [];
+      if (line.right >= 0) sideIdxs.push(line.right);
+      if (line.left >= 0) sideIdxs.push(line.left);
+      for (const si of sideIdxs) {
+        const side = sidedefs[si];
+        if (side && sectors[side.sector]) {
+          const sf = sectors[side.sector].floorH;
+          if (d < minDist) { minDist = d; playerSectorFloor = sf; }
+        }
+      }
+    }
+  }
+
+  // Use player's sector floor as the baseline — player always starts at Y=0
+  const baseFloor = playerSectorFloor;
 
   const walls = [];
   const colSegs = [];
@@ -330,8 +375,16 @@ export function convertWADMap(map, scale) {
         const fSide = line.right >= 0 ? sidedefs[line.right] : null;
         const texName = fSide && fSide.middle !== '-' ? fSide.middle : null;
         walls.push({
-          x: mx, y: fF + h / 2, z: mz, len, h, ang, light,
-          texName, xoff: fSide ? fSide.xoff : 0, yoff: fSide ? fSide.yoff : 0,
+          x: mx,
+          y: fF + h / 2,
+          z: mz,
+          len,
+          h,
+          ang,
+          light,
+          texName,
+          xoff: fSide ? fSide.xoff : 0,
+          yoff: fSide ? fSide.yoff : 0,
         });
         rasterSeg(colSegs, x1, z1, x2, z2, 1.0);
       }
@@ -348,8 +401,17 @@ export function convertWADMap(map, scale) {
         if (fSide && fSide.lower && fSide.lower !== '-') loTex = fSide.lower;
         else if (bSide && bSide.lower && bSide.lower !== '-') loTex = bSide.lower;
         walls.push({
-          x: mx, y: bot + loH / 2, z: mz, len, h: loH, ang, light, step: true,
-          texName: loTex, xoff: fSide ? fSide.xoff : 0, yoff: fSide ? fSide.yoff : 0,
+          x: mx,
+          y: bot + loH / 2,
+          z: mz,
+          len,
+          h: loH,
+          ang,
+          light,
+          step: true,
+          texName: loTex,
+          xoff: fSide ? fSide.xoff : 0,
+          yoff: fSide ? fSide.yoff : 0,
         });
         if (loH > 1.0) rasterSeg(colSegs, x1, z1, x2, z2, 0.8);
       }
@@ -361,8 +423,17 @@ export function convertWADMap(map, scale) {
         if (fSide && fSide.upper && fSide.upper !== '-') upTex = fSide.upper;
         else if (bSide && bSide.upper && bSide.upper !== '-') upTex = bSide.upper;
         walls.push({
-          x: mx, y: bot + hiH / 2, z: mz, len, h: hiH, ang, light, upper: true,
-          texName: upTex, xoff: fSide ? fSide.xoff : 0, yoff: fSide ? fSide.yoff : 0,
+          x: mx,
+          y: bot + hiH / 2,
+          z: mz,
+          len,
+          h: hiH,
+          ang,
+          light,
+          upper: true,
+          texName: upTex,
+          xoff: fSide ? fSide.xoff : 0,
+          yoff: fSide ? fSide.yoff : 0,
         });
       }
       // Impassable two-sided line (blocking flag)
@@ -375,47 +446,18 @@ export function convertWADMap(map, scale) {
   const enemies = [],
     items = [];
 
-  // Raw player start position (in DOOM coords) for sector lookup
-  let playerRawX = 0, playerRawY = 0;
-
   for (const t of things) {
     const tx = (t.x - cx) * scale,
       tz = (t.y - cy) * scale;
     const ta = ((t.angle - 90) * Math.PI) / 180;
 
     if (t.type === 1) {
+      // floorH is 0 because we used this sector's floor as baseFloor
       playerStart = { x: tx, z: tz, angle: ta, floorH: 0 };
-      playerRawX = t.x;
-      playerRawY = t.y;
     } else if (THING_MONSTERS[t.type]) {
       enemies.push({ x: tx, z: tz, type: THING_MONSTERS[t.type], doomType: t.type });
     } else if (THING_ITEMS[t.type]) {
       items.push({ x: tx, z: tz, type: THING_ITEMS[t.type], doomType: t.type });
-    }
-  }
-
-  // Find player's sector floor height using nearest linedef
-  let minDist = Infinity;
-  for (const line of linedefs) {
-    const va = vertexes[line.v1], vb = vertexes[line.v2];
-    if (!va || !vb || line.right < 0) continue;
-    // Distance from player to line segment
-    const dx = vb.x - va.x, dy = vb.y - va.y;
-    const lenSq = dx * dx + dy * dy;
-    if (lenSq < 1) continue;
-    let t = ((playerRawX - va.x) * dx + (playerRawY - va.y) * dy) / lenSq;
-    t = Math.max(0, Math.min(1, t));
-    const px = va.x + t * dx, py = va.y + t * dy;
-    const d = Math.hypot(playerRawX - px, playerRawY - py);
-    if (d < minDist) {
-      const side = sidedefs[line.right];
-      if (side) {
-        const sec = sectors[side.sector];
-        if (sec) {
-          minDist = d;
-          playerStart.floorH = (sec.floorH - baseFloor) * scale;
-        }
-      }
     }
   }
 

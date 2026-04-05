@@ -5,19 +5,49 @@
 // DOOM thing type → sprite prefix mapping
 const THING_SPRITE_PREFIX = {
   // Monsters
-  3004: 'POSS', 9: 'SPOS', 3001: 'TROO', 3006: 'SKUL',
-  65: 'CPOS', 3005: 'HEAD', 66: 'SKEL', 68: 'BSPI',
-  71: 'PAIN', 84: 'SSWV', 3002: 'SARG', 58: 'SARG',
-  67: 'FATT', 69: 'BOS2', 3003: 'BOSS', 64: 'VILE',
-  16: 'CYBR', 7: 'SPID',
+  3004: 'POSS',
+  9: 'SPOS',
+  3001: 'TROO',
+  3006: 'SKUL',
+  65: 'CPOS',
+  3005: 'HEAD',
+  66: 'SKEL',
+  68: 'BSPI',
+  71: 'PAIN',
+  84: 'SSWV',
+  3002: 'SARG',
+  58: 'SARG',
+  67: 'FATT',
+  69: 'BOS2',
+  3003: 'BOSS',
+  64: 'VILE',
+  16: 'CYBR',
+  7: 'SPID',
   // Items
-  2011: 'STIM', 2012: 'MEDI', 2014: 'BON1', 2015: 'BON2',
-  2018: 'ARM1', 2019: 'ARM2', 2007: 'CLIP', 2008: 'SHEL',
-  2010: 'ROCK', 2047: 'CELL', 2001: 'SHOT', 2002: 'MGUN',
-  2003: 'LAUN', 2004: 'PLAS', 2006: 'BFUG',
+  2011: 'STIM',
+  2012: 'MEDI',
+  2014: 'BON1',
+  2015: 'BON2',
+  2018: 'ARM1',
+  2019: 'ARM2',
+  2007: 'CLIP',
+  2008: 'SHEL',
+  2010: 'ROCK',
+  2047: 'CELL',
+  2001: 'SHOT',
+  2002: 'MGUN',
+  2003: 'LAUN',
+  2004: 'PLAS',
+  2006: 'BFUG',
   // Decorations
-  2035: 'BAR1', 70: 'FCAN', 44: 'TBLU', 45: 'TGRN', 46: 'TRED',
-  48: 'ELEC', 34: 'CAND', 35: 'CBRA',
+  2035: 'BAR1',
+  70: 'FCAN',
+  44: 'TBLU',
+  45: 'TGRN',
+  46: 'TRED',
+  48: 'ELEC',
+  34: 'CAND',
+  35: 'CBRA',
 };
 
 export { THING_SPRITE_PREFIX };
@@ -39,7 +69,10 @@ export class WADTextureManager {
   init() {
     if (this._init) return;
     this.palette = this.wad.getPalette();
-    if (!this.palette) { console.warn('WAD has no PLAYPAL'); return; }
+    if (!this.palette) {
+      console.warn('WAD has no PLAYPAL');
+      return;
+    }
     this.patchNames = this.wad.getPNames();
     this.textureDefs = {
       ...this.wad.getTextureDefs('TEXTURE1'),
@@ -50,8 +83,8 @@ export class WADTextureManager {
     this._init = true;
     console.log(
       `WAD textures: ${Object.keys(this.textureDefs).length} wall, ` +
-      `${Object.keys(this.flatLumps).length} flats, ` +
-      `${Object.keys(this.spriteLumps).length} sprites`
+        `${Object.keys(this.flatLumps).length} flats, ` +
+        `${Object.keys(this.spriteLumps).length} sprites`
     );
   }
 
@@ -82,7 +115,7 @@ export class WADTextureManager {
       for (let safety = 0; safety < 256; safety++) {
         if (ofs >= data.length) break;
         const topdelta = data[ofs++];
-        if (topdelta === 0xFF) break;
+        if (topdelta === 0xff) break;
         if (ofs >= data.length) break;
         const length = data[ofs++];
         ofs++; // skip pre-padding
@@ -93,7 +126,7 @@ export class WADTextureManager {
           if (y < height) {
             const palIdx = data[ofs];
             const pi = (y * width + x) * 4;
-            pixels[pi]     = this.palette[palIdx * 3];
+            pixels[pi] = this.palette[palIdx * 3];
             pixels[pi + 1] = this.palette[palIdx * 3 + 1];
             pixels[pi + 2] = this.palette[palIdx * 3 + 2];
             pixels[pi + 3] = 255;
@@ -132,7 +165,7 @@ export class WADTextureManager {
           if (dx < 0 || dx >= width || dy < 0 || dy >= height) continue;
 
           const dstIdx = (dy * width + dx) * 4;
-          pixels[dstIdx]     = pic.pixels[srcIdx];
+          pixels[dstIdx] = pic.pixels[srcIdx];
           pixels[dstIdx + 1] = pic.pixels[srcIdx + 1];
           pixels[dstIdx + 2] = pic.pixels[srcIdx + 2];
           pixels[dstIdx + 3] = 255;
@@ -202,7 +235,7 @@ export class WADTextureManager {
     const pixels = new Uint8Array(64 * 64 * 4);
     for (let i = 0; i < 4096; i++) {
       const palIdx = flatData[i];
-      pixels[i * 4]     = this.palette[palIdx * 3];
+      pixels[i * 4] = this.palette[palIdx * 3];
       pixels[i * 4 + 1] = this.palette[palIdx * 3 + 1];
       pixels[i * 4 + 2] = this.palette[palIdx * 3 + 2];
       pixels[i * 4 + 3] = 255;
@@ -302,9 +335,9 @@ export function setWallUVs(meshId, wallDoomLen, wallDoomH, texWidth, texHeight, 
   // BoxGeometry face order: +x(0-3), -x(4-7), +y(8-11), -y(12-15), +z(16-19), -z(20-23)
   // Main visible faces are +z (front) and -z (back)
   const setFace = (start, tu, tv) => {
-    uvAttr.setXY(start,     ofsU,      ofsV);
+    uvAttr.setXY(start, ofsU, ofsV);
     uvAttr.setXY(start + 1, ofsU + tu, ofsV);
-    uvAttr.setXY(start + 2, ofsU,      ofsV + tv);
+    uvAttr.setXY(start + 2, ofsU, ofsV + tv);
     uvAttr.setXY(start + 3, ofsU + tu, ofsV + tv);
   };
 

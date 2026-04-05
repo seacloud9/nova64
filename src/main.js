@@ -24,6 +24,7 @@ import { presetsApi } from '../runtime/api-presets.js';
 import { generativeApi } from '../runtime/api-generative.js';
 import { gameUtilsApi } from '../runtime/api-gameutils.js';
 import { nftSeedApi } from '../runtime/nft-seed.js';
+import { envApi } from '../runtime/env.js';
 
 const canvas = document.getElementById('screen');
 
@@ -59,6 +60,7 @@ const presetsInst = presetsApi(gpu);
 const genArtInst = generativeApi(gpu);
 const gameUtilsInst = gameUtilsApi();
 const nftSeedInst = nftSeedApi();
+const envInst = envApi();
 
 // Create UI API - needs to be created after api is fully initialized
 let uiApiInstance;
@@ -85,6 +87,7 @@ presetsInst.exposeTo(g);
 genArtInst.exposeTo(g);
 gameUtilsInst.exposeTo(g);
 nftSeedInst.exposeTo(g);
+envInst.exposeTo(g);
 
 // Now create UI API after g has rgba8 and other functions
 uiApiInstance = uiApi(gpu, g);
@@ -97,7 +100,7 @@ Object.assign(globalThis, g);
 // inject camera ref into sprite system
 if (g.getCamera) sApi.setCameraRef(g.getCamera());
 
-const nova = new Nova64(gpu);
+const nova = new Nova64(gpu, envInst);
 
 let paused = false;
 let stepOnce = false;

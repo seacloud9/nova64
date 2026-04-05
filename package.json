@@ -322,7 +322,14 @@
       "exportSeedMetadata": "readonly",
       "setSeed": "readonly",
       "getSeed": "readonly",
-      "getSeedRNG": "readonly"
+      "getSeedRNG": "readonly",
+      "loadEnv": "readonly",
+      "setLevel": "readonly",
+      "getEnv": "readonly",
+      "getLevel": "readonly",
+      "getLevels": "readonly",
+      "getCheats": "readonly",
+      "setCheat": "readonly"
     }
   },
   "prettier": {

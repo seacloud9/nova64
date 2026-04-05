@@ -1,5 +1,63 @@
 // Minecraft Demo - Ultimate Edition with Biomes, Ores, and Caves
 let lastDayTime = -1;
+
+// ── Environment configuration (loaded automatically by console) ──
+export const env = {
+  defaults: {
+    sky: { type: 'gradient', topColor: 0x87ceeb, bottomColor: 0xe0f0ff },
+    fog: { enabled: true, color: 0x87ceeb, near: 25, far: 50 },
+    camera: { position: [0, 80, 0], target: [0, 80, -10], fov: 75 },
+    lighting: {
+      ambient: 0x666666,
+      directional: { direction: [1, 2, 1], color: 0xffffff, intensity: 0.6 },
+    },
+    effects: {},
+    voxel: {
+      renderDistance: 3,
+      maxMeshRebuildsPerFrame: 3,
+      enableLOD: true,
+      textures: true,
+    },
+    cheats: {
+      enabled: true,
+      items: {
+        noclip: false,
+        godMode: false,
+        speedMultiplier: 1.0,
+        jumpMultiplier: 1.0,
+        noFog: false,
+        dayLocked: false,
+      },
+    },
+  },
+  levels: {
+    overworld: {
+      sky: { type: 'gradient', topColor: 0x87ceeb, bottomColor: 0xe0f0ff },
+      fog: { color: 0x87ceeb, near: 25, far: 50 },
+    },
+    caves: {
+      sky: { type: 'solid', color: 0x000000 },
+      fog: { color: 0x111111, near: 5, far: 20 },
+      lighting: { ambient: 0x222222 },
+    },
+    nether: {
+      sky: { type: 'solid', color: 0x330000 },
+      fog: { color: 0x330808, near: 8, far: 30 },
+      lighting: { ambient: 0x441111 },
+    },
+  },
+  onCheatsChanged(cheats) {
+    // React to cheat changes from the overlay
+    if (cheats.speedMultiplier !== undefined) player.speed = 0.15 * cheats.speedMultiplier;
+    if (cheats.jumpMultiplier !== undefined) player.jump = 0.35 * cheats.jumpMultiplier;
+    if (cheats.noFog) {
+      if (typeof clearFog === 'function') clearFog();
+    } else {
+      if (typeof setFog === 'function') setFog(0x87ceeb, 25, 50);
+    }
+  },
+};
+
 let player = {
   x: 0,
   y: 80,

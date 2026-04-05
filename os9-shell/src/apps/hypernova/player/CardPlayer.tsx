@@ -2,10 +2,11 @@
 // Renders a card stack in play mode with full interactivity
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useHyperNovaStore } from '../shared/store';
-import type { CardObject, Stack } from '../shared/schema';
+import type { CardObject, Stack, SymbolInstanceObject, HNSymbol, Keyframe } from '../shared/schema';
 import { renderObjectStyle, renderCardBackground, CARD_W, CARD_H } from '../editor/EditorCanvas';
-import { runScript, type ScriptAPI } from './ScriptRunner';
+import { runScript, buildTweenAPI, type ScriptAPI } from './ScriptRunner';
 import { MessageDispatcher, isNovaTalkScript, buildNovaTalkAPI } from './novatalk';
+import { killAllTweens, createClipTimeline, playClip } from './TweenEngine';
 
 // ---------------------------------------------------------------------------
 // CardPlayer
@@ -26,6 +27,7 @@ export function CardPlayer() {
     setCurrentCardId(stack?.cards[0]?.id ?? '');
     setFieldValues({});
     dispatcherRef.current = null;
+    killAllTweens();
   }, [store.mode, stack]);
 
   const currentCard = stack?.cards.find((c) => c.id === currentCardId);
@@ -55,6 +57,7 @@ export function CardPlayer() {
         getField: (id: string) => fieldValues[id] ?? '',
         alert: (msg: string) => window.alert(msg),
         log: (...args: unknown[]) => console.log('[hyperNova]', ...args),
+        ...buildTweenAPI(),
       };
     },
     [stack, fieldValues]
@@ -110,6 +113,7 @@ export function CardPlayer() {
       }
       // Clear interpreter cache on card change
       dispatcherRef.current?.clearCache();
+      killAllTweens();
       prevCardIdRef.current = currentCardId;
     }
   }, [currentCardId]);
@@ -140,6 +144,7 @@ export function CardPlayer() {
   }
 
   const bgStyle = renderCardBackground(currentCard.background);
+  const library = store.project.library;
 
   // ---- Navigation breadcrumb ---------------------------------------------
   const cardIndex = stack.cards.findIndex((c) => c.id === currentCardId);
@@ -193,113 +198,223 @@ export function CardPlayer() {
           boxShadow: '0 4px 32px rgba(0,0,0,0.6)',
         }}
       >
-        {currentCard.objects.map((obj) => {
-          const style = renderObjectStyle(obj, false);
-
-          if (obj.type === 'field') {
-            const val = fieldValues[obj.id] ?? obj.value ?? '';
-            return (
-              <input
-                key={obj.id}
-                style={{
-                  ...style,
-                  pointerEvents: 'all',
-                  cursor: 'text',
-                }}
-                value={val}
-                placeholder={obj.placeholder}
-                onChange={(e) =>
-                  setFieldValues((prev) => ({ ...prev, [obj.id]: e.target.value }))
-                }
-              />
-            );
-          }
-
-          if (obj.type === 'button') {
-            return (
-              <div
-                key={obj.id}
-                style={{
-                  ...style,
-                  cursor: 'pointer',
-                  transition: 'opacity 0.1s, transform 0.1s',
-                }}
-                onClick={() => handleObjectClick(obj)}
-                onMouseDown={(e) => {
-                  (e.currentTarget as HTMLElement).style.opacity = '0.8';
-                  (e.currentTarget as HTMLElement).style.transform = 'scale(0.97)';
-                  if (isNovaTalkScript(obj.script || '')) {
-                    sendNovaTalkMessage('mouseDown', obj);
-                  }
-                }}
-                onMouseUp={(e) => {
-                  (e.currentTarget as HTMLElement).style.opacity = '1';
-                  (e.currentTarget as HTMLElement).style.transform = 'scale(1)';
-                }}
-                onMouseEnter={() => {
-                  if (isNovaTalkScript(obj.script || '')) {
-                    sendNovaTalkMessage('mouseEnter', obj);
-                  }
-                }}
-                onMouseLeave={() => {
-                  if (isNovaTalkScript(obj.script || '')) {
-                    sendNovaTalkMessage('mouseLeave', obj);
-                  }
-                }}
-              >
-                {obj.label}
-              </div>
-            );
-          }
-
-          if (obj.type === 'text') {
-            const hasScript = !!(obj as { script?: string }).script;
-            return (
-              <div
-                key={obj.id}
-                style={{ ...style, cursor: hasScript ? 'pointer' : 'default' }}
-                onClick={hasScript ? () => handleObjectClick(obj) : undefined}
-              >
-                {obj.text}
-              </div>
-            );
-          }
-
-          if (obj.type === 'image') {
-            if (!obj.asset) return null;
-            const hasScript = !!(obj as { script?: string }).script;
-            return (
-              <img
-                key={obj.id}
-                src={obj.asset}
-                alt=""
-                style={{
-                  position: 'absolute',
-                  left: obj.x,
-                  top: obj.y,
-                  width: obj.width,
-                  height: obj.height,
-                  objectFit: 'contain',
-                  cursor: hasScript ? 'pointer' : 'default',
-                }}
-                onClick={hasScript ? () => handleObjectClick(obj) : undefined}
-              />
-            );
-          }
-
-          // rect
-          {
-            const hasScript = !!(obj as { script?: string }).script;
-            return (
-              <div
-                key={obj.id}
-                style={{ ...style, cursor: hasScript ? 'pointer' : 'default' }}
-                onClick={hasScript ? () => handleObjectClick(obj) : undefined}
-              />
-            );
-          }
-        })}
+        {currentCard.objects.map((obj) =>
+          renderObject(obj, fieldValues, setFieldValues, handleObjectClick, sendNovaTalkMessage, library)
+        )}
       </div>
     </div>
   );
+}
+
+// ---------------------------------------------------------------------------
+// MovieClip renderer — plays through keyframes on a GSAP timeline
+// ---------------------------------------------------------------------------
+
+function MovieClipPlayer({
+  instance,
+  symbol,
+  library,
+  onClick,
+}: {
+  instance: SymbolInstanceObject;
+  symbol: HNSymbol;
+  library: HNSymbol[];
+  onClick?: () => void;
+}) {
+  const [currentFrame, setCurrentFrame] = useState(1);
+
+  useEffect(() => {
+    if (symbol.type !== 'movie-clip' || symbol.frames.length <= 1) return;
+
+    const frameDuration = 1 / symbol.fps;
+    const clip = createClipTimeline(
+      instance.id,
+      frameDuration,
+      symbol.frames.length,
+      symbol.loop,
+      (frame) => setCurrentFrame(frame),
+    );
+    playClip(instance.id);
+
+    return () => {
+      clip.timeline.kill();
+    };
+  }, [instance.id, symbol]);
+
+  // Find the active keyframe: last keyframe whose .frame <= currentFrame
+  const activeKeyframe: Keyframe | undefined = [...symbol.frames]
+    .reverse()
+    .find((kf) => kf.frame <= currentFrame) ?? symbol.frames[0];
+
+  if (!activeKeyframe) return null;
+
+  return (
+    <div
+      data-hn-obj={instance.id}
+      style={{
+        position: 'absolute',
+        left: instance.x,
+        top: instance.y,
+        width: instance.width,
+        height: instance.height,
+        overflow: 'hidden',
+        cursor: onClick ? 'pointer' : 'default',
+      }}
+      onClick={onClick}
+    >
+      {/* Scale symbol content to fit instance bounds */}
+      <div
+        style={{
+          position: 'relative',
+          width: symbol.width,
+          height: symbol.height,
+          transform: `scale(${instance.width / symbol.width}, ${instance.height / symbol.height})`,
+          transformOrigin: 'top left',
+        }}
+      >
+        {activeKeyframe.objects.map((childObj) =>
+          renderObject(childObj, {}, undefined, undefined, undefined, library)
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Render a single CardObject (shared between card and MovieClip frames)
+// ---------------------------------------------------------------------------
+
+function renderObject(
+  obj: CardObject,
+  fieldValues: Record<string, string>,
+  setFieldValues?: React.Dispatch<React.SetStateAction<Record<string, string>>>,
+  handleObjectClick?: (obj: CardObject) => void,
+  sendNovaTalkMessage?: (message: string, targetObj: CardObject | null) => void,
+  library?: HNSymbol[],
+) {
+  // Symbol instance → delegate to MovieClipPlayer
+  if (obj.type === 'symbol-instance') {
+    const symbol = library?.find((s) => s.id === obj.symbolId);
+    if (!symbol) return null;
+    const hasScript = !!obj.script;
+    return (
+      <MovieClipPlayer
+        key={obj.id}
+        instance={obj}
+        symbol={symbol}
+        library={library ?? []}
+        onClick={hasScript && handleObjectClick ? () => handleObjectClick(obj) : undefined}
+      />
+    );
+  }
+
+  const style = renderObjectStyle(obj, false);
+
+  if (obj.type === 'field') {
+    const val = fieldValues[obj.id] ?? obj.value ?? '';
+    return (
+      <input
+        key={obj.id}
+        data-hn-obj={obj.id}
+        style={{
+          ...style,
+          pointerEvents: 'all',
+          cursor: 'text',
+        }}
+        value={val}
+        placeholder={obj.placeholder}
+        onChange={setFieldValues ? (e) =>
+          setFieldValues((prev) => ({ ...prev, [obj.id]: e.target.value }))
+        : undefined}
+      />
+    );
+  }
+
+  if (obj.type === 'button') {
+    return (
+      <div
+        key={obj.id}
+        data-hn-obj={obj.id}
+        style={{
+          ...style,
+          cursor: 'pointer',
+          transition: 'opacity 0.1s, transform 0.1s',
+        }}
+        onClick={handleObjectClick ? () => handleObjectClick(obj) : undefined}
+        onMouseDown={sendNovaTalkMessage ? (e) => {
+          (e.currentTarget as HTMLElement).style.opacity = '0.8';
+          (e.currentTarget as HTMLElement).style.transform = 'scale(0.97)';
+          if (isNovaTalkScript(obj.script || '')) {
+            sendNovaTalkMessage('mouseDown', obj);
+          }
+        } : undefined}
+        onMouseUp={(e) => {
+          (e.currentTarget as HTMLElement).style.opacity = '1';
+          (e.currentTarget as HTMLElement).style.transform = 'scale(1)';
+        }}
+        onMouseEnter={sendNovaTalkMessage ? () => {
+          if (isNovaTalkScript(obj.script || '')) {
+            sendNovaTalkMessage('mouseEnter', obj);
+          }
+        } : undefined}
+        onMouseLeave={sendNovaTalkMessage ? () => {
+          if (isNovaTalkScript(obj.script || '')) {
+            sendNovaTalkMessage('mouseLeave', obj);
+          }
+        } : undefined}
+      >
+        {obj.label}
+      </div>
+    );
+  }
+
+  if (obj.type === 'text') {
+    const hasScript = !!(obj as { script?: string }).script;
+    return (
+      <div
+        key={obj.id}
+        data-hn-obj={obj.id}
+        style={{ ...style, cursor: hasScript ? 'pointer' : 'default' }}
+        onClick={hasScript && handleObjectClick ? () => handleObjectClick(obj) : undefined}
+      >
+        {obj.text}
+      </div>
+    );
+  }
+
+  if (obj.type === 'image') {
+    if (!obj.asset) return null;
+    const hasScript = !!(obj as { script?: string }).script;
+    return (
+      <img
+        key={obj.id}
+        data-hn-obj={obj.id}
+        src={obj.asset}
+        alt=""
+        style={{
+          position: 'absolute',
+          left: obj.x,
+          top: obj.y,
+          width: obj.width,
+          height: obj.height,
+          objectFit: 'contain',
+          cursor: hasScript ? 'pointer' : 'default',
+        }}
+        onClick={hasScript && handleObjectClick ? () => handleObjectClick(obj) : undefined}
+      />
+    );
+  }
+
+  // rect
+  {
+    const hasScript = !!(obj as { script?: string }).script;
+    return (
+      <div
+        key={obj.id}
+        data-hn-obj={obj.id}
+        style={{ ...style, cursor: hasScript ? 'pointer' : 'default' }}
+        onClick={hasScript && handleObjectClick ? () => handleObjectClick(obj) : undefined}
+      />
+    );
+  }
 }

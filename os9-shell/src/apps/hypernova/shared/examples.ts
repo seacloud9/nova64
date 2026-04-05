@@ -3,7 +3,7 @@
 
 import type {
   HyperNovaProject, TextObject, ButtonObject, FieldObject,
-  RectObject,
+  RectObject, SymbolInstanceObject, HNSymbol,
 } from './schema';
 import { genId } from './schema';
 
@@ -635,6 +635,317 @@ function createDashboard(): HyperNovaProject {
 }
 
 // ---------------------------------------------------------------------------
+// 7. Tween Animation Showcase
+// ---------------------------------------------------------------------------
+
+function createTweenShowcase(): HyperNovaProject {
+  const c1 = genId(), c2 = genId(), c3 = genId();
+
+  // Object IDs that scripts reference for tweening
+  const titleId = genId();
+  const box1 = genId();
+  const box2 = genId();
+  const box3 = genId();
+  const heroTxt = genId();
+  const fadeBtn = genId();
+  const pulseBtn = genId();
+  const shakeBtn = genId();
+  const slideBox = genId();
+
+  return {
+    version: 1,
+    name: 'Tween Animation Showcase',
+    stacks: [{
+      id: genId(),
+      title: 'Tweens',
+      cards: [
+        {
+          id: c1, title: 'Intro',
+          background: { type: '2d-gradient', color: '#0f0c29', gradientTo: '#302b63' },
+          objects: [
+            { id: titleId, type: 'text', x: 80, y: 30, width: 480, height: 50, text: '✨ GSAP Tween Showcase', fontSize: 28, color: '#f8e71c', bold: true, italic: false } as TextObject,
+            { id: genId(), type: 'text', x: 60, y: 90, width: 520, height: 24, text: 'Click the buttons below to trigger animations on the colored boxes.', fontSize: 13, color: '#aaaadd', bold: false, italic: false } as TextObject,
+
+            // Animated boxes
+            { id: box1, type: 'rect', x: 100, y: 140, width: 80, height: 80, bgColor: '#ff6b6b', borderColor: '#ff8787', borderWidth: 2, borderRadius: 12 } as RectObject,
+            { id: box2, type: 'rect', x: 260, y: 140, width: 80, height: 80, bgColor: '#51cf66', borderColor: '#69db7c', borderWidth: 2, borderRadius: 12 } as RectObject,
+            { id: box3, type: 'rect', x: 420, y: 140, width: 80, height: 80, bgColor: '#339af0', borderColor: '#4dabf7', borderWidth: 2, borderRadius: 12 } as RectObject,
+
+            // Tween trigger buttons
+            { id: genId(), type: 'button', x: 60, y: 250, width: 130, height: 34, label: '🎭 Fade In All', bgColor: '#6741d9', textColor: '#ffffff',
+              script: `fadeIn("${box1}", { duration: 0.4 }); fadeIn("${box2}", { duration: 0.4, delay: 0.15 }); fadeIn("${box3}", { duration: 0.4, delay: 0.3 });` } as ButtonObject,
+            { id: genId(), type: 'button', x: 200, y: 250, width: 130, height: 34, label: '🎭 Fade Out All', bgColor: '#862e9c', textColor: '#ffffff',
+              script: `fadeOut("${box1}", { duration: 0.3 }); fadeOut("${box2}", { duration: 0.3, delay: 0.1 }); fadeOut("${box3}", { duration: 0.3, delay: 0.2 });` } as ButtonObject,
+            { id: genId(), type: 'button', x: 340, y: 250, width: 130, height: 34, label: '💫 Pulse Red', bgColor: '#e03131', textColor: '#ffffff',
+              script: `pulse("${box1}", { duration: 0.25 });` } as ButtonObject,
+
+            { id: genId(), type: 'button', x: 60, y: 295, width: 130, height: 34, label: '📳 Shake Green', bgColor: '#2b8a3e', textColor: '#ffffff',
+              script: `shake("${box2}");` } as ButtonObject,
+            { id: genId(), type: 'button', x: 200, y: 295, width: 190, height: 34, label: '↗️ Move Blue Across', bgColor: '#1971c2', textColor: '#ffffff',
+              script: `tweenTo("${box3}", { x: 100, y: 140 }, { duration: 0.8, ease: "bounce.out" });` } as ButtonObject,
+            { id: genId(), type: 'button', x: 400, y: 295, width: 130, height: 34, label: '↩️ Reset Blue', bgColor: '#495057', textColor: '#ffffff',
+              script: `tweenTo("${box3}", { x: 420, y: 140, opacity: 1 }, { duration: 0.4 });` } as ButtonObject,
+
+            { id: genId(), type: 'button', x: 220, y: 340, width: 200, height: 36, label: 'Slide-In Demo →', bgColor: '#3a6edd', textColor: '#ffffff', script: `goToCard("${c2}");` } as ButtonObject,
+          ],
+        },
+        {
+          id: c2, title: 'Slide & Sequence',
+          background: { type: '2d-gradient', color: '#1a1a2e', gradientTo: '#16213e' },
+          objects: [
+            { id: heroTxt, type: 'text', x: 100, y: 30, width: 440, height: 40, text: '🚀 Slide-In Animations', fontSize: 26, color: '#e2e8f0', bold: true, italic: false } as TextObject,
+            { id: slideBox, type: 'rect', x: 200, y: 100, width: 240, height: 120, bgColor: '#7950f2', borderColor: '#845ef7', borderWidth: 2, borderRadius: 16 } as RectObject,
+            { id: genId(), type: 'text', x: 220, y: 140, width: 200, height: 24, text: 'I slide around!', fontSize: 16, color: '#ffffff', bold: true, italic: false } as TextObject,
+
+            { id: genId(), type: 'button', x: 40, y: 250, width: 120, height: 34, label: '← From Left', bgColor: '#364fc7', textColor: '#ffffff',
+              script: `slideIn("${slideBox}", "left", { duration: 0.6 });` } as ButtonObject,
+            { id: genId(), type: 'button', x: 170, y: 250, width: 120, height: 34, label: '→ From Right', bgColor: '#364fc7', textColor: '#ffffff',
+              script: `slideIn("${slideBox}", "right", { duration: 0.6 });` } as ButtonObject,
+            { id: genId(), type: 'button', x: 300, y: 250, width: 120, height: 34, label: '↑ From Top', bgColor: '#364fc7', textColor: '#ffffff',
+              script: `slideIn("${slideBox}", "top", { duration: 0.6 });` } as ButtonObject,
+            { id: genId(), type: 'button', x: 430, y: 250, width: 130, height: 34, label: '↓ From Bottom', bgColor: '#364fc7', textColor: '#ffffff',
+              script: `slideIn("${slideBox}", "bottom", { duration: 0.6 });` } as ButtonObject,
+
+            { id: genId(), type: 'button', x: 40, y: 310, width: 100, height: 30, label: '← Back', bgColor: '#2a2a4a', textColor: '#8888cc', script: `goToCard("${c1}");` } as ButtonObject,
+            { id: genId(), type: 'button', x: 220, y: 310, width: 200, height: 36, label: 'Chained Tweens →', bgColor: '#3a6edd', textColor: '#ffffff', script: `goToCard("${c3}");` } as ButtonObject,
+          ],
+        },
+        {
+          id: c3, title: 'Chained Tweens',
+          background: { type: '2d-gradient', color: '#0a0a1a', gradientTo: '#1a0a2e' },
+          objects: [
+            { id: genId(), type: 'text', x: 80, y: 20, width: 480, height: 40, text: '🔗 Staggered & Chained', fontSize: 26, color: '#ffd43b', bold: true, italic: false } as TextObject,
+            { id: genId(), type: 'text', x: 60, y: 65, width: 520, height: 22, text: 'Use delay to chain tweens together into sequences.', fontSize: 13, color: '#868e96', bold: false, italic: false } as TextObject,
+
+            { id: fadeBtn, type: 'rect', x: 60, y: 100, width: 160, height: 60, bgColor: '#e64980', borderColor: '#f06595', borderWidth: 2, borderRadius: 10 } as RectObject,
+            { id: pulseBtn, type: 'rect', x: 240, y: 100, width: 160, height: 60, bgColor: '#f76707', borderColor: '#fd7e14', borderWidth: 2, borderRadius: 10 } as RectObject,
+            { id: shakeBtn, type: 'rect', x: 420, y: 100, width: 160, height: 60, bgColor: '#20c997', borderColor: '#38d9a9', borderWidth: 2, borderRadius: 10 } as RectObject,
+
+            { id: genId(), type: 'button', x: 160, y: 200, width: 320, height: 40, label: '▶ Run Staggered Sequence', bgColor: '#9c36b5', textColor: '#ffffff',
+              script: [
+                `fadeOut("${fadeBtn}", { duration: 0.3 });`,
+                `pulse("${pulseBtn}", { delay: 0.3 });`,
+                `shake("${shakeBtn}", { delay: 0.6 });`,
+                `fadeIn("${fadeBtn}", { duration: 0.5, delay: 0.9 });`,
+              ].join('\n') } as ButtonObject,
+
+            { id: genId(), type: 'button', x: 160, y: 260, width: 320, height: 40, label: '↔ Tween All to Center', bgColor: '#1098ad', textColor: '#ffffff',
+              script: [
+                `tweenTo("${fadeBtn}", { x: 220 }, { duration: 0.6, ease: "back.out" });`,
+                `tweenTo("${shakeBtn}", { x: 220 }, { duration: 0.6, ease: "back.out" });`,
+              ].join('\n') } as ButtonObject,
+
+            { id: genId(), type: 'button', x: 160, y: 310, width: 320, height: 40, label: '↩ Reset Positions', bgColor: '#495057', textColor: '#ffffff',
+              script: [
+                `tweenTo("${fadeBtn}", { x: 60, opacity: 1 }, { duration: 0.4 });`,
+                `tweenTo("${pulseBtn}", { opacity: 1 }, { duration: 0.4 });`,
+                `tweenTo("${shakeBtn}", { x: 420, opacity: 1 }, { duration: 0.4 });`,
+              ].join('\n') } as ButtonObject,
+
+            { id: genId(), type: 'button', x: 40, y: 340, width: 100, height: 30, label: '← Back', bgColor: '#2a2a4a', textColor: '#8888cc', script: `goToCard("${c2}");` } as ButtonObject,
+          ],
+        },
+      ],
+    }],
+    assets: { images: {} },
+    library: [],
+  };
+}
+
+// ---------------------------------------------------------------------------
+// 8. MovieClip Showcase (nested symbols with animation)
+// ---------------------------------------------------------------------------
+
+function createMovieClipShowcase(): HyperNovaProject {
+  // Symbol IDs
+  const spinnerSymId = genId();
+  const trafficLightSymId = genId();
+  const nestedOuterSymId = genId();
+
+  // Card IDs
+  const c1 = genId(), c2 = genId();
+
+  // Instance IDs (referenced by scripts)
+  const spinnerInst = genId();
+  const trafficInst = genId();
+  const nestedInst = genId();
+
+  // ------------------------------------
+  // Symbol: Spinner (3-frame movie clip — rotating indicator)
+  // ------------------------------------
+  const spinnerSymbol: HNSymbol = {
+    id: spinnerSymId,
+    name: 'Spinner',
+    type: 'movie-clip',
+    width: 80,
+    height: 80,
+    fps: 4,
+    loop: true,
+    frames: [
+      {
+        frame: 1, label: 'dot1',
+        objects: [
+          { id: genId(), type: 'rect', x: 30, y: 5, width: 20, height: 20, bgColor: '#ffd43b', borderColor: '#fab005', borderWidth: 2, borderRadius: 10 } as RectObject,
+          { id: genId(), type: 'rect', x: 30, y: 30, width: 20, height: 20, bgColor: '#333333', borderColor: '#444444', borderWidth: 1, borderRadius: 10 } as RectObject,
+          { id: genId(), type: 'rect', x: 30, y: 55, width: 20, height: 20, bgColor: '#333333', borderColor: '#444444', borderWidth: 1, borderRadius: 10 } as RectObject,
+        ],
+      },
+      {
+        frame: 2, label: 'dot2',
+        objects: [
+          { id: genId(), type: 'rect', x: 30, y: 5, width: 20, height: 20, bgColor: '#333333', borderColor: '#444444', borderWidth: 1, borderRadius: 10 } as RectObject,
+          { id: genId(), type: 'rect', x: 30, y: 30, width: 20, height: 20, bgColor: '#ffd43b', borderColor: '#fab005', borderWidth: 2, borderRadius: 10 } as RectObject,
+          { id: genId(), type: 'rect', x: 30, y: 55, width: 20, height: 20, bgColor: '#333333', borderColor: '#444444', borderWidth: 1, borderRadius: 10 } as RectObject,
+        ],
+      },
+      {
+        frame: 3, label: 'dot3',
+        objects: [
+          { id: genId(), type: 'rect', x: 30, y: 5, width: 20, height: 20, bgColor: '#333333', borderColor: '#444444', borderWidth: 1, borderRadius: 10 } as RectObject,
+          { id: genId(), type: 'rect', x: 30, y: 30, width: 20, height: 20, bgColor: '#333333', borderColor: '#444444', borderWidth: 1, borderRadius: 10 } as RectObject,
+          { id: genId(), type: 'rect', x: 30, y: 55, width: 20, height: 20, bgColor: '#ffd43b', borderColor: '#fab005', borderWidth: 2, borderRadius: 10 } as RectObject,
+        ],
+      },
+    ],
+  };
+
+  // ------------------------------------
+  // Symbol: Traffic Light (3-frame — red/yellow/green)
+  // ------------------------------------
+  const trafficLightSymbol: HNSymbol = {
+    id: trafficLightSymId,
+    name: 'Traffic Light',
+    type: 'movie-clip',
+    width: 60,
+    height: 140,
+    fps: 1,
+    loop: true,
+    frames: [
+      {
+        frame: 1, label: 'red',
+        objects: [
+          { id: genId(), type: 'rect', x: 0, y: 0, width: 60, height: 140, bgColor: '#1a1a1a', borderColor: '#444444', borderWidth: 2, borderRadius: 8 } as RectObject,
+          { id: genId(), type: 'rect', x: 12, y: 10, width: 36, height: 36, bgColor: '#ff4444', borderColor: '#ff6666', borderWidth: 2, borderRadius: 18 } as RectObject,
+          { id: genId(), type: 'rect', x: 12, y: 52, width: 36, height: 36, bgColor: '#333300', borderColor: '#444400', borderWidth: 1, borderRadius: 18 } as RectObject,
+          { id: genId(), type: 'rect', x: 12, y: 94, width: 36, height: 36, bgColor: '#003300', borderColor: '#004400', borderWidth: 1, borderRadius: 18 } as RectObject,
+        ],
+      },
+      {
+        frame: 2, label: 'yellow',
+        objects: [
+          { id: genId(), type: 'rect', x: 0, y: 0, width: 60, height: 140, bgColor: '#1a1a1a', borderColor: '#444444', borderWidth: 2, borderRadius: 8 } as RectObject,
+          { id: genId(), type: 'rect', x: 12, y: 10, width: 36, height: 36, bgColor: '#330000', borderColor: '#440000', borderWidth: 1, borderRadius: 18 } as RectObject,
+          { id: genId(), type: 'rect', x: 12, y: 52, width: 36, height: 36, bgColor: '#ffcc00', borderColor: '#ffdd33', borderWidth: 2, borderRadius: 18 } as RectObject,
+          { id: genId(), type: 'rect', x: 12, y: 94, width: 36, height: 36, bgColor: '#003300', borderColor: '#004400', borderWidth: 1, borderRadius: 18 } as RectObject,
+        ],
+      },
+      {
+        frame: 3, label: 'green',
+        objects: [
+          { id: genId(), type: 'rect', x: 0, y: 0, width: 60, height: 140, bgColor: '#1a1a1a', borderColor: '#444444', borderWidth: 2, borderRadius: 8 } as RectObject,
+          { id: genId(), type: 'rect', x: 12, y: 10, width: 36, height: 36, bgColor: '#330000', borderColor: '#440000', borderWidth: 1, borderRadius: 18 } as RectObject,
+          { id: genId(), type: 'rect', x: 12, y: 52, width: 36, height: 36, bgColor: '#333300', borderColor: '#444400', borderWidth: 1, borderRadius: 18 } as RectObject,
+          { id: genId(), type: 'rect', x: 12, y: 94, width: 36, height: 36, bgColor: '#44ff44', borderColor: '#66ff66', borderWidth: 2, borderRadius: 18 } as RectObject,
+        ],
+      },
+    ],
+  };
+
+  // ------------------------------------
+  // Symbol: Nested Outer — contains a spinner symbol instance inside it
+  // ------------------------------------
+  const nestedOuterSymbol: HNSymbol = {
+    id: nestedOuterSymId,
+    name: 'Loading Panel',
+    type: 'movie-clip',
+    width: 200,
+    height: 120,
+    fps: 2,
+    loop: true,
+    frames: [
+      {
+        frame: 1, label: 'loading',
+        objects: [
+          { id: genId(), type: 'rect', x: 0, y: 0, width: 200, height: 120, bgColor: '#1a1a2e', borderColor: '#3a3a6e', borderWidth: 2, borderRadius: 12 } as RectObject,
+          { id: genId(), type: 'text', x: 10, y: 10, width: 180, height: 24, text: '⏳ Loading...', fontSize: 16, color: '#aaaaff', bold: true, italic: false } as TextObject,
+          // Nested spinner instance!
+          { id: genId(), type: 'symbol-instance', x: 60, y: 35, width: 80, height: 80, symbolId: spinnerSymId, overrides: {}, currentFrame: 1 } as SymbolInstanceObject,
+        ],
+      },
+      {
+        frame: 2, label: 'done',
+        objects: [
+          { id: genId(), type: 'rect', x: 0, y: 0, width: 200, height: 120, bgColor: '#0a2a0a', borderColor: '#2a6a2a', borderWidth: 2, borderRadius: 12 } as RectObject,
+          { id: genId(), type: 'text', x: 10, y: 40, width: 180, height: 30, text: '✅ Complete!', fontSize: 20, color: '#66ff66', bold: true, italic: false } as TextObject,
+        ],
+      },
+    ],
+  };
+
+  return {
+    version: 1,
+    name: 'MovieClip Showcase',
+    stacks: [{
+      id: genId(),
+      title: 'MovieClips',
+      cards: [
+        {
+          id: c1, title: 'Animated Symbols',
+          background: { type: '2d-gradient', color: '#0d1117', gradientTo: '#161b22' },
+          objects: [
+            { id: genId(), type: 'text', x: 60, y: 15, width: 520, height: 40, text: '🎬 MovieClip Symbols', fontSize: 26, color: '#58a6ff', bold: true, italic: false } as TextObject,
+            { id: genId(), type: 'text', x: 60, y: 55, width: 520, height: 22, text: 'Symbols play through keyframes automatically, like Flash movie clips.', fontSize: 12, color: '#8b949e', bold: false, italic: false } as TextObject,
+
+            // Spinner instance
+            { id: genId(), type: 'text', x: 60, y: 85, width: 120, height: 20, text: 'Spinner:', fontSize: 13, color: '#c9d1d9', bold: true, italic: false } as TextObject,
+            { id: spinnerInst, type: 'symbol-instance', x: 60, y: 110, width: 80, height: 80, symbolId: spinnerSymId, overrides: {}, currentFrame: 1 } as SymbolInstanceObject,
+
+            // Traffic light instance
+            { id: genId(), type: 'text', x: 200, y: 85, width: 140, height: 20, text: 'Traffic Light:', fontSize: 13, color: '#c9d1d9', bold: true, italic: false } as TextObject,
+            { id: trafficInst, type: 'symbol-instance', x: 220, y: 110, width: 60, height: 140, symbolId: trafficLightSymId, overrides: {}, currentFrame: 1 } as SymbolInstanceObject,
+
+            // Script control buttons
+            { id: genId(), type: 'button', x: 60, y: 270, width: 140, height: 34, label: '⏹ Stop Spinner', bgColor: '#da3633', textColor: '#ffffff',
+              script: `stopClip("${spinnerInst}");` } as ButtonObject,
+            { id: genId(), type: 'button', x: 210, y: 270, width: 140, height: 34, label: '▶ Play Spinner', bgColor: '#238636', textColor: '#ffffff',
+              script: `playClip("${spinnerInst}");` } as ButtonObject,
+            { id: genId(), type: 'button', x: 360, y: 270, width: 160, height: 34, label: '⏭ Light → Green', bgColor: '#1f6feb', textColor: '#ffffff',
+              script: `gotoAndStop("${trafficInst}", 3);` } as ButtonObject,
+
+            { id: genId(), type: 'button', x: 220, y: 320, width: 200, height: 36, label: 'Nested Clips →', bgColor: '#3a6edd', textColor: '#ffffff', script: `goToCard("${c2}");` } as ButtonObject,
+          ],
+        },
+        {
+          id: c2, title: 'Nested MovieClips',
+          background: { type: '2d-gradient', color: '#0d1117', gradientTo: '#21262d' },
+          objects: [
+            { id: genId(), type: 'text', x: 60, y: 15, width: 520, height: 40, text: '🎭 Nested MovieClips', fontSize: 26, color: '#d2a8ff', bold: true, italic: false } as TextObject,
+            { id: genId(), type: 'text', x: 60, y: 55, width: 520, height: 40, text: 'The "Loading Panel" contains a Spinner symbol inside it —\nmovie clips within movie clips, just like Flash!', fontSize: 12, color: '#8b949e', bold: false, italic: false } as TextObject,
+
+            // Nested loading panel (contains spinner inside)
+            { id: nestedInst, type: 'symbol-instance', x: 120, y: 110, width: 200, height: 120, symbolId: nestedOuterSymId, overrides: {}, currentFrame: 1 } as SymbolInstanceObject,
+
+            // Standalone spinner for comparison
+            { id: genId(), type: 'text', x: 380, y: 95, width: 160, height: 20, text: 'Standalone Spinner:', fontSize: 12, color: '#8b949e', bold: false, italic: false } as TextObject,
+            { id: genId(), type: 'symbol-instance', x: 410, y: 120, width: 80, height: 80, symbolId: spinnerSymId, overrides: {}, currentFrame: 1 } as SymbolInstanceObject,
+
+            { id: genId(), type: 'rect', x: 60, y: 250, width: 520, height: 60, bgColor: '#161b22', borderColor: '#30363d', borderWidth: 1, borderRadius: 8 } as RectObject,
+            { id: genId(), type: 'text', x: 75, y: 258, width: 490, height: 40, text: 'Tip: In Edit mode, create symbols in the Library panel,\nthen place them on cards. Movie clips auto-play their timelines.', fontSize: 11, color: '#484f58', bold: false, italic: false } as TextObject,
+
+            { id: genId(), type: 'button', x: 60, y: 330, width: 100, height: 30, label: '← Back', bgColor: '#2a2a4a', textColor: '#8888cc', script: `goToCard("${c1}");` } as ButtonObject,
+
+            { id: genId(), type: 'button', x: 360, y: 325, width: 180, height: 36, label: '✨ Tween Nested', bgColor: '#8957e5', textColor: '#ffffff',
+              script: `fadeOut("${nestedInst}", { duration: 0.5 }); fadeIn("${nestedInst}", { duration: 0.5, delay: 0.7 });` } as ButtonObject,
+          ],
+        },
+      ],
+    }],
+    assets: { images: {} },
+    library: [spinnerSymbol, trafficLightSymbol, nestedOuterSymbol],
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Catalog
 // ---------------------------------------------------------------------------
 
@@ -680,5 +991,19 @@ export const EXAMPLE_CATALOG: ExampleEntry[] = [
     description: 'A GitHub-styled productivity dashboard with tasks, notes, and settings',
     icon: '⚡',
     create: createDashboard,
+  },
+  {
+    id: 'tweens',
+    name: 'Tween Animation',
+    description: 'GSAP-powered animations: fadeIn, fadeOut, pulse, shake, slide, and chained sequences',
+    icon: '✨',
+    create: createTweenShowcase,
+  },
+  {
+    id: 'movieclips',
+    name: 'MovieClip Showcase',
+    description: 'Flash-inspired MovieClip symbols with timeline animation and nested clips',
+    icon: '🎬',
+    create: createMovieClipShowcase,
   },
 ];

@@ -63,6 +63,17 @@ function mockAPI(cardId = 'test'): { api: ScriptAPI; calls: string[] } {
     getField: (id) => { calls.push(`getField:${id}`); return ''; },
     alert: (msg) => calls.push(`alert:${msg}`),
     log: (...args) => calls.push(`log:${args.join(',')}`),
+    // Tween / MovieClip stubs
+    fadeIn: () => {},
+    fadeOut: () => {},
+    tweenTo: () => {},
+    pulse: () => {},
+    shake: () => {},
+    slideIn: () => {},
+    playClip: () => {},
+    stopClip: () => {},
+    gotoAndPlay: () => {},
+    gotoAndStop: () => {},
   };
   return { api, calls };
 }

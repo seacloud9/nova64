@@ -58,7 +58,7 @@ export function Window({
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const [resizeStart, setResizeStart] = useState({ x: 0, y: 0, wx: 0, wy: 0, width: 0, height: 0 });
   
-  const { updateWindow, toggleShade, toggleMaximize, minimizeWindow } = useWindowStore();
+  const { updateWindow, toggleMaximize, minimizeWindow } = useWindowStore();
 
   // Calculate actual position and size
   const actualX = isMaximized ? 0 : x;
@@ -129,8 +129,7 @@ export function Window({
   };
 
   const handleTitleDoubleClick = () => {
-    UISounds.windowShade();
-    toggleShade(id);
+    toggleMaximize(id);
   };
 
   const handleEdgeMouseDown = (edge: ResizeEdge) => (e: React.MouseEvent) => {

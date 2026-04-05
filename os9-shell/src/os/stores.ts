@@ -104,7 +104,7 @@ export const useWindowStore = create<WindowStore>((set, get) => ({
   toggleMaximize: (id) => {
     set((state) => ({
       windows: state.windows.map((w) =>
-        w.id === id ? { ...w, isMaximized: !w.isMaximized } : w
+        w.id === id ? { ...w, isMaximized: !w.isMaximized, isShaded: false } : w
       ),
     }));
   },
@@ -122,7 +122,7 @@ export const useWindowStore = create<WindowStore>((set, get) => ({
     const { nextZIndex } = get();
     set((state) => ({
       windows: state.windows.map((w) =>
-        w.id === id ? { ...w, isMinimized: false, zIndex: nextZIndex } : w
+        w.id === id ? { ...w, isMinimized: false, isShaded: false, zIndex: nextZIndex } : w
       ),
       activeWindowId: id,
       nextZIndex: nextZIndex + 1,

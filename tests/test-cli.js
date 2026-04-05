@@ -1032,6 +1032,14 @@ async function main() {
         } catch (error) {
           console.log('⚠️  Voxel tests not available:', error.message);
         }
+
+        console.log('\n9️⃣ Manifest System Tests:');
+        try {
+          const { runManifestTests } = await import('./test-manifest.js');
+          results.push(await runManifestTests());
+        } catch (error) {
+          console.log('⚠️  Manifest tests not available:', error.message);
+        }
         break;
     }
 

@@ -568,7 +568,7 @@ function initKeyListener() {
 // ── Module export ───────────────────────────────────────────────
 
 export function envApi() {
-  initKeyListener();
+  if (typeof window !== 'undefined') initKeyListener();
 
   return {
     exposeTo(target) {

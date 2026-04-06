@@ -1,11 +1,12 @@
 // hyperNova – root application component
 import { useCallback, useState, useRef, useEffect } from 'react';
-import { useHyperNovaStore } from './shared/store';
+import { useHyperNovaStore, selectBreadcrumb } from './shared/store';
 import { CardList } from './editor/CardList';
 import { Toolbar } from './editor/Toolbar';
 import { EditorCanvas } from './editor/EditorCanvas';
 import { PropertiesPanel } from './editor/PropertiesPanel';
 import { LibraryPanel } from './editor/LibraryPanel';
+import { KeyframeStrip } from './editor/KeyframeStrip';
 import { CardPlayer } from './player/CardPlayer';
 import { downloadJson, downloadCart } from './shared/exporter';
 import { loadFromFile } from './shared/importer';
@@ -144,6 +145,8 @@ export function HyperNovaApp() {
   const isPlay = store.mode === 'play';
   const canUndo = store.historyIndex > 0;
   const canRedo = store.historyIndex < store.history.length - 1;
+  const breadcrumb = useHyperNovaStore(selectBreadcrumb);
+  const isInsideSymbol = store.symbolEditPath.length > 0;
 
   const handleSave = useCallback(() => {
     downloadJson(store.project);
@@ -333,6 +336,47 @@ export function HyperNovaApp() {
           )}
 
           {/* Canvas area */}
+          {/* Breadcrumb when inside a MovieClip */}
+          {!isPlay && isInsideSymbol && (
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 4,
+              padding: '3px 10px',
+              background: '#0c0c20',
+              borderBottom: '1px solid #1e1e3a',
+              flexShrink: 0,
+              fontSize: 11,
+            }}>
+              {breadcrumb.map((crumb, i) => {
+                const isLast = i === breadcrumb.length - 1;
+                return (
+                  <span key={i} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    {i > 0 && <span style={{ color: '#3a3a6a' }}>›</span>}
+                    <span
+                      style={{
+                        color: isLast ? '#c0c0ff' : '#6666cc',
+                        cursor: isLast ? 'default' : 'pointer',
+                        fontWeight: isLast ? 600 : 400,
+                      }}
+                      onClick={() => {
+                        if (isLast) return;
+                        if (crumb.depth === -1) {
+                          store.exitToRoot();
+                        } else {
+                          store.exitToDepth(crumb.depth);
+                        }
+                      }}
+                    >
+                      {crumb.depth === -1 ? '🃏' : '⬡'} {crumb.label}
+                    </span>
+                  </span>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Keyframe strip when editing a MovieClip timeline */}
+          {!isPlay && <KeyframeStrip />}
+
           <div style={S.canvasWrapper}>
             {isPlay ? <CardPlayer /> : <EditorCanvas />}
           </div>

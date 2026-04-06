@@ -1,7 +1,7 @@
 // hyperNova – EditorCanvas
 // WYSIWYG card editing canvas with drag-to-move, snap-to-grid, and alignment guides
 import React, { useRef, useState, useCallback, useEffect } from 'react'; // React needed for .CSSProperties
-import { useHyperNovaStore, selectCurrentCard } from '../shared/store';
+import { useHyperNovaStore, selectCurrentCard, selectEditingObjects, selectEditingSymbol } from '../shared/store';
 import type { CardObject } from '../shared/schema';
 import {
   createDefaultButton, createDefaultText, createDefaultField,
@@ -237,8 +237,12 @@ function AlignmentGuides({ guides }: { guides: { type: 'h' | 'v'; pos: number }[
 export function EditorCanvas() {
   const store = useHyperNovaStore();
   const currentCard = useHyperNovaStore(selectCurrentCard);
+  const editingObjects = useHyperNovaStore(selectEditingObjects);
+  const editingSymbol = useHyperNovaStore(selectEditingSymbol);
   const canvasRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<DragState | null>(null);
+
+  const isInsideSymbol = store.symbolEditPath.length > 0;
 
   const { showGrid, snapToGrid, gridSize, showGuides } = store.editorSettings;
 
@@ -308,6 +312,18 @@ export function EditorCanvas() {
     [store]
   );
 
+  // ---- Double-click: enter MovieClip symbol --------------------------------
+  const handleObjDoubleClick = useCallback(
+    (e: React.MouseEvent, obj: CardObject) => {
+      e.stopPropagation();
+      if (obj.type !== 'symbol-instance') return;
+      const sym = store.project.library?.find((s) => s.id === obj.symbolId);
+      if (!sym) return;
+      store.enterSymbol(sym.id);
+    },
+    [store]
+  );
+
   // ---- Global mouse move & up during drag ----------------------------------
   useEffect(() => {
     const onMove = (e: MouseEvent) => {
@@ -327,10 +343,11 @@ export function EditorCanvas() {
 
       // Smart alignment guides
       if (settings.showGuides) {
-        const card = selectCurrentCard(useHyperNovaStore.getState());
-        const dragged = card?.objects.find((o) => o.id === d.objId);
-        if (card && dragged) {
-          const result = computeAlignmentGuides(dragged, newX, newY, card.objects, GUIDE_SNAP_THRESHOLD);
+        const st = useHyperNovaStore.getState();
+        const objs = selectEditingObjects(st);
+        const dragged = objs.find((o) => o.id === d.objId);
+        if (dragged) {
+          const result = computeAlignmentGuides(dragged, newX, newY, objs, GUIDE_SNAP_THRESHOLD);
           newX = result.x;
           newY = result.y;
           setActiveGuides(result.guides);
@@ -368,21 +385,29 @@ export function EditorCanvas() {
     );
   }
 
-  const bgStyle = renderCardBackground(currentCard.background);
+  const bgStyle = isInsideSymbol
+    ? { background: '#18182e' } // neutral bg when editing inside a symbol
+    : renderCardBackground(currentCard.background);
   const cursorStyle =
     store.activeTool === 'select' ? (isDragging ? 'grabbing' : 'default') : 'crosshair';
+
+  // Always use full card dimensions for the canvas — symbol editing uses the same stage size
+  const canvasW = CARD_W;
+  const canvasH = CARD_H;
 
   return (
     <div
       style={{
         position: 'relative',
-        width: CARD_W,
-        height: CARD_H,
+        width: canvasW,
+        height: canvasH,
         ...bgStyle,
         cursor: cursorStyle,
         flexShrink: 0,
         overflow: 'hidden',
-        boxShadow: '0 4px 32px rgba(0,0,0,0.6)',
+        boxShadow: isInsideSymbol
+          ? '0 4px 32px rgba(100,100,255,0.3), inset 0 0 0 2px #4444aa'
+          : '0 4px 32px rgba(0,0,0,0.6)',
       }}
       ref={canvasRef}
       onClick={handleCanvasClick}
@@ -393,7 +418,34 @@ export function EditorCanvas() {
       {/* Smart alignment guides */}
       {showGuides && isDragging && <AlignmentGuides guides={activeGuides} />}
 
-      {currentCard.objects.map((obj) => {
+      {/* Symbol editing indicator */}
+      {isInsideSymbol && (
+        <div
+          style={{
+            position: 'absolute',
+            top: 4,
+            left: 4,
+            right: 4,
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            zIndex: 10,
+            pointerEvents: 'none',
+          }}
+        >
+          <span style={{ fontSize: 9, color: '#6666aa', background: '#0e0e2080', padding: '1px 6px', borderRadius: 3 }}>
+            ⬡ Editing: {editingSymbol?.name}
+          </span>
+          <span
+            style={{ fontSize: 9, color: '#8888cc', background: '#0e0e2080', padding: '1px 6px', borderRadius: 3, cursor: 'pointer', pointerEvents: 'all' }}
+            onClick={() => store.exitSymbol()}
+          >
+            ↩ Back
+          </span>
+        </div>
+      )}
+
+      {editingObjects.map((obj) => {
         const selected = obj.id === store.selectedObjectId;
         const style = renderObjectStyle(obj, selected);
 
@@ -402,6 +454,7 @@ export function EditorCanvas() {
             key={obj.id}
             style={{ ...style, zIndex: 1 }}
             onMouseDown={(e) => handleObjMouseDown(e, obj)}
+            onDoubleClick={(e) => handleObjDoubleClick(e, obj)}
           >
             {obj.type === 'text' && obj.text}
             {obj.type === 'button' && obj.label}
@@ -422,7 +475,7 @@ export function EditorCanvas() {
               )
             )}
             {obj.type === 'symbol-instance' && (
-              <span style={{ color: '#aa88ff', fontSize: 11 }}>⬡ Symbol</span>
+              <span style={{ color: '#aa88ff', fontSize: 11, cursor: 'pointer' }} title="Double-click to enter timeline">⬡ Symbol</span>
             )}
 
             {/* Resize handle hint (bottom-right) */}

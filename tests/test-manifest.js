@@ -12,7 +12,9 @@ function assert(condition, message) {
 
 function assertEq(actual, expected, message) {
   if (actual !== expected)
-    throw new Error(`${message || 'Not equal'}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
+    throw new Error(
+      `${message || 'Not equal'}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`
+    );
 }
 
 // ── Test Runner (matches project convention) ─────────────────
@@ -55,7 +57,7 @@ function registerI18nTests(runner) {
   runner.test('i18n - t() looks up loaded strings', () => {
     const inst = i18nApi();
     inst._reset();
-    inst._load({ defaultLocale: 'en', strings: { 'hello': 'Hello World' } });
+    inst._load({ defaultLocale: 'en', strings: { hello: 'Hello World' } });
     const g = {};
     inst.exposeTo(g);
     assertEq(g.t('hello'), 'Hello World');
@@ -64,7 +66,7 @@ function registerI18nTests(runner) {
   runner.test('i18n - t() interpolates {param} placeholders', () => {
     const inst = i18nApi();
     inst._reset();
-    inst._load({ defaultLocale: 'en', strings: { 'greet': 'Hello, {name}!' } });
+    inst._load({ defaultLocale: 'en', strings: { greet: 'Hello, {name}!' } });
     const g = {};
     inst.exposeTo(g);
     assertEq(g.t('greet', { name: 'Nova' }), 'Hello, Nova!');
@@ -75,8 +77,8 @@ function registerI18nTests(runner) {
     inst._reset();
     inst._load({
       defaultLocale: 'en',
-      strings: { 'hello': 'Hello', 'bye': 'Goodbye' },
-      locales: { es: { 'hello': 'Hola' } },
+      strings: { hello: 'Hello', bye: 'Goodbye' },
+      locales: { es: { hello: 'Hola' } },
     });
     const g = {};
     inst.exposeTo(g);
@@ -116,10 +118,10 @@ function registerI18nTests(runner) {
   runner.test('i18n - addStrings merges at runtime', () => {
     const inst = i18nApi();
     inst._reset();
-    inst._load({ defaultLocale: 'en', strings: { 'a': 'A' } });
+    inst._load({ defaultLocale: 'en', strings: { a: 'A' } });
     const g = {};
     inst.exposeTo(g);
-    g.addStrings({ 'b': 'B' });
+    g.addStrings({ b: 'B' });
     assertEq(g.t('a'), 'A');
     assertEq(g.t('b'), 'B');
   });
@@ -127,17 +129,17 @@ function registerI18nTests(runner) {
   runner.test('i18n - addStrings with locale param merges into locale', () => {
     const inst = i18nApi();
     inst._reset();
-    inst._load({ defaultLocale: 'en', strings: { 'hi': 'Hi' } });
+    inst._load({ defaultLocale: 'en', strings: { hi: 'Hi' } });
     const g = {};
     inst.exposeTo(g);
-    g.addStrings({ 'hi': 'Hola' }, 'es');
+    g.addStrings({ hi: 'Hola' }, 'es');
     g.setLocale('es');
     assertEq(g.t('hi'), 'Hola');
   });
 
   runner.test('i18n - reset clears all state', () => {
     const inst = i18nApi();
-    inst._load({ defaultLocale: 'en', strings: { 'x': 'X' } });
+    inst._load({ defaultLocale: 'en', strings: { x: 'X' } });
     inst._reset();
     assertEq(inst.t('x'), 'x'); // falls back to key
   });
@@ -194,7 +196,7 @@ function registerDataTests(runner) {
   }
 
   runner.test('Data - getEnemy returns enemy with resolved name', () => {
-    const inst = makeData(k => k === 'enemy.slime' ? 'Slime' : k);
+    const inst = makeData(k => (k === 'enemy.slime' ? 'Slime' : k));
     const g = {};
     inst.exposeTo(g);
     const e = g.getEnemy('slime');
@@ -262,7 +264,7 @@ function registerDataTests(runner) {
   });
 
   runner.test('Data - getItem returns item with resolved name', () => {
-    const inst = makeData(k => k === 'item.potion' ? 'Health Potion' : k);
+    const inst = makeData(k => (k === 'item.potion' ? 'Health Potion' : k));
     const g = {};
     inst.exposeTo(g);
     const item = g.getItem('potion');
@@ -337,9 +339,19 @@ function registerDataTests(runner) {
     const g = {};
     inst.exposeTo(g);
     const expected = [
-      'getEnemy', 'getNPC', 'getBoss', 'getEnemies', 'getEnemiesByTier',
-      'getNPCs', 'getBosses', 'getItem', 'getItems', 'getItemsByType',
-      'getItemsByRarity', 'getUIConfig', 'getGameplay',
+      'getEnemy',
+      'getNPC',
+      'getBoss',
+      'getEnemies',
+      'getEnemiesByTier',
+      'getNPCs',
+      'getBosses',
+      'getItem',
+      'getItems',
+      'getItemsByType',
+      'getItemsByRarity',
+      'getUIConfig',
+      'getGameplay',
     ];
     for (const fn of expected) {
       assert(typeof g[fn] === 'function', `Missing ${fn}`);
@@ -392,7 +404,10 @@ function registerAssetLoaderTests(runner) {
     inst._reset();
     const g = {};
     inst.exposeTo(g);
-    await g.preloadAssets({ sounds: { jump: 'sfx/jump.wav', coin: 'sfx/coin.wav' } }, '/carts/game');
+    await g.preloadAssets(
+      { sounds: { jump: 'sfx/jump.wav', coin: 'sfx/coin.wav' } },
+      '/carts/game'
+    );
     const status = g.getAssetStatus();
     assertEq(status.details.jump.status, 'ready');
     assertEq(status.details.coin.status, 'ready');
@@ -427,7 +442,7 @@ function registerManifestTests(runner) {
     assertEq(g.getMeta(), null);
   });
 
-  runner.test('Manifest - _loadFromCart loads full manifest', () => {
+  runner.test('Manifest - _loadFromCart loads full manifest', async () => {
     const inst = manifestApi();
     const g = {};
     inst.exposeTo(g);
@@ -452,7 +467,7 @@ function registerManifestTests(runner) {
       },
     };
 
-    inst._loadFromCart(mockCart, '/examples/test-game/code.js');
+    await inst._loadFromCart(mockCart, '/examples/test-game/code.js');
 
     const meta = g.getMeta();
     assertEq(meta.name, 'Test Game');
@@ -476,15 +491,15 @@ function registerManifestTests(runner) {
     assertEq(gp.player.hp, 50);
   });
 
-  runner.test('Manifest - _reset clears everything', () => {
+  runner.test('Manifest - _reset clears everything', async () => {
     const inst = manifestApi();
     const g = {};
     inst.exposeTo(g);
 
-    inst._loadFromCart({
+    await inst._loadFromCart({
       env: {
         meta: { name: 'X' },
-        text: { defaultLocale: 'en', strings: { 'a': 'A' } },
+        text: { defaultLocale: 'en', strings: { a: 'A' } },
         entities: { enemies: { slime: { name: 'a', hp: 1 } } },
       },
     });
@@ -496,23 +511,23 @@ function registerManifestTests(runner) {
     assertEq(g.getEnemy('slime'), null);
   });
 
-  runner.test('Manifest - _loadFromCart with no env is a no-op', () => {
+  runner.test('Manifest - _loadFromCart with no env is a no-op', async () => {
     const inst = manifestApi();
     const g = {};
     inst.exposeTo(g);
-    inst._loadFromCart({}); // cart with no env export
+    await inst._loadFromCart({}); // cart with no env export
     assertEq(g.getMeta(), null);
   });
 
-  runner.test('Manifest - partial manifest (only meta + text)', () => {
+  runner.test('Manifest - partial manifest (only meta + text)', async () => {
     const inst = manifestApi();
     const g = {};
     inst.exposeTo(g);
 
-    inst._loadFromCart({
+    await inst._loadFromCart({
       env: {
         meta: { name: 'Minimal' },
-        text: { defaultLocale: 'en', strings: { 'title': 'Mini' } },
+        text: { defaultLocale: 'en', strings: { title: 'Mini' } },
       },
     });
 
@@ -521,11 +536,11 @@ function registerManifestTests(runner) {
     assertEq(g.getEnemy('anything'), null); // no entities loaded
   });
 
-  runner.test('Manifest - getMeta returns copy', () => {
+  runner.test('Manifest - getMeta returns copy', async () => {
     const inst = manifestApi();
     const g = {};
     inst.exposeTo(g);
-    inst._loadFromCart({ env: { meta: { name: 'Copy Test' } } });
+    await inst._loadFromCart({ env: { meta: { name: 'Copy Test' } } });
     const m1 = g.getMeta();
     m1.name = 'Mutated';
     const m2 = g.getMeta();
@@ -562,7 +577,7 @@ async function registerCartParseTests(runner) {
 
     runner.test(`Cart ${cart} - has meta with name`, () => {
       const src = fs.readFileSync(path.join(examplesDir, cart, 'code.js'), 'utf8');
-      assert(src.includes("name:"), `${cart} meta missing name`);
+      assert(src.includes('name:'), `${cart} meta missing name`);
     });
 
     runner.test(`Cart ${cart} - has i18n text section`, () => {
@@ -573,7 +588,9 @@ async function registerCartParseTests(runner) {
 
     runner.test(`Cart ${cart} - parses without syntax errors`, () => {
       const src = fs.readFileSync(path.join(examplesDir, cart, 'code.js'), 'utf8');
-      const stripped = src.replace(/export\s+(function|const|let|var|async\s+function)/g, '$1');
+      const stripped = src
+        .replace(/^import\s+.*$/gm, '')
+        .replace(/export\s+(function|const|let|var|async\s+function)/g, '$1');
       new vm.Script(stripped, { filename: `${cart}/code.js` });
     });
   }

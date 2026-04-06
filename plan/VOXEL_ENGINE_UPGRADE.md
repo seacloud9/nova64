@@ -8,6 +8,7 @@
 ## Current State Assessment
 
 ### What We Have (v1 — single file, ~710 lines)
+
 - 15 block types with vertex colors
 - 16×64×16 chunks, render distance 4
 - Naive per-face meshing (labeled "greedy" but isn't)
@@ -18,6 +19,7 @@
 - No lighting, no transparency, no persistence, no workers
 
 ### Known Bugs
+
 1. **Cave generation is 2D** — `perlinNoise` called with 5 args but only uses 4; `worldZ` becomes `octaves` param, so caves are columns, not tunnels
 2. **Dead os9-shell API refs** — `createVoxelEngine`, `voxelSet`, `voxelGet`, `voxelClear`, `voxelRender` are passed to os9-shell evaluator but don't exist on `vxApi`
 3. **Material leak** — `updateChunkMesh` disposes mesh on unload but creates a new `MeshStandardMaterial` per chunk on each rebuild when `window.VOXEL_MATERIAL` isn't set
@@ -30,10 +32,12 @@
 **Files**: `runtime/api-voxel.js`
 
 ### 1.1 — Fix Cave Generation Bug
+
 - Implement proper 3D noise function (`noise3D`) for cave generation
 - Caves should carve 3D tunnels, not 2D columns
 
 ### 1.2 — Block Registry System
+
 Replace the hardcoded `BLOCK_TYPES` / `BLOCK_COLORS` objects with an extensible registry:
 
 ```js
@@ -51,13 +55,16 @@ const registry = {
 - Each block definition includes: `solid`, `transparent`, `fluid`, `lightEmit` (0-15), `lightBlock` (0-15)
 
 ### 1.3 — Fix Material Leak
+
 - Share a single `MeshStandardMaterial` across all chunk meshes (unless cart provides `window.VOXEL_MATERIAL`)
 - Dispose only on world reset
 
 ### 1.4 — Fix Dead os9-shell API References
+
 - Wire up `createVoxelEngine`, `voxelSet`, `voxelGet`, `voxelClear`, `voxelRender` in `src/main.js` to actual `vxApi` methods (or remove the dead refs)
 
 ### 1.5 — Expose Noise Functions
+
 - Expose `perlinNoise2D(x, z)` and `perlinNoise3D(x, y, z)` to carts for custom terrain generation
 
 **Deliverable**: Bug-free foundation with extensible block system. All existing carts continue to work.
@@ -69,28 +76,37 @@ const registry = {
 **Files**: `runtime/api-voxel.js` (or extract to `runtime/voxel/noise.js`)
 
 ### 2.1 — Proper Simplex/Perlin Noise
+
 Replace the sin-hash noise with a proper implementation:
+
 - **Simplex 2D + 3D** noise (open-source, public-domain implementations available)
 - Better gradient tables, proper permutation array seeded from `worldSeed`
 - Eliminates visible repetition artifacts
 
 ### 2.2 — Improved Terrain Generator
+
 - **3D caves** using worm-like noise tunnels (Perlin worms or threshold-based 3D noise)
 - **Ore veins** — stone variants at different depth ranges (coal, iron, gold, diamond as new block types)
 - **Overhangs & cliffs** using 3D density function instead of pure heightmap
 - **Smooth biome transitions** — interpolate height/block between adjacent biomes
 
 ### 2.3 — Configurable World Generation
+
 ```js
 createVoxelWorld({
   seed: 12345,
   chunkSize: 16,
-  chunkHeight: 128,    // doubled from 64
+  chunkHeight: 128, // doubled from 64
   seaLevel: 62,
-  generateTerrain: (chunk) => { /* custom */ },
-  generateStructures: (chunk) => { /* custom */ },
+  generateTerrain: chunk => {
+    /* custom */
+  },
+  generateStructures: chunk => {
+    /* custom */
+  },
 });
 ```
+
 - Carts can supply their own `generateTerrain` callback for fully custom worlds (flat, floating islands, etc.)
 - Default terrain gen remains available as `defaultTerrainGenerator()`
 
@@ -103,7 +119,9 @@ createVoxelWorld({
 **Files**: `runtime/voxel/mesher.js` (new, extracted)
 
 ### 3.1 — True Greedy Meshing Algorithm
+
 Replace the naive per-face mesher with a proper greedy mesher:
+
 - For each axis direction, sweep through the chunk in slices
 - For each slice, find maximal rectangles of identical block faces
 - Merge them into single quads → dramatically fewer vertices
@@ -113,12 +131,15 @@ Replace the naive per-face mesher with a proper greedy mesher:
 Reference: [Mikola Lysenko's greedy meshing article](https://0fps.net/2013/07/09/meshing-in-a-block-world/) (the same algorithm noa and voxel.js use).
 
 ### 3.2 — Separate Opaque & Transparent Passes
+
 - Opaque faces → standard mesh, depth write ON
 - Transparent faces (water, glass) → separate mesh, depth write OFF, alpha blending, rendered after opaque
 - Water gets slight blue tint + animated UV offset
 
 ### 3.3 — Per-Vertex Ambient Occlusion
+
 Replace the per-face-direction AO hack with proper per-vertex AO:
+
 - For each vertex of a face, check the 3 adjacent blocks (side1, side2, corner)
 - AO level = number of solid neighbors (0-3)
 - Smooth shading via vertex color darkening
@@ -135,23 +156,27 @@ Reference: [0fps.net AO for voxels](https://0fps.net/2013/07/03/ambient-occlusio
 **Files**: `runtime/voxel/lighting.js` (new)
 
 ### 4.1 — Sky Light
+
 - Light value 0-15 per block (stored in separate `Uint8Array` per chunk or packed into upper nibble)
 - Sky light propagates downward from Y=max, filling air blocks
 - Horizontal propagation with attenuation (BFS flood-fill)
 - When a block is placed/removed, incrementally update light via BFS
 
 ### 4.2 — Block Light
+
 - Torches, lava, glowstone emit light (0-15)
 - BFS flood-fill propagation with decreasing intensity
 - Separate channel from sky light (max of both used for rendering)
 - Add block types: `TORCH` (emit 14), `GLOWSTONE` (emit 15), `LAVA` (emit 15)
 
 ### 4.3 — Smooth Light Interpolation
+
 - Average light values across the 4 blocks sharing each vertex
 - Creates smooth lighting gradients instead of flat per-face lighting
 - Combines with AO for beautiful shadows in caves
 
 ### 4.4 — Day/Night Cycle Integration
+
 - Sky light multiplied by a global `skyBrightness` factor (0.0-1.0)
 - Carts control time of day: `setVoxelDayTime(0.0-1.0)`
 - Smooth transitions between light levels
@@ -165,19 +190,24 @@ Reference: [0fps.net AO for voxels](https://0fps.net/2013/07/03/ambient-occlusio
 **Files**: `runtime/api-voxel.js`
 
 ### 5.1 — DDA Voxel Traversal
+
 Replace the naive 0.1-step raycast with Amanatides & Woo DDA algorithm:
+
 - Never misses a voxel, regardless of angle
 - Returns exact hit position, face normal, and adjacent block position
 - Much faster (steps exactly once per voxel boundary)
 
 ### 5.2 — Swept AABB Collision
+
 Replace the simple overlap check with swept AABB collision:
+
 - Proper collision response for each axis (X, Y, Z resolved independently)
 - `moveAndSlide(position, velocity, size, dt)` → returns new position + grounded flag
 - Handles stairs (auto-step up 1 block), slopes, and edge cases
 - Water buoyancy (slower fall, swim up with Space)
 
 ### 5.3 — Expose Physics to Carts
+
 ```js
 // Cart API
 const result = moveVoxelEntity(pos, vel, size, dt);
@@ -193,15 +223,18 @@ const result = moveVoxelEntity(pos, vel, size, dt);
 **Files**: `runtime/voxel/atlas.js` (new)
 
 ### 6.1 — Texture Atlas System
+
 - Load block textures from a sprite sheet (e.g., 16×16 tiles in a 256×256 atlas)
 - Each block face can reference a different tile (top/side/bottom)
 - UV coordinates mapped to atlas sub-regions during meshing
 
 ### 6.2 — Default Texture Pack
+
 - Ship a small built-in CC0/MIT texture atlas (16×16 pixel art per block)
 - Procedurally generated fallback if atlas fails to load (current vertex-color behavior)
 
 ### 6.3 — Custom Texture Packs for Carts
+
 ```js
 // Cart can load custom textures
 loadVoxelTextures('/path/to/atlas.png', {
@@ -220,17 +253,20 @@ loadVoxelTextures('/path/to/atlas.png', {
 **Files**: `runtime/voxel/chunk-worker.js` (new Web Worker)
 
 ### 7.1 — Off-Main-Thread Chunk Generation
+
 - Move terrain generation + meshing to a Web Worker
 - Main thread sends: chunk coordinates, world seed, block registry
 - Worker returns: block data (`Uint8Array`) + mesh buffers (`Float32Array` for vertices, normals, colors, UVs + `Uint32Array` for indices)
 - Use `Transferable` objects to avoid copying
 
 ### 7.2 — Chunk Generation Queue
+
 - Priority queue sorted by distance to player
 - Limit meshes rebuilt per frame (e.g., 2-4 per tick)
 - Progressive loading: nearby chunks first, far chunks filled in
 
 ### 7.3 — Chunk LOD (Optional)
+
 - Far-away chunks rendered at half resolution (2×2 block quads)
 - Reduces vertex count for distant terrain
 - Swap to full-res as player approaches
@@ -244,24 +280,27 @@ loadVoxelTextures('/path/to/atlas.png', {
 **Files**: `runtime/voxel/storage.js` (new)
 
 ### 8.1 — Chunk Serialization
+
 - Serialize modified chunks to compact binary format
 - Run-Length Encoding (RLE) for common patterns (e.g., solid stone runs)
 - Only save chunks that differ from procedural generation (delta compression)
 
 ### 8.2 — IndexedDB Storage
+
 - Store chunks in IndexedDB (async, large capacity)
 - Key: `world:{seed}:chunk:{x},{z}`
 - Load saved chunks instead of regenerating
 - Lazy: only save chunks player has modified
 
 ### 8.3 — Cart API
+
 ```js
-saveVoxelWorld('my-world');      // persist all modified chunks
-loadVoxelWorld('my-world');      // restore from IndexedDB
-listVoxelWorlds();               // list saved worlds
-deleteVoxelWorld('my-world');    // cleanup
-exportVoxelWorld('my-world');    // download as .nova64world file
-importVoxelWorld(file);          // load from file
+saveVoxelWorld('my-world'); // persist all modified chunks
+loadVoxelWorld('my-world'); // restore from IndexedDB
+listVoxelWorlds(); // list saved worlds
+deleteVoxelWorld('my-world'); // cleanup
+exportVoxelWorld('my-world'); // download as .nova64world file
+importVoxelWorld(file); // load from file
 ```
 
 **Deliverable**: Persistent worlds that survive page reloads.
@@ -273,13 +312,16 @@ importVoxelWorld(file);          // load from file
 **Files**: `runtime/voxel/entities.js` (new)
 
 ### 9.1 — Voxel Entity System
+
 Lightweight ECS (Entity Component System) inspired by noa:
+
 - **Position** component (with local/global coordinate handling)
 - **Physics** component (velocity, gravity, collision shape)
 - **Mesh** component (Three.js mesh attached to entity)
 - **AI** component (optional: pathfinding, behavior trees)
 
 ### 9.2 — Built-in Entity Types
+
 ```js
 const zombie = spawnVoxelEntity('zombie', [x, y, z], {
   mesh: createCube(1, 0x00ff00),
@@ -289,6 +331,7 @@ const zombie = spawnVoxelEntity('zombie', [x, y, z], {
 ```
 
 ### 9.3 — Spatial Hashing
+
 - Fast broad-phase collision detection between entities
 - Efficient entity queries by region: `getEntitiesInRadius(pos, radius)`
 
@@ -299,21 +342,25 @@ const zombie = spawnVoxelEntity('zombie', [x, y, z], {
 ## Phase 10: Advanced Features (Effort: Large — Future)
 
 ### 10.1 — Multiplayer (WebSocket/WebRTC)
+
 - Send chunk diffs + entity states
 - Authoritative server mode or peer-to-peer
 - Inspired by voxel-server / noa multiplayer examples
 
 ### 10.2 — Infinite Height (Cubic Chunks)
+
 - Change from column chunks (16×64×16) to cubic chunks (16×16×16)
 - Enables infinite vertical worlds (sky islands, deep underground)
 - More complex neighbor management but better memory usage
 
 ### 10.3 — Advanced Biomes
+
 - Rivers, ocean depths, floating islands
 - Structure generation (villages, dungeons, temples)
 - Multi-block structures that span chunk boundaries
 
 ### 10.4 — Shader-Based Effects
+
 - Water reflections/refractions via custom Three.js shader
 - Waving grass/leaves vertex animation
 - Volumetric fog in caves
@@ -347,20 +394,21 @@ runtime/
 
 ## Implementation Priority
 
-| Phase | Name | Impact | Effort | Status |
-|-------|------|--------|--------|--------|
-| 1 | Foundation Fixes & Registry | High | Small | **DONE** ✅ |
-| 2 | Real Noise & Terrain | High | Small | **DONE** ✅ |
-| 3 | Greedy Meshing + AO + Transparency | Very High | Medium | **DONE** ✅ |
-| 4 | Lighting System (Sky + Block + Day/Night) | High | Medium-Large | **DONE** ✅ |
-| 5 | DDA Raycast & Swept AABB Physics | Medium | Small | **DONE** ✅ |
-| 6 | Texture Atlas | Medium | Medium | **DONE** ✅ |
-| 7 | Chunk Workers | High | Medium | **DONE** ✅ |
-| 8 | World Persistence (IndexedDB) | Medium | Medium | **DONE** ✅ |
-| 9 | Entity System | Medium | Large | **DONE** ✅ |
-| 10 | Advanced (Multiplayer, etc.) | High | Very Large | Future |
+| Phase | Name                                      | Impact    | Effort       | Status      |
+| ----- | ----------------------------------------- | --------- | ------------ | ----------- |
+| 1     | Foundation Fixes & Registry               | High      | Small        | **DONE** ✅ |
+| 2     | Real Noise & Terrain                      | High      | Small        | **DONE** ✅ |
+| 3     | Greedy Meshing + AO + Transparency        | Very High | Medium       | **DONE** ✅ |
+| 4     | Lighting System (Sky + Block + Day/Night) | High      | Medium-Large | **DONE** ✅ |
+| 5     | DDA Raycast & Swept AABB Physics          | Medium    | Small        | **DONE** ✅ |
+| 6     | Texture Atlas                             | Medium    | Medium       | **DONE** ✅ |
+| 7     | Chunk Workers                             | High      | Medium       | **DONE** ✅ |
+| 8     | World Persistence (IndexedDB)             | Medium    | Medium       | **DONE** ✅ |
+| 9     | Entity System                             | Medium    | Large        | **DONE** ✅ |
+| 10    | Advanced (Multiplayer, etc.)              | High      | Very Large   | Future      |
 
 ### Additional Improvements (Done ✅)
+
 - **Biome-specific tree variety**: Oak, birch, spruce, jungle, acacia trees placed by biome
 - **All voxel globals registered in eslint config** for cart linting
 - **Procedural texture atlas**: 27 pixel-art tiles generated at runtime, per-face mapping (grass top/side/bottom), toggle with `enableVoxelTextures()`, custom atlas support via `loadVoxelTextureAtlas()`

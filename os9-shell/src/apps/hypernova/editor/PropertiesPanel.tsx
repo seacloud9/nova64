@@ -1,6 +1,6 @@
 // hyperNova – PropertiesPanel
 // Shows editable properties for the selected card object + the script editor
-import { useHyperNovaStore, selectCurrentCard, selectCurrentObject } from '../shared/store';
+import { useHyperNovaStore, selectCurrentCard, selectEditingObjects } from '../shared/store';
 import type {
   CardObject, TextObject, ButtonObject, FieldObject, RectObject, ImageObject,
 } from '../shared/schema';
@@ -433,7 +433,12 @@ function CardBgEditor() {
 // ---------------------------------------------------------------------------
 
 export function PropertiesPanel() {
-  const obj = useHyperNovaStore(selectCurrentObject);
+  // Use editing-aware object selection (works inside symbol frames too)
+  const obj = useHyperNovaStore((store) => {
+    if (!store.selectedObjectId) return null;
+    const objs = selectEditingObjects(store);
+    return objs.find((o) => o.id === store.selectedObjectId) ?? null;
+  });
   const deleteObject = useHyperNovaStore((s) => s.deleteObject);
 
   return (

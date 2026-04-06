@@ -194,6 +194,13 @@ export function LibraryPanel() {
     store.updateSymbol(selectedSymbolId, { name });
   }, [store, selectedSymbolId]);
 
+  // Double-click library item → enter its timeline
+  const handleEditSymbol = useCallback((symId?: string) => {
+    const id = symId ?? selectedSymbolId;
+    if (!id) return;
+    store.enterSymbol(id);
+  }, [store, selectedSymbolId]);
+
   return (
     <div style={S.panel}>
       {/* Header */}
@@ -242,6 +249,8 @@ export function LibraryPanel() {
               key={sym.id}
               style={S.item(sym.id === selectedSymbolId)}
               onClick={() => setSelectedSymbolId(sym.id === selectedSymbolId ? null : sym.id)}
+              onDoubleClick={() => handleEditSymbol(sym.id)}
+              title="Double-click to edit symbol timeline"
             >
               <span style={S.itemIcon}>{sym.type === 'movie-clip' ? '▶' : '◆'}</span>
               <span style={S.itemName}>{sym.name}</span>
@@ -279,6 +288,13 @@ export function LibraryPanel() {
 
       {/* Actions */}
       <div style={S.actions}>
+        <div
+          style={S.actionBtn(!!selected)}
+          onClick={selected ? () => handleEditSymbol() : undefined}
+          title="Edit symbol timeline (or double-click)"
+        >
+          ✏️ Edit
+        </div>
         <div
           style={S.actionBtn(!!selected)}
           onClick={selected ? handlePlaceInstance : undefined}

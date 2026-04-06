@@ -14,6 +14,12 @@ interface EditorSettings {
   showGuides: boolean;     // smart alignment guides
 }
 
+/** Represents one level of MovieClip nesting (editing inside a symbol) */
+interface SymbolEditLevel {
+  symbolId: string;
+  frameIndex: number; // 0-based index into symbol.frames
+}
+
 interface HyperNovaStore {
   // ---- State ---------------------------------------------------------------
   project: HyperNovaProject;
@@ -28,6 +34,8 @@ interface HyperNovaStore {
   fieldValues: Record<string, string>;
   isDirty: boolean;
   editorSettings: EditorSettings;
+  /** Stack of symbol editing levels (empty = editing card stage) */
+  symbolEditPath: SymbolEditLevel[];
 
   // ---- Mode / tool ---------------------------------------------------------
   setMode(mode: 'edit' | 'play'): void;
@@ -42,6 +50,15 @@ interface HyperNovaStore {
   // ---- Navigation ----------------------------------------------------------
   selectCard(cardId: string): void;
   selectObject(id: string | null): void;
+
+  // ---- Symbol timeline navigation (Flash-style enter/exit) -----------------
+  enterSymbol(symbolId: string): void;
+  exitSymbol(): void;
+  exitToRoot(): void;
+  exitToDepth(depth: number): void;
+  setEditingFrame(frameIndex: number): void;
+  addKeyframe(): void;
+  deleteKeyframe(frameIndex: number): void;
 
   // ---- Card operations -----------------------------------------------------
   addCard(): void;
@@ -107,6 +124,7 @@ export const useHyperNovaStore = create<HyperNovaStore>((set, get) => ({
   historyIndex: 0,
   fieldValues: {},
   isDirty: false,
+  symbolEditPath: [],
   editorSettings: {
     showGrid: false,
     snapToGrid: true,
@@ -115,7 +133,7 @@ export const useHyperNovaStore = create<HyperNovaStore>((set, get) => ({
   },
 
   // ---- Mode / tool ---------------------------------------------------------
-  setMode: (mode) => set({ mode, selectedObjectId: null }),
+  setMode: (mode) => set({ mode, selectedObjectId: null, symbolEditPath: [] }),
   setActiveTool: (tool) => set({ activeTool: tool }),
 
   // ---- Editor settings -----------------------------------------------------
@@ -125,8 +143,81 @@ export const useHyperNovaStore = create<HyperNovaStore>((set, get) => ({
   setGridSize: (size) => set((s) => ({ editorSettings: { ...s.editorSettings, gridSize: size } })),
 
   // ---- Navigation ----------------------------------------------------------
-  selectCard: (cardId) => set({ selectedCardId: cardId, selectedObjectId: null }),
+  selectCard: (cardId) => set({ selectedCardId: cardId, selectedObjectId: null, symbolEditPath: [] }),
   selectObject: (id) => set({ selectedObjectId: id }),
+
+  // ---- Symbol timeline navigation (Flash-style enter/exit) -----------------
+  enterSymbol: (symbolId) => {
+    set((state) => ({
+      symbolEditPath: [...state.symbolEditPath, { symbolId, frameIndex: 0 }],
+      selectedObjectId: null,
+    }));
+  },
+
+  exitSymbol: () => {
+    set((state) => ({
+      symbolEditPath: state.symbolEditPath.slice(0, -1),
+      selectedObjectId: null,
+    }));
+  },
+
+  exitToRoot: () => set({ symbolEditPath: [], selectedObjectId: null }),
+
+  /** Navigate to a specific depth in the symbol edit path (0 = inside first symbol) */
+  exitToDepth: (depth: number) => {
+    set((state) => ({
+      symbolEditPath: state.symbolEditPath.slice(0, depth + 1),
+      selectedObjectId: null,
+    }));
+  },
+
+  setEditingFrame: (frameIndex) => {
+    set((state) => {
+      if (state.symbolEditPath.length === 0) return {};
+      const path = [...state.symbolEditPath];
+      path[path.length - 1] = { ...path[path.length - 1], frameIndex };
+      return { symbolEditPath: path, selectedObjectId: null };
+    });
+  },
+
+  addKeyframe: () => {
+    const state = get();
+    if (state.symbolEditPath.length === 0) return;
+    const current = state.symbolEditPath[state.symbolEditPath.length - 1];
+    const sym = (state.project.library || []).find((s) => s.id === current.symbolId);
+    if (!sym) return;
+    const nextFrame = sym.frames.length > 0
+      ? Math.max(...sym.frames.map((k) => k.frame)) + 1
+      : 1;
+    const newFrames = [...sym.frames, { frame: nextFrame, objects: [] }];
+    const library = (state.project.library || []).map((s) =>
+      s.id === current.symbolId ? { ...s, frames: newFrames } : s
+    );
+    const newProject = { ...state.project, library };
+    _pushSnap(set, newProject);
+    // Select the newly added keyframe
+    const path = [...state.symbolEditPath];
+    path[path.length - 1] = { ...current, frameIndex: newFrames.length - 1 };
+    set({ symbolEditPath: path, selectedObjectId: null });
+  },
+
+  deleteKeyframe: (frameIndex) => {
+    const state = get();
+    if (state.symbolEditPath.length === 0) return;
+    const current = state.symbolEditPath[state.symbolEditPath.length - 1];
+    const sym = (state.project.library || []).find((s) => s.id === current.symbolId);
+    if (!sym || sym.frames.length <= 1) return; // keep at least 1 frame
+    const newFrames = sym.frames.filter((_, i) => i !== frameIndex);
+    const library = (state.project.library || []).map((s) =>
+      s.id === current.symbolId ? { ...s, frames: newFrames } : s
+    );
+    const newProject = { ...state.project, library };
+    _pushSnap(set, newProject);
+    const newIdx = Math.min(current.frameIndex, newFrames.length - 1);
+    const path = [...state.symbolEditPath];
+    path[path.length - 1] = { ...current, frameIndex: newIdx };
+    set({ symbolEditPath: path, selectedObjectId: null });
+  },
 
   // ---- Card operations -----------------------------------------------------
   addCard: () => {
@@ -194,6 +285,22 @@ export const useHyperNovaStore = create<HyperNovaStore>((set, get) => ({
   addObject: (obj) => {
     const state = get();
     const si = state.selectedStackIndex;
+
+    // If editing inside a symbol, add to the active keyframe
+    if (state.symbolEditPath.length > 0) {
+      const current = state.symbolEditPath[state.symbolEditPath.length - 1];
+      const library = (state.project.library || []).map((s) => {
+        if (s.id !== current.symbolId) return s;
+        const frames = s.frames.map((kf, i) =>
+          i === current.frameIndex ? { ...kf, objects: [...kf.objects, obj] } : kf
+        );
+        return { ...s, frames };
+      });
+      _pushSnap(set, { ...state.project, library });
+      set({ selectedObjectId: obj.id });
+      return;
+    }
+
     const stack = state.project.stacks[si];
     const cards = stack.cards.map((c) =>
       c.id === state.selectedCardId
@@ -209,6 +316,22 @@ export const useHyperNovaStore = create<HyperNovaStore>((set, get) => ({
   updateObject: (id, updates) => {
     const state = get();
     const si = state.selectedStackIndex;
+
+    if (state.symbolEditPath.length > 0) {
+      const current = state.symbolEditPath[state.symbolEditPath.length - 1];
+      const library = (state.project.library || []).map((s) => {
+        if (s.id !== current.symbolId) return s;
+        const frames = s.frames.map((kf, i) =>
+          i === current.frameIndex
+            ? { ...kf, objects: kf.objects.map((o) => o.id === id ? ({ ...o, ...updates } as CardObject) : o) }
+            : kf
+        );
+        return { ...s, frames };
+      });
+      _pushSnap(set, { ...state.project, library });
+      return;
+    }
+
     const stack = state.project.stacks[si];
     const cards = stack.cards.map((c) =>
       c.id === state.selectedCardId
@@ -226,9 +349,24 @@ export const useHyperNovaStore = create<HyperNovaStore>((set, get) => ({
   },
 
   moveObject: (id, x, y) => {
-    // Like updateObject but doesn't flood history – only saves final position
-    // We directly replace the project without a new history entry for live drag
     set((state) => {
+      if (state.symbolEditPath.length > 0) {
+        const current = state.symbolEditPath[state.symbolEditPath.length - 1];
+        const library = (state.project.library || []).map((s) => {
+          if (s.id !== current.symbolId) return s;
+          const frames = s.frames.map((kf, i) =>
+            i === current.frameIndex
+              ? { ...kf, objects: kf.objects.map((o) => o.id === id ? ({ ...o, x, y } as CardObject) : o) }
+              : kf
+          );
+          return { ...s, frames };
+        });
+        const newProject = { ...state.project, library };
+        const history = [...state.history];
+        history[state.historyIndex] = newProject;
+        return { project: newProject, history, isDirty: true };
+      }
+
       const si = state.selectedStackIndex;
       const stack = state.project.stacks[si];
       const cards = stack.cards.map((c) =>
@@ -244,7 +382,6 @@ export const useHyperNovaStore = create<HyperNovaStore>((set, get) => ({
       const stacks = [...state.project.stacks];
       stacks[si] = { ...stack, cards };
       const newProject = { ...state.project, stacks };
-      // Also update history current entry in place (no new push)
       const history = [...state.history];
       history[state.historyIndex] = newProject;
       return { project: newProject, history, isDirty: true };
@@ -253,6 +390,23 @@ export const useHyperNovaStore = create<HyperNovaStore>((set, get) => ({
 
   deleteObject: (id) => {
     const state = get();
+
+    if (state.symbolEditPath.length > 0) {
+      const current = state.symbolEditPath[state.symbolEditPath.length - 1];
+      const library = (state.project.library || []).map((s) => {
+        if (s.id !== current.symbolId) return s;
+        const frames = s.frames.map((kf, i) =>
+          i === current.frameIndex
+            ? { ...kf, objects: kf.objects.filter((o) => o.id !== id) }
+            : kf
+        );
+        return { ...s, frames };
+      });
+      _pushSnap(set, { ...state.project, library });
+      set({ selectedObjectId: null });
+      return;
+    }
+
     const si = state.selectedStackIndex;
     const stack = state.project.stacks[si];
     const cards = stack.cards.map((c) =>
@@ -315,6 +469,7 @@ export const useHyperNovaStore = create<HyperNovaStore>((set, get) => ({
       historyIndex: 0,
       isDirty: false,
       mode: 'edit',
+      symbolEditPath: [],
     });
   },
 
@@ -343,4 +498,38 @@ export function selectCurrentObject(store: HyperNovaStore): CardObject | null {
   const card = selectCurrentCard(store);
   if (!card || !store.selectedObjectId) return null;
   return card.objects.find((o) => o.id === store.selectedObjectId) ?? null;
+}
+
+/** Get the objects currently being edited (card stage or symbol keyframe) */
+export function selectEditingObjects(store: HyperNovaStore): CardObject[] {
+  if (store.symbolEditPath.length > 0) {
+    const current = store.symbolEditPath[store.symbolEditPath.length - 1];
+    const sym = (store.project.library || []).find((s) => s.id === current.symbolId);
+    if (!sym) return [];
+    const kf = sym.frames[current.frameIndex];
+    return kf?.objects ?? [];
+  }
+  const card = selectCurrentCard(store);
+  return card?.objects ?? [];
+}
+
+/** Get the currently editing symbol (if inside one), or null */
+export function selectEditingSymbol(store: HyperNovaStore): HNSymbol | null {
+  if (store.symbolEditPath.length === 0) return null;
+  const current = store.symbolEditPath[store.symbolEditPath.length - 1];
+  return (store.project.library || []).find((s) => s.id === current.symbolId) ?? null;
+}
+
+/** Build the breadcrumb trail for symbol editing */
+export function selectBreadcrumb(store: HyperNovaStore): { label: string; depth: number }[] {
+  const card = selectCurrentCard(store);
+  const crumbs: { label: string; depth: number }[] = [
+    { label: card?.title ?? 'Card', depth: -1 },
+  ];
+  for (let i = 0; i < store.symbolEditPath.length; i++) {
+    const level = store.symbolEditPath[i];
+    const sym = (store.project.library || []).find((s) => s.id === level.symbolId);
+    crumbs.push({ label: sym?.name ?? 'Symbol', depth: i });
+  }
+  return crumbs;
 }

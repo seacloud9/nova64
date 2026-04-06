@@ -28,7 +28,7 @@ text/i18n, assets, UI, entities (enemies/NPCs/items), and gameplay config.
 export const env = {
   // ── Meta ───────────────────────────────────────────────────
   meta: {
-    name: 'My Game',           // cart display name
+    name: 'My Game', // cart display name
     version: '1.0.0',
     author: 'Dev Name',
     description: 'A cool game',
@@ -39,7 +39,7 @@ export const env = {
     defaultLocale: 'en',
     strings: {
       // Flat dot-notation keys
-      'title': 'Dragon Quest',
+      title: 'Dragon Quest',
       'menu.start': 'New Game',
       'menu.continue': 'Continue',
       'menu.options': 'Options',
@@ -55,11 +55,13 @@ export const env = {
     },
     locales: {
       es: {
-        'title': 'Aventura del Dragón',
+        title: 'Aventura del Dragón',
         'menu.start': 'Nuevo Juego',
         // ... only override what changes
       },
-      ja: { /* ... */ },
+      ja: {
+        /* ... */
+      },
     },
   },
 
@@ -76,7 +78,7 @@ export const env = {
       shield: 'models/shield.glb',
     },
     sounds: {
-      jump: 'sfx/jump',       // can omit extension, runtime tries .wav/.mp3
+      jump: 'sfx/jump', // can omit extension, runtime tries .wav/.mp3
       coin: 'sfx/coin',
       bgm_overworld: 'music/overworld.mp3',
     },
@@ -104,27 +106,35 @@ export const env = {
       fog: { color: 0x111111, near: 5, far: 20 },
     },
   },
-  onCheatsChanged(cheats) { /* ... */ },
+  onCheatsChanged(cheats) {
+    /* ... */
+  },
 
   // ── Entities ──────────────────────────────────────────────
   entities: {
     enemies: {
       slime: {
-        name: 'enemy.slime.name',   // t() key reference
-        hp: 10, atk: 3, def: 1, speed: 1.5,
+        name: 'enemy.slime.name', // t() key reference
+        hp: 10,
+        atk: 3,
+        def: 1,
+        speed: 1.5,
         color: 0x44ff44,
-        model: 'enemy_slime',       // ref to assets.textures or .models
-        behavior: 'wander',         // 'wander' | 'chase' | 'patrol' | 'guard' | 'flee'
+        model: 'enemy_slime', // ref to assets.textures or .models
+        behavior: 'wander', // 'wander' | 'chase' | 'patrol' | 'guard' | 'flee'
         loot: [
           { item: 'gel', chance: 0.5, quantity: [1, 3] },
           { item: 'coin', chance: 0.8 },
         ],
         spawnBiomes: ['plains', 'forest'],
-        tier: 1,                    // difficulty tier for scaling
+        tier: 1, // difficulty tier for scaling
       },
       skeleton: {
         name: 'enemy.skeleton.name',
-        hp: 20, atk: 6, def: 3, speed: 2.0,
+        hp: 20,
+        atk: 6,
+        def: 3,
+        speed: 2.0,
         color: 0xddddaa,
         behavior: 'chase',
         tier: 2,
@@ -143,11 +153,11 @@ export const env = {
     bosses: {
       dragon: {
         name: 'enemy.dragon.name',
-        hp: 200, atk: 25, def: 10,
+        hp: 200,
+        atk: 25,
+        def: 10,
         color: 0xff2200,
-        phases: [
-          { hpThreshold: 0.5, behavior: 'chase', atkMultiplier: 1.5 },
-        ],
+        phases: [{ hpThreshold: 0.5, behavior: 'chase', atkMultiplier: 1.5 }],
         loot: [{ item: 'dragon_scale', chance: 1.0 }],
       },
     },
@@ -158,13 +168,13 @@ export const env = {
     potion: {
       name: 'item.potion.name',
       description: 'item.potion.desc',
-      type: 'consumable',        // 'consumable' | 'weapon' | 'armor' | 'key' | 'material'
+      type: 'consumable', // 'consumable' | 'weapon' | 'armor' | 'key' | 'material'
       effect: { heal: 20 },
       stackable: true,
       maxStack: 99,
-      rarity: 'common',         // 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary'
-      icon: 'item_potion',      // asset ref
-      value: 25,                // buy/sell price
+      rarity: 'common', // 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary'
+      icon: 'item_potion', // asset ref
+      value: 25, // buy/sell price
     },
     sword: {
       name: 'item.sword.name',
@@ -180,17 +190,22 @@ export const env = {
   ui: {
     hud: {
       healthBar: {
-        x: 10, y: 10, width: 100, height: 12,
-        color: 0xff0000, bgColor: 0x333333, show: true,
+        x: 10,
+        y: 10,
+        width: 100,
+        height: 12,
+        color: 0xff0000,
+        bgColor: 0x333333,
+        show: true,
       },
       score: { x: 10, y: 30, color: 0xffffff, format: '{hud.score}: {value}' },
       minimap: { enabled: true, x: -120, y: 10, size: 100, shape: 'circle' },
     },
     dialog: {
-      style: 'rpg',             // 'rpg' | 'visual-novel' | 'minimal'
+      style: 'rpg', // 'rpg' | 'visual-novel' | 'minimal'
       boxColor: 0x222244,
       textColor: 0xffffff,
-      typewriterSpeed: 30,      // chars per second
+      typewriterSpeed: 30, // chars per second
       nameColor: 0xffff00,
     },
     menus: {
@@ -214,19 +229,20 @@ export const env = {
   // ── Gameplay ──────────────────────────────────────────────
   gameplay: {
     player: {
-      hp: 100, maxHp: 100,
+      hp: 100,
+      maxHp: 100,
       speed: 5.0,
       jumpForce: 0.35,
       startPosition: [0, 80, 0],
     },
     difficulty: {
-      enemyHpScale: 1.0,       // multiplier per level/floor
+      enemyHpScale: 1.0, // multiplier per level/floor
       enemyAtkScale: 1.0,
       lootChanceBonus: 0,
     },
     progression: {
       xpPerLevel: 100,
-      xpScaling: 1.5,          // xp needed = base * scaling^level
+      xpScaling: 1.5, // xp needed = base * scaling^level
     },
   },
 };
@@ -282,24 +298,24 @@ export const env = {
 
 ## New Global API Functions
 
-| Function | Module | Purpose |
-|----------|--------|---------|
-| `t(key, params)` | i18n.js | Translate string with optional interpolation |
-| `setLocale(locale)` | i18n.js | Switch language |
-| `getLocale()` | i18n.js | Get current locale |
-| `getEnemy(id)` | data.js | Get enemy template by id |
-| `getNPC(id)` | data.js | Get NPC template by id |
-| `getBoss(id)` | data.js | Get boss template by id |
-| `getItem(id)` | data.js | Get item template by id |
-| `getEnemies()` | data.js | Get all enemy templates |
-| `getEnemiesByTier(tier)` | data.js | Filter enemies by difficulty tier |
-| `getItems()` | data.js | Get all item templates |
-| `getItemsByType(type)` | data.js | Filter items by type |
-| `getGameplay()` | data.js | Get gameplay config |
-| `getUIConfig()` | data.js | Get UI config |
-| `preloadAssets()` | asset-loader.js | Begin preloading declared assets |
-| `getAsset(name)` | asset-loader.js | Get preloaded asset by logical name |
-| `getAssetStatus()` | asset-loader.js | Get loading progress |
+| Function                 | Module          | Purpose                                      |
+| ------------------------ | --------------- | -------------------------------------------- |
+| `t(key, params)`         | i18n.js         | Translate string with optional interpolation |
+| `setLocale(locale)`      | i18n.js         | Switch language                              |
+| `getLocale()`            | i18n.js         | Get current locale                           |
+| `getEnemy(id)`           | data.js         | Get enemy template by id                     |
+| `getNPC(id)`             | data.js         | Get NPC template by id                       |
+| `getBoss(id)`            | data.js         | Get boss template by id                      |
+| `getItem(id)`            | data.js         | Get item template by id                      |
+| `getEnemies()`           | data.js         | Get all enemy templates                      |
+| `getEnemiesByTier(tier)` | data.js         | Filter enemies by difficulty tier            |
+| `getItems()`             | data.js         | Get all item templates                       |
+| `getItemsByType(type)`   | data.js         | Filter items by type                         |
+| `getGameplay()`          | data.js         | Get gameplay config                          |
+| `getUIConfig()`          | data.js         | Get UI config                                |
+| `preloadAssets()`        | asset-loader.js | Begin preloading declared assets             |
+| `getAsset(name)`         | asset-loader.js | Get preloaded asset by logical name          |
+| `getAssetStatus()`       | asset-loader.js | Get loading progress                         |
 
 ---
 

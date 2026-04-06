@@ -85,19 +85,25 @@ class NovaContextImpl implements NovaContext {
     UISounds.windowOpen();
     useAppStore.getState().launchApp(appId);
     
+    // Support custom window properties passed through args
+    const a = (args && typeof args === 'object') ? args as Record<string, unknown> : {};
+    const windowTitle  = (typeof a.windowTitle === 'string'  ? a.windowTitle  : undefined) ?? app.name;
+    const windowWidth  = (typeof a.width       === 'number'  ? a.width        : undefined) ?? 800;
+    const windowHeight = (typeof a.height      === 'number'  ? a.height       : undefined) ?? 600;
+
     // Create a window for the app
     const windowId = useWindowStore.getState().createWindow({
-      title: app.name,
+      title: windowTitle,
       appId,
-      width: 600,
-      height: 400,
+      width: windowWidth,
+      height: windowHeight,
     });
 
     // Get the window element and mount the app
     setTimeout(() => {
       const windowElement = document.querySelector(`[data-window-id="${windowId}"] .window-content`);
       if (windowElement && app.mount) {
-        app.mount(windowElement as HTMLElement, this);
+        app.mount(windowElement as HTMLElement, this, args);
       }
     }, 0);
 

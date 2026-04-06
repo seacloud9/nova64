@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useAppStore } from '../os/stores';
+import { novaContext } from '../os/context';
 
 interface Game {
   id: string;
@@ -86,28 +86,19 @@ const GAMES: Game[] = [
 ];
 
 export function GameLauncher() {
-  const launchApp = useAppStore((state) => state.launchApp);
   const [hoveredGame, setHoveredGame] = useState<string | null>(null);
 
   const launchGame = (game: Game) => {
-    // Determine the nova64 console base URL
-    // Check if we're running on the OS shell's dev server (port 3000/3001)
-    const isOsShellDevServer = window.location.hostname === 'localhost' && 
-                               (window.location.port === '3000' || window.location.port === '3001');
-    
-    // If on OS shell dev server, point to main nova64 dev server (5173)
-    // If on main server or production, use root of current origin
-    const baseUrl = isOsShellDevServer ? 'http://localhost:5173' : window.location.origin;
-    
-    // Open the console page with the game path
-    const gameUrl = `${baseUrl}/console.html?path=${encodeURIComponent(game.path)}`;
-    console.log('🎮 Launching game:', game.name, 'at', gameUrl);
-    
-    window.open(gameUrl, `nova64-${game.id}`, 'width=1400,height=900,menubar=no,toolbar=no,location=no,status=no');
+    novaContext.launchApp('cart-runner', {
+      path: game.path,
+      windowTitle: '🕹️ ' + game.name,
+      width: 1100,
+      height: 750,
+    });
   };
 
   const createNewGame = () => {
-    launchApp('studio');
+    novaContext.launchApp('studio');
   };
 
   return (

@@ -68,40 +68,40 @@ const manifestInst = manifestApi();
 let uiApiInstance;
 
 // gather and expose to global
-const g = {};
-api.exposeTo(g);
-sApi.exposeTo(g);
-threeDApi_instance.exposeTo(g);
-eApi.exposeTo(g);
-pApi.exposeTo(g);
-tApi.exposeTo(g);
-Object.assign(g, { aabb, circleCollision, raycastTilemap });
-aApi.exposeTo(g);
-iApi.exposeTo(g);
-stApi.exposeTo(g);
-scrApi.exposeTo(g);
-skyApi.exposeTo(g);
-fxApi.exposeTo(g);
-vxApi.exposeTo(g);
-storeApiInst.exposeTo(g);
-api2dInst.exposeTo(g);
-presetsInst.exposeTo(g);
-genArtInst.exposeTo(g);
-gameUtilsInst.exposeTo(g);
-nftSeedInst.exposeTo(g);
-wadInst.exposeTo(g);
-manifestInst.exposeTo(g);
+const nova64api = {};
+api.exposeTo(nova64api);
+sApi.exposeTo(nova64api);
+threeDApi_instance.exposeTo(nova64api);
+eApi.exposeTo(nova64api);
+pApi.exposeTo(nova64api);
+tApi.exposeTo(nova64api);
+Object.assign(nova64api, { aabb, circleCollision, raycastTilemap });
+aApi.exposeTo(nova64api);
+iApi.exposeTo(nova64api);
+stApi.exposeTo(nova64api);
+scrApi.exposeTo(nova64api);
+skyApi.exposeTo(nova64api);
+fxApi.exposeTo(nova64api);
+vxApi.exposeTo(nova64api);
+storeApiInst.exposeTo(nova64api);
+api2dInst.exposeTo(nova64api);
+presetsInst.exposeTo(nova64api);
+genArtInst.exposeTo(nova64api);
+gameUtilsInst.exposeTo(nova64api);
+nftSeedInst.exposeTo(nova64api);
+wadInst.exposeTo(nova64api);
+manifestInst.exposeTo(nova64api);
 
-// Now create UI API after g has rgba8 and other functions
-uiApiInstance = uiApi(gpu, g);
-uiApiInstance.exposeTo(g);
+// Now create UI API after nova64api has rgba8 and other functions
+uiApiInstance = uiApi(gpu, nova64api);
+uiApiInstance.exposeTo(nova64api);
 
 // Connect input system to UI system for mouse events
 iApi.connectUI(uiApiInstance.setMousePosition, uiApiInstance.setMouseButton);
 
-Object.assign(globalThis, g);
+Object.assign(globalThis, nova64api);
 // inject camera ref into sprite system
-if (g.getCamera) sApi.setCameraRef(g.getCamera());
+if (nova64api.getCamera) sApi.setCameraRef(nova64api.getCamera());
 
 const nova = new Nova64(gpu, manifestInst);
 
@@ -273,6 +273,7 @@ const urlParams = new URLSearchParams(window.location.search);
 const gameParam = urlParams.get('game');
 const gamePathParam = urlParams.get('path'); // Allow direct path parameter
 const demoParam = urlParams.get('demo'); // Also handle ?demo= from console.html links
+const studioMode = urlParams.get('studio') === '1'; // Game Studio embeds console.html?studio=1
 
 // Map game IDs to their paths
 const gameMap = {
@@ -348,6 +349,16 @@ const demoMap = {
 
 // default cart - load from URL param or default to space-harrier-3d
 (async () => {
+  // Studio mode: skip auto-loading a cart; wait for EXECUTE_CODE from Game Studio
+  if (studioMode) {
+    console.log('🎮 Studio mode: waiting for code from Game Studio…');
+    requestAnimationFrame(loop);
+    if (window.parent && window.parent !== window) {
+      window.parent.postMessage({ type: 'EXECUTE_READY' }, '*');
+    }
+    return;
+  }
+
   let gamePath = document.getElementById('cart')?.value || '/examples/space-harrier-3d/code.js';
 
   if (gamePathParam) {
@@ -368,7 +379,7 @@ const demoMap = {
 })();
 
 // Listen for messages from Game Studio to execute code
-window.addEventListener('message', event => {
+window.addEventListener('message', async event => {
   if (event.data && event.data.type === 'EXECUTE_CODE') {
     console.log('🎮 Game Studio: Executing code...');
     console.log('📝 Code to execute:', event.data.code.substring(0, 200) + '...');
@@ -396,116 +407,28 @@ window.addEventListener('message', event => {
       const userCode = event.data.code;
 
       console.log('🔨 Creating game function...');
-      // Create a function from the code and execute it
+      // Dynamically build param list from nova64api so ALL Nova64 APIs are local variables
+      // in user code — avoids window.print and other globalThis clobbering issues.
+      const _apiNames = Object.keys(nova64api).filter(k => /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(k));
+      const _apiValues = _apiNames.map(k => nova64api[k]);
       const gameFunction = new Function(
-        'cls',
-        'pset',
-        'pget',
-        'rectfill',
-        'rect',
-        'circfill',
-        'circ',
-        'line',
-        'print',
-        'btn',
-        'btnp',
-        'rgba8',
-        'spr',
-        'map',
-        'mset',
-        'mget',
-        'rect3d',
-        'cube3d',
-        'sphere3d',
-        'cylinder3d',
-        'cone3d',
-        'model3d',
-        'light3d',
-        'setCamera',
-        'lookAt',
-        'fog3d',
-        'clearScene',
-        'updateModel',
-        'createSpaceSkybox',
-        'animateSkybox',
-        'clearSkybox',
-        'bloom',
-        'chromaticAberration',
-        'vignette',
-        'scanlines',
-        'crt',
-        'glitch',
-        'configureVoxelWorld',
-        'setVoxelBlock',
-        'getVoxelBlock',
-        'resetVoxelWorld',
-        'updateVoxelWorld',
-        'console',
-        'Math',
-        'Date',
-        'Array',
-        'Object',
-        'String',
-        'Number',
+        ..._apiNames,
         userCode +
-          '\n; return { update: typeof update !== "undefined" ? update : null, draw: typeof draw !== "undefined" ? draw : null, render: typeof render !== "undefined" ? render : null };'
+          '\n; return { init: typeof init !== "undefined" ? init : null, update: typeof update !== "undefined" ? update : null, draw: typeof draw !== "undefined" ? draw : null, render: typeof render !== "undefined" ? render : null };'
       );
 
       console.log('🚀 Executing game function...');
-      // Call with the API functions and capture the returned functions
-      const gameFunctions = gameFunction(
-        api.cls,
-        api.pset,
-        api.pget,
-        api.rectfill,
-        api.rect,
-        api.circfill,
-        api.circ,
-        api.line,
-        api.print,
-        iApi.btn,
-        iApi.btnp,
-        api.rgba8,
-        sApi.spr,
-        sApi.map,
-        sApi.mset,
-        sApi.mget,
-        threeDApi_instance.rect3d,
-        threeDApi_instance.cube3d,
-        threeDApi_instance.sphere3d,
-        threeDApi_instance.cylinder3d,
-        threeDApi_instance.cone3d,
-        threeDApi_instance.model3d,
-        threeDApi_instance.light3d,
-        threeDApi_instance.setCamera,
-        threeDApi_instance.lookAt,
-        threeDApi_instance.fog3d,
-        threeDApi_instance.clearScene,
-        threeDApi_instance.updateModel,
-        g.createSpaceSkybox,
-        g.animateSkybox,
-        g.clearSkybox,
-        fxApi.bloom,
-        fxApi.chromaticAberration,
-        fxApi.vignette,
-        fxApi.scanlines,
-        fxApi.crt,
-        fxApi.glitch,
-        vxApi.configureWorld,
-        vxApi.setBlock,
-        vxApi.getBlock,
-        vxApi.resetWorld,
-        vxApi.updateChunks,
-        console,
-        Math,
-        Date,
-        Array,
-        Object,
-        String,
-        Number
-      );
+      const gameFunctions = gameFunction(..._apiValues);
 
       console.log('📋 Game functions:', gameFunctions);
+
+      // Call init() if defined (modern Nova64 carts use init for one-time setup)
+      if (gameFunctions.init && typeof gameFunctions.init === 'function') {
+        console.log('🎬 Calling init()...');
+        const initResult = gameFunctions.init();
+        if (initResult instanceof Promise) await initResult;
+        console.log('✅ init() completed');
+      }
 
       // Replace the cart's update/draw functions with the new ones
       if (gameFunctions.update || gameFunctions.draw || gameFunctions.render) {

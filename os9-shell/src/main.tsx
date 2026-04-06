@@ -17,6 +17,8 @@ import './apps/sprite-editor-app';
 import './apps/demoscene-app';
 import './apps/hypernova';
 import './apps/Finder';
+import './apps/cart-runner-app';
+import './apps/model-viewer-app';
 
 // Initialize the OS
 const root = ReactDOM.createRoot(document.getElementById('root')!);

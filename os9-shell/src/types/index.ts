@@ -89,7 +89,7 @@ export interface Nova64App {
   name: string;
   icon: string;
   menus?: MenuTemplate[];
-  mount(el: HTMLElement, ctx: NovaContext): void;
+  mount(el: HTMLElement, ctx: NovaContext, args?: unknown): void;
   unmount(): void;
   onEvent?(evt: NovaEvent): void;
   getInfo?(): AppInfo;

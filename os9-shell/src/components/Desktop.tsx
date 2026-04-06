@@ -62,6 +62,15 @@ export function Desktop() {
       y: 540,
     },
     {
+      id: 'model-viewer',
+      name: 'Model Viewer',
+      path: '/Applications/ModelViewer.app',
+      type: 'app',
+      icon: '📦',
+      x: window.innerWidth - 100,
+      y: 640,
+    },
+    {
       id: 'trash',
       name: 'Trash',
       path: '/Trash',

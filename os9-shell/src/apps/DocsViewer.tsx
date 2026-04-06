@@ -23,6 +23,7 @@ const DOC_PAGES = [
   { label: 'Text Input', path: '/docs/textinput.html' },
   { label: 'Fullscreen', path: '/docs/fullscreen-button.html' },
   { label: 'NFT Seed', path: '/docs/api-nft-seed.html' },
+  { label: 'WAD System', path: '/docs/wad.html' },
 ];
 
 export function DocsViewer() {

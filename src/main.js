@@ -394,14 +394,18 @@ window.addEventListener('message', async event => {
       console.log('⏸️ Pausing game...');
       paused = true;
 
-      // Reset the 3D scene
-      console.log('🧹 Clearing 3D scene...');
-      if (threeDApi_instance && typeof threeDApi_instance.clearScene === 'function') {
-        threeDApi_instance.clearScene();
-        console.log('✅ Scene cleared');
-      } else {
-        console.warn('⚠️ clearScene not available');
-      }
+      // Full scene reset — clear all 3D objects, lights, effects, fog, skybox, camera
+      console.log('🧹 Resetting scene for new cart...');
+      if (typeof nova64api.clearScene === 'function') nova64api.clearScene();
+      if (typeof nova64api.clearFog   === 'function') nova64api.clearFog();
+      if (typeof nova64api.clearSkybox === 'function') nova64api.clearSkybox();
+      if (typeof nova64api.disableBloom === 'function') nova64api.disableBloom();
+      if (typeof nova64api.disableVignette === 'function') nova64api.disableVignette();
+      if (typeof nova64api.disableChromaticAberration === 'function') nova64api.disableChromaticAberration();
+      if (typeof nova64api.disableGlitch === 'function') nova64api.disableGlitch();
+      if (typeof nova64api.setCameraPosition === 'function') nova64api.setCameraPosition(0, 5, 10);
+      if (typeof nova64api.setCameraTarget === 'function') nova64api.setCameraTarget(0, 0, 0);
+      console.log('✅ Scene reset complete');
 
       // Execute the new code
       const userCode = event.data.code;

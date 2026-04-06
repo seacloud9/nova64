@@ -465,6 +465,8 @@ window.addEventListener('message', async event => {
     } catch (error) {
       console.error('❌ Game Studio: Error executing code:', error);
       console.error('Stack trace:', error.stack);
+      // Always resume so the next Run attempt isn't permanently frozen
+      paused = false;
       if (event.source) {
         event.source.postMessage(
           {

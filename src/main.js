@@ -381,6 +381,7 @@ const demoMap = {
 // Listen for messages from Game Studio to execute code
 window.addEventListener('message', async event => {
   if (event.data && event.data.type === 'EXECUTE_CODE') {
+    const postLog = (msg) => { if (event.source) event.source.postMessage({ type: "CART_LOG", message: msg }, event.origin); };
     console.log('🎮 Game Studio: Executing code...');
     console.log('📝 Code to execute:', event.data.code.substring(0, 200) + '...');
     console.log('🔧 Available APIs:', {
@@ -406,6 +407,7 @@ window.addEventListener('message', async event => {
       if (typeof nova64api.setCameraPosition === 'function') nova64api.setCameraPosition(0, 5, 10);
       if (typeof nova64api.setCameraTarget === 'function') nova64api.setCameraTarget(0, 0, 0);
       console.log('✅ Scene reset complete');
+      postLog('🧹 Scene reset for new cart');
 
       // Execute the new code
       const userCode = event.data.code;
@@ -432,28 +434,19 @@ window.addEventListener('message', async event => {
         const initResult = gameFunctions.init();
         if (initResult instanceof Promise) await initResult;
         console.log('✅ init() completed');
+        postLog('🎬 init() completed');
       }
 
-      // Replace the cart's update/draw functions with the new ones
-      if (gameFunctions.update || gameFunctions.draw || gameFunctions.render) {
-        console.log('🔄 Replacing cart functions...');
-        if (!nova.cart) {
-          nova.cart = {};
-        }
-        if (gameFunctions.update) {
-          nova.cart.update = gameFunctions.update;
-          console.log('✅ Replaced update function');
-        }
-        if (gameFunctions.draw) {
-          nova.cart.draw = gameFunctions.draw;
-          console.log('✅ Replaced draw function');
-        } else if (gameFunctions.render) {
-          // Support both draw() and render() naming conventions
-          nova.cart.draw = gameFunctions.render;
-          console.log('✅ Replaced draw function (from render)');
-        }
-      } else {
-        console.log('ℹ️ No update/draw functions found in code');
+      // Replace the cart's update/draw functions — always reset to drop stale handlers
+      console.log('🔄 Installing cart functions...');
+      nova.cart = {};
+      if (gameFunctions.update) {
+        nova.cart.update = gameFunctions.update;
+      }
+      if (gameFunctions.draw) {
+        nova.cart.draw = gameFunctions.draw;
+      } else if (gameFunctions.render) {
+        nova.cart.draw = gameFunctions.render;
       }
 
       // Resume the game loop
@@ -461,6 +454,7 @@ window.addEventListener('message', async event => {
       paused = false;
 
       console.log('✅ Game Studio: Code executed successfully!');
+      postLog('✅ Cart loaded and running!');
 
       // Send success message back
       if (event.source) {

@@ -97,6 +97,7 @@ export function GameStudio() {
   const [showDemos, setShowDemos] = useState(false);
   const [showMyCarts, setShowMyCarts] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
+  const [iframeMounted, setIframeMounted] = useState(false);
   const [isDemo, setIsDemo]       = useState(false);
   const [demoName, setDemoName]   = useState<string | null>(null);
   const [savedCarts, setSavedCarts] = useState<string[]>(() => lsListCarts());
@@ -176,6 +177,8 @@ export function GameStudio() {
         }
       } else if (e.data?.type === 'EXECUTE_SUCCESS') {
         setOutput(prev => [...prev, '\u2705 Game is running!']);
+      } else if (e.data?.type === 'CART_LOG') {
+        setOutput(prev => [...prev, e.data.message]);
       } else if (e.data?.type === 'EXECUTE_ERROR') {
         setOutput(prev => [...prev, `\u274C Runtime error: ${e.data.error}`]);
       }
@@ -201,27 +204,34 @@ export function GameStudio() {
     }
   };
 
-  const runGame = () => {
-    const processed = processCartCode(code);
+  // Helper: send processed code to Nova64 iframe (or queue for EXECUTE_READY)
+  const sendCodeToIframe = (rawCode: string) => {
+    const processed = processCartCode(rawCode);
     pendingCodeRef.current = processed;
-    // Always switch to preview so the user sees the result immediately
+    setIframeMounted(true);
     setShowPreview(true);
     if (iframeReadyRef.current && iframeRef.current?.contentWindow) {
       iframeRef.current.contentWindow.postMessage(
         { type: 'EXECUTE_CODE', code: processed }, getNovaBaseUrl()
       );
-      setOutput(['\uD83D\uDD79\uFE0F Running your code\u2026']);
       pendingCodeRef.current = null;
+      return true;
+    }
+    return false;
+  };
+
+  const runGame = () => {
+    if (sendCodeToIframe(code)) {
+      setOutput(prev => [...prev, '\uD83D\uDD79\uFE0F Running your code\u2026']);
     } else {
-      // Iframe loading or not yet shown — code queued, fires on EXECUTE_READY
-      setOutput(['\u23F3 Loading Nova64 runtime\u2026']);
+      setOutput(prev => [...prev, '\u23F3 Loading Nova64 runtime\u2026']);
     }
   };
 
   const loadDemo = async (key: string) => {
     const demo = DEMO_EXAMPLES[key];
     if (!demo) return;
-    setOutput([`\uD83D\uDCDA Loading: ${demo.name}\u2026`]);
+    setOutput(prev => [...prev, `\uD83D\uDCDA Loading: ${demo.name}\u2026`]);
     setShowDemos(false);
     try {
       let gameCode: string;
@@ -237,9 +247,14 @@ export function GameStudio() {
       setIsDemo(true);
       setDemoName(demo.name);
       setEditorReadOnly(true);
-      setOutput([`\uD83D\uDCDA Demo loaded: ${demo.name}`, '\uD83D\uDCD6 Read-only \u2014 click \uD83D\uDD00 Fork to edit']);
+      // Auto-run the demo immediately
+      if (sendCodeToIframe(gameCode)) {
+        setOutput(prev => [...prev, `\uD83D\uDD79\uFE0F Running: ${demo.name}`]);
+      } else {
+        setOutput(prev => [...prev, '\u23F3 Loading Nova64 runtime\u2026']);
+      }
     } catch (err) {
-      setOutput([`\u274C Failed to load demo: ${(err as Error).message}`]);
+      setOutput(prev => [...prev, `\u274C Failed to load demo: ${(err as Error).message}`]);
     }
   };
 
@@ -498,10 +513,14 @@ export function GameStudio() {
             })}
           </div>
 
-          {/* Content */}
-          <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-            {showPreview ? (
-              <div style={{ flex: 1, overflow: 'hidden' }}>
+          {/* Content — both panels always rendered, toggled via CSS display */}
+          <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
+            {/* Preview (iframe) — mounted once, never destroyed */}
+            {iframeMounted && (
+              <div style={{
+                position: 'absolute', inset: 0,
+                display: showPreview ? 'block' : 'none',
+              }}>
                 <iframe
                   ref={iframeRef}
                   src={`${getNovaBaseUrl()}/console.html?studio=1`}
@@ -511,39 +530,43 @@ export function GameStudio() {
                   title="Nova64 Preview"
                 />
               </div>
-            ) : (
-              <div style={{
-                flex: 1, color: '#00FF00',
-                fontFamily: 'Monaco, Menlo, monospace',
-                fontSize: 12, padding: 16, overflow: 'auto',
-              }}>
-                {output.length === 0 ? (
-                  <div style={{ color: '#006600' }}>
-                    <div style={{ marginBottom: 10, fontStyle: 'italic' }}>&gt; Game Studio Ready</div>
-                    {[
-                      ['📚 Demos', 'Browse example carts (read-only, runnable)'],
-                      ['🔀 Fork',  'Copy a demo into your own editable cart'],
-                      ['📂 My Carts', 'Load previously saved carts'],
-                      ['📤 Export', 'Download your cart as a .js file'],
-                      ['▶️ RUN', 'Preview in the Nova64 runtime'],
-                    ].map(([cmd, desc]) => (
-                      <div key={cmd} style={{ marginBottom: 6, color: '#00AAAA' }}>
-                        💡 <strong>{cmd}</strong> — {desc}
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  output.map((line, i) => (
-                    <div key={i} style={{
-                      marginBottom: 5, paddingLeft: 8, borderLeft: '2px solid #003300',
-                    }}>
-                      <span style={{ color: '#00AA00', marginRight: 8 }}>&gt;</span>
-                      {line}
-                    </div>
-                  ))
-                )}
-              </div>
             )}
+
+            {/* Console output — always rendered, hidden when preview is active */}
+            <div style={{
+              position: 'absolute', inset: 0,
+              display: showPreview ? 'none' : 'flex',
+              flexDirection: 'column',
+              color: '#00FF00',
+              fontFamily: 'Monaco, Menlo, monospace',
+              fontSize: 12, padding: 16, overflow: 'auto',
+            }}>
+              {output.length === 0 ? (
+                <div style={{ color: '#006600' }}>
+                  <div style={{ marginBottom: 10, fontStyle: 'italic' }}>&gt; Game Studio Ready</div>
+                  {[
+                    ['📚 Demos', 'Browse example carts (read-only, runnable)'],
+                    ['🔀 Fork',  'Copy a demo into your own editable cart'],
+                    ['📂 My Carts', 'Load previously saved carts'],
+                    ['📤 Export', 'Download your cart as a .js file'],
+                    ['▶️ RUN', 'Preview in the Nova64 runtime'],
+                  ].map(([cmd, desc]) => (
+                    <div key={cmd} style={{ marginBottom: 6, color: '#00AAAA' }}>
+                      💡 <strong>{cmd}</strong> — {desc}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                output.map((line, i) => (
+                  <div key={i} style={{
+                    marginBottom: 5, paddingLeft: 8, borderLeft: '2px solid #003300',
+                  }}>
+                    <span style={{ color: '#00AA00', marginRight: 8 }}>&gt;</span>
+                    {line}
+                  </div>
+                ))
+              )}
+            </div>
           </div>
         </div>
       </div>

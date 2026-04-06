@@ -204,17 +204,17 @@ export function GameStudio() {
   const runGame = () => {
     const processed = processCartCode(code);
     pendingCodeRef.current = processed;
+    // Always switch to preview so the user sees the result immediately
+    setShowPreview(true);
     if (iframeReadyRef.current && iframeRef.current?.contentWindow) {
       iframeRef.current.contentWindow.postMessage(
         { type: 'EXECUTE_CODE', code: processed }, getNovaBaseUrl()
       );
       setOutput(['\uD83D\uDD79\uFE0F Running your code\u2026']);
       pendingCodeRef.current = null;
-    } else if (!showPreview) {
-      setShowPreview(true);
-      setOutput(['\uD83D\uDD04 Loading Nova64 runtime\u2026']);
     } else {
-      setOutput(['\u23F3 Runtime loading, code queued\u2026']);
+      // Iframe loading or not yet shown — code queued, fires on EXECUTE_READY
+      setOutput(['\u23F3 Loading Nova64 runtime\u2026']);
     }
   };
 

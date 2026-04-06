@@ -3,7 +3,7 @@ import react from '@vitejs/plugin-react';
 
 export default defineConfig({
   plugins: [react()],
-  base: './', // Use relative paths for static deployment
+  base: '/os9-shell/', // Absolute path so assets resolve with or without trailing slash
   server: {
     port: 3000,
   },

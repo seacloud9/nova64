@@ -569,21 +569,22 @@ async function registerCartParseTests(runner) {
   ];
 
   for (const cart of cartsWithManifest) {
-    runner.test(`Cart ${cart} - exports valid env manifest`, () => {
-      const src = fs.readFileSync(path.join(examplesDir, cart, 'code.js'), 'utf8');
-      assert(src.includes('export const env'), `${cart} missing export const env`);
-      assert(src.includes('meta:'), `${cart} missing meta section`);
+    runner.test(`Cart ${cart} - has meta.json with name`, () => {
+      const metaPath = path.join(examplesDir, cart, 'meta.json');
+      assert(fs.existsSync(metaPath), `${cart} missing meta.json`);
+      const meta = JSON.parse(fs.readFileSync(metaPath, 'utf8'));
+      assert(meta.name, `${cart} meta.json missing name`);
     });
 
-    runner.test(`Cart ${cart} - has meta with name`, () => {
-      const src = fs.readFileSync(path.join(examplesDir, cart, 'code.js'), 'utf8');
-      assert(src.includes('name:'), `${cart} meta missing name`);
+    runner.test(`Cart ${cart} - has i18n text in meta.json`, () => {
+      const meta = JSON.parse(fs.readFileSync(path.join(examplesDir, cart, 'meta.json'), 'utf8'));
+      assert(meta.text, `${cart} missing text section in meta.json`);
+      assert(meta.text.strings, `${cart} missing strings in text`);
     });
 
-    runner.test(`Cart ${cart} - has i18n text section`, () => {
-      const src = fs.readFileSync(path.join(examplesDir, cart, 'code.js'), 'utf8');
-      assert(src.includes('text:'), `${cart} missing text section`);
-      assert(src.includes('strings:'), `${cart} missing strings in text`);
+    runner.test(`Cart ${cart} - has defaults in meta.json`, () => {
+      const meta = JSON.parse(fs.readFileSync(path.join(examplesDir, cart, 'meta.json'), 'utf8'));
+      assert(meta.defaults, `${cart} missing defaults section in meta.json`);
     });
 
     runner.test(`Cart ${cart} - parses without syntax errors`, () => {

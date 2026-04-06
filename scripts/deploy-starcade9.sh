@@ -16,6 +16,14 @@ echo "   Source: $NOVA64_DIR"
 echo "   Target: $DEPLOY_DIR"
 echo ""
 
+# Build os9-shell first to ensure fresh assets in public/os9-shell/
+echo "🏗️  Building os9-shell..."
+(cd "$NOVA64_DIR/os9-shell" && pnpm install && pnpm build)
+rm -rf "$NOVA64_DIR/public/os9-shell/"*
+mkdir -p "$NOVA64_DIR/public/os9-shell"
+cp -r "$NOVA64_DIR/os9-shell/dist/"* "$NOVA64_DIR/public/os9-shell/"
+echo ""
+
 # Root HTML files
 echo "📄 Copying root files..."
 cp "$NOVA64_DIR/index.html" "$DEPLOY_DIR/index.html"

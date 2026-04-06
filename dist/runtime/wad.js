@@ -1,40 +1,95 @@
 // runtime/wad.js — WAD File Parser, Level Converter & Texture Manager for Nova64
 // Supports classic DOOM WAD format (IWAD and PWAD)
+/* global getMesh */
 
 // ── Thing type mappings ──
 
 const THING_MONSTERS = {
-  3004: 'grunt', 9: 'grunt', 3001: 'grunt', 3006: 'grunt',
-  65: 'shooter', 3005: 'shooter', 66: 'shooter', 68: 'shooter',
-  71: 'shooter', 84: 'shooter',
-  3002: 'tank', 58: 'tank', 67: 'tank', 69: 'tank',
-  3003: 'boss', 64: 'boss', 16: 'boss', 7: 'boss',
+  3004: 'grunt',
+  9: 'grunt',
+  3001: 'grunt',
+  3006: 'grunt',
+  65: 'shooter',
+  3005: 'shooter',
+  66: 'shooter',
+  68: 'shooter',
+  71: 'shooter',
+  84: 'shooter',
+  3002: 'tank',
+  58: 'tank',
+  67: 'tank',
+  69: 'tank',
+  3003: 'boss',
+  64: 'boss',
+  16: 'boss',
+  7: 'boss',
 };
 
 const THING_ITEMS = {
-  2011: 'health', 2012: 'health', 2014: 'health',
-  2015: 'armor', 2018: 'armor', 2019: 'armor',
-  2007: 'ammo', 2008: 'ammo', 2010: 'ammo',
-  2047: 'ammo', 2048: 'ammo', 2049: 'ammo',
-  2001: 'ammo', 2002: 'ammo', 2003: 'ammo',
-  2004: 'ammo', 2006: 'ammo',
+  2011: 'health',
+  2012: 'health',
+  2014: 'health',
+  2015: 'armor',
+  2018: 'armor',
+  2019: 'armor',
+  2007: 'ammo',
+  2008: 'ammo',
+  2010: 'ammo',
+  2047: 'ammo',
+  2048: 'ammo',
+  2049: 'ammo',
+  2001: 'ammo',
+  2002: 'ammo',
+  2003: 'ammo',
+  2004: 'ammo',
+  2006: 'ammo',
 };
 
 const THING_SPRITE_PREFIX = {
   // Monsters
-  3004: 'POSS', 9: 'SPOS', 3001: 'TROO', 3006: 'SKUL',
-  65: 'CPOS', 3005: 'HEAD', 66: 'SKEL', 68: 'BSPI',
-  71: 'PAIN', 84: 'SSWV', 3002: 'SARG', 58: 'SARG',
-  67: 'FATT', 69: 'BOS2', 3003: 'BOSS', 64: 'VILE',
-  16: 'CYBR', 7: 'SPID',
+  3004: 'POSS',
+  9: 'SPOS',
+  3001: 'TROO',
+  3006: 'SKUL',
+  65: 'CPOS',
+  3005: 'HEAD',
+  66: 'SKEL',
+  68: 'BSPI',
+  71: 'PAIN',
+  84: 'SSWV',
+  3002: 'SARG',
+  58: 'SARG',
+  67: 'FATT',
+  69: 'BOS2',
+  3003: 'BOSS',
+  64: 'VILE',
+  16: 'CYBR',
+  7: 'SPID',
   // Items
-  2011: 'STIM', 2012: 'MEDI', 2014: 'BON1', 2015: 'BON2',
-  2018: 'ARM1', 2019: 'ARM2', 2007: 'CLIP', 2008: 'SHEL',
-  2010: 'ROCK', 2047: 'CELL', 2001: 'SHOT', 2002: 'MGUN',
-  2003: 'LAUN', 2004: 'PLAS', 2006: 'BFUG',
+  2011: 'STIM',
+  2012: 'MEDI',
+  2014: 'BON1',
+  2015: 'BON2',
+  2018: 'ARM1',
+  2019: 'ARM2',
+  2007: 'CLIP',
+  2008: 'SHEL',
+  2010: 'ROCK',
+  2047: 'CELL',
+  2001: 'SHOT',
+  2002: 'MGUN',
+  2003: 'LAUN',
+  2004: 'PLAS',
+  2006: 'BFUG',
   // Decorations
-  2035: 'BAR1', 70: 'FCAN', 44: 'TBLU', 45: 'TGRN',
-  46: 'TRED', 48: 'ELEC', 34: 'CAND', 35: 'CBRA',
+  2035: 'BAR1',
+  70: 'FCAN',
+  44: 'TBLU',
+  45: 'TGRN',
+  46: 'TRED',
+  48: 'ELEC',
+  34: 'CAND',
+  35: 'CBRA',
 };
 
 // ── Binary lump parsers ──
@@ -204,8 +259,14 @@ class WADLoader {
     const flats = {};
     let inFlats = false;
     for (const e of this.directory) {
-      if (e.name === 'F_START' || e.name === 'FF_START') { inFlats = true; continue; }
-      if (e.name === 'F_END' || e.name === 'FF_END') { inFlats = false; continue; }
+      if (e.name === 'F_START' || e.name === 'FF_START') {
+        inFlats = true;
+        continue;
+      }
+      if (e.name === 'F_END' || e.name === 'FF_END') {
+        inFlats = false;
+        continue;
+      }
       if (inFlats && e.size === 4096) {
         flats[e.name] = new Uint8Array(this.buffer, e.filepos, 4096);
       }
@@ -257,8 +318,14 @@ class WADLoader {
     const sprites = {};
     let inSprites = false;
     for (const e of this.directory) {
-      if (e.name === 'S_START' || e.name === 'SS_START') { inSprites = true; continue; }
-      if (e.name === 'S_END' || e.name === 'SS_END') { inSprites = false; continue; }
+      if (e.name === 'S_START' || e.name === 'SS_START') {
+        inSprites = true;
+        continue;
+      }
+      if (e.name === 'S_END' || e.name === 'SS_END') {
+        inSprites = false;
+        continue;
+      }
       if (inSprites && e.size > 0) {
         sprites[e.name] = new Uint8Array(this.buffer, e.filepos, e.size);
       }
@@ -273,32 +340,42 @@ function convertWADMap(map, scale) {
   if (!scale) scale = 1 / 20;
   const { vertexes, linedefs, sidedefs, sectors, things } = map;
 
-  let mnX = Infinity, mxX = -Infinity, mnY = Infinity, mxY = -Infinity;
+  let mnX = Infinity,
+    mxX = -Infinity,
+    mnY = Infinity,
+    mxY = -Infinity;
   for (const v of vertexes) {
     if (v.x < mnX) mnX = v.x;
     if (v.x > mxX) mxX = v.x;
     if (v.y < mnY) mnY = v.y;
     if (v.y > mxY) mxY = v.y;
   }
-  const cx = (mnX + mxX) / 2, cy = (mnY + mxY) / 2;
+  const cx = (mnX + mxX) / 2,
+    cy = (mnY + mxY) / 2;
 
   let playerThing = null;
   for (const t of things) {
-    if (t.type === 1) { playerThing = t; break; }
+    if (t.type === 1) {
+      playerThing = t;
+      break;
+    }
   }
 
   let playerSectorFloor = 0;
   if (playerThing) {
     let minDist = Infinity;
     for (const line of linedefs) {
-      const va = vertexes[line.v1], vb = vertexes[line.v2];
+      const va = vertexes[line.v1],
+        vb = vertexes[line.v2];
       if (!va || !vb) continue;
-      const dx = vb.x - va.x, dy = vb.y - va.y;
+      const dx = vb.x - va.x,
+        dy = vb.y - va.y;
       const lenSq = dx * dx + dy * dy;
       if (lenSq < 1) continue;
       let t = ((playerThing.x - va.x) * dx + (playerThing.y - va.y) * dy) / lenSq;
       t = Math.max(0, Math.min(1, t));
-      const px = va.x + t * dx, py = va.y + t * dy;
+      const px = va.x + t * dx,
+        py = va.y + t * dy;
       const d = Math.hypot(playerThing.x - px, playerThing.y - py);
       const sideIdxs = [];
       if (line.right >= 0) sideIdxs.push(line.right);
@@ -320,22 +397,26 @@ function convertWADMap(map, scale) {
   const colSegs = [];
 
   for (const line of linedefs) {
-    const va = vertexes[line.v1], vb = vertexes[line.v2];
+    const va = vertexes[line.v1],
+      vb = vertexes[line.v2];
     if (!va || !vb) continue;
 
-    const x1 = (va.x - cx) * scale, z1 = (va.y - cy) * scale;
-    const x2 = (vb.x - cx) * scale, z2 = (vb.y - cy) * scale;
+    const x1 = (va.x - cx) * scale,
+      z1 = (va.y - cy) * scale;
+    const x2 = (vb.x - cx) * scale,
+      z2 = (vb.y - cy) * scale;
     const len = Math.hypot(x2 - x1, z2 - z1);
     if (len < 0.05) continue;
 
-    const mx = (x1 + x2) / 2, mz = (z1 + z2) / 2;
+    const mx = (x1 + x2) / 2,
+      mz = (z1 + z2) / 2;
     const ang = -Math.atan2(z2 - z1, x2 - x1);
 
-    let fSec = null, bSec = null;
+    let fSec = null,
+      bSec = null;
     if (line.right >= 0 && sidedefs[line.right])
       fSec = sectors[sidedefs[line.right].sector] || null;
-    if (line.left >= 0 && sidedefs[line.left])
-      bSec = sectors[sidedefs[line.left].sector] || null;
+    if (line.left >= 0 && sidedefs[line.left]) bSec = sectors[sidedefs[line.left].sector] || null;
 
     const fF = fSec ? (fSec.floorH - baseFloor) * scale : 0;
     const fC = fSec ? (fSec.ceilH - baseFloor) * scale : 8;
@@ -349,8 +430,16 @@ function convertWADMap(map, scale) {
         const fSide = line.right >= 0 ? sidedefs[line.right] : null;
         const texName = fSide && fSide.middle !== '-' ? fSide.middle : null;
         walls.push({
-          x: mx, y: fF + h / 2, z: mz, len, h, ang, light, texName,
-          xoff: fSide ? fSide.xoff : 0, yoff: fSide ? fSide.yoff : 0,
+          x: mx,
+          y: fF + h / 2,
+          z: mz,
+          len,
+          h,
+          ang,
+          light,
+          texName,
+          xoff: fSide ? fSide.xoff : 0,
+          yoff: fSide ? fSide.yoff : 0,
         });
         rasterSeg(colSegs, x1, z1, x2, z2, 1.0);
       }
@@ -365,9 +454,17 @@ function convertWADMap(map, scale) {
         if (fSide && fSide.lower && fSide.lower !== '-') loTex = fSide.lower;
         else if (bSide && bSide.lower && bSide.lower !== '-') loTex = bSide.lower;
         walls.push({
-          x: mx, y: bot + loH / 2, z: mz, len, h: loH, ang, light,
-          step: true, texName: loTex,
-          xoff: fSide ? fSide.xoff : 0, yoff: fSide ? fSide.yoff : 0,
+          x: mx,
+          y: bot + loH / 2,
+          z: mz,
+          len,
+          h: loH,
+          ang,
+          light,
+          step: true,
+          texName: loTex,
+          xoff: fSide ? fSide.xoff : 0,
+          yoff: fSide ? fSide.yoff : 0,
         });
         if (loH > 1.0) rasterSeg(colSegs, x1, z1, x2, z2, 0.8);
       }
@@ -379,9 +476,17 @@ function convertWADMap(map, scale) {
         if (fSide && fSide.upper && fSide.upper !== '-') upTex = fSide.upper;
         else if (bSide && bSide.upper && bSide.upper !== '-') upTex = bSide.upper;
         walls.push({
-          x: mx, y: bot + hiH / 2, z: mz, len, h: hiH, ang, light,
-          upper: true, texName: upTex,
-          xoff: fSide ? fSide.xoff : 0, yoff: fSide ? fSide.yoff : 0,
+          x: mx,
+          y: bot + hiH / 2,
+          z: mz,
+          len,
+          h: hiH,
+          ang,
+          light,
+          upper: true,
+          texName: upTex,
+          xoff: fSide ? fSide.xoff : 0,
+          yoff: fSide ? fSide.yoff : 0,
         });
       }
 
@@ -390,10 +495,12 @@ function convertWADMap(map, scale) {
   }
 
   let playerStart = { x: 0, z: 0, angle: Math.PI / 4, floorH: 0 };
-  const enemies = [], items = [];
+  const enemies = [],
+    items = [];
 
   for (const t of things) {
-    const tx = (t.x - cx) * scale, tz = (t.y - cy) * scale;
+    const tx = (t.x - cx) * scale,
+      tz = (t.y - cy) * scale;
     const ta = ((t.angle - 90) * Math.PI) / 180;
 
     if (t.type === 1) {
@@ -449,8 +556,8 @@ class WADTextureManager {
     this._init = true;
     console.log(
       `WAD textures: ${Object.keys(this.textureDefs).length} wall, ` +
-      `${Object.keys(this.flatLumps).length} flats, ` +
-      `${Object.keys(this.spriteLumps).length} sprites`
+        `${Object.keys(this.flatLumps).length} flats, ` +
+        `${Object.keys(this.spriteLumps).length} sprites`
     );
   }
 

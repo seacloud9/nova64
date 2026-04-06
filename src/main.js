@@ -353,8 +353,17 @@ const demoMap = {
   if (studioMode) {
     console.log('🎮 Studio mode: waiting for code from Game Studio…');
     requestAnimationFrame(loop);
-    if (window.parent && window.parent !== window) {
-      window.parent.postMessage({ type: 'EXECUTE_READY' }, '*');
+    // Defer EXECUTE_READY until after window load so the parent's iframe
+    // onLoad handler fires first, avoiding any timing race.
+    const sendReady = () => {
+      if (window.parent && window.parent !== window) {
+        window.parent.postMessage({ type: 'EXECUTE_READY' }, '*');
+      }
+    };
+    if (document.readyState === 'complete') {
+      setTimeout(sendReady, 0);
+    } else {
+      window.addEventListener('load', () => setTimeout(sendReady, 0));
     }
     return;
   }

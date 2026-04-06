@@ -187,8 +187,10 @@ export function GameStudio() {
     return () => window.removeEventListener('message', handler);
   }, []);
 
-  // iframe onLoad resets ready flag; EXECUTE_READY from main.js re-arms it
-  const handleIframeLoad = useCallback(() => { iframeReadyRef.current = false; }, []);
+  // No-op: readiness is determined solely by EXECUTE_READY from main.js.
+  // Resetting here caused a race where onLoad fired AFTER EXECUTE_READY,
+  // permanently locking iframeReadyRef to false and blocking all subsequent runs.
+  const handleIframeLoad = useCallback(() => {}, []);
 
   // ── Actions ───────────────────────────────────────────────────────────
   const saveGame = async () => {

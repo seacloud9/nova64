@@ -29,6 +29,7 @@ export default defineConfig({
       input: {
         main: resolve(__dirname, 'index.html'),
         console: resolve(__dirname, 'console.html'),
+        'cart-runner': resolve(__dirname, 'cart-runner.html'),
       },
     },
   },

@@ -24,14 +24,20 @@ mkdir -p "$NOVA64_DIR/public/os9-shell"
 cp -r "$NOVA64_DIR/os9-shell/dist/"* "$NOVA64_DIR/public/os9-shell/"
 echo ""
 
+# Build main Nova64 project so console.html / cart-runner.html have Three.js
+# bundled locally — no esm.sh CDN needed at runtime.
+echo "⚡ Building Nova64 main project (bundles Three.js for production)..."
+(cd "$NOVA64_DIR" && pnpm build)
+echo ""
+
 # Ensure GitHub Pages serves static files without Jekyll processing
 touch "$DEPLOY_DIR/.nojekyll"
 
-# Root HTML files
+# Root HTML files — use Vite-built versions so Three.js is bundled, not CDN-fetched
 echo "📄 Copying root files..."
 cp "$NOVA64_DIR/index.html" "$DEPLOY_DIR/index.html"
-cp "$NOVA64_DIR/console.html" "$DEPLOY_DIR/console.html"
-cp "$NOVA64_DIR/cart-runner.html" "$DEPLOY_DIR/cart-runner.html"
+cp "$NOVA64_DIR/dist/console.html" "$DEPLOY_DIR/console.html"
+cp "$NOVA64_DIR/dist/cart-runner.html" "$DEPLOY_DIR/cart-runner.html"
 
 # src/main.js (entry point)
 echo "📦 Copying src/main.js..."
@@ -54,6 +60,9 @@ rsync -a --delete --exclude='.DS_Store' "$NOVA64_DIR/docs/" "$DEPLOY_DIR/docs/"
 echo "🎨 Syncing assets/..."
 mkdir -p "$DEPLOY_DIR/assets"
 rsync -a --delete --exclude='.DS_Store' "$NOVA64_DIR/public/assets/" "$DEPLOY_DIR/assets/"
+# Bundled JS from dist/assets/ (Three.js + runtime — no CDN dependency)
+# Added AFTER the --delete sync so these bundles are not removed.
+rsync -a --exclude='.DS_Store' "$NOVA64_DIR/dist/assets/" "$DEPLOY_DIR/assets/"
 
 # OS9 shell (pre-built)
 echo "🖥️  Syncing os9-shell/..."

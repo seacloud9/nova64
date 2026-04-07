@@ -75,28 +75,51 @@ export function MenuBar({ appMenus = [], onCommand }: MenuBarProps) {
         { label: 'Game Studio', id: 'studio', click: () => novaContext.launchApp('studio') },
         { label: 'Game Launcher', id: 'game-launcher', click: () => novaContext.launchApp('game-launcher') },
         { type: 'separator', label: '' },
-        { label: 'Games ▸', type: 'submenu', submenu: [
-          { label: '👋 Hello 3D World', click: () => novaContext.launchApp('nova64-console', { path: '/examples/hello-3d/code.js', width: 900, height: 700 }) },
-          { label: '🛸 Space Harrier', click: () => novaContext.launchApp('nova64-console', { path: '/examples/space-harrier-3d/code.js', width: 900, height: 700 }) },
-          { label: '🏎️ F-ZERO Racing', click: () => novaContext.launchApp('nova64-console', { path: '/examples/f-zero-nova-3d/code.js', width: 900, height: 700 }) },
-          { label: '🚀 Star Fox Nova', click: () => novaContext.launchApp('nova64-console', { path: '/examples/star-fox-nova-3d/code.js', width: 900, height: 700 }) },
-          { label: '🌆 Cyberpunk City', click: () => novaContext.launchApp('nova64-console', { path: '/examples/cyberpunk-city-3d/code.js', width: 900, height: 700 }) },
-          { label: '🏛️ Crystal Cathedral', click: () => novaContext.launchApp('nova64-console', { path: '/examples/crystal-cathedral-3d/code.js', width: 900, height: 700 }) },
-          { label: '🧙 Mystical Realm', click: () => novaContext.launchApp('nova64-console', { path: '/examples/mystical-realm-3d/code.js', width: 900, height: 700 }) },
-          { label: '⚔️ Knight Platformer', click: () => novaContext.launchApp('nova64-console', { path: '/examples/strider-demo-3d/code.js', width: 900, height: 700 }) },
-          { label: '🔫 FPS Demo', click: () => novaContext.launchApp('nova64-console', { path: '/examples/fps-demo-3d/code.js', width: 900, height: 700 }) },
-          { label: '⚛️ Physics Demo', click: () => novaContext.launchApp('nova64-console', { path: '/examples/physics-demo-3d/code.js', width: 900, height: 700 }) },
-          { label: '⛏️ Voxel Realm', click: () => novaContext.launchApp('nova64-console', { path: '/examples/minecraft-demo/code.js', width: 900, height: 700 }) },
-          { label: '🗻 Voxel Terrain', click: () => novaContext.launchApp('nova64-console', { path: '/examples/voxel-terrain/code.js', width: 900, height: 700 }) },
-          { label: '🏗️ Voxel Creative', click: () => novaContext.launchApp('nova64-console', { path: '/examples/voxel-creative/code.js', width: 900, height: 700 }) },
-          { label: '🏰 Dungeon Crawler', click: () => novaContext.launchApp('nova64-console', { path: '/examples/dungeon-crawler-3d/code.js', width: 900, height: 700 }) },
-          { label: '🧙 Wizardry', click: () => novaContext.launchApp('nova64-console', { path: '/examples/wizardry-3d/code.js', width: 900, height: 700 }) },
-          { label: '🌿 Nature Explorer', click: () => novaContext.launchApp('nova64-console', { path: '/examples/nature-explorer-3d/code.js', width: 900, height: 700 }) },
-          { label: '🍄 Super Plumber 64', click: () => novaContext.launchApp('nova64-console', { path: '/examples/super-plumber-64/code.js', width: 900, height: 700 }) },
-          { label: '✨ Demoscene', click: () => novaContext.launchApp('nova64-console', { path: '/examples/demoscene/code.js', width: 900, height: 700 }) },
-          { label: '🎯 Space Shooter', click: () => novaContext.launchApp('nova64-console', { path: '/examples/shooter-demo-3d/code.js', width: 900, height: 700 }) },
-          { label: '🎵 Audio Lab', click: () => novaContext.launchApp('nova64-console', { path: '/examples/audio-lab/code.js', width: 900, height: 700 }) },
-          { label: '🚀 Wing Commander', click: () => novaContext.launchApp('nova64-console', { path: '/examples/wing-commander-space/code.js', width: 900, height: 700 }) },
+        { label: 'Games', type: 'submenu', submenu: [
+          { label: '⭐ Hello World', click: () => novaContext.launchApp('cart-runner', { path: '/examples/hello-world/code.js', width: 900, height: 700 }) },
+          { label: '👋 Hello 3D World', click: () => novaContext.launchApp('cart-runner', { path: '/examples/hello-3d/code.js', width: 900, height: 700 }) },
+          { label: '🛸 Space Harrier', click: () => novaContext.launchApp('cart-runner', { path: '/examples/space-harrier-3d/code.js', width: 900, height: 700 }) },
+          { label: '🏎️ F-ZERO Racing', click: () => novaContext.launchApp('cart-runner', { path: '/examples/f-zero-nova-3d/code.js', width: 900, height: 700 }) },
+          { label: '🚀 Star Fox Nova', click: () => novaContext.launchApp('cart-runner', { path: '/examples/star-fox-nova-3d/code.js', width: 900, height: 700 }) },
+          { label: '🌆 Cyberpunk City', click: () => novaContext.launchApp('cart-runner', { path: '/examples/cyberpunk-city-3d/code.js', width: 900, height: 700 }) },
+          { label: '🏛️ Crystal Cathedral', click: () => novaContext.launchApp('cart-runner', { path: '/examples/crystal-cathedral-3d/code.js', width: 900, height: 700 }) },
+          { label: '🏰 Mystical Realm', click: () => novaContext.launchApp('cart-runner', { path: '/examples/mystical-realm-3d/code.js', width: 900, height: 700 }) },
+          { label: '🔫 FPS Demo', click: () => novaContext.launchApp('cart-runner', { path: '/examples/fps-demo-3d/code.js', width: 900, height: 700 }) },
+          { label: '💀 FreeDoom WAD', click: () => novaContext.launchApp('cart-runner', { path: '/examples/wad-demo/code.js', width: 900, height: 700 }) },
+          { label: '🕵️ The Verdict', click: () => novaContext.launchApp('cart-runner', { path: '/examples/adventure-comic-3d/code.js', width: 900, height: 700 }) },
+          { label: '⚛️ Physics Demo', click: () => novaContext.launchApp('cart-runner', { path: '/examples/physics-demo-3d/code.js', width: 900, height: 700 }) },
+          { label: '🎯 Space Shooter', click: () => novaContext.launchApp('cart-runner', { path: '/examples/shooter-demo-3d/code.js', width: 900, height: 700 }) },
+          { label: '⚔️ Gauntlet 64', click: () => novaContext.launchApp('cart-runner', { path: '/examples/strider-demo-3d/code.js', width: 900, height: 700 }) },
+          { label: '🍄 Super Plumber 64', click: () => novaContext.launchApp('cart-runner', { path: '/examples/super-plumber-64/code.js', width: 900, height: 700 }) },
+          { label: '⛏️ Voxel Realm', click: () => novaContext.launchApp('cart-runner', { path: '/examples/minecraft-demo/code.js', width: 900, height: 700 }) },
+          { label: '🌍 Voxel Terrain', click: () => novaContext.launchApp('cart-runner', { path: '/examples/voxel-terrain/code.js', width: 900, height: 700 }) },
+          { label: '🏗️ Voxel Creative', click: () => novaContext.launchApp('cart-runner', { path: '/examples/voxel-creative/code.js', width: 900, height: 700 }) },
+          { label: '🐄 Voxel Creatures', click: () => novaContext.launchApp('cart-runner', { path: '/examples/voxel-creatures/code.js', width: 900, height: 700 }) },
+          { label: '🏰 Dungeon Crawler', click: () => novaContext.launchApp('cart-runner', { path: '/examples/dungeon-crawler-3d/code.js', width: 900, height: 700 }) },
+          { label: '🧙 Wizardry', click: () => novaContext.launchApp('cart-runner', { path: '/examples/wizardry-3d/code.js', width: 900, height: 700 }) },
+          { label: '🐦 Boids Flocking', click: () => novaContext.launchApp('cart-runner', { path: '/examples/boids-flocking/code.js', width: 900, height: 700 }) },
+          { label: '🧬 Game of Life 3D', click: () => novaContext.launchApp('cart-runner', { path: '/examples/game-of-life-3d/code.js', width: 900, height: 700 }) },
+          { label: '🌿 Nature Explorer', click: () => novaContext.launchApp('cart-runner', { path: '/examples/nature-explorer-3d/code.js', width: 900, height: 700 }) },
+          { label: '🎨 Generative Art', click: () => novaContext.launchApp('cart-runner', { path: '/examples/generative-art/code.js', width: 900, height: 700 }) },
+          { label: '✨ TSL Showcase', click: () => novaContext.launchApp('cart-runner', { path: '/examples/tsl-showcase/code.js', width: 900, height: 700 }) },
+          { label: '🎯 Advanced 3D', click: () => novaContext.launchApp('cart-runner', { path: '/examples/3d-advanced/code.js', width: 900, height: 700 }) },
+          { label: '🦊 Animated Models', click: () => novaContext.launchApp('cart-runner', { path: '/examples/model-viewer-3d/code.js', width: 900, height: 700 }) },
+          { label: '🎬 Demoscene Tron', click: () => novaContext.launchApp('cart-runner', { path: '/examples/demoscene/code.js', width: 900, height: 700 }) },
+          { label: '🌌 Nova Drift', click: () => novaContext.launchApp('cart-runner', { path: '/examples/hello-skybox/code.js', width: 900, height: 700 }) },
+          { label: '🛸 Space Combat', click: () => novaContext.launchApp('cart-runner', { path: '/examples/space-combat-3d/code.js', width: 900, height: 700 }) },
+          { label: '🎮 Input Showcase', click: () => novaContext.launchApp('cart-runner', { path: '/examples/input-showcase/code.js', width: 900, height: 700 }) },
+          { label: '🎵 Audio Lab', click: () => novaContext.launchApp('cart-runner', { path: '/examples/audio-lab/code.js', width: 900, height: 700 }) },
+          { label: '💾 Storage Quest', click: () => novaContext.launchApp('cart-runner', { path: '/examples/storage-quest/code.js', width: 900, height: 700 }) },
+          { label: '⚡ Instancing Demo', click: () => novaContext.launchApp('cart-runner', { path: '/examples/instancing-demo/code.js', width: 900, height: 700 }) },
+          { label: '✨ Particles Demo', click: () => novaContext.launchApp('cart-runner', { path: '/examples/particles-demo/code.js', width: 900, height: 700 }) },
+          { label: '🖥️ Screen Demo', click: () => novaContext.launchApp('cart-runner', { path: '/examples/screen-demo/code.js', width: 900, height: 700 }) },
+          { label: '🎨 UI Demo', click: () => novaContext.launchApp('cart-runner', { path: '/examples/ui-demo/code.js', width: 900, height: 700 }) },
+          { label: '🚀 Wing Commander', click: () => novaContext.launchApp('cart-runner', { path: '/examples/wing-commander-space/code.js', width: 900, height: 700 }) },
+          { label: '🔮 PBR Showcase', click: () => novaContext.launchApp('cart-runner', { path: '/examples/pbr-showcase/code.js', width: 900, height: 700 }) },
+          { label: '🌌 Skybox Showcase', click: () => novaContext.launchApp('cart-runner', { path: '/examples/skybox-showcase/code.js', width: 900, height: 700 }) },
+          { label: '🌐 NFT Worlds', click: () => novaContext.launchApp('cart-runner', { path: '/examples/nft-worlds/code.js', width: 900, height: 700 }) },
+          { label: '🎲 NFT Art Generator', click: () => novaContext.launchApp('cart-runner', { path: '/examples/nft-art-generator/code.js', width: 900, height: 700 }) },
+          { label: '🎭 Creative Coding', click: () => novaContext.launchApp('cart-runner', { path: '/examples/creative-coding/code.js', width: 900, height: 700 }) },
         ]},
       ],
     },
@@ -256,7 +279,7 @@ function MenuDropdownItem({ item, onClick }: MenuDropdownItemProps) {
   return (
     <div
       className={`menu-dropdown-item ${item.enabled === false ? 'disabled' : ''}`}
-      onClick={item.enabled !== false ? onClick : undefined}
+      onClick={item.enabled !== false && !item.submenu ? onClick : undefined}
       onMouseEnter={() => item.submenu && setShowSubmenu(true)}
       onMouseLeave={() => setShowSubmenu(false)}
     >
@@ -271,7 +294,10 @@ function MenuDropdownItem({ item, onClick }: MenuDropdownItemProps) {
             <MenuDropdownItem
               key={subIndex}
               item={subItem}
-              onClick={onClick}
+              onClick={() => {
+                if (subItem.click) subItem.click();
+                onClick();
+              }}
             />
           ))}
         </div>

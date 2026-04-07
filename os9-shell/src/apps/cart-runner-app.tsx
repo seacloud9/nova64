@@ -15,7 +15,7 @@ interface CartFrameProps {
 }
 
 function CartFrame({ path }: CartFrameProps) {
-  const src = `${getBaseUrl()}/console.html?path=${encodeURIComponent(path)}`;
+  const src = `${getBaseUrl()}/cart-runner.html?path=${encodeURIComponent(path)}`;
   return (
     <iframe
       src={src}
@@ -28,12 +28,12 @@ function CartFrame({ path }: CartFrameProps) {
 
 const cartRunnerApp: Nova64App = {
   id: 'cart-runner',
-  name: 'Cart Runner',
-  icon: '🕹️',
+  name: 'Nova64 Console',
+  icon: '🎮',
 
   mount(container, _ctx, args) {
     const a = (args && typeof args === 'object') ? args as Record<string, unknown> : {};
-    const path = typeof a.path === 'string' ? a.path : '/examples/hello-3d/code.js';
+    const path = typeof a.path === 'string' ? a.path : '/examples/hello-world/code.js';
     const root = createRoot(container);
     root.render(<CartFrame path={path} />);
     // Store root for cleanup
@@ -46,11 +46,11 @@ const cartRunnerApp: Nova64App = {
 
   getInfo() {
     return {
-      name: 'Cart Runner',
+      name: 'Nova64 Console',
       version: '1.0',
       description: 'Run Nova64 game carts in an OS window',
       author: 'Nova64 OS',
-      icon: '🕹️',
+      icon: '🎮',
     };
   },
 };

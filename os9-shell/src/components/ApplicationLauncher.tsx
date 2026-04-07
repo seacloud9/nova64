@@ -60,16 +60,9 @@ const APPS: AppItem[] = [
     category: 'Reference',
   },
   {
-    id: 'nova64-console',
+    id: 'cart-runner',
     name: 'Nova64 Console',
     icon: '🎮',
-    description: 'Full-screen Nova64 game console',
-    category: 'Entertainment',
-  },
-  {
-    id: 'cart-runner',
-    name: 'Cart Runner',
-    icon: '🕹️',
     description: 'Run Nova64 game carts in a window',
     category: 'Entertainment',
   },

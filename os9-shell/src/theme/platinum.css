@@ -500,7 +500,7 @@ body {
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6);
   z-index: var(--z-menu);
   margin-top: 4px;
-  overflow: hidden;
+  overflow: visible;
   animation: menuSlideIn 0.15s ease-out;
 }
 
@@ -524,6 +524,14 @@ body {
   position: relative;
   color: var(--gnome-text);
   transition: background 0.1s ease;
+}
+
+.menu-dropdown-item:first-child {
+  border-radius: 8px 8px 0 0;
+}
+
+.menu-dropdown-item:last-child {
+  border-radius: 0 0 8px 8px;
 }
 
 .menu-dropdown-item:hover:not(.disabled) {

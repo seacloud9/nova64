@@ -91,12 +91,16 @@ class NovaContextImpl implements NovaContext {
     const windowWidth  = (typeof a.width       === 'number'  ? a.width        : undefined) ?? 800;
     const windowHeight = (typeof a.height      === 'number'  ? a.height       : undefined) ?? 600;
 
+    // cart-runner (Nova64 Console) always opens maximized
+    const startMaximized = appId === 'cart-runner';
+
     // Create a window for the app
     const windowId = useWindowStore.getState().createWindow({
       title: windowTitle,
       appId,
       width: windowWidth,
       height: windowHeight,
+      isMaximized: startMaximized,
     });
 
     // Get the window element and mount the app

@@ -260,3 +260,49 @@ export function killAllTweens() {
   clipTimelines.forEach((entry) => entry.timeline.kill());
   clipTimelines.clear();
 }
+
+// ---------------------------------------------------------------------------
+// Keyframe transition tweening — used by MovieClipPlayer during playback
+// ---------------------------------------------------------------------------
+
+/**
+ * Animate an element FROM a set of CSS properties TO another set.
+ * Used to interpolate between MovieClip keyframes when `tweens` is defined
+ * on a keyframe in the symbol's timeline.
+ */
+export function tweenFromTo(
+  objectId: string,
+  fromProps: TweenToProps,
+  toProps: TweenToProps,
+  opts: TweenOptions = {},
+) {
+  const el = getElement(objectId);
+  if (!el) return;
+  killTweens(objectId);
+
+  const fromVars: gsap.TweenVars = {};
+  const toVars: gsap.TweenVars = {
+    duration: opts.duration ?? 0.3,
+    ease: opts.ease ?? 'power2.inOut',
+    onComplete: opts.onComplete,
+  };
+
+  if (fromProps.x !== undefined) fromVars.left = fromProps.x;
+  if (fromProps.y !== undefined) fromVars.top = fromProps.y;
+  if (fromProps.width !== undefined) fromVars.width = fromProps.width;
+  if (fromProps.height !== undefined) fromVars.height = fromProps.height;
+  if (fromProps.opacity !== undefined) fromVars.opacity = fromProps.opacity;
+  if (fromProps.scale !== undefined) fromVars.scale = fromProps.scale;
+  if (fromProps.rotation !== undefined) fromVars.rotation = fromProps.rotation;
+
+  if (toProps.x !== undefined) toVars.left = toProps.x;
+  if (toProps.y !== undefined) toVars.top = toProps.y;
+  if (toProps.width !== undefined) toVars.width = toProps.width;
+  if (toProps.height !== undefined) toVars.height = toProps.height;
+  if (toProps.opacity !== undefined) toVars.opacity = toProps.opacity;
+  if (toProps.scale !== undefined) toVars.scale = toProps.scale;
+  if (toProps.rotation !== undefined) toVars.rotation = toProps.rotation;
+
+  const tw = gsap.fromTo(el, fromVars, toVars);
+  trackTween(objectId, tw);
+}

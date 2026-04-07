@@ -141,12 +141,32 @@ export interface Assets {
 
 export type SymbolType = 'graphic' | 'movie-clip';
 
+/**
+ * Tween properties for interpolating an object between this keyframe and the next.
+ * All positional values are in canvas pixels; rotation in degrees.
+ */
+export interface TweenProps {
+  ease?: string;       // GSAP ease string, e.g. 'power2.inOut'
+  duration?: number;   // override: seconds (defaults to frame-rate-derived duration)
+  x?: number;
+  y?: number;
+  width?: number;
+  height?: number;
+  opacity?: number;    // 0–1
+  scale?: number;
+  rotation?: number;   // degrees
+  skewX?: number;
+  skewY?: number;
+}
+
 /** A keyframe in a movie clip's timeline */
 export interface Keyframe {
   frame: number;               // 1-based frame index
   objects: CardObject[];       // objects visible at this keyframe
   label?: string;              // optional frame label (for goToFrame("label"))
   script?: string;             // frame script (runs when playhead enters)
+  /** Per-object tween from this keyframe to the next (keyed by object id) */
+  tweens?: Record<string, TweenProps>;
 }
 
 /** A reusable symbol stored in the project library */

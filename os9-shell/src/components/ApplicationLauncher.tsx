@@ -59,6 +59,41 @@ const APPS: AppItem[] = [
     description: 'Nova64 API reference',
     category: 'Reference',
   },
+  {
+    id: 'nova64-console',
+    name: 'Nova64 Console',
+    icon: '🎮',
+    description: 'Full-screen Nova64 game console',
+    category: 'Entertainment',
+  },
+  {
+    id: 'cart-runner',
+    name: 'Cart Runner',
+    icon: '🕹️',
+    description: 'Run Nova64 game carts in a window',
+    category: 'Entertainment',
+  },
+  {
+    id: 'model-viewer',
+    name: 'Model Viewer',
+    icon: '📦',
+    description: 'View 3D models and assets',
+    category: 'Development',
+  },
+  {
+    id: 'demoscene',
+    name: 'DemoScene',
+    icon: '💿',
+    description: 'Tron Odyssey interactive demo',
+    category: 'Entertainment',
+  },
+  {
+    id: 'com.nova64.profiler',
+    name: 'System Profiler',
+    icon: '💻',
+    description: 'System information and performance',
+    category: 'System',
+  },
 ];
 
 interface Props {

@@ -1,6 +1,6 @@
 // hyperNova – Zustand store
 import { create } from 'zustand';
-import type { HyperNovaProject, Card, CardObject, ToolType, HNSymbol } from './schema';
+import type { HyperNovaProject, Card, CardObject, ToolType, HNSymbol, TweenProps } from './schema';
 import { createDefaultProject, createDefaultCard, genId } from './schema';
 
 // ---------------------------------------------------------------------------
@@ -59,6 +59,7 @@ interface HyperNovaStore {
   setEditingFrame(frameIndex: number): void;
   addKeyframe(): void;
   deleteKeyframe(frameIndex: number): void;
+  setKeyframeTween(frameIndex: number, objectId: string, tween: TweenProps | null): void;
 
   // ---- Card operations -----------------------------------------------------
   addCard(): void;
@@ -217,6 +218,28 @@ export const useHyperNovaStore = create<HyperNovaStore>((set, get) => ({
     const path = [...state.symbolEditPath];
     path[path.length - 1] = { ...current, frameIndex: newIdx };
     set({ symbolEditPath: path, selectedObjectId: null });
+  },
+
+  setKeyframeTween: (frameIndex, objectId, tween) => {
+    const state = get();
+    if (state.symbolEditPath.length === 0) return;
+    const current = state.symbolEditPath[state.symbolEditPath.length - 1];
+    const sym = (state.project.library || []).find((s) => s.id === current.symbolId);
+    if (!sym) return;
+    const newFrames = sym.frames.map((kf, i) => {
+      if (i !== frameIndex) return kf;
+      const existingTweens = { ...(kf.tweens ?? {}) };
+      if (tween === null) {
+        delete existingTweens[objectId];
+      } else {
+        existingTweens[objectId] = tween;
+      }
+      return { ...kf, tweens: existingTweens };
+    });
+    const library = (state.project.library || []).map((s) =>
+      s.id === current.symbolId ? { ...s, frames: newFrames } : s
+    );
+    _pushSnap(set, { ...state.project, library });
   },
 
   // ---- Card operations -----------------------------------------------------

@@ -6,7 +6,7 @@ import type { CardObject, Stack, SymbolInstanceObject, HNSymbol, Keyframe } from
 import { renderObjectStyle, renderCardBackground, CARD_W, CARD_H } from '../editor/EditorCanvas';
 import { runScript, buildTweenAPI, type ScriptAPI } from './ScriptRunner';
 import { MessageDispatcher, isNovaTalkScript, buildNovaTalkAPI } from './novatalk';
-import { killAllTweens, createClipTimeline, playClip } from './TweenEngine';
+import { killAllTweens, createClipTimeline, playClip, tweenFromTo } from './TweenEngine';
 
 // ---------------------------------------------------------------------------
 // CardPlayer
@@ -222,6 +222,7 @@ function MovieClipPlayer({
   onClick?: () => void;
 }) {
   const [currentFrame, setCurrentFrame] = useState(1);
+  const prevKeyframeRef = useRef<Keyframe | undefined>(undefined);
 
   useEffect(() => {
     if (symbol.type !== 'movie-clip' || symbol.frames.length <= 1) return;
@@ -245,6 +246,27 @@ function MovieClipPlayer({
   const activeKeyframe: Keyframe | undefined = [...symbol.frames]
     .reverse()
     .find((kf) => kf.frame <= currentFrame) ?? symbol.frames[0];
+
+  // Fire GSAP fromTo tweens when the active keyframe changes
+  useEffect(() => {
+    const prev = prevKeyframeRef.current;
+    prevKeyframeRef.current = activeKeyframe;
+
+    if (!prev || !prev.tweens || !activeKeyframe) return;
+
+    for (const [objId, tweenProps] of Object.entries(prev.tweens)) {
+      const fromObj = prev.objects.find((o) => o.id === objId);
+      const toObj = activeKeyframe.objects.find((o) => o.id === objId);
+      if (!fromObj || !toObj) continue;
+
+      tweenFromTo(
+        objId,
+        { x: fromObj.x, y: fromObj.y, width: fromObj.width, height: fromObj.height },
+        { x: toObj.x, y: toObj.y, width: toObj.width, height: toObj.height },
+        { duration: tweenProps.duration, ease: tweenProps.ease },
+      );
+    }
+  }, [activeKeyframe]);
 
   if (!activeKeyframe) return null;
 

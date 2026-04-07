@@ -1,7 +1,6 @@
 // ⚔️ WIZARDRY NOVA 64 — First-Person Grid-Based Dungeon RPG ⚔️
 // Inspired by Wizardry: Proving Grounds of the Mad Overlord
 
-
 const W = 640,
   H = 360;
 const TILE = 3; // world units per grid cell

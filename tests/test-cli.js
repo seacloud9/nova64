@@ -985,6 +985,16 @@ async function main() {
         }
         break;
 
+      case 'cli':
+        console.log('🖥️  Running CLI Server Tests...');
+        try {
+          const { runCLIServerTests } = await import('./test-cli-server.js');
+          results.push(await runCLIServerTests());
+        } catch (error) {
+          console.log('⚠️  CLI server tests not available:', error.message);
+        }
+        break;
+
       case 'all':
       default:
         console.log('🚀 Running All Tests...\n');
@@ -1039,6 +1049,14 @@ async function main() {
           results.push(await runManifestTests());
         } catch (error) {
           console.log('⚠️  Manifest tests not available:', error.message);
+        }
+
+        console.log('\n🔟 CLI Server Tests:');
+        try {
+          const { runCLIServerTests } = await import('./test-cli-server.js');
+          results.push(await runCLIServerTests());
+        } catch (error) {
+          console.log('⚠️  CLI server tests not available:', error.message);
         }
         break;
     }

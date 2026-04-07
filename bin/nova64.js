@@ -83,6 +83,16 @@ async function servePath(filePath) {
     const mime = MIME_TYPES[ext] || 'application/octet-stream';
     return { data, mime, status: 200 };
   } catch {
+    // Try adding .html extension (e.g. /console → /console.html)
+    if (!extname(filePath)) {
+      try {
+        const htmlPath = filePath + '.html';
+        const data = await readFile(htmlPath);
+        return { data, mime: 'text/html; charset=utf-8', status: 200 };
+      } catch {
+        // fall through to null
+      }
+    }
     return null;
   }
 }
@@ -116,19 +126,19 @@ async function startServer(opts) {
   });
 
   server.listen(opts.port, () => {
-    const consoleUrl = `http://localhost:${opts.port}/console.html`;
+    const homeUrl = `http://localhost:${opts.port}/`;
     console.log(`
   \x1b[1m\x1b[35m🎮 Nova64\x1b[0m Fantasy Console
 
-  \x1b[32m➜\x1b[0m  Console:  \x1b[36m${consoleUrl}\x1b[0m
-  \x1b[32m➜\x1b[0m  Home:     \x1b[36mhttp://localhost:${opts.port}/\x1b[0m
+  \x1b[32m➜\x1b[0m  Home:     \x1b[36m${homeUrl}\x1b[0m
+  \x1b[32m➜\x1b[0m  Console:  \x1b[36mhttp://localhost:${opts.port}/console.html\x1b[0m
   \x1b[32m➜\x1b[0m  NovaOS:   \x1b[36mhttp://localhost:${opts.port}/os9-shell/\x1b[0m
 
   Press \x1b[1mCtrl+C\x1b[0m to stop
 `);
 
     if (opts.open) {
-      openBrowser(consoleUrl);
+      openBrowser(homeUrl);
     }
   });
 

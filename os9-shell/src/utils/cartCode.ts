@@ -25,7 +25,7 @@ export function getNovaBaseUrl(): string {
   // Vite server is on 5173. import.meta.env.DEV is tree-shaken to false
   // in production builds, so localhost:5173 never appears in the bundle.
   if (import.meta.env.DEV) {
-    return 'http://localhost:5173';
+    return 'http://localhost:3000';
   }
   return window.location.origin;
 }

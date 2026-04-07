@@ -36,7 +36,7 @@ export default defineConfig({
 
   // Dev server configuration
   server: {
-    port: 5173,
+    port: 3000,
     open: true,
     host: true, // Allow network access
 

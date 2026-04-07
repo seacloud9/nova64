@@ -29,6 +29,8 @@ let _OrbitControls: any = null;
 let _FlyControls: any = null;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let _GLTFLoader: any = null;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let _DRACOLoader: any = null;
 
 async function loadTHREE() {
   if (!_THREE) {
@@ -59,6 +61,14 @@ async function loadGLTFLoader() {
     _GLTFLoader = m.GLTFLoader;
   }
   return _GLTFLoader;
+}
+
+async function loadDRACOLoader() {
+  if (!_DRACOLoader) {
+    const m = await import(/* @vite-ignore */ `${EXAMPLES}/loaders/DRACOLoader.js`);
+    _DRACOLoader = m.DRACOLoader;
+  }
+  return _DRACOLoader;
 }
 
 // ── WAD Parser ──────────────────────────────────────────────────────────────
@@ -105,12 +115,11 @@ function buildWadMapGeometry(wad: WadData, mapName: string, THREE: any) {
   const ldLump = find('LINEDEFS');
   const sdLump = find('SIDEDEFS');
   const secLump = find('SECTORS');
-
   if (!vLump || !ldLump || !sdLump || !secLump) return null;
 
   const dv = new DataView(wad.bytes.buffer);
 
-  // Vertexes: 4 bytes each: int16 x, int16 y
+  // ── Parse vertices ──
   const numVerts = vLump.size / 4;
   const vx = new Float32Array(numVerts);
   const vy = new Float32Array(numVerts);
@@ -119,7 +128,7 @@ function buildWadMapGeometry(wad: WadData, mapName: string, THREE: any) {
     vy[i] = dv.getInt16(vLump.offset + i * 4 + 2, true);
   }
 
-  // Sectors: 26 bytes each — int16 floorH, int16 ceilH, 16 bytes textures, uint8 light at offset 20
+  // ── Parse sectors ── 26 bytes each
   const numSectors = secLump.size / 26;
   const sectorFloor = new Float32Array(numSectors);
   const sectorCeil = new Float32Array(numSectors);
@@ -128,21 +137,20 @@ function buildWadMapGeometry(wad: WadData, mapName: string, THREE: any) {
     const base = secLump.offset + i * 26;
     sectorFloor[i] = dv.getInt16(base, true);
     sectorCeil[i] = dv.getInt16(base + 2, true);
-    // light level at offset 20 in sector (after 2+2+16 = 20 bytes)
-    sectorLight[i] = dv.getUint16(base + 20, true) / 255;
+    sectorLight[i] = Math.min(1, dv.getUint16(base + 20, true) / 255);
   }
 
-  // Sidedefs: 30 bytes each — sector ref at byte 28 (int16)
+  // ── Parse sidedefs ── 30 bytes each
   const numSidedefs = sdLump.size / 30;
   const sidedefSector = new Int16Array(numSidedefs);
   for (let i = 0; i < numSidedefs; i++) {
     sidedefSector[i] = dv.getInt16(sdLump.offset + i * 30 + 28, true);
   }
 
-  // Linedefs: 14 bytes: v1(2), v2(2), flags(2), special(2), tag(2), sideR(2), sideL(2)
+  // ── Parse linedefs ── 14 bytes each
   const numLinedefs = ldLump.size / 14;
 
-  // Compute bounding box to center geometry
+  // ── Bounding box ──
   let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
   for (let i = 0; i < numVerts; i++) {
     if (vx[i] < minX) minX = vx[i];
@@ -152,81 +160,247 @@ function buildWadMapGeometry(wad: WadData, mapName: string, THREE: any) {
   }
   const cx = (minX + maxX) / 2;
   const cy = (minY + maxY) / 2;
-  const S = 1 / 64; // scale: 64 Doom units = 1 Three unit
+  const S = 1 / 64;
 
-  // Build wall quads (positions + colors)
-  // Each linedef produces a quad: 2 triangles = 6 vertices
-  const wallPositions: number[] = [];
-  const wallColors: number[] = [];
-  const wirePositions: number[] = [];
+  // ── Build sector boundary rings for floor/ceiling triangulation ──
+  // Collect line segments for each sector
+  const sectorLines: Map<number, Array<[number, number, number, number]>> = new Map();
 
   for (let i = 0; i < numLinedefs; i++) {
     const base = ldLump.offset + i * 14;
     const v1i = dv.getUint16(base, true);
     const v2i = dv.getUint16(base + 2, true);
-    const flags = dv.getUint16(base + 4, true);
-    const sideR = dv.getInt16(base + 10, true); // right sidedef index
-    const sideL = dv.getInt16(base + 12, true); // left sidedef index (-1 if none)
-
+    const sideR = dv.getInt16(base + 10, true);
+    const sideL = dv.getInt16(base + 12, true);
     if (v1i >= numVerts || v2i >= numVerts) continue;
 
-    // Determine sector from right sidedef
-    let floorH = 0, ceilH = 128, light = 0.5;
+    const addToSector = (sideIdx: number) => {
+      if (sideIdx < 0 || sideIdx >= numSidedefs) return;
+      const secIdx = sidedefSector[sideIdx];
+      if (secIdx < 0 || secIdx >= numSectors) return;
+      if (!sectorLines.has(secIdx)) sectorLines.set(secIdx, []);
+      sectorLines.get(secIdx)!.push([vx[v1i], vy[v1i], vx[v2i], vy[v2i]]);
+    };
+    addToSector(sideR);
+    addToSector(sideL);
+  }
+
+  // Simple ear-clipping triangulation of a polygon
+  function triangulate2D(ring: Array<[number, number]>): number[] {
+    const tris: number[] = [];
+    if (ring.length < 3) return tris;
+    // Ensure CCW winding
+    let area = 0;
+    for (let i = 0; i < ring.length; i++) {
+      const j = (i + 1) % ring.length;
+      area += ring[i][0] * ring[j][1] - ring[j][0] * ring[i][1];
+    }
+    const pts = area < 0 ? ring.slice().reverse() : ring.slice();
+
+    const indices = pts.map((_, i) => i);
+    let failCount = 0;
+    while (indices.length > 2 && failCount < indices.length * 2) {
+      let earFound = false;
+      for (let ii = 0; ii < indices.length; ii++) {
+        const prev = indices[(ii + indices.length - 1) % indices.length];
+        const curr = indices[ii];
+        const next = indices[(ii + 1) % indices.length];
+        const ax = pts[prev][0], ay = pts[prev][1];
+        const bx = pts[curr][0], by = pts[curr][1];
+        const cxx = pts[next][0], cyy = pts[next][1];
+        const cross = (bx - ax) * (cyy - ay) - (by - ay) * (cxx - ax);
+        if (cross <= 0) continue; // reflex
+
+        // Check no other point inside
+        let inside = false;
+        for (let k = 0; k < indices.length; k++) {
+          const ki = indices[k];
+          if (ki === prev || ki === curr || ki === next) continue;
+          const px = pts[ki][0], py = pts[ki][1];
+          const d1 = (px - ax) * (by - ay) - (py - ay) * (bx - ax);
+          const d2 = (px - bx) * (cyy - by) - (py - by) * (cxx - bx);
+          const d3 = (px - cxx) * (ay - cyy) - (py - cyy) * (ax - cxx);
+          if (d1 >= 0 && d2 >= 0 && d3 >= 0) { inside = true; break; }
+        }
+        if (inside) continue;
+
+        tris.push(prev, curr, next);
+        indices.splice(ii, 1);
+        earFound = true;
+        failCount = 0;
+        break;
+      }
+      if (!earFound) failCount++;
+    }
+    return tris;
+  }
+
+  // Build an ordered ring from unordered line segments
+  function buildRing(segs: Array<[number, number, number, number]>): Array<[number, number]> | null {
+    if (segs.length === 0) return null;
+    const eps = 1;
+    const eq = (a: number, b: number) => Math.abs(a - b) < eps;
+    const ring: Array<[number, number]> = [];
+    const used = new Set<number>();
+
+    ring.push([segs[0][0], segs[0][1]]);
+    let endX = segs[0][2], endY = segs[0][3];
+    used.add(0);
+
+    for (let iter = 0; iter < segs.length; iter++) {
+      let found = false;
+      for (let i = 0; i < segs.length; i++) {
+        if (used.has(i)) continue;
+        const [x1, y1, x2, y2] = segs[i];
+        if (eq(x1, endX) && eq(y1, endY)) {
+          ring.push([x1, y1]);
+          endX = x2; endY = y2;
+          used.add(i);
+          found = true;
+          break;
+        } else if (eq(x2, endX) && eq(y2, endY)) {
+          ring.push([x2, y2]);
+          endX = x1; endY = y1;
+          used.add(i);
+          found = true;
+          break;
+        }
+      }
+      if (!found) break;
+    }
+    return ring.length >= 3 ? ring : null;
+  }
+
+  // ── Geometry arrays ──
+  const wallPositions: number[] = [];
+  const wallColors: number[] = [];
+  const floorPositions: number[] = [];
+  const floorColors: number[] = [];
+  const ceilPositions: number[] = [];
+  const ceilColors: number[] = [];
+  const wirePositions: number[] = [];
+
+  // ── Build walls (including two-sided upper/lower) ──
+  for (let i = 0; i < numLinedefs; i++) {
+    const base = ldLump.offset + i * 14;
+    const v1i = dv.getUint16(base, true);
+    const v2i = dv.getUint16(base + 2, true);
+    const sideR = dv.getInt16(base + 10, true);
+    const sideL = dv.getInt16(base + 12, true);
+    if (v1i >= numVerts || v2i >= numVerts) continue;
+
+    // Right sector info
+    let floorR = 0, ceilR = 128, lightR = 0.5;
+    let secIdxR = -1;
     if (sideR >= 0 && sideR < numSidedefs) {
-      const secIdx = sidedefSector[sideR];
-      if (secIdx >= 0 && secIdx < numSectors) {
-        floorH = sectorFloor[secIdx];
-        ceilH = sectorCeil[secIdx];
-        light = sectorLight[secIdx];
+      secIdxR = sidedefSector[sideR];
+      if (secIdxR >= 0 && secIdxR < numSectors) {
+        floorR = sectorFloor[secIdxR];
+        ceilR = sectorCeil[secIdxR];
+        lightR = sectorLight[secIdxR];
       }
     }
 
-    const isTwoSided = (flags & 0x0004) !== 0;
-    if (isTwoSided && sideL >= 0) continue; // skip two-sided portals (openings)
+    const isTwoSided = sideL >= 0 && sideL < numSidedefs;
 
-    // Three.js coords: x = doom_x, y = height, z = -doom_y
     const x1 = (vx[v1i] - cx) * S;
     const z1 = -(vy[v1i] - cy) * S;
     const x2 = (vx[v2i] - cx) * S;
     const z2 = -(vy[v2i] - cy) * S;
-    const yBot = floorH * S;
-    const yTop = ceilH * S;
 
-    // Wall quad: 4 corners → 2 triangles (CCW)
-    // v0=bottom-left, v1=bottom-right, v2=top-right, v3=top-left
-    const r = light * 0.85 + 0.1;
-    const g = light * 0.75 + 0.05;
-    const b = light * 0.6;
+    const addQuad = (yBot: number, yTop: number, light: number) => {
+      if (yTop <= yBot) return;
+      const yb = yBot * S, yt = yTop * S;
+      const r = light * 0.85 + 0.1;
+      const g = light * 0.75 + 0.05;
+      const b = light * 0.6;
+      wallPositions.push(x1,yb,z1, x2,yb,z2, x2,yt,z2);
+      wallColors.push(r,g,b, r,g,b, r,g,b);
+      wallPositions.push(x1,yb,z1, x2,yt,z2, x1,yt,z1);
+      wallColors.push(r,g,b, r,g,b, r,g,b);
+      wirePositions.push(x1,yb,z1, x2,yb,z2);
+      wirePositions.push(x1,yt,z1, x2,yt,z2);
+      wirePositions.push(x1,yb,z1, x1,yt,z1);
+      wirePositions.push(x2,yb,z2, x2,yt,z2);
+    };
 
-    // Triangle 1: v0, v1, v2
-    wallPositions.push(x1, yBot, z1,  x2, yBot, z2,  x2, yTop, z2);
-    wallColors.push(r,g,b, r,g,b, r,g,b);
-    // Triangle 2: v0, v2, v3
-    wallPositions.push(x1, yBot, z1,  x2, yTop, z2,  x1, yTop, z1);
-    wallColors.push(r,g,b, r,g,b, r,g,b);
-
-    // Wireframe edge
-    wirePositions.push(x1, yBot, z1,  x2, yBot, z2);
-    wirePositions.push(x1, yTop, z1,  x2, yTop, z2);
-    wirePositions.push(x1, yBot, z1,  x1, yTop, z1);
-    wirePositions.push(x2, yBot, z2,  x2, yTop, z2);
+    if (!isTwoSided) {
+      // One-sided: full wall from floor to ceiling
+      addQuad(floorR, ceilR, lightR);
+    } else {
+      // Two-sided: render upper and lower wall sections where heights differ
+      let floorL = 0, ceilL = 128, lightL = 0.5;
+      const secIdxL = sidedefSector[sideL];
+      if (secIdxL >= 0 && secIdxL < numSectors) {
+        floorL = sectorFloor[secIdxL];
+        ceilL = sectorCeil[secIdxL];
+        lightL = sectorLight[secIdxL];
+      }
+      // Lower wall: where adjacent floor is higher
+      if (floorL > floorR) addQuad(floorR, floorL, lightR);
+      if (floorR > floorL) addQuad(floorL, floorR, lightL);
+      // Upper wall: where adjacent ceiling is lower
+      if (ceilL < ceilR) addQuad(ceilL, ceilR, lightR);
+      if (ceilR < ceilL) addQuad(ceilR, ceilL, lightL);
+    }
   }
 
-  const group = new THREE.Group();
+  // ── Build floor & ceiling polygons per sector ──
+  for (const [secIdx, segs] of sectorLines.entries()) {
+    if (secIdx < 0 || secIdx >= numSectors) continue;
+    const floorH = sectorFloor[secIdx] * S;
+    const ceilH = sectorCeil[secIdx] * S;
+    const light = sectorLight[secIdx];
 
-  if (wallPositions.length > 0) {
+    const ring = buildRing(segs);
+    if (!ring || ring.length < 3) continue;
+
+    // Transform ring to Three.js coords
+    const ring3: Array<[number, number]> = ring.map(([px, py]) => [
+      (px - cx) * S,
+      -(py - cy) * S,
+    ]);
+
+    const triIndices = triangulate2D(ring3);
+
+    const rF = light * 0.6 + 0.08;
+    const gF = light * 0.55 + 0.05;
+    const bF = light * 0.45;
+    const rC = light * 0.5 + 0.15;
+    const gC = light * 0.45 + 0.1;
+    const bC = light * 0.55 + 0.05;
+
+    for (let t = 0; t < triIndices.length; t += 3) {
+      const a = ring3[triIndices[t]], b = ring3[triIndices[t+1]], c = ring3[triIndices[t+2]];
+      if (!a || !b || !c) continue;
+      // Floor (y = floorH, face up)
+      floorPositions.push(a[0], floorH, a[1],  b[0], floorH, b[1],  c[0], floorH, c[1]);
+      floorColors.push(rF,gF,bF, rF,gF,bF, rF,gF,bF);
+      // Ceiling (y = ceilH, face down — reversed winding)
+      ceilPositions.push(c[0], ceilH, c[1],  b[0], ceilH, b[1],  a[0], ceilH, a[1]);
+      ceilColors.push(rC,gC,bC, rC,gC,bC, rC,gC,bC);
+    }
+  }
+
+  // ── Assemble group ──
+  const group = new THREE.Group();
+  const makeMesh = (positions: number[], colors: number[]) => {
+    if (positions.length === 0) return;
     const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.Float32BufferAttribute(wallPositions, 3));
-    geo.setAttribute('color', new THREE.Float32BufferAttribute(wallColors, 3));
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
     geo.computeVertexNormals();
     const mat = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide });
     group.add(new THREE.Mesh(geo, mat));
-  }
+  };
+  makeMesh(wallPositions, wallColors);
+  makeMesh(floorPositions, floorColors);
+  makeMesh(ceilPositions, ceilColors);
 
   if (wirePositions.length > 0) {
     const wGeo = new THREE.BufferGeometry();
     wGeo.setAttribute('position', new THREE.Float32BufferAttribute(wirePositions, 3));
-    const wMat = new THREE.LineBasicMaterial({ color: 0x00ff88, opacity: 0.35, transparent: true });
+    const wMat = new THREE.LineBasicMaterial({ color: 0x00ff88, opacity: 0.25, transparent: true });
     group.add(new THREE.LineSegments(wGeo, wMat));
   }
 
@@ -468,7 +642,12 @@ export function ModelViewer() {
     setStatus('Loading model…');
     setLoading(true);
 
+    const DRACOLoader = await loadDRACOLoader();
+    const dracoLoader = new DRACOLoader();
+    dracoLoader.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.7/');
+    dracoLoader.setDecoderConfig({ type: 'js' });
     const loader = new GLTFLoader();
+    loader.setDRACOLoader(dracoLoader);
     loader.load(
       url,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any

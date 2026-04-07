@@ -424,7 +424,7 @@ window.addEventListener('message', async event => {
       console.log('🔨 Creating game function...');
       // Dynamically build param list from nova64api so ALL Nova64 APIs are local variables
       // in user code — avoids window.print and other globalThis clobbering issues.
-      const _apiNames = Object.keys(nova64api).filter(k => /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(k));
+      const _apiNames = Object.keys(nova64api).filter(k => /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(k) && k.length >= 3);
       const _apiValues = _apiNames.map(k => nova64api[k]);
       const gameFunction = new Function(
         ..._apiNames,

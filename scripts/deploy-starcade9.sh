@@ -31,6 +31,7 @@ touch "$DEPLOY_DIR/.nojekyll"
 echo "📄 Copying root files..."
 cp "$NOVA64_DIR/index.html" "$DEPLOY_DIR/index.html"
 cp "$NOVA64_DIR/console.html" "$DEPLOY_DIR/console.html"
+cp "$NOVA64_DIR/cart-runner.html" "$DEPLOY_DIR/cart-runner.html"
 
 # src/main.js (entry point)
 echo "📦 Copying src/main.js..."

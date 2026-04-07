@@ -22,7 +22,10 @@ export function processCartCode(code: string): string {
  */
 export function getNovaBaseUrl(): string {
   const { hostname, port } = window.location;
-  if ((hostname === 'localhost' || hostname === '127.0.0.1') && port !== '5173') {
+  // os9-shell dev server runs on 3000/3001; Nova64 Vite dev server runs on 5173.
+  // Only redirect when we know we're on the separate os9-shell dev server.
+  // In production (GitHub Pages, npx serve, etc.) everything is same-origin.
+  if ((hostname === 'localhost' || hostname === '127.0.0.1') && (port === '3000' || port === '3001')) {
     return 'http://localhost:5173';
   }
   return window.location.origin;

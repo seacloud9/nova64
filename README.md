@@ -183,15 +183,15 @@ Load your cart by changing the import path in `src/main.js`.
 
 ```javascript
 // Camera
-setCameraPosition(x, y, z)
-setCameraTarget(x, y, z)
-setCameraFOV(degrees)
+setCameraPosition(x, y, z);
+setCameraTarget(x, y, z);
+setCameraFOV(degrees);
 
 // Atmospheric
-setFog(color, near, far)
-clearFog()
-setAmbientLight(color, intensity)
-createPointLight(color, intensity, distance, [x, y, z])
+setFog(color, near, far);
+clearFog();
+setAmbientLight(color, intensity);
+createPointLight(color, intensity, distance, [x, y, z]);
 ```
 
 ### 📦 **3D Objects**
@@ -218,12 +218,12 @@ removeMesh(mesh)          // also: destroyMesh(mesh)
 ### 🎮 **Input**
 
 ```javascript
-key(keyCode)              // Keyboard key held
-keyp(keyCode)             // Key just pressed
-btn(index)                // Gamepad button held
-btnp(index)               // Gamepad button just pressed
-mouseX(), mouseY()        // Mouse position
-mouseButton(index)        // Mouse button state
+key(keyCode); // Keyboard key held
+keyp(keyCode); // Key just pressed
+btn(index); // Gamepad button held
+btnp(index); // Gamepad button just pressed
+(mouseX(), mouseY()); // Mouse position
+mouseButton(index); // Mouse button state
 ```
 
 ### 🎨 **2D Overlay**
@@ -244,26 +244,26 @@ drawProgressBar(x, y, w, h, pct, fgColor, bgColor)
 ### 🌌 **Skybox & Effects**
 
 ```javascript
-createSpaceSkybox()
-createGradientSkybox(topColor, bottomColor)
-createSolidSkybox(color)
-enableSkyboxAutoAnimate(speed)
+createSpaceSkybox();
+createGradientSkybox(topColor, bottomColor);
+createSolidSkybox(color);
+enableSkyboxAutoAnimate(speed);
 
-enableBloom(strength, radius, threshold)
-enableVignette(darkness, offset)
-enableGlitch(amount)
-enableChromaticAberration(offset)
-enableN64Mode()
-enablePSXMode()
-enableLowPolyMode()
+enableBloom(strength, radius, threshold);
+enableVignette(darkness, offset);
+enableGlitch(amount);
+enableChromaticAberration(offset);
+enableN64Mode();
+enablePSXMode();
+enableLowPolyMode();
 ```
 
 ### 🔊 **Audio**
 
 ```javascript
-sfx(preset)               // Named presets: 'jump', 'coin', 'explosion', ...
-sfx({ wave, freq, dur })  // Custom sound
-setVolume(level)           // Master volume 0.0–1.0
+sfx(preset); // Named presets: 'jump', 'coin', 'explosion', ...
+sfx({ wave, freq, dur }); // Custom sound
+setVolume(level); // Master volume 0.0–1.0
 ```
 
 ### 💾 **Storage**
@@ -277,51 +277,51 @@ deleteData(key)
 ### 🧊 **Voxel Engine** (selection)
 
 ```javascript
-updateVoxelWorld(playerX, playerY, playerZ)
-setVoxelBlock(x, y, z, blockType)
-getVoxelBlock(x, y, z)
-raycastVoxelBlock(origin, direction, maxDist)
-checkVoxelCollision(x, y, z, w, h, d)
-spawnVoxelEntity(type, x, y, z, components)
-configureVoxelWorld(options)
-saveVoxelWorld(name)
-loadVoxelWorld(name)
+updateVoxelWorld(playerX, playerY, playerZ);
+setVoxelBlock(x, y, z, blockType);
+getVoxelBlock(x, y, z);
+raycastVoxelBlock(origin, direction, maxDist);
+checkVoxelCollision(x, y, z, w, h, d);
+spawnVoxelEntity(type, x, y, z, components);
+configureVoxelWorld(options);
+saveVoxelWorld(name);
+loadVoxelWorld(name);
 ```
 
 ### 🎮 **Game Utilities**
 
 ```javascript
-createShake() / triggerShake() / updateShake()
-createCooldown() / useCooldown() / updateCooldowns()
-createPool() / createSpawner() / updateSpawner()
-createStateMachine() / createTimer()
-createFloatingTextSystem() / drawFloatingTexts()
-createMinimap(opts) / drawMinimap(mm, time)
+createShake() / triggerShake() / updateShake();
+createCooldown() / useCooldown() / updateCooldowns();
+createPool() / createSpawner() / updateSpawner();
+createStateMachine() / createTimer();
+createFloatingTextSystem() / drawFloatingTexts();
+createMinimap(opts) / drawMinimap(mm, time);
 ```
 
 ### ⚛️ **Physics**
 
 ```javascript
-createBody(options)
-stepPhysics(dt)
-setGravity(x, y, z)
-setCollisionMap(fn)
+createBody(options);
+stepPhysics(dt);
+setGravity(x, y, z);
+setCollisionMap(fn);
 ```
 
 ---
 
 ## 🎪 **Demo Gallery** (47 Carts)
 
-| Category | Demos |
-|----------|-------|
-| **Space & Combat** | Star Fox Nova, Space Harrier, Wing Commander, Space Combat, Shooter Demo, FPS Demo |
-| **Racing & Action** | F-Zero Nova, Super Plumber 64, Strider Demo |
-| **RPG & Exploration** | Mystical Realm, Dungeon Crawler, Wizardry, Nature Explorer, Adventure Comic |
-| **Graphics Showcase** | Crystal Cathedral, Cyberpunk City, PBR Showcase, Skybox Showcase, Particles Demo, TSL Showcase |
-| **Voxel** | Minecraft Demo, Voxel Creative, Voxel Creatures, Voxel Terrain |
-| **Creative & Art** | Generative Art, Creative Coding, Demoscene, NFT Art Generator, NFT Worlds, Boids Flocking, Game of Life 3D |
-| **Tech Demos** | Physics Demo, Instancing Demo, Audio Lab, Model Viewer, Input Showcase, Hello 3D, Hello World, Hello Skybox |
-| **UI & System** | UI Demo, Screen Demo, Storage Quest, Test 2D Overlay, Test Font, Test Minimal |
+| Category              | Demos                                                                                                       |
+| --------------------- | ----------------------------------------------------------------------------------------------------------- |
+| **Space & Combat**    | Star Fox Nova, Space Harrier, Wing Commander, Space Combat, Shooter Demo, FPS Demo                          |
+| **Racing & Action**   | F-Zero Nova, Super Plumber 64, Strider Demo                                                                 |
+| **RPG & Exploration** | Mystical Realm, Dungeon Crawler, Wizardry, Nature Explorer, Adventure Comic                                 |
+| **Graphics Showcase** | Crystal Cathedral, Cyberpunk City, PBR Showcase, Skybox Showcase, Particles Demo, TSL Showcase              |
+| **Voxel**             | Minecraft Demo, Voxel Creative, Voxel Creatures, Voxel Terrain                                              |
+| **Creative & Art**    | Generative Art, Creative Coding, Demoscene, NFT Art Generator, NFT Worlds, Boids Flocking, Game of Life 3D  |
+| **Tech Demos**        | Physics Demo, Instancing Demo, Audio Lab, Model Viewer, Input Showcase, Hello 3D, Hello World, Hello Skybox |
+| **UI & System**       | UI Demo, Screen Demo, Storage Quest, Test 2D Overlay, Test Font, Test Minimal                               |
 
 ---
 

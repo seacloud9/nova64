@@ -15,15 +15,15 @@ export function processCartCode(code: string): string {
 }
 
 /**
- * Returns the base URL of the Nova64 main server (always port 5173).
- * os9-shell may run on port 3000/3001 (prod via pnpm dev) or any other port,
- * while the Nova64 runtime is always served from port 5173.
+ * Returns the base URL of the Nova64 main server.
+ * In local dev, os9-shell runs on port 3000/3001 while the Nova64 runtime
+ * is served from port 5173. In production (e.g. GitHub Pages), everything
+ * is served from the same origin.
  */
 export function getNovaBaseUrl(): string {
-  const { hostname } = window.location;
-  if (hostname === 'localhost' || hostname === '127.0.0.1') {
+  const { hostname, port } = window.location;
+  if ((hostname === 'localhost' || hostname === '127.0.0.1') && port !== '5173') {
     return 'http://localhost:5173';
   }
-  // LAN or remote access: same hostname, standard Nova64 dev port
-  return `http://${hostname}:5173`;
+  return window.location.origin;
 }

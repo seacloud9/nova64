@@ -21,11 +21,10 @@ export function processCartCode(code: string): string {
  * is served from the same origin.
  */
 export function getNovaBaseUrl(): string {
-  const { hostname, port } = window.location;
-  // os9-shell dev server runs on 3000/3001; Nova64 Vite dev server runs on 5173.
-  // Only redirect when we know we're on the separate os9-shell dev server.
-  // In production (GitHub Pages, npx serve, etc.) everything is same-origin.
-  if ((hostname === 'localhost' || hostname === '127.0.0.1') && (port === '3000' || port === '3001')) {
+  // In dev, os9-shell runs on its own server (3000/3001) while Nova64's
+  // Vite server is on 5173. import.meta.env.DEV is tree-shaken to false
+  // in production builds, so localhost:5173 never appears in the bundle.
+  if (import.meta.env.DEV) {
     return 'http://localhost:5173';
   }
   return window.location.origin;

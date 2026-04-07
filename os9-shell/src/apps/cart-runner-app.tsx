@@ -3,8 +3,9 @@ import type { Nova64App } from '../types';
 import { novaContext } from '../os/context';
 
 function getBaseUrl(): string {
-  const { hostname, port } = window.location;
-  if (hostname === 'localhost' && (port === '3000' || port === '3001')) {
+  // In dev, os9-shell runs on its own server while Nova64's Vite server
+  // is on 5173. import.meta.env.DEV is tree-shaken to false in production.
+  if (import.meta.env.DEV) {
     return 'http://localhost:5173';
   }
   return window.location.origin;

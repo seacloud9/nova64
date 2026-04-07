@@ -93,9 +93,7 @@ function httpGet(port, path) {
     const req = http.get(`http://localhost:${port}${path}`, res => {
       let body = '';
       res.on('data', chunk => (body += chunk));
-      res.on('end', () =>
-        resolvePromise({ status: res.statusCode, headers: res.headers, body })
-      );
+      res.on('end', () => resolvePromise({ status: res.statusCode, headers: res.headers, body }));
     });
     req.on('error', reject);
     req.setTimeout(5000, () => {
@@ -207,10 +205,7 @@ export async function runCLIServerTests() {
       res.headers['content-type'].includes('javascript'),
       'Content-Type should be javascript'
     );
-    Assert.isTrue(
-      res.body.includes('export function'),
-      'Cart code should contain export function'
-    );
+    Assert.isTrue(res.body.includes('export function'), 'Cart code should contain export function');
   });
 
   runner.test('GET /assets/main-*.js → 200 (bundled JS)', async () => {

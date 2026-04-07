@@ -12,6 +12,10 @@ import { downloadJson, downloadCart } from './shared/exporter';
 import { loadFromFile } from './shared/importer';
 import { createExampleProject } from './shared/schema';
 import { EXAMPLE_CATALOG } from './shared/examples';
+import {
+  autoSave, loadAutoSave, saveToLocal, loadFromLocal,
+  deleteSave, listSaves, type SaveEntry,
+} from './shared/storage';
 
 // ---------------------------------------------------------------------------
 // Styles (all inline to avoid collisions with os9-shell CSS)
@@ -187,6 +191,56 @@ export function HyperNovaApp() {
     setShowExamples(false);
   }, [store]);
 
+  // ---- localStorage persistence -------------------------------------------
+
+  // Restore from auto-save on first mount
+  useEffect(() => {
+    const saved = loadAutoSave();
+    if (saved) store.setProject(saved);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Auto-save on every project change (debounced 800 ms)
+  const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+    autoSaveTimerRef.current = setTimeout(() => autoSave(store.project), 800);
+    return () => { if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current); };
+  }, [store.project]);
+
+  // My Stacks dropdown
+  const [showStacks, setShowStacks] = useState(false);
+  const [stacksList, setStacksList] = useState<SaveEntry[]>(() => listSaves());
+  const stacksRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!showStacks) return;
+    const onOut = (e: MouseEvent) => {
+      if (stacksRef.current && !stacksRef.current.contains(e.target as Node)) setShowStacks(false);
+    };
+    document.addEventListener('mousedown', onOut);
+    return () => document.removeEventListener('mousedown', onOut);
+  }, [showStacks]);
+
+  const handleSaveToLocal = useCallback(() => {
+    saveToLocal(store.project);
+    setStacksList(listSaves());
+  }, [store.project]);
+
+  const handleLoadLocal = useCallback((id: string) => {
+    const p = loadFromLocal(id);
+    if (!p) return;
+    if (!store.isDirty || window.confirm('Load stack? Unsaved changes will be lost.')) {
+      store.setProject(p);
+      setShowStacks(false);
+    }
+  }, [store]);
+
+  const handleDeleteLocal = useCallback((e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    deleteSave(id);
+    setStacksList(listSaves());
+  }, []);
+
   return (
     <div style={S.root}>
       {/* ── Top bar ─────────────────────────────────────────────────────── */}
@@ -277,6 +331,80 @@ export function HyperNovaApp() {
                   </div>
                 </div>
               ))}
+            </div>
+          )}
+        </div>
+
+        {/* My Stacks — save/load from browser localStorage */}
+        <div ref={stacksRef} style={{ position: 'relative' }}>
+          <div
+            style={S.actionBtn}
+            onClick={() => { setStacksList(listSaves()); setShowStacks((v) => !v); }}
+            title="Save and load stacks from browser storage"
+          >
+            📚 My Stacks ▾
+          </div>
+          {showStacks && (
+            <div style={{
+              position: 'absolute', top: '100%', right: 0, zIndex: 100,
+              background: '#12122a', border: '1px solid #2a2a5a', borderRadius: 6,
+              padding: 4, minWidth: 270, marginTop: 4,
+              boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+            }}>
+              <div
+                style={{ padding: '7px 10px', cursor: 'pointer', borderRadius: 4, display: 'flex', gap: 8, alignItems: 'center' }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = '#1a3a1a')}
+                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                onClick={handleSaveToLocal}
+              >
+                <span>💾</span>
+                <div>
+                  <div style={{ fontSize: 12, color: '#60dd60', fontWeight: 600 }}>
+                    Save "{store.project.name}"
+                  </div>
+                  <div style={{ fontSize: 10, color: '#3a6a3a' }}>Save current project to browser storage</div>
+                </div>
+              </div>
+              {stacksList.length > 0 && (
+                <>
+                  <div style={{ height: 1, background: '#1a1a3a', margin: '2px 4px' }} />
+                  {stacksList.map((entry) => (
+                    <div
+                      key={entry.id}
+                      style={{ padding: '7px 10px', cursor: 'pointer', borderRadius: 4, display: 'flex', gap: 8, alignItems: 'center' }}
+                      onMouseEnter={(e) => (e.currentTarget.style.background = '#1a1a3a')}
+                      onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                      onClick={() => handleLoadLocal(entry.id)}
+                    >
+                      <span style={{ fontSize: 16 }}>🃏</span>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 12, color: '#e0e0ff', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {entry.name}
+                        </div>
+                        <div style={{ fontSize: 10, color: '#5a5a8a' }}>
+                          {entry.cardCount} card{entry.cardCount !== 1 ? 's' : ''} · {new Date(entry.savedAt).toLocaleDateString()}
+                        </div>
+                      </div>
+                      <div
+                        style={{
+                          padding: '1px 6px', borderRadius: 3, fontSize: 10,
+                          border: '1px solid #4a2a2a', background: '#1a0808', color: '#aa5555',
+                          cursor: 'pointer', flexShrink: 0,
+                        }}
+                        onClick={(e) => handleDeleteLocal(e, entry.id)}
+                        title="Delete this save"
+                      >
+                        ✕
+                      </div>
+                    </div>
+                  ))}
+                </>
+              )}
+              {stacksList.length === 0 && (
+                <div style={{ padding: '8px 12px', fontSize: 11, color: '#3a3a6a' }}>
+                  No saved stacks yet.
+                </div>
+              )}
             </div>
           )}
         </div>

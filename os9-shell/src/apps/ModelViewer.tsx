@@ -5,16 +5,9 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 type CameraMode = 'orbit' | 'fly';
 type FileType = 'gltf' | 'wad' | null;
 
-interface WadLump {
-  name: string;
-  offset: number;
-  size: number;
-}
+// WadLump replaced by DirEntry in WADLoaderMV
 
-interface WadData {
-  lumps: WadLump[];
-  bytes: Uint8Array;
-}
+// WadData replaced by WADLoaderMV
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -71,133 +64,640 @@ async function loadDRACOLoader() {
   return _DRACOLoader;
 }
 
-// ── WAD Parser ──────────────────────────────────────────────────────────────
+// ── WAD Thing Constants ──────────────────────────────────────────────────────
 
-function parseWAD(buffer: ArrayBuffer): WadData | null {
-  const bytes = new Uint8Array(buffer);
-  const view = new DataView(buffer);
-  const magic = String.fromCharCode(bytes[0], bytes[1], bytes[2], bytes[3]);
-  if (magic !== 'IWAD' && magic !== 'PWAD') return null;
-  const numLumps = view.getInt32(4, true);
-  const dirOffset = view.getInt32(8, true);
-  const lumps: WadLump[] = [];
-  for (let i = 0; i < numLumps; i++) {
-    const base = dirOffset + i * 16;
-    const offset = view.getInt32(base, true);
-    const size = view.getInt32(base + 4, true);
-    let name = '';
-    for (let c = 0; c < 8; c++) {
-      const ch = bytes[base + 8 + c];
-      if (ch === 0) break;
-      name += String.fromCharCode(ch);
-    }
-    lumps.push({ name, offset, size });
+const THING_MONSTERS: Record<number, string> = {
+  3004:'grunt',9:'grunt',3001:'grunt',3006:'grunt',
+  65:'shooter',3005:'shooter',66:'shooter',68:'shooter',71:'shooter',84:'shooter',
+  3002:'tank',58:'tank',67:'tank',69:'tank',
+  3003:'boss',64:'boss',16:'boss',7:'boss',
+};
+
+const THING_ITEMS: Record<number, string> = {
+  2011:'health',2012:'health',2014:'health',
+  2015:'armor',2018:'armor',2019:'armor',
+  2007:'ammo',2008:'ammo',2010:'ammo',2047:'ammo',2048:'ammo',2049:'ammo',
+  2001:'ammo',2002:'ammo',2003:'ammo',2004:'ammo',2006:'ammo',
+};
+
+const THING_SPRITE_PREFIX: Record<number, string> = {
+  3004:'POSS',9:'SPOS',3001:'TROO',3006:'SKUL',65:'CPOS',3005:'HEAD',
+  66:'SKEL',68:'BSPI',71:'PAIN',84:'SSWV',3002:'SARG',58:'SARG',
+  67:'FATT',69:'BOS2',3003:'BOSS',64:'VILE',16:'CYBR',7:'SPID',
+  2011:'STIM',2012:'MEDI',2014:'BON1',2015:'BON2',2018:'ARM1',2019:'ARM2',
+  2007:'CLIP',2008:'SHEL',2010:'ROCK',2047:'CELL',2001:'SHOT',2002:'MGUN',
+  2003:'LAUN',2004:'PLAS',2006:'BFUG',2035:'BAR1',70:'FCAN',44:'TBLU',
+  45:'TGRN',46:'TRED',48:'ELEC',34:'CAND',35:'CBRA',
+};
+
+const THING_COLORS: Record<string, number> = {
+  grunt:0x00cc00, shooter:0xcc6600, tank:0x666666, boss:0xff0000,
+  health:0xff3333, armor:0x3366ff, ammo:0xffcc00,
+};
+
+// ── WAD Binary Helpers ──────────────────────────────────────────────────────
+
+function readStr8(bytes: Uint8Array, offset: number): string {
+  let s = '';
+  for (let i = 0; i < 8; i++) {
+    const c = bytes[offset + i];
+    if (c === 0) break;
+    s += String.fromCharCode(c);
   }
-  return { lumps, bytes };
+  return s.toUpperCase();
 }
 
-function getWadMaps(wad: WadData): string[] {
-  return wad.lumps
-    .filter(l => /^(E\dM\d|MAP\d\d)$/.test(l.name))
-    .map(l => l.name);
+interface WadVertex { x: number; y: number; }
+interface WadLinedef { v1: number; v2: number; flags: number; right: number; left: number; }
+interface WadSidedef { xoff: number; yoff: number; upper: string; lower: string; middle: string; sector: number; }
+interface WadSector { floorH: number; ceilH: number; floorFlat: string; ceilFlat: string; light: number; }
+interface WadThing { x: number; y: number; angle: number; type: number; flags: number; }
+interface WadMap { name: string; vertexes: WadVertex[]; linedefs: WadLinedef[]; sidedefs: WadSidedef[]; sectors: WadSector[]; things: WadThing[]; }
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+interface WadTexDef { name: string; width: number; height: number; patches: any[]; }
+
+function readVerts(dv: DataView): WadVertex[] {
+  const out: WadVertex[] = [];
+  for (let i = 0; i < dv.byteLength; i += 4)
+    out.push({ x: dv.getInt16(i, true), y: dv.getInt16(i + 2, true) });
+  return out;
 }
 
+function readLines(dv: DataView): WadLinedef[] {
+  const out: WadLinedef[] = [];
+  for (let i = 0; i < dv.byteLength; i += 14)
+    out.push({
+      v1: dv.getUint16(i, true), v2: dv.getUint16(i + 2, true),
+      flags: dv.getUint16(i + 4, true),
+      right: dv.getInt16(i + 10, true), left: dv.getInt16(i + 12, true),
+    });
+  return out;
+}
+
+function readSides(dv: DataView): WadSidedef[] {
+  const bytes = new Uint8Array(dv.buffer, dv.byteOffset, dv.byteLength);
+  const out: WadSidedef[] = [];
+  for (let i = 0; i < dv.byteLength; i += 30) {
+    out.push({
+      xoff: dv.getInt16(i, true), yoff: dv.getInt16(i + 2, true),
+      upper: readStr8(bytes, i + 4), lower: readStr8(bytes, i + 12),
+      middle: readStr8(bytes, i + 20), sector: dv.getUint16(i + 28, true),
+    });
+  }
+  return out;
+}
+
+function readSectors(dv: DataView): WadSector[] {
+  const bytes = new Uint8Array(dv.buffer, dv.byteOffset, dv.byteLength);
+  const out: WadSector[] = [];
+  for (let i = 0; i < dv.byteLength; i += 26)
+    out.push({
+      floorH: dv.getInt16(i, true), ceilH: dv.getInt16(i + 2, true),
+      floorFlat: readStr8(bytes, i + 4), ceilFlat: readStr8(bytes, i + 12),
+      light: dv.getInt16(i + 20, true),
+    });
+  return out;
+}
+
+function readThings(dv: DataView): WadThing[] {
+  const out: WadThing[] = [];
+  for (let i = 0; i < dv.byteLength; i += 10)
+    out.push({
+      x: dv.getInt16(i, true), y: dv.getInt16(i + 2, true),
+      angle: dv.getUint16(i + 4, true), type: dv.getUint16(i + 6, true),
+      flags: dv.getUint16(i + 8, true),
+    });
+  return out;
+}
+
+// ── WADLoaderMV ─────────────────────────────────────────────────────────────
+
+interface DirEntry { name: string; filepos: number; size: number; }
+
+class WADLoaderMV {
+  directory: DirEntry[] = [];
+  buffer: ArrayBuffer | null = null;
+
+  load(arrayBuffer: ArrayBuffer) {
+    this.buffer = arrayBuffer;
+    const view = new DataView(arrayBuffer);
+    const bytes = new Uint8Array(arrayBuffer);
+    const tag = String.fromCharCode(bytes[0], bytes[1], bytes[2], bytes[3]);
+    if (tag !== 'IWAD' && tag !== 'PWAD') throw new Error('Invalid WAD file');
+
+    const numLumps = view.getInt32(4, true);
+    const dirOfs = view.getInt32(8, true);
+    this.directory = [];
+    for (let i = 0; i < numLumps; i++) {
+      const o = dirOfs + i * 16;
+      const filepos = view.getInt32(o, true);
+      const size = view.getInt32(o + 4, true);
+      let name = '';
+      for (let j = 0; j < 8; j++) {
+        const c = bytes[o + 8 + j];
+        if (c === 0) break;
+        name += String.fromCharCode(c);
+      }
+      this.directory.push({ name: name.toUpperCase(), filepos, size });
+    }
+    return this;
+  }
+
+  getMapNames(): string[] {
+    return this.directory.filter(e => /^(E\dM\d|MAP\d\d)$/.test(e.name)).map(e => e.name);
+  }
+
+  getMap(name: string): WadMap | null {
+    const idx = this.directory.findIndex(e => e.name === name);
+    if (idx < 0 || !this.buffer) return null;
+    const lumps: Record<string, DataView> = {};
+    for (let i = idx + 1; i < this.directory.length && i <= idx + 11; i++) {
+      const e = this.directory[i];
+      if (/^(E\dM\d|MAP\d\d)$/.test(e.name)) break;
+      if (e.size > 0) lumps[e.name] = new DataView(this.buffer, e.filepos, e.size);
+    }
+    if (!lumps.VERTEXES || !lumps.LINEDEFS || !lumps.SIDEDEFS || !lumps.SECTORS) return null;
+    return {
+      name,
+      vertexes: readVerts(lumps.VERTEXES),
+      linedefs: readLines(lumps.LINEDEFS),
+      sidedefs: readSides(lumps.SIDEDEFS),
+      sectors: readSectors(lumps.SECTORS),
+      things: lumps.THINGS ? readThings(lumps.THINGS) : [],
+    };
+  }
+
+  getPalette(): Uint8Array | null {
+    const lump = this.directory.find(e => e.name === 'PLAYPAL');
+    if (!lump || lump.size < 768 || !this.buffer) return null;
+    return new Uint8Array(this.buffer, lump.filepos, 768);
+  }
+
+  getLump(name: string): { data: Uint8Array; size: number } | null {
+    const lump = this.directory.find(e => e.name === name.toUpperCase());
+    if (!lump || lump.size === 0 || !this.buffer) return null;
+    return { data: new Uint8Array(this.buffer, lump.filepos, lump.size), size: lump.size };
+  }
+
+  getFlatLumps(): Record<string, Uint8Array> {
+    const flats: Record<string, Uint8Array> = {};
+    let inFlats = false;
+    for (const e of this.directory) {
+      if (e.name === 'F_START' || e.name === 'FF_START') { inFlats = true; continue; }
+      if (e.name === 'F_END' || e.name === 'FF_END') { inFlats = false; continue; }
+      if (inFlats && e.size === 4096 && this.buffer) {
+        flats[e.name] = new Uint8Array(this.buffer, e.filepos, 4096);
+      }
+    }
+    return flats;
+  }
+
+  getPNames(): string[] {
+    const lump = this.getLump('PNAMES');
+    if (!lump) return [];
+    const dv = new DataView(lump.data.buffer, lump.data.byteOffset, lump.data.byteLength);
+    const count = dv.getInt32(0, true);
+    const names: string[] = [];
+    for (let i = 0; i < count; i++) names.push(readStr8(lump.data, 4 + i * 8));
+    return names;
+  }
+
+  getTextureDefs(lumpName: string): Record<string, WadTexDef> {
+    const lump = this.getLump(lumpName);
+    if (!lump) return {};
+    const dv = new DataView(lump.data.buffer, lump.data.byteOffset, lump.data.byteLength);
+    const count = dv.getInt32(0, true);
+    const textures: Record<string, WadTexDef> = {};
+    for (let i = 0; i < count; i++) {
+      const offset = dv.getInt32(4 + i * 4, true);
+      if (offset + 22 > lump.size) continue;
+      const name = readStr8(lump.data, offset);
+      const width = dv.getInt16(offset + 12, true);
+      const height = dv.getInt16(offset + 14, true);
+      const patchCount = dv.getInt16(offset + 20, true);
+      const patches = [];
+      for (let j = 0; j < patchCount; j++) {
+        const po = offset + 22 + j * 10;
+        if (po + 6 > lump.size) break;
+        patches.push({
+          originX: dv.getInt16(po, true),
+          originY: dv.getInt16(po + 2, true),
+          patchIdx: dv.getInt16(po + 4, true),
+        });
+      }
+      textures[name] = { name, width, height, patches };
+    }
+    return textures;
+  }
+
+  getSpriteLumps(): Record<string, Uint8Array> {
+    const sprites: Record<string, Uint8Array> = {};
+    let inSprites = false;
+    for (const e of this.directory) {
+      if (e.name === 'S_START' || e.name === 'SS_START') { inSprites = true; continue; }
+      if (e.name === 'S_END' || e.name === 'SS_END') { inSprites = false; continue; }
+      if (inSprites && e.size > 0 && this.buffer) {
+        sprites[e.name] = new Uint8Array(this.buffer, e.filepos, e.size);
+      }
+    }
+    return sprites;
+  }
+}
+
+// ── WADTextureManagerMV (standalone, no global THREE dependency) ─────────────
+
+class WADTextureManagerMV {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  THREE: any;
+  wad: WADLoaderMV;
+  palette: Uint8Array | null = null;
+  patchNames: string[] = [];
+  textureDefs: Record<string, WadTexDef> = {};
+  flatLumps: Record<string, Uint8Array> = {};
+  spriteLumps: Record<string, Uint8Array> = {};
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  wallTexCache = new Map<string, any>();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  flatTexCache = new Map<string, any>();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  spriteTexCache = new Map<number, any>();
+  _init = false;
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  constructor(wadLoader: WADLoaderMV, THREE: any) {
+    this.THREE = THREE;
+    this.wad = wadLoader;
+  }
+
+  init() {
+    if (this._init) return;
+    this.palette = this.wad.getPalette();
+    if (!this.palette) { console.warn('WAD has no PLAYPAL'); return; }
+    this.patchNames = this.wad.getPNames();
+    this.textureDefs = {
+      ...this.wad.getTextureDefs('TEXTURE1'),
+      ...this.wad.getTextureDefs('TEXTURE2'),
+    };
+    this.flatLumps = this.wad.getFlatLumps();
+    this.spriteLumps = this.wad.getSpriteLumps();
+    this._init = true;
+  }
+
+  parsePicture(data: Uint8Array) {
+    if (!data || data.length < 8 || !this.palette) return null;
+    const dv = new DataView(data.buffer, data.byteOffset, data.byteLength);
+    const width = dv.getUint16(0, true);
+    const height = dv.getUint16(2, true);
+    if (width === 0 || height === 0 || width > 4096 || height > 4096) return null;
+    if (8 + width * 4 > data.length) return null;
+    const colOffsets: number[] = [];
+    for (let x = 0; x < width; x++) colOffsets.push(dv.getUint32(8 + x * 4, true));
+
+    const pixels = new Uint8Array(width * height * 4);
+    for (let x = 0; x < width; x++) {
+      let ofs = colOffsets[x];
+      if (ofs >= data.length) continue;
+      for (let safety = 0; safety < 256; safety++) {
+        if (ofs >= data.length) break;
+        const topdelta = data[ofs++];
+        if (topdelta === 0xff) break;
+        if (ofs >= data.length) break;
+        const length = data[ofs++];
+        ofs++; // padding
+        for (let j = 0; j < length; j++) {
+          if (ofs >= data.length) break;
+          const y = topdelta + j;
+          if (y < height) {
+            const palIdx = data[ofs];
+            const pi = (y * width + x) * 4;
+            pixels[pi] = this.palette![palIdx * 3];
+            pixels[pi + 1] = this.palette![palIdx * 3 + 1];
+            pixels[pi + 2] = this.palette![palIdx * 3 + 2];
+            pixels[pi + 3] = 255;
+          }
+          ofs++;
+        }
+        ofs++; // padding
+      }
+    }
+    return { width, height, pixels };
+  }
+
+  compositeWallTexture(texDef: WadTexDef) {
+    const { width, height, patches } = texDef;
+    const pixels = new Uint8Array(width * height * 4);
+    for (const p of patches) {
+      if (p.patchIdx < 0 || p.patchIdx >= this.patchNames.length) continue;
+      const patchName = this.patchNames[p.patchIdx];
+      const patchLump = this.wad.getLump(patchName);
+      if (!patchLump) continue;
+      const pic = this.parsePicture(patchLump.data);
+      if (!pic) continue;
+      for (let py = 0; py < pic.height; py++) {
+        for (let px = 0; px < pic.width; px++) {
+          const srcIdx = (py * pic.width + px) * 4;
+          if (pic.pixels[srcIdx + 3] === 0) continue;
+          const dx = p.originX + px;
+          const dy = p.originY + py;
+          if (dx < 0 || dx >= width || dy < 0 || dy >= height) continue;
+          const dstIdx = (dy * width + dx) * 4;
+          pixels[dstIdx] = pic.pixels[srcIdx];
+          pixels[dstIdx + 1] = pic.pixels[srcIdx + 1];
+          pixels[dstIdx + 2] = pic.pixels[srcIdx + 2];
+          pixels[dstIdx + 3] = 255;
+        }
+      }
+    }
+    return { width, height, pixels };
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  getWallTexture(name: string): any {
+    if (!name || name === '-' || !this._init) return null;
+    name = name.toUpperCase();
+    const cached = this.wallTexCache.get(name);
+    if (cached !== undefined) return cached;
+    const texDef = this.textureDefs[name];
+    if (!texDef) { this.wallTexCache.set(name, null); return null; }
+    const comp = this.compositeWallTexture(texDef);
+    // Flip Y for Three.js
+    const flipped = new Uint8Array(comp.width * comp.height * 4);
+    const rowBytes = comp.width * 4;
+    for (let y = 0; y < comp.height; y++) {
+      const srcRow = y * rowBytes;
+      const dstRow = (comp.height - 1 - y) * rowBytes;
+      flipped.set(comp.pixels.subarray(srcRow, srcRow + rowBytes), dstRow);
+    }
+    const T = this.THREE;
+    const tex = new T.DataTexture(flipped, comp.width, comp.height, T.RGBAFormat);
+    tex.wrapS = T.RepeatWrapping;
+    tex.wrapT = T.RepeatWrapping;
+    tex.magFilter = T.NearestFilter;
+    tex.minFilter = T.NearestFilter;
+    tex.generateMipmaps = false;
+    tex.needsUpdate = true;
+    this.wallTexCache.set(name, tex);
+    return tex;
+  }
+
+  getTextureDef(name: string): WadTexDef | null {
+    if (!name || name === '-') return null;
+    return this.textureDefs[name.toUpperCase()] || null;
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  getFlatTexture(name: string): any {
+    if (!name || name === '-' || !this._init) return null;
+    name = name.toUpperCase();
+    const cached = this.flatTexCache.get(name);
+    if (cached !== undefined) return cached;
+    const flatData = this.flatLumps[name];
+    if (!flatData || !this.palette) { this.flatTexCache.set(name, null); return null; }
+    const pixels = new Uint8Array(64 * 64 * 4);
+    for (let i = 0; i < 4096; i++) {
+      const palIdx = flatData[i];
+      pixels[i * 4] = this.palette[palIdx * 3];
+      pixels[i * 4 + 1] = this.palette[palIdx * 3 + 1];
+      pixels[i * 4 + 2] = this.palette[palIdx * 3 + 2];
+      pixels[i * 4 + 3] = 255;
+    }
+    const T = this.THREE;
+    const tex = new T.DataTexture(pixels, 64, 64, T.RGBAFormat);
+    tex.wrapS = T.RepeatWrapping;
+    tex.wrapT = T.RepeatWrapping;
+    tex.magFilter = T.NearestFilter;
+    tex.minFilter = T.NearestFilter;
+    tex.generateMipmaps = false;
+    tex.needsUpdate = true;
+    this.flatTexCache.set(name, tex);
+    return tex;
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  getSpriteTexture(thingType: number): any {
+    const prefix = THING_SPRITE_PREFIX[thingType];
+    if (!prefix) return null;
+    const cached = this.spriteTexCache.get(thingType);
+    if (cached !== undefined) return cached;
+    let spriteData = this.spriteLumps[prefix + 'A1'];
+    if (!spriteData) spriteData = this.spriteLumps[prefix + 'A0'];
+    if (!spriteData) {
+      const key = Object.keys(this.spriteLumps).find(k => k.startsWith(prefix + 'A'));
+      if (key) spriteData = this.spriteLumps[key];
+    }
+    if (!spriteData) { this.spriteTexCache.set(thingType, null); return null; }
+    const pic = this.parsePicture(spriteData);
+    if (!pic) { this.spriteTexCache.set(thingType, null); return null; }
+    // Flip Y for Three.js
+    const flipped = new Uint8Array(pic.width * pic.height * 4);
+    const rowBytes = pic.width * 4;
+    for (let y = 0; y < pic.height; y++) {
+      const srcRow = y * rowBytes;
+      const dstRow = (pic.height - 1 - y) * rowBytes;
+      flipped.set(pic.pixels.subarray(srcRow, srcRow + rowBytes), dstRow);
+    }
+    const T = this.THREE;
+    const tex = new T.DataTexture(flipped, pic.width, pic.height, T.RGBAFormat);
+    tex.magFilter = T.NearestFilter;
+    tex.minFilter = T.NearestFilter;
+    tex.generateMipmaps = false;
+    tex.needsUpdate = true;
+    const result = { texture: tex, width: pic.width, height: pic.height };
+    this.spriteTexCache.set(thingType, result);
+    return result;
+  }
+
+  dispose() {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    for (const tex of this.wallTexCache.values()) if (tex) (tex as any).dispose();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    for (const tex of this.flatTexCache.values()) if (tex) (tex as any).dispose();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    for (const s of this.spriteTexCache.values()) if (s) (s as any).texture.dispose();
+    this.wallTexCache.clear();
+    this.flatTexCache.clear();
+    this.spriteTexCache.clear();
+  }
+}
+
+// ── buildWadMapGeometry (textured, with things) ─────────────────────────────
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function buildWadMapGeometry(wad: WadData, mapName: string, THREE: any) {
-  const lumps = wad.lumps;
-  const mapIdx = lumps.findIndex(l => l.name === mapName);
-  if (mapIdx < 0) return null;
+function buildWadMapGeometry(loader: WADLoaderMV, texMgr: WADTextureManagerMV | null, mapName: string, THREE: any) {
+  const map = loader.getMap(mapName);
+  if (!map) return null;
 
-  const find = (n: string) => lumps.slice(mapIdx + 1, mapIdx + 12).find(l => l.name === n);
-
-  const vLump = find('VERTEXES');
-  const ldLump = find('LINEDEFS');
-  const sdLump = find('SIDEDEFS');
-  const secLump = find('SECTORS');
-  if (!vLump || !ldLump || !sdLump || !secLump) return null;
-
-  const dv = new DataView(wad.bytes.buffer);
-
-  // ── Parse vertices ──
-  const numVerts = vLump.size / 4;
-  const vx = new Float32Array(numVerts);
-  const vy = new Float32Array(numVerts);
-  for (let i = 0; i < numVerts; i++) {
-    vx[i] = dv.getInt16(vLump.offset + i * 4, true);
-    vy[i] = dv.getInt16(vLump.offset + i * 4 + 2, true);
-  }
-
-  // ── Parse sectors ── 26 bytes each
-  const numSectors = secLump.size / 26;
-  const sectorFloor = new Float32Array(numSectors);
-  const sectorCeil = new Float32Array(numSectors);
-  const sectorLight = new Float32Array(numSectors);
-  for (let i = 0; i < numSectors; i++) {
-    const base = secLump.offset + i * 26;
-    sectorFloor[i] = dv.getInt16(base, true);
-    sectorCeil[i] = dv.getInt16(base + 2, true);
-    sectorLight[i] = Math.min(1, dv.getUint16(base + 20, true) / 255);
-  }
-
-  // ── Parse sidedefs ── 30 bytes each
-  const numSidedefs = sdLump.size / 30;
-  const sidedefSector = new Int16Array(numSidedefs);
-  for (let i = 0; i < numSidedefs; i++) {
-    sidedefSector[i] = dv.getInt16(sdLump.offset + i * 30 + 28, true);
-  }
-
-  // ── Parse linedefs ── 14 bytes each
-  const numLinedefs = ldLump.size / 14;
-
-  // ── Bounding box ──
-  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-  for (let i = 0; i < numVerts; i++) {
-    if (vx[i] < minX) minX = vx[i];
-    if (vx[i] > maxX) maxX = vx[i];
-    if (vy[i] < minY) minY = vy[i];
-    if (vy[i] > maxY) maxY = vy[i];
-  }
-  const cx = (minX + maxX) / 2;
-  const cy = (minY + maxY) / 2;
+  const { vertexes, linedefs, sidedefs, sectors, things } = map;
   const S = 1 / 64;
 
-  // ── Build sector boundary rings for floor/ceiling triangulation ──
-  // Collect line segments for each sector
-  const sectorLines: Map<number, Array<[number, number, number, number]>> = new Map();
+  // ── Centering ──
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  for (const v of vertexes) {
+    if (v.x < minX) minX = v.x;
+    if (v.x > maxX) maxX = v.x;
+    if (v.y < minY) minY = v.y;
+    if (v.y > maxY) maxY = v.y;
+  }
+  const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
 
-  for (let i = 0; i < numLinedefs; i++) {
-    const base = ldLump.offset + i * 14;
-    const v1i = dv.getUint16(base, true);
-    const v2i = dv.getUint16(base + 2, true);
-    const sideR = dv.getInt16(base + 10, true);
-    const sideL = dv.getInt16(base + 12, true);
-    if (v1i >= numVerts || v2i >= numVerts) continue;
+  const group = new THREE.Group();
 
-    const addToSector = (sideIdx: number) => {
-      if (sideIdx < 0 || sideIdx >= numSidedefs) return;
-      const secIdx = sidedefSector[sideIdx];
-      if (secIdx < 0 || secIdx >= numSectors) return;
-      if (!sectorLines.has(secIdx)) sectorLines.set(secIdx, []);
-      sectorLines.get(secIdx)!.push([vx[v1i], vy[v1i], vx[v2i], vy[v2i]]);
-    };
-    addToSector(sideR);
-    addToSector(sideL);
+  // ── Wall batching ──
+  // Textured walls batched by texture name; untextured walls batched together
+  interface WallBatch { positions: number[]; uvs: number[]; normals: number[]; colors: number[]; }
+  const wallBatches = new Map<string, WallBatch>();
+  const untextured: { positions: number[]; normals: number[]; colors: number[] } = { positions: [], normals: [], colors: [] };
+
+  function getWallBatch(texName: string): WallBatch {
+    if (!wallBatches.has(texName)) wallBatches.set(texName, { positions: [], uvs: [], normals: [], colors: [] });
+    return wallBatches.get(texName)!;
   }
 
-  // Simple ear-clipping triangulation of a polygon
+  // ── Sector boundary lines for floor/ceiling ──
+  const sectorLines = new Map<number, Array<[number, number, number, number]>>();
+
+  for (const line of linedefs) {
+    const va = vertexes[line.v1], vb = vertexes[line.v2];
+    if (!va || !vb) continue;
+
+    const doomLen = Math.hypot(vb.x - va.x, vb.y - va.y);
+    const x1 = (va.x - cx) * S, z1 = -(va.y - cy) * S;
+    const x2 = (vb.x - cx) * S, z2 = -(vb.y - cy) * S;
+
+    // Normal (perpendicular to linedef direction in XZ plane)
+    const dx = x2 - x1, dz = z2 - z1;
+    const nLen = Math.hypot(dx, dz) || 1;
+    const nx = dz / nLen, nz = -dx / nLen;
+
+    const fSide = line.right >= 0 ? sidedefs[line.right] : null;
+    const bSide = line.left >= 0 ? sidedefs[line.left] : null;
+    const fSec = fSide ? sectors[fSide.sector] : null;
+    const bSec = bSide ? sectors[bSide.sector] : null;
+    const light = fSec ? Math.max(0.15, fSec.light / 255) : 0.5;
+
+    // Collect sector boundaries
+    if (fSide && fSide.sector < sectors.length) {
+      if (!sectorLines.has(fSide.sector)) sectorLines.set(fSide.sector, []);
+      sectorLines.get(fSide.sector)!.push([va.x, va.y, vb.x, vb.y]);
+    }
+    if (bSide && bSide.sector < sectors.length) {
+      if (!sectorLines.has(bSide.sector)) sectorLines.set(bSide.sector, []);
+      sectorLines.get(bSide.sector)!.push([va.x, va.y, vb.x, vb.y]);
+    }
+
+    function addWallQuad(yBotDoom: number, yTopDoom: number, texName: string | null | undefined, xoff: number, yoff: number, lightLevel: number) {
+      const wallHDoom = yTopDoom - yBotDoom;
+      if (wallHDoom <= 0) return;
+      const yb = yBotDoom * S, yt = yTopDoom * S;
+
+      const positions = [
+        x1, yb, z1, x2, yb, z2, x2, yt, z2,
+        x1, yb, z1, x2, yt, z2, x1, yt, z1,
+      ];
+      const normals = [
+        nx, 0, nz, nx, 0, nz, nx, 0, nz,
+        nx, 0, nz, nx, 0, nz, nx, 0, nz,
+      ];
+
+      const tex = texName && texName !== '-' ? texMgr?.getWallTexture(texName) : null;
+      const texDef = texName && texName !== '-' ? texMgr?.getTextureDef(texName) : null;
+
+      if (tex && texDef) {
+        const tileU = doomLen / texDef.width;
+        const tileV = wallHDoom / texDef.height;
+        const ofsU = (xoff || 0) / texDef.width;
+        const ofsV = (yoff || 0) / texDef.height;
+        const uvs = [
+          ofsU, ofsV + tileV,  ofsU + tileU, ofsV + tileV,  ofsU + tileU, ofsV,
+          ofsU, ofsV + tileV,  ofsU + tileU, ofsV,           ofsU, ofsV,
+        ];
+        const batch = getWallBatch(texName!);
+        batch.positions.push(...positions);
+        batch.normals.push(...normals);
+        batch.uvs.push(...uvs);
+        for (let i = 0; i < 6; i++) batch.colors.push(lightLevel, lightLevel, lightLevel);
+      } else {
+        const r = lightLevel * 0.85 + 0.1;
+        const g = lightLevel * 0.75 + 0.05;
+        const b = lightLevel * 0.6;
+        untextured.positions.push(...positions);
+        untextured.normals.push(...normals);
+        for (let i = 0; i < 6; i++) untextured.colors.push(r, g, b);
+      }
+    }
+
+    if (!bSec) {
+      // One-sided: full wall from floor to ceiling
+      const floorH = fSec ? fSec.floorH : 0;
+      const ceilH = fSec ? fSec.ceilH : 128;
+      addWallQuad(floorH, ceilH, fSide?.middle, fSide?.xoff || 0, fSide?.yoff || 0, light);
+    } else {
+      // Two-sided: upper and lower wall sections
+      const fF = fSec?.floorH ?? 0, fC = fSec?.ceilH ?? 128;
+      const bF = bSec?.floorH ?? 0, bC = bSec?.ceilH ?? 128;
+      const lightB = bSec ? Math.max(0.15, bSec.light / 255) : light;
+
+      // Lower wall
+      if (bF > fF) {
+        let texName = fSide?.lower !== '-' ? fSide?.lower : null;
+        if (!texName && bSide?.lower !== '-') texName = bSide?.lower;
+        addWallQuad(fF, bF, texName, fSide?.xoff || 0, fSide?.yoff || 0, light);
+      } else if (fF > bF) {
+        let texName = bSide?.lower !== '-' ? bSide?.lower : null;
+        if (!texName && fSide?.lower !== '-') texName = fSide?.lower;
+        addWallQuad(bF, fF, texName, bSide?.xoff || 0, bSide?.yoff || 0, lightB);
+      }
+      // Upper wall
+      if (bC < fC) {
+        let texName = fSide?.upper !== '-' ? fSide?.upper : null;
+        if (!texName && bSide?.upper !== '-') texName = bSide?.upper;
+        addWallQuad(bC, fC, texName, fSide?.xoff || 0, fSide?.yoff || 0, light);
+      } else if (fC < bC) {
+        let texName = bSide?.upper !== '-' ? bSide?.upper : null;
+        if (!texName && fSide?.upper !== '-') texName = fSide?.upper;
+        addWallQuad(fC, bC, texName, bSide?.xoff || 0, bSide?.yoff || 0, lightB);
+      }
+    }
+  }
+
+  // Create textured wall meshes (one per texture)
+  for (const [texName, batch] of wallBatches) {
+    if (batch.positions.length === 0) continue;
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(batch.positions, 3));
+    geo.setAttribute('normal', new THREE.Float32BufferAttribute(batch.normals, 3));
+    geo.setAttribute('uv', new THREE.Float32BufferAttribute(batch.uvs, 2));
+    geo.setAttribute('color', new THREE.Float32BufferAttribute(batch.colors, 3));
+    const tex = texMgr?.getWallTexture(texName);
+    const mat = new THREE.MeshPhongMaterial({
+      map: tex, vertexColors: true, side: THREE.DoubleSide,
+    });
+    group.add(new THREE.Mesh(geo, mat));
+  }
+
+  // Create untextured wall mesh
+  if (untextured.positions.length > 0) {
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(untextured.positions, 3));
+    geo.setAttribute('normal', new THREE.Float32BufferAttribute(untextured.normals, 3));
+    geo.setAttribute('color', new THREE.Float32BufferAttribute(untextured.colors, 3));
+    const mat = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide });
+    group.add(new THREE.Mesh(geo, mat));
+  }
+
+  // ── Floor & Ceiling polygons (per sector, batched by flat texture) ──
+
+  // Ear-clipping triangulation
   function triangulate2D(ring: Array<[number, number]>): number[] {
     const tris: number[] = [];
     if (ring.length < 3) return tris;
-    // Ensure CCW winding
     let area = 0;
     for (let i = 0; i < ring.length; i++) {
       const j = (i + 1) % ring.length;
       area += ring[i][0] * ring[j][1] - ring[j][0] * ring[i][1];
     }
     const pts = area < 0 ? ring.slice().reverse() : ring.slice();
-
-    const indices = pts.map((_, i) => i);
+    const indices = pts.map((_: [number, number], i: number) => i);
     let failCount = 0;
     while (indices.length > 2 && failCount < indices.length * 2) {
       let earFound = false;
@@ -209,9 +709,7 @@ function buildWadMapGeometry(wad: WadData, mapName: string, THREE: any) {
         const bx = pts[curr][0], by = pts[curr][1];
         const cxx = pts[next][0], cyy = pts[next][1];
         const cross = (bx - ax) * (cyy - ay) - (by - ay) * (cxx - ax);
-        if (cross <= 0) continue; // reflex
-
-        // Check no other point inside
+        if (cross <= 0) continue;
         let inside = false;
         for (let k = 0; k < indices.length; k++) {
           const ki = indices[k];
@@ -223,7 +721,6 @@ function buildWadMapGeometry(wad: WadData, mapName: string, THREE: any) {
           if (d1 >= 0 && d2 >= 0 && d3 >= 0) { inside = true; break; }
         }
         if (inside) continue;
-
         tris.push(prev, curr, next);
         indices.splice(ii, 1);
         earFound = true;
@@ -235,35 +732,24 @@ function buildWadMapGeometry(wad: WadData, mapName: string, THREE: any) {
     return tris;
   }
 
-  // Build an ordered ring from unordered line segments
   function buildRing(segs: Array<[number, number, number, number]>): Array<[number, number]> | null {
     if (segs.length === 0) return null;
     const eps = 1;
     const eq = (a: number, b: number) => Math.abs(a - b) < eps;
     const ring: Array<[number, number]> = [];
     const used = new Set<number>();
-
     ring.push([segs[0][0], segs[0][1]]);
     let endX = segs[0][2], endY = segs[0][3];
     used.add(0);
-
     for (let iter = 0; iter < segs.length; iter++) {
       let found = false;
       for (let i = 0; i < segs.length; i++) {
         if (used.has(i)) continue;
-        const [x1, y1, x2, y2] = segs[i];
-        if (eq(x1, endX) && eq(y1, endY)) {
-          ring.push([x1, y1]);
-          endX = x2; endY = y2;
-          used.add(i);
-          found = true;
-          break;
-        } else if (eq(x2, endX) && eq(y2, endY)) {
-          ring.push([x2, y2]);
-          endX = x1; endY = y1;
-          used.add(i);
-          found = true;
-          break;
+        const [sx1, sy1, sx2, sy2] = segs[i];
+        if (eq(sx1, endX) && eq(sy1, endY)) {
+          ring.push([sx1, sy1]); endX = sx2; endY = sy2; used.add(i); found = true; break;
+        } else if (eq(sx2, endX) && eq(sy2, endY)) {
+          ring.push([sx2, sy2]); endX = sx1; endY = sy1; used.add(i); found = true; break;
         }
       }
       if (!found) break;
@@ -271,136 +757,203 @@ function buildWadMapGeometry(wad: WadData, mapName: string, THREE: any) {
     return ring.length >= 3 ? ring : null;
   }
 
-  // ── Geometry arrays ──
-  const wallPositions: number[] = [];
-  const wallColors: number[] = [];
-  const floorPositions: number[] = [];
-  const floorColors: number[] = [];
-  const ceilPositions: number[] = [];
-  const ceilColors: number[] = [];
-  const wirePositions: number[] = [];
+  // Flat batching: Map<flatName, {positions, uvs, normals, colors}>
+  interface FlatBatch { positions: number[]; uvs: number[]; normals: number[]; colors: number[]; }
+  const floorBatches = new Map<string, FlatBatch>();
+  const ceilBatches = new Map<string, FlatBatch>();
+  const untexturedFloors: { positions: number[]; normals: number[]; colors: number[] } = { positions: [], normals: [], colors: [] };
+  const untexturedCeils: { positions: number[]; normals: number[]; colors: number[] } = { positions: [], normals: [], colors: [] };
 
-  // ── Build walls (including two-sided upper/lower) ──
-  for (let i = 0; i < numLinedefs; i++) {
-    const base = ldLump.offset + i * 14;
-    const v1i = dv.getUint16(base, true);
-    const v2i = dv.getUint16(base + 2, true);
-    const sideR = dv.getInt16(base + 10, true);
-    const sideL = dv.getInt16(base + 12, true);
-    if (v1i >= numVerts || v2i >= numVerts) continue;
-
-    // Right sector info
-    let floorR = 0, ceilR = 128, lightR = 0.5;
-    let secIdxR = -1;
-    if (sideR >= 0 && sideR < numSidedefs) {
-      secIdxR = sidedefSector[sideR];
-      if (secIdxR >= 0 && secIdxR < numSectors) {
-        floorR = sectorFloor[secIdxR];
-        ceilR = sectorCeil[secIdxR];
-        lightR = sectorLight[secIdxR];
-      }
-    }
-
-    const isTwoSided = sideL >= 0 && sideL < numSidedefs;
-
-    const x1 = (vx[v1i] - cx) * S;
-    const z1 = -(vy[v1i] - cy) * S;
-    const x2 = (vx[v2i] - cx) * S;
-    const z2 = -(vy[v2i] - cy) * S;
-
-    const addQuad = (yBot: number, yTop: number, light: number) => {
-      if (yTop <= yBot) return;
-      const yb = yBot * S, yt = yTop * S;
-      const r = light * 0.85 + 0.1;
-      const g = light * 0.75 + 0.05;
-      const b = light * 0.6;
-      wallPositions.push(x1,yb,z1, x2,yb,z2, x2,yt,z2);
-      wallColors.push(r,g,b, r,g,b, r,g,b);
-      wallPositions.push(x1,yb,z1, x2,yt,z2, x1,yt,z1);
-      wallColors.push(r,g,b, r,g,b, r,g,b);
-      wirePositions.push(x1,yb,z1, x2,yb,z2);
-      wirePositions.push(x1,yt,z1, x2,yt,z2);
-      wirePositions.push(x1,yb,z1, x1,yt,z1);
-      wirePositions.push(x2,yb,z2, x2,yt,z2);
-    };
-
-    if (!isTwoSided) {
-      // One-sided: full wall from floor to ceiling
-      addQuad(floorR, ceilR, lightR);
-    } else {
-      // Two-sided: render upper and lower wall sections where heights differ
-      let floorL = 0, ceilL = 128, lightL = 0.5;
-      const secIdxL = sidedefSector[sideL];
-      if (secIdxL >= 0 && secIdxL < numSectors) {
-        floorL = sectorFloor[secIdxL];
-        ceilL = sectorCeil[secIdxL];
-        lightL = sectorLight[secIdxL];
-      }
-      // Lower wall: where adjacent floor is higher
-      if (floorL > floorR) addQuad(floorR, floorL, lightR);
-      if (floorR > floorL) addQuad(floorL, floorR, lightL);
-      // Upper wall: where adjacent ceiling is lower
-      if (ceilL < ceilR) addQuad(ceilL, ceilR, lightR);
-      if (ceilR < ceilL) addQuad(ceilR, ceilL, lightL);
-    }
+  function getFlatBatch(map: Map<string, FlatBatch>, name: string): FlatBatch {
+    if (!map.has(name)) map.set(name, { positions: [], uvs: [], normals: [], colors: [] });
+    return map.get(name)!;
   }
 
-  // ── Build floor & ceiling polygons per sector ──
   for (const [secIdx, segs] of sectorLines.entries()) {
-    if (secIdx < 0 || secIdx >= numSectors) continue;
-    const floorH = sectorFloor[secIdx] * S;
-    const ceilH = sectorCeil[secIdx] * S;
-    const light = sectorLight[secIdx];
+    if (secIdx < 0 || secIdx >= sectors.length) continue;
+    const sec = sectors[secIdx];
+    const floorH = sec.floorH * S;
+    const ceilH = sec.ceilH * S;
+    const light = Math.max(0.15, sec.light / 255);
 
     const ring = buildRing(segs);
     if (!ring || ring.length < 3) continue;
 
     // Transform ring to Three.js coords
     const ring3: Array<[number, number]> = ring.map(([px, py]) => [
-      (px - cx) * S,
-      -(py - cy) * S,
+      (px - cx) * S, -(py - cy) * S,
     ]);
+    // Keep original doom coords for UV mapping
+    const ringDoom: Array<[number, number]> = ring.map(([px, py]) => [px, py]);
 
     const triIndices = triangulate2D(ring3);
 
-    const rF = light * 0.6 + 0.08;
-    const gF = light * 0.55 + 0.05;
-    const bF = light * 0.45;
-    const rC = light * 0.5 + 0.15;
-    const gC = light * 0.45 + 0.1;
-    const bC = light * 0.55 + 0.05;
-
     for (let t = 0; t < triIndices.length; t += 3) {
-      const a = ring3[triIndices[t]], b = ring3[triIndices[t+1]], c = ring3[triIndices[t+2]];
-      if (!a || !b || !c) continue;
-      // Floor (y = floorH, face up)
-      floorPositions.push(a[0], floorH, a[1],  b[0], floorH, b[1],  c[0], floorH, c[1]);
-      floorColors.push(rF,gF,bF, rF,gF,bF, rF,gF,bF);
-      // Ceiling (y = ceilH, face down — reversed winding)
-      ceilPositions.push(c[0], ceilH, c[1],  b[0], ceilH, b[1],  a[0], ceilH, a[1]);
-      ceilColors.push(rC,gC,bC, rC,gC,bC, rC,gC,bC);
+      const ai = triIndices[t], bi = triIndices[t + 1], ci = triIndices[t + 2];
+      const a = ring3[ai], b = ring3[bi], c = ring3[ci];
+      const ad = ringDoom[ai], bd = ringDoom[bi], cd = ringDoom[ci];
+      if (!a || !b || !c || !ad || !bd || !cd) continue;
+
+      // Floor
+      const floorFlat = sec.floorFlat;
+      const floorTex = floorFlat && floorFlat !== '-' && floorFlat !== 'F_SKY1' ? texMgr?.getFlatTexture(floorFlat) : null;
+      if (floorTex) {
+        const batch = getFlatBatch(floorBatches, floorFlat);
+        batch.positions.push(a[0], floorH, a[1], b[0], floorH, b[1], c[0], floorH, c[1]);
+        batch.normals.push(0, 1, 0, 0, 1, 0, 0, 1, 0);
+        // UV: tile every 64 doom units
+        batch.uvs.push(ad[0] / 64, ad[1] / 64, bd[0] / 64, bd[1] / 64, cd[0] / 64, cd[1] / 64);
+        for (let i = 0; i < 3; i++) batch.colors.push(light, light, light);
+      } else {
+        const r = light * 0.6 + 0.08, g = light * 0.55 + 0.05, b2 = light * 0.45;
+        untexturedFloors.positions.push(a[0], floorH, a[1], b[0], floorH, b[1], c[0], floorH, c[1]);
+        untexturedFloors.normals.push(0, 1, 0, 0, 1, 0, 0, 1, 0);
+        untexturedFloors.colors.push(r, g, b2, r, g, b2, r, g, b2);
+      }
+
+      // Ceiling (skip sky ceilings)
+      const ceilFlat = sec.ceilFlat;
+      if (ceilFlat === 'F_SKY1') continue;
+      const ceilTex = ceilFlat && ceilFlat !== '-' ? texMgr?.getFlatTexture(ceilFlat) : null;
+      if (ceilTex) {
+        const batch = getFlatBatch(ceilBatches, ceilFlat);
+        // Reversed winding for ceiling (face down)
+        batch.positions.push(c[0], ceilH, c[1], b[0], ceilH, b[1], a[0], ceilH, a[1]);
+        batch.normals.push(0, -1, 0, 0, -1, 0, 0, -1, 0);
+        batch.uvs.push(cd[0] / 64, cd[1] / 64, bd[0] / 64, bd[1] / 64, ad[0] / 64, ad[1] / 64);
+        for (let i = 0; i < 3; i++) batch.colors.push(light, light, light);
+      } else {
+        const r = light * 0.5 + 0.15, g = light * 0.45 + 0.1, b2 = light * 0.55 + 0.05;
+        untexturedCeils.positions.push(c[0], ceilH, c[1], b[0], ceilH, b[1], a[0], ceilH, a[1]);
+        untexturedCeils.normals.push(0, -1, 0, 0, -1, 0, 0, -1, 0);
+        untexturedCeils.colors.push(r, g, b2, r, g, b2, r, g, b2);
+      }
     }
   }
 
-  // ── Assemble group ──
-  const group = new THREE.Group();
-  const makeMesh = (positions: number[], colors: number[]) => {
-    if (positions.length === 0) return;
+  // Create textured floor meshes
+  for (const [flatName, batch] of floorBatches) {
+    if (batch.positions.length === 0) continue;
     const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-    geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-    geo.computeVertexNormals();
-    const mat = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide });
-    group.add(new THREE.Mesh(geo, mat));
-  };
-  makeMesh(wallPositions, wallColors);
-  makeMesh(floorPositions, floorColors);
-  makeMesh(ceilPositions, ceilColors);
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(batch.positions, 3));
+    geo.setAttribute('normal', new THREE.Float32BufferAttribute(batch.normals, 3));
+    geo.setAttribute('uv', new THREE.Float32BufferAttribute(batch.uvs, 2));
+    geo.setAttribute('color', new THREE.Float32BufferAttribute(batch.colors, 3));
+    const tex = texMgr?.getFlatTexture(flatName);
+    group.add(new THREE.Mesh(geo, new THREE.MeshPhongMaterial({ map: tex, vertexColors: true, side: THREE.DoubleSide })));
+  }
+  for (const [flatName, batch] of ceilBatches) {
+    if (batch.positions.length === 0) continue;
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(batch.positions, 3));
+    geo.setAttribute('normal', new THREE.Float32BufferAttribute(batch.normals, 3));
+    geo.setAttribute('uv', new THREE.Float32BufferAttribute(batch.uvs, 2));
+    geo.setAttribute('color', new THREE.Float32BufferAttribute(batch.colors, 3));
+    const tex = texMgr?.getFlatTexture(flatName);
+    group.add(new THREE.Mesh(geo, new THREE.MeshPhongMaterial({ map: tex, vertexColors: true, side: THREE.DoubleSide })));
+  }
 
+  // Create untextured floor/ceiling meshes
+  function makeUntexturedMesh(data: { positions: number[]; normals: number[]; colors: number[] }) {
+    if (data.positions.length === 0) return;
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(data.positions, 3));
+    geo.setAttribute('normal', new THREE.Float32BufferAttribute(data.normals, 3));
+    geo.setAttribute('color', new THREE.Float32BufferAttribute(data.colors, 3));
+    group.add(new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide })));
+  }
+  makeUntexturedMesh(untexturedFloors);
+  makeUntexturedMesh(untexturedCeils);
+
+  // ── Things (monsters, items, decorations) ──
+  for (const thing of things) {
+    const tx = (thing.x - cx) * S;
+    const tz = -(thing.y - cy) * S;
+
+    // Skip player starts
+    if (thing.type >= 1 && thing.type <= 4) continue;
+    if (thing.type === 11) continue; // Deathmatch start
+
+    // Find the floor height at this thing's position (approximate: use nearest sector)
+    let thingFloor = 0;
+    let minDist = Infinity;
+    for (const line of linedefs) {
+      const va = vertexes[line.v1], vb = vertexes[line.v2];
+      if (!va || !vb) continue;
+      const ldx = vb.x - va.x, ldy = vb.y - va.y;
+      const lenSq = ldx * ldx + ldy * ldy;
+      if (lenSq < 1) continue;
+      let t = ((thing.x - va.x) * ldx + (thing.y - va.y) * ldy) / lenSq;
+      t = Math.max(0, Math.min(1, t));
+      const px = va.x + t * ldx, py = va.y + t * ldy;
+      const d = Math.hypot(thing.x - px, thing.y - py);
+      if (d < minDist) {
+        const sIdx = line.right >= 0 ? sidedefs[line.right]?.sector : -1;
+        if (sIdx >= 0 && sIdx < sectors.length) {
+          minDist = d;
+          thingFloor = sectors[sIdx].floorH;
+        }
+      }
+    }
+    const ty = thingFloor * S;
+
+    const monsterType = THING_MONSTERS[thing.type];
+    const itemType = THING_ITEMS[thing.type];
+    const thingCategory = monsterType || itemType;
+
+    // Try sprite texture first
+    const spriteInfo = texMgr?.getSpriteTexture(thing.type);
+    if (spriteInfo) {
+      const sprW = spriteInfo.width * S;
+      const sprH = spriteInfo.height * S;
+      const planeGeo = new THREE.PlaneGeometry(sprW, sprH);
+      const spriteMat = new THREE.MeshBasicMaterial({
+        map: spriteInfo.texture,
+        transparent: true,
+        alphaTest: 0.1,
+        side: THREE.DoubleSide,
+      });
+      const sprite = new THREE.Mesh(planeGeo, spriteMat);
+      sprite.position.set(tx, ty + sprH / 2, tz);
+      // Face towards camera (billboard setup done per-frame would be ideal,
+      // but for a static viewer, face towards center)
+      sprite.lookAt(0, ty + sprH / 2, 0);
+      group.add(sprite);
+      continue;
+    }
+
+    // Fallback: colored box
+    if (thingCategory) {
+      const color = THING_COLORS[thingCategory] ?? 0x888888;
+      const size = monsterType ? (monsterType === 'boss' ? 1.5 : monsterType === 'tank' ? 1.2 : 0.8) : 0.5;
+      const h = monsterType ? size * 1.5 : size;
+      const boxGeo = new THREE.BoxGeometry(size * S * 64, h * S * 64, size * S * 64);
+      const boxMat = new THREE.MeshPhongMaterial({
+        color, emissive: color, emissiveIntensity: 0.3,
+      });
+      const box = new THREE.Mesh(boxGeo, boxMat);
+      box.position.set(tx, ty + (h * S * 64) / 2, tz);
+      group.add(box);
+    }
+  }
+
+  // ── Wireframe overlay ──
+  const wirePositions: number[] = [];
+  for (const line of linedefs) {
+    const va = vertexes[line.v1], vb = vertexes[line.v2];
+    if (!va || !vb) continue;
+    const x1 = (va.x - cx) * S, z1 = -(va.y - cy) * S;
+    const x2 = (vb.x - cx) * S, z2 = -(vb.y - cy) * S;
+    const fSide = line.right >= 0 ? sidedefs[line.right] : null;
+    const fSec = fSide ? sectors[fSide.sector] : null;
+    const fF = (fSec?.floorH ?? 0) * S, fC = (fSec?.ceilH ?? 128) * S;
+    wirePositions.push(x1, fF, z1, x2, fF, z2);
+    wirePositions.push(x1, fC, z1, x2, fC, z2);
+  }
   if (wirePositions.length > 0) {
     const wGeo = new THREE.BufferGeometry();
     wGeo.setAttribute('position', new THREE.Float32BufferAttribute(wirePositions, 3));
-    const wMat = new THREE.LineBasicMaterial({ color: 0x00ff88, opacity: 0.25, transparent: true });
+    const wMat = new THREE.LineBasicMaterial({ color: 0x00ff88, opacity: 0.12, transparent: true });
     group.add(new THREE.LineSegments(wGeo, wMat));
   }
 
@@ -451,7 +1004,8 @@ export function ModelViewer() {
   const mixerRef = useRef<unknown>(null);
   const clockRef = useRef<unknown>(null);
   const modelRef = useRef<unknown>(null);
-  const wadRef = useRef<WadData | null>(null);
+  const wadLoaderRef = useRef<WADLoaderMV | null>(null);
+  const texMgrRef = useRef<WADTextureManagerMV | null>(null);
   const animRef = useRef<number>(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -693,38 +1247,47 @@ export function ModelViewer() {
 
   // ── WAD load ───────────────────────────────────────────────────────────────
   const loadWAD = useCallback(async (file: File) => {
+    const THREE = await loadTHREE();
     await clearModel();
     setStatus('Parsing WAD…');
     setLoading(true);
-    const buf = await file.arrayBuffer();
-    const wad = parseWAD(buf);
-    if (!wad) {
-      setStatus('Error: not a valid WAD file (missing IWAD/PWAD header)');
-      setLoading(false);
-      return;
-    }
-    wadRef.current = wad;
-    const maps = getWadMaps(wad);
-    setWadMaps(maps);
-    setFileType('wad');
-    setLoading(false);
 
-    if (maps.length > 0) {
-      setCurrentMap(maps[0]);
-      // renderMap called via useEffect on currentMap
-    } else {
-      setStatus(`WAD loaded: ${wad.lumps.length} lumps. No maps found.`);
+    try {
+      const buf = await file.arrayBuffer();
+      const loader = new WADLoaderMV();
+      loader.load(buf);
+
+      // Initialize texture manager
+      const texMgr = new WADTextureManagerMV(loader, THREE);
+      texMgr.init();
+
+      wadLoaderRef.current = loader;
+      texMgrRef.current = texMgr;
+
+      const maps = loader.getMapNames();
+      setWadMaps(maps);
+      setFileType('wad');
+      setLoading(false);
+
+      if (maps.length > 0) {
+        setCurrentMap(maps[0]);
+      } else {
+        setStatus(`WAD loaded: ${loader.directory.length} lumps. No maps found.`);
+      }
+    } catch (err) {
+      setStatus(`Error: ${(err as Error).message || 'Invalid WAD file'}`);
+      setLoading(false);
     }
   }, [clearModel]);
 
   // ── Render WAD map ─────────────────────────────────────────────────────────
   const renderWadMap = useCallback(async (mapName: string) => {
-    if (!wadRef.current || !sceneRef.current) return;
+    if (!wadLoaderRef.current || !sceneRef.current) return;
     const THREE = await loadTHREE();
 
     await clearModel();
 
-    const group = buildWadMapGeometry(wadRef.current, mapName, THREE);
+    const group = buildWadMapGeometry(wadLoaderRef.current, texMgrRef.current, mapName, THREE);
     if (!group) {
       setStatus(`Could not parse map ${mapName}`);
       return;
@@ -737,8 +1300,10 @@ export function ModelViewer() {
       fitCameraToObject(cameraRef.current, group, controlsRef.current, THREE);
     }
 
-    const wad = wadRef.current;
-    setStatus(`Map: ${mapName} · ${wad.lumps.length} lumps total`);
+    const loader = wadLoaderRef.current;
+    const texCount = texMgrRef.current ? Object.keys(texMgrRef.current.textureDefs).length : 0;
+    const flatCount = texMgrRef.current ? Object.keys(texMgrRef.current.flatLumps).length : 0;
+    setStatus(`Map: ${mapName} · ${loader.directory.length} lumps · ${texCount} wall textures · ${flatCount} flats`);
   }, [clearModel]);
 
   // Render map when currentMap changes

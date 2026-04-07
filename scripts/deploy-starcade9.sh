@@ -24,6 +24,9 @@ mkdir -p "$NOVA64_DIR/public/os9-shell"
 cp -r "$NOVA64_DIR/os9-shell/dist/"* "$NOVA64_DIR/public/os9-shell/"
 echo ""
 
+# Ensure GitHub Pages serves static files without Jekyll processing
+touch "$DEPLOY_DIR/.nojekyll"
+
 # Root HTML files
 echo "📄 Copying root files..."
 cp "$NOVA64_DIR/index.html" "$DEPLOY_DIR/index.html"

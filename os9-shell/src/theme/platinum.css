@@ -24,10 +24,10 @@
   
   /* Window Colors */
   --window-title-active: linear-gradient(to bottom, #2c2c2c 0%, #242424 100%);
-  --window-title-inactive: #2c2c2c;
+  --window-title-inactive: rgba(30, 30, 36, 0.72);
   --window-border: #1c1c1c;
   --window-border-light: #3c3c3c;
-  --window-content-bg: #242424;
+  --window-content-bg: rgba(28, 28, 32, 0.68);
   --window-shadow: 
     0 20px 60px rgba(0, 0, 0, 0.8),
     0 0 0 1px rgba(255, 255, 255, 0.05),

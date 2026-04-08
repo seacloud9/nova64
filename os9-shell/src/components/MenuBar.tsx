@@ -3,6 +3,7 @@ import type { MenuTemplate, MenuItem } from '../types';
 import { ApplicationLauncher } from './ApplicationLauncher';
 import { novaContext } from '../os/context';
 import { UISounds } from '../os/sounds';
+import { useDesktopThemeStore } from '../os/stores';
 
 interface MenuBarProps {
   appMenus?: MenuTemplate[];
@@ -12,8 +13,10 @@ interface MenuBarProps {
 export function MenuBar({ appMenus = [], onCommand }: MenuBarProps) {
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
   const [showAppLauncher, setShowAppLauncher] = useState(false);
+  const [showAbout, setShowAbout] = useState(false);
   const [time, setTime] = useState(new Date());
   const menuRef = useRef<HTMLDivElement>(null);
+  const { theme: desktopTheme, toggle: toggleTheme } = useDesktopThemeStore();
 
   useEffect(() => {
     const timer = setInterval(() => setTime(new Date()), 1000);
@@ -46,22 +49,14 @@ export function MenuBar({ appMenus = [], onCommand }: MenuBarProps) {
   const novaMenu: MenuTemplate = {
     label: '🌟',
     submenu: [
-      { label: 'About nova64 OS', role: 'about' },
+      { label: 'About nova64 OS', click: () => setShowAbout(true) },
       { type: 'separator', label: '' },
-      { label: 'System Profiler...' },
-      { label: 'Control Panels', type: 'submenu', submenu: [
-        { label: 'Appearance', click: () => novaContext.launchApp('appearance', { width: 480, height: 340 }) },
-        { label: 'Sound' },
-        { label: 'Displays' },
-      ]},
+      { label: 'Appearance…', click: () => novaContext.launchApp('appearance', { width: 480, height: 340 }) },
       { type: 'separator', label: '' },
-      { label: 'Recent Items', type: 'submenu', submenu: [
-        { label: 'Applications', type: 'separator' },
-        { label: 'Clear Menu', enabled: false },
-      ]},
+      { label: 'System Profiler…', click: () => novaContext.launchApp('com.nova64.profiler') },
       { type: 'separator', label: '' },
-      { label: 'Restart...' },
-      { label: 'Shut Down...' },
+      { label: 'Restart…' },
+      { label: 'Shut Down…' },
     ],
   };
 
@@ -251,9 +246,14 @@ export function MenuBar({ appMenus = [], onCommand }: MenuBarProps) {
           ))}
         </div>
         <div className="menubar-right">
-          <div className="menu-status-icon" title="Network">📶</div>
-          <div className="menu-status-icon" title="Volume">�</div>
-          <div className="menu-status-icon" title="Battery">�🔋</div>
+          <button
+            className="theme-toggle-btn"
+            onClick={toggleTheme}
+            title={desktopTheme === 'dark' ? 'Switch to Light' : 'Switch to Dark'}
+            aria-label="Toggle theme"
+          >
+            {desktopTheme === 'dark' ? '☀️' : '🌙'}
+          </button>
           <div className="menu-time">{formatTime(time)}</div>
         </div>
       </div>
@@ -261,6 +261,8 @@ export function MenuBar({ appMenus = [], onCommand }: MenuBarProps) {
       {showAppLauncher && (
         <ApplicationLauncher onClose={() => setShowAppLauncher(false)} />
       )}
+
+      {showAbout && <AboutModal onClose={() => setShowAbout(false)} />}
     </>
   );
 }
@@ -303,6 +305,144 @@ function MenuDropdownItem({ item, onClick }: MenuDropdownItemProps) {
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+// ─── About Modal ─────────────────────────────────────────────────────────────
+
+function AboutModal({ onClose }: { onClose: () => void }) {
+  return (
+    <div
+      style={{
+        position: 'fixed', inset: 0,
+        zIndex: 20000,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        background: 'rgba(0,0,0,0.55)',
+        backdropFilter: 'blur(12px)',
+        WebkitBackdropFilter: 'blur(12px)',
+        animation: 'menuSlideIn 0.18s ease-out',
+      }}
+      onClick={onClose}
+    >
+      <div
+        style={{
+          width: 420,
+          borderRadius: 20,
+          overflow: 'hidden',
+          boxShadow: '0 32px 80px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.10)',
+          background: 'var(--window-content-bg)',
+          backdropFilter: 'blur(40px)',
+          WebkitBackdropFilter: 'blur(40px)',
+          border: '1px solid var(--window-border)',
+          fontFamily: 'var(--font-system)',
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Splash gradient header */}
+        <div
+          style={{
+            height: 160,
+            background: 'var(--desktop-bg)',
+            backgroundImage: 'var(--desktop-pattern)',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 8,
+            position: 'relative',
+            overflow: 'hidden',
+          }}
+        >
+          {/* Animated glow orb */}
+          <div style={{
+            position: 'absolute', inset: 0,
+            background: 'radial-gradient(circle at 50% 60%, rgba(124,140,255,0.35) 0%, transparent 65%)',
+            animation: 'particleFloat 6s ease-in-out infinite',
+            pointerEvents: 'none',
+          }} />
+          <div style={{ fontSize: 52, filter: 'drop-shadow(0 0 18px rgba(124,140,255,0.7))', lineHeight: 1 }}>🌟</div>
+          <div style={{
+            fontSize: 22, fontWeight: 800,
+            color: '#fff',
+            letterSpacing: '0.06em',
+            textShadow: '0 2px 20px rgba(124,140,255,0.8)',
+          }}>
+            nova64 OS
+          </div>
+          <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.55)', letterSpacing: '0.08em' }}>
+            Ultimate 3D Fantasy Console OS
+          </div>
+        </div>
+
+        {/* Body */}
+        <div style={{ padding: '20px 28px 24px', color: 'var(--gnome-text)' }}>
+          {/* Version row */}
+          <div style={{
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            paddingBottom: 14, borderBottom: '1px solid var(--gnome-border)', marginBottom: 14,
+          }}>
+            <span style={{ fontSize: 12, color: 'var(--gnome-text-secondary)' }}>Version</span>
+            <span style={{
+              fontSize: 12, fontWeight: 700,
+              padding: '3px 10px', borderRadius: 20,
+              background: 'var(--gnome-card)',
+              border: '1px solid var(--gnome-border)',
+              color: 'var(--glass-accent)',
+            }}>1.0.0 — Glass Edition</span>
+          </div>
+
+          {/* Credits */}
+          <div style={{ fontSize: 11, color: 'var(--gnome-text-secondary)', marginBottom: 16, lineHeight: 1.7 }}>
+            <div style={{ fontWeight: 700, fontSize: 12, color: 'var(--gnome-text)', marginBottom: 6, letterSpacing: '0.05em' }}>
+              DEVELOPED BY
+            </div>
+            {[
+              { name: 'Brendon Smith', role: 'Creator & Lead Developer' },
+              { name: 'GitHub Copilot', role: 'AI Pair Programmer' },
+            ].map((p) => (
+              <div key={p.name} style={{
+                display: 'flex', justifyContent: 'space-between',
+                padding: '5px 10px', borderRadius: 8,
+                background: 'var(--gnome-card)',
+                marginBottom: 4,
+                border: '1px solid var(--gnome-border)',
+              }}>
+                <span style={{ color: 'var(--gnome-text)', fontWeight: 600 }}>{p.name}</span>
+                <span style={{ color: 'var(--gnome-text-secondary)' }}>{p.role}</span>
+              </div>
+            ))}
+          </div>
+
+          {/* Tech badges */}
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 20 }}>
+            {['Three.js', 'React 18', 'Vite', 'TypeScript', 'EmulatorJS'].map((t) => (
+              <span key={t} style={{
+                fontSize: 11, padding: '3px 10px', borderRadius: 20,
+                background: 'var(--gnome-card)',
+                border: '1px solid var(--gnome-border)',
+                color: 'var(--gnome-text-secondary)',
+              }}>{t}</span>
+            ))}
+          </div>
+
+          <button
+            onClick={onClose}
+            style={{
+              width: '100%', padding: '10px',
+              borderRadius: 10, border: 'none',
+              background: 'var(--glass-accent)',
+              color: '#fff',
+              fontSize: 13, fontWeight: 700,
+              cursor: 'pointer',
+              boxShadow: '0 4px 16px var(--glass-accent-glow)',
+              letterSpacing: '0.04em',
+            }}
+          >
+            OK
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

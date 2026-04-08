@@ -258,12 +258,15 @@ body {
   flex-direction: column;
   background-color: var(--window-content-bg);
   border: 1px solid var(--window-border);
-  border-radius: 12px;
+  border-radius: 14px;
   box-shadow: var(--window-shadow);
   min-width: 200px;
   min-height: 100px;
   overflow: hidden;
   animation: windowSlideIn 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  /* Frosted glass chrome */
+  backdrop-filter: blur(32px) saturate(1.5);
+  -webkit-backdrop-filter: blur(32px) saturate(1.5);
 }
 
 @keyframes windowSlideIn {
@@ -291,6 +294,9 @@ body {
   cursor: move;
   position: relative;
   border-bottom: 1px solid var(--window-border-light);
+  /* Extra frosted layer on the title bar itself */
+  backdrop-filter: blur(40px) saturate(1.8);
+  -webkit-backdrop-filter: blur(40px) saturate(1.8);
 }
 
 .window-title-text {
@@ -461,6 +467,29 @@ body {
   align-items: center;
   gap: 8px;
   padding: 0 8px;
+}
+
+.theme-toggle-btn {
+  height: 24px;
+  min-width: 32px;
+  padding: 0 8px;
+  border-radius: 20px;
+  border: 1px solid var(--gnome-border);
+  background: var(--gnome-card);
+  color: var(--gnome-text);
+  font-size: 14px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.theme-toggle-btn:hover {
+  background: var(--gnome-hover);
+  transform: scale(1.08);
 }
 
 .menu-item {

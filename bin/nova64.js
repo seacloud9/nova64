@@ -1,39 +1,14 @@
 #!/usr/bin/env node
 
-import { createServer } from 'http';
-import { readFile, stat } from 'fs/promises';
-import { resolve, join, extname } from 'path';
+import { preview } from 'vite';
+import { stat } from 'fs/promises';
+import { resolve } from 'path';
 import { fileURLToPath } from 'url';
 import { exec } from 'child_process';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
-const distDir = resolve(__dirname, '..', 'dist');
-
-const MIME_TYPES = {
-  '.html': 'text/html; charset=utf-8',
-  '.js': 'application/javascript; charset=utf-8',
-  '.mjs': 'application/javascript; charset=utf-8',
-  '.css': 'text/css; charset=utf-8',
-  '.json': 'application/json; charset=utf-8',
-  '.png': 'image/png',
-  '.jpg': 'image/jpeg',
-  '.jpeg': 'image/jpeg',
-  '.gif': 'image/gif',
-  '.svg': 'image/svg+xml',
-  '.ico': 'image/x-icon',
-  '.webp': 'image/webp',
-  '.woff': 'font/woff',
-  '.woff2': 'font/woff2',
-  '.ttf': 'font/ttf',
-  '.otf': 'font/otf',
-  '.mp3': 'audio/mpeg',
-  '.wav': 'audio/wav',
-  '.ogg': 'audio/ogg',
-  '.glb': 'model/gltf-binary',
-  '.gltf': 'application/json',
-  '.wasm': 'application/wasm',
-  '.map': 'application/json',
-};
+const root = resolve(__dirname, '..');
+const distDir = resolve(root, 'dist');
 
 function parseArgs(args) {
   const opts = { port: 3000, open: true, help: false, startDemo: false };
@@ -72,124 +47,31 @@ function printHelp() {
 `);
 }
 
-async function servePath(filePath) {
-  try {
-    const s = await stat(filePath);
-    if (s.isDirectory()) {
-      filePath = join(filePath, 'index.html');
-    }
-    const data = await readFile(filePath);
-    const ext = extname(filePath).toLowerCase();
-    const mime = MIME_TYPES[ext] || 'application/octet-stream';
-    return { data, mime, status: 200 };
-  } catch {
-    // Try adding .html extension (e.g. /console → /console.html)
-    if (!extname(filePath)) {
-      try {
-        const htmlPath = filePath + '.html';
-        const data = await readFile(htmlPath);
-        return { data, mime: 'text/html; charset=utf-8', status: 200 };
-      } catch {
-        // fall through to null
-      }
-    }
-    return null;
-  }
-}
-
 async function startServer(opts) {
-  const server = createServer(async (req, res) => {
-    // Sanitize URL path to prevent directory traversal
-    const url = new URL(req.url, `http://localhost:${opts.port}`);
-    const pathname = decodeURIComponent(url.pathname);
-
-    // Redirect directory paths to their index.html (with or without trailing slash)
-    const testDir = resolve(distDir, '.' + pathname);
-    if (testDir.startsWith(distDir) && pathname !== '/') {
-      try {
-        const s = await stat(testDir);
-        if (s.isDirectory()) {
-          const target = pathname.endsWith('/')
-            ? pathname + 'index.html'
-            : pathname + '/index.html';
-          res.writeHead(302, {
-            Location: target,
-            'Cache-Control': 'no-store',
-          });
-          res.end();
-          return;
-        }
-      } catch {
-        // not a directory, continue
-      }
-    }
-
-    // Redirect extensionless paths to .html (e.g. /os9-shell/index → /os9-shell/index.html)
-    if (!extname(pathname) && pathname !== '/') {
-      const htmlFile = resolve(distDir, '.' + pathname + '.html');
-      if (htmlFile.startsWith(distDir)) {
-        try {
-          await stat(htmlFile);
-          res.writeHead(302, {
-            Location: pathname + '.html',
-            'Cache-Control': 'no-store',
-          });
-          res.end();
-          return;
-        } catch {
-          // no .html file, continue
-        }
-      }
-    }
-
-    const safePath = resolve(distDir, '.' + pathname);
-
-    // Ensure resolved path is within distDir
-    if (!safePath.startsWith(distDir)) {
-      res.writeHead(403);
-      res.end('Forbidden');
-      return;
-    }
-
-    const result = await servePath(safePath);
-    if (result) {
-      res.writeHead(result.status, {
-        'Content-Type': result.mime,
-        'Cache-Control': 'no-cache',
-        'Access-Control-Allow-Origin': '*',
-      });
-      res.end(result.data);
-    } else {
-      res.writeHead(404, { 'Content-Type': 'text/plain' });
-      res.end('Not Found');
-    }
+  const server = await preview({
+    root,
+    preview: {
+      port: opts.port,
+      strictPort: true,
+      host: true,
+      open: false,
+    },
   });
 
-  server.listen(opts.port, () => {
-    const homeUrl = `http://localhost:${opts.port}/`;
-    console.log(`
+  const port = opts.port;
+  console.log(`
   \x1b[1m\x1b[35m🎮 Nova64\x1b[0m Fantasy Console
 
-  \x1b[32m➜\x1b[0m  Home:     \x1b[36m${homeUrl}\x1b[0m
-  \x1b[32m➜\x1b[0m  Console:  \x1b[36mhttp://localhost:${opts.port}/console.html\x1b[0m
-  \x1b[32m➜\x1b[0m  NovaOS:   \x1b[36mhttp://localhost:${opts.port}/os9-shell/index.html\x1b[0m
+  \x1b[32m➜\x1b[0m  Home:     \x1b[36mhttp://localhost:${port}/\x1b[0m
+  \x1b[32m➜\x1b[0m  Console:  \x1b[36mhttp://localhost:${port}/console.html\x1b[0m
+  \x1b[32m➜\x1b[0m  NovaOS:   \x1b[36mhttp://localhost:${port}/os9-shell/index.html\x1b[0m
 
   Press \x1b[1mCtrl+C\x1b[0m to stop
 `);
 
-    if (opts.open) {
-      openBrowser(homeUrl);
-    }
-  });
-
-  server.on('error', err => {
-    if (err.code === 'EADDRINUSE') {
-      console.error(`\x1b[31mError: Port ${opts.port} is already in use.\x1b[0m`);
-      console.error(`Try: nova64 --start-demo --port ${opts.port + 1}`);
-      process.exit(1);
-    }
-    throw err;
-  });
+  if (opts.open) {
+    openBrowser(`http://localhost:${port}/`);
+  }
 }
 
 // Main

@@ -102,6 +102,46 @@ async function startServer(opts) {
     // Sanitize URL path to prevent directory traversal
     const url = new URL(req.url, `http://localhost:${opts.port}`);
     const pathname = decodeURIComponent(url.pathname);
+
+    // Redirect directory paths to their index.html (with or without trailing slash)
+    const testDir = resolve(distDir, '.' + pathname);
+    if (testDir.startsWith(distDir) && pathname !== '/') {
+      try {
+        const s = await stat(testDir);
+        if (s.isDirectory()) {
+          const target = pathname.endsWith('/')
+            ? pathname + 'index.html'
+            : pathname + '/index.html';
+          res.writeHead(302, {
+            Location: target,
+            'Cache-Control': 'no-store',
+          });
+          res.end();
+          return;
+        }
+      } catch {
+        // not a directory, continue
+      }
+    }
+
+    // Redirect extensionless paths to .html (e.g. /os9-shell/index → /os9-shell/index.html)
+    if (!extname(pathname) && pathname !== '/') {
+      const htmlFile = resolve(distDir, '.' + pathname + '.html');
+      if (htmlFile.startsWith(distDir)) {
+        try {
+          await stat(htmlFile);
+          res.writeHead(302, {
+            Location: pathname + '.html',
+            'Cache-Control': 'no-store',
+          });
+          res.end();
+          return;
+        } catch {
+          // no .html file, continue
+        }
+      }
+    }
+
     const safePath = resolve(distDir, '.' + pathname);
 
     // Ensure resolved path is within distDir
@@ -132,7 +172,7 @@ async function startServer(opts) {
 
   \x1b[32m➜\x1b[0m  Home:     \x1b[36m${homeUrl}\x1b[0m
   \x1b[32m➜\x1b[0m  Console:  \x1b[36mhttp://localhost:${opts.port}/console.html\x1b[0m
-  \x1b[32m➜\x1b[0m  NovaOS:   \x1b[36mhttp://localhost:${opts.port}/os9-shell/\x1b[0m
+  \x1b[32m➜\x1b[0m  NovaOS:   \x1b[36mhttp://localhost:${opts.port}/os9-shell/index.html\x1b[0m
 
   Press \x1b[1mCtrl+C\x1b[0m to stop
 `);

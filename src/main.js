@@ -389,26 +389,22 @@ const demoMap = {
 })();
 
 // Listen for messages from Game Studio to execute code
+let _studioGen = 0;
 window.addEventListener('message', async event => {
   if (event.data && event.data.type === 'EXECUTE_CODE') {
+    // Bump generation — any earlier in-flight execution will bail out
+    const gen = ++_studioGen;
     const postLog = msg => {
       if (event.source) event.source.postMessage({ type: 'CART_LOG', message: msg }, event.origin);
     };
     console.log('🎮 Game Studio: Executing code...');
-    console.log('📝 Code to execute:', event.data.code.substring(0, 200) + '...');
-    console.log('🔧 Available APIs:', {
-      api: typeof api,
-      iApi: typeof iApi,
-      threeDApi_instance: typeof threeDApi_instance,
-    });
 
     try {
-      // Stop current game loop if running
-      console.log('⏸️ Pausing game...');
+      // Stop current game loop and clear cart immediately
       paused = true;
+      nova.cart = null;
 
       // Full scene reset — clear all 3D objects, lights, effects, fog, skybox, camera
-      console.log('🧹 Resetting scene for new cart...');
       if (typeof nova64api.clearScene === 'function') nova64api.clearScene();
       if (typeof nova64api.clearFog === 'function') nova64api.clearFog();
       if (typeof nova64api.clearSkybox === 'function') nova64api.clearSkybox();
@@ -417,15 +413,18 @@ window.addEventListener('message', async event => {
       if (typeof nova64api.disableChromaticAberration === 'function')
         nova64api.disableChromaticAberration();
       if (typeof nova64api.disableGlitch === 'function') nova64api.disableGlitch();
+      if (typeof nova64api.clearButtons === 'function') nova64api.clearButtons();
       if (typeof nova64api.setCameraPosition === 'function') nova64api.setCameraPosition(0, 5, 10);
       if (typeof nova64api.setCameraTarget === 'function') nova64api.setCameraTarget(0, 0, 0);
-      console.log('✅ Scene reset complete');
+      if (typeof nova64api.setCameraFOV === 'function') nova64api.setCameraFOV(60);
       postLog('🧹 Scene reset for new cart');
+
+      // Race-condition guard: if a newer execution arrived, bail out
+      if (gen !== _studioGen) return;
 
       // Execute the new code
       const userCode = event.data.code;
 
-      console.log('🔨 Creating game function...');
       // Dynamically build param list from nova64api so ALL Nova64 APIs are local variables
       // in user code — avoids window.print and other globalThis clobbering issues.
       const _apiNames = Object.keys(nova64api).filter(
@@ -438,22 +437,18 @@ window.addEventListener('message', async event => {
           '\n; return { init: typeof init !== "undefined" ? init : null, update: typeof update !== "undefined" ? update : null, draw: typeof draw !== "undefined" ? draw : null, render: typeof render !== "undefined" ? render : null };'
       );
 
-      console.log('🚀 Executing game function...');
       const gameFunctions = gameFunction(..._apiValues);
-
-      console.log('📋 Game functions:', gameFunctions);
 
       // Call init() if defined (modern Nova64 carts use init for one-time setup)
       if (gameFunctions.init && typeof gameFunctions.init === 'function') {
-        console.log('🎬 Calling init()...');
         const initResult = gameFunctions.init();
         if (initResult instanceof Promise) await initResult;
-        console.log('✅ init() completed');
+        // Guard again after async init
+        if (gen !== _studioGen) return;
         postLog('🎬 init() completed');
       }
 
-      // Replace the cart's update/draw functions — always reset to drop stale handlers
-      console.log('🔄 Installing cart functions...');
+      // Replace the cart's update/draw functions
       nova.cart = {};
       if (gameFunctions.update) {
         nova.cart.update = gameFunctions.update;
@@ -465,10 +460,7 @@ window.addEventListener('message', async event => {
       }
 
       // Resume the game loop
-      console.log('▶️ Resuming game loop...');
       paused = false;
-
-      console.log('✅ Game Studio: Code executed successfully!');
       postLog('✅ Cart loaded and running!');
 
       // Send success message back
@@ -477,7 +469,6 @@ window.addEventListener('message', async event => {
       }
     } catch (error) {
       console.error('❌ Game Studio: Error executing code:', error);
-      console.error('Stack trace:', error.stack);
       // Always resume so the next Run attempt isn't permanently frozen
       paused = false;
       if (event.source) {

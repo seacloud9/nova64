@@ -1,0 +1,163 @@
+/* ============================================================================
+   eMobile OS — Glass UI Theme System
+   Two modes: dark (smoky) and light (clear)
+   Set via [data-theme="dark"] / [data-theme="light"] on <html>
+   ============================================================================ */
+
+/* --------------------------------------------------------------------------
+   Dark theme — Smoky Glass
+   -------------------------------------------------------------------------- */
+[data-theme="dark"] {
+  --shell-bg: linear-gradient(
+    135deg,
+    #050714 0%,
+    #0d0d2b 25%,
+    #130d2e 50%,
+    #0a1628 75%,
+    #050714 100%
+  );
+  --shell-bg-layer:
+    radial-gradient(ellipse at 20% 10%, rgba(120, 40, 200, 0.18) 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 90%, rgba(20, 80, 200, 0.15) 0%, transparent 50%),
+    radial-gradient(ellipse at 70% 20%, rgba(0, 180, 255, 0.08) 0%, transparent 40%);
+
+  --glass-bg: rgba(15, 15, 22, 0.72);
+  --glass-hover: rgba(25, 25, 40, 0.82);
+  --glass-border: rgba(255, 255, 255, 0.10);
+  --glass-blur: 24px;
+  --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+
+  --glass-tile: rgba(20, 20, 35, 0.65);
+  --glass-tile-hover: rgba(35, 35, 60, 0.85);
+  --glass-tile-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
+
+  --glass-focus-ring: 0 0 0 3px rgba(100, 120, 255, 0.9), 0 0 20px rgba(80, 100, 255, 0.4);
+
+  --glass-text: rgba(255, 255, 255, 0.95);
+  --glass-muted: rgba(255, 255, 255, 0.45);
+
+  --glass-accent: #7c8cff;
+  --glass-accent-glow: rgba(124, 140, 255, 0.35);
+
+  --statusbar-bg: rgba(8, 8, 18, 0.80);
+  --statusbar-border: rgba(255, 255, 255, 0.07);
+
+  --toast-bg: rgba(20, 20, 35, 0.92);
+  --toast-border: rgba(255, 255, 255, 0.12);
+
+  --scrollbar-thumb: rgba(255, 255, 255, 0.12);
+  --scrollbar-track: transparent;
+
+  --drawer-bg: rgba(10, 10, 22, 0.95);
+  --drawer-border: rgba(255, 255, 255, 0.08);
+  --drawer-item-hover: rgba(35, 35, 60, 0.80);
+}
+
+/* --------------------------------------------------------------------------
+   Light theme — Clear Glass
+   -------------------------------------------------------------------------- */
+[data-theme="light"] {
+  --shell-bg: linear-gradient(
+    145deg,
+    #e8f4fd 0%,
+    #ddeeff 30%,
+    #f0e8ff 60%,
+    #fce8f8 80%,
+    #f5f5ff 100%
+  );
+  --shell-bg-layer:
+    radial-gradient(ellipse at 15% 15%, rgba(180, 200, 255, 0.40) 0%, transparent 50%),
+    radial-gradient(ellipse at 85% 85%, rgba(220, 180, 255, 0.30) 0%, transparent 50%),
+    radial-gradient(ellipse at 60% 30%, rgba(255, 255, 255, 0.60) 0%, transparent 40%);
+
+  --glass-bg: rgba(255, 255, 255, 0.30);
+  --glass-hover: rgba(255, 255, 255, 0.50);
+  --glass-border: rgba(255, 255, 255, 0.70);
+  --glass-blur: 24px;
+  --glass-shadow: 0 8px 32px rgba(100, 120, 200, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.80);
+
+  --glass-tile: rgba(255, 255, 255, 0.35);
+  --glass-tile-hover: rgba(255, 255, 255, 0.65);
+  --glass-tile-shadow: 0 4px 24px rgba(100, 120, 200, 0.15);
+
+  --glass-focus-ring: 0 0 0 3px rgba(80, 100, 220, 0.80), 0 0 20px rgba(80, 100, 220, 0.25);
+
+  --glass-text: rgba(20, 20, 40, 0.92);
+  --glass-muted: rgba(20, 20, 40, 0.45);
+
+  --glass-accent: #4c5ee8;
+  --glass-accent-glow: rgba(76, 94, 232, 0.25);
+
+  --statusbar-bg: rgba(240, 245, 255, 0.75);
+  --statusbar-border: rgba(180, 200, 255, 0.40);
+
+  --toast-bg: rgba(255, 255, 255, 0.88);
+  --toast-border: rgba(180, 200, 255, 0.50);
+
+  --scrollbar-thumb: rgba(100, 100, 180, 0.20);
+  --scrollbar-track: transparent;
+
+  --drawer-bg: rgba(240, 244, 255, 0.96);
+  --drawer-border: rgba(180, 200, 255, 0.35);
+  --drawer-item-hover: rgba(255, 255, 255, 0.70);
+}
+
+/* --------------------------------------------------------------------------
+   Glass utilities (used alongside Tailwind)
+   -------------------------------------------------------------------------- */
+.glass-card {
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+}
+
+.glass-tile {
+  background: var(--glass-tile);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-tile-shadow);
+  transition:
+    background 0.2s ease,
+    box-shadow 0.2s ease,
+    transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1),
+    border-color 0.2s ease;
+}
+
+.glass-tile:hover,
+.glass-tile:focus {
+  background: var(--glass-tile-hover);
+  border-color: var(--glass-accent);
+  box-shadow: var(--glass-tile-shadow), 0 0 0 2px var(--glass-accent-glow);
+  outline: none;
+  transform: scale(1.04) translateY(-4px);
+}
+
+.glass-tile:focus-visible {
+  box-shadow: var(--glass-focus-ring);
+}
+
+.glass-tile:active {
+  transform: scale(0.96);
+}
+
+/* --------------------------------------------------------------------------
+   Scrollbar
+   -------------------------------------------------------------------------- */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 3px;
+}
+
+html {
+  transition: background 0.3s ease;
+}

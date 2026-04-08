@@ -81,6 +81,13 @@ const APPS: AppItem[] = [
     category: 'Entertainment',
   },
   {
+    id: 'emu',
+    name: 'eMU',
+    icon: '🕹️',
+    description: 'Retro console emulator — NES, SNES, N64, PlayStation & more',
+    category: 'Entertainment',
+  },
+  {
     id: 'com.nova64.profiler',
     name: 'System Profiler',
     icon: '💻',

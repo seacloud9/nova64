@@ -49,6 +49,7 @@ Opens at: http://localhost:3000
   - **Notes**: Simple text editor with auto-save
   - **Paint**: Canvas-based drawing tool with color picker and brush sizes
   - **System Profiler**: Displays hardware and system information
+  - **eMU**: Retro console emulator powered by EmulatorJS — supports 20+ systems (NES, SNES, N64, PlayStation, Game Boy, Sega Genesis, Arcade, and more)
 
 ### Developer Experience
 
@@ -276,6 +277,7 @@ You can create alternate themes by overriding these variables.
 os9-shell/
 ├── src/
 │   ├── apps/              # Demo applications
+│   │   ├── emu-app.tsx
 │   │   ├── notes.ts
 │   │   ├── paint.ts
 │   │   └── profiler.ts

@@ -52,7 +52,30 @@ export default defineConfig({
   },
 
   // Plugin configuration
-  plugins: [],
+  plugins: [
+    {
+      name: 'static-directory-index',
+      configureServer(server) {
+        // Mimic GitHub Pages / static hosting: serve index.html for directory paths.
+        // Return a function so the middleware runs AFTER Vite's internal transforms
+        // but we also need a pre-middleware to prevent Vite from redirecting
+        // /os9-shell/index.html → /os9-shell (which then hits SPA fallback).
+        server.middlewares.use((req, res, next) => {
+          const url = req.url?.split('?')[0];
+          if (url === '/os9-shell' || url === '/os9-shell/' || url === '/os9-shell/index') {
+            res.writeHead(302, {
+              Location: '/os9-shell/index.html',
+              'Cache-Control': 'no-store',
+            });
+            res.end();
+            return;
+          }
+          next();
+        });
+      },
+    },
+  ],
+  appType: 'mpa',
 
   // Resolve configuration
   resolve: {

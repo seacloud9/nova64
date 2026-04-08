@@ -14,6 +14,7 @@ import './apps/Finder';
 import './apps/cart-runner-app';
 import './apps/model-viewer-app';
 import './apps/emu-app';
+import './apps/appearance-app';
 
 import { App } from './components/App';
 import { novaContext } from './os/context';

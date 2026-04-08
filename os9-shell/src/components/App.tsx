@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useWindowStore, useUIStore } from '../os/stores';
+import { useState, useEffect } from 'react';
+import { useWindowStore, useUIStore, useDesktopThemeStore } from '../os/stores';
 import { MenuBar } from './MenuBar';
 import { Desktop } from './Desktop';
 import { Window } from './Window';
@@ -16,6 +16,12 @@ export function App() {
   const [booted, setBooted] = useState(false);
   const { windows, activeWindowId, focusWindow, closeWindow, restoreWindow } = useWindowStore();
   const { showFPS, scanlines } = useUIStore();
+  const { theme: desktopTheme } = useDesktopThemeStore();
+
+  // Sync data-theme attribute whenever the theme changes
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', desktopTheme);
+  }, [desktopTheme]);
 
   const handleBootComplete = () => {
     setBooted(true);

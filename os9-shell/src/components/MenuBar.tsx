@@ -50,7 +50,7 @@ export function MenuBar({ appMenus = [], onCommand }: MenuBarProps) {
       { type: 'separator', label: '' },
       { label: 'System Profiler...' },
       { label: 'Control Panels', type: 'submenu', submenu: [
-        { label: 'Appearance' },
+        { label: 'Appearance', click: () => novaContext.launchApp('appearance', { width: 480, height: 340 }) },
         { label: 'Sound' },
         { label: 'Displays' },
       ]},

@@ -400,3 +400,37 @@ export const useSystemStore = create<SystemStore>((set) => ({
     }));
   },
 }));
+
+// ============================================================================
+// Desktop Theme Store — dark / light Glass UI
+// ============================================================================
+
+type DesktopTheme = 'dark' | 'light';
+
+interface DesktopThemeStore {
+  theme: DesktopTheme;
+  setTheme: (t: DesktopTheme) => void;
+  toggle: () => void;
+}
+
+const _savedDesktopTheme = ((): DesktopTheme => {
+  try {
+    const v = localStorage.getItem('nova64-desktop-theme');
+    if (v === 'dark' || v === 'light') return v;
+  } catch { /* ignore */ }
+  return 'dark';
+})();
+
+export const useDesktopThemeStore = create<DesktopThemeStore>((set, get) => ({
+  theme: _savedDesktopTheme,
+
+  setTheme(t) {
+    try { localStorage.setItem('nova64-desktop-theme', t); } catch { /* ignore */ }
+    document.documentElement.setAttribute('data-theme', t);
+    set({ theme: t });
+  },
+
+  toggle() {
+    get().setTheme(get().theme === 'dark' ? 'light' : 'dark');
+  },
+}));

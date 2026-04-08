@@ -1086,3 +1086,218 @@ button:focus-visible {
   background: var(--gnome-blue) !important;
   color: #fff !important;
 }
+
+/* ============================================================================
+   Glass Dark Theme — smoky deep-space chrome
+   Applied via [data-theme="dark"] on <html>  (also the default)
+   Shared --glass-* vars mirror the mobile shell for visual consistency.
+   ============================================================================ */
+[data-theme="dark"] {
+  /* Core palette */
+  --gnome-dark:    #0d0d1a;
+  --gnome-darker:  #08080f;
+  --gnome-panel:   rgba(10, 10, 20, 0.82);
+  --gnome-bg:      rgba(14, 14, 28, 0.68);
+  --gnome-card:    rgba(18, 18, 36, 0.72);
+  --gnome-hover:   rgba(28, 28, 52, 0.82);
+  --gnome-active:  rgba(40, 40, 70, 0.90);
+  --gnome-border:  rgba(255, 255, 255, 0.10);
+
+  /* Accent */
+  --gnome-blue:       #7c8cff;
+  --gnome-blue-hover: #9aa8ff;
+  --gnome-blue-dark:  #5a6ee8;
+  --gnome-blue-light: #b0baff;
+
+  /* Text */
+  --gnome-text:           rgba(255, 255, 255, 0.95);
+  --gnome-text-secondary: rgba(255, 255, 255, 0.58);
+  --gnome-text-disabled:  rgba(255, 255, 255, 0.28);
+
+  /* Window chrome */
+  --window-title-active:   rgba(14, 14, 28, 0.90);
+  --window-title-inactive: rgba(10, 10, 22, 0.74);
+  --window-border:         rgba(255, 255, 255, 0.12);
+  --window-border-light:   rgba(255, 255, 255, 0.07);
+  --window-content-bg:     rgba(10, 10, 20, 0.78);
+  --window-shadow:
+    0 24px 64px rgba(0, 0, 0, 0.72),
+    0 0 0 1px rgba(255, 255, 255, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+
+  /* Menus */
+  --menu-bg:            rgba(10, 10, 22, 0.94);
+  --menu-border:        rgba(255, 255, 255, 0.09);
+  --menu-highlight:     #7c8cff;
+  --menu-text:          rgba(255, 255, 255, 0.92);
+  --menu-text-disabled: rgba(255, 255, 255, 0.28);
+
+  /* Desktop wallpaper */
+  --desktop-bg: linear-gradient(135deg, #050714 0%, #0d0d2b 25%, #130d2e 50%, #0a1628 75%, #050714 100%);
+  --desktop-pattern:
+    radial-gradient(ellipse at 20% 10%, rgba(120, 40, 200, 0.18) 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 90%, rgba(20,  80, 200, 0.15) 0%, transparent 50%),
+    radial-gradient(ellipse at 70% 20%, rgba(0,  180, 255, 0.08) 0%, transparent 40%);
+
+  /* Scrollbar */
+  --scroll-bg:          rgba(14, 14, 28, 0.50);
+  --scroll-track:       transparent;
+  --scroll-thumb:       rgba(255, 255, 255, 0.14);
+  --scroll-thumb-hover: rgba(255, 255, 255, 0.26);
+
+  /* Buttons */
+  --button-bg:     rgba(20, 20, 40, 0.68);
+  --button-border: rgba(255, 255, 255, 0.12);
+  --button-hover:  rgba(35, 35, 65, 0.84);
+  --button-active: #7c8cff;
+  --button-text:   rgba(255, 255, 255, 0.92);
+
+  /* Shared Glass vars — identical to mobile dark glass */
+  --glass-bg:          rgba(15, 15, 22, 0.72);
+  --glass-hover:       rgba(25, 25, 40, 0.82);
+  --glass-border:      rgba(255, 255, 255, 0.10);
+  --glass-blur:        24px;
+  --glass-shadow:      0 8px 32px rgba(0, 0, 0, 0.60), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  --glass-tile:        rgba(20, 20, 35, 0.65);
+  --glass-tile-hover:  rgba(35, 35, 60, 0.85);
+  --glass-text:        rgba(255, 255, 255, 0.95);
+  --glass-muted:       rgba(255, 255, 255, 0.45);
+  --glass-accent:      #7c8cff;
+  --glass-accent-glow: rgba(124, 140, 255, 0.35);
+}
+
+/* ============================================================================
+   Glass Light Theme — clear daylight glass
+   ============================================================================ */
+[data-theme="light"] {
+  /* Core palette */
+  --gnome-dark:    rgba(235, 240, 255, 0.88);
+  --gnome-darker:  rgba(220, 230, 255, 0.92);
+  --gnome-panel:   rgba(255, 255, 255, 0.68);
+  --gnome-bg:      rgba(255, 255, 255, 0.48);
+  --gnome-card:    rgba(255, 255, 255, 0.58);
+  --gnome-hover:   rgba(255, 255, 255, 0.78);
+  --gnome-active:  rgba(230, 236, 255, 0.90);
+  --gnome-border:  rgba(100, 120, 200, 0.20);
+
+  /* Accent */
+  --gnome-blue:       #4c5ee8;
+  --gnome-blue-hover: #3b4fd4;
+  --gnome-blue-dark:  #2d3fbc;
+  --gnome-blue-light: #7b8cf7;
+
+  /* Text */
+  --gnome-text:           rgba(16, 16, 44, 0.92);
+  --gnome-text-secondary: rgba(16, 16, 44, 0.58);
+  --gnome-text-disabled:  rgba(16, 16, 44, 0.30);
+
+  /* Window chrome */
+  --window-title-active:   rgba(240, 245, 255, 0.88);
+  --window-title-inactive: rgba(248, 250, 255, 0.74);
+  --window-border:         rgba(100, 120, 200, 0.22);
+  --window-border-light:   rgba(180, 200, 255, 0.38);
+  --window-content-bg:     rgba(255, 255, 255, 0.52);
+  --window-shadow:
+    0 16px 48px rgba(80, 100, 200, 0.18),
+    0 0 0 1px rgba(100, 120, 200, 0.16),
+    inset 0 1px 0 rgba(255, 255, 255, 0.80);
+
+  /* Menus */
+  --menu-bg:            rgba(255, 255, 255, 0.88);
+  --menu-border:        rgba(180, 200, 255, 0.38);
+  --menu-highlight:     #4c5ee8;
+  --menu-text:          rgba(16, 16, 44, 0.92);
+  --menu-text-disabled: rgba(16, 16, 44, 0.30);
+
+  /* Desktop wallpaper */
+  --desktop-bg: linear-gradient(145deg, #e8f4fd 0%, #ddeeff 30%, #f0e8ff 60%, #fce8f8 80%, #f5f5ff 100%);
+  --desktop-pattern:
+    radial-gradient(ellipse at 15% 15%, rgba(180, 200, 255, 0.40) 0%, transparent 50%),
+    radial-gradient(ellipse at 85% 85%, rgba(220, 180, 255, 0.30) 0%, transparent 50%),
+    radial-gradient(ellipse at 60% 30%, rgba(255, 255, 255, 0.60) 0%, transparent 40%);
+
+  /* Scrollbar */
+  --scroll-bg:          rgba(230, 238, 255, 0.55);
+  --scroll-track:       transparent;
+  --scroll-thumb:       rgba(100, 120, 200, 0.20);
+  --scroll-thumb-hover: rgba(100, 120, 200, 0.36);
+
+  /* Buttons */
+  --button-bg:     rgba(255, 255, 255, 0.58);
+  --button-border: rgba(100, 120, 200, 0.22);
+  --button-hover:  rgba(255, 255, 255, 0.78);
+  --button-active: #4c5ee8;
+  --button-text:   rgba(16, 16, 44, 0.92);
+
+  /* Shared Glass vars — identical to mobile light glass */
+  --glass-bg:          rgba(255, 255, 255, 0.30);
+  --glass-hover:       rgba(255, 255, 255, 0.50);
+  --glass-border:      rgba(255, 255, 255, 0.70);
+  --glass-blur:        24px;
+  --glass-shadow:      0 8px 32px rgba(100, 120, 200, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.80);
+  --glass-tile:        rgba(255, 255, 255, 0.35);
+  --glass-tile-hover:  rgba(255, 255, 255, 0.65);
+  --glass-text:        rgba(20, 20, 40, 0.92);
+  --glass-muted:       rgba(20, 20, 40, 0.45);
+  --glass-accent:      #4c5ee8;
+  --glass-accent-glow: rgba(76, 94, 232, 0.25);
+}
+
+/* ============================================================================
+   Glass surface chrome — backdrop-filter for window/menu in both themes
+   Augments the var()-based colors above with frosted-glass blur.
+   ============================================================================ */
+[data-theme] .window {
+  backdrop-filter: blur(var(--glass-blur, 24px));
+  -webkit-backdrop-filter: blur(var(--glass-blur, 24px));
+}
+
+[data-theme] .window-title {
+  backdrop-filter: blur(32px);
+  -webkit-backdrop-filter: blur(32px);
+}
+
+[data-theme] .menubar {
+  background: var(--gnome-panel);
+  border-bottom: 1px solid var(--gnome-border);
+  backdrop-filter: blur(32px);
+  -webkit-backdrop-filter: blur(32px);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04), 0 4px 20px rgba(0, 0, 0, 0.20);
+}
+
+[data-theme] .menu-dropdown {
+  background: var(--menu-bg);
+  border: 1px solid var(--menu-border);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+}
+
+/* Light-theme text adjustments for elements that hard-code colour */
+[data-theme="light"] .window-title-text {
+  color: var(--gnome-text);
+}
+
+[data-theme="light"] .menu-item,
+[data-theme="light"] .menu-logo,
+[data-theme="light"] .menu-time,
+[data-theme="light"] .menu-status-icon {
+  color: var(--gnome-text);
+}
+
+[data-theme="light"] .menu-dropdown-item {
+  color: var(--gnome-text);
+}
+
+[data-theme="light"] .menu-dropdown-item:hover {
+  background: var(--gnome-hover);
+  color: var(--gnome-text);
+}
+
+[data-theme="light"] .activities-button {
+  color: var(--gnome-text);
+}
+
+[data-theme="light"] body {
+  background: var(--gnome-darker);
+  color: var(--gnome-text);
+}

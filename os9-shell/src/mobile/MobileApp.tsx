@@ -8,11 +8,13 @@ import './theme/glass.css';
 import { tvContext } from './os/context';
 import { gameLauncherApp } from './apps/game-launcher';
 import { modelViewerApp } from './apps/model-viewer';
+import { emuiApp } from './apps/emu';
 import { TVShell } from './TVShell';
 
 // Register mobile apps
 tvContext.registerApp(gameLauncherApp);
 tvContext.registerApp(modelViewerApp);
+tvContext.registerApp(emuiApp);
 
 export function MobileApp() {
   return (

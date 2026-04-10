@@ -26,6 +26,7 @@ import { gameUtilsApi } from '../runtime/api-gameutils.js';
 import { nftSeedApi } from '../runtime/nft-seed.js';
 import { wadApi } from '../runtime/wad.js';
 import { manifestApi } from '../runtime/manifest.js';
+import { canvasUIApi } from '../runtime/canvas-ui.js';
 
 const canvas = document.getElementById('screen');
 
@@ -112,6 +113,7 @@ manifestInst.exposeTo(nova64api);
 // Now create UI API after nova64api has rgba8 and other functions
 uiApiInstance = uiApi(gpu, nova64api);
 uiApiInstance.exposeTo(nova64api);
+canvasUIApi().exposeTo(nova64api);
 
 // Connect input system to UI system for mouse events
 iApi.connectUI(uiApiInstance.setMousePosition, uiApiInstance.setMouseButton);
@@ -371,6 +373,9 @@ const demoMap = {
   'nft-art-generator': '/examples/nft-art-generator/code.js',
   'creative-coding': '/examples/creative-coding/code.js',
   'tsl-showcase': '/examples/tsl-showcase/code.js',
+  'hud-demo': '/examples/hud-demo/code.js',
+  'startscreen-demo': '/examples/startscreen-demo/code.js',
+  'canvas-ui-showcase': '/examples/canvas-ui-showcase/code.js',
 };
 
 // default cart - load from URL param or default to space-harrier-3d

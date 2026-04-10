@@ -61,6 +61,7 @@
     "test:starfox": "node tests/test-cli.js starfox",
     "test:integration": "node tests/test-cli.js integration",
     "test:voxel": "node tests/test-cli.js voxel",
+    "test:resize": "node tests/test-cli.js resize",
     "test:cli": "node tests/test-cli.js cli",
     "test:web": "open tests/test-runner.html || xdg-open tests/test-runner.html || start tests/test-runner.html",
     "test:all": "pnpm run test && pnpm run test:api && pnpm run test:input && pnpm run test:starfox && pnpm run test:integration",

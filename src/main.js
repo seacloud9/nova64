@@ -27,6 +27,7 @@ import { nftSeedApi } from '../runtime/nft-seed.js';
 import { wadApi } from '../runtime/wad.js';
 import { manifestApi } from '../runtime/manifest.js';
 import { canvasUIApi } from '../runtime/canvas-ui.js';
+import { hypeApi } from '../runtime/hype.js';
 
 const canvas = document.getElementById('screen');
 
@@ -104,6 +105,7 @@ const gameUtilsInst = gameUtilsApi();
 const nftSeedInst = nftSeedApi();
 const wadInst = wadApi();
 const manifestInst = manifestApi();
+const hypeInst = hypeApi();
 
 // Create UI API - needs to be created after api is fully initialized
 let uiApiInstance;
@@ -132,6 +134,7 @@ gameUtilsInst.exposeTo(nova64api);
 nftSeedInst.exposeTo(nova64api);
 wadInst.exposeTo(nova64api);
 manifestInst.exposeTo(nova64api);
+hypeInst.exposeTo(nova64api);
 
 // Now create UI API after nova64api has rgba8 and other functions
 uiApiInstance = uiApi(gpu, nova64api);

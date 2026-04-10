@@ -291,9 +291,12 @@ export class GpuThreeJS {
     return this.renderer;
   }
 
-  // Resize the renderer + camera to a new pixel resolution.
+  // Resize the 3D renderer to a new physical pixel resolution.
   // CSS display size is controlled by the stylesheet — this only updates
-  // the WebGL back-buffer and camera aspect ratio.
+  // the WebGL back-buffer and 3D camera aspect ratio.
+  // The 2D framebuffer and overlay stay at the original logical resolution
+  // so that cart HUD code (which draws at e.g. 640×360) is automatically
+  // scaled up by the GPU when the overlay quad is rendered.
   resize(w, h) {
     this.w = w;
     this.h = h;
@@ -303,21 +306,10 @@ export class GpuThreeJS {
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
-    // Rebuild the 2D overlay texture at the new resolution
-    if (this.overlay2D) {
-      this.overlay2D.scene.traverse(obj => {
-        if (obj.geometry) obj.geometry.dispose();
-        if (obj.material) {
-          if (obj.material.map) obj.material.map.dispose();
-          obj.material.dispose();
-        }
-      });
-      this.overlay2D = this.create2DOverlay(w, h);
-    }
-    // Resize the framebuffer too
-    if (this.fb) {
-      this.fb = new this.fb.constructor(w, h);
-    }
+    // NOTE: Do NOT resize fb or overlay2D — they stay at the logical
+    // resolution so all 2D/HUD drawing keeps working at the original
+    // coordinate system.  The overlay orthographic camera already maps
+    // its logical-sized quad across the full WebGL viewport.
   }
 
   setCameraPosition(x, y, z) {

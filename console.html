@@ -87,7 +87,8 @@
 
       .screen-container {
         position: relative;
-        border-radius: 8px;
+        width: 100%;
+        aspect-ratio: 16 / 9;
         overflow: hidden;
         border: 4px solid #050505;
         box-shadow:
@@ -96,13 +97,16 @@
         background: #000;
         /* Simulate TV curve slightly */
         border-radius: 2% / 3%;
+        box-sizing: border-box;
       }
 
       canvas {
         image-rendering: auto;
+        position: absolute;
+        top: 0;
+        left: 0;
         width: 100%;
-        height: auto;
-        aspect-ratio: 16 / 9;
+        height: 100%;
         background: #000;
         display: block;
         touch-action: none;
@@ -386,7 +390,7 @@
         }
 
         canvas {
-          /* let aspect-ratio do the constraining on mobile */
+          /* absolute fill — no override needed */
         }
 
         /* Show mobile controls */

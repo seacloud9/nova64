@@ -329,6 +329,9 @@
     }
     @media (max-width: 900px) { .hero-sun { width: 200px; height: 200px; } }
     .hero-inner {
+      padding: 10px;
+      background-color: #00000057;
+      border-radius: var(--radius);
       position: relative; z-index: 2;
       display: grid; grid-template-columns: 1fr; gap: 0; width: 100%;
     }
@@ -372,7 +375,7 @@
       -webkit-text-fill-color: transparent; background-clip: text;
     }
     .hero-sub {
-      font-size: clamp(16px, 2vw, 20px); color: var(--text-muted);
+      font-size: clamp(16px, 2vw, 20px); color: #47ff00;
       line-height: 1.6; margin-bottom: 40px; max-width: 480px;
     }
     .hero-ctas { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
@@ -752,7 +755,7 @@
   "hero.badge": "NOVA64 v0.4.8 // MEM CARD DETECTED",
   "hero.boot.check": "DISC CHECK",
   "hero.boot.ok": "OK",
-  "hero.h1.html": "Born From<br><span class=\"line-accent\">32-Bit Dreams.</span>",
+  "hero.h1.html": "Born From<br><span class=\"line-accent\">64-Bit Dreams.</span>",
   "hero.sub": "The darkness between polygons. The hum of a disc loading. NOVA64 is the fantasy console that never shipped in 1997 \u2014 running live, in your browser, right now.",
   "hero.cta.launch": "Launch Console",
   "hero.cta.demo": "Load a Demo",
@@ -942,7 +945,7 @@
         </div>
         <h1 class="hero-h1" data-i18n-html="hero.h1.html">
           Born From<br>
-          <span class="line-accent">32-Bit Dreams.</span>
+          <span class="line-accent">64-Bit Dreams.</span>
         </h1>
         <p class="hero-sub" data-i18n="hero.sub">The darkness between polygons. The hum of a disc loading. NOVA64 is the fantasy console that never shipped in 1997 &mdash; running live, in your browser, right now.</p>
         <div class="hero-ctas">

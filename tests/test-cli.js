@@ -995,6 +995,26 @@ async function main() {
         }
         break;
 
+      case 'resize':
+        console.log('📐 Running Resize Regression Tests...');
+        try {
+          const { runResizeTests } = await import('./test-resize.js');
+          results.push(await runResizeTests());
+        } catch (error) {
+          console.log('⚠️  Resize tests not available:', error.message);
+        }
+        break;
+
+      case 'hype':
+        console.log('✨ Running HYPE Framework Tests...');
+        try {
+          const { runHypeTests } = await import('./test-hype.js');
+          results.push(await runHypeTests());
+        } catch (error) {
+          console.log('⚠️  HYPE tests not available:', error.message);
+        }
+        break;
+
       case 'all':
       default:
         console.log('🚀 Running All Tests...\n');
@@ -1057,6 +1077,22 @@ async function main() {
           results.push(await runCLIServerTests());
         } catch (error) {
           console.log('⚠️  CLI server tests not available:', error.message);
+        }
+
+        console.log('\n1️⃣1️⃣ Resize Regression Tests:');
+        try {
+          const { runResizeTests } = await import('./test-resize.js');
+          results.push(await runResizeTests());
+        } catch (error) {
+          console.log('⚠️  Resize tests not available:', error.message);
+        }
+
+        console.log('\n1️⃣2️⃣ HYPE Framework Tests:');
+        try {
+          const { runHypeTests } = await import('./test-hype.js');
+          results.push(await runHypeTests());
+        } catch (error) {
+          console.log('⚠️  HYPE tests not available:', error.message);
         }
         break;
     }

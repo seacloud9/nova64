@@ -1,4 +1,4 @@
-import { Nova64 } from '../runtime/console.js';
+import { Nova64, NOVA64_VERSION } from '../runtime/console.js';
 import { GpuThreeJS } from '../runtime/gpu-threejs.js';
 import { logger } from '../runtime/logger.js';
 globalThis.novaLogger = logger;
@@ -32,11 +32,28 @@ const canvas = document.getElementById('screen');
 // Create fullscreen button - stored globally for cleanup if needed
 globalThis.fullscreenButton = createFullscreenButton(canvas);
 
+// Allow URL params to override default resolution & clear color
+// e.g. ?w=1280&h=720&clearColor=0x020010
+const _qs = new URLSearchParams(window.location.search);
+const _paramW = parseInt(_qs.get('w'), 10) || 640;
+const _paramH = parseInt(_qs.get('h'), 10) || 360;
+const _paramClearColor = _qs.get('clearColor');
+
+// Apply resolution to canvas BEFORE constructing renderer
+// (GpuThreeJS reads canvas.width / canvas.height for renderer.setSize)
+canvas.width = _paramW;
+canvas.height = _paramH;
+
 // ONLY use Three.js renderer - Nintendo 64/PlayStation style 3D console
 let gpu;
 try {
-  gpu = new GpuThreeJS(canvas, 640, 360);
-  console.log('✅ Using Three.js renderer - Nintendo 64/PlayStation GPU mode');
+  gpu = new GpuThreeJS(canvas, _paramW, _paramH);
+  if (_paramClearColor) {
+    gpu.renderer.setClearColor(parseInt(_paramClearColor, 16), 1.0);
+  }
+  console.log(
+    `✅ Using Three.js renderer (${_paramW}x${_paramH}) - Nintendo 64/PlayStation GPU mode`
+  );
 } catch (e) {
   console.error('❌ Three.js renderer failed to initialize:', e);
   throw new Error('Fantasy console requires 3D GPU support (Three.js)');
@@ -104,6 +121,14 @@ Object.assign(globalThis, nova64api);
 if (nova64api.getCamera) sApi.setCameraRef(nova64api.getCamera());
 
 const nova = new Nova64(gpu, manifestInst);
+globalThis.NOVA64_VERSION = NOVA64_VERSION;
+
+// Lifecycle: notify parent window when a cart finishes loading
+nova.onCartDidLoad = path => {
+  if (window.parent && window.parent !== window) {
+    window.parent.postMessage({ type: 'CART_LOADED', path }, '*');
+  }
+};
 
 let paused = false;
 let stepOnce = false;

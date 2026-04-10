@@ -807,33 +807,46 @@ function renderNode(ctx, node, parentRect, data, handlers, state, NW, NH) {
 // ─── CANVASUISCENE ───────────────────────────────────────────────────────────
 
 class CanvasUIScene {
-  constructor(ast, _opts = {}) {
+  constructor(ast, opts = {}) {
     this.ast = ast;
     this.state = new Map();
     this.NW = parseInt(ast?.attrs?.width || NML_W);
     this.NH = parseInt(ast?.attrs?.height || NML_H);
 
-    // Create the overlay <canvas> positioned over #screen
-    const mainCanvas = document.getElementById('screen');
-    this.canvas = document.createElement('canvas');
-    this.canvas.style.cssText =
-      'position:absolute;top:0;left:0;width:100%;height:100%;z-index:10;pointer-events:auto;';
-    // Pixel resolution: match main canvas for crisp rendering
-    const pw = mainCanvas ? mainCanvas.width : this.NW;
-    const ph = mainCanvas ? mainCanvas.height : this.NH;
-    this.canvas.width = pw;
-    this.canvas.height = ph;
-    this._sx = pw / this.NW;
-    this._sy = ph / this.NH;
+    if (opts.canvas || opts.ctx) {
+      // ── Canvas-in-canvas mode: render into a caller-supplied canvas/context ──
+      // No DOM overlay is created; caller owns the canvas lifecycle.
+      this.canvas = opts.canvas || opts.ctx.canvas;
+      this.ctx = opts.ctx || this.canvas.getContext('2d');
+      this._sx = this.canvas.width / this.NW;
+      this._sy = this.canvas.height / this.NH;
+      this._owned = false; // we do NOT remove this canvas on destroy()
+    } else {
+      // ── Overlay mode: create a new <canvas> on top of #screen ──
+      const mainCanvas = document.getElementById('screen');
+      this.canvas = document.createElement('canvas');
+      // background:transparent overrides console.html's global `canvas { background:#000 }`
+      this.canvas.style.cssText =
+        'position:absolute;top:0;left:0;width:100%;height:100%;' +
+        'z-index:10;pointer-events:auto;background:transparent;';
+      // Pixel resolution: match main canvas for crisp rendering
+      const pw = mainCanvas ? mainCanvas.width : this.NW;
+      const ph = mainCanvas ? mainCanvas.height : this.NH;
+      this.canvas.width = pw;
+      this.canvas.height = ph;
+      this._sx = pw / this.NW;
+      this._sy = ph / this.NH;
+      this._owned = true;
 
-    const container = mainCanvas ? mainCanvas.parentElement : document.body;
-    if (container && getComputedStyle(container).position === 'static') {
-      container.style.position = 'relative';
+      const container = mainCanvas ? mainCanvas.parentElement : document.body;
+      if (container && getComputedStyle(container).position === 'static') {
+        container.style.position = 'relative';
+      }
+      (container || document.body).appendChild(this.canvas);
+      this.ctx = this.canvas.getContext('2d');
+      initMouse(this.canvas);
     }
-    (container || document.body).appendChild(this.canvas);
-    this.ctx = this.canvas.getContext('2d');
 
-    initMouse(this.canvas);
     this._initSlideshows(ast);
   }
 
@@ -917,7 +930,9 @@ class CanvasUIScene {
   }
 
   destroy() {
-    if (this.canvas?.parentElement) this.canvas.parentElement.removeChild(this.canvas);
+    if (this._owned && this.canvas?.parentElement) {
+      this.canvas.parentElement.removeChild(this.canvas);
+    }
     this.canvas = null;
     this.ctx = null;
   }

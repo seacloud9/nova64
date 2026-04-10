@@ -23,7 +23,8 @@ export class GpuThreeJS {
       failIfMajorPerformanceCaveat: false,
     });
 
-    this.renderer.setSize(canvas.width, canvas.height);
+    // false = do NOT set inline style.width/height — CSS controls display size
+    this.renderer.setSize(canvas.width, canvas.height, false);
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // Enhanced pixel density
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
 
@@ -288,6 +289,35 @@ export class GpuThreeJS {
   }
   getRenderer() {
     return this.renderer;
+  }
+
+  // Resize the renderer + camera to a new pixel resolution.
+  // CSS display size is controlled by the stylesheet — this only updates
+  // the WebGL back-buffer and camera aspect ratio.
+  resize(w, h) {
+    this.w = w;
+    this.h = h;
+    this.canvas.width = w;
+    this.canvas.height = h;
+    this.renderer.setSize(w, h, false); // false = don't touch inline styles
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.camera.aspect = w / h;
+    this.camera.updateProjectionMatrix();
+    // Rebuild the 2D overlay texture at the new resolution
+    if (this.overlay2D) {
+      this.overlay2D.scene.traverse(obj => {
+        if (obj.geometry) obj.geometry.dispose();
+        if (obj.material) {
+          if (obj.material.map) obj.material.map.dispose();
+          obj.material.dispose();
+        }
+      });
+      this.overlay2D = this.create2DOverlay(w, h);
+    }
+    // Resize the framebuffer too
+    if (this.fb) {
+      this.fb = new this.fb.constructor(w, h);
+    }
   }
 
   setCameraPosition(x, y, z) {

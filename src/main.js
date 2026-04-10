@@ -60,6 +60,29 @@ try {
   throw new Error('Fantasy console requires 3D GPU support (Three.js)');
 }
 
+// Bake in responsive resize when no fixed ?w= param is provided.
+// Fixed mode (?w=1280&h=720): renderer stays at the given pixel resolution.
+// Responsive mode (default): ResizeObserver drives gpu.resize() whenever the
+// screen container changes size, keeping the backbuffer crisp at full DPR.
+const _isResponsive = !_qs.get('w');
+if (_isResponsive) {
+  const _screenContainer = canvas.parentElement; // .screen-container
+  if (_screenContainer) {
+    new ResizeObserver(entries => {
+      for (const entry of entries) {
+        const { width, height } = entry.contentRect;
+        if (width === 0 || height === 0) continue;
+        const dpr = Math.min(window.devicePixelRatio || 1, 2);
+        const w = Math.round(width * dpr);
+        const h = Math.round(height * dpr);
+        if (w !== canvas.width || h !== canvas.height) {
+          gpu.resize(w, h);
+        }
+      }
+    }).observe(_screenContainer);
+  }
+}
+
 const api = stdApi(gpu);
 const sApi = spriteApi(gpu);
 const threeDApi_instance = threeDApi(gpu);

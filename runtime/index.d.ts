@@ -547,11 +547,100 @@ export declare function uiButtonsModule(ctx: object): object;
 export declare function uiWidgetsModule(ctx: object): object;
 
 // ---------------------------------------------------------------------------
+// Engine adapter — renderer-agnostic API for cart authors
+// ---------------------------------------------------------------------------
+
+/** Opaque material object returned by engine.createMaterial(). */
+export type EngineMaterial = object;
+
+/** Opaque texture object returned by engine.create*Texture(). */
+export type EngineTexture = object;
+
+/** Opaque color object returned by engine.createColor(). */
+export type EngineColor = object;
+
+/** Opaque geometry object returned by engine.createPlaneGeometry(). */
+export type EngineGeometry = object;
+
+export type EngineMaterialType = 'basic' | 'phong' | 'standard';
+export type EngineFilterMode = 'nearest' | 'linear';
+export type EngineWrapMode = 'repeat' | 'clamp';
+export type EngineSideMode = 'front' | 'back' | 'double';
+
+export interface EngineMaterialOptions {
+  map?: EngineTexture;
+  color?: Color | EngineColor;
+  transparent?: boolean;
+  alphaTest?: number;
+  side?: EngineSideMode;
+  roughness?: number;
+  metalness?: number;
+  emissive?: Color;
+  flatShading?: boolean;
+  vertexColors?: boolean;
+}
+
+export interface EngineDataTextureOptions {
+  /** @default 'rgba' */
+  format?: 'rgba';
+  /** @default 'nearest' */
+  filter?: EngineFilterMode;
+  /** @default 'clamp' */
+  wrap?: EngineWrapMode;
+  /** @default true */
+  generateMipmaps?: boolean;
+}
+
+export interface EngineCanvasTextureOptions {
+  filter?: EngineFilterMode;
+  wrap?: EngineWrapMode;
+}
+
+export interface EngineAdapter {
+  /** Create a material of the given type. */
+  createMaterial(type: EngineMaterialType, opts?: EngineMaterialOptions): EngineMaterial;
+  /** Create a GPU texture from raw RGBA pixel data. */
+  createDataTexture(
+    data: Uint8Array | Uint8ClampedArray,
+    width: number,
+    height: number,
+    opts?: EngineDataTextureOptions
+  ): EngineTexture;
+  /** Create a GPU texture from an HTMLCanvasElement. */
+  createCanvasTexture(canvas: HTMLCanvasElement, opts?: EngineCanvasTextureOptions): EngineTexture;
+  /** Clone a texture. */
+  cloneTexture(tex: EngineTexture): EngineTexture;
+  /** Set repeat wrapping and tile count on a texture. */
+  setTextureRepeat(tex: EngineTexture, x: number, y: number): void;
+  /** Mark a texture as needing a GPU re-upload. */
+  invalidateTexture(tex: EngineTexture): void;
+  /** Create an opaque color value from r/g/b components (0–1). */
+  createColor(r: number, g: number, b: number): EngineColor;
+  /** Create a plane geometry. */
+  createPlaneGeometry(
+    width: number,
+    height: number,
+    segX?: number,
+    segY?: number
+  ): EngineGeometry;
+  /** Assign a material to a mesh by its Nova64 mesh ID. */
+  setMeshMaterial(meshId: MeshId, material: EngineMaterial): void;
+  /** Return the current camera world position. */
+  getCameraPosition(): { x: number; y: number; z: number };
+}
+
+export declare const engine: EngineAdapter;
+export declare function initAdapter(gpu: unknown): void;
+
+// ---------------------------------------------------------------------------
 // Global cart API (injected into globalThis at runtime)
 // Augment with: declare global { ... } in your cart's .d.ts if needed.
 // ---------------------------------------------------------------------------
 
 export interface Nova64CartGlobals {
+  // Engine adapter
+  engine: EngineAdapter;
+
   // 3D
   createCube: ThreeDApiInstance['createCube'];
   createSphere: ThreeDApiInstance['createSphere'];

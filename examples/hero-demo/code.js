@@ -137,7 +137,7 @@ void main(){
 function subdivPlane(mesh, w, h, segsX, segsY) {
   if (!mesh) return;
   mesh.geometry.dispose();
-  mesh.geometry = new THREE.PlaneGeometry(w, h, segsX, segsY);
+  mesh.geometry = engine.createPlaneGeometry(w, h, segsX, segsY);
 }
 
 // ── State ──

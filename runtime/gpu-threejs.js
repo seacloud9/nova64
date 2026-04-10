@@ -204,12 +204,46 @@ export class GpuThreeJS {
     };
   }
 
+  // ─── Stage Canvas2D overlay ──────────────────────────────────────────────────
+  // A dedicated transparent canvas placed over the WebGL canvas in the DOM.
+  // Used by Stage, MovieClip, enhanced spr(), blend modes, and filters.
+  // z-index 11 → sits above the Three.js canvas (WebGL + framebuffer overlay).
+  getStageCtx() {
+    if (this._stageCtx) return this._stageCtx;
+    const canvas = document.createElement('canvas');
+    canvas.width = this.fb.width;
+    canvas.height = this.fb.height;
+    canvas.style.cssText =
+      'position:absolute;top:0;left:0;width:100%;height:100%;' +
+      'z-index:11;pointer-events:none;background:transparent;image-rendering:pixelated;';
+    canvas.setAttribute('aria-hidden', 'true');
+    const container = this.canvas.parentElement || document.body;
+    if (getComputedStyle(container).position === 'static') {
+      container.style.position = 'relative';
+    }
+    container.appendChild(canvas);
+    this._stageCanvas = canvas;
+    this._stageCtx = canvas.getContext('2d', { alpha: true });
+    return this._stageCtx;
+  }
+
+  clearStage() {
+    if (this._stageCtx) {
+      this._stageCtx.setTransform(1, 0, 0, 1, 0, 0);
+      this._stageCtx.clearRect(0, 0, this._stageCanvas.width, this._stageCanvas.height);
+    }
+  }
+  // ─────────────────────────────────────────────────────────────────────────────
+
   beginFrame() {
     // Clear sprite batches
     this.spriteBatches.clear();
 
     // Clear 2D framebuffer
     this.fb.fill(0, 0, 0, 0);
+
+    // Clear stage Canvas2D overlay
+    this.clearStage();
   }
 
   endFrame() {

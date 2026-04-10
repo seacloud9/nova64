@@ -1015,6 +1015,16 @@ async function main() {
         }
         break;
 
+      case 'tween':
+        console.log('🎬 Running Tween Engine Tests...');
+        try {
+          const { runTweenTests } = await import('./test-tween.js');
+          results.push(await runTweenTests());
+        } catch (error) {
+          console.log('⚠️  Tween tests not available:', error.message);
+        }
+        break;
+
       case 'all':
       default:
         console.log('🚀 Running All Tests...\n');
@@ -1093,6 +1103,14 @@ async function main() {
           results.push(await runHypeTests());
         } catch (error) {
           console.log('⚠️  HYPE tests not available:', error.message);
+        }
+
+        console.log('\n1️⃣3️⃣ Tween Engine Tests:');
+        try {
+          const { runTweenTests } = await import('./test-tween.js');
+          results.push(await runTweenTests());
+        } catch (error) {
+          console.log('⚠️  Tween tests not available:', error.message);
         }
         break;
     }

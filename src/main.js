@@ -28,6 +28,13 @@ import { wadApi } from '../runtime/wad.js';
 import { manifestApi } from '../runtime/manifest.js';
 import { canvasUIApi } from '../runtime/canvas-ui.js';
 import { hypeApi } from '../runtime/hype.js';
+import { blendApi } from '../runtime/api-blend.js';
+import { stageApi } from '../runtime/stage.js';
+import { movieClipApi } from '../runtime/movie-clip.js';
+import { filtersApi } from '../runtime/api-filters.js';
+import { camera2DApi } from '../runtime/camera-2d.js';
+import { particles2DApi } from '../runtime/api-particles-2d.js';
+import { tweenApi } from '../runtime/tween.js';
 
 const canvas = document.getElementById('screen');
 
@@ -106,6 +113,14 @@ const nftSeedInst = nftSeedApi();
 const wadInst = wadApi();
 const manifestInst = manifestApi();
 const hypeInst = hypeApi();
+// ── 2D Stage & Animation system ──────────────────────────────────────────────
+const blendInst = blendApi(gpu);
+const stageInst = stageApi(gpu);
+const movieClipInst = movieClipApi(gpu);
+const filtersInst = filtersApi(gpu);
+const camera2DInst = camera2DApi(gpu);
+const particles2DInst = particles2DApi(gpu);
+const tweenInst = tweenApi();
 
 // Create UI API - needs to be created after api is fully initialized
 let uiApiInstance;
@@ -135,6 +150,14 @@ nftSeedInst.exposeTo(nova64api);
 wadInst.exposeTo(nova64api);
 manifestInst.exposeTo(nova64api);
 hypeInst.exposeTo(nova64api);
+// ── 2D Stage & Animation system ──────────────────────────────────────────────
+blendInst.exposeTo(nova64api);
+stageInst.exposeTo(nova64api);
+movieClipInst.exposeTo(nova64api);
+filtersInst.exposeTo(nova64api);
+camera2DInst.exposeTo(nova64api);
+particles2DInst.exposeTo(nova64api);
+tweenInst.exposeTo(nova64api);
 
 // Now create UI API after nova64api has rgba8 and other functions
 uiApiInstance = uiApi(gpu, nova64api);

@@ -1205,7 +1205,7 @@ export function hypeApi() {
         hypeReset,
         // Behaviors
         createOscillator,
-        createTween,
+        createTween, // unified version from tween.js
         createTimeTrigger,
         createRandomTrigger,
         createProximityTrigger,

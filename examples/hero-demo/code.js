@@ -142,15 +142,16 @@ function subdivPlane(mesh, w, h, segsX, segsY) {
 
 // ── State ──
 let t = 0;
+let logoId = null;
 
-export function init() {
+export async function init() {
   // Camera
   setCameraPosition(0, 3.5, 12);
   setCameraTarget(0, 1.0, -80);
   setCameraFOV(62);
 
   // Atmosphere
-  setFog(0x020010, 8, 160);
+  setFog(0x020010, 8, 250);
   setAmbientLight(0x0c0030);
   createPointLight(0xff0080, 3.5, 180, [0, 12, -60]);
   createPointLight(0xff5500, 2.0, 200, [0, 30, -120]);
@@ -222,6 +223,18 @@ export function init() {
   for (const pos of cloudPos) {
     const m = getMesh(createPlane(60, 20, 0xffffff, pos));
     if (m) m.material = cMat;
+  }
+
+  // ── NOVA64 LOGO — floating in front of the sun ──
+  // Position z=-100 puts it 25 units in front of the sun core near face (z=-125),
+  // so it is never occluded by opaque sun geometry in the depth buffer.
+  logoId = await loadModel('/assets/glb/nova_64_logo.glb', [24, 4, -55], 22);
+  const logoMesh = getMesh(logoId);
+  if (logoMesh) {
+    const logoMat = createTSLMaterial('rainbow', { speed: 0.5, opacity: 1.0 });
+    logoMesh.traverse(child => {
+      if (child.isMesh) child.material = logoMat;
+    });
   }
 
   // ── PARTICLES — Stars ──
@@ -315,6 +328,7 @@ export function init() {
 
 export function update(dt) {
   t += dt;
+  //if (logoId != null) rotateMesh(logoId, 0, dt * 0.4, 0);
   const cx = Math.sin(t * 0.22) * 2.0;
   const cy = 3.5 + Math.sin(t * 0.1) * 0.4;
   setCameraPosition(cx, cy, 12);

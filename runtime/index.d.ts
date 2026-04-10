@@ -288,7 +288,8 @@ export interface ThreeDApiInstance {
   loadModel(
     url: string,
     position?: [number, number, number],
-    options?: MeshOptions
+    scale?: number,
+    materialOptions?: MeshOptions & { fog?: boolean }
   ): Promise<MeshId>;
   playAnimation(
     meshId: MeshId,

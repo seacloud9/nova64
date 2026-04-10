@@ -19,7 +19,7 @@ This comprehensive guide provides GitHub Copilot with detailed context for devel
 
 ```javascript
 // Core rendering engine
-Three.js ^0.157.0        // 3D graphics, materials, lighting
+Three.js ^0.182.0        // 3D graphics, materials, lighting
 Vite ^5.4.0             // Build system, hot reloading
 ES2022 Modules          // Modern JavaScript features
 
@@ -947,8 +947,7 @@ This section documents a comprehensive plan for systematically enhancing Nova64 
 #### 1.1 Resolve Dependency Conflicts
 
 **File**: pnpm-lock.yaml
-**Issue**: Merge conflict between Three.js v0.182 and v0.157
-**Impact**: Dependency installation may be unreliable
+**Status**: Resolved — Three.js 0.182.0 is the single version in use throughout the project
 
 **Actions**:
 

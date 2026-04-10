@@ -118,6 +118,18 @@
     .nav-links a:hover { color: var(--text); }
     @media (max-width: 900px) { .nav-links { display: none; } }
     .nav-cta { display: flex; align-items: center; gap: 12px; }
+    .lang-switcher {
+      background: rgba(255,255,255,0.05);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      color: var(--text-muted);
+      font-size: 11px;
+      font-family: inherit;
+      padding: 5px 7px;
+      cursor: pointer;
+      letter-spacing: 0.05em;
+    }
+    .lang-switcher:hover { border-color: rgba(255,255,255,0.2); color: var(--text); }
     .btn-primary {
       background: var(--electric); color: #060810;
       font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 13px;
@@ -724,6 +736,144 @@
 </head>
 <body>
 
+<!-- ── I18N STRINGS ── -->
+<!-- To localize: create ./i18n/<lang>.json with key overrides, then add ?lang=<lang> to the URL -->
+<script type="application/json" id="nova64-i18n">
+{
+  "page.title": "NOVA64 // Disc 01 \u2014 The Browser Fantasy Console",
+  "nav.what": "What Is It",
+  "nav.features": "Features",
+  "nav.demos": "Demos",
+  "nav.novaos": "NovaOS",
+  "nav.press": "Press Kit",
+  "nav.github": "GitHub",
+  "nav.launch": "Launch Console",
+  "nav.drawer.launch": "Launch Console \u2192",
+  "hero.badge": "NOVA64 v0.4.8 // MEM CARD DETECTED",
+  "hero.boot.check": "DISC CHECK",
+  "hero.boot.ok": "OK",
+  "hero.h1.html": "Born From<br><span class=\"line-accent\">32-Bit Dreams.</span>",
+  "hero.sub": "The darkness between polygons. The hum of a disc loading. NOVA64 is the fantasy console that never shipped in 1997 \u2014 running live, in your browser, right now.",
+  "hero.cta.launch": "Launch Console",
+  "hero.cta.demo": "Load a Demo",
+  "hero.cta.docs": "Docs",
+  "hero.scroll": "SCROLL",
+  "what.h2": "Everything you remember. Everything they never shipped.",
+  "what.p1": "NOVA64 is the ghost of a console that should have shipped in 1997. Built entirely in JavaScript, it requires no install and runs anywhere a browser runs. Point it at a tab \u2014 and start making games.",
+  "what.p2.html": "Under the hood: <strong>Three.js 0.182.0</strong>, a hot-reloading cart system, voxel engine, physics, spatial audio, and a full sprite pipeline \u2014 all accessible through an API tight enough to fit in a memory card manual.",
+  "features.stamp": "MEM BLOCK 01",
+  "features.h2.html": "The specs they drew<br>on graph paper in \u201896.",
+  "features.sub": "35+ API functions. Every system accounted for. Every shortcut removed. If a 90s dev would have dreamed it, it\u2019s here.",
+  "features.3d.title": "3D Graphics Engine",
+  "features.3d.body": "Hardware-accelerated 3D built on Three.js 0.182.0. Advanced materials, cinematic lighting, 4K shadow maps \u2014 exposed through a dead-simple API.",
+  "features.voxel.title": "Voxel Engine",
+  "features.voxel.body": "Chunked voxel world with biomes, fluid simulation, raycasting, pathfinding, and a full entity-component system. Think Minecraft in 50 lines.",
+  "features.physics.title": "Physics & Collision",
+  "features.physics.body": "AABB collision, gravity, raycasting, and spatial partitioning. Plug in setCollisionMap() and your world becomes solid.",
+  "features.audio.title": "Spatial Audio",
+  "features.audio.body": "WebAudio with 3D positioning, named sound presets (jump, coin, explosion...), and a simple sfx() call to trigger any sound.",
+  "features.input.title": "Input System",
+  "features.input.body": "WASD + gamepad + mouse in a unified API. key(), btn(), btnp() \u2014 works the same across keyboard and controller.",
+  "features.gameutils.title": "Game Utils",
+  "features.gameutils.body": "Cooldowns, hit states, spawners, object pools, floating text, minimap, state machines, timers \u2014 the full toolkit.",
+  "features.novaos_s.title": "NovaOS Shell",
+  "features.novaos_s.body": "A retro operating system skin with a filesystem, app launcher, and terminal. Runs carts natively. Ships with the console.",
+  "features.dev.title": "Developer Tools",
+  "features.dev.body": "In-browser sprite editor, real-time cart hot reload, FPS counter, triangle count \u2014 all accessible without leaving the tab.",
+  "features.3d.list.1": "Cube, Sphere, Plane, Cylinder, Cone, Capsule, Torus primitives",
+  "features.3d.list.2": "Holographic, metallic, and emissive material presets",
+  "features.3d.list.3": "Dynamic camera: position, target, FOV, smooth transitions",
+  "features.3d.list.4": "Atmospheric fog, ambient light, point lights",
+  "features.3d.list.5": "Space, gradient, and solid skybox generators",
+  "features.3d.list.6": "Bloom, vignette, glitch, chromatic aberration post-FX",
+  "features.3d.list.7": "N64 low-poly mode, PSX dither mode",
+  "features.3d.list.8": "Hot-reloading cart system \u2014 save to reload",
+  "novaos.list.1": "Window manager with draggable apps & z-ordering",
+  "novaos.list.2": "Built-in file browser & text editor",
+  "novaos.list.3": "Native cart launcher with live preview",
+  "novaos.list.4": "Settings panel with display & audio controls",
+  "novaos.list.5": "Mobile-optimized shell variant",
+  "demos.fps.name": "FPS Combat",
+  "demos.fps.desc": "First-person shooter with raycasting & particle explosions",
+  "demos.crystal.name": "Crystal Cathedral",
+  "demos.crystal.desc": "Ultimate graphics showcase. Holographic architecture & dynamic lighting",
+  "demos.noir.name": "Noir Adventure",
+  "demos.noir.desc": "Comic-style adventure with cel-shading & dynamic panels",
+  "demos.fzero.name": "F-Zero Nova",
+  "demos.fzero.desc": "High-speed anti-grav racing through futuristic circuits",
+  "demos.starfox.name": "Star Fox Nova",
+  "demos.starfox.desc": "Epic rail shooter with squadron battles & boss fights",
+  "demos.cyber.name": "Cyberpunk City",
+  "demos.cyber.desc": "Neon-soaked open world with volumetric rain & atmosphere",
+  "demos.voxel.name": "Voxel World",
+  "demos.voxel.desc": "Procedural terrain, biomes & real-time block editing",
+  "demos.plumber.name": "Super Plumber 64",
+  "demos.plumber.desc": "3D platformer with coins, enemies & N64-era charm",
+  "demos.strider.name": "Knight Strider",
+  "demos.strider.desc": "Fantasy sword-fighter with spell effects & dungeon crawling",
+  "demos.demoscene.name": "Tron Demoscene",
+  "demos.demoscene.desc": "Audio-reactive visuals & real-time shader art",
+  "demos.model.name": "Model Viewer",
+  "demos.model.desc": "Rigged .glb model loaded with full skeletal animation",
+  "demos.pbr.name": "PBR Showcase",
+  "demos.pbr.desc": "Metalness & roughness grid with IBL reflections",
+  "press.github.link": "GitHub Repository",
+  "press.apidocs.link": "API Documentation",
+  "press.console.link": "Live Console",
+  "press.novaos.link": "NovaOS Shell",
+  "demos.stamp": "DISC VAULT",
+  "demos.h2": "Insert Disc. Begin.",
+  "demos.sub": "Every title in the vault loads cold. No waiting. No install. One click \u2014 and the dark fades to game.",
+  "demos.browse": "Browse All Demos \u2192",
+  "novaos.stamp": "BONUS DISC",
+  "novaos.h2.html": "System menu.<br>Dark as the disc.",
+  "novaos.body": "NovaOS is what happens when a love of Mac OS 9, PS1 system menus, and dark terminals converge at 2am. Boot it \u2014 and the past comes alive in your tab.",
+  "novaos.cta": "Boot NovaOS",
+  "why.stamp": "DEV.LOG",
+  "why.h2": "Why we built this.",
+  "why.phrase1": "No disc tray.\nJust the code.",
+  "why.phrase2": "Retro soul,\nmodern GPU.",
+  "why.phrase3": "Born in shadows.\nRuns in light.",
+  "why.quote.html": "\u201cEvery disc you ever loaded began the same way. A logo. A boot chime. The dark \u2014 then everything. <strong>NOVA64 rebuilds that ritual for the browser.</strong> One import. One tab. The game begins.\u201d",
+  "tech.threejs": "Three.js 0.182.0",
+  "tech.webgl2": "WebGL2",
+  "tech.webaudio": "Web Audio API",
+  "tech.esmodules": "ES Modules",
+  "tech.vite": "Vite 5.4",
+  "tech.gsap": "GSAP 3",
+  "tech.nodeps": "Zero Runtime Deps",
+  "press.stamp": "PRESS KIT",
+  "press.h2": "Assets & copy.",
+  "press.sub": "Everything you need to write about NOVA64. High-res assets, approved copy, and technical specs.",
+  "press.logo.label": "Primary Logo",
+  "press.console.label": "Console Render",
+  "press.cart.label": "Cart Art",
+  "press.mascot.label": "Mascot",
+  "press.blurb.title": "Brand Description",
+  "press.blurb.copy": "COPY",
+  "press.blurb.text": "NOVA64 is a browser-native 3D fantasy console built on Three.js. It lets developers build N64/PlayStation-era games in plain JavaScript with zero WebGL boilerplate. Over 35 API functions cover 3D graphics, audio, physics, input, voxel worlds, and a retro OS shell \u2014 all running live in the browser.",
+  "press.specs.title": "Technical Summary",
+  "press.spec.1": "Three.js 0.182.0 3D renderer (WebGL2 + Canvas2D fallbacks)",
+  "press.spec.2": "Chunked voxel engine with fluid, lighting & pathfinding",
+  "press.spec.3": "AABB physics with raycasting & spatial partitioning",
+  "press.spec.4": "WebAudio spatial sound with named preset library",
+  "press.spec.5": "Hot-reloading ES module cart system via Vite 5.4",
+  "press.spec.6": "NovaOS shell: window manager, file browser, cart launcher",
+  "cta.stamp": "BOOT SEQUENCE",
+  "cta.h2.html": "One more game.<br><span class=\"line-accent\">Press start.</span>",
+  "cta.sub": "No install disc. No memory card. Just the code and the dark.",
+  "cta.launch": "Launch Console",
+  "cta.docs": "Read the Docs",
+  "cta.github": "Star on GitHub",
+  "cta.note": "MIT License \u2014 fork it, ship it, make something weird.",
+  "footer.brand": "The browser console built from \u201997 dreams. Zero boilerplate. Zero compromise.",
+  "footer.col.product": "PRODUCT",
+  "footer.col.develop": "DEVELOP",
+  "footer.col.links": "LINKS",
+  "footer.tagline": "No memory cards were corrupted in the making of this project."
+}
+</script>
+
 <!-- ── NAV ── -->
 <nav id="nav">
   <div class="container">
@@ -732,18 +882,23 @@
       NOVA64
     </a>
     <div class="nav-links">
-      <a href="#what">What Is It</a>
-      <a href="#features">Features</a>
-      <a href="#demos">Demos</a>
-      <a href="#novaos">NovaOS</a>
-      <a href="#press">Press Kit</a>
+      <a href="#what" data-i18n="nav.what">What Is It</a>
+      <a href="#features" data-i18n="nav.features">Features</a>
+      <a href="#demos" data-i18n="nav.demos">Demos</a>
+      <a href="#novaos" data-i18n="nav.novaos">NovaOS</a>
+      <a href="#press" data-i18n="nav.press">Press Kit</a>
     </div>
     <div class="nav-cta">
       <a href="https://github.com/seacloud9/nova64" target="_blank" rel="noopener" class="btn-ghost-sm">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
-        GitHub
+        <span data-i18n="nav.github">GitHub</span>
       </a>
-      <a href="./console.html" class="btn-primary">Launch Console</a>
+      <select id="lang-select" class="lang-switcher" aria-label="Language">
+        <option value="en">EN</option>
+        <option value="es">ES</option>
+        <option value="ja">JA</option>
+      </select>
+      <a href="./console.html" class="btn-primary" data-i18n="nav.launch">Launch Console</a>
     </div>
     <button class="nav-hamburger" id="nav-toggle" aria-label="Menu">
       <span></span><span></span><span></span>
@@ -751,12 +906,12 @@
   </div>
 </nav>
 <div id="nav-drawer">
-  <a href="#what">What Is It</a>
-  <a href="#features">Features</a>
-  <a href="#demos">Demos</a>
-  <a href="#novaos">NovaOS</a>
-  <a href="#press">Press Kit</a>
-  <a href="./console.html" style="color:var(--electric);margin-top:8px;">Launch Console &rarr;</a>
+  <a href="#what" data-i18n="nav.what">What Is It</a>
+  <a href="#features" data-i18n="nav.features">Features</a>
+  <a href="#demos" data-i18n="nav.demos">Demos</a>
+  <a href="#novaos" data-i18n="nav.novaos">NovaOS</a>
+  <a href="#press" data-i18n="nav.press">Press Kit</a>
+  <a href="./console.html" style="color:var(--electric);margin-top:8px;" data-i18n="nav.drawer.launch">Launch Console &rarr;</a>
 </div>
 
 <!-- ── HERO ── -->
@@ -778,27 +933,27 @@
       <div class="hero-content">
         <div class="hero-badge">
           <span class="badge-dot"></span>
-          NOVA64 v0.2.0 // MEM CARD DETECTED
+          <span data-i18n="hero.badge">NOVA64 v0.4.8 // MEM CARD DETECTED</span>
         </div>
         <div class="hero-boot">
-          <span>DISC CHECK</span>
+          <span data-i18n="hero.boot.check">DISC CHECK</span>
           <div class="hero-boot-bar"><div class="hero-boot-fill"></div></div>
-          <span class="hero-boot-ok">OK</span>
+          <span class="hero-boot-ok" data-i18n="hero.boot.ok">OK</span>
         </div>
-        <h1 class="hero-h1">
+        <h1 class="hero-h1" data-i18n-html="hero.h1.html">
           Born From<br>
           <span class="line-accent">32-Bit Dreams.</span>
         </h1>
-        <p class="hero-sub">The darkness between polygons. The hum of a disc loading. NOVA64 is the fantasy console that never shipped in 1997 &mdash; running live, in your browser, right now.</p>
+        <p class="hero-sub" data-i18n="hero.sub">The darkness between polygons. The hum of a disc loading. NOVA64 is the fantasy console that never shipped in 1997 &mdash; running live, in your browser, right now.</p>
         <div class="hero-ctas">
           <a href="./console.html" class="btn-hero-primary">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>
-            Launch Console
+            <span data-i18n="hero.cta.launch">Launch Console</span>
           </a>
-          <a href="#demos" class="btn-hero-secondary">Load a Demo</a>
+          <a href="#demos" class="btn-hero-secondary" data-i18n="hero.cta.demo">Load a Demo</a>
           <a href="./docs/index.html" class="btn-hero-ghost">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-            Docs
+            <span data-i18n="hero.cta.docs">Docs</span>
           </a>
         </div>
       </div>
@@ -806,7 +961,7 @@
   </div>
   <div class="hero-scroll" id="hero-scroll">
     <div class="hero-scroll-line"></div>
-    SCROLL
+    <span data-i18n="hero.scroll">SCROLL</span>
   </div>
 </section>
 
@@ -816,10 +971,10 @@
     <div class="what-inner">
       <div class="reveal">
         <span class="what-quote-mark">&ldquo;</span>
-        <h2 class="what-pull-quote">Everything you remember. Everything they never shipped.</h2>
+        <h2 class="what-pull-quote" data-i18n="what.h2">Everything you remember. Everything they never shipped.</h2>
         <div class="what-body">
-          <p>NOVA64 is the ghost of a console that should have shipped in 1997. Built entirely in JavaScript, it requires no install and runs anywhere a browser runs. Point it at a tab &mdash; and start making games.</p>
-          <p>Under the hood: <strong>Three.js r157</strong>, a hot-reloading cart system, voxel engine, physics, spatial audio, and a full sprite pipeline &mdash; all accessible through an API tight enough to fit in a memory card manual.</p>
+          <p data-i18n="what.p1">NOVA64 is the ghost of a console that should have shipped in 1997. Built entirely in JavaScript, it requires no install and runs anywhere a browser runs. Point it at a tab &mdash; and start making games.</p>
+          <p data-i18n-html="what.p2.html">Under the hood: <strong>Three.js 0.182.0</strong>, a hot-reloading cart system, voxel engine, physics, spatial audio, and a full sprite pipeline &mdash; all accessible through an API tight enough to fit in a memory card manual.</p>
         </div>
         <div class="code-block">
           <div class="code-comment">// Your entire game in three functions</div>
@@ -848,58 +1003,58 @@
 <section id="features">
   <div class="container">
     <div class="features-header reveal">
-      <span class="stamp">MEM BLOCK 01</span>
-      <h2 class="section-title">The specs they drew<br>on graph paper in &rsquo;96.</h2>
-      <p class="section-sub">35+ API functions. Every system accounted for. Every shortcut removed. If a 90s dev would have dreamed it, it&rsquo;s here.</p>
+      <span class="stamp" data-i18n="features.stamp">MEM BLOCK 01</span>
+      <h2 class="section-title" data-i18n-html="features.h2.html">The specs they drew<br>on graph paper in &rsquo;96.</h2>
+      <p class="section-sub" data-i18n="features.sub">35+ API functions. Every system accounted for. Every shortcut removed. If a 90s dev would have dreamed it, it&rsquo;s here.</p>
     </div>
     <div class="features-grid">
       <div class="feat-card feat-3d feat-card-large reveal">
         <div class="feat-deco"></div>
         <div class="feat-title">
-          3D Graphics Engine
+          <span data-i18n="features.3d.title">3D Graphics Engine</span>
           <span class="feat-badge">THREE.JS</span>
         </div>
-        <p class="feat-body">Hardware-accelerated 3D built on Three.js r157. Advanced materials, cinematic lighting, 4K shadow maps &mdash; exposed through a dead-simple API.</p>
+        <p class="feat-body" data-i18n="features.3d.body">Hardware-accelerated 3D built on Three.js 0.182.0. Advanced materials, cinematic lighting, 4K shadow maps &mdash; exposed through a dead-simple API.</p>
         <ul class="feat-list">
-          <li>Cube, Sphere, Plane, Cylinder, Cone, Capsule, Torus primitives</li>
-          <li>Holographic, metallic, and emissive material presets</li>
-          <li>Dynamic camera: position, target, FOV, smooth transitions</li>
-          <li>Atmospheric fog, ambient light, point lights</li>
-          <li>Space, gradient, and solid skybox generators</li>
-          <li>Bloom, vignette, glitch, chromatic aberration post-FX</li>
-          <li>N64 low-poly mode, PSX dither mode</li>
-          <li>Hot-reloading cart system &mdash; save to reload</li>
+          <li data-i18n="features.3d.list.1">Cube, Sphere, Plane, Cylinder, Cone, Capsule, Torus primitives</li>
+          <li data-i18n="features.3d.list.2">Holographic, metallic, and emissive material presets</li>
+          <li data-i18n="features.3d.list.3">Dynamic camera: position, target, FOV, smooth transitions</li>
+          <li data-i18n="features.3d.list.4">Atmospheric fog, ambient light, point lights</li>
+          <li data-i18n="features.3d.list.5">Space, gradient, and solid skybox generators</li>
+          <li data-i18n="features.3d.list.6">Bloom, vignette, glitch, chromatic aberration post-FX</li>
+          <li data-i18n="features.3d.list.7">N64 low-poly mode, PSX dither mode</li>
+          <li data-i18n="features.3d.list.8">Hot-reloading cart system &mdash; save to reload</li>
         </ul>
       </div>
       <div class="feat-col-stack">
         <div class="feat-card feat-voxel reveal">
-          <div class="feat-title">Voxel Engine</div>
-          <p class="feat-body">Chunked voxel world with biomes, fluid simulation, raycasting, pathfinding, and a full entity-component system. Think Minecraft in 50 lines.</p>
+          <div class="feat-title" data-i18n="features.voxel.title">Voxel Engine</div>
+          <p class="feat-body" data-i18n="features.voxel.body">Chunked voxel world with biomes, fluid simulation, raycasting, pathfinding, and a full entity-component system. Think Minecraft in 50 lines.</p>
         </div>
         <div class="feat-card feat-physics reveal">
-          <div class="feat-title">Physics &amp; Collision</div>
-          <p class="feat-body">AABB collision, gravity, raycasting, and spatial partitioning. Plug in setCollisionMap() and your world becomes solid.</p>
+          <div class="feat-title" data-i18n="features.physics.title">Physics &amp; Collision</div>
+          <p class="feat-body" data-i18n="features.physics.body">AABB collision, gravity, raycasting, and spatial partitioning. Plug in setCollisionMap() and your world becomes solid.</p>
         </div>
       </div>
       <div class="feat-card feat-audio reveal">
-        <div class="feat-title">Spatial Audio</div>
-        <p class="feat-body">WebAudio with 3D positioning, named sound presets (jump, coin, explosion...), and a simple sfx() call to trigger any sound.</p>
+        <div class="feat-title" data-i18n="features.audio.title">Spatial Audio</div>
+        <p class="feat-body" data-i18n="features.audio.body">WebAudio with 3D positioning, named sound presets (jump, coin, explosion...), and a simple sfx() call to trigger any sound.</p>
       </div>
       <div class="feat-card feat-input reveal">
-        <div class="feat-title">Input System</div>
-        <p class="feat-body">WASD + gamepad + mouse in a unified API. key(), btn(), btnp() &mdash; works the same across keyboard and controller.</p>
+        <div class="feat-title" data-i18n="features.input.title">Input System</div>
+        <p class="feat-body" data-i18n="features.input.body">WASD + gamepad + mouse in a unified API. key(), btn(), btnp() &mdash; works the same across keyboard and controller.</p>
       </div>
       <div class="feat-card feat-fx reveal">
-        <div class="feat-title">Game Utils</div>
-        <p class="feat-body">Cooldowns, hit states, spawners, object pools, floating text, minimap, state machines, timers &mdash; the full toolkit.</p>
+        <div class="feat-title" data-i18n="features.gameutils.title">Game Utils</div>
+        <p class="feat-body" data-i18n="features.gameutils.body">Cooldowns, hit states, spawners, object pools, floating text, minimap, state machines, timers &mdash; the full toolkit.</p>
       </div>
       <div class="feat-card feat-os reveal">
-        <div class="feat-title">NovaOS Shell</div>
-        <p class="feat-body">A retro operating system skin with a filesystem, app launcher, and terminal. Runs carts natively. Ships with the console.</p>
+        <div class="feat-title" data-i18n="features.novaos_s.title">NovaOS Shell</div>
+        <p class="feat-body" data-i18n="features.novaos_s.body">A retro operating system skin with a filesystem, app launcher, and terminal. Runs carts natively. Ships with the console.</p>
       </div>
       <div class="feat-card feat-dev reveal">
-        <div class="feat-title">Developer Tools</div>
-        <p class="feat-body">In-browser sprite editor, real-time cart hot reload, FPS counter, triangle count &mdash; all accessible without leaving the tab.</p>
+        <div class="feat-title" data-i18n="features.dev.title">Developer Tools</div>
+        <p class="feat-body" data-i18n="features.dev.body">In-browser sprite editor, real-time cart hot reload, FPS counter, triangle count &mdash; all accessible without leaving the tab.</p>
       </div>
     </div>
   </div>
@@ -910,11 +1065,11 @@
   <div class="container">
     <div class="demos-header">
       <div class="demos-header-left reveal">
-        <span class="stamp">DISC VAULT</span>
-        <h2 class="section-title">Insert Disc. Begin.</h2>
-        <p class="demos-sub">Every title in the vault loads cold. No waiting. No install. One click &mdash; and the dark fades to game.</p>
+        <span class="stamp" data-i18n="demos.stamp">DISC VAULT</span>
+        <h2 class="section-title" data-i18n="demos.h2">Insert Disc. Begin.</h2>
+        <p class="demos-sub" data-i18n="demos.sub">Every title in the vault loads cold. No waiting. No install. One click &mdash; and the dark fades to game.</p>
       </div>
-      <a href="./console.html" class="btn-outline reveal">Browse All Demos &rarr;</a>
+      <a href="./console.html" class="btn-outline reveal" data-i18n="demos.browse">Browse All Demos &rarr;</a>
     </div>
     <div class="demo-grid">
       <div class="demo-card demo-fps reveal" onclick="location.href='./console.html?demo=fps-demo-3d'">
@@ -923,8 +1078,8 @@
           <div class="demo-play-btn">&#9654;</div>
         </div>
         <div class="demo-info">
-          <div class="demo-name">FPS Combat</div>
-          <div class="demo-desc">First-person shooter with raycasting &amp; particle explosions</div>
+          <div class="demo-name" data-i18n="demos.fps.name">FPS Combat</div>
+          <div class="demo-desc" data-i18n="demos.fps.desc">First-person shooter with raycasting &amp; particle explosions</div>
         </div>
       </div>
       <div class="demo-card demo-crystal demo-featured reveal" onclick="location.href='./console.html?demo=crystal-cathedral-3d'">
@@ -933,8 +1088,8 @@
           <div class="demo-play-btn">&#9654;</div>
         </div>
         <div class="demo-info">
-          <div class="demo-name">Crystal Cathedral</div>
-          <div class="demo-desc">Ultimate graphics showcase. Holographic architecture &amp; dynamic lighting</div>
+          <div class="demo-name" data-i18n="demos.crystal.name">Crystal Cathedral</div>
+          <div class="demo-desc" data-i18n="demos.crystal.desc">Ultimate graphics showcase. Holographic architecture &amp; dynamic lighting</div>
         </div>
       </div>
       <div class="demo-card demo-noir reveal" onclick="location.href='./console.html?demo=adventure-comic-3d'">
@@ -943,8 +1098,8 @@
           <div class="demo-play-btn">&#9654;</div>
         </div>
         <div class="demo-info">
-          <div class="demo-name">Noir Adventure</div>
-          <div class="demo-desc">Comic-style adventure with cel-shading &amp; dynamic panels</div>
+          <div class="demo-name" data-i18n="demos.noir.name">Noir Adventure</div>
+          <div class="demo-desc" data-i18n="demos.noir.desc">Comic-style adventure with cel-shading &amp; dynamic panels</div>
         </div>
       </div>
       <div class="demo-card demo-fzero demo-featured reveal" onclick="location.href='./console.html?demo=f-zero-nova-3d'">
@@ -953,8 +1108,8 @@
           <div class="demo-play-btn">&#9654;</div>
         </div>
         <div class="demo-info">
-          <div class="demo-name">F-Zero Nova</div>
-          <div class="demo-desc">High-speed anti-grav racing through futuristic circuits</div>
+          <div class="demo-name" data-i18n="demos.fzero.name">F-Zero Nova</div>
+          <div class="demo-desc" data-i18n="demos.fzero.desc">High-speed anti-grav racing through futuristic circuits</div>
         </div>
       </div>
       <div class="demo-card demo-space reveal" onclick="location.href='./console.html?demo=star-fox-nova-3d'">
@@ -963,8 +1118,8 @@
           <div class="demo-play-btn">&#9654;</div>
         </div>
         <div class="demo-info">
-          <div class="demo-name">Star Fox Nova</div>
-          <div class="demo-desc">Epic rail shooter with squadron battles &amp; boss fights</div>
+          <div class="demo-name" data-i18n="demos.starfox.name">Star Fox Nova</div>
+          <div class="demo-desc" data-i18n="demos.starfox.desc">Epic rail shooter with squadron battles &amp; boss fights</div>
         </div>
       </div>
       <div class="demo-card demo-cyber demo-featured reveal" onclick="location.href='./console.html?demo=cyberpunk-city-3d'">
@@ -973,8 +1128,8 @@
           <div class="demo-play-btn">&#9654;</div>
         </div>
         <div class="demo-info">
-          <div class="demo-name">Cyberpunk City</div>
-          <div class="demo-desc">Neon-soaked open world with volumetric rain &amp; atmosphere</div>
+          <div class="demo-name" data-i18n="demos.cyber.name">Cyberpunk City</div>
+          <div class="demo-desc" data-i18n="demos.cyber.desc">Neon-soaked open world with volumetric rain &amp; atmosphere</div>
         </div>
       </div>
       <div class="demo-card demo-voxel reveal" onclick="location.href='./console.html?demo=minecraft-demo'">
@@ -983,8 +1138,8 @@
           <div class="demo-play-btn">&#9654;</div>
         </div>
         <div class="demo-info">
-          <div class="demo-name">Voxel World</div>
-          <div class="demo-desc">Procedural terrain, biomes &amp; real-time block editing</div>
+          <div class="demo-name" data-i18n="demos.voxel.name">Voxel World</div>
+          <div class="demo-desc" data-i18n="demos.voxel.desc">Procedural terrain, biomes &amp; real-time block editing</div>
         </div>
       </div>
       <div class="demo-card demo-plumber reveal" onclick="location.href='./console.html?demo=super-plumber-64'">
@@ -993,8 +1148,8 @@
           <div class="demo-play-btn">&#9654;</div>
         </div>
         <div class="demo-info">
-          <div class="demo-name">Super Plumber 64</div>
-          <div class="demo-desc">3D platformer with coins, enemies &amp; N64-era charm</div>
+          <div class="demo-name" data-i18n="demos.plumber.name">Super Plumber 64</div>
+          <div class="demo-desc" data-i18n="demos.plumber.desc">3D platformer with coins, enemies &amp; N64-era charm</div>
         </div>
       </div>
       <div class="demo-card demo-strider reveal" onclick="location.href='./console.html?demo=strider-demo-3d'">
@@ -1003,8 +1158,8 @@
           <div class="demo-play-btn">&#9654;</div>
         </div>
         <div class="demo-info">
-          <div class="demo-name">Knight Strider</div>
-          <div class="demo-desc">Fantasy sword-fighter with spell effects &amp; dungeon crawling</div>
+          <div class="demo-name" data-i18n="demos.strider.name">Knight Strider</div>
+          <div class="demo-desc" data-i18n="demos.strider.desc">Fantasy sword-fighter with spell effects &amp; dungeon crawling</div>
         </div>
       </div>
       <div class="demo-card demo-demoscene demo-featured reveal" onclick="location.href='./console.html?demo=demoscene'">
@@ -1013,8 +1168,8 @@
           <div class="demo-play-btn">&#9654;</div>
         </div>
         <div class="demo-info">
-          <div class="demo-name">Tron Demoscene</div>
-          <div class="demo-desc">Audio-reactive visuals &amp; real-time shader art</div>
+          <div class="demo-name" data-i18n="demos.demoscene.name">Tron Demoscene</div>
+          <div class="demo-desc" data-i18n="demos.demoscene.desc">Audio-reactive visuals &amp; real-time shader art</div>
         </div>
       </div>
       <div class="demo-card demo-model reveal" onclick="location.href='./console.html?demo=model-viewer-3d'">
@@ -1023,8 +1178,8 @@
           <div class="demo-play-btn">&#9654;</div>
         </div>
         <div class="demo-info">
-          <div class="demo-name">Model Viewer</div>
-          <div class="demo-desc">Rigged .glb model loaded with full skeletal animation</div>
+          <div class="demo-name" data-i18n="demos.model.name">Model Viewer</div>
+          <div class="demo-desc" data-i18n="demos.model.desc">Rigged .glb model loaded with full skeletal animation</div>
         </div>
       </div>
       <div class="demo-card demo-pbr reveal" onclick="location.href='./console.html?demo=pbr-showcase'">
@@ -1033,8 +1188,8 @@
           <div class="demo-play-btn">&#9654;</div>
         </div>
         <div class="demo-info">
-          <div class="demo-name">PBR Showcase</div>
-          <div class="demo-desc">Metalness &amp; roughness grid with IBL reflections</div>
+          <div class="demo-name" data-i18n="demos.pbr.name">PBR Showcase</div>
+          <div class="demo-desc" data-i18n="demos.pbr.desc">Metalness &amp; roughness grid with IBL reflections</div>
         </div>
       </div>
     </div>
@@ -1049,18 +1204,18 @@
         <img src="./assets/novaOS/nova64Console.png" alt="NovaOS Shell" class="novaos-img" id="novaos-img" />
       </div>
       <div class="novaos-content reveal">
-        <span class="stamp">BONUS DISC</span>
-        <h2 class="novaos-title">System menu.<br>Dark as the disc.</h2>
-        <p class="novaos-body">NovaOS is what happens when a love of Mac OS 9, PS1 system menus, and dark terminals converge at 2am. Boot it &mdash; and the past comes alive in your tab.</p>
+        <span class="stamp" data-i18n="novaos.stamp">BONUS DISC</span>
+        <h2 class="novaos-title" data-i18n-html="novaos.h2.html">System menu.<br>Dark as the disc.</h2>
+        <p class="novaos-body" data-i18n="novaos.body">NovaOS is what happens when a love of Mac OS 9, PS1 system menus, and dark terminals converge at 2am. Boot it &mdash; and the past comes alive in your tab.</p>
         <ul class="novaos-list">
-          <li><span class="dot"></span>Window manager with draggable apps &amp; z-ordering</li>
-          <li><span class="dot"></span>Built-in file browser &amp; text editor</li>
-          <li><span class="dot"></span>Native cart launcher with live preview</li>
-          <li><span class="dot"></span>Settings panel with display &amp; audio controls</li>
-          <li><span class="dot"></span>Mobile-optimized shell variant <span class="coming-soon">BETA</span></li>
+          <li><span class="dot"></span><span data-i18n="novaos.list.1">Window manager with draggable apps &amp; z-ordering</span></li>
+          <li><span class="dot"></span><span data-i18n="novaos.list.2">Built-in file browser &amp; text editor</span></li>
+          <li><span class="dot"></span><span data-i18n="novaos.list.3">Native cart launcher with live preview</span></li>
+          <li><span class="dot"></span><span data-i18n="novaos.list.4">Settings panel with display &amp; audio controls</span></li>
+          <li><span class="dot"></span><span data-i18n="novaos.list.5">Mobile-optimized shell variant</span> <span class="coming-soon">BETA</span></li>
         </ul>
         <a href="./os9-shell/index.html" class="btn-novaos">
-          Boot NovaOS
+          <span data-i18n="novaos.cta">Boot NovaOS</span>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
         </a>
       </div>
@@ -1072,32 +1227,32 @@
 <section id="why">
   <div class="container">
     <div class="why-header reveal">
-      <span class="stamp">DEV.LOG</span>
-      <h2 class="section-title">Why we built this.</h2>
+      <span class="stamp" data-i18n="why.stamp">DEV.LOG</span>
+      <h2 class="section-title" data-i18n="why.h2">Why we built this.</h2>
     </div>
     <div class="why-phrases">
       <div class="why-phrase reveal">
-        <div class="why-phrase-text">No disc tray.&#10;Just the code.</div>
+        <div class="why-phrase-text" data-i18n="why.phrase1">No disc tray.&#10;Just the code.</div>
       </div>
       <div class="why-phrase reveal">
-        <div class="why-phrase-text">Retro soul,&#10;modern GPU.</div>
+        <div class="why-phrase-text" data-i18n="why.phrase2">Retro soul,&#10;modern GPU.</div>
       </div>
       <div class="why-phrase reveal">
-        <div class="why-phrase-text">Born in shadows.&#10;Runs in light.</div>
+        <div class="why-phrase-text" data-i18n="why.phrase3">Born in shadows.&#10;Runs in light.</div>
       </div>
     </div>
     <div class="why-manifesto reveal">
-      <blockquote>
+      <blockquote data-i18n-html="why.quote.html">
         &ldquo;Every disc you ever loaded began the same way. A logo. A boot chime. The dark &mdash; then everything. <strong>NOVA64 rebuilds that ritual for the browser.</strong> One import. One tab. The game begins.&rdquo;
       </blockquote>
       <div class="tech-strip">
-        <span class="tech-item">Three.js r157</span>
-        <span class="tech-item">WebGL2</span>
-        <span class="tech-item">Web Audio API</span>
-        <span class="tech-item">ES Modules</span>
-        <span class="tech-item">Vite 5.4</span>
-        <span class="tech-item">GSAP 3</span>
-        <span class="tech-item">Zero Runtime Deps</span>
+        <span class="tech-item" data-i18n="tech.threejs">Three.js 0.182.0</span>
+        <span class="tech-item" data-i18n="tech.webgl2">WebGL2</span>
+        <span class="tech-item" data-i18n="tech.webaudio">Web Audio API</span>
+        <span class="tech-item" data-i18n="tech.esmodules">ES Modules</span>
+        <span class="tech-item" data-i18n="tech.vite">Vite 5.4</span>
+        <span class="tech-item" data-i18n="tech.gsap">GSAP 3</span>
+        <span class="tech-item" data-i18n="tech.nodeps">Zero Runtime Deps</span>
       </div>
     </div>
   </div>
@@ -1107,9 +1262,9 @@
 <section id="press">
   <div class="container">
     <div class="press-header reveal">
-      <span class="stamp">PRESS KIT</span>
-      <h2 class="section-title">Assets &amp; copy.</h2>
-      <p class="section-sub">Everything you need to write about NOVA64. High-res assets, approved copy, and technical specs.</p>
+      <span class="stamp" data-i18n="press.stamp">PRESS KIT</span>
+      <h2 class="section-title" data-i18n="press.h2">Assets &amp; copy.</h2>
+      <p class="section-sub" data-i18n="press.sub">Everything you need to write about NOVA64. High-res assets, approved copy, and technical specs.</p>
     </div>
     <div class="press-assets-grid">
       <div class="press-asset reveal">
@@ -1117,7 +1272,7 @@
           <img src="./assets/novaOS/nova64Logo.png" alt="NOVA64 Logo" />
         </div>
         <div class="press-asset-info">
-          <span class="press-asset-label">Primary Logo</span>
+          <span class="press-asset-label" data-i18n="press.logo.label">Primary Logo</span>
           <a href="./assets/novaOS/nova64Logo.png" download class="press-download">&#8595; PNG</a>
         </div>
       </div>
@@ -1126,7 +1281,7 @@
           <img src="./assets/novaOS/nova64Console1.webp" alt="Console Render" />
         </div>
         <div class="press-asset-info">
-          <span class="press-asset-label">Console Render</span>
+          <span class="press-asset-label" data-i18n="press.console.label">Console Render</span>
           <a href="./assets/novaOS/nova64Console1.webp" download class="press-download">&#8595; WEBP</a>
         </div>
       </div>
@@ -1135,7 +1290,7 @@
           <img src="./assets/novaOS/nova64Cart.png" alt="Cartridge Art" />
         </div>
         <div class="press-asset-info">
-          <span class="press-asset-label">Cart Art</span>
+          <span class="press-asset-label" data-i18n="press.cart.label">Cart Art</span>
           <a href="./assets/novaOS/nova64Cart.png" download class="press-download">&#8595; PNG</a>
         </div>
       </div>
@@ -1144,7 +1299,7 @@
           <img src="./assets/novaOS/novaMascot.png" alt="Nova Mascot" />
         </div>
         <div class="press-asset-info">
-          <span class="press-asset-label">Mascot</span>
+          <span class="press-asset-label" data-i18n="press.mascot.label">Mascot</span>
           <a href="./assets/novaOS/novaMascot.png" download class="press-download">&#8595; PNG</a>
         </div>
       </div>
@@ -1152,34 +1307,34 @@
     <div class="press-copy-grid">
       <div class="press-copy-block reveal">
         <div class="press-copy-title">
-          Brand Description
-          <button class="copy-btn" id="copy-blurb-btn">COPY</button>
+          <span data-i18n="press.blurb.title">Brand Description</span>
+          <button class="copy-btn" id="copy-blurb-btn" data-i18n="press.blurb.copy">COPY</button>
         </div>
-        <p class="press-blurb" id="press-blurb-text">NOVA64 is a browser-native 3D fantasy console built on Three.js. It lets developers build N64/PlayStation-era games in plain JavaScript with zero WebGL boilerplate. Over 35 API functions cover 3D graphics, audio, physics, input, voxel worlds, and a retro OS shell &mdash; all running live in the browser.</p>
+        <p class="press-blurb" id="press-blurb-text" data-i18n="press.blurb.text">NOVA64 is a browser-native 3D fantasy console built on Three.js. It lets developers build N64/PlayStation-era games in plain JavaScript with zero WebGL boilerplate. Over 35 API functions cover 3D graphics, audio, physics, input, voxel worlds, and a retro OS shell &mdash; all running live in the browser.</p>
       </div>
       <div class="press-copy-block reveal">
-        <div class="press-copy-title">Technical Summary</div>
+        <div class="press-copy-title" data-i18n="press.specs.title">Technical Summary</div>
         <ul class="press-specs">
-          <li>Three.js r157 3D renderer (WebGL2 + Canvas2D fallbacks)</li>
-          <li>Chunked voxel engine with fluid, lighting &amp; pathfinding</li>
-          <li>AABB physics with raycasting &amp; spatial partitioning</li>
-          <li>WebAudio spatial sound with named preset library</li>
-          <li>Hot-reloading ES module cart system via Vite 5.4</li>
-          <li>NovaOS shell: window manager, file browser, cart launcher</li>
+          <li data-i18n="press.spec.1">Three.js 0.182.0 3D renderer (WebGL2 + Canvas2D fallbacks)</li>
+          <li data-i18n="press.spec.2">Chunked voxel engine with fluid, lighting &amp; pathfinding</li>
+          <li data-i18n="press.spec.3">AABB physics with raycasting &amp; spatial partitioning</li>
+          <li data-i18n="press.spec.4">WebAudio spatial sound with named preset library</li>
+          <li data-i18n="press.spec.5">Hot-reloading ES module cart system via Vite 5.4</li>
+          <li data-i18n="press.spec.6">NovaOS shell: window manager, file browser, cart launcher</li>
         </ul>
       </div>
     </div>
     <div class="press-links">
       <a href="https://github.com/seacloud9/nova64" target="_blank" rel="noopener" class="press-link-pill">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
-        GitHub Repository
+        <span data-i18n="press.github.link">GitHub Repository</span>
       </a>
       <a href="./docs/index.html" class="press-link-pill">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-        API Documentation
+        <span data-i18n="press.apidocs.link">API Documentation</span>
       </a>
-      <a href="./console.html" class="press-link-pill">&#9654; Live Console</a>
-      <a href="./os9-shell/index.html" class="press-link-pill">&#9632; NovaOS Shell</a>
+      <a href="./console.html" class="press-link-pill">&#9654; <span data-i18n="press.console.link">Live Console</span></a>
+      <a href="./os9-shell/index.html" class="press-link-pill">&#9632; <span data-i18n="press.novaos.link">NovaOS Shell</span></a>
     </div>
   </div>
 </section>
@@ -1189,21 +1344,21 @@
   <img src="./assets/novaOS/nova64Logo.png" alt="" class="cta-watermark" aria-hidden="true" />
   <div class="container">
     <div class="cta-content reveal">
-      <span class="stamp">BOOT SEQUENCE</span>
-      <h2 class="cta-h2">One more game.<br><span class="line-accent">Press start.</span></h2>
-      <p class="cta-sub">No install disc. No memory card. Just the code and the dark.</p>
+      <span class="stamp" data-i18n="cta.stamp">BOOT SEQUENCE</span>
+      <h2 class="cta-h2" data-i18n-html="cta.h2.html">One more game.<br><span class="line-accent">Press start.</span></h2>
+      <p class="cta-sub" data-i18n="cta.sub">No install disc. No memory card. Just the code and the dark.</p>
       <div class="cta-buttons">
         <a href="./console.html" class="btn-hero-primary">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>
-          Launch Console
+          <span data-i18n="cta.launch">Launch Console</span>
         </a>
-        <a href="./docs/index.html" class="btn-hero-secondary">Read the Docs</a>
+        <a href="./docs/index.html" class="btn-hero-secondary" data-i18n="cta.docs">Read the Docs</a>
         <a href="https://github.com/seacloud9/nova64" target="_blank" rel="noopener" class="btn-hero-ghost">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
-          Star on GitHub
+          <span data-i18n="cta.github">Star on GitHub</span>
         </a>
       </div>
-      <p class="cta-note">MIT License &mdash; fork it, ship it, make something weird.</p>
+      <p class="cta-note" data-i18n="cta.note">MIT License &mdash; fork it, ship it, make something weird.</p>
     </div>
   </div>
 </section>
@@ -1214,23 +1369,23 @@
     <div class="footer-inner">
       <div class="footer-brand">
         <img src="./assets/novaOS/nova64Logo.png" alt="NOVA64" />
-        <p class="footer-brand-tag">The browser console built from &rsquo;97 dreams. Zero boilerplate. Zero compromise.</p>
+        <p class="footer-brand-tag" data-i18n="footer.brand">The browser console built from &rsquo;97 dreams. Zero boilerplate. Zero compromise.</p>
       </div>
       <div class="footer-links">
         <div class="footer-col">
-          <span class="footer-col-title">PRODUCT</span>
+          <span class="footer-col-title" data-i18n="footer.col.product">PRODUCT</span>
           <a href="./console.html">Launch Console</a>
           <a href="./os9-shell/index.html">NovaOS Shell</a>
           <a href="#demos">Demo Gallery</a>
         </div>
         <div class="footer-col">
-          <span class="footer-col-title">DEVELOP</span>
+          <span class="footer-col-title" data-i18n="footer.col.develop">DEVELOP</span>
           <a href="./docs/index.html">API Reference</a>
           <a href="./docs/NOVA64_3D_API.md">3D API Guide</a>
           <a href="./docs/CHEATSHEET.md">Cheat Sheet</a>
         </div>
         <div class="footer-col">
-          <span class="footer-col-title">LINKS</span>
+          <span class="footer-col-title" data-i18n="footer.col.links">LINKS</span>
           <a href="https://github.com/seacloud9/nova64" target="_blank" rel="noopener">GitHub</a>
           <a href="#press">Press Kit</a>
           <a href="#what">About</a>
@@ -1239,7 +1394,7 @@
     </div>
     <div class="footer-bottom">
       <p>&copy; 2024 NOVA64. MIT License. <a href="https://github.com/seacloud9/nova64" target="_blank" rel="noopener">seacloud9/nova64</a></p>
-      <p>No memory cards were corrupted in the making of this project.</p>
+      <p data-i18n="footer.tagline">No memory cards were corrupted in the making of this project.</p>
     </div>
   </div>
 </footer>
@@ -1359,6 +1514,55 @@ window.addEventListener('load', () => {
       } catch(e) {}
     });
   }
+</script>
+
+<!-- ── I18N HYDRATION ── -->
+<script>(function () {
+  var el = document.getElementById('nova64-i18n');
+  if (!el) return;
+  var strings = JSON.parse(el.textContent);
+  function apply(map) {
+    document.querySelectorAll('[data-i18n]').forEach(function (n) {
+      var v = map[n.dataset.i18n];
+      if (v !== undefined) n.textContent = v;
+    });
+    document.querySelectorAll('[data-i18n-html]').forEach(function (n) {
+      var v = map[n.dataset.i18nHtml];
+      if (v !== undefined) n.innerHTML = v;
+    });
+    if (map['page.title']) document.title = map['page.title'];
+  }
+  apply(strings);
+  /* Resolve language: URL param overrides stored preference */
+  var urlLang = new URLSearchParams(location.search).get('lang');
+  var storedLang = localStorage.getItem('nova64-lang');
+  var lang = urlLang || storedLang || 'en';
+  if (urlLang && urlLang !== storedLang) localStorage.setItem('nova64-lang', urlLang);
+  /* Wire up language picker */
+  var sel = document.getElementById('lang-select');
+  if (sel) {
+    sel.value = lang;
+    sel.addEventListener('change', function () {
+      var l = sel.value;
+      localStorage.setItem('nova64-lang', l);
+      var u = new URL(location.href);
+      if (l === 'en') { u.searchParams.delete('lang'); } else { u.searchParams.set('lang', l); }
+      location.href = u.toString();
+    });
+  }
+  /* Load locale file for non-English languages */
+  if (lang && lang !== 'en') {
+    fetch('./i18n/' + encodeURIComponent(lang) + '.json')
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (data) {
+        if (data) {
+          apply(Object.assign({}, strings, data));
+          if (sel) sel.value = lang;
+        }
+      })
+      .catch(function () {});
+  }
+}());
 </script>
 
 </body>

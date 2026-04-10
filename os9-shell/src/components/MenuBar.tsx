@@ -4,6 +4,7 @@ import { ApplicationLauncher } from './ApplicationLauncher';
 import { novaContext } from '../os/context';
 import { UISounds } from '../os/sounds';
 import { useDesktopThemeStore } from '../os/stores';
+import { useI18n, type Lang } from '../i18n';
 
 interface MenuBarProps {
   appMenus?: MenuTemplate[];
@@ -17,6 +18,7 @@ export function MenuBar({ appMenus = [], onCommand }: MenuBarProps) {
   const [time, setTime] = useState(new Date());
   const menuRef = useRef<HTMLDivElement>(null);
   const { theme: desktopTheme, toggle: toggleTheme } = useDesktopThemeStore();
+  const { lang, setLang, t } = useI18n();
 
   useEffect(() => {
     const timer = setInterval(() => setTime(new Date()), 1000);
@@ -49,20 +51,20 @@ export function MenuBar({ appMenus = [], onCommand }: MenuBarProps) {
   const novaMenu: MenuTemplate = {
     label: '🌟',
     submenu: [
-      { label: 'About nova64 OS', click: () => setShowAbout(true) },
+      { label: t('menu.about'), click: () => setShowAbout(true) },
       { type: 'separator', label: '' },
-      { label: 'Appearance…', click: () => novaContext.launchApp('appearance', { width: 480, height: 340 }) },
+      { label: t('menu.appearance'), click: () => novaContext.launchApp('appearance', { width: 480, height: 340 }) },
       { type: 'separator', label: '' },
-      { label: 'System Profiler…', click: () => novaContext.launchApp('com.nova64.profiler') },
+      { label: t('menu.profiler'), click: () => novaContext.launchApp('com.nova64.profiler') },
       { type: 'separator', label: '' },
-      { label: 'Restart…' },
-      { label: 'Shut Down…' },
+      { label: t('menu.restart') },
+      { label: t('menu.shutdown') },
     ],
   };
 
   const finderMenus: MenuTemplate[] = [
     {
-      label: 'Applications',
+      label: t('menu.apps'),
       submenu: [
         { label: '🃏 hyperNova', id: 'hypernova', click: () => novaContext.launchApp('hypernova') },
         { type: 'separator', label: '' },
@@ -71,7 +73,7 @@ export function MenuBar({ appMenus = [], onCommand }: MenuBarProps) {
         { label: 'Game Launcher', id: 'game-launcher', click: () => novaContext.launchApp('game-launcher') },
         { label: '🕹️ eMU', id: 'emu', click: () => novaContext.launchApp('emu') },
         { type: 'separator', label: '' },
-        { label: 'Games', type: 'submenu', submenu: [
+        { label: t('menu.games'), type: 'submenu', submenu: [
           { label: '⭐ Hello World', click: () => novaContext.launchApp('cart-runner', { path: '/examples/hello-world/code.js', width: 900, height: 700 }) },
           { label: '👋 Hello 3D World', click: () => novaContext.launchApp('cart-runner', { path: '/examples/hello-3d/code.js', width: 900, height: 700 }) },
           { label: '🛸 Space Harrier', click: () => novaContext.launchApp('cart-runner', { path: '/examples/space-harrier-3d/code.js', width: 900, height: 700 }) },
@@ -246,6 +248,25 @@ export function MenuBar({ appMenus = [], onCommand }: MenuBarProps) {
           ))}
         </div>
         <div className="menubar-right">
+          <select
+            value={lang}
+            onChange={(e) => setLang(e.target.value as Lang)}
+            aria-label={t('lang.label')}
+            style={{
+              background: 'transparent',
+              border: '1px solid rgba(0,0,0,0.2)',
+              borderRadius: 3,
+              color: 'inherit',
+              fontSize: 11,
+              fontFamily: 'inherit',
+              padding: '2px 4px',
+              cursor: 'pointer',
+            }}
+          >
+            <option value="en">EN</option>
+            <option value="es">ES</option>
+            <option value="ja">JA</option>
+          </select>
           <button
             className="theme-toggle-btn"
             onClick={toggleTheme}

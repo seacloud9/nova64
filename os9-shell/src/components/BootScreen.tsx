@@ -1,16 +1,17 @@
 import { useEffect, useState } from 'react';
 import type { ExtensionManifest } from '../types';
 import { UISounds } from '../os/sounds';
+import { useI18n } from '../i18n';
 
 const EXTENSION_DURATION = 200;
 
-const EXTENSIONS: ExtensionManifest[] = [
-  { id: '1', name: 'Graphics Accelerator', version: '1.0', icon: '🎨', enabled: true },
-  { id: '2', name: 'Sound Manager', version: '1.0', icon: '🔊', enabled: true },
-  { id: '3', name: 'Network Extension', version: '1.0', icon: '🌐', enabled: true },
-  { id: '4', name: 'Memory Manager', version: '1.0', icon: '💾', enabled: true },
-  { id: '5', name: 'File System', version: '1.0', icon: '📁', enabled: true },
-  { id: '6', name: 'Display Manager', version: '1.0', icon: '🖥️', enabled: true },
+const EXTENSION_KEYS: Array<{ id: string; key: string; version: string; icon: string; enabled: boolean }> = [
+  { id: '1', key: 'boot.ext.graphics', version: '1.0', icon: '🎨', enabled: true },
+  { id: '2', key: 'boot.ext.sound', version: '1.0', icon: '🔊', enabled: true },
+  { id: '3', key: 'boot.ext.network', version: '1.0', icon: '🌐', enabled: true },
+  { id: '4', key: 'boot.ext.memory', version: '1.0', icon: '💾', enabled: true },
+  { id: '5', key: 'boot.ext.files', version: '1.0', icon: '📁', enabled: true },
+  { id: '6', key: 'boot.ext.display', version: '1.0', icon: '🖥️', enabled: true },
 ];
 
 interface BootScreenProps {
@@ -18,6 +19,14 @@ interface BootScreenProps {
 }
 
 export function BootScreen({ onComplete }: BootScreenProps) {
+  const { t } = useI18n();
+  const EXTENSIONS: ExtensionManifest[] = EXTENSION_KEYS.map((k) => ({
+    id: k.id,
+    name: t(k.key),
+    version: k.version,
+    icon: k.icon,
+    enabled: k.enabled,
+  }));
   const [stage, setStage] = useState<'splash' | 'extensions' | 'complete'>('splash');
   const [loadedExtensions, setLoadedExtensions] = useState<string[]>([]);
 
@@ -78,7 +87,7 @@ export function BootScreen({ onComplete }: BootScreenProps) {
         <div style={{ textAlign: 'center' }}>
           <div style={{ fontSize: 48, marginBottom: 24 }}>🌟</div>
           <div style={{ fontSize: 24, fontWeight: 'bold', marginBottom: 8 }}>
-            Welcome to nova64 OS
+            {t('boot.welcome')}
           </div>
           <div style={{ fontSize: 14, color: '#333' }}>
             Version 1.0
@@ -89,7 +98,7 @@ export function BootScreen({ onComplete }: BootScreenProps) {
       {stage === 'extensions' && (
         <div style={{ width: 600, textAlign: 'center' }}>
           <div style={{ fontSize: 18, marginBottom: 24, fontWeight: 'bold' }}>
-            Loading System Extensions...
+            {t('boot.loading')}
           </div>
           <div
             style={{

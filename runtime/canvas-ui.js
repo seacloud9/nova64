@@ -663,8 +663,14 @@ function drawProgressbar(ctx, rect, attrs, data) {
 // ─── RECURSIVE NODE RENDERER ─────────────────────────────────────────────────
 
 function renderNode(ctx, node, parentRect, data, handlers, state, NW, NH) {
-  const { tag, attrs, children, text } = node;
+  const { tag, children, text } = node;
   if (!tag || tag === '#text' || tag === 'frame') return;
+
+  // Apply data binding to all attribute values so {var} tokens resolve for numeric attrs too
+  const attrs = {};
+  for (const [k, v] of Object.entries(node.attrs)) {
+    attrs[k] = typeof v === 'string' ? bindData(v, data) : v;
+  }
 
   // Root wrapper — just recurse children
   if (tag === 'ui') {
@@ -693,100 +699,108 @@ function renderNode(ctx, node, parentRect, data, handlers, state, NW, NH) {
       ? { x: cx, y: cy, w: 0, h: 0 }
       : resolveRect(attrs, parentRect, NW, NH);
 
-  switch (tag) {
-    case 'rect':
-      drawRect(ctx, rect, attrs);
-      break;
-    case 'circle':
-      drawCircle(ctx, cx, cy, attrs);
-      break;
-    case 'ellipse':
-      drawEllipse(ctx, cx, cy, attrs);
-      break;
-    case 'triangle':
-      drawTriangle(ctx, cx, cy, attrs);
-      break;
-    case 'star':
-      drawStar(ctx, cx, cy, attrs);
-      break;
-    case 'line':
-      drawLine(ctx, attrs, parentRect, NW, NH);
-      break;
-    case 'path':
-      drawPath(ctx, rect.x, rect.y, attrs);
-      break;
-    case 'text':
-      drawText(ctx, rect, attrs, text, data);
-      break;
-    case 'image':
-      drawImage(ctx, rect, attrs);
-      break;
-    case 'svg':
-      attrs._innerSvg !== undefined ? drawInlineSvg(ctx, rect, attrs) : drawImage(ctx, rect, attrs);
-      break;
-    case 'sprite':
-      drawSprite(ctx, rect, attrs, data);
-      break;
-    case 'spritesheet':
-      drawSpritesheet(ctx, rect, attrs, ns);
-      break;
-    case 'slideshow':
-      drawSlideshow(ctx, rect, attrs, ns);
-      break;
-    case 'button':
-      drawButton(ctx, rect, attrs, data, handlers, ns);
-      break;
-    case 'progressbar':
-      drawProgressbar(ctx, rect, attrs, data);
-      break;
+  try {
+    switch (tag) {
+      case 'rect':
+        drawRect(ctx, rect, attrs);
+        break;
+      case 'circle':
+        drawCircle(ctx, cx, cy, attrs);
+        break;
+      case 'ellipse':
+        drawEllipse(ctx, cx, cy, attrs);
+        break;
+      case 'triangle':
+        drawTriangle(ctx, cx, cy, attrs);
+        break;
+      case 'star':
+        drawStar(ctx, cx, cy, attrs);
+        break;
+      case 'line':
+        drawLine(ctx, attrs, parentRect, NW, NH);
+        break;
+      case 'path':
+        drawPath(ctx, rect.x, rect.y, attrs);
+        break;
+      case 'text':
+        drawText(ctx, rect, attrs, text, data);
+        break;
+      case 'image':
+        drawImage(ctx, rect, attrs);
+        break;
+      case 'svg':
+        attrs._innerSvg !== undefined
+          ? drawInlineSvg(ctx, rect, attrs)
+          : drawImage(ctx, rect, attrs);
+        break;
+      case 'sprite':
+        drawSprite(ctx, rect, attrs, data);
+        break;
+      case 'spritesheet':
+        drawSpritesheet(ctx, rect, attrs, ns);
+        break;
+      case 'slideshow':
+        drawSlideshow(ctx, rect, attrs, ns);
+        break;
+      case 'button':
+        drawButton(ctx, rect, attrs, data, handlers, ns);
+        break;
+      case 'progressbar':
+        drawProgressbar(ctx, rect, attrs, data);
+        break;
 
-    case 'panel': {
-      const fill = resolveColor(attrs.fill || '#001122cc');
-      const stroke = resolveColor(attrs.stroke || '#0088ff');
-      const r = parseFloat(attrs.radius || 6);
-      const titleH = attrs.title ? parseFloat(attrs['title-height'] || 28) : 0;
+      case 'panel': {
+        const fill = resolveColor(attrs.fill || '#001122cc');
+        const stroke = resolveColor(attrs.stroke || '#0088ff');
+        const r = parseFloat(attrs.radius || 6);
+        const titleH = attrs.title ? parseFloat(attrs['title-height'] || 28) : 0;
 
-      ctx.beginPath();
-      rRect(ctx, rect.x, rect.y, rect.w, rect.h, r);
-      ctx.fillStyle = fill;
-      ctx.fill();
-      ctx.strokeStyle = stroke;
-      ctx.lineWidth = parseFloat(attrs['stroke-width'] || 1.5);
-      ctx.stroke();
-
-      if (attrs.title) {
-        ctx.save();
         ctx.beginPath();
-        rRect(ctx, rect.x, rect.y, rect.w, titleH, r);
-        ctx.fillStyle = stroke;
-        ctx.globalAlpha = 0.35;
+        rRect(ctx, rect.x, rect.y, rect.w, rect.h, r);
+        ctx.fillStyle = fill;
         ctx.fill();
-        ctx.globalAlpha = 1;
+        ctx.strokeStyle = stroke;
+        ctx.lineWidth = parseFloat(attrs['stroke-width'] || 1.5);
+        ctx.stroke();
+
+        if (attrs.title) {
+          ctx.save();
+          ctx.beginPath();
+          rRect(ctx, rect.x, rect.y, rect.w, titleH, r);
+          ctx.fillStyle = stroke;
+          ctx.globalAlpha = 0.35;
+          ctx.fill();
+          ctx.globalAlpha = 1;
+          ctx.restore();
+          ctx.font = `bold ${parseFloat(attrs['title-size'] || 11)}px monospace`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillStyle = resolveColor(attrs['title-color'] || '#fff');
+          ctx.fillText(attrs.title, rect.x + rect.w / 2, rect.y + titleH / 2);
+        }
+        for (const child of children) renderNode(ctx, child, rect, data, handlers, state, NW, NH);
+        break;
+      }
+
+      case 'group': {
+        ctx.save();
+        if (attrs.clip !== 'false' && rect.w > 0 && rect.h > 0) {
+          ctx.beginPath();
+          ctx.rect(rect.x, rect.y, rect.w, rect.h);
+          ctx.clip();
+        }
+        for (const child of children) renderNode(ctx, child, rect, data, handlers, state, NW, NH);
         ctx.restore();
-        ctx.font = `bold ${parseFloat(attrs['title-size'] || 11)}px monospace`;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillStyle = resolveColor(attrs['title-color'] || '#fff');
-        ctx.fillText(attrs.title, rect.x + rect.w / 2, rect.y + titleH / 2);
+        break;
       }
-      for (const child of children) renderNode(ctx, child, rect, data, handlers, state, NW, NH);
-      break;
-    }
 
-    case 'group': {
-      ctx.save();
-      if (attrs.clip !== 'false' && rect.w > 0 && rect.h > 0) {
-        ctx.beginPath();
-        ctx.rect(rect.x, rect.y, rect.w, rect.h);
-        ctx.clip();
-      }
-      for (const child of children) renderNode(ctx, child, rect, data, handlers, state, NW, NH);
-      ctx.restore();
-      break;
+      default:
+        break;
     }
-
-    default:
-      break;
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.warn('[CanvasUI] render error in <' + tag + '>:', e);
+    ctx.restore(); // recover canvas state
   }
 }
 

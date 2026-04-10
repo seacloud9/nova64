@@ -66,6 +66,8 @@
           inset 0 4px 6px rgba(255, 255, 255, 0.1),
           inset 0 -4px 6px rgba(0, 0, 0, 0.8);
         position: relative;
+        width: 100%;
+        box-sizing: border-box;
       }
 
       .hardware-brand {
@@ -98,12 +100,11 @@
 
       canvas {
         image-rendering: auto;
-        width: 1280px;
-        height: 720px;
+        width: 100%;
+        height: auto;
+        aspect-ratio: 16 / 9;
         background: #000;
         display: block;
-        max-width: 100%;
-        height: auto;
         touch-action: none;
         -webkit-touch-callout: none;
       }
@@ -385,7 +386,7 @@
         }
 
         canvas {
-          max-height: 50vh;
+          /* let aspect-ratio do the constraining on mobile */
         }
 
         /* Show mobile controls */

@@ -117,7 +117,35 @@
     }
     .nav-links a:hover { color: var(--text); }
     @media (max-width: 900px) { .nav-links { display: none; } }
-    .nav-cta { display: flex; align-items: center; gap: 12px; }
+    .nav-cta { display: flex; align-items: center; gap: 10px; }
+    .nav-trio { display: flex; align-items: center; gap: 6px; }
+    .nav-trio-btn {
+      display: flex; align-items: center; gap: 6px;
+      padding: 7px 13px; border-radius: 6px; font-size: 12px; font-weight: 700;
+      letter-spacing: 0.04em; transition: var(--trans); white-space: nowrap;
+      border: 1px solid var(--border); color: var(--text-muted);
+    }
+    .nav-trio-btn svg { flex-shrink: 0; }
+    .nav-trio-btn:hover { color: var(--text); border-color: rgba(255,255,255,0.25); background: rgba(255,255,255,0.04); }
+    .nav-trio-btn.console { border-color: rgba(0,255,255,0.3); color: var(--electric); }
+    .nav-trio-btn.console:hover { background: rgba(0,255,255,0.08); box-shadow: 0 0 18px rgba(0,255,255,0.2); }
+    .nav-trio-btn.os { border-color: rgba(157,0,255,0.35); color: #c86fff; }
+    .nav-trio-btn.os:hover { background: rgba(157,0,255,0.09); box-shadow: 0 0 18px rgba(157,0,255,0.25); }
+    .nav-trio-btn.docs { border-color: rgba(255,238,0,0.3); color: #ffe566; }
+    .nav-trio-btn.docs:hover { background: rgba(255,238,0,0.07); box-shadow: 0 0 18px rgba(255,238,0,0.2); }
+    @media (max-width: 900px) { .nav-trio { display: none; } }
+    .drawer-trio { display: flex; flex-direction: column; gap: 6px; padding: 12px 0 4px; border-top: 1px solid var(--border); margin-top: 8px; }
+    .drawer-trio-btn {
+      display: flex; align-items: center; gap: 10px;
+      padding: 13px 16px; border-radius: 8px; font-size: 14px; font-weight: 700;
+      transition: var(--trans); border: 1px solid transparent;
+    }
+    .drawer-trio-btn.console { color: var(--electric); border-color: rgba(0,255,255,0.2); }
+    .drawer-trio-btn.console:hover { background: rgba(0,255,255,0.06); }
+    .drawer-trio-btn.os { color: #c86fff; border-color: rgba(157,0,255,0.2); }
+    .drawer-trio-btn.os:hover { background: rgba(157,0,255,0.06); }
+    .drawer-trio-btn.docs { color: #ffe566; border-color: rgba(255,238,0,0.2); }
+    .drawer-trio-btn.docs:hover { background: rgba(255,238,0,0.06); }
     .lang-switcher {
       background: rgba(255,255,255,0.05);
       border: 1px solid var(--border);
@@ -934,6 +962,20 @@
       <a href="#press" data-i18n="nav.press">Press Kit</a>
     </div>
     <div class="nav-cta">
+      <div class="nav-trio">
+        <a href="./console.html" class="nav-trio-btn console">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="2" y="4" width="20" height="14" rx="2"/><path d="M8 20h8M12 18v2" stroke="currentColor" stroke-width="1.5" fill="none"/><path d="M7 11l3-3-3-3M13 12h4" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/></svg>
+          Console
+        </a>
+        <a href="./os9-shell/index.html" class="nav-trio-btn os">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="18" height="14" rx="2"/><path d="M3 7h18M7 5h.01M9 5h.01M11 5h.01"/><path d="M8 21h8M12 17v4" stroke-width="1.5"/></svg>
+          OS
+        </a>
+        <a href="./docs/index.html" class="nav-trio-btn docs">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 19V5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v14"/><path d="M4 19a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2"/><path d="M9 7h6M9 11h6M9 15h4"/></svg>
+          Docs
+        </a>
+      </div>
       <a href="https://github.com/seacloud9/nova64" target="_blank" rel="noopener" class="btn-ghost-sm">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
         <span data-i18n="nav.github">GitHub</span>
@@ -943,7 +985,6 @@
         <option value="es">ES</option>
         <option value="ja">JA</option>
       </select>
-      <a href="./console.html" class="btn-primary" data-i18n="nav.launch">Launch Console</a>
     </div>
     <button class="nav-hamburger" id="nav-toggle" aria-label="Menu">
       <span></span><span></span><span></span>
@@ -957,7 +998,20 @@
   <a href="#novaos" data-i18n="nav.novaos">NovaOS</a>
   <a href="#install">Install</a>
   <a href="#press" data-i18n="nav.press">Press Kit</a>
-  <a href="./console.html" style="color:var(--electric);margin-top:8px;" data-i18n="nav.drawer.launch">Launch Console &rarr;</a>
+  <div class="drawer-trio">
+    <a href="./console.html" class="drawer-trio-btn console">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="2" y="4" width="20" height="14" rx="2"/><path d="M7 11l3-3-3-3M13 12h4" stroke="#060810" stroke-width="1.5" fill="none" stroke-linecap="round"/></svg>
+      Console
+    </a>
+    <a href="./os9-shell/index.html" class="drawer-trio-btn os">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="18" height="14" rx="2"/><path d="M3 7h18M7 5h.01M9 5h.01M11 5h.01"/><path d="M8 21h8M12 17v4" stroke-width="1.5"/></svg>
+      NovaOS
+    </a>
+    <a href="./docs/index.html" class="drawer-trio-btn docs">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 19V5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v14"/><path d="M4 19a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2"/><path d="M9 7h6M9 11h6M9 15h4"/></svg>
+      Documentation
+    </a>
+  </div>
 </div>
 
 <!-- ── HERO ── -->

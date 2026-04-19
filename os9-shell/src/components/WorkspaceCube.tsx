@@ -1,6 +1,6 @@
 // Compiz-style workspace transition — 3D rotate only during switch.
-// In idle state: flat single workspace (no 3D context, no pointer issues).
-// During transition: brief 3D cube rotate between old and new face.
+// All workspace layers stay mounted (stable DOM) so imperative app.mount()
+// content survives transitions. Only CSS classes change.
 
 import { useEffect, useState, useRef, type ReactNode } from 'react';
 import { useWorkspaceStore, WORKSPACE_COUNT } from '../os/workspaceStore';
@@ -22,7 +22,6 @@ export function WorkspaceCube({ renderWorkspace }: WorkspaceCubeProps) {
   useEffect(() => {
     if (activeWorkspace === prevRef.current) return;
     const prev = prevRef.current;
-    // Determine rotation direction
     const diff = activeWorkspace - prev;
     const dir = diff > 0 || diff < -2 ? 'right' : 'left';
     setFromWs(prev);
@@ -56,31 +55,37 @@ export function WorkspaceCube({ renderWorkspace }: WorkspaceCubeProps) {
     );
   }
 
-  // Idle — flat, no 3D
-  if (!transitioning) {
-    return (
-      <div className="workspace-viewport">
-        {renderWorkspace(activeWorkspace)}
-      </div>
-    );
-  }
+  // Determine per-layer CSS class
+  const getLayerClass = (i: number) => {
+    if (transitioning) {
+      if (i === fromWs) return 'workspace-layer workspace-cube-face--front';
+      if (i === toWs) return `workspace-layer workspace-cube-face--${direction}`;
+    } else if (i === activeWorkspace) {
+      return 'workspace-layer';
+    }
+    return 'workspace-layer workspace-layer--hidden';
+  };
 
-  // Transitioning — 3D cube rotate between two faces
-  const animClass = direction === 'right'
-    ? 'workspace-cube--rotate-right'
-    : 'workspace-cube--rotate-left';
+  const stageClass = transitioning
+    ? 'workspace-stage workspace-stage--3d'
+    : 'workspace-stage';
+
+  const innerClass = transitioning
+    ? `workspace-inner workspace-inner--3d ${
+        direction === 'right'
+          ? 'workspace-cube--rotate-right'
+          : 'workspace-cube--rotate-left'
+      }`
+    : 'workspace-inner';
 
   return (
-    <div className="workspace-cube-viewport">
-      <div className={`workspace-cube ${animClass}`}>
-        {/* Outgoing face — front */}
-        <div className="workspace-cube-face workspace-cube-face--front">
-          {renderWorkspace(fromWs)}
-        </div>
-        {/* Incoming face — positioned to the right or left */}
-        <div className={`workspace-cube-face workspace-cube-face--${direction}`}>
-          {renderWorkspace(toWs)}
-        </div>
+    <div className={stageClass}>
+      <div className={innerClass}>
+        {Array.from({ length: WORKSPACE_COUNT }, (_, i) => (
+          <div key={i} className={getLayerClass(i)}>
+            {renderWorkspace(i)}
+          </div>
+        ))}
       </div>
     </div>
   );

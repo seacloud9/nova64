@@ -4,6 +4,8 @@ import { ApplicationLauncher } from './ApplicationLauncher';
 import { novaContext } from '../os/context';
 import { UISounds } from '../os/sounds';
 import { useDesktopThemeStore } from '../os/stores';
+import { useScreensaverStore } from '../os/screensaverStore';
+import { screensaverHacks } from '../screensavers';
 import { useI18n, type Lang } from '../i18n';
 
 interface MenuBarProps {
@@ -172,6 +174,16 @@ export function MenuBar({ appMenus = [], onCommand }: MenuBarProps) {
       submenu: [
         { label: 'Empty Trash...' },
         { label: 'Eject', accelerator: '⌘E', enabled: false },
+        { type: 'separator', label: '' },
+        { label: 'Start Screensaver', click: () => useScreensaverStore.getState().activate() },
+        { label: 'Screensaver', submenu: screensaverHacks.map(h => ({
+          label: h.name,
+          click: () => {
+            const store = useScreensaverStore.getState();
+            store.setHack(h.id);
+            store.activate();
+          },
+        }))},
         { type: 'separator', label: '' },
         { label: 'Sleep' },
         { label: 'Restart...' },

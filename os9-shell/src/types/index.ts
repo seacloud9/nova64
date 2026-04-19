@@ -70,6 +70,7 @@ export interface WindowState {
   closable?: boolean;
   resizable?: boolean;
   content?: ReactNode;
+  workspaceId: number;
 }
 
 // ============================================================================

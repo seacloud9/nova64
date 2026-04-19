@@ -1,5 +1,6 @@
 // Zustand stores for nova64 OS state management
 import { create } from 'zustand';
+import { useWorkspaceStore } from './workspaceStore';
 import type {
   WindowState,
   Nova64App,
@@ -51,6 +52,7 @@ export const useWindowStore = create<WindowStore>((set, get) => ({
       appId: 'unknown',
       closable: true,
       resizable: true,
+      workspaceId: useWorkspaceStore.getState().activeWorkspace,
       ...windowData,
     };
 

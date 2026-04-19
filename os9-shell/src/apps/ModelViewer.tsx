@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 // ── Types ──────────────────────────────────────────────────────────────────
 
 type CameraMode = 'orbit' | 'fly';
-type FileType = 'gltf' | 'wad' | null;
+type FileType = 'gltf' | 'wad' | 'vox' | null;
 
 // WadLump replaced by DirEntry in WADLoaderMV
 
@@ -24,6 +24,10 @@ let _FlyControls: any = null;
 let _GLTFLoader: any = null;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let _DRACOLoader: any = null;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let _VOXLoader: any = null;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let _VOXMesh: any = null;
 
 async function loadTHREE() {
   if (!_THREE) {
@@ -62,6 +66,15 @@ async function loadDRACOLoader() {
     _DRACOLoader = m.DRACOLoader;
   }
   return _DRACOLoader;
+}
+
+async function loadVOXLoader() {
+  if (!_VOXLoader) {
+    const m = await import(/* @vite-ignore */ `${EXAMPLES}/loaders/VOXLoader.js`);
+    _VOXLoader = m.VOXLoader;
+    _VOXMesh = m.VOXMesh;
+  }
+  return { VOXLoader: _VOXLoader, VOXMesh: _VOXMesh };
 }
 
 // ── WAD Thing Constants ──────────────────────────────────────────────────────
@@ -1009,7 +1022,7 @@ export function ModelViewer() {
   const animRef = useRef<number>(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const [status, setStatus] = useState('Drop a .gltf, .glb, or .wad file here, or click Open');
+  const [status, setStatus] = useState('Drop a .gltf, .glb, .wad, or .vox file here, or click Open');
   const [fileName, setFileName] = useState('');
   const [fileType, setFileType] = useState<FileType>(null);
   const [cameraMode, setCameraMode] = useState<CameraMode>('orbit');
@@ -1280,6 +1293,60 @@ export function ModelViewer() {
     }
   }, [clearModel]);
 
+  // ── VOX load ───────────────────────────────────────────────────────────────
+  const loadVOX = useCallback(async (file: File) => {
+    const THREE = await loadTHREE();
+    const { VOXLoader, VOXMesh } = await loadVOXLoader();
+    await clearModel();
+
+    const url = URL.createObjectURL(file);
+    setStatus('Loading VOX model…');
+    setLoading(true);
+
+    const loader = new VOXLoader();
+    loader.load(
+      url,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (chunks: any) => {
+        URL.revokeObjectURL(url);
+        const group = new THREE.Group();
+
+        for (const chunk of chunks) {
+          const mesh = new VOXMesh(chunk);
+          mesh.castShadow = true;
+          mesh.receiveShadow = true;
+          group.add(mesh);
+        }
+
+        modelRef.current = group;
+        (sceneRef.current as {add:(o:unknown)=>void}).add(group);
+
+        if (cameraRef.current && controlsRef.current) {
+          fitCameraToObject(cameraRef.current, group, controlsRef.current, THREE);
+        }
+
+        // Count voxels
+        let tris = 0;
+        group.traverse((o: unknown) => {
+          const m = o as {isMesh?:boolean; geometry?:{index?:{count:number};attributes?:{position?:{count:number}}}};
+          if (!m.isMesh || !m.geometry) return;
+          tris += m.geometry.index
+            ? m.geometry.index.count / 3
+            : (m.geometry.attributes?.position?.count ?? 0) / 3;
+        });
+        setStatus(`${Math.round(tris).toLocaleString()} triangles · ${chunks.length} chunk${chunks.length !== 1 ? 's' : ''}`);
+        setFileType('vox');
+        setLoading(false);
+      },
+      undefined,
+      (err: unknown) => {
+        URL.revokeObjectURL(url);
+        setStatus(`Error loading VOX: ${(err as Error).message ?? err}`);
+        setLoading(false);
+      }
+    );
+  }, [clearModel]);
+
   // ── Render WAD map ─────────────────────────────────────────────────────────
   const renderWadMap = useCallback(async (mapName: string) => {
     if (!wadLoaderRef.current || !sceneRef.current) return;
@@ -1322,10 +1389,12 @@ export function ModelViewer() {
       loadGLTF(file);
     } else if (name.endsWith('.wad')) {
       loadWAD(file);
+    } else if (name.endsWith('.vox')) {
+      loadVOX(file);
     } else {
-      setStatus(`Unsupported file type. Drop a .gltf, .glb, or .wad file.`);
+      setStatus(`Unsupported file type. Drop a .gltf, .glb, .wad, or .vox file.`);
     }
-  }, [loadGLTF, loadWAD]);
+  }, [loadGLTF, loadWAD, loadVOX]);
 
   // ── Drag & drop ────────────────────────────────────────────────────────────
   const onDragOver = (e: React.DragEvent) => { e.preventDefault(); setIsDragging(true); };
@@ -1352,7 +1421,7 @@ export function ModelViewer() {
     >
       {/* Toolbar */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 8px', background: '#222', borderBottom: '1px solid #333', flexShrink: 0, flexWrap: 'wrap' }}>
-        <input ref={fileInputRef} type="file" accept=".gltf,.glb,.wad" style={{ display: 'none' }} onChange={onFileInput} />
+        <input ref={fileInputRef} type="file" accept=".gltf,.glb,.wad,.vox" style={{ display: 'none' }} onChange={onFileInput} />
         <button style={BTN} onClick={() => fileInputRef.current?.click()}>📂 Open</button>
 
         {/* Separator */}
@@ -1366,7 +1435,7 @@ export function ModelViewer() {
         <div style={{ width: 1, height: 18, background: '#444', margin: '0 2px' }} />
 
         {/* Tools */}
-        {fileType === 'gltf' && (
+        {(fileType === 'gltf' || fileType === 'vox') && (
           <button style={wireframe ? BTN_ACTIVE : BTN} onClick={toggleWireframe}>🔲 Wire</button>
         )}
         <button style={BTN} onClick={resetCamera}>↩️ Reset</button>
@@ -1406,7 +1475,7 @@ export function ModelViewer() {
             position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
             background: 'rgba(0,80,200,0.35)', border: '3px dashed #4488ff', pointerEvents: 'none', zIndex: 10,
           }}>
-            <div style={{ fontSize: 24, color: '#aaccff' }}>Drop .gltf / .glb / .wad here</div>
+            <div style={{ fontSize: 24, color: '#aaccff' }}>Drop .gltf / .glb / .wad / .vox here</div>
           </div>
         )}
 
@@ -1418,7 +1487,7 @@ export function ModelViewer() {
           }}>
             <div style={{ fontSize: 48 }}>📦</div>
             <div style={{ fontSize: 14 }}>Drop a file or click Open</div>
-            <div style={{ fontSize: 11, color: '#3a3a3a' }}>.gltf · .glb · .wad</div>
+            <div style={{ fontSize: 11, color: '#3a3a3a' }}>.gltf · .glb · .wad · .vox</div>
           </div>
         )}
 

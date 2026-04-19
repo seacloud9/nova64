@@ -52,6 +52,43 @@ pnpm test:integration
 
 **🚨 CRITICAL: Never use `npm` or `yarn` - Always use `pnpm` for consistency and performance.**
 
+## 🛠️ **CLI Tool** (`bin/nova64.js`)
+
+The Nova64 CLI provides project scaffolding, template cloning, and a dev server:
+
+```bash
+# Create a new empty project (prompts for name if omitted)
+nova64 init my-game
+
+# Browse and clone from 60+ example templates (interactive picker)
+nova64 template
+
+# Clone a specific template directly
+nova64 template star-fox-nova-3d
+
+# Start dev server in a project directory (serves code.js with hot reload)
+cd my-game && nova64 dev
+
+# Launch the full console with all demos (legacy, requires pnpm build first)
+nova64 --start-demo
+```
+
+### **CLI Architecture** (`bin/commands/`):
+
+- `bin/nova64.js` - Main entry point with subcommand routing
+- `bin/commands/init.js` - Project scaffolding (creates `code.js`, `package.json`, `index.html`)
+- `bin/commands/template.js` - Interactive template picker using `@inquirer/prompts` with categorized example list
+- `bin/commands/dev.js` - Vite dev server that serves Nova64 runtime + user's `code.js` via `cart-runner.html`
+
+### **Scaffolded Project Structure**:
+
+```
+my-game/
+├── code.js        # Cart entry point (init/update/draw)
+├── index.html     # HTML shell with import map
+└── package.json   # Has nova64 dependency + "nova64 dev" script
+```
+
 ## 🏗️ **Architecture Overview**
 
 Nova64 is a revolutionary **JavaScript 3D Fantasy Console** featuring:

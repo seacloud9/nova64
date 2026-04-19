@@ -10,19 +10,20 @@ const __dirname = fileURLToPath(new URL('.', import.meta.url));
 const root = resolve(__dirname, '..');
 const distDir = resolve(root, 'dist');
 
-function parseArgs(args) {
-  const opts = { port: 3000, open: true, help: false, startDemo: false };
+function parseFlags(args) {
+  const opts = { port: 3000, open: true };
+  const remaining = [];
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
-    if (arg === '--help' || arg === '-h') opts.help = true;
-    else if (arg === '--start-demo') opts.startDemo = true;
-    else if (arg === '--no-open') opts.open = false;
+    if (arg === '--no-open') opts.open = false;
     else if (arg === '--port' || arg === '-p') {
       const port = parseInt(args[++i], 10);
       if (Number.isFinite(port) && port > 0 && port < 65536) opts.port = port;
+    } else {
+      remaining.push(arg);
     }
   }
-  return opts;
+  return { opts, remaining };
 }
 
 function openBrowser(url) {
@@ -36,14 +37,27 @@ function printHelp() {
   \x1b[1m\x1b[35m🎮 Nova64\x1b[0m — Ultimate 3D Fantasy Console
 
   \x1b[1mUsage:\x1b[0m
+    nova64 init [name]           Create a new Nova64 project
+    nova64 template [name]       Create a project from an example template
+    nova64 dev                   Start dev server for current project
     nova64 --start-demo          Launch the console with demos
-    nova64 --start-demo -p 8080  Use a custom port
+
+  \x1b[1mCommands:\x1b[0m
+    init [name]      Scaffold a new project (prompts for name if omitted)
+    template [name]  Pick from 60+ example games/demos to use as a starter
+    dev              Start a Vite dev server for the current project
 
   \x1b[1mOptions:\x1b[0m
-    --start-demo     Start local server and open the console
+    --start-demo     Start local server and open the full console
     -p, --port NUM   Port to listen on (default: 3000)
     --no-open        Don't auto-open the browser
     -h, --help       Show this help message
+
+  \x1b[1mExamples:\x1b[0m
+    nova64 init my-game          Create project in ./my-game/
+    nova64 template              Browse and pick a template interactively
+    nova64 template star-fox-nova-3d   Clone the Star Fox demo
+    cd my-game && nova64 dev     Start developing your game
 `);
 }
 
@@ -75,15 +89,29 @@ async function startServer(opts) {
 }
 
 // Main
-const opts = parseArgs(process.argv.slice(2));
+const args = process.argv.slice(2);
+const { opts, remaining } = parseFlags(args);
+const command = remaining[0];
+const commandArg = remaining[1];
 
-if (opts.help) {
+// Handle help
+if (command === 'help' || args.includes('--help') || args.includes('-h')) {
   printHelp();
   process.exit(0);
 }
 
-if (opts.startDemo) {
-  // Verify dist/ exists
+// Handle subcommands
+if (command === 'init') {
+  const { initCommand } = await import('./commands/init.js');
+  await initCommand(commandArg);
+} else if (command === 'template') {
+  const { templateCommand } = await import('./commands/template.js');
+  await templateCommand(commandArg);
+} else if (command === 'dev') {
+  const { devCommand } = await import('./commands/dev.js');
+  await devCommand(opts);
+} else if (args.includes('--start-demo')) {
+  // Legacy flag — keep for backward compatibility
   try {
     await stat(distDir);
   } catch {

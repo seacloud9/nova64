@@ -1,6 +1,6 @@
-// Workspace switcher with Z-depth transition effect
-// Active workspace is shown full-screen; on switch, the old workspace
-// recedes back in Z-space and the new one emerges forward.
+// Compiz-style workspace transition — 3D rotate only during switch.
+// In idle state: flat single workspace (no 3D context, no pointer issues).
+// During transition: brief 3D cube rotate between old and new face.
 
 import { useEffect, useState, useRef, type ReactNode } from 'react';
 import { useWorkspaceStore, WORKSPACE_COUNT } from '../os/workspaceStore';
@@ -12,25 +12,29 @@ interface WorkspaceCubeProps {
 export function WorkspaceCube({ renderWorkspace }: WorkspaceCubeProps) {
   const { activeWorkspace, isExpoMode, switchWorkspace } =
     useWorkspaceStore();
-  const [displayedWorkspace, setDisplayedWorkspace] = useState(activeWorkspace);
-  const [phase, setPhase] = useState<'idle' | 'out' | 'in'>('idle');
-  const prevWorkspaceRef = useRef(activeWorkspace);
+
+  const [transitioning, setTransitioning] = useState(false);
+  const [fromWs, setFromWs] = useState(activeWorkspace);
+  const [toWs, setToWs] = useState(activeWorkspace);
+  const [direction, setDirection] = useState<'left' | 'right'>('right');
+  const prevRef = useRef(activeWorkspace);
 
   useEffect(() => {
-    if (activeWorkspace === prevWorkspaceRef.current) return;
-    // Start "out" phase — old workspace recedes
-    setPhase('out');
-    const outTimer = setTimeout(() => {
-      // Swap to new workspace and start "in" phase
-      setDisplayedWorkspace(activeWorkspace);
-      setPhase('in');
-      const inTimer = setTimeout(() => {
-        setPhase('idle');
-      }, 300);
-      return () => clearTimeout(inTimer);
-    }, 300);
-    prevWorkspaceRef.current = activeWorkspace;
-    return () => clearTimeout(outTimer);
+    if (activeWorkspace === prevRef.current) return;
+    const prev = prevRef.current;
+    // Determine rotation direction
+    const diff = activeWorkspace - prev;
+    const dir = diff > 0 || diff < -2 ? 'right' : 'left';
+    setFromWs(prev);
+    setToWs(activeWorkspace);
+    setDirection(dir);
+    setTransitioning(true);
+    prevRef.current = activeWorkspace;
+
+    const timer = setTimeout(() => {
+      setTransitioning(false);
+    }, 600);
+    return () => clearTimeout(timer);
   }, [activeWorkspace]);
 
   if (isExpoMode) {
@@ -52,13 +56,32 @@ export function WorkspaceCube({ renderWorkspace }: WorkspaceCubeProps) {
     );
   }
 
-  let className = 'workspace-viewport';
-  if (phase === 'out') className += ' workspace-transition-out';
-  if (phase === 'in') className += ' workspace-transition-in';
+  // Idle — flat, no 3D
+  if (!transitioning) {
+    return (
+      <div className="workspace-viewport">
+        {renderWorkspace(activeWorkspace)}
+      </div>
+    );
+  }
+
+  // Transitioning — 3D cube rotate between two faces
+  const animClass = direction === 'right'
+    ? 'workspace-cube--rotate-right'
+    : 'workspace-cube--rotate-left';
 
   return (
-    <div className={className}>
-      {renderWorkspace(displayedWorkspace)}
+    <div className="workspace-cube-viewport">
+      <div className={`workspace-cube ${animClass}`}>
+        {/* Outgoing face — front */}
+        <div className="workspace-cube-face workspace-cube-face--front">
+          {renderWorkspace(fromWs)}
+        </div>
+        {/* Incoming face — positioned to the right or left */}
+        <div className={`workspace-cube-face workspace-cube-face--${direction}`}>
+          {renderWorkspace(toWs)}
+        </div>
+      </div>
     </div>
   );
 }

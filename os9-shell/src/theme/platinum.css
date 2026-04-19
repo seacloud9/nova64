@@ -143,8 +143,8 @@ body {
    ============================================================================ */
 
 .desktop {
-  position: fixed;
-  top: 28px; /* Below top bar */
+  position: absolute;
+  top: 0;
   left: 0;
   right: 0;
   bottom: 0;
@@ -1329,4 +1329,150 @@ button:focus-visible {
 [data-theme="light"] body {
   background: var(--gnome-darker);
   color: var(--gnome-text);
+}
+
+/* ══════════════════════════════════════════
+   Workspace Cube — CSS3 3D Transform
+   ══════════════════════════════════════════ */
+
+.workspace-cube-viewport {
+  position: fixed;
+  top: 28px;          /* below MenuBar (28px with border-box) */
+  left: 0;
+  right: 0;
+  bottom: 30px;       /* above ControlStrip (30px with border-box) */
+  perspective: 1200px;
+  overflow: hidden;
+}
+
+.workspace-cube {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  transform-style: preserve-3d;
+  transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.workspace-face {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.workspace-face--active {
+  pointer-events: auto;
+}
+
+/* ── Expo (overview) mode ── */
+
+.workspace-expo {
+  position: fixed;
+  top: 28px;
+  left: 0;
+  right: 0;
+  bottom: 30px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  gap: 12px;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.85);
+  z-index: 5000;
+}
+
+.workspace-expo-cell {
+  border-radius: 10px;
+  overflow: hidden;
+  position: relative;
+  cursor: pointer;
+  border: 2px solid transparent;
+  transition: border-color 0.2s, transform 0.2s;
+  transform: scale(1);
+}
+
+.workspace-expo-cell:hover {
+  border-color: var(--gnome-accent, #3584e4);
+  transform: scale(1.02);
+}
+
+.workspace-expo-cell.workspace-expo-cell--active {
+  border-color: var(--gnome-accent, #3584e4);
+  box-shadow: 0 0 0 2px var(--gnome-accent, #3584e4);
+}
+
+.workspace-expo-cell-label {
+  position: absolute;
+  bottom: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.7);
+  color: #fff;
+  font-size: 12px;
+  padding: 2px 10px;
+  border-radius: 8px;
+  pointer-events: none;
+}
+
+/* ── Workspace Switcher (squares in control strip) ── */
+
+.workspace-switcher {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: auto;
+  padding: 0 6px;
+}
+
+.workspace-indicator {
+  width: 16px;
+  height: 12px;
+  border-radius: 2px;
+  background: rgba(128, 128, 128, 0.3);
+  border: 1px solid rgba(128, 128, 128, 0.5);
+  padding: 0;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.workspace-indicator:hover {
+  background: rgba(128, 128, 128, 0.5);
+  border-color: rgba(128, 128, 128, 0.7);
+}
+
+.workspace-indicator--active {
+  background: var(--gnome-accent, #3584e4);
+  border-color: var(--gnome-accent, #3584e4);
+}
+
+[data-theme="light"] .workspace-indicator {
+  background: rgba(0, 0, 0, 0.15);
+  border-color: rgba(0, 0, 0, 0.35);
+}
+
+[data-theme="light"] .workspace-indicator:hover {
+  background: rgba(0, 0, 0, 0.25);
+  border-color: rgba(0, 0, 0, 0.5);
+}
+
+[data-theme="light"] .workspace-indicator--active {
+  background: var(--gnome-accent, #3584e4);
+  border-color: var(--gnome-accent, #3584e4);
+}
+
+/* ── Screensaver Overlay ── */
+
+.screensaver-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 99999;
+  background: #000;
+  cursor: none;
+}
+
+.screensaver-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
 }

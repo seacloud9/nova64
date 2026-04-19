@@ -1,4 +1,5 @@
 import { useUIStore } from '../os/stores';
+import { WorkspaceSwitcher } from './WorkspaceSwitcher';
 
 export function ControlStrip() {
   const {
@@ -80,6 +81,8 @@ export function ControlStrip() {
               <span className="control-strip-label">{item.label}</span>
             </div>
           ))}
+
+          <WorkspaceSwitcher />
         </>
       )}
     </div>

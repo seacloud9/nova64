@@ -1,8 +1,8 @@
 // camera-platformer — side-scrolling platformer using cam2DFollow
 // Shows: createCamera2D, cam2DFollow, cam2DApply, cam2DReset, 2D parallax layers
 
-const W = 320,
-  H = 240;
+let W = 640,
+  H = 360;
 const GRAVITY = 500; // px/s²
 const JUMP_VEL = -280;
 const RUN_SPD = 130;
@@ -46,6 +46,8 @@ function _drawFlag(wx, wy, color) {
 }
 
 export function init() {
+  W = typeof screenWidth === 'function' ? screenWidth() : 640;
+  H = typeof screenHeight === 'function' ? screenHeight() : 360;
   cam = createCamera2D({ screenW: W, screenH: H });
   cam.zoom = 1;
 

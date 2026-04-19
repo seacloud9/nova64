@@ -2,8 +2,8 @@
 // Shows: withFilter, CM (color matrix), applyGlitch, applyVHS, applyPixelate,
 //        applyBloom, toggleable effects with keyboard input
 
-const W = 320,
-  H = 240;
+let W = 640,
+  H = 360;
 let time = 0;
 let glitchTimer = 0;
 let glitchNext = 0.6;
@@ -28,7 +28,10 @@ function _drawPlasma(t) {
   }
 }
 
-export function init() {}
+export function init() {
+  W = typeof screenWidth === 'function' ? screenWidth() : 640;
+  H = typeof screenHeight === 'function' ? screenHeight() : 360;
+}
 
 export function update(dt) {
   time += dt;

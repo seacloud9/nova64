@@ -1,8 +1,8 @@
 // particle-trail — Mouse-following particle trail using createEmitter2D
 // Shows: createEmitter2D, following pointer/touch, color gradients, BM.ADD
 
-const W = 320,
-  H = 240;
+let W = 640,
+  H = 360;
 
 let trailEmitter;
 let sparkEmitter;
@@ -43,6 +43,8 @@ function _setupPointer() {
 }
 
 export function init() {
+  W = typeof screenWidth === 'function' ? screenWidth() : 640;
+  H = typeof screenHeight === 'function' ? screenHeight() : 360;
   _setupPointer();
 
   trailEmitter = createEmitter2D({

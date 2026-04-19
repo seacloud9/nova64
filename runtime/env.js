@@ -13,6 +13,12 @@ let _cheatsEnabled = false;
 let _overlayVisible = false;
 let _overlayEl = null;
 let _onCheatsChanged = null; // cart-provided callback
+let _rawMeta = null; // raw meta.json contents for display
+
+// ── Built-in cheats (always available) ──────────────────────────
+const _builtinCheats = {
+  godMode: false, // invincibility — cart reads via getCheats().godMode
+};
 
 // ── Schema defaults ─────────────────────────────────────────────
 const SCHEMA_DEFAULTS = {
@@ -60,6 +66,11 @@ const SCHEMA_DEFAULTS = {
 };
 
 // ── Helpers ──────────────────────────────────────────────────────
+
+/** Escape HTML entities for safe rendering in dev console */
+function escapeHtml(str) {
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
 
 /** Deep merge b into a (a wins for non-objects, b fills gaps) */
 function deepMerge(base, override) {
@@ -221,6 +232,10 @@ function applyEnv(config) {
     _cheatsEnabled = !!ch.enabled;
     _cheats = { ...(ch.items || {}) };
   }
+  // Merge built-in cheats (don't override cart-defined ones)
+  for (const [k, v] of Object.entries(_builtinCheats)) {
+    if (!(k in _cheats)) _cheats[k] = v;
+  }
 }
 
 // ── Cheat overlay ───────────────────────────────────────────────
@@ -241,7 +256,7 @@ function buildOverlay() {
   el.innerHTML = `
     <div style="max-width:600px; margin:0 auto;">
       <h2 style="color:#ff0;font-size:28px;margin:0 0 8px">⚙️ NOVA64 DEV CONSOLE</h2>
-      <p style="color:#888;font-size:14px;margin:0 0 20px">Press <kbd style="color:#ff0">X</kbd> to close</p>
+      <p style="color:#888;font-size:14px;margin:0 0 20px">Press <kbd style="color:#ff0">Shift+X</kbd> to close</p>
       <div id="nova64-cheat-sections"></div>
       <div id="nova64-env-info" style="margin-top:24px;border-top:1px solid #333;padding-top:16px"></div>
       <div id="nova64-manifest-info" style="margin-top:16px;border-top:1px solid #333;padding-top:16px"></div>
@@ -256,7 +271,10 @@ function renderOverlay() {
   const sections = _overlayEl.querySelector('#nova64-cheat-sections');
   const envInfo = _overlayEl.querySelector('#nova64-env-info');
 
-  // Cheat toggles
+  // Cheat toggles — ensure built-in cheats are always present
+  for (const [k, v] of Object.entries(_builtinCheats)) {
+    if (!(k in _cheats)) _cheats[k] = v;
+  }
   let html = '';
   const keys = Object.keys(_cheats);
   if (keys.length > 0) {
@@ -447,6 +465,12 @@ function renderOverlay() {
     }
   }
 
+  // Raw meta.json
+  if (_rawMeta) {
+    mhtml += '<h3 style="color:#0f0;font-size:20px;margin:12px 0 8px">📄 meta.json</h3>';
+    mhtml += `<pre style="background:#111;padding:8px;border-radius:4px;font-size:12px;color:#0ff;max-height:300px;overflow:auto;white-space:pre-wrap;word-break:break-word">${escapeHtml(JSON.stringify(_rawMeta, null, 2))}</pre>`;
+  }
+
   manifestEl.innerHTML = mhtml;
 
   // Bind locale buttons
@@ -467,7 +491,7 @@ function hideOverlay() {
 }
 
 function toggleOverlay() {
-  if (!_cheatsEnabled) return;
+  // Dev console is always accessible with Shift+X (no cheatsEnabled gate)
   if (_overlayVisible) {
     hideOverlay();
   } else {
@@ -532,7 +556,7 @@ function getLevels() {
 
 /** getCheats() — Returns a copy of current cheat flags. */
 function getCheats() {
-  return { ..._cheats };
+  return { _enabled: _cheatsEnabled, ..._cheats };
 }
 
 /** setCheat(key, value) — Set a single cheat flag programmatically. */
@@ -550,14 +574,15 @@ function resetEnv() {
   _cheats = {};
   _cheatsEnabled = false;
   _onCheatsChanged = null;
+  _rawMeta = null;
   hideOverlay();
 }
 
-// ── Keyboard listener for X key ─────────────────────────────────
+// ── Keyboard listener for Shift+X ───────────────────────────────
 function initKeyListener() {
   window.addEventListener('keydown', e => {
-    if (e.code === 'KeyX' && !e.ctrlKey && !e.metaKey && !e.altKey) {
-      // Only toggle if cheats are enabled and no text input is focused
+    if (e.code === 'KeyX' && e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      // Shift+X toggles dev console — always available
       const tag = document.activeElement?.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
       toggleOverlay();
@@ -581,6 +606,10 @@ export function envApi() {
       target.setCheat = setCheat;
     },
     _reset: resetEnv,
+    /** Store raw meta.json for display in dev console */
+    _setRawMeta(meta) {
+      _rawMeta = meta;
+    },
     _loadFromCart(mod) {
       // Called by console.js after import — check if cart exports env
       if (mod.env) {

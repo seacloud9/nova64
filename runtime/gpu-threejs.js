@@ -255,6 +255,14 @@ export class GpuThreeJS {
       globalThis.updateLODs();
     }
 
+    // Cardboard VR: use StereoEffect instead of normal render
+    if (typeof globalThis._xrRenderStereo === 'function' && globalThis._xrRenderStereo()) {
+      // Stereo already rendered — skip normal render but still do 2D overlay
+      // (2D overlay in cardboard mode is rendered flat, visible in both eyes)
+      this.update2DOverlay();
+      return;
+    }
+
     // Render 3D scene first - check if post-processing effects are enabled
     if (typeof globalThis.isEffectsEnabled === 'function' && globalThis.isEffectsEnabled()) {
       // Use post-processing composer
@@ -269,6 +277,9 @@ export class GpuThreeJS {
     }
 
     // RENDER 2D HUD OVERLAY!
+    // In WebXR VR/AR mode, skip the ortho overlay (it doesn't work in stereo).
+    // The VR HUD billboard is updated separately by xr._tick().
+    if (this.renderer.xr.isPresenting) return;
     this.update2DOverlay();
   }
 

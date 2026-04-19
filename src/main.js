@@ -28,6 +28,8 @@ import { wadApi } from '../runtime/wad.js';
 import { manifestApi } from '../runtime/manifest.js';
 import { canvasUIApi } from '../runtime/canvas-ui.js';
 import { hypeApi } from '../runtime/hype.js';
+import { xrModule } from '../runtime/xr.js';
+import { mediapipeModule } from '../runtime/mediapipe.js';
 import { blendApi } from '../runtime/api-blend.js';
 import { stageApi } from '../runtime/stage.js';
 import { movieClipApi } from '../runtime/movie-clip.js';
@@ -133,6 +135,8 @@ const filtersInst = filtersApi(gpu);
 const camera2DInst = camera2DApi(gpu);
 const particles2DInst = particles2DApi(gpu);
 const tweenInst = tweenApi();
+const xrInst = xrModule(gpu);
+const mpInst = mediapipeModule(gpu);
 
 // Create UI API - needs to be created after api is fully initialized
 let uiApiInstance;
@@ -170,6 +174,12 @@ filtersInst.exposeTo(nova64api);
 camera2DInst.exposeTo(nova64api);
 particles2DInst.exposeTo(nova64api);
 tweenInst.exposeTo(nova64api);
+xrInst.exposeTo(nova64api);
+
+// Expose XR stereo render hook for gpu-threejs.js
+globalThis._xrRenderStereo = () => xrInst._renderStereo();
+
+mpInst.exposeTo(nova64api);
 
 // Now create UI API after nova64api has rgba8 and other functions
 uiApiInstance = uiApi(gpu, nova64api);
@@ -385,7 +395,21 @@ function loop() {
   }
 
   if (statsEl) statsEl.textContent = statsText;
-  requestAnimationFrame(loop);
+
+  // XR per-frame update (VR HUD follow, etc.)
+  xrInst._tick();
+
+  // When NOT using setAnimationLoop (before startLoop is called),
+  // fall back to requestAnimationFrame
+  if (!_useAnimationLoop) requestAnimationFrame(loop);
+}
+
+let _useAnimationLoop = false;
+function startLoop() {
+  // renderer.setAnimationLoop is required for WebXR and is backward-
+  // compatible with normal rendering (acts like rAF when no XR session).
+  _useAnimationLoop = true;
+  gpu.getRenderer().setAnimationLoop(loop);
 }
 
 attachUI();
@@ -470,6 +494,8 @@ const demoMap = {
   'hud-demo': '/examples/hud-demo/code.js',
   'startscreen-demo': '/examples/startscreen-demo/code.js',
   'canvas-ui-showcase': '/examples/canvas-ui-showcase/code.js',
+  'vr-demo': '/examples/vr-demo/code.js',
+  'ar-hand-demo': '/examples/ar-hand-demo/code.js',
 };
 
 // default cart - load from URL param or default to space-harrier-3d
@@ -477,7 +503,7 @@ const demoMap = {
   // Studio mode: skip auto-loading a cart; wait for EXECUTE_CODE from Game Studio
   if (studioMode) {
     console.log('🎮 Studio mode: waiting for code from Game Studio…');
-    requestAnimationFrame(loop);
+    startLoop();
     // Defer EXECUTE_READY until after window load so the parent's iframe
     // onLoad handler fires first, avoiding any timing race.
     const sendReady = () => {
@@ -509,7 +535,7 @@ const demoMap = {
 
   console.log(`🎮 Loading game: ${gamePath}`);
   await loadCart(gamePath);
-  requestAnimationFrame(loop);
+  startLoop();
 })();
 
 // Listen for messages from Game Studio to execute code
@@ -541,6 +567,9 @@ window.addEventListener('message', async event => {
       if (typeof nova64api.setCameraPosition === 'function') nova64api.setCameraPosition(0, 5, 10);
       if (typeof nova64api.setCameraTarget === 'function') nova64api.setCameraTarget(0, 0, 0);
       if (typeof nova64api.setCameraFOV === 'function') nova64api.setCameraFOV(60);
+      // Clean up XR and MediaPipe tracking between cart loads
+      if (typeof nova64api.disableXR === 'function') nova64api.disableXR();
+      mpInst._cleanup();
       postLog('🧹 Scene reset for new cart');
 
       // Race-condition guard: if a newer execution arrived, bail out

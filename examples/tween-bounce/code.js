@@ -2,12 +2,14 @@
 // Shows: createTween (hype-style value tween), Ease.outBounce, Stage
 
 const BALLS = [];
-const W = 320,
-  H = 240;
+let W = 640,
+  H = 360;
 const COLORS = [0xff4466, 0x44aaff, 0xffcc00, 0x44ff88, 0xff8844, 0xaa44ff];
 const BALL_COUNT = 6;
 
 export function init() {
+  W = typeof screenWidth === 'function' ? screenWidth() : 640;
+  H = typeof screenHeight === 'function' ? screenHeight() : 360;
   for (let i = 0; i < BALL_COUNT; i++) {
     const x = 30 + (i / (BALL_COUNT - 1)) * (W - 60);
     const radius = 12 + Math.random() * 8;

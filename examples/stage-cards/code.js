@@ -1,8 +1,8 @@
 // stage-cards — playing card flip animation using Stage display list
 // Shows: createContainer, createGraphicsNode, tweenTo, easeInOutBack, BM.ADD
 
-const W = 320,
-  H = 240;
+let W = 640,
+  H = 360;
 const CARD_W = 44,
   CARD_H = 64;
 const SUITS = ['♠', '♥', '♦', '♣'];
@@ -68,6 +68,8 @@ function _makeCard(value, suit, suitColor, cx, cy) {
 }
 
 export function init() {
+  W = typeof screenWidth === 'function' ? screenWidth() : 640;
+  H = typeof screenHeight === 'function' ? screenHeight() : 360;
   root = createContainer();
   cards = [];
 

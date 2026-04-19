@@ -2,8 +2,8 @@
 // Shows: createContainer, createTextNode, createGraphicsNode, tweenTo,
 //        easeOutBack stagger, addChild, hitTest, blendMode
 
-const W = 320,
-  H = 240;
+let W = 640,
+  H = 360;
 const ITEMS = ['▶  START GAME', '⚙  OPTIONS', '🏆  LEADERBOARD', 'ℹ  ABOUT'];
 const COLORS_DEF = [0xffffff, 0xaaddff, 0xaaddff, 0xaaddff];
 const COLORS_HOV = [0xffcc44, 0x44ffaa, 0xff88cc, 0x88aaff];
@@ -25,6 +25,8 @@ function _makeBgStripe(x, y, w, h, color) {
 }
 
 export function init() {
+  W = typeof screenWidth === 'function' ? screenWidth() : 640;
+  H = typeof screenHeight === 'function' ? screenHeight() : 360;
   root = createContainer();
   bgRoot = createContainer();
   addChild(root, bgRoot);

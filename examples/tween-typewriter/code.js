@@ -2,8 +2,8 @@
 // Shows: hype-style createTween (scalar), easeLinear, onUpdate callback,
 //        createContainer, createTextNode, tweenTo, cursor animation
 
-const W = 320,
-  H = 240;
+let W = 640,
+  H = 360;
 
 const LINES = [
   { text: 'NOVA64 CONSOLE ONLINE', color: 0x44ff88, delay: 0.2 },
@@ -26,6 +26,8 @@ let cursorBlink = 0;
 let showCursor = true;
 
 export function init() {
+  W = typeof screenWidth === 'function' ? screenWidth() : 640;
+  H = typeof screenHeight === 'function' ? screenHeight() : 360;
   root = createContainer();
   displayTexts = LINES.map(() => '');
 

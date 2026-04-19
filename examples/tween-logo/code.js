@@ -2,8 +2,8 @@
 // Shows: createTween (nova-style on stage nodes), easeInOutBack stagger,
 //        easeOutElastic, chain tweens with onComplete, screen flash
 
-const W = 320,
-  H = 240;
+let W = 640,
+  H = 360;
 
 const LETTERS = ['N', 'O', 'V', 'A', '6', '4'];
 const LETTER_COLORS = [0xff4466, 0xff8844, 0xffcc44, 0x44ff88, 0x44aaff, 0xaa44ff];
@@ -16,6 +16,8 @@ let phase = 0; // 0=in, 1=idle, 2=out
 let phaseTimer = 0;
 
 export function init() {
+  W = typeof screenWidth === 'function' ? screenWidth() : 640;
+  H = typeof screenHeight === 'function' ? screenHeight() : 360;
   root = createContainer();
 
   const totalW = LETTERS.length * 44;

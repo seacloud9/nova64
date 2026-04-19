@@ -197,6 +197,23 @@ window.addEventListener('keydown', e => {
   }
 });
 
+// Wire debug panel controls → game loop state
+_debugPanel.setCallbacks({
+  onPause: () => {
+    paused = !paused;
+    _debugPanel.setPaused(paused);
+    // Sync the HTML pauseBtn if it exists
+    const pb = document.getElementById('pause');
+    if (pb) pb.textContent = paused ? 'Resume' : 'Pause';
+  },
+  onStep: () => {
+    stepOnce = true;
+  },
+  onReload: () => {
+    if (_currentCartPath) loadCart(_currentCartPath);
+  },
+});
+
 // Lifecycle: notify parent window when a cart finishes loading
 nova.onCartDidLoad = path => {
   if (window.parent && window.parent !== window) {
@@ -233,6 +250,7 @@ function attachUI() {
   pauseBtn.addEventListener('click', () => {
     paused = !paused;
     pauseBtn.textContent = paused ? 'Resume' : 'Pause';
+    _debugPanel.setPaused(paused);
   });
   stepBtn.addEventListener('click', () => {
     stepOnce = true;
@@ -278,7 +296,8 @@ globalThis.getFPS = () => fps;
 
 function loop() {
   const now = performance.now();
-  const dt = Math.min(0.1, (now - last) / 1000);
+  let dt = Math.min(0.1, (now - last) / 1000);
+  dt *= _debugPanel.getTimeScale();
   currentDt = dt;
   last = now;
 

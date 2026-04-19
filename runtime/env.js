@@ -465,10 +465,18 @@ function renderOverlay() {
     }
   }
 
-  // Raw meta.json
+  // Raw meta.json — editable live
   if (_rawMeta) {
-    mhtml += '<h3 style="color:#0f0;font-size:20px;margin:12px 0 8px">📄 meta.json</h3>';
-    mhtml += `<pre style="background:#111;padding:8px;border-radius:4px;font-size:12px;color:#0ff;max-height:300px;overflow:auto;white-space:pre-wrap;word-break:break-word">${escapeHtml(JSON.stringify(_rawMeta, null, 2))}</pre>`;
+    mhtml +=
+      '<h3 style="color:#0f0;font-size:20px;margin:12px 0 8px">📄 meta.json <span style="font-size:12px;color:#888">(editable)</span></h3>';
+    mhtml += `<textarea id="nova64-meta-editor" style="width:100%;min-height:200px;max-height:400px;background:#111;padding:8px;border:1px solid #333;border-radius:4px;font:12px monospace;color:#0ff;resize:vertical;white-space:pre;tab-size:2">${escapeHtml(JSON.stringify(_rawMeta, null, 2))}</textarea>`;
+    mhtml += '<div style="margin:6px 0;display:flex;gap:8px;align-items:center">';
+    mhtml +=
+      '<button id="nova64-meta-apply" style="padding:4px 16px;background:#0a0;color:#000;border:1px solid #0f0;cursor:pointer;font-family:inherit;font-size:13px;font-weight:bold;border-radius:3px">Apply</button>';
+    mhtml +=
+      '<button id="nova64-meta-reset" style="padding:4px 12px;background:#222;color:#f44;border:1px solid #f44;cursor:pointer;font-family:inherit;font-size:13px;border-radius:3px">Reset</button>';
+    mhtml += '<span id="nova64-meta-status" style="color:#888;font-size:12px"></span>';
+    mhtml += '</div>';
   }
 
   manifestEl.innerHTML = mhtml;
@@ -479,6 +487,43 @@ function renderOverlay() {
       const loc = btn.getAttribute('data-locale');
       if (typeof globalThis.setLocale === 'function') globalThis.setLocale(loc);
       renderOverlay();
+    };
+  }
+
+  // Bind meta.json editor
+  const metaApply = _overlayEl.querySelector('#nova64-meta-apply');
+  const metaReset = _overlayEl.querySelector('#nova64-meta-reset');
+  const metaEditor = _overlayEl.querySelector('#nova64-meta-editor');
+  const metaStatus = _overlayEl.querySelector('#nova64-meta-status');
+  if (metaApply && metaEditor) {
+    metaApply.onclick = () => {
+      try {
+        const parsed = JSON.parse(metaEditor.value);
+        // Apply env defaults from the edited meta
+        if (parsed.defaults) {
+          const merged = deepMerge(SCHEMA_DEFAULTS, parsed.defaults);
+          applyEnv(merged);
+        }
+        _rawMeta = parsed;
+        if (metaStatus) {
+          metaStatus.style.color = '#0f0';
+          metaStatus.textContent = '✓ Applied';
+        }
+      } catch (err) {
+        if (metaStatus) {
+          metaStatus.style.color = '#f44';
+          metaStatus.textContent = '✗ ' + err.message;
+        }
+      }
+    };
+  }
+  if (metaReset && metaEditor && _rawMeta) {
+    metaReset.onclick = () => {
+      metaEditor.value = JSON.stringify(_rawMeta, null, 2);
+      if (metaStatus) {
+        metaStatus.style.color = '#888';
+        metaStatus.textContent = 'Reset to last saved';
+      }
     };
   }
 

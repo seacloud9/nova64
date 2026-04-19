@@ -99,10 +99,13 @@ An in-browser debug overlay for inspecting and editing scenes at runtime.
 - Install the [Three.js DevTools](https://chromewebstore.google.com/detail/three-js-developer-tools/ljjomegalejmghcbeafmpnpgkoopignh) browser extension for additional scene inspection
 
 ### **Panel Sections**:
+- **Time Controls** (toolbar): Pause/Resume, Step Frame, Reload Cart, Speed slider (0–2x)
 - **Performance**: FPS, triangles, draw calls, geometries, textures, shader programs
 - **Camera**: Editable position/target/FOV inputs (calls `setCameraPosition`/`setCameraTarget`/`setCameraFOV` live)
 - **Scene Graph**: Collapsible tree of all objects — toggle visibility, click to highlight with wireframe bounding box
+- **Inspector**: Click an object in the scene graph to edit position/rotation/scale, material color/opacity, wireframe toggle
 - **Lights**: Color picker + intensity slider for every light in the scene
+- **Console Log**: Captured `console.log`/`warn`/`error` output with color-coded entries and auto-scroll
 
 ### **Three.js DevTools Bridge** (`src/main.js`):
 Exposes `globalThis.__THREE__`, `__THREE_SCENE__`, `__THREE_RENDERER__`, `__THREE_CAMERA__` so the browser extension can inspect the live scene.

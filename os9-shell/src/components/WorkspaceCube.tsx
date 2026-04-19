@@ -1,30 +1,37 @@
-// Compiz-style 3D rotating cube with 4 workspace faces
-// Uses CSS3 preserve-3d transforms for hardware-accelerated rotation
+// Workspace switcher with Z-depth transition effect
+// Active workspace is shown full-screen; on switch, the old workspace
+// recedes back in Z-space and the new one emerges forward.
 
-import { useEffect, useState, useCallback, type ReactNode } from 'react';
+import { useEffect, useState, useRef, type ReactNode } from 'react';
 import { useWorkspaceStore, WORKSPACE_COUNT } from '../os/workspaceStore';
 
 interface WorkspaceCubeProps {
-  /** Render function receiving workspace index, returns content for that face */
   renderWorkspace: (workspaceId: number) => ReactNode;
 }
 
 export function WorkspaceCube({ renderWorkspace }: WorkspaceCubeProps) {
-  const { activeWorkspace, isExpoMode, switchWorkspace } = useWorkspaceStore();
-  const [cubeSize, setCubeSize] = useState(window.innerWidth);
-
-  // Track viewport width for translateZ calculation
-  const handleResize = useCallback(() => {
-    setCubeSize(window.innerWidth);
-  }, []);
+  const { activeWorkspace, isExpoMode, switchWorkspace } =
+    useWorkspaceStore();
+  const [displayedWorkspace, setDisplayedWorkspace] = useState(activeWorkspace);
+  const [phase, setPhase] = useState<'idle' | 'out' | 'in'>('idle');
+  const prevWorkspaceRef = useRef(activeWorkspace);
 
   useEffect(() => {
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, [handleResize]);
-
-  const translateZ = cubeSize / 2;
-  const cubeRotation = -90 * activeWorkspace;
+    if (activeWorkspace === prevWorkspaceRef.current) return;
+    // Start "out" phase — old workspace recedes
+    setPhase('out');
+    const outTimer = setTimeout(() => {
+      // Swap to new workspace and start "in" phase
+      setDisplayedWorkspace(activeWorkspace);
+      setPhase('in');
+      const inTimer = setTimeout(() => {
+        setPhase('idle');
+      }, 300);
+      return () => clearTimeout(inTimer);
+    }, 300);
+    prevWorkspaceRef.current = activeWorkspace;
+    return () => clearTimeout(outTimer);
+  }, [activeWorkspace]);
 
   if (isExpoMode) {
     return (
@@ -45,26 +52,13 @@ export function WorkspaceCube({ renderWorkspace }: WorkspaceCubeProps) {
     );
   }
 
+  let className = 'workspace-viewport';
+  if (phase === 'out') className += ' workspace-transition-out';
+  if (phase === 'in') className += ' workspace-transition-in';
+
   return (
-    <div className="workspace-cube-viewport">
-      <div
-        className="workspace-cube"
-        style={{
-          transform: `translateZ(-${translateZ}px) rotateY(${cubeRotation}deg)`,
-        }}
-      >
-        {Array.from({ length: WORKSPACE_COUNT }, (_, i) => (
-          <div
-            key={i}
-            className={`workspace-face workspace-face--${i}${i === activeWorkspace ? ' workspace-face--active' : ''}`}
-            style={{
-              transform: `rotateY(${i * 90}deg) translateZ(${translateZ}px)`,
-            }}
-          >
-            {renderWorkspace(i)}
-          </div>
-        ))}
-      </div>
+    <div className={className}>
+      {renderWorkspace(displayedWorkspace)}
     </div>
   );
 }

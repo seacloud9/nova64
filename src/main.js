@@ -35,6 +35,8 @@ import { filtersApi } from '../runtime/api-filters.js';
 import { camera2DApi } from '../runtime/camera-2d.js';
 import { particles2DApi } from '../runtime/api-particles-2d.js';
 import { tweenApi } from '../runtime/tween.js';
+import { DebugPanel } from '../runtime/debug-panel.js';
+import * as THREE from 'three';
 
 const canvas = document.getElementById('screen');
 
@@ -63,6 +65,16 @@ try {
   console.log(
     `✅ Using Three.js renderer (${_paramW}x${_paramH}) - Nintendo 64/PlayStation GPU mode`
   );
+
+  // Expose Three.js internals for browser DevTools extension
+  globalThis.__THREE__ = THREE;
+  globalThis.__THREE_SCENE__ = gpu.scene;
+  globalThis.__THREE_RENDERER__ = gpu.renderer;
+  globalThis.__THREE_CAMERA__ = gpu.camera;
+  if (typeof window.__THREE_DEVTOOLS__ !== 'undefined') {
+    window.__THREE_DEVTOOLS__.dispatchEvent(new CustomEvent('observe', { detail: gpu.scene }));
+    window.__THREE_DEVTOOLS__.dispatchEvent(new CustomEvent('observe', { detail: gpu.renderer }));
+  }
 } catch (e) {
   console.error('❌ Three.js renderer failed to initialize:', e);
   throw new Error('Fantasy console requires 3D GPU support (Three.js)');
@@ -173,6 +185,17 @@ if (nova64api.getCamera) sApi.setCameraRef(nova64api.getCamera());
 
 const nova = new Nova64(gpu, manifestInst);
 globalThis.NOVA64_VERSION = NOVA64_VERSION;
+
+// ── Debug Panel ──────────────────────────────────────────────────────────────
+const _debugPanel = new DebugPanel(gpu);
+const _debugRequested = _qs.get('debug') === '1';
+if (_debugRequested) _debugPanel.toggle();
+window.addEventListener('keydown', e => {
+  if (e.code === 'F9') {
+    e.preventDefault();
+    _debugPanel.toggle();
+  }
+});
 
 // Lifecycle: notify parent window when a cart finishes loading
 nova.onCartDidLoad = path => {
@@ -327,6 +350,9 @@ function loop() {
   }
 
   fps = Math.round(1000 / (performance.now() - now));
+
+  // Update debug panel (throttled internally)
+  _debugPanel.update();
 
   // 3D GPU stats
   let statsText = `3D GPU (Three.js) • fps: ${fps}, update: ${uMs.toFixed(2)}ms, draw: ${dMs.toFixed(2)}ms`;

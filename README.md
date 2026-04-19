@@ -59,11 +59,23 @@
 # Install globally
 pnpm add -g nova64
 
-# Launch the console with 47 playable demos
-nova64 --start-demo
+# Create a new game project
+nova64 init my-game
+cd my-game && nova64 dev
 ```
 
-Your browser opens to the Nova64 console at `http://localhost:3000/console.html` with all demos ready to play.
+Your browser opens to a spinning cube starter at `http://localhost:5173` — edit `code.js` and see changes instantly.
+
+### 🎨 **Start from a Template**
+
+```bash
+# Browse 60+ example games and demos interactively
+nova64 template
+
+# Or clone a specific template directly
+nova64 template star-fox-nova-3d
+cd star-fox-nova-3d && nova64 dev
+```
 
 ### 🏁 **Development Setup**
 
@@ -75,13 +87,30 @@ pnpm dev
 # Visit http://localhost:5173
 ```
 
-### 🔧 **CLI Options**
+### 🔧 **CLI Commands**
 
 ```bash
-nova64 --start-demo              # Launch console with demos
-nova64 --start-demo -p 8080      # Use a custom port
-nova64 --start-demo --no-open    # Don't auto-open browser
+nova64 init [name]               # Scaffold a new project (prompts if name omitted)
+nova64 template [name]           # Pick from 60+ example templates
+nova64 dev                       # Start dev server for the current project
+nova64 --start-demo              # Launch console with all demos (requires build)
 nova64 --help                    # Show all options
+```
+
+**Options:**
+
+```bash
+-p, --port NUM                   # Port to listen on (default: 3000)
+--no-open                        # Don't auto-open the browser
+```
+
+### 🔍 **Debug Tools**
+
+```bash
+# In the browser while running any cart:
+F9                               # Toggle debug panel (scene graph, camera, lights, stats)
+Shift+X                          # Toggle dev console (cheats, meta.json, env, entities)
+?debug=1                         # Add to URL to auto-open debug panel on load
 ```
 
 ---
@@ -92,10 +121,16 @@ nova64 --help                    # Show all options
 nova64/
 ├── index.html               # Main console launcher
 ├── package.json             # Dependencies & scripts
-├── bin/nova64.js            # CLI entry point (nova64 --start-demo)
+├── bin/nova64.js            # CLI entry point (init, template, dev, --start-demo)
+├── bin/commands/             # CLI subcommand implementations
+│   ├── init.js              # Project scaffolding (code.js, package.json, index.html)
+│   ├── template.js          # Interactive template picker (60+ examples)
+│   └── dev.js               # Vite dev server for user projects
 ├── src/main.js              # Core engine bootstrap
 ├── runtime/                 # Advanced 3D Engine (41 modules)
 │   ├── gpu-threejs.js       # Three.js GPU backend with advanced materials
+│   ├── debug-panel.js       # F9 debug panel (scene graph, camera, lights, stats)
+│   ├── env.js               # Environment config + Shift+X dev console (cheats, meta)
 │   ├── api.js               # Core 2D API (cls, pset, line, rect, print)
 │   ├── api-3d.js            # 3D API (createCube, setCameraPosition, etc.)
 │   ├── api-effects.js       # Post-processing effects (bloom, vignette, glitch)

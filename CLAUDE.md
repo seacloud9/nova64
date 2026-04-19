@@ -89,6 +89,24 @@ my-game/
 └── package.json   # Has nova64 dependency + "nova64 dev" script
 ```
 
+## 🔍 **Debug Panel** (`runtime/debug-panel.js`)
+
+An in-browser debug overlay for inspecting and editing scenes at runtime.
+
+### **Activation**:
+- Press **F9** to toggle the panel open/closed
+- Add `?debug=1` to the URL to auto-open on load
+- Install the [Three.js DevTools](https://chromewebstore.google.com/detail/three-js-developer-tools/ljjomegalejmghcbeafmpnpgkoopignh) browser extension for additional scene inspection
+
+### **Panel Sections**:
+- **Performance**: FPS, triangles, draw calls, geometries, textures, shader programs
+- **Camera**: Editable position/target/FOV inputs (calls `setCameraPosition`/`setCameraTarget`/`setCameraFOV` live)
+- **Scene Graph**: Collapsible tree of all objects — toggle visibility, click to highlight with wireframe bounding box
+- **Lights**: Color picker + intensity slider for every light in the scene
+
+### **Three.js DevTools Bridge** (`src/main.js`):
+Exposes `globalThis.__THREE__`, `__THREE_SCENE__`, `__THREE_RENDERER__`, `__THREE_CAMERA__` so the browser extension can inspect the live scene.
+
 ## 🏗️ **Architecture Overview**
 
 Nova64 is a revolutionary **JavaScript 3D Fantasy Console** featuring:

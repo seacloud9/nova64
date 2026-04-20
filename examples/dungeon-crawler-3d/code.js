@@ -2,6 +2,52 @@
 // Procedurally generated dungeons with themed floors, boss fights, traps,
 // particle effects, screen shake, and atmospheric lighting.
 
+const {
+  createMinimap,
+  drawFloatingTexts3D,
+  drawGlowText,
+  drawHealthBar,
+  drawMinimap,
+  drawPixelBorder,
+  drawProgressBar,
+  print,
+  printCentered,
+  rect,
+  rectfill,
+  rgba8,
+} = nova64.draw;
+const {
+  createCapsule,
+  createCone,
+  createCube,
+  createCylinder,
+  createSphere,
+  destroyMesh,
+  rotateMesh,
+  setPosition,
+  setScale,
+} = nova64.scene;
+const { setCameraPosition, setCameraTarget } = nova64.camera;
+const { createPointLight, setAmbientLight, setFog, setLightColor, setLightDirection } =
+  nova64.light;
+const { enableBloom, enableFXAA, enableVignette } = nova64.fx;
+const { btnp, key, keyp } = nova64.input;
+const { sfx } = nova64.audio;
+const { Screen } = nova64.ui;
+const { t } = nova64.data;
+const {
+  color,
+  createCooldown,
+  createFloatingTextSystem,
+  createShake,
+  dist,
+  pulse,
+  triggerShake,
+  updateCooldown,
+  updateShake,
+  useCooldown,
+} = nova64.util;
+
 const TILE_SIZE = 2;
 const MAP_W = 30;
 const MAP_H = 30;

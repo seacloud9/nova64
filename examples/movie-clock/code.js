@@ -1,6 +1,10 @@
 // movie-clock — analogue clock animated with createMovieClip
 // Shows: createMovieClip, gotoAndStop, drawGraphicsNode, print, clean 60fps draw
 
+const { circle, cls, line, print, printCentered, screenHeight, screenWidth } = nova64.draw;
+const { createMovieClip, gotoAndStop } = nova64.ui;
+const { color, ellipse } = nova64.util;
+
 let W = 640,
   H = 360;
 let CX = W / 2,

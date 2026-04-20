@@ -3,6 +3,16 @@
 // WASD to move  |  SPACE to interact / advance dialogue
 
 // ── State ────────────────────────────────────────────────────────────────────
+const { print, rect, rectfill, rgba8, screenHeight, screenWidth } = nova64.draw;
+const { createCube, createPlane, setPosition, setRotation, setScale } = nova64.scene;
+const { setCameraFOV, setCameraPosition, setCameraTarget } = nova64.camera;
+const { createPointLight, setAmbientLight, setFog, setLightColor, setLightDirection } =
+  nova64.light;
+const { enableBloom, enableFXAA, enableVignette } = nova64.fx;
+const { btn, key } = nova64.input;
+const { sfx } = nova64.audio;
+const { pulse } = nova64.util;
+
 let state = 'title'; // 'title' | 'explore' | 'dialogue'
 let sceneTime = 0; // seconds since last state enter
 let textScroll = 0;

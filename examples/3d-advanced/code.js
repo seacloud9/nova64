@@ -1,6 +1,42 @@
 // examples/3d-advanced/code.js
 // Epic space battle scene with capital ships, fighters, and spectacular effects
 
+const { cls, drawPanel, line, print, rect, rgba8 } = nova64.draw;
+const {
+  clearScene,
+  createCube,
+  createSphere,
+  destroyMesh,
+  engine,
+  get3DStats,
+  getPosition,
+  rotateMesh,
+  setPosition,
+  setRotation,
+  setScale,
+} = nova64.scene;
+const { setCameraFOV, setCameraPosition, setCameraTarget } = nova64.camera;
+const { setAmbientLight, setFog, setLightColor, setLightDirection } = nova64.light;
+const { enableBloom, enableDithering, enableFXAA, enablePixelation, enableVignette } = nova64.fx;
+const { key } = nova64.input;
+const {
+  Screen,
+  centerX,
+  createButton,
+  createPanel,
+  drawAllButtons,
+  drawGradientRect,
+  drawText,
+  drawTextOutline,
+  drawTextShadow,
+  setFont,
+  setTextAlign,
+  uiColors,
+  updateAllButtons,
+} = nova64.ui;
+const { t } = nova64.data;
+const { color, pulse } = nova64.util;
+
 let capitalShips = [];
 let fighters = [];
 let projectiles = [];

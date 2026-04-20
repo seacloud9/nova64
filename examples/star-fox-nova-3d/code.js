@@ -2,6 +2,66 @@
 // Ultimate 3D Edition with Holographic Materials, Barrel Rolls, and Cinematic Lighting
 
 // ── State ──────────────────────────────────────────────
+const {
+  cls,
+  drawGlowTextCentered,
+  drawGradient,
+  drawNoise,
+  drawPanel,
+  drawRadialGradient,
+  drawScanlines,
+  drawStarburst,
+  drawWave,
+  line,
+  rect,
+  rgba8,
+} = nova64.draw;
+const {
+  createCube,
+  createInstancedMesh,
+  createSphere,
+  createTorus,
+  destroyMesh,
+  finalizeInstances,
+  rotateMesh,
+  setInstanceTransform,
+  setPosition,
+  setRotation,
+  setScale,
+} = nova64.scene;
+const { setCameraFOV, setCameraPosition, setCameraTarget } = nova64.camera;
+const { createSpaceSkybox, setAmbientLight, setFog, setLightColor, setLightDirection } =
+  nova64.light;
+const { enableBloom, enableFXAA, enableVignette } = nova64.fx;
+const { btn, btnp, isKeyPressed, key } = nova64.input;
+const { sfx } = nova64.audio;
+const {
+  centerX,
+  clearButtons,
+  createButton,
+  createPanel,
+  drawAllButtons,
+  drawText,
+  drawTextShadow,
+  grid,
+  setFont,
+  setTextAlign,
+  uiColors,
+  updateAllButtons,
+} = nova64.ui;
+const {
+  color,
+  createCooldown,
+  createHitState,
+  dist,
+  isInvulnerable,
+  rotate,
+  triggerHit,
+  updateCooldown,
+  updateHitState,
+  useCooldown,
+} = nova64.util;
+
 let gameState = 'start'; // 'start' | 'playing' | 'gameover'
 let gameTime = 0;
 let inputLockout = 0.6;

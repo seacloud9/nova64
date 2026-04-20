@@ -5,6 +5,27 @@
 // ============================================
 // GAME CONFIGURATION
 // ============================================
+const { circle, line, print, rect, rgba8 } = nova64.draw;
+const { createCube, createSphere, destroyMesh, setPosition, setRotation, setScale } = nova64.scene;
+const { setCameraPosition, setCameraTarget } = nova64.camera;
+const { setAmbientLight, setLightColor, setLightDirection } = nova64.light;
+const { enableBloom, enableFXAA, enableVignette } = nova64.fx;
+const { btn, isKeyDown, isKeyPressed } = nova64.input;
+const { sfx } = nova64.audio;
+const { t } = nova64.data;
+const {
+  color,
+  createCooldownSet,
+  createShake,
+  dist,
+  getShakeOffset,
+  pulse,
+  triggerShake,
+  updateCooldowns,
+  updateShake,
+  useCooldown,
+} = nova64.util;
+
 const CONFIG = {
   // Player ship
   SHIP_SPEED: 25,

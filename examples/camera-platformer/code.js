@@ -1,6 +1,11 @@
 // camera-platformer — side-scrolling platformer using cam2DFollow
 // Shows: createCamera2D, cam2DFollow, cam2DApply, cam2DReset, 2D parallax layers
 
+const { cls, line, print, rectfill, screenHeight, screenWidth } = nova64.draw;
+const { cam2DFollow, createCamera2D } = nova64.camera;
+const { key, keyp } = nova64.input;
+const { color } = nova64.util;
+
 let W = 640,
   H = 360;
 const GRAVITY = 500; // px/s²

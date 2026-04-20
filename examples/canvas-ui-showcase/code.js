@@ -2,6 +2,13 @@
 // NML Canvas UI Showcase — a complete reference demo of every supported element.
 // Organized into labelled sections, all on one screen with a scrollable panel.
 
+const { circle, line, rect } = nova64.draw;
+const { setCameraPosition, setCameraTarget } = nova64.camera;
+const { setAmbientLight, setFog } = nova64.light;
+const { parseCanvasUI, renderCanvasUI, updateCanvasUI } = nova64.ui;
+const { t } = nova64.data;
+const { bezier, color, ellipse, pulse } = nova64.util;
+
 const SHOWCASE_XML = `<ui>
   <!-- Full background -->
   <rect x="0" y="0" width="100%" height="100%" fill="#0a0a18" />

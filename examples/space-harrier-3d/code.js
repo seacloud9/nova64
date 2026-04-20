@@ -1,5 +1,73 @@
 // ⭐ SPACE HARRIER NOVA 64 - Exceptional 2.5D/3D Rail Shooter ⭐
 
+const {
+  cls,
+  drawGlowTextCentered,
+  drawGradient,
+  drawNoise,
+  drawPanel,
+  drawRadialGradient,
+  drawScanlines,
+  drawStarburst,
+  drawWave,
+  line,
+  rect,
+  rgba8,
+} = nova64.draw;
+const {
+  createAdvancedCube,
+  createCube,
+  createPlane,
+  createSphere,
+  destroyMesh,
+  rotateMesh,
+  setMeshVisible,
+  setPosition,
+  setRotation,
+  setScale,
+} = nova64.scene;
+const { setCameraFOV, setCameraPosition, setCameraTarget } = nova64.camera;
+const { setAmbientLight, setFog, setLightColor, setLightDirection } = nova64.light;
+const {
+  disableGlitch,
+  enableBloom,
+  enableDithering,
+  enableFXAA,
+  enableGlitch,
+  enablePixelation,
+  enableVignette,
+  setGlitchIntensity,
+  updateParticles,
+} = nova64.fx;
+const { isKeyPressed, key } = nova64.input;
+const { sfx } = nova64.audio;
+const {
+  centerX,
+  clearButtons,
+  createButton,
+  createPanel,
+  drawAllButtons,
+  drawText,
+  drawTextShadow,
+  setFont,
+  setTextAlign,
+  uiColors,
+  updateAllButtons,
+} = nova64.ui;
+const {
+  arc,
+  color,
+  cooldownReady,
+  createCooldown,
+  createShake,
+  dist,
+  noise,
+  triggerShake,
+  updateCooldown,
+  updateShake,
+  useCooldown,
+} = nova64.util;
+
 let gameState = 'start';
 let gameTime = 0;
 let inputLockoutCD;

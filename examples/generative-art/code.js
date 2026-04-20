@@ -2,6 +2,40 @@
 // 14 interactive Processing-style sketches. Press LEFT/RIGHT to switch.
 // All rendering happens in draw() (framebuffer is cleared between update & draw).
 
+const {
+  circle,
+  cls,
+  drawGlowTextCentered,
+  drawPanel,
+  drawRadialGradient,
+  drawRect,
+  line,
+  print,
+  printCentered,
+  pset,
+  rgba8,
+} = nova64.draw;
+const { createSolidSkybox } = nova64.light;
+const { btnp, keyp } = nova64.input;
+const { Screen } = nova64.ui;
+const { t } = nova64.data;
+const {
+  arc,
+  bezier,
+  color,
+  dist,
+  ellipse,
+  flowField,
+  hsb,
+  noise,
+  noiseSeed,
+  popMatrix,
+  pulse,
+  pushMatrix,
+  rotate,
+  translate,
+} = nova64.util;
+
 let currentSketch = 0;
 const SKETCH_COUNT = 14;
 const sketchNames = [

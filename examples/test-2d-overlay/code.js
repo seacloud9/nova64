@@ -1,5 +1,9 @@
 // MINIMAL 2D OVERLAY TEST - Tests if 2D rendering works AT ALL
 
+const { print, rect, rgba8 } = nova64.draw;
+const { createCube } = nova64.scene;
+const { setCameraPosition, setCameraTarget } = nova64.camera;
+
 let testTime = 0;
 
 export async function init() {

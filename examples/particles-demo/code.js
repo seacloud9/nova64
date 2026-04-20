@@ -2,6 +2,33 @@
 // 5 stunning scenes: inferno, blizzard, electric forge, galaxy, waterfall
 // Controls: 1-5 = scene, SPACE/TAP = burst, WASD = orbit, QE = zoom
 
+const { drawRoundedRect, print, printCentered, rgba8 } = nova64.draw;
+const {
+  clearScene,
+  createCone,
+  createCube,
+  createCylinder,
+  createPlane,
+  createSphere,
+  createTorus,
+  setRotation,
+} = nova64.scene;
+const { setCameraFOV, setCameraPosition, setCameraTarget } = nova64.camera;
+const { createPointLight, createSolidSkybox, setAmbientLight, setFog, setPointLightPosition } =
+  nova64.light;
+const {
+  burstParticles,
+  createParticleSystem,
+  enableBloom,
+  getParticleStats,
+  removeParticleSystem,
+  setParticleEmitter,
+  updateParticles,
+} = nova64.fx;
+const { btnp, key, keyp } = nova64.input;
+const { t } = nova64.data;
+const { frameCount, rotate } = nova64.util;
+
 let scene = 0;
 let systemIds = [];
 let lightIds = [];

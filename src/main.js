@@ -392,8 +392,8 @@ function loop() {
   let statsText = `3D GPU (Three.js) • fps: ${fps}, update: ${uMs.toFixed(2)}ms, draw: ${dMs.toFixed(2)}ms`;
 
   // Add 3D stats if available
-  if (typeof get3DStats === 'function') {
-    const stats3D = get3DStats();
+  if (typeof nova64api.get3DStats === 'function') {
+    const stats3D = nova64api.get3DStats();
     if (stats3D.render) {
       statsText += ` • triangles: ${stats3D.render.triangles}, calls: ${stats3D.render.calls}`;
     }

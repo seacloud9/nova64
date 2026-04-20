@@ -3,6 +3,14 @@
 // Shows: full-screen backgrounds, title text, animated star decorations, nav buttons,
 //        panel modals, SVG path decorations, and mouse-interactive menu navigation.
 
+const { circle, line, rect } = nova64.draw;
+const { createTorus, getMesh } = nova64.scene;
+const { setCameraPosition, setCameraTarget } = nova64.camera;
+const { setAmbientLight, setFog } = nova64.light;
+const { Screen, grid, parseCanvasUI, renderCanvasUI, updateCanvasUI } = nova64.ui;
+const { t } = nova64.data;
+const { arc, color, pulse } = nova64.util;
+
 const MAIN_MENU_XML = `<ui>
   <!-- ── Full-screen dark sky gradient ── -->
   <rect x="0" y="0" width="100%" height="100%" fill="#050515" />

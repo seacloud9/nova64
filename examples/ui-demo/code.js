@@ -1,6 +1,30 @@
 // 🎨 Nova64 UI System Demo - First Class Interface
 // Showcases all professional UI components
 
+const { circle, cls, line, rgba8 } = nova64.draw;
+const { isKeyDown } = nova64.input;
+const {
+  createButton,
+  createPanel,
+  drawAllButtons,
+  drawAllPanels,
+  drawGradientRect,
+  drawText,
+  drawTextOutline,
+  drawTextShadow,
+  getMousePosition,
+  isMouseDown,
+  setFont,
+  setMouseButton,
+  setMousePosition,
+  setTextAlign,
+  setTextBaseline,
+  uiColors,
+  uiProgressBar,
+  updateAllButtons,
+} = nova64.ui;
+const { pulse } = nova64.util;
+
 let demo = {
   panel1: null,
   panel2: null,

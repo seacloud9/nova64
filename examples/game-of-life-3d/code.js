@@ -2,6 +2,16 @@
 // A mesmerizing cellular automata with multiple rulesets and patterns
 // Uses the Nova64 3D engine for a stunning visual twist on classic CA
 
+const { print, printCentered, rect, rgba8 } = nova64.draw;
+const { createCube, destroyMesh, engine, setPosition, setScale } = nova64.scene;
+const { setCameraPosition, setCameraTarget } = nova64.camera;
+const { setAmbientLight, setFog, setLightDirection } = nova64.light;
+const { enableBloom } = nova64.fx;
+const { keyp } = nova64.input;
+const { grid } = nova64.ui;
+const { remove } = nova64.data;
+const { color, hsb, pulse } = nova64.util;
+
 const GRID_W = 40;
 const GRID_H = 30;
 const CELL_SIZE = 0.9;

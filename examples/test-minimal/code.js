@@ -1,5 +1,7 @@
 // ABSOLUTE MINIMUM TEST - Does 2D work at all?
 
+const { print, rect, rgba8 } = nova64.draw;
+
 export async function init() {
   console.log('⚡ ULTRA SIMPLE TEST');
 }

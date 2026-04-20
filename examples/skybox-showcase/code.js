@@ -3,6 +3,37 @@
 //
 // Controls: 1-5 = skybox type, WASD = orbit, QE = zoom, SPACE = toggle auto-rotate
 
+const { drawRoundedRect, print, printCentered, rgba8 } = nova64.draw;
+const {
+  clearScene,
+  createCone,
+  createCube,
+  createCylinder,
+  createPlane,
+  createSphere,
+  createTorus,
+  rotateMesh,
+  setPBRProperties,
+  setRotation,
+} = nova64.scene;
+const { setCameraFOV, setCameraPosition, setCameraTarget } = nova64.camera;
+const {
+  clearFog,
+  createGradientSkybox,
+  createImageSkybox,
+  createPointLight,
+  createSolidSkybox,
+  createSpaceSkybox,
+  enableSkyboxAutoAnimate,
+  setAmbientLight,
+  setFog,
+  setLightColor,
+  setLightDirection,
+} = nova64.light;
+const { enableBloom, enableFXAA, enableVignette } = nova64.fx;
+const { btnp, key, keyp } = nova64.input;
+const { rotate } = nova64.util;
+
 let scene = 0;
 let orbitAngle = 0;
 let orbitDist = 12;

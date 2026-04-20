@@ -1,4 +1,23 @@
 // Voxel Creatures — Entity system showcase with wandering mobs
+const { print, rect, rectfill, rgba8 } = nova64.draw;
+const { setCameraPosition, setCameraTarget } = nova64.camera;
+const { setFog } = nova64.light;
+const { key, keyp } = nova64.input;
+const {
+  cleanupVoxelEntities,
+  damageVoxelEntity,
+  enableVoxelTextures,
+  forceLoadVoxelChunks,
+  getVoxelEntitiesByType,
+  getVoxelEntityCount,
+  getVoxelHighestBlock,
+  moveVoxelEntity,
+  spawnVoxelEntity,
+  updateVoxelEntities,
+  updateVoxelWorld,
+} = nova64.voxel;
+const { dist } = nova64.util;
+
 let player = { x: 0, y: 80, z: 0, vx: 0, vy: 0, vz: 0, yaw: 0, pitch: 0, onGround: false };
 let loaded = false;
 let entityCount = 0;

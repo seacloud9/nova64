@@ -3,6 +3,37 @@
 // Scenes: Galaxy Spiral, Procedural Terrain, Energy Tornado, Material Lab
 // Navigate: Space/Enter = next scene, Arrow Left = prev scene
 
+const { print, screenHeight, screenWidth } = nova64.draw;
+const {
+  clearScene,
+  createCone,
+  createCube,
+  createPlane,
+  createSphere,
+  createTorus,
+  getMesh,
+  removeMesh,
+  rotateMesh,
+  setScale,
+  setupScene,
+} = nova64.scene;
+const { setCameraFOV, setCameraPosition, setCameraTarget } = nova64.camera;
+const { createPointLight, setAmbientLight, setFog } = nova64.light;
+const { createParticleSystem, enableBloom, enableVignette, removeParticleSystem, updateParticles } =
+  nova64.fx;
+const {
+  createHologramMaterial,
+  createLavaMaterial,
+  createPlasmaMaterial,
+  createShockwaveMaterial,
+  createTSLMaterial,
+  createTSLShaderMaterial,
+  createVortexMaterial,
+  createWaterMaterial,
+} = nova64.shader;
+const { keyp } = nova64.input;
+const { color, dist } = nova64.util;
+
 let currentScene = 0;
 const SCENE_COUNT = 4;
 let sceneTime = 0;

@@ -5,6 +5,51 @@
 /* eslint-disable no-undef */
 // Nova64 runtime provides these globals: enableBloom, enableFXAA, setBloomStrength, etc.
 
+const { drawPanel, print, rect, rgba8 } = nova64.draw;
+const {
+  createAdvancedCube,
+  createCube,
+  createSphere,
+  destroyMesh,
+  engine,
+  rotateMesh,
+  setPosition,
+  setRotation,
+  setScale,
+  setupScene,
+} = nova64.scene;
+const { setCameraFOV, setCameraPosition, setCameraTarget } = nova64.camera;
+const { setAmbientLight, setFog, setLightDirection } = nova64.light;
+const {
+  enableBloom,
+  enableChromaticAberration,
+  enableFXAA,
+  enableVignette,
+  isEffectsEnabled,
+  setBloomStrength,
+  updateParticles,
+} = nova64.fx;
+const { createTSLMaterial } = nova64.shader;
+const { isKeyDown } = nova64.input;
+const { simplexNoise2D, simplexNoise3D } = nova64.voxel;
+const {
+  centerX,
+  clearButtons,
+  createButton,
+  createPanel,
+  drawAllButtons,
+  drawGradientRect,
+  drawText,
+  drawTextOutline,
+  drawTextShadow,
+  grid,
+  setFont,
+  setTextAlign,
+  uiColors,
+  updateAllButtons,
+} = nova64.ui;
+const { color, noise, pulse } = nova64.util;
+
 let gameTime = 0;
 let sceneTime = 0;
 let currentScene = 0;

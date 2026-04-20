@@ -16,6 +16,30 @@
 //  Section 10 (155-175s)— Sawtooth Traveling Wave (20 cubes, saw OSC)
 //  Loops back at 175s
 
+const { circle, drawPanel, drawProgressBar, print, rgba8 } = nova64.draw;
+const { createCube, createSphere, rotateMesh, setMeshVisible, setPosition, setScale } =
+  nova64.scene;
+const { setCameraPosition, setCameraTarget } = nova64.camera;
+const { createPointLight, setAmbientLight, setFog } = nova64.light;
+const { keyp } = nova64.input;
+const { grid } = nova64.ui;
+const {
+  createCircleLayout,
+  createColorPool,
+  createGridLayout,
+  createHPool,
+  createHSwarm,
+  createOscillator,
+  createPathLayout,
+  createProximityTrigger,
+  createRandomTrigger,
+  createSphereLayout,
+  createTimeTrigger,
+  createTween,
+} = nova64.tween;
+const { t } = nova64.data;
+const { bezier, color, dist, pulse } = nova64.util;
+
 const DEMO_DURATION = 175;
 const SECTION_STARTS = [0, 10, 25, 45, 60, 80, 95, 110, 125, 140, 155];
 const SECTION_ENDS = [10, 25, 45, 60, 80, 95, 110, 125, 140, 155, DEMO_DURATION];

@@ -1,6 +1,25 @@
 // Nova64 Screen Management System Demo
 // Demonstrates the new screen management API for creating multi-screen games
 
+const {
+  cls,
+  drawGlowTextCentered,
+  drawGradient,
+  drawPixelBorder,
+  drawRadialGradient,
+  drawScanlines,
+  line,
+  print,
+  printCentered,
+  rgba8,
+} = nova64.draw;
+const { createCube, destroyMesh, setPosition, setRotation } = nova64.scene;
+const { setCameraFOV, setCameraPosition, setCameraTarget } = nova64.camera;
+const { setFog } = nova64.light;
+const { isKeyPressed } = nova64.input;
+const { Screen, addScreen, centerX, centerY, startScreens, switchToScreen } = nova64.ui;
+const { color } = nova64.util;
+
 const W = 640,
   H = 360;
 

@@ -2,6 +2,49 @@
 // Nintendo 64 / PlayStation style 3D physics with full GPU acceleration
 
 // Game state
+const { cls, drawPanel, print, printCentered, rect, rgba8 } = nova64.draw;
+const {
+  createCone,
+  createCube,
+  createCylinder,
+  createPlane,
+  createSphere,
+  destroyMesh,
+  get3DStats,
+  getPosition,
+  rotateMesh,
+  setPosition,
+  setRotation,
+  setScale,
+} = nova64.scene;
+const { setCameraFOV, setCameraPosition, setCameraTarget } = nova64.camera;
+const { setFog, setLightDirection } = nova64.light;
+const {
+  enableBloom,
+  enableDithering,
+  enableFXAA,
+  enablePixelation,
+  enableVignette,
+  updateParticles,
+} = nova64.fx;
+const { btnp, key, keyp } = nova64.input;
+const {
+  Screen,
+  centerX,
+  createButton,
+  createPanel,
+  drawAllButtons,
+  drawGradientRect,
+  drawText,
+  drawTextOutline,
+  drawTextShadow,
+  setFont,
+  setTextAlign,
+  uiColors,
+  updateAllButtons,
+} = nova64.ui;
+const { color, pulse } = nova64.util;
+
 let gameTime = 0;
 let selectedDemo = 0;
 let showDebugInfo = true;

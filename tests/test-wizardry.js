@@ -576,6 +576,12 @@ async function importCart(mockGlobal) {
     globalThis[k] = v;
   }
 
+  // Build nova64.* namespace from mock globals so destructuring works
+  const { NAMESPACE_MAP, buildNamespace } = await import(
+    path.resolve(__dirname, '..', 'runtime', 'namespace.js')
+  );
+  globalThis.nova64 = buildNamespace(mockGlobal, NAMESPACE_MAP);
+
   // Cart is an ES module with export function init/update/draw
   const cartPath = path.resolve(__dirname, '..', 'examples', 'wizardry-3d', 'code.js');
   const cartURL = new URL(`file://${cartPath}`).href;
@@ -589,6 +595,7 @@ function cleanupGlobals(mockGlobal) {
   for (const k of Object.keys(mockGlobal)) {
     delete globalThis[k];
   }
+  delete globalThis.nova64;
 }
 
 // ─── Test suites ───

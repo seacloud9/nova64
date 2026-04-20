@@ -1,6 +1,10 @@
 // stage-cards — playing card flip animation using Stage display list
 // Shows: createContainer, createGraphicsNode, tweenTo, easeInOutBack, BM.ADD
 
+const { BM, cls, line, print, screenHeight, screenWidth } = nova64.draw;
+const { addChild, createContainer, createGraphicsNode, drawStage } = nova64.ui;
+const { updateTweens } = nova64.tween;
+
 let W = 640,
   H = 360;
 const CARD_W = 44,

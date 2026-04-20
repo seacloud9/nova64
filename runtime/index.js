@@ -9,9 +9,11 @@ export {
   initAdapter,
   createThreeEngineAdapter,
   createUnityBridgeAdapter,
+  createCommandBufferAdapter,
   setEngineAdapter,
   installUnityBridge,
   resetEngineAdapter,
+  ADAPTER_CONTRACT_VERSION,
 } from './engine-adapter.js';
 
 // Re-export sub-modules for tree-shaking

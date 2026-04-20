@@ -627,11 +627,42 @@ export interface EngineAdapter {
   setMeshMaterial(meshId: MeshId, material: EngineMaterial): void;
   /** Return the current camera world position. */
   getCameraPosition(): { x: number; y: number; z: number };
+  /** Report what this backend supports. */
+  getCapabilities(): AdapterCapabilities;
 }
 
 export interface EngineBridgeMessage {
   method: string;
   payload: Record<string, unknown>;
+}
+
+export interface AdapterCapabilities {
+  /** Backend identifier: 'threejs', 'unity', 'babylon', 'godot', … */
+  backend: string;
+  /** Must equal ADAPTER_CONTRACT_VERSION. */
+  contractVersion: string;
+  /** Backend-specific semver. */
+  adapterVersion: string;
+  /** Feature strings declared by this backend. */
+  features: readonly string[];
+  /** Return true if this backend declares the given feature identifier. */
+  supports(feature: string): boolean;
+}
+
+export interface CommandBufferAdapterOptions {
+  /** Execute each call immediately without buffering. Default: false. */
+  autoFlush?: boolean;
+  /** Warn when queue exceeds this size. Default: 512. */
+  maxQueueSize?: number;
+}
+
+export interface CommandBufferAdapter extends EngineAdapter {
+  /** Drain all queued commands to the inner adapter in order. */
+  flush(): void;
+  /** Return the number of commands currently in the buffer. */
+  pendingCount(): number;
+  /** Discard all pending commands without executing them. */
+  discardPending(): void;
 }
 
 export interface UnityBridgeTransport {
@@ -640,8 +671,10 @@ export interface UnityBridgeTransport {
   send?(message: EngineBridgeMessage): void;
   postMessage?(message: { type: 'nova64'; method: string; payload: Record<string, unknown> }): void;
   getCameraPosition?(): { x: number; y: number; z: number };
+  getCapabilities?(): string[];
 }
 
+export declare const ADAPTER_CONTRACT_VERSION: string;
 export declare const engine: EngineAdapter;
 export declare function initAdapter(gpu: unknown): void;
 export declare function createThreeEngineAdapter(options?: {
@@ -650,12 +683,16 @@ export declare function createThreeEngineAdapter(options?: {
 }): EngineAdapter;
 export declare function createUnityBridgeAdapter(
   bridge: UnityBridgeTransport,
-  options?: { methodPrefix?: string }
+  options?: { methodPrefix?: string; features?: string[] }
 ): EngineAdapter;
+export declare function createCommandBufferAdapter(
+  innerAdapter: EngineAdapter,
+  options?: CommandBufferAdapterOptions
+): CommandBufferAdapter;
 export declare function setEngineAdapter(adapter: EngineAdapter): EngineAdapter;
 export declare function installUnityBridge(
   bridge: UnityBridgeTransport,
-  options?: { methodPrefix?: string }
+  options?: { methodPrefix?: string; features?: string[] }
 ): EngineAdapter;
 export declare function resetEngineAdapter(): EngineAdapter;
 

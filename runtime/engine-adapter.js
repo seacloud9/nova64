@@ -4,6 +4,10 @@
 //
 // Cart authors: use the global `engine` object instead of `THREE.*`.
 // Runtime authors: swap this module to port Nova64 to a different renderer.
+//
+// Adapter Contract version: 1.0.0
+// All adapters MUST implement the full engine surface listed in ADAPTER_CONTRACT.md
+// and MUST return a valid capabilities object from getCapabilities().
 
 import * as THREE from 'three';
 
@@ -22,6 +26,30 @@ const WRAP_MAP = {
   repeat: THREE.RepeatWrapping,
   clamp: THREE.ClampToEdgeWrapping,
 };
+
+/** Current adapter contract version exposed on every capabilities object. */
+export const ADAPTER_CONTRACT_VERSION = '1.0.0';
+
+/**
+ * Build a frozen capabilities object for an adapter.
+ * @param {{ backend: string, version: string, features: string[] }} opts
+ */
+function buildCapabilities(opts) {
+  const featureSet = new Set(opts.features ?? []);
+  return Object.freeze({
+    backend: opts.backend,
+    contractVersion: ADAPTER_CONTRACT_VERSION,
+    adapterVersion: opts.version,
+    features: Object.freeze([...featureSet]),
+    /**
+     * Test whether this backend supports a named feature.
+     * @param {string} feature
+     */
+    supports(feature) {
+      return featureSet.has(feature);
+    },
+  });
+}
 
 // gpu reference is set via initAdapter(gpu) — called from api-3d.js during boot
 let _gpu = null;
@@ -212,6 +240,28 @@ export function createThreeEngineAdapter(options = {}) {
       if (!cam) return { x: 0, y: 0, z: 0 };
       return { x: cam.position.x, y: cam.position.y, z: cam.position.z };
     },
+
+    /**
+     * Report what this backend can do.
+     * Capabilities are version-stable identifiers — carts can feature-detect
+     * using engine.getCapabilities().supports('materialType:standard').
+     */
+    getCapabilities() {
+      return buildCapabilities({
+        backend: 'threejs',
+        version: '1.0.0',
+        features: [
+          'material:basic',
+          'material:phong',
+          'material:standard',
+          'texture:data',
+          'texture:canvas',
+          'texture:repeat',
+          'geometry:plane',
+          'camera:read',
+        ],
+      });
+    },
   };
 }
 
@@ -304,6 +354,22 @@ export function createUnityBridgeAdapter(bridge, options = {}) {
       }
       return normalizeVec3(call('camera.getPosition'));
     },
+
+    getCapabilities() {
+      let features = options.features;
+      if (!features && typeof bridge.getCapabilities === 'function') {
+        try {
+          features = bridge.getCapabilities();
+        } catch {
+          features = [];
+        }
+      }
+      return buildCapabilities({
+        backend: 'unity',
+        version: '1.0.0',
+        features: features ?? ['material:basic', 'texture:data', 'geometry:plane', 'camera:read'],
+      });
+    },
   };
 }
 
@@ -324,6 +390,134 @@ export function resetEngineAdapter() {
   _customAdapterInstalled = false;
   _activeAdapter = createThreeEngineAdapter();
   return engine;
+}
+
+/**
+ * Wrap any adapter with a command buffer.
+ *
+ * Mutating calls (createMaterial, setMeshMaterial, etc.) are queued instead
+ * of dispatched immediately. Call adapter.flush() to drain the buffer to the
+ * inner adapter.  Read-through calls (getCameraPosition, getCapabilities) are
+ * always forwarded immediately.
+ *
+ * This is the recommended transport for any host bridge where frame-batched
+ * dispatch is more efficient than one-call-per-operation.
+ *
+ * @param {object} innerAdapter   — any adapter returned by createThreeEngineAdapter or createUnityBridgeAdapter
+ * @param {object} [opts]
+ *   autoFlush {boolean}  — if true, flush() is called automatically after each mutating call (default: false)
+ *   maxQueueSize {number} — warn when queue exceeds this size (default: 512)
+ * @returns {object} adapter with additional flush() / pendingCount() methods
+ */
+export function createCommandBufferAdapter(innerAdapter, opts = {}) {
+  if (!innerAdapter || typeof innerAdapter !== 'object') {
+    throw new Error('createCommandBufferAdapter requires an adapter object');
+  }
+
+  const autoFlush = opts.autoFlush ?? false;
+  const maxQueueSize = opts.maxQueueSize ?? 512;
+  let queue = [];
+
+  function enqueue(method, args) {
+    if (queue.length >= maxQueueSize) {
+      console.warn(
+        `[nova64/command-buffer] Queue size exceeded ${maxQueueSize}. ` +
+          'Call flush() or enable autoFlush to drain.'
+      );
+    }
+    queue.push({ method, args });
+    if (autoFlush) flush(); // eslint-disable-line no-use-before-define
+  }
+
+  function flush() {
+    const pending = queue;
+    queue = [];
+    for (const { method, args } of pending) {
+      if (typeof innerAdapter[method] === 'function') {
+        innerAdapter[method](...args);
+      }
+    }
+  }
+
+  /**
+   * For mutating calls that also return a value (e.g. createMaterial),
+   * we need to return something useful to the caller even before flush().
+   * We return a deferred-result handle so the calling code can still pass
+   * the opaque value into other calls that will also be buffered.
+   */
+  function deferredHandle(method, args) {
+    const placeholder = Object.freeze({
+      __nova64CommandBuffer: true,
+      method,
+      args,
+      toString() {
+        return `[deferred ${method}]`;
+      },
+    });
+    enqueue(method, args);
+    return placeholder;
+  }
+
+  // Read-through capability/camera helpers are not buffered.
+  return {
+    // --- Deferred mutating calls ---
+    createMaterial(...args) {
+      return deferredHandle('createMaterial', args);
+    },
+    createDataTexture(...args) {
+      return deferredHandle('createDataTexture', args);
+    },
+    createCanvasTexture(...args) {
+      return deferredHandle('createCanvasTexture', args);
+    },
+    cloneTexture(...args) {
+      return deferredHandle('cloneTexture', args);
+    },
+    setTextureRepeat(...args) {
+      enqueue('setTextureRepeat', args);
+    },
+    invalidateTexture(...args) {
+      enqueue('invalidateTexture', args);
+    },
+    createColor(...args) {
+      return deferredHandle('createColor', args);
+    },
+    createPlaneGeometry(...args) {
+      return deferredHandle('createPlaneGeometry', args);
+    },
+    setMeshMaterial(...args) {
+      enqueue('setMeshMaterial', args);
+    },
+
+    // --- Read-through calls ---
+    getCameraPosition(...args) {
+      return innerAdapter.getCameraPosition(...args);
+    },
+    getCapabilities(...args) {
+      return innerAdapter.getCapabilities(...args);
+    },
+
+    // --- Buffer management ---
+    /**
+     * Drain the pending command queue to the inner adapter.
+     * Call this once per frame from your host bridge update loop.
+     */
+    flush,
+
+    /**
+     * Return the number of commands currently waiting in the buffer.
+     */
+    pendingCount() {
+      return queue.length;
+    },
+
+    /**
+     * Discard all pending commands without dispatching them.
+     */
+    discardPending() {
+      queue = [];
+    },
+  };
 }
 
 export function initAdapter(gpu) {
@@ -377,5 +571,9 @@ export const engine = {
 
   getCameraPosition(...args) {
     return getActiveAdapter().getCameraPosition(...args);
+  },
+
+  getCapabilities(...args) {
+    return getActiveAdapter().getCapabilities(...args);
   },
 };

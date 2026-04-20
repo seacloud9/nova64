@@ -4,23 +4,47 @@
 
 > ✨ **Pure 3D Gaming Experience** — Advanced Three.js integration with Nintendo 64/PlayStation-style rendering, holographic materials, dynamic lighting, and cinematic post-processing effects!
 
-[![Version](https://img.shields.io/badge/version-0.4.0-blue.svg)](https://github.com/seacloud9/nova64)
+🌐 **Live Site:** [starcade9.github.io](https://starcade9.github.io/)
+
+[![Version](https://img.shields.io/badge/version-0.4.8-blue.svg)](https://github.com/seacloud9/nova64)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Tests](https://img.shields.io/badge/tests-passing-brightgreen.svg)](tests/)
 [![Build](https://img.shields.io/badge/build-passing-brightgreen.svg)](#)
 
 ---
 
-## 🌟 **Recent Updates (v0.4.0)**
+## 🌟 **Recent Updates (v0.4.8)**
 
-### 🖥️ **NEW: OS9 Desktop Shell** ⭐
+### 🃏 **NEW: hyperNova — HyperCard/Flash Authoring Tool** ⭐
+
+- **Card-Based Editor**: Create interactive stacks of cards — presentations, stories, mini-apps, and animations — using a WYSIWYG drag-and-drop editor
+- **NovaTalk Scripting**: A HyperTalk-inspired scripting language with full tokenizer → parser → interpreter, supporting `on handler`, `put X into Y`, `send` messages, `repeat`/`if`/`else` control flow, and HyperCard-style object references
+- **Symbol Library & MovieClips**: Flash-style reusable components with keyframe timelines, frame-by-frame animation, and GSAP-powered tweens (`fadeIn`, `slideIn`, `pulse`, `shake`, etc.)
+- **Keyframe Timeline Strip**: Per-object tween editing with easing, duration, position, rotation, scale, and skew
+- **Save/Load/Export**: Auto-save to localStorage, export as `.hcard.json` or as a Nova64 `.code.js` cart
+- **Built-in Examples**: Interactive story templates and demo stacks included
+
+### 🌐 **NEW: Internationalization (i18n)**
+
+- **3-Language Support**: Full English, Spanish (ES), and Japanese (JA) translations across the main website, console, and OS9 shell
+- **Language Picker**: Language selector in the navbar (main site & console) and OS9 shell menu bar
+- **Cart i18n API**: Runtime `t()`, `setLocale()`, `getLocale()`, `addStrings()`, `getAvailableLocales()` for translatable carts
+- **OS9 Shell Menus**: All system menus (File, Edit, View, Special, Activities) fully translated
+- **Persistent Preference**: Language choice saved to localStorage, synced across site and OS
+
+### 🖥️ **OS9 Desktop Shell**
 
 - **Mac OS 9-Style GUI**: Full desktop environment with window management, taskbar, and app launcher
 - **Game Studio**: In-browser game IDE with code editor, live preview, and cart management
 - **Model Viewer**: Load and inspect GLB/GLTF models with Draco compression and DOOM WAD maps with full texture/sprite rendering
-- **Game Launcher**: Browse and launch all 47 demo carts from a visual gallery
+- **Game Launcher**: Browse and launch all 60+ demo carts from a visual gallery
 - **Sprite Editor**: Pixel art editor integrated into the desktop environment
+- **eMU Emulator**: RetroArch-based retro game emulator
 - **Docs Viewer**: Browse API documentation directly in the shell
+- **Debug Panel**: F9 overlay with scene graph, camera inspector, lights editor, and performance stats
+- **Three.js DevTools Bridge**: Exposes scene/renderer/camera for the Three.js browser extension
+- **Screensaver System**: Multiple screensaver hacks selectable from the Special menu
+- **Theme Toggle**: Dark/light desktop theme switching
 
 ### 🎮 **Game Studio Improvements**
 
@@ -45,6 +69,7 @@
 
 ### 🎨 **Effects & Post-Processing**
 
+- **TSL Shader Pack**: Custom Three.js Shading Language effects (hologram, dissolve, force field, etc.)
 - **Retro Modes**: `enableN64Mode()`, `enablePSXMode()`, `enableLowPolyMode()` for authentic retro looks
 - **Post-Processing**: Bloom, vignette, glitch, chromatic aberration, FXAA
 - **Skybox System**: Space, gradient, and solid skyboxes with auto-animation
@@ -155,8 +180,10 @@ nova64/
 │   └── ...                  # editor, store, manifest, nft-seed, logger, etc.
 ├── os9-shell/               # Mac OS 9-Style Desktop Environment
 │   └── src/
-│       ├── apps/            # Desktop apps (GameStudio, ModelViewer, etc.)
+│       ├── apps/            # Desktop apps (GameStudio, ModelViewer, hyperNova, etc.)
+│       │   └── hypernova/   # HyperCard/Flash authoring tool with NovaTalk scripting
 │       ├── components/      # Window manager, taskbar, desktop UI
+│       ├── i18n.ts          # Internationalization (EN/ES/JA)
 │       ├── os/              # OS-level services and state
 │       └── theme/           # Retro Mac OS 9 styling
 ├── examples/                # 47 Demo Carts
@@ -388,7 +415,16 @@ MIT — see `LICENSE` for details.
 
 ## Version History
 
-### v0.4.0 (Current)
+### v0.4.8 (Current)
+
+- **hyperNova**: HyperCard/Flash-inspired authoring tool with card stacks, NovaTalk scripting, symbol library, keyframe timelines, and GSAP tweens
+- **Internationalization (i18n)**: Full EN/ES/JA support across main site, console, and OS9 shell with runtime `t()` API for carts
+- **Debug Panel**: F9 overlay with scene graph, camera inspector, lights editor, and Three.js DevTools bridge
+- **TSL Shader Pack**: Custom Three.js Shading Language effects
+- **60+ Demo Carts**: Expanded gallery including shader showcase, blend modes, camera platformer, VR/AR demos
+- **OS9 Shell Enhancements**: Screensaver system, theme toggle, locale-aware menus, eMU emulator
+
+### v0.4.0
 
 - **OS9 Desktop Shell**: Full Mac OS 9-style GUI with window management, taskbar, app launcher
 - **Game Studio**: In-browser IDE with code editor, live preview, reliable cart switching

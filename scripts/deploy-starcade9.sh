@@ -65,6 +65,11 @@ rsync -a --delete --exclude='.DS_Store' "$NOVA64_DIR/public/assets/" "$DEPLOY_DI
 # Added AFTER the --delete sync so these bundles are not removed.
 rsync -a --exclude='.DS_Store' "$NOVA64_DIR/dist/assets/" "$DEPLOY_DIR/assets/"
 
+# i18n locale files (es.json, ja.json)
+echo "🌐 Syncing i18n/..."
+mkdir -p "$DEPLOY_DIR/i18n"
+rsync -a --delete --exclude='.DS_Store' "$NOVA64_DIR/dist/i18n/" "$DEPLOY_DIR/i18n/"
+
 # OS9 shell (pre-built)
 echo "🖥️  Syncing os9-shell/..."
 mkdir -p "$DEPLOY_DIR/os9-shell"

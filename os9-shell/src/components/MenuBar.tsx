@@ -124,59 +124,59 @@ export function MenuBar({ appMenus = [], onCommand }: MenuBarProps) {
       ],
     },
     {
-      label: 'File',
+      label: t('menu.file'),
       submenu: [
-        { label: 'New Folder', accelerator: '⌘N' },
-        { label: 'Open', accelerator: '⌘O' },
+        { label: t('menu.file.newFolder'), accelerator: '⌘N' },
+        { label: t('menu.file.open'), accelerator: '⌘O' },
         { type: 'separator', label: '' },
-        { label: 'Close Window', accelerator: '⌘W' },
-        { label: 'Get Info', accelerator: '⌘I' },
-        { label: 'Duplicate', accelerator: '⌘D' },
-        { label: 'Make Alias', accelerator: '⌘L' },
+        { label: t('menu.file.closeWindow'), accelerator: '⌘W' },
+        { label: t('menu.file.getInfo'), accelerator: '⌘I' },
+        { label: t('menu.file.duplicate'), accelerator: '⌘D' },
+        { label: t('menu.file.makeAlias'), accelerator: '⌘L' },
         { type: 'separator', label: '' },
-        { label: 'Put Away', accelerator: '⌘Y' },
+        { label: t('menu.file.putAway'), accelerator: '⌘Y' },
         { type: 'separator', label: '' },
-        { label: 'Find...', accelerator: '⌘F' },
+        { label: t('menu.file.find'), accelerator: '⌘F' },
         { type: 'separator', label: '' },
-        { label: 'Empty Trash...' },
+        { label: t('menu.file.emptyTrash') },
       ],
     },
     {
-      label: 'Edit',
+      label: t('menu.edit'),
       submenu: [
-        { label: 'Undo', accelerator: '⌘Z' },
+        { label: t('menu.edit.undo'), accelerator: '⌘Z' },
         { type: 'separator', label: '' },
-        { label: 'Cut', accelerator: '⌘X', role: 'cut' },
-        { label: 'Copy', accelerator: '⌘C', role: 'copy' },
-        { label: 'Paste', accelerator: '⌘V', role: 'paste' },
-        { label: 'Clear' },
-        { label: 'Select All', accelerator: '⌘A' },
+        { label: t('menu.edit.cut'), accelerator: '⌘X', role: 'cut' },
+        { label: t('menu.edit.copy'), accelerator: '⌘C', role: 'copy' },
+        { label: t('menu.edit.paste'), accelerator: '⌘V', role: 'paste' },
+        { label: t('menu.edit.clear') },
+        { label: t('menu.edit.selectAll'), accelerator: '⌘A' },
       ],
     },
     {
-      label: 'View',
+      label: t('menu.view'),
       submenu: [
-        { label: 'as Icons', checked: true },
-        { label: 'as List' },
-        { label: 'as Columns' },
+        { label: t('menu.view.asIcons'), checked: true },
+        { label: t('menu.view.asList') },
+        { label: t('menu.view.asColumns') },
         { type: 'separator', label: '' },
-        { label: 'Clean Up' },
-        { label: 'Arrange', type: 'submenu', submenu: [
-          { label: 'by Name' },
-          { label: 'by Date Modified' },
-          { label: 'by Size' },
-          { label: 'by Kind' },
+        { label: t('menu.view.cleanUp') },
+        { label: t('menu.view.arrange'), type: 'submenu', submenu: [
+          { label: t('menu.view.byName') },
+          { label: t('menu.view.byDate') },
+          { label: t('menu.view.bySize') },
+          { label: t('menu.view.byKind') },
         ]},
       ],
     },
     {
-      label: 'Special',
+      label: t('menu.special'),
       submenu: [
-        { label: 'Empty Trash...' },
-        { label: 'Eject', accelerator: '⌘E', enabled: false },
+        { label: t('menu.file.emptyTrash') },
+        { label: t('menu.special.eject'), accelerator: '⌘E', enabled: false },
         { type: 'separator', label: '' },
-        { label: 'Start Screensaver', click: () => useScreensaverStore.getState().activate() },
-        { label: 'Screensaver', submenu: screensaverHacks.map(h => ({
+        { label: t('menu.special.startScreensaver'), click: () => useScreensaverStore.getState().activate() },
+        { label: t('menu.special.screensaver'), submenu: screensaverHacks.map(h => ({
           label: h.name,
           click: () => {
             const store = useScreensaverStore.getState();
@@ -185,9 +185,9 @@ export function MenuBar({ appMenus = [], onCommand }: MenuBarProps) {
           },
         }))},
         { type: 'separator', label: '' },
-        { label: 'Sleep' },
-        { label: 'Restart...' },
-        { label: 'Shut Down...' },
+        { label: t('menu.special.sleep') },
+        { label: t('menu.restart') },
+        { label: t('menu.shutdown') },
       ],
     },
   ];
@@ -195,10 +195,11 @@ export function MenuBar({ appMenus = [], onCommand }: MenuBarProps) {
   const allMenus = [novaMenu, ...(appMenus.length > 0 ? appMenus : finderMenus)];
 
   const formatTime = (date: Date) => {
-    return date.toLocaleTimeString('en-US', { 
+    const locale = lang === 'ja' ? 'ja-JP' : lang === 'es' ? 'es-ES' : 'en-US';
+    return date.toLocaleTimeString(locale, { 
       hour: 'numeric',
       minute: '2-digit',
-      hour12: true 
+      hour12: lang !== 'ja' 
     });
   };
 
@@ -235,7 +236,7 @@ export function MenuBar({ appMenus = [], onCommand }: MenuBarProps) {
             className="activities-button"
             onClick={() => setShowAppLauncher(true)}
           >
-            ⚡ Activities
+            ⚡ {t('menu.activities')}
           </button>
           {allMenus.map((menu, index) => (
             <div key={index} style={{ position: 'relative' }}>

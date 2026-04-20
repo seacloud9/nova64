@@ -9,7 +9,7 @@ const EXAMPLES_DIR = resolve(NOVA64_ROOT, 'examples');
 
 // Curated example metadata for the interactive picker
 const CATEGORIES = {
-  '⭐ Getting Started': ['hello-world', 'hello-3d', 'hello-skybox', 'input-showcase'],
+  '⭐ Getting Started': ['hello-world', 'hello-3d', 'hello-namespaced', 'hello-skybox', 'input-showcase'],
   '🎮 Games': [
     'star-fox-nova-3d',
     'f-zero-nova-3d',

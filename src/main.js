@@ -38,6 +38,7 @@ import { camera2DApi } from '../runtime/camera-2d.js';
 import { particles2DApi } from '../runtime/api-particles-2d.js';
 import { tweenApi } from '../runtime/tween.js';
 import { DebugPanel } from '../runtime/debug-panel.js';
+import { NAMESPACE_MAP, buildNamespace } from '../runtime/namespace.js';
 import * as THREE from 'three';
 
 const canvas = document.getElementById('screen');
@@ -190,6 +191,10 @@ canvasUIApi().exposeTo(nova64api);
 iApi.connectUI(uiApiInstance.setMousePosition, uiApiInstance.setMouseButton);
 
 Object.assign(globalThis, nova64api);
+
+// ── Build namespaced API: nova64.scene.*, nova64.input.*, etc. ───────────────
+globalThis.nova64 = buildNamespace(nova64api, NAMESPACE_MAP);
+
 // inject camera ref into sprite system
 if (nova64api.getCamera) sApi.setCameraRef(nova64api.getCamera());
 

@@ -38,6 +38,7 @@ echo "📄 Copying root files..."
 cp "$NOVA64_DIR/index.html" "$DEPLOY_DIR/index.html"
 cp "$NOVA64_DIR/dist/console.html" "$DEPLOY_DIR/console.html"
 cp "$NOVA64_DIR/dist/cart-runner.html" "$DEPLOY_DIR/cart-runner.html"
+cp "$NOVA64_DIR/dist/hero-embed.html" "$DEPLOY_DIR/hero-embed.html"
 
 # src/main.js (entry point)
 echo "📦 Copying src/main.js..."

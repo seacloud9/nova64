@@ -38,6 +38,7 @@ export function DemoScene() {
           uiModule,
           skyboxModule,
           fxModule,
+          voxelModule,
         ] = await Promise.all([
           import(/* @vite-ignore */ `${baseUrl}/runtime/gpu-threejs.js`),
           import(/* @vite-ignore */ `${baseUrl}/runtime/api.js`),
@@ -46,6 +47,7 @@ export function DemoScene() {
           import(/* @vite-ignore */ `${baseUrl}/runtime/ui.js`),
           import(/* @vite-ignore */ `${baseUrl}/runtime/api-skybox.js`),
           import(/* @vite-ignore */ `${baseUrl}/runtime/api-effects.js`),
+          import(/* @vite-ignore */ `${baseUrl}/runtime/api-voxel.js`),
         ]);
 
         const { GpuThreeJS } = gpuModule;
@@ -55,6 +57,7 @@ export function DemoScene() {
         const { uiApi } = uiModule;
         const { skyboxApi } = skyboxModule;
         const { effectsApi } = fxModule;
+        const { voxelApi: voxelApiFactory } = voxelModule;
 
         // Initialize GPU with the canvas
         const gpu = new GpuThreeJS(canvas, 640, 360);
@@ -67,6 +70,7 @@ export function DemoScene() {
         const iApi = inputApi();
         const skybox = skyboxApi(gpu);
         const fx = effectsApi(gpu);
+        const voxel = voxelApiFactory(gpu);
 
         // Create temp object for UI init
         const g: Record<string, unknown> = {};
@@ -80,6 +84,7 @@ export function DemoScene() {
         ui.exposeTo(window);
         skybox.exposeTo(window);
         fx.exposeTo(window);
+        voxel.exposeTo(window);
 
         console.log('✅ APIs loaded and exposed');
 

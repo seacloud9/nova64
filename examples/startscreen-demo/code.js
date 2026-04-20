@@ -8,8 +8,7 @@ const { createTorus, getMesh } = nova64.scene;
 const { setCameraPosition, setCameraTarget } = nova64.camera;
 const { setAmbientLight, setFog } = nova64.light;
 const { Screen, grid, parseCanvasUI, renderCanvasUI, updateCanvasUI } = nova64.ui;
-const { t } = nova64.data;
-const { arc, color, pulse } = nova64.util;
+const { arc, color } = nova64.util;
 
 const MAIN_MENU_XML = `<ui>
   <!-- ── Full-screen dark sky gradient ── -->

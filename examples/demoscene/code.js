@@ -16,7 +16,6 @@ const {
   setPosition,
   setRotation,
   setScale,
-  setupScene,
 } = nova64.scene;
 const { setCameraFOV, setCameraPosition, setCameraTarget } = nova64.camera;
 const { setAmbientLight, setFog, setLightDirection } = nova64.light;
@@ -27,13 +26,11 @@ const {
   enableVignette,
   isEffectsEnabled,
   setBloomStrength,
-  updateParticles,
 } = nova64.fx;
 const { createTSLMaterial } = nova64.shader;
 const { isKeyDown } = nova64.input;
 const { simplexNoise2D, simplexNoise3D } = nova64.voxel;
 const {
-  centerX,
   clearButtons,
   createButton,
   createPanel,
@@ -48,7 +45,7 @@ const {
   uiColors,
   updateAllButtons,
 } = nova64.ui;
-const { color, noise, pulse } = nova64.util;
+const { noise } = nova64.util;
 
 let gameTime = 0;
 let sceneTime = 0;

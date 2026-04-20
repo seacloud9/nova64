@@ -8,7 +8,6 @@ const { createPointLight, setAmbientLight, setFog } = nova64.light;
 const { createParticleSystem, enableBloom, enableVignette, updateParticles } = nova64.fx;
 const { createTSLMaterial, createTSLShaderMaterial } = nova64.shader;
 const { grid } = nova64.ui;
-const { t } = nova64.data;
 const { clamp, color, noise, pulse, smoothstep } = nova64.util;
 
 const noiseLib = `

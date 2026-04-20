@@ -71,6 +71,7 @@
     "bench:instancing": "node tests/bench.js --suite=instancing",
     "bench:mesh": "node tests/bench.js --suite=mesh",
     "lint": "eslint 'runtime/**/*.js' 'src/**/*.js' --max-warnings=0",
+    "lint:examples": "eslint 'examples/*/code.js' --no-eslintrc --env browser,es2021 --parser-options=ecmaVersion:latest,sourceType:module --global nova64 --global THREE --rule 'no-redeclare: error' --max-warnings=0",
     "lint:fix": "eslint 'runtime/**/*.js' 'src/**/*.js' --fix",
     "format": "prettier --write \"**/*.{js,json,md}\"",
     "format:check": "prettier --check \"**/*.{js,json,md}\"",
@@ -107,6 +108,7 @@
       "prettier --write"
     ],
     "examples/**/*.js": [
+      "eslint --no-eslintrc --env browser,es2021 --parser-options=ecmaVersion:latest,sourceType:module --global nova64 --global THREE --rule 'no-redeclare: error' --max-warnings=0",
       "prettier --write"
     ]
   },

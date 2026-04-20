@@ -15,7 +15,6 @@ const {
   removeMesh,
   rotateMesh,
   setScale,
-  setupScene,
 } = nova64.scene;
 const { setCameraFOV, setCameraPosition, setCameraTarget } = nova64.camera;
 const { createPointLight, setAmbientLight, setFog } = nova64.light;
@@ -32,8 +31,6 @@ const {
   createWaterMaterial,
 } = nova64.shader;
 const { keyp } = nova64.input;
-const { color, dist } = nova64.util;
-
 let currentScene = 0;
 const SCENE_COUNT = 4;
 let sceneTime = 0;

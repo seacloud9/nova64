@@ -5,7 +5,7 @@ const { print } = nova64.draw;
 const { createCube, createPlane, createSphere, rotateMesh } = nova64.scene;
 const { setCameraFOV, setCameraPosition, setCameraTarget } = nova64.camera;
 const { createGradientSkybox, createPointLight, setAmbientLight, setFog } = nova64.light;
-const { color, rotate } = nova64.util;
+const { rotate } = nova64.util;
 const { enableVR, getXRControllers, isXRActive } = nova64.xr;
 
 let objects = [];

@@ -52,7 +52,6 @@ const {
 } = nova64.fx;
 const { key, keyp } = nova64.input;
 const { sfx } = nova64.audio;
-const { t } = nova64.data;
 const { color, createFloatingTextSystem, noise } = nova64.util;
 
 const WORLD_SIZE = 120;

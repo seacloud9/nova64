@@ -18,19 +18,16 @@ const {
 const { createSolidSkybox } = nova64.light;
 const { btnp, keyp } = nova64.input;
 const { Screen } = nova64.ui;
-const { t } = nova64.data;
 const {
   arc,
   bezier,
   color,
-  dist,
   ellipse,
   flowField,
   hsb,
   noise,
   noiseSeed,
   popMatrix,
-  pulse,
   pushMatrix,
   rotate,
   translate,

@@ -38,7 +38,6 @@ const {
   enableFXAA,
   enablePixelation,
   enableVignette,
-  updateParticles,
 } = nova64.fx;
 const { btn, btnp, key } = nova64.input;
 const { sfx } = nova64.audio;
@@ -55,7 +54,7 @@ const {
   uiColors,
   updateAllButtons,
 } = nova64.ui;
-const { color, createShake, dist, noise, pulse, triggerShake, updateShake } = nova64.util;
+const { createShake, noise, pulse, triggerShake, updateShake } = nova64.util;
 
 let gameTime = 0;
 let cityObjects = [];

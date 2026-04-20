@@ -11,8 +11,6 @@ const { createPointLight, setAmbientLight, setFog, setLightColor, setLightDirect
 const { enableBloom, enableFXAA, enableVignette } = nova64.fx;
 const { btn, key } = nova64.input;
 const { sfx } = nova64.audio;
-const { pulse } = nova64.util;
-
 let state = 'title'; // 'title' | 'explore' | 'dialogue'
 let sceneTime = 0; // seconds since last state enter
 let textScroll = 0;

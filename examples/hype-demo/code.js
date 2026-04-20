@@ -37,8 +37,7 @@ const {
   createTimeTrigger,
   createTween,
 } = nova64.tween;
-const { t } = nova64.data;
-const { bezier, color, dist, pulse } = nova64.util;
+const { bezier, pulse } = nova64.util;
 
 const DEMO_DURATION = 175;
 const SECTION_STARTS = [0, 10, 25, 45, 60, 80, 95, 110, 125, 140, 155];

@@ -18,7 +18,7 @@ const {
 const { enableBloom, enableFXAA, enableVignette } = nova64.fx;
 const { key } = nova64.input;
 const { sfx } = nova64.audio;
-const { clamp, color, dist, pulse } = nova64.util;
+const { clamp } = nova64.util;
 
 let time = 0;
 let pos = { x: 0, y: 0, z: 10 };

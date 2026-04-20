@@ -12,14 +12,10 @@ const { setAmbientLight, setLightColor, setLightDirection } = nova64.light;
 const { enableBloom, enableFXAA, enableVignette } = nova64.fx;
 const { btn, isKeyDown, isKeyPressed } = nova64.input;
 const { sfx } = nova64.audio;
-const { t } = nova64.data;
 const {
-  color,
   createCooldownSet,
   createShake,
-  dist,
   getShakeOffset,
-  pulse,
   triggerShake,
   updateCooldowns,
   updateShake,

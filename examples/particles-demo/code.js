@@ -26,8 +26,7 @@ const {
   updateParticles,
 } = nova64.fx;
 const { btnp, key, keyp } = nova64.input;
-const { t } = nova64.data;
-const { frameCount, rotate } = nova64.util;
+const { rotate } = nova64.util;
 
 let scene = 0;
 let systemIds = [];

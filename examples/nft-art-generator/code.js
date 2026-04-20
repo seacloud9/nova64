@@ -2,11 +2,9 @@
 // Each seed produces a unique artwork. Same seed = same art, always.
 // Styles: Flow Field, Geometric Tiling, Organic Growth, Abstract Composition
 
-const { circle, cls, drawRect, line, print, rect } = nova64.draw;
+const { circle, cls, drawRect, line, prinrect } = nova64.draw;
 const { keyp } = nova64.input;
 const { createSeedFromHash, createSeedRNG, exportSeedMetadata, seedToTraits, t } = nova64.data;
-const { dist, flowField, lerpColor, pulse } = nova64.util;
-
 const STYLES = ['Flow Field', 'Geometric Tiling', 'Organic Growth', 'Abstract Composition'];
 const W = 640,
   H = 360;

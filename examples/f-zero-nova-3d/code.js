@@ -28,7 +28,7 @@ const {
 const { setCameraFOV, setCameraPosition, setCameraTarget } = nova64.camera;
 const { createSpaceSkybox, setAmbientLight, setFog, setLightColor, setLightDirection } =
   nova64.light;
-const { F, enableBloom, enableFXAA, updateParticles } = nova64.fx;
+const { F, enableBloom, enableFXAA } = nova64.fx;
 const { btn, btnp, isKeyPressed, key } = nova64.input;
 const { sfx } = nova64.audio;
 const {
@@ -45,9 +45,7 @@ const {
   uiColors,
   updateAllButtons,
 } = nova64.ui;
-const { t } = nova64.data;
 const {
-  color,
   createHitState,
   createShake,
   getShakeOffset,

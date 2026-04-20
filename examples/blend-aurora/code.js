@@ -4,7 +4,6 @@
 
 const { BM, cls, print, pset, rectfill, screenHeight, screenWidth, withBlend } = nova64.draw;
 const { createCamera2D } = nova64.camera;
-const { t } = nova64.data;
 const { color } = nova64.util;
 
 let W = 640,

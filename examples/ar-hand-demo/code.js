@@ -7,7 +7,7 @@ const { setCameraFOV, setCameraPosition, setCameraTarget } = nova64.camera;
 const { createPointLight, setAmbientLight } = nova64.light;
 const { getHandGesture, getHandLandmarks, initHandTracking, showCameraBackground } = nova64.input;
 const { remove } = nova64.data;
-const { dist, remap } = nova64.util;
+const { remap } = nova64.util;
 
 let cursor;
 let particles = [];

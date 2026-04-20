@@ -37,7 +37,6 @@ const {
   enablePixelation,
   enableVignette,
   setGlitchIntensity,
-  updateParticles,
 } = nova64.fx;
 const { isKeyPressed, key } = nova64.input;
 const { sfx } = nova64.audio;
@@ -56,11 +55,9 @@ const {
 } = nova64.ui;
 const {
   arc,
-  color,
   cooldownReady,
   createCooldown,
   createShake,
-  dist,
   noise,
   triggerShake,
   updateCooldown,

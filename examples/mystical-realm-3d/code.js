@@ -2,7 +2,7 @@
 // Showcases advanced 3D features: dynamic lighting, particle systems, procedural generation
 
 // Game state management
-const { circle, cls, drawPanel, drawProgressBar, print, rect, rgba8 } = nova64.draw;
+const { cls, drawPanel, drawProgressBar, print, rect, rgba8 } = nova64.draw;
 const {
   createAdvancedCube,
   createAdvancedSphere,
@@ -26,7 +26,6 @@ const { enableBloom, enableDithering, enableFXAA, enablePixelation, enableVignet
 const { key, keyp } = nova64.input;
 const { sfx } = nova64.audio;
 const {
-  centerX,
   centerY,
   createButton,
   createPanel,
@@ -40,15 +39,11 @@ const {
   uiColors,
   updateAllButtons,
 } = nova64.ui;
-const { t } = nova64.data;
 const {
   arc,
-  color,
   createCooldown,
   createShake,
-  dist,
   getShakeOffset,
-  pulse,
   triggerShake,
   updateCooldown,
   updateShake,

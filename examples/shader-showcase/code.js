@@ -16,8 +16,6 @@ const {
   createWaterMaterial,
 } = nova64.shader;
 const { keyp } = nova64.input;
-const { t } = nova64.data;
-
 let t = 0;
 let currentIndex = 0;
 let sphereId = null;

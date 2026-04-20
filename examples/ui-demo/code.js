@@ -23,8 +23,6 @@ const {
   uiProgressBar,
   updateAllButtons,
 } = nova64.ui;
-const { pulse } = nova64.util;
-
 let demo = {
   panel1: null,
   panel2: null,

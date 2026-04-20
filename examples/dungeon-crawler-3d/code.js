@@ -34,14 +34,10 @@ const { enableBloom, enableFXAA, enableVignette } = nova64.fx;
 const { btnp, key, keyp } = nova64.input;
 const { sfx } = nova64.audio;
 const { Screen } = nova64.ui;
-const { t } = nova64.data;
 const {
-  color,
   createCooldown,
   createFloatingTextSystem,
   createShake,
-  dist,
-  pulse,
   triggerShake,
   updateCooldown,
   updateShake,

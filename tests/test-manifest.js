@@ -595,6 +595,22 @@ async function registerCartParseTests(runner) {
       new vm.Script(stripped, { filename: `${cart}/code.js` });
     });
   }
+
+  // Parse-check ALL example carts (catches nova64.* destructuring collisions)
+  const allCarts = fs.readdirSync(examplesDir).filter(d =>
+    fs.statSync(path.join(examplesDir, d)).isDirectory() &&
+    fs.existsSync(path.join(examplesDir, d, 'code.js'))
+  );
+  for (const cart of allCarts) {
+    if (cartsWithManifest.includes(cart)) continue; // already tested above
+    runner.test(`Cart ${cart} - parses without syntax errors`, () => {
+      const src = fs.readFileSync(path.join(examplesDir, cart, 'code.js'), 'utf8');
+      const stripped = src
+        .replace(/^import\s+.*$/gm, '')
+        .replace(/export\s+(function|const|let|var|async\s+function)/g, '$1');
+      new vm.Script(stripped, { filename: `${cart}/code.js` });
+    });
+  }
 }
 
 // ── Main Runner ──────────────────────────────────────────────

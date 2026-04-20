@@ -8,9 +8,8 @@ const { setCameraPosition, setCameraTarget } = nova64.camera;
 const { setAmbientLight, setFog, setLightDirection } = nova64.light;
 const { enableBloom } = nova64.fx;
 const { keyp } = nova64.input;
-const { grid } = nova64.ui;
 const { remove } = nova64.data;
-const { color, hsb, pulse } = nova64.util;
+const { color, hsb } = nova64.util;
 
 const GRID_W = 40;
 const GRID_H = 30;

@@ -26,7 +26,7 @@ const {
   updateVoxelEntities,
   updateVoxelWorld,
 } = nova64.voxel;
-const { color, noise } = nova64.util;
+const { color } = nova64.util;
 
 let lastDayTime = -1;
 

@@ -23,11 +23,10 @@ const {
   setLightColor,
   setLightDirection,
 } = nova64.light;
-const { enableBloom, updateParticles } = nova64.fx;
-const { btnp, mouseX, mouseY } = nova64.input;
+const { enableBloom } = nova64.fx;
+const { btnp } = nova64.input;
 const { sfx } = nova64.audio;
 const { t } = nova64.data;
-const { color, dist } = nova64.util;
 const { enableVR, getXRControllers, isXRActive } = nova64.xr;
 
 let gameState = 'playing'; // 'playing' | 'gameover'

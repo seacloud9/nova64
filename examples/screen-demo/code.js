@@ -17,9 +17,7 @@ const { createCube, destroyMesh, setPosition, setRotation } = nova64.scene;
 const { setCameraFOV, setCameraPosition, setCameraTarget } = nova64.camera;
 const { setFog } = nova64.light;
 const { isKeyPressed } = nova64.input;
-const { Screen, addScreen, centerX, centerY, startScreens, switchToScreen } = nova64.ui;
-const { color } = nova64.util;
-
+const { Screen, addScreen, centerY, startScreens, switchToScreen } = nova64.ui;
 const W = 640,
   H = 360;
 

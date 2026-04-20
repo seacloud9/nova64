@@ -42,8 +42,7 @@ const {
   rect,
   rectfill,
   rgba8,
-  scrollingText,
-  setCamera,
+  scrollingTexsetCamera,
 } = nova64.draw;
 const {
   createAdvancedCube,
@@ -211,7 +210,6 @@ const {
   noiseMap,
   noiseSeed,
   popMatrix,
-  pulse,
   pushMatrix,
   quadCurve,
   rad2deg,

@@ -16,8 +16,6 @@ const {
   updateVoxelEntities,
   updateVoxelWorld,
 } = nova64.voxel;
-const { dist } = nova64.util;
-
 let player = { x: 0, y: 80, z: 0, vx: 0, vy: 0, vz: 0, yaw: 0, pitch: 0, onGround: false };
 let loaded = false;
 let entityCount = 0;

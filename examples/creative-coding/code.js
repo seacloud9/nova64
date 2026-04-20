@@ -37,8 +37,7 @@ const {
   updateParticles,
 } = nova64.fx;
 const { key, keyp } = nova64.input;
-const { t } = nova64.data;
-const { color, dist, pulse, rotate } = nova64.util;
+const { rotate } = nova64.util;
 
 const W = 640,
   H = 360;

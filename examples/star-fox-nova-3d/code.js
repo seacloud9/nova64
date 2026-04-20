@@ -53,7 +53,6 @@ const {
   color,
   createCooldown,
   createHitState,
-  dist,
   isInvulnerable,
   rotate,
   triggerHit,

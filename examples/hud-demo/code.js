@@ -7,8 +7,7 @@ const { createCube, getMesh } = nova64.scene;
 const { setCameraPosition, setCameraTarget } = nova64.camera;
 const { setAmbientLight, setFog } = nova64.light;
 const { parseCanvasUI, renderCanvasUI, updateCanvasUI } = nova64.ui;
-const { t } = nova64.data;
-const { color, dist } = nova64.util;
+const { color } = nova64.util;
 
 const HUD_XML = `<ui>
   <!-- ── Health / Mana / XP bars ── -->

@@ -35,7 +35,7 @@ const {
 const { enableBloom, enableFXAA, enableVignette } = nova64.fx;
 const { btnp, key, keyp } = nova64.input;
 const { t } = nova64.data;
-const { arc, color } = nova64.util;
+const { arc } = nova64.util;
 
 const SPACING = 2.4;
 

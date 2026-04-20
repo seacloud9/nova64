@@ -38,8 +38,6 @@ const {
   uiColors,
   updateAllButtons,
 } = nova64.ui;
-const { pulse } = nova64.util;
-
 let gameState = 'start'; // 'start', 'playing', 'gameOver'
 let startScreenTime = 0;
 let uiButtons = [];

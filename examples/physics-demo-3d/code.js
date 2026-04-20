@@ -19,14 +19,7 @@ const {
 } = nova64.scene;
 const { setCameraFOV, setCameraPosition, setCameraTarget } = nova64.camera;
 const { setFog, setLightDirection } = nova64.light;
-const {
-  enableBloom,
-  enableDithering,
-  enableFXAA,
-  enablePixelation,
-  enableVignette,
-  updateParticles,
-} = nova64.fx;
+const { enableBloom, enableDithering, enableFXAA, enablePixelation, enableVignette } = nova64.fx;
 const { btnp, key, keyp } = nova64.input;
 const {
   Screen,
@@ -43,8 +36,6 @@ const {
   uiColors,
   updateAllButtons,
 } = nova64.ui;
-const { color, pulse } = nova64.util;
-
 let gameTime = 0;
 let selectedDemo = 0;
 let showDebugInfo = true;

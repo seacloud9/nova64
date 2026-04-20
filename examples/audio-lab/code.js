@@ -9,16 +9,8 @@ const { setCameraPosition, setCameraTarget } = nova64.camera;
 const { setAmbientLight, setFog } = nova64.light;
 const { key, keyp } = nova64.input;
 const { setVolume, sfx } = nova64.audio;
-const {
-  color,
-  createCooldown,
-  createCooldownSet,
-  dist,
-  pulse,
-  updateCooldown,
-  updateCooldowns,
-  useCooldown,
-} = nova64.util;
+const { createCooldown, createCooldownSet, pulse, updateCooldown, updateCooldowns, useCooldown } =
+  nova64.util;
 
 const PRESETS = [
   { key: 'Digit1', label: '1: Jump', opts: { wave: 'sine', freq: 440, dur: 0.15, sweep: 200 } },

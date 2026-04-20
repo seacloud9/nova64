@@ -2,7 +2,7 @@
 // FREEDOOM WAD EXPLORER — Browse & play through classic DOOM levels via FreeDoom
 
 // ── State ──
-const { drawProgressBar, print, printCentered, rectfill, rgba8 } = nova64.draw;
+const { drawProgressBar, prinprintCentered, rectfill, rgba8 } = nova64.draw;
 const {
   createCube,
   createPlane,
@@ -25,7 +25,7 @@ const {
 const { btn, key, keyp, mouseDown } = nova64.input;
 const { sfx } = nova64.audio;
 const { WADLoader, WADTextureManager, convertWADMap, setWallUVs, t } = nova64.data;
-const { color, createShake, dist, dist3d, pulse, triggerShake, updateShake } = nova64.util;
+const { createShake, triggerShake, updateShake } = nova64.util;
 
 let gameTime = 0;
 let gameState = 'loading'; // loading, menu, playing, gameover, levelclear, victory

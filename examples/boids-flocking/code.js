@@ -5,7 +5,7 @@
 const { circle, cls, line, print, rect, rgba8 } = nova64.draw;
 const { btnp, keyp } = nova64.input;
 const { grid } = nova64.ui;
-const { TWO_PI, hsb, noise, noiseSeed, pulse } = nova64.util;
+const { TWO_PI, hsb, noise, noiseSeed } = nova64.util;
 
 const NUM_BOIDS = 350;
 const SEPARATION_RADIUS = 12;

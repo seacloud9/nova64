@@ -10,8 +10,6 @@ const { setAmbientLight, setFog } = nova64.light;
 const { key, keyp } = nova64.input;
 const { sfx } = nova64.audio;
 const { deleteData, loadData, saveData } = nova64.data;
-const { color, dist } = nova64.util;
-
 const SAVE_KEY = 'storagequest';
 const GEM_COLORS = [0xffdd00, 0x00ffaa, 0xff4488, 0x44aaff];
 const UPGRADE_COST = [0, 50, 150, 400]; // cumulative cost per level (level 0 = start)

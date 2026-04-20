@@ -39,8 +39,6 @@ const {
   uiColors,
   updateAllButtons,
 } = nova64.ui;
-const { color, pulse } = nova64.util;
-
 let cathedral = {
   pillars: [],
   crystals: [],

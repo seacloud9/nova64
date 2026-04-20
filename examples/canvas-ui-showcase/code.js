@@ -6,7 +6,6 @@ const { circle, line, rect } = nova64.draw;
 const { setCameraPosition, setCameraTarget } = nova64.camera;
 const { setAmbientLight, setFog } = nova64.light;
 const { parseCanvasUI, renderCanvasUI, updateCanvasUI } = nova64.ui;
-const { t } = nova64.data;
 const { bezier, color, ellipse, pulse } = nova64.util;
 
 const SHOWCASE_XML = `<ui>

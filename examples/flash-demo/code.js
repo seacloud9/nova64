@@ -27,7 +27,6 @@ const { burstEmitter2D, clearEmitter2D, createEmitter2D, drawEmitter2D, updateEm
 const { key, keyp } = nova64.input;
 const { addChild, createContainer, createGraphicsNode, createTextNode, drawStage } = nova64.ui;
 const { createTween, killAllTweens, updateTweens } = nova64.tween;
-const { t } = nova64.data;
 const { color } = nova64.util;
 
 let W, H, CX, CY;

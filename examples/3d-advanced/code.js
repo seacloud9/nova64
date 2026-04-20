@@ -7,7 +7,6 @@ const {
   createCube,
   createSphere,
   destroyMesh,
-  engine,
   get3DStats,
   getPosition,
   rotateMesh,
@@ -34,9 +33,6 @@ const {
   uiColors,
   updateAllButtons,
 } = nova64.ui;
-const { t } = nova64.data;
-const { color, pulse } = nova64.util;
-
 let capitalShips = [];
 let fighters = [];
 let projectiles = [];

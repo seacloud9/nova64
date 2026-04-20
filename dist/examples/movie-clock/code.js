@@ -1,11 +1,11 @@
 // movie-clock — analogue clock animated with createMovieClip
 // Shows: createMovieClip, gotoAndStop, drawGraphicsNode, print, clean 60fps draw
 
-const W = 320,
-  H = 240;
-const CX = W / 2,
+let W = 640,
+  H = 360;
+let CX = W / 2,
   CY = H / 2;
-const RADIUS = 86;
+const RADIUS = 120;
 
 let time = 0; // accumulated real seconds (used as wall-clock starting from now)
 
@@ -15,19 +15,11 @@ let secondClip;
 let minuteClip;
 let hourClip;
 
-// Helper: draw a clock hand from center at angle θ, length l, width w, color c
-function _hand(ctx, angle, length, width, color) {
+// Helper: draw a clock hand from center at angle θ, length l, color c
+function _hand(angle, length, color) {
   const cos = Math.cos(angle - Math.PI / 2);
   const sin = Math.sin(angle - Math.PI / 2);
-  ctx.save();
-  ctx.strokeStyle = `#${color.toString(16).padStart(6, '0')}`;
-  ctx.lineWidth = width;
-  ctx.lineCap = 'round';
-  ctx.beginPath();
-  ctx.moveTo(CX - cos * 10, CY - sin * 10);
-  ctx.lineTo(CX + cos * length, CY + sin * length);
-  ctx.stroke();
-  ctx.restore();
+  line(CX - cos * 10, CY - sin * 10, CX + cos * length, CY + sin * length, color);
 }
 
 function _makeDialFrames(count, drawFn) {
@@ -41,6 +33,10 @@ function _makeDialFrames(count, drawFn) {
 }
 
 export function init() {
+  W = typeof screenWidth === 'function' ? screenWidth() : 640;
+  H = typeof screenHeight === 'function' ? screenHeight() : 360;
+  CX = W / 2;
+  CY = H / 2;
   // Build a 60-frame clip for seconds/minutes and 12-frame for hours,
   // using a simple "label" per frame.
   const secLabels = {};
@@ -119,11 +115,11 @@ export function draw() {
   const hrAngle = (smoothHr / 12) * Math.PI * 2;
 
   // Hour hand
-  _hand(null, hrAngle, RADIUS * 0.5, 5, 0xffffff);
+  _hand(hrAngle, RADIUS * 0.5, 0xffffff);
   // Minute hand
-  _hand(null, minAngle, RADIUS * 0.75, 3, 0xaaddff);
+  _hand(minAngle, RADIUS * 0.75, 0xaaddff);
   // Second hand
-  _hand(null, secAngle, RADIUS * 0.88, 1, 0xff4444);
+  _hand(secAngle, RADIUS * 0.88, 0xff4444);
 
   // Center dot
   ellipsefill(CX, CY, 8, 8, 0xff4444);
@@ -138,7 +134,7 @@ export function draw() {
   const ss = String(secondClip.frame).padStart(2, '0');
 
   print('MOVIE CLOCK', 4, 4, 0xffffff);
-  printCentered(`${hh}:${mm}:${ss}`, CY + RADIUS + 14, 0xaaddff);
+  printCentered(`${hh}:${mm}:${ss}`, CX, CY + RADIUS + 14, 0xaaddff);
   print('createMovieClip • gotoAndStop • labels', 4, H - 12, 0x778899);
 }
 

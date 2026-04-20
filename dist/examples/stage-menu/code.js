@@ -2,8 +2,8 @@
 // Shows: createContainer, createTextNode, createGraphicsNode, tweenTo,
 //        easeOutBack stagger, addChild, hitTest, blendMode
 
-const W = 320,
-  H = 240;
+let W = 640,
+  H = 360;
 const ITEMS = ['▶  START GAME', '⚙  OPTIONS', '🏆  LEADERBOARD', 'ℹ  ABOUT'];
 const COLORS_DEF = [0xffffff, 0xaaddff, 0xaaddff, 0xaaddff];
 const COLORS_HOV = [0xffcc44, 0x44ffaa, 0xff88cc, 0x88aaff];
@@ -25,6 +25,8 @@ function _makeBgStripe(x, y, w, h, color) {
 }
 
 export function init() {
+  W = typeof screenWidth === 'function' ? screenWidth() : 640;
+  H = typeof screenHeight === 'function' ? screenHeight() : 360;
   root = createContainer();
   bgRoot = createContainer();
   addChild(root, bgRoot);
@@ -40,35 +42,35 @@ export function init() {
 
   // Title node — slide in from top
   titleNode = createTextNode('NOVA 64', {
-    font: 'bold 28px monospace',
+    font: 'bold 48px monospace',
     fill: '#ffcc44',
     align: 'center',
     stroke: '#cc8800',
-    strokeWidth: 2,
+    strokeWidth: 3,
   });
   titleNode.x = W / 2;
-  titleNode.y = -40; // start above screen
+  titleNode.y = -60; // start above screen
   addChild(root, titleNode);
 
   // Animate title in
-  titleNode.tweenTo({ y: 44 }, 0.7, { ease: 'easeOutBack' }).play();
+  titleNode.tweenTo({ y: 60 }, 0.7, { ease: 'easeOutBack' }).play();
 
   // Menu items — stagger slide-in from left
   menuItems = [];
   for (let i = 0; i < ITEMS.length; i++) {
     const node = createTextNode(ITEMS[i], {
-      font: 'bold 14px monospace',
+      font: 'bold 24px monospace',
       fill: `#${COLORS_DEF[i].toString(16).padStart(6, '0')}`,
       align: 'left',
     });
     node.x = -W; // start off-left
-    node.y = 90 + i * 34;
+    node.y = 140 + i * 50;
     node._idx = i;
     addChild(root, node);
 
     setTimeout(
       () => {
-        node.tweenTo({ x: 50 }, 0.55, { ease: 'easeOutBack' }).play();
+        node.tweenTo({ x: 100 }, 0.55, { ease: 'easeOutBack' }).play();
       },
       300 + i * 90
     );
@@ -81,11 +83,11 @@ export function init() {
     ctx.save();
     ctx.globalAlpha = n.alpha * 0.35;
     ctx.fillStyle = '#ffcc44';
-    ctx.fillRect(n.x, n.y, W - 40, 26);
+    ctx.fillRect(n.x, n.y, W - 80, 40);
     ctx.restore();
   });
-  cursor.x = 44;
-  cursor.y = 90 + selected * 34 - 5;
+  cursor.x = 90;
+  cursor.y = 140 + selected * 50 - 8;
   cursor._isCursor = true;
   addChild(root, cursor);
 
@@ -108,7 +110,7 @@ export function update(dt) {
     if (down) selected = (selected + 1) % ITEMS.length;
 
     // Tween cursor to new position
-    root._cursor.tweenTo({ y: 90 + selected * 34 - 5 }, 0.22, { ease: 'easeOutCubic' }).play();
+    root._cursor.tweenTo({ y: 140 + selected * 50 - 8 }, 0.22, { ease: 'easeOutCubic' }).play();
   }
 
   // Update item text color
@@ -134,7 +136,7 @@ export function draw() {
   // Subtitle tagline
   const alpha = 0.5 + 0.5 * Math.sin(time * 2.4);
   const bright = Math.floor(alpha * 120 + 60);
-  print('ULTIMATE 3D FANTASY CONSOLE', W / 2 - 82, 56, (bright << 16) | (bright << 8) | 0xff);
+  print('ULTIMATE 3D FANTASY CONSOLE', W / 2 - 82, 95, (bright << 16) | (bright << 8) | 0xff);
 
   // Bottom bar
   rectfill(0, H - 16, W, 16, 0x000000cc);

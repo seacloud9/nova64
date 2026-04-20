@@ -443,6 +443,7 @@ const gameMap = {
   wizardry: '/examples/wizardry-3d/code.js',
   'creative-coding': '/examples/creative-coding/code.js',
   'tsl-showcase': '/examples/tsl-showcase/code.js',
+  'shader-showcase': '/examples/shader-showcase/code.js',
 };
 
 // Map demo names (from ?demo= URL param) to paths
@@ -492,6 +493,7 @@ const demoMap = {
   'nft-art-generator': '/examples/nft-art-generator/code.js',
   'creative-coding': '/examples/creative-coding/code.js',
   'tsl-showcase': '/examples/tsl-showcase/code.js',
+  'shader-showcase': '/examples/shader-showcase/code.js',
   'hud-demo': '/examples/hud-demo/code.js',
   'startscreen-demo': '/examples/startscreen-demo/code.js',
   'canvas-ui-showcase': '/examples/canvas-ui-showcase/code.js',

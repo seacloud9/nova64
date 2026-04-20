@@ -162,6 +162,13 @@ export function threeDApi(gpu) {
         createTSLMaterial: ctx.createTSLMaterial,
         createTSLShaderMaterial: ctx.createTSLShaderMaterial,
         _updateTSLMaterials: ctx._updateTSLMaterials,
+        // Convenience factories (Phase 1 Shader Pack)
+        createLavaMaterial: ctx.createLavaMaterial,
+        createVortexMaterial: ctx.createVortexMaterial,
+        createPlasmaMaterial: ctx.createPlasmaMaterial,
+        createWaterMaterial: ctx.createWaterMaterial,
+        createHologramMaterial: ctx.createHologramMaterial,
+        createShockwaveMaterial: ctx.createShockwaveMaterial,
         // TSL building blocks (prefixed with tsl*)
         tslFn: ctx.tslFn,
         tslUniform: ctx.tslUniform,

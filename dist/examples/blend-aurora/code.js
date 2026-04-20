@@ -2,8 +2,8 @@
 // Shows: withBlend, BM.SCREEN, BM.ADD, layered gradients on stage canvas,
 //        createCamera2D pan, animated color bands
 
-const W = 320,
-  H = 240;
+let W = 640,
+  H = 360;
 let time = 0;
 
 // Aurora band config
@@ -53,7 +53,10 @@ function _drawRays(ctx, band, t, alpha) {
   }
 }
 
-export function init() {}
+export function init() {
+  W = typeof screenWidth === 'function' ? screenWidth() : 640;
+  H = typeof screenHeight === 'function' ? screenHeight() : 360;
+}
 
 export function update(dt) {
   time += dt;

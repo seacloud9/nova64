@@ -163,7 +163,7 @@ export async function init() {
   // ── SUN ── (3 layered spheres)
   const sunCoreMesh = getMesh(createSphere(40, 0xffffff, [0, 28, -165]));
   if (sunCoreMesh)
-    sunCoreMesh.material = createTSLMaterial('rainbow', { speed: 0.3, opacity: 1.0 });
+    sunCoreMesh.material = createTSLMaterial('rainbow', { speed: 0.1, opacity: 0.8 });
 
   const sunGlowMesh = getMesh(createSphere(60, 0xffffff, [0, 28, -168]));
   if (sunGlowMesh) sunGlowMesh.material = createTSLMaterial('plasma', { speed: 0.2, opacity: 0.3 });
@@ -231,7 +231,120 @@ export async function init() {
   logoId = await loadModel('/assets/glb/nova_64_logo.glb', [24, 4, -55], 22);
   const logoMesh = getMesh(logoId);
   if (logoMesh) {
-    const logoMat = createTSLMaterial('rainbow', { speed: 0.5, opacity: 1.0 });
+    // ── Pick a logo material (uncomment ONE) ──
+
+    // OPTION 1: Electricity — cyan lightning bolts, high contrast vs warm sun
+    const logoMat = createTSLMaterial('rainbow', { speed: 0.2, opacity: 1.0 });
+
+    // OPTION 2: Void — dark silhouette with purple edge glow, readable negative space
+    //const logoMat = createTSLMaterial('void', { speed: 0.5, opacity: 1.0 });
+
+    // OPTION 3: Lava — solid hot orange, dense enough to not wash out
+    //const logoMat = createTSLMaterial('lava', { speed: 0.8, opacity: 1.0 });
+
+    // OPTION 4: Chrome outline — dark fill with bright cyan/magenta edge lighting
+    //const logoMat = createTSLShaderMaterial(null, `
+    //  uniform float uTime; varying vec2 vUv;
+    //  void main(){
+    //    vec2 p=vUv-0.5; float d=length(p); float core=0.04;
+    //    float rimX=pow(1.0-abs(vUv.x-0.5)*2.0,4.0); float rimY=pow(1.0-abs(vUv.y-0.5)*2.0,4.0);
+    //    float rim=pow(1.0-rimX*rimY,2.5); float phase=uTime*0.6;
+    //    vec3 rimCol=mix(vec3(0,1,.95),vec3(1,0,.7),sin(phase+d*5.)*0.5+0.5);
+    //    float spec=pow(sin(vUv.x*6.2832+uTime*1.2)*0.5+0.5,8.0)*0.6;
+    //    gl_FragColor=vec4(vec3(core)+rimCol*rim*1.4+vec3(spec),1.0);
+    //  }
+    //`, {}, { transparent: false, depthWrite: true });
+
+    // OPTION 5: Holographic scan — horizontal scan lines over iridescent surface
+    // const logoMat = createTSLShaderMaterial(null, `
+    //  uniform float uTime; varying vec2 vUv;
+    //  void main(){
+    //    float scan=sin(vUv.y*80.0+uTime*4.0)*0.5+0.5;
+    //    scan=smoothstep(0.3,0.7,scan)*0.3+0.7;
+    //    float phase=(vUv.y+vUv.x)*3.0+uTime*0.8;
+    //    vec3 iri=vec3(sin(phase)*0.5+0.5,sin(phase+2.094)*0.5+0.5,sin(phase+4.189)*0.5+0.5);
+    //    iri=mix(iri,vec3(0.9,0.95,1.0),0.35);
+    //    float edge=pow(1.0-abs(vUv.x-0.5)*2.0,0.5)*pow(1.0-abs(vUv.y-0.5)*2.0,0.5);
+    //    float fresnel=1.0-edge; fresnel=pow(fresnel,1.5)*0.6;
+    //    vec3 col=iri*scan+vec3(0.6,0.8,1.0)*fresnel;
+    //    gl_FragColor=vec4(col,1.0);
+    //  }
+    // `, {}, { transparent: false, depthWrite: true });
+
+    // OPTION 6: Gold emboss — warm gold with dark recesses and bright highlights
+    //const logoMat = createTSLShaderMaterial(null, `
+    //  uniform float uTime; varying vec2 vUv;
+    //  void main(){
+    //    float nx=sin(vUv.x*40.0)*0.5+0.5; float ny=sin(vUv.y*40.0)*0.5+0.5;
+    //    float bump=(nx+ny)*0.5;
+    //    vec3 gold=vec3(1.0,0.84,0.0);
+    //    vec3 darkGold=vec3(0.45,0.3,0.05);
+    //    float light=dot(normalize(vec3(sin(uTime*0.3),1.0,0.5)),normalize(vec3(bump-0.5,bump-0.5,1.0)));
+    //    light=clamp(light,0.0,1.0);
+    //    vec3 col=mix(darkGold,gold,light*0.7+0.3);
+    //    float spec=pow(light,16.0)*0.8;
+    //    col+=vec3(1.0,0.95,0.8)*spec;
+    //    float sweep=pow(sin(vUv.x*3.14159+uTime*0.5)*0.5+0.5,6.0)*0.4;
+    //    col+=vec3(1.0,0.9,0.7)*sweep;
+    //    gl_FragColor=vec4(col,1.0);
+    //  }
+    //`, {}, { transparent: false, depthWrite: true });
+
+    // OPTION 7: Neon wireframe — dark body with bright animated wireframe grid
+    //const logoMat = createTSLShaderMaterial(null, `
+    //  uniform float uTime; varying vec2 vUv;
+    //  void main(){
+    //    vec2 g=abs(fract(vUv*vec2(12.0,18.0))-0.5);
+    //    float wire=1.0-smoothstep(0.0,0.06,min(g.x,g.y));
+    //    float phase=uTime*0.5;
+    //    vec3 wireCol=mix(vec3(0.0,1.0,0.6),vec3(0.0,0.5,1.0),sin(vUv.y*6.28+phase)*0.5+0.5);
+    //    float pulse=sin(vUv.y*3.14159-uTime*2.0)*0.5+0.5;
+    //    float scanUp=smoothstep(pulse-0.05,pulse,vUv.y)*smoothstep(pulse+0.05,pulse,vUv.y);
+    //    vec3 col=vec3(0.02,0.02,0.05)+wireCol*wire*1.5+vec3(0.0,1.0,0.9)*scanUp*0.6;
+    //    gl_FragColor=vec4(col,1.0);
+    //  }
+    //`, {}, { transparent: false, depthWrite: true });
+
+    // OPTION 8: Ice crystal — cold blue/white with frost sparkle effect
+    //const logoMat = createTSLShaderMaterial(null, `
+    //  uniform float uTime; varying vec2 vUv;
+    //  float hash2(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
+    //  void main(){
+    //    vec3 ice=mix(vec3(0.1,0.3,0.6),vec3(0.7,0.9,1.0),vUv.y);
+    //    float facet=hash2(floor(vUv*30.0));
+    //    ice+=vec3(0.2,0.25,0.3)*facet*0.5;
+    //    float sparkle=hash2(floor(vUv*60.0)+floor(uTime*3.0));
+    //    sparkle=step(0.96,sparkle)*2.0;
+    //    ice+=vec3(1.0)*sparkle;
+    //    float fresnel=pow(1.0-abs(vUv.x-0.5)*2.0,0.6)*pow(1.0-abs(vUv.y-0.5)*2.0,0.6);
+    //    fresnel=1.0-fresnel; fresnel=pow(fresnel,2.0);
+    //    ice+=vec3(0.4,0.7,1.0)*fresnel*0.8;
+    //    float crack=1.0-smoothstep(0.0,0.02,abs(fract(vUv.x*8.0+vUv.y*3.0+0.3)-0.5));
+    //    ice+=vec3(0.5,0.8,1.0)*crack*0.15;
+    //    gl_FragColor=vec4(ice,1.0);
+    //  }
+    //`, {}, { transparent: false, depthWrite: true });
+
+    // OPTION 9: Toxic glow — deep black with animated green/yellow toxic pulse
+    /*const logoMat = createTSLShaderMaterial(null, `
+      uniform float uTime; varying vec2 vUv;
+      void main(){
+        float d=length(vUv-0.5);
+        vec3 base=vec3(0.01,0.02,0.0);
+        float vein1=sin(vUv.x*20.0+vUv.y*10.0+uTime*1.5)*0.5+0.5;
+        float vein2=sin(vUv.y*15.0-vUv.x*8.0+uTime*2.0)*0.5+0.5;
+        float veins=pow(vein1*vein2,2.0);
+        vec3 toxic=mix(vec3(0.0,1.0,0.0),vec3(0.8,1.0,0.0),vein1);
+        base+=toxic*veins*0.6;
+        float pulse=sin(uTime*1.8-d*8.0)*0.5+0.5;
+        base+=vec3(0.0,0.8,0.2)*pulse*0.15;
+        float rim=pow(1.0-abs(vUv.x-0.5)*2.0,0.5)*pow(1.0-abs(vUv.y-0.5)*2.0,0.5);
+        rim=pow(1.0-rim,2.5);
+        base+=vec3(0.0,1.0,0.3)*rim*0.7;
+        gl_FragColor=vec4(base,1.0);
+      }
+    `, {}, { transparent: false, depthWrite: true });*/
+
     logoMesh.traverse(child => {
       if (child.isMesh) child.material = logoMat;
     });

@@ -24,7 +24,8 @@ let prevCtrlPos = [null, null]; // for velocity tracking
 
 // Desktop fallback
 let desktopSword = null;
-let mouseX = 0, mouseY = 0;
+let mouseX = 0,
+  mouseY = 0;
 
 const C = {
   swordBlade: 0x00ccff,
@@ -181,20 +182,34 @@ function spawnEnemy() {
   });
 
   // Eyes — glowing red
-  const eyeL = createSphere(size * 0.08, C.enemyEye, [x - size * 0.12, size * 1.65, z + size * 0.25], 4, {
-    material: 'emissive',
-    emissive: C.enemyEye,
-    intensity: 3,
-  });
-  const eyeR = createSphere(size * 0.08, C.enemyEye, [x + size * 0.12, size * 1.65, z + size * 0.25], 4, {
-    material: 'emissive',
-    emissive: C.enemyEye,
-    intensity: 3,
-  });
+  const eyeL = createSphere(
+    size * 0.08,
+    C.enemyEye,
+    [x - size * 0.12, size * 1.65, z + size * 0.25],
+    4,
+    {
+      material: 'emissive',
+      emissive: C.enemyEye,
+      intensity: 3,
+    }
+  );
+  const eyeR = createSphere(
+    size * 0.08,
+    C.enemyEye,
+    [x + size * 0.12, size * 1.65, z + size * 0.25],
+    4,
+    {
+      material: 'emissive',
+      emissive: C.enemyEye,
+      intensity: 3,
+    }
+  );
 
   enemies.push({
     parts: [body, head, eyeL, eyeR],
-    x, y: 0, z,
+    x,
+    y: 0,
+    z,
     size,
     hp,
     maxHp: hp,
@@ -218,7 +233,7 @@ function checkSlash(swordPos, velocity) {
     if (e.deathTimer >= 0) continue;
 
     const dx = swordPos.x - e.x;
-    const dy = swordPos.y - (e.size * 0.9);
+    const dy = swordPos.y - e.size * 0.9;
     const dz = swordPos.z - e.z;
     const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
 
@@ -256,7 +271,9 @@ function killEnemy(index) {
     const a = Math.random() * Math.PI * 2;
     particles.push({
       mesh,
-      x: px, y: py, z: pz,
+      x: px,
+      y: py,
+      z: pz,
       vx: Math.cos(a) * spd,
       vy: 2 + Math.random() * 4,
       vz: Math.sin(a) * spd,
@@ -295,7 +312,8 @@ export function update(dt) {
 
   // ── Torch flicker ──
   torches.forEach((t, i) => {
-    const flicker = Math.sin(gameTime * 8 + i * 2.3) * 0.1 + Math.sin(gameTime * 13 + i * 1.7) * 0.05;
+    const flicker =
+      Math.sin(gameTime * 8 + i * 2.3) * 0.1 + Math.sin(gameTime * 13 + i * 1.7) * 0.05;
     setPosition(t.flame, t.x, t.baseY + flicker, t.z);
   });
 
@@ -379,7 +397,8 @@ function updateDesktopSword(dt) {
   setPosition(desktopSword, sx, sy, 2);
 
   // Click to slash
-  if (btnp(0)) { // left mouse button
+  if (btnp(0)) {
+    // left mouse button
     const vel = { x: mouseX * 20, y: mouseY * 20, z: -10 };
     checkSlash({ x: sx, y: sy, z: 2 }, vel);
     sfx('laser');

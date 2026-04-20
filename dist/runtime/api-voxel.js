@@ -4852,7 +4852,8 @@ export function voxelApi(gpu) {
     const loader = new VOXLoader();
     const result = loader.parse(buffer);
     const chunks = result.chunks;
-    if (!chunks || chunks.length === 0) return { width: 0, height: 0, depth: 0, voxelCount: 0, blocksPlaced: 0 };
+    if (!chunks || chunks.length === 0)
+      return { width: 0, height: 0, depth: 0, voxelCount: 0, blocksPlaced: 0 };
 
     const paletteMap = options.palette || {};
     const autoRegister = options.registerColors === true;
@@ -4872,11 +4873,15 @@ export function voxelApi(gpu) {
 
     let totalPlaced = 0;
     let totalVoxels = 0;
-    let maxW = 0, maxH = 0, maxD = 0;
+    let maxW = 0,
+      maxH = 0,
+      maxD = 0;
 
     for (const chunk of chunks) {
       const { data, size, palette } = chunk;
-      const sx = size.x, sy = size.y, sz = size.z;
+      const sx = size.x,
+        sy = size.y,
+        sz = size.z;
       maxW = Math.max(maxW, sx);
       maxH = Math.max(maxH, sz); // .vox Z is up → world Y
       maxD = Math.max(maxD, sy);
@@ -4932,7 +4937,13 @@ export function voxelApi(gpu) {
       }
     }
 
-    return { width: maxW, height: maxH, depth: maxD, voxelCount: totalVoxels, blocksPlaced: totalPlaced };
+    return {
+      width: maxW,
+      height: maxH,
+      depth: maxD,
+      voxelCount: totalVoxels,
+      blocksPlaced: totalPlaced,
+    };
   }
 
   // Find the closest registered block type by RGB color distance

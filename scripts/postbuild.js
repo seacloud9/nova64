@@ -36,7 +36,14 @@ console.log('  ✓ Done\n');
 const REQUIRED_IMPORTS = ['three', 'three/tsl', 'three/webgpu', 'three/examples/jsm/'];
 
 // Files that use <script type="module"> but do NOT import three.js
-const IMPORT_MAP_SKIP = ['tests/test-runner.html', 'index.html', 'test-mobile.html', 'os9-shellMobile/index.html', 'os9-shellMobile/dist/index.html', 'public/os9-shellMobile/index.html'];
+const IMPORT_MAP_SKIP = [
+  'tests/test-runner.html',
+  'index.html',
+  'test-mobile.html',
+  'os9-shellMobile/index.html',
+  'os9-shellMobile/dist/index.html',
+  'public/os9-shellMobile/index.html',
+];
 
 function findHtmlFiles(dir) {
   const results = [];

@@ -14,37 +14,76 @@ import {
 
 // ─── Minimal test runner (same pattern as test-hype.js) ───────────────────────
 class TestRunner {
-  constructor() { this.tests = []; this.results = []; }
-  test(name, fn) { this.tests.push({ name, fn }); }
+  constructor() {
+    this.tests = [];
+    this.results = [];
+  }
+  test(name, fn) {
+    this.tests.push({ name, fn });
+  }
   async runAll() {
     console.log(`Running ${this.tests.length} tests...\n`);
     for (const t of this.tests) {
       const start = Date.now();
-      let passed = false, error = null;
-      try { await t.fn(); passed = true; console.log(`✅ ${t.name}`); }
-      catch (e) { error = e.message; console.log(`❌ ${t.name}: ${error}`); }
+      let passed = false,
+        error = null;
+      try {
+        await t.fn();
+        passed = true;
+        console.log(`✅ ${t.name}`);
+      } catch (e) {
+        error = e.message;
+        console.log(`❌ ${t.name}: ${error}`);
+      }
       this.results.push({ name: t.name, passed, error, duration: Date.now() - start });
     }
     const passed = this.results.filter(r => r.passed).length;
-    const total  = this.results.length;
+    const total = this.results.length;
     console.log(`\nResults: ${passed}/${total} passed`);
-    return { passed, total, failed: total - passed, errors: this.results.filter(r => !r.passed).map(r => ({ test: r.name, error: r.error })) };
+    return {
+      passed,
+      total,
+      failed: total - passed,
+      errors: this.results.filter(r => !r.passed).map(r => ({ test: r.name, error: r.error })),
+    };
   }
 }
 
 class Assert {
-  static isTrue(v, m = 'Expected true')          { if (!v)             throw new Error(`${m} (got ${v})`); }
-  static isFalse(v, m = 'Expected false')         { if (v)              throw new Error(`${m} (got ${v})`); }
-  static isEqual(a, b, m = 'Expected equal')      { if (a !== b)        throw new Error(`${m}: expected ${b}, got ${a}`); }
-  static isDefined(v, m = 'Expected defined')     { if (v == null)      throw new Error(`${m} (got ${v})`); }
-  static isFunction(v, m = 'Expected function')   { if (typeof v !== 'function') throw new Error(`${m} (got ${typeof v})`); }
-  static isNumber(v, m = 'Expected number')       { if (typeof v !== 'number' || isNaN(v)) throw new Error(`${m} (got ${v})`); }
-  static inRange(v, lo, hi, m = 'Out of range')   { if (v < lo || v > hi) throw new Error(`${m}: ${v} not in [${lo}, ${hi}]`); }
-  static doesNotThrow(fn, m = 'Should not throw') { try { fn(); } catch (e) { throw new Error(`${m}: ${e.message}`); } }
+  static isTrue(v, m = 'Expected true') {
+    if (!v) throw new Error(`${m} (got ${v})`);
+  }
+  static isFalse(v, m = 'Expected false') {
+    if (v) throw new Error(`${m} (got ${v})`);
+  }
+  static isEqual(a, b, m = 'Expected equal') {
+    if (a !== b) throw new Error(`${m}: expected ${b}, got ${a}`);
+  }
+  static isDefined(v, m = 'Expected defined') {
+    if (v == null) throw new Error(`${m} (got ${v})`);
+  }
+  static isFunction(v, m = 'Expected function') {
+    if (typeof v !== 'function') throw new Error(`${m} (got ${typeof v})`);
+  }
+  static isNumber(v, m = 'Expected number') {
+    if (typeof v !== 'number' || isNaN(v)) throw new Error(`${m} (got ${v})`);
+  }
+  static inRange(v, lo, hi, m = 'Out of range') {
+    if (v < lo || v > hi) throw new Error(`${m}: ${v} not in [${lo}, ${hi}]`);
+  }
+  static doesNotThrow(fn, m = 'Should not throw') {
+    try {
+      fn();
+    } catch (e) {
+      throw new Error(`${m}: ${e.message}`);
+    }
+  }
 }
 
 // Helpers: flush the global registry by a given dt
-function tick(dt)  { updateTweens(dt); }
+function tick(dt) {
+  updateTweens(dt);
+}
 
 export async function runTweenTests() {
   // Always start from a clean registry
@@ -108,7 +147,11 @@ export async function runTweenTests() {
     killAllTweens();
     let called = false;
     const obj = { x: 0 };
-    createTween(obj, { x: 10 }, 0.1, { onComplete: () => { called = true; } });
+    createTween(obj, { x: 10 }, 0.1, {
+      onComplete: () => {
+        called = true;
+      },
+    });
     tick(0.5);
     Assert.isTrue(called, 'onComplete should have fired');
   });
@@ -127,7 +170,7 @@ export async function runTweenTests() {
   runner.test('nova-style: stores _target for killTweensOf', () => {
     killAllTweens();
     const obj = { x: 0 };
-    const tw  = createTween(obj, { x: 100 }, 2.0, {});
+    const tw = createTween(obj, { x: 100 }, 2.0, {});
     Assert.isEqual(tw._target, obj, 'tween._target should reference the animated object');
     killAllTweens();
   });
@@ -152,7 +195,10 @@ export async function runTweenTests() {
     killAllTweens();
     const obj = { x: 0 };
     createTween(obj, { x: 100 }, 5.0, {});
-    Assert.doesNotThrow(() => killTweensOf({ unrelated: true }), 'killTweensOf unknown target should not throw');
+    Assert.doesNotThrow(
+      () => killTweensOf({ unrelated: true }),
+      'killTweensOf unknown target should not throw'
+    );
     Assert.isEqual(getTweenCount(), 1, 'Tween for obj should still be active');
     killAllTweens();
   });
@@ -161,7 +207,9 @@ export async function runTweenTests() {
 
   runner.test('killAllTweens: removes all active tweens', () => {
     killAllTweens();
-    const a = { x: 0 }, b = { y: 0 }, c = { z: 0 };
+    const a = { x: 0 },
+      b = { y: 0 },
+      c = { z: 0 };
     createTween(a, { x: 100 }, 5.0, {});
     createTween(b, { y: 100 }, 5.0, {});
     createTween(c, { z: 100 }, 5.0, {});
@@ -204,21 +252,28 @@ export async function runTweenTests() {
     // An emitter was stored as {em, life} wrapper; clearEmitter2D was called on
     // the wrapper instead of the raw emitter, causing a TypeError crash.
     const rawEmitter = { _particles: [1, 2, 3], _acc: 0.5 };
-    const wrappers   = [{ em: rawEmitter, life: 2.8 }];
+    const wrappers = [{ em: rawEmitter, life: 2.8 }];
 
     // clearEmitter2D equivalent (inline so test has no gpu dependency)
-    function clearEmitter(em) { em._particles.length = 0; em._acc = 0; }
+    function clearEmitter(em) {
+      em._particles.length = 0;
+      em._acc = 0;
+    }
 
     // The WRONG way that used to crash:
     let threwOnWrapper = false;
-    try { clearEmitter(wrappers[0]); } catch (_) { threwOnWrapper = true; }
+    try {
+      clearEmitter(wrappers[0]);
+    } catch (_) {
+      threwOnWrapper = true;
+    }
     Assert.isTrue(threwOnWrapper, 'Calling clear on wrapper WITHOUT unwrapping should throw');
 
     // The FIXED way (unwrap .em first):
-    Assert.doesNotThrow(
-      () => { const e = wrappers[0]; clearEmitter(e.em ?? e); },
-      'Unwrapping {em,life} wrapper before clear must not throw'
-    );
+    Assert.doesNotThrow(() => {
+      const e = wrappers[0];
+      clearEmitter(e.em ?? e);
+    }, 'Unwrapping {em,life} wrapper before clear must not throw');
     Assert.isEqual(rawEmitter._particles.length, 0, '_particles should be cleared');
   });
 
@@ -237,7 +292,7 @@ export async function runTweenTests() {
     const nodeB = { x: 0 };
     createTween(nodeB, { x: 100 }, 1.0, {});
     tick(0.5);
-    Assert.isEqual(nodeA.x, 0,  'Scene A node must not advance');
+    Assert.isEqual(nodeA.x, 0, 'Scene A node must not advance');
     Assert.inRange(nodeB.x, 30, 70, 'Scene B node should animate normally');
     killAllTweens();
   });
@@ -247,12 +302,15 @@ export async function runTweenTests() {
     // After scene change the callback should be harmless (no crashes even if state is stale).
     let sceneA = { shown: '' };
     const text = 'HELLO';
-    const tw   = createTween({
-      from: 0, to: text.length,
+    const tw = createTween({
+      from: 0,
+      to: text.length,
       duration: 1.0,
       ease: 'linear',
       loop: 'none',
-      onUpdate: v => { if (sceneA) sceneA.shown = text.slice(0, Math.ceil(v)); },
+      onUpdate: v => {
+        if (sceneA) sceneA.shown = text.slice(0, Math.ceil(v));
+      },
     });
     tw.pause();
     tw.play();
@@ -267,7 +325,11 @@ export async function runTweenTests() {
     Assert.doesNotThrow(() => tw.tick(0.5), 'Ticking with stale closure must not throw');
     // The closure guards: `if (sceneA)` — once sceneA is null the update is skipped,
     // so shown stays at the value from the first tick ('HEL'). No crash = the key guarantee.
-    Assert.isEqual(sceneARef.shown, 'HEL', 'Stale closure stops updating once reference is null (no crash)');
+    Assert.isEqual(
+      sceneARef.shown,
+      'HEL',
+      'Stale closure stops updating once reference is null (no crash)'
+    );
   });
 
   // ── Hype-style: basic scalar tween ────────────────────────────────────────

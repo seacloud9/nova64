@@ -28,20 +28,25 @@ export function draw() {
 }
 `;
 
-const PACKAGE_JSON_TEMPLATE = (name) => JSON.stringify({
-  name,
-  version: '0.0.1',
-  private: true,
-  type: 'module',
-  scripts: {
-    dev: 'nova64 dev',
-  },
-  dependencies: {
-    nova64: `^${process.env.NOVA64_VERSION || '0.4.8'}`,
-  },
-}, null, 2) + '\n';
+const PACKAGE_JSON_TEMPLATE = name =>
+  JSON.stringify(
+    {
+      name,
+      version: '0.0.1',
+      private: true,
+      type: 'module',
+      scripts: {
+        dev: 'nova64 dev',
+      },
+      dependencies: {
+        nova64: `^${process.env.NOVA64_VERSION || '0.4.8'}`,
+      },
+    },
+    null,
+    2
+  ) + '\n';
 
-const INDEX_HTML_TEMPLATE = (name) => `<!DOCTYPE html>
+const INDEX_HTML_TEMPLATE = name => `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -71,7 +76,12 @@ const INDEX_HTML_TEMPLATE = (name) => `<!DOCTYPE html>
 `;
 
 async function dirExists(p) {
-  try { await stat(p); return true; } catch { return false; }
+  try {
+    await stat(p);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export async function initCommand(dirArg) {
@@ -85,7 +95,7 @@ export async function initCommand(dirArg) {
     projectName = await input({
       message: 'Project name:',
       default: 'my-nova64-game',
-      validate: (v) => v.trim().length > 0 || 'Name cannot be empty',
+      validate: v => v.trim().length > 0 || 'Name cannot be empty',
     });
     projectDir = resolve(process.cwd(), projectName);
   }

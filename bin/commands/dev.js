@@ -7,7 +7,12 @@ const __dirname = fileURLToPath(new URL('.', import.meta.url));
 const NOVA64_ROOT = resolve(__dirname, '..', '..');
 
 async function fileExists(p) {
-  try { const s = await stat(p); return s.isFile(); } catch { return false; }
+  try {
+    const s = await stat(p);
+    return s.isFile();
+  } catch {
+    return false;
+  }
 }
 
 export async function devCommand(opts = {}) {
@@ -67,7 +72,8 @@ export async function devCommand(opts = {}) {
 
   if (opts.open !== false) {
     const { exec } = await import('child_process');
-    const cmd = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'start' : 'xdg-open';
+    const cmd =
+      process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'start' : 'xdg-open';
     exec(`${cmd} "http://localhost:${port}/"`);
   }
 }

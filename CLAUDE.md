@@ -94,11 +94,13 @@ my-game/
 An in-browser debug overlay for inspecting and editing scenes at runtime.
 
 ### **Activation**:
+
 - Press **F9** to toggle the panel open/closed
 - Add `?debug=1` to the URL to auto-open on load
 - Install the [Three.js DevTools](https://chromewebstore.google.com/detail/three-js-developer-tools/ljjomegalejmghcbeafmpnpgkoopignh) browser extension for additional scene inspection
 
 ### **Panel Sections**:
+
 - **Time Controls** (toolbar): Pause/Resume, Step Frame, Reload Cart, Speed slider (0–2x)
 - **Performance**: FPS, triangles, draw calls, geometries, textures, shader programs
 - **Camera**: Editable position/target/FOV inputs (calls `setCameraPosition`/`setCameraTarget`/`setCameraFOV` live)
@@ -108,6 +110,7 @@ An in-browser debug overlay for inspecting and editing scenes at runtime.
 - **Console Log**: Captured `console.log`/`warn`/`error` output with color-coded entries and auto-scroll
 
 ### **Three.js DevTools Bridge** (`src/main.js`):
+
 Exposes `globalThis.__THREE__`, `__THREE_SCENE__`, `__THREE_RENDERER__`, `__THREE_CAMERA__` so the browser extension can inspect the live scene.
 
 ## 🏗️ **Architecture Overview**

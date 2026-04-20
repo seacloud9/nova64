@@ -70,8 +70,7 @@ class Assert {
     if (typeof value !== 'number' || isNaN(value)) throw new Error(`${message} (got ${value})`);
   }
   static inRange(value, min, max, message = 'Expected in range') {
-    if (value < min || value > max)
-      throw new Error(`${message}: ${value} not in [${min}, ${max}]`);
+    if (value < min || value > max) throw new Error(`${message}: ${value} not in [${min}, ${max}]`);
   }
   static doesNotThrow(fn, message = 'Expected no throw') {
     try {
@@ -130,8 +129,9 @@ export async function runHypeTests() {
   runner.test('createOscillator - all waveforms tick without error', () => {
     ['sin', 'cos', 'tri', 'saw', 'noise'].forEach(waveform => {
       const osc = createOscillator({ waveform, min: 0, max: 1 });
-      Assert.doesNotThrow(() => { for (let i = 0; i < 10; i++) osc.tick(0.05); },
-        `waveform '${waveform}' should not throw`);
+      Assert.doesNotThrow(() => {
+        for (let i = 0; i < 10; i++) osc.tick(0.05);
+      }, `waveform '${waveform}' should not throw`);
     });
   });
 
@@ -225,7 +225,8 @@ export async function runHypeTests() {
 
   runner.test('createColorPool - reset moves cursor back to 0', () => {
     const pool = createColorPool([1, 2, 3], 'sequential');
-    pool.next(); pool.next();
+    pool.next();
+    pool.next();
     pool.reset();
     Assert.isEqual(pool.next(), 1, 'after reset, first color again');
   });
@@ -285,7 +286,9 @@ export async function runHypeTests() {
 
   runner.test('createHPool - releaseAll() returns all objects', () => {
     const pool = createHPool({ build: () => ({}) });
-    pool.request(); pool.request(); pool.request();
+    pool.request();
+    pool.request();
+    pool.request();
     pool.releaseAll();
     Assert.isEqual(pool.active.length, 0, 'active.length should be 0 after releaseAll');
   });
@@ -324,7 +327,10 @@ export async function runHypeTests() {
 
   runner.test('createGridLayout - spacing is respected', () => {
     const grid = createGridLayout({ cols: 3, rows: 1, spacingX: 5, spacingY: 1 });
-    const xs = grid.getPositions().map(p => p.x).sort((a, b) => a - b);
+    const xs = grid
+      .getPositions()
+      .map(p => p.x)
+      .sort((a, b) => a - b);
     // The difference between consecutive x-values should equal spacingX
     Assert.isEqual(xs[1] - xs[0], 5, 'spacingX should be 5');
   });
@@ -414,9 +420,11 @@ export async function runHypeTests() {
     const posB = { x: 10, y: 0, z: 0 };
     const pt = createProximityTrigger({
       getFrom: () => posA,
-      getTo:   () => posB,
+      getTo: () => posB,
       radius: 5,
-      onEnter: () => { entered = true; },
+      onEnter: () => {
+        entered = true;
+      },
     });
     pt.tick(0.016); // far — no enter
     Assert.isFalse(entered, 'should not enter when far away');
@@ -431,12 +439,14 @@ export async function runHypeTests() {
     const posB = { x: 2, y: 0, z: 0 }; // start inside
     const pt = createProximityTrigger({
       getFrom: () => posA,
-      getTo:   () => posB,
+      getTo: () => posB,
       radius: 5,
-      onExit: () => { exited = true; },
+      onExit: () => {
+        exited = true;
+      },
     });
     pt.tick(0.016); // inside — transitions to 'inside' state
-    posB.x = 10;   // move outside
+    posB.x = 10; // move outside
     pt.tick(0.016);
     Assert.isTrue(exited, 'should fire onExit when leaving radius');
   });

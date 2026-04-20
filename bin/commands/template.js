@@ -9,12 +9,7 @@ const EXAMPLES_DIR = resolve(NOVA64_ROOT, 'examples');
 
 // Curated example metadata for the interactive picker
 const CATEGORIES = {
-  '⭐ Getting Started': [
-    'hello-world',
-    'hello-3d',
-    'hello-skybox',
-    'input-showcase',
-  ],
+  '⭐ Getting Started': ['hello-world', 'hello-3d', 'hello-skybox', 'input-showcase'],
   '🎮 Games': [
     'star-fox-nova-3d',
     'f-zero-nova-3d',
@@ -29,12 +24,7 @@ const CATEGORIES = {
     'wizardry-3d',
     'adventure-comic-3d',
   ],
-  '⛏️ Voxel': [
-    'minecraft-demo',
-    'voxel-terrain',
-    'voxel-creative',
-    'voxel-creatures',
-  ],
+  '⛏️ Voxel': ['minecraft-demo', 'voxel-terrain', 'voxel-creative', 'voxel-creatures'],
   '🌍 Worlds & Showcases': [
     'cyberpunk-city-3d',
     'mystical-realm-3d',
@@ -67,18 +57,14 @@ const CATEGORIES = {
     'storage-quest',
     'startscreen-demo',
   ],
-  '⚡ Framework Demos': [
-    'hype-demo',
-    'flash-demo',
-    'wad-demo',
-  ],
+  '⚡ Framework Demos': ['hype-demo', 'flash-demo', 'wad-demo'],
 };
 
 async function getAvailableExamples() {
   const entries = await readdir(EXAMPLES_DIR, { withFileTypes: true });
   return entries
-    .filter((e) => e.isDirectory())
-    .map((e) => e.name)
+    .filter(e => e.isDirectory())
+    .map(e => e.name)
     .sort();
 }
 
@@ -87,7 +73,7 @@ function buildChoices(available) {
   const categorized = new Set();
 
   for (const [category, names] of Object.entries(CATEGORIES)) {
-    const items = names.filter((n) => available.includes(n));
+    const items = names.filter(n => available.includes(n));
     if (items.length === 0) continue;
     choices.push({ type: 'separator', separator: `── ${category} ──` });
     for (const name of items) {
@@ -97,7 +83,7 @@ function buildChoices(available) {
   }
 
   // Add uncategorized examples
-  const uncategorized = available.filter((n) => !categorized.has(n));
+  const uncategorized = available.filter(n => !categorized.has(n));
   if (uncategorized.length > 0) {
     choices.push({ type: 'separator', separator: '── 📦 Other ──' });
     for (const name of uncategorized) {
@@ -109,7 +95,12 @@ function buildChoices(available) {
 }
 
 async function dirExists(p) {
-  try { await stat(p); return true; } catch { return false; }
+  try {
+    await stat(p);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export async function templateCommand(templateArg) {
@@ -141,7 +132,7 @@ export async function templateCommand(templateArg) {
   const projectName = await input({
     message: 'Project name:',
     default: templateName,
-    validate: (v) => v.trim().length > 0 || 'Name cannot be empty',
+    validate: v => v.trim().length > 0 || 'Name cannot be empty',
   });
 
   const projectDir = resolve(process.cwd(), projectName);
@@ -152,7 +143,9 @@ export async function templateCommand(templateArg) {
   }
 
   const srcDir = resolve(EXAMPLES_DIR, templateName);
-  console.log(`\n  \x1b[35m🎮 Nova64\x1b[0m Creating project from template: \x1b[1m${templateName}\x1b[0m\n`);
+  console.log(
+    `\n  \x1b[35m🎮 Nova64\x1b[0m Creating project from template: \x1b[1m${templateName}\x1b[0m\n`
+  );
 
   // Copy template files
   await mkdir(projectDir, { recursive: true });
@@ -161,18 +154,23 @@ export async function templateCommand(templateArg) {
   // Generate package.json if not present
   const pkgPath = resolve(projectDir, 'package.json');
   if (!(await dirExists(pkgPath))) {
-    const pkg = JSON.stringify({
-      name: projectName,
-      version: '0.0.1',
-      private: true,
-      type: 'module',
-      scripts: {
-        dev: 'nova64 dev',
-      },
-      dependencies: {
-        nova64: `^${process.env.NOVA64_VERSION || '0.4.8'}`,
-      },
-    }, null, 2) + '\n';
+    const pkg =
+      JSON.stringify(
+        {
+          name: projectName,
+          version: '0.0.1',
+          private: true,
+          type: 'module',
+          scripts: {
+            dev: 'nova64 dev',
+          },
+          dependencies: {
+            nova64: `^${process.env.NOVA64_VERSION || '0.4.8'}`,
+          },
+        },
+        null,
+        2
+      ) + '\n';
     await writeFile(pkgPath, pkg);
   }
 

@@ -25,160 +25,357 @@ const WRAP_MAP = {
 
 // gpu reference is set via initAdapter(gpu) — called from api-3d.js during boot
 let _gpu = null;
+let _activeAdapter = null;
+let _customAdapterInstalled = false;
 
-export function initAdapter(gpu) {
-  _gpu = gpu;
+function createUnityHandle(kind, id, extra = {}) {
+  return Object.freeze({
+    __nova64Handle: true,
+    backend: 'unity',
+    kind,
+    id,
+    ...extra,
+  });
 }
 
-export const engine = {
-  /**
-   * Create a material.
-   * @param {'basic'|'phong'|'standard'} type
-   * @param {object} opts
-   *   map         — texture object (from engine.createDataTexture etc.)
-   *   color       — 0xRRGGBB number OR { r, g, b } for fractional
-   *   transparent — boolean
-   *   alphaTest   — number 0–1
-   *   side        — 'front' | 'back' | 'double'
-   *   roughness   — number (standard only)
-   *   metalness   — number (standard only)
-   *   emissive    — 0xRRGGBB number (standard only)
-   */
-  createMaterial(type, opts = {}) {
-    const params = {};
-    if (opts.map !== undefined) params.map = opts.map;
-    if (opts.transparent !== undefined) params.transparent = opts.transparent;
-    if (opts.alphaTest !== undefined) params.alphaTest = opts.alphaTest;
-    if (opts.side !== undefined) params.side = SIDE_MAP[opts.side] ?? THREE.FrontSide;
-    if (opts.color !== undefined) {
-      params.color =
-        opts.color !== null && typeof opts.color === 'object' && !Array.isArray(opts.color)
-          ? new THREE.Color(opts.color.r, opts.color.g, opts.color.b)
-          : opts.color;
-    }
-    if (type === 'phong') {
-      return new THREE.MeshPhongMaterial(params);
-    }
-    if (type === 'standard') {
-      if (opts.roughness !== undefined) params.roughness = opts.roughness;
-      if (opts.metalness !== undefined) params.metalness = opts.metalness;
-      if (opts.emissive !== undefined) params.emissive = opts.emissive;
-      if (opts.flatShading !== undefined) params.flatShading = opts.flatShading;
-      if (opts.vertexColors !== undefined) params.vertexColors = opts.vertexColors;
-      return new THREE.MeshStandardMaterial(params);
-    }
-    // default: 'basic'
-    return new THREE.MeshBasicMaterial(params);
-  },
+function isUnityHandle(value) {
+  return !!(value && typeof value === 'object' && value.__nova64Handle === true);
+}
 
-  /**
-   * Create a DataTexture from a raw pixel buffer.
-   * @param {Uint8Array|Uint8ClampedArray} data
-   * @param {number} width
-   * @param {number} height
-   * @param {object} opts
-   *   format          — 'rgba' (default)
-   *   filter          — 'nearest' | 'linear' (applied to min + mag)
-   *   wrap            — 'repeat' | 'clamp' (applied to wrapS + wrapT)
-   *   generateMipmaps — boolean (default true; set false for pixel-art / WAD textures)
-   */
-  createDataTexture(data, width, height, opts = {}) {
-    const format = THREE.RGBAFormat; // only format we expose for now
-    const tex = new THREE.DataTexture(data, width, height, format);
-    const filter = FILTER_MAP[opts.filter] ?? THREE.NearestFilter;
-    tex.minFilter = filter;
-    tex.magFilter = filter;
-    const wrap = WRAP_MAP[opts.wrap] ?? THREE.ClampToEdgeWrapping;
-    tex.wrapS = wrap;
-    tex.wrapT = wrap;
-    if (opts.generateMipmaps !== undefined) tex.generateMipmaps = opts.generateMipmaps;
-    tex.needsUpdate = true;
-    return tex;
-  },
+function serializeBridgeValue(value) {
+  if (isUnityHandle(value)) {
+    return {
+      handle: true,
+      backend: value.backend,
+      kind: value.kind,
+      id: value.id,
+    };
+  }
+  if (Array.isArray(value)) return value.map(serializeBridgeValue);
+  if (value && typeof value === 'object') {
+    const out = {};
+    for (const [key, item] of Object.entries(value)) out[key] = serializeBridgeValue(item);
+    return out;
+  }
+  return value;
+}
 
-  /**
-   * Create a CanvasTexture from an HTMLCanvasElement.
-   * @param {HTMLCanvasElement} canvas
-   * @param {object} opts  filter, wrap (same keys as createDataTexture)
-   */
-  createCanvasTexture(canvas, opts = {}) {
-    const tex = new THREE.CanvasTexture(canvas);
-    const filter = FILTER_MAP[opts.filter] ?? THREE.LinearFilter;
-    tex.minFilter = filter;
-    tex.magFilter = filter;
-    if (opts.wrap) {
+function normalizeVec3(value) {
+  return {
+    x: Number(value?.x) || 0,
+    y: Number(value?.y) || 0,
+    z: Number(value?.z) || 0,
+  };
+}
+
+function bridgeCall(bridge, method, payload = {}) {
+  if (typeof bridge.call === 'function') return bridge.call(method, payload);
+  if (typeof bridge.invoke === 'function') return bridge.invoke(method, payload);
+  if (typeof bridge.send === 'function') {
+    bridge.send({ method, payload });
+    return undefined;
+  }
+  if (typeof bridge.postMessage === 'function') {
+    bridge.postMessage({ type: 'nova64', method, payload });
+    return undefined;
+  }
+  throw new Error(
+    'Unity bridge must expose call(method, payload), invoke(method, payload), send(message), or postMessage(message)'
+  );
+}
+
+function getActiveAdapter() {
+  if (!_activeAdapter) _activeAdapter = createThreeEngineAdapter();
+  return _activeAdapter;
+}
+
+export function createThreeEngineAdapter(options = {}) {
+  const getGpu = options.getGpu ?? (() => _gpu);
+  const resolveMesh = options.resolveMesh ?? (meshId => globalThis.getMesh?.(meshId) ?? null);
+
+  return {
+    /**
+     * Create a material.
+     * @param {'basic'|'phong'|'standard'} type
+     * @param {object} opts
+     *   map         — texture object (from engine.createDataTexture etc.)
+     *   color       — 0xRRGGBB number OR { r, g, b } for fractional
+     *   transparent — boolean
+     *   alphaTest   — number 0–1
+     *   side        — 'front' | 'back' | 'double'
+     *   roughness   — number (standard only)
+     *   metalness   — number (standard only)
+     *   emissive    — 0xRRGGBB number (standard only)
+     */
+    createMaterial(type, opts = {}) {
+      const params = {};
+      if (opts.map !== undefined) params.map = opts.map;
+      if (opts.transparent !== undefined) params.transparent = opts.transparent;
+      if (opts.alphaTest !== undefined) params.alphaTest = opts.alphaTest;
+      if (opts.side !== undefined) params.side = SIDE_MAP[opts.side] ?? THREE.FrontSide;
+      if (opts.color !== undefined) {
+        params.color =
+          opts.color !== null && typeof opts.color === 'object' && !Array.isArray(opts.color)
+            ? new THREE.Color(opts.color.r, opts.color.g, opts.color.b)
+            : opts.color;
+      }
+      if (type === 'phong') {
+        return new THREE.MeshPhongMaterial(params);
+      }
+      if (type === 'standard') {
+        if (opts.roughness !== undefined) params.roughness = opts.roughness;
+        if (opts.metalness !== undefined) params.metalness = opts.metalness;
+        if (opts.emissive !== undefined) params.emissive = opts.emissive;
+        if (opts.flatShading !== undefined) params.flatShading = opts.flatShading;
+        if (opts.vertexColors !== undefined) params.vertexColors = opts.vertexColors;
+        return new THREE.MeshStandardMaterial(params);
+      }
+      return new THREE.MeshBasicMaterial(params);
+    },
+
+    /**
+     * Create a DataTexture from a raw pixel buffer.
+     * @param {Uint8Array|Uint8ClampedArray} data
+     * @param {number} width
+     * @param {number} height
+     * @param {object} opts
+     *   format          — 'rgba' (default)
+     *   filter          — 'nearest' | 'linear' (applied to min + mag)
+     *   wrap            — 'repeat' | 'clamp' (applied to wrapS + wrapT)
+     *   generateMipmaps — boolean (default true; set false for pixel-art / WAD textures)
+     */
+    createDataTexture(data, width, height, opts = {}) {
+      const format = THREE.RGBAFormat;
+      const tex = new THREE.DataTexture(data, width, height, format);
+      const filter = FILTER_MAP[opts.filter] ?? THREE.NearestFilter;
+      tex.minFilter = filter;
+      tex.magFilter = filter;
       const wrap = WRAP_MAP[opts.wrap] ?? THREE.ClampToEdgeWrapping;
       tex.wrapS = wrap;
       tex.wrapT = wrap;
-    }
-    tex.needsUpdate = true;
-    return tex;
+      if (opts.generateMipmaps !== undefined) tex.generateMipmaps = opts.generateMipmaps;
+      tex.needsUpdate = true;
+      return tex;
+    },
+
+    /**
+     * Create a CanvasTexture from an HTMLCanvasElement.
+     * @param {HTMLCanvasElement} canvas
+     * @param {object} opts  filter, wrap (same keys as createDataTexture)
+     */
+    createCanvasTexture(canvas, opts = {}) {
+      const tex = new THREE.CanvasTexture(canvas);
+      const filter = FILTER_MAP[opts.filter] ?? THREE.LinearFilter;
+      tex.minFilter = filter;
+      tex.magFilter = filter;
+      if (opts.wrap) {
+        const wrap = WRAP_MAP[opts.wrap] ?? THREE.ClampToEdgeWrapping;
+        tex.wrapS = wrap;
+        tex.wrapT = wrap;
+      }
+      tex.needsUpdate = true;
+      return tex;
+    },
+
+    cloneTexture(tex) {
+      return tex.clone();
+    },
+
+    setTextureRepeat(tex, x, y) {
+      tex.wrapS = THREE.RepeatWrapping;
+      tex.wrapT = THREE.RepeatWrapping;
+      tex.repeat.set(x, y);
+      tex.needsUpdate = true;
+    },
+
+    invalidateTexture(tex) {
+      tex.needsUpdate = true;
+    },
+
+    createColor(r, g, b) {
+      return new THREE.Color(r, g, b);
+    },
+
+    createPlaneGeometry(width, height, segX = 1, segY = 1) {
+      return new THREE.PlaneGeometry(width, height, segX, segY);
+    },
+
+    setMeshMaterial(meshId, material) {
+      const mesh = resolveMesh(meshId);
+      if (mesh) mesh.material = material;
+    },
+
+    getCameraPosition() {
+      const gpu = getGpu();
+      if (!gpu) return { x: 0, y: 0, z: 0 };
+      const cam = gpu.getCamera ? gpu.getCamera() : (gpu.camera ?? null);
+      if (!cam) return { x: 0, y: 0, z: 0 };
+      return { x: cam.position.x, y: cam.position.y, z: cam.position.z };
+    },
+  };
+}
+
+export function createUnityBridgeAdapter(bridge, options = {}) {
+  if (!bridge || typeof bridge !== 'object') {
+    throw new Error('createUnityBridgeAdapter requires a bridge object');
+  }
+
+  let nextHandleId = 1;
+  const autoPrefix = options.methodPrefix ?? '';
+  const call = (method, payload = {}) => bridgeCall(bridge, `${autoPrefix}${method}`, payload);
+  const makeHandle = (kind, result, extra = {}) => {
+    const id = result?.id ?? result?.handleId ?? result;
+    return createUnityHandle(kind, id ?? `${kind}:${nextHandleId++}`, extra);
+  };
+
+  return {
+    createMaterial(type, opts = {}) {
+      const result = call('material.create', {
+        type,
+        opts: serializeBridgeValue(opts),
+      });
+      return makeHandle('material', result, { materialType: type });
+    },
+
+    createDataTexture(data, width, height, opts = {}) {
+      const result = call('texture.createData', {
+        width,
+        height,
+        data,
+        opts: serializeBridgeValue(opts),
+      });
+      return makeHandle('texture', result, { width, height, source: 'data' });
+    },
+
+    createCanvasTexture(canvas, opts = {}) {
+      const result = call('texture.createCanvas', {
+        width: canvas?.width ?? 0,
+        height: canvas?.height ?? 0,
+        dataURL: typeof canvas?.toDataURL === 'function' ? canvas.toDataURL() : null,
+        opts: serializeBridgeValue(opts),
+      });
+      return makeHandle('texture', result, {
+        width: canvas?.width ?? 0,
+        height: canvas?.height ?? 0,
+        source: 'canvas',
+      });
+    },
+
+    cloneTexture(tex) {
+      const result = call('texture.clone', {
+        texture: serializeBridgeValue(tex),
+      });
+      return makeHandle('texture', result, { source: 'clone' });
+    },
+
+    setTextureRepeat(tex, x, y) {
+      call('texture.setRepeat', {
+        texture: serializeBridgeValue(tex),
+        x,
+        y,
+      });
+    },
+
+    invalidateTexture(tex) {
+      call('texture.invalidate', {
+        texture: serializeBridgeValue(tex),
+      });
+    },
+
+    createColor(r, g, b) {
+      return { r, g, b };
+    },
+
+    createPlaneGeometry(width, height, segX = 1, segY = 1) {
+      const result = call('geometry.createPlane', { width, height, segX, segY });
+      return makeHandle('geometry', result, { geometryType: 'plane' });
+    },
+
+    setMeshMaterial(meshId, material) {
+      call('mesh.setMaterial', {
+        meshId,
+        material: serializeBridgeValue(material),
+      });
+    },
+
+    getCameraPosition() {
+      if (typeof bridge.getCameraPosition === 'function') {
+        return normalizeVec3(bridge.getCameraPosition());
+      }
+      return normalizeVec3(call('camera.getPosition'));
+    },
+  };
+}
+
+export function setEngineAdapter(adapter) {
+  if (!adapter || typeof adapter !== 'object') {
+    throw new Error('setEngineAdapter requires an adapter object');
+  }
+  _activeAdapter = adapter;
+  _customAdapterInstalled = true;
+  return engine;
+}
+
+export function installUnityBridge(bridge, options = {}) {
+  return setEngineAdapter(createUnityBridgeAdapter(bridge, options));
+}
+
+export function resetEngineAdapter() {
+  _customAdapterInstalled = false;
+  _activeAdapter = createThreeEngineAdapter();
+  return engine;
+}
+
+export function initAdapter(gpu) {
+  _gpu = gpu;
+  if (_customAdapterInstalled) return engine;
+  if (globalThis.__NOVA64_UNITY_BRIDGE__) {
+    _activeAdapter = createUnityBridgeAdapter(globalThis.__NOVA64_UNITY_BRIDGE__);
+    _customAdapterInstalled = true;
+    return engine;
+  }
+  _activeAdapter = createThreeEngineAdapter();
+  return engine;
+}
+
+export const engine = {
+  createMaterial(...args) {
+    return getActiveAdapter().createMaterial(...args);
   },
 
-  /** Clone a texture. */
-  cloneTexture(tex) {
-    return tex.clone();
+  createDataTexture(...args) {
+    return getActiveAdapter().createDataTexture(...args);
   },
 
-  /**
-   * Set repeat wrapping + tile count on a texture.
-   * @param {object} tex  — any engine-created texture
-   * @param {number} x    — repeat count on U axis
-   * @param {number} y    — repeat count on V axis
-   */
-  setTextureRepeat(tex, x, y) {
-    tex.wrapS = THREE.RepeatWrapping;
-    tex.wrapT = THREE.RepeatWrapping;
-    tex.repeat.set(x, y);
-    tex.needsUpdate = true;
+  createCanvasTexture(...args) {
+    return getActiveAdapter().createCanvasTexture(...args);
   },
 
-  /** Mark a texture as needing a GPU re-upload. */
-  invalidateTexture(tex) {
-    tex.needsUpdate = true;
+  cloneTexture(...args) {
+    return getActiveAdapter().cloneTexture(...args);
   },
 
-  /**
-   * Create a color object (opaque to carts).
-   * Can be passed to createMaterial({ color: engine.createColor(...) }).
-   * @param {number} r  0–1
-   * @param {number} g  0–1
-   * @param {number} b  0–1
-   */
-  createColor(r, g, b) {
-    return new THREE.Color(r, g, b);
+  setTextureRepeat(...args) {
+    return getActiveAdapter().setTextureRepeat(...args);
   },
 
-  /**
-   * Create a plane geometry (opaque to carts).
-   * @param {number} width
-   * @param {number} height
-   * @param {number} [segX=1]
-   * @param {number} [segY=1]
-   */
-  createPlaneGeometry(width, height, segX = 1, segY = 1) {
-    return new THREE.PlaneGeometry(width, height, segX, segY);
+  invalidateTexture(...args) {
+    return getActiveAdapter().invalidateTexture(...args);
   },
 
-  /**
-   * Assign a material to a mesh identified by its Nova64 mesh ID.
-   * Uses getMesh() from the global scope (exposed by api-3d.js).
-   * @param {number} meshId
-   * @param {object} material  — result of engine.createMaterial()
-   */
-  setMeshMaterial(meshId, material) {
-    const mesh = globalThis.getMesh(meshId);
-    if (mesh) mesh.material = material;
+  createColor(...args) {
+    return getActiveAdapter().createColor(...args);
   },
 
-  /**
-   * Return the current camera position as a plain { x, y, z } object.
-   * Reads from the Three.js PerspectiveCamera held by the gpu backend.
-   */
-  getCameraPosition() {
-    if (!_gpu) return { x: 0, y: 0, z: 0 };
-    const cam = _gpu.getCamera ? _gpu.getCamera() : (_gpu.camera ?? null);
-    if (!cam) return { x: 0, y: 0, z: 0 };
-    return { x: cam.position.x, y: cam.position.y, z: cam.position.z };
+  createPlaneGeometry(...args) {
+    return getActiveAdapter().createPlaneGeometry(...args);
+  },
+
+  setMeshMaterial(...args) {
+    return getActiveAdapter().setMeshMaterial(...args);
+  },
+
+  getCameraPosition(...args) {
+    return getActiveAdapter().getCameraPosition(...args);
   },
 };

@@ -629,8 +629,35 @@ export interface EngineAdapter {
   getCameraPosition(): { x: number; y: number; z: number };
 }
 
+export interface EngineBridgeMessage {
+  method: string;
+  payload: Record<string, unknown>;
+}
+
+export interface UnityBridgeTransport {
+  call?(method: string, payload?: Record<string, unknown>): unknown;
+  invoke?(method: string, payload?: Record<string, unknown>): unknown;
+  send?(message: EngineBridgeMessage): void;
+  postMessage?(message: { type: 'nova64'; method: string; payload: Record<string, unknown> }): void;
+  getCameraPosition?(): { x: number; y: number; z: number };
+}
+
 export declare const engine: EngineAdapter;
 export declare function initAdapter(gpu: unknown): void;
+export declare function createThreeEngineAdapter(options?: {
+  getGpu?: () => unknown;
+  resolveMesh?: (meshId: MeshId) => unknown;
+}): EngineAdapter;
+export declare function createUnityBridgeAdapter(
+  bridge: UnityBridgeTransport,
+  options?: { methodPrefix?: string }
+): EngineAdapter;
+export declare function setEngineAdapter(adapter: EngineAdapter): EngineAdapter;
+export declare function installUnityBridge(
+  bridge: UnityBridgeTransport,
+  options?: { methodPrefix?: string }
+): EngineAdapter;
+export declare function resetEngineAdapter(): EngineAdapter;
 
 // ---------------------------------------------------------------------------
 // Global cart API (injected into globalThis at runtime)

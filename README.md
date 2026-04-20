@@ -59,6 +59,13 @@
 - **WAD Rendering**: Full DOOM WAD map visualization with wall/floor/ceiling textures, flat textures, sprite billboards for monsters/items/decorations, sector-based lighting, and batched rendering
 - **Complete Geometry**: Floors, ceilings, and two-sided walls properly rendered
 
+### 📱 **Planned: Unity Native Host Bridge**
+
+- **Mobile-Focused Direction**: Nova64 JS game logic can drive native Unity C# behavior for iOS/Android shipping
+- **Controlled Host API**: The bridge is designed as a whitelist-based host API, not arbitrary C# execution
+- **Safe Runtime Boundary**: Handle-based, command-buffered messaging keeps the JS↔C# boundary portable and performant
+- **Architecture Doc**: See [docs/UNITY_BRIDGE_ARCHITECTURE.md](docs/UNITY_BRIDGE_ARCHITECTURE.md) for the decision, constraints, and phased rollout
+
 ### 🧊 **Voxel Engine**
 
 - **Minecraft-Style Worlds**: Full voxel engine with chunk-based terrain, biomes, simplex noise generation

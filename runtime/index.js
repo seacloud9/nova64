@@ -4,6 +4,15 @@
 export { threeDApi } from './api-3d.js';
 export { uiApi } from './ui.js';
 export { logger } from './logger.js';
+export {
+  engine,
+  initAdapter,
+  createThreeEngineAdapter,
+  createUnityBridgeAdapter,
+  setEngineAdapter,
+  installUnityBridge,
+  resetEngineAdapter,
+} from './engine-adapter.js';
 
 // Re-export sub-modules for tree-shaking
 export * from './api-3d/materials.js';

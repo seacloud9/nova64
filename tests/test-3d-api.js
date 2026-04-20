@@ -3,6 +3,12 @@
 
 import { TestRunner, Assert, Performance, MockGPU } from './test-runner.js';
 import { threeDApi } from '../runtime/api-3d.js';
+import {
+  createUnityBridgeAdapter,
+  engine,
+  installUnityBridge,
+  resetEngineAdapter,
+} from '../runtime/engine-adapter.js';
 import { runScreenSystemTests } from './test-screen-system.js';
 
 export async function run3DAPITests() {
@@ -230,6 +236,69 @@ export async function run3DAPITests() {
   runner.test('getRenderer - should return renderer object', () => {
     const renderer = testGlobals.getRenderer();
     Assert.isObject(renderer, 'getRenderer should return renderer object');
+  });
+
+  runner.test('engine adapter - unity bridge marshals material and camera commands', () => {
+    const calls = [];
+    const bridge = {
+      call(method, payload = {}) {
+        calls.push({ method, payload });
+        if (method === 'texture.createData') return { id: 'tex-1' };
+        if (method === 'material.create') return { id: 'mat-1' };
+        if (method === 'geometry.createPlane') return { id: 'geo-1' };
+        if (method === 'camera.getPosition') return { x: 7, y: 8, z: 9 };
+        return undefined;
+      },
+    };
+
+    const unityEngine = createUnityBridgeAdapter(bridge);
+    const tex = unityEngine.createDataTexture(new Uint8Array([255, 0, 0, 255]), 1, 1, {
+      filter: 'nearest',
+    });
+    const color = unityEngine.createColor(1, 0.5, 0.25);
+    const material = unityEngine.createMaterial('standard', {
+      map: tex,
+      color,
+      roughness: 0.2,
+    });
+    const geometry = unityEngine.createPlaneGeometry(4, 2, 8, 4);
+    unityEngine.setMeshMaterial(42, material);
+    const cameraPos = unityEngine.getCameraPosition();
+
+    Assert.equals(tex.id, 'tex-1', 'Bridge texture handle should preserve returned ID');
+    Assert.equals(material.id, 'mat-1', 'Bridge material handle should preserve returned ID');
+    Assert.equals(geometry.id, 'geo-1', 'Bridge geometry handle should preserve returned ID');
+    Assert.equals(calls[1].payload.opts.map.id, 'tex-1', 'Material payload should serialize texture handles');
+    Assert.equals(calls[3].method, 'mesh.setMaterial', 'Mesh material assignment should be forwarded');
+    Assert.equals(calls[3].payload.material.id, 'mat-1', 'Mesh payload should serialize material handles');
+    Assert.equals(cameraPos.x, 7, 'Camera X should come from bridge');
+    Assert.equals(cameraPos.y, 8, 'Camera Y should come from bridge');
+    Assert.equals(cameraPos.z, 9, 'Camera Z should come from bridge');
+  });
+
+  runner.test('engine adapter - installUnityBridge swaps live engine backend', () => {
+    const calls = [];
+    const bridge = {
+      call(method, payload = {}) {
+        calls.push({ method, payload });
+        if (method === 'geometry.createPlane') return { id: 'unity-geo' };
+        if (method === 'camera.getPosition') return { x: 3, y: 4, z: 5 };
+        return undefined;
+      },
+    };
+
+    try {
+      installUnityBridge(bridge);
+      const geometry = engine.createPlaneGeometry(2, 3, 4, 5);
+      const cameraPos = engine.getCameraPosition();
+
+      Assert.equals(geometry.id, 'unity-geo', 'Live engine should delegate to Unity bridge');
+      Assert.equals(cameraPos.x, 3, 'Live engine should read camera X from bridge');
+      Assert.equals(calls[0].method, 'geometry.createPlane', 'Geometry creation should hit bridge');
+      Assert.equals(calls[1].method, 'camera.getPosition', 'Camera read should hit bridge');
+    } finally {
+      resetEngineAdapter();
+    }
   });
 
   // Performance tests

@@ -1,114 +1,120 @@
 // ── Nova64 Shader Showcase ──
-// Gallery of all 12 TSL material presets on rotating objects
+// Full-screen single-shader viewer — press Space/Enter to cycle through all 12 presets
 
 let t = 0;
-const meshIds = [];
-const labels = [];
+let currentIndex = 0;
+let sphereId = null;
+let cubeId = null;
+let torusId = null;
+let activeMat = null;
 
-export function init() {
-  // Camera — pulled back to see the full grid
-  setCameraPosition(0, 8, 20);
-  setCameraTarget(0, 1, 0);
-  setCameraFOV(55);
+const PRESETS = [
+  // Original 6
+  { name: 'plasma', group: 'ORIGINAL', fn: () => createTSLMaterial('plasma', { speed: 2.0 }) },
+  { name: 'galaxy', group: 'ORIGINAL', fn: () => createTSLMaterial('galaxy', { speed: 0.5 }) },
+  { name: 'lava', group: 'ORIGINAL', fn: () => createTSLMaterial('lava', { speed: 1.0 }) },
+  {
+    name: 'electricity',
+    group: 'ORIGINAL',
+    fn: () => createTSLMaterial('electricity', { speed: 3.0, color: 0x44aaff }),
+  },
+  { name: 'rainbow', group: 'ORIGINAL', fn: () => createTSLMaterial('rainbow', { speed: 1.0 }) },
+  { name: 'void', group: 'ORIGINAL', fn: () => createTSLMaterial('void', { speed: 0.3 }) },
+  // Phase 1 new 6
+  { name: 'lava2', group: 'PHASE 1', fn: () => createLavaMaterial({ speed: 0.2, intensity: 3.0 }) },
+  { name: 'vortex', group: 'PHASE 1', fn: () => createVortexMaterial({ speed: 1.0 }) },
+  { name: 'plasma2', group: 'PHASE 1', fn: () => createPlasmaMaterial({ speed: 1.0 }) },
+  { name: 'water', group: 'PHASE 1', fn: () => createWaterMaterial({ speed: 0.5 }) },
+  { name: 'hologram', group: 'PHASE 1', fn: () => createHologramMaterial({ speed: 1.0 }) },
+  { name: 'shockwave', group: 'PHASE 1', fn: () => createShockwaveMaterial({ speed: 0.3 }) },
+];
 
-  // Atmosphere
-  setFog(0x0a0a1a, 15, 60);
-  setAmbientLight(0x222244);
-  createPointLight(0xffffff, 1.5, 50, [0, 12, 10]);
-  createPointLight(0xff6600, 1.0, 40, [-10, 8, -5]);
-  createPointLight(0x0066ff, 1.0, 40, [10, 8, -5]);
-
-  enableBloom(0.8, 0.3, 0.4);
-
-  // ── 12 presets: 2 rows × 6 columns ──
-  // Top row: original 6 presets (on spheres)
-  // Bottom row: new Phase 1 presets (on cubes)
-  const presets = [
-    // Row 1 — existing presets (spheres)
-    { name: 'plasma', fn: () => createTSLMaterial('plasma', { speed: 2.0 }) },
-    { name: 'galaxy', fn: () => createTSLMaterial('galaxy', { speed: 0.5 }) },
-    { name: 'lava', fn: () => createTSLMaterial('lava', { speed: 1.0 }) },
-    { name: 'electricity', fn: () => createTSLMaterial('electricity', { speed: 3.0 }) },
-    { name: 'rainbow', fn: () => createTSLMaterial('rainbow', { speed: 1.0 }) },
-    { name: 'void', fn: () => createTSLMaterial('void', { speed: 0.3 }) },
-    // Row 2 — new Phase 1 presets (cubes, using convenience functions)
-    { name: 'lava2', fn: () => createLavaMaterial({ speed: 0.2, intensity: 3.0 }) },
-    { name: 'vortex', fn: () => createVortexMaterial({ speed: 1.0 }) },
-    { name: 'plasma2', fn: () => createPlasmaMaterial({ speed: 1.0 }) },
-    { name: 'water', fn: () => createWaterMaterial({ speed: 0.5 }) },
-    { name: 'hologram', fn: () => createHologramMaterial({ speed: 1.0 }) },
-    { name: 'shockwave', fn: () => createShockwaveMaterial({ speed: 0.3 }) },
-  ];
-
-  const cols = 6;
-  const spacingX = 4.5;
-  const spacingZ = 5.5;
-  const startX = -(cols - 1) * spacingX * 0.5;
-
-  for (let i = 0; i < presets.length; i++) {
-    const col = i % cols;
-    const row = Math.floor(i / cols);
-    const x = startX + col * spacingX;
-    const z = -row * spacingZ;
-    const y = 2;
-
-    // Row 0 = spheres, Row 1 = cubes
-    let id;
-    if (row === 0) {
-      id = createSphere(1.2, 0xffffff, [x, y, z]);
-    } else {
-      id = createCube(2.0, 0xffffff, [x, y, z]);
-    }
-
+function applyMaterial(index) {
+  currentIndex = ((index % PRESETS.length) + PRESETS.length) % PRESETS.length;
+  activeMat = PRESETS[currentIndex].fn();
+  for (const id of [sphereId, cubeId, torusId]) {
     const mesh = getMesh(id);
     if (mesh) {
-      const mat = presets[i].fn();
       mesh.traverse(child => {
-        if (child.isMesh) child.material = mat;
+        if (child.isMesh) child.material = activeMat;
       });
     }
-
-    meshIds.push(id);
-    labels.push({ name: presets[i].name, col, row });
   }
+}
+
+export function init() {
+  setCameraPosition(0, 2, 8);
+  setCameraTarget(0, 0.5, 0);
+  setCameraFOV(50);
+
+  setFog(0x060612, 10, 40);
+  setAmbientLight(0x222244);
+  createPointLight(0xffffff, 2.0, 30, [0, 10, 8]);
+  createPointLight(0xff4400, 1.0, 25, [-6, 5, -3]);
+  createPointLight(0x0044ff, 1.0, 25, [6, 5, -3]);
+
+  enableBloom(1.0, 0.35, 0.45);
+  enableVignette(1.0, 0.8);
+
+  // Three large objects showing the same material
+  sphereId = createSphere(2.0, 0xffffff, [0, 1.5, 0]);
+  cubeId = createCube(2.2, 0xffffff, [-4.5, 1.5, -1]);
+  torusId = createTorus(1.2, 0.5, 0xffffff, [4.5, 1.5, -1]);
 
   // Floor
-  const floor = getMesh(createPlane(40, 20, 0x111122, [0, -0.1, -2.5]));
+  const floor = getMesh(createPlane(30, 30, 0x0a0a1e, [0, -0.5, 0]));
   if (floor) floor.rotation.x = -Math.PI / 2;
+
+  // Apply first preset
+  applyMaterial(0);
 }
 
 export function update(dt) {
   t += dt;
 
-  // Slowly rotate all meshes
-  for (const id of meshIds) {
-    rotateMesh(id, 0, dt * 0.4, 0);
+  // Navigate with Space, Enter, or arrow keys
+  if (keyp('Space') || keyp('Enter') || keyp('ArrowRight') || keyp('ArrowDown')) {
+    applyMaterial(currentIndex + 1);
+  }
+  if (keyp('ArrowLeft') || keyp('ArrowUp')) {
+    applyMaterial(currentIndex - 1);
   }
 
-  // Gentle camera sway
-  const cx = Math.sin(t * 0.15) * 2;
-  const cy = 8 + Math.sin(t * 0.08) * 0.5;
-  setCameraPosition(cx, cy, 20);
+  // Rotate objects
+  for (const id of [sphereId, cubeId, torusId]) {
+    rotateMesh(id, 0, dt * 0.5, dt * 0.15);
+  }
+
+  // Gentle camera bob
+  const cy = 2 + Math.sin(t * 0.12) * 0.3;
+  setCameraPosition(0, cy, 8);
 }
 
 export function draw() {
   const W = typeof screenWidth === 'function' ? screenWidth() : 640;
+  const H = typeof screenHeight === 'function' ? screenHeight() : 360;
+  const preset = PRESETS[currentIndex];
+  const num = currentIndex + 1;
+  const total = PRESETS.length;
 
-  // Title
-  print('TSL Shader Pack — All Presets', 10, 8, 0x00ffcc, 2);
+  // Top bar
+  print(`SHADER ${num}/${total}`, 10, 8, 0x00ffcc, 2);
+  print(preset.group, W - 100, 12, preset.group === 'ORIGINAL' ? 0x888899 : 0x00ff88);
 
-  // Row labels
-  print('ORIGINAL', 10, 30, 0x888888);
-  print('PHASE 1 (NEW)', 10, 190, 0x00ff88);
+  // Shader name — large centered
+  const nameW = preset.name.length * 16;
+  print(preset.name.toUpperCase(), Math.floor((W - nameW) / 2), 40, 0xffffff, 3);
 
-  // Per-shader labels
-  const cols = 6;
-  const labelStartX = 52;
-  const labelSpacing = Math.floor((W - 100) / cols);
+  // Navigation hint at bottom
+  const hint = 'SPACE / ENTER  next     ARROWS  prev/next';
+  const hintW = hint.length * 7;
+  print(hint, Math.floor((W - hintW) / 2), H - 20, 0x555577);
 
-  for (const { name, col, row } of labels) {
-    const lx = labelStartX + col * labelSpacing;
-    const ly = row === 0 ? 165 : 325;
-    print(name, lx, ly, row === 0 ? 0xaaaaaa : 0x44ffaa);
+  // Dot indicators
+  const dotW = total * 10;
+  const dotX = Math.floor((W - dotW) / 2);
+  for (let i = 0; i < total; i++) {
+    const col = i === currentIndex ? 0x00ffcc : 0x333344;
+    print('\u2022', dotX + i * 10, H - 36, col);
   }
 }

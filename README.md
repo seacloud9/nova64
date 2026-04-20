@@ -66,6 +66,11 @@
 - **Safe Runtime Boundary**: Handle-based, command-buffered messaging keeps the JS↔C# boundary portable and performant
 - **Architecture Doc**: See [docs/UNITY_BRIDGE_ARCHITECTURE.md](docs/UNITY_BRIDGE_ARCHITECTURE.md) for the decision, constraints, and phased rollout
 
+### 🗺️ **Roadmap**
+
+- **Backend Expansion**: Babylon.js, Unity, and Godot support are tracked in [ROADMAP.md](ROADMAP.md)
+- **Realtime Follow-Up**: The roadmap also sketches the Colyseus + WebRTC follow-up plan for multiplayer, presence, chat, and RTC features
+
 ### 🧊 **Voxel Engine**
 
 - **Minecraft-Style Worlds**: Full voxel engine with chunk-based terrain, biomes, simplex noise generation

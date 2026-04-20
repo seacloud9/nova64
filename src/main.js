@@ -1,5 +1,6 @@
 import { Nova64, NOVA64_VERSION } from '../runtime/console.js';
 import { GpuThreeJS } from '../runtime/gpu-threejs.js';
+import { GpuBabylon } from '../runtime/gpu-babylon.js';
 import { logger } from '../runtime/logger.js';
 globalThis.novaLogger = logger;
 import { stdApi } from '../runtime/api.js';
@@ -58,29 +59,40 @@ const _paramClearColor = _qs.get('clearColor');
 canvas.width = _paramW;
 canvas.height = _paramH;
 
-// ONLY use Three.js renderer - Nintendo 64/PlayStation style 3D console
-let gpu;
-try {
-  gpu = new GpuThreeJS(canvas, _paramW, _paramH);
-  if (_paramClearColor) {
-    gpu.renderer.setClearColor(parseInt(_paramClearColor, 16), 1.0);
-  }
-  console.log(
-    `✅ Using Three.js renderer (${_paramW}x${_paramH}) - Nintendo 64/PlayStation GPU mode`
-  );
+const _requestedBackend = (_qs.get('backend') || '').toLowerCase();
+const _isBabylonPage = window.location.pathname.endsWith('/babylon_console.html');
+const _useBabylon = _requestedBackend === 'babylon' || _isBabylonPage;
 
-  // Expose Three.js internals for browser DevTools extension
-  globalThis.__THREE__ = THREE;
-  globalThis.__THREE_SCENE__ = gpu.scene;
-  globalThis.__THREE_RENDERER__ = gpu.renderer;
-  globalThis.__THREE_CAMERA__ = gpu.camera;
-  if (typeof window.__THREE_DEVTOOLS__ !== 'undefined') {
-    window.__THREE_DEVTOOLS__.dispatchEvent(new CustomEvent('observe', { detail: gpu.scene }));
-    window.__THREE_DEVTOOLS__.dispatchEvent(new CustomEvent('observe', { detail: gpu.renderer }));
+// Select renderer backend (default: Three.js)
+let gpu;
+let backendLabel = 'Three.js';
+try {
+  if (_useBabylon) {
+    gpu = new GpuBabylon(canvas, _paramW, _paramH);
+    backendLabel = 'Babylon.js';
+    console.log(`✅ Using Babylon.js renderer (${_paramW}x${_paramH}) - experimental backend`);
+  } else {
+    gpu = new GpuThreeJS(canvas, _paramW, _paramH);
+    if (_paramClearColor) {
+      gpu.renderer.setClearColor(parseInt(_paramClearColor, 16), 1.0);
+    }
+    console.log(
+      `✅ Using Three.js renderer (${_paramW}x${_paramH}) - Nintendo 64/PlayStation GPU mode`
+    );
+
+    // Expose Three.js internals for browser DevTools extension
+    globalThis.__THREE__ = THREE;
+    globalThis.__THREE_SCENE__ = gpu.scene;
+    globalThis.__THREE_RENDERER__ = gpu.renderer;
+    globalThis.__THREE_CAMERA__ = gpu.camera;
+    if (typeof window.__THREE_DEVTOOLS__ !== 'undefined') {
+      window.__THREE_DEVTOOLS__.dispatchEvent(new CustomEvent('observe', { detail: gpu.scene }));
+      window.__THREE_DEVTOOLS__.dispatchEvent(new CustomEvent('observe', { detail: gpu.renderer }));
+    }
   }
 } catch (e) {
-  console.error('❌ Three.js renderer failed to initialize:', e);
-  throw new Error('Fantasy console requires 3D GPU support (Three.js)');
+  console.error(`❌ ${_useBabylon ? 'Babylon.js' : 'Three.js'} renderer failed to initialize:`, e);
+  throw new Error('Fantasy console requires 3D GPU support');
 }
 
 // Bake in responsive resize when no fixed ?w= param is provided.
@@ -202,15 +214,28 @@ const nova = new Nova64(gpu, manifestInst);
 globalThis.NOVA64_VERSION = NOVA64_VERSION;
 
 // ── Debug Panel ──────────────────────────────────────────────────────────────
-const _debugPanel = new DebugPanel(gpu);
-const _debugRequested = _qs.get('debug') === '1';
-if (_debugRequested) _debugPanel.toggle();
-window.addEventListener('keydown', e => {
-  if (e.code === 'F9') {
-    e.preventDefault();
-    _debugPanel.toggle();
-  }
-});
+const _debugPanel = _useBabylon
+  ? {
+      toggle() {},
+      setCallbacks() {},
+      setPaused() {},
+      getTimeScale() {
+        return 1;
+      },
+      update() {},
+    }
+  : new DebugPanel(gpu);
+
+if (!_useBabylon) {
+  const _debugRequested = _qs.get('debug') === '1';
+  if (_debugRequested) _debugPanel.toggle();
+  window.addEventListener('keydown', e => {
+    if (e.code === 'F9') {
+      e.preventDefault();
+      _debugPanel.toggle();
+    }
+  });
+}
 
 // Wire debug panel controls → game loop state
 _debugPanel.setCallbacks({
@@ -389,7 +414,7 @@ function loop() {
   _debugPanel.update();
 
   // 3D GPU stats
-  let statsText = `3D GPU (Three.js) • fps: ${fps}, update: ${uMs.toFixed(2)}ms, draw: ${dMs.toFixed(2)}ms`;
+  let statsText = `3D GPU (${backendLabel}) • fps: ${fps}, update: ${uMs.toFixed(2)}ms, draw: ${dMs.toFixed(2)}ms`;
 
   // Add 3D stats if available
   if (typeof nova64api.get3DStats === 'function') {
@@ -411,10 +436,20 @@ function loop() {
 
 let _useAnimationLoop = false;
 function startLoop() {
-  // renderer.setAnimationLoop is required for WebXR and is backward-
-  // compatible with normal rendering (acts like rAF when no XR session).
   _useAnimationLoop = true;
-  gpu.getRenderer().setAnimationLoop(loop);
+  const renderer = gpu.getRenderer();
+  if (renderer && typeof renderer.setAnimationLoop === 'function') {
+    // Three.js / WebXR path
+    renderer.setAnimationLoop(loop);
+    return;
+  }
+  if (renderer && typeof renderer.runRenderLoop === 'function') {
+    // Babylon.js path
+    renderer.runRenderLoop(loop);
+    return;
+  }
+  // Generic fallback
+  requestAnimationFrame(loop);
 }
 
 attachUI();

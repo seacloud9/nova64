@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <title>NOVA-64 Console</title>
+    <title>NOVA-64 Babylon Console</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link href="https://fonts.googleapis.com/css2?family=VT323&display=swap" rel="stylesheet" />
     <link
@@ -534,9 +534,9 @@
     </style>
   <script type="application/json" id="nova64-i18n">
   {
-    "console.title": "NOVA-64 Console",
-    "console.studio.title": "NOVA-64 STUDIO",
-    "console.studio.sub": "Ultimate 3D Web Engine<br>Hardware-accelerated environment",
+    "console.title": "NOVA-64 Babylon Console",
+    "console.studio.title": "NOVA-64 BABYLON",
+    "console.studio.sub": "Experimental Babylon.js backend<br>Use this page to validate cart compatibility",
     "console.back": "BACK TO DASHBOARD",
     "console.label.cart": "Cartridge Selection",
     "console.btn.hold": "Hold",
@@ -554,17 +554,6 @@
     "console.controls.action": "Action"
   }
   </script>
-    <script type="importmap">
-    {
-      "imports": {
-        "three": "https://esm.sh/three@0.182.0",
-        "three/tsl": "https://esm.sh/three@0.182.0/tsl",
-        "three/webgpu": "https://esm.sh/three@0.182.0/webgpu",
-        "three/examples/jsm/": "https://esm.sh/three@0.182.0/examples/jsm/"
-      }
-    }
-    </script>
-    <script type="module" crossorigin src="./assets/main-qb_accud.js"></script>
   <!-- Google tag (gtag.js) -->
 <script async src="https://www.googletagmanager.com/gtag/js?id=G-B3RDWLFWVF"></script>
 <script>
@@ -644,11 +633,15 @@
         <div class="col">
           <label data-i18n="console.label.cart">Cartridge Selection</label>
           <select id="cart">
+            <option value="/examples/babylon-demo/code.js">🧪 Babylon Backend Demo (Recommended)</option>
             <option value="/examples/hello-world/code.js">⭐ Hello World (Start Here)</option>
             <option value="/examples/space-harrier-3d/code.js">
               🛸 Space Harrier (2.5D Rail Shooter)
             </option>
             <option value="/examples/hello-3d/code.js">👋 Hello 3D World (Basic Demo)</option>
+            <option value="/examples/hello-namespaced/code.js">
+              📦 Hello Namespaced (nova64.* API)
+            </option>
             <option value="/examples/crystal-cathedral-3d/code.js">
               🏛️ Crystal Cathedral (Graphics)
             </option>
@@ -882,7 +875,17 @@
       </div>
     </div>
 
-
+    <script type="importmap">
+    {
+      "imports": {
+        "three": "https://esm.sh/three@0.182.0",
+        "three/tsl": "https://esm.sh/three@0.182.0/tsl",
+        "three/webgpu": "https://esm.sh/three@0.182.0/webgpu",
+        "three/examples/jsm/": "https://esm.sh/three@0.182.0/examples/jsm/"
+      }
+    }
+    </script>
+    <script type="module" src="/src/main.js?backend=babylon"></script>
     <script>
       // Virtual controls code mapper
       function handleVirtualButton(element, isDown) {
@@ -987,6 +990,7 @@
             demoscene: '/examples/demoscene/code.js',
             'space-harrier-3d': '/examples/space-harrier-3d/code.js',
             'hello-3d': '/examples/hello-3d/code.js',
+            'hello-namespaced': '/examples/hello-namespaced/code.js',
             'mystical-realm-3d': '/examples/mystical-realm-3d/code.js',
             'physics-demo-3d': '/examples/physics-demo-3d/code.js',
             'shooter-demo-3d': '/examples/shooter-demo-3d/code.js',

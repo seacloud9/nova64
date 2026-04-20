@@ -15,6 +15,8 @@ export {
   resetEngineAdapter,
   ADAPTER_CONTRACT_VERSION,
 } from './engine-adapter.js';
+export { createBabylonEngineAdapter } from './engine-adapter-babylon.js';
+export { GpuBabylon } from './gpu-babylon.js';
 
 // Re-export sub-modules for tree-shaking
 export * from './api-3d/materials.js';

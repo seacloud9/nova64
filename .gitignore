@@ -13,6 +13,8 @@ os9-shell/node_modules
 os9-shellMobile/node_modules
 # testing
 /coverage
+/playwright-report
+/test-results
 
 # production
 /build

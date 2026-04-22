@@ -3,6 +3,8 @@ import { GpuThreeJS } from '../runtime/gpu-threejs.js';
 import { GpuBabylon } from '../runtime/gpu-babylon.js';
 import { logger } from '../runtime/logger.js';
 globalThis.novaLogger = logger;
+import { createLogger } from '../runtime/debug-logger.js';
+globalThis._debugLogger = createLogger('API');
 import { stdApi } from '../runtime/api.js';
 import { spriteApi } from '../runtime/api-sprites.js';
 import { threeDApi } from '../runtime/api-3d.js';

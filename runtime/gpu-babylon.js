@@ -324,13 +324,13 @@ export class GpuBabylon {
       }
     }
 
-    // DEBUG: Log framebuffer status every 60 frames
-    if (!this._compositeDebugCounter) this._compositeDebugCounter = 0;
-    this._compositeDebugCounter++;
-    if (this._compositeDebugCounter % 60 === 0) {
-      console.log(
-        `[GpuBabylon] Framebuffer composite: ${nonZeroPixels} non-zero pixels, hasContent: ${hasContent}`
-      );
+    // DEBUG: Log framebuffer status every 60 frames (dev mode only)
+    if (globalThis._debugLogger?.devOnly) {
+      if (!this._compositeDebugCounter) this._compositeDebugCounter = 0;
+      this._compositeDebugCounter++;
+      if (this._compositeDebugCounter % 60 === 0 && hasContent) {
+        globalThis._debugLogger.devOnly(`Framebuffer composite: ${nonZeroPixels} non-zero pixels`);
+      }
     }
 
     // Skip composite if framebuffer is empty (all transparent)

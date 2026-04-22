@@ -71,6 +71,11 @@
     "test:playwright:debug": "playwright test --debug",
     "test:babylon": "playwright test tests/playwright/backend-parity.spec.js",
     "test:babylon:ui": "playwright test tests/playwright/backend-parity.spec.js --ui",
+    "test:babylon:api": "playwright test tests/playwright/api-compatibility.spec.js",
+    "test:babylon:perf": "playwright test tests/playwright/performance-comparison.spec.js",
+    "test:babylon:visual": "playwright test tests/playwright/visual-regression.spec.js",
+    "test:babylon:gameplay": "playwright test tests/playwright/space-harrier-gameplay.spec.js",
+    "test:babylon:all": "playwright test tests/playwright/",
     "bench": "node tests/bench.js",
     "bench:material": "node tests/bench.js --suite=material",
     "bench:instancing": "node tests/bench.js --suite=instancing",
@@ -96,12 +101,15 @@
     "zustand": "^5.0.11"
   },
   "devDependencies": {
+    "@playwright/cli": "^0.1.8",
     "@playwright/test": "^1.59.1",
     "eslint": "^8.57.1",
     "husky": "^9.1.7",
     "lint-staged": "^16.4.0",
     "nodemon": "^3.1.10",
+    "pixelmatch": "^7.1.0",
     "playwright": "^1.59.1",
+    "pngjs": "^7.0.0",
     "prettier": "^3.6.2",
     "terser": "^5.46.0"
   },

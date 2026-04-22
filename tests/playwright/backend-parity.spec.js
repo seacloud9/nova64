@@ -10,13 +10,106 @@ import {
   isTextRendering
 } from './helpers.js';
 
-// List of carts to test
+// List of carts to test - organized by category
 const CARTS_TO_TEST = [
-  { name: 'space-harrier-3d', description: 'Space Harrier 3D' },
-  { name: 'crystal-cathedral-3d', description: 'Crystal Cathedral 3D' },
-  { name: 'f-zero-nova-3d', description: 'F-Zero Nova 3D' },
-  { name: 'wad-demo', description: 'WAD Demo' },
-  { name: 'hello-3d', description: 'Hello 3D (Basic)' },
+  // Basic 3D Tests
+  { name: 'hello-3d', description: 'Hello 3D (Basic)', category: 'basic' },
+  { name: 'hello-skybox', description: 'Hello Skybox', category: 'basic' },
+  { name: 'hello-world', description: 'Hello World', category: 'basic' },
+
+  // 3D Game Demos
+  { name: 'space-harrier-3d', description: 'Space Harrier 3D', category: '3d-games' },
+  { name: 'f-zero-nova-3d', description: 'F-Zero Nova 3D', category: '3d-games' },
+  { name: 'star-fox-nova-3d', description: 'Star Fox Nova 3D', category: '3d-games' },
+  { name: 'wing-commander-space', description: 'Wing Commander Space', category: '3d-games' },
+  { name: 'space-combat-3d', description: 'Space Combat 3D', category: '3d-games' },
+  { name: 'super-plumber-64', description: 'Super Plumber 64', category: '3d-games' },
+
+  // 3D Showcase Demos
+  { name: 'crystal-cathedral-3d', description: 'Crystal Cathedral 3D', category: '3d-showcase' },
+  { name: 'cyberpunk-city-3d', description: 'Cyberpunk City 3D', category: '3d-showcase' },
+  { name: 'mystical-realm-3d', description: 'Mystical Realm 3D', category: '3d-showcase' },
+  { name: 'nature-explorer-3d', description: 'Nature Explorer 3D', category: '3d-showcase' },
+  { name: '3d-advanced', description: '3D Advanced', category: '3d-showcase' },
+
+  // First-Person / Shooter
+  { name: 'fps-demo-3d', description: 'FPS Demo 3D', category: 'fps' },
+  { name: 'shooter-demo-3d', description: 'Shooter Demo 3D', category: 'fps' },
+  { name: 'dungeon-crawler-3d', description: 'Dungeon Crawler 3D', category: 'fps' },
+  { name: 'wizardry-3d', description: 'Wizardry 3D', category: 'fps' },
+
+  // Voxel Demos
+  { name: 'minecraft-demo', description: 'Minecraft Demo', category: 'voxel' },
+  { name: 'voxel-terrain', description: 'Voxel Terrain', category: 'voxel' },
+  { name: 'voxel-creative', description: 'Voxel Creative', category: 'voxel' },
+  { name: 'voxel-creatures', description: 'Voxel Creatures', category: 'voxel' },
+  { name: 'vox-viewer', description: 'Vox Viewer', category: 'voxel' },
+
+  // Rendering / Shader Demos
+  { name: 'pbr-showcase', description: 'PBR Showcase', category: 'rendering' },
+  { name: 'shader-showcase', description: 'Shader Showcase', category: 'rendering' },
+  { name: 'tsl-showcase', description: 'TSL Showcase', category: 'rendering' },
+  { name: 'skybox-showcase', description: 'Skybox Showcase', category: 'rendering' },
+  { name: 'instancing-demo', description: 'Instancing Demo', category: 'rendering' },
+
+  // Physics Demos
+  { name: 'physics-demo-3d', description: 'Physics Demo 3D', category: 'physics' },
+  { name: 'game-of-life-3d', description: 'Game of Life 3D', category: 'physics' },
+  { name: 'boids-flocking', description: 'Boids Flocking', category: 'physics' },
+
+  // Particle Systems
+  { name: 'particles-demo', description: 'Particles Demo', category: 'particles' },
+  { name: 'particle-fireworks', description: 'Particle Fireworks', category: 'particles' },
+  { name: 'particle-trail', description: 'Particle Trail', category: 'particles' },
+
+  // Creative / Generative
+  { name: 'generative-art', description: 'Generative Art', category: 'creative' },
+  { name: 'creative-coding', description: 'Creative Coding', category: 'creative' },
+  { name: 'blend-aurora', description: 'Blend Aurora', category: 'creative' },
+  { name: 'filter-glitch', description: 'Filter Glitch', category: 'creative' },
+  { name: 'nft-art-generator', description: 'NFT Art Generator', category: 'creative' },
+
+  // 2D / Stage Demos
+  { name: 'stage-cards', description: 'Stage Cards', category: 'stage' },
+  { name: 'stage-menu', description: 'Stage Menu', category: 'stage' },
+  { name: 'flash-demo', description: 'Flash Demo', category: 'stage' },
+  { name: 'movie-clock', description: 'Movie Clock', category: 'stage' },
+  { name: 'demoscene', description: 'Demoscene', category: 'stage' },
+
+  // UI Demos
+  { name: 'canvas-ui-showcase', description: 'Canvas UI Showcase', category: 'ui' },
+  { name: 'ui-demo', description: 'UI Demo', category: 'ui' },
+  { name: 'hud-demo', description: 'HUD Demo', category: 'ui' },
+  { name: 'screen-demo', description: 'Screen Demo', category: 'ui' },
+  { name: 'startscreen-demo', description: 'Start Screen Demo', category: 'ui' },
+
+  // Tween Demos
+  { name: 'tween-bounce', description: 'Tween Bounce', category: 'tween' },
+  { name: 'tween-logo', description: 'Tween Logo', category: 'tween' },
+  { name: 'tween-typewriter', description: 'Tween Typewriter', category: 'tween' },
+
+  // XR / VR Demos
+  { name: 'vr-demo', description: 'VR Demo', category: 'xr' },
+  { name: 'vr-sword-combat', description: 'VR Sword Combat', category: 'xr' },
+  { name: 'ar-hand-demo', description: 'AR Hand Demo', category: 'xr' },
+
+  // System Demos
+  { name: 'wad-demo', description: 'WAD Demo', category: 'systems' },
+  { name: 'model-viewer-3d', description: 'Model Viewer 3D', category: 'systems' },
+  { name: 'storage-quest', description: 'Storage Quest', category: 'systems' },
+  { name: 'input-showcase', description: 'Input Showcase', category: 'systems' },
+  { name: 'audio-lab', description: 'Audio Lab', category: 'systems' },
+
+  // Platformer / Adventure
+  { name: 'camera-platformer', description: 'Camera Platformer', category: 'platformer' },
+  { name: 'adventure-comic-3d', description: 'Adventure Comic 3D', category: 'platformer' },
+  { name: 'strider-demo-3d', description: 'Strider Demo 3D', category: 'platformer' },
+
+  // NFT / Blockchain
+  { name: 'nft-worlds', description: 'NFT Worlds', category: 'nft' },
+
+  // Babylon.js Specific
+  { name: 'babylon-demo', description: 'Babylon Demo', category: 'babylon' },
 ];
 
 // Test each cart in both backends

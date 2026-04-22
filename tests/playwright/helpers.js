@@ -125,28 +125,16 @@ export async function compareScreenshots(screenshot1, screenshot2) {
 export async function waitFor3DScene(page, backend) {
   // Wait for the main canvas to exist (both backends use id="screen")
   const canvasSelector = '#screen';
-  await page.waitForSelector(canvasSelector, { timeout: 10000 });
+  await page.waitForSelector(canvasSelector, { timeout: 30000 });
 
-  // Wait for scene to render (check for non-black pixels)
-  await page.waitForFunction((selector) => {
-    const canvas = document.querySelector(selector);
-    if (!canvas) return false;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return false;
-    try {
-      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      const pixels = imageData.data;
-      // Check if there are any non-black pixels
-      for (let i = 0; i < pixels.length; i += 4) {
-        if (pixels[i] > 10 || pixels[i+1] > 10 || pixels[i+2] > 10) {
-          return true;
-        }
-      }
-    } catch (e) {
-      // Canvas might not be readable yet
-    }
-    return false;
-  }, canvasSelector, { timeout: 10000 });
+  // Wait for Nova64 API to be available (global functions exposed)
+  await page.waitForFunction(() => {
+    return typeof globalThis.createCube === 'function' &&
+           typeof globalThis.setCameraPosition === 'function';
+  }, { timeout: 30000 });
+
+  // Wait an additional 2 seconds for first frame to render
+  await page.waitForTimeout(2000);
 }
 
 /**

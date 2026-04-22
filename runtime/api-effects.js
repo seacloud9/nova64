@@ -146,6 +146,18 @@ export function effectsApi(gpu) {
   function initPostProcessing() {
     if (composer) return; // Already initialized
 
+    // CRITICAL: Check if renderer is Babylon.js Engine (doesn't support Three.js post-processing)
+    // Babylon.js Engine has 'scenes' property, Three.js WebGLRenderer has 'domElement'
+    if (
+      !renderer ||
+      renderer.scenes ||
+      renderer.constructor.name === 'Engine' ||
+      !renderer.domElement
+    ) {
+      logger.warn('⚠️ Post-processing effects not supported with Babylon.js backend');
+      return; // Skip initialization for Babylon.js
+    }
+
     composer = new EffectComposer(renderer);
 
     // Base render pass
@@ -158,6 +170,12 @@ export function effectsApi(gpu) {
   // === BLOOM EFFECTS ===
   function enableBloom(strength = 1.0, radius = 0.5, threshold = 0.6) {
     initPostProcessing();
+
+    // Return early if post-processing not supported (e.g., Babylon.js backend)
+    if (!composer) {
+      logger.warn('⚠️ Bloom effect not available with current backend');
+      return false;
+    }
 
     if (bloomPass) {
       composer.removePass(bloomPass);
@@ -204,6 +222,12 @@ export function effectsApi(gpu) {
   function enableFXAA() {
     initPostProcessing();
 
+    // Return early if post-processing not supported
+    if (!composer) {
+      logger.warn('⚠️ FXAA not available with current backend');
+      return false;
+    }
+
     if (fxaaPass) return;
 
     fxaaPass = new ShaderPass(FXAAShader);
@@ -212,6 +236,7 @@ export function effectsApi(gpu) {
     fxaaPass.material.uniforms['resolution'].value.y = 1 / (window.innerHeight * pixelRatio);
 
     composer.addPass(fxaaPass);
+    return true;
   }
 
   function disableFXAA() {
@@ -224,13 +249,21 @@ export function effectsApi(gpu) {
   // === CHROMATIC ABERRATION ===
   function enableChromaticAberration(amount = 0.002) {
     initPostProcessing();
+
+    // Return early if post-processing not supported
+    if (!composer) {
+      logger.warn('⚠️ Chromatic aberration not available with current backend');
+      return false;
+    }
+
     if (chromaticAberrationPass) {
       chromaticAberrationPass.uniforms['amount'].value = amount;
-      return;
+      return true;
     }
     chromaticAberrationPass = new ShaderPass(ChromaticAberrationShader);
     chromaticAberrationPass.uniforms['amount'].value = amount;
     composer.addPass(chromaticAberrationPass);
+    return true;
   }
 
   function disableChromaticAberration() {
@@ -243,15 +276,23 @@ export function effectsApi(gpu) {
   // === VIGNETTE ===
   function enableVignette(darkness = 1.0, offset = 0.9) {
     initPostProcessing();
+
+    // Return early if post-processing not supported
+    if (!composer) {
+      logger.warn('⚠️ Vignette effect not available with current backend');
+      return false;
+    }
+
     if (vignettePass) {
       vignettePass.uniforms['darkness'].value = darkness;
       vignettePass.uniforms['offset'].value = offset;
-      return;
+      return true;
     }
     vignettePass = new ShaderPass(VignetteShader);
     vignettePass.uniforms['darkness'].value = darkness;
     vignettePass.uniforms['offset'].value = offset;
     composer.addPass(vignettePass);
+    return true;
   }
 
   function disableVignette() {
@@ -264,13 +305,21 @@ export function effectsApi(gpu) {
   // === GLITCH EFFECT ===
   function enableGlitch(intensity = 0.5) {
     initPostProcessing();
+
+    // Return early if post-processing not supported
+    if (!composer) {
+      logger.warn('⚠️ Glitch effect not available with current backend');
+      return false;
+    }
+
     if (glitchPass) {
       glitchPass.uniforms['intensity'].value = Math.max(0, Math.min(1, intensity));
-      return;
+      return true;
     }
     glitchPass = new ShaderPass(GlitchShader);
     glitchPass.uniforms['intensity'].value = Math.max(0, Math.min(1, intensity));
     composer.addPass(glitchPass);
+    return true;
   }
 
   function disableGlitch() {

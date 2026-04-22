@@ -41,6 +41,7 @@ let fpsTimer = 0;
 // ─── Lifecycle ───────────────────────────────────────────────────────────────
 
 export function init() {
+  console.log('[babylon-demo] init() called - creating 3D objects...');
   // Scene setup
   setCameraPosition(0, 6, 12);
   setCameraTarget(0, 0, 0);
@@ -56,6 +57,7 @@ export function init() {
   platform = createPlane(20, 20, 0x2a2a4a, [0, -0.01, 0]);
 
   // Central rotating cube (N64 blue)
+  console.log('[babylon-demo] Created cube:', cube);
   cube = createCube(2, 0x0055ff, [0, 1, 0]);
 
   // Orbiting sphere (warm orange)

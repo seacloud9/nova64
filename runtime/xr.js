@@ -330,7 +330,7 @@ export function xrModule(gpu) {
   // ── Queries ────────────────────────────────────────────────────────────────
   function isXRActive() {
     if (xrMode === 'cardboard') return cardboardActive;
-    return renderer.xr.isPresenting;
+    return renderer.xr ? renderer.xr.isPresenting : false;
   }
 
   function isXRSupported() {
@@ -338,7 +338,7 @@ export function xrModule(gpu) {
   }
 
   function getXRSession() {
-    return renderer.xr.getSession();
+    return renderer.xr ? renderer.xr.getSession() : null;
   }
 
   function getXRMode() {

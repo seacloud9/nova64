@@ -1,5 +1,70 @@
 // ⭐ SPACE HARRIER NOVA 64 - Exceptional 2.5D/3D Rail Shooter ⭐
 
+const {
+  cls,
+  drawGlowTextCentered,
+  drawGradient,
+  drawNoise,
+  drawPanel,
+  drawRadialGradient,
+  drawScanlines,
+  drawStarburst,
+  drawWave,
+  line,
+  rect,
+  rgba8,
+} = nova64.draw;
+const {
+  createAdvancedCube,
+  createCube,
+  createPlane,
+  createSphere,
+  destroyMesh,
+  rotateMesh,
+  setMeshVisible,
+  setPosition,
+  setRotation,
+  setScale,
+} = nova64.scene;
+const { setCameraFOV, setCameraPosition, setCameraTarget } = nova64.camera;
+const { setAmbientLight, setFog, setLightColor, setLightDirection } = nova64.light;
+const {
+  disableGlitch,
+  enableBloom,
+  enableDithering,
+  enableFXAA,
+  enableGlitch,
+  enablePixelation,
+  enableVignette,
+  setGlitchIntensity,
+} = nova64.fx;
+const { isKeyPressed, key } = nova64.input;
+const { sfx } = nova64.audio;
+const {
+  centerX,
+  clearButtons,
+  createButton,
+  createPanel,
+  drawAllButtons,
+  drawText,
+  drawTextShadow,
+  setFont,
+  setTextAlign,
+  uiColors,
+  updateAllButtons,
+} = nova64.ui;
+const {
+  arc,
+  cooldownReady,
+  createCooldown,
+  createShake,
+  noise,
+  triggerShake,
+  updateCooldown,
+  updateShake,
+  useCooldown,
+} = nova64.util;
+
 let gameState = 'start';
 let gameTime = 0;
 let inputLockoutCD;
@@ -62,6 +127,7 @@ let game = {
 export async function init() {
   console.log('🚀 SPACE HARRIER NOVA 64 - Loading...');
 
+  try {
   setCameraPosition(0, 5, 12);
   setCameraTarget(0, 3, -50);
   setCameraFOV(70);
@@ -95,6 +161,11 @@ export async function init() {
   game.shake = createShake({ decay: 5 });
 
   initStartScreen();
+  console.log('[space-harrier] ✅ Init complete!');
+  } catch (error) {
+    console.error('[space-harrier] ❌ Init failed with error:', error);
+    throw error; // Re-throw so Nova64 console can catch it
+  }
 }
 
 function createCheckeredFloor() {

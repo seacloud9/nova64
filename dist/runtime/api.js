@@ -181,7 +181,9 @@ export function stdApi(gpu) {
     // DEBUG: Log first 5 print calls
     if (!globalThis._printCallCount) globalThis._printCallCount = 0;
     if (globalThis._printCallCount < 5) {
-      console.log(`[API] print() called: text="${text}", x=${x}, y=${y}, color=${color}, scale=${scale}`);
+      console.log(
+        `[API] print() called: text="${text}", x=${x}, y=${y}, color=${color}, scale=${scale}`
+      );
       globalThis._printCallCount++;
     }
     BitmapFont.draw(fb, text, (x | 0) - camRef.x, (y | 0) - camRef.y, color, scale);

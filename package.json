@@ -66,6 +66,11 @@
     "test:web": "open tests/test-runner.html || xdg-open tests/test-runner.html || start tests/test-runner.html",
     "test:all": "pnpm run test && pnpm run test:api && pnpm run test:input && pnpm run test:starfox && pnpm run test:integration",
     "test:watch": "nodemon --watch runtime --watch tests --watch examples --exec 'pnpm run test'",
+    "test:playwright": "playwright test",
+    "test:playwright:ui": "playwright test --ui",
+    "test:playwright:debug": "playwright test --debug",
+    "test:babylon": "playwright test tests/playwright/backend-parity.spec.js",
+    "test:babylon:ui": "playwright test tests/playwright/backend-parity.spec.js --ui",
     "bench": "node tests/bench.js",
     "bench:material": "node tests/bench.js --suite=material",
     "bench:instancing": "node tests/bench.js --suite=instancing",
@@ -91,10 +96,12 @@
     "zustand": "^5.0.11"
   },
   "devDependencies": {
+    "@playwright/test": "^1.59.1",
     "eslint": "^8.57.1",
     "husky": "^9.1.7",
     "lint-staged": "^16.4.0",
     "nodemon": "^3.1.10",
+    "playwright": "^1.59.1",
     "prettier": "^3.6.2",
     "terser": "^5.46.0"
   },

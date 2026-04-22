@@ -1041,9 +1041,10 @@ export class GpuBabylon {
       enablePixelation: f => self.enablePixelation(f),
       enableDithering: e => self.enableDithering(e),
 
-      // 2D HUD
+      // 2D HUD - NOTE: print() is provided by api.js, not by gpu-babylon
+      // We only expose cls() here since it needs direct canvas access
       cls: c => self.cls(c),
-      print: (t, x, y, c, s) => self.print(t, x, y, c, s),
+      // print: removed - using api.js print() which supports BitmapFont + Framebuffer64
     });
   }
 

@@ -40,6 +40,8 @@ import {
   RawTexture,
   DynamicTexture,
   Material,
+  Matrix,
+  Quaternion,
 } from '@babylonjs/core';
 
 import { Framebuffer64 } from './framebuffer.js';
@@ -133,6 +135,7 @@ export class GpuBabylon {
 
     // Mesh registry: meshId → BABYLON.AbstractMesh
     this._meshes = new Map();
+    this._instancedMeshes = new Map(); // instanceId → { mesh, count, matrices, colors, hasColors }
     this._counter = 0;
 
     // Camera state mirrors
@@ -995,6 +998,168 @@ export class GpuBabylon {
   }
 
   // ---------------------------------------------------------------------------
+  // GPU Instancing
+  // ---------------------------------------------------------------------------
+
+  createInstancedMesh(shape = 'cube', count = 100, color = 0xffffff, options = {}) {
+    const {
+      size = 1,
+      width = 1,
+      height = 1,
+      segments = 6,
+      roughness = 0.7,
+      metalness = 0.0,
+      emissive = 0x000000,
+      emissiveIntensity = 1.0,
+    } = options;
+
+    // Create base mesh based on shape
+    let baseMesh;
+    const meshName = `instancedMesh_${++this._counter}`;
+
+    switch (shape) {
+      case 'sphere':
+        baseMesh = MeshBuilder.CreateSphere(meshName, { diameter: size * 2, segments }, this.scene);
+        break;
+      case 'plane':
+        baseMesh = MeshBuilder.CreateGround(meshName, { width, height }, this.scene);
+        break;
+      case 'cylinder':
+        baseMesh = MeshBuilder.CreateCylinder(
+          meshName,
+          { diameter: size * 2, height: height || 2, tessellation: 16 },
+          this.scene
+        );
+        break;
+      case 'cone':
+        baseMesh = MeshBuilder.CreateCylinder(
+          meshName,
+          { diameterTop: 0, diameterBottom: size * 2, height: height || 2, tessellation: 16 },
+          this.scene
+        );
+        break;
+      case 'cube':
+      default:
+        baseMesh = MeshBuilder.CreateBox(meshName, { size }, this.scene);
+    }
+
+    // Create material
+    const mat = new StandardMaterial(`${meshName}_mat`, this.scene);
+    mat.diffuseColor = hexToColor3(color);
+    mat.roughness = roughness;
+    mat.metallic = metalness;
+    mat.emissiveColor = hexToColor3(emissive);
+    if (emissive !== 0x000000) {
+      mat.emissiveColor.scaleInPlace(emissiveIntensity);
+    }
+
+    baseMesh.material = mat;
+    baseMesh.isVisible = false; // Base mesh is hidden, instances are visible
+
+    // Enable thin instances (Babylon's efficient instancing)
+    baseMesh.thinInstanceEnablePicking = false; // Optimization
+    const bufferMatrices = new Float32Array(16 * count); // 16 floats per matrix
+    baseMesh.thinInstanceSetBuffer('matrix', bufferMatrices, 16);
+
+    // Store instance data
+    const instanceId = this._counter;
+    this._instancedMeshes.set(instanceId, {
+      mesh: baseMesh,
+      count,
+      currentIndex: 0,
+      matrices: bufferMatrices,
+      colors: new Float32Array(4 * count), // RGBA per instance
+      hasColors: false,
+    });
+
+    this._meshes.set(instanceId, baseMesh);
+
+    return instanceId;
+  }
+
+  setInstanceTransform(
+    instancedId,
+    index,
+    x = 0,
+    y = 0,
+    z = 0,
+    rx = 0,
+    ry = 0,
+    rz = 0,
+    sx = 1,
+    sy = 1,
+    sz = 1
+  ) {
+    const entry = this._instancedMeshes.get(instancedId);
+    if (!entry || index < 0 || index >= entry.count) return false;
+
+    // Create transformation matrix
+    const matrix = Matrix.Compose(
+      new Vector3(sx, sy, sz), // scale
+      Quaternion.RotationYawPitchRoll(ry, rx, rz), // rotation
+      new Vector3(x, y, z) // position
+    );
+
+    // Copy matrix to buffer (16 floats per instance)
+    matrix.copyToArray(entry.matrices, index * 16);
+
+    // Mark the buffer as dirty
+    entry.mesh.thinInstanceBufferUpdated('matrix');
+
+    return true;
+  }
+
+  setInstanceColor(instancedId, index, color) {
+    const entry = this._instancedMeshes.get(instancedId);
+    if (!entry || index < 0 || index >= entry.count) return false;
+
+    const c = hexToColor3(color);
+    const offset = index * 4;
+    entry.colors[offset] = c.r;
+    entry.colors[offset + 1] = c.g;
+    entry.colors[offset + 2] = c.b;
+    entry.colors[offset + 3] = 1.0; // alpha
+
+    entry.hasColors = true;
+    return true;
+  }
+
+  finalizeInstances(instancedId) {
+    const entry = this._instancedMeshes.get(instancedId);
+    if (!entry) return false;
+
+    // Update matrix buffer
+    entry.mesh.thinInstanceBufferUpdated('matrix');
+
+    // If colors were set, enable color buffer
+    if (entry.hasColors) {
+      entry.mesh.thinInstanceSetBuffer('color', entry.colors, 4);
+    }
+
+    return true;
+  }
+
+  removeInstancedMesh(instancedId) {
+    const entry = this._instancedMeshes.get(instancedId);
+    if (!entry) return false;
+
+    entry.mesh.dispose();
+    this._instancedMeshes.delete(instancedId);
+    this._meshes.delete(instancedId);
+
+    return true;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Particle System (Stub - Not yet implemented for Babylon.js)
+  // ---------------------------------------------------------------------------
+
+  createParticleSystem(_maxParticles = 200, _options = {}) {
+    console.warn('[Nova64:WARN] ⚠️ Particle systems not yet implemented for Babylon.js backend');
+    return -1; // Return invalid ID to indicate not supported
+  }
+
+  // ---------------------------------------------------------------------------
   // exposeTo — wire all cart-facing functions onto a target object (globalThis)
   // ---------------------------------------------------------------------------
 
@@ -1040,6 +1205,19 @@ export class GpuBabylon {
       clearScene: () => self.clearScene(),
       enablePixelation: f => self.enablePixelation(f),
       enableDithering: e => self.enableDithering(e),
+
+      // GPU Instancing
+      createInstancedMesh: (shape, count, color, options) =>
+        self.createInstancedMesh(shape, count, color, options),
+      setInstanceTransform: (id, i, x, y, z, rx, ry, rz, sx, sy, sz) =>
+        self.setInstanceTransform(id, i, x, y, z, rx, ry, rz, sx, sy, sz),
+      setInstanceColor: (id, i, color) => self.setInstanceColor(id, i, color),
+      finalizeInstances: id => self.finalizeInstances(id),
+      removeInstancedMesh: id => self.removeInstancedMesh(id),
+
+      // Particle System (stub)
+      createParticleSystem: (maxParticles, options) =>
+        self.createParticleSystem(maxParticles, options),
 
       // 2D HUD - NOTE: print() is provided by api.js, not by gpu-babylon
       // We only expose cls() here since it needs direct canvas access

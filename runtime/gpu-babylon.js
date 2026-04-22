@@ -354,11 +354,12 @@ export class GpuBabylon {
     // Put framebuffer data onto temporary canvas
     this._fbCanvasCtx.putImageData(this._fbImageData, 0, 0);
 
-    // Draw temp canvas onto HUD canvas UNDER the existing text
+    // Draw temp canvas onto HUD canvas
     // drawImage DOES respect globalCompositeOperation (putImageData does NOT!)
-    this._hudCtx.globalCompositeOperation = 'destination-over';
-    this._hudCtx.drawImage(this._fbCanvas, 0, 0);
+    // Use 'source-over' (default) to draw framebuffer content ON TOP
+    // This is correct for most cases - start screens, HUD overlays, etc.
     this._hudCtx.globalCompositeOperation = 'source-over';
+    this._hudCtx.drawImage(this._fbCanvas, 0, 0);
   }
 
   endFrame() {

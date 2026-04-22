@@ -315,12 +315,22 @@ export class GpuBabylon {
     // Check if framebuffer has any non-transparent pixels
     const src = this.fb.pixels;
     let hasContent = false;
+    let nonZeroPixels = 0;
     for (let i = 0; i < W * H * 4; i += 4) {
       if (src[i + 3] > 0) {
         // Check alpha channel
         hasContent = true;
-        break;
+        nonZeroPixels++;
       }
+    }
+
+    // DEBUG: Log framebuffer status every 60 frames
+    if (!this._compositeDebugCounter) this._compositeDebugCounter = 0;
+    this._compositeDebugCounter++;
+    if (this._compositeDebugCounter % 60 === 0) {
+      console.log(
+        `[GpuBabylon] Framebuffer composite: ${nonZeroPixels} non-zero pixels, hasContent: ${hasContent}`
+      );
     }
 
     // Skip composite if framebuffer is empty (all transparent)

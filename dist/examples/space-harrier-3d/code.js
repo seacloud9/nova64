@@ -128,40 +128,40 @@ export async function init() {
   console.log('🚀 SPACE HARRIER NOVA 64 - Loading...');
 
   try {
-  setCameraPosition(0, 5, 12);
-  setCameraTarget(0, 3, -50);
-  setCameraFOV(70);
+    setCameraPosition(0, 5, 12);
+    setCameraTarget(0, 3, -50);
+    setCameraFOV(70);
 
-  // Vibrant alien sky and effects
-  setAmbientLight(0xffffff, 1.0);
-  setLightDirection(-0.5, -1, -0.5);
-  setLightColor(0xfff0dd);
-  setFog(PALETTE.sky, 30, 150);
+    // Vibrant alien sky and effects
+    setAmbientLight(0xffffff, 1.0);
+    setLightDirection(-0.5, -1, -0.5);
+    setLightColor(0xfff0dd);
+    setFog(PALETTE.sky, 30, 150);
 
-  // Retro presentation with modern shader touch
-  if (typeof enablePixelation === 'function') enablePixelation(1);
-  if (typeof enableDithering === 'function') enableDithering(true);
-  enableBloom(1.0, 0.5, 0.3); // Alien sky & bullet glow
-  enableFXAA();
-  enableVignette(1.0, 0.95);
+    // Retro presentation with modern shader touch
+    if (typeof enablePixelation === 'function') enablePixelation(1);
+    if (typeof enableDithering === 'function') enableDithering(true);
+    enableBloom(1.0, 0.5, 0.3); // Alien sky & bullet glow
+    enableFXAA();
+    enableVignette(1.0, 0.95);
 
-  createCheckeredFloor();
-  createPlayer();
+    createCheckeredFloor();
+    createPlayer();
 
-  // Hide player meshes on start screen to prevent 3D artifacts/bloom trails
-  setPlayerVisible(false);
+    // Hide player meshes on start screen to prevent 3D artifacts/bloom trails
+    setPlayerVisible(false);
 
-  for (let i = 0; i < 40; i++) {
-    spawnScenery(true);
-  }
+    for (let i = 0; i < 40; i++) {
+      spawnScenery(true);
+    }
 
-  inputLockoutCD = createCooldown(0.6);
-  inputLockoutCD.timer = 0.6; // start locked out
-  weaponCD = createCooldown(0.12);
-  game.shake = createShake({ decay: 5 });
+    inputLockoutCD = createCooldown(0.6);
+    inputLockoutCD.timer = 0.6; // start locked out
+    weaponCD = createCooldown(0.12);
+    game.shake = createShake({ decay: 5 });
 
-  initStartScreen();
-  console.log('[space-harrier] ✅ Init complete!');
+    initStartScreen();
+    console.log('[space-harrier] ✅ Init complete!');
   } catch (error) {
     console.error('[space-harrier] ❌ Init failed with error:', error);
     throw error; // Re-throw so Nova64 console can catch it
@@ -571,8 +571,19 @@ function updatePlayer(dt, isIdle) {
   }
 
   const moveSpeed = 45;
+  const oldX = p.x;
+  const oldY = p.y;
   p.x += dx * moveSpeed * dt;
   p.y += dy * moveSpeed * dt;
+
+  // DEBUG: Log player movement every 60 frames
+  if (!globalThis._playerDebugCounter) globalThis._playerDebugCounter = 0;
+  globalThis._playerDebugCounter++;
+  if (globalThis._playerDebugCounter % 60 === 0 && (dx !== 0 || dy !== 0)) {
+    console.log(
+      `[Space Harrier] Player move: dx=${dx}, dy=${dy}, pos=(${p.x.toFixed(2)}, ${p.y.toFixed(2)}, ${p.z.toFixed(2)})`
+    );
+  }
 
   if (p.x < -22) p.x = -22;
   if (p.x > 22) p.x = 22;

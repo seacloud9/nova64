@@ -111,6 +111,7 @@
         display: block;
         touch-action: none;
         -webkit-touch-callout: none;
+        z-index: 5; /* CRITICAL: Must be above background (0) but below HUD (10), scanlines (10), and glare (11) */
       }
 
       /* CRT Scanline Overlay */

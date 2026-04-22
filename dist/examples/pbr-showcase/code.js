@@ -10,6 +10,33 @@
 //
 // Controls: 1-6 = scene, WASD = orbit, QE = zoom
 
+const { drawRoundedRect, print, printCentered, rgba8 } = nova64.draw;
+const {
+  clearScene,
+  createCapsule,
+  createCone,
+  createCube,
+  createCylinder,
+  createPlane,
+  createSphere,
+  createTorus,
+  setPBRProperties,
+  setRotation,
+} = nova64.scene;
+const { setCameraFOV, setCameraPosition, setCameraTarget } = nova64.camera;
+const {
+  createGradientSkybox,
+  createImageSkybox,
+  setAmbientLight,
+  setFog,
+  setLightColor,
+  setLightDirection,
+} = nova64.light;
+const { enableBloom, enableFXAA, enableVignette } = nova64.fx;
+const { btnp, key, keyp } = nova64.input;
+const { t } = nova64.data;
+const { arc } = nova64.util;
+
 const SPACING = 2.4;
 
 let meshIds = [];

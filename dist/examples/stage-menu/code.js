@@ -2,6 +2,13 @@
 // Shows: createContainer, createTextNode, createGraphicsNode, tweenTo,
 //        easeOutBack stagger, addChild, hitTest, blendMode
 
+const { cls, print, pset, rectfill, screenHeight, screenWidth } = nova64.draw;
+const { keyp } = nova64.input;
+const { addChild, createContainer, createGraphicsNode, createTextNode, drawStage, hitTest } =
+  nova64.ui;
+const { updateTweens } = nova64.tween;
+const { color } = nova64.util;
+
 let W = 640,
   H = 360;
 const ITEMS = ['▶  START GAME', '⚙  OPTIONS', '🏆  LEADERBOARD', 'ℹ  ABOUT'];

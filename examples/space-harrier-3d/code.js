@@ -571,8 +571,19 @@ function updatePlayer(dt, isIdle) {
   }
 
   const moveSpeed = 45;
+  const oldX = p.x;
+  const oldY = p.y;
   p.x += dx * moveSpeed * dt;
   p.y += dy * moveSpeed * dt;
+
+  // DEBUG: Log player movement every 60 frames
+  if (!globalThis._playerDebugCounter) globalThis._playerDebugCounter = 0;
+  globalThis._playerDebugCounter++;
+  if (globalThis._playerDebugCounter % 60 === 0 && (dx !== 0 || dy !== 0)) {
+    console.log(
+      `[Space Harrier] Player move: dx=${dx}, dy=${dy}, pos=(${p.x.toFixed(2)}, ${p.y.toFixed(2)}, ${p.z.toFixed(2)})`
+    );
+  }
 
   if (p.x < -22) p.x = -22;
   if (p.x > 22) p.x = 22;

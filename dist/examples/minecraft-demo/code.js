@@ -1,4 +1,33 @@
 // Minecraft Demo - Ultimate Edition with Biomes, Ores, and Caves
+const { print, rect, rectfill, rgba8 } = nova64.draw;
+const { engine } = nova64.scene;
+const { setCameraPosition, setCameraTarget } = nova64.camera;
+const { setFog } = nova64.light;
+const { F } = nova64.fx;
+const { btnp, key, keyp } = nova64.input;
+const {
+  checkVoxelCollision,
+  cleanupVoxelEntities,
+  configureVoxelWorld,
+  enableVoxelTextures,
+  forceLoadVoxelChunks,
+  getVoxelBiome,
+  getVoxelBlock,
+  getVoxelEntityCount,
+  getVoxelHighestBlock,
+  loadVoxelWorld,
+  moveVoxelEntity,
+  raycastVoxelBlock,
+  resetVoxelWorld,
+  saveVoxelWorld,
+  setVoxelBlock,
+  setVoxelDayTime,
+  spawnVoxelEntity,
+  updateVoxelEntities,
+  updateVoxelWorld,
+} = nova64.voxel;
+const { color } = nova64.util;
+
 let lastDayTime = -1;
 
 let player = {

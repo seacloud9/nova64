@@ -2,6 +2,54 @@
 // Showcases advanced 3D features: dynamic lighting, particle systems, procedural generation
 
 // Game state management
+const { cls, drawPanel, drawProgressBar, print, rect, rgba8 } = nova64.draw;
+const {
+  createAdvancedCube,
+  createAdvancedSphere,
+  createCube,
+  createInstancedMesh,
+  createPlane,
+  createSphere,
+  finalizeInstances,
+  get3DStats,
+  getPosition,
+  removeMesh,
+  rotateMesh,
+  setInstanceTransform,
+  setMeshVisible,
+  setPosition,
+  setRotation,
+} = nova64.scene;
+const { setCameraFOV, setCameraPosition, setCameraTarget } = nova64.camera;
+const { setAmbientLight, setFog, setLightColor, setLightDirection } = nova64.light;
+const { enableBloom, enableDithering, enableFXAA, enablePixelation, enableVignette } = nova64.fx;
+const { key, keyp } = nova64.input;
+const { sfx } = nova64.audio;
+const {
+  centerY,
+  createButton,
+  createPanel,
+  drawAllButtons,
+  drawGradientRect,
+  drawText,
+  drawTextOutline,
+  drawTextShadow,
+  setFont,
+  setTextAlign,
+  uiColors,
+  updateAllButtons,
+} = nova64.ui;
+const {
+  arc,
+  createCooldown,
+  createShake,
+  getShakeOffset,
+  triggerShake,
+  updateCooldown,
+  updateShake,
+  useCooldown,
+} = nova64.util;
+
 let gameState = 'start'; // 'start', 'playing', 'paused', 'gameover'
 let startScreenTime = 0;
 let uiButtons = [];

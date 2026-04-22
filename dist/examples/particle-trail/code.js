@@ -1,6 +1,10 @@
 // particle-trail — Mouse-following particle trail using createEmitter2D
 // Shows: createEmitter2D, following pointer/touch, color gradients, BM.ADD
 
+const { BM, cls, line, print, screenHeight, screenWidth } = nova64.draw;
+const { createEmitter2D, drawEmitter2D, updateEmitter2D } = nova64.fx;
+const { color } = nova64.util;
+
 let W = 640,
   H = 360;
 

@@ -1,6 +1,13 @@
 // 🎮 GLB Model Showcase for Nova64
 // Demonstrates loading 3D models with animations and N64 PBR materials
 
+const { line, print, rect } = nova64.draw;
+const { clearScene, destroyMesh, loadModel, playAnimation, setRotation } = nova64.scene;
+const { setCameraPosition, setCameraTarget } = nova64.camera;
+const { createSpaceSkybox, setAmbientLight, setLightDirection } = nova64.light;
+const { enableRetroEffects } = nova64.fx;
+const { btnp, keyp } = nova64.input;
+
 let rotatingMesh = null;
 let currentModelIndex = 0;
 let models = [

@@ -1,6 +1,8 @@
 // Font Test - Complete Character Set Demo
 // Testing uppercase, lowercase, symbols, arrows, and emoji handling
 
+const { cls, print, rect, rgba8 } = nova64.draw;
+
 export async function init() {
   console.log('🔤 Font Test - Complete Character Set');
 }

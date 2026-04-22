@@ -3,6 +3,31 @@
 // NEO-DOOM: FAST, BRIGHT, FUN ARENA SHOOTER
 // 3 levels, 4 enemy types, pickups, boss fights — now with .WAD file support!
 
+const { drawProgressBar, prinprintCentered, rectfill, rgba8 } = nova64.draw;
+const {
+  createCube,
+  createPlane,
+  destroyMesh,
+  engine,
+  getMesh,
+  setPosition,
+  setRotation,
+  setScale,
+} = nova64.scene;
+const { setCameraFOV, setCameraPosition, setCameraTarget } = nova64.camera;
+const {
+  createPointLight,
+  removeLight,
+  setAmbientLight,
+  setDirectionalLight,
+  setFog,
+  setPointLightPosition,
+} = nova64.light;
+const { btn, key, mouseDown } = nova64.input;
+const { sfx } = nova64.audio;
+const { WADLoader, WADTextureManager, convertWADMap, setWallUVs, t } = nova64.data;
+const { createShake, triggerShake, updateShake } = nova64.util;
+
 let gameTime = 0;
 let gameState = 'start'; // start, playing, gameover, levelclear, victory
 

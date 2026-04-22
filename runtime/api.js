@@ -178,6 +178,14 @@ export function stdApi(gpu) {
   const drawRect = rectfill;
 
   function print(text, x, y, color = rgba8(255, 255, 255, 255), scale = 1) {
+    // DEBUG: Log first 5 print calls
+    if (!globalThis._printCallCount) globalThis._printCallCount = 0;
+    if (globalThis._printCallCount < 5) {
+      console.log(
+        `[API] print() called: text="${text}", x=${x}, y=${y}, color=${color}, scale=${scale}`
+      );
+      globalThis._printCallCount++;
+    }
     BitmapFont.draw(fb, text, (x | 0) - camRef.x, (y | 0) - camRef.y, color, scale);
   }
 

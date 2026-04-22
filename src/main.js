@@ -120,7 +120,7 @@ if (_isResponsive) {
 
 const api = stdApi(gpu);
 const sApi = spriteApi(gpu);
-const threeDApi_instance = threeDApi(gpu);
+const threeDApi_instance = _useBabylon ? null : threeDApi(gpu);
 const eApi = editorApi(sApi);
 const pApi = physicsApi();
 const tApi = textInputApi();
@@ -158,7 +158,9 @@ let uiApiInstance;
 const nova64api = {};
 api.exposeTo(nova64api);
 sApi.exposeTo(nova64api);
-threeDApi_instance.exposeTo(nova64api);
+if (threeDApi_instance) threeDApi_instance.exposeTo(nova64api);
+// When using Babylon.js, expose its built-in 3D API
+if (_useBabylon && gpu.exposeTo) gpu.exposeTo(nova64api);
 eApi.exposeTo(nova64api);
 pApi.exposeTo(nova64api);
 tApi.exposeTo(nova64api);
@@ -334,7 +336,11 @@ let currentDt = 0;
 globalThis.getDeltaTime = () => currentDt;
 globalThis.getFPS = () => fps;
 
+let loopCount = 0;
 function loop() {
+  loopCount++;
+  if (loopCount === 1) console.log('[main.js] First loop() call - dt calculation starting');
+  if (loopCount % 60 === 0) console.log('[main.js] loop() called', loopCount, 'times');
   const now = performance.now();
   let dt = Math.min(0.1, (now - last) / 1000);
   dt *= _debugPanel.getTimeScale();
@@ -443,8 +449,12 @@ function startLoop() {
     renderer.setAnimationLoop(loop);
     return;
   }
+  console.log('[main.js] Babylon.js path: calling renderer.runRenderLoop');
+  console.log('[main.js] Babylon.js path: calling renderer.runRenderLoop');
   if (renderer && typeof renderer.runRenderLoop === 'function') {
+    console.log('[main.js] Babylon.js path: calling renderer.runRenderLoop');
     // Babylon.js path
+    console.log('[main.js] Babylon.js path: calling renderer.runRenderLoop');
     renderer.runRenderLoop(loop);
     return;
   }

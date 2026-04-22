@@ -2,6 +2,42 @@
 // Nintendo 64 / PlayStation style 3D space combat with full GPU acceleration
 
 // Screen management
+const { drawPanel, print, printCentered, rect, rgba8 } = nova64.draw;
+const {
+  createCube,
+  createPlane,
+  createSphere,
+  destroyMesh,
+  engine,
+  get3DStats,
+  getPosition,
+  rotateMesh,
+  setPosition,
+  setRotation,
+  setScale,
+} = nova64.scene;
+const { setCameraFOV, setCameraPosition, setCameraTarget } = nova64.camera;
+const { setFog, setLightDirection } = nova64.light;
+const { enableBloom, enableDithering, enableFXAA, enablePixelation, enableVignette } = nova64.fx;
+const { btn, btnp, isKeyPressed, key } = nova64.input;
+const { sfx } = nova64.audio;
+const {
+  Screen,
+  addScreen,
+  centerX,
+  createButton,
+  createPanel,
+  drawAllButtons,
+  drawGradientRect,
+  drawText,
+  drawTextOutline,
+  drawTextShadow,
+  setFont,
+  setTextAlign,
+  switchToScreen,
+  uiColors,
+  updateAllButtons,
+} = nova64.ui;
 let gameState = 'start'; // 'start', 'playing', 'gameOver'
 let startScreenTime = 0;
 let uiButtons = [];

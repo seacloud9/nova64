@@ -1,6 +1,13 @@
 // VR Demo — immersive 3D experience with controller interaction
 // Drop cubes and spheres in a virtual room, grab them with controllers.
 
+const { print } = nova64.draw;
+const { createCube, createPlane, createSphere, rotateMesh } = nova64.scene;
+const { setCameraFOV, setCameraPosition, setCameraTarget } = nova64.camera;
+const { createGradientSkybox, createPointLight, setAmbientLight, setFog } = nova64.light;
+const { rotate } = nova64.util;
+const { enableVR, getXRControllers, isXRActive } = nova64.xr;
+
 let objects = [];
 let floor;
 const ROOM_SIZE = 10;

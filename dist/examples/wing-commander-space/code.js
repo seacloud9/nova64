@@ -2,6 +2,25 @@
 // Asteroid field combat with cockpit view like Wing Commander
 // VERSION: v001-INITIAL
 
+const { print, printCentered, rect, rgba8 } = nova64.draw;
+const { createCube, createSphere, destroyMesh, setPosition, setRotation, setScale } = nova64.scene;
+const { setCameraFOV, setCameraPosition, setCameraTarget } = nova64.camera;
+const { setAmbientLight, setLightColor, setLightDirection } = nova64.light;
+const { enableBloom, enableChromaticAberration, enableFXAA, enableVignette } = nova64.fx;
+const { isKeyDown, isKeyPressed } = nova64.input;
+const { sfx } = nova64.audio;
+const { createButton, drawAllButtons, updateAllButtons } = nova64.ui;
+const {
+  cooldownReady,
+  createCooldownSet,
+  createShake,
+  getShakeOffset,
+  triggerShake,
+  updateCooldowns,
+  updateShake,
+  useCooldown,
+} = nova64.util;
+
 console.log('🚀 Wing Commander Space Combat Loading...');
 
 // Helper function for 3D vectors

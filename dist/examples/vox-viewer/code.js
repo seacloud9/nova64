@@ -1,6 +1,11 @@
 // 🎮 MagicaVoxel .VOX Model Viewer for Nova64
 // Demonstrates loading and displaying .vox files as 3D meshes
 
+const { print } = nova64.draw;
+const { clearScene, createPlane, loadVoxModel, rotateMesh } = nova64.scene;
+const { setCameraPosition, setCameraTarget } = nova64.camera;
+const { createGradientSkybox, setAmbientLight, setLightDirection } = nova64.light;
+
 let voxMesh = null;
 let angle = 0;
 let isLoading = true;

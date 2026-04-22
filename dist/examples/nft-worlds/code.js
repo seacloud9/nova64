@@ -2,6 +2,13 @@
 // Enter any token ID, hash, or text to generate a unique deterministic world.
 // Same seed = same world, always.
 
+const { drawRect, prinprintCentered } = nova64.draw;
+const { clearScene, getPosition } = nova64.scene;
+const { setCameraPosition, setCameraTarget } = nova64.camera;
+const { setAmbientLight, setFog } = nova64.light;
+const { key, keyp } = nova64.input;
+const { configureVoxelWorld, resetVoxelWorld, setVoxelDayTime, updateVoxelWorld } = nova64.voxel;
+const { createSeedFromHash, createSeedRNG, exportSeedMetadata, seedToTraits, t } = nova64.data;
 const WORLD_SCHEMA = {
   biome: {
     values: ['forest', 'desert', 'tundra', 'ocean', 'mushroom', 'crystal', 'volcanic', 'floating'],

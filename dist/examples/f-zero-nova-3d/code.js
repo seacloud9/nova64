@@ -2,6 +2,60 @@
 // Ultimate Edition: Synthwave Neon Highway, Boost Mechanics, & Cinematic Bloom
 
 // ── Configuration ──────────────────────────────────────────
+const {
+  drawGlowTextCentered,
+  drawNoise,
+  drawPanel,
+  drawRadialGradient,
+  drawScanlines,
+  line,
+  rect,
+  rgba8,
+} = nova64.draw;
+const {
+  createAdvancedCube,
+  createCube,
+  createInstancedMesh,
+  createPlane,
+  destroyMesh,
+  finalizeInstances,
+  rotateMesh,
+  setInstanceTransform,
+  setPosition,
+  setRotation,
+  setScale,
+} = nova64.scene;
+const { setCameraFOV, setCameraPosition, setCameraTarget } = nova64.camera;
+const { createSpaceSkybox, setAmbientLight, setFog, setLightColor, setLightDirection } =
+  nova64.light;
+const { F, enableBloom, enableFXAA } = nova64.fx;
+const { btn, btnp, isKeyPressed, key } = nova64.input;
+const { sfx } = nova64.audio;
+const {
+  Screen,
+  centerX,
+  clearButtons,
+  createButton,
+  createPanel,
+  drawAllButtons,
+  drawText,
+  drawTextShadow,
+  setFont,
+  setTextAlign,
+  uiColors,
+  updateAllButtons,
+} = nova64.ui;
+const {
+  createHitState,
+  createShake,
+  getShakeOffset,
+  isInvulnerable,
+  triggerHit,
+  triggerShake,
+  updateHitState,
+  updateShake,
+} = nova64.util;
+
 const C = {
   // Materials and Colors
   shipBody: 0x0044ff,

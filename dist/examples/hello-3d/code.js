@@ -1,5 +1,11 @@
 // HELLO 3D WORLD - Simple Nintendo 64/PlayStation style 3D demo
 // Demonstrates basic 3D rendering with GPU acceleration
+//
+// 💡 TIP: All globals also live under the `nova64` namespace:
+//   const { createCube, setPosition, rotateMesh } = nova64.scene;
+//   const { setCameraPosition, setCameraTarget } = nova64.camera;
+//   const { print, rgba8, cls } = nova64.draw;
+//   const { key, isKeyPressed } = nova64.input;
 
 let cubes = [];
 let spheres = [];

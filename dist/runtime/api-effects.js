@@ -148,7 +148,12 @@ export function effectsApi(gpu) {
 
     // CRITICAL: Check if renderer is Babylon.js Engine (doesn't support Three.js post-processing)
     // Babylon.js Engine has 'scenes' property, Three.js WebGLRenderer has 'domElement'
-    if (!renderer || renderer.scenes || renderer.constructor.name === 'Engine' || !renderer.domElement) {
+    if (
+      !renderer ||
+      renderer.scenes ||
+      renderer.constructor.name === 'Engine' ||
+      !renderer.domElement
+    ) {
       logger.warn('⚠️ Post-processing effects not supported with Babylon.js backend');
       return; // Skip initialization for Babylon.js
     }

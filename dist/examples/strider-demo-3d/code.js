@@ -4,6 +4,41 @@
 // Inspired by Gauntlet, Diablo, and Hades
 // ========================================================================
 
+const { drawFloatingTexts3D, print, printCentered, rect, rgba8 } = nova64.draw;
+const {
+  createCube,
+  createCylinder,
+  createPlane,
+  createSphere,
+  createTorus,
+  destroyMesh,
+  setPosition,
+  setRotation,
+  setScale,
+} = nova64.scene;
+const { setCameraFOV, setCameraPosition, setCameraTarget } = nova64.camera;
+const { setAmbientLight, setFog, setLightDirection } = nova64.light;
+const { enableBloom, enableVignette } = nova64.fx;
+const { key, keyp } = nova64.input;
+const { sfx } = nova64.audio;
+const {
+  arc,
+  cooldownProgress,
+  cooldownReady,
+  createCooldownSet,
+  createFloatingTextSystem,
+  createHitState,
+  createShake,
+  getShakeOffset,
+  isVisible,
+  triggerHit,
+  triggerShake,
+  updateCooldowns,
+  updateHitState,
+  updateShake,
+  useCooldown,
+} = nova64.util;
+
 const W = 640,
   H = 360;
 const TILE = 2; // world-space tile size

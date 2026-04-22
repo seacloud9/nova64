@@ -84,6 +84,8 @@
     "release:major": "pnpm version major && git push && git push --tags"
   },
   "dependencies": {
+    "@babylonjs/core": "^7.0.0",
+    "@inquirer/prompts": "^8.4.0",
     "three": "^0.182.0",
     "vite": "^5.4.0",
     "zustand": "^5.0.11"

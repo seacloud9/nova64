@@ -3,6 +3,57 @@
 // photograph creatures, and uncover all points of interest across biomes
 
 // ── World Constants ──
+const {
+  circle,
+  createMinimap,
+  drawGlowText,
+  drawMinimap,
+  drawPixelBorder,
+  drawProgressBar,
+  line,
+  print,
+  printCentered,
+  rect,
+  rectfill,
+  rgba8,
+} = nova64.draw;
+const {
+  clearScene,
+  createCapsule,
+  createCone,
+  createCube,
+  createCylinder,
+  createPlane,
+  createSphere,
+  loadModel,
+  removeMesh,
+  setMeshOpacity,
+  setPosition,
+  setRotation,
+  setScale,
+  updateAnimations,
+} = nova64.scene;
+const { setCameraFOV, setCameraPosition, setCameraTarget } = nova64.camera;
+const {
+  createGradientSkybox,
+  createPointLight,
+  setAmbientLight,
+  setFog,
+  setLightDirection,
+  setPointLightColor,
+} = nova64.light;
+const {
+  createParticleSystem,
+  enableBloom,
+  enableVignette,
+  removeParticleSystem,
+  setParticleEmitter,
+  updateParticles,
+} = nova64.fx;
+const { key, keyp } = nova64.input;
+const { sfx } = nova64.audio;
+const { color, createFloatingTextSystem, noise } = nova64.util;
+
 const WORLD_SIZE = 120;
 const TREE_COUNT = 50;
 const ROCK_COUNT = 30;

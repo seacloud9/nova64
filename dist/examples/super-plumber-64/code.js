@@ -3,6 +3,34 @@
 // Power-ups, moving platforms, 4 enemy types, double jump, checkpoints
 
 // ── Constants ────────────────────────────────────────────────
+const { drawGlowText, print, printCentered, rect, rectfill, rgba8 } = nova64.draw;
+const {
+  createCube,
+  createCylinder,
+  createPlane,
+  createSphere,
+  destroyMesh,
+  rotateMesh,
+  setPosition,
+  setRotation,
+  setScale,
+} = nova64.scene;
+const { setCameraFOV, setCameraPosition, setCameraTarget } = nova64.camera;
+const { setAmbientLight, setFog, setLightColor, setLightDirection } = nova64.light;
+const { enableBloom, enableFXAA } = nova64.fx;
+const { btn, key, keyp } = nova64.input;
+const { sfx } = nova64.audio;
+const {
+  createHitState,
+  createShake,
+  isInvulnerable,
+  isVisible,
+  triggerHit,
+  triggerShake,
+  updateHitState,
+  updateShake,
+} = nova64.util;
+
 const C = {
   sky: 0x44aaff,
   grass: 0x228811,

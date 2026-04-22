@@ -9,6 +9,24 @@
 //   F                 — toggle wireframe HUD overlay
 
 // ── State ───────────────────────────────────────────────────────────────────
+const { drawRoundedRect, poly, print, printCentered, rgba8 } = nova64.draw;
+const {
+  clearScene,
+  createInstancedMesh,
+  createLODMesh,
+  createPlane,
+  finalizeInstances,
+  setInstanceColor,
+  setInstanceTransform,
+  updateLODs,
+} = nova64.scene;
+const { setCameraFOV, setCameraPosition, setCameraTarget } = nova64.camera;
+const { createPointLight, setAmbientLight, setDirectionalLight, setFog, setPointLightPosition } =
+  nova64.light;
+const { F, enableBloom, enableVignette } = nova64.fx;
+const { key, keyp } = nova64.input;
+const { pulse } = nova64.util;
+
 let scene = 1;
 let prevScene = 0;
 let time = 0;

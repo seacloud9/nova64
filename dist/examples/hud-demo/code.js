@@ -2,6 +2,13 @@
 // NML HUD Demo — demonstrates parseCanvasUI for in-game HUD overlaid on a 3D scene.
 // Shows: progressbars, text data-binding, star rating, radar, animated elements.
 
+const { circle, line, rect } = nova64.draw;
+const { createCube, getMesh } = nova64.scene;
+const { setCameraPosition, setCameraTarget } = nova64.camera;
+const { setAmbientLight, setFog } = nova64.light;
+const { parseCanvasUI, renderCanvasUI, updateCanvasUI } = nova64.ui;
+const { color } = nova64.util;
+
 const HUD_XML = `<ui>
   <!-- ── Health / Mana / XP bars ── -->
   <group x="10" y="10" width="200" height="80" clip="false">

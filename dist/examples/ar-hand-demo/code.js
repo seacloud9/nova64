@@ -1,6 +1,14 @@
 // AR Hand Tracking Demo — use your hands to control 3D objects
 // Uses MediaPipe hand landmarks + webcam background for AR effect.
 
+const { print } = nova64.draw;
+const { createSphere, removeMesh, rotateMesh, setPosition, setScale } = nova64.scene;
+const { setCameraFOV, setCameraPosition, setCameraTarget } = nova64.camera;
+const { createPointLight, setAmbientLight } = nova64.light;
+const { getHandGesture, getHandLandmarks, initHandTracking, showCameraBackground } = nova64.input;
+const { remove } = nova64.data;
+const { remap } = nova64.util;
+
 let cursor;
 let particles = [];
 const PARTICLE_LIFETIME = 2;

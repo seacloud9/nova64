@@ -1,6 +1,44 @@
 // CRYSTAL CATHEDRAL 3D - Ultimate Nintendo 64/PlayStation visual showcase
 // Demonstrates the most advanced graphics features: holographic materials, dynamic lighting, atmospheric effects
 
+const {
+  circle,
+  cls,
+  drawGlowTextCentered,
+  drawGradient,
+  drawNoise,
+  drawPanel,
+  drawRadialGradient,
+  drawScanlines,
+  drawStarburst,
+  print,
+  rgba8,
+} = nova64.draw;
+const {
+  createAdvancedCube,
+  createAdvancedSphere,
+  createPlane,
+  get3DStats,
+  rotateMesh,
+  setPosition,
+  setRotation,
+  setScale,
+} = nova64.scene;
+const { setCameraFOV, setCameraPosition, setCameraTarget } = nova64.camera;
+const { setAmbientLight, setFog, setLightColor, setLightDirection } = nova64.light;
+const { enableBloom, enableDithering, enableFXAA, enablePixelation, enableVignette } = nova64.fx;
+const {
+  Screen,
+  centerX,
+  createButton,
+  createPanel,
+  drawAllButtons,
+  drawText,
+  setFont,
+  setTextAlign,
+  uiColors,
+  updateAllButtons,
+} = nova64.ui;
 let cathedral = {
   pillars: [],
   crystals: [],

@@ -2,6 +2,11 @@
 // Shows: hype-style createTween (scalar), easeLinear, onUpdate callback,
 //        createContainer, createTextNode, tweenTo, cursor animation
 
+const { cls, line, print, printCentered, rect, rectfill, screenHeight, screenWidth } = nova64.draw;
+const { Screen, addChild, createContainer, createTextNode, drawStage } = nova64.ui;
+const { createTween } = nova64.tween;
+const { t } = nova64.data;
+
 let W = 640,
   H = 360;
 

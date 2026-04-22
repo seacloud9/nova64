@@ -87,11 +87,20 @@ export class GpuBabylon {
     });
 
     this.scene = new Scene(this.engine);
+
+    // CRITICAL: Use right-handed coordinate system to match Three.js
+    // Babylon.js is left-handed by default, but Three.js is right-handed
+    // This ensures player controls and positioning work identically in both backends
+    this.scene.useRightHandedSystem = true;
+
     // TEMPORARY DEBUG: Use bright magenta clear color to verify canvas is visible
     this.scene.clearColor = new Color4(1, 0, 1, 1); // BRIGHT MAGENTA for testing
     // this.scene.clearColor = new Color4(0.04, 0.04, 0.06, 1); // Original dark blue
 
-    console.log('[GpuBabylon] Scene created, clearColor:', this.scene.clearColor);
+    console.log(
+      '[GpuBabylon] Scene created with RIGHT-HANDED coordinate system, clearColor:',
+      this.scene.clearColor
+    );
     // Free-look camera (position-based, matches Nova64's camera model)
     this.camera = new UniversalCamera('cam', new Vector3(0, 5, -10), this.scene);
     this.camera.setTarget(Vector3.Zero());

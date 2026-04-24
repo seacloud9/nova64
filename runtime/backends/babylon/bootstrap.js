@@ -91,6 +91,9 @@ export function initializeBabylonBackend(self, canvas, w, h) {
 
   self._meshes = new Map();
   self._instancedMeshes = new Map();
+  self._lodObjects = new Map();
+  self._particleSystems = new Map();
+  self._particleCounter = 0;
   self._counter = 0;
   self._cameraTarget = Vector3.Zero();
   self._debugFrameCount = 0;

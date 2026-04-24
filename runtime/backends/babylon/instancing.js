@@ -1,9 +1,91 @@
 // runtime/backends/babylon/instancing.js
-// Thin-instance support for the Babylon backend.
+// Thin-instance support and LOD helpers for the Babylon backend.
 
-import { Matrix, MeshBuilder, Quaternion, StandardMaterial, Vector3 } from '@babylonjs/core';
+import {
+  Matrix,
+  MeshBuilder,
+  Quaternion,
+  StandardMaterial,
+  TransformNode,
+  Vector3,
+} from '@babylonjs/core';
 
-import { hexToColor3 } from './common.js';
+import { hexToColor3, normalizePosition, normalizeVectorArgs } from './common.js';
+
+function createLodLevelMesh(self, lodId, levelIndex, level = {}) {
+  const { shape = 'cube', size = 1, color = 0xffffff, options = {} } = level;
+  const name = `lod_${lodId}_level_${levelIndex}`;
+  let mesh;
+
+  switch (shape) {
+    case 'sphere':
+      mesh = MeshBuilder.CreateSphere(
+        name,
+        { diameter: size * 2, segments: options.segments || 8 },
+        self.scene
+      );
+      break;
+    case 'plane':
+      mesh = MeshBuilder.CreatePlane(
+        name,
+        { width: size, height: options.height || size },
+        self.scene
+      );
+      break;
+    case 'cylinder':
+      mesh = MeshBuilder.CreateCylinder(
+        name,
+        {
+          diameterTop: size,
+          diameterBottom: size,
+          height: options.height || size * 2,
+          tessellation: options.segments || 8,
+        },
+        self.scene
+      );
+      break;
+    case 'cone':
+      mesh = MeshBuilder.CreateCylinder(
+        name,
+        {
+          diameterTop: 0,
+          diameterBottom: size,
+          height: options.height || size * 2,
+          tessellation: options.segments || 8,
+        },
+        self.scene
+      );
+      break;
+    case 'cube':
+    default:
+      mesh = MeshBuilder.CreateBox(name, { size }, self.scene);
+      break;
+  }
+
+  mesh.material = self.createN64Material({ color, ...options });
+  mesh.receiveShadows = true;
+  mesh.castShadow = true;
+  return mesh;
+}
+
+function updateSingleLod(self, entry) {
+  if (!entry || entry.levels.length === 0) return;
+
+  const rootPosition = entry.root.getAbsolutePosition?.() ?? entry.root.position;
+  const distance = Vector3.Distance(self.camera.position, rootPosition);
+  let nextIndex = 0;
+
+  for (let i = 0; i < entry.levels.length; i++) {
+    if (distance >= entry.levels[i].distance) nextIndex = i;
+    else break;
+  }
+
+  if (entry.activeIndex === nextIndex) return;
+  entry.activeIndex = nextIndex;
+  entry.levels.forEach((level, index) => {
+    level.mesh.isVisible = index === nextIndex;
+  });
+}
 
 export function createBabylonInstancingApi(self) {
   return {
@@ -138,6 +220,59 @@ export function createBabylonInstancingApi(self) {
       self._instancedMeshes.delete(instancedId);
       self._meshes.delete(instancedId);
       return true;
+    },
+
+    createLODMesh(levels = [], position = [0, 0, 0]) {
+      const lodId = ++self._counter;
+      const root = new TransformNode(`lod_${lodId}`, self.scene);
+      root.position.copyFrom(normalizePosition(position));
+
+      const sortedLevels = [...levels].sort((a, b) => (a.distance ?? 0) - (b.distance ?? 0));
+      const levelEntries = sortedLevels.map((level, index) => {
+        const mesh = createLodLevelMesh(self, lodId, index, level);
+        mesh.parent = root;
+        mesh.isVisible = false;
+        return {
+          mesh,
+          distance: Number(level.distance) || 0,
+        };
+      });
+
+      const entry = {
+        root,
+        levels: levelEntries,
+        activeIndex: -1,
+      };
+
+      self._lodObjects.set(lodId, entry);
+      self._meshes.set(lodId, root);
+      updateSingleLod(self, entry);
+      return lodId;
+    },
+
+    setLODPosition(lodId, x, y, z) {
+      const entry = self._lodObjects.get(lodId);
+      if (!entry) return false;
+      const position = normalizeVectorArgs(x, y, z, 0);
+      entry.root.position.copyFromFloats(position.x, position.y, position.z);
+      updateSingleLod(self, entry);
+      return true;
+    },
+
+    removeLODMesh(lodId) {
+      const entry = self._lodObjects.get(lodId);
+      if (!entry) return false;
+      for (const level of entry.levels) {
+        level.mesh.material?.dispose?.();
+      }
+      entry.root.dispose?.();
+      self._lodObjects.delete(lodId);
+      self._meshes.delete(lodId);
+      return true;
+    },
+
+    updateLODs() {
+      self._lodObjects.forEach(entry => updateSingleLod(self, entry));
     },
   };
 }

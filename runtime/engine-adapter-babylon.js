@@ -47,6 +47,38 @@ function toColor3(BABYLON, colorOpt) {
   return null;
 }
 
+function applyBabylonTextureColorSpace(texture) {
+  if (!texture) return texture;
+  if ('gammaSpace' in texture) texture.gammaSpace = true;
+  return texture;
+}
+
+function textureHasTransparency(data) {
+  if (!data?.length) return false;
+  for (let i = 3; i < data.length; i += 4) {
+    if ((data[i] ?? 255) < 255) return true;
+  }
+  return false;
+}
+
+function configureStandardTextureAlpha(material, texture, matOpts = {}) {
+  if (!material || !texture) return;
+
+  const needsAlpha =
+    texture.hasAlpha === true || !!matOpts.transparent || matOpts.alphaTest !== undefined;
+  if (!needsAlpha) return;
+
+  texture.hasAlpha = true;
+  material.opacityTexture = texture;
+
+  if ('useAlphaFromDiffuseTexture' in material) {
+    material.useAlphaFromDiffuseTexture = true;
+  }
+  if ('useAlphaFromAlbedoTexture' in material) {
+    material.useAlphaFromAlbedoTexture = true;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Factory
 // ---------------------------------------------------------------------------
@@ -136,7 +168,11 @@ export function createBabylonEngineAdapter(BABYLON, scene, opts = {}) {
 
         const diffuse = toColor3(BABYLON, matOpts.color);
         if (diffuse) mat.albedoColor = diffuse;
-        if (matOpts.map) mat.albedoTexture = matOpts.map;
+        if (matOpts.map) {
+          const map = applyBabylonTextureColorSpace(matOpts.map);
+          mat.albedoTexture = map;
+          configureStandardTextureAlpha(mat, map, matOpts);
+        }
 
         if (matOpts.emissive !== undefined) {
           mat.emissiveColor = toColor3(BABYLON, matOpts.emissive) ?? mat.emissiveColor;
@@ -150,11 +186,21 @@ export function createBabylonEngineAdapter(BABYLON, scene, opts = {}) {
 
         if (type === 'basic') {
           mat.disableLighting = true;
-          // Emissive = diffuse so the surface appears flat-lit regardless of lights
-          if (diffuse) mat.emissiveColor = diffuse;
+          mat.specularColor = new BABYLON.Color3(0, 0, 0);
+          mat.emissiveColor = diffuse ?? new BABYLON.Color3(1, 1, 1);
         }
 
-        if (matOpts.map) mat.diffuseTexture = matOpts.map;
+        if (matOpts.map) {
+          const map = applyBabylonTextureColorSpace(matOpts.map);
+          mat.diffuseTexture = map;
+          if (type === 'basic') {
+            mat.emissiveTexture = map;
+            if (!diffuse) {
+              mat.diffuseColor = new BABYLON.Color3(1, 1, 1);
+            }
+          }
+          configureStandardTextureAlpha(mat, map, matOpts);
+        }
 
         if (matOpts.emissive !== undefined) {
           mat.emissiveColor = toColor3(BABYLON, matOpts.emissive) ?? mat.emissiveColor;
@@ -202,6 +248,8 @@ export function createBabylonEngineAdapter(BABYLON, scene, opts = {}) {
         false, // invertY
         samplingMode
       );
+      applyBabylonTextureColorSpace(tex);
+      tex.hasAlpha = textureHasTransparency(pixels);
 
       if (texOpts.wrap) {
         const wrapMode = WRAP[texOpts.wrap] ?? WRAP.clamp;
@@ -230,6 +278,8 @@ export function createBabylonEngineAdapter(BABYLON, scene, opts = {}) {
         generateMipmaps,
         samplingMode
       );
+      applyBabylonTextureColorSpace(tex);
+      tex.hasAlpha = true;
 
       // Copy source canvas content into the DynamicTexture's internal canvas
       if (canvas) {

@@ -9,7 +9,10 @@ import { createBabylonTransformsApi } from './transforms.js';
 import { createBabylonCameraApi } from './camera.js';
 import { createBabylonLightsApi } from './lights.js';
 import { createBabylonModelsApi } from './models.js';
+import { createBabylonSkyboxApi } from './skybox.js';
+import { createBabylonPbrApi } from './pbr.js';
 import { createBabylonInstancingApi } from './instancing.js';
+import { createBabylonParticlesApi } from './particles.js';
 import { createBabylonSurfaceApi } from './surface.js';
 
 export class GpuBabylon {
@@ -25,7 +28,10 @@ export class GpuBabylon {
       createBabylonCameraApi(this),
       createBabylonLightsApi(this),
       createBabylonModelsApi(this),
+      createBabylonSkyboxApi(this),
+      createBabylonPbrApi(this),
       createBabylonInstancingApi(this),
+      createBabylonParticlesApi(this),
       createBabylonSurfaceApi(this)
     );
   }

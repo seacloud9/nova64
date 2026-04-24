@@ -3,15 +3,8 @@
 
 // ── State ──
 const { drawProgressBar, prinprintCentered, rectfill, rgba8 } = nova64.draw;
-const {
-  createCube,
-  createPlane,
-  destroyMesh,
-  getMesh,
-  setPosition,
-  setRotation,
-  setScale,
-} = nova64.scene;
+const { createCube, createPlane, destroyMesh, getMesh, setPosition, setRotation, setScale } =
+  nova64.scene;
 const engine = nova64.scene.engine ?? globalThis.engine;
 const { getCamera, setCameraFOV, setCameraPosition, setCameraTarget } = nova64.camera;
 const {
@@ -38,6 +31,9 @@ let mapNames = [];
 let currentMapIdx = 0;
 let menuClickReady = false;
 let menuEnterTime = 0;
+let texturedWallCount = 0;
+let texturedSpriteCount = 0;
+let texturedFloorCount = 0;
 
 let player = { x: 0, y: 1.5, z: 0, yaw: 0, pitch: 0, health: 100, armor: 0, ammo: 50, score: 0 };
 let playerFloorBase = 0; // Y offset of the floor the player stands on
@@ -77,6 +73,9 @@ function exposeDebugState() {
     ammo: player.ammo,
     wallCount: entities.walls.length,
     enemyCount: entities.enemies.length,
+    texturedWallCount,
+    texturedSpriteCount,
+    texturedFloorCount,
   });
 }
 
@@ -270,6 +269,9 @@ function cleanupLevel() {
   for (let l of enemyLights) removeLight(l);
   enemyLights = [];
   entities = { walls: [], enemies: [], bullets: [], particles: [], pickups: [], enemyBullets: [] };
+  texturedWallCount = 0;
+  texturedSpriteCount = 0;
+  texturedFloorCount = 0;
 }
 
 function startLevel() {
@@ -337,6 +339,7 @@ function _startLevelInner() {
         }
 
         entities.walls.push({ m, x: w.x, z: w.z, r: 0 });
+        texturedWallCount++;
         textured = true;
       }
     }
@@ -421,6 +424,7 @@ function _startLevelInner() {
             side: 'double',
           })
         );
+        texturedFloorCount++;
       }
     }
   }
@@ -507,6 +511,7 @@ function spawnEnemy(x, z, type, doomType) {
           side: 'double',
         })
       );
+      texturedSpriteCount++;
       // Hide cube meshes
       getMesh(body).visible = false;
       getMesh(head).visible = false;
@@ -641,6 +646,7 @@ function spawnPickupAt(x, y, z, type, doomType) {
           side: 'double',
         })
       );
+      texturedSpriteCount++;
       getMesh(m).visible = false;
     }
   }

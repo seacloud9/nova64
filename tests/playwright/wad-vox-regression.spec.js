@@ -53,6 +53,9 @@ test.describe('WAD Regression', () => {
       expect(playingState?.wallCount ?? 0).toBeGreaterThan(0);
       expect(playingState?.playerHealth ?? 0).toBeGreaterThan(0);
       expect(playingState?.ammo ?? 0).toBeGreaterThan(0);
+      expect(playingState?.texturedWallCount ?? 0).toBeGreaterThan(0);
+      expect(playingState?.texturedSpriteCount ?? 0).toBeGreaterThan(0);
+      expect(playingState?.texturedFloorCount ?? 0).toBeGreaterThan(0);
 
       await page.waitForTimeout(1000);
 
@@ -84,6 +87,25 @@ test.describe('VOX Regression', () => {
       const errorText = getErrorText(logs);
       expect(errorText).not.toContain('Failed to load .vox model:');
       expect(errorText).toBe('');
+    });
+  }
+});
+
+test.describe('Wizardry Regression', () => {
+  for (const backend of BACKENDS) {
+    test(`wizardry-3d: reactive game store should initialize in ${backend}`, async ({ page }) => {
+      const logs = collectConsole(page);
+
+      await loadCart(page, 'wizardry-3d', backend);
+      await waitFor3DScene(page, backend);
+      await page.waitForTimeout(1500);
+
+      const metrics = extractMetrics(logs);
+      const errorText = getErrorText(logs);
+
+      expect(metrics.printCalls).toContain('WIZARDRY');
+      expect(errorText).not.toContain('createState is not a function');
+      expect(errorText).not.toContain('Cart init() threw:');
     });
   }
 });

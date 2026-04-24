@@ -1,7 +1,7 @@
 // runtime/backends/babylon/primitives.js
 // Material, geometry, and primitive mesh creation for Babylon.
 
-import { MeshBuilder } from '@babylonjs/core';
+import { Mesh, MeshBuilder } from '@babylonjs/core';
 
 import { normalizePosition } from './common.js';
 
@@ -99,7 +99,11 @@ export function createBabylonPrimitivesApi(self) {
         case 'plane':
           mesh = MeshBuilder.CreatePlane(
             name,
-            { width: geometryDesc.width, height: geometryDesc.height },
+            {
+              width: geometryDesc.width,
+              height: geometryDesc.height,
+              sideOrientation: Mesh.DOUBLESIDE,
+            },
             self.scene
           );
           break;

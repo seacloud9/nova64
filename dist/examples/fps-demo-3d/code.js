@@ -4,15 +4,8 @@
 // 3 levels, 4 enemy types, pickups, boss fights — now with .WAD file support!
 
 const { drawProgressBar, prinprintCentered, rectfill, rgba8 } = nova64.draw;
-const {
-  createCube,
-  createPlane,
-  destroyMesh,
-  getMesh,
-  setPosition,
-  setRotation,
-  setScale,
-} = nova64.scene;
+const { createCube, createPlane, destroyMesh, getMesh, setPosition, setRotation, setScale } =
+  nova64.scene;
 const engine = nova64.scene.engine ?? globalThis.engine;
 const { setCameraFOV, setCameraPosition, setCameraTarget } = nova64.camera;
 const {

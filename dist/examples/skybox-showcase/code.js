@@ -44,12 +44,27 @@ let propIds = [];
 
 const SCENE_NAMES = ['Deep Space', 'Dense Starfield', 'Sunset Gradient', 'Studio IBL', 'Void'];
 
-export async function init() {
-  setCameraFOV(70);
-  buildScene(0);
+async function applyStudioSkybox() {
+  try {
+    await createImageSkybox([
+      '/assets/sky/studio/px.png',
+      '/assets/sky/studio/nx.png',
+      '/assets/sky/studio/py.png',
+      '/assets/sky/studio/ny.png',
+      '/assets/sky/studio/pz.png',
+      '/assets/sky/studio/nz.png',
+    ]);
+  } catch (e) {
+    createGradientSkybox(0x1a2a3a, 0x0a0a14);
+  }
 }
 
-function buildScene(idx) {
+export async function init() {
+  setCameraFOV(70);
+  await buildScene(0);
+}
+
+async function buildScene(idx) {
   propIds = [];
   clearScene();
 
@@ -64,7 +79,7 @@ function buildScene(idx) {
   if (idx === 0) buildDeepSpace();
   else if (idx === 1) buildDenseStars();
   else if (idx === 2) buildSunset();
-  else if (idx === 3) buildStudio();
+  else if (idx === 3) await buildStudio();
   else if (idx === 4) buildVoid();
 }
 
@@ -177,19 +192,8 @@ function buildSunset() {
 }
 
 // ── Scene 3: Studio IBL — cube-map reflections with PBR objects ─────────────
-function buildStudio() {
-  try {
-    createImageSkybox([
-      '/assets/sky/studio/px.png',
-      '/assets/sky/studio/nx.png',
-      '/assets/sky/studio/py.png',
-      '/assets/sky/studio/ny.png',
-      '/assets/sky/studio/pz.png',
-      '/assets/sky/studio/nz.png',
-    ]);
-  } catch (e) {
-    createGradientSkybox(0x1a2a3a, 0x0a0a14);
-  }
+async function buildStudio() {
+  await applyStudioSkybox();
   setFog(0x060e1a, 20, 50);
   setAmbientLight(0x2a3a55, 1.6);
 
@@ -306,7 +310,7 @@ export function update(dt) {
     if (keyp('Digit' + (i + 1)) || keyp('Numpad' + (i + 1))) {
       if (scene !== i) {
         scene = i;
-        buildScene(i);
+        void buildScene(i);
       }
     }
   }

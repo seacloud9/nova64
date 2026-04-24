@@ -158,8 +158,8 @@ Nova64 is a JavaScript 3D fantasy console built around a shared runtime, a cart-
 
 GPU backends:
 
-- `runtime/gpu-threejs.js` - primary backend
-- `runtime/gpu-babylon.js` - experimental Babylon.js backend
+- `runtime/gpu-threejs.js` - public Three.js backend entrypoint
+- `runtime/gpu-babylon.js` - public Babylon.js backend entrypoint
 - `runtime/gpu-webgl2.js` - fallback backend
 - `runtime/gpu-canvas2d.js` - compatibility fallback
 

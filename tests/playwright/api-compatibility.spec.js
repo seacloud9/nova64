@@ -156,7 +156,135 @@ test.describe('Backend Surface Parity', () => {
     expect(threeCaps).toMatchObject(THREEJS_BACKEND_CAPABILITIES);
     expect(babylonCaps).toMatchObject(BABYLON_BACKEND_CAPABILITIES);
     expect(threeCaps.skybox).toBe(true);
-    expect(babylonCaps.skybox).toBe(false);
+    expect(babylonCaps.skybox).toBe(true);
+    expect(threeCaps.lod).toBe(true);
+    expect(babylonCaps.lod).toBe(true);
+    expect(threeCaps.raycast).toBe(true);
+    expect(babylonCaps.raycast).toBe(true);
+    expect(threeCaps.sceneSetup).toBe(true);
+    expect(babylonCaps.sceneSetup).toBe(true);
+    expect(threeCaps.pbrProperties).toBe(true);
+    expect(babylonCaps.pbrProperties).toBe(true);
+  });
+
+  test('setupScene and raycastFromCamera should work in both backends', async ({ page }) => {
+    for (const backend of BACKENDS) {
+      await openApiSandbox(page, backend);
+
+      const result = await page.evaluate(async () => {
+        clearScene();
+        setupScene({
+          camera: { x: 0, y: 0, z: 10, targetX: 0, targetY: 0, targetZ: 0, fov: 70 },
+          light: { direction: [-1, -1, -1], color: 0xffffff, ambient: 0x666666 },
+          fog: { color: 0x111122, near: 5, far: 40 },
+        });
+
+        const meshId = createCube(2, 0xff6600, [0, 0, 0]);
+        await new Promise(resolve => setTimeout(resolve, 150));
+
+        const canvas = document.getElementById('screen');
+        const hit = raycastFromCamera(canvas.clientWidth / 2, canvas.clientHeight / 2);
+        const camera = nova64.camera.getCamera();
+
+        return {
+          meshId,
+          hit,
+          cameraPosition: {
+            x: Number(camera?.position?.x ?? 0),
+            y: Number(camera?.position?.y ?? 0),
+            z: Number(camera?.position?.z ?? 0),
+          },
+        };
+      });
+
+      expect(result.cameraPosition).toEqual({ x: 0, y: 0, z: 10 });
+      expect(result.hit?.meshId, `raycast should hit created cube in ${backend}`).toBe(result.meshId);
+    }
+  });
+
+  test('PBR property helpers and LOD helpers should work in both backends', async ({ page }) => {
+    for (const backend of BACKENDS) {
+      await openApiSandbox(page, backend);
+
+      const result = await page.evaluate(() => {
+        clearScene();
+        const meshId = createSphere(1.5, 0xcccccc, [0, 0, -4], 16);
+        const pbrUpdated = setPBRProperties(meshId, {
+          metalness: 0.75,
+          roughness: 0.2,
+          envMapIntensity: 1.5,
+        });
+
+        const lodId = createLODMesh(
+          [
+            { shape: 'sphere', size: 1.5, color: 0xff8844, distance: 0, options: { segments: 8 } },
+            { shape: 'cube', size: 1.5, color: 0xaa5533, distance: 10 },
+          ],
+          [0, 0, -8]
+        );
+
+        return {
+          pbrUpdated,
+          lodId,
+          lodMoved: setLODPosition(lodId, 0, 0, -6),
+          lodUpdated: (updateLODs(), true),
+          lodRemoved: removeLODMesh(lodId),
+        };
+      });
+
+      expect(result.pbrUpdated, `setPBRProperties should work in ${backend}`).toBe(true);
+      expect(result.lodId, `createLODMesh should return an id in ${backend}`).toBeTruthy();
+      expect(result.lodMoved, `setLODPosition should work in ${backend}`).toBe(true);
+      expect(result.lodUpdated, `updateLODs should run in ${backend}`).toBe(true);
+      expect(result.lodRemoved, `removeLODMesh should work in ${backend}`).toBe(true);
+    }
+  });
+
+  test('skybox helpers should work in both backends', async ({ page }) => {
+    for (const backend of BACKENDS) {
+      await openApiSandbox(page, backend);
+
+      const result = await page.evaluate(async () => {
+        clearSkybox();
+
+        const gradientSky = createGradientSkybox({ topColor: 0x112244, bottomColor: 0x334466 });
+        const solidSky = createSolidSkybox(0x05070b);
+        clearSkybox();
+
+        const imageSky = await createImageSkybox([
+          '/assets/sky/studio/px.png',
+          '/assets/sky/studio/nx.png',
+          '/assets/sky/studio/py.png',
+          '/assets/sky/studio/ny.png',
+          '/assets/sky/studio/pz.png',
+          '/assets/sky/studio/nz.png',
+        ]);
+
+        const spaceSky = createSpaceSkybox({
+          starCount: 96,
+          starSize: 1.25,
+          nebulae: true,
+          nebulaColor: 0x220044,
+        });
+
+        enableSkyboxAutoAnimate(0.5);
+        await new Promise(resolve => setTimeout(resolve, 120));
+        disableSkyboxAutoAnimate();
+        clearSkybox();
+
+        return {
+          gradientSky: !!gradientSky,
+          solidSky: !!solidSky,
+          imageSky: !!imageSky,
+          spaceSky: !!spaceSky,
+        };
+      });
+
+      expect(result.gradientSky, `createGradientSkybox should work in ${backend}`).toBe(true);
+      expect(result.solidSky, `createSolidSkybox should work in ${backend}`).toBe(true);
+      expect(result.imageSky, `createImageSkybox should work in ${backend}`).toBe(true);
+      expect(result.spaceSky, `createSpaceSkybox should work in ${backend}`).toBe(true);
+    }
   });
 
   test('unsupported Babylon capabilities should fail safely instead of crashing carts', async ({
@@ -169,15 +297,26 @@ test.describe('Backend Surface Parity', () => {
 
     const result = await page.evaluate(() => {
       const caps = nova64.scene.getBackendCapabilities();
-      const skyboxResult = createGradientSkybox(0x87ceeb, 0x000033);
       const ditheringResult = enableDithering(true);
+      const particleSystemId = createParticleSystem(32);
+      const particleStats = getParticleStats(particleSystemId);
+      const particleEmitterResult = setParticleEmitter(particleSystemId, { emitterX: 1, emitterY: 2 });
+      const particleBurstResult = burstParticles(particleSystemId, 8);
+      const particleUpdateResult = updateParticles(1 / 60);
+      const particleRemoved = removeParticleSystem(particleSystemId);
 
       return {
         backend: caps.backend,
         skybox: caps.skybox,
         dithering: caps.dithering,
-        skyboxResult,
+        particles: caps.particles,
         ditheringResult,
+        particleSystemId,
+        particleStats,
+        particleEmitterResult,
+        particleBurstResult,
+        particleUpdateResult,
+        particleRemoved,
       };
     });
 
@@ -187,11 +326,18 @@ test.describe('Backend Surface Parity', () => {
       .join('\n');
 
     expect(result.backend).toBe('babylon');
-    expect(result.skybox).toBe(false);
+    expect(result.skybox).toBe(true);
     expect(result.dithering).toBe(false);
-    expect(result.skyboxResult).toBeNull();
+    expect(result.particles).toBe(false);
     expect(result.ditheringResult).toBe(false);
+    expect(result.particleSystemId).toBe(-1);
+    expect(result.particleStats).toEqual({ active: 0, max: 32 });
+    expect(result.particleEmitterResult).toBe(false);
+    expect(result.particleBurstResult).toBe(8);
+    expect(result.particleUpdateResult).toBe(0);
+    expect(result.particleRemoved).toBe(true);
     expect(errorText).not.toContain('gpu.endFrame() error:');
     expect(errorText).not.toContain('Cart update() error:');
+    expect(errorText).not.toContain('Cart draw() error:');
   });
 });

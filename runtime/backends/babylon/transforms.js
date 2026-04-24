@@ -10,6 +10,8 @@ export function createBabylonTransformsApi(self) {
       if (!mesh) return false;
       mesh.dispose?.();
       self._meshes.delete(id);
+      self._instancedMeshes?.delete?.(id);
+      self._lodObjects?.delete?.(id);
       return true;
     },
 

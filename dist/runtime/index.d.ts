@@ -283,6 +283,7 @@ export interface ThreeDApiInstance {
   destroyMesh(id: MeshId): void;
   removeMesh(id: MeshId): void;
   getMesh(id: MeshId): THREE.Mesh | undefined;
+  getBackendCapabilities(): Record<string, boolean | string>;
 
   // Model loading
   loadModel(
@@ -304,8 +305,8 @@ export interface ThreeDApiInstance {
   setPosition(meshId: MeshId, x: number, y: number, z: number): void;
   setRotation(meshId: MeshId, x: number, y: number, z: number): void;
   setScale(meshId: MeshId, x: number, y: number, z: number): void;
-  getPosition(meshId: MeshId): { x: number; y: number; z: number } | null;
-  getRotation(meshId: MeshId): { x: number; y: number; z: number } | null;
+  getPosition(meshId: MeshId): [number, number, number] | null;
+  getRotation(meshId: MeshId): [number, number, number] | null;
   rotateMesh(meshId: MeshId, dX: number, dY: number, dZ: number): void;
   moveMesh(meshId: MeshId, x: number, y: number, z: number): void;
 
@@ -723,8 +724,8 @@ export declare function createBabylonEngineAdapter(
  * GpuBabylon — standalone Babylon.js GPU backend for Nova64.
  *
  * Provides the same cart-facing API as the Three.js backend
- * (createCube, setCameraPosition, rotateMesh, etc.) implemented directly in
- * Babylon.js without passing through api-3d/primitives.js.
+ * (createCube, setCameraPosition, rotateMesh, etc.) through a compatibility
+ * surface backed by runtime/backends/babylon/* modules.
  *
  * Phase 2 implementation — see runtime/gpu-babylon.js for full feature list.
  */
@@ -740,12 +741,13 @@ export declare class GpuBabylon {
   destroyMesh(id: number): void;
   removeMesh(id: number): void;
   getMesh(id: number): object | null;
+  getBackendCapabilities(): Record<string, boolean | string>;
 
   // Transforms
   setPosition(id: number, x: number, y: number, z: number): void;
   setScale(id: number, x: number, y: number, z: number): void;
   setRotation(id: number, x: number, y: number, z: number): void;
-  getPosition(id: number): { x: number; y: number; z: number };
+  getPosition(id: number): [number, number, number] | null;
   rotateMesh(id: number, rx: number, ry: number, rz: number): void;
 
   // Camera
@@ -757,7 +759,14 @@ export declare class GpuBabylon {
   setAmbientLight(color?: number, intensity?: number): void;
   setLightDirection(x: number, y: number, z: number): void;
   setLightColor(color: number): void;
-  createPointLight(color?: number, intensity?: number, x?: number, y?: number, z?: number): number;
+  createPointLight(
+    color?: number,
+    intensity?: number,
+    distanceOrPosition?: number | [number, number, number] | { x: number; y: number; z: number },
+    x?: number | [number, number, number] | { x: number; y: number; z: number },
+    y?: number,
+    z?: number
+  ): number;
 
   // Scene
   setFog(color?: number, near?: number, far?: number): void;
@@ -978,6 +987,8 @@ export interface Nova64CartGlobals {
   createCamera2D(opts?: Camera2DOpts): Camera2D;
   beginCamera2D(cam: Camera2D): void;
   endCamera2D(cam: Camera2D): void;
+  cam2DApply(cam: Camera2D): void;
+  cam2DReset(cam: Camera2D): void;
   cam2DFollow(cam: Camera2D, targetX: number, targetY: number, dt: number, lerpFactor?: number): void;
   cam2DShake(cam: Camera2D, magnitude: number, duration: number): void;
   updateCamera2D(cam: Camera2D, dt: number): void;

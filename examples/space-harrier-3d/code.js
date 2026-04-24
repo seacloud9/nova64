@@ -470,6 +470,7 @@ function startGame() {
   if (gameState === 'playing') return;
   inputLockoutCD.timer = 0.3;
   gameState = 'playing';
+  console.log('[space-harrier] ✅ gameState is now: playing');
   setPlayerVisible(true);
   game.score = 0;
   game.player.health = 100;

@@ -3,16 +3,9 @@
 
 // ── State ──
 const { drawProgressBar, prinprintCentered, rectfill, rgba8 } = nova64.draw;
-const {
-  createCube,
-  createPlane,
-  destroyMesh,
-  engine,
-  getMesh,
-  setPosition,
-  setRotation,
-  setScale,
-} = nova64.scene;
+const { createCube, createPlane, destroyMesh, getMesh, setPosition, setRotation, setScale } =
+  nova64.scene;
+const engine = nova64.scene.engine ?? globalThis.engine;
 const { getCamera, setCameraFOV, setCameraPosition, setCameraTarget } = nova64.camera;
 const {
   createPointLight,
@@ -64,6 +57,22 @@ let killFlash = 0;
 let muzzleFlash = 0;
 let shootCooldown = 0;
 
+function exposeDebugState() {
+  if (typeof globalThis === 'undefined') return;
+  globalThis.__nova64WadDemoState = () => ({
+    gameState,
+    loadProgress,
+    loadError,
+    engineAvailable: !!(nova64.scene.engine ?? globalThis.engine),
+    mapCount: mapNames.length,
+    currentMap: mapNames[currentMapIdx] ?? null,
+    playerHealth: player.health,
+    ammo: player.ammo,
+    wallCount: entities.walls.length,
+    enemyCount: entities.enemies.length,
+  });
+}
+
 // ── Materials ──
 const MAT = {
   floor: { material: 'standard', color: 0x223344, roughness: 1.0 },
@@ -85,6 +94,7 @@ const FOG_COLORS = [0x001122, 0x221100, 0x110022, 0x002211, 0x220011, 0x111122];
 
 // ── Init ──
 export function init() {
+  exposeDebugState();
   shake = createShake({ maxIntensity: 8, decay: 0.88, noiseScale: 0.15 });
   setFog(0x001122, 8, 80);
   setAmbientLight(0x334466, 0.4);
@@ -170,48 +180,26 @@ export function init() {
 }
 
 async function loadWAD() {
+  gameState = 'loading';
+  loadProgress = 0.05;
+  loadError = null;
   try {
-    const resp = await fetch('/freedoom1.wad');
+    const resp = await fetch('/assets/freedoom1.wad', { cache: 'no-store' });
     if (!resp.ok) {
       gameState = 'missing';
       return;
     }
-    const total = parseInt(resp.headers.get('content-length') || '0', 10);
-    const reader = resp.body.getReader();
-    const chunks = [];
-    let received = 0;
+    loadProgress = 0.2;
 
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      chunks.push(value);
-      received += value.length;
-      if (total > 0) loadProgress = received / total;
-    }
-
-    const buf = new Uint8Array(received);
-    let offset = 0;
-    for (const chunk of chunks) {
-      buf.set(chunk, offset);
-      offset += chunk.length;
-    }
-
-    wadLoader = new WADLoader();
-    wadLoader.load(buf.buffer);
-    mapNames = wadLoader.getMapNames();
-
-    if (mapNames.length === 0) {
-      loadError = 'No maps found in WAD';
+    // Streamed reads can stall on large local WAD assets under Playwright/Vite,
+    // so prefer the simpler arrayBuffer path for the bundled file.
+    const buf = await resp.arrayBuffer();
+    if (!buf.byteLength) {
+      loadError = 'Bundled WAD file was empty';
       return;
     }
-
-    // Initialize texture manager
-    texMgr = new WADTextureManager(wadLoader);
-    texMgr.init();
-
-    gameState = 'menu';
-    menuClickReady = false;
-    menuEnterTime = gameTime;
+    loadProgress = 0.7;
+    initializeWAD(buf);
   } catch (err) {
     gameState = 'missing';
     console.error('WAD load failed:', err);
@@ -220,29 +208,40 @@ async function loadWAD() {
 
 async function loadWADFromFile(file) {
   gameState = 'loading';
-  loadProgress = 0;
+  loadProgress = 0.05;
   loadError = null;
   try {
     const buf = await file.arrayBuffer();
-    loadProgress = 1;
-    wadLoader = new WADLoader();
-    wadLoader.load(buf);
-    mapNames = wadLoader.getMapNames();
-    if (mapNames.length === 0) {
-      loadError = 'No maps found in WAD';
+    if (!buf.byteLength) {
+      loadError = 'Selected WAD file was empty';
       return;
     }
-    // Initialize texture manager
-    texMgr = new WADTextureManager(wadLoader);
-    texMgr.init();
-
-    gameState = 'menu';
-    menuClickReady = false;
-    menuEnterTime = gameTime;
+    loadProgress = 0.7;
+    initializeWAD(buf);
   } catch (err) {
     loadError = 'Invalid WAD file: ' + err.message;
     console.error('WAD parse error:', err);
   }
+}
+
+function initializeWAD(buf) {
+  wadLoader = new WADLoader();
+  wadLoader.load(buf);
+  mapNames = wadLoader.getMapNames();
+
+  if (mapNames.length === 0) {
+    loadError = 'No maps found in WAD';
+    return false;
+  }
+
+  texMgr = new WADTextureManager(wadLoader);
+  texMgr.init();
+
+  loadProgress = 1;
+  gameState = 'menu';
+  menuClickReady = false;
+  menuEnterTime = gameTime;
+  return true;
 }
 
 // ── Level building ──
@@ -317,20 +316,18 @@ function _startLevelInner() {
         setScale(m, w.len, w.h, 0.5);
         setRotation(m, 0, w.ang, 0);
 
-        // Set UV tiling for correct texture mapping
+        // Apply texture with sector lighting
+        const mat = engine.createMaterial('phong', {
+          map: tex,
+          color: engine.createColor(bri, bri, bri),
+        });
+        engine.setMeshMaterial(m, mat);
+
+        // Set UV tiling after the material exists so Babylon can update the texture transform.
         const texDef = texMgr.getTextureDef(w.texName);
         if (texDef) {
           setWallUVs(m, w.len / SCALE, w.h / SCALE, texDef.width, texDef.height, w.xoff, w.yoff);
         }
-
-        // Apply texture with sector lighting
-        engine.setMeshMaterial(
-          m,
-          engine.createMaterial('phong', {
-            map: tex,
-            color: engine.createColor(bri, bri, bri),
-          })
-        );
 
         entities.walls.push({ m, x: w.x, z: w.z, r: 0 });
         textured = true;

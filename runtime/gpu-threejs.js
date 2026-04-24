@@ -3,12 +3,14 @@
 import * as THREE from 'three';
 import { PMREMGenerator } from 'three';
 import { Framebuffer64 } from './framebuffer.js';
+import { THREEJS_BACKEND_CAPABILITIES } from './backends/threejs/capabilities.js';
 
 export class GpuThreeJS {
   constructor(canvas, w, h) {
     this.canvas = canvas;
     this.w = w;
     this.h = h;
+    this.backendName = 'threejs';
 
     // Initialize Three.js renderer with maximum quality settings
     this.renderer = new THREE.WebGLRenderer({
@@ -81,6 +83,10 @@ export class GpuThreeJS {
       drawCalls: 0,
       geometries: 0,
     };
+  }
+
+  getBackendCapabilities() {
+    return THREEJS_BACKEND_CAPABILITIES;
   }
 
   setupN64Lighting() {
@@ -334,6 +340,11 @@ export class GpuThreeJS {
   }
   getRenderer() {
     return this.renderer;
+  }
+
+  // Set the background clear color
+  setClearColor(color) {
+    this.renderer.setClearColor(color, 1.0);
   }
 
   // Resize the 3D renderer to a new physical pixel resolution.

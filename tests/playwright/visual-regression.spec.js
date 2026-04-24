@@ -67,14 +67,14 @@ async function compareBackends(page, cartName, options = {}) {
   await page.waitForTimeout(waitTime);
 
   const threejsPath = path.join(SCREENSHOTS_DIR, `${cartName}-threejs.png`);
-  await page.screenshot({ path: threejsPath, fullPage: false });
+  await screenshotCanvas(page, 'threejs', { path: threejsPath });
 
   // Take Babylon.js screenshot
   await loadCart(page, cartName, 'babylon');
   await page.waitForTimeout(waitTime);
 
   const babylonPath = path.join(SCREENSHOTS_DIR, `${cartName}-babylon.png`);
-  await page.screenshot({ path: babylonPath, fullPage: false });
+  await screenshotCanvas(page, 'babylon', { path: babylonPath });
 
   // Compare images
   const diffPath = path.join(DIFF_DIR, `${cartName}-diff.png`);
@@ -226,7 +226,7 @@ test.describe('Visual Regression - Lighting', () => {
       await page.waitForTimeout(1000);
 
       const screenshotPath = path.join(SCREENSHOTS_DIR, `lighting-${backend}.png`);
-      await page.screenshot({ path: screenshotPath, fullPage: false });
+      await screenshotCanvas(page, backend, { path: screenshotPath });
     }
 
     // Compare lighting screenshots
@@ -259,7 +259,7 @@ test.describe('Visual Regression - Materials', () => {
       await page.waitForTimeout(1000);
 
       const screenshotPath = path.join(SCREENSHOTS_DIR, `holographic-${backend}.png`);
-      await page.screenshot({ path: screenshotPath, fullPage: false });
+      await screenshotCanvas(page, backend, { path: screenshotPath });
     }
 
     const diffPath = path.join(DIFF_DIR, 'holographic-diff.png');
@@ -290,7 +290,7 @@ test.describe('Visual Regression - Materials', () => {
       await page.waitForTimeout(1000);
 
       const screenshotPath = path.join(SCREENSHOTS_DIR, `metallic-${backend}.png`);
-      await page.screenshot({ path: screenshotPath, fullPage: false });
+      await screenshotCanvas(page, backend, { path: screenshotPath });
     }
 
     const diffPath = path.join(DIFF_DIR, 'metallic-diff.png');
@@ -326,7 +326,7 @@ test.describe('Visual Regression - Fog', () => {
       await page.waitForTimeout(1000);
 
       const screenshotPath = path.join(SCREENSHOTS_DIR, `fog-${backend}.png`);
-      await page.screenshot({ path: screenshotPath, fullPage: false });
+      await screenshotCanvas(page, backend, { path: screenshotPath });
     }
 
     const diffPath = path.join(DIFF_DIR, 'fog-diff.png');

@@ -1,409 +1,197 @@
-// tests/playwright/api-compatibility.spec.js
-// API compatibility tests between Three.js and Babylon.js backends
-
 import { test, expect } from '@playwright/test';
 
-/**
- * These tests verify that all Nova64 API functions work correctly in both backends
- */
+import { REQUIRED_BACKEND_SURFACE_KEYS } from '../../runtime/shared/backend-surface.js';
+import { BABYLON_BACKEND_CAPABILITIES } from '../../runtime/backends/babylon/capabilities.js';
+import { THREEJS_BACKEND_CAPABILITIES } from '../../runtime/backends/threejs/capabilities.js';
 
-test.describe('Core 3D API Compatibility', () => {
-  test('createCube should work in both backends', async ({ page }) => {
-    for (const backend of ['threejs', 'babylon']) {
-      const logs = [];
-      page.removeAllListeners('console');
-      page.on('console', msg => logs.push({ type: msg.type(), text: msg.text() }));
+const BACKENDS = ['threejs', 'babylon'];
 
-      const url = backend === 'babylon' ? '/babylon_console.html' : '/console.html';
-      await page.goto(url);
-      await page.waitForTimeout(1000);
+async function openApiSandbox(page, backend) {
+  const url =
+    backend === 'babylon'
+      ? '/babylon_console.html?demo=test-minimal'
+      : '/console.html?demo=test-minimal';
 
-      // Execute createCube API call
-      const result = await page.evaluate(() => {
-        try {
-          const cube = createCube(2, 0xff0000, [0, 0, -5]);
-          return { success: true, error: null };
-        } catch (error) {
-          return { success: false, error: error.message };
-        }
-      });
+  await page.goto(url);
+  await page.waitForFunction(
+    () =>
+      typeof globalThis.createCube === 'function' &&
+      typeof globalThis.nova64?.scene?.engine !== 'undefined' &&
+      typeof globalThis.nova64?.camera?.getCamera === 'function',
+    { timeout: 30000 }
+  );
+  await page.waitForTimeout(500);
+}
 
-      const errors = logs.filter(l => l.type === 'error');
-      console.log(`${backend} createCube:`, result, 'Errors:', errors.length);
+async function getFlatSurfaceTypes(page) {
+  return page.evaluate(keys =>
+    Object.fromEntries(keys.map(key => [key, typeof globalThis[key]])),
+    REQUIRED_BACKEND_SURFACE_KEYS
+  );
+}
 
-      expect(result.success, `createCube should work in ${backend}`).toBe(true);
-      expect(errors.length, `No errors in ${backend}`).toBe(0);
+test.describe('Backend Surface Parity', () => {
+  test('required flat surface keys should exist in both backends', async ({ page }) => {
+    const flatTypes = {};
+
+    for (const backend of BACKENDS) {
+      await openApiSandbox(page, backend);
+      flatTypes[backend] = await getFlatSurfaceTypes(page);
+    }
+
+    for (const key of REQUIRED_BACKEND_SURFACE_KEYS) {
+      expect(flatTypes.threejs[key], `${key} should exist in threejs`).not.toBe('undefined');
+      expect(flatTypes.babylon[key], `${key} should exist in babylon`).toBe(flatTypes.threejs[key]);
     }
   });
 
-  test('createSphere should work in both backends', async ({ page }) => {
-    for (const backend of ['threejs', 'babylon']) {
-      const logs = [];
-      page.removeAllListeners('console');
-      page.on('console', msg => logs.push({ type: msg.type(), text: msg.text() }));
+  test('namespaced engine and camera accessors should stay wired in both backends', async ({
+    page,
+  }) => {
+    for (const backend of BACKENDS) {
+      await openApiSandbox(page, backend);
 
-      const url = backend === 'babylon' ? '/babylon_console.html' : '/console.html';
-      await page.goto(url);
-      await page.waitForTimeout(1000);
+      const result = await page.evaluate(() => ({
+        backend: nova64.scene.getBackendCapabilities?.().backend ?? null,
+        engineCreateMaterial: typeof nova64.scene.engine?.createMaterial,
+        engineSetMeshMaterial: typeof nova64.scene.engine?.setMeshMaterial,
+        getCamera: typeof nova64.camera.getCamera,
+        getScene: typeof nova64.scene.getScene,
+        getRenderer: typeof nova64.scene.getRenderer,
+      }));
 
-      const result = await page.evaluate(() => {
-        try {
-          const sphere = createSphere(1, 0x00ff00, [0, 0, -5]);
-          return { success: true, error: null };
-        } catch (error) {
-          return { success: false, error: error.message };
-        }
-      });
-
-      const errors = logs.filter(l => l.type === 'error');
-      expect(result.success, `createSphere should work in ${backend}`).toBe(true);
-      expect(errors.length, `No errors in ${backend}`).toBe(0);
+      expect(result.backend).toBe(backend);
+      expect(result.engineCreateMaterial).toBe('function');
+      expect(result.engineSetMeshMaterial).toBe('function');
+      expect(result.getCamera).toBe('function');
+      expect(result.getScene).toBe('function');
+      expect(result.getRenderer).toBe('function');
     }
   });
 
-  test('createPlane should work in both backends', async ({ page }) => {
-    for (const backend of ['threejs', 'babylon']) {
-      const url = backend === 'babylon' ? '/babylon_console.html' : '/console.html';
-      await page.goto(url);
-      await page.waitForTimeout(1000);
+  test('camera access should work in both backends', async ({ page }) => {
+    for (const backend of BACKENDS) {
+      await openApiSandbox(page, backend);
 
       const result = await page.evaluate(() => {
-        try {
-          const plane = createPlane(10, 10, 0x0000ff, [0, -1, 0]);
-          return { success: true, error: null };
-        } catch (error) {
-          return { success: false, error: error.message };
-        }
+        setCameraPosition(3, 4, 12);
+        setCameraTarget(0, 1, 0);
+        setCameraLookAt([0, 0, -5]);
+        setCameraFOV(70);
+
+        const camera = nova64.camera.getCamera();
+        const renderer = nova64.scene.getRenderer();
+        const scene = nova64.scene.getScene();
+
+        return {
+          hasCamera: !!camera,
+          hasRenderer: !!renderer,
+          hasScene: !!scene,
+          position: {
+            x: Number(camera?.position?.x ?? 0),
+            y: Number(camera?.position?.y ?? 0),
+            z: Number(camera?.position?.z ?? 0),
+          },
+        };
       });
 
-      expect(result.success, `createPlane should work in ${backend}`).toBe(true);
+      expect(result.hasCamera, `camera should exist in ${backend}`).toBe(true);
+      expect(result.hasRenderer, `renderer should exist in ${backend}`).toBe(true);
+      expect(result.hasScene, `scene should exist in ${backend}`).toBe(true);
+      expect(result.position).toEqual({ x: 3, y: 4, z: 12 });
     }
   });
 
-  test('createCylinder should work in both backends', async ({ page }) => {
-    for (const backend of ['threejs', 'babylon']) {
-      const url = backend === 'babylon' ? '/babylon_console.html' : '/console.html';
-      await page.goto(url);
-      await page.waitForTimeout(1000);
+  test('point light mutators should work in both backends', async ({ page }) => {
+    for (const backend of BACKENDS) {
+      await openApiSandbox(page, backend);
 
       const result = await page.evaluate(() => {
-        try {
-          const cylinder = createCylinder(1, 1, 2, 0xffff00, [0, 0, -5]);
-          return { success: true, error: null };
-        } catch (error) {
-          return { success: false, error: error.message };
-        }
+        const lightId = createPointLight(0xffffff, 1.2, 20, 0, 5, 0);
+        return {
+          lightId,
+          moved: setPointLightPosition(lightId, 1, 2, 3),
+          recolored: setPointLightColor(lightId, 0xff44aa, 1.5),
+          removed: removeLight(lightId),
+        };
       });
 
-      expect(result.success, `createCylinder should work in ${backend}`).toBe(true);
-    }
-  });
-});
-
-test.describe('Camera API Compatibility', () => {
-  test('setCameraPosition should work in both backends', async ({ page }) => {
-    for (const backend of ['threejs', 'babylon']) {
-      const url = backend === 'babylon' ? '/babylon_console.html' : '/console.html';
-      await page.goto(url);
-      await page.waitForTimeout(1000);
-
-      const result = await page.evaluate(() => {
-        try {
-          setCameraPosition(0, 5, 10);
-          return { success: true, error: null };
-        } catch (error) {
-          return { success: false, error: error.message };
-        }
-      });
-
-      expect(result.success, `setCameraPosition should work in ${backend}`).toBe(true);
+      expect(result.lightId).toBeTruthy();
+      expect(result.moved, `setPointLightPosition should work in ${backend}`).toBe(true);
+      expect(result.recolored, `setPointLightColor should work in ${backend}`).toBe(true);
+      expect(result.removed, `removeLight should work in ${backend}`).toBe(true);
     }
   });
 
-  test('setCameraTarget should work in both backends', async ({ page }) => {
-    for (const backend of ['threejs', 'babylon']) {
-      const url = backend === 'babylon' ? '/babylon_console.html' : '/console.html';
-      await page.goto(url);
-      await page.waitForTimeout(1000);
+  test('instancing helpers should work in both backends', async ({ page }) => {
+    for (const backend of BACKENDS) {
+      await openApiSandbox(page, backend);
 
       const result = await page.evaluate(() => {
-        try {
-          setCameraTarget(0, 0, 0);
-          return { success: true, error: null };
-        } catch (error) {
-          return { success: false, error: error.message };
-        }
+        const instancedId = createInstancedMesh('cube', 3, 0x88ccff, { size: 1 });
+        return {
+          instancedId,
+          firstTransform: setInstanceTransform(instancedId, 0, 0, 0, -5, 0, 0, 0, 1, 1, 1),
+          firstColor: setInstanceColor(instancedId, 0, 0xff0000),
+          finalized: finalizeInstances(instancedId),
+          removed: removeInstancedMesh(instancedId),
+        };
       });
 
-      expect(result.success, `setCameraTarget should work in ${backend}`).toBe(true);
+      expect(result.instancedId).toBeTruthy();
+      expect(result.firstTransform, `setInstanceTransform should work in ${backend}`).toBe(true);
+      expect(result.firstColor, `setInstanceColor should work in ${backend}`).toBe(true);
+      expect(result.finalized, `finalizeInstances should work in ${backend}`).toBe(true);
+      expect(result.removed, `removeInstancedMesh should work in ${backend}`).toBe(true);
     }
   });
 
-  test('setCameraFOV should work in both backends', async ({ page }) => {
-    for (const backend of ['threejs', 'babylon']) {
-      const url = backend === 'babylon' ? '/babylon_console.html' : '/console.html';
-      await page.goto(url);
-      await page.waitForTimeout(1000);
+  test('backend capabilities should be explicit and backend-specific', async ({ page }) => {
+    await openApiSandbox(page, 'threejs');
+    const threeCaps = await page.evaluate(() => nova64.scene.getBackendCapabilities());
 
-      const result = await page.evaluate(() => {
-        try {
-          setCameraFOV(75);
-          return { success: true, error: null };
-        } catch (error) {
-          return { success: false, error: error.message };
-        }
-      });
+    await openApiSandbox(page, 'babylon');
+    const babylonCaps = await page.evaluate(() => nova64.scene.getBackendCapabilities());
 
-      expect(result.success, `setCameraFOV should work in ${backend}`).toBe(true);
-    }
-  });
-});
-
-test.describe('Transform API Compatibility', () => {
-  test('rotateMesh should work in both backends', async ({ page }) => {
-    for (const backend of ['threejs', 'babylon']) {
-      const url = backend === 'babylon' ? '/babylon_console.html' : '/console.html';
-      await page.goto(url);
-      await page.waitForTimeout(1000);
-
-      const result = await page.evaluate(() => {
-        try {
-          const cube = createCube(2, 0xff0000, [0, 0, -5]);
-          rotateMesh(cube, 0, Math.PI / 4, 0);
-          return { success: true, error: null };
-        } catch (error) {
-          return { success: false, error: error.message };
-        }
-      });
-
-      expect(result.success, `rotateMesh should work in ${backend}`).toBe(true);
-    }
+    expect(threeCaps).toMatchObject(THREEJS_BACKEND_CAPABILITIES);
+    expect(babylonCaps).toMatchObject(BABYLON_BACKEND_CAPABILITIES);
+    expect(threeCaps.skybox).toBe(true);
+    expect(babylonCaps.skybox).toBe(false);
   });
 
-  test('setPosition should work in both backends', async ({ page }) => {
-    for (const backend of ['threejs', 'babylon']) {
-      const url = backend === 'babylon' ? '/babylon_console.html' : '/console.html';
-      await page.goto(url);
-      await page.waitForTimeout(1000);
+  test('unsupported Babylon capabilities should fail safely instead of crashing carts', async ({
+    page,
+  }) => {
+    const logs = [];
+    page.on('console', msg => logs.push({ type: msg.type(), text: msg.text() }));
 
-      const result = await page.evaluate(() => {
-        try {
-          const cube = createCube(2, 0xff0000, [0, 0, -5]);
-          setPosition(cube, [1, 2, 3]);
-          return { success: true, error: null };
-        } catch (error) {
-          return { success: false, error: error.message };
-        }
-      });
+    await openApiSandbox(page, 'babylon');
 
-      expect(result.success, `setPosition should work in ${backend}`).toBe(true);
-    }
-  });
+    const result = await page.evaluate(() => {
+      const caps = nova64.scene.getBackendCapabilities();
+      const skyboxResult = createGradientSkybox(0x87ceeb, 0x000033);
+      const ditheringResult = enableDithering(true);
 
-  test('setScale should work in both backends', async ({ page }) => {
-    for (const backend of ['threejs', 'babylon']) {
-      const url = backend === 'babylon' ? '/babylon_console.html' : '/console.html';
-      await page.goto(url);
-      await page.waitForTimeout(1000);
+      return {
+        backend: caps.backend,
+        skybox: caps.skybox,
+        dithering: caps.dithering,
+        skyboxResult,
+        ditheringResult,
+      };
+    });
 
-      const result = await page.evaluate(() => {
-        try {
-          const cube = createCube(2, 0xff0000, [0, 0, -5]);
-          setScale(cube, [2, 2, 2]);
-          return { success: true, error: null };
-        } catch (error) {
-          return { success: false, error: error.message };
-        }
-      });
+    const errorText = logs
+      .filter(log => log.type === 'error')
+      .map(log => log.text)
+      .join('\n');
 
-      expect(result.success, `setScale should work in ${backend}`).toBe(true);
-    }
-  });
-});
-
-test.describe('Lighting API Compatibility', () => {
-  test('setAmbientLight should work in both backends', async ({ page }) => {
-    for (const backend of ['threejs', 'babylon']) {
-      const url = backend === 'babylon' ? '/babylon_console.html' : '/console.html';
-      await page.goto(url);
-      await page.waitForTimeout(1000);
-
-      const result = await page.evaluate(() => {
-        try {
-          setAmbientLight(0xffffff, 0.5);
-          return { success: true, error: null };
-        } catch (error) {
-          return { success: false, error: error.message };
-        }
-      });
-
-      expect(result.success, `setAmbientLight should work in ${backend}`).toBe(true);
-    }
-  });
-
-  test('createPointLight should work in both backends', async ({ page }) => {
-    for (const backend of ['threejs', 'babylon']) {
-      const url = backend === 'babylon' ? '/babylon_console.html' : '/console.html';
-      await page.goto(url);
-      await page.waitForTimeout(1000);
-
-      const result = await page.evaluate(() => {
-        try {
-          const light = createPointLight(0xffffff, 1.0, [0, 5, 0]);
-          return { success: true, error: null };
-        } catch (error) {
-          return { success: false, error: error.message };
-        }
-      });
-
-      expect(result.success, `createPointLight should work in ${backend}`).toBe(true);
-    }
-  });
-
-  test('setFog should work in both backends', async ({ page }) => {
-    for (const backend of ['threejs', 'babylon']) {
-      const url = backend === 'babylon' ? '/babylon_console.html' : '/console.html';
-      await page.goto(url);
-      await page.waitForTimeout(1000);
-
-      const result = await page.evaluate(() => {
-        try {
-          setFog(0x000000, 10, 50);
-          return { success: true, error: null };
-        } catch (error) {
-          return { success: false, error: error.message };
-        }
-      });
-
-      expect(result.success, `setFog should work in ${backend}`).toBe(true);
-    }
-  });
-});
-
-test.describe('Skybox API Compatibility', () => {
-  test('createSpaceSkybox should work in both backends', async ({ page }) => {
-    for (const backend of ['threejs', 'babylon']) {
-      const url = backend === 'babylon' ? '/babylon_console.html' : '/console.html';
-      await page.goto(url);
-      await page.waitForTimeout(1000);
-
-      const result = await page.evaluate(() => {
-        try {
-          createSpaceSkybox();
-          return { success: true, error: null };
-        } catch (error) {
-          return { success: false, error: error.message };
-        }
-      });
-
-      expect(result.success, `createSpaceSkybox should work in ${backend}`).toBe(true);
-    }
-  });
-
-  test('createGradientSkybox should work in both backends', async ({ page }) => {
-    for (const backend of ['threejs', 'babylon']) {
-      const url = backend === 'babylon' ? '/babylon_console.html' : '/console.html';
-      await page.goto(url);
-      await page.waitForTimeout(1000);
-
-      const result = await page.evaluate(() => {
-        try {
-          createGradientSkybox(0x87ceeb, 0x000033);
-          return { success: true, error: null };
-        } catch (error) {
-          return { success: false, error: error.message };
-        }
-      });
-
-      expect(result.success, `createGradientSkybox should work in ${backend}`).toBe(true);
-    }
-  });
-});
-
-test.describe('2D Drawing API Compatibility', () => {
-  test('print should work in both backends', async ({ page }) => {
-    for (const backend of ['threejs', 'babylon']) {
-      const logs = [];
-      page.removeAllListeners('console');
-      page.on('console', msg => logs.push({ type: msg.type(), text: msg.text() }));
-
-      const url = backend === 'babylon' ? '/babylon_console.html' : '/console.html';
-      await page.goto(url);
-      await page.waitForTimeout(1000);
-
-      const result = await page.evaluate(() => {
-        try {
-          print('Test', 10, 10, 0xffffff);
-          return { success: true, error: null };
-        } catch (error) {
-          return { success: false, error: error.message };
-        }
-      });
-
-      expect(result.success, `print should work in ${backend}`).toBe(true);
-
-      // Check for print() debug logs
-      const printLogs = logs.filter(l => l.text.includes('print() called'));
-      console.log(`${backend} print logs:`, printLogs.length);
-    }
-  });
-
-  test('cls should work in both backends', async ({ page }) => {
-    for (const backend of ['threejs', 'babylon']) {
-      const url = backend === 'babylon' ? '/babylon_console.html' : '/console.html';
-      await page.goto(url);
-      await page.waitForTimeout(1000);
-
-      const result = await page.evaluate(() => {
-        try {
-          cls(0x000000);
-          return { success: true, error: null };
-        } catch (error) {
-          return { success: false, error: error.message };
-        }
-      });
-
-      expect(result.success, `cls should work in ${backend}`).toBe(true);
-    }
-  });
-});
-
-test.describe('Advanced Material API Compatibility', () => {
-  test('holographic material should work in both backends', async ({ page }) => {
-    for (const backend of ['threejs', 'babylon']) {
-      const url = backend === 'babylon' ? '/babylon_console.html' : '/console.html';
-      await page.goto(url);
-      await page.waitForTimeout(1000);
-
-      const result = await page.evaluate(() => {
-        try {
-          const cube = createCube(2, 0xff00ff, [0, 0, -5], { material: 'holographic' });
-          return { success: true, error: null };
-        } catch (error) {
-          return { success: false, error: error.message };
-        }
-      });
-
-      expect(result.success, `holographic material should work in ${backend}`).toBe(true);
-    }
-  });
-
-  test('metallic material should work in both backends', async ({ page }) => {
-    for (const backend of ['threejs', 'babylon']) {
-      const url = backend === 'babylon' ? '/babylon_console.html' : '/console.html';
-      await page.goto(url);
-      await page.waitForTimeout(1000);
-
-      const result = await page.evaluate(() => {
-        try {
-          const sphere = createSphere(1, 0xffaa00, [0, 0, -5], { material: 'metallic' });
-          return { success: true, error: null };
-        } catch (error) {
-          return { success: false, error: error.message };
-        }
-      });
-
-      expect(result.success, `metallic material should work in ${backend}`).toBe(true);
-    }
+    expect(result.backend).toBe('babylon');
+    expect(result.skybox).toBe(false);
+    expect(result.dithering).toBe(false);
+    expect(result.skyboxResult).toBeNull();
+    expect(result.ditheringResult).toBe(false);
+    expect(errorText).not.toContain('gpu.endFrame() error:');
+    expect(errorText).not.toContain('Cart update() error:');
   });
 });

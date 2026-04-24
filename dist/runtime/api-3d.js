@@ -3,17 +3,17 @@
 import * as THREE from 'three';
 globalThis.THREE = THREE; // @deprecated — use the global `engine` adapter instead
 import { engine, initAdapter } from './engine-adapter.js';
-import { materialsModule } from './api-3d/materials.js';
-import { primitivesModule } from './api-3d/primitives.js';
-import { transformsModule } from './api-3d/transforms.js';
-import { cameraModule } from './api-3d/camera.js';
-import { lightsModule } from './api-3d/lights.js';
-import { modelsModule } from './api-3d/models.js';
-import { instancingModule } from './api-3d/instancing.js';
-import { pbrModule } from './api-3d/pbr.js';
-import { sceneModule } from './api-3d/scene.js';
-import { particlesModule } from './api-3d/particles.js';
-import { tslModule } from './api-3d/tsl.js';
+import { materialsModule } from './backends/threejs/materials.js';
+import { primitivesModule } from './backends/threejs/primitives.js';
+import { transformsModule } from './backends/threejs/transforms.js';
+import { cameraModule } from './backends/threejs/camera.js';
+import { lightsModule } from './backends/threejs/lights.js';
+import { modelsModule } from './backends/threejs/models.js';
+import { instancingModule } from './backends/threejs/instancing.js';
+import { pbrModule } from './backends/threejs/pbr.js';
+import { sceneModule } from './backends/threejs/scene.js';
+import { particlesModule } from './backends/threejs/particles.js';
+import { tslModule } from './backends/threejs/tsl.js';
 
 export function threeDApi(gpu) {
   if (!gpu.getScene) return { exposeTo: () => {} };
@@ -67,6 +67,10 @@ export function threeDApi(gpu) {
     exposeTo(target) {
       Object.assign(target, {
         engine,
+        getBackendCapabilities:
+          typeof gpu.getBackendCapabilities === 'function'
+            ? () => gpu.getBackendCapabilities()
+            : () => ({ backend: 'threejs' }),
         // Primitive creation
         createCube: ctx.createCube,
         createSphere: ctx.createSphere,
@@ -119,6 +123,7 @@ export function threeDApi(gpu) {
         setAmbientLight: ctx.setAmbientLight,
         setDirectionalLight: ctx.setDirectionalLight,
         clearScene: ctx.clearScene,
+        setClearColor: ctx.setClearColor,
 
         // Effects
         enablePixelation: ctx.enablePixelation,

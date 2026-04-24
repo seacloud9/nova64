@@ -8,12 +8,12 @@ const {
   createCube,
   createPlane,
   destroyMesh,
-  engine,
   getMesh,
   setPosition,
   setRotation,
   setScale,
 } = nova64.scene;
+const engine = nova64.scene.engine ?? globalThis.engine;
 const { setCameraFOV, setCameraPosition, setCameraTarget } = nova64.camera;
 const {
   createPointLight,
@@ -574,18 +574,16 @@ function buildWADLevel(mapName) {
         setScale(m, w.len, w.h, 0.5);
         setRotation(m, 0, w.ang, 0);
 
+        const mat = engine.createMaterial('phong', {
+          map: tex,
+          color: engine.createColor(bri, bri, bri),
+        });
+        engine.setMeshMaterial(m, mat);
+
         const texDef = wadTexMgr.getTextureDef(w.texName);
         if (texDef) {
           setWallUVs(m, w.len / SCALE, w.h / SCALE, texDef.width, texDef.height, w.xoff, w.yoff);
         }
-
-        engine.setMeshMaterial(
-          m,
-          engine.createMaterial('phong', {
-            map: tex,
-            color: engine.createColor(bri, bri, bri),
-          })
-        );
 
         entities.walls.push({ m, x: w.x, z: w.z, r: 0 });
         textured = true;

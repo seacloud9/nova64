@@ -2,6 +2,8 @@
 // Supports classic DOOM WAD format (IWAD and PWAD)
 /* global getMesh */
 
+import { engine } from './engine-adapter.js';
+
 // ── Thing type mappings ──
 
 const THING_MONSTERS = {
@@ -667,13 +669,11 @@ class WADTextureManager {
       flipped.set(comp.pixels.subarray(srcRow, srcRow + rowBytes), dstRow);
     }
 
-    const tex = new THREE.DataTexture(flipped, comp.width, comp.height, THREE.RGBAFormat);
-    tex.wrapS = THREE.RepeatWrapping;
-    tex.wrapT = THREE.RepeatWrapping;
-    tex.magFilter = THREE.NearestFilter;
-    tex.minFilter = THREE.NearestFilter;
-    tex.generateMipmaps = false;
-    tex.needsUpdate = true;
+    const tex = engine.createDataTexture(flipped, comp.width, comp.height, {
+      filter: 'nearest',
+      wrap: 'repeat',
+      generateMipmaps: false,
+    });
 
     this.wallTexCache.set(name, tex);
     return tex;
@@ -706,13 +706,11 @@ class WADTextureManager {
       pixels[i * 4 + 3] = 255;
     }
 
-    const tex = new THREE.DataTexture(pixels, 64, 64, THREE.RGBAFormat);
-    tex.wrapS = THREE.RepeatWrapping;
-    tex.wrapT = THREE.RepeatWrapping;
-    tex.magFilter = THREE.NearestFilter;
-    tex.minFilter = THREE.NearestFilter;
-    tex.generateMipmaps = false;
-    tex.needsUpdate = true;
+    const tex = engine.createDataTexture(pixels, 64, 64, {
+      filter: 'nearest',
+      wrap: 'repeat',
+      generateMipmaps: false,
+    });
 
     this.flatTexCache.set(name, tex);
     return tex;
@@ -752,11 +750,10 @@ class WADTextureManager {
       flipped.set(pic.pixels.subarray(srcRow, srcRow + rowBytes), dstRow);
     }
 
-    const tex = new THREE.DataTexture(flipped, pic.width, pic.height, THREE.RGBAFormat);
-    tex.magFilter = THREE.NearestFilter;
-    tex.minFilter = THREE.NearestFilter;
-    tex.generateMipmaps = false;
-    tex.needsUpdate = true;
+    const tex = engine.createDataTexture(flipped, pic.width, pic.height, {
+      filter: 'nearest',
+      generateMipmaps: false,
+    });
 
     const result = {
       texture: tex,
@@ -781,17 +778,50 @@ class WADTextureManager {
 
 // ── setWallUVs helper ──
 
+function getMeshTexture(mesh) {
+  const materials = Array.isArray(mesh?.material) ? mesh.material : [mesh?.material];
+  for (const material of materials) {
+    if (!material) continue;
+    if (material.map) return material.map;
+    if (material.diffuseTexture) return material.diffuseTexture;
+    if (material.albedoTexture) return material.albedoTexture;
+  }
+  return null;
+}
+
+function applyTextureOffsets(texture, ofsU, ofsV) {
+  if (!texture) return;
+  if (texture.offset?.set) {
+    texture.offset.set(ofsU, ofsV);
+  } else {
+    if ('uOffset' in texture) texture.uOffset = ofsU;
+    if ('vOffset' in texture) texture.vOffset = ofsV;
+  }
+  try {
+    engine.invalidateTexture(texture);
+  } catch {
+    // Offset changes are runtime-only metadata on some backends.
+  }
+}
+
 function setWallUVs(meshId, wallDoomLen, wallDoomH, texWidth, texHeight, xoff, yoff) {
   const mesh = getMesh(meshId);
-  if (!mesh || !mesh.geometry) return;
+  if (!mesh || !texWidth || !texHeight) return;
 
-  const uvAttr = mesh.geometry.attributes.uv;
-  if (!uvAttr) return;
+  const uvAttr = mesh.geometry?.attributes?.uv ?? mesh.geometry?.getAttribute?.('uv');
 
   const tileU = wallDoomLen / texWidth;
   const tileV = wallDoomH / texHeight;
   const ofsU = (xoff || 0) / texWidth;
   const ofsV = (yoff || 0) / texHeight;
+
+  if (!uvAttr) {
+    const texture = getMeshTexture(mesh);
+    if (!texture) return;
+    engine.setTextureRepeat(texture, tileU, tileV);
+    applyTextureOffsets(texture, ofsU, ofsV);
+    return;
+  }
 
   const setFace = (start, tu, tv) => {
     uvAttr.setXY(start, ofsU, ofsV);

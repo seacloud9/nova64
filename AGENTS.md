@@ -318,7 +318,9 @@ Guidelines:
 
 ### Major Repository Areas
 
-- `runtime/` - engine backends, shared APIs, runtime systems
+- `runtime/` - stable runtime/public layer, wrappers, shared APIs, runtime systems
+- `runtime/backends/` - internal renderer-specific implementations for `threejs/` and `babylon/`
+- `runtime/shared/` - cross-backend contracts and helpers used by multiple runtimes
 - `src/` - application bootstrap and wiring
 - `examples/` - carts and demos
 - `tests/` - CLI-driven tests and Playwright coverage

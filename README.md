@@ -164,8 +164,11 @@ nova64/
 │   ├── template.js          # Interactive template picker (60+ examples)
 │   └── dev.js               # Vite dev server for user projects
 ├── src/main.js              # Core engine bootstrap
-├── runtime/                 # Advanced 3D Engine (41 modules)
+├── runtime/                 # Advanced 3D Engine runtime + public API layer
 │   ├── gpu-threejs.js       # Three.js GPU backend with advanced materials
+│   ├── gpu-babylon.js       # Babylon compatibility wrapper
+│   ├── backends/            # Internal backend implementations (threejs/, babylon/)
+│   ├── shared/              # Cross-backend runtime contracts and helpers
 │   ├── debug-panel.js       # F9 debug panel (scene graph, camera, lights, stats)
 │   ├── env.js               # Environment config + Shift+X dev console (cheats, meta)
 │   ├── api.js               # Core 2D API (cls, pset, line, rect, print)
@@ -211,6 +214,11 @@ nova64/
 ├── docs/                    # API documentation (HTML & Markdown)
 └── tests/                   # Test suites
 ```
+
+`runtime/` stays the stable public layer. Backend-specific implementation now lives under
+`runtime/backends/{threejs,babylon}`, while `runtime/shared/` holds cross-backend contracts and
+helpers used by both renderers. The backend split and parity rules are documented in
+[docs/BACKEND_RUNTIME.md](docs/BACKEND_RUNTIME.md).
 
 ---
 

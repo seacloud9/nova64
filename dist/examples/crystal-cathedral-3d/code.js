@@ -27,6 +27,7 @@ const {
 const { setCameraFOV, setCameraPosition, setCameraTarget } = nova64.camera;
 const { setAmbientLight, setFog, setLightColor, setLightDirection } = nova64.light;
 const { enableBloom, enableDithering, enableFXAA, enablePixelation, enableVignette } = nova64.fx;
+const { isKeyPressed } = nova64.input;
 const {
   Screen,
   centerX,
@@ -401,6 +402,13 @@ export function update(dt) {
   if (gameState === 'start') {
     startScreenTime += dt;
     updateAllButtons();
+
+    // KEYBOARD FALLBACK: Press SPACE to start (Enter is reserved for cart reset)
+    if (isKeyPressed(' ') || isKeyPressed('Space')) {
+      console.log('🎮 Keyboard start pressed!');
+      gameState = 'viewing';
+      return;
+    }
 
     // Still animate scene in background
     updateCamera(dt);

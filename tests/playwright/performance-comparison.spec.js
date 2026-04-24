@@ -13,31 +13,32 @@ async function measureFPS(page, duration = 3000) {
   return await page.evaluate((dur) => {
     return new Promise((resolve) => {
       const frames = [];
-      let lastTime = performance.now();
-      let rafId;
+      const startTime = performance.now();
+      let lastTime = startTime;
 
-      function measureFrame() {
-        const now = performance.now();
+      function measureFrame(now) {
         const delta = now - lastTime;
-        frames.push(1000 / delta);
+        if (delta > 0) {
+          frames.push(1000 / delta);
+        }
         lastTime = now;
 
-        if (now - frames[0] * delta < dur) {
-          rafId = requestAnimationFrame(measureFrame);
-        } else {
-          cancelAnimationFrame(rafId);
-
-          // Calculate statistics
-          const avgFPS = frames.reduce((a, b) => a + b, 0) / frames.length;
-          const minFPS = Math.min(...frames);
-          const maxFPS = Math.max(...frames);
-          const medianFPS = frames.sort((a, b) => a - b)[Math.floor(frames.length / 2)];
-
-          resolve({ avgFPS, minFPS, maxFPS, medianFPS, sampleCount: frames.length });
+        if (now - startTime < dur) {
+          requestAnimationFrame(measureFrame);
+          return;
         }
+
+        // Calculate statistics
+        const avgFPS = frames.reduce((a, b) => a + b, 0) / frames.length;
+        const minFPS = Math.min(...frames);
+        const maxFPS = Math.max(...frames);
+        const sortedFrames = [...frames].sort((a, b) => a - b);
+        const medianFPS = sortedFrames[Math.floor(sortedFrames.length / 2)];
+
+        resolve({ avgFPS, minFPS, maxFPS, medianFPS, sampleCount: frames.length });
       }
 
-      rafId = requestAnimationFrame(measureFrame);
+      requestAnimationFrame(measureFrame);
     });
   }, duration);
 }

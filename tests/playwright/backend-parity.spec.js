@@ -184,11 +184,14 @@ test.describe('Space Harrier - Text Rendering', () => {
     await loadCart(page, 'space-harrier-3d', 'threejs');
     await page.waitForTimeout(2000);
 
-    const textStatus = isTextRendering(logs);
+    const textStatus = await isTextRendering(page, logs);
     console.log('Three.js text rendering:', textStatus);
 
-    expect(textStatus.printCallsMade, 'print() should be called').toBe(true);
-    expect(textStatus.hasFramebufferContent, 'Framebuffer should have content').toBe(true);
+    expect(textStatus.printCallsMade, 'drawText/print should be called').toBe(true);
+    expect(textStatus.hasTitleTextPixels, 'Title text should render in the start screen').toBe(
+      true
+    );
+    expect(textStatus.hasFramebufferContent, 'Canvas should contain rendered content').toBe(true);
   });
 
   test('should render start screen text in Babylon.js', async ({ page }) => {
@@ -198,11 +201,14 @@ test.describe('Space Harrier - Text Rendering', () => {
     await loadCart(page, 'space-harrier-3d', 'babylon');
     await page.waitForTimeout(2000);
 
-    const textStatus = isTextRendering(logs);
+    const textStatus = await isTextRendering(page, logs);
     console.log('Babylon.js text rendering:', textStatus);
 
-    expect(textStatus.printCallsMade, 'print() should be called').toBe(true);
-    expect(textStatus.hasFramebufferContent, 'Framebuffer should have content').toBe(true);
+    expect(textStatus.printCallsMade, 'drawText/print should be called').toBe(true);
+    expect(textStatus.hasTitleTextPixels, 'Title text should render in the start screen').toBe(
+      true
+    );
+    expect(textStatus.hasFramebufferContent, 'Canvas should contain rendered content').toBe(true);
   });
 });
 
@@ -302,9 +308,9 @@ test.describe('Visual Comparison', () => {
     const screenshotBabylon = await screenshotCanvas(page, 'babylon');
 
     // Save screenshots for manual inspection
-    await page.screenshot({ path: 'screenshots/hello-3d-threejs.png', fullPage: true });
+    await screenshotCanvas(page, 'threejs', { path: 'screenshots/hello-3d-threejs.png' });
     await loadCart(page, 'hello-3d', 'babylon');
-    await page.screenshot({ path: 'screenshots/hello-3d-babylon.png', fullPage: true });
+    await screenshotCanvas(page, 'babylon', { path: 'screenshots/hello-3d-babylon.png' });
 
     // Note: Actual pixel comparison would require additional library
     // For now, just ensure both screenshots were captured

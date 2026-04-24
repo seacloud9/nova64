@@ -22,6 +22,7 @@ const _builtinCheats = {
 
 // ── Schema defaults ─────────────────────────────────────────────
 const SCHEMA_DEFAULTS = {
+  clearColor: 0x0a0a0f, // Background clear color (default dark blue-black)
   sky: {
     type: 'none', // 'none' | 'solid' | 'gradient' | 'space' | 'images'
     color: 0x000000,
@@ -107,6 +108,11 @@ function parseColor(c) {
 function applyEnv(config) {
   if (!config) return;
   _applied = config;
+
+  // Clear Color
+  if (config.clearColor != null && typeof globalThis.setClearColor === 'function') {
+    globalThis.setClearColor(parseColor(config.clearColor));
+  }
 
   // Sky
   const sky = config.sky;

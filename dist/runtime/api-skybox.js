@@ -6,6 +6,21 @@ export function skyboxApi(gpu) {
   let starField = null;
   let _rotSpeed = 1.0; // multiplier for animateSkybox speed
   let _auto = false; // enableSkyboxAutoAnimate flag
+  let _unsupportedWarned = false;
+
+  function _supportsSkybox() {
+    const caps = gpu.getBackendCapabilities?.();
+    if (caps && caps.skybox === false) return false;
+    return !!gpu.scene && typeof gpu.scene.add === 'function' && typeof gpu.scene.remove === 'function';
+  }
+
+  function _warnUnsupportedSkybox(name) {
+    if (_unsupportedWarned) return;
+    _unsupportedWarned = true;
+    console.warn(
+      `[Nova64:WARN] ${name} is not supported by the active backend yet; skipping skybox setup`
+    );
+  }
 
   // ── Space skybox ────────────────────────────────────────────────────────────
   /**
@@ -17,6 +32,10 @@ export function skyboxApi(gpu) {
    * @param {number} [options.nebulaColor=0x4422aa]
    */
   function createSpaceSkybox(options = {}) {
+    if (!_supportsSkybox()) {
+      _warnUnsupportedSkybox('createSpaceSkybox');
+      return null;
+    }
     const { starCount = 1000, starSize = 2, nebulae = true, nebulaColor = 0x4422aa } = options;
 
     _clearSky();
@@ -69,8 +88,17 @@ export function skyboxApi(gpu) {
    * @param {number} [bottomColor=0xf48c60] - hex colour at the horizon
    */
   function createGradientSkybox(topColor = 0x1a6aa8, bottomColor = 0xf48c60) {
+    if (!_supportsSkybox()) {
+      _warnUnsupportedSkybox('createGradientSkybox');
+      return null;
+    }
+    if (topColor && typeof topColor === 'object') {
+      bottomColor = topColor.bottomColor ?? bottomColor;
+      topColor = topColor.topColor ?? 0x1a6aa8;
+    }
     _clearSky();
     skyboxMesh = _gradientSphere(topColor, bottomColor);
+    return skyboxMesh;
   }
 
   // ── Solid-colour skybox ──────────────────────────────────────────────────────
@@ -79,8 +107,13 @@ export function skyboxApi(gpu) {
    * @param {number} [color=0x000000]
    */
   function createSolidSkybox(color = 0x000000) {
+    if (!_supportsSkybox()) {
+      _warnUnsupportedSkybox('createSolidSkybox');
+      return null;
+    }
     _clearSky();
     gpu.scene.background = new THREE.Color(color);
+    return gpu.scene.background;
   }
 
   // ── Image-based (cube map) skybox ────────────────────────────────────────────
@@ -101,6 +134,10 @@ export function skyboxApi(gpu) {
    * ]);
    */
   function createImageSkybox(urls) {
+    if (!_supportsSkybox()) {
+      _warnUnsupportedSkybox('createImageSkybox');
+      return Promise.resolve(null);
+    }
     return new Promise((resolve, reject) => {
       if (!Array.isArray(urls) || urls.length !== 6) {
         reject(

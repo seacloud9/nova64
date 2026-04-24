@@ -1,3 +1,5 @@
+import { PNG } from 'pngjs';
+
 /**
  * Playwright Test Helpers for Nova64 Backend Comparison
  */
@@ -57,7 +59,7 @@ export function extractMetrics(logs) {
     const text = log.text;
 
     // Extract print() calls
-    if (text.includes('[API] print() called:')) {
+    if (text.includes('print() called:')) {
       const match = text.match(/text="([^"]+)"/);
       if (match) metrics.printCalls.push(match[1]);
     }
@@ -96,13 +98,14 @@ export async function pressKey(page, key, duration = 100) {
 /**
  * Take a screenshot of the canvas
  * @param {import('@playwright/test').Page} page
- * @param {string} backend
+ * @param {string} _backend
+ * @param {object} [options]
  */
-export async function screenshotCanvas(page, backend) {
+export async function screenshotCanvas(page, _backend, options = {}) {
   // Both backends use id="screen"
   const canvasSelector = '#screen';
-  const canvas = await page.locator(canvasSelector);
-  return await canvas.screenshot();
+  const canvas = page.locator(canvasSelector);
+  return await canvas.screenshot(options);
 }
 
 /**
@@ -155,19 +158,67 @@ export function getPlayerPosition(logs) {
 
 /**
  * Check if text is rendering (via framebuffer pixels)
- * @param {Array<{type: string, text: string}>} logs
+ * @param {import('@playwright/test').Page} page
+ * @param {Array<{type: string, text: string}>} [logs]
  */
-export function isTextRendering(logs) {
-  const printLogs = logs.filter(log => log.text.includes('[API] print() called:'));
-  const pixelLogs = logs.filter(log => log.text.includes('non-zero pixels'));
+export async function isTextRendering(page, logs = []) {
+  const printLogs = logs.filter(log => log.text.includes('print() called:'));
+  const screenshot = await screenshotCanvas(page, 'text-probe');
+  const { width, height, data } = PNG.sync.read(screenshot);
+
+  const countRegion = (region, predicate, step = 2) => {
+    const x0 = Math.max(0, Math.floor(region.x * width));
+    const y0 = Math.max(0, Math.floor(region.y * height));
+    const x1 = Math.min(width, Math.ceil((region.x + region.w) * width));
+    const y1 = Math.min(height, Math.ceil((region.y + region.h) * height));
+    let matches = 0;
+    let total = 0;
+
+    for (let y = y0; y < y1; y += step) {
+      for (let x = x0; x < x1; x += step) {
+        const i = (y * width + x) * 4;
+        total++;
+        if (predicate(data[i], data[i + 1], data[i + 2], data[i + 3])) {
+          matches++;
+        }
+      }
+    }
+
+    return {
+      matches,
+      total,
+      ratio: total === 0 ? 0 : matches / total,
+    };
+  };
+
+  const isNonDark = (r, g, b, a) => a > 0 && r + g + b > 45;
+  const isWarmBright = (r, g, b, a) => a > 48 && r > 140 && g > 40 && b < 180;
+
+  const fullFrame = countRegion({ x: 0, y: 0, w: 1, h: 1 }, isNonDark, 4);
+  const title = countRegion({ x: 0.18, y: 0.08, w: 0.64, h: 0.26 }, isWarmBright, 2);
+  const prompt = countRegion({ x: 0.18, y: 0.86, w: 0.64, h: 0.08 }, isWarmBright, 2);
+  const canvasStats = {
+    hasCanvas: true,
+    width,
+    height,
+    nonDarkPixels: fullFrame.matches,
+    titleWarmPixels: title.matches,
+    promptWarmPixels: prompt.matches,
+    titleRatio: title.ratio,
+    promptRatio: prompt.ratio,
+  };
 
   return {
     printCallsMade: printLogs.length > 0,
-    hasFramebufferContent: pixelLogs.some(log => {
-      const match = log.text.match(/(\d+) non-zero pixels/);
-      return match && parseInt(match[1]) > 100; // At least 100 pixels
-    }),
+    hasFramebufferContent: canvasStats.hasCanvas && canvasStats.nonDarkPixels > 1000,
+    hasTitleTextPixels:
+      canvasStats.hasCanvas &&
+      (canvasStats.titleWarmPixels > 100 || canvasStats.titleRatio > 0.003),
+    hasPromptTextPixels:
+      canvasStats.hasCanvas &&
+      (canvasStats.promptWarmPixels > 20 || canvasStats.promptRatio > 0.001),
     printCalls: printLogs.length,
-    samplePrint: printLogs[0]?.text || null
+    samplePrint: printLogs[0]?.text || null,
+    canvasStats,
   };
 }

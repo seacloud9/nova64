@@ -85,6 +85,7 @@ export const NAMESPACE_MAP = {
   scene: [
     // 3D primitives & transforms
     'engine',
+    'getBackendCapabilities',
     'createCube',
     'createSphere',
     'createCylinder',
@@ -149,6 +150,8 @@ export const NAMESPACE_MAP = {
     'createCamera2D',
     'beginCamera2D',
     'endCamera2D',
+    'cam2DApply',
+    'cam2DReset',
     'cam2DFollow',
     'cam2DShake',
     'updateCamera2D',

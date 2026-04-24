@@ -75,6 +75,7 @@
     "test:babylon:perf": "playwright test tests/playwright/performance-comparison.spec.js",
     "test:babylon:visual": "playwright test tests/playwright/visual-regression.spec.js",
     "test:babylon:gameplay": "playwright test tests/playwright/space-harrier-gameplay.spec.js",
+    "test:start-screen": "playwright test tests/playwright/start-screen.spec.js",
     "test:babylon:all": "playwright test tests/playwright/",
     "bench": "node tests/bench.js",
     "bench:material": "node tests/bench.js --suite=material",

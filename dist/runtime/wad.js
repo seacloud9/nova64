@@ -824,7 +824,9 @@ function setBabylonMeshUVs(mesh, next) {
   }
 
   const applied = mesh?.getVerticesData?.('uv');
-  return !!applied && applied.length === next.length && Math.abs((applied[0] ?? 0) - next[0]) < 1e-6;
+  return (
+    !!applied && applied.length === next.length && Math.abs((applied[0] ?? 0) - next[0]) < 1e-6
+  );
 }
 
 function setBabylonBoxFaceUVs(mesh, faceRects) {

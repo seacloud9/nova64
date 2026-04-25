@@ -218,6 +218,9 @@ nova64/
 `runtime/` stays the stable public layer. The public `runtime/gpu-threejs.js` and
 `runtime/gpu-babylon.js` entrypoints now delegate into `runtime/backends/{threejs,babylon}`,
 while `runtime/shared/` holds cross-backend contracts and helpers used by both renderers.
+Babylon also has a dedicated compatibility layer in `runtime/backends/babylon/compat.js`
+for cart-facing Three-style expectations such as `scene.traverse`, `mesh.visible`,
+`material.map`, color helpers, and texture repeat/offset parity.
 The backend split and parity rules are documented in
 [docs/BACKEND_RUNTIME.md](docs/BACKEND_RUNTIME.md).
 

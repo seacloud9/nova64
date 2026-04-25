@@ -84,6 +84,7 @@ Use capability checks for behavior that is intentionally unsupported instead of 
 The Babylon backend implementation is grouped into focused modules. The main implementation areas are:
 
 - `bootstrap.js`
+- `compat.js`
 - `scene.js`
 - `camera.js`
 - `lights.js`
@@ -99,11 +100,35 @@ Current Babylon design rules:
 - `getRenderer()` returns the raw Babylon engine when direct renderer access is needed.
 - Unsupported features should fail safely and advertise capability flags.
 
+## Babylon Compatibility Layer
+
+`runtime/backends/babylon/compat.js` is the normalization layer for Babylon objects that need to satisfy long-standing Three-style cart expectations.
+
+It currently provides parity shims for:
+
+- scene traversal and root inspection: `scene.traverse`, `scene.children`
+- scene graph object checks: `isObject3D`, `isMesh`, `isLight`, `type`
+- Babylon mesh visibility bridging: `mesh.visible`
+- material aliases: `material.color`, `material.map`, `material.transparent`, `material.opacity`
+- color helpers: `color.set(...)`, `color.setHex(...)`, `color.getHex()`, `color.getHexString()`
+- texture helpers: `texture.repeat`, `texture.offset`, `texture.wrapS`, `texture.wrapT`, `texture.needsUpdate`
+- dirty/version tracking used by parity tests and cart utilities
+
+Design rules for this layer:
+
+- Put backend-normalization logic here instead of scattering one-off Babylon checks through carts.
+- Keep the shim focused on Nova64 cart/runtime expectations, not a full Three.js reimplementation.
+- Wire compatibility at creation and assignment points so loaded models, generated meshes, lights, textures, and materials all opt in automatically.
+- Back new compatibility assumptions with Playwright coverage before depending on them broadly.
+
 ## Recent Babylon Rendering Work
 
 Recent parity work focused on the places where carts were still clearly broken under Babylon:
 
 - WAD wall, floor, and sprite materials now use a safer Babylon texture/material path, including alpha and color-space handling for runtime-created textures.
+- Babylon WAD rendering now leans on the compat layer for shared mesh/material/texture behavior instead of cart-local backend branching for every parity gap.
+- Textured WAD walls use Babylon planes with per-mesh UV updates, while the Babylon wall/floor material tuning now avoids the earlier over-bright emissive look.
+- Three-style runtime calls like `material.color.set(0x336699)` and `texture.repeat.set(...)` now behave consistently on Babylon too.
 - `wizardry-3d` no longer depends on the old store polyfill behavior; plain-object game store initializers now work with real Zustand too.
 - Procedural Babylon sky spheres now use the correct material path and ignore fog, which fixes the blown-out `hello-skybox` rendering.
 - Image skyboxes now rebuild asynchronously in carts that clear the scene, and Babylon now splits environment-map usage from visible skybox usage instead of treating both as the same texture path.
@@ -113,7 +138,19 @@ Current visual status:
 
 - `hello-skybox` is back in close visual range with Three.js and covered by Playwright visual regression.
 - `pbr-showcase` is much closer than the earlier broken Babylon output, but it still does not match Three.js perfectly because Babylon does not yet have full PMREM and post-processing parity in Nova64.
+- `wad-demo` now has focused Babylon visual guardrails and is back down in the low-single-digit diff range in the gameplay-frame regression check on a clean server.
 - The visual regression threshold for `pbr-showcase` is intentionally looser than simple skybox scenes so it can still catch major regressions without pretending the two backends are identical today.
+
+## Focused Validation
+
+These are the most useful narrow checks for the current Babylon parity surface:
+
+- `pnpm test:babylon:api`
+- `pnpm exec playwright test tests/playwright/api-compatibility.spec.js --reporter=line`
+- `pnpm exec playwright test tests/playwright/wad-vox-regression.spec.js --grep "wad-demo" --reporter=line`
+- `pnpm exec playwright test tests/playwright/visual-regression.spec.js --grep "wad-demo gameplay frame" --reporter=line`
+
+Use the WAD-specific visual and regression slices first when touching Babylon WAD rendering, UVs, materials, lights, or compatibility shims.
 
 ## Remaining Babylon Backlog
 

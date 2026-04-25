@@ -437,10 +437,7 @@ function _startLevelInner() {
           floorMat.specularColor?.copyFromFloats?.(0.02, 0.02, 0.02);
           floorMat.ambientColor?.copyFromFloats?.(0.18, 0.18, 0.2);
         }
-        engine.setMeshMaterial(
-          floor,
-          floorMat
-        );
+        engine.setMeshMaterial(floor, floorMat);
         texturedFloorCount++;
       }
     }

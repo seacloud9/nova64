@@ -523,8 +523,15 @@ export function voxelApi(gpu) {
     return (hash >>> 0) % 1000000;
   }
 
-  function resolveDefaultWorldSeed() {
+  function resolveDefaultWorldSeed(cartPath = null) {
     if (typeof window === 'undefined') return 1337;
+
+    const activeCartPath =
+      cartPath ||
+      globalThis.__NOVA64_CURRENT_CART_PATH ||
+      globalThis.__nova64CurrentCartPath ||
+      null;
+    if (activeCartPath) return hashStringToSeed(`nova64-cart-path:${activeCartPath}`);
 
     const params = new URLSearchParams(window.location.search);
     const demo = params.get('demo');
@@ -951,6 +958,9 @@ export function voxelApi(gpu) {
             transparent: false,
             opacity: window.VOXEL_MATERIAL?.opacity ?? 1,
             atlasTiling: false,
+            roughness: window.VOXEL_MATERIAL?.roughness,
+            metalness: window.VOXEL_MATERIAL?.metalness,
+            flatShading: window.VOXEL_MATERIAL?.flatShading,
             tileSizeU: TILE_SIZE_U,
             tileSizeV: TILE_SIZE_V,
           });
@@ -998,6 +1008,9 @@ export function voxelApi(gpu) {
           transparent: true,
           opacity: 0.6,
           atlasTiling: useAtlasTilingShader(),
+          roughness: window.VOXEL_MATERIAL?.roughness,
+          metalness: window.VOXEL_MATERIAL?.metalness,
+          flatShading: window.VOXEL_MATERIAL?.flatShading,
           tileSizeU: TILE_SIZE_U,
           tileSizeV: TILE_SIZE_V,
         });
@@ -3352,7 +3365,15 @@ export function voxelApi(gpu) {
 
   // ─── World reset ────────────────────────────────────────────────────────
 
-  function resetWorld() {
+  function resetWorld(opts = {}) {
+    const restoreDefaults = !!opts.restoreDefaults;
+    const nextSeed =
+      opts.seed !== undefined
+        ? opts.seed
+        : restoreDefaults
+          ? resolveDefaultWorldSeed(opts.cartPath)
+          : worldSeed;
+
     for (const entry of chunkMeshes.values()) {
       if (entry.opaque) {
         disposeRenderMesh(entry.opaque);
@@ -3389,6 +3410,38 @@ export function voxelApi(gpu) {
     meshJobCallbacks.clear();
     pendingAsyncMeshes.clear();
     meshJobIdCounter = 0;
+    if (restoreDefaults) {
+      // Cross-cart resets need a full voxel presentation reset so the next cart
+      // doesn't inherit cached chunk materials, atlas textures, or generators.
+      customTerrainGenerator = null;
+      dayTimeFactor = 1.0;
+      if (typeof window !== 'undefined') {
+        window.VOXEL_MATERIAL = null;
+      }
+      rebuildMaterials();
+      if (atlasTexture?.dispose) {
+        atlasTexture.dispose();
+      }
+      atlasTexture = null;
+      atlasEnabled = false;
+      CHUNK_SIZE = 16;
+      CHUNK_HEIGHT = 128;
+      RENDER_DISTANCE = 4;
+      SEA_LEVEL = 62;
+      enableAO = true;
+      enableLighting = true;
+      enableCaves = true;
+      enableOres = true;
+      enableTrees = true;
+      enableShadows = true;
+      enableLOD = false;
+      lodDistances = [4, 8];
+      maxTerrainGenPerFrame = 2;
+      maxMeshRebuildsPerFrame = 4;
+      enableFluids = true;
+      enableAsyncMeshing = false;
+    }
+    worldSeed = nextSeed;
     noise = createSimplexNoise(worldSeed);
   }
 
@@ -5315,6 +5368,7 @@ export function voxelApi(gpu) {
   // Return current world configuration (useful for debug HUDs and perf tuning)
   function getWorldConfig() {
     return {
+      seed: worldSeed,
       chunkSize: CHUNK_SIZE,
       chunkHeight: CHUNK_HEIGHT,
       renderDistance: RENDER_DISTANCE,
@@ -5392,6 +5446,44 @@ export function voxelApi(gpu) {
     if (temperature > 0.4 && moisture > 0.4) return 'Forest';
     if (temperature < 0.35) return 'Snowy Hills';
     return 'Plains';
+  }
+
+  function getNoaPrototypeStatus() {
+    if (gpu?.getNoaPrototypeStatus) {
+      return gpu.getNoaPrototypeStatus();
+    }
+
+    return {
+      backend: gpu?.backendName ?? 'unknown',
+      requested: false,
+      available: false,
+      active: false,
+      mode: 'off',
+      source: 'runtime',
+      specifier: 'noa-engine',
+      reason: 'unsupported-backend',
+      error: null,
+      exportedKeys: [],
+      hasDefaultExport: false,
+      defaultExportType: 'undefined',
+      hasEngineFactory: false,
+      agentNotes: [
+        'NOA probing is only wired for the Babylon backend right now.',
+        'Keep runtime/api-voxel.js as the shared cart-facing layer while parity work continues.',
+      ],
+      nextStepFiles: [
+        'runtime/api-voxel.js',
+        'runtime/backends/babylon/noa-prototype.js',
+        'docs/BABYLON_NOA_PROTOTYPE.md',
+      ],
+    };
+  }
+
+  async function probeNoaPrototype(options = {}) {
+    if (gpu?.probeNoaPrototype) {
+      return await gpu.probeNoaPrototype(options);
+    }
+    return getNoaPrototypeStatus();
   }
 
   // ─── Public API ─────────────────────────────────────────────────────────
@@ -5477,6 +5569,10 @@ export function voxelApi(gpu) {
     // Noise (exposed for carts)
     noise,
 
+    // Babylon NOA prototype diagnostics
+    getNoaPrototypeStatus,
+    probeNoaPrototype,
+
     // os9-shell compatibility aliases
     createVoxelEngine: configureWorld,
     voxelSet: setBlock,
@@ -5503,6 +5599,8 @@ export function voxelApi(gpu) {
       g.getVoxelBiome = getBiome;
       g.getVoxelLightLevel = getLightLevel;
       g.setVoxelDayTime = setDayTime;
+      g.getVoxelNoaPrototypeStatus = getNoaPrototypeStatus;
+      g.probeVoxelNoaPrototype = probeNoaPrototype;
       g.saveVoxelWorld = saveWorld;
       g.loadVoxelWorld = loadWorld;
       g.listVoxelWorlds = listWorlds;

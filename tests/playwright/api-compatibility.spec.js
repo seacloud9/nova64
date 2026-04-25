@@ -6,11 +6,11 @@ import { THREEJS_BACKEND_CAPABILITIES } from '../../runtime/backends/threejs/cap
 
 const BACKENDS = ['threejs', 'babylon'];
 
-async function openApiSandbox(page, backend) {
+async function openApiSandbox(page, backend, extraQuery = '') {
   const url =
     backend === 'babylon'
-      ? '/babylon_console.html?demo=test-minimal'
-      : '/console.html?demo=test-minimal';
+      ? `/babylon_console.html?demo=test-minimal${extraQuery}`
+      : `/console.html?demo=test-minimal${extraQuery}`;
 
   await page.goto(url);
   await page.waitForFunction(
@@ -165,6 +165,36 @@ test.describe('Backend Surface Parity', () => {
     expect(babylonCaps.sceneSetup).toBe(true);
     expect(threeCaps.pbrProperties).toBe(true);
     expect(babylonCaps.pbrProperties).toBe(true);
+    expect(babylonCaps.noaPrototype).toBe(true);
+  });
+
+  test('NOA prototype probe should fail safely on Babylon and stay explicit on Three', async ({
+    page,
+  }) => {
+    await openApiSandbox(page, 'threejs');
+    const threeStatus = await page.evaluate(async () => {
+      await nova64.voxel.probeVoxelNoaPrototype({ requested: true, source: 'playwright-threejs' });
+      return nova64.voxel.getVoxelNoaPrototypeStatus();
+    });
+
+    expect(threeStatus.backend).toBe('threejs');
+    expect(threeStatus.reason).toBe('unsupported-backend');
+    expect(threeStatus.active).toBe(false);
+
+    await openApiSandbox(page, 'babylon', '&noaVoxel=1');
+    const babylonStatus = await page.evaluate(async () => {
+      await nova64.voxel.probeVoxelNoaPrototype({ requested: true, source: 'playwright-babylon' });
+      return nova64.voxel.getVoxelNoaPrototypeStatus();
+    });
+
+    expect(babylonStatus.backend).toBe('babylon');
+    expect(babylonStatus.requested).toBe(true);
+    expect(babylonStatus.mode).toBe('probe');
+    expect(babylonStatus.active).toBe(false);
+    expect(babylonStatus.specifier).toBe('noa-engine');
+    expect(Array.isArray(babylonStatus.agentNotes)).toBe(true);
+    expect(babylonStatus.agentNotes.length).toBeGreaterThan(0);
+    expect(['dependency-missing', 'loaded-awaiting-adapter']).toContain(babylonStatus.reason);
   });
 
   test('setupScene and raycastFromCamera should work in both backends', async ({ page }) => {

@@ -75,6 +75,7 @@
 
 - **Minecraft-Style Worlds**: Full voxel engine with chunk-based terrain, biomes, simplex noise generation
 - **Deterministic Default Seeds**: Shared voxel carts now derive stable default world seeds so Three.js and Babylon render the same terrain unless a cart opts into a custom seed
+- **Babylon NOA Probe Seam**: Babylon voxel parity work now includes an experimental `noa-engine` probe path for future backend-specific investigation without replacing Nova64's shared voxel API yet
 - **Block System**: Extensible block types with custom shapes and bounding boxes
 - **Fluid Simulation**: Water/lava fluid dynamics with source/drain mechanics
 - **Entity System**: ECS-style entities with archetypes, pathfinding, health, and spatial queries
@@ -178,6 +179,7 @@ nova64/
 │   ├── api-skybox.js        # Skybox system (space, gradient, solid)
 │   ├── api-sprites.js       # 2D sprite system with GPU batching
 │   ├── api-voxel.js         # Voxel engine API (blocks, chunks, entities)
+│   ├── cart-reset.js        # Shared cart-load reset hook registry
 │   ├── api-gameutils.js     # Game utilities (shake, cooldowns, spawners, pools)
 │   ├── api-generative.js    # Generative art utilities
 │   ├── api-presets.js       # Preset configurations
@@ -227,6 +229,7 @@ with `runtime/api-voxel.js` delegating chunk/entity mesh creation through backen
 instead of constructing raw Three.js meshes in Babylon mode.
 The backend split and parity rules are documented in
 [docs/BACKEND_RUNTIME.md](docs/BACKEND_RUNTIME.md).
+That document also covers the shared cart-reset lifecycle used to clear runtime state on cart loads and dashboard cart switches.
 
 ---
 

@@ -22,6 +22,7 @@ export const BABYLON_BACKEND_CAPABILITIES = Object.freeze({
   loadTexture: false,
   playAnimation: false,
   pbrMaps: false,
+  noaPrototype: true,
 });
 
 const warnedFeatures = new Set();

@@ -42,6 +42,7 @@ import { particles2DApi } from '../runtime/api-particles-2d.js';
 import { tweenApi } from '../runtime/tween.js';
 import { DebugPanel } from '../runtime/debug-panel.js';
 import { NAMESPACE_MAP, buildNamespace } from '../runtime/namespace.js';
+import { registerCartResetHook } from '../runtime/cart-reset.js';
 import * as THREE from 'three';
 
 const canvas = document.getElementById('screen');
@@ -216,6 +217,45 @@ if (nova64api.getCamera) sApi.setCameraRef(nova64api.getCamera());
 
 const nova = new Nova64(gpu, manifestInst);
 globalThis.NOVA64_VERSION = NOVA64_VERSION;
+
+registerCartResetHook('input', () => {
+  iApi.reset?.();
+});
+
+registerCartResetHook('ui', () => {
+  globalThis.clearButtons?.();
+  globalThis.clearPanels?.();
+});
+
+registerCartResetHook('screens', () => {
+  globalThis.screens?.reset?.();
+});
+
+registerCartResetHook('store', () => {
+  storeApiInst.reset?.();
+});
+
+registerCartResetHook('voxel', ({ modulePath }) => {
+  globalThis.resetVoxelWorld?.({ restoreDefaults: true, cartPath: modulePath });
+});
+
+registerCartResetHook('scene', () => {
+  globalThis.clearScene?.();
+  globalThis.clearSkybox?.();
+});
+
+registerCartResetHook('camera', () => {
+  globalThis.setCameraPosition?.(0, 5, 10);
+  globalThis.setCameraTarget?.(0, 0, 0);
+});
+
+registerCartResetHook('fog', () => {
+  globalThis.setFog?.(0x87ceeb, 50, 200);
+});
+
+registerCartResetHook('manifest', () => {
+  manifestInst._reset?.();
+});
 
 // ── Debug Panel ──────────────────────────────────────────────────────────────
 const _debugPanel = _useBabylon

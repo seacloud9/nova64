@@ -13,6 +13,7 @@ const {
   forceLoadVoxelChunks,
   getVoxelBiome,
   getVoxelBlock,
+  getVoxelConfig,
   getVoxelEntityCount,
   getVoxelHighestBlock,
   loadVoxelWorld,
@@ -57,6 +58,11 @@ let saveMessageTimer = 0;
 let texturesEnabled = true;
 let mobSpawnTimer = 0;
 let frameCount = 0;
+let respawnCount = 0;
+const FIXED_DAY_TIME = 0.12;
+const INITIAL_MOB_SPAWN_DELAY_SECONDS = 14;
+const PERIODIC_MOB_SPAWN_INTERVAL_SECONDS = 10;
+let ambientMobsActivated = false;
 
 const BLOCK_NAMES = {
   1: 'GRASS',
@@ -103,37 +109,78 @@ const BIOME_COLORS = {
   Plains: rgba8(150, 220, 150),
 };
 
-// AI for wandering mobs — simple random walk with idle pauses
-function wanderAI(ent, dt) {
-  if (!ent.data.nextAction) ent.data.nextAction = 0;
-  if (ent.data.walking === undefined) ent.data.walking = false;
-  if (!ent.data.moveDir) ent.data.moveDir = Math.random() * Math.PI * 2;
-
-  ent.data.nextAction -= dt;
-  if (ent.data.nextAction <= 0) {
-    if (Math.random() < 0.4) {
-      // Idle
-      ent.data.walking = false;
-      ent.vx = 0;
-      ent.vz = 0;
-      ent.data.nextAction = 1.5 + Math.random() * 2;
-    } else {
-      // Walk in a random direction
-      ent.data.walking = true;
-      ent.data.moveDir = Math.random() * Math.PI * 2;
-      ent.data.nextAction = 1 + Math.random() * 3;
-    }
+function hashText(text) {
+  let hash = 2166136261;
+  const value = String(text ?? '');
+  for (let i = 0; i < value.length; i++) {
+    hash ^= value.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
   }
+  return hash >>> 0;
+}
 
-  if (ent.data.walking) {
-    const speed = ent.type === 'chicken' ? 1.5 : 2.0;
-    ent.vx = Math.sin(ent.data.moveDir) * speed;
-    ent.vz = Math.cos(ent.data.moveDir) * speed;
+function createSeededRandom(seed) {
+  let state = (seed >>> 0) || 1;
+  return function nextRandom() {
+    state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+    return state / 4294967296;
+  };
+}
 
-    // Random jump when on ground
-    if (ent.onGround && Math.random() < 0.01) {
+function createDeterministicRng(label, ...values) {
+  const worldSeed = getVoxelConfig?.()?.seed ?? 1337;
+  const seedKey = [
+    worldSeed,
+    label,
+    ...values.map(value => (Number.isFinite(value) ? value.toFixed(3) : String(value))),
+  ].join(':');
+  return createSeededRandom(hashText(seedKey));
+}
+
+function getWanderState(ent) {
+  if (ent.data.wanderState) return ent.data.wanderState;
+
+  const rng = createDeterministicRng(`mob:${ent.id}:${ent.type}`, ent.x, ent.y, ent.z);
+  ent.data.wanderState = {
+    time: 0,
+    baseDir: rng() * Math.PI * 2,
+    dirPhase: rng() * Math.PI * 2,
+    movePhase: rng() * Math.PI * 2,
+    jumpPhase: rng() * Math.PI * 2,
+    gait: 0.8 + rng() * 0.3,
+    turnRate: 0.22 + rng() * 0.18,
+    jumpThreshold: 0.996 - rng() * 0.002,
+  };
+  return ent.data.wanderState;
+}
+
+// AI for wandering mobs — deterministic, backend-stable roaming
+function wanderAI(ent, dt) {
+  const state = getWanderState(ent);
+  state.time += dt;
+
+  const cycle = state.time * state.gait + state.movePhase;
+  const walkStrength = Math.sin(cycle * 0.9);
+
+  if (walkStrength > -0.12) {
+    const speedBase = ent.type === 'chicken' ? 1.4 : 1.9;
+    const speed = speedBase * (0.8 + 0.2 * Math.sin(cycle * 1.7 + state.dirPhase));
+    const direction =
+      state.baseDir +
+      Math.sin(cycle * state.turnRate + state.dirPhase) * 0.9 +
+      Math.cos(cycle * 0.23 + state.movePhase) * 0.35;
+
+    ent.data.walking = true;
+    ent.vx = Math.sin(direction) * speed;
+    ent.vz = Math.cos(direction) * speed;
+
+    if (ent.onGround && Math.sin(cycle * 2.4 + state.jumpPhase) > state.jumpThreshold) {
       ent.vy = 6;
     }
+  } else {
+    ent.data.walking = false;
+    ent.vx = 0;
+    ent.vz = 0;
   }
 
   // Rotate mesh to face movement direction
@@ -154,10 +201,13 @@ function spawnMobs(cx, cz) {
     { type: 'sheep', color: 0xeeeeee, size: [0.8, 0.9, 0.8], health: 10 },
   ];
 
+  const rng = createDeterministicRng('spawn-mobs', Math.floor(cx), Math.floor(cz));
   for (let i = 0; i < 3; i++) {
-    const def = MOB_TYPES[Math.floor(Math.random() * MOB_TYPES.length)];
-    const mx = cx + (Math.random() - 0.5) * 30;
-    const mz = cz + (Math.random() - 0.5) * 30;
+    const def = MOB_TYPES[Math.floor(rng() * MOB_TYPES.length)];
+    const angle = rng() * Math.PI * 2;
+    const distance = 12 + rng() * 18;
+    const mx = cx + Math.cos(angle) * distance;
+    const mz = cz + Math.sin(angle) * distance;
     const my = getVoxelHighestBlock(Math.floor(mx), Math.floor(mz)) + 1;
     if (my < 5) continue;
 
@@ -193,7 +243,7 @@ function createVoxelTexture() {
     }
   }
 
-  const tex = engine.createCanvasTexture(canvas, { filter: 'nearest' });
+  const tex = engine.createCanvasTexture(canvas, { filter: 'nearest', wrap: 'repeat' });
 
   globalThis.window.VOXEL_MATERIAL = engine.createMaterial('standard', {
     vertexColors: true,
@@ -204,8 +254,18 @@ function createVoxelTexture() {
   });
 }
 
+function getSkyColorForTime(t) {
+  const dayPhase = (Math.sin(t * Math.PI * 2) + 1) * 0.5;
+  const skyR = Math.round(10 + 125 * dayPhase);
+  const skyG = Math.round(10 + 196 * dayPhase);
+  const skyB = Math.round(20 + 215 * dayPhase);
+  return (skyR << 16) | (skyG << 8) | skyB;
+}
+
 export function init() {
-  createVoxelTexture();
+  if (typeof window !== 'undefined') {
+    window.VOXEL_MATERIAL = null;
+  }
   setCameraPosition(0, 80, 0);
 
   // Configure world for good performance: smaller render distance = fewer chunks
@@ -218,7 +278,13 @@ export function init() {
   }
 
   // Fog end must match render distance (3 chunks × 16 = 48 blocks)
-  setFog(0x87ceeb, 25, 50);
+  const skyColor = getSkyColorForTime(FIXED_DAY_TIME);
+  setFog(skyColor, 25, 50);
+  globalThis.setClearColor?.(skyColor);
+  if (typeof setVoxelDayTime === 'function') {
+    lastDayTime = FIXED_DAY_TIME;
+    setVoxelDayTime(FIXED_DAY_TIME);
+  }
 
   // Enable procedural texture atlas
   if (typeof enableVoxelTextures === 'function') {
@@ -226,7 +292,7 @@ export function init() {
   }
 }
 
-export function update() {
+export function update(dt = 1 / 60) {
   if (loadState === 0) {
     loadState = 1;
     return;
@@ -248,8 +314,6 @@ export function update() {
     if (player.y < 5) player.y = 80;
     loadState = 3;
     isLoaded = true;
-    // Spawn initial mobs
-    spawnMobs(player.x, player.z);
     return;
   }
 
@@ -257,25 +321,7 @@ export function update() {
 
   frameCount++;
 
-  // Day/night cycle: ~10 minute full cycle at 60fps (was 3 seconds!)
-  time += 0.00028;
-  const dayPhase = (Math.sin(time * Math.PI * 2) + 1) * 0.5; // 0=night, 1=day
-  const skyR = Math.round(10 + 125 * dayPhase);
-  const skyG = Math.round(10 + 196 * dayPhase);
-  const skyB = Math.round(20 + 215 * dayPhase);
-  // Only update fog when sky color actually changes
-  if (frameCount % 30 === 0) {
-    setFog((skyR << 16) | (skyG << 8) | skyB, 25, 50);
-  }
-
-  // Sync voxel lighting sparingly — setVoxelDayTime marks ALL chunks dirty
-  if (typeof setVoxelDayTime === 'function' && frameCount % 60 === 0) {
-    const quantized = Math.round((time % 1.0) * 20) / 20; // 20 steps per cycle
-    if (quantized !== lastDayTime) {
-      lastDayTime = quantized;
-      setVoxelDayTime(quantized);
-    }
-  }
+  time = FIXED_DAY_TIME;
 
   // Detect current biome (throttled — no need every frame)
   if (typeof getVoxelBiome === 'function' && frameCount % 30 === 0) {
@@ -299,13 +345,20 @@ export function update() {
 
   // Periodically spawn mobs if count is low
   if (typeof getVoxelEntityCount === 'function') {
-    mobSpawnTimer++;
-    if (mobSpawnTimer > 300 && getVoxelEntityCount() < 12) {
+    mobSpawnTimer += dt;
+    const nextSpawnDelay = ambientMobsActivated
+      ? PERIODIC_MOB_SPAWN_INTERVAL_SECONDS
+      : INITIAL_MOB_SPAWN_DELAY_SECONDS;
+    if (
+      mobSpawnTimer >= nextSpawnDelay &&
+      getVoxelEntityCount() < 12
+    ) {
       spawnMobs(player.x, player.z);
       mobSpawnTimer = 0;
+      ambientMobsActivated = true;
     }
     // Cleanup dead entities
-    if (mobSpawnTimer % 120 === 0 && typeof cleanupVoxelEntities === 'function') {
+    if (frameCount % 120 === 0 && typeof cleanupVoxelEntities === 'function') {
       cleanupVoxelEntities();
     }
   }
@@ -381,8 +434,10 @@ function handleInput() {
   // B key = respawn with new biome (random world + random position)
   if (keyp('KeyB') && typeof resetVoxelWorld === 'function') {
     resetVoxelWorld();
-    player.x = (Math.random() - 0.5) * 400;
-    player.z = (Math.random() - 0.5) * 400;
+    respawnCount++;
+    const rng = createDeterministicRng('respawn', respawnCount);
+    player.x = (rng() - 0.5) * 400;
+    player.z = (rng() - 0.5) * 400;
     updateVoxelWorld(player.x, player.z);
     if (typeof getVoxelHighestBlock === 'function') {
       player.y = getVoxelHighestBlock(Math.floor(player.x), Math.floor(player.z)) + 2;
@@ -394,6 +449,8 @@ function handleInput() {
     player.onGround = false;
     player.yaw = 0;
     player.pitch = 0;
+    mobSpawnTimer = 0;
+    ambientMobsActivated = false;
     spawnMobs(player.x, player.z);
   }
 

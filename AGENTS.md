@@ -162,6 +162,7 @@ GPU backends:
 - `runtime/gpu-babylon.js` - public Babylon.js backend entrypoint
 - `runtime/gpu-webgl2.js` - fallback backend
 - `runtime/gpu-canvas2d.js` - compatibility fallback
+- Babylon voxel parity work also has a guarded NOA investigation seam; read `docs/BABYLON_NOA_PROTOTYPE.md` before attempting a deeper Babylon-only voxel engine swap.
 
 Backend adapter layer:
 
@@ -184,6 +185,7 @@ Core runtime:
 - `runtime/api-sprites.js`
 - `runtime/api-voxel.js`
 - `runtime/audio.js`
+- `runtime/cart-reset.js`
 - `runtime/collision.js`
 - `runtime/console.js`
 - `runtime/data.js`
@@ -257,6 +259,12 @@ Backend behavior:
 - Three.js is the primary path.
 - Babylon.js is a secondary experimental path that still needs serious compatibility attention.
 - Babylon compatibility shims now live in `runtime/backends/babylon/compat.js`; if a cart or runtime helper depends on a Three-style object API, prefer extending that layer over adding scattered `if (backend === 'babylon')` branches.
+
+Cart reset behavior:
+
+- `runtime/console.js` now runs a shared cart-reset pipeline before each cart load.
+- Default browser hooks are registered from `src/main.js`.
+- If you add a runtime module with mutable global or long-lived cart state, register a cart reset hook instead of relying on page reloads or cart-local cleanup.
 - Babylon voxel rendering now also has a dedicated backend helper in `runtime/backends/babylon/voxel.js`; if a change touches `runtime/api-voxel.js`, prefer routing chunk/entity mesh creation through backend-aware helpers instead of creating raw Three.js meshes in shared code.
 - If a change touches rendering, adapters, materials, cameras, lights, or cart-facing 3D APIs, think about both backends.
 - Babylon mode can be reached through `babylon_console.html` or the `?backend=babylon` URL parameter.

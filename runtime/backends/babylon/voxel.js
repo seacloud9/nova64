@@ -173,6 +173,42 @@ function createChunkShaderMaterial(self, opts = {}) {
   return applyBabylonMaterialCompatibility(material);
 }
 
+function createLitChunkMaterial(self, opts = {}) {
+  const transparent = !!opts.transparent || (opts.opacity ?? 1) < 1;
+  const texture = applyBabylonTextureCompatibility(opts.texture ?? getWhiteTexture(self));
+  const material = new StandardMaterial(`nova64_voxel_chunk_${self._counter + 1}`, self.scene);
+
+  material.diffuseTexture = texture;
+  material.diffuseColor = new Color3(1, 1, 1);
+  material.ambientColor = new Color3(1, 1, 1);
+  material.emissiveTexture = texture;
+  material.disableLighting = true;
+  material.emissiveColor = new Color3(
+    opts.emissiveBoost ?? 0.22,
+    opts.emissiveBoost ?? 0.22,
+    opts.emissiveBoost ?? 0.22
+  );
+  material.specularColor = new Color3(0.01, 0.01, 0.01);
+  material.specularPower = 8;
+  material.alpha = opts.opacity ?? 1;
+  material.useVertexColors = true;
+  material.useVertexAlpha = transparent;
+  material.backFaceCulling = false;
+  material.separateCullingPass = false;
+  material.alphaMode = Constants.ALPHA_COMBINE;
+  material.fogEnabled = true;
+
+  if (transparent) {
+    texture.hasAlpha = true;
+    material.opacityTexture = texture;
+    if ('useAlphaFromDiffuseTexture' in material) {
+      material.useAlphaFromDiffuseTexture = true;
+    }
+  }
+
+  return applyBabylonMaterialCompatibility(material);
+}
+
 export function createBabylonVoxelApi(self) {
   return {
     createVoxelTextureFromCanvas(canvas) {
@@ -197,6 +233,9 @@ export function createBabylonVoxelApi(self) {
     },
 
     createVoxelChunkMaterial(opts = {}) {
+      if (!opts.atlasTiling) {
+        return createLitChunkMaterial(self, opts);
+      }
       return createChunkShaderMaterial(self, opts);
     },
 

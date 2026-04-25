@@ -347,6 +347,8 @@ export const NAMESPACE_MAP = {
     'getVoxelBiome',
     'getVoxelLightLevel',
     'setVoxelDayTime',
+    'getVoxelNoaPrototypeStatus',
+    'probeVoxelNoaPrototype',
     'saveVoxelWorld',
     'loadVoxelWorld',
     'listVoxelWorlds',

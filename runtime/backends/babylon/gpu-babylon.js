@@ -15,6 +15,7 @@ import { createBabylonInstancingApi } from './instancing.js';
 import { createBabylonParticlesApi } from './particles.js';
 import { createBabylonSurfaceApi } from './surface.js';
 import { createBabylonVoxelApi } from './voxel.js';
+import { createBabylonNoaPrototypeApi } from './noa-prototype.js';
 
 export class GpuBabylon {
   constructor(canvas, w, h) {
@@ -34,6 +35,7 @@ export class GpuBabylon {
       createBabylonInstancingApi(this),
       createBabylonParticlesApi(this),
       createBabylonVoxelApi(this),
+      createBabylonNoaPrototypeApi(this),
       createBabylonSurfaceApi(this)
     );
   }

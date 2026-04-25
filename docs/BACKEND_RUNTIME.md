@@ -61,6 +61,41 @@ Each backend exposes explicit capability flags:
 
 Use capability checks for behavior that is intentionally unsupported instead of silent no-ops. Current examples include Babylon particles, post-processing, and dithering behavior.
 
+## Cart Reset Lifecycle
+
+Nova64 now has a shared cart-reset pipeline so cart loads do not depend on scattered one-off cleanup calls.
+
+Primary pieces:
+
+- `runtime/cart-reset.js`
+  Internal registry for named cart reset hooks.
+- `runtime/console.js`
+  Calls the shared reset pipeline at the start of `Nova64.loadCart(...)`.
+- `src/main.js`
+  Registers the default runtime reset hooks used by the browser console bootstrap.
+
+The default browser/runtime reset sequence now covers:
+
+- input state
+- UI buttons and panels
+- screen manager registrations
+- `novaStore`
+- voxel world/config/material state
+- scene and skybox cleanup
+- camera reset
+- fog reset
+- manifest/env/i18n/data/assets reset
+
+Why this exists:
+
+- dashboard cart switching should behave like a fresh cart start
+- subsystems should not leak hidden state between carts
+- new stateful runtime modules need one clear place to integrate cleanup
+
+Rule for future runtime work:
+
+- if a module owns mutable global or long-lived cart state, register a cart reset hook for it instead of relying on ad hoc cleanup from carts or page reloads
+
 ## Tests That Guard This Split
 
 - `tests/playwright/api-compatibility.spec.js`
@@ -137,6 +172,7 @@ Recent parity work focused on the places where carts were still clearly broken u
 - `runtime/api-voxel.js` now builds backend-neutral voxel mesh payloads and delegates chunk/entity creation to the active renderer, which fixes the Babylon `gpu.scene.add is not a function` crash path in carts like `minecraft-demo` and `voxel-creatures`.
 - The default voxel world seed is now derived deterministically from the cart/demo identity instead of `Math.random()`, so Babylon and Three load the same terrain unless a cart explicitly requests a custom seed.
 - Babylon voxel chunk materials now use a safer two-sided shader path, which fixes the large terrain-void/culling mismatch that was still visible in `minecraft-demo`.
+- Babylon now also has a guarded NOA probe seam in `runtime/backends/babylon/noa-prototype.js`; use it to investigate `noa-engine` incrementally without letting a Babylon-only engine bypass Nova64's shared voxel API. See `docs/BABYLON_NOA_PROTOTYPE.md` for the handoff notes.
 
 Current visual status:
 

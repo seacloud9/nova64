@@ -237,6 +237,30 @@ class Input {
     this.uiCallbacks.setMousePosition = setMousePosition;
     this.uiCallbacks.setMouseButton = setMouseButton;
   }
+  reset() {
+    this.keys.clear();
+    this.prev.clear();
+    this.justPressedKeys.clear();
+    this.mouse.x = 0;
+    this.mouse.y = 0;
+    this.mouse.down = false;
+    this.mouse.prevDown = false;
+    this.mouse.pressed = false;
+    this.gamepadButtons.clear();
+    this.gamepadPrev.clear();
+    this.gamepadAxes.leftX = 0;
+    this.gamepadAxes.leftY = 0;
+    this.gamepadAxes.rightX = 0;
+    this.gamepadAxes.rightY = 0;
+    this._touchActive = false;
+
+    if (this.uiCallbacks.setMousePosition) {
+      this.uiCallbacks.setMousePosition(0, 0);
+    }
+    if (this.uiCallbacks.setMouseButton) {
+      this.uiCallbacks.setMouseButton(false);
+    }
+  }
   step() {
     this.prev = new Map(this.keys);
     this.mouse.prevDown = this.mouse.down;
@@ -329,6 +353,9 @@ export function inputApi() {
     },
     connectUI(setMousePosition, setMouseButton) {
       input.connectUI(setMousePosition, setMouseButton);
+    },
+    reset() {
+      input.reset();
     },
   };
 }

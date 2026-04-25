@@ -2,6 +2,9 @@ import { test, expect } from '@playwright/test';
 import { extractMetrics, loadCart, pressKey, waitFor3DScene } from './helpers.js';
 
 const BACKENDS = ['threejs', 'babylon'];
+const HELLO_3D_PATH = '/examples/hello-3d/code.js';
+const MINECRAFT_DEMO_PATH = '/examples/minecraft-demo/code.js';
+const VOXEL_TERRAIN_PATH = '/examples/voxel-terrain/code.js';
 
 function collectConsole(page) {
   const logs = [];
@@ -50,6 +53,62 @@ async function getVoxelSnapshot(page, x = 0, z = 0) {
     }),
     { x, z }
   );
+}
+
+async function getVoxelPlayerState(page, x = 0, z = 0) {
+  return await page.evaluate(
+    ({ x, z }) => {
+      const camera = globalThis.getCamera?.() ?? globalThis.nova64?.camera?.getCamera?.();
+      const position = camera?.position ?? null;
+      return {
+        seed:
+          globalThis.getVoxelConfig?.()?.seed ??
+          globalThis.nova64?.voxel?.getVoxelConfig?.()?.seed ??
+          null,
+        highest:
+          globalThis.getVoxelHighestBlock?.(x, z) ??
+          globalThis.nova64?.voxel?.getVoxelHighestBlock?.(x, z) ??
+          0,
+        biome:
+          globalThis.getVoxelBiome?.(x, z) ??
+          globalThis.nova64?.voxel?.getVoxelBiome?.(x, z) ??
+          null,
+        camera: position
+          ? { x: position.x, y: position.y, z: position.z }
+          : null,
+      };
+    },
+    { x, z }
+  );
+}
+
+async function loadCartFromDashboard(page, modulePath, backend = 'threejs', options = {}) {
+  const { navigate = true } = options;
+  const url = backend === 'babylon' ? '/babylon_console.html' : '/console.html';
+  if (navigate) {
+    await page.goto(url);
+  }
+  await page.waitForSelector('#cart', { timeout: 30000 });
+  await page.selectOption('#cart', modulePath);
+  await expect
+    .poll(
+      () =>
+        page.evaluate(
+          () => globalThis.__NOVA64_CURRENT_CART_PATH ?? globalThis.__nova64CurrentCartPath ?? null
+        ),
+      { timeout: 30000 }
+    )
+    .toBe(modulePath);
+  await page.waitForTimeout(2000);
+}
+
+function distanceBetweenPoints(a, b) {
+  if (!a || !b) return 0;
+  return Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
+}
+
+async function getNovaStoreState(page) {
+  return await page.evaluate(() => globalThis.novaStore?.getState?.() ?? null);
 }
 
 async function getHiddenSceneMeshCount(page) {
@@ -179,6 +238,58 @@ test.describe('Voxel Regression', () => {
     expect(babylonSnapshot.highest).toBe(threeSnapshot.highest);
     expect(babylonSnapshot.biome).toBe(threeSnapshot.biome);
   });
+
+  test('dashboard cart selector should give minecraft-demo the same world as direct demo load in Three.js', async ({
+    page,
+  }) => {
+    await loadCart(page, 'minecraft-demo', 'threejs');
+    await waitFor3DScene(page, 'threejs');
+    await expect
+      .poll(async () => (await getVoxelPlayerState(page)).highest, { timeout: 30000 })
+      .toBeGreaterThan(0);
+    const directState = await getVoxelPlayerState(page);
+
+    await loadCartFromDashboard(page, MINECRAFT_DEMO_PATH, 'threejs');
+    await expect
+      .poll(async () => (await getVoxelPlayerState(page)).highest, { timeout: 30000 })
+      .toBeGreaterThan(0);
+    const dashboardState = await getVoxelPlayerState(page);
+
+    expect(dashboardState.seed).toBe(directState.seed);
+    expect(dashboardState.highest).toBe(directState.highest);
+    expect(dashboardState.biome).toBe(directState.biome);
+  });
+
+  test('dashboard-selected voxel carts should reset world state and still allow movement in Three.js', async ({
+    page,
+  }) => {
+    await loadCartFromDashboard(page, MINECRAFT_DEMO_PATH, 'threejs');
+    await expect
+      .poll(async () => (await getVoxelPlayerState(page)).highest, { timeout: 30000 })
+      .toBeGreaterThan(0);
+    const minecraftState = await getVoxelPlayerState(page);
+
+    await loadCartFromDashboard(page, VOXEL_TERRAIN_PATH, 'threejs');
+    await expect
+      .poll(async () => (await getVoxelPlayerState(page)).highest, { timeout: 30000 })
+      .toBeGreaterThan(0);
+    const voxelTerrainState = await getVoxelPlayerState(page);
+
+    expect(minecraftState.seed).not.toBeNull();
+    expect(voxelTerrainState.seed).not.toBeNull();
+    expect(voxelTerrainState.seed).not.toBe(minecraftState.seed);
+
+    await page.locator('#screen').click();
+    const beforeMove = voxelTerrainState.camera;
+    await pressKey(page, 'w', 500);
+
+    await expect
+      .poll(
+        async () => distanceBetweenPoints(beforeMove, (await getVoxelPlayerState(page)).camera),
+        { timeout: 5000 }
+      )
+      .toBeGreaterThan(0.1);
+  });
 });
 
 test.describe('Wizardry Regression', () => {
@@ -198,4 +309,73 @@ test.describe('Wizardry Regression', () => {
       expect(errorText).not.toContain('Cart init() threw:');
     });
   }
+});
+
+test.describe('Cart Reset Regression', () => {
+  test('dashboard cart loads should reset novaStore defaults in Three.js', async ({ page }) => {
+    await page.goto('/console.html');
+    await page.waitForSelector('#cart', { timeout: 30000 });
+
+    await page.evaluate(() => {
+      globalThis.novaStore?.setState({
+        gameState: 'playing',
+        score: 99,
+        lives: 1,
+        level: 7,
+        time: 12.5,
+        paused: true,
+        playerX: 42,
+        playerY: -3,
+      });
+    });
+
+    await loadCartFromDashboard(page, HELLO_3D_PATH, 'threejs', { navigate: false });
+
+    await expect
+      .poll(async () => (await getNovaStoreState(page))?.score ?? -1, { timeout: 10000 })
+      .toBe(0);
+
+    const resetState = await getNovaStoreState(page);
+
+    expect(resetState).toMatchObject({
+      gameState: 'start',
+      score: 0,
+      lives: 3,
+      level: 1,
+      paused: false,
+      playerX: 0,
+      playerY: 0,
+    });
+    expect(resetState?.time ?? Infinity).toBeLessThan(5);
+  });
+
+  test('dashboard cart loads should clear stuck input state in Three.js', async ({ page }) => {
+    await page.goto('/console.html');
+    await page.waitForSelector('#cart', { timeout: 30000 });
+
+    const dirtyInput = await page.evaluate(() => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyW', bubbles: true }));
+      window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Space', bubbles: true }));
+      return {
+        w: globalThis.key?.('KeyW') ?? false,
+        space: globalThis.key?.('Space') ?? false,
+      };
+    });
+
+    expect(dirtyInput.w).toBe(true);
+    expect(dirtyInput.space).toBe(true);
+
+    await loadCartFromDashboard(page, HELLO_3D_PATH, 'threejs', { navigate: false });
+
+    await expect
+      .poll(
+        async () =>
+          await page.evaluate(() => ({
+            w: globalThis.key?.('KeyW') ?? false,
+            space: globalThis.key?.('Space') ?? false,
+          })),
+        { timeout: 10000 }
+      )
+      .toEqual({ w: false, space: false });
+  });
 });

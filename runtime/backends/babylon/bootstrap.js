@@ -23,22 +23,48 @@ import { createBabylonEngineAdapter } from '../../engine-adapter-babylon.js';
 import { setEngineAdapter } from '../../engine-adapter.js';
 import { BABYLON_BACKEND_CAPABILITIES } from './capabilities.js';
 import { isBabylonVerboseDebugEnabled } from './common.js';
+import {
+  applyBabylonLightCompatibility,
+  applyBabylonNodeCompatibility,
+  applyBabylonSceneCompatibility,
+} from './compat.js';
 
 export function setupDefaultLights(self) {
   self._hemisphereLight?.dispose?.();
   self._mainLight?.dispose?.();
+  self._fillLights?.forEach?.(light => light.dispose?.());
 
   if (!self._cartLights) self._cartLights = new Map();
   else self._cartLights.clear();
+  self._fillLights = [];
 
   self._hemisphereLight = new HemisphericLight('hemi', new Vector3(0, 1, 0), self.scene);
-  self._hemisphereLight.intensity = 0.6;
-  self._hemisphereLight.diffuse = new Color3(1, 1, 1);
-  self._hemisphereLight.groundColor = new Color3(0.1, 0.1, 0.2);
+  self._hemisphereLight.intensity = 0.35;
+  self._hemisphereLight.diffuse = new Color3(1.0, 0.98, 0.82);
+  self._hemisphereLight.groundColor = new Color3(0.03, 0.03, 0.12);
+  applyBabylonLightCompatibility(self._hemisphereLight);
 
-  self._mainLight = new DirectionalLight('main', new Vector3(-1, -2, -1), self.scene);
-  self._mainLight.intensity = 1.2;
+  self.scene.ambientColor = new Color3(0.08, 0.09, 0.13);
+
+  self._mainLight = new DirectionalLight('main', new Vector3(-5, -8, -3).normalize(), self.scene);
+  self._mainLight.position = new Vector3(5, 8, 3);
+  self._mainLight.intensity = 1.0;
   self._mainLight.diffuse = new Color3(1, 1, 1);
+  applyBabylonLightCompatibility(self._mainLight);
+
+  const fillLightA = new DirectionalLight('fillA', new Vector3(8, -4, 5).normalize(), self.scene);
+  fillLightA.position = new Vector3(-8, 4, -5);
+  fillLightA.intensity = 0.2;
+  fillLightA.diffuse = new Color3(0.25, 0.4, 0.8);
+  applyBabylonLightCompatibility(fillLightA);
+
+  const fillLightB = new DirectionalLight('fillB', new Vector3(-5, 3, -8).normalize(), self.scene);
+  fillLightB.position = new Vector3(5, -3, 8);
+  fillLightB.intensity = 0.15;
+  fillLightB.diffuse = new Color3(0.5, 0.2, 0.45);
+  applyBabylonLightCompatibility(fillLightB);
+
+  self._fillLights.push(fillLightA, fillLightB);
 }
 
 export function setupHudOverlay(self, mainCanvas, w, h) {
@@ -79,7 +105,8 @@ export function initializeBabylonBackend(self, canvas, w, h) {
 
   self.scene = new Scene(self.renderer);
   self.scene.useRightHandedSystem = true;
-  self.scene.clearColor = new Color4(0.04, 0.04, 0.06, 1);
+  self.scene.clearColor = new Color4(0.039, 0.039, 0.058, 1);
+  applyBabylonSceneCompatibility(self.scene);
 
   self.camera = new UniversalCamera('cam', new Vector3(0, 5, -10), self.scene);
   self.camera.setTarget(Vector3.Zero());
@@ -88,6 +115,7 @@ export function initializeBabylonBackend(self, canvas, w, h) {
   self.camera.fov = (75 * Math.PI) / 180;
   self.camera.attachControl(canvas, true);
   self.scene.activeCamera = self.camera;
+  applyBabylonNodeCompatibility(self.camera);
 
   self._meshes = new Map();
   self._instancedMeshes = new Map();

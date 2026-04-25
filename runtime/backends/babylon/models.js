@@ -4,6 +4,11 @@
 import { MeshBuilder, TransformNode } from '@babylonjs/core';
 
 import { normalizePosition } from './common.js';
+import {
+  applyBabylonMaterialCompatibility,
+  applyBabylonMeshCompatibility,
+  applyBabylonNodeCompatibility,
+} from './compat.js';
 
 export function createBabylonModelsApi(self) {
   return {
@@ -24,6 +29,7 @@ export function createBabylonModelsApi(self) {
 
       const root = new TransformNode(`nova64_vox_${self._counter + 1}`, self.scene);
       root.position.copyFrom(normalizePosition(position));
+      applyBabylonNodeCompatibility(root);
 
       if (typeof scale === 'number') {
         root.scaling.copyFromFloats(scale, scale, scale);
@@ -71,8 +77,9 @@ export function createBabylonModelsApi(self) {
             { size: 1 },
             self.scene
           );
+          applyBabylonMeshCompatibility(mesh);
           mesh.parent = root;
-          mesh.material = material;
+          mesh.material = applyBabylonMaterialCompatibility(material);
           mesh.receiveShadows = true;
           mesh.position.copyFromFloats(originX + vx, vz + 0.5, originZ + vy);
           voxelCount++;
@@ -85,7 +92,7 @@ export function createBabylonModelsApi(self) {
       }
 
       const id = ++self._counter;
-      self._meshes.set(id, root);
+      self._meshes.set(id, applyBabylonNodeCompatibility(root));
       return id;
     },
   };

@@ -4,6 +4,7 @@
 import { Mesh, MeshBuilder } from '@babylonjs/core';
 
 import { normalizePosition } from './common.js';
+import { applyBabylonMaterialCompatibility, applyBabylonMeshCompatibility } from './compat.js';
 
 export function createBabylonPrimitivesApi(self) {
   return {
@@ -25,7 +26,8 @@ export function createBabylonPrimitivesApi(self) {
     },
 
     _addMesh(babylonMesh, material) {
-      if (material) babylonMesh.material = material;
+      applyBabylonMeshCompatibility(babylonMesh);
+      if (material) babylonMesh.material = applyBabylonMaterialCompatibility(material);
       babylonMesh.receiveShadows = true;
       const id = ++self._counter;
       self._meshes.set(id, babylonMesh);
@@ -85,7 +87,12 @@ export function createBabylonPrimitivesApi(self) {
         case 'box':
           mesh = MeshBuilder.CreateBox(
             name,
-            { width: geometryDesc.w, height: geometryDesc.h, depth: geometryDesc.d },
+            {
+              width: geometryDesc.w,
+              height: geometryDesc.h,
+              depth: geometryDesc.d,
+              updatable: true,
+            },
             self.scene
           );
           break;
@@ -103,6 +110,7 @@ export function createBabylonPrimitivesApi(self) {
               width: geometryDesc.width,
               height: geometryDesc.height,
               sideOrientation: Mesh.DOUBLESIDE,
+              updatable: true,
             },
             self.scene
           );

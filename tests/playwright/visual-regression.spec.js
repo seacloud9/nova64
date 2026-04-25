@@ -2,7 +2,7 @@
 // Visual regression tests using pixelmatch to compare screenshots
 
 import { test, expect } from '@playwright/test';
-import { loadCart, screenshotCanvas } from './helpers.js';
+import { loadCart, pressKey, screenshotCanvas } from './helpers.js';
 import pixelmatch from 'pixelmatch';
 import { PNG } from 'pngjs';
 import fs from 'fs';
@@ -85,6 +85,24 @@ async function compareBackends(page, cartName, options = {}) {
   return result;
 }
 
+async function startWadDemo(page) {
+  await expect
+    .poll(async () => page.evaluate(() => globalThis.__nova64WadDemoState?.()?.gameState || ''), {
+      timeout: 30000,
+    })
+    .toBe('menu');
+
+  await pressKey(page, 'Enter', 100);
+
+  await expect
+    .poll(async () => page.evaluate(() => globalThis.__nova64WadDemoState?.()?.gameState || ''), {
+      timeout: 10000,
+    })
+    .toBe('playing');
+
+  await page.waitForTimeout(1000);
+}
+
 test.describe('Visual Regression - Basic 3D', () => {
   test('hello-3d should look similar', async ({ page }) => {
     const result = await compareBackends(page, 'hello-3d', {
@@ -128,6 +146,26 @@ test.describe('Visual Regression - 3D Showcases', () => {
     });
 
     expect(result.percentDiff, 'PBR materials should stay reasonably similar').toBeLessThan(30);
+  });
+});
+
+test.describe('Visual Regression - WAD', () => {
+  test('wad-demo gameplay frame should stay reasonably similar', async ({ page }) => {
+    await loadCart(page, 'wad-demo', 'threejs');
+    await startWadDemo(page);
+    const threejsPath = path.join(SCREENSHOTS_DIR, 'wad-demo-threejs.png');
+    await screenshotCanvas(page, 'threejs', { path: threejsPath });
+
+    await loadCart(page, 'wad-demo', 'babylon');
+    await startWadDemo(page);
+    const babylonPath = path.join(SCREENSHOTS_DIR, 'wad-demo-babylon.png');
+    await screenshotCanvas(page, 'babylon', { path: babylonPath });
+
+    const diffPath = path.join(DIFF_DIR, 'wad-demo-diff.png');
+    const result = compareImages(threejsPath, babylonPath, diffPath, 0.2);
+
+    console.log('wad-demo visual comparison:', result);
+    expect(result.percentDiff, 'WAD gameplay frame should stay reasonably similar').toBeLessThan(35);
   });
 });
 

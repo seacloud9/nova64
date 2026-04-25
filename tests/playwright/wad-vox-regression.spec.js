@@ -22,6 +22,14 @@ async function getWadDemoState(page) {
   return await page.evaluate(() => globalThis.__nova64WadDemoState?.() ?? null);
 }
 
+async function getHiddenSceneMeshCount(page) {
+  return await page.evaluate(() => {
+    const scene = globalThis.nova64?.scene?.getScene?.();
+    const meshes = scene?.meshes ?? scene?.children ?? [];
+    return meshes.filter(mesh => (mesh?.isVisible ?? mesh?.visible ?? true) === false).length;
+  });
+}
+
 test.describe('WAD Regression', () => {
   for (const backend of BACKENDS) {
     test(`wad-demo: bundled FreeDoom asset should load and start in ${backend}`, async ({
@@ -58,6 +66,9 @@ test.describe('WAD Regression', () => {
       expect(playingState?.texturedFloorCount ?? 0).toBeGreaterThan(0);
 
       await page.waitForTimeout(1000);
+
+      const hiddenMeshCount = await getHiddenSceneMeshCount(page);
+      expect(hiddenMeshCount).toBeGreaterThan(0);
 
       const errorText = getErrorText(logs);
       expect(errorText).not.toContain('Cart update() error:');

@@ -3,19 +3,24 @@
 
 import { DirectionalLight, PointLight, Vector3 } from '@babylonjs/core';
 import { hexToColor3, normalizePointLightArgs, normalizeVectorArgs } from './common.js';
+import {
+  applyBabylonLightCompatibility,
+  setBabylonDirectionalLightFromPosition,
+} from './compat.js';
 
 export function createBabylonLightsApi(self) {
   return {
     setAmbientLight(color = 0x404040, intensity = 1) {
+      const ambient = hexToColor3(color).scale(Math.max(intensity, 0));
+      if (self.scene) self.scene.ambientColor = ambient;
       if (!self._hemisphereLight) return;
       self._hemisphereLight.diffuse = hexToColor3(color);
-      self._hemisphereLight.intensity = intensity;
+      self._hemisphereLight.intensity = intensity * 0.8;
     },
 
     setLightDirection(x, y, z) {
       if (!self._mainLight) return;
-      const direction = normalizeVectorArgs(x, y, z, 0);
-      self._mainLight.direction = new Vector3(direction.x, direction.y, direction.z).normalize();
+      setBabylonDirectionalLightFromPosition(self._mainLight, normalizeVectorArgs(x, y, z, 0));
     },
 
     setLightColor(color = 0xffffff) {
@@ -37,6 +42,7 @@ export function createBabylonLightsApi(self) {
       light.diffuse = hexToColor3(color);
       light.intensity = intensity;
       if (distance > 0) light.range = distance;
+      applyBabylonLightCompatibility(light);
       const lightId = ++self._counter;
       self._cartLights.set(lightId, light);
       return lightId;
@@ -74,24 +80,22 @@ export function createBabylonLightsApi(self) {
         }
       });
 
-      const id = `dirLight_${Date.now()}`;
-      const light = new DirectionalLight(id, new Vector3(0, -1, 0), self.scene);
+      const light =
+        self._mainLight ?? new DirectionalLight('main', new Vector3(-1, -2, -1), self.scene);
+      self._mainLight = light;
       light.diffuse = hexToColor3(color);
       light.intensity = intensity;
+      applyBabylonLightCompatibility(light);
 
       if (Array.isArray(direction) && direction.length >= 3) {
-        const normalized = normalizeVectorArgs(direction, 0, 0, 0);
-        light.direction = new Vector3(normalized.x, normalized.y, normalized.z).normalize();
+        setBabylonDirectionalLightFromPosition(light, direction);
       } else if (direction && typeof direction === 'object') {
-        const normalized = normalizeVectorArgs(direction, 0, 0, 0);
-        light.direction = new Vector3(normalized.x, normalized.y, normalized.z).normalize();
+        setBabylonDirectionalLightFromPosition(light, direction);
       } else {
-        light.direction = new Vector3(1, -2, 1).normalize();
+        setBabylonDirectionalLightFromPosition(light, { x: 1, y: 2, z: 1 });
       }
 
-      const lightId = ++self._counter;
-      self._cartLights.set(lightId, light);
-      return lightId;
+      return 0;
     },
   };
 }

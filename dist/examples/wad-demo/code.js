@@ -307,6 +307,7 @@ function _startLevelInner() {
   const converted = convertWADMap(mapData);
   const accent = ACCENT_COLORS[currentMapIdx % ACCENT_COLORS.length];
   const SCALE = 1 / 20; // WAD coordinate scale factor
+  const isBabylonBackend = engine.getCapabilities?.()?.backend === 'babylon';
 
   // Build walls
   for (let i = 0; i < converted.walls.length; i++) {
@@ -318,18 +319,28 @@ function _startLevelInner() {
     if (texMgr && w.texName) {
       const tex = texMgr.getWallTexture(w.texName);
       if (tex) {
-        const m = createCube(1, 0xffffff, [w.x, w.y, w.z], {
-          material: 'standard',
-          roughness: 0.9,
-        });
-        setScale(m, w.len, w.h, 0.5);
+        const m = isBabylonBackend
+          ? createPlane(w.len, w.h, 0xffffff, [w.x, w.y, w.z], {
+              material: 'standard',
+              roughness: 0.9,
+            })
+          : createCube(1, 0xffffff, [w.x, w.y, w.z], {
+              material: 'standard',
+              roughness: 0.9,
+            });
+        if (!isBabylonBackend) setScale(m, w.len, w.h, 0.5);
         setRotation(m, 0, w.ang, 0);
 
         // Apply texture with sector lighting
         const mat = engine.createMaterial('phong', {
           map: tex,
           color: engine.createColor(bri, bri, bri),
+          side: 'double',
         });
+        if (isBabylonBackend) {
+          mat.specularColor?.copyFromFloats?.(0.02, 0.02, 0.02);
+          mat.ambientColor?.copyFromFloats?.(0.18 * bri, 0.18 * bri, 0.2 * bri);
+        }
         engine.setMeshMaterial(m, mat);
 
         // Set UV tiling after the material exists so Babylon can update the texture transform.
@@ -417,12 +428,18 @@ function _startLevelInner() {
         // 64 DOOM pixels per flat tile at scale 1/20 = 3.2 world units
         const tilesPerUnit = 20 / 64;
         engine.setTextureRepeat(floorTex, floorSize * tilesPerUnit, floorSize * tilesPerUnit);
+        const floorMat = engine.createMaterial('phong', {
+          map: floorTex,
+          side: 'double',
+        });
+        if (isBabylonBackend) {
+          floorMat.diffuseColor?.copyFromFloats?.(0.5, 0.5, 0.55);
+          floorMat.specularColor?.copyFromFloats?.(0.02, 0.02, 0.02);
+          floorMat.ambientColor?.copyFromFloats?.(0.18, 0.18, 0.2);
+        }
         engine.setMeshMaterial(
           floor,
-          engine.createMaterial('phong', {
-            map: floorTex,
-            side: 'double',
-          })
+          floorMat
         );
         texturedFloorCount++;
       }

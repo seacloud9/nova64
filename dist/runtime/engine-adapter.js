@@ -139,8 +139,12 @@ export function createThreeEngineAdapter(options = {}) {
       const params = {};
       if (opts.map !== undefined) params.map = opts.map;
       if (opts.transparent !== undefined) params.transparent = opts.transparent;
+      if (opts.opacity !== undefined) params.opacity = opts.opacity;
       if (opts.alphaTest !== undefined) params.alphaTest = opts.alphaTest;
       if (opts.side !== undefined) params.side = SIDE_MAP[opts.side] ?? THREE.FrontSide;
+      if (opts.opacity !== undefined && params.transparent === undefined && opts.opacity < 1) {
+        params.transparent = true;
+      }
       if (opts.color !== undefined) {
         params.color =
           opts.color !== null && typeof opts.color === 'object' && !Array.isArray(opts.color)

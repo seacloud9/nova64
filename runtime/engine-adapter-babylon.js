@@ -18,6 +18,12 @@
 // See docs/ADAPTER_CONTRACT.md for the full contract specification.
 
 import { ADAPTER_CONTRACT_VERSION } from './engine-adapter.js';
+import {
+  applyBabylonColorCompatibility,
+  applyBabylonMaterialCompatibility,
+  applyBabylonMeshCompatibility,
+  applyBabylonTextureCompatibility,
+} from './backends/babylon/compat.js';
 
 // ---------------------------------------------------------------------------
 // Internal helpers
@@ -168,9 +174,11 @@ export function createBabylonEngineAdapter(BABYLON, scene, opts = {}) {
 
         const diffuse = toColor3(BABYLON, matOpts.color);
         if (diffuse) mat.albedoColor = diffuse;
+        if (mat.ambientColor?.copyFromFloats) mat.ambientColor.copyFromFloats(1, 1, 1);
         if (matOpts.map) {
           const map = applyBabylonTextureColorSpace(matOpts.map);
           mat.albedoTexture = map;
+          applyBabylonTextureCompatibility(map);
           configureStandardTextureAlpha(mat, map, matOpts);
         }
 
@@ -183,16 +191,21 @@ export function createBabylonEngineAdapter(BABYLON, scene, opts = {}) {
 
         const diffuse = toColor3(BABYLON, matOpts.color);
         if (diffuse) mat.diffuseColor = diffuse;
+        if (mat.ambientColor?.copyFromFloats) mat.ambientColor.copyFromFloats(1, 1, 1);
 
         if (type === 'basic') {
           mat.disableLighting = true;
-          mat.specularColor = new BABYLON.Color3(0, 0, 0);
+          if (mat.specularColor?.copyFromFloats) mat.specularColor.copyFromFloats(0, 0, 0);
           mat.emissiveColor = diffuse ?? new BABYLON.Color3(1, 1, 1);
+        } else {
+          if (mat.specularColor?.copyFromFloats) mat.specularColor.copyFromFloats(0.08, 0.08, 0.08);
+          mat.specularPower = 32;
         }
 
         if (matOpts.map) {
           const map = applyBabylonTextureColorSpace(matOpts.map);
           mat.diffuseTexture = map;
+          applyBabylonTextureCompatibility(map);
           if (type === 'basic') {
             mat.emissiveTexture = map;
             if (!diffuse) {
@@ -219,12 +232,14 @@ export function createBabylonEngineAdapter(BABYLON, scene, opts = {}) {
 
       if (matOpts.side === 'double') {
         mat.backFaceCulling = false;
+        if ('twoSidedLighting' in mat) mat.twoSidedLighting = true;
+        if ('separateCullingPass' in mat) mat.separateCullingPass = true;
       } else if (matOpts.side === 'front') {
         mat.backFaceCulling = true;
       }
       // 'back' is non-standard in Babylon — leave as default
 
-      return mat;
+      return applyBabylonMaterialCompatibility(mat);
     },
 
     // -------------------------------------------------------------------------
@@ -257,7 +272,7 @@ export function createBabylonEngineAdapter(BABYLON, scene, opts = {}) {
         tex.wrapV = wrapMode;
       }
 
-      return tex;
+      return applyBabylonTextureCompatibility(tex);
     },
 
     /**
@@ -296,11 +311,12 @@ export function createBabylonEngineAdapter(BABYLON, scene, opts = {}) {
         tex.wrapV = wrapMode;
       }
 
-      return tex;
+      return applyBabylonTextureCompatibility(tex);
     },
 
     cloneTexture(tex) {
-      return tex.clone();
+      const clone = tex?.clone?.() ?? null;
+      return applyBabylonTextureCompatibility(clone);
     },
 
     /**
@@ -308,6 +324,7 @@ export function createBabylonEngineAdapter(BABYLON, scene, opts = {}) {
      */
     setTextureRepeat(tex, x, y) {
       if (!tex) return;
+      applyBabylonTextureCompatibility(tex);
       tex.uScale = x;
       tex.vScale = y;
       // Enable wrap mode so repeat actually tiles
@@ -320,6 +337,7 @@ export function createBabylonEngineAdapter(BABYLON, scene, opts = {}) {
      * Works for DynamicTexture (has update()); no-ops gracefully for others.
      */
     invalidateTexture(tex) {
+      applyBabylonTextureCompatibility(tex);
       if (tex && typeof tex.update === 'function') {
         try {
           tex.update();
@@ -334,7 +352,7 @@ export function createBabylonEngineAdapter(BABYLON, scene, opts = {}) {
     // -------------------------------------------------------------------------
 
     createColor(r, g, b) {
-      return new BABYLON.Color3(r, g, b);
+      return applyBabylonColorCompatibility(new BABYLON.Color3(r, g, b));
     },
 
     // -------------------------------------------------------------------------
@@ -369,7 +387,9 @@ export function createBabylonEngineAdapter(BABYLON, scene, opts = {}) {
 
     setMeshMaterial(meshId, material) {
       const mesh = resolveMesh(meshId);
-      if (mesh) mesh.material = material;
+      if (!mesh) return;
+      applyBabylonMeshCompatibility(mesh);
+      mesh.material = applyBabylonMaterialCompatibility(material);
     },
 
     // -------------------------------------------------------------------------

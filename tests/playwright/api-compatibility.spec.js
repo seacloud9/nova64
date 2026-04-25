@@ -287,6 +287,107 @@ test.describe('Backend Surface Parity', () => {
     }
   });
 
+  test('Three-style scene, mesh, light, material, and texture shims should work in both backends', async ({
+    page,
+  }) => {
+    for (const backend of BACKENDS) {
+      await openApiSandbox(page, backend);
+
+      const result = await page.evaluate(() => {
+        clearScene();
+        setDirectionalLight([5, 8, 3], 0xffccaa, 1);
+
+        const engine = nova64.scene.engine;
+        const canvas = document.createElement('canvas');
+        canvas.width = 4;
+        canvas.height = 4;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#ff8800';
+        ctx.fillRect(0, 0, 4, 4);
+
+        const texture = engine.createCanvasTexture(canvas, {
+          filter: 'nearest',
+          wrap: 'repeat',
+        });
+        texture.repeat.set(2, 3);
+        texture.offset.set(0.25, 0.5);
+        texture.needsUpdate = true;
+
+        const clonedTexture = engine.cloneTexture(texture);
+        clonedTexture.repeat.set(1.5, 2.5);
+        clonedTexture.offset.set(0.1, 0.2);
+        clonedTexture.needsUpdate = true;
+
+        const material = engine.createMaterial('phong', {
+          color: 0x224466,
+          map: clonedTexture,
+          transparent: true,
+          opacity: 0.8,
+          side: 'double',
+        });
+        material.color.set(0x336699);
+        material.needsUpdate = true;
+
+        const meshId = createCube(1, 0xffffff, [0, 0, -4]);
+        engine.setMeshMaterial(meshId, material);
+        const mesh = getMesh(meshId);
+        mesh.visible = false;
+
+        const scene = nova64.scene.getScene();
+        let traversedMesh = false;
+        let traversedLight = false;
+        let lightHex = null;
+        scene.traverse(obj => {
+          if (obj === mesh && obj.isMesh) traversedMesh = true;
+          if (!traversedLight && obj.isLight) {
+            traversedLight = true;
+            lightHex = obj.color?.getHexString?.() ?? null;
+          }
+        });
+
+        return {
+          childCount: Array.isArray(scene.children) ? scene.children.length : 0,
+          traversedMesh,
+          traversedLight,
+          lightHex,
+          isMesh: mesh.isMesh === true,
+          visible: mesh.visible,
+          materialColorHex: mesh.material?.color?.getHex?.() ?? null,
+          materialDirtySignal:
+            mesh.material?.needsUpdate === true || Number(mesh.material?.version ?? 0) > 0,
+          transparent: mesh.material?.transparent === true,
+          opacity: Number(mesh.material?.opacity ?? 0),
+          textureRepeat: {
+            x: Number(mesh.material?.map?.repeat?.x ?? 0),
+            y: Number(mesh.material?.map?.repeat?.y ?? 0),
+          },
+          textureOffset: {
+            x: Number(mesh.material?.map?.offset?.x ?? 0),
+            y: Number(mesh.material?.map?.offset?.y ?? 0),
+          },
+          textureDirtySignal:
+            mesh.material?.map?.needsUpdate === true || Number(mesh.material?.map?.version ?? 0) > 0,
+        };
+      });
+
+      expect(result.childCount, `scene.children should be array-like in ${backend}`).toBeGreaterThan(0);
+      expect(result.traversedMesh, `scene.traverse should visit meshes in ${backend}`).toBe(true);
+      expect(result.traversedLight, `scene.traverse should visit lights in ${backend}`).toBe(true);
+      expect(result.lightHex, `light.color.getHexString should work in ${backend}`).toMatch(/^[0-9a-f]{6}$/);
+      expect(result.isMesh, `meshes should expose isMesh in ${backend}`).toBe(true);
+      expect(result.visible, `mesh.visible should round-trip in ${backend}`).toBe(false);
+      expect(result.materialColorHex, `material.color.getHex should work in ${backend}`).toBe(0x336699);
+      expect(result.materialDirtySignal, `material.needsUpdate should work in ${backend}`).toBe(true);
+      expect(result.transparent, `material.transparent should work in ${backend}`).toBe(true);
+      expect(result.opacity, `material.opacity should work in ${backend}`).toBeCloseTo(0.8, 5);
+      expect(result.textureRepeat.x, `texture.repeat.x should work in ${backend}`).toBeCloseTo(1.5, 5);
+      expect(result.textureRepeat.y, `texture.repeat.y should work in ${backend}`).toBeCloseTo(2.5, 5);
+      expect(result.textureOffset.x, `texture.offset.x should work in ${backend}`).toBeCloseTo(0.1, 5);
+      expect(result.textureOffset.y, `texture.offset.y should work in ${backend}`).toBeCloseTo(0.2, 5);
+      expect(result.textureDirtySignal, `texture.needsUpdate should work in ${backend}`).toBe(true);
+    }
+  });
+
   test('unsupported Babylon capabilities should fail safely instead of crashing carts', async ({
     page,
   }) => {
@@ -299,10 +400,11 @@ test.describe('Backend Surface Parity', () => {
       const caps = nova64.scene.getBackendCapabilities();
       const ditheringResult = enableDithering(true);
       const particleSystemId = createParticleSystem(32);
-      const particleStats = getParticleStats(particleSystemId);
+      const initialParticleStats = getParticleStats(particleSystemId);
       const particleEmitterResult = setParticleEmitter(particleSystemId, { emitterX: 1, emitterY: 2 });
       const particleBurstResult = burstParticles(particleSystemId, 8);
       const particleUpdateResult = updateParticles(1 / 60);
+      const particleStats = getParticleStats(particleSystemId);
       const particleRemoved = removeParticleSystem(particleSystemId);
 
       return {
@@ -312,6 +414,7 @@ test.describe('Backend Surface Parity', () => {
         particles: caps.particles,
         ditheringResult,
         particleSystemId,
+        initialParticleStats,
         particleStats,
         particleEmitterResult,
         particleBurstResult,
@@ -328,13 +431,14 @@ test.describe('Backend Surface Parity', () => {
     expect(result.backend).toBe('babylon');
     expect(result.skybox).toBe(true);
     expect(result.dithering).toBe(false);
-    expect(result.particles).toBe(false);
+    expect(result.particles).toBe(true);
     expect(result.ditheringResult).toBe(false);
-    expect(result.particleSystemId).toBe(-1);
-    expect(result.particleStats).toEqual({ active: 0, max: 32 });
-    expect(result.particleEmitterResult).toBe(false);
+    expect(result.particleSystemId).toBeGreaterThan(0);
+    expect(result.initialParticleStats).toEqual({ active: 0, max: 32, free: 32 });
+    expect(result.particleStats).toEqual({ active: 8, max: 32, free: 24 });
+    expect(result.particleEmitterResult).toBe(true);
     expect(result.particleBurstResult).toBe(8);
-    expect(result.particleUpdateResult).toBe(0);
+    expect(result.particleUpdateResult).toBeGreaterThanOrEqual(0);
     expect(result.particleRemoved).toBe(true);
     expect(errorText).not.toContain('gpu.endFrame() error:');
     expect(errorText).not.toContain('Cart update() error:');

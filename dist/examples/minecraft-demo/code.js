@@ -176,12 +176,18 @@ function createVoxelTexture() {
   canvas.width = 64;
   canvas.height = 64;
   const ctx = canvas.getContext('2d');
+  const seed = 1337;
+
+  function seededNoise(x, y) {
+    const value = Math.sin((x + 1) * 12.9898 + (y + 1) * 78.233 + seed * 0.12345) * 43758.5453;
+    return value - Math.floor(value);
+  }
 
   for (let y = 0; y < 64; y++) {
     for (let x = 0; x < 64; x++) {
-      let noise = Math.random() * 60 - 30;
-      let isBorder = x % 16 === 0 || y % 16 === 0 ? -20 : 0;
-      let val = 180 + noise + isBorder;
+      const noise = seededNoise(x, y) * 60 - 30;
+      const isBorder = x % 16 === 0 || y % 16 === 0 ? -20 : 0;
+      const val = 180 + noise + isBorder;
       ctx.fillStyle = `rgb(${val}, ${val}, ${val})`;
       ctx.fillRect(x, y, 1, 1);
     }

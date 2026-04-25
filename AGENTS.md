@@ -257,6 +257,7 @@ Backend behavior:
 - Three.js is the primary path.
 - Babylon.js is a secondary experimental path that still needs serious compatibility attention.
 - Babylon compatibility shims now live in `runtime/backends/babylon/compat.js`; if a cart or runtime helper depends on a Three-style object API, prefer extending that layer over adding scattered `if (backend === 'babylon')` branches.
+- Babylon voxel rendering now also has a dedicated backend helper in `runtime/backends/babylon/voxel.js`; if a change touches `runtime/api-voxel.js`, prefer routing chunk/entity mesh creation through backend-aware helpers instead of creating raw Three.js meshes in shared code.
 - If a change touches rendering, adapters, materials, cameras, lights, or cart-facing 3D APIs, think about both backends.
 - Babylon mode can be reached through `babylon_console.html` or the `?backend=babylon` URL parameter.
 

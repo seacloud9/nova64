@@ -22,6 +22,18 @@ async function getWadDemoState(page) {
   return await page.evaluate(() => globalThis.__nova64WadDemoState?.() ?? null);
 }
 
+async function getVoxelState(page) {
+  return await page.evaluate(() => ({
+    backend: globalThis.nova64?.scene?.getBackendCapabilities?.().backend ?? null,
+    entityCount:
+      globalThis.getVoxelEntityCount?.() ?? globalThis.nova64?.voxel?.getVoxelEntityCount?.() ?? 0,
+    highestBlock:
+      globalThis.getVoxelHighestBlock?.(0, 0) ??
+      globalThis.nova64?.voxel?.getVoxelHighestBlock?.(0, 0) ??
+      0,
+  }));
+}
+
 async function getHiddenSceneMeshCount(page) {
   return await page.evaluate(() => {
     const scene = globalThis.nova64?.scene?.getScene?.();
@@ -98,6 +110,37 @@ test.describe('VOX Regression', () => {
       const errorText = getErrorText(logs);
       expect(errorText).not.toContain('Failed to load .vox model:');
       expect(errorText).toBe('');
+    });
+  }
+});
+
+test.describe('Voxel Regression', () => {
+  for (const cartName of ['minecraft-demo', 'voxel-creatures']) {
+    test(`${cartName}: Babylon voxel carts should boot without Three-only scene errors`, async ({
+      page,
+    }) => {
+      const logs = collectConsole(page);
+
+      await loadCart(page, cartName, 'babylon');
+      await waitFor3DScene(page, 'babylon');
+
+      await expect
+        .poll(async () => (await getVoxelState(page)).highestBlock, { timeout: 30000 })
+        .toBeGreaterThan(0);
+
+      await expect
+        .poll(async () => (await getVoxelState(page)).entityCount, { timeout: 30000 })
+        .toBeGreaterThan(0);
+
+      const state = await getVoxelState(page);
+      const errorText = getErrorText(logs);
+
+      expect(state.backend).toBe('babylon');
+      expect(errorText).not.toContain('gpu.scene.add is not a function');
+      expect(errorText).not.toContain('gpu.scene.remove is not a function');
+      expect(errorText).not.toContain('THREE is not defined');
+      expect(errorText).not.toContain('Cart update() error:');
+      expect(errorText).not.toContain('Cart init() threw:');
     });
   }
 });

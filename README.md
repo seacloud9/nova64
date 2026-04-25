@@ -221,6 +221,9 @@ while `runtime/shared/` holds cross-backend contracts and helpers used by both r
 Babylon also has a dedicated compatibility layer in `runtime/backends/babylon/compat.js`
 for cart-facing Three-style expectations such as `scene.traverse`, `mesh.visible`,
 `material.map`, color helpers, and texture repeat/offset parity.
+Voxel carts now also have a backend-native Babylon path in `runtime/backends/babylon/voxel.js`,
+with `runtime/api-voxel.js` delegating chunk/entity mesh creation through backend-aware helpers
+instead of constructing raw Three.js meshes in Babylon mode.
 The backend split and parity rules are documented in
 [docs/BACKEND_RUNTIME.md](docs/BACKEND_RUNTIME.md).
 

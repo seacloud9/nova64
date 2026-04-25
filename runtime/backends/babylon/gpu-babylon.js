@@ -14,6 +14,7 @@ import { createBabylonPbrApi } from './pbr.js';
 import { createBabylonInstancingApi } from './instancing.js';
 import { createBabylonParticlesApi } from './particles.js';
 import { createBabylonSurfaceApi } from './surface.js';
+import { createBabylonVoxelApi } from './voxel.js';
 
 export class GpuBabylon {
   constructor(canvas, w, h) {
@@ -32,6 +33,7 @@ export class GpuBabylon {
       createBabylonPbrApi(this),
       createBabylonInstancingApi(this),
       createBabylonParticlesApi(this),
+      createBabylonVoxelApi(this),
       createBabylonSurfaceApi(this)
     );
   }

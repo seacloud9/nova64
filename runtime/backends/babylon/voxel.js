@@ -165,8 +165,8 @@ function createChunkShaderMaterial(self, opts = {}) {
   material.setVector2('uTileSize', new Vector2(opts.tileSizeU ?? 1, opts.tileSizeV ?? 1));
   material.setFloat('uOpacity', opts.opacity ?? 1);
   material.setFloat('uUseAtlasTiling', opts.atlasTiling ? 1 : 0);
-  material.backFaceCulling = !transparent;
-  material.separateCullingPass = transparent;
+  material.backFaceCulling = false;
+  material.separateCullingPass = false;
   material.alphaMode = Constants.ALPHA_COMBINE;
   material.fogEnabled = true;
 

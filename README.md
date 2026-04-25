@@ -74,6 +74,7 @@
 ### 🧊 **Voxel Engine**
 
 - **Minecraft-Style Worlds**: Full voxel engine with chunk-based terrain, biomes, simplex noise generation
+- **Deterministic Default Seeds**: Shared voxel carts now derive stable default world seeds so Three.js and Babylon render the same terrain unless a cart opts into a custom seed
 - **Block System**: Extensible block types with custom shapes and bounding boxes
 - **Fluid Simulation**: Water/lava fluid dynamics with source/drain mechanics
 - **Entity System**: ECS-style entities with archetypes, pathfinding, health, and spatial queries

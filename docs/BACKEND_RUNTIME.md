@@ -135,6 +135,8 @@ Recent parity work focused on the places where carts were still clearly broken u
 - Babylon planes are created double-sided so rotated floor planes in carts like `pbr-showcase` and `wad-demo` render reliably.
 - Babylon voxel carts now use a backend-native voxel path in `runtime/backends/babylon/voxel.js` for atlas textures, chunk meshes, and simple voxel entity boxes instead of trying to add raw Three.js meshes into a Babylon scene.
 - `runtime/api-voxel.js` now builds backend-neutral voxel mesh payloads and delegates chunk/entity creation to the active renderer, which fixes the Babylon `gpu.scene.add is not a function` crash path in carts like `minecraft-demo` and `voxel-creatures`.
+- The default voxel world seed is now derived deterministically from the cart/demo identity instead of `Math.random()`, so Babylon and Three load the same terrain unless a cart explicitly requests a custom seed.
+- Babylon voxel chunk materials now use a safer two-sided shader path, which fixes the large terrain-void/culling mismatch that was still visible in `minecraft-demo`.
 
 Current visual status:
 
@@ -142,6 +144,7 @@ Current visual status:
 - `pbr-showcase` is much closer than the earlier broken Babylon output, but it still does not match Three.js perfectly because Babylon does not yet have full PMREM and post-processing parity in Nova64.
 - `wad-demo` now has focused Babylon visual guardrails and is back down in the low-single-digit diff range in the gameplay-frame regression check on a clean server.
 - Babylon voxel carts now boot and render chunk/entity content without Three-only scene errors, but voxel visual parity still needs follow-up work around custom material parity, chunk shading, and screenshot-level similarity against Three.js.
+- `minecraft-demo` now has deterministic terrain and a focused voxel visual regression guardrail, with the Babylon gameplay-frame diff back down into the low-to-mid teens instead of the earlier broken ~35%+ range caused by seed drift and chunk-face culling.
 - The visual regression threshold for `pbr-showcase` is intentionally looser than simple skybox scenes so it can still catch major regressions without pretending the two backends are identical today.
 
 ## Focused Validation
@@ -153,6 +156,7 @@ These are the most useful narrow checks for the current Babylon parity surface:
 - `pnpm exec playwright test tests/playwright/wad-vox-regression.spec.js --grep "wad-demo" --reporter=line`
 - `pnpm exec playwright test tests/playwright/wad-vox-regression.spec.js --grep "Voxel Regression" --reporter=line`
 - `pnpm exec playwright test tests/playwright/backend-parity.spec.js --grep 'Minecraft Demo|Voxel Terrain|Voxel Creative|Voxel Creatures' --reporter=line`
+- `pnpm exec playwright test tests/playwright/visual-regression.spec.js --grep "minecraft-demo should stay reasonably similar" --reporter=line`
 - `pnpm exec playwright test tests/playwright/visual-regression.spec.js --grep "wad-demo gameplay frame" --reporter=line`
 
 Use the WAD-specific visual and regression slices first when touching Babylon WAD rendering, UVs, materials, lights, or compatibility shims. Use the voxel-focused regression and backend-parity slices first when touching `runtime/api-voxel.js` or `runtime/backends/babylon/voxel.js`.

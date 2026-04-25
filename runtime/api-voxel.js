@@ -512,7 +512,32 @@ export function voxelApi(gpu) {
   // World data
   const chunks = new Map();
   const chunkMeshes = new Map();
-  let worldSeed = Math.floor(Math.random() * 50000);
+
+  function hashStringToSeed(input) {
+    let hash = 2166136261;
+    const text = String(input || 'nova64-voxel');
+    for (let i = 0; i < text.length; i++) {
+      hash ^= text.charCodeAt(i);
+      hash = Math.imul(hash, 16777619);
+    }
+    return (hash >>> 0) % 1000000;
+  }
+
+  function resolveDefaultWorldSeed() {
+    if (typeof window === 'undefined') return 1337;
+
+    const params = new URLSearchParams(window.location.search);
+    const demo = params.get('demo');
+    if (demo) return hashStringToSeed(`nova64-demo:${demo}`);
+
+    const cart = params.get('cart');
+    if (cart) return hashStringToSeed(`nova64-cart:${cart}`);
+
+    const normalizedPath = window.location.pathname.replace('babylon_console.html', 'console.html');
+    return hashStringToSeed(`nova64-path:${normalizedPath}`);
+  }
+
+  let worldSeed = resolveDefaultWorldSeed();
   let noise = createSimplexNoise(worldSeed);
 
   // Shared materials (fix material leak — one material for all chunks)
@@ -3364,7 +3389,6 @@ export function voxelApi(gpu) {
     meshJobCallbacks.clear();
     pendingAsyncMeshes.clear();
     meshJobIdCounter = 0;
-    worldSeed += 5000 + Math.floor(Math.random() * 10000);
     noise = createSimplexNoise(worldSeed);
   }
 

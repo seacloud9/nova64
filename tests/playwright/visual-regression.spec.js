@@ -169,6 +169,19 @@ test.describe('Visual Regression - WAD', () => {
   });
 });
 
+test.describe('Visual Regression - Voxel', () => {
+  test('minecraft-demo should stay reasonably similar', async ({ page }) => {
+    test.setTimeout(120000);
+    const result = await compareBackends(page, 'minecraft-demo', {
+      waitTime: 7000,
+      threshold: 0.18,
+      maxDiffPercent: 15,
+    });
+
+    expect(result.percentDiff, 'Minecraft demo should stay reasonably similar').toBeLessThan(15);
+  });
+});
+
 test.describe('Visual Regression - Start Screens', () => {
   test('space-harrier-3d start screen should match', async ({ page }) => {
     const result = await compareBackends(page, 'space-harrier-3d', {

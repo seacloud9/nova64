@@ -34,6 +34,24 @@ async function getVoxelState(page) {
   }));
 }
 
+async function getVoxelSnapshot(page, x = 0, z = 0) {
+  return await page.evaluate(
+    ({ x, z }) => ({
+      seed:
+        globalThis.getVoxelConfig?.()?.seed ??
+        globalThis.nova64?.voxel?.getVoxelConfig?.()?.seed ??
+        null,
+      highest:
+        globalThis.getVoxelHighestBlock?.(x, z) ??
+        globalThis.nova64?.voxel?.getVoxelHighestBlock?.(x, z) ??
+        0,
+      biome:
+        globalThis.getVoxelBiome?.(x, z) ?? globalThis.nova64?.voxel?.getVoxelBiome?.(x, z) ?? null,
+    }),
+    { x, z }
+  );
+}
+
 async function getHiddenSceneMeshCount(page) {
   return await page.evaluate(() => {
     const scene = globalThis.nova64?.scene?.getScene?.();
@@ -143,6 +161,24 @@ test.describe('Voxel Regression', () => {
       expect(errorText).not.toContain('Cart init() threw:');
     });
   }
+
+  test('minecraft-demo: default voxel world seed and terrain should match between backends', async ({
+    page,
+  }) => {
+    await loadCart(page, 'minecraft-demo', 'threejs');
+    await waitFor3DScene(page, 'threejs');
+    await expect.poll(async () => (await getVoxelSnapshot(page)).highest, { timeout: 30000 }).toBeGreaterThan(0);
+    const threeSnapshot = await getVoxelSnapshot(page);
+
+    await loadCart(page, 'minecraft-demo', 'babylon');
+    await waitFor3DScene(page, 'babylon');
+    await expect.poll(async () => (await getVoxelSnapshot(page)).highest, { timeout: 30000 }).toBeGreaterThan(0);
+    const babylonSnapshot = await getVoxelSnapshot(page);
+
+    expect(babylonSnapshot.seed).toBe(threeSnapshot.seed);
+    expect(babylonSnapshot.highest).toBe(threeSnapshot.highest);
+    expect(babylonSnapshot.biome).toBe(threeSnapshot.biome);
+  });
 });
 
 test.describe('Wizardry Regression', () => {

@@ -61,7 +61,12 @@ function ensureVoxelShaderRegistered() {
     void main(void) {
       vec2 sampleUv = vUv;
       if (uUseAtlasTiling > 0.5) {
-        sampleUv = vUv2 + fract(vUv) * uTileSize;
+        // Babylon.js DynamicTexture has inverted Y compared to Three.js CanvasTexture.
+        // Flip V coordinate: sample from (1 - v) to match Three.js UV convention.
+        vec2 tileOrigin = vec2(vUv2.x, 1.0 - vUv2.y - uTileSize.y);
+        vec2 tileOffset = fract(vUv) * uTileSize;
+        tileOffset.y = uTileSize.y - tileOffset.y; // flip within tile too
+        sampleUv = tileOrigin + tileOffset;
       }
 
       vec4 texel = texture2D(textureSampler, sampleUv);
@@ -178,21 +183,26 @@ function createLitChunkMaterial(self, opts = {}) {
   const texture = applyBabylonTextureCompatibility(opts.texture ?? getWhiteTexture(self));
   const material = new StandardMaterial(`nova64_voxel_chunk_${self._counter + 1}`, self.scene);
 
-  material.diffuseTexture = texture;
-  material.diffuseColor = new Color3(1, 1, 1);
-  material.ambientColor = new Color3(1, 1, 1);
+  // Voxel colors are pre-baked in vertex colors (including AO and lighting).
+  // We use emissive channel to display them without scene lighting re-modulating.
+  // This matches Three.js MeshStandardMaterial with vertexColors=true behavior.
   material.emissiveTexture = texture;
+  material.emissiveColor = new Color3(1, 1, 1); // Full brightness, no tint
+
+  // Disable scene lighting - vertex colors already include lighting/AO
   material.disableLighting = true;
-  material.emissiveColor = new Color3(
-    opts.emissiveBoost ?? 0.22,
-    opts.emissiveBoost ?? 0.22,
-    opts.emissiveBoost ?? 0.22
-  );
-  material.specularColor = new Color3(0.01, 0.01, 0.01);
-  material.specularPower = 8;
-  material.alpha = opts.opacity ?? 1;
+
+  // Enable vertex colors to modulate the emissive output
   material.useVertexColors = true;
   material.useVertexAlpha = transparent;
+
+  // Diffuse not needed since we use emissive, but set for consistency
+  material.diffuseColor = new Color3(0, 0, 0);
+  material.ambientColor = new Color3(0, 0, 0);
+  material.specularColor = new Color3(0, 0, 0);
+
+  // Rendering settings
+  material.alpha = opts.opacity ?? 1;
   material.backFaceCulling = false;
   material.separateCullingPass = false;
   material.alphaMode = Constants.ALPHA_COMBINE;

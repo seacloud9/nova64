@@ -33,42 +33,87 @@ Effect.ShadersStore['chromaticAberrationFragmentShader'] = `
   }
 `;
 
-// Glitch shader
+// Advanced Glitch shader - inspired by seacloud9's implementation
+// Supports displacement texture, chromatic aberration, scanlines, and snow noise
 Effect.ShadersStore['glitchFragmentShader'] = `
   precision highp float;
   varying vec2 vUV;
   uniform sampler2D textureSampler;
   uniform float intensity;
   uniform float time;
+  uniform float seed;
+  uniform float distortion_x;
+  uniform float distortion_y;
+  uniform float col_s;
 
   float rand(vec2 co) {
     return fract(sin(dot(co, vec2(12.9898, 78.233))) * 43758.5453);
   }
 
   void main(void) {
-    vec2 uv = vUV;
+    vec2 p = vUV;
+    float xs = floor(gl_FragCoord.x / 0.5);
+    float ys = floor(gl_FragCoord.y / 0.5);
 
-    // Scanline displacement
-    float scanJitter = step(0.99 - intensity * 0.3, rand(vec2(time * 1.3, floor(uv.y * 40.0))))
-                      * (rand(vec2(time, floor(uv.y * 40.0))) - 0.5) * intensity * 0.15;
-    uv.x += scanJitter;
+    // Generate pseudo-displacement from noise
+    float seed_scaled = seed * 0.01;
+    float disp_x = rand(p * seed_scaled) * 2.0 - 1.0;
+    float disp_y = rand(p * seed_scaled + vec2(1.0, 1.0)) * 2.0 - 1.0;
 
-    // Block glitch
-    float blockY = floor(uv.y * 8.0);
+    // Horizontal band distortion
+    float band_width = col_s * intensity;
+    if (p.y < distortion_x + band_width && p.y > distortion_x - band_width * seed_scaled) {
+      if (rand(vec2(time, distortion_x)) > 0.5) {
+        p.y = 1.0 - (p.y + distortion_y * intensity * 0.1);
+      } else {
+        p.y = distortion_y;
+      }
+    }
+
+    // Vertical band distortion
+    if (p.x < distortion_y + band_width && p.x > distortion_y - band_width * seed_scaled) {
+      if (rand(vec2(time + 1.0, distortion_y)) > 0.5) {
+        p.x = distortion_x;
+      } else {
+        p.x = 1.0 - (p.x + distortion_x * intensity * 0.1);
+      }
+    }
+
+    // Apply displacement noise
+    p.x += disp_x * intensity * 0.02 * (seed_scaled / 5.0);
+    p.y += disp_y * intensity * 0.02 * (seed_scaled / 5.0);
+
+    // Scanline displacement (horizontal jitter)
+    float scanJitter = step(0.99 - intensity * 0.3, rand(vec2(time * 1.3, floor(p.y * 40.0))))
+                      * (rand(vec2(time, floor(p.y * 40.0))) - 0.5) * intensity * 0.15;
+    p.x += scanJitter;
+
+    // Block glitch (larger rectangular artifacts)
+    float blockY = floor(p.y * 8.0);
     float blockShift = step(0.97 - intensity * 0.15, rand(vec2(blockY, time * 0.7)))
                       * (rand(vec2(blockY + 1.0, time)) - 0.5) * intensity * 0.1;
-    uv.x += blockShift;
+    p.x += blockShift;
 
-    // RGB channel split
-    float rgbShift = intensity * 0.012;
-    float r = texture2D(textureSampler, vec2(uv.x + rgbShift, uv.y + rgbShift * 0.5)).r;
-    float g = texture2D(textureSampler, uv).g;
-    float b = texture2D(textureSampler, vec2(uv.x - rgbShift, uv.y - rgbShift * 0.3)).b;
+    // Chromatic aberration / RGB channel split
+    float angle = time * 0.5;
+    vec2 offset = intensity * 0.015 * vec2(cos(angle), sin(angle));
+    float r = texture2D(textureSampler, p + offset).r;
+    float g = texture2D(textureSampler, p).g;
+    float b = texture2D(textureSampler, p - offset).b;
+    float a = texture2D(textureSampler, p).a;
 
-    // Color corruption
-    float noise = step(0.995 - intensity * 0.05, rand(uv + time)) * intensity;
+    vec4 color = vec4(r, g, b, a);
 
-    gl_FragColor = vec4(r + noise, g, b + noise * 0.5, 1.0);
+    // Snow/grain noise overlay
+    float snow = 200.0 * intensity * 0.1 * rand(vec2(xs * seed_scaled, ys * seed_scaled * 50.0)) * 0.2;
+    color.rgb += vec3(snow);
+
+    // Color corruption (random bright pixels)
+    float corruption = step(0.995 - intensity * 0.05, rand(p + time)) * intensity;
+    color.r += corruption;
+    color.b += corruption * 0.5;
+
+    gl_FragColor = color;
   }
 `;
 
@@ -256,19 +301,43 @@ export function createBabylonEffectsApi(self) {
 
   // === GLITCH ===
   let glitchIntensity = 0.5;
+  let glitchSeed = Math.random() * 100;
+  let glitchDistortionX = 0.5;
+  let glitchDistortionY = 0.5;
+  let glitchColS = 0.05;
 
-  function enableGlitch(intensity = 0.5) {
+  function enableGlitch(intensity = 0.5, options = {}) {
     initPipeline();
     glitchIntensity = Math.max(0, Math.min(1, intensity));
+
+    // Optional configuration
+    if (options.seed !== undefined) glitchSeed = options.seed;
+    if (options.distortionX !== undefined) glitchDistortionX = options.distortionX;
+    if (options.distortionY !== undefined) glitchDistortionY = options.distortionY;
+    if (options.bandWidth !== undefined) glitchColS = options.bandWidth;
 
     if (glitchPost) {
       return true;
     }
 
-    glitchPost = new PostProcess('glitch', 'glitch', ['intensity', 'time'], null, 1.0, self.camera);
+    // Create glitch post-process with all uniforms
+    glitchPost = new PostProcess(
+      'glitch',
+      'glitch',
+      ['intensity', 'time', 'seed', 'distortion_x', 'distortion_y', 'col_s'],
+      null,
+      1.0,
+      self.camera
+    );
+
     glitchPost.onApply = effect => {
       effect.setFloat('intensity', glitchIntensity);
       effect.setFloat('time', glitchTime);
+      // Randomize seed and distortion for dynamic effect
+      effect.setFloat('seed', glitchSeed + Math.random() * 10);
+      effect.setFloat('distortion_x', glitchDistortionX + (Math.random() - 0.5) * 0.1);
+      effect.setFloat('distortion_y', glitchDistortionY + (Math.random() - 0.5) * 0.1);
+      effect.setFloat('col_s', glitchColS);
     };
 
     return true;
@@ -283,6 +352,13 @@ export function createBabylonEffectsApi(self) {
 
   function setGlitchIntensity(intensity) {
     glitchIntensity = Math.max(0, Math.min(1, intensity));
+  }
+
+  function setGlitchOptions(options = {}) {
+    if (options.seed !== undefined) glitchSeed = options.seed;
+    if (options.distortionX !== undefined) glitchDistortionX = options.distortionX;
+    if (options.distortionY !== undefined) glitchDistortionY = options.distortionY;
+    if (options.bandWidth !== undefined) glitchColS = options.bandWidth;
   }
 
   // === RETRO EFFECTS CONVENIENCE ===
@@ -730,6 +806,7 @@ export function createBabylonEffectsApi(self) {
     enableGlitch,
     disableGlitch,
     setGlitchIntensity,
+    setGlitchOptions,
 
     // Sharpen (Babylon-specific bonus)
     enableSharpen,

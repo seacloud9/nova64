@@ -97,6 +97,7 @@ const CAPABILITY_GATED_BACKEND_SURFACE_GROUPS = Object.freeze({
     'enableGlitch',
     'disableGlitch',
     'setGlitchIntensity',
+    'setGlitchOptions',
     'enableRetroEffects',
     'disableRetroEffects',
     'enableSharpen',

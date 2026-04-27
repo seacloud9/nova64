@@ -584,8 +584,25 @@ export function effectsApi(gpu) {
     `,
   };
 
+  // Detect if running on Babylon.js backend
+  function isBabylonBackend() {
+    return (
+      !renderer || renderer.scenes || renderer.constructor.name === 'Engine' || !renderer.domElement
+    );
+  }
+
   // Create material with custom shader
   function createShaderMaterial(shaderName, customUniforms = {}) {
+    // Delegate to Babylon.js backend if applicable
+    if (isBabylonBackend()) {
+      // The Babylon backend exposes createShaderMaterial on the gpu object
+      if (typeof gpu.createShaderMaterial === 'function') {
+        return gpu.createShaderMaterial(shaderName, customUniforms);
+      }
+      logger.warn(`Shader material '${shaderName}' not available with Babylon.js backend`);
+      return null;
+    }
+
     let shader;
 
     switch (shaderName) {
@@ -630,6 +647,14 @@ export function effectsApi(gpu) {
 
   // Update shader uniforms
   function updateShaderUniform(shaderId, uniformName, value) {
+    // Delegate to Babylon.js backend if applicable
+    if (isBabylonBackend()) {
+      if (typeof gpu.updateShaderUniform === 'function') {
+        return gpu.updateShaderUniform(shaderId, uniformName, value);
+      }
+      return false;
+    }
+
     const material = customShaders.get(shaderId);
     if (material && material.uniforms[uniformName]) {
       material.uniforms[uniformName].value = value;

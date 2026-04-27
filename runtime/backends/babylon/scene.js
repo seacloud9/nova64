@@ -88,7 +88,18 @@ export function createBabylonSceneApi(self) {
     },
 
     update(dt) {
-      void dt;
+      // Update effects (glitch time, etc.)
+      if (typeof self.updateEffects === 'function') {
+        self.updateEffects(dt);
+      }
+      // Update TSL animated materials (uTime uniform)
+      if (typeof self._updateTSLMaterials === 'function') {
+        self._updateTSLMaterials(dt);
+      }
+      // Update skybox animation
+      if (typeof self.tickSkybox === 'function') {
+        self.tickSkybox(dt);
+      }
     },
 
     render() {

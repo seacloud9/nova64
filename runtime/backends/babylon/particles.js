@@ -1,17 +1,17 @@
 // runtime/backends/babylon/particles.js
-// GPU particle system for Babylon.js backend using InstancedMesh approach.
+// GPU particle system for Babylon.js backend using SolidParticleSystem.
 // API-compatible with Three.js particles module.
 
 import {
   Color3,
-  Matrix,
+  Color4,
   MeshBuilder,
-  Quaternion,
+  SolidParticleSystem,
   StandardMaterial,
-  Vector3,
 } from '@babylonjs/core';
 
 import { hexToColor3 } from './common.js';
+import { applyBabylonMaterialCompatibility, applyBabylonMeshCompatibility } from './compat.js';
 
 const STRIDE = 13; // slots per particle:
 // px py pz vx vy vz age life r g b size active
@@ -19,10 +19,6 @@ const STRIDE = 13; // slots per particle:
 export function createBabylonParticlesApi(self) {
   const particleSystems = new Map();
   let psCounter = 0;
-
-  const _tempPosition = new Vector3();
-  const _tempScaling = new Vector3();
-  const _tempQuaternion = new Quaternion();
 
   function createParticleSystem(maxParticlesOrOptions = 200, options = {}) {
     // Normalize arguments (support both signatures)
@@ -78,79 +74,164 @@ export function createBabylonParticlesApi(self) {
       rotationSpeed = 0,
     } = particleOptions;
 
-    // Create base geometry
-    let sourceMesh;
+    const id = ++psCounter;
+
+    // Create SolidParticleSystem
+    const sps = new SolidParticleSystem(`sps_${id}`, self.scene, {
+      updatable: true,
+      isPickable: false,
+      enableDepthSort: false,
+      particleIntersection: false,
+      boundingSphereOnly: false,
+      bSphereRadiusFactor: 1.0,
+    });
+
+    // Create shape mesh (temporary, will be disposed after building SPS)
+    let shapeMesh;
     if (shape === 'cube') {
-      sourceMesh = MeshBuilder.CreateBox(
-        `particle_source_${psCounter}`,
-        { size: size },
-        self.scene
-      );
+      shapeMesh = MeshBuilder.CreateBox(`particle_shape_${id}`, { size: size }, self.scene);
     } else {
-      sourceMesh = MeshBuilder.CreateSphere(
-        `particle_source_${psCounter}`,
+      shapeMesh = MeshBuilder.CreateSphere(
+        `particle_shape_${id}`,
         { diameter: size, segments: segments },
         self.scene
       );
     }
 
-    // Create material
-    const mat = new StandardMaterial(`particle_mat_${psCounter}`, self.scene);
+    // Add particles to SPS
+    sps.addShape(shapeMesh, maxParticles);
+    shapeMesh.dispose(); // No longer needed
+
+    // Build the SPS mesh
+    const spsMesh = sps.buildMesh();
+    spsMesh.hasVertexAlpha = true;
+
+    // Create material - use emissive-based rendering for bright particle glow
+    const mat = new StandardMaterial(`particle_mat_${id}`, self.scene);
     const sc = hexToColor3(startColor);
     const ec = hexToColor3(emissive);
+
+    // For particles, we want bright emissive glow like Three.js MeshStandardMaterial
+    mat.disableLighting = true;
+
+    // Use emissive color for the particle color (self-lit appearance)
+    const intensity = Math.min(emissiveIntensity, 4.0);
+    mat.emissiveColor = ec.scale(intensity);
     mat.diffuseColor = sc;
-    mat.emissiveColor = ec.scale(Math.min(emissiveIntensity, 1.0));
     mat.specularColor = new Color3(0, 0, 0);
+
+    // Enable vertex colors for per-particle coloring
+    mat.useVertexColors = true;
     mat.alpha = opacity;
 
     if (blending === 'additive') {
-      mat.alphaMode = 1; // ALPHA_ADD
+      mat.alphaMode = 2; // ALPHA_ADD
       mat.disableDepthWrite = true;
+    } else {
+      mat.alphaMode = 1; // ALPHA_COMBINE
     }
 
-    sourceMesh.material = mat;
-
-    // Create thin instances buffer
-    // Each instance needs 16 floats for the matrix
-    const matricesData = new Float32Array(maxParticles * 16);
-    // Color buffer: 4 floats per instance (r, g, b, a)
-    const colorsData = new Float32Array(maxParticles * 4);
-
-    // Initialize all instances as hidden (scale 0, position far away)
-    const hiddenMatrix = Matrix.Compose(
-      new Vector3(0, 0, 0), // scale 0
-      Quaternion.Identity(),
-      new Vector3(0, -9999, 0) // far below
-    );
-
-    for (let i = 0; i < maxParticles; i++) {
-      hiddenMatrix.copyToArray(matricesData, i * 16);
-      // Initial color (white, full alpha)
-      colorsData[i * 4 + 0] = 1;
-      colorsData[i * 4 + 1] = 1;
-      colorsData[i * 4 + 2] = 1;
-      colorsData[i * 4 + 3] = 1;
-    }
-
-    sourceMesh.thinInstanceSetBuffer('matrix', matricesData, 16, true);
-    sourceMesh.thinInstanceSetBuffer('color', colorsData, 4, true);
-    sourceMesh.thinInstanceEnablePicking = false;
+    spsMesh.material = mat;
+    applyBabylonMaterialCompatibility(mat);
+    applyBabylonMeshCompatibility(spsMesh);
 
     // Particle state pool
     const pool = new Float32Array(maxParticles * STRIDE);
 
-    const id = ++psCounter;
-
     const startColorObj = hexToColor3(startColor);
     const endColorObj = hexToColor3(endColor);
 
+    // Initialize all particles as inactive
+    sps.initParticles = function () {
+      for (let i = 0; i < sps.nbParticles; i++) {
+        const p = sps.particles[i];
+        p.isVisible = false;
+        p.position.set(0, -9999, 0);
+        p.scaling.set(0, 0, 0);
+        p.color = new Color4(1, 1, 1, 1);
+      }
+    };
+
+    // Update function called by setParticles()
+    sps.updateParticle = function (particle) {
+      const sys = particleSystems.get(id);
+      if (!sys) return particle;
+
+      const idx = particle.idx;
+      const base = idx * STRIDE;
+      const poolData = sys.pool;
+
+      // Check if active
+      if (poolData[base + 12] === 0) {
+        particle.isVisible = false;
+        particle.position.set(0, -9999, 0);
+        particle.scaling.set(0, 0, 0);
+        return particle;
+      }
+
+      particle.isVisible = true;
+
+      // Read position from pool
+      particle.position.x = poolData[base + 0];
+      particle.position.y = poolData[base + 1];
+      particle.position.z = poolData[base + 2];
+
+      // Read size and apply
+      const age = poolData[base + 6];
+      const life = poolData[base + 7];
+      const t = life > 0 ? age / life : 1;
+
+      // Size over life
+      let sizeMul;
+      if (sys.config.sizeOverLife) {
+        const [s0, s1, s2] = sys.config.sizeOverLife;
+        sizeMul = t < 0.5 ? s0 + (s1 - s0) * (t * 2) : s1 + (s2 - s1) * ((t - 0.5) * 2);
+      } else {
+        sizeMul = 1 - t * 0.8;
+      }
+      const sz = poolData[base + 11] * sizeMul;
+      particle.scaling.set(sz, sz, sz);
+
+      // Color interpolation
+      const r = poolData[base + 8] * (1 - t) + sys.config.endColor.r * t;
+      const g = poolData[base + 9] * (1 - t) + sys.config.endColor.g * t;
+      const b = poolData[base + 10] * (1 - t) + sys.config.endColor.b * t;
+
+      // Opacity over life
+      let alpha;
+      if (sys.config.opacityOverLife) {
+        const [o0, o1, o2] = sys.config.opacityOverLife;
+        alpha = t < 0.5 ? o0 + (o1 - o0) * (t * 2) : o1 + (o2 - o1) * ((t - 0.5) * 2);
+      } else {
+        alpha = sys.config.opacity * (1 - t * 0.5); // Fade out slightly
+      }
+
+      particle.color.r = r;
+      particle.color.g = g;
+      particle.color.b = b;
+      particle.color.a = alpha;
+
+      // Rotation
+      if (sys.config.rotationSpeed > 0) {
+        const rot = age * sys.config.rotationSpeed;
+        particle.rotation.x = rot * 0.7;
+        particle.rotation.y = rot;
+        particle.rotation.z = rot * 0.3;
+      }
+
+      return particle;
+    };
+
+    // Initialize particles
+    sps.initParticles();
+    sps.setParticles();
+
     particleSystems.set(id, {
-      mesh: sourceMesh,
+      sps,
+      mesh: spsMesh,
       material: mat,
       pool,
       maxParticles,
-      matricesData,
-      colorsData,
       freeList: Array.from({ length: maxParticles }, (_, i) => i),
       activeCount: 0,
       emitAccum: 0,
@@ -264,7 +345,7 @@ export function createBabylonParticlesApi(self) {
     let totalActive = 0;
 
     particleSystems.forEach(sys => {
-      const { pool, maxParticles, mesh, config, emitter, matricesData, colorsData } = sys;
+      const { pool, maxParticles, sps, config, emitter } = sys;
 
       // Auto-emit based on rate
       sys.emitAccum += emitter.emitRate * dt;
@@ -289,14 +370,6 @@ export function createBabylonParticlesApi(self) {
           pool[base + 12] = 0;
           sys.freeList.push(i);
           sys.activeCount--;
-
-          // Hide by scaling to zero
-          _tempPosition.set(0, -9999, 0);
-          _tempScaling.set(0, 0, 0);
-          Matrix.Compose(_tempScaling, Quaternion.Identity(), _tempPosition).copyToArray(
-            matricesData,
-            i * 16
-          );
           needsUpdate = true;
           continue;
         }
@@ -336,58 +409,12 @@ export function createBabylonParticlesApi(self) {
         pool[base + 1] += pool[base + 4] * dt; // py
         pool[base + 2] += pool[base + 5] * dt; // pz
 
-        // Interpolate color start→end
-        const t = age / life;
-        const r = pool[base + 8] * (1 - t) + config.endColor.r * t;
-        const g = pool[base + 9] * (1 - t) + config.endColor.g * t;
-        const b = pool[base + 10] * (1 - t) + config.endColor.b * t;
-
-        // Update color buffer
-        const colorIdx = i * 4;
-        colorsData[colorIdx + 0] = r;
-        colorsData[colorIdx + 1] = g;
-        colorsData[colorIdx + 2] = b;
-
-        // Opacity over life
-        if (config.opacityOverLife) {
-          const [o0, o1, o2] = config.opacityOverLife;
-          const opac = t < 0.5 ? o0 + (o1 - o0) * (t * 2) : o1 + (o2 - o1) * ((t - 0.5) * 2);
-          colorsData[colorIdx + 3] = opac;
-        } else {
-          colorsData[colorIdx + 3] = config.opacity;
-        }
-
-        // Shrink as particle ages — use sizeOverLife curve if provided
-        let sizeMul;
-        if (config.sizeOverLife) {
-          const [s0, s1, s2] = config.sizeOverLife;
-          sizeMul = t < 0.5 ? s0 + (s1 - s0) * (t * 2) : s1 + (s2 - s1) * ((t - 0.5) * 2);
-        } else {
-          sizeMul = 1 - t * 0.8;
-        }
-        const sz = pool[base + 11] * sizeMul;
-
-        // Rotation
-        const rot = config.rotationSpeed > 0 ? age * config.rotationSpeed : 0;
-
-        _tempPosition.set(pool[base + 0], pool[base + 1], pool[base + 2]);
-        _tempScaling.set(sz, sz, sz);
-        if (rot) {
-          Quaternion.FromEulerAnglesToRef(rot * 0.7, rot, rot * 0.3, _tempQuaternion);
-        } else {
-          _tempQuaternion.copyFrom(Quaternion.Identity());
-        }
-
-        Matrix.Compose(_tempScaling, _tempQuaternion, _tempPosition).copyToArray(
-          matricesData,
-          i * 16
-        );
         needsUpdate = true;
       }
 
       if (needsUpdate) {
-        mesh.thinInstanceBufferUpdated('matrix');
-        mesh.thinInstanceBufferUpdated('color');
+        // Update SPS - this will call updateParticle for each particle
+        sps.setParticles();
       }
 
       totalActive += sys.activeCount;
@@ -399,7 +426,7 @@ export function createBabylonParticlesApi(self) {
   function removeParticleSystem(systemId) {
     const sys = particleSystems.get(systemId);
     if (!sys) return false;
-    sys.mesh.dispose();
+    sys.sps.dispose();
     sys.material.dispose();
     particleSystems.delete(systemId);
     return true;

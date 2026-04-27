@@ -84,25 +84,74 @@ export function primitivesModule({
     }
 
     const id = ++counters.mesh;
-    meshes.set(id, mesh);
-    return id;
+
+    // Create a proxy that acts like an ID but also exposes mesh properties
+    // This allows carts to use both `setPosition(meshId, ...)` AND `mesh.position.x`
+    // Many carts assume createCube/createSphere return mesh objects with .position, .material, etc.
+    const proxy = new Proxy(mesh, {
+      get(target, prop) {
+        // For numeric coercion (when used as ID in Map lookups, etc.)
+        if (prop === Symbol.toPrimitive) {
+          return hint => (hint === 'number' ? id : String(id));
+        }
+        if (prop === 'valueOf') {
+          return () => id;
+        }
+        if (prop === 'toString') {
+          return () => String(id);
+        }
+        // Special property to get the raw numeric ID
+        if (prop === '__meshId') {
+          return id;
+        }
+        // Forward all other property access to the actual Three.js mesh
+        const value = target[prop];
+        if (typeof value === 'function') {
+          return value.bind(target);
+        }
+        return value;
+      },
+      set(target, prop, value) {
+        target[prop] = value;
+        return true;
+      },
+    });
+
+    meshes.set(id, proxy);
+    return proxy;
   }
 
-  function destroyMesh(id) {
+  function destroyMesh(idOrProxy) {
+    // Extract numeric ID from proxy if needed
+    let id = idOrProxy;
+    if (typeof idOrProxy !== 'number' && idOrProxy && typeof idOrProxy === 'object') {
+      id = idOrProxy.__meshId ?? idOrProxy.valueOf?.() ?? idOrProxy;
+    }
     const mesh = meshes.get(id);
     if (mesh) {
+      // The mesh is a Proxy that forwards to the actual Three.js mesh
+      // scene.remove, dispose etc. all work through the Proxy's forwarding
       scene.remove(mesh);
-      mesh.geometry?.dispose();
-      if (mesh.material?.map) mesh.material.map.dispose();
-      mesh.material?.dispose();
+      mesh.geometry?.dispose?.();
+      if (mesh.material?.map) mesh.material.map.dispose?.();
+      mesh.material?.dispose?.();
       meshes.delete(id);
       mixers.delete(id);
       modelAnimations.delete(id);
     }
   }
 
-  function getMesh(id) {
-    return meshes.get(id);
+  function getMesh(idOrProxy) {
+    // Handle both raw IDs and proxy objects
+    if (typeof idOrProxy === 'number') return meshes.get(idOrProxy);
+    if (idOrProxy && typeof idOrProxy === 'object') {
+      // Check for __meshId property (mesh proxy)
+      if (typeof idOrProxy.__meshId === 'number') return meshes.get(idOrProxy.__meshId);
+      // Try valueOf for numeric coercion
+      const val = idOrProxy.valueOf?.();
+      if (typeof val === 'number') return meshes.get(val);
+    }
+    return null;
   }
 
   function createCube(size = 1, color = 0xffffff, position = [0, 0, 0], options = {}) {

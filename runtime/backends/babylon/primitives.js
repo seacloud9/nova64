@@ -26,6 +26,10 @@ export function createBabylonPrimitivesApi(self) {
     },
 
     _addMesh(babylonMesh, material) {
+      if (!babylonMesh) {
+        console.error('[GpuBabylon] _addMesh called with null/undefined mesh');
+        return null;
+      }
       applyBabylonMeshCompatibility(babylonMesh);
       if (material) babylonMesh.material = applyBabylonMaterialCompatibility(material);
       babylonMesh.receiveShadows = true;
@@ -201,6 +205,10 @@ export function createBabylonPrimitivesApi(self) {
           mesh = MeshBuilder.CreateBox(name, { size: 1 }, self.scene);
       }
 
+      if (!mesh) {
+        console.error('[GpuBabylon] createMesh: MeshBuilder returned null');
+        return null;
+      }
       mesh.position.copyFrom(pos);
       return self._addMesh(mesh, material);
     },

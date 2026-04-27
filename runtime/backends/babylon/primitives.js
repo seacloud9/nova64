@@ -31,7 +31,43 @@ export function createBabylonPrimitivesApi(self) {
       babylonMesh.receiveShadows = true;
       const id = ++self._counter;
       self._meshes.set(id, babylonMesh);
-      return id;
+
+      // Create a proxy that acts like an ID but also exposes mesh properties
+      // This allows carts to use both `setPosition(meshId, ...)` AND `mesh.position.x`
+      // Many carts assume createCube/createSphere return mesh objects with .position, .material, etc.
+      const proxy = new Proxy(babylonMesh, {
+        get(target, prop) {
+          // For numeric coercion (when used as ID in Map lookups, etc.)
+          if (prop === Symbol.toPrimitive) {
+            return hint => (hint === 'number' ? id : String(id));
+          }
+          if (prop === 'valueOf') {
+            return () => id;
+          }
+          if (prop === 'toString') {
+            return () => String(id);
+          }
+          // Special property to get the raw numeric ID
+          if (prop === '__meshId') {
+            return id;
+          }
+          // Forward all other property access to the actual Babylon mesh
+          const value = target[prop];
+          if (typeof value === 'function') {
+            return value.bind(target);
+          }
+          return value;
+        },
+        set(target, prop, value) {
+          target[prop] = value;
+          return true;
+        },
+      });
+
+      // Also store proxy in meshes map so getMesh returns the proxy
+      self._meshes.set(id, proxy);
+
+      return proxy;
     },
 
     createBoxGeometry(w, h, d) {

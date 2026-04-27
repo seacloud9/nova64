@@ -3,9 +3,30 @@
 
 import { normalizeVectorArgs } from './common.js';
 
+// Helper to extract numeric ID from either a number or a mesh proxy
+function getMeshId(idOrProxy) {
+  if (typeof idOrProxy === 'number') return idOrProxy;
+  if (idOrProxy && typeof idOrProxy === 'object') {
+    // Check for __meshId property (mesh proxy)
+    if (typeof idOrProxy.__meshId === 'number') return idOrProxy.__meshId;
+    // Try valueOf for numeric coercion
+    const val = idOrProxy.valueOf?.();
+    if (typeof val === 'number') return val;
+  }
+  return null;
+}
+
 export function createBabylonTransformsApi(self) {
+  // Helper to get mesh from ID or proxy
+  function resolveMesh(idOrProxy) {
+    const id = getMeshId(idOrProxy);
+    if (id === null) return null;
+    return self._meshes.get(id) ?? null;
+  }
+
   return {
-    destroyMesh(id) {
+    destroyMesh(idOrProxy) {
+      const id = getMeshId(idOrProxy);
       const mesh = self._meshes.get(id);
       if (!mesh) return false;
       mesh.dispose?.();
@@ -15,21 +36,22 @@ export function createBabylonTransformsApi(self) {
       return true;
     },
 
-    removeMesh(id) {
-      return this.destroyMesh(id);
+    removeMesh(idOrProxy) {
+      return this.destroyMesh(idOrProxy);
     },
 
-    getMesh(id) {
-      return self._meshes.get(id) ?? null;
+    getMesh(idOrProxy) {
+      return resolveMesh(idOrProxy);
     },
 
-    setPosition(id, x, y, z) {
+    setPosition(idOrProxy, x, y, z) {
       const position = normalizeVectorArgs(x, y, z, 0);
-      const mesh = self._meshes.get(id);
+      const mesh = resolveMesh(idOrProxy);
       if (mesh) {
         mesh.position.copyFromFloats(position.x, position.y, position.z);
         return true;
       }
+      const id = getMeshId(idOrProxy);
       const light = self._cartLights.get(id);
       if (light) {
         light.position.copyFromFloats(position.x, position.y, position.z);
@@ -38,20 +60,20 @@ export function createBabylonTransformsApi(self) {
       return false;
     },
 
-    getPosition(id) {
-      const mesh = self._meshes.get(id);
+    getPosition(idOrProxy) {
+      const mesh = resolveMesh(idOrProxy);
       if (!mesh) return null;
       return [mesh.position.x, mesh.position.y, mesh.position.z];
     },
 
-    getRotation(id) {
-      const mesh = self._meshes.get(id);
+    getRotation(idOrProxy) {
+      const mesh = resolveMesh(idOrProxy);
       if (!mesh) return null;
       return [mesh.rotation.x, mesh.rotation.y, mesh.rotation.z];
     },
 
-    setScale(id, x, y, z) {
-      const mesh = self._meshes.get(id);
+    setScale(idOrProxy, x, y, z) {
+      const mesh = resolveMesh(idOrProxy);
       if (!mesh) return false;
       if (Array.isArray(x) || (x && typeof x === 'object')) {
         const scale = normalizeVectorArgs(x, y, z, 1);
@@ -70,16 +92,16 @@ export function createBabylonTransformsApi(self) {
       return true;
     },
 
-    setRotation(id, x, y, z) {
-      const mesh = self._meshes.get(id);
+    setRotation(idOrProxy, x, y, z) {
+      const mesh = resolveMesh(idOrProxy);
       if (!mesh) return false;
       const rotation = normalizeVectorArgs(x, y, z, 0);
       mesh.rotation.copyFromFloats(rotation.x, rotation.y, rotation.z);
       return true;
     },
 
-    rotateMesh(id, rx, ry, rz) {
-      const mesh = self._meshes.get(id);
+    rotateMesh(idOrProxy, rx, ry, rz) {
+      const mesh = resolveMesh(idOrProxy);
       if (!mesh) return false;
       const rotation = normalizeVectorArgs(rx, ry, rz, 0);
       mesh.rotation.x += rotation.x;
@@ -88,8 +110,8 @@ export function createBabylonTransformsApi(self) {
       return true;
     },
 
-    moveMesh(id, dx, dy, dz) {
-      const mesh = self._meshes.get(id);
+    moveMesh(idOrProxy, dx, dy, dz) {
+      const mesh = resolveMesh(idOrProxy);
       if (!mesh) return false;
       mesh.position.x += dx;
       mesh.position.y += dy;
@@ -97,36 +119,36 @@ export function createBabylonTransformsApi(self) {
       return true;
     },
 
-    setMeshVisible(id, visible) {
-      const mesh = self._meshes.get(id);
+    setMeshVisible(idOrProxy, visible) {
+      const mesh = resolveMesh(idOrProxy);
       if (!mesh) return false;
       mesh.isVisible = visible;
       return true;
     },
 
-    setMeshOpacity(id, opacity) {
-      const mesh = self._meshes.get(id);
+    setMeshOpacity(idOrProxy, opacity) {
+      const mesh = resolveMesh(idOrProxy);
       if (!mesh?.material) return false;
       mesh.material.alpha = opacity;
       return true;
     },
 
-    setReceiveShadow(id, receive) {
-      const mesh = self._meshes.get(id);
+    setReceiveShadow(idOrProxy, receive) {
+      const mesh = resolveMesh(idOrProxy);
       if (!mesh) return false;
       mesh.receiveShadows = receive;
       return true;
     },
 
-    setCastShadow(id, cast) {
-      const mesh = self._meshes.get(id);
+    setCastShadow(idOrProxy, cast) {
+      const mesh = resolveMesh(idOrProxy);
       if (!mesh) return false;
       mesh.castShadow = cast;
       return true;
     },
 
-    setFlatShading(id, enabled = true) {
-      const mesh = self._meshes.get(id);
+    setFlatShading(idOrProxy, enabled = true) {
+      const mesh = resolveMesh(idOrProxy);
       if (!mesh || !enabled || typeof mesh.convertToFlatShadedMesh !== 'function') return false;
       mesh.convertToFlatShadedMesh();
       return true;

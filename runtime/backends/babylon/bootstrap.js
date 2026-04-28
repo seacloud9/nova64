@@ -113,7 +113,9 @@ export function initializeBabylonBackend(self, canvas, w, h) {
   self.camera.minZ = 0.1;
   self.camera.maxZ = 1000;
   self.camera.fov = (75 * Math.PI) / 180;
-  self.camera.attachControl(canvas, true);
+  // Don't attach camera controls - cart code controls the camera via setCameraPosition/Target
+  // Attaching controls would let user input move the camera, breaking games like Space Harrier
+  // self.camera.attachControl(canvas, true);
   self.scene.activeCamera = self.camera;
   applyBabylonNodeCompatibility(self.camera);
 
@@ -148,7 +150,17 @@ export function initializeBabylonBackend(self, canvas, w, h) {
   };
 
   self._adapter = createBabylonEngineAdapter(BABYLON_NS, self.scene, {
-    resolveMesh: id => self._meshes.get(id) ?? null,
+    resolveMesh: idOrProxy => {
+      if (typeof idOrProxy === 'number') return self._meshes.get(idOrProxy) ?? null;
+      if (idOrProxy && typeof idOrProxy === 'object') {
+        if (typeof idOrProxy.__meshId === 'number') {
+          return self._meshes.get(idOrProxy.__meshId) ?? null;
+        }
+        const value = idOrProxy.valueOf?.();
+        if (typeof value === 'number') return self._meshes.get(value) ?? null;
+      }
+      return null;
+    },
   });
   self.engine = self._adapter;
 

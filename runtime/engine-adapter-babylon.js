@@ -211,6 +211,24 @@ export function createBabylonEngineAdapter(BABYLON, scene, opts = {}) {
             if (!diffuse) {
               mat.diffuseColor = new BABYLON.Color3(1, 1, 1);
             }
+          } else {
+            // For 'phong' materials with textures:
+            // In Three.js, texture * diffuseColor produces the final color.
+            // In Babylon, diffuseColor is not applied as a multiplier when diffuseTexture exists.
+            // Solution: Also use emissiveTexture + emissiveColor to restore texture brightness
+            // that would otherwise be lost in dim lighting conditions.
+            mat.emissiveTexture = map;
+            if (diffuse) {
+              // Use color as emissive intensity to bring back texture vibrancy
+              const boost = 0.6;
+              mat.emissiveColor = new BABYLON.Color3(
+                diffuse.r * boost,
+                diffuse.g * boost,
+                diffuse.b * boost
+              );
+            } else {
+              mat.emissiveColor = new BABYLON.Color3(0.5, 0.5, 0.5);
+            }
           }
           configureStandardTextureAlpha(mat, map, matOpts);
         }

@@ -49,6 +49,7 @@ Opens at: http://localhost:3000
   - **Notes**: Simple text editor with auto-save
   - **Paint**: Canvas-based drawing tool with color picker and brush sizes
   - **System Profiler**: Displays hardware and system information
+  - **Model Viewer**: GLB/GLTF and DOOM WAD inspection with Babylon WAD texture parity shared from the Nova64 runtime
   - **eMU**: Retro console emulator powered by EmulatorJS — supports 20+ systems (NES, SNES, N64, PlayStation, Game Boy, Sega Genesis, Arcade, and more)
 
 ### Developer Experience
@@ -57,6 +58,7 @@ Opens at: http://localhost:3000
 - **Hot Reload**: Vite-powered development with instant updates
 - **Event System**: Pub/sub event bus for OS-level communication
 - **State Management**: Zustand stores for windows, apps, UI, and system state
+- **Runtime Parity Notes**: WAD scenes launched from NovaOS benefit from the same Babylon mesh-proxy material assignment and vignette guards documented in the main Nova64 backend runtime notes
 
 ## 🚀 Quick Start
 

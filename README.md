@@ -13,6 +13,14 @@
 
 ---
 
+## Babylon.js WAD Visual Parity
+
+- **WAD Texture Parity**: Babylon WAD walls, floors, and sprite materials now receive engine-assigned textures through the same mesh proxy path used by Three.js carts
+- **Visual Regression Guardrail**: `wad-demo` gameplay-frame comparison is back in the low-single-digit diff range against Three.js
+- **Safer Post-Processing Boot**: Babylon vignette setup now falls back gracefully when image-processing pipeline internals are unavailable, preventing WAD cart boot failures
+
+---
+
 ## 🌟 **Recent Updates (v0.4.8)**
 
 ### 🃏 **NEW: hyperNova — HyperCard/Flash Authoring Tool** ⭐
@@ -57,6 +65,7 @@
 
 - **GLB Draco Support**: DRACOLoader for compressed GLB/GLTF geometry
 - **WAD Rendering**: Full DOOM WAD map visualization with wall/floor/ceiling textures, flat textures, sprite billboards for monsters/items/decorations, sector-based lighting, and batched rendering
+- **Babylon WAD Parity**: Babylon.js now resolves mesh proxies for engine-level material assignment, so WAD textures and runtime-created materials render closely to the Three.js backend
 - **Complete Geometry**: Floors, ceilings, and two-sided walls properly rendered
 
 ### 📱 **Planned: Unity Native Host Bridge**
@@ -224,6 +233,9 @@ while `runtime/shared/` holds cross-backend contracts and helpers used by both r
 Babylon also has a dedicated compatibility layer in `runtime/backends/babylon/compat.js`
 for cart-facing Three-style expectations such as `scene.traverse`, `mesh.visible`,
 `material.map`, color helpers, and texture repeat/offset parity.
+Engine-level Babylon material assignment now resolves both numeric mesh IDs and mesh
+proxies, which keeps WAD-generated wall/floor/sprite materials attached in the same
+cart-facing path as Three.js.
 Voxel carts now also have a backend-native Babylon path in `runtime/backends/babylon/voxel.js`,
 with `runtime/api-voxel.js` delegating chunk/entity mesh creation through backend-aware helpers
 instead of constructing raw Three.js meshes in Babylon mode.

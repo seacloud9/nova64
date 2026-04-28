@@ -141,24 +141,42 @@ export function createBabylonEffectsApi(self) {
   let glitchTime = 0;
   let effectsEnabled = false;
 
+  function trySetPipelineValue(key, value) {
+    if (!pipeline || !(key in pipeline)) return false;
+    try {
+      pipeline[key] = value;
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   // Initialize the default rendering pipeline
   function initPipeline() {
     if (pipeline) return pipeline;
 
     pipeline = new DefaultRenderingPipeline(
       'nova64_effects_pipeline',
-      true, // HDR
+      false, // HDR disabled - prevents color/brightness issues
       self.scene,
       [self.camera]
     );
 
     // Disable all effects by default
-    pipeline.bloomEnabled = false;
-    pipeline.fxaaEnabled = false;
-    pipeline.chromaticAberrationEnabled = false;
-    pipeline.vignetteEnabled = false;
-    pipeline.sharpenEnabled = false;
-    pipeline.grainEnabled = false;
+    trySetPipelineValue('bloomEnabled', false);
+    trySetPipelineValue('fxaaEnabled', false);
+    trySetPipelineValue('chromaticAberrationEnabled', false);
+    trySetPipelineValue('vignetteEnabled', false);
+    trySetPipelineValue('sharpenEnabled', false);
+    trySetPipelineValue('grainEnabled', false);
+
+    // Enable image processing for proper color output
+    pipeline.imageProcessingEnabled = true;
+    if (pipeline.imageProcessing) {
+      pipeline.imageProcessing.toneMappingEnabled = false;
+      pipeline.imageProcessing.exposure = 1.0;
+      pipeline.imageProcessing.contrast = 1.0;
+    }
 
     effectsEnabled = true;
     return pipeline;
@@ -217,10 +235,14 @@ export function createBabylonEffectsApi(self) {
     initPipeline();
 
     // Use pipeline's built-in chromatic aberration if available
+    // Note: DefaultRenderingPipeline properties are directly on pipeline, not nested
     if (pipeline.chromaticAberrationEnabled !== undefined) {
       pipeline.chromaticAberrationEnabled = true;
-      pipeline.chromaticAberration.aberrationAmount = amount * 500; // Scale to match Three.js
-      pipeline.chromaticAberration.radialIntensity = 1.0;
+      // Properties are directly on pipeline in Babylon.js DefaultRenderingPipeline
+      if (pipeline.chromaticAberration) {
+        pipeline.chromaticAberration.aberrationAmount = amount * 500;
+        pipeline.chromaticAberration.radialIntensity = 1.0;
+      }
       return true;
     }
 
@@ -258,13 +280,17 @@ export function createBabylonEffectsApi(self) {
   function enableVignette(darkness = 1.0, offset = 0.9) {
     initPipeline();
 
-    // Use pipeline's built-in vignette
-    if (pipeline.vignetteEnabled !== undefined) {
-      pipeline.vignetteEnabled = true;
-      pipeline.vignette.vignetteWeight = darkness;
-      pipeline.vignette.vignetteStretch = offset * 2;
-      pipeline.vignette.vignetteColor = new Color4(0, 0, 0, 1);
-      pipeline.vignette.vignetteCameraFov = self.camera.fov;
+    // Prefer Babylon's built-in vignette only when its image-processing config
+    // exists; some headless/WebGL paths expose the setters before that config is ready.
+    const imageProcessingConfig =
+      pipeline?.imageProcessingConfiguration ??
+      pipeline?.imageProcessing?.imageProcessingConfiguration ??
+      null;
+    if (imageProcessingConfig && trySetPipelineValue('vignetteEnabled', true)) {
+      imageProcessingConfig.vignetteWeight = darkness;
+      imageProcessingConfig.vignetteStretch = offset * 2;
+      imageProcessingConfig.vignetteColor = new Color4(0, 0, 0, 1);
+      imageProcessingConfig.vignetteCameraFov = self.camera?.fov ?? 0.8;
       return true;
     }
 
@@ -290,9 +316,7 @@ export function createBabylonEffectsApi(self) {
   }
 
   function disableVignette() {
-    if (pipeline && pipeline.vignetteEnabled !== undefined) {
-      pipeline.vignetteEnabled = false;
-    }
+    trySetPipelineValue('vignetteEnabled', false);
     if (vignettePost) {
       vignettePost.dispose();
       vignettePost = null;

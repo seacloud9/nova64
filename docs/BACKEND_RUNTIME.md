@@ -163,6 +163,9 @@ Recent parity work focused on the places where carts were still clearly broken u
 - WAD wall, floor, and sprite materials now use a safer Babylon texture/material path, including alpha and color-space handling for runtime-created textures.
 - Babylon WAD rendering now leans on the compat layer for shared mesh/material/texture behavior instead of cart-local backend branching for every parity gap.
 - Textured WAD walls use Babylon planes with per-mesh UV updates, while the Babylon wall/floor material tuning now avoids the earlier over-bright emissive look.
+- Babylon engine-level material assignment now resolves mesh proxies as well as numeric mesh IDs, which keeps WAD wall/floor/sprite textures attached when carts call `engine.setMeshMaterial(meshProxy, material)`.
+- Babylon vignette/post-processing setup now capability-checks pipeline properties and falls back when image-processing internals are unavailable, preventing WAD cart boot from aborting during environment load.
+- Babylon native camera controls stay detached from the canvas so cart-owned camera movement remains deterministic across demos and tests.
 - Three-style runtime calls like `material.color.set(0x336699)` and `texture.repeat.set(...)` now behave consistently on Babylon too.
 - `wizardry-3d` no longer depends on the old store polyfill behavior; plain-object game store initializers now work with real Zustand too.
 - Procedural Babylon sky spheres now use the correct material path and ignore fog, which fixes the blown-out `hello-skybox` rendering.

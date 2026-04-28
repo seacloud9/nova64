@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@babylonjs/core':
-        specifier: ^7.0.0
-        version: 7.54.3
+        specifier: ^9.4.1
+        version: 9.4.1
       '@inquirer/prompts':
         specifier: ^8.4.0
         version: 8.4.2
@@ -60,8 +60,8 @@ importers:
 
 packages:
 
-  '@babylonjs/core@7.54.3':
-    resolution: {integrity: sha512-P5ncXVd8GEUJLhwloP9V0oVwQYIrvZztguVeLlvd5Rx+9aQnenKjpV8auJ6SRsUlAmNZU4pFTKzwF6o2EUfhAw==}
+  '@babylonjs/core@9.4.1':
+    resolution: {integrity: sha512-zQcSyUAUUhdsTtBN6uF2jJxD8Okw2iVuj6J4N/E7SPlJCIg14KSiPETTnXSWcd46QVRN78ssCPXgr2IBbOn65g==}
 
   '@esbuild/aix-ppc64@0.21.5':
     resolution: {integrity: sha512-1SDgH6ZSPTlggy1yI6+Dbkiz8xzpHJEVAlF/AM1tHPLsf5STom9rwtjE4hKAF20FfXXNTFqEYXyJNWh1GiZedQ==}
@@ -1254,7 +1254,7 @@ packages:
 
 snapshots:
 
-  '@babylonjs/core@7.54.3': {}
+  '@babylonjs/core@9.4.1': {}
 
   '@esbuild/aix-ppc64@0.21.5':
     optional: true

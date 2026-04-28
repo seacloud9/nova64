@@ -134,6 +134,8 @@ Current Babylon design rules:
 - `engine` must mean the Nova64 engine adapter, not the raw Babylon renderer.
 - `getRenderer()` returns the raw Babylon engine when direct renderer access is needed.
 - Unsupported features should fail safely and advertise capability flags.
+- Babylon WebXR support is routed through Babylon's native WebXR default experience in `runtime/xr.js`; do not use Three.js `renderer.xr` objects in Babylon mode.
+- When WebXR VR is unavailable, Babylon mode should offer the Cardboard stereoscopic fallback instead of ending on an unavailable state.
 
 ## Babylon Compatibility Layer
 
@@ -160,6 +162,11 @@ Design rules for this layer:
 
 Recent parity work focused on the places where carts were still clearly broken under Babylon:
 
+- `@babylonjs/core` is now pinned to the current latest 9.x line used by the backend parity work.
+- Babylon `enableAR()` now creates a native Babylon WebXR AR entry point, while `enableVR()` creates a Babylon WebXR entry point when the browser supports it.
+- Babylon VR now exposes a working Cardboard fallback when native WebXR is not available, using Babylon stereoscopic camera rig mode and device-orientation updates.
+- MediaPipe camera-background helpers now avoid assigning Three.js `VideoTexture` objects into Babylon scenes; Babylon uses a DOM video layer and transparent scene clear color for AR-style passthrough.
+- `ar-hand-demo` now initializes its 3D scene even when webcam or MediaPipe hand tracking cannot start, so Babylon/headless smoke coverage does not fail on camera availability.
 - WAD wall, floor, and sprite materials now use a safer Babylon texture/material path, including alpha and color-space handling for runtime-created textures.
 - Babylon WAD rendering now leans on the compat layer for shared mesh/material/texture behavior instead of cart-local backend branching for every parity gap.
 - Textured WAD walls use Babylon planes with per-mesh UV updates, while the Babylon wall/floor material tuning now avoids the earlier over-bright emissive look.
@@ -197,8 +204,10 @@ These are the most useful narrow checks for the current Babylon parity surface:
 - `pnpm exec playwright test tests/playwright/backend-parity.spec.js --grep 'Minecraft Demo|Voxel Terrain|Voxel Creative|Voxel Creatures' --reporter=line`
 - `pnpm exec playwright test tests/playwright/visual-regression.spec.js --grep "minecraft-demo should stay reasonably similar" --reporter=line`
 - `pnpm exec playwright test tests/playwright/visual-regression.spec.js --grep "wad-demo gameplay frame" --reporter=line`
+- `pnpm exec playwright test tests/playwright/xr-ar-babylon.spec.js --reporter=line`
 
 Use the WAD-specific visual and regression slices first when touching Babylon WAD rendering, UVs, materials, lights, or compatibility shims. Use the voxel-focused regression and backend-parity slices first when touching `runtime/api-voxel.js` or `runtime/backends/babylon/voxel.js`.
+Use the XR/AR slice first when touching `runtime/xr.js`, `runtime/mediapipe.js`, or demos that call WebXR/MediaPipe APIs.
 
 ## Remaining Babylon Backlog
 

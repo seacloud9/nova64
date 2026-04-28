@@ -19,6 +19,13 @@
 - **Visual Regression Guardrail**: `wad-demo` gameplay-frame comparison is back in the low-single-digit diff range against Three.js
 - **Safer Post-Processing Boot**: Babylon vignette setup now falls back gracefully when image-processing pipeline internals are unavailable, preventing WAD cart boot failures
 
+## Babylon.js XR/AR Parity
+
+- **Latest Babylon.js**: The Babylon backend now targets `@babylonjs/core` 9.4.1
+- **Native Babylon WebXR**: `enableAR()` and `enableVR()` use Babylon's own WebXR experience path in Babylon mode
+- **Cardboard Fallback**: When native WebXR VR is unavailable, Babylon mode offers a Cardboard stereoscopic fallback instead of a dead-end unsupported state
+- **AR Demo Resilience**: MediaPipe camera backgrounds and the AR hand demo now degrade cleanly when camera access or hand tracking is unavailable
+
 ---
 
 ## 🌟 **Recent Updates (v0.4.8)**

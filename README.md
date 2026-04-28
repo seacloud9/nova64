@@ -57,7 +57,7 @@
 
 - **Mac OS 9-Style GUI**: Full desktop environment with window management, taskbar, and app launcher
 - **Crystal Desktop Experience**: NovaOS now opens onto a calm deep-blue crystal wallpaper with a modernized translucent boot/loading sequence
-- **Background Customization**: Right-click the desktop or open Appearance to choose built-in wallpapers, a solid color, or a custom image URL
+- **Background Customization**: Right-click the desktop or open Appearance to choose built-in wallpapers, a solid color, a custom image URL, or a visual-only sandboxed HTML iframe URL
 - **Game Studio**: In-browser game IDE with code editor, live preview, and cart management
 - **Model Viewer**: Load and inspect GLB/GLTF models with Draco compression and DOOM WAD maps with full texture/sprite rendering
 - **Game Launcher**: Browse and launch all 60+ demo carts from a visual gallery

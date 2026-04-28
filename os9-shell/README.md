@@ -31,7 +31,7 @@ Opens at: http://localhost:3000
 - **Window Management**: Draggable, resizable windows with windowshade (roll-up), close/zoom boxes, and z-order management
 - **Menu Bar**: Always-on-top menu bar with dynamic app menus, keyboard navigation (F10, arrows), and status widgets
 - **Desktop**: Icon grid with drag-to-select, aliases, classic Finder-style navigation, and right-click background switching
-- **Backgrounds**: Appearance and the desktop context menu support built-in wallpapers, solid colors, and custom image URLs persisted in localStorage
+- **Backgrounds**: Appearance and the desktop context menu support built-in wallpapers, solid colors, custom image URLs, and visual-only sandboxed HTML iframe URLs persisted in localStorage
 - **Control Strip**: Collapsible bottom panel with volume, brightness, FPS counter, scanlines toggle, and extensible API
 - **Alert Dialogs**: Classic OS 9 modal alerts with sound and customizable buttons
 - **Boot Sequence**: Modernized translucent crystal boot with extension loading progress and desktop reveal
@@ -65,7 +65,9 @@ Opens at: http://localhost:3000
 
 - Right-click the desktop and choose **Desktop Background** to switch between the built-in presets.
 - Choose **Use Image URL...** from the same submenu to set a remote image as the wallpaper.
-- Open **Appearance** for the full background panel with wallpaper previews, solid color selection, and URL entry.
+- Choose **Plasma Drift HTML** or **Use Visual HTML URL...** to render a visual-only HTML page in a sandboxed desktop iframe behind the icons.
+- HTML backgrounds are not clickable or interactive desktop widgets. They may only receive passive desktop signals such as mouse location.
+- Open **Appearance** for the full background panel with wallpaper previews, solid color selection, image URL entry, and visual HTML iframe URL entry.
 - Built-in wallpapers live in `os9-shell/public/wallpapers/` and are copied into `public/os9-shell/wallpapers/` by `pnpm osBuild`.
 
 ## 🚀 Quick Start

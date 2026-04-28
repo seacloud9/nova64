@@ -162,7 +162,7 @@
       <li>App framework with mount/unmount lifecycle and menu bar integration</li>
       <li>Pub/sub event bus for OS, apps, and cart code to communicate</li>
       <li>Control strip with volume, brightness, scanlines, FPS counter, and custom widgets</li>
-      <li>Crystal desktop background with right-click wallpaper switching, solid colors, and custom image URL support</li>
+      <li>Crystal desktop background with right-click wallpaper switching, solid colors, custom image URLs, and visual-only sandboxed HTML iframe backgrounds</li>
       <li>Modal alert dialogs with icon variants and auto-dismissing toast notifications</li>
       <li>Persistent user preferences that survive browser restarts</li>
       <li>Mobile-optimised shell variant in <code>os9-shellMobile/</code></li>
@@ -213,10 +213,12 @@ pnpm preview      # serve dist/ on http://localhost:4173</pre>
 
   <section class="doc-sec" id="backgrounds">
     <h2>&#127912; Desktop Backgrounds</h2>
-    <p>NovaOS ships with a calm deep-blue crystal wallpaper as the default desktop and includes additional built-in backgrounds in <code>os9-shell/public/wallpapers/</code>.</p>
+    <p>NovaOS ships with a calm deep-blue crystal wallpaper as the default desktop and includes additional built-in backgrounds in <code>os9-shell/public/wallpapers/</code>. It can also render visual-only sandboxed HTML iframe backgrounds behind desktop icons.</p>
     <ul>
-      <li><strong>Desktop context menu</strong> &mdash; right-click the desktop and choose <strong>Desktop Background</strong> to switch presets or set an image URL.</li>
-      <li><strong>Appearance app</strong> &mdash; preview built-in wallpapers, apply a solid color, or enter a remote image URL.</li>
+      <li><strong>Desktop context menu</strong> &mdash; right-click the desktop and choose <strong>Desktop Background</strong> to switch presets, set an image URL, or choose a visual HTML iframe URL.</li>
+      <li><strong>Appearance app</strong> &mdash; preview built-in wallpapers, apply a solid color, enter a remote image URL, or enter a visual HTML iframe URL.</li>
+      <li><strong>Visual only</strong> &mdash; HTML backgrounds cannot receive clicks or act like desktop widgets. They may only receive passive desktop signals such as mouse location.</li>
+      <li><strong>HTML example</strong> &mdash; the built-in option includes <code>plasma-drift.html</code>, a pleasing plasma background that reacts to mouse location.</li>
       <li><strong>Persistence</strong> &mdash; selected background settings are stored in <code>localStorage</code> under <code>nova64-desktop-background</code>.</li>
       <li><strong>Build output</strong> &mdash; <code>pnpm osBuild</code> copies the compiled shell and wallpaper assets into <code>public/os9-shell/</code>.</li>
     </ul>

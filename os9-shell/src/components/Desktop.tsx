@@ -1,12 +1,17 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import type { DesktopItem } from '../types';
 import { novaContext } from '../os/context';
 import { openFinderAt } from '../apps/Finder';
 import { showContextMenu, ContextMenuItem } from './ContextMenu';
 import { UISounds } from '../os/sounds';
-import { BACKGROUND_PRESETS, useDesktopBackgroundStore } from '../os/stores';
+import {
+  BACKGROUND_PRESETS,
+  HTML_BACKGROUND_EXAMPLES,
+  useDesktopBackgroundStore,
+} from '../os/stores';
 
 export function Desktop() {
+  const backgroundFrameRef = useRef<HTMLIFrameElement | null>(null);
   const [items] = useState<DesktopItem[]>([
     {
       id: 'hd',
@@ -86,9 +91,12 @@ export function Desktop() {
     backgroundType,
     presetId,
     imageUrl,
+    iframeUrl,
     setPreset,
     setImageUrl,
+    setIframeUrl,
     getBackgroundStyle,
+    getIframeUrl,
   } = useDesktopBackgroundStore();
 
   const promptForBackgroundUrl = () => {
@@ -98,6 +106,32 @@ export function Desktop() {
     if (trimmed) {
       setImageUrl(trimmed);
     }
+  };
+
+  const promptForIframeUrl = () => {
+    const nextUrl = window.prompt('Visual-only HTML background iframe URL', iframeUrl);
+    if (nextUrl === null) return;
+    const trimmed = nextUrl.trim();
+    if (trimmed) {
+      setIframeUrl(trimmed);
+    }
+  };
+
+  const postBackgroundPointer = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (backgroundType !== 'iframe') return;
+    const frame = backgroundFrameRef.current;
+    if (!frame?.contentWindow) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    frame.contentWindow.postMessage(
+      {
+        type: 'nova64-desktop-pointer',
+        x: e.clientX - rect.left,
+        y: e.clientY - rect.top,
+        width: rect.width,
+        height: rect.height,
+      },
+      '*'
+    );
   };
 
   const handleItemClick = (id: string, e: React.MouseEvent) => {
@@ -164,6 +198,21 @@ export function Desktop() {
             icon: backgroundType === 'url' ? '✓' : '🌐',
             onClick: promptForBackgroundUrl,
           },
+          { type: 'separator' as const, label: '' },
+          {
+            label: 'HTML backgrounds are visual only',
+            disabled: true,
+          },
+          ...HTML_BACKGROUND_EXAMPLES.map((example) => ({
+            label: example.name,
+            icon: backgroundType === 'iframe' && iframeUrl === example.url ? '✓' : '🪟',
+            onClick: () => setIframeUrl(example.url),
+          })),
+          {
+            label: 'Use Visual HTML URL...',
+            icon: backgroundType === 'iframe' ? '✓' : '🌐',
+            onClick: promptForIframeUrl,
+          },
         ],
       },
       { label: 'Change Desktop Background...', icon: '⚙️', onClick: () => novaContext.launchApp('appearance') },
@@ -207,10 +256,21 @@ export function Desktop() {
     <div
       className="desktop"
       data-background-type={backgroundType}
-      style={{ background: getBackgroundStyle() }}
+      style={{ background: backgroundType === 'iframe' ? '#07192f' : getBackgroundStyle() }}
       onClick={handleDesktopClick}
+      onMouseMove={postBackgroundPointer}
       onContextMenu={handleDesktopContextMenu}
     >
+      {backgroundType === 'iframe' && (
+        <iframe
+          ref={backgroundFrameRef}
+          className="desktop-background-frame"
+          src={getIframeUrl()}
+          title="Visual-only desktop HTML background"
+          sandbox="allow-same-origin allow-scripts"
+          referrerPolicy="no-referrer"
+        />
+      )}
       {items.map((item) => (
         <div
           key={item.id}

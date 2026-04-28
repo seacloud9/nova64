@@ -441,7 +441,7 @@ export const useDesktopThemeStore = create<DesktopThemeStore>((set, get) => ({
 // Desktop Background Store — background customization
 // ============================================================================
 
-export type BackgroundType = 'preset' | 'color' | 'url';
+export type BackgroundType = 'preset' | 'color' | 'url' | 'iframe';
 
 export interface BackgroundPreset {
   id: string;
@@ -449,6 +449,13 @@ export interface BackgroundPreset {
   type: 'gradient' | 'pattern' | 'image';
   value: string; // CSS background value
   thumbnail?: string; // preview color/gradient
+}
+
+export interface HtmlBackgroundExample {
+  id: string;
+  name: string;
+  url: string;
+  thumbnail: string;
 }
 
 // Built-in background presets
@@ -539,34 +546,60 @@ export const BACKGROUND_PRESETS: BackgroundPreset[] = [
   },
 ];
 
+export const HTML_BACKGROUND_EXAMPLES: HtmlBackgroundExample[] = [
+  {
+    id: 'plasma-drift',
+    name: 'Plasma Drift HTML',
+    url: '/os9-shell/wallpapers/plasma-drift.html',
+    thumbnail: 'radial-gradient(circle at 35% 35%, #83f7ff 0%, #19649e 36%, #08152f 72%, #030814 100%)',
+  },
+];
+
 interface DesktopBackgroundStore {
   backgroundType: BackgroundType;
   presetId: string;
   solidColor: string;
   imageUrl: string;
+  iframeUrl: string;
   setPreset: (id: string) => void;
   setSolidColor: (color: string) => void;
   setImageUrl: (url: string) => void;
+  setIframeUrl: (url: string) => void;
   getBackgroundStyle: () => string;
+  getIframeUrl: () => string;
 }
 
-const _loadBackgroundSettings = (): { type: BackgroundType; presetId: string; solidColor: string; imageUrl: string } => {
+const _loadBackgroundSettings = (): { type: BackgroundType; presetId: string; solidColor: string; imageUrl: string; iframeUrl: string } => {
   try {
     const saved = localStorage.getItem('nova64-desktop-background');
     if (saved) {
       const parsed = JSON.parse(saved);
+      const type = parsed.type === 'iframe' ? 'iframe' : parsed.type || 'preset';
       return {
-        type: parsed.type || 'preset',
+        type,
         presetId: parsed.presetId || 'crystal-blue',
         solidColor: parsed.solidColor || '#1a3a5c',
         imageUrl: parsed.imageUrl || '',
+        iframeUrl: parsed.iframeUrl || HTML_BACKGROUND_EXAMPLES[0].url,
       };
     }
   } catch { /* ignore */ }
-  return { type: 'preset', presetId: 'crystal-blue', solidColor: '#1a3a5c', imageUrl: '' };
+  return {
+    type: 'preset',
+    presetId: 'crystal-blue',
+    solidColor: '#1a3a5c',
+    imageUrl: '',
+    iframeUrl: HTML_BACKGROUND_EXAMPLES[0].url,
+  };
 };
 
-const _saveBackgroundSettings = (settings: { type: BackgroundType; presetId: string; solidColor: string; imageUrl: string }) => {
+const _saveBackgroundSettings = (settings: {
+  type: BackgroundType;
+  presetId: string;
+  solidColor: string;
+  imageUrl: string;
+  iframeUrl: string;
+}) => {
   try {
     localStorage.setItem('nova64-desktop-background', JSON.stringify(settings));
   } catch { /* ignore */ }
@@ -581,20 +614,50 @@ export const useDesktopBackgroundStore = create<DesktopBackgroundStore>((set, ge
   presetId: _initialBg.presetId,
   solidColor: _initialBg.solidColor,
   imageUrl: _initialBg.imageUrl,
+  iframeUrl: _initialBg.iframeUrl,
 
   setPreset(id) {
     set({ backgroundType: 'preset', presetId: id });
-    _saveBackgroundSettings({ type: 'preset', presetId: id, solidColor: get().solidColor, imageUrl: get().imageUrl });
+    _saveBackgroundSettings({
+      type: 'preset',
+      presetId: id,
+      solidColor: get().solidColor,
+      imageUrl: get().imageUrl,
+      iframeUrl: get().iframeUrl,
+    });
   },
 
   setSolidColor(color) {
     set({ backgroundType: 'color', solidColor: color });
-    _saveBackgroundSettings({ type: 'color', presetId: get().presetId, solidColor: color, imageUrl: get().imageUrl });
+    _saveBackgroundSettings({
+      type: 'color',
+      presetId: get().presetId,
+      solidColor: color,
+      imageUrl: get().imageUrl,
+      iframeUrl: get().iframeUrl,
+    });
   },
 
   setImageUrl(url) {
     set({ backgroundType: 'url', imageUrl: url });
-    _saveBackgroundSettings({ type: 'url', presetId: get().presetId, solidColor: get().solidColor, imageUrl: url });
+    _saveBackgroundSettings({
+      type: 'url',
+      presetId: get().presetId,
+      solidColor: get().solidColor,
+      imageUrl: url,
+      iframeUrl: get().iframeUrl,
+    });
+  },
+
+  setIframeUrl(url) {
+    set({ backgroundType: 'iframe', iframeUrl: url });
+    _saveBackgroundSettings({
+      type: 'iframe',
+      presetId: get().presetId,
+      solidColor: get().solidColor,
+      imageUrl: get().imageUrl,
+      iframeUrl: url,
+    });
   },
 
   getBackgroundStyle() {
@@ -616,5 +679,9 @@ export const useDesktopBackgroundStore = create<DesktopBackgroundStore>((set, ge
 
     // Fallback to crystal-blue
     return BACKGROUND_PRESETS[0].value;
+  },
+
+  getIframeUrl() {
+    return get().iframeUrl || HTML_BACKGROUND_EXAMPLES[0].url;
   },
 }));

@@ -4,6 +4,7 @@ import { createRoot } from 'react-dom/client';
 import type { Nova64App } from '../types';
 import {
   BACKGROUND_PRESETS,
+  HTML_BACKGROUND_EXAMPLES,
   useDesktopBackgroundStore,
   useDesktopThemeStore,
 } from '../os/stores';
@@ -18,12 +19,16 @@ function AppearancePanel() {
     presetId,
     solidColor,
     imageUrl,
+    iframeUrl,
     setPreset,
     setSolidColor,
     setImageUrl,
+    setIframeUrl,
     getBackgroundStyle,
+    getIframeUrl,
   } = useDesktopBackgroundStore();
   const [urlDraft, setUrlDraft] = useState(imageUrl);
+  const [iframeDraft, setIframeDraft] = useState(iframeUrl);
 
   const themes = [
     {
@@ -208,7 +213,7 @@ function AppearancePanel() {
             Desktop Background
           </h3>
           <p style={{ fontSize: 12, color: 'var(--gnome-text-secondary)', lineHeight: 1.5 }}>
-            Pick a built-in wallpaper, a solid color, or an image URL.
+            Pick a built-in wallpaper, a solid color, an image URL, or a visual-only HTML iframe.
           </p>
         </div>
 
@@ -217,7 +222,7 @@ function AppearancePanel() {
             height: 118,
             borderRadius: 12,
             border: '1px solid var(--gnome-border)',
-            background: getBackgroundStyle(),
+            background: backgroundType === 'iframe' ? '#07192f' : getBackgroundStyle(),
             backgroundSize: 'cover',
             backgroundPosition: 'center',
             boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.06), 0 12px 30px rgba(0,0,0,0.22)',
@@ -225,6 +230,22 @@ function AppearancePanel() {
             position: 'relative',
           }}
         >
+          {backgroundType === 'iframe' && (
+            <iframe
+              title="HTML background preview"
+              src={getIframeUrl()}
+              sandbox="allow-same-origin allow-scripts"
+              referrerPolicy="no-referrer"
+              style={{
+                position: 'absolute',
+                inset: 0,
+                width: '100%',
+                height: '100%',
+                border: 0,
+                pointerEvents: 'none',
+              }}
+            />
+          )}
           <div
             style={{
               position: 'absolute',
@@ -268,6 +289,47 @@ function AppearancePanel() {
                 }}
               >
                 <span style={{ fontSize: 12, fontWeight: 700 }}>{preset.name}</span>
+                {active && <span style={{ fontSize: 14, fontWeight: 700 }}>✓</span>}
+              </button>
+            );
+          })}
+        </div>
+
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(132px, 1fr))',
+            gap: 10,
+          }}
+        >
+          {HTML_BACKGROUND_EXAMPLES.map((example) => {
+            const active = backgroundType === 'iframe' && iframeUrl === example.url;
+            return (
+              <button
+                key={example.id}
+                type="button"
+                onClick={() => {
+                  setIframeDraft(example.url);
+                  setIframeUrl(example.url);
+                }}
+                style={{
+                  minHeight: 70,
+                  borderRadius: 10,
+                  border: active ? '2px solid var(--gnome-blue-light)' : '1px solid var(--gnome-border)',
+                  background: example.thumbnail,
+                  cursor: 'pointer',
+                  color: '#fff',
+                  padding: 10,
+                  display: 'flex',
+                  alignItems: 'flex-end',
+                  justifyContent: 'space-between',
+                  boxShadow: active
+                    ? '0 0 0 3px rgba(120,174,237,0.25), 0 8px 18px rgba(0,0,0,0.26)'
+                    : '0 5px 14px rgba(0,0,0,0.18)',
+                  textShadow: '0 1px 4px rgba(0,0,0,0.85)',
+                }}
+              >
+                <span style={{ fontSize: 12, fontWeight: 700 }}>{example.name}</span>
                 {active && <span style={{ fontSize: 14, fontWeight: 700 }}>✓</span>}
               </button>
             );
@@ -351,6 +413,48 @@ function AppearancePanel() {
             Use URL
           </button>
         </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '140px 1fr auto', gap: 10, alignItems: 'center' }}>
+          <label style={{ fontSize: 12, color: 'var(--gnome-text-secondary)' }} htmlFor="desktop-iframe">
+            Visual HTML URL
+          </label>
+          <input
+            id="desktop-iframe"
+            type="url"
+            value={iframeDraft}
+            onChange={(event) => setIframeDraft(event.currentTarget.value)}
+            placeholder="https://example.com/ambient-background.html"
+            style={{
+              minWidth: 0,
+              height: 34,
+              borderRadius: 8,
+              border: '1px solid var(--gnome-border)',
+              background: 'var(--gnome-card)',
+              color: 'var(--gnome-text)',
+              padding: '0 10px',
+              outline: 'none',
+            }}
+          />
+          <button
+            type="button"
+            onClick={() => {
+              const trimmed = iframeDraft.trim();
+              if (trimmed) setIframeUrl(trimmed);
+            }}
+            style={{
+              height: 34,
+              padding: '0 12px',
+              borderRadius: 8,
+              border: '1px solid var(--gnome-border)',
+              background: backgroundType === 'iframe' ? 'var(--gnome-blue)' : 'var(--gnome-card)',
+              color: 'var(--gnome-text)',
+              cursor: 'pointer',
+              fontWeight: 700,
+            }}
+          >
+            Use Visual
+          </button>
+        </div>
       </section>
 
       <div
@@ -364,8 +468,8 @@ function AppearancePanel() {
           lineHeight: 1.6,
         }}
       >
-        The new Crystal Blue wallpaper is also available from the desktop right-click menu.
-        URL backgrounds are stored locally and rendered as full-screen cover images.
+        HTML backgrounds are visual only. They render behind desktop icons, cannot receive clicks,
+        and may react only to passive desktop signals such as mouse location.
       </div>
     </div>
   );

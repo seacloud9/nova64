@@ -436,3 +436,185 @@ export const useDesktopThemeStore = create<DesktopThemeStore>((set, get) => ({
     get().setTheme(get().theme === 'dark' ? 'light' : 'dark');
   },
 }));
+
+// ============================================================================
+// Desktop Background Store — background customization
+// ============================================================================
+
+export type BackgroundType = 'preset' | 'color' | 'url';
+
+export interface BackgroundPreset {
+  id: string;
+  name: string;
+  type: 'gradient' | 'pattern' | 'image';
+  value: string; // CSS background value
+  thumbnail?: string; // preview color/gradient
+}
+
+// Built-in background presets
+export const BACKGROUND_PRESETS: BackgroundPreset[] = [
+  {
+    id: 'crystal-blue',
+    name: 'Crystal Blue',
+    type: 'image',
+    thumbnail: 'linear-gradient(135deg, #061326 0%, #123a66 48%, #07192f 100%)',
+    value: 'url("/os9-shell/wallpapers/deep-blue-crystal.svg") center/cover no-repeat, linear-gradient(160deg, #061326 0%, #123a66 48%, #07192f 100%)',
+  },
+  {
+    id: 'ice-cavern',
+    name: 'Ice Cavern',
+    type: 'image',
+    thumbnail: 'linear-gradient(135deg, #071827 0%, #1e6085 45%, #0b2a40 100%)',
+    value: 'url("/os9-shell/wallpapers/ice-cavern.svg") center/cover no-repeat, linear-gradient(155deg, #071827 0%, #1e6085 45%, #0b2a40 100%)',
+  },
+  {
+    id: 'quiet-orbit',
+    name: 'Quiet Orbit',
+    type: 'image',
+    thumbnail: 'linear-gradient(135deg, #06101d 0%, #16436d 52%, #030914 100%)',
+    value: 'url("/os9-shell/wallpapers/quiet-orbit.svg") center/cover no-repeat, linear-gradient(150deg, #06101d 0%, #16436d 52%, #030914 100%)',
+  },
+  {
+    id: 'deep-space',
+    name: 'Deep Space',
+    type: 'gradient',
+    thumbnail: 'linear-gradient(135deg, #050714 0%, #0d0d2b 50%, #0a0e27 100%)',
+    value: `
+      radial-gradient(ellipse at 20% 10%, rgba(120, 40, 200, 0.18) 0%, transparent 50%),
+      radial-gradient(ellipse at 80% 90%, rgba(20, 80, 200, 0.15) 0%, transparent 50%),
+      radial-gradient(ellipse at 70% 20%, rgba(0, 180, 255, 0.08) 0%, transparent 40%),
+      linear-gradient(135deg, #050714 0%, #0d0d2b 25%, #130d2e 50%, #0a1628 75%, #050714 100%)
+    `,
+  },
+  {
+    id: 'aurora',
+    name: 'Aurora',
+    type: 'gradient',
+    thumbnail: 'linear-gradient(135deg, #0a1a2e 0%, #1a4a3c 50%, #0d2a47 100%)',
+    value: `
+      radial-gradient(ellipse at 25% 15%, rgba(0, 255, 180, 0.12) 0%, transparent 45%),
+      radial-gradient(ellipse at 75% 25%, rgba(100, 200, 255, 0.1) 0%, transparent 40%),
+      radial-gradient(ellipse at 50% 70%, rgba(0, 180, 120, 0.15) 0%, transparent 50%),
+      radial-gradient(ellipse at 15% 85%, rgba(80, 255, 200, 0.08) 0%, transparent 35%),
+      linear-gradient(160deg, #0a1a2e 0%, #0d2a3a 30%, #1a4a3c 50%, #0d2a47 70%, #081825 100%)
+    `,
+  },
+  {
+    id: 'nebula',
+    name: 'Nebula',
+    type: 'gradient',
+    thumbnail: 'linear-gradient(135deg, #1a0a2e 0%, #2a1a4e 50%, #0a1a3e 100%)',
+    value: `
+      radial-gradient(ellipse at 30% 30%, rgba(200, 100, 255, 0.15) 0%, transparent 45%),
+      radial-gradient(ellipse at 70% 60%, rgba(100, 50, 200, 0.12) 0%, transparent 50%),
+      radial-gradient(ellipse at 20% 80%, rgba(150, 80, 255, 0.1) 0%, transparent 40%),
+      radial-gradient(ellipse at 85% 20%, rgba(80, 120, 255, 0.08) 0%, transparent 35%),
+      linear-gradient(145deg, #1a0a2e 0%, #2a1a4e 30%, #1a1a5e 50%, #0a1a3e 75%, #0a0a1e 100%)
+    `,
+  },
+  {
+    id: 'sunset',
+    name: 'Sunset',
+    type: 'gradient',
+    thumbnail: 'linear-gradient(135deg, #1a1020 0%, #3a1a30 50%, #2a1525 100%)',
+    value: `
+      radial-gradient(ellipse at 50% 0%, rgba(255, 150, 100, 0.2) 0%, transparent 50%),
+      radial-gradient(ellipse at 30% 30%, rgba(255, 100, 80, 0.12) 0%, transparent 45%),
+      radial-gradient(ellipse at 70% 50%, rgba(200, 80, 120, 0.1) 0%, transparent 40%),
+      radial-gradient(ellipse at 50% 100%, rgba(40, 20, 60, 0.3) 0%, transparent 60%),
+      linear-gradient(180deg, #2a1525 0%, #3a1a30 25%, #301a35 50%, #1a1020 75%, #0a0815 100%)
+    `,
+  },
+  {
+    id: 'midnight',
+    name: 'Midnight',
+    type: 'gradient',
+    thumbnail: 'linear-gradient(135deg, #080812 0%, #101025 50%, #0a0a18 100%)',
+    value: `
+      radial-gradient(ellipse at 50% 50%, rgba(40, 40, 80, 0.15) 0%, transparent 60%),
+      radial-gradient(circle at 20% 20%, rgba(60, 60, 100, 0.08) 0%, transparent 40%),
+      radial-gradient(circle at 80% 80%, rgba(50, 50, 90, 0.08) 0%, transparent 40%),
+      linear-gradient(135deg, #080812 0%, #101025 50%, #0a0a18 100%)
+    `,
+  },
+];
+
+interface DesktopBackgroundStore {
+  backgroundType: BackgroundType;
+  presetId: string;
+  solidColor: string;
+  imageUrl: string;
+  setPreset: (id: string) => void;
+  setSolidColor: (color: string) => void;
+  setImageUrl: (url: string) => void;
+  getBackgroundStyle: () => string;
+}
+
+const _loadBackgroundSettings = (): { type: BackgroundType; presetId: string; solidColor: string; imageUrl: string } => {
+  try {
+    const saved = localStorage.getItem('nova64-desktop-background');
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      return {
+        type: parsed.type || 'preset',
+        presetId: parsed.presetId || 'crystal-blue',
+        solidColor: parsed.solidColor || '#1a3a5c',
+        imageUrl: parsed.imageUrl || '',
+      };
+    }
+  } catch { /* ignore */ }
+  return { type: 'preset', presetId: 'crystal-blue', solidColor: '#1a3a5c', imageUrl: '' };
+};
+
+const _saveBackgroundSettings = (settings: { type: BackgroundType; presetId: string; solidColor: string; imageUrl: string }) => {
+  try {
+    localStorage.setItem('nova64-desktop-background', JSON.stringify(settings));
+  } catch { /* ignore */ }
+};
+
+const _cssUrl = (url: string) => url.replace(/"/g, '%22');
+
+const _initialBg = _loadBackgroundSettings();
+
+export const useDesktopBackgroundStore = create<DesktopBackgroundStore>((set, get) => ({
+  backgroundType: _initialBg.type,
+  presetId: _initialBg.presetId,
+  solidColor: _initialBg.solidColor,
+  imageUrl: _initialBg.imageUrl,
+
+  setPreset(id) {
+    set({ backgroundType: 'preset', presetId: id });
+    _saveBackgroundSettings({ type: 'preset', presetId: id, solidColor: get().solidColor, imageUrl: get().imageUrl });
+  },
+
+  setSolidColor(color) {
+    set({ backgroundType: 'color', solidColor: color });
+    _saveBackgroundSettings({ type: 'color', presetId: get().presetId, solidColor: color, imageUrl: get().imageUrl });
+  },
+
+  setImageUrl(url) {
+    set({ backgroundType: 'url', imageUrl: url });
+    _saveBackgroundSettings({ type: 'url', presetId: get().presetId, solidColor: get().solidColor, imageUrl: url });
+  },
+
+  getBackgroundStyle() {
+    const { backgroundType, presetId, solidColor, imageUrl } = get();
+
+    if (backgroundType === 'color') {
+      return solidColor;
+    }
+
+    if (backgroundType === 'url' && imageUrl) {
+      return `url("${_cssUrl(imageUrl)}") center/cover no-repeat, #07192f`;
+    }
+
+    // Find preset
+    const preset = BACKGROUND_PRESETS.find(p => p.id === presetId);
+    if (preset) {
+      return preset.value;
+    }
+
+    // Fallback to crystal-blue
+    return BACKGROUND_PRESETS[0].value;
+  },
+}));

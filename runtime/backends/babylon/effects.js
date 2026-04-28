@@ -185,11 +185,12 @@ export function createBabylonEffectsApi(self) {
   // === BLOOM ===
   function enableBloom(strength = 1.0, radius = 0.5, threshold = 0.6) {
     const p = initPipeline();
+    const needsLargeGlow = strength >= 1.0;
     p.bloomEnabled = true;
-    p.bloomWeight = strength;
-    p.bloomKernel = Math.round(radius * 128); // Convert radius to kernel size
-    p.bloomThreshold = threshold;
-    p.bloomScale = 0.5;
+    p.bloomWeight = needsLargeGlow ? strength * 2.2 : strength;
+    p.bloomKernel = Math.max(16, Math.round(radius * (needsLargeGlow ? 256 : 128)));
+    p.bloomThreshold = needsLargeGlow ? Math.max(0, threshold * 0.75) : threshold;
+    p.bloomScale = needsLargeGlow ? 0.35 : 0.5;
     return true;
   }
 

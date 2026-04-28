@@ -147,6 +147,16 @@ test.describe('Visual Regression - 3D Showcases', () => {
 
     expect(result.percentDiff, 'PBR materials should stay reasonably similar').toBeLessThan(30);
   });
+
+  test('tsl-showcase galaxy scene should stay reasonably similar', async ({ page }) => {
+    const result = await compareBackends(page, 'tsl-showcase', {
+      waitTime: 1000,
+      threshold: 0.2,
+      maxDiffPercent: 45,
+    });
+
+    expect(result.percentDiff, 'Galaxy TSL scene should stay reasonably similar').toBeLessThan(45);
+  });
 });
 
 test.describe('Visual Regression - WAD', () => {

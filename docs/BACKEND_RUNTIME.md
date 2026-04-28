@@ -183,11 +183,14 @@ Recent parity work focused on the places where carts were still clearly broken u
 - The default voxel world seed is now derived deterministically from the cart/demo identity instead of `Math.random()`, so Babylon and Three load the same terrain unless a cart explicitly requests a custom seed.
 - Babylon voxel chunk materials now use a safer two-sided shader path, which fixes the large terrain-void/culling mismatch that was still visible in `minecraft-demo`.
 - Babylon now also has a guarded NOA probe seam in `runtime/backends/babylon/noa-prototype.js`; use it to investigate `noa-engine` incrementally without letting a Babylon-only engine bypass Nova64's shared voxel API. See `docs/BABYLON_NOA_PROTOTYPE.md` for the handoff notes.
+- The first `tsl-showcase` Galaxy scene now uses deterministic star placement, which makes Babylon-vs-Three visual comparisons measure renderer parity instead of per-load randomness.
+- Babylon high-strength bloom requests now map to a wider/brighter Babylon post-processing setup so glowing TSL scenes stay closer to the Three.js UnrealBloom path while low-strength bloom scenes keep the conservative mapping.
 
 Current visual status:
 
 - `hello-skybox` is back in close visual range with Three.js and covered by Playwright visual regression.
 - `pbr-showcase` is much closer than the earlier broken Babylon output, but it still does not match Three.js perfectly because Babylon does not yet have full PMREM and post-processing parity in Nova64.
+- `tsl-showcase` scene 1, Galaxy Spiral, has a focused visual regression check and currently stays below the intentionally loose shader/parity threshold after the deterministic star-field and Babylon bloom tuning work.
 - `wad-demo` now has focused Babylon visual guardrails and is back down in the low-single-digit diff range in the gameplay-frame regression check on a clean server.
 - Babylon voxel carts now boot and render chunk/entity content without Three-only scene errors, but voxel visual parity still needs follow-up work around custom material parity, chunk shading, and screenshot-level similarity against Three.js.
 - `minecraft-demo` now has deterministic terrain and a focused voxel visual regression guardrail, with the Babylon gameplay-frame diff back down into the low-to-mid teens instead of the earlier broken ~35%+ range caused by seed drift and chunk-face culling.
@@ -204,10 +207,12 @@ These are the most useful narrow checks for the current Babylon parity surface:
 - `pnpm exec playwright test tests/playwright/backend-parity.spec.js --grep 'Minecraft Demo|Voxel Terrain|Voxel Creative|Voxel Creatures' --reporter=line`
 - `pnpm exec playwright test tests/playwright/visual-regression.spec.js --grep "minecraft-demo should stay reasonably similar" --reporter=line`
 - `pnpm exec playwright test tests/playwright/visual-regression.spec.js --grep "wad-demo gameplay frame" --reporter=line`
+- `pnpm exec playwright test tests/playwright/visual-regression.spec.js --grep "tsl-showcase galaxy" --reporter=line`
 - `pnpm exec playwright test tests/playwright/xr-ar-babylon.spec.js --reporter=line`
 
 Use the WAD-specific visual and regression slices first when touching Babylon WAD rendering, UVs, materials, lights, or compatibility shims. Use the voxel-focused regression and backend-parity slices first when touching `runtime/api-voxel.js` or `runtime/backends/babylon/voxel.js`.
 Use the XR/AR slice first when touching `runtime/xr.js`, `runtime/mediapipe.js`, or demos that call WebXR/MediaPipe APIs.
+Use the TSL Galaxy slice first when touching Babylon post-processing, procedural shader materials, particle glow, or the `tsl-showcase` cart.
 
 ## Remaining Babylon Backlog
 

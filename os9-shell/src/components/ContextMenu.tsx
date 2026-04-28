@@ -137,7 +137,7 @@ function ContextMenuPanel({
         border: '1px solid var(--gnome-border)',
         borderRadius: 8,
         boxShadow: '0 4px 16px rgba(0,0,0,0.6)',
-        overflow: 'hidden',
+        overflow: 'visible',
         animation: 'menuSlideIn 0.12s ease-out',
         zIndex: 20001,
         padding: '4px 0',

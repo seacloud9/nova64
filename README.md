@@ -26,6 +26,12 @@
 - **Cardboard Fallback**: When native WebXR VR is unavailable, Babylon mode offers a Cardboard stereoscopic fallback instead of a dead-end unsupported state
 - **AR Demo Resilience**: MediaPipe camera backgrounds and the AR hand demo now degrade cleanly when camera access or hand tracking is unavailable
 
+## Babylon.js TSL Visual Parity
+
+- **Deterministic Galaxy Showcase**: The first `tsl-showcase` scene now uses seeded star placement so Babylon.js and Three.js screenshots compare the same galaxy layout
+- **High-Strength Bloom Mapping**: Babylon bloom parameters now better match Three.js for high-glow shader carts without forcing low-strength PBR scenes into the same over-bright path
+- **Focused Guardrail**: `tests/playwright/visual-regression.spec.js` includes a `tsl-showcase` Galaxy scene comparison so future shader/post-processing changes have a narrow parity check
+
 ---
 
 ## 🌟 **Recent Updates (v0.4.8)**
@@ -50,6 +56,8 @@
 ### 🖥️ **OS9 Desktop Shell**
 
 - **Mac OS 9-Style GUI**: Full desktop environment with window management, taskbar, and app launcher
+- **Crystal Desktop Experience**: NovaOS now opens onto a calm deep-blue crystal wallpaper with a modernized translucent boot/loading sequence
+- **Background Customization**: Right-click the desktop or open Appearance to choose built-in wallpapers, a solid color, or a custom image URL
 - **Game Studio**: In-browser game IDE with code editor, live preview, and cart management
 - **Model Viewer**: Load and inspect GLB/GLTF models with Draco compression and DOOM WAD maps with full texture/sprite rendering
 - **Game Launcher**: Browse and launch all 60+ demo carts from a visual gallery
@@ -472,6 +480,6 @@ MIT — see `LICENSE` for details.
 - **Debug Panel**: F9 overlay with scene graph, camera inspector, lights editor, and Three.js DevTools bridge
 - **TSL Shader Pack**: Custom Three.js Shading Language effects
 - **60+ Demo Carts**: Expanded gallery including shader showcase, blend modes, camera platformer, VR/AR demos
-- **OS9 Shell Enhancements**: Screensaver system, theme toggle, locale-aware menus, eMU emulator
+- **OS9 Shell Enhancements**: Screensaver system, theme/background customization, locale-aware menus, eMU emulator
 
 See [CHANGELOG.md](CHANGELOG.md) for full version history.

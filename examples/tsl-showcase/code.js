@@ -49,6 +49,14 @@ function hslToHex(h, s, l) {
   return (f(0) << 16) | (f(8) << 8) | f(4);
 }
 
+function createSeededRandom(seed) {
+  let state = seed >>> 0;
+  return () => {
+    state = (state * 1664525 + 1013904223) >>> 0;
+    return state / 0x100000000;
+  };
+}
+
 /** Apply a material to a mesh ID (safely via getMesh + traverse) */
 function applyMat(id, mat) {
   const mesh = getMesh(id);
@@ -101,6 +109,8 @@ function setupScene(idx) {
 // ═══════════════════════════════════════════════════════════════════════════
 
 function setupGalaxy() {
+  const random = createSeededRandom(0x67a1c4);
+
   setCameraPosition(0, 18, 22);
   setCameraTarget(0, 0, 0);
   setCameraFOV(50);
@@ -129,10 +139,10 @@ function setupGalaxy() {
       const angle = armOffset + i * 0.18;
       const x = Math.cos(angle) * r;
       const z = Math.sin(angle) * r;
-      const y = (Math.random() - 0.5) * 0.8;
-      const size = 0.12 + Math.random() * 0.25;
+      const y = (random() - 0.5) * 0.8;
+      const size = 0.12 + random() * 0.25;
       const hue = 0.55 + arm * 0.12;
-      const col = hslToHex(hue, 0.9, 0.65 + Math.random() * 0.15);
+      const col = hslToHex(hue, 0.9, 0.65 + random() * 0.15);
       const starId = createCube(size, col, [x, y, z], {
         emissive: col,
         emissiveIntensity: 2.5,

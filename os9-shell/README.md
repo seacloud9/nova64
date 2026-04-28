@@ -27,13 +27,14 @@ Opens at: http://localhost:3000
 
 ### Core OS Components
 
-- **Platinum Theme**: Authentic Mac OS 9 visual design with beveled windows, gray palette, and pixel-perfect UI elements
+- **Platinum Theme**: Authentic Mac OS 9 visual design with beveled windows, crisp icons, and a calm deep-blue crystal desktop
 - **Window Management**: Draggable, resizable windows with windowshade (roll-up), close/zoom boxes, and z-order management
 - **Menu Bar**: Always-on-top menu bar with dynamic app menus, keyboard navigation (F10, arrows), and status widgets
-- **Desktop**: Icon grid with drag-to-select, aliases, and classic Finder-style navigation
+- **Desktop**: Icon grid with drag-to-select, aliases, classic Finder-style navigation, and right-click background switching
+- **Backgrounds**: Appearance and the desktop context menu support built-in wallpapers, solid colors, and custom image URLs persisted in localStorage
 - **Control Strip**: Collapsible bottom panel with volume, brightness, FPS counter, scanlines toggle, and extensible API
 - **Alert Dialogs**: Classic OS 9 modal alerts with sound and customizable buttons
-- **Boot Sequence**: Authentic "extensions marching" animation with gray splash screen
+- **Boot Sequence**: Modernized translucent crystal boot with extension loading progress and desktop reveal
 
 ### Filesystem
 
@@ -59,6 +60,13 @@ Opens at: http://localhost:3000
 - **Event System**: Pub/sub event bus for OS-level communication
 - **State Management**: Zustand stores for windows, apps, UI, and system state
 - **Runtime Parity Notes**: WAD scenes launched from NovaOS benefit from the same Babylon mesh-proxy material assignment and vignette guards documented in the main Nova64 backend runtime notes
+
+### Desktop Background Workflow
+
+- Right-click the desktop and choose **Desktop Background** to switch between the built-in presets.
+- Choose **Use Image URL...** from the same submenu to set a remote image as the wallpaper.
+- Open **Appearance** for the full background panel with wallpaper previews, solid color selection, and URL entry.
+- Built-in wallpapers live in `os9-shell/public/wallpapers/` and are copied into `public/os9-shell/wallpapers/` by `pnpm osBuild`.
 
 ## 🚀 Quick Start
 

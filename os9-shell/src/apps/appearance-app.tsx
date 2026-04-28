@@ -1,13 +1,29 @@
 // Appearance — desktop theme switcher (Glass Dark / Glass Light)
+import { useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import type { Nova64App } from '../types';
-import { useDesktopThemeStore } from '../os/stores';
+import {
+  BACKGROUND_PRESETS,
+  useDesktopBackgroundStore,
+  useDesktopThemeStore,
+} from '../os/stores';
 import { novaContext } from '../os/context';
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
 function AppearancePanel() {
   const { theme, setTheme } = useDesktopThemeStore();
+  const {
+    backgroundType,
+    presetId,
+    solidColor,
+    imageUrl,
+    setPreset,
+    setSolidColor,
+    setImageUrl,
+    getBackgroundStyle,
+  } = useDesktopBackgroundStore();
+  const [urlDraft, setUrlDraft] = useState(imageUrl);
 
   const themes = [
     {
@@ -62,7 +78,7 @@ function AppearancePanel() {
           Appearance
         </h2>
         <p style={{ fontSize: 12, color: 'var(--gnome-text-secondary)', lineHeight: 1.5 }}>
-          Choose a Glass UI theme for nova64 OS. Your selection is persisted automatically.
+          Choose the desktop theme and background. Your selection is persisted automatically.
         </p>
       </div>
 
@@ -186,7 +202,157 @@ function AppearancePanel() {
         })}
       </div>
 
-      {/* Info note */}
+      <section style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div>
+          <h3 style={{ fontSize: 13, fontWeight: 700, marginBottom: 4, color: 'var(--gnome-text)' }}>
+            Desktop Background
+          </h3>
+          <p style={{ fontSize: 12, color: 'var(--gnome-text-secondary)', lineHeight: 1.5 }}>
+            Pick a built-in wallpaper, a solid color, or an image URL.
+          </p>
+        </div>
+
+        <div
+          style={{
+            height: 118,
+            borderRadius: 12,
+            border: '1px solid var(--gnome-border)',
+            background: getBackgroundStyle(),
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+            boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.06), 0 12px 30px rgba(0,0,0,0.22)',
+            overflow: 'hidden',
+            position: 'relative',
+          }}
+        >
+          <div
+            style={{
+              position: 'absolute',
+              inset: 0,
+              background:
+                'linear-gradient(135deg, rgba(255,255,255,0.16), transparent 38%, rgba(0,0,0,0.18))',
+            }}
+          />
+        </div>
+
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(132px, 1fr))',
+            gap: 10,
+          }}
+        >
+          {BACKGROUND_PRESETS.map((preset) => {
+            const active = backgroundType === 'preset' && presetId === preset.id;
+            return (
+              <button
+                key={preset.id}
+                type="button"
+                onClick={() => setPreset(preset.id)}
+                style={{
+                  minHeight: 78,
+                  borderRadius: 10,
+                  border: active ? '2px solid var(--gnome-blue-light)' : '1px solid var(--gnome-border)',
+                  background: preset.thumbnail || preset.value,
+                  cursor: 'pointer',
+                  color: '#fff',
+                  padding: 10,
+                  display: 'flex',
+                  alignItems: 'flex-end',
+                  justifyContent: 'space-between',
+                  boxShadow: active
+                    ? '0 0 0 3px rgba(120,174,237,0.25), 0 8px 18px rgba(0,0,0,0.26)'
+                    : '0 5px 14px rgba(0,0,0,0.18)',
+                  textShadow: '0 1px 4px rgba(0,0,0,0.85)',
+                  transition: 'transform 0.16s ease, border 0.16s ease, box-shadow 0.16s ease',
+                }}
+              >
+                <span style={{ fontSize: 12, fontWeight: 700 }}>{preset.name}</span>
+                {active && <span style={{ fontSize: 14, fontWeight: 700 }}>✓</span>}
+              </button>
+            );
+          })}
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '140px 1fr auto', gap: 10, alignItems: 'center' }}>
+          <label style={{ fontSize: 12, color: 'var(--gnome-text-secondary)' }} htmlFor="desktop-color">
+            Solid color
+          </label>
+          <input
+            id="desktop-color"
+            type="color"
+            value={solidColor}
+            onChange={(event) => setSolidColor(event.currentTarget.value)}
+            style={{
+              width: '100%',
+              height: 34,
+              borderRadius: 8,
+              border: '1px solid var(--gnome-border)',
+              background: 'var(--gnome-card)',
+              padding: 3,
+            }}
+          />
+          <button
+            type="button"
+            onClick={() => setSolidColor(solidColor)}
+            style={{
+              height: 34,
+              padding: '0 12px',
+              borderRadius: 8,
+              border: '1px solid var(--gnome-border)',
+              background: backgroundType === 'color' ? 'var(--gnome-blue)' : 'var(--gnome-card)',
+              color: 'var(--gnome-text)',
+              cursor: 'pointer',
+              fontWeight: 700,
+            }}
+          >
+            Apply
+          </button>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '140px 1fr auto', gap: 10, alignItems: 'center' }}>
+          <label style={{ fontSize: 12, color: 'var(--gnome-text-secondary)' }} htmlFor="desktop-url">
+            Image URL
+          </label>
+          <input
+            id="desktop-url"
+            type="url"
+            value={urlDraft}
+            onChange={(event) => setUrlDraft(event.currentTarget.value)}
+            placeholder="https://example.com/wallpaper.jpg"
+            style={{
+              minWidth: 0,
+              height: 34,
+              borderRadius: 8,
+              border: '1px solid var(--gnome-border)',
+              background: 'var(--gnome-card)',
+              color: 'var(--gnome-text)',
+              padding: '0 10px',
+              outline: 'none',
+            }}
+          />
+          <button
+            type="button"
+            onClick={() => {
+              const trimmed = urlDraft.trim();
+              if (trimmed) setImageUrl(trimmed);
+            }}
+            style={{
+              height: 34,
+              padding: '0 12px',
+              borderRadius: 8,
+              border: '1px solid var(--gnome-border)',
+              background: backgroundType === 'url' ? 'var(--gnome-blue)' : 'var(--gnome-card)',
+              color: 'var(--gnome-text)',
+              cursor: 'pointer',
+              fontWeight: 700,
+            }}
+          >
+            Use URL
+          </button>
+        </div>
+      </section>
+
       <div
         style={{
           padding: '12px 14px',
@@ -198,10 +364,8 @@ function AppearancePanel() {
           lineHeight: 1.6,
         }}
       >
-        Both themes use the{' '}
-        <strong style={{ color: 'var(--gnome-text)' }}>Glass UI</strong> design language —
-        frosted‑glass window chrome, translucent surfaces, and matching accent colours across
-        the desktop and mobile shell.
+        The new Crystal Blue wallpaper is also available from the desktop right-click menu.
+        URL backgrounds are stored locally and rendered as full-screen cover images.
       </div>
     </div>
   );

@@ -4,6 +4,7 @@ import { novaContext } from '../os/context';
 import { openFinderAt } from '../apps/Finder';
 import { showContextMenu, ContextMenuItem } from './ContextMenu';
 import { UISounds } from '../os/sounds';
+import { BACKGROUND_PRESETS, useDesktopBackgroundStore } from '../os/stores';
 
 export function Desktop() {
   const [items] = useState<DesktopItem[]>([
@@ -81,6 +82,23 @@ export function Desktop() {
     },
   ]);
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
+  const {
+    backgroundType,
+    presetId,
+    imageUrl,
+    setPreset,
+    setImageUrl,
+    getBackgroundStyle,
+  } = useDesktopBackgroundStore();
+
+  const promptForBackgroundUrl = () => {
+    const nextUrl = window.prompt('Background image URL', imageUrl);
+    if (nextUrl === null) return;
+    const trimmed = nextUrl.trim();
+    if (trimmed) {
+      setImageUrl(trimmed);
+    }
+  };
 
   const handleItemClick = (id: string, e: React.MouseEvent) => {
     if (e.metaKey || e.ctrlKey) {
@@ -131,7 +149,24 @@ export function Desktop() {
       { label: 'Clean Up', icon: '✨', onClick: () => console.log('Clean Up') },
       { label: 'Arrange by Name', onClick: () => console.log('Arrange') },
       { type: 'separator', label: '' },
-      { label: 'Change Desktop Background...', icon: '🎨', onClick: () => console.log('Background') },
+      {
+        label: 'Desktop Background',
+        icon: '🎨',
+        submenu: [
+          ...BACKGROUND_PRESETS.map((preset) => ({
+            label: preset.name,
+            icon: backgroundType === 'preset' && presetId === preset.id ? '✓' : '',
+            onClick: () => setPreset(preset.id),
+          })),
+          { type: 'separator' as const, label: '' },
+          {
+            label: 'Use Image URL...',
+            icon: backgroundType === 'url' ? '✓' : '🌐',
+            onClick: promptForBackgroundUrl,
+          },
+        ],
+      },
+      { label: 'Change Desktop Background...', icon: '⚙️', onClick: () => novaContext.launchApp('appearance') },
       { type: 'separator', label: '' },
       { label: 'Get Info', icon: 'ℹ️', onClick: () => console.log('Get Info') },
     ]);
@@ -169,7 +204,13 @@ export function Desktop() {
   };
 
   return (
-    <div className="desktop" onClick={handleDesktopClick} onContextMenu={handleDesktopContextMenu}>
+    <div
+      className="desktop"
+      data-background-type={backgroundType}
+      style={{ background: getBackgroundStyle() }}
+      onClick={handleDesktopClick}
+      onContextMenu={handleDesktopContextMenu}
+    >
       {items.map((item) => (
         <div
           key={item.id}

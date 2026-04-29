@@ -7,7 +7,7 @@ import {
   screenshotCanvas,
   waitFor3DScene,
   getPlayerPosition,
-  isTextRendering
+  isTextRendering,
 } from './helpers.js';
 
 // List of carts to test - organized by category

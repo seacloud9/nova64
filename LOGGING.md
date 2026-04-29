@@ -7,12 +7,12 @@ Nova64 uses an environment-aware logging system that automatically adjusts verbo
 ## Log Levels
 
 ```javascript
-LogLevel.NONE  = 0  // No logging
-LogLevel.ERROR = 1  // Only errors (production default)
-LogLevel.WARN  = 2  // Errors + warnings
-LogLevel.INFO  = 3  // Errors + warnings + info
-LogLevel.DEBUG = 4  // Development default - includes debug info
-LogLevel.TRACE = 5  // Verbose tracing - use with ?debug=1
+LogLevel.NONE = 0; // No logging
+LogLevel.ERROR = 1; // Only errors (production default)
+LogLevel.WARN = 2; // Errors + warnings
+LogLevel.INFO = 3; // Errors + warnings + info
+LogLevel.DEBUG = 4; // Development default - includes debug info
+LogLevel.TRACE = 5; // Verbose tracing - use with ?debug=1
 ```
 
 ## Automatic Environment Detection
@@ -20,18 +20,21 @@ LogLevel.TRACE = 5  // Verbose tracing - use with ?debug=1
 The logging system automatically detects the environment:
 
 ### **Production Mode** (LogLevel.ERROR)
+
 - `NODE_ENV=production`
 - `import.meta.env.PROD`
 - Deployed on non-localhost domains
 - **Only critical errors logged**
 
 ### **Development Mode** (LogLevel.DEBUG)
+
 - `NODE_ENV=development`
 - `import.meta.env.DEV`
 - Running on `localhost`
 - **Debug information visible**
 
 ### **Debug Mode** (LogLevel.TRACE)
+
 - URL parameter: `?debug=1`
 - **All logging enabled**
 
@@ -123,9 +126,9 @@ export function stepPhysics(dt) {
 
 ```javascript
 const logger = createLogger('Renderer');
-const glLogger = logger.scope('GL');  // Creates 'Renderer:GL' logger
+const glLogger = logger.scope('GL'); // Creates 'Renderer:GL' logger
 
-glLogger.debug('Shader compiled');  // Logs: [Renderer:GL:DEBUG] Shader compiled
+glLogger.debug('Shader compiled'); // Logs: [Renderer:GL:DEBUG] Shader compiled
 ```
 
 ### Development-Only Logging
@@ -153,23 +156,26 @@ function print(text, x, y) {
 ### Legacy Logging (To Be Migrated)
 
 Files still using `console.log()` directly:
+
 - runtime/logger.js (structured logger)
 - runtime/console.js (cart loading)
-- examples/* (cart debug output)
+- examples/\* (cart debug output)
 
 ## Migration Guide
 
 **Before:**
+
 ```javascript
 console.log('[MyModule] Debug message');
 ```
 
 **After:**
+
 ```javascript
 import { createLogger } from '../runtime/debug-logger.js';
 const logger = createLogger('MyModule');
 
-logger.debug('Debug message');  // Auto-suppressed in production
+logger.debug('Debug message'); // Auto-suppressed in production
 ```
 
 ## Testing with Playwright

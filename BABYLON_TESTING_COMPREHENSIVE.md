@@ -11,9 +11,11 @@ This document provides complete documentation for the automated testing infrastr
 ## 🎯 Test Categories
 
 ### 1. **Backend Parity Tests** (`backend-parity.spec.js`)
+
 Tests 71 demo carts across both backends to verify functional parity.
 
 **Coverage:**
+
 - ✅ 71 carts organized by category (basic, 3d-games, 3d-showcase, fps, voxel, rendering, physics, particles, creative, stage, ui, tween, xr, systems, platformer, nft, babylon)
 - ✅ Load tests (no errors on initialization)
 - ✅ Console output matching (print calls, framebuffer content)
@@ -23,6 +25,7 @@ Tests 71 demo carts across both backends to verify functional parity.
 - ✅ Visual comparison (screenshot capture)
 
 **Test Structure:**
+
 ```javascript
 // For each of 71 carts:
 1. Should load without errors in Three.js
@@ -36,9 +39,11 @@ Tests 71 demo carts across both backends to verify functional parity.
 ```
 
 ### 2. **API Compatibility Tests** (`api-compatibility.spec.js`)
+
 Verifies all Nova64 API functions work correctly in both backends.
 
 **Coverage:**
+
 - ✅ Core 3D API: createCube, createSphere, createPlane, createCylinder
 - ✅ Camera API: setCameraPosition, setCameraTarget, setCameraFOV
 - ✅ Transform API: rotateMesh, setPosition, setScale
@@ -48,6 +53,7 @@ Verifies all Nova64 API functions work correctly in both backends.
 - ✅ Advanced Materials: holographic, metallic
 
 **Test Pattern:**
+
 ```javascript
 for (const backend of ['threejs', 'babylon']) {
   // Test each API function
@@ -66,9 +72,11 @@ for (const backend of ['threejs', 'babylon']) {
 ```
 
 ### 3. **Performance Comparison Tests** (`performance-comparison.spec.js`)
+
 Measures and compares performance metrics between backends.
 
 **Coverage:**
+
 - ✅ FPS benchmarking (4 carts tested: hello-3d, space-harrier-3d, crystal-cathedral-3d, particles-demo)
 - ✅ Memory usage comparison
 - ✅ Render stats comparison (triangle count, draw calls, geometries, textures)
@@ -77,6 +85,7 @@ Measures and compares performance metrics between backends.
 - ✅ Frame time consistency (variance analysis)
 
 **Key Metrics:**
+
 ```javascript
 {
   avgFPS: 60,          // Average frames per second
@@ -88,6 +97,7 @@ Measures and compares performance metrics between backends.
 ```
 
 **Performance Thresholds:**
+
 - Minimum FPS: 30 (general), 20 (stress test)
 - FPS variance tolerance: 30% between backends
 - Memory usage: < 200MB
@@ -95,9 +105,11 @@ Measures and compares performance metrics between backends.
 - Frame time consistency: stddev < 10ms
 
 ### 4. **Visual Regression Tests** (`visual-regression.spec.js`)
+
 Pixel-perfect visual comparison using pixelmatch.
 
 **Coverage:**
+
 - ✅ Basic 3D (hello-3d, hello-skybox)
 - ✅ 3D Showcases (crystal-cathedral-3d, pbr-showcase)
 - ✅ Start Screens (space-harrier-3d, startscreen-demo)
@@ -109,6 +121,7 @@ Pixel-perfect visual comparison using pixelmatch.
 - ✅ Fog rendering
 
 **Difference Thresholds:**
+
 ```javascript
 {
   Basic 3D: 5%,              // Strict
@@ -120,6 +133,7 @@ Pixel-perfect visual comparison using pixelmatch.
 ```
 
 **Output:**
+
 - Screenshots: `test-results/screenshots/`
 - Diff images: `test-results/diffs/`
 - HTML report: `test-results/visual-regression-report.html`
@@ -154,27 +168,33 @@ pnpm test:playwright:debug # Opens Playwright inspector
 **Recommended workflow:**
 
 1. **First Run - Backend Parity** (identify broken carts):
+
 ```bash
 pnpm test:babylon:ui
 ```
+
 This will show which of the 71 carts load successfully in both backends.
 
 2. **Second Run - API Compatibility** (verify all APIs work):
+
 ```bash
 pnpm test:babylon:api
 ```
 
 3. **Third Run - Performance** (measure speed/memory):
+
 ```bash
 pnpm test:babylon:perf
 ```
 
 4. **Fourth Run - Visual Regression** (pixel comparison):
+
 ```bash
 pnpm test:babylon:visual
 ```
 
 5. **Review Results**:
+
 ```bash
 # Open HTML report
 open test-results/visual-regression-report.html
@@ -190,6 +210,7 @@ pnpm exec playwright show-report
 ### Backend Parity Results
 
 **Expected Output:**
+
 ```
 ✅ PASS: hello-3d - Backend Parity - should load without errors in Three.js
 ✅ PASS: hello-3d - Backend Parity - should load without errors in Babylon.js
@@ -200,6 +221,7 @@ pnpm exec playwright show-report
 ```
 
 **What to do with failures:**
+
 1. Check console logs in test output
 2. Look for specific error messages
 3. Identify missing API implementations
@@ -208,6 +230,7 @@ pnpm exec playwright show-report
 ### API Compatibility Results
 
 **Expected Output:**
+
 ```
 ✅ PASS: createCube should work in both backends
 ✅ PASS: createSphere should work in both backends
@@ -216,6 +239,7 @@ pnpm exec playwright show-report
 ```
 
 **Action Items:**
+
 - Implement missing APIs in `runtime/gpu-babylon.js`
 - Add to `exposeTo()` method
 - Verify with re-run
@@ -223,6 +247,7 @@ pnpm exec playwright show-report
 ### Performance Results
 
 **Expected Output:**
+
 ```
 === hello-3d FPS Comparison ===
 Three.js: 60.00 avg, 58.00 min
@@ -232,6 +257,7 @@ Performance difference: 0.83%
 ```
 
 **Red Flags:**
+
 - FPS < 30 average
 - Difference > 30% between backends
 - Memory > 200MB
@@ -240,6 +266,7 @@ Performance difference: 0.83%
 ### Visual Regression Results
 
 **Expected Output:**
+
 ```
 hello-3d visual comparison: {
   numDiffPixels: 1234,
@@ -250,6 +277,7 @@ hello-3d visual comparison: {
 ```
 
 **Reviewing Diffs:**
+
 1. Open `test-results/visual-regression-report.html`
 2. Review side-by-side comparisons
 3. Check diff images (red = different pixels)
@@ -393,6 +421,7 @@ pnpm test:playwright:debug
 ```
 
 This opens the Playwright Inspector where you can:
+
 - Step through tests line by line
 - Inspect page state
 - View console logs
@@ -424,6 +453,7 @@ http://localhost:3001/console.html?demo=space-harrier-3d&debug=1
 ### Step 4: Check Test Artifacts
 
 After a test run, check:
+
 - `playwright-report/` - HTML test report
 - `test-results/` - Screenshots, videos, traces
 - `test-results/screenshots/` - Visual regression screenshots
@@ -434,29 +464,37 @@ After a test run, check:
 Common failure patterns:
 
 **1. Timeout Waiting for Scene:**
+
 ```
 Error: waitFor3DScene() timeout exceeded
 ```
+
 **Fix:** Increase timeout or check if cart has rendering issues
 
 **2. Missing API:**
+
 ```
 Error: createInstancedMesh is not a function
 ```
+
 **Fix:** Implement missing API in `runtime/gpu-babylon.js`
 
 **3. Visual Difference > Threshold:**
+
 ```
 Expected: percentDiff < 5
 Received: 12.5
 ```
+
 **Fix:** Review diff image, adjust threshold if acceptable, or fix rendering issue
 
 **4. Performance Degradation:**
+
 ```
 Expected: avgFPS >= 30
 Received: 18.5
 ```
+
 **Fix:** Profile performance, optimize Babylon.js backend
 
 ---
@@ -515,12 +553,14 @@ A cart is considered to have backend parity when:
 ### Current Status (After Test Expansion)
 
 **Expected Results:**
+
 - Backend Parity: ~33% passing initially (7/21 baseline carts)
 - API Compatibility: TBD (needs implementation)
 - Performance: TBD (needs benchmarking)
 - Visual Regression: TBD (needs pixel analysis)
 
 **Goal:**
+
 - Backend Parity: 90%+ (64/71 carts)
 - API Compatibility: 100% (all APIs implemented)
 - Performance: 90%+ (FPS within 30%)
@@ -583,11 +623,13 @@ jobs:
 ## 📚 Additional Resources
 
 ### Playwright Documentation
+
 - [Playwright Docs](https://playwright.dev)
 - [Playwright Test API](https://playwright.dev/docs/api/class-test)
 - [Playwright Inspector](https://playwright.dev/docs/debug)
 
 ### Nova64 Documentation
+
 - `BABYLON_AUTOMATED_TESTING.md` - Original testing guide
 - `BABYLON_DEBUG_SUMMARY.md` - Manual debugging guide
 - `LOGGING.md` - Environment-aware logging system
@@ -595,6 +637,7 @@ jobs:
 - `CLAUDE.md` - Complete development guide
 
 ### Test Files
+
 - `tests/playwright/backend-parity.spec.js` - Main parity tests (71 carts)
 - `tests/playwright/api-compatibility.spec.js` - API tests (21 tests)
 - `tests/playwright/performance-comparison.spec.js` - Performance tests (13 tests)
@@ -607,26 +650,31 @@ jobs:
 ## 🎓 Best Practices
 
 ### 1. Test Organization
+
 - Group related tests in describe blocks
 - Use descriptive test names
 - Keep tests independent (no shared state)
 
 ### 2. Test Reliability
+
 - Use explicit waits (`waitForTimeout`) instead of arbitrary delays
 - Set appropriate timeouts for heavy carts
 - Allow tolerance for timing-dependent tests (physics, particles)
 
 ### 3. Performance Testing
+
 - Warmup period before measuring (2 seconds)
 - Measure over sufficient duration (3+ seconds)
 - Allow variance between runs (±30%)
 
 ### 4. Visual Regression
+
 - Use strict thresholds for 2D/text (2-5%)
 - Use lenient thresholds for 3D/materials (15-20%)
 - Review diff images manually for critical carts
 
 ### 5. Debugging
+
 - Use Playwright UI for interactive debugging
 - Enable trace on retry for failure diagnosis
 - Check console logs for cart-specific errors

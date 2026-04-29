@@ -73,9 +73,7 @@ async function getVoxelPlayerState(page, x = 0, z = 0) {
           globalThis.getVoxelBiome?.(x, z) ??
           globalThis.nova64?.voxel?.getVoxelBiome?.(x, z) ??
           null,
-        camera: position
-          ? { x: position.x, y: position.y, z: position.z }
-          : null,
+        camera: position ? { x: position.x, y: position.y, z: position.z } : null,
       };
     },
     { x, z }
@@ -226,12 +224,16 @@ test.describe('Voxel Regression', () => {
   }) => {
     await loadCart(page, 'minecraft-demo', 'threejs');
     await waitFor3DScene(page, 'threejs');
-    await expect.poll(async () => (await getVoxelSnapshot(page)).highest, { timeout: 30000 }).toBeGreaterThan(0);
+    await expect
+      .poll(async () => (await getVoxelSnapshot(page)).highest, { timeout: 30000 })
+      .toBeGreaterThan(0);
     const threeSnapshot = await getVoxelSnapshot(page);
 
     await loadCart(page, 'minecraft-demo', 'babylon');
     await waitFor3DScene(page, 'babylon');
-    await expect.poll(async () => (await getVoxelSnapshot(page)).highest, { timeout: 30000 }).toBeGreaterThan(0);
+    await expect
+      .poll(async () => (await getVoxelSnapshot(page)).highest, { timeout: 30000 })
+      .toBeGreaterThan(0);
     const babylonSnapshot = await getVoxelSnapshot(page);
 
     expect(babylonSnapshot.seed).toBe(threeSnapshot.seed);

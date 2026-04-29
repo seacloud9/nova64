@@ -34,14 +34,7 @@ function compareImages(img1Path, img2Path, diffPath, threshold = 0.1) {
   const { width, height } = img1;
   const diff = new PNG({ width, height });
 
-  const numDiffPixels = pixelmatch(
-    img1.data,
-    img2.data,
-    diff.data,
-    width,
-    height,
-    { threshold }
-  );
+  const numDiffPixels = pixelmatch(img1.data, img2.data, diff.data, width, height, { threshold });
 
   fs.writeFileSync(diffPath, PNG.sync.write(diff));
 
@@ -175,7 +168,9 @@ test.describe('Visual Regression - WAD', () => {
     const result = compareImages(threejsPath, babylonPath, diffPath, 0.2);
 
     console.log('wad-demo visual comparison:', result);
-    expect(result.percentDiff, 'WAD gameplay frame should stay reasonably similar').toBeLessThan(35);
+    expect(result.percentDiff, 'WAD gameplay frame should stay reasonably similar').toBeLessThan(
+      35
+    );
   });
 });
 
@@ -379,7 +374,7 @@ test.describe('Visual Regression - Fog', () => {
       await page.evaluate(() => {
         // Create multiple cubes at different depths to show fog
         for (let i = 0; i < 5; i++) {
-          const z = -5 - (i * 3);
+          const z = -5 - i * 3;
           createCube(2, 0x00ffff, [0, 0, z]);
         }
         setFog(0x000000, 5, 25);
@@ -457,12 +452,16 @@ test.describe('Visual Regression Report', () => {
         <h4>Babylon.js</h4>
         <img src="../screenshots/${babylonFile}" alt="${cartName} Babylon.js">
       </div>
-      ${diffs.includes(diffFile) ? `
+      ${
+        diffs.includes(diffFile)
+          ? `
       <div>
         <h4>Difference</h4>
         <img src="../diffs/${diffFile}" alt="${cartName} Diff" class="diff">
       </div>
-      ` : ''}
+      `
+          : ''
+      }
     </div>
   </div>
 `;

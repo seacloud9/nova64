@@ -18,12 +18,14 @@ The dev server caches JavaScript modules aggressively. When you make changes to 
 ## Method 3: Manually Clear (Nuclear Option)
 
 ### Chrome/Edge:
+
 1. Press `Ctrl+Shift+Delete`
 2. Select "Cached images and files"
 3. Time range: "Last hour" or "All time"
 4. Click "Clear data"
 
 ### Firefox:
+
 1. Press `Ctrl+Shift+Delete`
 2. Select "Cache"
 3. Click "Clear Now"
@@ -41,6 +43,7 @@ wsl bash -c "cd /mnt/c/Users/brend/exp/nova64 && . ~/.nvm/nvm.sh && nvm use 20 &
 ## Verification
 
 After clearing cache, check the Network tab in DevTools:
+
 - Look for `gpu-babylon.js?import&t=XXXXXXXXXX`
 - The timestamp `t=` should be recent (current time in ms)
 - Click on it and verify the source code contains your latest changes

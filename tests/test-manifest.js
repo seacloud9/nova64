@@ -597,10 +597,13 @@ async function registerCartParseTests(runner) {
   }
 
   // Parse-check ALL example carts (catches nova64.* destructuring collisions)
-  const allCarts = fs.readdirSync(examplesDir).filter(d =>
-    fs.statSync(path.join(examplesDir, d)).isDirectory() &&
-    fs.existsSync(path.join(examplesDir, d, 'code.js'))
-  );
+  const allCarts = fs
+    .readdirSync(examplesDir)
+    .filter(
+      d =>
+        fs.statSync(path.join(examplesDir, d)).isDirectory() &&
+        fs.existsSync(path.join(examplesDir, d, 'code.js'))
+    );
   for (const cart of allCarts) {
     if (cartsWithManifest.includes(cart)) continue; // already tested above
     runner.test(`Cart ${cart} - parses without syntax errors`, () => {

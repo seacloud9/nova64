@@ -9,17 +9,21 @@
 ## Fixes Applied
 
 ### 1. Right-Handed Coordinate System (Commit `953d321`)
+
 **Issue:** Babylon.js uses LEFT-HANDED coordinates by default, Three.js uses RIGHT-HANDED
 **Fix:** Set `scene.useRightHandedSystem = true` in GpuBabylon constructor
 **Impact:** Should fix player controls working backwards
 
 ### 2. Framebuffer Composite Mode (Commit `6419da4`)
+
 **Issue:** Framebuffer drawn with `'destination-over'` (under HUD) instead of `'source-over'` (on top)
 **Fix:** Changed composite mode to `'source-over'`
 **Impact:** Should fix 2D content visibility on start screens
 
 ### 3. Debug Logging Added (Commit `5c12ea4`)
+
 **What:** Added comprehensive logging to:
+
 - Framebuffer composite (pixel count every 60 frames)
 - print() calls (first 5 calls logged)
 - Player movement (every 60 frames when moving)
@@ -31,6 +35,7 @@
 ### To Test with Debug Logging:
 
 1. **Open Babylon Console:**
+
    ```
    http://localhost:5173/babylon_console.html
    ```
@@ -55,6 +60,7 @@
 ### If Text Still Not Showing:
 
 Check console for:
+
 1. Are print() calls happening? (If no → cart code issue)
 2. Does framebuffer have pixels? (If no → BitmapFont issue)
 3. Is composite happening? (If no → canvas visibility issue)
@@ -79,11 +85,13 @@ Check console for:
 ### To Compare Three.js vs Babylon.js:
 
 1. **Open Three.js version:**
+
    ```
    http://localhost:5173/console.html
    ```
 
 2. **Open Babylon.js version (different browser tab):**
+
    ```
    http://localhost:5173/babylon_console.html
    ```
@@ -101,21 +109,27 @@ Check console for:
 ## Next Steps Based on Test Results
 
 ### If Text Rendering Works:
+
 ✅ Mark test as PASS in BABYLON_TESTING_PLAN.md
 ✅ Remove debug logging (or reduce verbosity)
 
 ### If Text Rendering Fails:
+
 ❌ Check which part of pipeline is failing:
+
 - If print() not called → Nova64.ui module not wired correctly
 - If framebuffer empty → BitmapFont.draw() not writing pixels
 - If framebuffer full but not visible → Canvas CSS/z-index issue
 
 ### If Player Controls Work:
+
 ✅ Mark test as PASS
 ✅ Remove debug logging
 
 ### If Player Controls Fail:
+
 ❌ Compare debug output between backends:
+
 - Check dx/dy values (should be same)
 - Check position values (should move same direction)
 - Check boundaries (should clamp at same values)
@@ -139,6 +153,7 @@ Check console for:
 ## Success Criteria
 
 Backend parity achieved when:
+
 - ✅ No console errors
 - ✅ Text renders identically
 - ✅ Player controls respond same as Three.js

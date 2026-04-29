@@ -10,8 +10,8 @@ import { loadCart } from './helpers.js';
 
 // Helper to measure FPS over a period
 async function measureFPS(page, duration = 3000) {
-  return await page.evaluate((dur) => {
-    return new Promise((resolve) => {
+  return await page.evaluate(dur => {
+    return new Promise(resolve => {
       const frames = [];
       const startTime = performance.now();
       let lastTime = startTime;
@@ -77,12 +77,7 @@ async function getRenderStats(page) {
 }
 
 test.describe('FPS Performance Comparison', () => {
-  const testCarts = [
-    'hello-3d',
-    'space-harrier-3d',
-    'crystal-cathedral-3d',
-    'particles-demo',
-  ];
+  const testCarts = ['hello-3d', 'space-harrier-3d', 'crystal-cathedral-3d', 'particles-demo'];
 
   for (const cartName of testCarts) {
     test(`${cartName} - FPS comparison`, async ({ page }) => {
@@ -101,12 +96,18 @@ test.describe('FPS Performance Comparison', () => {
 
       // Log comparison
       console.log(`\n=== ${cartName} FPS Comparison ===`);
-      console.log(`Three.js: ${results.threejs.avgFPS.toFixed(2)} avg, ${results.threejs.minFPS.toFixed(2)} min`);
-      console.log(`Babylon:  ${results.babylon.avgFPS.toFixed(2)} avg, ${results.babylon.minFPS.toFixed(2)} min`);
+      console.log(
+        `Three.js: ${results.threejs.avgFPS.toFixed(2)} avg, ${results.threejs.minFPS.toFixed(2)} min`
+      );
+      console.log(
+        `Babylon:  ${results.babylon.avgFPS.toFixed(2)} avg, ${results.babylon.minFPS.toFixed(2)} min`
+      );
 
       // Both backends should maintain at least 30 FPS average
       expect(results.threejs.avgFPS, 'Three.js should maintain 30+ FPS').toBeGreaterThanOrEqual(30);
-      expect(results.babylon.avgFPS, 'Babylon.js should maintain 30+ FPS').toBeGreaterThanOrEqual(30);
+      expect(results.babylon.avgFPS, 'Babylon.js should maintain 30+ FPS').toBeGreaterThanOrEqual(
+        30
+      );
 
       // Performance should be within 30% of each other
       const avgDiff = Math.abs(results.threejs.avgFPS - results.babylon.avgFPS);
@@ -258,8 +259,12 @@ test.describe('Stress Test - Many Objects', () => {
     }
 
     // Both backends should maintain at least 20 FPS with 100 cubes
-    expect(results.threejs.fps.avgFPS, 'Three.js should handle 100 cubes').toBeGreaterThanOrEqual(20);
-    expect(results.babylon.fps.avgFPS, 'Babylon.js should handle 100 cubes').toBeGreaterThanOrEqual(20);
+    expect(results.threejs.fps.avgFPS, 'Three.js should handle 100 cubes').toBeGreaterThanOrEqual(
+      20
+    );
+    expect(results.babylon.fps.avgFPS, 'Babylon.js should handle 100 cubes').toBeGreaterThanOrEqual(
+      20
+    );
 
     console.log('\n=== Stress Test Results ===');
     console.log(`Three.js: ${results.threejs.fps.avgFPS.toFixed(2)} FPS`);
@@ -277,7 +282,7 @@ test.describe('Frame Time Consistency', () => {
 
       // Measure frame time variance
       const frameTimeStats = await page.evaluate(() => {
-        return new Promise((resolve) => {
+        return new Promise(resolve => {
           const frameTimes = [];
           let lastTime = performance.now();
           let count = 0;
@@ -295,7 +300,9 @@ test.describe('Frame Time Consistency', () => {
             } else {
               // Calculate variance
               const mean = frameTimes.reduce((a, b) => a + b, 0) / frameTimes.length;
-              const variance = frameTimes.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / frameTimes.length;
+              const variance =
+                frameTimes.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) /
+                frameTimes.length;
               const stdDev = Math.sqrt(variance);
 
               resolve({ mean, variance, stdDev, frames: frameTimes.length });
@@ -312,8 +319,12 @@ test.describe('Frame Time Consistency', () => {
 
     // Log comparison
     console.log('\n=== Frame Time Consistency ===');
-    console.log(`Three.js: ${results.threejs.mean.toFixed(2)}ms avg, ${results.threejs.stdDev.toFixed(2)}ms stddev`);
-    console.log(`Babylon:  ${results.babylon.mean.toFixed(2)}ms avg, ${results.babylon.stdDev.toFixed(2)}ms stddev`);
+    console.log(
+      `Three.js: ${results.threejs.mean.toFixed(2)}ms avg, ${results.threejs.stdDev.toFixed(2)}ms stddev`
+    );
+    console.log(
+      `Babylon:  ${results.babylon.mean.toFixed(2)}ms avg, ${results.babylon.stdDev.toFixed(2)}ms stddev`
+    );
 
     // Standard deviation should be low (frame times consistent)
     expect(results.threejs.stdDev, 'Three.js frame times should be consistent').toBeLessThan(10);

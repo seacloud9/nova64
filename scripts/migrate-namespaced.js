@@ -30,7 +30,9 @@ for (const [group, fns] of Object.entries(NAMESPACE_MAP)) {
 const ALL_GLOBALS = new Set(Object.keys(REVERSE_MAP));
 
 const DRY_RUN = process.argv.includes('--dry-run');
-const SPECIFIC = process.argv.find(a => !a.startsWith('-') && a !== process.argv[0] && a !== process.argv[1]);
+const SPECIFIC = process.argv.find(
+  a => !a.startsWith('-') && a !== process.argv[0] && a !== process.argv[1]
+);
 
 const examplesDir = join(ROOT, 'examples');
 const dirs = SPECIFIC ? [SPECIFIC] : readdirSync(examplesDir).sort();
@@ -108,7 +110,13 @@ for (const dir of dirs) {
   // Skip leading comment blocks and blank lines
   for (let i = 0; i < lines.length; i++) {
     const trimmed = lines[i].trim();
-    if (trimmed === '' || trimmed.startsWith('//') || trimmed.startsWith('/*') || trimmed.startsWith('*') || trimmed.startsWith('*/')) {
+    if (
+      trimmed === '' ||
+      trimmed.startsWith('//') ||
+      trimmed.startsWith('/*') ||
+      trimmed.startsWith('*') ||
+      trimmed.startsWith('*/')
+    ) {
       insertIdx = i + 1;
     } else {
       break;
@@ -120,13 +128,17 @@ for (const dir of dirs) {
   const newCode = lines.join('\n');
 
   if (DRY_RUN) {
-    console.log(`🔍 ${dir} — would add ${usedGlobals.size} globals from ${Object.keys(groups).length} namespaces`);
+    console.log(
+      `🔍 ${dir} — would add ${usedGlobals.size} globals from ${Object.keys(groups).length} namespaces`
+    );
     for (const [ns, names] of Object.entries(groups)) {
       console.log(`   nova64.${ns}: ${names.join(', ')}`);
     }
   } else {
     writeFileSync(codeFile, newCode, 'utf8');
-    console.log(`✅ ${dir} — migrated ${usedGlobals.size} globals from ${Object.keys(groups).length} namespaces`);
+    console.log(
+      `✅ ${dir} — migrated ${usedGlobals.size} globals from ${Object.keys(groups).length} namespaces`
+    );
   }
   migrated++;
 }

@@ -10,41 +10,42 @@
 
 ### A. Text Rendering Tests
 
-| Test | Three.js | Babylon.js | Status |
-|------|----------|------------|--------|
-| Simple print() on HUD | ✅ | ❓ | TODO |
-| drawText() from ui module | ✅ | ❓ | TODO |
-| drawGlowTextCentered() | ✅ | ❓ | TODO |
-| Text with different fonts (setFont) | ✅ | ❓ | TODO |
-| Text alignment (center/left/right) | ✅ | ❓ | TODO |
-| Text on start screen (Space Harrier) | ✅ | ❌ | FAIL |
-| Text during gameplay | ✅ | ❓ | TODO |
+| Test                                 | Three.js | Babylon.js | Status |
+| ------------------------------------ | -------- | ---------- | ------ |
+| Simple print() on HUD                | ✅       | ❓         | TODO   |
+| drawText() from ui module            | ✅       | ❓         | TODO   |
+| drawGlowTextCentered()               | ✅       | ❓         | TODO   |
+| Text with different fonts (setFont)  | ✅       | ❓         | TODO   |
+| Text alignment (center/left/right)   | ✅       | ❓         | TODO   |
+| Text on start screen (Space Harrier) | ✅       | ❌         | FAIL   |
+| Text during gameplay                 | ✅       | ❓         | TODO   |
 
 ### B. Player Controls Tests (Space Harrier)
 
-| Test | Three.js | Babylon.js | Status |
-|------|----------|------------|--------|
-| Move left (A/←) | ✅ | ❓ | TODO |
-| Move right (D/→) | ✅ | ❓ | TODO |
-| Move up (W/↑) | ✅ | ❓ | TODO |
-| Move down (S/↓) | ✅ | ❓ | TODO |
-| Player stays within bounds X (-22 to 22) | ✅ | ❓ | TODO |
-| Player stays within bounds Y (0 to 18) | ✅ | ❓ | TODO |
-| Shoot (Space) | ✅ | ❓ | TODO |
+| Test                                     | Three.js | Babylon.js | Status |
+| ---------------------------------------- | -------- | ---------- | ------ |
+| Move left (A/←)                          | ✅       | ❓         | TODO   |
+| Move right (D/→)                         | ✅       | ❓         | TODO   |
+| Move up (W/↑)                            | ✅       | ❓         | TODO   |
+| Move down (S/↓)                          | ✅       | ❓         | TODO   |
+| Player stays within bounds X (-22 to 22) | ✅       | ❓         | TODO   |
+| Player stays within bounds Y (0 to 18)   | ✅       | ❓         | TODO   |
+| Shoot (Space)                            | ✅       | ❓         | TODO   |
 
 ### C. Camera Tests
 
-| Test | Three.js | Babylon.js | Status |
-|------|----------|------------|--------|
-| Camera position matches | ✅ | ❓ | TODO |
-| Camera looks at correct target | ✅ | ❓ | TODO |
-| Camera FOV correct (75°) | ✅ | ❓ | TODO |
-| Perspective projection correct | ✅ | ❓ | TODO |
-| Near/far clipping planes | ✅ | ❓ | TODO |
+| Test                           | Three.js | Babylon.js | Status |
+| ------------------------------ | -------- | ---------- | ------ |
+| Camera position matches        | ✅       | ❓         | TODO   |
+| Camera looks at correct target | ✅       | ❓         | TODO   |
+| Camera FOV correct (75°)       | ✅       | ❓         | TODO   |
+| Perspective projection correct | ✅       | ❓         | TODO   |
+| Near/far clipping planes       | ✅       | ❓         | TODO   |
 
 ### D. Cart Compatibility Tests
 
 #### Space Harrier 3D
+
 - [ ] Start screen renders (text, gradients, buttons)
 - [ ] Player spawns at correct position
 - [ ] Player controls work correctly
@@ -55,6 +56,7 @@
 - [ ] Game over screen works
 
 #### Crystal Cathedral 3D
+
 - [ ] Loads without errors
 - [ ] createAdvancedSphere() works
 - [ ] Holographic materials render
@@ -62,12 +64,14 @@
 - [ ] Camera movement smooth
 
 #### F-Zero Nova 3D
+
 - [ ] Skybox renders (scene.add compatibility)
 - [ ] Track geometry displays
 - [ ] Ship controls work
 - [ ] Speed effect works
 
 #### WAD Demo
+
 - [ ] Loads DOOM WAD files
 - [ ] setDirectionalLight() works
 - [ ] Level geometry renders
@@ -75,39 +79,41 @@
 
 ### E. 3D Rendering Comparison
 
-| Feature | Three.js | Babylon.js | Status |
-|---------|----------|------------|--------|
-| Basic cube rendering | ✅ | ❓ | TODO |
-| Sphere rendering | ✅ | ❓ | TODO |
-| Materials (basic) | ✅ | ❓ | TODO |
-| Materials (holographic) | ✅ | ❓ | TODO |
-| Materials (PBR) | ✅ | ❓ | TODO |
-| Lighting (ambient) | ✅ | ❓ | TODO |
-| Lighting (directional) | ✅ | ❓ | TODO |
-| Lighting (point) | ✅ | ❓ | TODO |
-| Fog rendering | ✅ | ❓ | TODO |
-| Mesh transforms (position) | ✅ | ❓ | TODO |
-| Mesh transforms (rotation) | ✅ | ❓ | TODO |
-| Mesh transforms (scale) | ✅ | ❓ | TODO |
+| Feature                    | Three.js | Babylon.js | Status |
+| -------------------------- | -------- | ---------- | ------ |
+| Basic cube rendering       | ✅       | ❓         | TODO   |
+| Sphere rendering           | ✅       | ❓         | TODO   |
+| Materials (basic)          | ✅       | ❓         | TODO   |
+| Materials (holographic)    | ✅       | ❓         | TODO   |
+| Materials (PBR)            | ✅       | ❓         | TODO   |
+| Lighting (ambient)         | ✅       | ❓         | TODO   |
+| Lighting (directional)     | ✅       | ❓         | TODO   |
+| Lighting (point)           | ✅       | ❓         | TODO   |
+| Fog rendering              | ✅       | ❓         | TODO   |
+| Mesh transforms (position) | ✅       | ❓         | TODO   |
+| Mesh transforms (rotation) | ✅       | ❓         | TODO   |
+| Mesh transforms (scale)    | ✅       | ❓         | TODO   |
 
 ### F. Coordinate System Tests
 
-| Test | Three.js | Babylon.js | Status |
-|------|----------|------------|--------|
-| +X is right | ✅ | ✅ | PASS (right-handed mode) |
-| +Y is up | ✅ | ✅ | PASS |
-| +Z is forward (toward camera) | ✅ | ✅ | PASS (right-handed mode) |
-| -Z is backward (away from camera) | ✅ | ✅ | PASS (right-handed mode) |
+| Test                              | Three.js | Babylon.js | Status                   |
+| --------------------------------- | -------- | ---------- | ------------------------ |
+| +X is right                       | ✅       | ✅         | PASS (right-handed mode) |
+| +Y is up                          | ✅       | ✅         | PASS                     |
+| +Z is forward (toward camera)     | ✅       | ✅         | PASS (right-handed mode) |
+| -Z is backward (away from camera) | ✅       | ✅         | PASS (right-handed mode) |
 
 ## Testing Methodology
 
 ### 1. Visual Comparison
+
 - Open `console.html` (Three.js) and `babylon_console.html` (Babylon.js) side-by-side
 - Load same cart in both
 - Compare visual output frame-by-frame
 - Document differences
 
 ### 2. Console Logging
+
 - Add debug logging to:
   - Player position updates
   - Camera position/target
@@ -116,12 +122,14 @@
 - Compare logs between backends
 
 ### 3. Manual Testing
+
 - Play each cart for 30 seconds minimum
 - Test all controls
 - Look for visual artifacts
 - Check performance (FPS)
 
 ### 4. Automated Checks
+
 - Verify no console errors
 - Check framebuffer content (non-zero pixels)
 - Verify HUD canvas has content
@@ -129,11 +137,13 @@
 ## Known Differences (Documented)
 
 ### Babylon.js Limitations
+
 1. Post-processing effects (bloom, vignette) not supported - handled gracefully
 2. Dithering effect not supported - logs warning
 3. XR/VR has different API - compatibility shims added
 
 ### Architecture Differences
+
 1. **Coordinate System**: Babylon uses left-handed by default (fixed with `useRightHandedSystem`)
 2. **Mesh Creation**: Babylon auto-adds meshes to scene (added `scene.add()` shim)
 3. **Vector3 API**: Babylon uses `copyFromFloats()` instead of `.set()`
@@ -141,6 +151,7 @@
 ## Success Criteria
 
 A cart passes backend parity when:
+
 - ✅ No console errors
 - ✅ Visual output matches Three.js (within 95% similarity)
 - ✅ Controls respond identically

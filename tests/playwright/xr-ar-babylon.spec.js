@@ -32,7 +32,9 @@ async function openBabylonSandbox(page) {
 }
 
 test.describe('Babylon XR and AR demo compatibility', () => {
-  test('VR demos initialize under Babylon with an XR or Cardboard entry point', async ({ page }) => {
+  test('VR demos initialize under Babylon with an XR or Cardboard entry point', async ({
+    page,
+  }) => {
     for (const cartName of ['vr-demo', 'vr-sword-combat']) {
       const issues = collectBrowserIssues(page);
 
@@ -46,8 +48,7 @@ test.describe('Babylon XR and AR demo compatibility', () => {
         supported: nova64.xr.isXRSupported(),
         controllers: nova64.xr.getXRControllers().length,
         hands: nova64.xr.getXRHands().length,
-        entryStatus: document.querySelector('[data-nova64-xr-status]')?.dataset
-          .nova64XrStatus,
+        entryStatus: document.querySelector('[data-nova64-xr-status]')?.dataset.nova64XrStatus,
         entryText: document.querySelector('[data-nova64-xr-status]')?.textContent,
       }));
 
@@ -105,9 +106,7 @@ test.describe('Babylon XR and AR demo compatibility', () => {
     expect(state.fallbackText).toContain('Use Cardboard VR');
   });
 
-  test('WebXR AR creates a Babylon.js AR entry point when WebXR is available', async ({
-    page,
-  }) => {
+  test('WebXR AR creates a Babylon.js AR entry point when WebXR is available', async ({ page }) => {
     const issues = collectBrowserIssues(page);
     await openBabylonSandbox(page);
 
@@ -145,8 +144,7 @@ test.describe('Babylon XR and AR demo compatibility', () => {
         hands: nova64.xr.getXRHands().length,
         referenceSet: nova64.xr.setXRReferenceSpace('local'),
         rigMoved: nova64.xr.setCameraRigPosition(1, 2, 3),
-        buttonText: document.querySelector('[data-nova64-xr-status="babylon-ready"]')
-          ?.textContent,
+        buttonText: document.querySelector('[data-nova64-xr-status="babylon-ready"]')?.textContent,
       };
 
       nova64.xr.disableXR();

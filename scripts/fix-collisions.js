@@ -35,7 +35,9 @@ for (const cart of carts) {
 
   const collisions = names.filter(n => {
     // Check for function declarations, let/const/var declarations
-    const re = new RegExp(`\\b(function|let|const|var)\\s+${n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`);
+    const re = new RegExp(
+      `\\b(function|let|const|var)\\s+${n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`
+    );
     return re.test(strippedForCheck);
   });
 
@@ -59,10 +61,7 @@ for (const cart of carts) {
 
     // Pattern 2: Multi-line - name on its own line with trailing comma
     // e.g. "  collision,\n"
-    const multiLineTrailingRe = new RegExp(
-      `^\\s*${collision},\\s*\\n`,
-      'gm'
-    );
+    const multiLineTrailingRe = new RegExp(`^\\s*${collision},\\s*\\n`, 'gm');
     if (multiLineTrailingRe.test(src)) {
       // Only replace within the context of nova64 destructuring blocks
       // Find the block, then remove the line
@@ -93,18 +92,14 @@ for (const cart of carts) {
     const inlineBeforeRe = new RegExp(`,\\s*${collision}(?=[\\s}])`, 'g');
 
     // Try pattern 4 first (within a nova64 destructuring context)
-    const check4 = new RegExp(
-      `(const\\s*\\{[^}]*)${collision},\\s*([^}]*\\}\\s*=\\s*nova64\\.)`
-    );
+    const check4 = new RegExp(`(const\\s*\\{[^}]*)${collision},\\s*([^}]*\\}\\s*=\\s*nova64\\.)`);
     if (check4.test(src)) {
       src = src.replace(check4, '$1$2');
       continue;
     }
 
     // Try pattern 5
-    const check5 = new RegExp(
-      `(const\\s*\\{[^}]*),\\s*${collision}([^}]*\\}\\s*=\\s*nova64\\.)`
-    );
+    const check5 = new RegExp(`(const\\s*\\{[^}]*),\\s*${collision}([^}]*\\}\\s*=\\s*nova64\\.)`);
     if (check5.test(src)) {
       src = src.replace(check5, '$1$2');
       continue;

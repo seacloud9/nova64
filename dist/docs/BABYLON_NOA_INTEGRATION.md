@@ -135,7 +135,7 @@ await enableVoxelNoaAdapter({
     playerWidth: 0.6,
     tickRate: 30,
     // ... see noa-engine docs for full options
-  }
+  },
 });
 ```
 
@@ -159,12 +159,12 @@ localStorage.setItem('nova64:noaVoxel', 'probe');
 
 ## Files
 
-| File | Description |
-|------|-------------|
-| `runtime/api-voxel.js` | Cart-facing voxel API (shared between backends) |
-| `runtime/backends/babylon/voxel.js` | Standard Babylon.js voxel backend |
-| `runtime/backends/babylon/noa-adapter.js` | NOA engine adapter for Babylon.js |
-| `runtime/backends/babylon/noa-prototype.js` | NOA feature detection and probing |
+| File                                        | Description                                     |
+| ------------------------------------------- | ----------------------------------------------- |
+| `runtime/api-voxel.js`                      | Cart-facing voxel API (shared between backends) |
+| `runtime/backends/babylon/voxel.js`         | Standard Babylon.js voxel backend               |
+| `runtime/backends/babylon/noa-adapter.js`   | NOA engine adapter for Babylon.js               |
+| `runtime/backends/babylon/noa-prototype.js` | NOA feature detection and probing               |
 
 ## Testing
 

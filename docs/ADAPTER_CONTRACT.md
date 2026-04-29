@@ -37,18 +37,18 @@ Every conforming adapter must implement all of the following. The conformance te
 
 Create a material.
 
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `type` | `'basic' \| 'phong' \| 'standard'` | Material model |
-| `opts.color` | `number \| { r, g, b }` | Base color |
-| `opts.map` | texture handle | Optional texture map |
-| `opts.transparent` | `boolean` | Enable alpha blending |
-| `opts.alphaTest` | `number` (0–1) | Alpha test cutoff |
-| `opts.side` | `'front' \| 'back' \| 'double'` | Face culling |
-| `opts.roughness` | `number` | Roughness (standard only) |
-| `opts.metalness` | `number` | Metalness (standard only) |
-| `opts.emissive` | `number` | Emissive color (standard only) |
-| `opts.flatShading` | `boolean` | Flat shading (standard only) |
+| Parameter          | Type                               | Description                    |
+| ------------------ | ---------------------------------- | ------------------------------ |
+| `type`             | `'basic' \| 'phong' \| 'standard'` | Material model                 |
+| `opts.color`       | `number \| { r, g, b }`            | Base color                     |
+| `opts.map`         | texture handle                     | Optional texture map           |
+| `opts.transparent` | `boolean`                          | Enable alpha blending          |
+| `opts.alphaTest`   | `number` (0–1)                     | Alpha test cutoff              |
+| `opts.side`        | `'front' \| 'back' \| 'double'`    | Face culling                   |
+| `opts.roughness`   | `number`                           | Roughness (standard only)      |
+| `opts.metalness`   | `number`                           | Metalness (standard only)      |
+| `opts.emissive`    | `number`                           | Emissive color (standard only) |
+| `opts.flatShading` | `boolean`                          | Flat shading (standard only)   |
 
 Returns an opaque material handle. The handle type is backend-specific. Cart code must not inspect its internals.
 
@@ -60,25 +60,25 @@ Returns an opaque material handle. The handle type is backend-specific. Cart cod
 
 Create a texture from a raw pixel buffer.
 
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `data` | `Uint8Array \| Uint8ClampedArray` | RGBA pixel data |
-| `width` | `number` | Texture width in pixels |
-| `height` | `number` | Texture height in pixels |
-| `opts.format` | `'rgba'` | Pixel format (default: `'rgba'`) |
-| `opts.filter` | `'nearest' \| 'linear'` | Sampling filter |
-| `opts.wrap` | `'repeat' \| 'clamp'` | UV wrapping mode |
-| `opts.generateMipmaps` | `boolean` | Mipmap generation (default: `true`) |
+| Parameter              | Type                              | Description                         |
+| ---------------------- | --------------------------------- | ----------------------------------- |
+| `data`                 | `Uint8Array \| Uint8ClampedArray` | RGBA pixel data                     |
+| `width`                | `number`                          | Texture width in pixels             |
+| `height`               | `number`                          | Texture height in pixels            |
+| `opts.format`          | `'rgba'`                          | Pixel format (default: `'rgba'`)    |
+| `opts.filter`          | `'nearest' \| 'linear'`           | Sampling filter                     |
+| `opts.wrap`            | `'repeat' \| 'clamp'`             | UV wrapping mode                    |
+| `opts.generateMipmaps` | `boolean`                         | Mipmap generation (default: `true`) |
 
 #### `createCanvasTexture(canvas, opts) → opaque handle`
 
 Create a texture from an HTMLCanvasElement.
 
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `canvas` | `HTMLCanvasElement` | Source canvas |
-| `opts.filter` | `'nearest' \| 'linear'` | Sampling filter |
-| `opts.wrap` | `'repeat' \| 'clamp'` | UV wrapping mode |
+| Parameter     | Type                    | Description      |
+| ------------- | ----------------------- | ---------------- |
+| `canvas`      | `HTMLCanvasElement`     | Source canvas    |
+| `opts.filter` | `'nearest' \| 'linear'` | Sampling filter  |
+| `opts.wrap`   | `'repeat' \| 'clamp'`   | UV wrapping mode |
 
 #### `cloneTexture(textureHandle) → opaque handle`
 
@@ -100,12 +100,12 @@ Mark a texture as dirty so the backend re-uploads it on the next frame.
 
 Create a flat plane geometry.
 
-| Parameter | Type | Default |
-|-----------|------|---------|
-| `width` | `number` | required |
-| `height` | `number` | required |
-| `segX` | `number` | `1` |
-| `segY` | `number` | `1` |
+| Parameter | Type     | Default  |
+| --------- | -------- | -------- |
+| `width`   | `number` | required |
+| `height`  | `number` | required |
+| `segX`    | `number` | `1`      |
+| `segY`    | `number` | `1`      |
 
 ---
 
@@ -115,10 +115,10 @@ Create a flat plane geometry.
 
 Assign a material to a mesh by ID.
 
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `meshId` | `number \| string` | Mesh identifier |
-| `materialHandle` | opaque handle | Handle returned by `createMaterial` |
+| Parameter        | Type               | Description                         |
+| ---------------- | ------------------ | ----------------------------------- |
+| `meshId`         | `number \| string` | Mesh identifier                     |
+| `materialHandle` | opaque handle      | Handle returned by `createMaterial` |
 
 ---
 
@@ -152,9 +152,9 @@ The returned object must conform to the following shape:
 
 ```typescript
 interface Capabilities {
-  backend: string;           // Backend identifier: 'threejs', 'unity', 'babylon', 'godot', …
-  contractVersion: string;   // Must equal ADAPTER_CONTRACT_VERSION
-  adapterVersion: string;    // Backend-specific semver
+  backend: string; // Backend identifier: 'threejs', 'unity', 'babylon', 'godot', …
+  contractVersion: string; // Must equal ADAPTER_CONTRACT_VERSION
+  adapterVersion: string; // Backend-specific semver
   features: readonly string[]; // Feature identifiers declared by this backend
   supports(feature: string): boolean; // Returns true iff feature is in the features list
 }
@@ -166,28 +166,28 @@ interface Capabilities {
 
 Standard feature strings that adapters should use when declaring capabilities. Custom backend-specific features are allowed but must be namespaced with the backend name, e.g. `'threejs:bloom'` or `'unity:prefab-loading'`.
 
-| Feature string | Description |
-|----------------|-------------|
-| `material:basic` | `MeshBasicMaterial` or equivalent |
-| `material:phong` | `MeshPhongMaterial` or equivalent |
-| `material:standard` | `MeshStandardMaterial` (PBR) or equivalent |
-| `texture:data` | Raw pixel buffer texture creation |
-| `texture:canvas` | HTMLCanvasElement-backed texture |
-| `texture:repeat` | UV repeat support |
-| `geometry:plane` | Plane geometry primitive |
-| `camera:read` | Camera position read-back |
-| `camera:write` | Camera position/target/fov write |
-| `lights:ambient` | Ambient light control |
-| `lights:point` | Point light creation |
-| `lights:directional` | Directional light control |
-| `shadows` | Shadow map support |
-| `instancing` | Instanced mesh rendering |
-| `audio:sfx` | Sound effect playback |
-| `physics:aabb` | AABB collision and gravity |
-| `input:keyboard` | Keyboard polling |
-| `input:gamepad` | Gamepad polling |
-| `asset:gltf` | GLTF/GLB model loading |
-| `asset:texture-atlas` | Texture atlas loading |
+| Feature string        | Description                                |
+| --------------------- | ------------------------------------------ |
+| `material:basic`      | `MeshBasicMaterial` or equivalent          |
+| `material:phong`      | `MeshPhongMaterial` or equivalent          |
+| `material:standard`   | `MeshStandardMaterial` (PBR) or equivalent |
+| `texture:data`        | Raw pixel buffer texture creation          |
+| `texture:canvas`      | HTMLCanvasElement-backed texture           |
+| `texture:repeat`      | UV repeat support                          |
+| `geometry:plane`      | Plane geometry primitive                   |
+| `camera:read`         | Camera position read-back                  |
+| `camera:write`        | Camera position/target/fov write           |
+| `lights:ambient`      | Ambient light control                      |
+| `lights:point`        | Point light creation                       |
+| `lights:directional`  | Directional light control                  |
+| `shadows`             | Shadow map support                         |
+| `instancing`          | Instanced mesh rendering                   |
+| `audio:sfx`           | Sound effect playback                      |
+| `physics:aabb`        | AABB collision and gravity                 |
+| `input:keyboard`      | Keyboard polling                           |
+| `input:gamepad`       | Gamepad polling                            |
+| `asset:gltf`          | GLTF/GLB model loading                     |
+| `asset:texture-atlas` | Texture atlas loading                      |
 
 ---
 
@@ -217,18 +217,18 @@ function onFrameEnd() {
 
 ### API
 
-| Method | Description |
-|--------|-------------|
-| `flush()` | Drain all queued commands to the inner adapter in registration order |
-| `pendingCount()` | Return the number of commands currently in the buffer |
-| `discardPending()` | Drop all queued commands without executing them |
+| Method             | Description                                                          |
+| ------------------ | -------------------------------------------------------------------- |
+| `flush()`          | Drain all queued commands to the inner adapter in registration order |
+| `pendingCount()`   | Return the number of commands currently in the buffer                |
+| `discardPending()` | Drop all queued commands without executing them                      |
 
 ### Options
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `autoFlush` | `boolean` | `false` | Execute each call immediately without buffering |
-| `maxQueueSize` | `number` | `512` | Log a warning when the queue exceeds this length |
+| Option         | Type      | Default | Description                                      |
+| -------------- | --------- | ------- | ------------------------------------------------ |
+| `autoFlush`    | `boolean` | `false` | Execute each call immediately without buffering  |
+| `maxQueueSize` | `number`  | `512`   | Log a warning when the queue exceeds this length |
 
 ---
 
@@ -237,6 +237,7 @@ function onFrameEnd() {
 Every adapter must pass `runAdapterConformanceTests(adapter, runner, { name })` from `tests/test-adapter-conformance.js` before being merged.
 
 The conformance suite validates:
+
 - All required methods are present and callable
 - `getCapabilities()` returns a valid, versioned capabilities object
 - `getCameraPosition()` returns a `{ x, y, z }` with finite numbers
@@ -250,16 +251,16 @@ New backends should also add their own extended test file for backend-specific b
 
 These capabilities are tracked but not yet in the contract. They will be added in a future minor bump.
 
-| Feature | Phase |
-|---------|-------|
-| `camera:write` (setCameraPosition, setCameraTarget, setCameraFOV) | Phase 1.1 |
-| `lights:ambient`, `lights:point`, `lights:directional` | Phase 1.1 |
-| `mesh:create` (createMesh, removeMesh) | Phase 1.1 |
-| `transforms` (setPosition, setScale, rotateMesh) | Phase 1.1 |
-| `asset:gltf` | Phase 3 (Unity) |
-| `audio:sfx` | Phase 1.1 |
-| `input:keyboard`, `input:gamepad` | Phase 1.1 |
+| Feature                                                           | Phase           |
+| ----------------------------------------------------------------- | --------------- |
+| `camera:write` (setCameraPosition, setCameraTarget, setCameraFOV) | Phase 1.1       |
+| `lights:ambient`, `lights:point`, `lights:directional`            | Phase 1.1       |
+| `mesh:create` (createMesh, removeMesh)                            | Phase 1.1       |
+| `transforms` (setPosition, setScale, rotateMesh)                  | Phase 1.1       |
+| `asset:gltf`                                                      | Phase 3 (Unity) |
+| `audio:sfx`                                                       | Phase 1.1       |
+| `input:keyboard`, `input:gamepad`                                 | Phase 1.1       |
 
 ---
 
-*Maintained alongside `runtime/engine-adapter.js`. Update this document whenever `ADAPTER_CONTRACT_VERSION` changes.*
+_Maintained alongside `runtime/engine-adapter.js`. Update this document whenever `ADAPTER_CONTRACT_VERSION` changes._

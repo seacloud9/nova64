@@ -268,9 +268,21 @@ export async function run3DAPITests() {
     Assert.equals(tex.id, 'tex-1', 'Bridge texture handle should preserve returned ID');
     Assert.equals(material.id, 'mat-1', 'Bridge material handle should preserve returned ID');
     Assert.equals(geometry.id, 'geo-1', 'Bridge geometry handle should preserve returned ID');
-    Assert.equals(calls[1].payload.opts.map.id, 'tex-1', 'Material payload should serialize texture handles');
-    Assert.equals(calls[3].method, 'mesh.setMaterial', 'Mesh material assignment should be forwarded');
-    Assert.equals(calls[3].payload.material.id, 'mat-1', 'Mesh payload should serialize material handles');
+    Assert.equals(
+      calls[1].payload.opts.map.id,
+      'tex-1',
+      'Material payload should serialize texture handles'
+    );
+    Assert.equals(
+      calls[3].method,
+      'mesh.setMaterial',
+      'Mesh material assignment should be forwarded'
+    );
+    Assert.equals(
+      calls[3].payload.material.id,
+      'mat-1',
+      'Mesh payload should serialize material handles'
+    );
     Assert.equals(cameraPos.x, 7, 'Camera X should come from bridge');
     Assert.equals(cameraPos.y, 8, 'Camera Y should come from bridge');
     Assert.equals(cameraPos.z, 9, 'Camera Z should come from bridge');

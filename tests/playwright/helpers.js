@@ -11,16 +11,20 @@ import { PNG } from 'pngjs';
  * @param {'threejs'|'babylon'} backend
  */
 export async function loadCart(page, cartName, backend = 'threejs') {
-  const url = backend === 'babylon'
-    ? `/babylon_console.html?demo=${cartName}`
-    : `/console.html?demo=${cartName}`;
+  const url =
+    backend === 'babylon'
+      ? `/babylon_console.html?demo=${cartName}`
+      : `/console.html?demo=${cartName}`;
 
   await page.goto(url);
 
   // Wait for cart to initialize
-  await page.waitForFunction(() => {
-    return !document.body.textContent.includes('Loading');
-  }, { timeout: 30000 });
+  await page.waitForFunction(
+    () => {
+      return !document.body.textContent.includes('Loading');
+    },
+    { timeout: 30000 }
+  );
 
   // Wait an additional 2 seconds for rendering to stabilize
   await page.waitForTimeout(2000);
@@ -36,7 +40,7 @@ export async function getConsoleLogs(page) {
   page.on('console', msg => {
     logs.push({
       type: msg.type(),
-      text: msg.text()
+      text: msg.text(),
     });
   });
   return logs;
@@ -52,7 +56,7 @@ export function extractMetrics(logs) {
     framebufferPixels: [],
     playerMoves: [],
     errors: [],
-    warnings: []
+    warnings: [],
   };
 
   logs.forEach(log => {
@@ -131,10 +135,15 @@ export async function waitFor3DScene(page, backend) {
   await page.waitForSelector(canvasSelector, { timeout: 30000 });
 
   // Wait for Nova64 API to be available (global functions exposed)
-  await page.waitForFunction(() => {
-    return typeof globalThis.createCube === 'function' &&
-           typeof globalThis.setCameraPosition === 'function';
-  }, { timeout: 30000 });
+  await page.waitForFunction(
+    () => {
+      return (
+        typeof globalThis.createCube === 'function' &&
+        typeof globalThis.setCameraPosition === 'function'
+      );
+    },
+    { timeout: 30000 }
+  );
 
   // Wait an additional 2 seconds for first frame to render
   await page.waitForTimeout(2000);

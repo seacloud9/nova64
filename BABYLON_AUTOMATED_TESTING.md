@@ -15,21 +15,25 @@ Automated browser testing using Playwright to systematically compare Three.js vs
 ## Quick Start
 
 ### Install Dependencies
+
 ```bash
 pnpm install
 ```
 
 ### Run All Backend Parity Tests
+
 ```bash
 pnpm test:babylon
 ```
 
 ### Run Tests with UI (Interactive)
+
 ```bash
 pnpm test:babylon:ui
 ```
 
 ### Debug a Failing Test
+
 ```bash
 pnpm test:playwright:debug
 ```
@@ -39,6 +43,7 @@ pnpm test:playwright:debug
 Both `console.html` (Three.js) and `babylon_console.html` (Babylon.js) support:
 
 - **`?demo=cart-name`** - Load cart by name
+
   ```
   http://localhost:5173/console.html?demo=space-harrier-3d
   http://localhost:5173/babylon_console.html?demo=space-harrier-3d
@@ -52,6 +57,7 @@ Both `console.html` (Three.js) and `babylon_console.html` (Babylon.js) support:
 ## Test Structure
 
 ### Directory Layout
+
 ```
 tests/
 ├── playwright/
@@ -64,6 +70,7 @@ playwright.config.js             # Playwright configuration
 ### Test Categories
 
 #### 1. **Load Tests** - Does cart load without errors?
+
 ```javascript
 test('should load without errors in Babylon.js', async ({ page }) => {
   await loadCart(page, 'space-harrier-3d', 'babylon');
@@ -73,15 +80,16 @@ test('should load without errors in Babylon.js', async ({ page }) => {
 ```
 
 #### 2. **Console Output Tests** - Do both backends log similar output?
+
 ```javascript
 test('should have matching console output', async ({ page }) => {
   // Compare print() calls, framebuffer pixels, etc.
-  expect(metricsThreejs.printCalls.length)
-    .toBeCloseTo(metricsBabylon.printCalls.length, tolerance);
+  expect(metricsThreejs.printCalls.length).toBeCloseTo(metricsBabylon.printCalls.length, tolerance);
 });
 ```
 
 #### 3. **Text Rendering Tests** - Is text visible?
+
 ```javascript
 test('should render start screen text', async ({ page }) => {
   const textStatus = isTextRendering(logs);
@@ -91,6 +99,7 @@ test('should render start screen text', async ({ page }) => {
 ```
 
 #### 4. **Player Control Tests** - Do controls work correctly?
+
 ```javascript
 test('should move player left', async ({ page }) => {
   await pressKey(page, 'a', 500);
@@ -100,6 +109,7 @@ test('should move player left', async ({ page }) => {
 ```
 
 #### 5. **Boundary Tests** - Are player boundaries enforced?
+
 ```javascript
 test('should enforce player boundaries', async ({ page }) => {
   await pressKey(page, 'd', 3000); // Hold right
@@ -109,6 +119,7 @@ test('should enforce player boundaries', async ({ page }) => {
 ```
 
 #### 6. **Visual Comparison Tests** - Do they look the same?
+
 ```javascript
 test('should have similar visual output', async ({ page }) => {
   const screenshotThreejs = await screenshotCanvas(page, 'threejs');
@@ -120,17 +131,20 @@ test('should have similar visual output', async ({ page }) => {
 ## Test Helpers (tests/playwright/helpers.js)
 
 ### Load a Cart
+
 ```javascript
 await loadCart(page, 'space-harrier-3d', 'babylon');
 ```
 
 ### Simulate Input
+
 ```javascript
-await pressKey(page, 'Space', 200);  // Press space for 200ms
-await pressKey(page, 'a', 500);      // Hold 'a' for 500ms
+await pressKey(page, 'Space', 200); // Press space for 200ms
+await pressKey(page, 'a', 500); // Hold 'a' for 500ms
 ```
 
 ### Extract Metrics from Console
+
 ```javascript
 const metrics = extractMetrics(logs);
 // Returns:
@@ -144,6 +158,7 @@ const metrics = extractMetrics(logs);
 ```
 
 ### Check Text Rendering
+
 ```javascript
 const textStatus = isTextRendering(logs);
 // Returns:
@@ -156,6 +171,7 @@ const textStatus = isTextRendering(logs);
 ```
 
 ### Get Player Position
+
 ```javascript
 const pos = getPlayerPosition(logs);
 // Returns: { x: 5.23, y: 0.0, z: -5.0 }
@@ -164,6 +180,7 @@ const pos = getPlayerPosition(logs);
 ## Current Test Coverage
 
 ### Carts Being Tested
+
 - ✅ space-harrier-3d
 - ✅ crystal-cathedral-3d
 - ✅ f-zero-nova-3d
@@ -171,7 +188,9 @@ const pos = getPlayerPosition(logs);
 - ✅ hello-3d
 
 ### To Add (All 71 Demos)
+
 Modify `CARTS_TO_TEST` array in `backend-parity.spec.js`:
+
 ```javascript
 const CARTS_TO_TEST = [
   { name: 'space-harrier-3d', description: 'Space Harrier 3D' },
@@ -183,11 +202,13 @@ const CARTS_TO_TEST = [
 ## Test Reports
 
 After running tests, open the HTML report:
+
 ```bash
 npx playwright show-report
 ```
 
 Reports include:
+
 - ✅ Test results (pass/fail)
 - 📊 Console logs from both backends
 - 📷 Screenshots (on failure)
@@ -197,30 +218,38 @@ Reports include:
 ## Debugging Failed Tests
 
 ### 1. Run in UI Mode
+
 ```bash
 pnpm test:babylon:ui
 ```
+
 - See tests run in real-time
 - Pause/resume execution
 - Inspect DOM at any point
 - Time-travel debugging
 
 ### 2. Run in Debug Mode
+
 ```bash
 pnpm test:playwright:debug
 ```
+
 - Opens Playwright Inspector
 - Step through test line-by-line
 - View console logs live
 
 ### 3. Check Screenshots
+
 Failed tests automatically save screenshots to:
+
 ```
 playwright-report/screenshots/
 ```
 
 ### 4. Check Videos
+
 Failed tests save videos to:
+
 ```
 playwright-report/videos/
 ```
@@ -228,6 +257,7 @@ playwright-report/videos/
 ## CI/CD Integration
 
 ### GitHub Actions Example
+
 ```yaml
 name: Babylon Backend Tests
 on: [push, pull_request]
@@ -250,6 +280,7 @@ jobs:
 ## Extending Tests
 
 ### Add a New Cart
+
 ```javascript
 const CARTS_TO_TEST = [
   // ... existing carts
@@ -258,6 +289,7 @@ const CARTS_TO_TEST = [
 ```
 
 ### Add a Custom Test
+
 ```javascript
 test('should do something specific', async ({ page }) => {
   await loadCart(page, 'my-cart', 'babylon');
@@ -272,12 +304,15 @@ test('should do something specific', async ({ page }) => {
 ```
 
 ### Add Visual Regression Testing
+
 Install pixelmatch:
+
 ```bash
 pnpm add -D pixelmatch
 ```
 
 Use in test:
+
 ```javascript
 import pixelmatch from 'pixelmatch';
 
@@ -286,7 +321,7 @@ test('should match visual output', async ({ page }) => {
   const img2 = await screenshotCanvas(page, 'babylon');
 
   const diff = pixelmatch(img1, img2, null, 640, 360, {
-    threshold: 0.1
+    threshold: 0.1,
   });
 
   expect(diff).toBeLessThan(1000); // Less than 1000 different pixels
@@ -310,6 +345,7 @@ test('should match visual output', async ({ page }) => {
 ## Success Criteria
 
 A cart passes when:
+
 - ✅ Loads without console errors in both backends
 - ✅ Text rendering works (print calls + framebuffer content)
 - ✅ Player controls work identically
@@ -319,24 +355,29 @@ A cart passes when:
 ## FAQ
 
 ### Q: How do I test just one cart?
+
 ```bash
 npx playwright test -g "Space Harrier"
 ```
 
 ### Q: How do I run tests in headed mode (see browser)?
+
 ```bash
 npx playwright test --headed
 ```
 
 ### Q: How do I run only failing tests?
+
 ```bash
 npx playwright test --last-failed
 ```
 
 ### Q: How do I update test snapshots?
+
 ```bash
 npx playwright test --update-snapshots
 ```
 
 ### Q: Is there an MCP server for Playwright?
+
 Check the Playwright MCP registry - if available, we can integrate it for real-time test monitoring and control through Claude!

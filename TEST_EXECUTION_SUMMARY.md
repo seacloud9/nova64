@@ -104,12 +104,14 @@ pnpm exec playwright show-report
 ### During Test Execution
 
 **Monitor for:**
+
 - [ ] Dev server stays responsive
 - [ ] No browser crashes
 - [ ] Console shows test progress
 - [ ] Test artifacts being created
 
 **Common Issues:**
+
 - Port 3001 in use → Kill other processes
 - Timeout errors → Increase timeout in playwright.config.js
 - Memory issues → Run fewer tests at once
@@ -139,6 +141,7 @@ pnpm exec playwright show-report
 **Pass Rate:** XX/213 tests (XX%)
 
 **Passing Carts (XX):**
+
 ```
 ✅ hello-3d
 ✅ hello-skybox
@@ -149,6 +152,7 @@ pnpm exec playwright show-report
 ```
 
 **Failing Carts (XX):**
+
 ```
 ❌ f-zero-nova-3d - createInstancedMesh not implemented
 ❌ minecraft-demo - timeout waiting for scene
@@ -161,6 +165,7 @@ pnpm exec playwright show-report
 **Pass Rate:** XX/21 tests (XX%)
 
 **Missing APIs:**
+
 ```
 ❌ createInstancedMesh() - needed for F-Zero
 ❌ createAdvancedSphere() - needed for Crystal Cathedral
@@ -168,6 +173,7 @@ pnpm exec playwright show-report
 ```
 
 **Working APIs:**
+
 ```
 ✅ createCube
 ✅ createSphere
@@ -185,6 +191,7 @@ pnpm exec playwright show-report
 **Pass Rate:** XX/13 tests (XX%)
 
 **FPS Comparison:**
+
 ```
 Cart                    Three.js    Babylon.js  Difference
 -----------------------------------------------------------
@@ -195,6 +202,7 @@ particles-demo          55.0 fps    50.0 fps    9.1%  ✅
 ```
 
 **Memory Usage:**
+
 ```
 Backend     Memory    Status
 --------------------------------
@@ -203,6 +211,7 @@ Babylon.js  92 MB     ✅ (within tolerance)
 ```
 
 **Load Times:**
+
 ```
 Cart                    Three.js    Babylon.js  Difference
 -----------------------------------------------------------
@@ -216,6 +225,7 @@ crystal-cathedral-3d    3.5s        3.8s        8.6%  ✅
 **Pass Rate:** XX/18 tests (XX%)
 
 **Pixel Differences:**
+
 ```
 Test                    Diff %      Threshold   Status
 --------------------------------------------------------
@@ -231,6 +241,7 @@ fog rendering           6.7%        15%         ✅
 ```
 
 **Visual Issues Found:**
+
 ```
 ⚠️ None (all within acceptable thresholds)
 
@@ -248,11 +259,13 @@ OR
 ### High Priority (Blocking Issues)
 
 **Missing APIs:**
+
 1. [ ] Implement createInstancedMesh() - blocks F-Zero demo
 2. [ ] Implement createAdvancedSphere() - blocks Crystal Cathedral
 3. [ ] Implement setMeshVisible() - blocks multiple carts
 
 **Critical Bugs:**
+
 1. [ ] Fix scene loading timeout (10 carts affected)
 2. [ ] Fix player teleportation in Space Harrier
 3. [ ] Fix framebuffer pixel count mismatch
@@ -260,11 +273,13 @@ OR
 ### Medium Priority (Quality Issues)
 
 **Performance:**
+
 1. [ ] Investigate FPS drops in particle demos
 2. [ ] Optimize memory usage (target < 80MB)
 3. [ ] Improve load times for voxel demos
 
 **Visual:**
+
 1. [ ] Adjust material rendering to match Three.js
 2. [ ] Fix color differences in advanced materials
 3. [ ] Improve lighting consistency
@@ -272,11 +287,13 @@ OR
 ### Low Priority (Nice to Have)
 
 **Coverage:**
+
 1. [ ] Add tests for remaining 0 untested carts
 2. [ ] Add XR/VR tests (currently skipped)
 3. [ ] Add audio comparison tests
 
 **Documentation:**
+
 1. [ ] Document all API differences
 2. [ ] Create troubleshooting guide
 3. [ ] Add performance optimization tips
@@ -288,11 +305,11 @@ OR
 ### Test Coverage Over Time
 
 | Date       | Passing Tests | Pass Rate | Notes                    |
-|------------|---------------|-----------|--------------------------|
+| ---------- | ------------- | --------- | ------------------------ |
 | 2024-XX-XX | 7/21          | 33%       | Initial test run         |
 | 2024-XX-XX | XX/213        | XX%       | After text rendering fix |
 | 2024-XX-XX | XX/213        | XX%       | After API implementation |
-| 2024-XX-XX | XX/213        | XX%       | Target: 90%+            |
+| 2024-XX-XX | XX/213        | XX%       | Target: 90%+             |
 
 ### Implementation Status
 
@@ -308,6 +325,7 @@ OR
 ### Backend Parity - Category Breakdown
 
 **Basic (3 carts):**
+
 ```
 ✅ hello-3d - PASS (all 3 tests)
 ✅ hello-skybox - PASS (all 3 tests)
@@ -316,6 +334,7 @@ Pass Rate: 9/9 (100%)
 ```
 
 **3D Games (9 carts):**
+
 ```
 ✅ space-harrier-3d - PASS (all 3 tests)
 ❌ f-zero-nova-3d - FAIL (createInstancedMesh missing)
@@ -329,6 +348,7 @@ Pass Rate: XX/27 (XX%)
 ### API Compatibility - Detailed Results
 
 **Core 3D API (4 tests):**
+
 ```
 ✅ createCube - Both backends work
 ✅ createSphere - Both backends work
@@ -338,6 +358,7 @@ Pass Rate: 4/4 (100%)
 ```
 
 **Camera API (3 tests):**
+
 ```
 ✅ setCameraPosition - Both backends work
 ✅ setCameraTarget - Both backends work

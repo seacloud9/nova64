@@ -24,8 +24,8 @@ async function openApiSandbox(page, backend, extraQuery = '') {
 }
 
 async function getFlatSurfaceTypes(page) {
-  return page.evaluate(keys =>
-    Object.fromEntries(keys.map(key => [key, typeof globalThis[key]])),
+  return page.evaluate(
+    keys => Object.fromEntries(keys.map(key => [key, typeof globalThis[key]])),
     REQUIRED_BACKEND_SURFACE_KEYS
   );
 }
@@ -228,7 +228,9 @@ test.describe('Backend Surface Parity', () => {
       });
 
       expect(result.cameraPosition).toEqual({ x: 0, y: 0, z: 10 });
-      expect(result.hit?.meshId, `raycast should hit created cube in ${backend}`).toBe(result.meshId);
+      expect(result.hit?.meshId, `raycast should hit created cube in ${backend}`).toBe(
+        result.meshId
+      );
     }
   });
 
@@ -396,24 +398,46 @@ test.describe('Backend Surface Parity', () => {
             y: Number(mesh.material?.map?.offset?.y ?? 0),
           },
           textureDirtySignal:
-            mesh.material?.map?.needsUpdate === true || Number(mesh.material?.map?.version ?? 0) > 0,
+            mesh.material?.map?.needsUpdate === true ||
+            Number(mesh.material?.map?.version ?? 0) > 0,
         };
       });
 
-      expect(result.childCount, `scene.children should be array-like in ${backend}`).toBeGreaterThan(0);
+      expect(
+        result.childCount,
+        `scene.children should be array-like in ${backend}`
+      ).toBeGreaterThan(0);
       expect(result.traversedMesh, `scene.traverse should visit meshes in ${backend}`).toBe(true);
       expect(result.traversedLight, `scene.traverse should visit lights in ${backend}`).toBe(true);
-      expect(result.lightHex, `light.color.getHexString should work in ${backend}`).toMatch(/^[0-9a-f]{6}$/);
+      expect(result.lightHex, `light.color.getHexString should work in ${backend}`).toMatch(
+        /^[0-9a-f]{6}$/
+      );
       expect(result.isMesh, `meshes should expose isMesh in ${backend}`).toBe(true);
       expect(result.visible, `mesh.visible should round-trip in ${backend}`).toBe(false);
-      expect(result.materialColorHex, `material.color.getHex should work in ${backend}`).toBe(0x336699);
-      expect(result.materialDirtySignal, `material.needsUpdate should work in ${backend}`).toBe(true);
+      expect(result.materialColorHex, `material.color.getHex should work in ${backend}`).toBe(
+        0x336699
+      );
+      expect(result.materialDirtySignal, `material.needsUpdate should work in ${backend}`).toBe(
+        true
+      );
       expect(result.transparent, `material.transparent should work in ${backend}`).toBe(true);
       expect(result.opacity, `material.opacity should work in ${backend}`).toBeCloseTo(0.8, 5);
-      expect(result.textureRepeat.x, `texture.repeat.x should work in ${backend}`).toBeCloseTo(1.5, 5);
-      expect(result.textureRepeat.y, `texture.repeat.y should work in ${backend}`).toBeCloseTo(2.5, 5);
-      expect(result.textureOffset.x, `texture.offset.x should work in ${backend}`).toBeCloseTo(0.1, 5);
-      expect(result.textureOffset.y, `texture.offset.y should work in ${backend}`).toBeCloseTo(0.2, 5);
+      expect(result.textureRepeat.x, `texture.repeat.x should work in ${backend}`).toBeCloseTo(
+        1.5,
+        5
+      );
+      expect(result.textureRepeat.y, `texture.repeat.y should work in ${backend}`).toBeCloseTo(
+        2.5,
+        5
+      );
+      expect(result.textureOffset.x, `texture.offset.x should work in ${backend}`).toBeCloseTo(
+        0.1,
+        5
+      );
+      expect(result.textureOffset.y, `texture.offset.y should work in ${backend}`).toBeCloseTo(
+        0.2,
+        5
+      );
       expect(result.textureDirtySignal, `texture.needsUpdate should work in ${backend}`).toBe(true);
     }
   });
@@ -431,7 +455,10 @@ test.describe('Backend Surface Parity', () => {
       const ditheringResult = enableDithering(true);
       const particleSystemId = createParticleSystem(32);
       const initialParticleStats = getParticleStats(particleSystemId);
-      const particleEmitterResult = setParticleEmitter(particleSystemId, { emitterX: 1, emitterY: 2 });
+      const particleEmitterResult = setParticleEmitter(particleSystemId, {
+        emitterX: 1,
+        emitterY: 2,
+      });
       const particleBurstResult = burstParticles(particleSystemId, 8);
       const particleUpdateResult = updateParticles(1 / 60);
       const particleStats = getParticleStats(particleSystemId);

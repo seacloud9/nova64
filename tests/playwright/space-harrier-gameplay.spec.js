@@ -149,12 +149,14 @@ test.describe('Space Harrier - Detailed Gameplay Parity', () => {
       if (startPos && endPos) {
         const distance = Math.sqrt(
           Math.pow(endPos.x - startPos.x, 2) +
-          Math.pow(endPos.y - startPos.y, 2) +
-          Math.pow(endPos.z - startPos.z, 2)
+            Math.pow(endPos.y - startPos.y, 2) +
+            Math.pow(endPos.z - startPos.z, 2)
         );
         const speed = distance / 2.0; // units per second
         measurements[backend] = { startPos, endPos, distance, speed };
-        console.log(`${backend} - Start: ${JSON.stringify(startPos)}, End: ${JSON.stringify(endPos)}, Speed: ${speed} units/s`);
+        console.log(
+          `${backend} - Start: ${JSON.stringify(startPos)}, End: ${JSON.stringify(endPos)}, Speed: ${speed} units/s`
+        );
       }
     }
 

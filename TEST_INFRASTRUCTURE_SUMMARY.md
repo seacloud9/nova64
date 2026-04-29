@@ -63,6 +63,7 @@ This document summarizes all test infrastructure additions made during the compr
 ### Package Configuration Updated
 
 **`package.json` - New test scripts:**
+
 ```json
 "test:babylon": "playwright test tests/playwright/backend-parity.spec.js",
 "test:babylon:ui": "playwright test tests/playwright/backend-parity.spec.js --ui",
@@ -74,6 +75,7 @@ This document summarizes all test infrastructure additions made during the compr
 ```
 
 **New dependencies:**
+
 ```json
 "devDependencies": {
   "pixelmatch": "^7.1.0",
@@ -87,36 +89,36 @@ This document summarizes all test infrastructure additions made during the compr
 
 ### By Category
 
-| Category | Carts | Tests | Description |
-|----------|-------|-------|-------------|
-| Basic | 3 | 9 | Hello world demos |
-| 3D Games | 9 | 27 | Space Harrier, F-Zero, Star Fox, etc. |
-| 3D Showcases | 5 | 15 | Cathedral, Cyberpunk City, Mystical Realm |
-| FPS | 4 | 12 | First-person shooters, dungeon crawlers |
-| Voxel | 5 | 15 | Minecraft, terrain generation |
-| Rendering | 5 | 15 | PBR, shaders, instancing |
-| Physics | 3 | 9 | Physics simulations, boids |
-| Particles | 3 | 9 | Particle systems, fireworks |
-| Creative | 5 | 15 | Generative art, filters |
-| Stage/2D | 5 | 15 | Flash-style stage demos |
-| UI | 5 | 15 | Canvas UI, HUD, screens |
-| Tween | 3 | 9 | Animation tweens |
-| XR/VR | 3 | 9 | VR/AR demos |
-| Systems | 5 | 15 | WAD, storage, input, audio |
-| Platformer | 3 | 9 | Platform games, adventure |
-| NFT | 1 | 3 | NFT worlds |
-| Babylon | 1 | 3 | Babylon-specific demo |
-| **TOTAL** | **71** | **213** | **Backend parity tests** |
+| Category     | Carts  | Tests   | Description                               |
+| ------------ | ------ | ------- | ----------------------------------------- |
+| Basic        | 3      | 9       | Hello world demos                         |
+| 3D Games     | 9      | 27      | Space Harrier, F-Zero, Star Fox, etc.     |
+| 3D Showcases | 5      | 15      | Cathedral, Cyberpunk City, Mystical Realm |
+| FPS          | 4      | 12      | First-person shooters, dungeon crawlers   |
+| Voxel        | 5      | 15      | Minecraft, terrain generation             |
+| Rendering    | 5      | 15      | PBR, shaders, instancing                  |
+| Physics      | 3      | 9       | Physics simulations, boids                |
+| Particles    | 3      | 9       | Particle systems, fireworks               |
+| Creative     | 5      | 15      | Generative art, filters                   |
+| Stage/2D     | 5      | 15      | Flash-style stage demos                   |
+| UI           | 5      | 15      | Canvas UI, HUD, screens                   |
+| Tween        | 3      | 9       | Animation tweens                          |
+| XR/VR        | 3      | 9       | VR/AR demos                               |
+| Systems      | 5      | 15      | WAD, storage, input, audio                |
+| Platformer   | 3      | 9       | Platform games, adventure                 |
+| NFT          | 1      | 3       | NFT worlds                                |
+| Babylon      | 1      | 3       | Babylon-specific demo                     |
+| **TOTAL**    | **71** | **213** | **Backend parity tests**                  |
 
 ### By Test Type
 
-| Test Type | Tests | Purpose |
-|-----------|-------|---------|
-| Backend Parity | 213 | Verify 71 carts work in both backends |
-| API Compatibility | 21 | Verify all APIs implemented |
-| Performance | 13 | Measure FPS, memory, load times |
-| Visual Regression | 18 | Pixel-perfect visual comparison |
-| **TOTAL** | **265+** | **Complete test suite** |
+| Test Type         | Tests    | Purpose                               |
+| ----------------- | -------- | ------------------------------------- |
+| Backend Parity    | 213      | Verify 71 carts work in both backends |
+| API Compatibility | 21       | Verify all APIs implemented           |
+| Performance       | 13       | Measure FPS, memory, load times       |
+| Visual Regression | 18       | Pixel-perfect visual comparison       |
+| **TOTAL**         | **265+** | **Complete test suite**               |
 
 ---
 
@@ -161,8 +163,8 @@ expect(result.success).toBe(true);
 Used by performance tests:
 
 ```javascript
-const fps = await page.evaluate((duration) => {
-  return new Promise((resolve) => {
+const fps = await page.evaluate(duration => {
+  return new Promise(resolve => {
     const frames = [];
     let lastTime = performance.now();
 
@@ -174,7 +176,7 @@ const fps = await page.evaluate((duration) => {
       if (frames.length < 60) {
         requestAnimationFrame(measureFrame);
       } else {
-        resolve({ avgFPS: frames.reduce((a,b) => a+b) / frames.length });
+        resolve({ avgFPS: frames.reduce((a, b) => a + b) / frames.length });
       }
     }
 
@@ -207,33 +209,38 @@ expect(result.percentDiff).toBeLessThan(maxDiffPercent);
 ### From `tests/playwright/helpers.js`
 
 **Cart Loading:**
+
 ```javascript
-loadCart(page, cartName, backend)
+loadCart(page, cartName, backend);
 ```
 
 **Console Log Analysis:**
+
 ```javascript
-getConsoleLogs(page)                  // Capture all console logs
-extractMetrics(logs)                  // Parse metrics from logs
-isTextRendering(logs)                 // Check if text is rendering
-getPlayerPosition(logs)               // Extract player position
+getConsoleLogs(page); // Capture all console logs
+extractMetrics(logs); // Parse metrics from logs
+isTextRendering(logs); // Check if text is rendering
+getPlayerPosition(logs); // Extract player position
 ```
 
 **Input Simulation:**
+
 ```javascript
-pressKey(page, key, duration)         // Simulate keyboard input
+pressKey(page, key, duration); // Simulate keyboard input
 ```
 
 **Visual Capture:**
+
 ```javascript
-screenshotCanvas(page, backend)       // Screenshot just the canvas
-waitFor3DScene(page, backend)         // Wait for 3D scene to render
+screenshotCanvas(page, backend); // Screenshot just the canvas
+waitFor3DScene(page, backend); // Wait for 3D scene to render
 ```
 
 **Image Comparison:**
+
 ```javascript
-compareImages(img1, img2, diff, threshold)  // Pixelmatch comparison
-compareBackends(page, cart, options)        // Full visual regression test
+compareImages(img1, img2, diff, threshold); // Pixelmatch comparison
+compareBackends(page, cart, options); // Full visual regression test
 ```
 
 ---
@@ -242,33 +249,33 @@ compareBackends(page, cart, options)        // Full visual regression test
 
 ### Test Pass Rate Targets
 
-| Metric | Target | Baseline | Notes |
-|--------|--------|----------|-------|
-| Backend Parity | 90%+ | 33% | 64/71 carts working |
-| API Compatibility | 100% | TBD | All APIs implemented |
-| Performance FPS | 90%+ | TBD | Within 30% of Three.js |
-| Visual Similarity | 80%+ | TBD | < 15% pixel difference |
-| Load Time | 100% | TBD | < 10s per cart |
-| Memory Usage | 100% | TBD | < 200MB |
+| Metric            | Target | Baseline | Notes                  |
+| ----------------- | ------ | -------- | ---------------------- |
+| Backend Parity    | 90%+   | 33%      | 64/71 carts working    |
+| API Compatibility | 100%   | TBD      | All APIs implemented   |
+| Performance FPS   | 90%+   | TBD      | Within 30% of Three.js |
+| Visual Similarity | 80%+   | TBD      | < 15% pixel difference |
+| Load Time         | 100%   | TBD      | < 10s per cart         |
+| Memory Usage      | 100%   | TBD      | < 200MB                |
 
 ### Performance Thresholds
 
-| Metric | Threshold | Purpose |
-|--------|-----------|---------|
-| Minimum FPS | 30 | Playable performance |
-| FPS Variance | 30% | Backend consistency |
-| Memory Limit | 200MB | Resource efficiency |
-| Load Time | 10s | User experience |
-| Frame Time StdDev | 10ms | Smooth rendering |
+| Metric            | Threshold | Purpose              |
+| ----------------- | --------- | -------------------- |
+| Minimum FPS       | 30        | Playable performance |
+| FPS Variance      | 30%       | Backend consistency  |
+| Memory Limit      | 200MB     | Resource efficiency  |
+| Load Time         | 10s       | User experience      |
+| Frame Time StdDev | 10ms      | Smooth rendering     |
 
 ### Visual Difference Thresholds
 
-| Content Type | Threshold | Rationale |
-|--------------|-----------|-----------|
-| 2D Text/Canvas | 2-5% | Should match exactly |
-| Basic 3D | 5% | Minor rendering differences OK |
-| Advanced Materials | 15-20% | Shader differences expected |
-| Particles | 20% | Randomness acceptable |
+| Content Type       | Threshold | Rationale                      |
+| ------------------ | --------- | ------------------------------ |
+| 2D Text/Canvas     | 2-5%      | Should match exactly           |
+| Basic 3D           | 5%        | Minor rendering differences OK |
+| Advanced Materials | 15-20%    | Shader differences expected    |
+| Particles          | 20%       | Randomness acceptable          |
 
 ---
 
@@ -326,12 +333,13 @@ pnpm test:babylon:all
 **Symptom:** `waitFor3DScene() timeout exceeded`
 
 **Solution:**
+
 ```javascript
 // Increase timeout in test
 await page.waitForTimeout(5000); // was 2000
 
 // Or in playwright.config.js
-timeout: 60000 // was 30000
+timeout: 60000; // was 30000
 ```
 
 ### Issue 2: Port Already in Use
@@ -339,6 +347,7 @@ timeout: 60000 // was 30000
 **Symptom:** `Error: listen EADDRINUSE: address already in use :::3001`
 
 **Solution:**
+
 ```bash
 # Kill process on port 3001
 kill -9 $(lsof -ti:3001)
@@ -352,11 +361,12 @@ VITE_PORT=3002 pnpm dev
 **Symptom:** Visual regression tests fail with high percentage
 
 **Solution:**
+
 ```javascript
 // Increase threshold for specific test
 const result = await compareBackends(page, 'my-cart', {
-  threshold: 0.2,        // was 0.1
-  maxDiffPercent: 20,    // was 5
+  threshold: 0.2, // was 0.1
+  maxDiffPercent: 20, // was 5
 });
 ```
 
@@ -365,6 +375,7 @@ const result = await compareBackends(page, 'my-cart', {
 **Symptom:** Tests crash with out-of-memory errors
 
 **Solution:**
+
 ```javascript
 // In playwright.config.js, run fewer workers
 workers: 1,  // was 2
@@ -378,17 +389,20 @@ NODE_OPTIONS=--max-old-space-size=4096 pnpm test:babylon:all
 ## 📚 Related Documentation
 
 ### Testing Documentation
+
 - `BABYLON_AUTOMATED_TESTING.md` - Original testing guide (343 lines)
 - `BABYLON_TESTING_COMPREHENSIVE.md` - Complete testing guide (400+ lines)
 - `TEST_EXECUTION_SUMMARY.md` - Quick reference (300+ lines)
 - `TEST_INFRASTRUCTURE_SUMMARY.md` - This document
 
 ### Implementation Documentation
+
 - `SESSION_SUMMARY.md` - Implementation session summary
 - `BABYLON_DEBUG_SUMMARY.md` - Manual debugging guide
 - `LOGGING.md` - Environment-aware logging system
 
 ### Development Documentation
+
 - `CLAUDE.md` - Complete Nova64 development guide
 - `README.md` - Project overview
 - `playwright.config.js` - Playwright configuration

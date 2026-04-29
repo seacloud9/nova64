@@ -1018,9 +1018,11 @@ export function api2d(gpu) {
     const texts = system.getTexts();
     for (const t of texts) {
       const alpha = Math.min(255, Math.floor((t.timer / t.maxTimer) * 255));
-      const r = (t.color >> 16) & 0xff;
-      const g = (t.color >> 8) & 0xff;
-      const b = t.color & 0xff;
+      // Convert BigInt to Number if needed (some carts may pass BigInt colors)
+      const color = typeof t.color === 'bigint' ? Number(t.color) : (t.color ?? 0xffffff);
+      const r = (color >> 16) & 0xff;
+      const g = (color >> 8) & 0xff;
+      const b = color & 0xff;
       _print(t.text, (t.x + offsetX) | 0, (t.y + offsetY) | 0, rgba8(r, g, b, alpha), t.scale);
     }
   }
@@ -1036,9 +1038,11 @@ export function api2d(gpu) {
     for (const t of texts) {
       const [sx, sy] = projectFn(t.x, t.y, t.z ?? 0);
       const alpha = Math.min(255, Math.floor((t.timer / t.maxTimer) * 255));
-      const r = (t.color >> 16) & 0xff;
-      const g = (t.color >> 8) & 0xff;
-      const b = t.color & 0xff;
+      // Convert BigInt to Number if needed (some carts may pass BigInt colors)
+      const color = typeof t.color === 'bigint' ? Number(t.color) : (t.color ?? 0xffffff);
+      const r = (color >> 16) & 0xff;
+      const g = (color >> 8) & 0xff;
+      const b = color & 0xff;
       _print(t.text, sx | 0, sy | 0, rgba8(r, g, b, alpha), t.scale);
     }
   }

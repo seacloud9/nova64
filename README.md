@@ -13,6 +13,27 @@
 
 ---
 
+## Babylon.js WAD Visual Parity
+
+- **WAD Texture Parity**: Babylon WAD walls, floors, and sprite materials now receive engine-assigned textures through the same mesh proxy path used by Three.js carts
+- **Visual Regression Guardrail**: `wad-demo` gameplay-frame comparison is back in the low-single-digit diff range against Three.js
+- **Safer Post-Processing Boot**: Babylon vignette setup now falls back gracefully when image-processing pipeline internals are unavailable, preventing WAD cart boot failures
+
+## Babylon.js XR/AR Parity
+
+- **Latest Babylon.js**: The Babylon backend now targets `@babylonjs/core` 9.4.1
+- **Native Babylon WebXR**: `enableAR()` and `enableVR()` use Babylon's own WebXR experience path in Babylon mode
+- **Cardboard Fallback**: When native WebXR VR is unavailable, Babylon mode offers a Cardboard stereoscopic fallback instead of a dead-end unsupported state
+- **AR Demo Resilience**: MediaPipe camera backgrounds and the AR hand demo now degrade cleanly when camera access or hand tracking is unavailable
+
+## Babylon.js TSL Visual Parity
+
+- **Deterministic Galaxy Showcase**: The first `tsl-showcase` scene now uses seeded star placement so Babylon.js and Three.js screenshots compare the same galaxy layout
+- **High-Strength Bloom Mapping**: Babylon bloom parameters now better match Three.js for high-glow shader carts without forcing low-strength PBR scenes into the same over-bright path
+- **Focused Guardrail**: `tests/playwright/visual-regression.spec.js` includes a `tsl-showcase` Galaxy scene comparison so future shader/post-processing changes have a narrow parity check
+
+---
+
 ## 🌟 **Recent Updates (v0.4.8)**
 
 ### 🃏 **NEW: hyperNova — HyperCard/Flash Authoring Tool** ⭐
@@ -35,6 +56,8 @@
 ### 🖥️ **OS9 Desktop Shell**
 
 - **Mac OS 9-Style GUI**: Full desktop environment with window management, taskbar, and app launcher
+- **Crystal Desktop Experience**: NovaOS now opens onto a calm deep-blue crystal wallpaper with a modernized translucent boot/loading sequence
+- **Background Customization**: Right-click the desktop or open Appearance to choose built-in wallpapers, a solid color, a custom image URL, or a visual-only sandboxed HTML iframe URL
 - **Game Studio**: In-browser game IDE with code editor, live preview, and cart management
 - **Model Viewer**: Load and inspect GLB/GLTF models with Draco compression and DOOM WAD maps with full texture/sprite rendering
 - **Game Launcher**: Browse and launch all 60+ demo carts from a visual gallery
@@ -57,6 +80,7 @@
 
 - **GLB Draco Support**: DRACOLoader for compressed GLB/GLTF geometry
 - **WAD Rendering**: Full DOOM WAD map visualization with wall/floor/ceiling textures, flat textures, sprite billboards for monsters/items/decorations, sector-based lighting, and batched rendering
+- **Babylon WAD Parity**: Babylon.js now resolves mesh proxies for engine-level material assignment, so WAD textures and runtime-created materials render closely to the Three.js backend
 - **Complete Geometry**: Floors, ceilings, and two-sided walls properly rendered
 
 ### 📱 **Planned: Unity Native Host Bridge**
@@ -74,6 +98,8 @@
 ### 🧊 **Voxel Engine**
 
 - **Minecraft-Style Worlds**: Full voxel engine with chunk-based terrain, biomes, simplex noise generation
+- **Deterministic Default Seeds**: Shared voxel carts now derive stable default world seeds so Three.js and Babylon render the same terrain unless a cart opts into a custom seed
+- **Babylon NOA Adapter Seam**: Babylon voxel parity work now includes guarded `noa-engine` probe and adapter paths for backend-specific investigation without replacing Nova64's shared voxel API
 - **Block System**: Extensible block types with custom shapes and bounding boxes
 - **Fluid Simulation**: Water/lava fluid dynamics with source/drain mechanics
 - **Entity System**: ECS-style entities with archetypes, pathfinding, health, and spatial queries
@@ -164,8 +190,11 @@ nova64/
 │   ├── template.js          # Interactive template picker (60+ examples)
 │   └── dev.js               # Vite dev server for user projects
 ├── src/main.js              # Core engine bootstrap
-├── runtime/                 # Advanced 3D Engine (41 modules)
-│   ├── gpu-threejs.js       # Three.js GPU backend with advanced materials
+├── runtime/                 # Advanced 3D Engine runtime + public API layer
+│   ├── gpu-threejs.js       # Public Three.js backend wrapper
+│   ├── gpu-babylon.js       # Public Babylon backend wrapper
+│   ├── backends/            # Internal backend implementations (threejs/, babylon/)
+│   ├── shared/              # Cross-backend runtime contracts and helpers
 │   ├── debug-panel.js       # F9 debug panel (scene graph, camera, lights, stats)
 │   ├── env.js               # Environment config + Shift+X dev console (cheats, meta)
 │   ├── api.js               # Core 2D API (cls, pset, line, rect, print)
@@ -174,6 +203,7 @@ nova64/
 │   ├── api-skybox.js        # Skybox system (space, gradient, solid)
 │   ├── api-sprites.js       # 2D sprite system with GPU batching
 │   ├── api-voxel.js         # Voxel engine API (blocks, chunks, entities)
+│   ├── cart-reset.js        # Shared cart-load reset hook registry
 │   ├── api-gameutils.js     # Game utilities (shake, cooldowns, spawners, pools)
 │   ├── api-generative.js    # Generative art utilities
 │   ├── api-presets.js       # Preset configurations
@@ -211,6 +241,22 @@ nova64/
 ├── docs/                    # API documentation (HTML & Markdown)
 └── tests/                   # Test suites
 ```
+
+`runtime/` stays the stable public layer. The public `runtime/gpu-threejs.js` and
+`runtime/gpu-babylon.js` entrypoints now delegate into `runtime/backends/{threejs,babylon}`,
+while `runtime/shared/` holds cross-backend contracts and helpers used by both renderers.
+Babylon also has a dedicated compatibility layer in `runtime/backends/babylon/compat.js`
+for cart-facing Three-style expectations such as `scene.traverse`, `mesh.visible`,
+`material.map`, color helpers, and texture repeat/offset parity.
+Engine-level Babylon material assignment now resolves both numeric mesh IDs and mesh
+proxies, which keeps WAD-generated wall/floor/sprite materials attached in the same
+cart-facing path as Three.js.
+Voxel carts now also have a backend-native Babylon path in `runtime/backends/babylon/voxel.js`,
+with `runtime/api-voxel.js` delegating chunk/entity mesh creation through backend-aware helpers
+instead of constructing raw Three.js meshes in Babylon mode.
+The backend split and parity rules are documented in
+[docs/BACKEND_RUNTIME.md](docs/BACKEND_RUNTIME.md).
+That document also covers the shared cart-reset lifecycle used to clear runtime state on cart loads and dashboard cart switches.
 
 ---
 
@@ -434,6 +480,6 @@ MIT — see `LICENSE` for details.
 - **Debug Panel**: F9 overlay with scene graph, camera inspector, lights editor, and Three.js DevTools bridge
 - **TSL Shader Pack**: Custom Three.js Shading Language effects
 - **60+ Demo Carts**: Expanded gallery including shader showcase, blend modes, camera platformer, VR/AR demos
-- **OS9 Shell Enhancements**: Screensaver system, theme toggle, locale-aware menus, eMU emulator
+- **OS9 Shell Enhancements**: Screensaver system, theme/background customization, locale-aware menus, eMU emulator
 
 See [CHANGELOG.md](CHANGELOG.md) for full version history.

@@ -3,6 +3,13 @@
 // Collect gems to earn points, upgrade your ship, and watch everything
 // persist across full page reloads via saveData/loadData.
 
+const { print, printCentered, rect, rgba8 } = nova64.draw;
+const { createCube, createPlane, createSphere, removeMesh, rotateMesh, setPosition } = nova64.scene;
+const { setCameraPosition, setCameraTarget } = nova64.camera;
+const { setAmbientLight, setFog } = nova64.light;
+const { key, keyp } = nova64.input;
+const { sfx } = nova64.audio;
+const { deleteData, loadData, saveData } = nova64.data;
 const SAVE_KEY = 'storagequest';
 const GEM_COLORS = [0xffdd00, 0x00ffaa, 0xff4488, 0x44aaff];
 const UPGRADE_COST = [0, 50, 150, 400]; // cumulative cost per level (level 0 = start)

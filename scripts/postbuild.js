@@ -50,7 +50,8 @@ function findHtmlFiles(dir) {
   if (!existsSync(dir)) return results;
   for (const entry of readdirSync(dir)) {
     const full = resolve(dir, entry);
-    if (entry === 'node_modules' || entry === '.git') continue;
+    // Skip node_modules, .git, and playwright-report (test artifacts)
+    if (entry === 'node_modules' || entry === '.git' || entry === 'playwright-report') continue;
     const stat = statSync(full);
     if (stat.isDirectory()) results.push(...findHtmlFiles(full));
     else if (entry.endsWith('.html')) results.push(full);

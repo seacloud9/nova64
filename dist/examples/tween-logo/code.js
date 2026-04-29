@@ -2,6 +2,10 @@
 // Shows: createTween (nova-style on stage nodes), easeInOutBack stagger,
 //        easeOutElastic, chain tweens with onComplete, screen flash
 
+const { cls, line, print, printCentered, pset, rectfill, screenHeight, screenWidth } = nova64.draw;
+const { Screen, addChild, createContainer, createGraphicsNode, drawStage, grid } = nova64.ui;
+const { createTween, updateTweens } = nova64.tween;
+
 let W = 640,
   H = 360;
 

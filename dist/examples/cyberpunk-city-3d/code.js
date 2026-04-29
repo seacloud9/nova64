@@ -1,6 +1,61 @@
 // CYBERPUNK CITY 3D - Ultimate Nintendo 64 Style 3D City
 // Full GPU-accelerated 3D world with dynamic lighting, flying vehicles, and retro effects
 
+const {
+  cls,
+  drawGlowTextCentered,
+  drawGradient,
+  drawNoise,
+  drawPanel,
+  drawRadialGradient,
+  drawScanlines,
+  drawWave,
+  print,
+  rect,
+  rgba8,
+} = nova64.draw;
+const {
+  createAdvancedCube,
+  createCube,
+  createCylinder,
+  createInstancedMesh,
+  createPlane,
+  createSphere,
+  destroyMesh,
+  finalizeInstances,
+  setInstanceColor,
+  setInstanceTransform,
+  setPosition,
+  setRotation,
+  setScale,
+} = nova64.scene;
+const { setCameraFOV, setCameraPosition, setCameraTarget } = nova64.camera;
+const { setAmbientLight, setFog, setLightColor, setLightDirection } = nova64.light;
+const {
+  enableBloom,
+  enableChromaticAberration,
+  enableDithering,
+  enableFXAA,
+  enablePixelation,
+  enableVignette,
+} = nova64.fx;
+const { btn, btnp, key } = nova64.input;
+const { sfx } = nova64.audio;
+const {
+  Screen,
+  centerX,
+  createButton,
+  createPanel,
+  drawAllButtons,
+  drawText,
+  grid,
+  setFont,
+  setTextAlign,
+  uiColors,
+  updateAllButtons,
+} = nova64.ui;
+const { createShake, noise, pulse, triggerShake, updateShake } = nova64.util;
+
 let gameTime = 0;
 let cityObjects = [];
 let vehicles = [];

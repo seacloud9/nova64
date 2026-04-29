@@ -3,6 +3,32 @@
 // Works on desktop too with keyboard + mouse fallback.
 
 // ── State ──────────────────────────────────────────────
+const { drawProgressBar, print, printCentered } = nova64.draw;
+const {
+  createCube,
+  createCylinder,
+  createPlane,
+  createSphere,
+  removeMesh,
+  rotateMesh,
+  setPosition,
+  setScale,
+} = nova64.scene;
+const { setCameraFOV, setCameraPosition, setCameraTarget } = nova64.camera;
+const {
+  createPointLight,
+  createSolidSkybox,
+  setAmbientLight,
+  setFog,
+  setLightColor,
+  setLightDirection,
+} = nova64.light;
+const { enableBloom } = nova64.fx;
+const { btnp } = nova64.input;
+const { sfx } = nova64.audio;
+const { t } = nova64.data;
+const { enableVR, getXRControllers, isXRActive } = nova64.xr;
+
 let gameState = 'playing'; // 'playing' | 'gameover'
 let score = 0;
 let combo = 0;

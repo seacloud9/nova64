@@ -6,6 +6,29 @@
 
 // Dimensions are resolved at runtime from the actual framebuffer size so the
 // demo fills the screen regardless of launch resolution.
+const {
+  BM,
+  circle,
+  cls,
+  drawScanlines,
+  line,
+  print,
+  printCentered,
+  pset,
+  rect,
+  rectfill,
+  rgba8,
+  screenHeight,
+  screenWidth,
+  withBlend,
+} = nova64.draw;
+const { burstEmitter2D, clearEmitter2D, createEmitter2D, drawEmitter2D, updateEmitter2D } =
+  nova64.fx;
+const { key, keyp } = nova64.input;
+const { addChild, createContainer, createGraphicsNode, createTextNode, drawStage } = nova64.ui;
+const { createTween, killAllTweens, updateTweens } = nova64.tween;
+const { color } = nova64.util;
+
 let W, H, CX, CY;
 
 // ─── Scene manager state ──────────────────────────────────────────────────────

@@ -3,6 +3,34 @@
 // Scenes: Galaxy Spiral, Procedural Terrain, Energy Tornado, Material Lab
 // Navigate: Space/Enter = next scene, Arrow Left = prev scene
 
+const { print, screenHeight, screenWidth } = nova64.draw;
+const {
+  clearScene,
+  createCone,
+  createCube,
+  createPlane,
+  createSphere,
+  createTorus,
+  getMesh,
+  removeMesh,
+  rotateMesh,
+  setScale,
+} = nova64.scene;
+const { setCameraFOV, setCameraPosition, setCameraTarget } = nova64.camera;
+const { createPointLight, setAmbientLight, setFog } = nova64.light;
+const { createParticleSystem, enableBloom, enableVignette, removeParticleSystem, updateParticles } =
+  nova64.fx;
+const {
+  createHologramMaterial,
+  createLavaMaterial,
+  createPlasmaMaterial,
+  createShockwaveMaterial,
+  createTSLMaterial,
+  createTSLShaderMaterial,
+  createVortexMaterial,
+  createWaterMaterial,
+} = nova64.shader;
+const { keyp } = nova64.input;
 let currentScene = 0;
 const SCENE_COUNT = 4;
 let sceneTime = 0;
@@ -19,6 +47,14 @@ function hslToHex(h, s, l) {
     return Math.round(255 * Math.max(0, Math.min(1, color)));
   };
   return (f(0) << 16) | (f(8) << 8) | f(4);
+}
+
+function createSeededRandom(seed) {
+  let state = seed >>> 0;
+  return () => {
+    state = (state * 1664525 + 1013904223) >>> 0;
+    return state / 0x100000000;
+  };
 }
 
 /** Apply a material to a mesh ID (safely via getMesh + traverse) */
@@ -73,6 +109,8 @@ function setupScene(idx) {
 // ═══════════════════════════════════════════════════════════════════════════
 
 function setupGalaxy() {
+  const random = createSeededRandom(0x67a1c4);
+
   setCameraPosition(0, 18, 22);
   setCameraTarget(0, 0, 0);
   setCameraFOV(50);
@@ -101,10 +139,10 @@ function setupGalaxy() {
       const angle = armOffset + i * 0.18;
       const x = Math.cos(angle) * r;
       const z = Math.sin(angle) * r;
-      const y = (Math.random() - 0.5) * 0.8;
-      const size = 0.12 + Math.random() * 0.25;
+      const y = (random() - 0.5) * 0.8;
+      const size = 0.12 + random() * 0.25;
       const hue = 0.55 + arm * 0.12;
-      const col = hslToHex(hue, 0.9, 0.65 + Math.random() * 0.15);
+      const col = hslToHex(hue, 0.9, 0.65 + random() * 0.15);
       const starId = createCube(size, col, [x, y, z], {
         emissive: col,
         emissiveIntensity: 2.5,

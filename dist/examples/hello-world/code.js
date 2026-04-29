@@ -1,6 +1,11 @@
 // Hello World — Nova64 minimal cart
 // A spinning cube with a HUD label. Under 15 lines.
 
+const { printCentered } = nova64.draw;
+const { createCube, rotateMesh } = nova64.scene;
+const { setCameraPosition, setCameraTarget } = nova64.camera;
+const { setAmbientLight } = nova64.light;
+
 let cube;
 
 export function init() {

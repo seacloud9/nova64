@@ -1112,6 +1112,14 @@ async function main() {
         } catch (error) {
           console.log('⚠️  Tween tests not available:', error.message);
         }
+
+        console.log('\n1️⃣4️⃣ Adapter Contract Conformance Tests:');
+        try {
+          const { runAdapterConformanceSuite } = await import('./test-adapter-conformance.js');
+          results.push(await runAdapterConformanceSuite());
+        } catch (error) {
+          console.log('⚠️  Adapter conformance tests not available:', error.message);
+        }
         break;
     }
 

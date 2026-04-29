@@ -2,6 +2,11 @@
 // Uses the Nova64 generative art API for noise and HSB colors
 // Watch hundreds of autonomous agents self-organize into beautiful flocks
 
+const { circle, cls, line, print, rect, rgba8 } = nova64.draw;
+const { btnp, keyp } = nova64.input;
+const { grid } = nova64.ui;
+const { TWO_PI, hsb, noise, noiseSeed } = nova64.util;
+
 const NUM_BOIDS = 350;
 const SEPARATION_RADIUS = 12;
 const ALIGNMENT_RADIUS = 25;

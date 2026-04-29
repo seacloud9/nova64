@@ -10,6 +10,33 @@
 //
 // Controls: 1-6 = scene, WASD = orbit, QE = zoom
 
+const { drawRoundedRect, print, printCentered, rgba8 } = nova64.draw;
+const {
+  clearScene,
+  createCapsule,
+  createCone,
+  createCube,
+  createCylinder,
+  createPlane,
+  createSphere,
+  createTorus,
+  setPBRProperties,
+  setRotation,
+} = nova64.scene;
+const { setCameraFOV, setCameraPosition, setCameraTarget } = nova64.camera;
+const {
+  createGradientSkybox,
+  createImageSkybox,
+  setAmbientLight,
+  setFog,
+  setLightColor,
+  setLightDirection,
+} = nova64.light;
+const { enableBloom, enableFXAA, enableVignette } = nova64.fx;
+const { btnp, key, keyp } = nova64.input;
+const { t } = nova64.data;
+const { arc } = nova64.util;
+
 const SPACING = 2.4;
 
 let meshIds = [];
@@ -22,10 +49,7 @@ let scene = 0;
 
 const SCENE_NAMES = ['Material Grid', 'Metals', 'Gems & Glass', 'Mixed', 'Emissive', 'Shapes'];
 
-// ── Init ────────────────────────────────────────────────────────────────────
-export async function init() {
-  setCameraFOV(58);
-
+async function applyShowcaseSkybox() {
   try {
     await createImageSkybox([
       '/assets/sky/studio/px.png',
@@ -38,6 +62,12 @@ export async function init() {
   } catch (e) {
     createGradientSkybox(0x0c1828, 0x040810);
   }
+}
+
+// ── Init ────────────────────────────────────────────────────────────────────
+export async function init() {
+  setCameraFOV(58);
+  await applyShowcaseSkybox();
 
   setFog(0x060e1a, 22, 60);
   setAmbientLight(0x2a3a55, 1.6);
@@ -47,7 +77,7 @@ export async function init() {
   enableVignette(1.0, 0.75);
   enableFXAA();
 
-  buildScene(0);
+  await buildScene(0);
 }
 
 function clearMeshes() {
@@ -61,7 +91,7 @@ function buildFloor() {
   setPBRProperties(floorId, { metalness: 0.85, roughness: 0.08, envMapIntensity: 1.5 });
 }
 
-function buildScene(idx) {
+async function buildScene(idx) {
   clearMeshes();
   clearScene();
   // Re-apply lighting after clearScene
@@ -73,18 +103,7 @@ function buildScene(idx) {
   enableFXAA();
   setFog(0x060e1a, 22, 60);
 
-  try {
-    createImageSkybox([
-      '/assets/sky/studio/px.png',
-      '/assets/sky/studio/nx.png',
-      '/assets/sky/studio/py.png',
-      '/assets/sky/studio/ny.png',
-      '/assets/sky/studio/pz.png',
-      '/assets/sky/studio/nz.png',
-    ]);
-  } catch (e) {
-    createGradientSkybox(0x0c1828, 0x040810);
-  }
+  await applyShowcaseSkybox();
 
   buildFloor();
 
@@ -414,7 +433,7 @@ export function update(dt) {
     if (keyp('Digit' + (i + 1)) || keyp('Numpad' + (i + 1)) || btnp(13 + i)) {
       if (scene !== i) {
         scene = i;
-        buildScene(i);
+        void buildScene(i);
       }
     }
   }

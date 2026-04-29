@@ -4,6 +4,22 @@
 // Controls:  W / SPACE = thrust   S = brake
 //            A / D     = yaw      Q / E = pitch
 
+const { print, rgba8 } = nova64.draw;
+const { createCube, createSphere, removeMesh, rotateMesh } = nova64.scene;
+const { setCameraFOV, setCameraPosition, setCameraTarget } = nova64.camera;
+const {
+  animateSkybox,
+  createSpaceSkybox,
+  setAmbientLight,
+  setFog,
+  setLightColor,
+  setLightDirection,
+} = nova64.light;
+const { enableBloom, enableFXAA, enableVignette } = nova64.fx;
+const { key } = nova64.input;
+const { sfx } = nova64.audio;
+const { clamp } = nova64.util;
+
 let time = 0;
 let pos = { x: 0, y: 0, z: 10 };
 let vel = { x: 0, y: 0, z: 0 };

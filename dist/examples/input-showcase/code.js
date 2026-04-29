@@ -2,6 +2,13 @@
 // Demonstrates every Nova64 input method: keyboard, gamepad, and mouse.
 // All inputs are visualized live so you can see exactly what the engine detects.
 
+const { print, printCentered, pset, rect, rgba8 } = nova64.draw;
+const { createCube, engine, rotateMesh } = nova64.scene;
+const { setCameraPosition, setCameraTarget } = nova64.camera;
+const { setAmbientLight, setFog } = nova64.light;
+const { btn, key } = nova64.input;
+const { color } = nova64.util;
+
 const KEY_MAP = [
   ['KeyW', 'W'],
   ['KeyA', 'A'],

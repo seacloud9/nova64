@@ -3,6 +3,24 @@
 // NEO-DOOM: FAST, BRIGHT, FUN ARENA SHOOTER
 // 3 levels, 4 enemy types, pickups, boss fights — now with .WAD file support!
 
+const { drawProgressBar, prinprintCentered, rectfill, rgba8 } = nova64.draw;
+const { createCube, createPlane, destroyMesh, getMesh, setPosition, setRotation, setScale } =
+  nova64.scene;
+const engine = nova64.scene.engine ?? globalThis.engine;
+const { setCameraFOV, setCameraPosition, setCameraTarget } = nova64.camera;
+const {
+  createPointLight,
+  removeLight,
+  setAmbientLight,
+  setDirectionalLight,
+  setFog,
+  setPointLightPosition,
+} = nova64.light;
+const { btn, key, mouseDown } = nova64.input;
+const { sfx } = nova64.audio;
+const { WADLoader, WADTextureManager, convertWADMap, setWallUVs, t } = nova64.data;
+const { createShake, triggerShake, updateShake } = nova64.util;
+
 let gameTime = 0;
 let gameState = 'start'; // start, playing, gameover, levelclear, victory
 
@@ -549,18 +567,16 @@ function buildWADLevel(mapName) {
         setScale(m, w.len, w.h, 0.5);
         setRotation(m, 0, w.ang, 0);
 
+        const mat = engine.createMaterial('phong', {
+          map: tex,
+          color: engine.createColor(bri, bri, bri),
+        });
+        engine.setMeshMaterial(m, mat);
+
         const texDef = wadTexMgr.getTextureDef(w.texName);
         if (texDef) {
           setWallUVs(m, w.len / SCALE, w.h / SCALE, texDef.width, texDef.height, w.xoff, w.yoff);
         }
-
-        engine.setMeshMaterial(
-          m,
-          engine.createMaterial('phong', {
-            map: tex,
-            color: engine.createColor(bri, bri, bri),
-          })
-        );
 
         entities.walls.push({ m, x: w.x, z: w.z, r: 0 });
         textured = true;

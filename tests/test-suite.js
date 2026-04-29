@@ -4,6 +4,7 @@
 import { TestRunner, Assert, Performance, MockGPU } from './test-runner.js';
 import { run3DAPITests } from './test-3d-api.js';
 import { runGPUTests } from './test-gpu-threejs.js';
+import { runAdapterConformanceSuite } from './test-adapter-conformance.js';
 
 export class Nova64TestSuite {
   constructor() {
@@ -33,6 +34,11 @@ export class Nova64TestSuite {
       console.log('\n🖥️  Testing GPU Backend...');
       const gpuResults = await runGPUTests();
       this.mergeResults('GPU Backend', gpuResults);
+
+      // Run adapter conformance tests (Phase 1)
+      console.log('\n🔌 Testing Adapter Contract Conformance...');
+      const conformanceResults = await runAdapterConformanceSuite();
+      this.mergeResults('Adapter Conformance', conformanceResults);
 
       // Run integration tests
       console.log('\n🔗 Running Integration Tests...');

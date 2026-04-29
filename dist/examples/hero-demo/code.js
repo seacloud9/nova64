@@ -2,6 +2,14 @@
 // Outrun synthwave: neon grid floor, displaced terrain hills, sun, clouds, particles
 
 // ── Shared GLSL noise lib (3-octave FBM) ──
+const { createPlane, createSphere, engine, getMesh, loadModel, rotateMesh } = nova64.scene;
+const { setCameraFOV, setCameraPosition, setCameraTarget } = nova64.camera;
+const { createPointLight, setAmbientLight, setFog } = nova64.light;
+const { createParticleSystem, enableBloom, enableVignette, updateParticles } = nova64.fx;
+const { createTSLMaterial, createTSLShaderMaterial } = nova64.shader;
+const { grid } = nova64.ui;
+const { clamp, color, noise, pulse, smoothstep } = nova64.util;
+
 const noiseLib = `
 float hash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
 float noise(vec2 p){

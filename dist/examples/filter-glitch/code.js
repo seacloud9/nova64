@@ -2,6 +2,11 @@
 // Shows: withFilter, CM (color matrix), applyGlitch, applyVHS, applyPixelate,
 //        applyBloom, toggleable effects with keyboard input
 
+const { cls, print, pset, rectfill, screenHeight, screenWidth } = nova64.draw;
+const { CM, withFilter } = nova64.fx;
+const { t } = nova64.data;
+const { color, noise } = nova64.util;
+
 let W = 640,
   H = 360;
 let time = 0;

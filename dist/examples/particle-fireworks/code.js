@@ -1,6 +1,9 @@
 // particle-fireworks — Fireworks burst using createEmitter2D and BM.ADD
 // Shows: createEmitter2D, update emitter position, BM.ADD blend mode, burst
 
+const { BM, circle, cls, print, pset, rectfill, screenHeight, screenWidth } = nova64.draw;
+const { createEmitter2D, drawEmitter2D, updateEmitter2D } = nova64.fx;
+
 let W = 640,
   H = 360;
 let emitters = [];

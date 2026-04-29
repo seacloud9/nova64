@@ -1,6 +1,9 @@
 // tween-bounce — bouncing balls demo using the unified Tween engine
 // Shows: createTween (hype-style value tween), Ease.outBounce, Stage
 
+const { cls, print, rectfill, screenHeight, screenWidth } = nova64.draw;
+const { engine } = nova64.scene;
+const { Ease, createTween } = nova64.tween;
 const BALLS = [];
 let W = 640,
   H = 360;

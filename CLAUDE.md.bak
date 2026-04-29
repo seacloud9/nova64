@@ -1,0 +1,320 @@
+# 🎮 Nova64 - Ultimate 3D Fantasy Console Development Guide
+
+> **⚠️ OUTDATED - This file is deprecated. Please refer to [AGENTS.md](./AGENTS.md) for the current cross-agent guide.**
+>
+> This file is kept for historical reference only. AGENTS.md is now the canonical source of truth for repository instructions.
+
+This file provides comprehensive guidance for AI assistants working with the **Nova64 Ultimate 3D Fantasy Console** codebase. Current version: **0.4.8**.
+
+## 🖥️ **Windows Development Environment**
+
+**⚠️ IMPORTANT: On Windows machines, always use WSL (Windows Subsystem for Linux):**
+
+```bash
+# First, open WSL terminal, then set Node.js version
+nvm use 20
+
+# Now you can run pnpm commands
+pnpm dev
+```
+
+**Key points:**
+
+- Always use **WSL** on Windows (not PowerShell or CMD)
+- Run `nvm use 20` before any pnpm commands in WSL
+- All pnpm commands must be executed inside WSL
+- Node.js 20 is required — other versions may break the build
+
+## 🚀 **Development Commands**
+
+**⚡ Always use `pnpm` for all package management and development tasks:**
+
+```bash
+# 📦 Install dependencies (ALWAYS use pnpm)
+pnpm install
+
+# 🔥 Start development server with hot reloading
+pnpm dev            # http://localhost:5173  (serves console.html)
+
+# 🏗️ Build for production (runs vite build + scripts/postbuild.js)
+pnpm build
+
+# 👁️ Preview production build
+pnpm preview
+
+# 🧪 Run complete test suite (505/505 tests passing)
+pnpm test
+
+# 🎯 Run specific test suites
+pnpm test:api
+pnpm test:input
+pnpm test:starfox
+pnpm test:integration
+pnpm test:voxel
+pnpm test:resize
+pnpm test:cli
+pnpm test:all        # alias for full suite
+pnpm test:watch      # re-run on file changes
+
+# 📊 Benchmarks
+pnpm bench
+pnpm bench:material
+pnpm bench:instancing
+pnpm bench:mesh
+
+# 🔍 Lint / format
+pnpm lint
+pnpm lint:fix
+pnpm format
+```
+
+**🚨 CRITICAL: Never use `npm` or `yarn` — always use `pnpm`.**
+
+## 🛠️ **CLI Tool** (`bin/nova64.js`)
+
+The Nova64 CLI provides project scaffolding, template cloning, and a dev server:
+
+```bash
+# Create a new empty project (prompts for name if omitted)
+nova64 init my-game
+
+# Browse and clone from 70+ example templates (interactive picker)
+nova64 template
+
+# Clone a specific template directly
+nova64 template star-fox-nova-3d
+
+# Start dev server in a project directory (serves code.js with hot reload)
+cd my-game && nova64 dev
+
+# Launch the full console with all demos (requires pnpm build first)
+nova64 --start-demo    # Opens http://localhost:3000/console.html
+```
+
+### **CLI Architecture** (`bin/commands/`):
+
+- `bin/nova64.js` - Main entry point with subcommand routing
+- `bin/commands/init.js` - Project scaffolding (creates `code.js`, `package.json`, `index.html`)
+- `bin/commands/template.js` - Interactive template picker using `@inquirer/prompts` with categorized list
+- `bin/commands/dev.js` - Vite dev server that serves Nova64 runtime + user's `code.js` via `cart-runner.html`
+
+### **Scaffolded Project Structure**:
+
+```
+my-game/
+├── code.js        # Cart entry point (init/update/draw)
+├── index.html     # HTML shell with import map
+└── package.json   # Has nova64 dependency + "nova64 dev" script
+```
+
+## 🔍 **Debug Panel** (`runtime/debug-panel.js`)
+
+An in-browser debug overlay for inspecting and editing scenes at runtime.
+
+### **Activation**:
+
+- Press **F9** to toggle the panel open/closed
+- Add `?debug=1` to the URL to auto-open on load
+- Install the [Three.js DevTools](https://chromewebstore.google.com/detail/three-js-developer-tools/ljjomegalejmghcbeafmpnpgkoopignh) browser extension for additional scene inspection
+
+### **Panel Sections**:
+
+- **Time Controls** (toolbar): Pause/Resume, Step Frame, Reload Cart, Speed slider (0–2x)
+- **Performance**: FPS, triangles, draw calls, geometries, textures, shader programs
+- **Camera**: Editable position/target/FOV inputs (calls `setCameraPosition`/`setCameraTarget`/`setCameraFOV` live)
+- **Scene Graph**: Collapsible tree of all objects — toggle visibility, click to highlight with wireframe bounding box
+- **Inspector**: Click an object in the scene graph to edit position/rotation/scale, material color/opacity, wireframe toggle
+- **Lights**: Color picker + intensity slider for every light in the scene
+- **Console Log**: Captured `console.log`/`warn`/`error` output with color-coded entries and auto-scroll
+
+### **Three.js DevTools Bridge** (`src/main.js`):
+
+Exposes `globalThis.__THREE__`, `__THREE_SCENE__`, `__THREE_RENDERER__`, `__THREE_CAMERA__` so the browser extension can inspect the live scene.
+
+## 🏗️ **Architecture Overview**
+
+Nova64 is a **JavaScript 3D Fantasy Console** featuring:
+
+- **🎯 3D Graphics Engine** powered by Three.js (with Babylon.js as an experimental backend)
+- **⚡ 505/505 tests passing** (100% test coverage)
+- **🎨 Nintendo 64/PlayStation Aesthetics** with modern performance
+- **✨ Advanced Materials System** (holographic, metallic, emissive effects)
+- **🌫️ Cinematic Lighting & Atmospherics** with 4K shadow mapping
+
+### 🎯 **Core Components**
+
+**GPU Backends** (`runtime/`):
+
+- `gpu-threejs.js` - **Primary backend** — Three.js with advanced materials, lighting, shader systems, and 2D overlay compositing
+- `gpu-babylon.js` - **Experimental Babylon.js backend** — parallel self-contained implementation; activate via `?backend=babylon` URL param or by serving `babylon_console.html`
+- `gpu-webgl2.js` - **WebGL2 fallback** with RGBA16F textures and ACES tone mapping
+- `gpu-canvas2d.js` - **Canvas2D fallback** with ordered dithering for maximum compatibility
+
+**Backend Adapter Layer**:
+
+- `engine-adapter.js` - Backend-agnostic adapter; exposes `engine` global so cart code never imports THREE directly
+- `engine-adapter-babylon.js` - Babylon.js implementation of the adapter contract
+- `framebuffer.js` - `Framebuffer64` — Uint16 RGBA pixel buffer; **required by all standard API modules** via `gpu.getFramebuffer()`
+
+**Core Runtime**:
+
+- `api.js` - Standard 2D drawing API (pset, line, rect, cls, print, etc.) — calls `gpu.getFramebuffer()`
+- `api-2d.js` - Extended 2D canvas drawing API
+- `api-3d.js` - 3D primitive API (createCube, setCameraPosition, rotateMesh, etc.)
+- `api-generative.js` - Processing.js-style generative art (noise, ellipse, bezier, flow fields, matrix stack)
+- `api-sprites.js` - 2D sprite system with GPU batching and parallax scrolling
+- `api-effects.js` - Post-processing effects (bloom, vignette, chromatic aberration, glitch)
+- `api-skybox.js` - Space, gradient, and solid sky backgrounds
+- `api-blend.js` - Canvas2D blend mode constants and helpers
+- `api-filters.js` - CSS/Canvas2D filter effects
+- `api-particles-2d.js` - Sprite-textured 2D particle emitter
+- `api-presets.js` - One-call visual style presets (N64 mode, PSX mode, low-poly)
+- `api-gameutils.js` - Game utilities (shake, cooldowns, hit states, spawners, pools, state machines, timers, floating text)
+- `api-voxel.js` - Full voxel engine with chunk streaming, biomes, fluid simulation, entity system, and pathfinding
+- `console.js` - Main Nova64 class; dynamic ES module cart loading and hot reloading
+- `input.js` - Input system: key(), btn(), btnp(), keyp() — keyboard + gamepad + mouse
+- `font.js` - Bitmap font renderer
+- `audio.js` - WebAudio system with spatial 3D audio and named SFX presets
+- `physics.js` - AABB collision and gravity simulation
+- `collision.js` - Raycasting and spatial partitioning
+- `storage.js` - Persistent storage via localStorage with JSON serialization
+- `textinput.js` - Text input overlay and keyboard handling
+- `editor.js` - In-browser sprite and asset editor
+
+**Display & Scene Systems**:
+
+- `stage.js` - Flash/PixiJS-style display list for Canvas2D scene graphs
+- `canvas-ui.js` - NML (Nova Markup Language) — XML-driven Canvas2D GUI system
+- `camera-2d.js` - 2D camera system for stage rendering (pan, zoom, shake)
+- `screens.js` - Screen state machine with animated transitions (fade, slide, wipe)
+- `debug-panel.js` - F9 in-browser debug overlay
+- `fullscreen-button.js` - Fullscreen toggle button
+
+**Media & Assets**:
+
+- `assets.js` / `asset-loader.js` - Asset loading pipeline
+- `wad.js` - DOOM WAD file parser, level converter, and texture manager
+- `movie-clip.js` - Flash-style sprite animation system
+- `manifest.js` - Cart manifest loader
+
+**Advanced Systems**:
+
+- `xr.js` - WebXR (VR + AR) and Cardboard VR support
+- `mediapipe.js` - MediaPipe Vision integration (hand, face, pose tracking)
+- `hype.js` - HYPE animation framework (inspired by HYPE_AS3/Processing)
+- `tween.js` - Unified tween engine used by Stage, HYPE, and cart code
+- `store.js` - Zustand-powered reactive game state
+- `namespace.js` - Nova64 namespace builder (nova64.* API surface)
+- `ui.js` - UI system
+- `nft-seed.js` - NFT seed-based generative art
+- `i18n.js` - Internationalisation support
+- `logger.js` - Structured logging (Nova64:INFO/WARN/ERROR)
+- `env.js` - Environment detection
+- `data.js` - Data utilities
+
+### 🎮 **Cart System**
+
+Nova64 carts are **ES modules** with three lifecycle hooks:
+
+```javascript
+let cube;
+
+export function init() {
+  // Create 3D objects ONCE here — never inside draw()
+  cube = createCube(2, 0x0088ff, [0, 0, -5], { material: 'holographic' });
+  setCameraPosition(0, 5, 10);
+  setFog(0x1a1a2e, 10, 30);
+}
+
+export function update(dt) {
+  // Handle input, update game logic, animate objects
+  if (key('KeyW')) player.z -= 5 * dt;
+  rotateMesh(cube, 0, dt, 0);
+}
+
+export function draw() {
+  // 3D scene renders automatically — draw 2D HUD here
+  print('Score: 1000', 10, 10, 0xffffff);
+}
+```
+
+**Cart Loading**: Modify import path in `src/main.js` (line ~109) to test different demos.
+
+**Babylon.js backend**: Load `babylon_console.html` or append `?backend=babylon` to any URL.
+
+### 🏗️ **Key Architectural Patterns**
+
+**GPU Contract**: Every GPU backend **must** implement:
+- `getFramebuffer()` → returns a `Framebuffer64` instance (required by api.js, api-2d.js, api-generative.js)
+- `supportsSpriteBatch()` → boolean
+- `beginFrame()` / `endFrame()` → called each tick
+- `resize(w, h)` → handle canvas resize
+
+**Global API Exposure**: All runtime modules expose APIs via `.exposeTo(globalThis)`.
+
+**Renderer Fallback Chain**:
+1. **Three.js** (preferred) — full 3D, advanced materials and lighting
+2. **Babylon.js** (experimental) — activate with `?backend=babylon`
+3. **WebGL2** — high-performance 2D with shader effects
+4. **Canvas2D** — universal compatibility fallback
+
+**Color Pipeline**: 64-bit RGBA (Uint16 per channel). Helpers: `packRGBA64()`, `rgba8()`, `unpackRGBA64()`.
+
+## 🎨 **Cart Development**
+
+### Creating a new cart:
+
+1. Create `examples/your-cart/code.js` with `init` / `update` / `draw` exports
+2. Update cart path in `src/main.js:109` for hot reloading
+3. Use control panel dropdown to switch between demos at runtime
+4. Run `pnpm test` to validate (505/505 must pass)
+
+### Complete Global API:
+
+- **3D Graphics**: createCube(size,color,[x,y,z],opts), createSphere(), createPlane(), createCylinder(), createCone(), createCapsule(), createTorus()
+- **Camera**: setCameraPosition(), setCameraTarget(), setCameraFOV()
+- **Transforms**: rotateMesh(), setPosition(), setScale(), removeMesh() / destroyMesh()
+- **Atmospherics**: setFog(), clearFog(), setAmbientLight(), createPointLight()
+- **Input**: key(code), keyp(code), btn(i), btnp(i) — keyboard + gamepad + mouse
+- **Skybox**: createSpaceSkybox(), createGradientSkybox(), createSolidSkybox(), enableSkyboxAutoAnimate()
+- **Effects**: enableBloom(), enableVignette(), enableGlitch(), enableChromaticAberration(), enableN64Mode(), enablePSXMode(), enableLowPolyMode()
+- **Audio**: sfx(preset), sfx({wave,freq,dur}), setVolume() — named presets: 'jump','coin','explosion',…
+- **Storage**: saveData(key,val), loadData(key,fallback), deleteData(key)
+- **Physics**: createBody(), stepPhysics(dt), setGravity(), setCollisionMap(fn)
+- **Text**: print(), printCentered(), drawGlowText(), drawCrosshair(), drawProgressBar()
+- **Minimap**: createMinimap(opts), drawMinimap(mm,time)
+- **Tween**: tween(target, props, opts) — easing, chaining, onComplete
+- **Screens**: pushScreen(id), popScreen(), registerScreen(id, {init,update,draw})
+- **Game Utils**: createShake/triggerShake/updateShake, createCooldown/useCooldown/updateCooldowns, createHitState/triggerHit/isInvulnerable/isVisible, createSpawner/updateSpawner, createPool, createFloatingTextSystem/drawFloatingTexts/drawFloatingTexts3D, createStateMachine, createTimer
+- **Voxel Engine**: BLOCK_TYPES, updateVoxelWorld(), forceLoadVoxelChunks(), resetVoxelWorld(), configureVoxelWorld(), getVoxelConfig(), getVoxelBlock(), setVoxelBlock(), getVoxelHighestBlock(), getVoxelBiome(), registerVoxelBlock(), getVoxelBlockShape(), getVoxelBlockBoundingBox(), isVoxelBlockFullCube(), VOXEL_SHAPE_BBOXES, raycastVoxelBlock(), checkVoxelCollision(), checkVoxelFluid(), moveVoxelEntity(), getVoxelLightLevel(), setVoxelDayTime(), setVoxelFluidSource(), removeVoxelFluidSource(), getVoxelFluidLevel(), spawnVoxelEntity(), removeVoxelEntity(), getVoxelEntity(), damageVoxelEntity(), healVoxelEntity(), updateVoxelEntities(), getVoxelEntitiesInRadius(), getVoxelEntitiesByType(), getVoxelEntityCount(), cleanupVoxelEntities(), setVoxelEntityComponent(), getVoxelEntityComponent(), hasVoxelEntityComponent(), removeVoxelEntityComponent(), queryVoxelEntities(), createVoxelEntityArchetype(), spawnVoxelEntityFromArchetype(), findVoxelPath(), exportVoxelRegion(), importVoxelRegion(), exportVoxelWorldJSON(), importVoxelWorldJSON(), saveVoxelWorld(), loadVoxelWorld(), listVoxelWorlds(), deleteVoxelWorld(), enableVoxelTextures(), loadVoxelTextureAtlas(), simplexNoise2D(), simplexNoise3D(), placeVoxelTree()
+
+## 🏗️ **Project Structure**
+
+### Demo Gallery (`examples/` — 71 total):
+
+- **3D Showcases**: crystal-cathedral-3d, cyberpunk-city-3d, mystical-realm-3d, nature-explorer-3d, dungeon-crawler-3d, fps-demo-3d, shooter-demo-3d, strider-demo-3d, space-combat-3d, space-harrier-3d, wing-commander-space, f-zero-nova-3d, star-fox-nova-3d, physics-demo-3d, 3d-advanced, pbr-showcase, tsl-showcase, shader-showcase
+- **Voxel**: minecraft-demo, voxel-terrain, voxel-creative, voxel-creatures, vox-viewer
+- **Stage / 2D**: adventure-comic-3d, hud-demo, canvas-ui-showcase, ui-demo, screen-demo, stage-cards, stage-menu, startscreen-demo, flash-demo, movie-clock, demoscene
+- **Babylon.js**: babylon-demo
+- **VR / XR**: vr-demo, vr-sword-combat, ar-hand-demo
+- **Audio / Input**: audio-lab, input-showcase
+- **Creative**: generative-art, creative-coding, boids-flocking, game-of-life-3d, blend-aurora, filter-glitch, instancing-demo, particle-fireworks, particle-trail, particles-demo
+- **Systems**: storage-quest, nft-art-generator, nft-worlds, wad-demo, model-viewer-3d, skybox-showcase
+- **Tween demos**: tween-bounce, tween-logo, tween-typewriter
+- **Hello / test**: hello-3d, hello-world, hello-skybox, hello-namespaced, hype-demo, hero-demo, test-2d-overlay, test-font, test-minimal
+- **Games**: super-plumber-64, camera-platformer, wizardry-3d
+
+### Core Entry Points:
+
+- `src/main.js` — orchestrates console startup, backend selection, API wiring
+- `console.html` — main console page (Three.js backend)
+- `babylon_console.html` — console page using Babylon.js backend
+- `cart-runner.html` — lightweight runner used by `nova64 dev` CLI command
+- `vite.config.js` — build configuration
+
+### Development Tools:
+
+- **Real-time Editor**: in-browser sprite and material editing
+- **Performance Monitor**: FPS, triangle count, memory analytics
+- **Debug Panel** (F9): scene graph, camera, lights, console log
+- **Build Pipeline**: `pnpm build` → `vite build` + `scripts/postbuild.js`

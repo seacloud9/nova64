@@ -1,4 +1,19 @@
 // Voxel Creative — Free-building sandbox with block palette and fly mode
+const { print, rect, rectfill, rgba8 } = nova64.draw;
+const { setCameraPosition, setCameraTarget } = nova64.camera;
+const { setFog } = nova64.light;
+const { F } = nova64.fx;
+const { key, keyp } = nova64.input;
+const {
+  configureVoxelWorld,
+  enableVoxelTextures,
+  forceLoadVoxelChunks,
+  getVoxelHighestBlock,
+  raycastVoxelBlock,
+  setVoxelBlock,
+  updateVoxelWorld,
+} = nova64.voxel;
+
 let player = { x: 8, y: 70, z: 8, vx: 0, vy: 0, vz: 0, yaw: 0, pitch: -0.3, onGround: false };
 let selectedBlock = 1;
 let selectedIdx = 0;

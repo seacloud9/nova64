@@ -1,4 +1,20 @@
 // Voxel Terrain Explorer — Showcases biomes, day/night, textures, and lighting
+const { print, rect, rectfill, rgba8 } = nova64.draw;
+const { setCameraPosition, setCameraTarget } = nova64.camera;
+const { setFog } = nova64.light;
+const { key, keyp } = nova64.input;
+const {
+  configureVoxelWorld,
+  enableVoxelTextures,
+  getVoxelBiome,
+  getVoxelHighestBlock,
+  getVoxelLightLevel,
+  moveVoxelEntity,
+  setVoxelDayTime,
+  updateVoxelWorld,
+} = nova64.voxel;
+const { color } = nova64.util;
+
 let lastDayTime = -1;
 let player = { x: 0, y: 80, z: 0, vx: 0, vy: 0, vz: 0, yaw: 0, pitch: 0, onGround: false };
 let time = 0.25; // Start at sunrise

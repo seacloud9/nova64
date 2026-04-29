@@ -2,6 +2,10 @@
 // Shows: withBlend, BM.SCREEN, BM.ADD, layered gradients on stage canvas,
 //        createCamera2D pan, animated color bands
 
+const { BM, cls, print, pset, rectfill, screenHeight, screenWidth, withBlend } = nova64.draw;
+const { createCamera2D } = nova64.camera;
+const { color } = nova64.util;
+
 let W = 640,
   H = 360;
 let time = 0;

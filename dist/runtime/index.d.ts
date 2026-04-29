@@ -283,6 +283,7 @@ export interface ThreeDApiInstance {
   destroyMesh(id: MeshId): void;
   removeMesh(id: MeshId): void;
   getMesh(id: MeshId): THREE.Mesh | undefined;
+  getBackendCapabilities(): Record<string, boolean | string>;
 
   // Model loading
   loadModel(
@@ -304,8 +305,8 @@ export interface ThreeDApiInstance {
   setPosition(meshId: MeshId, x: number, y: number, z: number): void;
   setRotation(meshId: MeshId, x: number, y: number, z: number): void;
   setScale(meshId: MeshId, x: number, y: number, z: number): void;
-  getPosition(meshId: MeshId): { x: number; y: number; z: number } | null;
-  getRotation(meshId: MeshId): { x: number; y: number; z: number } | null;
+  getPosition(meshId: MeshId): [number, number, number] | null;
+  getRotation(meshId: MeshId): [number, number, number] | null;
   rotateMesh(meshId: MeshId, dX: number, dY: number, dZ: number): void;
   moveMesh(meshId: MeshId, x: number, y: number, z: number): void;
 
@@ -627,10 +628,163 @@ export interface EngineAdapter {
   setMeshMaterial(meshId: MeshId, material: EngineMaterial): void;
   /** Return the current camera world position. */
   getCameraPosition(): { x: number; y: number; z: number };
+  /** Report what this backend supports. */
+  getCapabilities(): AdapterCapabilities;
 }
 
+export interface EngineBridgeMessage {
+  method: string;
+  payload: Record<string, unknown>;
+}
+
+export interface AdapterCapabilities {
+  /** Backend identifier: 'threejs', 'unity', 'babylon', 'godot', … */
+  backend: string;
+  /** Must equal ADAPTER_CONTRACT_VERSION. */
+  contractVersion: string;
+  /** Backend-specific semver. */
+  adapterVersion: string;
+  /** Feature strings declared by this backend. */
+  features: readonly string[];
+  /** Return true if this backend declares the given feature identifier. */
+  supports(feature: string): boolean;
+}
+
+export interface CommandBufferAdapterOptions {
+  /** Execute each call immediately without buffering. Default: false. */
+  autoFlush?: boolean;
+  /** Warn when queue exceeds this size. Default: 512. */
+  maxQueueSize?: number;
+}
+
+export interface CommandBufferAdapter extends EngineAdapter {
+  /** Drain all queued commands to the inner adapter in order. */
+  flush(): void;
+  /** Return the number of commands currently in the buffer. */
+  pendingCount(): number;
+  /** Discard all pending commands without executing them. */
+  discardPending(): void;
+}
+
+export interface UnityBridgeTransport {
+  call?(method: string, payload?: Record<string, unknown>): unknown;
+  invoke?(method: string, payload?: Record<string, unknown>): unknown;
+  send?(message: EngineBridgeMessage): void;
+  postMessage?(message: { type: 'nova64'; method: string; payload: Record<string, unknown> }): void;
+  getCameraPosition?(): { x: number; y: number; z: number };
+  getCapabilities?(): string[];
+}
+
+export declare const ADAPTER_CONTRACT_VERSION: string;
 export declare const engine: EngineAdapter;
 export declare function initAdapter(gpu: unknown): void;
+export declare function createThreeEngineAdapter(options?: {
+  getGpu?: () => unknown;
+  resolveMesh?: (meshId: MeshId) => unknown;
+}): EngineAdapter;
+export declare function createUnityBridgeAdapter(
+  bridge: UnityBridgeTransport,
+  options?: { methodPrefix?: string; features?: string[] }
+): EngineAdapter;
+export declare function createCommandBufferAdapter(
+  innerAdapter: EngineAdapter,
+  options?: CommandBufferAdapterOptions
+): CommandBufferAdapter;
+export declare function setEngineAdapter(adapter: EngineAdapter): EngineAdapter;
+export declare function installUnityBridge(
+  bridge: UnityBridgeTransport,
+  options?: { methodPrefix?: string; features?: string[] }
+): EngineAdapter;
+export declare function resetEngineAdapter(): EngineAdapter;
+
+// Babylon adapter
+export interface BabylonAdapterOptions {
+  /** Optional mesh resolver — maps a MeshId to the engine mesh object. */
+  resolveMesh?: (meshId: MeshId) => unknown;
+}
+
+/**
+ * Create a Nova64 EngineAdapter backed by a Babylon.js scene.
+ *
+ * Pass the full Babylon namespace as the first argument so the adapter can be
+ * tested with a mock object in Node.js without needing a real DOM or WebGL
+ * context.
+ *
+ * @param BABYLON — Babylon.js namespace (e.g. `import * as BABYLON from '@babylonjs/core'`)
+ * @param scene   — A `BABYLON.Scene` instance
+ * @param options — Optional configuration
+ */
+export declare function createBabylonEngineAdapter(
+  BABYLON: object,
+  scene: object,
+  options?: BabylonAdapterOptions
+): EngineAdapter;
+
+/**
+ * GpuBabylon — standalone Babylon.js GPU backend for Nova64.
+ *
+ * Provides the same cart-facing API as the Three.js backend
+ * (createCube, setCameraPosition, rotateMesh, etc.) through a compatibility
+ * surface backed by runtime/backends/babylon/* modules.
+ *
+ * Phase 2 implementation — see runtime/gpu-babylon.js for full feature list.
+ */
+export declare class GpuBabylon {
+  constructor(canvas: HTMLCanvasElement, w: number, h: number);
+
+  // Primitives
+  createCube(size?: number, color?: number, position?: [number, number, number] | {x: number, y: number, z: number}, options?: object): number;
+  createSphere(radius?: number, color?: number, position?: [number, number, number] | {x: number, y: number, z: number}, segments?: number, options?: object): number;
+  createPlane(width?: number, height?: number, color?: number, position?: [number, number, number] | {x: number, y: number, z: number}, options?: object): number;
+  createCylinder(rTop?: number, rBottom?: number, height?: number, color?: number, position?: [number, number, number] | {x: number, y: number, z: number}, options?: object): number;
+  createCone(radius?: number, height?: number, color?: number, position?: [number, number, number] | {x: number, y: number, z: number}, options?: object): number;
+  destroyMesh(id: number): void;
+  removeMesh(id: number): void;
+  getMesh(id: number): object | null;
+  getBackendCapabilities(): Record<string, boolean | string>;
+
+  // Transforms
+  setPosition(id: number, x: number, y: number, z: number): void;
+  setScale(id: number, x: number, y: number, z: number): void;
+  setRotation(id: number, x: number, y: number, z: number): void;
+  getPosition(id: number): [number, number, number] | null;
+  rotateMesh(id: number, rx: number, ry: number, rz: number): void;
+
+  // Camera
+  setCameraPosition(x: number, y: number, z: number): void;
+  setCameraTarget(x: number, y: number, z: number): void;
+  setCameraFOV(fovDegrees: number): void;
+
+  // Lights
+  setAmbientLight(color?: number, intensity?: number): void;
+  setLightDirection(x: number, y: number, z: number): void;
+  setLightColor(color: number): void;
+  createPointLight(
+    color?: number,
+    intensity?: number,
+    distanceOrPosition?: number | [number, number, number] | { x: number; y: number; z: number },
+    x?: number | [number, number, number] | { x: number; y: number; z: number },
+    y?: number,
+    z?: number
+  ): number;
+
+  // Scene
+  setFog(color?: number, near?: number, far?: number): void;
+  clearFog(): void;
+  get3DStats(): { triangles: number; drawCalls: number; meshes: number; backend: string };
+
+  // 2D HUD
+  cls(color?: number): void;
+  print(text: string, x: number, y: number, color?: number, size?: number): void;
+
+  // Babylon accessors
+  getScene(): object;
+  getCamera(): object;
+  getRenderer(): object;
+
+  // Cart integration
+  exposeTo(target: object): void;
+}
 
 // ---------------------------------------------------------------------------
 // Global cart API (injected into globalThis at runtime)
@@ -833,6 +987,8 @@ export interface Nova64CartGlobals {
   createCamera2D(opts?: Camera2DOpts): Camera2D;
   beginCamera2D(cam: Camera2D): void;
   endCamera2D(cam: Camera2D): void;
+  cam2DApply(cam: Camera2D): void;
+  cam2DReset(cam: Camera2D): void;
   cam2DFollow(cam: Camera2D, targetX: number, targetY: number, dt: number, lerpFactor?: number): void;
   cam2DShake(cam: Camera2D, magnitude: number, duration: number): void;
   updateCamera2D(cam: Camera2D, dt: number): void;

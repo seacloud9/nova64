@@ -3,6 +3,15 @@
 // Spawn floating sound emitters and walk around them to hear positional audio.
 // Press keys 1-5 to trigger different sound effects. Press B to spawn an emitter.
 
+const { print, printCentered, rect, rgba8 } = nova64.draw;
+const { createCube, createPlane, createSphere, rotateMesh, setPosition, setScale } = nova64.scene;
+const { setCameraPosition, setCameraTarget } = nova64.camera;
+const { setAmbientLight, setFog } = nova64.light;
+const { key, keyp } = nova64.input;
+const { setVolume, sfx } = nova64.audio;
+const { createCooldown, createCooldownSet, pulse, updateCooldown, updateCooldowns, useCooldown } =
+  nova64.util;
+
 const PRESETS = [
   { key: 'Digit1', label: '1: Jump', opts: { wave: 'sine', freq: 440, dur: 0.15, sweep: 200 } },
   { key: 'Digit2', label: '2: Coin', opts: { wave: 'square', freq: 880, dur: 0.1, sweep: -200 } },

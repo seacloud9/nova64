@@ -1,6 +1,21 @@
 // ── Nova64 Shader Showcase ──
 // Full-screen single-shader viewer — press Space/Enter to cycle through all 12 presets
 
+const { print, screenHeight, screenWidth } = nova64.draw;
+const { createCube, createPlane, createSphere, createTorus, getMesh, rotateMesh } = nova64.scene;
+const { setCameraFOV, setCameraPosition, setCameraTarget } = nova64.camera;
+const { createPointLight, setAmbientLight, setFog } = nova64.light;
+const { enableBloom, enableVignette } = nova64.fx;
+const {
+  createHologramMaterial,
+  createLavaMaterial,
+  createPlasmaMaterial,
+  createShockwaveMaterial,
+  createTSLMaterial,
+  createVortexMaterial,
+  createWaterMaterial,
+} = nova64.shader;
+const { keyp } = nova64.input;
 let t = 0;
 let currentIndex = 0;
 let sphereId = null;

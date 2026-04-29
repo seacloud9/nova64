@@ -11,15 +11,10 @@ const { remap } = nova64.util;
 
 let cursor;
 let particles = [];
+let trackingError = null;
 const PARTICLE_LIFETIME = 2;
 
 export async function init() {
-  // Start hand tracking (requests webcam permission)
-  await initHandTracking({ numHands: 2 });
-
-  // Show webcam as scene background for AR passthrough effect
-  showCameraBackground();
-
   // Create a cursor sphere that follows the index finger tip
   cursor = createSphere(0.15, 0xff00ff, [0, 0, -3], { material: 'holographic' });
 
@@ -30,6 +25,17 @@ export async function init() {
   setCameraPosition(0, 0, 0);
   setCameraTarget(0, 0, -1);
   setCameraFOV(60);
+
+  try {
+    // Start hand tracking (requests webcam permission)
+    await initHandTracking({ numHands: 2 });
+
+    // Show webcam as scene background for AR passthrough effect
+    showCameraBackground();
+  } catch (err) {
+    trackingError = err?.message || 'Hand tracking unavailable';
+    console.warn('AR hand tracking unavailable:', err);
+  }
 }
 
 export function update(dt) {
@@ -87,6 +93,13 @@ export function update(dt) {
 
 export function draw() {
   print('AR Hand Tracking', 10, 10, 0x00ffcc);
+
+  if (trackingError) {
+    print('Camera or hand tracking unavailable', 10, 35, 0xffcc00);
+    print('Demo scene is running without AR input', 10, 55, 0xaaaaaa);
+    print(`Particles: ${particles.length}`, 10, 115, 0xaaaaaa);
+    return;
+  }
 
   const hands = getHandLandmarks();
   if (hands.length === 0) {

@@ -6,6 +6,39 @@
 //   4) Sacred Geometry — interlocking polyhedra + orbiting halos
 // Controls: 1-4 = scene, SPACE = reset, WASD = orbit, Q/E = zoom
 
+const { drawPanel, print, rgba8 } = nova64.draw;
+const {
+  clearScene,
+  createCube,
+  createCylinder,
+  createSphere,
+  createTorus,
+  removeMesh,
+  rotateMesh,
+  setMeshOpacity,
+  setPosition,
+  setRotation,
+  setScale,
+} = nova64.scene;
+const { setCameraFOV, setCameraPosition, setCameraTarget } = nova64.camera;
+const {
+  createGradientSkybox,
+  createPointLight,
+  setAmbientLight,
+  setFog,
+  setPointLightColor,
+  setPointLightPosition,
+} = nova64.light;
+const {
+  createParticleSystem,
+  enableBloom,
+  removeParticleSystem,
+  setParticleEmitter,
+  updateParticles,
+} = nova64.fx;
+const { key, keyp } = nova64.input;
+const { rotate } = nova64.util;
+
 const W = 640,
   H = 360;
 let scene = 0;

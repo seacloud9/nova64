@@ -152,14 +152,19 @@ export function Desktop() {
 
   const handleItemDoubleClick = (item: DesktopItem) => {
     console.log('Open:', item.name, item.path);
-    
+
     // Launch application if it's an app
     if (item.type === 'app') {
       novaContext.launchApp(item.id);
     }
-    // Launch demoscene for Nova HD disk
+    // Launch the Nova HD demoscene through the standard cart runner.
     else if (item.id === 'hd') {
-      novaContext.launchApp('demoscene');
+      novaContext.launchApp('cart-runner', {
+        path: '/examples/demoscene/code.js',
+        windowTitle: 'Nova HD - Demoscene',
+        width: 1100,
+        height: 750,
+      });
     }
     // Open Finder for other disk/directory items
     else if (item.type === 'disk' || item.type === 'directory') {
@@ -187,7 +192,7 @@ export function Desktop() {
         label: 'Desktop Background',
         icon: '🎨',
         submenu: [
-          ...BACKGROUND_PRESETS.map((preset) => ({
+          ...BACKGROUND_PRESETS.map(preset => ({
             label: preset.name,
             icon: backgroundType === 'preset' && presetId === preset.id ? '✓' : '',
             onClick: () => setPreset(preset.id),
@@ -203,7 +208,7 @@ export function Desktop() {
             label: 'HTML backgrounds are visual only',
             disabled: true,
           },
-          ...HTML_BACKGROUND_EXAMPLES.map((example) => ({
+          ...HTML_BACKGROUND_EXAMPLES.map(example => ({
             label: example.name,
             icon: backgroundType === 'iframe' && iframeUrl === example.url ? '✓' : '🪟',
             onClick: () => setIframeUrl(example.url),
@@ -215,7 +220,11 @@ export function Desktop() {
           },
         ],
       },
-      { label: 'Change Desktop Background...', icon: '⚙️', onClick: () => novaContext.launchApp('appearance') },
+      {
+        label: 'Change Desktop Background...',
+        icon: '⚙️',
+        onClick: () => novaContext.launchApp('appearance'),
+      },
       { type: 'separator', label: '' },
       { label: 'Get Info', icon: 'ℹ️', onClick: () => console.log('Get Info') },
     ]);
@@ -226,29 +235,50 @@ export function Desktop() {
     e.stopPropagation();
     UISounds.contextMenu();
     setSelectedItems(new Set([item.id]));
-    
+
     const menuItems: ContextMenuItem[] = [
       { label: 'Open', icon: '📂', onClick: () => handleItemDoubleClick(item) },
     ];
-    
+
     if (item.type === 'app') {
-      menuItems.push({ label: 'Show Info', icon: 'ℹ️', onClick: () => console.log('Info:', item.name) });
+      menuItems.push({
+        label: 'Show Info',
+        icon: 'ℹ️',
+        onClick: () => console.log('Info:', item.name),
+      });
     }
-    
+
     if (item.type === 'disk' || item.type === 'directory') {
-      menuItems.push({ label: 'Open in Finder', icon: '🔍', onClick: () => openFinderAt(item.path) });
+      menuItems.push({
+        label: 'Open in Finder',
+        icon: '🔍',
+        onClick: () => openFinderAt(item.path),
+      });
     }
-    
+
     menuItems.push({ type: 'separator', label: '' });
-    menuItems.push({ label: 'Get Info', icon: 'ℹ️', onClick: () => console.log('Get Info:', item.name) });
-    menuItems.push({ label: 'Duplicate', icon: '📋', disabled: item.type === 'disk', onClick: () => console.log('Duplicate') });
+    menuItems.push({
+      label: 'Get Info',
+      icon: 'ℹ️',
+      onClick: () => console.log('Get Info:', item.name),
+    });
+    menuItems.push({
+      label: 'Duplicate',
+      icon: '📋',
+      disabled: item.type === 'disk',
+      onClick: () => console.log('Duplicate'),
+    });
     menuItems.push({ label: 'Make Alias', icon: '🔗', onClick: () => console.log('Make Alias') });
-    
+
     if (item.id !== 'trash' && item.type !== 'disk') {
       menuItems.push({ type: 'separator', label: '' });
-      menuItems.push({ label: 'Move to Trash', icon: '🗑️', onClick: () => console.log('Trash:', item.name) });
+      menuItems.push({
+        label: 'Move to Trash',
+        icon: '🗑️',
+        onClick: () => console.log('Trash:', item.name),
+      });
     }
-    
+
     showContextMenu(e.clientX, e.clientY, menuItems);
   };
 
@@ -271,7 +301,7 @@ export function Desktop() {
           referrerPolicy="no-referrer"
         />
       )}
-      {items.map((item) => (
+      {items.map(item => (
         <div
           key={item.id}
           className={`desktop-icon ${selectedItems.has(item.id) ? 'selected' : ''}`}
@@ -279,9 +309,9 @@ export function Desktop() {
             left: item.x,
             top: item.y,
           }}
-          onClick={(e) => handleItemClick(item.id, e)}
+          onClick={e => handleItemClick(item.id, e)}
           onDoubleClick={() => handleItemDoubleClick(item)}
-          onContextMenu={(e) => handleItemContextMenu(e, item)}
+          onContextMenu={e => handleItemContextMenu(e, item)}
         >
           <div className="desktop-icon-image">{item.icon}</div>
           <div className="desktop-icon-label">{item.name}</div>

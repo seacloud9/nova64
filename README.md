@@ -6,7 +6,7 @@
 
 🌐 **Live Site:** [starcade9.github.io](https://starcade9.github.io/)
 
-[![Version](https://img.shields.io/badge/version-0.4.8-blue.svg)](https://github.com/seacloud9/nova64)
+[![Version](https://img.shields.io/badge/version-0.4.9-blue.svg)](https://github.com/seacloud9/nova64)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Tests](https://img.shields.io/badge/tests-passing-brightgreen.svg)](tests/)
 [![Build](https://img.shields.io/badge/build-passing-brightgreen.svg)](#)
@@ -33,6 +33,14 @@
 - **Focused Guardrail**: `tests/playwright/visual-regression.spec.js` includes a `tsl-showcase` Galaxy scene comparison so future shader/post-processing changes have a narrow parity check
 
 ---
+
+## 🌟 **Recent Updates (v0.4.9)**
+
+### 🛠️ **OS9 Shell Cart Launch Reliability**
+
+- **Game Studio Demo Loading**: Demo carts now fetch through the shared Nova64 runtime URL helpers and execute without colliding with modern `nova64.*` destructuring.
+- **Game Launcher Catalog**: Launcher cards now point to their intended demo carts, with tests guarding against missing or duplicate cart paths.
+- **Nova HD Demoscene**: The Nova HD demo opens through the standard cart runner instead of a partial custom runtime.
 
 ## 🌟 **Recent Updates (v0.4.8)**
 
@@ -473,7 +481,12 @@ MIT — see `LICENSE` for details.
 
 ## Version History
 
-### v0.4.8 (Current)
+### v0.4.9 (Current)
+
+- Fixed OS9 Shell Game Studio, Game Launcher, and Nova HD cart launch regressions
+- Added regression tests for cart URL helpers, Game Launcher catalog paths, and Game Studio cart execution
+
+### v0.4.8
 
 - **hyperNova**: HyperCard/Flash-inspired authoring tool with card stacks, NovaTalk scripting, symbol library, keyframe timelines, and GSAP tweens
 - **Internationalization (i18n)**: Full EN/ES/JA support across main site, console, and OS9 shell with runtime `t()` API for carts

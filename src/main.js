@@ -43,6 +43,7 @@ import { tweenApi } from '../runtime/tween.js';
 import { DebugPanel } from '../runtime/debug-panel.js';
 import { NAMESPACE_MAP, buildNamespace } from '../runtime/namespace.js';
 import { registerCartResetHook } from '../runtime/cart-reset.js';
+import { createStudioCartFunction } from '../runtime/studio-executor.js';
 import * as THREE from 'three';
 
 const canvas = document.getElementById('screen');
@@ -691,19 +692,8 @@ window.addEventListener('message', async event => {
       // Execute the new code
       const userCode = event.data.code;
 
-      // Dynamically build param list from nova64api so ALL Nova64 APIs are local variables
-      // in user code — avoids window.print and other globalThis clobbering issues.
-      const _apiNames = Object.keys(nova64api).filter(
-        k => /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(k) && k.length >= 3
-      );
-      const _apiValues = _apiNames.map(k => nova64api[k]);
-      const gameFunction = new Function(
-        ..._apiNames,
-        userCode +
-          '\n; return { init: typeof init !== "undefined" ? init : null, update: typeof update !== "undefined" ? update : null, draw: typeof draw !== "undefined" ? draw : null, render: typeof render !== "undefined" ? render : null };'
-      );
-
-      const gameFunctions = gameFunction(..._apiValues);
+      const gameFunction = createStudioCartFunction(userCode);
+      const gameFunctions = gameFunction();
 
       // Call init() if defined (modern Nova64 carts use init for one-time setup)
       if (gameFunctions.init && typeof gameFunctions.init === 'function') {

@@ -1025,6 +1025,16 @@ async function main() {
         }
         break;
 
+      case 'studio':
+        console.log('💻 Running Game Studio Executor Tests...');
+        try {
+          const { runStudioExecutorTests } = await import('./test-studio-executor.js');
+          results.push(await runStudioExecutorTests());
+        } catch (error) {
+          console.log('⚠️  Game Studio executor tests not available:', error.message);
+        }
+        break;
+
       case 'all':
       default:
         console.log('🚀 Running All Tests...\n');
@@ -1119,6 +1129,14 @@ async function main() {
           results.push(await runAdapterConformanceSuite());
         } catch (error) {
           console.log('⚠️  Adapter conformance tests not available:', error.message);
+        }
+
+        console.log('\n1️⃣5️⃣ Game Studio Executor Tests:');
+        try {
+          const { runStudioExecutorTests } = await import('./test-studio-executor.js');
+          results.push(await runStudioExecutorTests());
+        } catch (error) {
+          console.log('⚠️  Game Studio executor tests not available:', error.message);
         }
         break;
     }

@@ -2,7 +2,13 @@
 
 All notable changes to Nova64 are documented here.
 
-## v0.4.8 (Current)
+## v0.4.9 (Current)
+
+- **OS9 Shell cart launching**: Fixed Game Studio demo loading, Game Launcher cart routing, and Nova HD demoscene startup to use the standard cart runner path.
+- **Game Studio executor**: Removed API parameter injection that collided with modern `nova64.*` destructuring patterns.
+- **Regression coverage**: Added tests for OS shell cart URL helpers, Game Launcher catalog paths, and Game Studio cart execution.
+
+## v0.4.8
 
 - **hyperNova**: HyperCard/Flash-inspired authoring tool with card stacks, NovaTalk scripting, symbol library, keyframe timelines, and GSAP tweens
 - **Internationalization (i18n)**: Full EN/ES/JA support across main site, console, and OS9 shell with runtime `t()` API for carts

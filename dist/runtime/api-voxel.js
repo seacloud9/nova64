@@ -5578,7 +5578,11 @@ export function voxelApi(gpu) {
       if (gpu?.enableNoaAdapter) {
         return await gpu.enableNoaAdapter(options);
       }
-      return { initialized: false, active: false, error: 'NOA adapter not available on this backend' };
+      return {
+        initialized: false,
+        active: false,
+        error: 'NOA adapter not available on this backend',
+      };
     },
     disableNoaAdapter: function () {
       if (gpu?.disableNoaAdapter) {

@@ -4,7 +4,7 @@ Shared instructions for coding agents working in the Nova64 repository.
 
 This file is the canonical cross-agent guide for the repo. It is based primarily on the current `CLAUDE.md`, then cross-checked against `package.json`, `README.md`, and the live repository structure so it reflects the current Nova64 state more accurately than older tool-specific docs.
 
-Current package version: `0.4.8`.
+Current package version: `0.4.9`.
 
 ## 🖥️ **Windows Development Environment**
 

@@ -1,5 +1,12 @@
-import { describe, it, expect } from 'vitest';
-import { processCartCode } from '../utils/cartCode';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import {
+  fetchCartCode,
+  getCartRunnerUrl,
+  getNovaBaseUrl,
+  getNovaResourceUrl,
+  normalizeCartPath,
+  processCartCode,
+} from '../utils/cartCode';
 
 describe('processCartCode', () => {
   it('strips export function declarations', () => {
@@ -84,7 +91,84 @@ describe('processCartCode', () => {
     ].join('\n');
     const result = processCartCode(input);
     expect(result).toBe(
-      ['function init() {}', 'async function load() {}', 'const VERSION = 1;', 'let lives = 3;'].join('\n')
+      [
+        'function init() {}',
+        'async function load() {}',
+        'const VERSION = 1;',
+        'let lives = 3;',
+      ].join('\n')
     );
+  });
+});
+
+describe('cart runtime URL helpers', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('routes local OS shell development to the Nova64 runtime server', () => {
+    vi.stubGlobal('window', {
+      location: { hostname: 'localhost', port: '3000', origin: 'http://localhost:3000' },
+    });
+
+    expect(getNovaBaseUrl()).toBe('http://localhost:5173');
+    expect(getNovaResourceUrl('/examples/demoscene/code.js')).toBe(
+      'http://localhost:5173/examples/demoscene/code.js'
+    );
+  });
+
+  it('uses the current origin outside local development', () => {
+    vi.stubGlobal('window', {
+      location: {
+        hostname: 'starcade9.github.io',
+        port: '',
+        origin: 'https://starcade9.github.io',
+      },
+    });
+
+    expect(getNovaBaseUrl()).toBe('https://starcade9.github.io');
+    expect(getNovaResourceUrl('/examples/demoscene/code.js')).toBe(
+      'https://starcade9.github.io/examples/demoscene/code.js'
+    );
+  });
+
+  it('normalizes relative cart paths and preserves absolute cart URLs', () => {
+    expect(normalizeCartPath('examples/minecraft-demo/code.js')).toBe(
+      '/examples/minecraft-demo/code.js'
+    );
+    expect(normalizeCartPath('/examples/demoscene/code.js')).toBe('/examples/demoscene/code.js');
+    expect(normalizeCartPath('')).toBe('/examples/hello-world/code.js');
+    expect(normalizeCartPath('https://cdn.example.test/cart.js')).toBe(
+      'https://cdn.example.test/cart.js'
+    );
+  });
+
+  it('encodes selected cart paths into cart-runner.html without changing carts', () => {
+    vi.stubGlobal('window', {
+      location: { hostname: 'localhost', port: '3000', origin: 'http://localhost:3000' },
+    });
+
+    const url = getCartRunnerUrl('/examples/minecraft-demo/code.js');
+    expect(new URL(url).origin).toBe('http://localhost:5173');
+    expect(new URL(url).pathname).toBe('/cart-runner.html');
+    expect(new URL(url).searchParams.get('path')).toBe('/examples/minecraft-demo/code.js');
+  });
+
+  it('fetchCartCode loads carts from the runtime server', async () => {
+    vi.stubGlobal('window', {
+      location: { hostname: 'localhost', port: '3000', origin: 'http://localhost:3000' },
+    });
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      text: async () => 'export function init() {}',
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(fetchCartCode('/examples/demoscene/code.js')).resolves.toBe(
+      'export function init() {}'
+    );
+    expect(fetchMock).toHaveBeenCalledWith('http://localhost:5173/examples/demoscene/code.js');
   });
 });

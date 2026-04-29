@@ -1,26 +1,24 @@
 import { createRoot } from 'react-dom/client';
 import type { Nova64App } from '../types';
 import { novaContext } from '../os/context';
-
-function getBaseUrl(): string {
-  // In dev, os9-shell runs on its own server while Nova64's Vite server
-  // is on 5173. import.meta.env.DEV is tree-shaken to false in production.
-  if (import.meta.env.DEV) {
-    return 'http://localhost:5173';
-  }
-  return window.location.origin;
-}
+import { getCartRunnerUrl, normalizeCartPath } from '../utils/cartCode';
 
 interface CartFrameProps {
   path: string;
 }
 
 function CartFrame({ path }: CartFrameProps) {
-  const src = `${getBaseUrl()}/cart-runner.html?path=${encodeURIComponent(path)}`;
+  const src = getCartRunnerUrl(path);
   return (
     <iframe
       src={src}
-      style={{ width: '100%', height: '100%', border: 'none', display: 'block', background: '#000' }}
+      style={{
+        width: '100%',
+        height: '100%',
+        border: 'none',
+        display: 'block',
+        background: '#000',
+      }}
       allow="fullscreen"
       title="Nova64 Cart"
     />
@@ -33,8 +31,8 @@ const cartRunnerApp: Nova64App = {
   icon: '🎮',
 
   mount(container, _ctx, args) {
-    const a = (args && typeof args === 'object') ? args as Record<string, unknown> : {};
-    const path = typeof a.path === 'string' ? a.path : '/examples/hello-world/code.js';
+    const a = args && typeof args === 'object' ? (args as Record<string, unknown>) : {};
+    const path = normalizeCartPath(typeof a.path === 'string' ? a.path : undefined);
     const root = createRoot(container);
     root.render(<CartFrame path={path} />);
     // Store root for cleanup

@@ -245,6 +245,20 @@ export function applyBabylonMaterialCompatibility(material) {
 
   material[MATERIAL_COMPAT] = true;
 
+  // Ensure needAlphaBlendingForMesh exists - Babylon.js rendering requires this method
+  // This is a safeguard for materials that may have been cloned or created without
+  // proper prototype chain (e.g., plain objects mistakenly used as materials)
+  if (typeof material.needAlphaBlendingForMesh !== 'function') {
+    material.needAlphaBlendingForMesh = function () {
+      return (this.alpha ?? 1) < 1 || !!this.opacityTexture || this.alphaMode > 0;
+    };
+  }
+  if (typeof material.needAlphaTesting !== 'function') {
+    material.needAlphaTesting = function () {
+      return this.alphaMode === Constants.MATERIAL_ALPHATEST;
+    };
+  }
+
   if (colorKey) {
     applyBabylonColorCompatibility(material[colorKey]);
     if (!('color' in material)) {

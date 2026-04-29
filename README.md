@@ -99,7 +99,7 @@
 
 - **Minecraft-Style Worlds**: Full voxel engine with chunk-based terrain, biomes, simplex noise generation
 - **Deterministic Default Seeds**: Shared voxel carts now derive stable default world seeds so Three.js and Babylon render the same terrain unless a cart opts into a custom seed
-- **Babylon NOA Probe Seam**: Babylon voxel parity work now includes an experimental `noa-engine` probe path for future backend-specific investigation without replacing Nova64's shared voxel API yet
+- **Babylon NOA Adapter Seam**: Babylon voxel parity work now includes guarded `noa-engine` probe and adapter paths for backend-specific investigation without replacing Nova64's shared voxel API
 - **Block System**: Extensible block types with custom shapes and bounding boxes
 - **Fluid Simulation**: Water/lava fluid dynamics with source/drain mechanics
 - **Entity System**: ECS-style entities with archetypes, pathfinding, health, and spatial queries

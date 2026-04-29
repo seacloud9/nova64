@@ -11,11 +11,23 @@ import {
 export function createBabylonLightsApi(self) {
   return {
     setAmbientLight(color = 0x404040, intensity = 1) {
-      const ambient = hexToColor3(color).scale(Math.max(intensity, 0));
-      if (self.scene) self.scene.ambientColor = ambient;
-      if (!self._hemisphereLight) return;
-      self._hemisphereLight.diffuse = hexToColor3(color);
-      self._hemisphereLight.intensity = intensity * 0.8;
+      // Babylon lighting needs to be boosted to match Three.js visual parity
+      // Three.js uses AmbientLight + HemisphereLight separately
+      const col3 = hexToColor3(color);
+      const adjustedIntensity = Math.max(intensity, 0);
+
+      // Set scene ambient color (affects materials with ambientColor)
+      if (self.scene) {
+        self.scene.ambientColor = col3.scale(adjustedIntensity);
+      }
+
+      // Update hemisphere light to provide fill lighting
+      if (self._hemisphereLight) {
+        self._hemisphereLight.diffuse = col3;
+        // Boost hemisphere intensity to compensate for Babylon's different lighting model
+        self._hemisphereLight.intensity = adjustedIntensity * 1.2;
+        self._hemisphereLight.groundColor = col3.scale(0.3);
+      }
     },
 
     setLightDirection(x, y, z) {
@@ -84,7 +96,8 @@ export function createBabylonLightsApi(self) {
         self._mainLight ?? new DirectionalLight('main', new Vector3(-1, -2, -1), self.scene);
       self._mainLight = light;
       light.diffuse = hexToColor3(color);
-      light.intensity = intensity;
+      // Boost intensity to match Three.js lighting model
+      light.intensity = intensity * 1.5;
       applyBabylonLightCompatibility(light);
 
       if (Array.isArray(direction) && direction.length >= 3) {

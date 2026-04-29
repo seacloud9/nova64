@@ -13,6 +13,7 @@ import {
 import '@babylonjs/core/Helpers/sceneHelpers.js';
 
 import { normalizeColorValue } from './common.js';
+import { applyBabylonMaterialCompatibility, applyBabylonMeshCompatibility } from './compat.js';
 
 function toColor4(hex, alpha = 1) {
   const value = normalizeColorValue(hex);
@@ -46,6 +47,8 @@ function createSkySphere(self, name, texture) {
   material.fogEnabled = false;
 
   mesh.material = material;
+  applyBabylonMaterialCompatibility(material);
+  applyBabylonMeshCompatibility(mesh);
   mesh.isPickable = false;
   mesh.infiniteDistance = true;
   mesh.ignoreCameraMaxZ = true;
@@ -77,6 +80,8 @@ function createCubeSkyMesh(self, texture) {
   material.fogEnabled = false;
 
   mesh.material = material;
+  applyBabylonMaterialCompatibility(material);
+  applyBabylonMeshCompatibility(mesh);
   mesh.isPickable = false;
   mesh.infiniteDistance = true;
   mesh.ignoreCameraMaxZ = true;

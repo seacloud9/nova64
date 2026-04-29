@@ -126,6 +126,82 @@ export function effectsApi(gpu) {
   const camera = gpu.getCamera();
   const renderer = gpu.getRenderer();
 
+  // Check if this is Babylon.js backend - if so, delegate to gpu's built-in effects
+  // Babylon.js Engine has 'scenes' array and 'getRenderingCanvas' method
+  // Three.js WebGLRenderer has 'domElement' property
+  const isBabylon =
+    !renderer ||
+    renderer.scenes !== undefined ||
+    typeof renderer.getRenderingCanvas === 'function' ||
+    renderer.constructor?.name === 'Engine' ||
+    renderer.constructor?.name?.includes?.('Engine') ||
+    !renderer.domElement;
+
+  if (isBabylon) {
+    // Babylon backend has its own effects implementation in effects.js
+    // Return a wrapper that delegates to the gpu's effect functions
+    return {
+      exposeTo(target) {
+        // These will be provided by gpu.exposeTo() from GpuBabylon's effects module
+        // We just ensure they're available in the target namespace
+        const babylonEffects = [
+          'enableBloom',
+          'disableBloom',
+          'setBloomStrength',
+          'setBloomRadius',
+          'setBloomThreshold',
+          'enableFXAA',
+          'disableFXAA',
+          'enableChromaticAberration',
+          'disableChromaticAberration',
+          'enableVignette',
+          'disableVignette',
+          'enableGlitch',
+          'disableGlitch',
+          'setGlitchIntensity',
+          'enableRetroEffects',
+          'disableRetroEffects',
+          'isEffectsEnabled',
+          'enableSharpen',
+          'disableSharpen',
+          'enableGrain',
+          'disableGrain',
+          // Custom shader materials (needed by Wizardry, etc.)
+          'createShaderMaterial',
+          'updateShaderUniform',
+        ];
+
+        // Only copy functions that exist on gpu and aren't already on target
+        for (const key of babylonEffects) {
+          if (typeof gpu[key] === 'function' && !(key in target)) {
+            target[key] = gpu[key].bind(gpu);
+          }
+        }
+
+        // Provide a no-op renderEffects for compatibility
+        if (!target.renderEffects) {
+          target.renderEffects = () => {
+            // Babylon handles effects in its own render loop
+          };
+        }
+      },
+
+      // Babylon handles effect updates via gpu.updateEffects() called in its render loop
+      update(deltaTime) {
+        if (typeof gpu.updateEffects === 'function') {
+          gpu.updateEffects(deltaTime);
+        }
+      },
+
+      // Babylon handles rendering via its own scene.render()
+      render() {
+        // No-op: Babylon effects are applied in the DefaultRenderingPipeline
+      },
+    };
+  }
+
+  // === THREE.JS POST-PROCESSING IMPLEMENTATION ===
+
   // Post-processing composer
   let composer = null;
   let renderPass = null;
@@ -145,18 +221,6 @@ export function effectsApi(gpu) {
   // Initialize post-processing
   function initPostProcessing() {
     if (composer) return; // Already initialized
-
-    // CRITICAL: Check if renderer is Babylon.js Engine (doesn't support Three.js post-processing)
-    // Babylon.js Engine has 'scenes' property, Three.js WebGLRenderer has 'domElement'
-    if (
-      !renderer ||
-      renderer.scenes ||
-      renderer.constructor.name === 'Engine' ||
-      !renderer.domElement
-    ) {
-      logger.warn('⚠️ Post-processing effects not supported with Babylon.js backend');
-      return; // Skip initialization for Babylon.js
-    }
 
     composer = new EffectComposer(renderer);
 
@@ -584,8 +648,25 @@ export function effectsApi(gpu) {
     `,
   };
 
+  // Detect if running on Babylon.js backend
+  function isBabylonBackend() {
+    return (
+      !renderer || renderer.scenes || renderer.constructor.name === 'Engine' || !renderer.domElement
+    );
+  }
+
   // Create material with custom shader
   function createShaderMaterial(shaderName, customUniforms = {}) {
+    // Delegate to Babylon.js backend if applicable
+    if (isBabylonBackend()) {
+      // The Babylon backend exposes createShaderMaterial on the gpu object
+      if (typeof gpu.createShaderMaterial === 'function') {
+        return gpu.createShaderMaterial(shaderName, customUniforms);
+      }
+      logger.warn(`Shader material '${shaderName}' not available with Babylon.js backend`);
+      return null;
+    }
+
     let shader;
 
     switch (shaderName) {
@@ -630,6 +711,14 @@ export function effectsApi(gpu) {
 
   // Update shader uniforms
   function updateShaderUniform(shaderId, uniformName, value) {
+    // Delegate to Babylon.js backend if applicable
+    if (isBabylonBackend()) {
+      if (typeof gpu.updateShaderUniform === 'function') {
+        return gpu.updateShaderUniform(shaderId, uniformName, value);
+      }
+      return false;
+    }
+
     const material = customShaders.get(shaderId);
     if (material && material.uniforms[uniformName]) {
       material.uniforms[uniformName].value = value;

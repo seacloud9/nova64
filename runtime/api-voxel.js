@@ -5573,6 +5573,32 @@ export function voxelApi(gpu) {
     getNoaPrototypeStatus,
     probeNoaPrototype,
 
+    // NOA adapter control (Babylon.js only)
+    enableNoaAdapter: async function (options = {}) {
+      if (gpu?.enableNoaAdapter) {
+        return await gpu.enableNoaAdapter(options);
+      }
+      return {
+        initialized: false,
+        active: false,
+        error: 'NOA adapter not available on this backend',
+      };
+    },
+    disableNoaAdapter: function () {
+      if (gpu?.disableNoaAdapter) {
+        gpu.disableNoaAdapter();
+      }
+    },
+    getNoaAdapterStatus: function () {
+      if (gpu?.getNoaAdapterStatus) {
+        return gpu.getNoaAdapterStatus();
+      }
+      return { initialized: false, active: false, error: 'NOA adapter not available' };
+    },
+    isNoaActive: function () {
+      return gpu?.isNoaActive?.() ?? false;
+    },
+
     // os9-shell compatibility aliases
     createVoxelEngine: configureWorld,
     voxelSet: setBlock,
@@ -5640,6 +5666,27 @@ export function voxelApi(gpu) {
       g.removeVoxelFluidSource = removeFluidSource;
       g.getVoxelFluidLevel = getFluidLevelWorld;
       g.importVoxModel = importVoxModel;
+      // NOA adapter control
+      g.enableVoxelNoaAdapter = async function (options = {}) {
+        if (gpu?.enableNoaAdapter) {
+          return await gpu.enableNoaAdapter(options);
+        }
+        return { initialized: false, active: false, error: 'NOA adapter not available' };
+      };
+      g.disableVoxelNoaAdapter = function () {
+        if (gpu?.disableNoaAdapter) {
+          gpu.disableNoaAdapter();
+        }
+      };
+      g.getVoxelNoaAdapterStatus = function () {
+        if (gpu?.getNoaAdapterStatus) {
+          return gpu.getNoaAdapterStatus();
+        }
+        return { initialized: false, active: false, error: 'NOA adapter not available' };
+      };
+      g.isVoxelNoaActive = function () {
+        return gpu?.isNoaActive?.() ?? false;
+      };
     },
   };
 }

@@ -101,6 +101,17 @@
     "vite": "^5.4.0",
     "zustand": "^5.0.11"
   },
+  "optionalDependencies": {
+    "noa-engine": "^0.33.0"
+  },
+  "peerDependencies": {
+    "noa-engine": ">=0.33.0"
+  },
+  "peerDependenciesMeta": {
+    "noa-engine": {
+      "optional": true
+    }
+  },
   "devDependencies": {
     "@playwright/cli": "^0.1.8",
     "@playwright/test": "^1.59.1",

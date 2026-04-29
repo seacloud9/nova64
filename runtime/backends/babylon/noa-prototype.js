@@ -1,5 +1,6 @@
 // runtime/backends/babylon/noa-prototype.js
 // Experimental NOA probe for Babylon voxel parity work.
+// Now integrates with noa-adapter.js for full NOA engine support.
 
 const NOA_MODULE_SPECIFIER = 'noa-engine';
 const NOA_STORAGE_KEY = 'nova64:noaVoxel';
@@ -10,10 +11,13 @@ const NOA_AGENT_NOTES = Object.freeze([
   'Treat this as a Babylon-only prototype seam until chunk meshing and entity parity are proven.',
   'Use minecraft-demo and voxel-creatures first when validating any NOA-backed experiment.',
   'Prefer borrowing NOA chunk/world ideas incrementally before considering deeper ownership changes.',
+  'The noa-adapter.js provides full NOA engine integration when noa-engine is installed.',
+  'NOA features are backwards-compatible: carts work the same whether NOA is active or not.',
 ]);
 
 const NOA_NEXT_STEP_FILES = Object.freeze([
   'runtime/backends/babylon/noa-prototype.js',
+  'runtime/backends/babylon/noa-adapter.js',
   'runtime/backends/babylon/voxel.js',
   'runtime/api-voxel.js',
   'tests/playwright/wad-vox-regression.spec.js',

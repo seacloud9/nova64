@@ -4,6 +4,7 @@ import { PBRMaterial } from '@babylonjs/core';
 
 import { warnUnsupportedBabylonFeature } from './capabilities.js';
 import { hexToColor3 } from './common.js';
+import { applyBabylonMaterialCompatibility } from './compat.js';
 
 function clamp01(value, fallback) {
   if (!Number.isFinite(value)) return fallback;
@@ -38,7 +39,7 @@ function ensureOwnedPbrMaterial(self, mesh) {
     if (current._nova64OwnedByMesh === true) return current;
     const cloned = current.clone(`${current.name ?? mesh.name ?? 'nova64'}_pbr`);
     cloned._nova64OwnedByMesh = true;
-    mesh.material = cloned;
+    mesh.material = applyBabylonMaterialCompatibility(cloned);
     return cloned;
   }
 

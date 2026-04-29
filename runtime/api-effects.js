@@ -166,6 +166,9 @@ export function effectsApi(gpu) {
           'disableSharpen',
           'enableGrain',
           'disableGrain',
+          // Custom shader materials (needed by Wizardry, etc.)
+          'createShaderMaterial',
+          'updateShaderUniform',
         ];
 
         // Only copy functions that exist on gpu and aren't already on target
@@ -181,6 +184,18 @@ export function effectsApi(gpu) {
             // Babylon handles effects in its own render loop
           };
         }
+      },
+
+      // Babylon handles effect updates via gpu.updateEffects() called in its render loop
+      update(deltaTime) {
+        if (typeof gpu.updateEffects === 'function') {
+          gpu.updateEffects(deltaTime);
+        }
+      },
+
+      // Babylon handles rendering via its own scene.render()
+      render() {
+        // No-op: Babylon effects are applied in the DefaultRenderingPipeline
       },
     };
   }

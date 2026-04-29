@@ -120,7 +120,7 @@ function hashText(text) {
 }
 
 function createSeededRandom(seed) {
-  let state = (seed >>> 0) || 1;
+  let state = seed >>> 0 || 1;
   return function nextRandom() {
     state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
     return state / 4294967296;
@@ -349,10 +349,7 @@ export function update(dt = 1 / 60) {
     const nextSpawnDelay = ambientMobsActivated
       ? PERIODIC_MOB_SPAWN_INTERVAL_SECONDS
       : INITIAL_MOB_SPAWN_DELAY_SECONDS;
-    if (
-      mobSpawnTimer >= nextSpawnDelay &&
-      getVoxelEntityCount() < 12
-    ) {
+    if (mobSpawnTimer >= nextSpawnDelay && getVoxelEntityCount() < 12) {
       spawnMobs(player.x, player.z);
       mobSpawnTimer = 0;
       ambientMobsActivated = true;

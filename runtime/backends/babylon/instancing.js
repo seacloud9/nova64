@@ -11,6 +11,7 @@ import {
 } from '@babylonjs/core';
 
 import { hexToColor3, normalizePosition, normalizeVectorArgs } from './common.js';
+import { applyBabylonMaterialCompatibility, applyBabylonMeshCompatibility } from './compat.js';
 
 function createLodLevelMesh(self, lodId, levelIndex, level = {}) {
   const { shape = 'cube', size = 1, color = 0xffffff, options = {} } = level;
@@ -144,6 +145,8 @@ export function createBabylonInstancingApi(self) {
       }
 
       baseMesh.material = mat;
+      applyBabylonMaterialCompatibility(mat);
+      applyBabylonMeshCompatibility(baseMesh);
       baseMesh.isVisible = false;
       baseMesh.thinInstanceEnablePicking = false;
 

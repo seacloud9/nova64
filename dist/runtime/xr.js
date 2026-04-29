@@ -59,7 +59,11 @@ export function xrModule(gpu) {
   }
 
   function hasBabylonScene() {
-    return backendName === 'babylon' && !!scene && typeof scene.createDefaultXRExperienceAsync === 'function';
+    return (
+      backendName === 'babylon' &&
+      !!scene &&
+      typeof scene.createDefaultXRExperienceAsync === 'function'
+    );
   }
 
   function hasNativeWebXR() {

@@ -29,6 +29,10 @@ enum class HandleKind : uint8_t {
     MESH_INSTANCE = 3, // godot::MeshInstance3D (Node3D in scene tree)
     CAMERA = 4,     // godot::Camera3D (Node3D in scene tree)
     LIGHT = 5,      // godot::Light3D subclass (Node3D in scene tree)
+    TEXTURE = 6,    // godot::Texture2D (Ref-counted Resource)
+    AUDIO_STREAM = 7, // godot::AudioStream (Ref-counted Resource)
+    AUDIO_PLAYER = 8, // godot::AudioStreamPlayer (Node in scene tree)
+    MULTI_MESH = 9,   // godot::MultiMeshInstance3D (Node3D in scene tree)
 };
 
 struct HandleEntry {

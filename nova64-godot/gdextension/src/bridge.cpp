@@ -19,7 +19,14 @@
 #include <godot_cpp/classes/camera3d.hpp>
 #include <godot_cpp/classes/directional_light3d.hpp>
 #include <godot_cpp/classes/file_access.hpp>
+#include <godot_cpp/classes/image.hpp>
+#include <godot_cpp/classes/image_texture.hpp>
 #include <godot_cpp/classes/input.hpp>
+#include <godot_cpp/classes/audio_stream.hpp>
+#include <godot_cpp/classes/audio_stream_player.hpp>
+#include <godot_cpp/classes/multi_mesh.hpp>
+#include <godot_cpp/classes/multi_mesh_instance3d.hpp>
+#include <godot_cpp/classes/resource_loader.hpp>
 #include <godot_cpp/classes/mesh_instance3d.hpp>
 #include <godot_cpp/classes/plane_mesh.hpp>
 #include <godot_cpp/classes/sphere_mesh.hpp>
@@ -45,7 +52,7 @@ using nova64::HandleTable;
 namespace {
 
 constexpr const char *ADAPTER_CONTRACT_VERSION = "1.0.0";
-constexpr const char *GODOT_ADAPTER_VERSION = "0.3.0";
+constexpr const char *GODOT_ADAPTER_VERSION = "0.4.0";
 constexpr const char *HOST_OPAQUE_KEY = "__nova64_host_ptr";
 
 Nova64Host *get_host_from_context(JSContext *ctx) {
@@ -372,6 +379,13 @@ Dictionary Nova64Host::get_capabilities() const {
     features.append("camera.setActive");
     features.append("light.createDirectional");
     features.append("input.poll");
+    features.append("texture.createFromImage");
+    features.append("texture.destroy");
+    features.append("audio.loadStream");
+    features.append("audio.play");
+    features.append("audio.stop");
+    features.append("mesh.createInstanced");
+    features.append("instance.setTransform");
     caps["features"] = features;
 
     return caps;
@@ -397,6 +411,13 @@ Dictionary Nova64Host::call_bridge(const String &p_method, const Dictionary &p_p
     if (p_method == "camera.setActive")         return _cmd_camera_set_active(p_payload);
     if (p_method == "light.createDirectional")  return _cmd_light_create_directional(p_payload);
     if (p_method == "input.poll")               return _cmd_input_poll(p_payload);
+    if (p_method == "texture.createFromImage")  return _cmd_texture_create_from_image(p_payload);
+    if (p_method == "texture.destroy")           return _cmd_texture_destroy(p_payload);
+    if (p_method == "audio.loadStream")          return _cmd_audio_load_stream(p_payload);
+    if (p_method == "audio.play")                return _cmd_audio_play(p_payload);
+    if (p_method == "audio.stop")                return _cmd_audio_stop(p_payload);
+    if (p_method == "mesh.createInstanced")      return _cmd_mesh_create_instanced(p_payload);
+    if (p_method == "instance.setTransform")     return _cmd_instance_set_transform(p_payload);
 
     return make_error("unsupported_method", p_method);
 }
@@ -411,6 +432,14 @@ Dictionary Nova64Host::_cmd_material_create(const Dictionary &p) {
     if (p.has("roughness")) mat->set_roughness(static_cast<float>(static_cast<double>(p["roughness"])));
     if (p.has("unshaded") && static_cast<bool>(p["unshaded"])) {
         mat->set_shading_mode(BaseMaterial3D::SHADING_MODE_UNSHADED);
+    }
+    if (p.has("albedoTexture")) {
+        uint32_t tex_id = handle_id_from_payload(p, "albedoTexture");
+        Ref<RefCounted> tex_res = _handles->get_resource(tex_id, HandleKind::TEXTURE);
+        Ref<Texture2D> tex = tex_res;
+        if (tex.is_valid()) {
+            mat->set_texture(BaseMaterial3D::TEXTURE_ALBEDO, tex);
+        }
     }
     uint32_t id = _handles->put_resource(HandleKind::MATERIAL, mat);
     return make_handle_result(id);
@@ -489,6 +518,7 @@ Node3D *Nova64Host::_resolve_node3d(uint32_t p_handle_id) const {
     if (Object *o = _handles->get_node(p_handle_id, HandleKind::MESH_INSTANCE)) return Object::cast_to<Node3D>(o);
     if (Object *o = _handles->get_node(p_handle_id, HandleKind::CAMERA))        return Object::cast_to<Node3D>(o);
     if (Object *o = _handles->get_node(p_handle_id, HandleKind::LIGHT))         return Object::cast_to<Node3D>(o);
+    if (Object *o = _handles->get_node(p_handle_id, HandleKind::MULTI_MESH))    return Object::cast_to<Node3D>(o);
     return nullptr;
 }
 
@@ -576,6 +606,156 @@ Dictionary Nova64Host::_cmd_input_poll(const Dictionary &) {
     out["axisY"]     = axis_y;
     out["mouseDown"] = in->is_mouse_button_pressed(MOUSE_BUTTON_LEFT);
     return out;
+}
+
+// ---- Texture upload ------------------------------------------------------
+
+Dictionary Nova64Host::_cmd_texture_create_from_image(const Dictionary &p) {
+    // Accepts either:
+    //   { path: "res://path/to/image.png" }            (loaded via ResourceLoader)
+    //   { width, height, pixels: [r,g,b,a, r,g,b,a, ...] }  (RGBA8 from JS)
+    Ref<ImageTexture> tex;
+
+    if (p.has("path")) {
+        String path = p["path"];
+        Ref<Resource> res = ResourceLoader::get_singleton()->load(path);
+        Ref<Texture2D> existing = res;
+        if (existing.is_valid()) {
+            uint32_t id = _handles->put_resource(HandleKind::TEXTURE, existing);
+            return make_handle_result(id);
+        }
+        Ref<Image> img = res;
+        if (img.is_null()) {
+            img = Image::load_from_file(path);
+        }
+        if (img.is_null() || img->is_empty()) {
+            return make_error("texture_load_failed", path);
+        }
+        tex = ImageTexture::create_from_image(img);
+    } else if (p.has("width") && p.has("height") && p.has("pixels")) {
+        int w = static_cast<int>(static_cast<int64_t>(p["width"]));
+        int h = static_cast<int>(static_cast<int64_t>(p["height"]));
+        Array pixels = p["pixels"];
+        const int expected = w * h * 4;
+        if (w <= 0 || h <= 0 || pixels.size() < expected) {
+            return make_error("texture_bad_payload", "pixels < w*h*4");
+        }
+        PackedByteArray bytes;
+        bytes.resize(expected);
+        for (int i = 0; i < expected; i++) {
+            int v = static_cast<int>(static_cast<int64_t>(pixels[i]));
+            if (v < 0) v = 0; else if (v > 255) v = 255;
+            bytes[i] = static_cast<uint8_t>(v);
+        }
+        Ref<Image> img = Image::create_from_data(w, h, false, Image::FORMAT_RGBA8, bytes);
+        if (img.is_null()) return make_error("texture_image_failed", "create_from_data");
+        tex = ImageTexture::create_from_image(img);
+    } else {
+        return make_error("texture_bad_payload", "need path or {width,height,pixels}");
+    }
+
+    if (tex.is_null()) return make_error("texture_alloc_failed", "");
+    uint32_t id = _handles->put_resource(HandleKind::TEXTURE, tex);
+    return make_handle_result(id);
+}
+
+Dictionary Nova64Host::_cmd_texture_destroy(const Dictionary &p) {
+    uint32_t id = handle_id_from_payload(p, "handle");
+    bool ok = _handles->destroy(id, false);
+    Dictionary out; out["ok"] = ok; return out;
+}
+
+// ---- Audio ---------------------------------------------------------------
+
+Dictionary Nova64Host::_cmd_audio_load_stream(const Dictionary &p) {
+    if (!p.has("path")) return make_error("audio_bad_payload", "path required");
+    String path = p["path"];
+    Ref<Resource> res = ResourceLoader::get_singleton()->load(path);
+    Ref<AudioStream> stream = res;
+    if (stream.is_null()) return make_error("audio_load_failed", path);
+    uint32_t id = _handles->put_resource(HandleKind::AUDIO_STREAM, stream);
+    return make_handle_result(id);
+}
+
+Dictionary Nova64Host::_cmd_audio_play(const Dictionary &p) {
+    uint32_t stream_id = handle_id_from_payload(p, "stream");
+    Ref<RefCounted> stream_res = _handles->get_resource(stream_id, HandleKind::AUDIO_STREAM);
+    Ref<AudioStream> stream = stream_res;
+    if (stream.is_null()) return make_error("audio_invalid_stream", "");
+
+    AudioStreamPlayer *player = memnew(AudioStreamPlayer);
+    add_child(player);
+    player->set_stream(stream);
+    if (p.has("volumeDb")) player->set_volume_db(static_cast<float>(static_cast<double>(p["volumeDb"])));
+    if (p.has("pitch"))    player->set_pitch_scale(static_cast<float>(static_cast<double>(p["pitch"])));
+    player->play();
+    uint32_t id = _handles->put_node(HandleKind::AUDIO_PLAYER, player);
+    return make_handle_result(id);
+}
+
+Dictionary Nova64Host::_cmd_audio_stop(const Dictionary &p) {
+    uint32_t id = handle_id_from_payload(p, "handle");
+    Object *obj = _handles->get_node(id, HandleKind::AUDIO_PLAYER);
+    AudioStreamPlayer *player = Object::cast_to<AudioStreamPlayer>(obj);
+    if (player) player->stop();
+    bool ok = _handles->destroy(id, true);
+    Dictionary out; out["ok"] = ok; return out;
+}
+
+// ---- Instancing ----------------------------------------------------------
+
+Dictionary Nova64Host::_cmd_mesh_create_instanced(const Dictionary &p) {
+    uint32_t geom_id = handle_id_from_payload(p, "geometry");
+    Ref<RefCounted> geom_res = _handles->get_resource(geom_id, HandleKind::GEOMETRY);
+    Ref<Mesh> mesh = geom_res;
+    if (mesh.is_null()) return make_error("instanced_invalid_geometry", "");
+
+    int count = p.has("count") ? static_cast<int>(static_cast<int64_t>(p["count"])) : 0;
+    if (count <= 0) return make_error("instanced_bad_count", "");
+
+    Ref<MultiMesh> mm; mm.instantiate();
+    mm->set_transform_format(MultiMesh::TRANSFORM_3D);
+    mm->set_use_colors(false);
+    mm->set_use_custom_data(false);
+    mm->set_mesh(mesh);
+    mm->set_instance_count(count);
+
+    MultiMeshInstance3D *node = memnew(MultiMeshInstance3D);
+    node->set_multimesh(mm);
+    add_child(node);
+
+    if (p.has("material")) {
+        uint32_t mat_id = handle_id_from_payload(p, "material");
+        Ref<RefCounted> mat_res = _handles->get_resource(mat_id, HandleKind::MATERIAL);
+        Ref<Material> mat = mat_res;
+        if (mat.is_valid()) node->set_material_override(mat);
+    }
+
+    uint32_t id = _handles->put_node(HandleKind::MULTI_MESH, node);
+    return make_handle_result(id);
+}
+
+Dictionary Nova64Host::_cmd_instance_set_transform(const Dictionary &p) {
+    uint32_t id = handle_id_from_payload(p, "handle");
+    Object *obj = _handles->get_node(id, HandleKind::MULTI_MESH);
+    MultiMeshInstance3D *node = Object::cast_to<MultiMeshInstance3D>(obj);
+    if (!node || node->get_multimesh().is_null()) {
+        return make_error("instance_invalid_handle", "");
+    }
+    int index = p.has("index") ? static_cast<int>(static_cast<int64_t>(p["index"])) : -1;
+    if (index < 0 || index >= node->get_multimesh()->get_instance_count()) {
+        return make_error("instance_bad_index", "");
+    }
+    Vector3 pos   = vec3_from_payload(p, "position", Vector3(0, 0, 0));
+    Vector3 rot   = vec3_from_payload(p, "rotation", Vector3(0, 0, 0));
+    Vector3 scale = vec3_from_payload(p, "scale",    Vector3(1, 1, 1));
+
+    Transform3D xf;
+    xf.basis = Basis::from_euler(rot);
+    xf.basis.scale(scale);
+    xf.origin = pos;
+    node->get_multimesh()->set_instance_transform(index, xf);
+    Dictionary out; out["ok"] = true; return out;
 }
 
 // ---- Cart loading (module mode) -----------------------------------------

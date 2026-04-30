@@ -94,6 +94,13 @@ private:
     Dictionary _cmd_camera_set_active(const Dictionary &p_payload);
     Dictionary _cmd_light_create_directional(const Dictionary &p_payload);
     Dictionary _cmd_input_poll(const Dictionary &p_payload);
+    Dictionary _cmd_texture_create_from_image(const Dictionary &p_payload);
+    Dictionary _cmd_texture_destroy(const Dictionary &p_payload);
+    Dictionary _cmd_audio_load_stream(const Dictionary &p_payload);
+    Dictionary _cmd_audio_play(const Dictionary &p_payload);
+    Dictionary _cmd_audio_stop(const Dictionary &p_payload);
+    Dictionary _cmd_mesh_create_instanced(const Dictionary &p_payload);
+    Dictionary _cmd_instance_set_transform(const Dictionary &p_payload);
 
     // Helpers
     Node3D *_resolve_node3d(uint32_t p_handle_id) const;

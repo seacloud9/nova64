@@ -1,5 +1,7 @@
-// 00-boot.js — mirror of tests/carts/00-boot.js. Run `scripts/sync-carts.sh`
-// from the nova64-godot/ directory to refresh.
+// 00-boot.js — synthetic test cart for the boot whitelist.
+//
+// G1 evaluates carts as ES modules and resolves init/update/draw from the
+// module namespace, so this cart uses standard `export function` syntax.
 
 export function init() {
   const result = engine.call('engine.init', {});
@@ -25,4 +27,5 @@ export function init() {
 }
 
 export function update(_dt) {}
+
 export function draw() {}

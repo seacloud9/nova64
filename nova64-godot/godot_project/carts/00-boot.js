@@ -1,11 +1,7 @@
-// 00-boot.js — copy of tests/carts/00-boot.js for the Godot project to load.
-//
-// During the G0 spike the runtime can only resolve carts under res://. The
-// canonical synthetic test cart lives at ../tests/carts/00-boot.js and a
-// future scripts/sync-carts.{sh,ps1} step will copy it here automatically.
-// Until that lands, keep this file in sync by hand.
+// 00-boot.js — mirror of tests/carts/00-boot.js. Run `scripts/sync-carts.sh`
+// from the nova64-godot/ directory to refresh.
 
-globalThis.init = function init() {
+export function init() {
   const result = engine.call('engine.init', {});
   if (!result || !result.capabilities) {
     throw new Error('00-boot: engine.init returned no capabilities');
@@ -26,7 +22,7 @@ globalThis.init = function init() {
     ' adapter=' + c.adapterVersion +
     ' features=' + c.features.length
   );
-};
+}
 
-globalThis.update = function update(_dt) {};
-globalThis.draw = function draw() {};
+export function update(_dt) {}
+export function draw() {}

@@ -1,12 +1,13 @@
 # nova64_host.gd
 # GDScript glue for the Nova64 host bridge.
-# Wires the engine-side Nova64Host node into Godot's _process / _ready
-# lifecycle so cart code (loaded via QuickJS) runs in lockstep with the
-# renderer.
+#
+# Loads a cart at _ready() and ticks it from _process(). The cart path is
+# exported so the editor (or another scene) can swap carts without touching
+# this script.
 
-extends Node
+extends Node3D
 
-const BOOT_CART := "res://carts/00-boot.js"
+@export_file("*.js") var cart_path: String = "res://carts/01-cube.js"
 
 @onready var host: Nova64Host = $Nova64Host
 
@@ -18,12 +19,8 @@ func _ready() -> void:
 	var caps: Dictionary = host.get_capabilities()
 	print("[nova64] booted host: ", caps)
 
-	# Sanity check — confirm the bridge round-trips through call_bridge().
-	var probe: Dictionary = host.call_bridge("host.getCapabilities", {})
-	print("[nova64] call_bridge probe: ", probe)
-
-	if not host.load_cart(BOOT_CART):
-		push_error("[nova64] failed to load boot cart " + BOOT_CART)
+	if not host.load_cart(cart_path):
+		push_error("[nova64] failed to load cart " + cart_path)
 		return
 
 	host.cart_init()

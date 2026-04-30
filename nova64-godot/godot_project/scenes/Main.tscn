@@ -2,7 +2,7 @@
 
 [ext_resource type="Script" path="res://scripts/nova64_host.gd" id="1_host_script"]
 
-[node name="Main" type="Node"]
+[node name="Main" type="Node3D"]
 script = ExtResource("1_host_script")
 
 [node name="Nova64Host" type="Nova64Host" parent="."]

@@ -18,7 +18,7 @@ Godot 4.x host bridge for Nova64 carts. See [`../GODOT.md`](../GODOT.md) for the
 
 ## Status
 
-- **G0 — Spike** in progress. GDExtension stub builds, QuickJS not yet linked.
+- **G1 — Spike** in progress. GDExtension links QuickJS, loads ES module carts, and exposes the first batch of adapter commands (material/geometry/mesh/transform/camera/light). The `01-cube.js` cart renders a rotating lit cube end-to-end.
 
 ## Quick Start (Linux/macOS, desktop)
 

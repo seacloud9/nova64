@@ -24,6 +24,7 @@ env = SConscript("third_party/godot-cpp/SConstruct")
 # ---------------------------------------------------------------------------
 nova64_sources = [
     "src/bridge.cpp",
+    "src/handles.cpp",
     "src/register_types.cpp",
 ]
 

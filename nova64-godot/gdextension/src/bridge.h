@@ -60,6 +60,10 @@ public:
     void cart_update(double p_delta);
     void cart_draw();
 
+    // Conformance harness hook: read a JS global by name and convert it to a
+    // Godot Variant. Returns null Variant if the global is undefined.
+    Variant read_global(const String &p_name);
+
 private:
     JSRuntime *_runtime = nullptr;
     JSContext *_context = nullptr;

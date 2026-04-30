@@ -365,6 +365,7 @@ void Nova64Host::_bind_methods() {
     ClassDB::bind_method(D_METHOD("cart_init"), &Nova64Host::cart_init);
     ClassDB::bind_method(D_METHOD("cart_update", "delta"), &Nova64Host::cart_update);
     ClassDB::bind_method(D_METHOD("cart_draw"), &Nova64Host::cart_draw);
+    ClassDB::bind_method(D_METHOD("read_global", "name"), &Nova64Host::read_global);
 }
 
 void Nova64Host::_ensure_runtime() {
@@ -993,3 +994,17 @@ void Nova64Host::_call_cart_fn(JSValue p_fn, double p_arg, bool p_pass_arg, cons
 void Nova64Host::cart_init()                  { _call_cart_fn(_cart_init_fn,   0.0,     false, "init"); }
 void Nova64Host::cart_update(double p_delta)  { _call_cart_fn(_cart_update_fn, p_delta, true,  "update"); }
 void Nova64Host::cart_draw()                  { _call_cart_fn(_cart_draw_fn,   0.0,     false, "draw"); }
+
+Variant Nova64Host::read_global(const String &p_name) {
+    if (!_context) return Variant();
+    CharString cs = p_name.utf8();
+    JSValue global = JS_GetGlobalObject(_context);
+    JSValue v = JS_GetPropertyStr(_context, global, cs.get_data());
+    Variant out;
+    if (!JS_IsUndefined(v) && !JS_IsNull(v)) {
+        out = js_to_variant(_context, v);
+    }
+    JS_FreeValue(_context, v);
+    JS_FreeValue(_context, global);
+    return out;
+}

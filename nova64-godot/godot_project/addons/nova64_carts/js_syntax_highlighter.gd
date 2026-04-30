@@ -60,6 +60,13 @@ func _get_name() -> String:
 func _get_supported_languages() -> PackedStringArray:
 	return PackedStringArray(["js"])
 
+# The textfile script editor matches highlighters by file extension via
+# _get_supported_extensions(); _get_supported_languages() alone is only used
+# for true Script-derived languages, so plain .js text files won't pick it
+# up unless this method is implemented too.
+func _get_supported_extensions() -> PackedStringArray:
+	return PackedStringArray(["js"])
+
 func _get_line_syntax_highlighting(p_line: int) -> Dictionary:
 	var te := get_text_edit()
 	if te != null and _ch.get_text_edit() != te:

@@ -45,6 +45,7 @@
 
 #include "quickjs.h"
 
+#include <chrono>
 #include <cstring>
 #include <string>
 
@@ -367,6 +368,7 @@ void Nova64Host::_bind_methods() {
     ClassDB::bind_method(D_METHOD("cart_update", "delta"), &Nova64Host::cart_update);
     ClassDB::bind_method(D_METHOD("cart_draw"), &Nova64Host::cart_draw);
     ClassDB::bind_method(D_METHOD("read_global", "name"), &Nova64Host::read_global);
+    ClassDB::bind_method(D_METHOD("get_perf_stats"), &Nova64Host::get_perf_stats);
 }
 
 void Nova64Host::_ensure_runtime() {
@@ -1057,8 +1059,68 @@ void Nova64Host::_call_cart_fn(JSValue p_fn, double p_arg, bool p_pass_arg, cons
 }
 
 void Nova64Host::cart_init()                  { _call_cart_fn(_cart_init_fn,   0.0,     false, "init"); }
-void Nova64Host::cart_update(double p_delta)  { _call_cart_fn(_cart_update_fn, p_delta, true,  "update"); }
-void Nova64Host::cart_draw()                  { _call_cart_fn(_cart_draw_fn,   0.0,     false, "draw"); }
+void Nova64Host::cart_update(double p_delta)  {
+    auto t0 = std::chrono::high_resolution_clock::now();
+    _call_cart_fn(_cart_update_fn, p_delta, true,  "update");
+    auto t1 = std::chrono::high_resolution_clock::now();
+    // Stash update sample; pair with the matching draw sample in cart_draw.
+    _perf_update_us[_perf_index] =
+        std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
+}
+void Nova64Host::cart_draw()                  {
+    auto t0 = std::chrono::high_resolution_clock::now();
+    _call_cart_fn(_cart_draw_fn,   0.0,     false, "draw");
+    auto t1 = std::chrono::high_resolution_clock::now();
+    uint64_t us = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
+    _record_perf_sample(_perf_update_us[_perf_index], us);
+}
+
+void Nova64Host::_record_perf_sample(uint64_t p_update_us, uint64_t p_draw_us) {
+    _perf_update_us[_perf_index] = p_update_us;
+    _perf_draw_us[_perf_index]   = p_draw_us;
+    _perf_index = (_perf_index + 1) % PERF_WINDOW;
+    _perf_frame_count++;
+
+    // Emit one perf line every PERF_WINDOW frames so adb logcat / pnpm bench
+    // can pick it up via grep without spamming the log.
+    if (_perf_frame_count > 0 && (_perf_frame_count % PERF_WINDOW) == 0) {
+        Dictionary s = get_perf_stats();
+        UtilityFunctions::print("[nova64-perf] frame_us avg=",
+            s["avg_frame_us"], " max=", s["max_frame_us"],
+            " update_us avg=", s["avg_update_us"], " max=", s["max_update_us"],
+            " draw_us avg=", s["avg_draw_us"], " max=", s["max_draw_us"],
+            " frames=", static_cast<int64_t>(_perf_frame_count));
+    }
+}
+
+Dictionary Nova64Host::get_perf_stats() const {
+    Dictionary out;
+    int n = static_cast<int>(_perf_frame_count < PERF_WINDOW ? _perf_frame_count : PERF_WINDOW);
+    if (n == 0) {
+        out["avg_update_us"] = 0; out["max_update_us"] = 0;
+        out["avg_draw_us"]   = 0; out["max_draw_us"]   = 0;
+        out["avg_frame_us"]  = 0; out["max_frame_us"]  = 0;
+        out["frame_count"]   = 0;
+        return out;
+    }
+    uint64_t sum_u = 0, max_u = 0, sum_d = 0, max_d = 0, sum_f = 0, max_f = 0;
+    for (int i = 0; i < n; i++) {
+        uint64_t u = _perf_update_us[i];
+        uint64_t d = _perf_draw_us[i];
+        uint64_t f = u + d;
+        sum_u += u; if (u > max_u) max_u = u;
+        sum_d += d; if (d > max_d) max_d = d;
+        sum_f += f; if (f > max_f) max_f = f;
+    }
+    out["avg_update_us"] = static_cast<int64_t>(sum_u / n);
+    out["max_update_us"] = static_cast<int64_t>(max_u);
+    out["avg_draw_us"]   = static_cast<int64_t>(sum_d / n);
+    out["max_draw_us"]   = static_cast<int64_t>(max_d);
+    out["avg_frame_us"]  = static_cast<int64_t>(sum_f / n);
+    out["max_frame_us"]  = static_cast<int64_t>(max_f);
+    out["frame_count"]   = static_cast<int64_t>(_perf_frame_count);
+    return out;
+}
 
 Variant Nova64Host::read_global(const String &p_name) {
     if (!_context) return Variant();

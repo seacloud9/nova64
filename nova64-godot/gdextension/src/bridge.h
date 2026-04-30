@@ -64,10 +64,26 @@ public:
     // Godot Variant. Returns null Variant if the global is undefined.
     Variant read_global(const String &p_name);
 
+    // Returns rolling perf stats for the last N frames (default 60).
+    // Keys: avg_update_us, max_update_us, avg_draw_us, max_draw_us,
+    //       avg_frame_us, max_frame_us, frame_count.
+    // Used by `bench:godot`, `pnpm test:godot:*`, and the on-device
+    // `scripts/measure-android.sh` capture (which greps logcat for the
+    // [nova64-perf] line emitted every 60 frames).
+    Dictionary get_perf_stats() const;
+
 private:
     JSRuntime *_runtime = nullptr;
     JSContext *_context = nullptr;
     bool _cart_loaded = false;
+
+    // Rolling perf telemetry. Microseconds. Updated every cart_update +
+    // cart_draw pair. Emitted to logs every 60 frames.
+    static constexpr int PERF_WINDOW = 60;
+    uint64_t _perf_update_us[PERF_WINDOW] = {};
+    uint64_t _perf_draw_us[PERF_WINDOW] = {};
+    int _perf_index = 0;
+    uint64_t _perf_frame_count = 0;
 
     // Cached cart export functions. Initialized to JS_UNDEFINED in the
     // constructor; populated by load_cart() and released in
@@ -83,6 +99,7 @@ private:
     void _install_host_globals();
     void _release_cart_exports();
     void _call_cart_fn(JSValue p_fn, double p_arg, bool p_pass_arg, const char *p_name);
+    void _record_perf_sample(uint64_t p_update_us, uint64_t p_draw_us);
 
     // ---- Command handlers (one per adapter namespace) -------------------
     Dictionary _cmd_material_create(const Dictionary &p_payload);

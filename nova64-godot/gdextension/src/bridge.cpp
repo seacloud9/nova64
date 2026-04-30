@@ -24,6 +24,8 @@
 #include <godot_cpp/classes/input.hpp>
 #include <godot_cpp/classes/audio_stream.hpp>
 #include <godot_cpp/classes/audio_stream_player.hpp>
+#include <godot_cpp/classes/gpu_particles3d.hpp>
+#include <godot_cpp/classes/particle_process_material.hpp>
 #include <godot_cpp/classes/multi_mesh.hpp>
 #include <godot_cpp/classes/multi_mesh_instance3d.hpp>
 #include <godot_cpp/classes/resource_loader.hpp>
@@ -52,7 +54,7 @@ using nova64::HandleTable;
 namespace {
 
 constexpr const char *ADAPTER_CONTRACT_VERSION = "1.0.0";
-constexpr const char *GODOT_ADAPTER_VERSION = "0.4.0";
+constexpr const char *GODOT_ADAPTER_VERSION = "0.5.0";
 constexpr const char *HOST_OPAQUE_KEY = "__nova64_host_ptr";
 
 Nova64Host *get_host_from_context(JSContext *ctx) {
@@ -217,6 +219,63 @@ JSValue js_engine_call(JSContext *ctx, JSValueConst, int argc, JSValueConst *arg
     return variant_to_js(ctx, result);
 }
 
+// engine.flush(commands) — batched dispatch.
+// commands is an Array of either [method, payload] pairs or {m, p} objects.
+// Returns an Array of result Dictionaries in the same order.
+JSValue js_engine_flush(JSContext *ctx, JSValueConst, int argc, JSValueConst *argv) {
+    if (argc < 1 || !JS_IsArray(argv[0])) {
+        return JS_ThrowTypeError(ctx, "engine.flush: expected array of commands");
+    }
+    Nova64Host *host = get_host_from_context(ctx);
+    if (!host) return JS_ThrowInternalError(ctx, "engine.flush: host pointer missing");
+
+    JSValue len_v = JS_GetPropertyStr(ctx, argv[0], "length");
+    int32_t len = 0;
+    JS_ToInt32(ctx, &len, len_v);
+    JS_FreeValue(ctx, len_v);
+
+    JSValue out = JS_NewArray(ctx);
+    for (int32_t i = 0; i < len; i++) {
+        JSValue cmd = JS_GetPropertyUint32(ctx, argv[0], i);
+        String method;
+        Dictionary payload;
+        bool ok = false;
+
+        if (JS_IsArray(cmd)) {
+            JSValue m = JS_GetPropertyUint32(ctx, cmd, 0);
+            JSValue p = JS_GetPropertyUint32(ctx, cmd, 1);
+            if (JS_IsString(m)) {
+                const char *s = JS_ToCString(ctx, m);
+                if (s) { method = String::utf8(s); JS_FreeCString(ctx, s); ok = true; }
+            }
+            if (JS_IsObject(p) && !JS_IsNull(p)) payload = js_to_dictionary(ctx, p);
+            JS_FreeValue(ctx, m);
+            JS_FreeValue(ctx, p);
+        } else if (JS_IsObject(cmd)) {
+            JSValue m = JS_GetPropertyStr(ctx, cmd, "m");
+            JSValue p = JS_GetPropertyStr(ctx, cmd, "p");
+            if (JS_IsString(m)) {
+                const char *s = JS_ToCString(ctx, m);
+                if (s) { method = String::utf8(s); JS_FreeCString(ctx, s); ok = true; }
+            }
+            if (JS_IsObject(p) && !JS_IsNull(p)) payload = js_to_dictionary(ctx, p);
+            JS_FreeValue(ctx, m);
+            JS_FreeValue(ctx, p);
+        }
+        JS_FreeValue(ctx, cmd);
+
+        Dictionary result;
+        if (!ok) {
+            result["error"] = String("flush_bad_command");
+            result["index"] = i;
+        } else {
+            result = host->call_bridge(method, payload);
+        }
+        JS_SetPropertyUint32(ctx, out, i, variant_to_js(ctx, result));
+    }
+    return out;
+}
+
 // ---- Payload helpers -----------------------------------------------------
 
 Color color_from_payload(const Dictionary &p, const String &key, Color fallback) {
@@ -349,6 +408,8 @@ void Nova64Host::_install_host_globals() {
     JSValue engine_obj = JS_NewObject(ctx);
     JS_SetPropertyStr(ctx, engine_obj, "call",
             JS_NewCFunction(ctx, js_engine_call, "call", 2));
+    JS_SetPropertyStr(ctx, engine_obj, "flush",
+            JS_NewCFunction(ctx, js_engine_flush, "flush", 1));
     const char *shim = "(function(){ return engine.call('host.getCapabilities', {}).capabilities; })";
     JSValue shim_fn = JS_Eval(ctx, shim, std::strlen(shim), "<engine.getCapabilities>", JS_EVAL_TYPE_GLOBAL);
     JS_SetPropertyStr(ctx, engine_obj, "getCapabilities", shim_fn);
@@ -386,6 +447,9 @@ Dictionary Nova64Host::get_capabilities() const {
     features.append("audio.stop");
     features.append("mesh.createInstanced");
     features.append("instance.setTransform");
+    features.append("particles.create");
+    features.append("particles.destroy");
+    features.append("engine.flush");
     caps["features"] = features;
 
     return caps;
@@ -418,6 +482,8 @@ Dictionary Nova64Host::call_bridge(const String &p_method, const Dictionary &p_p
     if (p_method == "audio.stop")                return _cmd_audio_stop(p_payload);
     if (p_method == "mesh.createInstanced")      return _cmd_mesh_create_instanced(p_payload);
     if (p_method == "instance.setTransform")     return _cmd_instance_set_transform(p_payload);
+    if (p_method == "particles.create")           return _cmd_particles_create(p_payload);
+    if (p_method == "particles.destroy")          return _cmd_particles_destroy(p_payload);
 
     return make_error("unsupported_method", p_method);
 }
@@ -519,6 +585,7 @@ Node3D *Nova64Host::_resolve_node3d(uint32_t p_handle_id) const {
     if (Object *o = _handles->get_node(p_handle_id, HandleKind::CAMERA))        return Object::cast_to<Node3D>(o);
     if (Object *o = _handles->get_node(p_handle_id, HandleKind::LIGHT))         return Object::cast_to<Node3D>(o);
     if (Object *o = _handles->get_node(p_handle_id, HandleKind::MULTI_MESH))    return Object::cast_to<Node3D>(o);
+    if (Object *o = _handles->get_node(p_handle_id, HandleKind::PARTICLES))     return Object::cast_to<Node3D>(o);
     return nullptr;
 }
 
@@ -756,6 +823,68 @@ Dictionary Nova64Host::_cmd_instance_set_transform(const Dictionary &p) {
     xf.origin = pos;
     node->get_multimesh()->set_instance_transform(index, xf);
     Dictionary out; out["ok"] = true; return out;
+}
+
+// ---- Particles ----------------------------------------------------------
+
+Dictionary Nova64Host::_cmd_particles_create(const Dictionary &p) {
+    GPUParticles3D *node = memnew(GPUParticles3D);
+    add_child(node);
+
+    int amount = p.has("amount") ? static_cast<int>(static_cast<int64_t>(p["amount"])) : 64;
+    if (amount < 1) amount = 1;
+    node->set_amount(amount);
+
+    if (p.has("lifetime")) node->set_lifetime(static_cast<double>(p["lifetime"]));
+    if (p.has("oneShot"))  node->set_one_shot(static_cast<bool>(p["oneShot"]));
+    if (p.has("preprocess")) node->set_pre_process_time(static_cast<double>(p["preprocess"]));
+
+    // Geometry — required so the GPU has something to draw per particle.
+    if (p.has("geometry")) {
+        uint32_t geom_id = handle_id_from_payload(p, "geometry");
+        Ref<RefCounted> geom_res = _handles->get_resource(geom_id, HandleKind::GEOMETRY);
+        Ref<Mesh> mesh = geom_res;
+        if (mesh.is_valid()) node->set_draw_pass_mesh(0, mesh);
+    }
+
+    // Optional material override on the draw pass.
+    if (p.has("material")) {
+        uint32_t mat_id = handle_id_from_payload(p, "material");
+        Ref<RefCounted> mat_res = _handles->get_resource(mat_id, HandleKind::MATERIAL);
+        Ref<Material> mat = mat_res;
+        if (mat.is_valid()) node->set_material_override(mat);
+    }
+
+    // Process material — minimum to get something visible.
+    Ref<ParticleProcessMaterial> proc; proc.instantiate();
+    if (p.has("emissionBoxExtents")) {
+        Vector3 ex = vec3_from_payload(p, "emissionBoxExtents", Vector3(1, 1, 1));
+        proc->set_emission_shape(ParticleProcessMaterial::EMISSION_SHAPE_BOX);
+        proc->set_emission_box_extents(ex);
+    }
+    Vector3 grav = vec3_from_payload(p, "gravity", Vector3(0, -9.8f, 0));
+    proc->set_gravity(grav);
+    if (p.has("initialVelocityMin"))
+        proc->set_param_min(ParticleProcessMaterial::PARAM_INITIAL_LINEAR_VELOCITY,
+                static_cast<double>(p["initialVelocityMin"]));
+    if (p.has("initialVelocityMax"))
+        proc->set_param_max(ParticleProcessMaterial::PARAM_INITIAL_LINEAR_VELOCITY,
+                static_cast<double>(p["initialVelocityMax"]));
+    if (p.has("scale")) {
+        proc->set_param_min(ParticleProcessMaterial::PARAM_SCALE, static_cast<double>(p["scale"]));
+        proc->set_param_max(ParticleProcessMaterial::PARAM_SCALE, static_cast<double>(p["scale"]));
+    }
+    node->set_process_material(proc);
+    node->set_emitting(true);
+
+    uint32_t id = _handles->put_node(HandleKind::PARTICLES, node);
+    return make_handle_result(id);
+}
+
+Dictionary Nova64Host::_cmd_particles_destroy(const Dictionary &p) {
+    uint32_t id = handle_id_from_payload(p, "handle");
+    bool ok = _handles->destroy(id, true);
+    Dictionary out; out["ok"] = ok; return out;
 }
 
 // ---- Cart loading (module mode) -----------------------------------------

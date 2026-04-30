@@ -101,6 +101,8 @@ private:
     Dictionary _cmd_audio_stop(const Dictionary &p_payload);
     Dictionary _cmd_mesh_create_instanced(const Dictionary &p_payload);
     Dictionary _cmd_instance_set_transform(const Dictionary &p_payload);
+    Dictionary _cmd_particles_create(const Dictionary &p_payload);
+    Dictionary _cmd_particles_destroy(const Dictionary &p_payload);
 
     // Helpers
     Node3D *_resolve_node3d(uint32_t p_handle_id) const;

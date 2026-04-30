@@ -33,16 +33,14 @@ export function init() {
     count: COUNT,
   }).handle;
 
-  // Lay out an N x N grid centered on origin.
+  // Lay out an N x N grid centered on origin (batched).
+  const layout = new Array(COUNT);
   for (let i = 0; i < COUNT; i++) {
     const x = (i % N) - N / 2;
     const z = Math.floor(i / N) - N / 2;
-    call('instance.setTransform', {
-      handle: multi,
-      index: i,
-      position: [x, 0, z],
-    });
+    layout[i] = ['instance.setTransform', { handle: multi, index: i, position: [x, 0, z] }];
   }
+  engine.flush(layout);
 
   const cam = call('camera.create', {}).handle;
   call('transform.set', { handle: cam, position: [0, 18, 22], rotation: [-0.55, 0, 0] });
@@ -53,16 +51,19 @@ export function init() {
 
 export function update(dt) {
   elapsed += dt;
+  // Batch all per-instance updates into a single host call.
+  const cmds = new Array(COUNT);
   for (let i = 0; i < COUNT; i++) {
     const x = (i % N) - N / 2;
     const z = Math.floor(i / N) - N / 2;
     const d = Math.sqrt(x * x + z * z);
     const y = Math.sin(d * 0.45 - elapsed * 2.5) * 0.9;
-    call('instance.setTransform', {
+    cmds[i] = ['instance.setTransform', {
       handle: multi,
       index: i,
       position: [x, y, z],
       rotation: [0, elapsed * 0.5 + i * 0.01, 0],
-    });
+    }];
   }
+  engine.flush(cmds);
 }

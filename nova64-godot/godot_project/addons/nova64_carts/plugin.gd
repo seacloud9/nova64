@@ -11,7 +11,9 @@ func _enter_tree() -> void:
 	_importer = CART_IMPORTER.new()
 	add_import_plugin(_importer)
 	_highlighter = JS_HIGHLIGHTER.new()
-	add_syntax_highlighter(_highlighter)
+	var se := EditorInterface.get_script_editor()
+	if se:
+		se.register_syntax_highlighter(_highlighter)
 	var fs := EditorInterface.get_resource_filesystem()
 	if fs:
 		fs.scan()
@@ -21,5 +23,7 @@ func _exit_tree() -> void:
 		remove_import_plugin(_importer)
 		_importer = null
 	if _highlighter:
-		remove_syntax_highlighter(_highlighter)
+		var se := EditorInterface.get_script_editor()
+		if se:
+			se.unregister_syntax_highlighter(_highlighter)
 		_highlighter = null

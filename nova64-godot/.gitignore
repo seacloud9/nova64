@@ -1,0 +1,29 @@
+# Build artifacts
+gdextension/.sconsign.dblite
+gdextension/**/*.os
+gdextension/**/*.o
+gdextension/**/*.obj
+gdextension/**/*.pdb
+gdextension/**/*.exp
+gdextension/**/*.lib
+gdextension/**/*.a
+
+# Compiled extension binaries land here and are loaded by the Godot project
+godot_project/bin/
+
+# Godot editor caches
+godot_project/.godot/
+godot_project/.import/
+godot_project/export.cfg
+godot_project/export_presets.cfg
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+*.swp
+.vs/
+.vscode/
+
+# SCons
+.sconf_temp/
+config.log

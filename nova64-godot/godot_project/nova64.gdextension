@@ -1,0 +1,23 @@
+; Nova64 GDExtension manifest. Tells Godot where to load the compiled bridge library
+; per platform. Paths are relative to the godot_project/ directory.
+;
+; Compiled artifacts are produced by gdextension/SConstruct and dropped into
+; godot_project/bin/ so this manifest can find them without copying.
+
+[configuration]
+
+entry_symbol = "nova64_library_init"
+compatibility_minimum = "4.3"
+
+[libraries]
+
+linux.debug.x86_64    = "res://bin/libnova64.linux.template_debug.x86_64.so"
+linux.release.x86_64  = "res://bin/libnova64.linux.template_release.x86_64.so"
+windows.debug.x86_64  = "res://bin/libnova64.windows.template_debug.x86_64.dll"
+windows.release.x86_64= "res://bin/libnova64.windows.template_release.x86_64.dll"
+macos.debug           = "res://bin/libnova64.macos.template_debug.framework"
+macos.release         = "res://bin/libnova64.macos.template_release.framework"
+android.debug.arm64   = "res://bin/libnova64.android.template_debug.arm64.so"
+android.release.arm64 = "res://bin/libnova64.android.template_release.arm64.so"
+ios.debug.arm64       = "res://bin/libnova64.ios.template_debug.arm64.dylib"
+ios.release.arm64     = "res://bin/libnova64.ios.template_release.arm64.dylib"

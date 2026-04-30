@@ -2,3 +2,8 @@ dist/
 node_modules/
 public/os9-shell/
 pnpm-lock.yaml
+
+# Godot host bridge — vendored submodules and engine project files
+nova64-godot/gdextension/third_party/
+nova64-godot/godot_project/bin/
+nova64-godot/godot_project/.godot/

@@ -26,7 +26,19 @@ DEFAULT_CARTS=(
 
 CARTS=("$@")
 if [ ${#CARTS[@]} -eq 0 ]; then
-  CARTS=("${DEFAULT_CARTS[@]}")
+  # Auto-discover every cart under tests/carts/ that has a code.js, skipping
+  # the synthetic conformance suite (00-* through 10-*) which uses a
+  # separate assert harness covered by run-conformance.sh.
+  CARTS_ROOT="$SCRIPT_DIR/../tests/carts"
+  while IFS= read -r dir; do
+    name="$(basename "$dir")"
+    case "$name" in
+      0[0-9]-*|10-*) continue ;;
+    esac
+    if [ -f "$dir/code.js" ]; then
+      CARTS+=("$name")
+    fi
+  done < <(find "$CARTS_ROOT" -mindepth 1 -maxdepth 1 -type d | sort)
 fi
 
 bash "$SCRIPT_DIR/sync-carts.sh" >/dev/null

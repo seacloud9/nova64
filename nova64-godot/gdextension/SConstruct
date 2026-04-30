@@ -51,7 +51,7 @@ qjs_env.Append(CPPDEFINES=qjs_defines)
 qjs_env.Append(CPPPATH=[quickjs_dir])
 if env["platform"] != "windows":
     qjs_env.Append(CCFLAGS=["-Wno-unused-parameter", "-Wno-sign-compare"])
-quickjs_objects = [qjs_env.Object(src) for src in quickjs_sources]
+quickjs_objects = [qjs_env.SharedObject(src) for src in quickjs_sources]
 
 # ---------------------------------------------------------------------------
 # Bridge include paths

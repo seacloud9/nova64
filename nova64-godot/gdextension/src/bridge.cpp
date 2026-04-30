@@ -165,7 +165,7 @@ Variant js_to_variant(JSContext *ctx, JSValueConst v) {
         JS_FreeCString(ctx, s);
         return out;
     }
-    if (JS_IsArray(ctx, v)) return js_to_array(ctx, v);
+    if (JS_IsArray(v)) return js_to_array(ctx, v);
     if (JS_IsObject(v)) return js_to_dictionary(ctx, v);
     return Variant();
 }

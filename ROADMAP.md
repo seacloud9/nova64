@@ -23,6 +23,7 @@ The near-term platform priorities are:
 
 - Babylon.js support
 - Godot host support
+- RetroArch core support with `.nova` packages
 - Unity host support
 - Colyseus-based realtime multiplayer
 - WebRTC-based realtime communication for voice and media where needed
@@ -120,7 +121,7 @@ Architecture:
 Phase 3 Todo:
 
 - [ ] Spike: build a minimal GDExtension that links QuickJS and exposes a `nova64_call(method, payloadJson)` entry point
-- [ ] Define the Godot-side host contract mirroring `runtime/engine-adapter.js` method names (material.create, texture.*, geometry.createPlane, mesh.setMaterial, camera.getPosition, transform.*, input.poll, audio.play)
+- [ ] Define the Godot-side host contract mirroring `runtime/engine-adapter.js` method names (`material.create`, `texture.*`, `geometry.createPlane`, `mesh.setMaterial`, `camera.getPosition`, `transform.*`, `input.poll`, `audio.play`)
 - [ ] Implement handle allocator and lifecycle tracker on the Godot side (meshes, materials, textures, cameras, audio sources)
 - [ ] Implement command-buffer flush phase aligned to Godot's `_process` / `_physics_process` lifecycle
 - [ ] Wire the Nova64 cart `init/update/draw` lifecycle into Godot's process callbacks
@@ -155,11 +156,54 @@ Exit criteria:
 - bridge latency and frame cost are measured on a representative mobile device
 - Godot host contract is documented and versioned
 
-### Phase 4: Unity Support
+### Phase 4: RetroArch Core Support
 
 Goal:
 
-Add Unity as a second native host backend after Godot has validated the shared host-bridge contract. Unity broadens reach to teams already invested in the Unity ecosystem and provides a battle-tested mobile distribution path.
+Add a Nova64 RetroArch/libretro core after the Godot implementation proves the embedded QuickJS host model, but before Unity broadens the native engine path. RetroArch should validate Nova64 as a small fantasy-console runtime with a portable `.nova` distribution format, deterministic core lifecycle, and native backend APIs.
+
+Architecture:
+
+- Nova64 JS owns cart logic, executed inside an embedded QuickJS runtime
+- RetroArch owns frontend lifecycle, video presentation, audio callbacks, input polling, save states, and platform integration
+- `.nova` packages provide distributable carts containing `code.js`, optional metadata, and assets
+- Plain `.js` carts remain supported for development and smoke tests
+- The core implements Nova64 APIs natively through compact renderer, input, audio, storage, and package-loader subsystems
+- Three.js and Babylon.js do not run inside RetroArch
+
+Scope:
+
+- CLI package workflow for `nova64 pack <project> --out game.nova` and `nova64 inspect game.nova`
+- `.nova` package parser with path validation, manifest metadata, file hashes, and useful malformed-package errors
+- QuickJS ES module loading with cached `init`, `update(dt)`, and `draw` exports
+- 2D framebuffer API first: clear, pixels, lines, rectangles, text smoke support, and deterministic framebuffer checksums
+- RetroArch joypad mapping into Nova64 `btn` and `btnp`
+- versioned save-state format with stable size checks
+- staged native 3D command bridge after lifecycle, input, package loading, and framebuffer tests pass
+- WSL/Linux desktop first, then macOS, Windows, Raspberry Pi, and Steam Deck validation
+
+Non-goals for this phase:
+
+- embedding a browser engine
+- claiming browser renderer parity on day one
+- making `.nova` a new source language or cart programming model
+- porting large demos before small conformance carts pass
+- unversioned save-state blobs
+
+Exit criteria:
+
+- `retroarch/RETROARCH_CORE_PLAN.md` stays current as the implementation roadmap
+- CLI can pack, inspect, and reject `.nova` packages through automated tests
+- the libretro core loads both plain `.js` and `.nova` carts
+- lifecycle calls occur in order: `init`, then per-frame `update(dt)`, then `draw`
+- input mapping, framebuffer output, and save-state versioning have deterministic smoke tests
+- the core builds on WSL/Linux and launches a sample cart through RetroArch
+
+### Phase 5: Unity Support
+
+Goal:
+
+Add Unity as a second native engine host backend after Godot has validated the shared host-bridge contract and RetroArch has validated the compact `.nova` package/runtime path. Unity broadens reach to teams already invested in the Unity ecosystem and provides a battle-tested mobile distribution path.
 
 Architecture:
 
@@ -350,10 +394,11 @@ Recommended order:
 1. stabilize adapter contract
 2. add Babylon renderer backend
 3. complete Godot host MVP (desktop + mobile proof)
-4. complete Unity host MVP, reusing the host contract validated by Godot
-5. add Colyseus multiplayer foundation
-6. add RTC voice/media layer
-7. add optional social/economy extensions later
+4. complete RetroArch core MVP with `.nova` packaging and QuickJS lifecycle
+5. complete Unity host MVP, reusing the host contract validated by Godot
+6. add Colyseus multiplayer foundation
+7. add RTC voice/media layer
+8. add optional social/economy extensions later
 
 This order reduces risk because it avoids solving host portability, authoritative multiplayer, and media networking all at once.
 
@@ -362,7 +407,7 @@ This order reduces risk because it avoids solving host portability, authoritativ
 - backend sprawl before the adapter contract is stable
 - overfitting the API to Three.js internals
 - adding Unity/Godot-specific concepts into the cart API
-- trying to build Babylon, Unity, Godot, Colyseus, and RTC simultaneously
+- trying to build Babylon, Godot, RetroArch, Unity, Colyseus, and RTC simultaneously
 - chatty bridge traffic on mobile devices
 - weak moderation posture for voice features
 - using WebRTC where authoritative state sync is needed
@@ -398,6 +443,7 @@ This order reduces risk because it avoids solving host portability, authoritativ
 - Babylon compatibility report
 - Godot host MVP with transforms, camera, input, and one running cart on desktop
 - Godot mobile proof-of-concept on iOS or Android
+- RetroArch `.nova` CLI packaging and QuickJS lifecycle spike
 - Unity host scoping memo derived from Godot host learnings
 - Colyseus world room + leaderboard path
 - RTC voice spike with strict room-size and moderation constraints

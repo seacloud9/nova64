@@ -22,8 +22,8 @@ Nova64 is moving toward a portable runtime model where the same gameplay-facing 
 The near-term platform priorities are:
 
 - Babylon.js support
-- Unity host support
 - Godot host support
+- Unity host support
 - Colyseus-based realtime multiplayer
 - WebRTC-based realtime communication for voice and media where needed
 
@@ -104,21 +104,74 @@ Exit criteria:
 - adapter conformance suite passes for Babylon
 - documented list of supported and unsupported features exists
 
-### Phase 3: Unity Support
+### Phase 3: Godot Support
 
 Goal:
 
-Use Unity as a native host backend so Nova64 game logic can drive native Unity C# behavior for mobile and desktop shipping.
+Use Godot as the first native host backend for Nova64, targeting both desktop (Windows, macOS, Linux) and mobile (iOS, Android) shipping. Godot is sequenced before Unity because GDExtension's C API maps cleanly onto an embedded JS runtime (QuickJS), and Godot's single open export pipeline reduces per-platform plugin friction.
+
+Architecture:
+
+- Nova64 JS owns game logic, executed inside an embedded QuickJS runtime
+- Godot owns rendering, audio, input, lifecycle, packaging, and platform services
+- JS communicates through the existing Nova64 engine-adapter command protocol (handle-based, command-buffered, whitelist-driven)
+- No arbitrary GDScript or C# evaluation from carts
+
+Phase 3 Todo:
+
+- [ ] Spike: build a minimal GDExtension that links QuickJS and exposes a `nova64_call(method, payloadJson)` entry point
+- [ ] Define the Godot-side host contract mirroring `runtime/engine-adapter.js` method names (material.create, texture.*, geometry.createPlane, mesh.setMaterial, camera.getPosition, transform.*, input.poll, audio.play)
+- [ ] Implement handle allocator and lifecycle tracker on the Godot side (meshes, materials, textures, cameras, audio sources)
+- [ ] Implement command-buffer flush phase aligned to Godot's `_process` / `_physics_process` lifecycle
+- [ ] Wire the Nova64 cart `init/update/draw` lifecycle into Godot's process callbacks
+- [ ] Bundle Nova64 runtime JS as an asset loaded into QuickJS at boot
+- [ ] Port one example cart end-to-end (recommended: a small example from `examples/` with no advanced TSL/PBR features)
+- [ ] Capability reporting: surface which adapter methods Godot host supports vs. stubs
+- [ ] Conformance test harness: run shared adapter conformance suite against the Godot host
+- [ ] Desktop export proof on Windows, macOS, Linux
+- [ ] Mobile export proof on iOS and Android, including bridge latency and frame-cost measurements
+- [ ] Document Godot host contract, supported methods, capability matrix, and known divergences
+
+Scope:
+
+- Godot transport layer for Nova64 host commands via GDExtension + QuickJS
+- resource-handle model for meshes, materials, textures, cameras, and audio sources
+- transform and scene update flow compatible with the existing adapter contract
+- input polling and audio playback through Godot's native systems
+- desktop-first packaging, then mobile packaging proof
+
+Non-goals for this phase:
+
+- arbitrary GDScript/C# eval from JS
+- mirroring the entire Godot scene tree into JS
+- custom shaders authored in Godot's shading language from cart code
+- feature parity with every Three.js or Babylon-specific effect
+
+Exit criteria:
+
+- at least one Nova64 sample cart runs end-to-end through the Godot host with native rendering
+- the Godot host passes the shared adapter conformance suite for the supported method set
+- desktop (Windows/macOS/Linux) and at least one mobile target (iOS or Android) produce shippable builds
+- bridge latency and frame cost are measured on a representative mobile device
+- Godot host contract is documented and versioned
+
+### Phase 4: Unity Support
+
+Goal:
+
+Add Unity as a second native host backend after Godot has validated the shared host-bridge contract. Unity broadens reach to teams already invested in the Unity ecosystem and provides a battle-tested mobile distribution path.
 
 Architecture:
 
 - JS remains the game-logic layer
 - Unity owns rendering, audio, input, lifecycle, packaging, and platform services
-- JS communicates through a controlled host API, not arbitrary C# execution
+- JS communicates through the same controlled host API used by the Godot host
+- transport on Unity goes JS (QuickJS) <-> native plugin (C) <-> C# P/Invoke <-> Unity
 
 Scope:
 
-- command-buffered host transport
+- native plugin embedding QuickJS for iOS, Android, Windows, macOS, Linux
+- C# bridge layer implementing the Nova64 host contract validated in Phase 3
 - handle allocation and resource lifecycle tracking
 - transforms, mesh creation, camera control, audio, and input polling
 - prefab and asset-loading hooks after core runtime flow is proven
@@ -129,42 +182,14 @@ Non-goals for this phase:
 - unrestricted Unity API access
 - arbitrary C# eval
 - mirroring Unity objects into JS
+- duplicating any host-contract decisions already settled in Phase 3
 
 Exit criteria:
 
 - at least one Nova64 sample runs through the Unity host with native rendering
-- bridge latency and frame cost are measured on a mobile target
-- Unity host contract is documented and versioned
-
-### Phase 4: Godot Support
-
-Goal:
-
-Add Godot as a second native host target to validate that Nova64 can bridge into more than one native engine ecosystem.
-
-Why Godot:
-
-- strong fit for open tooling and creator workflows
-- good long-term hedge against overfitting Nova64 to Unity-only assumptions
-- useful comparison for scene lifecycle, rendering ownership, and scripting boundaries
-
-Scope:
-
-- Godot transport layer for Nova64 host commands
-- resource-handle model for meshes, materials, cameras, and audio
-- transform and scene update flow compatible with the existing adapter contract
-- demo path for desktop first, then mobile if justified
-
-Non-goals for this phase:
-
-- feature parity with all Unity-specific native integrations
-- custom scripting passthrough from carts into GDScript/C# internals
-
-Exit criteria:
-
-- a thin but working Godot host path exists
-- conformance tests validate the shared adapter contract
-- differences between Unity and Godot host semantics are documented
+- the Unity host passes the shared adapter conformance suite for the supported method set
+- bridge latency and frame cost are measured on a mobile target and compared against the Godot host
+- Unity host contract is documented and versioned, with explicit notes on differences from the Godot host
 
 ## Realtime Follow-Up Plan
 
@@ -324,8 +349,8 @@ Recommended order:
 
 1. stabilize adapter contract
 2. add Babylon renderer backend
-3. complete Unity host MVP
-4. decide whether Godot support is parallel or subsequent based on traction
+3. complete Godot host MVP (desktop + mobile proof)
+4. complete Unity host MVP, reusing the host contract validated by Godot
 5. add Colyseus multiplayer foundation
 6. add RTC voice/media layer
 7. add optional social/economy extensions later
@@ -365,14 +390,15 @@ This order reduces risk because it avoids solving host portability, authoritativ
 ### Next 60 Days
 
 - Babylon MVP backend running at least one sample cart
-- Unity host MVP with transforms, camera, and input
+- Godot host spike: GDExtension + QuickJS + first adapter method working
 - initial Colyseus prototype with guest join, transforms, and chat
 
 ### Next 90 Days
 
 - Babylon compatibility report
-- Unity mobile proof-of-concept
-- Godot spike or decision memo
+- Godot host MVP with transforms, camera, input, and one running cart on desktop
+- Godot mobile proof-of-concept on iOS or Android
+- Unity host scoping memo derived from Godot host learnings
 - Colyseus world room + leaderboard path
 - RTC voice spike with strict room-size and moderation constraints
 
@@ -382,6 +408,6 @@ Nova64 succeeds on this roadmap if:
 
 - carts remain portable across backends
 - native hosts feel like implementation targets, not forks of the API
-- mobile deployment is credible through Unity and later Godot if justified
+- mobile deployment is credible through Godot first, then Unity
 - multiplayer state is authoritative and predictable through Colyseus
 - RTC features remain optional, moderated, and off the critical path until proven

@@ -1,0 +1,1 @@
+{"name":"Hello World","description":"G6 cart port — minimal Nova64 hello-world (spinning cube + HUD label) running through the Godot host via the nova64-compat shim.","author":"Nova64","version":"0.1.0","category":"port","source":"examples/hello-world"}

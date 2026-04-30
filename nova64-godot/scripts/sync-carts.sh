@@ -20,13 +20,29 @@ if [ ! -d "$src" ]; then
 fi
 
 mkdir -p "$dst"
-# Carts are folders containing code.js + meta.json. Mirror with rsync-style
-# behavior using cp -a; nuke the destination first so deletes propagate.
-rm -rf "$dst"
-mkdir -p "$dst"
+# Carts are folders containing code.js + meta.json. Mirror cart sources from
+# $src into $dst while preserving Godot-generated *.import sidecars (which
+# are tracked in git and would otherwise churn on every sync).
+
+# 1. Drop any cart subdir in $dst whose name no longer exists in $src.
+for existing in "$dst"/*/; do
+  [ -d "$existing" ] || continue
+  name="$(basename "$existing")"
+  if [ ! -d "$src/$name" ]; then
+    rm -rf "$existing"
+  fi
+done
+
+# 2. For each source cart, refresh code/data files in place (preserving
+#    *.import sidecars Godot wrote next to them).
 for cart in "$src"/*/; do
   name="$(basename "$cart")"
-  cp -a "$cart" "$dst/$name"
+  target="$dst/$name"
+  mkdir -p "$target"
+  # Remove only non-.import files so .import sidecars survive.
+  find "$target" -mindepth 1 -maxdepth 1 ! -name '*.import' -exec rm -rf {} +
+  # Copy fresh source contents in.
+  cp -a "$cart"/. "$target/"
   echo "synced $name"
 done
 

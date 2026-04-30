@@ -308,10 +308,25 @@ standpoint. ✅
 
 ### G6 — Cart Compatibility Pass
 
-- Port additional carts of increasing complexity.
-- Track unsupported feature gaps.
-- Decide which gaps are bridge work vs. cart-level adjustments.
-- Create `docs/GODOT_CART_COMPAT.md` to record results once at least one cart has been ported (avoid empty matrices that age badly).
+- [x] Second port: `examples/hello-world` (minimal spinning cube + HUD label)
+      copied verbatim into `nova64-godot/tests/carts/hello-world/`. Both
+      ports (`hello-namespaced`, `hello-world`) now live under the canonical
+      `tests/carts/` tree and are mirrored into `godot_project/carts/` by
+      `scripts/sync-carts.sh`.
+- [x] Tracked gaps surfaced by the new port and added as `warnOnce` no-op
+      shims: `printCentered`, `setAmbientLight`, `setLightColor`, `rectfill`,
+      `screenWidth`, `screenHeight`. The `nova64.fx` namespace is now an
+      alias of `nova64.effects` for parity with carts that use `nova64.fx`.
+- [x] Both ports load cleanly through the headless harness
+      (`init=true update=true draw=true`, 10 frames each), conformance suite
+      remains 27/27 PASS.
+- [ ] Continue porting carts of increasing complexity (next candidates:
+      `hello-skybox`, `instancing-demo`, `tween-bounce`).
+- [ ] Decide which `warnOnce` gaps are worth promoting to real bridge work
+      (FOV, fog, point light, 2D overlay) vs. living as no-ops.
+- [ ] Create `docs/GODOT_CART_COMPAT.md` once a representative set of carts
+      has been ported (deferred until ≥5 ports cover materially different
+      surface areas; avoid an empty matrix that ages badly).
 
 **Exit:** documented compatibility report covering a representative set of carts.
 

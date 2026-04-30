@@ -207,6 +207,8 @@
   function setFog(_color, _near, _far) { warnOnce('setFog'); }
   function createPointLight(_color, _energy, _pos) { warnOnce('createPointLight'); return 0; }
   function createAmbientLight(_color, _energy) { warnOnce('createAmbientLight'); return 0; }
+  function setAmbientLight(_color, _energy) { warnOnce('setAmbientLight'); }
+  function setLightColor(_color) { warnOnce('setLightColor'); }
 
   // ---------------- draw / 2D overlay (no host support yet) -------------
   function rgba8(r, g, b, a) {
@@ -215,9 +217,13 @@
   }
   function cls(_color) { /* host clears each frame */ }
   function novaPrint(_text, _x, _y, _color, _scale) { warnOnce('draw.print'); }
+  function printCentered(_text, _y, _color, _scale) { warnOnce('draw.printCentered'); }
   function rect(_x, _y, _w, _h, _color, _filled) { warnOnce('draw.rect'); }
+  function rectfill(_x, _y, _w, _h, _color) { warnOnce('draw.rectfill'); }
   function line(_x0, _y0, _x1, _y1, _color) { warnOnce('draw.line'); }
   function pixel(_x, _y, _color) { warnOnce('draw.pixel'); }
+  function screenWidth() { return 640; }
+  function screenHeight() { return 360; }
 
   // ---------------- input -----------------------------------------------
   let inputState = { left: false, right: false, up: false, down: false, action: false, cancel: false, axisX: 0, axisY: 0, mouseDown: false };
@@ -249,8 +255,8 @@
   // ---------------- namespace + global aliases -------------------------
   const sceneNs = { createCube, createSphere, createPlane, setPosition, setRotation, rotateMesh, setScale };
   const cameraNs = { setCameraPosition, setCameraTarget, setCameraFOV };
-  const lightNs = { setLightDirection, setFog, createPointLight, createAmbientLight };
-  const drawNs = { cls, print: novaPrint, rect, line, pixel, rgba8 };
+  const lightNs = { setLightDirection, setFog, createPointLight, createAmbientLight, setAmbientLight, setLightColor };
+  const drawNs = { cls, print: novaPrint, printCentered, rect, rectfill, line, pixel, rgba8, screenWidth, screenHeight };
   const inputNs = { key, isKeyPressed, pollInput };
   const fxNs = { enablePixelation, enableDithering, enableBloom, setN64Mode, setPSXMode };
 
@@ -262,6 +268,7 @@
     draw: drawNs,
     input: inputNs,
     effects: fxNs,
+    fx: fxNs,
   };
 
   // Flat-global aliases so older carts that don't destructure still work.

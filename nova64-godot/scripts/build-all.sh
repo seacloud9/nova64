@@ -63,13 +63,22 @@ build_one() {
         extra+=("use_mingw=yes")
       fi
       ;;
-    android|ios)
+    ios)
+      extra+=("arch=arm64")
+      ;;
+    android)
+      # Android builds both arm64 (devices) and x86_64 (emulator) below
       extra+=("arch=arm64")
       ;;
   esac
   echo ">>> scons platform=$platform target=$target ${extra[*]}"
   scons platform="$platform" target="$target" "${extra[@]}" \
     -j"$(nproc 2>/dev/null || sysctl -n hw.ncpu)"
+  if [ "$platform" = "android" ]; then
+    echo ">>> scons platform=android target=$target arch=x86_64 (emulator)"
+    scons platform=android target="$target" arch=x86_64 \
+      -j"$(nproc 2>/dev/null || sysctl -n hw.ncpu)"
+  fi
 }
 
 for platform in "${PLATFORMS[@]}"; do

@@ -257,20 +257,26 @@ standpoint. ✅
 
 ### G4 — Mobile Export
 
-- [x] Android export configured: `nova64.gdextension` declares `android.{debug,release}.arm64`,
-      bridge `.so` artifacts build via `scons platform=android arch=arm64` against NDK r23c
-      (godot-cpp-pinned), and `godot_project/export_presets.cfg` has an `Android ARM64`
-      preset wired to `org.nova64.host`. Toolchain bootstrap is automated via
-      `nova64-godot/scripts/install-android-toolchain.sh` +
-      `nova64-godot/scripts/install-android-sdk-packages.sh`.
+- [x] Android export configured: `nova64.gdextension` declares
+      `android.{debug,release}.{arm64,x86_64}`, bridge `.so` artifacts build via
+      `scons platform=android arch={arm64,x86_64}` against NDK r23c (godot-cpp-pinned),
+      and `godot_project/export_presets.cfg.example` has both `Android ARM64` (devices)
+      and `Android x86_64 (Emulator)` presets wired to `org.nova64.host`. Toolchain
+      bootstrap is automated via `nova64-godot/scripts/install-android-toolchain.sh`,
+      `install-android-sdk-packages.sh`, and `install-android-emulator.sh` (creates the
+      `nova64-test` AVD). Full setup walkthrough lives in
+      `nova64-godot/docs/ANDROID_SETUP.md`.
 - [ ] iOS export configured. Cross-compiling iOS frameworks from a non-macOS host is
       not feasible, so this slice is parked behind a documented Mac/Xcode bootstrap
       (script + checklist) and a CI matrix entry that builds the bridge on a macOS
       runner. Manifest entries (`ios.debug.arm64`, `ios.release.arm64`) are already in
       place.
-- [ ] Build matrix produces shippable binaries for all five platforms (linux/windows/macos
-      already via existing scripts; android now too; ios and macos require a macOS host).
+- [x] Build matrix produces shippable binaries for desktop+android (linux + windows via
+      existing scripts; android arm64 + x86_64 via `scripts/build-all.sh android`;
+      ios and macos still require a macOS host).
 - [ ] Bridge latency and frame cost measured on a representative mobile device.
+      Harness ready (`scripts/measure-android.sh`, `[nova64-perf]` log lines, AVD
+      provisioned); awaits a booted emulator or physical device run.
 
 **Exit:** a synthetic cart runs on a physical iOS or Android device with measured frame budget.
 

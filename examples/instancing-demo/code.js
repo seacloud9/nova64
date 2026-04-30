@@ -16,6 +16,7 @@ const {
   createLODMesh,
   createPlane,
   finalizeInstances,
+  setRotation,
   setInstanceColor,
   setInstanceTransform,
   updateLODs,
@@ -41,6 +42,16 @@ let crystalLightId = null;
 let camAngle = 0;
 let camRadius = 30;
 let camHeight = 12;
+let rngSeed = 1;
+
+function reseed(value) {
+  rngSeed = value >>> 0 || 1;
+}
+
+function rand() {
+  rngSeed = (Math.imul(rngSeed, 1664525) + 1013904223) >>> 0;
+  return rngSeed / 0x100000000;
+}
 
 // ── Init ─────────────────────────────────────────────────────────────────────
 export async function init() {
@@ -58,9 +69,11 @@ export async function init() {
 async function loadScene(id) {
   clearScene();
   crystalId = dustId = crystalLightId = null;
+  reseed(0x1a57a11c + id * 0x10001);
 
   // Ground plane — shared across scenes
-  createPlane(200, 200, 0x1a2a1a, [0, 0, 0]);
+  const ground = createPlane(200, 200, 0x1a2a1a, [0, 0, 0]);
+  setRotation(ground, -Math.PI / 2, 0, 0);
 
   if (id === 1) await buildForestScene();
   else if (id === 2) await buildCrystalScene();
@@ -90,9 +103,9 @@ async function buildForestScene() {
 
   const RANGE = 40;
   for (let i = 0; i < 500; i++) {
-    const x = (Math.random() - 0.5) * RANGE;
-    const z = (Math.random() - 0.5) * RANGE;
-    const h = 2 + Math.random() * 3;
+    const x = (rand() - 0.5) * RANGE;
+    const z = (rand() - 0.5) * RANGE;
+    const h = 2 + rand() * 3;
 
     setInstanceTransform(trunkId, i, x, h * 0.5, z, 0, 0, 0, 1, h, 1);
     setInstanceTransform(
@@ -104,13 +117,13 @@ async function buildForestScene() {
       0,
       0,
       0,
-      1 + Math.random() * 0.5,
-      1 + Math.random() * 0.3,
-      1 + Math.random() * 0.5
+      1 + rand() * 0.5,
+      1 + rand() * 0.3,
+      1 + rand() * 0.5
     );
 
     // Vary canopy green shade
-    const g = 0x33 + Math.floor(Math.random() * 0x55);
+    const g = 0x33 + Math.floor(rand() * 0x55);
     setInstanceColor(canopyId, i, (0x10 << 16) | (g << 8) | 0x10);
   }
 
@@ -125,13 +138,7 @@ async function buildForestScene() {
     emissiveIntensity: 0.8,
   });
   for (let i = 0; i < 200; i++) {
-    setInstanceTransform(
-      dustId,
-      i,
-      (Math.random() - 0.5) * 35,
-      0.5 + Math.random() * 8,
-      (Math.random() - 0.5) * 35
-    );
+    setInstanceTransform(dustId, i, (rand() - 0.5) * 35, 0.5 + rand() * 8, (rand() - 0.5) * 35);
   }
   finalizeInstances(dustId);
 }
@@ -155,13 +162,13 @@ async function buildCrystalScene() {
 
   const hues = [0x8855ff, 0xff44cc, 0x44aaff, 0xffaa00, 0x44ffaa];
   for (let i = 0; i < CRYSTAL_COUNT; i++) {
-    const angle = Math.random() * Math.PI * 2;
-    const r = 3 + Math.random() * 22;
+    const angle = rand() * Math.PI * 2;
+    const r = 3 + rand() * 22;
     const x = Math.cos(angle) * r;
     const z = Math.sin(angle) * r;
-    const h = 0.8 + Math.random() * 3.5;
-    const tiltX = (Math.random() - 0.5) * 0.4;
-    const tiltZ = (Math.random() - 0.5) * 0.4;
+    const h = 0.8 + rand() * 3.5;
+    const tiltX = (rand() - 0.5) * 0.4;
+    const tiltZ = (rand() - 0.5) * 0.4;
 
     setInstanceTransform(
       crystalId,
@@ -172,9 +179,9 @@ async function buildCrystalScene() {
       tiltX,
       0,
       tiltZ,
-      0.5 + Math.random() * 0.8,
+      0.5 + rand() * 0.8,
       h,
-      0.5 + Math.random() * 0.8
+      0.5 + rand() * 0.8
     );
     setInstanceColor(crystalId, i, hues[i % hues.length]);
   }
@@ -226,11 +233,11 @@ async function buildLODScene() {
 
   const RANGE = 45;
   for (let i = 0; i < ROCK_COUNT; i++) {
-    const x = (Math.random() - 0.5) * RANGE;
-    const z = (Math.random() - 0.5) * RANGE;
-    const s = 0.4 + Math.random() * 1.8;
-    setInstanceTransform(rocksId, i, x, s * 0.5, z, 0, Math.random() * Math.PI, 0, s, s * 0.7, s);
-    const shade = 0x66 + Math.floor(Math.random() * 0x44);
+    const x = (rand() - 0.5) * RANGE;
+    const z = (rand() - 0.5) * RANGE;
+    const s = 0.4 + rand() * 1.8;
+    setInstanceTransform(rocksId, i, x, s * 0.5, z, 0, rand() * Math.PI, 0, s, s * 0.7, s);
+    const shade = 0x66 + Math.floor(rand() * 0x44);
     setInstanceColor(rocksId, i, (shade << 16) | ((shade - 0x10) << 8) | (shade - 0x20));
   }
   finalizeInstances(rocksId);

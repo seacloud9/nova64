@@ -129,11 +129,29 @@ test.describe('Backend Surface Parity', () => {
 
       const result = await page.evaluate(() => {
         const instancedId = createInstancedMesh('cube', 3, 0x88ccff, { size: 1 });
+        const firstTransform = setInstanceTransform(instancedId, 0, 0, 0, -5, 0, 0, 0, 1, 1, 1);
+        const firstColor = setInstanceColor(instancedId, 0, 0xff0000);
+        const finalized = finalizeInstances(instancedId);
+        const mesh =
+          getMesh(instancedId) ??
+          nova64.scene.getScene().children?.find(child => child.isInstancedMesh) ??
+          nova64.scene.getScene().meshes?.find(child => child.name?.startsWith('instancedMesh_'));
+        const thinStorage = mesh?._thinInstanceDataStorage;
+        const meshInfo = {
+          visible: mesh?.visible ?? mesh?.isVisible ?? false,
+          isInstancedMesh: mesh?.isInstancedMesh === true,
+          thinInstanceCount: mesh?.thinInstanceCount ?? null,
+          matrixLength: mesh?.instanceMatrix?.array?.length ?? thinStorage?.matrixData?.length ?? 0,
+          colorLength:
+            mesh?.instanceColor?.array?.length ?? thinStorage?.instancesData?.color?.length ?? 0,
+        };
+
         return {
           instancedId,
-          firstTransform: setInstanceTransform(instancedId, 0, 0, 0, -5, 0, 0, 0, 1, 1, 1),
-          firstColor: setInstanceColor(instancedId, 0, 0xff0000),
-          finalized: finalizeInstances(instancedId),
+          firstTransform,
+          firstColor,
+          finalized,
+          meshInfo,
           removed: removeInstancedMesh(instancedId),
         };
       });
@@ -142,6 +160,19 @@ test.describe('Backend Surface Parity', () => {
       expect(result.firstTransform, `setInstanceTransform should work in ${backend}`).toBe(true);
       expect(result.firstColor, `setInstanceColor should work in ${backend}`).toBe(true);
       expect(result.finalized, `finalizeInstances should work in ${backend}`).toBe(true);
+      expect(
+        result.meshInfo.visible,
+        `instanced mesh should stay render-visible in ${backend}`
+      ).toBe(true);
+      expect(
+        result.meshInfo.matrixLength,
+        `instanced mesh should upload matrix data in ${backend}`
+      ).toBeGreaterThanOrEqual(16 * 3);
+      if (backend === 'babylon') {
+        expect(result.meshInfo.thinInstanceCount, 'Babylon should render thin instances').toBe(3);
+      } else {
+        expect(result.meshInfo.isInstancedMesh, 'Three should use InstancedMesh').toBe(true);
+      }
       expect(result.removed, `removeInstancedMesh should work in ${backend}`).toBe(true);
     }
   });
@@ -231,6 +262,269 @@ test.describe('Backend Surface Parity', () => {
       expect(result.hit?.meshId, `raycast should hit created cube in ${backend}`).toBe(
         result.meshId
       );
+    }
+  });
+
+  test('createCube should support cubic and rectangular box signatures in both backends', async ({
+    page,
+  }) => {
+    for (const backend of BACKENDS) {
+      await openApiSandbox(page, backend);
+
+      const result = await page.evaluate(() => {
+        clearScene();
+
+        const cubeId = createCube(2, 0x66ccff, [0, 0, 0], { material: 'standard' });
+        const boxId = createCube(2, 3, 4, 0xffcc00, [0, 0, 0], { material: 'standard' });
+
+        function getBounds(mesh) {
+          mesh.computeWorldMatrix?.(true);
+
+          if (mesh.geometry?.computeBoundingBox) {
+            mesh.geometry.computeBoundingBox();
+            const box = mesh.geometry.boundingBox;
+            return {
+              width: box.max.x - box.min.x,
+              height: box.max.y - box.min.y,
+              depth: box.max.z - box.min.z,
+            };
+          }
+
+          const box = mesh.getBoundingInfo?.().boundingBox;
+          return {
+            width: box.maximum.x - box.minimum.x,
+            height: box.maximum.y - box.minimum.y,
+            depth: box.maximum.z - box.minimum.z,
+          };
+        }
+
+        return {
+          cube: getBounds(getMesh(cubeId)),
+          box: getBounds(getMesh(boxId)),
+        };
+      });
+
+      expect(result.cube.width, `cube width should work in ${backend}`).toBeCloseTo(2, 3);
+      expect(result.cube.height, `cube height should work in ${backend}`).toBeCloseTo(2, 3);
+      expect(result.cube.depth, `cube depth should work in ${backend}`).toBeCloseTo(2, 3);
+      expect(result.box.width, `box width should work in ${backend}`).toBeCloseTo(2, 3);
+      expect(result.box.height, `box height should work in ${backend}`).toBeCloseTo(3, 3);
+      expect(result.box.depth, `box depth should work in ${backend}`).toBeCloseTo(4, 3);
+    }
+  });
+
+  test('createCylinder should support cart-facing and tapered signatures in both backends', async ({
+    page,
+  }) => {
+    for (const backend of BACKENDS) {
+      await openApiSandbox(page, backend);
+
+      const result = await page.evaluate(() => {
+        clearScene();
+
+        const simpleId = createCylinder(0.5, 2, 0x66ccff, [0, 0, 0], { segments: 12 });
+        const taperedId = createCylinder(0.25, 0.5, 3, 0xffcc00, [0, 0, 0], {
+          segments: 12,
+        });
+        const segmentedId = createCylinder(0.4, 1.25, 0x00ffcc, 8, [0, 0, 0]);
+
+        function getBounds(mesh) {
+          mesh.computeWorldMatrix?.(true);
+
+          if (mesh.geometry?.computeBoundingBox) {
+            mesh.geometry.computeBoundingBox();
+            const box = mesh.geometry.boundingBox;
+            return {
+              height: box.max.y - box.min.y,
+              diameterX: box.max.x - box.min.x,
+            };
+          }
+
+          const box = mesh.getBoundingInfo?.().boundingBox;
+          return {
+            height: box.maximum.y - box.minimum.y,
+            diameterX: box.maximum.x - box.minimum.x,
+          };
+        }
+
+        return {
+          simple: getBounds(getMesh(simpleId)),
+          tapered: getBounds(getMesh(taperedId)),
+          segmented: getBounds(getMesh(segmentedId)),
+        };
+      });
+
+      expect(result.simple.height, `simple cylinder height should work in ${backend}`).toBeCloseTo(
+        2,
+        3
+      );
+      expect(
+        result.simple.diameterX,
+        `simple cylinder radius should work in ${backend}`
+      ).toBeCloseTo(1, 2);
+      expect(
+        result.tapered.height,
+        `tapered cylinder height should still work in ${backend}`
+      ).toBeCloseTo(3, 3);
+      expect(
+        result.segmented.height,
+        `segmented cylinder shorthand should work in ${backend}`
+      ).toBeCloseTo(1.25, 3);
+      expect(
+        result.segmented.diameterX,
+        `segmented cylinder radius should work in ${backend}`
+      ).toBeCloseTo(0.8, 2);
+    }
+  });
+
+  test('createSphere should support options as the fourth argument in both backends', async ({
+    page,
+  }) => {
+    for (const backend of BACKENDS) {
+      await openApiSandbox(page, backend);
+
+      const result = await page.evaluate(() => {
+        clearScene();
+
+        const sphereId = createSphere(1, 0x66ccff, [0, 0, -4], {
+          material: 'standard',
+          emissive: 0x224466,
+          transparent: true,
+          opacity: 0.4,
+        });
+        const material = getMesh(sphereId)?.material;
+
+        return {
+          transparent: material?.transparent ?? material?.alpha < 1,
+          opacity: material?.opacity ?? material?.alpha ?? null,
+          hasEmissive: Boolean(material?.emissive || material?.emissiveColor),
+        };
+      });
+
+      expect(result.transparent, `sphere transparency should work in ${backend}`).toBe(true);
+      expect(result.opacity, `sphere opacity should work in ${backend}`).toBeCloseTo(0.4, 2);
+      expect(result.hasEmissive, `sphere emissive option should work in ${backend}`).toBe(true);
+    }
+  });
+
+  test('createPlane should apply material options in both backends', async ({ page }) => {
+    for (const backend of BACKENDS) {
+      await openApiSandbox(page, backend);
+
+      const result = await page.evaluate(() => {
+        clearScene();
+
+        const planeId = createPlane(2, 3, 0x66ccff, [0, 0, -4], {
+          material: 'standard',
+          transparent: true,
+          opacity: 0.35,
+          emissive: 0x224466,
+        });
+        const material = getMesh(planeId)?.material;
+
+        return {
+          transparent: material?.transparent ?? material?.alpha < 1,
+          opacity: material?.opacity ?? material?.alpha ?? null,
+          hasEmissive: Boolean(material?.emissive || material?.emissiveColor),
+        };
+      });
+
+      expect(result.transparent, `plane transparency should work in ${backend}`).toBe(true);
+      expect(result.opacity, `plane opacity should work in ${backend}`).toBeCloseTo(0.35, 2);
+      expect(result.hasEmissive, `plane emissive material option should work in ${backend}`).toBe(
+        true
+      );
+    }
+  });
+
+  test('3D particle systems should support emitter direction in both backends', async ({
+    page,
+  }) => {
+    for (const backend of BACKENDS) {
+      await openApiSandbox(page, backend);
+
+      const result = await page.evaluate(() => {
+        clearScene();
+
+        const systemId = createParticleSystem(12, {
+          shape: 'sphere',
+          size: 0.2,
+          emitRate: 0,
+          gravity: 0,
+          drag: 1,
+          emitterX: 0,
+          emitterY: 0,
+          emitterZ: 0,
+          directionX: 0,
+          directionY: -1,
+          directionZ: 0,
+          minLife: 2,
+          maxLife: 2,
+          minSpeed: 5,
+          maxSpeed: 5,
+          spread: 0,
+          minSize: 0.2,
+          maxSize: 0.2,
+          startColor: 0x88ccff,
+          endColor: 0x224466,
+        });
+
+        burstParticles(systemId, 1);
+        updateParticles(0.25);
+
+        function activeParticleYValues() {
+          const scene = nova64.scene.getScene();
+          const values = [];
+
+          for (const mesh of scene.children ?? []) {
+            if (!mesh.isInstancedMesh || !mesh.instanceMatrix?.array) continue;
+            const matrices = mesh.instanceMatrix.array;
+            for (let offset = 0; offset < matrices.length; offset += 16) {
+              const y = matrices[offset + 13];
+              const hasScale =
+                Math.abs(matrices[offset]) +
+                  Math.abs(matrices[offset + 5]) +
+                  Math.abs(matrices[offset + 10]) >
+                0.0001;
+              if (hasScale && y > -1000) values.push(y);
+            }
+          }
+
+          for (const mesh of scene.meshes ?? []) {
+            if (!mesh.name?.startsWith('sps_') || typeof mesh.getVerticesData !== 'function') {
+              continue;
+            }
+            const positions = mesh.getVerticesData('position') ?? [];
+            for (let i = 1; i < positions.length; i += 3) {
+              const y = positions[i];
+              if (Number.isFinite(y) && y > -1000) values.push(y);
+            }
+          }
+
+          return values;
+        }
+
+        const ys = activeParticleYValues();
+        const avgY = ys.reduce((sum, y) => sum + y, 0) / Math.max(ys.length, 1);
+        const minY = Math.min(...ys);
+
+        return {
+          active: getParticleStats(systemId)?.active ?? 0,
+          samples: ys.length,
+          avgY,
+          minY,
+        };
+      });
+
+      expect(result.active, `directional particles should be active in ${backend}`).toBe(1);
+      expect(
+        result.samples,
+        `directional particle positions should be readable in ${backend}`
+      ).toBeGreaterThan(0);
+      expect(
+        result.minY,
+        `negative Y direction should move particles downward in ${backend}`
+      ).toBeLessThan(-0.5);
     }
   });
 
@@ -453,7 +747,13 @@ test.describe('Backend Surface Parity', () => {
     const result = await page.evaluate(() => {
       const caps = nova64.scene.getBackendCapabilities();
       const ditheringResult = enableDithering(true);
-      const particleSystemId = createParticleSystem(32);
+      const particleSystemId = createParticleSystem(32, {
+        startColor: 0xff4400,
+        endColor: 0x220000,
+        emissive: 0xff4400,
+        emissiveIntensity: 3,
+        blending: 'additive',
+      });
       const initialParticleStats = getParticleStats(particleSystemId);
       const particleEmitterResult = setParticleEmitter(particleSystemId, {
         emitterX: 1,
@@ -462,6 +762,10 @@ test.describe('Backend Surface Parity', () => {
       const particleBurstResult = burstParticles(particleSystemId, 8);
       const particleUpdateResult = updateParticles(1 / 60);
       const particleStats = getParticleStats(particleSystemId);
+      const particleMesh = nova64.scene
+        .getScene()
+        .meshes.find(mesh => mesh.name?.startsWith('sps_'));
+      const particleMaterial = particleMesh?.material;
       const particleRemoved = removeParticleSystem(particleSystemId);
 
       return {
@@ -476,6 +780,11 @@ test.describe('Backend Surface Parity', () => {
         particleEmitterResult,
         particleBurstResult,
         particleUpdateResult,
+        particleMeshUseVertexColors: particleMesh?.useVertexColors === true,
+        particleMeshHasVertexAlpha: particleMesh?.hasVertexAlpha === true,
+        particleMaterialAlphaMode: particleMaterial?.alphaMode ?? null,
+        particleMaterialDepthWriteDisabled: particleMaterial?.disableDepthWrite === true,
+        particleMaterialDiffuseScale: Number(particleMaterial?.diffuseColor?.r ?? 0),
         particleRemoved,
       };
     });
@@ -496,6 +805,11 @@ test.describe('Backend Surface Parity', () => {
     expect(result.particleEmitterResult).toBe(true);
     expect(result.particleBurstResult).toBe(8);
     expect(result.particleUpdateResult).toBeGreaterThanOrEqual(0);
+    expect(result.particleMeshUseVertexColors).toBe(true);
+    expect(result.particleMeshHasVertexAlpha).toBe(true);
+    expect(result.particleMaterialAlphaMode).toBe(6);
+    expect(result.particleMaterialDepthWriteDisabled).toBe(true);
+    expect(result.particleMaterialDiffuseScale).toBeGreaterThan(1);
     expect(result.particleRemoved).toBe(true);
     expect(errorText).not.toContain('gpu.endFrame() error:');
     expect(errorText).not.toContain('Cart update() error:');

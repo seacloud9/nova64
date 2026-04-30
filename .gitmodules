@@ -1,0 +1,7 @@
+[submodule "nova64-godot/gdextension/third_party/godot-cpp"]
+	path = nova64-godot/gdextension/third_party/godot-cpp
+	url = https://github.com/godotengine/godot-cpp.git
+	branch = 4.3
+[submodule "nova64-godot/gdextension/third_party/quickjs"]
+	path = nova64-godot/gdextension/third_party/quickjs
+	url = https://github.com/quickjs-ng/quickjs.git

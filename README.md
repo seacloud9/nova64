@@ -327,6 +327,7 @@ createPointLight(color, intensity, distance, [x, y, z]);
 ```javascript
 // Primitives — createX(size/args, color, [x,y,z], options?)
 createCube(size, color, [x,y,z], { material, metalness, roughness, emissive, ... })
+createCube(width, height, depth, color, [x,y,z], options)
 createSphere(radius, color, [x,y,z], options)
 createPlane(w, h, color, [x,y,z], options)
 createCylinder(radiusTop, radiusBottom, height, color, [x,y,z], options)

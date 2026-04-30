@@ -78,6 +78,10 @@ function buildScene(idx) {
   else if (idx === 4) buildWaterfall();
 }
 
+function isBabylonBackend() {
+  return nova64.scene.getBackendCapabilities?.().backend === 'babylon';
+}
+
 // ── Scene 0: Inferno — massive bonfire with erupting embers ───────────────────
 function buildFire() {
   setAmbientLight(0x331100, 0.5);
@@ -115,12 +119,18 @@ function buildFire() {
   // Central log pile
   for (let i = 0; i < 4; i++) {
     const a = (i / 4) * Math.PI;
-    propIds.push(
-      createCylinder(0.2, 3.5, 0x221100, [Math.cos(a) * 0.6, 0.8, Math.sin(a) * 0.6], {
+    const log = createCylinder(
+      0.18,
+      3.0,
+      0x221100,
+      [Math.cos(a) * 0.18, 0.35, Math.sin(a) * 0.18],
+      {
         material: 'standard',
         roughness: 0.95,
-      })
+      }
     );
+    setRotation(log, Math.PI / 2, a, 0);
+    propIds.push(log);
   }
 
   // --- CORE FLAMES: bright dense fire column ---
@@ -578,16 +588,17 @@ function buildForge() {
 
 // ── Scene 3: Galaxy — swirling spiral arms with nebula dust and stellar nursery
 function buildGalaxy() {
+  const babylon = isBabylonBackend();
   setAmbientLight(0x020208, 0.15);
   setFog(0x000004, 40, 80);
   enableBloom(1.8, 0.6, 0.1);
   createSolidSkybox(0x000005);
 
   // Central black hole — emissive core
-  const core = createSphere(0.6, 0x221144, [0, 0, 0], {
+  const core = createSphere(babylon ? 1.45 : 0.6, babylon ? 0xffffff : 0x221144, [0, 0, 0], {
     material: 'standard',
-    emissive: 0x6633ff,
-    emissiveIntensity: 5.0,
+    emissive: babylon ? 0xffffff : 0x6633ff,
+    emissiveIntensity: babylon ? 8.0 : 5.0,
   });
   propIds.push(core);
 
@@ -719,13 +730,14 @@ function buildGalaxy() {
 
 // ── Scene 4: Waterfall — cascading water with mist and rainbow spray ──────────
 function buildWaterfall() {
-  setAmbientLight(0x446655, 1.2);
+  const babylon = isBabylonBackend();
+  setAmbientLight(0x446655, babylon ? 0.18 : 1.2);
   setFog(0x224433, 30, 65);
-  enableBloom(0.6, 0.3, 0.4);
+  enableBloom(babylon ? 0.95 : 0.6, babylon ? 0.45 : 0.3, babylon ? 0.18 : 0.4);
 
   // Lush green ground
   const floor = createPlane(50, 50, 0x336633, [0, 0, 0], {
-    material: 'standard',
+    material: 'phong',
     roughness: 0.85,
   });
   setRotation(floor, -Math.PI / 2, 0, 0);
@@ -734,7 +746,7 @@ function buildWaterfall() {
   // Cliff face — tall and wide
   propIds.push(
     createCube(10, 14, 3, 0x555544, [0, 7, -6], {
-      material: 'standard',
+      material: 'phong',
       roughness: 0.95,
       metalness: 0.05,
     })
@@ -742,21 +754,44 @@ function buildWaterfall() {
   // Cliff top ledge
   propIds.push(
     createCube(8, 0.6, 2, 0x666655, [0, 14, -5], {
-      material: 'standard',
+      material: 'phong',
       roughness: 0.85,
     })
   );
   // Side cliffs
   propIds.push(
-    createCube(3, 10, 3, 0x554433, [-5.5, 5, -5], { material: 'standard', roughness: 0.9 })
+    createCube(3, 10, 3, 0x554433, [-5.5, 5, -5], { material: 'phong', roughness: 0.9 })
   );
-  propIds.push(
-    createCube(3, 10, 3, 0x554433, [5.5, 5, -5], { material: 'standard', roughness: 0.9 })
-  );
+  propIds.push(createCube(3, 10, 3, 0x554433, [5.5, 5, -5], { material: 'phong', roughness: 0.9 }));
+
+  // Translucent water sheets give the cascade a continuous body in both backends;
+  // particles add spray, foam, and sparkle on top.
+  const waterSheet = createPlane(3.2, 12.4, 0x66bbff, [0, 7.4, -3.45], {
+    material: 'phong',
+    transparent: true,
+    opacity: 0.26,
+    emissive: 0x2255aa,
+    emissiveIntensity: 0.9,
+    roughness: 0.18,
+    metalness: 0.05,
+    side: 'double',
+  });
+  propIds.push(waterSheet);
+
+  const waterHighlight = createPlane(1.0, 11.6, 0xddeeff, [-0.75, 7.7, -3.38], {
+    material: 'phong',
+    transparent: true,
+    opacity: 0.18,
+    emissive: 0x88bbff,
+    emissiveIntensity: 1.2,
+    roughness: 0.1,
+    side: 'double',
+  });
+  propIds.push(waterHighlight);
 
   // Bright blue pool at base
   const pool = createCylinder(6, 0.4, 0x3388cc, [0, 0.2, 4], {
-    material: 'standard',
+    material: 'phong',
     emissive: 0x1144aa,
     emissiveIntensity: 1.0,
     roughness: 0.05,
@@ -778,7 +813,7 @@ function buildWaterfall() {
   for (const [rx, ry, rz] of rockSpots) {
     propIds.push(
       createSphere(0.5 + Math.random() * 0.5, 0x445544, [rx, ry, rz], 4, {
-        material: 'standard',
+        material: 'phong',
         roughness: 0.85,
       })
     );
@@ -791,19 +826,26 @@ function buildWaterfall() {
       segments: 4,
       emissive: 0x88bbff,
       emissiveIntensity: 1.8,
-      gravity: 16,
+      blending: 'additive',
+      opacity: 0.72,
+      gravity: -8,
       drag: 0.995,
       emitterX: 0,
       emitterY: 14,
       emitterZ: -3.5,
+      directionX: 0,
+      directionY: -1,
+      directionZ: 0,
       emitRate: 300,
       minLife: 0.8,
       maxLife: 1.6,
-      minSpeed: 0.8,
-      maxSpeed: 2.5,
+      minSpeed: 5,
+      maxSpeed: 9,
       spread: 0.2,
       minSize: 0.1,
       maxSize: 0.35,
+      sizeOverLife: [1.0, 0.9, 0.35],
+      opacityOverLife: [0.8, 0.7, 0.15],
       startColor: 0xddeeff,
       endColor: 0x66aadd,
     })
@@ -816,19 +858,26 @@ function buildWaterfall() {
       segments: 3,
       emissive: 0x77aaee,
       emissiveIntensity: 1.5,
-      gravity: 15,
+      blending: 'additive',
+      opacity: 0.65,
+      gravity: -8,
       drag: 0.99,
       emitterX: -0.8,
       emitterY: 14,
       emitterZ: -3.2,
+      directionX: 0,
+      directionY: -1,
+      directionZ: 0.08,
       emitRate: 140,
       minLife: 0.8,
       maxLife: 1.5,
-      minSpeed: 0.5,
-      maxSpeed: 2.0,
+      minSpeed: 4,
+      maxSpeed: 8,
       spread: 0.25,
       minSize: 0.08,
       maxSize: 0.28,
+      sizeOverLife: [1.0, 0.85, 0.25],
+      opacityOverLife: [0.75, 0.65, 0.12],
       startColor: 0xccddff,
       endColor: 0x5599cc,
     })
@@ -841,11 +890,16 @@ function buildWaterfall() {
       segments: 3,
       emissive: 0xaaddff,
       emissiveIntensity: 1.5,
-      gravity: 10,
+      blending: 'additive',
+      opacity: 0.68,
+      gravity: -10,
       drag: 0.9,
       emitterX: 0,
       emitterY: 0.8,
       emitterZ: 2,
+      directionX: 0,
+      directionY: 1,
+      directionZ: 0.35,
       emitRate: 150,
       minLife: 0.4,
       maxLife: 1.2,
@@ -854,6 +908,8 @@ function buildWaterfall() {
       spread: 0.8,
       minSize: 0.04,
       maxSize: 0.18,
+      sizeOverLife: [0.8, 1.0, 0.25],
+      opacityOverLife: [0.75, 0.6, 0.0],
       startColor: 0xffffff,
       endColor: 0x88ccee,
     })
@@ -866,11 +922,15 @@ function buildWaterfall() {
       segments: 4,
       emissive: 0x99bbcc,
       emissiveIntensity: 0.8,
-      gravity: -0.5,
+      opacity: 0.42,
+      gravity: -0.2,
       drag: 0.998,
       emitterX: 0,
       emitterY: 2,
       emitterZ: 5,
+      directionX: 0,
+      directionY: 0.25,
+      directionZ: 1,
       emitRate: 55,
       minLife: 3.0,
       maxLife: 7.0,
@@ -879,6 +939,8 @@ function buildWaterfall() {
       spread: Math.PI * 0.7,
       minSize: 0.2,
       maxSize: 0.7,
+      sizeOverLife: [0.4, 1.25, 1.7],
+      opacityOverLife: [0.0, 0.3, 0.0],
       startColor: 0xddeeff,
       endColor: 0x99bbcc,
     })
@@ -891,11 +953,16 @@ function buildWaterfall() {
       segments: 3,
       emissive: 0x88ccff,
       emissiveIntensity: 1.2,
-      gravity: 5,
+      blending: 'additive',
+      opacity: 0.55,
+      gravity: -8,
       drag: 0.94,
       emitterX: 2.5,
       emitterY: 3,
       emitterZ: 3,
+      directionX: 0.4,
+      directionY: 0.75,
+      directionZ: 0.8,
       emitRate: 45,
       minLife: 0.6,
       maxLife: 2.0,
@@ -904,6 +971,7 @@ function buildWaterfall() {
       spread: 0.8,
       minSize: 0.02,
       maxSize: 0.08,
+      opacityOverLife: [0.8, 0.5, 0.0],
       startColor: 0xcceeff,
       endColor: 0x4488cc,
     })
@@ -916,11 +984,15 @@ function buildWaterfall() {
       segments: 3,
       emissive: 0x66aacc,
       emissiveIntensity: 1.0,
-      gravity: 2,
+      opacity: 0.55,
+      gravity: -0.5,
       drag: 0.97,
       emitterX: 0,
       emitterY: 0.3,
       emitterZ: 9,
+      directionX: 0,
+      directionY: 0,
+      directionZ: 1,
       emitRate: 55,
       minLife: 2.0,
       maxLife: 4.0,
@@ -929,6 +1001,8 @@ function buildWaterfall() {
       spread: 0.3,
       minSize: 0.05,
       maxSize: 0.15,
+      sizeOverLife: [0.8, 1.0, 0.55],
+      opacityOverLife: [0.55, 0.45, 0.1],
       startColor: 0x88ccee,
       endColor: 0x5599aa,
     })

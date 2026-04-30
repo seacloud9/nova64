@@ -1,9 +1,13 @@
 @tool
-extends EditorSyntaxHighlighter
+extends CodeHighlighter
 
 # Lightweight JavaScript syntax highlighter for the Godot script editor.
-# Registered via the nova64_carts addon so files ending in `.js` get readable
-# colours without needing a full LSP-grade parser.
+# Assigned directly to a CodeEdit.syntax_highlighter by the nova64_carts
+# addon when a `.js` file is open. We extend `CodeHighlighter` (not
+# `EditorSyntaxHighlighter`) because Godot 4.4's plain TextEditor does not
+# iterate `ScriptEditor.register_syntax_highlighter()` for textfiles, and
+# `SyntaxHighlighter::set_text_edit` is not exposed to GDScript so we
+# cannot wrap a CodeHighlighter from inside an EditorSyntaxHighlighter.
 
 const KEYWORD_COLOR := Color(1.0, 0.44, 0.52)
 const CONTROL_COLOR := Color(1.0, 0.71, 0.36)
@@ -33,42 +37,21 @@ const TYPES := [
 	"Float32Array", "Uint8Array", "Int32Array", "console",
 ]
 
-var _ch: CodeHighlighter = CodeHighlighter.new()
-
 func _init() -> void:
-	_ch.number_color = NUMBER_COLOR
-	_ch.symbol_color = SYMBOL_COLOR
-	_ch.function_color = FUNCTION_COLOR
-	_ch.member_variable_color = MEMBER_COLOR
+	number_color = NUMBER_COLOR
+	symbol_color = SYMBOL_COLOR
+	function_color = FUNCTION_COLOR
+	member_variable_color = MEMBER_COLOR
 	for k in KEYWORDS:
-		_ch.add_keyword_color(k, KEYWORD_COLOR)
+		add_keyword_color(k, KEYWORD_COLOR)
 	for k in CONTROL_KEYWORDS:
-		_ch.add_keyword_color(k, CONTROL_COLOR)
+		add_keyword_color(k, CONTROL_COLOR)
 	for k in LITERALS:
-		_ch.add_keyword_color(k, LITERAL_COLOR)
+		add_keyword_color(k, LITERAL_COLOR)
 	for k in TYPES:
-		_ch.add_keyword_color(k, TYPE_COLOR)
-	_ch.add_color_region("//", "", COMMENT_COLOR, true)
-	_ch.add_color_region("/*", "*/", COMMENT_COLOR, false)
-	_ch.add_color_region("\"", "\"", STRING_COLOR, false)
-	_ch.add_color_region("'", "'", STRING_COLOR, false)
-	_ch.add_color_region("`", "`", STRING_COLOR, false)
-
-func _get_name() -> String:
-	return "JavaScript"
-
-func _get_supported_languages() -> PackedStringArray:
-	return PackedStringArray(["js"])
-
-# The textfile script editor matches highlighters by file extension via
-# _get_supported_extensions(); _get_supported_languages() alone is only used
-# for true Script-derived languages, so plain .js text files won't pick it
-# up unless this method is implemented too.
-func _get_supported_extensions() -> PackedStringArray:
-	return PackedStringArray(["js"])
-
-func _get_line_syntax_highlighting(p_line: int) -> Dictionary:
-	var te := get_text_edit()
-	if te != null and _ch.get_text_edit() != te:
-		_ch.set_text_edit(te)
-	return _ch._get_line_syntax_highlighting(p_line)
+		add_keyword_color(k, TYPE_COLOR)
+	add_color_region("//", "", COMMENT_COLOR, true)
+	add_color_region("/*", "*/", COMMENT_COLOR, false)
+	add_color_region("\"", "\"", STRING_COLOR, false)
+	add_color_region("'", "'", STRING_COLOR, false)
+	add_color_region("`", "`", STRING_COLOR, false)

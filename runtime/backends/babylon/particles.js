@@ -5,6 +5,7 @@
 import {
   Color3,
   Color4,
+  Constants,
   MeshBuilder,
   SolidParticleSystem,
   StandardMaterial,
@@ -19,6 +20,26 @@ const STRIDE = 13; // slots per particle:
 export function createBabylonParticlesApi(self) {
   const particleSystems = new Map();
   let psCounter = 0;
+
+  function normalizeDirection(x = 0, y = 1, z = 0) {
+    const len = Math.hypot(x, y, z);
+    if (!Number.isFinite(len) || len <= 0.0001) return { x: 0, y: 1, z: 0 };
+    return { x: x / len, y: y / len, z: z / len };
+  }
+
+  function directionBasis(direction) {
+    const up = Math.abs(direction.y) > 0.98 ? { x: 1, y: 0, z: 0 } : { x: 0, y: 1, z: 0 };
+    const tx = up.y * direction.z - up.z * direction.y;
+    const ty = up.z * direction.x - up.x * direction.z;
+    const tz = up.x * direction.y - up.y * direction.x;
+    const tangent = normalizeDirection(tx, ty, tz);
+    const bitangent = {
+      x: direction.y * tangent.z - direction.z * tangent.y,
+      y: direction.z * tangent.x - direction.x * tangent.z,
+      z: direction.x * tangent.y - direction.y * tangent.x,
+    };
+    return { tangent, bitangent };
+  }
 
   function createParticleSystem(maxParticlesOrOptions = 200, options = {}) {
     // Normalize arguments (support both signatures)
@@ -53,6 +74,9 @@ export function createBabylonParticlesApi(self) {
       emitterX = 0,
       emitterY = 0,
       emitterZ = 0,
+      directionX = 0,
+      directionY = 1,
+      directionZ = 0,
       emitRate = 20,
       minLife = 0.8,
       maxLife = 2.0,
@@ -105,19 +129,21 @@ export function createBabylonParticlesApi(self) {
     // Build the SPS mesh
     const spsMesh = sps.buildMesh();
     spsMesh.hasVertexAlpha = true;
+    spsMesh.useVertexColors = true;
+    spsMesh.alwaysSelectAsActiveMesh = true;
+    spsMesh.isPickable = false;
 
     // Create material - use emissive-based rendering for bright particle glow
     const mat = new StandardMaterial(`particle_mat_${id}`, self.scene);
-    const sc = hexToColor3(startColor);
     const ec = hexToColor3(emissive);
 
     // For particles, we want bright emissive glow like Three.js MeshStandardMaterial
     mat.disableLighting = true;
 
-    // Use emissive color for the particle color (self-lit appearance)
-    const intensity = Math.min(emissiveIntensity, 4.0);
-    mat.emissiveColor = ec.scale(intensity);
-    mat.diffuseColor = sc;
+    const intensity = Math.max(0, Math.min(Number(emissiveIntensity) || 0, 4.0));
+    const colorBoost = Math.max(1, intensity);
+    mat.emissiveColor = ec.scale(Math.min(intensity * 0.35, 2.0));
+    mat.diffuseColor = new Color3(colorBoost, colorBoost, colorBoost);
     mat.specularColor = new Color3(0, 0, 0);
 
     // Enable vertex colors for per-particle coloring
@@ -125,10 +151,11 @@ export function createBabylonParticlesApi(self) {
     mat.alpha = opacity;
 
     if (blending === 'additive') {
-      mat.alphaMode = 2; // ALPHA_ADD
+      mat.alphaMode = Constants.ALPHA_ONEONE;
       mat.disableDepthWrite = true;
     } else {
-      mat.alphaMode = 1; // ALPHA_COMBINE
+      mat.alphaMode = Constants.ALPHA_COMBINE;
+      mat.disableDepthWrite = false;
     }
 
     spsMesh.material = mat;
@@ -206,9 +233,9 @@ export function createBabylonParticlesApi(self) {
         alpha = sys.config.opacity * (1 - t * 0.5); // Fade out slightly
       }
 
-      particle.color.r = r;
-      particle.color.g = g;
-      particle.color.b = b;
+      particle.color.r = r * sys.config.colorBoost;
+      particle.color.g = g * sys.config.colorBoost;
+      particle.color.b = b * sys.config.colorBoost;
       particle.color.a = alpha;
 
       // Rotation
@@ -239,6 +266,9 @@ export function createBabylonParticlesApi(self) {
         x: emitterX,
         y: emitterY,
         z: emitterZ,
+        directionX,
+        directionY,
+        directionZ,
         emitRate,
         minLife,
         maxLife,
@@ -263,6 +293,7 @@ export function createBabylonParticlesApi(self) {
         opacityOverLife,
         rotationSpeed,
         opacity,
+        colorBoost,
       },
     });
 
@@ -286,15 +317,24 @@ export function createBabylonParticlesApi(self) {
     const ey = overrides.y ?? emitter.y;
     const ez = overrides.z ?? emitter.z;
 
-    // Random direction within spread cone (pointing up by default)
+    // Random direction within spread cone.
     const phi = Math.random() * Math.PI * 2;
     const theta = Math.random() * (overrides.spread ?? emitter.spread);
     const ct = Math.cos(theta);
     const st = Math.sin(theta);
     const speed = emitter.minSpeed + Math.random() * (emitter.maxSpeed - emitter.minSpeed);
-    const vx = overrides.vx ?? st * Math.cos(phi) * speed;
-    const vy = overrides.vy ?? ct * speed;
-    const vz = overrides.vz ?? st * Math.sin(phi) * speed;
+    const direction = normalizeDirection(
+      overrides.directionX ?? emitter.directionX,
+      overrides.directionY ?? emitter.directionY,
+      overrides.directionZ ?? emitter.directionZ
+    );
+    const { tangent, bitangent } = directionBasis(direction);
+    const radialX = Math.cos(phi) * tangent.x + Math.sin(phi) * bitangent.x;
+    const radialY = Math.cos(phi) * tangent.y + Math.sin(phi) * bitangent.y;
+    const radialZ = Math.cos(phi) * tangent.z + Math.sin(phi) * bitangent.z;
+    const vx = overrides.vx ?? (direction.x * ct + radialX * st) * speed;
+    const vy = overrides.vy ?? (direction.y * ct + radialY * st) * speed;
+    const vz = overrides.vz ?? (direction.z * ct + radialZ * st) * speed;
 
     const life = emitter.minLife + Math.random() * (emitter.maxLife - emitter.minLife);
     const sz = emitter.minSize + Math.random() * (emitter.maxSize - emitter.minSize);

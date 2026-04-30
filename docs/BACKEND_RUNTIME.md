@@ -185,6 +185,13 @@ Recent parity work focused on the places where carts were still clearly broken u
 - Babylon now also has guarded NOA probe and adapter seams in `runtime/backends/babylon/noa-prototype.js` and `runtime/backends/babylon/noa-adapter.js`; use them to investigate `noa-engine` incrementally without letting a Babylon-only engine bypass Nova64's shared voxel API. See `docs/BABYLON_NOA_PROTOTYPE.md` and `docs/BABYLON_NOA_INTEGRATION.md` for the current guardrails.
 - The first `tsl-showcase` Galaxy scene now uses deterministic star placement, which makes Babylon-vs-Three visual comparisons measure renderer parity instead of per-load randomness.
 - Babylon high-strength bloom requests now map to a wider/brighter Babylon post-processing setup so glowing TSL scenes stay closer to the Three.js UnrealBloom path while low-strength bloom scenes keep the conservative mapping.
+- `createCube(...)` now accepts rectangular width/height/depth/color signatures as well as the classic cube size/color signature in both backends, keeping scene prop dimensions stable in demos such as `particles-demo`.
+- `createSphere(...)` now accepts material options as the fourth argument as well as the explicit segments/options form, matching cart usage in glow-heavy demos such as the galaxy particle scene.
+- `createCylinder(...)` now accepts the cart-facing radius/height/color signatures and the older tapered radiusTop/radiusBottom/height signature in both backends, preventing Babylon from interpreting colors as giant cylinder heights.
+- `createPlane(...)` forwards material options through both backends, including opacity and transparency, so shared translucent scene props do not become opaque rectangles on Three.js.
+- Babylon thin instances keep their source mesh render-visible, refresh matrix/color buffers during `finalizeInstances(...)`, and refresh bounds so the same instanced cart content remains visible under Babylon.
+- Babylon particles now opt into mesh-level vertex colors/alpha, correct Babylon alpha modes, and HDR bloom so emissive particle carts such as `particles-demo` stay much closer to Three.js.
+- 3D particle emitters now accept `directionX`, `directionY`, and `directionZ` in both backends; the default remains upward, but carts such as the waterfall scene can emit downward water without relying on inverted gravity.
 
 Current visual status:
 
@@ -195,6 +202,8 @@ Current visual status:
 - Babylon voxel carts now boot and render chunk/entity content without Three-only scene errors, but voxel visual parity still needs follow-up work around custom material parity, chunk shading, and screenshot-level similarity against Three.js.
 - `minecraft-demo` now has deterministic terrain and a focused voxel visual regression guardrail, with the Babylon gameplay-frame diff back down into the low-to-mid teens instead of the earlier broken ~35%+ range caused by seed drift and chunk-face culling.
 - The visual regression threshold for `pbr-showcase` is intentionally looser than simple skybox scenes so it can still catch major regressions without pretending the two backends are identical today.
+- `particles-demo` now has a focused visual regression pass again after the cylinder signature fix and Babylon particle bloom/material tuning; the demo is still not pixel-identical, but the fire scene should no longer show the old center-pillar artifact.
+- `particles-demo` also has a waterfall-specific visual regression check, and `instancing-demo` now uses deterministic scene layouts plus its own visual parity guardrail.
 
 ## Focused Validation
 
@@ -208,6 +217,7 @@ These are the most useful narrow checks for the current Babylon parity surface:
 - `pnpm exec playwright test tests/playwright/visual-regression.spec.js --grep "minecraft-demo should stay reasonably similar" --reporter=line`
 - `pnpm exec playwright test tests/playwright/visual-regression.spec.js --grep "wad-demo gameplay frame" --reporter=line`
 - `pnpm exec playwright test tests/playwright/visual-regression.spec.js --grep "tsl-showcase galaxy" --reporter=line`
+- `pnpm exec playwright test tests/playwright/visual-regression.spec.js --grep "particles-demo" --reporter=line`
 - `pnpm exec playwright test tests/playwright/xr-ar-babylon.spec.js --reporter=line`
 
 Use the WAD-specific visual and regression slices first when touching Babylon WAD rendering, UVs, materials, lights, or compatibility shims. Use the voxel-focused regression and backend-parity slices first when touching `runtime/api-voxel.js` or `runtime/backends/babylon/voxel.js`.

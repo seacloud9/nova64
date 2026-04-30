@@ -1,14 +1,7 @@
 // runtime/backends/babylon/instancing.js
 // Thin-instance support and LOD helpers for the Babylon backend.
 
-import {
-  Matrix,
-  MeshBuilder,
-  Quaternion,
-  StandardMaterial,
-  TransformNode,
-  Vector3,
-} from '@babylonjs/core';
+import { Matrix, MeshBuilder, Quaternion, TransformNode, Vector3 } from '@babylonjs/core';
 
 import { hexToColor3, normalizePosition, normalizeVectorArgs } from './common.js';
 import { applyBabylonMaterialCompatibility, applyBabylonMeshCompatibility } from './compat.js';
@@ -89,6 +82,15 @@ function updateSingleLod(self, entry) {
 }
 
 export function createBabylonInstancingApi(self) {
+  function updateThinInstanceBuffers(entry) {
+    entry.mesh.thinInstanceBufferUpdated('matrix');
+    if (entry.hasColors) {
+      entry.mesh.thinInstanceSetBuffer('color', entry.colors, 4, false);
+    }
+    entry.mesh.thinInstanceRefreshBoundingInfo?.();
+    entry.mesh.refreshBoundingInfo?.();
+  }
+
   return {
     createInstancedMesh(shape = 'cube', count = 100, color = 0xffffff, options = {}) {
       const {
@@ -135,23 +137,27 @@ export function createBabylonInstancingApi(self) {
           baseMesh = MeshBuilder.CreateBox(meshName, { size }, self.scene);
       }
 
-      const mat = new StandardMaterial(`${meshName}_mat`, self.scene);
-      mat.diffuseColor = hexToColor3(color);
-      mat.roughness = roughness;
-      mat.metallic = metalness;
-      mat.emissiveColor = hexToColor3(emissive);
-      if (emissive !== 0x000000) {
-        mat.emissiveColor.scaleInPlace(emissiveIntensity);
-      }
+      const mat = self.createN64Material({
+        color,
+        material: options.material ?? 'phong',
+        roughness,
+        metalness,
+        emissive,
+        emissiveIntensity,
+      });
+      mat.useVertexColors = true;
+      mat.useVertexColor = true;
 
       baseMesh.material = mat;
       applyBabylonMaterialCompatibility(mat);
       applyBabylonMeshCompatibility(baseMesh);
-      baseMesh.isVisible = false;
+      baseMesh.isVisible = true;
+      baseMesh.alwaysSelectAsActiveMesh = true;
       baseMesh.thinInstanceEnablePicking = false;
+      baseMesh.hasVertexAlpha = true;
 
       const bufferMatrices = new Float32Array(16 * count);
-      baseMesh.thinInstanceSetBuffer('matrix', bufferMatrices, 16);
+      baseMesh.thinInstanceSetBuffer('matrix', bufferMatrices, 16, false);
 
       const instanceId = self._counter;
       self._instancedMeshes.set(instanceId, {
@@ -161,6 +167,7 @@ export function createBabylonInstancingApi(self) {
         matrices: bufferMatrices,
         colors: new Float32Array(4 * count),
         hasColors: false,
+        dirty: true,
       });
       self._meshes.set(instanceId, baseMesh);
       return instanceId;
@@ -188,7 +195,8 @@ export function createBabylonInstancingApi(self) {
         new Vector3(x, y, z)
       );
       matrix.copyToArray(entry.matrices, index * 16);
-      entry.mesh.thinInstanceBufferUpdated('matrix');
+      entry.mesh.thinInstanceSetMatrixAt?.(index, matrix, false);
+      entry.dirty = true;
       return true;
     },
 
@@ -203,16 +211,15 @@ export function createBabylonInstancingApi(self) {
       entry.colors[offset + 2] = c.b;
       entry.colors[offset + 3] = 1.0;
       entry.hasColors = true;
+      entry.dirty = true;
       return true;
     },
 
     finalizeInstances(instancedId) {
       const entry = self._instancedMeshes.get(instancedId);
       if (!entry) return false;
-      entry.mesh.thinInstanceBufferUpdated('matrix');
-      if (entry.hasColors) {
-        entry.mesh.thinInstanceSetBuffer('color', entry.colors, 4);
-      }
+      updateThinInstanceBuffers(entry);
+      entry.dirty = false;
       return true;
     },
 

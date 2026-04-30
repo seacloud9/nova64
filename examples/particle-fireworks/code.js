@@ -1,8 +1,8 @@
 // particle-fireworks — Fireworks burst using createEmitter2D and BM.ADD
-// Shows: createEmitter2D, update emitter position, BM.ADD blend mode, burst
+// Shows: createEmitter2D, update emitter position, BM.ADD blend mode, burstEmitter2D
 
-const { BM, circle, cls, print, pset, rectfill, screenHeight, screenWidth } = nova64.draw;
-const { createEmitter2D, drawEmitter2D, updateEmitter2D } = nova64.fx;
+const { BM, cls, print, pset, rectfill, screenHeight, screenWidth } = nova64.draw;
+const { burstEmitter2D, createEmitter2D, drawEmitter2D, updateEmitter2D } = nova64.fx;
 
 let W = 640,
   H = 360;
@@ -22,29 +22,27 @@ function _launchFirework() {
   const x = 30 + Math.random() * (W - 60);
   const y = 30 + Math.random() * (H * 0.55);
   const pal = PALETTES[0 | (Math.random() * PALETTES.length)];
+  const tint = pal[0 | (Math.random() * pal.length)];
 
   const em = createEmitter2D({
-    blendMode: 'add', // BM.ADD equivalent
+    blendMode: BM.ADD,
     x,
     y,
-    rate: 0, // burst only
+    emitRate: 0, // burst only
     maxParticles: 80,
-    life: 1.2,
-    lifeVariance: 0.5,
-    speed: 60,
-    speedVariance: 40,
-    angle: 0,
-    angleVariance: Math.PI, // full circle
+    life: [0.7, 1.7],
+    speed: [20, 100],
+    angle: [-Math.PI, Math.PI],
     gravity: 60,
-    startSize: 3,
-    endSize: 0.5,
-    startAlpha: 1,
-    endAlpha: 0,
-    colors: pal,
+    scale: [0.45, 1.2],
+    alpha: [0.8, 1],
+    fadeOut: true,
+    scaleDown: true,
+    tint,
   });
 
   // Emit a burst
-  burst(em, 80);
+  burstEmitter2D(em, 80);
 
   // Trail star rising before burst (simple CSS-like movement hack via tween)
   emitters.push({ em, life: 2.5, x, y });

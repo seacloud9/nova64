@@ -5,21 +5,55 @@ const CART_IMPORTER := preload("res://addons/nova64_carts/cart_importer.gd")
 const JS_HIGHLIGHTER := preload("res://addons/nova64_carts/js_syntax_highlighter.gd")
 
 var _importer: EditorImportPlugin
-var _highlighter: EditorSyntaxHighlighter
+# JS_HIGHLIGHTER extends CodeHighlighter (a SyntaxHighlighter), not
+# EditorSyntaxHighlighter, because Godot's plain TextEditor (used for .js
+# textfiles) ignores plugin-registered editor highlighters and we cannot
+# call the internal SyntaxHighlighter::set_text_edit() from GDScript.
+var _highlighter: CodeHighlighter
 
 func _enter_tree() -> void:
 	_importer = CART_IMPORTER.new()
 	add_import_plugin(_importer)
 	_highlighter = JS_HIGHLIGHTER.new()
-	var se := EditorInterface.get_script_editor()
-	if se:
-		se.register_syntax_highlighter(_highlighter)
 	_ensure_js_textfile_extension()
+	set_process(true)
 	# NOTE: Do NOT call EditorInterface.get_resource_filesystem().scan() here.
 	# The editor performs `first_scan_filesystem` on its own during startup;
 	# starting another scan in `_enter_tree` produces:
 	#   ERROR: Task 'first_scan_filesystem' already exists.
 	# Newly registered import plugins are still picked up by that initial scan.
+
+# Godot 4.4's TextEditor (the editor used for plain .js / .json textfiles)
+# hardcodes only the built-in plain + standard highlighters in its constructor
+# and ignores ScriptEditor::register_syntax_highlighter(). To get JS colouring
+# we poll once per frame and assign our highlighter directly to the active
+# editor's CodeEdit when the open file ends in `.js`.
+func _process(_delta: float) -> void:
+	var se := EditorInterface.get_script_editor()
+	if se == null:
+		return
+	var open := se.get_open_script_editors() if se.has_method("get_open_script_editors") else []
+	for base in open:
+		_apply_to_editor(base)
+
+func _apply_to_editor(base) -> void:
+	if base == null:
+		return
+	if not base.has_method("get_edited_resource") or not base.has_method("get_base_editor"):
+		return
+	var res = base.get_edited_resource()
+	if res == null:
+		return
+	var path := String(res.resource_path)
+	if not path.to_lower().ends_with(".js"):
+		return
+	var ctrl = base.get_base_editor()
+	if ctrl == null or not (ctrl is CodeEdit):
+		return
+	var ce: CodeEdit = ctrl
+	if ce.syntax_highlighter == _highlighter:
+		return
+	ce.syntax_highlighter = _highlighter
 
 # `docks/filesystem/textfile_extensions` is an *editor* setting (per user),
 # so it cannot be set from project.godot. We add `js` here on plugin load
@@ -57,11 +91,8 @@ func _deferred_filesystem_rescan() -> void:
 		fs.scan()
 
 func _exit_tree() -> void:
+	set_process(false)
 	if _importer:
 		remove_import_plugin(_importer)
 		_importer = null
-	if _highlighter:
-		var se := EditorInterface.get_script_editor()
-		if se:
-			se.unregister_syntax_highlighter(_highlighter)
-		_highlighter = null
+	_highlighter = null

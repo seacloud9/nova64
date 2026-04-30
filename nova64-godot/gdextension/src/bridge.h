@@ -97,6 +97,8 @@ private:
     void _ensure_runtime();
     void _shutdown_runtime();
     void _install_host_globals();
+    void _load_compat_shim();
+    bool _shim_loaded = false;
     void _release_cart_exports();
     void _call_cart_fn(JSValue p_fn, double p_arg, bool p_pass_arg, const char *p_name);
     void _record_perf_sample(uint64_t p_update_us, uint64_t p_draw_us);

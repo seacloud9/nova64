@@ -397,6 +397,7 @@ void Nova64Host::_shutdown_runtime() {
         _runtime = nullptr;
     }
     _cart_loaded = false;
+    _shim_loaded = false;
 }
 
 void Nova64Host::_install_host_globals() {
@@ -420,6 +421,33 @@ void Nova64Host::_install_host_globals() {
     JS_SetPropertyStr(ctx, global, "engine", engine_obj);
 
     JS_FreeValue(ctx, global);
+}
+
+void Nova64Host::_load_compat_shim() {
+    if (_shim_loaded || !_context) return;
+    const String shim_path = "res://shim/nova64-compat.js";
+    if (!FileAccess::file_exists(shim_path)) {
+        // Optional — carts that talk directly to engine.call work without it.
+        return;
+    }
+    Ref<FileAccess> f = FileAccess::open(shim_path, FileAccess::READ);
+    if (f.is_null()) return;
+    String src = f->get_as_text();
+    f->close();
+    CharString utf8 = src.utf8();
+    JSValue r = JS_Eval(_context, utf8.get_data(), utf8.length(),
+            "<nova64-compat>", JS_EVAL_TYPE_GLOBAL);
+    if (JS_IsException(r)) {
+        JSValue exc = JS_GetException(_context);
+        const char *msg = JS_ToCString(_context, exc);
+        UtilityFunctions::printerr("[nova64] compat shim error: ",
+                msg ? String::utf8(msg) : String("(unknown)"));
+        if (msg) JS_FreeCString(_context, msg);
+        JS_FreeValue(_context, exc);
+    } else {
+        _shim_loaded = true;
+    }
+    JS_FreeValue(_context, r);
 }
 
 Dictionary Nova64Host::get_capabilities() const {
@@ -916,6 +944,7 @@ Dictionary Nova64Host::_cmd_particles_destroy(const Dictionary &p) {
 
 bool Nova64Host::load_cart(const String &p_res_path) {
     _ensure_runtime();
+    _load_compat_shim();
     _release_cart_exports();
     _cart_loaded = false;
 

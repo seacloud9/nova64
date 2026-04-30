@@ -50,46 +50,67 @@ cp export_presets.cfg.example export_presets.cfg
 
 ---
 
-## 3. One-Time Godot Editor Setup
+## 3. One-Time Setup (CLI-Only — No Android Studio, No Godot Editor UI)
 
-Android export needs the Godot Android export templates and an Android SDK +
-JDK reachable from the editor.
+The full Android pipeline runs from the shell. You never need to open Android
+Studio or the Godot editor.
 
-1. Open `nova64-godot/godot_project/project.godot` in **Godot 4.4.1**.
-2. *Editor → Manage Export Templates → Download* (matches the running editor
-   version).
-3. *Editor → Editor Settings → Export → Android*
-   - **Android SDK Path**: e.g. `C:/Users/brend/AppData/Local/Android/Sdk`
-   - **Java SDK Path**: an OpenJDK 17 install
-   - **Debug Keystore**: leave default (Godot ships one); on first export Godot
-     will offer to generate a debug keystore automatically.
-4. *Project → Export* — both presets should now appear without red errors.
+```bash
+# 1. NDK r23c + scons toolchain
+bash scripts/install-android-toolchain.sh
+
+# 2. platform-tools, build-tools, platforms
+bash scripts/install-android-sdk-packages.sh
+
+# 3. Godot export templates (downloads ~700 MB tpz, extracts to user data dir)
+bash scripts/install-godot-templates.sh
+
+# 4. emulator package + AVD nova64-test (skip if you only target physical devices)
+bash scripts/install-android-emulator.sh
+
+# 5. activate the export presets template
+cp godot_project/export_presets.cfg.example godot_project/export_presets.cfg
+```
+
+`install-godot-templates.sh` writes templates to:
+
+- WSL with Windows host visible: `$APPDATA/Godot/export_templates/4.4.1.stable/`
+  (so the Windows `Godot_v4.4.1-stable_console.exe` finds them too)
+- pure Linux: `~/.local/share/godot/export_templates/4.4.1.stable/`
+
+Override the version with `GODOT_VERSION=4.4.1 GODOT_FLAVOR=stable`.
 
 Package id is `org.nova64.host`, version `0.4.9`.
+
+### Optional: Open Editor Once
+
+If you prefer to verify presets in the editor (not required), open
+`godot_project/project.godot` in Godot 4.4.1 once and confirm both presets
+appear under *Project → Export*. Skip this for fully automated CI runs.
 
 ---
 
 ## 4. Producing the APK
 
-### Editor (recommended)
-
-*Project → Export* → select preset → **Export Project** (debug). Output goes to
-`nova64-godot/bin/export/nova64-host[-x86_64].apk`.
-
-### Headless
+### Headless (preferred, CLI-only)
 
 ```bash
-# arm64 device APK
-godot --headless --path godot_project --export-debug "Android ARM64" \
-  ../bin/export/nova64-host.apk
+# Both presets, debug
+bash scripts/export-android.sh
 
-# x86_64 emulator APK
-godot --headless --path godot_project --export-debug "Android x86_64 (Emulator)" \
-  ../bin/export/nova64-host-x86_64.apk
+# Single ABI / mode
+bash scripts/export-android.sh arm64           # device-only debug APK
+bash scripts/export-android.sh x86_64 release  # emulator release APK
 ```
 
-Headless export only works after the editor has been opened once with the
-Android export templates installed.
+Outputs:
+
+- `nova64-godot/bin/export/nova64-host.apk` (arm64-v8a)
+- `nova64-godot/bin/export/nova64-host-x86_64.apk` (emulator)
+
+### Editor (optional fallback)
+
+*Project → Export* → select preset → **Export Project**. Same output paths.
 
 ---
 
@@ -101,15 +122,17 @@ Toolchain installer:
 bash scripts/install-android-emulator.sh   # adds emulator pkg + arm64-v8a image, creates AVD nova64-test
 ```
 
-Boot headless under WSLg (no X server needed):
+Boot it headlessly with one command:
 
 ```bash
-export ANDROID_HOME="$HOME/Android/Sdk"
-nohup "$ANDROID_HOME/emulator/emulator" -avd nova64-test \
-  -no-audio -no-window -gpu swiftshader_indirect &
-adb wait-for-device
-adb shell getprop sys.boot_completed   # repeat until == 1
+bash scripts/boot-android-emulator.sh                # boots nova64-test, blocks until ready
+AVD=Super_Tablet bash scripts/boot-android-emulator.sh   # different AVD
 ```
+
+The script runs `emulator -no-window -no-audio -gpu swiftshader_indirect` in
+the background and waits for `sys.boot_completed=1`. Logs are saved to
+`bench/emulator-<ts>.log`. If a device is already attached and booted, the
+script exits immediately.
 
 > WSL has no KVM; an arm64 image runs in pure software emulation and is slow
 > (~5–10 fps). It is sufficient to validate that the bridge loads and to
@@ -138,6 +161,19 @@ The log includes:
 - Device props: `model`, `soc`, `os`
 - Every `[nova64-perf]` line (emitted by `Nova64Host` every 60 frames)
 - A tail of `nova64_carts.log` from `run-as org.nova64.host`
+
+### One-Shot Pipeline
+
+For a fully unattended run (build → export → boot → install → measure):
+
+```bash
+bash scripts/android-all.sh                          # x86_64 emulator, 04-instances
+CART=08-capabilities bash scripts/android-all.sh     # different cart
+ABI=arm64 SKIP_BOOT=1 bash scripts/android-all.sh    # physical arm64 device
+SKIP_BUILD=1 bash scripts/android-all.sh             # reuse existing .so
+```
+
+Skip flags: `SKIP_BUILD`, `SKIP_EXPORT`, `SKIP_BOOT`, `SKIP_MEASURE`.
 
 ---
 

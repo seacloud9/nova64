@@ -263,9 +263,13 @@ standpoint. ✅
       and `godot_project/export_presets.cfg.example` has both `Android ARM64` (devices)
       and `Android x86_64 (Emulator)` presets wired to `org.nova64.host`. Toolchain
       bootstrap is automated via `nova64-godot/scripts/install-android-toolchain.sh`,
-      `install-android-sdk-packages.sh`, and `install-android-emulator.sh` (creates the
-      `nova64-test` AVD). Full setup walkthrough lives in
-      `nova64-godot/docs/ANDROID_SETUP.md`.
+      `install-android-sdk-packages.sh`, `install-android-emulator.sh` (creates the
+      `nova64-test` AVD), and `install-godot-templates.sh` (downloads the Godot export
+      templates without opening the editor). Headless APK export, emulator boot, and
+      end-to-end measurement run from the shell via `scripts/export-android.sh`,
+      `scripts/boot-android-emulator.sh`, and the `scripts/android-all.sh` orchestrator
+      — Android Studio and the Godot editor UI are never required. Full setup
+      walkthrough lives in `nova64-godot/docs/ANDROID_SETUP.md`.
 - [ ] iOS export configured. Cross-compiling iOS frameworks from a non-macOS host is
       not feasible, so this slice is parked behind a documented Mac/Xcode bootstrap
       (script + checklist) and a CI matrix entry that builds the bridge on a macOS
@@ -282,12 +286,25 @@ standpoint. ✅
 
 ### G5 — First Cart Port
 
-- Pick one small Nova64 cart from `examples/` (recommended: a 3D cart with no advanced TSL/PBR, no voxel system, no MediaPipe).
-- Port unchanged JS into the Godot project's `carts/` directory.
-- Identify and stub any unsupported adapter methods.
-- Iterate until the cart runs.
+- [x] Picked `examples/hello-namespaced` — a small 3D cart with no TSL/PBR, no
+      voxel system, and no MediaPipe — and ported it verbatim into
+      `nova64-godot/godot_project/carts/hello-namespaced/code.js`.
+- [x] Authored a JS compatibility shim at
+      `nova64-godot/godot_project/shim/nova64-compat.js` that maps the
+      cart-facing `nova64.{scene,camera,light,draw,input,effects}` namespaces
+      (and flat globals) onto the bridge's `engine.call(...)` adapter contract.
+      The bridge loads the shim once via `_load_compat_shim()` from
+      `bridge.cpp` (using `JS_EVAL_TYPE_GLOBAL`) before evaluating each cart
+      module, so ported carts run unchanged.
+- [x] Unsupported adapter methods are stubbed via a `warnOnce` gap list
+      (`setCameraFOV`, `setFog`, `createPointLight`, 2D `draw.print`/`rect`/
+      `line`/`pixel`, effect toggles). They no-op safely until the bridge
+      gains real coverage.
+- [x] Cart runs end-to-end through the headless harness:
+      `init=true update=true draw=true`, ticks 10 frames clean, no exception
+      trace, conformance suite still 27/27 PASS on desktop.
 
-**Exit:** at least one real Nova64 cart runs end-to-end through Godot on desktop.
+**Exit:** at least one real Nova64 cart runs end-to-end through Godot on desktop. ✅
 
 ### G6 — Cart Compatibility Pass
 

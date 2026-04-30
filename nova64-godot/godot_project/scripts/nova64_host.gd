@@ -7,7 +7,7 @@
 
 extends Node3D
 
-@export_file("*.js") var cart_path: String = "res://carts/01-cube.js"
+@export_file("*.js") var cart_path: String = "res://carts/02-input.js"
 
 @onready var host: Nova64Host = $Nova64Host
 

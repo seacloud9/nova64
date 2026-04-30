@@ -19,6 +19,7 @@
 #include <godot_cpp/classes/camera3d.hpp>
 #include <godot_cpp/classes/directional_light3d.hpp>
 #include <godot_cpp/classes/file_access.hpp>
+#include <godot_cpp/classes/input.hpp>
 #include <godot_cpp/classes/mesh_instance3d.hpp>
 #include <godot_cpp/classes/plane_mesh.hpp>
 #include <godot_cpp/classes/sphere_mesh.hpp>
@@ -44,7 +45,7 @@ using nova64::HandleTable;
 namespace {
 
 constexpr const char *ADAPTER_CONTRACT_VERSION = "1.0.0";
-constexpr const char *GODOT_ADAPTER_VERSION = "0.2.0";
+constexpr const char *GODOT_ADAPTER_VERSION = "0.3.0";
 constexpr const char *HOST_OPAQUE_KEY = "__nova64_host_ptr";
 
 Nova64Host *get_host_from_context(JSContext *ctx) {
@@ -370,6 +371,7 @@ Dictionary Nova64Host::get_capabilities() const {
     features.append("camera.create");
     features.append("camera.setActive");
     features.append("light.createDirectional");
+    features.append("input.poll");
     caps["features"] = features;
 
     return caps;
@@ -394,6 +396,7 @@ Dictionary Nova64Host::call_bridge(const String &p_method, const Dictionary &p_p
     if (p_method == "camera.create")            return _cmd_camera_create(p_payload);
     if (p_method == "camera.setActive")         return _cmd_camera_set_active(p_payload);
     if (p_method == "light.createDirectional")  return _cmd_light_create_directional(p_payload);
+    if (p_method == "input.poll")               return _cmd_input_poll(p_payload);
 
     return make_error("unsupported_method", p_method);
 }
@@ -528,6 +531,51 @@ Dictionary Nova64Host::_cmd_light_create_directional(const Dictionary &p) {
             static_cast<float>(static_cast<double>(p["energy"])));
     uint32_t id = _handles->put_node(HandleKind::LIGHT, light);
     return make_handle_result(id);
+}
+
+// Polls the keyboard / mouse / first gamepad and returns a snapshot in
+// the Nova64 input shape: { left, right, up, down, action, cancel,
+//   axisX, axisY, mouseX, mouseY, mouseDown }.
+Dictionary Nova64Host::_cmd_input_poll(const Dictionary &) {
+    Dictionary out;
+    Input *in = Input::get_singleton();
+    if (!in) return out;
+
+    auto key = [&](Key k) -> bool { return in->is_key_pressed(k); };
+
+    bool left   = key(KEY_LEFT)  || key(KEY_A);
+    bool right  = key(KEY_RIGHT) || key(KEY_D);
+    bool up     = key(KEY_UP)    || key(KEY_W);
+    bool down   = key(KEY_DOWN)  || key(KEY_S);
+    bool action = key(KEY_SPACE) || key(KEY_ENTER) || key(KEY_Z);
+    bool cancel = key(KEY_ESCAPE) || key(KEY_X);
+
+    double axis_x = (right ? 1.0 : 0.0) - (left ? 1.0 : 0.0);
+    double axis_y = (down  ? 1.0 : 0.0) - (up   ? 1.0 : 0.0);
+
+    // Gamepad 0 left stick overrides keyboard if active.
+    if (in->get_connected_joypads().size() > 0) {
+        double gx = in->get_joy_axis(0, JOY_AXIS_LEFT_X);
+        double gy = in->get_joy_axis(0, JOY_AXIS_LEFT_Y);
+        if (Math::abs(gx) > 0.15) axis_x = gx;
+        if (Math::abs(gy) > 0.15) axis_y = gy;
+        if (in->is_joy_button_pressed(0, JOY_BUTTON_A)) action = true;
+        if (in->is_joy_button_pressed(0, JOY_BUTTON_B)) cancel = true;
+    }
+
+    Vector2 mp = in->get_last_mouse_velocity(); // cheap, no viewport dep
+    (void)mp;
+
+    out["left"]      = left;
+    out["right"]     = right;
+    out["up"]        = up;
+    out["down"]      = down;
+    out["action"]    = action;
+    out["cancel"]    = cancel;
+    out["axisX"]     = axis_x;
+    out["axisY"]     = axis_y;
+    out["mouseDown"] = in->is_mouse_button_pressed(MOUSE_BUTTON_LEFT);
+    return out;
 }
 
 // ---- Cart loading (module mode) -----------------------------------------

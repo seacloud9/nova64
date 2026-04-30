@@ -1,5 +1,10 @@
-; Godot 4.x project file for the Nova64 host.
-; Edited by hand for the bridge spike; the editor will rewrite/expand this on first open.
+; Engine configuration file.
+; It's best edited using the editor UI and not directly,
+; since the parameters that go here are not all obvious.
+;
+; Format:
+;   [section] ; section goes between []
+;   param=value ; assign values to parameters
 
 config_version=5
 
@@ -7,8 +12,8 @@ config_version=5
 
 config/name="Nova64 Host"
 config/description="Godot 4.x host that loads Nova64 JS carts via the nova64 GDExtension."
-config/features=PackedStringArray("4.3", "GL Compatibility")
 run/main_scene="res://scenes/Main.tscn"
+config/features=PackedStringArray("4.4", "GL Compatibility")
 
 [rendering]
 

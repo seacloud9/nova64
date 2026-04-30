@@ -93,6 +93,7 @@ private:
     Dictionary _cmd_camera_create(const Dictionary &p_payload);
     Dictionary _cmd_camera_set_active(const Dictionary &p_payload);
     Dictionary _cmd_light_create_directional(const Dictionary &p_payload);
+    Dictionary _cmd_input_poll(const Dictionary &p_payload);
 
     // Helpers
     Node3D *_resolve_node3d(uint32_t p_handle_id) const;

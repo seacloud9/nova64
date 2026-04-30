@@ -213,39 +213,47 @@ The shared adapter conformance suite already exists for Three.js and Babylon. Ph
 
 ## Milestones
 
-### G0 — Spike
+### G0 — Spike ✅
 
 - GDExtension boots, registers a `Nova64Host` Godot class.
 - QuickJS linked and initialized.
 - One round-trip: `engine.init` returns capabilities.
 - Desktop-only (Linux or Windows host).
 
-**Exit:** `tests/carts/00-boot.js` passes on one desktop platform.
+**Exit:** `tests/carts/00-boot.js` passes on one desktop platform. ✅
 
-### G1 — Core Render Loop
+### G1 — Core Render Loop ✅
 
 - Command buffer + handle table.
 - Material, geometry, mesh, transform, camera commands implemented.
 - Frame lifecycle wired to `_process`.
 - Synthetic carts `01–06` pass.
 
-**Exit:** a spinning cube cart renders natively under Godot on desktop.
+**Exit:** a spinning cube cart renders natively under Godot on desktop. ✅
 
-### G2 — Input + Audio
+### G2 — Input + Audio + Perf ✅
 
 - Input polling implemented (keyboard, mouse, gamepad).
 - Audio stream load + play.
-- Synthetic carts `07–08` pass.
+- Texture upload from raw RGBA bytes.
+- MultiMesh-backed instancing + `engine.flush` batched dispatch.
+- GPU particles via `particles.create`.
+- Synthetic carts `02–05` pass.
 
-**Exit:** an interactive synthetic cart with keyboard movement and a sound effect runs correctly.
+**Exit:** an interactive synthetic cart with keyboard movement, instanced
+geometry, and particles runs correctly. ✅
 
-### G3 — Conformance + Stress
+### G3 — Conformance + Stress ✅
 
-- Adapter conformance suite ported and green.
-- Stress and error carts (`09–10`) pass.
-- Capability matrix documented.
+- Adapter conformance suite ported and green: `08-capabilities.js`,
+  `09-errors.js`, `10-stress.js` (27/27 assertions pass).
+- Headless harness (`scripts/run-conformance.sh` →
+  `godot_project/scripts/conformance_runner.gd`) reads `__nova64_assert`
+  via `Nova64Host.read_global` and exits non-zero on failure.
+- Capability matrix exercised by `08-capabilities.js`.
 
-**Exit:** Godot host is a first-class adapter from a contract-conformance standpoint.
+**Exit:** Godot host is a first-class adapter from a contract-conformance
+standpoint. ✅
 
 ### G4 — Mobile Export
 

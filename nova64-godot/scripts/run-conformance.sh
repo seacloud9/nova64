@@ -9,7 +9,9 @@ PROJECT_DIR="$SCRIPT_DIR/../godot_project"
 
 # Carts that publish __nova64_assert results.
 CARTS=(
+	"res://carts/08-capabilities.js"
 	"res://carts/09-errors.js"
+	"res://carts/10-stress.js"
 )
 
 bash "$SCRIPT_DIR/sync-carts.sh" >/dev/null

@@ -20,6 +20,14 @@ if [ ! -d "$src" ]; then
 fi
 
 mkdir -p "$dst"
-cp -v "$src"/*.js "$dst/"
+# Carts are folders containing code.js + meta.json. Mirror with rsync-style
+# behavior using cp -a; nuke the destination first so deletes propagate.
+rm -rf "$dst"
+mkdir -p "$dst"
+for cart in "$src"/*/; do
+  name="$(basename "$cart")"
+  cp -a "$cart" "$dst/$name"
+  echo "synced $name"
+done
 
-echo "synced $(ls -1 "$src"/*.js | wc -l) carts into $dst"
+echo "synced $(ls -1d "$src"/*/ | wc -l) carts into $dst"

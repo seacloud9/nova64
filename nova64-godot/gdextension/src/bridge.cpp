@@ -19,6 +19,7 @@
 #include <godot_cpp/classes/camera3d.hpp>
 #include <godot_cpp/classes/directional_light3d.hpp>
 #include <godot_cpp/classes/file_access.hpp>
+#include <godot_cpp/classes/dir_access.hpp>
 #include <godot_cpp/classes/image.hpp>
 #include <godot_cpp/classes/image_texture.hpp>
 #include <godot_cpp/classes/input.hpp>
@@ -451,6 +452,8 @@ Dictionary Nova64Host::get_capabilities() const {
     features.append("particles.create");
     features.append("particles.destroy");
     features.append("engine.flush");
+    features.append("material.emission");
+    features.append("material.blend.add");
     caps["features"] = features;
 
     return caps;
@@ -499,6 +502,25 @@ Dictionary Nova64Host::_cmd_material_create(const Dictionary &p) {
     if (p.has("roughness")) mat->set_roughness(static_cast<float>(static_cast<double>(p["roughness"])));
     if (p.has("unshaded") && static_cast<bool>(p["unshaded"])) {
         mat->set_shading_mode(BaseMaterial3D::SHADING_MODE_UNSHADED);
+    }
+    if (p.has("emission")) {
+        Color em = color_from_payload(p, "emission", Color(0, 0, 0, 1));
+        mat->set_feature(BaseMaterial3D::FEATURE_EMISSION, true);
+        mat->set_emission(em);
+        if (p.has("emissionEnergy")) {
+            mat->set_emission_energy_multiplier(
+                    static_cast<float>(static_cast<double>(p["emissionEnergy"])));
+        }
+    }
+    if (p.has("blend")) {
+        String b = p["blend"];
+        if (b == "add") {
+            mat->set_transparency(BaseMaterial3D::TRANSPARENCY_ALPHA);
+            mat->set_blend_mode(BaseMaterial3D::BLEND_MODE_ADD);
+            mat->set_depth_draw_mode(BaseMaterial3D::DEPTH_DRAW_DISABLED);
+        } else if (b == "alpha") {
+            mat->set_transparency(BaseMaterial3D::TRANSPARENCY_ALPHA);
+        }
     }
     if (p.has("albedoTexture")) {
         uint32_t tex_id = handle_id_from_payload(p, "albedoTexture");
@@ -895,16 +917,59 @@ bool Nova64Host::load_cart(const String &p_res_path) {
     _release_cart_exports();
     _cart_loaded = false;
 
-    Ref<FileAccess> f = FileAccess::open(p_res_path, FileAccess::READ);
+    // Accept three flavors:
+    //   1. "res://carts/foo/"        — folder containing code.js + meta.json
+    //   2. "res://carts/foo/meta.json" — meta sidecar; we open code.js next to it
+    //   3. "res://carts/foo.js" or "res://carts/foo/code.js" — direct script
+    String code_path = p_res_path;
+    String meta_path;
+    if (p_res_path.ends_with("/") || DirAccess::dir_exists_absolute(p_res_path)) {
+        String base = p_res_path.ends_with("/") ? p_res_path : (p_res_path + String("/"));
+        code_path = base + String("code.js");
+        meta_path = base + String("meta.json");
+    } else if (p_res_path.ends_with("meta.json")) {
+        meta_path = p_res_path;
+        code_path = p_res_path.get_base_dir() + String("/code.js");
+    } else if (p_res_path.ends_with("code.js")) {
+        code_path = p_res_path;
+        meta_path = p_res_path.get_base_dir() + String("/meta.json");
+    }
+
+    Ref<FileAccess> f = FileAccess::open(code_path, FileAccess::READ);
     if (f.is_null()) {
-        UtilityFunctions::printerr("[nova64] load_cart: cannot open ", p_res_path);
+        UtilityFunctions::printerr("[nova64] load_cart: cannot open ", code_path);
         return false;
     }
     String src = f->get_as_text();
     f->close();
 
+    // Best-effort: load and expose meta.json on globalThis.cart_meta.
+    if (!meta_path.is_empty() && FileAccess::file_exists(meta_path)) {
+        Ref<FileAccess> mf = FileAccess::open(meta_path, FileAccess::READ);
+        if (mf.is_valid()) {
+            String meta_src = mf->get_as_text();
+            mf->close();
+            CharString meta_utf8 = meta_src.utf8();
+            JSValue meta_v = JS_ParseJSON(_context, meta_utf8.get_data(),
+                    meta_utf8.length(), "meta.json");
+            if (!JS_IsException(meta_v)) {
+                JSValue global = JS_GetGlobalObject(_context);
+                JS_SetPropertyStr(_context, global, "cart_meta", meta_v);
+                JS_FreeValue(_context, global);
+            } else {
+                JSValue exc = JS_GetException(_context);
+                const char *msg = JS_ToCString(_context, exc);
+                UtilityFunctions::printerr("[nova64] load_cart: meta.json parse error: ",
+                        msg ? String::utf8(msg) : String("(unknown)"));
+                if (msg) JS_FreeCString(_context, msg);
+                JS_FreeValue(_context, exc);
+                JS_FreeValue(_context, meta_v);
+            }
+        }
+    }
+
     CharString src_utf8 = src.utf8();
-    CharString name_utf8 = p_res_path.utf8();
+    CharString name_utf8 = code_path.utf8();
 
     // Compile as a module so `export function init/update/draw` declarations
     // land on the module namespace.

@@ -27,3 +27,4 @@ Thumbs.db
 # SCons
 .sconf_temp/
 config.log
+test-results/

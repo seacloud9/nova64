@@ -153,6 +153,39 @@
     return geom ? spawnMesh(geom.handle, color, pos) : 0;
   }
 
+  // Cylinder + cone primitives — emulated as box approximations until the
+  // bridge gains real geometry methods. Keeps carts that destructure these
+  // factories from crashing and gives the right rough scale on screen.
+  function createCylinder(radiusTop, radiusBottom, height, color, pos) {
+    ensureInit();
+    const r = Math.max(radiusTop || 0.5, radiusBottom || 0.5);
+    const h = typeof height === 'number' ? height : 1;
+    const geom = call('geometry.createBox', { size: [r * 2, h, r * 2] });
+    if (!warned.has('createCylinder-fallback')) {
+      warned.add('createCylinder-fallback');
+      print('[nova64-compat] createCylinder approximated as box (no real cylinder geometry yet)');
+    }
+    return geom ? spawnMesh(geom.handle, color, pos) : 0;
+  }
+
+  function createCone(radius, height, color, pos) {
+    ensureInit();
+    const r = typeof radius === 'number' ? radius : 0.5;
+    const h = typeof height === 'number' ? height : 1;
+    const geom = call('geometry.createBox', { size: [r * 2, h, r * 2] });
+    if (!warned.has('createCone-fallback')) {
+      warned.add('createCone-fallback');
+      print('[nova64-compat] createCone approximated as box (no real cone geometry yet)');
+    }
+    return geom ? spawnMesh(geom.handle, color, pos) : 0;
+  }
+
+  function removeMesh(handle) {
+    if (!handle) return;
+    call('mesh.destroy', { handle: handle });
+    rotState.delete(handle);
+  }
+
   function setPosition(handle, x, y, z) {
     if (!handle) return;
     call('transform.set', { handle: handle, position: ensureArray3(x, y, z) });
@@ -249,16 +282,91 @@
   function enablePixelation(_n) { warnOnce('enablePixelation'); }
   function enableDithering(_b) { warnOnce('enableDithering'); }
   function enableBloom(_b) { warnOnce('enableBloom'); }
+  function enableFXAA() { warnOnce('enableFXAA'); }
+  function enableVignette(_a, _b) { warnOnce('enableVignette'); }
   function setN64Mode(_b) { warnOnce('setN64Mode'); }
   function setPSXMode(_b) { warnOnce('setPSXMode'); }
 
+  // ---------------- stats / util / audio / tween (no-op stubs) ---------
+  function get3DStats() {
+    return { meshes: 0, lights: 0, drawCalls: 0, backend: 'godot-quickjs' };
+  }
+  function clearFog() { warnOnce('clearFog'); }
+  function getPosition(_handle) { return [0, 0, 0]; }
+
+  const TWO_PI = Math.PI * 2;
+  function clamp(v, lo, hi) { return Math.min(Math.max(v, lo), hi); }
+  function lerp(a, b, t) { return a + (b - a) * t; }
+  function hsb(h, s, b) {
+    // HSB(0..360, 0..100, 0..100) → packed 0xRRGGBB int.
+    const sat = (s || 0) / 100, br = (b || 0) / 100;
+    const c = br * sat;
+    const hh = ((h || 0) % 360) / 60;
+    const x = c * (1 - Math.abs((hh % 2) - 1));
+    let r = 0, g = 0, bl = 0;
+    if (0 <= hh && hh < 1) { r = c; g = x; }
+    else if (hh < 2) { r = x; g = c; }
+    else if (hh < 3) { g = c; bl = x; }
+    else if (hh < 4) { g = x; bl = c; }
+    else if (hh < 5) { r = x; bl = c; }
+    else if (hh < 6) { r = c; bl = x; }
+    const m = br - c;
+    const R = Math.round((r + m) * 255), G = Math.round((g + m) * 255), B = Math.round((bl + m) * 255);
+    return (R << 16) | (G << 8) | B;
+  }
+  // Deterministic value-noise stand-in (not the same as runtime/api-generative).
+  let _noiseSeed = 1337;
+  function noiseSeed(s) { _noiseSeed = (s | 0) || 1; }
+  function noise(x, y, z) {
+    const n = Math.sin((x || 0) * 12.9898 + (y || 0) * 78.233 + (z || 0) * 37.719 + _noiseSeed) * 43758.5453;
+    return (n - Math.floor(n));
+  }
+
+  const utilNs = { TWO_PI, clamp, lerp, hsb, noise, noiseSeed };
+
+  // Audio stubs — no host audio yet.
+  function sfx(_name, _vol) { warnOnce('audio.sfx'); }
+  function playMusic(_name, _vol, _loop) { warnOnce('audio.playMusic'); }
+  function stopMusic() { warnOnce('audio.stopMusic'); }
+  const audioNs = { sfx, playMusic, stopMusic };
+
+  // Tween stubs — return chainable no-op handles so `createTween(...).play()`
+  // and `.tick(dt)` survive. value defaults to `from` so reads work.
+  function createTween(opts) {
+    warnOnce('tween.createTween');
+    const o = opts || {};
+    const t = {
+      value: o.from == null ? 0 : o.from,
+      pause() { return t; },
+      play() { return t; },
+      stop() { return t; },
+      reset() { return t; },
+      tick(_dt) { return t; },
+      onComplete() { return t; },
+    };
+    return t;
+  }
+  const Ease = {
+    linear: function (t) { return t; },
+    easeIn: function (t) { return t * t; },
+    easeOut: function (t) { return t * (2 - t); },
+    easeInOut: function (t) { return t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t; },
+    easeOutBounce: function (t) {
+      if (t < 1 / 2.75) return 7.5625 * t * t;
+      if (t < 2 / 2.75) { t -= 1.5 / 2.75; return 7.5625 * t * t + 0.75; }
+      if (t < 2.5 / 2.75) { t -= 2.25 / 2.75; return 7.5625 * t * t + 0.9375; }
+      t -= 2.625 / 2.75; return 7.5625 * t * t + 0.984375;
+    },
+  };
+  const tweenNs = { createTween, Ease };
+
   // ---------------- namespace + global aliases -------------------------
-  const sceneNs = { createCube, createSphere, createPlane, setPosition, setRotation, rotateMesh, setScale };
+  const sceneNs = { createCube, createSphere, createPlane, createCylinder, createCone, removeMesh, setPosition, setRotation, rotateMesh, setScale, getPosition };
   const cameraNs = { setCameraPosition, setCameraTarget, setCameraFOV };
-  const lightNs = { setLightDirection, setFog, createPointLight, createAmbientLight, setAmbientLight, setLightColor };
+  const lightNs = { setLightDirection, setFog, clearFog, createPointLight, createAmbientLight, setAmbientLight, setLightColor };
   const drawNs = { cls, print: novaPrint, printCentered, rect, rectfill, line, pixel, rgba8, screenWidth, screenHeight };
   const inputNs = { key, isKeyPressed, pollInput };
-  const fxNs = { enablePixelation, enableDithering, enableBloom, setN64Mode, setPSXMode };
+  const fxNs = { enablePixelation, enableDithering, enableBloom, enableFXAA, enableVignette, setN64Mode, setPSXMode };
 
   global.nova64 = {
     __compatLoaded: true,
@@ -269,10 +377,14 @@
     input: inputNs,
     effects: fxNs,
     fx: fxNs,
+    util: utilNs,
+    audio: audioNs,
+    tween: tweenNs,
   };
 
   // Flat-global aliases so older carts that don't destructure still work.
-  Object.assign(global, sceneNs, cameraNs, lightNs, drawNs, inputNs, fxNs);
+  Object.assign(global, sceneNs, cameraNs, lightNs, drawNs, inputNs, fxNs, utilNs, audioNs, tweenNs);
+  global.get3DStats = get3DStats;
 
   // `console` polyfill for carts that use console.log
   if (!global.console) {

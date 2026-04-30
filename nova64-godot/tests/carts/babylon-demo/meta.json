@@ -1,0 +1,1 @@
+{"name":"Babylon Demo","description":"G6 cart port — Babylon backend demo cart (cube + sphere + cylinder + cone + ground plane + dynamic point light). Validates the shim's cylinder/cone primitive fallbacks and get3DStats stub.","author":"Nova64","version":"0.1.0","category":"port","source":"examples/babylon-demo"}

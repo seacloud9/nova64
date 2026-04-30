@@ -1,0 +1,1 @@
+{"name":"Test 2D Overlay","description":"G6 cart port — minimal 2D-overlay test (red rect + text + cube). Validates draw no-op shim.","author":"Nova64","version":"0.1.0","category":"port","source":"examples/test-2d-overlay"}

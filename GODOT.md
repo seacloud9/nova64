@@ -313,13 +313,27 @@ standpoint. ✅
       ports (`hello-namespaced`, `hello-world`) now live under the canonical
       `tests/carts/` tree and are mirrored into `godot_project/carts/` by
       `scripts/sync-carts.sh`.
-- [x] Tracked gaps surfaced by the new port and added as `warnOnce` no-op
+- [x] Third + fourth ports: `examples/test-2d-overlay` (validates the 2D
+      overlay no-op shim against a live 3D cube) and `examples/babylon-demo`
+      (cube + sphere + cylinder + cone + ground plane + dynamic point light;
+      validates the cylinder/cone primitive box-fallback and `get3DStats`
+      stub).
+- [x] Tracked gaps surfaced by the new ports and added as `warnOnce` no-op
       shims: `printCentered`, `setAmbientLight`, `setLightColor`, `rectfill`,
-      `screenWidth`, `screenHeight`. The `nova64.fx` namespace is now an
-      alias of `nova64.effects` for parity with carts that use `nova64.fx`.
-- [x] Both ports load cleanly through the headless harness
-      (`init=true update=true draw=true`, 10 frames each), conformance suite
-      remains 27/27 PASS.
+      `screenWidth`, `screenHeight`, `enableFXAA`, `enableVignette`,
+      `clearFog`, `getPosition`. Real (best-effort) implementations were
+      added for `createCylinder` + `createCone` (box approximations) and
+      `removeMesh` (`mesh.destroy`). Plus stub layers for `nova64.audio.sfx`,
+      `nova64.tween.{createTween,Ease}`, and `nova64.util.{TWO_PI,clamp,
+      lerp,hsb,noise,noiseSeed}` so a wider class of carts boot without
+      crashing on free identifiers. The `nova64.fx` namespace is now an
+      alias of `nova64.effects`.
+- [x] Headless smoke runner `scripts/run-cart-smoke.sh` boots every ported
+      real cart through `conformance_runner.gd`, ticks 10 frames, and
+      reports PASS/FAIL per cart. Current desktop status: **4/4 PASS**
+      (hello-namespaced, hello-world, test-2d-overlay, babylon-demo).
+      Synthetic conformance suite (`scripts/run-conformance.sh`) remains
+      27/27 PASS.
 - [ ] Continue porting carts of increasing complexity (next candidates:
       `hello-skybox`, `instancing-demo`, `tween-bounce`).
 - [ ] Decide which `warnOnce` gaps are worth promoting to real bridge work

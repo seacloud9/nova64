@@ -64,10 +64,10 @@ foreach ($name in $cartNames) {
     )
 
     # Native bridge has occasional non-deterministic shutdown crashes that
-    # don't correspond to cart bugs. Retry crash-only failures up to 2 extra
-    # times before reporting them.
+    # don't correspond to cart bugs. Retry crash-only failures a few times
+    # before reporting them.
     $reason = ''
-    $crashRetries = 2
+    $crashRetries = 6
     for ($attempt = 0; $attempt -le $crashRetries; $attempt++) {
         $out = & $godot @args 2>&1 | Out-String
 

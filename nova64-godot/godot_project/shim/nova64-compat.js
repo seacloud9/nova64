@@ -466,6 +466,45 @@
   }
   function enableRetroEffects(b) { setN64Mode(b !== false); }
 
+  function enableSSR(b) {
+    ensureInit();
+    call('env.set', { ssr: b !== false });
+  }
+  function enableSSAO(b, intensity) {
+    ensureInit();
+    call('env.set', {
+      ssao: b !== false,
+      ssaoIntensity: typeof intensity === 'number' ? intensity : 1.0,
+    });
+  }
+  function enableVolumetricFog(b, density) {
+    ensureInit();
+    call('env.set', {
+      volumetricFog: b !== false,
+      volumetricFogDensity: typeof density === 'number' ? density : 0.05,
+    });
+  }
+  function enableDOF(_b) {
+    // CameraAttributes-based DOF is Phase 3 — soft no-op for now.
+    warnOnce('enableDOF');
+  }
+  function setExposure(v) {
+    ensureInit();
+    call('env.set', { exposure: typeof v === 'number' ? v : 1.0 });
+  }
+  function setTonemap(name) {
+    ensureInit();
+    call('env.set', { tonemap: typeof name === 'string' ? name : 'filmic' });
+  }
+  function setColorAdjustment(brightness, contrast, saturation) {
+    ensureInit();
+    call('env.set', {
+      brightness: typeof brightness === 'number' ? brightness : 1.0,
+      contrast: typeof contrast === 'number' ? contrast : 1.0,
+      saturation: typeof saturation === 'number' ? saturation : 1.0,
+    });
+  }
+
   // ---------------- stats / util / audio / tween (no-op stubs) ---------
   function get3DStats() {
     return { meshes: 0, lights: 0, drawCalls: 0, backend: 'godot-quickjs' };
@@ -685,12 +724,36 @@
   function createEmitter2D(_opts) { warnOnce('createEmitter2D'); return makeStub(); }
   function createParticles(_opts) { warnOnce('createParticles'); return makeStub(); }
 
-  // Skybox
-  function createSpaceSkybox(_opts) { warnOnce('createSpaceSkybox'); return 0; }
-  function createGalaxySkybox(_opts) { warnOnce('createGalaxySkybox'); return 0; }
-  function createSunsetSkybox(_opts) { warnOnce('createSunsetSkybox'); return 0; }
-  function setSkybox(_h) { warnOnce('setSkybox'); }
-  function createSkybox(_opts) { warnOnce('createSkybox'); return 0; }
+  // Skybox — wired to env.set sky presets.
+  function createSpaceSkybox(_opts)   { ensureInit(); call('env.set', { skyPreset: 'space',     sky: true }); return 1; }
+  function createGalaxySkybox(_opts)  { ensureInit(); call('env.set', { skyPreset: 'space',     sky: true, glow: true, glowIntensity: 1.6 }); return 1; }
+  function createSunsetSkybox(_opts)  { ensureInit(); call('env.set', { skyPreset: 'sunset',    sky: true }); return 1; }
+  function createDawnSkybox(_opts)    { ensureInit(); call('env.set', { skyPreset: 'dawn',      sky: true }); return 1; }
+  function createNightSkybox(_opts)   { ensureInit(); call('env.set', { skyPreset: 'night',     sky: true }); return 1; }
+  function createFoggySkybox(_opts)   { ensureInit(); call('env.set', { skyPreset: 'foggy',     sky: true }); return 1; }
+  function createDuskSkybox(_opts)    { ensureInit(); call('env.set', { skyPreset: 'dusk',      sky: true }); return 1; }
+  function createStormSkybox(_opts)   { ensureInit(); call('env.set', { skyPreset: 'storm',     sky: true }); return 1; }
+  function createAlienSkybox(_opts)   { ensureInit(); call('env.set', { skyPreset: 'alien',     sky: true }); return 1; }
+  function createUnderwaterSkybox(_opts) { ensureInit(); call('env.set', { skyPreset: 'underwater', sky: true }); return 1; }
+  function setSkybox(name) {
+    ensureInit();
+    if (typeof name === 'string') call('env.set', { skyPreset: name, sky: true });
+    else call('env.set', { sky: true });
+  }
+  function createSkybox(opts) {
+    ensureInit();
+    if (opts && typeof opts === 'object') {
+      const payload = { sky: true };
+      if (typeof opts.preset === 'string') payload.skyPreset = opts.preset;
+      if (typeof opts.topColor === 'number') payload.skyTopColor = colorFromHex(opts.topColor);
+      if (typeof opts.horizonColor === 'number') payload.skyHorizonColor = colorFromHex(opts.horizonColor);
+      if (typeof opts.groundColor === 'number') payload.groundBottomColor = colorFromHex(opts.groundColor);
+      call('env.set', payload);
+    } else {
+      call('env.set', { sky: true });
+    }
+    return 1;
+  }
 
   // Models / textures / advanced materials. createInstancedMesh falls back
   // to a single cube so cart code that destructures the return continues.
@@ -792,11 +855,11 @@
   const lightNs = { setLightDirection, setFog, clearFog, createPointLight, createSpotLight, createAmbientLight, setAmbientLight, setLightColor, setLightEnergy };
   const drawNs = { cls, print: novaPrint, printCentered, rect, rectfill, line, pixel, rgba8, screenWidth, screenHeight };
   const inputNs = { key, isKeyPressed, isKeyDown: key, keyp: key, pollInput, btn, btnp, pad: padNs, mouse: mouseNs };
-  const fxNs = { enablePixelation, enableDithering, enableBloom, enableFXAA, enableVignette, setN64Mode, setPSXMode };
+  const fxNs = { enablePixelation, enableDithering, enableBloom, enableFXAA, enableVignette, setN64Mode, setPSXMode, enableRetroEffects, enableSSR, enableSSAO, enableVolumetricFog, enableDOF, setExposure, setTonemap, setColorAdjustment };
   const uiNs = { createButton, createLabel, createPanel, createSlider, createCheckbox, createDialog, parseCanvasUI, renderCanvasUI, updateCanvasUI };
   const stageNs = { createGraphicsNode, createMovieClip, createStage, createScreen, pushScreen, popScreen, createShake, createCard, createMenu, createStartScreen };
   const particlesNs = { createParticleSystem, createEmitter2D, createParticles };
-  const skyboxNs = { createSpaceSkybox, createGalaxySkybox, createSunsetSkybox, setSkybox, createSkybox };
+  const skyboxNs = { createSpaceSkybox, createGalaxySkybox, createSunsetSkybox, createDawnSkybox, createNightSkybox, createFoggySkybox, createDuskSkybox, createStormSkybox, createAlienSkybox, createUnderwaterSkybox, setSkybox, createSkybox };
   const modelsNs = { loadModel, createTexture, loadTexture, createInstancedMesh, createTSLMaterial, createHologramMaterial, createVortexMaterial, createPBRMaterial, createAdvancedCube };
   const voxelNs = { configureVoxelWorld, enableVoxelTextures, setVoxel, getVoxel, spawnVoxelEntity, getVoxelEntityCount, clearVoxels, generateVoxelTerrain };
 

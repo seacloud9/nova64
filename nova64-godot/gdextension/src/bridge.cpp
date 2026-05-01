@@ -397,6 +397,17 @@ void Nova64Host::_release_cart_exports() {
 void Nova64Host::_shutdown_runtime() {
     _release_cart_exports();
     if (_handles) _handles->clear(true);
+    // Detach the WorldEnvironment we may have spawned so its Sky /
+    // ProceduralSkyMaterial Refs aren't dropped from inside the JS
+    // runtime teardown — that ordering trips a SIGSEGV on shutdown for
+    // some carts.
+    if (_world_env) {
+        Ref<Environment> env = _world_env->get_environment();
+        if (env.is_valid()) env->set_sky(Ref<Sky>());
+        _world_env->set_environment(Ref<Environment>());
+        _world_env->queue_free();
+        _world_env = nullptr;
+    }
     if (_context) {
         JS_FreeContext(_context);
         _context = nullptr;
@@ -560,9 +571,34 @@ Dictionary Nova64Host::_cmd_material_create(const Dictionary &p) {
     mat->set_albedo(color_from_payload(p, "albedo", Color(1.0f, 1.0f, 1.0f, 1.0f)));
     if (p.has("metallic")) mat->set_metallic(static_cast<float>(static_cast<double>(p["metallic"])));
     if (p.has("roughness")) mat->set_roughness(static_cast<float>(static_cast<double>(p["roughness"])));
+    if (p.has("specular")) mat->set_specular(static_cast<float>(static_cast<double>(p["specular"])));
+
+    // Shading mode: 'per_pixel' (default), 'per_vertex' (cheap), 'unshaded'.
+    if (p.has("shadingMode")) {
+        String s = p["shadingMode"];
+        if (s == "unshaded") mat->set_shading_mode(BaseMaterial3D::SHADING_MODE_UNSHADED);
+        else if (s == "per_vertex") mat->set_shading_mode(BaseMaterial3D::SHADING_MODE_PER_VERTEX);
+        else mat->set_shading_mode(BaseMaterial3D::SHADING_MODE_PER_PIXEL);
+    }
     if (p.has("unshaded") && static_cast<bool>(p["unshaded"])) {
         mat->set_shading_mode(BaseMaterial3D::SHADING_MODE_UNSHADED);
     }
+
+    // Diffuse / specular shading models — toon kicks in cel-shaded look.
+    if (p.has("diffuseMode")) {
+        String d = p["diffuseMode"];
+        if (d == "lambert_wrap") mat->set_diffuse_mode(BaseMaterial3D::DIFFUSE_LAMBERT_WRAP);
+        else if (d == "toon") mat->set_diffuse_mode(BaseMaterial3D::DIFFUSE_TOON);
+        else if (d == "burley") mat->set_diffuse_mode(BaseMaterial3D::DIFFUSE_BURLEY);
+        else mat->set_diffuse_mode(BaseMaterial3D::DIFFUSE_LAMBERT);
+    }
+    if (p.has("specularMode")) {
+        String s = p["specularMode"];
+        if (s == "toon") mat->set_specular_mode(BaseMaterial3D::SPECULAR_TOON);
+        else if (s == "disabled") mat->set_specular_mode(BaseMaterial3D::SPECULAR_DISABLED);
+        else mat->set_specular_mode(BaseMaterial3D::SPECULAR_SCHLICK_GGX);
+    }
+
     if (p.has("emission")) {
         Color em = color_from_payload(p, "emission", Color(0, 0, 0, 1));
         mat->set_feature(BaseMaterial3D::FEATURE_EMISSION, true);
@@ -572,24 +608,92 @@ Dictionary Nova64Host::_cmd_material_create(const Dictionary &p) {
                     static_cast<float>(static_cast<double>(p["emissionEnergy"])));
         }
     }
+    if (p.has("rim")) {
+        mat->set_feature(BaseMaterial3D::FEATURE_RIM, true);
+        mat->set_rim(static_cast<float>(static_cast<double>(p["rim"])));
+        if (p.has("rimTint")) mat->set_rim_tint(static_cast<float>(static_cast<double>(p["rimTint"])));
+    }
+    if (p.has("clearcoat")) {
+        mat->set_feature(BaseMaterial3D::FEATURE_CLEARCOAT, true);
+        mat->set_clearcoat(static_cast<float>(static_cast<double>(p["clearcoat"])));
+        if (p.has("clearcoatRoughness")) mat->set_clearcoat_roughness(
+                static_cast<float>(static_cast<double>(p["clearcoatRoughness"])));
+    }
+    if (p.has("anisotropy")) {
+        mat->set_feature(BaseMaterial3D::FEATURE_ANISOTROPY, true);
+        mat->set_anisotropy(static_cast<float>(static_cast<double>(p["anisotropy"])));
+    }
+
+    // Transparency / blend.
+    if (p.has("transparency")) {
+        String t = p["transparency"];
+        if (t == "alpha") mat->set_transparency(BaseMaterial3D::TRANSPARENCY_ALPHA);
+        else if (t == "scissor") mat->set_transparency(BaseMaterial3D::TRANSPARENCY_ALPHA_SCISSOR);
+        else if (t == "hash") mat->set_transparency(BaseMaterial3D::TRANSPARENCY_ALPHA_HASH);
+        else if (t == "depth_prepass") mat->set_transparency(BaseMaterial3D::TRANSPARENCY_ALPHA_DEPTH_PRE_PASS);
+        else mat->set_transparency(BaseMaterial3D::TRANSPARENCY_DISABLED);
+    }
+    if (p.has("alphaCut")) {
+        mat->set_alpha_scissor_threshold(static_cast<float>(static_cast<double>(p["alphaCut"])));
+        mat->set_transparency(BaseMaterial3D::TRANSPARENCY_ALPHA_SCISSOR);
+    }
     if (p.has("blend")) {
         String b = p["blend"];
         if (b == "add") {
             mat->set_transparency(BaseMaterial3D::TRANSPARENCY_ALPHA);
             mat->set_blend_mode(BaseMaterial3D::BLEND_MODE_ADD);
             mat->set_depth_draw_mode(BaseMaterial3D::DEPTH_DRAW_DISABLED);
+        } else if (b == "sub") {
+            mat->set_transparency(BaseMaterial3D::TRANSPARENCY_ALPHA);
+            mat->set_blend_mode(BaseMaterial3D::BLEND_MODE_SUB);
+        } else if (b == "mul") {
+            mat->set_transparency(BaseMaterial3D::TRANSPARENCY_ALPHA);
+            mat->set_blend_mode(BaseMaterial3D::BLEND_MODE_MUL);
         } else if (b == "alpha") {
             mat->set_transparency(BaseMaterial3D::TRANSPARENCY_ALPHA);
         }
     }
-    if (p.has("albedoTexture")) {
-        uint32_t tex_id = handle_id_from_payload(p, "albedoTexture");
+
+    // Cull mode.
+    if (p.has("cull")) {
+        String c = p["cull"];
+        if (c == "front") mat->set_cull_mode(BaseMaterial3D::CULL_FRONT);
+        else if (c == "disabled" || c == "none") mat->set_cull_mode(BaseMaterial3D::CULL_DISABLED);
+        else mat->set_cull_mode(BaseMaterial3D::CULL_BACK);
+    }
+    if (p.has("doubleSided") && static_cast<bool>(p["doubleSided"])) {
+        mat->set_cull_mode(BaseMaterial3D::CULL_DISABLED);
+    }
+
+    // Texture maps.
+    auto bind_tex = [&](const String &key, BaseMaterial3D::TextureParam slot) {
+        if (!p.has(key)) return;
+        uint32_t tex_id = handle_id_from_payload(p, key);
         Ref<RefCounted> tex_res = _handles->get_resource(tex_id, HandleKind::TEXTURE);
         Ref<Texture2D> tex = tex_res;
-        if (tex.is_valid()) {
-            mat->set_texture(BaseMaterial3D::TEXTURE_ALBEDO, tex);
-        }
+        if (tex.is_valid()) mat->set_texture(slot, tex);
+    };
+    bind_tex("albedoTexture",   BaseMaterial3D::TEXTURE_ALBEDO);
+    if (p.has("normalMap")) {
+        bind_tex("normalMap", BaseMaterial3D::TEXTURE_NORMAL);
+        mat->set_feature(BaseMaterial3D::FEATURE_NORMAL_MAPPING, true);
+        if (p.has("normalScale")) mat->set_normal_scale(
+                static_cast<float>(static_cast<double>(p["normalScale"])));
     }
+    if (p.has("emissionMap")) {
+        bind_tex("emissionMap", BaseMaterial3D::TEXTURE_EMISSION);
+        mat->set_feature(BaseMaterial3D::FEATURE_EMISSION, true);
+    }
+    bind_tex("roughnessMap", BaseMaterial3D::TEXTURE_ROUGHNESS);
+    bind_tex("metallicMap",  BaseMaterial3D::TEXTURE_METALLIC);
+    bind_tex("aoMap",        BaseMaterial3D::TEXTURE_AMBIENT_OCCLUSION);
+
+    // UV scale (uv1_scale Vector3 — z is a layer)
+    if (p.has("uvScale")) {
+        Vector3 us = vec3_from_payload(p, "uvScale", Vector3(1, 1, 1));
+        mat->set_uv1_scale(us);
+    }
+
     uint32_t id = _handles->put_resource(HandleKind::MATERIAL, mat);
     return make_handle_result(id);
 }
@@ -953,6 +1057,119 @@ Dictionary Nova64Host::_cmd_env_set(const Dictionary &p) {
             static_cast<float>(static_cast<double>(p["contrast"])));
     if (p.has("saturation")) env->set_adjustment_saturation(
             static_cast<float>(static_cast<double>(p["saturation"])));
+
+    // Depth-of-field is on CameraAttributes in Godot 4 — handled via
+    // camera.setParams once we wire that up. Skipped here.
+
+    // Screen-space reflections.
+    if (p.has("ssr")) env->set_ssr_enabled(static_cast<bool>(p["ssr"]));
+    if (p.has("ssrSteps")) env->set_ssr_max_steps(
+            static_cast<int>(static_cast<int64_t>(p["ssrSteps"])));
+
+    // Volumetric fog (cheap god-rays).
+    if (p.has("volumetricFog")) env->set_volumetric_fog_enabled(static_cast<bool>(p["volumetricFog"]));
+    if (p.has("volumetricFogDensity")) env->set_volumetric_fog_density(
+            static_cast<float>(static_cast<double>(p["volumetricFogDensity"])));
+
+    // Procedural sky tweaks.
+    Ref<Sky> sky = env->get_sky();
+    Ref<ProceduralSkyMaterial> sky_mat;
+    if (sky.is_valid()) sky_mat = sky->get_material();
+
+    if (sky_mat.is_valid()) {
+        if (p.has("skyTopColor")) sky_mat->set_sky_top_color(
+                color_from_payload(p, "skyTopColor", Color(0.18f, 0.32f, 0.55f, 1)));
+        if (p.has("skyHorizonColor")) sky_mat->set_sky_horizon_color(
+                color_from_payload(p, "skyHorizonColor", Color(0.55f, 0.62f, 0.72f, 1)));
+        if (p.has("groundHorizonColor")) sky_mat->set_ground_horizon_color(
+                color_from_payload(p, "groundHorizonColor", Color(0.42f, 0.40f, 0.38f, 1)));
+        if (p.has("groundBottomColor")) sky_mat->set_ground_bottom_color(
+                color_from_payload(p, "groundBottomColor", Color(0.10f, 0.10f, 0.12f, 1)));
+        if (p.has("sunAngleMax")) sky_mat->set_sun_angle_max(
+                static_cast<float>(static_cast<double>(p["sunAngleMax"])));
+        if (p.has("sunCurve")) sky_mat->set_sun_curve(
+                static_cast<float>(static_cast<double>(p["sunCurve"])));
+    }
+
+    // Sky presets — the heavy hitter for instant atmosphere.
+    if (p.has("skyPreset") && sky_mat.is_valid()) {
+        String name = p["skyPreset"];
+        if (name == "space") {
+            sky_mat->set_sky_top_color(Color(0.01f, 0.01f, 0.03f));
+            sky_mat->set_sky_horizon_color(Color(0.05f, 0.05f, 0.12f));
+            sky_mat->set_ground_horizon_color(Color(0.02f, 0.02f, 0.05f));
+            sky_mat->set_ground_bottom_color(Color(0.0f, 0.0f, 0.0f));
+            sky_mat->set_sun_angle_max(5.0f);
+            env->set_ambient_light_energy(0.15f);
+            env->set_glow_intensity(1.4f);
+        } else if (name == "sunset") {
+            sky_mat->set_sky_top_color(Color(0.12f, 0.18f, 0.40f));
+            sky_mat->set_sky_horizon_color(Color(1.0f, 0.45f, 0.20f));
+            sky_mat->set_ground_horizon_color(Color(0.55f, 0.20f, 0.10f));
+            sky_mat->set_ground_bottom_color(Color(0.10f, 0.05f, 0.05f));
+            sky_mat->set_sun_angle_max(35.0f);
+            env->set_ambient_light_color(Color(1.0f, 0.6f, 0.4f));
+            env->set_ambient_source(Environment::AMBIENT_SOURCE_SKY);
+            env->set_ambient_light_energy(1.2f);
+        } else if (name == "dawn") {
+            sky_mat->set_sky_top_color(Color(0.55f, 0.50f, 0.75f));
+            sky_mat->set_sky_horizon_color(Color(1.0f, 0.75f, 0.55f));
+            sky_mat->set_ground_horizon_color(Color(0.50f, 0.40f, 0.45f));
+            sky_mat->set_ground_bottom_color(Color(0.18f, 0.18f, 0.22f));
+            env->set_ambient_light_energy(1.0f);
+        } else if (name == "night") {
+            sky_mat->set_sky_top_color(Color(0.01f, 0.02f, 0.06f));
+            sky_mat->set_sky_horizon_color(Color(0.05f, 0.08f, 0.18f));
+            sky_mat->set_ground_horizon_color(Color(0.02f, 0.02f, 0.05f));
+            sky_mat->set_ground_bottom_color(Color(0.0f, 0.0f, 0.0f));
+            env->set_ambient_light_color(Color(0.20f, 0.30f, 0.55f));
+            env->set_ambient_source(Environment::AMBIENT_SOURCE_COLOR);
+            env->set_ambient_light_energy(0.4f);
+        } else if (name == "foggy") {
+            sky_mat->set_sky_top_color(Color(0.55f, 0.58f, 0.62f));
+            sky_mat->set_sky_horizon_color(Color(0.75f, 0.78f, 0.82f));
+            sky_mat->set_ground_horizon_color(Color(0.55f, 0.55f, 0.55f));
+            sky_mat->set_ground_bottom_color(Color(0.30f, 0.30f, 0.32f));
+            env->set_fog_enabled(true);
+            env->set_fog_light_color(Color(0.75f, 0.78f, 0.82f));
+            env->set_fog_density(0.04f);
+        } else if (name == "dusk") {
+            sky_mat->set_sky_top_color(Color(0.20f, 0.10f, 0.35f));
+            sky_mat->set_sky_horizon_color(Color(0.85f, 0.40f, 0.55f));
+            sky_mat->set_ground_horizon_color(Color(0.30f, 0.15f, 0.30f));
+            sky_mat->set_ground_bottom_color(Color(0.05f, 0.02f, 0.10f));
+            env->set_ambient_light_energy(0.7f);
+        } else if (name == "storm") {
+            sky_mat->set_sky_top_color(Color(0.18f, 0.20f, 0.22f));
+            sky_mat->set_sky_horizon_color(Color(0.30f, 0.32f, 0.30f));
+            sky_mat->set_ground_horizon_color(Color(0.15f, 0.16f, 0.15f));
+            sky_mat->set_ground_bottom_color(Color(0.05f, 0.05f, 0.05f));
+            env->set_fog_enabled(true);
+            env->set_fog_light_color(Color(0.40f, 0.42f, 0.40f));
+            env->set_fog_density(0.06f);
+            env->set_ambient_light_energy(0.5f);
+        } else if (name == "alien") {
+            sky_mat->set_sky_top_color(Color(0.20f, 0.05f, 0.35f));
+            sky_mat->set_sky_horizon_color(Color(0.60f, 0.25f, 0.55f));
+            sky_mat->set_ground_horizon_color(Color(0.30f, 0.55f, 0.25f));
+            sky_mat->set_ground_bottom_color(Color(0.10f, 0.20f, 0.10f));
+            env->set_ambient_light_color(Color(0.65f, 0.40f, 0.85f));
+            env->set_ambient_source(Environment::AMBIENT_SOURCE_COLOR);
+            env->set_ambient_light_energy(0.8f);
+        } else if (name == "underwater") {
+            sky_mat->set_sky_top_color(Color(0.05f, 0.20f, 0.35f));
+            sky_mat->set_sky_horizon_color(Color(0.10f, 0.45f, 0.55f));
+            sky_mat->set_ground_horizon_color(Color(0.05f, 0.20f, 0.30f));
+            sky_mat->set_ground_bottom_color(Color(0.02f, 0.08f, 0.15f));
+            env->set_fog_enabled(true);
+            env->set_fog_light_color(Color(0.10f, 0.40f, 0.55f));
+            env->set_fog_density(0.08f);
+            env->set_ambient_light_color(Color(0.20f, 0.55f, 0.80f));
+            env->set_ambient_source(Environment::AMBIENT_SOURCE_COLOR);
+            env->set_ambient_light_energy(0.9f);
+        }
+        env->set_background(Environment::BG_SKY);
+    }
 
     Dictionary out; out["ok"] = true; return out;
 }

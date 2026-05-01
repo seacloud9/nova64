@@ -17,7 +17,7 @@
 
 extends Node3D
 
-@export_dir var cart_path: String = "res://carts/hello-world"
+@export_dir var cart_path: String = "res://carts/demoscene"
 # Optional: pick a meta.json (imported as Nova64Cart) instead of typing a path.
 @export var cart_resource: Resource
 

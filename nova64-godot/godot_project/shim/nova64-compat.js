@@ -211,18 +211,15 @@
     return geom ? spawnMesh(geom.handle, color, pos) : 0;
   }
 
-  // Cylinder + cone primitives — emulated as box approximations until the
-  // bridge gains real geometry methods. Keeps carts that destructure these
-  // factories from crashing and gives the right rough scale on screen.
+  // Cylinder + cone + torus primitives — backed by real Godot meshes.
   function createCylinder(radiusTop, radiusBottom, height, color, pos) {
     ensureInit();
-    const r = Math.max(radiusTop || 0.5, radiusBottom || 0.5);
+    const rt = typeof radiusTop === 'number' ? radiusTop : 0.5;
+    const rb = typeof radiusBottom === 'number' ? radiusBottom : 0.5;
     const h = typeof height === 'number' ? height : 1;
-    const geom = call('geometry.createBox', { size: [r * 2, h, r * 2] });
-    if (!warned.has('createCylinder-fallback')) {
-      warned.add('createCylinder-fallback');
-      print('[nova64-compat] createCylinder approximated as box (no real cylinder geometry yet)');
-    }
+    const geom = call('geometry.createCylinder', {
+      topRadius: rt, bottomRadius: rb, height: h, sides: 24,
+    });
     return geom ? spawnMesh(geom.handle, color, pos) : 0;
   }
 
@@ -230,11 +227,15 @@
     ensureInit();
     const r = typeof radius === 'number' ? radius : 0.5;
     const h = typeof height === 'number' ? height : 1;
-    const geom = call('geometry.createBox', { size: [r * 2, h, r * 2] });
-    if (!warned.has('createCone-fallback')) {
-      warned.add('createCone-fallback');
-      print('[nova64-compat] createCone approximated as box (no real cone geometry yet)');
-    }
+    const geom = call('geometry.createCone', { radius: r, height: h, sides: 24 });
+    return geom ? spawnMesh(geom.handle, color, pos) : 0;
+  }
+
+  function createTorus(innerRadius, outerRadius, color, pos) {
+    ensureInit();
+    const inner = typeof innerRadius === 'number' ? innerRadius : 0.3;
+    const outer = typeof outerRadius === 'number' ? outerRadius : 0.5;
+    const geom = call('geometry.createTorus', { innerRadius: inner, outerRadius: outer });
     return geom ? spawnMesh(geom.handle, color, pos) : 0;
   }
 
@@ -320,11 +321,69 @@
       rotation: [pitch, yaw, 0],
     });
   }
-  function setFog(_color, _near, _far) { warnOnce('setFog'); }
-  function createPointLight(_color, _energy, _pos) { warnOnce('createPointLight'); return 0; }
-  function createAmbientLight(_color, _energy) { warnOnce('createAmbientLight'); return 0; }
-  function setAmbientLight(_color, _energy) { warnOnce('setAmbientLight'); }
-  function setLightColor(_color) { warnOnce('setLightColor'); }
+  function setFog(color, near, far) {
+    // Three.js linear fog → Godot's exponential fog. Approximate the
+    // density from the (near, far) range so distant objects fade out.
+    ensureInit();
+    const c = colorFromHex(typeof color === 'number' ? color : 0x7090b0);
+    const n = typeof near === 'number' ? near : 10;
+    const f = typeof far === 'number' ? far : 100;
+    const span = Math.max(1, f - n);
+    call('env.set', { fog: true, fogColor: c, fogDensity: 1.0 / span });
+  }
+  function clearFog() {
+    ensureInit();
+    call('env.set', { fog: false });
+  }
+  function createPointLight(color, energy, pos) {
+    ensureInit();
+    const r = call('light.createPoint', {
+      color: colorFromHex(typeof color === 'number' ? color : 0xffffff),
+      energy: typeof energy === 'number' ? energy : 1.0,
+      position: ensureArray3(pos && pos[0], pos && pos[1], pos && pos[2]),
+    });
+    return r ? r.handle : 0;
+  }
+  function createSpotLight(color, energy, pos, angle) {
+    ensureInit();
+    const r = call('light.createSpot', {
+      color: colorFromHex(typeof color === 'number' ? color : 0xffffff),
+      energy: typeof energy === 'number' ? energy : 1.0,
+      angle: typeof angle === 'number' ? angle : 35.0,
+      position: ensureArray3(pos && pos[0], pos && pos[1], pos && pos[2]),
+    });
+    return r ? r.handle : 0;
+  }
+  function createAmbientLight(color, energy) {
+    ensureInit();
+    call('env.set', {
+      ambient: colorFromHex(typeof color === 'number' ? color : 0x404040),
+      ambientEnergy: typeof energy === 'number' ? energy : 1.0,
+    });
+    return 0;
+  }
+  function setAmbientLight(color, energy) {
+    ensureInit();
+    call('env.set', {
+      ambient: colorFromHex(typeof color === 'number' ? color : 0x404040),
+      ambientEnergy: typeof energy === 'number' ? energy : 1.0,
+    });
+  }
+  function setLightColor(handle, color) {
+    if (!handle) return;
+    const h = unwrapHandle(handle);
+    if (!h) return;
+    call('light.setColor', {
+      handle: h,
+      color: colorFromHex(typeof color === 'number' ? color : 0xffffff),
+    });
+  }
+  function setLightEnergy(handle, energy) {
+    if (!handle) return;
+    const h = unwrapHandle(handle);
+    if (!h) return;
+    call('light.setEnergy', { handle: h, energy: typeof energy === 'number' ? energy : 1.0 });
+  }
 
   // ---------------- draw / 2D overlay (no host support yet) -------------
   function rgba8(r, g, b, a) {
@@ -361,14 +420,51 @@
   }
   const isKeyPressed = key;
 
-  // ---------------- effects (no-op shims) ------------------------------
-  function enablePixelation(_n) { warnOnce('enablePixelation'); }
+  // ---------------- effects (mapped to Godot WorldEnvironment) ---------
+  function enablePixelation(_n) { warnOnce('enablePixelation'); /* TODO: SubViewport */ }
   function enableDithering(_b) { warnOnce('enableDithering'); }
-  function enableBloom(_b) { warnOnce('enableBloom'); }
-  function enableFXAA() { warnOnce('enableFXAA'); }
-  function enableVignette(_a, _b) { warnOnce('enableVignette'); }
-  function setN64Mode(_b) { warnOnce('setN64Mode'); }
-  function setPSXMode(_b) { warnOnce('setPSXMode'); }
+  function enableBloom(b, intensity) {
+    ensureInit();
+    call('env.set', {
+      glow: b !== false,
+      glowIntensity: typeof intensity === 'number' ? intensity : 0.8,
+    });
+  }
+  function enableFXAA(_b) { /* Godot's MSAA/FXAA is project-level; no-op for now */ }
+  function enableVignette(amount, _hardness) {
+    ensureInit();
+    // Vignette via adjustment darkening — not a real radial vignette but a
+    // close enough cheap stand-in.
+    const a = typeof amount === 'number' ? Math.max(0, Math.min(1, amount)) : 0.3;
+    call('env.set', { brightness: 1.0 - a * 0.4, contrast: 1.0 + a * 0.2 });
+  }
+  function setN64Mode(b) {
+    // Punchy color, low-saturation glow for that warm CRT look.
+    ensureInit();
+    if (b === false) {
+      call('env.set', { glow: true, glowIntensity: 0.8, contrast: 1.05, saturation: 1.05, brightness: 1.0 });
+      return;
+    }
+    call('env.set', {
+      glow: true, glowIntensity: 0.6, glowStrength: 1.2, glowBloom: 0.15,
+      tonemap: 'filmic', exposure: 1.05,
+      contrast: 1.15, saturation: 1.25, brightness: 1.02,
+    });
+  }
+  function setPSXMode(b) {
+    // Lower brightness, slightly desaturated, harder contrast.
+    ensureInit();
+    if (b === false) {
+      call('env.set', { glow: true, glowIntensity: 0.8, contrast: 1.05, saturation: 1.05, brightness: 1.0 });
+      return;
+    }
+    call('env.set', {
+      glow: false,
+      tonemap: 'linear', exposure: 0.95,
+      contrast: 1.2, saturation: 0.85, brightness: 0.95,
+    });
+  }
+  function enableRetroEffects(b) { setN64Mode(b !== false); }
 
   // ---------------- stats / util / audio / tween (no-op stubs) ---------
   function get3DStats() {
@@ -691,9 +787,9 @@
 
 
   // ---------------- namespace + global aliases -------------------------
-  const sceneNs = { createCube, createSphere, createPlane, createCylinder, createCone, removeMesh, destroyMesh: removeMesh, setPosition, setRotation, rotateMesh, setScale, getPosition, engine: global.engine };
+  const sceneNs = { createCube, createSphere, createPlane, createCylinder, createCone, createTorus, removeMesh, destroyMesh: removeMesh, setPosition, setRotation, rotateMesh, setScale, getPosition, engine: global.engine };
   const cameraNs = { setCameraPosition, setCameraTarget, setCameraFOV };
-  const lightNs = { setLightDirection, setFog, clearFog, createPointLight, createAmbientLight, setAmbientLight, setLightColor };
+  const lightNs = { setLightDirection, setFog, clearFog, createPointLight, createSpotLight, createAmbientLight, setAmbientLight, setLightColor, setLightEnergy };
   const drawNs = { cls, print: novaPrint, printCentered, rect, rectfill, line, pixel, rgba8, screenWidth, screenHeight };
   const inputNs = { key, isKeyPressed, isKeyDown: key, keyp: key, pollInput, btn, btnp, pad: padNs, mouse: mouseNs };
   const fxNs = { enablePixelation, enableDithering, enableBloom, enableFXAA, enableVignette, setN64Mode, setPSXMode };

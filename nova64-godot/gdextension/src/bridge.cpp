@@ -17,7 +17,9 @@
 
 #include <godot_cpp/classes/box_mesh.hpp>
 #include <godot_cpp/classes/camera3d.hpp>
+#include <godot_cpp/classes/cylinder_mesh.hpp>
 #include <godot_cpp/classes/directional_light3d.hpp>
+#include <godot_cpp/classes/environment.hpp>
 #include <godot_cpp/classes/file_access.hpp>
 #include <godot_cpp/classes/dir_access.hpp>
 #include <godot_cpp/classes/image.hpp>
@@ -26,14 +28,21 @@
 #include <godot_cpp/classes/audio_stream.hpp>
 #include <godot_cpp/classes/audio_stream_player.hpp>
 #include <godot_cpp/classes/gpu_particles3d.hpp>
+#include <godot_cpp/classes/light3d.hpp>
+#include <godot_cpp/classes/omni_light3d.hpp>
 #include <godot_cpp/classes/particle_process_material.hpp>
 #include <godot_cpp/classes/multi_mesh.hpp>
 #include <godot_cpp/classes/multi_mesh_instance3d.hpp>
+#include <godot_cpp/classes/procedural_sky_material.hpp>
 #include <godot_cpp/classes/resource_loader.hpp>
 #include <godot_cpp/classes/mesh_instance3d.hpp>
 #include <godot_cpp/classes/plane_mesh.hpp>
+#include <godot_cpp/classes/sky.hpp>
 #include <godot_cpp/classes/sphere_mesh.hpp>
+#include <godot_cpp/classes/spot_light3d.hpp>
 #include <godot_cpp/classes/standard_material3d.hpp>
+#include <godot_cpp/classes/torus_mesh.hpp>
+#include <godot_cpp/classes/world_environment.hpp>
 #include <godot_cpp/core/class_db.hpp>
 #include <godot_cpp/variant/array.hpp>
 #include <godot_cpp/variant/color.hpp>
@@ -471,6 +480,15 @@ Dictionary Nova64Host::get_capabilities() const {
     features.append("camera.create");
     features.append("camera.setActive");
     features.append("light.createDirectional");
+    features.append("light.createPoint");
+    features.append("light.createSpot");
+    features.append("light.setColor");
+    features.append("light.setEnergy");
+    features.append("env.set");
+    features.append("camera.setParams");
+    features.append("geometry.createCylinder");
+    features.append("geometry.createCone");
+    features.append("geometry.createTorus");
     features.append("input.poll");
     features.append("texture.createFromImage");
     features.append("texture.destroy");
@@ -494,6 +512,9 @@ Dictionary Nova64Host::call_bridge(const String &p_method, const Dictionary &p_p
         Dictionary out; out["capabilities"] = get_capabilities(); return out;
     }
     if (p_method == "engine.init") {
+        // Spawn the default WorldEnvironment so every cart starts with a
+        // sensible sky/glow/tonemap baseline rather than a black void.
+        _ensure_environment();
         Dictionary out; out["capabilities"] = get_capabilities(); return out;
     }
     if (p_method == "material.create")          return _cmd_material_create(p_payload);
@@ -501,13 +522,22 @@ Dictionary Nova64Host::call_bridge(const String &p_method, const Dictionary &p_p
     if (p_method == "geometry.createBox")       return _cmd_geometry_create_box(p_payload);
     if (p_method == "geometry.createSphere")    return _cmd_geometry_create_sphere(p_payload);
     if (p_method == "geometry.createPlane")     return _cmd_geometry_create_plane(p_payload);
+    if (p_method == "geometry.createCylinder")  return _cmd_geometry_create_cylinder(p_payload);
+    if (p_method == "geometry.createCone")      return _cmd_geometry_create_cone(p_payload);
+    if (p_method == "geometry.createTorus")     return _cmd_geometry_create_torus(p_payload);
     if (p_method == "mesh.create")              return _cmd_mesh_create(p_payload);
     if (p_method == "mesh.setMaterial")         return _cmd_mesh_set_material(p_payload);
     if (p_method == "mesh.destroy")             return _cmd_mesh_destroy(p_payload);
     if (p_method == "transform.set")            return _cmd_transform_set(p_payload);
     if (p_method == "camera.create")            return _cmd_camera_create(p_payload);
     if (p_method == "camera.setActive")         return _cmd_camera_set_active(p_payload);
+    if (p_method == "camera.setParams")         return _cmd_camera_set_params(p_payload);
     if (p_method == "light.createDirectional")  return _cmd_light_create_directional(p_payload);
+    if (p_method == "light.createPoint")        return _cmd_light_create_point(p_payload);
+    if (p_method == "light.createSpot")         return _cmd_light_create_spot(p_payload);
+    if (p_method == "light.setColor")           return _cmd_light_set_color(p_payload);
+    if (p_method == "light.setEnergy")          return _cmd_light_set_energy(p_payload);
+    if (p_method == "env.set")                  return _cmd_env_set(p_payload);
     if (p_method == "input.poll")               return _cmd_input_poll(p_payload);
     if (p_method == "texture.createFromImage")  return _cmd_texture_create_from_image(p_payload);
     if (p_method == "texture.destroy")           return _cmd_texture_destroy(p_payload);
@@ -595,6 +625,35 @@ Dictionary Nova64Host::_cmd_geometry_create_plane(const Dictionary &p) {
     return make_handle_result(id);
 }
 
+Dictionary Nova64Host::_cmd_geometry_create_cylinder(const Dictionary &p) {
+    Ref<CylinderMesh> m; m.instantiate();
+    if (p.has("topRadius"))    m->set_top_radius(static_cast<float>(static_cast<double>(p["topRadius"])));
+    if (p.has("bottomRadius")) m->set_bottom_radius(static_cast<float>(static_cast<double>(p["bottomRadius"])));
+    if (p.has("height"))       m->set_height(static_cast<float>(static_cast<double>(p["height"])));
+    if (p.has("sides"))        m->set_radial_segments(static_cast<int>(static_cast<int64_t>(p["sides"])));
+    uint32_t id = _handles->put_resource(HandleKind::GEOMETRY, m);
+    return make_handle_result(id);
+}
+
+Dictionary Nova64Host::_cmd_geometry_create_cone(const Dictionary &p) {
+    // A cone is just a cylinder with topRadius = 0.
+    Ref<CylinderMesh> m; m.instantiate();
+    m->set_top_radius(0.0f);
+    if (p.has("radius")) m->set_bottom_radius(static_cast<float>(static_cast<double>(p["radius"])));
+    if (p.has("height")) m->set_height(static_cast<float>(static_cast<double>(p["height"])));
+    if (p.has("sides"))  m->set_radial_segments(static_cast<int>(static_cast<int64_t>(p["sides"])));
+    uint32_t id = _handles->put_resource(HandleKind::GEOMETRY, m);
+    return make_handle_result(id);
+}
+
+Dictionary Nova64Host::_cmd_geometry_create_torus(const Dictionary &p) {
+    Ref<TorusMesh> m; m.instantiate();
+    if (p.has("innerRadius")) m->set_inner_radius(static_cast<float>(static_cast<double>(p["innerRadius"])));
+    if (p.has("outerRadius")) m->set_outer_radius(static_cast<float>(static_cast<double>(p["outerRadius"])));
+    uint32_t id = _handles->put_resource(HandleKind::GEOMETRY, m);
+    return make_handle_result(id);
+}
+
 Dictionary Nova64Host::_cmd_mesh_create(const Dictionary &p) {
     uint32_t geom_id = handle_id_from_payload(p, "geometry");
     Ref<RefCounted> geom_ref = _handles->get_resource(geom_id, HandleKind::GEOMETRY);
@@ -657,9 +716,17 @@ Dictionary Nova64Host::_cmd_transform_set(const Dictionary &p) {
     Dictionary out; out["ok"] = true; return out;
 }
 
-Dictionary Nova64Host::_cmd_camera_create(const Dictionary &) {
+Dictionary Nova64Host::_cmd_camera_create(const Dictionary &p) {
     Camera3D *cam = memnew(Camera3D);
     add_child(cam);
+    // Saner defaults than Godot's camera (FOV 75, near 0.05, far 4000):
+    // closer to the Three.js defaults Nova carts grew up on.
+    double fov  = p.has("fov")  ? static_cast<double>(p["fov"])  : 60.0;
+    double near = p.has("near") ? static_cast<double>(p["near"]) : 0.1;
+    double far  = p.has("far")  ? static_cast<double>(p["far"])  : 1000.0;
+    cam->set_fov(static_cast<float>(fov));
+    cam->set_near(static_cast<float>(near));
+    cam->set_far(static_cast<float>(far));
     uint32_t id = _handles->put_node(HandleKind::CAMERA, cam);
     return make_handle_result(id);
 }
@@ -673,14 +740,221 @@ Dictionary Nova64Host::_cmd_camera_set_active(const Dictionary &p) {
     Dictionary out; out["ok"] = true; return out;
 }
 
+Dictionary Nova64Host::_cmd_camera_set_params(const Dictionary &p) {
+    uint32_t id = handle_id_from_payload(p, "handle");
+    Object *o = _handles->get_node(id, HandleKind::CAMERA);
+    Camera3D *cam = Object::cast_to<Camera3D>(o);
+    if (!cam) return make_error("invalid_camera_handle", "camera.setParams");
+    if (p.has("fov"))  cam->set_fov(static_cast<float>(static_cast<double>(p["fov"])));
+    if (p.has("near")) cam->set_near(static_cast<float>(static_cast<double>(p["near"])));
+    if (p.has("far"))  cam->set_far(static_cast<float>(static_cast<double>(p["far"])));
+    Dictionary out; out["ok"] = true; return out;
+}
+
 Dictionary Nova64Host::_cmd_light_create_directional(const Dictionary &p) {
     DirectionalLight3D *light = memnew(DirectionalLight3D);
     add_child(light);
     if (p.has("color")) light->set_color(color_from_payload(p, "color", Color(1, 1, 1, 1)));
-    if (p.has("energy")) light->set_param(Light3D::PARAM_ENERGY,
-            static_cast<float>(static_cast<double>(p["energy"])));
+    light->set_param(Light3D::PARAM_ENERGY,
+            p.has("energy") ? static_cast<float>(static_cast<double>(p["energy"])) : 1.0f);
+    // Shadows on by default — most carts expect rim/cast shadows for shape
+    // readability. Cheap mode keeps perf reasonable on mobile.
+    bool shadow = p.has("shadow") ? static_cast<bool>(p["shadow"]) : true;
+    light->set_shadow(shadow);
+    if (shadow) {
+        light->set_param(Light3D::PARAM_SHADOW_BIAS, 0.03f);
+        light->set_param(Light3D::PARAM_SHADOW_NORMAL_BIAS, 1.0f);
+    }
+    // Tilt the default sun a bit so flat-lit scenes still have shading.
+    light->set_rotation(Vector3(-0.9f, -0.6f, 0.0f));
     uint32_t id = _handles->put_node(HandleKind::LIGHT, light);
     return make_handle_result(id);
+}
+
+Dictionary Nova64Host::_cmd_light_create_point(const Dictionary &p) {
+    OmniLight3D *light = memnew(OmniLight3D);
+    add_child(light);
+    if (p.has("color")) light->set_color(color_from_payload(p, "color", Color(1, 1, 1, 1)));
+    light->set_param(Light3D::PARAM_ENERGY,
+            p.has("energy") ? static_cast<float>(static_cast<double>(p["energy"])) : 1.0f);
+    if (p.has("range")) {
+        light->set_param(Light3D::PARAM_RANGE,
+                static_cast<float>(static_cast<double>(p["range"])));
+    } else {
+        light->set_param(Light3D::PARAM_RANGE, 20.0f);
+    }
+    if (p.has("attenuation")) {
+        light->set_param(Light3D::PARAM_ATTENUATION,
+                static_cast<float>(static_cast<double>(p["attenuation"])));
+    }
+    if (p.has("position")) {
+        Vector3 pos = vec3_from_payload(p, "position", Vector3());
+        light->set_position(pos);
+    }
+    uint32_t id = _handles->put_node(HandleKind::LIGHT, light);
+    return make_handle_result(id);
+}
+
+Dictionary Nova64Host::_cmd_light_create_spot(const Dictionary &p) {
+    SpotLight3D *light = memnew(SpotLight3D);
+    add_child(light);
+    if (p.has("color")) light->set_color(color_from_payload(p, "color", Color(1, 1, 1, 1)));
+    light->set_param(Light3D::PARAM_ENERGY,
+            p.has("energy") ? static_cast<float>(static_cast<double>(p["energy"])) : 1.0f);
+    if (p.has("range")) {
+        light->set_param(Light3D::PARAM_RANGE,
+                static_cast<float>(static_cast<double>(p["range"])));
+    } else {
+        light->set_param(Light3D::PARAM_RANGE, 20.0f);
+    }
+    if (p.has("angle")) {
+        light->set_param(Light3D::PARAM_SPOT_ANGLE,
+                static_cast<float>(static_cast<double>(p["angle"])));
+    } else {
+        light->set_param(Light3D::PARAM_SPOT_ANGLE, 35.0f);
+    }
+    if (p.has("position")) {
+        Vector3 pos = vec3_from_payload(p, "position", Vector3());
+        light->set_position(pos);
+    }
+    uint32_t id = _handles->put_node(HandleKind::LIGHT, light);
+    return make_handle_result(id);
+}
+
+Dictionary Nova64Host::_cmd_light_set_color(const Dictionary &p) {
+    uint32_t id = handle_id_from_payload(p, "handle");
+    Light3D *light = Object::cast_to<Light3D>(_handles->get_node(id, HandleKind::LIGHT));
+    if (!light) return make_error("invalid_light_handle", "light.setColor");
+    light->set_color(color_from_payload(p, "color", Color(1, 1, 1, 1)));
+    Dictionary out; out["ok"] = true; return out;
+}
+
+Dictionary Nova64Host::_cmd_light_set_energy(const Dictionary &p) {
+    uint32_t id = handle_id_from_payload(p, "handle");
+    Light3D *light = Object::cast_to<Light3D>(_handles->get_node(id, HandleKind::LIGHT));
+    if (!light) return make_error("invalid_light_handle", "light.setEnergy");
+    light->set_param(Light3D::PARAM_ENERGY,
+            p.has("energy") ? static_cast<float>(static_cast<double>(p["energy"])) : 1.0f);
+    Dictionary out; out["ok"] = true; return out;
+}
+
+// ---- Environment ---------------------------------------------------------
+
+Environment *Nova64Host::_ensure_environment() {
+    if (_world_env != nullptr) {
+        Ref<Environment> env = _world_env->get_environment();
+        if (env.is_valid()) return env.ptr();
+    }
+    if (_world_env == nullptr) {
+        _world_env = memnew(WorldEnvironment);
+        add_child(_world_env);
+    }
+    Ref<Environment> env;
+    env.instantiate();
+
+    // Sky — procedural gradient so empty scenes don't render black.
+    Ref<Sky> sky;
+    sky.instantiate();
+    Ref<ProceduralSkyMaterial> sky_mat;
+    sky_mat.instantiate();
+    sky_mat->set_sky_top_color(Color(0.18f, 0.32f, 0.55f, 1.0f));
+    sky_mat->set_sky_horizon_color(Color(0.55f, 0.62f, 0.72f, 1.0f));
+    sky_mat->set_ground_horizon_color(Color(0.42f, 0.40f, 0.38f, 1.0f));
+    sky_mat->set_ground_bottom_color(Color(0.10f, 0.10f, 0.12f, 1.0f));
+    sky_mat->set_sun_angle_max(30.0f);
+    sky->set_material(sky_mat);
+    env->set_sky(sky);
+    env->set_background(Environment::BG_SKY);
+    env->set_ambient_source(Environment::AMBIENT_SOURCE_SKY);
+    env->set_reflection_source(Environment::REFLECTION_SOURCE_SKY);
+    env->set_ambient_light_energy(1.0f);
+
+    // Tonemap — filmic by default, modest exposure so emissive materials
+    // bloom without blowing out.
+    env->set_tonemapper(Environment::TONE_MAPPER_FILMIC);
+    env->set_tonemap_exposure(1.0f);
+    env->set_tonemap_white(6.0f);
+
+    // Glow / bloom — on by default. Mid intensity.
+    env->set_glow_enabled(true);
+    env->set_glow_intensity(0.8f);
+    env->set_glow_strength(1.0f);
+    env->set_glow_bloom(0.1f);
+    env->set_glow_hdr_bleed_threshold(1.0f);
+
+    // SSAO — subtle, off by default (can be expensive on mobile). Carts
+    // enable explicitly via env.set.
+    env->set_ssao_enabled(false);
+    env->set_ssao_radius(1.0f);
+    env->set_ssao_intensity(1.0f);
+
+    // Subtle adjustments for that warm retro feel.
+    env->set_adjustment_enabled(true);
+    env->set_adjustment_brightness(1.0f);
+    env->set_adjustment_contrast(1.05f);
+    env->set_adjustment_saturation(1.05f);
+
+    _world_env->set_environment(env);
+    return env.ptr();
+}
+
+Dictionary Nova64Host::_cmd_env_set(const Dictionary &p) {
+    Environment *env = _ensure_environment();
+    if (!env) return make_error("env_unavailable", "env.set");
+
+    if (p.has("ambient")) {
+        env->set_ambient_source(Environment::AMBIENT_SOURCE_COLOR);
+        env->set_ambient_light_color(color_from_payload(p, "ambient", Color(0.2f, 0.2f, 0.2f, 1.0f)));
+    }
+    if (p.has("ambientEnergy")) {
+        env->set_ambient_light_energy(static_cast<float>(static_cast<double>(p["ambientEnergy"])));
+    }
+    if (p.has("background")) {
+        Color bg = color_from_payload(p, "background", Color(0, 0, 0, 1));
+        env->set_background(Environment::BG_COLOR);
+        env->set_bg_color(bg);
+    } else if (p.has("sky") && static_cast<bool>(p["sky"])) {
+        env->set_background(Environment::BG_SKY);
+    }
+
+    if (p.has("glow")) env->set_glow_enabled(static_cast<bool>(p["glow"]));
+    if (p.has("glowIntensity")) env->set_glow_intensity(
+            static_cast<float>(static_cast<double>(p["glowIntensity"])));
+    if (p.has("glowStrength")) env->set_glow_strength(
+            static_cast<float>(static_cast<double>(p["glowStrength"])));
+    if (p.has("glowBloom")) env->set_glow_bloom(
+            static_cast<float>(static_cast<double>(p["glowBloom"])));
+    if (p.has("glowThreshold")) env->set_glow_hdr_bleed_threshold(
+            static_cast<float>(static_cast<double>(p["glowThreshold"])));
+
+    if (p.has("fog")) env->set_fog_enabled(static_cast<bool>(p["fog"]));
+    if (p.has("fogColor")) env->set_fog_light_color(
+            color_from_payload(p, "fogColor", Color(0.5f, 0.6f, 0.7f, 1.0f)));
+    if (p.has("fogDensity")) env->set_fog_density(
+            static_cast<float>(static_cast<double>(p["fogDensity"])));
+
+    if (p.has("ssao")) env->set_ssao_enabled(static_cast<bool>(p["ssao"]));
+    if (p.has("ssaoIntensity")) env->set_ssao_intensity(
+            static_cast<float>(static_cast<double>(p["ssaoIntensity"])));
+
+    if (p.has("tonemap")) {
+        String t = p["tonemap"];
+        if (t == "linear")  env->set_tonemapper(Environment::TONE_MAPPER_LINEAR);
+        else if (t == "reinhard") env->set_tonemapper(Environment::TONE_MAPPER_REINHARDT);
+        else if (t == "filmic") env->set_tonemapper(Environment::TONE_MAPPER_FILMIC);
+        else if (t == "aces")  env->set_tonemapper(Environment::TONE_MAPPER_ACES);
+    }
+    if (p.has("exposure")) env->set_tonemap_exposure(
+            static_cast<float>(static_cast<double>(p["exposure"])));
+
+    if (p.has("brightness")) env->set_adjustment_brightness(
+            static_cast<float>(static_cast<double>(p["brightness"])));
+    if (p.has("contrast")) env->set_adjustment_contrast(
+            static_cast<float>(static_cast<double>(p["contrast"])));
+    if (p.has("saturation")) env->set_adjustment_saturation(
+            static_cast<float>(static_cast<double>(p["saturation"])));
+
+    Dictionary out; out["ok"] = true; return out;
 }
 
 // Polls the keyboard / mouse / first gamepad and returns a snapshot in

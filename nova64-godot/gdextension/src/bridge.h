@@ -103,19 +103,34 @@ private:
     void _call_cart_fn(JSValue p_fn, double p_arg, bool p_pass_arg, const char *p_name);
     void _record_perf_sample(uint64_t p_update_us, uint64_t p_draw_us);
 
+    // Lazily creates a WorldEnvironment under this node with a tasteful
+    // default Environment (sky, glow, ambient, tonemap, mild SSAO). Carts
+    // tune this via `env.set`. Returns the Environment for direct mutation.
+    class Environment *_ensure_environment();
+    class WorldEnvironment *_world_env = nullptr;
+
     // ---- Command handlers (one per adapter namespace) -------------------
     Dictionary _cmd_material_create(const Dictionary &p_payload);
     Dictionary _cmd_material_destroy(const Dictionary &p_payload);
     Dictionary _cmd_geometry_create_box(const Dictionary &p_payload);
     Dictionary _cmd_geometry_create_sphere(const Dictionary &p_payload);
     Dictionary _cmd_geometry_create_plane(const Dictionary &p_payload);
+    Dictionary _cmd_geometry_create_cylinder(const Dictionary &p_payload);
+    Dictionary _cmd_geometry_create_cone(const Dictionary &p_payload);
+    Dictionary _cmd_geometry_create_torus(const Dictionary &p_payload);
     Dictionary _cmd_mesh_create(const Dictionary &p_payload);
     Dictionary _cmd_mesh_set_material(const Dictionary &p_payload);
     Dictionary _cmd_mesh_destroy(const Dictionary &p_payload);
     Dictionary _cmd_transform_set(const Dictionary &p_payload);
     Dictionary _cmd_camera_create(const Dictionary &p_payload);
     Dictionary _cmd_camera_set_active(const Dictionary &p_payload);
+    Dictionary _cmd_camera_set_params(const Dictionary &p_payload);
     Dictionary _cmd_light_create_directional(const Dictionary &p_payload);
+    Dictionary _cmd_light_create_point(const Dictionary &p_payload);
+    Dictionary _cmd_light_create_spot(const Dictionary &p_payload);
+    Dictionary _cmd_light_set_color(const Dictionary &p_payload);
+    Dictionary _cmd_light_set_energy(const Dictionary &p_payload);
+    Dictionary _cmd_env_set(const Dictionary &p_payload);
     Dictionary _cmd_input_poll(const Dictionary &p_payload);
     Dictionary _cmd_texture_create_from_image(const Dictionary &p_payload);
     Dictionary _cmd_texture_destroy(const Dictionary &p_payload);

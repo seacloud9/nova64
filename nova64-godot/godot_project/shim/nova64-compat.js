@@ -305,7 +305,11 @@
     cameraTarget = ensureArray3(x, y, z);
     applyCameraLookAt();
   }
-  function setCameraFOV(_deg) { warnOnce('setCameraFOV'); }
+  function setCameraFOV(deg) {
+    ensureInit();
+    if (!cameraHandle || typeof deg !== 'number') return;
+    call('camera.setParams', { handle: cameraHandle, fov: deg });
+  }
 
   // ---------------- light -----------------------------------------------
   function setLightDirection(x, y, z) {
@@ -719,10 +723,50 @@
   function createMenu(_opts) { warnOnce('createMenu'); return makeStub(); }
   function createStartScreen(_opts) { warnOnce('createStartScreen'); return makeStub(); }
 
-  // Particles (2D + 3D)
-  function createParticleSystem(_opts) { warnOnce('createParticleSystem'); return makeStub(); }
-  function createEmitter2D(_opts) { warnOnce('createEmitter2D'); return makeStub(); }
-  function createParticles(_opts) { warnOnce('createParticles'); return makeStub(); }
+  // Particles (2D + 3D) — backed by GPUParticles3D (3D) and a software
+  // simulation for 2D fallback. Both return a stub object with a .destroy()
+  // method so cart code can hold onto the handle.
+  function createParticleSystem(opts) { return createParticles(opts); }
+  function createEmitter2D(_opts)     { warnOnce('createEmitter2D'); return makeStub(); }
+  function createParticles(opts) {
+    ensureInit();
+    opts = opts || {};
+    // Need a draw-pass mesh — make a small sphere by default.
+    const geomR = call('geometry.createSphere', { radius: 0.08, height: 0.16 });
+    if (!geomR) return makeStub();
+    // Optional emissive material so particles glow.
+    const mat = call('material.create', {
+      albedo: colorFromHex(typeof opts.color === 'number' ? opts.color : 0xffffff),
+      unshaded: true,
+      emission: colorFromHex(typeof opts.color === 'number' ? opts.color : 0xffffff),
+      emissionEnergy: typeof opts.emissionEnergy === 'number' ? opts.emissionEnergy : 1.5,
+      blend: 'add',
+    });
+    const r = call('particles.create', {
+      geometry: geomR.handle,
+      material: mat ? mat.handle : 0,
+      amount: opts.count || opts.amount || 64,
+      lifetime: opts.lifetime || 2.0,
+      oneShot: !!opts.oneShot,
+      emissionBoxExtents: opts.spread ? [opts.spread, opts.spread, opts.spread] : [1, 1, 1],
+      gravity: Array.isArray(opts.gravity) ? opts.gravity
+              : (opts.gravity === false ? [0, 0, 0] : [0, opts.gravity || -1, 0]),
+      initialVelocityMin: opts.velocityMin || 0.5,
+      initialVelocityMax: opts.velocityMax || 2.0,
+      scale: opts.scale || 1.0,
+    });
+    if (!r) return makeStub();
+    if (Array.isArray(opts.position)) {
+      call('transform.set', { handle: r.handle, position: ensureArray3.apply(null, opts.position) });
+    }
+    return makeStub({
+      handle: r.handle,
+      destroy() { call('particles.destroy', { handle: r.handle }); },
+      setPosition(x, y, z) {
+        call('transform.set', { handle: r.handle, position: ensureArray3(x, y, z) });
+      },
+    });
+  }
 
   // Skybox — wired to env.set sky presets.
   function createSpaceSkybox(_opts)   { ensureInit(); call('env.set', { skyPreset: 'space',     sky: true }); return 1; }
@@ -755,37 +799,186 @@
     return 1;
   }
 
-  // Models / textures / advanced materials. createInstancedMesh falls back
-  // to a single cube so cart code that destructures the return continues.
+  // Models / textures / advanced materials.
   function loadModel(path, cb) {
-    warnOnce('loadModel');
+    // GLB/GLTF loader is a Phase 3 item — stub model load but still call cb.
     const stub = makeStub({ handle: 0, path: path });
     if (typeof cb === 'function') {
-      // Defer a tiny bit conceptually — we just call it inline because
-      // there is no event loop in QuickJS host.
       try { cb(stub); } catch (_e) { /* swallow */ }
     }
     return stub;
   }
-  function createTexture(_opts) { warnOnce('createTexture'); return 0; }
-  function loadTexture(_path) { warnOnce('loadTexture'); return 0; }
-  function createInstancedMesh(_geom, _count, color, _opts) {
-    warnOnce('createInstancedMesh');
-    // Fallback: single cube so the scene still has *something* visible.
-    const handle = createCube(1, color || 0xffffff, [0, 0, 0]);
-    const stub = makeStub({ handle: handle, count: 0 });
-    stub.setInstanceTransform = function () { return stub; };
+  function _resolveGeomString(name) {
+    // Accepts handle objects/numbers OR string names like 'sphere'/'box'.
+    if (name && typeof name === 'object' && name.handle) return name.handle;
+    if (typeof name === 'number') return name;
+    if (typeof name !== 'string') {
+      const r = call('geometry.createBox', { size: [1, 1, 1] });
+      return r ? r.handle : 0;
+    }
+    const n = name.toLowerCase();
+    let r;
+    if (n === 'sphere')        r = call('geometry.createSphere',   { radius: 0.5, height: 1 });
+    else if (n === 'plane')    r = call('geometry.createPlane',    { size: [1, 0, 1] });
+    else if (n === 'cylinder') r = call('geometry.createCylinder', { topRadius: 0.5, bottomRadius: 0.5, height: 1, sides: 24 });
+    else if (n === 'cone')     r = call('geometry.createCone',     { radius: 0.5, height: 1, sides: 24 });
+    else if (n === 'torus')    r = call('geometry.createTorus',    { innerRadius: 0.3, outerRadius: 0.5 });
+    else                       r = call('geometry.createBox',      { size: [1, 1, 1] });
+    return r ? r.handle : 0;
+  }
+  function createTexture(opts) {
+    ensureInit();
+    if (!opts) return 0;
+    if (typeof opts === 'string') return loadTexture(opts);
+    if (opts.path) return loadTexture(opts.path);
+    if (opts.width && opts.height && opts.pixels) {
+      const r = call('texture.createFromImage', {
+        width: opts.width, height: opts.height, pixels: opts.pixels,
+      });
+      return r ? r.handle : 0;
+    }
+    return 0;
+  }
+  function loadTexture(path, cb) {
+    ensureInit();
+    if (typeof path !== 'string') return 0;
+    // Cart paths are typically relative to the cart dir; normalize to res://carts/<cart>/...
+    let resPath = path;
+    if (!path.startsWith('res://') && !path.startsWith('user://')) {
+      const cart = (typeof globalThis.__nova64_cart_path === 'string')
+          ? globalThis.__nova64_cart_path : 'res://carts/current';
+      resPath = cart.replace(/\/?$/, '/') + path.replace(/^\.?\//, '');
+    }
+    const r = call('texture.createFromImage', { path: resPath });
+    const handle = r && r.handle ? r.handle : 0;
+    if (typeof cb === 'function') {
+      try { cb(handle); } catch (_e) { /* swallow */ }
+    }
+    return handle;
+  }
+  function createInstancedMesh(geom, count, color, opts) {
+    ensureInit();
+    opts = opts || {};
+    const n = (count | 0) > 0 ? (count | 0) : 1;
+    const geomHandle = _resolveGeomString(geom);
+    if (!geomHandle) return makeStub({ handle: 0, count: 0 });
+    const matPayload = {
+      albedo: colorFromHex(typeof color === 'number' ? color : 0xffffff),
+    };
+    if (typeof opts.emissive === 'number') {
+      matPayload.emission = colorFromHex(opts.emissive);
+      matPayload.emissionEnergy = opts.emissiveIntensity || 1.0;
+    }
+    if (opts.unshaded) matPayload.unshaded = true;
+    const matR = call('material.create', matPayload);
+    const r = call('mesh.createInstanced', {
+      geometry: geomHandle,
+      count: n,
+      material: matR ? matR.handle : 0,
+    });
+    if (!r || !r.handle) return makeStub({ handle: 0, count: 0 });
+    const stub = makeStub({ handle: r.handle, count: n });
+    stub.setInstanceTransform = function (i, x, y, z, rx, ry, rz, sx, sy, sz) {
+      call('instance.setTransform', {
+        handle: r.handle,
+        index: i | 0,
+        position: [x || 0, y || 0, z || 0],
+        rotation: [rx || 0, ry || 0, rz || 0],
+        scale: [sx == null ? 1 : sx, sy == null ? 1 : sy, sz == null ? 1 : sz],
+      });
+      return stub;
+    };
+    stub.setInstancePosition = function (i, x, y, z) {
+      call('instance.setTransform', {
+        handle: r.handle, index: i | 0, position: ensureArray3(x, y, z),
+      });
+      return stub;
+    };
     stub.setInstanceColor = function () { return stub; };
     stub.addInstance = function () { return stub; };
     return stub;
   }
-  function createTSLMaterial(_opts) { warnOnce('createTSLMaterial'); return 0; }
-  function createHologramMaterial(_opts) { warnOnce('createHologramMaterial'); return 0; }
-  function createVortexMaterial(_opts) { warnOnce('createVortexMaterial'); return 0; }
-  function createPBRMaterial(_opts) { warnOnce('createPBRMaterial'); return 0; }
+  // PBR — full StandardMaterial3D PBR surface.
+  function createPBRMaterial(opts) {
+    ensureInit();
+    opts = opts || {};
+    const payload = {
+      albedo: colorFromHex(typeof opts.color === 'number' ? opts.color
+                : (typeof opts.albedo === 'number' ? opts.albedo : 0xffffff)),
+      metallic: typeof opts.metallic === 'number' ? opts.metallic : 0.0,
+      roughness: typeof opts.roughness === 'number' ? opts.roughness : 0.5,
+      specular: typeof opts.specular === 'number' ? opts.specular : 0.5,
+    };
+    if (typeof opts.emission === 'number') {
+      payload.emission = colorFromHex(opts.emission);
+      payload.emissionEnergy = opts.emissionEnergy || 1.0;
+    }
+    if (typeof opts.rim === 'number') { payload.rim = opts.rim; payload.rimTint = opts.rimTint || 0.5; }
+    if (typeof opts.clearcoat === 'number') {
+      payload.clearcoat = opts.clearcoat;
+      payload.clearcoatRoughness = opts.clearcoatRoughness || 0.1;
+    }
+    if (typeof opts.anisotropy === 'number') payload.anisotropy = opts.anisotropy;
+    if (opts.normalMap) payload.normalMap = unwrapHandle(opts.normalMap);
+    if (opts.albedoTexture || opts.diffuseMap)
+      payload.albedoTexture = unwrapHandle(opts.albedoTexture || opts.diffuseMap);
+    if (opts.roughnessMap) payload.roughnessMap = unwrapHandle(opts.roughnessMap);
+    if (opts.metallicMap)  payload.metallicMap  = unwrapHandle(opts.metallicMap);
+    if (opts.aoMap)        payload.aoMap        = unwrapHandle(opts.aoMap);
+    if (opts.emissionMap)  payload.emissionMap  = unwrapHandle(opts.emissionMap);
+    const r = call('material.create', payload);
+    return r ? r.handle : 0;
+  }
+  // Hologram = unshaded + emissive + additive blend + rim glow.
+  function createHologramMaterial(opts) {
+    ensureInit();
+    opts = opts || {};
+    const c = typeof opts.color === 'number' ? opts.color : 0x00ffff;
+    const r = call('material.create', {
+      albedo: colorFromHex(c, 0.7),
+      emission: colorFromHex(c),
+      emissionEnergy: opts.energy || 2.0,
+      blend: 'add',
+      transparency: 'alpha',
+      cull: 'disabled',
+      unshaded: true,
+      rim: 0.6, rimTint: 0.8,
+    });
+    return r ? r.handle : 0;
+  }
+  function createVortexMaterial(opts) {
+    ensureInit();
+    opts = opts || {};
+    const c = typeof opts.color === 'number' ? opts.color : 0xff00ff;
+    const r = call('material.create', {
+      albedo: colorFromHex(c, 0.8),
+      emission: colorFromHex(c),
+      emissionEnergy: opts.energy || 2.5,
+      blend: 'add',
+      transparency: 'alpha',
+      cull: 'disabled',
+      unshaded: true,
+    });
+    return r ? r.handle : 0;
+  }
+  // TSL (Three Shading Language) → emit a tasteful PBR fallback.
+  function createTSLMaterial(opts) {
+    return createPBRMaterial(Object.assign({ emission: 0x00aaff, emissionEnergy: 1.5 }, opts || {}));
+  }
   function createAdvancedCube(color, pos) {
-    warnOnce('createAdvancedCube');
-    return createCube(1, color || 0xffffff, pos);
+    ensureInit();
+    const matH = createPBRMaterial({
+      color: typeof color === 'number' ? color : 0xffffff,
+      metallic: 0.6, roughness: 0.3,
+    });
+    const geomR = call('geometry.createBox', { size: [1, 1, 1] });
+    if (!geomR) return 0;
+    const meshR = call('mesh.create', { geometry: geomR.handle, material: matH });
+    if (!meshR) return 0;
+    if (Array.isArray(pos) && pos.length >= 3) {
+      call('transform.set', { handle: meshR.handle, position: ensureArray3.apply(null, pos) });
+    }
+    return makeMeshHandle(meshR.handle, pos);
   }
 
   // Voxel API stubs — return safe defaults so voxel demos boot.

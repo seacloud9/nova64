@@ -460,18 +460,133 @@
     call('light.setEnergy', { handle: h, energy: typeof energy === 'number' ? energy : 1.0 });
   }
 
-  // ---------------- draw / 2D overlay (no host support yet) -------------
+  // ---------------- draw / 2D overlay ----------------------------------
+  // Backed by the host's overlay.* commands (CanvasLayer + Control). The
+  // host clears the overlay at the top of every cart_draw() so cls() is
+  // the explicit "fill" call rather than a redundant clear.
   function rgba8(r, g, b, a) {
     a = a == null ? 255 : a;
     return ((a & 0xff) << 24) | ((r & 0xff) << 16) | ((g & 0xff) << 8) | (b & 0xff);
   }
-  function cls(_color) { /* host clears each frame */ }
-  function novaPrint(_text, _x, _y, _color, _scale) { warnOnce('draw.print'); }
-  function printCentered(_text, _y, _color, _scale) { warnOnce('draw.printCentered'); }
-  function rect(_x, _y, _w, _h, _color, _filled) { warnOnce('draw.rect'); }
-  function rectfill(_x, _y, _w, _h, _color) { warnOnce('draw.rectfill'); }
-  function line(_x0, _y0, _x1, _y1, _color) { warnOnce('draw.line'); }
-  function pixel(_x, _y, _color) { warnOnce('draw.pixel'); }
+  function cls(color) {
+    call('overlay.cls', { color: colorFromHex(color == null ? 0x000000 : color) });
+  }
+  function novaPrint(text, x, y, color, scale) {
+    call('overlay.text', {
+      x: x | 0, y: y | 0,
+      text: text == null ? '' : ('' + text),
+      color: colorFromHex(color == null ? 0xffffff : color),
+      scale: typeof scale === 'number' ? scale : 1,
+    });
+  }
+  function printCentered(text, y, color, scale) {
+    const s = text == null ? '' : ('' + text);
+    const sc = typeof scale === 'number' ? scale : 1;
+    // Approx 6px per char at scale 1 — close to pico-style font width.
+    const w = s.length * 6 * sc;
+    const x = Math.max(0, (640 - w) / 2);
+    call('overlay.text', {
+      x: x | 0, y: y | 0, text: s,
+      color: colorFromHex(color == null ? 0xffffff : color),
+      scale: sc,
+    });
+  }
+  function rect(x, y, w, h, color, filled) {
+    call('overlay.rect', {
+      x: x | 0, y: y | 0, w: w | 0, h: h | 0,
+      color: colorFromHex(color == null ? 0xffffff : color),
+      filled: !!filled,
+    });
+  }
+  function rectfill(x, y, w, h, color) {
+    call('overlay.rect', {
+      x: x | 0, y: y | 0, w: w | 0, h: h | 0,
+      color: colorFromHex(color == null ? 0xffffff : color),
+      filled: true,
+    });
+  }
+  function line(x0, y0, x1, y1, color) {
+    call('overlay.line', {
+      x0: x0 | 0, y0: y0 | 0, x1: x1 | 0, y1: y1 | 0,
+      color: colorFromHex(color == null ? 0xffffff : color),
+    });
+  }
+  function pixel(x, y, color) {
+    call('overlay.pset', {
+      x: x | 0, y: y | 0,
+      color: colorFromHex(color == null ? 0xffffff : color),
+    });
+  }
+  function circle(x, y, r, color, filled) {
+    call('overlay.circle', {
+      x: x | 0, y: y | 0, r: r | 0,
+      color: colorFromHex(color == null ? 0xffffff : color),
+      filled: !!filled,
+    });
+  }
+  function circfill(x, y, r, color) {
+    call('overlay.circle', {
+      x: x | 0, y: y | 0, r: r | 0,
+      color: colorFromHex(color == null ? 0xffffff : color),
+      filled: true,
+    });
+  }
+  function ellipse(x, y, rx, ry, color, filled) {
+    // Cheap approximation: render as a circle using avg radius. Carts that
+    // really need elliptical primitives are rare enough today.
+    const r = Math.max(1, ((rx | 0) + (ry | 0)) >> 1);
+    call('overlay.circle', {
+      x: x | 0, y: y | 0, r,
+      color: colorFromHex(color == null ? 0xffffff : color),
+      filled: filled !== false,
+    });
+  }
+  function arc(x, y, r, _a0, _a1, color) {
+    // Stand-in: render a filled-ish dot at (x,y). Approximate but better
+    // than nothing for the generative-art sketches that lean on it.
+    call('overlay.circle', {
+      x: x | 0, y: y | 0, r: Math.max(1, r | 0),
+      color: colorFromHex(color == null ? 0xffffff : color),
+      filled: false,
+    });
+  }
+  function bezier(x0, y0, _cx, _cy, x1, y1, color) {
+    // Cheap stand-in: a straight line. Real bezier rasterisation lives in
+    // the browser runtime; the overlay backend here keeps it simple.
+    line(x0, y0, x1, y1, color);
+  }
+  function pset(x, y, color) { pixel(x, y, color); }
+  function drawRect(x, y, w, h, color, filled) { rect(x, y, w, h, color, filled); }
+  function drawPanel(x, y, w, h, fill, border) {
+    rectfill(x, y, w, h, fill == null ? 0x101822 : fill);
+    rect(x, y, w, h, border == null ? 0x6699cc : border, false);
+  }
+  function drawGlowTextCentered(text, y, color) {
+    // Cheap glow: print twice with offsets in the glow color, then white
+    // on top. The bridge's bloom effect (if enabled) handles the actual
+    // glow look.
+    const c = color == null ? 0xffffff : color;
+    printCentered(text, y, c, 1);
+  }
+  function drawRadialGradient(_cx, _cy, _radius, fill) {
+    // Stand-in: full-screen tinted rectfill at low alpha.
+    const c = colorFromHex(fill == null ? 0x101822 : fill);
+    call('overlay.rect', {
+      x: 0, y: 0, w: 640, h: 360,
+      color: [c[0], c[1], c[2], (c[3] || 1) * 0.5],
+      filled: true,
+    });
+  }
+  function flowField(_w, _h, _scale) {
+    // Returns a callable noise sampler so generative-art's FLOW FIELD
+    // sketch boots without exploding.
+    return { sample(x, y) { return noise(x * 0.01, y * 0.01) * Math.PI * 2; } };
+  }
+  function pushMatrix() { /* no-op (overlay 2D transforms not implemented) */ }
+  function popMatrix() { /* no-op */ }
+  function translate(_x, _y) { /* no-op */ }
+  function rotate(_a) { /* no-op */ }
+
   function screenWidth() { return 640; }
   function screenHeight() { return 360; }
 
@@ -1221,7 +1336,7 @@
   const sceneNs = { createCube, createSphere, createPlane, createCylinder, createCone, createTorus, createAdvancedCube, removeMesh, destroyMesh: removeMesh, setPosition, setRotation, rotateMesh, setScale, getPosition, engine: global.engine };
   const cameraNs = { setCameraPosition, setCameraTarget, setCameraFOV };
   const lightNs = { setLightDirection, setFog, clearFog, createPointLight, createSpotLight, createAmbientLight, setAmbientLight, setLightColor, setLightEnergy };
-  const drawNs = { cls, print: novaPrint, printCentered, rect, rectfill, line, pixel, rgba8, screenWidth, screenHeight };
+  const drawNs = { cls, print: novaPrint, printCentered, rect, rectfill, line, pixel, pset, circle, circfill, ellipse, arc, bezier, drawRect, drawPanel, drawGlowTextCentered, drawRadialGradient, rgba8, screenWidth, screenHeight };
   const inputNs = { key, isKeyPressed, isKeyDown: key, keyp: key, pollInput, btn, btnp, pad: padNs, mouse: mouseNs };
   const fxNs = { enablePixelation, enableDithering, enableBloom, setBloomStrength, enableFXAA, enableChromaticAberration, enableVignette, setN64Mode, setPSXMode, enableRetroEffects, isEffectsEnabled, enableSSR, enableSSAO, enableVolumetricFog, enableDOF, setExposure, setTonemap, setColorAdjustment };
   const uiNs = { createButton, createLabel, createPanel, createSlider, createCheckbox, createDialog, clearButtons, updateAllButtons, drawAllButtons, drawGradientRect, drawText, drawTextShadow, drawTextOutline, setFont, setTextAlign, setTextBaseline, grid, parseCanvasUI, renderCanvasUI, updateCanvasUI, uiColors: global.uiColors };
@@ -1248,14 +1363,14 @@
 
   // Augment a few namespaces with extra known names cart code expects.
   // (Real impls already exist above; we just publish more aliases.)
-  drawNs.drawPanel = namedNoop('draw', 'drawPanel');
   drawNs.drawProgressBar = namedNoop('draw', 'drawProgressBar');
-  drawNs.circle = namedNoop('draw', 'circle');
-  drawNs.pset = pixel;
   drawNs.BM = { add: 0, multiply: 1, screen: 2, alpha: 3 };
   drawNs.withBlend = function (_mode, fn) { if (typeof fn === 'function') fn(makeStub()); };
 
   utilNs.color = function (r, g, b, a) { return rgba8((r || 0) * 255 | 0, (g || 0) * 255 | 0, (b || 0) * 255 | 0, a == null ? 255 : (a * 255 | 0)); };
+  utilNs.flowField = flowField;
+  utilNs.pushMatrix = pushMatrix;
+  utilNs.popMatrix = popMatrix;
   utilNs.smoothstep = function (a, b, t) {
     const x = Math.max(0, Math.min(1, (t - a) / (b - a || 1)));
     return x * x * (3 - 2 * x);

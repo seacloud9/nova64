@@ -17,11 +17,14 @@
 
 #include <godot_cpp/classes/box_mesh.hpp>
 #include <godot_cpp/classes/camera3d.hpp>
+#include <godot_cpp/classes/canvas_layer.hpp>
+#include <godot_cpp/classes/control.hpp>
 #include <godot_cpp/classes/cylinder_mesh.hpp>
 #include <godot_cpp/classes/directional_light3d.hpp>
 #include <godot_cpp/classes/environment.hpp>
 #include <godot_cpp/classes/file_access.hpp>
 #include <godot_cpp/classes/dir_access.hpp>
+#include <godot_cpp/classes/font.hpp>
 #include <godot_cpp/classes/image.hpp>
 #include <godot_cpp/classes/image_texture.hpp>
 #include <godot_cpp/classes/input.hpp>
@@ -34,6 +37,7 @@
 #include <godot_cpp/classes/multi_mesh.hpp>
 #include <godot_cpp/classes/multi_mesh_instance3d.hpp>
 #include <godot_cpp/classes/procedural_sky_material.hpp>
+#include <godot_cpp/classes/rendering_server.hpp>
 #include <godot_cpp/classes/resource_loader.hpp>
 #include <godot_cpp/classes/mesh_instance3d.hpp>
 #include <godot_cpp/classes/plane_mesh.hpp>
@@ -408,6 +412,11 @@ void Nova64Host::_shutdown_runtime() {
         _world_env->queue_free();
         _world_env = nullptr;
     }
+    if (_overlay_layer) {
+        _overlay_layer->queue_free();
+        _overlay_layer = nullptr;
+        _overlay = nullptr;
+    }
     if (_context) {
         JS_FreeContext(_context);
         _context = nullptr;
@@ -513,6 +522,12 @@ Dictionary Nova64Host::get_capabilities() const {
     features.append("engine.flush");
     features.append("material.emission");
     features.append("material.blend.add");
+    features.append("overlay.cls");
+    features.append("overlay.pset");
+    features.append("overlay.rect");
+    features.append("overlay.line");
+    features.append("overlay.circle");
+    features.append("overlay.text");
     caps["features"] = features;
 
     return caps;
@@ -559,6 +574,12 @@ Dictionary Nova64Host::call_bridge(const String &p_method, const Dictionary &p_p
     if (p_method == "instance.setTransform")     return _cmd_instance_set_transform(p_payload);
     if (p_method == "particles.create")           return _cmd_particles_create(p_payload);
     if (p_method == "particles.destroy")          return _cmd_particles_destroy(p_payload);
+    if (p_method == "overlay.cls")                return _cmd_overlay_cls(p_payload);
+    if (p_method == "overlay.pset")               return _cmd_overlay_pset(p_payload);
+    if (p_method == "overlay.rect")               return _cmd_overlay_rect(p_payload);
+    if (p_method == "overlay.line")               return _cmd_overlay_line(p_payload);
+    if (p_method == "overlay.circle")             return _cmd_overlay_circle(p_payload);
+    if (p_method == "overlay.text")               return _cmd_overlay_text(p_payload);
 
     return make_error("unsupported_method", p_method);
 }
@@ -1620,6 +1641,7 @@ void Nova64Host::cart_update(double p_delta)  {
         std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
 }
 void Nova64Host::cart_draw()                  {
+    _overlay_clear();
     auto t0 = std::chrono::high_resolution_clock::now();
     _call_cart_fn(_cart_draw_fn,   0.0,     false, "draw");
     auto t1 = std::chrono::high_resolution_clock::now();
@@ -1686,4 +1708,162 @@ Variant Nova64Host::read_global(const String &p_name) {
     JS_FreeValue(_context, v);
     JS_FreeValue(_context, global);
     return out;
+}
+
+// ===========================================================================
+// 2D Overlay (cart-side draw API)
+// ===========================================================================
+
+void Nova64Host::_ensure_overlay() {
+    if (_overlay != nullptr) return;
+    _overlay_layer = memnew(CanvasLayer);
+    _overlay_layer->set_layer(50);
+    add_child(_overlay_layer);
+
+    _overlay = memnew(Control);
+    _overlay->set_anchors_and_offsets_preset(Control::PRESET_FULL_RECT);
+    _overlay->set_mouse_filter(Control::MOUSE_FILTER_IGNORE);
+    _overlay_layer->add_child(_overlay);
+}
+
+void Nova64Host::_overlay_clear() {
+    if (_overlay == nullptr) return;
+    RenderingServer::get_singleton()->canvas_item_clear(_overlay->get_canvas_item());
+}
+
+// Carts author against a 640x360 logical canvas. Scale to whatever the
+// real Control rect is so it stays stable across window sizes.
+static Vector2 overlay_scale(godot::Control *overlay) {
+    if (overlay == nullptr) return Vector2(1, 1);
+    Vector2 sz = overlay->get_size();
+    float sx = sz.x > 0 ? sz.x / 640.0f : 1.0f;
+    float sy = sz.y > 0 ? sz.y / 360.0f : 1.0f;
+    return Vector2(sx, sy);
+}
+
+Dictionary Nova64Host::_cmd_overlay_cls(const Dictionary &p) {
+    _ensure_overlay();
+    Color c = color_from_payload(p, "color", Color(0, 0, 0, 1));
+    RenderingServer *rs = RenderingServer::get_singleton();
+    rs->canvas_item_clear(_overlay->get_canvas_item());
+    Vector2 sz = _overlay->get_size();
+    if (sz.x <= 0) sz = Vector2(640, 360);
+    rs->canvas_item_add_rect(_overlay->get_canvas_item(),
+            Rect2(Vector2(0, 0), sz), c);
+    Dictionary out; out["ok"] = true; return out;
+}
+
+Dictionary Nova64Host::_cmd_overlay_pset(const Dictionary &p) {
+    _ensure_overlay();
+    Vector2 s = overlay_scale(_overlay);
+    float x = static_cast<float>(p.get("x", 0.0));
+    float y = static_cast<float>(p.get("y", 0.0));
+    Color c = color_from_payload(p, "color", Color(1, 1, 1, 1));
+    RenderingServer::get_singleton()->canvas_item_add_rect(
+            _overlay->get_canvas_item(),
+            Rect2(Vector2(x * s.x, y * s.y),
+                  Vector2(Math::max(1.0f, s.x), Math::max(1.0f, s.y))),
+            c);
+    Dictionary out; out["ok"] = true; return out;
+}
+
+Dictionary Nova64Host::_cmd_overlay_rect(const Dictionary &p) {
+    _ensure_overlay();
+    Vector2 s = overlay_scale(_overlay);
+    float x = static_cast<float>(p.get("x", 0.0));
+    float y = static_cast<float>(p.get("y", 0.0));
+    float w = static_cast<float>(p.get("w", 0.0));
+    float h = static_cast<float>(p.get("h", 0.0));
+    Color c = color_from_payload(p, "color", Color(1, 1, 1, 1));
+    bool filled = static_cast<bool>(p.get("filled", true));
+    RenderingServer *rs = RenderingServer::get_singleton();
+    RID ci = _overlay->get_canvas_item();
+    Rect2 r(Vector2(x * s.x, y * s.y), Vector2(w * s.x, h * s.y));
+    if (filled) {
+        rs->canvas_item_add_rect(ci, r, c);
+    } else {
+        // Four edge lines so outline rect renders consistently.
+        Vector2 tl = r.position;
+        Vector2 tr = tl + Vector2(r.size.x, 0);
+        Vector2 bl = tl + Vector2(0, r.size.y);
+        Vector2 br = tl + r.size;
+        float w_px = Math::max(1.0f, s.x);
+        rs->canvas_item_add_line(ci, tl, tr, c, w_px);
+        rs->canvas_item_add_line(ci, tr, br, c, w_px);
+        rs->canvas_item_add_line(ci, br, bl, c, w_px);
+        rs->canvas_item_add_line(ci, bl, tl, c, w_px);
+    }
+    Dictionary out; out["ok"] = true; return out;
+}
+
+Dictionary Nova64Host::_cmd_overlay_line(const Dictionary &p) {
+    _ensure_overlay();
+    Vector2 s = overlay_scale(_overlay);
+    float x0 = static_cast<float>(p.get("x0", 0.0));
+    float y0 = static_cast<float>(p.get("y0", 0.0));
+    float x1 = static_cast<float>(p.get("x1", 0.0));
+    float y1 = static_cast<float>(p.get("y1", 0.0));
+    Color c = color_from_payload(p, "color", Color(1, 1, 1, 1));
+    float width = static_cast<float>(p.get("width", 1.0)) * Math::max(s.x, s.y);
+    if (width < 1.0f) width = 1.0f;
+    RenderingServer::get_singleton()->canvas_item_add_line(
+            _overlay->get_canvas_item(),
+            Vector2(x0 * s.x, y0 * s.y),
+            Vector2(x1 * s.x, y1 * s.y),
+            c, width);
+    Dictionary out; out["ok"] = true; return out;
+}
+
+Dictionary Nova64Host::_cmd_overlay_circle(const Dictionary &p) {
+    _ensure_overlay();
+    Vector2 s = overlay_scale(_overlay);
+    float x = static_cast<float>(p.get("x", 0.0));
+    float y = static_cast<float>(p.get("y", 0.0));
+    float r = static_cast<float>(p.get("r", 1.0));
+    Color c = color_from_payload(p, "color", Color(1, 1, 1, 1));
+    bool filled = static_cast<bool>(p.get("filled", true));
+    RenderingServer *rs = RenderingServer::get_singleton();
+    RID ci = _overlay->get_canvas_item();
+    Vector2 center(x * s.x, y * s.y);
+    float radius = r * Math::max(s.x, s.y);
+    if (filled) {
+        rs->canvas_item_add_circle(ci, center, radius, c);
+    } else {
+        // Approximate circle outline as polyline.
+        constexpr int SEGMENTS = 32;
+        PackedVector2Array pts;
+        pts.resize(SEGMENTS + 1);
+        for (int i = 0; i <= SEGMENTS; i++) {
+            float a = (float)i / SEGMENTS * Math_TAU;
+            pts[i] = center + Vector2(Math::cos(a), Math::sin(a)) * radius;
+        }
+        PackedColorArray cols;
+        cols.push_back(c);
+        rs->canvas_item_add_polyline(ci, pts, cols, Math::max(1.0f, s.x));
+    }
+    Dictionary out; out["ok"] = true; return out;
+}
+
+Dictionary Nova64Host::_cmd_overlay_text(const Dictionary &p) {
+    _ensure_overlay();
+    Vector2 s = overlay_scale(_overlay);
+    float x = static_cast<float>(p.get("x", 0.0));
+    float y = static_cast<float>(p.get("y", 0.0));
+    String text = String(p.get("text", ""));
+    Color c = color_from_payload(p, "color", Color(1, 1, 1, 1));
+    float scale = static_cast<float>(p.get("scale", 1.0));
+    Ref<Font> font = _overlay->get_theme_default_font();
+    if (font.is_null()) {
+        Dictionary out; out["ok"] = false; out["error"] = "no_font"; return out;
+    }
+    int base_size = 12;
+    int font_size = static_cast<int>(Math::round(base_size * scale * Math::max(s.x, s.y)));
+    if (font_size < 8) font_size = 8;
+    // Cart text origin is top-left; Font::draw_string uses baseline. Add
+    // ascent so y matches typical pico-style top-left text positioning.
+    float ascent = font->get_ascent(font_size);
+    Vector2 pos(x * s.x, y * s.y + ascent);
+    font->draw_string(_overlay->get_canvas_item(), pos, text,
+            HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, c);
+    Dictionary out; out["ok"] = true; return out;
 }

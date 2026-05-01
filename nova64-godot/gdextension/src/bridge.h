@@ -109,6 +109,17 @@ private:
     class Environment *_ensure_environment();
     class WorldEnvironment *_world_env = nullptr;
 
+    // Lazily creates a CanvasLayer + Control above the 3D scene that the
+    // cart's 2D draw API (print, rect, line, circle, pset, text)
+    // rasterises into via RenderingServer canvas_item commands. The Control
+    // is sized to the design resolution (640x360 logical units, scaled to
+    // viewport). Cleared at the top of each cart_draw() so the cart always
+    // sees a blank overlay.
+    void _ensure_overlay();
+    void _overlay_clear();
+    class CanvasLayer *_overlay_layer = nullptr;
+    class Control *_overlay = nullptr;
+
     // ---- Command handlers (one per adapter namespace) -------------------
     Dictionary _cmd_material_create(const Dictionary &p_payload);
     Dictionary _cmd_material_destroy(const Dictionary &p_payload);
@@ -141,6 +152,14 @@ private:
     Dictionary _cmd_instance_set_transform(const Dictionary &p_payload);
     Dictionary _cmd_particles_create(const Dictionary &p_payload);
     Dictionary _cmd_particles_destroy(const Dictionary &p_payload);
+
+    // 2D overlay (cart-side draw API: print/rect/line/circle/pset/text).
+    Dictionary _cmd_overlay_cls(const Dictionary &p_payload);
+    Dictionary _cmd_overlay_pset(const Dictionary &p_payload);
+    Dictionary _cmd_overlay_rect(const Dictionary &p_payload);
+    Dictionary _cmd_overlay_line(const Dictionary &p_payload);
+    Dictionary _cmd_overlay_circle(const Dictionary &p_payload);
+    Dictionary _cmd_overlay_text(const Dictionary &p_payload);
 
     // Helpers
     Node3D *_resolve_node3d(uint32_t p_handle_id) const;

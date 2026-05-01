@@ -768,6 +768,12 @@ Dictionary Nova64Host::_cmd_mesh_create(const Dictionary &p) {
 
     MeshInstance3D *node = memnew(MeshInstance3D);
     node->set_mesh(mesh);
+    if (p.has("material")) {
+        uint32_t mat_id = handle_id_from_payload(p, "material");
+        Ref<RefCounted> mat_ref = _handles->get_resource(mat_id, HandleKind::MATERIAL);
+        Ref<Material> mat = mat_ref;
+        if (mat.is_valid()) node->set_surface_override_material(0, mat);
+    }
     add_child(node);
 
     uint32_t id = _handles->put_node(HandleKind::MESH_INSTANCE, node);
@@ -1488,6 +1494,32 @@ bool Nova64Host::load_cart(const String &p_res_path) {
                 JS_FreeValue(_context, meta_v);
             }
         }
+    } else {
+        // Clear any meta from a previous cart so applyCartMeta() doesn't
+        // re-apply stale environment defaults.
+        JSValue global = JS_GetGlobalObject(_context);
+        JS_SetPropertyStr(_context, global, "cart_meta", JS_NULL);
+        JS_FreeValue(_context, global);
+    }
+
+    // Translate meta.json defaults (sky, fog, lighting, effects, camera, text)
+    // into engine.call('env.set', ...) payloads via the shim, before the cart
+    // module evaluates so init() sees the authored environment.
+    {
+        const char *src = "if (typeof globalThis.__nova64_applyCartMeta === 'function')"
+                          " { try { globalThis.__nova64_applyCartMeta(); }"
+                          " catch (e) { print('[nova64] applyCartMeta error: ' + e); } }";
+        JSValue r = JS_Eval(_context, src, std::strlen(src),
+                "<nova64-applyCartMeta>", JS_EVAL_TYPE_GLOBAL);
+        if (JS_IsException(r)) {
+            JSValue exc = JS_GetException(_context);
+            const char *msg = JS_ToCString(_context, exc);
+            UtilityFunctions::printerr("[nova64] load_cart: applyCartMeta failed: ",
+                    msg ? String::utf8(msg) : String("(unknown)"));
+            if (msg) JS_FreeCString(_context, msg);
+            JS_FreeValue(_context, exc);
+        }
+        JS_FreeValue(_context, r);
     }
 
     CharString src_utf8 = src.utf8();

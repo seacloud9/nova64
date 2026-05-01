@@ -154,31 +154,98 @@
     if (h && typeof h === 'object' && typeof h.handle === 'number') return h.handle;
     return h | 0;
   }
+  function makeTrackedVector(initial, onChange) {
+    const values = [(initial && initial[0]) || 0, (initial && initial[1]) || 0, (initial && initial[2]) || 0];
+    const vector = {};
+    function setValue(index, value, notify) {
+      values[index] = typeof value === 'number' && isFinite(value) ? value : 0;
+      if (notify !== false) onChange(values.slice());
+    }
+    Object.defineProperties(vector, {
+      x: { get() { return values[0]; }, set(v) { setValue(0, v, true); } },
+      y: { get() { return values[1]; }, set(v) { setValue(1, v, true); } },
+      z: { get() { return values[2]; }, set(v) { setValue(2, v, true); } },
+    });
+    vector._set = function (next, notify) {
+      setValue(0, next && next[0], false);
+      setValue(1, next && next[1], false);
+      setValue(2, next && next[2], false);
+      if (notify !== false) onChange(values.slice());
+    };
+    vector.toArray = function () { return values.slice(); };
+    return vector;
+  }
   function makeMeshHandle(rawHandle, pos) {
     const px = (pos && pos[0]) || 0;
     const py = (pos && pos[1]) || 0;
     const pz = (pos && pos[2]) || 0;
     const obj = {
       handle: rawHandle | 0,
-      position: { x: px, y: py, z: pz },
-      rotation: { x: 0, y: 0, z: 0 },
-      scale: { x: 1, y: 1, z: 1 },
-      material: null,
       visible: true,
     };
+    let materialHandle = null;
+    obj.position = makeTrackedVector([px, py, pz], function (v) {
+      if (obj.handle) call('transform.set', { handle: obj.handle, position: v });
+    });
+    obj.rotation = makeTrackedVector([0, 0, 0], function (v) {
+      if (!obj.handle) return;
+      rotState.set(obj.handle, v.slice());
+      call('transform.set', { handle: obj.handle, rotation: v });
+    });
+    obj.scale = makeTrackedVector([1, 1, 1], function (v) {
+      if (obj.handle) call('transform.set', { handle: obj.handle, scale: v });
+    });
+    Object.defineProperty(obj, 'material', {
+      get() { return materialHandle; },
+      set(value) {
+        materialHandle = value;
+        const matHandle = unwrapHandle(value);
+        if (obj.handle && matHandle) call('mesh.setMaterial', { mesh: obj.handle, material: matHandle });
+      },
+    });
     obj[Symbol.toPrimitive] = function () { return obj.handle; };
     return obj;
   }
 
-  function spawnMesh(geomHandle, color, pos) {
+  function materialPayload(color, opts) {
+    opts = opts || {};
+    const baseColor = opts.color != null ? opts.color : (opts.albedo != null ? opts.albedo : (color == null ? 0xffffff : color));
+    const alpha = opts.opacity != null ? opts.opacity : opts.alpha;
+    const payload = {
+      albedo: colorFromHex(baseColor, alpha == null ? 1 : alpha),
+      metallic: typeof opts.metallic === 'number' ? opts.metallic : 0.05,
+      roughness: typeof opts.roughness === 'number' ? opts.roughness : 0.6,
+    };
+    const emission = opts.emissive != null ? opts.emissive : opts.emission;
+    if (emission != null) {
+      payload.emission = colorFromHex(emission);
+      payload.emissionEnergy = typeof opts.emissiveIntensity === 'number'
+        ? opts.emissiveIntensity
+        : (typeof opts.emissionEnergy === 'number' ? opts.emissionEnergy : 1.0);
+    }
+    if (opts.unshaded) payload.unshaded = true;
+    if (opts.flatShading) payload.shadingMode = 'per_vertex';
+    if (opts.shadingMode) payload.shadingMode = opts.shadingMode;
+    if (opts.diffuseMode) payload.diffuseMode = opts.diffuseMode;
+    if (opts.specularMode) payload.specularMode = opts.specularMode;
+    if (opts.blend) payload.blend = opts.blend;
+    if (opts.additive) payload.blend = 'add';
+    if (opts.transparent || (alpha != null && alpha < 1)) payload.transparency = 'alpha';
+    if (opts.transparency) payload.transparency = opts.transparency;
+    if (opts.cull) payload.cull = opts.cull;
+    if (opts.doubleSided || opts.side === 'double') payload.doubleSided = true;
+    if (opts.rim != null) payload.rim = opts.rim;
+    if (opts.rimTint != null) payload.rimTint = opts.rimTint;
+    if (opts.clearcoat != null) payload.clearcoat = opts.clearcoat;
+    if (opts.clearcoatRoughness != null) payload.clearcoatRoughness = opts.clearcoatRoughness;
+    return payload;
+  }
+
+  function spawnMesh(geomHandle, color, pos, opts) {
     ensureInit();
-    const mat = call('material.create', {
-      albedo: colorFromHex(color),
-      metallic: 0.05,
-      roughness: 0.6,
-    });
+    const mat = call('material.create', materialPayload(color, opts));
     const matHandle = mat ? mat.handle : 0;
-    const mesh = call('mesh.create', { geometry: geomHandle });
+    const mesh = call('mesh.create', { geometry: geomHandle, material: matHandle });
     const meshHandle = mesh ? mesh.handle : 0;
     if (meshHandle && matHandle) {
       call('mesh.setMaterial', { mesh: meshHandle, material: matHandle });
@@ -189,30 +256,30 @@
     return meshHandle ? makeMeshHandle(meshHandle, pos) : 0;
   }
 
-  function createCube(size, color, pos) {
+  function createCube(size, color, pos, opts) {
     ensureInit();
     const s = typeof size === 'number' ? size : 1;
     const geom = call('geometry.createBox', { size: [s, s, s] });
-    return geom ? spawnMesh(geom.handle, color, pos) : 0;
+    return geom ? spawnMesh(geom.handle, color, pos, opts) : 0;
   }
 
-  function createSphere(radius, color, pos) {
+  function createSphere(radius, color, pos, _segments, opts) {
     ensureInit();
     const r = typeof radius === 'number' ? radius : 0.5;
     const geom = call('geometry.createSphere', { radius: r, height: r * 2 });
-    return geom ? spawnMesh(geom.handle, color, pos) : 0;
+    return geom ? spawnMesh(geom.handle, color, pos, opts) : 0;
   }
 
-  function createPlane(w, h, color, pos) {
+  function createPlane(w, h, color, pos, opts) {
     ensureInit();
     const sx = typeof w === 'number' ? w : 1;
     const sz = typeof h === 'number' ? h : 1;
     const geom = call('geometry.createPlane', { size: [sx, 0, sz] });
-    return geom ? spawnMesh(geom.handle, color, pos) : 0;
+    return geom ? spawnMesh(geom.handle, color, pos, opts) : 0;
   }
 
   // Cylinder + cone + torus primitives — backed by real Godot meshes.
-  function createCylinder(radiusTop, radiusBottom, height, color, pos) {
+  function createCylinder(radiusTop, radiusBottom, height, color, pos, opts) {
     ensureInit();
     const rt = typeof radiusTop === 'number' ? radiusTop : 0.5;
     const rb = typeof radiusBottom === 'number' ? radiusBottom : 0.5;
@@ -220,23 +287,23 @@
     const geom = call('geometry.createCylinder', {
       topRadius: rt, bottomRadius: rb, height: h, sides: 24,
     });
-    return geom ? spawnMesh(geom.handle, color, pos) : 0;
+    return geom ? spawnMesh(geom.handle, color, pos, opts) : 0;
   }
 
-  function createCone(radius, height, color, pos) {
+  function createCone(radius, height, color, pos, opts) {
     ensureInit();
     const r = typeof radius === 'number' ? radius : 0.5;
     const h = typeof height === 'number' ? height : 1;
     const geom = call('geometry.createCone', { radius: r, height: h, sides: 24 });
-    return geom ? spawnMesh(geom.handle, color, pos) : 0;
+    return geom ? spawnMesh(geom.handle, color, pos, opts) : 0;
   }
 
-  function createTorus(innerRadius, outerRadius, color, pos) {
+  function createTorus(innerRadius, outerRadius, color, pos, opts) {
     ensureInit();
     const inner = typeof innerRadius === 'number' ? innerRadius : 0.3;
     const outer = typeof outerRadius === 'number' ? outerRadius : 0.5;
     const geom = call('geometry.createTorus', { innerRadius: inner, outerRadius: outer });
-    return geom ? spawnMesh(geom.handle, color, pos) : 0;
+    return geom ? spawnMesh(geom.handle, color, pos, opts) : 0;
   }
 
   function removeMesh(handle) {
@@ -255,7 +322,8 @@
     const p = ensureArray3(x, y, z);
     call('transform.set', { handle: h, position: p });
     if (handle && typeof handle === 'object' && handle.position) {
-      handle.position.x = p[0]; handle.position.y = p[1]; handle.position.z = p[2];
+      if (typeof handle.position._set === 'function') handle.position._set(p, false);
+      else { handle.position.x = p[0]; handle.position.y = p[1]; handle.position.z = p[2]; }
     }
   }
 
@@ -267,7 +335,8 @@
     rotState.set(h, r.slice());
     call('transform.set', { handle: h, rotation: r });
     if (handle && typeof handle === 'object' && handle.rotation) {
-      handle.rotation.x = r[0]; handle.rotation.y = r[1]; handle.rotation.z = r[2];
+      if (typeof handle.rotation._set === 'function') handle.rotation._set(r, false);
+      else { handle.rotation.x = r[0]; handle.rotation.y = r[1]; handle.rotation.z = r[2]; }
     }
   }
 
@@ -279,7 +348,8 @@
     r[0] += dx || 0; r[1] += dy || 0; r[2] += dz || 0;
     call('transform.set', { handle: h, rotation: r });
     if (handle && typeof handle === 'object' && handle.rotation) {
-      handle.rotation.x = r[0]; handle.rotation.y = r[1]; handle.rotation.z = r[2];
+      if (typeof handle.rotation._set === 'function') handle.rotation._set(r, false);
+      else { handle.rotation.x = r[0]; handle.rotation.y = r[1]; handle.rotation.z = r[2]; }
     }
   }
 
@@ -290,7 +360,8 @@
     const s = ensureArray3(x, y, z, [1, 1, 1]);
     call('transform.set', { handle: h, scale: s });
     if (handle && typeof handle === 'object' && handle.scale) {
-      handle.scale.x = s[0]; handle.scale.y = s[1]; handle.scale.z = s[2];
+      if (typeof handle.scale._set === 'function') handle.scale._set(s, false);
+      else { handle.scale.x = s[0]; handle.scale.y = s[1]; handle.scale.z = s[2]; }
     }
   }
 
@@ -333,7 +404,7 @@
     const n = typeof near === 'number' ? near : 10;
     const f = typeof far === 'number' ? far : 100;
     const span = Math.max(1, f - n);
-    call('env.set', { fog: true, fogColor: c, fogDensity: 1.0 / span });
+    call('env.set', { fog: true, fogColor: c, fogDensity: 3.0 / span });
   }
   function clearFog() {
     ensureInit();
@@ -425,22 +496,46 @@
   const isKeyPressed = key;
 
   // ---------------- effects (mapped to Godot WorldEnvironment) ---------
+  let effectsEnabled = false;
   function enablePixelation(_n) { warnOnce('enablePixelation'); /* TODO: SubViewport */ }
   function enableDithering(_b) { warnOnce('enableDithering'); }
-  function enableBloom(b, intensity) {
+  function enableBloom(strengthOrEnabled, radius, threshold) {
     ensureInit();
+    const enabled = strengthOrEnabled !== false;
+    const strength = typeof strengthOrEnabled === 'number' ? strengthOrEnabled : 0.8;
+    effectsEnabled = effectsEnabled || enabled;
     call('env.set', {
-      glow: b !== false,
-      glowIntensity: typeof intensity === 'number' ? intensity : 0.8,
+      glow: enabled,
+      glowIntensity: strength,
+      glowStrength: typeof radius === 'number' ? Math.max(0.1, radius * 2.0) : 1.2,
+      glowBloom: typeof threshold === 'number' ? Math.max(0.0, threshold) : 0.2,
+      glowThreshold: typeof threshold === 'number' ? Math.max(0.0, threshold * 0.6) : 0.25,
     });
+    return enabled;
   }
-  function enableFXAA(_b) { /* Godot's MSAA/FXAA is project-level; no-op for now */ }
+  function setBloomStrength(v) {
+    ensureInit();
+    effectsEnabled = true;
+    const strength = typeof v === 'number' ? v : 1.0;
+    call('env.set', { glow: true, glowIntensity: strength, glowStrength: Math.max(0.4, strength) });
+    return true;
+  }
+  function enableFXAA(_b) { effectsEnabled = true; return true; }
+  function enableChromaticAberration(amount) {
+    ensureInit();
+    effectsEnabled = true;
+    const a = typeof amount === 'number' ? Math.max(0, Math.min(1, amount * 100)) : 0.2;
+    call('env.set', { contrast: 1.0 + a * 0.08, saturation: 1.0 + a * 0.12 });
+    return true;
+  }
   function enableVignette(amount, _hardness) {
     ensureInit();
     // Vignette via adjustment darkening — not a real radial vignette but a
     // close enough cheap stand-in.
     const a = typeof amount === 'number' ? Math.max(0, Math.min(1, amount)) : 0.3;
+    effectsEnabled = true;
     call('env.set', { brightness: 1.0 - a * 0.4, contrast: 1.0 + a * 0.2 });
+    return true;
   }
   function setN64Mode(b) {
     // Punchy color, low-saturation glow for that warm CRT look.
@@ -469,6 +564,7 @@
     });
   }
   function enableRetroEffects(b) { setN64Mode(b !== false); }
+  function isEffectsEnabled() { return effectsEnabled; }
 
   function enableSSR(b) {
     ensureInit();
@@ -513,7 +609,10 @@
   function get3DStats() {
     return { meshes: 0, lights: 0, drawCalls: 0, backend: 'godot-quickjs' };
   }
-  function clearFog() { warnOnce('clearFog'); }
+  function clearFog() {
+    ensureInit();
+    call('env.set', { fog: false });
+  }
   function getPosition(_handle) { return [0, 0, 0]; }
 
   const TWO_PI = Math.PI * 2;
@@ -542,6 +641,23 @@
   function noise(x, y, z) {
     const n = Math.sin((x || 0) * 12.9898 + (y || 0) * 78.233 + (z || 0) * 37.719 + _noiseSeed) * 43758.5453;
     return (n - Math.floor(n));
+  }
+  function fbmNoise(x, y, z, octaves, persistence, lacunarity, scale) {
+    octaves = octaves == null ? 4 : octaves;
+    persistence = persistence == null ? 0.5 : persistence;
+    lacunarity = lacunarity == null ? 2.0 : lacunarity;
+    scale = scale == null ? 0.01 : scale;
+    let total = 0;
+    let amplitude = 1;
+    let frequency = scale;
+    let maxValue = 0;
+    for (let i = 0; i < octaves; i++) {
+      total += noise((x || 0) * frequency, (y || 0) * frequency, (z || 0) * frequency) * amplitude;
+      maxValue += amplitude;
+      amplitude *= persistence;
+      frequency *= lacunarity;
+    }
+    return maxValue > 0 ? total / maxValue : 0;
   }
 
   const utilNs = { TWO_PI, clamp, lerp, hsb, noise, noiseSeed };
@@ -701,6 +817,24 @@
   }
 
   // UI / canvas-ui
+  function clearButtons() {}
+  function updateAllButtons() { return false; }
+  function drawAllButtons() {}
+  function drawGradientRect() {}
+  function drawText() {}
+  function drawTextShadow() {}
+  function drawTextOutline() {}
+  function setFont() {}
+  function setTextAlign() {}
+  function setTextBaseline() {}
+  function grid(cols, rows, w, h) {
+    return {
+      cols: cols || 1,
+      rows: rows || 1,
+      cellWidth: (w || 640) / (cols || 1),
+      cellHeight: (h || 360) / (rows || 1),
+    };
+  }
   function createButton(_opts) { warnOnce('ui.createButton'); return makeStub(); }
   function createLabel(_opts) { warnOnce('ui.createLabel'); return makeStub(); }
   function createPanel(_opts) { warnOnce('ui.createPanel'); return makeStub(); }
@@ -902,17 +1036,11 @@
   function createPBRMaterial(opts) {
     ensureInit();
     opts = opts || {};
-    const payload = {
-      albedo: colorFromHex(typeof opts.color === 'number' ? opts.color
-                : (typeof opts.albedo === 'number' ? opts.albedo : 0xffffff)),
-      metallic: typeof opts.metallic === 'number' ? opts.metallic : 0.0,
-      roughness: typeof opts.roughness === 'number' ? opts.roughness : 0.5,
-      specular: typeof opts.specular === 'number' ? opts.specular : 0.5,
-    };
-    if (typeof opts.emission === 'number') {
-      payload.emission = colorFromHex(opts.emission);
-      payload.emissionEnergy = opts.emissionEnergy || 1.0;
-    }
+    const payload = materialPayload(opts.color != null ? opts.color : opts.albedo, Object.assign({
+      metallic: 0.0,
+      roughness: 0.5,
+    }, opts));
+    payload.specular = typeof opts.specular === 'number' ? opts.specular : 0.5;
     if (typeof opts.rim === 'number') { payload.rim = opts.rim; payload.rimTint = opts.rimTint || 0.5; }
     if (typeof opts.clearcoat === 'number') {
       payload.clearcoat = opts.clearcoat;
@@ -961,24 +1089,49 @@
     });
     return r ? r.handle : 0;
   }
-  // TSL (Three Shading Language) → emit a tasteful PBR fallback.
-  function createTSLMaterial(opts) {
-    return createPBRMaterial(Object.assign({ emission: 0x00aaff, emissionEnergy: 1.5 }, opts || {}));
-  }
-  function createAdvancedCube(color, pos) {
+  // TSL (Three Shading Language) → emit a themed emissive material fallback.
+  function createTSLMaterial(kind, opts) {
     ensureInit();
-    const matH = createPBRMaterial({
-      color: typeof color === 'number' ? color : 0xffffff,
-      metallic: 0.6, roughness: 0.3,
-    });
-    const geomR = call('geometry.createBox', { size: [1, 1, 1] });
-    if (!geomR) return 0;
-    const meshR = call('mesh.create', { geometry: geomR.handle, material: matH });
-    if (!meshR) return 0;
-    if (Array.isArray(pos) && pos.length >= 3) {
-      call('transform.set', { handle: meshR.handle, position: ensureArray3.apply(null, pos) });
+    if (kind && typeof kind === 'object') {
+      opts = kind;
+      kind = opts.kind || opts.type || 'plasma';
     }
-    return makeMeshHandle(meshR.handle, pos);
+    opts = opts || {};
+    const name = typeof kind === 'string' ? kind.toLowerCase() : 'plasma';
+    const presets = {
+      plasma: { color: 0xff66ff, emission: 0xff33ff, emissionEnergy: 3.0, blend: 'add' },
+      lava: { color: 0xff6600, emission: 0xff3300, emissionEnergy: 3.0, blend: 'add' },
+      void: { color: 0x88ffff, emission: 0x00ffff, emissionEnergy: 2.8, blend: 'add' },
+      hologram: { color: 0x00ffff, emission: 0x00ffff, emissionEnergy: 2.4, blend: 'add' },
+    };
+    const preset = presets[name] || presets.plasma;
+    const payload = materialPayload(preset.color, Object.assign({
+      opacity: opts.opacity == null ? 0.85 : opts.opacity,
+      transparent: true,
+      unshaded: true,
+      cull: 'disabled',
+    }, preset, opts));
+    const r = call('material.create', payload);
+    return r ? r.handle : 0;
+  }
+  function createAdvancedCube(sizeOrColor, optsOrPos, maybePos) {
+    ensureInit();
+    let size = 1;
+    let opts = {};
+    let pos = maybePos;
+    if (typeof optsOrPos === 'object' && optsOrPos && !Array.isArray(optsOrPos)) {
+      size = typeof sizeOrColor === 'number' ? sizeOrColor : (optsOrPos.size || 1);
+      opts = optsOrPos;
+    } else {
+      opts = { color: sizeOrColor == null ? 0xffffff : sizeOrColor };
+      pos = optsOrPos;
+    }
+    const s = typeof size === 'number' ? size : 1;
+    const geomR = call('geometry.createBox', { size: [s, s, s] });
+    return geomR ? spawnMesh(geomR.handle, opts.color, pos, Object.assign({
+      metallic: 0.35,
+      roughness: 0.3,
+    }, opts)) : 0;
   }
 
   // Voxel API stubs — return safe defaults so voxel demos boot.
@@ -998,10 +1151,26 @@
     remove(_k) { warnOnce('storage.remove'); },
     clear() { warnOnce('storage.clear'); },
   };
+  // i18n state — populated by applyCartMeta() from meta.text.
+  const i18nState = {
+    defaultLocale: 'en',
+    activeLocale: 'en',
+    strings: Object.create(null),
+    locales: Object.create(null),
+  };
   const i18nNs = {
-    setLocale(_l) { warnOnce('i18n.setLocale'); },
-    t(key) { return key; },
-    getLocale() { return 'en'; },
+    setLocale(l) { if (typeof l === 'string') i18nState.activeLocale = l; },
+    t(key, fallback) {
+      if (typeof key !== 'string') return fallback != null ? fallback : '';
+      const al = i18nState.activeLocale;
+      if (al && al !== i18nState.defaultLocale) {
+        const lt = i18nState.locales && i18nState.locales[al];
+        if (lt && key in lt) return lt[key];
+      }
+      if (key in i18nState.strings) return i18nState.strings[key];
+      return fallback != null ? fallback : key;
+    },
+    getLocale() { return i18nState.activeLocale; },
   };
   const wadNs = {
     load(_path) { warnOnce('wad.load'); return null; },
@@ -1043,13 +1212,19 @@
 
 
   // ---------------- namespace + global aliases -------------------------
-  const sceneNs = { createCube, createSphere, createPlane, createCylinder, createCone, createTorus, removeMesh, destroyMesh: removeMesh, setPosition, setRotation, rotateMesh, setScale, getPosition, engine: global.engine };
+  const defaultUiColors = {
+    primary: 0x4a90e2, secondary: 0x9b9b9b, light: 0xeeeeee, dark: 0x222222,
+    success: 0x4caf50, warning: 0xffb300, danger: 0xe53935,
+    white: 0xffffff, black: 0x000000, accent: 0xff8800,
+  };
+  if (typeof global.uiColors === 'undefined') global.uiColors = defaultUiColors;
+  const sceneNs = { createCube, createSphere, createPlane, createCylinder, createCone, createTorus, createAdvancedCube, removeMesh, destroyMesh: removeMesh, setPosition, setRotation, rotateMesh, setScale, getPosition, engine: global.engine };
   const cameraNs = { setCameraPosition, setCameraTarget, setCameraFOV };
   const lightNs = { setLightDirection, setFog, clearFog, createPointLight, createSpotLight, createAmbientLight, setAmbientLight, setLightColor, setLightEnergy };
   const drawNs = { cls, print: novaPrint, printCentered, rect, rectfill, line, pixel, rgba8, screenWidth, screenHeight };
   const inputNs = { key, isKeyPressed, isKeyDown: key, keyp: key, pollInput, btn, btnp, pad: padNs, mouse: mouseNs };
-  const fxNs = { enablePixelation, enableDithering, enableBloom, enableFXAA, enableVignette, setN64Mode, setPSXMode, enableRetroEffects, enableSSR, enableSSAO, enableVolumetricFog, enableDOF, setExposure, setTonemap, setColorAdjustment };
-  const uiNs = { createButton, createLabel, createPanel, createSlider, createCheckbox, createDialog, parseCanvasUI, renderCanvasUI, updateCanvasUI };
+  const fxNs = { enablePixelation, enableDithering, enableBloom, setBloomStrength, enableFXAA, enableChromaticAberration, enableVignette, setN64Mode, setPSXMode, enableRetroEffects, isEffectsEnabled, enableSSR, enableSSAO, enableVolumetricFog, enableDOF, setExposure, setTonemap, setColorAdjustment };
+  const uiNs = { createButton, createLabel, createPanel, createSlider, createCheckbox, createDialog, clearButtons, updateAllButtons, drawAllButtons, drawGradientRect, drawText, drawTextShadow, drawTextOutline, setFont, setTextAlign, setTextBaseline, grid, parseCanvasUI, renderCanvasUI, updateCanvasUI, uiColors: global.uiColors };
   const stageNs = { createGraphicsNode, createMovieClip, createStage, createScreen, pushScreen, popScreen, createShake, createCard, createMenu, createStartScreen };
   const particlesNs = { createParticleSystem, createEmitter2D, createParticles };
   const skyboxNs = { createSpaceSkybox, createGalaxySkybox, createSunsetSkybox, createDawnSkybox, createNightSkybox, createFoggySkybox, createDuskSkybox, createStormSkybox, createAlienSkybox, createUnderwaterSkybox, setSkybox, createSkybox };
@@ -1096,8 +1271,12 @@
   utilNs.rotate = function (x, y, ang) { const c = Math.cos(ang), s = Math.sin(ang); return [x * c - y * s, x * s + y * c]; };
 
   // Voxel namespace gets simplex helpers (alias of shim's noise).
-  voxelNs.simplexNoise2D = function (x, y) { return noise(x, y, 0) * 2 - 1; };
-  voxelNs.simplexNoise3D = function (x, y, z) { return noise(x, y, z) * 2 - 1; };
+  voxelNs.simplexNoise2D = function (x, y, octaves, persistence, lacunarity, scale) {
+    return fbmNoise(x, y, 0, octaves, persistence, lacunarity, scale);
+  };
+  voxelNs.simplexNoise3D = function (x, y, z, octaves, persistence, lacunarity, scale) {
+    return fbmNoise(x, y, z, octaves, persistence, lacunarity, scale);
+  };
 
   // Tween namespace extras some carts call.
   tweenNs.killAllTweens = function () {};
@@ -1260,6 +1439,179 @@
   if (typeof global.hexColor === 'undefined') {
     global.hexColor = function (hex, alpha) { return colorFromHex(hex, alpha); };
   }
+
+  // ---------------- meta.json processing -------------------------------
+  // The host parses meta.json and exposes it as `globalThis.cart_meta` just
+  // before each cart loads. We translate the cart-facing schema (clearColor,
+  // fog, lighting, sky, skybox, effects, camera, text) onto the same env.set
+  // payloads the runtime/manifest.js path uses in the browser, so the cart's
+  // environment looks the way the author authored it without the cart having
+  // to call setFog/setSkybox/setAmbientLight by hand.
+  function parseMetaColor(v, alphaFallback) {
+    if (v == null) return [0, 0, 0, 1];
+    if (typeof v === 'string') {
+      let s = v.trim();
+      if (s.charAt(0) === '#') s = s.slice(1);
+      if (s.length === 3) s = s[0] + s[0] + s[1] + s[1] + s[2] + s[2];
+      const n = parseInt(s, 16);
+      if (!isFinite(n)) return [0, 0, 0, 1];
+      return colorFromHex(n, alphaFallback);
+    }
+    return colorFromHex(v, alphaFallback);
+  }
+  function applyCartMeta() {
+    const meta = global.cart_meta;
+    if (!meta || typeof meta !== 'object') return;
+    ensureInit();
+
+    // Text / i18n.
+    if (meta.text && typeof meta.text === 'object') {
+      i18nState.defaultLocale = typeof meta.text.defaultLocale === 'string'
+        ? meta.text.defaultLocale : 'en';
+      i18nState.activeLocale = i18nState.defaultLocale;
+      i18nState.strings = (meta.text.strings && typeof meta.text.strings === 'object')
+        ? meta.text.strings : Object.create(null);
+      i18nState.locales = (meta.text.locales && typeof meta.text.locales === 'object')
+        ? meta.text.locales : Object.create(null);
+    }
+
+    const d = meta.defaults;
+    if (!d || typeof d !== 'object') return;
+
+    // clearColor → solid background (overridden later if a sky preset exists).
+    if (d.clearColor != null) {
+      call('env.set', { background: parseMetaColor(d.clearColor) });
+    }
+
+    // sky / skybox → procedural sky preset + colors.
+    function applySkyConfig(s) {
+      if (s == null) return;
+      if (typeof s === 'string') {
+        call('env.set', { sky: true, skyPreset: s });
+        return;
+      }
+      if (typeof s !== 'object') return;
+      const payload = { sky: true };
+      if (typeof s.preset === 'string') payload.skyPreset = s.preset;
+      if (s.top) payload.skyTopColor = parseMetaColor(s.top);
+      if (s.horizon) payload.skyHorizonColor = parseMetaColor(s.horizon);
+      if (s.ground) payload.groundHorizonColor = parseMetaColor(s.ground);
+      if (s.bottom) payload.groundBottomColor = parseMetaColor(s.bottom);
+      if (s.color && payload.skyTopColor === undefined) {
+        // Single-color sky — paint top + horizon the same.
+        const c = parseMetaColor(s.color);
+        payload.skyTopColor = c;
+        payload.skyHorizonColor = c;
+      }
+      call('env.set', payload);
+    }
+    applySkyConfig(d.sky);
+    applySkyConfig(d.skybox);
+
+    // Lighting.
+    if (d.lighting && typeof d.lighting === 'object') {
+      const lp = {};
+      if (d.lighting.ambient != null) lp.ambient = parseMetaColor(d.lighting.ambient);
+      if (typeof d.lighting.ambientIntensity === 'number') {
+        lp.ambientEnergy = d.lighting.ambientIntensity;
+      }
+      if (Object.keys(lp).length) call('env.set', lp);
+      const dl = d.lighting.directional;
+      if (dl && typeof dl === 'object') {
+        if (Array.isArray(dl.direction)) {
+          setLightDirection(dl.direction[0], dl.direction[1], dl.direction[2]);
+        }
+        if (dirLightHandle && dl.color != null) {
+          call('light.setColor', {
+            handle: dirLightHandle,
+            color: parseMetaColor(dl.color),
+          });
+        }
+        if (dirLightHandle && typeof dl.intensity === 'number') {
+          call('light.setEnergy', { handle: dirLightHandle, energy: dl.intensity });
+        }
+      }
+    }
+
+    // Fog.
+    if (d.fog && typeof d.fog === 'object') {
+      const near = typeof d.fog.near === 'number' ? d.fog.near : 10;
+      const far  = typeof d.fog.far  === 'number' ? d.fog.far  : 100;
+      const span = Math.max(1, far - near);
+      const payload = {
+        fog: true,
+        fogColor: parseMetaColor(d.fog.color != null ? d.fog.color : '#7090b0'),
+        fogDensity: typeof d.fog.density === 'number' ? d.fog.density : (3.0 / span),
+      };
+      call('env.set', payload);
+    } else if (d.fog === false) {
+      call('env.set', { fog: false });
+    }
+
+    // Effects.
+    if (d.effects && typeof d.effects === 'object') {
+      const e = d.effects;
+      if (e.bloom) {
+        if (e.bloom === true) {
+          enableBloom(true);
+        } else if (typeof e.bloom === 'object') {
+          const strength = e.bloom.strength != null ? e.bloom.strength
+                          : (e.bloom.intensity != null ? e.bloom.intensity : true);
+          enableBloom(strength, e.bloom.radius, e.bloom.threshold);
+        }
+      }
+      if (typeof e.exposure === 'number') call('env.set', { exposure: e.exposure });
+      if (typeof e.tonemap === 'string') call('env.set', { tonemap: e.tonemap });
+      if (e.ssao) {
+        if (e.ssao === true) call('env.set', { ssao: true });
+        else if (typeof e.ssao === 'object') {
+          call('env.set', {
+            ssao: e.ssao.enabled !== false,
+            ssaoIntensity: typeof e.ssao.intensity === 'number' ? e.ssao.intensity : 1.0,
+          });
+        }
+      }
+      if (e.ssr) {
+        const enabled = e.ssr === true || (typeof e.ssr === 'object' && e.ssr.enabled !== false);
+        call('env.set', { ssr: enabled });
+      }
+      if (e.volumetricFog) {
+        if (e.volumetricFog === true) {
+          call('env.set', { volumetricFog: true });
+        } else if (typeof e.volumetricFog === 'object') {
+          call('env.set', {
+            volumetricFog: e.volumetricFog.enabled !== false,
+            volumetricFogDensity: typeof e.volumetricFog.density === 'number'
+              ? e.volumetricFog.density : 0.05,
+          });
+        }
+      }
+      if (typeof e.brightness === 'number'
+          || typeof e.contrast === 'number'
+          || typeof e.saturation === 'number') {
+        call('env.set', {
+          brightness: typeof e.brightness === 'number' ? e.brightness : 1.0,
+          contrast:   typeof e.contrast   === 'number' ? e.contrast   : 1.0,
+          saturation: typeof e.saturation === 'number' ? e.saturation : 1.0,
+        });
+      }
+    }
+
+    // Camera defaults.
+    if (d.camera && typeof d.camera === 'object') {
+      if (Array.isArray(d.camera.position)) {
+        setCameraPosition(d.camera.position[0], d.camera.position[1], d.camera.position[2]);
+      }
+      if (Array.isArray(d.camera.target)) {
+        setCameraTarget(d.camera.target[0], d.camera.target[1], d.camera.target[2]);
+      }
+      if (typeof d.camera.fov === 'number') setCameraFOV(d.camera.fov);
+    }
+  }
+  // Host invokes this between setting `globalThis.cart_meta` and evaluating
+  // the cart module, so the cart's init() sees an environment that already
+  // matches its meta.json defaults.
+  global.__nova64_applyCartMeta = applyCartMeta;
 
   print('[nova64-compat] shim loaded');
 })(globalThis);

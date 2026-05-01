@@ -121,3 +121,91 @@ powershell -NoProfile -ExecutionPolicy Bypass \
 powershell -NoProfile -ExecutionPolicy Bypass \
   -File nova64-godot\scripts\run-cart-smoke.ps1 cyberpunk-city-3d
 ```
+
+## All-cart browser vs Godot parity harness
+
+The dedicated parity harness compares every cart that exists in both
+`examples/` and `nova64-godot/tests/carts/`.
+
+It captures:
+
+- browser Three.js reference PNGs
+- Godot host PNGs
+- pixelmatch diff PNGs
+- `report.json`
+- `report.md`
+
+Outputs are written under:
+
+```text
+nova64-godot/test-results/visual-parity/
+```
+
+Run a report without failing on visual drift:
+
+```bash
+wsl bash -lc 'export NVM_DIR=/home/seacloud9/.nvm; \
+  . /home/seacloud9/.nvm/nvm.sh; nvm use 20; \
+  cd /mnt/c/Users/brend/exp/nova64 && pnpm godot:visual'
+```
+
+Run as a failing test gate:
+
+```bash
+wsl bash -lc 'export NVM_DIR=/home/seacloud9/.nvm; \
+  . /home/seacloud9/.nvm/nvm.sh; nvm use 20; \
+  cd /mnt/c/Users/brend/exp/nova64 && pnpm test:godot:visual'
+```
+
+Run one cart:
+
+```bash
+wsl bash -lc 'export NVM_DIR=/home/seacloud9/.nvm; \
+  . /home/seacloud9/.nvm/nvm.sh; nvm use 20; \
+  cd /mnt/c/Users/brend/exp/nova64 && \
+  node nova64-godot/scripts/visual-parity.js --cart=particles-demo'
+```
+
+If Godot is not on `PATH`, point the harness at it:
+
+```bash
+GODOT=/path/to/godot pnpm godot:visual
+```
+
+### Godot binary autodiscovery (WSL / Windows)
+
+The harness no longer requires `godot` to be on `PATH`.
+`nova64-godot/scripts/visual-parity.js` resolves the Godot binary in this
+order:
+
+1. `$GODOT` if set.
+2. `godot` or `godot4` on `PATH` (via `which` / `where`).
+3. The standard Windows install used by `run-cart-smoke.ps1`:
+
+   ```text
+   C:\Program Files\Godot_v4.4.1-stable_win64.exe\Godot_v4.4.1-stable_win64_console.exe
+   ```
+
+   Under WSL this is auto-translated to:
+
+   ```text
+   /mnt/c/Program Files/Godot_v4.4.1-stable_win64.exe/Godot_v4.4.1-stable_win64_console.exe
+   ```
+
+4. Falls back to `godot` and emits a clear error if nothing is found.
+
+So under WSL the canonical run is just:
+
+```bash
+wsl bash -lc 'export NVM_DIR=/home/seacloud9/.nvm; \
+  . /home/seacloud9/.nvm/nvm.sh; nvm use 20; \
+  cd /mnt/c/Users/brend/exp/nova64 && pnpm godot:visual'
+```
+
+No `GODOT=...` prefix, no manual PATH edits — the Windows Godot exe is
+launched directly through `/mnt/c/...` and renders headlessly into the
+parity report.
+
+The report mode is intentionally non-gating because Godot still has broad
+visual parity debt. Use the worst-diff table in `report.md` to choose the next
+bridge/shim fixes.

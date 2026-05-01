@@ -43,25 +43,45 @@ fi
 
 bash "$SCRIPT_DIR/sync-carts.sh" >/dev/null
 
+# Pass criteria — a cart must:
+#   1. Export init/update/draw (printed as init=true update=true draw=true)
+#   2. Run >=20 frames WITHOUT printing any `[nova64] cart <hook>:` errors.
+#      That prefix is only emitted when JS_Call returns an exception out of
+#      cart_init / cart_update / cart_draw — i.e. a real runtime error.
+FRAMES="${SMOKE_FRAMES:-20}"
 pass=0
 fail=0
+fail_names=()
 for name in "${CARTS[@]}"; do
   cart="res://carts/${name}"
   out=$(
     "$GODOT" --headless --path "$PROJECT_DIR" \
       --script res://scripts/conformance_runner.gd \
-      -- --cart="$cart" --frames=10 2>&1 || true
+      -- --cart="$cart" --frames="$FRAMES" 2>&1 || true
   )
-  if echo "$out" | grep -q "init=true update=true draw=true"; then
-    echo "PASS  $name"
+  reason=""
+  if ! echo "$out" | grep -q "init=true update=true draw=true"; then
+    reason="hooks missing"
+  elif echo "$out" | grep -qE "\[nova64\] cart (init|update|draw):"; then
+    # Extract the first runtime error line for the report.
+    reason="$(echo "$out" | grep -oE "\[nova64\] cart (init|update|draw):.*" | head -1)"
+  elif echo "$out" | grep -q "CrashHandlerException"; then
+    reason="native crash"
+  fi
+
+  if [ -z "$reason" ]; then
+    printf 'PASS  %s\n' "$name"
     pass=$((pass + 1))
   else
-    echo "FAIL  $name"
-    echo "$out" | tail -10 | sed 's/^/    /'
+    printf 'FAIL  %s  (%s)\n' "$name" "$reason"
     fail=$((fail + 1))
+    fail_names+=("$name")
   fi
 done
 
 echo
-echo "Cart smoke: ${pass} pass / ${fail} fail (${#CARTS[@]} total)"
-[ "$fail" -eq 0 ] || exit 1
+echo "Cart smoke: ${pass} pass / ${fail} fail (${#CARTS[@]} total, ${FRAMES} frames each)"
+if [ "$fail" -gt 0 ]; then
+  echo "Failures: ${fail_names[*]}"
+  exit 1
+fi

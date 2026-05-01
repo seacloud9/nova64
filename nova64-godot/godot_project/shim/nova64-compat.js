@@ -24,6 +24,40 @@
     print('[nova64-compat] gap: ' + name + ' (no-op shim)');
   }
 
+  // Cache of named no-op functions returned by the namespace fallback proxy.
+  // Reusing the same function across calls keeps reference counts stable so
+  // QuickJS shutdown doesn't end up double-collecting transient closures.
+  // The returned function yields a generic stub object so cart code that
+  // does `getMesh(h).position.x = 5` etc. doesn't blow up.
+  const noopCache = Object.create(null);
+  function namedNoop(ns, key) {
+    const cacheKey = ns + '.' + key;
+    if (!noopCache[cacheKey]) {
+      noopCache[cacheKey] = function () {
+        warnOnce(cacheKey);
+        return makeStub();
+      };
+    }
+    return noopCache[cacheKey];
+  }
+
+  // Wrap a real backing namespace object so any property the cart asks for
+  // resolves to either the real implementation, a numeric/object default,
+  // or a named no-op function. This stops `const { foo } = nova64.bar`
+  // from throwing when `bar` is incomplete.
+  function wrapNamespace(name, backing) {
+    return new Proxy(backing, {
+      get(target, prop) {
+        if (prop in target) return target[prop];
+        if (typeof prop === 'symbol') return undefined;
+        // Common numeric / object-shaped defaults.
+        if (prop === 'length' || prop === 'size' || prop === 'count') return 0;
+        return namedNoop(name, String(prop));
+      },
+      has() { return true; },
+    });
+  }
+
   function call(method, payload) {
     const r = engine.call(method, payload || {});
     if (r && r.error) {
@@ -112,6 +146,30 @@
   }
 
   // ---------------- mesh factories --------------------------------------
+  // Many carts (especially Three.js-style ones) treat meshes as objects with
+  // mutable .position/.rotation/.scale. Wrap each numeric bridge handle in a
+  // fat object that satisfies that shape AND coerces back to the numeric
+  // handle when passed to bridge-calling helpers (via Symbol.toPrimitive).
+  function unwrapHandle(h) {
+    if (h && typeof h === 'object' && typeof h.handle === 'number') return h.handle;
+    return h | 0;
+  }
+  function makeMeshHandle(rawHandle, pos) {
+    const px = (pos && pos[0]) || 0;
+    const py = (pos && pos[1]) || 0;
+    const pz = (pos && pos[2]) || 0;
+    const obj = {
+      handle: rawHandle | 0,
+      position: { x: px, y: py, z: pz },
+      rotation: { x: 0, y: 0, z: 0 },
+      scale: { x: 1, y: 1, z: 1 },
+      material: null,
+      visible: true,
+    };
+    obj[Symbol.toPrimitive] = function () { return obj.handle; };
+    return obj;
+  }
+
   function spawnMesh(geomHandle, color, pos) {
     ensureInit();
     const mat = call('material.create', {
@@ -128,7 +186,7 @@
     if (meshHandle) {
       call('transform.set', { handle: meshHandle, position: ensureArray3(pos && pos[0], pos && pos[1], pos && pos[2]) });
     }
-    return meshHandle;
+    return meshHandle ? makeMeshHandle(meshHandle, pos) : 0;
   }
 
   function createCube(size, color, pos) {
@@ -182,32 +240,57 @@
 
   function removeMesh(handle) {
     if (!handle) return;
-    call('mesh.destroy', { handle: handle });
-    rotState.delete(handle);
+    const h = unwrapHandle(handle);
+    if (!h) return;
+    call('mesh.destroy', { handle: h });
+    rotState.delete(h);
+    if (handle && typeof handle === 'object') handle.handle = 0;
   }
 
   function setPosition(handle, x, y, z) {
     if (!handle) return;
-    call('transform.set', { handle: handle, position: ensureArray3(x, y, z) });
+    const h = unwrapHandle(handle);
+    if (!h) return;
+    const p = ensureArray3(x, y, z);
+    call('transform.set', { handle: h, position: p });
+    if (handle && typeof handle === 'object' && handle.position) {
+      handle.position.x = p[0]; handle.position.y = p[1]; handle.position.z = p[2];
+    }
   }
 
   function setRotation(handle, x, y, z) {
     if (!handle) return;
+    const h = unwrapHandle(handle);
+    if (!h) return;
     const r = ensureArray3(x, y, z);
-    rotState.set(handle, r.slice());
-    call('transform.set', { handle: handle, rotation: r });
+    rotState.set(h, r.slice());
+    call('transform.set', { handle: h, rotation: r });
+    if (handle && typeof handle === 'object' && handle.rotation) {
+      handle.rotation.x = r[0]; handle.rotation.y = r[1]; handle.rotation.z = r[2];
+    }
   }
 
   function rotateMesh(handle, dx, dy, dz) {
     if (!handle) return;
-    const r = getRot(handle);
+    const h = unwrapHandle(handle);
+    if (!h) return;
+    const r = getRot(h);
     r[0] += dx || 0; r[1] += dy || 0; r[2] += dz || 0;
-    call('transform.set', { handle: handle, rotation: r });
+    call('transform.set', { handle: h, rotation: r });
+    if (handle && typeof handle === 'object' && handle.rotation) {
+      handle.rotation.x = r[0]; handle.rotation.y = r[1]; handle.rotation.z = r[2];
+    }
   }
 
   function setScale(handle, x, y, z) {
     if (!handle) return;
-    call('transform.set', { handle: handle, scale: ensureArray3(x, y, z, [1, 1, 1]) });
+    const h = unwrapHandle(handle);
+    if (!h) return;
+    const s = ensureArray3(x, y, z, [1, 1, 1]);
+    call('transform.set', { handle: h, scale: s });
+    if (handle && typeof handle === 'object' && handle.scale) {
+      handle.scale.x = s[0]; handle.scale.y = s[1]; handle.scale.z = s[2];
+    }
   }
 
   // ---------------- camera ----------------------------------------------
@@ -373,6 +456,12 @@
       x: 0, y: 0, z: 0, w: 0, h: 0,
       width: 0, height: 0,
       value: 0, alpha: 1, visible: true,
+      position: { x: 0, y: 0, z: 0 },
+      rotation: { x: 0, y: 0, z: 0 },
+      scale: { x: 1, y: 1, z: 1 },
+      material: null,
+      mesh: null,
+      length: 0,
       setPosition() { return s; },
       setRotation() { return s; },
       setScale() { return s; },
@@ -402,8 +491,74 @@
       emit() { return s; },
       show() { return s; },
       hide() { return s; },
+      // Canvas2D-ish surface methods so carts that get a "ctx" can render
+      // without throwing on unknown gradient / path / text APIs.
+      createLinearGradient() { return makeStub({ addColorStop() {} }); },
+      createRadialGradient() { return makeStub({ addColorStop() {} }); },
+      createPattern() { return makeStub(); },
+      addColorStop() {},
+      beginPath() { return s; },
+      closePath() { return s; },
+      moveTo() { return s; },
+      lineTo() { return s; },
+      arc() { return s; },
+      arcTo() { return s; },
+      bezierCurveTo() { return s; },
+      quadraticCurveTo() { return s; },
+      rect() { return s; },
+      fill() { return s; },
+      stroke() { return s; },
+      fillRect() { return s; },
+      strokeRect() { return s; },
+      clearRect() { return s; },
+      fillText() { return s; },
+      strokeText() { return s; },
+      measureText() { return { width: 0 }; },
+      save() { return s; },
+      restore() { return s; },
+      translate() { return s; },
+      scaleCtx() { return s; },
+      rotate() { return s; },
+      transform() { return s; },
+      setTransform() { return s; },
+      resetTransform() { return s; },
+      drawImage() { return s; },
+      clip() { return s; },
+      // Style-ish properties carts assign to (writes are silently dropped
+      // by the proxy below, but assignment to a real property is fine too).
+      fillStyle: '#000',
+      strokeStyle: '#000',
+      lineWidth: 1,
+      globalAlpha: 1,
+      globalCompositeOperation: 'source-over',
+      font: '10px sans',
+      textAlign: 'left',
+      textBaseline: 'alphabetic',
+      // Make stubs iterable (empty) so `for (const x of someStub) { ... }`
+      // and `[...someStub]` don't throw "value is not iterable".
+      [Symbol.iterator]: function* () { /* yields nothing */ },
     }, extra || {});
-    return s;
+    // Wrap in a Proxy so unknown method calls / property reads return safe
+    // stubs instead of throwing. Property writes pass through normally.
+    const proxy = new Proxy(s, {
+      get(target, prop) {
+        if (prop in target) return target[prop];
+        if (typeof prop === 'symbol') return undefined;
+        // Unknown properties: synthesise a self-chaining no-op function that
+        // returns the Proxy itself (so further unknown access keeps chaining)
+        // and also coerces to 0 / "" / false in numeric / string / boolean ctx.
+        const fn = function () { return proxy; };
+        fn[Symbol.toPrimitive] = function (hint) {
+          if (hint === 'number') return 0;
+          if (hint === 'string') return '';
+          return false;
+        };
+        // Cache on the target so repeated reads return the same identity.
+        target[prop] = fn;
+        return fn;
+      },
+    });
+    return proxy;
   }
 
   // UI / canvas-ui
@@ -536,11 +691,11 @@
 
 
   // ---------------- namespace + global aliases -------------------------
-  const sceneNs = { createCube, createSphere, createPlane, createCylinder, createCone, removeMesh, setPosition, setRotation, rotateMesh, setScale, getPosition };
+  const sceneNs = { createCube, createSphere, createPlane, createCylinder, createCone, removeMesh, destroyMesh: removeMesh, setPosition, setRotation, rotateMesh, setScale, getPosition, engine: global.engine };
   const cameraNs = { setCameraPosition, setCameraTarget, setCameraFOV };
   const lightNs = { setLightDirection, setFog, clearFog, createPointLight, createAmbientLight, setAmbientLight, setLightColor };
   const drawNs = { cls, print: novaPrint, printCentered, rect, rectfill, line, pixel, rgba8, screenWidth, screenHeight };
-  const inputNs = { key, isKeyPressed, pollInput, btn, btnp, pad: padNs, mouse: mouseNs };
+  const inputNs = { key, isKeyPressed, isKeyDown: key, keyp: key, pollInput, btn, btnp, pad: padNs, mouse: mouseNs };
   const fxNs = { enablePixelation, enableDithering, enableBloom, enableFXAA, enableVignette, setN64Mode, setPSXMode };
   const uiNs = { createButton, createLabel, createPanel, createSlider, createCheckbox, createDialog, parseCanvasUI, renderCanvasUI, updateCanvasUI };
   const stageNs = { createGraphicsNode, createMovieClip, createStage, createScreen, pushScreen, popScreen, createShake, createCard, createMenu, createStartScreen };
@@ -549,27 +704,101 @@
   const modelsNs = { loadModel, createTexture, loadTexture, createInstancedMesh, createTSLMaterial, createHologramMaterial, createVortexMaterial, createPBRMaterial, createAdvancedCube };
   const voxelNs = { configureVoxelWorld, enableVoxelTextures, setVoxel, getVoxel, spawnVoxelEntity, getVoxelEntityCount, clearVoxels, generateVoxelTerrain };
 
+  // Carts that go beyond the explicit lists above destructure things like
+  // `nova64.shader.createTSLMaterial`, `nova64.voxel.simplexNoise2D`,
+  // `nova64.physics.aabb`, etc. Provide top-level namespace objects with
+  // a few real impls (where we have them) and let the namespace proxy
+  // turn everything else into a named no-op.
+  const shaderBacking = { createTSLMaterial, createHologramMaterial, createVortexMaterial, createPBRMaterial };
+  const physicsBacking = {};
+  const dataBacking = {
+    t(key) { return key; },
+    saveData(_k, _v) {},
+    loadData(_k, fallback) { return fallback === undefined ? null : fallback; },
+    deleteData(_k) {},
+    remove(_k) {},
+  };
+
+  // Augment a few namespaces with extra known names cart code expects.
+  // (Real impls already exist above; we just publish more aliases.)
+  drawNs.drawPanel = namedNoop('draw', 'drawPanel');
+  drawNs.drawProgressBar = namedNoop('draw', 'drawProgressBar');
+  drawNs.circle = namedNoop('draw', 'circle');
+  drawNs.pset = pixel;
+  drawNs.BM = { add: 0, multiply: 1, screen: 2, alpha: 3 };
+  drawNs.withBlend = function (_mode, fn) { if (typeof fn === 'function') fn(makeStub()); };
+
+  utilNs.color = function (r, g, b, a) { return rgba8((r || 0) * 255 | 0, (g || 0) * 255 | 0, (b || 0) * 255 | 0, a == null ? 255 : (a * 255 | 0)); };
+  utilNs.smoothstep = function (a, b, t) {
+    const x = Math.max(0, Math.min(1, (t - a) / (b - a || 1)));
+    return x * x * (3 - 2 * x);
+  };
+  utilNs.pulse = function (t, freq) { return 0.5 + 0.5 * Math.sin((t || 0) * (freq || 1) * TWO_PI); };
+  utilNs.remap = function (v, a, b, c, d) { return c + (d - c) * ((v - a) / (b - a || 1)); };
+  utilNs.bezier = function (a, b, c, d, t) {
+    const it = 1 - t;
+    return it * it * it * a + 3 * it * it * t * b + 3 * it * t * t * c + t * t * t * d;
+  };
+  utilNs.arc = function (cx, cy, r, ang) { return [cx + Math.cos(ang) * r, cy + Math.sin(ang) * r]; };
+  utilNs.ellipse = function (cx, cy, rx, ry, ang) { return [cx + Math.cos(ang) * rx, cy + Math.sin(ang) * ry]; };
+  utilNs.rotate = function (x, y, ang) { const c = Math.cos(ang), s = Math.sin(ang); return [x * c - y * s, x * s + y * c]; };
+
+  // Voxel namespace gets simplex helpers (alias of shim's noise).
+  voxelNs.simplexNoise2D = function (x, y) { return noise(x, y, 0) * 2 - 1; };
+  voxelNs.simplexNoise3D = function (x, y, z) { return noise(x, y, z) * 2 - 1; };
+
+  // Tween namespace extras some carts call.
+  tweenNs.killAllTweens = function () {};
+  tweenNs.updateTweens = function (_dt) {};
+
+  // Wrap every namespace so missing properties become named no-ops instead
+  // of TypeErrors at destructure time.
+  const sceneNsP = wrapNamespace('scene', sceneNs);
+  const cameraNsP = wrapNamespace('camera', cameraNs);
+  const lightNsP = wrapNamespace('light', lightNs);
+  const drawNsP = wrapNamespace('draw', drawNs);
+  const inputNsP = wrapNamespace('input', inputNs);
+  const fxNsP = wrapNamespace('fx', fxNs);
+  const utilNsP = wrapNamespace('util', utilNs);
+  const audioNsP = wrapNamespace('audio', audioNs);
+  const tweenNsP = wrapNamespace('tween', tweenNs);
+  const uiNsP = wrapNamespace('ui', uiNs);
+  const stageNsP = wrapNamespace('stage', stageNs);
+  const particlesNsP = wrapNamespace('particles', particlesNs);
+  const skyboxNsP = wrapNamespace('skybox', skyboxNs);
+  const modelsNsP = wrapNamespace('models', modelsNs);
+  const voxelNsP = wrapNamespace('voxel', voxelNs);
+  const shaderNsP = wrapNamespace('shader', shaderBacking);
+  const physicsNsP = wrapNamespace('physics', physicsBacking);
+  const dataNsP = wrapNamespace('data', dataBacking);
+  const storageNsP = wrapNamespace('storage', storageNs);
+  const i18nNsP = wrapNamespace('i18n', i18nNs);
+  const wadNsP = wrapNamespace('wad', wadNs);
+
   global.nova64 = {
     __compatLoaded: true,
-    scene: sceneNs,
-    camera: cameraNs,
-    light: lightNs,
-    draw: drawNs,
-    input: inputNs,
-    effects: fxNs,
-    fx: fxNs,
-    util: utilNs,
-    audio: audioNs,
-    tween: tweenNs,
-    ui: uiNs,
-    stage: stageNs,
-    particles: particlesNs,
-    skybox: skyboxNs,
-    models: modelsNs,
-    voxel: voxelNs,
-    storage: storageNs,
-    i18n: i18nNs,
-    wad: wadNs,
+    scene: sceneNsP,
+    camera: cameraNsP,
+    light: lightNsP,
+    draw: drawNsP,
+    input: inputNsP,
+    effects: fxNsP,
+    fx: fxNsP,
+    util: utilNsP,
+    audio: audioNsP,
+    tween: tweenNsP,
+    ui: uiNsP,
+    stage: stageNsP,
+    particles: particlesNsP,
+    skybox: skyboxNsP,
+    models: modelsNsP,
+    voxel: voxelNsP,
+    shader: shaderNsP,
+    physics: physicsNsP,
+    data: dataNsP,
+    storage: storageNsP,
+    i18n: i18nNsP,
+    wad: wadNsP,
   };
 
   // Flat-global aliases so older carts that don't destructure still work.
@@ -579,9 +808,11 @@
   global.rand = rand;
   global.randInt = randInt;
   global.choose = choose;
-  global.storage = storageNs;
-  global.i18n = i18nNs;
-  global.wad = wadNs;
+  global.storage = storageNsP;
+  global.i18n = i18nNsP;
+  global.wad = wadNsP;
+  // Some carts use bare `engine` as the bridge handle.
+  if (!global.engine) global.engine = engine;
 
   // Browser-ish globals so demos that reach for them don't ReferenceError.
   if (!global.setTimeout) global.setTimeout = setTimeout_;
@@ -600,6 +831,82 @@
       warn: function () { print.apply(null, arguments); },
       error: function () { print.apply(null, arguments); },
     };
+  }
+
+  // Bare-global fallback. Earlier versions tried to install a Proxy as
+  // globalThis's prototype to auto-resolve any unknown identifier, but that
+  // tripped intermittent QuickJS GC crashes during cart shutdown. Instead,
+  // explicitly publish no-op stubs for every bare-global name we've seen
+  // ported carts use. Adding a missing one is cheap; the smoke runner will
+  // surface it as a `[nova64] cart …: ReferenceError` so we know.
+  const flatStubNames = [
+    // 2D draw helpers carts call as bare globals.
+    'drawText', 'drawTextShadow', 'drawTextOutline', 'drawGradientRect',
+    'drawPanel', 'drawProgressBar', 'drawSprite', 'drawTile',
+    'circfill', 'ellipsefill', 'trifill', 'spr', 'sspr',
+    // Input helpers some carts grab without destructuring.
+    'getMouseX', 'getMouseY', 'mouseDown', 'isKeyDown',
+    'getHandGesture', 'getHandLandmarks', 'initHandTracking',
+    'showCameraBackground',
+    // Mesh / scene helpers used bare in a few carts.
+    'getMeshPosition', 'destroyMesh', 'clearScene', 'playAnimation',
+    // FX / shader helpers used bare.
+    'enableChromaticAberration', 'enableRetroEffects',
+    'createTSLMaterial', 'createTSLShaderMaterial', 'createShaderMaterial',
+    'updateShaderUniform', 'createParticleSystem', 'updateParticles',
+    // UI helpers used bare.
+    'drawAllButtons', 'updateAllButtons', 'createButton',
+    'killAllTweens', 'updateTweens',
+    // Camera helpers used bare.
+    'cam2DApply', 'cam2DPush', 'cam2DPop', 'cam2DReset',
+    'setFont', 'setTextAlign', 'setTextBaseline',
+    'setCamera', 'setCameraTarget', 'setCameraPosition',
+    'setLookAt', 'lookAt',
+  ];
+  for (let i = 0; i < flatStubNames.length; i++) {
+    const fname = flatStubNames[i];
+    if (typeof global[fname] === 'undefined') {
+      global[fname] = namedNoop('global', fname);
+    }
+  }
+  // Layout helpers many carts use as `centerX(width)` to center on a 640x480
+  // virtual canvas.
+  if (typeof global.centerX === 'undefined') {
+    global.centerX = function (w) { return Math.floor((640 - (w || 0)) / 2); };
+  }
+  if (typeof global.centerY === 'undefined') {
+    global.centerY = function (h) { return Math.floor((480 - (h || 0)) / 2); };
+  }
+  // Minimal DOM stub. Some carts feature-test `typeof document !== 'undefined'`
+  // before doing browser-only work; provide a stub that returns no-op stubs.
+  if (typeof global.document === 'undefined') {
+    global.document = makeStub();
+  }
+  if (typeof global.window === 'undefined') {
+    global.window = global;
+  }
+  // Some carts read `mouseX`/`mouseY` as bare names; some call them as
+  // functions (`mouseX()`). Use numeric-coercible callables so both shapes work.
+  if (typeof global.mouseX === 'undefined') {
+    const mxFn = function () { return 0; };
+    mxFn[Symbol.toPrimitive] = function () { return 0; };
+    global.mouseX = mxFn;
+  }
+  if (typeof global.mouseY === 'undefined') {
+    const myFn = function () { return 0; };
+    myFn[Symbol.toPrimitive] = function () { return 0; };
+    global.mouseY = myFn;
+  }
+  // Style/colour palette objects some carts read fields off of.
+  if (typeof global.uiColors === 'undefined') {
+    global.uiColors = {
+      primary: 0x4a90e2, secondary: 0x9b9b9b, light: 0xeeeeee, dark: 0x222222,
+      success: 0x4caf50, warning: 0xffb300, danger: 0xe53935,
+      white: 0xffffff, black: 0x000000, accent: 0xff8800,
+    };
+  }
+  if (typeof global.hexColor === 'undefined') {
+    global.hexColor = function (hex, alpha) { return colorFromHex(hex, alpha); };
   }
 
   print('[nova64-compat] shim loaded');

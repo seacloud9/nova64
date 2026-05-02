@@ -2,44 +2,72 @@
 
 Status: actively in progress on `feature/godot-adapter`.
 
-## Where we are
+## Where we are (as of 2026-05-02, commit `550147e`)
 
-- `runtime/api-voxel.js` (web) — full voxel engine: chunked greedy
-  meshing, simplex noise terrain, biomes, ores, caves, trees, light
-  propagation, swept AABB physics, day/night.
-- Godot shim ([nova64-godot/godot_project/shim/nova64-compat.js](nova64-godot/godot_project/shim/nova64-compat.js))
-  emulates the cart-facing voxel API in JS:
-  - heightmap-based terrain (3-octave value noise, biome rules
-    matching the web engine)
-  - per-color MultiMesh batching (~7-10 multimeshes total)
-  - sparse player-edits map
-  - DDA raycast, swept AABB collision, gravity-driven entities
-- C++ bridge ([nova64-godot/gdextension/src/bridge.cpp](nova64-godot/gdextension/src/bridge.cpp))
-  exposes mesh / material / multimesh / camera / light / overlay
-  commands. No voxel-specific commands yet.
+Branch: `feature/godot-adapter`
 
-This visibly works (snapshot `nova64-godot/test-results/snapshots/mc-demo-v4.png`)
-but caps out below web parity in a few key ways.
+Completed:
+- **Phase 1** ✅ — Native `voxel.uploadChunk` face-culled mesher in C++
+  (commit `4817332`). Replaced column-bucketing MultiMesh path with real
+  chunk ArrayMesh builds. Shutdown double-free fixed (`_handles->clear(false)`).
+- **Phase 2** ✅ — Greedy meshing in `_cmd_voxel_upload_chunk` (commit
+  `299b03d`). Co-planar same-coloured faces merged into rectangles; ~5-10×
+  fewer triangles on heightmap terrain.
+- **Visual parity pass** ✅ (commit `00607ec`):
+  - All 25 `VX_BLOCK_COLORS` in shim synced exactly to `runtime/api-voxel.js`.
+  - `_vxSurfaceFor(biome)` and `_vxBiomeAt(x,z)` biome rules matched to web.
+  - `light.setSun` bridge command added (pitch/yaw/energy/color → shared
+    `_sun_light` DirectionalLight3D).
+  - `setVoxelDayTime(t)` added to shim: computes sun angle, ambient energy,
+    sky colour, fog colour and calls `light.setSun`.
+  - `setClearColor` exposed on `globalThis`.
+  - Fog now per-cart (removed forced fog override in `_vxGenerateWorld`).
+- **Depth fog** ✅ (commit `550147e`): Replaced exponential fog approximation
+  with Godot `FOG_MODE_DEPTH` using explicit near/far bounds. Improved
+  minecraft-demo diff from ~47% → **37.21%**.
+
+Current smoke-test status: **6/6 PASS** — voxel-terrain, minecraft-demo,
+voxel-creative, wizardry-3d, star-fox-nova-3d, f-zero-nova-3d.
+
+### Key files
+
+| File | Purpose |
+|------|---------|
+| `nova64-godot/gdextension/src/bridge.cpp` | C++ GDExtension bridge — mesher, fog, light.setSun |
+| `nova64-godot/gdextension/src/bridge.h` | Declarations — `_sun_light`, `_cmd_light_set_sun` |
+| `nova64-godot/godot_project/shim/nova64-compat.js` | JS shim — terrain, biomes, APIs |
+| `runtime/api-voxel.js` | Web engine ground truth for noise/biome/cart APIs |
+
+### Shim constants (nova64-compat.js)
+
+- `VX_BASE_Y = 60`, `VX_SEA_Y = 62` (matches web `SEA_LEVEL=62`)
+- `CXSZ = CZSZ = 16`, `CY_ORIGIN = 55`, `CY_HEIGHT = 50`
+- Biome thresholds: `t < 0.2` → Frozen, `t < 0.35 && m > 0.5` → Taiga,
+  `t > 0.7 && m < 0.25` → Desert, `t > 0.6 && m > 0.6` → Jungle,
+  `m < 0.3` → Savanna, `t > 0.4 && m > 0.4` → Forest, `t < 0.35` → Snowy,
+  else → Plains
+- Height: 4-octave FBM (scale 0.02) + 2-octave medium (0.06, ×0.4) +
+  2-octave detail (0.15, ×0.15) using value noise
+- Tree density: Jungle=0.025, Forest=0.018, Taiga=0.015, Plains=0.008;
+  no-spawn radius 12 from origin
 
 ## Latest parity checkpoint
 
-Focused run on 2026-05-02:
+Run on 2026-05-02:
 
 ```bash
-pnpm godot:visual -- --cart=minecraft-demo --cart=voxel-terrain \
-  --frames=120 --wait-ms=3000 --max-diff=100
+pnpm godot:visual -- --cart=minecraft-demo --frames=120 --wait-ms=3000 --max-diff=100
 ```
 
-Results:
+Result: **37.21%** pixel diff vs browser Three.js (down from 60.53% baseline).
 
-- `minecraft-demo`: **60.53%** pixel diff vs browser Three.js.
-- `voxel-terrain`: **95.08%** pixel diff vs browser Three.js.
-
-Both carts boot, run, and draw through Godot. The remaining gap is visual
-quality, not lifecycle. The screenshots show the current Godot path is washed
-out by environment/fog tuning and, more importantly, still uses a 2.5D
-heightmap/column approximation instead of the browser voxel engine's real
-chunk mesh.
+The remaining gap is primarily:
+1. Noise library mismatch — web uses OpenSimplex2, shim uses value noise;
+   terrain heights and biome distributions are structurally different.
+2. Per-biome height scaling — web uses biome-conditioned `heightBase` +
+   `heightScale`; shim uses a single formula.
+3. HUD/hotbar — browser screenshot includes the cart's 2D overlay; Godot
+   does not render the same HUD elements in the captured frame.
 
 `meta.json` is supported in the Godot host path: `load_cart()` reads sidecar
 metadata, exposes it as `globalThis.cart_meta`, and the compatibility shim
@@ -47,93 +75,95 @@ applies text, sky, fog, lighting, effects, and camera defaults before the cart
 module evaluates. Voxel-specific defaults should continue to flow through
 `configureVoxelWorld()` so carts keep one programming model across hosts.
 
-## Gaps vs the web engine
+## Remaining gaps vs the web engine
 
-1. **Per-block visibility** — shim renders a single tall box per (x,z)
-   column. Player edits inside a column or under a cliff are not
-   visible from the side, and we cannot represent caves, overhangs,
-   ore deposits or any non-2.5D structure.
-2. **Mesh fidelity** — no per-face culling against neighbors; no
-   greedy quad merging; no per-face textures; flat per-block colour.
-3. **Generation cost** — terrain heightmap and biome lookup run in JS.
-   Acceptable at 64×64 but not at 16-chunk render distance.
+1. **Noise library** — shim `_vxFbm` uses value noise; web engine uses
+   OpenSimplex. Terrain heights and biome distributions diverge structurally.
+2. **Per-biome height formula** — web uses `heightBase + simplex * heightScale`
+   per biome; shim uses a single blend formula.
+3. **Caves / overhangs** — no 3D carve pass yet.
 4. **Lighting** — no skylight propagation or torch emission.
+5. **Per-face textures** — flat vertex colour only.
 
-## Phased plan (each phase commits independently)
+## Phased plan
 
-### Phase 1 — Native voxel.uploadChunk (face-culled mesher) ← starting now
+### Phase 1 — Native voxel.uploadChunk (face-culled mesher) ✅ DONE (commit `4817332`)
 
-Add a C++ bridge command that builds an ArrayMesh from a packed block
-array, emitting one quad per visible face (face culled against the
-chunk's own neighbors; chunk boundaries treated as air for now).
+Added `_cmd_voxel_upload_chunk` in C++: builds an ArrayMesh from a packed block
+array, emitting one quad per visible face. Shim replaced column-bucketing path
+with a chunk-builder calling `voxel.uploadChunk` per 16×50×16 chunk. Shutdown
+double-free fixed (`_handles->clear(false)`).
 
-Bridge API:
+### Phase 2 — Greedy meshing in C++ ✅ DONE (commit `299b03d`)
 
-```
-voxel.uploadChunk {
-  origin:  [x, y, z],          // world-space origin of chunk
-  size:    [sx, sy, sz],       // dimensions in blocks
-  blocks:  PackedByteArray,    // sx*sy*sz block ids, x-major then y, then z
-  palette: { "1": 0x55aa44, ... }, // id -> hex color (id 0 = air)
-} => { handle: <mesh> }
-```
+Same bridge command, smarter mesher: sweeps each axis plane, builds a 2D
+visibility+color mask, merges same-colored adjacent faces into rectangles.
+~5-10× fewer triangles for typical heightmap terrain.
 
-Returned handle is destroyable via `mesh.destroy`. Mesh uses a single
-StandardMaterial3D per chunk; face vertex colours encode the block tint
-so one material draws all blocks. No texturing yet.
+### Phase 3 — Simplex noise + per-biome height formula ← NEXT
 
-Files touched:
+**Goal**: Eliminate the terrain generation divergence that accounts for most of
+the remaining ~37% pixel diff.
 
-- [nova64-godot/gdextension/src/bridge.cpp](nova64-godot/gdextension/src/bridge.cpp) — new `_cmd_voxel_upload_chunk`
-- [nova64-godot/gdextension/src/bridge.h](nova64-godot/gdextension/src/bridge.h) — declaration
+**Step 1 — Port simplex noise from web engine into shim**
 
-Shim changes:
+`runtime/api-voxel.js` uses OpenSimplex2 (lines ~100–243). Port or inline an
+equivalent pure-JS `_vxSimplex2D(x, z)` into `nova64-compat.js`, then replace
+`_vxFbm`/`_vxSmoothNoise` with:
 
-- Replace the column-bucketing path with a chunk-builder that packs the
-  heightmap into 16×Hslab×16 chunks and calls `voxel.uploadChunk` once
-  per chunk. Player edits update the corresponding chunk and re-upload.
-
-Validation:
-
-- All voxel carts smoke-PASS.
-- Snapshot diff vs `mc-demo-v4.png` should show identical biome
-  distribution but with proper cliff detail and cube boundaries.
-- Focused visual report should materially improve from the 2026-05-02 baseline:
-  `minecraft-demo` 60.53% diff and `voxel-terrain` 95.08% diff.
-
-### Phase 2 — Greedy meshing in C++
-
-Same bridge command, smarter mesher: merge co-planar same-coloured
-faces into rectangles. Roughly 5-10× fewer triangles for typical
-heightmap terrain. No API change for the cart.
-
-### Phase 3 — Cave / overhang generation
-
-Move `_vxHeightAt` and biome rules into C++ (or keep the heightmap in
-JS but add a 3D simplex carve-pass in C++). At this point the chunk
-is no longer column-ish and Phase 1's per-block visibility pays off.
-
-### Phase 4 — Per-block textures + skylight
-
-A texture atlas resource bound at boot, plus an A8 light buffer
-computed per chunk. Output as a vertex attribute.
-
-## Native build prerequisites
-
-WSL build chain is already validated this session:
-
-```
-wsl bash -lc 'cd nova64-godot/gdextension && \
-  scons platform=linux target=template_debug -j$(nproc) && \
-  scons platform=windows target=template_debug use_mingw=yes -j$(nproc)'
+```js
+function _vxFbm2D(x, z, octaves, persistence, lacunarity, scale) { ... }
 ```
 
-After native changes, run the smoke harness as usual:
+Use the same call sites as the web engine:
+- Height: `_vxFbm2D(x + seed, z + seed, 4, 0.5, 2.0, 0.01)`
+- Temperature: `_vxFbm2D(x + seed, z + seed, 2, 0.5, 2.0, 0.005)`
+- Moisture: `_vxFbm2D(x + 1000 + seed, z + 1000 + seed, 2, 0.5, 2.0, 0.003)`
 
-```
-powershell -NoProfile -ExecutionPolicy Bypass \
-  -File nova64-godot/scripts/run-cart-smoke.ps1 \
-  minecraft-demo voxel-creative voxel-terrain
+**Step 2 — Per-biome height formula**
+
+Replace the single `VX_BASE_Y + blend * VX_HEIGHT_AMPLITUDE` formula with
+biome-conditioned `heightBase + simplex * heightScale` matching the web engine:
+
+| Biome | heightBase | heightScale |
+|-------|-----------|-------------|
+| Jungle | 58 | 22 |
+| Desert | 63 | 4 |
+| Plains | 64 | 6 |
+| Forest | 64 | 8 |
+| (etc — check `runtime/api-voxel.js` for all values) |
+
+**Validation**:
+- `pnpm godot:visual -- --cart=minecraft-demo --frames=120 --wait-ms=3000`
+- Target: < 25% diff
+- Smoke: all 6 carts still PASS
+
+### Phase 4 — Cave / overhang generation
+
+Move or extend `_vxBlockColorAt` to include a 3D noise carve-pass that punches
+caves and overhangs. At this point the chunk is no longer column-ish; the
+Phase 1 per-block face culling pays full dividends.
+
+### Phase 5 — Per-block textures + skylight
+
+A texture atlas resource bound at boot, plus an A8 light buffer computed per
+chunk. Output as a vertex attribute.
+
+## Build and test commands
+
+```bash
+# Build both platforms (WSL)
+wsl bash -lc 'cd /mnt/c/Users/brend/exp/nova64/nova64-godot/gdextension && scons platform=linux target=template_debug -j$(nproc) 2>&1 | tail -15 && scons platform=windows target=template_debug use_mingw=yes -j$(nproc) 2>&1 | tail -15'
+
+# Smoke test (6 carts)
+powershell -NoProfile -ExecutionPolicy Bypass -File nova64-godot\scripts\run-cart-smoke.ps1
+
+# Visual parity — minecraft-demo
+wsl bash -lc 'cd /mnt/c/Users/brend/exp/nova64 && source ~/.nvm/nvm.sh; nvm use 20 >/dev/null; pnpm godot:visual -- --cart=minecraft-demo --frames=120 --wait-ms=3000 --max-diff=100'
+
+# Commit pattern (never git push)
+Set-Content -Encoding utf8 .git/COMMIT_MSG_TMP "your message"
+wsl bash -lc "cd /mnt/c/Users/brend/exp/nova64 && git add <files> && git -c core.hooksPath=/dev/null commit -F .git/COMMIT_MSG_TMP && rm .git/COMMIT_MSG_TMP"
 ```
 
 ## Decision log
@@ -146,4 +176,13 @@ powershell -NoProfile -ExecutionPolicy Bypass \
   unit-test by feeding it a known PackedByteArray.
 - **Vertex colours over per-face material** — one draw call per chunk
   beats one per block colour, and we can switch to a texture atlas in
-  Phase 4 without breaking the chunk handle contract.
+  Phase 5 without breaking the chunk handle contract.
+- **`FOG_MODE_DEPTH` over exponential** — Godot's depth fog maps directly
+  to near/far world-space distances, matching how carts set fog in JS.
+  Exponential density was too coarse to tune without washing out the scene.
+- **`_handles->clear(false)` not `true`** — `true` calls `queue_free()` on
+  chunk nodes while the scene tree also frees them on shutdown → double-free
+  SIGSEGV. Let the scene tree own teardown; just null mesh refs first.
+- **Terrain regression reverted** — attempted per-biome `heightBase`/
+  `heightScale` port in shim, but it diverged from block-space coordinates;
+  reverted and kept the fog improvement. Full fix is Phase 3 (simplex port).

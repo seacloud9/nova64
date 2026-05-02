@@ -845,6 +845,7 @@ Dictionary Nova64Host::_cmd_transform_set(const Dictionary &p) {
         n->set_rotation(r);
     }
     if (p.has("scale")) n->set_scale(vec3_from_payload(p, "scale", n->get_scale()));
+    if (p.has("visible")) n->set_visible(static_cast<bool>(p["visible"]));
 
     Dictionary out; out["ok"] = true; return out;
 }
@@ -2148,12 +2149,85 @@ Dictionary Nova64Host::_cmd_overlay_batch(const Dictionary &p) {
         Array op = ops[i];
         if (op.size() < 1) continue;
         String tag = String(op[0]);
-        if (tag == "rect")        _overlay_op_rect(op);
-        else if (tag == "line")   _overlay_op_line(op);
-        else if (tag == "circle") _overlay_op_circle(op);
-        else if (tag == "text")   _overlay_op_text(op);
-        else if (tag == "pset")   _overlay_op_pset(op);
-        else if (tag == "cls")    _overlay_op_cls(op);
+        if (tag == "rect")           _overlay_op_rect(op);
+        else if (tag == "line")      _overlay_op_line(op);
+        else if (tag == "circle")    _overlay_op_circle(op);
+        else if (tag == "text")      _overlay_op_text(op);
+        else if (tag == "pset")      _overlay_op_pset(op);
+        else if (tag == "cls")       _overlay_op_cls(op);
+        else if (tag == "gradient")  _overlay_op_gradient(op);
+        else if (tag == "triangle")  _overlay_op_triangle(op);
     }
     Dictionary out; out["ok"] = true; out["count"] = n; return out;
+}
+
+// ---- gradient op: vertical gradient fill --------------------------------
+// Op format: ['gradient', x, y, w, h, topColor, bottomColor]
+void Nova64Host::_overlay_op_gradient(const Array &op) {
+    if (op.size() < 7 || _overlay == nullptr) return;
+    Vector2 s = overlay_scale(_overlay);
+    float x = static_cast<float>(static_cast<double>(op[1])) * s.x;
+    float y = static_cast<float>(static_cast<double>(op[2])) * s.y;
+    float w = static_cast<float>(static_cast<double>(op[3])) * s.x;
+    float h = static_cast<float>(static_cast<double>(op[4])) * s.y;
+    Color top = color_from_array(op[5], Color(1, 1, 1, 1));
+    Color bot = color_from_array(op[6], Color(0, 0, 0, 1));
+
+    RenderingServer *rs = RenderingServer::get_singleton();
+    RID ci = _overlay->get_canvas_item();
+
+    // Use a quad with per-vertex colors for smooth gradient
+    PackedVector2Array pts;
+    pts.push_back(Vector2(x, y));         // top-left
+    pts.push_back(Vector2(x + w, y));     // top-right
+    pts.push_back(Vector2(x + w, y + h)); // bottom-right
+    pts.push_back(Vector2(x, y + h));     // bottom-left
+
+    PackedColorArray cols;
+    cols.push_back(top);   // top-left
+    cols.push_back(top);   // top-right
+    cols.push_back(bot);   // bottom-right
+    cols.push_back(bot);   // bottom-left
+
+    rs->canvas_item_add_polygon(ci, pts, cols);
+}
+
+// ---- triangle op: filled triangle ---------------------------------------
+// Op format: ['triangle', x0, y0, x1, y1, x2, y2, color, filled]
+void Nova64Host::_overlay_op_triangle(const Array &op) {
+    if (op.size() < 8 || _overlay == nullptr) return;
+    Vector2 s = overlay_scale(_overlay);
+    float x0 = static_cast<float>(static_cast<double>(op[1])) * s.x;
+    float y0 = static_cast<float>(static_cast<double>(op[2])) * s.y;
+    float x1 = static_cast<float>(static_cast<double>(op[3])) * s.x;
+    float y1 = static_cast<float>(static_cast<double>(op[4])) * s.y;
+    float x2 = static_cast<float>(static_cast<double>(op[5])) * s.x;
+    float y2 = static_cast<float>(static_cast<double>(op[6])) * s.y;
+    Color c = color_from_array(op[7], Color(1, 1, 1, 1));
+    bool filled = op.size() > 8 ? static_cast<bool>(op[8]) : true;
+
+    RenderingServer *rs = RenderingServer::get_singleton();
+    RID ci = _overlay->get_canvas_item();
+
+    if (filled) {
+        PackedVector2Array pts;
+        pts.push_back(Vector2(x0, y0));
+        pts.push_back(Vector2(x1, y1));
+        pts.push_back(Vector2(x2, y2));
+        PackedColorArray cols;
+        cols.push_back(c);
+        cols.push_back(c);
+        cols.push_back(c);
+        rs->canvas_item_add_polygon(ci, pts, cols);
+    } else {
+        // Outline only
+        PackedVector2Array pts;
+        pts.push_back(Vector2(x0, y0));
+        pts.push_back(Vector2(x1, y1));
+        pts.push_back(Vector2(x2, y2));
+        pts.push_back(Vector2(x0, y0)); // close the triangle
+        PackedColorArray cols;
+        cols.push_back(c);
+        rs->canvas_item_add_polyline(ci, pts, cols, Math::max(1.0f, s.x));
+    }
 }

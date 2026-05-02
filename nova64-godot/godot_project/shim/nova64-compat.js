@@ -381,6 +381,15 @@
     if (!cameraHandle || typeof deg !== 'number') return;
     call('camera.setParams', { handle: cameraHandle, fov: deg });
   }
+  function setCameraLookAt(direction) {
+    ensureInit();
+    if (Array.isArray(direction) && direction.length >= 3) {
+      cameraTarget = [cameraPos[0] + direction[0], cameraPos[1] + direction[1], cameraPos[2] + direction[2]];
+    } else if (direction && typeof direction === 'object') {
+      cameraTarget = [cameraPos[0] + (direction.x || 0), cameraPos[1] + (direction.y || 0), cameraPos[2] + (direction.z || 0)];
+    }
+    applyCameraLookAt();
+  }
 
   // ---------------- light -----------------------------------------------
   function setLightDirection(x, y, z) {
@@ -528,6 +537,165 @@
     a = a == null ? 255 : a;
     return ((a & 0xff) << 24) | ((r & 0xff) << 16) | ((g & 0xff) << 8) | (b & 0xff);
   }
+  // Unpack rgba8 int → { r, g, b, a } 0-255
+  function _unpackColor(c) {
+    const n = (c | 0) >>> 0;
+    if (n > 0xffffff) {
+      return { a: (n >>> 24) & 0xff, r: (n >>> 16) & 0xff, g: (n >>> 8) & 0xff, b: n & 0xff };
+    }
+    return { r: (n >>> 16) & 0xff, g: (n >>> 8) & 0xff, b: n & 0xff, a: 255 };
+  }
+  function colorLerp(c1, c2, t) {
+    const a = _unpackColor(c1), b = _unpackColor(c2);
+    return rgba8(a.r + (b.r - a.r) * t, a.g + (b.g - a.g) * t, a.b + (b.b - a.b) * t, a.a + (b.a - a.a) * t);
+  }
+  function colorMix(c, factor) {
+    const { r, g, b, a } = _unpackColor(c);
+    return rgba8(Math.min(255, r * factor), Math.min(255, g * factor), Math.min(255, b * factor), a);
+  }
+  function hslColor(h, s, l, alpha) {
+    s = s == null ? 1 : s; l = l == null ? 0.5 : l; alpha = alpha == null ? 255 : alpha;
+    h = ((h % 360) + 360) % 360;
+    const c2 = (1 - Math.abs(2 * l - 1)) * s;
+    const x = c2 * (1 - Math.abs(((h / 60) % 2) - 1));
+    const m = l - c2 / 2;
+    let r, g, b;
+    if (h < 60)      { r = c2; g = x;  b = 0;  }
+    else if (h < 120){ r = x;  g = c2; b = 0;  }
+    else if (h < 180){ r = 0;  g = c2; b = x;  }
+    else if (h < 240){ r = 0;  g = x;  b = c2; }
+    else if (h < 300){ r = x;  g = 0;  b = c2; }
+    else             { r = c2; g = 0;  b = x;  }
+    return rgba8(Math.round((r + m) * 255), Math.round((g + m) * 255), Math.round((b + m) * 255), alpha);
+  }
+  // n64Palette: named retro colors
+  const n64Palette = {
+    black: rgba8(0,0,0), white: rgba8(255,255,255), red: rgba8(220,30,30),
+    green: rgba8(30,200,60), blue: rgba8(30,80,220), yellow: rgba8(255,220,0),
+    cyan: rgba8(0,220,220), magenta: rgba8(200,0,200), orange: rgba8(255,140,0),
+    purple: rgba8(120,0,200), teal: rgba8(0,160,160), brown: rgba8(140,80,30),
+    grey: rgba8(128,128,128), darkGrey: rgba8(60,60,60), lightGrey: rgba8(200,200,200),
+    sky: rgba8(70,130,200), gold: rgba8(255,210,50), silver: rgba8(192,192,210),
+  };
+  function measureText(text, scale) {
+    scale = typeof scale === 'number' ? scale : 1;
+    // Approximate: 8 pixels per character at scale 1
+    return { width: (text ? text.length : 0) * 8 * scale };
+  }
+  function scrollingText(text, y, speed, time, color, scale, width) {
+    scale = typeof scale === 'number' ? scale : 1;
+    width = typeof width === 'number' ? width : 640;
+    const tw = measureText(text, scale).width;
+    const x = ((width - ((time * speed) % (width + tw))) | 0);
+    novaPrint(text, x, y, color, scale);
+  }
+  function drawWave(x, y, w, amplitude, frequency, phase, color, _thickness) {
+    // Approximate as a series of small rects along a sine path
+    const steps = Math.min(w, 80) | 0;
+    const step = w / (steps || 1);
+    for (let i = 0; i < steps; i++) {
+      const px = x + i * step;
+      const py = y + Math.sin(i * step * frequency + phase) * amplitude;
+      __ops.push(['rect', px | 0, py | 0, 2, 2, colorFromHex(color || 0xffffff)]);
+    }
+  }
+  function drawPulsingText(text, cx, y, color, time, opts) {
+    opts = opts || {};
+    const freq = opts.frequency != null ? opts.frequency : 3;
+    const minAlpha = opts.minAlpha != null ? opts.minAlpha : 120;
+    const scale = opts.scale != null ? opts.scale : 1;
+    const alpha = Math.floor((Math.sin(time * freq) * 0.5 + 0.5) * (255 - minAlpha) + minAlpha);
+    const { r, g, b } = _unpackColor(color || 0xffffff);
+    const pulsedColor = rgba8(r, g, b, alpha);
+    printCentered(text, cx, y, pulsedColor, scale);
+  }
+  function drawCheckerboard(x, y, w, h, c1, c2, size) {
+    size = typeof size === 'number' ? size : 8;
+    // Draw a simplified checkerboard using a grid of rects
+    for (let ty = 0; ty < h; ty += size) {
+      for (let tx = 0; tx < w; tx += size) {
+        const cell = (((tx / size) | 0) + ((ty / size) | 0)) % 2;
+        __ops.push(['rectfill', (x + tx) | 0, (y + ty) | 0, Math.min(size, w - tx) | 0, Math.min(size, h - ty) | 0, colorFromHex(cell === 0 ? c1 : c2)]);
+      }
+    }
+  }
+  function drawFloatingTexts(system, offsetX, offsetY) {
+    if (!system || typeof system.getTexts !== 'function') return;
+    offsetX = offsetX || 0; offsetY = offsetY || 0;
+    const texts = system.getTexts();
+    for (let i = 0; i < texts.length; i++) {
+      const t = texts[i];
+      const alpha = Math.min(255, Math.floor((t.timer / t.maxTimer) * 255));
+      const color = typeof t.color === 'bigint' ? Number(t.color) : (t.color || 0xffffff);
+      const { r, g, b } = _unpackColor(color);
+      novaPrint(t.text, (t.x + offsetX) | 0, (t.y + offsetY) | 0, rgba8(r, g, b, alpha), t.scale || 1);
+    }
+  }
+  function drawFloatingTexts3D(system, projectFn) {
+    if (!system || typeof system.getTexts !== 'function') return;
+    if (typeof projectFn !== 'function') return;
+    const texts = system.getTexts();
+    for (let i = 0; i < texts.length; i++) {
+      const t = texts[i];
+      const proj = projectFn(t.x, t.y, t.z || 0);
+      if (!proj) continue;
+      const sx = proj[0] != null ? proj[0] : proj.x;
+      const sy = proj[1] != null ? proj[1] : proj.y;
+      if (typeof sx !== 'number' || typeof sy !== 'number') continue;
+      const alpha = Math.min(255, Math.floor((t.timer / t.maxTimer) * 255));
+      const color = typeof t.color === 'bigint' ? Number(t.color) : (t.color || 0xffffff);
+      const { r, g, b } = _unpackColor(color);
+      novaPrint(t.text, sx | 0, sy | 0, rgba8(r, g, b, alpha), t.scale || 1);
+    }
+  }
+  function createMinimap(opts) {
+    opts = opts || {};
+    return { __isMinimap: true, opts: opts, revealed: new Set() };
+  }
+  function drawMinimap(minimapOrX, timeOrY, sizeArg, entitiesArg, bgColorArg) {
+    if (!minimapOrX) return;
+    let mm, x, y, size;
+    if (minimapOrX && minimapOrX.__isMinimap) {
+      mm = minimapOrX;
+      const o = mm.opts;
+      x = o.x != null ? o.x : 540; y = o.y != null ? o.y : 10;
+      size = o.width || o.size || 80;
+    } else {
+      x = minimapOrX || 540; y = timeOrY || 10; size = sizeArg || 80;
+    }
+    // Draw a simple minimap rectangle background
+    __ops.push(['rectfill', x | 0, y | 0, size | 0, size | 0, colorFromHex(0x000000, 0.7)]);
+    __ops.push(['rect', x | 0, y | 0, size | 0, size | 0, colorFromHex(0x888888)]);
+    // Draw entities if available
+    const entities = (mm && mm.opts.entities) || entitiesArg || [];
+    const player = mm && mm.opts.player;
+    const worldW = (mm && mm.opts.worldW) || 100;
+    const worldH = (mm && mm.opts.worldH) || 100;
+    const scale = size / Math.max(worldW, worldH);
+    for (let i = 0; i < entities.length; i++) {
+      const e = entities[i];
+      const ex = x + (e.x || 0) * scale; const ey = y + (e.y || 0) * scale;
+      __ops.push(['rectfill', (ex - 1) | 0, (ey - 1) | 0, 3, 3, colorFromHex(e.color || 0xff4444)]);
+    }
+    if (player) {
+      const px2 = x + (player.x || 0) * scale; const py2 = y + (player.y || 0) * scale;
+      __ops.push(['rectfill', (px2 - 2) | 0, (py2 - 2) | 0, 4, 4, colorFromHex(0xffff00)]);
+    }
+  }
+  function drawSkyGradient(topColor, bottomColor) {
+    // Draw a vertical gradient as stacked rects
+    const H = 360, W = 640, steps = 36;
+    const stepH = H / steps;
+    for (let i = 0; i < steps; i++) {
+      const t = i / (steps - 1);
+      const { r: r1, g: g1, b: b1 } = _unpackColor(topColor || 0x112244);
+      const { r: r2, g: g2, b: b2 } = _unpackColor(bottomColor || 0x000000);
+      const cr = Math.round(r1 + (r2 - r1) * t);
+      const cg = Math.round(g1 + (g2 - g1) * t);
+      const cb = Math.round(b1 + (b2 - b1) * t);
+      __ops.push(['rectfill', 0, (i * stepH) | 0, W, (stepH + 1) | 0, colorFromHex(rgba8(cr, cg, cb))]);
+    }
+  }
   function cls(color) {
     __ops.push(['cls', colorFromHex(color == null ? 0x000000 : color)]);
   }
@@ -606,8 +774,26 @@
   function drawRect(x, y, w, h, color, filled) { rect(x, y, w, h, color, filled); }
   // Canonical browser signature: drawPanel(x, y, w, h, opts={}).
   // Some carts also call drawPanel(x,y,w,h, fillColor, borderColor) — so
-  // accept both shapes.
-  function drawPanel(x, y, w, h, optsOrFill, border) {
+  // accept both shapes. Also handles panel objects from createPanel().
+  function drawPanel(panelOrX, y, w, h, optsOrFill, border) {
+    // If first arg is a panel object (from createPanel or ui.createPanel)
+    if (typeof panelOrX === 'object' && panelOrX !== null && 'x' in panelOrX && 'w' in panelOrX) {
+      const p = panelOrX;
+      // Shadow (offset dark rect behind)
+      if (p.shadow) {
+        rectfill(p.x + 4, p.y + 4, p.w, p.h, 0x000000);
+      }
+      // Fill (gradient or solid)
+      if (p.gradient && p.gradientColor != null) {
+        drawGradient(p.x, p.y, p.w, p.h, p.bgColor, p.gradientColor);
+      } else {
+        rectfill(p.x, p.y, p.w, p.h, p.bgColor != null ? p.bgColor : 0x101822);
+      }
+      // Border
+      rect(p.x, p.y, p.w, p.h, p.borderColor != null ? p.borderColor : 0x6699cc, false);
+      return;
+    }
+    // Simple signature: drawPanel(x, y, w, h, fill, border) or drawPanel(x, y, w, h, opts)
     let fill = 0x101822, brd = 0x6699cc;
     if (typeof optsOrFill === 'object' && optsOrFill !== null) {
       if (optsOrFill.fill != null) fill = optsOrFill.fill;
@@ -617,8 +803,8 @@
       fill = optsOrFill;
       if (typeof border === 'number') brd = border;
     }
-    rectfill(x, y, w, h, fill);
-    rect(x, y, w, h, brd, false);
+    rectfill(panelOrX, y, w, h, fill);
+    rect(panelOrX, y, w, h, brd, false);
   }
   // Canonical browser signature:
   //   drawGlowText(text, x, y, color, glowColor, scale=1)
@@ -658,24 +844,13 @@
     }
   }
   function drawGradient(x, y, w, h, top, bottom) {
-    // Vertical gradient via N horizontal slices.
+    // Use native gradient op for smooth vertical gradient
     const t = colorFromHex(top == null ? 0xffffff : top);
     const b = colorFromHex(bottom == null ? 0x000000 : bottom);
-    const STEPS = Math.max(1, Math.min(64, h | 0));
-    const sh = h / STEPS;
-    for (let i = 0; i < STEPS; i++) {
-      const k = i / Math.max(1, STEPS - 1);
-      const col = [
-        t[0] + (b[0] - t[0]) * k,
-        t[1] + (b[1] - t[1]) * k,
-        t[2] + (b[2] - t[2]) * k,
-        t[3] + (b[3] - t[3]) * k,
-      ];
-      const p = __tx(x, y + i * sh);
-      __ops.push(['rect', p[0] | 0, p[1] | 0,
-        Math.max(0, w | 0), Math.max(1, Math.ceil(sh)),
-        col, true]);
-    }
+    const p = __tx(x, y);
+    const ms = __mtxScale();
+    __ops.push(['gradient', p[0] | 0, p[1] | 0,
+      Math.max(0, (w * ms) | 0), Math.max(0, (h * ms) | 0), t, b]);
   }
   function drawProgressBar(x, y, w, h, value, color, bgColor) {
     const v = Math.max(0, Math.min(1, value || 0));
@@ -699,16 +874,21 @@
   }
   function drawScanlines(_alpha, _spacing) { /* host postFX handles this */ }
   function drawNoise(_alpha) { /* expensive in shim; skip */ }
-  function drawTriangle(x0, y0, x1, y1, x2, y2, color, _filled) {
-    // Outline only (overlay batch has no native triangle fill).
-    line(x0, y0, x1, y1, color);
-    line(x1, y1, x2, y2, color);
-    line(x2, y2, x0, y0, color);
+  function drawTriangle(x0, y0, x1, y1, x2, y2, color, filled) {
+    // Use native triangle op for filled triangles
+    const p0 = __tx(x0, y0), p1 = __tx(x1, y1), p2 = __tx(x2, y2);
+    const c = colorFromHex(color == null ? 0xffffff : color);
+    __ops.push(['triangle', p0[0] | 0, p0[1] | 0, p1[0] | 0, p1[1] | 0,
+      p2[0] | 0, p2[1] | 0, c, filled !== false]);
   }
   function drawDiamond(cx, cy, size, color, filled) {
     const s = size | 0;
-    drawTriangle(cx, cy - s, cx + s, cy, cx - s, cy, color, filled);
-    drawTriangle(cx, cy + s, cx + s, cy, cx - s, cy, color, filled);
+    const c = color == null ? 0xffffff : color;
+    const f = filled !== false;
+    drawTriangle(cx, cy - s, cx + s, cy, cx, cy, c, f);
+    drawTriangle(cx + s, cy, cx, cy + s, cx, cy, c, f);
+    drawTriangle(cx, cy + s, cx - s, cy, cx, cy, c, f);
+    drawTriangle(cx - s, cy, cx, cy - s, cx, cy, c, f);
   }
   function drawStarburst(cx, cy, n, r0, r1, color) {
     n = n | 0; if (n < 3) n = 3;
@@ -989,7 +1169,48 @@
     ensureInit();
     call('env.set', { fog: false });
   }
-  function getPosition(_handle) { return [0, 0, 0]; }
+  function getPosition(handle) {
+    if (handle && typeof handle === 'object' && handle.position) {
+      const p = handle.position;
+      return [p.x != null ? p.x : (p[0] || 0), p.y != null ? p.y : (p[1] || 0), p.z != null ? p.z : (p[2] || 0)];
+    }
+    return [0, 0, 0];
+  }
+  function moveMesh(handle, dx, dy, dz) {
+    if (!handle) return;
+    const cur = getPosition(handle);
+    setPosition(handle, cur[0] + (dx || 0), cur[1] + (dy || 0), cur[2] + (dz || 0));
+  }
+  function setMeshVisible(handle, visible) {
+    if (!handle) return;
+    const h = unwrapHandle(handle);
+    if (!h) return;
+    call('transform.set', { handle: h, visible: !!visible });
+    if (handle && typeof handle === 'object') handle.visible = !!visible;
+  }
+  function createAdvancedSphere(radiusOrOpts, optsOrPos, maybePos, _segments) {
+    ensureInit();
+    let radius = 0.5, opts = {}, pos = maybePos;
+    if (typeof radiusOrOpts === 'number') {
+      radius = radiusOrOpts;
+      if (optsOrPos && typeof optsOrPos === 'object' && !Array.isArray(optsOrPos)) {
+        opts = optsOrPos; pos = maybePos;
+      } else { pos = optsOrPos; }
+    } else if (radiusOrOpts && typeof radiusOrOpts === 'object') {
+      opts = radiusOrOpts; pos = optsOrPos;
+    }
+    const r = typeof radius === 'number' ? radius : 0.5;
+    const geomR = call('geometry.createSphere', { radius: r, height: r * 2 });
+    return geomR ? spawnMesh(geomR.handle, opts.color, pos, Object.assign({ metallic: 0.1, roughness: 0.5 }, opts)) : 0;
+  }
+  function createCapsule(radius, height, color, pos, opts) {
+    ensureInit();
+    const r = typeof radius === 'number' ? radius : 0.3;
+    const h = typeof height === 'number' ? height : 1;
+    // Godot doesn't have capsule geometry in the current bridge — use cylinder as stand-in
+    const geom = call('geometry.createCylinder', { topRadius: r, bottomRadius: r, height: h, sides: 16 });
+    return geom ? spawnMesh(geom.handle, color, pos, opts) : 0;
+  }
 
   const TWO_PI = Math.PI * 2;
   const HALF_PI = Math.PI / 2;
@@ -1275,11 +1496,107 @@
     return proxy;
   }
 
-  // UI / canvas-ui
-  function clearButtons() {}
-  function updateAllButtons() { return false; }
-  function drawAllButtons() {}
-  function drawGradientRect() {}
+  // UI / canvas-ui — real button/panel implementation for Godot parity
+  const __uiButtons = [];
+  let __uiButtonIdCounter = 0;
+
+  function clearButtons() {
+    __uiButtons.length = 0;
+  }
+
+  function createButton(x, y, w, h, label, onClick, opts) {
+    opts = opts || {};
+    const btn = {
+      id: ++__uiButtonIdCounter,
+      x: x | 0, y: y | 0, w: w | 0, h: h | 0,
+      label: label || '',
+      onClick: typeof onClick === 'function' ? onClick : function () {},
+      normalColor: opts.normalColor != null ? opts.normalColor : 0x4a90e2,
+      hoverColor: opts.hoverColor != null ? opts.hoverColor : 0x6aa8f2,
+      pressedColor: opts.pressedColor != null ? opts.pressedColor : 0x3a70c2,
+      textColor: opts.textColor != null ? opts.textColor : 0xffffff,
+      borderColor: opts.borderColor != null ? opts.borderColor : 0xffffff,
+      hovered: false,
+      pressed: false,
+    };
+    __uiButtons.push(btn);
+    return btn;
+  }
+
+  function updateAllButtons() {
+    const mx = mouseX(), my = mouseY();
+    const down = mouseDown();
+    const wasPressed = mousePressed();
+    let anyClicked = false;
+
+    for (let i = 0; i < __uiButtons.length; i++) {
+      const btn = __uiButtons[i];
+      const inside = mx >= btn.x && mx < btn.x + btn.w &&
+                     my >= btn.y && my < btn.y + btn.h;
+      btn.hovered = inside;
+      btn.pressed = inside && down;
+
+      if (inside && wasPressed) {
+        try { btn.onClick(); } catch (e) { print('[ui] button error: ' + e); }
+        anyClicked = true;
+      }
+    }
+    return anyClicked;
+  }
+
+  function drawAllButtons() {
+    const savedFont = __uiState.currentFont;
+    const savedAlign = __uiState.textAlign;
+    const savedBaseline = __uiState.textBaseline;
+
+    setFont('normal');
+    setTextAlign('center');
+    setTextBaseline('middle');
+
+    for (let i = 0; i < __uiButtons.length; i++) {
+      const btn = __uiButtons[i];
+      let bgColor = btn.normalColor;
+      if (btn.pressed) bgColor = btn.pressedColor;
+      else if (btn.hovered) bgColor = btn.hoverColor;
+
+      // Button background
+      rectfill(btn.x, btn.y, btn.w, btn.h, bgColor);
+      // Border
+      rect(btn.x, btn.y, btn.w, btn.h, btn.borderColor, false);
+      // Label
+      drawText(btn.label, btn.x + btn.w / 2, btn.y + btn.h / 2, btn.textColor, 1);
+    }
+
+    __uiState.currentFont = savedFont;
+    __uiState.textAlign = savedAlign;
+    __uiState.textBaseline = savedBaseline;
+  }
+
+  // drawGradientRect(x, y, w, h, topColor, bottomColor, filled)
+  function drawGradientRect(x, y, w, h, topColor, bottomColor, filled) {
+    if (filled === false) {
+      // Just draw border
+      rect(x, y, w, h, topColor, false);
+    } else {
+      // Draw gradient fill
+      drawGradient(x, y, w, h, topColor, bottomColor);
+    }
+  }
+
+  // createPanel returns an object describing the panel; drawPanel renders it
+  function createPanel(x, y, w, h, opts) {
+    opts = opts || {};
+    return {
+      x: x | 0, y: y | 0, w: w | 0, h: h | 0,
+      bgColor: opts.bgColor != null ? opts.bgColor : opts.fill != null ? opts.fill : 0x101822,
+      borderColor: opts.borderColor != null ? opts.borderColor : 0x6699cc,
+      borderWidth: opts.borderWidth || 1,
+      shadow: !!opts.shadow,
+      gradient: !!opts.gradient,
+      gradientColor: opts.gradientColor != null ? opts.gradientColor : opts.bgColor,
+    };
+  }
+
   // Font / text alignment state mirrors runtime/ui/text.js so the same
   // setFont('large') / setTextAlign('right') / drawTextShadow(...) sequence
   // produces the same pixel layout under Godot as it does on web.
@@ -1336,9 +1653,8 @@
       cellHeight: (h || 360) / (rows || 1),
     };
   }
-  function createButton(_opts) { warnOnce('ui.createButton'); return makeStub(); }
   function createLabel(_opts) { warnOnce('ui.createLabel'); return makeStub(); }
-  function createPanel(_opts) { warnOnce('ui.createPanel'); return makeStub(); }
+  // createButton and createPanel are defined above with real implementations
   function createSlider(_opts) { warnOnce('ui.createSlider'); return makeStub({ value: 0 }); }
   function createCheckbox(_opts) { warnOnce('ui.createCheckbox'); return makeStub({ checked: false }); }
   function createDialog(_opts) { warnOnce('ui.createDialog'); return makeStub(); }
@@ -1621,6 +1937,8 @@
     return r ? r.handle : 0;
   }
   // TSL (Three Shading Language) → emit a themed emissive material fallback.
+  // These match the browser's animated shaders as closely as possible with
+  // static Godot StandardMaterial3D settings.
   function createTSLMaterial(kind, opts) {
     ensureInit();
     if (kind && typeof kind === 'object') {
@@ -1629,19 +1947,95 @@
     }
     opts = opts || {};
     const name = typeof kind === 'string' ? kind.toLowerCase() : 'plasma';
+
+    // Extended preset library matching runtime/backends/threejs/tsl.js
     const presets = {
-      plasma: { color: 0xff66ff, emission: 0xff33ff, emissionEnergy: 3.0, blend: 'add' },
-      lava: { color: 0xff6600, emission: 0xff3300, emissionEnergy: 3.0, blend: 'add' },
-      void: { color: 0x88ffff, emission: 0x00ffff, emissionEnergy: 2.8, blend: 'add' },
-      hologram: { color: 0x00ffff, emission: 0x00ffff, emissionEnergy: 2.4, blend: 'add' },
+      // Animated pink/blue plasma wave
+      plasma: {
+        color: 0xff44aa, emission: 0xff2288, emissionEnergy: 2.5,
+        blend: 'add', metallic: 0, roughness: 1,
+      },
+      plasma2: {
+        color: 0xaa44ff, emission: 0x8822ff, emissionEnergy: 2.8,
+        blend: 'add', metallic: 0, roughness: 1,
+      },
+      // Fiery lava with cracks
+      lava: {
+        color: 0xff4400, emission: 0xff2200, emissionEnergy: 3.5,
+        blend: 'add', metallic: 0.1, roughness: 0.8,
+      },
+      lava2: {
+        color: 0xffaa00, emission: 0xff6600, emissionEnergy: 4.0,
+        blend: 'add', metallic: 0, roughness: 0.6,
+      },
+      // Dark swirling void/portal
+      void: {
+        color: 0x4422aa, emission: 0x2211aa, emissionEnergy: 2.0,
+        blend: 'add', metallic: 0.3, roughness: 0.5,
+      },
+      // Cyan holographic effect
+      hologram: {
+        color: 0x00ffff, emission: 0x00ccff, emissionEnergy: 2.5,
+        blend: 'add', metallic: 0.8, roughness: 0.2, rim: 0.8, rimTint: 0.5,
+      },
+      // Electric bolts
+      electricity: {
+        color: 0x44aaff, emission: 0x22aaff, emissionEnergy: 3.0,
+        blend: 'add', metallic: 0, roughness: 1,
+      },
+      // Rainbow gradient
+      rainbow: {
+        color: 0xff88ff, emission: 0xff44ff, emissionEnergy: 2.0,
+        blend: 'add', metallic: 0.5, roughness: 0.3,
+      },
+      // Swirling vortex portal
+      vortex: {
+        color: 0x8800ff, emission: 0x6600ff, emissionEnergy: 2.8,
+        blend: 'add', metallic: 0.2, roughness: 0.6, rim: 0.5,
+      },
+      // Galaxy spiral
+      galaxy: {
+        color: 0x4488ff, emission: 0x2266ff, emissionEnergy: 2.2,
+        blend: 'add', metallic: 0.4, roughness: 0.4,
+      },
+      // Water surface
+      water: {
+        color: 0x2288cc, emission: 0x116688, emissionEnergy: 1.2,
+        blend: 'alpha', metallic: 0.6, roughness: 0.1,
+      },
+      // Shockwave ripple
+      shockwave: {
+        color: 0xffffff, emission: 0xaaccff, emissionEnergy: 2.5,
+        blend: 'add', metallic: 0, roughness: 1,
+      },
+      // Fire effect
+      fire: {
+        color: 0xff6600, emission: 0xff4400, emissionEnergy: 3.8,
+        blend: 'add', metallic: 0, roughness: 1,
+      },
+      // Ice/frost
+      ice: {
+        color: 0x88ddff, emission: 0x44aaff, emissionEnergy: 1.5,
+        blend: 'alpha', metallic: 0.7, roughness: 0.15,
+      },
+      // Neon glow
+      neon: {
+        color: 0xff00ff, emission: 0xff00ff, emissionEnergy: 4.0,
+        blend: 'add', metallic: 0, roughness: 1,
+      },
     };
+
     const preset = presets[name] || presets.plasma;
+
+    // Build material payload merging preset with user options
     const payload = materialPayload(preset.color, Object.assign({
-      opacity: opts.opacity == null ? 0.85 : opts.opacity,
+      opacity: opts.opacity == null ? 0.9 : opts.opacity,
       transparent: true,
       unshaded: true,
       cull: 'disabled',
+      doubleSided: true,
     }, preset, opts));
+
     const r = call('material.create', payload);
     return r ? r.handle : 0;
   }
@@ -1682,10 +2076,44 @@
   const VX_HEIGHT_AMPLITUDE = 12;
   const VX_RADIUS = 32;          // half-width in blocks (=> 64x64 columns)
   const VX_TREE_CHANCE = 0.012;
+  // Block types matching runtime/api-voxel.js BLOCK_TYPES
+  const VX_BLOCK_TYPES = {
+    AIR: 0, GRASS: 1, DIRT: 2, STONE: 3, SAND: 4, WATER: 5,
+    WOOD: 6, LEAVES: 7, COBBLESTONE: 8, PLANKS: 9, GLASS: 10,
+    BRICK: 11, SNOW: 12, ICE: 13, BEDROCK: 14, COAL_ORE: 15,
+    IRON_ORE: 16, GOLD_ORE: 17, DIAMOND_ORE: 18, GRAVEL: 19,
+    CLAY: 20, TORCH: 21, GLOWSTONE: 22, LAVA: 23, OBSIDIAN: 24,
+    MOSSY_COBBLESTONE: 25,
+  };
+
+  // Block colors for visual parity with browser renderer
   const VX_BLOCK_COLORS = {
-    1: 0x55aa44, 2: 0x996644, 3: 0xaaaaaa, 4: 0xffdd88, 5: 0x2288dd,
-    6: 0x774422, 7: 0x116622, 8: 0x667788, 9: 0xddaa55, 11: 0xcc4433,
-    15: 0x444444, 16: 0xccaa88, 21: 0xffdd44, 22: 0xffeeaa,
+    0: 0x000000,    // AIR (not rendered)
+    1: 0x5da33f,    // GRASS - brighter green top
+    2: 0x8b6b4a,    // DIRT - warm brown
+    3: 0x808080,    // STONE - neutral gray
+    4: 0xe6c878,    // SAND - warm yellow
+    5: 0x3a7ca5,    // WATER - blue (semi-transparent handled separately)
+    6: 0x6b4423,    // WOOD - dark brown trunk
+    7: 0x2d8a2d,    // LEAVES - deep green
+    8: 0x707070,    // COBBLESTONE - dark gray
+    9: 0xc4a76c,    // PLANKS - light wood
+    10: 0xaaddff,   // GLASS - light blue tint
+    11: 0xb55442,   // BRICK - terracotta red
+    12: 0xf0f8ff,   // SNOW - almost white
+    13: 0x9ad3f5,   // ICE - light cyan
+    14: 0x2a2a2a,   // BEDROCK - very dark
+    15: 0x4a4a4a,   // COAL_ORE - dark stone with black specks
+    16: 0x9a836a,   // IRON_ORE - stone with tan specks
+    17: 0xf5d76e,   // GOLD_ORE - golden yellow
+    18: 0x5ae0e6,   // DIAMOND_ORE - bright cyan
+    19: 0x857f7a,   // GRAVEL - brownish gray
+    20: 0xa4a8b0,   // CLAY - gray-blue
+    21: 0xffe066,   // TORCH - bright yellow (emissive)
+    22: 0xfff4b3,   // GLOWSTONE - warm yellow glow
+    23: 0xff4400,   // LAVA - orange-red (emissive)
+    24: 0x0f0014,   // OBSIDIAN - very dark purple
+    25: 0x5a7a5a,   // MOSSY_COBBLESTONE - greenish gray
   };
   const vxBlocks = new Map();    // 'x,y,z' -> { id, mesh } (sparse, player edits)
   const vxMultimeshes = [];      // instanced column / tree meshes
@@ -1741,79 +2169,174 @@
   }
   function _vxSurfaceFor(biome) {
     switch (biome) {
-      case 'Desert': return { id: 4, color: 0xe6c878 };           // sand
+      case 'Desert': return { id: 4, color: 0xe6c878, sub: 0xd4b866 }; // sand
       case 'Frozen Tundra':
-      case 'Snowy Hills': return { id: 1, color: 0xe6f2ff };       // snowy grass
-      case 'Taiga': return { id: 1, color: 0x4a8c4a };
-      case 'Jungle': return { id: 1, color: 0x2c8a2c };
-      case 'Forest': return { id: 1, color: 0x4faa3c };
-      case 'Savanna': return { id: 1, color: 0xa8b257 };
-      default: return { id: 1, color: 0x55aa44 };                  // plains grass
+      case 'Snowy Hills': return { id: 12, color: 0xf0f8ff, sub: 0xddeeff }; // snow
+      case 'Taiga': return { id: 1, color: 0x4a9050, sub: 0x3a7040 };
+      case 'Jungle': return { id: 1, color: 0x2c9a2c, sub: 0x1c7a1c };
+      case 'Forest': return { id: 1, color: 0x4faa3c, sub: 0x3f8a2c };
+      case 'Savanna': return { id: 1, color: 0xa8b257, sub: 0x98a247 };
+      case 'Swamp': return { id: 1, color: 0x5a7a4a, sub: 0x4a6a3a };
+      case 'Mountains': return { id: 3, color: 0x888888, sub: 0x707070 };
+      default: return { id: 1, color: 0x5da33f, sub: 0x4d932f }; // plains grass
     }
   }
   function _vxTreeColor(biome) {
-    if (biome === 'Jungle') return 0x1a6b1a;
-    if (biome === 'Taiga' || biome === 'Snowy Hills' || biome === 'Frozen Tundra') return 0x2a5a2a;
-    if (biome === 'Savanna') return 0x808a3a;
-    return 0x227a22;
+    if (biome === 'Jungle') return 0x1a7b1a;
+    if (biome === 'Taiga' || biome === 'Snowy Hills' || biome === 'Frozen Tundra') return 0x2a6a3a;
+    if (biome === 'Savanna') return 0x909a4a;
+    if (biome === 'Swamp') return 0x3a5a2a;
+    return 0x2d8a2d;
+  }
+  function _vxTrunkColor(biome) {
+    if (biome === 'Jungle') return 0x5a3a18;
+    if (biome === 'Taiga') return 0x4a2a10;
+    if (biome === 'Savanna') return 0x7a5a28;
+    return 0x6b4423;
   }
   function _vxTreeAllowed(biome) {
-    return biome === 'Forest' || biome === 'Jungle' || biome === 'Taiga' || biome === 'Plains';
+    return biome === 'Forest' || biome === 'Jungle' || biome === 'Taiga' ||
+           biome === 'Plains' || biome === 'Swamp';
+  }
+  function _vxTreeDensity(biome) {
+    if (biome === 'Jungle') return 0.025;
+    if (biome === 'Forest') return 0.018;
+    if (biome === 'Taiga') return 0.015;
+    if (biome === 'Swamp') return 0.008;
+    return 0.008; // Plains
   }
 
   function _vxHeightAt(x, z) {
     const seed = vxConfig.seed | 0;
-    const n = _vxFbm(x * 0.05, z * 0.05, seed, 3);
-    return Math.floor(VX_BASE_Y + n * VX_HEIGHT_AMPLITUDE);
+    // Use multi-octave FBM for more natural terrain variation
+    const n = _vxFbm(x * 0.02, z * 0.02, seed, 4);
+    // Add medium frequency hills
+    const n2 = _vxFbm(x * 0.06, z * 0.06, seed + 100, 2) * 0.4;
+    // Add fine detail
+    const n3 = _vxFbm(x * 0.15, z * 0.15, seed + 200, 2) * 0.15;
+    return Math.floor(VX_BASE_Y + (n + n2 + n3) * VX_HEIGHT_AMPLITUDE);
   }
 
-  function _vxSpawnColumn(x, z, bucket) {
+  // Spawn individual blocks for a column position — renders surface + subsurface
+  // blocks as individual cubes for authentic Minecraft look
+  function _vxSpawnBlocks(x, z, bucket) {
     const biome = _vxBiomeAt(x, z);
     const surface = _vxSurfaceFor(biome);
-    let height = _vxHeightAt(x, z);
-    let blockId = surface.id;
-    let color = surface.color;
-    if (height < VX_SEA_Y) {
-      if (height >= VX_SEA_Y - 1) { color = surface.color; }
-      else { color = 0x6b5a3a; blockId = 2; }
-    }
-    const colHeight = height - VX_BASE_Y + 1;
-    if (colHeight <= 0) return;
-    const cx = x + 0.5, cz = z + 0.5;
-    const cy = VX_BASE_Y + colHeight * 0.5 - 0.5;
-    // Push into the colour bucket so we can render thousands of columns
-    // with a handful of multimeshes instead of thousands of nodes.
-    let arr = bucket.get(color);
-    if (!arr) { arr = []; bucket.set(color, arr); }
-    arr.push({ cx, cy, cz, sy: colHeight, x, z, height, biome, blockId });
+    const height = _vxHeightAt(x, z);
 
-    // Trees scatter (kept as individual columns of cubes; counts are low).
+    const cx = x + 0.5, cz = z + 0.5;
+
+    // Render surface block + a few visible layers below (dirt/stone)
+    // This creates the authentic blocky Minecraft look
+    const VISIBLE_DEPTH = 4; // How many layers below surface to render
+    const stoneColor = VX_BLOCK_COLORS[3]; // Stone gray
+    const dirtColor = surface.sub || VX_BLOCK_COLORS[2]; // Dirt or biome sub-color
+
+    for (let dy = 0; dy < VISIBLE_DEPTH; dy++) {
+      const y = height - dy;
+      if (y < VX_BASE_Y - 2) break;
+
+      let color;
+      if (dy === 0) {
+        // Surface block
+        if (height < VX_SEA_Y) {
+          color = height >= VX_SEA_Y - 1 ? surface.color : 0x6b5a3a; // sand underwater
+        } else {
+          color = surface.color;
+        }
+      } else if (dy < 3) {
+        // Dirt/sub-surface layer
+        color = dirtColor;
+      } else {
+        // Stone layer
+        color = stoneColor;
+      }
+
+      let arr = bucket.get(color);
+      if (!arr) { arr = []; bucket.set(color, arr); }
+      arr.push({ cx, cy: y + 0.5, cz, sx: 1, sy: 1, sz: 1 });
+    }
+
+    // Ore generation in deeper visible blocks (rare chance)
+    if (height > VX_BASE_Y + 10) {
+      const oreRoll = _vxHash2(x, z, vxConfig.seed + 77);
+      if (oreRoll > 0.97) {
+        // Coal ore
+        const oreY = height - VISIBLE_DEPTH;
+        let oreArr = bucket.get(VX_BLOCK_COLORS[15]);
+        if (!oreArr) { oreArr = []; bucket.set(VX_BLOCK_COLORS[15], oreArr); }
+        oreArr.push({ cx, cy: oreY + 0.5, cz, sx: 1, sy: 1, sz: 1 });
+      } else if (oreRoll > 0.95) {
+        // Iron ore
+        const oreY = height - VISIBLE_DEPTH;
+        let oreArr = bucket.get(VX_BLOCK_COLORS[16]);
+        if (!oreArr) { oreArr = []; bucket.set(VX_BLOCK_COLORS[16], oreArr); }
+        oreArr.push({ cx, cy: oreY + 0.5, cz, sx: 1, sy: 1, sz: 1 });
+      }
+    }
+
+    // Trees scatter — individual trunk blocks + leaf cube
+    const treeDensity = _vxTreeDensity(biome);
     if (_vxTreeAllowed(biome) && height >= VX_SEA_Y &&
-        _vxHash2(x, z, vxConfig.seed + 31) < VX_TREE_CHANCE) {
-      const trunkH = 4 + Math.floor(_vxHash2(x, z, vxConfig.seed + 53) * 2);
-      const trunkColor = 0x6b3a18;
+        _vxHash2(x, z, vxConfig.seed + 31) < treeDensity) {
+
+      // Vary tree height by biome
+      let baseH = 4, varH = 2;
+      if (biome === 'Jungle') { baseH = 6; varH = 4; }
+      else if (biome === 'Taiga') { baseH = 5; varH = 3; }
+      const trunkH = baseH + Math.floor(_vxHash2(x, z, vxConfig.seed + 53) * varH);
+
+      // Biome-specific trunk color — render as individual blocks
+      const trunkColor = _vxTrunkColor(biome);
       let trunkArr = bucket.get(trunkColor);
       if (!trunkArr) { trunkArr = []; bucket.set(trunkColor, trunkArr); }
-      trunkArr.push({ cx, cy: height + trunkH * 0.5 + 0.5, cz,
-                      sy: trunkH, sx: 0.6, sz: 0.6 });
+
+      // Individual trunk blocks (authentic look)
+      for (let ty = 1; ty <= trunkH; ty++) {
+        trunkArr.push({ cx, cy: height + ty + 0.5, cz, sx: 1, sy: 1, sz: 1 });
+      }
+
+      // Biome-specific leaf color and canopy
       const leafColor = _vxTreeColor(biome);
       let leafArr = bucket.get(leafColor);
       if (!leafArr) { leafArr = []; bucket.set(leafColor, leafArr); }
-      leafArr.push({ cx, cy: height + trunkH + 1.5, cz,
-                     sy: 2.5, sx: 3, sz: 3 });
+
+      // Canopy as a cluster of leaf blocks (more authentic)
+      const canopyY = height + trunkH + 1;
+      let canopyR = 2;
+      if (biome === 'Taiga') canopyR = 1;
+      else if (biome === 'Jungle') canopyR = 2;
+      else if (biome === 'Savanna') canopyR = 3;
+
+      // Render leaf blocks in a rough sphere/dome shape
+      for (let lx = -canopyR; lx <= canopyR; lx++) {
+        for (let lz = -canopyR; lz <= canopyR; lz++) {
+          for (let ly = 0; ly <= 2; ly++) {
+            const dist = Math.abs(lx) + Math.abs(lz) + ly;
+            // Skip corners for rounder shape
+            if (dist > canopyR + 1) continue;
+            // Random holes for natural look
+            if (_vxHash2(x + lx, z + lz, vxConfig.seed + ly + 99) > 0.75) continue;
+
+            leafArr.push({
+              cx: cx + lx, cy: canopyY + ly + 0.5, cz: cz + lz,
+              sx: 1, sy: 1, sz: 1
+            });
+          }
+        }
+      }
     }
   }
 
   function _vxGenerateWorld() {
     if (vxGenerated) return;
     vxGenerated = true;
-    // Bucket every column / tree segment by colour, then issue one
-    // instanced multimesh per colour. For a 64x64 world this turns ~4k
-    // node spawns into ~7-10 multimesh draws.
+    // Bucket every block by colour, then issue one instanced multimesh
+    // per colour. Individual blocks create authentic Minecraft look.
     const bucket = new Map();
     for (let dx = -VX_RADIUS; dx < VX_RADIUS; dx++) {
       for (let dz = -VX_RADIUS; dz < VX_RADIUS; dz++) {
-        _vxSpawnColumn(dx, dz, bucket);
+        _vxSpawnBlocks(dx, dz, bucket);
       }
     }
     for (const [color, arr] of bucket.entries()) {
@@ -1830,12 +2353,26 @@
       finalizeInstances(inst);
       vxMultimeshes.push(inst);
     }
-    vxWaterMesh = createPlane(VX_RADIUS * 2, VX_RADIUS * 2, 0x2a6dc0,
-      [0, VX_SEA_Y + 0.05, 0], { material: 'standard', roughness: 0.3, metallic: 0.1 });
+    // Water plane with semi-transparency for better visual parity
+    vxWaterMesh = createPlane(VX_RADIUS * 2, VX_RADIUS * 2, 0x3a8ac5,
+      [0, VX_SEA_Y + 0.05, 0], {
+        material: 'standard',
+        roughness: 0.15,
+        metallic: 0.4,
+        opacity: 0.75,
+        transparent: true,
+      });
+
+    // Set up atmospheric fog for voxel worlds to match browser rendering
+    setFog(0x87ceeb, VX_RADIUS * 0.8, VX_RADIUS * 1.8);
   }
 
   function configureVoxelWorld(opts) {
     if (opts && typeof opts === 'object') Object.assign(vxConfig, opts);
+    // Update seed-dependent values if seed changed
+    if (opts && opts.seed != null) {
+      vxGenerated = false; // Force regeneration on next load
+    }
   }
   function enableVoxelTextures(_b) { /* visual only — flat colours for now */ }
   function getVoxelConfig() { return Object.assign({}, vxConfig); }
@@ -2112,10 +2649,10 @@
     white: 0xffffff, black: 0x000000, accent: 0xff8800,
   };
   if (typeof global.uiColors === 'undefined') global.uiColors = defaultUiColors;
-  const sceneNs = { createCube, createSphere, createPlane, createCylinder, createCone, createTorus, createAdvancedCube, removeMesh, destroyMesh: removeMesh, setPosition, setRotation, rotateMesh, setScale, getPosition, createInstancedMesh, setInstanceTransform, setInstancePosition, setInstanceColor, finalizeInstances, engine: global.engine };
-  const cameraNs = { setCameraPosition, setCameraTarget, setCameraFOV };
+  const sceneNs = { createCube, createSphere, createPlane, createCylinder, createCone, createTorus, createAdvancedCube, createAdvancedSphere, createCapsule, removeMesh, destroyMesh: removeMesh, setPosition, setRotation, rotateMesh, moveMesh, setScale, getPosition, getMesh: function() { return null; }, createInstancedMesh, setInstanceTransform, setInstancePosition, setInstanceColor, finalizeInstances, setMeshVisible, setMeshOpacity: function(h, o) { setMeshVisible(h, o > 0); }, setCastShadow: function() {}, setReceiveShadow: function() {}, setFlatShading: function() {}, setPBRProperties: function() {}, createLODMesh: function() { return null; }, removeLODMesh: function() {}, updateLODs: function() {}, removeInstancedMesh: removeMesh, raycastFromCamera: function() { return null; }, get3DStats: function() { return {}; }, getRenderer: function() { return null; }, getScene: function() { return null; }, getRotation: function() { return [0, 0, 0]; }, engine: global.engine };
+  const cameraNs = { setCameraPosition, setCameraTarget, setCameraFOV, setCameraLookAt };
   const lightNs = { setLightDirection, setFog, clearFog, createPointLight, createSpotLight, createAmbientLight, setAmbientLight, setLightColor, setLightEnergy };
-  const drawNs = { cls, print: novaPrint, printCentered, printRight, rect, rectfill, line, pixel, pset, circle, circfill, ellipse, arc, bezier, drawRect, drawPanel, drawGlowText, drawGlowTextCentered, drawRadialGradient, drawGradient, drawProgressBar, drawHealthBar, drawPixelBorder, drawCrosshair, drawScanlines, drawNoise, drawTriangle, drawDiamond, drawStarburst, poly, rgba8, screenWidth, screenHeight };
+  const drawNs = { cls, print: novaPrint, printCentered, printRight, rect, rectfill, line, pixel, pset, circle, circfill, ellipse, arc, bezier, drawRect, drawPanel, drawGlowText, drawGlowTextCentered, drawRadialGradient, drawGradient, drawProgressBar, drawHealthBar, drawPixelBorder, drawCrosshair, drawScanlines, drawNoise, drawTriangle, drawDiamond, drawStarburst, poly, rgba8, screenWidth, screenHeight, colorLerp, colorMix, hslColor, hexColor: function(hex, alpha) { return colorFromHex(hex, alpha); }, n64Palette, measureText, scrollingText, drawWave, drawPulsingText, drawCheckerboard, drawFloatingTexts, drawFloatingTexts3D, createMinimap, drawMinimap, drawSkyGradient };
   const inputNs = {
     // raw key code surface (web-style codes)
     key, keyp, isKeyDown, isKeyPressed,
@@ -2132,7 +2669,7 @@
     pollInput,
   };
   const fxNs = { enablePixelation, enableDithering, enableBloom, setBloomStrength, enableFXAA, enableChromaticAberration, enableVignette, setN64Mode, setPSXMode, enableRetroEffects, isEffectsEnabled, enableSSR, enableSSAO, enableVolumetricFog, enableDOF, setExposure, setTonemap, setColorAdjustment };
-  const uiNs = { createButton, createLabel, createPanel, createSlider, createCheckbox, createDialog, clearButtons, updateAllButtons, drawAllButtons, drawGradientRect, drawText, drawTextShadow, drawTextOutline, setFont, setTextAlign, setTextBaseline, grid, parseCanvasUI, renderCanvasUI, updateCanvasUI, uiColors: global.uiColors, centerX: function (w) { return Math.floor((640 - (w || 0)) / 2); }, centerY: function (h) { return Math.floor((360 - (h || 0)) / 2); } };
+  const uiNs = { createButton, createLabel, createPanel, createSlider, createCheckbox, createDialog, clearButtons, updateAllButtons, drawAllButtons, drawGradientRect, drawPanel, drawText, drawTextShadow, drawTextOutline, setFont, setTextAlign, setTextBaseline, grid, parseCanvasUI, renderCanvasUI, updateCanvasUI, uiColors: global.uiColors, centerX: function (w) { return Math.floor((640 - (w || 0)) / 2); }, centerY: function (h) { return Math.floor((360 - (h || 0)) / 2); }, Screen: (function() { function Screen() { this.data = {}; } Screen.prototype.enter = function(d) { this.data = Object.assign({}, this.data, d || {}); }; Screen.prototype.exit = function() {}; Screen.prototype.update = function() {}; Screen.prototype.draw = function() {}; return Screen; }()), getFont: function() { return 'default'; }, uiProgressBar: drawProgressBar };
   const stageNs = { createGraphicsNode, createMovieClip, createStage, createScreen, pushScreen, popScreen, createShake, createCard, createMenu, createStartScreen };
   const particlesNs = { createParticleSystem, createEmitter2D, createParticles };
   const skyboxNs = { createSpaceSkybox, createGalaxySkybox, createSunsetSkybox, createDawnSkybox, createNightSkybox, createFoggySkybox, createDuskSkybox, createStormSkybox, createAlienSkybox, createUnderwaterSkybox, setSkybox, createSkybox };
@@ -2144,6 +2681,8 @@
     setVoxelDayTime, moveVoxelEntity, checkVoxelCollision, raycastVoxelBlock,
     spawnVoxelEntity, updateVoxelEntities, getVoxelEntityCount, cleanupVoxelEntities,
     setVoxel, getVoxel, clearVoxels, generateVoxelTerrain,
+    // Block type constants for cart parity
+    BLOCK_TYPES: VX_BLOCK_TYPES,
   };
 
   // Carts that go beyond the explicit lists above destructure things like
@@ -2295,6 +2834,10 @@
     'drawText', 'drawTextShadow', 'drawTextOutline', 'drawGradientRect',
     'drawPanel', 'drawProgressBar', 'drawSprite', 'drawTile',
     'circfill', 'ellipsefill', 'trifill', 'spr', 'sspr',
+    'scrollingText', 'drawWave', 'drawPulsingText', 'drawCheckerboard',
+    'drawFloatingTexts', 'drawFloatingTexts3D', 'createMinimap', 'drawMinimap',
+    'drawSkyGradient', 'measureText',
+    'colorLerp', 'colorMix', 'hslColor', 'hexColor',
     // Input helpers some carts grab without destructuring.
     'getMouseX', 'getMouseY', 'mouseDown', 'isKeyDown',
     'getHandGesture', 'getHandLandmarks', 'initHandTracking',
@@ -2359,6 +2902,26 @@
   if (typeof global.hexColor === 'undefined') {
     global.hexColor = function (hex, alpha) { return colorFromHex(hex, alpha); };
   }
+  // Install real implementations for bare-global draw helpers.
+  // These run AFTER flatStubNames so they override the no-op stubs.
+  global.colorLerp = colorLerp;
+  global.colorMix = colorMix;
+  global.hslColor = hslColor;
+  global.n64Palette = n64Palette;
+  global.measureText = measureText;
+  global.scrollingText = scrollingText;
+  global.drawWave = drawWave;
+  global.drawPulsingText = drawPulsingText;
+  global.drawCheckerboard = drawCheckerboard;
+  global.drawFloatingTexts = drawFloatingTexts;
+  global.drawFloatingTexts3D = drawFloatingTexts3D;
+  global.createMinimap = createMinimap;
+  global.drawMinimap = drawMinimap;
+  global.drawSkyGradient = drawSkyGradient;
+  global.setCameraLookAt = setCameraLookAt;
+  global.setMeshVisible = setMeshVisible;
+  global.moveMesh = moveMesh;
+  global.getPosition = getPosition;
 
   // ---------------- meta.json processing -------------------------------
   // The host parses meta.json and exposes it as `globalThis.cart_meta` just

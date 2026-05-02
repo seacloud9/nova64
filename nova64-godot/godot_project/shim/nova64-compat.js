@@ -2537,6 +2537,13 @@
   const vxConfig = { seed: 1337, renderDistance: 3, maxMeshRebuildsPerFrame: 3, enableLOD: true };
   let vxGenerated = false;
   let vxWaterMesh = 0;
+
+  // Chunk streaming state
+  const VX_CHUNK_SIZE = 16;      // blocks per chunk side
+  const VX_CHUNK_RADIUS = 4;     // chunks to load around player (4 = 64 blocks radius)
+  const vxLoadedChunks = new Map(); // 'cx,cz' -> { meshHandles: [...], waterMesh: handle }
+  let vxLastPlayerChunkX = null;
+  let vxLastPlayerChunkZ = null;
   // Cached height / biome lookups to avoid re-computing FBM per block per chunk.
   const _vxHeightCache = new Map();
   const _vxBiomeCache  = new Map();
@@ -2918,11 +2925,13 @@
     const stoneColor = VX_BLOCK_COLORS[3];
 
     // Find the minimum neighbor height to determine visible depth
-    let minNeighbor = height;
-    if (x > -VX_RADIUS) minNeighbor = Math.min(minNeighbor, _vxHeightAtCached(x - 1, z));
-    if (x < VX_RADIUS - 1) minNeighbor = Math.min(minNeighbor, _vxHeightAtCached(x + 1, z));
-    if (z > -VX_RADIUS) minNeighbor = Math.min(minNeighbor, _vxHeightAtCached(x, z - 1));
-    if (z < VX_RADIUS - 1) minNeighbor = Math.min(minNeighbor, _vxHeightAtCached(x, z + 1));
+    // Height cache works for any coordinate (noise-based, not chunk-dependent)
+    const minNeighbor = Math.min(
+      _vxHeightAtCached(x - 1, z),
+      _vxHeightAtCached(x + 1, z),
+      _vxHeightAtCached(x, z - 1),
+      _vxHeightAtCached(x, z + 1)
+    );
 
     // Limit subsurface depth to avoid too many blocks
     const maxDepth = Math.min(height - minNeighbor, 5);
@@ -2970,24 +2979,27 @@
     }
   }
 
-  function _vxGenerateWorld() {
-    if (vxGenerated) return;
-    vxGenerated = true;
+  // Convert world position to chunk coordinates
+  function _vxWorldToChunk(x) { return Math.floor(x / VX_CHUNK_SIZE); }
 
-    // Clear caches from any previous generation (seed change, reset).
-    _vxHeightCache.clear();
-    _vxBiomeCache.clear();
+  // Generate a single chunk at chunk coordinates (cx, cz)
+  function _vxGenerateChunk(cx, cz) {
+    const chunkKey = cx + ',' + cz;
+    if (vxLoadedChunks.has(chunkKey)) return; // Already loaded
 
-    // Use multimesh instancing approach - bucket blocks by color, then create
-    // one instanced mesh per color. This is fast and reliable.
+    const worldX = cx * VX_CHUNK_SIZE;
+    const worldZ = cz * VX_CHUNK_SIZE;
+
+    // Bucket blocks by color for this chunk
     const bucket = new Map();
-    for (let dx = -VX_RADIUS; dx < VX_RADIUS; dx++) {
-      for (let dz = -VX_RADIUS; dz < VX_RADIUS; dz++) {
-        _vxSpawnBlocks(dx, dz, bucket);
+    for (let dx = 0; dx < VX_CHUNK_SIZE; dx++) {
+      for (let dz = 0; dz < VX_CHUNK_SIZE; dz++) {
+        _vxSpawnBlocks(worldX + dx, worldZ + dz, bucket);
       }
     }
 
-    // Create instanced meshes for each color bucket
+    // Create instanced meshes for this chunk
+    const meshHandles = [];
     for (const [color, arr] of bucket.entries()) {
       if (arr.length === 0) continue;
       const inst = createInstancedMesh('cube', arr.length, color,
@@ -3001,12 +3013,12 @@
         setInstanceTransform(inst, i, it.cx, it.cy, it.cz, 0, 0, 0, sx, sy, sz);
       }
       finalizeInstances(inst);
-      vxMultimeshes.push(inst);
+      meshHandles.push(inst);
     }
 
-    // Water plane with semi-transparency
-    vxWaterMesh = createPlane(VX_RADIUS * 2, VX_RADIUS * 2, VX_BLOCK_COLORS[5],
-      [0, VX_SEA_Y + 0.05, 0], {
+    // Water plane for this chunk
+    const waterMesh = createPlane(VX_CHUNK_SIZE, VX_CHUNK_SIZE, VX_BLOCK_COLORS[5],
+      [worldX + VX_CHUNK_SIZE / 2, VX_SEA_Y + 0.05, worldZ + VX_CHUNK_SIZE / 2], {
         material: 'standard',
         roughness: 0.2,
         metallic: 0.3,
@@ -3014,8 +3026,81 @@
         transparent: true,
       });
 
+    vxLoadedChunks.set(chunkKey, { meshHandles, waterMesh });
+  }
+
+  // Unload a chunk at chunk coordinates (cx, cz)
+  function _vxUnloadChunk(cx, cz) {
+    const chunkKey = cx + ',' + cz;
+    const chunk = vxLoadedChunks.get(chunkKey);
+    if (!chunk) return;
+
+    // Destroy mesh handles
+    for (const inst of chunk.meshHandles) {
+      const h = _resolveInstanceHandle(inst);
+      if (h) call('mesh.destroy', { handle: h });
+    }
+    if (chunk.waterMesh) removeMesh(chunk.waterMesh);
+
+    vxLoadedChunks.delete(chunkKey);
+  }
+
+  // Update chunks around player position - load nearby, unload distant
+  function _vxUpdateChunks(playerX, playerZ) {
+    const pcx = _vxWorldToChunk(playerX);
+    const pcz = _vxWorldToChunk(playerZ);
+
+    // Only update if player moved to a different chunk
+    if (pcx === vxLastPlayerChunkX && pcz === vxLastPlayerChunkZ) return;
+    vxLastPlayerChunkX = pcx;
+    vxLastPlayerChunkZ = pcz;
+
+    // Determine which chunks should be loaded
+    const neededChunks = new Set();
+    for (let dx = -VX_CHUNK_RADIUS; dx <= VX_CHUNK_RADIUS; dx++) {
+      for (let dz = -VX_CHUNK_RADIUS; dz <= VX_CHUNK_RADIUS; dz++) {
+        neededChunks.add((pcx + dx) + ',' + (pcz + dz));
+      }
+    }
+
+    // Unload chunks that are too far
+    for (const chunkKey of vxLoadedChunks.keys()) {
+      if (!neededChunks.has(chunkKey)) {
+        const [cx, cz] = chunkKey.split(',').map(Number);
+        _vxUnloadChunk(cx, cz);
+      }
+    }
+
+    // Load chunks that are needed but not loaded (limit per frame for perf)
+    let loadedThisFrame = 0;
+    const maxLoadsPerFrame = vxConfig.maxMeshRebuildsPerFrame || 3;
+    for (let dx = -VX_CHUNK_RADIUS; dx <= VX_CHUNK_RADIUS; dx++) {
+      for (let dz = -VX_CHUNK_RADIUS; dz <= VX_CHUNK_RADIUS; dz++) {
+        const chunkKey = (pcx + dx) + ',' + (pcz + dz);
+        if (!vxLoadedChunks.has(chunkKey)) {
+          if (loadedThisFrame >= maxLoadsPerFrame) return; // Rate limit
+          _vxGenerateChunk(pcx + dx, pcz + dz);
+          loadedThisFrame++;
+        }
+      }
+    }
+  }
+
+  // Legacy function - now just triggers initial chunk loading around origin
+  function _vxGenerateWorld() {
+    if (vxGenerated) return;
+    vxGenerated = true;
+
+    // Clear caches from any previous generation (seed change, reset).
+    _vxHeightCache.clear();
+    _vxBiomeCache.clear();
+
     // Set fog to match web version's atmosphere
-    setFog(0x87ceeb, VX_RADIUS * 0.6, VX_RADIUS * 1.2);
+    const fogRadius = VX_CHUNK_SIZE * VX_CHUNK_RADIUS;
+    setFog(0x87ceeb, fogRadius * 0.4, fogRadius * 1.0);
+
+    // Initial chunk loading around origin
+    _vxUpdateChunks(0, 0);
   }
 
   function configureVoxelWorld(opts) {
@@ -3070,11 +3155,39 @@
   }
 
   function loadVoxelWorld(_name) { _vxGenerateWorld(); return true; }
-  function forceLoadVoxelChunks(_cx, _cz) { _vxGenerateWorld(); }
-  function updateVoxelWorld(_x, _z) { _vxGenerateWorld(); }
+  function forceLoadVoxelChunks(cx, cz) {
+    _vxGenerateWorld(); // Ensure fog/initial state set
+    // Force load all chunks in radius immediately (no rate limit)
+    const pcx = _vxWorldToChunk(cx || 0);
+    const pcz = _vxWorldToChunk(cz || 0);
+    for (let dx = -VX_CHUNK_RADIUS; dx <= VX_CHUNK_RADIUS; dx++) {
+      for (let dz = -VX_CHUNK_RADIUS; dz <= VX_CHUNK_RADIUS; dz++) {
+        _vxGenerateChunk(pcx + dx, pcz + dz);
+      }
+    }
+    vxLastPlayerChunkX = pcx;
+    vxLastPlayerChunkZ = pcz;
+  }
+
+  function updateVoxelWorld(x, z) {
+    _vxGenerateWorld(); // Ensure fog/initial state set
+    _vxUpdateChunks(x || 0, z || 0);
+  }
 
   function resetVoxelWorld() {
-    // Destroy native chunk meshes from voxel.uploadChunk path.
+    // Destroy all loaded chunks
+    for (const [chunkKey, chunk] of vxLoadedChunks.entries()) {
+      for (const inst of chunk.meshHandles) {
+        const h = _resolveInstanceHandle(inst);
+        if (h) call('mesh.destroy', { handle: h });
+      }
+      if (chunk.waterMesh) removeMesh(chunk.waterMesh);
+    }
+    vxLoadedChunks.clear();
+    vxLastPlayerChunkX = null;
+    vxLastPlayerChunkZ = null;
+
+    // Destroy native chunk meshes from voxel.uploadChunk path (legacy).
     for (const h of vxChunkHandles) {
       if (h) call('mesh.destroy', { handle: h });
     }

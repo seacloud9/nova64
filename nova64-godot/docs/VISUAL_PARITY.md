@@ -192,6 +192,14 @@ Fixes for broken voxel rendering (stretched columns, zigzag trees, visual artifa
 - **Atmospheric fog**: Sky-blue fog automatically set when voxel world generates,
   with near/far distances scaled to render radius for proper distance fade.
 
+- **Dynamic chunk streaming**: Voxel world now loads/unloads 16×16 block chunks
+  as the player moves. `updateVoxelWorld(x, z)` streams chunks around the player
+  position, loading new chunks when needed and unloading distant ones to save
+  memory. `forceLoadVoxelChunks(x, z)` loads all chunks in radius immediately.
+  - Chunk radius: 4 chunks (64 blocks) around player
+  - Rate-limited loading: max 3 chunks per frame for smooth performance
+  - Each chunk has its own water plane for seamless water across boundaries
+
 ### Phase 6 — Input play-feel and default visual punch (commit `TBD`)
 
 Improvements to core play responsiveness and out-of-the-box scene atmosphere.

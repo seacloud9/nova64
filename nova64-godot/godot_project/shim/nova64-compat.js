@@ -519,6 +519,11 @@
     __mtxStack.length = 0;
   };
 
+  // Host-invoked once per frame (start of cart_update) to advance the
+  // input "previous frame" window so btnp/keyp/mousePressed give a clean
+  // single-frame edge.
+  global.__nova64_inputStep = function () { _inputStep(); };
+
   function rgba8(r, g, b, a) {
     a = a == null ? 255 : a;
     return ((a & 0xff) << 24) | ((r & 0xff) << 16) | ((g & 0xff) << 8) | (b & 0xff);
@@ -733,25 +738,138 @@
   function screenWidth() { return 640; }
   function screenHeight() { return 360; }
 
-  // ---------------- input -----------------------------------------------
-  let inputState = { left: false, right: false, up: false, down: false, action: false, cancel: false, axisX: 0, axisY: 0, mouseDown: false };
+  // ---------------- input ------------------------------------------------
+  // Web-parity surface: every fn in runtime/input.js exposeTo() ends up here
+  // with matching semantics. The bridge polls the actual Godot Input
+  // singleton once per frame; everything else (just-pressed deltas,
+  // KEYMAP[0..15] lookup, single-char key normalization) is handled
+  // client-side so cart code that ports from the browser sees identical
+  // results.
+  //
+  // KEYMAP — mirrors runtime/input.js verbatim so btn(i)/btnp(i) behave
+  // the same on both backends.
+  const KEYMAP = {
+    0: 'ArrowLeft', 1: 'ArrowRight', 2: 'ArrowUp', 3: 'ArrowDown',
+    4: 'KeyZ',  5: 'KeyX',  6: 'KeyC',  7: 'KeyV',
+    8: 'KeyA',  9: 'KeyS', 10: 'KeyQ', 11: 'KeyW',
+    12: 'Enter', 13: 'Space',
+  };
+
+  let inputState = {
+    left: false, right: false, up: false, down: false,
+    action: false, cancel: false,
+    axisX: 0, axisY: 0,
+    mouseX: 0, mouseY: 0, mouseDown: false,
+    keys: [],
+    gpConnected: false,
+    gpLeftX: 0, gpLeftY: 0, gpRightX: 0, gpRightY: 0,
+    gpButtons: [],
+  };
+
+  // Tracked client-side so we can compute keyp/btnp/mousePressed correctly
+  // even though the bridge call is stateless.
+  let keysHeld = Object.create(null);
+  let keysPrev = Object.create(null);
+  let gpHeld   = Object.create(null);
+  let gpPrev   = Object.create(null);
+  let mouseDownPrev = false;
+  let mousePressedFlag = false;
+  let _lastPollFrame = -1;
+  let _frameTick = 0;
+
+  function _toBoolMap(arr) {
+    const m = Object.create(null);
+    if (Array.isArray(arr)) {
+      for (let i = 0; i < arr.length; i++) m[arr[i]] = true;
+    }
+    return m;
+  }
+
   function pollInput() {
-    inputState = call('input.poll', {}) || inputState;
+    // Snapshot prev-state once per host frame (cart_update + cart_draw both
+    // call into input fns; we want a single delta per frame).
+    if (_lastPollFrame !== _frameTick) {
+      keysPrev = keysHeld;
+      gpPrev = gpHeld;
+      mouseDownPrev = !!inputState.mouseDown;
+      _lastPollFrame = _frameTick;
+    }
+    const r = call('input.poll', {});
+    if (r) {
+      inputState = r;
+      keysHeld = _toBoolMap(r.keys);
+      gpHeld = _toBoolMap(r.gpButtons);
+      // Edge-trigger mousePressed (true for one frame after a press).
+      if (!!r.mouseDown && !mouseDownPrev) mousePressedFlag = true;
+    }
     return inputState;
   }
-  function key(name) {
+
+  // Called by the host once per frame to advance our "previous frame"
+  // window — see Nova64Host::cart_update glue.
+  function _inputStep() {
+    _frameTick++;
+    mousePressedFlag = false;
+  }
+
+  function _normKey(code) {
+    if (code === ' ') return 'Space';
+    if (typeof code !== 'string') return '';
+    if (code.length === 1) return 'Key' + code.toUpperCase();
+    return code;
+  }
+
+  function key(code) {
+    pollInput();
+    return !!keysHeld[code];
+  }
+  function keyp(code) {
+    pollInput();
+    return !!keysHeld[code] && !keysPrev[code];
+  }
+  function isKeyDown(code) {
+    pollInput();
+    return !!keysHeld[_normKey(code)];
+  }
+  function isKeyPressed(code) {
+    pollInput();
+    const k = _normKey(code);
+    return !!keysHeld[k] && !keysPrev[k];
+  }
+  function btn(i) {
+    pollInput();
+    const code = KEYMAP[i | 0] || '';
+    return !!keysHeld[code] || !!gpHeld[i | 0];
+  }
+  function btnp(i) {
+    pollInput();
+    const code = KEYMAP[i | 0] || '';
+    const keyJust = !!keysHeld[code] && !keysPrev[code];
+    const padJust = !!gpHeld[i | 0] && !gpPrev[i | 0];
+    return keyJust || padJust;
+  }
+  function mouseX() { pollInput(); return inputState.mouseX | 0; }
+  function mouseY() { pollInput(); return inputState.mouseY | 0; }
+  function mouseDown() { pollInput(); return !!inputState.mouseDown; }
+  function mousePressed() {
+    pollInput();
+    return mousePressedFlag || (!!inputState.mouseDown && !mouseDownPrev);
+  }
+  function gamepadAxis(name) {
     pollInput();
     switch (name) {
-      case 'ArrowLeft': case 'a': case 'A': return !!inputState.left;
-      case 'ArrowRight': case 'd': case 'D': return !!inputState.right;
-      case 'ArrowUp': case 'w': case 'W': return !!inputState.up;
-      case 'ArrowDown': case 's': case 'S': return !!inputState.down;
-      case ' ': case 'Space': case 'Enter': return !!inputState.action;
-      case 'Escape': return !!inputState.cancel;
-      default: return false;
+      case 'leftX':  return +inputState.gpLeftX  || 0;
+      case 'leftY':  return +inputState.gpLeftY  || 0;
+      case 'rightX': return +inputState.gpRightX || 0;
+      case 'rightY': return +inputState.gpRightY || 0;
+      default: return 0;
     }
   }
-  const isKeyPressed = key;
+  function gamepadConnected() { pollInput(); return !!inputState.gpConnected; }
+  function leftStickX()  { return gamepadAxis('leftX'); }
+  function leftStickY()  { return gamepadAxis('leftY'); }
+  function rightStickX() { return gamepadAxis('rightX'); }
+  function rightStickY() { return gamepadAxis('rightY'); }
 
   // ---------------- effects (mapped to Godot WorldEnvironment) ---------
   let effectsEnabled = false;
@@ -1528,19 +1646,22 @@
   function requestAnimationFrame_(_fn) { warnOnce('requestAnimationFrame'); return _timerId++; }
   function cancelAnimationFrame_(_id) { /* no-op */ }
 
-  // Extra input stubs — most carts only check truthy/falsy.
+  // Extra input stubs — kept for cart code that still imports the old names.
   const buttonState = { a: false, b: false, x: false, y: false, l: false, r: false, start: false, select: false };
-  function btn(_name) { return false; }
-  function btnp(_name) { return false; }
   const padNs = {
-    button(_i, _b) { return false; },
+    button(i, _b) { return btn(i); },
     axis(_i, _a) { return 0; },
-    isConnected(_i) { return false; },
+    isConnected(_i) { return gamepadConnected(); },
+    leftX:  leftStickX,
+    leftY:  leftStickY,
+    rightX: rightStickX,
+    rightY: rightStickY,
   };
   const mouseNs = {
-    x: 0, y: 0,
-    isDown(_b) { return false; },
-    wasPressed(_b) { return false; },
+    get x() { return mouseX(); },
+    get y() { return mouseY(); },
+    isDown(_b) { return mouseDown(); },
+    wasPressed(_b) { return mousePressed(); },
   };
 
   // Misc free helpers some carts grab off globalThis.
@@ -1563,7 +1684,21 @@
   const cameraNs = { setCameraPosition, setCameraTarget, setCameraFOV };
   const lightNs = { setLightDirection, setFog, clearFog, createPointLight, createSpotLight, createAmbientLight, setAmbientLight, setLightColor, setLightEnergy };
   const drawNs = { cls, print: novaPrint, printCentered, printRight, rect, rectfill, line, pixel, pset, circle, circfill, ellipse, arc, bezier, drawRect, drawPanel, drawGlowText, drawGlowTextCentered, drawRadialGradient, drawGradient, drawProgressBar, drawHealthBar, drawPixelBorder, drawCrosshair, drawScanlines, drawNoise, drawTriangle, drawDiamond, drawStarburst, poly, rgba8, screenWidth, screenHeight };
-  const inputNs = { key, isKeyPressed, isKeyDown: key, keyp: key, pollInput, btn, btnp, pad: padNs, mouse: mouseNs };
+  const inputNs = {
+    // raw key code surface (web-style codes)
+    key, keyp, isKeyDown, isKeyPressed,
+    // indexed buttons (KEYMAP[0..15])
+    btn, btnp,
+    // mouse
+    mouseX, mouseY, mouseDown, mousePressed,
+    // gamepad
+    gamepadAxis, gamepadConnected,
+    leftStickX, leftStickY, rightStickX, rightStickY,
+    // grouped object accessors used by some carts
+    pad: padNs, mouse: mouseNs,
+    // host hooks
+    pollInput,
+  };
   const fxNs = { enablePixelation, enableDithering, enableBloom, setBloomStrength, enableFXAA, enableChromaticAberration, enableVignette, setN64Mode, setPSXMode, enableRetroEffects, isEffectsEnabled, enableSSR, enableSSAO, enableVolumetricFog, enableDOF, setExposure, setTonemap, setColorAdjustment };
   const uiNs = { createButton, createLabel, createPanel, createSlider, createCheckbox, createDialog, clearButtons, updateAllButtons, drawAllButtons, drawGradientRect, drawText, drawTextShadow, drawTextOutline, setFont, setTextAlign, setTextBaseline, grid, parseCanvasUI, renderCanvasUI, updateCanvasUI, uiColors: global.uiColors };
   const stageNs = { createGraphicsNode, createMovieClip, createStage, createScreen, pushScreen, popScreen, createShake, createCard, createMenu, createStartScreen };

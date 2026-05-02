@@ -1203,38 +1203,123 @@ Dictionary Nova64Host::_cmd_env_set(const Dictionary &p) {
     Dictionary out; out["ok"] = true; return out;
 }
 
-// Polls the keyboard / mouse / first gamepad and returns a snapshot in
-// the Nova64 input shape: { left, right, up, down, action, cancel,
-//   axisX, axisY, mouseX, mouseY, mouseDown }.
+// Polls the keyboard / mouse / first gamepad and returns a rich snapshot
+// the JS shim translates into the full Nova64 input surface
+// (btn/btnp/key/keyp/isKeyDown/mouseX/mouseY/gamepadAxis/...).
+//
+// Output keys (all best-effort, missing fields default to falsy in the shim):
+//   left/right/up/down/action/cancel  - legacy convenience booleans
+//   axisX/axisY                       - keyboard or gamepad-left composite
+//   keys: [code, ...]                 - currently held key codes,
+//                                       web style ("KeyA", "ArrowLeft",
+//                                       "Space", "Enter", "Escape", ...)
+//   mouseX/mouseY/mouseDown           - mouse in 640x360 logical coords
+//   gpConnected                       - first gamepad present
+//   gpLeftX/gpLeftY/gpRightX/gpRightY - gamepad axes (deadzone applied)
+//   gpButtons: [stdIdx, ...]          - held standard-mapped button indices
 Dictionary Nova64Host::_cmd_input_poll(const Dictionary &) {
     Dictionary out;
     Input *in = Input::get_singleton();
     if (!in) return out;
 
-    auto key = [&](Key k) -> bool { return in->is_key_pressed(k); };
+    auto kp = [&](Key k) -> bool { return in->is_key_pressed(k); };
 
-    bool left   = key(KEY_LEFT)  || key(KEY_A);
-    bool right  = key(KEY_RIGHT) || key(KEY_D);
-    bool up     = key(KEY_UP)    || key(KEY_W);
-    bool down   = key(KEY_DOWN)  || key(KEY_S);
-    bool action = key(KEY_SPACE) || key(KEY_ENTER) || key(KEY_Z);
-    bool cancel = key(KEY_ESCAPE) || key(KEY_X);
+    // ---- key snapshot --------------------------------------------------
+    // Map every key Nova64 carts care about into a {code: held} bag.
+    // The shim keys off web-style codes ("KeyA", "Space", ...).
+    struct KeyMap { const char *code; Key k; };
+    static const KeyMap KEYS[] = {
+        // Letters
+        {"KeyA", KEY_A}, {"KeyB", KEY_B}, {"KeyC", KEY_C}, {"KeyD", KEY_D},
+        {"KeyE", KEY_E}, {"KeyF", KEY_F}, {"KeyG", KEY_G}, {"KeyH", KEY_H},
+        {"KeyI", KEY_I}, {"KeyJ", KEY_J}, {"KeyK", KEY_K}, {"KeyL", KEY_L},
+        {"KeyM", KEY_M}, {"KeyN", KEY_N}, {"KeyO", KEY_O}, {"KeyP", KEY_P},
+        {"KeyQ", KEY_Q}, {"KeyR", KEY_R}, {"KeyS", KEY_S}, {"KeyT", KEY_T},
+        {"KeyU", KEY_U}, {"KeyV", KEY_V}, {"KeyW", KEY_W}, {"KeyX", KEY_X},
+        {"KeyY", KEY_Y}, {"KeyZ", KEY_Z},
+        // Digits
+        {"Digit0", KEY_0}, {"Digit1", KEY_1}, {"Digit2", KEY_2},
+        {"Digit3", KEY_3}, {"Digit4", KEY_4}, {"Digit5", KEY_5},
+        {"Digit6", KEY_6}, {"Digit7", KEY_7}, {"Digit8", KEY_8},
+        {"Digit9", KEY_9},
+        // Arrows
+        {"ArrowLeft", KEY_LEFT}, {"ArrowRight", KEY_RIGHT},
+        {"ArrowUp", KEY_UP}, {"ArrowDown", KEY_DOWN},
+        // Whitespace / nav
+        {"Space", KEY_SPACE}, {"Enter", KEY_ENTER}, {"Escape", KEY_ESCAPE},
+        {"Tab", KEY_TAB}, {"Backspace", KEY_BACKSPACE},
+        {"ShiftLeft", KEY_SHIFT}, {"ShiftRight", KEY_SHIFT},
+        {"ControlLeft", KEY_CTRL}, {"ControlRight", KEY_CTRL},
+        {"AltLeft", KEY_ALT}, {"AltRight", KEY_ALT},
+    };
+    Array held;
+    for (const KeyMap &m : KEYS) {
+        if (kp(m.k)) held.append(String(m.code));
+    }
+    out["keys"] = held;
+
+    // ---- legacy convenience flags -------------------------------------
+    bool left   = kp(KEY_LEFT)  || kp(KEY_A);
+    bool right  = kp(KEY_RIGHT) || kp(KEY_D);
+    bool up     = kp(KEY_UP)    || kp(KEY_W);
+    bool down   = kp(KEY_DOWN)  || kp(KEY_S);
+    bool action = kp(KEY_SPACE) || kp(KEY_ENTER) || kp(KEY_Z);
+    bool cancel = kp(KEY_ESCAPE) || kp(KEY_X);
 
     double axis_x = (right ? 1.0 : 0.0) - (left ? 1.0 : 0.0);
     double axis_y = (down  ? 1.0 : 0.0) - (up   ? 1.0 : 0.0);
 
-    // Gamepad 0 left stick overrides keyboard if active.
+    // ---- gamepad snapshot ---------------------------------------------
+    bool gp_connected = false;
+    double gp_lx = 0, gp_ly = 0, gp_rx = 0, gp_ry = 0;
+    Array gp_buttons;
     if (in->get_connected_joypads().size() > 0) {
-        double gx = in->get_joy_axis(0, JOY_AXIS_LEFT_X);
-        double gy = in->get_joy_axis(0, JOY_AXIS_LEFT_Y);
-        if (Math::abs(gx) > 0.15) axis_x = gx;
-        if (Math::abs(gy) > 0.15) axis_y = gy;
+        gp_connected = true;
+        const double DZ = 0.15;
+        double lx = in->get_joy_axis(0, JOY_AXIS_LEFT_X);
+        double ly = in->get_joy_axis(0, JOY_AXIS_LEFT_Y);
+        double rx = in->get_joy_axis(0, JOY_AXIS_RIGHT_X);
+        double ry = in->get_joy_axis(0, JOY_AXIS_RIGHT_Y);
+        if (Math::abs(lx) > DZ) gp_lx = lx;
+        if (Math::abs(ly) > DZ) gp_ly = ly;
+        if (Math::abs(rx) > DZ) gp_rx = rx;
+        if (Math::abs(ry) > DZ) gp_ry = ry;
+        if (Math::abs(gp_lx) > 0) axis_x = gp_lx;
+        if (Math::abs(gp_ly) > 0) axis_y = gp_ly;
         if (in->is_joy_button_pressed(0, JOY_BUTTON_A)) action = true;
         if (in->is_joy_button_pressed(0, JOY_BUTTON_B)) cancel = true;
+
+        // Map Godot joy buttons to the Nova64 web KEYMAP indices so
+        // btn(i) lights up identically across the two backends.
+        struct GpBtn { JoyButton g; int n; };
+        static const GpBtn GP[] = {
+            {JOY_BUTTON_DPAD_LEFT,   0},
+            {JOY_BUTTON_DPAD_RIGHT,  1},
+            {JOY_BUTTON_DPAD_UP,     2},
+            {JOY_BUTTON_DPAD_DOWN,   3},
+            {JOY_BUTTON_A,           4},  // Z
+            {JOY_BUTTON_B,           5},  // X
+            {JOY_BUTTON_X,           6},  // C
+            {JOY_BUTTON_Y,           7},  // V
+            {JOY_BUTTON_LEFT_SHOULDER,  10}, // Q
+            {JOY_BUTTON_RIGHT_SHOULDER, 11}, // W
+            {JOY_BUTTON_START,       12}, // Enter
+            {JOY_BUTTON_BACK,        13}, // Space (Select)
+        };
+        for (const GpBtn &b : GP) {
+            if (in->is_joy_button_pressed(0, b.g)) gp_buttons.append(b.n);
+        }
     }
 
-    Vector2 mp = in->get_last_mouse_velocity(); // cheap, no viewport dep
-    (void)mp;
+    // ---- mouse position (logical 640x360) -----------------------------
+    Vector2 mp(0, 0);
+    double m_logx = 0, m_logy = 0;
+    if (_overlay != nullptr) {
+        mp = _overlay->get_local_mouse_position();
+        Vector2 sz = _overlay->get_size();
+        if (sz.x > 0) m_logx = (mp.x / sz.x) * 640.0;
+        if (sz.y > 0) m_logy = (mp.y / sz.y) * 360.0;
+    }
 
     out["left"]      = left;
     out["right"]     = right;
@@ -1244,7 +1329,15 @@ Dictionary Nova64Host::_cmd_input_poll(const Dictionary &) {
     out["cancel"]    = cancel;
     out["axisX"]     = axis_x;
     out["axisY"]     = axis_y;
+    out["mouseX"]    = m_logx;
+    out["mouseY"]    = m_logy;
     out["mouseDown"] = in->is_mouse_button_pressed(MOUSE_BUTTON_LEFT);
+    out["gpConnected"] = gp_connected;
+    out["gpLeftX"]     = gp_lx;
+    out["gpLeftY"]     = gp_ly;
+    out["gpRightX"]    = gp_rx;
+    out["gpRightY"]    = gp_ry;
+    out["gpButtons"]   = gp_buttons;
     return out;
 }
 
@@ -1635,6 +1728,20 @@ void Nova64Host::_call_cart_fn(JSValue p_fn, double p_arg, bool p_pass_arg, cons
 
 void Nova64Host::cart_init()                  { _call_cart_fn(_cart_init_fn,   0.0,     false, "init"); }
 void Nova64Host::cart_update(double p_delta)  {
+    // Advance the JS-side input "previous frame" window so btnp/keyp/
+    // mousePressed give a clean single-frame edge that matches the
+    // browser runtime/input.js step() semantics.
+    if (_context && _cart_loaded) {
+        JSValue global = JS_GetGlobalObject(_context);
+        JSValue step = JS_GetPropertyStr(_context, global, "__nova64_inputStep");
+        if (JS_IsFunction(_context, step)) {
+            JSValue r = JS_Call(_context, step, JS_UNDEFINED, 0, nullptr);
+            if (!JS_IsException(r)) JS_FreeValue(_context, r);
+            else JS_FreeValue(_context, JS_GetException(_context));
+        }
+        JS_FreeValue(_context, step);
+        JS_FreeValue(_context, global);
+    }
     auto t0 = std::chrono::high_resolution_clock::now();
     _call_cart_fn(_cart_update_fn, p_delta, true,  "update");
     auto t1 = std::chrono::high_resolution_clock::now();

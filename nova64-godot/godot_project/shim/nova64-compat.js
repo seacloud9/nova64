@@ -1665,49 +1665,194 @@
     }, opts)) : 0;
   }
 
-  // ---------------- voxel: minimal flat-world implementation ----------
-  // Not parity with the web voxel engine (no chunked greedy meshing,
-  // biomes, ores, caves), but enough that the minecraft-demo cart can
-  // actually load, the player has a grass surface to stand on, and
-  // placed / broken blocks render as individual cubes. Sparse blocks
-  // are stored in a Map; ground is a single large plane.
-  const VX_GROUND_Y = 63;
+  // ---------------- voxel: heightmap-based world ---------------------
+  // The web voxel engine uses chunked greedy meshing with simplex noise
+  // terrain, biomes, ores, caves and trees. We don't have GPU-side
+  // chunk meshing under Godot yet, so this layer fakes parity by:
+  //   - generating a heightmap with cheap value noise (matches the
+  //     web engine's overall feel: rolling hills, occasional spikes)
+  //   - rendering one column-shaped box per (x,z) cell, biome-tinted
+  //   - sampling the same noise for biome name (mirrors the web rules)
+  //   - scattering simple trees (trunk + leaf canopy) per biome
+  //   - tracking sparse blocks placed/broken by the player
+  // Collision, raycast and getHighestBlock all consult the heightmap so
+  // gameplay feels right even though the meshes are coarse.
+  const VX_BASE_Y = 60;          // bottom of generated columns
+  const VX_SEA_Y = 58;           // water surface (lower than terrain base)
+  const VX_HEIGHT_AMPLITUDE = 10;
+  const VX_RADIUS = 24;          // half-width in blocks (=> 48x48 columns)
+  const VX_TREE_CHANCE = 0.012;
   const VX_BLOCK_COLORS = {
     1: 0x55aa44, 2: 0x996644, 3: 0xaaaaaa, 4: 0xffdd88, 5: 0x2288dd,
     6: 0x774422, 7: 0x116622, 8: 0x667788, 9: 0xddaa55, 11: 0xcc4433,
     15: 0x444444, 16: 0xccaa88, 21: 0xffdd44, 22: 0xffeeaa,
   };
-  const vxBlocks = new Map(); // 'x,y,z' -> { id, mesh }
+  const vxBlocks = new Map();    // 'x,y,z' -> { id, mesh } (sparse, player edits)
+  const vxColumns = new Map();   // 'x,z'   -> { height, biome, blockId, mesh, leafMeshes }
   const vxEntities = [];
-  let vxGroundMesh = 0;
   const vxConfig = { seed: 1337, renderDistance: 3, maxMeshRebuildsPerFrame: 3, enableLOD: true };
+  let vxGenerated = false;
+  let vxWaterMesh = 0;
+
   function _vxKey(x, y, z) { return ((x | 0) + ',' + (y | 0) + ',' + (z | 0)); }
-  function _vxEnsureGround() {
-    if (vxGroundMesh) return;
-    vxGroundMesh = createPlane(200, 200, 0x55aa44, [0, VX_GROUND_Y, 0],
-      { material: 'standard', roughness: 0.95 });
+  function _vxColKey(x, z) { return ((x | 0) + ',' + (z | 0)); }
+
+  // Cheap deterministic 2D value noise. Not simplex, but smooth enough
+  // for visual parity at this resolution.
+  function _vxHash2(x, y, seed) {
+    let h = (x | 0) * 374761393 + (y | 0) * 668265263 + (seed | 0) * 1274126177;
+    h = (h ^ (h >>> 13)) >>> 0;
+    h = (h * 1274126177) >>> 0;
+    return ((h ^ (h >>> 16)) >>> 0) / 4294967295;
   }
+  function _vxSmoothNoise(x, y, seed) {
+    const xi = Math.floor(x), yi = Math.floor(y);
+    const xf = x - xi, yf = y - yi;
+    const u = xf * xf * (3 - 2 * xf);
+    const v = yf * yf * (3 - 2 * yf);
+    const a = _vxHash2(xi, yi, seed);
+    const b = _vxHash2(xi + 1, yi, seed);
+    const c = _vxHash2(xi, yi + 1, seed);
+    const d = _vxHash2(xi + 1, yi + 1, seed);
+    return a * (1 - u) * (1 - v) + b * u * (1 - v) + c * (1 - u) * v + d * u * v;
+  }
+  function _vxFbm(x, y, seed, octaves) {
+    let sum = 0, amp = 1, freq = 1, norm = 0;
+    for (let i = 0; i < octaves; i++) {
+      sum += _vxSmoothNoise(x * freq, y * freq, seed + i * 17) * amp;
+      norm += amp;
+      amp *= 0.5; freq *= 2;
+    }
+    return sum / norm;
+  }
+
+  function _vxBiomeAt(x, z) {
+    const seed = vxConfig.seed | 0;
+    const t = _vxFbm(x * 0.005 + seed * 0.01, z * 0.005 + seed * 0.01, seed, 2);
+    const m = _vxFbm(x * 0.003 + 1000, z * 0.003 + 1000, seed + 7, 2);
+    if (t < 0.3) return 'Frozen Tundra';
+    if (t < 0.4 && m > 0.55) return 'Taiga';
+    if (t > 0.7 && m < 0.3) return 'Desert';
+    if (t > 0.6 && m > 0.6) return 'Jungle';
+    if (m < 0.32) return 'Savanna';
+    if (t > 0.45 && m > 0.45) return 'Forest';
+    if (t < 0.4) return 'Snowy Hills';
+    return 'Plains';
+  }
+  function _vxSurfaceFor(biome) {
+    switch (biome) {
+      case 'Desert': return { id: 4, color: 0xe6c878 };           // sand
+      case 'Frozen Tundra':
+      case 'Snowy Hills': return { id: 1, color: 0xe6f2ff };       // snowy grass
+      case 'Taiga': return { id: 1, color: 0x4a8c4a };
+      case 'Jungle': return { id: 1, color: 0x2c8a2c };
+      case 'Forest': return { id: 1, color: 0x4faa3c };
+      case 'Savanna': return { id: 1, color: 0xa8b257 };
+      default: return { id: 1, color: 0x55aa44 };                  // plains grass
+    }
+  }
+  function _vxTreeColor(biome) {
+    if (biome === 'Jungle') return 0x1a6b1a;
+    if (biome === 'Taiga' || biome === 'Snowy Hills' || biome === 'Frozen Tundra') return 0x2a5a2a;
+    if (biome === 'Savanna') return 0x808a3a;
+    return 0x227a22;
+  }
+  function _vxTreeAllowed(biome) {
+    return biome === 'Forest' || biome === 'Jungle' || biome === 'Taiga' || biome === 'Plains';
+  }
+
+  function _vxHeightAt(x, z) {
+    const seed = vxConfig.seed | 0;
+    const n = _vxFbm(x * 0.05, z * 0.05, seed, 3);
+    return Math.floor(VX_BASE_Y + n * VX_HEIGHT_AMPLITUDE);
+  }
+
+  function _vxSpawnColumn(x, z) {
+    const biome = _vxBiomeAt(x, z);
+    const surface = _vxSurfaceFor(biome);
+    let height = _vxHeightAt(x, z);
+    let blockId = surface.id;
+    let color = surface.color;
+    // Below sea level => water surface, but keep ground underneath.
+    if (height < VX_SEA_Y) {
+      // shore band
+      if (height >= VX_SEA_Y - 1) { color = surface.color; }
+      else { color = 0x6b5a3a; blockId = 2; }
+    }
+    const colHeight = height - VX_BASE_Y + 1;
+    if (colHeight <= 0) return;
+    const cx = x + 0.5, cz = z + 0.5;
+    const cy = VX_BASE_Y + colHeight * 0.5 - 0.5;
+    const mesh = createCube(1, color, [cx, cy, cz],
+      { material: 'standard', roughness: 0.92 });
+    if (mesh && typeof setScale === 'function') setScale(mesh, 1, colHeight, 1);
+    const entry = { height, biome, blockId, mesh, leafMeshes: null };
+    vxColumns.set(_vxColKey(x, z), entry);
+
+    // Scatter trees deterministically.
+    if (_vxTreeAllowed(biome) && height >= VX_SEA_Y &&
+        _vxHash2(x, z, vxConfig.seed + 31) < VX_TREE_CHANCE) {
+      const trunkH = 4 + Math.floor(_vxHash2(x, z, vxConfig.seed + 53) * 2);
+      const trunkColor = 0x6b3a18;
+      const trunkMesh = createCube(1, trunkColor,
+        [cx, height + trunkH * 0.5 + 0.5, cz],
+        { material: 'standard', roughness: 0.9 });
+      if (trunkMesh && typeof setScale === 'function') setScale(trunkMesh, 0.6, trunkH, 0.6);
+      const leafColor = _vxTreeColor(biome);
+      const leafMesh = createCube(1, leafColor,
+        [cx, height + trunkH + 1.5, cz],
+        { material: 'standard', roughness: 0.95 });
+      if (leafMesh && typeof setScale === 'function') setScale(leafMesh, 3, 2.5, 3);
+      entry.leafMeshes = [trunkMesh, leafMesh];
+      entry.treeTop = height + trunkH + 2;
+    }
+  }
+
+  function _vxGenerateWorld() {
+    if (vxGenerated) return;
+    vxGenerated = true;
+    for (let dx = -VX_RADIUS; dx < VX_RADIUS; dx++) {
+      for (let dz = -VX_RADIUS; dz < VX_RADIUS; dz++) {
+        _vxSpawnColumn(dx, dz);
+      }
+    }
+    // Single transparent-ish water plane at sea level.
+    vxWaterMesh = createPlane(VX_RADIUS * 2, VX_RADIUS * 2, 0x2a6dc0,
+      [0, VX_SEA_Y + 0.05, 0], { material: 'standard', roughness: 0.3, metallic: 0.1 });
+  }
+
   function configureVoxelWorld(opts) {
     if (opts && typeof opts === 'object') Object.assign(vxConfig, opts);
   }
   function enableVoxelTextures(_b) { /* visual only — flat colours for now */ }
   function getVoxelConfig() { return Object.assign({}, vxConfig); }
-  function getVoxelBiome(_x, _z) { return 'Plains'; }
+  function getVoxelBiome(x, z) { return _vxBiomeAt(x | 0, z | 0); }
+
   function getVoxelHighestBlock(x, z) {
-    for (let y = VX_GROUND_Y + 32; y > VX_GROUND_Y; y--) {
-      if (vxBlocks.has(_vxKey(x, y, z))) return y;
+    const xi = x | 0, zi = z | 0;
+    // Highest sparse-block above column.
+    const col = vxColumns.get(_vxColKey(xi, zi));
+    let baseH = col ? col.height : _vxHeightAt(xi, zi);
+    for (let y = baseH + 32; y > baseH; y--) {
+      if (vxBlocks.has(_vxKey(xi, y, zi))) return y;
     }
-    return VX_GROUND_Y;
+    return baseH;
   }
+
   function getVoxelBlock(x, y, z) {
-    const k = _vxKey(x, y, z);
+    const xi = x | 0, yi = y | 0, zi = z | 0;
+    const k = _vxKey(xi, yi, zi);
     if (vxBlocks.has(k)) return vxBlocks.get(k).id;
-    if (y <= VX_GROUND_Y - 1) return 3;
-    if (y === VX_GROUND_Y) return 1;
+    const col = vxColumns.get(_vxColKey(xi, zi));
+    const baseH = col ? col.height : _vxHeightAt(xi, zi);
+    if (yi < VX_BASE_Y) return 3;          // deep stone
+    if (yi <= baseH) return col ? col.blockId : 1;
     return 0;
   }
+
   function setVoxelBlock(x, y, z, id) {
-    const k = _vxKey(x, y, z);
+    const xi = x | 0, yi = y | 0, zi = z | 0;
+    const k = _vxKey(xi, yi, zi);
     const existing = vxBlocks.get(k);
     if (existing && existing.mesh) {
       removeMesh(existing.mesh);
@@ -1715,23 +1860,32 @@
     }
     if (!id) return;
     const color = VX_BLOCK_COLORS[id] || 0x888888;
-    const mesh = createCube(1, color, [x + 0.5, y + 0.5, z + 0.5],
+    const mesh = createCube(1, color, [xi + 0.5, yi + 0.5, zi + 0.5],
       { material: 'standard', roughness: 0.85 });
     vxBlocks.set(k, { id, mesh });
   }
-  function loadVoxelWorld(_name) { _vxEnsureGround(); return true; }
-  function forceLoadVoxelChunks(_cx, _cz) { _vxEnsureGround(); }
-  function updateVoxelWorld(_x, _z) { _vxEnsureGround(); }
+
+  function loadVoxelWorld(_name) { _vxGenerateWorld(); return true; }
+  function forceLoadVoxelChunks(_cx, _cz) { _vxGenerateWorld(); }
+  function updateVoxelWorld(_x, _z) { _vxGenerateWorld(); }
+
   function resetVoxelWorld() {
-    if (vxGroundMesh) { removeMesh(vxGroundMesh); vxGroundMesh = 0; }
+    for (const c of vxColumns.values()) {
+      if (c.mesh) removeMesh(c.mesh);
+      if (c.leafMeshes) for (const m of c.leafMeshes) if (m) removeMesh(m);
+    }
+    vxColumns.clear();
+    if (vxWaterMesh) { removeMesh(vxWaterMesh); vxWaterMesh = 0; }
     for (const v of vxBlocks.values()) if (v.mesh) removeMesh(v.mesh);
     vxBlocks.clear();
     for (const e of vxEntities) if (e.mesh) removeMesh(e.mesh);
     vxEntities.length = 0;
+    vxGenerated = false;
   }
   function saveVoxelWorld(_name) { return true; }
   function setVoxelDayTime(_t) { /* visual only */ }
-  // Swept AABB vs ground + sparse placed blocks. The cart treats the
+
+  // Swept AABB vs heightmap + sparse placed blocks. The cart treats the
   // velocity as already-scaled per frame and passes dt=1.0; we honour
   // the dt scale so callers using per-second velocities still work.
   function moveVoxelEntity(pos, vel, size, dt) {
@@ -1745,10 +1899,18 @@
     const sz = (size && size[2]) || 0.6;
     let nx = px + dx, ny = py + dy, nz = pz + dz;
     let grounded = false;
-    if (ny < VX_GROUND_Y + 1) { ny = VX_GROUND_Y + 1; grounded = true; }
-    // Sparse-block test (only for placed blocks).
+    // Heightmap floor: highest column height under the entity's footprint.
+    const hx = sx * 0.5, hz = sz * 0.5;
+    let floorY = -Infinity;
+    for (let ix = Math.floor(nx - hx); ix <= Math.floor(nx + hx); ix++) {
+      for (let iz = Math.floor(nz - hz); iz <= Math.floor(nz + hz); iz++) {
+        const h = getVoxelHighestBlock(ix, iz) + 1;
+        if (h > floorY) floorY = h;
+      }
+    }
+    if (ny < floorY) { ny = floorY; grounded = true; }
+    // Sparse placed-block test.
     if (vxBlocks.size > 0) {
-      const hx = sx * 0.5, hz = sz * 0.5;
       for (const k of vxBlocks.keys()) {
         const parts = k.split(',');
         const bx = +parts[0], by = +parts[1], bz = +parts[2];
@@ -1765,15 +1927,16 @@
                  grounded ? 0 : (vel[1] || 0),
                  grounded && dy < 0 ? 0 : (vel[2] || 0)],
       grounded,
-      inWater: false,
+      inWater: ny < VX_SEA_Y + 1,
     };
   }
+
   function checkVoxelCollision(pos, _halfSize) {
     const x = pos[0] || 0, y = pos[1] || 0, z = pos[2] || 0;
-    if (y <= VX_GROUND_Y) return true;
     return getVoxelBlock(Math.floor(x), Math.floor(y), Math.floor(z)) !== 0;
   }
-  // DDA voxel ray traversal.
+
+  // DDA voxel ray traversal (uses heightmap-aware getVoxelBlock).
   function raycastVoxelBlock(origin, dir, maxDist) {
     const ox = origin[0] || 0, oy = origin[1] || 0, oz = origin[2] || 0;
     const dx = dir[0] || 0, dy = dir[1] || 0, dz = dir[2] || 0;
@@ -1804,10 +1967,13 @@
     }
     return { hit: false };
   }
+
   function spawnVoxelEntity(opts) {
     opts = opts || {};
     const size = opts.size || [0.8, 0.8, 0.8];
-    const x = opts.x || 0, y = opts.y == null ? VX_GROUND_Y + 2 : opts.y, z = opts.z || 0;
+    const x = opts.x || 0;
+    const z = opts.z || 0;
+    const y = opts.y == null ? getVoxelHighestBlock(x | 0, z | 0) + 2 : opts.y;
     const color = opts.color != null ? opts.color : 0xffaaaa;
     const mesh = createCube(1, color, [x, y, z], { material: 'standard' });
     if (mesh && typeof setScale === 'function') setScale(mesh, size[0], size[1], size[2]);
@@ -1829,7 +1995,8 @@
       ent.x += ent.vx * dts;
       ent.y += ent.vy * dts;
       ent.z += ent.vz * dts;
-      const floor = VX_GROUND_Y + (ent.size && ent.size[1] ? ent.size[1] * 0.5 : 0.5);
+      const sy = (ent.size && ent.size[1]) || 0.8;
+      const floor = getVoxelHighestBlock(ent.x | 0, ent.z | 0) + sy * 0.5 + 0.5;
       if (ent.y < floor) { ent.y = floor; ent.vy = 0; ent.onGround = true; }
       else ent.onGround = false;
       if (ent.mesh) setPosition(ent.mesh, ent.x, ent.y, ent.z);
@@ -1853,7 +2020,7 @@
   function setVoxel(x, y, z, id) { setVoxelBlock(x, y, z, id); }
   function getVoxel(x, y, z) { return getVoxelBlock(x, y, z); }
   function clearVoxels() { resetVoxelWorld(); }
-  function generateVoxelTerrain(_opts) { _vxEnsureGround(); }
+  function generateVoxelTerrain(_opts) { _vxGenerateWorld(); }
 
   // Storage / i18n / WAD / hype / NFT / XR — shallow no-ops.
   const storageNs = {

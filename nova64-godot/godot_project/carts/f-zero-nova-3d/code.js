@@ -750,8 +750,21 @@ function drawHUD() {
   }
 
   // Invuln and Damage Effects
+  // Subtle red pulse during the 0.5s post-hit invulnerability window.
+  // Previously this fired Math.sin(t*40) at peak alpha 100/255 (~6.4Hz at
+  // 39% red over the whole screen) which strobed hard enough to be
+  // seizure-adjacent on long invuln chains. Now it's a slower (~1.6Hz)
+  // edge-weighted vignette that tints the rim of the screen without
+  // flashing the playfield centre.
   if (isInvulnerable(playerHit)) {
-    rect(0, 0, 640, 360, rgba8(255, 0, 0, Math.floor(Math.sin(t * 40) * 50 + 50)), true);
+    const pulse = (Math.sin(t * 10) * 0.5 + 0.5); // 0..1, ~1.6Hz
+    const a = Math.floor(20 + pulse * 30); // 20..50 / 255 (~8..20%)
+    // top + bottom bands
+    rect(0, 0, 640, 36, rgba8(255, 30, 30, a), true);
+    rect(0, 324, 640, 36, rgba8(255, 30, 30, a), true);
+    // left + right bands
+    rect(0, 0, 36, 360, rgba8(255, 30, 30, a), true);
+    rect(604, 0, 36, 360, rgba8(255, 30, 30, a), true);
   }
   if (g.speed > 350) {
     // Hyperspeed blur effect via borders

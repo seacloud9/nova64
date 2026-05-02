@@ -30,7 +30,10 @@ var _cart_list: PackedStringArray = PackedStringArray()
 var _cart_index: int = 0
 var _overlay: CanvasLayer
 var _overlay_label: Label
+var _overlay_picker: OptionButton
 var _overlay_visible: bool = true
+# Suppress reload when we set the OptionButton index programmatically.
+var _suppress_picker_signal: bool = false
 
 func _resolve_cart_path() -> String:
 	if _selected_cart_path != "":
@@ -119,6 +122,10 @@ func _reload_scene() -> void:
 
 # ------------------------------------------------------------------ overlay --
 
+# Modeled after console.html's `<select id="cart">` dropdown — gives a one-click
+# cart picker that doesn't collide with cart input. The OptionButton only
+# captures keyboard focus while its popup is open; once a cart is chosen we
+# release focus so WASD / arrow keys go back to the cart.
 func _build_overlay() -> void:
 	_overlay = CanvasLayer.new()
 	_overlay.layer = 100
@@ -126,14 +133,50 @@ func _build_overlay() -> void:
 
 	var panel := PanelContainer.new()
 	panel.position = Vector2(12, 12)
-	panel.modulate = Color(1, 1, 1, 0.92)
+	panel.modulate = Color(1, 1, 1, 0.95)
+	# Don't let UI steal mouse from a fullscreen cart unless the user actually
+	# clicks the dropdown / its popup.
+	panel.mouse_filter = Control.MOUSE_FILTER_PASS
 	_overlay.add_child(panel)
 
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 6)
+	vbox.mouse_filter = Control.MOUSE_FILTER_PASS
+	panel.add_child(vbox)
+
+	# Header line — title + index/count + key hints.
 	_overlay_label = Label.new()
 	_overlay_label.add_theme_color_override("font_color", Color(1, 1, 1))
 	_overlay_label.add_theme_color_override("font_outline_color", Color(0, 0, 0))
 	_overlay_label.add_theme_constant_override("outline_size", 4)
-	panel.add_child(_overlay_label)
+	_overlay_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	vbox.add_child(_overlay_label)
+
+	# The cart picker dropdown — the actual <select> equivalent.
+	_overlay_picker = OptionButton.new()
+	_overlay_picker.custom_minimum_size = Vector2(280, 0)
+	_overlay_picker.fit_to_longest_item = false
+	_overlay_picker.tooltip_text = "Cartridge — pick to load (R reloads)"
+	for cart_name in _cart_list:
+		_overlay_picker.add_item(cart_name)
+	if _cart_list.size() > 0:
+		_overlay_picker.select(_cart_index)
+	_overlay_picker.item_selected.connect(_on_picker_selected)
+	vbox.add_child(_overlay_picker)
+
+func _on_picker_selected(idx: int) -> void:
+	if _suppress_picker_signal:
+		return
+	if idx < 0 or idx >= _cart_list.size() or idx == _cart_index:
+		# Release focus so WASD goes back to the cart.
+		if _overlay_picker != null:
+			_overlay_picker.release_focus()
+		return
+	_cart_index = idx
+	_selected_cart_path = "res://carts/" + _cart_list[_cart_index]
+	if _overlay_picker != null:
+		_overlay_picker.release_focus()
+	_reload_scene()
 
 func _refresh_overlay() -> void:
 	if _overlay_label == null:
@@ -141,14 +184,11 @@ func _refresh_overlay() -> void:
 	var current := "(none)"
 	if _cart_list.size() > 0:
 		current = _cart_list[_cart_index]
-	var lines: Array[String] = []
-	lines.append("Nova64 — cart %d / %d:  %s" % [_cart_index + 1, _cart_list.size(), current])
-	lines.append("< > switch   R reload   H hide overlay")
-	if _cart_list.size() > 1:
-		lines.append("")
-		var span := 3
-		for i in range(-span, span + 1):
-			var idx := (_cart_index + i + _cart_list.size()) % _cart_list.size()
-			var marker := "> " if i == 0 else "  "
-			lines.append("%s%s" % [marker, _cart_list[idx]])
-	_overlay_label.text = "\n".join(lines)
+	_overlay_label.text = "NOVA64  —  cart %d / %d:  %s\n< >  switch    R  reload    H  hide overlay" % [
+		_cart_index + 1, _cart_list.size(), current
+	]
+	if _overlay_picker != null and _cart_list.size() > 0:
+		_suppress_picker_signal = true
+		_overlay_picker.select(_cart_index)
+		_suppress_picker_signal = false
+

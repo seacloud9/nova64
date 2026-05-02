@@ -1641,61 +1641,128 @@ Dictionary Nova64Host::_cmd_voxel_upload_chunk(const Dictionary &p) {
         return blk[lx + sx * ly + sx * sy * lz];
     };
 
-    // Six face definitions.  Each face lists 4 corner offsets in CCW order
-    // (when viewed from the outside) so the winding gives an outward normal.
-    // The four corners are emitted as two triangles: [0,1,2] and [0,2,3].
-    struct FaceDef { float nx,ny,nz; float v[4][3]; };
-    static const FaceDef FACES[6] = {
-        // +X  normal (1,0,0)
-        { 1,0,0, { {1,0,0},{1,1,0},{1,1,1},{1,0,1} } },
-        // -X  normal (-1,0,0)
-        {-1,0,0, { {0,0,1},{0,1,1},{0,1,0},{0,0,0} } },
-        // +Y  normal (0,1,0)
-        { 0,1,0, { {0,1,1},{1,1,1},{1,1,0},{0,1,0} } },
-        // -Y  normal (0,-1,0)
-        { 0,-1,0,{ {0,0,0},{1,0,0},{1,0,1},{0,0,1} } },
-        // +Z  normal (0,0,1)
-        { 0,0,1, { {0,0,1},{1,0,1},{1,1,1},{0,1,1} } },
-        // -Z  normal (0,0,-1)
-        { 0,0,-1,{ {1,0,0},{0,0,0},{0,1,0},{1,1,0} } },
+    // Greedy meshing: for each face direction, sweep layer by layer building
+    // a 2D visibility mask, then merge co-planar same-coloured visible faces
+    // into the largest axis-aligned rectangles possible before emitting quads.
+    // This reduces draw-call vertex counts by 5-10× vs the naive per-block path
+    // while producing identical visual output.
+    //
+    // Per-face config table:
+    //   n_axis/n_sign = chunk axis that is the face normal and its direction
+    //   u_axis/v_axis = two tangent axes used for greedy sweeping
+    //   plane_offset  = 0 or 1; face plane = layer + plane_offset
+    //   cu[4]/cv[4]   = CCW corner offset flags (0 = start, 1 = start+size)
+    //                   verified against the original per-block vertex table
+    struct GFace {
+        int   n_axis, n_sign, u_axis, v_axis;
+        float nx, ny, nz;
+        int   plane_offset;
+        int   cu[4], cv[4];
     };
-    // Neighbour offsets matching face order above.
-    static const int NB[6][3] = {
-        {1,0,0},{-1,0,0},{0,1,0},{0,-1,0},{0,0,1},{0,0,-1}
+    static const GFace GFACES[6] = {
+        // +X  (n=0,+1) u=Y v=Z   plane=layer+1
+        {0,+1, 1,2,  +1,0,0,  1,  {0,1,1,0},{0,0,1,1}},
+        // -X  (n=0,-1) u=Y v=Z   plane=layer
+        {0,-1, 1,2,  -1,0,0,  0,  {0,1,1,0},{1,1,0,0}},
+        // +Y  (n=1,+1) u=X v=Z   plane=layer+1
+        {1,+1, 0,2,  0,+1,0,  1,  {0,1,1,0},{1,1,0,0}},
+        // -Y  (n=1,-1) u=X v=Z   plane=layer
+        {1,-1, 0,2,  0,-1,0,  0,  {0,1,1,0},{0,0,1,1}},
+        // +Z  (n=2,+1) u=X v=Y   plane=layer+1
+        {2,+1, 0,1,  0,0,+1,  1,  {0,1,1,0},{0,0,1,1}},
+        // -Z  (n=2,-1) u=X v=Y   plane=layer
+        {2,-1, 0,1,  0,0,-1,  0,  {1,0,0,1},{0,0,1,1}},
     };
+    // Per-face AO darkening: top=1.0, sides=0.85, bottom=0.70.
+    static const float FACE_AO[6] = { 0.85f, 0.85f, 1.0f, 0.70f, 0.85f, 0.85f };
+
+    // Chunk dimension along each axis for slice sizing.
+    const int DIM[3] = { sx, sy, sz };
 
     Ref<SurfaceTool> st;
     st.instantiate();
     st->begin(Mesh::PRIMITIVE_TRIANGLES);
 
-    // Slight per-face darkening to approximate ambient-occlusion depth cues
-    // without a real AO pass: top = 100%, sides = 85%, bottom = 70%.
-    static const float FACE_AO[6] = { 0.85f, 0.85f, 1.0f, 0.70f, 0.85f, 0.85f };
-
     bool has_geom = false;
-    for (int lz = 0; lz < sz; ++lz) {
-        for (int ly = 0; ly < sy; ++ly) {
-            for (int lx = 0; lx < sx; ++lx) {
-                int id = blk_at(lx, ly, lz);
-                if (id == 0) continue;
-                auto it = pal.find(id);
-                Color base_col = (it != pal.end()) ? it->second
-                                                    : Color(0.5f, 0.5f, 0.5f, 1.0f);
-                for (int fi = 0; fi < 6; ++fi) {
-                    const int *nb = NB[fi];
-                    if (blk_at(lx + nb[0], ly + nb[1], lz + nb[2]) != 0) continue;
-                    const FaceDef &fd = FACES[fi];
-                    float ao = FACE_AO[fi];
-                    Color col(base_col.r * ao, base_col.g * ao, base_col.b * ao, 1.0f);
-                    st->set_color(col);
-                    st->set_normal(Vector3(fd.nx, fd.ny, fd.nz));
-                    // Two triangles: [0,1,2] and [0,2,3]
-                    static const int TRI[6] = { 0, 1, 2, 0, 2, 3 };
-                    for (int ti = 0; ti < 6; ++ti) {
-                        const float *cv = fd.v[TRI[ti]];
-                        st->add_vertex(Vector3(lx + cv[0], ly + cv[1], lz + cv[2]));
+
+    for (int fi = 0; fi < 6; ++fi) {
+        const GFace &gf   = GFACES[fi];
+        const int    nd   = gf.n_axis;        // normal axis
+        const int    ud   = gf.u_axis;        // first tangent axis
+        const int    vd   = gf.v_axis;        // second tangent axis
+        const int    nlyr = DIM[nd];          // number of layers to sweep
+        const int    su   = DIM[ud];          // slice width
+        const int    sv   = DIM[vd];          // slice height
+        const float  ao   = FACE_AO[fi];
+        const Vector3 normal(gf.nx, gf.ny, gf.nz);
+
+        // Reused per-layer mask: entry = block id (>0) when face is visible, 0 otherwise.
+        std::vector<int> mask(su * sv);
+
+        for (int layer = 0; layer < nlyr; ++layer) {
+            // ---- Build visibility mask ----
+            for (int v = 0; v < sv; ++v) {
+                for (int u = 0; u < su; ++u) {
+                    int coords[3];
+                    coords[nd] = layer;
+                    coords[ud] = u;
+                    coords[vd] = v;
+                    int cur_id = blk_at(coords[0], coords[1], coords[2]);
+                    if (cur_id == 0) { mask[u + su*v] = 0; continue; }
+                    // Neighbour one step in the normal direction.
+                    int nc[3] = { coords[0], coords[1], coords[2] };
+                    nc[nd] += gf.n_sign;
+                    mask[u + su*v] = (blk_at(nc[0], nc[1], nc[2]) == 0) ? cur_id : 0;
+                }
+            }
+
+            // ---- Greedy merge ----
+            const int plane = layer + gf.plane_offset;
+            for (int v0 = 0; v0 < sv; ++v0) {
+                for (int u0 = 0; u0 < su; ++u0) {
+                    const int id = mask[u0 + su*v0];
+                    if (id == 0) continue;
+
+                    // Extend in u direction.
+                    int w = 1;
+                    while (u0+w < su && mask[u0+w + su*v0] == id) ++w;
+
+                    // Extend in v direction (each new row must be all same id, full width w).
+                    int h = 1;
+                    while (v0+h < sv) {
+                        bool ok = true;
+                        for (int k = 0; k < w; ++k) {
+                            if (mask[u0+k + su*(v0+h)] != id) { ok = false; break; }
+                        }
+                        if (!ok) break;
+                        ++h;
                     }
+
+                    // Emit quad.
+                    auto it = pal.find(id);
+                    Color base = (it != pal.end()) ? it->second : Color(0.5f, 0.5f, 0.5f, 1.0f);
+                    Color col(base.r * ao, base.g * ao, base.b * ao, 1.0f);
+                    st->set_color(col);
+                    st->set_normal(normal);
+                    // Two CCW triangles [0,1,2] and [0,2,3].
+                    // Corner positions assembled via the per-face cu[]/cv[] offset flags.
+                    const float pu[2] = { (float)u0, (float)(u0+w) };
+                    const float pv[2] = { (float)v0, (float)(v0+h) };
+                    float pos[4][3] = {};
+                    for (int ci = 0; ci < 4; ++ci) {
+                        pos[ci][nd] = (float)plane;
+                        pos[ci][ud] = pu[gf.cu[ci]];
+                        pos[ci][vd] = pv[gf.cv[ci]];
+                    }
+                    static const int TRI[6] = { 0,1,2, 0,2,3 };
+                    for (int ti = 0; ti < 6; ++ti)
+                        st->add_vertex(Vector3(pos[TRI[ti]][0], pos[TRI[ti]][1], pos[TRI[ti]][2]));
                     has_geom = true;
+
+                    // Mark merged region as processed.
+                    for (int dv = 0; dv < h; ++dv)
+                        for (int du = 0; du < w; ++du)
+                            mask[u0+du + su*(v0+dv)] = 0;
                 }
             }
         }

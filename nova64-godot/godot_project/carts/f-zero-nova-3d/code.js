@@ -121,9 +121,11 @@ let g = {
 export async function init() {
   console.log('🏁 F-ZERO NOVA 3D (Ultimate) — Initializing Engine...');
 
-  // Super wide FOV for speed illusion
+  // Super wide FOV for speed illusion. Position/target match the steady-state
+  // values used by updatePlaying() (z=12, camY=8 at pitch=0) so the camera
+  // does not jump forward at the start->countdown->playing transition.
   setCameraFOV(85);
-  setCameraPosition(0, 8, 15);
+  setCameraPosition(0, 8, 12);
   setCameraTarget(0, 0, -40);
 
   // Atmospheric Lighting

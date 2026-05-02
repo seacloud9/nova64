@@ -874,51 +874,134 @@
   function getPosition(_handle) { return [0, 0, 0]; }
 
   const TWO_PI = Math.PI * 2;
+  const HALF_PI = Math.PI / 2;
+  const QUARTER_PI = Math.PI / 4;
   function clamp(v, lo, hi) { return Math.min(Math.max(v, lo), hi); }
   function lerp(a, b, t) { return a + (b - a) * t; }
-  function hsb(h, s, b) {
-    // HSB(0..360, 0..100, 0..100) → packed 0xRRGGBB int.
-    const sat = (s || 0) / 100, br = (b || 0) / 100;
-    const c = br * sat;
-    const hh = ((h || 0) % 360) / 60;
-    const x = c * (1 - Math.abs((hh % 2) - 1));
-    let r = 0, g = 0, bl = 0;
-    if (0 <= hh && hh < 1) { r = c; g = x; }
-    else if (hh < 2) { r = x; g = c; }
-    else if (hh < 3) { g = c; bl = x; }
-    else if (hh < 4) { g = x; bl = c; }
-    else if (hh < 5) { r = x; bl = c; }
-    else if (hh < 6) { r = c; bl = x; }
-    const m = br - c;
-    const R = Math.round((r + m) * 255), G = Math.round((g + m) * 255), B = Math.round((bl + m) * 255);
-    return (R << 16) | (G << 8) | B;
+  // hsb(h:0..360, s:0..1, b:0..1, a:0..255) → packed rgba8 int. Mirrors
+  // runtime/api-generative.js so generative-art / boids produce the same
+  // colors on the Godot adapter as in the browser. Cart code that passes
+  // s/b in 0..100 (technically out-of-spec) gets the same saturated /
+  // wrapped colors the browser produces from the identical math.
+  function hsb(h, s, b, a) {
+    if (s == null) s = 1;
+    if (b == null) b = 1;
+    if (a == null) a = 255;
+    h = ((((h || 0) % 360) + 360) % 360);
+    const c = b * s;
+    const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+    const m = b - c;
+    let r, g, bl;
+    if (h < 60)       { r = c; g = x; bl = 0; }
+    else if (h < 120) { r = x; g = c; bl = 0; }
+    else if (h < 180) { r = 0; g = c; bl = x; }
+    else if (h < 240) { r = 0; g = x; bl = c; }
+    else if (h < 300) { r = x; g = 0; bl = c; }
+    else              { r = c; g = 0; bl = x; }
+    return rgba8((r + m) * 255, (g + m) * 255, (bl + m) * 255, a);
   }
-  // Deterministic value-noise stand-in (not the same as runtime/api-generative).
-  let _noiseSeed = 1337;
-  function noiseSeed(s) { _noiseSeed = (s | 0) || 1; }
+
+  // ─── Perlin noise (canonical port from runtime/api-generative.js) ────────
+  // Real Perlin is essential for FLOW FIELD, PERLIN LANDSCAPE, FRACTAL TREE
+  // etc. — the previous sin-hash stand-in produced no spatial coherence,
+  // so flow fields and landscapes rendered as TV static.
+  const _perm = new Uint8Array(512);
+  let _noiseOctaves = 4;
+  let _noiseFalloff = 0.5;
+  const _grad3 = [
+    [1, 1, 0], [-1, 1, 0], [1, -1, 0], [-1, -1, 0],
+    [1, 0, 1], [-1, 0, 1], [1, 0, -1], [-1, 0, -1],
+    [0, 1, 1], [0, -1, 1], [0, 1, -1], [0, -1, -1],
+  ];
+  function _initPerm(seed) {
+    const p = new Uint8Array(256);
+    for (let i = 0; i < 256; i++) p[i] = i;
+    let st = seed | 0;
+    for (let i = 255; i > 0; i--) {
+      st = (st * 1664525 + 1013904223) & 0x7fffffff;
+      const j = st % (i + 1);
+      const tmp = p[i]; p[i] = p[j]; p[j] = tmp;
+    }
+    for (let i = 0; i < 512; i++) _perm[i] = p[i & 255];
+  }
+  _initPerm(0);
+  function _fade(t) { return t * t * t * (t * (t * 6 - 15) + 10); }
+  function _plerp(a, b, t) { return a + (b - a) * t; }
+  function _perlin3(x, y, z) {
+    const X = Math.floor(x) & 255;
+    const Y = Math.floor(y) & 255;
+    const Z = Math.floor(z) & 255;
+    const xf = x - Math.floor(x);
+    const yf = y - Math.floor(y);
+    const zf = z - Math.floor(z);
+    const u = _fade(xf), v = _fade(yf), w = _fade(zf);
+    const A = _perm[X] + Y;
+    const AA = _perm[A] + Z;
+    const AB = _perm[A + 1] + Z;
+    const B = _perm[X + 1] + Y;
+    const BA = _perm[B] + Z;
+    const BB = _perm[B + 1] + Z;
+    function g(hash, dx, dy, dz) {
+      const gr = _grad3[hash % 12];
+      return gr[0] * dx + gr[1] * dy + gr[2] * dz;
+    }
+    return _plerp(
+      _plerp(
+        _plerp(g(_perm[AA], xf, yf, zf), g(_perm[BA], xf - 1, yf, zf), u),
+        _plerp(g(_perm[AB], xf, yf - 1, zf), g(_perm[BB], xf - 1, yf - 1, zf), u),
+        v
+      ),
+      _plerp(
+        _plerp(g(_perm[AA + 1], xf, yf, zf - 1), g(_perm[BA + 1], xf - 1, yf, zf - 1), u),
+        _plerp(g(_perm[AB + 1], xf, yf - 1, zf - 1), g(_perm[BB + 1], xf - 1, yf - 1, zf - 1), u),
+        v
+      ),
+      w
+    );
+  }
   function noise(x, y, z) {
-    const n = Math.sin((x || 0) * 12.9898 + (y || 0) * 78.233 + (z || 0) * 37.719 + _noiseSeed) * 43758.5453;
-    return (n - Math.floor(n));
+    if (y == null) y = 0;
+    if (z == null) z = 0;
+    let total = 0, amp = 1, freq = 1, maxAmp = 0;
+    for (let i = 0; i < _noiseOctaves; i++) {
+      total += _perlin3(x * freq, y * freq, z * freq) * amp;
+      maxAmp += amp;
+      amp *= _noiseFalloff;
+      freq *= 2;
+    }
+    return (total / maxAmp + 1) * 0.5;
+  }
+  function noiseSeed(seed) { _initPerm(seed); }
+  function noiseDetail(octaves, falloff) {
+    _noiseOctaves = Math.max(1, Math.min(8, octaves == null ? 4 : octaves));
+    _noiseFalloff = Math.max(0, Math.min(1, falloff == null ? 0.5 : falloff));
+  }
+  function noiseMap(w, h, scale, ox, oy) {
+    if (scale == null) scale = 0.02;
+    if (ox == null) ox = 0;
+    if (oy == null) oy = 0;
+    const out = new Float32Array(w * h);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      out[y * w + x] = noise((x + ox) * scale, (y + oy) * scale);
+    }
+    return out;
   }
   function fbmNoise(x, y, z, octaves, persistence, lacunarity, scale) {
     octaves = octaves == null ? 4 : octaves;
     persistence = persistence == null ? 0.5 : persistence;
     lacunarity = lacunarity == null ? 2.0 : lacunarity;
     scale = scale == null ? 0.01 : scale;
-    let total = 0;
-    let amplitude = 1;
-    let frequency = scale;
-    let maxValue = 0;
+    let total = 0, amplitude = 1, frequency = scale, maxValue = 0;
     for (let i = 0; i < octaves; i++) {
-      total += noise((x || 0) * frequency, (y || 0) * frequency, (z || 0) * frequency) * amplitude;
+      total += _perlin3((x || 0) * frequency, (y || 0) * frequency, (z || 0) * frequency) * amplitude;
       maxValue += amplitude;
       amplitude *= persistence;
       frequency *= lacunarity;
     }
-    return maxValue > 0 ? total / maxValue : 0;
+    return maxValue > 0 ? (total / maxValue + 1) * 0.5 : 0.5;
   }
 
-  const utilNs = { TWO_PI, clamp, lerp, hsb, noise, noiseSeed };
+  const utilNs = { TWO_PI, HALF_PI, QUARTER_PI, clamp, lerp, hsb, noise, noiseSeed, noiseDetail, noiseMap };
 
   // Audio stubs — no host audio yet.
   function sfx(_name, _vol) { warnOnce('audio.sfx'); }

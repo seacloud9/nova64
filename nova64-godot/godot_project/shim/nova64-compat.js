@@ -532,6 +532,11 @@
   // input "previous frame" window so btnp/keyp/mousePressed give a clean
   // single-frame edge.
   global.__nova64_inputStep = function () { _inputStep(); };
+  // Pre-update hook: tick active tweens + novaStore time each frame.
+  global.__nova64_preUpdate = function (dt) {
+    updateTweens(dt);
+    novaStore.setState(function (s) { return { time: s.time + dt }; });
+  };
 
   function rgba8(r, g, b, a) {
     a = a == null ? 255 : a;
@@ -1348,35 +1353,206 @@
   function stopMusic() { warnOnce('audio.stopMusic'); }
   const audioNs = { sfx, playMusic, stopMusic };
 
-  // Tween stubs — return chainable no-op handles so `createTween(...).play()`
-  // and `.tick(dt)` survive. value defaults to `from` so reads work.
-  function createTween(opts) {
-    warnOnce('tween.createTween');
-    const o = opts || {};
-    const t = {
-      value: o.from == null ? 0 : o.from,
-      pause() { return t; },
-      play() { return t; },
-      stop() { return t; },
-      reset() { return t; },
-      tick(_dt) { return t; },
-      onComplete() { return t; },
+  // ── Easing library (full parity with runtime/tween.js Ease object) ──────────
+  const Ease = (function () {
+    function outBounce(t) {
+      const n = 7.5625, d = 2.75;
+      if (t < 1 / d) return n * t * t;
+      if (t < 2 / d) { t -= 1.5 / d; return n * t * t + 0.75; }
+      if (t < 2.5 / d) { t -= 2.25 / d; return n * t * t + 0.9375; }
+      t -= 2.625 / d; return n * t * t + 0.984375;
+    }
+    return {
+      linear: function (t) { return t; },
+      // Quad
+      inQuad: function (t) { return t * t; },
+      outQuad: function (t) { return t * (2 - t); },
+      inOutQuad: function (t) { return t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t; },
+      // Cubic
+      inCubic: function (t) { return t * t * t; },
+      outCubic: function (t) { return --t * t * t + 1; },
+      inOutCubic: function (t) { return t < 0.5 ? 4 * t * t * t : (t - 1) * (2 * t - 2) * (2 * t - 2) + 1; },
+      // Quart
+      inQuart: function (t) { return t * t * t * t; },
+      outQuart: function (t) { return 1 - --t * t * t * t; },
+      inOutQuart: function (t) { return t < 0.5 ? 8 * t * t * t * t : 1 - 8 * --t * t * t * t; },
+      // Sine
+      inSine: function (t) { return 1 - Math.cos(t * Math.PI / 2); },
+      outSine: function (t) { return Math.sin(t * Math.PI / 2); },
+      inOutSine: function (t) { return -(Math.cos(Math.PI * t) - 1) / 2; },
+      // Expo
+      inExpo: function (t) { return t === 0 ? 0 : Math.pow(2, 10 * t - 10); },
+      outExpo: function (t) { return t === 1 ? 1 : 1 - Math.pow(2, -10 * t); },
+      // Elastic
+      outElastic: function (t) {
+        if (t === 0 || t === 1) return t;
+        return Math.pow(2, -10 * t) * Math.sin((t * 10 - 0.75) * (2 * Math.PI) / 3) + 1;
+      },
+      inElastic: function (t) {
+        if (t === 0 || t === 1) return t;
+        return -Math.pow(2, 10 * t - 10) * Math.sin((t * 10 - 10.75) * (2 * Math.PI) / 3);
+      },
+      // Back
+      outBack: function (t) { var c = 1.70158; return 1 + (c + 1) * --t * t * t + c * t * t; },
+      inBack: function (t) { var c = 1.70158; return (c + 1) * t * t * t - c * t * t; },
+      // Bounce
+      outBounce: outBounce,
+      inBounce: function (t) { return 1 - outBounce(1 - t); },
+      inOutBounce: function (t) { return t < 0.5 ? (1 - outBounce(1 - 2 * t)) / 2 : (1 + outBounce(2 * t - 1)) / 2; },
+      // Aliases used by hype.js-style strings ('easeOutCubic' etc.)
+      easeLinear: function (t) { return t; },
+      easeIn: function (t) { return t * t; },
+      easeOut: function (t) { return t * (2 - t); },
+      easeInOut: function (t) { return t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t; },
+      easeInQuad: function (t) { return t * t; },
+      easeOutQuad: function (t) { return t * (2 - t); },
+      easeInOutQuad: function (t) { return t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t; },
+      easeInCubic: function (t) { return t * t * t; },
+      easeOutCubic: function (t) { return --t * t * t + 1; },
+      easeInOutCubic: function (t) { return t < 0.5 ? 4 * t * t * t : (t - 1) * (2 * t - 2) * (2 * t - 2) + 1; },
+      easeInSine: function (t) { return 1 - Math.cos(t * Math.PI / 2); },
+      easeOutSine: function (t) { return Math.sin(t * Math.PI / 2); },
+      easeInOutSine: function (t) { return -(Math.cos(Math.PI * t) - 1) / 2; },
+      easeInExpo: function (t) { return t === 0 ? 0 : Math.pow(2, 10 * t - 10); },
+      easeOutExpo: function (t) { return t === 1 ? 1 : 1 - Math.pow(2, -10 * t); },
+      easeOutBack: function (t) { var c = 1.70158; return 1 + (c + 1) * --t * t * t + c * t * t; },
+      easeInBack: function (t) { var c = 1.70158; return (c + 1) * t * t * t - c * t * t; },
+      easeOutBounce: outBounce,
+      easeInBounce: function (t) { return 1 - outBounce(1 - t); },
+      easeOutElastic: function (t) {
+        if (t === 0 || t === 1) return t;
+        return Math.pow(2, -10 * t) * Math.sin((t * 10 - 0.75) * (2 * Math.PI) / 3) + 1;
+      },
     };
-    return t;
+  }());
+
+  // ── Real tween engine ─────────────────────────────────────────────────────────
+  // Supports both hype-style { from, to, duration } and nova-style (target, toProps, dur, opts)
+  var _activeTweens = [];
+  function _resolveEaseFn(e) {
+    if (typeof e === 'function') return e;
+    if (typeof e === 'string' && Ease[e]) return Ease[e];
+    return Ease.linear;
   }
-  const Ease = {
-    linear: function (t) { return t; },
-    easeIn: function (t) { return t * t; },
-    easeOut: function (t) { return t * (2 - t); },
-    easeInOut: function (t) { return t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t; },
-    easeOutBounce: function (t) {
-      if (t < 1 / 2.75) return 7.5625 * t * t;
-      if (t < 2 / 2.75) { t -= 1.5 / 2.75; return 7.5625 * t * t + 0.75; }
-      if (t < 2.5 / 2.75) { t -= 2.25 / 2.75; return 7.5625 * t * t + 0.9375; }
-      t -= 2.625 / 2.75; return 7.5625 * t * t + 0.984375;
-    },
-  };
-  const tweenNs = { createTween, Ease };
+  function createTween(arg1, arg2, arg3, arg4) {
+    // ── Hype style: createTween({ from, to, duration, ease, ... }) ──
+    if (arg1 !== null && typeof arg1 === 'object' && arg2 === undefined &&
+        ('from' in arg1 || 'to' in arg1 || 'duration' in arg1)) {
+      var o = arg1;
+      var fromV = o.from != null ? o.from : 0;
+      var toV   = o.to   != null ? o.to   : 1;
+      var dur   = o.duration || 1;
+      var easeFn = _resolveEaseFn(o.ease);
+      var loop = o.loop === true || o.loop === 'loop';
+      var pingpong = o.loop === 'pingpong' || o.yoyo === true;
+      var elapsed = 0, playing = o.autoPlay !== false, dir = 1;
+      var isArr = Array.isArray(fromV);
+      var fromArr = isArr ? fromV : [fromV];
+      var toArr   = isArr ? toV   : [toV];
+      var vals = fromArr.slice();
+      var tween = {
+        get value() { return isArr ? vals : vals[0]; },
+        get values() { return vals; },
+        get progress() { return Math.min(1, elapsed / dur); },
+        get done() { return !playing && elapsed >= dur; },
+        tick: function (dt) {
+          if (!playing) return;
+          elapsed += dt * dir;
+          var p = Math.max(0, Math.min(1, elapsed / dur));
+          var ep = easeFn(p);
+          for (var i = 0; i < vals.length; i++) vals[i] = fromArr[i] + (toArr[i] - fromArr[i]) * ep;
+          if (o.onUpdate) o.onUpdate(isArr ? vals : vals[0], p);
+          if (elapsed >= dur) {
+            if (pingpong) { dir = -dir; elapsed = dir > 0 ? 0 : dur; }
+            else if (loop) { elapsed = 0; }
+            else { playing = false; elapsed = dur; if (o.onComplete) o.onComplete(); }
+          } else if (elapsed <= 0 && pingpong) {
+            dir = 1; elapsed = 0;
+          }
+        },
+        play:    function () { playing = true;  return tween; },
+        pause:   function () { playing = false; return tween; },
+        stop:    function () { playing = false; return tween; },
+        restart: function () { elapsed = 0; dir = 1; playing = true; return tween; },
+        kill:    function () { playing = false; elapsed = dur; return tween; },
+        register:   function () { _activeTweens.push(tween); return tween; },
+        unregister: function () {
+          var i = _activeTweens.indexOf(tween);
+          if (i >= 0) _activeTweens.splice(i, 1);
+          return tween;
+        },
+      };
+      return tween;
+    }
+    // ── Nova style: createTween(target, toProps, duration, opts) ──
+    var target = arg1, toProps = arg2, duration = arg3 || 1, opts = arg4 || {};
+    if (!target || !toProps) {
+      var noop2 = { value: 0, values: [], progress: 0, done: true,
+        tick: function () {}, play: function () { return noop2; }, pause: function () { return noop2; },
+        stop: function () { return noop2; }, restart: function () { return noop2; },
+        kill: function () { return noop2; }, register: function () { return noop2; }, unregister: function () { return noop2; } };
+      return noop2;
+    }
+    var keys = Object.keys(toProps);
+    var fromVals = {}, toVals = {};
+    for (var ki = 0; ki < keys.length; ki++) {
+      fromVals[keys[ki]] = target[keys[ki]] != null ? target[keys[ki]] : 0;
+      toVals[keys[ki]] = toProps[keys[ki]];
+    }
+    var easeFn2 = _resolveEaseFn(opts.ease);
+    var loop2 = opts.loop === true || opts.loop === 'loop';
+    var pp2 = opts.loop === 'pingpong' || opts.yoyo;
+    var delay2 = opts.delay || 0;
+    var elapsed2 = 0, delayRemain = delay2, playing2 = true, dir2 = 1;
+    var novaTween = {
+      value: undefined, values: [],
+      get progress() { return Math.max(0, Math.min(1, elapsed2 / (duration || 1))); },
+      get done() { return !playing2 && elapsed2 >= duration; },
+      tick: function (dt) {
+        if (!playing2) return;
+        if (delayRemain > 0) { delayRemain -= dt; return; }
+        elapsed2 += dt * dir2;
+        var p = Math.max(0, Math.min(1, elapsed2 / (duration || 1)));
+        var ep = easeFn2(p);
+        for (var ki2 = 0; ki2 < keys.length; ki2++) {
+          target[keys[ki2]] = fromVals[keys[ki2]] + (toVals[keys[ki2]] - fromVals[keys[ki2]]) * ep;
+        }
+        if (opts.onUpdate) opts.onUpdate(target, p);
+        if (elapsed2 >= duration) {
+          if (pp2) { dir2 = -1; elapsed2 = duration; }
+          else if (loop2) { elapsed2 = 0; }
+          else { playing2 = false; elapsed2 = duration; if (opts.onComplete) opts.onComplete(target); }
+        } else if (elapsed2 <= 0 && pp2) { dir2 = 1; elapsed2 = 0; }
+      },
+      play:    function () { playing2 = true;  return novaTween; },
+      pause:   function () { playing2 = false; return novaTween; },
+      stop:    function () { playing2 = false; return novaTween; },
+      restart: function () { elapsed2 = 0; dir2 = 1; delayRemain = delay2; playing2 = true; return novaTween; },
+      kill:    function () {
+        playing2 = false;
+        var idx = _activeTweens.indexOf(novaTween);
+        if (idx >= 0) _activeTweens.splice(idx, 1);
+        return novaTween;
+      },
+      register:   function () { _activeTweens.push(novaTween); return novaTween; },
+      unregister: function () {
+        var idx = _activeTweens.indexOf(novaTween);
+        if (idx >= 0) _activeTweens.splice(idx, 1);
+        return novaTween;
+      },
+    };
+    if (opts.autoReg !== false) _activeTweens.push(novaTween);
+    return novaTween;
+  }
+  function updateTweens(dt) {
+    for (var i = 0; i < _activeTweens.length; i++) _activeTweens[i].tick(dt);
+    // prune done tweens
+    for (var j = _activeTweens.length - 1; j >= 0; j--) {
+      if (_activeTweens[j].done) _activeTweens.splice(j, 1);
+    }
+  }
+  function killAllTweens() { _activeTweens.length = 0; }
+  const tweenNs = { createTween, updateTweens, killAllTweens, Ease };
 
   // ---------------- broader cart compat stubs --------------------------
   // Most of these return inert objects whose methods chain to themselves
@@ -1662,6 +1838,226 @@
   function renderCanvasUI(_root) { warnOnce('canvas-ui.render'); }
   function updateCanvasUI(_root, _dt) { warnOnce('canvas-ui.update'); }
 
+  // ── Game utilities — pure logic, full parity with runtime/api-gameutils.js ──
+
+  // Screen Shake
+  function createShake(opts) {
+    opts = opts || {};
+    return { mag: 0, x: 0, y: 0, decay: opts.decay != null ? opts.decay : 4, maxMag: opts.maxMag != null ? opts.maxMag : 20 };
+  }
+  function triggerShake(shake, magnitude) {
+    shake.mag = Math.min(shake.mag + magnitude, shake.maxMag);
+  }
+  function updateShake(shake, dt) {
+    if (shake.mag > 0.01) {
+      shake.x = (Math.random() - 0.5) * shake.mag * 1.5;
+      shake.y = (Math.random() - 0.5) * shake.mag * 1.5;
+      shake.mag -= shake.decay * dt;
+    } else { shake.mag = 0; shake.x = 0; shake.y = 0; }
+  }
+  function getShakeOffset(shake) { return [shake.x, shake.y]; }
+
+  // Cooldown Timers
+  function createCooldown(duration) { return { remaining: 0, duration: duration || 0 }; }
+  function useCooldown(cd) {
+    if (cd.remaining > 0) return false;
+    cd.remaining = cd.duration;
+    return true;
+  }
+  function cooldownReady(cd) { return cd.remaining <= 0; }
+  function cooldownProgress(cd) {
+    if (!cd.duration) return 1;
+    return Math.max(0, 1 - cd.remaining / cd.duration);
+  }
+  function updateCooldown(cd, dt) {
+    if (cd.remaining > 0) cd.remaining = Math.max(0, cd.remaining - dt);
+  }
+  function createCooldownSet(defs) {
+    var set = {};
+    var keys = Object.keys(defs);
+    for (var i = 0; i < keys.length; i++) set[keys[i]] = createCooldown(defs[keys[i]]);
+    return set;
+  }
+  function updateCooldowns(set, dt) {
+    var keys = Object.keys(set);
+    for (var i = 0; i < keys.length; i++) updateCooldown(set[keys[i]], dt);
+  }
+
+  // Hit State / Invulnerability
+  function createHitState(opts) {
+    opts = opts || {};
+    return {
+      invulnTimer: 0,
+      invulnDuration: opts.invulnDuration != null ? opts.invulnDuration : 0.8,
+      blinkRate: opts.blinkRate != null ? opts.blinkRate : 25,
+      flashTimer: 0,
+    };
+  }
+  function triggerHit(hitState) {
+    if (hitState.invulnTimer > 0) return false;
+    hitState.invulnTimer = hitState.invulnDuration;
+    hitState.flashTimer = 0.1;
+    return true;
+  }
+  function isInvulnerable(hitState) { return hitState.invulnTimer > 0; }
+  function isVisible(hitState, time) {
+    if (hitState.invulnTimer <= 0) return true;
+    return Math.sin((time || 0) * hitState.blinkRate) > 0;
+  }
+  function isFlashing(hitState) { return hitState.flashTimer > 0; }
+  function updateHitState(hitState, dt) {
+    if (hitState.invulnTimer > 0) hitState.invulnTimer = Math.max(0, hitState.invulnTimer - dt);
+    if (hitState.flashTimer > 0) hitState.flashTimer = Math.max(0, hitState.flashTimer - dt);
+  }
+
+  // Spawn Wave Manager
+  function createSpawner(opts) {
+    opts = opts || {};
+    return {
+      wave: 0, totalSpawned: 0, active: true,
+      timer: opts.initialDelay != null ? opts.initialDelay : (opts.waveInterval || 10),
+      waveInterval: opts.waveInterval || 10,
+      baseCount: opts.baseCount != null ? opts.baseCount : 3,
+      countGrowth: opts.countGrowth != null ? opts.countGrowth : 1,
+      maxCount: opts.maxCount || 20,
+      spawnFn: opts.spawnFn || null,
+    };
+  }
+  function updateSpawner(spawner, dt) {
+    if (!spawner.active) return;
+    spawner.timer -= dt;
+    if (spawner.timer <= 0) {
+      spawner.wave++;
+      spawner.timer = spawner.waveInterval;
+      var count = Math.min(spawner.baseCount + (spawner.wave - 1) * spawner.countGrowth, spawner.maxCount);
+      if (spawner.spawnFn) {
+        for (var i = 0; i < count; i++) { spawner.spawnFn(spawner.wave, i, count); spawner.totalSpawned++; }
+      }
+    }
+  }
+  function triggerWave(spawner) { spawner.timer = 0; }
+  function getSpawnerWave(spawner) { return spawner.wave; }
+
+  // Object Pool
+  function createPool(maxSize, factory) {
+    maxSize = maxSize || 100;
+    var _f = factory || function () { return {}; };
+    var items = [];
+    for (var i = 0; i < maxSize; i++) { var o = _f(); o._poolAlive = false; items.push(o); }
+    return {
+      items: items,
+      spawn: function (initFn) {
+        for (var i = 0; i < items.length; i++) {
+          if (!items[i]._poolAlive) { items[i]._poolAlive = true; if (initFn) initFn(items[i]); return items[i]; }
+        }
+        return null;
+      },
+      forEach: function (fn) {
+        for (var i = 0; i < items.length; i++) {
+          if (!items[i]._poolAlive) continue;
+          if (fn(items[i], i) === false) items[i]._poolAlive = false;
+        }
+      },
+      kill: function (obj) { obj._poolAlive = false; },
+      recycle: function () { for (var i = 0; i < items.length; i++) items[i]._poolAlive = false; },
+      get count() { var n = 0; for (var i = 0; i < items.length; i++) if (items[i]._poolAlive) n++; return n; },
+    };
+  }
+
+  // Floating Text System
+  function createFloatingTextSystem() {
+    var texts = [];
+    return {
+      spawn: function (text, x, y, opts) {
+        opts = opts || {};
+        var is3D = opts.z !== undefined;
+        texts.push({
+          text: String(text), x: x, y: y, z: opts.z,
+          vx: opts.vx != null ? opts.vx : 0,
+          vy: opts.vy != null ? opts.vy : (is3D ? -(opts.riseSpeed || 2) : -(opts.riseSpeed || 30)),
+          vz: opts.vz != null ? opts.vz : 0,
+          timer: opts.duration != null ? opts.duration : 1.0,
+          maxTimer: opts.duration != null ? opts.duration : 1.0,
+          color: opts.color != null ? opts.color : 0xffffff,
+          scale: opts.scale != null ? opts.scale : 1,
+        });
+      },
+      update: function (dt) {
+        for (var i = texts.length - 1; i >= 0; i--) {
+          var t = texts[i]; t.x += t.vx * dt; t.y += t.vy * dt;
+          if (t.z !== undefined) t.z += t.vz * dt;
+          t.timer -= dt; if (t.timer <= 0) texts.splice(i, 1);
+        }
+      },
+      getTexts: function () { return texts; },
+      clear: function () { texts.length = 0; },
+      get count() { return texts.length; },
+    };
+  }
+
+  // State Machine
+  function createStateMachine(initialState) {
+    var current = initialState, elapsed = 0, handlers = {};
+    return {
+      on: function (state, fns) { handlers[state] = fns; return this; },
+      switchTo: function (state) {
+        if (handlers[current] && handlers[current].exit) handlers[current].exit();
+        current = state; elapsed = 0;
+        if (handlers[current] && handlers[current].enter) handlers[current].enter();
+      },
+      update: function (dt) {
+        elapsed += dt;
+        if (handlers[current] && handlers[current].update) handlers[current].update(dt, elapsed);
+      },
+      getState: function () { return current; },
+      getElapsed: function () { return elapsed; },
+      is: function (state) { return current === state; },
+    };
+  }
+
+  // Timer
+  function createTimer(duration, opts) {
+    opts = opts || {};
+    return {
+      elapsed: 0, duration: duration, loop: !!opts.loop, done: false,
+      onComplete: opts.onComplete || null,
+      update: function (dt) {
+        if (this.done && !this.loop) return;
+        this.elapsed += dt;
+        if (this.elapsed >= this.duration) {
+          this.elapsed = this.loop ? this.elapsed - this.duration : this.duration;
+          if (!this.loop) this.done = true;
+          if (this.onComplete) this.onComplete();
+        }
+      },
+      progress: function () { return Math.min(1, this.elapsed / (this.duration || 1)); },
+      reset: function () { this.elapsed = 0; this.done = false; },
+    };
+  }
+
+  // createGameStore — Zustand-compatible reactive store (polyfill, no Zustand dep needed)
+  function createGameStore(initialState) {
+    var state = typeof initialState === 'function' ? initialState() : (initialState || {});
+    var listeners = [];
+    return {
+      getState: function () { return state; },
+      setState: function (partial, replace) {
+        var next = typeof partial === 'function' ? partial(state) : partial;
+        var nextState = replace ? next : Object.assign({}, state, next);
+        if (nextState !== state) {
+          var prev = state; state = nextState;
+          for (var i = 0; i < listeners.length; i++) listeners[i](state, prev);
+        }
+      },
+      subscribe: function (listener) {
+        listeners.push(listener);
+        return function () { var idx = listeners.indexOf(listener); if (idx >= 0) listeners.splice(idx, 1); };
+      },
+      destroy: function () { listeners.length = 0; },
+    };
+  }
+  var novaStore = createGameStore({ gameState: 'start', score: 0, lives: 3, level: 1, time: 0, paused: false, playerX: 0, playerY: 0 });
+
   // Stage / screens / movie clip / graphics nodes
   function createGraphicsNode(_opts) { warnOnce('createGraphicsNode'); return makeStub(); }
   function createMovieClip(_opts) { warnOnce('createMovieClip'); return makeStub({ currentFrame: 0, totalFrames: 1 }); }
@@ -1669,7 +2065,6 @@
   function createScreen(_opts) { warnOnce('createScreen'); return makeStub(); }
   function pushScreen(_s) { warnOnce('pushScreen'); }
   function popScreen() { warnOnce('popScreen'); }
-  function createShake(_opts) { warnOnce('createShake'); return makeStub({ value: 0 }); }
   function createCard(_opts) { warnOnce('createCard'); return makeStub(); }
   function createMenu(_opts) { warnOnce('createMenu'); return makeStub(); }
   function createStartScreen(_opts) { warnOnce('createStartScreen'); return makeStub(); }
@@ -2670,7 +3065,9 @@
   };
   const fxNs = { enablePixelation, enableDithering, enableBloom, setBloomStrength, enableFXAA, enableChromaticAberration, enableVignette, setN64Mode, setPSXMode, enableRetroEffects, isEffectsEnabled, enableSSR, enableSSAO, enableVolumetricFog, enableDOF, setExposure, setTonemap, setColorAdjustment };
   const uiNs = { createButton, createLabel, createPanel, createSlider, createCheckbox, createDialog, clearButtons, updateAllButtons, drawAllButtons, drawGradientRect, drawPanel, drawText, drawTextShadow, drawTextOutline, setFont, setTextAlign, setTextBaseline, grid, parseCanvasUI, renderCanvasUI, updateCanvasUI, uiColors: global.uiColors, centerX: function (w) { return Math.floor((640 - (w || 0)) / 2); }, centerY: function (h) { return Math.floor((360 - (h || 0)) / 2); }, Screen: (function() { function Screen() { this.data = {}; } Screen.prototype.enter = function(d) { this.data = Object.assign({}, this.data, d || {}); }; Screen.prototype.exit = function() {}; Screen.prototype.update = function() {}; Screen.prototype.draw = function() {}; return Screen; }()), getFont: function() { return 'default'; }, uiProgressBar: drawProgressBar };
-  const stageNs = { createGraphicsNode, createMovieClip, createStage, createScreen, pushScreen, popScreen, createShake, createCard, createMenu, createStartScreen };
+  const stageNs = { createGraphicsNode, createMovieClip, createStage, createScreen, pushScreen, popScreen,
+    createShake, triggerShake, updateShake, getShakeOffset,
+    createCard, createMenu, createStartScreen };
   const particlesNs = { createParticleSystem, createEmitter2D, createParticles };
   const skyboxNs = { createSpaceSkybox, createGalaxySkybox, createSunsetSkybox, createDawnSkybox, createNightSkybox, createFoggySkybox, createDuskSkybox, createStormSkybox, createAlienSkybox, createUnderwaterSkybox, setSkybox, createSkybox };
   const modelsNs = { loadModel, createTexture, loadTexture, createInstancedMesh, createTSLMaterial, createHologramMaterial, createVortexMaterial, createPBRMaterial, createAdvancedCube };
@@ -2693,11 +3090,13 @@
   const shaderBacking = { createTSLMaterial, createHologramMaterial, createVortexMaterial, createPBRMaterial };
   const physicsBacking = {};
   const dataBacking = {
-    t(key) { return key; },
-    saveData(_k, _v) {},
-    loadData(_k, fallback) { return fallback === undefined ? null : fallback; },
-    deleteData(_k) {},
-    remove(_k) {},
+    t: function (key) { return key; },
+    saveData: function (_k, _v) {},
+    loadData: function (_k, fallback) { return fallback === undefined ? null : fallback; },
+    deleteData: function (_k) {},
+    remove: function (_k) {},
+    createGameStore: createGameStore,
+    novaStore: novaStore,
   };
 
   // Augment a few namespaces with extra known names cart code expects.
@@ -2737,9 +3136,35 @@
     return fbmNoise(x, y, z, octaves, persistence, lacunarity, scale);
   };
 
-  // Tween namespace extras some carts call.
-  tweenNs.killAllTweens = function () {};
-  tweenNs.updateTweens = function (_dt) {};
+  // Tween namespace is fully wired (createTween, updateTweens, killAllTweens already on tweenNs).
+  // util namespace: add gameutils
+  utilNs.createShake = createShake;
+  utilNs.triggerShake = triggerShake;
+  utilNs.updateShake = updateShake;
+  utilNs.getShakeOffset = getShakeOffset;
+  utilNs.createCooldown = createCooldown;
+  utilNs.useCooldown = useCooldown;
+  utilNs.cooldownReady = cooldownReady;
+  utilNs.cooldownProgress = cooldownProgress;
+  utilNs.updateCooldown = updateCooldown;
+  utilNs.createCooldownSet = createCooldownSet;
+  utilNs.updateCooldowns = updateCooldowns;
+  utilNs.createHitState = createHitState;
+  utilNs.triggerHit = triggerHit;
+  utilNs.isInvulnerable = isInvulnerable;
+  utilNs.isVisible = isVisible;
+  utilNs.isFlashing = isFlashing;
+  utilNs.updateHitState = updateHitState;
+  utilNs.createSpawner = createSpawner;
+  utilNs.updateSpawner = updateSpawner;
+  utilNs.triggerWave = triggerWave;
+  utilNs.getSpawnerWave = getSpawnerWave;
+  utilNs.createPool = createPool;
+  utilNs.createFloatingTextSystem = createFloatingTextSystem;
+  utilNs.createStateMachine = createStateMachine;
+  utilNs.createTimer = createTimer;
+  utilNs.createGameStore = createGameStore;
+  utilNs.novaStore = novaStore;
 
   // Wrap every namespace so missing properties become named no-ops instead
   // of TypeErrors at destructure time.
@@ -2850,7 +3275,8 @@
     'updateShaderUniform', 'createParticleSystem', 'updateParticles',
     // UI helpers used bare.
     'drawAllButtons', 'updateAllButtons', 'createButton',
-    'killAllTweens', 'updateTweens',
+    // NOTE: updateTweens / killAllTweens now have real implementations installed
+    // above, so they are NOT in flatStubNames (would override real impls).
     // Camera helpers used bare.
     'cam2DApply', 'cam2DPush', 'cam2DPop', 'cam2DReset',
     'setFont', 'setTextAlign', 'setTextBaseline',
@@ -2922,6 +3348,36 @@
   global.setMeshVisible = setMeshVisible;
   global.moveMesh = moveMesh;
   global.getPosition = getPosition;
+  // Game utilities as bare globals (carts that don't destructure nova64.util still work)
+  global.createShake = createShake;
+  global.triggerShake = triggerShake;
+  global.updateShake = updateShake;
+  global.getShakeOffset = getShakeOffset;
+  global.createCooldown = createCooldown;
+  global.useCooldown = useCooldown;
+  global.cooldownReady = cooldownReady;
+  global.cooldownProgress = cooldownProgress;
+  global.updateCooldown = updateCooldown;
+  global.createCooldownSet = createCooldownSet;
+  global.updateCooldowns = updateCooldowns;
+  global.createHitState = createHitState;
+  global.triggerHit = triggerHit;
+  global.isInvulnerable = isInvulnerable;
+  global.isFlashing = isFlashing;
+  global.updateHitState = updateHitState;
+  global.createSpawner = createSpawner;
+  global.updateSpawner = updateSpawner;
+  global.triggerWave = triggerWave;
+  global.getSpawnerWave = getSpawnerWave;
+  global.createPool = createPool;
+  global.createFloatingTextSystem = createFloatingTextSystem;
+  global.createStateMachine = createStateMachine;
+  global.createTimer = createTimer;
+  global.createGameStore = createGameStore;
+  global.novaStore = novaStore;
+  global.updateTweens = updateTweens;
+  global.killAllTweens = killAllTweens;
+  global.Ease = Ease;
 
   // ---------------- meta.json processing -------------------------------
   // The host parses meta.json and exposes it as `globalThis.cart_meta` just

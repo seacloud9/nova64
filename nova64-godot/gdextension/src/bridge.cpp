@@ -1741,6 +1741,17 @@ void Nova64Host::cart_update(double p_delta)  {
             else JS_FreeValue(_context, JS_GetException(_context));
         }
         JS_FreeValue(_context, step);
+        // Tick the active-tween registry and novaStore time so carts that
+        // use createTween / novaStore don't need to call updateTweens(dt) manually.
+        JSValue preUpdate = JS_GetPropertyStr(_context, global, "__nova64_preUpdate");
+        if (JS_IsFunction(_context, preUpdate)) {
+            JSValue dtVal = JS_NewFloat64(_context, p_delta);
+            JSValue r2 = JS_Call(_context, preUpdate, JS_UNDEFINED, 1, &dtVal);
+            if (!JS_IsException(r2)) JS_FreeValue(_context, r2);
+            else JS_FreeValue(_context, JS_GetException(_context));
+            JS_FreeValue(_context, dtVal);
+        }
+        JS_FreeValue(_context, preUpdate);
         JS_FreeValue(_context, global);
     }
     auto t0 = std::chrono::high_resolution_clock::now();

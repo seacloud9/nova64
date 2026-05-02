@@ -1280,12 +1280,54 @@
   function updateAllButtons() { return false; }
   function drawAllButtons() {}
   function drawGradientRect() {}
-  function drawText() {}
-  function drawTextShadow() {}
-  function drawTextOutline() {}
-  function setFont() {}
-  function setTextAlign() {}
-  function setTextBaseline() {}
+  // Font / text alignment state mirrors runtime/ui/text.js so the same
+  // setFont('large') / setTextAlign('right') / drawTextShadow(...) sequence
+  // produces the same pixel layout under Godot as it does on web.
+  const __uiFonts = {
+    tiny:   { size: 0.5, spacing: 1 },
+    small:  { size: 1,   spacing: 2 },
+    normal: { size: 2,   spacing: 1 },
+    large:  { size: 3,   spacing: 1 },
+    huge:   { size: 4,   spacing: 2 },
+  };
+  const __uiState = { currentFont: 'normal', textAlign: 'left', textBaseline: 'top' };
+  function setFont(fontName) {
+    if (__uiFonts[fontName]) __uiState.currentFont = fontName;
+  }
+  function setTextAlign(align) { __uiState.textAlign = align || 'left'; }
+  function setTextBaseline(baseline) { __uiState.textBaseline = baseline || 'top'; }
+  function __uiMeasure(text, scale) {
+    const f = __uiFonts[__uiState.currentFont] || __uiFonts.normal;
+    const s = (typeof scale === 'number' ? scale : 1) * f.size;
+    const str = text == null ? '' : ('' + text);
+    return { width: str.length * 6 * s, height: 8 * s, finalScale: s };
+  }
+  function drawText(text, x, y, color, scale) {
+    const m = __uiMeasure(text, scale);
+    let dx = x | 0, dy = y | 0;
+    if (__uiState.textAlign === 'center') dx = (x - m.width / 2) | 0;
+    else if (__uiState.textAlign === 'right') dx = (x - m.width) | 0;
+    if (__uiState.textBaseline === 'middle') dy = (y - m.height / 2) | 0;
+    else if (__uiState.textBaseline === 'bottom') dy = (y - m.height) | 0;
+    novaPrint(text == null ? '' : ('' + text), dx, dy,
+      color == null ? 0xffffff : color, m.finalScale);
+  }
+  function drawTextShadow(text, x, y, color, shadowColor, offset, scale) {
+    const off = typeof offset === 'number' ? offset : 2;
+    const sc = typeof scale === 'number' ? scale : 1;
+    drawText(text, x + off, y + off, shadowColor == null ? 0x000000 : shadowColor, sc);
+    drawText(text, x, y, color == null ? 0xffffff : color, sc);
+  }
+  function drawTextOutline(text, x, y, color, outlineColor, scale) {
+    const sc = typeof scale === 'number' ? scale : 1;
+    const oc = outlineColor == null ? 0x000000 : outlineColor;
+    for (let ox = -1; ox <= 1; ox++) {
+      for (let oy = -1; oy <= 1; oy++) {
+        if (ox !== 0 || oy !== 0) drawText(text, x + ox, y + oy, oc, sc);
+      }
+    }
+    drawText(text, x, y, color == null ? 0xffffff : color, sc);
+  }
   function grid(cols, rows, w, h) {
     return {
       cols: cols || 1,
@@ -1700,7 +1742,7 @@
     pollInput,
   };
   const fxNs = { enablePixelation, enableDithering, enableBloom, setBloomStrength, enableFXAA, enableChromaticAberration, enableVignette, setN64Mode, setPSXMode, enableRetroEffects, isEffectsEnabled, enableSSR, enableSSAO, enableVolumetricFog, enableDOF, setExposure, setTonemap, setColorAdjustment };
-  const uiNs = { createButton, createLabel, createPanel, createSlider, createCheckbox, createDialog, clearButtons, updateAllButtons, drawAllButtons, drawGradientRect, drawText, drawTextShadow, drawTextOutline, setFont, setTextAlign, setTextBaseline, grid, parseCanvasUI, renderCanvasUI, updateCanvasUI, uiColors: global.uiColors };
+  const uiNs = { createButton, createLabel, createPanel, createSlider, createCheckbox, createDialog, clearButtons, updateAllButtons, drawAllButtons, drawGradientRect, drawText, drawTextShadow, drawTextOutline, setFont, setTextAlign, setTextBaseline, grid, parseCanvasUI, renderCanvasUI, updateCanvasUI, uiColors: global.uiColors, centerX: function (w) { return Math.floor((640 - (w || 0)) / 2); }, centerY: function (h) { return Math.floor((360 - (h || 0)) / 2); } };
   const stageNs = { createGraphicsNode, createMovieClip, createStage, createScreen, pushScreen, popScreen, createShake, createCard, createMenu, createStartScreen };
   const particlesNs = { createParticleSystem, createEmitter2D, createParticles };
   const skyboxNs = { createSpaceSkybox, createGalaxySkybox, createSunsetSkybox, createDawnSkybox, createNightSkybox, createFoggySkybox, createDuskSkybox, createStormSkybox, createAlienSkybox, createUnderwaterSkybox, setSkybox, createSkybox };

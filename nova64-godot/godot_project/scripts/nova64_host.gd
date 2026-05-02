@@ -80,7 +80,7 @@ func _ready() -> void:
 
 	var caps: Dictionary = host.get_capabilities()
 	print("[nova64] booted host: ", caps)
-	print("[nova64] cart picker ready (", _cart_list.size(), " carts) — Left/Right switch, R reload, H toggle overlay")
+	print("[nova64] cart picker ready (", _cart_list.size(), " carts) — use the dropdown to switch, F2 reload, F3 toggle overlay")
 
 	if not host.load_cart(path):
 		push_error("[nova64] failed to load cart " + path)
@@ -98,14 +98,15 @@ func _unhandled_input(event: InputEvent) -> void:
 	if not (event is InputEventKey) or not event.pressed or event.echo:
 		return
 	var k := event as InputEventKey
+	# Cart cycling via arrow keys / [ ] / PageUp/Down was removed so cart
+	# code can use those keys for gameplay (F-Zero steering, Space Harrier
+	# strafing, etc). Cart switching is exclusively the OptionButton's
+	# job now. F2 reloads, F3 toggles the overlay — chosen because no
+	# Nova64 cart binds them.
 	match k.keycode:
-		KEY_RIGHT, KEY_PAGEDOWN, KEY_BRACKETRIGHT:
-			_switch_cart(1)
-		KEY_LEFT, KEY_PAGEUP, KEY_BRACKETLEFT:
-			_switch_cart(-1)
-		KEY_R:
+		KEY_F2:
 			_reload_scene()
-		KEY_H:
+		KEY_F3:
 			_overlay_visible = not _overlay_visible
 			if _overlay != null:
 				_overlay.visible = _overlay_visible
@@ -156,7 +157,7 @@ func _build_overlay() -> void:
 	_overlay_picker = OptionButton.new()
 	_overlay_picker.custom_minimum_size = Vector2(280, 0)
 	_overlay_picker.fit_to_longest_item = false
-	_overlay_picker.tooltip_text = "Cartridge — pick to load (R reloads)"
+	_overlay_picker.tooltip_text = "Cartridge — pick to load (F2 reloads, F3 hides this overlay)"
 	for cart_name in _cart_list:
 		_overlay_picker.add_item(cart_name)
 	if _cart_list.size() > 0:
@@ -184,11 +185,10 @@ func _refresh_overlay() -> void:
 	var current := "(none)"
 	if _cart_list.size() > 0:
 		current = _cart_list[_cart_index]
-	_overlay_label.text = "NOVA64  —  cart %d / %d:  %s\n< >  switch    R  reload    H  hide overlay" % [
+	_overlay_label.text = "NOVA64  —  cart %d / %d:  %s\nDropdown: switch    F2: reload    F3: hide overlay" % [
 		_cart_index + 1, _cart_list.size(), current
 	]
 	if _overlay_picker != null and _cart_list.size() > 0:
 		_suppress_picker_signal = true
 		_overlay_picker.select(_cart_index)
 		_suppress_picker_signal = false
-

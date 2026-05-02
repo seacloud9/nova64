@@ -160,6 +160,16 @@ private:
     Dictionary _cmd_overlay_line(const Dictionary &p_payload);
     Dictionary _cmd_overlay_circle(const Dictionary &p_payload);
     Dictionary _cmd_overlay_text(const Dictionary &p_payload);
+    Dictionary _cmd_overlay_batch(const Dictionary &p_payload);
+    // Inline op handlers used by the batch dispatcher; each takes a small
+    // Array (op tag at index 0) instead of a Dictionary so the shim can
+    // queue ops with minimal allocator pressure per primitive.
+    void _overlay_op_cls(const Array &op);
+    void _overlay_op_pset(const Array &op);
+    void _overlay_op_rect(const Array &op);
+    void _overlay_op_line(const Array &op);
+    void _overlay_op_circle(const Array &op);
+    void _overlay_op_text(const Array &op);
 
     // Helpers
     Node3D *_resolve_node3d(uint32_t p_handle_id) const;

@@ -528,6 +528,7 @@ Dictionary Nova64Host::get_capabilities() const {
     features.append("overlay.line");
     features.append("overlay.circle");
     features.append("overlay.text");
+    features.append("overlay.batch");
     caps["features"] = features;
 
     return caps;
@@ -580,6 +581,7 @@ Dictionary Nova64Host::call_bridge(const String &p_method, const Dictionary &p_p
     if (p_method == "overlay.line")               return _cmd_overlay_line(p_payload);
     if (p_method == "overlay.circle")             return _cmd_overlay_circle(p_payload);
     if (p_method == "overlay.text")               return _cmd_overlay_text(p_payload);
+    if (p_method == "overlay.batch")              return _cmd_overlay_batch(p_payload);
 
     return make_error("unsupported_method", p_method);
 }
@@ -1644,6 +1646,27 @@ void Nova64Host::cart_draw()                  {
     _overlay_clear();
     auto t0 = std::chrono::high_resolution_clock::now();
     _call_cart_fn(_cart_draw_fn,   0.0,     false, "draw");
+    // Drain the per-frame overlay queue. The shim publishes a global
+    // __nova64_overlayFlush() that issues a single overlay.batch with
+    // every queued op, so we amortize the JS↔C++ marshalling cost.
+    if (_context && _cart_loaded) {
+        JSValue global = JS_GetGlobalObject(_context);
+        JSValue flush = JS_GetPropertyStr(_context, global, "__nova64_overlayFlush");
+        if (JS_IsFunction(_context, flush)) {
+            JSValue r = JS_Call(_context, flush, JS_UNDEFINED, 0, nullptr);
+            if (JS_IsException(r)) {
+                JSValue exc = JS_GetException(_context);
+                const char *msg = JS_ToCString(_context, exc);
+                UtilityFunctions::printerr("[nova64] overlay flush: ",
+                        msg ? String::utf8(msg) : String("(unknown error)"));
+                if (msg) JS_FreeCString(_context, msg);
+                JS_FreeValue(_context, exc);
+            }
+            JS_FreeValue(_context, r);
+        }
+        JS_FreeValue(_context, flush);
+        JS_FreeValue(_context, global);
+    }
     auto t1 = std::chrono::high_resolution_clock::now();
     uint64_t us = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
     _record_perf_sample(_perf_update_us[_perf_index], us);
@@ -1866,4 +1889,164 @@ Dictionary Nova64Host::_cmd_overlay_text(const Dictionary &p) {
     font->draw_string(_overlay->get_canvas_item(), pos, text,
             HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, c);
     Dictionary out; out["ok"] = true; return out;
+}
+
+// ---- overlay batch dispatch ---------------------------------------------
+// Op format (small Array; index 0 is the op tag string):
+//   ['cls',   color]
+//   ['pset',  x, y, color]
+//   ['rect',  x, y, w, h, color, filled]
+//   ['line',  x0, y0, x1, y1, color]
+//   ['circle',x, y, r, color, filled]
+//   ['text',  x, y, text, color, scale]
+//
+// `color` is a 4-element [r,g,b,a] float array (already normalized 0..1)
+// because the shim's colorFromHex returns it that way.
+
+static Color color_from_array(const Variant &v, const Color &fallback) {
+    if (v.get_type() != Variant::ARRAY) return fallback;
+    Array a = v;
+    if (a.size() < 3) return fallback;
+    float r = static_cast<float>(static_cast<double>(a[0]));
+    float g = static_cast<float>(static_cast<double>(a[1]));
+    float b = static_cast<float>(static_cast<double>(a[2]));
+    float al = a.size() >= 4 ? static_cast<float>(static_cast<double>(a[3])) : 1.0f;
+    return Color(r, g, b, al);
+}
+
+void Nova64Host::_overlay_op_cls(const Array &op) {
+    if (op.size() < 2 || _overlay == nullptr) return;
+    Color c = color_from_array(op[1], Color(0, 0, 0, 1));
+    RenderingServer *rs = RenderingServer::get_singleton();
+    rs->canvas_item_clear(_overlay->get_canvas_item());
+    Vector2 sz = _overlay->get_size();
+    if (sz.x <= 0) sz = Vector2(640, 360);
+    rs->canvas_item_add_rect(_overlay->get_canvas_item(),
+            Rect2(Vector2(0, 0), sz), c);
+}
+
+void Nova64Host::_overlay_op_pset(const Array &op) {
+    if (op.size() < 4 || _overlay == nullptr) return;
+    Vector2 s = overlay_scale(_overlay);
+    float x = static_cast<float>(static_cast<double>(op[1]));
+    float y = static_cast<float>(static_cast<double>(op[2]));
+    Color c = color_from_array(op[3], Color(1, 1, 1, 1));
+    RenderingServer::get_singleton()->canvas_item_add_rect(
+            _overlay->get_canvas_item(),
+            Rect2(Vector2(x * s.x, y * s.y),
+                  Vector2(Math::max(1.0f, s.x), Math::max(1.0f, s.y))),
+            c);
+}
+
+void Nova64Host::_overlay_op_rect(const Array &op) {
+    if (op.size() < 7 || _overlay == nullptr) return;
+    Vector2 s = overlay_scale(_overlay);
+    float x = static_cast<float>(static_cast<double>(op[1]));
+    float y = static_cast<float>(static_cast<double>(op[2]));
+    float w = static_cast<float>(static_cast<double>(op[3]));
+    float h = static_cast<float>(static_cast<double>(op[4]));
+    Color c = color_from_array(op[5], Color(1, 1, 1, 1));
+    bool filled = static_cast<bool>(op[6]);
+    RenderingServer *rs = RenderingServer::get_singleton();
+    RID ci = _overlay->get_canvas_item();
+    Rect2 r(Vector2(x * s.x, y * s.y), Vector2(w * s.x, h * s.y));
+    if (filled) {
+        rs->canvas_item_add_rect(ci, r, c);
+    } else {
+        Vector2 tl = r.position;
+        Vector2 tr = tl + Vector2(r.size.x, 0);
+        Vector2 bl = tl + Vector2(0, r.size.y);
+        Vector2 br = tl + r.size;
+        float w_px = Math::max(1.0f, s.x);
+        rs->canvas_item_add_line(ci, tl, tr, c, w_px);
+        rs->canvas_item_add_line(ci, tr, br, c, w_px);
+        rs->canvas_item_add_line(ci, br, bl, c, w_px);
+        rs->canvas_item_add_line(ci, bl, tl, c, w_px);
+    }
+}
+
+void Nova64Host::_overlay_op_line(const Array &op) {
+    if (op.size() < 6 || _overlay == nullptr) return;
+    Vector2 s = overlay_scale(_overlay);
+    float x0 = static_cast<float>(static_cast<double>(op[1]));
+    float y0 = static_cast<float>(static_cast<double>(op[2]));
+    float x1 = static_cast<float>(static_cast<double>(op[3]));
+    float y1 = static_cast<float>(static_cast<double>(op[4]));
+    Color c = color_from_array(op[5], Color(1, 1, 1, 1));
+    float width = Math::max(1.0f, Math::max(s.x, s.y));
+    RenderingServer::get_singleton()->canvas_item_add_line(
+            _overlay->get_canvas_item(),
+            Vector2(x0 * s.x, y0 * s.y),
+            Vector2(x1 * s.x, y1 * s.y),
+            c, width);
+}
+
+void Nova64Host::_overlay_op_circle(const Array &op) {
+    if (op.size() < 6 || _overlay == nullptr) return;
+    Vector2 s = overlay_scale(_overlay);
+    float x = static_cast<float>(static_cast<double>(op[1]));
+    float y = static_cast<float>(static_cast<double>(op[2]));
+    float r = static_cast<float>(static_cast<double>(op[3]));
+    Color c = color_from_array(op[4], Color(1, 1, 1, 1));
+    bool filled = static_cast<bool>(op[5]);
+    RenderingServer *rs = RenderingServer::get_singleton();
+    RID ci = _overlay->get_canvas_item();
+    Vector2 center(x * s.x, y * s.y);
+    float radius = r * Math::max(s.x, s.y);
+    if (filled) {
+        rs->canvas_item_add_circle(ci, center, radius, c);
+    } else {
+        constexpr int SEGMENTS = 32;
+        PackedVector2Array pts;
+        pts.resize(SEGMENTS + 1);
+        for (int i = 0; i <= SEGMENTS; i++) {
+            float a = (float)i / SEGMENTS * Math_TAU;
+            pts[i] = center + Vector2(Math::cos(a), Math::sin(a)) * radius;
+        }
+        PackedColorArray cols;
+        cols.push_back(c);
+        rs->canvas_item_add_polyline(ci, pts, cols, Math::max(1.0f, s.x));
+    }
+}
+
+void Nova64Host::_overlay_op_text(const Array &op) {
+    if (op.size() < 6 || _overlay == nullptr) return;
+    Vector2 s = overlay_scale(_overlay);
+    float x = static_cast<float>(static_cast<double>(op[1]));
+    float y = static_cast<float>(static_cast<double>(op[2]));
+    String text = String(op[3]);
+    Color c = color_from_array(op[4], Color(1, 1, 1, 1));
+    float scale = static_cast<float>(static_cast<double>(op[5]));
+    Ref<Font> font = _overlay->get_theme_default_font();
+    if (font.is_null()) return;
+    int base_size = 12;
+    int font_size = static_cast<int>(Math::round(base_size * scale * Math::max(s.x, s.y)));
+    if (font_size < 8) font_size = 8;
+    float ascent = font->get_ascent(font_size);
+    Vector2 pos(x * s.x, y * s.y + ascent);
+    font->draw_string(_overlay->get_canvas_item(), pos, text,
+            HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, c);
+}
+
+Dictionary Nova64Host::_cmd_overlay_batch(const Dictionary &p) {
+    _ensure_overlay();
+    Variant v = p.get("ops", Variant());
+    if (v.get_type() != Variant::ARRAY) {
+        Dictionary out; out["ok"] = false; out["error"] = "no_ops"; return out;
+    }
+    Array ops = v;
+    int n = ops.size();
+    for (int i = 0; i < n; i++) {
+        if (ops[i].get_type() != Variant::ARRAY) continue;
+        Array op = ops[i];
+        if (op.size() < 1) continue;
+        String tag = String(op[0]);
+        if (tag == "rect")        _overlay_op_rect(op);
+        else if (tag == "line")   _overlay_op_line(op);
+        else if (tag == "circle") _overlay_op_circle(op);
+        else if (tag == "text")   _overlay_op_text(op);
+        else if (tag == "pset")   _overlay_op_pset(op);
+        else if (tag == "cls")    _overlay_op_cls(op);
+    }
+    Dictionary out; out["ok"] = true; out["count"] = n; return out;
 }

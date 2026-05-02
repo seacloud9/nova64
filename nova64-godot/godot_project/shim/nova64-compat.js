@@ -461,131 +461,274 @@
   }
 
   // ---------------- draw / 2D overlay ----------------------------------
-  // Backed by the host's overlay.* commands (CanvasLayer + Control). The
-  // host clears the overlay at the top of every cart_draw() so cls() is
-  // the explicit "fill" call rather than a redundant clear.
+  // All cart draw calls enqueue ops into a per-frame buffer. The host
+  // calls __nova64_overlayFlush() once after the cart's draw fn returns,
+  // which dispatches the whole batch in a single engine.call. This keeps
+  // the JS↔C++ round-trip count to O(1) per frame instead of O(N) per
+  // primitive — critical for boids (3000+ lines/frame) and generative-art.
+  //
+  // A 2D affine transform stack (3x3) is applied in the shim before
+  // points enter the queue, so generative-art's pushMatrix/translate/
+  // rotate/scale produce visually correct output.
+
+  const __ops = [];
+  // Affine matrix [a, b, c, d, e, f]:
+  //   x' = a*x + c*y + e
+  //   y' = b*x + d*y + f
+  let __mtx = [1, 0, 0, 1, 0, 0];
+  const __mtxStack = [];
+  function __identity() { return __mtx[0] === 1 && __mtx[1] === 0 && __mtx[2] === 0 && __mtx[3] === 1 && __mtx[4] === 0 && __mtx[5] === 0; }
+  function __tx(x, y) {
+    if (__identity()) return [x, y];
+    return [__mtx[0] * x + __mtx[2] * y + __mtx[4], __mtx[1] * x + __mtx[3] * y + __mtx[5]];
+  }
+  function __mtxScale() {
+    // Uniform scale magnitude for radii / line widths.
+    const sx = Math.sqrt(__mtx[0] * __mtx[0] + __mtx[1] * __mtx[1]);
+    const sy = Math.sqrt(__mtx[2] * __mtx[2] + __mtx[3] * __mtx[3]);
+    return (sx + sy) * 0.5;
+  }
+  function pushMatrix() { __mtxStack.push([__mtx[0], __mtx[1], __mtx[2], __mtx[3], __mtx[4], __mtx[5]]); }
+  function popMatrix() { if (__mtxStack.length > 0) __mtx = __mtxStack.pop(); }
+  function translate(x, y) {
+    __mtx[4] += __mtx[0] * x + __mtx[2] * y;
+    __mtx[5] += __mtx[1] * x + __mtx[3] * y;
+  }
+  function rotateMtx(a) {
+    const c = Math.cos(a), s = Math.sin(a);
+    const a0 = __mtx[0], b0 = __mtx[1], c0 = __mtx[2], d0 = __mtx[3];
+    __mtx[0] = a0 * c + c0 * s;
+    __mtx[1] = b0 * c + d0 * s;
+    __mtx[2] = a0 * -s + c0 * c;
+    __mtx[3] = b0 * -s + d0 * c;
+  }
+  function scaleMtx(sx, sy) {
+    if (sy == null) sy = sx;
+    __mtx[0] *= sx; __mtx[1] *= sx;
+    __mtx[2] *= sy; __mtx[3] *= sy;
+  }
+
+  // Host-invoked at end of cart_draw(). One engine.call drains the queue.
+  global.__nova64_overlayFlush = function () {
+    if (__ops.length === 0) return;
+    call('overlay.batch', { ops: __ops });
+    __ops.length = 0;
+    // Transform stack should be balanced by the cart but reset defensively
+    // so a cart bug can't bleed into the next frame.
+    __mtx = [1, 0, 0, 1, 0, 0];
+    __mtxStack.length = 0;
+  };
+
   function rgba8(r, g, b, a) {
     a = a == null ? 255 : a;
     return ((a & 0xff) << 24) | ((r & 0xff) << 16) | ((g & 0xff) << 8) | (b & 0xff);
   }
   function cls(color) {
-    call('overlay.cls', { color: colorFromHex(color == null ? 0x000000 : color) });
+    __ops.push(['cls', colorFromHex(color == null ? 0x000000 : color)]);
   }
   function novaPrint(text, x, y, color, scale) {
-    call('overlay.text', {
-      x: x | 0, y: y | 0,
-      text: text == null ? '' : ('' + text),
-      color: colorFromHex(color == null ? 0xffffff : color),
-      scale: typeof scale === 'number' ? scale : 1,
-    });
+    const p = __tx(x, y);
+    const sc = (typeof scale === 'number' ? scale : 1) * __mtxScale();
+    __ops.push(['text', p[0] | 0, p[1] | 0,
+      text == null ? '' : ('' + text),
+      colorFromHex(color == null ? 0xffffff : color), sc]);
   }
-  function printCentered(text, y, color, scale) {
+  // Canonical browser signature: printCentered(text, cx, y, color, scale=1).
+  function printCentered(text, cx, y, color, scale) {
     const s = text == null ? '' : ('' + text);
     const sc = typeof scale === 'number' ? scale : 1;
-    // Approx 6px per char at scale 1 — close to pico-style font width.
+    // 6px per char * scale matches the browser font metric.
     const w = s.length * 6 * sc;
-    const x = Math.max(0, (640 - w) / 2);
-    call('overlay.text', {
-      x: x | 0, y: y | 0, text: s,
-      color: colorFromHex(color == null ? 0xffffff : color),
-      scale: sc,
-    });
+    novaPrint(s, (cx | 0) - (w / 2) | 0, y | 0, color, sc);
+  }
+  function printRight(text, rx, y, color, scale) {
+    const s = text == null ? '' : ('' + text);
+    const sc = typeof scale === 'number' ? scale : 1;
+    const w = s.length * 6 * sc;
+    novaPrint(s, (rx | 0) - w | 0, y | 0, color, sc);
   }
   function rect(x, y, w, h, color, filled) {
-    call('overlay.rect', {
-      x: x | 0, y: y | 0, w: w | 0, h: h | 0,
-      color: colorFromHex(color == null ? 0xffffff : color),
-      filled: !!filled,
-    });
+    const p = __tx(x, y);
+    const ms = __mtxScale();
+    __ops.push(['rect', p[0] | 0, p[1] | 0,
+      Math.max(0, (w * ms) | 0), Math.max(0, (h * ms) | 0),
+      colorFromHex(color == null ? 0xffffff : color),
+      filled === true]);
   }
   function rectfill(x, y, w, h, color) {
-    call('overlay.rect', {
-      x: x | 0, y: y | 0, w: w | 0, h: h | 0,
-      color: colorFromHex(color == null ? 0xffffff : color),
-      filled: true,
-    });
+    const p = __tx(x, y);
+    const ms = __mtxScale();
+    __ops.push(['rect', p[0] | 0, p[1] | 0,
+      Math.max(0, (w * ms) | 0), Math.max(0, (h * ms) | 0),
+      colorFromHex(color == null ? 0xffffff : color), true]);
   }
   function line(x0, y0, x1, y1, color) {
-    call('overlay.line', {
-      x0: x0 | 0, y0: y0 | 0, x1: x1 | 0, y1: y1 | 0,
-      color: colorFromHex(color == null ? 0xffffff : color),
-    });
+    const a = __tx(x0, y0), b = __tx(x1, y1);
+    __ops.push(['line', a[0] | 0, a[1] | 0, b[0] | 0, b[1] | 0,
+      colorFromHex(color == null ? 0xffffff : color)]);
   }
   function pixel(x, y, color) {
-    call('overlay.pset', {
-      x: x | 0, y: y | 0,
-      color: colorFromHex(color == null ? 0xffffff : color),
-    });
+    const p = __tx(x, y);
+    __ops.push(['pset', p[0] | 0, p[1] | 0,
+      colorFromHex(color == null ? 0xffffff : color)]);
   }
   function circle(x, y, r, color, filled) {
-    call('overlay.circle', {
-      x: x | 0, y: y | 0, r: r | 0,
-      color: colorFromHex(color == null ? 0xffffff : color),
-      filled: !!filled,
-    });
+    const p = __tx(x, y);
+    const rr = Math.max(1, (r * __mtxScale()) | 0);
+    __ops.push(['circle', p[0] | 0, p[1] | 0, rr,
+      colorFromHex(color == null ? 0xffffff : color),
+      filled === true]);
   }
   function circfill(x, y, r, color) {
-    call('overlay.circle', {
-      x: x | 0, y: y | 0, r: r | 0,
-      color: colorFromHex(color == null ? 0xffffff : color),
-      filled: true,
-    });
+    const p = __tx(x, y);
+    const rr = Math.max(1, (r * __mtxScale()) | 0);
+    __ops.push(['circle', p[0] | 0, p[1] | 0, rr,
+      colorFromHex(color == null ? 0xffffff : color), true]);
   }
   function ellipse(x, y, rx, ry, color, filled) {
-    // Cheap approximation: render as a circle using avg radius. Carts that
-    // really need elliptical primitives are rare enough today.
+    // Approximate as average-radius circle. Real ellipse rasterisation
+    // would need a polyline; cheap stand-in keeps generative-art alive.
     const r = Math.max(1, ((rx | 0) + (ry | 0)) >> 1);
-    call('overlay.circle', {
-      x: x | 0, y: y | 0, r,
-      color: colorFromHex(color == null ? 0xffffff : color),
-      filled: filled !== false,
-    });
+    circle(x, y, r, color, filled !== false);
   }
   function arc(x, y, r, _a0, _a1, color) {
-    // Stand-in: render a filled-ish dot at (x,y). Approximate but better
-    // than nothing for the generative-art sketches that lean on it.
-    call('overlay.circle', {
-      x: x | 0, y: y | 0, r: Math.max(1, r | 0),
-      color: colorFromHex(color == null ? 0xffffff : color),
-      filled: false,
-    });
+    circle(x, y, Math.max(1, r | 0), color, false);
   }
   function bezier(x0, y0, _cx, _cy, x1, y1, color) {
-    // Cheap stand-in: a straight line. Real bezier rasterisation lives in
-    // the browser runtime; the overlay backend here keeps it simple.
     line(x0, y0, x1, y1, color);
   }
   function pset(x, y, color) { pixel(x, y, color); }
   function drawRect(x, y, w, h, color, filled) { rect(x, y, w, h, color, filled); }
-  function drawPanel(x, y, w, h, fill, border) {
-    rectfill(x, y, w, h, fill == null ? 0x101822 : fill);
-    rect(x, y, w, h, border == null ? 0x6699cc : border, false);
+  // Canonical browser signature: drawPanel(x, y, w, h, opts={}).
+  // Some carts also call drawPanel(x,y,w,h, fillColor, borderColor) — so
+  // accept both shapes.
+  function drawPanel(x, y, w, h, optsOrFill, border) {
+    let fill = 0x101822, brd = 0x6699cc;
+    if (typeof optsOrFill === 'object' && optsOrFill !== null) {
+      if (optsOrFill.fill != null) fill = optsOrFill.fill;
+      if (optsOrFill.background != null) fill = optsOrFill.background;
+      if (optsOrFill.border != null) brd = optsOrFill.border;
+    } else if (typeof optsOrFill === 'number') {
+      fill = optsOrFill;
+      if (typeof border === 'number') brd = border;
+    }
+    rectfill(x, y, w, h, fill);
+    rect(x, y, w, h, brd, false);
   }
-  function drawGlowTextCentered(text, y, color) {
-    // Cheap glow: print twice with offsets in the glow color, then white
-    // on top. The bridge's bloom effect (if enabled) handles the actual
-    // glow look.
+  // Canonical browser signature:
+  //   drawGlowText(text, x, y, color, glowColor, scale=1)
+  //   drawGlowTextCentered(text, cx, y, color, glowColor, scale=1)
+  function drawGlowText(text, x, y, color, glowColor, scale) {
+    const sc = typeof scale === 'number' ? scale : 1;
+    const g = glowColor == null ? 0x404060 : glowColor;
+    const offsets = [[-1,-1],[0,-1],[1,-1],[-1,0],[1,0],[-1,1],[0,1],[1,1]];
+    for (let i = 0; i < offsets.length; i++) {
+      novaPrint(text, x + offsets[i][0], y + offsets[i][1], g, sc);
+    }
+    novaPrint(text, x, y, color == null ? 0xffffff : color, sc);
+  }
+  function drawGlowTextCentered(text, cx, y, color, glowColor, scale) {
+    const s = text == null ? '' : ('' + text);
+    const sc = typeof scale === 'number' ? scale : 1;
+    const w = s.length * 6 * sc;
+    drawGlowText(s, (cx | 0) - (w / 2) | 0, y | 0, color, glowColor, sc);
+  }
+  // Canonical: drawRadialGradient(cx, cy, radius, innerColor, outerColor)
+  // Cheap approximation: concentric filled rings stepping inner→outer.
+  function drawRadialGradient(cx, cy, radius, innerColor, outerColor) {
+    const inner = colorFromHex(innerColor == null ? 0xffffff : innerColor);
+    const outer = colorFromHex(outerColor == null ? 0x000000 : outerColor);
+    const STEPS = 8;
+    for (let i = STEPS; i >= 1; i--) {
+      const t = i / STEPS;
+      const r = Math.max(1, (radius * t) | 0);
+      const col = [
+        outer[0] + (inner[0] - outer[0]) * (1 - t),
+        outer[1] + (inner[1] - outer[1]) * (1 - t),
+        outer[2] + (inner[2] - outer[2]) * (1 - t),
+        outer[3] + (inner[3] - outer[3]) * (1 - t),
+      ];
+      const p = __tx(cx, cy);
+      __ops.push(['circle', p[0] | 0, p[1] | 0, r, col, true]);
+    }
+  }
+  function drawGradient(x, y, w, h, top, bottom) {
+    // Vertical gradient via N horizontal slices.
+    const t = colorFromHex(top == null ? 0xffffff : top);
+    const b = colorFromHex(bottom == null ? 0x000000 : bottom);
+    const STEPS = Math.max(1, Math.min(64, h | 0));
+    const sh = h / STEPS;
+    for (let i = 0; i < STEPS; i++) {
+      const k = i / Math.max(1, STEPS - 1);
+      const col = [
+        t[0] + (b[0] - t[0]) * k,
+        t[1] + (b[1] - t[1]) * k,
+        t[2] + (b[2] - t[2]) * k,
+        t[3] + (b[3] - t[3]) * k,
+      ];
+      const p = __tx(x, y + i * sh);
+      __ops.push(['rect', p[0] | 0, p[1] | 0,
+        Math.max(0, w | 0), Math.max(1, Math.ceil(sh)),
+        col, true]);
+    }
+  }
+  function drawProgressBar(x, y, w, h, value, color, bgColor) {
+    const v = Math.max(0, Math.min(1, value || 0));
+    rectfill(x, y, w, h, bgColor == null ? 0x202028 : bgColor);
+    rectfill(x, y, (w * v) | 0, h, color == null ? 0x60c0ff : color);
+    rect(x, y, w, h, 0x404048, false);
+  }
+  function drawHealthBar(x, y, w, h, value, max) {
+    const v = max > 0 ? value / max : 0;
+    drawProgressBar(x, y, w, h, v,
+      v > 0.5 ? 0x60ff60 : v > 0.25 ? 0xffd040 : 0xff4040, 0x301818);
+  }
+  function drawPixelBorder(x, y, w, h, color) {
+    rect(x, y, w, h, color == null ? 0xffffff : color, false);
+  }
+  function drawCrosshair(x, y, size, color) {
+    const s = size | 0;
     const c = color == null ? 0xffffff : color;
-    printCentered(text, y, c, 1);
+    line(x - s, y, x + s, y, c);
+    line(x, y - s, x, y + s, c);
   }
-  function drawRadialGradient(_cx, _cy, _radius, fill) {
-    // Stand-in: full-screen tinted rectfill at low alpha.
-    const c = colorFromHex(fill == null ? 0x101822 : fill);
-    call('overlay.rect', {
-      x: 0, y: 0, w: 640, h: 360,
-      color: [c[0], c[1], c[2], (c[3] || 1) * 0.5],
-      filled: true,
-    });
+  function drawScanlines(_alpha, _spacing) { /* host postFX handles this */ }
+  function drawNoise(_alpha) { /* expensive in shim; skip */ }
+  function drawTriangle(x0, y0, x1, y1, x2, y2, color, _filled) {
+    // Outline only (overlay batch has no native triangle fill).
+    line(x0, y0, x1, y1, color);
+    line(x1, y1, x2, y2, color);
+    line(x2, y2, x0, y0, color);
+  }
+  function drawDiamond(cx, cy, size, color, filled) {
+    const s = size | 0;
+    drawTriangle(cx, cy - s, cx + s, cy, cx - s, cy, color, filled);
+    drawTriangle(cx, cy + s, cx + s, cy, cx - s, cy, color, filled);
+  }
+  function drawStarburst(cx, cy, n, r0, r1, color) {
+    n = n | 0; if (n < 3) n = 3;
+    const c = color == null ? 0xffffff : color;
+    let prevX = cx + r1, prevY = cy;
+    for (let i = 1; i <= n * 2; i++) {
+      const ang = (i / (n * 2)) * Math.PI * 2;
+      const rr = (i & 1) ? r0 : r1;
+      const x = cx + Math.cos(ang) * rr;
+      const y = cy + Math.sin(ang) * rr;
+      line(prevX, prevY, x, y, c);
+      prevX = x; prevY = y;
+    }
+  }
+  function poly(points, color, _filled) {
+    if (!Array.isArray(points) || points.length < 4) return;
+    const c = color == null ? 0xffffff : color;
+    for (let i = 0; i < points.length; i += 2) {
+      const j = (i + 2) % points.length;
+      line(points[i], points[i + 1], points[j], points[j + 1], c);
+    }
   }
   function flowField(_w, _h, _scale) {
-    // Returns a callable noise sampler so generative-art's FLOW FIELD
-    // sketch boots without exploding.
     return { sample(x, y) { return noise(x * 0.01, y * 0.01) * Math.PI * 2; } };
   }
-  function pushMatrix() { /* no-op (overlay 2D transforms not implemented) */ }
-  function popMatrix() { /* no-op */ }
-  function translate(_x, _y) { /* no-op */ }
-  function rotate(_a) { /* no-op */ }
 
   function screenWidth() { return 640; }
   function screenHeight() { return 360; }
@@ -1336,7 +1479,7 @@
   const sceneNs = { createCube, createSphere, createPlane, createCylinder, createCone, createTorus, createAdvancedCube, removeMesh, destroyMesh: removeMesh, setPosition, setRotation, rotateMesh, setScale, getPosition, engine: global.engine };
   const cameraNs = { setCameraPosition, setCameraTarget, setCameraFOV };
   const lightNs = { setLightDirection, setFog, clearFog, createPointLight, createSpotLight, createAmbientLight, setAmbientLight, setLightColor, setLightEnergy };
-  const drawNs = { cls, print: novaPrint, printCentered, rect, rectfill, line, pixel, pset, circle, circfill, ellipse, arc, bezier, drawRect, drawPanel, drawGlowTextCentered, drawRadialGradient, rgba8, screenWidth, screenHeight };
+  const drawNs = { cls, print: novaPrint, printCentered, printRight, rect, rectfill, line, pixel, pset, circle, circfill, ellipse, arc, bezier, drawRect, drawPanel, drawGlowText, drawGlowTextCentered, drawRadialGradient, drawGradient, drawProgressBar, drawHealthBar, drawPixelBorder, drawCrosshair, drawScanlines, drawNoise, drawTriangle, drawDiamond, drawStarburst, poly, rgba8, screenWidth, screenHeight };
   const inputNs = { key, isKeyPressed, isKeyDown: key, keyp: key, pollInput, btn, btnp, pad: padNs, mouse: mouseNs };
   const fxNs = { enablePixelation, enableDithering, enableBloom, setBloomStrength, enableFXAA, enableChromaticAberration, enableVignette, setN64Mode, setPSXMode, enableRetroEffects, isEffectsEnabled, enableSSR, enableSSAO, enableVolumetricFog, enableDOF, setExposure, setTonemap, setColorAdjustment };
   const uiNs = { createButton, createLabel, createPanel, createSlider, createCheckbox, createDialog, clearButtons, updateAllButtons, drawAllButtons, drawGradientRect, drawText, drawTextShadow, drawTextOutline, setFont, setTextAlign, setTextBaseline, grid, parseCanvasUI, renderCanvasUI, updateCanvasUI, uiColors: global.uiColors };
@@ -1363,7 +1506,6 @@
 
   // Augment a few namespaces with extra known names cart code expects.
   // (Real impls already exist above; we just publish more aliases.)
-  drawNs.drawProgressBar = namedNoop('draw', 'drawProgressBar');
   drawNs.BM = { add: 0, multiply: 1, screen: 2, alpha: 3 };
   drawNs.withBlend = function (_mode, fn) { if (typeof fn === 'function') fn(makeStub()); };
 
@@ -1371,6 +1513,12 @@
   utilNs.flowField = flowField;
   utilNs.pushMatrix = pushMatrix;
   utilNs.popMatrix = popMatrix;
+  utilNs.translate = translate;
+  // 2D matrix rotate (single arg). Carts that need the point-rotation
+  // helper can call utilNs.rotatePoint directly.
+  utilNs.rotate = rotateMtx;
+  utilNs.scale = scaleMtx;
+  utilNs.rotatePoint = function (x, y, ang) { const c = Math.cos(ang), s = Math.sin(ang); return [x * c - y * s, x * s + y * c]; };
   utilNs.smoothstep = function (a, b, t) {
     const x = Math.max(0, Math.min(1, (t - a) / (b - a || 1)));
     return x * x * (3 - 2 * x);
@@ -1383,7 +1531,7 @@
   };
   utilNs.arc = function (cx, cy, r, ang) { return [cx + Math.cos(ang) * r, cy + Math.sin(ang) * r]; };
   utilNs.ellipse = function (cx, cy, rx, ry, ang) { return [cx + Math.cos(ang) * rx, cy + Math.sin(ang) * ry]; };
-  utilNs.rotate = function (x, y, ang) { const c = Math.cos(ang), s = Math.sin(ang); return [x * c - y * s, x * s + y * c]; };
+
 
   // Voxel namespace gets simplex helpers (alias of shim's noise).
   voxelNs.simplexNoise2D = function (x, y, octaves, persistence, lacunarity, scale) {

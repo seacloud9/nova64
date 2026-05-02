@@ -520,6 +520,7 @@ Dictionary Nova64Host::get_capabilities() const {
     features.append("light.createSpot");
     features.append("light.setColor");
     features.append("light.setEnergy");
+    features.append("light.setSun");
     features.append("env.set");
     features.append("camera.setParams");
     features.append("geometry.createCylinder");
@@ -1110,6 +1111,19 @@ Dictionary Nova64Host::_cmd_env_set(const Dictionary &p) {
             color_from_payload(p, "fogColor", Color(0.5f, 0.6f, 0.7f, 1.0f)));
     if (p.has("fogDensity")) env->set_fog_density(
             static_cast<float>(static_cast<double>(p["fogDensity"])));
+    if (p.has("fogNear") || p.has("fogFar")) {
+        // Match Three.js linear fog semantics by driving Godot depth fog.
+        env->set_fog_mode(Environment::FOG_MODE_DEPTH);
+        if (p.has("fogNear")) {
+            env->set_fog_depth_begin(static_cast<float>(static_cast<double>(p["fogNear"])));
+        }
+        if (p.has("fogFar")) {
+            env->set_fog_depth_end(static_cast<float>(static_cast<double>(p["fogFar"])));
+        }
+        if (p.has("fogCurve")) {
+            env->set_fog_depth_curve(static_cast<float>(static_cast<double>(p["fogCurve"])));
+        }
+    }
 
     if (p.has("ssao")) env->set_ssao_enabled(static_cast<bool>(p["ssao"]));
     if (p.has("ssaoIntensity")) env->set_ssao_intensity(

@@ -406,14 +406,21 @@
     });
   }
   function setFog(color, near, far) {
-    // Three.js linear fog → Godot's exponential fog. Approximate the
-    // density from the (near, far) range so distant objects fade out.
+    // Three.js fog is linear near..far; map to Godot depth fog and keep
+    // a light density term for aerial perspective.
     ensureInit();
     const c = colorFromHex(typeof color === 'number' ? color : 0x7090b0);
     const n = typeof near === 'number' ? near : 10;
     const f = typeof far === 'number' ? far : 100;
     const span = Math.max(1, f - n);
-    call('env.set', { fog: true, fogColor: c, fogDensity: 3.0 / span });
+    call('env.set', {
+      fog: true,
+      fogColor: c,
+      fogNear: n,
+      fogFar: f,
+      fogCurve: 1.0,
+      fogDensity: 0.08 / span,
+    });
   }
   function clearFog() {
     ensureInit();

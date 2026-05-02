@@ -42,8 +42,10 @@
 #include <godot_cpp/classes/mesh_instance3d.hpp>
 #include <godot_cpp/classes/plane_mesh.hpp>
 #include <godot_cpp/classes/sky.hpp>
+#include <godot_cpp/classes/array_mesh.hpp>
 #include <godot_cpp/classes/sphere_mesh.hpp>
 #include <godot_cpp/classes/spot_light3d.hpp>
+#include <godot_cpp/classes/surface_tool.hpp>
 #include <godot_cpp/classes/standard_material3d.hpp>
 #include <godot_cpp/classes/torus_mesh.hpp>
 #include <godot_cpp/classes/world_environment.hpp>
@@ -400,7 +402,19 @@ void Nova64Host::_release_cart_exports() {
 
 void Nova64Host::_shutdown_runtime() {
     _release_cart_exports();
-    if (_handles) _handles->clear(true);
+    // Detach ArrayMesh refs from any chunk MeshInstance3D children before the
+    // scene tree frees them.  SurfaceTool-built ArrayMesh objects hold
+    // RenderingServer GPU rids that must be released while the RS is live.
+    for (int i = get_child_count() - 1; i >= 0; --i) {
+        if (MeshInstance3D *mi = Object::cast_to<MeshInstance3D>(get_child(i))) {
+            mi->set_mesh(Ref<Mesh>());
+        }
+    }
+    // Do NOT queue_free nodes here: the scene tree owns them and will free
+    // them when Nova64Host is freed (via ~Node children teardown).  Calling
+    // queue_free AND letting ~Node free the same child is a double-free that
+    // causes a SIGSEGV on carts with many mesh nodes (e.g. voxel chunks).
+    if (_handles) _handles->clear(false);
     // Detach the WorldEnvironment we may have spawned so its Sky /
     // ProceduralSkyMaterial Refs aren't dropped from inside the JS
     // runtime teardown — that ordering trips a SIGSEGV on shutdown for
@@ -575,6 +589,7 @@ Dictionary Nova64Host::call_bridge(const String &p_method, const Dictionary &p_p
     if (p_method == "instance.setTransform")     return _cmd_instance_set_transform(p_payload);
     if (p_method == "particles.create")           return _cmd_particles_create(p_payload);
     if (p_method == "particles.destroy")          return _cmd_particles_destroy(p_payload);
+    if (p_method == "voxel.uploadChunk")           return _cmd_voxel_upload_chunk(p_payload);
     if (p_method == "overlay.cls")                return _cmd_overlay_cls(p_payload);
     if (p_method == "overlay.pset")               return _cmd_overlay_pset(p_payload);
     if (p_method == "overlay.rect")               return _cmd_overlay_rect(p_payload);
@@ -1570,6 +1585,146 @@ Dictionary Nova64Host::_cmd_particles_destroy(const Dictionary &p) {
     uint32_t id = handle_id_from_payload(p, "handle");
     bool ok = _handles->destroy(id, true);
     Dictionary out; out["ok"] = ok; return out;
+}
+
+// ---- voxel.uploadChunk — face-culled chunk mesher ----------------------
+// Takes a flat block-id array (sx*sy*sz, x-fastest), a palette mapping id
+// strings to hex colours, and an origin. Builds an ArrayMesh with one quad
+// per visible block face (neighbour inside chunk = air at chunk boundary).
+// Returns a MESH_INSTANCE handle destroyable via mesh.destroy.
+Dictionary Nova64Host::_cmd_voxel_upload_chunk(const Dictionary &p) {
+    if (!p.has("origin") || !p.has("size") || !p.has("blocks") || !p.has("palette"))
+        return make_error("missing_params", "voxel.uploadChunk");
+
+    Array origin_a = p["origin"];
+    Array size_a   = p["size"];
+    Array blocks_a = p["blocks"];
+    Dictionary pal_d = p["palette"];
+
+    if (origin_a.size() < 3 || size_a.size() < 3)
+        return make_error("bad_origin_or_size", "voxel.uploadChunk");
+
+    const int ox = (int)(double)origin_a[0];
+    const int oy = (int)(double)origin_a[1];
+    const int oz = (int)(double)origin_a[2];
+    const int sx = (int)(double)size_a[0];
+    const int sy = (int)(double)size_a[1];
+    const int sz = (int)(double)size_a[2];
+
+    if (sx <= 0 || sy <= 0 || sz <= 0 || (sx * sy * sz) != blocks_a.size())
+        return make_error("bad_blocks_size", "voxel.uploadChunk");
+
+    // Pack block ids into a flat vector for fast lookup.
+    std::vector<uint8_t> blk(sx * sy * sz);
+    for (int i = 0; i < (int)blk.size(); ++i)
+        blk[i] = (uint8_t)(int)(double)blocks_a[i];
+
+    // Palette: string id -> Color
+    std::unordered_map<int, Color> pal;
+    {
+        Array keys = pal_d.keys();
+        for (int i = 0; i < keys.size(); ++i) {
+            int id = String(keys[i]).to_int();
+            int hex = (int)(double)pal_d[keys[i]];
+            pal[id] = Color(
+                ((hex >> 16) & 0xFF) / 255.0f,
+                ((hex >>  8) & 0xFF) / 255.0f,
+                ( hex        & 0xFF) / 255.0f,
+                1.0f);
+        }
+    }
+
+    // Block accessor — out-of-bounds = air (0).
+    // Index layout: lx + sx*ly + sx*sy*lz  (x fastest, z slowest)
+    auto blk_at = [&](int lx, int ly, int lz) -> int {
+        if (lx < 0 || lx >= sx || ly < 0 || ly >= sy || lz < 0 || lz >= sz) return 0;
+        return blk[lx + sx * ly + sx * sy * lz];
+    };
+
+    // Six face definitions.  Each face lists 4 corner offsets in CCW order
+    // (when viewed from the outside) so the winding gives an outward normal.
+    // The four corners are emitted as two triangles: [0,1,2] and [0,2,3].
+    struct FaceDef { float nx,ny,nz; float v[4][3]; };
+    static const FaceDef FACES[6] = {
+        // +X  normal (1,0,0)
+        { 1,0,0, { {1,0,0},{1,1,0},{1,1,1},{1,0,1} } },
+        // -X  normal (-1,0,0)
+        {-1,0,0, { {0,0,1},{0,1,1},{0,1,0},{0,0,0} } },
+        // +Y  normal (0,1,0)
+        { 0,1,0, { {0,1,1},{1,1,1},{1,1,0},{0,1,0} } },
+        // -Y  normal (0,-1,0)
+        { 0,-1,0,{ {0,0,0},{1,0,0},{1,0,1},{0,0,1} } },
+        // +Z  normal (0,0,1)
+        { 0,0,1, { {0,0,1},{1,0,1},{1,1,1},{0,1,1} } },
+        // -Z  normal (0,0,-1)
+        { 0,0,-1,{ {1,0,0},{0,0,0},{0,1,0},{1,1,0} } },
+    };
+    // Neighbour offsets matching face order above.
+    static const int NB[6][3] = {
+        {1,0,0},{-1,0,0},{0,1,0},{0,-1,0},{0,0,1},{0,0,-1}
+    };
+
+    Ref<SurfaceTool> st;
+    st.instantiate();
+    st->begin(Mesh::PRIMITIVE_TRIANGLES);
+
+    // Slight per-face darkening to approximate ambient-occlusion depth cues
+    // without a real AO pass: top = 100%, sides = 85%, bottom = 70%.
+    static const float FACE_AO[6] = { 0.85f, 0.85f, 1.0f, 0.70f, 0.85f, 0.85f };
+
+    bool has_geom = false;
+    for (int lz = 0; lz < sz; ++lz) {
+        for (int ly = 0; ly < sy; ++ly) {
+            for (int lx = 0; lx < sx; ++lx) {
+                int id = blk_at(lx, ly, lz);
+                if (id == 0) continue;
+                auto it = pal.find(id);
+                Color base_col = (it != pal.end()) ? it->second
+                                                    : Color(0.5f, 0.5f, 0.5f, 1.0f);
+                for (int fi = 0; fi < 6; ++fi) {
+                    const int *nb = NB[fi];
+                    if (blk_at(lx + nb[0], ly + nb[1], lz + nb[2]) != 0) continue;
+                    const FaceDef &fd = FACES[fi];
+                    float ao = FACE_AO[fi];
+                    Color col(base_col.r * ao, base_col.g * ao, base_col.b * ao, 1.0f);
+                    st->set_color(col);
+                    st->set_normal(Vector3(fd.nx, fd.ny, fd.nz));
+                    // Two triangles: [0,1,2] and [0,2,3]
+                    static const int TRI[6] = { 0, 1, 2, 0, 2, 3 };
+                    for (int ti = 0; ti < 6; ++ti) {
+                        const float *cv = fd.v[TRI[ti]];
+                        st->add_vertex(Vector3(lx + cv[0], ly + cv[1], lz + cv[2]));
+                    }
+                    has_geom = true;
+                }
+            }
+        }
+    }
+
+    if (!has_geom) {
+        Dictionary out; out["handle"] = (int64_t)0; return out;
+    }
+
+    Ref<ArrayMesh> mesh = st->commit();
+
+    // Vertex-colour material: one draw call per chunk, no per-block materials.
+    Ref<StandardMaterial3D> mat;
+    mat.instantiate();
+    mat->set_flag(BaseMaterial3D::FLAG_ALBEDO_FROM_VERTEX_COLOR, true);
+    mat->set_roughness(0.85f);
+    mat->set_metallic(0.0f);
+    mat->set_diffuse_mode(BaseMaterial3D::DIFFUSE_LAMBERT);
+    mesh->surface_set_material(0, mat);
+
+    MeshInstance3D *mi = memnew(MeshInstance3D);
+    mi->set_mesh(mesh);
+    mi->set_position(Vector3((float)ox, (float)oy, (float)oz));
+    add_child(mi);
+
+    uint32_t handle = _handles->put_node(HandleKind::MESH_INSTANCE, mi);
+    Dictionary out;
+    out["handle"] = (int64_t)handle;
+    return out;
 }
 
 // ---- Cart loading (module mode) -----------------------------------------

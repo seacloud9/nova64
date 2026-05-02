@@ -152,6 +152,7 @@ private:
     Dictionary _cmd_instance_set_transform(const Dictionary &p_payload);
     Dictionary _cmd_particles_create(const Dictionary &p_payload);
     Dictionary _cmd_particles_destroy(const Dictionary &p_payload);
+    Dictionary _cmd_voxel_upload_chunk(const Dictionary &p_payload);
 
     // 2D overlay (cart-side draw API: print/rect/line/circle/pset/text).
     Dictionary _cmd_overlay_cls(const Dictionary &p_payload);
@@ -170,6 +171,8 @@ private:
     void _overlay_op_line(const Array &op);
     void _overlay_op_circle(const Array &op);
     void _overlay_op_text(const Array &op);
+    void _overlay_op_gradient(const Array &op);
+    void _overlay_op_triangle(const Array &op);
 
     // Helpers
     Node3D *_resolve_node3d(uint32_t p_handle_id) const;

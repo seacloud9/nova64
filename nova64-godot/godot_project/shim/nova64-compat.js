@@ -2523,11 +2523,15 @@
     25: 0x5a7a5a,   // MOSSY_COBBLESTONE - greenish gray
   };
   const vxBlocks = new Map();    // 'x,y,z' -> { id, mesh } (sparse, player edits)
-  const vxMultimeshes = [];      // instanced column / tree meshes
+  const vxMultimeshes = [];      // kept for legacy resetVoxelWorld compat
+  const vxChunkHandles = [];     // mesh.destroy handles for voxel.uploadChunk meshes
   const vxEntities = [];
   const vxConfig = { seed: 1337, renderDistance: 3, maxMeshRebuildsPerFrame: 3, enableLOD: true };
   let vxGenerated = false;
   let vxWaterMesh = 0;
+  // Cached height / biome lookups to avoid re-computing FBM per block per chunk.
+  const _vxHeightCache = new Map();
+  const _vxBiomeCache  = new Map();
 
   function _vxKey(x, y, z) { return ((x | 0) + ',' + (y | 0) + ',' + (z | 0)); }
   function _vxColKey(x, z) { return ((x | 0) + ',' + (z | 0)); }
@@ -2622,6 +2626,92 @@
     // Add fine detail
     const n3 = _vxFbm(x * 0.15, z * 0.15, seed + 200, 2) * 0.15;
     return Math.floor(VX_BASE_Y + (n + n2 + n3) * VX_HEIGHT_AMPLITUDE);
+  }
+
+  function _vxHeightAtCached(x, z) {
+    const k = (x | 0) + ',' + (z | 0);
+    let h = _vxHeightCache.get(k);
+    if (h === undefined) { h = _vxHeightAt(x, z); _vxHeightCache.set(k, h); }
+    return h;
+  }
+  function _vxBiomeAtCached(x, z) {
+    const k = (x | 0) + ',' + (z | 0);
+    let b = _vxBiomeCache.get(k);
+    if (b === undefined) { b = _vxBiomeAt(x, z); _vxBiomeCache.set(k, b); }
+    return b;
+  }
+
+  // Return the hex colour of the block at world position (wx, wy, wz),
+  // or 0 for air.  Used by the chunk-based terrain generator.
+  function _vxBlockColorAt(wx, wy, wz) {
+    const height = _vxHeightAtCached(wx, wz);
+
+    if (wy <= height) {
+      // --- solid terrain ---
+      if (wy < VX_BASE_Y - 2) return VX_BLOCK_COLORS[3]; // deep stone
+      const biome = _vxBiomeAtCached(wx, wz);
+      const surface = _vxSurfaceFor(biome);
+      const dy = height - wy;
+      if (dy === 0) {
+        // surface block
+        if (wy < VX_SEA_Y) return wy >= VX_SEA_Y - 1 ? surface.color : 0x6b5a3a;
+        return surface.color;
+      }
+      if (dy < 3) return surface.sub || VX_BLOCK_COLORS[2]; // dirt
+      // Stone with ore veins at a specific depth
+      if (height > VX_BASE_Y + 10 && dy === 4) {
+        const oreRoll = _vxHash2(wx, wz, vxConfig.seed + 77);
+        if (oreRoll > 0.97) return VX_BLOCK_COLORS[15]; // coal ore
+        if (oreRoll > 0.95) return VX_BLOCK_COLORS[16]; // iron ore
+      }
+      return VX_BLOCK_COLORS[3]; // stone
+    }
+
+    // --- above terrain: trees ---
+    // Trunk at exactly (wx, wz)
+    const h2 = _vxHeightAtCached(wx, wz);
+    if (h2 >= VX_SEA_Y) {
+      const biome2 = _vxBiomeAtCached(wx, wz);
+      if (_vxTreeAllowed(biome2)) {
+        const td = _vxTreeDensity(biome2);
+        if (_vxHash2(wx, wz, vxConfig.seed + 31) < td) {
+          let baseH = 4, varH = 2;
+          if (biome2 === 'Jungle') { baseH = 6; varH = 4; }
+          else if (biome2 === 'Taiga') { baseH = 5; varH = 3; }
+          const trunkH = baseH + Math.floor(_vxHash2(wx, wz, vxConfig.seed + 53) * varH);
+          if (wy >= h2 + 1 && wy <= h2 + trunkH) return _vxTrunkColor(biome2);
+        }
+      }
+    }
+
+    // Canopy leaves originating from any tree within max canopy radius
+    const MAX_CANOPY_R = 3;
+    for (let dx = -MAX_CANOPY_R; dx <= MAX_CANOPY_R; dx++) {
+      for (let dz = -MAX_CANOPY_R; dz <= MAX_CANOPY_R; dz++) {
+        const tx = wx + dx, tz = wz + dz;
+        const th = _vxHeightAtCached(tx, tz);
+        if (th < VX_SEA_Y) continue;
+        const tb = _vxBiomeAtCached(tx, tz);
+        if (!_vxTreeAllowed(tb)) continue;
+        if (!(_vxHash2(tx, tz, vxConfig.seed + 31) < _vxTreeDensity(tb))) continue;
+        let baseH = 4, varH = 2;
+        if (tb === 'Jungle') { baseH = 6; varH = 4; }
+        else if (tb === 'Taiga') { baseH = 5; varH = 3; }
+        const trunkH = baseH + Math.floor(_vxHash2(tx, tz, vxConfig.seed + 53) * varH);
+        const canopyY = th + trunkH + 1;
+        let canopyR = 2;
+        if (tb === 'Taiga') canopyR = 1;
+        else if (tb === 'Savanna') canopyR = 3;
+        const lx = wx - tx, lz = wz - tz, ly = wy - canopyY;
+        if (lx < -canopyR || lx > canopyR || lz < -canopyR || lz > canopyR) continue;
+        if (ly < 0 || ly > 2) continue;
+        if (Math.abs(lx) + Math.abs(lz) + ly > canopyR + 1) continue;
+        if (_vxHash2(wx, wz, vxConfig.seed + ly + 99) > 0.75) continue;
+        return _vxTreeColor(tb);
+      }
+    }
+
+    return 0; // air
   }
 
   // Spawn individual blocks for a column position — renders surface + subsurface
@@ -2738,28 +2828,60 @@
   function _vxGenerateWorld() {
     if (vxGenerated) return;
     vxGenerated = true;
-    // Bucket every block by colour, then issue one instanced multimesh
-    // per colour. Individual blocks create authentic Minecraft look.
-    const bucket = new Map();
-    for (let dx = -VX_RADIUS; dx < VX_RADIUS; dx++) {
-      for (let dz = -VX_RADIUS; dz < VX_RADIUS; dz++) {
-        _vxSpawnBlocks(dx, dz, bucket);
+
+    // Clear caches from any previous generation (seed change, reset).
+    _vxHeightCache.clear();
+    _vxBiomeCache.clear();
+
+    // Chunk constants.  Height slab covers terrain base through tallest tree.
+    const CXSZ = 16, CZSZ = 16;
+    const CY_ORIGIN = VX_BASE_Y - 5;   // world-y origin of each chunk
+    const CY_HEIGHT = 50;              // covers y 55..104, above any tree
+
+    const worldMinX = -VX_RADIUS, worldMaxX = VX_RADIUS;
+    const worldMinZ = -VX_RADIUS, worldMaxZ = VX_RADIUS;
+
+    for (let cx = worldMinX; cx < worldMaxX; cx += CXSZ) {
+      for (let cz = worldMinZ; cz < worldMaxZ; cz += CZSZ) {
+        const sx = Math.min(CXSZ, worldMaxX - cx);
+        const sz = Math.min(CZSZ, worldMaxZ - cz);
+        const sy = CY_HEIGHT;
+
+        // Pack block ids into a flat Uint8Array (x fastest, z slowest).
+        const blocks = new Uint8Array(sx * sy * sz);
+        const colorToId = new Map();
+        let nextId = 1;
+        let hasBlocks = false;
+
+        for (let lz = 0; lz < sz; lz++) {
+          for (let ly = 0; ly < sy; ly++) {
+            for (let lx = 0; lx < sx; lx++) {
+              const color = _vxBlockColorAt(cx + lx, CY_ORIGIN + ly, cz + lz);
+              if (color !== 0) {
+                let id = colorToId.get(color);
+                if (id === undefined) { id = nextId++; colorToId.set(color, id); }
+                blocks[lx + sx * ly + sx * sy * lz] = id;
+                hasBlocks = true;
+              }
+            }
+          }
+        }
+
+        if (!hasBlocks) continue;
+
+        const palette = {};
+        for (const [color, id] of colorToId) palette[String(id)] = color;
+
+        const result = call('voxel.uploadChunk', {
+          origin: [cx, CY_ORIGIN, cz],
+          size:   [sx, sy, sz],
+          blocks: Array.from(blocks),
+          palette,
+        });
+        if (result && result.handle) vxChunkHandles.push(result.handle);
       }
     }
-    for (const [color, arr] of bucket.entries()) {
-      const inst = createInstancedMesh('cube', arr.length, color,
-        { material: 'standard' });
-      if (!inst || !inst.handle) continue;
-      for (let i = 0; i < arr.length; i++) {
-        const it = arr[i];
-        const sx = it.sx == null ? 1 : it.sx;
-        const sy = it.sy == null ? 1 : it.sy;
-        const sz = it.sz == null ? 1 : it.sz;
-        setInstanceTransform(inst, i, it.cx, it.cy, it.cz, 0, 0, 0, sx, sy, sz);
-      }
-      finalizeInstances(inst);
-      vxMultimeshes.push(inst);
-    }
+
     // Water plane with semi-transparency for better visual parity
     vxWaterMesh = createPlane(VX_RADIUS * 2, VX_RADIUS * 2, 0x3a8ac5,
       [0, VX_SEA_Y + 0.05, 0], {
@@ -2787,7 +2909,7 @@
 
   function getVoxelHighestBlock(x, z) {
     const xi = x | 0, zi = z | 0;
-    const baseH = _vxHeightAt(xi, zi);
+    const baseH = _vxHeightAtCached(xi, zi);
     for (let y = baseH + 32; y > baseH; y--) {
       if (vxBlocks.has(_vxKey(xi, y, zi))) return y;
     }
@@ -2827,6 +2949,12 @@
   function updateVoxelWorld(_x, _z) { _vxGenerateWorld(); }
 
   function resetVoxelWorld() {
+    // Destroy native chunk meshes from voxel.uploadChunk path.
+    for (const h of vxChunkHandles) {
+      if (h) call('mesh.destroy', { handle: h });
+    }
+    vxChunkHandles.length = 0;
+    // Legacy multimesh cleanup (may be empty in new path).
     for (const mm of vxMultimeshes) {
       const h = _resolveInstanceHandle(mm);
       if (h) call('mesh.destroy', { handle: h });
@@ -2837,6 +2965,8 @@
     vxBlocks.clear();
     for (const e of vxEntities) if (e.mesh) removeMesh(e.mesh);
     vxEntities.length = 0;
+    _vxHeightCache.clear();
+    _vxBiomeCache.clear();
     vxGenerated = false;
   }
   function saveVoxelWorld(_name) { return true; }

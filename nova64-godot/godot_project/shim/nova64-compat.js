@@ -1665,15 +1665,195 @@
     }, opts)) : 0;
   }
 
-  // Voxel API stubs — return safe defaults so voxel demos boot.
-  function configureVoxelWorld(_opts) { warnOnce('voxel.configure'); }
-  function enableVoxelTextures(_b) { warnOnce('voxel.enableTextures'); }
-  function setVoxel(_x, _y, _z, _id) { warnOnce('voxel.setVoxel'); }
-  function getVoxel(_x, _y, _z) { return 0; }
-  function spawnVoxelEntity(_opts) { warnOnce('voxel.spawnEntity'); return makeStub(); }
-  function getVoxelEntityCount() { return 0; }
-  function clearVoxels() { warnOnce('voxel.clear'); }
-  function generateVoxelTerrain(_opts) { warnOnce('voxel.generateTerrain'); }
+  // ---------------- voxel: minimal flat-world implementation ----------
+  // Not parity with the web voxel engine (no chunked greedy meshing,
+  // biomes, ores, caves), but enough that the minecraft-demo cart can
+  // actually load, the player has a grass surface to stand on, and
+  // placed / broken blocks render as individual cubes. Sparse blocks
+  // are stored in a Map; ground is a single large plane.
+  const VX_GROUND_Y = 63;
+  const VX_BLOCK_COLORS = {
+    1: 0x55aa44, 2: 0x996644, 3: 0xaaaaaa, 4: 0xffdd88, 5: 0x2288dd,
+    6: 0x774422, 7: 0x116622, 8: 0x667788, 9: 0xddaa55, 11: 0xcc4433,
+    15: 0x444444, 16: 0xccaa88, 21: 0xffdd44, 22: 0xffeeaa,
+  };
+  const vxBlocks = new Map(); // 'x,y,z' -> { id, mesh }
+  const vxEntities = [];
+  let vxGroundMesh = 0;
+  const vxConfig = { seed: 1337, renderDistance: 3, maxMeshRebuildsPerFrame: 3, enableLOD: true };
+  function _vxKey(x, y, z) { return ((x | 0) + ',' + (y | 0) + ',' + (z | 0)); }
+  function _vxEnsureGround() {
+    if (vxGroundMesh) return;
+    vxGroundMesh = createPlane(200, 200, 0x55aa44, [0, VX_GROUND_Y, 0],
+      { material: 'standard', roughness: 0.95 });
+  }
+  function configureVoxelWorld(opts) {
+    if (opts && typeof opts === 'object') Object.assign(vxConfig, opts);
+  }
+  function enableVoxelTextures(_b) { /* visual only — flat colours for now */ }
+  function getVoxelConfig() { return Object.assign({}, vxConfig); }
+  function getVoxelBiome(_x, _z) { return 'Plains'; }
+  function getVoxelHighestBlock(x, z) {
+    for (let y = VX_GROUND_Y + 32; y > VX_GROUND_Y; y--) {
+      if (vxBlocks.has(_vxKey(x, y, z))) return y;
+    }
+    return VX_GROUND_Y;
+  }
+  function getVoxelBlock(x, y, z) {
+    const k = _vxKey(x, y, z);
+    if (vxBlocks.has(k)) return vxBlocks.get(k).id;
+    if (y <= VX_GROUND_Y - 1) return 3;
+    if (y === VX_GROUND_Y) return 1;
+    return 0;
+  }
+  function setVoxelBlock(x, y, z, id) {
+    const k = _vxKey(x, y, z);
+    const existing = vxBlocks.get(k);
+    if (existing && existing.mesh) {
+      removeMesh(existing.mesh);
+      vxBlocks.delete(k);
+    }
+    if (!id) return;
+    const color = VX_BLOCK_COLORS[id] || 0x888888;
+    const mesh = createCube(1, color, [x + 0.5, y + 0.5, z + 0.5],
+      { material: 'standard', roughness: 0.85 });
+    vxBlocks.set(k, { id, mesh });
+  }
+  function loadVoxelWorld(_name) { _vxEnsureGround(); return true; }
+  function forceLoadVoxelChunks(_cx, _cz) { _vxEnsureGround(); }
+  function updateVoxelWorld(_x, _z) { _vxEnsureGround(); }
+  function resetVoxelWorld() {
+    if (vxGroundMesh) { removeMesh(vxGroundMesh); vxGroundMesh = 0; }
+    for (const v of vxBlocks.values()) if (v.mesh) removeMesh(v.mesh);
+    vxBlocks.clear();
+    for (const e of vxEntities) if (e.mesh) removeMesh(e.mesh);
+    vxEntities.length = 0;
+  }
+  function saveVoxelWorld(_name) { return true; }
+  function setVoxelDayTime(_t) { /* visual only */ }
+  // Swept AABB vs ground + sparse placed blocks. The cart treats the
+  // velocity as already-scaled per frame and passes dt=1.0; we honour
+  // the dt scale so callers using per-second velocities still work.
+  function moveVoxelEntity(pos, vel, size, dt) {
+    const dts = typeof dt === 'number' ? dt : 1.0;
+    const px = pos[0] || 0, py = pos[1] || 0, pz = pos[2] || 0;
+    const dx = (vel[0] || 0) * dts;
+    const dy = (vel[1] || 0) * dts;
+    const dz = (vel[2] || 0) * dts;
+    const sx = (size && size[0]) || 0.6;
+    const sy = (size && size[1]) || 1.8;
+    const sz = (size && size[2]) || 0.6;
+    let nx = px + dx, ny = py + dy, nz = pz + dz;
+    let grounded = false;
+    if (ny < VX_GROUND_Y + 1) { ny = VX_GROUND_Y + 1; grounded = true; }
+    // Sparse-block test (only for placed blocks).
+    if (vxBlocks.size > 0) {
+      const hx = sx * 0.5, hz = sz * 0.5;
+      for (const k of vxBlocks.keys()) {
+        const parts = k.split(',');
+        const bx = +parts[0], by = +parts[1], bz = +parts[2];
+        if (nx + hx > bx && nx - hx < bx + 1 &&
+            nz + hz > bz && nz - hz < bz + 1 &&
+            ny < by + 1 && ny + sy > by) {
+          if ((vel[1] || 0) <= 0 && py >= by + 1) { ny = by + 1; grounded = true; }
+        }
+      }
+    }
+    return {
+      position: [nx, ny, nz],
+      velocity: [grounded && dy < 0 ? 0 : (vel[0] || 0),
+                 grounded ? 0 : (vel[1] || 0),
+                 grounded && dy < 0 ? 0 : (vel[2] || 0)],
+      grounded,
+      inWater: false,
+    };
+  }
+  function checkVoxelCollision(pos, _halfSize) {
+    const x = pos[0] || 0, y = pos[1] || 0, z = pos[2] || 0;
+    if (y <= VX_GROUND_Y) return true;
+    return getVoxelBlock(Math.floor(x), Math.floor(y), Math.floor(z)) !== 0;
+  }
+  // DDA voxel ray traversal.
+  function raycastVoxelBlock(origin, dir, maxDist) {
+    const ox = origin[0] || 0, oy = origin[1] || 0, oz = origin[2] || 0;
+    const dx = dir[0] || 0, dy = dir[1] || 0, dz = dir[2] || 0;
+    let x = Math.floor(ox), y = Math.floor(oy), z = Math.floor(oz);
+    const stepX = dx >= 0 ? 1 : -1;
+    const stepY = dy >= 0 ? 1 : -1;
+    const stepZ = dz >= 0 ? 1 : -1;
+    const tDeltaX = dx !== 0 ? Math.abs(1 / dx) : Infinity;
+    const tDeltaY = dy !== 0 ? Math.abs(1 / dy) : Infinity;
+    const tDeltaZ = dz !== 0 ? Math.abs(1 / dz) : Infinity;
+    let tMaxX = dx !== 0 ? ((dx > 0 ? (x + 1 - ox) : (ox - x)) / Math.abs(dx)) : Infinity;
+    let tMaxY = dy !== 0 ? ((dy > 0 ? (y + 1 - oy) : (oy - y)) / Math.abs(dy)) : Infinity;
+    let tMaxZ = dz !== 0 ? ((dz > 0 ? (z + 1 - oz) : (oz - z)) / Math.abs(dz)) : Infinity;
+    let lastAxis = -1, traveled = 0;
+    const maxD = typeof maxDist === 'number' ? maxDist : 6;
+    for (let i = 0; i < 256 && traveled < maxD; i++) {
+      const block = getVoxelBlock(x, y, z);
+      if (block !== 0) {
+        const adj = [x, y, z];
+        if (lastAxis === 0) adj[0] -= stepX;
+        else if (lastAxis === 1) adj[1] -= stepY;
+        else if (lastAxis === 2) adj[2] -= stepZ;
+        return { hit: true, position: [x, y, z], adjacent: adj, block };
+      }
+      if (tMaxX < tMaxY && tMaxX < tMaxZ) { x += stepX; traveled = tMaxX; tMaxX += tDeltaX; lastAxis = 0; }
+      else if (tMaxY < tMaxZ)               { y += stepY; traveled = tMaxY; tMaxY += tDeltaY; lastAxis = 1; }
+      else                                  { z += stepZ; traveled = tMaxZ; tMaxZ += tDeltaZ; lastAxis = 2; }
+    }
+    return { hit: false };
+  }
+  function spawnVoxelEntity(opts) {
+    opts = opts || {};
+    const size = opts.size || [0.8, 0.8, 0.8];
+    const x = opts.x || 0, y = opts.y == null ? VX_GROUND_Y + 2 : opts.y, z = opts.z || 0;
+    const color = opts.color != null ? opts.color : 0xffaaaa;
+    const mesh = createCube(1, color, [x, y, z], { material: 'standard' });
+    if (mesh && typeof setScale === 'function') setScale(mesh, size[0], size[1], size[2]);
+    const ent = {
+      id: vxEntities.length + 1,
+      type: opts.type || 'entity',
+      x, y, z, vx: 0, vy: 0, vz: 0,
+      mesh, onGround: false, data: {},
+      health: opts.health == null ? 10 : opts.health,
+      size,
+    };
+    vxEntities.push(ent);
+    return ent;
+  }
+  function updateVoxelEntities(dt) {
+    const dts = typeof dt === 'number' ? dt : 1 / 60;
+    for (const ent of vxEntities) {
+      ent.vy -= 9.8 * dts;
+      ent.x += ent.vx * dts;
+      ent.y += ent.vy * dts;
+      ent.z += ent.vz * dts;
+      const floor = VX_GROUND_Y + (ent.size && ent.size[1] ? ent.size[1] * 0.5 : 0.5);
+      if (ent.y < floor) { ent.y = floor; ent.vy = 0; ent.onGround = true; }
+      else ent.onGround = false;
+      if (ent.mesh) setPosition(ent.mesh, ent.x, ent.y, ent.z);
+    }
+  }
+  function getVoxelEntityCount() { return vxEntities.length; }
+  function cleanupVoxelEntities(centerX, centerZ, radius) {
+    const r = typeof radius === 'number' ? radius : 64;
+    const r2 = r * r;
+    const cx = centerX || 0, cz = centerZ || 0;
+    for (let i = vxEntities.length - 1; i >= 0; i--) {
+      const e = vxEntities[i];
+      const ddx = e.x - cx, ddz = e.z - cz;
+      if (ddx * ddx + ddz * ddz > r2) {
+        if (e.mesh) removeMesh(e.mesh);
+        vxEntities.splice(i, 1);
+      }
+    }
+  }
+  // Legacy aliases for older voxel API names (some demos still call these).
+  function setVoxel(x, y, z, id) { setVoxelBlock(x, y, z, id); }
+  function getVoxel(x, y, z) { return getVoxelBlock(x, y, z); }
+  function clearVoxels() { resetVoxelWorld(); }
+  function generateVoxelTerrain(_opts) { _vxEnsureGround(); }
 
   // Storage / i18n / WAD / hype / NFT / XR — shallow no-ops.
   const storageNs = {
@@ -1777,7 +1957,14 @@
   const particlesNs = { createParticleSystem, createEmitter2D, createParticles };
   const skyboxNs = { createSpaceSkybox, createGalaxySkybox, createSunsetSkybox, createDawnSkybox, createNightSkybox, createFoggySkybox, createDuskSkybox, createStormSkybox, createAlienSkybox, createUnderwaterSkybox, setSkybox, createSkybox };
   const modelsNs = { loadModel, createTexture, loadTexture, createInstancedMesh, createTSLMaterial, createHologramMaterial, createVortexMaterial, createPBRMaterial, createAdvancedCube };
-  const voxelNs = { configureVoxelWorld, enableVoxelTextures, setVoxel, getVoxel, spawnVoxelEntity, getVoxelEntityCount, clearVoxels, generateVoxelTerrain };
+  const voxelNs = {
+    configureVoxelWorld, enableVoxelTextures, getVoxelConfig, getVoxelBiome,
+    getVoxelHighestBlock, getVoxelBlock, setVoxelBlock, loadVoxelWorld,
+    forceLoadVoxelChunks, updateVoxelWorld, resetVoxelWorld, saveVoxelWorld,
+    setVoxelDayTime, moveVoxelEntity, checkVoxelCollision, raycastVoxelBlock,
+    spawnVoxelEntity, updateVoxelEntities, getVoxelEntityCount, cleanupVoxelEntities,
+    setVoxel, getVoxel, clearVoxels, generateVoxelTerrain,
+  };
 
   // Carts that go beyond the explicit lists above destructure things like
   // `nova64.shader.createTSLMaterial`, `nova64.voxel.simplexNoise2D`,

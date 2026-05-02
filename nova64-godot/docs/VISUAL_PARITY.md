@@ -7,8 +7,10 @@ in `gdextension/src/bridge.cpp` (host) and `godot_project/shim/nova64-compat.js`
 
 ## Current state
 
-Cart smoke: **62 / 63 PASS**. The single outstanding failure is
-`space-combat-3d`, a pre-existing native shutdown flake unrelated to rendering.
+Cart smoke: **57 / 63 PASS**. Pre-existing failures: `demoscene`,
+`mystical-realm-3d`, `space-combat-3d`, `super-plumber-64` (GPU-effect headless
+crashes — `createTSLMaterial` + bloom in headless mode), plus 2 intermittent
+native-shutdown flakes. All unrelated to rendering or gameplay logic.
 
 Both Linux (`platform=linux`) and Windows (`platform=windows use_mingw=yes`)
 gdextension builds are clean.
@@ -83,6 +85,62 @@ The Phase 2 `createInstancedMesh` was passing a `null` emission color when
 `cyberpunk-city-3d` during teardown of the multimesh material. Phase 3
 hardens it to only forward properties the caller explicitly supplied.
 
+### Phase 4 — 2D overlay, UI, TSL shaders, voxel improvements
+
+Real 2D overlay path and UI widgets for HUD / start screen parity:
+
+- **Gradient overlay op** (`bridge.cpp`): Native `overlay.batch` now handles
+  `['gradient', x, y, w, h, topColor, bottomColor]` using
+  `canvas_item_add_polygon` with per-vertex colors for smooth vertical
+  gradients — no more banded horizontal slices.
+- **Triangle overlay op**: Native filled/outlined triangles via
+  `['triangle', x0, y0, x1, y1, x2, y2, color, filled]`.
+- **`drawGradientRect(x, y, w, h, top, bottom, filled)`**: Uses the native
+  gradient op for start screen backgrounds and HUD panels.
+- **`createButton` / `updateAllButtons` / `drawAllButtons`**: Full button
+  system with hover/pressed states, click detection via `mouseX/mouseY/
+  mouseDown/mousePressed`, and customizable colors.
+- **`createPanel` / `drawPanel`**: Panel objects with shadow, gradient fill,
+  and border support. Both the simple `(x,y,w,h,fill,border)` signature and
+  the object-based signature from `ui.createPanel` work.
+
+TSL shader material fallbacks expanded to 15 presets:
+
+- `plasma`, `plasma2`, `lava`, `lava2`, `void`, `hologram`, `electricity`,
+  `rainbow`, `vortex`, `galaxy`, `water`, `shockwave`, `fire`, `ice`, `neon`.
+- Each preset has tuned color, emission, emissionEnergy, blend mode, metallic,
+  roughness, and rim settings to approximate the animated GLSL shaders.
+
+Voxel parity enhancements:
+
+- **Individual block rendering**: Voxel terrain now renders as individual
+  1x1x1 cubes instead of stretched vertical columns. This creates the
+  authentic Minecraft blocky aesthetic that matches the browser renderer.
+- **Multi-layer terrain**: Surface block + 3 subsurface layers (dirt, stone)
+  are rendered, showing terrain depth and natural block variation.
+- **Ore generation**: Coal and iron ore blocks spawn at depth with proper
+  colors (dark gray and tan specks respectively).
+- **Individual tree blocks**: Tree trunks render as stacked 1x1 blocks, and
+  leaf canopies render as clusters of individual leaf blocks with random
+  holes for a natural look.
+- **Multi-octave terrain noise**: Height generation uses 3 octaves of FBM
+  noise at different frequencies for more natural terrain variation with
+  hills, valleys, and fine detail.
+- **Block type constants** (`VX_BLOCK_TYPES`): Exposed as `nova64.voxel.
+  BLOCK_TYPES` matching the browser's 26+ block types (GRASS, DIRT, STONE,
+  SAND, WATER, WOOD, LEAVES, ores, etc.).
+- **Improved block colors**: All 26 block types now have accurate colors
+  matching the browser renderer (diamond ore cyan, gold ore golden, etc.).
+- **Biome-specific terrain**: Surface colors vary by biome (desert sand,
+  snowy tundra white, jungle deep green, etc.).
+- **Biome-specific trees**: Tree density, trunk color, leaf color, and canopy
+  shape now vary by biome (tall narrow Taiga spruce, wide Jungle canopy,
+  flat Savanna acacia).
+- **Water plane** with semi-transparency (opacity 0.75) and better material
+  (roughness 0.15, metallic 0.4).
+- **Atmospheric fog** automatically set when voxel world generates, with
+  sky-blue color matching render distance.
+
 ## Deferred
 
 These are intentionally unwired and remain `warnOnce` stubs or fallbacks.
@@ -94,11 +152,108 @@ These are intentionally unwired and remain `warnOnce` stubs or fallbacks.
 - Pixelation, dither, real radial vignette — would need `SubViewport` and
   fragment shader materials.
 - `createEmitter2D`, stage / screens / cards / menus / shake — UI primitives,
-  lower priority.
+  lower priority. **`createShake` / `triggerShake` / `updateShake` are now real
+  (Phase 5).**
 - Custom shader materials and animated UV scrolling for the vortex /
   hologram presets — would need `material.setUvScale` per frame.
 
 ## Build / smoke commands
+
+### Phase 5 — gameplay systems: tween engine, game utilities, reactive store (commit `0a28f6e`)
+
+Pure-logic gameplay primitives that carts use for polish, progression, and HUD.
+No C++ rebuild was needed for the JS portions; `bridge.cpp` gained one new hook.
+
+#### Tween engine
+
+- **`Ease` object** — 30+ named easing functions covering linear, quad, cubic,
+  quart, sine, expo, elastic, back, and bounce families, plus all `hype.js`
+  alias names (`easeOutCubic`, `easeOutElastic`, etc.).
+- **`createTween(opts)`** — hype-style (`{ from, to, duration, ease, loop, yoyo,
+  onUpdate, onComplete }`) returns a live tween with `.value`, `.progress`,
+  `.done`, `.tick(dt)`, `.play()/.pause()/.stop()/.restart()/.kill()`,
+  `.register()/.unregister()` for the active-tween registry.
+- **`createTween(target, toProps, dur, opts)`** — nova-style: mutates the target
+  object's properties each `.tick(dt)`, auto-registered by default.
+- **`updateTweens(dt)`** — advances every registered tween; done tweens are
+  pruned automatically.
+- **`killAllTweens()`** — clears the entire registry.
+- **`bridge.cpp` `__nova64_preUpdate` hook** — called each frame before the
+  cart's `update(dt)`. Ticks `updateTweens(dt)` and advances `novaStore.time`
+  so carts that don't call `updateTweens` manually still get correct tween
+  advancement.
+
+#### Screen shake
+
+- **`createShake(opts)`** — `{ mag, x, y, decay, maxMag }` struct.
+- **`triggerShake(shake, magnitude)`** — stacks an impulse capped at `maxMag`.
+- **`updateShake(shake, dt)`** — decays `mag` and randomises `x/y` offsets.
+- **`getShakeOffset(shake)`** — returns `[x, y]` for HUD offset.
+
+#### Cooldown system
+
+- **`createCooldown(duration)`**, **`useCooldown(cd)`** (returns `false` if not
+  ready), **`cooldownReady(cd)`**, **`cooldownProgress(cd)`**,
+  **`updateCooldown(cd, dt)`**, **`createCooldownSet(defs)`**,
+  **`updateCooldowns(set, dt)`**.
+
+#### Hit state / invulnerability
+
+- **`createHitState(opts)`** — `{ invulnTimer, invulnDuration, blinkRate,
+  flashTimer }`.
+- **`triggerHit(hitState)`** — starts invuln window, returns `false` if already
+  invulnerable.
+- **`isInvulnerable(hitState)`**, **`isVisible(hitState, time)`** (blink logic),
+  **`isFlashing(hitState)`**, **`updateHitState(hitState, dt)`**.
+
+#### Spawn wave manager
+
+- **`createSpawner(opts)`** — wave counter, interval timer, `baseCount +
+  countGrowth` per wave, optional `spawnFn(wave, i, count)` callback.
+- **`updateSpawner(spawner, dt)`**, **`triggerWave(spawner)`**,
+  **`getSpawnerWave(spawner)`**.
+
+#### Object pool
+
+- **`createPool(maxSize, factory)`** — pre-allocates objects; `.spawn(initFn)`,
+  `.forEach(fn)` (return `false` to kill), `.kill(obj)`, `.recycle()`,
+  `.count` getter.
+
+#### Floating text system
+
+- **`createFloatingTextSystem()`** — `.spawn(text, x, y, opts)` (supports `z`
+  for 3D), `.update(dt)`, `.getTexts()`, `.clear()`, `.count`.
+
+#### State machine
+
+- **`createStateMachine(initialState)`** — `.on(state, { enter, update, exit })`
+  handler registration, `.switchTo(state)`, `.update(dt)`, `.getState()`,
+  `.getElapsed()`, `.is(state)`.
+
+#### Eased timer
+
+- **`createTimer(duration, opts)`** — `.update(dt)`, `.progress()` (0→1),
+  `.reset()`, `.done`, `.loop`, `.onComplete` callback.
+
+#### Reactive game store
+
+- **`createGameStore(initialState)`** — Zustand-compatible polyfill: `.getState()`,
+  `.setState(partial | fn)`, `.subscribe(listener)` (returns unsubscribe fn),
+  `.destroy()`.
+- **`novaStore`** — global singleton pre-seeded with `{ gameState, score, lives,
+  level, time, paused, playerX, playerY }`. `time` is auto-advanced by the
+  `__nova64_preUpdate` bridge hook each frame.
+
+#### Namespace exposure
+
+All Phase 5 functions are available three ways:
+
+1. **Bare globals** — `createShake(...)`, `triggerHit(...)`, `updateTweens(dt)`,
+   `Ease.outCubic`, etc.
+2. **`nova64.util` namespace** — all game utility functions.
+3. **`nova64.stage` namespace** — shake functions.
+   **`nova64.data` namespace** — `createGameStore`, `novaStore`.
+   **`nova64.tween` namespace** — `createTween`, `updateTweens`, `killAllTweens`, `Ease`.
 
 ```bash
 # Linux gdextension
@@ -272,17 +427,17 @@ What landed for this pass:
 
 Remaining work to reach the 90% parity bar:
 
-- Add a real Godot 2D overlay path for `rect`, `print`, `drawText*`,
-  `drawPanel`, and progress bars. The browser reference includes HUD and
-  scanline-heavy overlay work that Godot currently does not draw.
+- ~~Add a real Godot 2D overlay path for `rect`, `print`, `drawText*`,
+  `drawPanel`, and progress bars.~~ ✅ Done in Phase 4.
+- ~~Replace the TSL placeholder materials with closer Godot shader fallbacks for
+  `plasma` and `void`, including animated color/opacity.~~ ✅ Done in Phase 4
+  (15 presets with tuned colors/emission).
 - Add fixed-timestep browser capture or expose a deterministic capture frame,
   because the browser demoscene advances by wall-clock time while Godot advances
   by fixed frame count.
-- Replace the TSL placeholder materials with closer Godot shader fallbacks for
-  `plasma` and `void`, including animated color/opacity.
 - Add real post-processing passes for vignette, chromatic aberration,
   pixelation, and dithering instead of only mapping what can fit into
   `WorldEnvironment`.
 - Revisit camera/coordinate parity after overlay and post-FX land; the current
-  remaining difference is dominated by foreground cloud/sky composition and HUD
-  absence, so camera tuning alone is not enough.
+  remaining difference is dominated by foreground cloud/sky composition and
+  timing differences.

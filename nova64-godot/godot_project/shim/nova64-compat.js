@@ -1533,6 +1533,36 @@
     stub.addInstance = function () { return stub; };
     return stub;
   }
+  // Freestanding versions used by carts that destructure
+  // nova64.scene.setInstanceTransform / finalizeInstances etc. The handle
+  // argument is the value returned by createInstancedMesh (stub object or
+  // raw numeric handle).
+  function _resolveInstanceHandle(h) {
+    if (h == null) return 0;
+    if (typeof h === 'number') return h | 0;
+    if (typeof h.handle === 'number') return h.handle | 0;
+    return 0;
+  }
+  function setInstanceTransform(handle, i, x, y, z, rx, ry, rz, sx, sy, sz) {
+    const h = _resolveInstanceHandle(handle);
+    if (!h) return;
+    call('instance.setTransform', {
+      handle: h,
+      index: i | 0,
+      position: [x || 0, y || 0, z || 0],
+      rotation: [rx || 0, ry || 0, rz || 0],
+      scale: [sx == null ? 1 : sx, sy == null ? 1 : sy, sz == null ? 1 : sz],
+    });
+  }
+  function setInstancePosition(handle, i, x, y, z) {
+    const h = _resolveInstanceHandle(handle);
+    if (!h) return;
+    call('instance.setTransform', {
+      handle: h, index: i | 0, position: ensureArray3(x, y, z),
+    });
+  }
+  function setInstanceColor() { /* not yet bridged */ }
+  function finalizeInstances(_handle) { /* upload-on-each-set is fine for now */ }
   // PBR — full StandardMaterial3D PBR surface.
   function createPBRMaterial(opts) {
     ensureInit();
@@ -1722,7 +1752,7 @@
     white: 0xffffff, black: 0x000000, accent: 0xff8800,
   };
   if (typeof global.uiColors === 'undefined') global.uiColors = defaultUiColors;
-  const sceneNs = { createCube, createSphere, createPlane, createCylinder, createCone, createTorus, createAdvancedCube, removeMesh, destroyMesh: removeMesh, setPosition, setRotation, rotateMesh, setScale, getPosition, engine: global.engine };
+  const sceneNs = { createCube, createSphere, createPlane, createCylinder, createCone, createTorus, createAdvancedCube, removeMesh, destroyMesh: removeMesh, setPosition, setRotation, rotateMesh, setScale, getPosition, createInstancedMesh, setInstanceTransform, setInstancePosition, setInstanceColor, finalizeInstances, engine: global.engine };
   const cameraNs = { setCameraPosition, setCameraTarget, setCameraFOV };
   const lightNs = { setLightDirection, setFog, clearFog, createPointLight, createSpotLight, createAmbientLight, setAmbientLight, setLightColor, setLightEnergy };
   const drawNs = { cls, print: novaPrint, printCentered, printRight, rect, rectfill, line, pixel, pset, circle, circfill, ellipse, arc, bezier, drawRect, drawPanel, drawGlowText, drawGlowTextCentered, drawRadialGradient, drawGradient, drawProgressBar, drawHealthBar, drawPixelBorder, drawCrosshair, drawScanlines, drawNoise, drawTriangle, drawDiamond, drawStarburst, poly, rgba8, screenWidth, screenHeight };

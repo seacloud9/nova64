@@ -991,30 +991,30 @@ Environment *Nova64Host::_ensure_environment() {
     sky.instantiate();
     Ref<ProceduralSkyMaterial> sky_mat;
     sky_mat.instantiate();
-    sky_mat->set_sky_top_color(Color(0.18f, 0.32f, 0.55f, 1.0f));
-    sky_mat->set_sky_horizon_color(Color(0.55f, 0.62f, 0.72f, 1.0f));
-    sky_mat->set_ground_horizon_color(Color(0.42f, 0.40f, 0.38f, 1.0f));
-    sky_mat->set_ground_bottom_color(Color(0.10f, 0.10f, 0.12f, 1.0f));
+    sky_mat->set_sky_top_color(Color(0.12f, 0.22f, 0.40f, 1.0f));
+    sky_mat->set_sky_horizon_color(Color(0.42f, 0.50f, 0.62f, 1.0f));
+    sky_mat->set_ground_horizon_color(Color(0.28f, 0.28f, 0.30f, 1.0f));
+    sky_mat->set_ground_bottom_color(Color(0.06f, 0.06f, 0.08f, 1.0f));
     sky_mat->set_sun_angle_max(30.0f);
     sky->set_material(sky_mat);
     env->set_sky(sky);
     env->set_background(Environment::BG_SKY);
     env->set_ambient_source(Environment::AMBIENT_SOURCE_SKY);
     env->set_reflection_source(Environment::REFLECTION_SOURCE_SKY);
-    env->set_ambient_light_energy(1.0f);
+    env->set_ambient_light_energy(0.72f);
 
     // Tonemap — filmic by default, modest exposure so emissive materials
     // bloom without blowing out.
     env->set_tonemapper(Environment::TONE_MAPPER_FILMIC);
-    env->set_tonemap_exposure(1.0f);
-    env->set_tonemap_white(6.0f);
+    env->set_tonemap_exposure(0.96f);
+    env->set_tonemap_white(5.0f);
 
     // Glow / bloom — on by default. Mid intensity.
     env->set_glow_enabled(true);
-    env->set_glow_intensity(0.8f);
-    env->set_glow_strength(1.0f);
-    env->set_glow_bloom(0.1f);
-    env->set_glow_hdr_bleed_threshold(1.0f);
+    env->set_glow_intensity(0.92f);
+    env->set_glow_strength(1.15f);
+    env->set_glow_bloom(0.08f);
+    env->set_glow_hdr_bleed_threshold(0.9f);
 
     // SSAO — subtle, off by default (can be expensive on mobile). Carts
     // enable explicitly via env.set.
@@ -1025,8 +1025,8 @@ Environment *Nova64Host::_ensure_environment() {
     // Subtle adjustments for that warm retro feel.
     env->set_adjustment_enabled(true);
     env->set_adjustment_brightness(1.0f);
-    env->set_adjustment_contrast(1.05f);
-    env->set_adjustment_saturation(1.05f);
+    env->set_adjustment_contrast(1.12f);
+    env->set_adjustment_saturation(1.08f);
 
     _world_env->set_environment(env);
     return env.ptr();
@@ -1223,6 +1223,19 @@ Dictionary Nova64Host::_cmd_input_poll(const Dictionary &) {
     Input *in = Input::get_singleton();
     if (!in) return out;
 
+    auto shape_axis = [](double v) -> double {
+        const double deadzone = 0.18;
+        const double full_scale = 0.92;
+        const double exponent = 1.35;
+        const double mag = Math::abs(v);
+        if (mag <= deadzone) return 0.0;
+        double norm = (mag - deadzone) / (full_scale - deadzone);
+        if (norm < 0.0) norm = 0.0;
+        if (norm > 1.0) norm = 1.0;
+        const double curved = Math::pow(norm, exponent);
+        return v < 0.0 ? -curved : curved;
+    };
+
     auto kp = [&](Key k) -> bool { return in->is_key_pressed(k); };
 
     // ---- key snapshot --------------------------------------------------
@@ -1276,19 +1289,24 @@ Dictionary Nova64Host::_cmd_input_poll(const Dictionary &) {
     Array gp_buttons;
     if (in->get_connected_joypads().size() > 0) {
         gp_connected = true;
-        const double DZ = 0.15;
-        double lx = in->get_joy_axis(0, JOY_AXIS_LEFT_X);
-        double ly = in->get_joy_axis(0, JOY_AXIS_LEFT_Y);
-        double rx = in->get_joy_axis(0, JOY_AXIS_RIGHT_X);
-        double ry = in->get_joy_axis(0, JOY_AXIS_RIGHT_Y);
-        if (Math::abs(lx) > DZ) gp_lx = lx;
-        if (Math::abs(ly) > DZ) gp_ly = ly;
-        if (Math::abs(rx) > DZ) gp_rx = rx;
-        if (Math::abs(ry) > DZ) gp_ry = ry;
-        if (Math::abs(gp_lx) > 0) axis_x = gp_lx;
-        if (Math::abs(gp_ly) > 0) axis_y = gp_ly;
-        if (in->is_joy_button_pressed(0, JOY_BUTTON_A)) action = true;
-        if (in->is_joy_button_pressed(0, JOY_BUTTON_B)) cancel = true;
+        const int joy_id = static_cast<int>(in->get_connected_joypads()[0]);
+        const double dir_threshold = 0.35;
+        double lx = in->get_joy_axis(joy_id, JOY_AXIS_LEFT_X);
+        double ly = in->get_joy_axis(joy_id, JOY_AXIS_LEFT_Y);
+        double rx = in->get_joy_axis(joy_id, JOY_AXIS_RIGHT_X);
+        double ry = in->get_joy_axis(joy_id, JOY_AXIS_RIGHT_Y);
+        gp_lx = shape_axis(lx);
+        gp_ly = shape_axis(ly);
+        gp_rx = shape_axis(rx);
+        gp_ry = shape_axis(ry);
+        if (Math::abs(gp_lx) > Math::abs(axis_x)) axis_x = gp_lx;
+        if (Math::abs(gp_ly) > Math::abs(axis_y)) axis_y = gp_ly;
+        if (in->is_joy_button_pressed(joy_id, JOY_BUTTON_A)) action = true;
+        if (in->is_joy_button_pressed(joy_id, JOY_BUTTON_B)) cancel = true;
+        if (in->is_joy_button_pressed(joy_id, JOY_BUTTON_DPAD_LEFT) || gp_lx <= -dir_threshold) left = true;
+        if (in->is_joy_button_pressed(joy_id, JOY_BUTTON_DPAD_RIGHT) || gp_lx >= dir_threshold) right = true;
+        if (in->is_joy_button_pressed(joy_id, JOY_BUTTON_DPAD_UP) || gp_ly <= -dir_threshold) up = true;
+        if (in->is_joy_button_pressed(joy_id, JOY_BUTTON_DPAD_DOWN) || gp_ly >= dir_threshold) down = true;
 
         // Map Godot joy buttons to the Nova64 web KEYMAP indices so
         // btn(i) lights up identically across the two backends.
@@ -1308,7 +1326,7 @@ Dictionary Nova64Host::_cmd_input_poll(const Dictionary &) {
             {JOY_BUTTON_BACK,        13}, // Space (Select)
         };
         for (const GpBtn &b : GP) {
-            if (in->is_joy_button_pressed(0, b.g)) gp_buttons.append(b.n);
+            if (in->is_joy_button_pressed(joy_id, b.g)) gp_buttons.append(b.n);
         }
     }
 

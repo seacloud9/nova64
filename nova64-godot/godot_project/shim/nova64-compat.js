@@ -957,6 +957,7 @@
   let keysPrev = Object.create(null);
   let gpHeld   = Object.create(null);
   let gpPrev   = Object.create(null);
+  let inputPrevState = inputState;
   let mouseDownPrev = false;
   let mousePressedFlag = false;
   let _lastPollFrame = -1;
@@ -976,6 +977,7 @@
     if (_lastPollFrame !== _frameTick) {
       keysPrev = keysHeld;
       gpPrev = gpHeld;
+      inputPrevState = inputState;
       mouseDownPrev = !!inputState.mouseDown;
       _lastPollFrame = _frameTick;
     }
@@ -1023,14 +1025,24 @@
   }
   function btn(i) {
     pollInput();
-    const code = KEYMAP[i | 0] || '';
-    return !!keysHeld[code] || !!gpHeld[i | 0];
+    const index = i | 0;
+    const code = KEYMAP[index] || '';
+    if (index === 0) return !!inputState.left  || !!keysHeld[code] || !!gpHeld[index];
+    if (index === 1) return !!inputState.right || !!keysHeld[code] || !!gpHeld[index];
+    if (index === 2) return !!inputState.up    || !!keysHeld[code] || !!gpHeld[index];
+    if (index === 3) return !!inputState.down  || !!keysHeld[code] || !!gpHeld[index];
+    return !!keysHeld[code] || !!gpHeld[index];
   }
   function btnp(i) {
     pollInput();
-    const code = KEYMAP[i | 0] || '';
+    const index = i | 0;
+    const code = KEYMAP[index] || '';
     const keyJust = !!keysHeld[code] && !keysPrev[code];
-    const padJust = !!gpHeld[i | 0] && !gpPrev[i | 0];
+    const padJust = !!gpHeld[index] && !gpPrev[index];
+    if (index === 0) return keyJust || padJust || (!!inputState.left  && !inputPrevState.left);
+    if (index === 1) return keyJust || padJust || (!!inputState.right && !inputPrevState.right);
+    if (index === 2) return keyJust || padJust || (!!inputState.up    && !inputPrevState.up);
+    if (index === 3) return keyJust || padJust || (!!inputState.down  && !inputPrevState.down);
     return keyJust || padJust;
   }
   function mouseX() { pollInput(); return inputState.mouseX | 0; }

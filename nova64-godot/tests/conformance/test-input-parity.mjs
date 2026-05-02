@@ -211,6 +211,26 @@ group('btn keyboard+gamepad union', () => {
   eq(btn(4), false, 'btn(4) off');
 });
 
+group('directional fallback from polled state', () => {
+  pollSnapshot = makeSnapshot({ left: true });
+  stepFrame();
+  eq(btn(0), true, 'btn(0) via polled left flag');
+  eq(btnp(0), true, 'btnp(0) via polled left edge');
+
+  pollSnapshot = makeSnapshot({ left: true });
+  stepFrame();
+  eq(btnp(0), false, 'btnp(0) clears while polled left held');
+
+  pollSnapshot = makeSnapshot({});
+  stepFrame();
+  eq(btn(0), false, 'btn(0) clears when polled left clears');
+
+  pollSnapshot = makeSnapshot({ down: true });
+  stepFrame();
+  eq(btn(3), true, 'btn(3) via polled down flag');
+  eq(btnp(3), true, 'btnp(3) via polled down edge');
+});
+
 // --------------------------------------------------------------- summary ----
 console.log(`\nInput parity: ${pass} passed, ${fail} failed`);
 process.exit(fail === 0 ? 0 : 1);

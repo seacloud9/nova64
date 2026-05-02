@@ -141,6 +141,45 @@ Voxel parity enhancements:
 - **Atmospheric fog** automatically set when voxel world generates, with
   sky-blue color matching render distance.
 
+### Phase 6 — Input play-feel and default visual punch (commit `TBD`)
+
+Improvements to core play responsiveness and out-of-the-box scene atmosphere.
+
+#### Input improvements (`bridge.cpp` + `nova64-compat.js`)
+
+- **Stick response shaping** — `_cmd_input_poll` now applies a tuned response
+  curve to gamepad axes before using them. A 0.18 deadzone rejects joystick
+  noise; the remaining range is normalized and raised to a 1.35 power for a
+  natural feel (`shape_axis` lambda in bridge.cpp).
+- **Stick → directional fallback** — left-stick X/Y beyond a `dir_threshold`
+  of 0.35 now sets the `left` / `right` / `up` / `down` boolean flags in the
+  poll result alongside D-pad presses. Previously a stick push had no effect
+  on `btn(0-3)`.
+- **`btn(i)` / `btnp(i)` unified directions** — the shim's `btn()` and
+  `btnp()` functions for indices 0–3 additionally check
+  `inputState.left/right/up/down` from the polled state object, matching the
+  web runtime's unified directional surface. Gamepad steering now works
+  identically to keyboard arrows for any cart that uses the `btn()` API.
+- **Input conformance test** — `nova64-godot/tests/conformance/test-input-parity.mjs`
+  extended with a `'directional fallback from polled state'` group. Result:
+  **42 passed, 0 failed**.
+
+#### Visual improvements (`bridge.cpp` `_ensure_environment()`)
+
+- **Punchier sky** — default procedural sky gradients are darker and more
+  saturated: sky top `(0.12, 0.22, 0.40)`, horizon `(0.42, 0.50, 0.62)`.
+  Scenes look atmospheric rather than washed-out from the first frame.
+- **Lower ambient energy** — default ambient down to `0.72` so scene contrast
+  is not flattened by over-bright fill light.
+- **Sharper post-processing baseline** — `adjustment_contrast 1.12`,
+  `adjustment_saturation 1.08` for that warm retro feel without a meta.json
+  override.
+- **Tuned glow baseline** — `glow_intensity 0.92`, `glow_strength 1.15`,
+  `glow_bloom 0.08`, `hdr_bleed_threshold 0.9`; emissive materials read
+  correctly out of the box.
+- **Tighter tonemap** — filmic tonemapper with `exposure 0.96`, `white 5.0`
+  prevents over-bright emissive blowout while keeping rich darks.
+
 ## Deferred
 
 These are intentionally unwired and remain `warnOnce` stubs or fallbacks.
@@ -151,7 +190,7 @@ These are intentionally unwired and remain `warnOnce` stubs or fallbacks.
   `ResourceLoader::load(path, "PackedScene")` and instancing under the host.
 - Pixelation, dither, real radial vignette — would need `SubViewport` and
   fragment shader materials.
-- `createEmitter2D`, stage / screens / cards / menus / shake — UI primitives,
+- `createEmitter2D`, stage / screens / cards / menus — UI primitives,
   lower priority. **`createShake` / `triggerShake` / `updateShake` are now real
   (Phase 5).**
 - Custom shader materials and animated UV scrolling for the vortex /

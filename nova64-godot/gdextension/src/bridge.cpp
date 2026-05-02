@@ -419,6 +419,8 @@ void Nova64Host::_shutdown_runtime() {
     // ProceduralSkyMaterial Refs aren't dropped from inside the JS
     // runtime teardown — that ordering trips a SIGSEGV on shutdown for
     // some carts.
+    // Null the sun so it doesn't outlive the scene.
+    _sun_light = nullptr;
     if (_world_env) {
         Ref<Environment> env = _world_env->get_environment();
         if (env.is_valid()) env->set_sky(Ref<Sky>());
@@ -578,6 +580,7 @@ Dictionary Nova64Host::call_bridge(const String &p_method, const Dictionary &p_p
     if (p_method == "light.createSpot")         return _cmd_light_create_spot(p_payload);
     if (p_method == "light.setColor")           return _cmd_light_set_color(p_payload);
     if (p_method == "light.setEnergy")          return _cmd_light_set_energy(p_payload);
+    if (p_method == "light.setSun")             return _cmd_light_set_sun(p_payload);
     if (p_method == "env.set")                  return _cmd_env_set(p_payload);
     if (p_method == "input.poll")               return _cmd_input_poll(p_payload);
     if (p_method == "texture.createFromImage")  return _cmd_texture_create_from_image(p_payload);
@@ -897,6 +900,32 @@ Dictionary Nova64Host::_cmd_camera_set_params(const Dictionary &p) {
     if (p.has("fov"))  cam->set_fov(static_cast<float>(static_cast<double>(p["fov"])));
     if (p.has("near")) cam->set_near(static_cast<float>(static_cast<double>(p["near"])));
     if (p.has("far"))  cam->set_far(static_cast<float>(static_cast<double>(p["far"])));
+    Dictionary out; out["ok"] = true; return out;
+}
+
+Dictionary Nova64Host::_cmd_light_set_sun(const Dictionary &p) {
+    // Creates or updates a shared DirectionalLight3D that acts as the sun.
+    // Called by setVoxelDayTime() in the shim to replicate the day/night
+    // ambient + sun brightness the web voxel engine applies via skylight.
+    if (!_sun_light) {
+        _sun_light = memnew(DirectionalLight3D);
+        _sun_light->set_shadow(true);
+        _sun_light->set_param(Light3D::PARAM_SHADOW_BIAS, 0.02f);
+        _sun_light->set_param(Light3D::PARAM_SHADOW_NORMAL_BIAS, 1.0f);
+        add_child(_sun_light);
+    }
+    if (p.has("energy"))
+        _sun_light->set_param(Light3D::PARAM_ENERGY,
+                static_cast<float>(static_cast<double>(p["energy"])));
+    if (p.has("color"))
+        _sun_light->set_color(color_from_payload(p, "color", Color(1, 1, 1, 1)));
+    // pitch and yaw are in degrees.
+    float pitch = p.has("pitch") ? static_cast<float>(static_cast<double>(p["pitch"])) : -45.0f;
+    float yaw   = p.has("yaw")   ? static_cast<float>(static_cast<double>(p["yaw"]))   : -45.0f;
+    _sun_light->set_rotation(Vector3(
+        Math::deg_to_rad(pitch),
+        Math::deg_to_rad(yaw),
+        0.0f));
     Dictionary out; out["ok"] = true; return out;
 }
 

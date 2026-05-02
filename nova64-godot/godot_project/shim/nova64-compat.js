@@ -2493,34 +2493,35 @@
     MOSSY_COBBLESTONE: 25,
   };
 
-  // Block colors for visual parity with browser renderer
+  // Block colors — kept exactly in sync with runtime/api-voxel.js register() calls
+  // so Godot and Three.js produce identical colour output per block type.
   const VX_BLOCK_COLORS = {
     0: 0x000000,    // AIR (not rendered)
-    1: 0x5da33f,    // GRASS - brighter green top
-    2: 0x8b6b4a,    // DIRT - warm brown
-    3: 0x808080,    // STONE - neutral gray
-    4: 0xe6c878,    // SAND - warm yellow
-    5: 0x3a7ca5,    // WATER - blue (semi-transparent handled separately)
-    6: 0x6b4423,    // WOOD - dark brown trunk
-    7: 0x2d8a2d,    // LEAVES - deep green
-    8: 0x707070,    // COBBLESTONE - dark gray
-    9: 0xc4a76c,    // PLANKS - light wood
-    10: 0xaaddff,   // GLASS - light blue tint
-    11: 0xb55442,   // BRICK - terracotta red
-    12: 0xf0f8ff,   // SNOW - almost white
-    13: 0x9ad3f5,   // ICE - light cyan
-    14: 0x2a2a2a,   // BEDROCK - very dark
-    15: 0x4a4a4a,   // COAL_ORE - dark stone with black specks
-    16: 0x9a836a,   // IRON_ORE - stone with tan specks
-    17: 0xf5d76e,   // GOLD_ORE - golden yellow
-    18: 0x5ae0e6,   // DIAMOND_ORE - bright cyan
-    19: 0x857f7a,   // GRAVEL - brownish gray
-    20: 0xa4a8b0,   // CLAY - gray-blue
-    21: 0xffe066,   // TORCH - bright yellow (emissive)
-    22: 0xfff4b3,   // GLOWSTONE - warm yellow glow
-    23: 0xff4400,   // LAVA - orange-red (emissive)
-    24: 0x0f0014,   // OBSIDIAN - very dark purple
-    25: 0x5a7a5a,   // MOSSY_COBBLESTONE - greenish gray
+    1: 0x55cc33,    // GRASS
+    2: 0x996644,    // DIRT
+    3: 0xaaaaaa,    // STONE
+    4: 0xffdd88,    // SAND
+    5: 0x2288dd,    // WATER
+    6: 0x774422,    // WOOD
+    7: 0x116622,    // LEAVES
+    8: 0x667788,    // COBBLESTONE
+    9: 0xddaa55,    // PLANKS
+    10: 0xccffff,   // GLASS
+    11: 0xcc4433,   // BRICK
+    12: 0xeeeeff,   // SNOW
+    13: 0x99ddff,   // ICE
+    14: 0x333333,   // BEDROCK
+    15: 0x444444,   // COAL_ORE
+    16: 0xccaa88,   // IRON_ORE
+    17: 0xffcc33,   // GOLD_ORE
+    18: 0x44ffee,   // DIAMOND_ORE
+    19: 0x888888,   // GRAVEL
+    20: 0xbbaa99,   // CLAY
+    21: 0xffdd44,   // TORCH
+    22: 0xffeeaa,   // GLOWSTONE
+    23: 0xff4400,   // LAVA
+    24: 0x220033,   // OBSIDIAN
+    25: 0x668855,   // MOSSY_COBBLESTONE
   };
   const vxBlocks = new Map();    // 'x,y,z' -> { id, mesh } (sparse, player edits)
   const vxMultimeshes = [];      // kept for legacy resetVoxelWorld compat
@@ -2579,25 +2580,29 @@
     return 'Plains';
   }
   function _vxSurfaceFor(biome) {
+    // Surface block + color matches the web engine biome→surfaceBlock mapping
+    // in runtime/api-voxel.js so rendered colours are identical.
     switch (biome) {
-      case 'Desert': return { id: 4, color: 0xe6c878, sub: 0xd4b866 }; // sand
+      case 'Desert':     return { id: 4,  color: VX_BLOCK_COLORS[4],  sub: VX_BLOCK_COLORS[4]  }; // SAND
       case 'Frozen Tundra':
-      case 'Snowy Hills': return { id: 12, color: 0xf0f8ff, sub: 0xddeeff }; // snow
-      case 'Taiga': return { id: 1, color: 0x4a9050, sub: 0x3a7040 };
-      case 'Jungle': return { id: 1, color: 0x2c9a2c, sub: 0x1c7a1c };
-      case 'Forest': return { id: 1, color: 0x4faa3c, sub: 0x3f8a2c };
-      case 'Savanna': return { id: 1, color: 0xa8b257, sub: 0x98a247 };
-      case 'Swamp': return { id: 1, color: 0x5a7a4a, sub: 0x4a6a3a };
-      case 'Mountains': return { id: 3, color: 0x888888, sub: 0x707070 };
-      default: return { id: 1, color: 0x5da33f, sub: 0x4d932f }; // plains grass
+      case 'Snowy Hills':return { id: 12, color: VX_BLOCK_COLORS[12], sub: VX_BLOCK_COLORS[13] }; // SNOW / ICE
+      case 'Taiga':      return { id: 8,  color: VX_BLOCK_COLORS[8],  sub: VX_BLOCK_COLORS[3]  }; // COBBLESTONE / STONE
+      case 'Jungle':     return { id: 7,  color: VX_BLOCK_COLORS[7],  sub: VX_BLOCK_COLORS[2]  }; // LEAVES / DIRT
+      case 'Forest':     return { id: 1,  color: VX_BLOCK_COLORS[1],  sub: VX_BLOCK_COLORS[2]  }; // GRASS / DIRT
+      case 'Savanna':    return { id: 2,  color: VX_BLOCK_COLORS[2],  sub: VX_BLOCK_COLORS[4]  }; // DIRT / SAND
+      case 'Swamp':      return { id: 1,  color: 0x5a7a4a,            sub: VX_BLOCK_COLORS[2]  }; // muddy grass
+      case 'Mountains':  return { id: 3,  color: VX_BLOCK_COLORS[3],  sub: VX_BLOCK_COLORS[3]  }; // STONE
+      default:           return { id: 1,  color: VX_BLOCK_COLORS[1],  sub: VX_BLOCK_COLORS[2]  }; // Plains GRASS
     }
   }
   function _vxTreeColor(biome) {
-    if (biome === 'Jungle') return 0x1a7b1a;
-    if (biome === 'Taiga' || biome === 'Snowy Hills' || biome === 'Frozen Tundra') return 0x2a6a3a;
-    if (biome === 'Savanna') return 0x909a4a;
-    if (biome === 'Swamp') return 0x3a5a2a;
-    return 0x2d8a2d;
+    // Match web engine leaf colors (api-voxel.js LEAVES block = 0x116622 base,
+    // with biome tinting applied as the web engine does for each tree type).
+    if (biome === 'Jungle') return 0x0d5218;          // dark jungle leaves
+    if (biome === 'Taiga' || biome === 'Snowy Hills' || biome === 'Frozen Tundra') return 0x1a4a28; // spruce
+    if (biome === 'Savanna') return 0x5a6e22;         // acacia — yellow-green
+    if (biome === 'Swamp') return 0x2a4a1a;
+    return VX_BLOCK_COLORS[7]; // 0x116622 oak/birch
   }
   function _vxTrunkColor(biome) {
     if (biome === 'Jungle') return 0x5a3a18;
@@ -2883,7 +2888,7 @@
     }
 
     // Water plane with semi-transparency for better visual parity
-    vxWaterMesh = createPlane(VX_RADIUS * 2, VX_RADIUS * 2, 0x3a8ac5,
+    vxWaterMesh = createPlane(VX_RADIUS * 2, VX_RADIUS * 2, VX_BLOCK_COLORS[5],
       [0, VX_SEA_Y + 0.05, 0], {
         material: 'standard',
         roughness: 0.15,
@@ -2891,9 +2896,7 @@
         opacity: 0.75,
         transparent: true,
       });
-
-    // Set up atmospheric fog for voxel worlds to match browser rendering
-    setFog(0x87ceeb, VX_RADIUS * 0.8, VX_RADIUS * 1.8);
+    // Fog is set by each cart's init() — do not override it here.
   }
 
   function configureVoxelWorld(opts) {
@@ -2970,7 +2973,39 @@
     vxGenerated = false;
   }
   function saveVoxelWorld(_name) { return true; }
-  function setVoxelDayTime(_t) { /* visual only */ }
+  function setVoxelDayTime(t) {
+    // Mirror the web engine: t in [0,1], noon=0.25.
+    // Set DirectionalLight (sun) elevation and ambient energy so the
+    // Godot scene brightness matches the Three.js renderer.
+    ensureInit();
+    const angle = (t || 0) * Math.PI * 2;
+    const brightness = Math.max(0.15, Math.sin(angle) * 0.5 + 0.5); // 0.15..1.0
+    // Sun pitch: highest at noon (t=0.25), below horizon at night.
+    const sunPitch = Math.sin(angle) * 60; // degrees, -60..+60
+    // Sky background color changes with time (matches minecraft-demo getSkyColorForTime)
+    const dayPhase = brightness;
+    const skyR = (10 + 125 * dayPhase) / 255;
+    const skyG = (10 + 196 * dayPhase) / 255;
+    const skyB = (20 + 215 * dayPhase) / 255;
+    const skyHex = (Math.round(skyR * 255) << 16) | (Math.round(skyG * 255) << 8) | Math.round(skyB * 255);
+    const skyC = colorFromHex(skyHex);
+    // Update environment: background colour, sun, ambient.
+    call('env.set', {
+      background:    skyC,
+      fog:           true,
+      fogColor:      skyC,
+      ambient:       skyC,
+      ambientEnergy: 0.4 + 0.6 * brightness,
+    });
+    call('light.setSun', {
+      pitch:  sunPitch,
+      yaw:    -45,
+      energy: 0.3 + 1.0 * brightness,
+      color:  brightness > 0.5
+                ? { r: 1.0, g: 0.95, b: 0.85, a: 1 }   // warm daylight
+                : { r: 0.6, g: 0.65, b: 0.9,  a: 1 },  // cool twilight
+    });
+  }
 
   // Swept AABB vs heightmap + sparse placed blocks. The cart treats the
   // velocity as already-scaled per frame and passes dt=1.0; we honour
@@ -3380,6 +3415,14 @@
   if (!global.cancelAnimationFrame) global.cancelAnimationFrame = cancelAnimationFrame_;
   if (!global.performance) global.performance = { now: function () { return Date.now(); } };
   if (!global.window) global.window = global;
+
+  // Minecraft-demo (and similar) call `globalThis.setClearColor?.(hexColor)` to
+  // synchronise the clear colour with the day-time sky.  Wire that to env.set.
+  global.setClearColor = function (hexColor) {
+    ensureInit();
+    const c = colorFromHex(typeof hexColor === 'number' ? hexColor : 0x87ceeb);
+    call('env.set', { background: c });
+  };
 
   // `console` polyfill for carts that use console.log
   if (!global.console) {

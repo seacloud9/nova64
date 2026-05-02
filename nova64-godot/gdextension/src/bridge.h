@@ -108,6 +108,7 @@ private:
     // tune this via `env.set`. Returns the Environment for direct mutation.
     class Environment *_ensure_environment();
     class WorldEnvironment *_world_env = nullptr;
+    class DirectionalLight3D *_sun_light = nullptr; // shared day/night sun node
 
     // Lazily creates a CanvasLayer + Control above the 3D scene that the
     // cart's 2D draw API (print, rect, line, circle, pset, text)
@@ -141,6 +142,7 @@ private:
     Dictionary _cmd_light_create_spot(const Dictionary &p_payload);
     Dictionary _cmd_light_set_color(const Dictionary &p_payload);
     Dictionary _cmd_light_set_energy(const Dictionary &p_payload);
+    Dictionary _cmd_light_set_sun(const Dictionary &p_payload);
     Dictionary _cmd_env_set(const Dictionary &p_payload);
     Dictionary _cmd_input_poll(const Dictionary &p_payload);
     Dictionary _cmd_texture_create_from_image(const Dictionary &p_payload);

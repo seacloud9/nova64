@@ -13,6 +13,29 @@
 
 ---
 
+## Godot Native Host (in progress)
+
+Nova64 carts now run end-to-end through a native Godot 4.x host via a
+GDExtension that embeds QuickJS. See [ROADMAP.md](ROADMAP.md) Phase 3
+and [docs/GODOT_VOXEL_PLAN.md](docs/GODOT_VOXEL_PLAN.md) for the
+voxel-parity sub-plan.
+
+- **Voxel demo parity push**: `minecraft-demo` boots end-to-end with
+  full HUD, hotbar, biome label and rolling biome-tinted terrain
+  rendered via Godot MultiMesh. 64×64 column render distance with fog
+  falloff. All voxel carts pass the smoke harness.
+- **Cart-facing UI APIs filled in**: `drawText`, `drawTextShadow`,
+  `drawTextOutline`, `setFont`, `setTextAlign`, `setTextBaseline`,
+  plus `setInstanceTransform` / `setInstancePosition` for instanced
+  meshes — HUDs in f-zero / star-fox / space-harrier render correctly
+  under Godot.
+- **Build**: `cd nova64-godot/gdextension && scons platform=linux
+  target=template_debug` (and the matching Windows MinGW invocation).
+  See [nova64-godot/README.md](nova64-godot/README.md).
+- **Smoke**: `powershell -File nova64-godot/scripts/run-cart-smoke.ps1
+  <cart-name>` runs each cart for 300 frames against the conformance
+  harness.
+
 ## Babylon.js WAD Visual Parity
 
 - **WAD Texture Parity**: Babylon WAD walls, floors, and sprite materials now receive engine-assigned textures through the same mesh proxy path used by Three.js carts

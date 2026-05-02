@@ -120,18 +120,42 @@ Architecture:
 
 Phase 3 Todo:
 
-- [ ] Spike: build a minimal GDExtension that links QuickJS and exposes a `nova64_call(method, payloadJson)` entry point
-- [ ] Define the Godot-side host contract mirroring `runtime/engine-adapter.js` method names (`material.create`, `texture.*`, `geometry.createPlane`, `mesh.setMaterial`, `camera.getPosition`, `transform.*`, `input.poll`, `audio.play`)
-- [ ] Implement handle allocator and lifecycle tracker on the Godot side (meshes, materials, textures, cameras, audio sources)
-- [ ] Implement command-buffer flush phase aligned to Godot's `_process` / `_physics_process` lifecycle
-- [ ] Wire the Nova64 cart `init/update/draw` lifecycle into Godot's process callbacks
-- [ ] Bundle Nova64 runtime JS as an asset loaded into QuickJS at boot
-- [ ] Port one example cart end-to-end (recommended: a small example from `examples/` with no advanced TSL/PBR features)
-- [ ] Capability reporting: surface which adapter methods Godot host supports vs. stubs
-- [ ] Conformance test harness: run shared adapter conformance suite against the Godot host
+- [x] Spike: build a minimal GDExtension that links QuickJS and exposes a `nova64_call(method, payloadJson)` entry point
+- [x] Define the Godot-side host contract mirroring `runtime/engine-adapter.js` method names (`material.create`, `texture.*`, `geometry.createPlane`, `mesh.setMaterial`, `camera.getPosition`, `transform.*`, `input.poll`, `audio.play`)
+- [x] Implement handle allocator and lifecycle tracker on the Godot side (meshes, materials, textures, cameras, audio sources)
+- [x] Implement command-buffer flush phase aligned to Godot's `_process` / `_physics_process` lifecycle
+- [x] Wire the Nova64 cart `init/update/draw` lifecycle into Godot's process callbacks
+- [x] Bundle Nova64 runtime JS as an asset loaded into QuickJS at boot
+- [x] Port one example cart end-to-end (recommended: a small example from `examples/` with no advanced TSL/PBR features)
+- [x] Capability reporting: surface which adapter methods Godot host supports vs. stubs
+- [x] Conformance test harness: run shared adapter conformance suite against the Godot host
 - [ ] Desktop export proof on Windows, macOS, Linux
 - [ ] Mobile export proof on iOS and Android, including bridge latency and frame-cost measurements
 - [ ] Document Godot host contract, supported methods, capability matrix, and known divergences
+
+Phase 3 Voxel Sub-Roadmap (in progress on `feature/godot-adapter`):
+
+The minecraft-demo cart is the primary parity benchmark. See
+`docs/GODOT_VOXEL_PLAN.md` for the full plan; current status:
+
+- [x] **Voxel API surface in shim** — all 22 cart-facing voxel functions
+      (`getVoxelBlock`, `setVoxelBlock`, `moveVoxelEntity`,
+      `raycastVoxelBlock`, `spawnVoxelEntity`, etc.) implemented in JS
+      against a sparse Map + heightmap
+- [x] **Heightmap terrain** — 3-octave value-noise heights, 8 biomes
+      matching the web engine's temperature/moisture rules, scattered
+      trees with biome-aware trunk + canopy colours, water plane at
+      sea level
+- [x] **Instanced multimesh rendering** — terrain bucketed by colour
+      and uploaded as MultiMesh batches (~7-10 multimeshes total
+      regardless of voxel count); render distance now 64×64 columns
+- [ ] **Native voxel.uploadChunk command** (Phase 1 of voxel plan) —
+      C++ face-culled chunk mesher; replaces column-bucketing with
+      per-block visibility
+- [ ] **Greedy meshing in C++** — merge co-planar same-coloured faces
+- [ ] **Caves, overhangs, ores** — 3D simplex carve pass in C++
+- [ ] **Per-block textures + skylight** — texture atlas + A8 light
+      buffer per chunk
 
 Scope:
 

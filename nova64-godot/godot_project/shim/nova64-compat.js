@@ -2488,7 +2488,7 @@
   const VX_BASE_Y = 60;          // bottom of generated columns
   const VX_SEA_Y = 62;           // matches runtime/api-voxel.js SEA_LEVEL
   const VX_HEIGHT_AMPLITUDE = 12;
-  const VX_RADIUS = 32;          // half-width in blocks (=> 64x64 columns)
+  const VX_RADIUS = 32;          // half-width in blocks (=> 64x64 columns) - fast loading, good coverage
   const VX_TREE_CHANCE = 0.012;
   // Block types matching runtime/api-voxel.js BLOCK_TYPES
   const VX_BLOCK_TYPES = {
@@ -2547,6 +2547,14 @@
   // Deterministic hash used for ore/tree scatter decisions.
   function _vxHash2(x, y, seed) {
     let h = (x | 0) * 374761393 + (y | 0) * 668265263 + (seed | 0) * 1274126177;
+    h = (h ^ (h >>> 13)) >>> 0;
+    h = (h * 1274126177) >>> 0;
+    return ((h ^ (h >>> 16)) >>> 0) / 4294967295;
+  }
+
+  // Fast 3D hash for ore generation
+  function _vxHash3(x, y, z, seed) {
+    let h = (x | 0) * 374761393 + (y | 0) * 668265263 + (z | 0) * 1013904223 + (seed | 0) * 1274126177;
     h = (h ^ (h >>> 13)) >>> 0;
     h = (h * 1274126177) >>> 0;
     return ((h ^ (h >>> 16)) >>> 0) / 4294967295;
@@ -2628,7 +2636,76 @@
       return (total / maxValue) * 0.5 + 0.5;
     }
 
-    return { fbm2D };
+    // 3D Simplex noise for ore vein generation
+    const F3 = 1.0 / 3.0;
+    const G3 = 1.0 / 6.0;
+    const dot3 = (g, x, y, z) => g[0] * x + g[1] * y + g[2] * z;
+
+    function noise3D(xin, yin, zin) {
+      let n0, n1, n2, n3;
+      const s = (xin + yin + zin) * F3;
+      const i = Math.floor(xin + s);
+      const j = Math.floor(yin + s);
+      const k = Math.floor(zin + s);
+      const t = (i + j + k) * G3;
+      const X0 = i - t, Y0 = j - t, Z0 = k - t;
+      const x0 = xin - X0, y0 = yin - Y0, z0 = zin - Z0;
+
+      let i1, j1, k1, i2, j2, k2;
+      if (x0 >= y0) {
+        if (y0 >= z0)      { i1=1; j1=0; k1=0; i2=1; j2=1; k2=0; }
+        else if (x0 >= z0) { i1=1; j1=0; k1=0; i2=1; j2=0; k2=1; }
+        else               { i1=0; j1=0; k1=1; i2=1; j2=0; k2=1; }
+      } else {
+        if (y0 < z0)       { i1=0; j1=0; k1=1; i2=0; j2=1; k2=1; }
+        else if (x0 < z0)  { i1=0; j1=1; k1=0; i2=0; j2=1; k2=1; }
+        else               { i1=0; j1=1; k1=0; i2=1; j2=1; k2=0; }
+      }
+
+      const x1 = x0 - i1 + G3, y1 = y0 - j1 + G3, z1 = z0 - k1 + G3;
+      const x2 = x0 - i2 + 2*G3, y2 = y0 - j2 + 2*G3, z2 = z0 - k2 + 2*G3;
+      const x3 = x0 - 1 + 3*G3, y3 = y0 - 1 + 3*G3, z3 = z0 - 1 + 3*G3;
+
+      const ii = i & 255, jj = j & 255, kk = k & 255;
+      const gi0 = perm[ii + perm[jj + perm[kk]]] % 12;
+      const gi1 = perm[ii + i1 + perm[jj + j1 + perm[kk + k1]]] % 12;
+      const gi2 = perm[ii + i2 + perm[jj + j2 + perm[kk + k2]]] % 12;
+      const gi3 = perm[ii + 1 + perm[jj + 1 + perm[kk + 1]]] % 12;
+
+      let t0 = 0.6 - x0*x0 - y0*y0 - z0*z0;
+      if (t0 < 0) n0 = 0;
+      else { t0 *= t0; n0 = t0 * t0 * dot3(grad3[gi0], x0, y0, z0); }
+
+      let t1 = 0.6 - x1*x1 - y1*y1 - z1*z1;
+      if (t1 < 0) n1 = 0;
+      else { t1 *= t1; n1 = t1 * t1 * dot3(grad3[gi1], x1, y1, z1); }
+
+      let t2 = 0.6 - x2*x2 - y2*y2 - z2*z2;
+      if (t2 < 0) n2 = 0;
+      else { t2 *= t2; n2 = t2 * t2 * dot3(grad3[gi2], x2, y2, z2); }
+
+      let t3 = 0.6 - x3*x3 - y3*y3 - z3*z3;
+      if (t3 < 0) n3 = 0;
+      else { t3 *= t3; n3 = t3 * t3 * dot3(grad3[gi3], x3, y3, z3); }
+
+      return 32 * (n0 + n1 + n2 + n3);
+    }
+
+    function fbm3D(x, y, z, octaves = 2, persistence = 0.5, lacunarity = 2.0, scale = 0.1) {
+      let total = 0;
+      let frequency = scale;
+      let amplitude = 1;
+      let maxValue = 0;
+      for (let i = 0; i < octaves; i++) {
+        total += noise3D(x * frequency, y * frequency, z * frequency) * amplitude;
+        maxValue += amplitude;
+        amplitude *= persistence;
+        frequency *= lacunarity;
+      }
+      return (total / maxValue) * 0.5 + 0.5;
+    }
+
+    return { fbm2D, fbm3D };
   }
 
   let _vxNoise = _vxCreateSimplexNoise(vxConfig.seed | 0);
@@ -2647,15 +2724,17 @@
     return 'Plains';
   }
   function _vxBiomeProfile(biome) {
+    // Reduced height scales for smoother, more natural terrain
+    // Previous values were too extreme causing visual artifacts
     switch (biome) {
-      case 'Frozen Tundra': return { heightScale: 6, heightBase: 65 };
-      case 'Taiga':         return { heightScale: 18, heightBase: 66 };
-      case 'Desert':        return { heightScale: 4, heightBase: 63 };
-      case 'Jungle':        return { heightScale: 22, heightBase: 58 };
-      case 'Savanna':       return { heightScale: 5, heightBase: 65 };
-      case 'Forest':        return { heightScale: 14, heightBase: 64 };
-      case 'Snowy Hills':   return { heightScale: 35, heightBase: 62 };
-      default:              return { heightScale: 6, heightBase: 64 };
+      case 'Frozen Tundra': return { heightScale: 4, heightBase: 65 };
+      case 'Taiga':         return { heightScale: 8, heightBase: 66 };
+      case 'Desert':        return { heightScale: 3, heightBase: 64 };
+      case 'Jungle':        return { heightScale: 10, heightBase: 60 };
+      case 'Savanna':       return { heightScale: 4, heightBase: 65 };
+      case 'Forest':        return { heightScale: 6, heightBase: 64 };
+      case 'Snowy Hills':   return { heightScale: 12, heightBase: 64 };
+      default:              return { heightScale: 5, heightBase: 64 };
     }
   }
   function _vxSurfaceFor(biome) {
@@ -2723,30 +2802,40 @@
     return b;
   }
 
-  // Return the hex colour of the block at world position (wx, wy, wz),
-  // or 0 for air.  Used by the chunk-based terrain generator.
-  function _vxBlockColorAt(wx, wy, wz) {
+  // Return the BLOCK TYPE ID (not color!) at world position (wx, wy, wz),
+  // or 0 for air.  Used by the chunk-based terrain generator to get correct
+  // texture atlas tiles in bridge.cpp's voxel_tile_index_for_face().
+  // Block IDs match web engine BLOCK_TYPES: 1=GRASS, 2=DIRT, 3=STONE, etc.
+  function _vxBlockIdAt(wx, wy, wz) {
     const height = _vxHeightAtCached(wx, wz);
 
     if (wy <= height) {
       // --- solid terrain ---
-      if (wy < VX_BASE_Y - 2) return VX_BLOCK_COLORS[3]; // deep stone
+      if (wy < VX_BASE_Y - 2) return 3; // deep stone (STONE)
       const biome = _vxBiomeAtCached(wx, wz);
       const surface = _vxSurfaceFor(biome);
       const dy = height - wy;
       if (dy === 0) {
-        // surface block
-        if (wy < VX_SEA_Y) return wy >= VX_SEA_Y - 1 ? surface.color : 0x6b5a3a;
-        return surface.color;
+        // surface block - return biome's surface block ID
+        if (wy < VX_SEA_Y) return wy >= VX_SEA_Y - 1 ? surface.id : 4; // SAND underwater
+        return surface.id;
       }
-      if (dy < 3) return surface.sub || VX_BLOCK_COLORS[2]; // dirt
-      // Stone with ore veins at a specific depth
-      if (height > VX_BASE_Y + 10 && dy === 4) {
-        const oreRoll = _vxHash2(wx, wz, vxConfig.seed + 77);
-        if (oreRoll > 0.97) return VX_BLOCK_COLORS[15]; // coal ore
-        if (oreRoll > 0.95) return VX_BLOCK_COLORS[16]; // iron ore
+      if (dy < 3) return 2; // DIRT
+
+      // Fast hash-based ore generation (much faster than 3D FBM noise)
+      // Only check ores in the visible stone layer (dy 3-6)
+      if (dy >= 3 && dy <= 6) {
+        const oreHash = _vxHash3(wx, wy, wz, vxConfig.seed + 77);
+        // Diamond ore: y < 16, very rare
+        if (wy < 16 && oreHash > 0.995) return 18; // DIAMOND_ORE
+        // Gold ore: y < 32
+        if (wy < 32 && oreHash > 0.985) return 17; // GOLD_ORE
+        // Iron ore: y < 64
+        if (wy < 64 && oreHash > 0.965) return 16; // IRON_ORE
+        // Coal ore: anywhere
+        if (oreHash > 0.94) return 15; // COAL_ORE
       }
-      return VX_BLOCK_COLORS[3]; // stone
+      return 3; // STONE
     }
 
     // --- above terrain: trees ---
@@ -2761,7 +2850,7 @@
           if (biome2 === 'Jungle') { baseH = 6; varH = 4; }
           else if (biome2 === 'Taiga') { baseH = 5; varH = 3; }
           const trunkH = baseH + Math.floor(_vxHash2(wx, wz, vxConfig.seed + 53) * varH);
-          if (wy >= h2 + 1 && wy <= h2 + trunkH) return _vxTrunkColor(biome2);
+          if (wy >= h2 + 1 && wy <= h2 + trunkH) return 6; // WOOD
         }
       }
     }
@@ -2789,11 +2878,17 @@
         if (ly < 0 || ly > 2) continue;
         if (Math.abs(lx) + Math.abs(lz) + ly > canopyR + 1) continue;
         if (_vxHash2(wx, wz, vxConfig.seed + ly + 99) > 0.75) continue;
-        return _vxTreeColor(tb);
+        return 7; // LEAVES
       }
     }
 
-    return 0; // air
+    return 0; // AIR
+  }
+
+  // Wrapper that returns color from block ID (for legacy code paths)
+  function _vxBlockColorAt(wx, wy, wz) {
+    const id = _vxBlockIdAt(wx, wy, wz);
+    return VX_BLOCK_COLORS[id] || 0;
   }
 
   // Spawn individual blocks for a column position — renders surface + subsurface
@@ -2805,105 +2900,73 @@
 
     const cx = x + 0.5, cz = z + 0.5;
 
-    // Render surface block + a few visible layers below (dirt/stone)
-    // This creates the authentic blocky Minecraft look
-    const VISIBLE_DEPTH = 4; // How many layers below surface to render
-    const stoneColor = VX_BLOCK_COLORS[3]; // Stone gray
-    const dirtColor = surface.sub || VX_BLOCK_COLORS[2]; // Dirt or biome sub-color
-
-    for (let dy = 0; dy < VISIBLE_DEPTH; dy++) {
-      const y = height - dy;
-      if (y < VX_BASE_Y - 2) break;
-
-      let color;
-      if (dy === 0) {
-        // Surface block
-        if (height < VX_SEA_Y) {
-          color = height >= VX_SEA_Y - 1 ? surface.color : 0x6b5a3a; // sand underwater
-        } else {
-          color = surface.color;
-        }
-      } else if (dy < 3) {
-        // Dirt/sub-surface layer
-        color = dirtColor;
-      } else {
-        // Stone layer
-        color = stoneColor;
-      }
-
-      let arr = bucket.get(color);
-      if (!arr) { arr = []; bucket.set(color, arr); }
-      arr.push({ cx, cy: y + 0.5, cz, sx: 1, sy: 1, sz: 1 });
+    // Render surface block as a proper 1x1x1 cube
+    let surfaceColor;
+    if (height < VX_SEA_Y) {
+      surfaceColor = height >= VX_SEA_Y - 1 ? surface.color : 0x6b5a3a;
+    } else {
+      surfaceColor = surface.color;
     }
 
-    // Ore generation in deeper visible blocks (rare chance)
-    if (height > VX_BASE_Y + 10) {
-      const oreRoll = _vxHash2(x, z, vxConfig.seed + 77);
-      if (oreRoll > 0.97) {
-        // Coal ore
-        const oreY = height - VISIBLE_DEPTH;
-        let oreArr = bucket.get(VX_BLOCK_COLORS[15]);
-        if (!oreArr) { oreArr = []; bucket.set(VX_BLOCK_COLORS[15], oreArr); }
-        oreArr.push({ cx, cy: oreY + 0.5, cz, sx: 1, sy: 1, sz: 1 });
-      } else if (oreRoll > 0.95) {
-        // Iron ore
-        const oreY = height - VISIBLE_DEPTH;
-        let oreArr = bucket.get(VX_BLOCK_COLORS[16]);
-        if (!oreArr) { oreArr = []; bucket.set(VX_BLOCK_COLORS[16], oreArr); }
-        oreArr.push({ cx, cy: oreY + 0.5, cz, sx: 1, sy: 1, sz: 1 });
-      }
+    let arr = bucket.get(surfaceColor);
+    if (!arr) { arr = []; bucket.set(surfaceColor, arr); }
+    arr.push({ cx, cy: height + 0.5, cz, sx: 1, sy: 1, sz: 1 });
+
+    // Add subsurface layers for terrain depth on slopes
+    // Only render blocks that would be visible (neighbor is lower)
+    const dirtColor = surface.sub || VX_BLOCK_COLORS[2];
+    const stoneColor = VX_BLOCK_COLORS[3];
+
+    // Find the minimum neighbor height to determine visible depth
+    let minNeighbor = height;
+    if (x > -VX_RADIUS) minNeighbor = Math.min(minNeighbor, _vxHeightAtCached(x - 1, z));
+    if (x < VX_RADIUS - 1) minNeighbor = Math.min(minNeighbor, _vxHeightAtCached(x + 1, z));
+    if (z > -VX_RADIUS) minNeighbor = Math.min(minNeighbor, _vxHeightAtCached(x, z - 1));
+    if (z < VX_RADIUS - 1) minNeighbor = Math.min(minNeighbor, _vxHeightAtCached(x, z + 1));
+
+    // Limit subsurface depth to avoid too many blocks
+    const maxDepth = Math.min(height - minNeighbor, 5);
+
+    // Render subsurface layers
+    for (let d = 1; d <= maxDepth && height - d >= VX_BASE_Y - 2; d++) {
+      const y = height - d;
+      const layerColor = d <= 2 ? dirtColor : stoneColor;
+      let layerArr = bucket.get(layerColor);
+      if (!layerArr) { layerArr = []; bucket.set(layerColor, layerArr); }
+      layerArr.push({ cx, cy: y + 0.5, cz, sx: 1, sy: 1, sz: 1 });
     }
 
-    // Trees scatter — individual trunk blocks + leaf cube
+    // Trees - simplified: trunk column + compact canopy cube
     const treeDensity = _vxTreeDensity(biome);
     if (_vxTreeAllowed(biome) && height >= VX_SEA_Y &&
         _vxHash2(x, z, vxConfig.seed + 31) < treeDensity) {
 
-      // Vary tree height by biome
-      let baseH = 4, varH = 2;
-      if (biome === 'Jungle') { baseH = 6; varH = 4; }
-      else if (biome === 'Taiga') { baseH = 5; varH = 3; }
-      const trunkH = baseH + Math.floor(_vxHash2(x, z, vxConfig.seed + 53) * varH);
+      // Tree height varies by biome
+      let trunkH = 4 + Math.floor(_vxHash2(x, z, vxConfig.seed + 53) * 2);
+      if (biome === 'Jungle') trunkH = 6 + Math.floor(_vxHash2(x, z, vxConfig.seed + 53) * 3);
+      else if (biome === 'Taiga') trunkH = 5 + Math.floor(_vxHash2(x, z, vxConfig.seed + 53) * 2);
 
-      // Biome-specific trunk color — render as individual blocks
+      // Trunk as thin vertical block
       const trunkColor = _vxTrunkColor(biome);
       let trunkArr = bucket.get(trunkColor);
       if (!trunkArr) { trunkArr = []; bucket.set(trunkColor, trunkArr); }
-
-      // Individual trunk blocks (authentic look)
+      // Place trunk blocks individually for authentic blocky look
       for (let ty = 1; ty <= trunkH; ty++) {
         trunkArr.push({ cx, cy: height + ty + 0.5, cz, sx: 1, sy: 1, sz: 1 });
       }
 
-      // Biome-specific leaf color and canopy
+      // Canopy as a single scaled cube (clean, no zigzag)
       const leafColor = _vxTreeColor(biome);
       let leafArr = bucket.get(leafColor);
       if (!leafArr) { leafArr = []; bucket.set(leafColor, leafArr); }
 
-      // Canopy as a cluster of leaf blocks (more authentic)
-      const canopyY = height + trunkH + 1;
-      let canopyR = 2;
-      if (biome === 'Taiga') canopyR = 1;
-      else if (biome === 'Jungle') canopyR = 2;
-      else if (biome === 'Savanna') canopyR = 3;
+      let canopyW = 3, canopyH = 2;
+      if (biome === 'Taiga') { canopyW = 2; canopyH = 3; } // Tall narrow
+      else if (biome === 'Jungle') { canopyW = 4; canopyH = 3; } // Wide
+      else if (biome === 'Savanna') { canopyW = 5; canopyH = 1.5; } // Flat umbrella
 
-      // Render leaf blocks in a rough sphere/dome shape
-      for (let lx = -canopyR; lx <= canopyR; lx++) {
-        for (let lz = -canopyR; lz <= canopyR; lz++) {
-          for (let ly = 0; ly <= 2; ly++) {
-            const dist = Math.abs(lx) + Math.abs(lz) + ly;
-            // Skip corners for rounder shape
-            if (dist > canopyR + 1) continue;
-            // Random holes for natural look
-            if (_vxHash2(x + lx, z + lz, vxConfig.seed + ly + 99) > 0.75) continue;
-
-            leafArr.push({
-              cx: cx + lx, cy: canopyY + ly + 0.5, cz: cz + lz,
-              sx: 1, sy: 1, sz: 1
-            });
-          }
-        }
-      }
+      const canopyY = height + trunkH + canopyH / 2 + 0.5;
+      leafArr.push({ cx, cy: canopyY, cz, sx: canopyW, sy: canopyH, sz: canopyW });
     }
   }
 
@@ -2915,68 +2978,44 @@
     _vxHeightCache.clear();
     _vxBiomeCache.clear();
 
-    const worldMinX = -VX_RADIUS, worldMaxX = VX_RADIUS;
-    const worldMinZ = -VX_RADIUS, worldMaxZ = VX_RADIUS;
-
-    // Upload as one terrain chunk to avoid exposed vertical seam walls from
-    // per-chunk boundary culling (the native mesher currently treats chunk
-    // borders as air).
-    const CXSZ = (worldMaxX - worldMinX);
-    const CZSZ = (worldMaxZ - worldMinZ);
-    const CY_ORIGIN = VX_BASE_Y - 5;   // world-y origin of each chunk
-    const CY_HEIGHT = 50;              // covers y 55..104, above any tree
-
-    for (let cx = worldMinX; cx < worldMaxX; cx += CXSZ) {
-      for (let cz = worldMinZ; cz < worldMaxZ; cz += CZSZ) {
-        const sx = Math.min(CXSZ, worldMaxX - cx);
-        const sz = Math.min(CZSZ, worldMaxZ - cz);
-        const sy = CY_HEIGHT;
-
-        // Pack block ids into a flat Uint8Array (x fastest, z slowest).
-        const blocks = new Uint8Array(sx * sy * sz);
-        const colorToId = new Map();
-        let nextId = 1;
-        let hasBlocks = false;
-
-        for (let lz = 0; lz < sz; lz++) {
-          for (let ly = 0; ly < sy; ly++) {
-            for (let lx = 0; lx < sx; lx++) {
-              const color = _vxBlockColorAt(cx + lx, CY_ORIGIN + ly, cz + lz);
-              if (color !== 0) {
-                let id = colorToId.get(color);
-                if (id === undefined) { id = nextId++; colorToId.set(color, id); }
-                blocks[lx + sx * ly + sx * sy * lz] = id;
-                hasBlocks = true;
-              }
-            }
-          }
-        }
-
-        if (!hasBlocks) continue;
-
-        const palette = {};
-        for (const [color, id] of colorToId) palette[String(id)] = color;
-
-        const result = call('voxel.uploadChunk', {
-          origin: [cx, CY_ORIGIN, cz],
-          size:   [sx, sy, sz],
-          blocks: Array.from(blocks),
-          palette,
-        });
-        if (result && result.handle) vxChunkHandles.push(result.handle);
+    // Use multimesh instancing approach - bucket blocks by color, then create
+    // one instanced mesh per color. This is fast and reliable.
+    const bucket = new Map();
+    for (let dx = -VX_RADIUS; dx < VX_RADIUS; dx++) {
+      for (let dz = -VX_RADIUS; dz < VX_RADIUS; dz++) {
+        _vxSpawnBlocks(dx, dz, bucket);
       }
     }
 
-    // Water plane with semi-transparency for better visual parity
+    // Create instanced meshes for each color bucket
+    for (const [color, arr] of bucket.entries()) {
+      if (arr.length === 0) continue;
+      const inst = createInstancedMesh('cube', arr.length, color,
+        { material: 'standard', roughness: 0.85 });
+      if (!inst || !inst.handle) continue;
+      for (let i = 0; i < arr.length; i++) {
+        const it = arr[i];
+        const sx = it.sx == null ? 1 : it.sx;
+        const sy = it.sy == null ? 1 : it.sy;
+        const sz = it.sz == null ? 1 : it.sz;
+        setInstanceTransform(inst, i, it.cx, it.cy, it.cz, 0, 0, 0, sx, sy, sz);
+      }
+      finalizeInstances(inst);
+      vxMultimeshes.push(inst);
+    }
+
+    // Water plane with semi-transparency
     vxWaterMesh = createPlane(VX_RADIUS * 2, VX_RADIUS * 2, VX_BLOCK_COLORS[5],
       [0, VX_SEA_Y + 0.05, 0], {
         material: 'standard',
-        roughness: 0.15,
-        metallic: 0.4,
-        opacity: 0.75,
+        roughness: 0.2,
+        metallic: 0.3,
+        opacity: 0.7,
         transparent: true,
       });
-    // Fog is set by each cart's init() — do not override it here.
+
+    // Set fog to match web version's atmosphere
+    setFog(0x87ceeb, VX_RADIUS * 0.6, VX_RADIUS * 1.2);
   }
 
   function configureVoxelWorld(opts) {

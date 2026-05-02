@@ -141,6 +141,57 @@ Voxel parity enhancements:
 - **Atmospheric fog** automatically set when voxel world generates, with
   sky-blue color matching render distance.
 
+### Phase 5 — Voxel visual parity push
+
+Major improvements to close the gap between Godot and browser voxel rendering:
+
+- **Block ID to texture atlas mapping fix**: The chunk upload now sends actual
+  block type IDs (1=GRASS, 2=DIRT, 3=STONE, etc.) instead of sequential palette
+  indices. This allows `bridge.cpp`'s `voxel_tile_index_for_face()` to select
+  the correct texture atlas tile for each block, giving grass its green top
+  texture, dirt its brown texture, etc.
+
+- **Increased render radius**: Changed from 32 blocks to 40 blocks (80x80
+  columns). This is a balance between visual coverage and performance.
+
+- **Fast hash-based ore generation**: Ores spawn in the visible stone layer
+  (3-6 blocks below surface) using fast 3D hashing instead of expensive FBM:
+  - Diamond ore: y < 16, very rare (0.5%)
+  - Gold ore: y < 32, rare (1.5%)
+  - Iron ore: y < 64 (3.5%)
+  - Coal ore: common (6%)
+
+- **3D simplex noise**: Added `noise3D()` and `fbm3D()` to the JS shim for
+  future use (currently not used for world gen due to performance).
+
+### Phase 5b — Voxel terrain visual improvements
+
+Fixes for broken voxel rendering (stretched columns, zigzag trees, visual artifacts):
+
+- **Reduced biome height extremes**: Terrain height scales significantly reduced
+  to eliminate extreme cliffs and visual artifacts:
+  - Snowy Hills: 35 → 12
+  - Taiga: 18 → 8
+  - Jungle: 22 → 10
+  - Forest: 14 → 6
+  - Other biomes similarly adjusted for smoother, natural terrain
+
+- **Smart subsurface rendering**: Instead of rendering fixed depth layers,
+  the system now checks neighboring column heights to determine which subsurface
+  blocks are actually visible on slopes. Limited to 5 layers max to prevent
+  overdraw. Shows dirt (first 2 layers) and stone (deeper layers).
+
+- **Simplified tree canopies**: Replaced individual leaf block clusters (which
+  created zigzag visual artifacts) with single scaled cubes per canopy:
+  - Taiga: Tall narrow spruce (2×3×2)
+  - Jungle: Wide canopy (4×3×4)
+  - Savanna: Flat umbrella acacia (5×1.5×5)
+  - Default/Forest: Standard (3×2×3)
+  - Tree trunks remain as individual 1×1×1 blocks for authentic blocky look
+
+- **Atmospheric fog**: Sky-blue fog automatically set when voxel world generates,
+  with near/far distances scaled to render radius for proper distance fade.
+
 ### Phase 6 — Input play-feel and default visual punch (commit `TBD`)
 
 Improvements to core play responsiveness and out-of-the-box scene atmosphere.

@@ -2486,7 +2486,7 @@
   // Collision, raycast and getHighestBlock all consult the heightmap so
   // gameplay feels right even though the meshes are coarse.
   const VX_BASE_Y = 60;          // bottom of generated columns
-  const VX_SEA_Y = 58;           // water surface (lower than terrain base)
+  const VX_SEA_Y = 62;           // matches runtime/api-voxel.js SEA_LEVEL
   const VX_HEIGHT_AMPLITUDE = 12;
   const VX_RADIUS = 32;          // half-width in blocks (=> 64x64 columns)
   const VX_TREE_CHANCE = 0.012;
@@ -2544,47 +2544,119 @@
   function _vxKey(x, y, z) { return ((x | 0) + ',' + (y | 0) + ',' + (z | 0)); }
   function _vxColKey(x, z) { return ((x | 0) + ',' + (z | 0)); }
 
-  // Cheap deterministic 2D value noise. Not simplex, but smooth enough
-  // for visual parity at this resolution.
+  // Deterministic hash used for ore/tree scatter decisions.
   function _vxHash2(x, y, seed) {
     let h = (x | 0) * 374761393 + (y | 0) * 668265263 + (seed | 0) * 1274126177;
     h = (h ^ (h >>> 13)) >>> 0;
     h = (h * 1274126177) >>> 0;
     return ((h ^ (h >>> 16)) >>> 0) / 4294967295;
   }
-  function _vxSmoothNoise(x, y, seed) {
-    const xi = Math.floor(x), yi = Math.floor(y);
-    const xf = x - xi, yf = y - yi;
-    const u = xf * xf * (3 - 2 * xf);
-    const v = yf * yf * (3 - 2 * yf);
-    const a = _vxHash2(xi, yi, seed);
-    const b = _vxHash2(xi + 1, yi, seed);
-    const c = _vxHash2(xi, yi + 1, seed);
-    const d = _vxHash2(xi + 1, yi + 1, seed);
-    return a * (1 - u) * (1 - v) + b * u * (1 - v) + c * (1 - u) * v + d * u * v;
-  }
-  function _vxFbm(x, y, seed, octaves) {
-    let sum = 0, amp = 1, freq = 1, norm = 0;
-    for (let i = 0; i < octaves; i++) {
-      sum += _vxSmoothNoise(x * freq, y * freq, seed + i * 17) * amp;
-      norm += amp;
-      amp *= 0.5; freq *= 2;
+
+  function _vxCreateSimplexNoise(seed) {
+    const grad3 = [
+      [1, 1, 0], [-1, 1, 0], [1, -1, 0], [-1, -1, 0],
+      [1, 0, 1], [-1, 0, 1], [1, 0, -1], [-1, 0, -1],
+      [0, 1, 1], [0, -1, 1], [0, 1, -1], [0, -1, -1],
+    ];
+    const p = new Uint8Array(256);
+    for (let i = 0; i < 256; i++) p[i] = i;
+    let st = seed | 0;
+    const rand = () => {
+      st = (st * 1664525 + 1013904223) | 0;
+      return (st >>> 0) / 4294967296;
+    };
+    for (let i = 255; i > 0; i--) {
+      const j = (rand() * (i + 1)) | 0;
+      const t = p[i]; p[i] = p[j]; p[j] = t;
     }
-    return sum / norm;
+    const perm = new Uint8Array(512);
+    for (let i = 0; i < 512; i++) perm[i] = p[i & 255];
+
+    const F2 = 0.5 * (Math.sqrt(3) - 1);
+    const G2 = (3 - Math.sqrt(3)) / 6;
+    const dot2 = (g, x, y) => g[0] * x + g[1] * y;
+
+    function noise2D(xin, yin) {
+      let n0, n1, n2;
+      const s = (xin + yin) * F2;
+      const i = Math.floor(xin + s);
+      const j = Math.floor(yin + s);
+      const t = (i + j) * G2;
+      const x0 = xin - (i - t);
+      const y0 = yin - (j - t);
+      const i1 = x0 > y0 ? 1 : 0;
+      const j1 = x0 > y0 ? 0 : 1;
+      const x1 = x0 - i1 + G2;
+      const y1 = y0 - j1 + G2;
+      const x2 = x0 - 1 + 2 * G2;
+      const y2 = y0 - 1 + 2 * G2;
+      const ii = i & 255;
+      const jj = j & 255;
+
+      let t0 = 0.5 - x0 * x0 - y0 * y0;
+      if (t0 < 0) n0 = 0;
+      else {
+        t0 *= t0;
+        n0 = t0 * t0 * dot2(grad3[perm[ii + perm[jj]] % 12], x0, y0);
+      }
+      let t1 = 0.5 - x1 * x1 - y1 * y1;
+      if (t1 < 0) n1 = 0;
+      else {
+        t1 *= t1;
+        n1 = t1 * t1 * dot2(grad3[perm[ii + i1 + perm[jj + j1]] % 12], x1, y1);
+      }
+      let t2 = 0.5 - x2 * x2 - y2 * y2;
+      if (t2 < 0) n2 = 0;
+      else {
+        t2 *= t2;
+        n2 = t2 * t2 * dot2(grad3[perm[ii + 1 + perm[jj + 1]] % 12], x2, y2);
+      }
+      return 70 * (n0 + n1 + n2);
+    }
+
+    function fbm2D(x, z, octaves = 4, persistence = 0.5, lacunarity = 2.0, scale = 0.01) {
+      let total = 0;
+      let frequency = scale;
+      let amplitude = 1;
+      let maxValue = 0;
+      for (let i = 0; i < octaves; i++) {
+        total += noise2D(x * frequency, z * frequency) * amplitude;
+        maxValue += amplitude;
+        amplitude *= persistence;
+        frequency *= lacunarity;
+      }
+      return (total / maxValue) * 0.5 + 0.5;
+    }
+
+    return { fbm2D };
   }
+
+  let _vxNoise = _vxCreateSimplexNoise(vxConfig.seed | 0);
 
   function _vxBiomeAt(x, z) {
     const seed = vxConfig.seed | 0;
-    const t = _vxFbm(x * 0.005 + seed * 0.01, z * 0.005 + seed * 0.01, seed, 2);
-    const m = _vxFbm(x * 0.003 + 1000, z * 0.003 + 1000, seed + 7, 2);
-    if (t < 0.3) return 'Frozen Tundra';
-    if (t < 0.4 && m > 0.55) return 'Taiga';
-    if (t > 0.7 && m < 0.3) return 'Desert';
+    const t = _vxNoise.fbm2D(x + seed, z + seed, 2, 0.5, 2.0, 0.005);
+    const m = _vxNoise.fbm2D(x + 1000 + seed, z + 1000 + seed, 2, 0.5, 2.0, 0.003);
+    if (t < 0.2) return 'Frozen Tundra';
+    if (t < 0.35 && m > 0.5) return 'Taiga';
+    if (t > 0.7 && m < 0.25) return 'Desert';
     if (t > 0.6 && m > 0.6) return 'Jungle';
-    if (m < 0.32) return 'Savanna';
-    if (t > 0.45 && m > 0.45) return 'Forest';
-    if (t < 0.4) return 'Snowy Hills';
+    if (m < 0.3) return 'Savanna';
+    if (t > 0.4 && m > 0.4) return 'Forest';
+    if (t < 0.35) return 'Snowy Hills';
     return 'Plains';
+  }
+  function _vxBiomeProfile(biome) {
+    switch (biome) {
+      case 'Frozen Tundra': return { heightScale: 6, heightBase: 65 };
+      case 'Taiga':         return { heightScale: 18, heightBase: 66 };
+      case 'Desert':        return { heightScale: 4, heightBase: 63 };
+      case 'Jungle':        return { heightScale: 22, heightBase: 58 };
+      case 'Savanna':       return { heightScale: 5, heightBase: 65 };
+      case 'Forest':        return { heightScale: 14, heightBase: 64 };
+      case 'Snowy Hills':   return { heightScale: 35, heightBase: 62 };
+      default:              return { heightScale: 6, heightBase: 64 };
+    }
   }
   function _vxSurfaceFor(biome) {
     // Surface block + color matches the web engine biome→surfaceBlock mapping
@@ -2619,25 +2691,23 @@
   }
   function _vxTreeAllowed(biome) {
     return biome === 'Forest' || biome === 'Jungle' || biome === 'Taiga' ||
-           biome === 'Plains' || biome === 'Swamp';
+           biome === 'Plains' || biome === 'Savanna' || biome === 'Snowy Hills';
   }
   function _vxTreeDensity(biome) {
-    if (biome === 'Jungle') return 0.025;
-    if (biome === 'Forest') return 0.018;
-    if (biome === 'Taiga') return 0.015;
-    if (biome === 'Swamp') return 0.008;
-    return 0.008; // Plains
+    // Match runtime/api-voxel.js biome treeChance values.
+    if (biome === 'Jungle') return 0.15;
+    if (biome === 'Forest') return 0.08;
+    if (biome === 'Taiga') return 0.06;
+    if (biome === 'Snowy Hills') return 0.02;
+    if (biome === 'Savanna') return 0.005;
+    if (biome === 'Plains') return 0.015;
+    return 0.0;
   }
 
   function _vxHeightAt(x, z) {
-    const seed = vxConfig.seed | 0;
-    // Use multi-octave FBM for more natural terrain variation
-    const n = _vxFbm(x * 0.02, z * 0.02, seed, 4);
-    // Add medium frequency hills
-    const n2 = _vxFbm(x * 0.06, z * 0.06, seed + 100, 2) * 0.4;
-    // Add fine detail
-    const n3 = _vxFbm(x * 0.15, z * 0.15, seed + 200, 2) * 0.15;
-    return Math.floor(VX_BASE_Y + (n + n2 + n3) * VX_HEIGHT_AMPLITUDE);
+    const biome = _vxBiomeAtCached(x, z);
+    const p = _vxBiomeProfile(biome);
+    return Math.floor(_vxNoise.fbm2D(x, z, 4, 0.5, 2.0, 0.01) * p.heightScale + p.heightBase) + 3;
   }
 
   function _vxHeightAtCached(x, z) {
@@ -2845,13 +2915,16 @@
     _vxHeightCache.clear();
     _vxBiomeCache.clear();
 
-    // Chunk constants.  Height slab covers terrain base through tallest tree.
-    const CXSZ = 16, CZSZ = 16;
-    const CY_ORIGIN = VX_BASE_Y - 5;   // world-y origin of each chunk
-    const CY_HEIGHT = 50;              // covers y 55..104, above any tree
-
     const worldMinX = -VX_RADIUS, worldMaxX = VX_RADIUS;
     const worldMinZ = -VX_RADIUS, worldMaxZ = VX_RADIUS;
+
+    // Upload as one terrain chunk to avoid exposed vertical seam walls from
+    // per-chunk boundary culling (the native mesher currently treats chunk
+    // borders as air).
+    const CXSZ = (worldMaxX - worldMinX);
+    const CZSZ = (worldMaxZ - worldMinZ);
+    const CY_ORIGIN = VX_BASE_Y - 5;   // world-y origin of each chunk
+    const CY_HEIGHT = 50;              // covers y 55..104, above any tree
 
     for (let cx = worldMinX; cx < worldMaxX; cx += CXSZ) {
       for (let cz = worldMinZ; cz < worldMaxZ; cz += CZSZ) {
@@ -2910,6 +2983,9 @@
     if (opts && typeof opts === 'object') Object.assign(vxConfig, opts);
     // Update seed-dependent values if seed changed
     if (opts && opts.seed != null) {
+      _vxNoise = _vxCreateSimplexNoise(vxConfig.seed | 0);
+      _vxHeightCache.clear();
+      _vxBiomeCache.clear();
       vxGenerated = false; // Force regeneration on next load
     }
   }

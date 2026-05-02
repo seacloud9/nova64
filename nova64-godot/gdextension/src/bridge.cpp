@@ -46,6 +46,8 @@
 #include <godot_cpp/classes/sphere_mesh.hpp>
 #include <godot_cpp/classes/spot_light3d.hpp>
 #include <godot_cpp/classes/surface_tool.hpp>
+#include <godot_cpp/classes/shader.hpp>
+#include <godot_cpp/classes/shader_material.hpp>
 #include <godot_cpp/classes/standard_material3d.hpp>
 #include <godot_cpp/classes/torus_mesh.hpp>
 #include <godot_cpp/classes/world_environment.hpp>
@@ -63,6 +65,7 @@
 #include <chrono>
 #include <cstring>
 #include <string>
+#include <algorithm>
 
 using namespace godot;
 using nova64::HandleKind;
@@ -355,6 +358,171 @@ Dictionary make_error(const String &p_code, const String &p_method) {
 uint32_t handle_id_from_payload(const Dictionary &p, const String &key) {
     if (!p.has(key)) return 0;
     return static_cast<uint32_t>(static_cast<int64_t>(p[key]));
+}
+
+static constexpr int VOXEL_ATLAS_COLS = 8;
+static constexpr int VOXEL_ATLAS_ROWS = 4;
+static constexpr int VOXEL_TILE_PX = 16;
+
+Color color_from_hex_rgb(int hex, float alpha = 1.0f) {
+    return Color(
+            ((hex >> 16) & 0xFF) / 255.0f,
+            ((hex >> 8) & 0xFF) / 255.0f,
+            (hex & 0xFF) / 255.0f,
+            alpha);
+}
+
+uint32_t voxel_rng_next(uint32_t &state) {
+    state = state * 1664525u + 1013904223u;
+    return state;
+}
+
+float voxel_rng_unit(uint32_t &state) {
+    return ((voxel_rng_next(state) >> 8) & 0x00FFFFFF) / static_cast<float>(0x01000000);
+}
+
+void atlas_noise_rect(const Ref<Image> &img, int x, int y, int w, int h, int base_hex,
+        int variation, uint32_t &rng_state) {
+    Color base = color_from_hex_rgb(base_hex, 1.0f);
+    const int br = static_cast<int>(base.r * 255.0f);
+    const int bg = static_cast<int>(base.g * 255.0f);
+    const int bb = static_cast<int>(base.b * 255.0f);
+    for (int py = 0; py < h; ++py) {
+        for (int px = 0; px < w; ++px) {
+            float rv = voxel_rng_unit(rng_state) - 0.5f;
+            int dv = static_cast<int>(rv * static_cast<float>(variation));
+            int rr = std::clamp(br + dv, 0, 255);
+            int rg = std::clamp(bg + dv, 0, 255);
+            int rb = std::clamp(bb + dv, 0, 255);
+            img->set_pixel(x + px, y + py,
+                    Color(rr / 255.0f, rg / 255.0f, rb / 255.0f, 1.0f));
+        }
+    }
+}
+
+void atlas_fill_tile_noise(const Ref<Image> &img, int tile_idx, int base_hex,
+        int variation, uint32_t &rng_state) {
+    int tx = (tile_idx % VOXEL_ATLAS_COLS) * VOXEL_TILE_PX;
+    int ty = (tile_idx / VOXEL_ATLAS_COLS) * VOXEL_TILE_PX;
+    atlas_noise_rect(img, tx, ty, VOXEL_TILE_PX, VOXEL_TILE_PX, base_hex, variation, rng_state);
+}
+
+Ref<Texture2D> get_voxel_atlas_texture() {
+    static Ref<ImageTexture> atlas_tex;
+    if (atlas_tex.is_valid()) return atlas_tex;
+
+    Ref<Image> img = Image::create_empty(
+            VOXEL_ATLAS_COLS * VOXEL_TILE_PX,
+            VOXEL_ATLAS_ROWS * VOXEL_TILE_PX,
+            false,
+            Image::FORMAT_RGBA8);
+    if (img.is_null()) return Ref<Texture2D>();
+
+    uint32_t rng_state = 42u;
+    const int tile_base[27] = {
+        0x55cc33, 0x55cc33, 0x996644, 0xaaaaaa, 0xffdd88, 0x2288dd, 0x774422, 0x997744,
+        0x116622, 0x667788, 0xddaa55, 0xccffff, 0xcc4433, 0xeeeeff, 0x99ddff, 0x333333,
+        0x444444, 0xccaa88, 0xffcc33, 0x44ffee, 0x888888, 0xbbaa99, 0xffdd44, 0xffeeaa,
+        0xff4400, 0x220033, 0x668855
+    };
+    for (int i = 0; i < 27; ++i) {
+        atlas_fill_tile_noise(img, i, tile_base[i], 28, rng_state);
+    }
+
+    // Texture accents for better parity with the web procedural atlas.
+    int x = VOXEL_TILE_PX;
+    int y = 0;
+    atlas_noise_rect(img, x, y, VOXEL_TILE_PX, 4, 0x55cc33, 24, rng_state); // grass side top strip
+
+    x = 6 * VOXEL_TILE_PX;
+    y = 0;
+    for (int sx = 0; sx < VOXEL_TILE_PX; sx += 3) {
+        for (int sy = 0; sy < VOXEL_TILE_PX; ++sy) {
+            img->set_pixel(x + sx, y + sy, color_from_hex_rgb(0x5e3518));
+        }
+    }
+
+    x = 10 * VOXEL_TILE_PX;
+    y = VOXEL_TILE_PX;
+    for (int sy = 0; sy < VOXEL_TILE_PX; sy += 4) {
+        for (int sx = 0; sx < VOXEL_TILE_PX; ++sx) {
+            img->set_pixel(x + sx, y + sy, color_from_hex_rgb(0xc89940));
+        }
+    }
+
+    x = 12 * VOXEL_TILE_PX;
+    y = VOXEL_TILE_PX;
+    for (int sy = 0; sy < VOXEL_TILE_PX; sy += 4) {
+        for (int sx = 0; sx < VOXEL_TILE_PX; ++sx) {
+            img->set_pixel(x + sx, y + sy, color_from_hex_rgb(0xccbbaa));
+        }
+    }
+
+    atlas_tex.instantiate();
+    atlas_tex->set_image(img);
+    return atlas_tex;
+}
+
+int voxel_tile_index_for_face(int block_id, bool is_top, bool is_bottom) {
+    switch (block_id) {
+        case 1: return is_top ? 0 : (is_bottom ? 2 : 1); // grass
+        case 2: return 2;  // dirt
+        case 3: return 3;  // stone
+        case 4: return 4;  // sand
+        case 5: return 5;  // water
+        case 6: return (is_top || is_bottom) ? 7 : 6; // wood
+        case 7: return 8;  // leaves
+        case 8: return 9;  // cobblestone
+        case 9: return 10; // planks
+        case 10: return 11; // glass
+        case 11: return 12; // brick
+        case 12: return 13; // snow
+        case 13: return 14; // ice
+        case 14: return 15; // bedrock
+        case 15: return 16; // coal ore
+        case 16: return 17; // iron ore
+        case 17: return 18; // gold ore
+        case 18: return 19; // diamond ore
+        case 19: return 20; // gravel
+        case 20: return 21; // clay
+        case 21: return 22; // torch
+        case 22: return 23; // glowstone
+        case 23: return 24; // lava
+        case 24: return 25; // obsidian
+        case 25: return 26; // mossy cobblestone
+        default: return 3;  // fallback to stone-like texture
+    }
+}
+
+Vector2 voxel_tile_origin_uv(int tile_idx) {
+    if (tile_idx < 0) return Vector2(0.0f, 0.0f);
+    const int col = tile_idx % VOXEL_ATLAS_COLS;
+    const int row = tile_idx / VOXEL_ATLAS_COLS;
+    const float u = static_cast<float>(col) / static_cast<float>(VOXEL_ATLAS_COLS);
+    const float v = 1.0f - static_cast<float>(row + 1) / static_cast<float>(VOXEL_ATLAS_ROWS);
+    return Vector2(u, v);
+}
+
+Ref<Shader> get_voxel_chunk_shader() {
+    static Ref<Shader> voxel_shader;
+    if (voxel_shader.is_valid()) return voxel_shader;
+
+    voxel_shader.instantiate();
+    voxel_shader->set_code(R"(
+shader_type spatial;
+render_mode cull_back, diffuse_lambert, specular_disabled;
+
+uniform sampler2D atlas_tex : source_color, filter_nearest, repeat_enable;
+uniform vec2 tile_size = vec2(0.125, 0.25);
+
+void fragment() {
+    vec2 atlas_uv = UV2 + fract(UV) * tile_size;
+    vec4 texel = texture(atlas_tex, atlas_uv);
+    ALBEDO = texel.rgb * COLOR.rgb;
+    ALPHA = texel.a;
+}
+)");
+    return voxel_shader;
 }
 
 } // namespace
@@ -1784,13 +1952,18 @@ Dictionary Nova64Host::_cmd_voxel_upload_chunk(const Dictionary &p) {
                     // Emit quad.
                     auto it = pal.find(id);
                     Color base = (it != pal.end()) ? it->second : Color(0.5f, 0.5f, 0.5f, 1.0f);
-                    Color col(base.r * ao, base.g * ao, base.b * ao, 1.0f);
-                    st->set_color(col);
-                    st->set_normal(normal);
+                        // Keep AO as neutral grayscale so atlas texels drive hue.
+                        Color col(ao, ao, ao, 1.0f);
                     // Two CCW triangles [0,1,2] and [0,2,3].
                     // Corner positions assembled via the per-face cu[]/cv[] offset flags.
                     const float pu[2] = { (float)u0, (float)(u0+w) };
                     const float pv[2] = { (float)v0, (float)(v0+h) };
+                    const float uv_u[4] = { 0.0f, (float)w, (float)w, 0.0f };
+                    const float uv_v[4] = { (float)h, (float)h, 0.0f, 0.0f };
+                    const bool is_top = (fi == 2);
+                    const bool is_bottom = (fi == 3);
+                    const int tile_idx = voxel_tile_index_for_face(id, is_top, is_bottom);
+                    const Vector2 tile_uv = voxel_tile_origin_uv(tile_idx);
                     float pos[4][3] = {};
                     for (int ci = 0; ci < 4; ++ci) {
                         pos[ci][nd] = (float)plane;
@@ -1798,8 +1971,14 @@ Dictionary Nova64Host::_cmd_voxel_upload_chunk(const Dictionary &p) {
                         pos[ci][vd] = pv[gf.cv[ci]];
                     }
                     static const int TRI[6] = { 0,1,2, 0,2,3 };
-                    for (int ti = 0; ti < 6; ++ti)
-                        st->add_vertex(Vector3(pos[TRI[ti]][0], pos[TRI[ti]][1], pos[TRI[ti]][2]));
+                    for (int ti = 0; ti < 6; ++ti) {
+                        const int ci = TRI[ti];
+                        st->set_color(col);
+                        st->set_normal(normal);
+                        st->set_uv(Vector2(uv_u[ci], uv_v[ci]));
+                        st->set_uv2(tile_uv);
+                        st->add_vertex(Vector3(pos[ci][0], pos[ci][1], pos[ci][2]));
+                    }
                     has_geom = true;
 
                     // Mark merged region as processed.
@@ -1817,13 +1996,13 @@ Dictionary Nova64Host::_cmd_voxel_upload_chunk(const Dictionary &p) {
 
     Ref<ArrayMesh> mesh = st->commit();
 
-    // Vertex-colour material: one draw call per chunk, no per-block materials.
-    Ref<StandardMaterial3D> mat;
+        // Atlas textured material: UV carries repeat coords, UV2 carries tile origin.
+        Ref<ShaderMaterial> mat;
     mat.instantiate();
-    mat->set_flag(BaseMaterial3D::FLAG_ALBEDO_FROM_VERTEX_COLOR, true);
-    mat->set_roughness(0.85f);
-    mat->set_metallic(0.0f);
-    mat->set_diffuse_mode(BaseMaterial3D::DIFFUSE_LAMBERT);
+        mat->set_shader(get_voxel_chunk_shader());
+        mat->set_shader_parameter("atlas_tex", get_voxel_atlas_texture());
+        mat->set_shader_parameter("tile_size",
+            Vector2(1.0f / (float)VOXEL_ATLAS_COLS, 1.0f / (float)VOXEL_ATLAS_ROWS));
     mesh->surface_set_material(0, mat);
 
     MeshInstance3D *mi = memnew(MeshInstance3D);

@@ -1679,8 +1679,8 @@
   // gameplay feels right even though the meshes are coarse.
   const VX_BASE_Y = 60;          // bottom of generated columns
   const VX_SEA_Y = 58;           // water surface (lower than terrain base)
-  const VX_HEIGHT_AMPLITUDE = 10;
-  const VX_RADIUS = 24;          // half-width in blocks (=> 48x48 columns)
+  const VX_HEIGHT_AMPLITUDE = 12;
+  const VX_RADIUS = 32;          // half-width in blocks (=> 64x64 columns)
   const VX_TREE_CHANCE = 0.012;
   const VX_BLOCK_COLORS = {
     1: 0x55aa44, 2: 0x996644, 3: 0xaaaaaa, 4: 0xffdd88, 5: 0x2288dd,
@@ -1688,7 +1688,7 @@
     15: 0x444444, 16: 0xccaa88, 21: 0xffdd44, 22: 0xffeeaa,
   };
   const vxBlocks = new Map();    // 'x,y,z' -> { id, mesh } (sparse, player edits)
-  const vxColumns = new Map();   // 'x,z'   -> { height, biome, blockId, mesh, leafMeshes }
+  const vxMultimeshes = [];      // instanced column / tree meshes
   const vxEntities = [];
   const vxConfig = { seed: 1337, renderDistance: 3, maxMeshRebuildsPerFrame: 3, enableLOD: true };
   let vxGenerated = false;
@@ -1767,15 +1767,13 @@
     return Math.floor(VX_BASE_Y + n * VX_HEIGHT_AMPLITUDE);
   }
 
-  function _vxSpawnColumn(x, z) {
+  function _vxSpawnColumn(x, z, bucket) {
     const biome = _vxBiomeAt(x, z);
     const surface = _vxSurfaceFor(biome);
     let height = _vxHeightAt(x, z);
     let blockId = surface.id;
     let color = surface.color;
-    // Below sea level => water surface, but keep ground underneath.
     if (height < VX_SEA_Y) {
-      // shore band
       if (height >= VX_SEA_Y - 1) { color = surface.color; }
       else { color = 0x6b5a3a; blockId = 2; }
     }
@@ -1783,40 +1781,55 @@
     if (colHeight <= 0) return;
     const cx = x + 0.5, cz = z + 0.5;
     const cy = VX_BASE_Y + colHeight * 0.5 - 0.5;
-    const mesh = createCube(1, color, [cx, cy, cz],
-      { material: 'standard', roughness: 0.92 });
-    if (mesh && typeof setScale === 'function') setScale(mesh, 1, colHeight, 1);
-    const entry = { height, biome, blockId, mesh, leafMeshes: null };
-    vxColumns.set(_vxColKey(x, z), entry);
+    // Push into the colour bucket so we can render thousands of columns
+    // with a handful of multimeshes instead of thousands of nodes.
+    let arr = bucket.get(color);
+    if (!arr) { arr = []; bucket.set(color, arr); }
+    arr.push({ cx, cy, cz, sy: colHeight, x, z, height, biome, blockId });
 
-    // Scatter trees deterministically.
+    // Trees scatter (kept as individual columns of cubes; counts are low).
     if (_vxTreeAllowed(biome) && height >= VX_SEA_Y &&
         _vxHash2(x, z, vxConfig.seed + 31) < VX_TREE_CHANCE) {
       const trunkH = 4 + Math.floor(_vxHash2(x, z, vxConfig.seed + 53) * 2);
       const trunkColor = 0x6b3a18;
-      const trunkMesh = createCube(1, trunkColor,
-        [cx, height + trunkH * 0.5 + 0.5, cz],
-        { material: 'standard', roughness: 0.9 });
-      if (trunkMesh && typeof setScale === 'function') setScale(trunkMesh, 0.6, trunkH, 0.6);
+      let trunkArr = bucket.get(trunkColor);
+      if (!trunkArr) { trunkArr = []; bucket.set(trunkColor, trunkArr); }
+      trunkArr.push({ cx, cy: height + trunkH * 0.5 + 0.5, cz,
+                      sy: trunkH, sx: 0.6, sz: 0.6 });
       const leafColor = _vxTreeColor(biome);
-      const leafMesh = createCube(1, leafColor,
-        [cx, height + trunkH + 1.5, cz],
-        { material: 'standard', roughness: 0.95 });
-      if (leafMesh && typeof setScale === 'function') setScale(leafMesh, 3, 2.5, 3);
-      entry.leafMeshes = [trunkMesh, leafMesh];
-      entry.treeTop = height + trunkH + 2;
+      let leafArr = bucket.get(leafColor);
+      if (!leafArr) { leafArr = []; bucket.set(leafColor, leafArr); }
+      leafArr.push({ cx, cy: height + trunkH + 1.5, cz,
+                     sy: 2.5, sx: 3, sz: 3 });
     }
   }
 
   function _vxGenerateWorld() {
     if (vxGenerated) return;
     vxGenerated = true;
+    // Bucket every column / tree segment by colour, then issue one
+    // instanced multimesh per colour. For a 64x64 world this turns ~4k
+    // node spawns into ~7-10 multimesh draws.
+    const bucket = new Map();
     for (let dx = -VX_RADIUS; dx < VX_RADIUS; dx++) {
       for (let dz = -VX_RADIUS; dz < VX_RADIUS; dz++) {
-        _vxSpawnColumn(dx, dz);
+        _vxSpawnColumn(dx, dz, bucket);
       }
     }
-    // Single transparent-ish water plane at sea level.
+    for (const [color, arr] of bucket.entries()) {
+      const inst = createInstancedMesh('cube', arr.length, color,
+        { material: 'standard' });
+      if (!inst || !inst.handle) continue;
+      for (let i = 0; i < arr.length; i++) {
+        const it = arr[i];
+        const sx = it.sx == null ? 1 : it.sx;
+        const sy = it.sy == null ? 1 : it.sy;
+        const sz = it.sz == null ? 1 : it.sz;
+        setInstanceTransform(inst, i, it.cx, it.cy, it.cz, 0, 0, 0, sx, sy, sz);
+      }
+      finalizeInstances(inst);
+      vxMultimeshes.push(inst);
+    }
     vxWaterMesh = createPlane(VX_RADIUS * 2, VX_RADIUS * 2, 0x2a6dc0,
       [0, VX_SEA_Y + 0.05, 0], { material: 'standard', roughness: 0.3, metallic: 0.1 });
   }
@@ -1830,9 +1843,7 @@
 
   function getVoxelHighestBlock(x, z) {
     const xi = x | 0, zi = z | 0;
-    // Highest sparse-block above column.
-    const col = vxColumns.get(_vxColKey(xi, zi));
-    let baseH = col ? col.height : _vxHeightAt(xi, zi);
+    const baseH = _vxHeightAt(xi, zi);
     for (let y = baseH + 32; y > baseH; y--) {
       if (vxBlocks.has(_vxKey(xi, y, zi))) return y;
     }
@@ -1843,10 +1854,12 @@
     const xi = x | 0, yi = y | 0, zi = z | 0;
     const k = _vxKey(xi, yi, zi);
     if (vxBlocks.has(k)) return vxBlocks.get(k).id;
-    const col = vxColumns.get(_vxColKey(xi, zi));
-    const baseH = col ? col.height : _vxHeightAt(xi, zi);
-    if (yi < VX_BASE_Y) return 3;          // deep stone
-    if (yi <= baseH) return col ? col.blockId : 1;
+    const baseH = _vxHeightAt(xi, zi);
+    if (yi < VX_BASE_Y) return 3;
+    if (yi <= baseH) {
+      const biome = _vxBiomeAt(xi, zi);
+      return _vxSurfaceFor(biome).id;
+    }
     return 0;
   }
 
@@ -1870,11 +1883,11 @@
   function updateVoxelWorld(_x, _z) { _vxGenerateWorld(); }
 
   function resetVoxelWorld() {
-    for (const c of vxColumns.values()) {
-      if (c.mesh) removeMesh(c.mesh);
-      if (c.leafMeshes) for (const m of c.leafMeshes) if (m) removeMesh(m);
+    for (const mm of vxMultimeshes) {
+      const h = _resolveInstanceHandle(mm);
+      if (h) call('mesh.destroy', { handle: h });
     }
-    vxColumns.clear();
+    vxMultimeshes.length = 0;
     if (vxWaterMesh) { removeMesh(vxWaterMesh); vxWaterMesh = 0; }
     for (const v of vxBlocks.values()) if (v.mesh) removeMesh(v.mesh);
     vxBlocks.clear();

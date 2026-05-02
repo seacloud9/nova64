@@ -3050,35 +3050,38 @@
     const pcx = _vxWorldToChunk(playerX);
     const pcz = _vxWorldToChunk(playerZ);
 
-    // Only update if player moved to a different chunk
-    if (pcx === vxLastPlayerChunkX && pcz === vxLastPlayerChunkZ) return;
-    vxLastPlayerChunkX = pcx;
-    vxLastPlayerChunkZ = pcz;
+    // Track if player moved to new chunk (for unloading logic)
+    const playerMovedChunk = pcx !== vxLastPlayerChunkX || pcz !== vxLastPlayerChunkZ;
+    if (playerMovedChunk) {
+      vxLastPlayerChunkX = pcx;
+      vxLastPlayerChunkZ = pcz;
 
-    // Determine which chunks should be loaded
-    const neededChunks = new Set();
-    for (let dx = -VX_CHUNK_RADIUS; dx <= VX_CHUNK_RADIUS; dx++) {
-      for (let dz = -VX_CHUNK_RADIUS; dz <= VX_CHUNK_RADIUS; dz++) {
-        neededChunks.add((pcx + dx) + ',' + (pcz + dz));
+      // Determine which chunks should be loaded
+      const neededChunks = new Set();
+      for (let dx = -VX_CHUNK_RADIUS; dx <= VX_CHUNK_RADIUS; dx++) {
+        for (let dz = -VX_CHUNK_RADIUS; dz <= VX_CHUNK_RADIUS; dz++) {
+          neededChunks.add((pcx + dx) + ',' + (pcz + dz));
+        }
       }
-    }
 
-    // Unload chunks that are too far
-    for (const chunkKey of vxLoadedChunks.keys()) {
-      if (!neededChunks.has(chunkKey)) {
-        const [cx, cz] = chunkKey.split(',').map(Number);
-        _vxUnloadChunk(cx, cz);
+      // Unload chunks that are too far
+      for (const chunkKey of vxLoadedChunks.keys()) {
+        if (!neededChunks.has(chunkKey)) {
+          const [cx, cz] = chunkKey.split(',').map(Number);
+          _vxUnloadChunk(cx, cz);
+        }
       }
     }
 
     // Load chunks that are needed but not loaded (limit per frame for perf)
+    // This runs every call to allow gradual loading even when standing still
     let loadedThisFrame = 0;
     const maxLoadsPerFrame = vxConfig.maxMeshRebuildsPerFrame || 3;
     for (let dx = -VX_CHUNK_RADIUS; dx <= VX_CHUNK_RADIUS; dx++) {
       for (let dz = -VX_CHUNK_RADIUS; dz <= VX_CHUNK_RADIUS; dz++) {
         const chunkKey = (pcx + dx) + ',' + (pcz + dz);
         if (!vxLoadedChunks.has(chunkKey)) {
-          if (loadedThisFrame >= maxLoadsPerFrame) return; // Rate limit
+          if (loadedThisFrame >= maxLoadsPerFrame) return; // Rate limit, will continue next frame
           _vxGenerateChunk(pcx + dx, pcz + dz);
           loadedThisFrame++;
         }

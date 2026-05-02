@@ -104,8 +104,12 @@ function parseArgs(argv) {
     maxDiff: 35,
     noStartServer: false,
     port: 3000,
+    press: '',
+    pressFrames: 3,
+    pressMs: 120,
     reportOnly: false,
     threshold: 0.2,
+    loadTimeoutMs: 120000,
     waitMs: 2000,
     width: 1280,
     height: 720,
@@ -126,8 +130,14 @@ function parseArgs(argv) {
     else if (arg.startsWith('--frames=')) out.frames = Number(arg.slice('--frames='.length));
     else if (arg.startsWith('--godot=')) out.godot = arg.slice('--godot='.length);
     else if (arg.startsWith('--height=')) out.height = Number(arg.slice('--height='.length));
+    else if (arg.startsWith('--load-timeout-ms='))
+      out.loadTimeoutMs = Number(arg.slice('--load-timeout-ms='.length));
     else if (arg.startsWith('--max-diff=')) out.maxDiff = Number(arg.slice('--max-diff='.length));
     else if (arg.startsWith('--port=')) out.port = Number(arg.slice('--port='.length));
+    else if (arg.startsWith('--press=')) out.press = arg.slice('--press='.length);
+    else if (arg.startsWith('--press-frames='))
+      out.pressFrames = Number(arg.slice('--press-frames='.length));
+    else if (arg.startsWith('--press-ms=')) out.pressMs = Number(arg.slice('--press-ms='.length));
     else if (arg.startsWith('--threshold='))
       out.threshold = Number(arg.slice('--threshold='.length));
     else if (arg.startsWith('--wait-ms=')) out.waitMs = Number(arg.slice('--wait-ms='.length));
@@ -241,6 +251,19 @@ function checkGodot(godotBin) {
   return (result.stdout || result.stderr || '').trim();
 }
 
+function isWindowsExecutableFromWsl(exePath) {
+  return process.platform === 'linux' && exePath.toLowerCase().endsWith('.exe');
+}
+
+function toGodotHostPath(filePath, opts) {
+  if (!isWindowsExecutableFromWsl(opts.godot)) return filePath;
+  const result = spawnSync('wslpath', ['-w', filePath], { encoding: 'utf8' });
+  if (result.status !== 0) {
+    throw new Error(`wslpath failed for ${filePath}:\n${result.stderr}`);
+  }
+  return result.stdout.trim();
+}
+
 async function captureBrowserCart(browser, cart, opts) {
   const context = await browser.newContext({
     deviceScaleFactor: 1,
@@ -261,9 +284,20 @@ async function captureBrowserCart(browser, cart, opts) {
 
   await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
   await page.waitForSelector('#screen', { timeout: 30000 });
-  await page.waitForFunction(() => !document.body.textContent?.includes('Loading'), {
-    timeout: 30000,
-  });
+  await page.waitForFunction(
+    expectedPath => {
+      const state = globalThis.__nova64CartLoadState;
+      if (!state) return false;
+      return !!state.ready && typeof state.path === 'string' && state.path.endsWith(expectedPath);
+    },
+    `/examples/${cart}/code.js`,
+    { timeout: opts.loadTimeoutMs }
+  );
+  if (opts.press) {
+    await page.keyboard.down(opts.press);
+    await page.waitForTimeout(opts.pressMs);
+    await page.keyboard.up(opts.press);
+  }
   await page.waitForTimeout(opts.waitMs);
   await page.locator('#screen').screenshot({ path: outPath });
   await context.close();
@@ -273,10 +307,12 @@ async function captureBrowserCart(browser, cart, opts) {
 
 function captureGodotCart(cart, opts) {
   const outPath = path.join(GODOT_DIR, `${cart}.png`);
+  const godotProjectPath = toGodotHostPath(GODOT_PROJECT, opts);
+  const godotOutPath = toGodotHostPath(outPath, opts);
   const args = [
     ...(opts.godotHeadless ? ['--headless'] : []),
     '--path',
-    GODOT_PROJECT,
+    godotProjectPath,
     '--resolution',
     `${opts.width}x${opts.height}`,
     '--script',
@@ -284,8 +320,11 @@ function captureGodotCart(cart, opts) {
     '--',
     `--cart=res://carts/${cart}`,
     `--frames=${opts.frames}`,
-    `--snapshot=${outPath}`,
+    `--snapshot=${godotOutPath}`,
   ];
+  if (opts.press) {
+    args.push(`--press=${opts.press.toLowerCase()}`, `--press-frames=${opts.pressFrames}`);
+  }
 
   const result = spawnSync(opts.godot, args, {
     cwd: GODOT_ROOT,
@@ -294,13 +333,17 @@ function captureGodotCart(cart, opts) {
   });
   const output = `${result.stdout || ''}${result.stderr || ''}`;
   if (result.error) throw result.error;
-  if (result.status !== 0) {
+  if (result.status !== 0 && !fs.existsSync(outPath)) {
     throw new Error(`Godot exited ${result.status}\n${output}`);
   }
   if (!fs.existsSync(outPath)) {
     throw new Error(`Godot did not write snapshot: ${outPath}\n${output}`);
   }
-  return { path: outPath, messages: output.split('\n').filter(line => line.includes('[nova64')) };
+  const messages = output.split('\n').filter(line => line.includes('[nova64'));
+  if (result.status !== 0) {
+    messages.push(`Godot exited ${result.status} after writing snapshot`);
+  }
+  return { path: outPath, messages };
 }
 
 function compareImages(browserPath, godotPath, diffPath, opts) {
@@ -341,6 +384,10 @@ function writeReports(results, opts) {
       frames: opts.frames,
       maxDiff: opts.maxDiff,
       threshold: opts.threshold,
+      press: opts.press,
+      pressFrames: opts.pressFrames,
+      pressMs: opts.pressMs,
+      loadTimeoutMs: opts.loadTimeoutMs,
       width: opts.width,
       height: opts.height,
     },
@@ -470,7 +517,7 @@ async function main() {
 
   const hasInfraFailure = results.some(result => result.status === 'failed');
   const hasDiffFailure = results.some(result => result.status === 'diff');
-  if (hasInfraFailure || (opts.failOnThreshold && hasDiffFailure)) {
+  if (!opts.reportOnly && (hasInfraFailure || (opts.failOnThreshold && hasDiffFailure))) {
     process.exitCode = 1;
   }
 }

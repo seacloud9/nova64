@@ -19,6 +19,7 @@ Godot 4.x host bridge for Nova64 carts. See [`../GODOT.md`](../GODOT.md) for the
 ## Status
 
 - **G1 — Spike** in progress. GDExtension links QuickJS, loads ES module carts, and exposes the first batch of adapter commands (material/geometry/mesh/transform/camera/light). The `01-cube.js` cart renders a rotating lit cube end-to-end.
+- Visual parity is tracked by `pnpm godot:visual`, which captures browser Three.js, Godot, and diff PNGs for every mirrored cart. See [`docs/VISUAL_PARITY.md`](docs/VISUAL_PARITY.md).
 
 ## Quick Start (Linux/macOS, desktop)
 
@@ -38,10 +39,10 @@ This directory uses two git submodules. After cloning the parent repo:
 git submodule update --init --recursive
 ```
 
-| Path                                      | Repo                                          | Branch |
-| ----------------------------------------- | --------------------------------------------- | ------ |
-| `gdextension/third_party/godot-cpp`       | https://github.com/godotengine/godot-cpp      | `4.3`  |
-| `gdextension/third_party/quickjs`         | https://github.com/quickjs-ng/quickjs         | default |
+| Path                                | Repo                                     | Branch  |
+| ----------------------------------- | ---------------------------------------- | ------- |
+| `gdextension/third_party/godot-cpp` | https://github.com/godotengine/godot-cpp | `4.3`   |
+| `gdextension/third_party/quickjs`   | https://github.com/quickjs-ng/quickjs    | default |
 
 ## Roadmap
 

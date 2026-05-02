@@ -209,3 +209,80 @@ parity report.
 The report mode is intentionally non-gating because Godot still has broad
 visual parity debt. Use the worst-diff table in `report.md` to choose the next
 bridge/shim fixes.
+
+## Voxel parity checkpoint
+
+Focused command:
+
+```bash
+wsl bash -lc 'export NVM_DIR=/home/seacloud9/.nvm; \
+  . /home/seacloud9/.nvm/nvm.sh; nvm use 20; \
+  cd /mnt/c/Users/brend/exp/nova64 && \
+  pnpm godot:visual -- --cart=minecraft-demo --cart=voxel-terrain --frames=120 --wait-ms=3000 --max-diff=100'
+```
+
+Latest measured diffs:
+
+- `minecraft-demo`: **60.53%**
+- `voxel-terrain`: **95.08%**
+
+These are successful lifecycle captures, not acceptable parity results. The
+Godot host is booting the carts, loading sidecar `meta.json`, drawing the HUD,
+and rendering native scene content, but the voxel path is still the JS shim's
+heightmap/column approximation. The next improvement should be the native
+`voxel.uploadChunk` bridge command from `docs/GODOT_VOXEL_PLAN.md`, followed by
+shader/environment tuning so the Godot frame is not washed out compared with
+the browser reference.
+
+## Demoscene parity push
+
+The current focused target is `examples/demoscene`, captured after pressing
+Space so the comparison samples the active scene rather than the title screen.
+
+Current focused command:
+
+```bash
+wsl bash -lc 'export NVM_DIR=/home/seacloud9/.nvm; \
+  . /home/seacloud9/.nvm/nvm.sh; nvm use 20; \
+  cd /mnt/c/Users/brend/exp/nova64 && \
+  pnpm godot:visual -- --cart=demoscene --press=Space --frames=300 --wait-ms=5000 --max-diff=100'
+```
+
+Latest measured diff: **41.41%**. That is a real improvement from the previous
+timeout / invalid-reference state, but it is not the 90% parity target yet
+(90% parity means approximately **10% or lower pixel diff** with the current
+pixelmatch settings).
+
+What landed for this pass:
+
+- Browser capture now waits for `__nova64CartLoadState.ready` so heavy carts are
+  compared after `init()` finishes.
+- The debug panel console serializer handles `BigInt`, fixing the demoscene
+  browser init crash.
+- The demoscene cart uses a seeded RNG so procedural layout is stable between
+  runs.
+- Godot material assignment now works through `mesh.create { material }` and
+  `mesh.material = handle` in the shim.
+- Godot TSL fallbacks, bloom strength, chromatic-aberration approximation,
+  effect status, UI button stubs, and normalized voxel noise were improved.
+- Godot fog density now better approximates the heavy Three.js fog in the
+  demoscene frame.
+- The demoscene foreground cloud layer was reduced so it no longer hides the
+  whole Three.js reference frame.
+
+Remaining work to reach the 90% parity bar:
+
+- Add a real Godot 2D overlay path for `rect`, `print`, `drawText*`,
+  `drawPanel`, and progress bars. The browser reference includes HUD and
+  scanline-heavy overlay work that Godot currently does not draw.
+- Add fixed-timestep browser capture or expose a deterministic capture frame,
+  because the browser demoscene advances by wall-clock time while Godot advances
+  by fixed frame count.
+- Replace the TSL placeholder materials with closer Godot shader fallbacks for
+  `plasma` and `void`, including animated color/opacity.
+- Add real post-processing passes for vignette, chromatic aberration,
+  pixelation, and dithering instead of only mapping what can fit into
+  `WorldEnvironment`.
+- Revisit camera/coordinate parity after overlay and post-FX land; the current
+  remaining difference is dominated by foreground cloud/sky composition and HUD
+  absence, so camera tuning alone is not enough.

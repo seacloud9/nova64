@@ -14,6 +14,8 @@ func _init() -> void:
 	var cart_path := "res://carts/09-errors"
 	var frames := 5
 	var snapshot := ""
+	var press_key := ""
+	var press_frames := 3
 	for arg in OS.get_cmdline_user_args():
 		if arg.begins_with("--cart="):
 			cart_path = arg.substr(7)
@@ -21,6 +23,10 @@ func _init() -> void:
 			frames = int(arg.substr(9))
 		elif arg.begins_with("--snapshot="):
 			snapshot = arg.substr(11)
+		elif arg.begins_with("--press="):
+			press_key = arg.substr(8).to_lower()
+		elif arg.begins_with("--press-frames="):
+			press_frames = int(arg.substr(15))
 
 	print("[conformance] cart=", cart_path, " frames=", frames, " snapshot=", snapshot)
 
@@ -38,12 +44,18 @@ func _init() -> void:
 		return
 	host.cart_init()
 
+	if press_key != "":
+		_inject_key(press_key, true)
+
 	# Tick fixed-step. await process_frame so the renderer actually advances
 	# (required for snapshots and for GPU particle systems to step).
 	for i in range(frames):
 		host.cart_update(1.0 / 60.0)
 		host.cart_draw()
 		await process_frame
+		if press_key != "" and i + 1 >= press_frames:
+			_inject_key(press_key, false)
+			press_key = ""
 
 	# Optional snapshot — write the main viewport to PNG. Works under
 	# --headless because Godot still creates an offscreen renderer.
@@ -92,3 +104,26 @@ func _init() -> void:
 	else:
 		print("NOVA64-CONFORMANCE: FAIL")
 		quit(1)
+
+func _inject_key(name: String, pressed: bool) -> void:
+	var ev := InputEventKey.new()
+	match name:
+		"space":
+			ev.keycode = KEY_SPACE
+			ev.physical_keycode = KEY_SPACE
+		"enter":
+			ev.keycode = KEY_ENTER
+			ev.physical_keycode = KEY_ENTER
+		"escape":
+			ev.keycode = KEY_ESCAPE
+			ev.physical_keycode = KEY_ESCAPE
+		"z":
+			ev.keycode = KEY_Z
+			ev.physical_keycode = KEY_Z
+		"x":
+			ev.keycode = KEY_X
+			ev.physical_keycode = KEY_X
+		_:
+			return
+	ev.pressed = pressed
+	Input.parse_input_event(ev)

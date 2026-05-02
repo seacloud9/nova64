@@ -77,6 +77,8 @@
     "test:babylon:gameplay": "playwright test tests/playwright/space-harrier-gameplay.spec.js",
     "test:start-screen": "playwright test tests/playwright/start-screen.spec.js",
     "test:babylon:all": "playwright test tests/playwright/",
+    "godot:visual": "node nova64-godot/scripts/visual-parity.js --all --report-only",
+    "test:godot:visual": "node nova64-godot/scripts/visual-parity.js --all --fail-on-threshold",
     "bench": "node tests/bench.js",
     "bench:material": "node tests/bench.js --suite=material",
     "bench:instancing": "node tests/bench.js --suite=instancing",

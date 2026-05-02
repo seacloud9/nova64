@@ -718,6 +718,23 @@ export class DebugPanel {
       error: console.error.bind(console),
     };
     const self = this;
+    const formatArg = value => {
+      if (typeof value === 'bigint') return `${value.toString()}n`;
+      if (typeof value !== 'object' || value === null) return String(value);
+      const seen = new WeakSet();
+      try {
+        return JSON.stringify(value, (_key, nested) => {
+          if (typeof nested === 'bigint') return `${nested.toString()}n`;
+          if (typeof nested === 'object' && nested !== null) {
+            if (seen.has(nested)) return '[Circular]';
+            seen.add(nested);
+          }
+          return nested;
+        });
+      } catch {
+        return String(value);
+      }
+    };
 
     const capture = (level, origFn) =>
       function (...args) {
@@ -726,7 +743,7 @@ export class DebugPanel {
         if (typeof args[0] === 'string' && args[0].includes('[Nova64 Debug]')) return;
         self._logHistory.push({
           level,
-          text: args.map(a => (typeof a === 'object' ? JSON.stringify(a) : String(a))).join(' '),
+          text: args.map(formatArg).join(' '),
           ts: Date.now(),
         });
         if (self._logHistory.length > self._maxLogs) self._logHistory.shift();

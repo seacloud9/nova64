@@ -218,6 +218,14 @@ if (nova64api.getCamera) sApi.setCameraRef(nova64api.getCamera());
 
 const nova = new Nova64(gpu, manifestInst);
 globalThis.NOVA64_VERSION = NOVA64_VERSION;
+globalThis.__nova64Runtime = nova;
+globalThis.__nova64CartLoadState = {
+  path: '',
+  count: 0,
+  loading: false,
+  ready: false,
+  error: '',
+};
 
 registerCartResetHook('input', () => {
   iApi.reset?.();
@@ -301,6 +309,13 @@ _debugPanel.setCallbacks({
 
 // Lifecycle: notify parent window when a cart finishes loading
 nova.onCartDidLoad = path => {
+  globalThis.__nova64CartLoadState = {
+    path,
+    count: (globalThis.__nova64CartLoadState?.count || 0) + 1,
+    loading: false,
+    ready: true,
+    error: '',
+  };
   if (window.parent && window.parent !== window) {
     window.parent.postMessage({ type: 'CART_LOADED', path }, '*');
   }
@@ -313,7 +328,25 @@ let _currentCartPath = '';
 
 async function loadCart(path) {
   _currentCartPath = path;
-  await nova.loadCart(path);
+  globalThis.__nova64CartLoadState = {
+    path,
+    count: globalThis.__nova64CartLoadState?.count || 0,
+    loading: true,
+    ready: false,
+    error: '',
+  };
+  try {
+    await nova.loadCart(path);
+  } catch (err) {
+    globalThis.__nova64CartLoadState = {
+      path,
+      count: globalThis.__nova64CartLoadState?.count || 0,
+      loading: false,
+      ready: false,
+      error: err instanceof Error ? err.message : String(err),
+    };
+    throw err;
+  }
 }
 
 function attachUI() {

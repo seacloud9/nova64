@@ -21,6 +21,32 @@ Status: actively in progress on `feature/godot-adapter`.
 This visibly works (snapshot `nova64-godot/test-results/snapshots/mc-demo-v4.png`)
 but caps out below web parity in a few key ways.
 
+## Latest parity checkpoint
+
+Focused run on 2026-05-02:
+
+```bash
+pnpm godot:visual -- --cart=minecraft-demo --cart=voxel-terrain \
+  --frames=120 --wait-ms=3000 --max-diff=100
+```
+
+Results:
+
+- `minecraft-demo`: **60.53%** pixel diff vs browser Three.js.
+- `voxel-terrain`: **95.08%** pixel diff vs browser Three.js.
+
+Both carts boot, run, and draw through Godot. The remaining gap is visual
+quality, not lifecycle. The screenshots show the current Godot path is washed
+out by environment/fog tuning and, more importantly, still uses a 2.5D
+heightmap/column approximation instead of the browser voxel engine's real
+chunk mesh.
+
+`meta.json` is supported in the Godot host path: `load_cart()` reads sidecar
+metadata, exposes it as `globalThis.cart_meta`, and the compatibility shim
+applies text, sky, fog, lighting, effects, and camera defaults before the cart
+module evaluates. Voxel-specific defaults should continue to flow through
+`configureVoxelWorld()` so carts keep one programming model across hosts.
+
 ## Gaps vs the web engine
 
 1. **Per-block visibility** — shim renders a single tall box per (x,z)
@@ -35,13 +61,14 @@ but caps out below web parity in a few key ways.
 
 ## Phased plan (each phase commits independently)
 
-### Phase 1 — Native voxel.uploadChunk (face-culled mesher)  ← starting now
+### Phase 1 — Native voxel.uploadChunk (face-culled mesher) ← starting now
 
 Add a C++ bridge command that builds an ArrayMesh from a packed block
 array, emitting one quad per visible face (face culled against the
 chunk's own neighbors; chunk boundaries treated as air for now).
 
 Bridge API:
+
 ```
 voxel.uploadChunk {
   origin:  [x, y, z],          // world-space origin of chunk
@@ -56,18 +83,23 @@ StandardMaterial3D per chunk; face vertex colours encode the block tint
 so one material draws all blocks. No texturing yet.
 
 Files touched:
+
 - [nova64-godot/gdextension/src/bridge.cpp](nova64-godot/gdextension/src/bridge.cpp) — new `_cmd_voxel_upload_chunk`
 - [nova64-godot/gdextension/src/bridge.h](nova64-godot/gdextension/src/bridge.h) — declaration
 
 Shim changes:
+
 - Replace the column-bucketing path with a chunk-builder that packs the
   heightmap into 16×Hslab×16 chunks and calls `voxel.uploadChunk` once
   per chunk. Player edits update the corresponding chunk and re-upload.
 
 Validation:
+
 - All voxel carts smoke-PASS.
 - Snapshot diff vs `mc-demo-v4.png` should show identical biome
   distribution but with proper cliff detail and cube boundaries.
+- Focused visual report should materially improve from the 2026-05-02 baseline:
+  `minecraft-demo` 60.53% diff and `voxel-terrain` 95.08% diff.
 
 ### Phase 2 — Greedy meshing in C++
 

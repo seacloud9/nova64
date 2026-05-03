@@ -2020,9 +2020,6 @@ Dictionary Nova64Host::_cmd_voxel_upload_chunk(const Dictionary &p) {
 
 bool Nova64Host::load_cart(const String &p_res_path) {
     _ensure_runtime();
-    _load_compat_shim();
-    _release_cart_exports();
-    _cart_loaded = false;
 
     // Accept three flavors:
     //   1. "res://carts/foo/"        — folder containing code.js + meta.json
@@ -2041,6 +2038,35 @@ bool Nova64Host::load_cart(const String &p_res_path) {
         code_path = p_res_path;
         meta_path = p_res_path.get_base_dir() + String("/meta.json");
     }
+
+    // Expose the cart path on globalThis BEFORE loading the compat shim,
+    // so the shim can use it for seed derivation.
+    // The browser uses `?demo=cart-name` which becomes `hashStringToSeed('nova64-demo:cart-name')`.
+    {
+        String cart_folder_name;
+        // Extract folder name: "res://carts/minecraft-demo/" -> "minecraft-demo"
+        String base_dir = code_path.get_base_dir();
+        if (base_dir.ends_with("/")) {
+            base_dir = base_dir.substr(0, base_dir.length() - 1);
+        }
+        int last_slash = base_dir.rfind("/");
+        if (last_slash >= 0) {
+            cart_folder_name = base_dir.substr(last_slash + 1);
+        } else {
+            cart_folder_name = base_dir;
+        }
+
+        JSValue global = JS_GetGlobalObject(_context);
+        CharString cart_name_utf8 = cart_folder_name.utf8();
+        JSValue cart_name_val = JS_NewStringLen(_context, cart_name_utf8.get_data(), cart_name_utf8.length());
+        JS_SetPropertyStr(_context, global, "__nova64_cart_name", cart_name_val);
+        JS_FreeValue(_context, global);
+    }
+
+    // Now load the compat shim (which will use __nova64_cart_name for seed)
+    _load_compat_shim();
+    _release_cart_exports();
+    _cart_loaded = false;
 
     Ref<FileAccess> f = FileAccess::open(code_path, FileAccess::READ);
     if (f.is_null()) {

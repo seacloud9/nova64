@@ -168,13 +168,21 @@ Major improvements to close the gap between Godot and browser voxel rendering:
 
 Fixes for broken voxel rendering (stretched columns, zigzag trees, visual artifacts):
 
-- **Reduced biome height extremes**: Terrain height scales significantly reduced
-  to eliminate extreme cliffs and visual artifacts:
-  - Snowy Hills: 35 → 12
-  - Taiga: 18 → 8
-  - Jungle: 22 → 10
-  - Forest: 14 → 6
-  - Other biomes similarly adjusted for smoother, natural terrain
+- **Biome height formulas matched to web engine**: Height scales now use the exact
+  values from `runtime/api-voxel.js` for terrain parity:
+  - Frozen Tundra: heightScale=6, heightBase=65
+  - Taiga: heightScale=18, heightBase=66
+  - Desert: heightScale=4, heightBase=63
+  - Jungle: heightScale=22, heightBase=58
+  - Savanna: heightScale=5, heightBase=65
+  - Forest: heightScale=14, heightBase=64
+  - Snowy Hills: heightScale=35, heightBase=62
+  - Plains: heightScale=6, heightBase=64
+
+- **World seed derivation matched to browser**: The Godot host now exposes
+  `__nova64_cart_name` before the shim loads, enabling the same seed derivation
+  as the browser (`hashStringToSeed('nova64-demo:' + cartName)`). This ensures
+  terrain generation is identical between Godot and Three.js renderers.
 
 - **Smart subsurface rendering**: Instead of rendering fixed depth layers,
   the system now checks neighboring column heights to determine which subsurface

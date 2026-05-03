@@ -2534,7 +2534,29 @@
   const vxMultimeshes = [];      // kept for legacy resetVoxelWorld compat
   const vxChunkHandles = [];     // mesh.destroy handles for voxel.uploadChunk meshes
   const vxEntities = [];
-  const vxConfig = { seed: 1337, renderDistance: 3, maxMeshRebuildsPerFrame: 3, enableLOD: true };
+
+  // Compute world seed matching the browser's resolveDefaultWorldSeed().
+  // Browser uses: hashStringToSeed('nova64-demo:' + cartName) for ?demo=... URLs
+  function _vxHashStringToSeed(input) {
+    let hash = 2166136261;
+    const text = String(input || 'nova64-voxel');
+    for (let i = 0; i < text.length; i++) {
+      hash ^= text.charCodeAt(i);
+      hash = Math.imul(hash, 16777619);
+    }
+    return (hash >>> 0) % 1000000;
+  }
+  function _vxResolveDefaultSeed() {
+    // __nova64_cart_name is set by the Godot host bridge before cart loads
+    const cartName = global.__nova64_cart_name;
+    if (cartName) {
+      // Match browser: hashStringToSeed('nova64-demo:' + cartName)
+      return _vxHashStringToSeed('nova64-demo:' + cartName);
+    }
+    return 1337; // fallback
+  }
+
+  const vxConfig = { seed: _vxResolveDefaultSeed(), renderDistance: 3, maxMeshRebuildsPerFrame: 3, enableLOD: true };
   let vxGenerated = false;
   let vxWaterMesh = 0;
 
@@ -2731,17 +2753,17 @@
     return 'Plains';
   }
   function _vxBiomeProfile(biome) {
-    // Reduced height scales for smoother, more natural terrain
-    // Previous values were too extreme causing visual artifacts
+    // Match web engine (runtime/api-voxel.js) biome height values
+    // These values directly correspond to the browser Three.js terrain
     switch (biome) {
-      case 'Frozen Tundra': return { heightScale: 4, heightBase: 65 };
-      case 'Taiga':         return { heightScale: 8, heightBase: 66 };
-      case 'Desert':        return { heightScale: 3, heightBase: 64 };
-      case 'Jungle':        return { heightScale: 10, heightBase: 60 };
-      case 'Savanna':       return { heightScale: 4, heightBase: 65 };
-      case 'Forest':        return { heightScale: 6, heightBase: 64 };
-      case 'Snowy Hills':   return { heightScale: 12, heightBase: 64 };
-      default:              return { heightScale: 5, heightBase: 64 };
+      case 'Frozen Tundra': return { heightScale: 6, heightBase: 65 };  // t < 0.2
+      case 'Taiga':         return { heightScale: 18, heightBase: 66 }; // t < 0.35 && m > 0.5
+      case 'Desert':        return { heightScale: 4, heightBase: 63 };  // t > 0.7 && m < 0.25
+      case 'Jungle':        return { heightScale: 22, heightBase: 58 }; // t > 0.6 && m > 0.6
+      case 'Savanna':       return { heightScale: 5, heightBase: 65 };  // m < 0.3
+      case 'Forest':        return { heightScale: 14, heightBase: 64 }; // t > 0.4 && m > 0.4
+      case 'Snowy Hills':   return { heightScale: 35, heightBase: 62 }; // t < 0.35
+      default:              return { heightScale: 6, heightBase: 64 };  // Plains
     }
   }
   function _vxSurfaceFor(biome) {
@@ -2934,7 +2956,8 @@
     );
 
     // Limit subsurface depth to avoid too many blocks
-    const maxDepth = Math.min(height - minNeighbor, 5);
+    // Increased from 5 to 8 to show more terrain detail on steep slopes
+    const maxDepth = Math.min(height - minNeighbor, 8);
 
     // Render subsurface layers
     for (let d = 1; d <= maxDepth && height - d >= VX_BASE_Y - 2; d++) {

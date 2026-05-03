@@ -53,20 +53,24 @@ voxel-creative, wizardry-3d, star-fox-nova-3d, f-zero-nova-3d.
 
 ## Latest parity checkpoint
 
-Run on 2026-05-02:
+Run on 2026-05-03:
 
 ```bash
 pnpm godot:visual -- --cart=minecraft-demo --frames=120 --wait-ms=3000 --max-diff=100
 ```
 
-Result: **37.21%** pixel diff vs browser Three.js (down from 60.53% baseline).
+Result: **58.73%** pixel diff vs browser Three.js.
+
+Improvements this session:
+- Biome height formulas now match web engine exactly (was using reduced values)
+- World seed derivation now matches browser (`hashStringToSeed('nova64-demo:' + cartName)`)
+- Increased subsurface depth limit from 5 to 8 blocks
 
 The remaining gap is primarily:
-1. Noise library mismatch — web uses OpenSimplex2, shim uses value noise;
-   terrain heights and biome distributions are structurally different.
-2. Per-biome height scaling — web uses biome-conditioned `heightBase` +
-   `heightScale`; shim uses a single formula.
-3. HUD/hotbar — browser screenshot includes the cart's 2D overlay; Godot
+1. Rendering approach — Godot uses instanced 1x1x1 cubes, browser uses greedy-meshed chunks
+2. Tree canopies — Godot uses single scaled cubes, browser uses individual leaf blocks
+3. Lighting model — Godot vs Three.js material/lighting differences
+4. HUD/hotbar — browser screenshot includes the cart's 2D overlay; Godot
    does not render the same HUD elements in the captured frame.
 
 `meta.json` is supported in the Godot host path: `load_cart()` reads sidecar
@@ -77,10 +81,11 @@ module evaluates. Voxel-specific defaults should continue to flow through
 
 ## Remaining gaps vs the web engine
 
-1. **Noise library** — shim `_vxFbm` uses value noise; web engine uses
-   OpenSimplex. Terrain heights and biome distributions diverge structurally.
-2. **Per-biome height formula** — web uses `heightBase + simplex * heightScale`
-   per biome; shim uses a single blend formula.
+1. **Rendering approach** — Godot uses instanced 1x1x1 cubes for terrain;
+   web uses greedy-meshed ArrayMesh chunks. Visually similar but different
+   edge/shading characteristics.
+2. **Tree canopies** — shim uses single scaled cubes for canopies; web engine
+   renders individual leaf blocks with randomized holes for natural look.
 3. **Caves / overhangs** — no 3D carve pass yet.
 4. **Lighting** — no skylight propagation or torch emission.
 5. **Per-face textures** — flat vertex colour only.

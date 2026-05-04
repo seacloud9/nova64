@@ -110,6 +110,15 @@ private:
     class WorldEnvironment *_world_env = nullptr;
     class DirectionalLight3D *_sun_light = nullptr; // shared day/night sun node
 
+    // Default scene lighting setup (matches Three.js backend for visual parity)
+    void _setup_default_lighting();
+    class DirectionalLight3D *_main_light = nullptr;      // Main directional light with shadows
+    class DirectionalLight3D *_fill_light_1 = nullptr;    // Blue fill light
+    class DirectionalLight3D *_fill_light_2 = nullptr;    // Pink fill light
+    class DirectionalLight3D *_fill_light_3 = nullptr;    // Green fill light
+    class OmniLight3D *_point_light_1 = nullptr;          // Warm point light (animated)
+    class OmniLight3D *_point_light_2 = nullptr;          // Cool point light (animated)
+
     // Lazily creates a CanvasLayer + Control above the 3D scene that the
     // cart's 2D draw API (print, rect, line, circle, pset, text)
     // rasterises into via RenderingServer canvas_item commands. The Control
@@ -175,6 +184,8 @@ private:
     void _overlay_op_text(const Array &op);
     void _overlay_op_gradient(const Array &op);
     void _overlay_op_triangle(const Array &op);
+    void _overlay_op_polygon(const Array &op);
+    void _overlay_op_ellipse(const Array &op);
 
     // Helpers
     Node3D *_resolve_node3d(uint32_t p_handle_id) const;

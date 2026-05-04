@@ -587,8 +587,14 @@ void Nova64Host::_shutdown_runtime() {
     // ProceduralSkyMaterial Refs aren't dropped from inside the JS
     // runtime teardown — that ordering trips a SIGSEGV on shutdown for
     // some carts.
-    // Null the sun so it doesn't outlive the scene.
+    // Null the sun and default lighting so they don't outlive the scene.
     _sun_light = nullptr;
+    _main_light = nullptr;
+    _fill_light_1 = nullptr;
+    _fill_light_2 = nullptr;
+    _fill_light_3 = nullptr;
+    _point_light_1 = nullptr;
+    _point_light_2 = nullptr;
     if (_world_env) {
         Ref<Environment> env = _world_env->get_environment();
         if (env.is_valid()) env->set_sky(Ref<Sky>());
@@ -727,6 +733,8 @@ Dictionary Nova64Host::call_bridge(const String &p_method, const Dictionary &p_p
         // Spawn the default WorldEnvironment so every cart starts with a
         // sensible sky/glow/tonemap baseline rather than a black void.
         _ensure_environment();
+        // Setup default scene lighting (matches Three.js backend for visual parity)
+        _setup_default_lighting();
         Dictionary out; out["capabilities"] = get_capabilities(); return out;
     }
     if (p_method == "material.create")          return _cmd_material_create(p_payload);
@@ -903,6 +911,17 @@ Dictionary Nova64Host::_cmd_material_create(const Dictionary &p) {
         Vector3 us = vec3_from_payload(p, "uvScale", Vector3(1, 1, 1));
         mat->set_uv1_scale(us);
     }
+
+    // Enhanced defaults for better visual quality (Phase 2: Visual Parity)
+    // Add subtle rim lighting by default if not explicitly disabled
+    if (!p.has("rim") && !p.has("disableRim")) {
+        mat->set_feature(BaseMaterial3D::FEATURE_RIM, true);
+        mat->set_rim(0.15f);        // Subtle rim for edge definition
+        mat->set_rim_tint(0.5f);    // Balanced tint
+    }
+
+    // Note: Godot's PBR workflow automatically handles metallic specular reflections
+    // via environment maps when metallic > 0. No additional setup needed.
 
     uint32_t id = _handles->put_resource(HandleKind::MATERIAL, mat);
     return make_handle_result(id);
@@ -1214,20 +1233,22 @@ Environment *Nova64Host::_ensure_environment() {
     env->set_background(Environment::BG_SKY);
     env->set_ambient_source(Environment::AMBIENT_SOURCE_SKY);
     env->set_reflection_source(Environment::REFLECTION_SOURCE_SKY);
-    env->set_ambient_light_energy(0.72f);
+    env->set_ambient_light_energy(0.85f); // Increased from 0.72 for brighter ambient (closer to Three.js)
 
-    // Tonemap — filmic by default, modest exposure so emissive materials
-    // bloom without blowing out.
-    env->set_tonemapper(Environment::TONE_MAPPER_FILMIC);
-    env->set_tonemap_exposure(0.96f);
-    env->set_tonemap_white(5.0f);
+    // Tonemap — ACES filmic to match Three.js, higher exposure for dramatic lighting
+    // (Phase 3: Visual Parity - matches Three.js ACESFilmicToneMapping with exposure 1.25)
+    env->set_tonemapper(Environment::TONE_MAPPER_ACES);  // Changed from FILMIC to ACES
+    env->set_tonemap_exposure(1.2f);                      // Increased from 0.96 to 1.2
+    env->set_tonemap_white(6.0f);                         // Increased from 5.0 for brighter highlights
 
-    // Glow / bloom — on by default. Mid intensity.
+    // Glow / bloom — enhanced to match Three.js dramatic lighting
+    // (Phase 3: Visual Parity - more intense bloom for cinematic effect)
     env->set_glow_enabled(true);
-    env->set_glow_intensity(0.92f);
-    env->set_glow_strength(1.15f);
-    env->set_glow_bloom(0.08f);
-    env->set_glow_hdr_bleed_threshold(0.9f);
+    env->set_glow_intensity(1.1f);              // Increased from 0.92 to 1.1
+    env->set_glow_strength(1.3f);               // Increased from 1.15 to 1.3
+    env->set_glow_bloom(0.12f);                 // Increased from 0.08 to 0.12
+    env->set_glow_hdr_bleed_threshold(0.85f);   // Lower from 0.9 to 0.85 for more bloom
+    env->set_glow_hdr_luminance_cap(16.0f);     // Add cap for emissive materials
 
     // SSAO — subtle, off by default (can be expensive on mobile). Carts
     // enable explicitly via env.set.
@@ -1428,6 +1449,110 @@ Dictionary Nova64Host::_cmd_env_set(const Dictionary &p) {
     }
 
     Dictionary out; out["ok"] = true; return out;
+}
+
+// ---- Default Scene Lighting (Visual Parity with Three.js) ---------------
+
+void Nova64Host::_setup_default_lighting() {
+    // This lighting setup matches the Three.js backend (gpu-threejs.js lines 91-176)
+    // to achieve visual parity: 1 main light, 3 colored fill lights, 2 point lights.
+
+    // Main directional light with high-quality shadows (matches Three.js mainLight)
+    if (!_main_light) {
+        _main_light = memnew(DirectionalLight3D);
+        _main_light->set_name("Nova64_MainLight");
+        _main_light->set_color(Color(1.0f, 1.0f, 1.0f));
+        _main_light->set_param(Light3D::PARAM_ENERGY, 1.8f); // Match Three.js intensity
+
+        // High-quality shadows (Three.js uses 4096x4096 shadow maps)
+        _main_light->set_shadow(true);
+        _main_light->set_param(Light3D::PARAM_SHADOW_MAX_DISTANCE, 200.0f);
+        _main_light->set_param(Light3D::PARAM_SHADOW_BIAS, 0.00005f);
+        _main_light->set_param(Light3D::PARAM_SHADOW_NORMAL_BIAS, 0.02f);
+
+        // Position and aim to match Three.js (5, 8, 3) looking at origin
+        _main_light->set_position(Vector3(5.0f, 8.0f, 3.0f));
+        _main_light->look_at(Vector3(0, 0, 0), Vector3(0, 1, 0));
+
+        add_child(_main_light);
+    }
+
+    // Fill Light 1 - Blue tone (matches Three.js fillLight1: 0x4080ff, intensity 0.8)
+    if (!_fill_light_1) {
+        _fill_light_1 = memnew(DirectionalLight3D);
+        _fill_light_1->set_name("Nova64_FillLight1_Blue");
+        _fill_light_1->set_color(Color(0.25f, 0.50f, 1.0f)); // 0x4080ff
+        _fill_light_1->set_param(Light3D::PARAM_ENERGY, 0.8f);
+        _fill_light_1->set_shadow(false); // Fill lights don't cast shadows
+
+        _fill_light_1->set_position(Vector3(-8.0f, 4.0f, -5.0f));
+        _fill_light_1->look_at(Vector3(0, 0, 0), Vector3(0, 1, 0));
+
+        add_child(_fill_light_1);
+    }
+
+    // Fill Light 2 - Pink tone (matches Three.js fillLight2: 0xff4080, intensity 0.6)
+    if (!_fill_light_2) {
+        _fill_light_2 = memnew(DirectionalLight3D);
+        _fill_light_2->set_name("Nova64_FillLight2_Pink");
+        _fill_light_2->set_color(Color(1.0f, 0.25f, 0.50f)); // 0xff4080
+        _fill_light_2->set_param(Light3D::PARAM_ENERGY, 0.6f);
+        _fill_light_2->set_shadow(false);
+
+        _fill_light_2->set_position(Vector3(5.0f, -3.0f, 8.0f));
+        _fill_light_2->look_at(Vector3(0, 0, 0), Vector3(0, 1, 0));
+
+        add_child(_fill_light_2);
+    }
+
+    // Fill Light 3 - Green tone (matches Three.js fillLight3: 0x80ff40, intensity 0.4)
+    if (!_fill_light_3) {
+        _fill_light_3 = memnew(DirectionalLight3D);
+        _fill_light_3->set_name("Nova64_FillLight3_Green");
+        _fill_light_3->set_color(Color(0.50f, 1.0f, 0.25f)); // 0x80ff40
+        _fill_light_3->set_param(Light3D::PARAM_ENERGY, 0.4f);
+        _fill_light_3->set_shadow(false);
+
+        _fill_light_3->set_position(Vector3(-3.0f, 6.0f, -2.0f));
+        _fill_light_3->look_at(Vector3(0, 0, 0), Vector3(0, 1, 0));
+
+        add_child(_fill_light_3);
+    }
+
+    // Point Light 1 - Warm tone (matches Three.js pointLight1: 0xffaa00, intensity 2, range 30)
+    if (!_point_light_1) {
+        _point_light_1 = memnew(OmniLight3D);
+        _point_light_1->set_name("Nova64_PointLight1_Warm");
+        _point_light_1->set_color(Color(1.0f, 0.67f, 0.0f)); // 0xffaa00
+        _point_light_1->set_param(Light3D::PARAM_ENERGY, 2.0f);
+        _point_light_1->set_param(Light3D::PARAM_RANGE, 30.0f);
+        _point_light_1->set_param(Light3D::PARAM_ATTENUATION, 1.0f);
+
+        // Shadows for point lights (Three.js uses 1024x1024)
+        _point_light_1->set_shadow(true);
+        _point_light_1->set_param(Light3D::PARAM_SHADOW_BIAS, 0.02f);
+
+        _point_light_1->set_position(Vector3(10.0f, 15.0f, 10.0f));
+
+        add_child(_point_light_1);
+    }
+
+    // Point Light 2 - Cool tone (matches Three.js pointLight2: 0x00aaff, intensity 1.5, range 25)
+    if (!_point_light_2) {
+        _point_light_2 = memnew(OmniLight3D);
+        _point_light_2->set_name("Nova64_PointLight2_Cool");
+        _point_light_2->set_color(Color(0.0f, 0.67f, 1.0f)); // 0x00aaff
+        _point_light_2->set_param(Light3D::PARAM_ENERGY, 1.5f);
+        _point_light_2->set_param(Light3D::PARAM_RANGE, 25.0f);
+        _point_light_2->set_param(Light3D::PARAM_ATTENUATION, 1.0f);
+
+        _point_light_2->set_shadow(true);
+        _point_light_2->set_param(Light3D::PARAM_SHADOW_BIAS, 0.02f);
+
+        _point_light_2->set_position(Vector3(-10.0f, 10.0f, -10.0f));
+
+        add_child(_point_light_2);
+    }
 }
 
 // Polls the keyboard / mouse / first gamepad and returns a rich snapshot
@@ -2213,6 +2338,13 @@ void Nova64Host::_call_cart_fn(JSValue p_fn, double p_arg, bool p_pass_arg, cons
         JS_FreeValue(_context, exc);
     }
     JS_FreeValue(_context, ret);
+
+    // Execute pending promise jobs so async functions can complete.
+    // This is essential for carts with `async init()` or `await` in their hooks.
+    JSContext *ctx1 = nullptr;
+    while (JS_ExecutePendingJob(_runtime, &ctx1) > 0) {
+        // Keep pumping until no more jobs
+    }
 }
 
 void Nova64Host::cart_init()                  { _call_cart_fn(_cart_init_fn,   0.0,     false, "init"); }
@@ -2656,6 +2788,8 @@ Dictionary Nova64Host::_cmd_overlay_batch(const Dictionary &p) {
         else if (tag == "cls")       _overlay_op_cls(op);
         else if (tag == "gradient")  _overlay_op_gradient(op);
         else if (tag == "triangle")  _overlay_op_triangle(op);
+        else if (tag == "polygon")   _overlay_op_polygon(op);
+        else if (tag == "ellipse")   _overlay_op_ellipse(op);
     }
     Dictionary out; out["ok"] = true; out["count"] = n; return out;
 }
@@ -2725,6 +2859,77 @@ void Nova64Host::_overlay_op_triangle(const Array &op) {
         pts.push_back(Vector2(x1, y1));
         pts.push_back(Vector2(x2, y2));
         pts.push_back(Vector2(x0, y0)); // close the triangle
+        PackedColorArray cols;
+        cols.push_back(c);
+        rs->canvas_item_add_polyline(ci, pts, cols, Math::max(1.0f, s.x));
+    }
+}
+
+// ---- polygon op: filled polygon from point array -------------------------
+// Op format: ['polygon', [x0,y0,x1,y1,...], color, filled]
+void Nova64Host::_overlay_op_polygon(const Array &op) {
+    if (op.size() < 3 || _overlay == nullptr) return;
+    Vector2 s = overlay_scale(_overlay);
+    Color c = color_from_array(op[2], Color(1, 1, 1, 1));
+    bool filled = op.size() > 3 ? static_cast<bool>(op[3]) : true;
+
+    Variant ptsVar = op[1];
+    if (ptsVar.get_type() != Variant::ARRAY) return;
+    Array ptsArr = ptsVar;
+    int numCoords = ptsArr.size();
+    if (numCoords < 6) return; // Need at least 3 points (6 coords)
+
+    PackedVector2Array pts;
+    for (int i = 0; i + 1 < numCoords; i += 2) {
+        float px = static_cast<float>(static_cast<double>(ptsArr[i])) * s.x;
+        float py = static_cast<float>(static_cast<double>(ptsArr[i + 1])) * s.y;
+        pts.push_back(Vector2(px, py));
+    }
+
+    RenderingServer *rs = RenderingServer::get_singleton();
+    RID ci = _overlay->get_canvas_item();
+
+    if (filled) {
+        PackedColorArray cols;
+        for (int i = 0; i < pts.size(); i++) cols.push_back(c);
+        rs->canvas_item_add_polygon(ci, pts, cols);
+    } else {
+        pts.push_back(pts[0]); // close polygon
+        PackedColorArray cols;
+        cols.push_back(c);
+        rs->canvas_item_add_polyline(ci, pts, cols, Math::max(1.0f, s.x));
+    }
+}
+
+// ---- ellipse op: filled/stroked ellipse ----------------------------------
+// Op format: ['ellipse', cx, cy, rx, ry, color, filled]
+void Nova64Host::_overlay_op_ellipse(const Array &op) {
+    if (op.size() < 6 || _overlay == nullptr) return;
+    Vector2 s = overlay_scale(_overlay);
+    float cx = static_cast<float>(static_cast<double>(op[1])) * s.x;
+    float cy = static_cast<float>(static_cast<double>(op[2])) * s.y;
+    float rx = static_cast<float>(static_cast<double>(op[3])) * s.x;
+    float ry = static_cast<float>(static_cast<double>(op[4])) * s.y;
+    Color c = color_from_array(op[5], Color(1, 1, 1, 1));
+    bool filled = op.size() > 6 ? static_cast<bool>(op[6]) : true;
+
+    // Generate ellipse points
+    const int segments = 32;
+    PackedVector2Array pts;
+    for (int i = 0; i < segments; i++) {
+        float angle = static_cast<float>(i) / static_cast<float>(segments) * Math_TAU;
+        pts.push_back(Vector2(cx + rx * cos(angle), cy + ry * sin(angle)));
+    }
+
+    RenderingServer *rs = RenderingServer::get_singleton();
+    RID ci = _overlay->get_canvas_item();
+
+    if (filled) {
+        PackedColorArray cols;
+        for (int i = 0; i < segments; i++) cols.push_back(c);
+        rs->canvas_item_add_polygon(ci, pts, cols);
+    } else {
+        pts.push_back(pts[0]); // close ellipse
         PackedColorArray cols;
         cols.push_back(c);
         rs->canvas_item_add_polyline(ci, pts, cols, Math::max(1.0f, s.x));

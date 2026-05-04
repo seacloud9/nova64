@@ -1246,7 +1246,7 @@ Environment *Nova64Host::_ensure_environment() {
     // Tonemap — ACES filmic to match Three.js, higher exposure for dramatic lighting
     // (Phase 3: Visual Parity - matches Three.js ACESFilmicToneMapping with exposure 1.25)
     env->set_tonemapper(Environment::TONE_MAPPER_ACES);  // Changed from FILMIC to ACES
-    env->set_tonemap_exposure(1.2f);                      // Increased from 0.96 to 1.2
+    env->set_tonemap_exposure(1.5f);                      // Increased to 1.5 to match Three.js brightness (Three.js uses 1.25 but Godot needs higher due to different tone mapping curve)
     env->set_tonemap_white(6.0f);                         // Increased from 5.0 for brighter highlights
 
     // Glow / bloom — enhanced to match Three.js dramatic lighting

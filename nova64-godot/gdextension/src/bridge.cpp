@@ -1272,8 +1272,11 @@ Dictionary Nova64Host::_cmd_env_set(const Dictionary &p) {
     if (!env) return make_error("env_unavailable", "env.set");
 
     if (p.has("ambient")) {
+        // When a cart explicitly sets ambient light color, switch to COLOR mode
+        // to match Three.js behavior (AmbientLight sets a flat color, not sky-based).
         env->set_ambient_source(Environment::AMBIENT_SOURCE_COLOR);
         env->set_ambient_light_color(color_from_payload(p, "ambient", Color(0.2f, 0.2f, 0.2f, 1.0f)));
+        // NOTE: Background remains SKY unless cart explicitly sets background or fog color
     }
     if (p.has("ambientEnergy")) {
         env->set_ambient_light_energy(static_cast<float>(static_cast<double>(p["ambientEnergy"])));
@@ -1297,8 +1300,14 @@ Dictionary Nova64Host::_cmd_env_set(const Dictionary &p) {
             static_cast<float>(static_cast<double>(p["glowThreshold"])));
 
     if (p.has("fog")) env->set_fog_enabled(static_cast<bool>(p["fog"]));
-    if (p.has("fogColor")) env->set_fog_light_color(
-            color_from_payload(p, "fogColor", Color(0.5f, 0.6f, 0.7f, 1.0f)));
+    if (p.has("fogColor")) {
+        Color fog_color = color_from_payload(p, "fogColor", Color(0.5f, 0.6f, 0.7f, 1.0f));
+        env->set_fog_light_color(fog_color);
+        // Match Three.js behavior: when fog is set, the background should be the fog color
+        // so distant objects fade into the background seamlessly
+        env->set_background(Environment::BG_COLOR);
+        env->set_bg_color(fog_color);
+    }
     if (p.has("fogDensity")) env->set_fog_density(
             static_cast<float>(static_cast<double>(p["fogDensity"])));
     if (p.has("fogNear") || p.has("fogFar")) {

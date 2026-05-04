@@ -550,6 +550,7 @@ void Nova64Host::_bind_methods() {
     ClassDB::bind_method(D_METHOD("cart_init"), &Nova64Host::cart_init);
     ClassDB::bind_method(D_METHOD("cart_update", "delta"), &Nova64Host::cart_update);
     ClassDB::bind_method(D_METHOD("cart_draw"), &Nova64Host::cart_draw);
+    ClassDB::bind_method(D_METHOD("update_dynamic_lighting", "delta"), &Nova64Host::update_dynamic_lighting);
     ClassDB::bind_method(D_METHOD("read_global", "name"), &Nova64Host::read_global);
     ClassDB::bind_method(D_METHOD("get_perf_stats"), &Nova64Host::get_perf_stats);
 }
@@ -1553,6 +1554,42 @@ void Nova64Host::_setup_default_lighting() {
 
         add_child(_point_light_2);
     }
+}
+
+// ---- Dynamic Lighting Animation (Phase 4: Visual Parity) ----------------
+
+void Nova64Host::_update_dynamic_lighting(double p_delta) {
+    // Accumulate time for smooth animation
+    _accumulated_time += p_delta;
+    float time = static_cast<float>(_accumulated_time);
+
+    // Animate point light positions to match Three.js (gpu-threejs.js lines 697-705)
+    // Subtle movement creates atmospheric depth without being distracting
+
+    // Point Light 1: Gentle circular motion in XY plane
+    // Three.js: point1.position.x = 10 + Math.sin(time * 0.5) * 3
+    //           point1.position.y = 15 + Math.cos(time * 0.7) * 2
+    if (_point_light_1) {
+        Vector3 pos = _point_light_1->get_position();
+        pos.x = 10.0f + Math::sin(time * 0.5f) * 3.0f;
+        pos.y = 15.0f + Math::cos(time * 0.7f) * 2.0f;
+        _point_light_1->set_position(pos);
+    }
+
+    // Point Light 2: Gentle movement in XZ plane
+    // Three.js: point2.position.x = -10 + Math.cos(time * 0.6) * 4
+    //           point2.position.z = -10 + Math.sin(time * 0.4) * 3
+    if (_point_light_2) {
+        Vector3 pos = _point_light_2->get_position();
+        pos.x = -10.0f + Math::cos(time * 0.6f) * 4.0f;
+        pos.z = -10.0f + Math::sin(time * 0.4f) * 3.0f;
+        _point_light_2->set_position(pos);
+    }
+}
+
+// Public wrapper for GDScript access
+void Nova64Host::update_dynamic_lighting(double p_delta) {
+    _update_dynamic_lighting(p_delta);
 }
 
 // Polls the keyboard / mouse / first gamepad and returns a rich snapshot

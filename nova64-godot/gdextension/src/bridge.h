@@ -60,6 +60,10 @@ public:
     void cart_update(double p_delta);
     void cart_draw();
 
+    // Dynamic lighting animation (Phase 4: Visual Parity)
+    // Animates point light positions for atmospheric effect (matches Three.js)
+    void update_dynamic_lighting(double p_delta);
+
     // Conformance harness hook: read a JS global by name and convert it to a
     // Godot Variant. Returns null Variant if the global is undefined.
     Variant read_global(const String &p_name);
@@ -112,6 +116,8 @@ private:
 
     // Default scene lighting setup (matches Three.js backend for visual parity)
     void _setup_default_lighting();
+    void _update_dynamic_lighting(double p_delta);
+    double _accumulated_time = 0.0;
     class DirectionalLight3D *_main_light = nullptr;      // Main directional light with shadows
     class DirectionalLight3D *_fill_light_1 = nullptr;    // Blue fill light
     class DirectionalLight3D *_fill_light_2 = nullptr;    // Pink fill light

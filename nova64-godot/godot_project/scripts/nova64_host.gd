@@ -91,6 +91,8 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	if host == null:
 		return
+	# Phase 4: Animate default lighting (matches Three.js atmospheric movement)
+	host.update_dynamic_lighting(delta)
 	host.cart_update(delta)
 	host.cart_draw()
 

@@ -1219,7 +1219,17 @@ Environment *Nova64Host::_ensure_environment() {
     Ref<Environment> env;
     env.instantiate();
 
-    // Sky — procedural gradient so empty scenes don't render black.
+    // Default background: dark color matching Three.js setClearColor(0x0a0a0f)
+    // Don't use a sky by default - carts will set fog color which becomes the background
+    env->set_background(Environment::BG_COLOR);
+    env->set_bg_color(Color(0.04f, 0.04f, 0.06f, 1.0f)); // 0x0a0a0f as RGB
+
+    // Ambient light: use COLOR mode with dark blue-gray (matching Three.js default)
+    env->set_ambient_source(Environment::AMBIENT_SOURCE_COLOR);
+    env->set_ambient_light_color(Color(0.2f, 0.2f, 0.25f, 1.0f));
+    env->set_ambient_light_energy(0.85f); // Increased from 0.72 for brighter ambient (closer to Three.js)
+
+    // Keep sky for reflections only (not visible as background)
     Ref<Sky> sky;
     sky.instantiate();
     Ref<ProceduralSkyMaterial> sky_mat;
@@ -1231,10 +1241,7 @@ Environment *Nova64Host::_ensure_environment() {
     sky_mat->set_sun_angle_max(30.0f);
     sky->set_material(sky_mat);
     env->set_sky(sky);
-    env->set_background(Environment::BG_SKY);
-    env->set_ambient_source(Environment::AMBIENT_SOURCE_SKY);
     env->set_reflection_source(Environment::REFLECTION_SOURCE_SKY);
-    env->set_ambient_light_energy(0.85f); // Increased from 0.72 for brighter ambient (closer to Three.js)
 
     // Tonemap — ACES filmic to match Three.js, higher exposure for dramatic lighting
     // (Phase 3: Visual Parity - matches Three.js ACESFilmicToneMapping with exposure 1.25)

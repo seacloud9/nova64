@@ -151,6 +151,7 @@
   const materialPayloadState = new Map();
   const meshProxyState = new Map();
   const particleSystemState = new Map();
+  const proceduralTextureState = new Map();
   let syntheticMaterialId = 1;
   function makeTrackedVector(initial, onChange) {
     const values = [(initial && initial[0]) || 0, (initial && initial[1]) || 0, (initial && initial[2]) || 0];
@@ -181,6 +182,10 @@
       handle: rawHandle | 0,
       isMesh: true,
       visible: true,
+    };
+    obj.geometry = {
+      handle: 0,
+      dispose: function () {},
     };
     let materialHandle = null;
     obj.position = makeTrackedVector([px, py, pz], function (v) {
@@ -252,6 +257,8 @@
     if (opts.envMapIntensity != null) payload.envMapIntensity = opts.envMapIntensity;
     const map = opts.albedoTexture || opts.diffuseMap || opts.map || opts.texture;
     if (map) payload.albedoTexture = unwrapHandle(map);
+    const emissionMap = opts.emissionMap || opts.emissiveMap;
+    if (emissionMap) payload.emissionMap = unwrapHandle(emissionMap);
     if (opts.alphaTest != null) payload.alphaCut = opts.alphaTest;
     return payload;
   }
@@ -363,11 +370,17 @@
     return geom ? spawnMesh(geom.handle, color, pos, opts) : 0;
   }
 
-  function createTorus(innerRadius, outerRadius, color, pos, opts) {
+  function createTorus(radius, tube, color, pos, opts) {
     ensureInit();
-    const inner = typeof innerRadius === 'number' ? innerRadius : 0.3;
-    const outer = typeof outerRadius === 'number' ? outerRadius : 0.5;
-    const geom = call('geometry.createTorus', { innerRadius: inner, outerRadius: outer });
+    const r = typeof radius === 'number' ? radius : 1;
+    const t = typeof tube === 'number' ? tube : 0.3;
+    // Browser carts use Three.js TorusGeometry(radius, tube). Godot TorusMesh
+    // wants inner/outer radii, so translate instead of treating the tube as
+    // the outer radius.
+    const geom = call('geometry.createTorus', {
+      innerRadius: Math.max(0.001, r - t),
+      outerRadius: Math.max(0.002, r + t),
+    });
     return geom ? spawnMesh(geom.handle, color, pos, opts) : 0;
   }
 
@@ -584,6 +597,7 @@
     meshProxyState.clear();
     meshMaterialState.clear();
     particleSystemState.clear();
+    proceduralTextureState.clear();
 
     // Clear any user-created lights (not the default directional light)
     for (const [handle, info] of meshes.entries()) {
@@ -1618,6 +1632,8 @@
           }
         },
         play:    function () { playing = true;  return tween; },
+        start:   function () { elapsed = 0; dir = 1; playing = true; return tween; },
+        resume:  function () { playing = true;  return tween; },
         pause:   function () { playing = false; return tween; },
         stop:    function () { playing = false; return tween; },
         restart: function () { elapsed = 0; dir = 1; playing = true; return tween; },
@@ -1672,6 +1688,8 @@
         } else if (elapsed2 <= 0 && pp2) { dir2 = 1; elapsed2 = 0; }
       },
       play:    function () { playing2 = true;  return novaTween; },
+      start:   function () { elapsed2 = 0; delayRemain = delay2; dir2 = 1; playing2 = true; return novaTween; },
+      resume:  function () { playing2 = true;  return novaTween; },
       pause:   function () { playing2 = false; return novaTween; },
       stop:    function () { playing2 = false; return novaTween; },
       restart: function () { elapsed2 = 0; dir2 = 1; delayRemain = delay2; playing2 = true; return novaTween; },
@@ -1699,7 +1717,323 @@
     }
   }
   function killAllTweens() { _activeTweens.length = 0; }
-  const tweenNs = { createTween, updateTweens, killAllTweens, Ease };
+  const _hypeRegistry = [];
+  function hypeRegister(behavior) {
+    if (behavior && _hypeRegistry.indexOf(behavior) < 0) _hypeRegistry.push(behavior);
+    return behavior;
+  }
+  function hypeUnregister(behavior) {
+    const i = _hypeRegistry.indexOf(behavior);
+    if (i >= 0) _hypeRegistry.splice(i, 1);
+    return behavior;
+  }
+  function hypeUpdate(dt) {
+    const copy = _hypeRegistry.slice();
+    for (let i = 0; i < copy.length; i++) {
+      if (copy[i] && typeof copy[i].tick === 'function') copy[i].tick(dt);
+    }
+  }
+  function hypeReset() {
+    _hypeRegistry.length = 0;
+  }
+  function _hypeHash(n) {
+    n = (n | 0) ^ 61 ^ ((n | 0) >>> 16);
+    n = (n + (n << 3)) | 0;
+    n = n ^ (n >>> 4);
+    n = Math.imul(n, 0x27d4eb2d);
+    n = n ^ (n >>> 15);
+    return ((n >>> 0) / 0xffffffff) * 2 - 1;
+  }
+  function _hypeNoise(x) {
+    const xi = Math.floor(x);
+    const xf = x - xi;
+    const s = xf * xf * (3 - 2 * xf);
+    const a = _hypeHash(xi);
+    const b = _hypeHash(xi + 1);
+    return a + (b - a) * s;
+  }
+  function createOscillator(opts) {
+    opts = opts || {};
+    const waveform = opts.waveform || 'sin';
+    let min = opts.min != null ? opts.min : 0;
+    let max = opts.max != null ? opts.max : 1;
+    let speed = opts.speed != null ? opts.speed : 1;
+    let offset = opts.offset || 0;
+    let t = 0, raw = 0, value = (min + max) / 2;
+    const osc = {
+      get value() { return value; },
+      get raw() { return raw; },
+      tick: function (dt) {
+        t += dt || 0;
+        const phase = t * speed + offset;
+        if (waveform === 'cos') raw = Math.cos(phase * Math.PI * 2);
+        else if (waveform === 'tri') raw = 1 - 4 * Math.abs(Math.round(phase - 0.25) - (phase - 0.25));
+        else if (waveform === 'saw') raw = 2 * (phase - Math.floor(phase + 0.5));
+        else if (waveform === 'noise') raw = _hypeNoise(phase * 3.7);
+        else raw = Math.sin(phase * Math.PI * 2);
+        value = min + (raw + 1) * 0.5 * (max - min);
+      },
+      reset: function () { t = 0; raw = 0; value = (min + max) / 2; return osc; },
+      register: function () { return hypeRegister(osc); },
+      unregister: function () { return hypeUnregister(osc); },
+      setMin: function (v) { min = v; return osc; },
+      setMax: function (v) { max = v; return osc; },
+      setSpeed: function (v) { speed = v; return osc; },
+      setOffset: function (v) { offset = v; return osc; },
+      setRange: function (lo, hi) { min = lo; max = hi; return osc; },
+    };
+    osc.tick(0);
+    if (opts.autoReg) hypeRegister(osc);
+    return osc;
+  }
+  function createTimeTrigger(opts) {
+    opts = opts || {};
+    const interval = Math.max(0.0001, opts.interval != null ? opts.interval : (opts.delay || 1));
+    let elapsed = 0, fired = false, active = opts.active !== false;
+    const trg = {
+      tick: function (dt) {
+        if (!active || fired) return;
+        elapsed += dt || 0;
+        while (elapsed >= interval && !fired) {
+          elapsed -= interval;
+          if (typeof opts.callback === 'function') opts.callback();
+          if (!opts.repeat) fired = true;
+        }
+      },
+      reset: function () { elapsed = 0; fired = false; active = true; return trg; },
+      start: function () { active = true; return trg; },
+      stop: function () { active = false; return trg; },
+      register: function () { return hypeRegister(trg); },
+      unregister: function () { return hypeUnregister(trg); },
+    };
+    if (opts.autoReg) hypeRegister(trg);
+    return trg;
+  }
+  function createRandomTrigger(opts) {
+    opts = opts || {};
+    const chance = opts.chance != null ? opts.chance : 0.01;
+    const trg = {
+      tick: function () { if (Math.random() < chance && typeof opts.callback === 'function') opts.callback(); },
+      register: function () { return hypeRegister(trg); },
+      unregister: function () { return hypeUnregister(trg); },
+    };
+    if (opts.autoReg) hypeRegister(trg);
+    return trg;
+  }
+  function _readPoint(fn) {
+    const p = typeof fn === 'function' ? fn() : (fn || {});
+    return { x: p.x || 0, y: p.y || 0, z: p.z || 0 };
+  }
+  function createProximityTrigger(opts) {
+    opts = opts || {};
+    let inside = false, dist = 0;
+    const radius = opts.radius != null ? opts.radius : 10;
+    const trg = {
+      get distance() { return dist; },
+      get inside() { return inside; },
+      tick: function () {
+        const a = _readPoint(opts.getFrom);
+        const b = _readPoint(opts.getTo);
+        const dx = a.x - b.x, dy = a.y - b.y, dz = a.z - b.z;
+        dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        const nowInside = dist <= radius;
+        if (nowInside && !inside && typeof opts.onEnter === 'function') opts.onEnter(dist);
+        if (!nowInside && inside && typeof opts.onExit === 'function') opts.onExit(dist);
+        if (nowInside && typeof opts.onInside === 'function') opts.onInside(dist);
+        inside = nowInside;
+      },
+      register: function () { return hypeRegister(trg); },
+      unregister: function () { return hypeUnregister(trg); },
+    };
+    if (opts.autoReg) hypeRegister(trg);
+    return trg;
+  }
+  function createColorPool(colors, mode) {
+    let pool = (colors || []).slice();
+    let idx = 0;
+    mode = mode || 'sequential';
+    function shuffle() {
+      for (let i = pool.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        const t = pool[i]; pool[i] = pool[j]; pool[j] = t;
+      }
+      idx = 0;
+    }
+    const cp = {
+      get current() { return pool[idx] || 0; },
+      next: function () {
+        if (!pool.length) return 0;
+        if (mode === 'random') return pool[Math.floor(Math.random() * pool.length)];
+        const c = pool[idx];
+        idx = (idx + 1) % pool.length;
+        if (mode === 'shuffle' && idx === 0) shuffle();
+        return c;
+      },
+      getColor: function (i) { return pool.length ? pool[((i % pool.length) + pool.length) % pool.length] : 0; },
+      shuffle: function () { shuffle(); return cp; },
+      reset: function () { idx = 0; return cp; },
+      add: function (c) { pool.push(c); return cp; },
+    };
+    if (mode === 'shuffle') shuffle();
+    return cp;
+  }
+  function createHPool(opts) {
+    opts = opts || {};
+    const build = opts.build || function () { return {}; };
+    const max = opts.max || 0;
+    const waiting = [], active = [];
+    function request() {
+      if (max > 0 && active.length >= max) return null;
+      let obj = waiting.length ? waiting.pop() : build();
+      if (waiting.indexOf(obj) < 0 && active.indexOf(obj) < 0 && typeof opts.onCreate === 'function' && !obj.__hpoolCreated) {
+        obj.__hpoolCreated = true;
+        opts.onCreate(obj);
+      }
+      active.push(obj);
+      if (typeof opts.onRequest === 'function') opts.onRequest(obj);
+      return obj;
+    }
+    function release(obj) {
+      const i = active.indexOf(obj);
+      if (i < 0) return;
+      active.splice(i, 1);
+      if (typeof opts.onRelease === 'function') opts.onRelease(obj);
+      waiting.push(obj);
+    }
+    return {
+      get active() { return active; },
+      get available() { return waiting.length; },
+      request: request,
+      release: release,
+      requestAll: function (n) { const out = []; for (let i = 0; i < n; i++) { const o = request(); if (o) out.push(o); } return out; },
+      releaseAll: function () { while (active.length) release(active[0]); },
+      onEach: function (fn) { for (let i = 0; i < active.length; i++) fn(active[i], i); },
+    };
+  }
+  function createGridLayout(opts) {
+    opts = opts || {};
+    const cols = opts.cols || 4, rows = opts.rows || 4, layers = opts.layers || 1;
+    const sx = opts.spacingX || 50, sy = opts.spacingY || 50, sz = opts.spacingZ || 50;
+    const ox = opts.originX || 0, oy = opts.originY || 0, oz = opts.originZ || 0;
+    function getPositions() {
+      const out = [];
+      for (let l = 0; l < layers; l++) for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+        out.push({ x: ox + c * sx - ((cols - 1) * sx) / 2, y: oy + r * sy - ((rows - 1) * sy) / 2, z: oz + l * sz - ((layers - 1) * sz) / 2 });
+      }
+      return out;
+    }
+    return { getPositions: getPositions, each: function (fn) { getPositions().forEach(fn); } };
+  }
+  function createCircleLayout(opts) {
+    opts = opts || {};
+    const count = opts.count || 8, radius = opts.radius || 100, plane = opts.plane || 'xz';
+    const start = opts.startAngle || 0, end = opts.endAngle == null ? Math.PI * 2 : opts.endAngle;
+    const cx = opts.cx || 0, cy = opts.cy || 0, cz = opts.cz || 0;
+    function getPositions() {
+      const out = [], span = end - start, step = count > 1 ? span / count : 0;
+      for (let i = 0; i < count; i++) {
+        const a = start + i * step, co = Math.cos(a) * radius, si = Math.sin(a) * radius;
+        let x = cx, y = cy, z = cz;
+        if (plane === 'xy') { x += co; y += si; }
+        else if (plane === 'yz') { y += co; z += si; }
+        else { x += co; z += si; }
+        out.push({ x: x, y: y, z: z, angle: a });
+      }
+      return out;
+    }
+    return { getPositions: getPositions, each: function (fn) { getPositions().forEach(fn); } };
+  }
+  function createSphereLayout(opts) {
+    opts = opts || {};
+    const count = opts.count || 20, radius = opts.radius || 100, cx = opts.cx || 0, cy = opts.cy || 0, cz = opts.cz || 0;
+    function getPositions() {
+      const out = [], golden = Math.PI * (3 - Math.sqrt(5));
+      for (let i = 0; i < count; i++) {
+        const yy = count > 1 ? (1 - (i / (count - 1)) * 2) * radius : 0;
+        const rr = Math.sqrt(Math.max(0, radius * radius - yy * yy));
+        const theta = golden * i;
+        out.push({ x: cx + Math.cos(theta) * rr, y: cy + yy, z: cz + Math.sin(theta) * rr });
+      }
+      return out;
+    }
+    return { getPositions: getPositions, each: function (fn) { getPositions().forEach(fn); } };
+  }
+  function createPathLayout(opts) {
+    opts = opts || {};
+    const points = opts.points || [{ x: -100, y: 0, z: 0 }, { x: 100, y: 0, z: 0 }];
+    const count = opts.count || 10, mode = opts.mode || 'linear';
+    function lerp(a, b, t) { return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t, z: a.z + (b.z - a.z) * t }; }
+    function bez(p0, p1, p2, p3, t) {
+      const mt = 1 - t;
+      return { x: mt*mt*mt*p0.x + 3*mt*mt*t*p1.x + 3*mt*t*t*p2.x + t*t*t*p3.x,
+        y: mt*mt*mt*p0.y + 3*mt*mt*t*p1.y + 3*mt*t*t*p2.y + t*t*t*p3.y,
+        z: mt*mt*mt*p0.z + 3*mt*mt*t*p1.z + 3*mt*t*t*p2.z + t*t*t*p3.z };
+    }
+    function getAt(t) {
+      t = Math.max(0, Math.min(1, t));
+      if (mode === 'bezier') {
+        const segs = Math.max(1, Math.floor((points.length - 1) / 3));
+        const seg = Math.min(Math.floor(t * segs), segs - 1);
+        const base = seg * 3, local = t * segs - seg;
+        return bez(points[base], points[base + 1], points[base + 2], points[base + 3], local);
+      }
+      const segs2 = Math.max(1, points.length - 1);
+      const seg2 = Math.min(Math.floor(t * segs2), segs2 - 1);
+      return lerp(points[seg2], points[seg2 + 1], t * segs2 - seg2);
+    }
+    function getPositions() { const out = []; for (let i = 0; i < count; i++) { const t = count > 1 ? i / (count - 1) : 0; out.push(Object.assign(getAt(t), { t: t })); } return out; }
+    return { getAt: getAt, getPositions: getPositions, each: function (fn) { getPositions().forEach(fn); } };
+  }
+  function createHSwarm(opts) {
+    opts = opts || {};
+    const count = opts.count || 20, speed = opts.speed || 4, bounds = opts.bounds || null;
+    const agents = [], goals = [];
+    for (let i = 0; i < count; i++) {
+      const a = { x: (Math.random() - 0.5) * 10, y: (Math.random() - 0.5) * 10, z: -10, vx: (Math.random() - 0.5) * speed, vy: (Math.random() - 0.5) * speed, vz: (Math.random() - 0.5) * speed };
+      if (typeof opts.initFn === 'function') opts.initFn(a, i);
+      agents.push(a);
+    }
+    const swarm = {
+      agents: agents,
+      goals: goals,
+      addGoal: function (x, y, z, weight) { goals.push({ x: x || 0, y: y || 0, z: z || 0, weight: weight == null ? 1 : weight }); return swarm; },
+      clearGoals: function () { goals.length = 0; return swarm; },
+      tick: function (dt) {
+        dt = dt || 0;
+        for (let i = 0; i < agents.length; i++) {
+          const a = agents[i];
+          if (goals.length) {
+            const g = goals[i % goals.length];
+            a.vx += (g.x - a.x) * 0.25 * (g.weight || 1) * dt;
+            a.vy += (g.y - a.y) * 0.25 * (g.weight || 1) * dt;
+            a.vz += (g.z - a.z) * 0.25 * (g.weight || 1) * dt;
+          }
+          const len = Math.hypot(a.vx, a.vy, a.vz) || 1;
+          if (len > speed) { a.vx = a.vx / len * speed; a.vy = a.vy / len * speed; a.vz = a.vz / len * speed; }
+          a.x += a.vx * dt; a.y += a.vy * dt; a.z += a.vz * dt;
+          if (bounds) {
+            const hw = bounds.w / 2, hh = bounds.h / 2, hd = (bounds.d || bounds.w) / 2;
+            const bx = bounds.x || 0, by = bounds.y || 0, bz = bounds.z || 0;
+            if (a.x < bx - hw) a.x += bounds.w; else if (a.x > bx + hw) a.x -= bounds.w;
+            if (a.y < by - hh) a.y += bounds.h; else if (a.y > by + hh) a.y -= bounds.h;
+            if (a.z < bz - hd) a.z += (bounds.d || bounds.w); else if (a.z > bz + hd) a.z -= (bounds.d || bounds.w);
+          }
+        }
+      },
+      register: function () { return hypeRegister(swarm); },
+      unregister: function () { return hypeUnregister(swarm); },
+    };
+    if (opts.autoReg) hypeRegister(swarm);
+    return swarm;
+  }
+
+  const tweenNs = {
+    createTween, updateTweens, killAllTweens, Ease,
+    hypeRegister, hypeUnregister, hypeUpdate, hypeReset,
+    createOscillator, createTimeTrigger, createRandomTrigger, createProximityTrigger,
+    createHSwarm, createColorPool, createHPool,
+    createGridLayout, createCircleLayout, createSphereLayout, createPathLayout,
+  };
 
   // ---------------- broader cart compat stubs --------------------------
   // Most of these return inert objects whose methods chain to themselves
@@ -3270,6 +3604,59 @@
     }
     return handle;
   }
+  function _lerpByte(a, b, t) { return Math.max(0, Math.min(255, Math.round(a + (b - a) * t))); }
+  function _pushPixel(pixels, r, g, b, a) {
+    pixels.push(r & 255, g & 255, b & 255, a == null ? 255 : (a & 255));
+  }
+  function _proceduralTexture(name) {
+    ensureInit();
+    if (proceduralTextureState.has(name)) return proceduralTextureState.get(name);
+    const w = 96, h = 96, pixels = [];
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const u = x / (w - 1);
+        const v = y / (h - 1);
+        if (name === 'grid') {
+          const gx = Math.abs(((u * 24) % 1) - 0.5);
+          const gy = Math.abs(((v * 36) % 1) - 0.5);
+          const line = gx > 0.47 || gy > 0.47;
+          const edge = Math.abs(u - 0.5) * 2;
+          const fade = Math.max(0, Math.min(1, v * 1.4));
+          const r = _lerpByte(0, 255, edge);
+          const g = _lerpByte(255, 0, edge * 0.6);
+          const b = _lerpByte(230, 255, edge);
+          _pushPixel(pixels, r, g, b, line ? Math.floor(235 * fade) : 12);
+        } else if (name === 'terrain') {
+          const n = (Math.sin(u * 37.0) + Math.sin(v * 51.0 + u * 11.0) + Math.sin((u + v) * 29.0)) / 3;
+          const ridge = Math.max(0, n);
+          const wire = Math.abs(((u * 10) % 1) - 0.5) > 0.46 || Math.abs(((v * 28) % 1) - 0.5) > 0.47;
+          const r = _lerpByte(15, 255, ridge * 0.8);
+          const g = _lerpByte(0, wire ? 210 : 40, ridge);
+          const b = _lerpByte(70, 210, 1 - ridge * 0.3);
+          _pushPixel(pixels, r, g, b, 215);
+        } else if (name === 'cloud') {
+          const n = (Math.sin(u * 18.0 + v * 4.0) + Math.sin(u * 31.0 - v * 8.0) + Math.sin((u + v) * 22.0)) / 3;
+          const a = Math.max(0, Math.min(180, Math.floor((n + 0.55) * 140)));
+          _pushPixel(pixels, 60, 235, 255, a);
+        } else {
+          const cx = u - 0.5, cy = v - 0.5;
+          const d = Math.sqrt(cx * cx + cy * cy);
+          const a = Math.atan2(cy, cx);
+          const spiral = Math.sin(a * 3.0 + d * 42.0);
+          const core = Math.max(0, 1 - d * 2.3);
+          const arm = Math.max(0, spiral * 0.5 + 0.5) * Math.max(0, 1 - d * 1.4);
+          const glow = Math.max(core, arm);
+          const r = _lerpByte(50, 255, arm);
+          const g = _lerpByte(80, 190, core);
+          const b = _lerpByte(190, 255, glow);
+          _pushPixel(pixels, r, g, b, Math.floor(Math.min(255, glow * 255)));
+        }
+      }
+    }
+    const handle = createTexture({ width: w, height: h, pixels });
+    proceduralTextureState.set(name, handle);
+    return handle;
+  }
   function createInstancedMesh(geom, count, color, opts) {
     ensureInit();
     opts = opts || {};
@@ -3541,8 +3928,8 @@
       },
       // Galaxy spiral
       galaxy: {
-        color: 0x4488ff, emission: 0x2266ff, emissionEnergy: 2.2,
-        blend: 'add', metallic: 0.4, roughness: 0.4,
+        color: 0x6688ff, emission: 0x3355ff, emissionEnergy: 1.45,
+        blend: 'alpha', metallic: 0.15, roughness: 0.65,
       },
       // Water surface
       water: {
@@ -3578,6 +3965,12 @@
       blend: preset.blend === 'add' ? 'alpha' : preset.blend,
       emissionEnergy: Math.min(preset.emissionEnergy || 1, 1.35),
     });
+    if (name === 'galaxy' && opts.map == null && opts.albedoTexture == null) {
+      const galaxyTex = _proceduralTexture('galaxy');
+      tonedPreset.map = galaxyTex;
+      tonedPreset.emissionMap = galaxyTex;
+      tonedPreset.opacity = opts.opacity == null ? 0.82 : opts.opacity;
+    }
     const payload = materialPayload(tonedPreset.color, Object.assign({
       opacity: opts.opacity == null ? 0.9 : opts.opacity,
       transparent: true,
@@ -3598,7 +3991,18 @@
     let kind = opts.kind || opts.type || 'plasma';
     if (src.indexOf('lava') >= 0 || src.indexOf('fire') >= 0) kind = 'lava';
     else if (src.indexOf('water') >= 0) kind = 'water';
-    else if (src.indexOf('grid') >= 0 || src.indexOf('neon') >= 0) kind = 'neon';
+    else if (src.indexOf('grid') >= 0 || src.indexOf('neon') >= 0) {
+      kind = 'neon';
+      opts = Object.assign({ map: _proceduralTexture('grid'), emissionMap: _proceduralTexture('grid'), color: 0x00ffff, emissive: 0xff00cc, opacity: 0.86, emissionEnergy: 1.25 }, opts);
+    }
+    else if (src.indexOf('cloud') >= 0 || src.indexOf('rainbow') >= 0) {
+      kind = 'water';
+      opts = Object.assign({ map: _proceduralTexture('cloud'), color: 0x44eaff, emissive: 0x00ccff, opacity: 0.45, emissionEnergy: 0.75 }, opts);
+    }
+    else if (src.indexOf('vheight') >= 0 || src.indexOf('fbm3') >= 0) {
+      kind = 'vortex';
+      opts = Object.assign({ map: _proceduralTexture('terrain'), emissionMap: _proceduralTexture('terrain'), color: 0x6611aa, emissive: 0x00ccff, opacity: 0.78, emissionEnergy: 1.05 }, opts);
+    }
     else if (src.indexOf('void') >= 0 || src.indexOf('noise') >= 0) kind = 'void';
     else if (src.indexOf('rainbow') >= 0) kind = 'rainbow';
     return createTSLMaterial(kind, opts);
@@ -5481,6 +5885,18 @@
   global.wad = wadNsP;
   // Some carts use bare `engine` as the bridge handle.
   if (!global.engine) global.engine = engine;
+  if (typeof global.engine.createPlaneGeometry === 'undefined') {
+    global.engine.createPlaneGeometry = function (w, h) {
+      const geom = call('geometry.createPlane', { size: [w || 1, h || 1] });
+      return { handle: geom && geom.handle ? geom.handle : 0, dispose: function () {} };
+    };
+  }
+  if (typeof global.engine.createBoxGeometry === 'undefined') {
+    global.engine.createBoxGeometry = function (w, h, d) {
+      const geom = call('geometry.createBox', { size: [w || 1, h || 1, d || 1] });
+      return { handle: geom && geom.handle ? geom.handle : 0, dispose: function () {} };
+    };
+  }
 
   // Browser-ish globals so demos that reach for them don't ReferenceError.
   if (!global.setTimeout) global.setTimeout = setTimeout_;
@@ -5556,7 +5972,7 @@
     global.centerX = function (w) { return Math.floor((640 - (w || 0)) / 2); };
   }
   if (typeof global.centerY === 'undefined') {
-    global.centerY = function (h) { return Math.floor((480 - (h || 0)) / 2); };
+    global.centerY = function (h) { return Math.floor((360 - (h || 0)) / 2); };
   }
   // Minimal DOM stub. Some carts feature-test `typeof document !== 'undefined'`
   // before doing browser-only work; provide a stub that returns no-op stubs.

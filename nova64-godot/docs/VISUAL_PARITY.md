@@ -70,6 +70,44 @@ Known follow-up:
   shutdown SIGSEGV; the screenshots and conformance PASS signal complete before
   teardown.
 
+## Godot HYPE, Hero, DemoScene, and TSL Galaxy checkpoint
+
+This checkpoint addressed the next visual parity issues found from focused
+Godot screenshots:
+
+- `hype-demo` now exists as a Godot cart under
+  `godot_project/carts/hype-demo`, copied from the browser example.
+- The Godot shim now exposes the HYPE framework surface used by that cart:
+  oscillator, time/random/proximity triggers, color pools, HPool, swarm, grid,
+  circle, sphere, and path layouts.
+- The global `centerY()` helper now matches the actual Godot overlay height
+  (`360`) instead of the old `480` fallback. This keeps HUDs and start screens
+  aligned with `screenHeight()`.
+- `demoscene` start-screen controls were tightened for the 640x360 Godot
+  overlay so the buttons, feature panel, prompt, and controls text fit without
+  clipping.
+- The TSL Galaxy scene now uses a Three-style torus signature mapping
+  (`createTorus(radius, tube, ...)`) before creating Godot `TorusMesh`
+  inner/outer radii. This removes the huge washed-out ring artifact.
+- `createTSLMaterial('galaxy')` and shader-material fallbacks for grid,
+  terrain, and cloud shaders now use small generated texture maps rather than
+  only flat emissive colors. This gives `tsl-showcase` and `hero-demo` more
+  readable structure while still remaining an approximation.
+- Mesh proxies now include harmless geometry objects and the bridge-style
+  `engine.createPlaneGeometry()` / `createBoxGeometry()` helpers. This prevents
+  Three.js-specific cart code such as `mesh.geometry.dispose()` from rejecting
+  async init paths under Godot.
+
+Focused validation:
+
+- `hype-demo`: PASS visual.
+- `demoscene`: PASS visual.
+- `tsl-showcase`: PASS visual, with Galaxy Spiral no longer dominated by the
+  overlarge white torus.
+- `hero-demo`: PASS visual. Earlier "failure" was mostly the native process
+  exiting non-zero after it had already printed visual PASS; this pass completed
+  cleanly after the geometry/shader fallback work.
+
 ## Previous checkpoint — VOX loader visibility
 
 `vox-viewer` now renders `assets/vox/house.vox` in the Godot adapter. The fix

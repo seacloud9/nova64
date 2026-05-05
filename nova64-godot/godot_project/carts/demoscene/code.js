@@ -153,9 +153,9 @@ function initStartScreen() {
   // Main start button - extra large and flashy
   const startBtn = createButton(
     centerX(280),
-    180,
+    156,
     280,
-    70,
+    52,
     '▶ BEGIN ODYSSEY ▶',
     () => {
       console.log('🚀🚀🚀 START BUTTON CLICKED! 🚀🚀🚀');
@@ -177,9 +177,9 @@ function initStartScreen() {
   // Info button
   const infoBtn = createButton(
     centerX(240),
-    270,
+    216,
     240,
-    50,
+    42,
     '💡 ABOUT DEMO',
     () => {
       console.log('ℹ️ ABOUT BUTTON CLICKED!');
@@ -1027,19 +1027,19 @@ function drawStartScreen() {
   const g = Math.floor(128 + Math.sin(startScreenTime * 2 + 2) * 127);
   const b = Math.floor(128 + Math.sin(startScreenTime * 2 + 4) * 127);
 
-  drawTextShadow('NOVA64', 320, 50 + bounce, rgba8(r, g, b, 255), rgba8(0, 0, 0, 255), 6, 1);
+  drawTextShadow('NOVA64', 320, 34 + bounce * 0.45, rgba8(r, g, b, 255), rgba8(0, 0, 0, 255), 6, 0.82);
 
   setFont('large');
   const cyan = rgba8(0, 255, 255, Math.floor(pulse * 255));
-  drawTextOutline('DEMOSCENE', 320, 110, cyan, rgba8(0, 0, 0, 255), 2);
+  drawTextOutline('DEMOSCENE', 320, 80, cyan, rgba8(0, 0, 0, 255), 1.25);
 
   // Subtitle
   setFont('normal');
   const magenta = rgba8(255, 0, 255, 255);
-  drawText('▶ TRON ODYSSEY ◀', 320, 145, magenta, 1);
+  drawText('▶ TRON ODYSSEY ◀', 320, 122, magenta, 0.85);
 
   // Info panel
-  const panel = createPanel(centerX(500), 210, 500, 200, {
+  const panel = createPanel(centerX(500), 266, 500, 74, {
     bgColor: rgba8(10, 0, 20, 200),
     borderColor: rgba8(0, 255, 255, 255),
     borderWidth: 3,
@@ -1051,19 +1051,14 @@ function drawStartScreen() {
 
   setFont('small');
   setTextAlign('center');
-  drawText('A VISUAL SHOWCASE OF NOVA64 CAPABILITIES', 320, 225, uiColors.warning, 1);
-  drawText('', 320, 240, uiColors.light, 1);
-  drawText('✨ BLOOM & POST-PROCESSING EFFECTS', 320, 255, uiColors.light, 1);
-  drawText('🎨 DYNAMIC SHADER MATERIALS', 320, 270, uiColors.light, 1);
-  drawText('💫 GPU-ACCELERATED PARTICLES', 320, 285, uiColors.light, 1);
-  drawText('🎬 CINEMATIC CAMERA CHOREOGRAPHY', 320, 300, uiColors.light, 1);
-  drawText('🌈 PROCEDURAL NEON GEOMETRY', 320, 315, uiColors.light, 1);
+  drawText('A VISUAL SHOWCASE OF NOVA64 CAPABILITIES', 320, 274, uiColors.warning, 0.82);
+  drawText('BLOOM • SHADERS • PARTICLES • CAMERA • NEON GEOMETRY', 320, 294, uiColors.light, 0.78);
 
   setFont('tiny');
   drawText(
     'Journey through 5 unique scenes showcasing the engine',
     320,
-    335,
+    314,
     uiColors.secondary,
     1
   );
@@ -1071,15 +1066,9 @@ function drawStartScreen() {
   // Draw buttons
   drawAllButtons();
 
-  // Pulsing prompt
-  const alpha = Math.floor((Math.sin(startScreenTime * 5) * 0.5 + 0.5) * 255);
-  setFont('normal');
-  drawText('▶ PRESS BEGIN OR SPACEBAR TO START ◀', 320, 375, rgba8(0, 255, 255, alpha), 1);
-
   // Credits
   setFont('tiny');
-  drawText('CONTROLS: CLICK BUTTON OR PRESS SPACE/ENTER', 320, 395, rgba8(150, 150, 200, 200), 1);
-  drawText('NOVA64 - THE ULTIMATE FANTASY CONSOLE', 320, 410, rgba8(100, 100, 150, 180), 1);
+  drawText('CONTROLS: CLICK BUTTON OR PRESS SPACE/ENTER', 320, 330, rgba8(150, 150, 200, 200), 0.55);
 }
 
 function drawDemoHUD() {

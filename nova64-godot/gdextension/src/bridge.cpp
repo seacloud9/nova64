@@ -1096,7 +1096,13 @@ Dictionary Nova64Host::_cmd_vox_load(const Dictionary &p) {
     Dictionary palette_d;
     for (int i = 0; i < 256; ++i) {
         if (!used[i]) continue;
-        palette_d[String::num_int64(i)] = (int64_t)palette[i];
+        // MagicaVoxel XYZI colour indices are 1-based. Index 0 is air /
+        // transparent, while RGBA/default palette entry 0 is the colour for
+        // voxel index 1. Keep block id 0 reserved for air, but look up the
+        // authored colour from index-1 so imported .vox models match the web
+        // VOXLoader palette.
+        const int palette_index = i > 0 ? i - 1 : 0;
+        palette_d[String::num_int64(i)] = (int64_t)palette[palette_index];
     }
 
     Dictionary chunk_payload;

@@ -22,6 +22,7 @@ let state = 'loading';
 let loadError = null;
 
 let walls = [];
+let thingSprites = [];
 let collisionSegs = [];
 let floorMesh = 0;
 let ceilingMesh = 0;
@@ -72,6 +73,10 @@ function clearLevel() {
     if (w.handle) destroyMesh(w.handle);
   }
   walls = [];
+  for (const s of thingSprites) {
+    if (s.handle) destroyMesh(s.handle);
+  }
+  thingSprites = [];
   collisionSegs = [];
   if (floorMesh) { destroyMesh(floorMesh); floorMesh = 0; }
   if (ceilingMesh) { destroyMesh(ceilingMesh); ceilingMesh = 0; }
@@ -100,6 +105,42 @@ function buildTexturedWall(w, bri, fallbackColor) {
   }
   texturedWalls++;
   return h;
+}
+
+function buildThingSprite(t, kind) {
+  if (!texMgr || !t || !t.doomType) return 0;
+  const sprite = texMgr.getSpriteTexture(t.doomType);
+  if (!sprite || !sprite.texture) return 0;
+
+  const worldH = Math.max(0.8, sprite.height * SCALE);
+  const worldW = Math.max(0.4, sprite.width * SCALE);
+  const y = (t.floorH || 0) + worldH * 0.5;
+  const h = createPlane(worldW, worldH, 0xffffff, [t.x, y, t.z], {
+    material: 'standard',
+    map: sprite.texture,
+    transparent: true,
+    opacity: 1,
+    unshaded: true,
+    doubleSided: true,
+    roughness: 1,
+  });
+  setRotation(h, Math.PI / 2, player.yaw, 0);
+  thingSprites.push({
+    handle: h,
+    x: t.x,
+    y,
+    z: t.z,
+    kind,
+    type: t.type,
+    doomType: t.doomType,
+  });
+  return h;
+}
+
+function updateThingSprites() {
+  for (const s of thingSprites) {
+    setRotation(s.handle, Math.PI / 2, player.yaw, 0);
+  }
 }
 
 function buildLevel(mapName) {
@@ -143,6 +184,13 @@ function buildLevel(mapName) {
     collisionSegs.push({ x: seg.x, z: seg.z, r: seg.r });
   }
 
+  for (const enemy of converted.enemies || []) {
+    buildThingSprite(enemy, 'enemy');
+  }
+  for (const item of converted.items || []) {
+    buildThingSprite(item, 'item');
+  }
+
   floorMesh = createPlane(420, 420, 0x222233, [0, 0, 0], { material: 'standard', roughness: 1 });
   setRotation(floorMesh, -Math.PI / 2, 0, 0);
   ceilingMesh = createPlane(420, 420, 0x0a0a14, [0, 12, 0], { material: 'standard', roughness: 1 });
@@ -165,8 +213,10 @@ function buildLevel(mapName) {
   print('[wad-demo] built ' + mapName
     + ' walls=' + totalWalls
     + ' textured=' + texturedWalls
+    + ' sprites=' + thingSprites.length
     + ' floorTex=' + texturedFloor);
   syncCamera();
+  updateThingSprites();
 }
 
 function mostCommonFlat(sectors, keyName) {
@@ -303,6 +353,7 @@ export function draw() {
   rectfill(0, 0, 640, 24, rgba8(0, 0, 0, 190));
   novaPrint('MAP ' + currentMap
     + '  WALLS ' + totalWalls
+    + '  SPR ' + thingSprites.length
     + '  TEX ' + texturedWalls + '/' + totalWalls
     + '  FLOOR ' + texturedFloor
     + '  POS ' + player.x.toFixed(1) + ',' + player.z.toFixed(1)

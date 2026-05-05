@@ -70,6 +70,33 @@ Known follow-up:
   shutdown SIGSEGV; the screenshots and conformance PASS signal complete before
   teardown.
 
+## WAD sprites, GLB visibility, and VOX palette checkpoint
+
+This checkpoint closes three asset-parity gaps against the web runtime:
+
+- `wad-demo` now instantiates enemy/item thing sprites from the WAD `THINGS`
+  list. The cart uses `WADTextureManager.getSpriteTexture(doomType)` and builds
+  transparent, double-sided billboard planes for monsters and pickups. The HUD
+  now reports `SPR <count>` alongside wall/texture counts; E1M1 currently
+  reports `SPR 158`.
+- `model-viewer-3d` no longer points Godot at remote HTTPS GLB URLs that the
+  native bridge cannot load. The first model is now a bundled local
+  `res://assets/glb/Fox.glb`, with local fallback entries so the demo always
+  produces visible geometry in the Godot adapter.
+- The `.vox` loader now treats MagicaVoxel `XYZI` color indices as 1-based,
+  matching the VOX spec and Three.js `VOXLoader`. Block id 0 remains air, while
+  color id 1 maps to palette entry 0. This fixes the visible palette shift on
+  `house.vox`.
+
+Focused validation:
+
+- Rebuilt the Windows GDExtension:
+  `scons platform=windows target=template_debug -j4`.
+- `model-viewer-3d`: PASS visual; the Fox GLB appears.
+- `vox-viewer`: PASS visual; `house.vox` shows the corrected red/green/cyan
+  palette.
+- `wad-demo` with Enter on E1M1: PASS visual; HUD reports `SPR 158`.
+
 ## Godot HYPE, Hero, DemoScene, and TSL Galaxy checkpoint
 
 This checkpoint addressed the next visual parity issues found from focused

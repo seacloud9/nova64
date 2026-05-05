@@ -12,22 +12,22 @@ let rotatingMesh = null;
 let currentModelIndex = 0;
 let models = [
   {
-    url: 'https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/Fox/glTF-Binary/Fox.glb',
+    url: 'res://assets/glb/Fox.glb',
     scale: 0.05,
     yOffset: -2,
     name: 'Animated Fox',
   },
   {
-    url: 'https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/CesiumMan/glTF-Binary/CesiumMan.glb',
-    scale: 2.5,
-    yOffset: -2,
-    name: 'Cesium Man',
+    url: 'res://assets/glb/nova_64_logo.glb',
+    scale: 1.4,
+    yOffset: -1,
+    name: 'Nova64 Logo',
   },
   {
-    url: 'https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/Duck/glTF-Binary/Duck.glb',
-    scale: 2.0,
-    yOffset: -1.5,
-    name: 'Duck',
+    url: 'res://assets/glb/Fox.glb',
+    scale: 0.075,
+    yOffset: -2,
+    name: 'Fox Closeup',
   },
 ];
 
@@ -83,6 +83,7 @@ async function switchModel(index) {
     if (index === 0) playAnimation(meshId, 2, true, 1.5); // Fox Run
   } catch (e) {
     console.error('Failed to load model', e);
+    rotatingMesh = null;
   }
 
   isLoading = false;

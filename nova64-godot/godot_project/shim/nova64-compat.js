@@ -149,6 +149,8 @@
   }
   const meshMaterialState = new Map();
   const materialPayloadState = new Map();
+  const meshProxyState = new Map();
+  const particleSystemState = new Map();
   let syntheticMaterialId = 1;
   function makeTrackedVector(initial, onChange) {
     const values = [(initial && initial[0]) || 0, (initial && initial[1]) || 0, (initial && initial[2]) || 0];
@@ -177,6 +179,7 @@
     const pz = (pos && pos[2]) || 0;
     const obj = {
       handle: rawHandle | 0,
+      isMesh: true,
       visible: true,
     };
     let materialHandle = null;
@@ -205,7 +208,11 @@
         }
       },
     });
+    obj.traverse = function (fn) {
+      if (typeof fn === 'function') fn(obj);
+    };
     obj[Symbol.toPrimitive] = function () { return obj.handle; };
+    if (obj.handle) meshProxyState.set(obj.handle, obj);
     return obj;
   }
 
@@ -294,16 +301,58 @@
     return geom ? spawnMesh(geom.handle, color, pos, planeOpts) : 0;
   }
 
+  function isPositionLike(value) {
+    return Array.isArray(value) || (value && typeof value === 'object' && value.x !== undefined);
+  }
+  function isOptionsLike(value) {
+    return value && typeof value === 'object' && !Array.isArray(value) && value.x === undefined;
+  }
+  function normalizeCylinderArgs(radiusTop, radiusBottom, height, color, pos, opts, argCount) {
+    if (argCount <= 3 && Number.isFinite(height) && (height === 0 || Math.abs(height) > 128)) {
+      return { radiusTop, radiusBottom: radiusTop, height: radiusBottom, color: height, position: pos, options: opts || {} };
+    }
+    if (isPositionLike(color) || isOptionsLike(color)) {
+      return {
+        radiusTop,
+        radiusBottom: radiusTop,
+        height: radiusBottom,
+        color: height,
+        position: isPositionLike(color) ? color : [0, 0, 0],
+        options: isPositionLike(color) ? (pos || {}) : color,
+      };
+    }
+    if (Number.isInteger(color) && color >= 3 && color <= 128 && isPositionLike(pos)) {
+      return {
+        radiusTop,
+        radiusBottom: radiusTop,
+        height: radiusBottom,
+        color: height,
+        position: pos,
+        options: Object.assign({}, opts || {}, { segments: color }),
+      };
+    }
+    return { radiusTop, radiusBottom, height, color, position: pos, options: opts || {} };
+  }
+
   // Cylinder + cone + torus primitives — backed by real Godot meshes.
   function createCylinder(radiusTop, radiusBottom, height, color, pos, opts) {
     ensureInit();
-    const rt = typeof radiusTop === 'number' ? radiusTop : 0.5;
-    const rb = typeof radiusBottom === 'number' ? radiusBottom : 0.5;
-    const h = typeof height === 'number' ? height : 1;
+    const args = normalizeCylinderArgs(
+      typeof radiusTop === 'number' ? radiusTop : 1,
+      typeof radiusBottom === 'number' ? radiusBottom : 1,
+      typeof height === 'number' ? height : 1,
+      color == null ? 0xffffff : color,
+      pos || [0, 0, 0],
+      opts || {},
+      arguments.length
+    );
     const geom = call('geometry.createCylinder', {
-      topRadius: rt, bottomRadius: rb, height: h, sides: 24,
+      topRadius: args.radiusTop,
+      bottomRadius: args.radiusBottom,
+      height: args.height,
+      sides: (args.options && args.options.segments) || 24,
     });
-    return geom ? spawnMesh(geom.handle, color, pos, opts) : 0;
+    return geom ? spawnMesh(geom.handle, args.color, args.position, args.options) : 0;
   }
 
   function createCone(radius, height, color, pos, opts) {
@@ -329,6 +378,7 @@
     call('mesh.destroy', { handle: h });
     rotState.delete(h);
     meshMaterialState.delete(h);
+    meshProxyState.delete(h);
     meshes.delete(h);
     if (handle && typeof handle === 'object') handle.handle = 0;
   }
@@ -381,6 +431,15 @@
       if (typeof handle.scale._set === 'function') handle.scale._set(s, false);
       else { handle.scale.x = s[0]; handle.scale.y = s[1]; handle.scale.z = s[2]; }
     }
+  }
+
+  function getMesh(handle) {
+    const h = unwrapHandle(handle);
+    if (!h) return null;
+    if (meshProxyState.has(h)) return meshProxyState.get(h);
+    const proxy = makeMeshHandle(h, [0, 0, 0]);
+    meshProxyState.set(h, proxy);
+    return proxy;
   }
 
   // ---------------- camera ----------------------------------------------
@@ -522,6 +581,9 @@
       }
     }
     meshes.clear();
+    meshProxyState.clear();
+    meshMaterialState.clear();
+    particleSystemState.clear();
 
     // Clear any user-created lights (not the default directional light)
     for (const [handle, info] of meshes.entries()) {
@@ -600,6 +662,7 @@
   global.__nova64_inputStep = function () { _inputStep(); };
   // Pre-update hook: tick active tweens + novaStore time each frame.
   global.__nova64_preUpdate = function (dt) {
+    _tickTimers(dt);
     updateTweens(dt);
     novaStore.setState(function (s) { return { time: s.time + dt }; });
   };
@@ -834,6 +897,9 @@
     const sc = __mtxScale();
     __ops.push(['ellipse', p[0] | 0, p[1] | 0, (rx * sc) | 0, (ry * sc) | 0,
       colorFromHex(color == null ? 0xffffff : color), filled !== false]);
+  }
+  function ellipsefill(x, y, rx, ry, color) {
+    ellipse(x, y, rx, ry, color, true);
   }
   function arc(x, y, r, _a0, _a1, color) {
     circle(x, y, Math.max(1, r | 0), color, false);
@@ -2724,8 +2790,105 @@
   }
   var novaStore = createGameStore({ gameState: 'start', score: 0, lives: 3, level: 1, time: 0, paused: false, playerX: 0, playerY: 0 });
 
+  function _cssColorToHex(value, fallback) {
+    if (typeof value === 'number') return value;
+    if (typeof value !== 'string') return fallback == null ? 0xffffff : fallback;
+    const s = value.trim();
+    if (s[0] === '#') return parseInt(s.slice(1), 16) || 0;
+    const rgba = s.match(/rgba?\(([^)]+)\)/i);
+    if (rgba) {
+      const parts = rgba[1].split(',').map(function (v) { return parseFloat(v); });
+      return rgba8(parts[0] || 0, parts[1] || 0, parts[2] || 0, parts[3] == null ? 255 : parts[3] * 255);
+    }
+    const hsla = s.match(/hsla?\(([^)]+)\)/i);
+    if (hsla) {
+      const parts = hsla[1].split(',');
+      return hslColor(parseFloat(parts[0]) || 0, (parseFloat(parts[1]) || 0) / 100, (parseFloat(parts[2]) || 0) / 100, parts[3] == null ? 255 : parseFloat(parts[3]) * 255);
+    }
+    return fallback == null ? 0xffffff : fallback;
+  }
+  function _makeCanvasContext() {
+    const ctx = {
+      fillStyle: 0xffffff,
+      strokeStyle: 0xffffff,
+      globalAlpha: 1,
+      lineWidth: 1,
+      font: '8px monospace',
+      textAlign: 'left',
+      textBaseline: 'top',
+      _stack: [],
+      _tx: 0, _ty: 0, _sx: 1, _sy: 1,
+      save() { this._stack.push([this.fillStyle, this.strokeStyle, this.globalAlpha, this.lineWidth, this.font, this.textAlign, this.textBaseline, this._tx, this._ty, this._sx, this._sy]); },
+      restore() { const s = this._stack.pop(); if (!s) return; this.fillStyle=s[0]; this.strokeStyle=s[1]; this.globalAlpha=s[2]; this.lineWidth=s[3]; this.font=s[4]; this.textAlign=s[5]; this.textBaseline=s[6]; this._tx=s[7]; this._ty=s[8]; this._sx=s[9]; this._sy=s[10]; },
+      translate(x, y) { this._tx += (x || 0) * this._sx; this._ty += (y || 0) * this._sy; },
+      scale(x, y) { this._sx *= x || 1; this._sy *= y == null ? (x || 1) : y; },
+      createLinearGradient() {
+        const stops = [];
+        return { stops, addColorStop(_p, c) { stops.push(c); }, _isGradient: true };
+      },
+      _color(v) {
+        const c = v && v._isGradient ? (v.stops[Math.floor(v.stops.length / 2)] || 0xffffff) : v;
+        const hex = _cssColorToHex(c, 0xffffff);
+        if (this.globalAlpha >= 0.999) return hex;
+        const u = colorFromHex(hex);
+        return [u[0], u[1], u[2], u[3] * this.globalAlpha];
+      },
+      fillRect(x, y, w, h) { rectfill(this._tx + x * this._sx, this._ty + y * this._sy, w * this._sx, h * this._sy, this._color(this.fillStyle)); },
+      strokeRect(x, y, w, h) { rect(this._tx + x * this._sx, this._ty + y * this._sy, w * this._sx, h * this._sy, this._color(this.strokeStyle), false); },
+      beginPath() { this._path = []; },
+      moveTo(x, y) { this._path = [[x, y]]; },
+      lineTo(x, y) { if (!this._path) this._path = []; this._path.push([x, y]); },
+      quadraticCurveTo(_cx, _cy, x, y) { this.lineTo(x, y); },
+      closePath() {},
+      fill() {
+        if (!this._path || this._path.length < 3) return;
+        const pts = [];
+        for (let i = 0; i < this._path.length; i++) {
+          pts.push(this._tx + this._path[i][0] * this._sx, this._ty + this._path[i][1] * this._sy);
+        }
+        poly(pts, this._color(this.fillStyle), true);
+      },
+      stroke() { if (!this._path) return; for (let i = 1; i < this._path.length; i++) line(this._tx + this._path[i-1][0] * this._sx, this._ty + this._path[i-1][1] * this._sy, this._tx + this._path[i][0] * this._sx, this._ty + this._path[i][1] * this._sy, this._color(this.strokeStyle)); },
+      fillText(text, x, y) { novaPrint(text, this._tx + x * this._sx, this._ty + y * this._sy, this._color(this.fillStyle), Math.max(1, Math.abs(this._sx))); },
+      strokeText(text, x, y) { novaPrint(text, this._tx + x * this._sx, this._ty + y * this._sy, this._color(this.strokeStyle), Math.max(1, Math.abs(this._sx))); },
+      arc(x, y, r) { circle(this._tx + x * this._sx, this._ty + y * this._sy, Math.abs(r * this._sx), this._color(this.fillStyle), true); },
+    };
+    return ctx;
+  }
+
   // Stage / screens / movie clip / graphics nodes
-  function createGraphicsNode(_opts) { warnOnce('createGraphicsNode'); return makeStub(); }
+  function createContainer() { return { children: [], x: 0, y: 0, alpha: 1, scaleX: 1, scaleY: 1 }; }
+  function addChild(parent, child) { if (parent && child) { (parent.children || (parent.children = [])).push(child); child.parent = parent; } return child; }
+  function createGraphicsNode(drawFn) {
+    const node = createContainer();
+    node.draw = typeof drawFn === 'function' ? drawFn : function () {};
+    node.tweenTo = function (props, dur, opts) { return createTween(node, props, dur, opts || {}); };
+    return node;
+  }
+  function createTextNode(text, opts) {
+    opts = opts || {};
+    const node = createContainer();
+    node.text = text || '';
+    node.color = opts.color == null ? 0xffffff : opts.color;
+    node.draw = function (_ctx, n) { novaPrint(n.text, n.x || 0, n.y || 0, n.color); };
+    node.tweenTo = function (props, dur, twOpts) { return createTween(node, props, dur, twOpts || {}); };
+    return node;
+  }
+  function drawStage(root) {
+    const ctx = _makeCanvasContext();
+    function drawNode(node) {
+      if (!node) return;
+      ctx.save();
+      ctx.globalAlpha *= node.alpha == null ? 1 : node.alpha;
+      ctx.translate(node.x || 0, node.y || 0);
+      ctx.scale(node.scaleX == null ? 1 : node.scaleX, node.scaleY == null ? 1 : node.scaleY);
+      if (typeof node.draw === 'function') node.draw(ctx, node);
+      const kids = node.children || [];
+      for (let i = 0; i < kids.length; i++) drawNode(kids[i]);
+      ctx.restore();
+    }
+    drawNode(root);
+  }
   function createMovieClip(_opts) { warnOnce('createMovieClip'); return makeStub({ currentFrame: 0, totalFrames: 1 }); }
   function createStage(_opts) { warnOnce('createStage'); return makeStub(); }
   function createScreen(_opts) { warnOnce('createScreen'); return makeStub(); }
@@ -2738,26 +2901,181 @@
   // Particles (2D + 3D) — backed by GPUParticles3D (3D) and a software
   // simulation for 2D fallback. Both return a stub object with a .destroy()
   // method so cart code can hold onto the handle.
-  function createParticleSystem(opts) { return createParticles(opts); }
-  function createEmitter2D(_opts)     { warnOnce('createEmitter2D'); return makeStub(); }
+  function createParticleSystem(maxParticles, opts) {
+    if (typeof maxParticles === 'number') {
+      return createParticles(Object.assign({}, opts || {}, { count: maxParticles, amount: maxParticles }));
+    }
+    return createParticles(maxParticles || {});
+  }
+  function createEmitter2D(opts) {
+    opts = opts || {};
+    return {
+      x: opts.x || 0,
+      y: opts.y || 0,
+      tint: opts.tint == null ? 0xffffff : opts.tint,
+      blendMode: opts.blendMode || opts.blending || 'source-over',
+      maxParticles: opts.maxParticles || 128,
+      emitRate: opts.emitRate || 0,
+      speed: opts.speed || [20, 80],
+      angle: opts.angle || [-Math.PI, Math.PI],
+      life: opts.life || [0.4, 1.2],
+      scale: opts.scale || [1, 2],
+      gravity: opts.gravity || 0,
+      fadeOut: opts.fadeOut !== false,
+      scaleDown: opts.scaleDown !== false,
+      particles: [],
+      _carry: 0,
+    };
+  }
+  function _range(v, fallback) {
+    if (Array.isArray(v)) return (v[0] || 0) + Math.random() * ((v[1] == null ? v[0] : v[1]) - (v[0] || 0));
+    return v == null ? fallback : v;
+  }
+  function _spawnEmitterParticle(em) {
+    if (!em || em.particles.length >= em.maxParticles) return;
+    const a = _range(em.angle, 0);
+    const sp = _range(em.speed, 50);
+    const life = Math.max(0.01, _range(em.life, 1));
+    em.particles.push({
+      x: em.x || 0,
+      y: em.y || 0,
+      vx: Math.cos(a) * sp,
+      vy: Math.sin(a) * sp,
+      life,
+      age: 0,
+      size: Math.max(1, _range(em.scale, 1)),
+      color: em.tint == null ? 0xffffff : em.tint,
+    });
+  }
+  function burstEmitter2D(em, count) {
+    count = count == null ? 16 : count;
+    for (let i = 0; i < count; i++) _spawnEmitterParticle(em);
+  }
+  function updateEmitter2D(em, dt) {
+    if (!em) return;
+    if (em.emitRate > 0) {
+      em._carry += em.emitRate * dt;
+      while (em._carry >= 1) { _spawnEmitterParticle(em); em._carry -= 1; }
+    }
+    const g = em.gravity || 0;
+    for (let i = em.particles.length - 1; i >= 0; i--) {
+      const p = em.particles[i];
+      p.age += dt;
+      if (p.age >= p.life) { em.particles.splice(i, 1); continue; }
+      p.vy += g * dt;
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+    }
+  }
+  function drawEmitter2D(em) {
+    if (!em) return;
+    for (let i = 0; i < em.particles.length; i++) {
+      const p = em.particles[i];
+      const t = Math.max(0, Math.min(1, p.age / p.life));
+      const alpha = em.fadeOut ? Math.floor((1 - t) * 255) : 255;
+      const size = Math.max(1, em.scaleDown ? p.size * (1 - t) : p.size);
+      circle(p.x, p.y, size, (alpha << 24) | (p.color & 0xffffff), true);
+    }
+  }
+  function clearEmitter2D(em) {
+    if (em && em.particles) em.particles.length = 0;
+  }
+  function _particleSystemFor(id) {
+    const h = unwrapHandle(id);
+    return h ? particleSystemState.get(h) : null;
+  }
+  function _particleLife(sys, overrides) {
+    overrides = overrides || {};
+    const minLife = overrides.minLife == null ? sys.emitter.minLife : overrides.minLife;
+    const maxLife = overrides.maxLife == null ? sys.emitter.maxLife : overrides.maxLife;
+    return Math.max(0.01, minLife + Math.random() * Math.max(0, maxLife - minLife));
+  }
+  function _trackParticleSpawn(sys, count, overrides) {
+    if (!sys) return;
+    count = Math.max(0, count | 0);
+    for (let i = 0; i < count && sys.particles.length < sys.maxParticles; i++) {
+      sys.particles.push({ age: 0, life: _particleLife(sys, overrides) });
+    }
+    sys.activeCount = sys.particles.length;
+  }
+  function setParticleEmitter(systemId, emitter) {
+    const sys = _particleSystemFor(systemId);
+    if (!sys) return;
+    Object.assign(sys.emitter, emitter || {});
+    if (sys.handle && (emitter.emitterX != null || emitter.emitterY != null || emitter.emitterZ != null)) {
+      call('transform.set', {
+        handle: sys.handle,
+        position: [
+          emitter.emitterX == null ? sys.emitter.emitterX : emitter.emitterX,
+          emitter.emitterY == null ? sys.emitter.emitterY : emitter.emitterY,
+          emitter.emitterZ == null ? sys.emitter.emitterZ : emitter.emitterZ,
+        ],
+      });
+    }
+  }
+  function emitParticle(systemId, overrides) {
+    _trackParticleSpawn(_particleSystemFor(systemId), 1, overrides || {});
+  }
+  function burstParticles(systemId, count, overrides) {
+    _trackParticleSpawn(_particleSystemFor(systemId), count == null ? 10 : count, overrides || {});
+  }
+  function updateParticles(dt) {
+    let total = 0;
+    particleSystemState.forEach(function (sys) {
+      sys.emitAccum += (sys.emitter.emitRate || 0) * (dt || 0);
+      while (sys.emitAccum >= 1) {
+        _trackParticleSpawn(sys, 1);
+        sys.emitAccum -= 1;
+      }
+      for (let i = sys.particles.length - 1; i >= 0; i--) {
+        const p = sys.particles[i];
+        p.age += dt || 0;
+        if (p.age >= p.life) sys.particles.splice(i, 1);
+      }
+      sys.activeCount = sys.particles.length;
+      total += sys.activeCount;
+    });
+    return total;
+  }
+  function removeParticleSystem(systemId) {
+    const h = unwrapHandle(systemId);
+    if (!h) return false;
+    call('particles.destroy', { handle: h });
+    particleSystemState.delete(h);
+    if (systemId && typeof systemId === 'object') systemId.handle = 0;
+    return true;
+  }
+  function getParticleStats(systemId) {
+    const sys = _particleSystemFor(systemId);
+    if (!sys) return null;
+    return {
+      active: sys.activeCount,
+      max: sys.maxParticles,
+      free: Math.max(0, sys.maxParticles - sys.activeCount),
+    };
+  }
   function createParticles(opts) {
     ensureInit();
     opts = opts || {};
+    const amount = opts.count || opts.amount || 64;
+    const particleColor = typeof opts.color === 'number' ? opts.color
+      : (typeof opts.startColor === 'number' ? opts.startColor
+        : (typeof opts.emissive === 'number' ? opts.emissive : 0xffffff));
     // Need a draw-pass mesh — make a small sphere by default.
     const geomR = call('geometry.createSphere', { radius: 0.08, height: 0.16 });
     if (!geomR) return makeStub();
     // Optional emissive material so particles glow.
     const mat = call('material.create', {
-      albedo: colorFromHex(typeof opts.color === 'number' ? opts.color : 0xffffff),
+      albedo: colorFromHex(particleColor),
       unshaded: true,
-      emission: colorFromHex(typeof opts.color === 'number' ? opts.color : 0xffffff),
+      emission: colorFromHex(particleColor),
       emissionEnergy: typeof opts.emissionEnergy === 'number' ? opts.emissionEnergy : 1.5,
       blend: 'add',
     });
     const r = call('particles.create', {
       geometry: geomR.handle,
       material: mat ? mat.handle : 0,
-      amount: opts.count || opts.amount || 64,
+      amount,
       lifetime: opts.lifetime || 2.0,
       oneShot: !!opts.oneShot,
       emissionBoxExtents: opts.spread ? [opts.spread, opts.spread, opts.spread] : [1, 1, 1],
@@ -2771,9 +3089,24 @@
     if (Array.isArray(opts.position)) {
       call('transform.set', { handle: r.handle, position: ensureArray3.apply(null, opts.position) });
     }
+    particleSystemState.set(r.handle, {
+      handle: r.handle,
+      maxParticles: amount,
+      activeCount: 0,
+      emitAccum: 0,
+      particles: [],
+      emitter: {
+        emitRate: opts.emitRate || 0,
+        minLife: opts.minLife || 0.8,
+        maxLife: opts.maxLife || opts.lifetime || 2.0,
+        emitterX: opts.emitterX || 0,
+        emitterY: opts.emitterY || 0,
+        emitterZ: opts.emitterZ || 0,
+      },
+    });
     return makeStub({
       handle: r.handle,
-      destroy() { call('particles.destroy', { handle: r.handle }); },
+      destroy() { removeParticleSystem(r.handle); },
       setPosition(x, y, z) {
         call('transform.set', { handle: r.handle, position: ensureArray3(x, y, z) });
       },
@@ -3241,17 +3574,42 @@
     const preset = presets[name] || presets.plasma;
 
     // Build material payload merging preset with user options
-    const payload = materialPayload(preset.color, Object.assign({
+    const tonedPreset = Object.assign({}, preset, {
+      blend: preset.blend === 'add' ? 'alpha' : preset.blend,
+      emissionEnergy: Math.min(preset.emissionEnergy || 1, 1.35),
+    });
+    const payload = materialPayload(tonedPreset.color, Object.assign({
       opacity: opts.opacity == null ? 0.9 : opts.opacity,
       transparent: true,
       unshaded: true,
       cull: 'disabled',
       doubleSided: true,
-    }, preset, opts));
+    }, tonedPreset, opts));
+    if (payload.emissionEnergy != null && opts.emissionEnergy == null && opts.emissiveIntensity == null) {
+      payload.emissionEnergy = Math.min(payload.emissionEnergy, 1.35);
+    }
 
     const r = call('material.create', payload);
     return r ? r.handle : 0;
   }
+  function createTSLShaderMaterial(_vertexShader, fragmentShader, _uniforms, opts) {
+    opts = opts || {};
+    const src = typeof fragmentShader === 'string' ? fragmentShader.toLowerCase() : '';
+    let kind = opts.kind || opts.type || 'plasma';
+    if (src.indexOf('lava') >= 0 || src.indexOf('fire') >= 0) kind = 'lava';
+    else if (src.indexOf('water') >= 0) kind = 'water';
+    else if (src.indexOf('grid') >= 0 || src.indexOf('neon') >= 0) kind = 'neon';
+    else if (src.indexOf('void') >= 0 || src.indexOf('noise') >= 0) kind = 'void';
+    else if (src.indexOf('rainbow') >= 0) kind = 'rainbow';
+    return createTSLMaterial(kind, opts);
+  }
+  function createShaderMaterial(vertexShader, fragmentShader, uniforms, opts) {
+    return createTSLShaderMaterial(vertexShader, fragmentShader, uniforms, opts);
+  }
+  function createLavaMaterial(opts) { return createTSLMaterial('lava2', opts); }
+  function createPlasmaMaterial(opts) { return createTSLMaterial('plasma2', opts); }
+  function createWaterMaterial(opts) { return createTSLMaterial('water', opts); }
+  function createShockwaveMaterial(opts) { return createTSLMaterial('shockwave', opts); }
   function createAdvancedCube(sizeOrColor, optsOrPos, maybePos) {
     ensureInit();
     let size = 1;
@@ -4853,15 +5211,39 @@
     THING_SPRITE_PREFIX: _WAD_THING_SPRITE_PREFIX,
   };
 
-  // Browser-ish scheduler shims. We don't actually defer; the cart still
-  // boots, and most demos only use setTimeout for one-off setup.
   let _timerId = 1;
-  function setTimeout_(_fn, _ms) { warnOnce('setTimeout'); return _timerId++; }
-  function setInterval_(_fn, _ms) { warnOnce('setInterval'); return _timerId++; }
-  function clearTimeout_(_id) { /* no-op */ }
-  function clearInterval_(_id) { /* no-op */ }
-  function requestAnimationFrame_(_fn) { warnOnce('requestAnimationFrame'); return _timerId++; }
-  function cancelAnimationFrame_(_id) { /* no-op */ }
+  const _timers = new Map();
+  function _scheduleTimer(fn, ms, repeat) {
+    const id = _timerId++;
+    _timers.set(id, {
+      fn,
+      delay: Math.max(0, (ms || 0) / 1000),
+      remaining: Math.max(0, (ms || 0) / 1000),
+      repeat: !!repeat,
+    });
+    return id;
+  }
+  function _tickTimers(dt) {
+    const due = [];
+    _timers.forEach(function (timer, id) {
+      timer.remaining -= dt || 0;
+      if (timer.remaining <= 0) due.push([id, timer]);
+    });
+    for (let i = 0; i < due.length; i++) {
+      const id = due[i][0];
+      const timer = due[i][1];
+      if (!_timers.has(id)) continue;
+      if (timer.repeat) timer.remaining += timer.delay || 0.000001;
+      else _timers.delete(id);
+      try { if (typeof timer.fn === 'function') timer.fn(); } catch (e) { print('[nova64-compat] timer error: ' + e); }
+    }
+  }
+  function setTimeout_(fn, ms) { return _scheduleTimer(fn, ms, false); }
+  function setInterval_(fn, ms) { return _scheduleTimer(fn, ms, true); }
+  function clearTimeout_(id) { _timers.delete(id); }
+  function clearInterval_(id) { _timers.delete(id); }
+  function requestAnimationFrame_(fn) { return _scheduleTimer(function () { if (typeof fn === 'function') fn(novaStore.getState().time * 1000); }, 0, false); }
+  function cancelAnimationFrame_(id) { _timers.delete(id); }
 
   // Extra input stubs — kept for cart code that still imports the old names.
   const buttonState = { a: false, b: false, x: false, y: false, l: false, r: false, start: false, select: false };
@@ -4911,10 +5293,10 @@
     return r ? r.capabilities : { backend: 'godot' };
   };
 
-  const sceneNs = { createCube, createSphere, createPlane, createCylinder, createCone, createTorus, createAdvancedCube, createAdvancedSphere, createCapsule, removeMesh, destroyMesh: removeMesh, setPosition, setRotation, rotateMesh, moveMesh, setScale, getPosition, getMesh: function() { return null; }, createInstancedMesh, setInstanceTransform, setInstancePosition, setInstanceColor, finalizeInstances, setMeshVisible, setMeshOpacity: function(h, o) { setMeshVisible(h, o > 0); }, setCastShadow: function() {}, setReceiveShadow: function() {}, setFlatShading: function() {}, setPBRProperties, createLODMesh: function() { return null; }, removeLODMesh: function() {}, updateLODs: function() {}, removeInstancedMesh: removeMesh, raycastFromCamera: function() { return null; }, get3DStats: function() { return {}; }, getRenderer: function() { return null; }, getScene: function() { return null; }, getRotation: function() { return [0, 0, 0]; }, clearScene, loadModel, loadVoxModel, loadTexture, playAnimation: function() {}, updateAnimations: function() {}, engine: global.engine };
+  const sceneNs = { createCube, createSphere, createPlane, createCylinder, createCone, createTorus, createAdvancedCube, createAdvancedSphere, createCapsule, removeMesh, destroyMesh: removeMesh, setPosition, setRotation, rotateMesh, moveMesh, setScale, getPosition, getMesh, createInstancedMesh, setInstanceTransform, setInstancePosition, setInstanceColor, finalizeInstances, setMeshVisible, setMeshOpacity: function(h, o) { setMeshVisible(h, o > 0); }, setCastShadow: function() {}, setReceiveShadow: function() {}, setFlatShading: function() {}, setPBRProperties, createLODMesh: function() { return null; }, removeLODMesh: function() {}, updateLODs: function() {}, removeInstancedMesh: removeMesh, raycastFromCamera: function() { return null; }, get3DStats: function() { return {}; }, getRenderer: function() { return null; }, getScene: function() { return null; }, getRotation: function() { return [0, 0, 0]; }, clearScene, loadModel, loadVoxModel, loadTexture, playAnimation: function() {}, updateAnimations: function() {}, engine: global.engine };
   const cameraNs = { setCameraPosition, setCameraTarget, setCameraFOV, setCameraLookAt };
   const lightNs = { setLightDirection, setFog, clearFog, createPointLight, createSpotLight, createAmbientLight, setAmbientLight, setLightColor, setLightEnergy, createGradientSkybox, createImageSkybox };
-  const drawNs = { cls, print: novaPrint, printCentered, printRight, rect, rectfill, line, pixel, pset, circle, circfill, ellipse, arc, bezier, drawRect, drawPanel, drawGlowText, drawGlowTextCentered, drawRadialGradient, drawGradient, drawProgressBar, drawHealthBar, drawPixelBorder, drawCrosshair, drawScanlines, drawNoise, drawTriangle, drawDiamond, drawStarburst, poly, rgba8, screenWidth, screenHeight, colorLerp, colorMix, hslColor, hexColor: function(hex, alpha) { return colorFromHex(hex, alpha); }, n64Palette, measureText, scrollingText, drawWave, drawPulsingText, drawCheckerboard, drawFloatingTexts, drawFloatingTexts3D, createMinimap, drawMinimap, drawSkyGradient };
+  const drawNs = { cls, print: novaPrint, printCentered, printRight, rect, rectfill, line, pixel, pset, circle, circfill, ellipse, ellipsefill, arc, bezier, drawRect, drawPanel, drawGlowText, drawGlowTextCentered, drawRadialGradient, drawGradient, drawProgressBar, drawHealthBar, drawPixelBorder, drawCrosshair, drawScanlines, drawNoise, drawTriangle, drawDiamond, drawStarburst, poly, rgba8, screenWidth, screenHeight, colorLerp, colorMix, hslColor, hexColor: function(hex, alpha) { return colorFromHex(hex, alpha); }, n64Palette, measureText, scrollingText, drawWave, drawPulsingText, drawCheckerboard, drawFloatingTexts, drawFloatingTexts3D, createMinimap, drawMinimap, drawSkyGradient };
   const inputNs = {
     // raw key code surface (web-style codes)
     key, keyp, isKeyDown, isKeyPressed,
@@ -4930,14 +5312,14 @@
     // host hooks
     pollInput,
   };
-  const fxNs = { enablePixelation, enableDithering, enableBloom, setBloomStrength, enableFXAA, enableChromaticAberration, enableVignette, setN64Mode, setPSXMode, enableRetroEffects, isEffectsEnabled, enableSSR, enableSSAO, enableVolumetricFog, enableDOF, setExposure, setTonemap, setColorAdjustment };
-  const uiNs = { createButton, createLabel, createPanel, createSlider, createCheckbox, createDialog, clearButtons, updateAllButtons, drawAllButtons, drawGradientRect, drawPanel, drawText, drawTextShadow, drawTextOutline, setFont, setTextAlign, setTextBaseline, grid, parseCanvasUI, renderCanvasUI, updateCanvasUI, uiColors: global.uiColors, centerX: function (w) { return Math.floor((640 - (w || 0)) / 2); }, centerY: function (h) { return Math.floor((360 - (h || 0)) / 2); }, Screen: (function() { function Screen() { this.data = {}; } Screen.prototype.enter = function(d) { this.data = Object.assign({}, this.data, d || {}); }; Screen.prototype.exit = function() {}; Screen.prototype.update = function() {}; Screen.prototype.draw = function() {}; return Screen; }()), getFont: function() { return 'default'; }, uiProgressBar: drawProgressBar };
-  const stageNs = { createGraphicsNode, createMovieClip, createStage, createScreen, pushScreen, popScreen,
+  const fxNs = { enablePixelation, enableDithering, enableBloom, setBloomStrength, enableFXAA, enableChromaticAberration, enableVignette, setN64Mode, setPSXMode, enableRetroEffects, isEffectsEnabled, enableSSR, enableSSAO, enableVolumetricFog, enableDOF, setExposure, setTonemap, setColorAdjustment, createParticleSystem, setParticleEmitter, emitParticle, burstParticles, updateParticles, removeParticleSystem, getParticleStats, createEmitter2D, updateEmitter2D, drawEmitter2D, burstEmitter2D, clearEmitter2D };
+  const uiNs = { createButton, createLabel, createPanel, createSlider, createCheckbox, createDialog, clearButtons, updateAllButtons, drawAllButtons, drawGradientRect, drawPanel, drawText, drawTextShadow, drawTextOutline, setFont, setTextAlign, setTextBaseline, grid, parseCanvasUI, renderCanvasUI, updateCanvasUI, createContainer, addChild, createGraphicsNode, createTextNode, drawStage, uiColors: global.uiColors, centerX: function (w) { return Math.floor((640 - (w || 0)) / 2); }, centerY: function (h) { return Math.floor((360 - (h || 0)) / 2); }, Screen: (function() { function Screen() { this.data = {}; } Screen.prototype.enter = function(d) { this.data = Object.assign({}, this.data, d || {}); }; Screen.prototype.exit = function() {}; Screen.prototype.update = function() {}; Screen.prototype.draw = function() {}; return Screen; }()), getFont: function() { return 'default'; }, uiProgressBar: drawProgressBar };
+  const stageNs = { createContainer, addChild, createGraphicsNode, createTextNode, drawStage, createMovieClip, createStage, createScreen, pushScreen, popScreen,
     createShake, triggerShake, updateShake, getShakeOffset,
     createCard, createMenu, createStartScreen };
-  const particlesNs = { createParticleSystem, createEmitter2D, createParticles };
+  const particlesNs = { createParticleSystem, setParticleEmitter, emitParticle, burstParticles, updateParticles, removeParticleSystem, getParticleStats, createEmitter2D, updateEmitter2D, drawEmitter2D, burstEmitter2D, clearEmitter2D, createParticles };
   const skyboxNs = { createSpaceSkybox, createGalaxySkybox, createSunsetSkybox, createDawnSkybox, createNightSkybox, createFoggySkybox, createDuskSkybox, createStormSkybox, createAlienSkybox, createUnderwaterSkybox, createGradientSkybox, createImageSkybox, setSkybox, createSkybox };
-  const modelsNs = { loadModel, loadVoxModel, createTexture, loadTexture, createInstancedMesh, createTSLMaterial, createHologramMaterial, createVortexMaterial, createPBRMaterial, createAdvancedCube };
+  const modelsNs = { loadModel, loadVoxModel, createTexture, loadTexture, createInstancedMesh, createTSLMaterial, createTSLShaderMaterial, createShaderMaterial, createHologramMaterial, createVortexMaterial, createPBRMaterial, createLavaMaterial, createPlasmaMaterial, createWaterMaterial, createShockwaveMaterial, createAdvancedCube };
   const voxelNs = {
     configureVoxelWorld, enableVoxelTextures, getVoxelConfig, getVoxelBiome,
     getVoxelHighestBlock, getVoxelBlock, setVoxelBlock, loadVoxelWorld,
@@ -4954,7 +5336,7 @@
   // `nova64.physics.aabb`, etc. Provide top-level namespace objects with
   // a few real impls (where we have them) and let the namespace proxy
   // turn everything else into a named no-op.
-  const shaderBacking = { createTSLMaterial, createHologramMaterial, createVortexMaterial, createPBRMaterial };
+  const shaderBacking = { createTSLMaterial, createTSLShaderMaterial, createShaderMaterial, createHologramMaterial, createVortexMaterial, createPBRMaterial, createLavaMaterial, createPlasmaMaterial, createWaterMaterial, createShockwaveMaterial };
   const physicsBacking = {};
   const dataBacking = {
     t: function (key) { return key; },
@@ -4973,7 +5355,7 @@
   // Augment a few namespaces with extra known names cart code expects.
   // (Real impls already exist above; we just publish more aliases.)
   drawNs.BM = { add: 0, multiply: 1, screen: 2, alpha: 3 };
-  drawNs.withBlend = function (_mode, fn) { if (typeof fn === 'function') fn(makeStub()); };
+  drawNs.withBlend = function (_mode, fn) { if (typeof fn === 'function') fn(_makeCanvasContext()); };
 
   utilNs.color = function (r, g, b, a) { return rgba8((r || 0) * 255 | 0, (g || 0) * 255 | 0, (b || 0) * 255 | 0, a == null ? 255 : (a * 255 | 0)); };
   utilNs.flowField = flowField;
@@ -5089,7 +5471,7 @@
 
   // Flat-global aliases so older carts that don't destructure still work.
   Object.assign(global, sceneNs, cameraNs, lightNs, drawNs, inputNs, fxNs, utilNs, audioNs, tweenNs,
-    uiNs, stageNs, particlesNs, skyboxNs, modelsNs, voxelNs);
+    uiNs, stageNs, particlesNs, skyboxNs, modelsNs, voxelNs, shaderBacking);
   global.get3DStats = get3DStats;
   global.rand = rand;
   global.randInt = randInt;

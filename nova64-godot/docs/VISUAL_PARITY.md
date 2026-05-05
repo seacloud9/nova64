@@ -15,7 +15,62 @@ native-shutdown flakes. All unrelated to rendering or gameplay logic.
 Both Linux (`platform=linux`) and Windows (`platform=windows use_mingw=yes`)
 gdextension builds are clean.
 
-## Latest checkpoint — VOX loader visibility
+## Latest checkpoint — particles, TSL, and Flash/Hype shims
+
+This checkpoint focused on the next set of high-visible Godot adapter parity
+gaps after WAD/PBR/VOX:
+
+- `particles-demo` no longer renders the giant stretched center artifact. The
+  shim now accepts the browser cylinder overloads used by Three.js carts:
+  `(radius, height, color, position, opts)` and the segmented variant, in
+  addition to the Godot/bridge top-radius/bottom-radius form.
+- Three-style particle APIs are now exposed through `nova64.fx` and
+  `nova64.particles`: `createParticleSystem(max, opts)`, `setParticleEmitter`,
+  `emitParticle`, `burstParticles`, `updateParticles`, `removeParticleSystem`,
+  and `getParticleStats`. Native Godot particles still provide the draw path,
+  while the shim tracks browser-style active/max/free stats for HUD parity.
+- `tsl-showcase` now gets material assignment through `getMesh()` mesh proxies
+  instead of dropping `applyMat(id, material)` calls. Common shader aliases
+  (`createTSLShaderMaterial`, `createShaderMaterial`, `createLavaMaterial`,
+  `createPlasmaMaterial`, `createWaterMaterial`, `createShockwaveMaterial`) map
+  to toned Godot material fallbacks so the scene is no longer a white/default
+  material wash.
+- Browser scheduler calls (`setTimeout`, `setInterval`,
+  `requestAnimationFrame`) are now driven from the Godot pre-update hook. This
+  unblocks Flash/Hype scenes that pause tweens during setup and resume them with
+  a timeout.
+- Flash-style 2D/stage helpers now have basic runtime implementations:
+  canvas-like draw contexts, containers, graphics/text nodes, `drawStage`, and
+  software 2D emitters. `ellipsefill` is also wired so tween demos render their
+  animated circles instead of disappearing behind a no-op.
+
+Focused validation:
+
+```bash
+wsl bash -lc "cd /mnt/c/Users/brend/exp/nova64 && source ~/.nvm/nvm.sh && \
+  nvm use 20 >/dev/null && node --check \
+  nova64-godot/godot_project/shim/nova64-compat.js"
+```
+
+Visual smoke carts:
+
+- `particles-demo`: old stretched cylinder artifact gone; particle HUD now uses
+  shim-tracked stats.
+- `05-particles`: still renders the particle fountain correctly.
+- `tsl-showcase`: materials now attach and the scene is readable, though these
+  are still Godot material approximations rather than true TSL shader execution.
+- `flash-demo`: first scene tween/timer balls and second-scene fireworks render.
+- `tween-bounce`: bouncing circles render through the new `ellipsefill` alias.
+
+Known follow-up:
+
+- TSL parity is still approximate. True parity needs a dedicated Godot shader
+  bridge or a deeper TSL/GLSL translation path.
+- Some Windows snapshot runs still hit the pre-existing post-PASS native
+  shutdown SIGSEGV; the screenshots and conformance PASS signal complete before
+  teardown.
+
+## Previous checkpoint — VOX loader visibility
 
 `vox-viewer` now renders `assets/vox/house.vox` in the Godot adapter. The fix
 has three parts:

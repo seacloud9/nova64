@@ -547,3 +547,75 @@ Remaining work to reach the 90% parity bar:
 - Revisit camera/coordinate parity after overlay and post-FX land; the current
   remaining difference is dominated by foreground cloud/sky composition and
   timing differences.
+
+## WAD and PBR Godot checkpoint
+
+This checkpoint focused on two high-visibility parity failures:
+
+- `wad-demo` in Godot was a flat-shaded proof cart instead of a textured
+  FreeDoom map explorer.
+- `pbr-showcase` in Godot rendered mostly black because scene construction was
+  aborting before the PBR meshes were created.
+
+What landed:
+
+- `nova64-godot/godot_project/carts/wad-demo` now loads the bundled
+  `res://assets/freedoom-0.13.0/freedoom-0.13.0/freedoom1.wad` by default.
+- The Godot WAD cart now has a map picker: Up/Down selects a map, Enter loads
+  it, and Esc returns to map select.
+- The Godot WAD cart now uses WAD wall textures and floor/ceiling flats through
+  the shimmed `WADTextureManager` path instead of flat colors.
+- The Godot shim now exposes the Three-style material helpers used by WAD carts:
+  `engine.createMaterial`, `engine.setMeshMaterial`, texture clone/repeat
+  helpers, and `setWallUVs`.
+- `nova64.scene.setPBRProperties()` now updates Godot `StandardMaterial3D`
+  materials instead of being a no-op.
+- `metalness` is treated as an alias for Godot `metallic`, matching the
+  cart-facing Three.js PBR vocabulary.
+- The shim tracks mesh/material state so `clearScene()` can rebuild scenes
+  cleanly and so later PBR/property updates preserve the original albedo color.
+- Godot plane geometry now matches Three.js `PlaneGeometry` orientation before
+  cart transforms, fixing the huge vertical floor slab in `pbr-showcase`.
+- The conformance runner releases snapshot image buffers and frees the native
+  host before process shutdown, which avoids the windowed snapshot exit crash.
+
+Focused validation:
+
+```bash
+wsl bash -lc "cd /mnt/c/Users/brend/exp/nova64/nova64-godot/gdextension && \
+  scons platform=windows target=template_debug -j4"
+
+wsl bash -lc "cd /mnt/c/Users/brend/exp/nova64/nova64-godot/gdextension && \
+  scons platform=linux target=template_debug -j4"
+```
+
+```bash
+wsl bash -lc "cd /mnt/c/Users/brend/exp/nova64 && \
+  '/mnt/c/Program Files/Godot_v4.4.1-stable_win64.exe/Godot_v4.4.1-stable_win64_console.exe' \
+  --windowed --path 'C:\Users\brend\exp\nova64\nova64-godot\godot_project' \
+  --script 'res://scripts/conformance_runner.gd' -- \
+  --cart=res://carts/wad-demo --frames=140 --press=enter --press-frames=8 \
+  --snapshot='C:\Users\brend\exp\nova64\nova64-godot\test-results\tmp-wad-demo-plane.png'"
+
+wsl bash -lc "cd /mnt/c/Users/brend/exp/nova64 && \
+  '/mnt/c/Program Files/Godot_v4.4.1-stable_win64.exe/Godot_v4.4.1-stable_win64_console.exe' \
+  --windowed --path 'C:\Users\brend\exp\nova64\nova64-godot\godot_project' \
+  --script 'res://scripts/conformance_runner.gd' -- \
+  --cart=res://carts/pbr-showcase --frames=120 \
+  --snapshot='C:\Users\brend\exp\nova64\nova64-godot\test-results\tmp-pbr-showcase-plane.png'"
+```
+
+Expected WAD smoke signal after pressing Enter on the first map:
+
+```text
+MAP E1M1  WALLS 1286  TEX 1285/1286  FLOOR 2
+NOVA64-CONFORMANCE: PASS (visual)
+```
+
+Remaining visual debt:
+
+- WAD texture coverage is now high, but UV offset/lighting still needs deeper
+  tuning against the Three.js reference.
+- PBR is no longer black and scene layout now matches the browser structure,
+  but Godot material response remains glossier and higher-contrast than the
+  Three.js reference.

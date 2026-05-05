@@ -15,9 +15,12 @@
 #include <godot_cpp/classes/node.hpp>
 #include <godot_cpp/classes/node3d.hpp>
 #include <godot_cpp/variant/dictionary.hpp>
+#include <godot_cpp/variant/packed_byte_array.hpp>
 #include <godot_cpp/variant/string.hpp>
 
 #include <memory>
+#include <unordered_map>
+#include <cstdint>
 
 // quickjs.h defines JSValue as either a struct, a uint64_t, or a pointer
 // depending on build flags, so a clean forward declaration isn't portable.
@@ -179,6 +182,21 @@ private:
     Dictionary _cmd_overlay_circle(const Dictionary &p_payload);
     Dictionary _cmd_overlay_text(const Dictionary &p_payload);
     Dictionary _cmd_overlay_batch(const Dictionary &p_payload);
+    Dictionary _cmd_model_load(const Dictionary &p_payload);
+    Dictionary _cmd_vox_load(const Dictionary &p_payload);
+    Dictionary _cmd_wad_load(const Dictionary &p_payload);
+    Dictionary _cmd_wad_read_lump(const Dictionary &p_payload);
+    Dictionary _cmd_wad_destroy(const Dictionary &p_payload);
+
+    // WAD blob storage. Big DOOM/Freedoom WADs (28-50MB) can't transit
+    // the JS bridge as a single int array, so the host owns the bytes
+    // and the shim asks for individual lumps via wad.readLump.
+    struct WadBlob {
+        godot::PackedByteArray bytes;
+        godot::Array directory; // Array of Dictionary{ name, filepos, size }
+    };
+    std::unordered_map<uint32_t, WadBlob> _wads;
+    uint32_t _next_wad_id = 1;
     // Inline op handlers used by the batch dispatcher; each takes a small
     // Array (op tag at index 0) instead of a Dictionary so the shim can
     // queue ops with minimal allocator pressure per primitive.

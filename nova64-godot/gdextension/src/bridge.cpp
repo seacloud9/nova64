@@ -38,7 +38,11 @@
 #include <godot_cpp/classes/multi_mesh_instance3d.hpp>
 #include <godot_cpp/classes/procedural_sky_material.hpp>
 #include <godot_cpp/classes/rendering_server.hpp>
+#include <godot_cpp/classes/file_access.hpp>
 #include <godot_cpp/classes/resource_loader.hpp>
+#include <godot_cpp/classes/packed_scene.hpp>
+#include <godot_cpp/classes/gltf_document.hpp>
+#include <godot_cpp/classes/gltf_state.hpp>
 #include <godot_cpp/classes/mesh_instance3d.hpp>
 #include <godot_cpp/classes/plane_mesh.hpp>
 #include <godot_cpp/classes/sky.hpp>
@@ -54,6 +58,9 @@
 #include <godot_cpp/core/class_db.hpp>
 #include <godot_cpp/variant/array.hpp>
 #include <godot_cpp/variant/color.hpp>
+#include <godot_cpp/variant/packed_int32_array.hpp>
+#include <godot_cpp/variant/packed_vector2_array.hpp>
+#include <godot_cpp/variant/packed_vector3_array.hpp>
 #include <godot_cpp/variant/transform3d.hpp>
 #include <godot_cpp/variant/utility_functions.hpp>
 #include <godot_cpp/variant/variant.hpp>
@@ -76,6 +83,33 @@ namespace {
 constexpr const char *ADAPTER_CONTRACT_VERSION = "1.0.0";
 constexpr const char *GODOT_ADAPTER_VERSION = "0.5.0";
 constexpr const char *HOST_OPAQUE_KEY = "__nova64_host_ptr";
+
+void detach_node_resources(Node *p_node) {
+    if (!p_node) return;
+
+    if (MeshInstance3D *mi = Object::cast_to<MeshInstance3D>(p_node)) {
+        mi->set_mesh(Ref<Mesh>());
+        mi->set_material_override(Ref<Material>());
+    }
+    if (MultiMeshInstance3D *mmi = Object::cast_to<MultiMeshInstance3D>(p_node)) {
+        mmi->set_multimesh(Ref<MultiMesh>());
+        mmi->set_material_override(Ref<Material>());
+    }
+    if (GPUParticles3D *particles = Object::cast_to<GPUParticles3D>(p_node)) {
+        particles->set_emitting(false);
+        particles->set_process_material(Ref<Material>());
+        particles->set_draw_pass_mesh(0, Ref<Mesh>());
+        particles->set_material_override(Ref<Material>());
+    }
+    if (AudioStreamPlayer *player = Object::cast_to<AudioStreamPlayer>(p_node)) {
+        player->stop();
+        player->set_stream(Ref<AudioStream>());
+    }
+
+    for (int i = 0; i < p_node->get_child_count(); ++i) {
+        detach_node_resources(p_node->get_child(i));
+    }
+}
 
 Nova64Host *get_host_from_context(JSContext *ctx) {
     JSValue global = JS_GetGlobalObject(ctx);
@@ -571,19 +605,18 @@ void Nova64Host::_release_cart_exports() {
 
 void Nova64Host::_shutdown_runtime() {
     _release_cart_exports();
-    // Detach ArrayMesh refs from any chunk MeshInstance3D children before the
-    // scene tree frees them.  SurfaceTool-built ArrayMesh objects hold
-    // RenderingServer GPU rids that must be released while the RS is live.
-    for (int i = get_child_count() - 1; i >= 0; --i) {
-        if (MeshInstance3D *mi = Object::cast_to<MeshInstance3D>(get_child(i))) {
-            mi->set_mesh(Ref<Mesh>());
-        }
-    }
+    // Detach render/audio refs before the scene tree frees child nodes.
+    // SurfaceTool-built ArrayMesh, MultiMesh, particles, and audio resources
+    // hold server-side RIDs that should be released while the servers are live.
+    detach_node_resources(this);
     // Do NOT queue_free nodes here: the scene tree owns them and will free
     // them when Nova64Host is freed (via ~Node children teardown).  Calling
     // queue_free AND letting ~Node free the same child is a double-free that
     // causes a SIGSEGV on carts with many mesh nodes (e.g. voxel chunks).
     if (_handles) _handles->clear(false);
+    // Drop any host-owned WAD blobs so reloading a cart doesn't leak the
+    // 28-50MB of byte data they each hold.
+    _wads.clear();
     // Detach the WorldEnvironment we may have spawned so its Sky /
     // ProceduralSkyMaterial Refs aren't dropped from inside the JS
     // runtime teardown — that ordering trips a SIGSEGV on shutdown for
@@ -600,11 +633,9 @@ void Nova64Host::_shutdown_runtime() {
         Ref<Environment> env = _world_env->get_environment();
         if (env.is_valid()) env->set_sky(Ref<Sky>());
         _world_env->set_environment(Ref<Environment>());
-        _world_env->queue_free();
         _world_env = nullptr;
     }
     if (_overlay_layer) {
-        _overlay_layer->queue_free();
         _overlay_layer = nullptr;
         _overlay = nullptr;
     }
@@ -721,6 +752,12 @@ Dictionary Nova64Host::get_capabilities() const {
     features.append("overlay.circle");
     features.append("overlay.text");
     features.append("overlay.batch");
+    features.append("model.load");
+    features.append("vox.load");
+    features.append("wad.load");
+    features.append("wad.readLump");
+    features.append("wad.destroy");
+    features.append("voxel.uploadChunk");
     caps["features"] = features;
 
     return caps;
@@ -778,8 +815,435 @@ Dictionary Nova64Host::call_bridge(const String &p_method, const Dictionary &p_p
     if (p_method == "overlay.circle")             return _cmd_overlay_circle(p_payload);
     if (p_method == "overlay.text")               return _cmd_overlay_text(p_payload);
     if (p_method == "overlay.batch")              return _cmd_overlay_batch(p_payload);
+    if (p_method == "model.load")                 return _cmd_model_load(p_payload);
+    if (p_method == "vox.load")                   return _cmd_vox_load(p_payload);
+    if (p_method == "wad.load")                   return _cmd_wad_load(p_payload);
+    if (p_method == "wad.readLump")               return _cmd_wad_read_lump(p_payload);
+    if (p_method == "wad.destroy")                return _cmd_wad_destroy(p_payload);
 
     return make_error("unsupported_method", p_method);
+}
+
+// ---- Model loading -------------------------------------------------------
+
+Dictionary Nova64Host::_cmd_model_load(const Dictionary &p) {
+    if (!p.has("path")) {
+        return make_error("missing_path", "model.load");
+    }
+
+    String path = p["path"];
+
+    // Normalise to a Godot resource path; carts pass cart-relative or
+    // leading-slash strings interchangeably with the Three.js backend.
+    if (path.begins_with("/")) {
+        path = "res:/" + path.substr(1);
+    } else if (!path.begins_with("res://") && !path.begins_with("user://")) {
+        path = "res://" + path;
+    }
+
+    if (!FileAccess::file_exists(path)) {
+        return make_error("file_not_found", path);
+    }
+
+    Node3D *node3d = nullptr;
+
+    if (path.ends_with(".gltf") || path.ends_with(".glb")) {
+        // Try ResourceLoader first — works when the .glb has been imported
+        // by the editor (the common case for shipped projects). Fall back
+        // to runtime GLTFDocument for ad-hoc files that haven't been
+        // pre-imported (e.g. user:// paths or freshly dropped assets).
+        Ref<PackedScene> scene = ResourceLoader::get_singleton()->load(path);
+        if (scene.is_valid()) {
+            Node *node = scene->instantiate();
+            if (node) node3d = Object::cast_to<Node3D>(node);
+            if (!node3d && node) memdelete(node);
+        }
+
+        if (!node3d) {
+            Ref<GLTFDocument> doc;
+            doc.instantiate();
+            Ref<GLTFState> state;
+            state.instantiate();
+            Error err = doc->append_from_file(path, state);
+            if (err != OK) {
+                return make_error("failed_to_load", path);
+            }
+            Node *node = doc->generate_scene(state);
+            if (node) node3d = Object::cast_to<Node3D>(node);
+            if (!node3d && node) memdelete(node);
+        }
+    }
+
+    if (!node3d) {
+        return make_error("unsupported_or_invalid", path);
+    }
+
+    // Apply optional position/scale before adding so the first transform
+    // notification carries the final values.
+    if (p.has("position")) {
+        Array a = p["position"];
+        if (a.size() >= 3) {
+            node3d->set_position(Vector3(
+                static_cast<float>(static_cast<double>(a[0])),
+                static_cast<float>(static_cast<double>(a[1])),
+                static_cast<float>(static_cast<double>(a[2]))));
+        }
+    }
+    if (p.has("scale")) {
+        Variant s = p["scale"];
+        if (s.get_type() == Variant::ARRAY) {
+            Array a = s;
+            if (a.size() >= 3) {
+                node3d->set_scale(Vector3(
+                    static_cast<float>(static_cast<double>(a[0])),
+                    static_cast<float>(static_cast<double>(a[1])),
+                    static_cast<float>(static_cast<double>(a[2]))));
+            }
+        } else {
+            float sc = static_cast<float>(static_cast<double>(s));
+            node3d->set_scale(Vector3(sc, sc, sc));
+        }
+    }
+
+    add_child(node3d);
+
+    uint32_t handle = _handles->put_node(HandleKind::MESH_INSTANCE, node3d);
+    Dictionary result;
+    result["handle"] = handle;
+    result["path"] = path;
+    return result;
+}
+
+// ---- .vox (MagicaVoxel) loading -----------------------------------------
+//
+// Parses a minimal subset of the MagicaVoxel .vox format (SIZE/XYZI/RGBA
+// chunks of the first model) and routes the result through the existing
+// voxel.uploadChunk mesher so the same greedy/face-culled path renders
+// .vox imports and live cart-built terrain consistently.
+//
+// The .vox coordinate system is Z-up; we remap to the voxel mesher's Y-up
+// indexing so models stand "upright" when dropped into a cart.
+
+Dictionary Nova64Host::_cmd_vox_load(const Dictionary &p) {
+    if (!p.has("path")) return make_error("missing_path", "vox.load");
+
+    String path = p["path"];
+    if (path.begins_with("/")) {
+        path = "res:/" + path.substr(1);
+    } else if (!path.begins_with("res://") && !path.begins_with("user://")) {
+        path = "res://" + path;
+    }
+
+    Ref<FileAccess> f = FileAccess::open(path, FileAccess::READ);
+    if (f.is_null()) return make_error("file_not_found", path);
+
+    PackedByteArray bytes = f->get_buffer(f->get_length());
+    f->close();
+    const int n = bytes.size();
+    if (n < 8) return make_error("vox_too_small", path);
+
+    auto u32 = [&](int off) -> uint32_t {
+        return (uint32_t)(uint8_t)bytes[off]
+             | ((uint32_t)(uint8_t)bytes[off + 1] << 8)
+             | ((uint32_t)(uint8_t)bytes[off + 2] << 16)
+             | ((uint32_t)(uint8_t)bytes[off + 3] << 24);
+    };
+    auto chunk_id = [&](int off) -> String {
+        char s[5] = { (char)bytes[off], (char)bytes[off+1], (char)bytes[off+2], (char)bytes[off+3], 0 };
+        return String(s);
+    };
+
+    if (chunk_id(0) != "VOX ") return make_error("vox_bad_magic", path);
+
+    // Skip 4 magic + 4 version, then parse top-level MAIN chunk.
+    int cursor = 8;
+    if (cursor + 12 > n) return make_error("vox_truncated", path);
+    if (chunk_id(cursor) != "MAIN") return make_error("vox_no_main", path);
+    uint32_t main_content = u32(cursor + 4);
+    uint32_t main_children = u32(cursor + 8);
+    cursor += 12 + main_content; // step over MAIN's (empty) content
+    int end = cursor + (int)main_children;
+    if (end > n) end = n;
+
+    // First-model parse: collect first SIZE/XYZI pair plus optional RGBA.
+    int sx = 0, sy = 0, sz = 0;
+    std::vector<uint8_t> voxels; // packed [x,y,z,colorIdx] tuples
+    bool got_size = false, got_xyzi = false;
+    uint32_t palette[256];
+    bool got_rgba = false;
+
+    while (cursor + 12 <= end) {
+        String id = chunk_id(cursor);
+        uint32_t csz = u32(cursor + 4);
+        // child size unused for leaf chunks
+        int cstart = cursor + 12;
+        int cend = cstart + (int)csz;
+        if (cend > end) break;
+
+        if (id == "SIZE" && csz >= 12 && !got_size) {
+            sx = (int)u32(cstart);
+            sy = (int)u32(cstart + 4);
+            sz = (int)u32(cstart + 8);
+            got_size = true;
+        } else if (id == "XYZI" && csz >= 4 && !got_xyzi) {
+            uint32_t cnt = u32(cstart);
+            int need = 4 + (int)cnt * 4;
+            if (csz >= (uint32_t)need) {
+                voxels.resize((size_t)cnt * 4);
+                for (uint32_t i = 0; i < cnt; ++i) {
+                    voxels[i * 4 + 0] = (uint8_t)bytes[cstart + 4 + i * 4 + 0];
+                    voxels[i * 4 + 1] = (uint8_t)bytes[cstart + 4 + i * 4 + 1];
+                    voxels[i * 4 + 2] = (uint8_t)bytes[cstart + 4 + i * 4 + 2];
+                    voxels[i * 4 + 3] = (uint8_t)bytes[cstart + 4 + i * 4 + 3];
+                }
+                got_xyzi = true;
+            }
+        } else if (id == "RGBA" && csz >= 256 * 4) {
+            for (int i = 0; i < 256; ++i) {
+                uint8_t r = (uint8_t)bytes[cstart + i * 4 + 0];
+                uint8_t g = (uint8_t)bytes[cstart + i * 4 + 1];
+                uint8_t b = (uint8_t)bytes[cstart + i * 4 + 2];
+                palette[i] = ((uint32_t)r << 16) | ((uint32_t)g << 8) | (uint32_t)b;
+            }
+            got_rgba = true;
+        }
+        // chunks include their child block but for leaves child size is 0;
+        // we read csz as content + skip child block reported by header word
+        // at offset cursor+8. Use it to advance correctly.
+        uint32_t child_block = u32(cursor + 8);
+        cursor = cstart + (int)csz + (int)child_block;
+    }
+
+    if (!got_size || !got_xyzi) return make_error("vox_missing_chunks", path);
+
+    // Default MagicaVoxel palette (the .vox spec uses 1-based colour
+    // indices into this palette when no RGBA chunk is present).
+    static const uint32_t DEFAULT_PALETTE[256] = {
+        0xffffff,0xffffcc,0xffff99,0xffff66,0xffff33,0xffff00,0xffccff,0xffcccc,
+        0xffcc99,0xffcc66,0xffcc33,0xffcc00,0xff99ff,0xff99cc,0xff9999,0xff9966,
+        0xff9933,0xff9900,0xff66ff,0xff66cc,0xff6699,0xff6666,0xff6633,0xff6600,
+        0xff33ff,0xff33cc,0xff3399,0xff3366,0xff3333,0xff3300,0xff00ff,0xff00cc,
+        0xff0099,0xff0066,0xff0033,0xff0000,0xccffff,0xccffcc,0xccff99,0xccff66,
+        0xccff33,0xccff00,0xccccff,0xcccccc,0xcccc99,0xcccc66,0xcccc33,0xcccc00,
+        0xcc99ff,0xcc99cc,0xcc9999,0xcc9966,0xcc9933,0xcc9900,0xcc66ff,0xcc66cc,
+        0xcc6699,0xcc6666,0xcc6633,0xcc6600,0xcc33ff,0xcc33cc,0xcc3399,0xcc3366,
+        0xcc3333,0xcc3300,0xcc00ff,0xcc00cc,0xcc0099,0xcc0066,0xcc0033,0xcc0000,
+        0x99ffff,0x99ffcc,0x99ff99,0x99ff66,0x99ff33,0x99ff00,0x99ccff,0x99cccc,
+        0x99cc99,0x99cc66,0x99cc33,0x99cc00,0x9999ff,0x9999cc,0x999999,0x999966,
+        0x999933,0x999900,0x9966ff,0x9966cc,0x996699,0x996666,0x996633,0x996600,
+        0x9933ff,0x9933cc,0x993399,0x993366,0x993333,0x993300,0x9900ff,0x9900cc,
+        0x990099,0x990066,0x990033,0x990000,0x66ffff,0x66ffcc,0x66ff99,0x66ff66,
+        0x66ff33,0x66ff00,0x66ccff,0x66cccc,0x66cc99,0x66cc66,0x66cc33,0x66cc00,
+        0x6699ff,0x6699cc,0x669999,0x669966,0x669933,0x669900,0x6666ff,0x6666cc,
+        0x666699,0x666666,0x666633,0x666600,0x6633ff,0x6633cc,0x663399,0x663366,
+        0x663333,0x663300,0x6600ff,0x6600cc,0x660099,0x660066,0x660033,0x660000,
+        0x33ffff,0x33ffcc,0x33ff99,0x33ff66,0x33ff33,0x33ff00,0x33ccff,0x33cccc,
+        0x33cc99,0x33cc66,0x33cc33,0x33cc00,0x3399ff,0x3399cc,0x339999,0x339966,
+        0x339933,0x339900,0x3366ff,0x3366cc,0x336699,0x336666,0x336633,0x336600,
+        0x3333ff,0x3333cc,0x333399,0x333366,0x333333,0x333300,0x3300ff,0x3300cc,
+        0x330099,0x330066,0x330033,0x330000,0x00ffff,0x00ffcc,0x00ff99,0x00ff66,
+        0x00ff33,0x00ff00,0x00ccff,0x00cccc,0x00cc99,0x00cc66,0x00cc33,0x00cc00,
+        0x0099ff,0x0099cc,0x009999,0x009966,0x009933,0x009900,0x0066ff,0x0066cc,
+        0x006699,0x006666,0x006633,0x006600,0x0033ff,0x0033cc,0x003399,0x003366,
+        0x003333,0x003300,0x0000ff,0x0000cc,0x000099,0x000066,0x000033,0xee0000,
+        0xdd0000,0xbb0000,0xaa0000,0x880000,0x770000,0x550000,0x440000,0x220000,
+        0x110000,0x00ee00,0x00dd00,0x00bb00,0x00aa00,0x008800,0x007700,0x005500,
+        0x004400,0x002200,0x001100,0x0000ee,0x0000dd,0x0000bb,0x0000aa,0x000088,
+        0x000077,0x000055,0x000044,0x000022,0x000011,0xeeeeee,0xdddddd,0xbbbbbb,
+        0xaaaaaa,0x888888,0x777777,0x555555,0x444444,0x222222,0x111111,0x000000
+    };
+    if (!got_rgba) {
+        for (int i = 0; i < 256; ++i) palette[i] = DEFAULT_PALETTE[i];
+    }
+
+    // Build a Y-up block grid: world(x, y, z) = vox(x, z, y).
+    const int wsx = sx;
+    const int wsy = sz; // .vox Z (height) becomes world Y
+    const int wsz = sy;
+    Array blocks;
+    blocks.resize(wsx * wsy * wsz);
+    for (int i = 0; i < wsx * wsy * wsz; ++i) blocks[i] = 0;
+
+    // Track which colour indices actually appear so the palette stays compact.
+    bool used[256] = { false };
+    for (size_t i = 0; i + 3 < voxels.size(); i += 4) {
+        int vx = voxels[i + 0];
+        int vy = voxels[i + 1];
+        int vz = voxels[i + 2];
+        int ci = voxels[i + 3];
+        if (vx < 0 || vx >= sx || vy < 0 || vy >= sy || vz < 0 || vz >= sz) continue;
+        const int wx = vx;
+        const int wy = vz;
+        const int wz = vy;
+        const int idx = wx + wsx * wy + wsx * wsy * wz;
+        blocks[idx] = ci;
+        used[ci] = true;
+    }
+
+    Dictionary palette_d;
+    for (int i = 0; i < 256; ++i) {
+        if (!used[i]) continue;
+        palette_d[String::num_int64(i)] = (int64_t)palette[i];
+    }
+
+    Dictionary chunk_payload;
+    Array origin_a;
+    origin_a.append(0); origin_a.append(0); origin_a.append(0);
+    Array size_a;
+    size_a.append(wsx); size_a.append(wsy); size_a.append(wsz);
+    chunk_payload["origin"] = origin_a;
+    chunk_payload["size"] = size_a;
+    chunk_payload["blocks"] = blocks;
+    chunk_payload["palette"] = palette_d;
+
+    Dictionary mesh_result = _cmd_voxel_upload_chunk(chunk_payload);
+    if (mesh_result.has("error")) return mesh_result;
+
+    // Apply optional position/scale on the resulting node.
+    if (mesh_result.has("handle")) {
+        uint32_t h = (uint32_t)(int64_t)mesh_result["handle"];
+        Object *obj = _handles->get_node(h, HandleKind::MESH_INSTANCE);
+        Node3D *node3d = Object::cast_to<Node3D>(obj);
+        if (node3d) {
+            if (p.has("position")) {
+                Array a = p["position"];
+                if (a.size() >= 3) {
+                    node3d->set_position(Vector3(
+                        (float)(double)a[0], (float)(double)a[1], (float)(double)a[2]));
+                }
+            }
+            if (p.has("scale")) {
+                Variant s = p["scale"];
+                if (s.get_type() == Variant::ARRAY) {
+                    Array a = s;
+                    if (a.size() >= 3) {
+                        node3d->set_scale(Vector3(
+                            (float)(double)a[0], (float)(double)a[1], (float)(double)a[2]));
+                    }
+                } else {
+                    float sc = (float)(double)s;
+                    node3d->set_scale(Vector3(sc, sc, sc));
+                }
+            }
+        }
+    }
+
+    mesh_result["path"] = path;
+    return mesh_result;
+}
+
+// ---- DOOM IWAD/PWAD loading --------------------------------------------
+//
+// Real DOOM/Freedoom WADs are 28-50MB. Shipping the whole blob through
+// the JS bridge as a single int array is prohibitive (would allocate
+// 30M+ Variants), so the host parses the WAD directory once, keeps the
+// raw bytes in a server-side blob, and exposes a (handle, filepos,
+// size) → bytes API the shim uses to fetch lumps lazily.
+
+Dictionary Nova64Host::_cmd_wad_load(const Dictionary &p) {
+    if (!p.has("path")) return make_error("missing_path", "wad.load");
+
+    String path = p["path"];
+    if (path.begins_with("/")) {
+        path = "res:/" + path.substr(1);
+    } else if (!path.begins_with("res://") && !path.begins_with("user://")) {
+        path = "res://" + path;
+    }
+
+    Ref<FileAccess> f = FileAccess::open(path, FileAccess::READ);
+    if (f.is_null()) return make_error("file_not_found", path);
+
+    int64_t total = (int64_t)f->get_length();
+    PackedByteArray bytes = f->get_buffer(total);
+    f->close();
+    if (bytes.size() < 12) return make_error("wad_too_small", path);
+
+    // Header: 4 bytes magic, 4 bytes numLumps (LE int32), 4 bytes dirOfs.
+    char tag[5] = { (char)bytes[0], (char)bytes[1], (char)bytes[2], (char)bytes[3], 0 };
+    String tag_s(tag);
+    if (tag_s != "IWAD" && tag_s != "PWAD") return make_error("wad_bad_magic", path);
+
+    auto u32 = [&](int off) -> uint32_t {
+        return (uint32_t)(uint8_t)bytes[off]
+             | ((uint32_t)(uint8_t)bytes[off + 1] << 8)
+             | ((uint32_t)(uint8_t)bytes[off + 2] << 16)
+             | ((uint32_t)(uint8_t)bytes[off + 3] << 24);
+    };
+    int32_t num_lumps = (int32_t)u32(4);
+    int32_t dir_ofs = (int32_t)u32(8);
+    if (num_lumps < 0 || num_lumps > (1 << 22)) return make_error("wad_bad_dir", path);
+    if (dir_ofs < 0 || dir_ofs + (int64_t)num_lumps * 16 > bytes.size()) {
+        return make_error("wad_dir_oob", path);
+    }
+
+    Array directory;
+    directory.resize(num_lumps);
+    for (int i = 0; i < num_lumps; ++i) {
+        int o = dir_ofs + i * 16;
+        int32_t filepos = (int32_t)u32(o);
+        int32_t size = (int32_t)u32(o + 4);
+        // Lump name: 8 bytes, null-padded, ASCII upper-case.
+        char name[9] = { 0 };
+        for (int j = 0; j < 8; ++j) {
+            char c = (char)bytes[o + 8 + j];
+            if (c == 0) break;
+            name[j] = c;
+        }
+        Dictionary entry;
+        entry["name"] = String(name).to_upper();
+        entry["filepos"] = (int64_t)filepos;
+        entry["size"] = (int64_t)size;
+        directory[i] = entry;
+    }
+
+    uint32_t handle = _next_wad_id++;
+    WadBlob blob;
+    blob.bytes = bytes;
+    blob.directory = directory;
+    _wads[handle] = std::move(blob);
+
+    Dictionary result;
+    result["handle"] = (int64_t)handle;
+    result["tag"] = tag_s;
+    result["directory"] = directory;
+    result["path"] = path;
+    result["size"] = (int64_t)bytes.size();
+    return result;
+}
+
+Dictionary Nova64Host::_cmd_wad_read_lump(const Dictionary &p) {
+    if (!p.has("handle")) return make_error("missing_handle", "wad.readLump");
+    if (!p.has("filepos") || !p.has("size")) {
+        return make_error("missing_filepos_or_size", "wad.readLump");
+    }
+    uint32_t handle = (uint32_t)(int64_t)p["handle"];
+    auto it = _wads.find(handle);
+    if (it == _wads.end()) return make_error("unknown_wad_handle", "wad.readLump");
+
+    int64_t filepos = (int64_t)p["filepos"];
+    int64_t size = (int64_t)p["size"];
+    const PackedByteArray &b = it->second.bytes;
+    if (filepos < 0 || size < 0 || filepos + size > b.size()) {
+        return make_error("wad_lump_oob", "wad.readLump");
+    }
+
+    Array bytes_out;
+    bytes_out.resize(size);
+    for (int64_t i = 0; i < size; ++i) {
+        bytes_out[i] = (int)(uint8_t)b[filepos + i];
+    }
+    Dictionary result;
+    result["bytes"] = bytes_out;
+    result["size"] = size;
+    return result;
+}
+
+Dictionary Nova64Host::_cmd_wad_destroy(const Dictionary &p) {
+    if (!p.has("handle")) return make_error("missing_handle", "wad.destroy");
+    uint32_t handle = (uint32_t)(int64_t)p["handle"];
+    Dictionary result;
+    result["ok"] = (_wads.erase(handle) > 0);
+    return result;
 }
 
 // ---- Command handlers ----------------------------------------------------
@@ -791,6 +1255,14 @@ Dictionary Nova64Host::_cmd_material_create(const Dictionary &p) {
     if (p.has("metallic")) mat->set_metallic(static_cast<float>(static_cast<double>(p["metallic"])));
     if (p.has("roughness")) mat->set_roughness(static_cast<float>(static_cast<double>(p["roughness"])));
     if (p.has("specular")) mat->set_specular(static_cast<float>(static_cast<double>(p["specular"])));
+
+    // Enable environment reflections for PBR materials
+    mat->set_specular(0.5f); // Default specular for reflections
+    if (p.has("envMapIntensity")) {
+        // Adjust specular based on env map intensity
+        float intensity = static_cast<float>(static_cast<double>(p["envMapIntensity"]));
+        mat->set_specular(0.5f * intensity);
+    }
 
     // Shading mode: 'per_pixel' (default), 'per_vertex' (cheap), 'unshaded'.
     if (p.has("shadingMode")) {
@@ -950,11 +1422,43 @@ Dictionary Nova64Host::_cmd_geometry_create_sphere(const Dictionary &p) {
 }
 
 Dictionary Nova64Host::_cmd_geometry_create_plane(const Dictionary &p) {
-    Ref<PlaneMesh> m; m.instantiate();
+    Ref<ArrayMesh> m; m.instantiate();
+    Vector3 s = Vector3(1.0f, 0.0f, 1.0f);
     if (p.has("size")) {
-        Vector3 s = vec3_from_payload(p, "size", Vector3(1.0f, 0.0f, 1.0f));
-        m->set_size(Vector2(s.x, s.z != 0.0f ? s.z : s.y));
+        s = vec3_from_payload(p, "size", s);
     }
+    const float w = s.x;
+    const float h = s.z != 0.0f ? s.z : s.y;
+    const float hw = w * 0.5f;
+    const float hh = h * 0.5f;
+
+    PackedVector3Array verts;
+    verts.append(Vector3(-hw, -hh, 0.0f));
+    verts.append(Vector3( hw, -hh, 0.0f));
+    verts.append(Vector3( hw,  hh, 0.0f));
+    verts.append(Vector3(-hw,  hh, 0.0f));
+
+    PackedVector3Array normals;
+    for (int i = 0; i < 4; ++i) normals.append(Vector3(0.0f, 0.0f, 1.0f));
+
+    PackedVector2Array uvs;
+    uvs.append(Vector2(0.0f, 1.0f));
+    uvs.append(Vector2(1.0f, 1.0f));
+    uvs.append(Vector2(1.0f, 0.0f));
+    uvs.append(Vector2(0.0f, 0.0f));
+
+    PackedInt32Array indices;
+    indices.append(0); indices.append(1); indices.append(2);
+    indices.append(0); indices.append(2); indices.append(3);
+
+    Array arrays;
+    arrays.resize(Mesh::ARRAY_MAX);
+    arrays[Mesh::ARRAY_VERTEX] = verts;
+    arrays[Mesh::ARRAY_NORMAL] = normals;
+    arrays[Mesh::ARRAY_TEX_UV] = uvs;
+    arrays[Mesh::ARRAY_INDEX] = indices;
+    m->add_surface_from_arrays(Mesh::PRIMITIVE_TRIANGLES, arrays);
+
     uint32_t id = _handles->put_resource(HandleKind::GEOMETRY, m);
     return make_handle_result(id);
 }
@@ -1219,44 +1723,44 @@ Environment *Nova64Host::_ensure_environment() {
     Ref<Environment> env;
     env.instantiate();
 
-    // Default background: dark color matching Three.js setClearColor(0x0a0a0f)
-    // Don't use a sky by default - carts will set fog color which becomes the background
+    // Default background: Match Three.js clear color exactly
     env->set_background(Environment::BG_COLOR);
-    env->set_bg_color(Color(0.04f, 0.04f, 0.06f, 1.0f)); // 0x0a0a0f as RGB
+    // Three.js uses 0x0a0a0f which is rgb(10, 10, 15) or (0.039, 0.039, 0.059)
+    env->set_bg_color(Color(0.039f, 0.039f, 0.059f, 1.0f)); // Exact 0x0a0a0f
 
-    // Ambient light: use COLOR mode with dark blue-gray (matching Three.js default)
+    // Ambient light — keep it subtle so the directional light still shapes
+    // surfaces. Matches Three.js's default ambient (0x606080 @ 0.5) once the
+    // colour is converted to linear and dropped onto the Godot scale.
     env->set_ambient_source(Environment::AMBIENT_SOURCE_COLOR);
-    env->set_ambient_light_color(Color(0.2f, 0.2f, 0.25f, 1.0f));
-    env->set_ambient_light_energy(0.85f); // Increased from 0.72 for brighter ambient (closer to Three.js)
+    env->set_ambient_light_color(Color(0.18f, 0.18f, 0.23f, 1.0f));
+    env->set_ambient_light_energy(0.55f);
 
-    // Keep sky for reflections only (not visible as background)
+    // Sky for reflections (not visible as background by default)
     Ref<Sky> sky;
     sky.instantiate();
     Ref<ProceduralSkyMaterial> sky_mat;
     sky_mat.instantiate();
-    sky_mat->set_sky_top_color(Color(0.12f, 0.22f, 0.40f, 1.0f));
-    sky_mat->set_sky_horizon_color(Color(0.42f, 0.50f, 0.62f, 1.0f));
-    sky_mat->set_ground_horizon_color(Color(0.28f, 0.28f, 0.30f, 1.0f));
-    sky_mat->set_ground_bottom_color(Color(0.06f, 0.06f, 0.08f, 1.0f));
+    sky_mat->set_sky_top_color(Color(0.35f, 0.46f, 0.71f, 1.0f));
+    sky_mat->set_sky_horizon_color(Color(0.55f, 0.69f, 0.81f, 1.0f));
+    sky_mat->set_ground_horizon_color(Color(0.42f, 0.44f, 0.49f, 1.0f));
+    sky_mat->set_ground_bottom_color(Color(0.12f, 0.12f, 0.13f, 1.0f));
     sky_mat->set_sun_angle_max(30.0f);
     sky->set_material(sky_mat);
     env->set_sky(sky);
     env->set_reflection_source(Environment::REFLECTION_SOURCE_SKY);
 
-    // Tonemap — ACES filmic to match Three.js, higher exposure for dramatic lighting
-    // (Phase 3: Visual Parity - matches Three.js ACESFilmicToneMapping with exposure 1.25)
-    env->set_tonemapper(Environment::TONE_MAPPER_ACES);  // Changed from FILMIC to ACES
-    env->set_tonemap_exposure(1.5f);                      // Increased to 1.5 to match Three.js brightness (Three.js uses 1.25 but Godot needs higher due to different tone mapping curve)
-    env->set_tonemap_white(6.0f);                         // Increased from 5.0 for brighter highlights
+    // Tonemap — ACES with balanced exposure
+    env->set_tonemapper(Environment::TONE_MAPPER_ACES);
+    env->set_tonemap_exposure(1.0f);                      // Standard exposure
+    env->set_tonemap_white(1.0f);                         // Standard white point
 
-    // Glow / bloom — enhanced to match Three.js dramatic lighting
-    // (Phase 3: Visual Parity - more intense bloom for cinematic effect)
+    // Glow / bloom — standard settings
     env->set_glow_enabled(true);
-    env->set_glow_intensity(1.1f);              // Increased from 0.92 to 1.1
-    env->set_glow_strength(1.3f);               // Increased from 1.15 to 1.3
-    env->set_glow_bloom(0.12f);                 // Increased from 0.08 to 0.12
-    env->set_glow_hdr_bleed_threshold(0.85f);   // Lower from 0.9 to 0.85 for more bloom
-    env->set_glow_hdr_luminance_cap(16.0f);     // Add cap for emissive materials
+    env->set_glow_intensity(0.8f);
+    env->set_glow_strength(1.0f);
+    env->set_glow_bloom(0.1f);
+    env->set_glow_hdr_bleed_threshold(1.0f);
+    env->set_glow_hdr_luminance_cap(16.0f);
 
     // SSAO — subtle, off by default (can be expensive on mobile). Carts
     // enable explicitly via env.set.
@@ -1264,11 +1768,13 @@ Environment *Nova64Host::_ensure_environment() {
     env->set_ssao_radius(1.0f);
     env->set_ssao_intensity(1.0f);
 
-    // Subtle adjustments for that warm retro feel.
-    env->set_adjustment_enabled(true);
+    // Color adjustments off by default — Three.js relies entirely on tonemap
+    // and material colours, so anything we add here stacks on top of cart
+    // intent and tends to wash scenes out. Carts can re-enable via env.set.
+    env->set_adjustment_enabled(false);
     env->set_adjustment_brightness(1.0f);
-    env->set_adjustment_contrast(1.12f);
-    env->set_adjustment_saturation(1.08f);
+    env->set_adjustment_contrast(1.0f);
+    env->set_adjustment_saturation(1.0f);
 
     _world_env->set_environment(env);
     return env.ptr();
@@ -1286,7 +1792,9 @@ Dictionary Nova64Host::_cmd_env_set(const Dictionary &p) {
         // NOTE: Background remains SKY unless cart explicitly sets background or fog color
     }
     if (p.has("ambientEnergy")) {
-        env->set_ambient_light_energy(static_cast<float>(static_cast<double>(p["ambientEnergy"])));
+        // Direct passthrough - Space Harrier expects full ambient energy
+        float energy = static_cast<float>(static_cast<double>(p["ambientEnergy"]));
+        env->set_ambient_light_energy(energy); // Direct 1:1 mapping with Three.js
     }
     if (p.has("background")) {
         Color bg = color_from_payload(p, "background", Color(0, 0, 0, 1));
@@ -1310,10 +1818,9 @@ Dictionary Nova64Host::_cmd_env_set(const Dictionary &p) {
     if (p.has("fogColor")) {
         Color fog_color = color_from_payload(p, "fogColor", Color(0.5f, 0.6f, 0.7f, 1.0f));
         env->set_fog_light_color(fog_color);
-        // Match Three.js behavior: when fog is set, the background should be the fog color
-        // so distant objects fade into the background seamlessly
-        env->set_background(Environment::BG_COLOR);
-        env->set_bg_color(fog_color);
+        // Three.js does not auto-sync scene.background to fog color; carts that
+        // want a fog-colored sky pass `background` explicitly via env.set or
+        // call setClearColor() — handled by the dedicated `background` branch above.
     }
     if (p.has("fogDensity")) env->set_fog_density(
             static_cast<float>(static_cast<double>(p["fogDensity"])));
@@ -1479,7 +1986,10 @@ void Nova64Host::_setup_default_lighting() {
         _main_light = memnew(DirectionalLight3D);
         _main_light->set_name("Nova64_MainLight");
         _main_light->set_color(Color(1.0f, 1.0f, 1.0f));
-        _main_light->set_param(Light3D::PARAM_ENERGY, 1.8f); // Match Three.js intensity
+        // Three.js mainLight is 1.8, but Godot's forward+ accumulator drives
+        // surfaces brighter at the same numeric energy; 1.0 is a closer
+        // visual match before fill lights stack on top.
+        _main_light->set_param(Light3D::PARAM_ENERGY, 1.0f);
 
         // High-quality shadows (Three.js uses 4096x4096 shadow maps)
         _main_light->set_shadow(true);
@@ -1487,10 +1997,11 @@ void Nova64Host::_setup_default_lighting() {
         _main_light->set_param(Light3D::PARAM_SHADOW_BIAS, 0.00005f);
         _main_light->set_param(Light3D::PARAM_SHADOW_NORMAL_BIAS, 0.02f);
 
-        // Position and aim to match Three.js (5, 8, 3) looking at origin
-        _main_light->set_position(Vector3(5.0f, 8.0f, 3.0f));
-        _main_light->look_at(Vector3(0, 0, 0), Vector3(0, 1, 0));
-
+        // Position and aim to match Three.js (5, 8, 3) looking at origin.
+        _main_light->look_at_from_position(
+                Vector3(5.0f, 8.0f, 3.0f),
+                Vector3(0, 0, 0),
+                Vector3(0, 1, 0));
         add_child(_main_light);
     }
 
@@ -1499,12 +2010,13 @@ void Nova64Host::_setup_default_lighting() {
         _fill_light_1 = memnew(DirectionalLight3D);
         _fill_light_1->set_name("Nova64_FillLight1_Blue");
         _fill_light_1->set_color(Color(0.25f, 0.50f, 1.0f)); // 0x4080ff
-        _fill_light_1->set_param(Light3D::PARAM_ENERGY, 0.8f);
+        _fill_light_1->set_param(Light3D::PARAM_ENERGY, 0.35f);
         _fill_light_1->set_shadow(false); // Fill lights don't cast shadows
 
-        _fill_light_1->set_position(Vector3(-8.0f, 4.0f, -5.0f));
-        _fill_light_1->look_at(Vector3(0, 0, 0), Vector3(0, 1, 0));
-
+        _fill_light_1->look_at_from_position(
+                Vector3(-8.0f, 4.0f, -5.0f),
+                Vector3(0, 0, 0),
+                Vector3(0, 1, 0));
         add_child(_fill_light_1);
     }
 
@@ -1513,12 +2025,13 @@ void Nova64Host::_setup_default_lighting() {
         _fill_light_2 = memnew(DirectionalLight3D);
         _fill_light_2->set_name("Nova64_FillLight2_Pink");
         _fill_light_2->set_color(Color(1.0f, 0.25f, 0.50f)); // 0xff4080
-        _fill_light_2->set_param(Light3D::PARAM_ENERGY, 0.6f);
+        _fill_light_2->set_param(Light3D::PARAM_ENERGY, 0.25f);
         _fill_light_2->set_shadow(false);
 
-        _fill_light_2->set_position(Vector3(5.0f, -3.0f, 8.0f));
-        _fill_light_2->look_at(Vector3(0, 0, 0), Vector3(0, 1, 0));
-
+        _fill_light_2->look_at_from_position(
+                Vector3(5.0f, -3.0f, 8.0f),
+                Vector3(0, 0, 0),
+                Vector3(0, 1, 0));
         add_child(_fill_light_2);
     }
 
@@ -1527,12 +2040,13 @@ void Nova64Host::_setup_default_lighting() {
         _fill_light_3 = memnew(DirectionalLight3D);
         _fill_light_3->set_name("Nova64_FillLight3_Green");
         _fill_light_3->set_color(Color(0.50f, 1.0f, 0.25f)); // 0x80ff40
-        _fill_light_3->set_param(Light3D::PARAM_ENERGY, 0.4f);
+        _fill_light_3->set_param(Light3D::PARAM_ENERGY, 0.18f);
         _fill_light_3->set_shadow(false);
 
-        _fill_light_3->set_position(Vector3(-3.0f, 6.0f, -2.0f));
-        _fill_light_3->look_at(Vector3(0, 0, 0), Vector3(0, 1, 0));
-
+        _fill_light_3->look_at_from_position(
+                Vector3(-3.0f, 6.0f, -2.0f),
+                Vector3(0, 0, 0),
+                Vector3(0, 1, 0));
         add_child(_fill_light_3);
     }
 
@@ -1541,7 +2055,7 @@ void Nova64Host::_setup_default_lighting() {
         _point_light_1 = memnew(OmniLight3D);
         _point_light_1->set_name("Nova64_PointLight1_Warm");
         _point_light_1->set_color(Color(1.0f, 0.67f, 0.0f)); // 0xffaa00
-        _point_light_1->set_param(Light3D::PARAM_ENERGY, 2.0f);
+        _point_light_1->set_param(Light3D::PARAM_ENERGY, 1.2f);
         _point_light_1->set_param(Light3D::PARAM_RANGE, 30.0f);
         _point_light_1->set_param(Light3D::PARAM_ATTENUATION, 1.0f);
 
@@ -1559,7 +2073,7 @@ void Nova64Host::_setup_default_lighting() {
         _point_light_2 = memnew(OmniLight3D);
         _point_light_2->set_name("Nova64_PointLight2_Cool");
         _point_light_2->set_color(Color(0.0f, 0.67f, 1.0f)); // 0x00aaff
-        _point_light_2->set_param(Light3D::PARAM_ENERGY, 1.5f);
+        _point_light_2->set_param(Light3D::PARAM_ENERGY, 0.9f);
         _point_light_2->set_param(Light3D::PARAM_RANGE, 25.0f);
         _point_light_2->set_param(Light3D::PARAM_ATTENUATION, 1.0f);
 

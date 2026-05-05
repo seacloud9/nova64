@@ -100,6 +100,7 @@
   // Per-handle Euler rotation cache so rotateMesh can advance without a
   // round-trip to the host (bridge has no get_rotation yet).
   const rotState = new Map();
+  const meshes = new Map();
   function getRot(handle) {
     let r = rotState.get(handle);
     if (!r) { r = [0, 0, 0]; rotState.set(handle, r); }
@@ -154,6 +155,9 @@
     if (h && typeof h === 'object' && typeof h.handle === 'number') return h.handle;
     return h | 0;
   }
+  const meshMaterialState = new Map();
+  const materialPayloadState = new Map();
+  let syntheticMaterialId = 1;
   function makeTrackedVector(initial, onChange) {
     const values = [(initial && initial[0]) || 0, (initial && initial[1]) || 0, (initial && initial[2]) || 0];
     const vector = {};
@@ -200,7 +204,13 @@
       set(value) {
         materialHandle = value;
         const matHandle = unwrapHandle(value);
-        if (obj.handle && matHandle) call('mesh.setMaterial', { mesh: obj.handle, material: matHandle });
+        if (obj.handle && matHandle) {
+          call('mesh.setMaterial', { mesh: obj.handle, material: matHandle });
+          meshMaterialState.set(obj.handle, {
+            material: matHandle,
+            payload: Object.assign({}, materialPayloadState.get(matHandle) || {}),
+          });
+        }
       },
     });
     obj[Symbol.toPrimitive] = function () { return obj.handle; };
@@ -213,7 +223,9 @@
     const alpha = opts.opacity != null ? opts.opacity : opts.alpha;
     const payload = {
       albedo: colorFromHex(baseColor, alpha == null ? 1 : alpha),
-      metallic: typeof opts.metallic === 'number' ? opts.metallic : 0.05,
+      metallic: typeof opts.metallic === 'number'
+        ? opts.metallic
+        : (typeof opts.metalness === 'number' ? opts.metalness : 0.05),
       roughness: typeof opts.roughness === 'number' ? opts.roughness : 0.6,
     };
     const emission = opts.emissive != null ? opts.emissive : opts.emission;
@@ -238,15 +250,25 @@
     if (opts.rimTint != null) payload.rimTint = opts.rimTint;
     if (opts.clearcoat != null) payload.clearcoat = opts.clearcoat;
     if (opts.clearcoatRoughness != null) payload.clearcoatRoughness = opts.clearcoatRoughness;
+    if (opts.envMapIntensity != null) payload.envMapIntensity = opts.envMapIntensity;
+    const map = opts.albedoTexture || opts.diffuseMap || opts.map || opts.texture;
+    if (map) payload.albedoTexture = unwrapHandle(map);
+    if (opts.alphaTest != null) payload.alphaCut = opts.alphaTest;
     return payload;
   }
 
   function spawnMesh(geomHandle, color, pos, opts) {
     ensureInit();
-    const mat = call('material.create', materialPayload(color, opts));
+    const payload = materialPayload(color, opts);
+    const mat = call('material.create', payload);
     const matHandle = mat ? mat.handle : 0;
     const mesh = call('mesh.create', { geometry: geomHandle, material: matHandle });
     const meshHandle = mesh ? mesh.handle : 0;
+    if (matHandle) materialPayloadState.set(matHandle, Object.assign({}, payload));
+    if (meshHandle && matHandle) {
+      meshMaterialState.set(meshHandle, { material: matHandle, payload: Object.assign({}, payload) });
+    }
+    if (meshHandle) meshes.set(meshHandle, { type: 'mesh' });
     if (meshHandle && matHandle) {
       call('mesh.setMaterial', { mesh: meshHandle, material: matHandle });
     }
@@ -275,7 +297,9 @@
     const sx = typeof w === 'number' ? w : 1;
     const sz = typeof h === 'number' ? h : 1;
     const geom = call('geometry.createPlane', { size: [sx, 0, sz] });
-    return geom ? spawnMesh(geom.handle, color, pos, opts) : 0;
+    // Planes are double-sided by default to match Three.js PlaneGeometry behavior
+    const planeOpts = Object.assign({ doubleSided: true }, opts);
+    return geom ? spawnMesh(geom.handle, color, pos, planeOpts) : 0;
   }
 
   // Cylinder + cone + torus primitives — backed by real Godot meshes.
@@ -312,6 +336,8 @@
     if (!h) return;
     call('mesh.destroy', { handle: h });
     rotState.delete(h);
+    meshMaterialState.delete(h);
+    meshes.delete(h);
     if (handle && typeof handle === 'object') handle.handle = 0;
   }
 
@@ -406,8 +432,9 @@
     });
   }
   function setFog(color, near, far) {
-    // Three.js fog is linear near..far; map to Godot depth fog and keep
-    // a light density term for aerial perspective.
+    // Three.js fog is linear near..far; map to Godot depth fog. Three.js does
+    // NOT auto-sync scene.background to the fog color; carts that want a
+    // fog-colored sky should also call setClearColor() explicitly.
     ensureInit();
     const c = colorFromHex(typeof color === 'number' ? color : 0x7090b0);
     const n = typeof near === 'number' ? near : 10;
@@ -461,6 +488,21 @@
     });
   }
   function setLightColor(handle, color) {
+    // Support both signatures:
+    // 1. setLightColor(color) - sets main directional light color (Space Harrier usage)
+    // 2. setLightColor(handle, color) - sets specific light color
+
+    if (typeof handle === 'number' && color === undefined) {
+      // Single argument version - set main directional light color
+      if (!dirLightHandle) return;
+      call('light.setColor', {
+        handle: dirLightHandle,
+        color: colorFromHex(handle),
+      });
+      return;
+    }
+
+    // Two argument version - set specific light color
     if (!handle) return;
     const h = unwrapHandle(handle);
     if (!h) return;
@@ -474,6 +516,31 @@
     const h = unwrapHandle(handle);
     if (!h) return;
     call('light.setEnergy', { handle: h, energy: typeof energy === 'number' ? energy : 1.0 });
+  }
+
+  // ---------------- scene management -----------------------------------
+  function clearScene() {
+    // Clear all user-created meshes but preserve lighting and environment
+    ensureInit();
+
+    // Clear all meshes from the meshes map
+    for (const [handle, info] of meshes.entries()) {
+      if (info && info.type === 'mesh') {
+        call('mesh.destroy', { handle });
+      }
+    }
+    meshes.clear();
+
+    // Clear any user-created lights (not the default directional light)
+    for (const [handle, info] of meshes.entries()) {
+      if (info && info.type === 'light' && handle !== dirLightHandle) {
+        // For now, we don't have a light.destroy command, so just clear from map
+        meshes.delete(handle);
+      }
+    }
+
+    // Note: We don't clear the environment, skybox, or default lighting
+    // as those are typically re-applied after clearScene in carts
   }
 
   // ---------------- draw / 2D overlay ----------------------------------
@@ -771,10 +838,10 @@
       colorFromHex(color == null ? 0xffffff : color), true]);
   }
   function ellipse(x, y, rx, ry, color, filled) {
-    // Approximate as average-radius circle. Real ellipse rasterisation
-    // would need a polyline; cheap stand-in keeps generative-art alive.
-    const r = Math.max(1, ((rx | 0) + (ry | 0)) >> 1);
-    circle(x, y, r, color, filled !== false);
+    const p = __tx(x, y);
+    const sc = __mtxScale();
+    __ops.push(['ellipse', p[0] | 0, p[1] | 0, (rx * sc) | 0, (ry * sc) | 0,
+      colorFromHex(color == null ? 0xffffff : color), filled !== false]);
   }
   function arc(x, y, r, _a0, _a1, color) {
     circle(x, y, Math.max(1, r | 0), color, false);
@@ -915,13 +982,16 @@
       prevX = x; prevY = y;
     }
   }
-  function poly(points, color, _filled) {
-    if (!Array.isArray(points) || points.length < 4) return;
-    const c = color == null ? 0xffffff : color;
+  function poly(points, color, filled) {
+    if (!Array.isArray(points) || points.length < 6) return;
+    // Transform all points
+    const sc = __mtxScale();
+    const transformed = [];
     for (let i = 0; i < points.length; i += 2) {
-      const j = (i + 2) % points.length;
-      line(points[i], points[i + 1], points[j], points[j + 1], c);
+      const p = __tx(points[i], points[i + 1]);
+      transformed.push(p[0] | 0, p[1] | 0);
     }
+    __ops.push(['polygon', transformed, colorFromHex(color == null ? 0xffffff : color), filled !== false]);
   }
   function flowField(_w, _h, _scale) {
     return { sample(x, y) { return noise(x * 0.01, y * 0.01) * Math.PI * 2; } };
@@ -1853,9 +1923,594 @@
   function createSlider(_opts) { warnOnce('ui.createSlider'); return makeStub({ value: 0 }); }
   function createCheckbox(_opts) { warnOnce('ui.createCheckbox'); return makeStub({ checked: false }); }
   function createDialog(_opts) { warnOnce('ui.createDialog'); return makeStub(); }
-  function parseCanvasUI(_src) { warnOnce('canvas-ui.parse'); return makeStub(); }
-  function renderCanvasUI(_root) { warnOnce('canvas-ui.render'); }
-  function updateCanvasUI(_root, _dt) { warnOnce('canvas-ui.update'); }
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  // Canvas-UI (NML) — Minimal implementation for Godot using 2D draw primitives.
+  // Supports: rect, circle, ellipse, triangle, star, line, text, button, progressbar, group, panel, path
+  // ══════════════════════════════════════════════════════════════════════════════
+
+  const NML_W = 640, NML_H = 360;
+
+  // Decode XML entities
+  function _decodeXmlEntities(str) {
+    return str
+      .replace(/&quot;/g, '"')
+      .replace(/&apos;/g, "'")
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&amp;/g, '&');
+  }
+
+  // Parse NML (subset of XML) into AST
+  function _nmlParse(xmlString) {
+    const str = (xmlString || '').trim();
+    let pos = 0;
+    function skipWS() { while (pos < str.length && /\s/.test(str[pos])) pos++; }
+    function skipComment() {
+      if (str.startsWith('<!--', pos)) { pos = str.indexOf('-->', pos + 4); pos = pos >= 0 ? pos + 3 : str.length; return true; }
+      return false;
+    }
+    function readAttrValue() {
+      if (str[pos] === '"' || str[pos] === "'") {
+        const q = str[pos++]; let v = '';
+        while (pos < str.length && str[pos] !== q) v += str[pos++];
+        pos++; return _decodeXmlEntities(v);
+      }
+      let v = ''; while (pos < str.length && !/[\s>/]/.test(str[pos])) v += str[pos++];
+      return _decodeXmlEntities(v);
+    }
+    function readAttrs() {
+      const attrs = {}; skipWS();
+      while (pos < str.length && str[pos] !== '>' && !(str[pos] === '/' && str[pos + 1] === '>')) {
+        if (/[a-zA-Z_:]/.test(str[pos])) {
+          let name = ''; while (pos < str.length && /[a-zA-Z0-9_:-]/.test(str[pos])) name += str[pos++];
+          skipWS();
+          if (str[pos] === '=') { pos++; skipWS(); attrs[name] = readAttrValue(); }
+          else attrs[name] = true;
+          skipWS();
+        } else pos++;
+      }
+      return attrs;
+    }
+    function readText() { let t = ''; while (pos < str.length && str[pos] !== '<') t += str[pos++]; return _decodeXmlEntities(t.trim()); }
+    function parseNode() {
+      skipWS(); if (pos >= str.length) return null;
+      if (skipComment()) return null;
+      if (str[pos] !== '<') { const t = readText(); return t ? { tag: '#text', attrs: {}, children: [], text: t } : null; }
+      pos++; if (str[pos] === '/') return null; if (str[pos] === '!') return null;
+      let tag = ''; while (pos < str.length && /[a-zA-Z0-9_-]/.test(str[pos])) tag += str[pos++];
+      tag = tag.toLowerCase();
+      const attrs = readAttrs(), children = []; let text = '';
+      if (str[pos] === '/' && str[pos + 1] === '>') { pos += 2; return { tag, attrs, children, text }; }
+      if (str[pos] === '>') {
+        pos++;
+        // Inline SVG capture
+        if (tag === 'svg' && !attrs.src) {
+          let depth = 1, inner = '';
+          while (pos < str.length && depth > 0) {
+            if (str.startsWith('<svg', pos) && /[\s>/]/.test(str[pos + 4])) depth++;
+            else if (str.startsWith('</svg>', pos)) { depth--; if (depth === 0) { pos += 6; break; } }
+            if (depth > 0) inner += str[pos++];
+          }
+          attrs._innerSvg = inner.trim();
+          return { tag, attrs, children, text };
+        }
+        while (pos < str.length) {
+          skipWS();
+          if (str.startsWith('</', pos)) { while (pos < str.length && str[pos] !== '>') pos++; pos++; break; }
+          if (skipComment()) continue;
+          if (str[pos] === '<') { const child = parseNode(); if (child) children.push(child); }
+          else text += readText();
+        }
+      }
+      return { tag, attrs, children, text: text.trim() };
+    }
+    return parseNode();
+  }
+
+  function _nmlResolveVal(val, parentDim) {
+    if (val === undefined || val === null) return undefined;
+    const s = String(val);
+    if (s.endsWith('%')) return (parseFloat(s) / 100) * (parentDim || 0);
+    const n = parseFloat(s); return isNaN(n) ? 0 : n;
+  }
+
+  function _nmlResolveColor(val) {
+    if (!val) return null;
+    const s = String(val).trim();
+    if (/^#[0-9a-fA-F]{6}$/.test(s)) {
+      return parseInt(s.slice(1), 16);
+    }
+    if (/^#[0-9a-fA-F]{8}$/.test(s)) {
+      return parseInt(s.slice(1, 7), 16); // ignore alpha for now
+    }
+    if (/^#[0-9a-fA-F]{3}$/.test(s)) {
+      const r = s[1], g = s[2], b = s[3];
+      return parseInt(r + r + g + g + b + b, 16);
+    }
+    return 0xffffff;
+  }
+
+  function _nmlBindData(val, data) {
+    if (!val || !data) return val || '';
+    return String(val).replace(/\{(\w+)\}/g, (_, k) => (data[k] !== undefined ? data[k] : ''));
+  }
+
+  function _nmlResolveRect(attrs, parentRect, NW, NH) {
+    const pw = parentRect ? parentRect.w : NW, ph = parentRect ? parentRect.h : NH;
+    const px = parentRect ? parentRect.x : 0, py = parentRect ? parentRect.y : 0;
+    let x = _nmlResolveVal(attrs.x, pw) || 0, y = _nmlResolveVal(attrs.y, ph) || 0;
+    const w = _nmlResolveVal(attrs.width || attrs.w, pw) || 0;
+    const h = _nmlResolveVal(attrs.height || attrs.h, ph) || 0;
+    const anchor = attrs.anchor || '';
+    const ax = attrs['anchor-x'] || (anchor === 'center' ? 'center' : anchor === 'right' ? 'right' : null);
+    const ay = attrs['anchor-y'] || (anchor === 'center' ? 'center' : anchor === 'bottom' ? 'bottom' : null);
+    if (ax === 'center') x -= w / 2; else if (ax === 'right') x -= w;
+    if (ay === 'center') y -= h / 2; else if (ay === 'bottom') y -= h;
+    return { x: px + x, y: py + y, w, h };
+  }
+
+  // SVG path parser: converts SVG "d" attribute to an array of polyline segments.
+  // Each segment is { points: [x,y,...], closed: bool }
+  // Supports: M/m (moveto), L/l (lineto), H/h/V/v (horiz/vert), C/c (cubic bezier),
+  // Q/q (quadratic bezier), S/s (smooth cubic), T/t (smooth quad), A/a (arc), Z/z (close)
+  function _svgParsePath(d) {
+    if (!d) return [];
+    const segments = [];
+    let curSeg = { points: [], closed: false };
+    let cx = 0, cy = 0; // Current point
+    let startX = 0, startY = 0; // Start of current subpath (for Z)
+    let lastCmd = '', lastCx2 = 0, lastCy2 = 0; // For S/T smooth continuation
+
+    // Tokenize: split into commands and numbers
+    const tokens = [];
+    const re = /([MmLlHhVvCcSsQqTtAaZz])|([+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?)/g;
+    let m;
+    while ((m = re.exec(d)) !== null) {
+      if (m[1]) tokens.push({ type: 'cmd', val: m[1] });
+      else tokens.push({ type: 'num', val: parseFloat(m[2]) });
+    }
+
+    let i = 0;
+    function nextNum() { return i < tokens.length && tokens[i].type === 'num' ? tokens[i++].val : 0; }
+    function hasMoreNums() { return i < tokens.length && tokens[i].type === 'num'; }
+
+    // Cubic bezier to polyline (de Casteljau)
+    function cubicBezier(x0, y0, x1, y1, x2, y2, x3, y3, pts, steps = 12) {
+      for (let t = 1; t <= steps; t++) {
+        const u = t / steps;
+        const u2 = u * u, u3 = u2 * u;
+        const c = 1 - u, c2 = c * c, c3 = c2 * c;
+        const x = c3 * x0 + 3 * c2 * u * x1 + 3 * c * u2 * x2 + u3 * x3;
+        const y = c3 * y0 + 3 * c2 * u * y1 + 3 * c * u2 * y2 + u3 * y3;
+        pts.push(x, y);
+      }
+    }
+
+    // Quadratic bezier to polyline
+    function quadBezier(x0, y0, x1, y1, x2, y2, pts, steps = 10) {
+      for (let t = 1; t <= steps; t++) {
+        const u = t / steps;
+        const c = 1 - u;
+        const x = c * c * x0 + 2 * c * u * x1 + u * u * x2;
+        const y = c * c * y0 + 2 * c * u * y1 + u * u * y2;
+        pts.push(x, y);
+      }
+    }
+
+    // Arc to bezier segments (simplified)
+    function arcToBeziers(x0, y0, rx, ry, angle, largeArc, sweep, x1, y1, pts) {
+      // Degenerate: if either radius is 0 or endpoints are the same, just lineto
+      if (rx === 0 || ry === 0 || (x0 === x1 && y0 === y1)) {
+        pts.push(x1, y1);
+        return;
+      }
+      // Normalize radii
+      rx = Math.abs(rx); ry = Math.abs(ry);
+      const phi = angle * Math.PI / 180;
+      const cosPhi = Math.cos(phi), sinPhi = Math.sin(phi);
+      // Step 1: compute (x1', y1')
+      const dx = (x0 - x1) / 2, dy = (y0 - y1) / 2;
+      const x1p = cosPhi * dx + sinPhi * dy;
+      const y1p = -sinPhi * dx + cosPhi * dy;
+      // Adjust radii if too small
+      let lambda = (x1p * x1p) / (rx * rx) + (y1p * y1p) / (ry * ry);
+      if (lambda > 1) { const s = Math.sqrt(lambda); rx *= s; ry *= s; }
+      // Step 2: compute (cx', cy')
+      const sq = Math.max(0, (rx * rx * ry * ry - rx * rx * y1p * y1p - ry * ry * x1p * x1p) /
+                 (rx * rx * y1p * y1p + ry * ry * x1p * x1p));
+      const root = Math.sqrt(sq) * (largeArc === sweep ? -1 : 1);
+      const cxp = root * rx * y1p / ry;
+      const cyp = -root * ry * x1p / rx;
+      // Step 3: compute center (cx, cy)
+      const cx = cosPhi * cxp - sinPhi * cyp + (x0 + x1) / 2;
+      const cy = sinPhi * cxp + cosPhi * cyp + (y0 + y1) / 2;
+      // Step 4: compute theta1 and dtheta
+      function vecAngle(ux, uy, vx, vy) {
+        const dot = ux * vx + uy * vy;
+        const len = Math.sqrt((ux * ux + uy * uy) * (vx * vx + vy * vy));
+        let ang = Math.acos(Math.max(-1, Math.min(1, dot / len)));
+        if (ux * vy - uy * vx < 0) ang = -ang;
+        return ang;
+      }
+      const theta1 = vecAngle(1, 0, (x1p - cxp) / rx, (y1p - cyp) / ry);
+      let dtheta = vecAngle((x1p - cxp) / rx, (y1p - cyp) / ry, (-x1p - cxp) / rx, (-y1p - cyp) / ry);
+      if (!sweep && dtheta > 0) dtheta -= 2 * Math.PI;
+      else if (sweep && dtheta < 0) dtheta += 2 * Math.PI;
+      // Approximate arc with line segments
+      const steps = Math.max(4, Math.ceil(Math.abs(dtheta) / (Math.PI / 8)));
+      for (let s = 1; s <= steps; s++) {
+        const t = theta1 + (s / steps) * dtheta;
+        const ex = rx * Math.cos(t), ey = ry * Math.sin(t);
+        const px = cosPhi * ex - sinPhi * ey + cx;
+        const py = sinPhi * ex + cosPhi * ey + cy;
+        pts.push(px, py);
+      }
+    }
+
+    function pushPoint(x, y) {
+      curSeg.points.push(x, y);
+      cx = x; cy = y;
+    }
+
+    function finishSeg() {
+      if (curSeg.points.length >= 4) segments.push(curSeg);
+      curSeg = { points: [], closed: false };
+    }
+
+    while (i < tokens.length) {
+      const tok = tokens[i];
+      if (tok.type === 'cmd') {
+        const cmd = tok.val; i++;
+        lastCmd = cmd;
+        switch (cmd) {
+          case 'M': case 'm': {
+            if (curSeg.points.length > 0) finishSeg();
+            let first = true;
+            while (hasMoreNums()) {
+              let x = nextNum(), y = nextNum();
+              if (cmd === 'm') { x += cx; y += cy; }
+              if (first) { startX = x; startY = y; first = false; }
+              pushPoint(x, y);
+            }
+            break;
+          }
+          case 'L': case 'l':
+            while (hasMoreNums()) {
+              let x = nextNum(), y = nextNum();
+              if (cmd === 'l') { x += cx; y += cy; }
+              pushPoint(x, y);
+            }
+            break;
+          case 'H': case 'h':
+            while (hasMoreNums()) {
+              let x = nextNum();
+              if (cmd === 'h') x += cx;
+              pushPoint(x, cy);
+            }
+            break;
+          case 'V': case 'v':
+            while (hasMoreNums()) {
+              let y = nextNum();
+              if (cmd === 'v') y += cy;
+              pushPoint(cx, y);
+            }
+            break;
+          case 'C': case 'c':
+            while (hasMoreNums()) {
+              let x1 = nextNum(), y1 = nextNum();
+              let x2 = nextNum(), y2 = nextNum();
+              let x = nextNum(), y = nextNum();
+              if (cmd === 'c') {
+                x1 += cx; y1 += cy; x2 += cx; y2 += cy; x += cx; y += cy;
+              }
+              cubicBezier(cx, cy, x1, y1, x2, y2, x, y, curSeg.points);
+              lastCx2 = x2; lastCy2 = y2;
+              cx = x; cy = y;
+            }
+            break;
+          case 'S': case 's':
+            while (hasMoreNums()) {
+              // Reflect previous control point
+              let x1 = 2 * cx - lastCx2, y1 = 2 * cy - lastCy2;
+              let x2 = nextNum(), y2 = nextNum();
+              let x = nextNum(), y = nextNum();
+              if (cmd === 's') { x2 += cx; y2 += cy; x += cx; y += cy; }
+              cubicBezier(cx, cy, x1, y1, x2, y2, x, y, curSeg.points);
+              lastCx2 = x2; lastCy2 = y2;
+              cx = x; cy = y;
+            }
+            break;
+          case 'Q': case 'q':
+            while (hasMoreNums()) {
+              let x1 = nextNum(), y1 = nextNum();
+              let x = nextNum(), y = nextNum();
+              if (cmd === 'q') { x1 += cx; y1 += cy; x += cx; y += cy; }
+              quadBezier(cx, cy, x1, y1, x, y, curSeg.points);
+              lastCx2 = x1; lastCy2 = y1;
+              cx = x; cy = y;
+            }
+            break;
+          case 'T': case 't':
+            while (hasMoreNums()) {
+              let x1 = 2 * cx - lastCx2, y1 = 2 * cy - lastCy2;
+              let x = nextNum(), y = nextNum();
+              if (cmd === 't') { x += cx; y += cy; }
+              quadBezier(cx, cy, x1, y1, x, y, curSeg.points);
+              lastCx2 = x1; lastCy2 = y1;
+              cx = x; cy = y;
+            }
+            break;
+          case 'A': case 'a':
+            while (hasMoreNums()) {
+              const rx = nextNum(), ry = nextNum(), angle = nextNum();
+              const largeArc = nextNum(), sweep = nextNum();
+              let x = nextNum(), y = nextNum();
+              if (cmd === 'a') { x += cx; y += cy; }
+              arcToBeziers(cx, cy, rx, ry, angle, largeArc, sweep, x, y, curSeg.points);
+              cx = x; cy = y;
+            }
+            break;
+          case 'Z': case 'z':
+            pushPoint(startX, startY);
+            curSeg.closed = true;
+            finishSeg();
+            break;
+        }
+      } else {
+        // Implicit command repeat (same as last command)
+        i++;
+      }
+    }
+    finishSeg();
+    return segments;
+  }
+
+  // Render a single NML node using our 2D draw primitives
+  function _nmlRenderNode(node, parentRect, data, handlers, scaleX, scaleY) {
+    if (!node || node.tag === '#text') return;
+    const { tag, attrs, children } = node;
+    const bound = (v) => _nmlBindData(v, data);
+    const r = _nmlResolveRect(attrs, parentRect, NML_W, NML_H);
+    const fill = _nmlResolveColor(bound(attrs.fill));
+    const stroke = _nmlResolveColor(bound(attrs.stroke));
+    const color = _nmlResolveColor(bound(attrs.color));
+
+    // Scale coordinates to screen
+    const sx = (v) => v * scaleX, sy = (v) => v * scaleY;
+
+    switch (tag) {
+      case 'rect': {
+        if (fill !== null) rect(sx(r.x), sy(r.y), sx(r.w), sy(r.h), fill);
+        if (stroke !== null) {
+          rect(sx(r.x), sy(r.y), sx(r.w), 1, stroke);
+          rect(sx(r.x), sy(r.y + r.h - 1), sx(r.w), 1, stroke);
+          rect(sx(r.x), sy(r.y), 1, sy(r.h), stroke);
+          rect(sx(r.x + r.w - 1), sy(r.y), 1, sy(r.h), stroke);
+        }
+        break;
+      }
+      case 'circle': {
+        // Support both NML (x,y) and SVG (cx,cy) attribute names
+        const circX = _nmlResolveVal(attrs.cx || attrs.x, parentRect?.w || NML_W) || 0;
+        const circY = _nmlResolveVal(attrs.cy || attrs.y, parentRect?.h || NML_H) || 0;
+        const radius = parseFloat(attrs.r) || 10;
+        if (fill !== null) circle(sx(circX + (parentRect?.x || 0)), sy(circY + (parentRect?.y || 0)), sx(radius), fill);
+        if (stroke !== null) {
+          // Draw stroked circle using ellipse (which supports stroke)
+          ellipse(sx(circX + (parentRect?.x || 0)), sy(circY + (parentRect?.y || 0)), sx(radius), sy(radius), stroke, false);
+        }
+        break;
+      }
+      case 'ellipse': {
+        // Support both NML (x,y) and SVG (cx,cy) attribute names
+        const ecx = _nmlResolveVal(attrs.cx || attrs.x, parentRect?.w || NML_W) || 0;
+        const ecy = _nmlResolveVal(attrs.cy || attrs.y, parentRect?.h || NML_H) || 0;
+        const erx = parseFloat(attrs.rx) || 10, ery = parseFloat(attrs.ry) || erx;
+        if (fill !== null) ellipse(sx(ecx + (parentRect?.x || 0)), sy(ecy + (parentRect?.y || 0)), sx(erx), sy(ery), fill, true);
+        if (stroke !== null) ellipse(sx(ecx + (parentRect?.x || 0)), sy(ecy + (parentRect?.y || 0)), sx(erx), sy(ery), stroke, false);
+        break;
+      }
+      case 'line': {
+        const x1 = _nmlResolveVal(attrs.x1, parentRect?.w || NML_W) || 0;
+        const y1 = _nmlResolveVal(attrs.y1, parentRect?.h || NML_H) || 0;
+        const x2 = _nmlResolveVal(attrs.x2, parentRect?.w || NML_W) || 0;
+        const y2 = _nmlResolveVal(attrs.y2, parentRect?.h || NML_H) || 0;
+        const c = color || stroke || 0xffffff;
+        line(sx(x1 + (parentRect?.x || 0)), sy(y1 + (parentRect?.y || 0)),
+             sx(x2 + (parentRect?.x || 0)), sy(y2 + (parentRect?.y || 0)), c);
+        break;
+      }
+      case 'path': {
+        // SVG path element: parse d="" attribute and render as polylines
+        const d = attrs.d;
+        if (!d) break;
+        const pathX = _nmlResolveVal(attrs.x, parentRect?.w || NML_W) || 0;
+        const pathY = _nmlResolveVal(attrs.y, parentRect?.h || NML_H) || 0;
+        const ox = sx(pathX + (parentRect?.x || 0));
+        const oy = sy(pathY + (parentRect?.y || 0));
+        const pathFill = attrs.fill !== 'none' ? fill : null;
+        const pathStroke = attrs.stroke !== 'none' ? (stroke || color) : null;
+        const segments = _svgParsePath(d);
+        for (const seg of segments) {
+          if (seg.points.length < 4) continue;
+          // Transform points to screen coordinates with path offset
+          const pts = [];
+          for (let i = 0; i < seg.points.length; i += 2) {
+            pts.push(ox + sx(seg.points[i]), oy + sy(seg.points[i + 1]));
+          }
+          if (pathFill !== null && seg.closed) poly(pts, pathFill, true);
+          if (pathStroke !== null) poly(pts, pathStroke, false);
+        }
+        break;
+      }
+      case 'text': {
+        const tx = _nmlResolveVal(attrs.x, parentRect?.w || NML_W) || 0;
+        const ty = _nmlResolveVal(attrs.y, parentRect?.h || NML_H) || 0;
+        const size = parseFloat(attrs.size) || 8;
+        const c = color || 0xffffff;
+        const txt = bound(node.text || attrs.text || '');
+        const ax = attrs['anchor-x'];
+        // novaPrint signature: (text, x, y, color, scale)
+        // Scale is relative (1 = default size), not pixel size
+        const fontScale = size / 8; // 8px is default font size
+        if (ax === 'center') {
+          printCentered(txt, sx(tx + (parentRect?.x || 0)), sy(ty + (parentRect?.y || 0)), c, fontScale * scaleY);
+        } else {
+          novaPrint(txt, sx(tx + (parentRect?.x || 0)), sy(ty + (parentRect?.y || 0)), c, fontScale * scaleY);
+        }
+        break;
+      }
+      case 'button': {
+        const fillC = fill !== null ? fill : 0x333355;
+        const textC = _nmlResolveColor(bound(attrs['text-color'])) || 0xffffff;
+        const txt = bound(attrs.text || '');
+        rect(sx(r.x), sy(r.y), sx(r.w), sy(r.h), fillC);
+        if (stroke !== null) {
+          rect(sx(r.x), sy(r.y), sx(r.w), 1, stroke);
+          rect(sx(r.x), sy(r.y + r.h - 1), sx(r.w), 1, stroke);
+          rect(sx(r.x), sy(r.y), 1, sy(r.h), stroke);
+          rect(sx(r.x + r.w - 1), sy(r.y), 1, sy(r.h), stroke);
+        }
+        const fontSize = parseFloat(attrs['font-size']) || 10;
+        const fontScale = fontSize / 8;
+        printCentered(txt, sx(r.x + r.w / 2), sy(r.y + r.h / 2 - fontSize / 2), textC, fontScale * scaleY);
+        break;
+      }
+      case 'progressbar': {
+        const bg = _nmlResolveColor(bound(attrs.background)) || 0x222222;
+        const fg = fill !== null ? fill : 0x44aa44;
+        const val = parseFloat(bound(attrs.value)) || 0;
+        const max = parseFloat(attrs.max) || 100;
+        const pct = Math.max(0, Math.min(1, val / max));
+        rect(sx(r.x), sy(r.y), sx(r.w), sy(r.h), bg);
+        rect(sx(r.x), sy(r.y), sx(r.w * pct), sy(r.h), fg);
+        if (attrs.label) {
+          novaPrint(attrs.label, sx(r.x + 2), sy(r.y + r.h / 2 - 4), 0xffffff, 0.875 * scaleY);
+        }
+        break;
+      }
+      case 'star': {
+        const cx = _nmlResolveVal(attrs.x, parentRect?.w || NML_W) || 0;
+        const cy = _nmlResolveVal(attrs.y, parentRect?.h || NML_H) || 0;
+        const outerR = parseFloat(bound(attrs.r)) || 10;
+        const innerR = parseFloat(bound(attrs['inner-r'])) || outerR * 0.4;
+        const points = parseInt(attrs.points) || 5;
+        const rotation = parseFloat(bound(attrs.rotation)) || 0;
+        const rotRad = (rotation - 90) * Math.PI / 180; // Start from top
+        const pcx = sx(cx + (parentRect?.x || 0));
+        const pcy = sy(cy + (parentRect?.y || 0));
+        const starPts = [];
+        for (let i = 0; i < points * 2; i++) {
+          const angle = rotRad + (i * Math.PI / points);
+          const r = (i % 2 === 0) ? sx(outerR) : sx(innerR);
+          starPts.push(pcx + r * Math.cos(angle), pcy + r * Math.sin(angle));
+        }
+        if (fill !== null) poly(starPts, fill, true);
+        if (stroke !== null) poly(starPts, stroke, false);
+        break;
+      }
+      case 'triangle': {
+        const cx = _nmlResolveVal(attrs.x, parentRect?.w || NML_W) || 0;
+        const cy = _nmlResolveVal(attrs.y, parentRect?.h || NML_H) || 0;
+        const size = parseFloat(attrs.size) || 20;
+        const pcx = sx(cx + (parentRect?.x || 0));
+        const pcy = sy(cy + (parentRect?.y || 0));
+        const h = sy(size) * 0.866; // height of equilateral triangle
+        const triPts = [
+          pcx, pcy - h * 0.67,           // top
+          pcx - sx(size) / 2, pcy + h * 0.33, // bottom-left
+          pcx + sx(size) / 2, pcy + h * 0.33  // bottom-right
+        ];
+        if (fill !== null) poly(triPts, fill, true);
+        if (stroke !== null) poly(triPts, stroke, false);
+        break;
+      }
+      case 'group':
+      case 'panel':
+      case 'ui': {
+        // Container: render children with this as parent rect
+        if (tag === 'panel' && fill !== null) rect(sx(r.x), sy(r.y), sx(r.w), sy(r.h), fill);
+        if (tag === 'panel' && attrs.title) {
+          const titleH = parseFloat(attrs['title-height']) || 20;
+          rect(sx(r.x), sy(r.y), sx(r.w), sy(titleH), 0x333355);
+          const titleSize = parseFloat(attrs['title-size']) || 10;
+          printCentered(attrs.title, sx(r.x + r.w / 2), sy(r.y + titleH / 2 - titleSize / 2), 0xffffff, (titleSize / 8) * scaleY);
+        }
+        for (const child of children) {
+          _nmlRenderNode(child, r, data, handlers, scaleX, scaleY);
+        }
+        break;
+      }
+      case 'svg': {
+        // Inline SVG block: parse the captured inner SVG and render its children
+        // The parser captures raw SVG markup in attrs._innerSvg
+        if (attrs._innerSvg) {
+          // Parse the inner SVG as a root element and render its children
+          const innerAst = _nmlParse('<root>' + attrs._innerSvg + '</root>');
+          if (innerAst && innerAst.children) {
+            // Create a rect for the SVG viewport
+            const svgRect = { x: r.x, y: r.y, w: r.w || 128, h: r.h || 128 };
+            // The inner elements use SVG coordinates, scale to fit the viewport
+            // SVG viewBox would be [0,0,w,h] by default
+            const svgW = parseFloat(attrs.viewBoxW) || svgRect.w;
+            const svgH = parseFloat(attrs.viewBoxH) || svgRect.h;
+            const innerScaleX = svgRect.w / svgW;
+            const innerScaleY = svgRect.h / svgH;
+            for (const child of innerAst.children) {
+              // Render with combined scaling
+              _nmlRenderNode(child, svgRect, data, handlers, scaleX * innerScaleX, scaleY * innerScaleY);
+            }
+          }
+        } else {
+          // External SVG (src=) - not supported, just render children
+          for (const child of children) {
+            _nmlRenderNode(child, r, data, handlers, scaleX, scaleY);
+          }
+        }
+        break;
+      }
+      default:
+        // Unknown tag — try rendering children
+        for (const child of children) {
+          _nmlRenderNode(child, parentRect, data, handlers, scaleX, scaleY);
+        }
+    }
+  }
+
+  class CanvasUIScene {
+    constructor(ast, opts = {}) {
+      this.ast = ast;
+      this.NW = parseInt(ast?.attrs?.width || NML_W);
+      this.NH = parseInt(ast?.attrs?.height || NML_H);
+      this.state = new Map();
+    }
+    update(dt) {
+      // Animation state updates would go here
+    }
+    render(data = {}, handlers = {}) {
+      if (!this.ast) return;
+      // The C++ overlay_scale() already handles 640x360 → screen scaling,
+      // so we pass scale=1 to avoid double-scaling
+      _nmlRenderNode(this.ast, null, data, handlers, 1, 1);
+    }
+    destroy() { this.ast = null; }
+  }
+
+  function parseCanvasUI(xmlString, opts = {}) {
+    const ast = _nmlParse(xmlString);
+    if (!ast) { console.warn('[CanvasUI] Failed to parse NML'); return makeStub(); }
+    return new CanvasUIScene(ast, opts);
+  }
+  function renderCanvasUI(scene, data = {}, handlers = {}) {
+    if (scene?.render) scene.render(data, handlers);
+  }
+  function updateCanvasUI(scene, dt) {
+    if (scene?.update) scene.update(dt);
+  }
+  function destroyCanvasUI(scene) {
+    if (scene?.destroy) scene.destroy();
+  }
 
   // ── Game utilities — pure logic, full parity with runtime/api-gameutils.js ──
 
@@ -2144,6 +2799,20 @@
   function createStormSkybox(_opts)   { ensureInit(); call('env.set', { skyPreset: 'storm',     sky: true }); return 1; }
   function createAlienSkybox(_opts)   { ensureInit(); call('env.set', { skyPreset: 'alien',     sky: true }); return 1; }
   function createUnderwaterSkybox(_opts) { ensureInit(); call('env.set', { skyPreset: 'underwater', sky: true }); return 1; }
+  // Gradient and image skyboxes — gradient uses procedural sky colors, image is stubbed.
+  function createGradientSkybox(topColor, bottomColor) {
+    ensureInit();
+    const payload = { sky: true };
+    if (typeof topColor === 'number') payload.skyTopColor = colorFromHex(topColor);
+    if (typeof bottomColor === 'number') payload.groundBottomColor = colorFromHex(bottomColor);
+    call('env.set', payload);
+    return 1;
+  }
+  async function createImageSkybox(_urls) {
+    // Image-based skybox (cubemap) not supported yet — reject so carts use their fallback.
+    ensureInit();
+    return Promise.reject(new Error('createImageSkybox not supported in Godot adapter'));
+  }
   function setSkybox(name) {
     ensureInit();
     if (typeof name === 'string') call('env.set', { skyPreset: name, sky: true });
@@ -2165,13 +2834,65 @@
   }
 
   // Models / textures / advanced materials.
-  function loadModel(path, cb) {
-    // GLB/GLTF loader is a Phase 3 item — stub model load but still call cb.
-    const stub = makeStub({ handle: 0, path: path });
-    if (typeof cb === 'function') {
-      try { cb(stub); } catch (_e) { /* swallow */ }
+  // Matches the Three.js signature: loadModel(url, position?, scale?, materialOptions?)
+  // → Promise<handle>. Also accepts a legacy callback form (path, cb) used by
+  // older carts; in that case cb is invoked with the resolved handle.
+  function loadModel(path, position, scale, materialOptions) {
+    ensureInit();
+    const legacyCb = typeof position === 'function' ? position : null;
+    const pos = (Array.isArray(position) && position.length >= 3) ? position : null;
+    const sc = (typeof scale === 'number') ? scale : null;
+
+    let resPath = path;
+    if (typeof path === 'string'
+        && !path.startsWith('res://')
+        && !path.startsWith('user://')
+        && !path.startsWith('/')) {
+      const cart = (typeof globalThis.__nova64_cart_path === 'string')
+          ? globalThis.__nova64_cart_path : 'res://carts/current';
+      resPath = cart.replace(/\/?$/, '/') + path.replace(/^\.?\//, '');
     }
-    return stub;
+
+    const payload = { path: resPath };
+    if (pos) payload.position = pos;
+    if (sc != null) payload.scale = sc;
+
+    const r = call('model.load', payload);
+    const handle = (r && r.handle) ? r.handle : 0;
+
+    if (legacyCb) {
+      try { legacyCb(handle); } catch (_e) { /* swallow */ }
+    }
+
+    // Match the Three.js Promise<handle> shape; carts that `await loadModel(...)`
+    // get the handle directly. Synchronous bridge call means resolution is immediate.
+    return Promise.resolve(handle);
+  }
+  // loadVoxModel(url, position?, scale?, options?) → Promise<handle>. Mirrors
+  // the Three.js VOXLoader entrypoint; the bridge parses the .vox file
+  // natively and routes through the existing voxel.uploadChunk mesher.
+  function loadVoxModel(path, position, scale, _options) {
+    ensureInit();
+    const pos = (Array.isArray(position) && position.length >= 3) ? position : null;
+    const sc = (typeof scale === 'number') ? scale : null;
+
+    let resPath = path;
+    if (typeof path === 'string'
+        && !path.startsWith('res://')
+        && !path.startsWith('user://')
+        && !path.startsWith('/')) {
+      const cart = (typeof globalThis.__nova64_cart_path === 'string')
+          ? globalThis.__nova64_cart_path : 'res://carts/current';
+      resPath = cart.replace(/\/?$/, '/') + path.replace(/^\.?\//, '');
+    }
+
+    const payload = { path: resPath };
+    if (pos) payload.position = pos;
+    if (sc != null) payload.scale = sc;
+
+    const r = call('vox.load', payload);
+    const handle = (r && r.handle) ? r.handle : 0;
+    return Promise.resolve(handle);
   }
   function _resolveGeomString(name) {
     // Accepts handle objects/numbers OR string names like 'sphere'/'box'.
@@ -2316,7 +3037,90 @@
     if (opts.aoMap)        payload.aoMap        = unwrapHandle(opts.aoMap);
     if (opts.emissionMap)  payload.emissionMap  = unwrapHandle(opts.emissionMap);
     const r = call('material.create', payload);
+    if (r && r.handle) materialPayloadState.set(r.handle, Object.assign({}, payload));
     return r ? r.handle : 0;
+  }
+  function setPBRProperties(handle, opts) {
+    ensureInit();
+    const meshHandle = unwrapHandle(handle);
+    if (!meshHandle) return 0;
+    opts = opts || {};
+    const prev = meshMaterialState.get(meshHandle) || {};
+    const payload = Object.assign({}, prev.payload || {});
+    const next = materialPayload(opts.color != null ? opts.color : null, Object.assign({}, opts));
+    if (opts.color == null && opts.albedo == null && opts.map == null && opts.texture == null
+        && opts.albedoTexture == null && opts.diffuseMap == null) {
+      delete next.albedo;
+      delete next.albedoTexture;
+    }
+    Object.assign(payload, next);
+    if (typeof opts.metalness === 'number') payload.metallic = opts.metalness;
+    if (typeof opts.metallic === 'number') payload.metallic = opts.metallic;
+    if (typeof opts.roughness === 'number') payload.roughness = opts.roughness;
+    if (typeof opts.envMapIntensity === 'number') payload.envMapIntensity = opts.envMapIntensity;
+    if (typeof opts.opacity === 'number' && opts.opacity < 1) payload.transparency = 'alpha';
+    const r = call('material.create', payload);
+    if (!r || !r.handle) return 0;
+    materialPayloadState.set(r.handle, Object.assign({}, payload));
+    meshMaterialState.set(meshHandle, { material: r.handle, payload: Object.assign({}, payload) });
+    call('mesh.setMaterial', { mesh: meshHandle, material: r.handle });
+    return r.handle;
+  }
+  function createEngineMaterial(_kind, opts) {
+    ensureInit();
+    opts = opts || {};
+    const payload = materialPayload(opts.color != null ? opts.color : 0xffffff, opts);
+    const tex = opts.map || opts.texture || opts.albedoTexture || opts.diffuseMap;
+    if (tex) {
+      payload.albedoTexture = unwrapHandle(tex);
+      if (tex.__uvScale) payload.uvScale = tex.__uvScale.slice();
+    }
+    if (opts.transparent) payload.transparency = 'alpha';
+    if (opts.alphaTest != null) payload.alphaCut = opts.alphaTest;
+    if (opts.side === 'double') payload.doubleSided = true;
+    const r = call('material.create', payload);
+    if (!r || !r.handle) return 0;
+    materialPayloadState.set(r.handle, Object.assign({}, payload));
+    return r.handle;
+  }
+  function setMeshMaterial(mesh, material) {
+    const meshHandle = unwrapHandle(mesh);
+    const matHandle = unwrapHandle(material);
+    if (!meshHandle || !matHandle) return;
+    const payload = Object.assign({}, materialPayloadState.get(matHandle) || {});
+    meshMaterialState.set(meshHandle, { material: matHandle, payload });
+    call('mesh.setMaterial', { mesh: meshHandle, material: matHandle });
+  }
+  function createEngineColor(r, g, b, a) {
+    return { r: r == null ? 1 : r, g: g == null ? 1 : g, b: b == null ? 1 : b, a: a == null ? 1 : a };
+  }
+  function cloneTexture(texture) {
+    if (!texture) return texture;
+    const copy = Object.assign({}, texture);
+    if (texture.__uvScale) copy.__uvScale = texture.__uvScale.slice();
+    return copy;
+  }
+  function setTextureRepeat(texture, u, v) {
+    if (texture) texture.__uvScale = [u || 1, v || 1, 1];
+    return texture;
+  }
+  function setWallUVs(mesh, wallW, wallH, texW, texH, _xoff, _yoff) {
+    const meshHandle = unwrapHandle(mesh);
+    if (!meshHandle) return;
+    const prev = meshMaterialState.get(meshHandle);
+    if (!prev || !prev.payload) return;
+    const payload = Object.assign({}, prev.payload, {
+      uvScale: [
+        texW ? Math.max(0.001, wallW / texW) : 1,
+        texH ? Math.max(0.001, wallH / texH) : 1,
+        1,
+      ],
+    });
+    const r = call('material.create', payload);
+    if (!r || !r.handle) return;
+    materialPayloadState.set(r.handle, Object.assign({}, payload));
+    meshMaterialState.set(meshHandle, { material: r.handle, payload });
+    call('mesh.setMaterial', { mesh: meshHandle, material: r.handle });
   }
   // Hologram = unshaded + emissive + additive blend + rim glow.
   function createHologramMaterial(opts) {
@@ -3433,9 +4237,625 @@
     },
     getLocale() { return i18nState.activeLocale; },
   };
+  // ---------------- WAD (DOOM IWAD/PWAD) loader -----------------------
+  // Mirrors runtime/wad.js for cart parity. The bridge streams the raw
+  // bytes off disk; the parsing/composition runs JS-side, just like the
+  // Three.js backend, so DOOM-style carts behave identically.
+
+  const _WAD_THING_MONSTERS = {
+    3004: 'grunt', 9: 'grunt', 3001: 'grunt', 3006: 'grunt',
+    65: 'shooter', 3005: 'shooter', 66: 'shooter', 68: 'shooter',
+    71: 'shooter', 84: 'shooter',
+    3002: 'tank', 58: 'tank', 67: 'tank', 69: 'tank',
+    3003: 'boss', 64: 'boss', 16: 'boss', 7: 'boss',
+  };
+  const _WAD_THING_ITEMS = {
+    2011: 'health', 2012: 'health', 2014: 'health',
+    2015: 'armor', 2018: 'armor', 2019: 'armor',
+    2007: 'ammo', 2008: 'ammo', 2010: 'ammo', 2047: 'ammo', 2048: 'ammo', 2049: 'ammo',
+    2001: 'ammo', 2002: 'ammo', 2003: 'ammo', 2004: 'ammo', 2006: 'ammo',
+  };
+  const _WAD_THING_SPRITE_PREFIX = {
+    3004: 'POSS', 9: 'SPOS', 3001: 'TROO', 3006: 'SKUL', 65: 'CPOS',
+    3005: 'HEAD', 66: 'SKEL', 68: 'BSPI', 71: 'PAIN', 84: 'SSWV',
+    3002: 'SARG', 58: 'SARG', 67: 'FATT', 69: 'BOS2', 3003: 'BOSS',
+    64: 'VILE', 16: 'CYBR', 7: 'SPID',
+    2011: 'STIM', 2012: 'MEDI', 2014: 'BON1', 2015: 'BON2',
+    2018: 'ARM1', 2019: 'ARM2', 2007: 'CLIP', 2008: 'SHEL', 2010: 'ROCK',
+    2047: 'CELL', 2001: 'SHOT', 2002: 'MGUN', 2003: 'LAUN', 2004: 'PLAS', 2006: 'BFUG',
+    2035: 'BAR1', 70: 'FCAN', 44: 'TBLU', 45: 'TGRN', 46: 'TRED',
+    48: 'ELEC', 34: 'CAND', 35: 'CBRA',
+  };
+
+  function _wadReadStr8(bytes, offset) {
+    let s = '';
+    for (let i = 0; i < 8; i++) {
+      const c = bytes[offset + i];
+      if (c === 0) break;
+      s += String.fromCharCode(c);
+    }
+    return s.toUpperCase();
+  }
+  function _wadReadVerts(dv) {
+    if (!dv) return [];
+    const out = [];
+    for (let i = 0; i < dv.byteLength; i += 4) {
+      out.push({ x: dv.getInt16(i, true), y: dv.getInt16(i + 2, true) });
+    }
+    return out;
+  }
+  function _wadReadLines(dv) {
+    if (!dv) return [];
+    const out = [];
+    for (let i = 0; i < dv.byteLength; i += 14) {
+      out.push({
+        v1: dv.getUint16(i, true), v2: dv.getUint16(i + 2, true),
+        flags: dv.getUint16(i + 4, true),
+        right: dv.getInt16(i + 10, true), left: dv.getInt16(i + 12, true),
+      });
+    }
+    return out;
+  }
+  function _wadReadSides(dv) {
+    if (!dv) return [];
+    const bytes = new Uint8Array(dv.buffer, dv.byteOffset, dv.byteLength);
+    const out = [];
+    for (let i = 0; i < dv.byteLength; i += 30) {
+      out.push({
+        xoff: dv.getInt16(i, true), yoff: dv.getInt16(i + 2, true),
+        upper: _wadReadStr8(bytes, i + 4),
+        lower: _wadReadStr8(bytes, i + 12),
+        middle: _wadReadStr8(bytes, i + 20),
+        sector: dv.getUint16(i + 28, true),
+      });
+    }
+    return out;
+  }
+  function _wadReadSectors(dv) {
+    if (!dv) return [];
+    const bytes = new Uint8Array(dv.buffer, dv.byteOffset, dv.byteLength);
+    const out = [];
+    for (let i = 0; i < dv.byteLength; i += 26) {
+      out.push({
+        floorH: dv.getInt16(i, true), ceilH: dv.getInt16(i + 2, true),
+        floorFlat: _wadReadStr8(bytes, i + 4),
+        ceilFlat: _wadReadStr8(bytes, i + 12),
+        light: dv.getInt16(i + 20, true),
+      });
+    }
+    return out;
+  }
+  function _wadReadThings(dv) {
+    if (!dv) return [];
+    const out = [];
+    for (let i = 0; i < dv.byteLength; i += 10) {
+      out.push({
+        x: dv.getInt16(i, true), y: dv.getInt16(i + 2, true),
+        angle: dv.getUint16(i + 4, true),
+        type: dv.getUint16(i + 6, true),
+        flags: dv.getUint16(i + 8, true),
+      });
+    }
+    return out;
+  }
+
+  function _wadRasterSeg(out, x1, z1, x2, z2, r) {
+    const len = Math.hypot(x2 - x1, z2 - z1);
+    const steps = Math.max(1, Math.ceil(len / 2.5));
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps;
+      out.push({ x: x1 + (x2 - x1) * t, z: z1 + (z2 - z1) * t, r });
+    }
+  }
+
+  // Convert a JS int array (from the bridge) into a fresh Uint8Array. The
+  // bridge returns Variant ints because the QuickJS<->Godot Dictionary/
+  // Array transport doesn't carry typed-array tags directly.
+  function _wadIntArrayToU8(bytesArr) {
+    const len = bytesArr.length | 0;
+    const u8 = new Uint8Array(len);
+    for (let i = 0; i < len; i++) u8[i] = bytesArr[i] & 0xff;
+    return u8;
+  }
+
+  // Real DOOM WADs are 28-50MB so the C++ side owns the bytes; the shim
+  // holds a wadHandle + directory and fetches each lump on demand. The
+  // returned Uint8Arrays back fresh ArrayBuffers, so the existing
+  // DataView-based parsers work unchanged.
+  function WADLoader() {
+    this.directory = [];
+    this.buffer = null;     // legacy ArrayBuffer path (kept for in-memory loads)
+    this._wadHandle = 0;
+    this._lumpCache = new Map(); // filepos|size -> Uint8Array
+  }
+  // Two load forms:
+  //   load(arrayBuffer): legacy in-memory path; parses directory locally.
+  //   load({ handle, directory }): handle-based path used by loadWad(path).
+  WADLoader.prototype.load = function (input) {
+    if (input && typeof input === 'object' && 'handle' in input && Array.isArray(input.directory)) {
+      this._wadHandle = input.handle | 0;
+      this.directory = input.directory.map(e => ({
+        name: String(e.name).toUpperCase(),
+        filepos: e.filepos | 0,
+        size: e.size | 0,
+      }));
+      return this;
+    }
+    // Fallback: legacy in-memory ArrayBuffer load (used by tests/dev tools).
+    const arrayBuffer = input;
+    this.buffer = arrayBuffer;
+    const view = new DataView(arrayBuffer);
+    const bytes = new Uint8Array(arrayBuffer);
+    const tag = String.fromCharCode(bytes[0], bytes[1], bytes[2], bytes[3]);
+    if (tag !== 'IWAD' && tag !== 'PWAD') throw new Error('Invalid WAD file');
+    const numLumps = view.getInt32(4, true);
+    const dirOfs = view.getInt32(8, true);
+    this.directory = [];
+    for (let i = 0; i < numLumps; i++) {
+      const o = dirOfs + i * 16;
+      const filepos = view.getInt32(o, true);
+      const size = view.getInt32(o + 4, true);
+      let name = '';
+      for (let j = 0; j < 8; j++) {
+        const c = bytes[o + 8 + j];
+        if (c === 0) break;
+        name += String.fromCharCode(c);
+      }
+      this.directory.push({ name: name.toUpperCase(), filepos, size });
+    }
+    return this;
+  };
+  // Internal: fetch lump bytes as a Uint8Array (with cache).
+  WADLoader.prototype._readLumpBytes = function (filepos, size) {
+    if (size <= 0) return null;
+    if (this.buffer) {
+      // Legacy path uses subarray of the original buffer.
+      return new Uint8Array(this.buffer, filepos, size);
+    }
+    if (!this._wadHandle) return null;
+    const key = filepos + '|' + size;
+    const cached = this._lumpCache.get(key);
+    if (cached) return cached;
+    const r = call('wad.readLump', { handle: this._wadHandle, filepos, size });
+    if (!r || !r.bytes) return null;
+    const u8 = _wadIntArrayToU8(r.bytes);
+    this._lumpCache.set(key, u8);
+    return u8;
+  };
+  WADLoader.prototype.getMapNames = function () {
+    return this.directory.filter(e => /^(E\dM\d|MAP\d\d)$/.test(e.name)).map(e => e.name);
+  };
+  WADLoader.prototype.getMap = function (name) {
+    const idx = this.directory.findIndex(e => e.name === name);
+    if (idx < 0) return null;
+    const lumps = {};
+    for (let i = idx + 1; i < this.directory.length && i <= idx + 11; i++) {
+      const e = this.directory[i];
+      if (/^(E\dM\d|MAP\d\d)$/.test(e.name)) break;
+      if (e.size <= 0) continue;
+      const u8 = this._readLumpBytes(e.filepos, e.size);
+      if (!u8) continue;
+      lumps[e.name] = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
+    }
+    return {
+      name,
+      vertexes: _wadReadVerts(lumps.VERTEXES),
+      linedefs: _wadReadLines(lumps.LINEDEFS),
+      sidedefs: _wadReadSides(lumps.SIDEDEFS),
+      sectors: _wadReadSectors(lumps.SECTORS),
+      things: _wadReadThings(lumps.THINGS),
+    };
+  };
+  WADLoader.prototype.getPalette = function () {
+    const lump = this.directory.find(e => e.name === 'PLAYPAL');
+    if (!lump || lump.size < 768) return null;
+    return this._readLumpBytes(lump.filepos, 768);
+  };
+  WADLoader.prototype.getLump = function (name) {
+    const lump = this.directory.find(e => e.name === name.toUpperCase());
+    if (!lump || lump.size === 0) return null;
+    const u8 = this._readLumpBytes(lump.filepos, lump.size);
+    if (!u8) return null;
+    return { data: u8, size: lump.size };
+  };
+  WADLoader.prototype.getFlatLumps = function () {
+    // For a 28MB WAD, the flats section is dozens of 4KB lumps. We return
+    // accessor stubs that lazy-fetch on first access so naïve iteration
+    // (e.g. Object.keys) doesn't trigger thousands of round-trips.
+    const flats = {};
+    const wad = this;
+    let inFlats = false;
+    for (const e of this.directory) {
+      if (e.name === 'F_START' || e.name === 'FF_START') { inFlats = true; continue; }
+      if (e.name === 'F_END'   || e.name === 'FF_END')   { inFlats = false; continue; }
+      if (inFlats && e.size === 4096) {
+        // Define a getter so the lump bytes are only fetched when accessed.
+        const filepos = e.filepos;
+        Object.defineProperty(flats, e.name, {
+          enumerable: true, configurable: true,
+          get() {
+            const u8 = wad._readLumpBytes(filepos, 4096);
+            // Cache the resolved value to avoid re-fetching.
+            Object.defineProperty(flats, e.name, { value: u8, enumerable: true, configurable: true, writable: true });
+            return u8;
+          },
+        });
+      }
+    }
+    return flats;
+  };
+  WADLoader.prototype.getSpriteLumps = function () {
+    // Same lazy-getter pattern as flats — ~1500 sprite frames in DOOM is
+    // way too many to eagerly fetch on init.
+    const sprites = {};
+    const wad = this;
+    let inSprites = false;
+    for (const e of this.directory) {
+      if (e.name === 'S_START' || e.name === 'SS_START') { inSprites = true; continue; }
+      if (e.name === 'S_END'   || e.name === 'SS_END')   { inSprites = false; continue; }
+      if (inSprites && e.size > 0) {
+        const filepos = e.filepos;
+        const size = e.size;
+        Object.defineProperty(sprites, e.name, {
+          enumerable: true, configurable: true,
+          get() {
+            const u8 = wad._readLumpBytes(filepos, size);
+            Object.defineProperty(sprites, e.name, { value: u8, enumerable: true, configurable: true, writable: true });
+            return u8;
+          },
+        });
+      }
+    }
+    return sprites;
+  };
+  WADLoader.prototype.dispose = function () {
+    if (this._wadHandle) {
+      call('wad.destroy', { handle: this._wadHandle });
+      this._wadHandle = 0;
+    }
+    this._lumpCache.clear();
+    this.buffer = null;
+  };
+
+  function wadConvertMap(map, scale) {
+    if (!scale) scale = 1 / 20;
+    const { vertexes, linedefs, sidedefs, sectors, things } = map;
+
+    let mnX = Infinity, mxX = -Infinity, mnY = Infinity, mxY = -Infinity;
+    for (const v of vertexes) {
+      if (v.x < mnX) mnX = v.x; if (v.x > mxX) mxX = v.x;
+      if (v.y < mnY) mnY = v.y; if (v.y > mxY) mxY = v.y;
+    }
+    const cx = (mnX + mxX) / 2, cy = (mnY + mxY) / 2;
+
+    let playerThing = null;
+    for (const t of things) {
+      if (t.type === 1) { playerThing = t; break; }
+    }
+    let playerSectorFloor = 0;
+    if (playerThing) {
+      let minDist = Infinity;
+      for (const line of linedefs) {
+        const va = vertexes[line.v1], vb = vertexes[line.v2];
+        if (!va || !vb) continue;
+        const dx = vb.x - va.x, dy = vb.y - va.y;
+        const lenSq = dx * dx + dy * dy;
+        if (lenSq < 1) continue;
+        let t = ((playerThing.x - va.x) * dx + (playerThing.y - va.y) * dy) / lenSq;
+        t = Math.max(0, Math.min(1, t));
+        const px = va.x + t * dx, py = va.y + t * dy;
+        const d = Math.hypot(playerThing.x - px, playerThing.y - py);
+        const sideIdxs = [];
+        if (line.right >= 0) sideIdxs.push(line.right);
+        if (line.left >= 0) sideIdxs.push(line.left);
+        for (const si of sideIdxs) {
+          const side = sidedefs[si];
+          if (side && sectors[side.sector] && d < minDist) {
+            minDist = d;
+            playerSectorFloor = sectors[side.sector].floorH;
+          }
+        }
+      }
+    }
+
+    const baseFloor = playerSectorFloor;
+    const walls = [];
+    const colSegs = [];
+    for (const line of linedefs) {
+      const va = vertexes[line.v1], vb = vertexes[line.v2];
+      if (!va || !vb) continue;
+      const x1 = (va.x - cx) * scale, z1 = (va.y - cy) * scale;
+      const x2 = (vb.x - cx) * scale, z2 = (vb.y - cy) * scale;
+      const len = Math.hypot(x2 - x1, z2 - z1);
+      if (len < 0.05) continue;
+      const mx = (x1 + x2) / 2, mz = (z1 + z2) / 2;
+      const ang = -Math.atan2(z2 - z1, x2 - x1);
+      let fSec = null, bSec = null;
+      if (line.right >= 0 && sidedefs[line.right]) fSec = sectors[sidedefs[line.right].sector] || null;
+      if (line.left  >= 0 && sidedefs[line.left])  bSec = sectors[sidedefs[line.left].sector]  || null;
+      const fF = fSec ? (fSec.floorH - baseFloor) * scale : 0;
+      const fC = fSec ? (fSec.ceilH  - baseFloor) * scale : 8;
+      const bF = bSec ? (bSec.floorH - baseFloor) * scale : 0;
+      const bC = bSec ? (bSec.ceilH  - baseFloor) * scale : 8;
+      const light = fSec ? Math.max(0.25, fSec.light / 255) : 0.5;
+      if (!bSec) {
+        const h = fC - fF;
+        if (h > 0.05) {
+          const fSide = line.right >= 0 ? sidedefs[line.right] : null;
+          const texName = fSide && fSide.middle !== '-' ? fSide.middle : null;
+          walls.push({ x: mx, y: fF + h / 2, z: mz, len, h, ang, light, texName,
+            xoff: fSide ? fSide.xoff : 0, yoff: fSide ? fSide.yoff : 0 });
+          _wadRasterSeg(colSegs, x1, z1, x2, z2, 1.0);
+        }
+      } else {
+        const fSide = line.right >= 0 ? sidedefs[line.right] : null;
+        const bSide = line.left  >= 0 ? sidedefs[line.left]  : null;
+        const loH = Math.abs(bF - fF);
+        if (loH > 0.3) {
+          const bot = Math.min(fF, bF);
+          let loTex = null;
+          if (fSide && fSide.lower && fSide.lower !== '-') loTex = fSide.lower;
+          else if (bSide && bSide.lower && bSide.lower !== '-') loTex = bSide.lower;
+          walls.push({ x: mx, y: bot + loH / 2, z: mz, len, h: loH, ang, light, step: true,
+            texName: loTex, xoff: fSide ? fSide.xoff : 0, yoff: fSide ? fSide.yoff : 0 });
+          if (loH > 1.0) _wadRasterSeg(colSegs, x1, z1, x2, z2, 0.8);
+        }
+        const hiH = Math.abs(fC - bC);
+        if (hiH > 0.3) {
+          const bot = Math.min(fC, bC);
+          let upTex = null;
+          if (fSide && fSide.upper && fSide.upper !== '-') upTex = fSide.upper;
+          else if (bSide && bSide.upper && bSide.upper !== '-') upTex = bSide.upper;
+          walls.push({ x: mx, y: bot + hiH / 2, z: mz, len, h: hiH, ang, light, upper: true,
+            texName: upTex, xoff: fSide ? fSide.xoff : 0, yoff: fSide ? fSide.yoff : 0 });
+        }
+        if (line.flags & 1) _wadRasterSeg(colSegs, x1, z1, x2, z2, 1.0);
+      }
+    }
+
+    let playerStart = { x: 0, z: 0, angle: Math.PI / 4, floorH: 0 };
+    const enemies = [], items = [];
+    for (const t of things) {
+      const tx = (t.x - cx) * scale, tz = (t.y - cy) * scale;
+      const ta = ((t.angle - 90) * Math.PI) / 180;
+      if (t.type === 1) {
+        playerStart = { x: tx, z: tz, angle: ta, floorH: 0 };
+      } else if (_WAD_THING_MONSTERS[t.type]) {
+        enemies.push({ x: tx, z: tz, type: _WAD_THING_MONSTERS[t.type], doomType: t.type });
+      } else if (_WAD_THING_ITEMS[t.type]) {
+        items.push({ x: tx, z: tz, type: _WAD_THING_ITEMS[t.type], doomType: t.type });
+      }
+    }
+    const sectorData = sectors.map(s => ({
+      floorH: (s.floorH - baseFloor) * scale,
+      ceilH:  (s.ceilH  - baseFloor) * scale,
+      floorFlat: s.floorFlat, ceilFlat: s.ceilFlat,
+      light: Math.max(0.25, s.light / 255),
+    }));
+    return { walls, colSegs, enemies, items, playerStart, sectors: sectorData };
+  }
+
+  // Texture manager — produces engine-side textures from WAD picture/flat
+  // lumps via the existing texture.createFromImage bridge. UV manipulation
+  // (setWallUVs in the Three.js runtime) is geometry-specific and not yet
+  // wired through the Godot bridge; carts that need it should fall back to
+  // applying procedural UVs on the cart side.
+  function WADTextureManager(wadLoader) {
+    this.wad = wadLoader;
+    this.palette = null;
+    this.patchNames = null;
+    this.textureDefs = null;
+    this.flatLumps = null;
+    this.spriteLumps = null;
+    this.wallTexCache = new Map();
+    this.flatTexCache = new Map();
+    this.spriteTexCache = new Map();
+    this._init = false;
+  }
+  WADTextureManager.prototype.init = function () {
+    if (this._init) return;
+    this.palette = this.wad.getPalette();
+    if (!this.palette) {
+      console.warn('WAD has no PLAYPAL');
+      return;
+    }
+    const pnames = this.wad.getLump('PNAMES');
+    this.patchNames = [];
+    if (pnames) {
+      const dv = new DataView(pnames.data.buffer, pnames.data.byteOffset, pnames.data.byteLength);
+      const count = dv.getInt32(0, true);
+      for (let i = 0; i < count; i++) {
+        this.patchNames.push(_wadReadStr8(pnames.data, 4 + i * 8));
+      }
+    }
+    this.textureDefs = Object.assign({},
+      this._readTextureDefs('TEXTURE1'),
+      this._readTextureDefs('TEXTURE2'));
+    this.flatLumps = this.wad.getFlatLumps();
+    this.spriteLumps = this.wad.getSpriteLumps();
+    this._init = true;
+  };
+  WADTextureManager.prototype._readTextureDefs = function (lumpName) {
+    const lump = this.wad.getLump(lumpName);
+    if (!lump) return {};
+    const dv = new DataView(lump.data.buffer, lump.data.byteOffset, lump.data.byteLength);
+    const count = dv.getInt32(0, true);
+    const out = {};
+    for (let i = 0; i < count; i++) {
+      const offset = dv.getInt32(4 + i * 4, true);
+      if (offset + 22 > lump.size) continue;
+      const name = _wadReadStr8(lump.data, offset);
+      const width = dv.getInt16(offset + 12, true);
+      const height = dv.getInt16(offset + 14, true);
+      const patchCount = dv.getInt16(offset + 20, true);
+      const patches = [];
+      for (let j = 0; j < patchCount; j++) {
+        const po = offset + 22 + j * 10;
+        if (po + 6 > lump.size) break;
+        patches.push({
+          originX: dv.getInt16(po, true),
+          originY: dv.getInt16(po + 2, true),
+          patchIdx: dv.getInt16(po + 4, true),
+        });
+      }
+      out[name] = { name, width, height, patches };
+    }
+    return out;
+  };
+  WADTextureManager.prototype._parsePicture = function (data) {
+    if (!data || data.length < 8) return null;
+    const dv = new DataView(data.buffer, data.byteOffset, data.byteLength);
+    const width = dv.getUint16(0, true);
+    const height = dv.getUint16(2, true);
+    const leftOfs = dv.getInt16(4, true);
+    const topOfs = dv.getInt16(6, true);
+    if (width === 0 || height === 0 || width > 4096 || height > 4096) return null;
+    if (8 + width * 4 > data.length) return null;
+    const colOffsets = [];
+    for (let x = 0; x < width; x++) colOffsets.push(dv.getUint32(8 + x * 4, true));
+    const pixels = new Uint8Array(width * height * 4);
+    for (let x = 0; x < width; x++) {
+      let ofs = colOffsets[x];
+      if (ofs >= data.length) continue;
+      for (let safety = 0; safety < 256; safety++) {
+        if (ofs >= data.length) break;
+        const topdelta = data[ofs++];
+        if (topdelta === 0xff) break;
+        if (ofs >= data.length) break;
+        const length = data[ofs++];
+        ofs++;
+        for (let j = 0; j < length; j++) {
+          if (ofs >= data.length) break;
+          const y = topdelta + j;
+          if (y < height) {
+            const palIdx = data[ofs];
+            const pi = (y * width + x) * 4;
+            pixels[pi]     = this.palette[palIdx * 3];
+            pixels[pi + 1] = this.palette[palIdx * 3 + 1];
+            pixels[pi + 2] = this.palette[palIdx * 3 + 2];
+            pixels[pi + 3] = 255;
+          }
+          ofs++;
+        }
+        ofs++;
+      }
+    }
+    return { width, height, leftOfs, topOfs, pixels };
+  };
+  WADTextureManager.prototype._uploadDataTexture = function (pixels, width, height) {
+    // Convert Uint8Array -> plain int array for the bridge transport.
+    const arr = new Array(pixels.length);
+    for (let i = 0; i < pixels.length; i++) arr[i] = pixels[i];
+    const r = call('texture.createFromImage', { width, height, pixels: arr });
+    return r ? r.handle : 0;
+  };
+  WADTextureManager.prototype.getWallTexture = function (name) {
+    if (!name || name === '-' || !this._init) return null;
+    name = name.toUpperCase();
+    if (this.wallTexCache.has(name)) return this.wallTexCache.get(name);
+    const def = this.textureDefs[name];
+    if (!def) { this.wallTexCache.set(name, null); return null; }
+    const w = def.width, h = def.height;
+    const px = new Uint8Array(w * h * 4);
+    for (const p of def.patches) {
+      if (p.patchIdx < 0 || p.patchIdx >= this.patchNames.length) continue;
+      const patchLump = this.wad.getLump(this.patchNames[p.patchIdx]);
+      if (!patchLump) continue;
+      const pic = this._parsePicture(patchLump.data);
+      if (!pic) continue;
+      for (let py = 0; py < pic.height; py++) {
+        for (let pxX = 0; pxX < pic.width; pxX++) {
+          const srcIdx = (py * pic.width + pxX) * 4;
+          if (pic.pixels[srcIdx + 3] === 0) continue;
+          const dx = p.originX + pxX, dy = p.originY + py;
+          if (dx < 0 || dx >= w || dy < 0 || dy >= h) continue;
+          const dstIdx = (dy * w + dx) * 4;
+          px[dstIdx]     = pic.pixels[srcIdx];
+          px[dstIdx + 1] = pic.pixels[srcIdx + 1];
+          px[dstIdx + 2] = pic.pixels[srcIdx + 2];
+          px[dstIdx + 3] = 255;
+        }
+      }
+    }
+    const handle = this._uploadDataTexture(px, w, h);
+    const tex = handle ? { handle, width: w, height: h } : null;
+    this.wallTexCache.set(name, tex);
+    return tex;
+  };
+  WADTextureManager.prototype.getTextureDef = function (name) {
+    if (!name || !this.textureDefs) return null;
+    return this.textureDefs[String(name).toUpperCase()] || null;
+  };
+  WADTextureManager.prototype.getFlatTexture = function (name) {
+    if (!name || name === '-' || !this._init) return null;
+    name = name.toUpperCase();
+    if (this.flatTexCache.has(name)) return this.flatTexCache.get(name);
+    const flatData = this.flatLumps[name];
+    if (!flatData) { this.flatTexCache.set(name, null); return null; }
+    const px = new Uint8Array(64 * 64 * 4);
+    for (let i = 0; i < 4096; i++) {
+      const palIdx = flatData[i];
+      px[i * 4]     = this.palette[palIdx * 3];
+      px[i * 4 + 1] = this.palette[palIdx * 3 + 1];
+      px[i * 4 + 2] = this.palette[palIdx * 3 + 2];
+      px[i * 4 + 3] = 255;
+    }
+    const handle = this._uploadDataTexture(px, 64, 64);
+    const tex = handle ? { handle, width: 64, height: 64 } : null;
+    this.flatTexCache.set(name, tex);
+    return tex;
+  };
+  WADTextureManager.prototype.getSpriteTexture = function (thingType) {
+    const prefix = _WAD_THING_SPRITE_PREFIX[thingType];
+    if (!prefix || !this._init) return null;
+    if (this.spriteTexCache.has(thingType)) return this.spriteTexCache.get(thingType);
+    let data = this.spriteLumps[prefix + 'A1'] || this.spriteLumps[prefix + 'A0'];
+    if (!data) {
+      const key = Object.keys(this.spriteLumps).find(k => k.startsWith(prefix + 'A'));
+      if (key) data = this.spriteLumps[key];
+    }
+    if (!data) { this.spriteTexCache.set(thingType, null); return null; }
+    const pic = this._parsePicture(data);
+    if (!pic) { this.spriteTexCache.set(thingType, null); return null; }
+    const handle = this._uploadDataTexture(pic.pixels, pic.width, pic.height);
+    const tex = handle ? {
+      texture: { handle, width: pic.width, height: pic.height },
+      width: pic.width, height: pic.height,
+      leftOfs: pic.leftOfs, topOfs: pic.topOfs,
+    } : null;
+    this.spriteTexCache.set(thingType, tex);
+    return tex;
+  };
+
+  // Synchronous wad.load — returns a parsed WADLoader instance bound to
+  // the host-side blob. Lump bytes are pulled lazily; the host owns the
+  // raw 28-50MB file so JS doesn't have to materialise it all at once.
+  function loadWad(path) {
+    ensureInit();
+    if (typeof path !== 'string') return null;
+    // res://, user://, and absolute paths pass through; bare paths resolve
+    // relative to the active cart directory.
+    let resPath = path;
+    if (!path.startsWith('res://') && !path.startsWith('user://') && !path.startsWith('/')) {
+      const cart = (typeof globalThis.__nova64_cart_path === 'string')
+          ? globalThis.__nova64_cart_path : 'res://carts/current';
+      resPath = cart.replace(/\/?$/, '/') + path.replace(/^\.?\//, '');
+    }
+    const r = call('wad.load', { path: resPath });
+    if (!r || !r.handle || !r.directory) return null;
+    return new WADLoader().load({ handle: r.handle, directory: r.directory });
+  }
+
   const wadNs = {
-    load(_path) { warnOnce('wad.load'); return null; },
+    load: loadWad,
     get(_path) { return null; },
+    WADLoader,
+    WADTextureManager,
+    convertWADMap: wadConvertMap,
+    setWallUVs,
+    THING_MONSTERS: _WAD_THING_MONSTERS,
+    THING_ITEMS: _WAD_THING_ITEMS,
+    THING_SPRITE_PREFIX: _WAD_THING_SPRITE_PREFIX,
   };
 
   // Browser-ish scheduler shims. We don't actually defer; the cart still
@@ -3482,9 +4902,23 @@
     white: 0xffffff, black: 0x000000, accent: 0xff8800,
   };
   if (typeof global.uiColors === 'undefined') global.uiColors = defaultUiColors;
-  const sceneNs = { createCube, createSphere, createPlane, createCylinder, createCone, createTorus, createAdvancedCube, createAdvancedSphere, createCapsule, removeMesh, destroyMesh: removeMesh, setPosition, setRotation, rotateMesh, moveMesh, setScale, getPosition, getMesh: function() { return null; }, createInstancedMesh, setInstanceTransform, setInstancePosition, setInstanceColor, finalizeInstances, setMeshVisible, setMeshOpacity: function(h, o) { setMeshVisible(h, o > 0); }, setCastShadow: function() {}, setReceiveShadow: function() {}, setFlatShading: function() {}, setPBRProperties: function() {}, createLODMesh: function() { return null; }, removeLODMesh: function() {}, updateLODs: function() {}, removeInstancedMesh: removeMesh, raycastFromCamera: function() { return null; }, get3DStats: function() { return {}; }, getRenderer: function() { return null; }, getScene: function() { return null; }, getRotation: function() { return [0, 0, 0]; }, engine: global.engine };
+  // Note: loadModel/loadVoxModel/loadTexture/playAnimation are also
+  // exposed on nova64.scene because runtime/namespace.js (the Three.js
+  // backend) lives them under the "scene" namespace; carts that
+  // destructure `const { loadVoxModel } = nova64.scene` rely on that.
+  engine.createMaterial = engine.createMaterial || createEngineMaterial;
+  engine.setMeshMaterial = engine.setMeshMaterial || setMeshMaterial;
+  engine.createColor = engine.createColor || createEngineColor;
+  engine.cloneTexture = engine.cloneTexture || cloneTexture;
+  engine.setTextureRepeat = engine.setTextureRepeat || setTextureRepeat;
+  engine.getCapabilities = engine.getCapabilities || function () {
+    const r = call('host.getCapabilities', {});
+    return r ? r.capabilities : { backend: 'godot' };
+  };
+
+  const sceneNs = { createCube, createSphere, createPlane, createCylinder, createCone, createTorus, createAdvancedCube, createAdvancedSphere, createCapsule, removeMesh, destroyMesh: removeMesh, setPosition, setRotation, rotateMesh, moveMesh, setScale, getPosition, getMesh: function() { return null; }, createInstancedMesh, setInstanceTransform, setInstancePosition, setInstanceColor, finalizeInstances, setMeshVisible, setMeshOpacity: function(h, o) { setMeshVisible(h, o > 0); }, setCastShadow: function() {}, setReceiveShadow: function() {}, setFlatShading: function() {}, setPBRProperties, createLODMesh: function() { return null; }, removeLODMesh: function() {}, updateLODs: function() {}, removeInstancedMesh: removeMesh, raycastFromCamera: function() { return null; }, get3DStats: function() { return {}; }, getRenderer: function() { return null; }, getScene: function() { return null; }, getRotation: function() { return [0, 0, 0]; }, clearScene, loadModel, loadVoxModel, loadTexture, playAnimation: function() {}, updateAnimations: function() {}, engine: global.engine };
   const cameraNs = { setCameraPosition, setCameraTarget, setCameraFOV, setCameraLookAt };
-  const lightNs = { setLightDirection, setFog, clearFog, createPointLight, createSpotLight, createAmbientLight, setAmbientLight, setLightColor, setLightEnergy };
+  const lightNs = { setLightDirection, setFog, clearFog, createPointLight, createSpotLight, createAmbientLight, setAmbientLight, setLightColor, setLightEnergy, createGradientSkybox, createImageSkybox };
   const drawNs = { cls, print: novaPrint, printCentered, printRight, rect, rectfill, line, pixel, pset, circle, circfill, ellipse, arc, bezier, drawRect, drawPanel, drawGlowText, drawGlowTextCentered, drawRadialGradient, drawGradient, drawProgressBar, drawHealthBar, drawPixelBorder, drawCrosshair, drawScanlines, drawNoise, drawTriangle, drawDiamond, drawStarburst, poly, rgba8, screenWidth, screenHeight, colorLerp, colorMix, hslColor, hexColor: function(hex, alpha) { return colorFromHex(hex, alpha); }, n64Palette, measureText, scrollingText, drawWave, drawPulsingText, drawCheckerboard, drawFloatingTexts, drawFloatingTexts3D, createMinimap, drawMinimap, drawSkyGradient };
   const inputNs = {
     // raw key code surface (web-style codes)
@@ -3507,8 +4941,8 @@
     createShake, triggerShake, updateShake, getShakeOffset,
     createCard, createMenu, createStartScreen };
   const particlesNs = { createParticleSystem, createEmitter2D, createParticles };
-  const skyboxNs = { createSpaceSkybox, createGalaxySkybox, createSunsetSkybox, createDawnSkybox, createNightSkybox, createFoggySkybox, createDuskSkybox, createStormSkybox, createAlienSkybox, createUnderwaterSkybox, setSkybox, createSkybox };
-  const modelsNs = { loadModel, createTexture, loadTexture, createInstancedMesh, createTSLMaterial, createHologramMaterial, createVortexMaterial, createPBRMaterial, createAdvancedCube };
+  const skyboxNs = { createSpaceSkybox, createGalaxySkybox, createSunsetSkybox, createDawnSkybox, createNightSkybox, createFoggySkybox, createDuskSkybox, createStormSkybox, createAlienSkybox, createUnderwaterSkybox, createGradientSkybox, createImageSkybox, setSkybox, createSkybox };
+  const modelsNs = { loadModel, loadVoxModel, createTexture, loadTexture, createInstancedMesh, createTSLMaterial, createHologramMaterial, createVortexMaterial, createPBRMaterial, createAdvancedCube };
   const voxelNs = {
     configureVoxelWorld, enableVoxelTextures, getVoxelConfig, getVoxelBiome,
     getVoxelHighestBlock, getVoxelBlock, setVoxelBlock, loadVoxelWorld,
@@ -3529,6 +4963,10 @@
   const physicsBacking = {};
   const dataBacking = {
     t: function (key) { return key; },
+    WADLoader,
+    WADTextureManager,
+    convertWADMap: wadConvertMap,
+    setWallUVs,
     saveData: function (_k, _v) {},
     loadData: function (_k, fallback) { return fallback === undefined ? null : fallback; },
     deleteData: function (_k) {},

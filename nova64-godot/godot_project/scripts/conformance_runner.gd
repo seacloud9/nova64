@@ -40,7 +40,7 @@ func _init() -> void:
 
 	if not host.load_cart(cart_path):
 		push_error("[conformance] load_cart failed for " + cart_path)
-		quit(2)
+		await _finish(host, 2)
 		return
 	host.cart_init()
 
@@ -57,38 +57,20 @@ func _init() -> void:
 			_inject_key(press_key, false)
 			press_key = ""
 
-	# Optional snapshot — write the main viewport to PNG. Works under
-	# --headless because Godot still creates an offscreen renderer.
+	# Optional snapshot — write the main viewport to PNG. Windowed mode is the
+	# reliable path on Windows; dummy/headless rendering may not expose a texture.
 	if snapshot != "":
-		await process_frame
-		await process_frame
-		var img: Image = get_root().get_viewport().get_texture().get_image()
-		if img == null:
-			push_warning("[conformance] viewport image unavailable — skipping snapshot")
-		else:
-			var save_path := snapshot
-			if save_path.begins_with("res://") or save_path.begins_with("user://"):
-				img.save_png(save_path)
-			else:
-				# Absolute or relative host path — write via FileAccess.
-				var bytes := img.save_png_to_buffer()
-				var f := FileAccess.open(save_path, FileAccess.WRITE)
-				if f:
-					f.store_buffer(bytes)
-					f.close()
-					print("[conformance] snapshot written: ", save_path)
-				else:
-					push_warning("[conformance] cannot open snapshot path: " + save_path)
+		await _write_snapshot(snapshot)
 
 	var report = host.read_global("__nova64_assert")
 	if report == null:
 		# No assertions — for visual-only carts we treat snapshot success as pass.
 		if snapshot != "":
 			print("NOVA64-CONFORMANCE: PASS (visual)")
-			quit(0)
+			await _finish(host, 0)
 		else:
 			print("[conformance] no __nova64_assert global — cart did not publish results")
-			quit(1)
+			await _finish(host, 1)
 		return
 
 	var total := int(report.get("total", 0))
@@ -100,10 +82,41 @@ func _init() -> void:
 
 	if passed == total and total > 0:
 		print("NOVA64-CONFORMANCE: PASS")
-		quit(0)
+		await _finish(host, 0)
 	else:
 		print("NOVA64-CONFORMANCE: FAIL")
-		quit(1)
+		await _finish(host, 1)
+
+func _finish(host, code: int) -> void:
+	# Free the native host while the scene/rendering servers are still alive.
+	# Immediate quit after a windowed snapshot can otherwise leave the host to
+	# tear down during final engine shutdown, which is crash-prone on Windows.
+	if host != null and is_instance_valid(host):
+		host.queue_free()
+		await process_frame
+		await process_frame
+	quit(code)
+
+func _write_snapshot(save_path: String) -> void:
+	await process_frame
+	await process_frame
+	var img: Image = get_root().get_viewport().get_texture().get_image()
+	if img == null:
+		push_warning("[conformance] viewport image unavailable — skipping snapshot")
+		return
+
+	if save_path.begins_with("res://") or save_path.begins_with("user://"):
+		img.save_png(save_path)
+	else:
+		# Absolute or relative host path — write via FileAccess.
+		var bytes := img.save_png_to_buffer()
+		var f := FileAccess.open(save_path, FileAccess.WRITE)
+		if f:
+			f.store_buffer(bytes)
+			f.close()
+			print("[conformance] snapshot written: ", save_path)
+		else:
+			push_warning("[conformance] cannot open snapshot path: " + save_path)
 
 func _inject_key(name: String, pressed: bool) -> void:
 	var ev := InputEventKey.new()

@@ -2,13 +2,22 @@
 
 Shared instructions for coding agents working in the Nova64 repository.
 
-This file is the canonical cross-agent guide for the repo. It is based primarily on the current `CLAUDE.md`, then cross-checked against `package.json`, `README.md`, and the live repository structure so it reflects the current Nova64 state more accurately than older tool-specific docs.
+## Single Source of Truth
+
+`AGENTS.md` is the only canonical source for agent-facing repository instructions. Tool-specific files such as `CLAUDE.md`, `CODEX.md`, and `COPILOT.md` must stay as thin pointers to this file, not independent guides.
+
+When changing agent workflow, commands, architecture notes, or repository rules:
+
+- Update `AGENTS.md` first.
+- Keep tool-specific files limited to a short redirect to `AGENTS.md`.
+- Do not copy large instruction blocks into tool-specific files.
+- If another instruction file disagrees with `AGENTS.md`, verify against live source files and then reconcile the rule back here.
 
 Current package version: `0.4.9`.
 
 ## 🖥️ **Windows Development Environment**
 
-On Windows, always use WSL for normal `pnpm`-based repository work.
+On Windows, always prefer WSL for repository work. Use WSL as the default shell for normal development, file inspection, search, `pnpm`, build, lint, format, and test commands.
 
 ```bash
 # First, open WSL, then select Node 20
@@ -21,7 +30,9 @@ pnpm dev
 Key points:
 
 - Always use WSL for primary repo development on Windows.
+- Prefer WSL even when a command could also run in PowerShell.
 - Run `nvm use 20` before `pnpm` commands when working in WSL.
+- Use native Windows tools only when the workflow specifically requires them, such as Godot `.exe` launches, Windows-only PowerShell scripts, or inspecting Windows-specific paths.
 - Keep command guidance aligned with the scripts defined in `package.json`.
 - Do not rewrite repository instructions around `npm` or `yarn` unless the repo itself changes.
 
@@ -343,5 +354,6 @@ Guidelines:
 ### Documentation Expectations
 
 - Treat `AGENTS.md` as the shared source of truth for cross-agent repo instructions.
+- Keep `CLAUDE.md`, `CODEX.md`, and `COPILOT.md` as short pointers to `AGENTS.md`.
 - Keep lengthy tutorials, exhaustive API references, and speculative roadmaps in separate docs.
-- If `CLAUDE.md`, `COPILOT.md`, README, or another instruction file diverges from the current repo, verify against live source files before carrying its content forward.
+- If README or another non-agent doc diverges from the current repo, verify against live source files before carrying its content forward.

@@ -131,18 +131,10 @@
 
   function applyCameraLookAt() {
     if (!cameraHandle) return;
-    const dx = cameraTarget[0] - cameraPos[0];
-    const dy = cameraTarget[1] - cameraPos[1];
-    const dz = cameraTarget[2] - cameraPos[2];
-    const len = Math.hypot(dx, dy, dz) || 1;
-    const fx = dx / len, fy = dy / len, fz = dz / len;
-    // Godot cameras look down -Z. Convert forward → Euler XY (no roll).
-    const yaw = Math.atan2(-fx, -fz);
-    const pitch = Math.asin(fy);
     call('transform.set', {
       handle: cameraHandle,
       position: cameraPos,
-      rotation: [pitch, yaw, 0],
+      lookAt: cameraTarget,
     });
   }
 
@@ -2891,6 +2883,9 @@
     if (sc != null) payload.scale = sc;
 
     const r = call('vox.load', payload);
+    if (r && r.error) {
+      return Promise.reject(new Error(r.message || r.method || r.error));
+    }
     const handle = (r && r.handle) ? r.handle : 0;
     return Promise.resolve(handle);
   }

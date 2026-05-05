@@ -389,6 +389,16 @@ Dictionary make_error(const String &p_code, const String &p_method) {
     return out;
 }
 
+String normalize_resource_path(String path) {
+    if (path.begins_with("/")) {
+        return "res://" + path.substr(1);
+    }
+    if (!path.begins_with("res://") && !path.begins_with("user://")) {
+        return "res://" + path;
+    }
+    return path;
+}
+
 uint32_t handle_id_from_payload(const Dictionary &p, const String &key) {
     if (!p.has(key)) return 0;
     return static_cast<uint32_t>(static_cast<int64_t>(p[key]));
@@ -557,6 +567,21 @@ void fragment() {
 }
 )");
     return voxel_shader;
+}
+
+Ref<Shader> get_voxel_palette_shader() {
+    Ref<Shader> palette_shader;
+    palette_shader.instantiate();
+    palette_shader->set_code(R"(
+shader_type spatial;
+render_mode cull_disabled, unshaded;
+
+void fragment() {
+    ALBEDO = COLOR.rgb;
+    ALPHA = COLOR.a;
+}
+)");
+    return palette_shader;
 }
 
 } // namespace
@@ -831,15 +856,7 @@ Dictionary Nova64Host::_cmd_model_load(const Dictionary &p) {
         return make_error("missing_path", "model.load");
     }
 
-    String path = p["path"];
-
-    // Normalise to a Godot resource path; carts pass cart-relative or
-    // leading-slash strings interchangeably with the Three.js backend.
-    if (path.begins_with("/")) {
-        path = "res:/" + path.substr(1);
-    } else if (!path.begins_with("res://") && !path.begins_with("user://")) {
-        path = "res://" + path;
-    }
+    String path = normalize_resource_path(p["path"]);
 
     if (!FileAccess::file_exists(path)) {
         return make_error("file_not_found", path);
@@ -918,8 +935,9 @@ Dictionary Nova64Host::_cmd_model_load(const Dictionary &p) {
 //
 // Parses a minimal subset of the MagicaVoxel .vox format (SIZE/XYZI/RGBA
 // chunks of the first model) and routes the result through the existing
-// voxel.uploadChunk mesher so the same greedy/face-culled path renders
-// .vox imports and live cart-built terrain consistently.
+// voxel.uploadChunk mesher in palette-colour mode. Terrain chunks keep the
+// texture-atlas material path; .vox imports need their authored MagicaVoxel
+// palette instead.
 //
 // The .vox coordinate system is Z-up; we remap to the voxel mesher's Y-up
 // indexing so models stand "upright" when dropped into a cart.
@@ -927,12 +945,7 @@ Dictionary Nova64Host::_cmd_model_load(const Dictionary &p) {
 Dictionary Nova64Host::_cmd_vox_load(const Dictionary &p) {
     if (!p.has("path")) return make_error("missing_path", "vox.load");
 
-    String path = p["path"];
-    if (path.begins_with("/")) {
-        path = "res:/" + path.substr(1);
-    } else if (!path.begins_with("res://") && !path.begins_with("user://")) {
-        path = "res://" + path;
-    }
+    String path = normalize_resource_path(p["path"]);
 
     Ref<FileAccess> f = FileAccess::open(path, FileAccess::READ);
     if (f.is_null()) return make_error("file_not_found", path);
@@ -1095,6 +1108,7 @@ Dictionary Nova64Host::_cmd_vox_load(const Dictionary &p) {
     chunk_payload["size"] = size_a;
     chunk_payload["blocks"] = blocks;
     chunk_payload["palette"] = palette_d;
+    chunk_payload["usePaletteColors"] = true;
 
     Dictionary mesh_result = _cmd_voxel_upload_chunk(chunk_payload);
     if (mesh_result.has("error")) return mesh_result;
@@ -1105,11 +1119,13 @@ Dictionary Nova64Host::_cmd_vox_load(const Dictionary &p) {
         Object *obj = _handles->get_node(h, HandleKind::MESH_INSTANCE);
         Node3D *node3d = Object::cast_to<Node3D>(obj);
         if (node3d) {
+            Vector3 requested_pos(0.0f, 0.0f, 0.0f);
+            Vector3 requested_scale(1.0f, 1.0f, 1.0f);
             if (p.has("position")) {
                 Array a = p["position"];
                 if (a.size() >= 3) {
-                    node3d->set_position(Vector3(
-                        (float)(double)a[0], (float)(double)a[1], (float)(double)a[2]));
+                    requested_pos = Vector3(
+                        (float)(double)a[0], (float)(double)a[1], (float)(double)a[2]);
                 }
             }
             if (p.has("scale")) {
@@ -1117,14 +1133,21 @@ Dictionary Nova64Host::_cmd_vox_load(const Dictionary &p) {
                 if (s.get_type() == Variant::ARRAY) {
                     Array a = s;
                     if (a.size() >= 3) {
-                        node3d->set_scale(Vector3(
-                            (float)(double)a[0], (float)(double)a[1], (float)(double)a[2]));
+                        requested_scale = Vector3(
+                            (float)(double)a[0], (float)(double)a[1], (float)(double)a[2]);
                     }
                 } else {
                     float sc = (float)(double)s;
-                    node3d->set_scale(Vector3(sc, sc, sc));
+                    requested_scale = Vector3(sc, sc, sc);
                 }
             }
+            node3d->set_scale(requested_scale);
+            // Match the browser backends: VOX roots sit at the requested
+            // position while model voxels are centered around X/Z.
+            node3d->set_position(requested_pos + Vector3(
+                -0.5f * (float)wsx * requested_scale.x,
+                0.0f,
+                -0.5f * (float)wsz * requested_scale.z));
         }
     }
 
@@ -1143,12 +1166,7 @@ Dictionary Nova64Host::_cmd_vox_load(const Dictionary &p) {
 Dictionary Nova64Host::_cmd_wad_load(const Dictionary &p) {
     if (!p.has("path")) return make_error("missing_path", "wad.load");
 
-    String path = p["path"];
-    if (path.begins_with("/")) {
-        path = "res:/" + path.substr(1);
-    } else if (!path.begins_with("res://") && !path.begins_with("user://")) {
-        path = "res://" + path;
-    }
+    String path = normalize_resource_path(p["path"]);
 
     Ref<FileAccess> f = FileAccess::open(path, FileAccess::READ);
     if (f.is_null()) return make_error("file_not_found", path);
@@ -1551,7 +1569,12 @@ Dictionary Nova64Host::_cmd_transform_set(const Dictionary &p) {
     if (!n) return make_error("invalid_node_handle", "transform.set");
 
     if (p.has("position")) n->set_position(vec3_from_payload(p, "position", n->get_position()));
-    if (p.has("rotation")) {
+    if (p.has("lookAt")) {
+        Vector3 target = vec3_from_payload(p, "lookAt", n->get_position() + Vector3(0.0f, 0.0f, -1.0f));
+        if (n->get_position().distance_to(target) > 0.0001f) {
+            n->look_at_from_position(n->get_position(), target, Vector3(0.0f, 1.0f, 0.0f));
+        }
+    } else if (p.has("rotation")) {
         Vector3 r = vec3_from_payload(p, "rotation", n->get_rotation());
         n->set_rotation(r);
     }
@@ -2513,6 +2536,8 @@ Dictionary Nova64Host::_cmd_voxel_upload_chunk(const Dictionary &p) {
     const int sx = (int)(double)size_a[0];
     const int sy = (int)(double)size_a[1];
     const int sz = (int)(double)size_a[2];
+    const bool use_palette_colors =
+            p.has("usePaletteColors") && static_cast<bool>(p["usePaletteColors"]);
 
     if (sx <= 0 || sy <= 0 || sz <= 0 || (sx * sy * sz) != blocks_a.size())
         return make_error("bad_blocks_size", "voxel.uploadChunk");
@@ -2644,8 +2669,9 @@ Dictionary Nova64Host::_cmd_voxel_upload_chunk(const Dictionary &p) {
                     // Emit quad.
                     auto it = pal.find(id);
                     Color base = (it != pal.end()) ? it->second : Color(0.5f, 0.5f, 0.5f, 1.0f);
-                        // Keep AO as neutral grayscale so atlas texels drive hue.
-                        Color col(ao, ao, ao, 1.0f);
+                    Color col = use_palette_colors
+                        ? Color(base.r * ao, base.g * ao, base.b * ao, base.a)
+                        : Color(ao, ao, ao, 1.0f);
                     // Two CCW triangles [0,1,2] and [0,2,3].
                     // Corner positions assembled via the per-face cu[]/cv[] offset flags.
                     const float pu[2] = { (float)u0, (float)(u0+w) };
@@ -2688,14 +2714,21 @@ Dictionary Nova64Host::_cmd_voxel_upload_chunk(const Dictionary &p) {
 
     Ref<ArrayMesh> mesh = st->commit();
 
+    if (use_palette_colors) {
+        Ref<ShaderMaterial> mat;
+        mat.instantiate();
+        mat->set_shader(get_voxel_palette_shader());
+        mesh->surface_set_material(0, mat);
+    } else {
         // Atlas textured material: UV carries repeat coords, UV2 carries tile origin.
         Ref<ShaderMaterial> mat;
-    mat.instantiate();
+        mat.instantiate();
         mat->set_shader(get_voxel_chunk_shader());
         mat->set_shader_parameter("atlas_tex", get_voxel_atlas_texture());
         mat->set_shader_parameter("tile_size",
             Vector2(1.0f / (float)VOXEL_ATLAS_COLS, 1.0f / (float)VOXEL_ATLAS_ROWS));
-    mesh->surface_set_material(0, mat);
+        mesh->surface_set_material(0, mat);
+    }
 
     MeshInstance3D *mi = memnew(MeshInstance3D);
     mi->set_mesh(mesh);

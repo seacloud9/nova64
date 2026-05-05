@@ -15,6 +15,34 @@ native-shutdown flakes. All unrelated to rendering or gameplay logic.
 Both Linux (`platform=linux`) and Windows (`platform=windows use_mingw=yes`)
 gdextension builds are clean.
 
+## Latest checkpoint — VOX loader visibility
+
+`vox-viewer` now renders `assets/vox/house.vox` in the Godot adapter. The fix
+has three parts:
+
+- Bridge asset paths now use a single `normalize_resource_path()` helper, so
+  cart-style `/assets/...` paths resolve to `res://assets/...` consistently for
+  model, VOX, and WAD loading.
+- VOX imports still reuse the greedy voxel mesher, but opt into a palette-color
+  material path instead of the terrain texture atlas. The palette shader is
+  unshaded so authored MagicaVoxel colors stay readable under bright sky/glow
+  presets.
+- Camera target updates now go through `transform.set { lookAt }`, which the
+  bridge applies with Godot's native `look_at_from_position()` rather than a
+  hand-rolled Euler conversion in the JS shim.
+
+Focused validation:
+
+```bash
+cd /mnt/c/Users/brend/exp/nova64
+'/mnt/c/Program Files/Godot_v4.4.1-stable_win64.exe/Godot_v4.4.1-stable_win64_console.exe' \
+  --windowed \
+  --path 'C:\Users\brend\exp\nova64\nova64-godot\godot_project' \
+  --script 'res://scripts/conformance_runner.gd' \
+  -- --cart=res://carts/vox-viewer --frames=160 \
+  --snapshot='C:\Users\brend\exp\nova64\nova64-godot\test-results\tmp-vox-viewer-clean.png'
+```
+
 ## What's wired
 
 ### Phase 1 — initial parity (commits `1d2a7b2`, `3386527`)

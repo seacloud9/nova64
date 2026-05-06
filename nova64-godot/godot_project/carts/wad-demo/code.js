@@ -124,7 +124,7 @@ function buildThingSprite(t, kind) {
     doubleSided: true,
     roughness: 1,
   });
-  setRotation(h, Math.PI / 2, player.yaw, 0);
+  setRotation(h, Math.PI / 2, player.yaw + Math.PI, 0);
   thingSprites.push({
     handle: h,
     x: t.x,
@@ -139,7 +139,7 @@ function buildThingSprite(t, kind) {
 
 function updateThingSprites() {
   for (const s of thingSprites) {
-    setRotation(s.handle, Math.PI / 2, player.yaw, 0);
+    setRotation(s.handle, Math.PI / 2, player.yaw + Math.PI, 0);
   }
 }
 

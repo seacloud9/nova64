@@ -5574,7 +5574,14 @@
     if (!data) { this.spriteTexCache.set(thingType, null); return null; }
     const pic = this._parsePicture(data);
     if (!pic) { this.spriteTexCache.set(thingType, null); return null; }
-    const handle = this._uploadDataTexture(pic.pixels, pic.width, pic.height);
+    const flipped = new Uint8Array(pic.width * pic.height * 4);
+    const rowBytes = pic.width * 4;
+    for (let y = 0; y < pic.height; y++) {
+      const srcRow = y * rowBytes;
+      const dstRow = (pic.height - 1 - y) * rowBytes;
+      flipped.set(pic.pixels.subarray(srcRow, srcRow + rowBytes), dstRow);
+    }
+    const handle = this._uploadDataTexture(flipped, pic.width, pic.height);
     const tex = handle ? {
       texture: { handle, width: pic.width, height: pic.height },
       width: pic.width, height: pic.height,

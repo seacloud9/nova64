@@ -1069,7 +1069,8 @@ Dictionary Nova64Host::_cmd_vox_load(const Dictionary &p) {
         for (int i = 0; i < 256; ++i) palette[i] = DEFAULT_PALETTE[i];
     }
 
-    // Build a Y-up block grid: world(x, y, z) = vox(x, z, y).
+    // Match Three.js VOXLoader.buildMesh(): VOX X stays X, VOX Z becomes
+    // world Y, and VOX Y is flipped into world Z.
     const int wsx = sx;
     const int wsy = sz; // .vox Z (height) becomes world Y
     const int wsz = sy;
@@ -1087,7 +1088,7 @@ Dictionary Nova64Host::_cmd_vox_load(const Dictionary &p) {
         if (vx < 0 || vx >= sx || vy < 0 || vy >= sy || vz < 0 || vz >= sz) continue;
         const int wx = vx;
         const int wy = vz;
-        const int wz = vy;
+        const int wz = (sy - 1) - vy;
         const int idx = wx + wsx * wy + wsx * wsy * wz;
         blocks[idx] = ci;
         used[ci] = true;
@@ -1148,11 +1149,11 @@ Dictionary Nova64Host::_cmd_vox_load(const Dictionary &p) {
                 }
             }
             node3d->set_scale(requested_scale);
-            // Match the browser backends: VOX roots sit at the requested
-            // position while model voxels are centered around X/Z.
+            // Match the browser backends: the VOX mesh geometry is centered
+            // around the requested root position on all three axes.
             node3d->set_position(requested_pos + Vector3(
                 -0.5f * (float)wsx * requested_scale.x,
-                0.0f,
+                -0.5f * (float)wsy * requested_scale.y,
                 -0.5f * (float)wsz * requested_scale.z));
         }
     }

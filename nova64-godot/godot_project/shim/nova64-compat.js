@@ -3551,9 +3551,9 @@
     // get the handle directly. Synchronous bridge call means resolution is immediate.
     return Promise.resolve(handle);
   }
-  // loadVoxModel(url, position?, scale?, options?) → Promise<handle>. Mirrors
+  // loadVoxModel(url, position?, scale?, options?) -> Promise<handle>. Mirrors
   // the Three.js VOXLoader entrypoint; the bridge parses the .vox file
-  // natively and routes through the existing voxel.uploadChunk mesher.
+  // natively and builds the authored voxel mesh.
   function loadVoxModel(path, position, scale, _options) {
     ensureInit();
     const pos = (Array.isArray(position) && position.length >= 3) ? position : null;
@@ -3578,6 +3578,7 @@
       return Promise.reject(new Error(r.message || r.method || r.error));
     }
     const handle = (r && r.handle) ? r.handle : 0;
+    if (handle) setRotation(handle, 0, Math.PI, 0);
     return Promise.resolve(handle);
   }
   function _resolveGeomString(name) {
@@ -5598,14 +5599,7 @@
     if (!data) { this.spriteTexCache.set(thingType, null); return null; }
     const pic = this._parsePicture(data);
     if (!pic) { this.spriteTexCache.set(thingType, null); return null; }
-    const flipped = new Uint8Array(pic.width * pic.height * 4);
-    const rowBytes = pic.width * 4;
-    for (let y = 0; y < pic.height; y++) {
-      const srcRow = y * rowBytes;
-      const dstRow = (pic.height - 1 - y) * rowBytes;
-      flipped.set(pic.pixels.subarray(srcRow, srcRow + rowBytes), dstRow);
-    }
-    const handle = this._uploadDataTexture(flipped, pic.width, pic.height);
+    const handle = this._uploadDataTexture(pic.pixels, pic.width, pic.height);
     const tex = handle ? {
       texture: { handle, width: pic.width, height: pic.height },
       width: pic.width, height: pic.height,

@@ -1072,95 +1072,185 @@ Dictionary Nova64Host::_cmd_vox_load(const Dictionary &p) {
         for (int i = 0; i < 256; ++i) palette[i] = DEFAULT_PALETTE[i];
     }
 
-    // Match Three.js VOXLoader.buildMesh(): VOX X stays X, VOX Z becomes
-    // world Y, and VOX Y is flipped into world Z.
-    const int wsx = sx;
-    const int wsy = sz; // .vox Z (height) becomes world Y
-    const int wsz = sy;
-    Array blocks;
-    blocks.resize(wsx * wsy * wsz);
-    for (int i = 0; i < wsx * wsy * wsz; ++i) blocks[i] = 0;
-
-    // Track which colour indices actually appear so the palette stays compact.
-    bool used[256] = { false };
+    std::vector<uint8_t> volume(sx * sy * sz, 0);
     for (size_t i = 0; i + 3 < voxels.size(); i += 4) {
-        int vx = voxels[i + 0];
-        int vy = voxels[i + 1];
-        int vz = voxels[i + 2];
-        int ci = voxels[i + 3];
+        const int vx = voxels[i + 0];
+        const int vy = voxels[i + 1];
+        const int vz = voxels[i + 2];
+        const int ci = voxels[i + 3];
+        if (ci <= 0) continue;
         if (vx < 0 || vx >= sx || vy < 0 || vy >= sy || vz < 0 || vz >= sz) continue;
-        const int wx = vx;
-        const int wy = vz;
-        const int wz = (sy - 1) - vy;
-        const int idx = wx + wsx * wy + wsx * wsy * wz;
-        blocks[idx] = ci;
-        used[ci] = true;
+        volume[vx + vy * sx + vz * sx * sy] = (uint8_t)ci;
     }
 
-    Dictionary palette_d;
-    for (int i = 0; i < 256; ++i) {
-        if (!used[i]) continue;
-        // MagicaVoxel XYZI colour indices are 1-based. Index 0 is air /
-        // transparent, while RGBA/default palette entry 0 is the colour for
-        // voxel index 1. Keep block id 0 reserved for air, but look up the
-        // authored colour from index-1 so imported .vox models match the web
-        // VOXLoader palette.
-        const int palette_index = i > 0 ? i - 1 : 0;
-        palette_d[String::num_int64(i)] = (int64_t)palette[palette_index];
-    }
+    Ref<SurfaceTool> st;
+    st.instantiate();
+    st->begin(Mesh::PRIMITIVE_TRIANGLES);
 
-    Dictionary chunk_payload;
-    Array origin_a;
-    origin_a.append(0); origin_a.append(0); origin_a.append(0);
-    Array size_a;
-    size_a.append(wsx); size_a.append(wsy); size_a.append(wsz);
-    chunk_payload["origin"] = origin_a;
-    chunk_payload["size"] = size_a;
-    chunk_payload["blocks"] = blocks;
-    chunk_payload["palette"] = palette_d;
-    chunk_payload["usePaletteColors"] = true;
+    const int dims[3] = { sx, sy, sz };
+    bool has_geom = false;
+    auto volume_at = [&](int x, int y, int z) -> int {
+        if (x < 0 || x >= sx || y < 0 || y >= sy || z < 0 || z >= sz) return 0;
+        return volume[x + y * sx + z * sx * sy];
+    };
+    auto to_godot = [&](float x, float y, float z) -> Vector3 {
+        // VOX X right, VOX Y forward, VOX Z up -> Godot/Nova64 Y-up
+        // centered mesh. The X/Z terms are mirrored together to account for
+        // Godot's opposite camera-forward convention while preserving the
+        // authored handedness of the model.
+        return Vector3(-x + (float)sx * 0.5f, z - (float)sz * 0.5f, -y + (float)sy * 0.5f);
+    };
+    auto color_for = [&](int color_index) -> Color {
+        const int palette_index = color_index > 0 ? color_index - 1 : 0;
+        const int clamped_palette_index = palette_index < 0 ? 0 : (palette_index > 255 ? 255 : palette_index);
+        const uint32_t hex = palette[clamped_palette_index];
+        return Color(
+            ((hex >> 16) & 0xFF) / 255.0f,
+            ((hex >> 8) & 0xFF) / 255.0f,
+            (hex & 0xFF) / 255.0f,
+            1.0f);
+    };
 
-    Dictionary mesh_result = _cmd_voxel_upload_chunk(chunk_payload);
-    if (mesh_result.has("error")) return mesh_result;
+    for (int d = 0; d < 3; ++d) {
+        const int u = (d + 1) % 3;
+        const int v = (d + 2) % 3;
+        const int dims_d = dims[d];
+        const int dims_u = dims[u];
+        const int dims_v = dims[v];
+        int q[3] = { 0, 0, 0 };
+        q[d] = 1;
+        std::vector<int> mask(dims_u * dims_v, 0);
 
-    // Apply optional position/scale on the resulting node.
-    if (mesh_result.has("handle")) {
-        uint32_t h = (uint32_t)(int64_t)mesh_result["handle"];
-        Object *obj = _handles->get_node(h, HandleKind::MESH_INSTANCE);
-        Node3D *node3d = Object::cast_to<Node3D>(obj);
-        if (node3d) {
-            Vector3 requested_pos(0.0f, 0.0f, 0.0f);
-            Vector3 requested_scale(1.0f, 1.0f, 1.0f);
-            if (p.has("position")) {
-                Array a = p["position"];
-                if (a.size() >= 3) {
-                    requested_pos = Vector3(
-                        (float)(double)a[0], (float)(double)a[1], (float)(double)a[2]);
+        for (int slice = 0; slice <= dims_d; ++slice) {
+            int nmask = 0;
+            for (int vv = 0; vv < dims_v; ++vv) {
+                for (int uu = 0; uu < dims_u; ++uu) {
+                    int pos[3] = { 0, 0, 0 };
+                    pos[d] = slice;
+                    pos[u] = uu;
+                    pos[v] = vv;
+                    const int behind = slice > 0
+                        ? volume_at(pos[0] - q[0], pos[1] - q[1], pos[2] - q[2])
+                        : 0;
+                    const int infront = slice < dims_d
+                        ? volume_at(pos[0], pos[1], pos[2])
+                        : 0;
+                    mask[nmask++] = (behind > 0 && infront == 0)
+                        ? behind
+                        : ((infront > 0 && behind == 0) ? -infront : 0);
                 }
             }
-            if (p.has("scale")) {
-                Variant s = p["scale"];
-                if (s.get_type() == Variant::ARRAY) {
-                    Array a = s;
-                    if (a.size() >= 3) {
-                        requested_scale = Vector3(
-                            (float)(double)a[0], (float)(double)a[1], (float)(double)a[2]);
+
+            nmask = 0;
+            for (int vv = 0; vv < dims_v; ++vv) {
+                for (int uu = 0; uu < dims_u; ) {
+                    const int c = mask[nmask];
+                    if (c == 0) {
+                        ++uu;
+                        ++nmask;
+                        continue;
                     }
-                } else {
-                    float sc = (float)(double)s;
-                    requested_scale = Vector3(sc, sc, sc);
+
+                    int w = 1;
+                    while (uu + w < dims_u && mask[nmask + w] == c) ++w;
+
+                    int h = 1;
+                    bool done = false;
+                    while (vv + h < dims_v && !done) {
+                        for (int k = 0; k < w; ++k) {
+                            if (mask[nmask + k + h * dims_u] != c) {
+                                done = true;
+                                break;
+                            }
+                        }
+                        if (!done) ++h;
+                    }
+
+                    float pos[3] = { 0.0f, 0.0f, 0.0f };
+                    pos[d] = (float)slice;
+                    pos[u] = (float)uu;
+                    pos[v] = (float)vv;
+                    float du[3] = { 0.0f, 0.0f, 0.0f };
+                    float dv[3] = { 0.0f, 0.0f, 0.0f };
+                    du[u] = (float)w;
+                    dv[v] = (float)h;
+
+                    Vector3 v0 = to_godot(pos[0], pos[1], pos[2]);
+                    Vector3 v1 = to_godot(pos[0] + du[0], pos[1] + du[1], pos[2] + du[2]);
+                    Vector3 v2 = to_godot(pos[0] + du[0] + dv[0], pos[1] + du[1] + dv[1], pos[2] + du[2] + dv[2]);
+                    Vector3 v3 = to_godot(pos[0] + dv[0], pos[1] + dv[1], pos[2] + dv[2]);
+
+                    Vector3 quad[4];
+                    if (c > 0) {
+                        quad[0] = v0; quad[1] = v1; quad[2] = v2; quad[3] = v3;
+                    } else {
+                        quad[0] = v0; quad[1] = v3; quad[2] = v2; quad[3] = v1;
+                    }
+                    Vector3 normal = (quad[1] - quad[0]).cross(quad[2] - quad[0]).normalized();
+                    Color col = color_for(c < 0 ? -c : c);
+                    static const int TRI[6] = { 0, 1, 2, 0, 2, 3 };
+                    for (int ti = 0; ti < 6; ++ti) {
+                        const int qi = TRI[ti];
+                        st->set_color(col);
+                        st->set_normal(normal);
+                        st->add_vertex(quad[qi]);
+                    }
+                    has_geom = true;
+
+                    for (int hh = 0; hh < h; ++hh)
+                        for (int ww = 0; ww < w; ++ww)
+                            mask[nmask + ww + hh * dims_u] = 0;
+
+                    uu += w;
+                    nmask += w;
                 }
             }
-            node3d->set_scale(requested_scale);
-            // Match the browser backends: the VOX mesh geometry is centered
-            // around the requested root position on all three axes.
-            node3d->set_position(requested_pos + Vector3(
-                -0.5f * (float)wsx * requested_scale.x,
-                -0.5f * (float)wsy * requested_scale.y,
-                -0.5f * (float)wsz * requested_scale.z));
         }
     }
 
+    if (!has_geom) {
+        Dictionary out; out["handle"] = (int64_t)0; out["path"] = path; return out;
+    }
+
+    Ref<ArrayMesh> mesh = st->commit();
+    Ref<ShaderMaterial> mat;
+    mat.instantiate();
+    mat->set_shader(get_voxel_palette_shader());
+    mesh->surface_set_material(0, mat);
+
+    MeshInstance3D *mi = memnew(MeshInstance3D);
+    mi->set_mesh(mesh);
+    add_child(mi);
+
+    Vector3 requested_pos(0.0f, 0.0f, 0.0f);
+    Vector3 requested_scale(1.0f, 1.0f, 1.0f);
+    if (p.has("position")) {
+        Array a = p["position"];
+        if (a.size() >= 3) {
+            requested_pos = Vector3((float)(double)a[0], (float)(double)a[1], (float)(double)a[2]);
+        }
+    }
+    if (p.has("scale")) {
+        Variant s = p["scale"];
+        if (s.get_type() == Variant::ARRAY) {
+            Array a = s;
+            if (a.size() >= 3) {
+                requested_scale = Vector3((float)(double)a[0], (float)(double)a[1], (float)(double)a[2]);
+            }
+        } else {
+            float sc = (float)(double)s;
+            requested_scale = Vector3(sc, sc, sc);
+        }
+    }
+    mi->set_scale(requested_scale);
+    mi->set_position(requested_pos + Vector3(
+        0.0f,
+        (float)sz * 0.5f * requested_scale.y,
+        0.0f));
+
+    const uint32_t handle = _handles->put_node(HandleKind::MESH_INSTANCE, mi);
+    Dictionary mesh_result;
+    mesh_result["handle"] = (int64_t)handle;
     mesh_result["path"] = path;
     return mesh_result;
 }

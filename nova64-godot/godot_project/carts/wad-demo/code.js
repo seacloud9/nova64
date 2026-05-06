@@ -124,7 +124,6 @@ function buildThingSprite(t, kind) {
     doubleSided: true,
     roughness: 1,
   });
-  setRotation(h, Math.PI / 2, player.yaw + Math.PI, 0);
   thingSprites.push({
     handle: h,
     x: t.x,
@@ -134,12 +133,22 @@ function buildThingSprite(t, kind) {
     type: t.type,
     doomType: t.doomType,
   });
+  faceThingSprite(thingSprites[thingSprites.length - 1]);
   return h;
+}
+
+function faceThingSprite(s) {
+  const dx = player.x - s.x;
+  const dz = player.z - s.z;
+  const yaw = (Math.abs(dx) + Math.abs(dz) > 0.0001)
+    ? Math.atan2(dx, dz)
+    : player.yaw + Math.PI;
+  setRotation(s.handle, 0, yaw, 0);
 }
 
 function updateThingSprites() {
   for (const s of thingSprites) {
-    setRotation(s.handle, Math.PI / 2, player.yaw + Math.PI, 0);
+    faceThingSprite(s);
   }
 }
 

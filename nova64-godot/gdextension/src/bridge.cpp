@@ -577,7 +577,10 @@ shader_type spatial;
 render_mode cull_disabled, unshaded;
 
 void fragment() {
-    ALBEDO = COLOR.rgb;
+    vec3 light_dir = normalize(vec3(-0.35, 0.80, 0.45));
+    float lit = clamp(dot(normalize(NORMAL), light_dir), 0.0, 1.0);
+    float shade = 0.68 + lit * 0.32;
+    ALBEDO = COLOR.rgb * shade;
     ALPHA = COLOR.a;
 }
 )");

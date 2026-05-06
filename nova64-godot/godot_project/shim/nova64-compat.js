@@ -798,28 +798,52 @@
   }
   function createMinimap(opts) {
     opts = opts || {};
-    return { __isMinimap: true, opts: opts, revealed: new Set() };
+    const mm = {
+      __isMinimap: true,
+      x: opts.x != null ? opts.x : 540,
+      y: opts.y != null ? opts.y : 10,
+      width: opts.width != null ? opts.width : (opts.size != null ? opts.size : 80),
+      height: opts.height != null ? opts.height : (opts.size != null ? opts.size : 80),
+      bgColor: opts.bgColor != null ? opts.bgColor : rgba8(0, 0, 0, 180),
+      borderLight: opts.borderLight != null ? opts.borderLight : rgba8(150, 150, 150),
+      borderDark: opts.borderDark != null ? opts.borderDark : rgba8(50, 50, 50),
+      shape: opts.shape || 'rect',
+      follow: opts.follow || null,
+      worldW: opts.worldW != null ? opts.worldW : 100,
+      worldH: opts.worldH != null ? opts.worldH : 100,
+      entities: Array.isArray(opts.entities) ? opts.entities : [],
+      player: opts.player || null,
+      gridLines: opts.gridLines || 0,
+      gridColor: opts.gridColor != null ? opts.gridColor : rgba8(40, 60, 40, 120),
+      revealed: new Set(),
+    };
+    // Older Godot shim callers used mm.opts; browser-compatible callers mutate
+    // mm.player/mm.entities directly. Keep both paths pointing at one object.
+    mm.opts = mm;
+    return mm;
   }
   function drawMinimap(minimapOrX, timeOrY, sizeArg, entitiesArg, bgColorArg) {
     if (!minimapOrX) return;
-    let mm, x, y, size;
+    let mm, x, y, size, height;
     if (minimapOrX && minimapOrX.__isMinimap) {
       mm = minimapOrX;
-      const o = mm.opts;
+      const o = mm.opts || mm;
       x = o.x != null ? o.x : 540; y = o.y != null ? o.y : 10;
       size = o.width || o.size || 80;
+      height = o.height || size;
     } else {
-      x = minimapOrX || 540; y = timeOrY || 10; size = sizeArg || 80;
+      x = minimapOrX || 540; y = timeOrY || 10; size = sizeArg || 80; height = size;
     }
     // Draw a simple minimap rectangle background
-    __ops.push(['rectfill', x | 0, y | 0, size | 0, size | 0, colorFromHex(0x000000, 0.7)]);
-    __ops.push(['rect', x | 0, y | 0, size | 0, size | 0, colorFromHex(0x888888)]);
+    __ops.push(['rectfill', x | 0, y | 0, size | 0, height | 0, colorFromHex(0x000000, 0.7)]);
+    __ops.push(['rect', x | 0, y | 0, size | 0, height | 0, colorFromHex(0x888888)]);
     // Draw entities if available
-    const entities = (mm && mm.opts.entities) || entitiesArg || [];
-    const player = mm && mm.opts.player;
-    const worldW = (mm && mm.opts.worldW) || 100;
-    const worldH = (mm && mm.opts.worldH) || 100;
-    const scale = size / Math.max(worldW, worldH);
+    const o = mm ? (mm.opts || mm) : null;
+    const entities = (o && o.entities) || entitiesArg || [];
+    const player = o && o.player;
+    const worldW = (o && o.worldW) || 100;
+    const worldH = (o && o.worldH) || 100;
+    const scale = Math.min(size / Math.max(1, worldW), height / Math.max(1, worldH));
     for (let i = 0; i < entities.length; i++) {
       const e = entities[i];
       const ex = x + (e.x || 0) * scale; const ey = y + (e.y || 0) * scale;

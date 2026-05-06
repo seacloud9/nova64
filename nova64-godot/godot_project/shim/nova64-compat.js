@@ -4146,9 +4146,14 @@
     24: 0x220033,   // OBSIDIAN
     25: 0x668855,   // MOSSY_COBBLESTONE
   };
+  const VX_BLOCK_PALETTE = (function () {
+    const p = {};
+    for (const id in VX_BLOCK_COLORS) p[id] = VX_BLOCK_COLORS[id];
+    return p;
+  }());
   const vxBlocks = new Map();    // 'x,y,z' -> { id, mesh } (sparse, player edits)
   const vxMultimeshes = [];      // kept for legacy resetVoxelWorld compat
-  const vxChunkHandles = [];     // mesh.destroy handles for voxel.uploadChunk meshes
+  const vxChunkHandles = [];     // legacy native chunk handles; vxLoadedChunks owns new chunk meshes
   const vxEntities = [];
 
   // Compute world seed matching the browser's resolveDefaultWorldSeed().
@@ -4163,6 +4168,13 @@
     return (hash >>> 0) % 1000000;
   }
   function _vxResolveDefaultSeed() {
+    const activeCartPath =
+      global.__NOVA64_CURRENT_CART_PATH ||
+      global.__nova64CurrentCartPath ||
+      null;
+    if (activeCartPath) {
+      return _vxHashStringToSeed('nova64-cart-path:' + activeCartPath);
+    }
     // __nova64_cart_name is set by the Godot host bridge before cart loads
     const cartName = global.__nova64_cart_name;
     if (cartName) {
@@ -4172,13 +4184,24 @@
     return 1337; // fallback
   }
 
-  const vxConfig = { seed: _vxResolveDefaultSeed(), renderDistance: 3, maxMeshRebuildsPerFrame: 3, enableLOD: true };
+  const vxConfig = {
+    seed: _vxResolveDefaultSeed(),
+    renderDistance: 3,
+    maxMeshRebuildsPerFrame: 3,
+    enableLOD: true,
+    enableCaves: true,
+    enableOres: true,
+    enableTrees: true,
+    enableLava: true,
+    enableWaterPlane: false,
+  };
   let vxGenerated = false;
   let vxWaterMesh = 0;
 
   // Chunk streaming state
   const VX_CHUNK_SIZE = 16;      // blocks per chunk side
-  const VX_CHUNK_RADIUS = 4;     // chunks to load around player (4 = 64 blocks radius)
+  const VX_CHUNK_HEIGHT = 128;   // matches runtime/api-voxel.js CHUNK_HEIGHT
+  const VX_CHUNK_RADIUS = 4;     // fallback radius when cart does not configure renderDistance
   const vxLoadedChunks = new Map(); // 'cx,cz' -> { meshHandles: [...], waterMesh: handle }
   let vxLastPlayerChunkX = null;
   let vxLastPlayerChunkZ = null;
@@ -4188,6 +4211,10 @@
 
   function _vxKey(x, y, z) { return ((x | 0) + ',' + (y | 0) + ',' + (z | 0)); }
   function _vxColKey(x, z) { return ((x | 0) + ',' + (z | 0)); }
+  function _vxChunkRadius() {
+    const r = vxConfig && vxConfig.renderDistance != null ? vxConfig.renderDistance : VX_CHUNK_RADIUS;
+    return Math.max(1, Math.min(6, r | 0));
+  }
 
   // Deterministic hash used for ore/tree scatter decisions.
   function _vxHash2(x, y, seed) {
@@ -4213,13 +4240,12 @@
     ];
     const p = new Uint8Array(256);
     for (let i = 0; i < 256; i++) p[i] = i;
-    let st = seed | 0;
-    const rand = () => {
-      st = (st * 1664525 + 1013904223) | 0;
-      return (st >>> 0) / 4294967296;
+    const seededRandom = s => {
+      const x = Math.sin(s * 127.1 + 311.7) * 43758.5453;
+      return x - Math.floor(x);
     };
     for (let i = 255; i > 0; i--) {
-      const j = (rand() * (i + 1)) | 0;
+      const j = Math.floor(seededRandom(seed + i) * (i + 1));
       const t = p[i]; p[i] = p[j]; p[j] = t;
     }
     const perm = new Uint8Array(512);
@@ -4350,7 +4376,7 @@
       return (total / maxValue) * 0.5 + 0.5;
     }
 
-    return { fbm2D, fbm3D };
+    return { noise2D, noise3D, fbm2D, fbm3D };
   }
 
   let _vxNoise = _vxCreateSimplexNoise(vxConfig.seed | 0);
@@ -4427,11 +4453,14 @@
     if (biome === 'Plains') return 0.015;
     return 0.0;
   }
+  function _vxTreeRoll(x, z) {
+    return (_vxNoise.noise2D((x | 0) * 0.7, (z | 0) * 0.7) + 1.0) * 0.5;
+  }
 
   function _vxHeightAt(x, z) {
     const biome = _vxBiomeAtCached(x, z);
     const p = _vxBiomeProfile(biome);
-    return Math.floor(_vxNoise.fbm2D(x, z, 4, 0.5, 2.0, 0.01) * p.heightScale + p.heightBase) + 3;
+    return Math.floor(_vxNoise.fbm2D(x, z, 4, 0.5, 2.0, 0.01) * p.heightScale + p.heightBase) - 1;
   }
 
   function _vxHeightAtCached(x, z) {
@@ -4452,9 +4481,21 @@
   // texture atlas tiles in bridge.cpp's voxel_tile_index_for_face().
   // Block IDs match web engine BLOCK_TYPES: 1=GRASS, 2=DIRT, 3=STONE, etc.
   function _vxBlockIdAt(wx, wy, wz) {
+    const edit = vxBlocks.get(_vxKey(wx, wy, wz));
+    if (edit) return edit.id || 0;
+
     const height = _vxHeightAtCached(wx, wz);
 
     if (wy <= height) {
+      if (wy === 0) return 14; // BEDROCK
+
+      if (vxConfig.enableCaves !== false && wy > 1 && wy < height - 5) {
+        const cave1 = _vxNoise.fbm3D(wx, wy, wz, 3, 0.5, 2.0, 0.04);
+        const cave2 = _vxNoise.fbm3D(wx + 7777, wy + 7777, wz + 7777, 2, 0.5, 2.0, 0.08);
+        const carved = Math.abs(cave1 - 0.5) < 0.04 || Math.abs(cave2 - 0.5) < 0.03;
+        if (carved) return (wy <= 5 && vxConfig.enableLava !== false) ? 23 : 0;
+      }
+
       // --- solid terrain ---
       if (wy < VX_BASE_Y - 2) return 3; // deep stone (STONE)
       const biome = _vxBiomeAtCached(wx, wz);
@@ -4467,30 +4508,30 @@
       }
       if (dy < 3) return 2; // DIRT
 
-      // Fast hash-based ore generation (much faster than 3D FBM noise)
-      // Only check ores in the visible stone layer (dy 3-6)
-      if (dy >= 3 && dy <= 6) {
-        const oreHash = _vxHash3(wx, wy, wz, vxConfig.seed + 77);
-        // Diamond ore: y < 16, very rare
-        if (wy < 16 && oreHash > 0.995) return 18; // DIAMOND_ORE
-        // Gold ore: y < 32
-        if (wy < 32 && oreHash > 0.985) return 17; // GOLD_ORE
-        // Iron ore: y < 64
-        if (wy < 64 && oreHash > 0.965) return 16; // IRON_ORE
-        // Coal ore: anywhere
-        if (oreHash > 0.94) return 15; // COAL_ORE
+      if (vxConfig.enableOres !== false) {
+        if (wy < 16 && _vxNoise.fbm3D(wx, wy, wz, 2, 0.5, 2.0, 0.15) > 0.78) return 18;
+        if (wy < 32 && _vxNoise.fbm3D(wx + 500, wy, wz + 500, 2, 0.5, 2.0, 0.12) > 0.76) return 17;
+        if (wy < 64 && _vxNoise.fbm3D(wx + 1000, wy, wz + 1000, 2, 0.5, 2.0, 0.1) > 0.73) return 16;
+        if (_vxNoise.fbm3D(wx + 2000, wy, wz + 2000, 2, 0.5, 2.0, 0.08) > 0.72) return 15;
+        if (wy < 40 && _vxNoise.fbm3D(wx + 3000, wy, wz + 3000, 1, 0.5, 2.0, 0.06) > 0.8) return 19;
+      }
+
+      if (height <= VX_SEA_Y + 2 && height >= VX_SEA_Y - 3 && wy >= height - 4 && wy < height - 1) {
+        if (_vxNoise.fbm3D(wx + 5000, wy, wz + 5000, 1, 0.5, 2.0, 0.1) > 0.7) return 20;
       }
       return 3; // STONE
     }
 
+    if (wy < VX_SEA_Y && wy >= height) return 0; // water plane handles water surface in Godot
+
     // --- above terrain: trees ---
     // Trunk at exactly (wx, wz)
     const h2 = _vxHeightAtCached(wx, wz);
-    if (h2 >= VX_SEA_Y) {
+    if (vxConfig.enableTrees !== false && h2 >= VX_SEA_Y) {
       const biome2 = _vxBiomeAtCached(wx, wz);
       if (_vxTreeAllowed(biome2)) {
         const td = _vxTreeDensity(biome2);
-        if (_vxHash2(wx, wz, vxConfig.seed + 31) < td) {
+        if (_vxTreeRoll(wx, wz) < td) {
           let baseH = 4, varH = 2;
           if (biome2 === 'Jungle') { baseH = 6; varH = 4; }
           else if (biome2 === 'Taiga') { baseH = 5; varH = 3; }
@@ -4509,7 +4550,7 @@
         if (th < VX_SEA_Y) continue;
         const tb = _vxBiomeAtCached(tx, tz);
         if (!_vxTreeAllowed(tb)) continue;
-        if (!(_vxHash2(tx, tz, vxConfig.seed + 31) < _vxTreeDensity(tb))) continue;
+        if (vxConfig.enableTrees === false || !(_vxTreeRoll(tx, tz) < _vxTreeDensity(tb))) continue;
         let baseH = 4, varH = 2;
         if (tb === 'Jungle') { baseH = 6; varH = 4; }
         else if (tb === 'Taiga') { baseH = 5; varH = 3; }
@@ -4536,8 +4577,9 @@
     return VX_BLOCK_COLORS[id] || 0;
   }
 
-  // Spawn individual blocks for a column position — renders surface + subsurface
-  // blocks as individual cubes for authentic Minecraft look
+  // Legacy instanced-cube terrain path kept for older tests and fallback cleanup.
+  // The active terrain renderer below uses voxel.uploadChunk so block IDs flow
+  // through the same atlas tile mapping as the web runtime.
   function _vxSpawnBlocks(x, z, bucket) {
     const biome = _vxBiomeAt(x, z);
     const surface = _vxSurfaceFor(biome);
@@ -4629,41 +4671,79 @@
     const worldX = cx * VX_CHUNK_SIZE;
     const worldZ = cz * VX_CHUNK_SIZE;
 
-    // Bucket blocks by color for this chunk
-    const bucket = new Map();
-    for (let dx = 0; dx < VX_CHUNK_SIZE; dx++) {
-      for (let dz = 0; dz < VX_CHUNK_SIZE; dz++) {
-        _vxSpawnBlocks(worldX + dx, worldZ + dz, bucket);
+    const meshHandles = [];
+
+    // Compact column layout: lx + sx*lz, with a small fixed stride. This keeps
+    // the hot path off the QuickJS bridge; C++ expands these columns into a
+    // block volume before greedy meshing.
+    const paddedSize = VX_CHUNK_SIZE + 2;
+    const columnStride = 6; // height, surfaceId, subId, trunkH, canopyR, leafId
+    const columns = new Array(paddedSize * paddedSize * columnStride);
+    let write = 0;
+    let hasWaterSurface = false;
+    for (let lz = 0; lz < paddedSize; lz++) {
+      const wz = worldZ + lz - 1;
+      for (let lx = 0; lx < paddedSize; lx++) {
+        const wx = worldX + lx - 1;
+        const height = _vxHeightAtCached(wx, wz);
+        const biome = _vxBiomeAtCached(wx, wz);
+        const surface = _vxSurfaceFor(biome);
+        const surfaceId = height < VX_SEA_Y ? (height >= VX_SEA_Y - 1 ? surface.id : 4) : surface.id;
+        let trunkH = 0;
+        let canopyR = 2;
+        if (vxConfig.enableTrees !== false && height >= VX_SEA_Y && _vxTreeAllowed(biome) &&
+            _vxTreeRoll(wx, wz) < _vxTreeDensity(biome)) {
+          let baseH = 4, varH = 2;
+          if (biome === 'Jungle') { baseH = 6; varH = 4; }
+          else if (biome === 'Taiga') { baseH = 5; varH = 3; }
+          trunkH = baseH + Math.floor(_vxHash2(wx, wz, vxConfig.seed + 53) * varH);
+          if (biome === 'Taiga') canopyR = 1;
+          else if (biome === 'Savanna') canopyR = 3;
+        }
+
+        columns[write++] = height;
+        columns[write++] = surfaceId;
+        columns[write++] = 2; // dirt subsurface, matching _vxBlockIdAt()
+        columns[write++] = trunkH;
+        columns[write++] = canopyR;
+        columns[write++] = 7; // leaves
+
+        if (!hasWaterSurface &&
+            lx > 0 && lx <= VX_CHUNK_SIZE && lz > 0 && lz <= VX_CHUNK_SIZE &&
+            height < VX_SEA_Y) {
+          hasWaterSurface = true;
+        }
       }
     }
 
-    // Create instanced meshes for this chunk
-    const meshHandles = [];
-    for (const [color, arr] of bucket.entries()) {
-      if (arr.length === 0) continue;
-      const inst = createInstancedMesh('cube', arr.length, color,
-        { material: 'standard', roughness: 0.85 });
-      if (!inst || !inst.handle) continue;
-      for (let i = 0; i < arr.length; i++) {
-        const it = arr[i];
-        const sx = it.sx == null ? 1 : it.sx;
-        const sy = it.sy == null ? 1 : it.sy;
-        const sz = it.sz == null ? 1 : it.sz;
-        setInstanceTransform(inst, i, it.cx, it.cy, it.cz, 0, 0, 0, sx, sy, sz);
-      }
-      finalizeInstances(inst);
-      meshHandles.push(inst);
+    const uploaded = call('voxel.uploadChunk', {
+      origin: [worldX - 1, 0, worldZ - 1],
+      size: [paddedSize, VX_CHUNK_HEIGHT, paddedSize],
+      columns,
+      columnStride,
+      palette: VX_BLOCK_PALETTE,
+      meshMin: [1, 0, 1],
+      meshMax: [VX_CHUNK_SIZE + 1, VX_CHUNK_HEIGHT, VX_CHUNK_SIZE + 1],
+      usePaletteColors: false,
+    });
+    if (uploaded && uploaded.handle) {
+      meshHandles.push(uploaded.handle);
     }
 
     // Water plane for this chunk
-    const waterMesh = createPlane(VX_CHUNK_SIZE, VX_CHUNK_SIZE, VX_BLOCK_COLORS[5],
-      [worldX + VX_CHUNK_SIZE / 2, VX_SEA_Y + 0.05, worldZ + VX_CHUNK_SIZE / 2], {
-        material: 'standard',
-        roughness: 0.2,
-        metallic: 0.3,
-        opacity: 0.7,
-        transparent: true,
-      });
+    const waterMesh = hasWaterSurface && vxConfig.enableWaterPlane === true
+      ? createPlane(VX_CHUNK_SIZE, VX_CHUNK_SIZE, 0x2f8fcc,
+          [worldX + VX_CHUNK_SIZE / 2, VX_SEA_Y + 0.05, worldZ + VX_CHUNK_SIZE / 2], {
+            material: 'standard',
+            roughness: 0.95,
+            metallic: 0.0,
+            opacity: 0.32,
+            transparent: true,
+          })
+      : 0;
+    if (waterMesh) {
+      setRotation(waterMesh, -Math.PI / 2, 0, 0);
+    }
 
     vxLoadedChunks.set(chunkKey, { meshHandles, waterMesh });
   }
@@ -4697,8 +4777,9 @@
 
       // Determine which chunks should be loaded
       const neededChunks = new Set();
-      for (let dx = -VX_CHUNK_RADIUS; dx <= VX_CHUNK_RADIUS; dx++) {
-        for (let dz = -VX_CHUNK_RADIUS; dz <= VX_CHUNK_RADIUS; dz++) {
+      const radius = _vxChunkRadius();
+      for (let dx = -radius; dx <= radius; dx++) {
+        for (let dz = -radius; dz <= radius; dz++) {
           neededChunks.add((pcx + dx) + ',' + (pcz + dz));
         }
       }
@@ -4716,8 +4797,9 @@
     // This runs every call to allow gradual loading even when standing still
     let loadedThisFrame = 0;
     const maxLoadsPerFrame = vxConfig.maxMeshRebuildsPerFrame || 3;
-    for (let dx = -VX_CHUNK_RADIUS; dx <= VX_CHUNK_RADIUS; dx++) {
-      for (let dz = -VX_CHUNK_RADIUS; dz <= VX_CHUNK_RADIUS; dz++) {
+    const radius = _vxChunkRadius();
+    for (let dx = -radius; dx <= radius; dx++) {
+      for (let dz = -radius; dz <= radius; dz++) {
         const chunkKey = (pcx + dx) + ',' + (pcz + dz);
         if (!vxLoadedChunks.has(chunkKey)) {
           if (loadedThisFrame >= maxLoadsPerFrame) return; // Rate limit, will continue next frame
@@ -4738,7 +4820,7 @@
     _vxBiomeCache.clear();
 
     // Set fog to match web version's atmosphere
-    const fogRadius = VX_CHUNK_SIZE * VX_CHUNK_RADIUS;
+    const fogRadius = VX_CHUNK_SIZE * _vxChunkRadius();
     setFog(0x87ceeb, fogRadius * 0.4, fogRadius * 1.0);
 
     // Initial chunk loading around origin
@@ -4762,8 +4844,11 @@
   function getVoxelHighestBlock(x, z) {
     const xi = x | 0, zi = z | 0;
     const baseH = _vxHeightAtCached(xi, zi);
-    for (let y = baseH + 32; y > baseH; y--) {
-      if (vxBlocks.has(_vxKey(xi, y, zi))) return y;
+    const maxY = Math.min(VX_CHUNK_HEIGHT - 1, baseH + 16);
+    for (let y = maxY; y > baseH; y--) {
+      const edit = vxBlocks.get(_vxKey(xi, y, zi));
+      if (edit && edit.id) return y;
+      if (_vxBlockIdAt(xi, y, zi)) return y;
     }
     return baseH;
   }
@@ -4772,13 +4857,7 @@
     const xi = x | 0, yi = y | 0, zi = z | 0;
     const k = _vxKey(xi, yi, zi);
     if (vxBlocks.has(k)) return vxBlocks.get(k).id;
-    const baseH = _vxHeightAt(xi, zi);
-    if (yi < VX_BASE_Y) return 3;
-    if (yi <= baseH) {
-      const biome = _vxBiomeAt(xi, zi);
-      return _vxSurfaceFor(biome).id;
-    }
-    return 0;
+    return _vxBlockIdAt(xi, yi, zi);
   }
 
   function setVoxelBlock(x, y, z, id) {
@@ -4802,8 +4881,9 @@
     // Force load all chunks in radius immediately (no rate limit)
     const pcx = _vxWorldToChunk(cx || 0);
     const pcz = _vxWorldToChunk(cz || 0);
-    for (let dx = -VX_CHUNK_RADIUS; dx <= VX_CHUNK_RADIUS; dx++) {
-      for (let dz = -VX_CHUNK_RADIUS; dz <= VX_CHUNK_RADIUS; dz++) {
+    const radius = _vxChunkRadius();
+    for (let dx = -radius; dx <= radius; dx++) {
+      for (let dz = -radius; dz <= radius; dz++) {
         _vxGenerateChunk(pcx + dx, pcz + dz);
       }
     }

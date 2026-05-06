@@ -809,3 +809,70 @@ Remaining visual debt:
 - PBR is no longer black and scene layout now matches the browser structure,
   but Godot material response remains glossier and higher-contrast than the
   Three.js reference.
+
+## Voxel native chunk checkpoint
+
+This checkpoint continued the Godot voxel parity plan after the `.vox` and
+demo fixes. The important implementation rule is now: keep high-volume voxel
+work native. The Godot shim sends compact x/z column records for generated
+terrain, and `voxel.uploadChunk` expands those columns into a block volume
+before greedy meshing in C++.
+
+What landed:
+
+- `voxel.uploadChunk` accepts compact `columns` payloads in addition to the
+  older full `blocks` array path.
+- Chunk uploads include a one-block neighbor border plus `meshMin`/`meshMax`
+  so the native mesher can cull duplicate boundary faces.
+- The Godot shim no longer sends ~40k block IDs per terrain chunk across the
+  QuickJS bridge during normal terrain streaming.
+- The Godot shim now uses the browser runtime's simplex permutation shuffle and
+  exposes the browser-style active cart path before loading carts, improving
+  voxel world seed parity.
+- The voxel atlas row origin and accent pixel placement were fixed so terrain
+  samples the intended grass/dirt/stone/wood tiles instead of shifted rows.
+- The chunk shader now uses atlas textures plus baked face shading without
+  extra Godot per-pixel lighting, which better matches the flat Three.js voxel
+  look.
+- Temporary per-chunk water planes are disabled by default; stacked transparent
+  planes were not a good parity path and could wash out the scene.
+
+Focused validation:
+
+```bash
+wsl bash -lc "cd /mnt/c/Users/brend/exp/nova64 && source ~/.nvm/nvm.sh && \
+  nvm use 20 >/dev/null && \
+  node --check nova64-godot/godot_project/shim/nova64-compat.js"
+
+wsl bash -lc "cd /mnt/c/Users/brend/exp/nova64/nova64-godot/gdextension && \
+  scons platform=windows target=template_debug -j4 && \
+  scons platform=linux target=template_debug -j4"
+
+wsl bash -lc "cd /mnt/c/Users/brend/exp/nova64 && \
+  '/mnt/c/Program Files/Godot_v4.4.1-stable_win64.exe/Godot_v4.4.1-stable_win64_console.exe' \
+  --windowed --path 'C:\Users\brend\exp\nova64\nova64-godot\godot_project' \
+  --script 'res://scripts/conformance_runner.gd' -- \
+  --cart=res://carts/minecraft-demo --frames=120 \
+  --snapshot='C:\Users\brend\exp\nova64\nova64-godot\test-results\minecraft-demo-cart-path-seed.png'"
+
+wsl bash -lc "cd /mnt/c/Users/brend/exp/nova64 && source ~/.nvm/nvm.sh && \
+  nvm use 20 >/dev/null && \
+  pnpm godot:visual -- --cart=minecraft-demo --frames=120 --wait-ms=500 --report-only"
+```
+
+Observed state:
+
+- Godot `minecraft-demo` conformance passes visually.
+- First-load chunk spikes are much lower than the full-block bridge payload
+  path; the last parity run reported about `12.9ms` average through the first
+  60 frames with one initial chunk-load spike.
+- `minecraft-demo` Three.js/Godot diff improved from `93.05%` during the
+  distorted pass to `82.90%` after atlas, seed, and shader fixes.
+
+Remaining visual debt:
+
+- The Godot view is now readable and much closer in feel, but it is still not
+  pixel-parity with Three.js. Camera framing, tree/canopy silhouette, fog/sky
+  balance, and transparent vegetation treatment still need more targeted passes.
+- Water should move into the native chunk/block path instead of returning as
+  stacked transparent overlay planes.

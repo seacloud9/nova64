@@ -209,6 +209,30 @@ wsl bash -lc "cd /mnt/c/Users/brend/exp/nova64 && git add <files> && git -c core
 - **C++ chosen over Rust** — godot-cpp bindings are mature and the
   existing bridge is already C++; introducing Rust would require a
   second toolchain and another FFI layer.
+- **Current checkpoint: native-column terrain path** — `voxel.uploadChunk`
+  now accepts compact terrain columns and expands them to a C++ block volume
+  before greedy meshing. This replaced the slow full-block-array bridge path
+  for generated Godot terrain and made the visual tuning loop responsive again.
+- **Compact columns over the bridge** — Godot terrain chunks must avoid
+  sending full `sx * sy * sz` JS block arrays during normal streaming.
+  The shim now sends one compact column record per x/z column and lets
+  `voxel.uploadChunk` expand that data into a block volume before greedy
+  meshing in C++. This keeps chunk loading responsive while preserving
+  the existing cart-facing voxel API.
+- **Chunk-border culling belongs in the native mesher** — chunk uploads can
+  include a one-block neighbor border plus `meshMin`/`meshMax`, so C++ can
+  cull faces against adjacent terrain without rendering duplicate boundary
+  slabs.
+- **Seed parity uses the browser cart path** — the web runtime prefers
+  `__NOVA64_CURRENT_CART_PATH` over `?demo=` when deriving voxel world seeds.
+  The Godot host now exposes a browser-style `/examples/<cart>/code.js` path
+  before the shim loads, and the shim uses that same seed source.
+- **Texture atlas UVs are top-origin in Godot shader space** — the chunk
+  shader now passes the row origin directly instead of vertically flipping it,
+  matching how the generated Image atlas is filled.
+- **Temporary water planes stay off by default** — per-chunk transparent water
+  planes caused stacked blending and scene washout. Water should return as
+  native chunk/block rendering when the fluid pass lands.
 - **Heightmap stays in JS for Phase 1** — keeps the parity contract
   small (only one new bridge command) and makes the mesher easy to
   unit-test by feeding it a known PackedByteArray.

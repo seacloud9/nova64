@@ -65,6 +65,7 @@
 #include <godot_cpp/variant/utility_functions.hpp>
 #include <godot_cpp/variant/variant.hpp>
 #include <godot_cpp/variant/vector2.hpp>
+#include <godot_cpp/variant/vector2i.hpp>
 #include <godot_cpp/variant/vector3.hpp>
 
 #include "quickjs.h"
@@ -451,6 +452,12 @@ void atlas_fill_tile_noise(const Ref<Image> &img, int tile_idx, int base_hex,
     atlas_noise_rect(img, tx, ty, VOXEL_TILE_PX, VOXEL_TILE_PX, base_hex, variation, rng_state);
 }
 
+Vector2i atlas_tile_pixel_origin(int tile_idx) {
+    return Vector2i(
+            (tile_idx % VOXEL_ATLAS_COLS) * VOXEL_TILE_PX,
+            (tile_idx / VOXEL_ATLAS_COLS) * VOXEL_TILE_PX);
+}
+
 Ref<Texture2D> get_voxel_atlas_texture() {
     static Ref<ImageTexture> atlas_tex;
     if (atlas_tex.is_valid()) return atlas_tex;
@@ -486,16 +493,18 @@ Ref<Texture2D> get_voxel_atlas_texture() {
         }
     }
 
-    x = 10 * VOXEL_TILE_PX;
-    y = VOXEL_TILE_PX;
+    Vector2i tile_origin = atlas_tile_pixel_origin(10);
+    x = tile_origin.x;
+    y = tile_origin.y;
     for (int sy = 0; sy < VOXEL_TILE_PX; sy += 4) {
         for (int sx = 0; sx < VOXEL_TILE_PX; ++sx) {
             img->set_pixel(x + sx, y + sy, color_from_hex_rgb(0xc89940));
         }
     }
 
-    x = 12 * VOXEL_TILE_PX;
-    y = VOXEL_TILE_PX;
+    tile_origin = atlas_tile_pixel_origin(12);
+    x = tile_origin.x;
+    y = tile_origin.y;
     for (int sy = 0; sy < VOXEL_TILE_PX; sy += 4) {
         for (int sx = 0; sx < VOXEL_TILE_PX; ++sx) {
             img->set_pixel(x + sx, y + sy, color_from_hex_rgb(0xccbbaa));
@@ -543,7 +552,7 @@ Vector2 voxel_tile_origin_uv(int tile_idx) {
     const int col = tile_idx % VOXEL_ATLAS_COLS;
     const int row = tile_idx / VOXEL_ATLAS_COLS;
     const float u = static_cast<float>(col) / static_cast<float>(VOXEL_ATLAS_COLS);
-    const float v = 1.0f - static_cast<float>(row + 1) / static_cast<float>(VOXEL_ATLAS_ROWS);
+    const float v = static_cast<float>(row) / static_cast<float>(VOXEL_ATLAS_ROWS);
     return Vector2(u, v);
 }
 
@@ -554,7 +563,7 @@ Ref<Shader> get_voxel_chunk_shader() {
     voxel_shader.instantiate();
     voxel_shader->set_code(R"(
 shader_type spatial;
-render_mode cull_back, diffuse_lambert, specular_disabled;
+render_mode cull_disabled, unshaded, specular_disabled;
 
 uniform sampler2D atlas_tex : source_color, filter_nearest, repeat_enable;
 uniform vec2 tile_size = vec2(0.125, 0.25);
@@ -2575,12 +2584,15 @@ Dictionary Nova64Host::_cmd_particles_destroy(const Dictionary &p) {
 // per visible block face (neighbour inside chunk = air at chunk boundary).
 // Returns a MESH_INSTANCE handle destroyable via mesh.destroy.
 Dictionary Nova64Host::_cmd_voxel_upload_chunk(const Dictionary &p) {
-    if (!p.has("origin") || !p.has("size") || !p.has("blocks") || !p.has("palette"))
+    if (!p.has("origin") || !p.has("size") || (!p.has("blocks") && !p.has("columns")) || !p.has("palette"))
         return make_error("missing_params", "voxel.uploadChunk");
 
     Array origin_a = p["origin"];
     Array size_a   = p["size"];
-    Array blocks_a = p["blocks"];
+    Array blocks_a;
+    if (p.has("blocks")) {
+        blocks_a = p["blocks"];
+    }
     Dictionary pal_d = p["palette"];
 
     if (origin_a.size() < 3 || size_a.size() < 3)
@@ -2595,13 +2607,99 @@ Dictionary Nova64Host::_cmd_voxel_upload_chunk(const Dictionary &p) {
     const bool use_palette_colors =
             p.has("usePaletteColors") && static_cast<bool>(p["usePaletteColors"]);
 
-    if (sx <= 0 || sy <= 0 || sz <= 0 || (sx * sy * sz) != blocks_a.size())
+    const bool has_columns = p.has("columns");
+    if (sx <= 0 || sy <= 0 || sz <= 0)
+        return make_error("bad_chunk_size", "voxel.uploadChunk");
+    if (!has_columns && (sx * sy * sz) != blocks_a.size())
         return make_error("bad_blocks_size", "voxel.uploadChunk");
+
+    int mesh_min[3] = { 0, 0, 0 };
+    int mesh_max[3] = { sx, sy, sz };
+    if (p.has("meshMin")) {
+        Array a = p["meshMin"];
+        if (a.size() >= 3) {
+            mesh_min[0] = std::clamp((int)(double)a[0], 0, sx);
+            mesh_min[1] = std::clamp((int)(double)a[1], 0, sy);
+            mesh_min[2] = std::clamp((int)(double)a[2], 0, sz);
+        }
+    }
+    if (p.has("meshMax")) {
+        Array a = p["meshMax"];
+        if (a.size() >= 3) {
+            mesh_max[0] = std::clamp((int)(double)a[0], 0, sx);
+            mesh_max[1] = std::clamp((int)(double)a[1], 0, sy);
+            mesh_max[2] = std::clamp((int)(double)a[2], 0, sz);
+        }
+    }
 
     // Pack block ids into a flat vector for fast lookup.
     std::vector<uint8_t> blk(sx * sy * sz);
-    for (int i = 0; i < (int)blk.size(); ++i)
-        blk[i] = (uint8_t)(int)(double)blocks_a[i];
+    if (has_columns) {
+        Array columns_a = p["columns"];
+        const int stride = p.has("columnStride") ? std::max(1, (int)(double)p["columnStride"]) : 6;
+        if (columns_a.size() != sx * sz * stride)
+            return make_error("bad_columns_size", "voxel.uploadChunk");
+
+        auto col_at = [&](int lx, int lz, int offset) -> int {
+            if (lx < 0 || lx >= sx || lz < 0 || lz >= sz || offset < 0 || offset >= stride) return 0;
+            return (int)(double)columns_a[(lx + sx * lz) * stride + offset];
+        };
+        auto set_blk = [&](int lx, int ly, int lz, int id) {
+            if (lx < 0 || lx >= sx || ly < 0 || ly >= sy || lz < 0 || lz >= sz) return;
+            blk[lx + sx * ly + sx * sy * lz] = (uint8_t)std::clamp(id, 0, 255);
+        };
+
+        for (int lz = 0; lz < sz; ++lz) {
+            for (int lx = 0; lx < sx; ++lx) {
+                const int height = col_at(lx, lz, 0);
+                const int surface_id = col_at(lx, lz, 1);
+                const int sub_id = col_at(lx, lz, 2);
+                const int max_y = std::min(height, sy - 1);
+                for (int ly = 0; ly <= max_y; ++ly) {
+                    int id = 3; // stone
+                    if (ly == 0) {
+                        id = 14; // bedrock
+                    } else {
+                        const int dy = height - ly;
+                        if (dy == 0) id = surface_id > 0 ? surface_id : 1;
+                        else if (dy < 3) id = sub_id > 0 ? sub_id : 2;
+                    }
+                    set_blk(lx, ly, lz, id);
+                }
+
+                const int trunk_h = col_at(lx, lz, 3);
+                if (trunk_h > 0 && height >= 0) {
+                    for (int ty = 1; ty <= trunk_h; ++ty) {
+                        set_blk(lx, height + ty, lz, 6);
+                    }
+                }
+            }
+        }
+
+        // Leaves need to see neighboring tree origins, so generate them after
+        // every trunk column exists.
+        for (int tz = 0; tz < sz; ++tz) {
+            for (int tx = 0; tx < sx; ++tx) {
+                const int th = col_at(tx, tz, 0);
+                const int trunk_h = col_at(tx, tz, 3);
+                if (trunk_h <= 0) continue;
+                const int canopy_r = std::max(1, col_at(tx, tz, 4));
+                const int leaf_id = std::max(1, col_at(tx, tz, 5));
+                const int canopy_y = th + trunk_h + 1;
+                for (int dz = -canopy_r; dz <= canopy_r; ++dz) {
+                    for (int dx = -canopy_r; dx <= canopy_r; ++dx) {
+                        for (int dy = 0; dy <= 2; ++dy) {
+                            if (std::abs(dx) + std::abs(dz) + dy > canopy_r + 1) continue;
+                            set_blk(tx + dx, canopy_y + dy, tz + dz, leaf_id);
+                        }
+                    }
+                }
+            }
+        }
+    } else {
+        for (int i = 0; i < (int)blk.size(); ++i)
+            blk[i] = (uint8_t)(int)(double)blocks_a[i];
+    }
 
     // Palette: string id -> Color
     std::unordered_map<int, Color> pal;
@@ -2691,6 +2789,12 @@ Dictionary Nova64Host::_cmd_voxel_upload_chunk(const Dictionary &p) {
                     coords[nd] = layer;
                     coords[ud] = u;
                     coords[vd] = v;
+                    if (coords[0] < mesh_min[0] || coords[0] >= mesh_max[0] ||
+                            coords[1] < mesh_min[1] || coords[1] >= mesh_max[1] ||
+                            coords[2] < mesh_min[2] || coords[2] >= mesh_max[2]) {
+                        mask[u + su*v] = 0;
+                        continue;
+                    }
                     int cur_id = blk_at(coords[0], coords[1], coords[2]);
                     if (cur_id == 0) { mask[u + su*v] = 0; continue; }
                     // Neighbour one step in the normal direction.
@@ -2841,6 +2945,12 @@ bool Nova64Host::load_cart(const String &p_res_path) {
         CharString cart_name_utf8 = cart_folder_name.utf8();
         JSValue cart_name_val = JS_NewStringLen(_context, cart_name_utf8.get_data(), cart_name_utf8.length());
         JS_SetPropertyStr(_context, global, "__nova64_cart_name", cart_name_val);
+        String web_cart_path = String("/examples/") + cart_folder_name + String("/code.js");
+        CharString cart_path_utf8 = web_cart_path.utf8();
+        JSValue cart_path_val = JS_NewStringLen(_context, cart_path_utf8.get_data(), cart_path_utf8.length());
+        JS_SetPropertyStr(_context, global, "__NOVA64_CURRENT_CART_PATH", cart_path_val);
+        JSValue legacy_cart_path_val = JS_NewStringLen(_context, cart_path_utf8.get_data(), cart_path_utf8.length());
+        JS_SetPropertyStr(_context, global, "__nova64CurrentCartPath", legacy_cart_path_val);
         JS_FreeValue(_context, global);
     }
 

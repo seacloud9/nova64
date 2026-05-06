@@ -1087,7 +1087,6 @@ Dictionary Nova64Host::_cmd_vox_load(const Dictionary &p) {
     st.instantiate();
     st->begin(Mesh::PRIMITIVE_TRIANGLES);
 
-    const int dims[3] = { sx, sy, sz };
     bool has_geom = false;
     auto volume_at = [&](int x, int y, int z) -> int {
         if (x < 0 || x >= sx || y < 0 || y >= sy || z < 0 || z >= sz) return 0;
@@ -1111,99 +1110,56 @@ Dictionary Nova64Host::_cmd_vox_load(const Dictionary &p) {
             1.0f);
     };
 
-    for (int d = 0; d < 3; ++d) {
-        const int u = (d + 1) % 3;
-        const int v = (d + 2) % 3;
-        const int dims_d = dims[d];
-        const int dims_u = dims[u];
-        const int dims_v = dims[v];
-        int q[3] = { 0, 0, 0 };
-        q[d] = 1;
-        std::vector<int> mask(dims_u * dims_v, 0);
+    auto add_face = [&](int color_index,
+                        const Vector3 &a,
+                        const Vector3 &b,
+                        const Vector3 &c,
+                        const Vector3 &d) {
+        Vector3 quad[4] = {
+            to_godot(a.x, a.y, a.z),
+            to_godot(b.x, b.y, b.z),
+            to_godot(c.x, c.y, c.z),
+            to_godot(d.x, d.y, d.z),
+        };
+        Vector3 normal = (quad[1] - quad[0]).cross(quad[2] - quad[0]).normalized();
+        if (normal.length_squared() <= 0.000001f) return;
 
-        for (int slice = 0; slice <= dims_d; ++slice) {
-            int nmask = 0;
-            for (int vv = 0; vv < dims_v; ++vv) {
-                for (int uu = 0; uu < dims_u; ++uu) {
-                    int pos[3] = { 0, 0, 0 };
-                    pos[d] = slice;
-                    pos[u] = uu;
-                    pos[v] = vv;
-                    const int behind = slice > 0
-                        ? volume_at(pos[0] - q[0], pos[1] - q[1], pos[2] - q[2])
-                        : 0;
-                    const int infront = slice < dims_d
-                        ? volume_at(pos[0], pos[1], pos[2])
-                        : 0;
-                    mask[nmask++] = (behind > 0 && infront == 0)
-                        ? behind
-                        : ((infront > 0 && behind == 0) ? -infront : 0);
-                }
-            }
+        Color col = color_for(color_index);
+        static const int TRI[6] = { 0, 1, 2, 0, 2, 3 };
+        for (int ti = 0; ti < 6; ++ti) {
+            const int qi = TRI[ti];
+            st->set_color(col);
+            st->set_normal(normal);
+            st->add_vertex(quad[qi]);
+        }
+        has_geom = true;
+    };
 
-            nmask = 0;
-            for (int vv = 0; vv < dims_v; ++vv) {
-                for (int uu = 0; uu < dims_u; ) {
-                    const int c = mask[nmask];
-                    if (c == 0) {
-                        ++uu;
-                        ++nmask;
-                        continue;
-                    }
+    for (int z = 0; z < sz; ++z) {
+        for (int y = 0; y < sy; ++y) {
+            for (int x = 0; x < sx; ++x) {
+                const int ci = volume_at(x, y, z);
+                if (ci <= 0) continue;
 
-                    int w = 1;
-                    while (uu + w < dims_u && mask[nmask + w] == c) ++w;
+                const float x0 = (float)x;
+                const float x1 = (float)(x + 1);
+                const float y0 = (float)y;
+                const float y1 = (float)(y + 1);
+                const float z0 = (float)z;
+                const float z1 = (float)(z + 1);
 
-                    int h = 1;
-                    bool done = false;
-                    while (vv + h < dims_v && !done) {
-                        for (int k = 0; k < w; ++k) {
-                            if (mask[nmask + k + h * dims_u] != c) {
-                                done = true;
-                                break;
-                            }
-                        }
-                        if (!done) ++h;
-                    }
-
-                    float pos[3] = { 0.0f, 0.0f, 0.0f };
-                    pos[d] = (float)slice;
-                    pos[u] = (float)uu;
-                    pos[v] = (float)vv;
-                    float du[3] = { 0.0f, 0.0f, 0.0f };
-                    float dv[3] = { 0.0f, 0.0f, 0.0f };
-                    du[u] = (float)w;
-                    dv[v] = (float)h;
-
-                    Vector3 v0 = to_godot(pos[0], pos[1], pos[2]);
-                    Vector3 v1 = to_godot(pos[0] + du[0], pos[1] + du[1], pos[2] + du[2]);
-                    Vector3 v2 = to_godot(pos[0] + du[0] + dv[0], pos[1] + du[1] + dv[1], pos[2] + du[2] + dv[2]);
-                    Vector3 v3 = to_godot(pos[0] + dv[0], pos[1] + dv[1], pos[2] + dv[2]);
-
-                    Vector3 quad[4];
-                    if (c > 0) {
-                        quad[0] = v0; quad[1] = v1; quad[2] = v2; quad[3] = v3;
-                    } else {
-                        quad[0] = v0; quad[1] = v3; quad[2] = v2; quad[3] = v1;
-                    }
-                    Vector3 normal = (quad[1] - quad[0]).cross(quad[2] - quad[0]).normalized();
-                    Color col = color_for(c < 0 ? -c : c);
-                    static const int TRI[6] = { 0, 1, 2, 0, 2, 3 };
-                    for (int ti = 0; ti < 6; ++ti) {
-                        const int qi = TRI[ti];
-                        st->set_color(col);
-                        st->set_normal(normal);
-                        st->add_vertex(quad[qi]);
-                    }
-                    has_geom = true;
-
-                    for (int hh = 0; hh < h; ++hh)
-                        for (int ww = 0; ww < w; ++ww)
-                            mask[nmask + ww + hh * dims_u] = 0;
-
-                    uu += w;
-                    nmask += w;
-                }
+                if (volume_at(x - 1, y, z) == 0)
+                    add_face(ci, Vector3(x0, y0, z0), Vector3(x0, y0, z1), Vector3(x0, y1, z1), Vector3(x0, y1, z0));
+                if (volume_at(x + 1, y, z) == 0)
+                    add_face(ci, Vector3(x1, y0, z0), Vector3(x1, y1, z0), Vector3(x1, y1, z1), Vector3(x1, y0, z1));
+                if (volume_at(x, y - 1, z) == 0)
+                    add_face(ci, Vector3(x0, y0, z0), Vector3(x1, y0, z0), Vector3(x1, y0, z1), Vector3(x0, y0, z1));
+                if (volume_at(x, y + 1, z) == 0)
+                    add_face(ci, Vector3(x0, y1, z0), Vector3(x0, y1, z1), Vector3(x1, y1, z1), Vector3(x1, y1, z0));
+                if (volume_at(x, y, z - 1) == 0)
+                    add_face(ci, Vector3(x0, y0, z0), Vector3(x0, y1, z0), Vector3(x1, y1, z0), Vector3(x1, y0, z0));
+                if (volume_at(x, y, z + 1) == 0)
+                    add_face(ci, Vector3(x0, y0, z1), Vector3(x1, y0, z1), Vector3(x1, y1, z1), Vector3(x0, y1, z1));
             }
         }
     }

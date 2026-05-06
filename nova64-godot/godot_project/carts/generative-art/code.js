@@ -285,14 +285,19 @@ function _initSketch(idx) {
 // Particles follow Perlin noise flow vectors. Trail history drawn each frame.
 // ════════════════════════════════════════════════════════════════════════════
 
-const FLOW_COLS = 64;
-const FLOW_ROWS = 36;
-const FLOW_CELL = 10;
-const TRAIL_LEN = 12;
+const FLOW_COLS = 24;
+const FLOW_ROWS = 14;
+const FLOW_CELL = Math.ceil(W / FLOW_COLS);
+const FLOW_PARTICLES = 140;
+const TRAIL_LEN = 5;
+const FLOW_FIELD_INTERVAL = 3;
+let flowFrame = 0;
 
 function _initFlowField() {
   particles = [];
-  for (let i = 0; i < 600; i++) {
+  flowFrame = 0;
+  field = flowField(FLOW_COLS, FLOW_ROWS, 0.08, 0);
+  for (let i = 0; i < FLOW_PARTICLES; i++) {
     particles.push({
       x: Math.random() * W,
       y: Math.random() * H,
@@ -305,7 +310,9 @@ function _initFlowField() {
 }
 
 function _updateFlowField(dt) {
-  field = flowField(FLOW_COLS, FLOW_ROWS, 0.08, time * 0.15);
+  if (!field || (flowFrame++ % FLOW_FIELD_INTERVAL) === 0) {
+    field = flowField(FLOW_COLS, FLOW_ROWS, 0.08, time * 0.15);
+  }
 
   for (const p of particles) {
     const col = Math.floor(p.x / FLOW_CELL);
@@ -364,6 +371,7 @@ function _drawFlowField() {
 // ════════════════════════════════════════════════════════════════════════════
 
 let landscapeOffset = 0;
+const LAND_STEP = 4;
 
 function _initPerlinLandscape() {
   landscapeOffset = 0;
@@ -402,26 +410,26 @@ function _drawPerlinLandscape() {
     const L = layers[layerIdx];
     const off = landscapeOffset * L.speed;
 
-    for (let x = 0; x < W; x++) {
+    for (let x = 0; x < W; x += LAND_STEP) {
       const n = noise((x + off) * L.scale, layerIdx * 100);
       const h = L.base - n * L.amp;
 
-      for (let y = Math.floor(h); y < H; y++) {
+      for (let y = Math.floor(h); y < H; y += LAND_STEP) {
         const t = Math.min(1, (y - h) / L.amp);
         const r = L.color1[0] + (L.color2[0] - L.color1[0]) * t;
         const g = L.color1[1] + (L.color2[1] - L.color1[1]) * t;
         const b = L.color1[2] + (L.color2[2] - L.color1[2]) * t;
-        pset(x, y, rgba8(r, g, b));
+        drawRect(x, y, LAND_STEP, LAND_STEP, rgba8(r, g, b), true);
       }
     }
   }
 
   // Water reflection
-  for (let x = 0; x < W; x++) {
-    for (let y = H - 30; y < H; y++) {
+  for (let x = 0; x < W; x += LAND_STEP) {
+    for (let y = H - 30; y < H; y += LAND_STEP) {
       const wave = Math.sin(x * 0.05 + time * 2) * 3;
       const alpha = 80 - (y - (H - 30)) * 2;
-      if (alpha > 0) pset(x, y, rgba8(20, 40, 80, alpha));
+      if (alpha > 0) drawRect(x, y + wave, LAND_STEP, LAND_STEP, rgba8(20, 40, 80, alpha), true);
     }
   }
 }
@@ -437,7 +445,7 @@ function _initSpiralGalaxy() {
   const cx = W / 2,
     cy = H / 2;
 
-  for (let i = 0; i < 2000; i++) {
+  for (let i = 0; i < 900; i++) {
     const arm = Math.floor(Math.random() * 4);
     const dist = Math.random() * 160;
     const baseAngle = (arm / 4) * Math.PI * 2;
@@ -517,8 +525,8 @@ function _initParticleGarden() {
 function _updateParticleGarden(dt) {
   // Spawn from emitters
   for (const em of emitters) {
-    if (particles.length < 1500) {
-      for (let i = 0; i < 3; i++) {
+    if (particles.length < 650) {
+      for (let i = 0; i < 2; i++) {
         const p = {
           x: em.x,
           y: em.y,
@@ -617,9 +625,9 @@ function _drawWaveInterference() {
     { x: W * 0.5, y: H * 0.7, freq: 0.045, phase: time * 3.5 + 2 },
   ];
 
-  // Sample every 2 pixels for performance
-  for (let y = 0; y < H; y += 2) {
-    for (let x = 0; x < W; x += 2) {
+  const step = 4;
+  for (let y = 0; y < H; y += step) {
+    for (let x = 0; x < W; x += step) {
       let val = 0;
       for (const src of sources) {
         const dx = x - src.x;
@@ -633,10 +641,7 @@ function _drawWaveInterference() {
       const brightness = 0.3 + val * 0.6;
       const c = hsb(hue, 0.9, brightness);
 
-      pset(x, y, c);
-      pset(x + 1, y, c);
-      pset(x, y + 1, c);
-      pset(x + 1, y + 1, c);
+      drawRect(x, y, step, step, c, true);
     }
   }
 
@@ -736,9 +741,9 @@ function _drawNeonGeometry() {
 // ════════════════════════════════════════════════════════════════════════════
 
 let rdGridA, rdGridB, rdNextA, rdNextB;
-const RD_W = 160,
-  RD_H = 90;
-const RD_SCALE = 4;
+const RD_W = 80,
+  RD_H = 45;
+const RD_SCALE = 8;
 
 function _initReactionDiffusion() {
   rdGridA = new Float32Array(RD_W * RD_H).fill(1.0);
@@ -900,8 +905,8 @@ function _drawFractalTree() {
 // ════════════════════════════════════════════════════════════════════════════
 
 let voronoiSeeds = [];
-const VOR_COUNT = 24;
-const VOR_SCALE = 8; // render at lower res for performance
+const VOR_COUNT = 18;
+const VOR_SCALE = 12; // render at lower res for the Godot bridge
 
 function _initVoronoi() {
   voronoiSeeds = [];
@@ -971,10 +976,10 @@ function _drawVoronoi() {
 // Deep zoom with smooth iteration coloring and palette cycling.
 // ════════════════════════════════════════════════════════════════════════════
 
-const MB_W = 160,
-  MB_H = 90,
-  MB_SCALE = 4;
-const MB_ITER = 80;
+const MB_W = 80,
+  MB_H = 45,
+  MB_SCALE = 8;
+const MB_ITER = 56;
 
 function _drawMandelbrot() {
   const zoom = Math.pow(1.5, time * 0.4);
@@ -1241,9 +1246,9 @@ function _drawCirclePacking() {
 // ════════════════════════════════════════════════════════════════════════════
 
 function _drawPixelSorting() {
-  const PS_W = 160,
-    PS_H = 90,
-    PS_S = 4;
+  const PS_W = 80,
+    PS_H = 45,
+    PS_S = 8;
   // Generate base pattern (gradient + noise bands)
   const px = [];
   for (let y = 0; y < PS_H; y++) {

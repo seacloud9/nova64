@@ -2,7 +2,40 @@
 
 Status: actively in progress on `feature/godot-adapter`.
 
-## Where we are (as of 2026-05-02, commit `550147e`)
+## Current checkpoint (2026-05-06)
+
+The latest voxel-parity work split two paths that had different needs:
+
+- Nova64 terrain chunks still use the native `voxel.uploadChunk` path with
+  greedy chunk meshing and atlas/palette materials.
+- Standalone MagicaVoxel `.vox` files now use a native exposed-face mesh path.
+  This fixed `house.vox`, where the direct greedy pass could drop the authored
+  front facade. The viewer now shows the front wall, windows, door, chimney,
+  roof, and base slab.
+
+The cart-facing VOX rule is now simple: `loadVoxModel()` resolves the asset path
+and returns the native handle without applying hidden root rotation. Native
+coordinate conversion and cart-authored transforms are the single source of
+orientation truth.
+
+Recent validation:
+
+- Rebuilt Windows and Linux debug GDExtension binaries from WSL.
+- `vox-viewer` Godot visual conformance passed with the exposed-face importer.
+- `flash-demo`, `generative-art`, and `space-harrier-3d` also passed focused
+  visual checks after related adapter parity fixes.
+
+Next voxel-parity work:
+
+- Keep `.vox` correctness first; add optimization only after more assets are
+  visually confirmed.
+- Port the browser voxel terrain noise/biome math into the Godot shim so
+  terrain generation, trees, and block placement converge before doing deeper
+  material work.
+- After terrain shape parity improves, revisit per-face textures and light data
+  for chunks.
+
+## Older terrain checkpoint (2026-05-02, commit `550147e`)
 
 Branch: `feature/godot-adapter`
 

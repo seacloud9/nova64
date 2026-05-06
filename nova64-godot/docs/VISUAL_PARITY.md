@@ -15,6 +15,48 @@ native-shutdown flakes. All unrelated to rendering or gameplay logic.
 Both Linux (`platform=linux`) and Windows (`platform=windows use_mingw=yes`)
 gdextension builds are clean.
 
+## Latest checkpoint — VOX, Flash mouse, bloom, and generative art
+
+This checkpoint keeps the Godot adapter moving toward Three.js visual parity
+for asset loading and high-cost 2D demos:
+
+- `.vox` imports now use a native exposed-face mesh path for MagicaVoxel files.
+  The earlier direct loader could drop an entire facade after greedy merging;
+  `house.vox` now shows the authored front wall, windows, door, chimney, roof,
+  and ground slab.
+- `loadVoxModel()` no longer applies a hidden 180-degree root rotation after
+  import. Model orientation now comes from the native VOX coordinate mapping and
+  cart-authored transforms only.
+- Flash Stage canvas parity now includes `ctx.rect()` and text alignment /
+  baseline handling. This fixes the card-flip scene, whose card bodies are
+  path rectangles.
+- The Flash particle-trail scene now falls back to `nova64.input.mouseX()` /
+  `mouseY()` under Godot instead of relying only on DOM canvas mouse events.
+- Godot bloom mapping is toned down. Three.js bloom values no longer translate
+  into a blown-out white floor in `space-harrier-3d`.
+- `flowField()` now returns the same `Float32Array` shape as the browser
+  runtime. The generative-art flow-field sketch no longer indexes an object,
+  gets `undefined`, and collapses all trails toward the corner.
+- The Godot generative-art cart uses reduced simulation density and lower-res
+  blocks for the most expensive sketches so it remains interactive through the
+  JS-to-Godot overlay bridge.
+
+Focused validation:
+
+- `node --check` passed for `nova64-compat.js`, `flash-demo/code.js`, and
+  `generative-art/code.js`.
+- Godot visual conformance passed for `vox-viewer`, `flash-demo`,
+  `generative-art`, and `space-harrier-3d`.
+- Rebuilt both debug GDExtension binaries:
+  `libnova64.windows.template_debug.x86_64.dll` and
+  `libnova64.linux.template_debug.x86_64.so`.
+
+Cleanup:
+
+- Removed stale generated plan copies from ignored `dist/docs/*PLAN.md`.
+- `AGENTS.md` remains the single source of truth for agent instructions;
+  tool-specific instruction files should stay as short pointers only.
+
 ## Latest checkpoint — particles, TSL, and Flash/Hype shims
 
 This checkpoint focused on the next set of high-visible Godot adapter parity

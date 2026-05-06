@@ -24,7 +24,7 @@ const {
 } = nova64.draw;
 const { burstEmitter2D, clearEmitter2D, createEmitter2D, drawEmitter2D, updateEmitter2D } =
   nova64.fx;
-const { key, keyp } = nova64.input;
+const { key, keyp, mouseX, mouseY } = nova64.input;
 const { addChild, createContainer, createGraphicsNode, createTextNode, drawStage } = nova64.ui;
 const { createTween, killAllTweens, updateTweens } = nova64.tween;
 const { color } = nova64.util;
@@ -599,6 +599,16 @@ function _s7BindMouse() {
   canvas.addEventListener('touchmove', e => toLocal(e.touches[0]), { passive: true });
 }
 
+function _s7PollMouse() {
+  if (typeof mouseX !== 'function' || typeof mouseY !== 'function') return false;
+  const mx = mouseX();
+  const my = mouseY();
+  if (!Number.isFinite(mx) || !Number.isFinite(my)) return false;
+  _s7MX = Math.max(0, Math.min(W, mx));
+  _s7MY = Math.max(0, Math.min(H, my));
+  return true;
+}
+
 function s7_init(s) {
   _s7MX = CX;
   _s7MY = CY;
@@ -641,6 +651,7 @@ function s7_init(s) {
 }
 
 function s7_update(s, dt) {
+  const liveMouse = _s7PollMouse();
   s.trail.x = _s7MX;
   s.trail.y = _s7MY;
   s.spark.x = _s7MX;
@@ -670,7 +681,7 @@ function s7_update(s, dt) {
   updateEmitter2D(s.spark, dt);
 
   // Auto-orbit when idle
-  if (spd < 3) {
+  if (!liveMouse && spd < 3) {
     _s7MX = CX + Math.cos(s.t * 1.1) * 85;
     _s7MY = CY + Math.sin(s.t * 0.9) * 52;
   }

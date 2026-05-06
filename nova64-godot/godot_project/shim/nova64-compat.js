@@ -1089,8 +1089,16 @@
     }
     __ops.push(['polygon', transformed, colorFromHex(color == null ? 0xffffff : color), filled !== false]);
   }
-  function flowField(_w, _h, _scale) {
-    return { sample(x, y) { return noise(x * 0.01, y * 0.01) * Math.PI * 2; } };
+  function flowField(cols, rows, scale, t) {
+    scale = scale == null ? 0.06 : scale;
+    t = t == null ? 0 : t;
+    const field = new Float32Array(Math.max(0, cols | 0) * Math.max(0, rows | 0));
+    for (let y = 0; y < rows; y++) {
+      for (let x = 0; x < cols; x++) {
+        field[y * cols + x] = noise(x * scale, y * scale, t) * Math.PI * 4;
+      }
+    }
+    return field;
   }
 
   function screenWidth() { return 640; }
@@ -1252,10 +1260,10 @@
     effectsEnabled = effectsEnabled || enabled;
     call('env.set', {
       glow: enabled,
-      glowIntensity: strength,
-      glowStrength: typeof radius === 'number' ? Math.max(0.1, radius * 2.0) : 1.2,
-      glowBloom: typeof threshold === 'number' ? Math.max(0.0, threshold) : 0.2,
-      glowThreshold: typeof threshold === 'number' ? Math.max(0.0, threshold * 0.6) : 0.25,
+      glowIntensity: strength * 0.45,
+      glowStrength: typeof radius === 'number' ? Math.max(0.1, radius * 0.9) : 0.55,
+      glowBloom: typeof radius === 'number' ? Math.max(0.02, Math.min(0.18, radius * 0.18)) : 0.08,
+      glowThreshold: typeof threshold === 'number' ? Math.max(0.85, threshold * 2.5) : 1.0,
     });
     return enabled;
   }
@@ -3197,6 +3205,9 @@
       moveTo(x, y) { this._path = [[x, y]]; },
       lineTo(x, y) { if (!this._path) this._path = []; this._path.push([x, y]); },
       quadraticCurveTo(_cx, _cy, x, y) { this.lineTo(x, y); },
+      rect(x, y, w, h) {
+        this._path = [[x, y], [x + w, y], [x + w, y + h], [x, y + h], [x, y]];
+      },
       closePath() {},
       fill() {
         if (!this._path || this._path.length < 3) return;
@@ -3207,8 +3218,29 @@
         poly(pts, this._color(this.fillStyle), true);
       },
       stroke() { if (!this._path) return; for (let i = 1; i < this._path.length; i++) line(this._tx + this._path[i-1][0] * this._sx, this._ty + this._path[i-1][1] * this._sy, this._tx + this._path[i][0] * this._sx, this._ty + this._path[i][1] * this._sy, this._color(this.strokeStyle)); },
-      fillText(text, x, y) { novaPrint(text, this._tx + x * this._sx, this._ty + y * this._sy, this._color(this.fillStyle), Math.max(1, Math.abs(this._sx))); },
-      strokeText(text, x, y) { novaPrint(text, this._tx + x * this._sx, this._ty + y * this._sy, this._color(this.strokeStyle), Math.max(1, Math.abs(this._sx))); },
+      _textPos(text, x, y) {
+        const scale = Math.max(1, Math.abs(this._sx));
+        const s = String(text == null ? '' : text);
+        let px = this._tx + x * this._sx;
+        let py = this._ty + y * this._sy;
+        const align = this.textAlign || 'left';
+        const baseline = this.textBaseline || 'alphabetic';
+        const width = s.length * 6 * scale;
+        const height = 8 * scale;
+        if (align === 'center') px -= width / 2;
+        else if (align === 'right' || align === 'end') px -= width;
+        if (baseline === 'middle') py -= height / 2;
+        else if (baseline === 'bottom' || baseline === 'ideographic') py -= height;
+        return [s, px, py, scale];
+      },
+      fillText(text, x, y) {
+        const p = this._textPos(text, x, y);
+        novaPrint(p[0], p[1], p[2], this._color(this.fillStyle), p[3]);
+      },
+      strokeText(text, x, y) {
+        const p = this._textPos(text, x, y);
+        novaPrint(p[0], p[1], p[2], this._color(this.strokeStyle), p[3]);
+      },
       arc(x, y, r) { circle(this._tx + x * this._sx, this._ty + y * this._sy, Math.abs(r * this._sx), this._color(this.fillStyle), true); },
     };
     return ctx;
@@ -3577,9 +3609,7 @@
     if (r && r.error) {
       return Promise.reject(new Error(r.message || r.method || r.error));
     }
-    const handle = (r && r.handle) ? r.handle : 0;
-    if (handle) setRotation(handle, 0, Math.PI, 0);
-    return Promise.resolve(handle);
+    return Promise.resolve((r && r.handle) ? r.handle : 0);
   }
   function _resolveGeomString(name) {
     // Accepts handle objects/numbers OR string names like 'sphere'/'box'.

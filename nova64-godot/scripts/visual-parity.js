@@ -105,6 +105,8 @@ function parseArgs(argv) {
     noStartServer: false,
     port: 3000,
     press: '',
+    pressCount: 1,
+    pressGapMs: 120,
     pressFrames: 3,
     pressMs: 120,
     reportOnly: false,
@@ -135,6 +137,10 @@ function parseArgs(argv) {
     else if (arg.startsWith('--max-diff=')) out.maxDiff = Number(arg.slice('--max-diff='.length));
     else if (arg.startsWith('--port=')) out.port = Number(arg.slice('--port='.length));
     else if (arg.startsWith('--press=')) out.press = arg.slice('--press='.length);
+    else if (arg.startsWith('--press-count='))
+      out.pressCount = Number(arg.slice('--press-count='.length));
+    else if (arg.startsWith('--press-gap-ms='))
+      out.pressGapMs = Number(arg.slice('--press-gap-ms='.length));
     else if (arg.startsWith('--press-frames='))
       out.pressFrames = Number(arg.slice('--press-frames='.length));
     else if (arg.startsWith('--press-ms=')) out.pressMs = Number(arg.slice('--press-ms='.length));
@@ -294,9 +300,13 @@ async function captureBrowserCart(browser, cart, opts) {
     { timeout: opts.loadTimeoutMs }
   );
   if (opts.press) {
-    await page.keyboard.down(opts.press);
-    await page.waitForTimeout(opts.pressMs);
-    await page.keyboard.up(opts.press);
+    const pressCount = Math.max(1, Math.floor(opts.pressCount || 1));
+    for (let i = 0; i < pressCount; i++) {
+      await page.keyboard.down(opts.press);
+      await page.waitForTimeout(opts.pressMs);
+      await page.keyboard.up(opts.press);
+      if (i + 1 < pressCount) await page.waitForTimeout(opts.pressGapMs);
+    }
   }
   await page.waitForTimeout(opts.waitMs);
   await page.locator('#screen').screenshot({ path: outPath });
@@ -323,7 +333,11 @@ function captureGodotCart(cart, opts) {
     `--snapshot=${godotOutPath}`,
   ];
   if (opts.press) {
-    args.push(`--press=${opts.press.toLowerCase()}`, `--press-frames=${opts.pressFrames}`);
+    args.push(
+      `--press=${opts.press.toLowerCase()}`,
+      `--press-frames=${opts.pressFrames}`,
+      `--press-count=${Math.max(1, Math.floor(opts.pressCount || 1))}`
+    );
   }
 
   const result = spawnSync(opts.godot, args, {
@@ -385,6 +399,8 @@ function writeReports(results, opts) {
       maxDiff: opts.maxDiff,
       threshold: opts.threshold,
       press: opts.press,
+      pressCount: opts.pressCount,
+      pressGapMs: opts.pressGapMs,
       pressFrames: opts.pressFrames,
       pressMs: opts.pressMs,
       loadTimeoutMs: opts.loadTimeoutMs,

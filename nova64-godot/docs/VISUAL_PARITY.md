@@ -15,6 +15,41 @@ native-shutdown flakes. All unrelated to rendering or gameplay logic.
 Both Linux (`platform=linux`) and Windows (`platform=windows use_mingw=yes`)
 gdextension builds are clean.
 
+## Latest checkpoint — Shader Showcase TSL fallbacks
+
+The Godot `shader-showcase` cart now reads much closer to the Three.js version
+instead of collapsing the TSL presets to flat emissive colours:
+
+- `createTSLMaterial()` now attaches small procedural albedo/emission textures
+  for plasma, galaxy, lava, lava2, electricity, rainbow, void/vortex, water,
+  hologram, and shockwave fallbacks.
+- Godot material payloads now forward `uvScale`, allowing these static shader
+  approximations to use preset-specific texture scale.
+- Opaque shader presets stay opaque in Godot, reducing transparency sorting
+  artifacts on torus/cube geometry. Translucent presets still use alpha where
+  the browser effect depends on it.
+- `createVortexMaterial()` and `createHologramMaterial()` route through the
+  same TSL fallback path, so Phase 1 Shader Showcase presets no longer bypass
+  the richer material approximations.
+- The visual parity harness now supports repeated key presses with
+  `--press-count`, letting interactive carts such as Shader Showcase be
+  captured on later presets without editing the cart.
+
+Focused validation:
+
+- `node --check nova64-godot/godot_project/shim/nova64-compat.js`
+- `node --check nova64-godot/scripts/visual-parity.js`
+- `pnpm godot:visual -- --cart=shader-showcase --frames=160 --wait-ms=500 --report-only`
+  passed at **25.15%** diff.
+- Preset spot checks also passed: Galaxy **10.82%**, Lava **30.37%**,
+  Electricity **10.92%**, Void **5.23%**, Vortex **28.31%**.
+
+Known follow-up:
+
+- These are still Godot material approximations, not true TSL execution. Full
+  parity will need either a Godot shader bridge or a TSL/GLSL translation path,
+  plus closer bloom/vignette post-processing.
+
 ## Latest checkpoint — VOX, Flash mouse, bloom, and generative art
 
 This checkpoint keeps the Godot adapter moving toward Three.js visual parity

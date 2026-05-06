@@ -260,6 +260,7 @@
     const emissionMap = opts.emissionMap || opts.emissiveMap;
     if (emissionMap) payload.emissionMap = unwrapHandle(emissionMap);
     if (opts.alphaTest != null) payload.alphaCut = opts.alphaTest;
+    if (opts.uvScale) payload.uvScale = ensureArray3(opts.uvScale[0], opts.uvScale[1], opts.uvScale[2] == null ? 1 : opts.uvScale[2]);
     return payload;
   }
 
@@ -3660,6 +3661,26 @@
     return handle;
   }
   function _lerpByte(a, b, t) { return Math.max(0, Math.min(255, Math.round(a + (b - a) * t))); }
+  function _clamp01(v) { return Math.max(0, Math.min(1, v)); }
+  function _smooth01(v) { v = _clamp01(v); return v * v * (3 - 2 * v); }
+  function _wave01(v) { return Math.sin(v) * 0.5 + 0.5; }
+  function _hsvToRgbBytes(h, s, v) {
+    h = ((h % 1) + 1) % 1;
+    s = _clamp01(s);
+    v = _clamp01(v);
+    const i = Math.floor(h * 6);
+    const f = h * 6 - i;
+    const p = v * (1 - s);
+    const q = v * (1 - f * s);
+    const t = v * (1 - (1 - f) * s);
+    let r = v, g = t, b = p;
+    if (i % 6 === 1) { r = q; g = v; b = p; }
+    else if (i % 6 === 2) { r = p; g = v; b = t; }
+    else if (i % 6 === 3) { r = p; g = q; b = v; }
+    else if (i % 6 === 4) { r = t; g = p; b = v; }
+    else if (i % 6 === 5) { r = v; g = p; b = q; }
+    return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)];
+  }
   function _pushPixel(pixels, r, g, b, a) {
     pixels.push(r & 255, g & 255, b & 255, a == null ? 255 : (a & 255));
   }
@@ -3693,6 +3714,101 @@
           const n = (Math.sin(u * 18.0 + v * 4.0) + Math.sin(u * 31.0 - v * 8.0) + Math.sin((u + v) * 22.0)) / 3;
           const a = Math.max(0, Math.min(180, Math.floor((n + 0.55) * 140)));
           _pushPixel(pixels, 60, 235, 255, a);
+        } else if (name === 'galaxy') {
+          const cx = u - 0.5, cy = v - 0.5;
+          const d = Math.sqrt(cx * cx + cy * cy);
+          const a = Math.atan2(cy, cx);
+          const arm = _smooth01((_wave01(a * 3.5 + d * 34.0) - 0.34) * 2.1) * Math.max(0, 1 - d * 1.25);
+          const haze = _smooth01((_wave01(u * 11.0 - v * 8.0) + arm - 0.58) * 1.6);
+          const starSeed = Math.sin((x + 17) * 127.1 + (y + 31) * 311.7) * 43758.5453;
+          const star = (starSeed - Math.floor(starSeed)) > 0.985 ? 1 : 0;
+          const scan = (y % 3 === 0) ? 0.72 : 1.0;
+          const glow = Math.max(arm, haze * 0.7);
+          const r = Math.floor(_lerpByte(28, 255, glow) * scan + star * 55);
+          const g = Math.floor(_lerpByte(8, 130, glow * 0.52) * scan + star * 70);
+          const b = Math.floor(_lerpByte(55, 255, Math.max(glow, star)) * scan);
+          _pushPixel(pixels, r, g, b, Math.floor(130 + glow * 105 + star * 20));
+        } else if (name === 'plasma' || name === 'plasma2') {
+          const swirl = _wave01(u * 8.0 + Math.sin(v * 5.0) * 1.7)
+            + _wave01(v * 9.0 + Math.sin(u * 7.0) * 1.4)
+            + _wave01((u - v) * 6.0);
+          const field = swirl / 3;
+          const magenta = _smooth01((field - 0.34) * 2.1);
+          const cyan = _smooth01((_wave01(u * 13.0 - v * 10.0) * field - 0.46) * 3.8);
+          const white = _smooth01((cyan - 0.58) * 2.6);
+          const plasma2Bias = name === 'plasma2' ? 0.14 : 0;
+          const r = _lerpByte(58, 255, Math.max(magenta, white));
+          const g = _lerpByte(72, 255, cyan * 0.95 + white * 0.4);
+          const b = _lerpByte(185, 255, Math.max(cyan, magenta * 0.55 + plasma2Bias));
+          _pushPixel(pixels, r, g, b, 245);
+        } else if (name === 'lava' || name === 'lava2') {
+          const heat = 0.86 + _wave01(u * 9.0 + Math.sin(v * 5.0) * 1.5) * 0.10
+            + _wave01((u + v) * 7.0) * 0.06;
+          const scan = (y % 3 === 0) ? 0.86 : 1.0;
+          const glow = _clamp01(name === 'lava2' ? heat + 0.06 : heat);
+          const r = Math.floor(_lerpByte(235, 255, glow) * scan);
+          const g = Math.floor(_lerpByte(108, 252, glow) * scan);
+          const b = Math.floor(_lerpByte(12, 76, glow) * scan);
+          _pushPixel(pixels, r, g, b, 255);
+        } else if (name === 'fire') {
+          const crack = Math.abs(Math.sin(u * 34.0 + Math.sin(v * 9.0) * 2.0))
+            * Math.abs(Math.sin(v * 28.0 + Math.sin(u * 12.0) * 2.4));
+          const heat = _smooth01(1 - crack * 1.65 + _wave01((u - v) * 17.0) * 0.25);
+          const glow = name === 'lava2' ? _clamp01(heat * 1.15) : heat;
+          const r = _lerpByte(50, 255, glow);
+          const g = _lerpByte(5, name === 'lava2' ? 190 : 92, glow * glow);
+          const b = _lerpByte(0, 22, glow);
+          _pushPixel(pixels, r, g, b, 255);
+        } else if (name === 'electricity') {
+          const pathA = 0.5 + Math.sin(v * 15.0) * 0.13 + Math.sin(v * 47.0) * 0.045;
+          const pathB = 0.28 + Math.sin(v * 11.0 + 1.4) * 0.10 + Math.sin(v * 39.0) * 0.035;
+          const boltA = Math.abs(u - pathA);
+          const boltB = Math.abs(u - pathB);
+          const core = Math.max(_smooth01(1 - boltA * 34.0), _smooth01(1 - boltB * 28.0) * 0.75);
+          const branch = _smooth01(1 - Math.abs((u + v * 0.72) % 0.38 - 0.19) * 24.0) * _wave01(v * 34.0);
+          const glow = _clamp01(core + branch * 0.35);
+          _pushPixel(pixels, _lerpByte(4, 190, glow), _lerpByte(20, 255, glow), 255, Math.floor(32 + glow * 210));
+        } else if (name === 'rainbow') {
+          const field = _wave01(u * 7.0 + Math.sin(v * 5.0) * 1.6);
+          const violet = _smooth01((_wave01((u + v) * 8.0) - 0.62) * 3.1);
+          const green = _smooth01((_wave01(u * 5.0 - v * 6.0) - 0.36) * 1.8);
+          const white = _smooth01((field - 0.78) * 2.4);
+          const r = _lerpByte(8, 190, violet * 0.85 + white * 0.55);
+          const g = _lerpByte(168, 255, green * 0.85 + white * 0.35);
+          const b = _lerpByte(210, 255, Math.max(field * 0.9, white * 0.6));
+          _pushPixel(pixels, r, g, b, 245);
+        } else if (name === 'water') {
+          const ripple = _wave01(v * 42.0 + Math.sin(u * 16.0) * 3.5) * 0.55
+            + _wave01((u + v) * 24.0) * 0.45;
+          const foam = _smooth01((ripple - 0.62) * 4.0);
+          _pushPixel(pixels, _lerpByte(6, 116, foam), _lerpByte(70, 235, ripple), _lerpByte(145, 255, ripple), 205);
+        } else if (name === 'hologram') {
+          const line = Math.abs(((v * 38.0) % 1) - 0.5) > 0.43;
+          const pulse = _wave01(u * 18.0 + v * 6.0);
+          _pushPixel(pixels, 20, _lerpByte(155, 255, pulse), 255, line ? 235 : 95);
+        } else if (name === 'shockwave') {
+          const cx = u - 0.5, cy = v - 0.5;
+          const d = Math.sqrt(cx * cx + cy * cy);
+          const rings = Math.max(0, 1 - Math.abs(Math.sin(d * 58.0)) * 2.7);
+          const glow = _smooth01(rings * Math.max(0, 1 - d * 1.15));
+          _pushPixel(pixels, _lerpByte(80, 255, glow), _lerpByte(135, 255, glow), 255, Math.floor(70 + glow * 185));
+        } else if (name === 'vortex') {
+          const cx = u - 0.5, cy = v - 0.5;
+          const d = Math.sqrt(cx * cx + cy * cy);
+          const a = Math.atan2(cy, cx);
+          const spiral = _smooth01((_wave01(a * 3.0 + d * 26.0) - 0.38) * 2.6);
+          const flare = _smooth01((_wave01(a * 1.4 - d * 19.0) - 0.56) * 3.5);
+          const glow = Math.max(spiral * Math.max(0, 1 - d * 0.9), flare);
+          const white = _smooth01((glow - 0.68) * 3.2);
+          _pushPixel(pixels, _lerpByte(8, 245, white), _lerpByte(64, 255, glow), _lerpByte(105, 255, Math.max(glow, white)), Math.floor(70 + glow * 165));
+        } else if (name === 'void') {
+          const cx = u - 0.5, cy = v - 0.5;
+          const d = Math.sqrt(cx * cx + cy * cy);
+          const a = Math.atan2(cy, cx);
+          const spiral = _wave01(a * 4.0 + d * 54.0);
+          const rim = _smooth01((0.55 - Math.abs(d - 0.33)) * 3.2);
+          const glow = Math.max(spiral * rim, Math.max(0, 1 - d * 2.5) * 0.8);
+          _pushPixel(pixels, _lerpByte(8, 170, glow), _lerpByte(2, 55, glow), _lerpByte(32, 255, glow), Math.floor(80 + glow * 175));
         } else {
           const cx = u - 0.5, cy = v - 0.5;
           const d = Math.sqrt(cx * cx + cy * cy);
@@ -3895,34 +4011,11 @@
   // Hologram = unshaded + emissive + additive blend + rim glow.
   function createHologramMaterial(opts) {
     ensureInit();
-    opts = opts || {};
-    const c = typeof opts.color === 'number' ? opts.color : 0x00ffff;
-    const r = call('material.create', {
-      albedo: colorFromHex(c, 0.7),
-      emission: colorFromHex(c),
-      emissionEnergy: opts.energy || 2.0,
-      blend: 'add',
-      transparency: 'alpha',
-      cull: 'disabled',
-      unshaded: true,
-      rim: 0.6, rimTint: 0.8,
-    });
-    return r ? r.handle : 0;
+    return createTSLMaterial('hologram', opts || {});
   }
   function createVortexMaterial(opts) {
     ensureInit();
-    opts = opts || {};
-    const c = typeof opts.color === 'number' ? opts.color : 0xff00ff;
-    const r = call('material.create', {
-      albedo: colorFromHex(c, 0.8),
-      emission: colorFromHex(c),
-      emissionEnergy: opts.energy || 2.5,
-      blend: 'add',
-      transparency: 'alpha',
-      cull: 'disabled',
-      unshaded: true,
-    });
-    return r ? r.handle : 0;
+    return createTSLMaterial('vortex', opts || {});
   }
   // TSL (Three Shading Language) → emit a themed emissive material fallback.
   // These match the browser's animated shaders as closely as possible with
@@ -3949,12 +4042,12 @@
       },
       // Fiery lava with cracks
       lava: {
-        color: 0xff4400, emission: 0xff2200, emissionEnergy: 3.5,
-        blend: 'add', metallic: 0.1, roughness: 0.8,
+        color: 0xffee55, emission: 0xffaa22, emissionEnergy: 4.2,
+        blend: 'add', metallic: 0.05, roughness: 0.72,
       },
       lava2: {
-        color: 0xffaa00, emission: 0xff6600, emissionEnergy: 4.0,
-        blend: 'add', metallic: 0, roughness: 0.6,
+        color: 0xffff55, emission: 0xffcc00, emissionEnergy: 4.4,
+        blend: 'add', metallic: 0, roughness: 0.55,
       },
       // Dark swirling void/portal
       void: {
@@ -3973,17 +4066,17 @@
       },
       // Rainbow gradient
       rainbow: {
-        color: 0xff88ff, emission: 0xff44ff, emissionEnergy: 2.0,
-        blend: 'add', metallic: 0.5, roughness: 0.3,
+        color: 0x44ffdd, emission: 0x22ffbb, emissionEnergy: 3.2,
+        blend: 'add', metallic: 0.35, roughness: 0.28,
       },
       // Swirling vortex portal
       vortex: {
-        color: 0x8800ff, emission: 0x6600ff, emissionEnergy: 2.8,
+        color: 0x44ffee, emission: 0x00ffff, emissionEnergy: 2.8,
         blend: 'add', metallic: 0.2, roughness: 0.6, rim: 0.5,
       },
       // Galaxy spiral
       galaxy: {
-        color: 0x6688ff, emission: 0x3355ff, emissionEnergy: 1.45,
+        color: 0xd088ff, emission: 0xff88ff, emissionEnergy: 1.9,
         blend: 'alpha', metallic: 0.15, roughness: 0.65,
       },
       // Water surface
@@ -4014,30 +4107,67 @@
     };
 
     const preset = presets[name] || presets.plasma;
+    const textureName = {
+      plasma: 'plasma',
+      plasma2: 'plasma2',
+      lava: 'lava',
+      lava2: 'lava2',
+      fire: 'fire',
+      electricity: 'electricity',
+      rainbow: 'rainbow',
+      void: 'void',
+      vortex: 'vortex',
+      galaxy: 'galaxy',
+      water: 'water',
+      hologram: 'hologram',
+      shockwave: 'shockwave',
+      neon: 'grid',
+      ice: 'water',
+    }[name] || 'plasma';
 
-    // Build material payload merging preset with user options
+    // Godot does not run the browser TSL graph yet, so give the fallback
+    // material a small static shader texture plus emission map. This preserves
+    // the cart's "procedural shader sampler" read at a glance instead of
+    // collapsing every preset to one flat albedo color.
+    const translucent = name === 'galaxy' || name === 'void' || name === 'vortex'
+      || name === 'electricity'
+      || name === 'water' || name === 'hologram' || name === 'shockwave'
+      || name === 'ice';
+    const maxEmission = name === 'lava' || name === 'lava2' ? 4.1 : (name === 'fire' || name === 'electricity' || name === 'rainbow' ? 3.25 : 2.35);
     const tonedPreset = Object.assign({}, preset, {
-      blend: preset.blend === 'add' ? 'alpha' : preset.blend,
-      emissionEnergy: Math.min(preset.emissionEnergy || 1, 1.35),
+      blend: translucent ? (preset.blend === 'add' ? 'alpha' : preset.blend) : undefined,
+      emissionEnergy: Math.min(preset.emissionEnergy || 1, maxEmission),
+      opacity: name === 'galaxy' ? 0.82 : (name === 'water' ? 0.72 : (translucent ? 0.88 : 1.0)),
+      uvScale: name === 'plasma' || name === 'plasma2'
+        ? [1.0, 1.0, 1]
+        : (name === 'rainbow'
+        ? [0.9, 0.9, 1]
+        : (name === 'electricity'
+        ? [1.2, 1.2, 1]
+        : (name === 'galaxy'
+        ? [0.8, 0.8, 1]
+        : (name === 'void' || name === 'vortex'
+        ? [1.4, 1.4, 1]
+        : [2.2, 2.2, 1])))),
     });
-    if (name === 'galaxy' && opts.map == null && opts.albedoTexture == null) {
-      const galaxyTex = _proceduralTexture('galaxy');
-      tonedPreset.map = galaxyTex;
-      tonedPreset.emissionMap = galaxyTex;
-      tonedPreset.opacity = opts.opacity == null ? 0.82 : opts.opacity;
+    if (opts.map == null && opts.albedoTexture == null && opts.texture == null) {
+      const tex = _proceduralTexture(textureName);
+      tonedPreset.map = tex;
+      tonedPreset.emissionMap = tex;
     }
     const payload = materialPayload(tonedPreset.color, Object.assign({
-      opacity: opts.opacity == null ? 0.9 : opts.opacity,
-      transparent: true,
+      opacity: opts.opacity == null ? (translucent ? 0.9 : 1.0) : opts.opacity,
+      transparent: translucent,
       unshaded: true,
       cull: 'disabled',
       doubleSided: true,
     }, tonedPreset, opts));
     if (payload.emissionEnergy != null && opts.emissionEnergy == null && opts.emissiveIntensity == null) {
-      payload.emissionEnergy = Math.min(payload.emissionEnergy, 1.35);
+      payload.emissionEnergy = Math.min(payload.emissionEnergy, maxEmission);
     }
 
     const r = call('material.create', payload);
+    if (r && r.handle) materialPayloadState.set(r.handle, Object.assign({}, payload));
     return r ? r.handle : 0;
   }
   function createTSLShaderMaterial(_vertexShader, fragmentShader, _uniforms, opts) {

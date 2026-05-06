@@ -16,6 +16,7 @@ func _init() -> void:
 	var snapshot := ""
 	var press_key := ""
 	var press_frames := 3
+	var press_count := 1
 	for arg in OS.get_cmdline_user_args():
 		if arg.begins_with("--cart="):
 			cart_path = arg.substr(7)
@@ -27,6 +28,8 @@ func _init() -> void:
 			press_key = arg.substr(8).to_lower()
 		elif arg.begins_with("--press-frames="):
 			press_frames = int(arg.substr(15))
+		elif arg.begins_with("--press-count="):
+			press_count = max(1, int(arg.substr(14)))
 
 	print("[conformance] cart=", cart_path, " frames=", frames, " snapshot=", snapshot)
 
@@ -44,18 +47,24 @@ func _init() -> void:
 		return
 	host.cart_init()
 
-	if press_key != "":
-		_inject_key(press_key, true)
+	var press_remaining := press_count if press_key != "" else 0
+	var press_down := false
+	var next_press_frame := 0
 
 	# Tick fixed-step. await process_frame so the renderer actually advances
 	# (required for snapshots and for GPU particle systems to step).
 	for i in range(frames):
+		if press_key != "" and press_remaining > 0 and not press_down and i >= next_press_frame:
+			_inject_key(press_key, true)
+			press_down = true
 		host.cart_update(1.0 / 60.0)
 		host.cart_draw()
 		await process_frame
-		if press_key != "" and i + 1 >= press_frames:
+		if press_key != "" and press_down and i + 1 >= next_press_frame + press_frames:
 			_inject_key(press_key, false)
-			press_key = ""
+			press_down = false
+			press_remaining -= 1
+			next_press_frame = i + press_frames + 1
 
 	# Optional snapshot — write the main viewport to PNG. Windowed mode is the
 	# reliable path on Windows; dummy/headless rendering may not expose a texture.

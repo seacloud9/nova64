@@ -506,217 +506,217 @@ setCollisionMap(fn);
 ## 🎪 **Demo Gallery** (71 Carts)
 
 <div align="center">
-  <a href="https://starcade9.github.io/console.html?cart=3d-advanced" title="3d Advanced">
+  <a href="https://starcade9.github.io/console.html?demo=3d-advanced" title="3d Advanced">
     <img src="public/assets/cart-thumbs/3d-advanced.png" width="100" height="100" alt="3d Advanced" style="margin: 2px; object-fit: cover;">
   </a>
-  <a href="https://starcade9.github.io/console.html?cart=adventure-comic-3d" title="Adventure Comic 3d">
+  <a href="https://starcade9.github.io/console.html?demo=adventure-comic-3d" title="Adventure Comic 3d">
     <img src="public/assets/cart-thumbs/adventure-comic-3d.png" width="100" height="100" alt="Adventure Comic 3d" style="margin: 2px; object-fit: cover;">
   </a>
-  <a href="https://starcade9.github.io/console.html?cart=ar-hand-demo" title="Ar Hand Demo">
+  <a href="https://starcade9.github.io/console.html?demo=ar-hand-demo" title="Ar Hand Demo">
     <img src="public/assets/cart-thumbs/ar-hand-demo.png" width="100" height="100" alt="Ar Hand Demo" style="margin: 2px; object-fit: cover;">
   </a>
-  <a href="https://starcade9.github.io/console.html?cart=audio-lab" title="Audio Lab">
+  <a href="https://starcade9.github.io/console.html?demo=audio-lab" title="Audio Lab">
     <img src="public/assets/cart-thumbs/audio-lab.png" width="100" height="100" alt="Audio Lab" style="margin: 2px; object-fit: cover;">
   </a>
-  <a href="https://starcade9.github.io/console.html?cart=babylon-demo" title="Babylon Demo">
+  <a href="https://starcade9.github.io/console.html?demo=babylon-demo" title="Babylon Demo">
     <img src="public/assets/cart-thumbs/babylon-demo.png" width="100" height="100" alt="Babylon Demo" style="margin: 2px; object-fit: cover;">
   </a>
-  <a href="https://starcade9.github.io/console.html?cart=blend-aurora" title="Blend Aurora">
+  <a href="https://starcade9.github.io/console.html?demo=blend-aurora" title="Blend Aurora">
     <img src="public/assets/cart-thumbs/blend-aurora.png" width="100" height="100" alt="Blend Aurora" style="margin: 2px; object-fit: cover;">
   </a>
-  <a href="https://starcade9.github.io/console.html?cart=boids-flocking" title="Boids Flocking">
+  <a href="https://starcade9.github.io/console.html?demo=boids-flocking" title="Boids Flocking">
     <img src="public/assets/cart-thumbs/boids-flocking.png" width="100" height="100" alt="Boids Flocking" style="margin: 2px; object-fit: cover;">
   </a>
-  <a href="https://starcade9.github.io/console.html?cart=camera-platformer" title="Camera Platformer">
+  <a href="https://starcade9.github.io/console.html?demo=camera-platformer" title="Camera Platformer">
     <img src="public/assets/cart-thumbs/camera-platformer.png" width="100" height="100" alt="Camera Platformer" style="margin: 2px; object-fit: cover;">
   </a>
-  <a href="https://starcade9.github.io/console.html?cart=canvas-ui-showcase" title="Canvas Ui Showcase">
+  <a href="https://starcade9.github.io/console.html?demo=canvas-ui-showcase" title="Canvas Ui Showcase">
     <img src="public/assets/cart-thumbs/canvas-ui-showcase.png" width="100" height="100" alt="Canvas Ui Showcase" style="margin: 2px; object-fit: cover;">
   </a>
-  <a href="https://starcade9.github.io/console.html?cart=creative-coding" title="Creative Coding">
+  <a href="https://starcade9.github.io/console.html?demo=creative-coding" title="Creative Coding">
     <img src="public/assets/cart-thumbs/creative-coding.png" width="100" height="100" alt="Creative Coding" style="margin: 2px; object-fit: cover;">
   </a>
-  <a href="https://starcade9.github.io/console.html?cart=crystal-cathedral-3d" title="Crystal Cathedral 3d">
+  <a href="https://starcade9.github.io/console.html?demo=crystal-cathedral-3d" title="Crystal Cathedral 3d">
     <img src="public/assets/cart-thumbs/crystal-cathedral-3d.png" width="100" height="100" alt="Crystal Cathedral 3d" style="margin: 2px; object-fit: cover;">
   </a>
-  <a href="https://starcade9.github.io/console.html?cart=cyberpunk-city-3d" title="Cyberpunk City 3d">
+  <a href="https://starcade9.github.io/console.html?demo=cyberpunk-city-3d" title="Cyberpunk City 3d">
     <img src="public/assets/cart-thumbs/cyberpunk-city-3d.png" width="100" height="100" alt="Cyberpunk City 3d" style="margin: 2px; object-fit: cover;">
   </a>
-  <a href="https://starcade9.github.io/console.html?cart=demoscene" title="Demoscene">
+  <a href="https://starcade9.github.io/console.html?demo=demoscene" title="Demoscene">
     <img src="public/assets/cart-thumbs/demoscene.png" width="100" height="100" alt="Demoscene" style="margin: 2px; object-fit: cover;">
   </a>
-  <a href="https://starcade9.github.io/console.html?cart=dungeon-crawler-3d" title="Dungeon Crawler 3d">
+  <a href="https://starcade9.github.io/console.html?demo=dungeon-crawler-3d" title="Dungeon Crawler 3d">
     <img src="public/assets/cart-thumbs/dungeon-crawler-3d.png" width="100" height="100" alt="Dungeon Crawler 3d" style="margin: 2px; object-fit: cover;">
   </a>
-  <a href="https://starcade9.github.io/console.html?cart=f-zero-nova-3d" title="F Zero Nova 3d">
+  <a href="https://starcade9.github.io/console.html?demo=f-zero-nova-3d" title="F Zero Nova 3d">
     <img src="public/assets/cart-thumbs/f-zero-nova-3d.png" width="100" height="100" alt="F Zero Nova 3d" style="margin: 2px; object-fit: cover;">
   </a>
-  <a href="https://starcade9.github.io/console.html?cart=filter-glitch" title="Filter Glitch">
+  <a href="https://starcade9.github.io/console.html?demo=filter-glitch" title="Filter Glitch">
     <img src="public/assets/cart-thumbs/filter-glitch.png" width="100" height="100" alt="Filter Glitch" style="margin: 2px; object-fit: cover;">
   </a>
-  <a href="https://starcade9.github.io/console.html?cart=flash-demo" title="Flash Demo">
+  <a href="https://starcade9.github.io/console.html?demo=flash-demo" title="Flash Demo">
     <img src="public/assets/cart-thumbs/flash-demo.png" width="100" height="100" alt="Flash Demo" style="margin: 2px; object-fit: cover;">
   </a>
-  <a href="https://starcade9.github.io/console.html?cart=fps-demo-3d" title="Fps Demo 3d">
+  <a href="https://starcade9.github.io/console.html?demo=fps-demo-3d" title="Fps Demo 3d">
     <img src="public/assets/cart-thumbs/fps-demo-3d.png" width="100" height="100" alt="Fps Demo 3d" style="margin: 2px; object-fit: cover;">
   </a>
-  <a href="https://starcade9.github.io/console.html?cart=game-of-life-3d" title="Game Of Life 3d">
+  <a href="https://starcade9.github.io/console.html?demo=game-of-life-3d" title="Game Of Life 3d">
     <img src="public/assets/cart-thumbs/game-of-life-3d.png" width="100" height="100" alt="Game Of Life 3d" style="margin: 2px; object-fit: cover;">
   </a>
-  <a href="https://starcade9.github.io/console.html?cart=generative-art" title="Generative Art">
+  <a href="https://starcade9.github.io/console.html?demo=generative-art" title="Generative Art">
     <img src="public/assets/cart-thumbs/generative-art.png" width="100" height="100" alt="Generative Art" style="margin: 2px; object-fit: cover;">
   </a>
-  <a href="https://starcade9.github.io/console.html?cart=hello-3d" title="Hello 3d">
+  <a href="https://starcade9.github.io/console.html?demo=hello-3d" title="Hello 3d">
     <img src="public/assets/cart-thumbs/hello-3d.png" width="100" height="100" alt="Hello 3d" style="margin: 2px; object-fit: cover;">
   </a>
-  <a href="https://starcade9.github.io/console.html?cart=hello-namespaced" title="Hello Namespaced">
+  <a href="https://starcade9.github.io/console.html?demo=hello-namespaced" title="Hello Namespaced">
     <img src="public/assets/cart-thumbs/hello-namespaced.png" width="100" height="100" alt="Hello Namespaced" style="margin: 2px; object-fit: cover;">
   </a>
-  <a href="https://starcade9.github.io/console.html?cart=hello-skybox" title="Hello Skybox">
+  <a href="https://starcade9.github.io/console.html?demo=hello-skybox" title="Hello Skybox">
     <img src="public/assets/cart-thumbs/hello-skybox.png" width="100" height="100" alt="Hello Skybox" style="margin: 2px; object-fit: cover;">
   </a>
-  <a href="https://starcade9.github.io/console.html?cart=hello-world" title="Hello World">
+  <a href="https://starcade9.github.io/console.html?demo=hello-world" title="Hello World">
     <img src="public/assets/cart-thumbs/hello-world.png" width="100" height="100" alt="Hello World" style="margin: 2px; object-fit: cover;">
   </a>
-  <a href="https://starcade9.github.io/console.html?cart=hero-demo" title="Hero Demo">
+  <a href="https://starcade9.github.io/console.html?demo=hero-demo" title="Hero Demo">
     <img src="public/assets/cart-thumbs/hero-demo.png" width="100" height="100" alt="Hero Demo" style="margin: 2px; object-fit: cover;">
   </a>
-  <a href="https://starcade9.github.io/console.html?cart=hud-demo" title="Hud Demo">
+  <a href="https://starcade9.github.io/console.html?demo=hud-demo" title="Hud Demo">
     <img src="public/assets/cart-thumbs/hud-demo.png" width="100" height="100" alt="Hud Demo" style="margin: 2px; object-fit: cover;">
   </a>
-  <a href="https://starcade9.github.io/console.html?cart=hype-demo" title="Hype Demo">
+  <a href="https://starcade9.github.io/console.html?demo=hype-demo" title="Hype Demo">
     <img src="public/assets/cart-thumbs/hype-demo.png" width="100" height="100" alt="Hype Demo" style="margin: 2px; object-fit: cover;">
   </a>
-  <a href="https://starcade9.github.io/console.html?cart=input-showcase" title="Input Showcase">
+  <a href="https://starcade9.github.io/console.html?demo=input-showcase" title="Input Showcase">
     <img src="public/assets/cart-thumbs/input-showcase.png" width="100" height="100" alt="Input Showcase" style="margin: 2px; object-fit: cover;">
   </a>
-  <a href="https://starcade9.github.io/console.html?cart=instancing-demo" title="Instancing Demo">
+  <a href="https://starcade9.github.io/console.html?demo=instancing-demo" title="Instancing Demo">
     <img src="public/assets/cart-thumbs/instancing-demo.png" width="100" height="100" alt="Instancing Demo" style="margin: 2px; object-fit: cover;">
   </a>
-  <a href="https://starcade9.github.io/console.html?cart=minecraft-demo" title="Minecraft Demo">
+  <a href="https://starcade9.github.io/console.html?demo=minecraft-demo" title="Minecraft Demo">
     <img src="public/assets/cart-thumbs/minecraft-demo.png" width="100" height="100" alt="Minecraft Demo" style="margin: 2px; object-fit: cover;">
   </a>
-  <a href="https://starcade9.github.io/console.html?cart=model-viewer-3d" title="Model Viewer 3d">
+  <a href="https://starcade9.github.io/console.html?demo=model-viewer-3d" title="Model Viewer 3d">
     <img src="public/assets/cart-thumbs/model-viewer-3d.png" width="100" height="100" alt="Model Viewer 3d" style="margin: 2px; object-fit: cover;">
   </a>
-  <a href="https://starcade9.github.io/console.html?cart=movie-clock" title="Movie Clock">
+  <a href="https://starcade9.github.io/console.html?demo=movie-clock" title="Movie Clock">
     <img src="public/assets/cart-thumbs/movie-clock.png" width="100" height="100" alt="Movie Clock" style="margin: 2px; object-fit: cover;">
   </a>
-  <a href="https://starcade9.github.io/console.html?cart=mystical-realm-3d" title="Mystical Realm 3d">
+  <a href="https://starcade9.github.io/console.html?demo=mystical-realm-3d" title="Mystical Realm 3d">
     <img src="public/assets/cart-thumbs/mystical-realm-3d.png" width="100" height="100" alt="Mystical Realm 3d" style="margin: 2px; object-fit: cover;">
   </a>
-  <a href="https://starcade9.github.io/console.html?cart=nature-explorer-3d" title="Nature Explorer 3d">
+  <a href="https://starcade9.github.io/console.html?demo=nature-explorer-3d" title="Nature Explorer 3d">
     <img src="public/assets/cart-thumbs/nature-explorer-3d.png" width="100" height="100" alt="Nature Explorer 3d" style="margin: 2px; object-fit: cover;">
   </a>
-  <a href="https://starcade9.github.io/console.html?cart=nft-art-generator" title="Nft Art Generator">
+  <a href="https://starcade9.github.io/console.html?demo=nft-art-generator" title="Nft Art Generator">
     <img src="public/assets/cart-thumbs/nft-art-generator.png" width="100" height="100" alt="Nft Art Generator" style="margin: 2px; object-fit: cover;">
   </a>
-  <a href="https://starcade9.github.io/console.html?cart=nft-worlds" title="Nft Worlds">
+  <a href="https://starcade9.github.io/console.html?demo=nft-worlds" title="Nft Worlds">
     <img src="public/assets/cart-thumbs/nft-worlds.png" width="100" height="100" alt="Nft Worlds" style="margin: 2px; object-fit: cover;">
   </a>
-  <a href="https://starcade9.github.io/console.html?cart=particle-fireworks" title="Particle Fireworks">
+  <a href="https://starcade9.github.io/console.html?demo=particle-fireworks" title="Particle Fireworks">
     <img src="public/assets/cart-thumbs/particle-fireworks.png" width="100" height="100" alt="Particle Fireworks" style="margin: 2px; object-fit: cover;">
   </a>
-  <a href="https://starcade9.github.io/console.html?cart=particle-trail" title="Particle Trail">
+  <a href="https://starcade9.github.io/console.html?demo=particle-trail" title="Particle Trail">
     <img src="public/assets/cart-thumbs/particle-trail.png" width="100" height="100" alt="Particle Trail" style="margin: 2px; object-fit: cover;">
   </a>
-  <a href="https://starcade9.github.io/console.html?cart=particles-demo" title="Particles Demo">
+  <a href="https://starcade9.github.io/console.html?demo=particles-demo" title="Particles Demo">
     <img src="public/assets/cart-thumbs/particles-demo.png" width="100" height="100" alt="Particles Demo" style="margin: 2px; object-fit: cover;">
   </a>
-  <a href="https://starcade9.github.io/console.html?cart=pbr-showcase" title="Pbr Showcase">
+  <a href="https://starcade9.github.io/console.html?demo=pbr-showcase" title="Pbr Showcase">
     <img src="public/assets/cart-thumbs/pbr-showcase.png" width="100" height="100" alt="Pbr Showcase" style="margin: 2px; object-fit: cover;">
   </a>
-  <a href="https://starcade9.github.io/console.html?cart=physics-demo-3d" title="Physics Demo 3d">
+  <a href="https://starcade9.github.io/console.html?demo=physics-demo-3d" title="Physics Demo 3d">
     <img src="public/assets/cart-thumbs/physics-demo-3d.png" width="100" height="100" alt="Physics Demo 3d" style="margin: 2px; object-fit: cover;">
   </a>
-  <a href="https://starcade9.github.io/console.html?cart=screen-demo" title="Screen Demo">
+  <a href="https://starcade9.github.io/console.html?demo=screen-demo" title="Screen Demo">
     <img src="public/assets/cart-thumbs/screen-demo.png" width="100" height="100" alt="Screen Demo" style="margin: 2px; object-fit: cover;">
   </a>
-  <a href="https://starcade9.github.io/console.html?cart=shader-showcase" title="Shader Showcase">
+  <a href="https://starcade9.github.io/console.html?demo=shader-showcase" title="Shader Showcase">
     <img src="public/assets/cart-thumbs/shader-showcase.png" width="100" height="100" alt="Shader Showcase" style="margin: 2px; object-fit: cover;">
   </a>
-  <a href="https://starcade9.github.io/console.html?cart=shooter-demo-3d" title="Shooter Demo 3d">
+  <a href="https://starcade9.github.io/console.html?demo=shooter-demo-3d" title="Shooter Demo 3d">
     <img src="public/assets/cart-thumbs/shooter-demo-3d.png" width="100" height="100" alt="Shooter Demo 3d" style="margin: 2px; object-fit: cover;">
   </a>
-  <a href="https://starcade9.github.io/console.html?cart=skybox-showcase" title="Skybox Showcase">
+  <a href="https://starcade9.github.io/console.html?demo=skybox-showcase" title="Skybox Showcase">
     <img src="public/assets/cart-thumbs/skybox-showcase.png" width="100" height="100" alt="Skybox Showcase" style="margin: 2px; object-fit: cover;">
   </a>
-  <a href="https://starcade9.github.io/console.html?cart=space-combat-3d" title="Space Combat 3d">
+  <a href="https://starcade9.github.io/console.html?demo=space-combat-3d" title="Space Combat 3d">
     <img src="public/assets/cart-thumbs/space-combat-3d.png" width="100" height="100" alt="Space Combat 3d" style="margin: 2px; object-fit: cover;">
   </a>
-  <a href="https://starcade9.github.io/console.html?cart=space-harrier-3d" title="Space Harrier 3d">
+  <a href="https://starcade9.github.io/console.html?demo=space-harrier-3d" title="Space Harrier 3d">
     <img src="public/assets/cart-thumbs/space-harrier-3d.png" width="100" height="100" alt="Space Harrier 3d" style="margin: 2px; object-fit: cover;">
   </a>
-  <a href="https://starcade9.github.io/console.html?cart=stage-cards" title="Stage Cards">
+  <a href="https://starcade9.github.io/console.html?demo=stage-cards" title="Stage Cards">
     <img src="public/assets/cart-thumbs/stage-cards.png" width="100" height="100" alt="Stage Cards" style="margin: 2px; object-fit: cover;">
   </a>
-  <a href="https://starcade9.github.io/console.html?cart=stage-menu" title="Stage Menu">
+  <a href="https://starcade9.github.io/console.html?demo=stage-menu" title="Stage Menu">
     <img src="public/assets/cart-thumbs/stage-menu.png" width="100" height="100" alt="Stage Menu" style="margin: 2px; object-fit: cover;">
   </a>
-  <a href="https://starcade9.github.io/console.html?cart=star-fox-nova-3d" title="Star Fox Nova 3d">
+  <a href="https://starcade9.github.io/console.html?demo=star-fox-nova-3d" title="Star Fox Nova 3d">
     <img src="public/assets/cart-thumbs/star-fox-nova-3d.png" width="100" height="100" alt="Star Fox Nova 3d" style="margin: 2px; object-fit: cover;">
   </a>
-  <a href="https://starcade9.github.io/console.html?cart=startscreen-demo" title="Startscreen Demo">
+  <a href="https://starcade9.github.io/console.html?demo=startscreen-demo" title="Startscreen Demo">
     <img src="public/assets/cart-thumbs/startscreen-demo.png" width="100" height="100" alt="Startscreen Demo" style="margin: 2px; object-fit: cover;">
   </a>
-  <a href="https://starcade9.github.io/console.html?cart=storage-quest" title="Storage Quest">
+  <a href="https://starcade9.github.io/console.html?demo=storage-quest" title="Storage Quest">
     <img src="public/assets/cart-thumbs/storage-quest.png" width="100" height="100" alt="Storage Quest" style="margin: 2px; object-fit: cover;">
   </a>
-  <a href="https://starcade9.github.io/console.html?cart=strider-demo-3d" title="Strider Demo 3d">
+  <a href="https://starcade9.github.io/console.html?demo=strider-demo-3d" title="Strider Demo 3d">
     <img src="public/assets/cart-thumbs/strider-demo-3d.png" width="100" height="100" alt="Strider Demo 3d" style="margin: 2px; object-fit: cover;">
   </a>
-  <a href="https://starcade9.github.io/console.html?cart=super-plumber-64" title="Super Plumber 64">
+  <a href="https://starcade9.github.io/console.html?demo=super-plumber-64" title="Super Plumber 64">
     <img src="public/assets/cart-thumbs/super-plumber-64.png" width="100" height="100" alt="Super Plumber 64" style="margin: 2px; object-fit: cover;">
   </a>
-  <a href="https://starcade9.github.io/console.html?cart=test-2d-overlay" title="Test 2d Overlay">
+  <a href="https://starcade9.github.io/console.html?demo=test-2d-overlay" title="Test 2d Overlay">
     <img src="public/assets/cart-thumbs/test-2d-overlay.png" width="100" height="100" alt="Test 2d Overlay" style="margin: 2px; object-fit: cover;">
   </a>
-  <a href="https://starcade9.github.io/console.html?cart=test-font" title="Test Font">
+  <a href="https://starcade9.github.io/console.html?demo=test-font" title="Test Font">
     <img src="public/assets/cart-thumbs/test-font.png" width="100" height="100" alt="Test Font" style="margin: 2px; object-fit: cover;">
   </a>
-  <a href="https://starcade9.github.io/console.html?cart=test-minimal" title="Test Minimal">
+  <a href="https://starcade9.github.io/console.html?demo=test-minimal" title="Test Minimal">
     <img src="public/assets/cart-thumbs/test-minimal.png" width="100" height="100" alt="Test Minimal" style="margin: 2px; object-fit: cover;">
   </a>
-  <a href="https://starcade9.github.io/console.html?cart=tsl-showcase" title="Tsl Showcase">
+  <a href="https://starcade9.github.io/console.html?demo=tsl-showcase" title="Tsl Showcase">
     <img src="public/assets/cart-thumbs/tsl-showcase.png" width="100" height="100" alt="Tsl Showcase" style="margin: 2px; object-fit: cover;">
   </a>
-  <a href="https://starcade9.github.io/console.html?cart=tween-bounce" title="Tween Bounce">
+  <a href="https://starcade9.github.io/console.html?demo=tween-bounce" title="Tween Bounce">
     <img src="public/assets/cart-thumbs/tween-bounce.png" width="100" height="100" alt="Tween Bounce" style="margin: 2px; object-fit: cover;">
   </a>
-  <a href="https://starcade9.github.io/console.html?cart=tween-logo" title="Tween Logo">
+  <a href="https://starcade9.github.io/console.html?demo=tween-logo" title="Tween Logo">
     <img src="public/assets/cart-thumbs/tween-logo.png" width="100" height="100" alt="Tween Logo" style="margin: 2px; object-fit: cover;">
   </a>
-  <a href="https://starcade9.github.io/console.html?cart=tween-typewriter" title="Tween Typewriter">
+  <a href="https://starcade9.github.io/console.html?demo=tween-typewriter" title="Tween Typewriter">
     <img src="public/assets/cart-thumbs/tween-typewriter.png" width="100" height="100" alt="Tween Typewriter" style="margin: 2px; object-fit: cover;">
   </a>
-  <a href="https://starcade9.github.io/console.html?cart=ui-demo" title="Ui Demo">
+  <a href="https://starcade9.github.io/console.html?demo=ui-demo" title="Ui Demo">
     <img src="public/assets/cart-thumbs/ui-demo.png" width="100" height="100" alt="Ui Demo" style="margin: 2px; object-fit: cover;">
   </a>
-  <a href="https://starcade9.github.io/console.html?cart=vox-viewer" title="Vox Viewer">
+  <a href="https://starcade9.github.io/console.html?demo=vox-viewer" title="Vox Viewer">
     <img src="public/assets/cart-thumbs/vox-viewer.png" width="100" height="100" alt="Vox Viewer" style="margin: 2px; object-fit: cover;">
   </a>
-  <a href="https://starcade9.github.io/console.html?cart=voxel-creative" title="Voxel Creative">
+  <a href="https://starcade9.github.io/console.html?demo=voxel-creative" title="Voxel Creative">
     <img src="public/assets/cart-thumbs/voxel-creative.png" width="100" height="100" alt="Voxel Creative" style="margin: 2px; object-fit: cover;">
   </a>
-  <a href="https://starcade9.github.io/console.html?cart=voxel-creatures" title="Voxel Creatures">
+  <a href="https://starcade9.github.io/console.html?demo=voxel-creatures" title="Voxel Creatures">
     <img src="public/assets/cart-thumbs/voxel-creatures.png" width="100" height="100" alt="Voxel Creatures" style="margin: 2px; object-fit: cover;">
   </a>
-  <a href="https://starcade9.github.io/console.html?cart=voxel-terrain" title="Voxel Terrain">
+  <a href="https://starcade9.github.io/console.html?demo=voxel-terrain" title="Voxel Terrain">
     <img src="public/assets/cart-thumbs/voxel-terrain.png" width="100" height="100" alt="Voxel Terrain" style="margin: 2px; object-fit: cover;">
   </a>
-  <a href="https://starcade9.github.io/console.html?cart=vr-demo" title="Vr Demo">
+  <a href="https://starcade9.github.io/console.html?demo=vr-demo" title="Vr Demo">
     <img src="public/assets/cart-thumbs/vr-demo.png" width="100" height="100" alt="Vr Demo" style="margin: 2px; object-fit: cover;">
   </a>
-  <a href="https://starcade9.github.io/console.html?cart=vr-sword-combat" title="Vr Sword Combat">
+  <a href="https://starcade9.github.io/console.html?demo=vr-sword-combat" title="Vr Sword Combat">
     <img src="public/assets/cart-thumbs/vr-sword-combat.png" width="100" height="100" alt="Vr Sword Combat" style="margin: 2px; object-fit: cover;">
   </a>
-  <a href="https://starcade9.github.io/console.html?cart=wad-demo" title="Wad Demo">
+  <a href="https://starcade9.github.io/console.html?demo=wad-demo" title="Wad Demo">
     <img src="public/assets/cart-thumbs/wad-demo.png" width="100" height="100" alt="Wad Demo" style="margin: 2px; object-fit: cover;">
   </a>
-  <a href="https://starcade9.github.io/console.html?cart=wing-commander-space" title="Wing Commander Space">
+  <a href="https://starcade9.github.io/console.html?demo=wing-commander-space" title="Wing Commander Space">
     <img src="public/assets/cart-thumbs/wing-commander-space.png" width="100" height="100" alt="Wing Commander Space" style="margin: 2px; object-fit: cover;">
   </a>
-  <a href="https://starcade9.github.io/console.html?cart=wizardry-3d" title="Wizardry 3d">
+  <a href="https://starcade9.github.io/console.html?demo=wizardry-3d" title="Wizardry 3d">
     <img src="public/assets/cart-thumbs/wizardry-3d.png" width="100" height="100" alt="Wizardry 3d" style="margin: 2px; object-fit: cover;">
   </a>
 </div>

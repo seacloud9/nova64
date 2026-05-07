@@ -974,8 +974,8 @@
       });
 
       const urlParams = new URLSearchParams(window.location.search);
-      // `?cart=` and `?demo=` are aliases — README links use ?cart=. DO NOT
-      // drop the alias without regenerating the README/homepage demo links.
+      // TODO: rename the URL param from 'demo' to 'cart' throughout — then
+      // remove the ?cart= alias. Old bookmarks still resolve via the alias.
       const demoParam = urlParams.get('demo') || urlParams.get('cart');
       if (demoParam) {
         window.addEventListener('load', () => {

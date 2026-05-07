@@ -239,6 +239,10 @@ wsl bash -lc "cd /mnt/c/Users/brend/exp/nova64 && git add <files> && git -c core
   tree type and deterministic bend/hash metadata. Native `voxel.uploadChunk`
   expands oak, birch, spruce, jungle, and acacia shapes in C++ instead of
   sending full tree block volumes over QuickJS or drawing one generic canopy.
+- **Leaves are visually opaque in the native atlas path** — the browser registry
+  marks leaves transparent for face/light behavior, but the Three.js visual
+  reads as dense green foliage. Godot now keeps water/glass/ice on transparent
+  surfaces while rendering leaf blocks through the opaque atlas surface.
 - **Water belongs in the native chunk volume** — per-chunk transparent water
   planes caused stacked blending and scene washout. Compact-column uploads now
   fill below-sea-level air with native water blocks, while shim collision and

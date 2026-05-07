@@ -723,6 +723,44 @@ int voxel_tile_index_for_face(int block_id, bool is_top, bool is_bottom) {
     }
 }
 
+bool voxel_block_is_transparent(int block_id) {
+    switch (block_id) {
+        case 5:  // water
+        case 10: // glass
+        case 13: // ice
+        case 21: // torch
+        case 31: // fence
+        case 32: // flower
+        case 33: // tall grass
+            return true;
+        default:
+            return false;
+    }
+}
+
+bool voxel_block_is_solid(int block_id) {
+    if (block_id == 0) return false;
+    switch (block_id) {
+        case 5:  // water
+        case 21: // torch
+        case 23: // lava
+        case 32: // flower
+        case 33: // tall grass
+            return false;
+        default:
+            return true;
+    }
+}
+
+float voxel_block_opacity(int block_id) {
+    switch (block_id) {
+        case 5:  return 0.58f; // water
+        case 10: return 0.35f; // glass
+        case 13: return 0.62f; // ice
+        default: return 0.75f;
+    }
+}
+
 Vector2 voxel_tile_origin_uv(int tile_idx) {
     if (tile_idx < 0) return Vector2(0.0f, 0.0f);
     const int col = tile_idx % VOXEL_ATLAS_COLS;
@@ -748,7 +786,29 @@ void fragment() {
     vec2 atlas_uv = UV2 + fract(UV) * tile_size;
     vec4 texel = texture(atlas_tex, atlas_uv);
     ALBEDO = texel.rgb * COLOR.rgb;
-    ALPHA = texel.a;
+}
+)");
+    return voxel_shader;
+}
+
+Ref<Shader> get_voxel_transparent_chunk_shader() {
+    static Ref<Shader> voxel_shader;
+    if (voxel_shader.is_valid()) return voxel_shader;
+
+    voxel_shader.instantiate();
+    voxel_shader->set_code(R"(
+shader_type spatial;
+render_mode cull_disabled, unshaded, specular_disabled, blend_mix, depth_draw_alpha_prepass;
+
+uniform sampler2D atlas_tex : source_color, filter_nearest, repeat_enable;
+uniform vec2 tile_size = vec2(0.125, 0.25);
+uniform float opacity = 1.0;
+
+void fragment() {
+    vec2 atlas_uv = UV2 + fract(UV) * tile_size;
+    vec4 texel = texture(atlas_tex, atlas_uv);
+    ALBEDO = texel.rgb * COLOR.rgb;
+    ALPHA = texel.a * COLOR.a * opacity;
 }
 )");
     return voxel_shader;
@@ -3015,11 +3075,16 @@ Dictionary Nova64Host::_cmd_voxel_upload_chunk(const Dictionary &p) {
     // Chunk dimension along each axis for slice sizing.
     const int DIM[3] = { sx, sy, sz };
 
-    Ref<SurfaceTool> st;
-    st.instantiate();
-    st->begin(Mesh::PRIMITIVE_TRIANGLES);
+    Ref<SurfaceTool> st_opaque;
+    st_opaque.instantiate();
+    st_opaque->begin(Mesh::PRIMITIVE_TRIANGLES);
 
-    bool has_geom = false;
+    Ref<SurfaceTool> st_transparent;
+    st_transparent.instantiate();
+    st_transparent->begin(Mesh::PRIMITIVE_TRIANGLES);
+
+    bool has_opaque_geom = false;
+    bool has_transparent_geom = false;
 
     for (int fi = 0; fi < 6; ++fi) {
         const GFace &gf   = GFACES[fi];
@@ -3054,7 +3119,27 @@ Dictionary Nova64Host::_cmd_voxel_upload_chunk(const Dictionary &p) {
                     // Neighbour one step in the normal direction.
                     int nc[3] = { coords[0], coords[1], coords[2] };
                     nc[nd] += gf.n_sign;
-                    mask[u + su*v] = (blk_at(nc[0], nc[1], nc[2]) == 0) ? cur_id : 0;
+                    const int neighbor_id = blk_at(nc[0], nc[1], nc[2]);
+                    bool show_face = false;
+                    if (use_palette_colors) {
+                        show_face = neighbor_id == 0;
+                    } else {
+                        const bool cur_transparent = voxel_block_is_transparent(cur_id);
+                        if (cur_transparent) {
+                            if (neighbor_id == cur_id) {
+                                show_face = false;
+                            } else if (voxel_block_is_solid(neighbor_id) &&
+                                    !voxel_block_is_transparent(neighbor_id)) {
+                                show_face = false;
+                            } else {
+                                show_face = true;
+                            }
+                        } else {
+                            show_face = !voxel_block_is_solid(neighbor_id) ||
+                                    voxel_block_is_transparent(neighbor_id);
+                        }
+                    }
+                    mask[u + su*v] = show_face ? cur_id : 0;
                 }
             }
 
@@ -3083,9 +3168,12 @@ Dictionary Nova64Host::_cmd_voxel_upload_chunk(const Dictionary &p) {
                     // Emit quad.
                     auto it = pal.find(id);
                     Color base = (it != pal.end()) ? it->second : Color(0.5f, 0.5f, 0.5f, 1.0f);
+                    const bool transparent_face =
+                            !use_palette_colors && voxel_block_is_transparent(id);
+                    const float face_alpha = transparent_face ? voxel_block_opacity(id) : base.a;
                     Color col = use_palette_colors
                         ? Color(base.r * ao, base.g * ao, base.b * ao, base.a)
-                        : Color(ao, ao, ao, 1.0f);
+                        : Color(ao, ao, ao, face_alpha);
                     // Two CCW triangles [0,1,2] and [0,2,3].
                     // Corner positions assembled via the per-face cu[]/cv[] offset flags.
                     const float pu[2] = { (float)u0, (float)(u0+w) };
@@ -3112,6 +3200,9 @@ Dictionary Nova64Host::_cmd_voxel_upload_chunk(const Dictionary &p) {
                     const bool is_bottom = (fi == 3);
                     const int tile_idx = voxel_tile_index_for_face(id, is_top, is_bottom);
                     const Vector2 tile_uv = voxel_tile_origin_uv(tile_idx);
+                    SurfaceTool *target_st = transparent_face
+                            ? st_transparent.ptr()
+                            : st_opaque.ptr();
                     float pos[4][3] = {};
                     for (int ci = 0; ci < 4; ++ci) {
                         pos[ci][nd] = (float)plane;
@@ -3121,13 +3212,14 @@ Dictionary Nova64Host::_cmd_voxel_upload_chunk(const Dictionary &p) {
                     static const int TRI[6] = { 0,1,2, 0,2,3 };
                     for (int ti = 0; ti < 6; ++ti) {
                         const int ci = TRI[ti];
-                        st->set_color(col);
-                        st->set_normal(normal);
-                        st->set_uv(Vector2(uv_u[ci], uv_v[ci]));
-                        st->set_uv2(tile_uv);
-                        st->add_vertex(Vector3(pos[ci][0], pos[ci][1], pos[ci][2]));
+                        target_st->set_color(col);
+                        target_st->set_normal(normal);
+                        target_st->set_uv(Vector2(uv_u[ci], uv_v[ci]));
+                        target_st->set_uv2(tile_uv);
+                        target_st->add_vertex(Vector3(pos[ci][0], pos[ci][1], pos[ci][2]));
                     }
-                    has_geom = true;
+                    if (transparent_face) has_transparent_geom = true;
+                    else has_opaque_geom = true;
 
                     // Mark merged region as processed.
                     for (int dv = 0; dv < h; ++dv)
@@ -3138,26 +3230,48 @@ Dictionary Nova64Host::_cmd_voxel_upload_chunk(const Dictionary &p) {
         }
     }
 
-    if (!has_geom) {
+    if (!has_opaque_geom && !has_transparent_geom) {
         Dictionary out; out["handle"] = (int64_t)0; return out;
     }
 
-    Ref<ArrayMesh> mesh = st->commit();
+    Ref<ArrayMesh> mesh;
+    mesh.instantiate();
 
+    if (has_opaque_geom) {
+        st_opaque->commit(mesh);
+    }
+    if (has_transparent_geom) {
+        st_transparent->commit(mesh);
+    }
+
+    int surface_idx = 0;
     if (use_palette_colors) {
         Ref<ShaderMaterial> mat;
         mat.instantiate();
         mat->set_shader(get_voxel_palette_shader());
-        mesh->surface_set_material(0, mat);
+        if (has_opaque_geom) mesh->surface_set_material(surface_idx++, mat);
     } else {
         // Atlas textured material: UV carries repeat coords, UV2 carries tile origin.
-        Ref<ShaderMaterial> mat;
-        mat.instantiate();
-        mat->set_shader(get_voxel_chunk_shader());
-        mat->set_shader_parameter("atlas_tex", get_voxel_atlas_texture());
-        mat->set_shader_parameter("tile_size",
-            Vector2(1.0f / (float)VOXEL_ATLAS_COLS, 1.0f / (float)VOXEL_ATLAS_ROWS));
-        mesh->surface_set_material(0, mat);
+        Ref<Texture2D> atlas_tex = get_voxel_atlas_texture();
+        Vector2 tile_size =
+            Vector2(1.0f / (float)VOXEL_ATLAS_COLS, 1.0f / (float)VOXEL_ATLAS_ROWS);
+        if (has_opaque_geom) {
+            Ref<ShaderMaterial> mat;
+            mat.instantiate();
+            mat->set_shader(get_voxel_chunk_shader());
+            mat->set_shader_parameter("atlas_tex", atlas_tex);
+            mat->set_shader_parameter("tile_size", tile_size);
+            mesh->surface_set_material(surface_idx++, mat);
+        }
+        if (has_transparent_geom) {
+            Ref<ShaderMaterial> mat;
+            mat.instantiate();
+            mat->set_shader(get_voxel_transparent_chunk_shader());
+            mat->set_shader_parameter("atlas_tex", atlas_tex);
+            mat->set_shader_parameter("tile_size", tile_size);
+            mat->set_shader_parameter("opacity", 1.0f);
+            mesh->surface_set_material(surface_idx++, mat);
+        }
     }
 
     MeshInstance3D *mi = memnew(MeshInstance3D);

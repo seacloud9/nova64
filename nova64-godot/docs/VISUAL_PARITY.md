@@ -933,9 +933,10 @@ What landed:
   atlas shader convention, while `UV2` carries the tile origin.
 - `.vox` model coordinates now follow the Three.js `VOXLoader` transform
   orientation (`x`, `z`, `-y`) for front/back parity.
-- Godot voxel seed resolution now prefers the cart folder name as
-  `nova64-demo:<cart>` because the browser visual harness imports the voxel
-  runtime before `Nova64.loadCart()` injects `__NOVA64_CURRENT_CART_PATH`.
+- Godot voxel seed resolution now normalizes `res://carts/<cart>` to the
+  browser-style `/examples/<cart>/code.js` cart path before hashing. This
+  matches the browser `resetVoxelWorld({ restoreDefaults, cartPath })` seed
+  path instead of drifting to a `?demo=` seed.
 - Minecraft tree origins now obey the browser chunk-local placement guard
   (`x/z` local coordinates 3 through 12 only, and above sea level), preventing
   spawn-edge trees/canopies from crowding the initial camera.
@@ -946,9 +947,18 @@ What landed:
   up to the browser sea level. The Godot shim also treats water as non-solid
   for highest-block and collision queries, matching player movement expectations
   better than the old transparent overlay plane experiment.
+- Native chunk meshing now splits opaque and transparent block faces into
+  separate ArrayMesh surfaces. Water, glass, and ice use the transparent atlas
+  shader; leaves render through the opaque atlas surface so tree canopies stay
+  dense green instead of washing out against sky/fog.
+- A temporary leaf-tile diagnostic forced block id `7` to sample the known-good
+  grass tile. The same canopy geometry turned green, proving tree placement and
+  leaf block IDs were correct; the visible issue was transparent leaf material
+  treatment, not a broken tree mesher.
 - Older ignored intermediate voxel diagnostic folders were removed. The kept
   local snapshots are the documented `post-tree-edge-guard`,
-  `post-typed-tree-shapes`, and `post-native-water` checkpoints.
+  `post-typed-tree-shapes`, `post-native-water`, and `post-opaque-leaves`
+  checkpoints.
 
 Focused validation:
 
@@ -970,8 +980,8 @@ wsl bash -lc "cd /mnt/c/Users/brend/exp/nova64 && source ~/.nvm/nvm.sh && \
 Latest rebuilt native library hashes:
 
 ```text
-4963b90bb9db5321d92492fc5d8e1f707aea2e203d2524ea6b7191780ed24911  nova64-godot/godot_project/bin/libnova64.windows.template_debug.x86_64.dll
-7e43c42caab020ba3999d766e8fb9d5c4568dcb58314f21b600d50c6a30d1209  nova64-godot/godot_project/bin/libnova64.linux.template_debug.x86_64.so
+1598ad6dd17251165b7291a92a710e2cab748f1c8d1b5868501deec04fd875a6  nova64-godot/godot_project/bin/libnova64.windows.template_debug.x86_64.dll
+283df6deace175417e9116df005f43e22470495b23561500795ed2dc88d74945  nova64-godot/godot_project/bin/libnova64.linux.template_debug.x86_64.so
 ```
 
 Snapshots from the final Minecraft pass:
@@ -982,20 +992,23 @@ Snapshots from the final Minecraft pass:
 - `nova64-godot/test-results/visual-parity/voxel-diagnostics/post-native-water/browser-minecraft-demo.png`
 - `nova64-godot/test-results/visual-parity/voxel-diagnostics/post-native-water/godot-minecraft-demo.png`
 - `nova64-godot/test-results/visual-parity/voxel-diagnostics/post-native-water/report-minecraft-demo.md`
+- `nova64-godot/test-results/visual-parity/voxel-diagnostics/post-opaque-leaves/browser-minecraft-demo.png`
+- `nova64-godot/test-results/visual-parity/voxel-diagnostics/post-opaque-leaves/godot-minecraft-demo.png`
+- `nova64-godot/test-results/visual-parity/voxel-diagnostics/post-opaque-leaves/report-minecraft-demo.md`
 
 Observed state:
 
 - Godot `minecraft-demo` conformance still passes.
-- The latest report-mode screenshot diff is `92.14%`; the raw percentage is
+- The latest report-mode screenshot diff is `84.13%`; the raw percentage is
   high because the camera/fog/HUD framing still differs, but the Godot frame is
-  no longer buried in spawn-edge canopy and the native atlas is sampling the
-  intended tile details.
+  no longer buried in spawn-edge canopy and leaf canopies now sample the
+  intended green atlas tile instead of washing out through transparent sorting.
 
 Remaining visual debt:
 
 - The Godot terrain generator still uses compact column records. The tree
   silhouettes now carry browser-like type data, but can still differ at chunk
-  boundaries and under transparent leaf/fog treatment.
+  boundaries and under camera/fog differences.
 - Camera framing, fog density, and HUD scale still dominate screenshot diff.
 - Water is represented in the native block/chunk path now. Remaining water work
   is visual: material transparency/tint, shoreline blending, and making sure the

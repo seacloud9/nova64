@@ -4287,7 +4287,9 @@
   const vxEntities = [];
 
   // Compute world seed matching the browser's resolveDefaultWorldSeed().
-  // Browser uses: hashStringToSeed('nova64-demo:' + cartName) for ?demo=... URLs
+  // Browser resetWorld({ restoreDefaults: true, cartPath }) resolves the
+  // active cart path before falling back to ?demo=... URLs, so Godot must do
+  // the same once the host has exposed the cart path before shim evaluation.
   function _vxHashStringToSeed(input) {
     let hash = 2166136261;
     const text = String(input || 'nova64-voxel');
@@ -4298,20 +4300,21 @@
     return (hash >>> 0) % 1000000;
   }
   function _vxResolveDefaultSeed() {
-    // Browser api-voxel.js is imported during startup, before Nova64.loadCart()
-    // injects __NOVA64_CURRENT_CART_PATH. Under the visual harness the browser
-    // therefore falls through to ?demo=<cart>. Prefer the Godot cart folder name
-    // here so both backends generate the same terrain and biome layout.
-    const cartName = global.__nova64_cart_name;
-    if (cartName) {
-      return _vxHashStringToSeed('nova64-demo:' + cartName);
-    }
     const activeCartPath =
       global.__NOVA64_CURRENT_CART_PATH ||
       global.__nova64CurrentCartPath ||
       null;
     if (activeCartPath) {
-      return _vxHashStringToSeed('nova64-cart-path:' + activeCartPath);
+      let normalizedPath = String(activeCartPath);
+      const cartName = global.__nova64_cart_name;
+      if (cartName && normalizedPath.indexOf('res://carts/') === 0) {
+        normalizedPath = '/examples/' + cartName + '/code.js';
+      }
+      return _vxHashStringToSeed('nova64-cart-path:' + normalizedPath);
+    }
+    const cartName = global.__nova64_cart_name;
+    if (cartName) {
+      return _vxHashStringToSeed('nova64-demo:' + cartName);
     }
     return 1337; // fallback
   }

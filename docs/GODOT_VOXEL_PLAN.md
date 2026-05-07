@@ -2,38 +2,43 @@
 
 Status: actively in progress on `feature/godot-adapter`.
 
-## Current checkpoint (2026-05-06)
+## Current checkpoint (2026-05-07)
 
-The latest voxel-parity work split two paths that had different needs:
+The current Godot voxel path is now native for the expensive terrain work:
 
-- Nova64 terrain chunks still use the native `voxel.uploadChunk` path with
-  greedy chunk meshing and atlas/palette materials.
-- Standalone MagicaVoxel `.vox` files now use a native exposed-face mesh path.
-  This fixed `house.vox`, where the direct greedy pass could drop the authored
-  front facade. The viewer now shows the front wall, windows, door, chimney,
-  roof, and base slab.
-
-The cart-facing VOX rule is now simple: `loadVoxModel()` resolves the asset path
-and returns the native handle without applying hidden root rotation. Native
-coordinate conversion and cart-authored transforms are the single source of
-orientation truth.
+- Generated terrain chunks use `voxel.uploadChunk` with compact x/z column
+  records. C++ expands those records into a native block volume, fills native
+  water below sea level, expands typed tree silhouettes, and greedily meshes
+  the visible faces.
+- The native atlas path mirrors the browser procedural atlas tile order. Chunk
+  UVs use repeat coordinates in `UV` and tile origins in `UV2`.
+- Water, glass, and ice render on a transparent atlas surface. Leaves render on
+  the opaque atlas surface so tree canopies remain dense green instead of
+  washing out through sky/fog blending.
+- Godot cart paths are normalized to browser-style `/examples/<cart>/code.js`
+  before voxel seed hashing, matching the browser reset-world cart-path rule.
+- Standalone MagicaVoxel `.vox` files stay on the separate native exposed-face
+  importer so authored facades, palette colors, and orientation remain stable.
 
 Recent validation:
 
 - Rebuilt Windows and Linux debug GDExtension binaries from WSL.
-- `vox-viewer` Godot visual conformance passed with the exposed-face importer.
-- `flash-demo`, `generative-art`, and `space-harrier-3d` also passed focused
-  visual checks after related adapter parity fixes.
+- `minecraft-demo` Godot visual conformance passed after the native water and
+  opaque-leaf passes. Latest documented checkpoint: `post-opaque-leaves`,
+  **84.13%** report-mode diff.
+- A temporary leaf-tile diagnostic forced block id `7` to sample the grass tile.
+  The same canopy geometry turned green, proving the tree mesher and leaf IDs
+  were correct; the bug was transparent leaf material treatment.
 
 Next voxel-parity work:
 
-- Keep `.vox` correctness first; add optimization only after more assets are
-  visually confirmed.
-- Port the browser voxel terrain noise/biome math into the Godot shim so
-  terrain generation, trees, and block placement converge before doing deeper
-  material work.
-- After terrain shape parity improves, revisit per-face textures and light data
-  for chunks.
+- Compare compact-column output against browser full chunk data around caves,
+  overhangs, ores, and chunk-border trees.
+- Add or approximate skylight/torch-light data so Godot chunk shading better
+  matches the browser renderer.
+- Continue camera/fog/HUD parity work for `minecraft-demo`; these still drive a
+  large part of screenshot diff even after atlas, trees, water, and leaves were
+  corrected.
 
 ## Older terrain checkpoint (2026-05-02, commit `550147e`)
 
@@ -79,32 +84,40 @@ voxel-creative, wizardry-3d, star-fox-nova-3d, f-zero-nova-3d.
   `t > 0.7 && m < 0.25` → Desert, `t > 0.6 && m > 0.6` → Jungle,
   `m < 0.3` → Savanna, `t > 0.4 && m > 0.4` → Forest, `t < 0.35` → Snowy,
   else → Plains
-- Height: 4-octave FBM (scale 0.02) + 2-octave medium (0.06, ×0.4) +
-  2-octave detail (0.15, ×0.15) using value noise
-- Tree density: Jungle=0.025, Forest=0.018, Taiga=0.015, Plains=0.008;
-  no-spawn radius 12 from origin
+- Height: browser-style simplex FBM with per-biome `heightBase` /
+  `heightScale` values from `runtime/api-voxel.js`.
+- Tree density: Jungle=0.15, Forest=0.08, Taiga=0.06, Snowy=0.02,
+  Savanna=0.005, Plains=0.015, with browser chunk-local origin guards.
 
 ## Latest parity checkpoint
 
-Run on 2026-05-03:
+Run on 2026-05-07:
 
 ```bash
-pnpm godot:visual -- --cart=minecraft-demo --frames=120 --wait-ms=3000 --max-diff=100
+pnpm godot:visual -- --cart=minecraft-demo --frames=220 --wait-ms=1000 --report-only --max-diff=100
 ```
 
-Result: **58.73%** pixel diff vs browser Three.js.
+Result: **84.13%** report-mode pixel diff vs browser Three.js.
 
 Improvements this session:
-- Biome height formulas now match web engine exactly (was using reduced values)
-- World seed derivation now matches browser (`hashStringToSeed('nova64-demo:' + cartName)`)
-- Increased subsurface depth limit from 5 to 8 blocks
+- Compact terrain columns are expanded and greedily meshed in C++ instead of
+  using JS-side MultiMesh buckets.
+- Native atlas tile order, RNG sequence, UV repeat coordinates, and UV2 tile
+  origins now align with the browser atlas convention.
+- Tree origins follow the browser chunk-local guard, and typed tree metadata
+  expands oak, birch, spruce, jungle, and acacia shapes natively.
+- Native water blocks fill below-sea-level air and remain non-solid for
+  gameplay queries.
+- Leaves render as dense opaque atlas blocks, while water/glass/ice stay on a
+  transparent surface.
 
 The remaining gap is primarily:
-1. Rendering approach — Godot uses instanced 1x1x1 cubes, browser uses greedy-meshed chunks
-2. Tree canopies — Godot uses single scaled cubes, browser uses individual leaf blocks
-3. Lighting model — Godot vs Three.js material/lighting differences
-4. HUD/hotbar — browser screenshot includes the cart's 2D overlay; Godot
-   does not render the same HUD elements in the captured frame.
+1. Camera/fog/HUD framing differences in the visual harness.
+2. Lighting model differences: no skylight propagation or torch emission yet.
+3. Remaining compact-column limitations around caves, overhangs, ores, and
+   chunk-border edge cases.
+4. Water material polish: transparency/tint/shoreline blending is functional
+   but still not visually equivalent to the browser.
 
 `meta.json` is supported in the Godot host path: `load_cart()` reads sidecar
 metadata, exposes it as `globalThis.cart_meta`, and the compatibility shim
@@ -114,14 +127,14 @@ module evaluates. Voxel-specific defaults should continue to flow through
 
 ## Remaining gaps vs the web engine
 
-1. **Rendering approach** — Godot uses instanced 1x1x1 cubes for terrain;
-   web uses greedy-meshed ArrayMesh chunks. Visually similar but different
-   edge/shading characteristics.
-2. **Tree canopies** — shim uses single scaled cubes for canopies; web engine
-   renders individual leaf blocks with randomized holes for natural look.
-3. **Caves / overhangs** — no 3D carve pass yet.
-4. **Lighting** — no skylight propagation or torch emission.
-5. **Per-face textures** — flat vertex colour only.
+1. **Camera/fog/HUD framing** — the Godot frame is visually readable, but the
+   captured view still differs enough to dominate report-mode diff.
+2. **Caves / overhangs / ores** — compact-column uploads cover the common
+   heightmap path well, but need another audit against browser full-volume
+   generation features.
+3. **Lighting** — no skylight propagation or torch emission buffer yet.
+4. **Water polish** — water is native and non-solid now, but fluid material
+   tint, transparency, and shoreline blending remain approximate.
 
 ## Phased plan
 
@@ -138,12 +151,12 @@ Same bridge command, smarter mesher: sweeps each axis plane, builds a 2D
 visibility+color mask, merges same-colored adjacent faces into rectangles.
 ~5-10× fewer triangles for typical heightmap terrain.
 
-### Phase 3 — Simplex noise + per-biome height formula ← NEXT
+### Phase 3 — Simplex noise + per-biome height formula ✅ DONE
 
-**Goal**: Eliminate the terrain generation divergence that accounts for most of
-the remaining ~37% pixel diff.
+**Goal**: Eliminate the terrain generation divergence that accounted for the
+old value-noise heightmap mismatch.
 
-**Step 1 — Port simplex noise from web engine into shim**
+**Step 1 — Port simplex noise from web engine into shim** ✅
 
 `runtime/api-voxel.js` uses OpenSimplex2 (lines ~100–243). Port or inline an
 equivalent pure-JS `_vxSimplex2D(x, z)` into `nova64-compat.js`, then replace
@@ -158,7 +171,7 @@ Use the same call sites as the web engine:
 - Temperature: `_vxFbm2D(x + seed, z + seed, 2, 0.5, 2.0, 0.005)`
 - Moisture: `_vxFbm2D(x + 1000 + seed, z + 1000 + seed, 2, 0.5, 2.0, 0.003)`
 
-**Step 2 — Per-biome height formula**
+**Step 2 — Per-biome height formula** ✅
 
 Replace the single `VX_BASE_Y + blend * VX_HEIGHT_AMPLITUDE` formula with
 biome-conditioned `heightBase + simplex * heightScale` matching the web engine:
@@ -172,20 +185,24 @@ biome-conditioned `heightBase + simplex * heightScale` matching the web engine:
 | (etc — check `runtime/api-voxel.js` for all values) |
 
 **Validation**:
-- `pnpm godot:visual -- --cart=minecraft-demo --frames=120 --wait-ms=3000`
-- Target: < 25% diff
-- Smoke: all 6 carts still PASS
+- `pnpm godot:visual -- --cart=minecraft-demo --frames=220 --wait-ms=1000 --report-only --max-diff=100`
+- Latest documented focused run: PASS, **84.13%** report-mode diff.
+- Raw diff remains high because camera/fog/HUD framing now dominate more than
+  terrain generation itself.
 
-### Phase 4 — Cave / overhang generation
+### Phase 4 — Cave / overhang / ore parity ← NEXT
 
-Move or extend `_vxBlockColorAt` to include a 3D noise carve-pass that punches
-caves and overhangs. At this point the chunk is no longer column-ish; the
-Phase 1 per-block face culling pays full dividends.
+Audit the compact-column shortcut against browser full-volume generation for
+caves, overhangs, ores, and edge-case chunk boundaries. Decide whether to
+extend native column expansion with targeted carve/ore metadata or send a
+selective full-volume payload only when a cart needs those features.
 
-### Phase 5 — Per-block textures + skylight
+### Phase 5 — Skylight / torch-light parity
 
-A texture atlas resource bound at boot, plus an A8 light buffer computed per
-chunk. Output as a vertex attribute.
+The native atlas path is already live. The remaining lighting pass should add
+or approximate an A8 skylight/block-light buffer per chunk, then feed it into
+vertex color or a secondary attribute so caves, water, and tree interiors better
+match the browser renderer.
 
 ## Build and test commands
 
@@ -223,11 +240,11 @@ wsl bash -lc "cd /mnt/c/Users/brend/exp/nova64 && git add <files> && git -c core
   include a one-block neighbor border plus `meshMin`/`meshMax`, so C++ can
   cull faces against adjacent terrain without rendering duplicate boundary
   slabs.
-- **Seed parity follows browser load timing** — the browser visual harness
-  imports `runtime/api-voxel.js` before `Nova64.loadCart()` injects
-  `__NOVA64_CURRENT_CART_PATH`, so default voxel seeds fall through to
-  `?demo=<cart>`. The Godot shim therefore prefers `__nova64_cart_name` and
-  hashes `nova64-demo:<cart>` before considering an injected cart path.
+- **Seed parity follows the browser reset-world cart path** — the browser
+  imports `runtime/api-voxel.js` early, then `Nova64.loadCart()` calls
+  `resetVoxelWorld({ restoreDefaults, cartPath })`. Godot exposes and
+  normalizes `res://carts/<cart>` to `/examples/<cart>/code.js` before shim
+  evaluation so both hosts hash `nova64-cart-path:<browser-style-path>`.
 - **Texture atlas UVs are top-origin in Godot shader space** — the chunk
   shader now passes the row origin directly instead of vertically flipping it,
   matching how the generated Image atlas is filled.

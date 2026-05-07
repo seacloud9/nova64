@@ -138,24 +138,36 @@ Phase 3 Voxel Sub-Roadmap (in progress on `feature/godot-adapter`):
 The minecraft-demo cart is the primary parity benchmark. See
 `docs/GODOT_VOXEL_PLAN.md` for the full plan; current status:
 
-- [x] **Voxel API surface in shim** — all 22 cart-facing voxel functions
+- [x] **Voxel API surface in shim** — cart-facing voxel functions
       (`getVoxelBlock`, `setVoxelBlock`, `moveVoxelEntity`,
       `raycastVoxelBlock`, `spawnVoxelEntity`, etc.) implemented in JS
-      against a sparse Map + heightmap
-- [x] **Heightmap terrain** — 3-octave value-noise heights, 8 biomes
-      matching the web engine's temperature/moisture rules, scattered
-      trees with biome-aware trunk + canopy colours, water plane at
-      sea level
-- [x] **Instanced multimesh rendering** — terrain bucketed by colour
-      and uploaded as MultiMesh batches (~7-10 multimeshes total
-      regardless of voxel count); render distance now 64×64 columns
-- [ ] **Native voxel.uploadChunk command** (Phase 1 of voxel plan) —
-      C++ face-culled chunk mesher; replaces column-bucketing with
-      per-block visibility
-- [ ] **Greedy meshing in C++** — merge co-planar same-coloured faces
-- [ ] **Caves, overhangs, ores** — 3D simplex carve pass in C++
-- [ ] **Per-block textures + skylight** — texture atlas + A8 light
-      buffer per chunk
+      against sparse edits plus generated terrain queries.
+- [x] **Native `voxel.uploadChunk` command** — generated terrain now
+      uploads compact x/z column records and expands them into a native
+      block volume in C++ before meshing.
+- [x] **Greedy meshing in C++** — native chunk mesher merges co-planar
+      same-block faces and culls chunk-border faces using a one-block
+      neighbor border plus `meshMin` / `meshMax`.
+- [x] **Procedural atlas parity** — native atlas generation mirrors the
+      browser tile order and RNG stream, with UV repeat in `UV` and tile
+      origin in `UV2`.
+- [x] **Typed native trees** — compact columns carry tree type, trunk
+      height, leaf id, and bend metadata; C++ expands oak, birch, spruce,
+      jungle, and acacia silhouettes without full JS block uploads.
+- [x] **Native water blocks** — below-sea-level air now becomes native
+      water blocks. Water remains non-solid for collision/highest-block
+      queries.
+- [x] **Transparent surface split** — water/glass/ice render on a
+      transparent atlas surface while leaves stay visually opaque so
+      canopies read as dense green foliage.
+- [ ] **Caves, overhangs, ores parity pass** — audit the compact-column
+      shortcut against browser 3D carve/ore behavior and decide whether
+      to extend native expansion or reintroduce targeted full-volume data.
+- [ ] **Skylight / torch-light parity** — add or approximate light buffers
+      so chunk shading better matches the browser voxel renderer.
+- [ ] **Camera/fog/HUD parity polish** — reduce remaining `minecraft-demo`
+      screenshot drift now that block IDs, atlas sampling, trees, and
+      native water are materially closer.
 
 Scope:
 

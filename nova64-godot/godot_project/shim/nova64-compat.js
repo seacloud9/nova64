@@ -181,8 +181,23 @@
     const obj = {
       handle: rawHandle | 0,
       isMesh: true,
-      visible: true,
     };
+    // Three.js carts assign `mesh.visible = false` to hide a node. The plain
+    // JS field would never reach the host, so cubes stayed rendered (e.g.
+    // WAD enemy/item billboards would still show their fallback cubes).
+    // Forward writes through transform.set so visibility actually applies.
+    let visibleState = true;
+    Object.defineProperty(obj, 'visible', {
+      enumerable: true,
+      configurable: true,
+      get() { return visibleState; },
+      set(v) {
+        const next = !!v;
+        if (next === visibleState) return;
+        visibleState = next;
+        if (obj.handle) call('transform.set', { handle: obj.handle, visible: next });
+      },
+    });
     obj.geometry = {
       handle: 0,
       dispose: function () {},
@@ -518,8 +533,16 @@
     ensureInit();
     call('env.set', { fog: false });
   }
-  function createPointLight(color, energy, pos) {
+  function createPointLight(color, energy, rangeOrPos, maybePos) {
     ensureInit();
+    // Three.js-style call sites use (color, energy, range, pos). The shim's
+    // host bridge currently doesn't take a range, but we still accept the
+    // 4-arg form so the third arg is treated as range (and ignored on the
+    // host) instead of being mistaken for the position vector.
+    let pos = maybePos;
+    if (Array.isArray(rangeOrPos)) {
+      pos = rangeOrPos;
+    }
     const r = call('light.createPoint', {
       color: colorFromHex(typeof color === 'number' ? color : 0xffffff),
       energy: typeof energy === 'number' ? energy : 1.0,
@@ -581,6 +604,47 @@
     const h = unwrapHandle(handle);
     if (!h) return;
     call('light.setEnergy', { handle: h, energy: typeof energy === 'number' ? energy : 1.0 });
+  }
+  // Three.js-style helpers used by carts like fps-demo-3d.
+  // Destroys a light handle and frees host-side state. Falls back to
+  // energy=0 + mesh.destroy because the host bridge doesn't expose a
+  // dedicated light.destroy yet (see clearScene precedent).
+  function removeLight(handle) {
+    if (!handle) return;
+    const h = unwrapHandle(handle);
+    if (!h) return;
+    call('light.setEnergy', { handle: h, energy: 0 });
+    call('mesh.destroy', { handle: h });
+    meshes.delete(h);
+    if (handle && typeof handle === 'object') handle.handle = 0;
+  }
+  // Cart-facing combined directional-light setter:
+  //   setDirectionalLight(dir, color, intensity)
+  //   setDirectionalLight(color, intensity)            (no direction)
+  function setDirectionalLight(dirOrColor, colorOrIntensity, maybeIntensity) {
+    ensureInit();
+    let dir = null, color, intensity;
+    if (Array.isArray(dirOrColor)) {
+      dir = dirOrColor;
+      color = colorOrIntensity;
+      intensity = maybeIntensity;
+    } else {
+      color = dirOrColor;
+      intensity = colorOrIntensity;
+    }
+    if (dir) setLightDirection(dir[0], dir[1], dir[2]);
+    if (dirLightHandle && typeof color === 'number') {
+      call('light.setColor', { handle: dirLightHandle, color: colorFromHex(color) });
+    }
+    if (dirLightHandle && typeof intensity === 'number') {
+      call('light.setEnergy', { handle: dirLightHandle, energy: intensity });
+    }
+  }
+  function setPointLightPosition(handle, x, y, z) {
+    if (!handle) return;
+    const h = unwrapHandle(handle);
+    if (!h) return;
+    call('transform.set', { handle: h, position: ensureArray3(x, y, z) });
   }
 
   // ---------------- scene management -----------------------------------
@@ -1384,8 +1448,14 @@
     if (!handle) return;
     const h = unwrapHandle(handle);
     if (!h) return;
-    call('transform.set', { handle: h, visible: !!visible });
-    if (handle && typeof handle === 'object') handle.visible = !!visible;
+    // Setting `.visible` on the proxy already dispatches transform.set via
+    // its setter, so prefer that path when we have one to avoid a duplicate
+    // host call. Only fall back to a direct call for raw integer handles.
+    if (handle && typeof handle === 'object' && 'visible' in handle) {
+      handle.visible = !!visible;
+    } else {
+      call('transform.set', { handle: h, visible: !!visible });
+    }
   }
   function createAdvancedSphere(radiusOrOpts, optsOrPos, maybePos, _segments) {
     ensureInit();
@@ -6051,10 +6121,17 @@
     const r = call('host.getCapabilities', {});
     return r ? r.capabilities : { backend: 'godot' };
   };
+  // Three.js carts use engine.getCameraPosition() to billboard sprites at
+  // the camera. Mirror the shim's tracked cameraPos as a {x,y,z}-shaped
+  // object so cart code like `const p = engine.getCameraPosition(); p.x`
+  // works without throwing "not a function" every frame.
+  engine.getCameraPosition = engine.getCameraPosition || function () {
+    return { x: cameraPos[0], y: cameraPos[1], z: cameraPos[2] };
+  };
 
   const sceneNs = { createCube, createSphere, createPlane, createCylinder, createCone, createTorus, createAdvancedCube, createAdvancedSphere, createCapsule, removeMesh, destroyMesh: removeMesh, setPosition, setRotation, rotateMesh, moveMesh, setScale, getPosition, getMesh, createInstancedMesh, setInstanceTransform, setInstancePosition, setInstanceColor, finalizeInstances, setMeshVisible, setMeshOpacity: function(h, o) { setMeshVisible(h, o > 0); }, setCastShadow: function() {}, setReceiveShadow: function() {}, setFlatShading: function() {}, setPBRProperties, createLODMesh: function() { return null; }, removeLODMesh: function() {}, updateLODs: function() {}, removeInstancedMesh: removeMesh, raycastFromCamera: function() { return null; }, get3DStats: function() { return {}; }, getRenderer: function() { return null; }, getScene: function() { return null; }, getRotation: function() { return [0, 0, 0]; }, clearScene, loadModel, loadVoxModel, loadTexture, playAnimation: function() {}, updateAnimations: function() {}, engine: global.engine };
   const cameraNs = { setCameraPosition, setCameraTarget, setCameraFOV, setCameraLookAt };
-  const lightNs = { setLightDirection, setFog, clearFog, createPointLight, createSpotLight, createAmbientLight, setAmbientLight, setLightColor, setLightEnergy, createGradientSkybox, createImageSkybox };
+  const lightNs = { setLightDirection, setDirectionalLight, setFog, clearFog, createPointLight, removeLight, setPointLightPosition, createSpotLight, createAmbientLight, setAmbientLight, setLightColor, setLightEnergy, createGradientSkybox, createImageSkybox };
   const drawNs = { cls, print: novaPrint, printCentered, printRight, rect, rectfill, line, pixel, pset, circle, circfill, ellipse, ellipsefill, arc, bezier, drawRect, drawPanel, drawGlowText, drawGlowTextCentered, drawRadialGradient, drawGradient, drawProgressBar, drawHealthBar, drawPixelBorder, drawCrosshair, drawScanlines, drawNoise, drawTriangle, drawDiamond, drawStarburst, poly, rgba8, screenWidth, screenHeight, colorLerp, colorMix, hslColor, hexColor: function(hex, alpha) { return colorFromHex(hex, alpha); }, n64Palette, measureText, scrollingText, drawWave, drawPulsingText, drawCheckerboard, drawFloatingTexts, drawFloatingTexts3D, createMinimap, drawMinimap, drawSkyGradient };
   const inputNs = {
     // raw key code surface (web-style codes)

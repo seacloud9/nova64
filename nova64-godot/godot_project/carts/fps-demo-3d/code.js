@@ -16,7 +16,7 @@ const {
   setFog,
   setPointLightPosition,
 } = nova64.light;
-const { btn, key, mouseDown } = nova64.input;
+const { btn, key, keyp, mouseDown } = nova64.input;
 const { sfx } = nova64.audio;
 const { WADLoader, WADTextureManager, convertWADMap, setWallUVs, t } = nova64.data;
 const { createShake, triggerShake, updateShake } = nova64.util;
@@ -57,6 +57,12 @@ let wadLoader = null;
 let wadTexMgr = null;
 let wadMapNames = [];
 let wadMapIndex = 0;
+
+// Default WAD asset shipped with this demo. DO NOT REMOVE — this freedoom1.wad
+// is the canonical fallback IWAD that fps-demo-3d auto-loads on boot when
+// running under the Godot host. The user can still drag/drop a different WAD
+// or press 'L' to override it at runtime.
+const DEFAULT_WAD_PATH = 'res://assets/freedoom-0.13.0/freedoom-0.13.0/freedoom1.wad';
 
 // 3 maps with different layouts and enemy compositions
 const MAPS = [
@@ -208,6 +214,38 @@ export function init() {
       }
     });
   }
+
+  // Auto-load the bundled freedoom1.wad on boot (Godot host). DO NOT REMOVE.
+  tryAutoLoadDefaultWAD();
+}
+
+// Synchronous WAD auto-loader for the default freedoom1.wad shipped under
+// res://assets/freedoom-0.13.0/. Uses the Godot host bridge (nova64.wad.load)
+// when available; on browser backends without that bridge, this is a no-op
+// and the cart falls back to the built-in MAPS levels.
+function tryAutoLoadDefaultWAD() {
+  try {
+    if (!nova64.wad || typeof nova64.wad.load !== 'function') return false;
+    const w = nova64.wad.load(DEFAULT_WAD_PATH);
+    if (!w) return false;
+    wadLoader = w;
+    wadMapNames = wadLoader.getMapNames();
+    if (!wadMapNames || wadMapNames.length === 0) {
+      wadLoader = null;
+      return false;
+    }
+    wadTexMgr = new WADTextureManager(wadLoader);
+    wadTexMgr.init();
+    isWADMode = true;
+    wadMapIndex = 0;
+    return true;
+  } catch (err) {
+    console.error('Default WAD auto-load failed:', err);
+    wadLoader = null;
+    wadTexMgr = null;
+    isWADMode = false;
+    return false;
+  }
 }
 
 function cleanupLevel() {
@@ -253,6 +291,11 @@ function startGame(lvl) {
     buildWADLevel(wadMapNames[wadMapIndex]);
     return;
   }
+
+  // Non-WAD level uses the bootstrap floor/ceiling planes \u2014 make sure they
+  // are visible (they may have been hidden by a previous WAD load).
+  if (floorMesh) floorMesh.visible = true;
+  if (ceilingMesh) ceilingMesh.visible = true;
 
   const map = MAPS[lvl - 1];
   const SIZE = 4;
@@ -496,7 +539,7 @@ function enemyShoot(e, angleOffset) {
   });
 }
 
-function spawnPickup(x, y, z) {
+function spawnPickup(x, y, z, doomType) {
   let r = Math.random();
   let type, mat;
   if (r < 0.4) {
@@ -511,7 +554,34 @@ function spawnPickup(x, y, z) {
   }
 
   let m = createCube(0.6, mat.color, [x, y, z], mat);
-  entities.pickups.push({ m, x, y, z, type, life: 15 }); // 15 seconds
+
+  // WAD sprite billboard: when running a WAD map, replace the cube with a
+  // textured billboard plane that faces the camera. DO NOT REMOVE: items
+  // appearing as plain boxes is the regression the user keeps flagging.
+  let sprite = null,
+    spriteH = 0;
+  if (wadTexMgr && doomType) {
+    const spriteInfo = wadTexMgr.getSpriteTexture(doomType);
+    if (spriteInfo) {
+      const sc = 1 / 20;
+      spriteH = spriteInfo.height * sc;
+      const sprW = spriteInfo.width * sc;
+      sprite = createPlane(sprW, spriteH, 0xffffff, [x, spriteH / 2, z]);
+      engine.setMeshMaterial(
+        sprite,
+        engine.createMaterial('basic', {
+          map: spriteInfo.texture,
+          transparent: true,
+          alphaTest: 0.1,
+          side: 'double',
+        })
+      );
+      // Hide the placeholder cube once we have the real sprite.
+      getMesh(m).visible = false;
+    }
+  }
+
+  entities.pickups.push({ m, sprite, spriteH, x, y, z, type, life: 15 }); // 15 seconds
 }
 
 // ── WAD File Loading ──
@@ -544,6 +614,13 @@ async function loadWADFile(file) {
 function buildWADLevel(mapName) {
   const mapData = wadLoader.getMap(mapName);
   if (!mapData) return;
+
+  // Hide the small non-WAD floor/ceiling so they don't z-fight with the
+  // WAD floor at y=0 (cube blink) or stretch the dummy ceiling material.
+  // DO NOT REMOVE: the WAD level uses its own 400×400 floor and the WAD
+  // sectors handle ceilings, so the bootstrap planes must be hidden.
+  if (floorMesh) floorMesh.visible = false;
+  if (ceilingMesh) ceilingMesh.visible = false;
 
   const converted = convertWADMap(mapData);
   const accentColors = [0x00aaff, 0xff6600, 0xcc00ff, 0x00ff88, 0xff0066, 0xffaa00];
@@ -620,7 +697,7 @@ function buildWADLevel(mapName) {
 
   // Spawn pickups from WAD items
   for (const item of converted.items) {
-    spawnPickup(item.x, 1, item.z);
+    spawnPickup(item.x, 1, item.z, item.doomType);
   }
 
   // Player start — set Y to the sector floor height the player starts on
@@ -747,6 +824,39 @@ export function update(dt) {
   }
 
   if (gameState !== 'playing') {
+    // Poll start/restart input here so the cart works on hosts that don't
+    // dispatch DOM events (e.g. the Godot QuickJS bridge). The mousedown
+    // document listener above only fires in browsers; without this poll,
+    // pressing Enter / Space / clicking on Godot would do nothing and the
+    // start screen would stick forever (looks like "the WAD didn't load").
+    if (gameState === 'start' || gameState === 'gameover' || gameState === 'victory') {
+      // Map picker on the start screen — Left/Right (or A/D) cycle through
+      // the loaded WAD's maps. DO NOT REMOVE: the user explicitly relies on
+      // being able to choose which map to play. Note: btn() takes an INT
+      // index; passing a string like btn('A') collapses to btn(0)=ArrowLeft
+      // which would trigger startGame on every Left press — do not regress.
+      let pickerConsumed = false;
+      if (gameState === 'start' && isWADMode && wadMapNames.length > 1) {
+        const prev = keyp('ArrowLeft') || keyp('KeyA');
+        const next = keyp('ArrowRight') || keyp('KeyD');
+        if (prev) {
+          wadMapIndex = (wadMapIndex - 1 + wadMapNames.length) % wadMapNames.length;
+          pickerConsumed = true;
+        }
+        if (next) {
+          wadMapIndex = (wadMapIndex + 1) % wadMapNames.length;
+          pickerConsumed = true;
+        }
+      }
+      // Start triggers — use real key codes / integer btn indices.
+      // btn(4) = KeyZ (action A), btn(12) = Enter, btn(13) = Space.
+      if (!pickerConsumed && (
+        mouseDown() || key('Space') || key('Enter') || key('Return') ||
+        btn(4) || btn(12) || btn(13)
+      )) {
+        startGame(1);
+      }
+    }
     let r = 40;
     setCameraPosition(Math.sin(gameTime * 0.3) * r, 30, Math.cos(gameTime * 0.3) * r);
     setCameraTarget(0, 0, 0);
@@ -815,7 +925,9 @@ export function update(dt) {
   setCameraFOV(isSprinting ? 95 : 85);
 
   // ── Shooting ──
-  if (mouseDown() || key('Space') || btn('A')) {
+  // btn(4) = KeyZ (action A). Do NOT pass a string — 'A'|0 collapses to 0
+  // (ArrowLeft) and shoots when the player tries to strafe left.
+  if (mouseDown() || key('Space') || btn(4)) {
     shoot();
   }
 
@@ -1012,8 +1124,16 @@ export function update(dt) {
     let p = entities.pickups[i];
     p.life -= dt;
     let py = p.y + Math.sin(gameTime * 3 + i) * 0.3;
-    setPosition(p.m, p.x, py, p.z);
-    setRotation(p.m, 0, gameTime * 2, 0);
+    if (p.sprite) {
+      // Billboard the WAD sprite toward the camera; don't bob the cube
+      // (which is hidden) or rotate it (the texture wouldn't read).
+      setPosition(p.sprite, p.x, p.spriteH / 2 + py - p.y, p.z);
+      const camPos = engine.getCameraPosition();
+      setRotation(p.sprite, 0, Math.atan2(camPos.x - p.x, camPos.z - p.z), 0);
+    } else {
+      setPosition(p.m, p.x, py, p.z);
+      setRotation(p.m, 0, gameTime * 2, 0);
+    }
 
     if (Math.hypot(player.x - p.x, player.z - p.z) < 2.0) {
       let picked = false;
@@ -1032,12 +1152,14 @@ export function update(dt) {
       }
       if (picked) {
         destroyMesh(p.m);
+        if (p.sprite) destroyMesh(p.sprite);
         entities.pickups.splice(i, 1);
         continue;
       }
     }
     if (p.life <= 0) {
       destroyMesh(p.m);
+      if (p.sprite) destroyMesh(p.sprite);
       entities.pickups.splice(i, 1);
     }
   }
@@ -1118,8 +1240,11 @@ function drawStartScreen() {
   // Game info + WAD status
   if (isWADMode) {
     printCentered(`WAD LOADED: ${wadMapNames.length} MAPS`, W / 2, 233, rgba8(0, 255, 100, 255));
-    printCentered(`STARTING: ${wadMapNames[wadMapIndex]}`, W / 2, 255, rgba8(255, 170, 0, 200));
-    printCentered('R - Return to original levels', W / 2, 278, rgba8(120, 120, 120, 200));
+    // Map selector — left/right arrows cycle. Show ◀ NAME ▶ so it's obvious.
+    const sel = wadMapNames[wadMapIndex] || '?';
+    printCentered(`< ${sel} >`, W / 2, 255, rgba8(255, 170, 0, 255));
+    printCentered('LEFT / RIGHT - Pick map', W / 2, 273, rgba8(180, 180, 180, 220));
+    printCentered('R - Return to original levels', W / 2, 290, rgba8(120, 120, 120, 200));
   } else {
     printCentered(
       '3 LEVELS  |  4 ENEMY TYPES  |  BOSS FIGHTS',

@@ -14,8 +14,20 @@ All notable changes to Nova64 are documented here.
     00–10 conformance series and the standard 3D/UI/particle demos.
   - `fps-demo-3d` ships a Godot-side WAD start-screen map picker
     that loads `freedoom1.wad` through `nova64.wad.load()`
-    (Up/Down/W/S to select, Enter/Space to start, Esc returns to the
-    picker from gameplay).
+    (Left/Right or A/D to select a map, Enter/Space/click to start).
+    Fixes shipped alongside the picker:
+    - Mesh proxy `.visible = false` now dispatches to the host
+      (`nova64-compat.js`), so WAD enemy/pickup billboards no longer
+      show the placeholder cube behind them.
+    - `buildWADLevel()` hides the bootstrap floor/ceiling planes so
+      they no longer z-fight with the WAD floor (the "blink") or
+      stretch a dummy material across the WAD ceiling.
+    - `spawnPickup()` accepts a `doomType` and creates a textured
+      WAD sprite billboard for items, matching enemy rendering.
+    - `btn()` calls in the cart now use proper integer indices —
+      `btn('A')` was being coerced to `btn(0)` (= `ArrowLeft`) and
+      both started the game on the picker and fired the gun on
+      strafe-left.
   - Outstanding work: WAD wall/flat/sprite/sector-light parity,
     desktop/mobile export proofs, and host-contract docs. Tracked in
     [ROADMAP.md](ROADMAP.md) Phase 3 → *WAD Sub-Roadmap*. **WAD

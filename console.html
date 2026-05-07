@@ -974,7 +974,9 @@
       });
 
       const urlParams = new URLSearchParams(window.location.search);
-      const demoParam = urlParams.get('demo');
+      // `?cart=` and `?demo=` are aliases — README links use ?cart=. DO NOT
+      // drop the alias without regenerating the README/homepage demo links.
+      const demoParam = urlParams.get('demo') || urlParams.get('cart');
       if (demoParam) {
         window.addEventListener('load', () => {
           const select = document.getElementById('cart');

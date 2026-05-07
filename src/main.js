@@ -544,7 +544,10 @@ attachUI();
 const urlParams = new URLSearchParams(window.location.search);
 const gameParam = urlParams.get('game');
 const gamePathParam = urlParams.get('path'); // Allow direct path parameter
-const demoParam = urlParams.get('demo'); // Also handle ?demo= from console.html links
+// `?cart=` and `?demo=` are aliases. README/index links use `?cart=` so it
+// must keep working in production — DO NOT REMOVE without updating the
+// generated demo links in README.md and the homepage.
+const demoParam = urlParams.get('demo') || urlParams.get('cart');
 const studioMode = urlParams.get('studio') === '1'; // Game Studio embeds console.html?studio=1
 
 // Map game IDs to their paths

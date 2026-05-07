@@ -912,7 +912,7 @@ Remaining visual debt:
 - Water should move into the native chunk/block path instead of returning as
   stacked transparent overlay planes.
 
-## Voxel atlas and Minecraft parity checkpoint
+## Voxel atlas, typed trees, and Minecraft parity checkpoint
 
 This checkpoint tightened the native Godot voxel path after the first native
 chunk pass. The focus was Minecraft/voxel visual parity rather than adding new
@@ -937,6 +937,12 @@ What landed:
 - Minecraft tree origins now obey the browser chunk-local placement guard
   (`x/z` local coordinates 3 through 12 only, and above sea level), preventing
   spawn-edge trees/canopies from crowding the initial camera.
+- The compact-column terrain payload now carries tree type and deterministic
+  shape metadata, and native `voxel.uploadChunk` expands oak, birch, spruce,
+  jungle, and acacia silhouettes instead of a single generic canopy blob.
+- Older ignored intermediate voxel diagnostic folders were removed. The kept
+  local snapshots are the documented `post-tree-edge-guard` checkpoint and the
+  latest `post-typed-tree-shapes` pass.
 
 Focused validation:
 
@@ -955,25 +961,32 @@ wsl bash -lc "cd /mnt/c/Users/brend/exp/nova64 && source ~/.nvm/nvm.sh && \
   --report-only --max-diff=100"
 ```
 
+Latest rebuilt native library hashes:
+
+```text
+dc4931ba4ab0104a0060560567c96950c1af216212343b4b5ce7b0524e0a1e51  nova64-godot/godot_project/bin/libnova64.windows.template_debug.x86_64.dll
+580ab6cf9a7cc0b68143cc1233f04c315187284c7475d9e0568af71087930c00  nova64-godot/godot_project/bin/libnova64.linux.template_debug.x86_64.so
+```
+
 Snapshots from the final Minecraft pass:
 
-- `nova64-godot/test-results/visual-parity/voxel-diagnostics/post-tree-edge-guard/browser-minecraft-demo.png`
-- `nova64-godot/test-results/visual-parity/voxel-diagnostics/post-tree-edge-guard/godot-minecraft-demo.png`
-- `nova64-godot/test-results/visual-parity/voxel-diagnostics/post-tree-edge-guard/report-minecraft-demo.md`
+- `nova64-godot/test-results/visual-parity/voxel-diagnostics/post-typed-tree-shapes/browser-minecraft-demo.png`
+- `nova64-godot/test-results/visual-parity/voxel-diagnostics/post-typed-tree-shapes/godot-minecraft-demo.png`
+- `nova64-godot/test-results/visual-parity/voxel-diagnostics/post-typed-tree-shapes/report-minecraft-demo.md`
 
 Observed state:
 
 - Godot `minecraft-demo` conformance still passes.
-- The latest report-mode screenshot diff is `92.46%`; the raw percentage is
+- The latest report-mode screenshot diff is `92.14%`; the raw percentage is
   high because the camera/fog/HUD framing still differs, but the Godot frame is
   no longer buried in spawn-edge canopy and the native atlas is sampling the
   intended tile details.
 
 Remaining visual debt:
 
-- The Godot terrain generator still uses compact column records instead of the
-  browser's full per-block chunk construction, so tree silhouettes and some
-  exposed canopy details remain approximate.
+- The Godot terrain generator still uses compact column records. The tree
+  silhouettes now carry browser-like type data, but can still differ at chunk
+  boundaries and under transparent leaf/fog treatment.
 - Camera framing, fog density, and HUD scale still dominate screenshot diff.
 - Water should be represented in the native block/chunk path before treating
   Minecraft parity as closed.

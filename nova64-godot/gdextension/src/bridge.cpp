@@ -2822,6 +2822,13 @@ Dictionary Nova64Host::_cmd_voxel_upload_chunk(const Dictionary &p) {
             if (lx < 0 || lx >= sx || ly < 0 || ly >= sy || lz < 0 || lz >= sz) return;
             blk[lx + sx * ly + sx * sy * lz] = (uint8_t)std::clamp(id, 0, 255);
         };
+        auto get_blk = [&](int lx, int ly, int lz) -> int {
+            if (lx < 0 || lx >= sx || ly < 0 || ly >= sy || lz < 0 || lz >= sz) return 0;
+            return blk[lx + sx * ly + sx * sy * lz];
+        };
+        auto set_if_air = [&](int lx, int ly, int lz, int id) {
+            if (get_blk(lx, ly, lz) == 0) set_blk(lx, ly, lz, id);
+        };
 
         for (int lz = 0; lz < sz; ++lz) {
             for (int lx = 0; lx < sx; ++lx) {
@@ -2840,31 +2847,93 @@ Dictionary Nova64Host::_cmd_voxel_upload_chunk(const Dictionary &p) {
                     }
                     set_blk(lx, ly, lz, id);
                 }
-
-                const int trunk_h = col_at(lx, lz, 3);
-                if (trunk_h > 0 && height >= 0) {
-                    for (int ty = 1; ty <= trunk_h; ++ty) {
-                        set_blk(lx, height + ty, lz, 6);
-                    }
-                }
             }
         }
 
-        // Leaves need to see neighboring tree origins, so generate them after
-        // every trunk column exists.
+        // Trees are expanded natively from compact column metadata. Keep this
+        // shape logic aligned with runtime/api-voxel.js generateChunkTerrain()
+        // while avoiding a full sx*sy*sz JS block upload across the bridge.
         for (int tz = 0; tz < sz; ++tz) {
             for (int tx = 0; tx < sx; ++tx) {
                 const int th = col_at(tx, tz, 0);
                 const int trunk_h = col_at(tx, tz, 3);
                 if (trunk_h <= 0) continue;
-                const int canopy_r = std::max(1, col_at(tx, tz, 4));
+                const int tree_type = std::max(1, col_at(tx, tz, 4));
                 const int leaf_id = std::max(1, col_at(tx, tz, 5));
-                const int canopy_y = th + trunk_h + 1;
-                for (int dz = -canopy_r; dz <= canopy_r; ++dz) {
-                    for (int dx = -canopy_r; dx <= canopy_r; ++dx) {
-                        for (int dy = 0; dy <= 2; ++dy) {
-                            if (std::abs(dx) + std::abs(dz) + dy > canopy_r + 1) continue;
-                            set_blk(tx + dx, canopy_y + dy, tz + dz, leaf_id);
+                const int bend_dir = col_at(tx, tz, 6) < 0 ? -1 : 1;
+                const int base_y = th + 1;
+
+                if (tree_type == 3) { // spruce
+                    for (int i = 0; i < trunk_h; ++i) set_blk(tx, base_y + i, tz, 6);
+                    for (int layer = 0; layer < trunk_h - 2; ++layer) {
+                        const int ly = base_y + 2 + layer;
+                        const int r = std::max(1, (trunk_h - 2 - layer) / 2);
+                        for (int dz = -r; dz <= r; ++dz) {
+                            for (int dx = -r; dx <= r; ++dx) {
+                                if (dx == 0 && dz == 0) continue;
+                                if (std::abs(dx) + std::abs(dz) <= r + 1) {
+                                    set_if_air(tx + dx, ly, tz + dz, leaf_id);
+                                }
+                            }
+                        }
+                    }
+                    set_if_air(tx, base_y + trunk_h, tz, leaf_id);
+                    set_if_air(tx, base_y + trunk_h + 1, tz, leaf_id);
+                } else if (tree_type == 2) { // birch
+                    for (int i = 0; i < trunk_h; ++i) set_blk(tx, base_y + i, tz, 6);
+                    const int leaf_y = base_y + trunk_h;
+                    for (int dz = -2; dz <= 2; ++dz) {
+                        for (int dy = -1; dy <= 2; ++dy) {
+                            for (int dx = -2; dx <= 2; ++dx) {
+                                const int dist = dx * dx + dy * dy + dz * dz;
+                                if (dist <= 5) set_if_air(tx + dx, leaf_y + dy, tz + dz, leaf_id);
+                            }
+                        }
+                    }
+                } else if (tree_type == 4) { // jungle
+                    for (int i = 0; i < trunk_h; ++i) set_blk(tx, base_y + i, tz, 6);
+                    for (int dz = -1; dz <= 1; ++dz) {
+                        for (int dx = -1; dx <= 1; ++dx) {
+                            if ((dx != 0 || dz != 0) && std::abs(dx) + std::abs(dz) < 2) {
+                                set_blk(tx + dx, base_y, tz + dz, 6);
+                                set_blk(tx + dx, base_y + 1, tz + dz, 6);
+                            }
+                        }
+                    }
+                    const int leaf_y = base_y + trunk_h;
+                    for (int dz = -3; dz <= 3; ++dz) {
+                        for (int dy = -2; dy <= 2; ++dy) {
+                            for (int dx = -3; dx <= 3; ++dx) {
+                                const int dist = dx * dx + dy * dy * 2 + dz * dz;
+                                if (dist <= 12) set_if_air(tx + dx, leaf_y + dy, tz + dz, leaf_id);
+                            }
+                        }
+                    }
+                } else if (tree_type == 5) { // acacia
+                    int bent_x = tx;
+                    for (int i = 0; i < trunk_h; ++i) {
+                        set_blk(bent_x, base_y + i, tz, 6);
+                        if (i == trunk_h / 2) bent_x += bend_dir;
+                    }
+                    const int leaf_y = base_y + trunk_h;
+                    for (int dz = -3; dz <= 3; ++dz) {
+                        for (int dx = -3; dx <= 3; ++dx) {
+                            if (dx * dx + dz * dz <= 10) {
+                                set_if_air(bent_x + dx, leaf_y, tz + dz, leaf_id);
+                                set_if_air(bent_x + dx, leaf_y + 1, tz + dz, leaf_id);
+                            }
+                        }
+                    }
+                } else { // oak/default
+                    for (int i = 0; i < trunk_h; ++i) set_blk(tx, base_y + i, tz, 6);
+                    const int leaf_y = base_y + trunk_h;
+                    for (int dz = -2; dz <= 2; ++dz) {
+                        for (int dy = -2; dy <= 2; ++dy) {
+                            for (int dx = -2; dx <= 2; ++dx) {
+                                if (std::abs(dx) + std::abs(dy) + std::abs(dz) < 4) {
+                                    set_if_air(tx + dx, leaf_y + dy, tz + dz, leaf_id);
+                                }
+                            }
                         }
                     }
                 }

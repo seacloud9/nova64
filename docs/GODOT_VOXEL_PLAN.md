@@ -235,6 +235,10 @@ wsl bash -lc "cd /mnt/c/Users/brend/exp/nova64 && git add <files> && git -c core
   only originate inside local chunk coordinates `3..12` and above sea level.
   The Godot compact-column path mirrors that guard so spawn-edge canopies do
   not appear where the browser would reject the tree.
+- **Tree silhouettes stay native but typed** — compact columns now include
+  tree type and deterministic bend/hash metadata. Native `voxel.uploadChunk`
+  expands oak, birch, spruce, jungle, and acacia shapes in C++ instead of
+  sending full tree block volumes over QuickJS or drawing one generic canopy.
 - **Temporary water planes stay off by default** — per-chunk transparent water
   planes caused stacked blending and scene washout. Water should return as
   native chunk/block rendering when the fluid pass lands.

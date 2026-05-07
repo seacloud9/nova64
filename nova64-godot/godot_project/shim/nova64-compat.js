@@ -4585,6 +4585,14 @@
     if (biome === 'Plains') return 0.015;
     return 0.0;
   }
+  function _vxTreeTypeFor(biome) {
+    // 1=oak, 2=birch, 3=spruce, 4=jungle, 5=acacia.
+    if (biome === 'Frozen Tundra' || biome === 'Taiga' || biome === 'Snowy Hills') return 3;
+    if (biome === 'Jungle') return 4;
+    if (biome === 'Desert' || biome === 'Savanna') return 5;
+    if (biome === 'Forest') return 2;
+    return 1;
+  }
   function _vxTreeRoll(x, z) {
     return (_vxNoise.noise2D((x | 0) * 0.7, (z | 0) * 0.7) + 1.0) * 0.5;
   }
@@ -4598,6 +4606,33 @@
     const lx = _vxChunkLocalCoord(x | 0);
     const lz = _vxChunkLocalCoord(z | 0);
     return lx > 2 && lx < VX_CHUNK_SIZE - 3 && lz > 2 && lz < VX_CHUNK_SIZE - 3;
+  }
+  function _vxTreeShapeHash(x, z) {
+    const xi = x | 0;
+    const zi = z | 0;
+    const lx = _vxChunkLocalCoord(xi);
+    const lz = _vxChunkLocalCoord(zi);
+    const baseX = xi - lx;
+    const baseZ = zi - lz;
+    return _vxNoise.noise2D(lx * 7.1 + baseX, lz * 13.3 + baseZ);
+  }
+  function _vxTreeInfoAt(x, z) {
+    if (vxConfig.enableTrees === false) return null;
+    const xi = x | 0;
+    const zi = z | 0;
+    const height = _vxHeightAtCached(xi, zi);
+    if (height <= VX_SEA_Y || !_vxTreePlacementAllowedAt(xi, zi)) return null;
+    const biome = _vxBiomeAtCached(xi, zi);
+    if (!_vxTreeAllowed(biome) || _vxTreeRoll(xi, zi) >= _vxTreeDensity(biome)) return null;
+    const type = _vxTreeTypeFor(biome);
+    const hash = _vxTreeShapeHash(xi, zi);
+    const absHash = Math.abs(hash);
+    let trunkH = 4 + Math.floor(absHash * 3);
+    if (type === 2) trunkH = 5 + Math.floor(absHash * 2);
+    else if (type === 3) trunkH = 6 + Math.floor(absHash * 4);
+    else if (type === 4) trunkH = 8 + Math.floor(absHash * 6);
+    else if (type === 5) trunkH = 4 + Math.floor(absHash * 3);
+    return { height, type, trunkH, bendDir: hash > 0 ? 1 : -1 };
   }
 
   function _vxHeightAt(x, z) {
@@ -4667,47 +4702,59 @@
 
     if (wy < VX_SEA_Y && wy >= height) return 0; // water plane handles water surface in Godot
 
-    // --- above terrain: trees ---
-    // Trunk at exactly (wx, wz)
-    const h2 = _vxHeightAtCached(wx, wz);
-    if (vxConfig.enableTrees !== false && h2 > VX_SEA_Y && _vxTreePlacementAllowedAt(wx, wz)) {
-      const biome2 = _vxBiomeAtCached(wx, wz);
-      if (_vxTreeAllowed(biome2)) {
-        const td = _vxTreeDensity(biome2);
-        if (_vxTreeRoll(wx, wz) < td) {
-          let baseH = 4, varH = 2;
-          if (biome2 === 'Jungle') { baseH = 6; varH = 4; }
-          else if (biome2 === 'Taiga') { baseH = 5; varH = 3; }
-          const trunkH = baseH + Math.floor(_vxHash2(wx, wz, vxConfig.seed + 53) * varH);
-          if (wy >= h2 + 1 && wy <= h2 + trunkH) return 6; // WOOD
-        }
-      }
-    }
+    // --- above terrain: browser-like tree blocks ---
+    // Check nearby tree origins because canopies and acacia bends can extend
+    // away from their trunk origin.
+    for (let dz = -4; dz <= 4; dz++) {
+      for (let dx = -4; dx <= 4; dx++) {
+        const tx = wx + dx;
+        const tz = wz + dz;
+        const info = _vxTreeInfoAt(tx, tz);
+        if (!info) continue;
+        const baseY = info.height + 1;
+        const relX = wx - tx;
+        const relZ = wz - tz;
+        const relY = wy - baseY;
 
-    // Canopy leaves originating from any tree within max canopy radius
-    const MAX_CANOPY_R = 3;
-    for (let dx = -MAX_CANOPY_R; dx <= MAX_CANOPY_R; dx++) {
-      for (let dz = -MAX_CANOPY_R; dz <= MAX_CANOPY_R; dz++) {
-        const tx = wx + dx, tz = wz + dz;
-        const th = _vxHeightAtCached(tx, tz);
-        if (th <= VX_SEA_Y || !_vxTreePlacementAllowedAt(tx, tz)) continue;
-        const tb = _vxBiomeAtCached(tx, tz);
-        if (!_vxTreeAllowed(tb)) continue;
-        if (vxConfig.enableTrees === false || !(_vxTreeRoll(tx, tz) < _vxTreeDensity(tb))) continue;
-        let baseH = 4, varH = 2;
-        if (tb === 'Jungle') { baseH = 6; varH = 4; }
-        else if (tb === 'Taiga') { baseH = 5; varH = 3; }
-        const trunkH = baseH + Math.floor(_vxHash2(tx, tz, vxConfig.seed + 53) * varH);
-        const canopyY = th + trunkH + 1;
-        let canopyR = 2;
-        if (tb === 'Taiga') canopyR = 1;
-        else if (tb === 'Savanna') canopyR = 3;
-        const lx = wx - tx, lz = wz - tz, ly = wy - canopyY;
-        if (lx < -canopyR || lx > canopyR || lz < -canopyR || lz > canopyR) continue;
-        if (ly < 0 || ly > 2) continue;
-        if (Math.abs(lx) + Math.abs(lz) + ly > canopyR + 1) continue;
-        if (_vxHash2(wx, wz, vxConfig.seed + ly + 99) > 0.75) continue;
-        return 7; // LEAVES
+        if (info.type === 3) { // spruce
+          if (relX === 0 && relZ === 0 && relY >= 0 && relY < info.trunkH) return 6;
+          for (let layer = 0; layer < info.trunkH - 2; layer++) {
+            const ly = 2 + layer;
+            const r = Math.max(1, Math.floor((info.trunkH - 2 - layer) / 2));
+            if (relY === ly && !(relX === 0 && relZ === 0) && Math.abs(relX) <= r && Math.abs(relZ) <= r &&
+                Math.abs(relX) + Math.abs(relZ) <= r + 1) return 7;
+          }
+          if (relX === 0 && relZ === 0 && (relY === info.trunkH || relY === info.trunkH + 1)) return 7;
+        } else if (info.type === 2) { // birch
+          if (relX === 0 && relZ === 0 && relY >= 0 && relY < info.trunkH) return 6;
+          const ly = relY - info.trunkH;
+          if (relX >= -2 && relX <= 2 && relZ >= -2 && relZ <= 2 && ly >= -1 && ly <= 2 &&
+              relX * relX + ly * ly + relZ * relZ <= 5) return 7;
+        } else if (info.type === 4) { // jungle
+          if (relX === 0 && relZ === 0 && relY >= 0 && relY < info.trunkH) return 6;
+          if ((relX !== 0 || relZ !== 0) && Math.abs(relX) <= 1 && Math.abs(relZ) <= 1 &&
+              Math.abs(relX) + Math.abs(relZ) < 2 && (relY === 0 || relY === 1)) return 6;
+          const ly = relY - info.trunkH;
+          if (relX >= -3 && relX <= 3 && relZ >= -3 && relZ <= 3 && ly >= -2 && ly <= 2 &&
+              relX * relX + ly * ly * 2 + relZ * relZ <= 12) return 7;
+        } else if (info.type === 5) { // acacia
+          let bentX = 0;
+          for (let i = 0; i < info.trunkH; i++) {
+            if (relX === bentX && relZ === 0 && relY === i) return 6;
+            if (i === Math.floor(info.trunkH / 2)) bentX += info.bendDir;
+          }
+          const ly = relY - info.trunkH;
+          if ((ly === 0 || ly === 1) && relZ >= -3 && relZ <= 3 &&
+              wx - (tx + bentX) >= -3 && wx - (tx + bentX) <= 3) {
+            const leafX = wx - (tx + bentX);
+            if (leafX * leafX + relZ * relZ <= 10) return 7;
+          }
+        } else { // oak/default
+          if (relX === 0 && relZ === 0 && relY >= 0 && relY < info.trunkH) return 6;
+          const ly = relY - info.trunkH;
+          if (relX >= -2 && relX <= 2 && relZ >= -2 && relZ <= 2 && ly >= -2 && ly <= 2 &&
+              Math.abs(relX) + Math.abs(ly) + Math.abs(relZ) < 4) return 7;
+        }
       }
     }
 
@@ -4820,7 +4867,7 @@
     // the hot path off the QuickJS bridge; C++ expands these columns into a
     // block volume before greedy meshing.
     const paddedSize = VX_CHUNK_SIZE + 2;
-    const columnStride = 6; // height, surfaceId, subId, trunkH, canopyR, leafId
+    const columnStride = 7; // height, surfaceId, subId, trunkH, treeType, leafId, bendDir
     const columns = new Array(paddedSize * paddedSize * columnStride);
     let write = 0;
     let hasWaterSurface = false;
@@ -4832,24 +4879,16 @@
         const biome = _vxBiomeAtCached(wx, wz);
         const surface = _vxSurfaceFor(biome);
         const surfaceId = height < VX_SEA_Y ? (height >= VX_SEA_Y - 1 ? surface.id : 4) : surface.id;
-        let trunkH = 0;
-        let canopyR = 2;
-        if (vxConfig.enableTrees !== false && height > VX_SEA_Y && _vxTreePlacementAllowedAt(wx, wz) && _vxTreeAllowed(biome) &&
-            _vxTreeRoll(wx, wz) < _vxTreeDensity(biome)) {
-          let baseH = 4, varH = 2;
-          if (biome === 'Jungle') { baseH = 6; varH = 4; }
-          else if (biome === 'Taiga') { baseH = 5; varH = 3; }
-          trunkH = baseH + Math.floor(_vxHash2(wx, wz, vxConfig.seed + 53) * varH);
-          if (biome === 'Taiga') canopyR = 1;
-          else if (biome === 'Savanna') canopyR = 3;
-        }
+        const treeInfo = _vxTreeInfoAt(wx, wz);
+        const trunkH = treeInfo ? treeInfo.trunkH : 0;
 
         columns[write++] = height;
         columns[write++] = surfaceId;
         columns[write++] = 2; // dirt subsurface, matching _vxBlockIdAt()
         columns[write++] = trunkH;
-        columns[write++] = canopyR;
+        columns[write++] = treeInfo ? treeInfo.type : 0;
         columns[write++] = 7; // leaves
+        columns[write++] = treeInfo ? treeInfo.bendDir : 0;
 
         if (!hasWaterSurface &&
             lx > 0 && lx <= VX_CHUNK_SIZE && lz > 0 && lz <= VX_CHUNK_SIZE &&

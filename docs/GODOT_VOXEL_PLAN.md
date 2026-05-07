@@ -239,9 +239,10 @@ wsl bash -lc "cd /mnt/c/Users/brend/exp/nova64 && git add <files> && git -c core
   tree type and deterministic bend/hash metadata. Native `voxel.uploadChunk`
   expands oak, birch, spruce, jungle, and acacia shapes in C++ instead of
   sending full tree block volumes over QuickJS or drawing one generic canopy.
-- **Temporary water planes stay off by default** — per-chunk transparent water
-  planes caused stacked blending and scene washout. Water should return as
-  native chunk/block rendering when the fluid pass lands.
+- **Water belongs in the native chunk volume** — per-chunk transparent water
+  planes caused stacked blending and scene washout. Compact-column uploads now
+  fill below-sea-level air with native water blocks, while shim collision and
+  highest-block queries keep water non-solid.
 - **Heightmap stays in JS for Phase 1** — keeps the parity contract
   small (only one new bridge command) and makes the mesher easy to
   unit-test by feeding it a known PackedByteArray.

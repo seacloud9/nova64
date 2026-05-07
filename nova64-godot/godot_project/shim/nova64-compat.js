@@ -4700,7 +4700,7 @@
       return 3; // STONE
     }
 
-    if (wy < VX_SEA_Y && wy >= height) return 0; // water plane handles water surface in Godot
+    if (wy < VX_SEA_Y && wy > height) return VX_BLOCK_TYPES.WATER;
 
     // --- above terrain: browser-like tree blocks ---
     // Check nearby tree origins because canopies and acacia bends can extend
@@ -5030,7 +5030,8 @@
     for (let y = maxY; y > baseH; y--) {
       const edit = vxBlocks.get(_vxKey(xi, y, zi));
       if (edit && edit.id) return y;
-      if (_vxBlockIdAt(xi, y, zi)) return y;
+      const id = _vxBlockIdAt(xi, y, zi);
+      if (id && id !== VX_BLOCK_TYPES.WATER) return y;
     }
     return baseH;
   }
@@ -5194,7 +5195,8 @@
 
   function checkVoxelCollision(pos, _halfSize) {
     const x = pos[0] || 0, y = pos[1] || 0, z = pos[2] || 0;
-    return getVoxelBlock(Math.floor(x), Math.floor(y), Math.floor(z)) !== 0;
+    const id = getVoxelBlock(Math.floor(x), Math.floor(y), Math.floor(z));
+    return id !== 0 && id !== VX_BLOCK_TYPES.WATER;
   }
 
   // DDA voxel ray traversal (uses heightmap-aware getVoxelBlock).

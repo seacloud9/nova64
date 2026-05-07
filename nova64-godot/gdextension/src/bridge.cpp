@@ -2847,6 +2847,17 @@ Dictionary Nova64Host::_cmd_voxel_upload_chunk(const Dictionary &p) {
                     }
                     set_blk(lx, ly, lz, id);
                 }
+                // Browser terrain fills air columns below SEA_LEVEL with
+                // water blocks. The shim height is browser height - 1, so
+                // water starts just above the surface block and runs up to
+                // y=61 for the default sea level 62.
+                static constexpr int SEA_LEVEL = 62;
+                if (height + 1 < SEA_LEVEL) {
+                    const int water_top = std::min(SEA_LEVEL - 1, sy - 1);
+                    for (int ly = std::max(0, height + 1); ly <= water_top; ++ly) {
+                        set_if_air(lx, ly, lz, 5);
+                    }
+                }
             }
         }
 

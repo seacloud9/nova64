@@ -870,7 +870,8 @@ What landed:
   extra Godot per-pixel lighting, which better matches the flat Three.js voxel
   look.
 - Temporary per-chunk water planes are disabled by default; stacked transparent
-  planes were not a good parity path and could wash out the scene.
+  planes were not a good parity path and could wash out the scene. Water now
+  belongs in the native chunk/block volume instead.
 
 Focused validation:
 
@@ -909,10 +910,11 @@ Remaining visual debt:
 - The Godot view is now readable and much closer in feel, but it is still not
   pixel-parity with Three.js. Camera framing, tree/canopy silhouette, fog/sky
   balance, and transparent vegetation treatment still need more targeted passes.
-- Water should move into the native chunk/block path instead of returning as
-  stacked transparent overlay planes.
+- Water has moved into the native chunk/block path, but its material treatment
+  is still block/atlas based. Transparent fluid shading, water tint, and edge
+  blending remain separate polish work.
 
-## Voxel atlas, typed trees, and Minecraft parity checkpoint
+## Voxel atlas, typed trees, native water, and Minecraft parity checkpoint
 
 This checkpoint tightened the native Godot voxel path after the first native
 chunk pass. The focus was Minecraft/voxel visual parity rather than adding new
@@ -940,9 +942,13 @@ What landed:
 - The compact-column terrain payload now carries tree type and deterministic
   shape metadata, and native `voxel.uploadChunk` expands oak, birch, spruce,
   jungle, and acacia silhouettes instead of a single generic canopy blob.
+- Compact terrain columns now generate water blocks in the native chunk volume
+  up to the browser sea level. The Godot shim also treats water as non-solid
+  for highest-block and collision queries, matching player movement expectations
+  better than the old transparent overlay plane experiment.
 - Older ignored intermediate voxel diagnostic folders were removed. The kept
-  local snapshots are the documented `post-tree-edge-guard` checkpoint and the
-  latest `post-typed-tree-shapes` pass.
+  local snapshots are the documented `post-tree-edge-guard`,
+  `post-typed-tree-shapes`, and `post-native-water` checkpoints.
 
 Focused validation:
 
@@ -964,8 +970,8 @@ wsl bash -lc "cd /mnt/c/Users/brend/exp/nova64 && source ~/.nvm/nvm.sh && \
 Latest rebuilt native library hashes:
 
 ```text
-dc4931ba4ab0104a0060560567c96950c1af216212343b4b5ce7b0524e0a1e51  nova64-godot/godot_project/bin/libnova64.windows.template_debug.x86_64.dll
-580ab6cf9a7cc0b68143cc1233f04c315187284c7475d9e0568af71087930c00  nova64-godot/godot_project/bin/libnova64.linux.template_debug.x86_64.so
+4963b90bb9db5321d92492fc5d8e1f707aea2e203d2524ea6b7191780ed24911  nova64-godot/godot_project/bin/libnova64.windows.template_debug.x86_64.dll
+7e43c42caab020ba3999d766e8fb9d5c4568dcb58314f21b600d50c6a30d1209  nova64-godot/godot_project/bin/libnova64.linux.template_debug.x86_64.so
 ```
 
 Snapshots from the final Minecraft pass:
@@ -973,6 +979,9 @@ Snapshots from the final Minecraft pass:
 - `nova64-godot/test-results/visual-parity/voxel-diagnostics/post-typed-tree-shapes/browser-minecraft-demo.png`
 - `nova64-godot/test-results/visual-parity/voxel-diagnostics/post-typed-tree-shapes/godot-minecraft-demo.png`
 - `nova64-godot/test-results/visual-parity/voxel-diagnostics/post-typed-tree-shapes/report-minecraft-demo.md`
+- `nova64-godot/test-results/visual-parity/voxel-diagnostics/post-native-water/browser-minecraft-demo.png`
+- `nova64-godot/test-results/visual-parity/voxel-diagnostics/post-native-water/godot-minecraft-demo.png`
+- `nova64-godot/test-results/visual-parity/voxel-diagnostics/post-native-water/report-minecraft-demo.md`
 
 Observed state:
 
@@ -988,5 +997,7 @@ Remaining visual debt:
   silhouettes now carry browser-like type data, but can still differ at chunk
   boundaries and under transparent leaf/fog treatment.
 - Camera framing, fog density, and HUD scale still dominate screenshot diff.
-- Water should be represented in the native block/chunk path before treating
-  Minecraft parity as closed.
+- Water is represented in the native block/chunk path now. Remaining water work
+  is visual: material transparency/tint, shoreline blending, and making sure the
+  atlas block treatment reads like the browser's water surface from common
+  camera angles.

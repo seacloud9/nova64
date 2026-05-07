@@ -4,6 +4,24 @@ All notable changes to Nova64 are documented here.
 
 ## v0.4.9 (Current)
 
+- **Godot native host — merged to trunk** 🎉:
+  - The GDExtension (`nova64-godot/gdextension/`), QuickJS bridge,
+    cart shim, conformance harness, and visual-parity tooling are
+    now part of the main build. Nova64 carts run end-to-end through
+    a native Godot 4.x host.
+  - Carts running natively: `minecraft-demo`, `f-zero-nova-3d`,
+    `star-fox-nova-3d`, `space-harrier-3d`, `fps-demo-3d`, plus the
+    00–10 conformance series and the standard 3D/UI/particle demos.
+  - `fps-demo-3d` ships a Godot-side WAD start-screen map picker
+    that loads `freedoom1.wad` through `nova64.wad.load()`
+    (Up/Down/W/S to select, Enter/Space to start, Esc returns to the
+    picker from gameplay).
+  - Outstanding work: WAD wall/flat/sprite/sector-light parity,
+    desktop/mobile export proofs, and host-contract docs. Tracked in
+    [ROADMAP.md](ROADMAP.md) Phase 3 → *WAD Sub-Roadmap*. **WAD
+    parity changes must not regress voxel rendering** — run
+    `pnpm godot:visual minecraft-demo` and a `voxel-creative` /
+    `voxel-terrain` smoke before landing shared-adapter changes.
 - **Godot adapter — voxel parity push** (`feature/godot-adapter`):
   - `minecraft-demo` now boots and renders end-to-end under the Godot
     host. Implements the full 22-function voxel API surface in the JS

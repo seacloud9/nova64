@@ -13,15 +13,27 @@
 
 ---
 
-## Godot Native Host (in progress)
+## Godot Native Host — **Now in trunk** 🎉
 
-Nova64 carts now run end-to-end through a native Godot 4.x host via a
-GDExtension that embeds QuickJS. See [ROADMAP.md](ROADMAP.md) Phase 3
-and [docs/GODOT_VOXEL_PLAN.md](docs/GODOT_VOXEL_PLAN.md) for the
-voxel-parity sub-plan.
+Nova64 carts run end-to-end through a native **Godot 4.x** host via a
+GDExtension that embeds QuickJS. The host, the cart shim, the
+conformance harness, and the visual-parity tooling are all part of the
+main build. See [ROADMAP.md](ROADMAP.md) Phase 3 and
+[docs/GODOT_VOXEL_PLAN.md](docs/GODOT_VOXEL_PLAN.md) for the in-flight
+sub-plans.
 
+- **Carts running natively**: `minecraft-demo`, `f-zero-nova-3d`,
+  `star-fox-nova-3d`, `space-harrier-3d`, `fps-demo-3d` (with WAD map
+  picker), plus the full 00–10 conformance series and the standard
+  3D/UI/particle demos.
+- **WAD pipeline online**: `fps-demo-3d` loads `freedoom1.wad` through
+  `nova64.wad.load()` and presents a start-screen map picker (Up/Down
+  to select, Enter to start, Esc returns from gameplay). Rendering
+  fidelity for WAD walls/flats/sprites is still being lifted to
+  Three.js/Babylon parity — see the **Improving Godot WAD rendering**
+  notes below.
 - **Voxel demo parity push**: `minecraft-demo` boots end-to-end with
-  full HUD, hotbar, biome label and rolling biome-tinted terrain
+  full HUD, hotbar, biome label, and rolling biome-tinted terrain
   rendered via Godot MultiMesh. 64×64 column render distance with fog
   falloff. All voxel carts pass the smoke harness.
 - **Cart-facing UI APIs filled in**: `drawText`, `drawTextShadow`,
@@ -35,6 +47,34 @@ voxel-parity sub-plan.
 - **Smoke**: `powershell -File nova64-godot/scripts/run-cart-smoke.ps1
   <cart-name>` runs each cart for 300 frames against the conformance
   harness.
+
+### Improving Godot WAD rendering (without regressing voxels)
+
+The Godot WAD renderer currently uses a partial flat-shaded path for
+several wall/flat cases. Bringing it to Three.js/Babylon parity is
+tracked in [ROADMAP.md](ROADMAP.md) Phase 3 → *WAD Sub-Roadmap*. Open
+items:
+
+- Route WAD wall/flat textures through the same engine-assigned
+  material proxy that Three.js and Babylon use, instead of bespoke
+  Godot-only material code in cart space.
+- Honour two-sided lines, sky flats, and animated flats.
+- Port sector-light / `COLORMAP` lookup so dark sectors read
+  correctly without baking light into texture memory.
+- Lift `THINGS` sprite billboards (transparent pixels, rotation
+  tables) to match the browser renderer.
+- Make the start-screen map picker scroll past its current 7-entry
+  window and surface `MAPINFO` / `UMAPINFO` map names when available.
+- Add a Godot `wad-demo` capture to `pnpm godot:visual`.
+
+> ⚠️ **Non-regression rule**: any shared adapter, atlas, sampler, or
+> fog/frustum change made to improve WAD rendering **must not degrade
+> voxel rendering**. The voxel path (compact columns → C++ greedy
+> mesher → split opaque/transparent atlas surfaces) is the most
+> fragile shared seam in the Godot host. Before landing a WAD-driven
+> change, run `pnpm godot:visual minecraft-demo` and a
+> `voxel-creative` / `voxel-terrain` smoke and confirm no parity
+> drift.
 
 ## Babylon.js WAD Visual Parity
 
@@ -123,7 +163,8 @@ voxel-parity sub-plan.
 
 ### 🗺️ **Roadmap**
 
-- **Backend Expansion**: Babylon.js, Unity, and Godot support are tracked in [ROADMAP.md](ROADMAP.md)
+- **Godot Native Host**: Now in trunk — see [Godot Native Host](#godot-native-host--now-in-trunk-) above and [ROADMAP.md](ROADMAP.md) Phase 3 for WAD/voxel polish work
+- **Backend Expansion**: Babylon.js, RetroArch, and Unity targets are tracked in [ROADMAP.md](ROADMAP.md)
 - **Realtime Follow-Up**: The roadmap also sketches the Colyseus + WebRTC follow-up plan for multiplayer, presence, chat, and RTC features
 
 ### 🧊 **Voxel Engine**

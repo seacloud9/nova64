@@ -105,7 +105,11 @@ Exit criteria:
 - adapter conformance suite passes for Babylon
 - documented list of supported and unsupported features exists
 
-### Phase 3: Godot Support
+### Phase 3: Godot Support — **Merged to trunk** (in-progress polish)
+
+Status: The Godot native host has landed in `main`. The GDExtension (`nova64-godot/gdextension/`), the Godot project, the cart shim, the conformance harness, and the visual-parity tooling are all part of the trunk build. Carts including `minecraft-demo`, `f-zero-nova-3d`, `star-fox-nova-3d`, `space-harrier-3d`, and `fps-demo-3d` boot end-to-end. WAD content can be loaded through `nova64.wad.load()` from `fps-demo-3d`'s start-screen map picker.
+
+Remaining work in this phase is polish: WAD render fidelity, voxel parity polish, desktop/mobile export proofs, and finalising the host-contract docs. None of this should regress the Three.js or Babylon backends.
 
 Goal:
 
@@ -129,9 +133,24 @@ Phase 3 Todo:
 - [x] Port one example cart end-to-end (recommended: a small example from `examples/` with no advanced TSL/PBR features)
 - [x] Capability reporting: surface which adapter methods Godot host supports vs. stubs
 - [x] Conformance test harness: run shared adapter conformance suite against the Godot host
+- [x] Merge the Godot host (GDExtension + QuickJS bridge + cart shim + visual-parity tooling) into trunk
+- [x] Port multiple non-trivial carts: `minecraft-demo`, `f-zero-nova-3d`, `star-fox-nova-3d`, `space-harrier-3d`, `fps-demo-3d` (with WAD map picker)
 - [ ] Desktop export proof on Windows, macOS, Linux
 - [ ] Mobile export proof on iOS and Android, including bridge latency and frame-cost measurements
 - [ ] Document Godot host contract, supported methods, capability matrix, and known divergences
+
+Phase 3 WAD Sub-Roadmap (Godot WAD rendering — needs improvement):
+
+The `fps-demo-3d` cart now ships with a Godot-side WAD map picker that loads `freedoom1.wad` through `nova64.wad.load()`, but the Godot WAD render path is still behind Three.js / Babylon and must not regress voxel work as it improves. Tracked gaps:
+
+- [ ] **Wall texture parity** — Godot WAD walls currently rely on the shim's flat-shaded fallback for several texture cases; route them through the same engine-assigned material proxy used by Three.js and Babylon (`runtime/backends/babylon/compat.js` style). Do this in the backend adapter, not in cart code.
+- [ ] **Two-sided wall + flat parity** — confirm two-sided lines, sky flats, and animated flats render correctly under Godot. Reference: `docs/BACKEND_RUNTIME.md` Babylon plane double-sided note.
+- [ ] **Sprite billboard parity** — `THINGS` sprites already instantiate, but transparent-pixel handling and per-frame rotation tables need parity with the browser path.
+- [ ] **Sector light + colormap parity** — Godot path uses a flat ambient term; port the sector-light / `COLORMAP` lookup so dark sectors read correctly without baking lighting into texture memory.
+- [ ] **Map picker UX polish** — keep the picker scrollable past 7 entries (currently a fixed window in `fps-demo-3d`), and add map names from `MAPINFO` / `UMAPINFO` when present.
+- [ ] **Visual regression coverage** — add a Godot-side `wad-demo` parity capture to the existing `pnpm godot:visual` flow.
+
+Non-regression rule: **WAD parity work must not degrade voxel rendering.** The voxel pipeline (compact columns → C++ greedy mesher → split opaque/transparent atlas surfaces) is the most fragile part of the Godot host. Any shared adapter change made for WAD rendering (material proxies, texture allocator changes, atlas/sampler tweaks, frustum/fog math) needs a `pnpm godot:visual minecraft-demo` run plus a `voxel-creative` / `voxel-terrain` smoke before landing.
 
 Phase 3 Voxel Sub-Roadmap (in progress on `feature/godot-adapter`):
 

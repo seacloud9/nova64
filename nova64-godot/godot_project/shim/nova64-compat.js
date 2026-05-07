@@ -1416,6 +1416,17 @@
   const QUARTER_PI = Math.PI / 4;
   function clamp(v, lo, hi) { return Math.min(Math.max(v, lo), hi); }
   function lerp(a, b, t) { return a + (b - a) * t; }
+  function dist(x1, y1, x2, y2) {
+    const dx = (x2 || 0) - (x1 || 0);
+    const dy = (y2 || 0) - (y1 || 0);
+    return Math.sqrt(dx * dx + dy * dy);
+  }
+  function dist3d(x1, y1, z1, x2, y2, z2) {
+    const dx = (x2 || 0) - (x1 || 0);
+    const dy = (y2 || 0) - (y1 || 0);
+    const dz = (z2 || 0) - (z1 || 0);
+    return Math.sqrt(dx * dx + dy * dy + dz * dz);
+  }
   // hsb(h:0..360, s:0..1, b:0..1, a:0..255) → packed rgba8 int. Mirrors
   // runtime/api-generative.js so generative-art / boids produce the same
   // colors on the Godot adapter as in the browser. Cart code that passes
@@ -1539,7 +1550,11 @@
     return maxValue > 0 ? (total / maxValue + 1) * 0.5 : 0.5;
   }
 
-  const utilNs = { TWO_PI, HALF_PI, QUARTER_PI, clamp, lerp, hsb, noise, noiseSeed, noiseDetail, noiseMap };
+  const utilNs = {
+    TWO_PI, HALF_PI, QUARTER_PI,
+    clamp, lerp, dist, dist3d,
+    hsb, noise, noiseSeed, noiseDetail, noiseMap,
+  };
 
   // Audio stubs — no host audio yet.
   function sfx(_name, _vol) { warnOnce('audio.sfx'); }
@@ -5994,8 +6009,26 @@
     if (max == null) { max = min; min = 0; }
     return min + Math.random() * ((max == null ? 1 : max) - min);
   }
-  function randInt(min, max) { return Math.floor(rand(min, max)); }
+  function randRange(min, max) { return rand(min, max); }
+  function randInt(min, max) {
+    if (max == null) { max = min; min = 0; }
+    return Math.floor(rand(min, max + 1));
+  }
   function choose(arr) { return arr && arr.length ? arr[Math.floor(Math.random() * arr.length)] : undefined; }
+  utilNs.rand = rand;
+  utilNs.randRange = randRange;
+  utilNs.randInt = randInt;
+  utilNs.choose = choose;
+  utilNs.ease = function (t, name) {
+    if (typeof t === 'string') {
+      const key = t;
+      t = name == null ? 0 : name;
+      name = key;
+    }
+    const key = name || 'linear';
+    const fn = Ease[key] || Ease['ease' + String(key).charAt(0).toUpperCase() + String(key).slice(1)] || Ease.linear;
+    return fn(clamp(+t || 0, 0, 1));
+  };
 
 
   // ---------------- namespace + global aliases -------------------------
@@ -6200,6 +6233,7 @@
     uiNs, stageNs, particlesNs, skyboxNs, modelsNs, voxelNs, shaderBacking);
   global.get3DStats = get3DStats;
   global.rand = rand;
+  global.randRange = randRange;
   global.randInt = randInt;
   global.choose = choose;
   global.storage = storageNsP;

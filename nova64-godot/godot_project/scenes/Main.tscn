@@ -1,0 +1,8 @@
+[gd_scene load_steps=2 format=3 uid="uid://d3hc7rhx8io7f"]
+
+[ext_resource type="Script" uid="uid://utltl30moh2x" path="res://scripts/nova64_host.gd" id="1_host_script"]
+
+[node name="Main" type="Node3D"]
+script = ExtResource("1_host_script")
+
+[node name="Nova64Host" type="Nova64Host" parent="."]

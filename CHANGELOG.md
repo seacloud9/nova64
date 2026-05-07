@@ -4,6 +4,30 @@ All notable changes to Nova64 are documented here.
 
 ## v0.4.9 (Current)
 
+- **Godot adapter — voxel parity push** (`feature/godot-adapter`):
+  - `minecraft-demo` now boots and renders end-to-end under the Godot
+    host. Implements the full 22-function voxel API surface in the JS
+    shim (`getVoxelBlock`, `setVoxelBlock`, `moveVoxelEntity`,
+    `raycastVoxelBlock`, `spawnVoxelEntity`, `checkVoxelCollision`,
+    `getVoxelHighestBlock`, etc.) over a sparse-Map + heightmap model.
+  - Heightmap-based terrain generation: 3-octave value noise, 8-biome
+    classification matching the web engine's temp/moisture rules,
+    biome-aware surface colours, scattered trees with trunk + canopy.
+  - MultiMesh-batched terrain rendering: per-colour buckets render
+    thousands of columns in ~7-10 multimeshes total. Render distance
+    bumped to 64×64 columns with smooth fog falloff.
+  - Cart-facing UI text APIs (`drawText`, `drawTextShadow`,
+    `drawTextOutline`, `setFont`, `setTextAlign`, `setTextBaseline`)
+    and instance APIs (`setInstanceTransform`, `setInstancePosition`,
+    `setInstanceColor`, `finalizeInstances`) implemented in the shim;
+    HUDs and instanced effects in f-zero / star-fox / space-harrier
+    now render correctly under Godot.
+  - F-zero camera fix: race start no longer perspective-jumps because
+    the init position now matches updatePlaying's z=12 framing.
+  - New plan doc: [docs/GODOT_VOXEL_PLAN.md](docs/GODOT_VOXEL_PLAN.md)
+    — phased roadmap toward native (C++) voxel parity (face-culled
+    chunk mesher, greedy meshing, caves/overhangs, per-block textures
+    + skylight).
 - **OS9 Shell cart launching**: Fixed Game Studio demo loading, Game Launcher cart routing, and Nova HD demoscene startup to use the standard cart runner path.
 - **Game Studio executor**: Removed API parameter injection that collided with modern `nova64.*` destructuring patterns.
 - **Regression coverage**: Added tests for OS shell cart URL helpers, Game Launcher catalog paths, and Game Studio cart execution.

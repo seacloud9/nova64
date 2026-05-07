@@ -6,6 +6,90 @@ import { Mesh, MeshBuilder } from '@babylonjs/core';
 import { normalizePosition } from './common.js';
 import { applyBabylonMaterialCompatibility, applyBabylonMeshCompatibility } from './compat.js';
 
+function isPositionLike(value) {
+  return Array.isArray(value) || (value && typeof value === 'object' && value.x !== undefined);
+}
+
+function isOptionsLike(value) {
+  return value && typeof value === 'object' && !Array.isArray(value) && value.x === undefined;
+}
+
+function normalizeCylinderArgs(
+  rTop = 1,
+  rBottom = 1,
+  h = 2,
+  color = 0xffffff,
+  position = [0, 0, 0],
+  options = {},
+  argCount = 6
+) {
+  if (argCount <= 3 && Number.isFinite(h) && (h === 0 || Math.abs(h) > 128)) {
+    return {
+      rTop,
+      rBottom: rTop,
+      h: rBottom,
+      color: h,
+      position,
+      options: options ?? {},
+    };
+  }
+
+  if (isPositionLike(color) || isOptionsLike(color)) {
+    return {
+      rTop,
+      rBottom: rTop,
+      h: rBottom,
+      color: h,
+      position: isPositionLike(color) ? color : [0, 0, 0],
+      options: isPositionLike(color) ? (position ?? {}) : color,
+    };
+  }
+
+  if (Number.isInteger(color) && color >= 3 && color <= 128 && isPositionLike(position)) {
+    return {
+      rTop,
+      rBottom: rTop,
+      h: rBottom,
+      color: h,
+      position,
+      options: { ...(options ?? {}), segments: color },
+    };
+  }
+
+  return { rTop, rBottom, h, color, position, options: options ?? {} };
+}
+
+function normalizeCubeArgs(size = 1, color = 0xffffff, position = [0, 0, 0], options = {}, args) {
+  const list = Array.from(args ?? []);
+  const [width, height, depth, boxColor, boxPosition, boxOptions] = list;
+
+  if (
+    list.length >= 4 &&
+    Number.isFinite(width) &&
+    Number.isFinite(height) &&
+    Number.isFinite(depth) &&
+    Number.isFinite(boxColor)
+  ) {
+    return {
+      width,
+      height,
+      depth,
+      color: boxColor,
+      position: isPositionLike(boxPosition) ? boxPosition : [0, 0, 0],
+      options: isPositionLike(boxPosition) ? (boxOptions ?? {}) : (boxPosition ?? {}),
+    };
+  }
+
+  return {
+    width: size,
+    height: size,
+    depth: size,
+    color,
+    position,
+    options: options ?? {},
+  };
+}
+
 export function createBabylonPrimitivesApi(self) {
   return {
     createN64Material(opts = {}) {
@@ -214,10 +298,11 @@ export function createBabylonPrimitivesApi(self) {
     },
 
     createCube(size = 1, color = 0xffffff, position = [0, 0, 0], options = {}) {
+      const args = normalizeCubeArgs(size, color, position, options, arguments);
       return self.createMesh(
-        self.createBoxGeometry(size, size, size),
-        self.createN64Material({ color, ...options }),
-        position
+        self.createBoxGeometry(args.width, args.height, args.depth),
+        self.createN64Material({ color: args.color, ...args.options }),
+        args.position
       );
     },
 
@@ -230,6 +315,10 @@ export function createBabylonPrimitivesApi(self) {
     },
 
     createSphere(radius = 1, color = 0xffffff, position = [0, 0, 0], segments = 8, options = {}) {
+      if (isOptionsLike(segments)) {
+        options = segments;
+        segments = 8;
+      }
       return self.createMesh(
         self.createSphereGeometry(radius, segments),
         self.createN64Material({ color, ...options }),
@@ -261,10 +350,19 @@ export function createBabylonPrimitivesApi(self) {
       position = [0, 0, 0],
       options = {}
     ) {
+      const args = normalizeCylinderArgs(
+        rTop,
+        rBottom,
+        h,
+        color,
+        position,
+        options,
+        arguments.length
+      );
       return self.createMesh(
-        self.createCylinderGeometry(rTop, rBottom, h),
-        self.createN64Material({ color, ...options }),
-        position
+        self.createCylinderGeometry(args.rTop, args.rBottom, args.h, args.options.segments || 16),
+        self.createN64Material({ color: args.color, ...args.options }),
+        args.position
       );
     },
 

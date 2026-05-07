@@ -1,0 +1,78 @@
+#!/usr/bin/env python
+# SCons build script for the Nova64 Godot GDExtension.
+#
+# Usage (from gdextension/):
+#   scons platform=linux   target=template_debug
+#   scons platform=windows target=template_release
+#   scons platform=macos
+#   scons platform=android arch=arm64
+#   scons platform=ios     arch=arm64
+#
+# Output binaries are written to ../godot_project/bin/ where the
+# nova64.gdextension manifest expects them.
+
+import os
+
+# godot-cpp ships its own SConstruct and exposes a SConscript that produces
+# the env we need. We import it and reuse its environment so symbol
+# visibility, C++ standard, and platform flags stay consistent with the
+# bindings.
+env = SConscript("third_party/godot-cpp/SConstruct")
+
+# ---------------------------------------------------------------------------
+# Nova64 bridge sources
+# ---------------------------------------------------------------------------
+nova64_sources = [
+    "src/bridge.cpp",
+    "src/handles.cpp",
+    "src/register_types.cpp",
+]
+
+# ---------------------------------------------------------------------------
+# QuickJS-NG — minimum source set per third_party/quickjs/CMakeLists.txt
+# ---------------------------------------------------------------------------
+quickjs_dir = "third_party/quickjs"
+quickjs_sources = [
+    os.path.join(quickjs_dir, "quickjs.c"),
+    os.path.join(quickjs_dir, "libregexp.c"),
+    os.path.join(quickjs_dir, "libunicode.c"),
+    os.path.join(quickjs_dir, "dtoa.c"),
+]
+
+# QuickJS expects _GNU_SOURCE on POSIX and a couple of guards on Windows.
+qjs_defines = ["_GNU_SOURCE"]
+if env["platform"] == "windows":
+    qjs_defines += ["WIN32_LEAN_AND_MEAN", "_WIN32_WINNT=0x0601"]
+
+# Compile QuickJS with its own flag set so warnings/defines don't leak into
+# the C++ bridge sources or godot-cpp.
+qjs_env = env.Clone()
+qjs_env.Append(CPPDEFINES=qjs_defines)
+qjs_env.Append(CPPPATH=[quickjs_dir])
+if env["platform"] != "windows":
+    qjs_env.Append(CCFLAGS=["-Wno-unused-parameter", "-Wno-sign-compare"])
+quickjs_objects = [qjs_env.SharedObject(src) for src in quickjs_sources]
+
+# ---------------------------------------------------------------------------
+# Bridge include paths
+# ---------------------------------------------------------------------------
+env.Append(CPPPATH=[
+    "src",
+    "src/adapter",
+    quickjs_dir,
+])
+
+# Output naming matches what nova64.gdextension expects.
+library_name = "libnova64{}{}".format(
+    env["suffix"],
+    env["SHLIBSUFFIX"],
+)
+
+output_path = "../godot_project/bin/{}".format(library_name)
+
+library = env.SharedLibrary(
+    output_path,
+    source=nova64_sources + quickjs_objects,
+)
+
+Default(library)

@@ -421,6 +421,7 @@ export class GpuThreeJS {
       emissiveIntensity = 0,
       roughness = 0.6,
       transparent = false,
+      opacity = 1,
       alphaTest = 0.5,
       animated = false,
       holographic = false,
@@ -437,7 +438,7 @@ export class GpuThreeJS {
         metalness: 0.8,
         roughness: 0.1,
         transparent: true,
-        opacity: 0.9,
+        opacity: options.opacity ?? 0.9,
         side: THREE.DoubleSide,
         fog: true,
       });
@@ -449,6 +450,7 @@ export class GpuThreeJS {
         roughness: roughness * 0.4,
         envMapIntensity: 2.5,
         transparent: transparent,
+        opacity,
         alphaTest: alphaTest,
         side: THREE.DoubleSide,
         fog: true,
@@ -458,6 +460,7 @@ export class GpuThreeJS {
       material = new THREE.MeshPhongMaterial({
         color: color,
         transparent: transparent,
+        opacity,
         alphaTest: alphaTest,
         side: THREE.DoubleSide,
         shininess: 60,

@@ -4,6 +4,90 @@
 import * as THREE from 'three';
 import { logger } from '../../logger.js';
 
+function isPositionLike(value) {
+  return Array.isArray(value) || (value && typeof value === 'object' && value.x !== undefined);
+}
+
+function isOptionsLike(value) {
+  return value && typeof value === 'object' && !Array.isArray(value) && value.x === undefined;
+}
+
+function normalizeCylinderArgs(
+  radiusTop = 1,
+  radiusBottom = 1,
+  height = 1,
+  color = 0xffffff,
+  position = [0, 0, 0],
+  options = {},
+  argCount = 6
+) {
+  if (argCount <= 3 && Number.isFinite(height) && (height === 0 || Math.abs(height) > 128)) {
+    return {
+      radiusTop,
+      radiusBottom: radiusTop,
+      height: radiusBottom,
+      color: height,
+      position,
+      options: options ?? {},
+    };
+  }
+
+  if (isPositionLike(color) || isOptionsLike(color)) {
+    return {
+      radiusTop,
+      radiusBottom: radiusTop,
+      height: radiusBottom,
+      color: height,
+      position: isPositionLike(color) ? color : [0, 0, 0],
+      options: isPositionLike(color) ? (position ?? {}) : color,
+    };
+  }
+
+  if (Number.isInteger(color) && color >= 3 && color <= 128 && isPositionLike(position)) {
+    return {
+      radiusTop,
+      radiusBottom: radiusTop,
+      height: radiusBottom,
+      color: height,
+      position,
+      options: { ...(options ?? {}), segments: color },
+    };
+  }
+
+  return { radiusTop, radiusBottom, height, color, position, options: options ?? {} };
+}
+
+function normalizeCubeArgs(size = 1, color = 0xffffff, position = [0, 0, 0], options = {}, args) {
+  const list = Array.from(args ?? []);
+  const [width, height, depth, boxColor, boxPosition, boxOptions] = list;
+
+  if (
+    list.length >= 4 &&
+    Number.isFinite(width) &&
+    Number.isFinite(height) &&
+    Number.isFinite(depth) &&
+    Number.isFinite(boxColor)
+  ) {
+    return {
+      width,
+      height,
+      depth,
+      color: boxColor,
+      position: isPositionLike(boxPosition) ? boxPosition : [0, 0, 0],
+      options: isPositionLike(boxPosition) ? (boxOptions ?? {}) : (boxPosition ?? {}),
+    };
+  }
+
+  return {
+    width: size,
+    height: size,
+    depth: size,
+    color,
+    position,
+    options: options ?? {},
+  };
+}
+
 export function primitivesModule({
   scene,
   gpu,
@@ -156,18 +240,28 @@ export function primitivesModule({
 
   function createCube(size = 1, color = 0xffffff, position = [0, 0, 0], options = {}) {
     try {
-      if (typeof size !== 'number' || size <= 0) {
+      const args = normalizeCubeArgs(size, color, position, options, arguments);
+      if (
+        typeof args.width !== 'number' ||
+        typeof args.height !== 'number' ||
+        typeof args.depth !== 'number' ||
+        args.width <= 0 ||
+        args.height <= 0 ||
+        args.depth <= 0
+      ) {
         logger.warn('createCube: invalid size, using default');
-        size = 1;
+        args.width = 1;
+        args.height = 1;
+        args.depth = 1;
       }
-      if (typeof color !== 'number') {
+      if (typeof args.color !== 'number') {
         logger.warn('createCube: invalid color, using white');
-        color = 0xffffff;
+        args.color = 0xffffff;
       }
       return createMesh(
-        gpu.createBoxGeometry(size, size, size),
-        getCachedMaterial({ color, ...options }),
-        position
+        gpu.createBoxGeometry(args.width, args.height, args.depth),
+        getCachedMaterial({ color: args.color, ...args.options }),
+        args.position
       );
     } catch (e) {
       logger.error('createCube failed:', e);
@@ -197,6 +291,10 @@ export function primitivesModule({
     options = {}
   ) {
     try {
+      if (isOptionsLike(segments)) {
+        options = segments;
+        segments = 8;
+      }
       if (typeof radius !== 'number' || radius <= 0) {
         logger.warn('createSphere: invalid radius, using default');
         radius = 1;
@@ -236,7 +334,13 @@ export function primitivesModule({
     }
   }
 
-  function createPlane(width = 1, height = 1, color = 0xffffff, position = [0, 0, 0]) {
+  function createPlane(
+    width = 1,
+    height = 1,
+    color = 0xffffff,
+    position = [0, 0, 0],
+    options = {}
+  ) {
     try {
       if (typeof width !== 'number' || width <= 0) {
         logger.warn('createPlane: invalid width, using default');
@@ -248,7 +352,7 @@ export function primitivesModule({
       }
       return createMesh(
         gpu.createPlaneGeometry(width, height),
-        getCachedMaterial({ color }),
+        getCachedMaterial({ color, ...options }),
         position
       );
     } catch (e) {
@@ -266,10 +370,28 @@ export function primitivesModule({
     options = {}
   ) {
     try {
+      const args = normalizeCylinderArgs(
+        radiusTop,
+        radiusBottom,
+        height,
+        color,
+        position,
+        options,
+        arguments.length
+      );
       const geom = gpu.createCylinderGeometry
-        ? gpu.createCylinderGeometry(radiusTop, radiusBottom, height, options.segments || 16)
-        : gpu.createBoxGeometry(radiusTop, height, radiusTop);
-      return createMesh(geom, getCachedMaterial({ ...options, color }), position);
+        ? gpu.createCylinderGeometry(
+            args.radiusTop,
+            args.radiusBottom,
+            args.height,
+            args.options.segments || 16
+          )
+        : gpu.createBoxGeometry(args.radiusTop, args.height, args.radiusTop);
+      return createMesh(
+        geom,
+        getCachedMaterial({ ...args.options, color: args.color }),
+        args.position
+      );
     } catch (e) {
       logger.error('createCylinder err', e);
       return createCube(radiusTop * 2, color, position);

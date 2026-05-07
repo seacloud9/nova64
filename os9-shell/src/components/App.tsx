@@ -116,7 +116,7 @@ export function App() {
   // Render the windows for a specific workspace
   const renderWorkspace = (workspaceId: number) => {
     const wsWindows = windows.filter(
-      (w) => w.workspaceId === workspaceId && !w.isMinimized
+      (w) => w.workspaceId === workspaceId
     );
     return (
       <>

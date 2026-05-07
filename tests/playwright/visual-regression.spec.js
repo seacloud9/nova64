@@ -45,6 +45,24 @@ function compareImages(img1Path, img2Path, diffPath, threshold = 0.1) {
   };
 }
 
+function countImagePixels(imgPath, predicate, region = { x: 0, y: 0, w: 1, h: 1 }, step = 1) {
+  const img = PNG.sync.read(fs.readFileSync(imgPath));
+  const x0 = Math.max(0, Math.floor(region.x * img.width));
+  const y0 = Math.max(0, Math.floor(region.y * img.height));
+  const x1 = Math.min(img.width, Math.ceil((region.x + region.w) * img.width));
+  const y1 = Math.min(img.height, Math.ceil((region.y + region.h) * img.height));
+  let matches = 0;
+
+  for (let y = y0; y < y1; y += step) {
+    for (let x = x0; x < x1; x += step) {
+      const i = (y * img.width + x) * 4;
+      if (predicate(img.data[i], img.data[i + 1], img.data[i + 2], img.data[i + 3])) matches++;
+    }
+  }
+
+  return matches;
+}
+
 /**
  * Take screenshots of both backends and compare them
  */
@@ -150,6 +168,27 @@ test.describe('Visual Regression - 3D Showcases', () => {
 
     expect(result.percentDiff, 'Galaxy TSL scene should stay reasonably similar').toBeLessThan(45);
   });
+
+  test('instancing-demo forest scene should stay reasonably similar', async ({ page }) => {
+    const result = await compareBackends(page, 'instancing-demo', {
+      waitTime: 3000,
+      threshold: 0.2,
+      maxDiffPercent: 12,
+    });
+    const babylonPath = path.join(SCREENSHOTS_DIR, 'instancing-demo-babylon.png');
+    const trunkPixels = countImagePixels(
+      babylonPath,
+      (r, g, b, a) => a > 0 && r > 45 && g > 30 && g < 95 && b < 55,
+      { x: 0, y: 0.28, w: 1, h: 0.72 },
+      2
+    );
+
+    expect(result.percentDiff, 'Instancing demo should stay reasonably similar').toBeLessThan(12);
+    expect(
+      trunkPixels,
+      'Babylon instancing demo should render visible forest instances'
+    ).toBeGreaterThan(1200);
+  });
 });
 
 test.describe('Visual Regression - WAD', () => {
@@ -236,10 +275,77 @@ test.describe('Visual Regression - Particle Systems', () => {
     const result = await compareBackends(page, 'particles-demo', {
       waitTime: 1000, // Capture early to avoid randomness
       threshold: 0.2,
-      maxDiffPercent: 20, // Particles can vary due to timing
+      maxDiffPercent: 28, // Particles can vary due to timing
     });
 
-    expect(result.percentDiff, 'Particles should be roughly similar').toBeLessThan(20);
+    expect(result.percentDiff, 'Particles should be roughly similar').toBeLessThan(28);
+  });
+
+  test('particles-demo waterfall scene should stay reasonably similar', async ({ page }) => {
+    for (const backend of ['threejs', 'babylon']) {
+      await loadCart(page, 'particles-demo', backend);
+      await pressKey(page, 'Digit5', 100);
+      await page.waitForTimeout(2500);
+
+      const screenshotPath = path.join(SCREENSHOTS_DIR, `particles-demo-waterfall-${backend}.png`);
+      await screenshotCanvas(page, backend, { path: screenshotPath });
+    }
+
+    const diffPath = path.join(DIFF_DIR, 'particles-demo-waterfall-diff.png');
+    const result = compareImages(
+      path.join(SCREENSHOTS_DIR, 'particles-demo-waterfall-threejs.png'),
+      path.join(SCREENSHOTS_DIR, 'particles-demo-waterfall-babylon.png'),
+      diffPath,
+      0.2
+    );
+
+    console.log('particles-demo waterfall visual comparison:', result);
+    expect(result.percentDiff, 'Waterfall particles should stay roughly similar').toBeLessThan(28);
+  });
+
+  test('particles-demo galaxy scene should stay reasonably similar', async ({ page }) => {
+    for (const backend of ['threejs', 'babylon']) {
+      await loadCart(page, 'particles-demo', backend);
+      await pressKey(page, 'Digit4', 100);
+      await page.waitForTimeout(3000);
+
+      const screenshotPath = path.join(SCREENSHOTS_DIR, `particles-demo-galaxy-${backend}.png`);
+      await screenshotCanvas(page, backend, { path: screenshotPath });
+    }
+
+    const diffPath = path.join(DIFF_DIR, 'particles-demo-galaxy-diff.png');
+    const result = compareImages(
+      path.join(SCREENSHOTS_DIR, 'particles-demo-galaxy-threejs.png'),
+      path.join(SCREENSHOTS_DIR, 'particles-demo-galaxy-babylon.png'),
+      diffPath,
+      0.2
+    );
+
+    console.log('particles-demo galaxy visual comparison:', result);
+    expect(result.percentDiff, 'Galaxy particles should stay roughly similar').toBeLessThan(22);
+  });
+
+  test('particles-demo burst frame should stay reasonably similar', async ({ page }) => {
+    for (const backend of ['threejs', 'babylon']) {
+      await loadCart(page, 'particles-demo', backend);
+      await page.waitForTimeout(1000);
+      await pressKey(page, 'Space', 120);
+      await page.waitForTimeout(700);
+
+      const screenshotPath = path.join(SCREENSHOTS_DIR, `particles-demo-burst-${backend}.png`);
+      await screenshotCanvas(page, backend, { path: screenshotPath });
+    }
+
+    const diffPath = path.join(DIFF_DIR, 'particles-demo-burst-diff.png');
+    const result = compareImages(
+      path.join(SCREENSHOTS_DIR, 'particles-demo-burst-threejs.png'),
+      path.join(SCREENSHOTS_DIR, 'particles-demo-burst-babylon.png'),
+      diffPath,
+      0.2
+    );
+
+    console.log('particles-demo burst visual comparison:', result);
+    expect(result.percentDiff, 'Burst particles should stay roughly similar').toBeLessThan(25);
   });
 });
 

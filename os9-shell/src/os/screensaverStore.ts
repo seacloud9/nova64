@@ -22,3 +22,9 @@ export const useScreensaverStore = create<ScreensaverStore>((set) => ({
   setHack: (id: string) => set({ selectedHackId: id }),
   setTimeout: (ms: number) => set({ idleTimeoutMs: ms }),
 }));
+
+// Expose for devtools / Playwright testing
+if (typeof window !== 'undefined') {
+  (window as unknown as Record<string, unknown>).__screensaverStore = useScreensaverStore;
+}
+

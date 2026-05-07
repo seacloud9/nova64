@@ -79,6 +79,16 @@ let camera = {
 // State management
 let gameState = 'start';
 let startScreenTime = 0;
+let rngState = 0x64d00d;
+
+function resetRandom(seed = 0x64d00d) {
+  rngState = seed >>> 0;
+}
+
+function random() {
+  rngState = (Math.imul(rngState, 1664525) + 1013904223) >>> 0;
+  return rngState / 0x100000000;
+}
 
 // Scene definitions
 const SCENES = [
@@ -106,6 +116,7 @@ export async function init() {
   console.log('🎬 NOVA64 DEMOSCENE - TRON ODYSSEY INIT');
   console.log('========================================');
   console.log('Initial gameState:', gameState);
+  resetRandom();
 
   // Initial camera setup
   setCameraPosition(camera.x, camera.y, camera.z);
@@ -237,12 +248,12 @@ async function buildStartScene() {
   digitalTowers.push({ mesh: sun, isSun: true, rotSpeed: 0.2 });
 
   // 3. Noise-based Procedural Clouds (TSL)
-  const cloudMat = createTSLMaterial('void', { speed: 0.1, opacity: 0.7 });
-  for (let i = 0; i < 30; i++) {
-    const cx = (Math.random() - 0.5) * 150;
-    const cy = 25 + Math.random() * 15;
-    const cz = -20 - Math.random() * 80;
-    const cloudSize = 5 + Math.random() * 10;
+  const cloudMat = createTSLMaterial('void', { speed: 0.1, opacity: 0.35 });
+  for (let i = 0; i < 8; i++) {
+    const cx = (random() - 0.5) * 150;
+    const cy = 25 + random() * 15;
+    const cz = -20 - random() * 80;
+    const cloudSize = 3 + random() * 5;
 
     // Use simplex volume to shape the cloud a bit
     const density = simplexNoise3D(cx, cy, cz, 2, 0.5, 2.0, 0.1);
@@ -255,7 +266,7 @@ async function buildStartScene() {
         isCloud: true,
         rotSpeed: 0.05,
         origX: cx,
-        speedX: 1 + Math.random() * 2,
+        speedX: 1 + random() * 2,
       });
     }
   }
@@ -266,7 +277,7 @@ async function buildStartScene() {
     const radius = 25;
     const x = Math.cos(angle) * radius;
     const z = Math.sin(angle) * radius;
-    const size = 2 + Math.random() * 3;
+    const size = 2 + random() * 3;
 
     // Rainbow of colors for crystals
     const crystalColor = COLORS.neonYellow;
@@ -287,7 +298,7 @@ async function buildStartScene() {
       x,
       z,
       angle,
-      rotSpeed: 0.5 + Math.random(),
+      rotSpeed: 0.5 + random(),
       isCrystal: true,
     });
   }
@@ -300,9 +311,9 @@ async function createParticleField() {
   // Ambient floating particles - BRIGHT and GLOWING
   for (let i = 0; i < 150; i++) {
     // More particles!
-    const x = (Math.random() - 0.5) * 100;
-    const y = Math.random() * 30;
-    const z = (Math.random() - 0.5) * 100;
+    const x = (random() - 0.5) * 100;
+    const y = random() * 30;
+    const z = (random() - 0.5) * 100;
 
     const colors = [
       COLORS.neonCyan,
@@ -312,7 +323,7 @@ async function createParticleField() {
       COLORS.neonGreen,
       COLORS.neonOrange,
     ];
-    const color = colors[Math.floor(Math.random() * colors.length)];
+    const color = colors[Math.floor(random() * colors.length)];
 
     const particle = createSphere(0.3, color, [x, y, z], 6, {
       emissive: color,
@@ -324,9 +335,9 @@ async function createParticleField() {
       x,
       y,
       z,
-      vx: (Math.random() - 0.5) * 2,
-      vy: Math.random() * 0.5,
-      vz: (Math.random() - 0.5) * 2,
+      vx: (random() - 0.5) * 2,
+      vy: random() * 0.5,
+      vz: (random() - 0.5) * 2,
       life: 100,
       color,
     });
@@ -509,7 +520,7 @@ function updateGridAwakening(dt, progress) {
 // Scene 1: DATA TUNNEL
 function updateDataTunnel(dt, progress) {
   // Create tunnel segments on the fly
-  if (tunnelSegments.length < 50 && Math.random() < 0.3) {
+  if (tunnelSegments.length < 50 && random() < 0.3) {
     createTunnelSegment();
   }
 
@@ -529,7 +540,7 @@ function updateDataTunnel(dt, progress) {
   }
 
   // Create data streams
-  if (dataStreams.length < 30 && Math.random() < 0.2) {
+  if (dataStreams.length < 30 && random() < 0.2) {
     createDataStream();
   }
 
@@ -545,7 +556,7 @@ function updateDataTunnel(dt, progress) {
 // Scene 2: DIGITAL CITY
 function updateDigitalCity(dt, progress) {
   // Build city towers as we go
-  if (digitalTowers.length < 40 && Math.random() < 0.1) {
+  if (digitalTowers.length < 40 && random() < 0.1) {
     createDigitalTower();
   }
 
@@ -561,7 +572,7 @@ function updateDigitalCity(dt, progress) {
   });
 
   // Spawn light cycles
-  if (lightCycles.length < 6 && Math.random() < 0.1) {
+  if (lightCycles.length < 6 && random() < 0.1) {
     createLightCycle();
   }
 
@@ -579,7 +590,7 @@ function updateDigitalCity(dt, progress) {
 // Scene 3: ENERGY CORE
 function updateEnergyCore(dt, progress) {
   // Create energy fields
-  if (energyFields.length < 20 && Math.random() < 0.15) {
+  if (energyFields.length < 20 && random() < 0.15) {
     createEnergyField();
   }
 
@@ -613,7 +624,7 @@ function updateTheVoid(dt, progress) {
   setFog(0x000000, 10, Math.max(20, fogFar));
 
   // Create final particle explosion
-  if (progress > 0.5 && Math.random() < 0.5) {
+  if (progress > 0.5 && random() < 0.5) {
     createExplosionParticle();
   }
 
@@ -628,7 +639,7 @@ function updateTheVoid(dt, progress) {
 // Helper functions for creating scene elements
 function createPulseRing() {
   const ringColors = [COLORS.neonCyan, COLORS.neonMagenta, COLORS.neonYellow];
-  const color = ringColors[Math.floor(Math.random() * ringColors.length)];
+  const color = ringColors[Math.floor(random() * ringColors.length)];
 
   const ring = createSphere(1, color, [0, 0.2, 0], 8, {
     emissive: color,
@@ -659,7 +670,7 @@ function updatePulseRings(dt) {
 }
 
 function createTunnelSegment() {
-  const z = -50 - Math.random() * 20;
+  const z = -50 - random() * 20;
   const segments = 8;
   const tunnelColors = [COLORS.neonCyan, COLORS.neonMagenta, COLORS.neonYellow, COLORS.neonPink];
 
@@ -692,8 +703,8 @@ function createTunnelSegment() {
 }
 
 function createDataStream() {
-  const angle = Math.random() * Math.PI * 2;
-  const radius = 10 + Math.random() * 5;
+  const angle = random() * Math.PI * 2;
+  const radius = 10 + random() * 5;
   const x = Math.cos(angle) * radius;
   const y = Math.sin(angle) * radius;
 
@@ -704,7 +715,7 @@ function createDataStream() {
     COLORS.neonGreen,
     COLORS.neonOrange,
   ];
-  const color = colors[Math.floor(Math.random() * colors.length)];
+  const color = colors[Math.floor(random() * colors.length)];
 
   const stream = createAdvancedCube(
     1,
@@ -723,7 +734,7 @@ function createDataStream() {
     x,
     y,
     z: -60,
-    speed: 30 + Math.random() * 20,
+    speed: 30 + random() * 20,
     color,
   });
 }
@@ -742,14 +753,14 @@ function updateDataStreams(dt) {
 }
 
 function createDigitalTower() {
-  const x = (Math.random() - 0.5) * 80;
-  const z = (Math.random() - 0.5) * 80;
+  const x = (random() - 0.5) * 80;
+  const z = (random() - 0.5) * 80;
 
   // Avoid center
   if (Math.abs(x) < 15 && Math.abs(z) < 15) return;
 
-  const width = 2 + Math.random() * 3;
-  const height = 10 + Math.random() * 20;
+  const width = 2 + random() * 3;
+  const height = 10 + random() * 20;
 
   const colors = [
     COLORS.neonCyan,
@@ -759,7 +770,7 @@ function createDigitalTower() {
     COLORS.neonGreen,
     COLORS.neonOrange,
   ];
-  const color = colors[Math.floor(Math.random() * colors.length)];
+  const color = colors[Math.floor(random() * colors.length)];
 
   const tower = createAdvancedCube(
     1,
@@ -780,19 +791,19 @@ function createDigitalTower() {
     height,
     width,
     baseScale: 1,
-    pulsePhase: Math.random() * Math.PI * 2,
+    pulsePhase: random() * Math.PI * 2,
     color,
   });
 }
 
 function createLightCycle() {
-  const angle = Math.random() * Math.PI * 2;
+  const angle = random() * Math.PI * 2;
   const radius = 30;
   const x = Math.cos(angle) * radius;
   const z = Math.sin(angle) * radius;
 
   const cycleColors = [COLORS.neonCyan, COLORS.neonMagenta, COLORS.neonYellow, COLORS.neonOrange];
-  const bodyColor = cycleColors[Math.floor(Math.random() * cycleColors.length)];
+  const bodyColor = cycleColors[Math.floor(random() * cycleColors.length)];
   const trailColor = bodyColor; // Matching trail
 
   const body = createAdvancedCube(
@@ -825,7 +836,7 @@ function createLightCycle() {
     x,
     z,
     angle,
-    speed: 2 + Math.random(),
+    speed: 2 + random(),
     color: bodyColor,
   });
 }
@@ -849,11 +860,11 @@ function updateLightCycles(dt) {
 }
 
 function createEnergyField() {
-  const x = (Math.random() - 0.5) * 20;
-  const y = (Math.random() - 0.5) * 20;
-  const z = (Math.random() - 0.5) * 20;
+  const x = (random() - 0.5) * 20;
+  const y = (random() - 0.5) * 20;
+  const z = (random() - 0.5) * 20;
 
-  const size = 1 + Math.random() * 2;
+  const size = 1 + random() * 2;
   const colors = [
     COLORS.neonMagenta,
     COLORS.neonYellow,
@@ -861,7 +872,7 @@ function createEnergyField() {
     COLORS.neonCyan,
     COLORS.neonGreen,
   ];
-  const color = colors[Math.floor(Math.random() * colors.length)];
+  const color = colors[Math.floor(random() * colors.length)];
 
   const field = createSphere(size, color, [x, y, z], 10, {
     emissive: color,
@@ -871,19 +882,19 @@ function createEnergyField() {
   energyFields.push({
     mesh: field,
     rotation: 0,
-    rotSpeed: 0.5 + Math.random(),
-    pulsePhase: Math.random() * Math.PI * 2,
+    rotSpeed: 0.5 + random(),
+    pulsePhase: random() * Math.PI * 2,
     color,
   });
 }
 
 function createExplosionParticle() {
-  const x = (Math.random() - 0.5) * 40;
-  const y = (Math.random() - 0.5) * 40;
-  const z = (Math.random() - 0.5) * 40;
+  const x = (random() - 0.5) * 40;
+  const y = (random() - 0.5) * 40;
+  const z = (random() - 0.5) * 40;
 
   const colors = Object.values(COLORS);
-  const color = colors[Math.floor(Math.random() * colors.length)];
+  const color = colors[Math.floor(random() * colors.length)];
 
   const particle = createSphere(0.5, color, [x, y, z], 6, {
     emissive: color,
@@ -895,9 +906,9 @@ function createExplosionParticle() {
     x,
     y,
     z,
-    vx: (Math.random() - 0.5) * 20,
-    vy: (Math.random() - 0.5) * 20,
-    vz: (Math.random() - 0.5) * 20,
+    vx: (random() - 0.5) * 20,
+    vy: (random() - 0.5) * 20,
+    vz: (random() - 0.5) * 20,
     life: 3,
     color,
   });

@@ -1,4 +1,4 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+git s https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
 # secrets and enviorment variables 
 # .env
@@ -38,3 +38,9 @@ yarn-error.log*
 
 # WAD files (large binary game data)
 *.wad
+
+# Godot shader examples and assets (Jettelly course - don't commit)
+nova64-godot/godot_project/data/
+
+# Godot user assets directory (GLB models, VOX files, etc.)
+nova64-godot/godot_project/assets/

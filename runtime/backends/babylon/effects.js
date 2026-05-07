@@ -155,12 +155,9 @@ export function createBabylonEffectsApi(self) {
   function initPipeline() {
     if (pipeline) return pipeline;
 
-    pipeline = new DefaultRenderingPipeline(
-      'nova64_effects_pipeline',
-      false, // HDR disabled - prevents color/brightness issues
-      self.scene,
-      [self.camera]
-    );
+    pipeline = new DefaultRenderingPipeline('nova64_effects_pipeline', true, self.scene, [
+      self.camera,
+    ]);
 
     // Disable all effects by default
     trySetPipelineValue('bloomEnabled', false);
@@ -187,10 +184,10 @@ export function createBabylonEffectsApi(self) {
     const p = initPipeline();
     const needsLargeGlow = strength >= 1.0;
     p.bloomEnabled = true;
-    p.bloomWeight = needsLargeGlow ? strength * 2.2 : strength;
-    p.bloomKernel = Math.max(16, Math.round(radius * (needsLargeGlow ? 256 : 128)));
-    p.bloomThreshold = needsLargeGlow ? Math.max(0, threshold * 0.75) : threshold;
-    p.bloomScale = needsLargeGlow ? 0.35 : 0.5;
+    p.bloomWeight = needsLargeGlow ? strength * 5.0 : strength;
+    p.bloomKernel = Math.max(16, Math.round(radius * (needsLargeGlow ? 768 : 128)));
+    p.bloomThreshold = needsLargeGlow ? Math.max(0, threshold * 0.3) : threshold;
+    p.bloomScale = needsLargeGlow ? 0.25 : 0.5;
     return true;
   }
 
@@ -202,13 +199,13 @@ export function createBabylonEffectsApi(self) {
 
   function setBloomStrength(strength) {
     if (pipeline) {
-      pipeline.bloomWeight = strength;
+      pipeline.bloomWeight = strength >= 1 ? strength * 5.0 : strength;
     }
   }
 
   function setBloomRadius(radius) {
     if (pipeline) {
-      pipeline.bloomKernel = Math.round(radius * 128);
+      pipeline.bloomKernel = Math.max(16, Math.round(radius * 768));
     }
   }
 

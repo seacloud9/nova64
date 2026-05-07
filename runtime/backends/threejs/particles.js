@@ -28,6 +28,26 @@ export function particlesModule({ scene, counters }) {
   const _dummy = new THREE.Object3D();
   const _color = new THREE.Color();
 
+  function _normalizeDirection(x = 0, y = 1, z = 0) {
+    const len = Math.hypot(x, y, z);
+    if (!Number.isFinite(len) || len <= 0.0001) return { x: 0, y: 1, z: 0 };
+    return { x: x / len, y: y / len, z: z / len };
+  }
+
+  function _directionBasis(direction) {
+    const up = Math.abs(direction.y) > 0.98 ? { x: 1, y: 0, z: 0 } : { x: 0, y: 1, z: 0 };
+    const tx = up.y * direction.z - up.z * direction.y;
+    const ty = up.z * direction.x - up.x * direction.z;
+    const tz = up.x * direction.y - up.y * direction.x;
+    const tangent = _normalizeDirection(tx, ty, tz);
+    const bitangent = {
+      x: direction.y * tangent.z - direction.z * tangent.y,
+      y: direction.z * tangent.x - direction.x * tangent.z,
+      z: direction.x * tangent.y - direction.y * tangent.x,
+    };
+    return { tangent, bitangent };
+  }
+
   function createParticleSystem(maxParticles = 200, options = {}) {
     const {
       shape = 'sphere',
@@ -45,6 +65,9 @@ export function particlesModule({ scene, counters }) {
       emitterX = 0,
       emitterY = 0,
       emitterZ = 0,
+      directionX = 0,
+      directionY = 1,
+      directionZ = 0,
       emitRate = 20, // particles per second
       minLife = 0.8,
       maxLife = 2.0,
@@ -121,6 +144,9 @@ export function particlesModule({ scene, counters }) {
         x: emitterX,
         y: emitterY,
         z: emitterZ,
+        directionX,
+        directionY,
+        directionZ,
         emitRate,
         minLife,
         maxLife,
@@ -167,15 +193,24 @@ export function particlesModule({ scene, counters }) {
     const ey = overrides.y ?? emitter.y;
     const ez = overrides.z ?? emitter.z;
 
-    // Random direction within spread cone (pointing up by default)
+    // Random direction within spread cone.
     const phi = Math.random() * Math.PI * 2;
     const theta = Math.random() * (overrides.spread ?? emitter.spread);
     const ct = Math.cos(theta);
     const st = Math.sin(theta);
     const speed = emitter.minSpeed + Math.random() * (emitter.maxSpeed - emitter.minSpeed);
-    const vx = overrides.vx ?? st * Math.cos(phi) * speed;
-    const vy = overrides.vy ?? ct * speed;
-    const vz = overrides.vz ?? st * Math.sin(phi) * speed;
+    const direction = _normalizeDirection(
+      overrides.directionX ?? emitter.directionX,
+      overrides.directionY ?? emitter.directionY,
+      overrides.directionZ ?? emitter.directionZ
+    );
+    const { tangent, bitangent } = _directionBasis(direction);
+    const radialX = Math.cos(phi) * tangent.x + Math.sin(phi) * bitangent.x;
+    const radialY = Math.cos(phi) * tangent.y + Math.sin(phi) * bitangent.y;
+    const radialZ = Math.cos(phi) * tangent.z + Math.sin(phi) * bitangent.z;
+    const vx = overrides.vx ?? (direction.x * ct + radialX * st) * speed;
+    const vy = overrides.vy ?? (direction.y * ct + radialY * st) * speed;
+    const vz = overrides.vz ?? (direction.z * ct + radialZ * st) * speed;
 
     const life = emitter.minLife + Math.random() * (emitter.maxLife - emitter.minLife);
     const sz = emitter.minSize + Math.random() * (emitter.maxSize - emitter.minSize);

@@ -4298,18 +4298,20 @@
     return (hash >>> 0) % 1000000;
   }
   function _vxResolveDefaultSeed() {
+    // Browser api-voxel.js is imported during startup, before Nova64.loadCart()
+    // injects __NOVA64_CURRENT_CART_PATH. Under the visual harness the browser
+    // therefore falls through to ?demo=<cart>. Prefer the Godot cart folder name
+    // here so both backends generate the same terrain and biome layout.
+    const cartName = global.__nova64_cart_name;
+    if (cartName) {
+      return _vxHashStringToSeed('nova64-demo:' + cartName);
+    }
     const activeCartPath =
       global.__NOVA64_CURRENT_CART_PATH ||
       global.__nova64CurrentCartPath ||
       null;
     if (activeCartPath) {
       return _vxHashStringToSeed('nova64-cart-path:' + activeCartPath);
-    }
-    // __nova64_cart_name is set by the Godot host bridge before cart loads
-    const cartName = global.__nova64_cart_name;
-    if (cartName) {
-      // Match browser: hashStringToSeed('nova64-demo:' + cartName)
-      return _vxHashStringToSeed('nova64-demo:' + cartName);
     }
     return 1337; // fallback
   }
@@ -4586,6 +4588,17 @@
   function _vxTreeRoll(x, z) {
     return (_vxNoise.noise2D((x | 0) * 0.7, (z | 0) * 0.7) + 1.0) * 0.5;
   }
+  function _vxChunkLocalCoord(v) {
+    return ((v % VX_CHUNK_SIZE) + VX_CHUNK_SIZE) % VX_CHUNK_SIZE;
+  }
+  function _vxTreePlacementAllowedAt(x, z) {
+    // Match runtime/api-voxel.js: pending trees are only accepted when their
+    // local chunk origin is safely inside the chunk, so canopies do not cross
+    // chunk boundaries or appear at spawn-edge columns.
+    const lx = _vxChunkLocalCoord(x | 0);
+    const lz = _vxChunkLocalCoord(z | 0);
+    return lx > 2 && lx < VX_CHUNK_SIZE - 3 && lz > 2 && lz < VX_CHUNK_SIZE - 3;
+  }
 
   function _vxHeightAt(x, z) {
     const biome = _vxBiomeAtCached(x, z);
@@ -4657,7 +4670,7 @@
     // --- above terrain: trees ---
     // Trunk at exactly (wx, wz)
     const h2 = _vxHeightAtCached(wx, wz);
-    if (vxConfig.enableTrees !== false && h2 >= VX_SEA_Y) {
+    if (vxConfig.enableTrees !== false && h2 > VX_SEA_Y && _vxTreePlacementAllowedAt(wx, wz)) {
       const biome2 = _vxBiomeAtCached(wx, wz);
       if (_vxTreeAllowed(biome2)) {
         const td = _vxTreeDensity(biome2);
@@ -4677,7 +4690,7 @@
       for (let dz = -MAX_CANOPY_R; dz <= MAX_CANOPY_R; dz++) {
         const tx = wx + dx, tz = wz + dz;
         const th = _vxHeightAtCached(tx, tz);
-        if (th < VX_SEA_Y) continue;
+        if (th <= VX_SEA_Y || !_vxTreePlacementAllowedAt(tx, tz)) continue;
         const tb = _vxBiomeAtCached(tx, tz);
         if (!_vxTreeAllowed(tb)) continue;
         if (vxConfig.enableTrees === false || !(_vxTreeRoll(tx, tz) < _vxTreeDensity(tb))) continue;
@@ -4821,7 +4834,7 @@
         const surfaceId = height < VX_SEA_Y ? (height >= VX_SEA_Y - 1 ? surface.id : 4) : surface.id;
         let trunkH = 0;
         let canopyR = 2;
-        if (vxConfig.enableTrees !== false && height >= VX_SEA_Y && _vxTreeAllowed(biome) &&
+        if (vxConfig.enableTrees !== false && height > VX_SEA_Y && _vxTreePlacementAllowedAt(wx, wz) && _vxTreeAllowed(biome) &&
             _vxTreeRoll(wx, wz) < _vxTreeDensity(biome)) {
           let baseH = 4, varH = 2;
           if (biome === 'Jungle') { baseH = 6; varH = 4; }

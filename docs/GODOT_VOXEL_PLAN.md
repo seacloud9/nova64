@@ -223,13 +223,18 @@ wsl bash -lc "cd /mnt/c/Users/brend/exp/nova64 && git add <files> && git -c core
   include a one-block neighbor border plus `meshMin`/`meshMax`, so C++ can
   cull faces against adjacent terrain without rendering duplicate boundary
   slabs.
-- **Seed parity uses the browser cart path** — the web runtime prefers
-  `__NOVA64_CURRENT_CART_PATH` over `?demo=` when deriving voxel world seeds.
-  The Godot host now exposes a browser-style `/examples/<cart>/code.js` path
-  before the shim loads, and the shim uses that same seed source.
+- **Seed parity follows browser load timing** — the browser visual harness
+  imports `runtime/api-voxel.js` before `Nova64.loadCart()` injects
+  `__NOVA64_CURRENT_CART_PATH`, so default voxel seeds fall through to
+  `?demo=<cart>`. The Godot shim therefore prefers `__nova64_cart_name` and
+  hashes `nova64-demo:<cart>` before considering an injected cart path.
 - **Texture atlas UVs are top-origin in Godot shader space** — the chunk
   shader now passes the row origin directly instead of vertically flipping it,
   matching how the generated Image atlas is filled.
+- **Tree origins must respect browser chunk-local guards** — Minecraft trees
+  only originate inside local chunk coordinates `3..12` and above sea level.
+  The Godot compact-column path mirrors that guard so spawn-edge canopies do
+  not appear where the browser would reject the tree.
 - **Temporary water planes stay off by default** — per-chunk transparent water
   planes caused stacked blending and scene washout. Water should return as
   native chunk/block rendering when the fluid pass lands.

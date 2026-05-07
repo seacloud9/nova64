@@ -423,7 +423,7 @@ uint32_t voxel_rng_next(uint32_t &state) {
 }
 
 float voxel_rng_unit(uint32_t &state) {
-    return ((voxel_rng_next(state) >> 8) & 0x00FFFFFF) / static_cast<float>(0x01000000);
+    return static_cast<float>(static_cast<double>(voxel_rng_next(state)) / 4294967296.0);
 }
 
 void atlas_noise_rect(const Ref<Image> &img, int x, int y, int w, int h, int base_hex,
@@ -443,6 +443,26 @@ void atlas_noise_rect(const Ref<Image> &img, int x, int y, int w, int h, int bas
                     Color(rr / 255.0f, rg / 255.0f, rb / 255.0f, 1.0f));
         }
     }
+}
+
+void atlas_fill_rect(const Ref<Image> &img, int x, int y, int w, int h, int hex, float alpha = 1.0f) {
+    Color c = color_from_hex_rgb(hex, alpha);
+    const int max_x = img.is_valid() ? img->get_width() : 0;
+    const int max_y = img.is_valid() ? img->get_height() : 0;
+    for (int py = 0; py < h; ++py) {
+        const int yy = y + py;
+        if (yy < 0 || yy >= max_y) continue;
+        for (int px = 0; px < w; ++px) {
+            const int xx = x + px;
+            if (xx < 0 || xx >= max_x) continue;
+            img->set_pixel(xx, yy, c);
+        }
+    }
+}
+
+int atlas_rand_px(uint32_t &rng_state, int max_exclusive) {
+    if (max_exclusive <= 1) return 0;
+    return std::clamp((int)(voxel_rng_unit(rng_state) * max_exclusive), 0, max_exclusive - 1);
 }
 
 void atlas_fill_tile_noise(const Ref<Image> &img, int tile_idx, int base_hex,
@@ -470,45 +490,201 @@ Ref<Texture2D> get_voxel_atlas_texture() {
     if (img.is_null()) return Ref<Texture2D>();
 
     uint32_t rng_state = 42u;
-    const int tile_base[27] = {
-        0x55cc33, 0x55cc33, 0x996644, 0xaaaaaa, 0xffdd88, 0x2288dd, 0x774422, 0x997744,
-        0x116622, 0x667788, 0xddaa55, 0xccffff, 0xcc4433, 0xeeeeff, 0x99ddff, 0x333333,
-        0x444444, 0xccaa88, 0xffcc33, 0x44ffee, 0x888888, 0xbbaa99, 0xffdd44, 0xffeeaa,
-        0xff4400, 0x220033, 0x668855
-    };
-    for (int i = 0; i < 27; ++i) {
-        atlas_fill_tile_noise(img, i, tile_base[i], 28, rng_state);
+    // Texture atlas parity with runtime/api-voxel.js. The ordering matters:
+    // the browser atlas uses one seeded RNG stream while drawing each tile and
+    // its details. Keep the same sequence here so directional-looking tiles
+    // don't appear to come from a different side of the material.
+    Vector2i tile_origin = atlas_tile_pixel_origin(0);
+    int x = tile_origin.x;
+    int y = tile_origin.y;
+    atlas_noise_rect(img, x, y, VOXEL_TILE_PX, VOXEL_TILE_PX, 0x55cc33, 40, rng_state);
+    for (int i = 0; i < 6; ++i) {
+        int px = x + atlas_rand_px(rng_state, VOXEL_TILE_PX);
+        int py = y + atlas_rand_px(rng_state, VOXEL_TILE_PX);
+        atlas_fill_rect(img, px, py, 1, 1, 0x3a8a22);
     }
 
-    // Texture accents for better parity with the web procedural atlas.
-    int x = VOXEL_TILE_PX;
-    int y = 0;
-    atlas_noise_rect(img, x, y, VOXEL_TILE_PX, 4, 0x55cc33, 24, rng_state); // grass side top strip
+    tile_origin = atlas_tile_pixel_origin(1); // grass side
+    x = tile_origin.x;
+    y = tile_origin.y;
+    atlas_noise_rect(img, x, y + 4, VOXEL_TILE_PX, VOXEL_TILE_PX - 4, 0x996644, 30, rng_state);
+    atlas_noise_rect(img, x, y, VOXEL_TILE_PX, 4, 0x55cc33, 30, rng_state);
+    for (int px = 0; px < VOXEL_TILE_PX; ++px) {
+        if (voxel_rng_unit(rng_state) > 0.5f) img->set_pixel(x + px, y + 4, color_from_hex_rgb(0x55cc33));
+    }
 
-    x = 6 * VOXEL_TILE_PX;
-    y = 0;
-    for (int sx = 0; sx < VOXEL_TILE_PX; sx += 3) {
+    tile_origin = atlas_tile_pixel_origin(2); // dirt flecks
+    x = tile_origin.x;
+    y = tile_origin.y;
+    atlas_noise_rect(img, x, y, VOXEL_TILE_PX, VOXEL_TILE_PX, 0x996644, 35, rng_state);
+    for (int i = 0; i < 4; ++i) {
+        int px = x + atlas_rand_px(rng_state, VOXEL_TILE_PX);
+        int py = y + atlas_rand_px(rng_state, VOXEL_TILE_PX);
+        atlas_fill_rect(img, px, py, 2, 1, 0x7a5533);
+    }
+
+    tile_origin = atlas_tile_pixel_origin(3); // stone cracks
+    x = tile_origin.x;
+    y = tile_origin.y;
+    atlas_noise_rect(img, x, y, VOXEL_TILE_PX, VOXEL_TILE_PX, 0xaaaaaa, 25, rng_state);
+    for (int i = 0; i < 3; ++i) {
+        int px = x + atlas_rand_px(rng_state, VOXEL_TILE_PX - 4);
+        int py = y + atlas_rand_px(rng_state, VOXEL_TILE_PX - 2);
+        int ww = 3 + (int)(voxel_rng_unit(rng_state) * 3);
+        atlas_fill_rect(img, px, py, ww, 1, 0x888888);
+    }
+
+    atlas_fill_tile_noise(img, 4, 0xffdd88, 20, rng_state); // sand
+
+    tile_origin = atlas_tile_pixel_origin(5); // water wave highlights
+    x = tile_origin.x;
+    y = tile_origin.y;
+    atlas_noise_rect(img, x, y, VOXEL_TILE_PX, VOXEL_TILE_PX, 0x2288dd, 15, rng_state);
+    for (int i = 0; i < 3; ++i) {
+        int px = x + atlas_rand_px(rng_state, VOXEL_TILE_PX - 5);
+        int py = y + atlas_rand_px(rng_state, VOXEL_TILE_PX);
+        atlas_fill_rect(img, px, py, 4, 1, 0xb4dcff, 0.30f);
+    }
+
+    tile_origin = atlas_tile_pixel_origin(6); // wood side — bark texture
+    x = tile_origin.x;
+    y = tile_origin.y;
+    atlas_noise_rect(img, x, y, VOXEL_TILE_PX, VOXEL_TILE_PX, 0x774422, 20, rng_state);
+    for (int sx = 0; sx < VOXEL_TILE_PX; sx += 3 + (int)(voxel_rng_unit(rng_state) * 2)) {
         for (int sy = 0; sy < VOXEL_TILE_PX; ++sy) {
-            img->set_pixel(x + sx, y + sy, color_from_hex_rgb(0x5e3518));
+            if (voxel_rng_unit(rng_state) > 0.3f) img->set_pixel(x + sx, y + sy, color_from_hex_rgb(0x5e3518));
         }
     }
 
-    Vector2i tile_origin = atlas_tile_pixel_origin(10);
+    tile_origin = atlas_tile_pixel_origin(7); // wood top — square pixel rings
     x = tile_origin.x;
     y = tile_origin.y;
-    for (int sy = 0; sy < VOXEL_TILE_PX; sy += 4) {
-        for (int sx = 0; sx < VOXEL_TILE_PX; ++sx) {
-            img->set_pixel(x + sx, y + sy, color_from_hex_rgb(0xc89940));
+    atlas_noise_rect(img, x, y, VOXEL_TILE_PX, VOXEL_TILE_PX, 0x997744, 15, rng_state);
+    for (int r = 2; r < 7; r += 2) {
+        const int cx = x + VOXEL_TILE_PX / 2;
+        const int cy = y + VOXEL_TILE_PX / 2;
+        for (int a = -r; a <= r; ++a) {
+            img->set_pixel(cx + a, cy - r, color_from_hex_rgb(0x664422));
+            img->set_pixel(cx + a, cy + r, color_from_hex_rgb(0x664422));
+            img->set_pixel(cx - r, cy + a, color_from_hex_rgb(0x664422));
+            img->set_pixel(cx + r, cy + a, color_from_hex_rgb(0x664422));
         }
     }
 
-    tile_origin = atlas_tile_pixel_origin(12);
+    tile_origin = atlas_tile_pixel_origin(8); // leaves speckles
     x = tile_origin.x;
     y = tile_origin.y;
+    atlas_noise_rect(img, x, y, VOXEL_TILE_PX, VOXEL_TILE_PX, 0x116622, 30, rng_state);
+    for (int i = 0; i < 12; ++i) {
+        int px = x + atlas_rand_px(rng_state, VOXEL_TILE_PX);
+        int py = y + atlas_rand_px(rng_state, VOXEL_TILE_PX);
+        atlas_fill_rect(img, px, py, 2, 2, voxel_rng_unit(rng_state) > 0.5f ? 0x0d5518 : 0x1a8833);
+    }
+
+    tile_origin = atlas_tile_pixel_origin(9); // cobblestone blocks
+    x = tile_origin.x;
+    y = tile_origin.y;
+    atlas_noise_rect(img, x, y, VOXEL_TILE_PX, VOXEL_TILE_PX, 0x667788, 30, rng_state);
+    for (int i = 0; i < 6; ++i) {
+        int shade = 80 + (int)(voxel_rng_unit(rng_state) * 60);
+        int hex = (shade << 16) | (shade << 8) | std::min(255, shade + 10);
+        int px = x + atlas_rand_px(rng_state, VOXEL_TILE_PX - 3);
+        int py = y + atlas_rand_px(rng_state, VOXEL_TILE_PX - 3);
+        int ww = 2 + (int)(voxel_rng_unit(rng_state) * 2);
+        int hh = 2 + (int)(voxel_rng_unit(rng_state) * 2);
+        atlas_fill_rect(img, px, py, ww, hh, hex);
+    }
+
+    tile_origin = atlas_tile_pixel_origin(10); // planks
+    x = tile_origin.x;
+    y = tile_origin.y;
+    atlas_noise_rect(img, x, y, VOXEL_TILE_PX, VOXEL_TILE_PX, 0xddaa55, 15, rng_state);
+    for (int sy = 0; sy < VOXEL_TILE_PX; sy += 4) atlas_fill_rect(img, x, y + sy, VOXEL_TILE_PX, 1, 0xc89940);
+
+    tile_origin = atlas_tile_pixel_origin(11); // glass frame
+    x = tile_origin.x;
+    y = tile_origin.y;
+    atlas_fill_rect(img, x, y, VOXEL_TILE_PX, VOXEL_TILE_PX, 0xc8f0ff, 0.30f);
+    atlas_fill_rect(img, x, y, VOXEL_TILE_PX, 1, 0x99bbcc);
+    atlas_fill_rect(img, x, y + VOXEL_TILE_PX - 1, VOXEL_TILE_PX, 1, 0x99bbcc);
+    atlas_fill_rect(img, x, y, 1, VOXEL_TILE_PX, 0x99bbcc);
+    atlas_fill_rect(img, x + VOXEL_TILE_PX - 1, y, 1, VOXEL_TILE_PX, 0x99bbcc);
+    atlas_fill_rect(img, x + VOXEL_TILE_PX / 2, y, 1, VOXEL_TILE_PX, 0x99bbcc);
+    atlas_fill_rect(img, x, y + VOXEL_TILE_PX / 2, VOXEL_TILE_PX, 1, 0x99bbcc);
+
+    tile_origin = atlas_tile_pixel_origin(12); // brick mortar
+    x = tile_origin.x;
+    y = tile_origin.y;
+    atlas_noise_rect(img, x, y, VOXEL_TILE_PX, VOXEL_TILE_PX, 0xcc4433, 20, rng_state);
     for (int sy = 0; sy < VOXEL_TILE_PX; sy += 4) {
-        for (int sx = 0; sx < VOXEL_TILE_PX; ++sx) {
-            img->set_pixel(x + sx, y + sy, color_from_hex_rgb(0xccbbaa));
+        atlas_fill_rect(img, x, y + sy, VOXEL_TILE_PX, 1, 0xccbbaa);
+        const int off = (sy % 8 == 0) ? 0 : VOXEL_TILE_PX / 2;
+        atlas_fill_rect(img, x + off, y + sy, 1, 4, 0xccbbaa);
+        atlas_fill_rect(img, x + off + VOXEL_TILE_PX / 2, y + sy, 1, 4, 0xccbbaa);
+    }
+
+    atlas_fill_tile_noise(img, 13, 0xeeeeff, 8, rng_state); // snow
+
+    tile_origin = atlas_tile_pixel_origin(14); // ice cracks
+    x = tile_origin.x;
+    y = tile_origin.y;
+    atlas_noise_rect(img, x, y, VOXEL_TILE_PX, VOXEL_TILE_PX, 0x99ddff, 12, rng_state);
+    atlas_fill_rect(img, x + 3, y + 2, 1, 8, 0xbbeeff);
+    atlas_fill_rect(img, x + 10, y + 5, 1, 6, 0xbbeeff);
+
+    atlas_fill_tile_noise(img, 15, 0x333333, 30, rng_state); // bedrock
+
+    const int ore_speck[4] = { 0x111111, 0xddaa77, 0xffcc00, 0x33ddcc };
+    for (int oi = 0; oi < 4; ++oi) {
+        tile_origin = atlas_tile_pixel_origin(16 + oi);
+        x = tile_origin.x;
+        y = tile_origin.y;
+        atlas_noise_rect(img, x, y, VOXEL_TILE_PX, VOXEL_TILE_PX, 0xaaaaaa, 25, rng_state);
+        for (int i = 0; i < 5 + oi; ++i) {
+            int px = x + atlas_rand_px(rng_state, VOXEL_TILE_PX - 2);
+            int py = y + atlas_rand_px(rng_state, VOXEL_TILE_PX - 2);
+            atlas_fill_rect(img, px, py, 2, 2, ore_speck[oi]);
         }
+    }
+
+    atlas_fill_tile_noise(img, 20, 0x888888, 40, rng_state); // gravel
+    atlas_fill_tile_noise(img, 21, 0xbbaa99, 15, rng_state); // clay
+
+    tile_origin = atlas_tile_pixel_origin(22); // torch
+    x = tile_origin.x;
+    y = tile_origin.y;
+    atlas_fill_rect(img, x, y, VOXEL_TILE_PX, VOXEL_TILE_PX, 0x1a1a1a);
+    atlas_fill_rect(img, x + 7, y + 6, 2, 10, 0x774422);
+    atlas_fill_rect(img, x + 6, y + 3, 4, 4, 0xffdd44);
+    atlas_fill_rect(img, x + 7, y + 2, 2, 2, 0xffaa00);
+
+    tile_origin = atlas_tile_pixel_origin(23); // glowstone cracks
+    x = tile_origin.x;
+    y = tile_origin.y;
+    atlas_noise_rect(img, x, y, VOXEL_TILE_PX, VOXEL_TILE_PX, 0xffeeaa, 20, rng_state);
+    atlas_fill_rect(img, x + 4, y + 3, 8, 1, 0xddcc66);
+    atlas_fill_rect(img, x + 2, y + 9, 6, 1, 0xddcc66);
+
+    tile_origin = atlas_tile_pixel_origin(24); // lava bright spots
+    x = tile_origin.x;
+    y = tile_origin.y;
+    atlas_noise_rect(img, x, y, VOXEL_TILE_PX, VOXEL_TILE_PX, 0xff4400, 30, rng_state);
+    for (int i = 0; i < 4; ++i) {
+        int px = x + atlas_rand_px(rng_state, VOXEL_TILE_PX - 3);
+        int py = y + atlas_rand_px(rng_state, VOXEL_TILE_PX - 3);
+        atlas_fill_rect(img, px, py, 3, 2, 0xffaa33);
+    }
+
+    atlas_fill_tile_noise(img, 25, 0x220033, 12, rng_state); // obsidian
+
+    tile_origin = atlas_tile_pixel_origin(26); // mossy cobblestone moss
+    x = tile_origin.x;
+    y = tile_origin.y;
+    atlas_noise_rect(img, x, y, VOXEL_TILE_PX, VOXEL_TILE_PX, 0x667788, 25, rng_state);
+    for (int i = 0; i < 8; ++i) {
+        int px = x + atlas_rand_px(rng_state, VOXEL_TILE_PX);
+        int py = y + atlas_rand_px(rng_state, VOXEL_TILE_PX);
+        atlas_fill_rect(img, px, py, 2, 2, 0x446633);
     }
 
     atlas_tex.instantiate();
@@ -1102,11 +1278,9 @@ Dictionary Nova64Host::_cmd_vox_load(const Dictionary &p) {
         return volume[x + y * sx + z * sx * sy];
     };
     auto to_godot = [&](float x, float y, float z) -> Vector3 {
-        // VOX X right, VOX Y forward, VOX Z up -> Godot/Nova64 Y-up
-        // centered mesh. The X/Z terms are mirrored together to account for
-        // Godot's opposite camera-forward convention while preserving the
-        // authored handedness of the model.
-        return Vector3(-x + (float)sx * 0.5f, z - (float)sz * 0.5f, -y + (float)sy * 0.5f);
+        // Match Three.js VOXLoader buildMesh(): VOX X right, VOX Y forward,
+        // VOX Z up -> Nova64/Godot Y-up with +Z treated as camera-back.
+        return Vector3(x - (float)sx * 0.5f, z - (float)sz * 0.5f, -y + (float)sy * 0.5f);
     };
     auto color_for = [&](int color_index) -> Color {
         const int palette_index = color_index > 0 ? color_index - 1 : 0;
@@ -2836,8 +3010,24 @@ Dictionary Nova64Host::_cmd_voxel_upload_chunk(const Dictionary &p) {
                     // Corner positions assembled via the per-face cu[]/cv[] offset flags.
                     const float pu[2] = { (float)u0, (float)(u0+w) };
                     const float pv[2] = { (float)v0, (float)(v0+h) };
-                    const float uv_u[4] = { 0.0f, (float)w, (float)w, 0.0f };
-                    const float uv_v[4] = { (float)h, (float)h, 0.0f, 0.0f };
+                    float uv_u[4] = { 0.0f, (float)w, (float)w, 0.0f };
+                    float uv_v[4] = { (float)h, (float)h, 0.0f, 0.0f };
+                    if (fi == 0) { // +X: Godot corner order is web [1,2,3,0]
+                        for (int ci = 0; ci < 4; ++ci) {
+                            uv_u[ci] = gf.cv[ci] ? 0.0f : (float)h;
+                            uv_v[ci] = gf.cu[ci] ? 0.0f : (float)w;
+                        }
+                    } else if (fi == 1) { // -X: Godot corner order is web [1,2,3,0]
+                        for (int ci = 0; ci < 4; ++ci) {
+                            uv_u[ci] = gf.cv[ci] ? (float)h : 0.0f;
+                            uv_v[ci] = gf.cu[ci] ? 0.0f : (float)w;
+                        }
+                    } else if (fi == 2) { // +Y: Godot corner order is web [2,3,0,1]
+                        for (int ci = 0; ci < 4; ++ci) {
+                            uv_u[ci] = gf.cu[ci] ? 0.0f : (float)w;
+                            uv_v[ci] = gf.cv[ci] ? 0.0f : (float)h;
+                        }
+                    }
                     const bool is_top = (fi == 2);
                     const bool is_bottom = (fi == 3);
                     const int tile_idx = voxel_tile_index_for_face(id, is_top, is_bottom);

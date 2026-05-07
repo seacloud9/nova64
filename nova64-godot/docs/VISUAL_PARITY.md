@@ -911,3 +911,69 @@ Remaining visual debt:
   balance, and transparent vegetation treatment still need more targeted passes.
 - Water should move into the native chunk/block path instead of returning as
   stacked transparent overlay planes.
+
+## Voxel atlas and Minecraft parity checkpoint
+
+This checkpoint tightened the native Godot voxel path after the first native
+chunk pass. The focus was Minecraft/voxel visual parity rather than adding new
+cart-facing API surface.
+
+What landed:
+
+- The native procedural voxel atlas now mirrors `runtime/api-voxel.js`
+  tile-by-tile instead of filling all base colors first and adding accents
+  later. This preserves the browser RNG stream order for directional-looking
+  details such as grass sides, bark, planks, brick mortar, ores, glowstone,
+  lava, and mossy cobble.
+- Native atlas RNG now uses the same `seededRandom(42)` unit interval as the
+  browser atlas.
+- Godot chunk UVs keep per-face repeat coordinates aligned to the browser
+  atlas shader convention, while `UV2` carries the tile origin.
+- `.vox` model coordinates now follow the Three.js `VOXLoader` transform
+  orientation (`x`, `z`, `-y`) for front/back parity.
+- Godot voxel seed resolution now prefers the cart folder name as
+  `nova64-demo:<cart>` because the browser visual harness imports the voxel
+  runtime before `Nova64.loadCart()` injects `__NOVA64_CURRENT_CART_PATH`.
+- Minecraft tree origins now obey the browser chunk-local placement guard
+  (`x/z` local coordinates 3 through 12 only, and above sea level), preventing
+  spawn-edge trees/canopies from crowding the initial camera.
+
+Focused validation:
+
+```bash
+wsl bash -lc "cd /mnt/c/Users/brend/exp/nova64 && source ~/.nvm/nvm.sh && \
+  nvm use 20 >/dev/null && \
+  node --check nova64-godot/godot_project/shim/nova64-compat.js"
+
+wsl bash -lc "cd /mnt/c/Users/brend/exp/nova64/nova64-godot/gdextension && \
+  scons platform=windows target=template_debug -j4 && \
+  scons platform=linux target=template_debug -j4"
+
+wsl bash -lc "cd /mnt/c/Users/brend/exp/nova64 && source ~/.nvm/nvm.sh && \
+  nvm use 20 >/dev/null && \
+  pnpm godot:visual -- --cart=minecraft-demo --frames=220 --wait-ms=1000 \
+  --report-only --max-diff=100"
+```
+
+Snapshots from the final Minecraft pass:
+
+- `nova64-godot/test-results/visual-parity/voxel-diagnostics/post-tree-edge-guard/browser-minecraft-demo.png`
+- `nova64-godot/test-results/visual-parity/voxel-diagnostics/post-tree-edge-guard/godot-minecraft-demo.png`
+- `nova64-godot/test-results/visual-parity/voxel-diagnostics/post-tree-edge-guard/report-minecraft-demo.md`
+
+Observed state:
+
+- Godot `minecraft-demo` conformance still passes.
+- The latest report-mode screenshot diff is `92.46%`; the raw percentage is
+  high because the camera/fog/HUD framing still differs, but the Godot frame is
+  no longer buried in spawn-edge canopy and the native atlas is sampling the
+  intended tile details.
+
+Remaining visual debt:
+
+- The Godot terrain generator still uses compact column records instead of the
+  browser's full per-block chunk construction, so tree silhouettes and some
+  exposed canopy details remain approximate.
+- Camera framing, fog density, and HUD scale still dominate screenshot diff.
+- Water should be represented in the native block/chunk path before treating
+  Minecraft parity as closed.

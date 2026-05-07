@@ -4,7 +4,7 @@ Shared instructions for coding agents working in the Nova64 repository.
 
 ## Single Source of Truth
 
-`AGENTS.md` is the only canonical source for agent-facing repository instructions. Tool-specific files such as `CLAUDE.md`, `CODEX.md`, and `COPILOT.md` must stay as thin pointers to this file, not independent guides.
+`AGENTS.md` is the only canonical source for agent-facing repository instructions. Tool-specific files such as `CLAUDE.md`, `CODEX.md`, `COPILOT.md`, and `GEMINI.md` must stay as thin pointers to this file, not independent guides.
 
 When changing agent workflow, commands, architecture notes, or repository rules:
 
@@ -354,6 +354,6 @@ Guidelines:
 ### Documentation Expectations
 
 - Treat `AGENTS.md` as the shared source of truth for cross-agent repo instructions.
-- Keep `CLAUDE.md`, `CODEX.md`, and `COPILOT.md` as short pointers to `AGENTS.md`.
+- Keep `CLAUDE.md`, `CODEX.md`, `COPILOT.md`, and `GEMINI.md` as short pointers to `AGENTS.md`.
 - Keep lengthy tutorials, exhaustive API references, and speculative roadmaps in separate docs.
 - If README or another non-agent doc diverges from the current repo, verify against live source files before carrying its content forward.

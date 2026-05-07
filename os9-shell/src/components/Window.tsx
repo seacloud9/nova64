@@ -11,6 +11,24 @@ const EDGE_CURSORS: Record<ResizeEdge, string> = {
   ne: 'ne-resize', nw: 'nw-resize', se: 'nwse-resize', sw: 'sw-resize',
 };
 
+/**
+ * Stable container for imperatively-mounted app content.
+ * When no React children are provided (the common case for imperatively-mounted apps),
+ * this renders a self-closing div. React sees no children to reconcile, so it will
+ * never clear content injected by app.mount() / createRoot().
+ * This prevents the minimize/restore bug where content disappeared.
+ */
+function ImperativeContent({ children }: { children?: ReactNode }) {
+  if (children) {
+    return (
+      <div className="window-content" style={{ overflow: 'auto', flex: 1 }}>
+        {children}
+      </div>
+    );
+  }
+  return <div className="window-content" style={{ overflow: 'auto', flex: 1 }} />;
+}
+
 interface WindowProps {
   id: string;
   title: string;
@@ -177,7 +195,13 @@ export function Window({
         width: actualWidth,
         height: isShaded ? 'auto' : actualHeight,
         zIndex,
-        display: isMinimized ? 'none' : undefined,
+        ...(isMinimized ? {
+          visibility: 'hidden' as const,
+          position: 'fixed' as const,
+          left: -9999,
+          top: -9999,
+          pointerEvents: 'none' as const,
+        } : {}),
       }}
       onClick={handleContentClick}
     >
@@ -204,9 +228,7 @@ export function Window({
       
       {!isShaded && (
         <>
-          <div className="window-content" style={{ overflow: 'auto', flex: 1 }}>
-            {children}
-          </div>
+          <ImperativeContent>{children}</ImperativeContent>
           {/* 8-edge resize zones */}
           {resizable && !isMaximized && (
             <>

@@ -72,7 +72,7 @@ export function ScreensaverOverlay() {
       onMouseDown={dismiss}
       onTouchStart={dismiss}
     >
-      <canvas ref={canvasRef} className="screensaver-canvas" />
+      <canvas key={selectedHackId} ref={canvasRef} className="screensaver-canvas" />
     </div>
   );
 }

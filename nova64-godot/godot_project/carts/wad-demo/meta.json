@@ -1,7 +1,0 @@
-{
-  "name": "WAD Demo (Freedoom)",
-  "description": "Loads freedoom1.wad from res://assets/, parses E1M1, and renders the level geometry as colored cubes. Use WASD/arrows to walk around and Q/E (or mouse) to look.",
-  "author": "Nova64",
-  "version": "0.1.0",
-  "category": "demo"
-}

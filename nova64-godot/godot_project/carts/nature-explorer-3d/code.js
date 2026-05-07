@@ -311,12 +311,6 @@ function createCollectibleMesh(type, x, z) {
   return mesh;
 }
 
-function createGroundPlane(w, h, planeColor, pos, opts) {
-  const mesh = createPlane(w, h, planeColor, pos, opts);
-  setRotation(mesh, -Math.PI / 2, 0, 0);
-  return mesh;
-}
-
 // ── Create POI structure ──
 function createPOIMesh(type, x, z) {
   const c = type.color;
@@ -330,7 +324,7 @@ function createPOIMesh(type, x, z) {
         const pillar = createCylinder(0.4, h, c, [px, h / 2, pz]);
         if (Math.random() > 0.5) setScale(pillar, 1, 0.6, 1); // Broken
       }
-      createGroundPlane(6, 6, 0x777766, [x, 0.05, z]);
+      createPlane(6, 6, 0x777766, [x, 0.05, z]);
       break;
     }
     case 'Fairy Ring': {
@@ -523,11 +517,11 @@ function generateWorld() {
   seed = 42;
 
   // Ground — layered for depth
-  createGroundPlane(WORLD_SIZE * 2.5, WORLD_SIZE * 2.5, 0x4a8c3f, [0, 0, 0]);
+  createPlane(WORLD_SIZE * 2.5, WORLD_SIZE * 2.5, 0x4a8c3f, [0, 0, 0]);
   // Dirt ring around world edge
-  createGroundPlane(WORLD_SIZE * 4, WORLD_SIZE * 4, 0x8a7a5a, [0, -0.02, 0]);
+  createPlane(WORLD_SIZE * 4, WORLD_SIZE * 4, 0x8a7a5a, [0, -0.02, 0]);
   // Water plane
-  const water = createGroundPlane(WORLD_SIZE * 5, WORLD_SIZE * 5, 0x2266aa, [0, -0.8, 0]);
+  const water = createPlane(WORLD_SIZE * 5, WORLD_SIZE * 5, 0x2266aa, [0, -0.8, 0]);
 
   // Hills with biome-colored grass
   for (let i = 0; i < 20; i++) {

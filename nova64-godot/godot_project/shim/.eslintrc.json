@@ -1,0 +1,9 @@
+{
+  "parserOptions": {
+    "sourceType": "script"
+  },
+  "rules": {
+    "no-undef":      "off",
+    "no-unused-vars": "off"
+  }
+}

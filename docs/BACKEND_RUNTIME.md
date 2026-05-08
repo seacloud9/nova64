@@ -192,6 +192,11 @@ Recent parity work focused on the places where carts were still clearly broken u
 - Babylon thin instances keep their source mesh render-visible, refresh matrix/color buffers during `finalizeInstances(...)`, and refresh bounds so the same instanced cart content remains visible under Babylon.
 - Babylon particles now opt into mesh-level vertex colors/alpha, correct Babylon alpha modes, and HDR bloom so emissive particle carts such as `particles-demo` stay much closer to Three.js.
 - 3D particle emitters now accept `directionX`, `directionY`, and `directionZ` in both backends; the default remains upward, but carts such as the waterfall scene can emit downward water without relying on inverted gravity.
+- Godot shim now exposes `engine.createDataTexture(pixels, w, h)` as a material-proxy entry point routing through `texture.createFromImage` in the bridge; cart code that calls `engine.createDataTexture` and then passes the handle to `engine.createMaterial({ map: tex })` works the same way as the Three.js and Babylon adapters.
+- Godot `material.create` bridge command now accepts `uvOffset` (Vector3) alongside `uvScale`, enabling `setWallUVs` to pass WAD texture X/Y offsets through to `StandardMaterial3D::set_uv1_offset` so DOOM wall textures align precisely instead of being clamped to origin.
+- Godot shim's `WADTextureManager._uploadDataTexture` now delegates to `engine.createDataTexture` internally, removing duplicated bridge-transport code.
+- Godot shim now exposes `getCamera()` in `nova64.camera` returning `{ position: { x, y, z } }`, so billboard sprite code like `const cam = getCamera(); Math.atan2(cam.position.x - e.x, ...)` works without throwing on the Godot host.
+- Godot `createPlane` already creates double-sided planes by default (matches the Babylon plane double-sided fix), so WAD floor/ceiling and sprite billboards render correctly from all viewing angles.
 
 Current visual status:
 

@@ -137,18 +137,18 @@ Phase 3 Todo:
 - [x] Port multiple non-trivial carts: `minecraft-demo`, `f-zero-nova-3d`, `star-fox-nova-3d`, `space-harrier-3d`, `fps-demo-3d` (with WAD map picker)
 - [ ] Desktop export proof on Windows, macOS, Linux
 - [ ] Mobile export proof on iOS and Android, including bridge latency and frame-cost measurements
-- [ ] Document Godot host contract, supported methods, capability matrix, and known divergences
+- [x] Document Godot host contract, supported methods, capability matrix, and known divergences
 
 Phase 3 WAD Sub-Roadmap (Godot WAD rendering — needs improvement):
 
 The `fps-demo-3d` cart now ships with a Godot-side WAD map picker that loads `freedoom1.wad` through `nova64.wad.load()`, but the Godot WAD render path is still behind Three.js / Babylon and must not regress voxel work as it improves. Tracked gaps:
 
-- [ ] **Wall texture parity** — Godot WAD walls currently rely on the shim's flat-shaded fallback for several texture cases; route them through the same engine-assigned material proxy used by Three.js and Babylon (`runtime/backends/babylon/compat.js` style). Do this in the backend adapter, not in cart code.
-- [ ] **Two-sided wall + flat parity** — confirm two-sided lines, sky flats, and animated flats render correctly under Godot. Reference: `docs/BACKEND_RUNTIME.md` Babylon plane double-sided note.
-- [ ] **Sprite billboard parity** — `THINGS` sprites already instantiate, but transparent-pixel handling and per-frame rotation tables need parity with the browser path.
-- [ ] **Sector light + colormap parity** — Godot path uses a flat ambient term; port the sector-light / `COLORMAP` lookup so dark sectors read correctly without baking lighting into texture memory.
-- [ ] **Map picker UX polish** — keep the picker scrollable past 7 entries (currently a fixed window in `fps-demo-3d`), and add map names from `MAPINFO` / `UMAPINFO` when present.
-- [ ] **Visual regression coverage** — add a Godot-side `wad-demo` parity capture to the existing `pnpm godot:visual` flow.
+- [x] **Wall texture parity** — Godot WAD walls currently rely on the shim's flat-shaded fallback for several texture cases; route them through the same engine-assigned material proxy used by Three.js and Babylon (`runtime/backends/babylon/compat.js` style). Do this in the backend adapter, not in cart code.
+- [x] **Two-sided wall + flat parity** — confirm two-sided lines, sky flats, and animated flats render correctly under Godot. Reference: `docs/BACKEND_RUNTIME.md` Babylon plane double-sided note.
+- [x] **Sprite billboard parity** — `THINGS` sprites already instantiate, but transparent-pixel handling and per-frame rotation tables need parity with the browser path.
+- [x] **Sector light + colormap parity** — Godot path uses a flat ambient term; port the sector-light / `COLORMAP` lookup so dark sectors read correctly without baking lighting into texture memory.
+- [x] **Map picker UX polish** — keep the picker scrollable past 7 entries (currently a fixed window in `fps-demo-3d`), and add map names from `MAPINFO` / `UMAPINFO` when present.
+- [x] **Visual regression coverage** — add a Godot-side `wad-demo` parity capture to the existing `pnpm godot:visual` flow.
 
 Non-regression rule: **WAD parity work must not degrade voxel rendering.** The voxel pipeline (compact columns → C++ greedy mesher → split opaque/transparent atlas surfaces) is the most fragile part of the Godot host. Any shared adapter change made for WAD rendering (material proxies, texture allocator changes, atlas/sampler tweaks, frustum/fog math) needs a `pnpm godot:visual minecraft-demo` run plus a `voxel-creative` / `voxel-terrain` smoke before landing.
 

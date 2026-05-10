@@ -33,33 +33,16 @@ export class Nova64 {
       });
     } else {
       // Fallback for environments that import Nova64 without the main bootstrap.
-      if (typeof globalThis.clearButtons === 'function') {
-        globalThis.clearButtons();
-      }
-      if (typeof globalThis.clearPanels === 'function') {
-        globalThis.clearPanels();
-      }
-      if (globalThis.screens && typeof globalThis.screens.reset === 'function') {
-        globalThis.screens.reset();
-      }
-      if (typeof globalThis.resetVoxelWorld === 'function') {
-        globalThis.resetVoxelWorld({ restoreDefaults: true, cartPath: modulePath });
-      }
-      if (typeof globalThis.clearScene === 'function') {
-        globalThis.clearScene();
-      }
-      if (typeof globalThis.clearSkybox === 'function') {
-        globalThis.clearSkybox();
-      }
-      if (typeof globalThis.setCameraPosition === 'function') {
-        globalThis.setCameraPosition(0, 5, 10);
-      }
-      if (typeof globalThis.setCameraTarget === 'function') {
-        globalThis.setCameraTarget(0, 0, 0);
-      }
-      if (typeof globalThis.setFog === 'function') {
-        globalThis.setFog(0x87ceeb, 50, 200);
-      }
+      const ns = globalThis.nova64;
+      ns?.ui?.clearButtons?.();
+      ns?.ui?.clearPanels?.();
+      ns?.ui?.screens?.reset?.();
+      ns?.voxel?.resetVoxelWorld?.({ restoreDefaults: true, cartPath: modulePath });
+      ns?.scene?.clearScene?.();
+      ns?.light?.clearSkybox?.();
+      ns?.camera?.setCameraPosition?.(0, 5, 10);
+      ns?.camera?.setCameraTarget?.(0, 0, 0);
+      ns?.light?.setFog?.(0x87ceeb, 50, 200);
       if (this._manifest) this._manifest._reset();
     }
 
@@ -88,18 +71,11 @@ export class Nova64 {
 
     // Clear scene AGAIN right before init — in case a concurrent loadCart
     // already ran and added its own objects while we were awaiting import.
-    if (typeof globalThis.clearScene === 'function') {
-      globalThis.clearScene();
-    }
-    if (typeof globalThis.clearSkybox === 'function') {
-      globalThis.clearSkybox();
-    }
-    if (typeof globalThis.clearButtons === 'function') {
-      globalThis.clearButtons();
-    }
-    if (typeof globalThis.clearPanels === 'function') {
-      globalThis.clearPanels();
-    }
+    const ns = globalThis.nova64;
+    ns?.scene?.clearScene?.();
+    ns?.light?.clearSkybox?.();
+    ns?.ui?.clearButtons?.();
+    ns?.ui?.clearPanels?.();
 
     // Auto-load manifest: meta.json (preferred) or export const env (fallback)
     if (this._manifest) await this._manifest._loadFromCart(mod, modulePath);

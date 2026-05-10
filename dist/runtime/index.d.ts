@@ -32,9 +32,13 @@ export interface ParticleSystemOptions {
   emissiveIntensity?: number;
   gravity?: number;
   drag?: number;
+  blending?: 'normal' | 'additive';
   emitterX?: number;
   emitterY?: number;
   emitterZ?: number;
+  directionX?: number;
+  directionY?: number;
+  directionZ?: number;
   emitRate?: number;
   minLife?: number;
   maxLife?: number;
@@ -45,12 +49,25 @@ export interface ParticleSystemOptions {
   maxSize?: number;
   startColor?: Color;
   endColor?: Color;
+  turbulence?: number;
+  turbulenceScale?: number;
+  attractorX?: number | null;
+  attractorY?: number | null;
+  attractorZ?: number | null;
+  attractorStrength?: number;
+  sizeOverLife?: [number, number, number] | null;
+  opacity?: number;
+  opacityOverLife?: [number, number, number] | null;
+  rotationSpeed?: number;
 }
 
 export interface ParticleEmitter {
   x: number;
   y: number;
   z: number;
+  directionX: number;
+  directionY: number;
+  directionZ: number;
   emitRate: number;
   minLife: number;
   maxLife: number;
@@ -68,6 +85,9 @@ export interface ParticleOverrides {
   vx: number;
   vy: number;
   vz: number;
+  directionX: number;
+  directionY: number;
+  directionZ: number;
   spread: number;
   r: number;
   g: number;
@@ -221,6 +241,14 @@ export declare const logger: Logger;
 export interface ThreeDApiInstance {
   // Primitives
   createCube(
+    width?: number,
+    height?: number,
+    depth?: number,
+    color?: Color,
+    position?: [number, number, number],
+    options?: MeshOptions
+  ): MeshId;
+  createCube(
     size?: number,
     color?: Color,
     position?: [number, number, number],
@@ -230,7 +258,28 @@ export interface ThreeDApiInstance {
     radius?: number,
     color?: Color,
     position?: [number, number, number],
+    options?: MeshOptions
+  ): MeshId;
+  createSphere(
+    radius?: number,
+    color?: Color,
+    position?: [number, number, number],
     segments?: number,
+    options?: MeshOptions
+  ): MeshId;
+  createCylinder(
+    radius?: number,
+    height?: number,
+    color?: Color,
+    position?: [number, number, number],
+    options?: MeshOptions
+  ): MeshId;
+  createCylinder(
+    radius?: number,
+    height?: number,
+    color?: Color,
+    segments?: number,
+    position?: [number, number, number],
     options?: MeshOptions
   ): MeshId;
   createCylinder(
@@ -618,12 +667,7 @@ export interface EngineAdapter {
   /** Create an opaque color value from r/g/b components (0–1). */
   createColor(r: number, g: number, b: number): EngineColor;
   /** Create a plane geometry. */
-  createPlaneGeometry(
-    width: number,
-    height: number,
-    segX?: number,
-    segY?: number
-  ): EngineGeometry;
+  createPlaneGeometry(width: number, height: number, segX?: number, segY?: number): EngineGeometry;
   /** Assign a material to a mesh by its Nova64 mesh ID. */
   setMeshMaterial(meshId: MeshId, material: EngineMaterial): void;
   /** Return the current camera world position. */
@@ -733,11 +777,70 @@ export declare class GpuBabylon {
   constructor(canvas: HTMLCanvasElement, w: number, h: number);
 
   // Primitives
-  createCube(size?: number, color?: number, position?: [number, number, number] | {x: number, y: number, z: number}, options?: object): number;
-  createSphere(radius?: number, color?: number, position?: [number, number, number] | {x: number, y: number, z: number}, segments?: number, options?: object): number;
-  createPlane(width?: number, height?: number, color?: number, position?: [number, number, number] | {x: number, y: number, z: number}, options?: object): number;
-  createCylinder(rTop?: number, rBottom?: number, height?: number, color?: number, position?: [number, number, number] | {x: number, y: number, z: number}, options?: object): number;
-  createCone(radius?: number, height?: number, color?: number, position?: [number, number, number] | {x: number, y: number, z: number}, options?: object): number;
+  createCube(
+    width?: number,
+    height?: number,
+    depth?: number,
+    color?: number,
+    position?: [number, number, number] | { x: number; y: number; z: number },
+    options?: object
+  ): number;
+  createCube(
+    size?: number,
+    color?: number,
+    position?: [number, number, number] | { x: number; y: number; z: number },
+    options?: object
+  ): number;
+  createSphere(
+    radius?: number,
+    color?: number,
+    position?: [number, number, number] | { x: number; y: number; z: number },
+    options?: object
+  ): number;
+  createSphere(
+    radius?: number,
+    color?: number,
+    position?: [number, number, number] | { x: number; y: number; z: number },
+    segments?: number,
+    options?: object
+  ): number;
+  createPlane(
+    width?: number,
+    height?: number,
+    color?: number,
+    position?: [number, number, number] | { x: number; y: number; z: number },
+    options?: object
+  ): number;
+  createCylinder(
+    radius?: number,
+    height?: number,
+    color?: number,
+    position?: [number, number, number] | { x: number; y: number; z: number },
+    options?: object
+  ): number;
+  createCylinder(
+    radius?: number,
+    height?: number,
+    color?: number,
+    segments?: number,
+    position?: [number, number, number] | { x: number; y: number; z: number },
+    options?: object
+  ): number;
+  createCylinder(
+    rTop?: number,
+    rBottom?: number,
+    height?: number,
+    color?: number,
+    position?: [number, number, number] | { x: number; y: number; z: number },
+    options?: object
+  ): number;
+  createCone(
+    radius?: number,
+    height?: number,
+    color?: number,
+    position?: [number, number, number] | { x: number; y: number; z: number },
+    options?: object
+  ): number;
   destroyMesh(id: number): void;
   removeMesh(id: number): void;
   getMesh(id: number): object | null;
@@ -928,10 +1031,21 @@ export interface Nova64CartGlobals {
 
   // Blend modes (runtime/api-blend.js)
   BM: {
-    NORMAL: string; ADD: string; MULTIPLY: string; SCREEN: string;
-    OVERLAY: string; DARKEN: string; LIGHTEN: string; DIFFERENCE: string;
-    EXCLUSION: string; HUE: string; SATURATION: string; COLOR: string;
-    LUMINOSITY: string; ERASE: string; NONE: string;
+    NORMAL: string;
+    ADD: string;
+    MULTIPLY: string;
+    SCREEN: string;
+    OVERLAY: string;
+    DARKEN: string;
+    LIGHTEN: string;
+    DIFFERENCE: string;
+    EXCLUSION: string;
+    HUE: string;
+    SATURATION: string;
+    COLOR: string;
+    LUMINOSITY: string;
+    ERASE: string;
+    NONE: string;
   };
   setBlendMode(mode: string): void;
   resetBlendMode(): void;
@@ -940,7 +1054,10 @@ export interface Nova64CartGlobals {
 
   // Stage display list (runtime/stage.js)
   createContainer(): StageNode;
-  createSpriteNode(image: HTMLImageElement | HTMLCanvasElement | ImageBitmap, opts?: SpriteNodeOpts): StageNode;
+  createSpriteNode(
+    image: HTMLImageElement | HTMLCanvasElement | ImageBitmap,
+    opts?: SpriteNodeOpts
+  ): StageNode;
   createGraphicsNode(drawFn: (ctx: CanvasRenderingContext2D, node: StageNode) => void): StageNode;
   createTextNode(text: string, opts?: TextNodeOpts): StageNode;
   addChild(parent: StageNode, child: StageNode): StageNode;
@@ -976,11 +1093,22 @@ export interface Nova64CartGlobals {
     combine(...filters: string[]): string;
   };
   CM: {
-    identity: number[]; grayscale: number[]; sepia: number[];
-    invert: number[]; nightVision: number[]; warmth: number[];
+    identity: number[];
+    grayscale: number[];
+    sepia: number[];
+    invert: number[];
+    nightVision: number[];
+    warmth: number[];
   };
   withFilter(filter: string, fn: (ctx: CanvasRenderingContext2D | null) => void): void;
-  withColorMatrix(matrix: number[], fn: (ctx: OffscreenCanvasRenderingContext2D) => void, x?: number, y?: number, w?: number, h?: number): void;
+  withColorMatrix(
+    matrix: number[],
+    fn: (ctx: OffscreenCanvasRenderingContext2D) => void,
+    x?: number,
+    y?: number,
+    w?: number,
+    h?: number
+  ): void;
   applyColorMatrix(matrix: number[], x?: number, y?: number, w?: number, h?: number): void;
 
   // Camera2D (runtime/camera-2d.js)
@@ -989,7 +1117,13 @@ export interface Nova64CartGlobals {
   endCamera2D(cam: Camera2D): void;
   cam2DApply(cam: Camera2D): void;
   cam2DReset(cam: Camera2D): void;
-  cam2DFollow(cam: Camera2D, targetX: number, targetY: number, dt: number, lerpFactor?: number): void;
+  cam2DFollow(
+    cam: Camera2D,
+    targetX: number,
+    targetY: number,
+    dt: number,
+    lerpFactor?: number
+  ): void;
   cam2DShake(cam: Camera2D, magnitude: number, duration: number): void;
   updateCamera2D(cam: Camera2D, dt: number): void;
   cam2DWorldToScreen(cam: Camera2D, wx: number, wy: number): { x: number; y: number };
@@ -1007,17 +1141,32 @@ export interface Nova64CartGlobals {
 
   // Tween engine (runtime/tween.js)
   Ease: Record<string, (t: number) => number>;
-  createTween(target: object, to: Record<string, number>, duration: number, opts?: TweenOpts): Tween;
+  createTween(
+    target: object,
+    to: Record<string, number>,
+    duration: number,
+    opts?: TweenOpts
+  ): Tween;
   killTween(tween: Tween): void;
   killTweensOf(target: object): void;
   updateTweens(dt: number): void;
   getTweenCount(): number;
 
   // Enhanced sprite API (runtime/api-sprites.js)
-  sprRect(sx: number, sy: number, sw: number, sh: number, dx: number, dy: number, opts?: SprOpts): void;
+  sprRect(
+    sx: number,
+    sy: number,
+    sw: number,
+    sh: number,
+    dx: number,
+    dy: number,
+    opts?: SprOpts
+  ): void;
   loadAtlas(url: string): Promise<string>;
   sprByName(name: string, x: number, y: number, opts?: SprOpts): void;
-  getAtlasFrame(name: string): { x: number; y: number; w: number; h: number; atlasId: string } | null;
+  getAtlasFrame(
+    name: string
+  ): { x: number; y: number; w: number; h: number; atlasId: string } | null;
 }
 
 // ─── Supporting types ─────────────────────────────────────────────────────────
@@ -1050,31 +1199,52 @@ export interface StageNode {
   children: StageNode[];
   // SpriteNode extras
   image?: HTMLImageElement | HTMLCanvasElement | ImageBitmap;
-  sx?: number; sy?: number; sw?: number; sh?: number;
-  dw?: number; dh?: number;
-  anchorX?: number; anchorY?: number;
+  sx?: number;
+  sy?: number;
+  sw?: number;
+  sh?: number;
+  dw?: number;
+  dh?: number;
+  anchorX?: number;
+  anchorY?: number;
   tint?: number | null;
-  flipX?: boolean; flipY?: boolean;
+  flipX?: boolean;
+  flipY?: boolean;
   // TextNode extras
-  text?: string; font?: string; fill?: string;
-  align?: string; baseline?: string;
-  stroke?: string | null; strokeWidth?: number;
+  text?: string;
+  font?: string;
+  fill?: string;
+  align?: string;
+  baseline?: string;
+  stroke?: string | null;
+  strokeWidth?: number;
   maxWidth?: number;
   // GraphicsNode extras
   draw?: (ctx: CanvasRenderingContext2D, node: StageNode) => void;
 }
 
 export interface SpriteNodeOpts {
-  sx?: number; sy?: number; sw?: number; sh?: number;
-  dw?: number; dh?: number;
-  anchorX?: number; anchorY?: number;
+  sx?: number;
+  sy?: number;
+  sw?: number;
+  sh?: number;
+  dw?: number;
+  dh?: number;
+  anchorX?: number;
+  anchorY?: number;
   tint?: number | null;
-  flipX?: boolean; flipY?: boolean;
+  flipX?: boolean;
+  flipY?: boolean;
 }
 
 export interface TextNodeOpts {
-  font?: string; fill?: string; align?: string; baseline?: string;
-  stroke?: string; strokeWidth?: number; maxWidth?: number;
+  font?: string;
+  fill?: string;
+  align?: string;
+  baseline?: string;
+  stroke?: string;
+  strokeWidth?: number;
+  maxWidth?: number;
 }
 
 export type MovieClipFrame =
@@ -1099,19 +1269,26 @@ export interface MovieClip {
 }
 
 export interface Camera2DOpts {
-  x?: number; y?: number;
-  zoom?: number; rotation?: number;
-  screenW?: number; screenH?: number;
+  x?: number;
+  y?: number;
+  zoom?: number;
+  rotation?: number;
+  screenW?: number;
+  screenH?: number;
 }
 
 export interface Camera2D {
-  x: number; y: number;
-  zoom: number; rotation: number;
-  screenW: number | null; screenH: number | null;
+  x: number;
+  y: number;
+  zoom: number;
+  rotation: number;
+  screenW: number | null;
+  screenH: number | null;
 }
 
 export interface Emitter2DOpts {
-  x?: number; y?: number;
+  x?: number;
+  y?: number;
   image?: HTMLImageElement | null;
   frames?: Array<{ sx: number; sy: number; sw: number; sh: number }> | null;
   blendMode?: string;
@@ -1132,7 +1309,8 @@ export interface Emitter2DOpts {
 }
 
 export interface Emitter2D {
-  x: number; y: number;
+  x: number;
+  y: number;
   active: boolean;
   emitRate: number;
 }

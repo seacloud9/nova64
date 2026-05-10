@@ -252,20 +252,17 @@ export class DebugPanel {
     grid.appendChild(this._el('span', { text: 'Pos', css: 'color:#888;' }));
     grid.appendChild(
       this._numInput(p.x, v => {
-        if (typeof globalThis.setCameraPosition === 'function')
-          globalThis.setCameraPosition(v, p.y, p.z);
+        globalThis.nova64?.camera?.setCameraPosition?.(v, p.y, p.z);
       })
     );
     grid.appendChild(
       this._numInput(p.y, v => {
-        if (typeof globalThis.setCameraPosition === 'function')
-          globalThis.setCameraPosition(p.x, v, p.z);
+        globalThis.nova64?.camera?.setCameraPosition?.(p.x, v, p.z);
       })
     );
     grid.appendChild(
       this._numInput(p.z, v => {
-        if (typeof globalThis.setCameraPosition === 'function')
-          globalThis.setCameraPosition(p.x, p.y, v);
+        globalThis.nova64?.camera?.setCameraPosition?.(p.x, p.y, v);
       })
     );
 
@@ -273,27 +270,24 @@ export class DebugPanel {
       grid.appendChild(this._el('span', { text: 'Tgt', css: 'color:#888;' }));
       grid.appendChild(
         this._numInput(t.x, v => {
-          if (typeof globalThis.setCameraTarget === 'function')
-            globalThis.setCameraTarget(v, t.y, t.z);
+          globalThis.nova64?.camera?.setCameraTarget?.(v, t.y, t.z);
         })
       );
       grid.appendChild(
         this._numInput(t.y, v => {
-          if (typeof globalThis.setCameraTarget === 'function')
-            globalThis.setCameraTarget(t.x, v, t.z);
+          globalThis.nova64?.camera?.setCameraTarget?.(t.x, v, t.z);
         })
       );
       grid.appendChild(
         this._numInput(t.z, v => {
-          if (typeof globalThis.setCameraTarget === 'function')
-            globalThis.setCameraTarget(t.x, t.y, v);
+          globalThis.nova64?.camera?.setCameraTarget?.(t.x, t.y, v);
         })
       );
     }
 
     grid.appendChild(this._el('span', { text: 'FOV', css: 'color:#888;' }));
     const fovInput = this._numInput(cam.fov, v => {
-      if (typeof globalThis.setCameraFOV === 'function') globalThis.setCameraFOV(v);
+      globalThis.nova64?.camera?.setCameraFOV?.(v);
     });
     fovInput.style.gridColumn = 'span 3';
     grid.appendChild(fovInput);

@@ -1,6 +1,6 @@
 // runtime/wad.js — WAD File Parser, Level Converter & Texture Manager for Nova64
 // Supports classic DOOM WAD format (IWAD and PWAD)
-/* global getMesh */
+/* global */
 
 import { engine } from './engine-adapter.js';
 
@@ -222,6 +222,49 @@ class WADLoader {
 
   getMapNames() {
     return this.directory.filter(e => /^(E\dM\d|MAP\d\d)$/.test(e.name)).map(e => e.name);
+  }
+
+  /**
+   * Parse UMAPINFO and MAPINFO lumps and return a map from internal map
+   * identifier (e.g. "E1M1", "MAP01") to a human-readable level title.
+   * UMAPINFO is checked first (more standardised); falls back to MAPINFO.
+   * Returns an empty object when neither lump is present.
+   */
+  getMapTitles() {
+    const titles = {};
+
+    // ── UMAPINFO ──────────────────────────────────────────────────────────
+    // Format:  MAP E1M1 { LEVELNAME = "Hangar" ... }
+    const umapLump = this.getLump('UMAPINFO');
+    if (umapLump) {
+      const text = new TextDecoder('utf-8', { fatal: false }).decode(umapLump.data);
+      const re = /\bMAP\s+(\w+)\s*\{([^}]*)\}/gi;
+      let m;
+      while ((m = re.exec(text)) !== null) {
+        const key = m[1].toUpperCase();
+        const body = m[2];
+        const nameMatch = body.match(/LEVELNAME\s*=\s*"([^"]+)"/i);
+        if (nameMatch) titles[key] = nameMatch[1];
+      }
+      if (Object.keys(titles).length > 0) return titles;
+    }
+
+    // ── MAPINFO ───────────────────────────────────────────────────────────
+    // Handles three common variants:
+    //   map E1M1 "Title"
+    //   map MAP01 "Title"   (ZDoom / GZDoom)
+    //   map E1M1 lookup TITLESTRING  (ZDoom lookup)
+    const mapinfoLump = this.getLump('MAPINFO');
+    if (mapinfoLump) {
+      const text = new TextDecoder('utf-8', { fatal: false }).decode(mapinfoLump.data);
+      const re = /^\s*map\s+(\w+)\s+"([^"]+)"/gim;
+      let m;
+      while ((m = re.exec(text)) !== null) {
+        titles[m[1].toUpperCase()] = m[2];
+      }
+    }
+
+    return titles;
   }
 
   getMap(name) {
@@ -876,7 +919,7 @@ function setBabylonPlaneUVs(mesh, ofsU, ofsV, tileU, tileV) {
 }
 
 function setWallUVs(meshId, wallDoomLen, wallDoomH, texWidth, texHeight, xoff, yoff) {
-  const mesh = getMesh(meshId);
+  const mesh = globalThis.nova64?.scene?.getMesh?.(meshId);
   if (!mesh || !texWidth || !texHeight) return;
 
   const uvAttr = mesh.geometry?.attributes?.uv ?? mesh.geometry?.getAttribute?.('uv');

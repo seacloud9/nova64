@@ -179,12 +179,14 @@ export function createBabylonSceneApi(self) {
         self.setFog(opts.fog.color ?? 0x000000, opts.fog.near ?? 10, opts.fog.far ?? 50);
       }
 
-      if (opts.skybox && typeof globalThis.createSpaceSkybox === 'function') {
-        globalThis.createSpaceSkybox(opts.skybox);
+      if (opts.skybox) {
+        globalThis.nova64?.light?.createSpaceSkybox?.(opts.skybox);
       }
 
-      if (opts.effects && typeof globalThis.enableRetroEffects === 'function') {
-        globalThis.enableRetroEffects(typeof opts.effects === 'object' ? opts.effects : {});
+      if (opts.effects) {
+        globalThis.nova64?.fx?.enableRetroEffects?.(
+          typeof opts.effects === 'object' ? opts.effects : {}
+        );
       }
     },
 

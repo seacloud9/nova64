@@ -1,6 +1,6 @@
 // runtime/wad.js — WAD File Parser, Level Converter & Texture Manager for Nova64
 // Supports classic DOOM WAD format (IWAD and PWAD)
-/* global getMesh */
+/* global */
 
 import { engine } from './engine-adapter.js';
 
@@ -919,7 +919,7 @@ function setBabylonPlaneUVs(mesh, ofsU, ofsV, tileU, tileV) {
 }
 
 function setWallUVs(meshId, wallDoomLen, wallDoomH, texWidth, texHeight, xoff, yoff) {
-  const mesh = getMesh(meshId);
+  const mesh = globalThis.nova64?.scene?.getMesh?.(meshId);
   if (!mesh || !texWidth || !texHeight) return;
 
   const uvAttr = mesh.geometry?.attributes?.uv ?? mesh.geometry?.getAttribute?.('uv');

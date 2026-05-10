@@ -834,7 +834,7 @@ export function voxelApi(gpu) {
   const TILE_SIZE_V = 1.0 / ATLAS_ROWS;
 
   function getVoxelEngineAdapter() {
-    return gpu?.engine ?? globalThis.engine ?? null;
+    return gpu?.engine ?? globalThis.engine ?? globalThis.nova64?.scene?.engine ?? null;
   }
 
   function hasCustomVoxelMaterial() {

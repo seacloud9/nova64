@@ -756,14 +756,16 @@ export function effectsApi(gpu) {
   function enableRetroEffects(opts = {}) {
     // Pixelation — delegated to gpu (api-3d)
     const pixelFactor = opts.pixelation !== undefined ? opts.pixelation : 1;
-    if (pixelFactor !== false && typeof globalThis.enablePixelation === 'function') {
-      globalThis.enablePixelation(pixelFactor);
+    const enablePixelation = globalThis.enablePixelation ?? globalThis.nova64?.fx?.enablePixelation;
+    if (pixelFactor !== false && typeof enablePixelation === 'function') {
+      enablePixelation(pixelFactor);
     }
 
     // Dithering — delegated to gpu (api-3d)
     const dither = opts.dithering !== undefined ? opts.dithering : true;
-    if (dither !== false && typeof globalThis.enableDithering === 'function') {
-      globalThis.enableDithering(dither);
+    const enableDithering = globalThis.enableDithering ?? globalThis.nova64?.fx?.enableDithering;
+    if (dither !== false && typeof enableDithering === 'function') {
+      enableDithering(dither);
     }
 
     // Bloom
@@ -805,7 +807,9 @@ export function effectsApi(gpu) {
     disableVignette();
     disableChromaticAberration();
     if (typeof globalThis.enablePixelation === 'function') globalThis.enablePixelation(0);
+    else if (typeof globalThis.nova64?.fx?.enablePixelation === 'function') globalThis.nova64.fx.enablePixelation(0);
     if (typeof globalThis.enableDithering === 'function') globalThis.enableDithering(false);
+    else if (typeof globalThis.nova64?.fx?.enableDithering === 'function') globalThis.nova64.fx.enableDithering(false);
   }
 
   // === RENDERING ===

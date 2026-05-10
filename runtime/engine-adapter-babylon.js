@@ -108,7 +108,9 @@ export function createBabylonEngineAdapter(BABYLON, scene, opts = {}) {
 
   const genMaterialName = makeNameGen('nova64_mat');
   const genTextureName = makeNameGen('nova64_tex');
-  const resolveMesh = opts.resolveMesh ?? (meshId => globalThis.getMesh?.(meshId) ?? null);
+  const resolveMesh =
+    opts.resolveMesh ??
+    (meshId => globalThis.getMesh?.(meshId) ?? globalThis.nova64?.scene?.getMesh?.(meshId) ?? null);
 
   // Sampling mode lookup: Nova64 filter → Babylon sampling mode constant
   const SAMPLING = {

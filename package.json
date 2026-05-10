@@ -1,6 +1,6 @@
 {
   "name": "nova64",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Nova64 — Ultimate 3D Fantasy Console runtime for JavaScript games powered by Three.js",
   "keywords": [
     "fantasy-console",
@@ -15,10 +15,10 @@
   "homepage": "https://github.com/seacloud9/nova64#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/nova64/nova64.git"
+    "url": "git+https://github.com/seacloud9/nova64.git"
   },
   "bugs": {
-    "url": "https://github.com/nova64/nova64/issues"
+    "url": "https://github.com/seacloud9/nova64/issues"
   },
   "type": "module",
   "bin": {

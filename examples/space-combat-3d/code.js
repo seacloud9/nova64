@@ -189,6 +189,12 @@ export async function init() {
   nova64.fx.enableFXAA();
   nova64.fx.enableVignette(1.3, 0.9);
 
+  // Babylon flourish: GlowLayer makes emissive surfaces (lasers, engines,
+  // pickups, boss eyes) bloom volumetrically without bloom-threshold tuning.
+  // Returns false on Three.js — UnrealBloom already covers that path, so
+  // we intentionally don't escalate.
+  nova64.fx.enableGlow?.(0.9, 32);
+
   // Setup camera
   updateCamera(0);
 }

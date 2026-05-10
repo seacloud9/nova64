@@ -176,7 +176,9 @@ export async function init() {
   const sunGlowMesh = nova64.scene.getMesh(nova64.scene.createSphere(60, 0xffffff, [0, 28, -168]));
   if (sunGlowMesh) sunGlowMesh.material = createTSLMaterial('plasma', { speed: 0.2, opacity: 0.3 });
 
-  const sunCoronaMesh = nova64.scene.getMesh(nova64.scene.createSphere(85, 0xffffff, [0, 28, -170]));
+  const sunCoronaMesh = nova64.scene.getMesh(
+    nova64.scene.createSphere(85, 0xffffff, [0, 28, -170])
+  );
   if (sunCoronaMesh)
     sunCoronaMesh.material = createTSLShaderMaterial(
       null,
@@ -186,7 +188,9 @@ export async function init() {
     );
 
   // ── NEON GRID FLOOR ── (large plane, shader handles infinite scroll)
-  const floorMesh = nova64.scene.getMesh(nova64.scene.createPlane(300, 350, 0x000011, [0, -0.1, -120]));
+  const floorMesh = nova64.scene.getMesh(
+    nova64.scene.createPlane(300, 350, 0x000011, [0, -0.1, -120])
+  );
   if (floorMesh) {
     floorMesh.rotation.x = -Math.PI / 2;
     floorMesh.material = createTSLShaderMaterial(null, gridFloorFrag, {}, { transparent: true });
@@ -207,7 +211,9 @@ export async function init() {
   // ── ROAD RAILS ── (glowing neon strips)
   const railMat = createTSLMaterial('plasma', { speed: 1.5, opacity: 0.85 });
   for (const xOff of [-16, 16]) {
-    const m = nova64.scene.getMesh(nova64.scene.createPlane(0.35, 200, 0xff0066, [xOff, 0.08, -80]));
+    const m = nova64.scene.getMesh(
+      nova64.scene.createPlane(0.35, 200, 0xff0066, [xOff, 0.08, -80])
+    );
     if (m) {
       m.rotation.x = -Math.PI / 2;
       m.material = railMat;

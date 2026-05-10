@@ -475,7 +475,12 @@ function updateFloatingElements(dt) {
 
     // Update position and rotation
     nova64.scene.setPosition(element.mesh, element.x, element.y, element.z);
-    nova64.scene.rotateMesh(element.mesh, dt * element.rotationSpeed, dt * element.rotationSpeed * 0.7, 0);
+    nova64.scene.rotateMesh(
+      element.mesh,
+      dt * element.rotationSpeed,
+      dt * element.rotationSpeed * 0.7,
+      0
+    );
   });
 }
 
@@ -488,7 +493,12 @@ function updateMasterCrystal(dt) {
     nova64.scene.setScale(cathedral.masterCrystal.mesh, pulseScale, pulseScale, pulseScale);
 
     // Rotation
-    nova64.scene.rotateMesh(cathedral.masterCrystal.mesh, 0, dt * cathedral.masterCrystal.rotationSpeed, 0);
+    nova64.scene.rotateMesh(
+      cathedral.masterCrystal.mesh,
+      0,
+      dt * cathedral.masterCrystal.rotationSpeed,
+      0
+    );
 
     // Vertical floating motion
     const floatY = 4 + Math.sin(time * 2) * 1;
@@ -597,7 +607,12 @@ export function draw() {
       cathedral.floatingElements.length +
       cathedral.crystals.length +
       10;
-    nova64.draw.print(`3D Objects: ${objectCount} | GPU: Three.js Advanced`, 8, 108, nova64.draw.rgba8(150, 150, 255, 255));
+    nova64.draw.print(
+      `3D Objects: ${objectCount} | GPU: Three.js Advanced`,
+      8,
+      108,
+      nova64.draw.rgba8(150, 150, 255, 255)
+    );
     nova64.draw.print(
       `Shadows: Ultra | Materials: Holographic | Lighting: Dynamic`,
       8,
@@ -628,32 +643,90 @@ export function draw() {
 
   // Dynamic status indicators
   const pulseAlpha = Math.floor((Math.sin(time * 8) + 1) * 127 + 128);
-  nova64.draw.print('🔮 TRANSCENDENT EXPERIENCE ACTIVE 🔮', 200, 8, nova64.draw.rgba8(255, 100, 255, pulseAlpha));
+  nova64.draw.print(
+    '🔮 TRANSCENDENT EXPERIENCE ACTIVE 🔮',
+    200,
+    8,
+    nova64.draw.rgba8(255, 100, 255, pulseAlpha)
+  );
 }
 
 function drawStartScreen() {
   // Deep space gradient background
-  nova64.draw.drawGradient(0, 0, 640, 360, nova64.draw.rgba8(5, 10, 40, 245), nova64.draw.rgba8(10, 30, 60, 230), 'v');
+  nova64.draw.drawGradient(
+    0,
+    0,
+    640,
+    360,
+    nova64.draw.rgba8(5, 10, 40, 245),
+    nova64.draw.rgba8(10, 30, 60, 230),
+    'v'
+  );
 
   // Radial glow behind title
-  nova64.draw.drawRadialGradient(320, 100, 220, nova64.draw.rgba8(0, 140, 255, 55), nova64.draw.rgba8(0, 0, 0, 0));
+  nova64.draw.drawRadialGradient(
+    320,
+    100,
+    220,
+    nova64.draw.rgba8(0, 140, 255, 55),
+    nova64.draw.rgba8(0, 0, 0, 0)
+  );
 
   // Noise grain for depth
   nova64.draw.drawNoise(0, 0, 640, 360, 12, Math.floor(startScreenTime * 10));
 
   // Corner starbursts
   const cornerPulse = Math.sin(startScreenTime * 2) * 0.5 + 0.5;
-  nova64.draw.drawStarburst(28, 28, 18, 8, 6, nova64.draw.rgba8(100, 200, 255, Math.floor(cornerPulse * 210)), true);
-  nova64.draw.drawStarburst(612, 28, 18, 8, 6, nova64.draw.rgba8(100, 200, 255, Math.floor(cornerPulse * 210)), true);
-  nova64.draw.drawStarburst(28, 332, 13, 5, 5, nova64.draw.rgba8(60, 150, 255, Math.floor(cornerPulse * 160)), true);
-  nova64.draw.drawStarburst(612, 332, 13, 5, 5, nova64.draw.rgba8(60, 150, 255, Math.floor(cornerPulse * 160)), true);
+  nova64.draw.drawStarburst(
+    28,
+    28,
+    18,
+    8,
+    6,
+    nova64.draw.rgba8(100, 200, 255, Math.floor(cornerPulse * 210)),
+    true
+  );
+  nova64.draw.drawStarburst(
+    612,
+    28,
+    18,
+    8,
+    6,
+    nova64.draw.rgba8(100, 200, 255, Math.floor(cornerPulse * 210)),
+    true
+  );
+  nova64.draw.drawStarburst(
+    28,
+    332,
+    13,
+    5,
+    5,
+    nova64.draw.rgba8(60, 150, 255, Math.floor(cornerPulse * 160)),
+    true
+  );
+  nova64.draw.drawStarburst(
+    612,
+    332,
+    13,
+    5,
+    5,
+    nova64.draw.rgba8(60, 150, 255, Math.floor(cornerPulse * 160)),
+    true
+  );
 
   // Animated holographic title
   const hueShift = (startScreenTime * 50) % 360;
   const hologramColor = hslToRgba8(hueShift, 80, 70, 255);
   const float = Math.sin(startScreenTime * 2) * 10;
 
-  nova64.draw.drawGlowTextCentered('CRYSTAL', 320, 48 + float, hologramColor, nova64.draw.rgba8(0, 80, 200, 180), 2);
+  nova64.draw.drawGlowTextCentered(
+    'CRYSTAL',
+    320,
+    48 + float,
+    hologramColor,
+    nova64.draw.rgba8(0, 80, 200, 180),
+    2
+  );
   nova64.draw.drawGlowTextCentered(
     'CATHEDRAL',
     320,
@@ -697,7 +770,13 @@ function drawStartScreen() {
   nova64.ui.drawText('◆ Nintendo 64 / PlayStation Retro Aesthetics', 320, 292, uiColors.light, 1);
 
   nova64.ui.setFont('tiny');
-  nova64.ui.drawText('Camera orbits automatically - Pure visual experience', 320, 310, uiColors.secondary, 1);
+  nova64.ui.drawText(
+    'Camera orbits automatically - Pure visual experience',
+    320,
+    310,
+    uiColors.secondary,
+    1
+  );
 
   // Draw buttons
   nova64.ui.drawAllButtons();
@@ -705,11 +784,23 @@ function drawStartScreen() {
   // Pulsing crystal prompt
   const alpha = Math.floor((Math.sin(startScreenTime * 5) * 0.5 + 0.5) * 255);
   nova64.ui.setFont('normal');
-  nova64.ui.drawText('◆ WITNESS THE ULTIMATE 3D GRAPHICS ◆', 320, 430, nova64.draw.rgba8(100, 200, 255, alpha), 1);
+  nova64.ui.drawText(
+    '◆ WITNESS THE ULTIMATE 3D GRAPHICS ◆',
+    320,
+    430,
+    nova64.draw.rgba8(100, 200, 255, alpha),
+    1
+  );
 
   // Tech info
   nova64.ui.setFont('tiny');
-  nova64.ui.drawText('Powered by Three.js + WebGL 2.0', 320, 340, nova64.draw.rgba8(120, 160, 200, 150), 1);
+  nova64.ui.drawText(
+    'Powered by Three.js + WebGL 2.0',
+    320,
+    340,
+    nova64.draw.rgba8(120, 160, 200, 150),
+    1
+  );
 
   // CRT scanlines for retro feel
   nova64.draw.drawScanlines(40, 2);
@@ -748,5 +839,10 @@ function hslToRgba8(h, s, l, a) {
     b = x;
   }
 
-  return nova64.draw.rgba8(Math.floor((r + m) * 255), Math.floor((g + m) * 255), Math.floor((b + m) * 255), a);
+  return nova64.draw.rgba8(
+    Math.floor((r + m) * 255),
+    Math.floor((g + m) * 255),
+    Math.floor((b + m) * 255),
+    a
+  );
 }

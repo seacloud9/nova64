@@ -79,7 +79,10 @@ export function init() {
   deskLamp = nova64.light.createPointLight(0xff9933, 6.0, 14, 0, 2.8, -0.2); // warm amber desk lamp
 
   // ── Floor ──────────────────────────────────────────────────────────────────
-  const floor = nova64.scene.createPlane(20, 20, 0x2a1800, [0, 0, 0], { material: 'standard', roughness: 0.9 });
+  const floor = nova64.scene.createPlane(20, 20, 0x2a1800, [0, 0, 0], {
+    material: 'standard',
+    roughness: 0.9,
+  });
   nova64.scene.setRotation(floor, -Math.PI / 2, 0, 0);
 
   // ── Walls ──────────────────────────────────────────────────────────────────
@@ -102,7 +105,10 @@ export function init() {
   nova64.scene.setRotation(window1, 0, -Math.PI / 2, 0);
 
   // ── Desk ──────────────────────────────────────────────────────────────────
-  const desk = nova64.scene.createCube(1, 0x2a1600, [0, 0.4, 0], { material: 'standard', roughness: 0.5 });
+  const desk = nova64.scene.createCube(1, 0x2a1600, [0, 0.4, 0], {
+    material: 'standard',
+    roughness: 0.5,
+  });
   nova64.scene.setScale(desk, 5, 0.8, 2.5);
 
   // Desk lamp post
@@ -120,9 +126,15 @@ export function init() {
   nova64.scene.setScale(lampShade, 3, 0.7, 3);
 
   // ── Filing cabinet (back-left corner) ────────────────────────────────────
-  const cab1 = nova64.scene.createCube(1, 0x333333, [-6, 0.75, -6.5], { material: 'metallic', metalness: 0.6 });
+  const cab1 = nova64.scene.createCube(1, 0x333333, [-6, 0.75, -6.5], {
+    material: 'metallic',
+    metalness: 0.6,
+  });
   nova64.scene.setScale(cab1, 2, 1.5, 1.5);
-  const cab2 = nova64.scene.createCube(1, 0x2a2a2a, [-6, 2.25, -6.5], { material: 'metallic', metalness: 0.6 });
+  const cab2 = nova64.scene.createCube(1, 0x2a2a2a, [-6, 2.25, -6.5], {
+    material: 'metallic',
+    metalness: 0.6,
+  });
   nova64.scene.setScale(cab2, 2, 1.5, 1.5);
   // Cabinet handle details
   const handle = nova64.scene.createCube(0.08, 0x888888, [-6.9, 0.85, -6.5], {
@@ -132,7 +144,10 @@ export function init() {
   nova64.scene.setScale(handle, 1, 1, 5);
 
   // ── Evidence (glowing cube on desk) ──────────────────────────────────────
-  evidence = nova64.scene.createCube(0.4, 0x00ff88, [0, 1.1, 0], { material: 'emissive', emissive: 0x00ff88 });
+  evidence = nova64.scene.createCube(0.4, 0x00ff88, [0, 1.1, 0], {
+    material: 'emissive',
+    emissive: 0x00ff88,
+  });
 
   // ── Detective (multi-part) ────────────────────────────────────────────────
   detective.body = nova64.scene.createCube(1, 0x334477, [playerPos.x, 0.9, playerPos.z], {
@@ -147,9 +162,15 @@ export function init() {
   });
 
   // ── Suspect (multi-part) ──────────────────────────────────────────────────
-  suspect.body = nova64.scene.createCube(1, 0x883322, [3, 0.9, -2], { material: 'standard', roughness: 0.6 });
+  suspect.body = nova64.scene.createCube(1, 0x883322, [3, 0.9, -2], {
+    material: 'standard',
+    roughness: 0.6,
+  });
   nova64.scene.setScale(suspect.body, 0.9, 1.8, 0.7);
-  suspect.head = nova64.scene.createCube(0.7, 0xaa4433, [3, 2.2, -2], { material: 'standard', roughness: 0.5 });
+  suspect.head = nova64.scene.createCube(0.7, 0xaa4433, [3, 2.2, -2], {
+    material: 'standard',
+    roughness: 0.5,
+  });
 
   // Camera
   nova64.camera.setCameraPosition(0, 3, 8);
@@ -302,7 +323,12 @@ export function draw() {
     // Pulsing prompt — with dark bg for visibility
     nova64.draw.rectfill(40, 205, 240, 18, nova64.draw.rgba8(0, 0, 0, 220));
     const pulse = Math.floor((Math.sin(sceneTime * 5) * 0.5 + 0.5) * 200 + 55);
-    nova64.draw.print('SPACE to begin investigation', 50, 210, nova64.draw.rgba8(255, 255, 255, pulse));
+    nova64.draw.print(
+      'SPACE to begin investigation',
+      50,
+      210,
+      nova64.draw.rgba8(255, 255, 255, pulse)
+    );
   } else if (state === 'explore') {
     const distToDesk = Math.hypot(playerPos.x, playerPos.z);
     const distToSuspect = Math.hypot(playerPos.x - 3, playerPos.z + 2);
@@ -337,7 +363,12 @@ export function draw() {
           : nova64.draw.rgba8(51, 170, 85, 255);
     const badgeX = speaker === 'Suspect' ? W - 92 : 8;
     nova64.draw.rectfill(badgeX, H - 82, 84, 18, speakerColor);
-    nova64.draw.print(speaker.toUpperCase(), badgeX + 4, H - 77, nova64.draw.rgba8(255, 255, 255, 255));
+    nova64.draw.print(
+      speaker.toUpperCase(),
+      badgeX + 4,
+      H - 77,
+      nova64.draw.rgba8(255, 255, 255, 255)
+    );
 
     // Dialogue text
     const display = currentText.substring(0, Math.floor(textScroll));
@@ -346,7 +377,8 @@ export function draw() {
     // Advance prompt
     if (textScroll >= currentText.length) {
       const blink = Math.floor(sceneTime * 4) % 2 === 0;
-      if (blink) nova64.draw.print('\u25BC SPACE', W - 50, H - 18, nova64.draw.rgba8(255, 255, 255, 255));
+      if (blink)
+        nova64.draw.print('\u25BC SPACE', W - 50, H - 18, nova64.draw.rgba8(255, 255, 255, 255));
     }
   }
 }

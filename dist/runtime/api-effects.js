@@ -807,9 +807,11 @@ export function effectsApi(gpu) {
     disableVignette();
     disableChromaticAberration();
     if (typeof globalThis.enablePixelation === 'function') globalThis.enablePixelation(0);
-    else if (typeof globalThis.nova64?.fx?.enablePixelation === 'function') globalThis.nova64.fx.enablePixelation(0);
+    else if (typeof globalThis.nova64?.fx?.enablePixelation === 'function')
+      globalThis.nova64.fx.enablePixelation(0);
     if (typeof globalThis.enableDithering === 'function') globalThis.enableDithering(false);
-    else if (typeof globalThis.nova64?.fx?.enableDithering === 'function') globalThis.nova64.fx.enableDithering(false);
+    else if (typeof globalThis.nova64?.fx?.enableDithering === 'function')
+      globalThis.nova64.fx.enableDithering(false);
   }
 
   // === RENDERING ===
@@ -850,6 +852,12 @@ export function effectsApi(gpu) {
         enableGlitch: enableGlitch,
         disableGlitch: disableGlitch,
         setGlitchIntensity: setGlitchIntensity,
+
+        // Glow layer — Babylon-specific. On Three.js, UnrealBloom already
+        // handles emissive glow well, so this is a graceful no-op that returns
+        // false so carts can branch on the result if they care.
+        enableGlow: () => false,
+        disableGlow: () => {},
 
         // Convenience
         enableRetroEffects: enableRetroEffects,

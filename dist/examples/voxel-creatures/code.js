@@ -282,11 +282,21 @@ export function draw() {
   nova64.draw.print(MOB_DEFS[selectedMob].type.toUpperCase(), 15, selY - 14, 0xffdd88);
 
   // Controls
-  nova64.draw.print('WASD=Move  E=Spawn  R=Spawn5  C=Clear  1-6=Select Mob', 10, 20, nova64.draw.rgba8(255, 255, 255, 160));
+  nova64.draw.print(
+    'WASD=Move  E=Spawn  R=Spawn5  C=Clear  1-6=Select Mob',
+    10,
+    20,
+    nova64.draw.rgba8(255, 255, 255, 160)
+  );
 
   // Message
   if (msgTimer > 0) {
     const alpha = Math.min(255, msgTimer * 4);
-    nova64.draw.print(msg, (640 - msg.length * 8) / 2, 160, nova64.draw.rgba8(255, 255, 100, alpha));
+    nova64.draw.print(
+      msg,
+      (640 - msg.length * 8) / 2,
+      160,
+      nova64.draw.rgba8(255, 255, 100, alpha)
+    );
   }
 }

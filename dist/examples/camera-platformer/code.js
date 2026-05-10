@@ -66,7 +66,8 @@ export function update(dt) {
   // Input
   const left = nova64.input.key('ArrowLeft') || nova64.input.key('KeyA');
   const right = nova64.input.key('ArrowRight') || nova64.input.key('KeyD');
-  const jump = nova64.input.keyp('ArrowUp') || nova64.input.keyp('KeyW') || nova64.input.keyp('Space');
+  const jump =
+    nova64.input.keyp('ArrowUp') || nova64.input.keyp('KeyW') || nova64.input.keyp('Space');
 
   vx = 0;
   if (left) vx = -RUN_SPD;

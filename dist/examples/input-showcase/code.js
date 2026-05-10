@@ -69,7 +69,14 @@ export function draw() {
     const x = 8 + col * 44;
     const y = 36 + row * 14;
     const pressed = nova64.input.key(code);
-    nova64.draw.rect(x, y, 40, 12, pressed ? nova64.draw.rgba8(0, 200, 80, 255) : nova64.draw.rgba8(40, 40, 80, 200), true);
+    nova64.draw.rect(
+      x,
+      y,
+      40,
+      12,
+      pressed ? nova64.draw.rgba8(0, 200, 80, 255) : nova64.draw.rgba8(40, 40, 80, 200),
+      true
+    );
     nova64.draw.rect(x, y, 40, 12, nova64.draw.rgba8(100, 100, 180, 180), false);
     nova64.draw.print(label, x + 2, y + 2, pressed ? 0x000000 : 0xdddddd);
   });
@@ -79,7 +86,14 @@ export function draw() {
   BTN_LABELS.forEach((label, i) => {
     const x = 8 + i * 30;
     const pressed = nova64.input.btn(i);
-    nova64.draw.rect(x, 84, 26, 12, pressed ? nova64.draw.rgba8(255, 160, 0, 255) : nova64.draw.rgba8(40, 40, 80, 200), true);
+    nova64.draw.rect(
+      x,
+      84,
+      26,
+      12,
+      pressed ? nova64.draw.rgba8(255, 160, 0, 255) : nova64.draw.rgba8(40, 40, 80, 200),
+      true
+    );
     nova64.draw.rect(x, 84, 26, 12, nova64.draw.rgba8(100, 100, 180, 180), false);
     nova64.draw.print(label, x + 2, 86, pressed ? 0x000000 : 0xdddddd);
   });

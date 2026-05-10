@@ -363,7 +363,11 @@ function buildMapMeshes() {
 
   // Ground plane
   const groundSize = MAP_W * TILE;
-  const gm = nova64.scene.createPlane(groundSize, groundSize, th.floor, [groundSize / 2, 0, groundSize / 2]);
+  const gm = nova64.scene.createPlane(groundSize, groundSize, th.floor, [
+    groundSize / 2,
+    0,
+    groundSize / 2,
+  ]);
   nova64.scene.setRotation(gm, -Math.PI / 2, 0, 0);
   mapMeshes.push(gm);
 
@@ -501,8 +505,16 @@ function spawnEnemies() {
       const colors = { food: 0x44cc44, potion: 0x4444ff, gold: 0xffdd00 };
       const m =
         type === 'gold'
-          ? nova64.scene.createCylinder(0.25, 0.15, colors[type], [pos.x * TILE + 1, 0.3, pos.y * TILE + 1])
-          : nova64.scene.createSphere(0.25, colors[type], [pos.x * TILE + 1, 0.5, pos.y * TILE + 1]);
+          ? nova64.scene.createCylinder(0.25, 0.15, colors[type], [
+              pos.x * TILE + 1,
+              0.3,
+              pos.y * TILE + 1,
+            ])
+          : nova64.scene.createSphere(0.25, colors[type], [
+              pos.x * TILE + 1,
+              0.5,
+              pos.y * TILE + 1,
+            ]);
       pickups.push({
         x: pos.x * TILE + 1,
         z: pos.y * TILE + 1,
@@ -577,7 +589,8 @@ export function update() {
   if (state === 'classSelect') {
     if (nova64.input.keyp('ArrowLeft') || nova64.input.keyp('KeyA'))
       classIdx = (classIdx + CLASSES.length - 1) % CLASSES.length;
-    if (nova64.input.keyp('ArrowRight') || nova64.input.keyp('KeyD')) classIdx = (classIdx + 1) % CLASSES.length;
+    if (nova64.input.keyp('ArrowRight') || nova64.input.keyp('KeyD'))
+      classIdx = (classIdx + 1) % CLASSES.length;
     if (nova64.input.keyp('Space') || nova64.input.keyp('Enter')) startLevel();
     return;
   }
@@ -644,7 +657,12 @@ function updatePlayer(dt) {
   }
 
   // Dash trigger
-  if ((nova64.input.keyp('ShiftLeft') || nova64.input.keyp('ShiftRight') || nova64.input.keyp('KeyK')) && nova64.util.useCooldown(cooldowns.dash)) {
+  if (
+    (nova64.input.keyp('ShiftLeft') ||
+      nova64.input.keyp('ShiftRight') ||
+      nova64.input.keyp('KeyK')) &&
+    nova64.util.useCooldown(cooldowns.dash)
+  ) {
     player.dashTimer = DASH_DUR;
     player.dashDX = mx !== 0 || mz !== 0 ? mx : Math.sin(player.facing);
     player.dashDZ = mx !== 0 || mz !== 0 ? mz : -Math.cos(player.facing);
@@ -665,7 +683,10 @@ function updatePlayer(dt) {
   if (player.atkAnim > 0) player.atkAnim -= dt;
 
   if (
-    (nova64.input.keyp('Space') || nova64.input.keyp('KeyZ') || nova64.input.keyp('KeyX') || nova64.input.keyp('KeyJ')) &&
+    (nova64.input.keyp('Space') ||
+      nova64.input.keyp('KeyZ') ||
+      nova64.input.keyp('KeyX') ||
+      nova64.input.keyp('KeyJ')) &&
     nova64.util.useCooldown(cooldowns.attack)
   ) {
     player.atkAnim = 0.2;
@@ -740,7 +761,11 @@ function updatePlayer(dt) {
   }
 
   // Use potion
-  if ((nova64.input.keyp('KeyP') || nova64.input.keyp('KeyQ')) && player.potions > 0 && player.hp < player.maxHp) {
+  if (
+    (nova64.input.keyp('KeyP') || nova64.input.keyp('KeyQ')) &&
+    player.potions > 0 &&
+    player.hp < player.maxHp
+  ) {
     player.potions--;
     player.hp = Math.min(player.hp + 40, player.maxHp);
     spawnParts(player.x, 1, player.z, 8, 0x44ff44);
@@ -1269,7 +1294,11 @@ export function draw() {
   // HP bar
   const hpP = player.hp / player.maxHp;
   const hpC =
-    hpP > 0.5 ? nova64.draw.rgba8(50, 220, 80) : hpP > 0.25 ? nova64.draw.rgba8(220, 200, 50) : nova64.draw.rgba8(220, 50, 50);
+    hpP > 0.5
+      ? nova64.draw.rgba8(50, 220, 80)
+      : hpP > 0.25
+        ? nova64.draw.rgba8(220, 200, 50)
+        : nova64.draw.rgba8(220, 50, 50);
   nova64.draw.print('HP', 14, 14, nova64.draw.rgba8(200, 200, 200));
   nova64.draw.rect(40, 14, 150, 7, nova64.draw.rgba8(30, 30, 30), true);
   nova64.draw.rect(40, 14, Math.floor(150 * hpP), 7, hpC, true);
@@ -1281,13 +1310,23 @@ export function draw() {
   nova64.draw.rect(40, 26, 150, 5, nova64.draw.rgba8(20, 20, 40), true);
   nova64.draw.rect(40, 26, Math.floor(150 * xpP), 5, nova64.draw.rgba8(120, 120, 255), true);
 
-  nova64.draw.print(`LVL ${player.lvl}  ATK ${player.atk}`, 14, 38, nova64.draw.rgba8(220, 220, 255));
+  nova64.draw.print(
+    `LVL ${player.lvl}  ATK ${player.atk}`,
+    14,
+    38,
+    nova64.draw.rgba8(220, 220, 255)
+  );
   nova64.draw.print(`SCORE ${score}`, 14, 50, nova64.draw.rgba8(255, 215, 0));
   nova64.draw.print(`POTIONS ${player.potions}`, 14, 62, nova64.draw.rgba8(100, 100, 255));
 
   // Level & theme
   const th = theme();
-  nova64.draw.print(`FLOOR ${level + 1}: ${th.name}`, 440, 14, nova64.draw.rgba8(180, 180, 220, 200));
+  nova64.draw.print(
+    `FLOOR ${level + 1}: ${th.name}`,
+    440,
+    14,
+    nova64.draw.rgba8(180, 180, 220, 200)
+  );
   nova64.draw.print(`KILLS ${kills}`, 550, 28, nova64.draw.rgba8(200, 120, 120));
 
   // Boss HP bar (big, prominent at top center)
@@ -1297,7 +1336,14 @@ export function draw() {
     const bossBarX = 320 - bossBarW / 2;
     nova64.draw.rect(bossBarX - 2, 6, bossBarW + 4, 18, nova64.draw.rgba8(0, 0, 0, 200), true);
     nova64.draw.rect(bossBarX, 8, bossBarW, 14, nova64.draw.rgba8(40, 10, 10), true);
-    nova64.draw.rect(bossBarX, 8, Math.floor(bossBarW * bossHpP), 14, nova64.draw.rgba8(220, 40, 40), true);
+    nova64.draw.rect(
+      bossBarX,
+      8,
+      Math.floor(bossBarW * bossHpP),
+      14,
+      nova64.draw.rgba8(220, 40, 40),
+      true
+    );
     nova64.draw.rect(bossBarX - 2, 6, bossBarW + 4, 18, nova64.draw.rgba8(200, 100, 50), false);
     nova64.draw.printCentered(`⚔ ${boss.bossName} ⚔`, 320, 10, nova64.draw.rgba8(255, 200, 100));
   }
@@ -1307,14 +1353,24 @@ export function draw() {
     const ptx2 = Math.floor(player.x / TILE),
       ptz2 = Math.floor(player.z / TILE);
     if (ptx2 === exitPos.x && ptz2 === exitPos.y) {
-      nova64.draw.printCentered('EXIT LOCKED — DEFEAT THE BOSS!', 320, 180, nova64.draw.rgba8(255, 80, 80));
+      nova64.draw.printCentered(
+        'EXIT LOCKED — DEFEAT THE BOSS!',
+        320,
+        180,
+        nova64.draw.rgba8(255, 80, 80)
+      );
     }
   }
 
   // Enemy count
   const alive = enemies.filter(e => e.alive).length;
   const spawners = spawnTimers.filter(s => s.alive).length;
-  nova64.draw.print(`ENEMIES ${alive}  SPAWNERS ${spawners}`, 400, 344, nova64.draw.rgba8(180, 130, 130, 160));
+  nova64.draw.print(
+    `ENEMIES ${alive}  SPAWNERS ${spawners}`,
+    400,
+    344,
+    nova64.draw.rgba8(180, 130, 130, 160)
+  );
 
   // Enemy HP bars (drawn above enemies on screen)
   for (const e of enemies) {
@@ -1328,7 +1384,14 @@ export function draw() {
       bh = 3;
     const hp = e.hp / e.maxHp;
     nova64.draw.rect(sx - bw / 2, sy, bw, bh, nova64.draw.rgba8(40, 0, 0, 180), true);
-    nova64.draw.rect(sx - bw / 2, sy, Math.floor(bw * hp), bh, nova64.draw.rgba8(220, 50, 50), true);
+    nova64.draw.rect(
+      sx - bw / 2,
+      sy,
+      Math.floor(bw * hp),
+      bh,
+      nova64.draw.rgba8(220, 50, 50),
+      true
+    );
   }
 
   // Dash cooldown indicator
@@ -1351,7 +1414,12 @@ export function draw() {
   ]);
 
   // Controls hint
-  nova64.draw.print('WASD Move  SPC/Z Attack  SHIFT Dash  P Potion', 100, 352, nova64.draw.rgba8(80, 80, 110, 110));
+  nova64.draw.print(
+    'WASD Move  SPC/Z Attack  SHIFT Dash  P Potion',
+    100,
+    352,
+    nova64.draw.rgba8(80, 80, 110, 110)
+  );
 }
 
 // ---- MINIMAP ----
@@ -1359,7 +1427,14 @@ function _local_drawMinimap() {
   const mmX = W - 78,
     mmY = 56;
   const mmS = 2; // pixel per tile
-  nova64.draw.rect(mmX - 2, mmY - 2, MAP_W * mmS + 4, MAP_H * mmS + 4, nova64.draw.rgba8(0, 0, 0, 180), true);
+  nova64.draw.rect(
+    mmX - 2,
+    mmY - 2,
+    MAP_W * mmS + 4,
+    MAP_H * mmS + 4,
+    nova64.draw.rgba8(0, 0, 0, 180),
+    true
+  );
 
   for (let x = 0; x < MAP_W; x++) {
     for (let y = 0; y < MAP_H; y++) {
@@ -1380,7 +1455,14 @@ function _local_drawMinimap() {
   if (Math.sin(t * 8) > 0) {
     const px = Math.floor(player.x / TILE),
       pz = Math.floor(player.z / TILE);
-    nova64.draw.rect(mmX + px * mmS, mmY + pz * mmS, mmS + 1, mmS + 1, nova64.draw.rgba8(255, 255, 0), true);
+    nova64.draw.rect(
+      mmX + px * mmS,
+      mmY + pz * mmS,
+      mmS + 1,
+      mmS + 1,
+      nova64.draw.rgba8(255, 255, 0),
+      true
+    );
   }
 
   // Enemy dots
@@ -1388,7 +1470,14 @@ function _local_drawMinimap() {
     if (!e.alive) continue;
     const ex = Math.floor(e.x / TILE),
       ez = Math.floor(e.z / TILE);
-    nova64.draw.rect(mmX + ex * mmS, mmY + ez * mmS, mmS, mmS, nova64.draw.rgba8(255, 80, 80), true);
+    nova64.draw.rect(
+      mmX + ex * mmS,
+      mmY + ez * mmS,
+      mmS,
+      mmS,
+      nova64.draw.rgba8(255, 80, 80),
+      true
+    );
   }
 }
 
@@ -1414,10 +1503,20 @@ function drawClassSelect() {
       b = c.color & 0xff;
     nova64.draw.rect(cx + 35, 110, 40, 40, nova64.draw.rgba8(r, g, b), true);
 
-    nova64.draw.print(c.name, cx + 8, 158, selected ? nova64.draw.rgba8(255, 255, 200) : nova64.draw.rgba8(160, 160, 180));
+    nova64.draw.print(
+      c.name,
+      cx + 8,
+      158,
+      selected ? nova64.draw.rgba8(255, 255, 200) : nova64.draw.rgba8(160, 160, 180)
+    );
     nova64.draw.print(`HP: ${c.hp}`, cx + 8, 174, nova64.draw.rgba8(100, 200, 100));
     nova64.draw.print(`ATK: ${c.atk}`, cx + 8, 186, nova64.draw.rgba8(200, 100, 100));
-    nova64.draw.print(`SPD: ${(c.spd * 100).toFixed(0)}%`, cx + 8, 198, nova64.draw.rgba8(100, 150, 255));
+    nova64.draw.print(
+      `SPD: ${(c.spd * 100).toFixed(0)}%`,
+      cx + 8,
+      198,
+      nova64.draw.rgba8(100, 150, 255)
+    );
     nova64.draw.print(c.desc, cx + 4, 216, nova64.draw.rgba8(120, 120, 140));
   }
 
@@ -1428,14 +1527,29 @@ function drawClassSelect() {
     270,
     nova64.draw.rgba8(255, 255, 100, Math.floor(100 + pulse * 155))
   );
-  nova64.draw.printCentered('WASD Move | SPC/Z Attack | SHIFT Dash | P Potion', 320, 300, nova64.draw.rgba8(140, 140, 170));
-  nova64.draw.printCentered('Destroy spawners! Find the exit portal!', 320, 320, nova64.draw.rgba8(120, 160, 140));
+  nova64.draw.printCentered(
+    'WASD Move | SPC/Z Attack | SHIFT Dash | P Potion',
+    320,
+    300,
+    nova64.draw.rgba8(140, 140, 170)
+  );
+  nova64.draw.printCentered(
+    'Destroy spawners! Find the exit portal!',
+    320,
+    320,
+    nova64.draw.rgba8(120, 160, 140)
+  );
 }
 
 function drawDead() {
   nova64.draw.rect(0, 0, W, H, nova64.draw.rgba8(50, 0, 0, 210), true);
   nova64.draw.printCentered('YOU HAVE FALLEN', 320, 80, nova64.draw.rgba8(255, 60, 60));
-  nova64.draw.printCentered(`${CLASSES[classIdx].name}  Level ${player.lvl}`, 320, 120, nova64.draw.rgba8(200, 200, 200));
+  nova64.draw.printCentered(
+    `${CLASSES[classIdx].name}  Level ${player.lvl}`,
+    320,
+    120,
+    nova64.draw.rgba8(200, 200, 200)
+  );
   nova64.draw.printCentered(
     `Score: ${score}  |  Kills: ${totalKills}  |  Floor: ${level + 1}`,
     320,
@@ -1470,9 +1584,24 @@ function drawDead() {
 
 function drawLevelComplete() {
   nova64.draw.rect(0, 0, W, H, nova64.draw.rgba8(0, 20, 40, 210), true);
-  nova64.draw.printCentered(`FLOOR ${level + 1} COMPLETE!`, 320, 80, nova64.draw.rgba8(100, 255, 200));
-  nova64.draw.printCentered(`Score: ${score}  |  Kills: ${kills}`, 320, 130, nova64.draw.rgba8(200, 200, 200));
-  nova64.draw.printCentered(`${CLASSES[classIdx].name}  Level ${player.lvl}`, 320, 160, nova64.draw.rgba8(180, 180, 220));
+  nova64.draw.printCentered(
+    `FLOOR ${level + 1} COMPLETE!`,
+    320,
+    80,
+    nova64.draw.rgba8(100, 255, 200)
+  );
+  nova64.draw.printCentered(
+    `Score: ${score}  |  Kills: ${kills}`,
+    320,
+    130,
+    nova64.draw.rgba8(200, 200, 200)
+  );
+  nova64.draw.printCentered(
+    `${CLASSES[classIdx].name}  Level ${player.lvl}`,
+    320,
+    160,
+    nova64.draw.rgba8(180, 180, 220)
+  );
 
   if (level < THEMES.length - 1) {
     const nextIsBoss = (level + 2) % 3 === 0;
@@ -1483,7 +1612,12 @@ function drawLevelComplete() {
       nextIsBoss ? nova64.draw.rgba8(255, 100, 100) : nova64.draw.rgba8(200, 180, 140)
     );
   } else {
-    nova64.draw.printCentered('The depths grow darker...', 320, 200, nova64.draw.rgba8(200, 100, 100));
+    nova64.draw.printCentered(
+      'The depths grow darker...',
+      320,
+      200,
+      nova64.draw.rgba8(200, 100, 100)
+    );
   }
 
   kills = 0; // reset per-floor kills

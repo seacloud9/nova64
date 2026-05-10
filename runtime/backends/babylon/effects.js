@@ -7,6 +7,7 @@ import {
   Constants,
   DefaultRenderingPipeline,
   Effect,
+  GlowLayer,
   PostProcess,
   ShaderMaterial,
 } from '@babylonjs/core';
@@ -140,6 +141,7 @@ export function createBabylonEffectsApi(self) {
   let vignettePost = null;
   let glitchTime = 0;
   let effectsEnabled = false;
+  let glowLayer = null;
 
   function trySetPipelineValue(key, value) {
     if (!pipeline || !(key in pipeline)) return false;
@@ -177,6 +179,32 @@ export function createBabylonEffectsApi(self) {
 
     effectsEnabled = true;
     return pipeline;
+  }
+
+  // === GLOW LAYER (Babylon-specific bonus) ===
+  // Babylon's GlowLayer renders emissive surfaces into a separate blurred buffer
+  // and composites it back, giving cheap volumetric-style glow without the
+  // threshold tuning bloom needs. Great for laser bolts, engine trails, HUD lines.
+  function enableGlow(intensity = 1.0, blurKernelSize = 32) {
+    if (!self.scene) return false;
+    if (!glowLayer) {
+      glowLayer = new GlowLayer('nova64_glow', self.scene, {
+        mainTextureFixedSize: 512,
+        blurKernelSize,
+      });
+    }
+    glowLayer.intensity = intensity;
+    if (typeof blurKernelSize === 'number') {
+      glowLayer.blurKernelSize = blurKernelSize;
+    }
+    glowLayer.isEnabled = true;
+    return true;
+  }
+
+  function disableGlow() {
+    if (glowLayer) {
+      glowLayer.isEnabled = false;
+    }
   }
 
   // === BLOOM ===
@@ -837,6 +865,10 @@ export function createBabylonEffectsApi(self) {
     // Grain (Babylon-specific bonus)
     enableGrain,
     disableGrain,
+
+    // Glow layer (Babylon-specific bonus)
+    enableGlow,
+    disableGlow,
 
     // Convenience
     enableRetroEffects,

@@ -191,6 +191,9 @@ function setupLighting() {
   nova64.fx.enableFXAA(); // Smooth starfield
   nova64.fx.enableVignette(1.8, 0.85); // Cockpit-style dark border
   nova64.fx.enableChromaticAberration(0.0015); // Subtle lens dispersion
+  // Babylon flourish: GlowLayer pushes emissive ship hulls / lasers into a
+  // separate blurred buffer for cheap volumetric glow. No-op on Three.js.
+  nova64.fx.enableGlow?.(1.0, 32);
 }
 
 function createStarField() {

@@ -160,7 +160,12 @@ function createNebula() {
 
     // Brighter nebula colors for visibility
     const colors = [0x8844aa, 0x4488aa, 0xaa8844, 0xaa4488, 0x44aa88];
-    const cloud = nova64.scene.createSphere(8 + Math.random() * 12, colors[i % colors.length], [0, 0, 0], 6);
+    const cloud = nova64.scene.createSphere(
+      8 + Math.random() * 12,
+      colors[i % colors.length],
+      [0, 0, 0],
+      6
+    );
     nova64.scene.setPosition(cloud, x, y, z);
 
     nebula.push({
@@ -199,12 +204,22 @@ function createCapitalShips() {
     // Command bridge (brighter)
     const bridge = nova64.scene.createCube(1, config.color + 0x222222);
     nova64.scene.setScale(bridge, config.size[0] * 0.3, config.size[1] * 1.5, config.size[2] * 0.2);
-    nova64.scene.setPosition(bridge, config.pos[0], config.pos[1] + config.size[1] * 0.8, config.pos[2]);
+    nova64.scene.setPosition(
+      bridge,
+      config.pos[0],
+      config.pos[1] + config.size[1] * 0.8,
+      config.pos[2]
+    );
 
     // Engine glow (brighter cyan)
     const engine = nova64.scene.createCube(1, 0x44ffff);
     nova64.scene.setScale(engine, config.size[0] * 0.6, config.size[1] * 0.4, config.size[2] * 0.1);
-    nova64.scene.setPosition(engine, config.pos[0], config.pos[1], config.pos[2] - config.size[2] * 0.6);
+    nova64.scene.setPosition(
+      engine,
+      config.pos[0],
+      config.pos[1],
+      config.pos[2] - config.size[2] * 0.6
+    );
 
     // Weapon turrets (brighter)
     for (let t = 0; t < 4; t++) {
@@ -417,7 +432,12 @@ export function update(dt) {
         fighter.squadCenter[2] + Math.sin(formationAngle) * (fighter.formation.radius + evasion);
 
       nova64.scene.setPosition(fighter.mesh, targetX, targetY, targetZ);
-      nova64.scene.setRotation(fighter.mesh, evasion * 0.1, formationAngle + Math.PI / 2, evasion * 0.05);
+      nova64.scene.setRotation(
+        fighter.mesh,
+        evasion * 0.1,
+        formationAngle + Math.PI / 2,
+        evasion * 0.05
+      );
 
       // Engine trail follows
       nova64.scene.setPosition(
@@ -586,7 +606,12 @@ export function draw() {
 
   const battlePhase = Math.floor(time / 10) % 3;
   const phases = ['ENGAGEMENT', 'HEAVY COMBAT', 'CRITICAL PHASE'];
-  nova64.draw.print(`STATUS: ${phases[battlePhase]}`, 8, 24, battlePhase === 2 ? warningColor : hudColor);
+  nova64.draw.print(
+    `STATUS: ${phases[battlePhase]}`,
+    8,
+    24,
+    battlePhase === 2 ? warningColor : hudColor
+  );
 
   // Fleet status
   const blueFleet = capitalShips.filter(s => s.faction === 'blue').length;
@@ -596,7 +621,12 @@ export function draw() {
 
   // Fighter status
   const activeFighters = fighters.length;
-  nova64.draw.print(`FIGHTERS: ${activeFighters} ACTIVE`, 8, 72, nova64.draw.rgba8(255, 255, 100, 255));
+  nova64.draw.print(
+    `FIGHTERS: ${activeFighters} ACTIVE`,
+    8,
+    72,
+    nova64.draw.rgba8(255, 255, 100, 255)
+  );
 
   // Battle intensity
   const intensity = Math.floor(battleIntensity * 100);
@@ -614,7 +644,13 @@ export function draw() {
   // Grid lines
   for (let i = 1; i < 4; i++) {
     const gridPos = radarX + (radarSize / 4) * i;
-    nova64.draw.line(gridPos, radarY, gridPos, radarY + radarSize, nova64.draw.rgba8(0, 100, 0, 100));
+    nova64.draw.line(
+      gridPos,
+      radarY,
+      gridPos,
+      radarY + radarSize,
+      nova64.draw.rgba8(0, 100, 0, 100)
+    );
     nova64.draw.line(
       radarX,
       radarY + (radarSize / 4) * i,
@@ -629,7 +665,10 @@ export function draw() {
     if (ship.type === 'capital') {
       const radarPosX = radarX + radarSize / 2 + ((ship.pos[0] / 60) * radarSize) / 2;
       const radarPosY = radarY + radarSize / 2 + ((ship.pos[2] / 60) * radarSize) / 2;
-      const color = ship.faction === 'blue' ? nova64.draw.rgba8(100, 150, 255, 255) : nova64.draw.rgba8(255, 100, 150, 255);
+      const color =
+        ship.faction === 'blue'
+          ? nova64.draw.rgba8(100, 150, 255, 255)
+          : nova64.draw.rgba8(255, 100, 150, 255);
       nova64.draw.rect(radarPosX - 2, radarPosY - 2, 4, 4, color, true);
     }
   });
@@ -638,7 +677,13 @@ export function draw() {
   const sweepAngle = time * 2;
   const sweepX = radarX + radarSize / 2 + (Math.cos(sweepAngle) * radarSize) / 2;
   const sweepY = radarY + radarSize / 2 + (Math.sin(sweepAngle) * radarSize) / 2;
-  nova64.draw.line(radarX + radarSize / 2, radarY + radarSize / 2, sweepX, sweepY, nova64.draw.rgba8(0, 255, 0, 150));
+  nova64.draw.line(
+    radarX + radarSize / 2,
+    radarY + radarSize / 2,
+    sweepX,
+    sweepY,
+    nova64.draw.rgba8(0, 255, 0, 150)
+  );
 
   // Performance stats
   if (typeof get3DStats === 'function') {
@@ -660,7 +705,15 @@ export function draw() {
 
 function drawStartScreen() {
   // Deep space gradient background
-  nova64.ui.drawGradientRect(0, 0, 640, 360, nova64.draw.rgba8(10, 5, 20, 235), nova64.draw.rgba8(5, 2, 10, 250), true);
+  nova64.ui.drawGradientRect(
+    0,
+    0,
+    640,
+    360,
+    nova64.draw.rgba8(10, 5, 20, 235),
+    nova64.draw.rgba8(5, 2, 10, 250),
+    true
+  );
 
   // Animated title
   nova64.ui.setFont('huge');
@@ -674,8 +727,24 @@ function drawStartScreen() {
   );
 
   const shake = Math.random() > 0.9 ? Math.floor(Math.random() * 6) - 3 : 0;
-  nova64.ui.drawTextShadow('3D ADVANCED', 320 + shake, 50, combatColor, nova64.draw.rgba8(0, 0, 0, 255), 7, 1);
-  nova64.ui.drawTextShadow('SPACE BATTLE', 320, 105, nova64.draw.rgba8(100, 150, 255, 255), nova64.draw.rgba8(0, 0, 0, 255), 7, 1);
+  nova64.ui.drawTextShadow(
+    '3D ADVANCED',
+    320 + shake,
+    50,
+    combatColor,
+    nova64.draw.rgba8(0, 0, 0, 255),
+    7,
+    1
+  );
+  nova64.ui.drawTextShadow(
+    'SPACE BATTLE',
+    320,
+    105,
+    nova64.draw.rgba8(100, 150, 255, 255),
+    nova64.draw.rgba8(0, 0, 0, 255),
+    7,
+    1
+  );
 
   // Subtitle
   nova64.ui.setFont('large');
@@ -706,7 +775,13 @@ function drawStartScreen() {
 
   nova64.ui.setFont('small');
   nova64.ui.drawText('⚡ Capital Ships + Fighter Squadrons', 320, 255, uiColors.light, 1);
-  nova64.ui.drawText('⚡ Real-time Combat with Projectiles & Explosions', 320, 270, uiColors.light, 1);
+  nova64.ui.drawText(
+    '⚡ Real-time Combat with Projectiles & Explosions',
+    320,
+    270,
+    uiColors.light,
+    1
+  );
   nova64.ui.drawText('⚡ 200+ Stars + Nebula Backgrounds', 320, 285, uiColors.light, 1);
   nova64.ui.drawText('⚡ Advanced 3D Effects & Cinematic Camera', 320, 300, uiColors.light, 1);
 
@@ -719,9 +794,21 @@ function drawStartScreen() {
   // Pulsing prompt
   const alpha = Math.floor((Math.sin(startScreenTime * 6) * 0.5 + 0.5) * 255);
   nova64.ui.setFont('normal');
-  nova64.ui.drawText('⚡ PREPARE FOR BATTLE ⚡', 320, 430, nova64.draw.rgba8(255, 100, 50, alpha), 1);
+  nova64.ui.drawText(
+    '⚡ PREPARE FOR BATTLE ⚡',
+    320,
+    430,
+    nova64.draw.rgba8(255, 100, 50, alpha),
+    1
+  );
 
   // Info
   nova64.ui.setFont('tiny');
-  nova64.ui.drawText('Full GPU-Accelerated 3D Combat', 320, 345, nova64.draw.rgba8(150, 100, 150, 150), 1);
+  nova64.ui.drawText(
+    'Full GPU-Accelerated 3D Combat',
+    320,
+    345,
+    nova64.draw.rgba8(150, 100, 150, 150),
+    1
+  );
 }

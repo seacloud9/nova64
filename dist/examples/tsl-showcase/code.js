@@ -289,7 +289,11 @@ function setupTornado() {
   // Orbiting energy orbs with shockwave material
   for (let i = 0; i < 4; i++) {
     const angle = (i / 4) * Math.PI * 2;
-    const orbId = nova64.scene.createSphere(0.6, 0xffffff, [Math.cos(angle) * 5, 6, Math.sin(angle) * 5]);
+    const orbId = nova64.scene.createSphere(0.6, 0xffffff, [
+      Math.cos(angle) * 5,
+      6,
+      Math.sin(angle) * 5,
+    ]);
     applyMat(orbId, createShockwaveMaterial({ speed: 0.5 }));
     ids.push(orbId);
   }
@@ -414,7 +418,12 @@ export function update(dt) {
   sceneTime += dt;
 
   // Navigate scenes
-  if (nova64.input.keyp('Space') || nova64.input.keyp('Enter') || nova64.input.keyp('ArrowRight') || nova64.input.keyp('ArrowDown')) {
+  if (
+    nova64.input.keyp('Space') ||
+    nova64.input.keyp('Enter') ||
+    nova64.input.keyp('ArrowRight') ||
+    nova64.input.keyp('ArrowDown')
+  ) {
     _local_setupScene(currentScene + 1);
     return;
   }

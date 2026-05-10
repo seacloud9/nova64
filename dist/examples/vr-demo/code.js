@@ -49,8 +49,12 @@ export function init() {
     const color = Math.random() * 0xffffff;
     const obj =
       i % 2 === 0
-        ? nova64.scene.createCube(0.5 + Math.random() * 0.5, color, [x, y, z], { material: 'holographic' })
-        : nova64.scene.createSphere(0.3 + Math.random() * 0.3, color, [x, y, z], { material: 'metallic' });
+        ? nova64.scene.createCube(0.5 + Math.random() * 0.5, color, [x, y, z], {
+            material: 'holographic',
+          })
+        : nova64.scene.createSphere(0.3 + Math.random() * 0.3, color, [x, y, z], {
+            material: 'metallic',
+          });
     objects.push({ mesh: obj, vel: { x: 0, y: 0, z: 0 }, rot: Math.random() * 2 - 1 });
   }
 
@@ -71,7 +75,11 @@ export function update(dt) {
       // Trigger pressed — spawn a small cube at controller position
       if (ctrl.buttons[0]?.pressed) {
         const color = ctrl.index === 0 ? 0x00ff88 : 0xff4488;
-        const cube = nova64.scene.createCube(0.15, color, [ctrl.position.x, ctrl.position.y, ctrl.position.z]);
+        const cube = nova64.scene.createCube(0.15, color, [
+          ctrl.position.x,
+          ctrl.position.y,
+          ctrl.position.z,
+        ]);
         objects.push({ mesh: cube, vel: { x: 0, y: -0.5, z: 0 }, rot: 3 });
       }
     }

@@ -148,16 +148,28 @@ export function update(dt) {
   // Simulate mouse position from keyboard for demo
   // In real game, you'd use actual mouse input
   if (nova64.input.isKeyDown('arrowleft')) {
-    nova64.ui.setMousePosition(Math.max(0, nova64.ui.getMousePosition().x - 200 * dt), nova64.ui.getMousePosition().y);
+    nova64.ui.setMousePosition(
+      Math.max(0, nova64.ui.getMousePosition().x - 200 * dt),
+      nova64.ui.getMousePosition().y
+    );
   }
   if (nova64.input.isKeyDown('arrowright')) {
-    nova64.ui.setMousePosition(Math.min(640, nova64.ui.getMousePosition().x + 200 * dt), nova64.ui.getMousePosition().y);
+    nova64.ui.setMousePosition(
+      Math.min(640, nova64.ui.getMousePosition().x + 200 * dt),
+      nova64.ui.getMousePosition().y
+    );
   }
   if (nova64.input.isKeyDown('arrowup')) {
-    nova64.ui.setMousePosition(nova64.ui.getMousePosition().x, Math.max(0, nova64.ui.getMousePosition().y - 200 * dt));
+    nova64.ui.setMousePosition(
+      nova64.ui.getMousePosition().x,
+      Math.max(0, nova64.ui.getMousePosition().y - 200 * dt)
+    );
   }
   if (nova64.input.isKeyDown('arrowdown')) {
-    nova64.ui.setMousePosition(nova64.ui.getMousePosition().x, Math.min(360, nova64.ui.getMousePosition().y + 200 * dt));
+    nova64.ui.setMousePosition(
+      nova64.ui.getMousePosition().x,
+      Math.min(360, nova64.ui.getMousePosition().y + 200 * dt)
+    );
   }
 
   // Space to click
@@ -176,7 +188,15 @@ export function draw() {
   nova64.draw.cls();
 
   // Draw gradient background
-  nova64.ui.drawGradientRect(0, 0, 640, 360, nova64.draw.rgba8(10, 10, 30, 255), nova64.draw.rgba8(30, 10, 50, 255), true);
+  nova64.ui.drawGradientRect(
+    0,
+    0,
+    640,
+    360,
+    nova64.draw.rgba8(10, 10, 30, 255),
+    nova64.draw.rgba8(30, 10, 50, 255),
+    true
+  );
 
   // Draw all panels
   nova64.ui.drawAllPanels();
@@ -216,7 +236,15 @@ export function draw() {
   nova64.ui.setTextAlign('center');
   nova64.ui.setTextBaseline('middle');
   const level = Math.floor(demo.exp / 1000) + 1;
-  nova64.ui.drawTextShadow('LVL ' + level, 280, 200, uiColors.white, nova64.draw.rgba8(0, 0, 0, 200), 3, 1);
+  nova64.ui.drawTextShadow(
+    'LVL ' + level,
+    280,
+    200,
+    uiColors.white,
+    nova64.draw.rgba8(0, 0, 0, 200),
+    3,
+    1
+  );
 
   // ============================================
   // Panel 2: Control Panel
@@ -229,7 +257,14 @@ export function draw() {
   // Score with outline
   nova64.ui.setFont('large');
   const scoreText = 'SCORE: ' + demo.score.toString().padStart(8, '0');
-  nova64.ui.drawTextOutline(scoreText, 340, 50, uiColors.warning, nova64.draw.rgba8(0, 0, 0, 255), 1);
+  nova64.ui.drawTextOutline(
+    scoreText,
+    340,
+    50,
+    uiColors.warning,
+    nova64.draw.rgba8(0, 0, 0, 255),
+    1
+  );
 
   // Time
   nova64.ui.setFont('normal');
@@ -260,7 +295,14 @@ export function draw() {
   nova64.ui.setTextAlign('center');
   nova64.ui.setTextBaseline('top');
   const titleY = 5 + Math.sin(demo.time * 2) * 2;
-  nova64.ui.drawTextOutline('NOVA64 UI SYSTEM', 320, titleY, uiColors.primary, nova64.draw.rgba8(0, 0, 0, 255), 1);
+  nova64.ui.drawTextOutline(
+    'NOVA64 UI SYSTEM',
+    320,
+    titleY,
+    uiColors.primary,
+    nova64.draw.rgba8(0, 0, 0, 255),
+    1
+  );
 
   // ============================================
   // Instructions
@@ -284,8 +326,20 @@ export function draw() {
   const mouse = nova64.ui.getMousePosition();
 
   // Cursor shadow
-  nova64.draw.line(mouse.x + 2, mouse.y + 2, mouse.x + 12, mouse.y + 12, nova64.draw.rgba8(0, 0, 0, 150));
-  nova64.draw.line(mouse.x + 2, mouse.y + 2, mouse.x + 7, mouse.y + 12, nova64.draw.rgba8(0, 0, 0, 150));
+  nova64.draw.line(
+    mouse.x + 2,
+    mouse.y + 2,
+    mouse.x + 12,
+    mouse.y + 12,
+    nova64.draw.rgba8(0, 0, 0, 150)
+  );
+  nova64.draw.line(
+    mouse.x + 2,
+    mouse.y + 2,
+    mouse.x + 7,
+    mouse.y + 12,
+    nova64.draw.rgba8(0, 0, 0, 150)
+  );
 
   // Cursor
   nova64.draw.line(mouse.x, mouse.y, mouse.x + 10, mouse.y + 10, uiColors.white);

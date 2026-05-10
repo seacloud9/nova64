@@ -88,7 +88,12 @@ export function update(dt) {
   t += dt;
 
   // Navigate with Space, Enter, or arrow keys
-  if (nova64.input.keyp('Space') || nova64.input.keyp('Enter') || nova64.input.keyp('ArrowRight') || nova64.input.keyp('ArrowDown')) {
+  if (
+    nova64.input.keyp('Space') ||
+    nova64.input.keyp('Enter') ||
+    nova64.input.keyp('ArrowRight') ||
+    nova64.input.keyp('ArrowDown')
+  ) {
     applyMaterial(currentIndex + 1);
   }
   if (nova64.input.keyp('ArrowLeft') || nova64.input.keyp('ArrowUp')) {

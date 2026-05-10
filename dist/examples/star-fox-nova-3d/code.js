@@ -146,7 +146,12 @@ export async function init() {
   nova64.light.setFog(0x020308, 50, 300);
 
   if (typeof createSpaceSkybox === 'function') {
-    nova64.light.createSpaceSkybox({ starCount: 3000, starSize: 2.5, nebulae: true, nebulaColor: 0x1a0044 });
+    nova64.light.createSpaceSkybox({
+      starCount: 3000,
+      starSize: 2.5,
+      nebulae: true,
+      nebulaColor: 0x1a0044,
+    });
   }
 
   // Post-processing — cinematic space feel
@@ -264,7 +269,9 @@ function createArwing() {
   nova64.scene.setScale(p.meshes.engineR, 0.8, 0.6, 1.0);
 
   // Tail fin
-  p.meshes.tail = nova64.scene.createCube(0.3, C.shipWing, [px, py + 0.8, pz - 1.8], { material: 'metallic' });
+  p.meshes.tail = nova64.scene.createCube(0.3, C.shipWing, [px, py + 0.8, pz - 1.8], {
+    material: 'metallic',
+  });
   nova64.scene.setScale(p.meshes.tail, 0.15, 1.4, 1.2);
 }
 
@@ -275,7 +282,10 @@ function spawnAsteroid(randomZ = false) {
   const z = randomZ ? 10 - Math.random() * 250 : -250 - Math.random() * 50;
   const sz = 1.5 + Math.random() * 4;
 
-  const mesh = nova64.scene.createSphere(sz, C.asteroid, [x, y, z], 6, { material: 'standard', roughness: 0.9 });
+  const mesh = nova64.scene.createSphere(sz, C.asteroid, [x, y, z], 6, {
+    material: 'standard',
+    roughness: 0.9,
+  });
   game.asteroids.push({
     mesh,
     x,
@@ -293,7 +303,10 @@ function spawnEnemy() {
   const y = 4 + Math.random() * 14;
   const z = -200 - Math.random() * 40;
 
-  const core = nova64.scene.createSphere(1.8, C.drone, [x, y, z], 8, { material: 'metallic', metalness: 0.8 });
+  const core = nova64.scene.createSphere(1.8, C.drone, [x, y, z], 8, {
+    material: 'metallic',
+    metalness: 0.8,
+  });
   const eye = nova64.scene.createSphere(0.8, C.droneEye, [x, y, z + 1.5], 8, {
     material: 'emissive',
     emissive: C.droneEye,
@@ -393,7 +406,10 @@ function spawnRing() {
   const mesh =
     typeof createTorus === 'function'
       ? nova64.scene.createTorus(x, y, z, 2.0, 0.35, C.ring)
-      : nova64.scene.createSphere(2.0, C.ring, [x, y, z], 8, { material: 'emissive', emissive: 0xffaa00 });
+      : nova64.scene.createSphere(2.0, C.ring, [x, y, z], 8, {
+          material: 'emissive',
+          emissive: 0xffaa00,
+        });
 
   if (typeof createTorus !== 'function') nova64.scene.setScale(mesh, 1.0, 1.0, 0.1);
   game.rings.push({ mesh, x, y, z, collected: false });
@@ -455,7 +471,10 @@ function fireEnemyShot(ex, ey, ez) {
 
 function createExplosion(x, y, z, color, count = 16) {
   for (let i = 0; i < count; i++) {
-    const mesh = nova64.scene.createCube(0.6, color, [x, y, z], { material: 'emissive', emissive: color });
+    const mesh = nova64.scene.createCube(0.6, color, [x, y, z], {
+      material: 'emissive',
+      emissive: color,
+    });
     const spd = 15 + Math.random() * 25;
     const a1 = Math.random() * Math.PI * 2;
     const a2 = Math.random() * Math.PI * 2;
@@ -598,7 +617,13 @@ function updateArwing(dt) {
   nova64.util.updateHitState(playerHit, dt);
 
   // Barrel Roll Logic (Press Q/E or trigger dynamically)
-  if (!p.isBarrelRolling && (nova64.input.isKeyPressed('KeyQ') || nova64.input.isKeyPressed('KeyE') || nova64.input.btnp(1) || nova64.input.btnp(2))) {
+  if (
+    !p.isBarrelRolling &&
+    (nova64.input.isKeyPressed('KeyQ') ||
+      nova64.input.isKeyPressed('KeyE') ||
+      nova64.input.btnp(1) ||
+      nova64.input.btnp(2))
+  ) {
     p.isBarrelRolling = true;
     p.rollSpeed = nova64.input.isKeyPressed('KeyE') ? -Math.PI * 6 : Math.PI * 6; // Fast spin
     playerHit.invulnTimer = Math.max(playerHit.invulnTimer, 0.5); // Invincible during roll!
@@ -616,10 +641,34 @@ function updateArwing(dt) {
   // Input — smooth velocity-based movement
   let ix = 0,
     iy = 0;
-  if (nova64.input.key('ArrowLeft') || nova64.input.key('KeyA') || nova64.input.btn(14) || nova64.input.btn(12)) ix = -1;
-  if (nova64.input.key('ArrowRight') || nova64.input.key('KeyD') || nova64.input.btn(15) || nova64.input.btn(13)) ix = 1;
-  if (nova64.input.key('ArrowUp') || nova64.input.key('KeyW') || nova64.input.btn(12) || nova64.input.btn(14)) iy = 1;
-  if (nova64.input.key('ArrowDown') || nova64.input.key('KeyS') || nova64.input.btn(13) || nova64.input.btn(15)) iy = -1;
+  if (
+    nova64.input.key('ArrowLeft') ||
+    nova64.input.key('KeyA') ||
+    nova64.input.btn(14) ||
+    nova64.input.btn(12)
+  )
+    ix = -1;
+  if (
+    nova64.input.key('ArrowRight') ||
+    nova64.input.key('KeyD') ||
+    nova64.input.btn(15) ||
+    nova64.input.btn(13)
+  )
+    ix = 1;
+  if (
+    nova64.input.key('ArrowUp') ||
+    nova64.input.key('KeyW') ||
+    nova64.input.btn(12) ||
+    nova64.input.btn(14)
+  )
+    iy = 1;
+  if (
+    nova64.input.key('ArrowDown') ||
+    nova64.input.key('KeyS') ||
+    nova64.input.btn(13) ||
+    nova64.input.btn(15)
+  )
+    iy = -1;
 
   const accel = 140,
     friction = 5.0;
@@ -1025,20 +1074,74 @@ export function draw() {
 
 function drawStartScreen() {
   nova64.draw.cls(nova64.draw.rgba8(2, 4, 16, 255));
-  nova64.draw.drawGradient(0, 0, 640, 360, nova64.draw.rgba8(2, 6, 20, 255), nova64.draw.rgba8(1, 2, 8, 255), 'v');
+  nova64.draw.drawGradient(
+    0,
+    0,
+    640,
+    360,
+    nova64.draw.rgba8(2, 6, 20, 255),
+    nova64.draw.rgba8(1, 2, 8, 255),
+    'v'
+  );
 
   // Intense Nebula glow
-  nova64.draw.drawRadialGradient(320, 90, 280, nova64.draw.rgba8(0, 100, 255, 50), nova64.draw.rgba8(0, 0, 0, 0));
-  nova64.draw.drawRadialGradient(320, 90, 140, nova64.draw.rgba8(0, 220, 255, 40), nova64.draw.rgba8(0, 0, 0, 0));
+  nova64.draw.drawRadialGradient(
+    320,
+    90,
+    280,
+    nova64.draw.rgba8(0, 100, 255, 50),
+    nova64.draw.rgba8(0, 0, 0, 0)
+  );
+  nova64.draw.drawRadialGradient(
+    320,
+    90,
+    140,
+    nova64.draw.rgba8(0, 220, 255, 40),
+    nova64.draw.rgba8(0, 0, 0, 0)
+  );
 
   nova64.draw.drawNoise(0, 0, 640, 360, 12, Math.floor(gameTime * 5));
 
   const sp = Math.sin(gameTime * 3.5) * 0.5 + 0.5;
-  nova64.draw.drawStarburst(40, 35, 16, 6, 8, nova64.draw.rgba8(0, 200, 255, Math.floor(sp * 200)), true);
-  nova64.draw.drawStarburst(600, 35, 16, 6, 8, nova64.draw.rgba8(0, 200, 255, Math.floor(sp * 200)), true);
+  nova64.draw.drawStarburst(
+    40,
+    35,
+    16,
+    6,
+    8,
+    nova64.draw.rgba8(0, 200, 255, Math.floor(sp * 200)),
+    true
+  );
+  nova64.draw.drawStarburst(
+    600,
+    35,
+    16,
+    6,
+    8,
+    nova64.draw.rgba8(0, 200, 255, Math.floor(sp * 200)),
+    true
+  );
 
-  nova64.draw.drawWave(0, 180, 640, 6, 0.03, gameTime * 3.2, nova64.draw.rgba8(0, 150, 255, 100), 2);
-  nova64.draw.drawWave(0, 184, 640, 4, 0.045, gameTime * 3.8 + 1, nova64.draw.rgba8(0, 255, 200, 70), 1);
+  nova64.draw.drawWave(
+    0,
+    180,
+    640,
+    6,
+    0.03,
+    gameTime * 3.2,
+    nova64.draw.rgba8(0, 150, 255, 100),
+    2
+  );
+  nova64.draw.drawWave(
+    0,
+    184,
+    640,
+    4,
+    0.045,
+    gameTime * 3.8 + 1,
+    nova64.draw.rgba8(0, 255, 200, 70),
+    1
+  );
 
   const bob = Math.sin(gameTime * 2.0) * 8;
   nova64.draw.drawGlowTextCentered(
@@ -1061,7 +1164,13 @@ function drawStartScreen() {
   nova64.ui.setFont('large');
   nova64.ui.setTextAlign('center');
   const subPulse = Math.sin(gameTime * 4) * 0.25 + 0.75;
-  nova64.ui.drawText('ULTIMATE SPACE COMBAT', 320, 148, nova64.draw.rgba8(0, 255, 200, Math.floor(subPulse * 255)), 1);
+  nova64.ui.drawText(
+    'ULTIMATE SPACE COMBAT',
+    320,
+    148,
+    nova64.draw.rgba8(0, 255, 200, Math.floor(subPulse * 255)),
+    1
+  );
 
   const panel = nova64.ui.createPanel(nova64.ui.centerX(440), 190, 440, 92, {
     bgColor: nova64.draw.rgba8(4, 10, 30, 230),
@@ -1074,7 +1183,13 @@ function drawStartScreen() {
   nova64.ui.setFont('small');
   nova64.ui.drawText('◆ Blast enemy forces and avoid asteroids', 320, 208, uiColors.light, 1);
   nova64.ui.drawText('◆ Collect rings to heal and points', 320, 223, uiColors.light, 1);
-  nova64.ui.drawText('◆ Press Q or E to BARREL ROLL! (Invincibility)', 320, 240, nova64.draw.rgba8(255, 220, 50, 255), 1);
+  nova64.ui.drawText(
+    '◆ Press Q or E to BARREL ROLL! (Invincibility)',
+    320,
+    240,
+    nova64.draw.rgba8(255, 220, 50, 255),
+    1
+  );
 
   nova64.ui.drawAllButtons();
 
@@ -1082,7 +1197,13 @@ function drawStartScreen() {
   nova64.ui.setTextAlign('center');
   nova64.ui.drawText('WASD / Arrows: Steer  ◆  Space: Fire', 320, 316, uiColors.secondary, 1);
   const alpha = Math.floor((Math.sin(gameTime * 6) * 0.5 + 0.5) * 255);
-  nova64.ui.drawText('◆ PRESS SPACE TO LAUNCH ◆', 320, 335, nova64.draw.rgba8(0, 220, 255, alpha), 1);
+  nova64.ui.drawText(
+    '◆ PRESS SPACE TO LAUNCH ◆',
+    320,
+    335,
+    nova64.draw.rgba8(0, 220, 255, alpha),
+    1
+  );
 
   nova64.draw.drawScanlines(45, 3);
 }
@@ -1093,17 +1214,43 @@ function drawGameOverScreen() {
 
   nova64.ui.setFont('huge');
   nova64.ui.setTextAlign('center');
-  nova64.ui.drawTextShadow('MISSION FAILED', 320, 100, nova64.draw.rgba8(255, 50, 50, 255), nova64.draw.rgba8(0, 0, 0, 255), 4, 1);
+  nova64.ui.drawTextShadow(
+    'MISSION FAILED',
+    320,
+    100,
+    nova64.draw.rgba8(255, 50, 50, 255),
+    nova64.draw.rgba8(0, 0, 0, 255),
+    4,
+    1
+  );
 
   nova64.ui.setFont('large');
   nova64.ui.drawText('FINAL SCORE', 320, 160, nova64.draw.rgba8(180, 200, 255, 200), 1);
 
   nova64.ui.setFont('huge');
-  nova64.ui.drawText(Math.floor(game.score).toString(), 320, 195, nova64.draw.rgba8(0, 255, 200, 255), 1);
+  nova64.ui.drawText(
+    Math.floor(game.score).toString(),
+    320,
+    195,
+    nova64.draw.rgba8(0, 255, 200, 255),
+    1
+  );
 
   nova64.ui.setFont('normal');
-  nova64.ui.drawText('ENEMIES DESTROYED: ' + game.kills, 320, 235, nova64.draw.rgba8(255, 180, 80, 220), 1);
-  nova64.ui.drawText('WAVE REACHED: ' + game.wave, 320, 255, nova64.draw.rgba8(160, 200, 255, 200), 1);
+  nova64.ui.drawText(
+    'ENEMIES DESTROYED: ' + game.kills,
+    320,
+    235,
+    nova64.draw.rgba8(255, 180, 80, 220),
+    1
+  );
+  nova64.ui.drawText(
+    'WAVE REACHED: ' + game.wave,
+    320,
+    255,
+    nova64.draw.rgba8(160, 200, 255, 200),
+    1
+  );
 
   nova64.ui.drawAllButtons();
   nova64.draw.drawScanlines(40, 2);
@@ -1130,7 +1277,13 @@ function drawHUD() {
   nova64.ui.drawText('KILLS ' + game.kills, 300, 8, nova64.draw.rgba8(255, 180, 80, 180), 1);
 
   nova64.ui.setTextAlign('right');
-  nova64.ui.drawText('SPD ' + Math.floor(game.speed), 624, 8, nova64.draw.rgba8(100, 200, 255, 180), 1);
+  nova64.ui.drawText(
+    'SPD ' + Math.floor(game.speed),
+    624,
+    8,
+    nova64.draw.rgba8(100, 200, 255, 180),
+    1
+  );
 
   // Modern angled health bar
   const barX = 420,
@@ -1138,13 +1291,24 @@ function drawHUD() {
     barW = 200,
     barH = 16;
   // Frame
-  nova64.draw.rect(barX - 2, barY - 2, barW + 4, barH + 4, nova64.draw.rgba8(0, 150, 255, 150), false);
+  nova64.draw.rect(
+    barX - 2,
+    barY - 2,
+    barW + 4,
+    barH + 4,
+    nova64.draw.rgba8(0, 150, 255, 150),
+    false
+  );
   nova64.draw.rect(barX, barY, barW, barH, nova64.draw.rgba8(20, 0, 0, 200), true);
 
   const hp = Math.max(0, game.player.health);
   const hpW = (hp / 100) * barW;
   const hpColor =
-    hp > 50 ? nova64.draw.rgba8(0, 255, 100, 255) : hp > 25 ? nova64.draw.rgba8(255, 200, 0, 255) : nova64.draw.rgba8(255, 50, 50, 255);
+    hp > 50
+      ? nova64.draw.rgba8(0, 255, 100, 255)
+      : hp > 25
+        ? nova64.draw.rgba8(255, 200, 0, 255)
+        : nova64.draw.rgba8(255, 50, 50, 255);
   nova64.draw.rect(barX, barY, hpW, barH, hpColor, true);
 
   nova64.ui.setTextAlign('right');

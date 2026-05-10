@@ -45,7 +45,10 @@ export async function init() {
     update(dt) {
       this.animTime += dt;
 
-      if ((nova64.input.isKeyPressed('w') || nova64.input.isKeyPressed('ArrowUp')) && this.selectedOption > 0) {
+      if (
+        (nova64.input.isKeyPressed('w') || nova64.input.isKeyPressed('ArrowUp')) &&
+        this.selectedOption > 0
+      ) {
         this.selectedOption--;
       }
       if (
@@ -77,14 +80,34 @@ export async function init() {
       const cx = W / 2;
 
       // Dark gradient background
-      nova64.draw.drawGradient(0, 0, W, H, nova64.draw.rgba8(5, 5, 22, 255), nova64.draw.rgba8(16, 8, 42, 255), 'v');
+      nova64.draw.drawGradient(
+        0,
+        0,
+        W,
+        H,
+        nova64.draw.rgba8(5, 5, 22, 255),
+        nova64.draw.rgba8(16, 8, 42, 255),
+        'v'
+      );
 
       // Radial spotlight behind title
-      nova64.draw.drawRadialGradient(cx, 70, 120, nova64.draw.rgba8(0, 180, 120, 35), nova64.draw.rgba8(0, 0, 0, 0));
+      nova64.draw.drawRadialGradient(
+        cx,
+        70,
+        120,
+        nova64.draw.rgba8(0, 180, 120, 35),
+        nova64.draw.rgba8(0, 0, 0, 0)
+      );
 
       // Title with glow
       const titleY = 40 + Math.sin(this.animTime * 2) * 3;
-      nova64.draw.drawGlowTextCentered('NOVA64', cx, titleY, nova64.draw.rgba8(100, 255, 200, 255), nova64.draw.rgba8(0, 100, 80, 140));
+      nova64.draw.drawGlowTextCentered(
+        'NOVA64',
+        cx,
+        titleY,
+        nova64.draw.rgba8(100, 255, 200, 255),
+        nova64.draw.rgba8(0, 100, 80, 140)
+      );
 
       // Pixel-bordered option box
       const boxY = 100;
@@ -173,7 +196,12 @@ export async function init() {
     draw() {
       nova64.draw.print(`Level: ${this.level}`, 10, 10, nova64.draw.rgba8(255, 255, 255));
       nova64.draw.print(`Score: ${this.score}`, 10, 30, nova64.draw.rgba8(255, 255, 255));
-      nova64.draw.print(`Time: ${Math.floor(this.time)}s`, 10, 50, nova64.draw.rgba8(255, 255, 255));
+      nova64.draw.print(
+        `Time: ${Math.floor(this.time)}s`,
+        10,
+        50,
+        nova64.draw.rgba8(255, 255, 255)
+      );
       nova64.draw.print('Press M for Menu', W - 120, 10, nova64.draw.rgba8(200, 200, 200));
 
       // Crosshair
@@ -209,8 +237,18 @@ export async function init() {
       const centerX = W / 2;
 
       nova64.draw.print('SETTINGS', centerX - 30, 50, nova64.draw.rgba8(255, 255, 100));
-      nova64.draw.print(`Volume: ${this.volume}%`, centerX - 40, 100, nova64.draw.rgba8(255, 255, 255));
-      nova64.draw.print('A/D to adjust volume', centerX - 50, 120, nova64.draw.rgba8(150, 150, 150));
+      nova64.draw.print(
+        `Volume: ${this.volume}%`,
+        centerX - 40,
+        100,
+        nova64.draw.rgba8(255, 255, 255)
+      );
+      nova64.draw.print(
+        'A/D to adjust volume',
+        centerX - 50,
+        120,
+        nova64.draw.rgba8(150, 150, 150)
+      );
       nova64.draw.print('Press M for Menu', centerX - 40, 160, nova64.draw.rgba8(200, 200, 200));
     },
   });
@@ -288,8 +326,18 @@ export async function init() {
       const color = flash ? nova64.draw.rgba8(255, 100, 100) : nova64.draw.rgba8(200, 50, 50);
 
       nova64.draw.print('GAME OVER', centerX - 35, centerY - 20, color);
-      nova64.draw.print(`Score: ${this.data.score}`, centerX - 30, centerY + 10, nova64.draw.rgba8(255, 255, 255));
-      nova64.draw.print('Space = Menu, R = Retry', centerX - 55, centerY + 40, nova64.draw.rgba8(200, 200, 200));
+      nova64.draw.print(
+        `Score: ${this.data.score}`,
+        centerX - 30,
+        centerY + 10,
+        nova64.draw.rgba8(255, 255, 255)
+      );
+      nova64.draw.print(
+        'Space = Menu, R = Retry',
+        centerX - 55,
+        centerY + 40,
+        nova64.draw.rgba8(200, 200, 200)
+      );
     },
   });
 

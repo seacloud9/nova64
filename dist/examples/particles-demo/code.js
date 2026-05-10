@@ -89,7 +89,10 @@ function buildFire() {
   nova64.fx.enableBloom(2.0, 0.6, 0.2);
 
   // Charred ground
-  const floor = nova64.scene.createPlane(50, 50, 0x1a0800, [0, 0, 0], { material: 'standard', roughness: 1 });
+  const floor = nova64.scene.createPlane(50, 50, 0x1a0800, [0, 0, 0], {
+    material: 'standard',
+    roughness: 1,
+  });
   nova64.scene.setRotation(floor, -Math.PI / 2, 0, 0);
   propIds.push(floor);
 
@@ -255,7 +258,12 @@ function buildFire() {
   );
 
   // Multiple warm lights for dramatic illumination
-  lightIds.push({ id: nova64.light.createPointLight(0xff4400, 12, 30, 0, 3, 0), baseX: 0, baseZ: 0, phase: 0 });
+  lightIds.push({
+    id: nova64.light.createPointLight(0xff4400, 12, 30, 0, 3, 0),
+    baseX: 0,
+    baseZ: 0,
+    phase: 0,
+  });
   lightIds.push({
     id: nova64.light.createPointLight(0xff8800, 8, 22, -2, 1.5, -2),
     baseX: -2,
@@ -333,7 +341,10 @@ function buildBlizzard() {
     [3, 0.3, -5],
   ].forEach(([sx, sy, sz]) =>
     propIds.push(
-      nova64.scene.createSphere(0.8, 0xddeeff, [sx, sy, sz], 6, { material: 'standard', roughness: 0.5 })
+      nova64.scene.createSphere(0.8, 0xddeeff, [sx, sy, sz], 6, {
+        material: 'standard',
+        roughness: 0.5,
+      })
     )
   );
 
@@ -595,11 +606,16 @@ function buildGalaxy() {
   nova64.light.createSolidSkybox(0x000005);
 
   // Central black hole — emissive core
-  const core = nova64.scene.createSphere(babylon ? 1.45 : 0.6, babylon ? 0xffffff : 0x221144, [0, 0, 0], {
-    material: 'standard',
-    emissive: babylon ? 0xffffff : 0x6633ff,
-    emissiveIntensity: babylon ? 8.0 : 5.0,
-  });
+  const core = nova64.scene.createSphere(
+    babylon ? 1.45 : 0.6,
+    babylon ? 0xffffff : 0x221144,
+    [0, 0, 0],
+    {
+      material: 'standard',
+      emissive: babylon ? 0xffffff : 0x6633ff,
+      emissiveIntensity: babylon ? 8.0 : 5.0,
+    }
+  );
   propIds.push(core);
 
   // Accretion disc ring
@@ -760,9 +776,14 @@ function buildWaterfall() {
   );
   // Side cliffs
   propIds.push(
-    nova64.scene.createCube(3, 10, 3, 0x554433, [-5.5, 5, -5], { material: 'phong', roughness: 0.9 })
+    nova64.scene.createCube(3, 10, 3, 0x554433, [-5.5, 5, -5], {
+      material: 'phong',
+      roughness: 0.9,
+    })
   );
-  propIds.push(nova64.scene.createCube(3, 10, 3, 0x554433, [5.5, 5, -5], { material: 'phong', roughness: 0.9 }));
+  propIds.push(
+    nova64.scene.createCube(3, 10, 3, 0x554433, [5.5, 5, -5], { material: 'phong', roughness: 0.9 })
+  );
 
   // Translucent water sheets give the cascade a continuous body in both backends;
   // particles add spray, foam, and sparkle on top.
@@ -1050,8 +1071,10 @@ export function update(dt) {
   // Camera orbit
   if (nova64.input.key('KeyA') || nova64.input.key('ArrowLeft')) orbitAngle -= dt * 1.2;
   if (nova64.input.key('KeyD') || nova64.input.key('ArrowRight')) orbitAngle += dt * 1.2;
-  if (nova64.input.key('KeyW') || nova64.input.key('ArrowUp')) orbitY = Math.min(20, orbitY + dt * 5);
-  if (nova64.input.key('KeyS') || nova64.input.key('ArrowDown')) orbitY = Math.max(2, orbitY - dt * 5);
+  if (nova64.input.key('KeyW') || nova64.input.key('ArrowUp'))
+    orbitY = Math.min(20, orbitY + dt * 5);
+  if (nova64.input.key('KeyS') || nova64.input.key('ArrowDown'))
+    orbitY = Math.max(2, orbitY - dt * 5);
   if (nova64.input.key('KeyQ')) orbitDist = Math.min(40, orbitDist + dt * 8);
   if (nova64.input.key('KeyE')) orbitDist = Math.max(6, orbitDist - dt * 8);
 
@@ -1248,5 +1271,10 @@ export function draw() {
     222,
     nova64.draw.rgba8(180, 255, 180, 255)
   );
-  nova64.draw.print('[SPACE] Burst  [WASD] Orbit  [\\[\\]] Count', 6, 231, nova64.draw.rgba8(110, 110, 110, 220));
+  nova64.draw.print(
+    '[SPACE] Burst  [WASD] Orbit  [\\[\\]] Count',
+    6,
+    231,
+    nova64.draw.rgba8(110, 110, 110, 220)
+  );
 }

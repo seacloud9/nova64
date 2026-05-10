@@ -132,7 +132,10 @@ export async function init() {
   };
 
   shake = nova64.util.createShake({ decay: 3 });
-  cooldowns = nova64.util.createCooldownSet({ laser: CONFIG.LASER_COOLDOWN, missile: CONFIG.MISSILE_COOLDOWN });
+  cooldowns = nova64.util.createCooldownSet({
+    laser: CONFIG.LASER_COOLDOWN,
+    missile: CONFIG.MISSILE_COOLDOWN,
+  });
 
   // Reset wave state
   wave = 0;
@@ -188,6 +191,9 @@ function setupLighting() {
   nova64.fx.enableFXAA(); // Smooth starfield
   nova64.fx.enableVignette(1.8, 0.85); // Cockpit-style dark border
   nova64.fx.enableChromaticAberration(0.0015); // Subtle lens dispersion
+  // Babylon flourish: GlowLayer pushes emissive ship hulls / lasers into a
+  // separate blurred buffer for cheap volumetric glow. No-op on Three.js.
+  nova64.fx.enableGlow?.(1.0, 32);
 }
 
 function createStarField() {
@@ -496,7 +502,11 @@ function updateStartScreen(dt) {
   nova64.ui.updateAllButtons();
 
   // KEYBOARD FALLBACK - Use isKeyDown for reliable detection
-  if (nova64.input.isKeyDown('Enter') || nova64.input.isKeyDown('Space') || nova64.input.isKeyDown(' ')) {
+  if (
+    nova64.input.isKeyDown('Enter') ||
+    nova64.input.isKeyDown('Space') ||
+    nova64.input.isKeyDown(' ')
+  ) {
     console.log('⌨️ Keyboard start detected!');
     startGame();
   }
@@ -526,7 +536,11 @@ function updateInput(dt) {
   }
 
   // Speed control with W/S
-  const speedMultiplier = nova64.input.isKeyDown('KeyW') ? 1 : nova64.input.isKeyDown('KeyS') ? -0.5 : 0.5;
+  const speedMultiplier = nova64.input.isKeyDown('KeyW')
+    ? 1
+    : nova64.input.isKeyDown('KeyS')
+      ? -0.5
+      : 0.5;
   player.boosting = nova64.input.isKeyDown('ShiftLeft') || nova64.input.isKeyDown('ShiftRight');
 
   const finalSpeed =
@@ -1131,8 +1145,19 @@ export function draw() {
 
   if (gameState === 'waveclear') {
     const alpha = Math.floor(Math.min(1, waveClearTimer) * 255);
-    nova64.draw.printCentered(`WAVE ${wave} CLEAR!`, 320, 140, nova64.draw.rgba8(0, 255, 100, alpha), 2);
-    nova64.draw.printCentered(`+${wave * 500} BONUS`, 320, 170, nova64.draw.rgba8(255, 255, 0, alpha));
+    nova64.draw.printCentered(
+      `WAVE ${wave} CLEAR!`,
+      320,
+      140,
+      nova64.draw.rgba8(0, 255, 100, alpha),
+      2
+    );
+    nova64.draw.printCentered(
+      `+${wave * 500} BONUS`,
+      320,
+      170,
+      nova64.draw.rgba8(255, 255, 0, alpha)
+    );
     nova64.draw.printCentered('+3 MISSILES', 320, 195, nova64.draw.rgba8(255, 180, 0, alpha));
   }
 
@@ -1151,7 +1176,12 @@ function drawStartScreen() {
 
   // Pulsing start prompt
   const pulse = Math.sin(gameTime * 3) * 0.5 + 0.5;
-  nova64.draw.print('PRESS ENTER OR SPACE TO START', 170, 150, nova64.draw.rgba8(255, 255, 100, Math.floor(pulse * 255)));
+  nova64.draw.print(
+    'PRESS ENTER OR SPACE TO START',
+    170,
+    150,
+    nova64.draw.rgba8(255, 255, 100, Math.floor(pulse * 255))
+  );
 
   // Controls
   nova64.draw.rect(150, 180, 340, 150, nova64.draw.rgba8(10, 10, 40, 220), true);
@@ -1176,7 +1206,12 @@ function drawHUD() {
 
   // Stats
   nova64.draw.print(`SCORE: ${score}`, 20, 25, nova64.draw.rgba8(255, 255, 0, 255));
-  nova64.draw.print(`WAVE: ${wave}  KILLS: ${kills}`, 20, 45, nova64.draw.rgba8(255, 100, 100, 255));
+  nova64.draw.print(
+    `WAVE: ${wave}  KILLS: ${kills}`,
+    20,
+    45,
+    nova64.draw.rgba8(255, 100, 100, 255)
+  );
 
   // Health bar
   nova64.draw.print('HULL:', 20, 65, nova64.draw.rgba8(255, 255, 255, 255));
@@ -1187,14 +1222,28 @@ function drawHUD() {
   // Shield bar
   nova64.draw.print('SHIELD:', 20, 85, nova64.draw.rgba8(255, 255, 255, 255));
   nova64.draw.rect(85, 83, 100, 12, nova64.draw.rgba8(0, 20, 50, 255), true);
-  nova64.draw.rect(85, 83, Math.floor(player.shield), 12, nova64.draw.rgba8(0, 150, 255, 255), true);
+  nova64.draw.rect(
+    85,
+    83,
+    Math.floor(player.shield),
+    12,
+    nova64.draw.rgba8(0, 150, 255, 255),
+    true
+  );
   nova64.draw.rect(85, 83, 100, 12, nova64.draw.rgba8(0, 150, 255, 100), false);
 
   // Energy bar (top right)
   nova64.draw.rect(530, 10, 100, 25, nova64.draw.rgba8(0, 0, 0, 180), true);
   nova64.draw.print('ENERGY', 540, 18, nova64.draw.rgba8(255, 255, 255, 255));
   nova64.draw.rect(535, 28, 95, 5, nova64.draw.rgba8(0, 50, 0, 255), true);
-  nova64.draw.rect(535, 28, Math.floor(player.energy * 0.95), 5, nova64.draw.rgba8(0, 255, 0, 255), true);
+  nova64.draw.rect(
+    535,
+    28,
+    Math.floor(player.energy * 0.95),
+    5,
+    nova64.draw.rgba8(0, 255, 0, 255),
+    true
+  );
 
   // Weapon status
   nova64.draw.rect(330, 10, 180, 50, nova64.draw.rgba8(0, 0, 0, 180), true);
@@ -1224,7 +1273,12 @@ function drawHUD() {
     nova64.draw.rect(220, 320, 200, 30, nova64.draw.rgba8(0, 0, 0, 180), true);
     nova64.draw.rect(220, 320, 200, 30, nova64.draw.rgba8(255, 0, 0, 100), false);
     const typeLabel = (target.type || 'fighter').toUpperCase();
-    nova64.draw.print(`${typeLabel}: ${Math.floor(targetDist)}m`, 240, 330, nova64.draw.rgba8(255, 0, 0, 255));
+    nova64.draw.print(
+      `${typeLabel}: ${Math.floor(targetDist)}m`,
+      240,
+      330,
+      nova64.draw.rgba8(255, 0, 0, 255)
+    );
   }
 
   // Boss health bar
@@ -1236,7 +1290,14 @@ function drawHUD() {
       nova64.draw.print('BOSS', bx, 118, nova64.draw.rgba8(255, 50, 50, 255));
       nova64.draw.rect(bx + 40, 116, bw - 40, 12, nova64.draw.rgba8(80, 0, 0, 255), true);
       const hp = Math.max(0, boss.health / boss.maxHealth);
-      nova64.draw.rect(bx + 40, 116, Math.floor(hp * (bw - 40)), 12, nova64.draw.rgba8(255, 0, 0, 255), true);
+      nova64.draw.rect(
+        bx + 40,
+        116,
+        Math.floor(hp * (bw - 40)),
+        12,
+        nova64.draw.rgba8(255, 0, 0, 255),
+        true
+      );
       nova64.draw.rect(bx + 40, 116, bw - 40, 12, nova64.draw.rgba8(200, 100, 100), false);
     }
   }
@@ -1283,8 +1344,22 @@ function _local_drawCrosshair() {
   nova64.draw.rect(cx - bracket, cy + bracket - 2, 10, 2, nova64.draw.rgba8(0, 255, 0, 150), true);
   nova64.draw.rect(cx - bracket, cy + bracket - 10, 2, 10, nova64.draw.rgba8(0, 255, 0, 150), true);
   // Bottom right
-  nova64.draw.rect(cx + bracket - 10, cy + bracket - 2, 10, 2, nova64.draw.rgba8(0, 255, 0, 150), true);
-  nova64.draw.rect(cx + bracket - 2, cy + bracket - 10, 2, 10, nova64.draw.rgba8(0, 255, 0, 150), true);
+  nova64.draw.rect(
+    cx + bracket - 10,
+    cy + bracket - 2,
+    10,
+    2,
+    nova64.draw.rgba8(0, 255, 0, 150),
+    true
+  );
+  nova64.draw.rect(
+    cx + bracket - 2,
+    cy + bracket - 10,
+    2,
+    10,
+    nova64.draw.rgba8(0, 255, 0, 150),
+    true
+  );
 }
 
 function drawGameOver() {
@@ -1296,7 +1371,12 @@ function drawGameOver() {
   nova64.draw.print(`WAVES SURVIVED: ${wave}`, 220, 210, nova64.draw.rgba8(200, 200, 255, 255));
 
   const pulse = Math.sin(gameTime * 3) * 0.5 + 0.5;
-  nova64.draw.print('PRESS ENTER TO RESTART', 210, 240, nova64.draw.rgba8(255, 255, 100, Math.floor(pulse * 255)));
+  nova64.draw.print(
+    'PRESS ENTER TO RESTART',
+    210,
+    240,
+    nova64.draw.rgba8(255, 255, 100, Math.floor(pulse * 255))
+  );
 
   if (nova64.input.isKeyDown('Enter') || nova64.input.isKeyDown('Space')) {
     init();

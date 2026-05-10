@@ -67,7 +67,9 @@ export function update(dt) {
         // Pinch detected — spawn a bigger orb
         const ox = (idxTip.x - 0.5) * 8;
         const oy = -(idxTip.y - 0.5) * 6;
-        const orb = nova64.scene.createSphere(0.3, 0x00ffcc, [ox, oy, -3], { material: 'holographic' });
+        const orb = nova64.scene.createSphere(0.3, 0x00ffcc, [ox, oy, -3], {
+          material: 'holographic',
+        });
         particles.push({ mesh: orb, life: PARTICLE_LIFETIME * 2 });
       }
     }

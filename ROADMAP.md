@@ -54,7 +54,15 @@ That means the repo is ready for phased backend work instead of one large rewrit
 
 ## Roadmap Overview
 
-### Phase 1: Stabilize the Backend Contract
+### Phase 1: Stabilize the Backend Contract — **Effectively complete (v0.5.0)** ✅
+
+Status: Landed in trunk via the **grouped `nova64.*` namespace migration**.
+`runtime/namespace.js` (`NAMESPACE_MAP` + `buildNamespace()`) is now the
+canonical, versioned, cart-facing contract — Three.js, Babylon, and Godot all
+bind through the same shape. Bare globals (`Object.assign(globalThis, …)`)
+have been retired from `src/main.js`, and every cart in the official gallery
+(71+) plus every internal runtime callsite has been migrated. Conformance
+harnesses run against the namespaced surface in all three backends.
 
 Goal:
 
@@ -74,7 +82,26 @@ Exit criteria:
 - backend-specific behavior is covered by conformance tests
 - new backends can be added without changing cart code
 
-### Phase 2: Babylon.js Support
+### Phase 2: Babylon.js Support — **Exit criteria met, hardening continues (v0.5.0)** ✅
+
+Status: All exit criteria have landed. Babylon runs the full cart gallery
+through the same `nova64.*` namespace as Three.js. v0.5.0 adds:
+
+- **Noa voxel adapter** (`runtime/backends/babylon/noa-adapter.js` +
+  `noa-prototype.js`) — Babylon now backs the shared `nova64.voxel.*` API
+  with native chunk meshing, matching the Three.js voxel path with zero
+  cart-side changes.
+- **WAD visual parity** — Babylon WAD walls/floors/sprites now flow through
+  the same engine-assigned mesh proxy path Three.js uses; `wad-demo`
+  parity is in the low-single-digit pixel diff range.
+- **WebXR parity** — `@babylonjs/core` 9.4.1 with native Babylon WebXR
+  (`enableAR()` / `enableVR()`) and Cardboard fallback when WebXR is
+  unavailable.
+- **TSL parity guardrail** — deterministic seeded `tsl-showcase` Galaxy
+  scene comparison in `tests/playwright/visual-regression.spec.js`.
+
+Remaining work is incremental polish (advanced TSL effects, perf parity on
+heavy scenes), not gating.
 
 Goal:
 

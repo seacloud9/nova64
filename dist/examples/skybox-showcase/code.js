@@ -85,7 +85,12 @@ async function buildScene(idx) {
 
 // ── Scene 0: Deep Space — sparse stars with nebula ──────────────────────────
 function buildDeepSpace() {
-  nova64.light.createSpaceSkybox({ starCount: 2000, starSize: 2.0, nebulae: true, nebulaColor: 0x220044 });
+  nova64.light.createSpaceSkybox({
+    starCount: 2000,
+    starSize: 2.0,
+    nebulae: true,
+    nebulaColor: 0x220044,
+  });
   nova64.light.enableSkyboxAutoAnimate(0.3);
   nova64.light.setFog(0x000008, 30, 80);
 
@@ -174,10 +179,16 @@ function buildSunset() {
       material: 'standard',
       roughness: 0.95,
     });
-    const crown = nova64.scene.createCone(1.0 + Math.random() * 0.6, h * 0.8, 0x112200, [tx, h - 0.5, tz], {
-      material: 'standard',
-      roughness: 0.85,
-    });
+    const crown = nova64.scene.createCone(
+      1.0 + Math.random() * 0.6,
+      h * 0.8,
+      0x112200,
+      [tx, h - 0.5, tz],
+      {
+        material: 'standard',
+        roughness: 0.85,
+      }
+    );
     propIds.push(trunk, crown);
   }
 
@@ -249,11 +260,16 @@ function buildVoid() {
         }
       );
     } else if (i % 3 === 1) {
-      id = nova64.scene.createCube(1.2, colors[i], [Math.cos(a) * r, Math.sin(a * 0.5) * 2, Math.sin(a) * r], {
-        material: 'standard',
-        emissive: colors[i],
-        emissiveIntensity: 4.0,
-      });
+      id = nova64.scene.createCube(
+        1.2,
+        colors[i],
+        [Math.cos(a) * r, Math.sin(a * 0.5) * 2, Math.sin(a) * r],
+        {
+          material: 'standard',
+          emissive: colors[i],
+          emissiveIntensity: 4.0,
+        }
+      );
     } else {
       id = nova64.scene.createSphere(
         0.6,
@@ -287,8 +303,10 @@ export function update(dt) {
   // Camera controls
   if (nova64.input.key('KeyA') || nova64.input.key('ArrowLeft')) orbitAngle -= dt * 1.2;
   if (nova64.input.key('KeyD') || nova64.input.key('ArrowRight')) orbitAngle += dt * 1.2;
-  if (nova64.input.key('KeyW') || nova64.input.key('ArrowUp')) orbitY = Math.min(15, orbitY + dt * 4);
-  if (nova64.input.key('KeyS') || nova64.input.key('ArrowDown')) orbitY = Math.max(-2, orbitY - dt * 4);
+  if (nova64.input.key('KeyW') || nova64.input.key('ArrowUp'))
+    orbitY = Math.min(15, orbitY + dt * 4);
+  if (nova64.input.key('KeyS') || nova64.input.key('ArrowDown'))
+    orbitY = Math.max(-2, orbitY - dt * 4);
   if (nova64.input.key('KeyQ')) orbitDist = Math.min(30, orbitDist + dt * 6);
   if (nova64.input.key('KeyE')) orbitDist = Math.max(5, orbitDist - dt * 6);
 
@@ -296,7 +314,13 @@ export function update(dt) {
   if (nova64.input.keyp('Space') || nova64.input.btnp(13)) autoRotate = !autoRotate;
 
   // Auto-orbit
-  if (autoRotate && !nova64.input.key('KeyA') && !nova64.input.key('KeyD') && !nova64.input.key('ArrowLeft') && !nova64.input.key('ArrowRight')) {
+  if (
+    autoRotate &&
+    !nova64.input.key('KeyA') &&
+    !nova64.input.key('KeyD') &&
+    !nova64.input.key('ArrowLeft') &&
+    !nova64.input.key('ArrowRight')
+  ) {
     orbitAngle += dt * 0.25;
   }
 
@@ -323,9 +347,19 @@ export function update(dt) {
 
 export function draw() {
   nova64.draw.drawRoundedRect(0, 0, 320, 14, 0, nova64.draw.rgba8(0, 0, 0, 150));
-  nova64.draw.printCentered('[1]Space [2]Stars [3]Sunset [4]IBL [5]Void', 160, 2, nova64.draw.rgba8(220, 200, 150, 255));
+  nova64.draw.printCentered(
+    '[1]Space [2]Stars [3]Sunset [4]IBL [5]Void',
+    160,
+    2,
+    nova64.draw.rgba8(220, 200, 150, 255)
+  );
 
   nova64.draw.drawRoundedRect(0, 222, 320, 18, 0, nova64.draw.rgba8(0, 0, 0, 130));
   nova64.draw.print('Skybox: ' + SCENE_NAMES[scene], 6, 224, nova64.draw.rgba8(180, 255, 180, 255));
-  nova64.draw.print('TAP/[SPACE] Auto-rot  [WASD] Orbit  [QE] Zoom', 6, 232, nova64.draw.rgba8(110, 110, 110, 220));
+  nova64.draw.print(
+    'TAP/[SPACE] Auto-rot  [WASD] Orbit  [QE] Zoom',
+    6,
+    232,
+    nova64.draw.rgba8(110, 110, 110, 220)
+  );
 }

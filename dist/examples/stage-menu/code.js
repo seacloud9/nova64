@@ -143,7 +143,12 @@ export function draw() {
   // Subtitle tagline
   const alpha = 0.5 + 0.5 * Math.sin(time * 2.4);
   const bright = Math.floor(alpha * 120 + 60);
-  nova64.draw.print('ULTIMATE 3D FANTASY CONSOLE', W / 2 - 82, 95, (bright << 16) | (bright << 8) | 0xff);
+  nova64.draw.print(
+    'ULTIMATE 3D FANTASY CONSOLE',
+    W / 2 - 82,
+    95,
+    (bright << 16) | (bright << 8) | 0xff
+  );
 
   // Bottom bar
   nova64.draw.rectfill(0, H - 16, W, 16, 0x000000cc);

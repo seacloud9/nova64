@@ -138,8 +138,8 @@ export async function waitFor3DScene(page, backend) {
   await page.waitForFunction(
     () => {
       return (
-        typeof globalThis.createCube === 'function' &&
-        typeof globalThis.setCameraPosition === 'function'
+        typeof globalThis.nova64?.createCube === 'function' &&
+        typeof globalThis.nova64?.setCameraPosition === 'function'
       );
     },
     { timeout: 30000 }

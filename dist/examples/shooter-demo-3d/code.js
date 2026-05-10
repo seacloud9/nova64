@@ -120,12 +120,28 @@ export async function init() {
 // === TITLE SCREEN ===
 function drawTitleScreen() {
   // Background gradient
-  nova64.ui.drawGradientRect(0, 0, 640, 360, nova64.draw.rgba8(0, 10, 40, 255), nova64.draw.rgba8(0, 0, 20, 255), true);
+  nova64.ui.drawGradientRect(
+    0,
+    0,
+    640,
+    360,
+    nova64.draw.rgba8(0, 10, 40, 255),
+    nova64.draw.rgba8(0, 0, 20, 255),
+    true
+  );
 
   // Title
   nova64.ui.setFont('huge');
   nova64.ui.setTextAlign('center');
-  nova64.ui.drawTextShadow('STAR COMBAT 64', 320, 120, nova64.draw.rgba8(255, 102, 0, 255), nova64.draw.rgba8(0, 0, 0, 255), 4, 1);
+  nova64.ui.drawTextShadow(
+    'STAR COMBAT 64',
+    320,
+    120,
+    nova64.draw.rgba8(255, 102, 0, 255),
+    nova64.draw.rgba8(0, 0, 0, 255),
+    4,
+    1
+  );
 
   // Subtitle
   nova64.ui.setFont('large');
@@ -144,7 +160,13 @@ function drawTitleScreen() {
 
   // Controls
   nova64.ui.setFont('small');
-  nova64.ui.drawText('ARROWS: Move • Z: Fire • X: Charge Shot', 320, 240, nova64.draw.rgba8(255, 255, 255, 255), 1);
+  nova64.ui.drawText(
+    'ARROWS: Move • Z: Fire • X: Charge Shot',
+    320,
+    240,
+    nova64.draw.rgba8(255, 255, 255, 255),
+    1
+  );
 
   // Draw buttons if they exist
   if (uiButtons && uiButtons.length > 0) {
@@ -154,7 +176,12 @@ function drawTitleScreen() {
 
 function updateTitleScreen() {
   // Check for Space key, Enter, or gamepad button
-  if (nova64.input.isKeyPressed('Space') || nova64.input.isKeyPressed('Enter') || nova64.input.btnp(4) || nova64.input.btnp(12)) {
+  if (
+    nova64.input.isKeyPressed('Space') ||
+    nova64.input.isKeyPressed('Enter') ||
+    nova64.input.btnp(4) ||
+    nova64.input.btnp(12)
+  ) {
     nova64.ui.switchToScreen('game');
   }
 
@@ -261,23 +288,63 @@ function exitGameScreen() {
 // === GAME OVER SCREEN ===
 function drawGameOverScreen() {
   // Dark red background
-  nova64.ui.drawGradientRect(0, 0, 640, 360, nova64.draw.rgba8(40, 0, 0, 255), nova64.draw.rgba8(20, 0, 0, 255), true);
+  nova64.ui.drawGradientRect(
+    0,
+    0,
+    640,
+    360,
+    nova64.draw.rgba8(40, 0, 0, 255),
+    nova64.draw.rgba8(20, 0, 0, 255),
+    true
+  );
 
   // Mission Failed
   nova64.ui.setFont('huge');
   nova64.ui.setTextAlign('center');
-  nova64.ui.drawTextShadow('MISSION FAILED', 320, 120, nova64.draw.rgba8(255, 0, 0, 255), nova64.draw.rgba8(100, 0, 0, 255), 4, 1);
+  nova64.ui.drawTextShadow(
+    'MISSION FAILED',
+    320,
+    120,
+    nova64.draw.rgba8(255, 0, 0, 255),
+    nova64.draw.rgba8(100, 0, 0, 255),
+    4,
+    1
+  );
 
   // Stats
   nova64.ui.setFont('large');
-  nova64.ui.drawText(`Final Score: ${gameData.score}`, 320, 170, nova64.draw.rgba8(255, 255, 255, 255), 1);
-  nova64.ui.drawText(`Level Reached: ${gameData.level}`, 320, 200, nova64.draw.rgba8(255, 255, 255, 255), 1);
+  nova64.ui.drawText(
+    `Final Score: ${gameData.score}`,
+    320,
+    170,
+    nova64.draw.rgba8(255, 255, 255, 255),
+    1
+  );
+  nova64.ui.drawText(
+    `Level Reached: ${gameData.level}`,
+    320,
+    200,
+    nova64.draw.rgba8(255, 255, 255, 255),
+    1
+  );
 
   // Prompts
   nova64.ui.setFont('normal');
   const pulse = Math.sin(Date.now() * 0.005) * 0.5 + 0.5;
-  nova64.ui.drawText('Press SPACE to try again', 320, 260, nova64.draw.rgba8(0, 255, 255, Math.floor(pulse * 255)), 1);
-  nova64.ui.drawText('Press ESC for title screen', 320, 290, nova64.draw.rgba8(0, 255, 255, 200), 1);
+  nova64.ui.drawText(
+    'Press SPACE to try again',
+    320,
+    260,
+    nova64.draw.rgba8(0, 255, 255, Math.floor(pulse * 255)),
+    1
+  );
+  nova64.ui.drawText(
+    'Press ESC for title screen',
+    320,
+    290,
+    nova64.draw.rgba8(0, 255, 255, 200),
+    1
+  );
 }
 
 function updateGameOverScreen() {
@@ -348,7 +415,15 @@ export function draw() {
 
 function drawStartScreen() {
   // Space gradient background
-  nova64.ui.drawGradientRect(0, 0, 640, 360, nova64.draw.rgba8(10, 5, 25, 235), nova64.draw.rgba8(5, 2, 12, 250), true);
+  nova64.ui.drawGradientRect(
+    0,
+    0,
+    640,
+    360,
+    nova64.draw.rgba8(10, 5, 25, 235),
+    nova64.draw.rgba8(5, 2, 12, 250),
+    true
+  );
 
   // Animated title
   nova64.ui.setFont('huge');
@@ -357,8 +432,24 @@ function drawStartScreen() {
   const fireColor = nova64.draw.rgba8(255, Math.floor(pulse * 150), 0, 255);
 
   const shake = Math.sin(startScreenTime * 15) * 2;
-  nova64.ui.drawTextShadow('STAR', 320 + shake, 50, fireColor, nova64.draw.rgba8(0, 0, 0, 255), 7, 1);
-  nova64.ui.drawTextShadow('COMBAT 64', 320, 105, nova64.draw.rgba8(0, 255, 255, 255), nova64.draw.rgba8(0, 0, 0, 255), 7, 1);
+  nova64.ui.drawTextShadow(
+    'STAR',
+    320 + shake,
+    50,
+    fireColor,
+    nova64.draw.rgba8(0, 0, 0, 255),
+    7,
+    1
+  );
+  nova64.ui.drawTextShadow(
+    'COMBAT 64',
+    320,
+    105,
+    nova64.draw.rgba8(0, 255, 255, 255),
+    nova64.draw.rgba8(0, 0, 0, 255),
+    7,
+    1
+  );
 
   // Subtitle
   nova64.ui.setFont('large');
@@ -402,11 +493,23 @@ function drawStartScreen() {
   // Pulsing prompt
   const alpha = Math.floor((Math.sin(startScreenTime * 6) * 0.5 + 0.5) * 255);
   nova64.ui.setFont('normal');
-  nova64.ui.drawText('🚀 PREPARE FOR COMBAT 🚀', 320, 430, nova64.draw.rgba8(255, 150, 0, alpha), 1);
+  nova64.ui.drawText(
+    '🚀 PREPARE FOR COMBAT 🚀',
+    320,
+    430,
+    nova64.draw.rgba8(255, 150, 0, alpha),
+    1
+  );
 
   // Info
   nova64.ui.setFont('tiny');
-  nova64.ui.drawText('3D Space Combat Simulator', 320, 345, nova64.draw.rgba8(150, 150, 200, 150), 1);
+  nova64.ui.drawText(
+    '3D Space Combat Simulator',
+    320,
+    345,
+    nova64.draw.rgba8(150, 150, 200, 150),
+    1
+  );
 }
 
 function createPlayerShip() {
@@ -462,7 +565,12 @@ async function createSpaceEnvironment() {
       (Math.random() - 0.5) * 30,
       -60 - i * 10,
     ]);
-    nova64.scene.setRotation(nebula, Math.random() * 0.5, Math.random() * 0.5, Math.random() * 6.28);
+    nova64.scene.setRotation(
+      nebula,
+      Math.random() * 0.5,
+      Math.random() * 0.5,
+      Math.random() * 6.28
+    );
   }
 
   // Create space station or planet in distance
@@ -475,7 +583,12 @@ async function createSpaceEnvironment() {
       (Math.random() - 0.5) * 40,
       -20 - Math.random() * 40,
     ]);
-    nova64.scene.setRotation(debris, Math.random() * 6.28, Math.random() * 6.28, Math.random() * 6.28);
+    nova64.scene.setRotation(
+      debris,
+      Math.random() * 6.28,
+      Math.random() * 6.28,
+      Math.random() * 6.28
+    );
   }
 }
 
@@ -812,7 +925,8 @@ function updateEnemies(dt) {
 
       // Update mesh positions
       if (enemy.mesh.body) nova64.scene.setPosition(enemy.mesh.body, enemy.x, enemy.y, enemy.z);
-      if (enemy.mesh.engine) nova64.scene.setPosition(enemy.mesh.engine, enemy.x, enemy.y, enemy.z - 0.5);
+      if (enemy.mesh.engine)
+        nova64.scene.setPosition(enemy.mesh.engine, enemy.x, enemy.y, enemy.z - 0.5);
 
       // Rotate enemy ships
       if (enemy.type === 'fast') {
@@ -1244,7 +1358,12 @@ function drawUI() {
   nova64.draw.rect(16, 16, 400, 80, nova64.draw.rgba8(0, 100, 200, 100), false);
 
   // Score and Level
-  nova64.draw.print(`SCORE: ${gameData.score.toString().padStart(8, '0')}`, 24, 24, nova64.draw.rgba8(255, 255, 0, 255));
+  nova64.draw.print(
+    `SCORE: ${gameData.score.toString().padStart(8, '0')}`,
+    24,
+    24,
+    nova64.draw.rgba8(255, 255, 0, 255)
+  );
   nova64.draw.print(`LEVEL: ${gameData.level}`, 24, 40, nova64.draw.rgba8(0, 255, 255, 255));
   nova64.draw.print(`LIVES: ${gameData.lives}`, 24, 56, nova64.draw.rgba8(255, 100, 100, 255));
 
@@ -1256,23 +1375,54 @@ function drawUI() {
   // Health bar
   nova64.draw.print('HULL:', 200, 24, nova64.draw.rgba8(255, 255, 255, 255));
   nova64.draw.rect(240, 22, 100, 8, nova64.draw.rgba8(100, 0, 0, 255), true);
-  nova64.draw.rect(240, 22, Math.floor((gameData.player.health / 100) * 100), 8, nova64.draw.rgba8(255, 0, 0, 255), true);
+  nova64.draw.rect(
+    240,
+    22,
+    Math.floor((gameData.player.health / 100) * 100),
+    8,
+    nova64.draw.rgba8(255, 0, 0, 255),
+    true
+  );
 
   // Shield bar
   nova64.draw.print('SHIELD:', 200, 40, nova64.draw.rgba8(255, 255, 255, 255));
   nova64.draw.rect(260, 38, 100, 8, nova64.draw.rgba8(0, 0, 100, 255), true);
-  nova64.draw.rect(260, 38, Math.floor((gameData.player.shield / 100) * 100), 8, nova64.draw.rgba8(0, 100, 255, 255), true);
+  nova64.draw.rect(
+    260,
+    38,
+    Math.floor((gameData.player.shield / 100) * 100),
+    8,
+    nova64.draw.rgba8(0, 100, 255, 255),
+    true
+  );
 
   // Energy bar
   nova64.draw.print('ENERGY:', 200, 56, nova64.draw.rgba8(255, 255, 255, 255));
   nova64.draw.rect(260, 54, 100, 8, nova64.draw.rgba8(100, 0, 100, 255), true);
-  nova64.draw.rect(260, 54, Math.floor((gameData.player.energy / 100) * 100), 8, nova64.draw.rgba8(255, 0, 255, 255), true);
+  nova64.draw.rect(
+    260,
+    54,
+    Math.floor((gameData.player.energy / 100) * 100),
+    8,
+    nova64.draw.rgba8(255, 0, 255, 255),
+    true
+  );
 
   // 3D Stats
   const stats = nova64.scene.get3DStats();
   if (stats) {
-    nova64.draw.print(`3D: ${stats.meshes || 0} meshes`, 450, 24, nova64.draw.rgba8(150, 150, 150, 255));
-    nova64.draw.print(`GPU: ${stats.renderer || 'ThreeJS'}`, 450, 40, nova64.draw.rgba8(150, 150, 150, 255));
+    nova64.draw.print(
+      `3D: ${stats.meshes || 0} meshes`,
+      450,
+      24,
+      nova64.draw.rgba8(150, 150, 150, 255)
+    );
+    nova64.draw.print(
+      `GPU: ${stats.renderer || 'ThreeJS'}`,
+      450,
+      40,
+      nova64.draw.rgba8(150, 150, 150, 255)
+    );
   }
 
   // Boss health bar
@@ -1296,8 +1446,19 @@ function drawUI() {
   // Wave clear bonus display
   if (gameData.waveClearPause && gameData.level > 0) {
     const alpha = Math.floor(Math.min(1, gameData.waveClearTimer) * 255);
-    nova64.draw.printCentered(`WAVE ${gameData.level} CLEAR!`, 320, 160, nova64.draw.rgba8(0, 255, 100, alpha), 2);
-    nova64.draw.printCentered(`+${gameData.level * 500} BONUS`, 320, 190, nova64.draw.rgba8(255, 255, 0, alpha));
+    nova64.draw.printCentered(
+      `WAVE ${gameData.level} CLEAR!`,
+      320,
+      160,
+      nova64.draw.rgba8(0, 255, 100, alpha),
+      2
+    );
+    nova64.draw.printCentered(
+      `+${gameData.level * 500} BONUS`,
+      320,
+      190,
+      nova64.draw.rgba8(255, 255, 0, alpha)
+    );
   }
 
   // Wave warning
@@ -1309,7 +1470,11 @@ function drawUI() {
   }
 
   // Weapon level indicator
-  const wpnColors = [nova64.draw.rgba8(255, 255, 0), nova64.draw.rgba8(0, 255, 255), nova64.draw.rgba8(255, 100, 255)];
+  const wpnColors = [
+    nova64.draw.rgba8(255, 255, 0),
+    nova64.draw.rgba8(0, 255, 255),
+    nova64.draw.rgba8(255, 100, 255),
+  ];
   nova64.draw.print(
     `WPN LV${gameData.player.weaponLevel}`,
     24,
@@ -1318,5 +1483,10 @@ function drawUI() {
   );
 
   // Controls
-  nova64.draw.print('ARROWS=MOVE  X=FIRE  Z=CHARGE', 24, 340, nova64.draw.rgba8(150, 150, 150, 200));
+  nova64.draw.print(
+    'ARROWS=MOVE  X=FIRE  Z=CHARGE',
+    24,
+    340,
+    nova64.draw.rgba8(150, 150, 150, 200)
+  );
 }

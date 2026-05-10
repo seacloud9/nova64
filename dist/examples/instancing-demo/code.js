@@ -138,7 +138,13 @@ async function buildForestScene() {
     emissiveIntensity: 0.8,
   });
   for (let i = 0; i < 200; i++) {
-    nova64.scene.setInstanceTransform(dustId, i, (rand() - 0.5) * 35, 0.5 + rand() * 8, (rand() - 0.5) * 35);
+    nova64.scene.setInstanceTransform(
+      dustId,
+      i,
+      (rand() - 0.5) * 35,
+      0.5 + rand() * 8,
+      (rand() - 0.5) * 35
+    );
   }
   nova64.scene.finalizeInstances(dustId);
 }
@@ -236,9 +242,25 @@ async function buildLODScene() {
     const x = (rand() - 0.5) * RANGE;
     const z = (rand() - 0.5) * RANGE;
     const s = 0.4 + rand() * 1.8;
-    nova64.scene.setInstanceTransform(rocksId, i, x, s * 0.5, z, 0, rand() * Math.PI, 0, s, s * 0.7, s);
+    nova64.scene.setInstanceTransform(
+      rocksId,
+      i,
+      x,
+      s * 0.5,
+      z,
+      0,
+      rand() * Math.PI,
+      0,
+      s,
+      s * 0.7,
+      s
+    );
     const shade = 0x66 + Math.floor(rand() * 0x44);
-    nova64.scene.setInstanceColor(rocksId, i, (shade << 16) | ((shade - 0x10) << 8) | (shade - 0x20));
+    nova64.scene.setInstanceColor(
+      rocksId,
+      i,
+      (shade << 16) | ((shade - 0x10) << 8) | (shade - 0x20)
+    );
   }
   nova64.scene.finalizeInstances(rocksId);
 }
@@ -270,8 +292,10 @@ export function update(dt) {
   // Camera orbit
   if (nova64.input.key('KeyA') || nova64.input.key('ArrowLeft')) camAngle -= dt * 0.8;
   if (nova64.input.key('KeyD') || nova64.input.key('ArrowRight')) camAngle += dt * 0.8;
-  if (nova64.input.key('KeyW') || nova64.input.key('ArrowUp')) camHeight = Math.min(40, camHeight + dt * 6);
-  if (nova64.input.key('KeyS') || nova64.input.key('ArrowDown')) camHeight = Math.max(3, camHeight - dt * 6);
+  if (nova64.input.key('KeyW') || nova64.input.key('ArrowUp'))
+    camHeight = Math.min(40, camHeight + dt * 6);
+  if (nova64.input.key('KeyS') || nova64.input.key('ArrowDown'))
+    camHeight = Math.max(3, camHeight - dt * 6);
   if (nova64.input.key('KeyQ')) camRadius = Math.min(55, camRadius + dt * 8);
   if (nova64.input.key('KeyE')) camRadius = Math.max(8, camRadius - dt * 8);
 
@@ -329,7 +353,12 @@ export function draw() {
   // Scene name
   nova64.draw.drawRoundedRect(0, 210, 320, 30, 0, nova64.draw.rgba8(0, 0, 0, 140));
   nova64.draw.printCentered(sceneNames[scene] ?? '', 160, 217, YELLOW);
-  nova64.draw.printCentered('1=Forest  2=Crystals  3=LOD  F=HUD  WASD=Orbit  QE=Zoom', 160, 225, DIM);
+  nova64.draw.printCentered(
+    '1=Forest  2=Crystals  3=LOD  F=HUD  WASD=Orbit  QE=Zoom',
+    160,
+    225,
+    DIM
+  );
 
   // Scene-specific stats
   let statLine = '';

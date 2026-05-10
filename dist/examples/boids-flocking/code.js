@@ -224,7 +224,13 @@ export function draw() {
     for (let i = 1; i < b.trail.length; i++) {
       const alpha = (i / b.trail.length) * 0.4;
       const col = nova64.util.hsb(b.hue, 70, 80 + i * 2, alpha);
-      nova64.draw.line(b.trail[i - 1].x | 0, b.trail[i - 1].y | 0, b.trail[i].x | 0, b.trail[i].y | 0, col);
+      nova64.draw.line(
+        b.trail[i - 1].x | 0,
+        b.trail[i - 1].y | 0,
+        b.trail[i].x | 0,
+        b.trail[i].y | 0,
+        col
+      );
     }
   }
 
@@ -253,10 +259,28 @@ export function draw() {
   if (mode === 1) {
     const pulse = Math.sin(time * 6) * 0.3 + 0.7;
     const r = 6 + pulse * 4;
-    nova64.draw.circle(predator.x | 0, predator.y | 0, r, nova64.draw.rgba8(255, 50, 50, 200), true);
-    nova64.draw.circle(predator.x | 0, predator.y | 0, r + 3, nova64.draw.rgba8(255, 100, 50, 100), false);
+    nova64.draw.circle(
+      predator.x | 0,
+      predator.y | 0,
+      r,
+      nova64.draw.rgba8(255, 50, 50, 200),
+      true
+    );
+    nova64.draw.circle(
+      predator.x | 0,
+      predator.y | 0,
+      r + 3,
+      nova64.draw.rgba8(255, 100, 50, 100),
+      false
+    );
     // Danger zone ring
-    nova64.draw.circle(predator.x | 0, predator.y | 0, 80, nova64.draw.rgba8(255, 30, 30, 30), false);
+    nova64.draw.circle(
+      predator.x | 0,
+      predator.y | 0,
+      80,
+      nova64.draw.rgba8(255, 30, 30, 30),
+      false
+    );
   }
 
   // HUD

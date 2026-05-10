@@ -202,6 +202,9 @@ export const NAMESPACE_MAP = {
     'enableGlitch',
     'disableGlitch',
     'setGlitchIntensity',
+    // Babylon-specific bonus (graceful no-op on Three.js)
+    'enableGlow',
+    'disableGlow',
     'enableRetroEffects',
     'disableRetroEffects',
     'isEffectsEnabled',

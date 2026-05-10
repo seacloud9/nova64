@@ -88,7 +88,11 @@ function clearMeshes() {
 function buildFloor() {
   floorId = nova64.scene.createPlane(50, 50, 0x080c14, [0, -3.3, 0]);
   nova64.scene.setRotation(floorId, -Math.PI / 2, 0, 0);
-  nova64.scene.setPBRProperties(floorId, { metalness: 0.85, roughness: 0.08, envMapIntensity: 1.5 });
+  nova64.scene.setPBRProperties(floorId, {
+    metalness: 0.85,
+    roughness: 0.08,
+    envMapIntensity: 1.5,
+  });
 }
 
 async function buildScene(idx) {
@@ -386,13 +390,16 @@ function buildShapes() {
 
   for (const s of shapes) {
     let id;
-    if (s.type === 'sphere') id = nova64.scene.createSphere(1.0, s.color, s.pos, 32, { material: 'standard' });
-    else if (s.type === 'cube') id = nova64.scene.createCube(1.6, s.color, s.pos, { material: 'standard' });
+    if (s.type === 'sphere')
+      id = nova64.scene.createSphere(1.0, s.color, s.pos, 32, { material: 'standard' });
+    else if (s.type === 'cube')
+      id = nova64.scene.createCube(1.6, s.color, s.pos, { material: 'standard' });
     else if (s.type === 'cylinder')
       id = nova64.scene.createCylinder(0.7, 2.0, s.color, s.pos, { material: 'standard' });
     else if (s.type === 'torus')
       id = nova64.scene.createTorus(0.8, 0.3, s.color, s.pos, { material: 'standard' });
-    else if (s.type === 'cone') id = nova64.scene.createCone(0.9, 2.0, s.color, s.pos, { material: 'standard' });
+    else if (s.type === 'cone')
+      id = nova64.scene.createCone(0.9, 2.0, s.color, s.pos, { material: 'standard' });
     else if (s.type === 'capsule')
       id = nova64.scene.createCapsule(0.5, 1.2, s.color, s.pos, { material: 'standard' });
     nova64.scene.setPBRProperties(id, {
@@ -411,13 +418,20 @@ export function update(dt) {
   // Keyboard orbit controls
   if (nova64.input.key('KeyA') || nova64.input.key('ArrowLeft')) orbitAngle -= dt * 1.0;
   if (nova64.input.key('KeyD') || nova64.input.key('ArrowRight')) orbitAngle += dt * 1.0;
-  if (nova64.input.key('KeyW') || nova64.input.key('ArrowUp')) orbitY = Math.min(12, orbitY + dt * 4);
-  if (nova64.input.key('KeyS') || nova64.input.key('ArrowDown')) orbitY = Math.max(-4, orbitY - dt * 4);
+  if (nova64.input.key('KeyW') || nova64.input.key('ArrowUp'))
+    orbitY = Math.min(12, orbitY + dt * 4);
+  if (nova64.input.key('KeyS') || nova64.input.key('ArrowDown'))
+    orbitY = Math.max(-4, orbitY - dt * 4);
   if (nova64.input.key('KeyQ')) orbitDist = Math.min(30, orbitDist + dt * 6);
   if (nova64.input.key('KeyE')) orbitDist = Math.max(8, orbitDist - dt * 6);
 
   // Slow auto-orbit when no input
-  if (!nova64.input.key('KeyA') && !nova64.input.key('KeyD') && !nova64.input.key('ArrowLeft') && !nova64.input.key('ArrowRight')) {
+  if (
+    !nova64.input.key('KeyA') &&
+    !nova64.input.key('KeyD') &&
+    !nova64.input.key('ArrowLeft') &&
+    !nova64.input.key('ArrowRight')
+  ) {
     orbitAngle += dt * 0.16;
   }
 
@@ -430,7 +444,11 @@ export function update(dt) {
 
   // Scene switch
   for (let i = 0; i < 6; i++) {
-    if (nova64.input.keyp('Digit' + (i + 1)) || nova64.input.keyp('Numpad' + (i + 1)) || nova64.input.btnp(13 + i)) {
+    if (
+      nova64.input.keyp('Digit' + (i + 1)) ||
+      nova64.input.keyp('Numpad' + (i + 1)) ||
+      nova64.input.btnp(13 + i)
+    ) {
       if (scene !== i) {
         scene = i;
         void buildScene(i);

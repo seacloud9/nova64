@@ -853,6 +853,12 @@ export function effectsApi(gpu) {
         disableGlitch: disableGlitch,
         setGlitchIntensity: setGlitchIntensity,
 
+        // Glow layer — Babylon-specific. On Three.js, UnrealBloom already
+        // handles emissive glow well, so this is a graceful no-op that returns
+        // false so carts can branch on the result if they care.
+        enableGlow: () => false,
+        disableGlow: () => {},
+
         // Convenience
         enableRetroEffects: enableRetroEffects,
         disableRetroEffects: disableRetroEffects,

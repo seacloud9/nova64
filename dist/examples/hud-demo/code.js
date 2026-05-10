@@ -87,11 +87,11 @@ export function init() {
   for (let i = 0; i < 6; i++) {
     const angle = (i / 6) * Math.PI * 2;
     const dist = 6;
-    const id = nova64.scene.createCube(1.2, [0x3399ff, 0xff6644, 0x44ff88, 0xff33cc, 0xffcc00, 0x00ddff][i], [
-      Math.cos(angle) * dist,
-      0,
-      Math.sin(angle) * dist - 8,
-    ]);
+    const id = nova64.scene.createCube(
+      1.2,
+      [0x3399ff, 0xff6644, 0x44ff88, 0xff33cc, 0xffcc00, 0x00ddff][i],
+      [Math.cos(angle) * dist, 0, Math.sin(angle) * dist - 8]
+    );
     scene3D.push({ id, angle });
   }
 

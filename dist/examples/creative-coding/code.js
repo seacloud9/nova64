@@ -277,7 +277,9 @@ function buildJellyfish() {
     const tube = 0.08 + (1 - t) * 0.12;
     const hue = 260 + t * 40;
     const color = hslToHex(hue, 0.7, 0.5);
-    const id = nova64.scene.createTorus(radius, tube, color, [0, y, 0], { material: 'holographic' });
+    const id = nova64.scene.createTorus(radius, tube, color, [0, y, 0], {
+      material: 'holographic',
+    });
     meshes.push(id);
     jellyBell.push({ id, baseY: y, baseRadius: radius, t, phase: i * 0.5 });
   }
@@ -297,9 +299,15 @@ function buildJellyfish() {
     const x = Math.cos(angle) * dist;
     const z = Math.sin(angle) * dist;
     const orgY = 0.5 + Math.random();
-    const id = nova64.scene.createSphere(0.3 + Math.random() * 0.4, organColors[i], [x, orgY, z], 8, {
-      material: 'emissive',
-    });
+    const id = nova64.scene.createSphere(
+      0.3 + Math.random() * 0.4,
+      organColors[i],
+      [x, orgY, z],
+      8,
+      {
+        material: 'emissive',
+      }
+    );
     meshes.push(id);
     jellyOrgans.push({
       id,
@@ -456,11 +464,15 @@ function buildParticleStorm() {
     const dist = 8;
     const x = Math.cos(angle) * dist;
     const z = Math.sin(angle) * dist;
-    const id = nova64.scene.createSphere(0.8, attractorColors[i], [x, 0, z], 12, { material: 'emissive' });
+    const id = nova64.scene.createSphere(0.8, attractorColors[i], [x, 0, z], 12, {
+      material: 'emissive',
+    });
     meshes.push(id);
 
     // Halo ring around each attractor
-    const haloId = nova64.scene.createTorus(1.5, 0.05, attractorColors[i], [x, 0, z], { material: 'emissive' });
+    const haloId = nova64.scene.createTorus(1.5, 0.05, attractorColors[i], [x, 0, z], {
+      material: 'emissive',
+    });
     meshes.push(haloId);
 
     stormAttractors.push({
@@ -515,7 +527,9 @@ function buildParticleStorm() {
   for (let i = 0; i < 8; i++) {
     const y = -6 + i * 1.5;
     const radius = 4 + Math.abs(y) * 0.5;
-    const id = nova64.scene.createTorus(radius, 0.02, 0x222244, [0, y, 0], { material: 'emissive' });
+    const id = nova64.scene.createTorus(radius, 0.02, 0x222244, [0, y, 0], {
+      material: 'emissive',
+    });
     meshes.push(id);
     nova64.scene.setMeshOpacity(id, 0.3);
   }
@@ -574,7 +588,12 @@ function _updateParticleStorm(dt) {
   for (let i = 0; i < 8; i++) {
     const idx = ringStart + i;
     if (idx < meshes.length) {
-      nova64.scene.rotateMesh(meshes[idx], 0, dt * (0.2 + i * 0.05) * (i % 2 === 0 ? 1 : -1), dt * 0.1);
+      nova64.scene.rotateMesh(
+        meshes[idx],
+        0,
+        dt * (0.2 + i * 0.05) * (i % 2 === 0 ? 1 : -1),
+        dt * 0.1
+      );
     }
   }
 
@@ -698,7 +717,9 @@ function buildSacredGeometry() {
     const dy = (vb[1] - va[1]) * scale;
     const dz = (vb[2] - va[2]) * scale;
     const len = Math.sqrt(dx * dx + dy * dy + dz * dz);
-    const id = nova64.scene.createCylinder(0.04, 0.04, len, 0x4466aa, [mx, my, mz], { material: 'emissive' });
+    const id = nova64.scene.createCylinder(0.04, 0.04, len, 0x4466aa, [mx, my, mz], {
+      material: 'emissive',
+    });
     meshes.push(id);
     const ax = Math.atan2(Math.sqrt(dx * dx + dz * dz), dy);
     const ay = Math.atan2(dx, dz);
@@ -723,7 +744,9 @@ function buildSacredGeometry() {
       const x = Math.cos(angle) * haloRadii[h];
       const z = Math.sin(angle) * haloRadii[h];
       const size = 0.15 + (h === 0 ? 0.1 : 0);
-      const id = nova64.scene.createSphere(size, haloColors[h], [x, 0, z], 6, { material: 'holographic' });
+      const id = nova64.scene.createSphere(size, haloColors[h], [x, 0, z], 6, {
+        material: 'holographic',
+      });
       meshes.push(id);
       halo.ids.push({ id, angle, idx: i });
     }
@@ -732,14 +755,18 @@ function buildSacredGeometry() {
 
   // Central seed of life — 7 torus rings
   const seedRadius = 2;
-  const centerId = nova64.scene.createTorus(seedRadius, 0.06, 0xffffff, [0, 0, 0], { material: 'holographic' });
+  const centerId = nova64.scene.createTorus(seedRadius, 0.06, 0xffffff, [0, 0, 0], {
+    material: 'holographic',
+  });
   meshes.push(centerId);
   sacredCenter.push({ id: centerId, angle: 0 });
   for (let i = 0; i < 6; i++) {
     const a = (i / 6) * Math.PI * 2;
     const x = Math.cos(a) * seedRadius;
     const z = Math.sin(a) * seedRadius;
-    const id = nova64.scene.createTorus(seedRadius, 0.05, 0xccaaff, [x, 0, z], { material: 'holographic' });
+    const id = nova64.scene.createTorus(seedRadius, 0.05, 0xccaaff, [x, 0, z], {
+      material: 'holographic',
+    });
     meshes.push(id);
     sacredCenter.push({ id, angle: a });
   }
@@ -926,6 +953,11 @@ export function draw() {
     borderDark: nova64.draw.rgba8(40, 40, 80, 120),
   });
   nova64.draw.print(`${scene + 1}/4  ${name}`, 16, 12, nova64.draw.rgba8(220, 200, 255));
-  nova64.draw.print('[1-4] SCENE  [SPACE] RESET  [WASD] ORBIT  [Q/E] ZOOM', 10, H - 18, nova64.draw.rgba8(100, 100, 150));
+  nova64.draw.print(
+    '[1-4] SCENE  [SPACE] RESET  [WASD] ORBIT  [Q/E] ZOOM',
+    10,
+    H - 18,
+    nova64.draw.rgba8(100, 100, 150)
+  );
   nova64.draw.print('CREATIVE CODING 3D', W - 170, 12, nova64.draw.rgba8(140, 100, 200));
 }

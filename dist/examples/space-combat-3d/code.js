@@ -144,7 +144,10 @@ export async function init() {
   };
 
   shake = nova64.util.createShake({ decay: 3 });
-  cooldowns = nova64.util.createCooldownSet({ laser: CONFIG.LASER_COOLDOWN, missile: CONFIG.MISSILE_COOLDOWN });
+  cooldowns = nova64.util.createCooldownSet({
+    laser: CONFIG.LASER_COOLDOWN,
+    missile: CONFIG.MISSILE_COOLDOWN,
+  });
 
   // Clear arrays
   asteroids = [];
@@ -185,6 +188,12 @@ export async function init() {
   nova64.fx.enableBloom(0.8, 0.4, 0.45);
   nova64.fx.enableFXAA();
   nova64.fx.enableVignette(1.3, 0.9);
+
+  // Babylon flourish: GlowLayer makes emissive surfaces (lasers, engines,
+  // pickups, boss eyes) bloom volumetrically without bloom-threshold tuning.
+  // Returns false on Three.js — UnrealBloom already covers that path, so
+  // we intentionally don't escalate.
+  nova64.fx.enableGlow?.(0.9, 32);
 
   // Setup camera
   updateCamera(0);
@@ -392,7 +401,12 @@ export function update() {
   const dt = 1 / 60;
 
   if (gameState === 'start') {
-    if (nova64.input.isKeyDown('Enter') || nova64.input.isKeyDown('Space') || nova64.input.isKeyDown(' ') || nova64.input.btn(13)) {
+    if (
+      nova64.input.isKeyDown('Enter') ||
+      nova64.input.isKeyDown('Space') ||
+      nova64.input.isKeyDown(' ') ||
+      nova64.input.btn(13)
+    ) {
       gameState = 'playing';
     }
     return;
@@ -521,7 +535,11 @@ function updateInput(dt) {
   }
 
   // Fire missile - M or Right Click
-  if (nova64.input.isKeyPressed('KeyM') && nova64.util.useCooldown(cooldowns.missile) && player.missiles > 0) {
+  if (
+    nova64.input.isKeyPressed('KeyM') &&
+    nova64.util.useCooldown(cooldowns.missile) &&
+    player.missiles > 0
+  ) {
     fireMissile();
     player.missiles--;
     nova64.audio.sfx('explosion');
@@ -831,7 +849,10 @@ function spawnPickup(x, y, z) {
     color = 0x00ff88;
   }
 
-  let mesh = nova64.scene.createSphere(1.5, color, [x, y, z], { emissive: color, emissiveIntensity: 3 });
+  let mesh = nova64.scene.createSphere(1.5, color, [x, y, z], {
+    emissive: color,
+    emissiveIntensity: 3,
+  });
   pickups.push({ pos: { x, y, z }, mesh, type, life: 15 });
 }
 
@@ -1024,7 +1045,12 @@ function updateAsteroids(dt) {
 
     // Update mesh
     nova64.scene.setPosition(asteroid.mesh, asteroid.pos.x, asteroid.pos.y, asteroid.pos.z);
-    nova64.scene.setRotation(asteroid.mesh, asteroid.rotation.x, asteroid.rotation.y, asteroid.rotation.z);
+    nova64.scene.setRotation(
+      asteroid.mesh,
+      asteroid.rotation.x,
+      asteroid.rotation.y,
+      asteroid.rotation.z
+    );
   });
 }
 
@@ -1141,7 +1167,12 @@ export function draw() {
     drawHUD();
     nova64.draw.rect(120, 100, 400, 60, nova64.draw.rgba8(0, 0, 0, 200), true);
     nova64.draw.print(`WAVE ${wave} CLEAR!`, 230, 110, nova64.draw.rgba8(0, 255, 100, 255));
-    nova64.draw.print(`+${1000 * wave} BONUS  +3 MISSILES`, 190, 135, nova64.draw.rgba8(255, 200, 0, 255));
+    nova64.draw.print(
+      `+${1000 * wave} BONUS  +3 MISSILES`,
+      190,
+      135,
+      nova64.draw.rgba8(255, 200, 0, 255)
+    );
   } else if (gameState === 'paused') {
     drawHUD();
     drawPauseScreen();
@@ -1160,7 +1191,12 @@ function drawStartScreen() {
 
   // Instructions
   const pulse = Math.sin(gameTime * 3) * 0.5 + 0.5;
-  nova64.draw.print('PRESS SPACE / TAP TO START', 190, 160, nova64.draw.rgba8(255, 255, 255, Math.floor(pulse * 255)));
+  nova64.draw.print(
+    'PRESS SPACE / TAP TO START',
+    190,
+    160,
+    nova64.draw.rgba8(255, 255, 255, Math.floor(pulse * 255))
+  );
 
   // Controls
   nova64.draw.rect(120, 200, 400, 140, nova64.draw.rgba8(20, 20, 40, 220), true);
@@ -1168,8 +1204,18 @@ function drawStartScreen() {
 
   nova64.draw.print('CONTROLS:', 270, 215, nova64.draw.rgba8(255, 255, 100, 255));
 
-  nova64.draw.print('W/S or Arrows = Pitch Up/Down', 140, 240, nova64.draw.rgba8(200, 200, 200, 255));
-  nova64.draw.print('A/D or Arrows = Yaw Left/Right', 140, 260, nova64.draw.rgba8(200, 200, 200, 255));
+  nova64.draw.print(
+    'W/S or Arrows = Pitch Up/Down',
+    140,
+    240,
+    nova64.draw.rgba8(200, 200, 200, 255)
+  );
+  nova64.draw.print(
+    'A/D or Arrows = Yaw Left/Right',
+    140,
+    260,
+    nova64.draw.rgba8(200, 200, 200, 255)
+  );
   nova64.draw.print('Q/E = Strafe Left/Right', 140, 280, nova64.draw.rgba8(200, 200, 200, 255));
   nova64.draw.print('SPACE = Fire Lasers', 140, 300, nova64.draw.rgba8(200, 200, 200, 255));
   nova64.draw.print('M = Fire Missile', 140, 320, nova64.draw.rgba8(200, 200, 200, 255));
@@ -1185,7 +1231,12 @@ function drawHUD() {
   nova64.draw.rect(0, 0, 640, 1, nova64.draw.rgba8(0, 255, 255, 255), true);
 
   // Score and stats
-  nova64.draw.print(`SCORE: ${score.toString().padStart(8, '0')}`, 10, 10, nova64.draw.rgba8(0, 255, 255, 255));
+  nova64.draw.print(
+    `SCORE: ${score.toString().padStart(8, '0')}`,
+    10,
+    10,
+    nova64.draw.rgba8(0, 255, 255, 255)
+  );
   nova64.draw.print(`KILLS: ${kills}`, 10, 25, nova64.draw.rgba8(255, 100, 100, 255));
 
   nova64.draw.print(`WAVE: ${wave}`, 250, 10, nova64.draw.rgba8(255, 255, 0, 255));
@@ -1320,7 +1371,14 @@ function drawRadar() {
               : enemy.type === 'bomber'
                 ? nova64.draw.rgba8(255, 136, 0, 255)
                 : nova64.draw.rgba8(255, 100, 100, 255);
-      nova64.draw.rect(Math.floor(x) - dotSize / 2, Math.floor(y) - dotSize / 2, dotSize, dotSize, color, true);
+      nova64.draw.rect(
+        Math.floor(x) - dotSize / 2,
+        Math.floor(y) - dotSize / 2,
+        dotSize,
+        dotSize,
+        color,
+        true
+      );
     }
   });
 }
@@ -1340,9 +1398,20 @@ function drawGameOver() {
   nova64.draw.print(`WAVE REACHED: ${wave}`, 250, 220, nova64.draw.rgba8(200, 200, 200, 255));
 
   const pulse = Math.sin(gameTime * 3) * 0.5 + 0.5;
-  nova64.draw.print('Press SPACE / Tap to restart', 205, 270, nova64.draw.rgba8(255, 255, 255, Math.floor(pulse * 255)));
+  nova64.draw.print(
+    'Press SPACE / Tap to restart',
+    205,
+    270,
+    nova64.draw.rgba8(255, 255, 255, Math.floor(pulse * 255))
+  );
 
-  if (nova64.input.isKeyDown('KeyR') || nova64.input.isKeyDown('Enter') || nova64.input.isKeyDown('Space') || nova64.input.isKeyDown(' ') || nova64.input.btn(13)) {
+  if (
+    nova64.input.isKeyDown('KeyR') ||
+    nova64.input.isKeyDown('Enter') ||
+    nova64.input.isKeyDown('Space') ||
+    nova64.input.isKeyDown(' ') ||
+    nova64.input.btn(13)
+  ) {
     init();
   }
 }

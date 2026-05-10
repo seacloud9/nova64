@@ -430,7 +430,12 @@ export function update(dt) {
         Math.sin(seg.mesh.position.x * 0.1 + gameTime) *
         Math.cos(seg.mesh.position.z * 0.1 + gameTime) *
         1.5;
-      nova64.scene.setPosition(seg.mesh, seg.mesh.position.x, seg.origY + hOffset, seg.mesh.position.z);
+      nova64.scene.setPosition(
+        seg.mesh,
+        seg.mesh.position.x,
+        seg.origY + hOffset,
+        seg.mesh.position.z
+      );
     }
   });
 
@@ -445,7 +450,12 @@ function updateStartSceneAnimation(dt) {
   digitalTowers.forEach(obj => {
     if (obj.isCrystal) {
       obj.angle += obj.rotSpeed * dt;
-      nova64.scene.setRotation(obj.mesh, Math.PI / 4 + Math.sin(gameTime * 2) * 0.2, obj.angle, Math.PI / 6);
+      nova64.scene.setRotation(
+        obj.mesh,
+        Math.PI / 4 + Math.sin(gameTime * 2) * 0.2,
+        obj.angle,
+        Math.PI / 6
+      );
     } else if (obj.isSun) {
       nova64.scene.rotateMesh(obj.mesh, 0, obj.rotSpeed * dt, 0); // Sun rotating
     } else if (obj.isCloud) {
@@ -463,7 +473,12 @@ function updateStartSceneAnimation(dt) {
         Math.sin(seg.mesh.position.x * 0.1 + gameTime) *
         Math.cos(seg.mesh.position.z * 0.1 + gameTime) *
         1.5;
-      nova64.scene.setPosition(seg.mesh, seg.mesh.position.x, seg.origY + hOffset, seg.mesh.position.z);
+      nova64.scene.setPosition(
+        seg.mesh,
+        seg.mesh.position.x,
+        seg.origY + hOffset,
+        seg.mesh.position.z
+      );
     }
   });
 }
@@ -601,7 +616,12 @@ function updateEnergyCore(dt, progress) {
 
     const scale = 1 + Math.sin(field.pulsePhase) * 0.3;
     nova64.scene.setScale(field.mesh, scale, scale, scale);
-    nova64.scene.setRotation(field.mesh, field.rotation, field.rotation * 1.5, field.rotation * 0.5);
+    nova64.scene.setRotation(
+      field.mesh,
+      field.rotation,
+      field.rotation * 1.5,
+      field.rotation * 0.5
+    );
   });
 
   // Camera - spiraling into the core
@@ -1024,7 +1044,15 @@ export function draw() {
 
 function drawStartScreen() {
   // Dark gradient overlay
-  nova64.ui.drawGradientRect(0, 0, 640, 360, nova64.draw.rgba8(0, 10, 20, 220), nova64.draw.rgba8(20, 0, 40, 240), true);
+  nova64.ui.drawGradientRect(
+    0,
+    0,
+    640,
+    360,
+    nova64.draw.rgba8(0, 10, 20, 220),
+    nova64.draw.rgba8(20, 0, 40, 240),
+    true
+  );
 
   // Animated title
   const pulse = Math.sin(startScreenTime * 3) * 0.3 + 0.7;
@@ -1038,7 +1066,15 @@ function drawStartScreen() {
   const g = Math.floor(128 + Math.sin(startScreenTime * 2 + 2) * 127);
   const b = Math.floor(128 + Math.sin(startScreenTime * 2 + 4) * 127);
 
-  nova64.ui.drawTextShadow('NOVA64', 320, 50 + bounce, nova64.draw.rgba8(r, g, b, 255), nova64.draw.rgba8(0, 0, 0, 255), 6, 1);
+  nova64.ui.drawTextShadow(
+    'NOVA64',
+    320,
+    50 + bounce,
+    nova64.draw.rgba8(r, g, b, 255),
+    nova64.draw.rgba8(0, 0, 0, 255),
+    6,
+    1
+  );
 
   nova64.ui.setFont('large');
   const cyan = nova64.draw.rgba8(0, 255, 255, Math.floor(pulse * 255));
@@ -1085,12 +1121,30 @@ function drawStartScreen() {
   // Pulsing prompt
   const alpha = Math.floor((Math.sin(startScreenTime * 5) * 0.5 + 0.5) * 255);
   nova64.ui.setFont('normal');
-  nova64.ui.drawText('▶ PRESS BEGIN OR SPACEBAR TO START ◀', 320, 375, nova64.draw.rgba8(0, 255, 255, alpha), 1);
+  nova64.ui.drawText(
+    '▶ PRESS BEGIN OR SPACEBAR TO START ◀',
+    320,
+    375,
+    nova64.draw.rgba8(0, 255, 255, alpha),
+    1
+  );
 
   // Credits
   nova64.ui.setFont('tiny');
-  nova64.ui.drawText('CONTROLS: CLICK BUTTON OR PRESS SPACE/ENTER', 320, 395, nova64.draw.rgba8(150, 150, 200, 200), 1);
-  nova64.ui.drawText('NOVA64 - THE ULTIMATE FANTASY CONSOLE', 320, 410, nova64.draw.rgba8(100, 100, 150, 180), 1);
+  nova64.ui.drawText(
+    'CONTROLS: CLICK BUTTON OR PRESS SPACE/ENTER',
+    320,
+    395,
+    nova64.draw.rgba8(150, 150, 200, 200),
+    1
+  );
+  nova64.ui.drawText(
+    'NOVA64 - THE ULTIMATE FANTASY CONSOLE',
+    320,
+    410,
+    nova64.draw.rgba8(100, 100, 150, 180),
+    1
+  );
 }
 
 function drawDemoHUD() {
@@ -1125,7 +1179,12 @@ function drawDemoHUD() {
 
   nova64.ui.setFont('tiny');
   nova64.draw.print(`${progress.toFixed(1)}%`, 24, 78, nova64.draw.rgba8(150, 150, 200, 255));
-  nova64.draw.print(`Time: ${sceneTime.toFixed(1)}s / ${scene.duration}s`, 24, 90, nova64.draw.rgba8(150, 150, 200, 255));
+  nova64.draw.print(
+    `Time: ${sceneTime.toFixed(1)}s / ${scene.duration}s`,
+    24,
+    90,
+    nova64.draw.rgba8(150, 150, 200, 255)
+  );
 
   // Effect status - top right
   const statsX = 640 - 200;
@@ -1150,7 +1209,12 @@ function drawDemoHUD() {
 
   // Nova64 watermark
   nova64.ui.setFont('tiny');
-  nova64.draw.print('NOVA64 - POWERED BY THREE.JS', 320, 360 - 20, nova64.draw.rgba8(100, 100, 150, 200));
+  nova64.draw.print(
+    'NOVA64 - POWERED BY THREE.JS',
+    320,
+    360 - 20,
+    nova64.draw.rgba8(100, 100, 150, 200)
+  );
 
   // Transition overlay
   if (transitioning) {

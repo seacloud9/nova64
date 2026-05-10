@@ -346,7 +346,15 @@ function _startLevelInner() {
         // Set UV tiling after the material exists so Babylon can update the texture transform.
         const texDef = texMgr.getTextureDef(w.texName);
         if (texDef) {
-          nova64.data.setWallUVs(m, w.len / SCALE, w.h / SCALE, texDef.width, texDef.height, w.xoff, w.yoff);
+          nova64.data.setWallUVs(
+            m,
+            w.len / SCALE,
+            w.h / SCALE,
+            texDef.width,
+            texDef.height,
+            w.xoff,
+            w.yoff
+          );
         }
 
         entities.walls.push({ m, x: w.x, z: w.z, r: 0 });
@@ -485,7 +493,12 @@ function spawnEnemy(x, z, type, doomType) {
 
   let body = nova64.scene.createCube(size, mat.color, [x, 2, z], mat);
   nova64.scene.setScale(body, 0.7, 1.2, 0.7);
-  let head = nova64.scene.createCube(size * 0.55, MAT.enemyEye.color, [x, 2 + size * 0.7, z], MAT.enemyEye);
+  let head = nova64.scene.createCube(
+    size * 0.55,
+    MAT.enemyEye.color,
+    [x, 2 + size * 0.7, z],
+    MAT.enemyEye
+  );
   nova64.scene.setScale(head, 1, 0.6, 0.8);
 
   let detail = null;
@@ -496,7 +509,12 @@ function spawnEnemy(x, z, type, doomType) {
     detail = nova64.scene.createCube(size * 0.6, detailMat.color, [x, 2 + size, z], detailMat);
     nova64.scene.setScale(detail, 1.5, 0.4, 0.5);
   } else if (type === 'shooter') {
-    detail = nova64.scene.createCube(size * 0.2, detailMat.color, [x, 2, z + size * 0.5], detailMat);
+    detail = nova64.scene.createCube(
+      size * 0.2,
+      detailMat.color,
+      [x, 2, z + size * 0.5],
+      detailMat
+    );
     nova64.scene.setScale(detail, 0.4, 0.4, 2.0);
   }
 
@@ -677,7 +695,11 @@ function spawnPickupRandom(x, y, z) {
 function spawnGibs(cx, cy, cz, color, count) {
   for (let i = 0; i < count; i++) {
     let size = 0.15 + Math.random() * 0.25;
-    let m = nova64.scene.createCube(size, color, [cx, cy, cz], { material: 'emissive', color, intensity: 2.5 });
+    let m = nova64.scene.createCube(size, color, [cx, cy, cz], {
+      material: 'emissive',
+      color,
+      intensity: 2.5,
+    });
     let life = 0.4 + Math.random() * 0.6;
     entities.particles.push({
       m,
@@ -994,7 +1016,12 @@ export function update(dt) {
 
     // Billboard pickup sprite
     if (p.sprite) {
-      nova64.scene.setPosition(p.sprite, p.x, p.spriteH / 2 + Math.sin(gameTime * 3 + i) * 0.3, p.z);
+      nova64.scene.setPosition(
+        p.sprite,
+        p.x,
+        p.spriteH / 2 + Math.sin(gameTime * 3 + i) * 0.3,
+        p.z
+      );
       const cam = nova64.camera.getCamera();
       const sdx = cam.position.x - p.x;
       const sdz = cam.position.z - p.z;
@@ -1079,7 +1106,12 @@ function drawLoading() {
   let W = 640,
     H = 360;
   nova64.draw.rectfill(0, 0, W, H, nova64.draw.rgba8(0, 0, 0, 220));
-  nova64.draw.printCentered('FREEDOOM WAD EXPLORER', W / 2, 45, nova64.draw.rgba8(0, 200, 255, 255));
+  nova64.draw.printCentered(
+    'FREEDOOM WAD EXPLORER',
+    W / 2,
+    45,
+    nova64.draw.rgba8(0, 200, 255, 255)
+  );
 
   if (gameState === 'missing') {
     // WAD not found — show download/drop instructions
@@ -1087,7 +1119,12 @@ function drawLoading() {
 
     nova64.draw.rectfill(W / 2 - 200, 111, 400, 2, nova64.draw.rgba8(255, 200, 0, 100));
 
-    nova64.draw.printCentered('To play, you need a .WAD file:', W / 2, 132, nova64.draw.rgba8(200, 200, 200, 255));
+    nova64.draw.printCentered(
+      'To play, you need a .WAD file:',
+      W / 2,
+      132,
+      nova64.draw.rgba8(200, 200, 200, 255)
+    );
 
     nova64.draw.printCentered(
       '1. Download FreeDoom (free, open-source):',
@@ -1095,7 +1132,12 @@ function drawLoading() {
       162,
       nova64.draw.rgba8(150, 150, 150, 255)
     );
-    nova64.draw.printCentered('github.com/freedoom/freedoom/releases', W / 2, 182, nova64.draw.rgba8(100, 200, 255, 255));
+    nova64.draw.printCentered(
+      'github.com/freedoom/freedoom/releases',
+      W / 2,
+      182,
+      nova64.draw.rgba8(100, 200, 255, 255)
+    );
 
     nova64.draw.printCentered(
       '2. Extract freedoom1.wad or freedoom2.wad',
@@ -1108,18 +1150,43 @@ function drawLoading() {
 
     let pulse = Math.sin(gameTime * 3) * 0.3 + 0.7;
     let a = Math.floor(pulse * 255);
-    nova64.draw.printCentered('DRAG & DROP .WAD file here', W / 2, 270, nova64.draw.rgba8(0, 255, 204, a));
-    nova64.draw.printCentered('or press L to browse', W / 2, 293, nova64.draw.rgba8(0, 255, 204, a));
+    nova64.draw.printCentered(
+      'DRAG & DROP .WAD file here',
+      W / 2,
+      270,
+      nova64.draw.rgba8(0, 255, 204, a)
+    );
+    nova64.draw.printCentered(
+      'or press L to browse',
+      W / 2,
+      293,
+      nova64.draw.rgba8(0, 255, 204, a)
+    );
 
     nova64.draw.rectfill(W / 2 - 200, 315, 400, 2, nova64.draw.rgba8(100, 100, 100, 80));
-    nova64.draw.printCentered('Also works with DOOM shareware WADs', W / 2, 330, nova64.draw.rgba8(100, 100, 100, 180));
+    nova64.draw.printCentered(
+      'Also works with DOOM shareware WADs',
+      W / 2,
+      330,
+      nova64.draw.rgba8(100, 100, 100, 180)
+    );
   } else if (loadError) {
     nova64.draw.printCentered('LOAD ERROR', W / 2, 120, nova64.draw.rgba8(255, 50, 50, 255));
     nova64.draw.printCentered(loadError, W / 2, 150, nova64.draw.rgba8(200, 100, 100, 255));
-    nova64.draw.printCentered('Drop a valid .WAD file or press L', W / 2, 195, nova64.draw.rgba8(150, 150, 150, 200));
+    nova64.draw.printCentered(
+      'Drop a valid .WAD file or press L',
+      W / 2,
+      195,
+      nova64.draw.rgba8(150, 150, 150, 200)
+    );
   } else {
     let pct = Math.floor(loadProgress * 100);
-    nova64.draw.printCentered(`Loading WAD... ${pct}%`, W / 2, 150, nova64.draw.rgba8(200, 200, 200, 255));
+    nova64.draw.printCentered(
+      `Loading WAD... ${pct}%`,
+      W / 2,
+      150,
+      nova64.draw.rgba8(200, 200, 200, 255)
+    );
     nova64.draw.drawProgressBar(
       W / 2 - 160,
       180,
@@ -1145,7 +1212,12 @@ function drawMenu() {
   let sepW = 240 + Math.sin(gameTime * 2) * 40;
   nova64.draw.rectfill(W / 2 - sepW / 2, 99, sepW, 3, nova64.draw.rgba8(0, 255, 204, 180));
 
-  nova64.draw.printCentered(`${mapNames.length} MAPS LOADED`, W / 2, 120, nova64.draw.rgba8(0, 255, 100, 255));
+  nova64.draw.printCentered(
+    `${mapNames.length} MAPS LOADED`,
+    W / 2,
+    120,
+    nova64.draw.rgba8(0, 255, 100, 255)
+  );
 
   // Map list (show current + surrounding)
   let startIdx = Math.max(0, currentMapIdx - 2);
@@ -1153,16 +1225,28 @@ function drawMenu() {
   for (let i = startIdx; i < endIdx; i++) {
     let isCurrent = i === currentMapIdx;
     let y = 150 + (i - startIdx) * 21;
-    let color = isCurrent ? nova64.draw.rgba8(255, 255, 0, 255) : nova64.draw.rgba8(140, 140, 140, 200);
+    let color = isCurrent
+      ? nova64.draw.rgba8(255, 255, 0, 255)
+      : nova64.draw.rgba8(140, 140, 140, 200);
     let prefix = isCurrent ? '> ' : '  ';
     nova64.draw.printCentered(`${prefix}${mapNames[i]}`, W / 2, y, color);
   }
 
-  nova64.draw.printCentered('UP/DOWN - Select Map', W / 2, 263, nova64.draw.rgba8(150, 150, 150, 255));
+  nova64.draw.printCentered(
+    'UP/DOWN - Select Map',
+    W / 2,
+    263,
+    nova64.draw.rgba8(150, 150, 150, 255)
+  );
   nova64.draw.printCentered('ENTER - Play', W / 2, 285, nova64.draw.rgba8(150, 150, 150, 255));
 
   if (Math.sin(gameTime * 5) > 0) {
-    nova64.draw.printCentered('>>> SELECT A MAP & PRESS ENTER <<<', W / 2, 323, nova64.draw.rgba8(0, 255, 204, 255));
+    nova64.draw.printCentered(
+      '>>> SELECT A MAP & PRESS ENTER <<<',
+      W / 2,
+      323,
+      nova64.draw.rgba8(0, 255, 204, 255)
+    );
   }
 
   // Input handled in update()
@@ -1175,11 +1259,31 @@ function drawGameOver() {
   nova64.draw.rectfill(0, 0, W, H, nova64.draw.rgba8(120, 0, 0, a));
   nova64.draw.printCentered('Y O U   D I E D', W / 2, 75, nova64.draw.rgba8(255, 50, 50, 255));
   nova64.draw.rectfill(W / 2 - 120, 102, 240, 2, nova64.draw.rgba8(255, 50, 50, 150));
-  nova64.draw.printCentered(`MAP: ${mapNames[currentMapIdx]}`, W / 2, 128, nova64.draw.rgba8(255, 170, 0, 255));
-  nova64.draw.printCentered(`KILLS: ${kills} / ${totalEnemies}`, W / 2, 158, nova64.draw.rgba8(255, 255, 255, 255));
-  nova64.draw.printCentered(`SCORE: ${player.score}`, W / 2, 188, nova64.draw.rgba8(255, 204, 0, 255));
+  nova64.draw.printCentered(
+    `MAP: ${mapNames[currentMapIdx]}`,
+    W / 2,
+    128,
+    nova64.draw.rgba8(255, 170, 0, 255)
+  );
+  nova64.draw.printCentered(
+    `KILLS: ${kills} / ${totalEnemies}`,
+    W / 2,
+    158,
+    nova64.draw.rgba8(255, 255, 255, 255)
+  );
+  nova64.draw.printCentered(
+    `SCORE: ${player.score}`,
+    W / 2,
+    188,
+    nova64.draw.rgba8(255, 204, 0, 255)
+  );
   if (Math.sin(gameTime * 5) > 0)
-    nova64.draw.printCentered('CLICK TO RESTART', W / 2, 255, nova64.draw.rgba8(200, 200, 200, 255));
+    nova64.draw.printCentered(
+      'CLICK TO RESTART',
+      W / 2,
+      255,
+      nova64.draw.rgba8(200, 200, 200, 255)
+    );
 }
 
 function drawVictory() {
@@ -1189,10 +1293,25 @@ function drawVictory() {
   nova64.draw.rectfill(0, 0, W, H, nova64.draw.rgba8(0, 30, 0, a));
   nova64.draw.printCentered('V I C T O R Y', W / 2, 68, nova64.draw.rgba8(0, 255, 100, 255));
   nova64.draw.printCentered('ALL MAPS CLEARED', W / 2, 120, nova64.draw.rgba8(255, 255, 255, 255));
-  nova64.draw.printCentered(`FINAL SCORE: ${player.score}`, W / 2, 165, nova64.draw.rgba8(255, 204, 0, 255));
-  nova64.draw.printCentered(`TOTAL KILLS: ${kills}`, W / 2, 195, nova64.draw.rgba8(255, 170, 0, 255));
+  nova64.draw.printCentered(
+    `FINAL SCORE: ${player.score}`,
+    W / 2,
+    165,
+    nova64.draw.rgba8(255, 204, 0, 255)
+  );
+  nova64.draw.printCentered(
+    `TOTAL KILLS: ${kills}`,
+    W / 2,
+    195,
+    nova64.draw.rgba8(255, 170, 0, 255)
+  );
   if (Math.sin(gameTime * 5) > 0)
-    nova64.draw.printCentered('CLICK TO PLAY AGAIN', W / 2, 270, nova64.draw.rgba8(200, 200, 200, 255));
+    nova64.draw.printCentered(
+      'CLICK TO PLAY AGAIN',
+      W / 2,
+      270,
+      nova64.draw.rgba8(200, 200, 200, 255)
+    );
 }
 
 function drawLevelClear() {
@@ -1202,7 +1321,12 @@ function drawLevelClear() {
     cy = H / 2;
   nova64.draw.rectfill(cx - 160, cy - 45, 320, 83, nova64.draw.rgba8(0, 0, 0, 210));
   nova64.draw.rectfill(cx - 160, cy - 45, 320, 3, nova64.draw.rgba8(0, 255, 100, 200));
-  nova64.draw.printCentered(`${mapNames[currentMapIdx]} CLEAR!`, cx, cy - 27, nova64.draw.rgba8(0, 255, 100, 255));
+  nova64.draw.printCentered(
+    `${mapNames[currentMapIdx]} CLEAR!`,
+    cx,
+    cy - 27,
+    nova64.draw.rgba8(0, 255, 100, 255)
+  );
   nova64.draw.printCentered(`+500 BONUS`, cx, cy, nova64.draw.rgba8(255, 170, 0, 255));
   let next =
     currentMapIdx + 1 < mapNames.length
@@ -1216,9 +1340,21 @@ function drawHUD() {
     H = 360;
 
   if (damageFlash > 0)
-    nova64.draw.rectfill(0, 0, W, H, nova64.draw.rgba8(255, 0, 0, Math.floor(Math.min(damageFlash * 400, 120))));
+    nova64.draw.rectfill(
+      0,
+      0,
+      W,
+      H,
+      nova64.draw.rgba8(255, 0, 0, Math.floor(Math.min(damageFlash * 400, 120)))
+    );
   if (killFlash > 0)
-    nova64.draw.rectfill(0, 0, W, H, nova64.draw.rgba8(255, 200, 0, Math.floor(Math.min(killFlash * 300, 60))));
+    nova64.draw.rectfill(
+      0,
+      0,
+      W,
+      H,
+      nova64.draw.rgba8(255, 200, 0, Math.floor(Math.min(killFlash * 300, 60)))
+    );
 
   // Bottom bar
   nova64.draw.rectfill(0, H - 48, W, 48, nova64.draw.rgba8(0, 0, 0, 180));
@@ -1227,9 +1363,22 @@ function drawHUD() {
   // Health
   let hp = Math.max(0, player.health);
   let hColor =
-    hp > 60 ? nova64.draw.rgba8(0, 255, 100, 255) : hp > 25 ? nova64.draw.rgba8(255, 200, 0, 255) : nova64.draw.rgba8(255, 40, 40, 255);
-  let hpFlicker = hp <= 25 && Math.sin(gameTime * 15) > 0 ? nova64.draw.rgba8(255, 100, 100, 255) : hColor;
-  nova64.draw.drawProgressBar(16, H - 21, 140, 11, hp / 100, hpFlicker, nova64.draw.rgba8(40, 40, 40, 200));
+    hp > 60
+      ? nova64.draw.rgba8(0, 255, 100, 255)
+      : hp > 25
+        ? nova64.draw.rgba8(255, 200, 0, 255)
+        : nova64.draw.rgba8(255, 40, 40, 255);
+  let hpFlicker =
+    hp <= 25 && Math.sin(gameTime * 15) > 0 ? nova64.draw.rgba8(255, 100, 100, 255) : hColor;
+  nova64.draw.drawProgressBar(
+    16,
+    H - 21,
+    140,
+    11,
+    hp / 100,
+    hpFlicker,
+    nova64.draw.rgba8(40, 40, 40, 200)
+  );
   nova64.draw.print(`HP ${hp}`, 16, H - 38, hColor);
   if (player.armor > 0) {
     nova64.draw.drawProgressBar(
@@ -1245,7 +1394,8 @@ function drawHUD() {
   }
 
   // Ammo
-  let ammoColor = player.ammo > 10 ? nova64.draw.rgba8(255, 204, 0, 255) : nova64.draw.rgba8(255, 50, 50, 255);
+  let ammoColor =
+    player.ammo > 10 ? nova64.draw.rgba8(255, 204, 0, 255) : nova64.draw.rgba8(255, 50, 50, 255);
   nova64.draw.print(`AMMO`, W - 140, H - 38, nova64.draw.rgba8(180, 180, 180, 200));
   nova64.draw.print(`${player.ammo}`, W - 66, H - 38, ammoColor);
   if (player.ammo <= 0 && Math.sin(gameTime * 12) > 0)
@@ -1273,7 +1423,11 @@ function drawHUD() {
   nova64.draw.rectfill(cx, cy + spread + 2, 1, 6, cAlpha);
 
   // Gun viewmodel
-  let isMoving = nova64.input.key('KeyW') || nova64.input.key('KeyS') || nova64.input.key('KeyA') || nova64.input.key('KeyD');
+  let isMoving =
+    nova64.input.key('KeyW') ||
+    nova64.input.key('KeyS') ||
+    nova64.input.key('KeyA') ||
+    nova64.input.key('KeyD');
   let isSprinting = nova64.input.key('ShiftLeft') || nova64.input.key('ShiftRight');
   let bobSpeed = isSprinting ? 14 : 9;
   let bobAmplitude = isSprinting ? 9 : 5;
@@ -1294,9 +1448,28 @@ function drawHUD() {
 
   if (muzzleFlash > 0) {
     let fa = Math.floor(muzzleFlash * 3000);
-    nova64.draw.rectfill(gx - 23, gy - 143, 45, 30, nova64.draw.rgba8(0, 255, 255, Math.min(fa, 200)));
-    nova64.draw.rectfill(gx - 12, gy - 150, 24, 18, nova64.draw.rgba8(255, 255, 255, Math.min(fa, 255)));
-    nova64.draw.rectfill(gx - 5, gy - 158, 9, 12, nova64.draw.rgba8(255, 255, 200, Math.min(fa, 200)));
+    nova64.draw.rectfill(
+      gx - 23,
+      gy - 143,
+      45,
+      30,
+      nova64.draw.rgba8(0, 255, 255, Math.min(fa, 200))
+    );
+    nova64.draw.rectfill(
+      gx - 12,
+      gy - 150,
+      24,
+      18,
+      nova64.draw.rgba8(255, 255, 255, Math.min(fa, 255))
+    );
+    nova64.draw.rectfill(
+      gx - 5,
+      gy - 158,
+      9,
+      12,
+      nova64.draw.rgba8(255, 255, 200, Math.min(fa, 200))
+    );
   }
-  if (isSprinting && isMoving) nova64.draw.print('SPRINT', W / 2 - 30, H - 60, nova64.draw.rgba8(255, 200, 0, 180));
+  if (isSprinting && isMoving)
+    nova64.draw.print('SPRINT', W / 2 - 30, H - 60, nova64.draw.rgba8(255, 200, 0, 180));
 }

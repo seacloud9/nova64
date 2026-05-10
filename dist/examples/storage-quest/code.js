@@ -31,10 +31,16 @@ function spawnGems(count) {
     const r = 3 + Math.random() * 6;
     const color = GEM_COLORS[(gems.length + i) % GEM_COLORS.length];
     gems.push({
-      mesh: nova64.scene.createSphere(0.25, color, [Math.cos(angle) * r, 0.5, Math.sin(angle) * r], 6, {
-        material: 'holographic',
-        emissive: color,
-      }),
+      mesh: nova64.scene.createSphere(
+        0.25,
+        color,
+        [Math.cos(angle) * r, 0.5, Math.sin(angle) * r],
+        6,
+        {
+          material: 'holographic',
+          emissive: color,
+        }
+      ),
       x: Math.cos(angle) * r,
       z: Math.sin(angle) * r,
       spin: Math.random() * Math.PI * 2,
@@ -60,10 +66,15 @@ export function init() {
   // Ship color reflects upgrade level
   const shipColors = [0x0088ff, 0x00ffaa, 0xffaa00, 0xff44aa];
   const sz = 0.5 + state.shipLevel * 0.15;
-  ship = nova64.scene.createCube(sz * 2, shipColors[state.shipLevel % shipColors.length], [0, 0.6, 0], {
-    material: 'metallic',
-    emissive: 0x002244,
-  });
+  ship = nova64.scene.createCube(
+    sz * 2,
+    shipColors[state.shipLevel % shipColors.length],
+    [0, 0.6, 0],
+    {
+      material: 'metallic',
+      emissive: 0x002244,
+    }
+  );
 
   spawnGems(5 + state.level * 2);
 }

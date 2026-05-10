@@ -453,7 +453,8 @@ function handleInput() {
 
   // P key = save world
   if (nova64.input.keyp('KeyP') && typeof saveVoxelWorld === 'function') {
-    nova64.voxel.saveVoxelWorld('minecraft-demo')
+    nova64.voxel
+      .saveVoxelWorld('minecraft-demo')
       .then(() => {
         saveMessage = 'World Saved!';
         saveMessageTimer = 120;
@@ -466,7 +467,8 @@ function handleInput() {
 
   // L key = load world
   if (nova64.input.keyp('KeyL') && typeof loadVoxelWorld === 'function') {
-    nova64.voxel.loadVoxelWorld('minecraft-demo')
+    nova64.voxel
+      .loadVoxelWorld('minecraft-demo')
       .then(loaded => {
         if (loaded) {
           saveMessage = 'World Loaded!';
@@ -586,7 +588,11 @@ function handleBlockInteraction() {
     const dy = Math.sin(player.pitch);
     const dz = -Math.cos(player.yaw) * Math.cos(player.pitch);
 
-    const result = nova64.voxel.raycastVoxelBlock([player.x, player.y + 0.8, player.z], [dx, dy, dz], 6);
+    const result = nova64.voxel.raycastVoxelBlock(
+      [player.x, player.y + 0.8, player.z],
+      [dx, dy, dz],
+      6
+    );
 
     if (result && result.hit) {
       if (nova64.input.keyp('KeyF') || nova64.input.keyp('KeyQ')) {
@@ -595,7 +601,12 @@ function handleBlockInteraction() {
       }
       if (nova64.input.keyp('KeyE') || nova64.input.keyp('KeyR')) {
         // Place block on adjacent face
-        nova64.voxel.setVoxelBlock(result.adjacent[0], result.adjacent[1], result.adjacent[2], selectedBlock);
+        nova64.voxel.setVoxelBlock(
+          result.adjacent[0],
+          result.adjacent[1],
+          result.adjacent[2],
+          selectedBlock
+        );
       }
     }
   }
@@ -643,7 +654,12 @@ export function draw() {
   }
   // Block name below hotbar
   const bname = BLOCK_NAMES[selectedBlock] || 'UNKNOWN';
-  nova64.draw.print(bname, (640 - bname.length * 8) / 2, hbY - 14, nova64.draw.rgba8(255, 255, 255, 200));
+  nova64.draw.print(
+    bname,
+    (640 - bname.length * 8) / 2,
+    hbY - 14,
+    nova64.draw.rgba8(255, 255, 255, 200)
+  );
 
   // Controls hint
   nova64.draw.print(

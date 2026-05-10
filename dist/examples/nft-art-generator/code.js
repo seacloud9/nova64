@@ -92,8 +92,13 @@ function pushSeed(seed) {
 }
 
 function generateArt(seed) {
-  rng = nova64.data.createSeedRNG(typeof seed === 'string' ? nova64.data.createSeedFromHash(seed) : seed);
-  traits = nova64.data.seedToTraits(typeof seed === 'string' ? nova64.data.createSeedFromHash(seed) : seed, ART_SCHEMA);
+  rng = nova64.data.createSeedRNG(
+    typeof seed === 'string' ? nova64.data.createSeedFromHash(seed) : seed
+  );
+  traits = nova64.data.seedToTraits(
+    typeof seed === 'string' ? nova64.data.createSeedFromHash(seed) : seed,
+    ART_SCHEMA
+  );
   palette = rng.palette(6);
   time = 0;
 

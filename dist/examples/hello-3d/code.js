@@ -156,7 +156,11 @@ export function update(dt) {
     nova64.ui.updateAllButtons();
 
     // KEYBOARD FALLBACK: Press ENTER or SPACE to start
-    if (nova64.input.isKeyPressed('Enter') || nova64.input.isKeyPressed(' ') || nova64.input.isKeyPressed('Space')) {
+    if (
+      nova64.input.isKeyPressed('Enter') ||
+      nova64.input.isKeyPressed(' ') ||
+      nova64.input.isKeyPressed('Space')
+    ) {
       console.log('🎮 Keyboard start pressed!');
       gameState = 'playing';
       return;
@@ -235,22 +239,50 @@ export function draw() {
   nova64.draw.print('🎮 HELLO 3D WORLD', 8, 8, nova64.draw.rgba8(0, 255, 255, 255));
   nova64.draw.print('Nintendo 64 / PlayStation Style', 8, 24, nova64.draw.rgba8(255, 200, 0, 255));
   nova64.draw.print(`Time: ${time.toFixed(1)}s`, 8, 40, nova64.draw.rgba8(255, 255, 255, 255));
-  nova64.draw.print(`Objects: ${cubes.length + spheres.length + 1}`, 8, 56, nova64.draw.rgba8(100, 255, 100, 255));
+  nova64.draw.print(
+    `Objects: ${cubes.length + spheres.length + 1}`,
+    8,
+    56,
+    nova64.draw.rgba8(100, 255, 100, 255)
+  );
 
   // 3D Stats
   const stats = nova64.scene.get3DStats();
   if (stats && stats.render) {
-    nova64.draw.print(`3D Meshes: ${stats.meshes || 0}`, 8, 72, nova64.draw.rgba8(150, 150, 255, 255));
-    nova64.draw.print(`GPU: ${stats.renderer || 'Three.js'}`, 8, 88, nova64.draw.rgba8(150, 150, 255, 255));
+    nova64.draw.print(
+      `3D Meshes: ${stats.meshes || 0}`,
+      8,
+      72,
+      nova64.draw.rgba8(150, 150, 255, 255)
+    );
+    nova64.draw.print(
+      `GPU: ${stats.renderer || 'Three.js'}`,
+      8,
+      88,
+      nova64.draw.rgba8(150, 150, 255, 255)
+    );
   }
 
   nova64.draw.print('WASD: Move camera manually', 8, 320, nova64.draw.rgba8(200, 200, 200, 200));
-  nova64.draw.print('Full GPU 3D acceleration with Three.js!', 8, 340, nova64.draw.rgba8(100, 255, 100, 180));
+  nova64.draw.print(
+    'Full GPU 3D acceleration with Three.js!',
+    8,
+    340,
+    nova64.draw.rgba8(100, 255, 100, 180)
+  );
 }
 
 function drawStartScreen() {
   // Bright gradient background
-  nova64.ui.drawGradientRect(0, 0, 640, 360, nova64.draw.rgba8(30, 60, 120, 230), nova64.draw.rgba8(10, 30, 80, 240), true);
+  nova64.ui.drawGradientRect(
+    0,
+    0,
+    640,
+    360,
+    nova64.draw.rgba8(30, 60, 120, 230),
+    nova64.draw.rgba8(10, 30, 80, 240),
+    true
+  );
 
   // Animated title with rainbow glow
   const rainbow = [
@@ -266,8 +298,24 @@ function drawStartScreen() {
   nova64.ui.setFont('huge');
   nova64.ui.setTextAlign('center');
   const bounce = Math.sin(startScreenTime * 3) * 8;
-  nova64.ui.drawTextShadow('HELLO', 320, 60 + bounce, rainbow[colorIndex], nova64.draw.rgba8(0, 0, 0, 255), 5, 1);
-  nova64.ui.drawTextShadow('3D WORLD', 320, 110 + bounce, nova64.draw.rgba8(0, 255, 255, 255), nova64.draw.rgba8(0, 0, 0, 255), 5, 1);
+  nova64.ui.drawTextShadow(
+    'HELLO',
+    320,
+    60 + bounce,
+    rainbow[colorIndex],
+    nova64.draw.rgba8(0, 0, 0, 255),
+    5,
+    1
+  );
+  nova64.ui.drawTextShadow(
+    '3D WORLD',
+    320,
+    110 + bounce,
+    nova64.draw.rgba8(0, 255, 255, 255),
+    nova64.draw.rgba8(0, 0, 0, 255),
+    5,
+    1
+  );
 
   // Subtitle
   nova64.ui.setFont('large');
@@ -297,12 +345,36 @@ function drawStartScreen() {
   nova64.ui.drawText('BASIC 3D RENDERING DEMO', 320, 220, nova64.draw.rgba8(0, 255, 255, 255), 1);
 
   nova64.ui.setFont('small');
-  nova64.ui.drawText('Experience GPU-accelerated 3D graphics with Three.js', 320, 245, nova64.ui.uiColors.light, 1);
-  nova64.ui.drawText('Watch spinning cubes and bouncing spheres', 320, 260, nova64.ui.uiColors.light, 1);
-  nova64.ui.drawText('Full retro Nintendo 64 visual effects enabled', 320, 275, nova64.ui.uiColors.light, 1);
+  nova64.ui.drawText(
+    'Experience GPU-accelerated 3D graphics with Three.js',
+    320,
+    245,
+    nova64.ui.uiColors.light,
+    1
+  );
+  nova64.ui.drawText(
+    'Watch spinning cubes and bouncing spheres',
+    320,
+    260,
+    nova64.ui.uiColors.light,
+    1
+  );
+  nova64.ui.drawText(
+    'Full retro Nintendo 64 visual effects enabled',
+    320,
+    275,
+    nova64.ui.uiColors.light,
+    1
+  );
 
   nova64.ui.setFont('tiny');
-  nova64.ui.drawText('Camera rotates automatically around the scene', 320, 300, nova64.ui.uiColors.secondary, 1);
+  nova64.ui.drawText(
+    'Camera rotates automatically around the scene',
+    320,
+    300,
+    nova64.ui.uiColors.secondary,
+    1
+  );
 
   // Draw buttons
   nova64.ui.drawAllButtons();
@@ -327,5 +399,11 @@ function drawStartScreen() {
 
   // Nova64 branding
   nova64.ui.setFont('tiny');
-  nova64.ui.drawText('Nova64 v0.2.0 - Fantasy Console', 320, 345, nova64.draw.rgba8(150, 150, 200, 150), 1);
+  nova64.ui.drawText(
+    'Nova64 v0.2.0 - Fantasy Console',
+    320,
+    345,
+    nova64.draw.rgba8(150, 150, 200, 150),
+    1
+  );
 }

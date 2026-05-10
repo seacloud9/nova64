@@ -241,7 +241,10 @@ async function generateTerrain() {
 
   // Ancient trees — GPU instanced (30 draw calls → 2)
   treeTrunkInstanceId = nova64.scene.createInstancedMesh('cube', 15, 0x4a3a2a, { size: 1 });
-  treeCrownInstanceId = nova64.scene.createInstancedMesh('sphere', 15, 0x2a5a2a, { size: 4, segments: 8 });
+  treeCrownInstanceId = nova64.scene.createInstancedMesh('sphere', 15, 0x2a5a2a, {
+    size: 4,
+    segments: 8,
+  });
   treeMeta = [];
   for (let i = 0; i < 15; i++) {
     const x = (Math.random() - 0.5) * 90;
@@ -661,13 +664,35 @@ function initWinScreen() {
 }
 
 function drawWinScreen() {
-  nova64.ui.drawGradientRect(0, 0, 640, 480, nova64.draw.rgba8(10, 30, 10, 220), nova64.draw.rgba8(20, 80, 20, 240), true);
+  nova64.ui.drawGradientRect(
+    0,
+    0,
+    640,
+    480,
+    nova64.draw.rgba8(10, 30, 10, 220),
+    nova64.draw.rgba8(20, 80, 20, 240),
+    true
+  );
   const glow = (Math.sin(time * 3) + 1) * 0.5;
   nova64.ui.setFont('huge');
   nova64.ui.setTextAlign('center');
-  nova64.ui.drawTextShadow('QUEST COMPLETE!', 320, 60, nova64.draw.rgba8(255, 215, 0, 255), nova64.draw.rgba8(0, 0, 0, 255), 5, 1);
+  nova64.ui.drawTextShadow(
+    'QUEST COMPLETE!',
+    320,
+    60,
+    nova64.draw.rgba8(255, 215, 0, 255),
+    nova64.draw.rgba8(0, 0, 0, 255),
+    5,
+    1
+  );
   nova64.ui.setFont('large');
-  nova64.ui.drawText('The realm is saved!', 320, 130, nova64.draw.rgba8(Math.floor(100 + 155 * glow), 255, 100, 255), 1);
+  nova64.ui.drawText(
+    'The realm is saved!',
+    320,
+    130,
+    nova64.draw.rgba8(Math.floor(100 + 155 * glow), 255, 100, 255),
+    1
+  );
   const panel = nova64.ui.createPanel(nova64.ui.centerX(420), 170, 420, 140, {
     bgColor: nova64.draw.rgba8(20, 40, 20, 220),
     borderColor: nova64.draw.rgba8(100, 200, 100, 255),
@@ -991,11 +1016,21 @@ export function draw() {
 
   // Title and info
   nova64.draw.print('🏰 MYSTICAL REALM 3D', 8, 8, nova64.draw.rgba8(255, 215, 0, 255));
-  nova64.draw.print('Nintendo 64 / PlayStation Fantasy World', 8, 24, nova64.draw.rgba8(200, 150, 255, 255));
+  nova64.draw.print(
+    'Nintendo 64 / PlayStation Fantasy World',
+    8,
+    24,
+    nova64.draw.rgba8(200, 150, 255, 255)
+  );
 
   // Game stats
   const collectedCrystals = world.crystals.filter(c => c.collected).length;
-  nova64.draw.print(`Time: ${timeOfDay} | Weather: ${world.weather.type}`, 8, 50, nova64.draw.rgba8(150, 200, 255, 255));
+  nova64.draw.print(
+    `Time: ${timeOfDay} | Weather: ${world.weather.type}`,
+    8,
+    50,
+    nova64.draw.rgba8(150, 200, 255, 255)
+  );
   nova64.draw.print(
     `Crystals: ${collectedCrystals}/${world.crystals.length}`,
     8,
@@ -1003,7 +1038,12 @@ export function draw() {
     nova64.draw.rgba8(255, 200, 100, 255)
   );
   const caughtCount = world.creatures.filter(c => c.caught).length;
-  nova64.draw.print(`Creatures: ${caughtCount}/${world.creatures.length}`, 8, 82, nova64.draw.rgba8(255, 150, 255, 255));
+  nova64.draw.print(
+    `Creatures: ${caughtCount}/${world.creatures.length}`,
+    8,
+    82,
+    nova64.draw.rgba8(255, 150, 255, 255)
+  );
   nova64.draw.print(
     `Position: ${player.x.toFixed(1)}, ${player.y.toFixed(1)}, ${player.z.toFixed(1)}`,
     8,
@@ -1041,15 +1081,35 @@ export function draw() {
   }
 
   // Controls
-  nova64.draw.print('WASD: Move | Space: Jump | E: Magic Bolt', 8, 300, nova64.draw.rgba8(200, 200, 200, 180));
-  nova64.draw.print('Stun creatures with magic, walk into them to catch!', 8, 316, nova64.draw.rgba8(255, 255, 100, 200));
-  nova64.draw.print('Collect all crystals + catch all creatures to win!', 8, 332, nova64.draw.rgba8(100, 255, 100, 180));
+  nova64.draw.print(
+    'WASD: Move | Space: Jump | E: Magic Bolt',
+    8,
+    300,
+    nova64.draw.rgba8(200, 200, 200, 180)
+  );
+  nova64.draw.print(
+    'Stun creatures with magic, walk into them to catch!',
+    8,
+    316,
+    nova64.draw.rgba8(255, 255, 100, 200)
+  );
+  nova64.draw.print(
+    'Collect all crystals + catch all creatures to win!',
+    8,
+    332,
+    nova64.draw.rgba8(100, 255, 100, 180)
+  );
 
   // Weather indicator
   if (world.weather.type === 'storm') {
     nova64.draw.print('⚡ STORM APPROACHING ⚡', 200, 8, nova64.draw.rgba8(255, 255, 0, 255));
   } else if (world.weather.type === 'mystical') {
-    nova64.draw.print('✨ Mystical energies swirl... ✨', 200, 8, nova64.draw.rgba8(255, 100, 255, 255));
+    nova64.draw.print(
+      '✨ Mystical energies swirl... ✨',
+      200,
+      8,
+      nova64.draw.rgba8(255, 100, 255, 255)
+    );
   }
 
   // Health bar
@@ -1060,13 +1120,34 @@ export function draw() {
       : healthPct > 0.25
         ? nova64.draw.rgba8(220, 180, 30, 255)
         : nova64.draw.rgba8(200, 40, 40, 255);
-  nova64.draw.drawProgressBar(16, 168, 160, 10, healthPct, hpColor, nova64.draw.rgba8(20, 10, 30, 220));
-  nova64.draw.print(`HP ${player.health}/${player.maxHealth}`, 16, 158, nova64.draw.rgba8(255, 200, 255, 220));
+  nova64.draw.drawProgressBar(
+    16,
+    168,
+    160,
+    10,
+    healthPct,
+    hpColor,
+    nova64.draw.rgba8(20, 10, 30, 220)
+  );
+  nova64.draw.print(
+    `HP ${player.health}/${player.maxHealth}`,
+    16,
+    158,
+    nova64.draw.rgba8(255, 200, 255, 220)
+  );
 }
 
 function drawStartScreen() {
   // Mystical gradient background
-  nova64.ui.drawGradientRect(0, 0, 640, 360, nova64.draw.rgba8(20, 10, 40, 220), nova64.draw.rgba8(50, 20, 80, 240), true);
+  nova64.ui.drawGradientRect(
+    0,
+    0,
+    640,
+    360,
+    nova64.draw.rgba8(20, 10, 40, 220),
+    nova64.draw.rgba8(50, 20, 80, 240),
+    true
+  );
 
   // Animated title with magical glow
   const glow = Math.sin(startScreenTime * 2) * 0.3 + 0.7;
@@ -1080,8 +1161,24 @@ function drawStartScreen() {
   nova64.ui.setFont('huge');
   nova64.ui.setTextAlign('center');
   const bounce = Math.sin(startScreenTime * 2) * 12;
-  nova64.ui.drawTextShadow('MYSTICAL', 320, 50 + bounce, glowColor, nova64.draw.rgba8(0, 0, 0, 255), 5, 1);
-  nova64.ui.drawTextShadow('REALM', 320, 100 + bounce, nova64.draw.rgba8(255, 215, 0, 255), nova64.draw.rgba8(0, 0, 0, 255), 5, 1);
+  nova64.ui.drawTextShadow(
+    'MYSTICAL',
+    320,
+    50 + bounce,
+    glowColor,
+    nova64.draw.rgba8(0, 0, 0, 255),
+    5,
+    1
+  );
+  nova64.ui.drawTextShadow(
+    'REALM',
+    320,
+    100 + bounce,
+    nova64.draw.rgba8(255, 215, 0, 255),
+    nova64.draw.rgba8(0, 0, 0, 255),
+    5,
+    1
+  );
 
   // Subtitle with pulse
   nova64.ui.setFont('large');
@@ -1113,11 +1210,29 @@ function drawStartScreen() {
 
   nova64.ui.setFont('small');
   nova64.ui.drawText('A mystical realm awaits exploration', 320, 210, uiColors.light, 1);
-  nova64.ui.drawText('Collect magical crystals scattered across the land', 320, 225, uiColors.light, 1);
-  nova64.ui.drawText('Navigate through day, night, and mystical storms', 320, 240, uiColors.light, 1);
+  nova64.ui.drawText(
+    'Collect magical crystals scattered across the land',
+    320,
+    225,
+    uiColors.light,
+    1
+  );
+  nova64.ui.drawText(
+    'Navigate through day, night, and mystical storms',
+    320,
+    240,
+    uiColors.light,
+    1
+  );
 
   nova64.ui.setFont('tiny');
-  nova64.ui.drawText('WASD = Move  |  Space = Jump  |  E = Magic Bolt', 320, 270, uiColors.secondary, 1);
+  nova64.ui.drawText(
+    'WASD = Move  |  Space = Jump  |  E = Magic Bolt',
+    320,
+    270,
+    uiColors.secondary,
+    1
+  );
   nova64.ui.drawText(
     'Stun creatures • Catch them • Collect all crystals to WIN!',
     320,
@@ -1132,11 +1247,23 @@ function drawStartScreen() {
   // Pulsing start prompt
   const alpha = Math.floor((Math.sin(startScreenTime * 5) * 0.5 + 0.5) * 255);
   nova64.ui.setFont('normal');
-  nova64.ui.drawText('▶ PRESS BEGIN QUEST TO START ◀', 320, 305, nova64.draw.rgba8(200, 100, 255, alpha), 1);
+  nova64.ui.drawText(
+    '▶ PRESS BEGIN QUEST TO START ◀',
+    320,
+    305,
+    nova64.draw.rgba8(200, 100, 255, alpha),
+    1
+  );
 
   // Mystical particles hint
   nova64.ui.setFont('tiny');
-  nova64.ui.drawText('Nintendo 64 / PlayStation Style Graphics', 320, 340, nova64.draw.rgba8(150, 150, 200, 150), 1);
+  nova64.ui.drawText(
+    'Nintendo 64 / PlayStation Style Graphics',
+    320,
+    340,
+    nova64.draw.rgba8(150, 150, 200, 150),
+    1
+  );
 }
 
 function drawGameOverScreen() {
@@ -1147,24 +1274,38 @@ function drawGameOverScreen() {
   nova64.ui.setFont('huge');
   nova64.ui.setTextAlign('center');
   const flash = Math.floor(time * 2) % 2 === 0;
-  const color = flash ? nova64.draw.rgba8(200, 100, 255, 255) : nova64.draw.rgba8(150, 50, 200, 255);
+  const color = flash
+    ? nova64.draw.rgba8(200, 100, 255, 255)
+    : nova64.draw.rgba8(150, 50, 200, 255);
   nova64.ui.drawTextShadow('QUEST ENDED', 320, 80, color, nova64.draw.rgba8(0, 0, 0, 255), 5, 1);
 
   // Stats panel
-  const statsPanel = nova64.ui.createPanel(nova64.ui.centerX(420), nova64.ui.centerY(220), 420, 220, {
-    bgColor: nova64.draw.rgba8(20, 10, 40, 220),
-    borderColor: nova64.draw.rgba8(100, 50, 200, 255),
-    borderWidth: 3,
-    shadow: true,
-    title: 'FINAL STATISTICS',
-    titleBgColor: nova64.draw.rgba8(100, 50, 200, 255),
-  });
+  const statsPanel = nova64.ui.createPanel(
+    nova64.ui.centerX(420),
+    nova64.ui.centerY(220),
+    420,
+    220,
+    {
+      bgColor: nova64.draw.rgba8(20, 10, 40, 220),
+      borderColor: nova64.draw.rgba8(100, 50, 200, 255),
+      borderWidth: 3,
+      shadow: true,
+      title: 'FINAL STATISTICS',
+      titleBgColor: nova64.draw.rgba8(100, 50, 200, 255),
+    }
+  );
   nova64.draw.drawPanel(statsPanel);
 
   // Stats
   nova64.ui.setFont('large');
   nova64.ui.setTextAlign('center');
-  nova64.ui.drawText(`Crystals Collected: ${crystalsCollected}`, 320, 200, nova64.draw.rgba8(255, 215, 0, 255), 1);
+  nova64.ui.drawText(
+    `Crystals Collected: ${crystalsCollected}`,
+    320,
+    200,
+    nova64.draw.rgba8(255, 215, 0, 255),
+    1
+  );
 
   nova64.ui.setFont('normal');
   const minutes = Math.floor(playTime / 60);

@@ -39,8 +39,7 @@ function _baseNode(type) {
     globalThis.createTween?.(node, props, dur, opts) ??
     globalThis.nova64?.tween?.createTween?.(node, props, dur, opts);
   node.killTweens = () =>
-    globalThis.killTweensOf?.(node) ??
-    globalThis.nova64?.tween?.killTweensOf?.(node);
+    globalThis.killTweensOf?.(node) ?? globalThis.nova64?.tween?.killTweensOf?.(node);
   return node;
 }
 

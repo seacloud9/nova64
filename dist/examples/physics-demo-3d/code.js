@@ -181,7 +181,15 @@ export function draw() {
 
 function drawStartScreen() {
   // Scientific gradient background
-  nova64.ui.drawGradientRect(0, 0, 640, 360, nova64.draw.rgba8(20, 40, 30, 230), nova64.draw.rgba8(10, 20, 15, 245), true);
+  nova64.ui.drawGradientRect(
+    0,
+    0,
+    640,
+    360,
+    nova64.draw.rgba8(20, 40, 30, 230),
+    nova64.draw.rgba8(10, 20, 15, 245),
+    true
+  );
 
   // Animated title
   nova64.ui.setFont('huge');
@@ -195,8 +203,24 @@ function drawStartScreen() {
   );
 
   const bounce = Math.abs(Math.sin(startScreenTime * 4)) * 15;
-  nova64.ui.drawTextShadow('PHYSICS', 320, 50 + bounce, sciColor, nova64.draw.rgba8(0, 0, 0, 255), 6, 1);
-  nova64.ui.drawTextShadow('LAB 3D', 320, 105, nova64.draw.rgba8(255, 255, 255, 255), nova64.draw.rgba8(0, 0, 0, 255), 6, 1);
+  nova64.ui.drawTextShadow(
+    'PHYSICS',
+    320,
+    50 + bounce,
+    sciColor,
+    nova64.draw.rgba8(0, 0, 0, 255),
+    6,
+    1
+  );
+  nova64.ui.drawTextShadow(
+    'LAB 3D',
+    320,
+    105,
+    nova64.draw.rgba8(255, 255, 255, 255),
+    nova64.draw.rgba8(0, 0, 0, 255),
+    6,
+    1
+  );
 
   // Subtitle
   nova64.ui.setFont('large');
@@ -226,7 +250,13 @@ function drawStartScreen() {
   nova64.ui.drawText('5 PHYSICS SIMULATIONS', 320, 230, nova64.draw.rgba8(100, 255, 150, 255), 1);
 
   nova64.ui.setFont('small');
-  nova64.ui.drawText('⚛ Bouncing Spheres - Realistic collision physics', 320, 255, uiColors.light, 1);
+  nova64.ui.drawText(
+    '⚛ Bouncing Spheres - Realistic collision physics',
+    320,
+    255,
+    uiColors.light,
+    1
+  );
   nova64.ui.drawText('⚛ Pendulum Chain - Connected body dynamics', 320, 270, uiColors.light, 1);
   nova64.ui.drawText('⚛ Particle Fountain - Mass particle system', 320, 285, uiColors.light, 1);
   nova64.ui.drawText('⚛ Gravity Well - Force field simulation', 320, 300, uiColors.light, 1);
@@ -240,11 +270,23 @@ function drawStartScreen() {
   // Pulsing prompt
   const alpha = Math.floor((Math.sin(startScreenTime * 6) * 0.5 + 0.5) * 255);
   nova64.ui.setFont('normal');
-  nova64.ui.drawText('⚛ EXPERIENCE REAL-TIME 3D PHYSICS ⚛', 320, 430, nova64.draw.rgba8(100, 255, 150, alpha), 1);
+  nova64.ui.drawText(
+    '⚛ EXPERIENCE REAL-TIME 3D PHYSICS ⚛',
+    320,
+    430,
+    nova64.draw.rgba8(100, 255, 150, alpha),
+    1
+  );
 
   // Tech info
   nova64.ui.setFont('tiny');
-  nova64.ui.drawText('Nintendo 64 / PlayStation Style Rendering', 320, 345, nova64.draw.rgba8(150, 200, 150, 150), 1);
+  nova64.ui.drawText(
+    'Nintendo 64 / PlayStation Style Rendering',
+    320,
+    345,
+    nova64.draw.rgba8(150, 200, 150, 150),
+    1
+  );
 }
 
 async function createWorld() {
@@ -435,7 +477,11 @@ function setupGravityWell() {
     const radius = 8 + Math.random() * 4;
 
     const sphere = createPhysicsObject({
-      mesh: nova64.scene.createSphere(0.6, 0x44ffff, [Math.cos(angle) * radius, 8, Math.sin(angle) * radius]),
+      mesh: nova64.scene.createSphere(0.6, 0x44ffff, [
+        Math.cos(angle) * radius,
+        8,
+        Math.sin(angle) * radius,
+      ]),
       x: Math.cos(angle) * radius,
       y: 8,
       z: Math.sin(angle) * radius,
@@ -507,11 +553,11 @@ function setupSandbox() {
   for (let row = 0; row < 5; row++) {
     for (let col = 0; col < 3; col++) {
       const cube = createPhysicsObject({
-        mesh: nova64.scene.createCube(1.2, [0xff4444, 0x44ff44, 0x4488ff, 0xffff44, 0xff88ff][row], [
-          (col - 1) * 1.5,
-          row * 1.5 + 1,
-          0,
-        ]),
+        mesh: nova64.scene.createCube(
+          1.2,
+          [0xff4444, 0x44ff44, 0x4488ff, 0xffff44, 0xff88ff][row],
+          [(col - 1) * 1.5, row * 1.5 + 1, 0]
+        ),
         x: (col - 1) * 1.5,
         y: row * 1.5 + 1,
         z: 0,
@@ -930,11 +976,26 @@ function drawUI() {
 
   // Title and Demo Info
   nova64.draw.print('PHYSICS LAB 3D', 24, 24, nova64.draw.rgba8(100, 200, 255, 255));
-  nova64.draw.print(`DEMO: ${demos[selectedDemo].name}`, 24, 40, nova64.draw.rgba8(255, 255, 255, 255));
+  nova64.draw.print(
+    `DEMO: ${demos[selectedDemo].name}`,
+    24,
+    40,
+    nova64.draw.rgba8(255, 255, 255, 255)
+  );
 
   // Stats
-  nova64.draw.print(`OBJECTS: ${physicsObjects.length}`, 24, 56, nova64.draw.rgba8(255, 215, 0, 255));
-  nova64.draw.print(`PARTICLES: ${particles.length}`, 24, 72, nova64.draw.rgba8(255, 100, 100, 255));
+  nova64.draw.print(
+    `OBJECTS: ${physicsObjects.length}`,
+    24,
+    56,
+    nova64.draw.rgba8(255, 215, 0, 255)
+  );
+  nova64.draw.print(
+    `PARTICLES: ${particles.length}`,
+    24,
+    72,
+    nova64.draw.rgba8(255, 100, 100, 255)
+  );
 
   // Destruction score — the fun metric!
   const scoreColor =
@@ -947,7 +1008,12 @@ function drawUI() {
   nova64.draw.print(`COLLISIONS: ${collisionCount}`, 24, 104, nova64.draw.rgba8(200, 150, 255));
 
   // Right side stats
-  nova64.draw.print(`BIGGEST HIT: ${biggestImpact.toFixed(1)}`, 250, 56, nova64.draw.rgba8(255, 150, 50));
+  nova64.draw.print(
+    `BIGGEST HIT: ${biggestImpact.toFixed(1)}`,
+    250,
+    56,
+    nova64.draw.rgba8(255, 150, 50)
+  );
   if (highScore > 0) {
     nova64.draw.print(`HIGH SCORE: ${highScore}`, 250, 72, nova64.draw.rgba8(255, 215, 0));
   }
@@ -956,7 +1022,12 @@ function drawUI() {
   // 3D Stats
   const stats = nova64.scene.get3DStats();
   if (stats) {
-    nova64.draw.print(`3D MESHES: ${stats.meshes || 0}`, 250, 104, nova64.draw.rgba8(150, 150, 255, 255));
+    nova64.draw.print(
+      `3D MESHES: ${stats.meshes || 0}`,
+      250,
+      104,
+      nova64.draw.rgba8(150, 150, 255, 255)
+    );
   }
 
   // Debug info

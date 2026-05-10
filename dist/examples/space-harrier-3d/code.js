@@ -252,7 +252,12 @@ function spawnScenery(randomZ = false) {
     nova64.scene.setScale(trunk, 1, height, 1);
 
     // Exceptional foliage look
-    const top = nova64.scene.createSphere(2.5 + Math.random(), PALETTE.treeLeaves, [x, y + height + 1, z], 6);
+    const top = nova64.scene.createSphere(
+      2.5 + Math.random(),
+      PALETTE.treeLeaves,
+      [x, y + height + 1, z],
+      6
+    );
     parts.push({ mesh: trunk, oy: y + height / 2 });
     parts.push({ mesh: top, oy: y + height + 1 });
   } else {
@@ -409,7 +414,8 @@ export function update(dt) {
     // Animate player idly
     updatePlayer(dt, true);
 
-    if (nova64.util.cooldownReady(inputLockoutCD) && nova64.input.isKeyPressed('Space')) startGame();
+    if (nova64.util.cooldownReady(inputLockoutCD) && nova64.input.isKeyPressed('Space'))
+      startGame();
     return;
   }
 
@@ -831,32 +837,126 @@ function drawStartScreen() {
   nova64.draw.cls(nova64.draw.rgba8(5, 0, 15, 255));
 
   // Rich alien-world gradient layered on top
-  nova64.draw.drawGradient(0, 0, 640, 360, nova64.draw.rgba8(20, 5, 55, 255), nova64.draw.rgba8(4, 0, 18, 255), 'v');
+  nova64.draw.drawGradient(
+    0,
+    0,
+    640,
+    360,
+    nova64.draw.rgba8(20, 5, 55, 255),
+    nova64.draw.rgba8(4, 0, 18, 255),
+    'v'
+  );
 
   // Radial spotlight glow behind title
-  nova64.draw.drawRadialGradient(320, 105, 230, nova64.draw.rgba8(200, 60, 255, 48), nova64.draw.rgba8(0, 0, 0, 0));
+  nova64.draw.drawRadialGradient(
+    320,
+    105,
+    230,
+    nova64.draw.rgba8(200, 60, 255, 48),
+    nova64.draw.rgba8(0, 0, 0, 0)
+  );
 
   // Cosmic starfield noise
   nova64.draw.drawNoise(0, 0, 640, 360, 22, Math.floor(gameTime * 6));
 
   // Distant planet arc at horizon
-  nova64.draw.drawRadialGradient(320, 440, 280, nova64.draw.rgba8(80, 0, 160, 70), nova64.draw.rgba8(0, 0, 0, 0));
+  nova64.draw.drawRadialGradient(
+    320,
+    440,
+    280,
+    nova64.draw.rgba8(80, 0, 160, 70),
+    nova64.draw.rgba8(0, 0, 0, 0)
+  );
 
   // Corner starbursts — pulsing
   const sp = Math.sin(gameTime * 2) * 0.5 + 0.5;
-  nova64.draw.drawStarburst(30, 30, 18, 7, 6, nova64.draw.rgba8(255, 140, 0, Math.floor(sp * 210)), true);
-  nova64.draw.drawStarburst(610, 30, 18, 7, 6, nova64.draw.rgba8(255, 140, 0, Math.floor(sp * 210)), true);
-  nova64.draw.drawStarburst(30, 330, 12, 5, 5, nova64.draw.rgba8(180, 0, 255, Math.floor((1 - sp) * 180)), true);
-  nova64.draw.drawStarburst(610, 330, 12, 5, 5, nova64.draw.rgba8(180, 0, 255, Math.floor((1 - sp) * 180)), true);
+  nova64.draw.drawStarburst(
+    30,
+    30,
+    18,
+    7,
+    6,
+    nova64.draw.rgba8(255, 140, 0, Math.floor(sp * 210)),
+    true
+  );
+  nova64.draw.drawStarburst(
+    610,
+    30,
+    18,
+    7,
+    6,
+    nova64.draw.rgba8(255, 140, 0, Math.floor(sp * 210)),
+    true
+  );
+  nova64.draw.drawStarburst(
+    30,
+    330,
+    12,
+    5,
+    5,
+    nova64.draw.rgba8(180, 0, 255, Math.floor((1 - sp) * 180)),
+    true
+  );
+  nova64.draw.drawStarburst(
+    610,
+    330,
+    12,
+    5,
+    5,
+    nova64.draw.rgba8(180, 0, 255, Math.floor((1 - sp) * 180)),
+    true
+  );
 
   // More scattered star shots across the sky
-  nova64.draw.drawStarburst(90, 70, 7, 3, 4, nova64.draw.rgba8(255, 255, 180, Math.floor(sp * 160)), true);
-  nova64.draw.drawStarburst(550, 55, 6, 2, 4, nova64.draw.rgba8(200, 180, 255, Math.floor((1 - sp) * 150)), true);
-  nova64.draw.drawStarburst(480, 80, 5, 2, 5, nova64.draw.rgba8(255, 200, 100, Math.floor(sp * 130)), true);
+  nova64.draw.drawStarburst(
+    90,
+    70,
+    7,
+    3,
+    4,
+    nova64.draw.rgba8(255, 255, 180, Math.floor(sp * 160)),
+    true
+  );
+  nova64.draw.drawStarburst(
+    550,
+    55,
+    6,
+    2,
+    4,
+    nova64.draw.rgba8(200, 180, 255, Math.floor((1 - sp) * 150)),
+    true
+  );
+  nova64.draw.drawStarburst(
+    480,
+    80,
+    5,
+    2,
+    5,
+    nova64.draw.rgba8(255, 200, 100, Math.floor(sp * 130)),
+    true
+  );
 
   // Energy wave at the horizon line
-  nova64.draw.drawWave(0, 185, 640, 6, 0.028, gameTime * 2.2, nova64.draw.rgba8(180, 0, 255, 100), 2);
-  nova64.draw.drawWave(0, 190, 640, 4, 0.042, gameTime * 2.8 + 1.0, nova64.draw.rgba8(255, 100, 0, 75), 2);
+  nova64.draw.drawWave(
+    0,
+    185,
+    640,
+    6,
+    0.028,
+    gameTime * 2.2,
+    nova64.draw.rgba8(180, 0, 255, 100),
+    2
+  );
+  nova64.draw.drawWave(
+    0,
+    190,
+    640,
+    4,
+    0.042,
+    gameTime * 2.8 + 1.0,
+    nova64.draw.rgba8(255, 100, 0, 75),
+    2
+  );
 
   // Main title — SPACE HARRIER with orange/flame glow
   const titleBob = Math.sin(gameTime * 1.8) * 7;
@@ -881,11 +981,23 @@ function drawStartScreen() {
   const subPulse = Math.sin(gameTime * 3) * 0.25 + 0.75;
   nova64.ui.setFont('large');
   nova64.ui.setTextAlign('center');
-  nova64.ui.drawText('NOVA 64 EDITION', 320, 152, nova64.draw.rgba8(120, 200, 255, Math.floor(subPulse * 255)), 1);
+  nova64.ui.drawText(
+    'NOVA 64 EDITION',
+    320,
+    152,
+    nova64.draw.rgba8(120, 200, 255, Math.floor(subPulse * 255)),
+    1
+  );
 
   // Tagline
   nova64.ui.setFont('normal');
-  nova64.ui.drawText('THE LEGENDARY RAIL SHOOTER RETURNS', 320, 174, nova64.draw.rgba8(200, 150, 255, 200), 1);
+  nova64.ui.drawText(
+    'THE LEGENDARY RAIL SHOOTER RETURNS',
+    320,
+    174,
+    nova64.draw.rgba8(200, 150, 255, 200),
+    1
+  );
 
   // Info panel
   const panel = nova64.ui.createPanel(nova64.ui.centerX(440), 200, 440, 92, {
@@ -911,7 +1023,13 @@ function drawStartScreen() {
 
   // Pulsing prompt
   const alpha = Math.floor((Math.sin(gameTime * 5) * 0.5 + 0.5) * 255);
-  nova64.ui.drawText('◆ PRESS SPACE TO LAUNCH ◆', 320, 334, nova64.draw.rgba8(255, 160, 0, alpha), 1);
+  nova64.ui.drawText(
+    '◆ PRESS SPACE TO LAUNCH ◆',
+    320,
+    334,
+    nova64.draw.rgba8(255, 160, 0, alpha),
+    1
+  );
 
   // CRT scanlines
   nova64.draw.drawScanlines(45, 2);
@@ -947,7 +1065,15 @@ export function draw() {
     nova64.draw.rect(0, 0, 640, 360, nova64.draw.rgba8(100, 0, 0, 150), true);
     nova64.ui.setFont('huge');
     nova64.ui.setTextAlign('center');
-    nova64.ui.drawTextShadow('GAME OVER', 320, 120, uiColors.danger, nova64.draw.rgba8(0, 0, 0, 255), 4, 1);
+    nova64.ui.drawTextShadow(
+      'GAME OVER',
+      320,
+      120,
+      uiColors.danger,
+      nova64.draw.rgba8(0, 0, 0, 255),
+      4,
+      1
+    );
 
     nova64.ui.setFont('normal');
     nova64.ui.drawText('SCORE: ' + Math.floor(game.score), 320, 180, uiColors.warning, 1);
@@ -990,7 +1116,13 @@ export function draw() {
   // Kill streak
   if (game.killStreak >= 3) {
     nova64.ui.setTextAlign('center');
-    nova64.ui.drawText(`${game.killStreak}x STREAK!`, 320, 60, nova64.draw.rgba8(255, 200, 50, 255), 1);
+    nova64.ui.drawText(
+      `${game.killStreak}x STREAK!`,
+      320,
+      60,
+      nova64.draw.rgba8(255, 200, 50, 255),
+      1
+    );
     nova64.ui.setTextAlign('left');
   }
 
@@ -998,9 +1130,21 @@ export function draw() {
   if (game.waveClear) {
     nova64.ui.setTextAlign('center');
     nova64.ui.setFont('large');
-    nova64.ui.drawText(`WAVE ${game.wave} CLEAR!`, 320, 160, nova64.draw.rgba8(0, 255, 100, 255), 1);
+    nova64.ui.drawText(
+      `WAVE ${game.wave} CLEAR!`,
+      320,
+      160,
+      nova64.draw.rgba8(0, 255, 100, 255),
+      1
+    );
     nova64.ui.setFont('normal');
-    nova64.ui.drawText(`+${game.wave * 200} BONUS`, 320, 185, nova64.draw.rgba8(255, 255, 100, 255), 1);
+    nova64.ui.drawText(
+      `+${game.wave * 200} BONUS`,
+      320,
+      185,
+      nova64.draw.rgba8(255, 255, 100, 255),
+      1
+    );
     nova64.ui.setTextAlign('left');
   }
 }

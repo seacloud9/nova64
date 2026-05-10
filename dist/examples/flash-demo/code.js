@@ -100,7 +100,11 @@ export function update(dt) {
   _navCD = Math.max(0, _navCD - dt);
 
   if (_navCD <= 0 && _fadeDir === 0) {
-    if (nova64.input.keyp('Space') || nova64.input.keyp('Enter') || nova64.input.keyp('ArrowRight')) {
+    if (
+      nova64.input.keyp('Space') ||
+      nova64.input.keyp('Enter') ||
+      nova64.input.keyp('ArrowRight')
+    ) {
       _startFade((_si + 1) % SCENES.length);
       _navCD = 0.35;
     }
@@ -187,7 +191,13 @@ function s1_draw(s) {
 
     // Specular highlight
     const sr = Math.max(1, (b.r / 3) | 0);
-    nova64.draw.circle((b.x - b.r * 0.35) | 0, (cy - b.r * 0.32) | 0, sr, nova64.draw.rgba8(255, 255, 255, 200), true);
+    nova64.draw.circle(
+      (b.x - b.r * 0.35) | 0,
+      (cy - b.r * 0.32) | 0,
+      sr,
+      nova64.draw.rgba8(255, 255, 255, 200),
+      true
+    );
   }
 
   nova64.draw.print('TWEEN BOUNCE', 4, 4, 0x888888);
@@ -890,7 +900,8 @@ function s9_update(s, dt) {
 
 function s9_draw(s) {
   nova64.draw.cls(0x0d1a2e);
-  for (let i = 0; i < 18; i++) nova64.draw.pset(((_gT * 12 + i * 137) | 0) % W, (i * 83) % H, 0x1a2a3a);
+  for (let i = 0; i < 18; i++)
+    nova64.draw.pset(((_gT * 12 + i * 137) | 0) % W, (i * 83) % H, 0x1a2a3a);
   nova64.draw.rectfill(0, 0, W, 42, nova64.draw.rgba8(0, 0, 0, 110));
   nova64.draw.printCentered('NOVA  64', CX, 12, 0xffcc44);
   nova64.draw.printCentered('ULTIMATE 3D FANTASY CONSOLE', CX, 27, 0x445566);

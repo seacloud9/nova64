@@ -186,8 +186,20 @@ export function init() {
   s4SphereA = nova64.scene.createSphere(0.7, 0xff4488, [s4APos.x, s4APos.y, s4APos.z]);
   s4SphereB = nova64.scene.createSphere(0.7, 0x44aaff, [s4BPos.x, s4BPos.y, s4BPos.z]);
 
-  s4AOsc = nova64.tween.createOscillator({ waveform: 'sin', min: -5, max: 5, speed: 0.4, offset: 0 });
-  s4BOsc = nova64.tween.createOscillator({ waveform: 'cos', min: -5, max: 5, speed: 0.4, offset: 0 });
+  s4AOsc = nova64.tween.createOscillator({
+    waveform: 'sin',
+    min: -5,
+    max: 5,
+    speed: 0.4,
+    offset: 0,
+  });
+  s4BOsc = nova64.tween.createOscillator({
+    waveform: 'cos',
+    min: -5,
+    max: 5,
+    speed: 0.4,
+    offset: 0,
+  });
 
   s4Proximity = nova64.tween.createProximityTrigger({
     getFrom: () => s4APos,
@@ -307,7 +319,12 @@ export function init() {
   });
 
   // Slow saw oscillator spins the whole formation
-  s7RotOsc = nova64.tween.createOscillator({ waveform: 'saw', min: 0, max: Math.PI * 2, speed: 0.08 });
+  s7RotOsc = nova64.tween.createOscillator({
+    waveform: 'saw',
+    min: 0,
+    max: Math.PI * 2,
+    speed: 0.08,
+  });
 
   // ── Section 8 — HPool Dynamic Objects ────────────────────────────────────
   let _s8HueIdx = 0;
@@ -373,14 +390,22 @@ export function init() {
   for (let i = 0; i < LISS_TRAIL; i++) {
     const fade = 1 - i / LISS_TRAIL;
     const c = Math.round(fade * 200);
-    const mesh = nova64.scene.createCube(0.18, nova64.draw.rgba8(c, Math.round(fade * 140), 255), [0, 0, -8]);
+    const mesh = nova64.scene.createCube(
+      0.18,
+      nova64.draw.rgba8(c, Math.round(fade * 140), 255),
+      [0, 0, -8]
+    );
     s9TrailMeshes.push(mesh);
     s9History.push({ x: 0, y: 0, z: -8 });
   }
 
   // ── Section 10 — TimeTrigger Cascade ────────────────────────────────────────
   for (let i = 0; i < CASCADE_COUNT; i++) {
-    const mesh = nova64.scene.createCube(0.7, 0x223344, [(i - CASCADE_COUNT / 2 + 0.5) * 1.8, 0, -8]);
+    const mesh = nova64.scene.createCube(0.7, 0x223344, [
+      (i - CASCADE_COUNT / 2 + 0.5) * 1.8,
+      0,
+      -8,
+    ]);
     s10Cubes.push(mesh);
     const tw = nova64.tween.createTween({
       from: 0.4,
@@ -777,12 +802,22 @@ export function draw() {
   if (section === 5) {
     const t = (s6RiderTween?.progress ?? 0).toFixed(2);
     nova64.draw.drawPanel(4, H - 24, 190, 14, panel(nova64.draw.rgba8(255, 170, 0)));
-    nova64.draw.print(`Path t: ${t}  Waypoints: ${s6PathMeshes.length}`, 8, H - 20, nova64.draw.rgba8(255, 170, 0));
+    nova64.draw.print(
+      `Path t: ${t}  Waypoints: ${s6PathMeshes.length}`,
+      8,
+      H - 20,
+      nova64.draw.rgba8(255, 170, 0)
+    );
   }
 
   if (section === 6) {
     nova64.draw.drawPanel(4, H - 24, 215, 14, panel(nova64.draw.rgba8(255, 128, 255)));
-    nova64.draw.print(`Fibonacci sphere  24 pts  ColorPool: shuffle`, 8, H - 20, nova64.draw.rgba8(255, 128, 255));
+    nova64.draw.print(
+      `Fibonacci sphere  24 pts  ColorPool: shuffle`,
+      8,
+      H - 20,
+      nova64.draw.rgba8(255, 128, 255)
+    );
   }
 
   if (section === 7) {
@@ -799,7 +834,12 @@ export function draw() {
     nova64.draw.drawPanel(4, H - 24, 215, 14, panel(nova64.draw.rgba8(136, 136, 255)));
     const rx = (s9OscX?.value ?? 0).toFixed(2);
     const ry = (s9OscY?.value ?? 0).toFixed(2);
-    nova64.draw.print(`Lissajous  x:${rx} y:${ry}  trail:${LISS_TRAIL}`, 8, H - 20, nova64.draw.rgba8(136, 136, 255));
+    nova64.draw.print(
+      `Lissajous  x:${rx} y:${ry}  trail:${LISS_TRAIL}`,
+      8,
+      H - 20,
+      nova64.draw.rgba8(136, 136, 255)
+    );
   }
 
   if (section === 9) {
@@ -814,12 +854,26 @@ export function draw() {
 
   if (section === 10) {
     nova64.draw.drawPanel(4, H - 24, 215, 14, panel(nova64.draw.rgba8(68, 255, 204)));
-    nova64.draw.print(`Saw wave  ${WAVE_COUNT} cubes  phase: 1/${WAVE_COUNT}`, 8, H - 20, nova64.draw.rgba8(68, 255, 204));
+    nova64.draw.print(
+      `Saw wave  ${WAVE_COUNT} cubes  phase: 1/${WAVE_COUNT}`,
+      8,
+      H - 20,
+      nova64.draw.rgba8(68, 255, 204)
+    );
   }
 
   // ── Timer bar ─────────────────────────────────────────────────────────────
   const secStart = SECTION_STARTS[section];
   const secEnd = SECTION_ENDS[section];
   const t = Math.min(1, (time - secStart) / (secEnd - secStart));
-  nova64.draw.drawProgressBar(4, H - 6, W - 8, 4, t, cCyan, nova64.draw.rgba8(17, 34, 51), nova64.draw.rgba8(34, 68, 85));
+  nova64.draw.drawProgressBar(
+    4,
+    H - 6,
+    W - 8,
+    4,
+    t,
+    cCyan,
+    nova64.draw.rgba8(17, 34, 51),
+    nova64.draw.rgba8(34, 68, 85)
+  );
 }

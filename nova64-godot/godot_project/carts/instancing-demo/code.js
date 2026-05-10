@@ -87,44 +87,44 @@ async function buildForestScene() {
 
   // Trunks: 500 instanced cylinders
   const trunkId = createInstancedMesh('cylinder', 500, 0x4a2e10, {
-    size: 0.25,
-    height: 3,
-    roughness: 1,
-    metalness: 0,
+	size: 0.25,
+	height: 3,
+	roughness: 1,
+	metalness: 0,
   });
 
   // Canopies: 500 instanced spheres, per-instance colour
   const canopyId = createInstancedMesh('sphere', 500, 0x226622, {
-    size: 0.9,
-    segments: 5,
-    roughness: 0.9,
-    metalness: 0,
+	size: 0.9,
+	segments: 5,
+	roughness: 0.9,
+	metalness: 0,
   });
 
   const RANGE = 40;
   for (let i = 0; i < 500; i++) {
-    const x = (rand() - 0.5) * RANGE;
-    const z = (rand() - 0.5) * RANGE;
-    const h = 2 + rand() * 3;
+	const x = (rand() - 0.5) * RANGE;
+	const z = (rand() - 0.5) * RANGE;
+	const h = 2 + rand() * 3;
 
-    setInstanceTransform(trunkId, i, x, h * 0.5, z, 0, 0, 0, 1, h, 1);
-    setInstanceTransform(
-      canopyId,
-      i,
-      x,
-      h + 1.2,
-      z,
-      0,
-      0,
-      0,
-      1 + rand() * 0.5,
-      1 + rand() * 0.3,
-      1 + rand() * 0.5
-    );
+	setInstanceTransform(trunkId, i, x, h * 0.5, z, 0, 0, 0, 1, h, 1);
+	setInstanceTransform(
+	  canopyId,
+	  i,
+	  x,
+	  h + 1.2,
+	  z,
+	  0,
+	  0,
+	  0,
+	  1 + rand() * 0.5,
+	  1 + rand() * 0.3,
+	  1 + rand() * 0.5
+	);
 
-    // Vary canopy green shade
-    const g = 0x33 + Math.floor(rand() * 0x55);
-    setInstanceColor(canopyId, i, (0x10 << 16) | (g << 8) | 0x10);
+	// Vary canopy green shade
+	const g = 0x33 + Math.floor(rand() * 0x55);
+	setInstanceColor(canopyId, i, (0x10 << 16) | (g << 8) | 0x10);
   }
 
   finalizeInstances(trunkId);
@@ -132,13 +132,13 @@ async function buildForestScene() {
 
   // Floating dust particles (animated in update)
   dustId = createInstancedMesh('sphere', 200, 0xaaffaa, {
-    size: 0.05,
-    segments: 3,
-    emissive: 0x224422,
-    emissiveIntensity: 0.8,
+	size: 0.05,
+	segments: 3,
+	emissive: 0x224422,
+	emissiveIntensity: 0.8,
   });
   for (let i = 0; i < 200; i++) {
-    setInstanceTransform(dustId, i, (rand() - 0.5) * 35, 0.5 + rand() * 8, (rand() - 0.5) * 35);
+	setInstanceTransform(dustId, i, (rand() - 0.5) * 35, 0.5 + rand() * 8, (rand() - 0.5) * 35);
   }
   finalizeInstances(dustId);
 }
@@ -152,38 +152,38 @@ async function buildCrystalScene() {
 
   const CRYSTAL_COUNT = 300;
   crystalId = createInstancedMesh('cone', CRYSTAL_COUNT, 0x8855ff, {
-    size: 0.6,
-    height: 3,
-    roughness: 0.1,
-    metalness: 0.8,
-    emissive: 0x220044,
-    emissiveIntensity: 0.5,
+	size: 0.6,
+	height: 3,
+	roughness: 0.1,
+	metalness: 0.8,
+	emissive: 0x220044,
+	emissiveIntensity: 0.5,
   });
 
   const hues = [0x8855ff, 0xff44cc, 0x44aaff, 0xffaa00, 0x44ffaa];
   for (let i = 0; i < CRYSTAL_COUNT; i++) {
-    const angle = rand() * Math.PI * 2;
-    const r = 3 + rand() * 22;
-    const x = Math.cos(angle) * r;
-    const z = Math.sin(angle) * r;
-    const h = 0.8 + rand() * 3.5;
-    const tiltX = (rand() - 0.5) * 0.4;
-    const tiltZ = (rand() - 0.5) * 0.4;
+	const angle = rand() * Math.PI * 2;
+	const r = 3 + rand() * 22;
+	const x = Math.cos(angle) * r;
+	const z = Math.sin(angle) * r;
+	const h = 0.8 + rand() * 3.5;
+	const tiltX = (rand() - 0.5) * 0.4;
+	const tiltZ = (rand() - 0.5) * 0.4;
 
-    setInstanceTransform(
-      crystalId,
-      i,
-      x,
-      h * 0.5,
-      z,
-      tiltX,
-      0,
-      tiltZ,
-      0.5 + rand() * 0.8,
-      h,
-      0.5 + rand() * 0.8
-    );
-    setInstanceColor(crystalId, i, hues[i % hues.length]);
+	setInstanceTransform(
+	  crystalId,
+	  i,
+	  x,
+	  h * 0.5,
+	  z,
+	  tiltX,
+	  0,
+	  tiltZ,
+	  0.5 + rand() * 0.8,
+	  h,
+	  0.5 + rand() * 0.8
+	);
+	setInstanceColor(crystalId, i, hues[i % hues.length]);
   }
   finalizeInstances(crystalId);
 }
@@ -196,49 +196,49 @@ async function buildLODScene() {
 
   // One LOD rock model: high-poly close, low-poly far
   createLODMesh(
-    [
-      {
-        shape: 'sphere',
-        size: 2,
-        color: 0x887766,
-        distance: 0,
-        options: { segments: 8, roughness: 1, metalness: 0 },
-      },
-      {
-        shape: 'sphere',
-        size: 2,
-        color: 0x887766,
-        distance: 15,
-        options: { segments: 5, roughness: 1, metalness: 0 },
-      },
-      {
-        shape: 'cube',
-        size: 2,
-        color: 0x776655,
-        distance: 35,
-        options: { roughness: 1, metalness: 0 },
-      },
-    ],
-    [0, 1, 0]
+	[
+	  {
+		shape: 'sphere',
+		size: 2,
+		color: 0x887766,
+		distance: 0,
+		options: { segments: 8, roughness: 1, metalness: 0 },
+	  },
+	  {
+		shape: 'sphere',
+		size: 2,
+		color: 0x887766,
+		distance: 15,
+		options: { segments: 5, roughness: 1, metalness: 0 },
+	  },
+	  {
+		shape: 'cube',
+		size: 2,
+		color: 0x776655,
+		distance: 35,
+		options: { roughness: 1, metalness: 0 },
+	  },
+	],
+	[0, 1, 0]
   );
 
   // Scatter 80 individual rocks using instancing
   const ROCK_COUNT = 80;
   const rocksId = createInstancedMesh('sphere', ROCK_COUNT, 0x887766, {
-    size: 1,
-    segments: 5,
-    roughness: 1,
-    metalness: 0,
+	size: 1,
+	segments: 5,
+	roughness: 1,
+	metalness: 0,
   });
 
   const RANGE = 45;
   for (let i = 0; i < ROCK_COUNT; i++) {
-    const x = (rand() - 0.5) * RANGE;
-    const z = (rand() - 0.5) * RANGE;
-    const s = 0.4 + rand() * 1.8;
-    setInstanceTransform(rocksId, i, x, s * 0.5, z, 0, rand() * Math.PI, 0, s, s * 0.7, s);
-    const shade = 0x66 + Math.floor(rand() * 0x44);
-    setInstanceColor(rocksId, i, (shade << 16) | ((shade - 0x10) << 8) | (shade - 0x20));
+	const x = (rand() - 0.5) * RANGE;
+	const z = (rand() - 0.5) * RANGE;
+	const s = 0.4 + rand() * 1.8;
+	setInstanceTransform(rocksId, i, x, s * 0.5, z, 0, rand() * Math.PI, 0, s, s * 0.7, s);
+	const shade = 0x66 + Math.floor(rand() * 0x44);
+	setInstanceColor(rocksId, i, (shade << 16) | ((shade - 0x10) << 8) | (shade - 0x20));
   }
   finalizeInstances(rocksId);
 }
@@ -249,22 +249,22 @@ export function update(dt) {
 
   // Switch scene on 1/2/3
   if (keyp('Digit1') && scene !== 1) {
-    scene = 1;
-    prevScene = 0;
+	scene = 1;
+	prevScene = 0;
   }
   if (keyp('Digit2') && scene !== 2) {
-    scene = 2;
-    prevScene = 0;
+	scene = 2;
+	prevScene = 0;
   }
   if (keyp('Digit3') && scene !== 3) {
-    scene = 3;
-    prevScene = 0;
+	scene = 3;
+	prevScene = 0;
   }
   if (keyp('KeyF')) showHUD = !showHUD;
 
   if (scene !== prevScene) {
-    loadScene(scene);
-    prevScene = scene;
+	loadScene(scene);
+	prevScene = scene;
   }
 
   // Camera orbit
@@ -282,25 +282,25 @@ export function update(dt) {
 
   // Animate dust in forest scene
   if (scene === 1 && dustId !== null) {
-    for (let i = 0; i < 200; i++) {
-      const offset = i * 1.37;
-      const x = Math.sin(time * 0.3 + offset) * 17;
-      const y = 0.5 + ((time * 0.2 + offset * 0.5) % 8);
-      const z = Math.cos(time * 0.2 + offset * 0.7) * 17;
-      setInstanceTransform(dustId, i, x, y, z);
-    }
-    finalizeInstances(dustId);
+	for (let i = 0; i < 200; i++) {
+	  const offset = i * 1.37;
+	  const x = Math.sin(time * 0.3 + offset) * 17;
+	  const y = 0.5 + ((time * 0.2 + offset * 0.5) % 8);
+	  const z = Math.cos(time * 0.2 + offset * 0.7) * 17;
+	  setInstanceTransform(dustId, i, x, y, z);
+	}
+	finalizeInstances(dustId);
   }
 
   // Animate crystals — subtle pulse
   if (scene === 2 && crystalId !== null && crystalLightId !== null) {
-    // Update point light position to orbit
-    setPointLightPosition(
-      crystalLightId,
-      Math.cos(time * 0.5) * 8,
-      6 + Math.sin(time * 0.7) * 2,
-      Math.sin(time * 0.5) * 8
-    );
+	// Update point light position to orbit
+	setPointLightPosition(
+	  crystalLightId,
+	  Math.cos(time * 0.5) * 8,
+	  6 + Math.sin(time * 0.7) * 2,
+	  Math.sin(time * 0.5) * 8
+	);
   }
 
   // Update LOD (required each frame)
@@ -312,10 +312,10 @@ export function draw() {
   if (!showHUD) return;
 
   const sceneNames = [
-    '',
-    'FOREST (500 instanced trees)',
-    'CRYSTAL FIELD (300 instanced prisms)',
-    'LOD ROCKS (80 instanced + 1 LOD)',
+	'',
+	'FOREST (500 instanced trees)',
+	'CRYSTAL FIELD (300 instanced prisms)',
+	'LOD ROCKS (80 instanced + 1 LOD)',
   ];
   const BLUE = rgba8(40, 80, 180, 200);
   const WHITE = rgba8(255, 255, 255, 255);

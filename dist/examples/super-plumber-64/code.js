@@ -376,7 +376,10 @@ function addPlatform(x, y, z, sx, sy, sz, color, isBrick = false, isTrampoline =
 }
 
 function addMovingPlatform(x, y, z, sx, sy, sz, color, axis, range, speed) {
-  const mesh = nova64.scene.createCube(1, color, [x, y, z], { material: 'standard', roughness: 0.5 });
+  const mesh = nova64.scene.createCube(1, color, [x, y, z], {
+    material: 'standard',
+    roughness: 0.5,
+  });
   nova64.scene.setScale(mesh, sx, sy, sz);
   const glow = nova64.scene.createCube(1, 0xffff88, [x, y + sy / 2 + 0.1, z], {
     material: 'emissive',
@@ -402,13 +405,18 @@ function addMovingPlatform(x, y, z, sx, sy, sz, color, axis, range, speed) {
 }
 
 function addHazard(x, y, z, sx, sy, sz, color, damage) {
-  const mesh = nova64.scene.createCube(1, color, [x, y, z], { material: 'emissive', emissive: color });
+  const mesh = nova64.scene.createCube(1, color, [x, y, z], {
+    material: 'emissive',
+    emissive: color,
+  });
   nova64.scene.setScale(mesh, sx, sy, sz);
   g.hazards.push({ mesh, x, y, z, sx, sy, sz, damage });
 }
 
 function addCheckpoint(x, y, z) {
-  const pole = nova64.scene.createCylinder(0.15, 0.15, 3, 0x888888, [x, y + 1.5, z], { material: 'standard' });
+  const pole = nova64.scene.createCylinder(0.15, 0.15, 3, 0x888888, [x, y + 1.5, z], {
+    material: 'standard',
+  });
   g.worldMeshes.push(pole);
   const flag = nova64.scene.createCube(1, 0xff4444, [x + 0.6, y + 2.5, z], {
     material: 'emissive',
@@ -430,7 +438,9 @@ function addTree(x, y, z, snowy = false) {
   });
   g.worldMeshes.push(leaves);
   if (snowy) {
-    const snowCap = nova64.scene.createSphere(1.6, 0xeeeeff, [x, y + 4.5, z], 8, { material: 'standard' });
+    const snowCap = nova64.scene.createSphere(1.6, 0xeeeeff, [x, y + 4.5, z], 8, {
+      material: 'standard',
+    });
     nova64.scene.setScale(snowCap, 1, 0.4, 1);
     g.worldMeshes.push(snowCap);
   }
@@ -458,10 +468,16 @@ function spawnPowerup(x, y, z, type) {
 
 // ── Enemies ────────────────────────────────────────────────
 function spawnGoomba(x, y, z) {
-  const body = nova64.scene.createSphere(1.0, C.goomba, [x, y + 0.6, z], 8, { material: 'standard' });
+  const body = nova64.scene.createSphere(1.0, C.goomba, [x, y + 0.6, z], 8, {
+    material: 'standard',
+  });
   nova64.scene.setScale(body, 1, 0.7, 1);
-  const eyeL = nova64.scene.createCube(0.2, 0x000000, [x - 0.3, y + 0.9, z + 0.8], { material: 'standard' });
-  const eyeR = nova64.scene.createCube(0.2, 0x000000, [x + 0.3, y + 0.9, z + 0.8], { material: 'standard' });
+  const eyeL = nova64.scene.createCube(0.2, 0x000000, [x - 0.3, y + 0.9, z + 0.8], {
+    material: 'standard',
+  });
+  const eyeR = nova64.scene.createCube(0.2, 0x000000, [x + 0.3, y + 0.9, z + 0.8], {
+    material: 'standard',
+  });
   g.enemies.push({
     meshes: [body, eyeL, eyeR],
     type: 'goomba',
@@ -481,7 +497,9 @@ function spawnKoopa(x, y, z) {
     material: 'standard',
     roughness: 0.3,
   });
-  const head = nova64.scene.createSphere(0.4, 0xffcc66, [x, y + 1.2, z + 0.5], 8, { material: 'standard' });
+  const head = nova64.scene.createSphere(0.4, 0xffcc66, [x, y + 1.2, z + 0.5], 8, {
+    material: 'standard',
+  });
   g.enemies.push({
     meshes: [shell, head],
     type: 'koopa',
@@ -501,9 +519,13 @@ function spawnFlyGuy(x, y, z) {
     material: 'emissive',
     emissive: C.flyGuy,
   });
-  const wingL = nova64.scene.createCube(0.1, 0xffffff, [x - 0.8, y + 0.2, z], { material: 'standard' });
+  const wingL = nova64.scene.createCube(0.1, 0xffffff, [x - 0.8, y + 0.2, z], {
+    material: 'standard',
+  });
   nova64.scene.setScale(wingL, 8, 1, 3);
-  const wingR = nova64.scene.createCube(0.1, 0xffffff, [x + 0.8, y + 0.2, z], { material: 'standard' });
+  const wingR = nova64.scene.createCube(0.1, 0xffffff, [x + 0.8, y + 0.2, z], {
+    material: 'standard',
+  });
   nova64.scene.setScale(wingR, 8, 1, 3);
   g.enemies.push({
     meshes: [body, wingL, wingR],
@@ -565,10 +587,17 @@ function spawnChomp(x, y, z) {
 
 // ── Plumber Build ──────────────────────────────────────────
 function buildPlumber() {
-  const body = nova64.scene.createCube(1.2, C.plumberBody, [0, 0, 0], { material: 'standard', roughness: 0.8 });
+  const body = nova64.scene.createCube(1.2, C.plumberBody, [0, 0, 0], {
+    material: 'standard',
+    roughness: 0.8,
+  });
   nova64.scene.setScale(body, 1, 1.2, 1);
-  const head = nova64.scene.createSphere(0.8, C.plumberFace, [0, 1.2, 0], 12, { material: 'standard' });
-  const hat = nova64.scene.createSphere(0.82, C.plumberHat, [0, 1.5, 0], 12, { material: 'standard' });
+  const head = nova64.scene.createSphere(0.8, C.plumberFace, [0, 1.2, 0], 12, {
+    material: 'standard',
+  });
+  const hat = nova64.scene.createSphere(0.82, C.plumberHat, [0, 1.5, 0], 12, {
+    material: 'standard',
+  });
   nova64.scene.setScale(hat, 1, 0.5, 1);
   const brim = nova64.scene.createCube(1, C.plumberHat, [0, 1.4, 0.5], { material: 'standard' });
   nova64.scene.setScale(brim, 1.2, 0.1, 0.6);
@@ -583,7 +612,10 @@ function buildPlumber() {
 
 function createFX(cx, cy, cz, color, count = 10, speed = 10) {
   for (let i = 0; i < count; i++) {
-    const mesh = nova64.scene.createCube(0.4, color, [cx, cy, cz], { material: 'emissive', emissive: color });
+    const mesh = nova64.scene.createCube(0.4, color, [cx, cy, cz], {
+      material: 'emissive',
+      emissive: color,
+    });
     const a = Math.random() * Math.PI * 2;
     const a2 = Math.random() * Math.PI - Math.PI / 2;
     g.particles.push({
@@ -606,7 +638,12 @@ export function update(dt) {
 
   if (gameState !== 'playing') {
     if (inputLock > 0) inputLock -= dt;
-    if (gameState === 'start' && inputLock <= 0 && (nova64.input.keyp('Space') || nova64.input.keyp('Enter'))) startGame();
+    if (
+      gameState === 'start' &&
+      inputLock <= 0 &&
+      (nova64.input.keyp('Space') || nova64.input.keyp('Enter'))
+    )
+      startGame();
     if (
       (gameState === 'gameover' || gameState === 'win') &&
       inputLock <= 0 &&
@@ -698,7 +735,11 @@ function handlePlayerInput(dt) {
 
   // Jump / double jump — floaty Mario-style arcs
   const maxJumps = g.hasDoubleJump ? 2 : 1;
-  if ((nova64.input.keyp('Space') || nova64.input.keyp('KeyZ')) && p.jumpsLeft > 0 && p.jumpTimer <= 0) {
+  if (
+    (nova64.input.keyp('Space') || nova64.input.keyp('KeyZ')) &&
+    p.jumpsLeft > 0 &&
+    p.jumpTimer <= 0
+  ) {
     p.vy = p.jumpsLeft === maxJumps ? 18 : 14;
     p.isGrounded = false;
     p.jumpsLeft--;
@@ -1107,15 +1148,26 @@ export function draw() {
 function drawHUD() {
   // Coin counter
   nova64.draw.rectfill(14, 10, 110, 22, nova64.draw.rgba8(0, 0, 0, 140));
-  nova64.draw.print(`COINS ${g.coins}/${g.totalCoins}`, 20, 14, nova64.draw.rgba8(255, 220, 50, 255));
+  nova64.draw.print(
+    `COINS ${g.coins}/${g.totalCoins}`,
+    20,
+    14,
+    nova64.draw.rgba8(255, 220, 50, 255)
+  );
 
   // Score
   nova64.draw.rectfill(500, 10, 130, 22, nova64.draw.rgba8(0, 0, 0, 140));
-  nova64.draw.print(`SCORE ${String(g.score).padStart(6, '0')}`, 506, 14, nova64.draw.rgba8(255, 255, 255, 255));
+  nova64.draw.print(
+    `SCORE ${String(g.score).padStart(6, '0')}`,
+    506,
+    14,
+    nova64.draw.rgba8(255, 255, 255, 255)
+  );
 
   // Health hearts
   for (let i = 0; i < g.maxHealth; i++) {
-    const color = i < g.health ? nova64.draw.rgba8(255, 50, 50, 255) : nova64.draw.rgba8(60, 60, 60, 150);
+    const color =
+      i < g.health ? nova64.draw.rgba8(255, 50, 50, 255) : nova64.draw.rgba8(60, 60, 60, 150);
     nova64.draw.rectfill(20 + i * 24, 38, 18, 16, color);
     nova64.draw.rect(20 + i * 24, 38, 18, 16, nova64.draw.rgba8(255, 255, 255, 100), false);
   }
@@ -1128,12 +1180,23 @@ function drawHUD() {
   // Power-up indicators
   if (g.starTimer > 0) {
     const flash = Math.sin(t * 10) > 0;
-    nova64.draw.rectfill(270, 10, 100, 18, flash ? nova64.draw.rgba8(255, 255, 0, 180) : nova64.draw.rgba8(200, 150, 0, 180));
+    nova64.draw.rectfill(
+      270,
+      10,
+      100,
+      18,
+      flash ? nova64.draw.rgba8(255, 255, 0, 180) : nova64.draw.rgba8(200, 150, 0, 180)
+    );
     nova64.draw.print(`STAR ${Math.ceil(g.starTimer)}s`, 280, 12, nova64.draw.rgba8(0, 0, 0, 255));
   }
   if (g.speedTimer > 0) {
     nova64.draw.rectfill(270, 30, 100, 18, nova64.draw.rgba8(50, 200, 255, 160));
-    nova64.draw.print(`SPEED ${Math.ceil(g.speedTimer)}s`, 276, 32, nova64.draw.rgba8(0, 0, 0, 255));
+    nova64.draw.print(
+      `SPEED ${Math.ceil(g.speedTimer)}s`,
+      276,
+      32,
+      nova64.draw.rgba8(0, 0, 0, 255)
+    );
   }
   if (g.hasDoubleJump) {
     nova64.draw.print('2x JUMP', 560, 38, nova64.draw.rgba8(100, 220, 255, 200));
@@ -1149,17 +1212,47 @@ function drawStartScreen() {
     nova64.draw.rgba8(255, 50, 50),
     nova64.draw.rgba8(150, 0, 0)
   );
-  nova64.draw.printCentered('NOVA 64', 320, 95 + Math.sin(t * 3) * 5, nova64.draw.rgba8(255, 200, 0));
+  nova64.draw.printCentered(
+    'NOVA 64',
+    320,
+    95 + Math.sin(t * 3) * 5,
+    nova64.draw.rgba8(255, 200, 0)
+  );
 
   nova64.draw.rectfill(140, 130, 360, 120, nova64.draw.rgba8(10, 20, 50, 220));
   nova64.draw.rect(140, 130, 360, 120, nova64.draw.rgba8(100, 150, 255, 200), false);
 
-  nova64.draw.printCentered('3 ZONES: Grassland  Desert  Ice', 320, 140, nova64.draw.rgba8(200, 200, 255));
+  nova64.draw.printCentered(
+    '3 ZONES: Grassland  Desert  Ice',
+    320,
+    140,
+    nova64.draw.rgba8(200, 200, 255)
+  );
   nova64.draw.printCentered('WASD / Arrows = Move', 320, 162, nova64.draw.rgba8(200, 200, 200));
-  nova64.draw.printCentered('SPACE = Jump (collect Speed Shoes for 2x)', 320, 178, nova64.draw.rgba8(200, 200, 200));
-  nova64.draw.printCentered('Stomp enemies! Collect ALL coins to win!', 320, 194, nova64.draw.rgba8(255, 255, 100));
-  nova64.draw.printCentered('Power-ups: Star, Mushroom, Speed Shoes', 320, 214, nova64.draw.rgba8(100, 255, 150));
-  nova64.draw.printCentered('Touch checkpoints to save your position!', 320, 230, nova64.draw.rgba8(255, 180, 100));
+  nova64.draw.printCentered(
+    'SPACE = Jump (collect Speed Shoes for 2x)',
+    320,
+    178,
+    nova64.draw.rgba8(200, 200, 200)
+  );
+  nova64.draw.printCentered(
+    'Stomp enemies! Collect ALL coins to win!',
+    320,
+    194,
+    nova64.draw.rgba8(255, 255, 100)
+  );
+  nova64.draw.printCentered(
+    'Power-ups: Star, Mushroom, Speed Shoes',
+    320,
+    214,
+    nova64.draw.rgba8(100, 255, 150)
+  );
+  nova64.draw.printCentered(
+    'Touch checkpoints to save your position!',
+    320,
+    230,
+    nova64.draw.rgba8(255, 180, 100)
+  );
 
   const pulse = Math.sin(t * 3) * 0.5 + 0.5;
   nova64.draw.printCentered(
@@ -1172,7 +1265,13 @@ function drawStartScreen() {
 
 function drawGameOver() {
   nova64.draw.rectfill(0, 0, 640, 360, nova64.draw.rgba8(40, 0, 0, 220));
-  nova64.draw.drawGlowText('GAME OVER', 220, 80, nova64.draw.rgba8(255, 50, 50), nova64.draw.rgba8(150, 0, 0));
+  nova64.draw.drawGlowText(
+    'GAME OVER',
+    220,
+    80,
+    nova64.draw.rgba8(255, 50, 50),
+    nova64.draw.rgba8(150, 0, 0)
+  );
   nova64.draw.printCentered(
     `Score: ${g.score}  |  Coins: ${g.coins}/${g.totalCoins}`,
     320,
@@ -1180,7 +1279,12 @@ function drawGameOver() {
     nova64.draw.rgba8(200, 200, 200)
   );
   const zoneNames = ['Grassland', 'Desert Ruins', 'Ice Mountain'];
-  nova64.draw.printCentered(`Reached: ${zoneNames[getZone(g.p.z)]}`, 320, 175, nova64.draw.rgba8(180, 180, 200));
+  nova64.draw.printCentered(
+    `Reached: ${zoneNames[getZone(g.p.z)]}`,
+    320,
+    175,
+    nova64.draw.rgba8(180, 180, 200)
+  );
   const pulse = Math.sin(t * 2) * 0.5 + 0.5;
   nova64.draw.printCentered(
     'PRESS SPACE TO TRY AGAIN',
@@ -1192,12 +1296,29 @@ function drawGameOver() {
 
 function drawWinScreen() {
   nova64.draw.rectfill(0, 0, 640, 360, nova64.draw.rgba8(0, 20, 0, 200));
-  nova64.draw.drawGlowText('COURSE CLEAR!', 180, 60, nova64.draw.rgba8(50, 255, 100), nova64.draw.rgba8(0, 100, 0));
+  nova64.draw.drawGlowText(
+    'COURSE CLEAR!',
+    180,
+    60,
+    nova64.draw.rgba8(50, 255, 100),
+    nova64.draw.rgba8(0, 100, 0)
+  );
   nova64.draw.printCentered(`FINAL SCORE: ${g.score}`, 320, 130, nova64.draw.rgba8(255, 220, 50));
-  nova64.draw.printCentered(`ALL ${g.totalCoins} COINS COLLECTED!`, 320, 160, nova64.draw.rgba8(255, 255, 100));
+  nova64.draw.printCentered(
+    `ALL ${g.totalCoins} COINS COLLECTED!`,
+    320,
+    160,
+    nova64.draw.rgba8(255, 255, 100)
+  );
   const rating =
     g.score > 15000 ? 'S RANK!' : g.score > 10000 ? 'A RANK' : g.score > 5000 ? 'B RANK' : 'C RANK';
-  nova64.draw.drawGlowText(rating, 260, 200, nova64.draw.rgba8(255, 215, 0), nova64.draw.rgba8(180, 140, 0));
+  nova64.draw.drawGlowText(
+    rating,
+    260,
+    200,
+    nova64.draw.rgba8(255, 215, 0),
+    nova64.draw.rgba8(180, 140, 0)
+  );
   const pulse = Math.sin(t * 2) * 0.5 + 0.5;
   nova64.draw.printCentered(
     'PRESS SPACE TO PLAY AGAIN',

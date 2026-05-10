@@ -47,7 +47,10 @@ export function init() {
   ground = nova64.scene.createPlane(40, 40, 0x111133, [0, 0, 0]);
   nova64.scene.rotateMesh(ground, -Math.PI / 2, 0, 0);
 
-  playerMesh = nova64.scene.createCube(0.6, 0xffffff, [0, 1, 0], { material: 'emissive', emissive: 0xffffff });
+  playerMesh = nova64.scene.createCube(0.6, 0xffffff, [0, 1, 0], {
+    material: 'emissive',
+    emissive: 0xffffff,
+  });
   if (typeof setVolume === 'function') nova64.audio.setVolume(volume);
 
   // Initialize cooldowns for sound triggers
@@ -104,7 +107,8 @@ export function update(dt) {
       emissiveIntensity: 0.6,
     });
     emitters.push({ mesh, x: player.x, z: player.z, color, pulse: Math.random() * Math.PI * 2 });
-    if (typeof sfx === 'function') nova64.audio.sfx({ wave: 'sine', freq: 660, dur: 0.2, sweep: 220 });
+    if (typeof sfx === 'function')
+      nova64.audio.sfx({ wave: 'sine', freq: 660, dur: 0.2, sweep: 220 });
   }
 
   // Animate emitter pulse and trigger proximity sfx

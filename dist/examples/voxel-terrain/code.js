@@ -237,7 +237,12 @@ export function draw() {
 
   // Controls
   const mode = flyMode ? '[FLY]' : '[WALK]';
-  nova64.draw.print(`WASD=Move  Arrows=Look  Space=Jump  G=Fly${mode}`, 10, 330, nova64.draw.rgba8(255, 255, 255, 160));
+  nova64.draw.print(
+    `WASD=Move  Arrows=Look  Space=Jump  G=Fly${mode}`,
+    10,
+    330,
+    nova64.draw.rgba8(255, 255, 255, 160)
+  );
   nova64.draw.print(
     `T=Tex${texturesOn ? ':ON' : ':OFF'}  O=AO${aoOn ? ':ON' : ':OFF'}  L=Shad${shadowsOn ? ':ON' : ':OFF'}  P=Light${lightingOn ? ':ON' : ':OFF'}`,
     10,

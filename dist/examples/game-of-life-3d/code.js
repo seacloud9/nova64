@@ -315,16 +315,31 @@ export function draw() {
     // Dark overlay
     nova64.draw.rect(0, 0, 640, 360, nova64.draw.rgba8(0, 0, 20, 180), true);
     nova64.draw.printCentered('GAME OF LIFE 3D', 320, 80, nova64.draw.rgba8(100, 200, 255));
-    nova64.draw.printCentered("Conway's Cellular Automata in Three Dimensions", 320, 110, nova64.draw.rgba8(150, 150, 200));
+    nova64.draw.printCentered(
+      "Conway's Cellular Automata in Three Dimensions",
+      320,
+      110,
+      nova64.draw.rgba8(150, 150, 200)
+    );
     const pulse = Math.sin(time * 3) * 0.5 + 0.5;
-    nova64.draw.printCentered('PRESS SPACE TO BEGIN', 320, 180, nova64.draw.rgba8(255, 255, 100, 100 + pulse * 155));
+    nova64.draw.printCentered(
+      'PRESS SPACE TO BEGIN',
+      320,
+      180,
+      nova64.draw.rgba8(255, 255, 100, 100 + pulse * 155)
+    );
     nova64.draw.printCentered(
       'LEFT/RIGHT = Ruleset  |  UP = Pattern  |  R = Reset',
       320,
       240,
       nova64.draw.rgba8(120, 120, 160)
     );
-    nova64.draw.printCentered('DOWN = Speed  |  SPACE = Pause', 320, 260, nova64.draw.rgba8(120, 120, 160));
+    nova64.draw.printCentered(
+      'DOWN = Speed  |  SPACE = Pause',
+      320,
+      260,
+      nova64.draw.rgba8(120, 120, 160)
+    );
     return;
   }
 

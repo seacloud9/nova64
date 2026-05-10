@@ -109,14 +109,23 @@ export function update(dt) {
     const rdx = -Math.sin(player.yaw) * Math.cos(player.pitch);
     const rdy = Math.sin(player.pitch);
     const rdz = -Math.cos(player.yaw) * Math.cos(player.pitch);
-    const hit = nova64.voxel.raycastVoxelBlock([player.x, player.y + 0.8, player.z], [rdx, rdy, rdz], 8);
+    const hit = nova64.voxel.raycastVoxelBlock(
+      [player.x, player.y + 0.8, player.z],
+      [rdx, rdy, rdz],
+      8
+    );
 
     if (hit && hit.hit) {
       if (nova64.input.keyp('KeyF') || nova64.input.keyp('KeyQ')) {
         nova64.voxel.setVoxelBlock(hit.position[0], hit.position[1], hit.position[2], 0);
       }
       if (nova64.input.keyp('KeyE') || nova64.input.keyp('KeyR')) {
-        nova64.voxel.setVoxelBlock(hit.adjacent[0], hit.adjacent[1], hit.adjacent[2], selectedBlock);
+        nova64.voxel.setVoxelBlock(
+          hit.adjacent[0],
+          hit.adjacent[1],
+          hit.adjacent[2],
+          selectedBlock
+        );
       }
     }
   }
@@ -200,6 +209,11 @@ export function draw() {
   // Message
   if (msgTimer > 0) {
     const alpha = Math.min(255, msgTimer * 4);
-    nova64.draw.print(msg, (640 - msg.length * 8) / 2, 160, nova64.draw.rgba8(255, 255, 100, alpha));
+    nova64.draw.print(
+      msg,
+      (640 - msg.length * 8) / 2,
+      160,
+      nova64.draw.rgba8(255, 255, 100, alpha)
+    );
   }
 }

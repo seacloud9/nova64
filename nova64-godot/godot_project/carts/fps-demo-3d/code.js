@@ -57,6 +57,7 @@ let wadLoader = null;
 let wadTexMgr = null;
 let wadMapNames = [];
 let wadMapIndex = 0;
+let wadMapTitles = {}; // map name → human-readable title (from MAPINFO/UMAPINFO)
 
 // Default WAD asset shipped with this demo. DO NOT REMOVE — this freedoom1.wad
 // is the canonical fallback IWAD that fps-demo-3d auto-loads on boot when
@@ -211,6 +212,7 @@ export function init() {
         wadLoader = null;
         wadMapNames = [];
         wadMapIndex = 0;
+        wadMapTitles = {};
       }
     });
   }
@@ -234,6 +236,7 @@ function tryAutoLoadDefaultWAD() {
       wadLoader = null;
       return false;
     }
+    wadMapTitles = wadLoader.getMapTitles ? wadLoader.getMapTitles() : {};
     wadTexMgr = new WADTextureManager(wadLoader);
     wadTexMgr.init();
     isWADMode = true;
@@ -596,6 +599,7 @@ async function loadWADFile(file) {
       wadLoader = null;
       return;
     }
+    wadMapTitles = wadLoader.getMapTitles ? wadLoader.getMapTitles() : {};
     // Initialize texture manager
     wadTexMgr = new WADTextureManager(wadLoader);
     wadTexMgr.init();
@@ -1239,12 +1243,47 @@ function drawStartScreen() {
 
   // Game info + WAD status
   if (isWADMode) {
-    printCentered(`WAD LOADED: ${wadMapNames.length} MAPS`, W / 2, 233, rgba8(0, 255, 100, 255));
-    // Map selector — left/right arrows cycle. Show ◀ NAME ▶ so it's obvious.
-    const sel = wadMapNames[wadMapIndex] || '?';
-    printCentered(`< ${sel} >`, W / 2, 255, rgba8(255, 170, 0, 255));
-    printCentered('LEFT / RIGHT - Pick map', W / 2, 273, rgba8(180, 180, 180, 220));
-    printCentered('R - Return to original levels', W / 2, 290, rgba8(120, 120, 120, 200));
+    const total = wadMapNames.length;
+    printCentered(
+      `WAD LOADED: ${total} MAP${total !== 1 ? 'S' : ''}`,
+      W / 2,
+      233,
+      rgba8(0, 255, 100, 255)
+    );
+
+    // ── Scrollable 5-entry map picker ────────────────────────────────────
+    // Shows 2 entries above and 2 below the selected map, wrapping at the
+    // edges. Works correctly with WADs that have more than 7 maps.
+    const WINDOW = 2; // entries above/below the selection
+    const ROW_H = 14; // pixels between rows
+    const baseY = 250; // y-position of the top row in the window
+
+    for (let offset = -WINDOW; offset <= WINDOW; offset++) {
+      const idx = (wadMapIndex + offset + total) % total;
+      const mapId = wadMapNames[idx];
+      const title = wadMapTitles[mapId];
+      const label = title ? `${mapId}  ${title}` : mapId;
+      const y = baseY + (offset + WINDOW) * ROW_H;
+
+      if (offset === 0) {
+        // Selected entry — bright with angle-bracket indicators
+        printCentered(`< ${label} >`, W / 2, y, rgba8(255, 170, 0, 255));
+      } else {
+        // Neighbour entries — progressively dimmer as they get farther
+        const alpha = Math.abs(offset) === 1 ? 180 : 110;
+        printCentered(label, W / 2, y, rgba8(160, 160, 160, alpha));
+      }
+    }
+
+    // Position indicator and controls hint
+    const posLabel = `${wadMapIndex + 1} / ${total}`;
+    printCentered(posLabel, W / 2, baseY + (WINDOW * 2 + 1) * ROW_H + 2, rgba8(100, 100, 100, 180));
+    printCentered(
+      'LEFT / RIGHT - Pick map  |  R - Original levels',
+      W / 2,
+      baseY + (WINDOW * 2 + 1) * ROW_H + 16,
+      rgba8(130, 130, 130, 200)
+    );
   } else {
     printCentered(
       '3 LEVELS  |  4 ENEMY TYPES  |  BOSS FIGHTS',
@@ -1257,7 +1296,7 @@ function drawStartScreen() {
 
   // Blinking prompt
   if (Math.sin(gameTime * 5) > 0) {
-    printCentered('>>> CLICK TO BEGIN <<<', W / 2, 312, rgba8(0, 255, 204, 255));
+    printCentered('>>> CLICK TO BEGIN <<<', W / 2, 336, rgba8(0, 255, 204, 255));
   }
 }
 

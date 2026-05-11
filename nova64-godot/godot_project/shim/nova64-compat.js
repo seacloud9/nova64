@@ -4075,7 +4075,7 @@
     if (texture) texture.__uvScale = [u || 1, v || 1, 1];
     return texture;
   }
-  function setWallUVs(mesh, wallW, wallH, texW, texH, _xoff, _yoff) {
+  function setWallUVs(mesh, wallW, wallH, texW, texH, xoff, yoff) {
     const meshHandle = unwrapHandle(mesh);
     if (!meshHandle) return;
     const prev = meshMaterialState.get(meshHandle);
@@ -4085,6 +4085,11 @@
         texW ? Math.max(0.001, wallW / texW) : 1,
         texH ? Math.max(0.001, wallH / texH) : 1,
         1,
+      ],
+      uvOffset: [
+        texW ? (xoff || 0) / texW : 0,
+        texH ? (yoff || 0) / texH : 0,
+        0,
       ],
     });
     const r = call('material.create', payload);
@@ -5800,10 +5805,9 @@
   }
 
   // Texture manager — produces engine-side textures from WAD picture/flat
-  // lumps via the existing texture.createFromImage bridge. UV manipulation
-  // (setWallUVs in the Three.js runtime) is geometry-specific and not yet
-  // wired through the Godot bridge; carts that need it should fall back to
-  // applying procedural UVs on the cart side.
+  // lumps via engine.createDataTexture (which routes to texture.createFromImage
+  // in the bridge). UV tiling is applied via setWallUVs after engine.setMeshMaterial
+  // using the same material-proxy approach as Three.js and Babylon.
   function WADTextureManager(wadLoader) {
     this.wad = wadLoader;
     this.palette = null;
@@ -5907,11 +5911,10 @@
     return { width, height, leftOfs, topOfs, pixels };
   };
   WADTextureManager.prototype._uploadDataTexture = function (pixels, width, height) {
-    // Convert Uint8Array -> plain int array for the bridge transport.
-    const arr = new Array(pixels.length);
-    for (let i = 0; i < pixels.length; i++) arr[i] = pixels[i];
-    const r = call('texture.createFromImage', { width, height, pixels: arr });
-    return r ? r.handle : 0;
+    // Delegate to engine.createDataTexture so both the WADTextureManager path
+    // and direct engine.createDataTexture calls share the same bridge routing.
+    const tex = engine.createDataTexture(pixels, width, height);
+    return tex ? tex.handle : 0;
   };
   WADTextureManager.prototype.getWallTexture = function (name) {
     if (!name || name === '-' || !this._init) return null;
@@ -6117,6 +6120,22 @@
   engine.createColor = engine.createColor || createEngineColor;
   engine.cloneTexture = engine.cloneTexture || cloneTexture;
   engine.setTextureRepeat = engine.setTextureRepeat || setTextureRepeat;
+  // Route engine.createDataTexture through the same material-proxy path used
+  // by Three.js and Babylon adapters. Cart code that calls
+  // engine.createDataTexture(pixels, w, h, opts) receives a plain texture
+  // handle object { handle, width, height } that is compatible with
+  // engine.createMaterial({ map: tex }), engine.cloneTexture, and
+  // engine.setTextureRepeat — the same interface as the browser adapters.
+  engine.createDataTexture = engine.createDataTexture || function (pixels, width, height /*, opts */) {
+    const w = width | 0;
+    const h = height | 0;
+    if (w <= 0 || h <= 0 || !pixels || !pixels.length) return null;
+    const arr = new Array(pixels.length);
+    for (let i = 0; i < pixels.length; i++) arr[i] = pixels[i];
+    const r = call('texture.createFromImage', { width: w, height: h, pixels: arr });
+    if (!r || !r.handle) return null;
+    return { handle: r.handle | 0, width: w, height: h };
+  };
   engine.getCapabilities = engine.getCapabilities || function () {
     const r = call('host.getCapabilities', {});
     return r ? r.capabilities : { backend: 'godot' };
@@ -6130,7 +6149,13 @@
   };
 
   const sceneNs = { createCube, createSphere, createPlane, createCylinder, createCone, createTorus, createAdvancedCube, createAdvancedSphere, createCapsule, removeMesh, destroyMesh: removeMesh, setPosition, setRotation, rotateMesh, moveMesh, setScale, getPosition, getMesh, createInstancedMesh, setInstanceTransform, setInstancePosition, setInstanceColor, finalizeInstances, setMeshVisible, setMeshOpacity: function(h, o) { setMeshVisible(h, o > 0); }, setCastShadow: function() {}, setReceiveShadow: function() {}, setFlatShading: function() {}, setPBRProperties, createLODMesh: function() { return null; }, removeLODMesh: function() {}, updateLODs: function() {}, removeInstancedMesh: removeMesh, raycastFromCamera: function() { return null; }, get3DStats: function() { return {}; }, getRenderer: function() { return null; }, getScene: function() { return null; }, getRotation: function() { return [0, 0, 0]; }, clearScene, loadModel, loadVoxModel, loadTexture, playAnimation: function() {}, updateAnimations: function() {}, engine: global.engine };
-  const cameraNs = { setCameraPosition, setCameraTarget, setCameraFOV, setCameraLookAt };
+  // getCamera() — returns a camera-like object with a .position property so
+  // billboard code like `const cam = getCamera(); cam.position.x` works the
+  // same as the Three.js path.
+  function getCamera() {
+    return { position: { x: cameraPos[0], y: cameraPos[1], z: cameraPos[2] } };
+  }
+  const cameraNs = { setCameraPosition, setCameraTarget, setCameraFOV, setCameraLookAt, getCamera };
   const lightNs = { setLightDirection, setDirectionalLight, setFog, clearFog, createPointLight, removeLight, setPointLightPosition, createSpotLight, createAmbientLight, setAmbientLight, setLightColor, setLightEnergy, createGradientSkybox, createImageSkybox };
   const drawNs = { cls, print: novaPrint, printCentered, printRight, rect, rectfill, line, pixel, pset, circle, circfill, ellipse, ellipsefill, arc, bezier, drawRect, drawPanel, drawGlowText, drawGlowTextCentered, drawRadialGradient, drawGradient, drawProgressBar, drawHealthBar, drawPixelBorder, drawCrosshair, drawScanlines, drawNoise, drawTriangle, drawDiamond, drawStarburst, poly, rgba8, screenWidth, screenHeight, colorLerp, colorMix, hslColor, hexColor: function(hex, alpha) { return colorFromHex(hex, alpha); }, n64Palette, measureText, scrollingText, drawWave, drawPulsingText, drawCheckerboard, drawFloatingTexts, drawFloatingTexts3D, createMinimap, drawMinimap, drawSkyGradient };
   const inputNs = {

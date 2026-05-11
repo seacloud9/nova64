@@ -22,6 +22,7 @@ import { effectsApi } from '../runtime/api-effects.js';
 import { voxelApi } from '../runtime/api-voxel.js';
 import { createFullscreenButton } from '../runtime/fullscreen-button.js';
 import { storeApi } from '../runtime/store.js';
+import { buildNamespace, NAMESPACE_MAP } from '../runtime/namespace.js';
 import { api2d } from '../runtime/api-2d.js';
 import { presetsApi } from '../runtime/api-presets.js';
 import { generativeApi } from '../runtime/api-generative.js';
@@ -41,7 +42,6 @@ import { camera2DApi } from '../runtime/camera-2d.js';
 import { particles2DApi } from '../runtime/api-particles-2d.js';
 import { tweenApi } from '../runtime/tween.js';
 import { DebugPanel } from '../runtime/debug-panel.js';
-import { NAMESPACE_MAP, buildNamespace } from '../runtime/namespace.js';
 import { registerCartResetHook } from '../runtime/cart-reset.js';
 import { createStudioCartFunction } from '../runtime/studio-executor.js';
 import * as THREE from 'three';
@@ -208,9 +208,7 @@ canvasUIApi().exposeTo(nova64api);
 // Connect input system to UI system for mouse events
 iApi.connectUI(uiApiInstance.setMousePosition, uiApiInstance.setMouseButton);
 
-Object.assign(globalThis, nova64api);
-
-// ── Build namespaced API: nova64.scene.*, nova64.input.*, etc. ───────────────
+// Expose grouped-only namespace. Carts use nova64.draw.cls(), nova64.scene.createCube(), etc.
 globalThis.nova64 = buildNamespace(nova64api, NAMESPACE_MAP);
 
 // inject camera ref into sprite system
@@ -232,12 +230,12 @@ registerCartResetHook('input', () => {
 });
 
 registerCartResetHook('ui', () => {
-  globalThis.clearButtons?.();
-  globalThis.clearPanels?.();
+  nova64api.clearButtons?.();
+  nova64api.clearPanels?.();
 });
 
 registerCartResetHook('screens', () => {
-  globalThis.screens?.reset?.();
+  nova64api.screens?.reset?.();
 });
 
 registerCartResetHook('store', () => {
@@ -245,21 +243,21 @@ registerCartResetHook('store', () => {
 });
 
 registerCartResetHook('voxel', ({ modulePath }) => {
-  globalThis.resetVoxelWorld?.({ restoreDefaults: true, cartPath: modulePath });
+  nova64api.resetVoxelWorld?.({ restoreDefaults: true, cartPath: modulePath });
 });
 
 registerCartResetHook('scene', () => {
-  globalThis.clearScene?.();
-  globalThis.clearSkybox?.();
+  nova64api.clearScene?.();
+  nova64api.clearSkybox?.();
 });
 
 registerCartResetHook('camera', () => {
-  globalThis.setCameraPosition?.(0, 5, 10);
-  globalThis.setCameraTarget?.(0, 0, 0);
+  nova64api.setCameraPosition?.(0, 5, 10);
+  nova64api.setCameraTarget?.(0, 0, 0);
 });
 
 registerCartResetHook('fog', () => {
-  globalThis.setFog?.(0x87ceeb, 50, 200);
+  nova64api.setFog?.(0x87ceeb, 50, 200);
 });
 
 registerCartResetHook('manifest', () => {
@@ -435,16 +433,16 @@ function loop() {
     // Update post-processing shader uniforms (time, etc.)
     fxApi.update(dt);
     // Update procedural TSL material time uniforms
-    if (typeof globalThis._updateTSLMaterials === 'function') {
-      globalThis._updateTSLMaterials(dt);
+    if (typeof nova64api._updateTSLMaterials === 'function') {
+      nova64api._updateTSLMaterials(dt);
     }
 
     // Update cart first (for manual screen management)
     // Check if cart exists to prevent errors during scene transitions
     if (nova.cart && nova.cart.update) {
       try {
-        if (typeof globalThis.updateAnimations === 'function') {
-          globalThis.updateAnimations(dt);
+        if (typeof nova64api.updateAnimations === 'function') {
+          nova64api.updateAnimations(dt);
         }
         nova.cart.update(dt);
       } catch (e) {

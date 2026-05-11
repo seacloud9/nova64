@@ -6,7 +6,7 @@
 
 🌐 **Live Site:** [starcade9.github.io](https://starcade9.github.io/)
 
-[![Version](https://img.shields.io/badge/version-0.4.9-blue.svg)](https://github.com/seacloud9/nova64)
+[![Version](https://img.shields.io/badge/version-0.5.0-blue.svg)](https://github.com/seacloud9/nova64)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Tests](https://img.shields.io/badge/tests-passing-brightgreen.svg)](tests/)
 [![Build](https://img.shields.io/badge/build-passing-brightgreen.svg)](#)
@@ -97,6 +97,76 @@ items:
 
 ---
 
+## 🌟 **Recent Updates (v0.5.0)** — *The Great Namespace Push*
+
+### 🎯 **NEW: Grouped `nova64.*` Namespace** ⭐
+
+Nova64 carts now run against a single, canonical, **discoverable** API surface. The
+old "100+ bare globals on `window`" surface has been retired — every cart in the
+official gallery (all 71+) and every internal runtime callsite has been migrated.
+
+- **Namespaced groups**: `nova64.draw.*`, `nova64.scene.*`, `nova64.camera.*`,
+  `nova64.light.*`, `nova64.fx.*`, `nova64.shader.*`, `nova64.input.*`,
+  `nova64.audio.*`, `nova64.physics.*`, `nova64.voxel.*`, `nova64.ui.*`,
+  `nova64.tween.*`, `nova64.sprite.*`, `nova64.data.*`, `nova64.util.*`,
+  `nova64.xr.*`, `nova64.wad.*`
+- **Single source of truth**: `runtime/namespace.js` (`NAMESPACE_MAP` +
+  `buildNamespace()`) is the canonical cart-facing contract — Three.js, Babylon,
+  and Godot all bind through the same shape.
+- **No more `Object.assign(globalThis, …)`**: The runtime no longer pollutes the
+  global scope. Carts get a clean, IDE-friendly object tree.
+- **Migration tooling**: `scripts/migrate-to-namespace.{cjs,js}` and
+  `scripts/audit-carts.mjs` shipped alongside the migration so contributors can
+  rewrite legacy carts in seconds.
+- **All 71+ demo carts migrated**: 200 files touched, every cart re-verified.
+
+### 🧊 **NEW: Noa Voxel Adapter (Babylon)** ⭐
+
+The Babylon backend now has a first-class **Noa-engine** voxel adapter sitting
+behind Nova64's shared voxel API — the same `nova64.voxel.*` calls that drive
+the Three.js Minecraft demo can now route through Babylon-native chunk meshing.
+
+- `runtime/backends/babylon/noa-adapter.js` + `noa-prototype.js` provide the
+  Babylon-side seam.
+- Identical cart code, two voxel runtimes, zero API drift.
+
+### 🦖 **Godot Native Host: Trunk-Class** ⭐
+
+The Godot 4.x native host has graduated from "experimental side branch" to a
+**fully integrated trunk citizen**. JavaScript carts execute inside QuickJS
+embedded in a GDExtension, rendered by Godot's native renderer.
+
+- **Carts running natively today**: `minecraft-demo` (full HUD, hotbar,
+  biome-tinted MultiMesh terrain at 64×64 columns), `f-zero-nova-3d`,
+  `star-fox-nova-3d`, `space-harrier-3d`, `fps-demo-3d` (with WAD map picker),
+  and the full 00–10 conformance series.
+- **WAD pipeline online**: `freedoom1.wad` loads through `nova64.wad.load()`
+  with a start-screen map picker.
+- **JS syntax highlighting + ESLint** wired into the Godot editor for cart
+  `code.js` files.
+- **Smoke + visual-parity harnesses** ship in-tree.
+
+### 🌌 **Babylon.js Visual Parity (WAD / XR / TSL)**
+
+- **WAD textures** flow through the same engine-assigned mesh proxy path
+  Three.js uses; `wad-demo` parity is back in the low-single-digit pixel diff.
+- **Native Babylon WebXR** (`@babylonjs/core` 9.4.1) for `enableAR()` /
+  `enableVR()`, with Cardboard fallback when native WebXR is unavailable.
+- **Deterministic TSL galaxy showcase** with seeded star placement so
+  Three.js / Babylon screenshots compare apples to apples; bloom mapping
+  tuned for high-strength shader carts.
+
+### 🛠️ **Runtime Hardening Side-Effects**
+
+- Cart-reset hooks moved to a registry (`runtime/cart-reset.js`) — no more
+  silent state leaks between cart loads.
+- Race-condition guard (`_loadGeneration`) in the cart loader.
+- Effects pipeline (`enableRetroEffects` / `disableRetroEffects`,
+  `updateLODs`, `isEffectsEnabled`, `renderEffects`) all resolve through the
+  namespace, so a stale binding can no longer silently no-op.
+
+---
+
 ## 🌟 **Recent Updates (v0.4.9)**
 
 ### 🛠️ **OS9 Shell Cart Launch Reliability**
@@ -171,7 +241,8 @@ items:
 
 - **Minecraft-Style Worlds**: Full voxel engine with chunk-based terrain, biomes, simplex noise generation
 - **Deterministic Default Seeds**: Shared voxel carts now derive stable default world seeds so Three.js and Babylon render the same terrain unless a cart opts into a custom seed
-- **Babylon NOA Adapter Seam**: Babylon voxel parity work now includes guarded `noa-engine` probe and adapter paths for backend-specific investigation without replacing Nova64's shared voxel API
+- **Babylon Noa Adapter (v0.5.0)**: First-class `noa-engine` adapter (`runtime/backends/babylon/noa-adapter.js`) lets Babylon back the shared `nova64.voxel.*` API with native chunk meshing — same cart, two voxel runtimes
+- **Godot MultiMesh Terrain**: Native Godot host renders 64×64-column biome-tinted terrain through MultiMesh with full HUD/hotbar parity
 - **Block System**: Extensible block types with custom shapes and bounding boxes
 - **Fluid Simulation**: Water/lava fluid dynamics with source/drain mechanics
 - **Entity System**: ECS-style entities with archetypes, pathfinding, health, and spatial queries
@@ -751,7 +822,16 @@ MIT — see `LICENSE` for details.
 
 ## Version History
 
-### v0.4.9 (Current)
+### v0.5.0 (Current) — *The Great Namespace Push*
+
+- **Grouped `nova64.*` namespace**: 100+ bare globals retired; all 71+ demo carts and every runtime callsite migrated to `nova64.draw.*`, `nova64.scene.*`, `nova64.fx.*`, `nova64.voxel.*`, etc. Single canonical contract in `runtime/namespace.js`
+- **Babylon Noa voxel adapter**: `runtime/backends/babylon/noa-adapter.js` lets Babylon back the shared voxel API with native chunk meshing
+- **Godot native host trunk-class**: `minecraft-demo`, `f-zero-nova-3d`, `star-fox-nova-3d`, `space-harrier-3d`, `fps-demo-3d` (with WAD map picker) running natively via GDExtension+QuickJS; JS syntax highlighting + ESLint in the Godot editor
+- **Babylon WAD/XR/TSL parity**: WAD texture proxy path, native Babylon WebXR (`@babylonjs/core` 9.4.1) with Cardboard fallback, deterministic TSL galaxy guardrail
+- **Runtime hardening**: cart-reset hook registry, load-generation race guard, namespace-aware effects pipeline
+- **Migration tooling**: `scripts/migrate-to-namespace.{cjs,js}`, `scripts/audit-carts.mjs`, `scripts/walk-carts.mjs`
+
+### v0.4.9
 
 - Fixed OS9 Shell Game Studio, Game Launcher, and Nova HD cart launch regressions
 - Added regression tests for cart URL helpers, Game Launcher catalog paths, and Game Studio cart execution

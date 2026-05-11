@@ -119,7 +119,9 @@ function getActiveAdapter() {
 
 export function createThreeEngineAdapter(options = {}) {
   const getGpu = options.getGpu ?? (() => _gpu);
-  const resolveMesh = options.resolveMesh ?? (meshId => globalThis.getMesh?.(meshId) ?? null);
+  const resolveMesh =
+    options.resolveMesh ??
+    (meshId => globalThis.getMesh?.(meshId) ?? globalThis.nova64?.scene?.getMesh?.(meshId) ?? null);
 
   return {
     /**

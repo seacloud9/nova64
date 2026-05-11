@@ -1702,6 +1702,12 @@ Dictionary Nova64Host::_cmd_material_create(const Dictionary &p) {
         mat->set_uv1_scale(us);
     }
 
+    // UV offset (uv1_offset Vector3 — x/y map to S/T offset, z unused)
+    if (p.has("uvOffset")) {
+        Vector3 uo = vec3_from_payload(p, "uvOffset", Vector3(0, 0, 0));
+        mat->set_uv1_offset(uo);
+    }
+
     // Enhanced defaults for better visual quality (Phase 2: Visual Parity)
     // Add subtle rim lighting by default if not explicitly disabled
     if (!p.has("rim") && !p.has("disableRim")) {

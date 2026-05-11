@@ -442,9 +442,10 @@ export function api2d(gpu) {
 
   // ── Text helpers ─────────────────────────────────────────────────────────────
 
-  // We reach into the gpu's exposed stdApi print via globalThis
+  // Use the grouped namespace's draw.print (NOT globalThis.print, which is window.print).
   function _print(text, x, y, color, scale) {
-    if (typeof globalThis.print === 'function') globalThis.print(text, x, y, color, scale);
+    const fn = globalThis.nova64?.draw?.print;
+    if (typeof fn === 'function') fn(text, x, y, color, scale);
   }
 
   function measureText(text, scale = 1) {

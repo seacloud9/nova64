@@ -257,8 +257,9 @@ export class GpuThreeJS {
     this.update(0.016);
 
     // Update LOD levels based on current camera position
-    if (typeof globalThis.updateLODs === 'function') {
-      globalThis.updateLODs();
+    const updateLODs = globalThis.updateLODs ?? globalThis.nova64?.scene?.updateLODs;
+    if (typeof updateLODs === 'function') {
+      updateLODs();
     }
 
     // Cardboard VR: use StereoEffect instead of normal render
@@ -270,10 +271,12 @@ export class GpuThreeJS {
     }
 
     // Render 3D scene first - check if post-processing effects are enabled
-    if (typeof globalThis.isEffectsEnabled === 'function' && globalThis.isEffectsEnabled()) {
+    const isEffectsEnabled = globalThis.isEffectsEnabled ?? globalThis.nova64?.fx?.isEffectsEnabled;
+    const renderEffects = globalThis.renderEffects ?? globalThis.nova64?.fx?.renderEffects;
+    if (typeof isEffectsEnabled === 'function' && isEffectsEnabled()) {
       // Use post-processing composer
-      if (typeof globalThis.renderEffects === 'function') {
-        globalThis.renderEffects();
+      if (typeof renderEffects === 'function') {
+        renderEffects();
       } else {
         this.renderer.render(this.scene, this.camera);
       }

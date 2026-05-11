@@ -1012,9 +1012,12 @@
             'creative-coding': '/examples/creative-coding/code.js',
             'hype-demo': '/examples/hype-demo/code.js',
             'flash-demo': '/examples/flash-demo/code.js',
+            'hero-demo': '/examples/hero-demo/code.js',
+            'dungeon-crawler-3d': '/examples/dungeon-crawler-3d/code.js',
           };
           if (demoMap[demoParam]) {
             select.value = demoMap[demoParam];
+            select.dispatchEvent(new Event('change'));
           }
         });
       }

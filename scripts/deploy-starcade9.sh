@@ -39,6 +39,10 @@ cp "$NOVA64_DIR/index.html" "$DEPLOY_DIR/index.html"
 cp "$NOVA64_DIR/dist/console.html" "$DEPLOY_DIR/console.html"
 cp "$NOVA64_DIR/dist/cart-runner.html" "$DEPLOY_DIR/cart-runner.html"
 cp "$NOVA64_DIR/dist/hero-embed.html" "$DEPLOY_DIR/hero-embed.html"
+cp "$NOVA64_DIR/babylon_console.html" "$DEPLOY_DIR/babylon_console.html"
+cp "$NOVA64_DIR/Redesign.html" "$DEPLOY_DIR/Redesign.html"
+cp "$NOVA64_DIR/tweaks-panel.jsx" "$DEPLOY_DIR/tweaks-panel.jsx"
+cp "$NOVA64_DIR/cart-grid.jsx" "$DEPLOY_DIR/cart-grid.jsx"
 
 # src/main.js (entry point)
 echo "📦 Copying src/main.js..."
@@ -64,6 +68,10 @@ rsync -a --delete --exclude='.DS_Store' "$NOVA64_DIR/public/assets/" "$DEPLOY_DI
 # Bundled JS from dist/assets/ (Three.js + runtime — no CDN dependency)
 # Added AFTER the --delete sync so these bundles are not removed.
 rsync -a --exclude='.DS_Store' "$NOVA64_DIR/dist/assets/" "$DEPLOY_DIR/assets/"
+# Also mirror under public/assets/ so pages that reference that path (e.g. Redesign.html) work
+echo "🎨 Syncing public/assets/..."
+mkdir -p "$DEPLOY_DIR/public/assets"
+rsync -a --delete --exclude='.DS_Store' "$NOVA64_DIR/public/assets/" "$DEPLOY_DIR/public/assets/"
 
 # i18n locale files (es.json, ja.json)
 echo "🌐 Syncing i18n/..."

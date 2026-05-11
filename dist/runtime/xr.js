@@ -361,10 +361,16 @@ export function xrModule(gpu) {
     renderer.xr.addEventListener('sessionstart', () => {
       console.log('🥽 WebXR VR session started');
       // Disable post-processing (not compatible with multi-view)
-      if (typeof globalThis.isEffectsEnabled === 'function' && globalThis.isEffectsEnabled()) {
+      const isEffectsEnabled =
+        globalThis.isEffectsEnabled ?? globalThis.nova64?.fx?.isEffectsEnabled;
+      if (typeof isEffectsEnabled === 'function' && isEffectsEnabled()) {
         console.warn('⚠️ Post-processing disabled in VR (multi-view not supported)');
         globalThis.__xrEffectsWereEnabled = true;
-        if (typeof globalThis.disableAllEffects === 'function') globalThis.disableAllEffects();
+        const disable =
+          globalThis.disableAllEffects ??
+          globalThis.nova64?.fx?.disableAllEffects ??
+          globalThis.nova64?.fx?.disableRetroEffects;
+        if (typeof disable === 'function') disable();
       }
     });
 
@@ -414,10 +420,16 @@ export function xrModule(gpu) {
 
     renderer.xr.addEventListener('sessionstart', () => {
       console.log('📱 WebXR AR session started');
-      if (typeof globalThis.isEffectsEnabled === 'function' && globalThis.isEffectsEnabled()) {
+      const isEffectsEnabled =
+        globalThis.isEffectsEnabled ?? globalThis.nova64?.fx?.isEffectsEnabled;
+      if (typeof isEffectsEnabled === 'function' && isEffectsEnabled()) {
         console.warn('⚠️ Post-processing disabled in AR');
         globalThis.__xrEffectsWereEnabled = true;
-        if (typeof globalThis.disableAllEffects === 'function') globalThis.disableAllEffects();
+        const disable =
+          globalThis.disableAllEffects ??
+          globalThis.nova64?.fx?.disableAllEffects ??
+          globalThis.nova64?.fx?.disableRetroEffects;
+        if (typeof disable === 'function') disable();
       }
     });
 

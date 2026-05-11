@@ -1035,6 +1035,16 @@ async function main() {
         }
         break;
 
+      case 'namespace':
+        console.log('🧭 Running Namespace Tests...');
+        try {
+          const { runNamespaceTests } = await import('./test-namespace.js');
+          results.push(await runNamespaceTests());
+        } catch (error) {
+          console.log('⚠️  Namespace tests not available:', error.message);
+        }
+        break;
+
       case 'all':
       default:
         console.log('🚀 Running All Tests...\n');
@@ -1138,6 +1148,14 @@ async function main() {
         } catch (error) {
           console.log('⚠️  Game Studio executor tests not available:', error.message);
         }
+
+        console.log('\n1️⃣6️⃣ Namespace Tests:');
+        try {
+          const { runNamespaceTests } = await import('./test-namespace.js');
+          results.push(await runNamespaceTests());
+        } catch (error) {
+          console.log('⚠️  Namespace tests not available:', error.message);
+        }
         break;
     }
 
@@ -1170,8 +1188,13 @@ async function main() {
   }
 }
 
-// Run if called directly
-if (import.meta.url === `file://${process.argv[1]}`) {
+// Run if called directly (Windows-safe — pathToFileURL handles drive letters & backslashes)
+import { pathToFileURL } from 'url';
+const isMain =
+  process.argv[1] &&
+  (import.meta.url === pathToFileURL(process.argv[1]).href ||
+    process.argv[1].endsWith('test-cli.js'));
+if (isMain) {
   main();
 }
 

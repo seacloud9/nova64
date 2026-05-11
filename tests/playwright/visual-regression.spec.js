@@ -191,6 +191,112 @@ test.describe('Visual Regression - 3D Showcases', () => {
   });
 });
 
+// Helper: dismiss the "PRESS SPACE TO START" gate that both space-combat carts use.
+async function startSpaceCombatCart(page) {
+  await pressKey(page, 'Space', 100);
+  await page.waitForTimeout(200);
+  await pressKey(page, 'Space', 100);
+}
+
+test.describe('Visual Regression - Space Combat', () => {
+  // Both carts depend heavily on bloom/FXAA/vignette and now also on the
+  // Babylon-only GlowLayer flourish. We don't expect pixel parity — what we
+  // want to assert is:
+  //   1. Both backends render *something* (canvas isn't blank/all-black).
+  //   2. The diff stays within a wide-but-finite envelope so a regression
+  //      that flips one backend to a black frame fails the suite.
+  test('space-combat-3d gameplay frame should render on both backends', async ({ page }) => {
+    await loadCart(page, 'space-combat-3d', 'threejs');
+    await page.waitForTimeout(2000);
+    await startSpaceCombatCart(page);
+    await page.waitForTimeout(1500);
+    const threejsPath = path.join(SCREENSHOTS_DIR, 'space-combat-3d-threejs.png');
+    await screenshotCanvas(page, 'threejs', { path: threejsPath });
+
+    await loadCart(page, 'space-combat-3d', 'babylon');
+    await page.waitForTimeout(2000);
+    await startSpaceCombatCart(page);
+    await page.waitForTimeout(1500);
+    const babylonPath = path.join(SCREENSHOTS_DIR, 'space-combat-3d-babylon.png');
+    await screenshotCanvas(page, 'babylon', { path: babylonPath });
+
+    // Sanity: each frame must contain non-black pixels (lasers, HUD, stars).
+    const threejsLitPixels = countImagePixels(
+      threejsPath,
+      (r, g, b, a) => a > 0 && r + g + b > 80,
+      { x: 0, y: 0, w: 1, h: 1 },
+      4
+    );
+    const babylonLitPixels = countImagePixels(
+      babylonPath,
+      (r, g, b, a) => a > 0 && r + g + b > 80,
+      { x: 0, y: 0, w: 1, h: 1 },
+      4
+    );
+
+    expect(threejsLitPixels, 'Three.js space-combat must render non-black pixels').toBeGreaterThan(
+      1000
+    );
+    expect(babylonLitPixels, 'Babylon space-combat must render non-black pixels').toBeGreaterThan(
+      1000
+    );
+
+    const diffPath = path.join(DIFF_DIR, 'space-combat-3d-diff.png');
+    const result = compareImages(threejsPath, babylonPath, diffPath, 0.2);
+    console.log('space-combat-3d visual comparison:', result);
+    // Wide envelope — these scenes are procedurally placed and use bloom heavily.
+    expect(result.percentDiff, 'space-combat-3d should not catastrophically diverge').toBeLessThan(
+      80
+    );
+  });
+
+  test('wing-commander-space gameplay frame should render on both backends', async ({ page }) => {
+    await loadCart(page, 'wing-commander-space', 'threejs');
+    await page.waitForTimeout(2000);
+    await startSpaceCombatCart(page);
+    await page.waitForTimeout(1500);
+    const threejsPath = path.join(SCREENSHOTS_DIR, 'wing-commander-space-threejs.png');
+    await screenshotCanvas(page, 'threejs', { path: threejsPath });
+
+    await loadCart(page, 'wing-commander-space', 'babylon');
+    await page.waitForTimeout(2000);
+    await startSpaceCombatCart(page);
+    await page.waitForTimeout(1500);
+    const babylonPath = path.join(SCREENSHOTS_DIR, 'wing-commander-space-babylon.png');
+    await screenshotCanvas(page, 'babylon', { path: babylonPath });
+
+    const threejsLitPixels = countImagePixels(
+      threejsPath,
+      (r, g, b, a) => a > 0 && r + g + b > 80,
+      { x: 0, y: 0, w: 1, h: 1 },
+      4
+    );
+    const babylonLitPixels = countImagePixels(
+      babylonPath,
+      (r, g, b, a) => a > 0 && r + g + b > 80,
+      { x: 0, y: 0, w: 1, h: 1 },
+      4
+    );
+
+    expect(
+      threejsLitPixels,
+      'Three.js wing-commander-space must render non-black pixels'
+    ).toBeGreaterThan(1000);
+    expect(
+      babylonLitPixels,
+      'Babylon wing-commander-space must render non-black pixels'
+    ).toBeGreaterThan(1000);
+
+    const diffPath = path.join(DIFF_DIR, 'wing-commander-space-diff.png');
+    const result = compareImages(threejsPath, babylonPath, diffPath, 0.2);
+    console.log('wing-commander-space visual comparison:', result);
+    expect(
+      result.percentDiff,
+      'wing-commander-space should not catastrophically diverge'
+    ).toBeLessThan(80);
+  });
+});
+
 test.describe('Visual Regression - WAD', () => {
   test('wad-demo gameplay frame should stay reasonably similar', async ({ page }) => {
     await loadCart(page, 'wad-demo', 'threejs');

@@ -1,0 +1,13 @@
+[remap]
+
+importer="nova64.cart"
+type="Resource"
+uid="uid://mn22ig6j21xt"
+valid=false
+
+[deps]
+
+source_file="res://shim/.eslintrc.json"
+
+[params]
+

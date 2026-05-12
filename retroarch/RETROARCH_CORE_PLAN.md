@@ -85,9 +85,13 @@ Goals:
 
 ## Milestone 3: OpenGL ES 3.1 Renderer
 
+Status: started.
+
 Goals:
 
 - Render cube, sphere, and plane primitives through GLES 3.1.
+  - Cube and plane rendering are implemented through a first shader/VBO/IBO path.
+  - Sphere rendering remains next.
 - Upload the 2D framebuffer as an overlay texture and composite it after 3D.
 - Keep all GL calls behind the renderer interface.
 - Support basic materials, ambient light, directional light, and camera transforms.

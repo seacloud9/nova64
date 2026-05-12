@@ -1,4 +1,5 @@
 #include <math.h>
+#include <stddef.h>
 #include <stdarg.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -28,19 +29,60 @@
 
 typedef unsigned int GLenum;
 typedef unsigned int GLbitfield;
+typedef unsigned int GLuint;
+typedef unsigned char GLboolean;
 typedef int GLint;
 typedef int GLsizei;
+typedef ptrdiff_t GLsizeiptr;
 typedef float GLfloat;
+typedef char GLchar;
 
 #define GL_COLOR_BUFFER_BIT 0x00004000
 #define GL_DEPTH_BUFFER_BIT 0x00000100
 #define GL_DEPTH_TEST 0x0B71
+#define GL_VERTEX_SHADER 0x8B31
+#define GL_FRAGMENT_SHADER 0x8B30
+#define GL_COMPILE_STATUS 0x8B81
+#define GL_LINK_STATUS 0x8B82
+#define GL_INFO_LOG_LENGTH 0x8B84
+#define GL_ARRAY_BUFFER 0x8892
+#define GL_ELEMENT_ARRAY_BUFFER 0x8893
+#define GL_STATIC_DRAW 0x88E4
+#define GL_FLOAT 0x1406
+#define GL_FALSE 0
+#define GL_TRIANGLES 0x0004
+#define GL_UNSIGNED_SHORT 0x1403
 
 typedef void (*PFNGLVIEWPORTPROC)(GLint x, GLint y, GLsizei width, GLsizei height);
 typedef void (*PFNGLCLEARCOLORPROC)(GLfloat red, GLfloat green, GLfloat blue, GLfloat alpha);
 typedef void (*PFNGLCLEARPROC)(GLbitfield mask);
 typedef void (*PFNGLENABLEPROC)(GLenum cap);
 typedef void (*PFNGLDISABLEPROC)(GLenum cap);
+typedef GLuint (*PFNGLCREATESHADERPROC)(GLenum type);
+typedef void (*PFNGLSHADERSOURCEPROC)(GLuint shader, GLsizei count, const GLchar *const *string, const GLint *length);
+typedef void (*PFNGLCOMPILESHADERPROC)(GLuint shader);
+typedef void (*PFNGLGETSHADERIVPROC)(GLuint shader, GLenum pname, GLint *params);
+typedef void (*PFNGLGETSHADERINFOLOGPROC)(GLuint shader, GLsizei bufSize, GLsizei *length, GLchar *infoLog);
+typedef void (*PFNGLDELETESHADERPROC)(GLuint shader);
+typedef GLuint (*PFNGLCREATEPROGRAMPROC)(void);
+typedef void (*PFNGLATTACHSHADERPROC)(GLuint program, GLuint shader);
+typedef void (*PFNGLLINKPROGRAMPROC)(GLuint program);
+typedef void (*PFNGLGETPROGRAMIVPROC)(GLuint program, GLenum pname, GLint *params);
+typedef void (*PFNGLGETPROGRAMINFOLOGPROC)(GLuint program, GLsizei bufSize, GLsizei *length, GLchar *infoLog);
+typedef void (*PFNGLDELETEPROGRAMPROC)(GLuint program);
+typedef void (*PFNGLUSEPROGRAMPROC)(GLuint program);
+typedef GLint (*PFNGLGETATTRIBLOCATIONPROC)(GLuint program, const GLchar *name);
+typedef GLint (*PFNGLGETUNIFORMLOCATIONPROC)(GLuint program, const GLchar *name);
+typedef void (*PFNGLUNIFORMMATRIX4FVPROC)(GLint location, GLsizei count, GLboolean transpose, const GLfloat *value);
+typedef void (*PFNGLUNIFORM4FPROC)(GLint location, GLfloat v0, GLfloat v1, GLfloat v2, GLfloat v3);
+typedef void (*PFNGLGENBUFFERSPROC)(GLsizei n, GLuint *buffers);
+typedef void (*PFNGLBINDBUFFERPROC)(GLenum target, GLuint buffer);
+typedef void (*PFNGLBUFFERDATAPROC)(GLenum target, GLsizeiptr size, const void *data, GLenum usage);
+typedef void (*PFNGLDELETEBUFFERSPROC)(GLsizei n, const GLuint *buffers);
+typedef void (*PFNGLENABLEVERTEXATTRIBARRAYPROC)(GLuint index);
+typedef void (*PFNGLDISABLEVERTEXATTRIBARRAYPROC)(GLuint index);
+typedef void (*PFNGLVERTEXATTRIBPOINTERPROC)(GLuint index, GLint size, GLenum type, GLboolean normalized, GLsizei stride, const void *pointer);
+typedef void (*PFNGLDRAWELEMENTSPROC)(GLenum mode, GLsizei count, GLenum type, const void *indices);
 
 enum nova64_button {
    NOVA64_BTN_LEFT = 0,
@@ -106,11 +148,45 @@ struct nova64_gles_backend {
    bool requested;
    bool active;
    bool functions_loaded;
+   bool resources_ready;
    PFNGLVIEWPORTPROC Viewport;
    PFNGLCLEARCOLORPROC ClearColor;
    PFNGLCLEARPROC Clear;
    PFNGLENABLEPROC Enable;
    PFNGLDISABLEPROC Disable;
+   PFNGLCREATESHADERPROC CreateShader;
+   PFNGLSHADERSOURCEPROC ShaderSource;
+   PFNGLCOMPILESHADERPROC CompileShader;
+   PFNGLGETSHADERIVPROC GetShaderiv;
+   PFNGLGETSHADERINFOLOGPROC GetShaderInfoLog;
+   PFNGLDELETESHADERPROC DeleteShader;
+   PFNGLCREATEPROGRAMPROC CreateProgram;
+   PFNGLATTACHSHADERPROC AttachShader;
+   PFNGLLINKPROGRAMPROC LinkProgram;
+   PFNGLGETPROGRAMIVPROC GetProgramiv;
+   PFNGLGETPROGRAMINFOLOGPROC GetProgramInfoLog;
+   PFNGLDELETEPROGRAMPROC DeleteProgram;
+   PFNGLUSEPROGRAMPROC UseProgram;
+   PFNGLGETATTRIBLOCATIONPROC GetAttribLocation;
+   PFNGLGETUNIFORMLOCATIONPROC GetUniformLocation;
+   PFNGLUNIFORMMATRIX4FVPROC UniformMatrix4fv;
+   PFNGLUNIFORM4FPROC Uniform4f;
+   PFNGLGENBUFFERSPROC GenBuffers;
+   PFNGLBINDBUFFERPROC BindBuffer;
+   PFNGLBUFFERDATAPROC BufferData;
+   PFNGLDELETEBUFFERSPROC DeleteBuffers;
+   PFNGLENABLEVERTEXATTRIBARRAYPROC EnableVertexAttribArray;
+   PFNGLDISABLEVERTEXATTRIBARRAYPROC DisableVertexAttribArray;
+   PFNGLVERTEXATTRIBPOINTERPROC VertexAttribPointer;
+   PFNGLDRAWELEMENTSPROC DrawElements;
+   GLuint cube_vbo;
+   GLuint cube_ibo;
+   GLuint plane_vbo;
+   GLuint plane_ibo;
+   GLuint cube_program;
+   GLint cube_position_attrib;
+   GLint cube_mvp_uniform;
+   GLint cube_color_uniform;
 };
 
 static retro_environment_t environ_cb;
@@ -497,37 +573,116 @@ static void mesh_local_to_world(const struct nova64_mesh *mesh, const float loca
    world[2] = rotated[2] + mesh->position[2];
 }
 
-static void draw_projected_polyline(const struct nova64_mesh *mesh, const float *points, int count, uint32_t color, bool closed)
+static void mat4_identity(float m[16])
 {
-   int previous_x = 0;
-   int previous_y = 0;
-   int first_x = 0;
-   int first_y = 0;
-   bool has_previous = false;
-   bool has_first = false;
+   memset(m, 0, sizeof(float) * 16);
+   m[0] = 1.0f;
+   m[5] = 1.0f;
+   m[10] = 1.0f;
+   m[15] = 1.0f;
+}
 
-   for (int i = 0; i < count; i++) {
-      float world[3];
-      mesh_local_to_world(mesh, &points[i * 3], world);
-      int x = 0;
-      int y = 0;
-      if (!project_world_point(world, &x, &y, NULL)) {
-         has_previous = false;
-         continue;
+static void mat4_multiply(float out[16], const float a[16], const float b[16])
+{
+   float r[16];
+   for (int col = 0; col < 4; col++) {
+      for (int row = 0; row < 4; row++) {
+         r[col * 4 + row] =
+            a[0 * 4 + row] * b[col * 4 + 0] +
+            a[1 * 4 + row] * b[col * 4 + 1] +
+            a[2 * 4 + row] * b[col * 4 + 2] +
+            a[3 * 4 + row] * b[col * 4 + 3];
       }
-      if (!has_first) {
-         first_x = x;
-         first_y = y;
-         has_first = true;
-      }
-      if (has_previous)
-         draw_line_pixels(previous_x, previous_y, x, y, color);
-      previous_x = x;
-      previous_y = y;
-      has_previous = true;
    }
-   if (closed && has_previous && has_first)
-      draw_line_pixels(previous_x, previous_y, first_x, first_y, color);
+   memcpy(out, r, sizeof(r));
+}
+
+static void mat4_perspective(float out[16], float fov_degrees, float aspect, float near_z, float far_z)
+{
+   float fov = fov_degrees;
+   if (fov < 15.0f)
+      fov = 15.0f;
+   if (fov > 120.0f)
+      fov = 120.0f;
+   float f = 1.0f / tanf((fov * 0.5f) * (float)M_PI / 180.0f);
+   memset(out, 0, sizeof(float) * 16);
+   out[0] = f / aspect;
+   out[5] = f;
+   out[10] = (far_z + near_z) / (near_z - far_z);
+   out[11] = -1.0f;
+   out[14] = (2.0f * far_z * near_z) / (near_z - far_z);
+}
+
+static void mat4_look_at(float out[16], const float eye[3], const float target[3], const float up_hint[3])
+{
+   float f[3] = {target[0] - eye[0], target[1] - eye[1], target[2] - eye[2]};
+   normalize3(f);
+   float up[3] = {up_hint[0], up_hint[1], up_hint[2]};
+   normalize3(up);
+   float s[3];
+   cross3(f, up, s);
+   normalize3(s);
+   float u[3];
+   cross3(s, f, u);
+
+   mat4_identity(out);
+   out[0] = s[0];
+   out[4] = s[1];
+   out[8] = s[2];
+   out[1] = u[0];
+   out[5] = u[1];
+   out[9] = u[2];
+   out[2] = -f[0];
+   out[6] = -f[1];
+   out[10] = -f[2];
+   out[12] = -dot3(s, eye);
+   out[13] = -dot3(u, eye);
+   out[14] = dot3(f, eye);
+}
+
+static void mat4_from_mesh(float out[16], const struct nova64_mesh *mesh)
+{
+   float cx = cosf(mesh->rotation[0]);
+   float sx = sinf(mesh->rotation[0]);
+   float cy = cosf(mesh->rotation[1]);
+   float sy = sinf(mesh->rotation[1]);
+   float cz = cosf(mesh->rotation[2]);
+   float sz = sinf(mesh->rotation[2]);
+
+   float rx[16] = {
+      1, 0, 0, 0,
+      0, cx, sx, 0,
+      0, -sx, cx, 0,
+      0, 0, 0, 1,
+   };
+   float ry[16] = {
+      cy, 0, -sy, 0,
+      0, 1, 0, 0,
+      sy, 0, cy, 0,
+      0, 0, 0, 1,
+   };
+   float rz[16] = {
+      cz, sz, 0, 0,
+      -sz, cz, 0, 0,
+      0, 0, 1, 0,
+      0, 0, 0, 1,
+   };
+   float scale[16];
+   mat4_identity(scale);
+   scale[0] = mesh->scale[0];
+   scale[5] = mesh->scale[1];
+   scale[10] = mesh->scale[2];
+
+   float tmp1[16];
+   float tmp2[16];
+   float tmp3[16];
+   mat4_multiply(tmp1, rx, scale);
+   mat4_multiply(tmp2, ry, tmp1);
+   mat4_multiply(tmp3, rz, tmp2);
+   memcpy(out, tmp3, sizeof(tmp3));
+   out[12] = mesh->position[0];
+   out[13] = mesh->position[1];
+   out[14] = mesh->position[2];
 }
 
 static float edge2d(float ax, float ay, float bx, float by, float cx, float cy)
@@ -663,13 +818,27 @@ static void draw_software_cube(const struct nova64_mesh *mesh)
 
 static void draw_software_plane(const struct nova64_mesh *mesh)
 {
-   static const float outline[] = {
+   static const float corners[] = {
       -0.8f, 0.0f, -0.8f,
        0.8f, 0.0f, -0.8f,
        0.8f, 0.0f,  0.8f,
       -0.8f, 0.0f,  0.8f,
    };
-   draw_projected_polyline(mesh, outline, 4, shade_color(mesh->color, 1.15f), true);
+
+   int screen[4][2];
+   bool visible = true;
+   for (int i = 0; i < 4; i++) {
+      float world[3];
+      mesh_local_to_world(mesh, &corners[i * 3], world);
+      if (!project_world_point(world, &screen[i][0], &screen[i][1], NULL)) {
+         visible = false;
+         break;
+      }
+   }
+   if (!visible)
+      return;
+
+   draw_filled_quad(screen, shade_color(mesh->color, 0.72f));
 }
 
 static void draw_software_sphere(const struct nova64_mesh *mesh)
@@ -1262,6 +1431,158 @@ static retro_proc_address_t load_gles_proc(const char *name)
    return hw_render.get_proc_address(name);
 }
 
+static GLuint gles_compile_shader(GLenum type, const char *source)
+{
+   GLuint shader = gles.CreateShader(type);
+   if (!shader)
+      return 0;
+   const GLchar *sources[] = {source};
+   gles.ShaderSource(shader, 1, sources, NULL);
+   gles.CompileShader(shader);
+
+   GLint status = 0;
+   gles.GetShaderiv(shader, GL_COMPILE_STATUS, &status);
+   if (!status) {
+      GLchar log[512];
+      GLsizei length = 0;
+      if (gles.GetShaderInfoLog)
+         gles.GetShaderInfoLog(shader, (GLsizei)sizeof(log), &length, log);
+      log[length < (GLsizei)sizeof(log) ? length : (GLsizei)sizeof(log) - 1] = '\0';
+      if (log_cb)
+         log_cb(RETRO_LOG_ERROR, "[nova64] GLES shader compile failed: %s\n", log);
+      gles.DeleteShader(shader);
+      return 0;
+   }
+   return shader;
+}
+
+static bool gles_create_cube_program(void)
+{
+   static const char *vertex_source =
+      "attribute vec3 a_position;\n"
+      "uniform mat4 u_mvp;\n"
+      "void main() {\n"
+      "  gl_Position = u_mvp * vec4(a_position, 1.0);\n"
+      "}\n";
+   static const char *fragment_source =
+      "precision mediump float;\n"
+      "uniform vec4 u_color;\n"
+      "void main() {\n"
+      "  gl_FragColor = u_color;\n"
+      "}\n";
+
+   GLuint vertex = gles_compile_shader(GL_VERTEX_SHADER, vertex_source);
+   GLuint fragment = gles_compile_shader(GL_FRAGMENT_SHADER, fragment_source);
+   if (!vertex || !fragment) {
+      if (vertex)
+         gles.DeleteShader(vertex);
+      if (fragment)
+         gles.DeleteShader(fragment);
+      return false;
+   }
+
+   GLuint program = gles.CreateProgram();
+   gles.AttachShader(program, vertex);
+   gles.AttachShader(program, fragment);
+   gles.LinkProgram(program);
+   gles.DeleteShader(vertex);
+   gles.DeleteShader(fragment);
+
+   GLint status = 0;
+   gles.GetProgramiv(program, GL_LINK_STATUS, &status);
+   if (!status) {
+      GLchar log[512];
+      GLsizei length = 0;
+      if (gles.GetProgramInfoLog)
+         gles.GetProgramInfoLog(program, (GLsizei)sizeof(log), &length, log);
+      log[length < (GLsizei)sizeof(log) ? length : (GLsizei)sizeof(log) - 1] = '\0';
+      if (log_cb)
+         log_cb(RETRO_LOG_ERROR, "[nova64] GLES program link failed: %s\n", log);
+      gles.DeleteProgram(program);
+      return false;
+   }
+
+   gles.cube_program = program;
+   gles.cube_position_attrib = gles.GetAttribLocation(program, "a_position");
+   gles.cube_mvp_uniform = gles.GetUniformLocation(program, "u_mvp");
+   gles.cube_color_uniform = gles.GetUniformLocation(program, "u_color");
+   return gles.cube_position_attrib >= 0 && gles.cube_mvp_uniform >= 0 && gles.cube_color_uniform >= 0;
+}
+
+static void gles_destroy_resources(void)
+{
+   if (gles.cube_vbo && gles.DeleteBuffers)
+      gles.DeleteBuffers(1, &gles.cube_vbo);
+   if (gles.cube_ibo && gles.DeleteBuffers)
+      gles.DeleteBuffers(1, &gles.cube_ibo);
+   if (gles.plane_vbo && gles.DeleteBuffers)
+      gles.DeleteBuffers(1, &gles.plane_vbo);
+   if (gles.plane_ibo && gles.DeleteBuffers)
+      gles.DeleteBuffers(1, &gles.plane_ibo);
+   if (gles.cube_program && gles.DeleteProgram)
+      gles.DeleteProgram(gles.cube_program);
+   gles.cube_vbo = 0;
+   gles.cube_ibo = 0;
+   gles.plane_vbo = 0;
+   gles.plane_ibo = 0;
+   gles.cube_program = 0;
+   gles.resources_ready = false;
+}
+
+static bool gles_init_resources(void)
+{
+   if (gles.resources_ready)
+      return true;
+
+   static const GLfloat cube_vertices[] = {
+      -0.5f, -0.5f, -0.5f,
+       0.5f, -0.5f, -0.5f,
+       0.5f,  0.5f, -0.5f,
+      -0.5f,  0.5f, -0.5f,
+      -0.5f, -0.5f,  0.5f,
+       0.5f, -0.5f,  0.5f,
+       0.5f,  0.5f,  0.5f,
+      -0.5f,  0.5f,  0.5f,
+   };
+   static const unsigned short cube_indices[] = {
+      0, 1, 2, 0, 2, 3,
+      4, 6, 5, 4, 7, 6,
+      0, 4, 5, 0, 5, 1,
+      3, 2, 6, 3, 6, 7,
+      1, 5, 6, 1, 6, 2,
+      0, 3, 7, 0, 7, 4,
+   };
+   static const GLfloat plane_vertices[] = {
+      -0.5f, 0.0f, -0.5f,
+       0.5f, 0.0f, -0.5f,
+       0.5f, 0.0f,  0.5f,
+      -0.5f, 0.0f,  0.5f,
+   };
+   static const unsigned short plane_indices[] = {
+      0, 1, 2, 0, 2, 3,
+   };
+
+   if (!gles_create_cube_program())
+      return false;
+
+   gles.GenBuffers(1, &gles.cube_vbo);
+   gles.BindBuffer(GL_ARRAY_BUFFER, gles.cube_vbo);
+   gles.BufferData(GL_ARRAY_BUFFER, (GLsizeiptr)sizeof(cube_vertices), cube_vertices, GL_STATIC_DRAW);
+   gles.GenBuffers(1, &gles.cube_ibo);
+   gles.BindBuffer(GL_ELEMENT_ARRAY_BUFFER, gles.cube_ibo);
+   gles.BufferData(GL_ELEMENT_ARRAY_BUFFER, (GLsizeiptr)sizeof(cube_indices), cube_indices, GL_STATIC_DRAW);
+
+   gles.GenBuffers(1, &gles.plane_vbo);
+   gles.BindBuffer(GL_ARRAY_BUFFER, gles.plane_vbo);
+   gles.BufferData(GL_ARRAY_BUFFER, (GLsizeiptr)sizeof(plane_vertices), plane_vertices, GL_STATIC_DRAW);
+   gles.GenBuffers(1, &gles.plane_ibo);
+   gles.BindBuffer(GL_ELEMENT_ARRAY_BUFFER, gles.plane_ibo);
+   gles.BufferData(GL_ELEMENT_ARRAY_BUFFER, (GLsizeiptr)sizeof(plane_indices), plane_indices, GL_STATIC_DRAW);
+
+   gles.resources_ready = true;
+   return true;
+}
+
 static bool gles_load_functions(void)
 {
    if (gles.functions_loaded)
@@ -1272,10 +1593,42 @@ static bool gles_load_functions(void)
    gles.Clear = (PFNGLCLEARPROC)load_gles_proc("glClear");
    gles.Enable = (PFNGLENABLEPROC)load_gles_proc("glEnable");
    gles.Disable = (PFNGLDISABLEPROC)load_gles_proc("glDisable");
+   gles.CreateShader = (PFNGLCREATESHADERPROC)load_gles_proc("glCreateShader");
+   gles.ShaderSource = (PFNGLSHADERSOURCEPROC)load_gles_proc("glShaderSource");
+   gles.CompileShader = (PFNGLCOMPILESHADERPROC)load_gles_proc("glCompileShader");
+   gles.GetShaderiv = (PFNGLGETSHADERIVPROC)load_gles_proc("glGetShaderiv");
+   gles.GetShaderInfoLog = (PFNGLGETSHADERINFOLOGPROC)load_gles_proc("glGetShaderInfoLog");
+   gles.DeleteShader = (PFNGLDELETESHADERPROC)load_gles_proc("glDeleteShader");
+   gles.CreateProgram = (PFNGLCREATEPROGRAMPROC)load_gles_proc("glCreateProgram");
+   gles.AttachShader = (PFNGLATTACHSHADERPROC)load_gles_proc("glAttachShader");
+   gles.LinkProgram = (PFNGLLINKPROGRAMPROC)load_gles_proc("glLinkProgram");
+   gles.GetProgramiv = (PFNGLGETPROGRAMIVPROC)load_gles_proc("glGetProgramiv");
+   gles.GetProgramInfoLog = (PFNGLGETPROGRAMINFOLOGPROC)load_gles_proc("glGetProgramInfoLog");
+   gles.DeleteProgram = (PFNGLDELETEPROGRAMPROC)load_gles_proc("glDeleteProgram");
+   gles.UseProgram = (PFNGLUSEPROGRAMPROC)load_gles_proc("glUseProgram");
+   gles.GetAttribLocation = (PFNGLGETATTRIBLOCATIONPROC)load_gles_proc("glGetAttribLocation");
+   gles.GetUniformLocation = (PFNGLGETUNIFORMLOCATIONPROC)load_gles_proc("glGetUniformLocation");
+   gles.UniformMatrix4fv = (PFNGLUNIFORMMATRIX4FVPROC)load_gles_proc("glUniformMatrix4fv");
+   gles.Uniform4f = (PFNGLUNIFORM4FPROC)load_gles_proc("glUniform4f");
+   gles.GenBuffers = (PFNGLGENBUFFERSPROC)load_gles_proc("glGenBuffers");
+   gles.BindBuffer = (PFNGLBINDBUFFERPROC)load_gles_proc("glBindBuffer");
+   gles.BufferData = (PFNGLBUFFERDATAPROC)load_gles_proc("glBufferData");
+   gles.DeleteBuffers = (PFNGLDELETEBUFFERSPROC)load_gles_proc("glDeleteBuffers");
+   gles.EnableVertexAttribArray = (PFNGLENABLEVERTEXATTRIBARRAYPROC)load_gles_proc("glEnableVertexAttribArray");
+   gles.DisableVertexAttribArray = (PFNGLDISABLEVERTEXATTRIBARRAYPROC)load_gles_proc("glDisableVertexAttribArray");
+   gles.VertexAttribPointer = (PFNGLVERTEXATTRIBPOINTERPROC)load_gles_proc("glVertexAttribPointer");
+   gles.DrawElements = (PFNGLDRAWELEMENTSPROC)load_gles_proc("glDrawElements");
 
-   gles.functions_loaded = gles.Viewport && gles.ClearColor && gles.Clear;
+   gles.functions_loaded = gles.Viewport && gles.ClearColor && gles.Clear &&
+      gles.CreateShader && gles.ShaderSource && gles.CompileShader && gles.GetShaderiv &&
+      gles.DeleteShader && gles.CreateProgram && gles.AttachShader && gles.LinkProgram &&
+      gles.GetProgramiv && gles.DeleteProgram && gles.UseProgram && gles.GetAttribLocation &&
+      gles.GetUniformLocation && gles.UniformMatrix4fv && gles.Uniform4f &&
+      gles.GenBuffers && gles.BindBuffer && gles.BufferData && gles.DeleteBuffers &&
+      gles.EnableVertexAttribArray && gles.DisableVertexAttribArray &&
+      gles.VertexAttribPointer && gles.DrawElements;
    if (!gles.functions_loaded)
-      nova64_log_line(RETRO_LOG_WARN, "[nova64] GLES proc-address callback did not provide the minimal clear path");
+      nova64_log_line(RETRO_LOG_WARN, "[nova64] GLES proc-address callback did not provide the primitive renderer path");
    return gles.functions_loaded;
 }
 
@@ -1288,6 +1641,7 @@ static void gles_context_reset(void)
 
 static void gles_context_destroy(void)
 {
+   gles_destroy_resources();
    gles.active = false;
    gles.functions_loaded = false;
    gles.Viewport = NULL;
@@ -1295,7 +1649,67 @@ static void gles_context_destroy(void)
    gles.Clear = NULL;
    gles.Enable = NULL;
    gles.Disable = NULL;
+   gles.CreateShader = NULL;
+   gles.ShaderSource = NULL;
+   gles.CompileShader = NULL;
+   gles.GetShaderiv = NULL;
+   gles.GetShaderInfoLog = NULL;
+   gles.DeleteShader = NULL;
+   gles.CreateProgram = NULL;
+   gles.AttachShader = NULL;
+   gles.LinkProgram = NULL;
+   gles.GetProgramiv = NULL;
+   gles.GetProgramInfoLog = NULL;
+   gles.DeleteProgram = NULL;
+   gles.UseProgram = NULL;
+   gles.GetAttribLocation = NULL;
+   gles.GetUniformLocation = NULL;
+   gles.UniformMatrix4fv = NULL;
+   gles.Uniform4f = NULL;
+   gles.GenBuffers = NULL;
+   gles.BindBuffer = NULL;
+   gles.BufferData = NULL;
+   gles.DeleteBuffers = NULL;
+   gles.EnableVertexAttribArray = NULL;
+   gles.DisableVertexAttribArray = NULL;
+   gles.VertexAttribPointer = NULL;
+   gles.DrawElements = NULL;
    nova64_log_line(RETRO_LOG_INFO, "[nova64] GLES3 hardware context destroyed");
+}
+
+static void render_gles_primitive(const struct nova64_mesh *mesh, const float view_projection[16],
+      GLuint vbo, GLuint ibo, GLsizei index_count)
+{
+   float model[16];
+   float mvp[16];
+   mat4_from_mesh(model, mesh);
+   mat4_multiply(mvp, view_projection, model);
+
+   uint32_t color = mesh->color;
+   float r = (float)((color >> 24) & 0xffU) / 255.0f;
+   float g = (float)((color >> 16) & 0xffU) / 255.0f;
+   float b = (float)((color >> 8) & 0xffU) / 255.0f;
+   float a = (float)(color & 0xffU) / 255.0f;
+
+   gles.UseProgram(gles.cube_program);
+   gles.UniformMatrix4fv(gles.cube_mvp_uniform, 1, GL_FALSE, mvp);
+   gles.Uniform4f(gles.cube_color_uniform, r, g, b, a);
+   gles.BindBuffer(GL_ARRAY_BUFFER, vbo);
+   gles.BindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo);
+   gles.EnableVertexAttribArray((GLuint)gles.cube_position_attrib);
+   gles.VertexAttribPointer((GLuint)gles.cube_position_attrib, 3, GL_FLOAT, GL_FALSE, 0, NULL);
+   gles.DrawElements(GL_TRIANGLES, index_count, GL_UNSIGNED_SHORT, NULL);
+   gles.DisableVertexAttribArray((GLuint)gles.cube_position_attrib);
+}
+
+static void render_gles_cube(const struct nova64_mesh *mesh, const float view_projection[16])
+{
+   render_gles_primitive(mesh, view_projection, gles.cube_vbo, gles.cube_ibo, 36);
+}
+
+static void render_gles_plane(const struct nova64_mesh *mesh, const float view_projection[16])
+{
+   render_gles_primitive(mesh, view_projection, gles.plane_vbo, gles.plane_ibo, 6);
 }
 
 static void render_gles_scene(void)
@@ -1313,6 +1727,24 @@ static void render_gles_scene(void)
       gles.Enable(GL_DEPTH_TEST);
    gles.ClearColor(r, g, b, 1.0f);
    gles.Clear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+   if (!gles_init_resources())
+      return;
+
+   float projection[16];
+   float view[16];
+   float view_projection[16];
+   float up[3] = {0.0f, 1.0f, 0.0f};
+   mat4_perspective(projection, camera_state.fov, (float)NOVA64_WIDTH / (float)NOVA64_HEIGHT, 0.05f, 100.0f);
+   mat4_look_at(view, camera_state.position, camera_state.target, up);
+   mat4_multiply(view_projection, projection, view);
+
+   for (int i = 0; i < NOVA64_MAX_MESHES; i++) {
+      if (meshes[i].used && meshes[i].type == NOVA64_MESH_CUBE)
+         render_gles_cube(&meshes[i], view_projection);
+      else if (meshes[i].used && meshes[i].type == NOVA64_MESH_PLANE)
+         render_gles_plane(&meshes[i], view_projection);
+   }
 }
 
 static char *read_file_to_memory(const char *path, size_t *out_size)

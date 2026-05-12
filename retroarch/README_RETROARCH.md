@@ -15,6 +15,8 @@ The first executable core milestone is now wired around:
   unavailable.
 - A RetroArch-owned OpenGL ES hardware context request targeting OpenGL ES 3.1.
 - A minimal backend-neutral 3D command table for opaque mesh handles.
+- A first OpenGL ES cube/plane primitive renderer using RetroArch proc-address
+  loading.
 - Versioned save-state headers for host-owned deterministic state only.
 
 Vulkan 1.2 is the next renderer target. The C renderer boundary is intentionally
@@ -117,8 +119,9 @@ helpers for tiny conformance carts.
 ## Renderer Roadmap
 
 1. OpenGL ES 3.1: first hardware renderer. The current core requests the context and
-   loads functions through the libretro proc-address callback. Full primitive
-   drawing and 2D overlay compositing are next.
+   loads functions through the libretro proc-address callback. Cube primitive
+   and plane rendering are in place; sphere primitives and 2D overlay compositing
+   are next.
 2. Vulkan 1.2: planned second backend. The goal is partial-to-mostly complete
    Nova64 primitive/material coverage without changing cart-facing APIs.
 3. Package/assets: `.nova` package parsing, assets, textures, model loading, and
@@ -130,8 +133,8 @@ helpers for tiny conformance carts.
   framebuffer, input, camera, light, and native mesh-table state.
 - `.nova` package parsing currently uses manifest metadata only to find executable
   cart source; assets remain staged next.
-- GLES 3D primitive drawing is a command bridge smoke path; geometry rendering and
-  overlay composition are staged next.
+- GLES currently renders cube and plane primitives; sphere primitives and overlay
+  composition are staged next.
 - The software fallback includes a deterministic primitive preview renderer so
   conformance carts can produce solid shaded captures before the full GLES/Vulkan
   paths are complete.

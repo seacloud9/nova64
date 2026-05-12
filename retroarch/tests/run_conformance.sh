@@ -42,6 +42,7 @@ run_case "01 framebuffer" "retroarch/conformance/01-framebuffer.js" "4817a6cf4ba
 run_case "02 input" "retroarch/conformance/02-input.js" "872fd1e2547c6371"
 run_case "03 errors" "retroarch/conformance/03-errors.js" "f443942d0c7ee363"
 run_case "06 cube" "retroarch/conformance/06-cube.js" "53584f0993f3ff6a"
+run_case "07 cube plane" "retroarch/conformance/07-cube-plane.js" "cc715d97cf852c67"
 run_case "nova fallback" "${PACKAGE_DIR}/cube-fallback.nova" "53584f0993f3ff6a"
 run_case "nova manifest main" "${PACKAGE_DIR}/cube-manifest.nova" "53584f0993f3ff6a"
 

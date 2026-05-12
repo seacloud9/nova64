@@ -1,0 +1,13 @@
+{
+  "servers": {
+    "mempalace": {
+      "type": "stdio",
+      "command": "wsl",
+      "args": [
+        "bash",
+        "-c",
+        "cd ~/ai-tools && pipenv run python -m mempalace.mcp_server"
+      ]
+    }
+  }
+}

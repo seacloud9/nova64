@@ -19,13 +19,14 @@ export function modelsModule({ scene, gpu, meshes, mixers, modelAnimations, coun
             if (child.isMesh) {
               child.castShadow = true;
               child.receiveShadow = true;
-              if (child.material) {
+              // Preserve the GLB's own PBR materials by default.
+              // Only replace when the cart explicitly requests N64 style via materialOptions.n64.
+              if (materialOptions.n64 && child.material) {
                 const mat = gpu.createN64Material({
                   color: child.material.color,
                   texture: child.material.map,
                   ...materialOptions,
                 });
-                // fog must be set before the shader compiles on next render
                 if (materialOptions.fog === false) mat.fog = false;
                 child.material = mat;
               }

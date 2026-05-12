@@ -9,18 +9,18 @@ const { setAmbientLight, setFog, setLightDirection } = nova64.light;
 const { enableBloom } = nova64.fx;
 const { keyp } = nova64.input;
 const { remove } = nova64.data;
-const { color, hsb } = nova64.util;
-
 const GRID_W = 40;
 const GRID_H = 30;
 const CELL_SIZE = 0.9;
+const CUBE_SIZE = CELL_SIZE * 0.52;
 
 let grid = [];
 let nextGrid = [];
 let meshGrid = []; // 3D cube mesh IDs
 let generation = 0;
+let lastSyncedGeneration = -1;
 let tickTimer = 0;
-let tickSpeed = 0.12; // seconds per generation
+let tickSpeed = 0.2; // seconds per generation
 let paused = false;
 let gameState = 'start';
 let time = 0;
@@ -48,6 +48,43 @@ function createGrid() {
   return g;
 }
 
+function hsbHex(h, s = 1, b = 1) {
+  const hue = ((h % 360) + 360) % 360;
+  const sat = Math.max(0, Math.min(1, s));
+  const bri = Math.max(0, Math.min(1, b));
+  const c = bri * sat;
+  const x = c * (1 - Math.abs(((hue / 60) % 2) - 1));
+  const m = bri - c;
+  let r = 0;
+  let g = 0;
+  let bl = 0;
+
+  if (hue < 60) [r, g, bl] = [c, x, 0];
+  else if (hue < 120) [r, g, bl] = [x, c, 0];
+  else if (hue < 180) [r, g, bl] = [0, c, x];
+  else if (hue < 240) [r, g, bl] = [0, x, c];
+  else if (hue < 300) [r, g, bl] = [x, 0, c];
+  else [r, g, bl] = [c, 0, x];
+
+  const red = Math.floor((r + m) * 255);
+  const green = Math.floor((g + m) * 255);
+  const blue = Math.floor((bl + m) * 255);
+  return (red << 16) | (green << 8) | blue;
+}
+
+function cellHeight(x, y) {
+  return 0.18 + Math.sin(generation * 0.3 + x * 0.2 + y * 0.2) * 0.06;
+}
+
+function createCellMesh(x, y) {
+  const hue = ((x / GRID_W) * 210 + (y / GRID_H) * 140 + generation * 3) % 360;
+  const col = hsbHex(hue, 0.72, 0.85);
+  const px = x * CELL_SIZE;
+  const pz = y * CELL_SIZE;
+  const height = cellHeight(x, y);
+  return nova64.scene.createCube(CUBE_SIZE, height, CUBE_SIZE, col, [px, height * 0.5, pz]);
+}
+
 function clearMeshes() {
   for (let y = 0; y < GRID_H; y++) {
     for (let x = 0; x < GRID_W; x++) {
@@ -57,6 +94,7 @@ function clearMeshes() {
       }
     }
   }
+  lastSyncedGeneration = -1;
 }
 
 function randomize(density = 0.3) {
@@ -66,6 +104,8 @@ function randomize(density = 0.3) {
     }
   }
   generation = 0;
+  tickTimer = 0;
+  lastSyncedGeneration = -1;
 }
 
 function placeGlider(gx, gy) {
@@ -152,7 +192,7 @@ function loadPattern(idx) {
 
   if (idx === 0) {
     // Random soup
-    randomize(0.35);
+    randomize(0.1);
   } else if (idx === 1) {
     // Glider fleet
     for (let i = 0; i < 8; i++) {
@@ -166,6 +206,8 @@ function loadPattern(idx) {
     placePulsar(GRID_W / 2 - 6, GRID_H / 2 - 6);
   }
   generation = 0;
+  tickTimer = 0;
+  lastSyncedGeneration = -1;
 }
 
 function countNeighbors(x, y) {
@@ -173,8 +215,9 @@ function countNeighbors(x, y) {
   for (let dy = -1; dy <= 1; dy++) {
     for (let dx = -1; dx <= 1; dx++) {
       if (dx === 0 && dy === 0) continue;
-      const nx = (x + dx + GRID_W) % GRID_W;
-      const ny = (y + dy + GRID_H) % GRID_H;
+      const nx = x + dx;
+      const ny = y + dy;
+      if (nx < 0 || nx >= GRID_W || ny < 0 || ny >= GRID_H) continue;
       count += grid[ny][nx];
     }
   }
@@ -198,16 +241,21 @@ function step() {
   generation++;
 }
 
+function toSeconds(dt) {
+  return dt > 1 ? dt / 1000 : dt;
+}
+
 export function init() {
+  nova64.scene.clearScene();
+
   grid = createGrid();
   nextGrid = createGrid();
   meshGrid = [];
   for (let y = 0; y < GRID_H; y++) meshGrid[y] = new Array(GRID_W).fill(null);
 
-  nova64.light.setAmbientLight(0xffffff, 0.3);
+  nova64.light.setAmbientLight(0x202030, 0.8);
   nova64.light.setLightDirection(-1, -2, -1);
   nova64.light.setFog(0x050510, 30, 80);
-  nova64.fx.enableBloom(1.0, 0.4, 0.3);
 
   loadPattern(0);
   gameState = 'start';
@@ -215,14 +263,15 @@ export function init() {
 }
 
 export function update(dt) {
-  time += dt;
+  const frameDt = toSeconds(dt);
+  time += frameDt;
 
   if (gameState === 'start') {
     if (nova64.input.keyp('Space') || nova64.input.keyp('Enter')) {
       gameState = 'running';
     }
     // Still animate camera on start
-    cameraAngle += dt * 0.2;
+    cameraAngle += frameDt * 0.2;
     updateCamera();
     return;
   }
@@ -248,7 +297,7 @@ export function update(dt) {
 
   // Simulation tick
   if (!paused) {
-    tickTimer += dt;
+    tickTimer += Math.min(frameDt, tickSpeed);
     if (tickTimer >= tickSpeed) {
       tickTimer = 0;
       step();
@@ -256,7 +305,7 @@ export function update(dt) {
   }
 
   // Camera orbit
-  cameraAngle += dt * 0.15;
+  cameraAngle += frameDt * 0.15;
   updateCamera();
 
   // Sync 3D cubes with grid
@@ -273,35 +322,17 @@ function updateCamera() {
 }
 
 function syncMeshes() {
+  const genChanged = generation !== lastSyncedGeneration;
+  if (!genChanged) return;
+
+  clearMeshes();
   for (let y = 0; y < GRID_H; y++) {
     for (let x = 0; x < GRID_W; x++) {
       const alive = grid[y][x];
-      const hasMesh = meshGrid[y][x] != null;
-
-      if (alive && !hasMesh) {
-        // Birth — create a cube
-        const hue = ((x + y) * 7 + generation * 2) % 360;
-        const col = nova64.util.hsb(hue, 80, 90);
-        const px = x * CELL_SIZE;
-        const pz = y * CELL_SIZE;
-        const height = 0.5 + Math.sin(generation * 0.3 + x * 0.2 + y * 0.2) * 0.3;
-        meshGrid[y][x] = nova64.scene.createCube(CELL_SIZE * 0.85, col, [px, height, pz]);
-        nova64.scene.setScale(meshGrid[y][x], 1, 0.5 + height, 1);
-      } else if (!alive && hasMesh) {
-        // Death — remove the cube
-        nova64.scene.destroyMesh(meshGrid[y][x]);
-        meshGrid[y][x] = null;
-      } else if (alive && hasMesh) {
-        // Alive — animate height and color
-        const hue = ((x + y) * 7 + generation * 2) % 360;
-        const height = 0.5 + Math.sin(generation * 0.3 + x * 0.2 + y * 0.2) * 0.3;
-        const px = x * CELL_SIZE;
-        const pz = y * CELL_SIZE;
-        nova64.scene.setPosition(meshGrid[y][x], px, height, pz);
-        nova64.scene.setScale(meshGrid[y][x], 1, 0.5 + height, 1);
-      }
+      meshGrid[y][x] = alive ? createCellMesh(x, y) : null;
     }
   }
+  lastSyncedGeneration = generation;
 }
 
 function countAlive() {

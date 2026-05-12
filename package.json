@@ -64,6 +64,8 @@
     "test:resize": "node tests/test-cli.js resize",
     "test:cli": "node tests/test-cli.js cli",
     "test:namespace": "node tests/test-namespace.js",
+    "mempalace:mine": "wsl bash -c 'cd ~/ai-tools && pipenv run mempalace mine /mnt/c/Users/brend/exp/nova64/runtime/ --mode projects --wing nova64_runtime'",
+    "mempalace:search": "wsl bash -c 'cd ~/ai-tools && pipenv run mempalace search'",
     "test:coverage": "c8 --reporter=text --reporter=html --reporter=lcov --report-dir=coverage --include='runtime/**/*.js' node tests/test-cli.js",
     "test:coverage:summary": "c8 --reporter=text-summary --include='runtime/**/*.js' node tests/test-cli.js",
     "test:web": "open tests/test-runner.html || xdg-open tests/test-runner.html || start tests/test-runner.html",

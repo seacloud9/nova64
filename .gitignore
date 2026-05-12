@@ -21,6 +21,11 @@ os9-shellMobile/node_modules
 
 # production
 /build
+/retroarch/build/
+/retroarch/nova64_libretro.so
+/.sconsign.dblite
+/nova64-godot/gdextension/third_party/quickjs/*.o
+/nova64-godot/gdextension/third_party/quickjs/*.os
 
 # misc
 .DS_Store

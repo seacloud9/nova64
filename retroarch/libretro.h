@@ -188,6 +188,9 @@ typedef int16_t (RETRO_CALLCONV *retro_input_state_t)(unsigned port, unsigned de
       unsigned index, unsigned id);
 
 typedef void (RETRO_CALLCONV *retro_proc_address_t)(void);
+typedef void (RETRO_CALLCONV *retro_hw_context_reset_t)(void);
+typedef uintptr_t (RETRO_CALLCONV *retro_hw_get_current_framebuffer_t)(void);
+typedef retro_proc_address_t (RETRO_CALLCONV *retro_hw_get_proc_address_t)(const char *sym);
 typedef void (RETRO_CALLCONV *retro_set_environment_t)(retro_environment_t);
 typedef void (RETRO_CALLCONV *retro_set_video_refresh_t)(retro_video_refresh_t);
 typedef void (RETRO_CALLCONV *retro_set_audio_sample_t)(retro_audio_sample_t);
@@ -215,6 +218,37 @@ typedef void (RETRO_CALLCONV *retro_unload_game_t)(void);
 typedef unsigned (RETRO_CALLCONV *retro_get_region_t)(void);
 typedef void *(RETRO_CALLCONV *retro_get_memory_data_t)(unsigned id);
 typedef size_t (RETRO_CALLCONV *retro_get_memory_size_t)(unsigned id);
+
+enum retro_hw_context_type
+{
+   RETRO_HW_CONTEXT_NONE = 0,
+   RETRO_HW_CONTEXT_OPENGL = 1,
+   RETRO_HW_CONTEXT_OPENGLES2 = 2,
+   RETRO_HW_CONTEXT_OPENGL_CORE = 3,
+   RETRO_HW_CONTEXT_OPENGLES3 = 4,
+   RETRO_HW_CONTEXT_OPENGLES_VERSION = 5,
+   RETRO_HW_CONTEXT_VULKAN = 6,
+   RETRO_HW_CONTEXT_DUMMY = INT_MAX
+};
+
+#define RETRO_HW_FRAME_BUFFER_VALID ((uintptr_t)-1)
+
+struct retro_hw_render_callback
+{
+   enum retro_hw_context_type context_type;
+   retro_hw_context_reset_t context_reset;
+   retro_hw_context_reset_t context_destroy;
+   retro_hw_get_current_framebuffer_t get_current_framebuffer;
+   retro_hw_get_proc_address_t get_proc_address;
+   bool depth;
+   bool stencil;
+   bool bottom_left_origin;
+   unsigned version_major;
+   unsigned version_minor;
+   bool cache_context;
+   void *context_data;
+   bool debug_context;
+};
 
 
 #define RETRO_ENVIRONMENT_SET_ROTATION                    1

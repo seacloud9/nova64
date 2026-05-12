@@ -1400,6 +1400,67 @@ static bool extract_zip_entry(const uint8_t *archive, size_t archive_size,
    return true;
 }
 
+static bool extract_zip_named_entry(const uint8_t *archive, size_t archive_size,
+      uint16_t entry_count, uint32_t central_offset, const char *expected_name,
+      char **out_source, size_t *out_size)
+{
+   size_t offset = central_offset;
+   for (uint16_t i = 0; i < entry_count && offset + 46 <= archive_size; i++) {
+      const uint8_t *entry = archive + offset;
+      if (read_u32_le(entry) != NOVA64_ZIP_CENTRAL_SIGNATURE)
+         return false;
+      uint16_t method = read_u16_le(entry + 10);
+      uint32_t compressed_size = read_u32_le(entry + 20);
+      uint32_t uncompressed_size = read_u32_le(entry + 24);
+      uint16_t name_len = read_u16_le(entry + 28);
+      uint16_t extra_len = read_u16_le(entry + 30);
+      uint16_t comment_len = read_u16_le(entry + 32);
+      uint32_t local_offset = read_u32_le(entry + 42);
+      if (offset + 46 + name_len + extra_len + comment_len > archive_size)
+         return false;
+
+      const uint8_t *name = entry + 46;
+      if (bytes_equal_name(name, name_len, expected_name))
+         return extract_zip_entry(archive, archive_size, local_offset, compressed_size,
+               uncompressed_size, method, out_source, out_size);
+      offset += 46 + name_len + extra_len + comment_len;
+   }
+   return false;
+}
+
+static bool parse_manifest_main(const char *manifest, size_t manifest_size, char *out_path, size_t out_path_size)
+{
+   if (!manifest || !out_path || out_path_size == 0)
+      return false;
+
+   const char *cursor = manifest;
+   const char *end = manifest + manifest_size;
+   while (cursor < end) {
+      const char *key = strstr(cursor, "\"main\"");
+      if (!key || key >= end)
+         return false;
+      cursor = key + 6;
+      while (cursor < end && (*cursor == ' ' || *cursor == '\t' || *cursor == '\r' || *cursor == '\n'))
+         cursor++;
+      if (cursor >= end || *cursor != ':')
+         continue;
+      cursor++;
+      while (cursor < end && (*cursor == ' ' || *cursor == '\t' || *cursor == '\r' || *cursor == '\n'))
+         cursor++;
+      if (cursor >= end || *cursor != '"')
+         return false;
+      cursor++;
+      size_t len = 0;
+      while (cursor < end && *cursor != '"' && *cursor != '\\' && len + 1 < out_path_size)
+         out_path[len++] = *cursor++;
+      out_path[len] = '\0';
+      if (len == 0 || strstr(out_path, "..") || out_path[0] == '/' || out_path[0] == '\\')
+         return false;
+      return true;
+   }
+   return false;
+}
+
 static bool extract_nova_code_js(const char *archive_text, size_t archive_size, char **out_source, size_t *out_size)
 {
    const uint8_t *archive = (const uint8_t *)archive_text;
@@ -1425,6 +1486,25 @@ static bool extract_nova_code_js(const char *archive_text, size_t archive_size, 
    if ((size_t)central_offset + central_size > archive_size)
       return false;
 
+   char *manifest = NULL;
+   size_t manifest_size = 0;
+   char manifest_main[256];
+   if (extract_zip_named_entry(archive, archive_size, entry_count, central_offset,
+         "manifest.json", &manifest, &manifest_size)) {
+      if (parse_manifest_main(manifest, manifest_size, manifest_main, sizeof(manifest_main))) {
+         bool loaded_main = extract_zip_named_entry(archive, archive_size, entry_count,
+               central_offset, manifest_main, out_source, out_size);
+         free(manifest);
+         if (loaded_main) {
+            if (log_cb)
+               log_cb(RETRO_LOG_INFO, "[nova64] extracted %s from .nova manifest\n", manifest_main);
+            return true;
+         }
+      } else {
+         free(manifest);
+      }
+   }
+
    const char *candidate_names[] = {
       "code.js",
       "game/code.js",
@@ -1432,32 +1512,11 @@ static bool extract_nova_code_js(const char *archive_text, size_t archive_size, 
    };
 
    for (size_t c = 0; c < sizeof(candidate_names) / sizeof(candidate_names[0]); c++) {
-      size_t offset = central_offset;
-      for (uint16_t i = 0; i < entry_count && offset + 46 <= archive_size; i++) {
-         const uint8_t *entry = archive + offset;
-         if (read_u32_le(entry) != NOVA64_ZIP_CENTRAL_SIGNATURE)
-            return false;
-         uint16_t method = read_u16_le(entry + 10);
-         uint32_t compressed_size = read_u32_le(entry + 20);
-         uint32_t uncompressed_size = read_u32_le(entry + 24);
-         uint16_t name_len = read_u16_le(entry + 28);
-         uint16_t extra_len = read_u16_le(entry + 30);
-         uint16_t comment_len = read_u16_le(entry + 32);
-         uint32_t local_offset = read_u32_le(entry + 42);
-         if (offset + 46 + name_len + extra_len + comment_len > archive_size)
-            return false;
-
-         const uint8_t *name = entry + 46;
-         if (bytes_equal_name(name, name_len, candidate_names[c])) {
-            if (extract_zip_entry(archive, archive_size, local_offset, compressed_size,
-                  uncompressed_size, method, out_source, out_size)) {
-               if (log_cb)
-                  log_cb(RETRO_LOG_INFO, "[nova64] extracted %s from .nova package\n", candidate_names[c]);
-               return true;
-            }
-            return false;
-         }
-         offset += 46 + name_len + extra_len + comment_len;
+      if (extract_zip_named_entry(archive, archive_size, entry_count, central_offset,
+            candidate_names[c], out_source, out_size)) {
+         if (log_cb)
+            log_cb(RETRO_LOG_INFO, "[nova64] extracted %s from .nova package\n", candidate_names[c]);
+         return true;
       }
    }
    return false;

@@ -52,8 +52,10 @@ Included:
 - Make and SCons build paths.
 - A native callback-stub harness for loading conformance carts outside RetroArch.
 - Harness PPM screen capture output for software-framebuffer renders.
+- Harness checksum assertions and a one-command conformance runner.
 - A deterministic solid-shaded software primitive preview for conformance renders.
-- Raw `.nova` JS compatibility plus zip-style `.nova` `code.js` extraction.
+- Raw `.nova` JS compatibility plus zip-style `.nova` manifest `"main"` and
+  `code.js` extraction.
 
 Known limits:
 
@@ -63,7 +65,8 @@ Known limits:
 - Software 2D overlay compositing over GLES is still pending.
 - Software fallback previews 3D commands; full GLES/Vulkan primitive rendering is
   still pending.
-- `.nova` metadata and asset parsing is still pending.
+- `.nova` metadata parsing currently selects the executable source path; full
+  asset parsing is still pending.
 
 ## Milestone 2: Content And Conformance
 
@@ -71,14 +74,14 @@ Goals:
 
 - Expand `.nova` package parsing while preserving plain `.js` development carts.
 - Define `.nova` as a package format, not a new programming model.
-- Load package metadata and asset manifests without executing code.
+- Load package asset manifests without executing code.
 - Add conformance carts:
   - `00-boot.js`: lifecycle/log order. Done.
   - `01-framebuffer.js`: deterministic 2D checksum. Done.
   - `02-input.js`: hold and edge transitions. Done.
   - `03-errors.js`: controlled exceptions. Done.
   - `06-cube.js`: minimal camera/light/mesh command scene. Done.
-- Expand the harness into assertions and golden checksums.
+- Expand conformance coverage around package assets and additional API families.
 
 ## Milestone 3: OpenGL ES 3.1 Renderer
 
@@ -121,6 +124,7 @@ cd /mnt/c/Users/brend/exp/nova64
 make -C retroarch clean all
 make -C retroarch DEBUG=1
 scons -f retroarch/SConstruct DEBUG=1
+bash retroarch/tests/run_conformance.sh
 ```
 
 Manual RetroArch smoke targets:

@@ -50,17 +50,27 @@ RetroArch:
 ```bash
 cc -Iretroarch -o retroarch/build/harness retroarch/tests/harness.c -ldl
 retroarch/build/harness retroarch/nova64_libretro.so retroarch/conformance/00-boot.js
-retroarch/build/harness retroarch/nova64_libretro.so retroarch/conformance/06-cube.js screenshots/retroarch/06-cube.ppm
+retroarch/build/harness retroarch/nova64_libretro.so retroarch/conformance/06-cube.js --capture screenshots/retroarch/06-cube.ppm
 ```
 
 The optional third argument writes the most recent software framebuffer as a PPM
-screen capture.
+screen capture. `--expect <hex>` turns the harness into a checksum assertion.
+
+Run the full conformance suite:
+
+```bash
+bash retroarch/tests/run_conformance.sh
+```
+
+The suite builds the core, compiles the harness, generates `.nova` package
+fixtures, and checks golden frame checksums.
 
 ## Supported Content
 
 - `.js`: supported as the primary development cart format.
 - `.nova`: kept as a compatibility extension. Raw JS payloads execute directly;
-  zip-style `.nova` packages extract `code.js`, `game/code.js`, or `src/code.js`.
+  zip-style `.nova` packages prefer `manifest.json`'s `"main"` path, then fall
+  back to `code.js`, `game/code.js`, or `src/code.js`.
 
 ## Implemented Cart APIs
 
@@ -118,8 +128,8 @@ helpers for tiny conformance carts.
 
 - QuickJS heap state is not serialized. Save states currently include only
   framebuffer, input, camera, light, and native mesh-table state.
-- `.nova` package parsing currently extracts executable cart source only; metadata
-  and assets remain staged next.
+- `.nova` package parsing currently uses manifest metadata only to find executable
+  cart source; assets remain staged next.
 - GLES 3D primitive drawing is a command bridge smoke path; geometry rendering and
   overlay composition are staged next.
 - The software fallback includes a deterministic primitive preview renderer so

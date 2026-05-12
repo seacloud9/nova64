@@ -1,4 +1,5 @@
 #include <dlfcn.h>
+#include <errno.h>
 #include <stdarg.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -15,6 +16,19 @@ static bool g_joypad[16];
 static uint16_t *g_last_frame;
 static unsigned g_last_width;
 static unsigned g_last_height;
+
+static bool parse_u64_hex(const char *text, uint64_t *out)
+{
+   if (!text || !out)
+      return false;
+   errno = 0;
+   char *end = NULL;
+   unsigned long long value = strtoull(text, &end, 16);
+   if (errno != 0 || !end || *end != '\0')
+      return false;
+   *out = (uint64_t)value;
+   return true;
+}
 
 static void harness_log(enum retro_log_level level, const char *fmt, ...)
 {
@@ -156,8 +170,42 @@ static void *load_symbol(void *core, const char *name)
 int main(int argc, char **argv)
 {
    if (argc < 3) {
-      fprintf(stderr, "usage: %s <nova64_libretro.so> <cart.js> [capture.ppm]\n", argv[0]);
+      fprintf(stderr, "usage: %s <nova64_libretro.so> <cart.js|cart.nova> [capture.ppm] [--capture path] [--expect checksum] [--frames n]\n", argv[0]);
       return 2;
+   }
+
+   const char *capture_path = NULL;
+   bool has_expected_checksum = false;
+   uint64_t expected_checksum = 0;
+   unsigned frames_to_run = 3;
+
+   for (int i = 3; i < argc; i++) {
+      if (!strcmp(argv[i], "--capture")) {
+         if (++i >= argc) {
+            fprintf(stderr, "--capture requires a path\n");
+            return 2;
+         }
+         capture_path = argv[i];
+      } else if (!strcmp(argv[i], "--expect")) {
+         if (++i >= argc || !parse_u64_hex(argv[i], &expected_checksum)) {
+            fprintf(stderr, "--expect requires a hex checksum\n");
+            return 2;
+         }
+         has_expected_checksum = true;
+      } else if (!strcmp(argv[i], "--frames")) {
+         if (++i >= argc) {
+            fprintf(stderr, "--frames requires a count\n");
+            return 2;
+         }
+         frames_to_run = (unsigned)strtoul(argv[i], NULL, 10);
+         if (frames_to_run == 0)
+            frames_to_run = 1;
+      } else if (!capture_path) {
+         capture_path = argv[i];
+      } else {
+         fprintf(stderr, "unknown argument: %s\n", argv[i]);
+         return 2;
+      }
    }
 
    void *core = dlopen(argv[1], RTLD_NOW);
@@ -209,11 +257,11 @@ int main(int argc, char **argv)
    game.size = cart_size;
    bool ok = load_game(&game);
    if (ok) {
-      run();
-      g_joypad[RETRO_DEVICE_ID_JOYPAD_B] = true;
-      run();
+      for (unsigned frame = 0; frame < frames_to_run; frame++) {
+         g_joypad[RETRO_DEVICE_ID_JOYPAD_B] = frame == 1;
+         run();
+      }
       g_joypad[RETRO_DEVICE_ID_JOYPAD_B] = false;
-      run();
    }
 
    unload_game();
@@ -221,8 +269,15 @@ int main(int argc, char **argv)
    free(cart);
    dlclose(core);
 
-   if (argc >= 4 && !write_ppm(argv[3])) {
-      fprintf(stderr, "failed to write capture: %s\n", argv[3]);
+   if (capture_path && !write_ppm(capture_path)) {
+      fprintf(stderr, "failed to write capture: %s\n", capture_path);
+      free(g_last_frame);
+      return 1;
+   }
+
+   if (has_expected_checksum && g_checksum != expected_checksum) {
+      fprintf(stderr, "checksum mismatch: expected=%016llx actual=%016llx\n",
+            (unsigned long long)expected_checksum, (unsigned long long)g_checksum);
       free(g_last_frame);
       return 1;
    }

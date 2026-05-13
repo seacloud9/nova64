@@ -1,230 +1,164 @@
-# 🎮 Nova64 Ultimate 3D Fantasy Console - RetroArch Core v0.2.0
+# Nova64 RetroArch Core
 
-Revolutionary RetroArch/libretro core implementation for the **Nova64 Ultimate 3D Fantasy Console** featuring spectacular Nintendo 64/PlayStation-style graphics with modern performance.
+This directory contains the native Nova64 libretro core. It does not embed a browser,
+Three.js, or Babylon.js. Carts run through QuickJS and call native Nova64 host APIs.
 
-## 🚀 **New in v0.2.0**
+## Current Milestone
 
-- **Three.js Core Integration**: Full 3D graphics pipeline in RetroArch
-- **Enhanced Performance**: Optimized rendering for 60 FPS gameplay
-- **Advanced Materials**: Holographic, metallic, and emissive surface effects
-- **Spatial Audio**: 3D positioned sound with environmental effects
-- **Professional Lighting**: Dynamic shadows and atmospheric rendering
+The first executable core milestone is now wired around:
 
-## 🌟 **What is Nova64 RetroArch Core?**
+- QuickJS runtime/context creation from the shared source in
+  `nova64-godot/gdextension/third_party/quickjs`.
+- ES module carts with cached `init()`, `update(dt)`, and `draw()` exports.
+- Plain `.js` cart loading plus `.nova` extension compatibility for package work.
+- A 640x360 software 2D framebuffer presented as RGB565 when hardware rendering is
+  unavailable.
+- A RetroArch-owned OpenGL ES hardware context request targeting OpenGL ES 3.1.
+- A minimal backend-neutral 3D command table for opaque mesh handles.
+- A first OpenGL ES cube/plane/sphere primitive renderer using RetroArch proc-address
+  loading, with per-vertex normals and basic ambient/directional lighting.
+- A small renderer boundary that owns hardware context request, context lifecycle,
+  and frame presentation decisions ahead of the Vulkan backend.
+- A first OpenGL ES 2D overlay texture compositor that uploads the software
+  framebuffer after 3D rendering.
+- Versioned save-state headers for host-owned deterministic state only.
 
-The Nova64 RetroArch core transforms RetroArch into a **3D fantasy console powerhouse**, providing:
+Vulkan 1.2 is the next renderer target. The C renderer boundary is intentionally
+shaped so a Vulkan backend can be added beside GLES without replacing the
+QuickJS/runtime layer.
 
-### 🎪 **Spectacular 3D Features**
+## Build
 
-- **🚀 Advanced 3D Graphics**: Three.js-powered rendering with holographic materials
-- **💡 Cinematic Lighting**: Multi-layered ambient, directional, and point lighting systems
-- **🌫️ Atmospheric Effects**: Dynamic fog, volumetric lighting, particle systems
-- **📐 High-Quality Shadows**: 4K shadow maps with soft shadow filtering
-- **🎨 Professional Materials**: Metallic, emissive, and animated surface effects
-
-### 🎯 **Enhanced RetroArch Integration**
-
-- **🔄 Seamless 2D/3D Hybrid**: Perfect combination of pixel art overlays and 3D worlds
-- **💾 Save State Support**: Complete game state preservation including 3D scene data
-- **🎮 Advanced Input Mapping**: WASD + gamepad support with customizable controls
-- **🔊 Spatial Audio**: 3D positioned sound effects and ambient audio systems
-- **🎪 Shader Pipeline**: Advanced post-processing with ACES tone mapping
-
-### 🏆 **Spectacular Demo Gallery**
-
-- **🏰 Mystical Realm**: Fantasy world with weather systems and crystal collection
-- **🏛️ Crystal Cathedral**: Ultimate graphics showcase with holographic architecture
-- **🚀 Star Fox Nova**: Epic space combat with squadron battles
-- **🌃 Cyberpunk City**: Neon-lit metropolis with atmospheric rain effects
-
-## 🔧 **Building the Ultimate 3D Core**
-
-### 📋 **Prerequisites**
-
-- **GCC or Clang**: Modern C compiler with C11 support
-- **Make**: GNU Make build system
-- **OpenGL ES 3.0+**: Hardware-accelerated 3D graphics support
-- **RetroArch Headers**: Development headers (included in this repository)
-- **JavaScript Engine**: QuickJS recommended for ES2020+ support
-
-### 🚀 **Build Process**
+Use WSL for Windows development.
+The core links zlib for zip-style `.nova` source extraction.
 
 ```bash
-# 📁 Navigate to RetroArch core directory
-cd retroarch/
-
-# 🏗️ Build the spectacular 3D core
-make clean && make
-
-# ✅ Output files generated:
-# - nova64_libretro.so (Linux)
-# - nova64_libretro.dylib (macOS)
-# - nova64_libretro.dll (Windows)
+cd /mnt/c/Users/brend/exp/nova64
+make -C retroarch clean all
+make -C retroarch DEBUG=1
 ```
 
-**🎯 Build Result**: Creates optimized RetroArch core with full 3D graphics pipeline support.
-
-### 🌍 **Cross-Platform Builds**
+An optional SCons entry point is available:
 
 ```bash
-# 🍎 macOS (with Metal/OpenGL support)
-make platform=osx
-
-# 🪟 Windows (MinGW with DirectX/OpenGL)
-make platform=win
-
-# 📱 Android (OpenGL ES optimized)
-make platform=android
-
-# 📱 iOS (Metal backend preferred)
-make platform=ios
-
-# 🐧 Linux ARM (Raspberry Pi, Steam Deck)
-make platform=rpi
-
-# 🎮 Nintendo Switch (Homebrew)
-make platform=switch
-
-# ⚡ WebAssembly (Browser deployment)
-make platform=emscripten
+scons -f retroarch/SConstruct
+scons -f retroarch/SConstruct DEBUG=1
 ```
 
-**🎯 Platform Features**: Each build optimized for target hardware with appropriate 3D acceleration.
+Both paths build from the shared QuickJS source tree and place generated object
+files under `retroarch/build/`.
 
-## 🚀 **Installation & Setup**
+## Native Harness
 
-### 📦 **Core Installation**
+The lightweight harness stubs libretro callbacks and runs a cart without launching
+RetroArch:
 
-1. **📁 Copy Core File** to your RetroArch cores directory:
-   - **🐧 Linux**: `~/.config/retroarch/cores/nova64_libretro.so`
-   - **🍎 macOS**: `~/Library/Application Support/RetroArch/cores/nova64_libretro.dylib`
-   - **🪟 Windows**: `%APPDATA%\RetroArch\cores\nova64_libretro.dll`
+```bash
+cc -Iretroarch -o retroarch/build/harness retroarch/tests/harness.c -ldl
+retroarch/build/harness retroarch/nova64_libretro.so retroarch/conformance/00-boot.js
+retroarch/build/harness retroarch/nova64_libretro.so retroarch/conformance/06-cube.js --capture screenshots/retroarch/06-cube.ppm
+```
 
-2. **🎮 Core Recognition**: Appears as **"Nova64 Ultimate 3D Fantasy Console"** in RetroArch's core list
+The optional third argument writes the most recent software framebuffer as a PPM
+screen capture. `--expect <hex>` turns the harness into a checksum assertion.
+`--command-log <path>` writes a deterministic renderer command log for headless
+checks of camera, light, overlay, and mesh state. The same path can be enabled
+outside the harness with `NOVA64_RENDER_COMMAND_LOG=/tmp/nova64.commands`.
 
-### 🎪 **Ultimate 3D Gaming Experience**
+Run the full conformance suite:
 
-1. **🚀 Launch RetroArch** with hardware acceleration enabled
-2. **🎯 Load Nova64 Core** from the cores menu
-3. **📂 Select Cart** - Load Nova64 cartridge files (`.js`, `.nova`, or `.n64cart`)
-4. **✨ Experience Magic** - Spectacular 3D worlds render with RetroArch integration
-5. **🎮 Customize Controls** - Configure WASD + gamepad mapping in RetroArch settings
+```bash
+bash retroarch/tests/run_conformance.sh
+```
 
-### 🏆 **Recommended RetroArch Settings**
+The suite builds the core, compiles the harness, generates `.nova` package
+fixtures, checks golden frame checksums, and verifies renderer command logs for
+the mixed 3D/HUD scene and staged Vulkan selection.
 
-- **Video Driver**: `vulkan` or `gl` for best 3D performance
-- **Audio Driver**: `pulse` (Linux) or `wasapi` (Windows) for spatial audio
-- **Threaded Video**: `ON` for smooth 60 FPS rendering
-- **VSync**: `ON` to prevent screen tearing
-- **Shader Pipeline**: Enable for post-processing effects
+## Renderer Selection
 
-### Controls
+The core exposes a `nova64_renderer` option with `opengles3` and `vulkan12`.
+`opengles3` is the active implemented hardware renderer. `vulkan12` is a staged
+backend identity for the next renderer milestone; selecting it currently records
+the Vulkan preference in logs and command logs, then requests the working GLES
+fallback until the Vulkan backend is implemented.
 
-The Nova64 input mapping to RetroArch controls:
+For harness or shell-driven tests, `NOVA64_RENDERER=vulkan12` mirrors the core
+option. The harness also accepts `--renderer opengles3|vulkan12`.
 
-| Nova64 Button | RetroArch Button | Purpose  |
-| ------------- | ---------------- | -------- |
-| Left          | D-Pad Left       | Movement |
-| Right         | D-Pad Right      | Movement |
-| Up            | D-Pad Up         | Movement |
-| Down          | D-Pad Down       | Movement |
-| Z             | B Button         | Action   |
-| X             | A Button         | Action   |
-| C             | Y Button         | Action   |
-| V             | X Button         | Action   |
+## Supported Content
 
-## Current Limitations
+- `.js`: supported as the primary development cart format.
+- `.nova`: kept as a compatibility extension. Raw JS payloads execute directly;
+  zip-style `.nova` packages prefer `manifest.json`'s `"main"` path, then fall
+  back to `code.js`, `game/code.js`, or `src/code.js`.
 
-This is a basic implementation that provides the core RetroArch integration. For full functionality, the following would need to be implemented:
+## Implemented Cart APIs
 
-### JavaScript Engine Integration
+Lifecycle:
 
-The current core is a stub that needs integration with a JavaScript engine like:
+- `init()`
+- `update(dt)`
+- `draw()`
 
-- QuickJS (recommended - small, fast, ES2020+ support)
-- Duktape (lightweight ES5.1)
-- V8 (full-featured but large)
+2D:
 
-### Nova64 API Implementation (v0.2.0)
+- `rgba8(r, g, b, a)`
+- `cls(color)`
+- `pset(x, y, color)`
+- `line(x0, y0, x1, y1, color)`
+- `rect(x, y, w, h, color, filled)`
+- `print(text, x, y, color)`
 
-The following Nova64 APIs need to be implemented in C:
+Input:
 
-**2D Graphics APIs:**
+- `btn(nameOrIndex)`
+- `btnp(nameOrIndex)`
 
-- Core drawing: `cls()`, `pset()`, `line()`, `rect()`, `print()`
-- Color helpers: `packRGBA64()`, `rgba8()`
-- Camera system: `setCamera()`, `getCamera()`
-- Sprite rendering: `spr()`, `loadSprites()`
+3D command bridge:
 
-**3D Graphics APIs (New!):**
+- `createCube(color)`
+- `createSphere(color)`
+- `createPlane(color)`
+- `destroyMesh(handle)`
+- `setPosition(handle, x, y, z)`
+- `setRotation(handle, x, y, z)`
+- `setScale(handle, x, y, z)`
+- `setCameraPosition(x, y, z)`
+- `setCameraTarget(x, y, z)`
+- `setCameraFOV(degrees)`
+- `setAmbientLight(color)`
+- `setLightDirection(x, y, z)`
+- `clearScene()`
 
-- Object creation: `createCube()`, `createSphere()`, `createPlane()`
-- Model loading: `loadModel()` (GLTF/GLB support)
-- Transforms: `setPosition()`, `setRotation()`, `setScale()`, `rotateMesh()`, `moveMesh()`
-- Camera: `setCameraPosition()`, `setCameraTarget()`, `setCameraFOV()`
-- Scene: `setFog()`, `setLightDirection()`, `clearScene()`
-- Effects: `enablePixelation()`, `enableDithering()`
-- Advanced: `raycastFromCamera()`, `get3DStats()`
+These functions are exposed both under `nova64.draw`, `nova64.input`,
+`nova64.scene`, `nova64.camera`, and `nova64.light`, and as top-level compatibility
+helpers for tiny conformance carts.
 
-**System APIs:**
+## Renderer Roadmap
 
-- Input: `btn()`, `btnp()`
-- Audio: `sfx()`
-- Storage: `saveJSON()`, `loadJSON()`, `remove()`
+1. OpenGL ES 3.1: first hardware renderer. The current core requests the context and
+   loads functions through the libretro proc-address callback. Cube, plane, and
+   low-poly sphere rendering, basic lit material color, and 2D overlay texture
+   compositing are in place.
+2. Vulkan 1.2: planned second backend. The goal is partial-to-mostly complete
+   Nova64 primitive/material coverage without changing cart-facing APIs.
+3. Package/assets: `.nova` package parsing, assets, textures, model loading, and
+   deterministic conformance coverage.
 
-### Feature Roadmap v0.2.0
+## Limitations
 
-**Priority 1 - 3D Graphics Integration:**
-
-- [ ] JavaScript engine integration (QuickJS recommended for size/performance)
-- [ ] 3D rendering backend (OpenGL ES 3.0+ required)
-- [ ] Three.js-compatible 3D API implementation in C
-- [ ] Model loading support (GLTF/GLB parsing)
-- [ ] Material and lighting system
-- [ ] Shadow mapping and fog effects
-
-**Priority 2 - Enhanced 2D System:**
-
-- [ ] Complete Nova64 2D API implementation
-- [ ] High-resolution framebuffer support (640x360 native)
-- [ ] Sprite batching and texture atlas support
-- [ ] Advanced 2D/3D overlay compositing
-
-**Priority 3 - System Features:**
-
-- [ ] Audio synthesis and playbook
-- [ ] Save state support for 3D scene data
-- [ ] Performance optimization for 3D scenes
-- [ ] Memory management for dynamic 3D objects
-- [ ] Error handling and debugging tools
-
-**Priority 4 - Visual Enhancements:**
-
-- [ ] Post-processing pipeline (bloom, tone mapping)
-- [ ] N64-style texture filtering and effects
-- [ ] Dynamic lighting and particle systems
-- [ ] Weather and atmospheric effects
-
-## Architecture Notes
-
-The core uses Nova64's enhanced 640x360 RGBA64 framebuffer format internally for the 2D overlay system, with 3D rendering handled via OpenGL. The 3D scene renders first, followed by the 2D overlay composite, then conversion to RGB565 for RetroArch display. This preserves the high color depth and enables stunning 3D graphics while maintaining compatibility with RetroArch's rendering pipeline.
-
-The JavaScript execution would happen in `execute_js_frame()`, which should:
-
-1. Update the JS engine's input state
-2. Call `cart.update(deltaTime)`
-3. Call `cart.draw()`
-4. Process any Nova64 API calls
-5. Update the internal framebuffer
-
-## Development
-
-To extend this core:
-
-1. Add JavaScript engine as a dependency
-2. Implement the Nova64 API functions in C
-3. Add proper error handling and memory management
-4. Implement audio generation
-5. Add save state serialization for cart variables
-
-For questions or contributions, see the main Nova64 project documentation.
+- QuickJS heap state is not serialized. Save states currently include only
+  framebuffer, input, camera, light, and native mesh-table state.
+- `.nova` package parsing currently uses manifest metadata only to find executable
+  cart source; assets remain staged next.
+- GLES currently renders cube, plane, and low-poly sphere primitives with basic
+  ambient/directional lighting and composites the 2D framebuffer as a texture
+  overlay.
+- Hardware GLES presentation still needs manual smoke coverage inside RetroArch;
+  the native harness validates the same carts through deterministic software
+  captures and renderer command logs when no hardware context is available.
+- The software fallback includes a deterministic primitive preview renderer so
+  conformance carts can produce solid shaded captures before the full GLES/Vulkan
+  paths are complete.
+- Audio and persistent cart storage are not implemented yet.

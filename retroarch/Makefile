@@ -1,8 +1,8 @@
-# Nova64 RetroArch Core Makefile v0.2.0
-# Enhanced 3D graphics support with Three.js-compatible API
+# Nova64 RetroArch Core Makefile v0.3.0
+# QuickJS + software 2D + native GLES command bridge
 
 TARGET_NAME = nova64
-VERSION = 0.2.0
+VERSION = 0.3.0
 DEBUG = 0
 GIT_VERSION := " $(shell git rev-parse --short HEAD || echo unknown)"
 ifneq ($(GIT_VERSION)," unknown")
@@ -20,6 +20,16 @@ else ifneq ($(findstring Darwin,$(shell uname -a)),)
    platform = osx
 else ifneq ($(findstring win,$(shell uname -a)),)
    platform = win
+endif
+endif
+
+# Windows shells can leak a win platform value into WSL. Native WSL builds should
+# still produce the Linux libretro shared object unless explicitly cross-built.
+ifneq ($(findstring Linux,$(shell uname -s 2>/dev/null)),)
+ifneq ($(findstring MINGW,$(shell uname -a)),MINGW)
+ifeq ($(platform),win)
+   platform = unix
+endif
 endif
 endif
 
@@ -139,7 +149,8 @@ endif
 
 include Makefile.common
 
-OBJECTS := $(SOURCES_C:.c=.o)
+OBJDIR := build
+OBJECTS := $(addprefix $(OBJDIR)/,$(notdir $(SOURCES_C:.c=.o)))
 
 CFLAGS += -std=c99 $(DEFINES)
 
@@ -153,10 +164,16 @@ $(TARGET): $(OBJECTS)
 	$(CC) $(fpic) $(SHARED) $(INCLUDES) -o $@ $(OBJECTS) $(LIBM)
 endif
 
-%.o: %.c
+$(OBJDIR):
+	mkdir -p $(OBJDIR)
+
+$(OBJDIR)/nova64_libretro.o: $(CORE_DIR)/nova64_libretro.c | $(OBJDIR)
+	$(CC) $(CFLAGS) $(fpic) -c -o $@ $<
+
+$(OBJDIR)/%.o: $(QUICKJS_DIR)/%.c | $(OBJDIR)
 	$(CC) $(CFLAGS) $(fpic) -c -o $@ $<
 
 clean:
-	rm -f $(OBJECTS) $(TARGET)
+	rm -rf $(OBJDIR) $(TARGET)
 
 .PHONY: clean

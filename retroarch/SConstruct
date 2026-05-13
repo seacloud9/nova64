@@ -1,0 +1,59 @@
+import os
+
+env = Environment(
+    CC=os.environ.get("CC", "cc"),
+    tools=["default"],
+)
+
+debug = ARGUMENTS.get("DEBUG", "0") == "1"
+platform = ARGUMENTS.get("platform", "unix")
+quickjs_dir = "#nova64-godot/gdextension/third_party/quickjs"
+target_name = "nova64_libretro"
+build_dir = "#retroarch/build/scons"
+
+env.Replace(SHLIBPREFIX="")
+
+env.Append(
+    CPPPATH=["#retroarch", quickjs_dir],
+    CPPDEFINES=[
+        "__LIBRETRO__",
+        "_GNU_SOURCE",
+        ("CONFIG_VERSION", '\\"nova64-libretro\\"'),
+        ("NOVA64_VERSION", '\\"0.3.0\\"'),
+    ],
+    CCFLAGS=[
+        "-std=c99",
+        "-Wall",
+        "-fPIC",
+        "-Wno-unused-parameter",
+        "-Wno-missing-field-initializers",
+        "-Wno-unused-but-set-variable",
+    ],
+    LIBS=["m", "z"],
+)
+
+if debug:
+    env.Append(CCFLAGS=["-O0", "-g", "-DDEBUG"])
+else:
+    env.Append(CCFLAGS=["-O3", "-DNDEBUG"])
+
+suffix = {
+    "osx": ".dylib",
+    "win": ".dll",
+}.get(platform, ".so")
+
+sources = [
+    "#retroarch/nova64_libretro.c",
+    quickjs_dir + "/quickjs.c",
+    quickjs_dir + "/libregexp.c",
+    quickjs_dir + "/libunicode.c",
+    quickjs_dir + "/dtoa.c",
+]
+
+objects = []
+for source in sources:
+    basename = os.path.splitext(os.path.basename(str(source)))[0]
+    objects.append(env.SharedObject(target=build_dir + "/" + basename, source=source))
+
+target = env.SharedLibrary(target="#retroarch/" + target_name + suffix, source=objects)
+Default(target)

@@ -2,6 +2,7 @@
 // Three.js backend for 3D rendering with N64-style effects and 2D overlay support.
 import * as THREE from 'three';
 import { PMREMGenerator } from 'three';
+import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { Framebuffer64 } from '../../framebuffer.js';
 import { THREEJS_BACKEND_CAPABILITIES } from './capabilities.js';
 
@@ -90,20 +91,20 @@ export class GpuThreeJS {
   }
 
   setupN64Lighting() {
-    // Multi-layered ambient lighting for rich atmosphere
-    const ambientLight = new THREE.AmbientLight(0x606080, 0.5);
+    // Neutral ambient base — carts override via setAmbientLight()
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.3);
     this.scene.add(ambientLight);
 
-    // Hemisphere light for more natural lighting
-    const hemisphereLight = new THREE.HemisphereLight(0xffffbb, 0x080820, 0.6);
+    // Hemisphere: neutral ground (0x383838) avoids warm-brown tinting on coloured objects
+    const hemisphereLight = new THREE.HemisphereLight(0xc8d8ff, 0x383838, 0.5);
     this.scene.add(hemisphereLight);
 
-    // Main directional light with ultra-high quality shadows
-    this.mainLight = new THREE.DirectionalLight(0xffffff, 1.8);
+    // Single main directional with shadows — carts steer via setLightDirection/Color
+    this.mainLight = new THREE.DirectionalLight(0xffffff, 1.5);
     this.mainLight.position.set(5, 8, 3);
     this.mainLight.castShadow = true;
-    this.mainLight.shadow.mapSize.width = 4096;
-    this.mainLight.shadow.mapSize.height = 4096;
+    this.mainLight.shadow.mapSize.width = 2048;
+    this.mainLight.shadow.mapSize.height = 2048;
     this.mainLight.shadow.camera.near = 0.1;
     this.mainLight.shadow.camera.far = 200;
     this.mainLight.shadow.camera.left = -100;
@@ -114,63 +115,19 @@ export class GpuThreeJS {
     this.mainLight.shadow.normalBias = 0.02;
     this.scene.add(this.mainLight);
 
-    // Dramatic colored fill lights for cinematic atmosphere
-    const fillLight1 = new THREE.DirectionalLight(0x4080ff, 0.8);
-    fillLight1.position.set(-8, 4, -5);
-    fillLight1.castShadow = false;
-    this.scene.add(fillLight1);
-
-    const fillLight2 = new THREE.DirectionalLight(0xff4080, 0.6);
-    fillLight2.position.set(5, -3, 8);
-    fillLight2.castShadow = false;
-    this.scene.add(fillLight2);
-
-    const fillLight3 = new THREE.DirectionalLight(0x80ff40, 0.4);
-    fillLight3.position.set(-3, 6, -2);
-    fillLight3.castShadow = false;
-    this.scene.add(fillLight3);
-
-    // Point lights for localized dramatic effects
-    const pointLight1 = new THREE.PointLight(0xffaa00, 2, 30);
-    pointLight1.position.set(10, 15, 10);
-    pointLight1.castShadow = true;
-    pointLight1.shadow.mapSize.width = 1024;
-    pointLight1.shadow.mapSize.height = 1024;
-    this.scene.add(pointLight1);
-
-    const pointLight2 = new THREE.PointLight(0x00aaff, 1.5, 25);
-    pointLight2.position.set(-10, 10, -10);
-    pointLight2.castShadow = true;
-    pointLight2.shadow.mapSize.width = 1024;
-    pointLight2.shadow.mapSize.height = 1024;
-    this.scene.add(pointLight2);
-
-    // Generate a procedural environment map so metallic/holographic surfaces
-    // actually show specular reflections (envMapIntensity was previously inert).
-    // We use a simple gradient sky as the env source.
+    // Environment map for PBR metallic reflections
     try {
       const pmremGenerator = new PMREMGenerator(this.renderer);
       pmremGenerator.compileEquirectangularShader();
-      const skyColor = new THREE.Color(0x1a2040);
-      const envScene = new THREE.Scene();
-      envScene.background = skyColor;
-      this.scene.environment = pmremGenerator.fromScene(envScene).texture;
+      this.scene.environment = pmremGenerator.fromScene(new RoomEnvironment()).texture;
       pmremGenerator.dispose();
     } catch (_) {
-      // Envmap setup is non-critical; silently skip on unsupported renderers
+      // Non-critical; silently skip on unsupported renderers
     }
 
-    // Atmospheric fog with subtle color
-    this.scene.fog = new THREE.FogExp2(0x202050, 0.005);
-
-    // Store lights for dynamic control
+    // Store lights for dynamic control via setAmbientLight / setLightDirection etc.
     this.lights = {
       main: this.mainLight,
-      fill1: fillLight1,
-      fill2: fillLight2,
-      fill3: fillLight3,
-      point1: pointLight1,
-      point2: pointLight2,
       ambient: ambientLight,
       hemisphere: hemisphereLight,
     };
@@ -433,20 +390,19 @@ export class GpuThreeJS {
     let material;
 
     if (holographic || emissiveIntensity > 0.5) {
-      // Create stunning holographic/glowing materials - simplified to avoid shader errors
       material = new THREE.MeshStandardMaterial({
         color: color,
         emissive: new THREE.Color(emissive),
         emissiveIntensity: Math.max(emissiveIntensity, 0.4),
         metalness: 0.8,
         roughness: 0.1,
+        envMapIntensity: 2.5,
         transparent: true,
         opacity: options.opacity ?? 0.9,
         side: THREE.DoubleSide,
         fog: true,
       });
     } else if (metallic) {
-      // Enhanced metallic materials with environment reflections
       material = new THREE.MeshStandardMaterial({
         color: color,
         metalness: 0.9,
@@ -459,24 +415,21 @@ export class GpuThreeJS {
         fog: true,
       });
     } else {
-      // Enhanced standard materials with better lighting
-      material = new THREE.MeshPhongMaterial({
+      // MeshStandardMaterial for ALL default geometry so scene.environment
+      // and PBR metalness/roughness work correctly (MeshPhongMaterial ignores both).
+      material = new THREE.MeshStandardMaterial({
         color: color,
+        emissive: emissive !== 0x000000 ? new THREE.Color(emissive) : new THREE.Color(0),
+        emissiveIntensity: emissive !== 0x000000 ? Math.max(emissiveIntensity, 0.3) : 0,
+        metalness: metalness,
+        roughness: roughness,
+        envMapIntensity: 0.6,
         transparent: transparent,
         opacity,
         alphaTest: alphaTest,
         side: THREE.DoubleSide,
-        shininess: 60,
-        specular: 0x444444,
         fog: true,
-        reflectivity: 0.2,
       });
-
-      // Add emissive glow if specified
-      if (emissive !== 0x000000) {
-        material.emissive = new THREE.Color(emissive);
-        material.emissiveIntensity = Math.max(emissiveIntensity, 0.3);
-      }
     }
 
     // Enhanced texture handling with better filtering
@@ -495,23 +448,7 @@ export class GpuThreeJS {
       }
     }
 
-    // Normal mapping — upgrades MeshPhong to MeshStandard for TBN support
-    if (normalMap && material.isMeshPhongMaterial) {
-      const std = new THREE.MeshStandardMaterial({
-        color: material.color,
-        emissive: material.emissive || new THREE.Color(0),
-        emissiveIntensity: material.emissiveIntensity || 0,
-        roughness: roughness,
-        metalness: metalness,
-        map: material.map || null,
-        transparent: material.transparent,
-        alphaTest: material.alphaTest,
-        side: material.side,
-        fog: material.fog,
-      });
-      material.dispose();
-      material = std;
-    }
+    // Normal map assignment (all paths already use MeshStandardMaterial)
     if (normalMap && material.normalMap !== undefined) {
       material.normalMap = normalMap;
       normalMap.wrapS = THREE.RepeatWrapping;
@@ -694,17 +631,6 @@ export class GpuThreeJS {
       if (material.emissive && material.userData.holographic) {
         material.emissiveIntensity = 0.3 + Math.sin(time * 4) * 0.2;
       }
-    }
-
-    // Dynamic lighting effects — position only, no HSL cycling
-    if (this.lights) {
-      // Subtle light movement for atmosphere
-      this.lights.point1.position.x = 10 + Math.sin(time * 0.5) * 3;
-      this.lights.point1.position.y = 15 + Math.cos(time * 0.7) * 2;
-
-      this.lights.point2.position.x = -10 + Math.cos(time * 0.6) * 4;
-      this.lights.point2.position.z = -10 + Math.sin(time * 0.4) * 3;
-      // NOTE: fill2 / fill3 colors are now static — carts own mood lighting
     }
 
     // Fog animation for atmospheric depth

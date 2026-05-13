@@ -70,7 +70,7 @@ export async function init() {
   await applyShowcaseSkybox();
 
   nova64.light.setFog(0x060e1a, 22, 60);
-  nova64.light.setAmbientLight(0x2a3a55, 1.6);
+  nova64.light.setAmbientLight(0x4a6090, 2.0);
   nova64.light.setLightDirection(-0.6, -1.0, -0.5);
   nova64.light.setLightColor(0xffffff);
   nova64.fx.enableBloom(0.5, 0.35, 0.35);
@@ -99,8 +99,7 @@ async function buildScene(idx) {
   clearMeshes();
   nova64.scene.clearScene();
   // Re-apply lighting after clearScene
-  nova64.light.setAmbientLight(0x2a3a55, 1.6);
-  nova64.light.setLightDirection(-0.6, -1.0, -0.5);
+  nova64.light.setAmbientLight(0x4a6090, 2.0);
   nova64.light.setLightColor(0xffffff);
   nova64.fx.enableBloom(0.5, 0.35, 0.35);
   nova64.fx.enableVignette(1.0, 0.75);

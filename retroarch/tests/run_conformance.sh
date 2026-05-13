@@ -43,6 +43,8 @@ run_case "02 input" "retroarch/conformance/02-input.js" "872fd1e2547c6371"
 run_case "03 errors" "retroarch/conformance/03-errors.js" "f443942d0c7ee363"
 run_case "06 cube" "retroarch/conformance/06-cube.js" "53584f0993f3ff6a"
 run_case "07 cube plane" "retroarch/conformance/07-cube-plane.js" "cc715d97cf852c67"
+run_case "08 sphere" "retroarch/conformance/08-sphere.js" "6ca539fe0bfe71f6"
+run_case "09 overlay scene" "retroarch/conformance/09-overlay-scene.js" "12f25aad2651ae13"
 run_case "nova fallback" "${PACKAGE_DIR}/cube-fallback.nova" "53584f0993f3ff6a"
 run_case "nova manifest main" "${PACKAGE_DIR}/cube-manifest.nova" "53584f0993f3ff6a"
 

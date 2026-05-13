@@ -52,6 +52,19 @@ typedef char GLchar;
 #define GL_FALSE 0
 #define GL_TRIANGLES 0x0004
 #define GL_UNSIGNED_SHORT 0x1403
+#define GL_TEXTURE_2D 0x0DE1
+#define GL_TEXTURE0 0x84C0
+#define GL_TEXTURE_MIN_FILTER 0x2801
+#define GL_TEXTURE_MAG_FILTER 0x2800
+#define GL_TEXTURE_WRAP_S 0x2802
+#define GL_TEXTURE_WRAP_T 0x2803
+#define GL_NEAREST 0x2600
+#define GL_CLAMP_TO_EDGE 0x812F
+#define GL_RGBA 0x1908
+#define GL_UNSIGNED_BYTE 0x1401
+#define GL_BLEND 0x0BE2
+#define GL_SRC_ALPHA 0x0302
+#define GL_ONE_MINUS_SRC_ALPHA 0x0303
 
 typedef void (*PFNGLVIEWPORTPROC)(GLint x, GLint y, GLsizei width, GLsizei height);
 typedef void (*PFNGLCLEARCOLORPROC)(GLfloat red, GLfloat green, GLfloat blue, GLfloat alpha);
@@ -83,6 +96,15 @@ typedef void (*PFNGLENABLEVERTEXATTRIBARRAYPROC)(GLuint index);
 typedef void (*PFNGLDISABLEVERTEXATTRIBARRAYPROC)(GLuint index);
 typedef void (*PFNGLVERTEXATTRIBPOINTERPROC)(GLuint index, GLint size, GLenum type, GLboolean normalized, GLsizei stride, const void *pointer);
 typedef void (*PFNGLDRAWELEMENTSPROC)(GLenum mode, GLsizei count, GLenum type, const void *indices);
+typedef void (*PFNGLGENTEXTURESPROC)(GLsizei n, GLuint *textures);
+typedef void (*PFNGLDELETETEXTURESPROC)(GLsizei n, const GLuint *textures);
+typedef void (*PFNGLACTIVETEXTUREPROC)(GLenum texture);
+typedef void (*PFNGLBINDTEXTUREPROC)(GLenum target, GLuint texture);
+typedef void (*PFNGLTEXPARAMETERIPROC)(GLenum target, GLenum pname, GLint param);
+typedef void (*PFNGLTEXIMAGE2DPROC)(GLenum target, GLint level, GLint internalformat, GLsizei width, GLsizei height, GLint border, GLenum format, GLenum type, const void *pixels);
+typedef void (*PFNGLTEXSUBIMAGE2DPROC)(GLenum target, GLint level, GLint xoffset, GLint yoffset, GLsizei width, GLsizei height, GLenum format, GLenum type, const void *pixels);
+typedef void (*PFNGLUNIFORM1IPROC)(GLint location, GLint v0);
+typedef void (*PFNGLBLENDFUNCPROC)(GLenum sfactor, GLenum dfactor);
 
 enum nova64_button {
    NOVA64_BTN_LEFT = 0,
@@ -179,14 +201,32 @@ struct nova64_gles_backend {
    PFNGLDISABLEVERTEXATTRIBARRAYPROC DisableVertexAttribArray;
    PFNGLVERTEXATTRIBPOINTERPROC VertexAttribPointer;
    PFNGLDRAWELEMENTSPROC DrawElements;
+   PFNGLGENTEXTURESPROC GenTextures;
+   PFNGLDELETETEXTURESPROC DeleteTextures;
+   PFNGLACTIVETEXTUREPROC ActiveTexture;
+   PFNGLBINDTEXTUREPROC BindTexture;
+   PFNGLTEXPARAMETERIPROC TexParameteri;
+   PFNGLTEXIMAGE2DPROC TexImage2D;
+   PFNGLTEXSUBIMAGE2DPROC TexSubImage2D;
+   PFNGLUNIFORM1IPROC Uniform1i;
+   PFNGLBLENDFUNCPROC BlendFunc;
    GLuint cube_vbo;
    GLuint cube_ibo;
    GLuint plane_vbo;
    GLuint plane_ibo;
+   GLuint sphere_vbo;
+   GLuint sphere_ibo;
+   GLuint overlay_vbo;
+   GLuint overlay_ibo;
+   GLuint overlay_texture;
    GLuint cube_program;
+   GLuint overlay_program;
    GLint cube_position_attrib;
    GLint cube_mvp_uniform;
    GLint cube_color_uniform;
+   GLint overlay_position_attrib;
+   GLint overlay_uv_attrib;
+   GLint overlay_texture_uniform;
 };
 
 static retro_environment_t environ_cb;
@@ -199,6 +239,8 @@ static retro_log_printf_t log_cb;
 
 static uint32_t *framebuffer;
 static uint16_t *rgb565_framebuffer;
+static uint8_t *overlay_rgba_framebuffer;
+static uint32_t framebuffer_clear_color;
 static char *cart_content;
 static size_t cart_size;
 static char cart_path[1024];
@@ -301,6 +343,7 @@ static void clear_framebuffer(uint32_t color)
 {
    if (!framebuffer)
       return;
+   framebuffer_clear_color = color;
    for (size_t i = 0; i < (size_t)NOVA64_WIDTH * NOVA64_HEIGHT; i++)
       framebuffer[i] = color;
 }
@@ -857,18 +900,25 @@ static void draw_software_sphere(const struct nova64_mesh *mesh)
    if (radius < 2)
       radius = 2;
    uint32_t color = shade_color(mesh->color, 1.15f);
-   int last_x = sx + radius;
-   int last_y = sy;
-   for (int i = 1; i <= 48; i++) {
-      float a = ((float)i / 48.0f) * 2.0f * (float)M_PI;
-      int x = sx + (int)(cosf(a) * radius);
-      int y = sy + (int)(sinf(a) * radius);
-      draw_line_pixels(last_x, last_y, x, y, color);
-      last_x = x;
-      last_y = y;
+   uint32_t highlight = shade_color(mesh->color, 1.25f);
+   for (int y = -radius; y <= radius; y++) {
+      int span = (int)sqrtf((float)(radius * radius - y * y));
+      for (int x = -span; x <= span; x++) {
+         float nx = radius > 0 ? (float)x / (float)radius : 0.0f;
+         float ny = radius > 0 ? (float)y / (float)radius : 0.0f;
+         float light = 0.78f + (-nx * 0.25f) + (-ny * 0.18f);
+         uint32_t shaded = shade_color(color, light);
+         set_pixel(sx + x, sy + y, shaded);
+      }
    }
-   draw_line_pixels(sx - radius, sy, sx + radius, sy, shade_color(mesh->color, 0.8f));
-   draw_line_pixels(sx, sy - radius, sx, sy + radius, shade_color(mesh->color, 0.8f));
+   int gleam = radius / 4;
+   if (gleam < 2)
+      gleam = 2;
+   for (int y = -gleam; y <= gleam; y++) {
+      int span = (int)sqrtf((float)(gleam * gleam - y * y));
+      for (int x = -span; x <= span; x++)
+         set_pixel(sx - radius / 3 + x, sy - radius / 3 + y, highlight);
+   }
 }
 
 static void render_software_scene(void)
@@ -909,6 +959,26 @@ static void convert_framebuffer_to_rgb565(void)
       uint16_t b = (uint16_t)((color >> 8) & 0xffU);
       rgb565_framebuffer[i] = (uint16_t)(((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3));
    }
+}
+
+static bool convert_framebuffer_to_overlay_rgba(void)
+{
+   if (!framebuffer || !overlay_rgba_framebuffer)
+      return false;
+   bool has_visible_pixels = false;
+   for (size_t i = 0; i < (size_t)NOVA64_WIDTH * NOVA64_HEIGHT; i++) {
+      uint32_t color = framebuffer[i];
+      uint8_t alpha = (uint8_t)(color & 0xffU);
+      if (color == framebuffer_clear_color)
+         alpha = 0;
+      if (alpha)
+         has_visible_pixels = true;
+      overlay_rgba_framebuffer[i * 4 + 0] = (uint8_t)((color >> 24) & 0xffU);
+      overlay_rgba_framebuffer[i * 4 + 1] = (uint8_t)((color >> 16) & 0xffU);
+      overlay_rgba_framebuffer[i * 4 + 2] = (uint8_t)((color >> 8) & 0xffU);
+      overlay_rgba_framebuffer[i * 4 + 3] = alpha;
+   }
+   return has_visible_pixels;
 }
 
 static int allocate_mesh(enum nova64_mesh_type type)
@@ -1509,6 +1579,62 @@ static bool gles_create_cube_program(void)
    return gles.cube_position_attrib >= 0 && gles.cube_mvp_uniform >= 0 && gles.cube_color_uniform >= 0;
 }
 
+static bool gles_create_overlay_program(void)
+{
+   static const char *vertex_source =
+      "attribute vec2 a_position;\n"
+      "attribute vec2 a_uv;\n"
+      "varying vec2 v_uv;\n"
+      "void main() {\n"
+      "  v_uv = a_uv;\n"
+      "  gl_Position = vec4(a_position, 0.0, 1.0);\n"
+      "}\n";
+   static const char *fragment_source =
+      "precision mediump float;\n"
+      "varying vec2 v_uv;\n"
+      "uniform sampler2D u_overlay;\n"
+      "void main() {\n"
+      "  gl_FragColor = texture2D(u_overlay, v_uv);\n"
+      "}\n";
+
+   GLuint vertex = gles_compile_shader(GL_VERTEX_SHADER, vertex_source);
+   GLuint fragment = gles_compile_shader(GL_FRAGMENT_SHADER, fragment_source);
+   if (!vertex || !fragment) {
+      if (vertex)
+         gles.DeleteShader(vertex);
+      if (fragment)
+         gles.DeleteShader(fragment);
+      return false;
+   }
+
+   GLuint program = gles.CreateProgram();
+   gles.AttachShader(program, vertex);
+   gles.AttachShader(program, fragment);
+   gles.LinkProgram(program);
+   gles.DeleteShader(vertex);
+   gles.DeleteShader(fragment);
+
+   GLint status = 0;
+   gles.GetProgramiv(program, GL_LINK_STATUS, &status);
+   if (!status) {
+      GLchar log[512];
+      GLsizei length = 0;
+      if (gles.GetProgramInfoLog)
+         gles.GetProgramInfoLog(program, (GLsizei)sizeof(log), &length, log);
+      log[length < (GLsizei)sizeof(log) ? length : (GLsizei)sizeof(log) - 1] = '\0';
+      if (log_cb)
+         log_cb(RETRO_LOG_ERROR, "[nova64] GLES overlay program link failed: %s\n", log);
+      gles.DeleteProgram(program);
+      return false;
+   }
+
+   gles.overlay_program = program;
+   gles.overlay_position_attrib = gles.GetAttribLocation(program, "a_position");
+   gles.overlay_uv_attrib = gles.GetAttribLocation(program, "a_uv");
+   gles.overlay_texture_uniform = gles.GetUniformLocation(program, "u_overlay");
+   return gles.overlay_position_attrib >= 0 && gles.overlay_uv_attrib >= 0 && gles.overlay_texture_uniform >= 0;
+}
+
 static void gles_destroy_resources(void)
 {
    if (gles.cube_vbo && gles.DeleteBuffers)
@@ -1519,13 +1645,31 @@ static void gles_destroy_resources(void)
       gles.DeleteBuffers(1, &gles.plane_vbo);
    if (gles.plane_ibo && gles.DeleteBuffers)
       gles.DeleteBuffers(1, &gles.plane_ibo);
+   if (gles.sphere_vbo && gles.DeleteBuffers)
+      gles.DeleteBuffers(1, &gles.sphere_vbo);
+   if (gles.sphere_ibo && gles.DeleteBuffers)
+      gles.DeleteBuffers(1, &gles.sphere_ibo);
+   if (gles.overlay_vbo && gles.DeleteBuffers)
+      gles.DeleteBuffers(1, &gles.overlay_vbo);
+   if (gles.overlay_ibo && gles.DeleteBuffers)
+      gles.DeleteBuffers(1, &gles.overlay_ibo);
+   if (gles.overlay_texture && gles.DeleteTextures)
+      gles.DeleteTextures(1, &gles.overlay_texture);
    if (gles.cube_program && gles.DeleteProgram)
       gles.DeleteProgram(gles.cube_program);
+   if (gles.overlay_program && gles.DeleteProgram)
+      gles.DeleteProgram(gles.overlay_program);
    gles.cube_vbo = 0;
    gles.cube_ibo = 0;
    gles.plane_vbo = 0;
    gles.plane_ibo = 0;
+   gles.sphere_vbo = 0;
+   gles.sphere_ibo = 0;
+   gles.overlay_vbo = 0;
+   gles.overlay_ibo = 0;
+   gles.overlay_texture = 0;
    gles.cube_program = 0;
+   gles.overlay_program = 0;
    gles.resources_ready = false;
 }
 
@@ -1561,8 +1705,37 @@ static bool gles_init_resources(void)
    static const unsigned short plane_indices[] = {
       0, 1, 2, 0, 2, 3,
    };
+   static const GLfloat sphere_vertices[] = {
+       0.0f,  0.5f,  0.0f,
+       0.5f,  0.0f,  0.0f,
+       0.0f,  0.0f,  0.5f,
+      -0.5f,  0.0f,  0.0f,
+       0.0f,  0.0f, -0.5f,
+       0.0f, -0.5f,  0.0f,
+   };
+   static const unsigned short sphere_indices[] = {
+      0, 1, 2,
+      0, 2, 3,
+      0, 3, 4,
+      0, 4, 1,
+      5, 2, 1,
+      5, 3, 2,
+      5, 4, 3,
+      5, 1, 4,
+   };
+   static const GLfloat overlay_vertices[] = {
+      -1.0f, -1.0f, 0.0f, 1.0f,
+       1.0f, -1.0f, 1.0f, 1.0f,
+       1.0f,  1.0f, 1.0f, 0.0f,
+      -1.0f,  1.0f, 0.0f, 0.0f,
+   };
+   static const unsigned short overlay_indices[] = {
+      0, 1, 2, 0, 2, 3,
+   };
 
    if (!gles_create_cube_program())
+      return false;
+   if (!gles_create_overlay_program())
       return false;
 
    gles.GenBuffers(1, &gles.cube_vbo);
@@ -1578,6 +1751,29 @@ static bool gles_init_resources(void)
    gles.GenBuffers(1, &gles.plane_ibo);
    gles.BindBuffer(GL_ELEMENT_ARRAY_BUFFER, gles.plane_ibo);
    gles.BufferData(GL_ELEMENT_ARRAY_BUFFER, (GLsizeiptr)sizeof(plane_indices), plane_indices, GL_STATIC_DRAW);
+
+   gles.GenBuffers(1, &gles.sphere_vbo);
+   gles.BindBuffer(GL_ARRAY_BUFFER, gles.sphere_vbo);
+   gles.BufferData(GL_ARRAY_BUFFER, (GLsizeiptr)sizeof(sphere_vertices), sphere_vertices, GL_STATIC_DRAW);
+   gles.GenBuffers(1, &gles.sphere_ibo);
+   gles.BindBuffer(GL_ELEMENT_ARRAY_BUFFER, gles.sphere_ibo);
+   gles.BufferData(GL_ELEMENT_ARRAY_BUFFER, (GLsizeiptr)sizeof(sphere_indices), sphere_indices, GL_STATIC_DRAW);
+
+   gles.GenBuffers(1, &gles.overlay_vbo);
+   gles.BindBuffer(GL_ARRAY_BUFFER, gles.overlay_vbo);
+   gles.BufferData(GL_ARRAY_BUFFER, (GLsizeiptr)sizeof(overlay_vertices), overlay_vertices, GL_STATIC_DRAW);
+   gles.GenBuffers(1, &gles.overlay_ibo);
+   gles.BindBuffer(GL_ELEMENT_ARRAY_BUFFER, gles.overlay_ibo);
+   gles.BufferData(GL_ELEMENT_ARRAY_BUFFER, (GLsizeiptr)sizeof(overlay_indices), overlay_indices, GL_STATIC_DRAW);
+
+   gles.GenTextures(1, &gles.overlay_texture);
+   gles.BindTexture(GL_TEXTURE_2D, gles.overlay_texture);
+   gles.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+   gles.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+   gles.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+   gles.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+   gles.TexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, NOVA64_WIDTH, NOVA64_HEIGHT, 0,
+      GL_RGBA, GL_UNSIGNED_BYTE, NULL);
 
    gles.resources_ready = true;
    return true;
@@ -1618,6 +1814,15 @@ static bool gles_load_functions(void)
    gles.DisableVertexAttribArray = (PFNGLDISABLEVERTEXATTRIBARRAYPROC)load_gles_proc("glDisableVertexAttribArray");
    gles.VertexAttribPointer = (PFNGLVERTEXATTRIBPOINTERPROC)load_gles_proc("glVertexAttribPointer");
    gles.DrawElements = (PFNGLDRAWELEMENTSPROC)load_gles_proc("glDrawElements");
+   gles.GenTextures = (PFNGLGENTEXTURESPROC)load_gles_proc("glGenTextures");
+   gles.DeleteTextures = (PFNGLDELETETEXTURESPROC)load_gles_proc("glDeleteTextures");
+   gles.ActiveTexture = (PFNGLACTIVETEXTUREPROC)load_gles_proc("glActiveTexture");
+   gles.BindTexture = (PFNGLBINDTEXTUREPROC)load_gles_proc("glBindTexture");
+   gles.TexParameteri = (PFNGLTEXPARAMETERIPROC)load_gles_proc("glTexParameteri");
+   gles.TexImage2D = (PFNGLTEXIMAGE2DPROC)load_gles_proc("glTexImage2D");
+   gles.TexSubImage2D = (PFNGLTEXSUBIMAGE2DPROC)load_gles_proc("glTexSubImage2D");
+   gles.Uniform1i = (PFNGLUNIFORM1IPROC)load_gles_proc("glUniform1i");
+   gles.BlendFunc = (PFNGLBLENDFUNCPROC)load_gles_proc("glBlendFunc");
 
    gles.functions_loaded = gles.Viewport && gles.ClearColor && gles.Clear &&
       gles.CreateShader && gles.ShaderSource && gles.CompileShader && gles.GetShaderiv &&
@@ -1626,7 +1831,10 @@ static bool gles_load_functions(void)
       gles.GetUniformLocation && gles.UniformMatrix4fv && gles.Uniform4f &&
       gles.GenBuffers && gles.BindBuffer && gles.BufferData && gles.DeleteBuffers &&
       gles.EnableVertexAttribArray && gles.DisableVertexAttribArray &&
-      gles.VertexAttribPointer && gles.DrawElements;
+      gles.VertexAttribPointer && gles.DrawElements && gles.GenTextures &&
+      gles.DeleteTextures && gles.ActiveTexture && gles.BindTexture &&
+      gles.TexParameteri && gles.TexImage2D && gles.TexSubImage2D &&
+      gles.Uniform1i && gles.BlendFunc;
    if (!gles.functions_loaded)
       nova64_log_line(RETRO_LOG_WARN, "[nova64] GLES proc-address callback did not provide the primitive renderer path");
    return gles.functions_loaded;
@@ -1674,6 +1882,15 @@ static void gles_context_destroy(void)
    gles.DisableVertexAttribArray = NULL;
    gles.VertexAttribPointer = NULL;
    gles.DrawElements = NULL;
+   gles.GenTextures = NULL;
+   gles.DeleteTextures = NULL;
+   gles.ActiveTexture = NULL;
+   gles.BindTexture = NULL;
+   gles.TexParameteri = NULL;
+   gles.TexImage2D = NULL;
+   gles.TexSubImage2D = NULL;
+   gles.Uniform1i = NULL;
+   gles.BlendFunc = NULL;
    nova64_log_line(RETRO_LOG_INFO, "[nova64] GLES3 hardware context destroyed");
 }
 
@@ -1712,6 +1929,41 @@ static void render_gles_plane(const struct nova64_mesh *mesh, const float view_p
    render_gles_primitive(mesh, view_projection, gles.plane_vbo, gles.plane_ibo, 6);
 }
 
+static void render_gles_sphere(const struct nova64_mesh *mesh, const float view_projection[16])
+{
+   render_gles_primitive(mesh, view_projection, gles.sphere_vbo, gles.sphere_ibo, 24);
+}
+
+static void render_gles_overlay(void)
+{
+   if (!convert_framebuffer_to_overlay_rgba())
+      return;
+
+   gles.ActiveTexture(GL_TEXTURE0);
+   gles.BindTexture(GL_TEXTURE_2D, gles.overlay_texture);
+   gles.TexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, NOVA64_WIDTH, NOVA64_HEIGHT,
+      GL_RGBA, GL_UNSIGNED_BYTE, overlay_rgba_framebuffer);
+
+   gles.Disable(GL_DEPTH_TEST);
+   gles.Enable(GL_BLEND);
+   gles.BlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+   gles.UseProgram(gles.overlay_program);
+   gles.Uniform1i(gles.overlay_texture_uniform, 0);
+   gles.BindBuffer(GL_ARRAY_BUFFER, gles.overlay_vbo);
+   gles.BindBuffer(GL_ELEMENT_ARRAY_BUFFER, gles.overlay_ibo);
+   gles.EnableVertexAttribArray((GLuint)gles.overlay_position_attrib);
+   gles.EnableVertexAttribArray((GLuint)gles.overlay_uv_attrib);
+   gles.VertexAttribPointer((GLuint)gles.overlay_position_attrib, 2, GL_FLOAT, GL_FALSE,
+      (GLsizei)(sizeof(GLfloat) * 4), NULL);
+   gles.VertexAttribPointer((GLuint)gles.overlay_uv_attrib, 2, GL_FLOAT, GL_FALSE,
+      (GLsizei)(sizeof(GLfloat) * 4), (const void *)(sizeof(GLfloat) * 2));
+   gles.DrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, NULL);
+   gles.DisableVertexAttribArray((GLuint)gles.overlay_uv_attrib);
+   gles.DisableVertexAttribArray((GLuint)gles.overlay_position_attrib);
+   gles.Disable(GL_BLEND);
+   gles.Enable(GL_DEPTH_TEST);
+}
+
 static void render_gles_scene(void)
 {
    if (!gles.active || !gles_load_functions())
@@ -1744,7 +1996,11 @@ static void render_gles_scene(void)
          render_gles_cube(&meshes[i], view_projection);
       else if (meshes[i].used && meshes[i].type == NOVA64_MESH_PLANE)
          render_gles_plane(&meshes[i], view_projection);
+      else if (meshes[i].used && meshes[i].type == NOVA64_MESH_SPHERE)
+         render_gles_sphere(&meshes[i], view_projection);
    }
+
+   render_gles_overlay();
 }
 
 static char *read_file_to_memory(const char *path, size_t *out_size)
@@ -1958,12 +2214,15 @@ void RETRO_CALLCONV retro_init(void)
 {
    framebuffer = (uint32_t *)calloc((size_t)NOVA64_WIDTH * NOVA64_HEIGHT, sizeof(uint32_t));
    rgb565_framebuffer = (uint16_t *)calloc((size_t)NOVA64_WIDTH * NOVA64_HEIGHT, sizeof(uint16_t));
-   if (!framebuffer || !rgb565_framebuffer) {
+   overlay_rgba_framebuffer = (uint8_t *)calloc((size_t)NOVA64_WIDTH * NOVA64_HEIGHT * 4, sizeof(uint8_t));
+   if (!framebuffer || !rgb565_framebuffer || !overlay_rgba_framebuffer) {
       nova64_log_line(RETRO_LOG_ERROR, "[nova64] failed to allocate framebuffers");
       free(framebuffer);
       free(rgb565_framebuffer);
+      free(overlay_rgba_framebuffer);
       framebuffer = NULL;
       rgb565_framebuffer = NULL;
+      overlay_rgba_framebuffer = NULL;
       return;
    }
 
@@ -1978,9 +2237,11 @@ void RETRO_CALLCONV retro_deinit(void)
    js_host_free();
    free(framebuffer);
    free(rgb565_framebuffer);
+   free(overlay_rgba_framebuffer);
    free(cart_content);
    framebuffer = NULL;
    rgb565_framebuffer = NULL;
+   overlay_rgba_framebuffer = NULL;
    cart_content = NULL;
    cart_size = 0;
    initialized = false;

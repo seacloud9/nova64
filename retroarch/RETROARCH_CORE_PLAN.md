@@ -60,11 +60,11 @@ Included:
 Known limits:
 
 - QuickJS heap serialization is deliberately not attempted.
-- GLES primitive drawing is not complete yet; the current hardware path validates
-  context ownership and command state shape.
-- Software 2D overlay compositing over GLES is still pending.
-- Software fallback previews 3D commands; full GLES/Vulkan primitive rendering is
-  still pending.
+- GLES primitive drawing now covers the first cube, plane, and low-poly sphere
+  path, but advanced materials and richer mesh types are still pending.
+- Software 2D overlay compositing over GLES is implemented for the first HUD path.
+- Software fallback previews 3D commands; Vulkan primitive rendering is still
+  pending.
 - `.nova` metadata parsing currently selects the executable source path; full
   asset parsing is still pending.
 
@@ -90,9 +90,12 @@ Status: started.
 Goals:
 
 - Render cube, sphere, and plane primitives through GLES 3.1.
-  - Cube and plane rendering are implemented through a first shader/VBO/IBO path.
-  - Sphere rendering remains next.
+  - Cube, plane, and low-poly sphere rendering are implemented through a first
+    shader/VBO/IBO path.
 - Upload the 2D framebuffer as an overlay texture and composite it after 3D.
+  - First overlay texture upload/composite path is implemented.
+- Add a mixed 3D plus HUD conformance cart.
+  - `09-overlay-scene.js` is implemented with a deterministic software capture.
 - Keep all GL calls behind the renderer interface.
 - Support basic materials, ambient light, directional light, and camera transforms.
 - Add a deterministic command-log mode for headless conformance tests.

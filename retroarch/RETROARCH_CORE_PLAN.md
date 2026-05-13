@@ -350,9 +350,16 @@ directional lighting. Everything below is missing or incomplete.
 
 ### 8B: 2D Draw API Completion
 
-The current 2D API covers primitives and basic text. Missing:
+Tilemap first pass done:
 
-- Tilemap API (Godot/web parity):
+  - `createTilemap(tileW, tileH, cols, rows)` → handle; `setTile(map, col, row, idx)`;
+    `drawTilemap(map, dx, dy, path)` blits tiles from a horizontal strip RGBA asset;
+    `clearTilemap(map)`, `destroyTilemap(map)`. Max 16 active tilemaps.
+    `31-tilemap.js` covers a 4×3 grid drawn from a 4-color tilesheet package asset.
+
+Still missing:
+
+- Full tilemap API (Godot/web parity):
   - `createTilemap(tileW, tileH, cols, rows)` — allocates a tilemap buffer.
   - `setTile(map, col, row, tileIndex)` — sets a cell.
   - `drawTilemap(map, dx, dy, tilesheetPath)` — draws using a package asset
@@ -411,7 +418,17 @@ The current audio covers procedural SFX and single-channel PCM playback. Missing
 
 ### 8D: Input Expansion
 
-Current: keyboard, mouse, single gamepad. Missing:
+Current: keyboard, mouse, single gamepad, analog sticks, triggers, multi-port. Done:
+
+  - `axis(side, axis [, port])` polls `RETRO_DEVICE_ANALOG` for left/right stick
+    X/Y axes, normalized to -1..1. `trigger('left'|'right' [, port])` polls L2/R2,
+    normalized to 0..1. Multi-port: `btn(name, port)` and `btnp(name, port)` accept
+    an optional port argument (0-3) backed by `mp_buttons[4][NOVA64_BUTTON_COUNT]`
+    arrays polled each frame. Harness flags: `--analog-lx N`, `--analog-ly N`,
+    `--analog-rx N`, `--analog-ry N`, `--trigger-l N`, `--trigger-r N`.
+    `34-analog.js` covers axis range checks and false-zero assertions.
+
+Still missing:
 
 - Analog sticks:
   - `axis(side, axis)` → float −1..1 for `RETRO_DEVICE_ANALOG`.
@@ -432,6 +449,14 @@ Current: keyboard, mouse, single gamepad. Missing:
 - Conformance updates.
 
 ### 8E: Scripting And Runtime
+
+Deterministic RNG done:
+
+  - `nova64.random.seed(n)` (xorshift64), `.next()` → float [0,1),
+    `.int(lo, hi)` → integer [lo, hi]. Seeding with the same value reproduces
+    the same sequence. `35-rng.js` covers seed determinism and int range bounds.
+
+Still needed:
 
 - Multi-module carts:
   - Allow a cart's `init/update/draw` module to `import` other local modules

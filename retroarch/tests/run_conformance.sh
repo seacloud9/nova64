@@ -85,6 +85,23 @@ with ZipFile(package_dir / "sprite.nova", "w", ZIP_DEFLATED) as package:
         "manifest.json",
         '{"name":"sprite","main":"src/main.js","assets":["sprites/dot.rgba"]}\n',
     )
+
+# 4-tile horizontal strip for tilemap conformance: each tile 8x8, strip 32x8 RGBA
+tw, th = 8, 8
+sheet = bytearray(32 * th * 4)
+tile_colors = [(220,60,60,255),(60,220,60,255),(60,100,220,255),(220,220,60,255)]
+for ti, (r,g,b,a) in enumerate(tile_colors):
+    for py in range(th):
+        for px in range(tw):
+            i = (py * 32 + ti * tw + px) * 4
+            sheet[i:i+4] = [r, g, b, a]
+with ZipFile(package_dir / "tilemap.nova", "w", ZIP_DEFLATED) as package:
+    package.write("retroarch/conformance/31-tilemap.js", "src/main.js")
+    package.writestr("tiles/sheet.rgba", bytes(sheet))
+    package.writestr(
+        "manifest.json",
+        '{"name":"tilemap","main":"src/main.js","assets":["tiles/sheet.rgba"]}\n',
+    )
 PY
 
 run_case() {
@@ -196,6 +213,19 @@ run_showcase_case() {
 }
 
 run_showcase_case "30 showcase" "30-showcase" "retroarch/conformance/30-showcase.js" "8edfc5576738b943" "a96055c2163c4413"
+
+run_analog_case() {
+  local label="$1"
+  local cart="$2"
+  local checksum="$3"
+  echo "== ${label}"
+  "${HARNESS}" "${CORE}" "${cart}" \
+    --analog-lx 16383 --analog-ly -8192 --trigger-l 16383 --expect "${checksum}"
+}
+
+run_visual_case "31 tilemap" "31-tilemap" "${PACKAGE_DIR}/tilemap.nova" "c26e61e20f059b0a"
+run_analog_case "34 analog"  "retroarch/conformance/34-analog.js" "a66365b2ba482b6f"
+run_visual_case "35 rng" "35-rng" "retroarch/conformance/35-rng.js" "6702787d75707713"
 run_visual_case "19 texture" "19-texture" "retroarch/conformance/19-texture.js" "f4fd3acbca0331b4"
 run_visual_case "20 post" "20-post" "retroarch/conformance/20-post.js" "75a3d27c9048e5b0"
 run_visual_case "21 post-effects" "21-post-effects" "retroarch/conformance/21-post-effects.js" "3a18d91989ad8ded"

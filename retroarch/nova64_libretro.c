@@ -457,11 +457,18 @@ static int cam2d_y = 0;
 #define NOVA64_MOUSE_RIGHT   3
 #define NOVA64_MOUSE_MIDDLE  6
 #define NOVA64_MOUSE_BTN_COUNT 3
+#define NOVA64_POINTER_X     0
+#define NOVA64_POINTER_Y     1
+#define NOVA64_POINTER_PRESSED 2
+#define NOVA64_POINTER_COUNT 3
 
 static int32_t mouse_rel_x;
 static int32_t mouse_rel_y;
 static bool mouse_btns[NOVA64_MOUSE_BTN_COUNT];     /* left, right, middle */
 static bool mouse_prev_btns[NOVA64_MOUSE_BTN_COUNT];
+static int32_t touch_x;
+static int32_t touch_y;
+static int32_t touch_count;
 
 /* Analog sticks (RETRO_DEVICE_ANALOG = 5) */
 #define NOVA64_DEVICE_ANALOG       5
@@ -637,6 +644,7 @@ static void update_storage_cart_id(void);
 static void audio_mix_frame(void);
 static void reset_audio_state(void);
 static const struct nova64_package_asset *find_package_asset(const char *path);
+static void sanitize_identifier(const char *input, char *out, size_t out_size, const char *fallback);
 static char *js_module_normalize(JSContext *ctx, const char *module_base_name,
       const char *module_name, void *opaque);
 static JSModuleDef *js_module_loader(JSContext *ctx, const char *module_name, void *opaque);
@@ -3079,6 +3087,24 @@ static JSValue js_mouse_btnp(JSContext *ctx, JSValueConst this_val, int argc, JS
    return JS_NewBool(ctx, mouse_btns[idx] && !mouse_prev_btns[idx]);
 }
 
+static JSValue js_touch_x(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val; (void)argc; (void)argv;
+   return JS_NewInt32(ctx, touch_count > 0 ? touch_x : 0);
+}
+
+static JSValue js_touch_y(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val; (void)argc; (void)argv;
+   return JS_NewInt32(ctx, touch_count > 0 ? touch_y : 0);
+}
+
+static JSValue js_touch_count(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val; (void)argc; (void)argv;
+   return JS_NewInt32(ctx, touch_count);
+}
+
 static JSValue js_create_cube(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
    (void)this_val;
@@ -4050,19 +4076,47 @@ static JSValue js_assets_quota(JSContext *ctx, JSValueConst this_val, int argc, 
    return quota;
 }
 
+static bool storage_effective_key(JSContext *ctx, JSValueConst this_val, JSValueConst key_value,
+      char *out, size_t out_size)
+{
+   if (!out || out_size == 0)
+      return false;
+   const char *key = JS_ToCString(ctx, key_value);
+   if (!key)
+      return false;
+
+   char prefix[96];
+   prefix[0] = '\0';
+   if (!JS_IsUndefined(this_val) && !JS_IsNull(this_val)) {
+      JSValue prefix_value = JS_GetPropertyStr(ctx, this_val, "__prefix");
+      if (!JS_IsUndefined(prefix_value) && !JS_IsNull(prefix_value)) {
+         const char *raw_prefix = JS_ToCString(ctx, prefix_value);
+         if (raw_prefix)
+            sanitize_identifier(raw_prefix, prefix, sizeof(prefix), NULL);
+         if (raw_prefix)
+            JS_FreeCString(ctx, raw_prefix);
+      }
+      JS_FreeValue(ctx, prefix_value);
+   }
+
+   int written = prefix[0] ?
+      snprintf(out, out_size, "%s__%s", prefix, key) :
+      snprintf(out, out_size, "%s", key);
+   JS_FreeCString(ctx, key);
+   return written > 0 && (size_t)written < out_size;
+}
+
 static JSValue js_storage_save_data(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
-   (void)this_val;
    if (argc < 2)
       return JS_NewBool(ctx, false);
 
-   const char *key = JS_ToCString(ctx, argv[0]);
-   if (!key)
+   char effective_key[256];
+   if (!storage_effective_key(ctx, this_val, argv[0], effective_key, sizeof(effective_key)))
       return JS_NewBool(ctx, false);
 
    char path[2048];
-   bool ok = storage_path_for_key(key, path, sizeof(path));
-   JS_FreeCString(ctx, key);
+   bool ok = storage_path_for_key(effective_key, path, sizeof(path));
    if (!ok)
       return JS_NewBool(ctx, false);
 
@@ -4092,17 +4146,15 @@ static JSValue js_storage_save_data(JSContext *ctx, JSValueConst this_val, int a
 
 static JSValue js_storage_load_data(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
-   (void)this_val;
    if (argc < 1)
       return argc > 1 ? JS_DupValue(ctx, argv[1]) : JS_NULL;
 
-   const char *key = JS_ToCString(ctx, argv[0]);
-   if (!key)
+   char effective_key[256];
+   if (!storage_effective_key(ctx, this_val, argv[0], effective_key, sizeof(effective_key)))
       return argc > 1 ? JS_DupValue(ctx, argv[1]) : JS_NULL;
 
    char path[2048];
-   bool ok = storage_path_for_key(key, path, sizeof(path));
-   JS_FreeCString(ctx, key);
+   bool ok = storage_path_for_key(effective_key, path, sizeof(path));
    if (!ok)
       return argc > 1 ? JS_DupValue(ctx, argv[1]) : JS_NULL;
 
@@ -4122,17 +4174,15 @@ static JSValue js_storage_load_data(JSContext *ctx, JSValueConst this_val, int a
 
 static JSValue js_storage_delete_data(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
-   (void)this_val;
    if (argc < 1)
       return JS_NewBool(ctx, false);
 
-   const char *key = JS_ToCString(ctx, argv[0]);
-   if (!key)
+   char effective_key[256];
+   if (!storage_effective_key(ctx, this_val, argv[0], effective_key, sizeof(effective_key)))
       return JS_NewBool(ctx, false);
 
    char path[2048];
-   bool ok = storage_path_for_key(key, path, sizeof(path));
-   JS_FreeCString(ctx, key);
+   bool ok = storage_path_for_key(effective_key, path, sizeof(path));
    if (!ok)
       return JS_NewBool(ctx, false);
 
@@ -4141,15 +4191,13 @@ static JSValue js_storage_delete_data(JSContext *ctx, JSValueConst this_val, int
 
 static JSValue js_storage_has_data(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
-   (void)this_val;
    if (argc < 1)
       return JS_NewBool(ctx, false);
-   const char *key = JS_ToCString(ctx, argv[0]);
-   if (!key)
+   char effective_key[256];
+   if (!storage_effective_key(ctx, this_val, argv[0], effective_key, sizeof(effective_key)))
       return JS_NewBool(ctx, false);
    char path[2048];
-   bool ok = storage_path_for_key(key, path, sizeof(path));
-   JS_FreeCString(ctx, key);
+   bool ok = storage_path_for_key(effective_key, path, sizeof(path));
    if (!ok)
       return JS_NewBool(ctx, false);
    FILE *f = fopen(path, "rb");
@@ -4249,6 +4297,34 @@ static JSValue js_storage_clear(JSContext *ctx, JSValueConst this_val, int argc,
 }
 #endif
 
+static void set_function(JSContext *ctx, JSValue object, const char *name, JSCFunction *fn, int length);
+
+static JSValue js_storage_open(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 1)
+      return JS_NULL;
+   const char *ns = JS_ToCString(ctx, argv[0]);
+   if (!ns)
+      return JS_NULL;
+   char safe_ns[96];
+   sanitize_identifier(ns, safe_ns, sizeof(safe_ns), NULL);
+   JS_FreeCString(ctx, ns);
+   if (!safe_ns[0])
+      return JS_NULL;
+
+   JSValue store = JS_NewObject(ctx);
+   JS_SetPropertyStr(ctx, store, "__prefix", JS_NewString(ctx, safe_ns));
+   set_function(ctx, store, "saveData", js_storage_save_data, 2);
+   set_function(ctx, store, "loadData", js_storage_load_data, 2);
+   set_function(ctx, store, "deleteData", js_storage_delete_data, 1);
+   set_function(ctx, store, "saveJSON", js_storage_save_data, 2);
+   set_function(ctx, store, "loadJSON", js_storage_load_data, 2);
+   set_function(ctx, store, "remove", js_storage_delete_data, 1);
+   set_function(ctx, store, "has", js_storage_has_data, 1);
+   return store;
+}
+
 static void set_function(JSContext *ctx, JSValue object, const char *name, JSCFunction *fn, int length)
 {
    JS_SetPropertyStr(ctx, object, name, JS_NewCFunction(ctx, fn, name, length));
@@ -4293,6 +4369,9 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, input, "mouseY", js_mouse_y, 0);
    set_function(ctx, input, "mouseBtn", js_mouse_btn, 1);
    set_function(ctx, input, "mouseBtnp", js_mouse_btnp, 1);
+   set_function(ctx, input, "touchX", js_touch_x, 1);
+   set_function(ctx, input, "touchY", js_touch_y, 1);
+   set_function(ctx, input, "touchCount", js_touch_count, 0);
    set_function(ctx, input, "axis", js_axis, 3);
    set_function(ctx, input, "trigger", js_trigger, 2);
 
@@ -4371,6 +4450,7 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, storage, "has", js_storage_has_data, 1);
    set_function(ctx, storage, "keys", js_storage_keys, 0);
    set_function(ctx, storage, "clear", js_storage_clear, 0);
+   set_function(ctx, storage, "open", js_storage_open, 1);
 
    /* nova64.tilemap namespace */
    JSValue tilemap_ns = JS_NewObject(ctx);
@@ -4466,6 +4546,9 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, global, "mouseY", js_mouse_y, 0);
    set_function(ctx, global, "mouseBtn", js_mouse_btn, 1);
    set_function(ctx, global, "mouseBtnp", js_mouse_btnp, 1);
+   set_function(ctx, global, "touchX", js_touch_x, 1);
+   set_function(ctx, global, "touchY", js_touch_y, 1);
+   set_function(ctx, global, "touchCount", js_touch_count, 0);
    set_function(ctx, global, "axis", js_axis, 3);
    set_function(ctx, global, "trigger", js_trigger, 2);
    set_function(ctx, global, "createTilemap", js_create_tilemap, 4);
@@ -4708,6 +4791,11 @@ static void update_input(void)
    mouse_btns[0] = input_state_cb(0, RETRO_DEVICE_MOUSE, 0, NOVA64_MOUSE_LEFT)  != 0;
    mouse_btns[1] = input_state_cb(0, RETRO_DEVICE_MOUSE, 0, NOVA64_MOUSE_RIGHT) != 0;
    mouse_btns[2] = input_state_cb(0, RETRO_DEVICE_MOUSE, 0, NOVA64_MOUSE_MIDDLE)!= 0;
+   int16_t pointer_count = input_state_cb(0, RETRO_DEVICE_POINTER, 0, NOVA64_POINTER_COUNT);
+   bool pointer_pressed = input_state_cb(0, RETRO_DEVICE_POINTER, 0, NOVA64_POINTER_PRESSED) != 0;
+   touch_count = pointer_count > 0 ? pointer_count : (pointer_pressed ? 1 : 0);
+   touch_x = (int32_t)input_state_cb(0, RETRO_DEVICE_POINTER, 0, NOVA64_POINTER_X);
+   touch_y = (int32_t)input_state_cb(0, RETRO_DEVICE_POINTER, 0, NOVA64_POINTER_Y);
 
    /* Analog sticks + triggers — port 0 */
    static const int joypad_map[NOVA64_BUTTON_COUNT] = {
@@ -6439,6 +6527,7 @@ void RETRO_CALLCONV retro_reset(void)
    mouse_rel_x = 0; mouse_rel_y = 0;
    memset(mouse_btns, 0, sizeof(mouse_btns));
    memset(mouse_prev_btns, 0, sizeof(mouse_prev_btns));
+   touch_x = touch_y = touch_count = 0;
    memset(analog_axes, 0, sizeof(analog_axes));
    memset(analog_triggers, 0, sizeof(analog_triggers));
    memset(mp_buttons, 0, sizeof(mp_buttons));

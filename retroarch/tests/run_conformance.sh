@@ -347,6 +347,24 @@ run_seed_visual_case "38 seeded rng" "38-seeded-rng" "retroarch/conformance/38-s
 run_visual_case "39 meta" "39-meta" "${PACKAGE_DIR}/meta.nova" "5847ee6e3ae4d065"
 run_visual_case "40 perf" "40-perf" "retroarch/conformance/40-perf.js" "4c3959dfa4b4a5ff"
 NOVA64_ASSET_QUOTA=8 run_visual_case "41 asset quota" "41-asset-quota" "${PACKAGE_DIR}/asset-quota.nova" "e970ff560d9059da"
+
+run_touch_case() {
+  local label="$1"
+  local name="$2"
+  local cart="$3"
+  local checksum="$4"
+  local ppm="${SCREENSHOT_DIR}/${name}.ppm"
+  local png="${SCREENSHOT_DIR}/${name}.png"
+  should_run_label "${label}" || return 0
+  echo "== ${label}"
+  "${HARNESS}" "${CORE}" "${cart}" \
+    --touch-x 123 --touch-y -45 --touch-count 1 --expect "${checksum}" --capture "${ppm}"
+  python3 retroarch/tests/ppm_to_png.py "${ppm}" "${png}"
+  rm -f "${ppm}"
+}
+
+run_touch_case "42 touch" "42-touch" "retroarch/conformance/42-touch.js" "cd7a6f3e2772273d"
+NOVA64_SAVE_DIR="${SAVE_DIR}" run_visual_case "43 storage namespace" "43-storage-namespace" "retroarch/conformance/43-storage-namespace.js" "f12dbe70fe3883f3"
 run_visual_case "19 texture" "19-texture" "retroarch/conformance/19-texture.js" "f4fd3acbca0331b4"
 run_visual_case "20 post" "20-post" "retroarch/conformance/20-post.js" "75a3d27c9048e5b0"
 run_visual_case "21 post-effects" "21-post-effects" "retroarch/conformance/21-post-effects.js" "3a18d91989ad8ded"

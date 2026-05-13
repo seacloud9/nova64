@@ -20,6 +20,10 @@ static bool g_keyboard[512];
 static int16_t g_mouse_x;
 static int16_t g_mouse_y;
 static bool g_mouse_btn[3]; /* left, right, middle */
+static int16_t g_touch_x;
+static int16_t g_touch_y;
+static bool g_touch_pressed;
+static int16_t g_touch_count;
 /* Analog: [port][side 0=L,1=R][axis 0=X,1=Y] */
 static int16_t g_analog[4][2][2];
 /* Triggers: [port][0=L2,1=R2] */
@@ -177,6 +181,17 @@ static int16_t harness_input_state(unsigned port, unsigned device, unsigned inde
          default: return 0;
       }
    }
+   if (device == RETRO_DEVICE_POINTER) {
+      (void)port;
+      (void)index;
+      switch (id) {
+         case 0: return g_touch_x;
+         case 1: return g_touch_y;
+         case 2: return g_touch_pressed ? 1 : 0;
+         case 3: return g_touch_count;
+         default: return 0;
+      }
+   }
    /* RETRO_DEVICE_ANALOG == 5 */
    if (device == 5) {
       unsigned p = port < 4 ? port : 0;
@@ -258,7 +273,7 @@ static void *load_symbol(void *core, const char *name)
 int main(int argc, char **argv)
 {
    if (argc < 3) {
-      fprintf(stderr, "usage: %s <nova64_libretro.so> <cart.js|cart.nova> [--capture path] [--command-log path] [--renderer opengles3|vulkan12] [--expect checksum] [--expect-audio checksum] [--frames n] [--seed n] [--perf] [--key name]\n", argv[0]);
+      fprintf(stderr, "usage: %s <nova64_libretro.so> <cart.js|cart.nova> [--capture path] [--command-log path] [--renderer opengles3|vulkan12] [--expect checksum] [--expect-audio checksum] [--frames n] [--seed n] [--perf] [--key name] [--touch-x n --touch-y n --touch-count n]\n", argv[0]);
       return 2;
    }
 
@@ -354,6 +369,16 @@ int main(int argc, char **argv)
             fprintf(stderr, "--mouse-btn: unknown button '%s'\n", argv[i]);
             return 2;
          }
+      } else if (!strcmp(argv[i], "--touch-x")) {
+         if (++i >= argc) { fprintf(stderr, "--touch-x requires a value\n"); return 2; }
+         g_touch_x = (int16_t)strtol(argv[i], NULL, 10);
+      } else if (!strcmp(argv[i], "--touch-y")) {
+         if (++i >= argc) { fprintf(stderr, "--touch-y requires a value\n"); return 2; }
+         g_touch_y = (int16_t)strtol(argv[i], NULL, 10);
+      } else if (!strcmp(argv[i], "--touch-count")) {
+         if (++i >= argc) { fprintf(stderr, "--touch-count requires a count\n"); return 2; }
+         g_touch_count = (int16_t)strtol(argv[i], NULL, 10);
+         g_touch_pressed = g_touch_count > 0;
       } else if (!strcmp(argv[i], "--port")) {
          /* --port N sets subsequent joypad state to that port (0-3) */
          if (++i >= argc) { fprintf(stderr, "--port requires 0-3\n"); return 2; }

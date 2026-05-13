@@ -435,6 +435,9 @@ Current: keyboard, mouse, single gamepad, analog sticks, triggers, multi-port. D
     arrays polled each frame. Harness flags: `--analog-lx N`, `--analog-ly N`,
     `--analog-rx N`, `--analog-ry N`, `--trigger-l N`, `--trigger-r N`.
     `34-analog.js` covers axis range checks and false-zero assertions.
+  - `touchX([i])`, `touchY([i])`, and `touchCount()` poll
+    `RETRO_DEVICE_POINTER`, with harness `--touch-x`, `--touch-y`, and
+    `--touch-count` injection. `42-touch.js` covers pointer input.
 
 Still missing:
 
@@ -451,9 +454,6 @@ Still missing:
   - Harness `--port N` flag to inject input on a specific port.
 - Controller rumble:
   - `rumble(strong, weak [, duration])` — calls `RETRO_ENVIRONMENT_SET_RUMBLE_INTERFACE`.
-- Touch / pointer:
-  - `touchX(i)`, `touchY(i)`, `touchCount()` if `RETRO_DEVICE_POINTER` is
-    available; graceful degradation when not.
 - Conformance updates.
 
 ### 8E: Scripting And Runtime
@@ -519,9 +519,14 @@ Still needed:
 
 ### 8G: Storage Expansion
 
-- Namespaced storage:
-  - `nova64.storage.open(namespace)` — opens a sub-store keyed by cart + namespace.
-  - Prevents key collisions in carts that share storage between subsystems.
+Namespaced storage done:
+
+  - `nova64.storage.open(namespace)` returns an isolated sub-store with
+    save/load/delete aliases and `has`, keyed under the current cart plus the
+    namespace. `43-storage-namespace.js` covers namespace isolation.
+
+Still missing:
+
 - Migration helpers:
   - `nova64.storage.version()` — returns the stored data-version integer.
   - `nova64.storage.setVersion(n)` — update it after a migration.

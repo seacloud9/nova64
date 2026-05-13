@@ -72,6 +72,8 @@ Harness flags:
 | `--mouse-x <n>` | Inject relative mouse X movement |
 | `--mouse-y <n>` | Inject relative mouse Y movement |
 | `--mouse-btn left\|right\|middle` | Inject held mouse button |
+| `--touch-x <n>` / `--touch-y <n>` | Inject pointer/touch coordinates |
+| `--touch-count <n>` | Inject active pointer/touch count |
 
 `NOVA64_SAVE_DIR=<path>` sets the cart storage directory for harness runs.
 `NOVA64_RENDER_COMMAND_LOG=<path>` enables command logging outside the harness.
@@ -165,6 +167,9 @@ mouseX()                  // relative X movement this frame
 mouseY()                  // relative Y movement this frame
 mouseBtn(name)            // held: 'left'|'right'|'middle'
 mouseBtnp(name)           // edge (just pressed)
+touchX([i])               // pointer/touch X, 0 if inactive
+touchY([i])               // pointer/touch Y, 0 if inactive
+touchCount()              // active pointer/touch count
 ```
 
 ### Audio
@@ -192,6 +197,7 @@ nova64.storage.remove(key)
 nova64.storage.has(key)          // true if key exists
 nova64.storage.keys()            // array of stored key names for this cart
 nova64.storage.clear()           // delete all keys for this cart; returns count
+nova64.storage.open(namespace)   // isolated store: save/load/delete/has
 ```
 
 Top-level aliases: `saveData`, `loadData`, `deleteData`, `saveJSON`, `loadJSON`,
@@ -386,3 +392,5 @@ These browser-side Nova64 or Three.js features are not implemented:
 | `39-meta.js` | manifest metadata APIs |
 | `40-perf.js` | perf begin/end/report/clear |
 | `41-asset-quota.js` | asset quota reporting and rejection |
+| `42-touch.js` | pointer/touch input |
+| `43-storage-namespace.js` | namespaced storage stores |

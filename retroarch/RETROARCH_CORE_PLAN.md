@@ -107,6 +107,10 @@ Goals:
 Goals:
 
 - Add a Vulkan backend next to GLES, not instead of it.
+  - The `nova64_renderer` core option and `NOVA64_RENDERER` env override now
+    recognize `vulkan12` as a staged backend identity.
+  - The current `vulkan12` selection records command-log state and falls back to
+    the working GLES request until Vulkan command execution exists.
 - Target Vulkan 1.2 with a pragmatic partial-to-mostly implementation first.
 - Reuse the same opaque handles and renderer command structs.
 - Add primitives, camera, lighting, and overlay composition before advanced effects.

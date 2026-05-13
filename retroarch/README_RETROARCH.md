@@ -73,6 +73,17 @@ The suite builds the core, compiles the harness, generates `.nova` package
 fixtures, checks golden frame checksums, and verifies the mixed 3D/HUD command
 log checksum.
 
+## Renderer Selection
+
+The core exposes a `nova64_renderer` option with `opengles3` and `vulkan12`.
+`opengles3` is the active implemented hardware renderer. `vulkan12` is a staged
+backend identity for the next renderer milestone; selecting it currently records
+the Vulkan preference in logs and command logs, then requests the working GLES
+fallback until the Vulkan backend is implemented.
+
+For harness or shell-driven tests, `NOVA64_RENDERER=vulkan12` mirrors the core
+option. The harness also accepts `--renderer opengles3|vulkan12`.
+
 ## Supported Content
 
 - `.js`: supported as the primary development cart format.

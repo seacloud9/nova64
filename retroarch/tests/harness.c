@@ -13,6 +13,7 @@ static retro_log_printf_t g_log;
 static uint64_t g_checksum;
 static unsigned g_video_frames;
 static bool g_joypad[16];
+static const char *g_renderer_option;
 static uint16_t *g_last_frame;
 static unsigned g_last_width;
 static unsigned g_last_height;
@@ -49,7 +50,16 @@ static bool harness_environment(unsigned cmd, void *data)
       }
       case RETRO_ENVIRONMENT_SET_PIXEL_FORMAT:
       case RETRO_ENVIRONMENT_SET_SUPPORT_NO_GAME:
+      case RETRO_ENVIRONMENT_SET_VARIABLES:
          return true;
+      case RETRO_ENVIRONMENT_GET_VARIABLE: {
+         struct retro_variable *variable = (struct retro_variable *)data;
+         if (variable && variable->key && !strcmp(variable->key, "nova64_renderer")) {
+            variable->value = g_renderer_option ? g_renderer_option : "opengles3";
+            return true;
+         }
+         return false;
+      }
       case RETRO_ENVIRONMENT_SET_HW_RENDER:
          return false;
       default:
@@ -170,7 +180,7 @@ static void *load_symbol(void *core, const char *name)
 int main(int argc, char **argv)
 {
    if (argc < 3) {
-      fprintf(stderr, "usage: %s <nova64_libretro.so> <cart.js|cart.nova> [capture.ppm] [--capture path] [--command-log path] [--expect checksum] [--frames n]\n", argv[0]);
+      fprintf(stderr, "usage: %s <nova64_libretro.so> <cart.js|cart.nova> [capture.ppm] [--capture path] [--command-log path] [--renderer opengles3|vulkan12] [--expect checksum] [--frames n]\n", argv[0]);
       return 2;
    }
 
@@ -193,6 +203,12 @@ int main(int argc, char **argv)
             return 2;
          }
          command_log_path = argv[i];
+      } else if (!strcmp(argv[i], "--renderer")) {
+         if (++i >= argc) {
+            fprintf(stderr, "--renderer requires opengles3 or vulkan12\n");
+            return 2;
+         }
+         g_renderer_option = argv[i];
       } else if (!strcmp(argv[i], "--expect")) {
          if (++i >= argc || !parse_u64_hex(argv[i], &expected_checksum)) {
             fprintf(stderr, "--expect requires a hex checksum\n");

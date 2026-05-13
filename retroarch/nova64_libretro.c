@@ -145,6 +145,11 @@ struct nova64_light {
    float direction[3];
 };
 
+enum nova64_renderer_backend {
+   NOVA64_RENDERER_GLES3 = 0,
+   NOVA64_RENDERER_VULKAN12
+};
+
 struct nova64_save_header {
    uint32_t magic;
    uint32_t version;
@@ -257,6 +262,7 @@ static struct nova64_camera camera_state;
 static struct nova64_light light_state;
 static struct nova64_js_host js_host;
 static struct nova64_gles_backend gles;
+static enum nova64_renderer_backend renderer_preference = NOVA64_RENDERER_GLES3;
 static struct retro_hw_render_callback hw_render;
 static enum retro_pixel_format pixel_format = RETRO_PIXEL_FORMAT_RGB565;
 static bool drawing_scene_preview;
@@ -270,6 +276,75 @@ static void nova64_log_line(enum retro_log_level level, const char *message)
       log_cb(level, "%s\n", message);
    else
       fprintf(stderr, "%s\n", message);
+}
+
+static const char *renderer_backend_name(enum nova64_renderer_backend backend)
+{
+   switch (backend) {
+      case NOVA64_RENDERER_VULKAN12:
+         return "vulkan12";
+      case NOVA64_RENDERER_GLES3:
+      default:
+         return "opengles3";
+   }
+}
+
+static char ascii_lower_char(char c)
+{
+   if (c >= 'A' && c <= 'Z')
+      return (char)(c + ('a' - 'A'));
+   return c;
+}
+
+static bool ascii_equals_ignore_case(const char *left, const char *right)
+{
+   if (!left || !right)
+      return false;
+   while (*left && *right) {
+      if (ascii_lower_char(*left) != ascii_lower_char(*right))
+         return false;
+      left++;
+      right++;
+   }
+   return *left == '\0' && *right == '\0';
+}
+
+static enum nova64_renderer_backend parse_renderer_backend(const char *value)
+{
+   if (!value || !value[0])
+      return NOVA64_RENDERER_GLES3;
+   if (ascii_equals_ignore_case(value, "vulkan") || ascii_equals_ignore_case(value, "vulkan12") ||
+         ascii_equals_ignore_case(value, "vulkan1.2") || ascii_equals_ignore_case(value, "vulkan 1.2"))
+      return NOVA64_RENDERER_VULKAN12;
+   return NOVA64_RENDERER_GLES3;
+}
+
+static void set_core_variables(void)
+{
+   if (!environ_cb)
+      return;
+
+   static struct retro_variable variables[] = {
+      {"nova64_renderer", "Renderer backend; opengles3|vulkan12"},
+      {NULL, NULL},
+   };
+   environ_cb(RETRO_ENVIRONMENT_SET_VARIABLES, variables);
+}
+
+static enum nova64_renderer_backend read_renderer_preference(void)
+{
+   const char *env_backend = getenv("NOVA64_RENDERER");
+   if (env_backend && env_backend[0])
+      return parse_renderer_backend(env_backend);
+
+   if (environ_cb) {
+      struct retro_variable variable;
+      variable.key = "nova64_renderer";
+      variable.value = NULL;
+      if (environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &variable) && variable.value)
+         return parse_renderer_backend(variable.value);
+   }
+   return NOVA64_RENDERER_GLES3;
 }
 
 static uint32_t rgba8(uint32_t r, uint32_t g, uint32_t b, uint32_t a)
@@ -991,6 +1066,8 @@ static void write_renderer_command_log(void)
    }
 
    fprintf(file, "frame=%llu\n", (unsigned long long)frame_count);
+   fprintf(file, "renderer preference=%s hardware_gles_requested=%d hardware_gles_active=%d\n",
+         renderer_backend_name(renderer_preference), gles.requested ? 1 : 0, gles.active ? 1 : 0);
    fprintf(file, "camera position=%.4f,%.4f,%.4f target=%.4f,%.4f,%.4f fov=%.4f\n",
          camera_state.position[0], camera_state.position[1], camera_state.position[2],
          camera_state.target[0], camera_state.target[1], camera_state.target[2],
@@ -2372,6 +2449,18 @@ void RETRO_CALLCONV retro_set_environment(retro_environment_t cb)
    struct retro_log_callback logger;
    if (cb(RETRO_ENVIRONMENT_GET_LOG_INTERFACE, &logger))
       log_cb = logger.log;
+
+   set_core_variables();
+   renderer_preference = read_renderer_preference();
+   if (renderer_preference == NOVA64_RENDERER_VULKAN12) {
+      nova64_log_line(RETRO_LOG_WARN,
+            "[nova64] Vulkan 1.2 renderer selected, but the Vulkan backend is staged; requesting OpenGL ES 3.1 fallback");
+   } else {
+      char renderer_message[96];
+      snprintf(renderer_message, sizeof(renderer_message), "[nova64] renderer backend: %s",
+            renderer_backend_name(renderer_preference));
+      nova64_log_line(RETRO_LOG_INFO, renderer_message);
+   }
 
    cb(RETRO_ENVIRONMENT_SET_PIXEL_FORMAT, &pixel_format);
 

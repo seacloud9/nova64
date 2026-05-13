@@ -41,9 +41,14 @@ run_command_log_case() {
   local label="$1"
   local cart="$2"
   local expected_sha="$3"
+  local renderer="${4:-}"
   local log_path="retroarch/build/${label}.commands"
   echo "== ${label} command log"
-  "${HARNESS}" "${CORE}" "${cart}" --command-log "${log_path}" >/dev/null
+  if [[ -n "${renderer}" ]]; then
+    "${HARNESS}" "${CORE}" "${cart}" --renderer "${renderer}" --command-log "${log_path}" >/dev/null
+  else
+    "${HARNESS}" "${CORE}" "${cart}" --command-log "${log_path}" >/dev/null
+  fi
   local actual_sha
   actual_sha="$(sha256sum "${log_path}" | awk '{print $1}')"
   if [[ "${actual_sha}" != "${expected_sha}" ]]; then
@@ -60,7 +65,8 @@ run_case "06 cube" "retroarch/conformance/06-cube.js" "53584f0993f3ff6a"
 run_case "07 cube plane" "retroarch/conformance/07-cube-plane.js" "cc715d97cf852c67"
 run_case "08 sphere" "retroarch/conformance/08-sphere.js" "6ca539fe0bfe71f6"
 run_case "09 overlay scene" "retroarch/conformance/09-overlay-scene.js" "12f25aad2651ae13"
-run_command_log_case "09-overlay-scene" "retroarch/conformance/09-overlay-scene.js" "bc950d8a9272fcb33e7cae46ed10b3aa3eaadf19551b3bf640fd605948a5d5ab"
+run_command_log_case "09-overlay-scene" "retroarch/conformance/09-overlay-scene.js" "d3858bec86c219de492c73202e8b424cc19fdcb1a7fb6f29e288559df6b13c38"
+run_command_log_case "06-cube-vulkan12" "retroarch/conformance/06-cube.js" "e1b52dec66dd3bfc13c7d65d620c3d46d1d16f210ac366a4fe1575076207a050" "vulkan12"
 run_case "nova fallback" "${PACKAGE_DIR}/cube-fallback.nova" "53584f0993f3ff6a"
 run_case "nova manifest main" "${PACKAGE_DIR}/cube-manifest.nova" "53584f0993f3ff6a"
 

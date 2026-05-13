@@ -102,6 +102,8 @@ Goals:
 - Support basic materials, ambient light, directional light, and camera transforms.
   - GLES primitive shaders now consume per-vertex normals plus ambient and
     directional light state for basic lit material color.
+  - `10-lighting.js` is implemented as a deterministic material/light conformance
+    scene with framebuffer and command-log checks.
 - Add a deterministic command-log mode for headless conformance tests.
   - `NOVA64_RENDER_COMMAND_LOG` and harness `--command-log` are implemented for
     camera, light, overlay, and mesh-state checks.

@@ -73,7 +73,7 @@ bash retroarch/tests/run_conformance.sh
 
 The suite builds the core, compiles the harness, generates `.nova` package
 fixtures, checks golden frame checksums, and verifies renderer command logs for
-the mixed 3D/HUD scene and staged Vulkan selection.
+the mixed 3D/HUD scene, lighting/material scene, and staged Vulkan selection.
 
 ## Renderer Selection
 

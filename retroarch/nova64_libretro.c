@@ -28,7 +28,7 @@
 #define NOVA64_MAX_MESHES 1024
 #define NOVA64_MAX_POINT_LIGHTS 64
 #define NOVA64_SAVE_MAGIC 0x5344364eU
-#define NOVA64_SAVE_VERSION 2U
+#define NOVA64_SAVE_VERSION 3U
 #define NOVA64_ZIP_EOCD_SIGNATURE 0x06054b50U
 #define NOVA64_ZIP_CENTRAL_SIGNATURE 0x02014b50U
 #define NOVA64_ZIP_LOCAL_SIGNATURE 0x04034b50U
@@ -145,10 +145,14 @@ enum nova64_mesh_type {
 struct nova64_mesh {
    bool used;
    bool visible;
+   bool flat_shading;
+   bool cast_shadow;
+   bool receive_shadow;
    enum nova64_mesh_type type;
    float position[3];
    float rotation[3];
    float scale[3];
+   float opacity;
    uint32_t color;
 };
 
@@ -560,6 +564,13 @@ static uint32_t color_with_intensity(uint32_t color, float intensity)
    uint32_t b = (uint32_t)fminf(255.0f, (float)((color >> 8) & 0xffU) * intensity);
    uint32_t a = color & 0xffU;
    return rgba8(r, g, b, a);
+}
+
+static uint32_t color_with_opacity(uint32_t color, float opacity)
+{
+   opacity = clamp_float(opacity, 0.0f, 1.0f);
+   uint32_t a = (uint32_t)fminf(255.0f, (float)(color & 0xffU) * opacity);
+   return (color & 0xffffff00U) | (a & 0xffU);
 }
 
 static int allocate_point_light(void)
@@ -1030,7 +1041,7 @@ static uint32_t shade_color(uint32_t color, float amount)
 static bool scene_has_visible_meshes(void)
 {
    for (int i = 0; i < NOVA64_MAX_MESHES; i++) {
-      if (meshes[i].used && meshes[i].visible)
+      if (meshes[i].used && meshes[i].visible && meshes[i].opacity > 0.0f)
          return true;
    }
    return false;
@@ -1394,7 +1405,8 @@ static void draw_software_cube(const struct nova64_mesh *mesh)
       const int *face = faces[order[i].index];
       if (!visible[face[0]] || !visible[face[1]] || !visible[face[2]] || !visible[face[3]])
          continue;
-      uint32_t face_color = lit_face_color(mesh->color, world[face[0]], world[face[1]], world[face[2]]);
+      uint32_t face_color = lit_face_color(color_with_opacity(mesh->color, mesh->opacity),
+            world[face[0]], world[face[1]], world[face[2]]);
       int quad[4][2] = {
          {screen[face[0]][0], screen[face[0]][1]},
          {screen[face[1]][0], screen[face[1]][1]},
@@ -1427,7 +1439,7 @@ static void draw_software_plane(const struct nova64_mesh *mesh)
    if (!visible)
       return;
 
-   draw_filled_quad(screen, shade_color(mesh->color, 0.72f));
+   draw_filled_quad(screen, shade_color(color_with_opacity(mesh->color, mesh->opacity), 0.72f));
 }
 
 static void draw_software_sphere(const struct nova64_mesh *mesh)
@@ -1445,8 +1457,9 @@ static void draw_software_sphere(const struct nova64_mesh *mesh)
    int radius = (int)(radius_scale * 0.5f * focal / depth);
    if (radius < 2)
       radius = 2;
-   uint32_t color = shade_color(mesh->color, 1.15f);
-   uint32_t highlight = shade_color(mesh->color, 1.25f);
+   uint32_t base_color = color_with_opacity(mesh->color, mesh->opacity);
+   uint32_t color = shade_color(base_color, 1.15f);
+   uint32_t highlight = shade_color(base_color, 1.25f);
    for (int y = -radius; y <= radius; y++) {
       int span = (int)sqrtf((float)(radius * radius - y * y));
       for (int x = -span; x <= span; x++) {
@@ -1475,7 +1488,7 @@ static void render_software_scene(void)
    drawing_scene_preview = true;
    for (int i = 0; i < NOVA64_MAX_MESHES; i++) {
       const struct nova64_mesh *mesh = &meshes[i];
-      if (!mesh->used || !mesh->visible)
+      if (!mesh->used || !mesh->visible || mesh->opacity <= 0.0f)
          continue;
       switch (mesh->type) {
          case NOVA64_MESH_CUBE:
@@ -1561,8 +1574,10 @@ static void write_renderer_command_log(void)
       if (!mesh->used)
          continue;
       fprintf(file,
-            "mesh id=%d type=%s visible=%d color=%08x position=%.4f,%.4f,%.4f rotation=%.4f,%.4f,%.4f scale=%.4f,%.4f,%.4f\n",
-            i + 1, mesh_type_name(mesh->type), mesh->visible ? 1 : 0, mesh->color,
+            "mesh id=%d type=%s visible=%d opacity=%.4f flat=%d cast_shadow=%d receive_shadow=%d color=%08x position=%.4f,%.4f,%.4f rotation=%.4f,%.4f,%.4f scale=%.4f,%.4f,%.4f\n",
+            i + 1, mesh_type_name(mesh->type), mesh->visible ? 1 : 0, mesh->opacity,
+            mesh->flat_shading ? 1 : 0, mesh->cast_shadow ? 1 : 0,
+            mesh->receive_shadow ? 1 : 0, mesh->color,
             mesh->position[0], mesh->position[1], mesh->position[2],
             mesh->rotation[0], mesh->rotation[1], mesh->rotation[2],
             mesh->scale[0], mesh->scale[1], mesh->scale[2]);
@@ -1629,6 +1644,10 @@ static int allocate_mesh(enum nova64_mesh_type type)
          meshes[i].scale[0] = 1.0f;
          meshes[i].scale[1] = 1.0f;
          meshes[i].scale[2] = 1.0f;
+         meshes[i].opacity = 1.0f;
+         meshes[i].flat_shading = false;
+         meshes[i].cast_shadow = false;
+         meshes[i].receive_shadow = false;
          meshes[i].color = rgba8(255, 255, 255, 255);
          return i + 1;
       }
@@ -1642,6 +1661,20 @@ static struct nova64_mesh *mesh_from_handle(int handle)
       return NULL;
    struct nova64_mesh *mesh = &meshes[handle - 1];
    return mesh->used ? mesh : NULL;
+}
+
+static size_t mesh_triangle_count(enum nova64_mesh_type type)
+{
+   switch (type) {
+      case NOVA64_MESH_CUBE:
+         return 12;
+      case NOVA64_MESH_PLANE:
+         return 2;
+      case NOVA64_MESH_SPHERE:
+         return 96;
+      default:
+         return 0;
+   }
 }
 
 static void js_log_exception(JSContext *ctx, const char *where)
@@ -2003,6 +2036,48 @@ static JSValue js_set_mesh_visible(JSContext *ctx, JSValueConst this_val, int ar
    return JS_NewBool(ctx, true);
 }
 
+static JSValue js_set_flat_shading(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   struct nova64_mesh *mesh = mesh_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!mesh)
+      return JS_NewBool(ctx, false);
+   mesh->flat_shading = argc > 1 ? JS_ToBool(ctx, argv[1]) : true;
+   return JS_NewBool(ctx, true);
+}
+
+static JSValue js_set_mesh_opacity(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   struct nova64_mesh *mesh = mesh_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!mesh)
+      return JS_NewBool(ctx, false);
+   mesh->opacity = (float)clamp_double(
+         double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, mesh->opacity),
+         0.0, 1.0);
+   return JS_NewBool(ctx, true);
+}
+
+static JSValue js_set_cast_shadow(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   struct nova64_mesh *mesh = mesh_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!mesh)
+      return JS_NewBool(ctx, false);
+   mesh->cast_shadow = argc > 1 ? JS_ToBool(ctx, argv[1]) : true;
+   return JS_NewBool(ctx, true);
+}
+
+static JSValue js_set_receive_shadow(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   struct nova64_mesh *mesh = mesh_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!mesh)
+      return JS_NewBool(ctx, false);
+   mesh->receive_shadow = argc > 1 ? JS_ToBool(ctx, argv[1]) : true;
+   return JS_NewBool(ctx, true);
+}
+
 static JSValue js_get_mesh(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
    (void)this_val;
@@ -2015,10 +2090,67 @@ static JSValue js_get_mesh(JSContext *ctx, JSValueConst this_val, int argc, JSVa
    JS_SetPropertyStr(ctx, object, "id", JS_NewInt32(ctx, handle));
    JS_SetPropertyStr(ctx, object, "type", JS_NewString(ctx, mesh_type_name(mesh->type)));
    JS_SetPropertyStr(ctx, object, "visible", JS_NewBool(ctx, mesh->visible));
+   JS_SetPropertyStr(ctx, object, "opacity", JS_NewFloat64(ctx, mesh->opacity));
+   JS_SetPropertyStr(ctx, object, "flatShading", JS_NewBool(ctx, mesh->flat_shading));
+   JS_SetPropertyStr(ctx, object, "castShadow", JS_NewBool(ctx, mesh->cast_shadow));
+   JS_SetPropertyStr(ctx, object, "receiveShadow", JS_NewBool(ctx, mesh->receive_shadow));
    JS_SetPropertyStr(ctx, object, "color", JS_NewUint32(ctx, mesh->color));
    JS_SetPropertyStr(ctx, object, "position", js_vec3_array(ctx, mesh->position));
    JS_SetPropertyStr(ctx, object, "rotation", js_vec3_array(ctx, mesh->rotation));
    JS_SetPropertyStr(ctx, object, "scale", js_vec3_array(ctx, mesh->scale));
+   return object;
+}
+
+static JSValue js_get_3d_stats(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   (void)argc;
+   (void)argv;
+
+   size_t meshes_count = 0;
+   size_t visible_count = 0;
+   size_t triangles = 0;
+   for (int i = 0; i < NOVA64_MAX_MESHES; i++) {
+      if (!meshes[i].used)
+         continue;
+      meshes_count++;
+      triangles += mesh_triangle_count(meshes[i].type);
+      if (meshes[i].visible && meshes[i].opacity > 0.0f)
+         visible_count++;
+   }
+
+   size_t lights_count = 0;
+   for (int i = 0; i < NOVA64_MAX_POINT_LIGHTS; i++) {
+      if (point_lights[i].used)
+         lights_count++;
+   }
+
+   JSValue object = JS_NewObject(ctx);
+   JS_SetPropertyStr(ctx, object, "triangles", JS_NewUint32(ctx, (uint32_t)triangles));
+   JS_SetPropertyStr(ctx, object, "drawCalls", JS_NewUint32(ctx, (uint32_t)(visible_count + 1)));
+   JS_SetPropertyStr(ctx, object, "meshes", JS_NewUint32(ctx, (uint32_t)meshes_count));
+   JS_SetPropertyStr(ctx, object, "visibleMeshes", JS_NewUint32(ctx, (uint32_t)visible_count));
+   JS_SetPropertyStr(ctx, object, "pointLights", JS_NewUint32(ctx, (uint32_t)lights_count));
+   JS_SetPropertyStr(ctx, object, "backend", JS_NewString(ctx, renderer_backend_name(renderer_preference)));
+   return object;
+}
+
+static JSValue js_get_backend_capabilities(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   (void)argc;
+   (void)argv;
+
+   JSValue object = JS_NewObject(ctx);
+   JS_SetPropertyStr(ctx, object, "backend", JS_NewString(ctx, renderer_backend_name(renderer_preference)));
+   JS_SetPropertyStr(ctx, object, "hardwareGLES", JS_NewBool(ctx, gles.active));
+   JS_SetPropertyStr(ctx, object, "softwareFallback", JS_NewBool(ctx, !gles.active));
+   JS_SetPropertyStr(ctx, object, "primitives", JS_NewBool(ctx, true));
+   JS_SetPropertyStr(ctx, object, "meshOpacity", JS_NewBool(ctx, true));
+   JS_SetPropertyStr(ctx, object, "meshShadowFlags", JS_NewBool(ctx, true));
+   JS_SetPropertyStr(ctx, object, "pointLights", JS_NewBool(ctx, true));
+   JS_SetPropertyStr(ctx, object, "fogState", JS_NewBool(ctx, true));
+   JS_SetPropertyStr(ctx, object, "postProcessing", JS_NewBool(ctx, false));
    return object;
 }
 
@@ -2456,6 +2588,12 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, scene, "rotateMesh", js_rotate_mesh, 4);
    set_function(ctx, scene, "moveMesh", js_move_mesh, 4);
    set_function(ctx, scene, "setMeshVisible", js_set_mesh_visible, 2);
+   set_function(ctx, scene, "setFlatShading", js_set_flat_shading, 2);
+   set_function(ctx, scene, "setMeshOpacity", js_set_mesh_opacity, 2);
+   set_function(ctx, scene, "setCastShadow", js_set_cast_shadow, 2);
+   set_function(ctx, scene, "setReceiveShadow", js_set_receive_shadow, 2);
+   set_function(ctx, scene, "get3DStats", js_get_3d_stats, 0);
+   set_function(ctx, scene, "getBackendCapabilities", js_get_backend_capabilities, 0);
    set_function(ctx, scene, "setFog", js_set_fog, 3);
    set_function(ctx, scene, "clearFog", js_clear_fog, 0);
    set_function(ctx, scene, "clearScene", js_clear_scene, 0);
@@ -2531,6 +2669,12 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, global, "rotateMesh", js_rotate_mesh, 4);
    set_function(ctx, global, "moveMesh", js_move_mesh, 4);
    set_function(ctx, global, "setMeshVisible", js_set_mesh_visible, 2);
+   set_function(ctx, global, "setFlatShading", js_set_flat_shading, 2);
+   set_function(ctx, global, "setMeshOpacity", js_set_mesh_opacity, 2);
+   set_function(ctx, global, "setCastShadow", js_set_cast_shadow, 2);
+   set_function(ctx, global, "setReceiveShadow", js_set_receive_shadow, 2);
+   set_function(ctx, global, "get3DStats", js_get_3d_stats, 0);
+   set_function(ctx, global, "getBackendCapabilities", js_get_backend_capabilities, 0);
    set_function(ctx, global, "setCameraPosition", js_set_camera_position, 3);
    set_function(ctx, global, "setCameraTarget", js_set_camera_target, 3);
    set_function(ctx, global, "setCameraFOV", js_set_camera_fov, 1);
@@ -3168,7 +3312,7 @@ static void render_gles_primitive(const struct nova64_mesh *mesh, const float vi
    float r = (float)((color >> 24) & 0xffU) / 255.0f;
    float g = (float)((color >> 16) & 0xffU) / 255.0f;
    float b = (float)((color >> 8) & 0xffU) / 255.0f;
-   float a = (float)(color & 0xffU) / 255.0f;
+   float a = ((float)(color & 0xffU) / 255.0f) * clamp_float(mesh->opacity, 0.0f, 1.0f);
 
    gles.UseProgram(gles.cube_program);
    gles.UniformMatrix4fv(gles.cube_mvp_uniform, 1, GL_FALSE, mvp);
@@ -3268,7 +3412,7 @@ static void render_gles_scene(void)
    mat4_multiply(view_projection, projection, view);
 
    for (int i = 0; i < NOVA64_MAX_MESHES; i++) {
-      if (!meshes[i].used || !meshes[i].visible)
+      if (!meshes[i].used || !meshes[i].visible || meshes[i].opacity <= 0.0f)
          continue;
       if (meshes[i].type == NOVA64_MESH_CUBE)
          render_gles_cube(&meshes[i], view_projection);

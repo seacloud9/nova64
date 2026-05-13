@@ -175,6 +175,12 @@ Storage:
 - `rotateMesh(handle, dx, dy, dz)`
 - `moveMesh(handle, dx, dy, dz)`
 - `setMeshVisible(handle, visible)`
+- `setFlatShading(handle, enabled)`
+- `setMeshOpacity(handle, opacity)`
+- `setCastShadow(handle, enabled)`
+- `setReceiveShadow(handle, enabled)`
+- `get3DStats()`
+- `getBackendCapabilities()`
 - `setCameraPosition(x, y, z)`
 - `setCameraTarget(x, y, z)`
 - `setCameraFOV(degrees)`

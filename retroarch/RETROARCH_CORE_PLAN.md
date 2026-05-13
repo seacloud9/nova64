@@ -167,6 +167,8 @@ Areas:
   - Transform helpers now include position/rotation getters, additive
     `rotateMesh`/`moveMesh`, `setMeshVisible`, `removeMesh`, and a read-only
     `getMesh` snapshot.
+  - Mesh helper state now includes opacity, flat-shading and shadow flags, plus
+    basic 3D stats and backend capabilities for feature gating.
 - Expand camera and lighting:
   - Orthographic/perspective options, fog, point lights, directional light parity,
     basic shadows where feasible, and command-log conformance for state changes.

@@ -26,8 +26,9 @@
 #define NOVA64_AUDIO_MAX_VOICES 8
 #define NOVA64_CORE_VERSION "0.3.0"
 #define NOVA64_MAX_MESHES 1024
+#define NOVA64_MAX_POINT_LIGHTS 64
 #define NOVA64_SAVE_MAGIC 0x5344364eU
-#define NOVA64_SAVE_VERSION 1U
+#define NOVA64_SAVE_VERSION 2U
 #define NOVA64_ZIP_EOCD_SIGNATURE 0x06054b50U
 #define NOVA64_ZIP_CENTRAL_SIGNATURE 0x02014b50U
 #define NOVA64_ZIP_LOCAL_SIGNATURE 0x04034b50U
@@ -159,7 +160,22 @@ struct nova64_camera {
 
 struct nova64_light {
    uint32_t ambient;
+   float ambient_intensity;
+   uint32_t color;
+   float intensity;
    float direction[3];
+   bool fog_enabled;
+   uint32_t fog_color;
+   float fog_near;
+   float fog_far;
+};
+
+struct nova64_point_light {
+   bool used;
+   uint32_t color;
+   float intensity;
+   float distance;
+   float position[3];
 };
 
 enum nova64_renderer_backend {
@@ -324,6 +340,7 @@ static bool previous_buttons[NOVA64_BUTTON_COUNT];
 static bool pressed_buttons[NOVA64_BUTTON_COUNT];
 
 static struct nova64_mesh meshes[NOVA64_MAX_MESHES];
+static struct nova64_point_light point_lights[NOVA64_MAX_POINT_LIGHTS];
 static struct nova64_camera camera_state;
 static struct nova64_light light_state;
 static struct nova64_audio_voice audio_voices[NOVA64_AUDIO_MAX_VOICES];
@@ -520,6 +537,56 @@ static bool set_position_from_js(JSContext *ctx, JSValueConst value, float targe
    return true;
 }
 
+static void clear_scene_objects(void)
+{
+   memset(meshes, 0, sizeof(meshes));
+   memset(point_lights, 0, sizeof(point_lights));
+}
+
+static float clamp_float(float value, float min_value, float max_value)
+{
+   if (value < min_value)
+      return min_value;
+   if (value > max_value)
+      return max_value;
+   return value;
+}
+
+static uint32_t color_with_intensity(uint32_t color, float intensity)
+{
+   intensity = clamp_float(intensity, 0.0f, 4.0f);
+   uint32_t r = (uint32_t)fminf(255.0f, (float)((color >> 24) & 0xffU) * intensity);
+   uint32_t g = (uint32_t)fminf(255.0f, (float)((color >> 16) & 0xffU) * intensity);
+   uint32_t b = (uint32_t)fminf(255.0f, (float)((color >> 8) & 0xffU) * intensity);
+   uint32_t a = color & 0xffU;
+   return rgba8(r, g, b, a);
+}
+
+static int allocate_point_light(void)
+{
+   for (int i = 0; i < NOVA64_MAX_POINT_LIGHTS; i++) {
+      if (!point_lights[i].used) {
+         point_lights[i].used = true;
+         point_lights[i].color = rgba8(255, 255, 255, 255);
+         point_lights[i].intensity = 1.0f;
+         point_lights[i].distance = 20.0f;
+         point_lights[i].position[0] = 0.0f;
+         point_lights[i].position[1] = 5.0f;
+         point_lights[i].position[2] = 0.0f;
+         return i + 1;
+      }
+   }
+   return 0;
+}
+
+static struct nova64_point_light *point_light_from_handle(int handle)
+{
+   if (handle <= 0 || handle > NOVA64_MAX_POINT_LIGHTS)
+      return NULL;
+   struct nova64_point_light *light = &point_lights[handle - 1];
+   return light->used ? light : NULL;
+}
+
 static uint16_t read_u16_le(const uint8_t *data)
 {
    return (uint16_t)data[0] | ((uint16_t)data[1] << 8);
@@ -539,7 +606,7 @@ static bool bytes_equal_name(const uint8_t *name, uint16_t name_len, const char 
 
 static void reset_scene_state(void)
 {
-   memset(meshes, 0, sizeof(meshes));
+   clear_scene_objects();
    camera_state.position[0] = 0.0f;
    camera_state.position[1] = 1.5f;
    camera_state.position[2] = 6.0f;
@@ -548,9 +615,16 @@ static void reset_scene_state(void)
    camera_state.target[2] = 0.0f;
    camera_state.fov = 60.0f;
    light_state.ambient = rgba8(48, 48, 56, 255);
+   light_state.ambient_intensity = 1.0f;
+   light_state.color = rgba8(255, 255, 255, 255);
+   light_state.intensity = 1.0f;
    light_state.direction[0] = -0.4f;
    light_state.direction[1] = -0.8f;
    light_state.direction[2] = -0.3f;
+   light_state.fog_enabled = false;
+   light_state.fog_color = rgba8(0, 0, 0, 255);
+   light_state.fog_near = 10.0f;
+   light_state.fog_far = 50.0f;
 }
 
 static enum nova64_audio_wave audio_wave_from_name(const char *name, enum nova64_audio_wave fallback)
@@ -1473,9 +1547,12 @@ static void write_renderer_command_log(void)
          camera_state.position[0], camera_state.position[1], camera_state.position[2],
          camera_state.target[0], camera_state.target[1], camera_state.target[2],
          camera_state.fov);
-   fprintf(file, "light ambient=%08x direction=%.4f,%.4f,%.4f\n",
-         light_state.ambient, light_state.direction[0], light_state.direction[1],
-         light_state.direction[2]);
+   fprintf(file,
+         "light ambient=%08x ambient_intensity=%.4f color=%08x intensity=%.4f direction=%.4f,%.4f,%.4f fog=%d fog_color=%08x fog_near=%.4f fog_far=%.4f\n",
+         light_state.ambient, light_state.ambient_intensity, light_state.color, light_state.intensity,
+         light_state.direction[0], light_state.direction[1], light_state.direction[2],
+         light_state.fog_enabled ? 1 : 0, light_state.fog_color,
+         light_state.fog_near, light_state.fog_far);
    fprintf(file, "overlay clear=%08x visible_pixels=%zu\n",
          framebuffer_clear_color, count_overlay_pixels());
 
@@ -1489,6 +1566,15 @@ static void write_renderer_command_log(void)
             mesh->position[0], mesh->position[1], mesh->position[2],
             mesh->rotation[0], mesh->rotation[1], mesh->rotation[2],
             mesh->scale[0], mesh->scale[1], mesh->scale[2]);
+   }
+   for (int i = 0; i < NOVA64_MAX_POINT_LIGHTS; i++) {
+      const struct nova64_point_light *light = &point_lights[i];
+      if (!light->used)
+         continue;
+      fprintf(file,
+            "point_light id=%d color=%08x intensity=%.4f distance=%.4f position=%.4f,%.4f,%.4f\n",
+            i + 1, light->color, light->intensity, light->distance,
+            light->position[0], light->position[1], light->position[2]);
    }
    fprintf(file, "\n");
    fclose(file);
@@ -1958,23 +2044,147 @@ static JSValue js_set_camera_fov(JSContext *ctx, JSValueConst this_val, int argc
    return JS_UNDEFINED;
 }
 
+static JSValue js_set_camera_look_at(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   float direction[3] = {0.0f, 0.0f, -1.0f};
+   set_transform_vec3_from_args(ctx, argc, argv, 0, direction, false, false);
+   camera_state.target[0] = camera_state.position[0] + direction[0];
+   camera_state.target[1] = camera_state.position[1] + direction[1];
+   camera_state.target[2] = camera_state.position[2] + direction[2];
+   return JS_UNDEFINED;
+}
+
 static JSValue js_set_ambient_light(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
+   (void)this_val;
    light_state.ambient = color_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, light_state.ambient);
+   light_state.ambient_intensity = (float)clamp_double(
+         double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, light_state.ambient_intensity),
+         0.0, 4.0);
    return JS_UNDEFINED;
 }
 
 static JSValue js_set_light_direction(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
-   light_state.direction[0] = (float)double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, light_state.direction[0]);
-   light_state.direction[1] = (float)double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, light_state.direction[1]);
-   light_state.direction[2] = (float)double_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, light_state.direction[2]);
+   (void)this_val;
+   set_transform_vec3_from_args(ctx, argc, argv, 0, light_state.direction, false, false);
    return JS_UNDEFINED;
+}
+
+static JSValue js_set_light_color(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   light_state.color = color_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, light_state.color);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_set_directional_light(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   set_transform_vec3_from_args(ctx, argc, argv, 0, light_state.direction, false, false);
+   light_state.color = color_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, light_state.color);
+   light_state.intensity = (float)clamp_double(
+         double_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, light_state.intensity),
+         0.0, 8.0);
+   return JS_NewBool(ctx, true);
+}
+
+static JSValue js_set_fog(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   light_state.fog_enabled = true;
+   light_state.fog_color = color_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, light_state.fog_color);
+   light_state.fog_near = (float)double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, light_state.fog_near);
+   light_state.fog_far = (float)double_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, light_state.fog_far);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_clear_fog(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)ctx;
+   (void)this_val;
+   (void)argc;
+   (void)argv;
+   light_state.fog_enabled = false;
+   return JS_UNDEFINED;
+}
+
+static JSValue js_create_point_light(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int handle = allocate_point_light();
+   struct nova64_point_light *light = point_light_from_handle(handle);
+   if (!light)
+      return JS_NewInt32(ctx, 0);
+
+   light->color = color_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, light->color);
+   light->intensity = (float)clamp_double(
+         double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, light->intensity),
+         0.0, 16.0);
+
+   if (argc > 2 && set_position_from_js(ctx, argv[2], light->position)) {
+      light->distance = 20.0f;
+   } else {
+      light->distance = (float)clamp_double(
+            double_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, light->distance),
+            0.0, 10000.0);
+      if (argc > 3) {
+         if (!set_position_from_js(ctx, argv[3], light->position)) {
+            light->position[0] = (float)double_from_js(ctx, argv[3], light->position[0]);
+            light->position[1] = (float)double_from_js(ctx, argc > 4 ? argv[4] : JS_UNDEFINED, light->position[1]);
+            light->position[2] = (float)double_from_js(ctx, argc > 5 ? argv[5] : JS_UNDEFINED, light->position[2]);
+         }
+      }
+   }
+
+   return JS_NewInt32(ctx, handle);
+}
+
+static JSValue js_set_point_light_position(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   struct nova64_point_light *light = point_light_from_handle(
+         int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!light)
+      return JS_NewBool(ctx, false);
+   set_transform_vec3_from_args(ctx, argc, argv, 1, light->position, false, false);
+   return JS_NewBool(ctx, true);
+}
+
+static JSValue js_set_point_light_color(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   struct nova64_point_light *light = point_light_from_handle(
+         int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!light)
+      return JS_NewBool(ctx, false);
+   light->color = color_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, light->color);
+   if (argc > 2) {
+      light->intensity = (float)clamp_double(double_from_js(ctx, argv[2], light->intensity),
+            0.0, 16.0);
+   }
+   return JS_NewBool(ctx, true);
+}
+
+static JSValue js_remove_light(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int handle = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0);
+   struct nova64_point_light *light = point_light_from_handle(handle);
+   if (!light)
+      return JS_NewBool(ctx, false);
+   memset(light, 0, sizeof(*light));
+   return JS_NewBool(ctx, true);
 }
 
 static JSValue js_clear_scene(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
-   reset_scene_state();
+   (void)ctx;
+   (void)this_val;
+   (void)argc;
+   (void)argv;
+   clear_scene_objects();
    return JS_UNDEFINED;
 }
 
@@ -2246,14 +2456,30 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, scene, "rotateMesh", js_rotate_mesh, 4);
    set_function(ctx, scene, "moveMesh", js_move_mesh, 4);
    set_function(ctx, scene, "setMeshVisible", js_set_mesh_visible, 2);
+   set_function(ctx, scene, "setFog", js_set_fog, 3);
+   set_function(ctx, scene, "clearFog", js_clear_fog, 0);
    set_function(ctx, scene, "clearScene", js_clear_scene, 0);
 
    set_function(ctx, camera, "setPosition", js_set_camera_position, 3);
    set_function(ctx, camera, "setTarget", js_set_camera_target, 3);
    set_function(ctx, camera, "setFOV", js_set_camera_fov, 1);
+   set_function(ctx, camera, "setCameraPosition", js_set_camera_position, 3);
+   set_function(ctx, camera, "setCameraTarget", js_set_camera_target, 3);
+   set_function(ctx, camera, "setCameraFOV", js_set_camera_fov, 1);
+   set_function(ctx, camera, "setCameraLookAt", js_set_camera_look_at, 1);
 
-   set_function(ctx, light, "setAmbient", js_set_ambient_light, 1);
+   set_function(ctx, light, "setAmbient", js_set_ambient_light, 2);
    set_function(ctx, light, "setDirection", js_set_light_direction, 3);
+   set_function(ctx, light, "setAmbientLight", js_set_ambient_light, 2);
+   set_function(ctx, light, "setLightDirection", js_set_light_direction, 3);
+   set_function(ctx, light, "setLightColor", js_set_light_color, 1);
+   set_function(ctx, light, "setDirectionalLight", js_set_directional_light, 3);
+   set_function(ctx, light, "createPointLight", js_create_point_light, 6);
+   set_function(ctx, light, "setPointLightPosition", js_set_point_light_position, 4);
+   set_function(ctx, light, "setPointLightColor", js_set_point_light_color, 3);
+   set_function(ctx, light, "removeLight", js_remove_light, 1);
+   set_function(ctx, light, "setFog", js_set_fog, 3);
+   set_function(ctx, light, "clearFog", js_clear_fog, 0);
 
    set_function(ctx, audio, "sfx", js_sfx, 2);
    set_function(ctx, audio, "setVolume", js_set_volume, 1);
@@ -2276,7 +2502,8 @@ static bool install_nova64_api(JSContext *ctx)
    JS_SetPropertyStr(ctx, nova64, "input", input);
    JS_SetPropertyStr(ctx, nova64, "scene", scene);
    JS_SetPropertyStr(ctx, nova64, "camera", camera);
-   JS_SetPropertyStr(ctx, nova64, "light", light);
+   JS_SetPropertyStr(ctx, nova64, "light", JS_DupValue(ctx, light));
+   JS_SetPropertyStr(ctx, nova64, "lights", light);
    JS_SetPropertyStr(ctx, nova64, "audio", audio);
    JS_SetPropertyStr(ctx, nova64, "assets", assets);
    JS_SetPropertyStr(ctx, nova64, "storage", storage);
@@ -2307,8 +2534,17 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, global, "setCameraPosition", js_set_camera_position, 3);
    set_function(ctx, global, "setCameraTarget", js_set_camera_target, 3);
    set_function(ctx, global, "setCameraFOV", js_set_camera_fov, 1);
-   set_function(ctx, global, "setAmbientLight", js_set_ambient_light, 1);
+   set_function(ctx, global, "setCameraLookAt", js_set_camera_look_at, 1);
+   set_function(ctx, global, "setAmbientLight", js_set_ambient_light, 2);
    set_function(ctx, global, "setLightDirection", js_set_light_direction, 3);
+   set_function(ctx, global, "setLightColor", js_set_light_color, 1);
+   set_function(ctx, global, "setDirectionalLight", js_set_directional_light, 3);
+   set_function(ctx, global, "createPointLight", js_create_point_light, 6);
+   set_function(ctx, global, "setPointLightPosition", js_set_point_light_position, 4);
+   set_function(ctx, global, "setPointLightColor", js_set_point_light_color, 3);
+   set_function(ctx, global, "removeLight", js_remove_light, 1);
+   set_function(ctx, global, "setFog", js_set_fog, 3);
+   set_function(ctx, global, "clearFog", js_clear_fog, 0);
    set_function(ctx, global, "clearScene", js_clear_scene, 0);
    set_function(ctx, global, "sfx", js_sfx, 2);
    set_function(ctx, global, "setVolume", js_set_volume, 1);
@@ -2938,11 +3174,12 @@ static void render_gles_primitive(const struct nova64_mesh *mesh, const float vi
    gles.UniformMatrix4fv(gles.cube_mvp_uniform, 1, GL_FALSE, mvp);
    gles.UniformMatrix3fv(gles.cube_normal_matrix_uniform, 1, GL_FALSE, normal_matrix);
    gles.Uniform4f(gles.cube_color_uniform, r, g, b, a);
+   uint32_t ambient = color_with_intensity(light_state.ambient, light_state.ambient_intensity);
    gles.Uniform4f(gles.cube_ambient_uniform,
-      (float)((light_state.ambient >> 24) & 0xffU) / 255.0f,
-      (float)((light_state.ambient >> 16) & 0xffU) / 255.0f,
-      (float)((light_state.ambient >> 8) & 0xffU) / 255.0f,
-      (float)(light_state.ambient & 0xffU) / 255.0f);
+      (float)((ambient >> 24) & 0xffU) / 255.0f,
+      (float)((ambient >> 16) & 0xffU) / 255.0f,
+      (float)((ambient >> 8) & 0xffU) / 255.0f,
+      (float)(ambient & 0xffU) / 255.0f);
    gles.Uniform4f(gles.cube_light_direction_uniform,
       light_state.direction[0], light_state.direction[1], light_state.direction[2], 0.0f);
    gles.BindBuffer(GL_ARRAY_BUFFER, vbo);
@@ -3008,7 +3245,7 @@ static void render_gles_scene(void)
    if (!gles.active || !gles_load_functions())
       return;
 
-   uint32_t ambient = light_state.ambient;
+   uint32_t ambient = color_with_intensity(light_state.ambient, light_state.ambient_intensity);
    float r = (float)((ambient >> 24) & 0xffU) / 255.0f;
    float g = (float)((ambient >> 16) & 0xffU) / 255.0f;
    float b = (float)((ambient >> 8) & 0xffU) / 255.0f;
@@ -3815,7 +4052,7 @@ size_t RETRO_CALLCONV retro_serialize_size(void)
 {
    return sizeof(struct nova64_save_header) +
           ((size_t)NOVA64_WIDTH * NOVA64_HEIGHT * sizeof(uint32_t)) +
-          sizeof(meshes) + sizeof(camera_state) + sizeof(light_state);
+          sizeof(meshes) + sizeof(point_lights) + sizeof(camera_state) + sizeof(light_state);
 }
 
 bool RETRO_CALLCONV retro_serialize(void *data, size_t size)
@@ -3845,6 +4082,8 @@ bool RETRO_CALLCONV retro_serialize(void *data, size_t size)
    cursor += header.framebuffer_bytes;
    memcpy(cursor, meshes, sizeof(meshes));
    cursor += sizeof(meshes);
+   memcpy(cursor, point_lights, sizeof(point_lights));
+   cursor += sizeof(point_lights);
    memcpy(cursor, &camera_state, sizeof(camera_state));
    cursor += sizeof(camera_state);
    memcpy(cursor, &light_state, sizeof(light_state));
@@ -3870,6 +4109,8 @@ bool RETRO_CALLCONV retro_unserialize(const void *data, size_t size)
    cursor += header.framebuffer_bytes;
    memcpy(meshes, cursor, sizeof(meshes));
    cursor += sizeof(meshes);
+   memcpy(point_lights, cursor, sizeof(point_lights));
+   cursor += sizeof(point_lights);
    memcpy(&camera_state, cursor, sizeof(camera_state));
    cursor += sizeof(camera_state);
    memcpy(&light_state, cursor, sizeof(light_state));

@@ -178,13 +178,23 @@ Storage:
 - `setCameraPosition(x, y, z)`
 - `setCameraTarget(x, y, z)`
 - `setCameraFOV(degrees)`
+- `setCameraLookAt(direction)`
 - `setAmbientLight(color)`
+- `setAmbientLight(color, intensity)`
 - `setLightDirection(x, y, z)`
+- `setLightColor(color)`
+- `setDirectionalLight(direction, color, intensity)`
+- `createPointLight(color, intensity, distance, position)`
+- `setPointLightPosition(light, x, y, z)`
+- `setPointLightColor(light, color, intensity)`
+- `removeLight(light)`
+- `setFog(color, near, far)`
+- `clearFog()`
 - `clearScene()`
 
 These functions are exposed both under `nova64.draw`, `nova64.input`,
-`nova64.scene`, `nova64.camera`, and `nova64.light`, and as top-level compatibility
-helpers for tiny conformance carts.
+`nova64.scene`, `nova64.camera`, `nova64.light`/`nova64.lights`, and as top-level
+compatibility helpers for tiny conformance carts.
 
 ## Renderer Roadmap
 
@@ -200,7 +210,7 @@ helpers for tiny conformance carts.
 ## Limitations
 
 - QuickJS heap state is not serialized. Save states currently include only
-  framebuffer, input, camera, light, and native mesh-table state.
+  framebuffer, input, camera, light/fog, point-light, and native mesh-table state.
 - `.nova` package parsing currently uses manifest metadata only to find executable
   cart source; assets remain staged next.
 - GLES currently renders cube, plane, and low-poly sphere primitives with basic

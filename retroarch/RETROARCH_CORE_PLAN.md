@@ -170,6 +170,8 @@ Areas:
 - Expand camera and lighting:
   - Orthographic/perspective options, fog, point lights, directional light parity,
     basic shadows where feasible, and command-log conformance for state changes.
+  - Camera look-at, ambient intensity, directional color/intensity, fog state, and
+    point-light lifecycle are now exposed with command-log conformance coverage.
 - Expand input:
   - Keyboard mappings, mouse buttons, relative mouse movement where RetroArch
     exposes it, touch/lightgun-style affordances if they map cleanly, and

@@ -51,6 +51,25 @@ with ZipFile(package_dir / "asset-runtime.nova", "w", ZIP_DEFLATED) as package:
         "manifest.json",
         '{"name":"asset-runtime","main":"src/main.js","assets":["assets/message.txt","data/config.json","bin/blob.bin"]}\n',
     )
+
+# 4x4 RGBA sprite: bright red 2x2 top-left, blue 2x2 bottom-right
+dot = bytearray(4 * 4 * 4)
+for row in range(4):
+    for col in range(4):
+        i = (row * 4 + col) * 4
+        if row < 2 and col < 2:
+            dot[i:i+4] = [255, 60, 60, 255]   # red
+        elif row >= 2 and col >= 2:
+            dot[i:i+4] = [60, 100, 255, 255]  # blue
+        else:
+            dot[i:i+4] = [200, 200, 200, 255] # grey
+with ZipFile(package_dir / "sprite.nova", "w", ZIP_DEFLATED) as package:
+    package.write("retroarch/conformance/27-sprite.js", "src/main.js")
+    package.writestr("sprites/dot.rgba", bytes(dot))
+    package.writestr(
+        "manifest.json",
+        '{"name":"sprite","main":"src/main.js","assets":["sprites/dot.rgba"]}\n',
+    )
 PY
 
 run_case() {
@@ -142,6 +161,7 @@ run_mouse_case() {
 
 run_mouse_case "25 mouse" "retroarch/conformance/25-mouse.js" "c921e3d3b2b7c551"
 run_visual_case "26 draw2d" "26-draw2d" "retroarch/conformance/26-draw2d.js" "5c927cbdf07816e8"
+run_visual_case "27 sprite" "27-sprite" "${PACKAGE_DIR}/sprite.nova" "f6ca57a33e1c1b09"
 run_visual_case "19 texture" "19-texture" "retroarch/conformance/19-texture.js" "f4fd3acbca0331b4"
 run_visual_case "20 post" "20-post" "retroarch/conformance/20-post.js" "75a3d27c9048e5b0"
 run_visual_case "21 post-effects" "21-post-effects" "retroarch/conformance/21-post-effects.js" "3a18d91989ad8ded"

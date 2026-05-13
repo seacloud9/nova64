@@ -1252,6 +1252,44 @@ static void draw_text_aligned(const char *text, int x, int y, uint32_t color, in
    draw_text_pixels(text, x, y, color);
 }
 
+static uint32_t get_pixel(int x, int y)
+{
+   if (!framebuffer || x < 0 || y < 0 || x >= NOVA64_WIDTH || y >= NOVA64_HEIGHT)
+      return 0;
+   return framebuffer[(size_t)y * NOVA64_WIDTH + (size_t)x];
+}
+
+static void blit_rgba(const uint8_t *rgba, int img_w, int img_h,
+                      int dx, int dy, int sx, int sy, int sw, int sh)
+{
+   if (!rgba) return;
+   for (int row = 0; row < sh; row++) {
+      int src_y = sy + row;
+      if (src_y < 0 || src_y >= img_h) continue;
+      for (int col = 0; col < sw; col++) {
+         int src_x = sx + col;
+         if (src_x < 0 || src_x >= img_w) continue;
+         size_t si = ((size_t)src_y * (size_t)img_w + (size_t)src_x) * 4;
+         uint8_t r = rgba[si], g = rgba[si+1], b = rgba[si+2], a = rgba[si+3];
+         if (a == 0) continue;
+         if (a == 255) {
+            set_pixel(dx + col, dy + row, rgba8(r, g, b, 255));
+         } else {
+            /* Alpha blend over existing pixel */
+            uint32_t dst = get_pixel(dx + col, dy + row);
+            uint8_t dr = (uint8_t)((dst >> 24) & 0xff);
+            uint8_t dg = (uint8_t)((dst >> 16) & 0xff);
+            uint8_t db = (uint8_t)((dst >>  8) & 0xff);
+            float fa = (float)a / 255.0f;
+            uint8_t or2 = (uint8_t)(r * fa + dr * (1.0f - fa));
+            uint8_t og  = (uint8_t)(g * fa + dg * (1.0f - fa));
+            uint8_t ob  = (uint8_t)(b * fa + db * (1.0f - fa));
+            set_pixel(dx + col, dy + row, rgba8(or2, og, ob, 255));
+         }
+      }
+   }
+}
+
 static void draw_circle_pixels(int cx, int cy, int r, uint32_t color, bool filled)
 {
    if (r < 0) return;
@@ -2090,6 +2128,40 @@ static JSValue js_circfill(JSContext *ctx, JSValueConst this_val, int argc, JSVa
    uint32_t color = color_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, rgba8(255, 255, 255, 255));
    draw_circle_pixels(cx, cy, r, color, true);
    return JS_UNDEFINED;
+}
+
+/* spr(path, dx, dy [, imgw, imgh [, sx, sy [, bw, bh]]]) — blit RGBA asset */
+static JSValue js_spr(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 3) return JS_NewBool(ctx, false);
+   const char *path = JS_ToCString(ctx, argv[0]);
+   if (!path) return JS_NewBool(ctx, false);
+   const struct nova64_package_asset *asset = find_package_asset(path);
+   JS_FreeCString(ctx, path);
+   if (!asset || !asset->data || asset->size < 4)
+      return JS_NewBool(ctx, false);
+
+   int dx = int_from_js(ctx, argv[1], 0);
+   int dy = int_from_js(ctx, argv[2], 0);
+
+   int img_w = argc > 3 ? int_from_js(ctx, argv[3], 0) : 0;
+   int img_h = argc > 4 ? int_from_js(ctx, argv[4], 0) : 0;
+   if (img_w <= 0 || img_h <= 0) {
+      int side = (int)sqrt((double)(asset->size / 4));
+      img_w = side > 0 ? side : 1;
+      img_h = (int)((asset->size / 4) / (size_t)img_w);
+      if (img_h <= 0) img_h = img_w;
+   }
+
+   int sx = argc > 5 ? int_from_js(ctx, argv[5], 0) : 0;
+   int sy = argc > 6 ? int_from_js(ctx, argv[6], 0) : 0;
+   int bw = argc > 7 ? int_from_js(ctx, argv[7], 0) : (img_w - sx);
+   int bh = argc > 8 ? int_from_js(ctx, argv[8], 0) : (img_h - sy);
+   if (bw <= 0 || bh <= 0) return JS_NewBool(ctx, false);
+
+   blit_rgba((const uint8_t *)asset->data, img_w, img_h, dx, dy, sx, sy, bw, bh);
+   return JS_NewBool(ctx, true);
 }
 
 static int button_index_from_js(JSContext *ctx, JSValueConst value)
@@ -3306,6 +3378,7 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, draw, "circfill", js_circfill, 4);
    set_function(ctx, draw, "print", js_draw_print, 5);
    set_function(ctx, draw, "textWidth", js_text_width, 1);
+   set_function(ctx, draw, "spr", js_spr, 9);
 
    set_function(ctx, input, "btn", js_btn, 1);
    set_function(ctx, input, "btnp", js_btnp, 1);
@@ -3422,6 +3495,7 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, global, "circfill", js_circfill, 4);
    set_function(ctx, global, "print", js_draw_print, 5);
    set_function(ctx, global, "textWidth", js_text_width, 1);
+   set_function(ctx, global, "spr", js_spr, 9);
    set_function(ctx, global, "btn", js_btn, 1);
    set_function(ctx, global, "btnp", js_btnp, 1);
    set_function(ctx, global, "key", js_key, 1);

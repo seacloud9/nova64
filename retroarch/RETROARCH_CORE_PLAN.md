@@ -199,6 +199,12 @@ Areas:
 - Expand assets and data:
   - Bind manifest assets into texture/model/audio APIs, expose typed data helpers,
     support safe package paths, and keep plain `.js` development carts ergonomic.
+  - `spr(path, dx, dy [, imgw, imgh [, sx, sy [, bw, bh]]])` blits a raw RGBA
+    package asset onto the 2D framebuffer with per-pixel alpha blending. Image
+    dimensions default to a square root estimate; a source crop region can be
+    specified for sprite-sheet use. `27-sprite.js` covers full-image and
+    cropped-region blits in a visual conformance cart with a generated 4×4
+    test sprite.
 - Expand storage:
   - Namespaces, key listing, clear operations, quota/error behavior, and migration
     notes for save-directory layouts.

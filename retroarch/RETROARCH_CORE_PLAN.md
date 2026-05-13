@@ -183,6 +183,11 @@ Areas:
     escape, backspace, tab, a-z, 0-9, F1-F12, and modifier keys. The harness
     `--key <name>` flag injects a held key for deterministic conformance.
     `23-keyboard.js` covers hold, edge, and false-positive key tests.
+  - `mouseX()`, `mouseY()`, `mouseBtn(name)`, `mouseBtnp(name)` now poll
+    `RETRO_DEVICE_MOUSE` for relative movement and left/right/middle button
+    hold/edge state. Harness `--mouse-x N`, `--mouse-y N`, `--mouse-btn name`
+    flags inject deterministic mouse state. `25-mouse.js` covers movement,
+    button edge, and false-positive button tests.
 - Expand audio:
   - Sampled asset playback, music/loop helpers, channel control, and volume/mute
     state that survives normal cart reset semantics.

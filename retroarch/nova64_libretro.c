@@ -415,6 +415,19 @@ static bool pressed_buttons[NOVA64_BUTTON_COUNT];
 static bool key_held[NOVA64_KEY_TABLE_SIZE];
 static bool key_prev_held[NOVA64_KEY_TABLE_SIZE];
 
+/* Mouse */
+#define NOVA64_MOUSE_X       0
+#define NOVA64_MOUSE_Y       1
+#define NOVA64_MOUSE_LEFT    2
+#define NOVA64_MOUSE_RIGHT   3
+#define NOVA64_MOUSE_MIDDLE  6
+#define NOVA64_MOUSE_BTN_COUNT 3
+
+static int32_t mouse_rel_x;
+static int32_t mouse_rel_y;
+static bool mouse_btns[NOVA64_MOUSE_BTN_COUNT];     /* left, right, middle */
+static bool mouse_prev_btns[NOVA64_MOUSE_BTN_COUNT];
+
 /* Standard RETROK key codes (from libretro spec) */
 #define NOVA64_RETROK_BACKSPACE  8
 #define NOVA64_RETROK_TAB        9
@@ -2089,6 +2102,50 @@ static JSValue js_keyp(JSContext *ctx, JSValueConst this_val, int argc, JSValueC
    return JS_NewBool(ctx, key_held[code] && !key_prev_held[code]);
 }
 
+static int mouse_btn_index(JSContext *ctx, JSValueConst value)
+{
+   if (JS_IsNumber(value)) {
+      int i = int_from_js(ctx, value, -1);
+      return (i >= 0 && i < NOVA64_MOUSE_BTN_COUNT) ? i : -1;
+   }
+   const char *name = JS_ToCString(ctx, value);
+   if (!name) return -1;
+   int idx = -1;
+   if (!strcmp(name, "left"))        idx = 0;
+   else if (!strcmp(name, "right"))  idx = 1;
+   else if (!strcmp(name, "middle")) idx = 2;
+   JS_FreeCString(ctx, name);
+   return idx;
+}
+
+static JSValue js_mouse_x(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val; (void)argc; (void)argv;
+   return JS_NewInt32(ctx, mouse_rel_x);
+}
+
+static JSValue js_mouse_y(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val; (void)argc; (void)argv;
+   return JS_NewInt32(ctx, mouse_rel_y);
+}
+
+static JSValue js_mouse_btn(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int idx = argc > 0 ? mouse_btn_index(ctx, argv[0]) : -1;
+   if (idx < 0) return JS_NewBool(ctx, false);
+   return JS_NewBool(ctx, mouse_btns[idx]);
+}
+
+static JSValue js_mouse_btnp(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int idx = argc > 0 ? mouse_btn_index(ctx, argv[0]) : -1;
+   if (idx < 0) return JS_NewBool(ctx, false);
+   return JS_NewBool(ctx, mouse_btns[idx] && !mouse_prev_btns[idx]);
+}
+
 static JSValue js_create_cube(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
    (void)this_val;
@@ -3156,6 +3213,10 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, input, "btnp", js_btnp, 1);
    set_function(ctx, input, "key", js_key, 1);
    set_function(ctx, input, "keyp", js_keyp, 1);
+   set_function(ctx, input, "mouseX", js_mouse_x, 0);
+   set_function(ctx, input, "mouseY", js_mouse_y, 0);
+   set_function(ctx, input, "mouseBtn", js_mouse_btn, 1);
+   set_function(ctx, input, "mouseBtnp", js_mouse_btnp, 1);
 
    set_function(ctx, scene, "createCube", js_create_cube, 1);
    set_function(ctx, scene, "createSphere", js_create_sphere, 1);
@@ -3264,6 +3325,10 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, global, "btnp", js_btnp, 1);
    set_function(ctx, global, "key", js_key, 1);
    set_function(ctx, global, "keyp", js_keyp, 1);
+   set_function(ctx, global, "mouseX", js_mouse_x, 0);
+   set_function(ctx, global, "mouseY", js_mouse_y, 0);
+   set_function(ctx, global, "mouseBtn", js_mouse_btn, 1);
+   set_function(ctx, global, "mouseBtnp", js_mouse_btnp, 1);
    set_function(ctx, global, "createCube", js_create_cube, 1);
    set_function(ctx, global, "createSphere", js_create_sphere, 1);
    set_function(ctx, global, "createPlane", js_create_plane, 1);
@@ -3487,6 +3552,13 @@ static void update_input(void)
       if (code >= 0 && code < NOVA64_KEY_TABLE_SIZE)
          key_held[code] = input_state_cb(0, RETRO_DEVICE_KEYBOARD, 0, (unsigned)code) != 0;
    }
+
+   memcpy(mouse_prev_btns, mouse_btns, sizeof(mouse_btns));
+   mouse_rel_x = (int32_t)input_state_cb(0, RETRO_DEVICE_MOUSE, 0, NOVA64_MOUSE_X);
+   mouse_rel_y = (int32_t)input_state_cb(0, RETRO_DEVICE_MOUSE, 0, NOVA64_MOUSE_Y);
+   mouse_btns[0] = input_state_cb(0, RETRO_DEVICE_MOUSE, 0, NOVA64_MOUSE_LEFT)  != 0;
+   mouse_btns[1] = input_state_cb(0, RETRO_DEVICE_MOUSE, 0, NOVA64_MOUSE_RIGHT) != 0;
+   mouse_btns[2] = input_state_cb(0, RETRO_DEVICE_MOUSE, 0, NOVA64_MOUSE_MIDDLE)!= 0;
 }
 
 static retro_proc_address_t load_gles_proc(const char *name)
@@ -5064,6 +5136,9 @@ void RETRO_CALLCONV retro_reset(void)
    memset(pressed_buttons, 0, sizeof(pressed_buttons));
    memset(key_held, 0, sizeof(key_held));
    memset(key_prev_held, 0, sizeof(key_prev_held));
+   mouse_rel_x = 0; mouse_rel_y = 0;
+   memset(mouse_btns, 0, sizeof(mouse_btns));
+   memset(mouse_prev_btns, 0, sizeof(mouse_prev_btns));
    frame_count = 0;
    clear_framebuffer(rgba8(0, 0, 0, 255));
    reset_scene_state();

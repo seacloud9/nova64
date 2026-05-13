@@ -16,6 +16,9 @@ static unsigned g_video_frames;
 static unsigned g_audio_frames;
 static bool g_joypad[16];
 static bool g_keyboard[512];
+static int16_t g_mouse_x;
+static int16_t g_mouse_y;
+static bool g_mouse_btn[3]; /* left, right, middle */
 static const char *g_renderer_option;
 static uint16_t *g_last_frame;
 static unsigned g_last_width;
@@ -160,6 +163,16 @@ static int16_t harness_input_state(unsigned port, unsigned device, unsigned inde
          return g_keyboard[id] ? 1 : 0;
       return 0;
    }
+   if (device == RETRO_DEVICE_MOUSE) {
+      switch (id) {
+         case 0: return g_mouse_x;   /* MOUSE_X */
+         case 1: return g_mouse_y;   /* MOUSE_Y */
+         case 2: return g_mouse_btn[0] ? 1 : 0; /* left */
+         case 3: return g_mouse_btn[1] ? 1 : 0; /* right */
+         case 6: return g_mouse_btn[2] ? 1 : 0; /* middle */
+         default: return 0;
+      }
+   }
    if (device != RETRO_DEVICE_JOYPAD || id >= 16)
       return 0;
    return g_joypad[id] ? 1 : 0;
@@ -290,6 +303,30 @@ int main(int argc, char **argv)
             return 2;
          }
          g_keyboard[code] = true;
+      } else if (!strcmp(argv[i], "--mouse-x")) {
+         if (++i >= argc) {
+            fprintf(stderr, "--mouse-x requires a value\n");
+            return 2;
+         }
+         g_mouse_x = (int16_t)strtol(argv[i], NULL, 10);
+      } else if (!strcmp(argv[i], "--mouse-y")) {
+         if (++i >= argc) {
+            fprintf(stderr, "--mouse-y requires a value\n");
+            return 2;
+         }
+         g_mouse_y = (int16_t)strtol(argv[i], NULL, 10);
+      } else if (!strcmp(argv[i], "--mouse-btn")) {
+         if (++i >= argc) {
+            fprintf(stderr, "--mouse-btn requires left|right|middle\n");
+            return 2;
+         }
+         if (!strcmp(argv[i], "left"))        g_mouse_btn[0] = true;
+         else if (!strcmp(argv[i], "right"))  g_mouse_btn[1] = true;
+         else if (!strcmp(argv[i], "middle")) g_mouse_btn[2] = true;
+         else {
+            fprintf(stderr, "--mouse-btn: unknown button '%s'\n", argv[i]);
+            return 2;
+         }
       } else if (!capture_path) {
          capture_path = argv[i];
       } else {

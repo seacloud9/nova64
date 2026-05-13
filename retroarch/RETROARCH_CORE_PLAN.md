@@ -178,6 +178,11 @@ Areas:
   - Keyboard mappings, mouse buttons, relative mouse movement where RetroArch
     exposes it, touch/lightgun-style affordances if they map cleanly, and
     deterministic harness injection.
+  - `key(name)` and `keyp(name)` now poll `RETRO_DEVICE_KEYBOARD` with
+    per-frame hold/edge-detection arrays. Names cover arrows, space, enter,
+    escape, backspace, tab, a-z, 0-9, F1-F12, and modifier keys. The harness
+    `--key <name>` flag injects a held key for deterministic conformance.
+    `23-keyboard.js` covers hold, edge, and false-positive key tests.
 - Expand audio:
   - Sampled asset playback, music/loop helpers, channel control, and volume/mute
     state that survives normal cart reset semantics.

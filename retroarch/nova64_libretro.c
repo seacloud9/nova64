@@ -410,6 +410,43 @@ static bool buttons[NOVA64_BUTTON_COUNT];
 static bool previous_buttons[NOVA64_BUTTON_COUNT];
 static bool pressed_buttons[NOVA64_BUTTON_COUNT];
 
+#define NOVA64_KEY_TABLE_SIZE 512
+static bool key_held[NOVA64_KEY_TABLE_SIZE];
+static bool key_prev_held[NOVA64_KEY_TABLE_SIZE];
+
+/* Standard RETROK key codes (from libretro spec) */
+#define NOVA64_RETROK_BACKSPACE  8
+#define NOVA64_RETROK_TAB        9
+#define NOVA64_RETROK_RETURN     13
+#define NOVA64_RETROK_ESCAPE     27
+#define NOVA64_RETROK_SPACE      32
+#define NOVA64_RETROK_UP         273
+#define NOVA64_RETROK_DOWN       274
+#define NOVA64_RETROK_RIGHT      275
+#define NOVA64_RETROK_LEFT       276
+#define NOVA64_RETROK_F1         282
+#define NOVA64_RETROK_LSHIFT     304
+#define NOVA64_RETROK_RSHIFT     303
+#define NOVA64_RETROK_LCTRL      306
+#define NOVA64_RETROK_RCTRL      305
+#define NOVA64_RETROK_LALT       308
+#define NOVA64_RETROK_RALT       307
+
+/* Keys we poll each frame — kept small to avoid unnecessary input queries */
+static const int nova64_tracked_keys[] = {
+   NOVA64_RETROK_BACKSPACE, NOVA64_RETROK_TAB, NOVA64_RETROK_RETURN,
+   NOVA64_RETROK_ESCAPE, NOVA64_RETROK_SPACE,
+   48,49,50,51,52,53,54,55,56,57, /* 0-9 */
+   97,98,99,100,101,102,103,104,105,106,107,108,109, /* a-m */
+   110,111,112,113,114,115,116,117,118,119,120,121,122, /* n-z */
+   NOVA64_RETROK_UP, NOVA64_RETROK_DOWN, NOVA64_RETROK_RIGHT, NOVA64_RETROK_LEFT,
+   /* F1-F12 */
+   282,283,284,285,286,287,288,289,290,291,292,293,
+   NOVA64_RETROK_LSHIFT, NOVA64_RETROK_RSHIFT,
+   NOVA64_RETROK_LCTRL, NOVA64_RETROK_RCTRL,
+   NOVA64_RETROK_LALT, NOVA64_RETROK_RALT,
+};
+
 static struct nova64_mesh meshes[NOVA64_MAX_MESHES];
 static struct nova64_point_light point_lights[NOVA64_MAX_POINT_LIGHTS];
 static struct nova64_texture textures[NOVA64_MAX_TEXTURES];
@@ -1718,16 +1755,23 @@ static void write_renderer_command_log(void)
          light_state.fog_near, light_state.fog_far);
    fprintf(file, "overlay clear=%08x visible_pixels=%zu\n",
          framebuffer_clear_color, count_overlay_pixels());
+   fprintf(file,
+         "post crt=%d vignette=%.4f pixelate=%d bloom=%.4f chromatic=%.4f colorgrade=%.4f,%.4f,%.4f posterize=%d\n",
+         post_state.crt_enabled ? 1 : 0, post_state.vignette, post_state.pixelate,
+         post_state.bloom, post_state.chromatic,
+         post_state.color_grade[0], post_state.color_grade[1], post_state.color_grade[2],
+         post_state.posterize);
 
    for (int i = 0; i < NOVA64_MAX_MESHES; i++) {
       const struct nova64_mesh *mesh = &meshes[i];
       if (!mesh->used)
          continue;
       fprintf(file,
-            "mesh id=%d type=%s visible=%d opacity=%.4f flat=%d cast_shadow=%d receive_shadow=%d color=%08x position=%.4f,%.4f,%.4f rotation=%.4f,%.4f,%.4f scale=%.4f,%.4f,%.4f\n",
+            "mesh id=%d type=%s visible=%d opacity=%.4f flat=%d cast_shadow=%d receive_shadow=%d color=%08x emissive=%08x emissive_intensity=%.4f position=%.4f,%.4f,%.4f rotation=%.4f,%.4f,%.4f scale=%.4f,%.4f,%.4f\n",
             i + 1, mesh_type_name(mesh->type), mesh->visible ? 1 : 0, mesh->opacity,
             mesh->flat_shading ? 1 : 0, mesh->cast_shadow ? 1 : 0,
             mesh->receive_shadow ? 1 : 0, mesh->color,
+            mesh->emissive_color, mesh->emissive_intensity,
             mesh->position[0], mesh->position[1], mesh->position[2],
             mesh->rotation[0], mesh->rotation[1], mesh->rotation[2],
             mesh->scale[0], mesh->scale[1], mesh->scale[2]);
@@ -1979,6 +2023,67 @@ static JSValue js_btnp(JSContext *ctx, JSValueConst this_val, int argc, JSValueC
 {
    int index = argc > 0 ? button_index_from_js(ctx, argv[0]) : -1;
    return JS_NewBool(ctx, index >= 0 ? pressed_buttons[index] : false);
+}
+
+static int key_code_from_js(JSContext *ctx, JSValueConst value)
+{
+   if (JS_IsNumber(value)) {
+      int code = int_from_js(ctx, value, -1);
+      return (code >= 0 && code < NOVA64_KEY_TABLE_SIZE) ? code : -1;
+   }
+   const char *name = JS_ToCString(ctx, value);
+   if (!name)
+      return -1;
+   int code = -1;
+   if (!strcmp(name, "up"))          code = NOVA64_RETROK_UP;
+   else if (!strcmp(name, "down"))   code = NOVA64_RETROK_DOWN;
+   else if (!strcmp(name, "left"))   code = NOVA64_RETROK_LEFT;
+   else if (!strcmp(name, "right"))  code = NOVA64_RETROK_RIGHT;
+   else if (!strcmp(name, "space"))  code = NOVA64_RETROK_SPACE;
+   else if (!strcmp(name, "enter") || !strcmp(name, "return"))
+                                     code = NOVA64_RETROK_RETURN;
+   else if (!strcmp(name, "escape") || !strcmp(name, "esc"))
+                                     code = NOVA64_RETROK_ESCAPE;
+   else if (!strcmp(name, "backspace")) code = NOVA64_RETROK_BACKSPACE;
+   else if (!strcmp(name, "tab"))    code = NOVA64_RETROK_TAB;
+   else if (!strcmp(name, "shift") || !strcmp(name, "lshift"))
+                                     code = NOVA64_RETROK_LSHIFT;
+   else if (!strcmp(name, "rshift")) code = NOVA64_RETROK_RSHIFT;
+   else if (!strcmp(name, "ctrl") || !strcmp(name, "lctrl"))
+                                     code = NOVA64_RETROK_LCTRL;
+   else if (!strcmp(name, "rctrl"))  code = NOVA64_RETROK_RCTRL;
+   else if (!strcmp(name, "alt") || !strcmp(name, "lalt"))
+                                     code = NOVA64_RETROK_LALT;
+   else if (!strcmp(name, "ralt"))   code = NOVA64_RETROK_RALT;
+   else if (name[0] >= 'a' && name[0] <= 'z' && name[1] == '\0')
+      code = (int)name[0]; /* a-z maps to RETROK 97-122 */
+   else if (name[0] >= '0' && name[0] <= '9' && name[1] == '\0')
+      code = (int)name[0]; /* 0-9 maps to RETROK 48-57 */
+   else if (name[0] == 'f' || name[0] == 'F') {
+      int fn = (int)strtol(name + 1, NULL, 10);
+      if (fn >= 1 && fn <= 12)
+         code = NOVA64_RETROK_F1 + (fn - 1);
+   }
+   JS_FreeCString(ctx, name);
+   return code;
+}
+
+static JSValue js_key(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int code = argc > 0 ? key_code_from_js(ctx, argv[0]) : -1;
+   if (code < 0 || code >= NOVA64_KEY_TABLE_SIZE)
+      return JS_NewBool(ctx, false);
+   return JS_NewBool(ctx, key_held[code]);
+}
+
+static JSValue js_keyp(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int code = argc > 0 ? key_code_from_js(ctx, argv[0]) : -1;
+   if (code < 0 || code >= NOVA64_KEY_TABLE_SIZE)
+      return JS_NewBool(ctx, false);
+   return JS_NewBool(ctx, key_held[code] && !key_prev_held[code]);
 }
 
 static JSValue js_create_cube(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
@@ -2936,6 +3041,8 @@ static bool install_nova64_api(JSContext *ctx)
 
    set_function(ctx, input, "btn", js_btn, 1);
    set_function(ctx, input, "btnp", js_btnp, 1);
+   set_function(ctx, input, "key", js_key, 1);
+   set_function(ctx, input, "keyp", js_keyp, 1);
 
    set_function(ctx, scene, "createCube", js_create_cube, 1);
    set_function(ctx, scene, "createSphere", js_create_sphere, 1);
@@ -3039,6 +3146,8 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, global, "print", js_draw_print, 4);
    set_function(ctx, global, "btn", js_btn, 1);
    set_function(ctx, global, "btnp", js_btnp, 1);
+   set_function(ctx, global, "key", js_key, 1);
+   set_function(ctx, global, "keyp", js_keyp, 1);
    set_function(ctx, global, "createCube", js_create_cube, 1);
    set_function(ctx, global, "createSphere", js_create_sphere, 1);
    set_function(ctx, global, "createPlane", js_create_plane, 1);
@@ -3250,6 +3359,15 @@ static void update_input(void)
 
    for (int i = 0; i < NOVA64_BUTTON_COUNT; i++)
       pressed_buttons[i] = buttons[i] && !previous_buttons[i];
+
+   memcpy(key_prev_held, key_held, sizeof(key_held));
+   memset(key_held, 0, sizeof(key_held));
+   size_t num_tracked = sizeof(nova64_tracked_keys) / sizeof(nova64_tracked_keys[0]);
+   for (size_t ki = 0; ki < num_tracked; ki++) {
+      int code = nova64_tracked_keys[ki];
+      if (code >= 0 && code < NOVA64_KEY_TABLE_SIZE)
+         key_held[code] = input_state_cb(0, RETRO_DEVICE_KEYBOARD, 0, (unsigned)code) != 0;
+   }
 }
 
 static retro_proc_address_t load_gles_proc(const char *name)
@@ -4817,6 +4935,8 @@ void RETRO_CALLCONV retro_reset(void)
    memset(buttons, 0, sizeof(buttons));
    memset(previous_buttons, 0, sizeof(previous_buttons));
    memset(pressed_buttons, 0, sizeof(pressed_buttons));
+   memset(key_held, 0, sizeof(key_held));
+   memset(key_prev_held, 0, sizeof(key_prev_held));
    frame_count = 0;
    clear_framebuffer(rgba8(0, 0, 0, 255));
    reset_scene_state();

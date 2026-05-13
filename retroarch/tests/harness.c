@@ -15,6 +15,7 @@ static uint64_t g_audio_checksum = 1469598103934665603ULL;
 static unsigned g_video_frames;
 static unsigned g_audio_frames;
 static bool g_joypad[16];
+static bool g_keyboard[512];
 static const char *g_renderer_option;
 static uint16_t *g_last_frame;
 static unsigned g_last_width;
@@ -123,10 +124,42 @@ static size_t harness_audio_batch(const int16_t *data, size_t frames)
 
 static void harness_input_poll(void) {}
 
+static int harness_key_code(const char *name)
+{
+   if (!name) return -1;
+   if (!strcmp(name, "up"))     return 273;
+   if (!strcmp(name, "down"))   return 274;
+   if (!strcmp(name, "right"))  return 275;
+   if (!strcmp(name, "left"))   return 276;
+   if (!strcmp(name, "space"))  return 32;
+   if (!strcmp(name, "enter") || !strcmp(name, "return")) return 13;
+   if (!strcmp(name, "escape") || !strcmp(name, "esc"))   return 27;
+   if (!strcmp(name, "backspace")) return 8;
+   if (!strcmp(name, "tab"))    return 9;
+   if (!strcmp(name, "shift") || !strcmp(name, "lshift")) return 304;
+   if (!strcmp(name, "rshift")) return 303;
+   if (!strcmp(name, "ctrl") || !strcmp(name, "lctrl"))   return 306;
+   if (!strcmp(name, "rctrl"))  return 305;
+   if (!strcmp(name, "alt") || !strcmp(name, "lalt"))     return 308;
+   if (!strcmp(name, "ralt"))   return 307;
+   if (name[0] >= 'a' && name[0] <= 'z' && name[1] == '\0') return (int)name[0];
+   if (name[0] >= '0' && name[0] <= '9' && name[1] == '\0') return (int)name[0];
+   if (name[0] == 'f' || name[0] == 'F') {
+      int fn = (int)strtol(name + 1, NULL, 10);
+      if (fn >= 1 && fn <= 12) return 282 + (fn - 1);
+   }
+   return -1;
+}
+
 static int16_t harness_input_state(unsigned port, unsigned device, unsigned index, unsigned id)
 {
    (void)port;
    (void)index;
+   if (device == RETRO_DEVICE_KEYBOARD) {
+      if (id < 512)
+         return g_keyboard[id] ? 1 : 0;
+      return 0;
+   }
    if (device != RETRO_DEVICE_JOYPAD || id >= 16)
       return 0;
    return g_joypad[id] ? 1 : 0;
@@ -195,7 +228,7 @@ static void *load_symbol(void *core, const char *name)
 int main(int argc, char **argv)
 {
    if (argc < 3) {
-      fprintf(stderr, "usage: %s <nova64_libretro.so> <cart.js|cart.nova> [capture.ppm] [--capture path] [--command-log path] [--renderer opengles3|vulkan12] [--expect checksum] [--expect-audio checksum] [--frames n]\n", argv[0]);
+      fprintf(stderr, "usage: %s <nova64_libretro.so> <cart.js|cart.nova> [--capture path] [--command-log path] [--renderer opengles3|vulkan12] [--expect checksum] [--expect-audio checksum] [--frames n] [--key name]\n", argv[0]);
       return 2;
    }
 
@@ -246,6 +279,17 @@ int main(int argc, char **argv)
          frames_to_run = (unsigned)strtoul(argv[i], NULL, 10);
          if (frames_to_run == 0)
             frames_to_run = 1;
+      } else if (!strcmp(argv[i], "--key")) {
+         if (++i >= argc) {
+            fprintf(stderr, "--key requires a key name\n");
+            return 2;
+         }
+         int code = harness_key_code(argv[i]);
+         if (code < 0 || code >= 512) {
+            fprintf(stderr, "--key: unknown key '%s'\n", argv[i]);
+            return 2;
+         }
+         g_keyboard[code] = true;
       } else if (!capture_path) {
          capture_path = argv[i];
       } else {

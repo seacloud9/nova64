@@ -164,6 +164,9 @@ Areas:
     array/object position arguments for cube, sphere, and plane creation.
   - Plane dimensions are now accepted directly through
     `createPlane(width, depth, color)` while preserving `createPlane(color)`.
+  - Transform helpers now include position/rotation getters, additive
+    `rotateMesh`/`moveMesh`, `setMeshVisible`, `removeMesh`, and a read-only
+    `getMesh` snapshot.
 - Expand camera and lighting:
   - Orthographic/perspective options, fog, point lights, directional light parity,
     basic shadows where feasible, and command-log conformance for state changes.

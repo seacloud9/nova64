@@ -165,9 +165,16 @@ Storage:
 - `createPlane(color)`
 - `createPlane(width, depth, color)`
 - `destroyMesh(handle)`
+- `removeMesh(handle)`
+- `getMesh(handle)` snapshot
 - `setPosition(handle, x, y, z)`
 - `setRotation(handle, x, y, z)`
 - `setScale(handle, x, y, z)`
+- `getPosition(handle)`
+- `getRotation(handle)`
+- `rotateMesh(handle, dx, dy, dz)`
+- `moveMesh(handle, dx, dy, dz)`
+- `setMeshVisible(handle, visible)`
 - `setCameraPosition(x, y, z)`
 - `setCameraTarget(x, y, z)`
 - `setCameraFOV(degrees)`

@@ -143,6 +143,7 @@ enum nova64_mesh_type {
 
 struct nova64_mesh {
    bool used;
+   bool visible;
    enum nova64_mesh_type type;
    float position[3];
    float rotation[3];
@@ -955,7 +956,7 @@ static uint32_t shade_color(uint32_t color, float amount)
 static bool scene_has_visible_meshes(void)
 {
    for (int i = 0; i < NOVA64_MAX_MESHES; i++) {
-      if (meshes[i].used)
+      if (meshes[i].used && meshes[i].visible)
          return true;
    }
    return false;
@@ -1400,7 +1401,7 @@ static void render_software_scene(void)
    drawing_scene_preview = true;
    for (int i = 0; i < NOVA64_MAX_MESHES; i++) {
       const struct nova64_mesh *mesh = &meshes[i];
-      if (!mesh->used)
+      if (!mesh->used || !mesh->visible)
          continue;
       switch (mesh->type) {
          case NOVA64_MESH_CUBE:
@@ -1483,8 +1484,8 @@ static void write_renderer_command_log(void)
       if (!mesh->used)
          continue;
       fprintf(file,
-            "mesh id=%d type=%s color=%08x position=%.4f,%.4f,%.4f rotation=%.4f,%.4f,%.4f scale=%.4f,%.4f,%.4f\n",
-            i + 1, mesh_type_name(mesh->type), mesh->color,
+            "mesh id=%d type=%s visible=%d color=%08x position=%.4f,%.4f,%.4f rotation=%.4f,%.4f,%.4f scale=%.4f,%.4f,%.4f\n",
+            i + 1, mesh_type_name(mesh->type), mesh->visible ? 1 : 0, mesh->color,
             mesh->position[0], mesh->position[1], mesh->position[2],
             mesh->rotation[0], mesh->rotation[1], mesh->rotation[2],
             mesh->scale[0], mesh->scale[1], mesh->scale[2]);
@@ -1531,6 +1532,7 @@ static int allocate_mesh(enum nova64_mesh_type type)
    for (int i = 0; i < NOVA64_MAX_MESHES; i++) {
       if (!meshes[i].used) {
          meshes[i].used = true;
+         meshes[i].visible = true;
          meshes[i].type = type;
          meshes[i].position[0] = 0.0f;
          meshes[i].position[1] = 0.0f;
@@ -1793,6 +1795,45 @@ static JSValue js_create_plane(JSContext *ctx, JSValueConst this_val, int argc, 
    return JS_NewInt32(ctx, handle);
 }
 
+static JSValue js_vec3_array(JSContext *ctx, const float value[3])
+{
+   JSValue array = JS_NewArray(ctx);
+   JS_SetPropertyUint32(ctx, array, 0, JS_NewFloat64(ctx, value[0]));
+   JS_SetPropertyUint32(ctx, array, 1, JS_NewFloat64(ctx, value[1]));
+   JS_SetPropertyUint32(ctx, array, 2, JS_NewFloat64(ctx, value[2]));
+   return array;
+}
+
+static float normalize_positive_transform(double value)
+{
+   return value > 0.0 ? (float)clamp_double(value, 0.001, 10000.0) : 1.0f;
+}
+
+static void set_transform_vec3_from_args(JSContext *ctx, int argc, JSValueConst *argv,
+      int start, float target[3], bool positive, bool uniform_single)
+{
+   if (argc <= start)
+      return;
+
+   float next[3] = {target[0], target[1], target[2]};
+   if (set_position_from_js(ctx, argv[start], next)) {
+      target[0] = positive ? normalize_positive_transform(next[0]) : next[0];
+      target[1] = positive ? normalize_positive_transform(next[1]) : next[1];
+      target[2] = positive ? normalize_positive_transform(next[2]) : next[2];
+      return;
+   }
+
+   double fallback = positive ? 1.0 : 0.0;
+   double x = double_from_js(ctx, argv[start], fallback);
+   double y = argc > start + 1 ? double_from_js(ctx, argv[start + 1], fallback) :
+      (uniform_single ? x : fallback);
+   double z = argc > start + 2 ? double_from_js(ctx, argv[start + 2], fallback) :
+      (uniform_single ? x : fallback);
+   target[0] = positive ? normalize_positive_transform(x) : (float)x;
+   target[1] = positive ? normalize_positive_transform(y) : (float)y;
+   target[2] = positive ? normalize_positive_transform(z) : (float)z;
+}
+
 static JSValue js_destroy_mesh(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
    int handle = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0);
@@ -1804,9 +1845,7 @@ static JSValue js_destroy_mesh(JSContext *ctx, JSValueConst this_val, int argc, 
 
 static JSValue js_set_vec3(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv, float *target)
 {
-   target[0] = (float)double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, target[0]);
-   target[1] = (float)double_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, target[1]);
-   target[2] = (float)double_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, target[2]);
+   set_transform_vec3_from_args(ctx, argc, argv, 1, target, false, false);
    return JS_UNDEFINED;
 }
 
@@ -1825,7 +1864,76 @@ static JSValue js_set_rotation(JSContext *ctx, JSValueConst this_val, int argc, 
 static JSValue js_set_scale(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
    struct nova64_mesh *mesh = mesh_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
-   return mesh ? js_set_vec3(ctx, this_val, argc, argv, mesh->scale) : JS_UNDEFINED;
+   if (mesh)
+      set_transform_vec3_from_args(ctx, argc, argv, 1, mesh->scale, true, true);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_get_position(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   struct nova64_mesh *mesh = mesh_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   return mesh ? js_vec3_array(ctx, mesh->position) : JS_NULL;
+}
+
+static JSValue js_get_rotation(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   struct nova64_mesh *mesh = mesh_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   return mesh ? js_vec3_array(ctx, mesh->rotation) : JS_NULL;
+}
+
+static JSValue js_rotate_mesh(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   struct nova64_mesh *mesh = mesh_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!mesh)
+      return JS_NewBool(ctx, false);
+   mesh->rotation[0] += (float)double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0.0);
+   mesh->rotation[1] += (float)double_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 0.0);
+   mesh->rotation[2] += (float)double_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, 0.0);
+   return JS_NewBool(ctx, true);
+}
+
+static JSValue js_move_mesh(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   struct nova64_mesh *mesh = mesh_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!mesh)
+      return JS_NewBool(ctx, false);
+   mesh->position[0] += (float)double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0.0);
+   mesh->position[1] += (float)double_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 0.0);
+   mesh->position[2] += (float)double_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, 0.0);
+   return JS_NewBool(ctx, true);
+}
+
+static JSValue js_set_mesh_visible(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   struct nova64_mesh *mesh = mesh_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!mesh)
+      return JS_NewBool(ctx, false);
+   mesh->visible = argc > 1 ? JS_ToBool(ctx, argv[1]) : true;
+   return JS_NewBool(ctx, true);
+}
+
+static JSValue js_get_mesh(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int handle = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0);
+   struct nova64_mesh *mesh = mesh_from_handle(handle);
+   if (!mesh)
+      return JS_NULL;
+
+   JSValue object = JS_NewObject(ctx);
+   JS_SetPropertyStr(ctx, object, "id", JS_NewInt32(ctx, handle));
+   JS_SetPropertyStr(ctx, object, "type", JS_NewString(ctx, mesh_type_name(mesh->type)));
+   JS_SetPropertyStr(ctx, object, "visible", JS_NewBool(ctx, mesh->visible));
+   JS_SetPropertyStr(ctx, object, "color", JS_NewUint32(ctx, mesh->color));
+   JS_SetPropertyStr(ctx, object, "position", js_vec3_array(ctx, mesh->position));
+   JS_SetPropertyStr(ctx, object, "rotation", js_vec3_array(ctx, mesh->rotation));
+   JS_SetPropertyStr(ctx, object, "scale", js_vec3_array(ctx, mesh->scale));
+   return object;
 }
 
 static JSValue js_set_camera_position(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
@@ -2128,9 +2236,16 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, scene, "createSphere", js_create_sphere, 1);
    set_function(ctx, scene, "createPlane", js_create_plane, 1);
    set_function(ctx, scene, "destroyMesh", js_destroy_mesh, 1);
+   set_function(ctx, scene, "removeMesh", js_destroy_mesh, 1);
+   set_function(ctx, scene, "getMesh", js_get_mesh, 1);
    set_function(ctx, scene, "setPosition", js_set_position, 4);
    set_function(ctx, scene, "setRotation", js_set_rotation, 4);
    set_function(ctx, scene, "setScale", js_set_scale, 4);
+   set_function(ctx, scene, "getPosition", js_get_position, 1);
+   set_function(ctx, scene, "getRotation", js_get_rotation, 1);
+   set_function(ctx, scene, "rotateMesh", js_rotate_mesh, 4);
+   set_function(ctx, scene, "moveMesh", js_move_mesh, 4);
+   set_function(ctx, scene, "setMeshVisible", js_set_mesh_visible, 2);
    set_function(ctx, scene, "clearScene", js_clear_scene, 0);
 
    set_function(ctx, camera, "setPosition", js_set_camera_position, 3);
@@ -2179,9 +2294,16 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, global, "createSphere", js_create_sphere, 1);
    set_function(ctx, global, "createPlane", js_create_plane, 1);
    set_function(ctx, global, "destroyMesh", js_destroy_mesh, 1);
+   set_function(ctx, global, "removeMesh", js_destroy_mesh, 1);
+   set_function(ctx, global, "getMesh", js_get_mesh, 1);
    set_function(ctx, global, "setPosition", js_set_position, 4);
    set_function(ctx, global, "setRotation", js_set_rotation, 4);
    set_function(ctx, global, "setScale", js_set_scale, 4);
+   set_function(ctx, global, "getPosition", js_get_position, 1);
+   set_function(ctx, global, "getRotation", js_get_rotation, 1);
+   set_function(ctx, global, "rotateMesh", js_rotate_mesh, 4);
+   set_function(ctx, global, "moveMesh", js_move_mesh, 4);
+   set_function(ctx, global, "setMeshVisible", js_set_mesh_visible, 2);
    set_function(ctx, global, "setCameraPosition", js_set_camera_position, 3);
    set_function(ctx, global, "setCameraTarget", js_set_camera_target, 3);
    set_function(ctx, global, "setCameraFOV", js_set_camera_fov, 1);
@@ -2909,11 +3031,13 @@ static void render_gles_scene(void)
    mat4_multiply(view_projection, projection, view);
 
    for (int i = 0; i < NOVA64_MAX_MESHES; i++) {
-      if (meshes[i].used && meshes[i].type == NOVA64_MESH_CUBE)
+      if (!meshes[i].used || !meshes[i].visible)
+         continue;
+      if (meshes[i].type == NOVA64_MESH_CUBE)
          render_gles_cube(&meshes[i], view_projection);
-      else if (meshes[i].used && meshes[i].type == NOVA64_MESH_PLANE)
+      else if (meshes[i].type == NOVA64_MESH_PLANE)
          render_gles_plane(&meshes[i], view_projection);
-      else if (meshes[i].used && meshes[i].type == NOVA64_MESH_SPHERE)
+      else if (meshes[i].type == NOVA64_MESH_SPHERE)
          render_gles_sphere(&meshes[i], view_projection);
    }
 

@@ -52,6 +52,19 @@ with ZipFile(package_dir / "asset-runtime.nova", "w", ZIP_DEFLATED) as package:
         '{"name":"asset-runtime","main":"src/main.js","assets":["assets/message.txt","data/config.json","bin/blob.bin"]}\n',
     )
 
+with ZipFile(package_dir / "multimodule.nova", "w", ZIP_DEFLATED) as package:
+    package.write("retroarch/conformance/37-multimodule.js", "src/main.js")
+    package.writestr("src/lib/value.js", "export default 37;\n")
+    package.writestr(
+        "src/lib/module-helper.js",
+        "export const label = 'multi-module';\n"
+        "export function mixColor(v) { return rgba8(v, v * 5, v * 10, 255); }\n",
+    )
+    package.writestr(
+        "manifest.json",
+        '{"name":"multimodule","main":"src/main.js","assets":["src/lib/value.js","src/lib/module-helper.js"]}\n',
+    )
+
 # 440Hz sine wave, 0.25s, int16 LE mono at 44100Hz
 import math, struct
 beep_frames = int(44100 * 0.25)
@@ -248,6 +261,7 @@ run_visual_case "32 spritesheet" "32-spritesheet" "${PACKAGE_DIR}/spritesheet.no
 run_analog_case "34 analog"  "retroarch/conformance/34-analog.js" "a66365b2ba482b6f"
 run_visual_case "35 rng" "35-rng" "retroarch/conformance/35-rng.js" "6702787d75707713"
 run_visual_case "36 camera2d" "36-camera2d" "retroarch/conformance/36-camera2d.js" "0b89e24020dcb94c"
+run_visual_case "37 multimodule" "37-multimodule" "${PACKAGE_DIR}/multimodule.nova" "adf7ef109e9afc87"
 run_visual_case "19 texture" "19-texture" "retroarch/conformance/19-texture.js" "f4fd3acbca0331b4"
 run_visual_case "20 post" "20-post" "retroarch/conformance/20-post.js" "75a3d27c9048e5b0"
 run_visual_case "21 post-effects" "21-post-effects" "retroarch/conformance/21-post-effects.js" "3a18d91989ad8ded"

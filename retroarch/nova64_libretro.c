@@ -607,6 +607,9 @@ static void update_storage_cart_id(void);
 static void audio_mix_frame(void);
 static void reset_audio_state(void);
 static const struct nova64_package_asset *find_package_asset(const char *path);
+static char *js_module_normalize(JSContext *ctx, const char *module_base_name,
+      const char *module_name, void *opaque);
+static JSModuleDef *js_module_loader(JSContext *ctx, const char *module_name, void *opaque);
 
 static void nova64_log_line(enum retro_log_level level, const char *message)
 {
@@ -4301,6 +4304,7 @@ static bool js_host_create(void)
       nova64_log_line(RETRO_LOG_ERROR, "[nova64] failed to create QuickJS runtime");
       return false;
    }
+   JS_SetModuleLoaderFunc(js_host.runtime, js_module_normalize, js_module_loader, NULL);
 
    js_host.context = JS_NewContext(js_host.runtime);
    if (!js_host.context) {
@@ -4339,7 +4343,9 @@ static bool js_host_load_cart(const char *source, size_t source_size, const char
       return false;
 
    JSContext *ctx = js_host.context;
-   JSValue compiled = JS_Eval(ctx, source, source_size, filename ? filename : "<nova64-cart>",
+   const char *eval_filename = package_manifest_main[0] ? package_manifest_main :
+      (filename ? filename : "<nova64-cart>");
+   JSValue compiled = JS_Eval(ctx, source, source_size, eval_filename,
          JS_EVAL_TYPE_MODULE | JS_EVAL_FLAG_COMPILE_ONLY);
    if (JS_IsException(compiled)) {
       js_log_exception(ctx, "compile");
@@ -5633,6 +5639,95 @@ static bool store_package_asset(const char *path, char *data, size_t size)
       }
    }
    return false;
+}
+
+static bool normalize_package_module_path(const char *base, const char *name, char *out, size_t out_size)
+{
+   if (!name || !out || out_size == 0 || strchr(name, '\\'))
+      return false;
+
+   char combined[512];
+   if ((name[0] == '.' && name[1] == '/') || (name[0] == '.' && name[1] == '.' && name[2] == '/')) {
+      char base_dir[256];
+      base_dir[0] = '\0';
+      if (base) {
+         snprintf(base_dir, sizeof(base_dir), "%s", base);
+         char *slash = strrchr(base_dir, '/');
+         if (slash)
+            slash[1] = '\0';
+         else
+            base_dir[0] = '\0';
+      }
+      if (snprintf(combined, sizeof(combined), "%s%s", base_dir, name) >= (int)sizeof(combined))
+         return false;
+   } else {
+      if (snprintf(combined, sizeof(combined), "%s", name) >= (int)sizeof(combined))
+         return false;
+   }
+
+   out[0] = '\0';
+   char *cursor = combined;
+   while (*cursor) {
+      while (*cursor == '/')
+         cursor++;
+      char *segment = cursor;
+      while (*cursor && *cursor != '/')
+         cursor++;
+      char saved = *cursor;
+      *cursor = '\0';
+
+      if (!strcmp(segment, "..")) {
+         char *slash = strrchr(out, '/');
+         if (slash)
+            *slash = '\0';
+         else
+            return false;
+      } else if (segment[0] && strcmp(segment, ".")) {
+         size_t used = strlen(out);
+         int written = snprintf(out + used, out_size - used, "%s%s", used ? "/" : "", segment);
+         if (written < 0 || (size_t)written >= out_size - used)
+            return false;
+      }
+
+      *cursor = saved;
+      if (saved)
+         cursor++;
+   }
+
+   return is_safe_package_path(out);
+}
+
+static char *js_module_normalize(JSContext *ctx, const char *module_base_name,
+      const char *module_name, void *opaque)
+{
+   (void)opaque;
+   char path[256];
+   if (!normalize_package_module_path(module_base_name, module_name, path, sizeof(path))) {
+      JS_ThrowReferenceError(ctx, "unsafe module import '%s'", module_name ? module_name : "");
+      return NULL;
+   }
+
+   size_t len = strlen(path);
+   char *normalized = (char *)js_malloc(ctx, len + 1);
+   if (!normalized)
+      return NULL;
+   memcpy(normalized, path, len + 1);
+   return normalized;
+}
+
+static JSModuleDef *js_module_loader(JSContext *ctx, const char *module_name, void *opaque)
+{
+   (void)opaque;
+   const struct nova64_package_asset *asset = find_package_asset(module_name);
+   if (!asset) {
+      JS_ThrowReferenceError(ctx, "module not found '%s'", module_name ? module_name : "");
+      return NULL;
+   }
+   JSValue compiled = JS_Eval(ctx, (const char *)asset->data, asset->size, module_name,
+         JS_EVAL_TYPE_MODULE | JS_EVAL_FLAG_COMPILE_ONLY);
+   if (JS_IsException(compiled))
+      return NULL;
+   return (JSModuleDef *)JS_VALUE_GET_PTR(compiled);
 }
 
 static bool make_directory_if_missing(const char *path)

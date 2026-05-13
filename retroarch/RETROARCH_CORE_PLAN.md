@@ -464,21 +464,24 @@ Deterministic RNG done:
     `.int(lo, hi)` → integer [lo, hi]. Seeding with the same value reproduces
     the same sequence. `35-rng.js` covers seed determinism and int range bounds.
 
+Multi-module package carts done:
+
+  - QuickJS now has a package module loader for relative ES module imports.
+    `.nova` mains are evaluated under their manifest path (for example
+    `src/main.js`), and `import './lib/foo.js'` resolves through the staged
+    package asset map. Helper modules should be listed in manifest `"assets"`.
+    `37-multimodule.js` covers default and named imports from a generated
+    package.
+
 Still needed:
 
-- Multi-module carts:
-  - Allow a cart's `init/update/draw` module to `import` other local modules
-    from the same `.nova` package via relative paths.
-  - QuickJS already supports ES modules; the core needs to resolve intra-package
-    module paths through the staged asset map.
 - Better JS error reporting:
   - Line numbers and stack traces from QuickJS exceptions currently show internal
     bytecode offsets. Map them back to cart source lines for debuggable errors.
   - Print the errant line of source code alongside the error message.
-- Deterministic RNG:
-  - `nova64.random(seed)` — seeded random number generator that produces the
-    same sequence on every platform. Important for procedural carts.
-  - Harness `--seed N` to inject a deterministic seed for conformance.
+- Harness seed injection:
+  - `--seed N` should inject a deterministic initial RNG seed for conformance
+    and manual replay.
 - Cart metadata and title screens:
   - Read `manifest.json` `"title"`, `"author"`, `"version"` and expose via
     `nova64.meta.title()`, `.author()`, `.version()`.

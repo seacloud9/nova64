@@ -20,7 +20,8 @@ Implemented and conformance-tested:
 - Material effects: emissive color and per-mesh alpha/transparency.
 - Procedural SFX and PCM asset audio mixing through RetroArch audio callbacks.
 - Persistent JSON cart storage using the RetroArch save directory.
-- `.nova` zip-style package format with manifest asset staging.
+- `.nova` zip-style package format with manifest asset staging and relative
+  ES module imports.
 - Full keyboard and mouse input with per-frame hold/edge detection.
 - Versioned save-state headers for deterministic host-owned state.
 
@@ -81,7 +82,7 @@ bash retroarch/tests/run_conformance.sh
 
 The suite builds the core, compiles the harness, generates `.nova` package
 fixtures, then checks framebuffer checksums, audio checksums, renderer command
-logs, and visual screenshot captures for all 30 conformance carts.
+logs, and visual screenshot captures for the conformance carts.
 
 ## Renderer Selection
 
@@ -97,6 +98,8 @@ for harness and shell-driven tests.
 - `.nova` — zip-style package. Manifest `"main"` selects the entry point; falls
   back to `code.js`, `game/code.js`, or `src/code.js`. Assets declared in
   `manifest.json` `"assets": []` are staged in memory and readable by carts.
+  Relative imports from the main module are resolved against staged package
+  assets, so helper modules should be listed in `"assets"`.
 
 ## Cart-Facing API
 
@@ -352,3 +355,4 @@ These browser-side Nova64 or Three.js features are not implemented:
 | `34-analog.js` | analog stick and trigger input |
 | `35-rng.js` | deterministic RNG |
 | `36-camera2d.js` | 2D camera offset and clear |
+| `37-multimodule.js` | relative ES module imports from `.nova` packages |

@@ -428,6 +428,10 @@ static bool key_prev_held[NOVA64_KEY_TABLE_SIZE];
 static int clip_x, clip_y, clip_w, clip_h;
 static bool clip_active;
 
+/* 2D camera offset — subtracted from all 2D draw coordinates */
+static int cam2d_x = 0;
+static int cam2d_y = 0;
+
 /* Mouse */
 #define NOVA64_MOUSE_X       0
 #define NOVA64_MOUSE_Y       1
@@ -2135,8 +2139,8 @@ static JSValue js_cls(JSContext *ctx, JSValueConst this_val, int argc, JSValueCo
 
 static JSValue js_pset(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
-   int x = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0);
-   int y = int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0);
+   int x = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0) - cam2d_x;
+   int y = int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0) - cam2d_y;
    uint32_t color = color_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, rgba8(255, 255, 255, 255));
    set_pixel(x, y, color);
    return JS_UNDEFINED;
@@ -2144,10 +2148,10 @@ static JSValue js_pset(JSContext *ctx, JSValueConst this_val, int argc, JSValueC
 
 static JSValue js_line(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
-   int x0 = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0);
-   int y0 = int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0);
-   int x1 = int_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 0);
-   int y1 = int_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, 0);
+   int x0 = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0) - cam2d_x;
+   int y0 = int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0) - cam2d_y;
+   int x1 = int_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 0) - cam2d_x;
+   int y1 = int_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, 0) - cam2d_y;
    uint32_t color = color_from_js(ctx, argc > 4 ? argv[4] : JS_UNDEFINED, rgba8(255, 255, 255, 255));
    draw_line_pixels(x0, y0, x1, y1, color);
    return JS_UNDEFINED;
@@ -2155,8 +2159,8 @@ static JSValue js_line(JSContext *ctx, JSValueConst this_val, int argc, JSValueC
 
 static JSValue js_rect(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
-   int x = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0);
-   int y = int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0);
+   int x = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0) - cam2d_x;
+   int y = int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0) - cam2d_y;
    int w = int_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 0);
    int h = int_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, 0);
    uint32_t color = color_from_js(ctx, argc > 4 ? argv[4] : JS_UNDEFINED, rgba8(255, 255, 255, 255));
@@ -2185,8 +2189,8 @@ static JSValue js_draw_print(JSContext *ctx, JSValueConst this_val, int argc, JS
    if (argc < 3)
       return js_console_log(ctx, this_val, argc, argv);
    const char *text = JS_ToCString(ctx, argv[0]);
-   int x = int_from_js(ctx, argv[1], 0);
-   int y = int_from_js(ctx, argv[2], 0);
+   int x = int_from_js(ctx, argv[1], 0) - cam2d_x;
+   int y = int_from_js(ctx, argv[2], 0) - cam2d_y;
    uint32_t color = color_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, rgba8(255, 255, 255, 255));
    int align = argc > 4 ? text_align_from_js(ctx, argv[4]) : 0;
    draw_text_aligned(text, x, y, color, align);
@@ -2208,8 +2212,8 @@ static JSValue js_text_width(JSContext *ctx, JSValueConst this_val, int argc, JS
 static JSValue js_circ(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
    (void)this_val;
-   int cx = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0);
-   int cy = int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0);
+   int cx = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0) - cam2d_x;
+   int cy = int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0) - cam2d_y;
    int r  = int_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 0);
    uint32_t color = color_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, rgba8(255, 255, 255, 255));
    draw_circle_pixels(cx, cy, r, color, false);
@@ -2219,8 +2223,8 @@ static JSValue js_circ(JSContext *ctx, JSValueConst this_val, int argc, JSValueC
 static JSValue js_circfill(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
    (void)this_val;
-   int cx = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0);
-   int cy = int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0);
+   int cx = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0) - cam2d_x;
+   int cy = int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0) - cam2d_y;
    int r  = int_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 0);
    uint32_t color = color_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, rgba8(255, 255, 255, 255));
    draw_circle_pixels(cx, cy, r, color, true);
@@ -2239,8 +2243,8 @@ static JSValue js_spr(JSContext *ctx, JSValueConst this_val, int argc, JSValueCo
    if (!asset || !asset->data || asset->size < 4)
       return JS_NewBool(ctx, false);
 
-   int dx = int_from_js(ctx, argv[1], 0);
-   int dy = int_from_js(ctx, argv[2], 0);
+   int dx = int_from_js(ctx, argv[1], 0) - cam2d_x;
+   int dy = int_from_js(ctx, argv[2], 0) - cam2d_y;
 
    int img_w = argc > 3 ? int_from_js(ctx, argv[3], 0) : 0;
    int img_h = argc > 4 ? int_from_js(ctx, argv[4], 0) : 0;
@@ -2277,6 +2281,22 @@ static JSValue js_clear_clip(JSContext *ctx, JSValueConst this_val, int argc, JS
 {
    (void)this_val; (void)argc; (void)argv;
    clip_active = false;
+   return JS_UNDEFINED;
+}
+
+/* setCamera2D(x, y) — set 2D camera world-space scroll offset */
+static JSValue js_set_camera2d(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   cam2d_x = argc > 0 ? int_from_js(ctx, argv[0], 0) : 0;
+   cam2d_y = argc > 1 ? int_from_js(ctx, argv[1], 0) : 0;
+   return JS_UNDEFINED;
+}
+
+static JSValue js_clear_camera2d(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val; (void)argc; (void)argv;
+   cam2d_x = cam2d_y = 0;
    return JS_UNDEFINED;
 }
 
@@ -2363,8 +2383,8 @@ static JSValue js_draw_tilemap(JSContext *ctx, JSValueConst this_val, int argc, 
    (void)this_val;
    if (argc < 4) return JS_NewBool(ctx, false);
    int idx = int_from_js(ctx, argv[0], -1);
-   int dx  = int_from_js(ctx, argv[1], 0);
-   int dy  = int_from_js(ctx, argv[2], 0);
+   int dx  = int_from_js(ctx, argv[1], 0) - cam2d_x;
+   int dy  = int_from_js(ctx, argv[2], 0) - cam2d_y;
    const char *path = JS_ToCString(ctx, argv[3]);
    if (!path || idx < 0 || idx >= NOVA64_MAX_TILEMAPS || !tilemaps[idx].active) {
       JS_FreeCString(ctx, path);
@@ -3795,6 +3815,8 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, draw, "spr", js_spr, 9);
    set_function(ctx, draw, "setClip", js_set_clip, 4);
    set_function(ctx, draw, "clearClip", js_clear_clip, 0);
+   set_function(ctx, draw, "setCamera2D", js_set_camera2d, 2);
+   set_function(ctx, draw, "clearCamera2D", js_clear_camera2d, 0);
 
    set_function(ctx, input, "btn", js_btn, 2);
    set_function(ctx, input, "btnp", js_btnp, 2);
@@ -3938,6 +3960,8 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, global, "spr", js_spr, 9);
    set_function(ctx, global, "setClip", js_set_clip, 4);
    set_function(ctx, global, "clearClip", js_clear_clip, 0);
+   set_function(ctx, global, "setCamera2D", js_set_camera2d, 2);
+   set_function(ctx, global, "clearCamera2D", js_clear_camera2d, 0);
    set_function(ctx, global, "playSound", js_play_sound, 3);
    set_function(ctx, global, "stopSound", js_stop_sound, 1);
    set_function(ctx, global, "stopAllSounds", js_stop_all_sounds, 0);
@@ -5811,6 +5835,7 @@ void RETRO_CALLCONV retro_reset(void)
    memset(mp_prev_buttons, 0, sizeof(mp_prev_buttons));
    memset(mp_pressed_buttons, 0, sizeof(mp_pressed_buttons));
    clip_active = false;
+   cam2d_x = cam2d_y = 0;
    frame_count = 0;
    clear_framebuffer(rgba8(0, 0, 0, 255));
    reset_scene_state();

@@ -357,6 +357,13 @@ Tilemap first pass done:
     `clearTilemap(map)`, `destroyTilemap(map)`. Max 16 active tilemaps.
     `31-tilemap.js` covers a 4×3 grid drawn from a 4-color tilesheet package asset.
 
+2D camera done:
+
+  - `setCamera2D(x, y)` sets a per-frame world-space scroll offset subtracted
+    from all 2D draw coordinate inputs: pset, line, rect, circ, circfill, print,
+    spr, drawTilemap. `clearCamera2D()` resets to (0, 0). Offset is reset on
+    cart reload. `36-camera2d.js` verifies offset shifts and clear.
+
 Still missing:
 
 - Full tilemap API (Godot/web parity):

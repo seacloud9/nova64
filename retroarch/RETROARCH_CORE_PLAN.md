@@ -235,6 +235,19 @@ Areas:
   - Software or checksum references for effect state where pixel-perfect hardware
     parity is impractical.
   - `19-texture.js` and `20-post.js` are implemented and passing.
+- Remaining post passes: bloom (5-tap bright-pass cross), chromatic aberration
+  (per-channel UV offset along radial), color grade (per-channel RGB multiplier),
+  and posterize (N-level quantize) are now implemented in the post shader and
+  exposed via `nova64.post.setBloom`, `setChromatic`, `setColorGrade`,
+  `setPosterize`. `getState()` returns all fields including `colorGrade[]`.
+  `21-post-effects.js` covers state round-trips and is passing.
+- Material hooks: `setMeshEmissive(handle, color, intensity)` and
+  `setMeshAlpha(handle, alpha)` are now implemented. Emissive adds a lit
+  contribution on top of the base color in both the GLES shader and the software
+  preview renderer. Alpha maps to mesh opacity and enables per-mesh GL blend in
+  hardware mode. `getBackendCapabilities()` exposes `emissive` and `meshAlpha`
+  capability flags. `22-material.js` covers emissive glow and semi-transparent
+  mesh rendering and is passing.
 
 Exit criteria:
 

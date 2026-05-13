@@ -173,7 +173,9 @@ struct nova64_mesh {
    float scale[3];
    float opacity;
    uint32_t color;
-   int texture_handle; /* 0 = no texture */
+   int texture_handle;      /* 0 = no texture */
+   uint32_t emissive_color; /* 0 = none, else RGBA8 */
+   float emissive_intensity; /* 0 = off */
 };
 
 struct nova64_camera {
@@ -342,6 +344,10 @@ struct nova64_gles_backend {
    GLint post_vignette_uniform;
    GLint post_pixelate_uniform;
    GLint post_resolution_uniform;
+   GLint post_bloom_uniform;
+   GLint post_chromatic_uniform;
+   GLint post_color_grade_uniform;
+   GLint post_posterize_uniform;
    GLuint cube_vbo;
    GLuint cube_ibo;
    GLuint plane_vbo;
@@ -366,6 +372,8 @@ struct nova64_gles_backend {
    GLint cube_fog_far_uniform;
    GLint cube_has_texture_uniform;
    GLint cube_texture_uniform;
+   GLint cube_emissive_color_uniform;
+   GLint cube_emissive_intensity_uniform;
    GLint overlay_position_attrib;
    GLint overlay_uv_attrib;
    GLint overlay_texture_uniform;
@@ -420,8 +428,12 @@ static bool drawing_scene_preview;
 /* Post-processing state — persists across frames, reset on cart reload */
 struct nova64_post_state {
    bool crt_enabled;
-   float vignette;   /* 0.0 = off, 1.0 = full */
-   int pixelate;     /* 0 = off, 1+ = block size in pixels */
+   float vignette;       /* 0.0 = off, 1.0 = full */
+   int pixelate;         /* 0 = off, 1+ = block size in pixels */
+   float bloom;          /* 0.0 = off, 0.0-1.0 intensity */
+   float chromatic;      /* 0.0 = off, offset amount (try 0.003-0.01) */
+   float color_grade[3]; /* RGB multipliers, default 1.0 each */
+   int posterize;        /* 0 = off, 2-8 = quantize levels */
 };
 static struct nova64_post_state post_state;
 
@@ -430,11 +442,18 @@ static void reset_post_state(void)
    post_state.crt_enabled = false;
    post_state.vignette = 0.0f;
    post_state.pixelate = 0;
+   post_state.bloom = 0.0f;
+   post_state.chromatic = 0.0f;
+   post_state.color_grade[0] = post_state.color_grade[1] = post_state.color_grade[2] = 1.0f;
+   post_state.posterize = 0;
 }
 
 static bool post_is_active(void)
 {
-   return post_state.crt_enabled || post_state.vignette > 0.0f || post_state.pixelate > 0;
+   return post_state.crt_enabled || post_state.vignette > 0.0f || post_state.pixelate > 0
+      || post_state.bloom > 0.0f || post_state.chromatic > 0.0f || post_state.posterize > 0
+      || post_state.color_grade[0] != 1.0f || post_state.color_grade[1] != 1.0f
+      || post_state.color_grade[2] != 1.0f;
 }
 
 static bool scene_has_visible_meshes(void);
@@ -672,6 +691,16 @@ static float clamp_float(float value, float min_value, float max_value)
    if (value > max_value)
       return max_value;
    return value;
+}
+
+static uint32_t color_add_emissive(uint32_t base, uint32_t emissive, float intensity)
+{
+   if (intensity <= 0.0f || (emissive >> 8) == 0)
+      return base;
+   uint32_t r = ((base >> 24) & 0xffU) + (uint32_t)fminf(255.0f, (float)((emissive >> 24) & 0xffU) * intensity);
+   uint32_t g = ((base >> 16) & 0xffU) + (uint32_t)fminf(255.0f, (float)((emissive >> 16) & 0xffU) * intensity);
+   uint32_t b = ((base >>  8) & 0xffU) + (uint32_t)fminf(255.0f, (float)((emissive >>  8) & 0xffU) * intensity);
+   return ((r > 255 ? 255 : r) << 24) | ((g > 255 ? 255 : g) << 16) | ((b > 255 ? 255 : b) << 8) | (base & 0xffU);
 }
 
 static uint32_t color_with_intensity(uint32_t color, float intensity)
@@ -1523,8 +1552,9 @@ static void draw_software_cube(const struct nova64_mesh *mesh)
       const int *face = faces[order[i].index];
       if (!visible[face[0]] || !visible[face[1]] || !visible[face[2]] || !visible[face[3]])
          continue;
-      uint32_t face_color = lit_face_color(color_with_opacity(mesh->color, mesh->opacity),
-            world[face[0]], world[face[1]], world[face[2]]);
+      uint32_t face_color = color_add_emissive(
+            lit_face_color(color_with_opacity(mesh->color, mesh->opacity), world[face[0]], world[face[1]], world[face[2]]),
+            mesh->emissive_color, mesh->emissive_intensity);
       int quad[4][2] = {
          {screen[face[0]][0], screen[face[0]][1]},
          {screen[face[1]][0], screen[face[1]][1]},
@@ -1557,7 +1587,9 @@ static void draw_software_plane(const struct nova64_mesh *mesh)
    if (!visible)
       return;
 
-   draw_filled_quad(screen, shade_color(color_with_opacity(mesh->color, mesh->opacity), 0.72f));
+   draw_filled_quad(screen, color_add_emissive(
+      shade_color(color_with_opacity(mesh->color, mesh->opacity), 0.72f),
+      mesh->emissive_color, mesh->emissive_intensity));
 }
 
 static void draw_software_sphere(const struct nova64_mesh *mesh)
@@ -1576,8 +1608,8 @@ static void draw_software_sphere(const struct nova64_mesh *mesh)
    if (radius < 2)
       radius = 2;
    uint32_t base_color = color_with_opacity(mesh->color, mesh->opacity);
-   uint32_t color = shade_color(base_color, 1.15f);
-   uint32_t highlight = shade_color(base_color, 1.25f);
+   uint32_t color = color_add_emissive(shade_color(base_color, 1.15f), mesh->emissive_color, mesh->emissive_intensity);
+   uint32_t highlight = color_add_emissive(shade_color(base_color, 1.25f), mesh->emissive_color, mesh->emissive_intensity);
    for (int y = -radius; y <= radius; y++) {
       int span = (int)sqrtf((float)(radius * radius - y * y));
       for (int x = -span; x <= span; x++) {
@@ -2280,6 +2312,8 @@ static JSValue js_get_backend_capabilities(JSContext *ctx, JSValueConst this_val
    JS_SetPropertyStr(ctx, object, "fogState", JS_NewBool(ctx, true));
    JS_SetPropertyStr(ctx, object, "textures", JS_NewBool(ctx, gles.active));
    JS_SetPropertyStr(ctx, object, "postProcessing", JS_NewBool(ctx, gles.active));
+   JS_SetPropertyStr(ctx, object, "emissive", JS_NewBool(ctx, true));
+   JS_SetPropertyStr(ctx, object, "meshAlpha", JS_NewBool(ctx, true));
    return object;
 }
 
@@ -2546,9 +2580,73 @@ static JSValue js_post_get_state(JSContext *ctx, JSValueConst this_val, int argc
    JS_SetPropertyStr(ctx, obj, "crt", JS_NewBool(ctx, post_state.crt_enabled));
    JS_SetPropertyStr(ctx, obj, "vignette", JS_NewFloat64(ctx, (double)post_state.vignette));
    JS_SetPropertyStr(ctx, obj, "pixelate", JS_NewInt32(ctx, post_state.pixelate));
+   JS_SetPropertyStr(ctx, obj, "bloom", JS_NewFloat64(ctx, (double)post_state.bloom));
+   JS_SetPropertyStr(ctx, obj, "chromatic", JS_NewFloat64(ctx, (double)post_state.chromatic));
+   JSValue grade = JS_NewArray(ctx);
+   JS_SetPropertyUint32(ctx, grade, 0, JS_NewFloat64(ctx, (double)post_state.color_grade[0]));
+   JS_SetPropertyUint32(ctx, grade, 1, JS_NewFloat64(ctx, (double)post_state.color_grade[1]));
+   JS_SetPropertyUint32(ctx, grade, 2, JS_NewFloat64(ctx, (double)post_state.color_grade[2]));
+   JS_SetPropertyStr(ctx, obj, "colorGrade", grade);
+   JS_SetPropertyStr(ctx, obj, "posterize", JS_NewInt32(ctx, post_state.posterize));
    JS_SetPropertyStr(ctx, obj, "active", JS_NewBool(ctx, post_is_active()));
    JS_SetPropertyStr(ctx, obj, "fboReady", JS_NewBool(ctx, gles.post_resources_ready));
    return obj;
+}
+
+static JSValue js_post_set_bloom(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   post_state.bloom = (float)clamp_double(
+      double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0.0), 0.0, 1.0);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_post_set_chromatic(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   post_state.chromatic = (float)clamp_double(
+      double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0.0), 0.0, 0.1);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_post_set_color_grade(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   post_state.color_grade[0] = (float)clamp_double(double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 1.0), 0.0, 4.0);
+   post_state.color_grade[1] = (float)clamp_double(double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 1.0), 0.0, 4.0);
+   post_state.color_grade[2] = (float)clamp_double(double_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 1.0), 0.0, 4.0);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_post_set_posterize(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int levels = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0);
+   post_state.posterize = (levels < 2) ? 0 : (levels > 32 ? 32 : levels);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_set_mesh_emissive(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   struct nova64_mesh *mesh = mesh_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!mesh)
+      return JS_NewBool(ctx, false);
+   mesh->emissive_color = color_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, mesh->emissive_color);
+   mesh->emissive_intensity = (float)clamp_double(
+      double_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, (double)mesh->emissive_intensity), 0.0, 4.0);
+   return JS_NewBool(ctx, true);
+}
+
+static JSValue js_set_mesh_alpha(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   struct nova64_mesh *mesh = mesh_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!mesh)
+      return JS_NewBool(ctx, false);
+   mesh->opacity = (float)clamp_double(
+      double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 1.0), 0.0, 1.0);
+   return JS_NewBool(ctx, true);
 }
 
 static JSValue js_create_texture(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
@@ -2858,6 +2956,8 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, scene, "setCastShadow", js_set_cast_shadow, 2);
    set_function(ctx, scene, "setReceiveShadow", js_set_receive_shadow, 2);
    set_function(ctx, scene, "setMeshColor", js_set_mesh_color, 2);
+   set_function(ctx, scene, "setMeshEmissive", js_set_mesh_emissive, 3);
+   set_function(ctx, scene, "setMeshAlpha", js_set_mesh_alpha, 2);
    set_function(ctx, scene, "get3DStats", js_get_3d_stats, 0);
    set_function(ctx, scene, "getBackendCapabilities", js_get_backend_capabilities, 0);
    set_function(ctx, scene, "setFog", js_set_fog, 3);
@@ -2921,6 +3021,10 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, post, "setCRT", js_post_set_crt, 1);
    set_function(ctx, post, "setVignette", js_post_set_vignette, 1);
    set_function(ctx, post, "setPixelate", js_post_set_pixelate, 1);
+   set_function(ctx, post, "setBloom", js_post_set_bloom, 1);
+   set_function(ctx, post, "setChromatic", js_post_set_chromatic, 1);
+   set_function(ctx, post, "setColorGrade", js_post_set_color_grade, 3);
+   set_function(ctx, post, "setPosterize", js_post_set_posterize, 1);
    set_function(ctx, post, "clear", js_post_clear, 0);
    set_function(ctx, post, "getState", js_post_get_state, 0);
    JS_SetPropertyStr(ctx, nova64, "post", post);
@@ -2954,6 +3058,8 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, global, "setCastShadow", js_set_cast_shadow, 2);
    set_function(ctx, global, "setReceiveShadow", js_set_receive_shadow, 2);
    set_function(ctx, global, "setMeshColor", js_set_mesh_color, 2);
+   set_function(ctx, global, "setMeshEmissive", js_set_mesh_emissive, 3);
+   set_function(ctx, global, "setMeshAlpha", js_set_mesh_alpha, 2);
    set_function(ctx, global, "draw3d", js_draw3d, 1);
    set_function(ctx, global, "createTexture", js_create_texture, 3);
    set_function(ctx, global, "setMeshTexture", js_set_mesh_texture, 2);
@@ -3211,6 +3317,8 @@ static bool gles_create_cube_program(void)
       "uniform float u_fog_far;\n"
       "uniform int u_has_texture;\n"
       "uniform sampler2D u_texture;\n"
+      "uniform vec4 u_emissive_color;\n"
+      "uniform float u_emissive_intensity;\n"
       "void main() {\n"
       "  vec3 ambient = u_ambient_color.rgb * 0.35;\n"
       "  vec4 base = (u_has_texture != 0) ? texture2D(u_texture, v_uv) * u_color : u_color;\n"
@@ -3220,6 +3328,7 @@ static bool gles_create_cube_program(void)
       "    float fog_t = clamp((depth_linear - u_fog_near / (u_fog_far + 0.001)) / ((u_fog_far - u_fog_near) / (u_fog_far + 0.001)), 0.0, 1.0);\n"
       "    lit = mix(lit, u_fog_color.rgb, fog_t);\n"
       "  }\n"
+      "  lit = clamp(lit + u_emissive_color.rgb * u_emissive_intensity, 0.0, 1.0);\n"
       "  gl_FragColor = vec4(lit, base.a);\n"
       "}\n";
 
@@ -3268,6 +3377,8 @@ static bool gles_create_cube_program(void)
    gles.cube_fog_far_uniform = gles.GetUniformLocation(program, "u_fog_far");
    gles.cube_has_texture_uniform = gles.GetUniformLocation(program, "u_has_texture");
    gles.cube_texture_uniform = gles.GetUniformLocation(program, "u_texture");
+   gles.cube_emissive_color_uniform = gles.GetUniformLocation(program, "u_emissive_color");
+   gles.cube_emissive_intensity_uniform = gles.GetUniformLocation(program, "u_emissive_intensity");
    return gles.cube_position_attrib >= 0 && gles.cube_normal_attrib >= 0 &&
       gles.cube_mvp_uniform >= 0 && gles.cube_normal_matrix_uniform >= 0 &&
       gles.cube_color_uniform >= 0 && gles.cube_ambient_uniform >= 0 &&
@@ -3692,6 +3803,23 @@ static void render_gles_primitive(const struct nova64_mesh *mesh, const float vi
       if (gles.cube_texture_uniform >= 0)
          gles.Uniform1i(gles.cube_texture_uniform, 0);
    }
+   /* emissive */
+   if (gles.cube_emissive_color_uniform >= 0) {
+      uint32_t ec = mesh->emissive_color;
+      gles.Uniform4f(gles.cube_emissive_color_uniform,
+         (float)((ec >> 24) & 0xffU) / 255.0f,
+         (float)((ec >> 16) & 0xffU) / 255.0f,
+         (float)((ec >>  8) & 0xffU) / 255.0f,
+         1.0f);
+   }
+   if (gles.cube_emissive_intensity_uniform >= 0 && gles.Uniform1f)
+      gles.Uniform1f(gles.cube_emissive_intensity_uniform, mesh->emissive_intensity);
+   /* enable blending for semi-transparent meshes */
+   bool mesh_transparent = mesh->opacity < 0.999f;
+   if (mesh_transparent) {
+      gles.Enable(GL_BLEND);
+      gles.BlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+   }
    gles.BindBuffer(GL_ARRAY_BUFFER, vbo);
    gles.BindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo);
    gles.EnableVertexAttribArray((GLuint)gles.cube_position_attrib);
@@ -3703,6 +3831,8 @@ static void render_gles_primitive(const struct nova64_mesh *mesh, const float vi
    gles.DrawElements(GL_TRIANGLES, index_count, GL_UNSIGNED_SHORT, NULL);
    gles.DisableVertexAttribArray((GLuint)gles.cube_normal_attrib);
    gles.DisableVertexAttribArray((GLuint)gles.cube_position_attrib);
+   if (mesh_transparent)
+      gles.Disable(GL_BLEND);
 }
 
 static void render_gles_cube(const struct nova64_mesh *mesh, const float view_projection[16])
@@ -3768,7 +3898,7 @@ static bool gles_create_post_program(void)
       "  v_uv = a_uv;\n"
       "  gl_Position = vec4(a_position, 0.0, 1.0);\n"
       "}\n";
-   /* CRT scanline + vignette + pixelate post-processing fragment shader */
+   /* Post-processing fragment shader: CRT, vignette, pixelate, bloom, chromatic, colorgrade, posterize */
    static const char *fragment_source =
       "precision mediump float;\n"
       "varying vec2 v_uv;\n"
@@ -3777,6 +3907,10 @@ static bool gles_create_post_program(void)
       "uniform float u_vignette;\n"
       "uniform int u_pixelate;\n"
       "uniform vec2 u_resolution;\n"
+      "uniform float u_bloom;\n"
+      "uniform float u_chromatic;\n"
+      "uniform vec3 u_color_grade;\n"
+      "uniform int u_posterize;\n"
       "void main() {\n"
       "  vec2 uv = v_uv;\n"
       "  if (u_pixelate > 0) {\n"
@@ -3784,7 +3918,17 @@ static bool gles_create_post_program(void)
       "    float py = float(u_pixelate) / u_resolution.y;\n"
       "    uv = floor(uv / vec2(px, py)) * vec2(px, py) + vec2(px, py) * 0.5;\n"
       "  }\n"
-      "  vec4 color = texture2D(u_scene, uv);\n"
+      /* chromatic aberration: shift R/B channels along screen radial */
+      "  vec4 color;\n"
+      "  if (u_chromatic > 0.0) {\n"
+      "    vec2 dir = (uv - 0.5) * u_chromatic;\n"
+      "    color.r = texture2D(u_scene, uv + dir).r;\n"
+      "    color.g = texture2D(u_scene, uv).g;\n"
+      "    color.b = texture2D(u_scene, uv - dir).b;\n"
+      "    color.a = 1.0;\n"
+      "  } else {\n"
+      "    color = texture2D(u_scene, uv);\n"
+      "  }\n"
       "  if (u_crt != 0) {\n"
       "    float line = sin(v_uv.y * u_resolution.y * 3.14159265);\n"
       "    float scanline = pow(abs(line) * 0.5 + 0.5, 0.35) * 0.88 + 0.12;\n"
@@ -3797,12 +3941,30 @@ static bool gles_create_post_program(void)
       "    else\n"
       "      color = texture2D(u_scene, uv) * vec4(color.rgb / (texture2D(u_scene, v_uv).rgb + 0.001), color.a);\n"
       "  }\n"
+      /* bloom: 5-tap cross bright-pass added back */
+      "  if (u_bloom > 0.0) {\n"
+      "    vec2 ts = vec2(2.0 / u_resolution.x, 2.0 / u_resolution.y);\n"
+      "    vec3 s = texture2D(u_scene, uv + vec2(ts.x, 0.0)).rgb\n"
+      "           + texture2D(u_scene, uv - vec2(ts.x, 0.0)).rgb\n"
+      "           + texture2D(u_scene, uv + vec2(0.0, ts.y)).rgb\n"
+      "           + texture2D(u_scene, uv - vec2(0.0, ts.y)).rgb;\n"
+      "    vec3 avg = s * 0.25;\n"
+      "    float luma = dot(avg, vec3(0.299, 0.587, 0.114));\n"
+      "    color.rgb += avg * max(0.0, luma - 0.45) * u_bloom * 2.2;\n"
+      "  }\n"
+      /* posterize: quantize to N levels */
+      "  if (u_posterize > 1) {\n"
+      "    float levels = float(u_posterize);\n"
+      "    color.rgb = floor(color.rgb * levels + 0.5) / levels;\n"
+      "  }\n"
+      /* color grade: per-channel tint multiply */
+      "  color.rgb *= u_color_grade;\n"
       "  if (u_vignette > 0.0) {\n"
       "    vec2 cv = v_uv - 0.5;\n"
       "    float vt = clamp(1.0 - dot(cv, cv) * 4.0 * u_vignette, 0.0, 1.0);\n"
       "    color.rgb *= vt;\n"
       "  }\n"
-      "  gl_FragColor = vec4(color.rgb, 1.0);\n"
+      "  gl_FragColor = vec4(clamp(color.rgb, 0.0, 1.0), 1.0);\n"
       "}\n";
 
    GLuint vertex = gles_compile_shader(GL_VERTEX_SHADER, vertex_source);
@@ -3833,6 +3995,10 @@ static bool gles_create_post_program(void)
    gles.post_vignette_uniform = gles.GetUniformLocation(program, "u_vignette");
    gles.post_pixelate_uniform = gles.GetUniformLocation(program, "u_pixelate");
    gles.post_resolution_uniform = gles.GetUniformLocation(program, "u_resolution");
+   gles.post_bloom_uniform = gles.GetUniformLocation(program, "u_bloom");
+   gles.post_chromatic_uniform = gles.GetUniformLocation(program, "u_chromatic");
+   gles.post_color_grade_uniform = gles.GetUniformLocation(program, "u_color_grade");
+   gles.post_posterize_uniform = gles.GetUniformLocation(program, "u_posterize");
    return gles.post_position_attrib >= 0 && gles.post_uv_attrib >= 0;
 }
 
@@ -3919,6 +4085,15 @@ static void render_gles_post_pass(GLuint hw_fbo)
    if (gles.post_resolution_uniform >= 0)
       gles.Uniform4f(gles.post_resolution_uniform,
          (float)NOVA64_WIDTH, (float)NOVA64_HEIGHT, 0.0f, 0.0f);
+   if (gles.post_bloom_uniform >= 0 && gles.Uniform1f)
+      gles.Uniform1f(gles.post_bloom_uniform, post_state.bloom);
+   if (gles.post_chromatic_uniform >= 0 && gles.Uniform1f)
+      gles.Uniform1f(gles.post_chromatic_uniform, post_state.chromatic);
+   if (gles.post_color_grade_uniform >= 0 && gles.Uniform4f)
+      gles.Uniform4f(gles.post_color_grade_uniform,
+         post_state.color_grade[0], post_state.color_grade[1], post_state.color_grade[2], 0.0f);
+   if (gles.post_posterize_uniform >= 0)
+      gles.Uniform1i(gles.post_posterize_uniform, post_state.posterize);
 
    gles.BindBuffer(GL_ARRAY_BUFFER, gles.overlay_vbo);
    gles.BindBuffer(GL_ELEMENT_ARRAY_BUFFER, gles.overlay_ibo);

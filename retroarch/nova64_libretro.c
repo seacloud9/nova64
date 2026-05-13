@@ -464,6 +464,61 @@ static double clamp_double(double value, double min_value, double max_value)
    return value;
 }
 
+static bool set_vec3_from_js_property(JSContext *ctx, JSValueConst value, const char *name, float *target)
+{
+   JSValue property = JS_GetPropertyStr(ctx, value, name);
+   if (JS_IsUndefined(property) || JS_IsNull(property)) {
+      JS_FreeValue(ctx, property);
+      return false;
+   }
+   double number = 0.0;
+   bool ok = JS_ToFloat64(ctx, &number, property) == 0;
+   JS_FreeValue(ctx, property);
+   if (ok)
+      *target = (float)number;
+   return ok;
+}
+
+static bool set_vec3_from_js_index(JSContext *ctx, JSValueConst value, uint32_t index, float *target)
+{
+   JSValue property = JS_GetPropertyUint32(ctx, value, index);
+   if (JS_IsUndefined(property) || JS_IsNull(property)) {
+      JS_FreeValue(ctx, property);
+      return false;
+   }
+   double number = 0.0;
+   bool ok = JS_ToFloat64(ctx, &number, property) == 0;
+   JS_FreeValue(ctx, property);
+   if (ok)
+      *target = (float)number;
+   return ok;
+}
+
+static bool set_position_from_js(JSContext *ctx, JSValueConst value, float target[3])
+{
+   if (JS_IsUndefined(value) || JS_IsNull(value))
+      return false;
+
+   float next[3] = {target[0], target[1], target[2]};
+   bool has_array_values =
+      set_vec3_from_js_index(ctx, value, 0, &next[0]) |
+      set_vec3_from_js_index(ctx, value, 1, &next[1]) |
+      set_vec3_from_js_index(ctx, value, 2, &next[2]);
+   if (!has_array_values) {
+      bool has_object_values =
+         set_vec3_from_js_property(ctx, value, "x", &next[0]) |
+         set_vec3_from_js_property(ctx, value, "y", &next[1]) |
+         set_vec3_from_js_property(ctx, value, "z", &next[2]);
+      if (!has_object_values)
+         return false;
+   }
+
+   target[0] = next[0];
+   target[1] = next[1];
+   target[2] = next[2];
+   return true;
+}
+
 static uint16_t read_u16_le(const uint8_t *data)
 {
    return (uint16_t)data[0] | ((uint16_t)data[1] << 8);
@@ -1655,25 +1710,62 @@ static JSValue js_btnp(JSContext *ctx, JSValueConst this_val, int argc, JSValueC
    return JS_NewBool(ctx, index >= 0 ? pressed_buttons[index] : false);
 }
 
-static JSValue js_create_mesh(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv, enum nova64_mesh_type type)
-{
-   int handle = allocate_mesh(type);
-   if (!handle)
-      return JS_ThrowInternalError(ctx, "Nova64 mesh table is full");
-   struct nova64_mesh *mesh = mesh_from_handle(handle);
-   if (mesh && argc > 0)
-      mesh->color = color_from_js(ctx, argv[0], mesh->color);
-   return JS_NewInt32(ctx, handle);
-}
-
 static JSValue js_create_cube(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
-   return js_create_mesh(ctx, this_val, argc, argv, NOVA64_MESH_CUBE);
+   (void)this_val;
+   int handle = allocate_mesh(NOVA64_MESH_CUBE);
+   if (!handle)
+      return JS_ThrowInternalError(ctx, "Nova64 mesh table is full");
+
+   struct nova64_mesh *mesh = mesh_from_handle(handle);
+   if (!mesh)
+      return JS_NewInt32(ctx, handle);
+
+   if (argc >= 4 && JS_IsNumber(argv[0]) && JS_IsNumber(argv[1]) &&
+         JS_IsNumber(argv[2]) && JS_IsNumber(argv[3])) {
+      mesh->scale[0] = (float)clamp_double(fabs(double_from_js(ctx, argv[0], 1.0)), 0.001, 10000.0);
+      mesh->scale[1] = (float)clamp_double(fabs(double_from_js(ctx, argv[1], 1.0)), 0.001, 10000.0);
+      mesh->scale[2] = (float)clamp_double(fabs(double_from_js(ctx, argv[2], 1.0)), 0.001, 10000.0);
+      mesh->color = color_from_js(ctx, argv[3], mesh->color);
+      if (argc > 4)
+         set_position_from_js(ctx, argv[4], mesh->position);
+   } else if (argc >= 2 && JS_IsNumber(argv[0])) {
+      double size = clamp_double(fabs(double_from_js(ctx, argv[0], 1.0)), 0.001, 10000.0);
+      mesh->scale[0] = (float)size;
+      mesh->scale[1] = (float)size;
+      mesh->scale[2] = (float)size;
+      mesh->color = color_from_js(ctx, argv[1], mesh->color);
+      if (argc > 2)
+         set_position_from_js(ctx, argv[2], mesh->position);
+   } else if (argc > 0) {
+      mesh->color = color_from_js(ctx, argv[0], mesh->color);
+   }
+   return JS_NewInt32(ctx, handle);
 }
 
 static JSValue js_create_sphere(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
-   return js_create_mesh(ctx, this_val, argc, argv, NOVA64_MESH_SPHERE);
+   (void)this_val;
+   int handle = allocate_mesh(NOVA64_MESH_SPHERE);
+   if (!handle)
+      return JS_ThrowInternalError(ctx, "Nova64 mesh table is full");
+
+   struct nova64_mesh *mesh = mesh_from_handle(handle);
+   if (!mesh)
+      return JS_NewInt32(ctx, handle);
+
+   if (argc >= 2 && JS_IsNumber(argv[0])) {
+      double radius = clamp_double(fabs(double_from_js(ctx, argv[0], 1.0)), 0.001, 10000.0);
+      mesh->scale[0] = (float)(radius * 2.0);
+      mesh->scale[1] = (float)(radius * 2.0);
+      mesh->scale[2] = (float)(radius * 2.0);
+      mesh->color = color_from_js(ctx, argv[1], mesh->color);
+      if (argc > 2)
+         set_position_from_js(ctx, argv[2], mesh->position);
+   } else if (argc > 0) {
+      mesh->color = color_from_js(ctx, argv[0], mesh->color);
+   }
+   return JS_NewInt32(ctx, handle);
 }
 
 static JSValue js_create_plane(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
@@ -1693,6 +1785,8 @@ static JSValue js_create_plane(JSContext *ctx, JSValueConst this_val, int argc, 
       mesh->scale[2] = (float)clamp_double(fabs(depth), 0.001, 10000.0);
       if (argc > 2)
          mesh->color = color_from_js(ctx, argv[2], mesh->color);
+      if (argc > 3)
+         set_position_from_js(ctx, argv[3], mesh->position);
    } else if (argc > 0) {
       mesh->color = color_from_js(ctx, argv[0], mesh->color);
    }

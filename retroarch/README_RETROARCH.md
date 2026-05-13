@@ -158,7 +158,10 @@ Storage:
 3D command bridge:
 
 - `createCube(color)`
+- `createCube(size, color, position)`
+- `createCube(width, height, depth, color, position)`
 - `createSphere(color)`
+- `createSphere(radius, color, position)`
 - `createPlane(color)`
 - `createPlane(width, depth, color)`
 - `destroyMesh(handle)`

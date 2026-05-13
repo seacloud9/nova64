@@ -160,6 +160,8 @@ Areas:
   - Primitive argument parity for cubes, planes, spheres, capsules/cylinders where
     practical, transform helpers, object lookup, material assignment, mesh
     destruction, and predictable handle lifecycle.
+  - Cube size/box dimensions and sphere radius now map to native mesh scale, with
+    array/object position arguments for cube, sphere, and plane creation.
   - Plane dimensions are now accepted directly through
     `createPlane(width, depth, color)` while preserving `createPlane(color)`.
 - Expand camera and lighting:

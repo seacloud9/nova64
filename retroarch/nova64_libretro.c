@@ -240,6 +240,7 @@ struct nova64_audio_voice {
    uint32_t noise_state;
    /* PCM playback fields (wave == NOVA64_AUDIO_PCM) */
    const int16_t *pcm_data;
+   const struct nova64_package_asset *pcm_asset; /* source asset for stop-by-path */
    size_t pcm_frames;   /* total sample frames */
    size_t pcm_channels; /* 1 or 2 */
    double pcm_rate;     /* source sample rate */
@@ -422,6 +423,10 @@ static bool pressed_buttons[NOVA64_BUTTON_COUNT];
 #define NOVA64_KEY_TABLE_SIZE 512
 static bool key_held[NOVA64_KEY_TABLE_SIZE];
 static bool key_prev_held[NOVA64_KEY_TABLE_SIZE];
+
+/* 2D clip region (0,0,0,0 = no clip) */
+static int clip_x, clip_y, clip_w, clip_h;
+static bool clip_active;
 
 /* Mouse */
 #define NOVA64_MOUSE_X       0
@@ -1119,6 +1124,10 @@ static void set_pixel(int x, int y, uint32_t color)
       return;
    if (x < 0 || y < 0 || x >= NOVA64_WIDTH || y >= NOVA64_HEIGHT)
       return;
+   if (clip_active) {
+      if (x < clip_x || y < clip_y || x >= clip_x + clip_w || y >= clip_y + clip_h)
+         return;
+   }
    framebuffer[(size_t)y * NOVA64_WIDTH + (size_t)x] = color;
 }
 
@@ -2195,6 +2204,37 @@ static JSValue js_spr(JSContext *ctx, JSValueConst this_val, int argc, JSValueCo
    return JS_NewBool(ctx, true);
 }
 
+static JSValue js_set_clip(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 4) { clip_active = false; return JS_UNDEFINED; }
+   clip_x = int_from_js(ctx, argv[0], 0);
+   clip_y = int_from_js(ctx, argv[1], 0);
+   clip_w = int_from_js(ctx, argv[2], 0);
+   clip_h = int_from_js(ctx, argv[3], 0);
+   clip_active = (clip_w > 0 && clip_h > 0);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_clear_clip(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val; (void)argc; (void)argv;
+   clip_active = false;
+   return JS_UNDEFINED;
+}
+
+static JSValue js_get_frame(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val; (void)argc; (void)argv;
+   return JS_NewInt64(ctx, (int64_t)frame_count);
+}
+
+static JSValue js_get_time(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val; (void)argc; (void)argv;
+   return JS_NewFloat64(ctx, (double)frame_count / NOVA64_FPS);
+}
+
 static int button_index_from_js(JSContext *ctx, JSValueConst value)
 {
    if (JS_IsNumber(value)) {
@@ -2923,12 +2963,47 @@ static JSValue js_play_sound(JSContext *ctx, JSValueConst this_val, int argc, JS
    voice->wave        = NOVA64_AUDIO_PCM;
    voice->vol         = clamp_double(vol, 0.0, 1.0);
    voice->pcm_data    = pcm;
+   voice->pcm_asset   = asset;
    voice->pcm_frames  = frames;
    voice->pcm_channels= channels;
    voice->pcm_rate    = rate;
    voice->pcm_pos     = 0.0;
    voice->pcm_loop    = loop;
    return JS_NewBool(ctx, true);
+}
+
+static JSValue js_stop_sound(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 1 || JS_IsUndefined(argv[0]) || JS_IsNull(argv[0])) {
+      /* No args: stop all PCM voices */
+      for (size_t i = 0; i < NOVA64_AUDIO_MAX_VOICES; i++) {
+         if (audio_voices[i].active && audio_voices[i].wave == NOVA64_AUDIO_PCM)
+            audio_voices[i].active = false;
+      }
+      return JS_NewBool(ctx, true);
+   }
+   const char *path = JS_ToCString(ctx, argv[0]);
+   if (!path) return JS_NewBool(ctx, false);
+   const struct nova64_package_asset *asset = find_package_asset(path);
+   JS_FreeCString(ctx, path);
+   bool stopped = false;
+   for (size_t i = 0; i < NOVA64_AUDIO_MAX_VOICES; i++) {
+      if (audio_voices[i].active && audio_voices[i].wave == NOVA64_AUDIO_PCM &&
+          audio_voices[i].pcm_asset == asset) {
+         audio_voices[i].active = false;
+         stopped = true;
+      }
+   }
+   return JS_NewBool(ctx, stopped);
+}
+
+static JSValue js_stop_all_sounds(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val; (void)argc; (void)argv;
+   for (size_t i = 0; i < NOVA64_AUDIO_MAX_VOICES; i++)
+      audio_voices[i].active = false;
+   return JS_UNDEFINED;
 }
 
 static JSValue js_sfx(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
@@ -3495,6 +3570,8 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, draw, "print", js_draw_print, 5);
    set_function(ctx, draw, "textWidth", js_text_width, 1);
    set_function(ctx, draw, "spr", js_spr, 9);
+   set_function(ctx, draw, "setClip", js_set_clip, 4);
+   set_function(ctx, draw, "clearClip", js_clear_clip, 0);
 
    set_function(ctx, input, "btn", js_btn, 1);
    set_function(ctx, input, "btnp", js_btnp, 1);
@@ -3560,6 +3637,8 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, audio, "sfx", js_sfx, 2);
    set_function(ctx, audio, "setVolume", js_set_volume, 1);
    set_function(ctx, audio, "playSound", js_play_sound, 3);
+   set_function(ctx, audio, "stopSound", js_stop_sound, 1);
+   set_function(ctx, audio, "stopAll", js_stop_all_sounds, 0);
 
    set_function(ctx, assets, "has", js_assets_has, 1);
    set_function(ctx, assets, "size", js_assets_size, 1);
@@ -3601,6 +3680,9 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, post, "getState", js_post_get_state, 0);
    JS_SetPropertyStr(ctx, nova64, "post", post);
 
+   set_function(ctx, nova64, "frame", js_get_frame, 0);
+   set_function(ctx, nova64, "time", js_get_time, 0);
+
    JS_SetPropertyStr(ctx, global, "nova64", nova64);
 
    set_function(ctx, global, "rgba8", js_rgba8, 4);
@@ -3613,6 +3695,11 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, global, "print", js_draw_print, 5);
    set_function(ctx, global, "textWidth", js_text_width, 1);
    set_function(ctx, global, "spr", js_spr, 9);
+   set_function(ctx, global, "setClip", js_set_clip, 4);
+   set_function(ctx, global, "clearClip", js_clear_clip, 0);
+   set_function(ctx, global, "playSound", js_play_sound, 3);
+   set_function(ctx, global, "stopSound", js_stop_sound, 1);
+   set_function(ctx, global, "stopAllSounds", js_stop_all_sounds, 0);
    set_function(ctx, global, "btn", js_btn, 1);
    set_function(ctx, global, "btnp", js_btnp, 1);
    set_function(ctx, global, "key", js_key, 1);
@@ -5432,6 +5519,7 @@ void RETRO_CALLCONV retro_reset(void)
    mouse_rel_x = 0; mouse_rel_y = 0;
    memset(mouse_btns, 0, sizeof(mouse_btns));
    memset(mouse_prev_btns, 0, sizeof(mouse_prev_btns));
+   clip_active = false;
    frame_count = 0;
    clear_framebuffer(rgba8(0, 0, 0, 255));
    reset_scene_state();

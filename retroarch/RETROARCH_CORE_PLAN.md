@@ -156,6 +156,12 @@ Areas:
 - Complete the cart-facing 2D draw API:
   - Text alignment, richer font paths, sprites, sprite sheets, tilemaps, clipping,
     camera offsets, palette helpers, and deterministic framebuffer behavior.
+  - `setClip(x, y, w, h)` and `clearClip()` apply a per-frame pixel-level clip
+    region to all 2D draw operations via the `set_pixel` path. `nova64.frame()`
+    and `nova64.time()` expose the frame counter and elapsed seconds.
+    `stopSound(path)` and `stopAllSounds()` stop active PCM audio voices.
+    `29-runtime-utils.js` covers clip arc rendering, frame/time advancement,
+    and stopAllSounds in a visual conformance cart.
   - `circ(cx, cy, r, color)` and `circfill(cx, cy, r, color)` now draw circles
     via Bresenham's midpoint algorithm. `print` accepts an optional 5th alignment
     argument: `'left'` (default), `'center'`, or `'right'`. `textWidth(text)`

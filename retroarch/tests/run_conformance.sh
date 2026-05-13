@@ -179,6 +179,23 @@ run_visual_case "26 draw2d" "26-draw2d" "retroarch/conformance/26-draw2d.js" "5c
 run_visual_case "27 sprite" "27-sprite" "${PACKAGE_DIR}/sprite.nova" "f6ca57a33e1c1b09"
 run_audio_case "28 play sound" "${PACKAGE_DIR}/play-sound.nova" "c731ab8067d773d7" "1e5796287c9800a7"
 run_visual_case "29 runtime utils" "29-runtime-utils" "retroarch/conformance/29-runtime-utils.js" "14ba8d2d1685cbbf"
+
+run_showcase_case() {
+  local label="$1"
+  local name="$2"
+  local cart="$3"
+  local checksum="$4"
+  local audio_checksum="$5"
+  local ppm="${SCREENSHOT_DIR}/${name}.ppm"
+  local png="${SCREENSHOT_DIR}/${name}.png"
+  echo "== ${label}"
+  NOVA64_SAVE_DIR="${SAVE_DIR}" "${HARNESS}" "${CORE}" "${cart}" \
+    --key space --expect "${checksum}" --expect-audio "${audio_checksum}" --capture "${ppm}"
+  python3 retroarch/tests/ppm_to_png.py "${ppm}" "${png}"
+  rm -f "${ppm}"
+}
+
+run_showcase_case "30 showcase" "30-showcase" "retroarch/conformance/30-showcase.js" "8edfc5576738b943" "a96055c2163c4413"
 run_visual_case "19 texture" "19-texture" "retroarch/conformance/19-texture.js" "f4fd3acbca0331b4"
 run_visual_case "20 post" "20-post" "retroarch/conformance/20-post.js" "75a3d27c9048e5b0"
 run_visual_case "21 post-effects" "21-post-effects" "retroarch/conformance/21-post-effects.js" "3a18d91989ad8ded"

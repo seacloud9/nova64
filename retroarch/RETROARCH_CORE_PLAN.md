@@ -226,10 +226,17 @@ Areas:
     `24-storage-keys.js` covers save/has/keys/clear round-trips.
 - Keep every new API covered by narrow conformance carts before adding broader
   showcase carts.
+- Multi-API showcase: `30-showcase.js` combines 3D scene (cube/sphere/plane), 2D
+  overlay HUD, keyboard input (space toggles CRT post-effect), mouse (pans cube),
+  procedural audio (`sfx`), persistent storage (`saveJSON`/`loadJSON`), post
+  effects (vignette + CRT), and runtime utilities (`nova64.frame()`). The cart
+  runs in the harness with `--key space` injection and passes framebuffer and audio
+  checksums.
 
 Exit criteria:
 
 - A representative browser demo cart runs in RetroArch without browser-only shims.
+  `30-showcase.js` demonstrates cross-API cart portability without browser-only shims.
 - Conformance covers all stable cart-facing API families.
 - Command logs capture enough runtime state to debug parity regressions headlessly.
 

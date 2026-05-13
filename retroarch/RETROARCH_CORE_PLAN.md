@@ -192,6 +192,11 @@ Areas:
 - Expand storage:
   - Namespaces, key listing, clear operations, quota/error behavior, and migration
     notes for save-directory layouts.
+  - `nova64.storage.has(key)`, `nova64.storage.keys()`, and
+    `nova64.storage.clear()` are now implemented via POSIX directory scanning.
+    `keys()` returns the sanitized key names for all stored entries belonging to
+    the current cart. `clear()` removes them all and returns the count.
+    `24-storage-keys.js` covers save/has/keys/clear round-trips.
 - Keep every new API covered by narrow conformance carts before adding broader
   showcase carts.
 

@@ -10,6 +10,7 @@
 #ifdef _WIN32
 #include <direct.h>
 #else
+#include <dirent.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #endif
@@ -497,6 +498,8 @@ static bool scene_has_visible_meshes(void);
 static void render_software_scene(void);
 static char *read_file_to_memory(const char *path, size_t *out_size);
 static bool storage_path_for_key(const char *key, char *out, size_t out_size);
+static bool storage_root_dir(char *out, size_t out_size);
+static void update_storage_cart_id(void);
 static void audio_mix_frame(void);
 static void reset_audio_state(void);
 static const struct nova64_package_asset *find_package_asset(const char *path);
@@ -3014,6 +3017,116 @@ static JSValue js_storage_delete_data(JSContext *ctx, JSValueConst this_val, int
    return JS_NewBool(ctx, remove(path) == 0);
 }
 
+static JSValue js_storage_has_data(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 1)
+      return JS_NewBool(ctx, false);
+   const char *key = JS_ToCString(ctx, argv[0]);
+   if (!key)
+      return JS_NewBool(ctx, false);
+   char path[2048];
+   bool ok = storage_path_for_key(key, path, sizeof(path));
+   JS_FreeCString(ctx, key);
+   if (!ok)
+      return JS_NewBool(ctx, false);
+   FILE *f = fopen(path, "rb");
+   if (f) { fclose(f); return JS_NewBool(ctx, true); }
+   return JS_NewBool(ctx, false);
+}
+
+#ifndef _WIN32
+static JSValue js_storage_keys(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val; (void)argc; (void)argv;
+   JSValue arr = JS_NewArray(ctx);
+   uint32_t idx = 0;
+
+   if (!storage_cart_id[0])
+      update_storage_cart_id();
+   const char *cid = storage_cart_id[0] ? storage_cart_id : "cart";
+   size_t cid_len = strlen(cid);
+
+   char root[1200];
+   if (!storage_root_dir(root, sizeof(root)))
+      return arr;
+
+   DIR *dir = opendir(root);
+   if (!dir)
+      return arr;
+
+   struct dirent *entry;
+   while ((entry = readdir(dir)) != NULL) {
+      const char *name = entry->d_name;
+      size_t name_len = strlen(name);
+      /* Match: {cid}_{key}.json */
+      if (name_len <= cid_len + 1 + 5)
+         continue;
+      if (strncmp(name, cid, cid_len) != 0 || name[cid_len] != '_')
+         continue;
+      if (strcmp(name + name_len - 5, ".json") != 0)
+         continue;
+      /* Extract the key portion */
+      const char *key_start = name + cid_len + 1;
+      size_t key_len = name_len - cid_len - 1 - 5;
+      JSValue k = JS_NewStringLen(ctx, key_start, key_len);
+      JS_SetPropertyUint32(ctx, arr, idx++, k);
+   }
+   closedir(dir);
+   return arr;
+}
+
+static JSValue js_storage_clear(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val; (void)argc; (void)argv;
+   if (!storage_cart_id[0])
+      update_storage_cart_id();
+   const char *cid = storage_cart_id[0] ? storage_cart_id : "cart";
+   size_t cid_len = strlen(cid);
+
+   char root[1200];
+   if (!storage_root_dir(root, sizeof(root)))
+      return JS_NewInt32(ctx, 0);
+
+   DIR *dir = opendir(root);
+   if (!dir)
+      return JS_NewInt32(ctx, 0);
+
+   int count = 0;
+   struct dirent *entry;
+   while ((entry = readdir(dir)) != NULL) {
+      const char *name = entry->d_name;
+      size_t name_len = strlen(name);
+      if (name_len <= cid_len + 1 + 5)
+         continue;
+      if (strncmp(name, cid, cid_len) != 0 || name[cid_len] != '_')
+         continue;
+      if (strcmp(name + name_len - 5, ".json") != 0)
+         continue;
+      char fpath[2048];
+      int plen = snprintf(fpath, sizeof(fpath), "%s%s%s", root, NOVA64_PATH_SEPARATOR, name);
+      if (plen > 0 && (size_t)plen < sizeof(fpath)) {
+         if (remove(fpath) == 0)
+            count++;
+      }
+   }
+   closedir(dir);
+   return JS_NewInt32(ctx, count);
+}
+#else
+/* Windows stubs — directory scanning not implemented for now */
+static JSValue js_storage_keys(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val; (void)argc; (void)argv;
+   return JS_NewArray(ctx);
+}
+static JSValue js_storage_clear(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val; (void)argc; (void)argv;
+   return JS_NewInt32(ctx, 0);
+}
+#endif
+
 static void set_function(JSContext *ctx, JSValue object, const char *name, JSCFunction *fn, int length)
 {
    JS_SetPropertyStr(ctx, object, name, JS_NewCFunction(ctx, fn, name, length));
@@ -3112,6 +3225,9 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, storage, "saveJSON", js_storage_save_data, 2);
    set_function(ctx, storage, "loadJSON", js_storage_load_data, 2);
    set_function(ctx, storage, "remove", js_storage_delete_data, 1);
+   set_function(ctx, storage, "has", js_storage_has_data, 1);
+   set_function(ctx, storage, "keys", js_storage_keys, 0);
+   set_function(ctx, storage, "clear", js_storage_clear, 0);
 
    JS_SetPropertyStr(ctx, nova64, "draw", draw);
    JS_SetPropertyStr(ctx, nova64, "input", input);
@@ -3204,6 +3320,9 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, global, "saveJSON", js_storage_save_data, 2);
    set_function(ctx, global, "loadJSON", js_storage_load_data, 2);
    set_function(ctx, global, "remove", js_storage_delete_data, 1);
+   set_function(ctx, global, "hasData", js_storage_has_data, 1);
+   set_function(ctx, global, "storageKeys", js_storage_keys, 0);
+   set_function(ctx, global, "storageClear", js_storage_clear, 0);
 
    JS_FreeValue(ctx, global);
    return true;
@@ -4607,6 +4726,16 @@ static void refresh_storage_save_directory(void)
    snprintf(storage_save_directory, sizeof(storage_save_directory), ".");
 }
 
+static bool storage_root_dir(char *out, size_t out_size)
+{
+   if (!out || out_size == 0)
+      return false;
+   if (!storage_save_directory[0])
+      refresh_storage_save_directory();
+   int len = snprintf(out, out_size, "%s%snova64", storage_save_directory, NOVA64_PATH_SEPARATOR);
+   return len >= 0 && (size_t)len < out_size;
+}
+
 static bool storage_path_for_key(const char *key, char *out, size_t out_size)
 {
    if (!key || !key[0] || !out || out_size == 0)
@@ -4623,9 +4752,7 @@ static bool storage_path_for_key(const char *key, char *out, size_t out_size)
       update_storage_cart_id();
 
    char root[1200];
-   int root_len = snprintf(root, sizeof(root), "%s%s%s", storage_save_directory,
-         NOVA64_PATH_SEPARATOR, "nova64");
-   if (root_len < 0 || (size_t)root_len >= sizeof(root))
+   if (!storage_root_dir(root, sizeof(root)))
       return false;
    if (!make_directory_if_missing(storage_save_directory) || !make_directory_if_missing(root))
       return false;

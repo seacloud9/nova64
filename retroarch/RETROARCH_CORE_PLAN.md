@@ -487,12 +487,13 @@ Performance profiling done:
     lightweight per-label CPU timing. Harness `--perf` enables unload-time perf
     logging. `40-perf.js` covers timer reporting and clearing.
 
+JS error reporting done:
+
+  - Exceptions now log the source line for the first stack frame when the source
+    is available from the active cart or staged package assets.
+
 Still needed:
 
-- Better JS error reporting:
-  - Line numbers and stack traces from QuickJS exceptions currently show internal
-    bytecode offsets. Map them back to cart source lines for debuggable errors.
-  - Print the errant line of source code alongside the error message.
 - RetroArch core info content database matching on manifest metadata fields.
 
 ### 8F: Asset Pipeline Expansion
@@ -512,8 +513,9 @@ Still needed:
   - `NOVA64_HOT_RELOAD=1` env flag: re-read cart file from disk on cart reset
     so incremental edit cycles don't require a full RetroArch restart.
 - Asset size limits and quota:
-  - Enforce a configurable maximum total asset size to prevent OOM on constrained
-    devices. Report quota via `nova64.assets.quota()`.
+  - Configurable `NOVA64_ASSET_QUOTA` limit prevents package asset staging from
+    exceeding the quota. `nova64.assets.quota()` reports used/max/count/missing
+    and rejected asset counts. `41-asset-quota.js` covers rejection.
 
 ### 8G: Storage Expansion
 

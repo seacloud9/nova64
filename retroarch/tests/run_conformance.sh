@@ -101,6 +101,15 @@ with ZipFile(package_dir / "meta.nova", "w", ZIP_DEFLATED) as package:
         '{"name":"meta-cart","title":"Meta Cart","author":"Nova Team","version":"1.2.3","main":"src/main.js"}\n',
     )
 
+with ZipFile(package_dir / "asset-quota.nova", "w", ZIP_DEFLATED) as package:
+    package.write("retroarch/conformance/41-asset-quota.js", "src/main.js")
+    package.writestr("assets/small.txt", "small")
+    package.writestr("assets/large.txt", "this is too large")
+    package.writestr(
+        "manifest.json",
+        '{"name":"asset-quota","main":"src/main.js","assets":["assets/small.txt","assets/large.txt"]}\n',
+    )
+
 # 440Hz sine wave, 0.25s, int16 LE mono at 44100Hz
 import math, struct
 beep_frames = int(44100 * 0.25)
@@ -337,6 +346,7 @@ run_visual_case "37 multimodule" "37-multimodule" "${PACKAGE_DIR}/multimodule.no
 run_seed_visual_case "38 seeded rng" "38-seeded-rng" "retroarch/conformance/38-seeded-rng.js" "2026" "d593029700fd611b"
 run_visual_case "39 meta" "39-meta" "${PACKAGE_DIR}/meta.nova" "5847ee6e3ae4d065"
 run_visual_case "40 perf" "40-perf" "retroarch/conformance/40-perf.js" "4c3959dfa4b4a5ff"
+NOVA64_ASSET_QUOTA=8 run_visual_case "41 asset quota" "41-asset-quota" "${PACKAGE_DIR}/asset-quota.nova" "e970ff560d9059da"
 run_visual_case "19 texture" "19-texture" "retroarch/conformance/19-texture.js" "f4fd3acbca0331b4"
 run_visual_case "20 post" "20-post" "retroarch/conformance/20-post.js" "75a3d27c9048e5b0"
 run_visual_case "21 post-effects" "21-post-effects" "retroarch/conformance/21-post-effects.js" "3a18d91989ad8ded"

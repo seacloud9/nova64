@@ -206,10 +206,11 @@ nova64.assets.readText(path [, fallback])
 nova64.assets.readJSON(path [, fallback])
 nova64.assets.readBytes(path)     // Uint8Array
 nova64.assets.list()              // array of asset paths from manifest
+nova64.assets.quota()             // { used, max, count, missing, rejected }
 ```
 
 Top-level aliases: `assetHas`, `assetSize`, `readAssetText`, `readAssetJSON`,
-`readAssetBytes`, `listAssets`.
+`readAssetBytes`, `listAssets`, `assetQuota`.
 
 ### Metadata And Perf
 
@@ -384,3 +385,4 @@ These browser-side Nova64 or Three.js features are not implemented:
 | `38-seeded-rng.js` | harness initial RNG seed injection |
 | `39-meta.js` | manifest metadata APIs |
 | `40-perf.js` | perf begin/end/report/clear |
+| `41-asset-quota.js` | asset quota reporting and rejection |

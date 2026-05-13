@@ -37,6 +37,7 @@
 #define NOVA64_ZIP_MAX_EOCD_SEARCH 65557U
 #define NOVA64_MAX_PACKAGE_ASSETS 128
 #define NOVA64_MAX_PERF_TIMERS 32
+#define NOVA64_DEFAULT_ASSET_QUOTA_BYTES (16U * 1024U * 1024U)
 #ifdef _WIN32
 #define NOVA64_PATH_SEPARATOR "\\"
 #else
@@ -423,6 +424,8 @@ static char package_manifest_main[256];
 static size_t package_manifest_asset_count;
 static size_t package_manifest_missing_asset_count;
 static size_t package_manifest_asset_bytes;
+static size_t package_asset_quota_bytes = NOVA64_DEFAULT_ASSET_QUOTA_BYTES;
+static size_t package_asset_quota_rejected_count;
 static struct nova64_package_asset package_assets[NOVA64_MAX_PACKAGE_ASSETS];
 static struct nova64_perf_timer perf_timers[NOVA64_MAX_PERF_TIMERS];
 static char renderer_command_log_path[1024];
@@ -2120,6 +2123,8 @@ static size_t mesh_triangle_count(enum nova64_mesh_type type)
    }
 }
 
+static void log_exception_source_context(const char *stack_text);
+
 static void js_log_exception(JSContext *ctx, const char *where)
 {
    JSValue exception = JS_GetException(ctx);
@@ -2140,11 +2145,87 @@ static void js_log_exception(JSContext *ctx, const char *where)
             log_cb(RETRO_LOG_ERROR, "%s\n", stack_text);
          else
             fprintf(stderr, "%s\n", stack_text);
+         log_exception_source_context(stack_text);
          JS_FreeCString(ctx, stack_text);
       }
    }
    JS_FreeValue(ctx, stack);
    JS_FreeValue(ctx, exception);
+}
+
+static bool source_line_from_text(const char *source, size_t source_size, int line,
+      const char **out_start, size_t *out_len)
+{
+   if (!source || line <= 0 || !out_start || !out_len)
+      return false;
+   const char *cursor = source;
+   const char *end = source + source_size;
+   int current = 1;
+   while (cursor < end && current < line) {
+      if (*cursor++ == '\n')
+         current++;
+   }
+   if (current != line)
+      return false;
+   const char *start = cursor;
+   while (cursor < end && *cursor != '\n' && *cursor != '\r')
+      cursor++;
+   *out_start = start;
+   *out_len = (size_t)(cursor - start);
+   return true;
+}
+
+static bool lookup_source_line(const char *filename, int line, const char **out_start, size_t *out_len)
+{
+   if (!filename || line <= 0)
+      return false;
+   const struct nova64_package_asset *asset = find_package_asset(filename);
+   if (asset)
+      return source_line_from_text((const char *)asset->data, asset->size, line, out_start, out_len);
+   if ((package_manifest_main[0] && !strcmp(filename, package_manifest_main)) ||
+         (cart_path[0] && !strcmp(filename, cart_path)) ||
+         strstr(filename, "<nova64-cart>")) {
+      return source_line_from_text(cart_content, cart_size, line, out_start, out_len);
+   }
+   return false;
+}
+
+static void log_exception_source_context(const char *stack_text)
+{
+   if (!stack_text)
+      return;
+   const char *open = strchr(stack_text, '(');
+   const char *close = open ? strchr(open, ')') : NULL;
+   if (!open || !close || close <= open + 1)
+      return;
+   char location[512];
+   size_t len = (size_t)(close - open - 1);
+   if (len >= sizeof(location))
+      len = sizeof(location) - 1;
+   memcpy(location, open + 1, len);
+   location[len] = '\0';
+
+   char *last_colon = strrchr(location, ':');
+   if (!last_colon)
+      return;
+   *last_colon = '\0';
+   char *line_colon = strrchr(location, ':');
+   if (!line_colon)
+      return;
+   *line_colon = '\0';
+   int line = (int)strtol(line_colon + 1, NULL, 10);
+   const char *source_line = NULL;
+   size_t source_len = 0;
+   if (!lookup_source_line(location, line, &source_line, &source_len))
+      return;
+   if (source_len > 160)
+      source_len = 160;
+   if (log_cb)
+      log_cb(RETRO_LOG_ERROR, "[nova64] source %s:%d: %.*s\n", location, line,
+            (int)source_len, source_line);
+   else
+      fprintf(stderr, "[nova64] source %s:%d: %.*s\n", location, line,
+            (int)source_len, source_line);
 }
 
 static JSValue js_console_log(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
@@ -3957,6 +4038,18 @@ static JSValue js_assets_list(JSContext *ctx, JSValueConst this_val, int argc, J
    return list;
 }
 
+static JSValue js_assets_quota(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val; (void)argc; (void)argv;
+   JSValue quota = JS_NewObject(ctx);
+   JS_SetPropertyStr(ctx, quota, "used", JS_NewInt64(ctx, (int64_t)package_manifest_asset_bytes));
+   JS_SetPropertyStr(ctx, quota, "max", JS_NewInt64(ctx, (int64_t)package_asset_quota_bytes));
+   JS_SetPropertyStr(ctx, quota, "count", JS_NewUint32(ctx, (uint32_t)package_manifest_asset_count));
+   JS_SetPropertyStr(ctx, quota, "missing", JS_NewUint32(ctx, (uint32_t)package_manifest_missing_asset_count));
+   JS_SetPropertyStr(ctx, quota, "rejected", JS_NewUint32(ctx, (uint32_t)package_asset_quota_rejected_count));
+   return quota;
+}
+
 static JSValue js_storage_save_data(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
    (void)this_val;
@@ -4267,6 +4360,7 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, assets, "readJSON", js_assets_read_json, 2);
    set_function(ctx, assets, "readBytes", js_assets_read_bytes, 1);
    set_function(ctx, assets, "list", js_assets_list, 0);
+   set_function(ctx, assets, "quota", js_assets_quota, 0);
 
    set_function(ctx, storage, "saveData", js_storage_save_data, 2);
    set_function(ctx, storage, "loadData", js_storage_load_data, 2);
@@ -4430,6 +4524,7 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, global, "readAssetJSON", js_assets_read_json, 2);
    set_function(ctx, global, "readAssetBytes", js_assets_read_bytes, 1);
    set_function(ctx, global, "listAssets", js_assets_list, 0);
+   set_function(ctx, global, "assetQuota", js_assets_quota, 0);
    set_function(ctx, global, "saveData", js_storage_save_data, 2);
    set_function(ctx, global, "loadData", js_storage_load_data, 2);
    set_function(ctx, global, "deleteData", js_storage_delete_data, 1);
@@ -6092,9 +6187,15 @@ static void parse_manifest_asset_list_metadata(const char *manifest, size_t mani
          char *asset_data = NULL;
          size_t asset_size = 0;
          if (extract_zip_named_entry(archive, archive_size, entry_count, central_offset,
-               path, &asset_data, &asset_size) && store_package_asset(path, asset_data, asset_size)) {
-            package_manifest_asset_count++;
-            package_manifest_asset_bytes += asset_size;
+               path, &asset_data, &asset_size)) {
+            if (package_manifest_asset_bytes + asset_size <= package_asset_quota_bytes &&
+                  store_package_asset(path, asset_data, asset_size)) {
+               package_manifest_asset_count++;
+               package_manifest_asset_bytes += asset_size;
+            } else {
+               free(asset_data);
+               package_asset_quota_rejected_count++;
+            }
          } else {
             free(asset_data);
             package_manifest_missing_asset_count++;
@@ -6110,6 +6211,14 @@ static void parse_manifest_asset_list_metadata(const char *manifest, size_t mani
 static void reset_package_manifest_metadata(void)
 {
    clear_package_assets();
+   const char *quota_text = getenv("NOVA64_ASSET_QUOTA");
+   package_asset_quota_bytes = NOVA64_DEFAULT_ASSET_QUOTA_BYTES;
+   if (quota_text && quota_text[0]) {
+      char *end = NULL;
+      unsigned long long value = strtoull(quota_text, &end, 10);
+      if (end && *end == '\0')
+         package_asset_quota_bytes = (size_t)value;
+   }
    package_manifest_name[0] = '\0';
    package_manifest_title[0] = '\0';
    package_manifest_author[0] = '\0';
@@ -6118,6 +6227,7 @@ static void reset_package_manifest_metadata(void)
    package_manifest_asset_count = 0;
    package_manifest_missing_asset_count = 0;
    package_manifest_asset_bytes = 0;
+   package_asset_quota_rejected_count = 0;
 }
 
 static bool extract_nova_code_js(const char *archive_text, size_t archive_size, char **out_source, size_t *out_size)

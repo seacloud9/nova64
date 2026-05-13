@@ -91,7 +91,9 @@ option. The harness also accepts `--renderer opengles3|vulkan12`.
 - `.js`: supported as the primary development cart format.
 - `.nova`: kept as a compatibility extension. Raw JS payloads execute directly;
   zip-style `.nova` packages prefer `manifest.json`'s `"main"` path, then fall
-  back to `code.js`, `game/code.js`, or `src/code.js`.
+  back to `code.js`, `game/code.js`, or `src/code.js`. Package manifests now stage
+  `name`, `main`, and safe `assets: []` path metadata for command-log
+  conformance; full asset loading remains a later milestone.
 
 ## Implemented Cart APIs
 

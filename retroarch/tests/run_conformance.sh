@@ -27,6 +27,15 @@ with ZipFile(package_dir / "cube-fallback.nova", "w", ZIP_DEFLATED) as package:
 with ZipFile(package_dir / "cube-manifest.nova", "w", ZIP_DEFLATED) as package:
     package.write("retroarch/conformance/06-cube.js", "src/main.js")
     package.writestr("manifest.json", '{"name":"cube-manifest","main":"src/main.js"}\n')
+
+with ZipFile(package_dir / "asset-manifest.nova", "w", ZIP_DEFLATED) as package:
+    package.write("retroarch/conformance/06-cube.js", "src/main.js")
+    package.writestr("assets/palette.bin", b"nova64\n")
+    package.writestr("textures/checker.rgba", b"rgba\n")
+    package.writestr(
+        "manifest.json",
+        '{"name":"asset-manifest","main":"src/main.js","assets":["assets/palette.bin","textures/checker.rgba"]}\n',
+    )
 PY
 
 run_case() {
@@ -71,5 +80,6 @@ run_command_log_case "10-lighting" "retroarch/conformance/10-lighting.js" "35413
 run_command_log_case "06-cube-vulkan12" "retroarch/conformance/06-cube.js" "e1b52dec66dd3bfc13c7d65d620c3d46d1d16f210ac366a4fe1575076207a050" "vulkan12"
 run_case "nova fallback" "${PACKAGE_DIR}/cube-fallback.nova" "53584f0993f3ff6a"
 run_case "nova manifest main" "${PACKAGE_DIR}/cube-manifest.nova" "53584f0993f3ff6a"
+run_command_log_case "nova-asset-manifest" "${PACKAGE_DIR}/asset-manifest.nova" "e6155762859c730a8796ad9de88e672dfaa89de75dec9b5ea312ec7a3e09d234"
 
 echo "Conformance passed."

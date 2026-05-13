@@ -255,6 +255,9 @@ static uint32_t framebuffer_clear_color;
 static char *cart_content;
 static size_t cart_size;
 static char cart_path[1024];
+static char package_manifest_name[128];
+static char package_manifest_main[256];
+static size_t package_manifest_asset_count;
 static char renderer_command_log_path[1024];
 static bool initialized;
 static uint64_t frame_count;
@@ -1097,6 +1100,10 @@ static void write_renderer_command_log(void)
    fprintf(file, "frame=%llu\n", (unsigned long long)frame_count);
    fprintf(file, "renderer preference=%s hardware_gles_requested=%d hardware_gles_active=%d\n",
          renderer_backend_name(renderer_preference), gles.requested ? 1 : 0, gles.active ? 1 : 0);
+   if (package_manifest_name[0] || package_manifest_main[0] || package_manifest_asset_count) {
+      fprintf(file, "package name=\"%s\" main=\"%s\" asset_count=%zu\n",
+            package_manifest_name, package_manifest_main, package_manifest_asset_count);
+   }
    fprintf(file, "camera position=%.4f,%.4f,%.4f target=%.4f,%.4f,%.4f fov=%.4f\n",
          camera_state.position[0], camera_state.position[1], camera_state.position[2],
          camera_state.target[0], camera_state.target[1], camera_state.target[2],
@@ -2413,37 +2420,106 @@ static bool extract_zip_named_entry(const uint8_t *archive, size_t archive_size,
    return false;
 }
 
-static bool parse_manifest_main(const char *manifest, size_t manifest_size, char *out_path, size_t out_path_size)
+static const char *skip_json_ws(const char *cursor, const char *end)
 {
-   if (!manifest || !out_path || out_path_size == 0)
+   while (cursor < end && (*cursor == ' ' || *cursor == '\t' || *cursor == '\r' || *cursor == '\n'))
+      cursor++;
+   return cursor;
+}
+
+static bool is_safe_package_path(const char *path)
+{
+   return path && path[0] && !strstr(path, "..") && path[0] != '/' && path[0] != '\\';
+}
+
+static bool parse_manifest_string_field(const char *manifest, size_t manifest_size,
+      const char *field, char *out, size_t out_size, bool require_safe_path)
+{
+   if (!manifest || !field || !out || out_size == 0)
       return false;
 
    const char *cursor = manifest;
    const char *end = manifest + manifest_size;
+   char key_pattern[64];
+   snprintf(key_pattern, sizeof(key_pattern), "\"%s\"", field);
    while (cursor < end) {
-      const char *key = strstr(cursor, "\"main\"");
+      const char *key = strstr(cursor, key_pattern);
       if (!key || key >= end)
          return false;
-      cursor = key + 6;
-      while (cursor < end && (*cursor == ' ' || *cursor == '\t' || *cursor == '\r' || *cursor == '\n'))
-         cursor++;
+      cursor = key + strlen(key_pattern);
+      cursor = skip_json_ws(cursor, end);
       if (cursor >= end || *cursor != ':')
          continue;
       cursor++;
-      while (cursor < end && (*cursor == ' ' || *cursor == '\t' || *cursor == '\r' || *cursor == '\n'))
-         cursor++;
+      cursor = skip_json_ws(cursor, end);
       if (cursor >= end || *cursor != '"')
          return false;
       cursor++;
       size_t len = 0;
-      while (cursor < end && *cursor != '"' && *cursor != '\\' && len + 1 < out_path_size)
-         out_path[len++] = *cursor++;
-      out_path[len] = '\0';
-      if (len == 0 || strstr(out_path, "..") || out_path[0] == '/' || out_path[0] == '\\')
+      while (cursor < end && *cursor != '"' && *cursor != '\\' && len + 1 < out_size)
+         out[len++] = *cursor++;
+      out[len] = '\0';
+      if (len == 0)
+         return false;
+      if (require_safe_path && !is_safe_package_path(out))
          return false;
       return true;
    }
    return false;
+}
+
+static bool parse_manifest_main(const char *manifest, size_t manifest_size, char *out_path, size_t out_path_size)
+{
+   return parse_manifest_string_field(manifest, manifest_size, "main", out_path, out_path_size, true);
+}
+
+static size_t parse_manifest_asset_list_count(const char *manifest, size_t manifest_size)
+{
+   if (!manifest)
+      return 0;
+
+   const char *end = manifest + manifest_size;
+   const char *key = strstr(manifest, "\"assets\"");
+   if (!key || key >= end)
+      return 0;
+   const char *cursor = skip_json_ws(key + 8, end);
+   if (cursor >= end || *cursor != ':')
+      return 0;
+   cursor = skip_json_ws(cursor + 1, end);
+   if (cursor >= end || *cursor != '[')
+      return 0;
+   cursor++;
+
+   size_t count = 0;
+   while (cursor < end) {
+      cursor = skip_json_ws(cursor, end);
+      if (cursor >= end || *cursor == ']')
+         break;
+      if (*cursor != '"')
+         return count;
+      cursor++;
+      char path[256];
+      size_t len = 0;
+      while (cursor < end && *cursor != '"' && *cursor != '\\' && len + 1 < sizeof(path))
+         path[len++] = *cursor++;
+      path[len] = '\0';
+      if (cursor >= end || *cursor != '"')
+         return count;
+      if (is_safe_package_path(path))
+         count++;
+      cursor++;
+      cursor = skip_json_ws(cursor, end);
+      if (cursor < end && *cursor == ',')
+         cursor++;
+   }
+   return count;
+}
+
+static void reset_package_manifest_metadata(void)
+{
+   package_manifest_name[0] = '\0';
+   package_manifest_main[0] = '\0';
+   package_manifest_asset_count = 0;
 }
 
 static bool extract_nova_code_js(const char *archive_text, size_t archive_size, char **out_source, size_t *out_size)
@@ -2476,7 +2552,11 @@ static bool extract_nova_code_js(const char *archive_text, size_t archive_size, 
    char manifest_main[256];
    if (extract_zip_named_entry(archive, archive_size, entry_count, central_offset,
          "manifest.json", &manifest, &manifest_size)) {
+      parse_manifest_string_field(manifest, manifest_size, "name",
+            package_manifest_name, sizeof(package_manifest_name), false);
+      package_manifest_asset_count = parse_manifest_asset_list_count(manifest, manifest_size);
       if (parse_manifest_main(manifest, manifest_size, manifest_main, sizeof(manifest_main))) {
+         snprintf(package_manifest_main, sizeof(package_manifest_main), "%s", manifest_main);
          bool loaded_main = extract_zip_named_entry(archive, archive_size, entry_count,
                central_offset, manifest_main, out_source, out_size);
          free(manifest);
@@ -2672,6 +2752,7 @@ bool RETRO_CALLCONV retro_load_game(const struct retro_game_info *info)
    cart_content = NULL;
    cart_size = 0;
    cart_path[0] = '\0';
+   reset_package_manifest_metadata();
 
    if (!info) {
       nova64_log_line(RETRO_LOG_ERROR, "[nova64] no game info provided");

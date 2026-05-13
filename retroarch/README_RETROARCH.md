@@ -160,6 +160,7 @@ Storage:
 - `createCube(color)`
 - `createSphere(color)`
 - `createPlane(color)`
+- `createPlane(width, depth, color)`
 - `destroyMesh(handle)`
 - `setPosition(handle, x, y, z)`
 - `setRotation(handle, x, y, z)`

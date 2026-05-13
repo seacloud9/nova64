@@ -144,6 +144,113 @@ Goals:
 - Persistent JSON cart storage is implemented as the first broader-runtime slice,
   using RetroArch save directories or `NOVA64_SAVE_DIR` in harness tests.
 
+## Milestone 6: Full Runtime Sweep
+
+Goal:
+
+Close the gap between the browser Nova64 runtime and the native RetroArch host so
+real carts can move across with minimal conditional code.
+
+Areas:
+
+- Complete the cart-facing 2D draw API:
+  - Text alignment, richer font paths, sprites, sprite sheets, tilemaps, clipping,
+    camera offsets, palette helpers, and deterministic framebuffer behavior.
+- Complete the cart-facing 3D scene API:
+  - Primitive argument parity for cubes, planes, spheres, capsules/cylinders where
+    practical, transform helpers, object lookup, material assignment, mesh
+    destruction, and predictable handle lifecycle.
+  - Plane dimensions are now accepted directly through
+    `createPlane(width, depth, color)` while preserving `createPlane(color)`.
+- Expand camera and lighting:
+  - Orthographic/perspective options, fog, point lights, directional light parity,
+    basic shadows where feasible, and command-log conformance for state changes.
+- Expand input:
+  - Keyboard mappings, mouse buttons, relative mouse movement where RetroArch
+    exposes it, touch/lightgun-style affordances if they map cleanly, and
+    deterministic harness injection.
+- Expand audio:
+  - Sampled asset playback, music/loop helpers, channel control, and volume/mute
+    state that survives normal cart reset semantics.
+- Expand assets and data:
+  - Bind manifest assets into texture/model/audio APIs, expose typed data helpers,
+    support safe package paths, and keep plain `.js` development carts ergonomic.
+- Expand storage:
+  - Namespaces, key listing, clear operations, quota/error behavior, and migration
+    notes for save-directory layouts.
+- Keep every new API covered by narrow conformance carts before adding broader
+  showcase carts.
+
+Exit criteria:
+
+- A representative browser demo cart runs in RetroArch without browser-only shims.
+- Conformance covers all stable cart-facing API families.
+- Command logs capture enough runtime state to debug parity regressions headlessly.
+
+## Milestone 7: Shaders And Post Processing
+
+Goal:
+
+Bring Nova64's visual identity into the native renderer with programmable effects
+that remain backend-neutral before Vulkan grows beyond the staged identity.
+
+Areas:
+
+- Define a cart-facing shader/effect API that can compile to GLES first and Vulkan
+  later without exposing backend-specific handles.
+- Add framebuffer/post passes:
+  - CRT mask/scanline, bloom, vignette, color grading, pixelation, posterize,
+    chromatic offset, blur, and palette/posterization effects.
+- Add material shader hooks:
+  - Basic unlit/lit variants, emissive color, texture sampling, UV transforms,
+    alpha/blend modes, and a safe subset for custom fragment logic.
+- Add render targets:
+  - Offscreen passes for 2D/3D composition, HUD overlays, feedback effects, and
+    deterministic fallback captures.
+- Add conformance:
+  - Command-log coverage for pass graphs and shader options.
+  - Software or checksum references for effect state where pixel-perfect hardware
+    parity is impractical.
+
+Exit criteria:
+
+- At least three post effects are usable from carts and validated in harness.
+- GLES owns the first implementation while the renderer boundary stays suitable
+  for Vulkan.
+- Effect state survives reset/load boundaries cleanly.
+
+## Milestone 8: Release Hardening And RetroArch Parity
+
+Goal:
+
+Turn the native core from an implementation track into something shippable and
+pleasant to test in real RetroArch installs.
+
+Areas:
+
+- Performance:
+  - Mesh batching, fewer per-frame allocations, predictable audio mixing cost,
+    asset lifetime accounting, and stress carts for CPU/GPU budgets.
+- Platform packaging:
+  - Linux, Windows, and macOS build notes; CI-friendly make/SCons paths; core info
+    metadata; and reproducible release artifacts.
+- Manual hardware matrix:
+  - RetroArch video drivers, GLES-capable platforms, save directories, controller
+    mappings, audio latency, and frontend-specific quirks.
+- Compatibility discipline:
+  - Save-state versioning policy, persistent storage migration, package format
+    versioning, and documented unsupported browser-only APIs.
+- Developer experience:
+  - Better harness diagnostics, screenshot/audio artifact capture, command-log
+    diff tooling, and docs for turning browser carts into `.nova` packages.
+
+Exit criteria:
+
+- A release checklist can be run by someone who did not implement the core.
+- The harness and docs explain failures well enough to debug without launching a
+  full RetroArch frontend first.
+- Known gaps are tracked as explicit compatibility notes rather than surprises.
+
 ## Validation
 
 Use WSL on Windows:

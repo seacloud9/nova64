@@ -1278,10 +1278,10 @@ static void draw_software_cube(const struct nova64_mesh *mesh)
 static void draw_software_plane(const struct nova64_mesh *mesh)
 {
    static const float corners[] = {
-      -0.8f, 0.0f, -0.8f,
-       0.8f, 0.0f, -0.8f,
-       0.8f, 0.0f,  0.8f,
-      -0.8f, 0.0f,  0.8f,
+      -0.5f, 0.0f, -0.5f,
+       0.5f, 0.0f, -0.5f,
+       0.5f, 0.0f,  0.5f,
+      -0.5f, 0.0f,  0.5f,
    };
 
    int screen[4][2];
@@ -1678,7 +1678,25 @@ static JSValue js_create_sphere(JSContext *ctx, JSValueConst this_val, int argc,
 
 static JSValue js_create_plane(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
-   return js_create_mesh(ctx, this_val, argc, argv, NOVA64_MESH_PLANE);
+   int handle = allocate_mesh(NOVA64_MESH_PLANE);
+   if (!handle)
+      return JS_ThrowInternalError(ctx, "Nova64 mesh table is full");
+
+   struct nova64_mesh *mesh = mesh_from_handle(handle);
+   if (!mesh)
+      return JS_NewInt32(ctx, handle);
+
+   if (argc >= 2 && JS_IsNumber(argv[0]) && JS_IsNumber(argv[1])) {
+      double width = double_from_js(ctx, argv[0], 1.0);
+      double depth = double_from_js(ctx, argv[1], 1.0);
+      mesh->scale[0] = (float)clamp_double(fabs(width), 0.001, 10000.0);
+      mesh->scale[2] = (float)clamp_double(fabs(depth), 0.001, 10000.0);
+      if (argc > 2)
+         mesh->color = color_from_js(ctx, argv[2], mesh->color);
+   } else if (argc > 0) {
+      mesh->color = color_from_js(ctx, argv[0], mesh->color);
+   }
+   return JS_NewInt32(ctx, handle);
 }
 
 static JSValue js_destroy_mesh(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)

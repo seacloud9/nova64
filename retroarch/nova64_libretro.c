@@ -223,7 +223,8 @@ enum nova64_audio_wave {
    NOVA64_AUDIO_SINE,
    NOVA64_AUDIO_SAWTOOTH,
    NOVA64_AUDIO_TRIANGLE,
-   NOVA64_AUDIO_NOISE
+   NOVA64_AUDIO_NOISE,
+   NOVA64_AUDIO_PCM
 };
 
 struct nova64_audio_voice {
@@ -237,6 +238,13 @@ struct nova64_audio_voice {
    size_t elapsed_samples;
    size_t total_samples;
    uint32_t noise_state;
+   /* PCM playback fields (wave == NOVA64_AUDIO_PCM) */
+   const int16_t *pcm_data;
+   size_t pcm_frames;   /* total sample frames */
+   size_t pcm_channels; /* 1 or 2 */
+   double pcm_rate;     /* source sample rate */
+   double pcm_pos;      /* fractional playback position */
+   bool pcm_loop;
 };
 
 struct nova64_sfx_params {
@@ -1016,6 +1024,29 @@ static void audio_start_sfx(const struct nova64_sfx_params *input)
 
 static double audio_sample_voice(struct nova64_audio_voice *voice)
 {
+   if (voice->wave == NOVA64_AUDIO_PCM) {
+      if (!voice->pcm_data || voice->pcm_frames == 0) {
+         voice->active = false;
+         return 0.0;
+      }
+      size_t frame = (size_t)voice->pcm_pos;
+      if (frame >= voice->pcm_frames) {
+         if (voice->pcm_loop) {
+            voice->pcm_pos = fmod(voice->pcm_pos, (double)voice->pcm_frames);
+            frame = (size_t)voice->pcm_pos;
+         } else {
+            voice->active = false;
+            return 0.0;
+         }
+      }
+      /* Simple nearest-neighbor — left channel only for mono or stereo mix */
+      size_t ch = voice->pcm_channels > 1 ? voice->pcm_channels : 1;
+      double left  = (double)voice->pcm_data[frame * ch] / 32768.0;
+      double right = ch > 1 ? (double)voice->pcm_data[frame * ch + 1] / 32768.0 : left;
+      voice->pcm_pos += voice->pcm_rate / NOVA64_SAMPLE_RATE;
+      return ((left + right) * 0.5) * voice->vol;
+   }
+
    double value = 0.0;
    switch (voice->wave) {
       case NOVA64_AUDIO_SINE:
@@ -2815,6 +2846,91 @@ static JSValue js_clear_scene(JSContext *ctx, JSValueConst this_val, int argc, J
    return JS_UNDEFINED;
 }
 
+static bool wav_parse(const char *data, size_t size,
+                      const int16_t **out_pcm, size_t *out_frames,
+                      size_t *out_channels, double *out_rate)
+{
+   /* Minimal RIFF/WAV parser — PCM format only */
+   if (!data || size < 44) return false;
+   if (memcmp(data, "RIFF", 4) != 0 || memcmp(data + 8, "WAVE", 4) != 0)
+      return false;
+   const uint8_t *b = (const uint8_t *)data;
+   size_t pos = 12;
+   uint16_t audio_fmt = 0, channels = 0, bps = 0;
+   uint32_t sample_rate = 0;
+   const int16_t *pcm = NULL;
+   size_t pcm_bytes = 0;
+   while (pos + 8 <= size) {
+      uint32_t chunk_size = (uint32_t)b[pos+4] | ((uint32_t)b[pos+5]<<8) |
+                            ((uint32_t)b[pos+6]<<16) | ((uint32_t)b[pos+7]<<24);
+      if (memcmp(b + pos, "fmt ", 4) == 0 && chunk_size >= 16) {
+         audio_fmt   = (uint16_t)(b[pos+8]  | (b[pos+9]  << 8));
+         channels    = (uint16_t)(b[pos+10] | (b[pos+11] << 8));
+         sample_rate = (uint32_t)(b[pos+12] | (b[pos+13]<<8) | (b[pos+14]<<16) | (b[pos+15]<<24));
+         bps         = (uint16_t)(b[pos+22] | (b[pos+23] << 8));
+      } else if (memcmp(b + pos, "data", 4) == 0) {
+         pcm = (const int16_t *)(b + pos + 8);
+         pcm_bytes = chunk_size;
+         break;
+      }
+      pos += 8 + chunk_size + (chunk_size & 1);
+   }
+   if (audio_fmt != 1 || bps != 16 || !pcm || channels == 0 || sample_rate == 0)
+      return false;
+   *out_pcm      = pcm;
+   *out_frames   = pcm_bytes / (channels * sizeof(int16_t));
+   *out_channels = channels;
+   *out_rate     = (double)sample_rate;
+   return true;
+}
+
+static JSValue js_play_sound(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 1) return JS_NewBool(ctx, false);
+   const char *path = JS_ToCString(ctx, argv[0]);
+   if (!path) return JS_NewBool(ctx, false);
+   const struct nova64_package_asset *asset = find_package_asset(path);
+   JS_FreeCString(ctx, path);
+   if (!asset || !asset->data || asset->size < 4)
+      return JS_NewBool(ctx, false);
+
+   double vol = argc > 1 ? double_from_js(ctx, argv[1], 1.0) : 1.0;
+   bool loop  = argc > 2 ? JS_ToBool(ctx, argv[2]) != 0 : false;
+
+   /* Find a free voice */
+   size_t slot = 0;
+   for (size_t i = 0; i < NOVA64_AUDIO_MAX_VOICES; i++) {
+      if (!audio_voices[i].active) { slot = i; break; }
+   }
+   struct nova64_audio_voice *voice = &audio_voices[slot];
+   memset(voice, 0, sizeof(*voice));
+
+   const int16_t *pcm = NULL;
+   size_t frames = 0, channels = 1;
+   double rate = NOVA64_SAMPLE_RATE;
+
+   if (!wav_parse(asset->data, asset->size, &pcm, &frames, &channels, &rate)) {
+      /* Treat as raw int16 LE mono at 44100Hz */
+      pcm      = (const int16_t *)asset->data;
+      frames   = asset->size / sizeof(int16_t);
+      channels = 1;
+      rate     = NOVA64_SAMPLE_RATE;
+   }
+   if (frames == 0) return JS_NewBool(ctx, false);
+
+   voice->active      = true;
+   voice->wave        = NOVA64_AUDIO_PCM;
+   voice->vol         = clamp_double(vol, 0.0, 1.0);
+   voice->pcm_data    = pcm;
+   voice->pcm_frames  = frames;
+   voice->pcm_channels= channels;
+   voice->pcm_rate    = rate;
+   voice->pcm_pos     = 0.0;
+   voice->pcm_loop    = loop;
+   return JS_NewBool(ctx, true);
+}
+
 static JSValue js_sfx(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
    (void)this_val;
@@ -3443,6 +3559,7 @@ static bool install_nova64_api(JSContext *ctx)
 
    set_function(ctx, audio, "sfx", js_sfx, 2);
    set_function(ctx, audio, "setVolume", js_set_volume, 1);
+   set_function(ctx, audio, "playSound", js_play_sound, 3);
 
    set_function(ctx, assets, "has", js_assets_has, 1);
    set_function(ctx, assets, "size", js_assets_size, 1);
@@ -3548,6 +3665,7 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, global, "clearScene", js_clear_scene, 0);
    set_function(ctx, global, "sfx", js_sfx, 2);
    set_function(ctx, global, "setVolume", js_set_volume, 1);
+   set_function(ctx, global, "playSound", js_play_sound, 3);
    set_function(ctx, global, "assetHas", js_assets_has, 1);
    set_function(ctx, global, "assetSize", js_assets_size, 1);
    set_function(ctx, global, "readAssetText", js_assets_read_text, 2);

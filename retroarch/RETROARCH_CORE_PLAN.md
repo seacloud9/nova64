@@ -196,6 +196,11 @@ Areas:
 - Expand audio:
   - Sampled asset playback, music/loop helpers, channel control, and volume/mute
     state that survives normal cart reset semantics.
+  - `playSound(path, vol, loop)` plays a package asset as PCM audio. Raw int16
+    LE mono at 44100Hz is the default format; standard RIFF/WAV PCM files are
+    auto-detected and any sample rate is accepted via nearest-neighbor
+    resampling. Looping is supported via the `loop` argument. `28-play-sound.js`
+    covers a generated 440Hz sine beep with framebuffer and audio checksums.
 - Expand assets and data:
   - Bind manifest assets into texture/model/audio APIs, expose typed data helpers,
     support safe package paths, and keep plain `.js` development carts ergonomic.

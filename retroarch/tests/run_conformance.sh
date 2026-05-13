@@ -52,6 +52,21 @@ with ZipFile(package_dir / "asset-runtime.nova", "w", ZIP_DEFLATED) as package:
         '{"name":"asset-runtime","main":"src/main.js","assets":["assets/message.txt","data/config.json","bin/blob.bin"]}\n',
     )
 
+# 440Hz sine wave, 0.25s, int16 LE mono at 44100Hz
+import math, struct
+beep_frames = int(44100 * 0.25)
+beep = bytearray(beep_frames * 2)
+for i in range(beep_frames):
+    s = int(math.sin(2 * math.pi * 440 * i / 44100) * 16383)
+    struct.pack_into('<h', beep, i * 2, s)
+with ZipFile(package_dir / "play-sound.nova", "w", ZIP_DEFLATED) as package:
+    package.write("retroarch/conformance/28-play-sound.js", "src/main.js")
+    package.writestr("sounds/beep.pcm", bytes(beep))
+    package.writestr(
+        "manifest.json",
+        '{"name":"play-sound","main":"src/main.js","assets":["sounds/beep.pcm"]}\n',
+    )
+
 # 4x4 RGBA sprite: bright red 2x2 top-left, blue 2x2 bottom-right
 dot = bytearray(4 * 4 * 4)
 for row in range(4):
@@ -162,6 +177,7 @@ run_mouse_case() {
 run_mouse_case "25 mouse" "retroarch/conformance/25-mouse.js" "c921e3d3b2b7c551"
 run_visual_case "26 draw2d" "26-draw2d" "retroarch/conformance/26-draw2d.js" "5c927cbdf07816e8"
 run_visual_case "27 sprite" "27-sprite" "${PACKAGE_DIR}/sprite.nova" "f6ca57a33e1c1b09"
+run_audio_case "28 play sound" "${PACKAGE_DIR}/play-sound.nova" "c731ab8067d773d7" "1e5796287c9800a7"
 run_visual_case "19 texture" "19-texture" "retroarch/conformance/19-texture.js" "f4fd3acbca0331b4"
 run_visual_case "20 post" "20-post" "retroarch/conformance/20-post.js" "75a3d27c9048e5b0"
 run_visual_case "21 post-effects" "21-post-effects" "retroarch/conformance/21-post-effects.js" "3a18d91989ad8ded"

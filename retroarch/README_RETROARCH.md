@@ -17,6 +17,8 @@ The first executable core milestone is now wired around:
 - A minimal backend-neutral 3D command table for opaque mesh handles.
 - A first OpenGL ES cube/plane/sphere primitive renderer using RetroArch proc-address
   loading, with per-vertex normals and basic ambient/directional lighting.
+- A small renderer boundary that owns hardware context request, context lifecycle,
+  and frame presentation decisions ahead of the Vulkan backend.
 - A first OpenGL ES 2D overlay texture compositor that uploads the software
   framebuffer after 3D rendering.
 - Versioned save-state headers for host-owned deterministic state only.

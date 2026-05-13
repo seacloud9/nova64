@@ -2229,6 +2229,77 @@ static void render_gles_scene(void)
    render_gles_overlay();
 }
 
+static void renderer_context_reset(void)
+{
+   switch (renderer_preference) {
+      case NOVA64_RENDERER_VULKAN12:
+      case NOVA64_RENDERER_GLES3:
+      default:
+         gles_context_reset();
+         break;
+   }
+}
+
+static void renderer_context_destroy(void)
+{
+   switch (renderer_preference) {
+      case NOVA64_RENDERER_VULKAN12:
+      case NOVA64_RENDERER_GLES3:
+      default:
+         gles_context_destroy();
+         break;
+   }
+}
+
+static void renderer_request_hardware_context(retro_environment_t cb)
+{
+   renderer_preference = read_renderer_preference();
+   if (renderer_preference == NOVA64_RENDERER_VULKAN12) {
+      nova64_log_line(RETRO_LOG_WARN,
+            "[nova64] Vulkan 1.2 renderer selected, but the Vulkan backend is staged; requesting OpenGL ES 3.1 fallback");
+   } else {
+      char renderer_message[96];
+      snprintf(renderer_message, sizeof(renderer_message), "[nova64] renderer backend: %s",
+            renderer_backend_name(renderer_preference));
+      nova64_log_line(RETRO_LOG_INFO, renderer_message);
+   }
+
+   memset(&hw_render, 0, sizeof(hw_render));
+   hw_render.context_type = RETRO_HW_CONTEXT_OPENGLES3;
+   hw_render.context_reset = renderer_context_reset;
+   hw_render.context_destroy = renderer_context_destroy;
+   hw_render.depth = true;
+   hw_render.stencil = false;
+   hw_render.bottom_left_origin = true;
+   hw_render.version_major = 3;
+   hw_render.version_minor = 1;
+   hw_render.cache_context = false;
+   gles.requested = cb(RETRO_ENVIRONMENT_SET_HW_RENDER, &hw_render);
+   if (!gles.requested)
+      nova64_log_line(RETRO_LOG_WARN, "[nova64] GLES3 hardware rendering unavailable; using software 2D output");
+}
+
+static bool renderer_has_hardware_frame(void)
+{
+   switch (renderer_preference) {
+      case NOVA64_RENDERER_VULKAN12:
+      case NOVA64_RENDERER_GLES3:
+      default:
+         return gles.requested && gles.active;
+   }
+}
+
+static void renderer_render_hardware_frame(void)
+{
+   switch (renderer_preference) {
+      case NOVA64_RENDERER_VULKAN12:
+      case NOVA64_RENDERER_GLES3:
+      default:
+         render_gles_scene();
+         break;
+   }
+}
+
 static char *read_file_to_memory(const char *path, size_t *out_size)
 {
    FILE *file = fopen(path, "rb");
@@ -2532,32 +2603,8 @@ void RETRO_CALLCONV retro_set_environment(retro_environment_t cb)
       log_cb = logger.log;
 
    set_core_variables();
-   renderer_preference = read_renderer_preference();
-   if (renderer_preference == NOVA64_RENDERER_VULKAN12) {
-      nova64_log_line(RETRO_LOG_WARN,
-            "[nova64] Vulkan 1.2 renderer selected, but the Vulkan backend is staged; requesting OpenGL ES 3.1 fallback");
-   } else {
-      char renderer_message[96];
-      snprintf(renderer_message, sizeof(renderer_message), "[nova64] renderer backend: %s",
-            renderer_backend_name(renderer_preference));
-      nova64_log_line(RETRO_LOG_INFO, renderer_message);
-   }
-
    cb(RETRO_ENVIRONMENT_SET_PIXEL_FORMAT, &pixel_format);
-
-   memset(&hw_render, 0, sizeof(hw_render));
-   hw_render.context_type = RETRO_HW_CONTEXT_OPENGLES3;
-   hw_render.context_reset = gles_context_reset;
-   hw_render.context_destroy = gles_context_destroy;
-   hw_render.depth = true;
-   hw_render.stencil = false;
-   hw_render.bottom_left_origin = true;
-   hw_render.version_major = 3;
-   hw_render.version_minor = 1;
-   hw_render.cache_context = false;
-   gles.requested = cb(RETRO_ENVIRONMENT_SET_HW_RENDER, &hw_render);
-   if (!gles.requested)
-      nova64_log_line(RETRO_LOG_WARN, "[nova64] GLES3 hardware rendering unavailable; using software 2D output");
+   renderer_request_hardware_context(cb);
 }
 
 void RETRO_CALLCONV retro_set_audio_sample(retro_audio_sample_t cb)
@@ -2606,8 +2653,8 @@ void RETRO_CALLCONV retro_run(void)
    js_host_call_frame(1.0 / NOVA64_FPS);
    write_renderer_command_log();
 
-   if (gles.requested && gles.active) {
-      render_gles_scene();
+   if (renderer_has_hardware_frame()) {
+      renderer_render_hardware_frame();
       video_cb((const void *)RETRO_HW_FRAME_BUFFER_VALID, NOVA64_WIDTH, NOVA64_HEIGHT, 0);
    } else {
       convert_framebuffer_to_rgb565();

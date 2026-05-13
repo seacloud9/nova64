@@ -97,6 +97,8 @@ Goals:
 - Add a mixed 3D plus HUD conformance cart.
   - `09-overlay-scene.js` is implemented with a deterministic software capture.
 - Keep all GL calls behind the renderer interface.
+  - Hardware context request, context callbacks, and hardware-frame presentation
+    now route through renderer boundary helpers instead of direct libretro calls.
 - Support basic materials, ambient light, directional light, and camera transforms.
   - GLES primitive shaders now consume per-vertex normals plus ambient and
     directional light state for basic lit material color.

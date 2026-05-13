@@ -475,20 +475,25 @@ Multi-module package carts done:
     `37-multimodule.js` covers default and named imports from a generated
     package.
 
+Manifest metadata done:
+
+  - `manifest.json` `name`, `title`, `author`, `version`, and `main` are exposed
+    through `nova64.meta.*()` accessors. `39-meta.js` verifies metadata from a
+    generated `.nova` package.
+
+Performance profiling done:
+
+  - `nova64.perf.begin(label)`, `.end(label)`, `.report()`, and `.clear()` track
+    lightweight per-label CPU timing. Harness `--perf` enables unload-time perf
+    logging. `40-perf.js` covers timer reporting and clearing.
+
 Still needed:
 
 - Better JS error reporting:
   - Line numbers and stack traces from QuickJS exceptions currently show internal
     bytecode offsets. Map them back to cart source lines for debuggable errors.
   - Print the errant line of source code alongside the error message.
-- Cart metadata and title screens:
-  - Read `manifest.json` `"title"`, `"author"`, `"version"` and expose via
-    `nova64.meta.title()`, `.author()`, `.version()`.
-  - RetroArch core info content database matching on these fields.
-- Performance profiling:
-  - `nova64.perf.begin(label)` / `.end(label)` — lightweight in-cart timer.
-  - `nova64.perf.report()` — returns a snapshot of accumulated times.
-  - Harness `--perf` flag to print the report after the run.
+- RetroArch core info content database matching on manifest metadata fields.
 
 ### 8F: Asset Pipeline Expansion
 

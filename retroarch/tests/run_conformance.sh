@@ -94,6 +94,13 @@ with ZipFile(package_dir / "multimodule.nova", "w", ZIP_DEFLATED) as package:
         '{"name":"multimodule","main":"src/main.js","assets":["src/lib/value.js","src/lib/module-helper.js"]}\n',
     )
 
+with ZipFile(package_dir / "meta.nova", "w", ZIP_DEFLATED) as package:
+    package.write("retroarch/conformance/39-meta.js", "src/main.js")
+    package.writestr(
+        "manifest.json",
+        '{"name":"meta-cart","title":"Meta Cart","author":"Nova Team","version":"1.2.3","main":"src/main.js"}\n',
+    )
+
 # 440Hz sine wave, 0.25s, int16 LE mono at 44100Hz
 import math, struct
 beep_frames = int(44100 * 0.25)
@@ -328,6 +335,8 @@ run_visual_case "35 rng" "35-rng" "retroarch/conformance/35-rng.js" "6702787d757
 run_visual_case "36 camera2d" "36-camera2d" "retroarch/conformance/36-camera2d.js" "0b89e24020dcb94c"
 run_visual_case "37 multimodule" "37-multimodule" "${PACKAGE_DIR}/multimodule.nova" "adf7ef109e9afc87"
 run_seed_visual_case "38 seeded rng" "38-seeded-rng" "retroarch/conformance/38-seeded-rng.js" "2026" "d593029700fd611b"
+run_visual_case "39 meta" "39-meta" "${PACKAGE_DIR}/meta.nova" "5847ee6e3ae4d065"
+run_visual_case "40 perf" "40-perf" "retroarch/conformance/40-perf.js" "4c3959dfa4b4a5ff"
 run_visual_case "19 texture" "19-texture" "retroarch/conformance/19-texture.js" "f4fd3acbca0331b4"
 run_visual_case "20 post" "20-post" "retroarch/conformance/20-post.js" "75a3d27c9048e5b0"
 run_visual_case "21 post-effects" "21-post-effects" "retroarch/conformance/21-post-effects.js" "3a18d91989ad8ded"

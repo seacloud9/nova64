@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #ifdef _WIN32
 #include <direct.h>
 #else
@@ -35,6 +36,7 @@
 #define NOVA64_ZIP_LOCAL_SIGNATURE 0x04034b50U
 #define NOVA64_ZIP_MAX_EOCD_SEARCH 65557U
 #define NOVA64_MAX_PACKAGE_ASSETS 128
+#define NOVA64_MAX_PERF_TIMERS 32
 #ifdef _WIN32
 #define NOVA64_PATH_SEPARATOR "\\"
 #else
@@ -263,6 +265,15 @@ struct nova64_package_asset {
    size_t size;
 };
 
+struct nova64_perf_timer {
+   bool used;
+   bool active;
+   char label[64];
+   double total;
+   uint32_t count;
+   clock_t started_at;
+};
+
 struct nova64_save_header {
    uint32_t magic;
    uint32_t version;
@@ -405,11 +416,15 @@ static char *cart_content;
 static size_t cart_size;
 static char cart_path[1024];
 static char package_manifest_name[128];
+static char package_manifest_title[128];
+static char package_manifest_author[128];
+static char package_manifest_version[64];
 static char package_manifest_main[256];
 static size_t package_manifest_asset_count;
 static size_t package_manifest_missing_asset_count;
 static size_t package_manifest_asset_bytes;
 static struct nova64_package_asset package_assets[NOVA64_MAX_PACKAGE_ASSETS];
+static struct nova64_perf_timer perf_timers[NOVA64_MAX_PERF_TIMERS];
 static char renderer_command_log_path[1024];
 static char storage_save_directory[1024];
 static char storage_cart_id[128];
@@ -2706,6 +2721,128 @@ static JSValue js_get_time(JSContext *ctx, JSValueConst this_val, int argc, JSVa
    return JS_NewFloat64(ctx, (double)frame_count / NOVA64_FPS);
 }
 
+static JSValue js_meta_name(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val; (void)argc; (void)argv;
+   return JS_NewString(ctx, package_manifest_name);
+}
+
+static JSValue js_meta_title(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val; (void)argc; (void)argv;
+   return JS_NewString(ctx, package_manifest_title);
+}
+
+static JSValue js_meta_author(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val; (void)argc; (void)argv;
+   return JS_NewString(ctx, package_manifest_author);
+}
+
+static JSValue js_meta_version(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val; (void)argc; (void)argv;
+   return JS_NewString(ctx, package_manifest_version);
+}
+
+static JSValue js_meta_main(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val; (void)argc; (void)argv;
+   return JS_NewString(ctx, package_manifest_main);
+}
+
+static struct nova64_perf_timer *perf_timer_for_label(const char *label, bool create)
+{
+   if (!label || !label[0])
+      return NULL;
+   for (int i = 0; i < NOVA64_MAX_PERF_TIMERS; i++) {
+      if (perf_timers[i].used && !strcmp(perf_timers[i].label, label))
+         return &perf_timers[i];
+   }
+   if (!create)
+      return NULL;
+   for (int i = 0; i < NOVA64_MAX_PERF_TIMERS; i++) {
+      if (!perf_timers[i].used) {
+         perf_timers[i].used = true;
+         snprintf(perf_timers[i].label, sizeof(perf_timers[i].label), "%s", label);
+         return &perf_timers[i];
+      }
+   }
+   return NULL;
+}
+
+static JSValue js_perf_begin(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   const char *label = argc > 0 ? JS_ToCString(ctx, argv[0]) : NULL;
+   struct nova64_perf_timer *timer = perf_timer_for_label(label, true);
+   if (label)
+      JS_FreeCString(ctx, label);
+   if (!timer)
+      return JS_NewBool(ctx, false);
+   timer->active = true;
+   timer->started_at = clock();
+   return JS_NewBool(ctx, true);
+}
+
+static JSValue js_perf_end(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   const char *label = argc > 0 ? JS_ToCString(ctx, argv[0]) : NULL;
+   struct nova64_perf_timer *timer = perf_timer_for_label(label, false);
+   if (label)
+      JS_FreeCString(ctx, label);
+   if (!timer || !timer->active)
+      return JS_NewFloat64(ctx, 0.0);
+   clock_t ended_at = clock();
+   double elapsed = (double)(ended_at - timer->started_at) / (double)CLOCKS_PER_SEC;
+   if (elapsed < 0.0)
+      elapsed = 0.0;
+   timer->active = false;
+   timer->total += elapsed;
+   timer->count++;
+   return JS_NewFloat64(ctx, elapsed);
+}
+
+static JSValue js_perf_report(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val; (void)argc; (void)argv;
+   JSValue report = JS_NewObject(ctx);
+   for (int i = 0; i < NOVA64_MAX_PERF_TIMERS; i++) {
+      if (!perf_timers[i].used)
+         continue;
+      JSValue entry = JS_NewObject(ctx);
+      JS_SetPropertyStr(ctx, entry, "total", JS_NewFloat64(ctx, perf_timers[i].total));
+      JS_SetPropertyStr(ctx, entry, "count", JS_NewUint32(ctx, perf_timers[i].count));
+      JS_SetPropertyStr(ctx, entry, "active", JS_NewBool(ctx, perf_timers[i].active));
+      JS_SetPropertyStr(ctx, report, perf_timers[i].label, entry);
+   }
+   return report;
+}
+
+static JSValue js_perf_clear(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)ctx; (void)this_val; (void)argc; (void)argv;
+   memset(perf_timers, 0, sizeof(perf_timers));
+   return JS_UNDEFINED;
+}
+
+static void log_perf_report_if_requested(void)
+{
+   const char *enabled = getenv("NOVA64_PERF");
+   if (!enabled || !enabled[0] || !strcmp(enabled, "0"))
+      return;
+   if (!log_cb)
+      return;
+   for (int i = 0; i < NOVA64_MAX_PERF_TIMERS; i++) {
+      if (perf_timers[i].used) {
+         log_cb(RETRO_LOG_INFO, "[nova64] perf %s total=%.6f count=%u active=%d\n",
+               perf_timers[i].label, perf_timers[i].total, perf_timers[i].count,
+               perf_timers[i].active ? 1 : 0);
+      }
+   }
+}
+
 static int button_index_from_js(JSContext *ctx, JSValueConst value)
 {
    if (JS_IsNumber(value)) {
@@ -4186,6 +4323,21 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, post, "clear", js_post_clear, 0);
    set_function(ctx, post, "getState", js_post_get_state, 0);
    JS_SetPropertyStr(ctx, nova64, "post", post);
+
+   JSValue meta = JS_NewObject(ctx);
+   set_function(ctx, meta, "name", js_meta_name, 0);
+   set_function(ctx, meta, "title", js_meta_title, 0);
+   set_function(ctx, meta, "author", js_meta_author, 0);
+   set_function(ctx, meta, "version", js_meta_version, 0);
+   set_function(ctx, meta, "main", js_meta_main, 0);
+   JS_SetPropertyStr(ctx, nova64, "meta", meta);
+
+   JSValue perf = JS_NewObject(ctx);
+   set_function(ctx, perf, "begin", js_perf_begin, 1);
+   set_function(ctx, perf, "end", js_perf_end, 1);
+   set_function(ctx, perf, "report", js_perf_report, 0);
+   set_function(ctx, perf, "clear", js_perf_clear, 0);
+   JS_SetPropertyStr(ctx, nova64, "perf", perf);
 
    set_function(ctx, nova64, "frame", js_get_frame, 0);
    set_function(ctx, nova64, "time", js_get_time, 0);
@@ -5959,6 +6111,9 @@ static void reset_package_manifest_metadata(void)
 {
    clear_package_assets();
    package_manifest_name[0] = '\0';
+   package_manifest_title[0] = '\0';
+   package_manifest_author[0] = '\0';
+   package_manifest_version[0] = '\0';
    package_manifest_main[0] = '\0';
    package_manifest_asset_count = 0;
    package_manifest_missing_asset_count = 0;
@@ -5997,6 +6152,12 @@ static bool extract_nova_code_js(const char *archive_text, size_t archive_size, 
          "manifest.json", &manifest, &manifest_size)) {
       parse_manifest_string_field(manifest, manifest_size, "name",
             package_manifest_name, sizeof(package_manifest_name), false);
+      parse_manifest_string_field(manifest, manifest_size, "title",
+            package_manifest_title, sizeof(package_manifest_title), false);
+      parse_manifest_string_field(manifest, manifest_size, "author",
+            package_manifest_author, sizeof(package_manifest_author), false);
+      parse_manifest_string_field(manifest, manifest_size, "version",
+            package_manifest_version, sizeof(package_manifest_version), false);
       parse_manifest_asset_list_metadata(manifest, manifest_size, archive, archive_size,
             entry_count, central_offset);
       if (parse_manifest_main(manifest, manifest_size, manifest_main, sizeof(manifest_main))) {
@@ -6183,6 +6344,7 @@ void RETRO_CALLCONV retro_reset(void)
    clear_textures();
    destroy_all_tilemaps();
    clear_all_spritesheets();
+   memset(perf_timers, 0, sizeof(perf_timers));
    rng_seed_from_environment();
    if (cart_content && cart_size)
       js_host_load_cart(cart_content, cart_size, cart_path[0] ? cart_path : "<nova64-cart>");
@@ -6261,6 +6423,7 @@ bool RETRO_CALLCONV retro_load_game(const struct retro_game_info *info)
    reset_audio_state();
    destroy_all_tilemaps();
    clear_all_spritesheets();
+   memset(perf_timers, 0, sizeof(perf_timers));
    rng_seed_from_environment();
    frame_count = 0;
 
@@ -6284,10 +6447,12 @@ bool RETRO_CALLCONV retro_load_game_special(unsigned game_type, const struct ret
 
 void RETRO_CALLCONV retro_unload_game(void)
 {
+   log_perf_report_if_requested();
    js_host_free();
    clear_textures();
    destroy_all_tilemaps();
    clear_all_spritesheets();
+   memset(perf_timers, 0, sizeof(perf_timers));
    free(cart_content);
    cart_content = NULL;
    cart_size = 0;

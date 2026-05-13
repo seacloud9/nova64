@@ -67,6 +67,7 @@ Harness flags:
 | `--command-log <path>` | Write deterministic renderer command log |
 | `--renderer opengles3\|vulkan12` | Select renderer backend |
 | `--seed <n>` | Inject deterministic initial RNG seed |
+| `--perf` | Log `nova64.perf` report on unload |
 | `--key <name>` | Inject held keyboard key (e.g. `space`, `left`) |
 | `--mouse-x <n>` | Inject relative mouse X movement |
 | `--mouse-y <n>` | Inject relative mouse Y movement |
@@ -209,6 +210,21 @@ nova64.assets.list()              // array of asset paths from manifest
 
 Top-level aliases: `assetHas`, `assetSize`, `readAssetText`, `readAssetJSON`,
 `readAssetBytes`, `listAssets`.
+
+### Metadata And Perf
+
+```js
+nova64.meta.name()
+nova64.meta.title()
+nova64.meta.author()
+nova64.meta.version()
+nova64.meta.main()
+
+nova64.perf.begin(label)
+nova64.perf.end(label)
+nova64.perf.report()             // { [label]: { total, count, active } }
+nova64.perf.clear()
+```
 
 ### 3D Scene
 
@@ -366,3 +382,5 @@ These browser-side Nova64 or Three.js features are not implemented:
 | `36-camera2d.js` | 2D camera offset and clear |
 | `37-multimodule.js` | relative ES module imports from `.nova` packages |
 | `38-seeded-rng.js` | harness initial RNG seed injection |
+| `39-meta.js` | manifest metadata APIs |
+| `40-perf.js` | perf begin/end/report/clear |

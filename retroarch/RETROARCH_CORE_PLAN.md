@@ -198,6 +198,8 @@ Exit criteria:
 
 ## Milestone 7: Shaders And Post Processing
 
+Status: first pass implemented; texture sampling and three post effects are live.
+
 Goal:
 
 Bring Nova64's visual identity into the native renderer with programmable effects
@@ -210,16 +212,29 @@ Areas:
 - Add framebuffer/post passes:
   - CRT mask/scanline, bloom, vignette, color grading, pixelation, posterize,
     chromatic offset, blur, and palette/posterization effects.
+  - CRT scanline/barrel, vignette, and pixelate are now implemented through a GLES
+    FBO pipeline. `nova64.post.setCRT`, `setVignette`, `setPixelate`, `clear`, and
+    `getState` are exposed to carts. Post state resets on cart reload.
+  - `20-post.js` is implemented as a deterministic post-processing conformance cart.
 - Add material shader hooks:
   - Basic unlit/lit variants, emissive color, texture sampling, UV transforms,
     alpha/blend modes, and a safe subset for custom fragment logic.
+  - Texture handle allocation and binding are implemented: `createTexture`,
+    `setMeshTexture`, `destroyTexture`. In software/headless mode handles are valid
+    but no GL upload occurs. `19-texture.js` covers this path.
+  - `setMeshColor` and a `draw3d` per-frame callback are now exposed.
+  - Mesh shader now supports a `u_texture` sampler and `u_has_texture` guard so
+    textured meshes sample the bound GL texture when hardware is available.
 - Add render targets:
   - Offscreen passes for 2D/3D composition, HUD overlays, feedback effects, and
     deterministic fallback captures.
+  - The post FBO (`post_fbo` + depth renderbuffer) routes 3D into an offscreen color
+    texture before the post-program blit. The 2D overlay is always composited last.
 - Add conformance:
   - Command-log coverage for pass graphs and shader options.
   - Software or checksum references for effect state where pixel-perfect hardware
     parity is impractical.
+  - `19-texture.js` and `20-post.js` are implemented and passing.
 
 Exit criteria:
 

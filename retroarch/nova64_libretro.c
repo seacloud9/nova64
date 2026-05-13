@@ -81,6 +81,13 @@ typedef char GLchar;
 #define GL_BLEND 0x0BE2
 #define GL_SRC_ALPHA 0x0302
 #define GL_ONE_MINUS_SRC_ALPHA 0x0303
+/* FBO */
+#define GL_FRAMEBUFFER 0x8D40
+#define GL_RENDERBUFFER 0x8D41
+#define GL_COLOR_ATTACHMENT0 0x8CE0
+#define GL_DEPTH_ATTACHMENT 0x8D00
+#define GL_FRAMEBUFFER_COMPLETE 0x8CD5
+#define GL_DEPTH_COMPONENT16 0x81A5
 
 typedef void (*PFNGLVIEWPORTPROC)(GLint x, GLint y, GLsizei width, GLsizei height);
 typedef void (*PFNGLCLEARCOLORPROC)(GLfloat red, GLfloat green, GLfloat blue, GLfloat alpha);
@@ -121,7 +128,19 @@ typedef void (*PFNGLTEXPARAMETERIPROC)(GLenum target, GLenum pname, GLint param)
 typedef void (*PFNGLTEXIMAGE2DPROC)(GLenum target, GLint level, GLint internalformat, GLsizei width, GLsizei height, GLint border, GLenum format, GLenum type, const void *pixels);
 typedef void (*PFNGLTEXSUBIMAGE2DPROC)(GLenum target, GLint level, GLint xoffset, GLint yoffset, GLsizei width, GLsizei height, GLenum format, GLenum type, const void *pixels);
 typedef void (*PFNGLUNIFORM1IPROC)(GLint location, GLint v0);
+typedef void (*PFNGLUNIFORM1FPROC)(GLint location, GLfloat v0);
 typedef void (*PFNGLBLENDFUNCPROC)(GLenum sfactor, GLenum dfactor);
+/* FBO */
+typedef void (*PFNGLGENFRAMEBUFFERSPROC)(GLsizei n, GLuint *framebuffers);
+typedef void (*PFNGLBINDFRAMEBUFFERPROC)(GLenum target, GLuint framebuffer);
+typedef void (*PFNGLFRAMEBUFFERTEXTURE2DPROC)(GLenum target, GLenum attachment, GLenum textarget, GLuint texture, GLint level);
+typedef GLenum (*PFNGLCHECKFRAMEBUFFERSTATUSPROC)(GLenum target);
+typedef void (*PFNGLDELETEFRAMEBUFFERSPROC)(GLsizei n, const GLuint *framebuffers);
+typedef void (*PFNGLGENRENDERBUFFERSPROC)(GLsizei n, GLuint *renderbuffers);
+typedef void (*PFNGLBINDRENDERBUFFERPROC)(GLenum target, GLuint renderbuffer);
+typedef void (*PFNGLRENDERBUFFERSTORAGEPROC)(GLenum target, GLenum internalformat, GLsizei width, GLsizei height);
+typedef void (*PFNGLFRAMEBUFFERRENDERBUFFERPROC)(GLenum target, GLenum attachment, GLenum renderbuffertarget, GLuint renderbuffer);
+typedef void (*PFNGLDELETERENDERBUFFERSPROC)(GLsizei n, const GLuint *renderbuffers);
 
 enum nova64_button {
    NOVA64_BTN_LEFT = 0,
@@ -154,6 +173,7 @@ struct nova64_mesh {
    float scale[3];
    float opacity;
    uint32_t color;
+   int texture_handle; /* 0 = no texture */
 };
 
 struct nova64_camera {
@@ -180,6 +200,14 @@ struct nova64_point_light {
    float intensity;
    float distance;
    float position[3];
+};
+
+#define NOVA64_MAX_TEXTURES 64
+struct nova64_texture {
+   bool used;
+   GLuint gl_name; /* 0 = not uploaded / software mode */
+   int width;
+   int height;
 };
 
 enum nova64_renderer_backend {
@@ -288,7 +316,32 @@ struct nova64_gles_backend {
    PFNGLTEXIMAGE2DPROC TexImage2D;
    PFNGLTEXSUBIMAGE2DPROC TexSubImage2D;
    PFNGLUNIFORM1IPROC Uniform1i;
+   PFNGLUNIFORM1FPROC Uniform1f;
    PFNGLBLENDFUNCPROC BlendFunc;
+   /* FBO procs */
+   PFNGLGENFRAMEBUFFERSPROC GenFramebuffers;
+   PFNGLBINDFRAMEBUFFERPROC BindFramebuffer;
+   PFNGLFRAMEBUFFERTEXTURE2DPROC FramebufferTexture2D;
+   PFNGLCHECKFRAMEBUFFERSTATUSPROC CheckFramebufferStatus;
+   PFNGLDELETEFRAMEBUFFERSPROC DeleteFramebuffers;
+   PFNGLGENRENDERBUFFERSPROC GenRenderbuffers;
+   PFNGLBINDRENDERBUFFERPROC BindRenderbuffer;
+   PFNGLRENDERBUFFERSTORAGEPROC RenderbufferStorage;
+   PFNGLFRAMEBUFFERRENDERBUFFERPROC FramebufferRenderbuffer;
+   PFNGLDELETERENDERBUFFERSPROC DeleteRenderbuffers;
+   /* Post-processing resources */
+   GLuint post_fbo;
+   GLuint post_rbo;
+   GLuint post_color_texture;
+   GLuint post_program;
+   bool post_resources_ready;
+   GLint post_position_attrib;
+   GLint post_uv_attrib;
+   GLint post_scene_uniform;
+   GLint post_crt_uniform;
+   GLint post_vignette_uniform;
+   GLint post_pixelate_uniform;
+   GLint post_resolution_uniform;
    GLuint cube_vbo;
    GLuint cube_ibo;
    GLuint plane_vbo;
@@ -307,6 +360,12 @@ struct nova64_gles_backend {
    GLint cube_color_uniform;
    GLint cube_ambient_uniform;
    GLint cube_light_direction_uniform;
+   GLint cube_fog_enabled_uniform;
+   GLint cube_fog_color_uniform;
+   GLint cube_fog_near_uniform;
+   GLint cube_fog_far_uniform;
+   GLint cube_has_texture_uniform;
+   GLint cube_texture_uniform;
    GLint overlay_position_attrib;
    GLint overlay_uv_attrib;
    GLint overlay_texture_uniform;
@@ -345,6 +404,7 @@ static bool pressed_buttons[NOVA64_BUTTON_COUNT];
 
 static struct nova64_mesh meshes[NOVA64_MAX_MESHES];
 static struct nova64_point_light point_lights[NOVA64_MAX_POINT_LIGHTS];
+static struct nova64_texture textures[NOVA64_MAX_TEXTURES];
 static struct nova64_camera camera_state;
 static struct nova64_light light_state;
 static struct nova64_audio_voice audio_voices[NOVA64_AUDIO_MAX_VOICES];
@@ -356,6 +416,26 @@ static enum nova64_renderer_backend renderer_preference = NOVA64_RENDERER_GLES3;
 static struct retro_hw_render_callback hw_render;
 static enum retro_pixel_format pixel_format = RETRO_PIXEL_FORMAT_RGB565;
 static bool drawing_scene_preview;
+
+/* Post-processing state — persists across frames, reset on cart reload */
+struct nova64_post_state {
+   bool crt_enabled;
+   float vignette;   /* 0.0 = off, 1.0 = full */
+   int pixelate;     /* 0 = off, 1+ = block size in pixels */
+};
+static struct nova64_post_state post_state;
+
+static void reset_post_state(void)
+{
+   post_state.crt_enabled = false;
+   post_state.vignette = 0.0f;
+   post_state.pixelate = 0;
+}
+
+static bool post_is_active(void)
+{
+   return post_state.crt_enabled || post_state.vignette > 0.0f || post_state.pixelate > 0;
+}
 
 static bool scene_has_visible_meshes(void);
 static void render_software_scene(void);
@@ -545,6 +625,44 @@ static void clear_scene_objects(void)
 {
    memset(meshes, 0, sizeof(meshes));
    memset(point_lights, 0, sizeof(point_lights));
+}
+
+static int allocate_texture(void)
+{
+   for (int i = 0; i < NOVA64_MAX_TEXTURES; i++) {
+      if (!textures[i].used) {
+         textures[i].used = true;
+         textures[i].gl_name = 0;
+         textures[i].width = 0;
+         textures[i].height = 0;
+         return i + 1;
+      }
+   }
+   return 0;
+}
+
+static struct nova64_texture *texture_from_handle(int handle)
+{
+   if (handle <= 0 || handle > NOVA64_MAX_TEXTURES)
+      return NULL;
+   struct nova64_texture *tex = &textures[handle - 1];
+   return tex->used ? tex : NULL;
+}
+
+static void free_texture_gl(struct nova64_texture *tex)
+{
+   if (tex && tex->gl_name && gles.active && gles.DeleteTextures)
+      gles.DeleteTextures(1, &tex->gl_name);
+   if (tex)
+      tex->gl_name = 0;
+}
+
+static void clear_textures(void)
+{
+   for (int i = 0; i < NOVA64_MAX_TEXTURES; i++) {
+      free_texture_gl(&textures[i]);
+      memset(&textures[i], 0, sizeof(textures[i]));
+   }
 }
 
 static float clamp_float(float value, float min_value, float max_value)
@@ -2078,6 +2196,16 @@ static JSValue js_set_receive_shadow(JSContext *ctx, JSValueConst this_val, int 
    return JS_NewBool(ctx, true);
 }
 
+static JSValue js_set_mesh_color(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   struct nova64_mesh *mesh = mesh_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!mesh)
+      return JS_NewBool(ctx, false);
+   mesh->color = color_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, mesh->color);
+   return JS_NewBool(ctx, true);
+}
+
 static JSValue js_get_mesh(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
    (void)this_val;
@@ -2150,7 +2278,8 @@ static JSValue js_get_backend_capabilities(JSContext *ctx, JSValueConst this_val
    JS_SetPropertyStr(ctx, object, "meshShadowFlags", JS_NewBool(ctx, true));
    JS_SetPropertyStr(ctx, object, "pointLights", JS_NewBool(ctx, true));
    JS_SetPropertyStr(ctx, object, "fogState", JS_NewBool(ctx, true));
-   JS_SetPropertyStr(ctx, object, "postProcessing", JS_NewBool(ctx, false));
+   JS_SetPropertyStr(ctx, object, "textures", JS_NewBool(ctx, gles.active));
+   JS_SetPropertyStr(ctx, object, "postProcessing", JS_NewBool(ctx, gles.active));
    return object;
 }
 
@@ -2357,6 +2486,142 @@ static JSValue js_set_volume(JSContext *ctx, JSValueConst this_val, int argc, JS
    audio_master_volume = clamp_double(double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED,
          audio_master_volume), 0.0, 1.0);
    return JS_UNDEFINED;
+}
+
+/* draw3d(callback) — native host renders 3D automatically each frame. */
+static JSValue js_draw3d(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc > 0 && JS_IsFunction(ctx, argv[0])) {
+      JSValue result = JS_Call(ctx, argv[0], JS_UNDEFINED, 0, NULL);
+      if (JS_IsException(result))
+         js_log_exception(ctx, "draw3d callback");
+      else
+         JS_FreeValue(ctx, result);
+   }
+   return JS_UNDEFINED;
+}
+
+/* —— Post-processing JS API —— */
+
+static JSValue js_post_set_crt(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   post_state.crt_enabled = argc > 0 ? JS_ToBool(ctx, argv[0]) : true;
+   return JS_UNDEFINED;
+}
+
+static JSValue js_post_set_vignette(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   post_state.vignette = (float)clamp_double(
+      double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0.0), 0.0, 1.0);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_post_set_pixelate(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int size = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0);
+   post_state.pixelate = size < 0 ? 0 : size;
+   return JS_UNDEFINED;
+}
+
+static JSValue js_post_clear(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)ctx;
+   (void)this_val;
+   (void)argc;
+   (void)argv;
+   reset_post_state();
+   return JS_UNDEFINED;
+}
+
+static JSValue js_post_get_state(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   (void)argc;
+   (void)argv;
+   JSValue obj = JS_NewObject(ctx);
+   JS_SetPropertyStr(ctx, obj, "crt", JS_NewBool(ctx, post_state.crt_enabled));
+   JS_SetPropertyStr(ctx, obj, "vignette", JS_NewFloat64(ctx, (double)post_state.vignette));
+   JS_SetPropertyStr(ctx, obj, "pixelate", JS_NewInt32(ctx, post_state.pixelate));
+   JS_SetPropertyStr(ctx, obj, "active", JS_NewBool(ctx, post_is_active()));
+   JS_SetPropertyStr(ctx, obj, "fboReady", JS_NewBool(ctx, gles.post_resources_ready));
+   return obj;
+}
+
+static JSValue js_create_texture(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 1)
+      return JS_NewInt32(ctx, 0);
+
+   const char *path = JS_ToCString(ctx, argv[0]);
+   if (!path)
+      return JS_NewInt32(ctx, 0);
+   const struct nova64_package_asset *asset = find_package_asset(path);
+   JS_FreeCString(ctx, path);
+   if (!asset || !asset->data || asset->size < 4)
+      return JS_NewInt32(ctx, 0);
+
+   int handle = allocate_texture();
+   if (!handle)
+      return JS_NewInt32(ctx, 0);
+
+   struct nova64_texture *tex = texture_from_handle(handle);
+   if (!tex) {
+      return JS_NewInt32(ctx, 0);
+   }
+
+   /* Determine dimensions from optional width/height args or square-root guess */
+   int w = argc > 1 ? int_from_js(ctx, argv[1], 0) : 0;
+   int h = argc > 2 ? int_from_js(ctx, argv[2], 0) : 0;
+   if (w <= 0 || h <= 0) {
+      /* Guess square texture */
+      int side = (int)sqrt((double)(asset->size / 4));
+      w = side > 0 ? side : 1;
+      h = side > 0 ? side : 1;
+   }
+   tex->width = w;
+   tex->height = h;
+
+   if (gles.active && gles.GenTextures && gles.BindTexture && gles.TexImage2D) {
+      gles.GenTextures(1, &tex->gl_name);
+      gles.ActiveTexture(GL_TEXTURE0);
+      gles.BindTexture(GL_TEXTURE_2D, tex->gl_name);
+      gles.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+      gles.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+      gles.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+      gles.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+      gles.TexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, (GLsizei)w, (GLsizei)h, 0,
+         GL_RGBA, GL_UNSIGNED_BYTE, asset->data);
+      gles.BindTexture(GL_TEXTURE_2D, 0);
+   }
+   return JS_NewInt32(ctx, handle);
+}
+
+static JSValue js_set_mesh_texture(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   struct nova64_mesh *mesh = mesh_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!mesh)
+      return JS_NewBool(ctx, false);
+   mesh->texture_handle = int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0);
+   return JS_NewBool(ctx, true);
+}
+
+static JSValue js_destroy_texture(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)ctx;
+   (void)this_val;
+   int handle = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0);
+   struct nova64_texture *tex = texture_from_handle(handle);
+   if (!tex)
+      return JS_NewBool(ctx, false);
+   free_texture_gl(tex);
+   memset(tex, 0, sizeof(*tex));
+   return JS_NewBool(ctx, true);
 }
 
 static JSValue js_assets_has(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
@@ -2592,11 +2857,16 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, scene, "setMeshOpacity", js_set_mesh_opacity, 2);
    set_function(ctx, scene, "setCastShadow", js_set_cast_shadow, 2);
    set_function(ctx, scene, "setReceiveShadow", js_set_receive_shadow, 2);
+   set_function(ctx, scene, "setMeshColor", js_set_mesh_color, 2);
    set_function(ctx, scene, "get3DStats", js_get_3d_stats, 0);
    set_function(ctx, scene, "getBackendCapabilities", js_get_backend_capabilities, 0);
    set_function(ctx, scene, "setFog", js_set_fog, 3);
    set_function(ctx, scene, "clearFog", js_clear_fog, 0);
    set_function(ctx, scene, "clearScene", js_clear_scene, 0);
+   set_function(ctx, scene, "draw3d", js_draw3d, 1);
+   set_function(ctx, scene, "createTexture", js_create_texture, 3);
+   set_function(ctx, scene, "setMeshTexture", js_set_mesh_texture, 2);
+   set_function(ctx, scene, "destroyTexture", js_destroy_texture, 1);
 
    set_function(ctx, camera, "setPosition", js_set_camera_position, 3);
    set_function(ctx, camera, "setTarget", js_set_camera_target, 3);
@@ -2645,6 +2915,16 @@ static bool install_nova64_api(JSContext *ctx)
    JS_SetPropertyStr(ctx, nova64, "audio", audio);
    JS_SetPropertyStr(ctx, nova64, "assets", assets);
    JS_SetPropertyStr(ctx, nova64, "storage", storage);
+
+   /* nova64.post — post-processing namespace */
+   JSValue post = JS_NewObject(ctx);
+   set_function(ctx, post, "setCRT", js_post_set_crt, 1);
+   set_function(ctx, post, "setVignette", js_post_set_vignette, 1);
+   set_function(ctx, post, "setPixelate", js_post_set_pixelate, 1);
+   set_function(ctx, post, "clear", js_post_clear, 0);
+   set_function(ctx, post, "getState", js_post_get_state, 0);
+   JS_SetPropertyStr(ctx, nova64, "post", post);
+
    JS_SetPropertyStr(ctx, global, "nova64", nova64);
 
    set_function(ctx, global, "rgba8", js_rgba8, 4);
@@ -2673,6 +2953,11 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, global, "setMeshOpacity", js_set_mesh_opacity, 2);
    set_function(ctx, global, "setCastShadow", js_set_cast_shadow, 2);
    set_function(ctx, global, "setReceiveShadow", js_set_receive_shadow, 2);
+   set_function(ctx, global, "setMeshColor", js_set_mesh_color, 2);
+   set_function(ctx, global, "draw3d", js_draw3d, 1);
+   set_function(ctx, global, "createTexture", js_create_texture, 3);
+   set_function(ctx, global, "setMeshTexture", js_set_mesh_texture, 2);
+   set_function(ctx, global, "destroyTexture", js_destroy_texture, 1);
    set_function(ctx, global, "get3DStats", js_get_3d_stats, 0);
    set_function(ctx, global, "getBackendCapabilities", js_get_backend_capabilities, 0);
    set_function(ctx, global, "setCameraPosition", js_set_camera_position, 3);
@@ -2902,22 +3187,40 @@ static bool gles_create_cube_program(void)
       "uniform mat3 u_normal_matrix;\n"
       "uniform vec4 u_light_direction;\n"
       "varying float v_light;\n"
+      "varying float v_depth;\n"
+      "varying vec2 v_uv;\n"
       "void main() {\n"
       "  vec3 n = normalize(u_normal_matrix * a_normal);\n"
       "  vec3 l = normalize(-u_light_direction.xyz);\n"
       "  float diffuse = max(dot(n, l), 0.0);\n"
       "  v_light = 0.58 + diffuse * 0.42;\n"
       "  gl_Position = u_mvp * vec4(a_position, 1.0);\n"
+      "  v_depth = gl_Position.z / gl_Position.w;\n"
+      "  v_uv = a_position.xz + 0.5;\n"
       "}\n";
    static const char *fragment_source =
       "precision mediump float;\n"
       "varying float v_light;\n"
+      "varying float v_depth;\n"
+      "varying vec2 v_uv;\n"
       "uniform vec4 u_color;\n"
       "uniform vec4 u_ambient_color;\n"
+      "uniform int u_fog_enabled;\n"
+      "uniform vec4 u_fog_color;\n"
+      "uniform float u_fog_near;\n"
+      "uniform float u_fog_far;\n"
+      "uniform int u_has_texture;\n"
+      "uniform sampler2D u_texture;\n"
       "void main() {\n"
       "  vec3 ambient = u_ambient_color.rgb * 0.35;\n"
-      "  vec3 lit = clamp(u_color.rgb * v_light + ambient, 0.0, 1.0);\n"
-      "  gl_FragColor = vec4(lit, u_color.a);\n"
+      "  vec4 base = (u_has_texture != 0) ? texture2D(u_texture, v_uv) * u_color : u_color;\n"
+      "  vec3 lit = clamp(base.rgb * v_light + ambient, 0.0, 1.0);\n"
+      "  if (u_fog_enabled != 0) {\n"
+      "    float depth_linear = v_depth * 0.5 + 0.5;\n"
+      "    float fog_t = clamp((depth_linear - u_fog_near / (u_fog_far + 0.001)) / ((u_fog_far - u_fog_near) / (u_fog_far + 0.001)), 0.0, 1.0);\n"
+      "    lit = mix(lit, u_fog_color.rgb, fog_t);\n"
+      "  }\n"
+      "  gl_FragColor = vec4(lit, base.a);\n"
       "}\n";
 
    GLuint vertex = gles_compile_shader(GL_VERTEX_SHADER, vertex_source);
@@ -2959,6 +3262,12 @@ static bool gles_create_cube_program(void)
    gles.cube_color_uniform = gles.GetUniformLocation(program, "u_color");
    gles.cube_ambient_uniform = gles.GetUniformLocation(program, "u_ambient_color");
    gles.cube_light_direction_uniform = gles.GetUniformLocation(program, "u_light_direction");
+   gles.cube_fog_enabled_uniform = gles.GetUniformLocation(program, "u_fog_enabled");
+   gles.cube_fog_color_uniform = gles.GetUniformLocation(program, "u_fog_color");
+   gles.cube_fog_near_uniform = gles.GetUniformLocation(program, "u_fog_near");
+   gles.cube_fog_far_uniform = gles.GetUniformLocation(program, "u_fog_far");
+   gles.cube_has_texture_uniform = gles.GetUniformLocation(program, "u_has_texture");
+   gles.cube_texture_uniform = gles.GetUniformLocation(program, "u_texture");
    return gles.cube_position_attrib >= 0 && gles.cube_normal_attrib >= 0 &&
       gles.cube_mvp_uniform >= 0 && gles.cube_normal_matrix_uniform >= 0 &&
       gles.cube_color_uniform >= 0 && gles.cube_ambient_uniform >= 0 &&
@@ -3225,7 +3534,19 @@ static bool gles_load_functions(void)
    gles.TexImage2D = (PFNGLTEXIMAGE2DPROC)load_gles_proc("glTexImage2D");
    gles.TexSubImage2D = (PFNGLTEXSUBIMAGE2DPROC)load_gles_proc("glTexSubImage2D");
    gles.Uniform1i = (PFNGLUNIFORM1IPROC)load_gles_proc("glUniform1i");
+   gles.Uniform1f = (PFNGLUNIFORM1FPROC)load_gles_proc("glUniform1f");
    gles.BlendFunc = (PFNGLBLENDFUNCPROC)load_gles_proc("glBlendFunc");
+   /* FBO procs — optional; post-processing degrades gracefully if absent */
+   gles.GenFramebuffers = (PFNGLGENFRAMEBUFFERSPROC)load_gles_proc("glGenFramebuffers");
+   gles.BindFramebuffer = (PFNGLBINDFRAMEBUFFERPROC)load_gles_proc("glBindFramebuffer");
+   gles.FramebufferTexture2D = (PFNGLFRAMEBUFFERTEXTURE2DPROC)load_gles_proc("glFramebufferTexture2D");
+   gles.CheckFramebufferStatus = (PFNGLCHECKFRAMEBUFFERSTATUSPROC)load_gles_proc("glCheckFramebufferStatus");
+   gles.DeleteFramebuffers = (PFNGLDELETEFRAMEBUFFERSPROC)load_gles_proc("glDeleteFramebuffers");
+   gles.GenRenderbuffers = (PFNGLGENRENDERBUFFERSPROC)load_gles_proc("glGenRenderbuffers");
+   gles.BindRenderbuffer = (PFNGLBINDRENDERBUFFERPROC)load_gles_proc("glBindRenderbuffer");
+   gles.RenderbufferStorage = (PFNGLRENDERBUFFERSTORAGEPROC)load_gles_proc("glRenderbufferStorage");
+   gles.FramebufferRenderbuffer = (PFNGLFRAMEBUFFERRENDERBUFFERPROC)load_gles_proc("glFramebufferRenderbuffer");
+   gles.DeleteRenderbuffers = (PFNGLDELETERENDERBUFFERSPROC)load_gles_proc("glDeleteRenderbuffers");
 
    gles.functions_loaded = gles.Viewport && gles.ClearColor && gles.Clear &&
       gles.CreateShader && gles.ShaderSource && gles.CompileShader && gles.GetShaderiv &&
@@ -3237,7 +3558,7 @@ static bool gles_load_functions(void)
       gles.VertexAttribPointer && gles.DrawElements && gles.GenTextures &&
       gles.DeleteTextures && gles.ActiveTexture && gles.BindTexture &&
       gles.TexParameteri && gles.TexImage2D && gles.TexSubImage2D &&
-      gles.Uniform1i && gles.BlendFunc;
+      gles.Uniform1i && gles.Uniform1f && gles.BlendFunc;
    if (!gles.functions_loaded)
       nova64_log_line(RETRO_LOG_WARN, "[nova64] GLES proc-address callback did not provide the primitive renderer path");
    return gles.functions_loaded;
@@ -3294,7 +3615,23 @@ static void gles_context_destroy(void)
    gles.TexImage2D = NULL;
    gles.TexSubImage2D = NULL;
    gles.Uniform1i = NULL;
+   gles.Uniform1f = NULL;
    gles.BlendFunc = NULL;
+   gles.GenFramebuffers = NULL;
+   gles.BindFramebuffer = NULL;
+   gles.FramebufferTexture2D = NULL;
+   gles.CheckFramebufferStatus = NULL;
+   gles.DeleteFramebuffers = NULL;
+   gles.GenRenderbuffers = NULL;
+   gles.BindRenderbuffer = NULL;
+   gles.RenderbufferStorage = NULL;
+   gles.FramebufferRenderbuffer = NULL;
+   gles.DeleteRenderbuffers = NULL;
+   gles.post_fbo = 0;
+   gles.post_rbo = 0;
+   gles.post_color_texture = 0;
+   gles.post_program = 0;
+   gles.post_resources_ready = false;
    nova64_log_line(RETRO_LOG_INFO, "[nova64] GLES3 hardware context destroyed");
 }
 
@@ -3326,6 +3663,35 @@ static void render_gles_primitive(const struct nova64_mesh *mesh, const float vi
       (float)(ambient & 0xffU) / 255.0f);
    gles.Uniform4f(gles.cube_light_direction_uniform,
       light_state.direction[0], light_state.direction[1], light_state.direction[2], 0.0f);
+   /* fog */
+   if (gles.cube_fog_enabled_uniform >= 0) {
+      gles.Uniform1i(gles.cube_fog_enabled_uniform, light_state.fog_enabled ? 1 : 0);
+      if (gles.cube_fog_color_uniform >= 0)
+         gles.Uniform4f(gles.cube_fog_color_uniform,
+            (float)((light_state.fog_color >> 24) & 0xffU) / 255.0f,
+            (float)((light_state.fog_color >> 16) & 0xffU) / 255.0f,
+            (float)((light_state.fog_color >>  8) & 0xffU) / 255.0f,
+            1.0f);
+      if (gles.cube_fog_near_uniform >= 0 && gles.Uniform1f)
+         gles.Uniform1f(gles.cube_fog_near_uniform, light_state.fog_near);
+      if (gles.cube_fog_far_uniform >= 0 && gles.Uniform1f)
+         gles.Uniform1f(gles.cube_fog_far_uniform, light_state.fog_far);
+   }
+   /* texture */
+   GLuint mesh_gl_tex = 0;
+   if (mesh->texture_handle > 0) {
+      struct nova64_texture *tex = texture_from_handle(mesh->texture_handle);
+      if (tex && tex->gl_name)
+         mesh_gl_tex = tex->gl_name;
+   }
+   if (gles.cube_has_texture_uniform >= 0)
+      gles.Uniform1i(gles.cube_has_texture_uniform, mesh_gl_tex ? 1 : 0);
+   if (mesh_gl_tex) {
+      gles.ActiveTexture(GL_TEXTURE0);
+      gles.BindTexture(GL_TEXTURE_2D, mesh_gl_tex);
+      if (gles.cube_texture_uniform >= 0)
+         gles.Uniform1i(gles.cube_texture_uniform, 0);
+   }
    gles.BindBuffer(GL_ARRAY_BUFFER, vbo);
    gles.BindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo);
    gles.EnableVertexAttribArray((GLuint)gles.cube_position_attrib);
@@ -3384,24 +3750,216 @@ static void render_gles_overlay(void)
    gles.Enable(GL_DEPTH_TEST);
 }
 
+static bool gles_has_fbo_procs(void)
+{
+   return gles.GenFramebuffers && gles.BindFramebuffer && gles.FramebufferTexture2D &&
+          gles.CheckFramebufferStatus && gles.DeleteFramebuffers &&
+          gles.GenRenderbuffers && gles.BindRenderbuffer && gles.RenderbufferStorage &&
+          gles.FramebufferRenderbuffer && gles.DeleteRenderbuffers;
+}
+
+static bool gles_create_post_program(void)
+{
+   static const char *vertex_source =
+      "attribute vec2 a_position;\n"
+      "attribute vec2 a_uv;\n"
+      "varying vec2 v_uv;\n"
+      "void main() {\n"
+      "  v_uv = a_uv;\n"
+      "  gl_Position = vec4(a_position, 0.0, 1.0);\n"
+      "}\n";
+   /* CRT scanline + vignette + pixelate post-processing fragment shader */
+   static const char *fragment_source =
+      "precision mediump float;\n"
+      "varying vec2 v_uv;\n"
+      "uniform sampler2D u_scene;\n"
+      "uniform int u_crt;\n"
+      "uniform float u_vignette;\n"
+      "uniform int u_pixelate;\n"
+      "uniform vec2 u_resolution;\n"
+      "void main() {\n"
+      "  vec2 uv = v_uv;\n"
+      "  if (u_pixelate > 0) {\n"
+      "    float px = float(u_pixelate) / u_resolution.x;\n"
+      "    float py = float(u_pixelate) / u_resolution.y;\n"
+      "    uv = floor(uv / vec2(px, py)) * vec2(px, py) + vec2(px, py) * 0.5;\n"
+      "  }\n"
+      "  vec4 color = texture2D(u_scene, uv);\n"
+      "  if (u_crt != 0) {\n"
+      "    float line = sin(v_uv.y * u_resolution.y * 3.14159265);\n"
+      "    float scanline = pow(abs(line) * 0.5 + 0.5, 0.35) * 0.88 + 0.12;\n"
+      "    color.rgb *= scanline;\n"
+      "    vec2 centered = uv - 0.5;\n"
+      "    float barrel = dot(centered, centered) * 0.08;\n"
+      "    uv = uv + centered * barrel;\n"
+      "    if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0)\n"
+      "      color = vec4(0.0, 0.0, 0.0, 1.0);\n"
+      "    else\n"
+      "      color = texture2D(u_scene, uv) * vec4(color.rgb / (texture2D(u_scene, v_uv).rgb + 0.001), color.a);\n"
+      "  }\n"
+      "  if (u_vignette > 0.0) {\n"
+      "    vec2 cv = v_uv - 0.5;\n"
+      "    float vt = clamp(1.0 - dot(cv, cv) * 4.0 * u_vignette, 0.0, 1.0);\n"
+      "    color.rgb *= vt;\n"
+      "  }\n"
+      "  gl_FragColor = vec4(color.rgb, 1.0);\n"
+      "}\n";
+
+   GLuint vertex = gles_compile_shader(GL_VERTEX_SHADER, vertex_source);
+   GLuint fragment = gles_compile_shader(GL_FRAGMENT_SHADER, fragment_source);
+   if (!vertex || !fragment) {
+      if (vertex) gles.DeleteShader(vertex);
+      if (fragment) gles.DeleteShader(fragment);
+      return false;
+   }
+   GLuint program = gles.CreateProgram();
+   gles.AttachShader(program, vertex);
+   gles.AttachShader(program, fragment);
+   gles.LinkProgram(program);
+   gles.DeleteShader(vertex);
+   gles.DeleteShader(fragment);
+   GLint status = 0;
+   gles.GetProgramiv(program, GL_LINK_STATUS, &status);
+   if (!status) {
+      gles.DeleteProgram(program);
+      nova64_log_line(RETRO_LOG_WARN, "[nova64] post program link failed; effects disabled");
+      return false;
+   }
+   gles.post_program = program;
+   gles.post_position_attrib = gles.GetAttribLocation(program, "a_position");
+   gles.post_uv_attrib = gles.GetAttribLocation(program, "a_uv");
+   gles.post_scene_uniform = gles.GetUniformLocation(program, "u_scene");
+   gles.post_crt_uniform = gles.GetUniformLocation(program, "u_crt");
+   gles.post_vignette_uniform = gles.GetUniformLocation(program, "u_vignette");
+   gles.post_pixelate_uniform = gles.GetUniformLocation(program, "u_pixelate");
+   gles.post_resolution_uniform = gles.GetUniformLocation(program, "u_resolution");
+   return gles.post_position_attrib >= 0 && gles.post_uv_attrib >= 0;
+}
+
+static void gles_destroy_post_resources(void)
+{
+   if (!gles_has_fbo_procs())
+      return;
+   if (gles.post_fbo)
+      gles.DeleteFramebuffers(1, &gles.post_fbo);
+   if (gles.post_rbo)
+      gles.DeleteRenderbuffers(1, &gles.post_rbo);
+   if (gles.post_color_texture && gles.DeleteTextures)
+      gles.DeleteTextures(1, &gles.post_color_texture);
+   if (gles.post_program && gles.DeleteProgram)
+      gles.DeleteProgram(gles.post_program);
+   gles.post_fbo = 0;
+   gles.post_rbo = 0;
+   gles.post_color_texture = 0;
+   gles.post_program = 0;
+   gles.post_resources_ready = false;
+}
+
+static bool gles_init_post_resources(void)
+{
+   if (gles.post_resources_ready)
+      return true;
+   if (!gles_has_fbo_procs())
+      return false;
+   if (!gles_create_post_program())
+      return false;
+
+   gles.GenTextures(1, &gles.post_color_texture);
+   gles.BindTexture(GL_TEXTURE_2D, gles.post_color_texture);
+   gles.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+   gles.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+   gles.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+   gles.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+   gles.TexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, NOVA64_WIDTH, NOVA64_HEIGHT, 0,
+      GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+   gles.BindTexture(GL_TEXTURE_2D, 0);
+
+   gles.GenRenderbuffers(1, &gles.post_rbo);
+   gles.BindRenderbuffer(GL_RENDERBUFFER, gles.post_rbo);
+   gles.RenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT16, NOVA64_WIDTH, NOVA64_HEIGHT);
+   gles.BindRenderbuffer(GL_RENDERBUFFER, 0);
+
+   gles.GenFramebuffers(1, &gles.post_fbo);
+   gles.BindFramebuffer(GL_FRAMEBUFFER, gles.post_fbo);
+   gles.FramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, gles.post_color_texture, 0);
+   gles.FramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, gles.post_rbo);
+   GLenum status = gles.CheckFramebufferStatus(GL_FRAMEBUFFER);
+   gles.BindFramebuffer(GL_FRAMEBUFFER, 0);
+   if (status != GL_FRAMEBUFFER_COMPLETE) {
+      gles_destroy_post_resources();
+      nova64_log_line(RETRO_LOG_WARN, "[nova64] post FBO incomplete; effects disabled");
+      return false;
+   }
+   gles.post_resources_ready = true;
+   nova64_log_line(RETRO_LOG_INFO, "[nova64] post-processing FBO ready");
+   return true;
+}
+
+/* Renders the post-processing fullscreen quad using the FBO color texture.
+   Uses the same overlay VBO/IBO quad (reused geometry, different program). */
+static void render_gles_post_pass(GLuint hw_fbo)
+{
+   gles.BindFramebuffer(GL_FRAMEBUFFER, hw_fbo);
+   gles.Viewport(0, 0, NOVA64_WIDTH, NOVA64_HEIGHT);
+   gles.Disable(GL_DEPTH_TEST);
+   gles.ClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+   gles.Clear(GL_COLOR_BUFFER_BIT);
+
+   gles.UseProgram(gles.post_program);
+   gles.ActiveTexture(GL_TEXTURE0);
+   gles.BindTexture(GL_TEXTURE_2D, gles.post_color_texture);
+   if (gles.post_scene_uniform >= 0)
+      gles.Uniform1i(gles.post_scene_uniform, 0);
+   if (gles.post_crt_uniform >= 0)
+      gles.Uniform1i(gles.post_crt_uniform, post_state.crt_enabled ? 1 : 0);
+   if (gles.post_vignette_uniform >= 0 && gles.Uniform1f)
+      gles.Uniform1f(gles.post_vignette_uniform, post_state.vignette);
+   if (gles.post_pixelate_uniform >= 0)
+      gles.Uniform1i(gles.post_pixelate_uniform, post_state.pixelate);
+   if (gles.post_resolution_uniform >= 0)
+      gles.Uniform4f(gles.post_resolution_uniform,
+         (float)NOVA64_WIDTH, (float)NOVA64_HEIGHT, 0.0f, 0.0f);
+
+   gles.BindBuffer(GL_ARRAY_BUFFER, gles.overlay_vbo);
+   gles.BindBuffer(GL_ELEMENT_ARRAY_BUFFER, gles.overlay_ibo);
+   gles.EnableVertexAttribArray((GLuint)gles.post_position_attrib);
+   gles.EnableVertexAttribArray((GLuint)gles.post_uv_attrib);
+   gles.VertexAttribPointer((GLuint)gles.post_position_attrib, 2, GL_FLOAT, GL_FALSE,
+      (GLsizei)(sizeof(GLfloat) * 4), NULL);
+   gles.VertexAttribPointer((GLuint)gles.post_uv_attrib, 2, GL_FLOAT, GL_FALSE,
+      (GLsizei)(sizeof(GLfloat) * 4), (const void *)(sizeof(GLfloat) * 2));
+   gles.DrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, NULL);
+   gles.DisableVertexAttribArray((GLuint)gles.post_uv_attrib);
+   gles.DisableVertexAttribArray((GLuint)gles.post_position_attrib);
+   gles.BindTexture(GL_TEXTURE_2D, 0);
+   gles.Enable(GL_DEPTH_TEST);
+}
+
 static void render_gles_scene(void)
 {
    if (!gles.active || !gles_load_functions())
       return;
 
+   if (!gles_init_resources())
+      return;
+
+   /* When post effects are requested and the FBO is available, render 3D into
+      the offscreen post_fbo then blit to the RetroArch HW framebuffer via the
+      post program. The 2D overlay is always composited last on top. */
+   bool use_post = post_is_active() && gles_init_post_resources();
+   GLuint hw_fbo = hw_render.get_current_framebuffer ? hw_render.get_current_framebuffer() : 0;
+
+   if (use_post)
+      gles.BindFramebuffer(GL_FRAMEBUFFER, gles.post_fbo);
+
    uint32_t ambient = color_with_intensity(light_state.ambient, light_state.ambient_intensity);
    float r = (float)((ambient >> 24) & 0xffU) / 255.0f;
    float g = (float)((ambient >> 16) & 0xffU) / 255.0f;
-   float b = (float)((ambient >> 8) & 0xffU) / 255.0f;
-   if (gles.Viewport)
-      gles.Viewport(0, 0, NOVA64_WIDTH, NOVA64_HEIGHT);
-   if (gles.Enable)
-      gles.Enable(GL_DEPTH_TEST);
+   float b = (float)((ambient >>  8) & 0xffU) / 255.0f;
+   gles.Viewport(0, 0, NOVA64_WIDTH, NOVA64_HEIGHT);
+   gles.Enable(GL_DEPTH_TEST);
    gles.ClearColor(r, g, b, 1.0f);
    gles.Clear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-   if (!gles_init_resources())
-      return;
 
    float projection[16];
    float view[16];
@@ -3420,6 +3978,13 @@ static void render_gles_scene(void)
          render_gles_plane(&meshes[i], view_projection);
       else if (meshes[i].type == NOVA64_MESH_SPHERE)
          render_gles_sphere(&meshes[i], view_projection);
+   }
+
+   if (use_post) {
+      /* Post pass: blit the FBO color texture to the RetroArch HW framebuffer */
+      render_gles_post_pass(hw_fbo);
+      /* Re-bind HW framebuffer so overlay compositing lands on the right target */
+      gles.BindFramebuffer(GL_FRAMEBUFFER, hw_fbo);
    }
 
    render_gles_overlay();
@@ -3984,6 +4549,7 @@ void RETRO_CALLCONV retro_init(void)
 void RETRO_CALLCONV retro_deinit(void)
 {
    js_host_free();
+   clear_textures();
    reset_package_manifest_metadata();
    free(framebuffer);
    free(rgb565_framebuffer);
@@ -4080,6 +4646,8 @@ void RETRO_CALLCONV retro_reset(void)
    clear_framebuffer(rgba8(0, 0, 0, 255));
    reset_scene_state();
    reset_audio_state();
+   reset_post_state();
+   clear_textures();
    if (cart_content && cart_size)
       js_host_load_cart(cart_content, cart_size, cart_path[0] ? cart_path : "<nova64-cart>");
 }
@@ -4178,6 +4746,7 @@ bool RETRO_CALLCONV retro_load_game_special(unsigned game_type, const struct ret
 void RETRO_CALLCONV retro_unload_game(void)
 {
    js_host_free();
+   clear_textures();
    free(cart_content);
    cart_content = NULL;
    cart_size = 0;

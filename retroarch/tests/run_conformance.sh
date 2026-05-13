@@ -105,6 +105,8 @@ run_case "15 primitive args" "retroarch/conformance/15-primitive-args.js" "1294e
 run_case "16 transforms" "retroarch/conformance/16-transforms.js" "271707fd988ce378"
 run_case "17 light fog" "retroarch/conformance/17-light-fog.js" "1c577cddb900b60b"
 run_case "18 mesh helpers" "retroarch/conformance/18-mesh-helpers.js" "085d5a80c48ebdcd"
+run_case "19 texture" "retroarch/conformance/19-texture.js" "f4fd3acbca0331b4"
+run_case "20 post" "retroarch/conformance/20-post.js" "75a3d27c9048e5b0"
 run_command_log_case "09-overlay-scene" "retroarch/conformance/09-overlay-scene.js" "6c67a7f0e98993dc1b2df7196dd12c2be9460b155ebb0194db2d205afa6f537a"
 run_command_log_case "10-lighting" "retroarch/conformance/10-lighting.js" "7f746695c51ff3e2d51a0d33b1ca18e42e40270759aadb04eee5318c3bfbc85d"
 run_command_log_case "14-plane-dimensions" "retroarch/conformance/14-plane-dimensions.js" "a92d89c1ef501c0eeb63af62d01d60ca10a90516d8fc677232b0d24c17962575"

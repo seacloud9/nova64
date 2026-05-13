@@ -80,6 +80,6 @@ run_command_log_case "10-lighting" "retroarch/conformance/10-lighting.js" "35413
 run_command_log_case "06-cube-vulkan12" "retroarch/conformance/06-cube.js" "e1b52dec66dd3bfc13c7d65d620c3d46d1d16f210ac366a4fe1575076207a050" "vulkan12"
 run_case "nova fallback" "${PACKAGE_DIR}/cube-fallback.nova" "53584f0993f3ff6a"
 run_case "nova manifest main" "${PACKAGE_DIR}/cube-manifest.nova" "53584f0993f3ff6a"
-run_command_log_case "nova-asset-manifest" "${PACKAGE_DIR}/asset-manifest.nova" "e6155762859c730a8796ad9de88e672dfaa89de75dec9b5ea312ec7a3e09d234"
+run_command_log_case "nova-asset-manifest" "${PACKAGE_DIR}/asset-manifest.nova" "63fb45ba2bf01151f4dba5bdd9a0cc4e061c731c16d65b3e02884b48881526cb"
 
 echo "Conformance passed."

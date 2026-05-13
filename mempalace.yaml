@@ -1,0 +1,97 @@
+wing: nova64
+rooms:
+- name: bin
+  description: Files from bin/
+  keywords:
+  - bin
+- name: documentation
+  description: Files from docs/
+  keywords:
+  - documentation
+  - docs
+- name: examples
+  description: Files from examples/
+  keywords:
+  - examples
+- name: nova64_godot
+  description: Files from nova64-godot/
+  keywords:
+  - nova64_godot
+  - nova64-godot
+- name: os9_shell
+  description: Files from os9-shell/
+  keywords:
+  - os9_shell
+  - os9-shell
+- name: os9_shellmobile
+  description: Files from os9-shellMobile/
+  keywords:
+  - os9_shellmobile
+  - os9-shellmobile
+- name: plan
+  description: Files from plan/
+  keywords:
+  - plan
+- name: playwright_report
+  description: Files from playwright-report/
+  keywords:
+  - playwright_report
+  - playwright-report
+- name: public
+  description: Files from public/
+  keywords:
+  - public
+- name: retroarch
+  description: Libretro core, QuickJS host bridge, GLES/Vulkan renderer milestones, conformance carts, and native harness tests.
+  keywords:
+  - retroarch
+  - libretro
+  - quickjs
+  - gles
+  - vulkan
+  - conformance
+  - nova package
+- name: runtime
+  description: Browser runtime APIs, renderer adapters, cart lifecycle, assets, framebuffer, and cross-backend behavior.
+  keywords:
+  - runtime
+  - api
+  - threejs
+  - babylon
+  - framebuffer
+  - cart lifecycle
+- name: screenshots
+  description: Files from screenshots/
+  keywords:
+  - screenshots
+- name: scripts
+  description: Files from scripts/
+  keywords:
+  - scripts
+- name: src
+  description: Files from src/
+  keywords:
+  - src
+- name: test_results
+  description: Files from test-results/
+  keywords:
+  - test_results
+  - test-results
+- name: testing
+  description: Files from tests/
+  keywords:
+  - testing
+  - tests
+- name: design
+  description: Files from assets/
+  keywords:
+  - design
+  - assets
+- name: frontend
+  description: Files from ui/
+  keywords:
+  - frontend
+  - ui
+- name: general
+  description: Files that don't fit other rooms
+  keywords: []

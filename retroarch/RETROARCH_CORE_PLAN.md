@@ -75,8 +75,9 @@ Goals:
 - Expand `.nova` package parsing while preserving plain `.js` development carts.
 - Define `.nova` as a package format, not a new programming model.
 - Load package asset manifests without executing code.
-  - Zip-style `.nova` manifests now stage `name`, `main`, and safe `assets: []`
-    path counts in renderer command logs. Full asset loading remains later.
+  - Zip-style `.nova` manifests now stage `name`, `main`, safe `assets: []`
+    paths, missing asset counts, and asset byte totals in renderer command logs.
+    Full asset loading remains later.
 - Add conformance carts:
   - `00-boot.js`: lifecycle/log order. Done.
   - `01-framebuffer.js`: deterministic 2D checksum. Done.

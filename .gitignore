@@ -57,3 +57,6 @@ nova64-godot/godot_project/data/
 
 # Godot user assets directory (GLB models, VOX files, etc.)
 nova64-godot/godot_project/assets/
+
+# MemPalace generated entity registry (issue #185)
+entities.json

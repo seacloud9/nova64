@@ -258,6 +258,8 @@ static char cart_path[1024];
 static char package_manifest_name[128];
 static char package_manifest_main[256];
 static size_t package_manifest_asset_count;
+static size_t package_manifest_missing_asset_count;
+static size_t package_manifest_asset_bytes;
 static char renderer_command_log_path[1024];
 static bool initialized;
 static uint64_t frame_count;
@@ -1101,8 +1103,9 @@ static void write_renderer_command_log(void)
    fprintf(file, "renderer preference=%s hardware_gles_requested=%d hardware_gles_active=%d\n",
          renderer_backend_name(renderer_preference), gles.requested ? 1 : 0, gles.active ? 1 : 0);
    if (package_manifest_name[0] || package_manifest_main[0] || package_manifest_asset_count) {
-      fprintf(file, "package name=\"%s\" main=\"%s\" asset_count=%zu\n",
-            package_manifest_name, package_manifest_main, package_manifest_asset_count);
+      fprintf(file, "package name=\"%s\" main=\"%s\" asset_count=%zu missing_assets=%zu asset_bytes=%zu\n",
+            package_manifest_name, package_manifest_main, package_manifest_asset_count,
+            package_manifest_missing_asset_count, package_manifest_asset_bytes);
    }
    fprintf(file, "camera position=%.4f,%.4f,%.4f target=%.4f,%.4f,%.4f fov=%.4f\n",
          camera_state.position[0], camera_state.position[1], camera_state.position[2],
@@ -2420,6 +2423,33 @@ static bool extract_zip_named_entry(const uint8_t *archive, size_t archive_size,
    return false;
 }
 
+static bool find_zip_entry_uncompressed_size(const uint8_t *archive, size_t archive_size,
+      uint16_t entry_count, uint32_t central_offset, const char *expected_name,
+      uint32_t *out_uncompressed_size)
+{
+   size_t offset = central_offset;
+   for (uint16_t i = 0; i < entry_count && offset + 46 <= archive_size; i++) {
+      const uint8_t *entry = archive + offset;
+      if (read_u32_le(entry) != NOVA64_ZIP_CENTRAL_SIGNATURE)
+         return false;
+      uint32_t uncompressed_size = read_u32_le(entry + 24);
+      uint16_t name_len = read_u16_le(entry + 28);
+      uint16_t extra_len = read_u16_le(entry + 30);
+      uint16_t comment_len = read_u16_le(entry + 32);
+      if (offset + 46 + name_len + extra_len + comment_len > archive_size)
+         return false;
+
+      const uint8_t *name = entry + 46;
+      if (bytes_equal_name(name, name_len, expected_name)) {
+         if (out_uncompressed_size)
+            *out_uncompressed_size = uncompressed_size;
+         return true;
+      }
+      offset += 46 + name_len + extra_len + comment_len;
+   }
+   return false;
+}
+
 static const char *skip_json_ws(const char *cursor, const char *end)
 {
    while (cursor < end && (*cursor == ' ' || *cursor == '\t' || *cursor == '\r' || *cursor == '\n'))
@@ -2473,30 +2503,30 @@ static bool parse_manifest_main(const char *manifest, size_t manifest_size, char
    return parse_manifest_string_field(manifest, manifest_size, "main", out_path, out_path_size, true);
 }
 
-static size_t parse_manifest_asset_list_count(const char *manifest, size_t manifest_size)
+static void parse_manifest_asset_list_metadata(const char *manifest, size_t manifest_size,
+      const uint8_t *archive, size_t archive_size, uint16_t entry_count, uint32_t central_offset)
 {
    if (!manifest)
-      return 0;
+      return;
 
    const char *end = manifest + manifest_size;
    const char *key = strstr(manifest, "\"assets\"");
    if (!key || key >= end)
-      return 0;
+      return;
    const char *cursor = skip_json_ws(key + 8, end);
    if (cursor >= end || *cursor != ':')
-      return 0;
+      return;
    cursor = skip_json_ws(cursor + 1, end);
    if (cursor >= end || *cursor != '[')
-      return 0;
+      return;
    cursor++;
 
-   size_t count = 0;
    while (cursor < end) {
       cursor = skip_json_ws(cursor, end);
       if (cursor >= end || *cursor == ']')
          break;
       if (*cursor != '"')
-         return count;
+         return;
       cursor++;
       char path[256];
       size_t len = 0;
@@ -2504,15 +2534,22 @@ static size_t parse_manifest_asset_list_count(const char *manifest, size_t manif
          path[len++] = *cursor++;
       path[len] = '\0';
       if (cursor >= end || *cursor != '"')
-         return count;
-      if (is_safe_package_path(path))
-         count++;
+         return;
+      if (is_safe_package_path(path)) {
+         uint32_t asset_size = 0;
+         if (find_zip_entry_uncompressed_size(archive, archive_size, entry_count,
+               central_offset, path, &asset_size)) {
+            package_manifest_asset_count++;
+            package_manifest_asset_bytes += asset_size;
+         } else {
+            package_manifest_missing_asset_count++;
+         }
+      }
       cursor++;
       cursor = skip_json_ws(cursor, end);
       if (cursor < end && *cursor == ',')
          cursor++;
    }
-   return count;
 }
 
 static void reset_package_manifest_metadata(void)
@@ -2520,6 +2557,8 @@ static void reset_package_manifest_metadata(void)
    package_manifest_name[0] = '\0';
    package_manifest_main[0] = '\0';
    package_manifest_asset_count = 0;
+   package_manifest_missing_asset_count = 0;
+   package_manifest_asset_bytes = 0;
 }
 
 static bool extract_nova_code_js(const char *archive_text, size_t archive_size, char **out_source, size_t *out_size)
@@ -2554,7 +2593,8 @@ static bool extract_nova_code_js(const char *archive_text, size_t archive_size, 
          "manifest.json", &manifest, &manifest_size)) {
       parse_manifest_string_field(manifest, manifest_size, "name",
             package_manifest_name, sizeof(package_manifest_name), false);
-      package_manifest_asset_count = parse_manifest_asset_list_count(manifest, manifest_size);
+      parse_manifest_asset_list_metadata(manifest, manifest_size, archive, archive_size,
+            entry_count, central_offset);
       if (parse_manifest_main(manifest, manifest_size, manifest_main, sizeof(manifest_main))) {
          snprintf(package_manifest_main, sizeof(package_manifest_main), "%s", manifest_main);
          bool loaded_main = extract_zip_named_entry(archive, archive_size, entry_count,

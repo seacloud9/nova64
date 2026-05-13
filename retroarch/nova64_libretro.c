@@ -1,4 +1,5 @@
 #include <math.h>
+#include <errno.h>
 #include <stddef.h>
 #include <stdarg.h>
 #include <stdbool.h>
@@ -6,6 +7,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#ifdef _WIN32
+#include <direct.h>
+#else
+#include <sys/stat.h>
+#include <sys/types.h>
+#endif
 #include <zlib.h>
 
 #include "libretro.h"
@@ -15,6 +22,8 @@
 #define NOVA64_HEIGHT 360
 #define NOVA64_FPS 60.0
 #define NOVA64_SAMPLE_RATE 44100.0
+#define NOVA64_AUDIO_FRAME_SAMPLES 735
+#define NOVA64_AUDIO_MAX_VOICES 8
 #define NOVA64_CORE_VERSION "0.3.0"
 #define NOVA64_MAX_MESHES 1024
 #define NOVA64_SAVE_MAGIC 0x5344364eU
@@ -23,6 +32,12 @@
 #define NOVA64_ZIP_CENTRAL_SIGNATURE 0x02014b50U
 #define NOVA64_ZIP_LOCAL_SIGNATURE 0x04034b50U
 #define NOVA64_ZIP_MAX_EOCD_SEARCH 65557U
+#define NOVA64_MAX_PACKAGE_ASSETS 128
+#ifdef _WIN32
+#define NOVA64_PATH_SEPARATOR "\\"
+#else
+#define NOVA64_PATH_SEPARATOR "/"
+#endif
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
@@ -151,6 +166,42 @@ enum nova64_renderer_backend {
    NOVA64_RENDERER_VULKAN12
 };
 
+enum nova64_audio_wave {
+   NOVA64_AUDIO_SQUARE = 0,
+   NOVA64_AUDIO_SINE,
+   NOVA64_AUDIO_SAWTOOTH,
+   NOVA64_AUDIO_TRIANGLE,
+   NOVA64_AUDIO_NOISE
+};
+
+struct nova64_audio_voice {
+   bool active;
+   enum nova64_audio_wave wave;
+   double phase;
+   double freq;
+   double dur;
+   double vol;
+   double sweep;
+   size_t elapsed_samples;
+   size_t total_samples;
+   uint32_t noise_state;
+};
+
+struct nova64_sfx_params {
+   enum nova64_audio_wave wave;
+   double freq;
+   double dur;
+   double vol;
+   double sweep;
+};
+
+struct nova64_package_asset {
+   bool used;
+   char path[256];
+   uint8_t *data;
+   size_t size;
+};
+
 struct nova64_save_header {
    uint32_t magic;
    uint32_t version;
@@ -260,7 +311,10 @@ static char package_manifest_main[256];
 static size_t package_manifest_asset_count;
 static size_t package_manifest_missing_asset_count;
 static size_t package_manifest_asset_bytes;
+static struct nova64_package_asset package_assets[NOVA64_MAX_PACKAGE_ASSETS];
 static char renderer_command_log_path[1024];
+static char storage_save_directory[1024];
+static char storage_cart_id[128];
 static bool initialized;
 static uint64_t frame_count;
 
@@ -271,6 +325,9 @@ static bool pressed_buttons[NOVA64_BUTTON_COUNT];
 static struct nova64_mesh meshes[NOVA64_MAX_MESHES];
 static struct nova64_camera camera_state;
 static struct nova64_light light_state;
+static struct nova64_audio_voice audio_voices[NOVA64_AUDIO_MAX_VOICES];
+static int16_t audio_mix_buffer[NOVA64_AUDIO_FRAME_SAMPLES * 2];
+static double audio_master_volume = 0.4;
 static struct nova64_js_host js_host;
 static struct nova64_gles_backend gles;
 static enum nova64_renderer_backend renderer_preference = NOVA64_RENDERER_GLES3;
@@ -280,6 +337,11 @@ static bool drawing_scene_preview;
 
 static bool scene_has_visible_meshes(void);
 static void render_software_scene(void);
+static char *read_file_to_memory(const char *path, size_t *out_size);
+static bool storage_path_for_key(const char *key, char *out, size_t out_size);
+static void audio_mix_frame(void);
+static void reset_audio_state(void);
+static const struct nova64_package_asset *find_package_asset(const char *path);
 
 static void nova64_log_line(enum retro_log_level level, const char *message)
 {
@@ -393,6 +455,15 @@ static double double_from_js(JSContext *ctx, JSValueConst value, double fallback
    return out;
 }
 
+static double clamp_double(double value, double min_value, double max_value)
+{
+   if (value < min_value)
+      return min_value;
+   if (value > max_value)
+      return max_value;
+   return value;
+}
+
 static uint16_t read_u16_le(const uint8_t *data)
 {
    return (uint16_t)data[0] | ((uint16_t)data[1] << 8);
@@ -424,6 +495,241 @@ static void reset_scene_state(void)
    light_state.direction[0] = -0.4f;
    light_state.direction[1] = -0.8f;
    light_state.direction[2] = -0.3f;
+}
+
+static enum nova64_audio_wave audio_wave_from_name(const char *name, enum nova64_audio_wave fallback)
+{
+   if (!name)
+      return fallback;
+   if (!strcmp(name, "sine"))
+      return NOVA64_AUDIO_SINE;
+   if (!strcmp(name, "sawtooth") || !strcmp(name, "saw"))
+      return NOVA64_AUDIO_SAWTOOTH;
+   if (!strcmp(name, "triangle"))
+      return NOVA64_AUDIO_TRIANGLE;
+   if (!strcmp(name, "noise"))
+      return NOVA64_AUDIO_NOISE;
+   if (!strcmp(name, "square"))
+      return NOVA64_AUDIO_SQUARE;
+   return fallback;
+}
+
+static void audio_default_params(struct nova64_sfx_params *params)
+{
+   params->wave = NOVA64_AUDIO_SQUARE;
+   params->freq = 440.0;
+   params->dur = 0.2;
+   params->vol = 0.5;
+   params->sweep = 0.0;
+}
+
+static void audio_apply_preset(const char *name, struct nova64_sfx_params *params)
+{
+   if (!name)
+      return;
+
+   if (!strcmp(name, "0")) {
+      params->wave = NOVA64_AUDIO_SQUARE;
+      params->freq = 880.0;
+      params->dur = 0.1;
+      params->vol = 0.4;
+   } else if (!strcmp(name, "1")) {
+      params->wave = NOVA64_AUDIO_SINE;
+      params->freq = 220.0;
+      params->dur = 0.3;
+      params->vol = 0.3;
+      params->sweep = -100.0;
+   } else if (!strcmp(name, "2")) {
+      params->wave = NOVA64_AUDIO_NOISE;
+      params->dur = 0.2;
+      params->vol = 0.3;
+   } else if (!strcmp(name, "jump")) {
+      params->wave = NOVA64_AUDIO_SQUARE;
+      params->freq = 300.0;
+      params->dur = 0.12;
+      params->vol = 0.4;
+      params->sweep = 200.0;
+   } else if (!strcmp(name, "land")) {
+      params->wave = NOVA64_AUDIO_NOISE;
+      params->dur = 0.08;
+      params->vol = 0.3;
+   } else if (!strcmp(name, "coin")) {
+      params->wave = NOVA64_AUDIO_SINE;
+      params->freq = 1046.0;
+      params->dur = 0.15;
+      params->vol = 0.5;
+      params->sweep = 400.0;
+   } else if (!strcmp(name, "powerup")) {
+      params->wave = NOVA64_AUDIO_SINE;
+      params->freq = 440.0;
+      params->dur = 0.4;
+      params->vol = 0.5;
+      params->sweep = 880.0;
+   } else if (!strcmp(name, "explosion")) {
+      params->wave = NOVA64_AUDIO_NOISE;
+      params->dur = 0.4;
+      params->vol = 0.8;
+   } else if (!strcmp(name, "laser")) {
+      params->wave = NOVA64_AUDIO_SQUARE;
+      params->freq = 1200.0;
+      params->dur = 0.1;
+      params->vol = 0.4;
+      params->sweep = -800.0;
+   } else if (!strcmp(name, "hit")) {
+      params->wave = NOVA64_AUDIO_SQUARE;
+      params->freq = 200.0;
+      params->dur = 0.15;
+      params->vol = 0.5;
+      params->sweep = -100.0;
+   } else if (!strcmp(name, "death")) {
+      params->wave = NOVA64_AUDIO_SAWTOOTH;
+      params->freq = 440.0;
+      params->dur = 0.6;
+      params->vol = 0.5;
+      params->sweep = -400.0;
+   } else if (!strcmp(name, "select")) {
+      params->wave = NOVA64_AUDIO_SINE;
+      params->freq = 660.0;
+      params->dur = 0.08;
+      params->vol = 0.3;
+   } else if (!strcmp(name, "confirm")) {
+      params->wave = NOVA64_AUDIO_SINE;
+      params->freq = 880.0;
+      params->dur = 0.12;
+      params->vol = 0.3;
+      params->sweep = 220.0;
+   } else if (!strcmp(name, "error")) {
+      params->wave = NOVA64_AUDIO_SQUARE;
+      params->freq = 180.0;
+      params->dur = 0.3;
+      params->vol = 0.4;
+      params->sweep = -30.0;
+   } else if (!strcmp(name, "blip")) {
+      params->wave = NOVA64_AUDIO_SQUARE;
+      params->freq = 440.0;
+      params->dur = 0.06;
+      params->vol = 0.3;
+   }
+}
+
+static bool js_get_number_property(JSContext *ctx, JSValueConst object, const char *name, double *out)
+{
+   JSValue value = JS_GetPropertyStr(ctx, object, name);
+   if (JS_IsUndefined(value) || JS_IsNull(value)) {
+      JS_FreeValue(ctx, value);
+      return false;
+   }
+   double number = 0.0;
+   bool ok = JS_ToFloat64(ctx, &number, value) == 0;
+   JS_FreeValue(ctx, value);
+   if (ok)
+      *out = number;
+   return ok;
+}
+
+static void audio_apply_js_options(JSContext *ctx, JSValueConst value, struct nova64_sfx_params *params)
+{
+   JSValue wave_value = JS_GetPropertyStr(ctx, value, "wave");
+   const char *wave_name = JS_ToCString(ctx, wave_value);
+   if (wave_name) {
+      params->wave = audio_wave_from_name(wave_name, params->wave);
+      JS_FreeCString(ctx, wave_name);
+   }
+   JS_FreeValue(ctx, wave_value);
+
+   js_get_number_property(ctx, value, "freq", &params->freq);
+   js_get_number_property(ctx, value, "dur", &params->dur);
+   js_get_number_property(ctx, value, "vol", &params->vol);
+   js_get_number_property(ctx, value, "sweep", &params->sweep);
+}
+
+static void audio_start_sfx(const struct nova64_sfx_params *input)
+{
+   struct nova64_sfx_params params = *input;
+   params.freq = clamp_double(params.freq, 1.0, 20000.0);
+   params.dur = clamp_double(params.dur, 0.001, 10.0);
+   params.vol = clamp_double(params.vol, 0.0, 1.0);
+
+   size_t slot = 0;
+   for (size_t i = 0; i < NOVA64_AUDIO_MAX_VOICES; i++) {
+      if (!audio_voices[i].active) {
+         slot = i;
+         break;
+      }
+   }
+
+   struct nova64_audio_voice *voice = &audio_voices[slot];
+   memset(voice, 0, sizeof(*voice));
+   voice->active = true;
+   voice->wave = params.wave;
+   voice->freq = params.freq;
+   voice->dur = params.dur;
+   voice->vol = params.vol;
+   voice->sweep = params.sweep;
+   voice->total_samples = (size_t)(params.dur * NOVA64_SAMPLE_RATE);
+   if (voice->total_samples == 0)
+      voice->total_samples = 1;
+   voice->noise_state = 0x6e6f7661U ^ (uint32_t)(params.freq * 17.0) ^
+      ((uint32_t)voice->total_samples << 1);
+}
+
+static double audio_sample_voice(struct nova64_audio_voice *voice)
+{
+   double value = 0.0;
+   switch (voice->wave) {
+      case NOVA64_AUDIO_SINE:
+         value = sin(voice->phase * 2.0 * M_PI);
+         break;
+      case NOVA64_AUDIO_SAWTOOTH:
+         value = voice->phase * 2.0 - 1.0;
+         break;
+      case NOVA64_AUDIO_TRIANGLE:
+         value = 1.0 - fabs(voice->phase * 4.0 - 2.0);
+         break;
+      case NOVA64_AUDIO_NOISE:
+         voice->noise_state = voice->noise_state * 1664525U + 1013904223U;
+         value = ((double)((voice->noise_state >> 9) & 0x7fffff) / 4194303.5) - 1.0;
+         break;
+      case NOVA64_AUDIO_SQUARE:
+      default:
+         value = voice->phase < 0.5 ? 1.0 : -1.0;
+         break;
+   }
+
+   double t = voice->dur > 0.0 ? (double)voice->elapsed_samples / (voice->dur * NOVA64_SAMPLE_RATE) : 1.0;
+   double current_freq = clamp_double(voice->freq + voice->sweep * t, 1.0, 20000.0);
+   voice->phase += current_freq / NOVA64_SAMPLE_RATE;
+   voice->phase -= floor(voice->phase);
+   voice->elapsed_samples++;
+   if (voice->elapsed_samples >= voice->total_samples)
+      voice->active = false;
+   return value * voice->vol;
+}
+
+static void audio_mix_frame(void)
+{
+   if (!audio_batch_cb)
+      return;
+
+   for (size_t i = 0; i < NOVA64_AUDIO_FRAME_SAMPLES; i++) {
+      double mixed = 0.0;
+      for (size_t v = 0; v < NOVA64_AUDIO_MAX_VOICES; v++) {
+         if (audio_voices[v].active)
+            mixed += audio_sample_voice(&audio_voices[v]);
+      }
+      mixed = clamp_double(mixed * audio_master_volume, -1.0, 1.0);
+      int16_t sample = (int16_t)(mixed * 32767.0);
+      audio_mix_buffer[i * 2 + 0] = sample;
+      audio_mix_buffer[i * 2 + 1] = sample;
+   }
+   audio_batch_cb(audio_mix_buffer, NOVA64_AUDIO_FRAME_SAMPLES);
+}
+
+static void reset_audio_state(void)
+{
+   memset(audio_voices, 0, sizeof(audio_voices));
+   memset(audio_mix_buffer, 0, sizeof(audio_mix_buffer));
+   audio_master_volume = 0.4;
 }
 
 static void clear_framebuffer(uint32_t color)
@@ -1452,6 +1758,232 @@ static JSValue js_clear_scene(JSContext *ctx, JSValueConst this_val, int argc, J
    return JS_UNDEFINED;
 }
 
+static JSValue js_sfx(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   struct nova64_sfx_params params;
+   audio_default_params(&params);
+
+   if (argc > 0) {
+      if (JS_IsNumber(argv[0])) {
+         int preset_id = int_from_js(ctx, argv[0], -1);
+         char preset_name[16];
+         snprintf(preset_name, sizeof(preset_name), "%d", preset_id);
+         audio_apply_preset(preset_name, &params);
+         if (argc > 1)
+            audio_apply_js_options(ctx, argv[1], &params);
+      } else if (JS_IsString(argv[0])) {
+         const char *preset_name = JS_ToCString(ctx, argv[0]);
+         if (preset_name) {
+            audio_apply_preset(preset_name, &params);
+            JS_FreeCString(ctx, preset_name);
+            if (argc > 1)
+               audio_apply_js_options(ctx, argv[1], &params);
+         }
+      } else {
+         audio_apply_js_options(ctx, argv[0], &params);
+      }
+   }
+
+   audio_start_sfx(&params);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_set_volume(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   audio_master_volume = clamp_double(double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED,
+         audio_master_volume), 0.0, 1.0);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_assets_has(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 1)
+      return JS_NewBool(ctx, false);
+
+   const char *path = JS_ToCString(ctx, argv[0]);
+   if (!path)
+      return JS_NewBool(ctx, false);
+   bool found = find_package_asset(path) != NULL;
+   JS_FreeCString(ctx, path);
+   return JS_NewBool(ctx, found);
+}
+
+static JSValue js_assets_size(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 1)
+      return JS_NewInt32(ctx, -1);
+
+   const char *path = JS_ToCString(ctx, argv[0]);
+   if (!path)
+      return JS_NewInt32(ctx, -1);
+   const struct nova64_package_asset *asset = find_package_asset(path);
+   JS_FreeCString(ctx, path);
+   return asset ? JS_NewInt64(ctx, (int64_t)asset->size) : JS_NewInt32(ctx, -1);
+}
+
+static JSValue js_assets_read_text(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 1)
+      return argc > 1 ? JS_DupValue(ctx, argv[1]) : JS_NULL;
+
+   const char *path = JS_ToCString(ctx, argv[0]);
+   if (!path)
+      return argc > 1 ? JS_DupValue(ctx, argv[1]) : JS_NULL;
+   const struct nova64_package_asset *asset = find_package_asset(path);
+   JS_FreeCString(ctx, path);
+   if (!asset)
+      return argc > 1 ? JS_DupValue(ctx, argv[1]) : JS_NULL;
+   return JS_NewStringLen(ctx, (const char *)asset->data, asset->size);
+}
+
+static JSValue js_assets_read_json(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 1)
+      return argc > 1 ? JS_DupValue(ctx, argv[1]) : JS_NULL;
+
+   const char *path = JS_ToCString(ctx, argv[0]);
+   if (!path)
+      return argc > 1 ? JS_DupValue(ctx, argv[1]) : JS_NULL;
+   const struct nova64_package_asset *asset = find_package_asset(path);
+   JS_FreeCString(ctx, path);
+   if (!asset)
+      return argc > 1 ? JS_DupValue(ctx, argv[1]) : JS_NULL;
+
+   JSValue parsed = JS_ParseJSON(ctx, (const char *)asset->data, asset->size, asset->path);
+   if (JS_IsException(parsed)) {
+      js_log_exception(ctx, "assets.readJSON");
+      return argc > 1 ? JS_DupValue(ctx, argv[1]) : JS_NULL;
+   }
+   return parsed;
+}
+
+static JSValue js_assets_read_bytes(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 1)
+      return JS_NULL;
+
+   const char *path = JS_ToCString(ctx, argv[0]);
+   if (!path)
+      return JS_NULL;
+   const struct nova64_package_asset *asset = find_package_asset(path);
+   JS_FreeCString(ctx, path);
+   if (!asset)
+      return JS_NULL;
+   return JS_NewArrayBufferCopy(ctx, asset->data, asset->size);
+}
+
+static JSValue js_assets_list(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   (void)argc;
+   (void)argv;
+   JSValue list = JS_NewObject(ctx);
+   uint32_t index = 0;
+   for (int i = 0; i < NOVA64_MAX_PACKAGE_ASSETS; i++) {
+      if (!package_assets[i].used)
+         continue;
+      JS_SetPropertyUint32(ctx, list, index++, JS_NewString(ctx, package_assets[i].path));
+   }
+   JS_SetPropertyStr(ctx, list, "length", JS_NewUint32(ctx, index));
+   return list;
+}
+
+static JSValue js_storage_save_data(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 2)
+      return JS_NewBool(ctx, false);
+
+   const char *key = JS_ToCString(ctx, argv[0]);
+   if (!key)
+      return JS_NewBool(ctx, false);
+
+   char path[2048];
+   bool ok = storage_path_for_key(key, path, sizeof(path));
+   JS_FreeCString(ctx, key);
+   if (!ok)
+      return JS_NewBool(ctx, false);
+
+   JSValue json_value = JS_JSONStringify(ctx, argv[1], JS_UNDEFINED, JS_UNDEFINED);
+   if (JS_IsException(json_value))
+      return JS_NewBool(ctx, false);
+
+   const char *json = JS_ToCString(ctx, json_value);
+   if (!json) {
+      JS_FreeValue(ctx, json_value);
+      return JS_NewBool(ctx, false);
+   }
+
+   FILE *file = fopen(path, "wb");
+   if (file) {
+      size_t json_len = strlen(json);
+      ok = fwrite(json, 1, json_len, file) == json_len;
+      ok = fclose(file) == 0 && ok;
+   } else {
+      ok = false;
+   }
+
+   JS_FreeCString(ctx, json);
+   JS_FreeValue(ctx, json_value);
+   return JS_NewBool(ctx, ok);
+}
+
+static JSValue js_storage_load_data(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 1)
+      return argc > 1 ? JS_DupValue(ctx, argv[1]) : JS_NULL;
+
+   const char *key = JS_ToCString(ctx, argv[0]);
+   if (!key)
+      return argc > 1 ? JS_DupValue(ctx, argv[1]) : JS_NULL;
+
+   char path[2048];
+   bool ok = storage_path_for_key(key, path, sizeof(path));
+   JS_FreeCString(ctx, key);
+   if (!ok)
+      return argc > 1 ? JS_DupValue(ctx, argv[1]) : JS_NULL;
+
+   size_t json_size = 0;
+   char *json = read_file_to_memory(path, &json_size);
+   if (!json)
+      return argc > 1 ? JS_DupValue(ctx, argv[1]) : JS_NULL;
+
+   JSValue parsed = JS_ParseJSON(ctx, json, json_size, path);
+   free(json);
+   if (JS_IsException(parsed)) {
+      js_log_exception(ctx, "storage.loadData");
+      return argc > 1 ? JS_DupValue(ctx, argv[1]) : JS_NULL;
+   }
+   return parsed;
+}
+
+static JSValue js_storage_delete_data(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 1)
+      return JS_NewBool(ctx, false);
+
+   const char *key = JS_ToCString(ctx, argv[0]);
+   if (!key)
+      return JS_NewBool(ctx, false);
+
+   char path[2048];
+   bool ok = storage_path_for_key(key, path, sizeof(path));
+   JS_FreeCString(ctx, key);
+   if (!ok)
+      return JS_NewBool(ctx, false);
+
+   return JS_NewBool(ctx, remove(path) == 0);
+}
+
 static void set_function(JSContext *ctx, JSValue object, const char *name, JSCFunction *fn, int length)
 {
    JS_SetPropertyStr(ctx, object, name, JS_NewCFunction(ctx, fn, name, length));
@@ -1466,6 +1998,9 @@ static bool install_nova64_api(JSContext *ctx)
    JSValue scene = JS_NewObject(ctx);
    JSValue camera = JS_NewObject(ctx);
    JSValue light = JS_NewObject(ctx);
+   JSValue audio = JS_NewObject(ctx);
+   JSValue assets = JS_NewObject(ctx);
+   JSValue storage = JS_NewObject(ctx);
 
    set_function(ctx, draw, "rgba8", js_rgba8, 4);
    set_function(ctx, draw, "cls", js_cls, 1);
@@ -1493,11 +2028,31 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, light, "setAmbient", js_set_ambient_light, 1);
    set_function(ctx, light, "setDirection", js_set_light_direction, 3);
 
+   set_function(ctx, audio, "sfx", js_sfx, 2);
+   set_function(ctx, audio, "setVolume", js_set_volume, 1);
+
+   set_function(ctx, assets, "has", js_assets_has, 1);
+   set_function(ctx, assets, "size", js_assets_size, 1);
+   set_function(ctx, assets, "readText", js_assets_read_text, 2);
+   set_function(ctx, assets, "readJSON", js_assets_read_json, 2);
+   set_function(ctx, assets, "readBytes", js_assets_read_bytes, 1);
+   set_function(ctx, assets, "list", js_assets_list, 0);
+
+   set_function(ctx, storage, "saveData", js_storage_save_data, 2);
+   set_function(ctx, storage, "loadData", js_storage_load_data, 2);
+   set_function(ctx, storage, "deleteData", js_storage_delete_data, 1);
+   set_function(ctx, storage, "saveJSON", js_storage_save_data, 2);
+   set_function(ctx, storage, "loadJSON", js_storage_load_data, 2);
+   set_function(ctx, storage, "remove", js_storage_delete_data, 1);
+
    JS_SetPropertyStr(ctx, nova64, "draw", draw);
    JS_SetPropertyStr(ctx, nova64, "input", input);
    JS_SetPropertyStr(ctx, nova64, "scene", scene);
    JS_SetPropertyStr(ctx, nova64, "camera", camera);
    JS_SetPropertyStr(ctx, nova64, "light", light);
+   JS_SetPropertyStr(ctx, nova64, "audio", audio);
+   JS_SetPropertyStr(ctx, nova64, "assets", assets);
+   JS_SetPropertyStr(ctx, nova64, "storage", storage);
    JS_SetPropertyStr(ctx, global, "nova64", nova64);
 
    set_function(ctx, global, "rgba8", js_rgba8, 4);
@@ -1521,6 +2076,20 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, global, "setAmbientLight", js_set_ambient_light, 1);
    set_function(ctx, global, "setLightDirection", js_set_light_direction, 3);
    set_function(ctx, global, "clearScene", js_clear_scene, 0);
+   set_function(ctx, global, "sfx", js_sfx, 2);
+   set_function(ctx, global, "setVolume", js_set_volume, 1);
+   set_function(ctx, global, "assetHas", js_assets_has, 1);
+   set_function(ctx, global, "assetSize", js_assets_size, 1);
+   set_function(ctx, global, "readAssetText", js_assets_read_text, 2);
+   set_function(ctx, global, "readAssetJSON", js_assets_read_json, 2);
+   set_function(ctx, global, "readAssetBytes", js_assets_read_bytes, 1);
+   set_function(ctx, global, "listAssets", js_assets_list, 0);
+   set_function(ctx, global, "saveData", js_storage_save_data, 2);
+   set_function(ctx, global, "loadData", js_storage_load_data, 2);
+   set_function(ctx, global, "deleteData", js_storage_delete_data, 1);
+   set_function(ctx, global, "saveJSON", js_storage_save_data, 2);
+   set_function(ctx, global, "loadJSON", js_storage_load_data, 2);
+   set_function(ctx, global, "remove", js_storage_delete_data, 1);
 
    JS_FreeValue(ctx, global);
    return true;
@@ -2423,33 +2992,6 @@ static bool extract_zip_named_entry(const uint8_t *archive, size_t archive_size,
    return false;
 }
 
-static bool find_zip_entry_uncompressed_size(const uint8_t *archive, size_t archive_size,
-      uint16_t entry_count, uint32_t central_offset, const char *expected_name,
-      uint32_t *out_uncompressed_size)
-{
-   size_t offset = central_offset;
-   for (uint16_t i = 0; i < entry_count && offset + 46 <= archive_size; i++) {
-      const uint8_t *entry = archive + offset;
-      if (read_u32_le(entry) != NOVA64_ZIP_CENTRAL_SIGNATURE)
-         return false;
-      uint32_t uncompressed_size = read_u32_le(entry + 24);
-      uint16_t name_len = read_u16_le(entry + 28);
-      uint16_t extra_len = read_u16_le(entry + 30);
-      uint16_t comment_len = read_u16_le(entry + 32);
-      if (offset + 46 + name_len + extra_len + comment_len > archive_size)
-         return false;
-
-      const uint8_t *name = entry + 46;
-      if (bytes_equal_name(name, name_len, expected_name)) {
-         if (out_uncompressed_size)
-            *out_uncompressed_size = uncompressed_size;
-         return true;
-      }
-      offset += 46 + name_len + extra_len + comment_len;
-   }
-   return false;
-}
-
 static const char *skip_json_ws(const char *cursor, const char *end)
 {
    while (cursor < end && (*cursor == ' ' || *cursor == '\t' || *cursor == '\r' || *cursor == '\n'))
@@ -2460,6 +3002,162 @@ static const char *skip_json_ws(const char *cursor, const char *end)
 static bool is_safe_package_path(const char *path)
 {
    return path && path[0] && !strstr(path, "..") && path[0] != '/' && path[0] != '\\';
+}
+
+static void clear_package_assets(void)
+{
+   for (int i = 0; i < NOVA64_MAX_PACKAGE_ASSETS; i++) {
+      free(package_assets[i].data);
+      memset(&package_assets[i], 0, sizeof(package_assets[i]));
+   }
+}
+
+static const struct nova64_package_asset *find_package_asset(const char *path)
+{
+   if (!path)
+      return NULL;
+   for (int i = 0; i < NOVA64_MAX_PACKAGE_ASSETS; i++) {
+      if (package_assets[i].used && !strcmp(package_assets[i].path, path))
+         return &package_assets[i];
+   }
+   return NULL;
+}
+
+static bool store_package_asset(const char *path, char *data, size_t size)
+{
+   if (!path || !data)
+      return false;
+   for (int i = 0; i < NOVA64_MAX_PACKAGE_ASSETS; i++) {
+      if (package_assets[i].used && !strcmp(package_assets[i].path, path)) {
+         free(package_assets[i].data);
+         package_assets[i].data = (uint8_t *)data;
+         package_assets[i].size = size;
+         return true;
+      }
+   }
+   for (int i = 0; i < NOVA64_MAX_PACKAGE_ASSETS; i++) {
+      if (!package_assets[i].used) {
+         package_assets[i].used = true;
+         snprintf(package_assets[i].path, sizeof(package_assets[i].path), "%s", path);
+         package_assets[i].data = (uint8_t *)data;
+         package_assets[i].size = size;
+         return true;
+      }
+   }
+   return false;
+}
+
+static bool make_directory_if_missing(const char *path)
+{
+   if (!path || !path[0])
+      return false;
+#ifdef _WIN32
+   return _mkdir(path) == 0 || errno == EEXIST;
+#else
+   return mkdir(path, 0755) == 0 || errno == EEXIST;
+#endif
+}
+
+static void sanitize_identifier(const char *input, char *out, size_t out_size, const char *fallback)
+{
+   if (!out || out_size == 0)
+      return;
+
+   size_t written = 0;
+   if (input) {
+      for (const char *cursor = input; *cursor && written + 1 < out_size; cursor++) {
+         char ch = *cursor;
+         bool safe = (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') ||
+                     (ch >= '0' && ch <= '9') || ch == '-' || ch == '_';
+         out[written++] = safe ? ch : '_';
+      }
+   }
+
+   if (written == 0 && fallback) {
+      while (*fallback && written + 1 < out_size)
+         out[written++] = *fallback++;
+   }
+   out[written] = '\0';
+}
+
+static const char *path_basename(const char *path)
+{
+   if (!path || !path[0])
+      return NULL;
+   const char *base = path;
+   for (const char *cursor = path; *cursor; cursor++) {
+      if (*cursor == '/' || *cursor == '\\')
+         base = cursor + 1;
+   }
+   return base;
+}
+
+static void update_storage_cart_id(void)
+{
+   char id_source[256];
+   id_source[0] = '\0';
+   if (package_manifest_name[0]) {
+      snprintf(id_source, sizeof(id_source), "%s", package_manifest_name);
+   } else {
+      const char *base = path_basename(cart_path);
+      if (base && base[0]) {
+         size_t written = 0;
+         while (base[written] && base[written] != '.' && written + 1 < sizeof(id_source)) {
+            id_source[written] = base[written];
+            written++;
+         }
+         id_source[written] = '\0';
+      }
+   }
+   sanitize_identifier(id_source, storage_cart_id, sizeof(storage_cart_id), "cart");
+}
+
+static void refresh_storage_save_directory(void)
+{
+   const char *env_save_dir = getenv("NOVA64_SAVE_DIR");
+   if (env_save_dir && env_save_dir[0]) {
+      snprintf(storage_save_directory, sizeof(storage_save_directory), "%s", env_save_dir);
+      return;
+   }
+
+   if (environ_cb) {
+      const char *retro_save_dir = NULL;
+      if (environ_cb(RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY, &retro_save_dir) &&
+            retro_save_dir && retro_save_dir[0]) {
+         snprintf(storage_save_directory, sizeof(storage_save_directory), "%s", retro_save_dir);
+         return;
+      }
+   }
+
+   snprintf(storage_save_directory, sizeof(storage_save_directory), ".");
+}
+
+static bool storage_path_for_key(const char *key, char *out, size_t out_size)
+{
+   if (!key || !key[0] || !out || out_size == 0)
+      return false;
+
+   char safe_key[128];
+   sanitize_identifier(key, safe_key, sizeof(safe_key), NULL);
+   if (!safe_key[0])
+      return false;
+
+   if (!storage_save_directory[0])
+      refresh_storage_save_directory();
+   if (!storage_cart_id[0])
+      update_storage_cart_id();
+
+   char root[1200];
+   int root_len = snprintf(root, sizeof(root), "%s%s%s", storage_save_directory,
+         NOVA64_PATH_SEPARATOR, "nova64");
+   if (root_len < 0 || (size_t)root_len >= sizeof(root))
+      return false;
+   if (!make_directory_if_missing(storage_save_directory) || !make_directory_if_missing(root))
+      return false;
+
+   int path_len = snprintf(out, out_size, "%s%s%s_%s.json", root, NOVA64_PATH_SEPARATOR,
+         storage_cart_id[0] ? storage_cart_id : "cart", safe_key);
+   return path_len >= 0 && (size_t)path_len < out_size;
 }
 
 static bool parse_manifest_string_field(const char *manifest, size_t manifest_size,
@@ -2536,12 +3234,14 @@ static void parse_manifest_asset_list_metadata(const char *manifest, size_t mani
       if (cursor >= end || *cursor != '"')
          return;
       if (is_safe_package_path(path)) {
-         uint32_t asset_size = 0;
-         if (find_zip_entry_uncompressed_size(archive, archive_size, entry_count,
-               central_offset, path, &asset_size)) {
+         char *asset_data = NULL;
+         size_t asset_size = 0;
+         if (extract_zip_named_entry(archive, archive_size, entry_count, central_offset,
+               path, &asset_data, &asset_size) && store_package_asset(path, asset_data, asset_size)) {
             package_manifest_asset_count++;
             package_manifest_asset_bytes += asset_size;
          } else {
+            free(asset_data);
             package_manifest_missing_asset_count++;
          }
       }
@@ -2554,6 +3254,7 @@ static void parse_manifest_asset_list_metadata(const char *manifest, size_t mani
 
 static void reset_package_manifest_metadata(void)
 {
+   clear_package_assets();
    package_manifest_name[0] = '\0';
    package_manifest_main[0] = '\0';
    package_manifest_asset_count = 0;
@@ -2666,6 +3367,7 @@ void RETRO_CALLCONV retro_init(void)
 void RETRO_CALLCONV retro_deinit(void)
 {
    js_host_free();
+   reset_package_manifest_metadata();
    free(framebuffer);
    free(rgb565_framebuffer);
    free(overlay_rgba_framebuffer);
@@ -2760,6 +3462,7 @@ void RETRO_CALLCONV retro_reset(void)
    frame_count = 0;
    clear_framebuffer(rgba8(0, 0, 0, 255));
    reset_scene_state();
+   reset_audio_state();
    if (cart_content && cart_size)
       js_host_load_cart(cart_content, cart_size, cart_path[0] ? cart_path : "<nova64-cart>");
 }
@@ -2772,6 +3475,7 @@ void RETRO_CALLCONV retro_run(void)
    update_input();
    js_host_call_frame(1.0 / NOVA64_FPS);
    write_renderer_command_log();
+   audio_mix_frame();
 
    if (renderer_has_hardware_frame()) {
       renderer_render_hardware_frame();
@@ -2782,7 +3486,6 @@ void RETRO_CALLCONV retro_run(void)
    }
 
    frame_count++;
-   (void)audio_batch_cb;
    (void)audio_cb;
 }
 
@@ -2792,6 +3495,8 @@ bool RETRO_CALLCONV retro_load_game(const struct retro_game_info *info)
    cart_content = NULL;
    cart_size = 0;
    cart_path[0] = '\0';
+   storage_cart_id[0] = '\0';
+   storage_save_directory[0] = '\0';
    reset_package_manifest_metadata();
 
    if (!info) {
@@ -2832,6 +3537,7 @@ bool RETRO_CALLCONV retro_load_game(const struct retro_game_info *info)
 
    clear_framebuffer(rgba8(0, 0, 0, 255));
    reset_scene_state();
+   reset_audio_state();
    frame_count = 0;
 
    if (!js_host_load_cart(cart_content, cart_size, cart_path[0] ? cart_path : "<nova64-cart>")) {
@@ -2859,6 +3565,9 @@ void RETRO_CALLCONV retro_unload_game(void)
    cart_content = NULL;
    cart_size = 0;
    cart_path[0] = '\0';
+   storage_cart_id[0] = '\0';
+   storage_save_directory[0] = '\0';
+   reset_package_manifest_metadata();
 }
 
 unsigned RETRO_CALLCONV retro_get_region(void)

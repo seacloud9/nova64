@@ -8,11 +8,14 @@ cd "${REPO_ROOT}"
 CORE="retroarch/nova64_libretro.so"
 HARNESS="retroarch/build/harness"
 PACKAGE_DIR="retroarch/build/conformance-packages"
+SAVE_DIR="retroarch/build/conformance-saves"
 
 make -C retroarch clean all
 cc -Iretroarch -o "${HARNESS}" retroarch/tests/harness.c -ldl
 
 mkdir -p "${PACKAGE_DIR}"
+rm -rf "${SAVE_DIR}"
+mkdir -p "${SAVE_DIR}"
 python3 - <<'PY'
 from pathlib import Path
 from zipfile import ZIP_DEFLATED, ZipFile
@@ -35,6 +38,16 @@ with ZipFile(package_dir / "asset-manifest.nova", "w", ZIP_DEFLATED) as package:
     package.writestr(
         "manifest.json",
         '{"name":"asset-manifest","main":"src/main.js","assets":["assets/palette.bin","textures/checker.rgba"]}\n',
+    )
+
+with ZipFile(package_dir / "asset-runtime.nova", "w", ZIP_DEFLATED) as package:
+    package.write("retroarch/conformance/13-assets.js", "src/main.js")
+    package.writestr("assets/message.txt", "hello assets\n")
+    package.writestr("data/config.json", '{"answer":64,"name":"nova"}\n')
+    package.writestr("bin/blob.bin", bytes([1, 2, 3, 4]))
+    package.writestr(
+        "manifest.json",
+        '{"name":"asset-runtime","main":"src/main.js","assets":["assets/message.txt","data/config.json","bin/blob.bin"]}\n',
     )
 PY
 
@@ -66,6 +79,15 @@ run_command_log_case() {
   fi
 }
 
+run_audio_case() {
+  local label="$1"
+  local cart="$2"
+  local checksum="$3"
+  local audio_checksum="$4"
+  echo "== ${label}"
+  "${HARNESS}" "${CORE}" "${cart}" --expect "${checksum}" --expect-audio "${audio_checksum}"
+}
+
 run_case "00 boot" "retroarch/conformance/00-boot.js" "eed98c91acf88bfb"
 run_case "01 framebuffer" "retroarch/conformance/01-framebuffer.js" "4817a6cf4ba81cca"
 run_case "02 input" "retroarch/conformance/02-input.js" "872fd1e2547c6371"
@@ -75,6 +97,9 @@ run_case "07 cube plane" "retroarch/conformance/07-cube-plane.js" "cc715d97cf852
 run_case "08 sphere" "retroarch/conformance/08-sphere.js" "6ca539fe0bfe71f6"
 run_case "09 overlay scene" "retroarch/conformance/09-overlay-scene.js" "12f25aad2651ae13"
 run_case "10 lighting" "retroarch/conformance/10-lighting.js" "2e18d84a07860616"
+NOVA64_SAVE_DIR="${SAVE_DIR}" run_case "11 storage" "retroarch/conformance/11-storage.js" "5dd5226aa3467474"
+run_audio_case "12 audio" "retroarch/conformance/12-audio.js" "c0e5bade62febc47" "a18315634c550da3"
+run_case "13 assets" "${PACKAGE_DIR}/asset-runtime.nova" "294b9bd45b20fb27"
 run_command_log_case "09-overlay-scene" "retroarch/conformance/09-overlay-scene.js" "d3858bec86c219de492c73202e8b424cc19fdcb1a7fb6f29e288559df6b13c38"
 run_command_log_case "10-lighting" "retroarch/conformance/10-lighting.js" "35413019eb4ac6513431241983366b3e3d5acff64f141fccc250429c8a1fe386"
 run_command_log_case "06-cube-vulkan12" "retroarch/conformance/06-cube.js" "e1b52dec66dd3bfc13c7d65d620c3d46d1d16f210ac366a4fe1575076207a050" "vulkan12"

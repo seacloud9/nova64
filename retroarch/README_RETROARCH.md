@@ -21,6 +21,11 @@ The first executable core milestone is now wired around:
   and frame presentation decisions ahead of the Vulkan backend.
 - A first OpenGL ES 2D overlay texture compositor that uploads the software
   framebuffer after 3D rendering.
+- A small native SFX mixer that writes deterministic stereo sample batches through
+  RetroArch audio callbacks.
+- Persistent cart JSON storage using RetroArch's save directory, with
+  `NOVA64_SAVE_DIR` for harness and shell-driven tests.
+- `.nova` manifest assets staged in memory for cart reads as text, JSON, or bytes.
 - Versioned save-state headers for host-owned deterministic state only.
 
 Vulkan 1.2 is the next renderer target. The C renderer boundary is intentionally
@@ -118,6 +123,38 @@ Input:
 - `btn(nameOrIndex)`
 - `btnp(nameOrIndex)`
 
+Audio:
+
+- `nova64.audio.sfx(idOrOpts, maybeOpts)`
+- `nova64.audio.setVolume(value)`
+- Top-level compatibility aliases: `sfx`, `setVolume`
+- Supported SFX options: `wave`, `freq`, `dur`, `vol`, `sweep`
+- Supported preset ids/names match the browser runtime's small SFX preset table.
+
+Assets:
+
+- `nova64.assets.has(path)`
+- `nova64.assets.size(path)`
+- `nova64.assets.readText(path, fallback)`
+- `nova64.assets.readJSON(path, fallback)`
+- `nova64.assets.readBytes(path)`
+- `nova64.assets.list()`
+- Top-level compatibility aliases: `assetHas`, `assetSize`, `readAssetText`,
+  `readAssetJSON`, `readAssetBytes`, `listAssets`
+- Only safe paths declared in a zip-style `.nova` manifest `assets: []` list are
+  staged for reads.
+
+Storage:
+
+- `nova64.storage.saveData(key, value)`
+- `nova64.storage.loadData(key, fallback)`
+- `nova64.storage.deleteData(key)`
+- `nova64.storage.saveJSON(key, value)`
+- `nova64.storage.loadJSON(key, fallback)`
+- `nova64.storage.remove(key)`
+- Top-level compatibility aliases: `saveData`, `loadData`, `deleteData`,
+  `saveJSON`, `loadJSON`, `remove`
+
 3D command bridge:
 
 - `createCube(color)`
@@ -164,4 +201,8 @@ helpers for tiny conformance carts.
 - The software fallback includes a deterministic primitive preview renderer so
   conformance carts can produce solid shaded captures before the full GLES/Vulkan
   paths are complete.
-- Audio and persistent cart storage are not implemented yet.
+- Audio currently covers procedural SFX only; streamed music and sampled assets are
+  not implemented yet.
+- Package asset loading currently covers manifest-declared in-memory data reads;
+  texture/model/audio asset binding remains a later milestone.
+- Persistent cart storage currently stores JSON values only.

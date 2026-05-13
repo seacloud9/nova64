@@ -132,10 +132,17 @@ Goals:
 Goals:
 
 - Audio mixing into RetroArch sample batches.
+  - Procedural `sfx` and `setVolume` now mix deterministic stereo batches through
+    RetroArch audio callbacks, with harness audio checksum coverage.
 - Persistent cart storage distinct from save states.
 - Asset loading for textures, sprites, data, models, and audio.
+  - Zip-style `.nova` manifest assets are now staged in memory and readable by
+    carts as text, JSON, or bytes. Binding those assets into texture/model/audio
+    APIs remains later work.
 - Model loading after primitive rendering is stable.
 - More complete draw API coverage and richer text/sprite support.
+- Persistent JSON cart storage is implemented as the first broader-runtime slice,
+  using RetroArch save directories or `NOVA64_SAVE_DIR` in harness tests.
 
 ## Validation
 

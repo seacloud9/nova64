@@ -11,7 +11,9 @@
 
 static retro_log_printf_t g_log;
 static uint64_t g_checksum;
+static uint64_t g_audio_checksum = 1469598103934665603ULL;
 static unsigned g_video_frames;
+static unsigned g_audio_frames;
 static bool g_joypad[16];
 static const char *g_renderer_option;
 static uint16_t *g_last_frame;
@@ -96,13 +98,26 @@ static void harness_video(const void *data, unsigned width, unsigned height, siz
 
 static void harness_audio(int16_t left, int16_t right)
 {
-   (void)left;
-   (void)right;
+   int16_t samples[2] = {left, right};
+   const uint8_t *bytes = (const uint8_t *)samples;
+   for (size_t i = 0; i < sizeof(samples); i++) {
+      g_audio_checksum ^= bytes[i];
+      g_audio_checksum *= 1099511628211ULL;
+   }
+   g_audio_frames++;
 }
 
 static size_t harness_audio_batch(const int16_t *data, size_t frames)
 {
-   (void)data;
+   if (data) {
+      const uint8_t *bytes = (const uint8_t *)data;
+      size_t byte_count = frames * 2 * sizeof(int16_t);
+      for (size_t i = 0; i < byte_count; i++) {
+         g_audio_checksum ^= bytes[i];
+         g_audio_checksum *= 1099511628211ULL;
+      }
+   }
+   g_audio_frames += (unsigned)frames;
    return frames;
 }
 
@@ -180,7 +195,7 @@ static void *load_symbol(void *core, const char *name)
 int main(int argc, char **argv)
 {
    if (argc < 3) {
-      fprintf(stderr, "usage: %s <nova64_libretro.so> <cart.js|cart.nova> [capture.ppm] [--capture path] [--command-log path] [--renderer opengles3|vulkan12] [--expect checksum] [--frames n]\n", argv[0]);
+      fprintf(stderr, "usage: %s <nova64_libretro.so> <cart.js|cart.nova> [capture.ppm] [--capture path] [--command-log path] [--renderer opengles3|vulkan12] [--expect checksum] [--expect-audio checksum] [--frames n]\n", argv[0]);
       return 2;
    }
 
@@ -188,6 +203,8 @@ int main(int argc, char **argv)
    const char *command_log_path = NULL;
    bool has_expected_checksum = false;
    uint64_t expected_checksum = 0;
+   bool has_expected_audio_checksum = false;
+   uint64_t expected_audio_checksum = 0;
    unsigned frames_to_run = 3;
 
    for (int i = 3; i < argc; i++) {
@@ -215,6 +232,12 @@ int main(int argc, char **argv)
             return 2;
          }
          has_expected_checksum = true;
+      } else if (!strcmp(argv[i], "--expect-audio")) {
+         if (++i >= argc || !parse_u64_hex(argv[i], &expected_audio_checksum)) {
+            fprintf(stderr, "--expect-audio requires a hex checksum\n");
+            return 2;
+         }
+         has_expected_audio_checksum = true;
       } else if (!strcmp(argv[i], "--frames")) {
          if (++i >= argc) {
             fprintf(stderr, "--frames requires a count\n");
@@ -307,8 +330,16 @@ int main(int argc, char **argv)
       return 1;
    }
 
+   if (has_expected_audio_checksum && g_audio_checksum != expected_audio_checksum) {
+      fprintf(stderr, "audio checksum mismatch: expected=%016llx actual=%016llx\n",
+            (unsigned long long)expected_audio_checksum, (unsigned long long)g_audio_checksum);
+      free(g_last_frame);
+      return 1;
+   }
+
    free(g_last_frame);
-   printf("ok=%d frames=%u checksum=%016llx\n", ok ? 1 : 0, g_video_frames,
-         (unsigned long long)g_checksum);
+   printf("ok=%d frames=%u checksum=%016llx audio_frames=%u audio_checksum=%016llx\n",
+         ok ? 1 : 0, g_video_frames, (unsigned long long)g_checksum,
+         g_audio_frames, (unsigned long long)g_audio_checksum);
    return ok ? 0 : 1;
 }

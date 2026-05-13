@@ -3,38 +3,30 @@
 This directory contains the native Nova64 libretro core. It does not embed a browser,
 Three.js, or Babylon.js. Carts run through QuickJS and call native Nova64 host APIs.
 
-## Current Milestone
+## Status
 
-The first executable core milestone is now wired around:
+Milestones 1–7 are complete. The core is in Milestone 8 (Release Hardening).
 
-- QuickJS runtime/context creation from the shared source in
-  `nova64-godot/gdextension/third_party/quickjs`.
-- ES module carts with cached `init()`, `update(dt)`, and `draw()` exports.
-- Plain `.js` cart loading plus `.nova` extension compatibility for package work.
-- A 640x360 software 2D framebuffer presented as RGB565 when hardware rendering is
-  unavailable.
-- A RetroArch-owned OpenGL ES hardware context request targeting OpenGL ES 3.1.
-- A minimal backend-neutral 3D command table for opaque mesh handles.
-- A first OpenGL ES cube/plane/sphere primitive renderer using RetroArch proc-address
-  loading, with per-vertex normals and basic ambient/directional lighting.
-- A small renderer boundary that owns hardware context request, context lifecycle,
-  and frame presentation decisions ahead of the Vulkan backend.
-- A first OpenGL ES 2D overlay texture compositor that uploads the software
-  framebuffer after 3D rendering.
-- A small native SFX mixer that writes deterministic stereo sample batches through
-  RetroArch audio callbacks.
-- Persistent cart JSON storage using RetroArch's save directory, with
-  `NOVA64_SAVE_DIR` for harness and shell-driven tests.
-- `.nova` manifest assets staged in memory for cart reads as text, JSON, or bytes.
-- Versioned save-state headers for host-owned deterministic state only.
+Implemented and conformance-tested:
 
-Vulkan 1.2 is the next renderer target. The C renderer boundary is intentionally
-shaped so a Vulkan backend can be added beside GLES without replacing the
-QuickJS/runtime layer.
+- QuickJS ES module cart execution with `init()`, `update(dt)`, `draw()` lifecycle.
+- 640×360 software 2D framebuffer; RGB565 output when hardware is unavailable.
+- OpenGL ES 3.1 hardware renderer via RetroArch-owned hardware context.
+- Cube, plane, and low-poly sphere primitives with ambient/directional lighting.
+- 2D overlay texture compositor (software framebuffer over GLES 3D output).
+- Post-processing pipeline: CRT, vignette, pixelate, bloom, chromatic aberration,
+  color grade, and posterize effects via GLES FBO.
+- Texture handle allocation and per-mesh texture binding.
+- Material effects: emissive color and per-mesh alpha/transparency.
+- Procedural SFX and PCM asset audio mixing through RetroArch audio callbacks.
+- Persistent JSON cart storage using the RetroArch save directory.
+- `.nova` zip-style package format with manifest asset staging.
+- Full keyboard and mouse input with per-frame hold/edge detection.
+- Versioned save-state headers for deterministic host-owned state.
 
 ## Build
 
-Use WSL for Windows development.
+Use WSL for all build and test operations on Windows.
 The core links zlib for zip-style `.nova` source extraction.
 
 ```bash
@@ -43,15 +35,16 @@ make -C retroarch clean all
 make -C retroarch DEBUG=1
 ```
 
-An optional SCons entry point is available:
+Optional SCons entry point:
 
 ```bash
 scons -f retroarch/SConstruct
 scons -f retroarch/SConstruct DEBUG=1
 ```
 
-Both paths build from the shared QuickJS source tree and place generated object
-files under `retroarch/build/`.
+Both paths build from the shared QuickJS source tree in
+`nova64-godot/gdextension/third_party/quickjs` and place generated object files
+under `retroarch/build/`.
 
 ## Native Harness
 
@@ -61,14 +54,24 @@ RetroArch:
 ```bash
 cc -Iretroarch -o retroarch/build/harness retroarch/tests/harness.c -ldl
 retroarch/build/harness retroarch/nova64_libretro.so retroarch/conformance/00-boot.js
-retroarch/build/harness retroarch/nova64_libretro.so retroarch/conformance/06-cube.js --capture screenshots/retroarch/06-cube.ppm
 ```
 
-The optional third argument writes the most recent software framebuffer as a PPM
-screen capture. `--expect <hex>` turns the harness into a checksum assertion.
-`--command-log <path>` writes a deterministic renderer command log for headless
-checks of camera, light, overlay, and mesh state. The same path can be enabled
-outside the harness with `NOVA64_RENDER_COMMAND_LOG=/tmp/nova64.commands`.
+Harness flags:
+
+| Flag | Effect |
+|------|--------|
+| `--expect <hex>` | Assert framebuffer checksum matches |
+| `--expect-audio <hex>` | Assert audio batch checksum matches |
+| `--capture <path.ppm>` | Write software framebuffer as PPM |
+| `--command-log <path>` | Write deterministic renderer command log |
+| `--renderer opengles3\|vulkan12` | Select renderer backend |
+| `--key <name>` | Inject held keyboard key (e.g. `space`, `left`) |
+| `--mouse-x <n>` | Inject relative mouse X movement |
+| `--mouse-y <n>` | Inject relative mouse Y movement |
+| `--mouse-btn left\|right\|middle` | Inject held mouse button |
+
+`NOVA64_SAVE_DIR=<path>` sets the cart storage directory for harness runs.
+`NOVA64_RENDER_COMMAND_LOG=<path>` enables command logging outside the harness.
 
 Run the full conformance suite:
 
@@ -77,159 +80,266 @@ bash retroarch/tests/run_conformance.sh
 ```
 
 The suite builds the core, compiles the harness, generates `.nova` package
-fixtures, checks golden frame checksums, and verifies renderer command logs for
-the mixed 3D/HUD scene, lighting/material scene, and staged Vulkan selection.
+fixtures, then checks framebuffer checksums, audio checksums, renderer command
+logs, and visual screenshot captures for all 30 conformance carts.
 
 ## Renderer Selection
 
-The core exposes a `nova64_renderer` option with `opengles3` and `vulkan12`.
-`opengles3` is the active implemented hardware renderer. `vulkan12` is a staged
-backend identity for the next renderer milestone; selecting it currently records
-the Vulkan preference in logs and command logs, then requests the working GLES
-fallback until the Vulkan backend is implemented.
-
-For harness or shell-driven tests, `NOVA64_RENDERER=vulkan12` mirrors the core
-option. The harness also accepts `--renderer opengles3|vulkan12`.
+The core exposes a `nova64_renderer` option with `opengles3` (default) and
+`vulkan12` (staged). `opengles3` is the active hardware renderer. `vulkan12`
+records the selection in logs/command logs and requests the GLES fallback until
+the Vulkan backend is implemented. `NOVA64_RENDERER=<value>` mirrors the option
+for harness and shell-driven tests.
 
 ## Supported Content
 
-- `.js`: supported as the primary development cart format.
-- `.nova`: kept as a compatibility extension. Raw JS payloads execute directly;
-  zip-style `.nova` packages prefer `manifest.json`'s `"main"` path, then fall
-  back to `code.js`, `game/code.js`, or `src/code.js`. Package manifests now stage
-  `name`, `main`, and safe `assets: []` path metadata, verify those asset entries
-  exist in the package, and record asset byte totals for command-log conformance;
-  full asset loading remains a later milestone.
+- `.js` — primary development cart format.
+- `.nova` — zip-style package. Manifest `"main"` selects the entry point; falls
+  back to `code.js`, `game/code.js`, or `src/code.js`. Assets declared in
+  `manifest.json` `"assets": []` are staged in memory and readable by carts.
 
-## Implemented Cart APIs
+## Cart-Facing API
 
-Lifecycle:
+### Lifecycle
 
-- `init()`
-- `update(dt)`
-- `draw()`
+```js
+export function init() {}
+export function update(dt) {}  // dt: seconds since last frame
+export function draw() {}
+```
 
-2D:
+### 2D Draw
 
-- `rgba8(r, g, b, a)`
-- `cls(color)`
-- `pset(x, y, color)`
-- `line(x0, y0, x1, y1, color)`
-- `rect(x, y, w, h, color, filled)`
-- `print(text, x, y, color)`
+```js
+rgba8(r, g, b, a)                        // color constant
+cls(color)                                // clear framebuffer
+pset(x, y, color)
+line(x0, y0, x1, y1, color)
+rect(x, y, w, h, color, filled)
+circ(cx, cy, r, color)                    // Bresenham outline circle
+circfill(cx, cy, r, color)               // filled circle
+print(text, x, y, color [, align])       // align: 'left'|'center'|'right'
+textWidth(text)                           // pixel width of text string
+spr(path, dx, dy [, imgW, imgH [, sx, sy [, bw, bh]]])  // blit RGBA asset
+setClip(x, y, w, h)                      // set 2D clip region
+clearClip()                               // remove clip region
+draw3d()                                  // flush 3D scene to framebuffer
+```
 
-Input:
+### Input — Gamepad
 
-- `btn(nameOrIndex)`
-- `btnp(nameOrIndex)`
+```js
+btn(nameOrIndex)   // held: 'up','down','left','right','a','b','x','y', or 0-7
+btnp(nameOrIndex)  // edge (just pressed)
+```
 
-Audio:
+### Input — Keyboard
 
-- `nova64.audio.sfx(idOrOpts, maybeOpts)`
-- `nova64.audio.setVolume(value)`
-- Top-level compatibility aliases: `sfx`, `setVolume`
-- Supported SFX options: `wave`, `freq`, `dur`, `vol`, `sweep`
-- Supported preset ids/names match the browser runtime's small SFX preset table.
+```js
+key(name)    // held: 'space','enter','escape','backspace','tab','up','down',
+             //       'left','right', 'a'-'z', '0'-'9', 'f1'-'f12',
+             //       'lshift','rshift','lctrl','rctrl','lalt','ralt'
+keyp(name)   // edge (just pressed)
+```
 
-Assets:
+### Input — Mouse
 
-- `nova64.assets.has(path)`
-- `nova64.assets.size(path)`
-- `nova64.assets.readText(path, fallback)`
-- `nova64.assets.readJSON(path, fallback)`
-- `nova64.assets.readBytes(path)`
-- `nova64.assets.list()`
-- Top-level compatibility aliases: `assetHas`, `assetSize`, `readAssetText`,
-  `readAssetJSON`, `readAssetBytes`, `listAssets`
-- Only safe paths declared in a zip-style `.nova` manifest `assets: []` list are
-  staged for reads.
+```js
+mouseX()                  // relative X movement this frame
+mouseY()                  // relative Y movement this frame
+mouseBtn(name)            // held: 'left'|'right'|'middle'
+mouseBtnp(name)           // edge (just pressed)
+```
 
-Storage:
+### Audio
 
-- `nova64.storage.saveData(key, value)`
-- `nova64.storage.loadData(key, fallback)`
-- `nova64.storage.deleteData(key)`
-- `nova64.storage.saveJSON(key, value)`
-- `nova64.storage.loadJSON(key, fallback)`
-- `nova64.storage.remove(key)`
-- Top-level compatibility aliases: `saveData`, `loadData`, `deleteData`,
-  `saveJSON`, `loadJSON`, `remove`
+```js
+sfx(idOrOpts [, opts])          // procedural synth SFX
+setVolume(value)                 // global volume 0.0–1.0
+playSound(path [, vol [, loop]]) // play PCM asset (.pcm raw int16 or .wav)
+stopSound(path)                  // stop a specific looping sound
+stopAllSounds()                  // stop all active audio voices
+```
 
-3D command bridge:
+SFX option keys: `wave` ('square'|'sine'|'triangle'|'noise'), `freq`, `dur`,
+`vol`, `sweep`.
 
-- `createCube(color)`
-- `createCube(size, color, position)`
-- `createCube(width, height, depth, color, position)`
-- `createSphere(color)`
-- `createSphere(radius, color, position)`
-- `createPlane(color)`
-- `createPlane(width, depth, color)`
-- `destroyMesh(handle)`
-- `removeMesh(handle)`
-- `getMesh(handle)` snapshot
-- `setPosition(handle, x, y, z)`
-- `setRotation(handle, x, y, z)`
-- `setScale(handle, x, y, z)`
-- `getPosition(handle)`
-- `getRotation(handle)`
-- `rotateMesh(handle, dx, dy, dz)`
-- `moveMesh(handle, dx, dy, dz)`
-- `setMeshVisible(handle, visible)`
-- `setFlatShading(handle, enabled)`
-- `setMeshOpacity(handle, opacity)`
-- `setCastShadow(handle, enabled)`
-- `setReceiveShadow(handle, enabled)`
-- `get3DStats()`
-- `getBackendCapabilities()`
-- `setCameraPosition(x, y, z)`
-- `setCameraTarget(x, y, z)`
-- `setCameraFOV(degrees)`
-- `setCameraLookAt(direction)`
-- `setAmbientLight(color)`
-- `setAmbientLight(color, intensity)`
-- `setLightDirection(x, y, z)`
-- `setLightColor(color)`
-- `setDirectionalLight(direction, color, intensity)`
-- `createPointLight(color, intensity, distance, position)`
-- `setPointLightPosition(light, x, y, z)`
-- `setPointLightColor(light, color, intensity)`
-- `removeLight(light)`
-- `setFog(color, near, far)`
-- `clearFog()`
-- `clearScene()`
+### Storage
 
-These functions are exposed both under `nova64.draw`, `nova64.input`,
-`nova64.scene`, `nova64.camera`, `nova64.light`/`nova64.lights`, and as top-level
-compatibility helpers for tiny conformance carts.
+```js
+nova64.storage.saveData(key, value)
+nova64.storage.loadData(key [, fallback])
+nova64.storage.deleteData(key)
+nova64.storage.saveJSON(key, value)
+nova64.storage.loadJSON(key [, fallback])
+nova64.storage.remove(key)
+nova64.storage.has(key)          // true if key exists
+nova64.storage.keys()            // array of stored key names for this cart
+nova64.storage.clear()           // delete all keys for this cart; returns count
+```
 
-## Renderer Roadmap
+Top-level aliases: `saveData`, `loadData`, `deleteData`, `saveJSON`, `loadJSON`,
+`remove`, `hasData`, `storageKeys`, `storageClear`.
 
-1. OpenGL ES 3.1: first hardware renderer. The current core requests the context and
-   loads functions through the libretro proc-address callback. Cube, plane, and
-   low-poly sphere rendering, basic lit material color, and 2D overlay texture
-   compositing are in place.
-2. Vulkan 1.2: planned second backend. The goal is partial-to-mostly complete
-   Nova64 primitive/material coverage without changing cart-facing APIs.
-3. Package/assets: `.nova` package parsing, assets, textures, model loading, and
-   deterministic conformance coverage.
+### Assets
 
-## Limitations
+```js
+nova64.assets.has(path)
+nova64.assets.size(path)
+nova64.assets.readText(path [, fallback])
+nova64.assets.readJSON(path [, fallback])
+nova64.assets.readBytes(path)     // Uint8Array
+nova64.assets.list()              // array of asset paths from manifest
+```
 
-- QuickJS heap state is not serialized. Save states currently include only
-  framebuffer, input, camera, light/fog, point-light, and native mesh-table state.
-- `.nova` package parsing currently uses manifest metadata only to find executable
-  cart source; assets remain staged next.
-- GLES currently renders cube, plane, and low-poly sphere primitives with basic
-  ambient/directional lighting and composites the 2D framebuffer as a texture
-  overlay.
-- Hardware GLES presentation still needs manual smoke coverage inside RetroArch;
-  the native harness validates the same carts through deterministic software
-  captures and renderer command logs when no hardware context is available.
-- The software fallback includes a deterministic primitive preview renderer so
-  conformance carts can produce solid shaded captures before the full GLES/Vulkan
-  paths are complete.
-- Audio currently covers procedural SFX only; streamed music and sampled assets are
-  not implemented yet.
-- Package asset loading currently covers manifest-declared in-memory data reads;
-  texture/model/audio asset binding remains a later milestone.
-- Persistent cart storage currently stores JSON values only.
+Top-level aliases: `assetHas`, `assetSize`, `readAssetText`, `readAssetJSON`,
+`readAssetBytes`, `listAssets`.
+
+### 3D Scene
+
+```js
+// Primitives
+createCube(color)
+createCube(size, color [, position])
+createCube(width, height, depth, color [, position])
+createSphere(color)
+createSphere(radius, color [, position])
+createPlane(color)
+createPlane(width, depth, color)
+
+// Mesh lifecycle
+destroyMesh(handle)
+removeMesh(handle)
+getMesh(handle)              // snapshot: { x, y, z, rx, ry, rz, sx, sy, sz, visible }
+
+// Transforms
+setPosition(handle, x, y, z)
+setRotation(handle, x, y, z)
+setScale(handle, x, y, z)
+getPosition(handle)          // { x, y, z }
+getRotation(handle)          // { x, y, z }
+rotateMesh(handle, dx, dy, dz)
+moveMesh(handle, dx, dy, dz)
+
+// Material
+setMeshVisible(handle, visible)
+setMeshOpacity(handle, opacity)     // 0.0–1.0
+setFlatShading(handle, enabled)
+setCastShadow(handle, enabled)
+setReceiveShadow(handle, enabled)
+setMeshColor(handle, color)
+setMeshEmissive(handle, color, intensity)
+setMeshAlpha(handle, alpha)
+setMeshTexture(handle, texHandle)
+
+// Textures
+createTexture(width, height, rgbaBytes)
+destroyTexture(texHandle)
+
+// Stats and capabilities
+get3DStats()               // { meshCount, lightCount }
+getBackendCapabilities()   // { emissive, meshAlpha, textures }
+```
+
+### Camera
+
+```js
+setCameraPosition(x, y, z)
+setCameraTarget(x, y, z)
+setCameraFOV(degrees)
+setCameraLookAt(direction)
+```
+
+### Lighting
+
+```js
+setAmbientLight(color [, intensity])
+setLightDirection(x, y, z)
+setLightColor(color)
+setDirectionalLight(direction, color, intensity)
+createPointLight(color, intensity, distance [, position])
+setPointLightPosition(light, x, y, z)
+setPointLightColor(light, color, intensity)
+removeLight(light)
+setFog(color, near, far)
+clearFog()
+clearScene()
+```
+
+### Post Processing
+
+```js
+nova64.post.setCRT(intensity)       // CRT scanline/barrel, 0.0–1.0
+nova64.post.setVignette(intensity)  // vignette darkening, 0.0–1.0
+nova64.post.setPixelate(size)       // pixelation block size (1 = off)
+nova64.post.setBloom(intensity)     // bloom bright-pass, 0.0–1.0
+nova64.post.setChromatic(intensity) // chromatic aberration, 0.0–1.0
+nova64.post.setColorGrade(r, g, b)  // per-channel RGB multiplier
+nova64.post.setPosterize(levels)    // color quantization levels (0 = off)
+nova64.post.clear()                 // reset all post effects
+nova64.post.getState()              // returns current effect state object
+```
+
+### Runtime Utilities
+
+```js
+nova64.frame()   // current frame counter (integer, increments each retro_run)
+nova64.time()    // elapsed seconds (float)
+```
+
+## Known Gaps And Unsupported APIs
+
+These browser-side Nova64 or Three.js features are not implemented:
+
+- **QuickJS heap serialization**: save states include only native host state
+  (framebuffer, input, camera, lights, mesh table). JS object state is reset on
+  load. Carts must re-derive JS state from persistent storage or use deterministic
+  init logic.
+- **Tilemaps and sprite sheets beyond spr()**: the full browser tilemap API is not
+  yet mapped.
+- **Streamed music**: `playMusic()`, track looping, and crossfade are not
+  implemented. Use `playSound(..., vol, true)` for looping PCM clips.
+- **Texture binding in software mode**: `createTexture`/`setMeshTexture` allocate
+  valid handles and track state but do not upload to GL in headless/software
+  captures.
+- **Shadow maps**: `setCastShadow`/`setReceiveShadow` record state but shading
+  does not vary by shadow in the current GLES shader.
+- **Orthographic camera**: only perspective projection is implemented.
+- **Browser-only globals**: `window`, `document`, `THREE`, `BABYLON`, and any
+  DOM/Web APIs are not available and will throw at cart load time.
+- **Multiplayer/network**: no networking APIs.
+- **Vulkan renderer**: staged but not yet functional; selects GLES fallback.
+
+## Conformance Carts
+
+| Cart | What it covers |
+|------|----------------|
+| `00-boot.js` | lifecycle and log order |
+| `01-framebuffer.js` | deterministic 2D checksum |
+| `02-input.js` | gamepad hold and edge transitions |
+| `03-errors.js` | controlled exceptions |
+| `06-cube.js` | camera/light/mesh command scene |
+| `07-cube-plane.js` | cube + ground plane |
+| `08-sphere.js` | sphere primitive |
+| `09-overlay-scene.js` | 3D + 2D HUD composite |
+| `10-lighting.js` | material and light |
+| `11-storage.js` | saveJSON/loadJSON round-trip |
+| `12-audio.js` | procedural SFX batch |
+| `13-assets.js` | package asset reads |
+| `14-plane-dimensions.js` | plane width/depth args |
+| `15-primitive-args.js` | cube/sphere position args |
+| `16-transforms.js` | rotateMesh/moveMesh/getters |
+| `17-light-fog.js` | fog + point lights |
+| `18-mesh-helpers.js` | opacity, visibility, flat-shading |
+| `19-texture.js` | createTexture/setMeshTexture |
+| `20-post.js` | CRT/vignette/pixelate post effects |
+| `21-post-effects.js` | bloom/chromatic/colorGrade/posterize |
+| `22-material.js` | emissive + mesh alpha |
+| `23-keyboard.js` | key hold, edge, false-positive |
+| `24-storage-keys.js` | has/keys/clear round-trip |
+| `25-mouse.js` | mouseX/Y, button edge/hold |
+| `26-draw2d.js` | circ/circfill, print alignment |
+| `27-sprite.js` | spr() full and cropped blit |
+| `28-play-sound.js` | PCM playback + audio checksum |
+| `29-runtime-utils.js` | frame/time, setClip/clearClip |
+| `30-showcase.js` | multi-API cross-subsystem demo |

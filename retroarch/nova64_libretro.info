@@ -1,0 +1,15 @@
+# Nova64 libretro core info file
+# Place alongside nova64_libretro.so in the RetroArch cores directory.
+
+display_name = "Nova64"
+authors = "Nova64 Contributors"
+supported_extensions = "js|nova"
+corename = "nova64"
+categories = "Other"
+systemname = "Nova64"
+license = "MIT"
+permissions = ""
+display_version = "0.8.0"
+supports_no_game = "false"
+database = ""
+notes = "Runs Nova64 JavaScript carts (.js) and packages (.nova) using QuickJS. Requires OpenGL ES 3.1 for 3D rendering; falls back to software 2D rendering when hardware is unavailable. See README_RETROARCH.md for full cart API reference."

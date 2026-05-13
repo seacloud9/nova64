@@ -407,6 +407,15 @@ int main(int argc, char **argv)
    if (has_expected_checksum && g_checksum != expected_checksum) {
       fprintf(stderr, "checksum mismatch: expected=%016llx actual=%016llx\n",
             (unsigned long long)expected_checksum, (unsigned long long)g_checksum);
+      if (!capture_path) {
+         /* auto-save a failure capture so the frame is visible without a re-run */
+         const char *base = strrchr(argv[2], '/');
+         base = base ? base + 1 : argv[2];
+         char fail_path[512];
+         snprintf(fail_path, sizeof(fail_path), "/tmp/nova64-fail-%s.ppm", base);
+         if (write_ppm(fail_path))
+            fprintf(stderr, "failure capture: %s\n", fail_path);
+      }
       free(g_last_frame);
       return 1;
    }
@@ -419,8 +428,9 @@ int main(int argc, char **argv)
    }
 
    free(g_last_frame);
-   printf("ok=%d frames=%u checksum=%016llx audio_frames=%u audio_checksum=%016llx\n",
+   printf("ok=%d frames=%u checksum=%016llx audio_frames=%u audio_checksum=%016llx width=%u height=%u\n",
          ok ? 1 : 0, g_video_frames, (unsigned long long)g_checksum,
-         g_audio_frames, (unsigned long long)g_audio_checksum);
+         g_audio_frames, (unsigned long long)g_audio_checksum,
+         g_last_width, g_last_height);
    return ok ? 0 : 1;
 }

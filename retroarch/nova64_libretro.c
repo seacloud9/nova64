@@ -1225,6 +1225,53 @@ static void draw_text_pixels(const char *text, int x, int y, uint32_t color)
    }
 }
 
+static int text_pixel_width(const char *text)
+{
+   if (!text || !text[0])
+      return 0;
+   int max_w = 0, cur_w = 0;
+   for (const char *p = text; *p; p++) {
+      if (*p == '\n') {
+         if (cur_w > max_w) max_w = cur_w;
+         cur_w = 0;
+      } else {
+         cur_w += 6;
+      }
+   }
+   if (cur_w > max_w) max_w = cur_w;
+   return max_w > 0 ? max_w - 1 : 0; /* trim trailing space */
+}
+
+static void draw_text_aligned(const char *text, int x, int y, uint32_t color, int align)
+{
+   /* align: 0=left, 1=center, 2=right */
+   if (align == 1)
+      x -= text_pixel_width(text) / 2;
+   else if (align == 2)
+      x -= text_pixel_width(text);
+   draw_text_pixels(text, x, y, color);
+}
+
+static void draw_circle_pixels(int cx, int cy, int r, uint32_t color, bool filled)
+{
+   if (r < 0) return;
+   int x = 0, y = r, d = 1 - r;
+   while (x <= y) {
+      if (filled) {
+         for (int i = cx - y; i <= cx + y; i++) { set_pixel(i, cy - x, color); set_pixel(i, cy + x, color); }
+         for (int i = cx - x; i <= cx + x; i++) { set_pixel(i, cy - y, color); set_pixel(i, cy + y, color); }
+      } else {
+         set_pixel(cx + x, cy - y, color); set_pixel(cx - x, cy - y, color);
+         set_pixel(cx + x, cy + y, color); set_pixel(cx - x, cy + y, color);
+         set_pixel(cx + y, cy - x, color); set_pixel(cx - y, cy - x, color);
+         set_pixel(cx + y, cy + x, color); set_pixel(cx - y, cy + x, color);
+      }
+      if (d < 0) d += 2 * x + 3;
+      else { d += 2 * (x - y) + 5; y--; }
+      x++;
+   }
+}
+
 static uint32_t shade_color(uint32_t color, float amount)
 {
    if (amount < 0.0f)
@@ -1983,6 +2030,21 @@ static JSValue js_rect(JSContext *ctx, JSValueConst this_val, int argc, JSValueC
    return JS_UNDEFINED;
 }
 
+static int text_align_from_js(JSContext *ctx, JSValueConst value)
+{
+   if (JS_IsUndefined(value) || JS_IsNull(value))
+      return 0;
+   if (JS_IsNumber(value))
+      return int_from_js(ctx, value, 0);
+   const char *s = JS_ToCString(ctx, value);
+   if (!s) return 0;
+   int align = 0;
+   if (!strcmp(s, "center") || !strcmp(s, "c")) align = 1;
+   else if (!strcmp(s, "right") || !strcmp(s, "r")) align = 2;
+   JS_FreeCString(ctx, s);
+   return align;
+}
+
 static JSValue js_draw_print(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
    if (argc < 3)
@@ -1991,9 +2053,42 @@ static JSValue js_draw_print(JSContext *ctx, JSValueConst this_val, int argc, JS
    int x = int_from_js(ctx, argv[1], 0);
    int y = int_from_js(ctx, argv[2], 0);
    uint32_t color = color_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, rgba8(255, 255, 255, 255));
-   draw_text_pixels(text, x, y, color);
+   int align = argc > 4 ? text_align_from_js(ctx, argv[4]) : 0;
+   draw_text_aligned(text, x, y, color, align);
    if (text)
       JS_FreeCString(ctx, text);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_text_width(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 1) return JS_NewInt32(ctx, 0);
+   const char *text = JS_ToCString(ctx, argv[0]);
+   int w = text_pixel_width(text);
+   if (text) JS_FreeCString(ctx, text);
+   return JS_NewInt32(ctx, w);
+}
+
+static JSValue js_circ(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int cx = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0);
+   int cy = int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0);
+   int r  = int_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 0);
+   uint32_t color = color_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, rgba8(255, 255, 255, 255));
+   draw_circle_pixels(cx, cy, r, color, false);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_circfill(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int cx = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0);
+   int cy = int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0);
+   int r  = int_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 0);
+   uint32_t color = color_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, rgba8(255, 255, 255, 255));
+   draw_circle_pixels(cx, cy, r, color, true);
    return JS_UNDEFINED;
 }
 
@@ -3207,7 +3302,10 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, draw, "pset", js_pset, 3);
    set_function(ctx, draw, "line", js_line, 5);
    set_function(ctx, draw, "rect", js_rect, 6);
-   set_function(ctx, draw, "print", js_draw_print, 4);
+   set_function(ctx, draw, "circ", js_circ, 4);
+   set_function(ctx, draw, "circfill", js_circfill, 4);
+   set_function(ctx, draw, "print", js_draw_print, 5);
+   set_function(ctx, draw, "textWidth", js_text_width, 1);
 
    set_function(ctx, input, "btn", js_btn, 1);
    set_function(ctx, input, "btnp", js_btnp, 1);
@@ -3320,7 +3418,10 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, global, "pset", js_pset, 3);
    set_function(ctx, global, "line", js_line, 5);
    set_function(ctx, global, "rect", js_rect, 6);
-   set_function(ctx, global, "print", js_draw_print, 4);
+   set_function(ctx, global, "circ", js_circ, 4);
+   set_function(ctx, global, "circfill", js_circfill, 4);
+   set_function(ctx, global, "print", js_draw_print, 5);
+   set_function(ctx, global, "textWidth", js_text_width, 1);
    set_function(ctx, global, "btn", js_btn, 1);
    set_function(ctx, global, "btnp", js_btnp, 1);
    set_function(ctx, global, "key", js_key, 1);

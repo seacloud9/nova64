@@ -156,6 +156,11 @@ Areas:
 - Complete the cart-facing 2D draw API:
   - Text alignment, richer font paths, sprites, sprite sheets, tilemaps, clipping,
     camera offsets, palette helpers, and deterministic framebuffer behavior.
+  - `circ(cx, cy, r, color)` and `circfill(cx, cy, r, color)` now draw circles
+    via Bresenham's midpoint algorithm. `print` accepts an optional 5th alignment
+    argument: `'left'` (default), `'center'`, or `'right'`. `textWidth(text)`
+    returns the pixel width of a string using the built-in 5×7 font metrics.
+    `26-draw2d.js` covers circles and aligned text in a visual conformance cart.
 - Complete the cart-facing 3D scene API:
   - Primitive argument parity for cubes, planes, spheres, capsules/cylinders where
     practical, transform helpers, object lookup, material assignment, mesh

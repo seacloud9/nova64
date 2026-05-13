@@ -141,6 +141,7 @@ run_mouse_case() {
 }
 
 run_mouse_case "25 mouse" "retroarch/conformance/25-mouse.js" "c921e3d3b2b7c551"
+run_visual_case "26 draw2d" "26-draw2d" "retroarch/conformance/26-draw2d.js" "5c927cbdf07816e8"
 run_visual_case "19 texture" "19-texture" "retroarch/conformance/19-texture.js" "f4fd3acbca0331b4"
 run_visual_case "20 post" "20-post" "retroarch/conformance/20-post.js" "75a3d27c9048e5b0"
 run_visual_case "21 post-effects" "21-post-effects" "retroarch/conformance/21-post-effects.js" "3a18d91989ad8ded"

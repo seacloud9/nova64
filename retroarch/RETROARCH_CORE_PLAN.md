@@ -85,12 +85,12 @@ Goals:
 
 ## Milestone 3: OpenGL ES 3.1 Renderer
 
-Status: started.
+Status: first pass implemented; advanced materials and richer mesh families remain.
 
 Goals:
 
 - Render cube, sphere, and plane primitives through GLES 3.1.
-  - Cube, plane, and low-poly sphere rendering are implemented through a first
+  - Cube, plane, and low-poly sphere rendering are implemented through a lit
     shader/VBO/IBO path.
 - Upload the 2D framebuffer as an overlay texture and composite it after 3D.
   - First overlay texture upload/composite path is implemented.
@@ -98,6 +98,8 @@ Goals:
   - `09-overlay-scene.js` is implemented with a deterministic software capture.
 - Keep all GL calls behind the renderer interface.
 - Support basic materials, ambient light, directional light, and camera transforms.
+  - GLES primitive shaders now consume per-vertex normals plus ambient and
+    directional light state for basic lit material color.
 - Add a deterministic command-log mode for headless conformance tests.
   - `NOVA64_RENDER_COMMAND_LOG` and harness `--command-log` are implemented for
     camera, light, overlay, and mesh-state checks.
@@ -144,4 +146,5 @@ Manual RetroArch smoke targets:
 
 - Load a `.js` boot cart.
 - Load a deterministic framebuffer cart.
-- Load a cube command cart with a GLES-capable RetroArch video driver.
+- Load `06-cube.js`, `08-sphere.js`, and `09-overlay-scene.js` with a GLES-capable
+  RetroArch video driver.

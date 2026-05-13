@@ -87,6 +87,7 @@ typedef void (*PFNGLUSEPROGRAMPROC)(GLuint program);
 typedef GLint (*PFNGLGETATTRIBLOCATIONPROC)(GLuint program, const GLchar *name);
 typedef GLint (*PFNGLGETUNIFORMLOCATIONPROC)(GLuint program, const GLchar *name);
 typedef void (*PFNGLUNIFORMMATRIX4FVPROC)(GLint location, GLsizei count, GLboolean transpose, const GLfloat *value);
+typedef void (*PFNGLUNIFORMMATRIX3FVPROC)(GLint location, GLsizei count, GLboolean transpose, const GLfloat *value);
 typedef void (*PFNGLUNIFORM4FPROC)(GLint location, GLfloat v0, GLfloat v1, GLfloat v2, GLfloat v3);
 typedef void (*PFNGLGENBUFFERSPROC)(GLsizei n, GLuint *buffers);
 typedef void (*PFNGLBINDBUFFERPROC)(GLenum target, GLuint buffer);
@@ -197,6 +198,7 @@ struct nova64_gles_backend {
    PFNGLGETATTRIBLOCATIONPROC GetAttribLocation;
    PFNGLGETUNIFORMLOCATIONPROC GetUniformLocation;
    PFNGLUNIFORMMATRIX4FVPROC UniformMatrix4fv;
+   PFNGLUNIFORMMATRIX3FVPROC UniformMatrix3fv;
    PFNGLUNIFORM4FPROC Uniform4f;
    PFNGLGENBUFFERSPROC GenBuffers;
    PFNGLBINDBUFFERPROC BindBuffer;
@@ -227,8 +229,12 @@ struct nova64_gles_backend {
    GLuint cube_program;
    GLuint overlay_program;
    GLint cube_position_attrib;
+   GLint cube_normal_attrib;
    GLint cube_mvp_uniform;
+   GLint cube_normal_matrix_uniform;
    GLint cube_color_uniform;
+   GLint cube_ambient_uniform;
+   GLint cube_light_direction_uniform;
    GLint overlay_position_attrib;
    GLint overlay_uv_attrib;
    GLint overlay_texture_uniform;
@@ -802,6 +808,29 @@ static void mat4_from_mesh(float out[16], const struct nova64_mesh *mesh)
    out[12] = mesh->position[0];
    out[13] = mesh->position[1];
    out[14] = mesh->position[2];
+}
+
+static void mat3_normal_from_mesh(float out[9], const struct nova64_mesh *mesh)
+{
+   struct nova64_mesh rotation_only = *mesh;
+   rotation_only.position[0] = 0.0f;
+   rotation_only.position[1] = 0.0f;
+   rotation_only.position[2] = 0.0f;
+   rotation_only.scale[0] = 1.0f;
+   rotation_only.scale[1] = 1.0f;
+   rotation_only.scale[2] = 1.0f;
+
+   float rotation[16];
+   mat4_from_mesh(rotation, &rotation_only);
+   out[0] = rotation[0];
+   out[1] = rotation[1];
+   out[2] = rotation[2];
+   out[3] = rotation[4];
+   out[4] = rotation[5];
+   out[5] = rotation[6];
+   out[6] = rotation[8];
+   out[7] = rotation[9];
+   out[8] = rotation[10];
 }
 
 static float edge2d(float ax, float ay, float bx, float by, float cx, float cy)
@@ -1675,15 +1704,27 @@ static bool gles_create_cube_program(void)
 {
    static const char *vertex_source =
       "attribute vec3 a_position;\n"
+      "attribute vec3 a_normal;\n"
       "uniform mat4 u_mvp;\n"
+      "uniform mat3 u_normal_matrix;\n"
+      "uniform vec4 u_light_direction;\n"
+      "varying float v_light;\n"
       "void main() {\n"
+      "  vec3 n = normalize(u_normal_matrix * a_normal);\n"
+      "  vec3 l = normalize(-u_light_direction.xyz);\n"
+      "  float diffuse = max(dot(n, l), 0.0);\n"
+      "  v_light = 0.58 + diffuse * 0.42;\n"
       "  gl_Position = u_mvp * vec4(a_position, 1.0);\n"
       "}\n";
    static const char *fragment_source =
       "precision mediump float;\n"
+      "varying float v_light;\n"
       "uniform vec4 u_color;\n"
+      "uniform vec4 u_ambient_color;\n"
       "void main() {\n"
-      "  gl_FragColor = u_color;\n"
+      "  vec3 ambient = u_ambient_color.rgb * 0.35;\n"
+      "  vec3 lit = clamp(u_color.rgb * v_light + ambient, 0.0, 1.0);\n"
+      "  gl_FragColor = vec4(lit, u_color.a);\n"
       "}\n";
 
    GLuint vertex = gles_compile_shader(GL_VERTEX_SHADER, vertex_source);
@@ -1719,9 +1760,16 @@ static bool gles_create_cube_program(void)
 
    gles.cube_program = program;
    gles.cube_position_attrib = gles.GetAttribLocation(program, "a_position");
+   gles.cube_normal_attrib = gles.GetAttribLocation(program, "a_normal");
    gles.cube_mvp_uniform = gles.GetUniformLocation(program, "u_mvp");
+   gles.cube_normal_matrix_uniform = gles.GetUniformLocation(program, "u_normal_matrix");
    gles.cube_color_uniform = gles.GetUniformLocation(program, "u_color");
-   return gles.cube_position_attrib >= 0 && gles.cube_mvp_uniform >= 0 && gles.cube_color_uniform >= 0;
+   gles.cube_ambient_uniform = gles.GetUniformLocation(program, "u_ambient_color");
+   gles.cube_light_direction_uniform = gles.GetUniformLocation(program, "u_light_direction");
+   return gles.cube_position_attrib >= 0 && gles.cube_normal_attrib >= 0 &&
+      gles.cube_mvp_uniform >= 0 && gles.cube_normal_matrix_uniform >= 0 &&
+      gles.cube_color_uniform >= 0 && gles.cube_ambient_uniform >= 0 &&
+      gles.cube_light_direction_uniform >= 0;
 }
 
 static bool gles_create_overlay_program(void)
@@ -1824,39 +1872,55 @@ static bool gles_init_resources(void)
       return true;
 
    static const GLfloat cube_vertices[] = {
-      -0.5f, -0.5f, -0.5f,
-       0.5f, -0.5f, -0.5f,
-       0.5f,  0.5f, -0.5f,
-      -0.5f,  0.5f, -0.5f,
-      -0.5f, -0.5f,  0.5f,
-       0.5f, -0.5f,  0.5f,
-       0.5f,  0.5f,  0.5f,
-      -0.5f,  0.5f,  0.5f,
+      -0.5f, -0.5f, -0.5f,  0.0f,  0.0f, -1.0f,
+       0.5f, -0.5f, -0.5f,  0.0f,  0.0f, -1.0f,
+       0.5f,  0.5f, -0.5f,  0.0f,  0.0f, -1.0f,
+      -0.5f,  0.5f, -0.5f,  0.0f,  0.0f, -1.0f,
+      -0.5f, -0.5f,  0.5f,  0.0f,  0.0f,  1.0f,
+       0.5f, -0.5f,  0.5f,  0.0f,  0.0f,  1.0f,
+       0.5f,  0.5f,  0.5f,  0.0f,  0.0f,  1.0f,
+      -0.5f,  0.5f,  0.5f,  0.0f,  0.0f,  1.0f,
+      -0.5f, -0.5f, -0.5f,  0.0f, -1.0f,  0.0f,
+      -0.5f, -0.5f,  0.5f,  0.0f, -1.0f,  0.0f,
+       0.5f, -0.5f,  0.5f,  0.0f, -1.0f,  0.0f,
+       0.5f, -0.5f, -0.5f,  0.0f, -1.0f,  0.0f,
+      -0.5f,  0.5f, -0.5f,  0.0f,  1.0f,  0.0f,
+       0.5f,  0.5f, -0.5f,  0.0f,  1.0f,  0.0f,
+       0.5f,  0.5f,  0.5f,  0.0f,  1.0f,  0.0f,
+      -0.5f,  0.5f,  0.5f,  0.0f,  1.0f,  0.0f,
+       0.5f, -0.5f, -0.5f,  1.0f,  0.0f,  0.0f,
+       0.5f, -0.5f,  0.5f,  1.0f,  0.0f,  0.0f,
+       0.5f,  0.5f,  0.5f,  1.0f,  0.0f,  0.0f,
+       0.5f,  0.5f, -0.5f,  1.0f,  0.0f,  0.0f,
+      -0.5f, -0.5f, -0.5f, -1.0f,  0.0f,  0.0f,
+      -0.5f,  0.5f, -0.5f, -1.0f,  0.0f,  0.0f,
+      -0.5f,  0.5f,  0.5f, -1.0f,  0.0f,  0.0f,
+      -0.5f, -0.5f,  0.5f, -1.0f,  0.0f,  0.0f,
    };
    static const unsigned short cube_indices[] = {
       0, 1, 2, 0, 2, 3,
       4, 6, 5, 4, 7, 6,
-      0, 4, 5, 0, 5, 1,
-      3, 2, 6, 3, 6, 7,
-      1, 5, 6, 1, 6, 2,
-      0, 3, 7, 0, 7, 4,
+      8, 9, 10, 8, 10, 11,
+      12, 13, 14, 12, 14, 15,
+      16, 17, 18, 16, 18, 19,
+      20, 21, 22, 20, 22, 23,
    };
    static const GLfloat plane_vertices[] = {
-      -0.5f, 0.0f, -0.5f,
-       0.5f, 0.0f, -0.5f,
-       0.5f, 0.0f,  0.5f,
-      -0.5f, 0.0f,  0.5f,
+      -0.5f, 0.0f, -0.5f, 0.0f, 1.0f, 0.0f,
+       0.5f, 0.0f, -0.5f, 0.0f, 1.0f, 0.0f,
+       0.5f, 0.0f,  0.5f, 0.0f, 1.0f, 0.0f,
+      -0.5f, 0.0f,  0.5f, 0.0f, 1.0f, 0.0f,
    };
    static const unsigned short plane_indices[] = {
       0, 1, 2, 0, 2, 3,
    };
    static const GLfloat sphere_vertices[] = {
-       0.0f,  0.5f,  0.0f,
-       0.5f,  0.0f,  0.0f,
-       0.0f,  0.0f,  0.5f,
-      -0.5f,  0.0f,  0.0f,
-       0.0f,  0.0f, -0.5f,
-       0.0f, -0.5f,  0.0f,
+       0.0f,  0.5f,  0.0f,  0.0f,  1.0f,  0.0f,
+       0.5f,  0.0f,  0.0f,  1.0f,  0.0f,  0.0f,
+       0.0f,  0.0f,  0.5f,  0.0f,  0.0f,  1.0f,
+      -0.5f,  0.0f,  0.0f, -1.0f,  0.0f,  0.0f,
+       0.0f,  0.0f, -0.5f,  0.0f,  0.0f, -1.0f,
+       0.0f, -0.5f,  0.0f,  0.0f, -1.0f,  0.0f,
    };
    static const unsigned short sphere_indices[] = {
       0, 1, 2,
@@ -1950,6 +2014,7 @@ static bool gles_load_functions(void)
    gles.GetAttribLocation = (PFNGLGETATTRIBLOCATIONPROC)load_gles_proc("glGetAttribLocation");
    gles.GetUniformLocation = (PFNGLGETUNIFORMLOCATIONPROC)load_gles_proc("glGetUniformLocation");
    gles.UniformMatrix4fv = (PFNGLUNIFORMMATRIX4FVPROC)load_gles_proc("glUniformMatrix4fv");
+   gles.UniformMatrix3fv = (PFNGLUNIFORMMATRIX3FVPROC)load_gles_proc("glUniformMatrix3fv");
    gles.Uniform4f = (PFNGLUNIFORM4FPROC)load_gles_proc("glUniform4f");
    gles.GenBuffers = (PFNGLGENBUFFERSPROC)load_gles_proc("glGenBuffers");
    gles.BindBuffer = (PFNGLBINDBUFFERPROC)load_gles_proc("glBindBuffer");
@@ -1973,7 +2038,7 @@ static bool gles_load_functions(void)
       gles.CreateShader && gles.ShaderSource && gles.CompileShader && gles.GetShaderiv &&
       gles.DeleteShader && gles.CreateProgram && gles.AttachShader && gles.LinkProgram &&
       gles.GetProgramiv && gles.DeleteProgram && gles.UseProgram && gles.GetAttribLocation &&
-      gles.GetUniformLocation && gles.UniformMatrix4fv && gles.Uniform4f &&
+      gles.GetUniformLocation && gles.UniformMatrix4fv && gles.UniformMatrix3fv && gles.Uniform4f &&
       gles.GenBuffers && gles.BindBuffer && gles.BufferData && gles.DeleteBuffers &&
       gles.EnableVertexAttribArray && gles.DisableVertexAttribArray &&
       gles.VertexAttribPointer && gles.DrawElements && gles.GenTextures &&
@@ -2018,6 +2083,7 @@ static void gles_context_destroy(void)
    gles.GetAttribLocation = NULL;
    gles.GetUniformLocation = NULL;
    gles.UniformMatrix4fv = NULL;
+   gles.UniformMatrix3fv = NULL;
    gles.Uniform4f = NULL;
    gles.GenBuffers = NULL;
    gles.BindBuffer = NULL;
@@ -2043,8 +2109,10 @@ static void render_gles_primitive(const struct nova64_mesh *mesh, const float vi
       GLuint vbo, GLuint ibo, GLsizei index_count)
 {
    float model[16];
+   float normal_matrix[9];
    float mvp[16];
    mat4_from_mesh(model, mesh);
+   mat3_normal_from_mesh(normal_matrix, mesh);
    mat4_multiply(mvp, view_projection, model);
 
    uint32_t color = mesh->color;
@@ -2055,12 +2123,25 @@ static void render_gles_primitive(const struct nova64_mesh *mesh, const float vi
 
    gles.UseProgram(gles.cube_program);
    gles.UniformMatrix4fv(gles.cube_mvp_uniform, 1, GL_FALSE, mvp);
+   gles.UniformMatrix3fv(gles.cube_normal_matrix_uniform, 1, GL_FALSE, normal_matrix);
    gles.Uniform4f(gles.cube_color_uniform, r, g, b, a);
+   gles.Uniform4f(gles.cube_ambient_uniform,
+      (float)((light_state.ambient >> 24) & 0xffU) / 255.0f,
+      (float)((light_state.ambient >> 16) & 0xffU) / 255.0f,
+      (float)((light_state.ambient >> 8) & 0xffU) / 255.0f,
+      (float)(light_state.ambient & 0xffU) / 255.0f);
+   gles.Uniform4f(gles.cube_light_direction_uniform,
+      light_state.direction[0], light_state.direction[1], light_state.direction[2], 0.0f);
    gles.BindBuffer(GL_ARRAY_BUFFER, vbo);
    gles.BindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo);
    gles.EnableVertexAttribArray((GLuint)gles.cube_position_attrib);
-   gles.VertexAttribPointer((GLuint)gles.cube_position_attrib, 3, GL_FLOAT, GL_FALSE, 0, NULL);
+   gles.EnableVertexAttribArray((GLuint)gles.cube_normal_attrib);
+   gles.VertexAttribPointer((GLuint)gles.cube_position_attrib, 3, GL_FLOAT, GL_FALSE,
+      (GLsizei)(sizeof(GLfloat) * 6), NULL);
+   gles.VertexAttribPointer((GLuint)gles.cube_normal_attrib, 3, GL_FLOAT, GL_FALSE,
+      (GLsizei)(sizeof(GLfloat) * 6), (const void *)(uintptr_t)(sizeof(GLfloat) * 3));
    gles.DrawElements(GL_TRIANGLES, index_count, GL_UNSIGNED_SHORT, NULL);
+   gles.DisableVertexAttribArray((GLuint)gles.cube_normal_attrib);
    gles.DisableVertexAttribArray((GLuint)gles.cube_position_attrib);
 }
 

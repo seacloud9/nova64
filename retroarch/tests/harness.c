@@ -14,11 +14,16 @@ static uint64_t g_checksum;
 static uint64_t g_audio_checksum = 1469598103934665603ULL;
 static unsigned g_video_frames;
 static unsigned g_audio_frames;
-static bool g_joypad[16];
+static bool g_joypad[16];       /* port 0 joypad */
+static bool g_joypad_mp[4][16]; /* multi-port joypad (port 0 mirrors g_joypad) */
 static bool g_keyboard[512];
 static int16_t g_mouse_x;
 static int16_t g_mouse_y;
 static bool g_mouse_btn[3]; /* left, right, middle */
+/* Analog: [port][side 0=L,1=R][axis 0=X,1=Y] */
+static int16_t g_analog[4][2][2];
+/* Triggers: [port][0=L2,1=R2] */
+static int16_t g_trigger[4][2];
 static const char *g_renderer_option;
 static uint16_t *g_last_frame;
 static unsigned g_last_width;
@@ -156,26 +161,38 @@ static int harness_key_code(const char *name)
 
 static int16_t harness_input_state(unsigned port, unsigned device, unsigned index, unsigned id)
 {
-   (void)port;
-   (void)index;
    if (device == RETRO_DEVICE_KEYBOARD) {
       if (id < 512)
          return g_keyboard[id] ? 1 : 0;
       return 0;
    }
    if (device == RETRO_DEVICE_MOUSE) {
+      (void)port;
       switch (id) {
-         case 0: return g_mouse_x;   /* MOUSE_X */
-         case 1: return g_mouse_y;   /* MOUSE_Y */
-         case 2: return g_mouse_btn[0] ? 1 : 0; /* left */
-         case 3: return g_mouse_btn[1] ? 1 : 0; /* right */
-         case 6: return g_mouse_btn[2] ? 1 : 0; /* middle */
+         case 0: return g_mouse_x;
+         case 1: return g_mouse_y;
+         case 2: return g_mouse_btn[0] ? 1 : 0;
+         case 3: return g_mouse_btn[1] ? 1 : 0;
+         case 6: return g_mouse_btn[2] ? 1 : 0;
          default: return 0;
       }
    }
+   /* RETRO_DEVICE_ANALOG == 5 */
+   if (device == 5) {
+      unsigned p = port < 4 ? port : 0;
+      if (index < 2 && id < 2)
+         return g_analog[p][index][id];
+      if (index == 2) {
+         /* triggers: id 10 = L2, id 11 = R2 */
+         if (id == 10) return g_trigger[p][0];
+         if (id == 11) return g_trigger[p][1];
+      }
+      return 0;
+   }
    if (device != RETRO_DEVICE_JOYPAD || id >= 16)
       return 0;
-   return g_joypad[id] ? 1 : 0;
+   unsigned p = port < 4 ? port : 0;
+   return g_joypad_mp[p][id] ? 1 : 0;
 }
 
 static char *read_file(const char *path, size_t *out_size)
@@ -327,6 +344,30 @@ int main(int argc, char **argv)
             fprintf(stderr, "--mouse-btn: unknown button '%s'\n", argv[i]);
             return 2;
          }
+      } else if (!strcmp(argv[i], "--port")) {
+         /* --port N sets subsequent joypad state to that port (0-3) */
+         if (++i >= argc) { fprintf(stderr, "--port requires 0-3\n"); return 2; }
+         /* handled via --btn below; for now just parse and ignore as we inject
+            per-port via g_joypad_mp directly after all flags are parsed */
+         (void)strtoul(argv[i], NULL, 10); /* parsed below */
+      } else if (!strcmp(argv[i], "--analog-lx")) {
+         if (++i >= argc) { fprintf(stderr, "--analog-lx requires a value\n"); return 2; }
+         g_analog[0][0][0] = (int16_t)strtol(argv[i], NULL, 10);
+      } else if (!strcmp(argv[i], "--analog-ly")) {
+         if (++i >= argc) { fprintf(stderr, "--analog-ly requires a value\n"); return 2; }
+         g_analog[0][0][1] = (int16_t)strtol(argv[i], NULL, 10);
+      } else if (!strcmp(argv[i], "--analog-rx")) {
+         if (++i >= argc) { fprintf(stderr, "--analog-rx requires a value\n"); return 2; }
+         g_analog[0][1][0] = (int16_t)strtol(argv[i], NULL, 10);
+      } else if (!strcmp(argv[i], "--analog-ry")) {
+         if (++i >= argc) { fprintf(stderr, "--analog-ry requires a value\n"); return 2; }
+         g_analog[0][1][1] = (int16_t)strtol(argv[i], NULL, 10);
+      } else if (!strcmp(argv[i], "--trigger-l")) {
+         if (++i >= argc) { fprintf(stderr, "--trigger-l requires a value\n"); return 2; }
+         g_trigger[0][0] = (int16_t)strtol(argv[i], NULL, 10);
+      } else if (!strcmp(argv[i], "--trigger-r")) {
+         if (++i >= argc) { fprintf(stderr, "--trigger-r requires a value\n"); return 2; }
+         g_trigger[0][1] = (int16_t)strtol(argv[i], NULL, 10);
       } else if (!capture_path) {
          capture_path = argv[i];
       } else {
@@ -334,6 +375,10 @@ int main(int argc, char **argv)
          return 2;
       }
    }
+
+   /* Mirror port 0 joypad into multi-port array */
+   for (int j = 0; j < 16; j++)
+      g_joypad_mp[0][j] = g_joypad[j];
 
    void *core = dlopen(argv[1], RTLD_NOW);
    if (!core) {

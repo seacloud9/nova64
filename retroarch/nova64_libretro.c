@@ -441,6 +441,63 @@ static int32_t mouse_rel_y;
 static bool mouse_btns[NOVA64_MOUSE_BTN_COUNT];     /* left, right, middle */
 static bool mouse_prev_btns[NOVA64_MOUSE_BTN_COUNT];
 
+/* Analog sticks (RETRO_DEVICE_ANALOG = 5) */
+#define NOVA64_DEVICE_ANALOG       5
+#define NOVA64_ANALOG_LEFT         0
+#define NOVA64_ANALOG_RIGHT        1
+#define NOVA64_ANALOG_BUTTON       2
+#define NOVA64_ANALOG_X            0
+#define NOVA64_ANALOG_Y            1
+#define NOVA64_MAX_PORTS           4
+/* RETRO joypad button ids for L2/R2 — same as in libretro spec */
+#define NOVA64_RETRO_L2            10
+#define NOVA64_RETRO_R2            11
+
+/* Per-port analog axes [-1, 1] and triggers [0, 1] */
+static float analog_axes[NOVA64_MAX_PORTS][2][2]; /* [port][side 0=L,1=R][axis 0=X,1=Y] */
+static float analog_triggers[NOVA64_MAX_PORTS][2]; /* [port][0=L2,1=R2] */
+
+/* Multi-port joypad state for ports 1-3 (port 0 uses the existing arrays) */
+static bool mp_buttons[NOVA64_MAX_PORTS][NOVA64_BUTTON_COUNT];
+static bool mp_prev_buttons[NOVA64_MAX_PORTS][NOVA64_BUTTON_COUNT];
+static bool mp_pressed_buttons[NOVA64_MAX_PORTS][NOVA64_BUTTON_COUNT];
+
+/* Tilemap subsystem */
+#define NOVA64_MAX_TILEMAPS 16
+struct nova64_tilemap {
+   int tile_w, tile_h;
+   int cols, rows;
+   int *cells;
+   bool active;
+};
+static struct nova64_tilemap tilemaps[NOVA64_MAX_TILEMAPS];
+
+static void destroy_tilemap(int idx)
+{
+   if (idx < 0 || idx >= NOVA64_MAX_TILEMAPS) return;
+   free(tilemaps[idx].cells);
+   memset(&tilemaps[idx], 0, sizeof(tilemaps[idx]));
+}
+
+static void destroy_all_tilemaps(void)
+{
+   for (int i = 0; i < NOVA64_MAX_TILEMAPS; i++)
+      destroy_tilemap(i);
+}
+
+/* Deterministic RNG — xorshift64 */
+static uint64_t rng_state = 12345678901234567ULL;
+
+static void rng_seed_impl(uint64_t seed) { rng_state = seed ? seed : 12345678901234567ULL; }
+
+static double rng_next_impl(void)
+{
+   rng_state ^= rng_state << 13;
+   rng_state ^= rng_state >> 7;
+   rng_state ^= rng_state << 17;
+   return (double)(rng_state >> 11) / (double)(UINT64_C(1) << 53);
+}
+
 /* Standard RETROK key codes (from libretro spec) */
 #define NOVA64_RETROK_BACKSPACE  8
 #define NOVA64_RETROK_TAB        9
@@ -2223,6 +2280,166 @@ static JSValue js_clear_clip(JSContext *ctx, JSValueConst this_val, int argc, JS
    return JS_UNDEFINED;
 }
 
+/* axis(side, axis [, port]) — analog stick value -1..1 */
+static JSValue js_axis(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 2) return JS_NewFloat64(ctx, 0.0);
+   const char *side_s = JS_ToCString(ctx, argv[0]);
+   const char *axis_s = JS_ToCString(ctx, argv[1]);
+   int port = argc > 2 ? int_from_js(ctx, argv[2], 0) : 0;
+   if (!side_s || !axis_s) {
+      JS_FreeCString(ctx, side_s);
+      JS_FreeCString(ctx, axis_s);
+      return JS_NewFloat64(ctx, 0.0);
+   }
+   if (port < 0 || port >= NOVA64_MAX_PORTS) port = 0;
+   int side = (!strcmp(side_s, "right")) ? 1 : 0;
+   int ax   = (!strcmp(axis_s, "y"))     ? 1 : 0;
+   JS_FreeCString(ctx, side_s);
+   JS_FreeCString(ctx, axis_s);
+   return JS_NewFloat64(ctx, analog_axes[port][side][ax]);
+}
+
+/* trigger('left'|'right' [, port]) — trigger value 0..1 */
+static JSValue js_trigger(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 1) return JS_NewFloat64(ctx, 0.0);
+   const char *side_s = JS_ToCString(ctx, argv[0]);
+   int port = argc > 1 ? int_from_js(ctx, argv[1], 0) : 0;
+   if (!side_s) return JS_NewFloat64(ctx, 0.0);
+   if (port < 0 || port >= NOVA64_MAX_PORTS) port = 0;
+   int side = (!strcmp(side_s, "right")) ? 1 : 0;
+   JS_FreeCString(ctx, side_s);
+   float val = analog_triggers[port][side];
+   if (val < 0.0f) val = 0.0f;
+   if (val > 1.0f) val = 1.0f;
+   return JS_NewFloat64(ctx, val);
+}
+
+/* Tilemap bindings */
+
+static JSValue js_create_tilemap(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int tw = argc > 0 ? int_from_js(ctx, argv[0], 8) : 8;
+   int th = argc > 1 ? int_from_js(ctx, argv[1], 8) : 8;
+   int cols = argc > 2 ? int_from_js(ctx, argv[2], 16) : 16;
+   int rows = argc > 3 ? int_from_js(ctx, argv[3], 16) : 16;
+   if (tw <= 0 || th <= 0 || cols <= 0 || rows <= 0) return JS_NewInt32(ctx, -1);
+   for (int i = 0; i < NOVA64_MAX_TILEMAPS; i++) {
+      if (!tilemaps[i].active) {
+         tilemaps[i].cells = (int *)calloc((size_t)(cols * rows), sizeof(int));
+         if (!tilemaps[i].cells) return JS_NewInt32(ctx, -1);
+         tilemaps[i].tile_w = tw;
+         tilemaps[i].tile_h = th;
+         tilemaps[i].cols   = cols;
+         tilemaps[i].rows   = rows;
+         tilemaps[i].active = true;
+         return JS_NewInt32(ctx, i);
+      }
+   }
+   return JS_NewInt32(ctx, -1);
+}
+
+static JSValue js_set_tile(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 4) return JS_UNDEFINED;
+   int idx  = int_from_js(ctx, argv[0], -1);
+   int col  = int_from_js(ctx, argv[1], 0);
+   int row  = int_from_js(ctx, argv[2], 0);
+   int tile = int_from_js(ctx, argv[3], 0);
+   if (idx < 0 || idx >= NOVA64_MAX_TILEMAPS || !tilemaps[idx].active) return JS_UNDEFINED;
+   struct nova64_tilemap *tm = &tilemaps[idx];
+   if (col < 0 || col >= tm->cols || row < 0 || row >= tm->rows) return JS_UNDEFINED;
+   tm->cells[row * tm->cols + col] = tile;
+   return JS_UNDEFINED;
+}
+
+static JSValue js_draw_tilemap(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 4) return JS_NewBool(ctx, false);
+   int idx = int_from_js(ctx, argv[0], -1);
+   int dx  = int_from_js(ctx, argv[1], 0);
+   int dy  = int_from_js(ctx, argv[2], 0);
+   const char *path = JS_ToCString(ctx, argv[3]);
+   if (!path || idx < 0 || idx >= NOVA64_MAX_TILEMAPS || !tilemaps[idx].active) {
+      JS_FreeCString(ctx, path);
+      return JS_NewBool(ctx, false);
+   }
+   const struct nova64_package_asset *asset = find_package_asset(path);
+   JS_FreeCString(ctx, path);
+   if (!asset || !asset->data || asset->size < 4) return JS_NewBool(ctx, false);
+
+   struct nova64_tilemap *tm = &tilemaps[idx];
+   /* Tilesheet is a horizontal strip: width = tile_w * N, height = tile_h */
+   int sheet_h = tm->tile_h;
+   int sheet_w = (sheet_h > 0) ? (int)(asset->size / (size_t)(4 * sheet_h)) : 0;
+   if (sheet_w <= 0 || sheet_h <= 0) return JS_NewBool(ctx, false);
+   int tiles_per_row = sheet_w / tm->tile_w;
+   if (tiles_per_row <= 0) tiles_per_row = 1;
+
+   for (int r = 0; r < tm->rows; r++) {
+      for (int c = 0; c < tm->cols; c++) {
+         int tile = tm->cells[r * tm->cols + c];
+         if (tile < 0) continue;
+         int sx = (tile % tiles_per_row) * tm->tile_w;
+         int sy = (tile / tiles_per_row) * tm->tile_h;
+         blit_rgba((const uint8_t *)asset->data, sheet_w, sheet_h,
+                   dx + c * tm->tile_w, dy + r * tm->tile_h,
+                   sx, sy, tm->tile_w, tm->tile_h);
+      }
+   }
+   return JS_NewBool(ctx, true);
+}
+
+static JSValue js_clear_tilemap(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val; (void)ctx;
+   int idx = argc > 0 ? int_from_js(ctx, argv[0], -1) : -1;
+   if (idx >= 0 && idx < NOVA64_MAX_TILEMAPS && tilemaps[idx].active)
+      memset(tilemaps[idx].cells, 0, (size_t)(tilemaps[idx].cols * tilemaps[idx].rows) * sizeof(int));
+   return JS_UNDEFINED;
+}
+
+static JSValue js_destroy_tilemap(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val; (void)ctx;
+   int idx = argc > 0 ? int_from_js(ctx, argv[0], -1) : -1;
+   destroy_tilemap(idx);
+   return JS_UNDEFINED;
+}
+
+/* RNG bindings */
+
+static JSValue js_rng_seed(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double seed = argc > 0 ? double_from_js(ctx, argv[0], 0.0) : 0.0;
+   rng_seed_impl((uint64_t)(seed >= 0 ? seed : -seed));
+   return JS_UNDEFINED;
+}
+
+static JSValue js_rng_next(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val; (void)argc; (void)argv;
+   return JS_NewFloat64(ctx, rng_next_impl());
+}
+
+static JSValue js_rng_int(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int lo = argc > 0 ? int_from_js(ctx, argv[0], 0) : 0;
+   int hi = argc > 1 ? int_from_js(ctx, argv[1], 1) : 1;
+   if (hi <= lo) return JS_NewInt32(ctx, lo);
+   int range = hi - lo + 1;
+   double r = rng_next_impl();
+   return JS_NewInt32(ctx, lo + (int)(r * range));
+}
+
 static JSValue js_get_frame(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
    (void)this_val; (void)argc; (void)argv;
@@ -2270,13 +2487,19 @@ static int button_index_from_js(JSContext *ctx, JSValueConst value)
 static JSValue js_btn(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
    int index = argc > 0 ? button_index_from_js(ctx, argv[0]) : -1;
-   return JS_NewBool(ctx, index >= 0 ? buttons[index] : false);
+   int port  = argc > 1 ? int_from_js(ctx, argv[1], 0) : 0;
+   if (port <= 0 || port >= NOVA64_MAX_PORTS)
+      return JS_NewBool(ctx, index >= 0 ? buttons[index] : false);
+   return JS_NewBool(ctx, index >= 0 ? mp_buttons[port][index] : false);
 }
 
 static JSValue js_btnp(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
    int index = argc > 0 ? button_index_from_js(ctx, argv[0]) : -1;
-   return JS_NewBool(ctx, index >= 0 ? pressed_buttons[index] : false);
+   int port  = argc > 1 ? int_from_js(ctx, argv[1], 0) : 0;
+   if (port <= 0 || port >= NOVA64_MAX_PORTS)
+      return JS_NewBool(ctx, index >= 0 ? pressed_buttons[index] : false);
+   return JS_NewBool(ctx, index >= 0 ? mp_pressed_buttons[port][index] : false);
 }
 
 static int key_code_from_js(JSContext *ctx, JSValueConst value)
@@ -3573,14 +3796,16 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, draw, "setClip", js_set_clip, 4);
    set_function(ctx, draw, "clearClip", js_clear_clip, 0);
 
-   set_function(ctx, input, "btn", js_btn, 1);
-   set_function(ctx, input, "btnp", js_btnp, 1);
+   set_function(ctx, input, "btn", js_btn, 2);
+   set_function(ctx, input, "btnp", js_btnp, 2);
    set_function(ctx, input, "key", js_key, 1);
    set_function(ctx, input, "keyp", js_keyp, 1);
    set_function(ctx, input, "mouseX", js_mouse_x, 0);
    set_function(ctx, input, "mouseY", js_mouse_y, 0);
    set_function(ctx, input, "mouseBtn", js_mouse_btn, 1);
    set_function(ctx, input, "mouseBtnp", js_mouse_btnp, 1);
+   set_function(ctx, input, "axis", js_axis, 3);
+   set_function(ctx, input, "trigger", js_trigger, 2);
 
    set_function(ctx, scene, "createCube", js_create_cube, 1);
    set_function(ctx, scene, "createSphere", js_create_sphere, 1);
@@ -3657,6 +3882,22 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, storage, "keys", js_storage_keys, 0);
    set_function(ctx, storage, "clear", js_storage_clear, 0);
 
+   /* nova64.tilemap namespace */
+   JSValue tilemap_ns = JS_NewObject(ctx);
+   set_function(ctx, tilemap_ns, "create", js_create_tilemap, 4);
+   set_function(ctx, tilemap_ns, "setTile", js_set_tile, 4);
+   set_function(ctx, tilemap_ns, "draw", js_draw_tilemap, 4);
+   set_function(ctx, tilemap_ns, "clear", js_clear_tilemap, 1);
+   set_function(ctx, tilemap_ns, "destroy", js_destroy_tilemap, 1);
+   JS_SetPropertyStr(ctx, nova64, "tilemap", tilemap_ns);
+
+   /* nova64.random namespace */
+   JSValue random_ns = JS_NewObject(ctx);
+   set_function(ctx, random_ns, "seed", js_rng_seed, 1);
+   set_function(ctx, random_ns, "next", js_rng_next, 0);
+   set_function(ctx, random_ns, "int", js_rng_int, 2);
+   JS_SetPropertyStr(ctx, nova64, "random", random_ns);
+
    JS_SetPropertyStr(ctx, nova64, "draw", draw);
    JS_SetPropertyStr(ctx, nova64, "input", input);
    JS_SetPropertyStr(ctx, nova64, "scene", scene);
@@ -3700,14 +3941,21 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, global, "playSound", js_play_sound, 3);
    set_function(ctx, global, "stopSound", js_stop_sound, 1);
    set_function(ctx, global, "stopAllSounds", js_stop_all_sounds, 0);
-   set_function(ctx, global, "btn", js_btn, 1);
-   set_function(ctx, global, "btnp", js_btnp, 1);
+   set_function(ctx, global, "btn", js_btn, 2);
+   set_function(ctx, global, "btnp", js_btnp, 2);
    set_function(ctx, global, "key", js_key, 1);
    set_function(ctx, global, "keyp", js_keyp, 1);
    set_function(ctx, global, "mouseX", js_mouse_x, 0);
    set_function(ctx, global, "mouseY", js_mouse_y, 0);
    set_function(ctx, global, "mouseBtn", js_mouse_btn, 1);
    set_function(ctx, global, "mouseBtnp", js_mouse_btnp, 1);
+   set_function(ctx, global, "axis", js_axis, 3);
+   set_function(ctx, global, "trigger", js_trigger, 2);
+   set_function(ctx, global, "createTilemap", js_create_tilemap, 4);
+   set_function(ctx, global, "setTile", js_set_tile, 4);
+   set_function(ctx, global, "drawTilemap", js_draw_tilemap, 4);
+   set_function(ctx, global, "clearTilemap", js_clear_tilemap, 1);
+   set_function(ctx, global, "destroyTilemap", js_destroy_tilemap, 1);
    set_function(ctx, global, "createCube", js_create_cube, 1);
    set_function(ctx, global, "createSphere", js_create_sphere, 1);
    set_function(ctx, global, "createPlane", js_create_plane, 1);
@@ -3939,6 +4187,44 @@ static void update_input(void)
    mouse_btns[0] = input_state_cb(0, RETRO_DEVICE_MOUSE, 0, NOVA64_MOUSE_LEFT)  != 0;
    mouse_btns[1] = input_state_cb(0, RETRO_DEVICE_MOUSE, 0, NOVA64_MOUSE_RIGHT) != 0;
    mouse_btns[2] = input_state_cb(0, RETRO_DEVICE_MOUSE, 0, NOVA64_MOUSE_MIDDLE)!= 0;
+
+   /* Analog sticks + triggers — port 0 */
+   static const int joypad_map[NOVA64_BUTTON_COUNT] = {
+      RETRO_DEVICE_ID_JOYPAD_LEFT, RETRO_DEVICE_ID_JOYPAD_RIGHT,
+      RETRO_DEVICE_ID_JOYPAD_UP, RETRO_DEVICE_ID_JOYPAD_DOWN,
+      RETRO_DEVICE_ID_JOYPAD_B, RETRO_DEVICE_ID_JOYPAD_A,
+      RETRO_DEVICE_ID_JOYPAD_Y, RETRO_DEVICE_ID_JOYPAD_X
+   };
+   for (unsigned p = 0; p < NOVA64_MAX_PORTS; p++) {
+      int16_t lx = input_state_cb(p, NOVA64_DEVICE_ANALOG, NOVA64_ANALOG_LEFT,   NOVA64_ANALOG_X);
+      int16_t ly = input_state_cb(p, NOVA64_DEVICE_ANALOG, NOVA64_ANALOG_LEFT,   NOVA64_ANALOG_Y);
+      int16_t rx = input_state_cb(p, NOVA64_DEVICE_ANALOG, NOVA64_ANALOG_RIGHT,  NOVA64_ANALOG_X);
+      int16_t ry = input_state_cb(p, NOVA64_DEVICE_ANALOG, NOVA64_ANALOG_RIGHT,  NOVA64_ANALOG_Y);
+      int16_t l2 = input_state_cb(p, NOVA64_DEVICE_ANALOG, NOVA64_ANALOG_BUTTON, NOVA64_RETRO_L2);
+      int16_t r2 = input_state_cb(p, NOVA64_DEVICE_ANALOG, NOVA64_ANALOG_BUTTON, NOVA64_RETRO_R2);
+      analog_axes[p][0][0] = lx / 32767.0f;
+      analog_axes[p][0][1] = ly / 32767.0f;
+      analog_axes[p][1][0] = rx / 32767.0f;
+      analog_axes[p][1][1] = ry / 32767.0f;
+      analog_triggers[p][0] = (float)l2 / 32767.0f;
+      analog_triggers[p][1] = (float)r2 / 32767.0f;
+
+      /* Multi-port joypad state */
+      if (p == 0) {
+         for (int i = 0; i < NOVA64_BUTTON_COUNT; i++)
+            mp_buttons[0][i] = buttons[i];
+      } else {
+         memcpy(mp_prev_buttons[p], mp_buttons[p], NOVA64_BUTTON_COUNT * sizeof(bool));
+         memset(mp_buttons[p], 0, NOVA64_BUTTON_COUNT * sizeof(bool));
+         for (int i = 0; i < NOVA64_BUTTON_COUNT; i++) {
+            mp_buttons[p][i] = input_state_cb(p, RETRO_DEVICE_JOYPAD, 0, joypad_map[i]) != 0;
+            mp_pressed_buttons[p][i] = mp_buttons[p][i] && !mp_prev_buttons[p][i];
+         }
+      }
+   }
+   /* mirror port 0 edge state into mp */
+   for (int i = 0; i < NOVA64_BUTTON_COUNT; i++)
+      mp_pressed_buttons[0][i] = pressed_buttons[i];
 }
 
 static retro_proc_address_t load_gles_proc(const char *name)
@@ -5519,6 +5805,11 @@ void RETRO_CALLCONV retro_reset(void)
    mouse_rel_x = 0; mouse_rel_y = 0;
    memset(mouse_btns, 0, sizeof(mouse_btns));
    memset(mouse_prev_btns, 0, sizeof(mouse_prev_btns));
+   memset(analog_axes, 0, sizeof(analog_axes));
+   memset(analog_triggers, 0, sizeof(analog_triggers));
+   memset(mp_buttons, 0, sizeof(mp_buttons));
+   memset(mp_prev_buttons, 0, sizeof(mp_prev_buttons));
+   memset(mp_pressed_buttons, 0, sizeof(mp_pressed_buttons));
    clip_active = false;
    frame_count = 0;
    clear_framebuffer(rgba8(0, 0, 0, 255));
@@ -5526,6 +5817,8 @@ void RETRO_CALLCONV retro_reset(void)
    reset_audio_state();
    reset_post_state();
    clear_textures();
+   destroy_all_tilemaps();
+   rng_seed_impl(0);
    if (cart_content && cart_size)
       js_host_load_cart(cart_content, cart_size, cart_path[0] ? cart_path : "<nova64-cart>");
 }

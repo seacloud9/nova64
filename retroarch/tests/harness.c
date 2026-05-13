@@ -170,11 +170,12 @@ static void *load_symbol(void *core, const char *name)
 int main(int argc, char **argv)
 {
    if (argc < 3) {
-      fprintf(stderr, "usage: %s <nova64_libretro.so> <cart.js|cart.nova> [capture.ppm] [--capture path] [--expect checksum] [--frames n]\n", argv[0]);
+      fprintf(stderr, "usage: %s <nova64_libretro.so> <cart.js|cart.nova> [capture.ppm] [--capture path] [--command-log path] [--expect checksum] [--frames n]\n", argv[0]);
       return 2;
    }
 
    const char *capture_path = NULL;
+   const char *command_log_path = NULL;
    bool has_expected_checksum = false;
    uint64_t expected_checksum = 0;
    unsigned frames_to_run = 3;
@@ -186,6 +187,12 @@ int main(int argc, char **argv)
             return 2;
          }
          capture_path = argv[i];
+      } else if (!strcmp(argv[i], "--command-log")) {
+         if (++i >= argc) {
+            fprintf(stderr, "--command-log requires a path\n");
+            return 2;
+         }
+         command_log_path = argv[i];
       } else if (!strcmp(argv[i], "--expect")) {
          if (++i >= argc || !parse_u64_hex(argv[i], &expected_checksum)) {
             fprintf(stderr, "--expect requires a hex checksum\n");
@@ -242,6 +249,8 @@ int main(int argc, char **argv)
    }
 
    g_log = harness_log;
+   if (command_log_path)
+      setenv("NOVA64_RENDER_COMMAND_LOG", command_log_path, 1);
    set_environment(harness_environment);
    set_video(harness_video);
    set_audio(harness_audio);

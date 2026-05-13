@@ -59,6 +59,9 @@ retroarch/build/harness retroarch/nova64_libretro.so retroarch/conformance/06-cu
 
 The optional third argument writes the most recent software framebuffer as a PPM
 screen capture. `--expect <hex>` turns the harness into a checksum assertion.
+`--command-log <path>` writes a deterministic renderer command log for headless
+checks of camera, light, overlay, and mesh state. The same path can be enabled
+outside the harness with `NOVA64_RENDER_COMMAND_LOG=/tmp/nova64.commands`.
 
 Run the full conformance suite:
 
@@ -67,7 +70,8 @@ bash retroarch/tests/run_conformance.sh
 ```
 
 The suite builds the core, compiles the harness, generates `.nova` package
-fixtures, and checks golden frame checksums.
+fixtures, checks golden frame checksums, and verifies the mixed 3D/HUD command
+log checksum.
 
 ## Supported Content
 
@@ -138,7 +142,7 @@ helpers for tiny conformance carts.
   the 2D framebuffer as a texture overlay.
 - Hardware GLES presentation still needs manual smoke coverage inside RetroArch;
   the native harness validates the same carts through deterministic software
-  captures when no hardware context is available.
+  captures and renderer command logs when no hardware context is available.
 - The software fallback includes a deterministic primitive preview renderer so
   conformance carts can produce solid shaded captures before the full GLES/Vulkan
   paths are complete.

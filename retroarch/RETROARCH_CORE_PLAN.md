@@ -99,6 +99,8 @@ Goals:
 - Keep all GL calls behind the renderer interface.
 - Support basic materials, ambient light, directional light, and camera transforms.
 - Add a deterministic command-log mode for headless conformance tests.
+  - `NOVA64_RENDER_COMMAND_LOG` and harness `--command-log` are implemented for
+    camera, light, overlay, and mesh-state checks.
 
 ## Milestone 4: Vulkan 1.2 Renderer
 

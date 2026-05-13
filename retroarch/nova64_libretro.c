@@ -244,6 +244,7 @@ static uint32_t framebuffer_clear_color;
 static char *cart_content;
 static size_t cart_size;
 static char cart_path[1024];
+static char renderer_command_log_path[1024];
 static bool initialized;
 static uint64_t frame_count;
 
@@ -946,6 +947,73 @@ static void render_software_scene(void)
       }
    }
    drawing_scene_preview = false;
+}
+
+static const char *mesh_type_name(enum nova64_mesh_type type)
+{
+   switch (type) {
+      case NOVA64_MESH_CUBE:
+         return "cube";
+      case NOVA64_MESH_SPHERE:
+         return "sphere";
+      case NOVA64_MESH_PLANE:
+         return "plane";
+      default:
+         return "none";
+   }
+}
+
+static size_t count_overlay_pixels(void)
+{
+   if (!framebuffer)
+      return 0;
+
+   size_t count = 0;
+   for (size_t i = 0; i < (size_t)NOVA64_WIDTH * NOVA64_HEIGHT; i++) {
+      uint32_t color = framebuffer[i];
+      uint8_t alpha = (uint8_t)(color & 0xffU);
+      if (color != framebuffer_clear_color && alpha)
+         count++;
+   }
+   return count;
+}
+
+static void write_renderer_command_log(void)
+{
+   if (!renderer_command_log_path[0])
+      return;
+
+   FILE *file = fopen(renderer_command_log_path, "ab");
+   if (!file) {
+      renderer_command_log_path[0] = '\0';
+      nova64_log_line(RETRO_LOG_WARN, "[nova64] disabled renderer command log after open failure");
+      return;
+   }
+
+   fprintf(file, "frame=%llu\n", (unsigned long long)frame_count);
+   fprintf(file, "camera position=%.4f,%.4f,%.4f target=%.4f,%.4f,%.4f fov=%.4f\n",
+         camera_state.position[0], camera_state.position[1], camera_state.position[2],
+         camera_state.target[0], camera_state.target[1], camera_state.target[2],
+         camera_state.fov);
+   fprintf(file, "light ambient=%08x direction=%.4f,%.4f,%.4f\n",
+         light_state.ambient, light_state.direction[0], light_state.direction[1],
+         light_state.direction[2]);
+   fprintf(file, "overlay clear=%08x visible_pixels=%zu\n",
+         framebuffer_clear_color, count_overlay_pixels());
+
+   for (int i = 0; i < NOVA64_MAX_MESHES; i++) {
+      const struct nova64_mesh *mesh = &meshes[i];
+      if (!mesh->used)
+         continue;
+      fprintf(file,
+            "mesh id=%d type=%s color=%08x position=%.4f,%.4f,%.4f rotation=%.4f,%.4f,%.4f scale=%.4f,%.4f,%.4f\n",
+            i + 1, mesh_type_name(mesh->type), mesh->color,
+            mesh->position[0], mesh->position[1], mesh->position[2],
+            mesh->rotation[0], mesh->rotation[1], mesh->rotation[2],
+            mesh->scale[0], mesh->scale[1], mesh->scale[2]);
+   }
+   fprintf(file, "\n");
+   fclose(file);
 }
 
 static void convert_framebuffer_to_rgb565(void)
@@ -2228,6 +2296,20 @@ void RETRO_CALLCONV retro_init(void)
 
    clear_framebuffer(rgba8(0, 0, 0, 255));
    reset_scene_state();
+   const char *command_log = getenv("NOVA64_RENDER_COMMAND_LOG");
+   if (command_log && command_log[0]) {
+      snprintf(renderer_command_log_path, sizeof(renderer_command_log_path), "%s", command_log);
+      FILE *file = fopen(renderer_command_log_path, "wb");
+      if (file) {
+         fprintf(file, "nova64-render-command-log-v1\n");
+         fclose(file);
+      } else {
+         renderer_command_log_path[0] = '\0';
+         nova64_log_line(RETRO_LOG_WARN, "[nova64] could not initialize renderer command log");
+      }
+   } else {
+      renderer_command_log_path[0] = '\0';
+   }
    initialized = true;
    nova64_log_line(RETRO_LOG_INFO, "[nova64] core initialized");
 }
@@ -2352,6 +2434,7 @@ void RETRO_CALLCONV retro_run(void)
 
    update_input();
    js_host_call_frame(1.0 / NOVA64_FPS);
+   write_renderer_command_log();
 
    if (gles.requested && gles.active) {
       render_gles_scene();

@@ -10,6 +10,35 @@ HARNESS="retroarch/build/harness"
 PACKAGE_DIR="retroarch/build/conformance-packages"
 SAVE_DIR="retroarch/build/conformance-saves"
 SCREENSHOT_DIR="screenshots/retroarch"
+RECENT_COUNT=0
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --recent)
+      if [[ $# -lt 2 ]]; then
+        echo "--recent requires a count" >&2
+        exit 2
+      fi
+      RECENT_COUNT="$2"
+      shift 2
+      ;;
+    *)
+      echo "unknown argument: $1" >&2
+      exit 2
+      ;;
+  esac
+done
+
+LATEST_CASE="$(find retroarch/conformance -maxdepth 1 -type f -name '[0-9][0-9]-*.js' \
+  | sed -E 's|.*/([0-9][0-9])-.*|\1|' | sort -n | tail -1)"
+LATEST_CASE="${LATEST_CASE:-0}"
+RECENT_MIN=0
+if [[ "${RECENT_COUNT}" -gt 0 ]]; then
+  RECENT_MIN=$((10#${LATEST_CASE} - RECENT_COUNT + 1))
+  if [[ "${RECENT_MIN}" -lt 0 ]]; then
+    RECENT_MIN=0
+  fi
+fi
 
 make -C retroarch clean all
 cc -Iretroarch -o "${HARNESS}" retroarch/tests/harness.c -ldl
@@ -141,8 +170,22 @@ run_case() {
   local label="$1"
   local cart="$2"
   local checksum="$3"
+  should_run_label "${label}" || return 0
   echo "== ${label}"
   "${HARNESS}" "${CORE}" "${cart}" --expect "${checksum}"
+}
+
+should_run_label() {
+  local label="$1"
+  if [[ "${RECENT_COUNT}" -le 0 ]]; then
+    return 0
+  fi
+  if [[ "${label}" =~ ^([0-9][0-9]) ]]; then
+    local n=$((10#${BASH_REMATCH[1]}))
+    [[ "${n}" -ge "${RECENT_MIN}" ]]
+    return
+  fi
+  return 1
 }
 
 run_command_log_case() {
@@ -151,6 +194,7 @@ run_command_log_case() {
   local expected_sha="$3"
   local renderer="${4:-}"
   local log_path="retroarch/build/${label}.commands"
+  should_run_label "${label}" || return 0
   echo "== ${label} command log"
   if [[ -n "${renderer}" ]]; then
     "${HARNESS}" "${CORE}" "${cart}" --renderer "${renderer}" --command-log "${log_path}" >/dev/null
@@ -170,6 +214,7 @@ run_audio_case() {
   local cart="$2"
   local checksum="$3"
   local audio_checksum="$4"
+  should_run_label "${label}" || return 0
   echo "== ${label}"
   "${HARNESS}" "${CORE}" "${cart}" --expect "${checksum}" --expect-audio "${audio_checksum}"
 }
@@ -181,8 +226,24 @@ run_visual_case() {
   local checksum="$4"
   local ppm="${SCREENSHOT_DIR}/${name}.ppm"
   local png="${SCREENSHOT_DIR}/${name}.png"
+  should_run_label "${label}" || return 0
   echo "== ${label}"
   "${HARNESS}" "${CORE}" "${cart}" --expect "${checksum}" --capture "${ppm}"
+  python3 retroarch/tests/ppm_to_png.py "${ppm}" "${png}"
+  rm -f "${ppm}"
+}
+
+run_seed_visual_case() {
+  local label="$1"
+  local name="$2"
+  local cart="$3"
+  local seed="$4"
+  local checksum="$5"
+  local ppm="${SCREENSHOT_DIR}/${name}.ppm"
+  local png="${SCREENSHOT_DIR}/${name}.png"
+  should_run_label "${label}" || return 0
+  echo "== ${label}"
+  "${HARNESS}" "${CORE}" "${cart}" --seed "${seed}" --expect "${checksum}" --capture "${ppm}"
   python3 retroarch/tests/ppm_to_png.py "${ppm}" "${png}"
   rm -f "${ppm}"
 }
@@ -192,6 +253,7 @@ run_key_case() {
   local cart="$2"
   local key="$3"
   local checksum="$4"
+  should_run_label "${label}" || return 0
   echo "== ${label}"
   "${HARNESS}" "${CORE}" "${cart}" --key "${key}" --expect "${checksum}"
 }
@@ -220,6 +282,7 @@ run_mouse_case() {
   local label="$1"
   local cart="$2"
   local checksum="$3"
+  should_run_label "${label}" || return 0
   echo "== ${label}"
   "${HARNESS}" "${CORE}" "${cart}" --mouse-x 5 --mouse-y -3 --mouse-btn left --expect "${checksum}"
 }
@@ -238,6 +301,7 @@ run_showcase_case() {
   local audio_checksum="$5"
   local ppm="${SCREENSHOT_DIR}/${name}.ppm"
   local png="${SCREENSHOT_DIR}/${name}.png"
+  should_run_label "${label}" || return 0
   echo "== ${label}"
   NOVA64_SAVE_DIR="${SAVE_DIR}" "${HARNESS}" "${CORE}" "${cart}" \
     --key space --expect "${checksum}" --expect-audio "${audio_checksum}" --capture "${ppm}"
@@ -251,6 +315,7 @@ run_analog_case() {
   local label="$1"
   local cart="$2"
   local checksum="$3"
+  should_run_label "${label}" || return 0
   echo "== ${label}"
   "${HARNESS}" "${CORE}" "${cart}" \
     --analog-lx 16383 --analog-ly -8192 --trigger-l 16383 --expect "${checksum}"
@@ -262,6 +327,7 @@ run_analog_case "34 analog"  "retroarch/conformance/34-analog.js" "a66365b2ba482
 run_visual_case "35 rng" "35-rng" "retroarch/conformance/35-rng.js" "6702787d75707713"
 run_visual_case "36 camera2d" "36-camera2d" "retroarch/conformance/36-camera2d.js" "0b89e24020dcb94c"
 run_visual_case "37 multimodule" "37-multimodule" "${PACKAGE_DIR}/multimodule.nova" "adf7ef109e9afc87"
+run_seed_visual_case "38 seeded rng" "38-seeded-rng" "retroarch/conformance/38-seeded-rng.js" "2026" "d593029700fd611b"
 run_visual_case "19 texture" "19-texture" "retroarch/conformance/19-texture.js" "f4fd3acbca0331b4"
 run_visual_case "20 post" "20-post" "retroarch/conformance/20-post.js" "75a3d27c9048e5b0"
 run_visual_case "21 post-effects" "21-post-effects" "retroarch/conformance/21-post-effects.js" "3a18d91989ad8ded"

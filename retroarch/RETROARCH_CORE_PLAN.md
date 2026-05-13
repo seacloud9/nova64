@@ -463,6 +463,8 @@ Deterministic RNG done:
   - `nova64.random.seed(n)` (xorshift64), `.next()` → float [0,1),
     `.int(lo, hi)` → integer [lo, hi]. Seeding with the same value reproduces
     the same sequence. `35-rng.js` covers seed determinism and int range bounds.
+    Harness `--seed N` now injects the initial RNG state before cart `init()`.
+    `38-seeded-rng.js` covers seeded replay from the harness.
 
 Multi-module package carts done:
 
@@ -479,9 +481,6 @@ Still needed:
   - Line numbers and stack traces from QuickJS exceptions currently show internal
     bytecode offsets. Map them back to cart source lines for debuggable errors.
   - Print the errant line of source code alongside the error message.
-- Harness seed injection:
-  - `--seed N` should inject a deterministic initial RNG seed for conformance
-    and manual replay.
 - Cart metadata and title screens:
   - Read `manifest.json` `"title"`, `"author"`, `"version"` and expose via
     `nova64.meta.title()`, `.author()`, `.version()`.
@@ -573,6 +572,9 @@ built-in physics layer removes this burden without adding a heavy dependency.
   - Print frame dimensions in the summary line.
   - `--verbose` flag: echo each JS API call through the render command log path.
   - `--seed N`: inject deterministic RNG seed.
+  - `run_conformance.sh --recent N` runs only the newest numbered conformance
+    carts for fast iteration; full `pnpm run retroarch:test` remains the
+    pre-commit gate.
   - `--port N`: inject input on a specific controller port.
   - `--frames N`: already done; confirm it works for all cart types.
 - Command-log diff tooling:

@@ -66,6 +66,7 @@ Harness flags:
 | `--capture <path.ppm>` | Write software framebuffer as PPM |
 | `--command-log <path>` | Write deterministic renderer command log |
 | `--renderer opengles3\|vulkan12` | Select renderer backend |
+| `--seed <n>` | Inject deterministic initial RNG seed |
 | `--key <name>` | Inject held keyboard key (e.g. `space`, `left`) |
 | `--mouse-x <n>` | Inject relative mouse X movement |
 | `--mouse-y <n>` | Inject relative mouse Y movement |
@@ -78,6 +79,14 @@ Run the full conformance suite:
 
 ```bash
 bash retroarch/tests/run_conformance.sh
+```
+
+During implementation, run only the newest cases:
+
+```bash
+bash retroarch/tests/run_conformance.sh --recent 2
+# or
+pnpm run retroarch:test:recent
 ```
 
 The suite builds the core, compiles the harness, generates `.nova` package
@@ -356,3 +365,4 @@ These browser-side Nova64 or Three.js features are not implemented:
 | `35-rng.js` | deterministic RNG |
 | `36-camera2d.js` | 2D camera offset and clear |
 | `37-multimodule.js` | relative ES module imports from `.nova` packages |
+| `38-seeded-rng.js` | harness initial RNG seed injection |

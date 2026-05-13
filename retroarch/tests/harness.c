@@ -258,7 +258,7 @@ static void *load_symbol(void *core, const char *name)
 int main(int argc, char **argv)
 {
    if (argc < 3) {
-      fprintf(stderr, "usage: %s <nova64_libretro.so> <cart.js|cart.nova> [--capture path] [--command-log path] [--renderer opengles3|vulkan12] [--expect checksum] [--expect-audio checksum] [--frames n] [--key name]\n", argv[0]);
+      fprintf(stderr, "usage: %s <nova64_libretro.so> <cart.js|cart.nova> [--capture path] [--command-log path] [--renderer opengles3|vulkan12] [--expect checksum] [--expect-audio checksum] [--frames n] [--seed n] [--key name]\n", argv[0]);
       return 2;
    }
 
@@ -269,6 +269,7 @@ int main(int argc, char **argv)
    bool has_expected_audio_checksum = false;
    uint64_t expected_audio_checksum = 0;
    unsigned frames_to_run = 3;
+   const char *seed_option = NULL;
 
    for (int i = 3; i < argc; i++) {
       if (!strcmp(argv[i], "--capture")) {
@@ -309,6 +310,12 @@ int main(int argc, char **argv)
          frames_to_run = (unsigned)strtoul(argv[i], NULL, 10);
          if (frames_to_run == 0)
             frames_to_run = 1;
+      } else if (!strcmp(argv[i], "--seed")) {
+         if (++i >= argc) {
+            fprintf(stderr, "--seed requires a non-negative integer\n");
+            return 2;
+         }
+         seed_option = argv[i];
       } else if (!strcmp(argv[i], "--key")) {
          if (++i >= argc) {
             fprintf(stderr, "--key requires a key name\n");
@@ -416,6 +423,8 @@ int main(int argc, char **argv)
    g_log = harness_log;
    if (command_log_path)
       setenv("NOVA64_RENDER_COMMAND_LOG", command_log_path, 1);
+   if (seed_option)
+      setenv("NOVA64_SEED", seed_option, 1);
    set_environment(harness_environment);
    set_video(harness_video);
    set_audio(harness_audio);

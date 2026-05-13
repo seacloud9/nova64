@@ -511,6 +511,18 @@ static uint64_t rng_state = 12345678901234567ULL;
 
 static void rng_seed_impl(uint64_t seed) { rng_state = seed ? seed : 12345678901234567ULL; }
 
+static void rng_seed_from_environment(void)
+{
+   const char *seed_text = getenv("NOVA64_SEED");
+   if (!seed_text || !seed_text[0]) {
+      rng_seed_impl(0);
+      return;
+   }
+   char *end = NULL;
+   uint64_t seed = (uint64_t)strtoull(seed_text, &end, 10);
+   rng_seed_impl((end && *end == '\0') ? seed : 0);
+}
+
 static double rng_next_impl(void)
 {
    rng_state ^= rng_state << 13;
@@ -6171,7 +6183,7 @@ void RETRO_CALLCONV retro_reset(void)
    clear_textures();
    destroy_all_tilemaps();
    clear_all_spritesheets();
-   rng_seed_impl(0);
+   rng_seed_from_environment();
    if (cart_content && cart_size)
       js_host_load_cart(cart_content, cart_size, cart_path[0] ? cart_path : "<nova64-cart>");
 }
@@ -6249,6 +6261,7 @@ bool RETRO_CALLCONV retro_load_game(const struct retro_game_info *info)
    reset_audio_state();
    destroy_all_tilemaps();
    clear_all_spritesheets();
+   rng_seed_from_environment();
    frame_count = 0;
 
    if (!js_host_load_cart(cart_content, cart_size, cart_path[0] ? cart_path : "<nova64-cart>")) {

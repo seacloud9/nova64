@@ -319,6 +319,30 @@ Shift+X                          # Toggle dev console (cheats, meta.json, env, e
 ?debug=1                         # Add to URL to auto-open debug panel on load
 ```
 
+### 🕹️ **RetroArch / libretro Core**
+
+Nova64 also ships a native RetroArch core under `retroarch/`. It runs carts
+through QuickJS and native Nova64 host APIs; it does not embed a browser,
+Three.js, or Babylon.js. The current native renderer path targets OpenGL ES 3.1,
+with Vulkan 1.2 staged behind the backend-neutral renderer interface.
+
+On Windows, run these from WSL after selecting Node 20:
+
+```bash
+nvm use 20
+
+pnpm run retroarch:test          # Native conformance harness
+pnpm run retroarch:build         # Clean release Make build
+pnpm run retroarch:build:debug   # Clean debug Make build
+pnpm run retroarch:scons:debug   # Debug SCons build path
+pnpm run retroarch:validate      # Conformance + Make + debug + SCons checks
+pnpm run retroarch:clean         # Remove generated RetroArch build outputs
+```
+
+See [retroarch/README_RETROARCH.md](retroarch/README_RETROARCH.md) and
+[retroarch/RETROARCH_CORE_PLAN.md](retroarch/RETROARCH_CORE_PLAN.md) for the
+current milestone plan.
+
 ---
 
 ## 🏗️ **Architecture**
@@ -802,6 +826,7 @@ pnpm test:api            # 3D API functions
 pnpm test:input          # Input system
 pnpm test:starfox        # Star Fox demo validation
 pnpm test:integration    # Integration tests
+pnpm run retroarch:test  # RetroArch native conformance harness
 ```
 
 ---

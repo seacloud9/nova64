@@ -468,6 +468,7 @@ static bool mp_pressed_buttons[NOVA64_MAX_PORTS][NOVA64_BUTTON_COUNT];
 
 /* Tilemap subsystem */
 #define NOVA64_MAX_TILEMAPS 16
+#define NOVA64_MAX_SPRITESHEETS 32
 struct nova64_tilemap {
    int tile_w, tile_h;
    int cols, rows;
@@ -475,6 +476,17 @@ struct nova64_tilemap {
    bool active;
 };
 static struct nova64_tilemap tilemaps[NOVA64_MAX_TILEMAPS];
+
+struct nova64_spritesheet {
+   bool active;
+   char path[256];
+   char atlas_path[256];
+   int frame_w;
+   int frame_h;
+   int image_w;
+   int image_h;
+};
+static struct nova64_spritesheet spritesheets[NOVA64_MAX_SPRITESHEETS];
 
 static void destroy_tilemap(int idx)
 {
@@ -487,6 +499,11 @@ static void destroy_all_tilemaps(void)
 {
    for (int i = 0; i < NOVA64_MAX_TILEMAPS; i++)
       destroy_tilemap(i);
+}
+
+static void clear_all_spritesheets(void)
+{
+   memset(spritesheets, 0, sizeof(spritesheets));
 }
 
 /* Deterministic RNG — xorshift64 */
@@ -2265,6 +2282,208 @@ static JSValue js_spr(JSContext *ctx, JSValueConst this_val, int argc, JSValueCo
    return JS_NewBool(ctx, true);
 }
 
+static void atlas_path_for_image(const char *path, char *out, size_t out_size)
+{
+   if (!path || !out || out_size == 0)
+      return;
+   snprintf(out, out_size, "%s", path);
+   char *dot = strrchr(out, '.');
+   if (dot)
+      snprintf(dot, out_size - (size_t)(dot - out), ".json");
+   else
+      snprintf(out + strlen(out), out_size - strlen(out), ".json");
+}
+
+static char *asset_text_copy(const struct nova64_package_asset *asset)
+{
+   if (!asset || !asset->data)
+      return NULL;
+   char *text = (char *)malloc(asset->size + 1);
+   if (!text)
+      return NULL;
+   memcpy(text, asset->data, asset->size);
+   text[asset->size] = '\0';
+   return text;
+}
+
+static bool json_get_int_between(const char *start, const char *end, const char *key, int *out)
+{
+   if (!start || !key || !out)
+      return false;
+   char pattern[64];
+   snprintf(pattern, sizeof(pattern), "\"%s\"", key);
+   size_t pattern_len = strlen(pattern);
+   for (const char *p = strstr(start, pattern); p && (!end || p < end); p = strstr(p + pattern_len, pattern)) {
+      const char *colon = strchr(p + pattern_len, ':');
+      if (!colon || (end && colon >= end))
+         continue;
+      char *after = NULL;
+      long value = strtol(colon + 1, &after, 10);
+      if (after && after != colon + 1 && (!end || after <= end)) {
+         *out = (int)value;
+         return true;
+      }
+   }
+   return false;
+}
+
+static bool spritesheet_named_region(const struct nova64_spritesheet *sheet, const char *name,
+      int *sx, int *sy, int *w, int *h)
+{
+   if (!sheet || !name || !sheet->atlas_path[0])
+      return false;
+   const struct nova64_package_asset *asset = find_package_asset(sheet->atlas_path);
+   char *json = asset_text_copy(asset);
+   if (!json)
+      return false;
+
+   char quoted[128];
+   snprintf(quoted, sizeof(quoted), "\"%s\"", name);
+   char *found = strstr(json, quoted);
+   if (!found) {
+      free(json);
+      return false;
+   }
+   char *object_start = strchr(found, '{');
+   char *object_end = object_start ? strchr(object_start, '}') : NULL;
+   bool ok = object_start && object_end &&
+      json_get_int_between(object_start, object_end, "x", sx) &&
+      json_get_int_between(object_start, object_end, "y", sy);
+   if (ok) {
+      int parsed_w = 0;
+      int parsed_h = 0;
+      *w = json_get_int_between(object_start, object_end, "w", &parsed_w) ? parsed_w : sheet->frame_w;
+      *h = json_get_int_between(object_start, object_end, "h", &parsed_h) ? parsed_h : sheet->frame_h;
+   }
+   free(json);
+   return ok;
+}
+
+static bool configure_spritesheet_dimensions(struct nova64_spritesheet *sheet,
+      const struct nova64_package_asset *image_asset)
+{
+   if (!sheet || !image_asset || sheet->frame_w <= 0 || sheet->frame_h <= 0)
+      return false;
+
+   const struct nova64_package_asset *atlas = find_package_asset(sheet->atlas_path);
+   char *json = asset_text_copy(atlas);
+   if (json) {
+      json_get_int_between(json, NULL, "imageWidth", &sheet->image_w);
+      json_get_int_between(json, NULL, "imageHeight", &sheet->image_h);
+      free(json);
+   }
+
+   size_t pixels = image_asset->size / 4;
+   if (sheet->image_w <= 0 || sheet->image_h <= 0 ||
+         (size_t)sheet->image_w * (size_t)sheet->image_h > pixels) {
+      if (pixels % (size_t)sheet->frame_h == 0) {
+         sheet->image_h = sheet->frame_h;
+         sheet->image_w = (int)(pixels / (size_t)sheet->frame_h);
+      } else {
+         int side = (int)sqrt((double)pixels);
+         sheet->image_w = side > 0 ? side : sheet->frame_w;
+         sheet->image_h = side > 0 ? side : sheet->frame_h;
+      }
+   }
+
+   return sheet->image_w >= sheet->frame_w && sheet->image_h >= sheet->frame_h &&
+      (size_t)sheet->image_w * (size_t)sheet->image_h <= pixels;
+}
+
+static struct nova64_spritesheet *spritesheet_from_handle(int handle)
+{
+   if (handle < 0 || handle >= NOVA64_MAX_SPRITESHEETS)
+      return NULL;
+   return spritesheets[handle].active ? &spritesheets[handle] : NULL;
+}
+
+static JSValue js_create_spritesheet(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 3)
+      return JS_NewInt32(ctx, -1);
+   const char *path = JS_ToCString(ctx, argv[0]);
+   int frame_w = int_from_js(ctx, argv[1], 0);
+   int frame_h = int_from_js(ctx, argv[2], 0);
+   const struct nova64_package_asset *asset = find_package_asset(path);
+   if (!path || !asset || !asset->data || frame_w <= 0 || frame_h <= 0) {
+      JS_FreeCString(ctx, path);
+      return JS_NewInt32(ctx, -1);
+   }
+
+   for (int i = 0; i < NOVA64_MAX_SPRITESHEETS; i++) {
+      if (spritesheets[i].active)
+         continue;
+      struct nova64_spritesheet *sheet = &spritesheets[i];
+      memset(sheet, 0, sizeof(*sheet));
+      sheet->active = true;
+      sheet->frame_w = frame_w;
+      sheet->frame_h = frame_h;
+      snprintf(sheet->path, sizeof(sheet->path), "%s", path);
+      atlas_path_for_image(path, sheet->atlas_path, sizeof(sheet->atlas_path));
+      JS_FreeCString(ctx, path);
+      if (!configure_spritesheet_dimensions(sheet, asset)) {
+         memset(sheet, 0, sizeof(*sheet));
+         return JS_NewInt32(ctx, -1);
+      }
+      return JS_NewInt32(ctx, i);
+   }
+
+   JS_FreeCString(ctx, path);
+   return JS_NewInt32(ctx, -1);
+}
+
+static JSValue js_spr_frame(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 4)
+      return JS_NewBool(ctx, false);
+   struct nova64_spritesheet *sheet = spritesheet_from_handle(int_from_js(ctx, argv[0], -1));
+   int frame = int_from_js(ctx, argv[1], 0);
+   int dx = int_from_js(ctx, argv[2], 0) - cam2d_x;
+   int dy = int_from_js(ctx, argv[3], 0) - cam2d_y;
+   if (!sheet || frame < 0)
+      return JS_NewBool(ctx, false);
+   const struct nova64_package_asset *asset = find_package_asset(sheet->path);
+   if (!asset || !asset->data)
+      return JS_NewBool(ctx, false);
+
+   int frames_per_row = sheet->image_w / sheet->frame_w;
+   if (frames_per_row <= 0)
+      return JS_NewBool(ctx, false);
+   int sx = (frame % frames_per_row) * sheet->frame_w;
+   int sy = (frame / frames_per_row) * sheet->frame_h;
+   if (sx + sheet->frame_w > sheet->image_w || sy + sheet->frame_h > sheet->image_h)
+      return JS_NewBool(ctx, false);
+
+   blit_rgba((const uint8_t *)asset->data, sheet->image_w, sheet->image_h,
+         dx, dy, sx, sy, sheet->frame_w, sheet->frame_h);
+   return JS_NewBool(ctx, true);
+}
+
+static JSValue js_spr_named(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 4)
+      return JS_NewBool(ctx, false);
+   struct nova64_spritesheet *sheet = spritesheet_from_handle(int_from_js(ctx, argv[0], -1));
+   const char *name = JS_ToCString(ctx, argv[1]);
+   int dx = int_from_js(ctx, argv[2], 0) - cam2d_x;
+   int dy = int_from_js(ctx, argv[3], 0) - cam2d_y;
+   int sx = 0, sy = 0, w = 0, h = 0;
+   bool ok = sheet && name && spritesheet_named_region(sheet, name, &sx, &sy, &w, &h);
+   JS_FreeCString(ctx, name);
+   if (!ok || w <= 0 || h <= 0 || sx < 0 || sy < 0 ||
+         sx + w > sheet->image_w || sy + h > sheet->image_h)
+      return JS_NewBool(ctx, false);
+   const struct nova64_package_asset *asset = find_package_asset(sheet->path);
+   if (!asset || !asset->data)
+      return JS_NewBool(ctx, false);
+   blit_rgba((const uint8_t *)asset->data, sheet->image_w, sheet->image_h,
+         dx, dy, sx, sy, w, h);
+   return JS_NewBool(ctx, true);
+}
+
 static JSValue js_set_clip(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
    (void)this_val;
@@ -3193,7 +3412,7 @@ static JSValue js_play_sound(JSContext *ctx, JSValueConst this_val, int argc, JS
    size_t frames = 0, channels = 1;
    double rate = NOVA64_SAMPLE_RATE;
 
-   if (!wav_parse(asset->data, asset->size, &pcm, &frames, &channels, &rate)) {
+   if (!wav_parse((const char *)asset->data, asset->size, &pcm, &frames, &channels, &rate)) {
       /* Treat as raw int16 LE mono at 44100Hz */
       pcm      = (const int16_t *)asset->data;
       frames   = asset->size / sizeof(int16_t);
@@ -3813,6 +4032,9 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, draw, "print", js_draw_print, 5);
    set_function(ctx, draw, "textWidth", js_text_width, 1);
    set_function(ctx, draw, "spr", js_spr, 9);
+   set_function(ctx, draw, "createSpriteSheet", js_create_spritesheet, 3);
+   set_function(ctx, draw, "sprFrame", js_spr_frame, 4);
+   set_function(ctx, draw, "sprNamed", js_spr_named, 4);
    set_function(ctx, draw, "setClip", js_set_clip, 4);
    set_function(ctx, draw, "clearClip", js_clear_clip, 0);
    set_function(ctx, draw, "setCamera2D", js_set_camera2d, 2);
@@ -3913,6 +4135,13 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, tilemap_ns, "destroy", js_destroy_tilemap, 1);
    JS_SetPropertyStr(ctx, nova64, "tilemap", tilemap_ns);
 
+   /* nova64.sprites namespace */
+   JSValue sprites_ns = JS_NewObject(ctx);
+   set_function(ctx, sprites_ns, "createSpriteSheet", js_create_spritesheet, 3);
+   set_function(ctx, sprites_ns, "sprFrame", js_spr_frame, 4);
+   set_function(ctx, sprites_ns, "sprNamed", js_spr_named, 4);
+   JS_SetPropertyStr(ctx, nova64, "sprites", sprites_ns);
+
    /* nova64.random namespace */
    JSValue random_ns = JS_NewObject(ctx);
    set_function(ctx, random_ns, "seed", js_rng_seed, 1);
@@ -3958,6 +4187,9 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, global, "print", js_draw_print, 5);
    set_function(ctx, global, "textWidth", js_text_width, 1);
    set_function(ctx, global, "spr", js_spr, 9);
+   set_function(ctx, global, "createSpriteSheet", js_create_spritesheet, 3);
+   set_function(ctx, global, "sprFrame", js_spr_frame, 4);
+   set_function(ctx, global, "sprNamed", js_spr_named, 4);
    set_function(ctx, global, "setClip", js_set_clip, 4);
    set_function(ctx, global, "clearClip", js_clear_clip, 0);
    set_function(ctx, global, "setCamera2D", js_set_camera2d, 2);
@@ -5843,6 +6075,7 @@ void RETRO_CALLCONV retro_reset(void)
    reset_post_state();
    clear_textures();
    destroy_all_tilemaps();
+   clear_all_spritesheets();
    rng_seed_impl(0);
    if (cart_content && cart_size)
       js_host_load_cart(cart_content, cart_size, cart_path[0] ? cart_path : "<nova64-cart>");
@@ -5919,6 +6152,8 @@ bool RETRO_CALLCONV retro_load_game(const struct retro_game_info *info)
    clear_framebuffer(rgba8(0, 0, 0, 255));
    reset_scene_state();
    reset_audio_state();
+   destroy_all_tilemaps();
+   clear_all_spritesheets();
    frame_count = 0;
 
    if (!js_host_load_cart(cart_content, cart_size, cart_path[0] ? cart_path : "<nova64-cart>")) {
@@ -5943,6 +6178,8 @@ void RETRO_CALLCONV retro_unload_game(void)
 {
    js_host_free();
    clear_textures();
+   destroy_all_tilemaps();
+   clear_all_spritesheets();
    free(cart_content);
    cart_content = NULL;
    cart_size = 0;

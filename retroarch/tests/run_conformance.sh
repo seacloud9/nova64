@@ -86,6 +86,26 @@ with ZipFile(package_dir / "sprite.nova", "w", ZIP_DEFLATED) as package:
         '{"name":"sprite","main":"src/main.js","assets":["sprites/dot.rgba"]}\n',
     )
 
+# 4-frame 16x4 RGBA sprite sheet with atlas metadata for named regions
+sheet = bytearray(16 * 4 * 4)
+frame_colors = [(240, 70, 70, 255), (70, 220, 90, 255), (80, 130, 250, 255), (245, 220, 70, 255)]
+for frame, (r, g, b, a) in enumerate(frame_colors):
+    for py in range(4):
+        for px in range(4):
+            i = (py * 16 + frame * 4 + px) * 4
+            sheet[i:i+4] = [r, g, b, a]
+with ZipFile(package_dir / "spritesheet.nova", "w", ZIP_DEFLATED) as package:
+    package.write("retroarch/conformance/32-spritesheet.js", "src/main.js")
+    package.writestr("sprites/sheet.rgba", bytes(sheet))
+    package.writestr(
+        "sprites/sheet.json",
+        '{"imageWidth":16,"imageHeight":4,"frames":{"coin":{"x":12,"y":0,"w":4,"h":4}}}\n',
+    )
+    package.writestr(
+        "manifest.json",
+        '{"name":"spritesheet","main":"src/main.js","assets":["sprites/sheet.rgba","sprites/sheet.json"]}\n',
+    )
+
 # 4-tile horizontal strip for tilemap conformance: each tile 8x8, strip 32x8 RGBA
 tw, th = 8, 8
 sheet = bytearray(32 * th * 4)
@@ -224,6 +244,7 @@ run_analog_case() {
 }
 
 run_visual_case "31 tilemap" "31-tilemap" "${PACKAGE_DIR}/tilemap.nova" "c26e61e20f059b0a"
+run_visual_case "32 spritesheet" "32-spritesheet" "${PACKAGE_DIR}/spritesheet.nova" "293febc1b420fc27"
 run_analog_case "34 analog"  "retroarch/conformance/34-analog.js" "a66365b2ba482b6f"
 run_visual_case "35 rng" "35-rng" "retroarch/conformance/35-rng.js" "6702787d75707713"
 run_visual_case "36 camera2d" "36-camera2d" "retroarch/conformance/36-camera2d.js" "0b89e24020dcb94c"

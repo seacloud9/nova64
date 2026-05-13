@@ -121,6 +121,9 @@ circfill(cx, cy, r, color)               // filled circle
 print(text, x, y, color [, align])       // align: 'left'|'center'|'right'
 textWidth(text)                           // pixel width of text string
 spr(path, dx, dy [, imgW, imgH [, sx, sy [, bw, bh]]])  // blit RGBA asset
+createSpriteSheet(path, frameW, frameH)  // auto-slice RGBA sheet
+sprFrame(sheet, frame, dx, dy)            // draw indexed frame
+sprNamed(sheet, name, dx, dy)             // draw atlas JSON region
 setClip(x, y, w, h)                      // set 2D clip region
 clearClip()                               // remove clip region
 draw3d()                                  // flush 3D scene to framebuffer
@@ -295,8 +298,9 @@ These browser-side Nova64 or Three.js features are not implemented:
   (framebuffer, input, camera, lights, mesh table). JS object state is reset on
   load. Carts must re-derive JS state from persistent storage or use deterministic
   init logic.
-- **Tilemaps and sprite sheets beyond spr()**: the full browser tilemap API is not
-  yet mapped.
+- **Advanced tilemap and sprite-sheet tooling**: first-pass tilemaps and
+  sprite-sheet frame/atlas blits are implemented, but richer browser tooling
+  such as z-sorted draw queues and complex atlas formats is not yet mapped.
 - **Streamed music**: `playMusic()`, track looping, and crossfade are not
   implemented. Use `playSound(..., vol, true)` for looping PCM clips.
 - **Texture binding in software mode**: `createTexture`/`setMeshTexture` allocate
@@ -343,3 +347,8 @@ These browser-side Nova64 or Three.js features are not implemented:
 | `28-play-sound.js` | PCM playback + audio checksum |
 | `29-runtime-utils.js` | frame/time, setClip/clearClip |
 | `30-showcase.js` | multi-API cross-subsystem demo |
+| `31-tilemap.js` | tilemap draw from RGBA tilesheet |
+| `32-spritesheet.js` | sprite-sheet frame and named atlas blit |
+| `34-analog.js` | analog stick and trigger input |
+| `35-rng.js` | deterministic RNG |
+| `36-camera2d.js` | 2D camera offset and clear |

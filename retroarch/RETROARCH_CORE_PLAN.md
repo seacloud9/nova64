@@ -364,6 +364,14 @@ Tilemap first pass done:
     spr, drawTilemap. `clearCamera2D()` resets to (0, 0). Offset is reset on
     cart reload. `36-camera2d.js` verifies offset shifts and clear.
 
+Sprite-sheet first pass done:
+
+  - `createSpriteSheet(path, frameW, frameH)` auto-slices raw RGBA sheets,
+    using an adjacent JSON atlas for image dimensions and named regions when
+    present. `sprFrame(sheet, frame, dx, dy)` draws by index, and
+    `sprNamed(sheet, name, dx, dy)` draws named atlas regions. `32-spritesheet.js`
+    covers indexed and named blits from a generated package asset.
+
 Still missing:
 
 - Full tilemap API (Godot/web parity):
@@ -373,16 +381,9 @@ Still missing:
     tilesheet. The tilesheet is an RGBA image; tile index picks the source crop.
   - `clearTilemap(map)`, `destroyTilemap(map)`.
   - Conformance: `31-tilemap.js` with a generated 4×4 tilesheet asset.
-- Named sprite-sheet regions:
-  - `createSpriteSheet(path, frameW, frameH)` — auto-slices a sheet into frames.
-  - `sprFrame(sheet, frame, dx, dy)` — blit a single frame by index.
-  - `sprNamed(sheet, name, dx, dy)` — blit by name from an atlas JSON sidecar.
-  - Conformance: `32-spritesheet.js`.
-- 2D camera transform:
-  - `setCamera2D(x, y [, zoom [, rotation]])` — global 2D camera offset applied
-    to all `pset`/`line`/`rect`/`circ`/`print`/`spr` calls.
-  - `clearCamera2D()` — reset to no transform.
-  - Needed by scrolling platformers and top-down RPGs.
+- 2D camera zoom/rotation:
+  - Extend `setCamera2D(x, y [, zoom [, rotation]])` beyond the current offset
+    implementation for zoomed and rotated 2D views.
 - Blend modes for 2D:
   - `setBlend2D('normal'|'additive'|'multiply'|'screen')` — applied per-pixel in
     the software framebuffer blit path.

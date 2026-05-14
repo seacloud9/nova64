@@ -458,7 +458,7 @@ static nova64_rumble_set_fn rumble_fn;
 
 /* Named audio channel volumes (8C) */
 #define NOVA64_AUDIO_MAX_CHANNELS 16
-struct nova64_audio_channel { char name[32]; float volume; };
+struct nova64_audio_channel { char name[32]; float volume; float pitch; };
 static struct nova64_audio_channel audio_channels[NOVA64_AUDIO_MAX_CHANNELS];
 
 static float channel_volume(const char *name) {
@@ -466,6 +466,13 @@ static float channel_volume(const char *name) {
    for (int i = 0; i < NOVA64_AUDIO_MAX_CHANNELS; i++)
       if (audio_channels[i].name[0] && !strcmp(audio_channels[i].name, name))
          return audio_channels[i].volume;
+   return 1.0f;
+}
+static float channel_pitch(const char *name) {
+   if (!name || !name[0]) return 1.0f;
+   for (int i = 0; i < NOVA64_AUDIO_MAX_CHANNELS; i++)
+      if (audio_channels[i].name[0] && !strcmp(audio_channels[i].name, name))
+         return audio_channels[i].pitch > 0.01f ? audio_channels[i].pitch : 1.0f;
    return 1.0f;
 }
 static void channel_set_volume(const char *name, float vol) {
@@ -479,6 +486,20 @@ static void channel_set_volume(const char *name, float vol) {
       if (!audio_channels[i].name[0]) {
          strncpy(audio_channels[i].name, name, sizeof(audio_channels[i].name)-1);
          audio_channels[i].volume = vol; return;
+      }
+   }
+}
+static void channel_set_pitch(const char *name, float pitch) {
+   if (!name || !name[0]) return;
+   for (int i = 0; i < NOVA64_AUDIO_MAX_CHANNELS; i++) {
+      if (audio_channels[i].name[0] && !strcmp(audio_channels[i].name, name)) {
+         audio_channels[i].pitch = pitch; return;
+      }
+   }
+   for (int i = 0; i < NOVA64_AUDIO_MAX_CHANNELS; i++) {
+      if (!audio_channels[i].name[0]) {
+         strncpy(audio_channels[i].name, name, sizeof(audio_channels[i].name)-1);
+         audio_channels[i].pitch = pitch; return;
       }
    }
 }
@@ -1459,6 +1480,9 @@ static double audio_sample_voice(struct nova64_audio_voice *voice)
       double advance = voice->pcm_rate / NOVA64_SAMPLE_RATE;
       if (voice->pitch > 0.01f && voice->pitch != 1.0f)
          advance *= (double)voice->pitch;
+      float ch_p = channel_pitch(voice->channel);
+      if (ch_p > 0.01f && ch_p != 1.0f)
+         advance *= (double)ch_p;
       voice->pcm_pos += advance;
       return ((left + right) * 0.5) * voice->vol * channel_volume(voice->channel);
    }
@@ -1488,6 +1512,11 @@ static double audio_sample_voice(struct nova64_audio_voice *voice)
    double current_freq = clamp_double(voice->freq + voice->sweep * t, 1.0, 20000.0);
    if (voice->pitch > 0.01f && voice->pitch != 1.0f)
       current_freq = clamp_double(current_freq * (double)voice->pitch, 1.0, 20000.0);
+   {
+      float ch_p = channel_pitch(voice->channel);
+      if (ch_p > 0.01f && ch_p != 1.0f)
+         current_freq = clamp_double(current_freq * (double)ch_p, 1.0, 20000.0);
+   }
    voice->phase += current_freq / NOVA64_SAMPLE_RATE;
    voice->phase -= floor(voice->phase);
    voice->elapsed_samples++;
@@ -6304,6 +6333,29 @@ static JSValue js_get_channel_volume(JSContext *ctx, JSValueConst this_val, int 
    return JS_NewFloat64(ctx, vol);
 }
 
+static JSValue js_set_channel_pitch(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 2) return JS_UNDEFINED;
+   const char *name = JS_ToCString(ctx, argv[0]);
+   if (!name) return JS_UNDEFINED;
+   float pitch = (float)clamp_double(double_from_js(ctx, argv[1], 1.0), 0.01, 100.0);
+   channel_set_pitch(name, pitch);
+   JS_FreeCString(ctx, name);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_get_channel_pitch(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 1) return JS_NewFloat64(ctx, 1.0);
+   const char *name = JS_ToCString(ctx, argv[0]);
+   if (!name) return JS_NewFloat64(ctx, 1.0);
+   float pitch = channel_pitch(name);
+   JS_FreeCString(ctx, name);
+   return JS_NewFloat64(ctx, pitch);
+}
+
 static JSValue js_stop_channel(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
    (void)this_val;
@@ -7400,11 +7452,15 @@ static bool install_nova64_api(JSContext *ctx)
    /* Multi-channel audio (8C) */
    set_function(ctx, global, "setChannelVolume",  js_set_channel_volume, 2);
    set_function(ctx, global, "getChannelVolume",  js_get_channel_volume, 1);
+   set_function(ctx, global, "setChannelPitch",   js_set_channel_pitch,  2);
+   set_function(ctx, global, "getChannelPitch",   js_get_channel_pitch,  1);
    set_function(ctx, global, "stopChannel",       js_stop_channel,       1);
    {
       JSValue aud = JS_GetPropertyStr(ctx, nova64, "audio");
       set_function(ctx, aud, "setChannelVolume", js_set_channel_volume, 2);
       set_function(ctx, aud, "getChannelVolume", js_get_channel_volume, 1);
+      set_function(ctx, aud, "setChannelPitch",  js_set_channel_pitch,  2);
+      set_function(ctx, aud, "getChannelPitch",  js_get_channel_pitch,  1);
       set_function(ctx, aud, "stopChannel",      js_stop_channel,       1);
       JS_FreeValue(ctx, aud);
    }

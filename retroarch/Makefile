@@ -176,4 +176,14 @@ $(OBJDIR)/%.o: $(QUICKJS_DIR)/%.c | $(OBJDIR)
 clean:
 	rm -rf $(OBJDIR) $(TARGET)
 
-.PHONY: clean
+harness: $(TARGET)
+	mkdir -p build
+	cc -I. -o build/harness tests/harness.c -ldl -lm
+
+conformance: harness $(TARGET)
+	bash tests/run_conformance.sh
+
+info:
+	@cat nova64_libretro.info 2>/dev/null || echo "(not found)"
+
+.PHONY: clean harness conformance info

@@ -479,5 +479,7 @@ run_visual_case "92 hot reload"      "92-hot-reload"       "retroarch/conformanc
 run_visual_case "93 dev console"     "93-dev-console"      "retroarch/conformance/93-dev-console.js"      "499d83798b7a231a"
 run_visual_case "94 create mesh"     "94-create-mesh"      "retroarch/conformance/94-create-mesh.js"      "79cbd3d3d92c1840"
 run_visual_case "95 audio pitch"     "95-audio-pitch"      "retroarch/conformance/95-audio-pitch.js"      "37a3290c34b4ffd2"
+run_visual_case "96 channel pitch"   "96-channel-pitch"    "retroarch/conformance/96-channel-pitch.js"    "844d5878fcded8e8"
+run_visual_case "97 multiport input" "97-multiport-input"  "retroarch/conformance/97-multiport-input.js"  "986ec7433a2db70c"
 
 echo "Conformance passed."

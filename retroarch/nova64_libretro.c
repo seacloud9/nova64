@@ -5472,6 +5472,33 @@ static JSValue js_stop_voice(JSContext *ctx, JSValueConst this_val, int argc, JS
    return JS_UNDEFINED;
 }
 
+static JSValue js_get_voice_pitch(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 1) return JS_NewFloat64(ctx, 0.0);
+   int handle = int_from_js(ctx, argv[0], 0);
+   if (handle < 1 || handle > (int)NOVA64_AUDIO_MAX_VOICES) return JS_NewFloat64(ctx, 0.0);
+   return JS_NewFloat64(ctx, (double)audio_voices[handle - 1].pitch);
+}
+
+static JSValue js_get_voice_volume(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 1) return JS_NewFloat64(ctx, 0.0);
+   int handle = int_from_js(ctx, argv[0], 0);
+   if (handle < 1 || handle > (int)NOVA64_AUDIO_MAX_VOICES) return JS_NewFloat64(ctx, 0.0);
+   return JS_NewFloat64(ctx, (double)audio_voices[handle - 1].vol);
+}
+
+static JSValue js_voice_active(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 1) return JS_FALSE;
+   int handle = int_from_js(ctx, argv[0], 0);
+   if (handle < 1 || handle > (int)NOVA64_AUDIO_MAX_VOICES) return JS_FALSE;
+   return JS_NewBool(ctx, audio_voices[handle - 1].active);
+}
+
 static JSValue js_stop_sound(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
    (void)this_val;
@@ -7649,13 +7676,19 @@ static bool install_nova64_api(JSContext *ctx)
       JS_FreeValue(ctx, aud);
    }
 
-   /* Voice handle control (M8 batch 10) */
-   set_function(ctx, global, "setVoicePitch", js_set_voice_pitch, 2);
-   set_function(ctx, global, "stopVoice",     js_stop_voice,      1);
+   /* Voice handle control (M8 batch 10/11) */
+   set_function(ctx, global, "setVoicePitch",  js_set_voice_pitch,  2);
+   set_function(ctx, global, "stopVoice",      js_stop_voice,       1);
+   set_function(ctx, global, "getVoicePitch",  js_get_voice_pitch,  1);
+   set_function(ctx, global, "getVoiceVolume", js_get_voice_volume, 1);
+   set_function(ctx, global, "voiceActive",    js_voice_active,     1);
    {
       JSValue aud = JS_GetPropertyStr(ctx, nova64, "audio");
-      set_function(ctx, aud, "setVoicePitch", js_set_voice_pitch, 2);
-      set_function(ctx, aud, "stopVoice",     js_stop_voice,      1);
+      set_function(ctx, aud, "setVoicePitch",  js_set_voice_pitch,  2);
+      set_function(ctx, aud, "stopVoice",      js_stop_voice,       1);
+      set_function(ctx, aud, "getVoicePitch",  js_get_voice_pitch,  1);
+      set_function(ctx, aud, "getVoiceVolume", js_get_voice_volume, 1);
+      set_function(ctx, aud, "voiceActive",    js_voice_active,     1);
       JS_FreeValue(ctx, aud);
    }
 

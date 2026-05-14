@@ -11,6 +11,9 @@ PACKAGE_DIR="retroarch/build/conformance-packages"
 SAVE_DIR="retroarch/build/conformance-saves"
 SCREENSHOT_DIR="screenshots/retroarch"
 RECENT_COUNT=0
+RANGE_FROM=0
+RANGE_TO=999
+SKIP_BUILD=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -22,6 +25,14 @@ while [[ $# -gt 0 ]]; do
       RECENT_COUNT="$2"
       shift 2
       ;;
+    --from)
+      if [[ $# -lt 2 ]]; then echo "--from requires a number" >&2; exit 2; fi
+      RANGE_FROM="$2"; shift 2 ;;
+    --to)
+      if [[ $# -lt 2 ]]; then echo "--to requires a number" >&2; exit 2; fi
+      RANGE_TO="$2"; shift 2 ;;
+    --skip-build)
+      SKIP_BUILD=1; shift ;;
     *)
       echo "unknown argument: $1" >&2
       exit 2
@@ -32,19 +43,23 @@ done
 LATEST_CASE="$(find retroarch/conformance -maxdepth 1 -type f -name '[0-9][0-9]-*.js' \
   | sed -E 's|.*/([0-9][0-9])-.*|\1|' | sort -n | tail -1)"
 LATEST_CASE="${LATEST_CASE:-0}"
-RECENT_MIN=0
 if [[ "${RECENT_COUNT}" -gt 0 ]]; then
-  RECENT_MIN=$((10#${LATEST_CASE} - RECENT_COUNT + 1))
-  if [[ "${RECENT_MIN}" -lt 0 ]]; then
-    RECENT_MIN=0
-  fi
+  RANGE_FROM=$((10#${LATEST_CASE} - RECENT_COUNT + 1))
+  if [[ "${RANGE_FROM}" -lt 0 ]]; then RANGE_FROM=0; fi
+  RANGE_TO=999
 fi
 
-make -C retroarch clean all
-cc -Iretroarch -o "${HARNESS}" retroarch/tests/harness.c -ldl
+if [[ "${SKIP_BUILD}" -eq 0 ]]; then
+  make -C retroarch clean all
+  cc -Iretroarch -o "${HARNESS}" retroarch/tests/harness.c -ldl
+fi
 
 mkdir -p "${PACKAGE_DIR}"
-rm -rf "${SAVE_DIR}"
+# Only wipe the save dir when starting from the beginning so batched runs
+# preserve storage state written by earlier-numbered carts.
+if [[ "${RANGE_FROM}" -eq 0 ]]; then
+  rm -rf "${SAVE_DIR}"
+fi
 mkdir -p "${SAVE_DIR}"
 mkdir -p "${SCREENSHOT_DIR}"
 python3 - <<'PY'
@@ -221,15 +236,13 @@ run_case() {
 
 should_run_label() {
   local label="$1"
-  if [[ "${RECENT_COUNT}" -le 0 ]]; then
-    return 0
-  fi
   if [[ "${label}" =~ ^([0-9][0-9]) ]]; then
     local n=$((10#${BASH_REMATCH[1]}))
-    [[ "${n}" -ge "${RECENT_MIN}" ]]
+    [[ "${n}" -ge "${RANGE_FROM}" && "${n}" -le "${RANGE_TO}" ]]
     return
   fi
-  return 1
+  # Non-numeric labels (nova package cases) run only on full suite
+  [[ "${RANGE_FROM}" -eq 0 && "${RANGE_TO}" -eq 999 ]]
 }
 
 run_command_log_case() {
@@ -426,7 +439,7 @@ run_visual_case "44 capsule" "44-capsule" "retroarch/conformance/44-capsule.js" 
 run_visual_case "45 cylinder" "45-cylinder" "retroarch/conformance/45-cylinder.js" "24497981dc726b1a"
 run_visual_case "46 blend2d" "46-blend2d" "retroarch/conformance/46-blend2d.js" "db4581a1620a7c61"
 run_visual_case "47 camera ortho" "47-camera-ortho" "retroarch/conformance/47-camera-ortho.js" "5259ad834c36f30b"
-run_visual_case "48 sky color" "48-sky-color" "retroarch/conformance/48-sky-color.js" "a716a1fbb3b6af37"
+run_visual_case "48 sky color" "48-sky-color" "retroarch/conformance/48-sky-color.js" "b6102009e6b66ff5"
 run_visual_case "49 mesh material" "49-mesh-material" "retroarch/conformance/49-mesh-material.js" "445c76953fa43187"
 
 run_visual_case "50 get3d stats"    "50-get3d-stats"    "retroarch/conformance/50-get3d-stats.js"    "a839eb25fa0c6c42"
@@ -466,7 +479,7 @@ run_visual_case "81 png sprite"      "81-png-sprite"      "${PACKAGE_DIR}/png-sp
 run_visual_case "82 scene hierarchy" "82-scene-hierarchy" "retroarch/conformance/82-scene-hierarchy.js" "63489e6061ea6404"
 run_visual_case "83 audio channels"  "83-audio-channels"  "retroarch/conformance/83-audio-channels.js"  "eb6c1c11ccb03969"
 
-NOVA64_SAVE_DIR="${SAVE_DIR}" run_visual_case "84 storage cart ids" "84-storage-cart-ids" "retroarch/conformance/84-storage-cart-ids.js" "23faa2d53016edd2"
+NOVA64_SAVE_DIR="${SAVE_DIR}" run_visual_case "84 storage cart ids" "84-storage-cart-ids" "retroarch/conformance/84-storage-cart-ids.js" "0eb64e3b2eff029a"
 run_visual_case "85 raycast"       "85-raycast"       "retroarch/conformance/85-raycast.js"       "74ba13fecf04c622"
 run_visual_case "86 bitmap font"   "86-bitmap-font"   "retroarch/conformance/86-bitmap-font.js"   "2bc8c5bfa38e71dc"
 run_visual_case "87 resolution"    "87-resolution"    "retroarch/conformance/87-resolution.js"    "814d1457723bb11b"

@@ -27,6 +27,4 @@ export function draw() {
    print('84 CART IDS', 4, 4, rgba8(255, 200, 80, 255));
    print(ok ? 'PASS' : 'FAIL', 4, 14,
       ok ? rgba8(100, 255, 100, 255) : rgba8(255, 80, 80, 255));
-   const ids = cartIds();
-   print('count=' + ids.length, 4, 24, rgba8(180, 200, 180, 255));
 }

@@ -40,8 +40,8 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-LATEST_CASE="$(find retroarch/conformance -maxdepth 1 -type f -name '[0-9][0-9]-*.js' \
-  | sed -E 's|.*/([0-9][0-9])-.*|\1|' | sort -n | tail -1)"
+LATEST_CASE="$(find retroarch/conformance -maxdepth 1 -type f -name '[0-9]*-*.js' \
+  | sed -E 's|.*/([0-9]+)-.*|\1|' | sort -n | tail -1)"
 LATEST_CASE="${LATEST_CASE:-0}"
 if [[ "${RECENT_COUNT}" -gt 0 ]]; then
   RANGE_FROM=$((10#${LATEST_CASE} - RECENT_COUNT + 1))
@@ -236,7 +236,7 @@ run_case() {
 
 should_run_label() {
   local label="$1"
-  if [[ "${label}" =~ ^([0-9][0-9]) ]]; then
+  if [[ "${label}" =~ ^([0-9]+) ]]; then
     local n=$((10#${BASH_REMATCH[1]}))
     [[ "${n}" -ge "${RANGE_FROM}" && "${n}" -le "${RANGE_TO}" ]]
     return
@@ -496,5 +496,9 @@ run_visual_case "96 channel pitch"   "96-channel-pitch"    "retroarch/conformanc
 run_visual_case "97 multiport input" "97-multiport-input"  "retroarch/conformance/97-multiport-input.js"  "986ec7433a2db70c"
 run_visual_case "98 cheevos ram"     "98-cheevos-ram"      "retroarch/conformance/98-cheevos-ram.js"      "552966b5304b031e"
 run_visual_case "99 voice handle"    "99-voice-handle"     "retroarch/conformance/99-voice-handle.js"     "94ade054edea55c8"
+
+run_visual_case "100 pbr material"     "100-pbr-material"     "retroarch/conformance/100-pbr-material.js"     "1cebb4a284ffc988"
+run_visual_case "101 uv transform"     "101-uv-transform"     "retroarch/conformance/101-uv-transform.js"     "5e3fdb809fd92a33"
+run_visual_case "102 audio resilience" "102-audio-resilience" "retroarch/conformance/102-stereo-audio.js"     "58b3c68b8833ca3a"
 
 echo "Conformance passed."

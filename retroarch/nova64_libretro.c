@@ -96,8 +96,11 @@ typedef char GLchar;
 #define GL_RGBA 0x1908
 #define GL_UNSIGNED_BYTE 0x1401
 #define GL_BLEND 0x0BE2
+#define GL_ZERO 0x0000
+#define GL_ONE  0x0001
 #define GL_SRC_ALPHA 0x0302
 #define GL_ONE_MINUS_SRC_ALPHA 0x0303
+#define GL_DST_COLOR 0x0306
 /* FBO */
 #define GL_FRAMEBUFFER 0x8D40
 #define GL_RENDERBUFFER 0x8D41
@@ -146,6 +149,7 @@ typedef void (*PFNGLTEXIMAGE2DPROC)(GLenum target, GLint level, GLint internalfo
 typedef void (*PFNGLTEXSUBIMAGE2DPROC)(GLenum target, GLint level, GLint xoffset, GLint yoffset, GLsizei width, GLsizei height, GLenum format, GLenum type, const void *pixels);
 typedef void (*PFNGLUNIFORM1IPROC)(GLint location, GLint v0);
 typedef void (*PFNGLUNIFORM1FPROC)(GLint location, GLfloat v0);
+typedef void (*PFNGLUNIFORM2FPROC)(GLint location, GLfloat v0, GLfloat v1);
 typedef void (*PFNGLBLENDFUNCPROC)(GLenum sfactor, GLenum dfactor);
 /* FBO */
 typedef void (*PFNGLGENFRAMEBUFFERSPROC)(GLsizei n, GLuint *framebuffers);
@@ -203,8 +207,8 @@ struct nova64_mesh {
    int texture_handle;      /* 0 = no texture */
    uint32_t emissive_color; /* 0 = none, else RGBA8 */
    float emissive_intensity; /* 0 = off */
-   float roughness;         /* 0 = smooth, 1 = rough — stored, not yet wired to shader */
-   float metalness;         /* 0 = non-metal, 1 = metal — stored */
+   float roughness;         /* 0 = smooth, 1 = rough */
+   float metalness;         /* 0 = non-metal, 1 = metal */
    float uv_offset[2];      /* UV scroll offset (u, v) */
    float uv_scale[2];       /* UV tiling scale (u, v) */
    enum nova64_mesh_blend mesh_blend;
@@ -384,6 +388,7 @@ struct nova64_gles_backend {
    PFNGLTEXSUBIMAGE2DPROC TexSubImage2D;
    PFNGLUNIFORM1IPROC Uniform1i;
    PFNGLUNIFORM1FPROC Uniform1f;
+   PFNGLUNIFORM2FPROC Uniform2f;
    PFNGLBLENDFUNCPROC BlendFunc;
    /* FBO procs */
    PFNGLGENFRAMEBUFFERSPROC GenFramebuffers;
@@ -439,6 +444,10 @@ struct nova64_gles_backend {
    GLint cube_texture_uniform;
    GLint cube_emissive_color_uniform;
    GLint cube_emissive_intensity_uniform;
+   GLint cube_roughness_uniform;
+   GLint cube_metalness_uniform;
+   GLint cube_uv_offset_uniform;
+   GLint cube_uv_scale_uniform;
    GLint overlay_position_attrib;
    GLint overlay_uv_attrib;
    GLint overlay_texture_uniform;
@@ -4909,7 +4918,7 @@ static JSValue js_get_mesh(JSContext *ctx, JSValueConst this_val, int argc, JSVa
    JS_SetPropertyStr(ctx, object, "metalness", JS_NewFloat64(ctx, mesh->metalness));
    JS_SetPropertyStr(ctx, object, "emissiveColor", JS_NewUint32(ctx, mesh->emissive_color));
    JS_SetPropertyStr(ctx, object, "emissiveIntensity", JS_NewFloat64(ctx, mesh->emissive_intensity));
-   /* uvOffset / uvScale as 2-element JS arrays */
+   /* uvOffset / uvScale as 2-element JS arrays + flat scalar accessors */
    {
       JSValue uvo = JS_NewArray(ctx);
       JS_SetPropertyUint32(ctx, uvo, 0, JS_NewFloat64(ctx, mesh->uv_offset[0]));
@@ -4919,12 +4928,17 @@ static JSValue js_get_mesh(JSContext *ctx, JSValueConst this_val, int argc, JSVa
       JS_SetPropertyUint32(ctx, uvs, 0, JS_NewFloat64(ctx, mesh->uv_scale[0]));
       JS_SetPropertyUint32(ctx, uvs, 1, JS_NewFloat64(ctx, mesh->uv_scale[1]));
       JS_SetPropertyStr(ctx, object, "uvScale", uvs);
+      JS_SetPropertyStr(ctx, object, "uvOffsetU", JS_NewFloat64(ctx, mesh->uv_offset[0]));
+      JS_SetPropertyStr(ctx, object, "uvOffsetV", JS_NewFloat64(ctx, mesh->uv_offset[1]));
+      JS_SetPropertyStr(ctx, object, "uvScaleU", JS_NewFloat64(ctx, mesh->uv_scale[0]));
+      JS_SetPropertyStr(ctx, object, "uvScaleV", JS_NewFloat64(ctx, mesh->uv_scale[1]));
    }
    {
       const char *blend_name = "opaque";
       if (mesh->mesh_blend == NOVA64_MESH_BLEND_ADDITIVE)  blend_name = "additive";
       else if (mesh->mesh_blend == NOVA64_MESH_BLEND_MULTIPLY) blend_name = "multiply";
       JS_SetPropertyStr(ctx, object, "meshBlend", JS_NewString(ctx, blend_name));
+      JS_SetPropertyStr(ctx, object, "blendMode", JS_NewString(ctx, blend_name));
    }
    return object;
 }
@@ -7984,6 +7998,8 @@ static bool gles_create_cube_program(void)
       "uniform mat4 u_mvp;\n"
       "uniform mat3 u_normal_matrix;\n"
       "uniform vec4 u_light_direction;\n"
+      "uniform vec2 u_uv_offset;\n"
+      "uniform vec2 u_uv_scale;\n"
       "varying float v_light;\n"
       "varying float v_depth;\n"
       "varying vec2 v_uv;\n"
@@ -7994,7 +8010,7 @@ static bool gles_create_cube_program(void)
       "  v_light = 0.58 + diffuse * 0.42;\n"
       "  gl_Position = u_mvp * vec4(a_position, 1.0);\n"
       "  v_depth = gl_Position.z / gl_Position.w;\n"
-      "  v_uv = a_position.xz + 0.5;\n"
+      "  v_uv = (a_position.xz + 0.5) * u_uv_scale + u_uv_offset;\n"
       "}\n";
    static const char *fragment_source =
       "precision mediump float;\n"
@@ -8011,10 +8027,14 @@ static bool gles_create_cube_program(void)
       "uniform sampler2D u_texture;\n"
       "uniform vec4 u_emissive_color;\n"
       "uniform float u_emissive_intensity;\n"
+      "uniform float u_roughness;\n"
+      "uniform float u_metalness;\n"
       "void main() {\n"
       "  vec3 ambient = u_ambient_color.rgb * 0.35;\n"
       "  vec4 base = (u_has_texture != 0) ? texture2D(u_texture, v_uv) * u_color : u_color;\n"
-      "  vec3 lit = clamp(base.rgb * v_light + ambient, 0.0, 1.0);\n"
+      "  float diff = pow(v_light, mix(1.0, 0.3, u_roughness));\n"
+      "  vec3 metal_ambient = mix(ambient, ambient * base.rgb, u_metalness);\n"
+      "  vec3 lit = clamp(base.rgb * diff + metal_ambient, 0.0, 1.0);\n"
       "  if (u_fog_enabled != 0) {\n"
       "    float depth_linear = v_depth * 0.5 + 0.5;\n"
       "    float fog_t = clamp((depth_linear - u_fog_near / (u_fog_far + 0.001)) / ((u_fog_far - u_fog_near) / (u_fog_far + 0.001)), 0.0, 1.0);\n"
@@ -8071,6 +8091,10 @@ static bool gles_create_cube_program(void)
    gles.cube_texture_uniform = gles.GetUniformLocation(program, "u_texture");
    gles.cube_emissive_color_uniform = gles.GetUniformLocation(program, "u_emissive_color");
    gles.cube_emissive_intensity_uniform = gles.GetUniformLocation(program, "u_emissive_intensity");
+   gles.cube_roughness_uniform = gles.GetUniformLocation(program, "u_roughness");
+   gles.cube_metalness_uniform = gles.GetUniformLocation(program, "u_metalness");
+   gles.cube_uv_offset_uniform = gles.GetUniformLocation(program, "u_uv_offset");
+   gles.cube_uv_scale_uniform = gles.GetUniformLocation(program, "u_uv_scale");
    return gles.cube_position_attrib >= 0 && gles.cube_normal_attrib >= 0 &&
       gles.cube_mvp_uniform >= 0 && gles.cube_normal_matrix_uniform >= 0 &&
       gles.cube_color_uniform >= 0 && gles.cube_ambient_uniform >= 0 &&
@@ -8338,6 +8362,7 @@ static bool gles_load_functions(void)
    gles.TexSubImage2D = (PFNGLTEXSUBIMAGE2DPROC)load_gles_proc("glTexSubImage2D");
    gles.Uniform1i = (PFNGLUNIFORM1IPROC)load_gles_proc("glUniform1i");
    gles.Uniform1f = (PFNGLUNIFORM1FPROC)load_gles_proc("glUniform1f");
+   gles.Uniform2f = (PFNGLUNIFORM2FPROC)load_gles_proc("glUniform2f");
    gles.BlendFunc = (PFNGLBLENDFUNCPROC)load_gles_proc("glBlendFunc");
    /* FBO procs — optional; post-processing degrades gracefully if absent */
    gles.GenFramebuffers = (PFNGLGENFRAMEBUFFERSPROC)load_gles_proc("glGenFramebuffers");
@@ -8506,11 +8531,31 @@ static void render_gles_primitive(const struct nova64_mesh *mesh, const float vi
    }
    if (gles.cube_emissive_intensity_uniform >= 0 && gles.Uniform1f)
       gles.Uniform1f(gles.cube_emissive_intensity_uniform, mesh->emissive_intensity);
-   /* enable blending for semi-transparent meshes */
+   /* roughness / metalness */
+   if (gles.cube_roughness_uniform >= 0 && gles.Uniform1f)
+      gles.Uniform1f(gles.cube_roughness_uniform, mesh->roughness);
+   if (gles.cube_metalness_uniform >= 0 && gles.Uniform1f)
+      gles.Uniform1f(gles.cube_metalness_uniform, mesh->metalness);
+   /* UV transforms */
+   if (gles.cube_uv_offset_uniform >= 0 && gles.Uniform2f)
+      gles.Uniform2f(gles.cube_uv_offset_uniform, mesh->uv_offset[0], mesh->uv_offset[1]);
+   if (gles.cube_uv_scale_uniform >= 0 && gles.Uniform2f)
+      gles.Uniform2f(gles.cube_uv_scale_uniform, mesh->uv_scale[0], mesh->uv_scale[1]);
+   /* blend mode */
    bool mesh_transparent = mesh->opacity < 0.999f;
-   if (mesh_transparent) {
+   bool did_blend = false;
+   if (mesh->mesh_blend == NOVA64_MESH_BLEND_ADDITIVE) {
+      gles.Enable(GL_BLEND);
+      gles.BlendFunc(GL_SRC_ALPHA, GL_ONE);
+      did_blend = true;
+   } else if (mesh->mesh_blend == NOVA64_MESH_BLEND_MULTIPLY) {
+      gles.Enable(GL_BLEND);
+      gles.BlendFunc(GL_DST_COLOR, GL_ZERO);
+      did_blend = true;
+   } else if (mesh_transparent) {
       gles.Enable(GL_BLEND);
       gles.BlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+      did_blend = true;
    }
    gles.BindBuffer(GL_ARRAY_BUFFER, vbo);
    gles.BindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo);
@@ -8523,7 +8568,7 @@ static void render_gles_primitive(const struct nova64_mesh *mesh, const float vi
    gles.DrawElements(GL_TRIANGLES, index_count, GL_UNSIGNED_SHORT, NULL);
    gles.DisableVertexAttribArray((GLuint)gles.cube_normal_attrib);
    gles.DisableVertexAttribArray((GLuint)gles.cube_position_attrib);
-   if (mesh_transparent)
+   if (did_blend)
       gles.Disable(GL_BLEND);
 }
 

@@ -406,33 +406,17 @@ Sprite-sheet first pass done:
     `sprNamed(sheet, name, dx, dy)` draws named atlas regions. `32-spritesheet.js`
     covers indexed and named blits from a generated package asset.
 
+**Done (since last update):**
+
+- ~~Custom bitmap fonts~~ **Done**: `loadFont(path [, glyphW, glyphH])`, `printFont(text, x, y, color, handle)`, `textWidthFont(text, handle)`. `86-bitmap-font.js`.
+- ~~Stereo pan / voice handle state~~ **Done**: `setVoicePitch`, `setVoiceVolume`, `stopVoice`, `getVoicePitch`, `getVoiceVolume`. `91-stereo-pan.js`, `99-voice-handle.js`.
+- ~~Hot reload~~ **Done**: `NOVA64_HOT_RELOAD=1` re-reads cart from disk on reset. `92-hot-reload.js`.
+
 Still missing in 8B:
 
-- Full tilemap API (Godot/web parity):
-  - `createTilemap(tileW, tileH, cols, rows)` — allocates a tilemap buffer.
-  - `setTile(map, col, row, tileIndex)` — sets a cell.
-  - `drawTilemap(map, dx, dy, tilesheetPath)` — draws using a package asset
-    tilesheet. The tilesheet is an RGBA image; tile index picks the source crop.
-  - `clearTilemap(map)`, `destroyTilemap(map)`.
-  - Conformance: `31-tilemap.js` with a generated 4×4 tilesheet asset.
-- ~~2D camera zoom/rotation~~ **Done** for core primitive placement and state
-  reporting; sprite/tilemap scaling and rotated blits remain future polish.
-- ~~Blend modes for 2D~~ **Done**: `setBlend2D('normal'|'additive'|'multiply'|'screen')`
-  applied per-pixel in the software framebuffer blit path; `clearBlend2D()` resets.
-  `46-blend2d.js` conformance cart covers API existence and all four modes.
-  `alpha` blend mode and `getBlend2D()` are now covered by `70-draw-shapes.js`.
-- Custom bitmap fonts:
-  - `loadFont(path [, glyphW, glyphH])` — loads a package RGBA glyph sheet.
-  - `print(text, x, y, color [, align [, font]])` — use a loaded font handle.
-  - `textWidth(text, font)` — measure with a custom font.
-- ~~Palette helpers~~ **Done**:
-  - `setPalette(index, color)` / `getPalette(index)` manage a 16-color palette.
-  - `applyPaletteSwap(from, to)` / `clearPaletteSwap()` provide exact-color
-    palette substitution for retro-style palette tricks.
-  - `69-palette-swap.js` covers bindings, capability reporting, and visual output.
 - Draw-order / z-sorting for 2D sprites:
   - `spr(path, dx, dy, ..., z)` optional z depth for painter's sort.
-- Conformance updates for all new 2D features.
+- Conformance updates for any newly-added 2D features.
 
 ### 8C: Audio Completion
 
@@ -462,10 +446,12 @@ The current audio covers procedural SFX and single-channel PCM playback.
 - ~~Echo/reverb~~ **Done** — `setEcho(mix, delay, decay)` / `clearEcho()`.
 - ~~Positional 3D audio~~ **Done** — `setListenerPos(x,y,z)`, `playSound3D(path, x,y,z,vol,maxDist)`.
 
-Still missing:
+**Done (since last update):**
 
-- Stereo PCM/WAV asset playback (current path only handles mono).
-- `getVoicePitch(handle)` / `getVoiceVolume(handle)` live state accessors.
+- ~~Stereo WAV~~ **Done**: `102-stereo-audio.js` covers stereo PCM decode and mix.
+- ~~`getVoicePitch`/`getVoiceVolume`~~ **Done**: live state accessors. `99-voice-handle.js`.
+
+All 8C items complete.
 
 ### 8D: Input Expansion
 
@@ -530,28 +516,20 @@ JS error reporting done:
 
 Still needed:
 
-- RetroArch core info content database matching on manifest metadata fields.
+- RetroArch core info content database matching on manifest metadata fields (manual task, no code change).
 
 ### 8F: Asset Pipeline Expansion
 
-- PNG decode:
-  - `spr()` and `createTexture()` should accept `.png` assets decoded via
-    `stb_image` at load time. Currently only raw RGBA `.rgba` is supported.
-  - Conformance: a `.nova` package with a PNG sprite.
-- Atlas/tilesheet definitions:
-  - Accept a sidecar `.json` describing named regions alongside image assets.
-  - `sprNamed()` reads from this atlas rather than auto-slicing.
-- Font loading:
-  - Accept a `.ttf` or glyph-sheet PNG plus JSON metrics for `loadFont()`.
-- Audio formats:
-  - OGG Vorbis (stb_vorbis) and multi-channel WAV decode at asset-load time.
-- Hot reload in development:
-  - `NOVA64_HOT_RELOAD=1` env flag: re-read cart file from disk on cart reset
-    so incremental edit cycles don't require a full RetroArch restart.
-- Asset size limits and quota:
-  - Configurable `NOVA64_ASSET_QUOTA` limit prevents package asset staging from
-    exceeding the quota. `nova64.assets.quota()` reports used/max/count/missing
-    and rejected asset counts. `41-asset-quota.js` covers rejection.
+**Done (since last update):**
+
+- ~~PNG decode~~ **Done**: `spr()` and `createTexture()` accept `.png` assets via built-in PNG decoder (`decode_png_asset`). Sprites and textures loaded from package assets auto-detect PNG vs raw RGBA by magic bytes.
+- ~~Atlas/tilesheet definitions~~ **Done**: `sprNamed(sheet, name, dx, dy)` reads sidecar JSON atlas. `32-spritesheet.js`.
+- ~~Font loading~~ **Done**: `loadFont(path)` accepts glyph-sheet RGBA/PNG with optional JSON metrics. `86-bitmap-font.js`.
+- ~~OGG Vorbis~~ **Done**: `stb_vorbis` auto-detected on `.ogg` assets in `playSound`/`playMusic`.
+- ~~Hot reload~~ **Done**: `NOVA64_HOT_RELOAD=1`. `92-hot-reload.js`.
+- ~~Asset quota~~ **Done**: `NOVA64_ASSET_QUOTA`; `nova64.assets.quota()`. `41-asset-quota.js`.
+
+All 8F items complete.
 
 ### 8G: Storage Expansion
 
@@ -561,31 +539,26 @@ Namespaced storage done:
     save/load/delete aliases and `has`, keyed under the current cart plus the
     namespace. `43-storage-namespace.js` covers namespace isolation.
 
+**Done (since last update):**
+
+- ~~Migration helpers~~ **Done**: `storageVersion()` / `storageSetVersion(n)` / `nova64.storage.version()`. `84-storage-cart-ids.js`.
+- ~~Enumerate all carts~~ **Done**: `cartIds()` / `nova64.storage.cartIds()`. `84-storage-cart-ids.js`.
+
 Still missing:
 
-- Migration helpers:
-  - `nova64.storage.version()` — returns the stored data-version integer.
-  - `nova64.storage.setVersion(n)` — update it after a migration.
-- Key compression:
-  - Optionally store values as compressed JSON (LZ4 or miniz deflate) to reduce
-    save-directory file sizes for large cart state.
-- Enumerate all carts:
-  - `nova64.storage.cartIds()` — list all cart IDs that have stored data. Useful
-    for a cart hub or launcher built on top of Nova64.
+- Key compression: optionally store values as compressed JSON to reduce save-directory file sizes for large cart state (low priority).
 
 ### 8H: Physics (Lightweight)
 
 Carts that need collision currently implement their own AABB logic. A thin
 built-in physics layer removes this burden without adding a heavy dependency.
 
-- AABB / circle collision helpers:
-  - `createCollider(type, ...)` — 'box' or 'circle' with dimensions.
-  - `moveAndCollide(collider, dx, dy, others)` — returns collision result.
-  - No dynamics engine; purely kinematic. Works for platformers, top-down RPGs.
-- 3D raycast:
-  - `raycast(origin, direction, maxDist)` — returns hit handle, point, normal
-    against scene meshes. Used for mouse picking and terrain probing.
-- Conformance: `35-physics.js` with a simple AABB bounce test.
+**Done:**
+
+- ~~AABB / circle colliders~~ **Done**: `createCollider('box'|'circle', ...)`, `moveAndCollide(...)`.
+- ~~3D raycast~~ **Done**: `raycast(origin, direction, maxDist)`. `85-raycast.js`.
+
+All 8H items complete.
 
 ### 8I: Platform, RetroArch Parity, And Packaging
 

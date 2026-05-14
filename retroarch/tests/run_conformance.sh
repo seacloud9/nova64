@@ -471,4 +471,9 @@ run_visual_case "85 raycast"       "85-raycast"       "retroarch/conformance/85-
 run_visual_case "86 bitmap font"   "86-bitmap-font"   "retroarch/conformance/86-bitmap-font.js"   "2bc8c5bfa38e71dc"
 run_visual_case "87 resolution"    "87-resolution"    "retroarch/conformance/87-resolution.js"    "814d1457723bb11b"
 
+run_visual_case "88 echo api"        "88-echo"             "retroarch/conformance/88-echo.js"             "2a6874d8dc393448"
+run_visual_case "89 positional audio" "89-positional-audio" "retroarch/conformance/89-positional-audio.js" "fbb4bb11cac086fa"
+run_visual_case "90 developer mode"  "90-developer-mode"   "retroarch/conformance/90-developer-mode.js"   "4fc5aba23dda88d6"
+run_visual_case "91 stereo pan"      "91-stereo-pan"       "retroarch/conformance/91-stereo-pan.js"       "14e58194e07a35b0"
+
 echo "Conformance passed."

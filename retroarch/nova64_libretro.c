@@ -281,6 +281,7 @@ struct nova64_audio_voice {
    bool pcm_loop;
    int16_t *ogg_decoded_data; /* owned malloc'd PCM from OGG decode, NULL otherwise */
    char channel[32];          /* named channel for volume grouping (8C) */
+   float pan;                 /* stereo pan: -1 left, 0 center, +1 right (8C batch4) */
 };
 
 struct nova64_sfx_params {
@@ -762,6 +763,18 @@ static struct nova64_audio_voice audio_voices[NOVA64_AUDIO_MAX_VOICES];
 static int16_t audio_mix_buffer[NOVA64_AUDIO_FRAME_SAMPLES * 2];
 static double audio_master_volume = 0.4;
 
+/* ── Echo / delay ────────────────────────────────────────── */
+#define NOVA64_ECHO_BUF_SIZE 44100   /* 1-second ring buffer */
+static int16_t echo_buf[NOVA64_ECHO_BUF_SIZE * 2]; /* L,R interleaved */
+static size_t echo_write_pos = 0;
+static int echo_delay_frames = 0;  /* 0 = echo off */
+static float echo_decay = 0.5f;
+static float echo_wet   = 0.5f;
+
+/* ── Positional audio ─────────────────────────────────────── */
+static float listener_pos[3]; /* defaults 0,0,0; update with setListenerPos */
+static bool g_developer_mode = false;
+
 /* Dedicated music state — looping background track, one at a time */
 struct nova64_music_state {
    bool active;
@@ -930,8 +943,9 @@ static void set_core_variables(void)
       return;
 
    static struct retro_variable variables[] = {
-      {"nova64_renderer",   "Renderer backend; opengles3|vulkan12"},
-      {"nova64_resolution", "Resolution; 640x360|320x180|1280x720"},
+      {"nova64_renderer",       "Renderer backend; opengles3|vulkan12"},
+      {"nova64_resolution",     "Resolution; 640x360|320x180|1280x720"},
+      {"nova64_developer_mode", "Developer mode; disable|enable"},
       {NULL, NULL},
    };
    environ_cb(RETRO_ENVIRONMENT_SET_VARIABLES, variables);
@@ -1459,12 +1473,20 @@ static void audio_mix_frame(void)
       return;
 
    for (size_t i = 0; i < NOVA64_AUDIO_FRAME_SAMPLES; i++) {
-      double mixed = 0.0;
+      double mixed_l = 0.0, mixed_r = 0.0;
+
+      /* Mix voices with per-voice panning */
       for (size_t v = 0; v < NOVA64_AUDIO_MAX_VOICES; v++) {
-         if (audio_voices[v].active)
-            mixed += audio_sample_voice(&audio_voices[v]);
+         if (!audio_voices[v].active) continue;
+         double s = audio_sample_voice(&audio_voices[v]);
+         double p = (double)audio_voices[v].pan;
+         /* Constant-power panning: pan in [-1,+1] */
+         double angle = (p + 1.0) * (3.14159265 / 4.0); /* 0..PI/2 */
+         mixed_l += s * cos(angle);
+         mixed_r += s * sin(angle);
       }
-      /* Mix music track */
+
+      /* Mix music track (center, no panning) */
       if (music_state.active && !music_state.paused && music_state.pcm_data) {
          size_t mi = (size_t)music_state.pcm_pos;
          if (mi < music_state.pcm_frames) {
@@ -1473,18 +1495,34 @@ static void audio_mix_frame(void)
                ? (double)music_state.pcm_data[(mi + 1) * music_state.pcm_channels] / 32768.0
                : s0;
             double frac = music_state.pcm_pos - (double)mi;
-            mixed += (s0 + (s1 - s0) * frac) * music_state.vol;
+            double ms = (s0 + (s1 - s0) * frac) * music_state.vol;
+            mixed_l += ms;
+            mixed_r += ms;
          }
          music_state.pcm_pos += music_state.pcm_rate / NOVA64_SAMPLE_RATE;
-         if ((size_t)music_state.pcm_pos >= music_state.pcm_frames) {
-            /* Loop back to start */
+         if ((size_t)music_state.pcm_pos >= music_state.pcm_frames)
             music_state.pcm_pos = 0.0;
-         }
       }
-      mixed = clamp_double(mixed * audio_master_volume, -1.0, 1.0);
-      int16_t sample = (int16_t)(mixed * 32767.0);
-      audio_mix_buffer[i * 2 + 0] = sample;
-      audio_mix_buffer[i * 2 + 1] = sample;
+
+      mixed_l = clamp_double(mixed_l * audio_master_volume, -1.0, 1.0);
+      mixed_r = clamp_double(mixed_r * audio_master_volume, -1.0, 1.0);
+
+      /* Echo / delay feedback */
+      if (echo_delay_frames > 0) {
+         int rp = ((int)echo_write_pos - echo_delay_frames + NOVA64_ECHO_BUF_SIZE) % NOVA64_ECHO_BUF_SIZE;
+         double old_l = echo_buf[rp * 2 + 0] / 32767.0;
+         double old_r = echo_buf[rp * 2 + 1] / 32767.0;
+         /* Write feedback (dry + decay*old) into ring buffer */
+         echo_buf[echo_write_pos * 2 + 0] = (int16_t)(clamp_double(mixed_l + echo_decay * old_l, -1.0, 1.0) * 32767.0);
+         echo_buf[echo_write_pos * 2 + 1] = (int16_t)(clamp_double(mixed_r + echo_decay * old_r, -1.0, 1.0) * 32767.0);
+         echo_write_pos = (echo_write_pos + 1) % (size_t)NOVA64_ECHO_BUF_SIZE;
+         /* Add wet echo to output */
+         mixed_l = clamp_double(mixed_l + echo_wet * old_l, -1.0, 1.0);
+         mixed_r = clamp_double(mixed_r + echo_wet * old_r, -1.0, 1.0);
+      }
+
+      audio_mix_buffer[i * 2 + 0] = (int16_t)(mixed_l * 32767.0);
+      audio_mix_buffer[i * 2 + 1] = (int16_t)(mixed_r * 32767.0);
    }
    audio_batch_cb(audio_mix_buffer, NOVA64_AUDIO_FRAME_SAMPLES);
 }
@@ -1502,6 +1540,12 @@ static void reset_audio_state(void)
       free(music_state.ogg_decoded_data);
    memset(&music_state, 0, sizeof(music_state));
    music_state.vol = 1.0f;
+   memset(echo_buf, 0, sizeof(echo_buf));
+   echo_write_pos = 0;
+   echo_delay_frames = 0;
+   echo_decay = 0.5f;
+   echo_wet   = 0.5f;
+   memset(listener_pos, 0, sizeof(listener_pos));
 }
 
 static void clear_framebuffer(uint32_t color)
@@ -6648,6 +6692,98 @@ static JSValue js_get_resolution(JSContext *ctx, JSValueConst this_val, int argc
    return obj;
 }
 
+/* ── Audio echo / delay (8C batch4) ───────────────────── */
+static JSValue js_set_echo(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 1) return JS_UNDEFINED;
+   double delay_sec = double_from_js(ctx, argv[0], 0.3);
+   echo_decay = (float)clamp_double(argc > 1 ? double_from_js(ctx, argv[1], 0.5) : 0.5, 0.0, 0.99);
+   echo_wet   = (float)clamp_double(argc > 2 ? double_from_js(ctx, argv[2], 0.5) : 0.5, 0.0, 1.0);
+   int frames = (int)(delay_sec * NOVA64_SAMPLE_RATE);
+   if (frames < 1) frames = 1;
+   if (frames >= NOVA64_ECHO_BUF_SIZE) frames = NOVA64_ECHO_BUF_SIZE - 1;
+   echo_delay_frames = frames;
+   return JS_UNDEFINED;
+}
+
+static JSValue js_clear_echo(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val; (void)argc; (void)argv; (void)ctx;
+   echo_delay_frames = 0;
+   memset(echo_buf, 0, sizeof(echo_buf));
+   echo_write_pos = 0;
+   return JS_UNDEFINED;
+}
+
+/* ── Positional 3D audio (8C batch4) ─────────────────── */
+static JSValue js_set_listener_pos(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc >= 3) {
+      listener_pos[0] = (float)double_from_js(ctx, argv[0], 0.0);
+      listener_pos[1] = (float)double_from_js(ctx, argv[1], 0.0);
+      listener_pos[2] = (float)double_from_js(ctx, argv[2], 0.0);
+   }
+   return JS_UNDEFINED;
+}
+
+static JSValue js_play_sound_3d(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   /* playSound3D(path, x, y, z [, vol [, maxDist]]) */
+   if (argc < 4) return JS_NewBool(ctx, false);
+   float sx = (float)double_from_js(ctx, argv[1], 0.0);
+   float sy = (float)double_from_js(ctx, argv[2], 0.0);
+   float sz = (float)double_from_js(ctx, argv[3], 0.0);
+   double vol_arg = argc > 4 ? double_from_js(ctx, argv[4], 1.0) : 1.0;
+   double max_dist = argc > 5 ? double_from_js(ctx, argv[5], 10.0) : 10.0;
+   if (max_dist < 0.001) max_dist = 0.001;
+
+   float dx = sx - listener_pos[0];
+   float dy = sy - listener_pos[1];
+   float dz = sz - listener_pos[2];
+   double dist = sqrt((double)dx*dx + (double)dy*dy + (double)dz*dz);
+   double vol_scale = clamp_double(1.0 - dist / max_dist, 0.0, 1.0);
+   if (vol_scale < 0.001) return JS_NewBool(ctx, false); /* inaudible */
+
+   /* Pan based on relative X direction from listener */
+   double raw_pan = clamp_double((double)dx / max_dist, -1.0, 1.0);
+
+   /* Build argv subset for js_play_sound: (path, vol_scaled, loop?, channel?) */
+   JSValue call_argv[4];
+   call_argv[0] = argv[0];
+   call_argv[1] = JS_NewFloat64(ctx, vol_arg * vol_scale);
+   call_argv[2] = JS_NewBool(ctx, false);
+   call_argv[3] = JS_UNDEFINED;
+   JSValue result = js_play_sound(ctx, JS_UNDEFINED, 3, call_argv);
+   JS_FreeValue(ctx, call_argv[1]);
+
+   /* Patch the most recently activated voice with the computed pan */
+   for (int v = (int)NOVA64_AUDIO_MAX_VOICES - 1; v >= 0; v--) {
+      if (audio_voices[v].active && audio_voices[v].pan == 0.0f &&
+            audio_voices[v].wave == NOVA64_AUDIO_PCM && audio_voices[v].pcm_pos < 2.0) {
+         audio_voices[v].pan = (float)raw_pan;
+         break;
+      }
+   }
+   return result;
+}
+
+/* ── Developer mode (8I batch4) ──────────────────────── */
+static JSValue js_is_developer_mode(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val; (void)argc; (void)argv;
+   if (!g_developer_mode && environ_cb) {
+      struct retro_variable v;
+      v.key = "nova64_developer_mode";
+      v.value = NULL;
+      if (environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &v) && v.value)
+         g_developer_mode = (v.value[0] == 'e'); /* "enable" */
+   }
+   return JS_NewBool(ctx, g_developer_mode);
+}
+
 static void set_function(JSContext *ctx, JSValue object, const char *name, JSCFunction *fn, int length)
 {
    JS_SetPropertyStr(ctx, object, name, JS_NewCFunction(ctx, fn, name, length));
@@ -7196,6 +7332,30 @@ static bool install_nova64_api(JSContext *ctx)
    /* Resolution query (8I) */
    set_function(ctx, global, "getResolution", js_get_resolution, 0);
    set_function(ctx, nova64, "getResolution", js_get_resolution, 0);
+
+   /* Echo / delay (8C batch4) */
+   set_function(ctx, global, "setEcho",   js_set_echo,   3);
+   set_function(ctx, global, "clearEcho", js_clear_echo, 0);
+   {
+      JSValue aud = JS_GetPropertyStr(ctx, nova64, "audio");
+      set_function(ctx, aud, "setEcho",   js_set_echo,   3);
+      set_function(ctx, aud, "clearEcho", js_clear_echo, 0);
+      JS_FreeValue(ctx, aud);
+   }
+
+   /* Positional 3D audio (8C batch4) */
+   set_function(ctx, global, "setListenerPos", js_set_listener_pos, 3);
+   set_function(ctx, global, "playSound3D",    js_play_sound_3d,    6);
+   {
+      JSValue aud = JS_GetPropertyStr(ctx, nova64, "audio");
+      set_function(ctx, aud, "setListenerPos", js_set_listener_pos, 3);
+      set_function(ctx, aud, "playSound3D",    js_play_sound_3d,    6);
+      JS_FreeValue(ctx, aud);
+   }
+
+   /* Developer mode (8I batch4) */
+   set_function(ctx, global, "isDeveloperMode", js_is_developer_mode, 0);
+   set_function(ctx, nova64, "isDeveloperMode", js_is_developer_mode, 0);
 
    JS_FreeValue(ctx, global);
    return true;
@@ -9101,6 +9261,10 @@ void RETRO_CALLCONV retro_set_environment(retro_environment_t cb)
    memset(&rif, 0, sizeof(rif));
    if (cb(RETRO_ENVIRONMENT_GET_RUMBLE_INTERFACE, &rif) && rif.set_rumble_state)
       rumble_fn = rif.set_rumble_state;
+
+   /* Signal achievement support stub (RETRO_ENVIRONMENT_SET_SUPPORT_ACHIEVEMENTS = 63) */
+   bool achievements_supported = true;
+   cb(63, &achievements_supported);
 }
 
 void RETRO_CALLCONV retro_set_audio_sample(retro_audio_sample_t cb)

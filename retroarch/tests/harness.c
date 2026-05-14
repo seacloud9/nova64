@@ -1,5 +1,6 @@
 #include <dlfcn.h>
 #include <errno.h>
+#include <math.h>
 #include <stdarg.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -8,6 +9,257 @@
 #include <string.h>
 
 #include "../libretro.h"
+
+/* ── EGL/GLES3 headless context ─────────────────────────────────────────────
+ * All EGL types and functions are loaded dynamically via dlopen so that
+ * no EGL dev headers are required. libEGL.so.1 ships with libegl-mesa0.
+ * GL functions are retrieved via eglGetProcAddress after context creation.
+ * ───────────────────────────────────────────────────────────────────────── */
+
+/* EGL opaque handle types */
+typedef void *HarnessEGLDisplay;
+typedef void *HarnessEGLContext;
+typedef void *HarnessEGLSurface;
+typedef void *HarnessEGLConfig;
+typedef int   HarnessEGLBoolean;
+typedef int   HarnessEGLint;
+typedef unsigned int HarnessEGLenum;
+
+#define HARNESS_EGL_DEFAULT_DISPLAY  ((void *)0)
+#define HARNESS_EGL_NO_DISPLAY       ((HarnessEGLDisplay)0)
+#define HARNESS_EGL_NO_CONTEXT       ((HarnessEGLContext)0)
+#define HARNESS_EGL_NO_SURFACE       ((HarnessEGLSurface)0)
+#define HARNESS_EGL_OPENGL_ES_API    0x30A0
+#define HARNESS_EGL_CONTEXT_CLIENT_VERSION 0x3098
+#define HARNESS_EGL_NONE             0x3038
+#define HARNESS_EGL_TRUE             1
+
+/* GL constants needed for FBO setup */
+#define HARNESS_GL_RGBA              0x1908
+#define HARNESS_GL_UNSIGNED_BYTE     0x1401
+#define HARNESS_GL_TEXTURE_2D        0x0DE1
+#define HARNESS_GL_RENDERBUFFER      0x8D41
+#define HARNESS_GL_FRAMEBUFFER       0x8D40
+#define HARNESS_GL_COLOR_ATTACHMENT0 0x8CE0
+#define HARNESS_GL_DEPTH_ATTACHMENT  0x8D00
+#define HARNESS_GL_DEPTH_COMPONENT16 0x81A5
+#define HARNESS_GL_FRAMEBUFFER_COMPLETE 0x8CD5
+
+/* EGL function pointer types */
+typedef HarnessEGLDisplay (*pfn_eglGetDisplay)(void *);
+typedef HarnessEGLBoolean (*pfn_eglInitialize)(HarnessEGLDisplay, HarnessEGLint *, HarnessEGLint *);
+typedef HarnessEGLBoolean (*pfn_eglBindAPI)(HarnessEGLenum);
+typedef HarnessEGLContext (*pfn_eglCreateContext)(HarnessEGLDisplay, HarnessEGLConfig, HarnessEGLContext, const HarnessEGLint *);
+typedef HarnessEGLBoolean (*pfn_eglMakeCurrent)(HarnessEGLDisplay, HarnessEGLSurface, HarnessEGLSurface, HarnessEGLContext);
+typedef HarnessEGLBoolean (*pfn_eglDestroyContext)(HarnessEGLDisplay, HarnessEGLContext);
+typedef HarnessEGLBoolean (*pfn_eglTerminate)(HarnessEGLDisplay);
+typedef void *(*pfn_eglGetProcAddress)(const char *);
+typedef HarnessEGLint (*pfn_eglGetError)(void);
+
+/* GL function pointer types (unsigned int = GLuint/GLenum, int = GLint/GLsizei) */
+typedef void (*pfn_glGenFramebuffers)(int, unsigned int *);
+typedef void (*pfn_glBindFramebuffer)(unsigned int, unsigned int);
+typedef void (*pfn_glGenTextures)(int, unsigned int *);
+typedef void (*pfn_glBindTexture)(unsigned int, unsigned int);
+typedef void (*pfn_glTexImage2D)(unsigned int, int, int, int, int, int, unsigned int, unsigned int, const void *);
+typedef void (*pfn_glTexParameteri)(unsigned int, unsigned int, int);
+typedef void (*pfn_glGenRenderbuffers)(int, unsigned int *);
+typedef void (*pfn_glBindRenderbuffer)(unsigned int, unsigned int);
+typedef void (*pfn_glRenderbufferStorage)(unsigned int, unsigned int, int, int);
+typedef void (*pfn_glFramebufferTexture2D)(unsigned int, unsigned int, unsigned int, unsigned int, int);
+typedef void (*pfn_glFramebufferRenderbuffer)(unsigned int, unsigned int, unsigned int, unsigned int);
+typedef unsigned int (*pfn_glCheckFramebufferStatus)(unsigned int);
+typedef void (*pfn_glReadPixels)(int, int, int, int, unsigned int, unsigned int, void *);
+typedef void (*pfn_glDeleteFramebuffers)(int, const unsigned int *);
+typedef void (*pfn_glDeleteTextures)(int, const unsigned int *);
+typedef void (*pfn_glDeleteRenderbuffers)(int, const unsigned int *);
+typedef void (*pfn_glFinish)(void);
+
+/* Runtime-loaded EGL state */
+static void *g_egl_lib = NULL;
+static pfn_eglGetDisplay      g_eglGetDisplay;
+static pfn_eglInitialize      g_eglInitialize;
+static pfn_eglBindAPI         g_eglBindAPI;
+static pfn_eglCreateContext   g_eglCreateContext;
+static pfn_eglMakeCurrent     g_eglMakeCurrent;
+static pfn_eglDestroyContext  g_eglDestroyContext;
+static pfn_eglTerminate       g_eglTerminate;
+static pfn_eglGetProcAddress  g_eglGetProcAddress;
+static pfn_eglGetError        g_eglGetError;
+
+/* Runtime-loaded GL state */
+static pfn_glGenFramebuffers       g_glGenFramebuffers;
+static pfn_glBindFramebuffer       g_glBindFramebuffer;
+static pfn_glGenTextures           g_glGenTextures;
+static pfn_glBindTexture           g_glBindTexture;
+static pfn_glTexImage2D            g_glTexImage2D;
+static pfn_glTexParameteri         g_glTexParameteri;
+static pfn_glGenRenderbuffers      g_glGenRenderbuffers;
+static pfn_glBindRenderbuffer      g_glBindRenderbuffer;
+static pfn_glRenderbufferStorage   g_glRenderbufferStorage;
+static pfn_glFramebufferTexture2D  g_glFramebufferTexture2D;
+static pfn_glFramebufferRenderbuffer g_glFramebufferRenderbuffer;
+static pfn_glCheckFramebufferStatus g_glCheckFramebufferStatus;
+static pfn_glReadPixels            g_glReadPixels;
+static pfn_glDeleteFramebuffers    g_glDeleteFramebuffers;
+static pfn_glDeleteTextures        g_glDeleteTextures;
+static pfn_glDeleteRenderbuffers   g_glDeleteRenderbuffers;
+static pfn_glFinish                g_glFinish;
+
+/* EGL/GL state */
+static HarnessEGLDisplay g_egl_dpy = NULL;
+static HarnessEGLContext g_egl_ctx = NULL;
+static unsigned int g_fbo = 0, g_fbo_tex = 0, g_fbo_depth = 0;
+static unsigned g_hw_width = 640, g_hw_height = 360;
+static bool g_gles_active = false;    /* GLES3 context successfully created */
+static bool g_request_gles = false;   /* --gles flag passed */
+static uint8_t *g_hw_pixels = NULL;   /* readback buffer for GLES frames */
+static bool g_hw_last_frame = false;  /* last frame was a HW readback */
+static struct retro_hw_render_callback g_hw_render;
+
+static retro_proc_address_t harness_get_proc_address(const char *sym)
+{
+   return (retro_proc_address_t)(uintptr_t)g_eglGetProcAddress(sym);
+}
+
+static uintptr_t harness_get_current_framebuffer(void)
+{
+   return (uintptr_t)g_fbo;
+}
+
+static bool harness_load_egl(void)
+{
+   g_egl_lib = dlopen("libEGL.so.1", RTLD_NOW | RTLD_GLOBAL);
+   if (!g_egl_lib) {
+      fprintf(stderr, "[harness] dlopen libEGL.so.1 failed: %s\n", dlerror());
+      return false;
+   }
+#define LEGL(fn) g_##fn = (pfn_##fn)dlsym(g_egl_lib, #fn); if (!g_##fn) { fprintf(stderr,"[harness] missing EGL sym: %s\n",#fn); return false; }
+   LEGL(eglGetDisplay)
+   LEGL(eglInitialize)
+   LEGL(eglBindAPI)
+   LEGL(eglCreateContext)
+   LEGL(eglMakeCurrent)
+   LEGL(eglDestroyContext)
+   LEGL(eglTerminate)
+   LEGL(eglGetProcAddress)
+   LEGL(eglGetError)
+#undef LEGL
+   return true;
+}
+
+static void harness_load_gl(void)
+{
+#define LGL(fn) g_##fn = (pfn_##fn)((uintptr_t)g_eglGetProcAddress(#fn));
+   LGL(glGenFramebuffers)
+   LGL(glBindFramebuffer)
+   LGL(glGenTextures)
+   LGL(glBindTexture)
+   LGL(glTexImage2D)
+   LGL(glTexParameteri)
+   LGL(glGenRenderbuffers)
+   LGL(glBindRenderbuffer)
+   LGL(glRenderbufferStorage)
+   LGL(glFramebufferTexture2D)
+   LGL(glFramebufferRenderbuffer)
+   LGL(glCheckFramebufferStatus)
+   LGL(glReadPixels)
+   LGL(glDeleteFramebuffers)
+   LGL(glDeleteTextures)
+   LGL(glDeleteRenderbuffers)
+   LGL(glFinish)
+#undef LGL
+}
+
+static bool harness_setup_gles3(void)
+{
+   if (!harness_load_egl())
+      return false;
+
+   g_egl_dpy = g_eglGetDisplay(HARNESS_EGL_DEFAULT_DISPLAY);
+   if (!g_egl_dpy) { fprintf(stderr, "[harness] eglGetDisplay failed\n"); return false; }
+
+   HarnessEGLint major = 0, minor = 0;
+   if (!g_eglInitialize(g_egl_dpy, &major, &minor)) {
+      fprintf(stderr, "[harness] eglInitialize failed: %x\n", g_eglGetError());
+      return false;
+   }
+   fprintf(stderr, "[harness] EGL %d.%d\n", major, minor);
+
+   if (!g_eglBindAPI(HARNESS_EGL_OPENGL_ES_API)) {
+      fprintf(stderr, "[harness] eglBindAPI GLES failed\n"); return false;
+   }
+
+   /* EGL_KHR_no_config_context: pass NULL config */
+   HarnessEGLint ctx_attrs[] = { HARNESS_EGL_CONTEXT_CLIENT_VERSION, 3, HARNESS_EGL_NONE };
+   g_egl_ctx = g_eglCreateContext(g_egl_dpy, NULL, HARNESS_EGL_NO_CONTEXT, ctx_attrs);
+   if (!g_egl_ctx) {
+      fprintf(stderr, "[harness] eglCreateContext GLES3 failed: %x\n", g_eglGetError());
+      return false;
+   }
+
+   /* EGL_KHR_surfaceless_context: make current with no surface */
+   if (!g_eglMakeCurrent(g_egl_dpy, HARNESS_EGL_NO_SURFACE, HARNESS_EGL_NO_SURFACE, g_egl_ctx)) {
+      fprintf(stderr, "[harness] eglMakeCurrent surfaceless failed: %x\n", g_eglGetError());
+      return false;
+   }
+
+   harness_load_gl();
+
+   if (!g_glGenFramebuffers) {
+      fprintf(stderr, "[harness] GL functions unavailable via eglGetProcAddress\n");
+      return false;
+   }
+
+   /* Allocate pixel readback buffer */
+   g_hw_pixels = (uint8_t *)malloc((size_t)g_hw_width * g_hw_height * 4);
+   if (!g_hw_pixels) return false;
+
+   /* Create FBO */
+   g_glGenFramebuffers(1, &g_fbo);
+   g_glBindFramebuffer(HARNESS_GL_FRAMEBUFFER, g_fbo);
+
+   g_glGenTextures(1, &g_fbo_tex);
+   g_glBindTexture(HARNESS_GL_TEXTURE_2D, g_fbo_tex);
+   g_glTexImage2D(HARNESS_GL_TEXTURE_2D, 0, (int)HARNESS_GL_RGBA,
+      (int)g_hw_width, (int)g_hw_height, 0,
+      HARNESS_GL_RGBA, HARNESS_GL_UNSIGNED_BYTE, NULL);
+   g_glFramebufferTexture2D(HARNESS_GL_FRAMEBUFFER, HARNESS_GL_COLOR_ATTACHMENT0,
+      HARNESS_GL_TEXTURE_2D, g_fbo_tex, 0);
+
+   g_glGenRenderbuffers(1, &g_fbo_depth);
+   g_glBindRenderbuffer(HARNESS_GL_RENDERBUFFER, g_fbo_depth);
+   g_glRenderbufferStorage(HARNESS_GL_RENDERBUFFER, HARNESS_GL_DEPTH_COMPONENT16,
+      (int)g_hw_width, (int)g_hw_height);
+   g_glFramebufferRenderbuffer(HARNESS_GL_FRAMEBUFFER, HARNESS_GL_DEPTH_ATTACHMENT,
+      HARNESS_GL_RENDERBUFFER, g_fbo_depth);
+
+   unsigned int status = g_glCheckFramebufferStatus(HARNESS_GL_FRAMEBUFFER);
+   if (status != HARNESS_GL_FRAMEBUFFER_COMPLETE) {
+      fprintf(stderr, "[harness] FBO incomplete: %x\n", status);
+      return false;
+   }
+
+   fprintf(stderr, "[harness] GLES3 headless FBO ready (%ux%u)\n", g_hw_width, g_hw_height);
+   return true;
+}
+
+static void harness_teardown_gles3(void)
+{
+   if (g_egl_ctx && g_egl_dpy) {
+      g_eglMakeCurrent(g_egl_dpy, HARNESS_EGL_NO_SURFACE, HARNESS_EGL_NO_SURFACE, HARNESS_EGL_NO_CONTEXT);
+      if (g_fbo)       { g_glDeleteFramebuffers(1, &g_fbo);       g_fbo = 0; }
+      if (g_fbo_tex)   { g_glDeleteTextures(1, &g_fbo_tex);       g_fbo_tex = 0; }
+      if (g_fbo_depth) { g_glDeleteRenderbuffers(1, &g_fbo_depth); g_fbo_depth = 0; }
+      g_eglDestroyContext(g_egl_dpy, g_egl_ctx);
+      g_eglTerminate(g_egl_dpy);
+      g_egl_ctx = NULL;
+      g_egl_dpy = NULL;
+   }
+   free(g_hw_pixels); g_hw_pixels = NULL;
+   if (g_egl_lib) { dlclose(g_egl_lib); g_egl_lib = NULL; }
+   g_gles_active = false;
+}
 
 static retro_log_printf_t g_log;
 static uint64_t g_checksum;
@@ -75,8 +327,18 @@ static bool harness_environment(unsigned cmd, void *data)
          }
          return false;
       }
-      case RETRO_ENVIRONMENT_SET_HW_RENDER:
-         return false;
+      case RETRO_ENVIRONMENT_SET_HW_RENDER: {
+         if (!g_request_gles)
+            return false;
+         struct retro_hw_render_callback *hw = (struct retro_hw_render_callback *)data;
+         if (!harness_setup_gles3())
+            return false;
+         hw->get_current_framebuffer = harness_get_current_framebuffer;
+         hw->get_proc_address = harness_get_proc_address;
+         g_hw_render = *hw;
+         g_gles_active = true;
+         return true;
+      }
       default:
          return false;
    }
@@ -85,9 +347,32 @@ static bool harness_environment(unsigned cmd, void *data)
 static void harness_video(const void *data, unsigned width, unsigned height, size_t pitch)
 {
    g_video_frames++;
+
+   /* RETRO_HW_FRAME_BUFFER_VALID sentinel: read back from FBO */
+   if (data == (const void *)(uintptr_t)(-1)) {
+      if (g_gles_active && g_hw_pixels) {
+         g_glFinish();
+         g_glBindFramebuffer(HARNESS_GL_FRAMEBUFFER, g_fbo);
+         g_glReadPixels(0, 0, (int)g_hw_width, (int)g_hw_height,
+            HARNESS_GL_RGBA, HARNESS_GL_UNSIGNED_BYTE, g_hw_pixels);
+         g_checksum = 1469598103934665603ULL;
+         size_t n = (size_t)g_hw_width * g_hw_height * 4;
+         for (size_t i = 0; i < n; i++) {
+            g_checksum ^= g_hw_pixels[i];
+            g_checksum *= 1099511628211ULL;
+         }
+         g_last_width  = g_hw_width;
+         g_last_height = g_hw_height;
+         g_hw_last_frame = true;
+      }
+      return;
+   }
+
    if (!data)
       return;
 
+   /* Software frame: RGB565 */
+   g_hw_last_frame = false;
    size_t pixels = (size_t)width * height;
    uint16_t *copy = (uint16_t *)realloc(g_last_frame, pixels * sizeof(uint16_t));
    if (copy) {
@@ -240,7 +525,7 @@ static char *read_file(const char *path, size_t *out_size)
 
 static bool write_ppm(const char *path)
 {
-   if (!path || !g_last_frame || !g_last_width || !g_last_height)
+   if (!path || !g_last_width || !g_last_height)
       return false;
 
    FILE *file = fopen(path, "wb");
@@ -248,16 +533,32 @@ static bool write_ppm(const char *path)
       return false;
 
    fprintf(file, "P6\n%u %u\n255\n", g_last_width, g_last_height);
-   for (unsigned y = 0; y < g_last_height; y++) {
-      for (unsigned x = 0; x < g_last_width; x++) {
-         uint16_t pixel = g_last_frame[(size_t)y * g_last_width + x];
-         uint8_t rgb[3];
-         rgb[0] = (uint8_t)(((pixel >> 11) & 0x1f) * 255 / 31);
-         rgb[1] = (uint8_t)(((pixel >> 5) & 0x3f) * 255 / 63);
-         rgb[2] = (uint8_t)((pixel & 0x1f) * 255 / 31);
-         fwrite(rgb, 1, sizeof(rgb), file);
+
+   if (g_hw_last_frame && g_hw_pixels) {
+      /* RGBA8 readback — write R,G,B; skip A */
+      for (unsigned y = 0; y < g_last_height; y++) {
+         for (unsigned x = 0; x < g_last_width; x++) {
+            const uint8_t *p = g_hw_pixels + ((size_t)y * g_last_width + x) * 4;
+            fwrite(p, 1, 3, file);
+         }
       }
+   } else if (g_last_frame) {
+      /* RGB565 software frame */
+      for (unsigned y = 0; y < g_last_height; y++) {
+         for (unsigned x = 0; x < g_last_width; x++) {
+            uint16_t pixel = g_last_frame[(size_t)y * g_last_width + x];
+            uint8_t rgb[3];
+            rgb[0] = (uint8_t)(((pixel >> 11) & 0x1f) * 255 / 31);
+            rgb[1] = (uint8_t)(((pixel >> 5) & 0x3f) * 255 / 63);
+            rgb[2] = (uint8_t)((pixel & 0x1f) * 255 / 31);
+            fwrite(rgb, 1, sizeof(rgb), file);
+         }
+      }
+   } else {
+      fclose(file);
+      return false;
    }
+
    fclose(file);
    return true;
 }
@@ -273,7 +574,7 @@ static void *load_symbol(void *core, const char *name)
 int main(int argc, char **argv)
 {
    if (argc < 3) {
-      fprintf(stderr, "usage: %s <nova64_libretro.so> <cart.js|cart.nova> [--capture path] [--command-log path] [--renderer opengles3|vulkan12] [--expect checksum] [--expect-audio checksum] [--frames n] [--seed n] [--perf] [--verbose] [--key name] [--touch-x n --touch-y n --touch-count n]\n", argv[0]);
+      fprintf(stderr, "usage: %s <nova64_libretro.so> <cart.js|cart.nova> [--capture path] [--command-log path] [--renderer opengles3|vulkan12] [--gles] [--expect checksum] [--expect-audio checksum] [--frames n] [--seed n] [--perf] [--verbose] [--key name] [--touch-x n --touch-y n --touch-count n]\n", argv[0]);
       return 2;
    }
 
@@ -332,6 +633,8 @@ int main(int argc, char **argv)
             return 2;
          }
          seed_option = argv[i];
+      } else if (!strcmp(argv[i], "--gles")) {
+         g_request_gles = true;
       } else if (!strcmp(argv[i], "--perf")) {
          perf_enabled = true;
       } else if (!strcmp(argv[i], "--verbose")) {
@@ -471,6 +774,8 @@ int main(int argc, char **argv)
    game.data = cart;
    game.size = cart_size;
    bool ok = load_game(&game);
+   if (ok && g_gles_active && g_hw_render.context_reset)
+      g_hw_render.context_reset();
    if (ok) {
       for (unsigned frame = 0; frame < frames_to_run; frame++) {
          g_joypad[RETRO_DEVICE_ID_JOYPAD_B] = frame == 1;
@@ -480,6 +785,9 @@ int main(int argc, char **argv)
    }
 
    unload_game();
+   if (g_gles_active && g_hw_render.context_destroy)
+      g_hw_render.context_destroy();
+   harness_teardown_gles3();
    deinit();
    free(cart);
    dlclose(core);

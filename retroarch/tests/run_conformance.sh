@@ -513,6 +513,7 @@ run_visual_case "99 voice handle"    "99-voice-handle"     "retroarch/conformanc
 run_visual_case "100 pbr material"     "100-pbr-material"     "retroarch/conformance/100-pbr-material.js"     "1cebb4a284ffc988"
 run_visual_case "101 uv transform"     "101-uv-transform"     "retroarch/conformance/101-uv-transform.js"     "5e3fdb809fd92a33"
 run_visual_case "102 audio resilience" "102-audio-resilience" "retroarch/conformance/102-stereo-audio.js"     "58b3c68b8833ca3a"
+run_visual_case "103 shadow map"      "103-shadow-map"      "retroarch/conformance/103-shadow-map.js"          "2af3ff820f1a8741"
 
 # GLES hardware-rendered locked checksums (run with NOVA64_GLES_TESTS=1)
 # 20-post skipped: GLES FBO crash
@@ -554,5 +555,6 @@ run_gles_case "94 create mesh"        "94-create-mesh"         "retroarch/confor
 run_gles_case "100 pbr material"      "100-pbr-material"       "retroarch/conformance/100-pbr-material.js"       "73caba476790550e"
 run_gles_case "101 uv transform"      "101-uv-transform"       "retroarch/conformance/101-uv-transform.js"       "44002286e0e4fba6"
 run_gles_case "102 audio resilience"  "102-audio-resilience"   "retroarch/conformance/102-stereo-audio.js"       "b9ab1f7141236d75"
+run_gles_case "103 shadow map"        "103-shadow-map"         "retroarch/conformance/103-shadow-map.js"         "b059978553d8413e"
 
 echo "Conformance passed."

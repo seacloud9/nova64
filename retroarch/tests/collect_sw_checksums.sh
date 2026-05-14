@@ -47,6 +47,7 @@ CARTS=(
   85-raycast
   100-pbr-material
   101-uv-transform
+  103-shadow-map
 )
 
 echo "# Software renderer checksums — $(date)"

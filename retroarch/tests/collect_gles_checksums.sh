@@ -46,6 +46,7 @@ CARTS=(
   94-create-mesh
   100-pbr-material
   101-uv-transform
+  103-shadow-map
 )
 
 echo "# GLES hardware checksums — $(date)"

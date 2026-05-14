@@ -87,6 +87,7 @@ typedef char GLchar;
 #define GL_UNSIGNED_SHORT 0x1403
 #define GL_TEXTURE_2D 0x0DE1
 #define GL_TEXTURE0 0x84C0
+#define GL_TEXTURE1 0x84C1
 #define GL_TEXTURE_MIN_FILTER 0x2801
 #define GL_TEXTURE_MAG_FILTER 0x2800
 #define GL_TEXTURE_WRAP_S 0x2802
@@ -108,6 +109,8 @@ typedef char GLchar;
 #define GL_DEPTH_ATTACHMENT 0x8D00
 #define GL_FRAMEBUFFER_COMPLETE 0x8CD5
 #define GL_DEPTH_COMPONENT16 0x81A5
+#define GL_DEPTH_COMPONENT   0x1902
+#define GL_RGB565            0x8D62
 
 typedef void (*PFNGLVIEWPORTPROC)(GLint x, GLint y, GLsizei width, GLsizei height);
 typedef void (*PFNGLCLEARCOLORPROC)(GLfloat red, GLfloat green, GLfloat blue, GLfloat alpha);
@@ -448,6 +451,19 @@ struct nova64_gles_backend {
    GLint cube_metalness_uniform;
    GLint cube_uv_offset_uniform;
    GLint cube_uv_scale_uniform;
+   /* Shadow map uniforms in cube program */
+   GLint cube_shadow_map_uniform;
+   GLint cube_shadow_mvp_uniform;
+   GLint cube_shadow_texel_size_uniform;
+   GLint cube_shadow_enabled_uniform;
+   /* Shadow map resources */
+   GLuint shadow_fbo;
+   GLuint shadow_rbo;
+   GLuint shadow_depth_tex;
+   GLuint shadow_program;
+   GLint  shadow_mvp_uniform;
+   GLint  shadow_position_attrib;
+   bool   shadow_resources_ready;
    GLint overlay_position_attrib;
    GLint overlay_uv_attrib;
    GLint overlay_texture_uniform;
@@ -570,6 +586,10 @@ enum nova64_blend_mode {
 static enum nova64_blend_mode blend_2d_mode = NOVA64_BLEND_NORMAL;
 static enum nova64_blend_mode blend_stack[NOVA64_DRAW_STACK_MAX];
 static int blend_stack_depth;
+
+/* Shadow map configuration — 0 = disabled, power-of-2 size = enabled */
+static int g_shadow_map_size = 1024;
+static float g_shadow_light_vp[16];
 
 /* Sky/background color — used as GLES clear color when enabled */
 static bool sky_color_enabled = false;
@@ -4868,6 +4888,8 @@ static JSValue js_set_mesh_opacity(JSContext *ctx, JSValueConst this_val, int ar
    return JS_NewBool(ctx, true);
 }
 
+static void gles_destroy_shadow_resources(void);
+
 static JSValue js_set_cast_shadow(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
    (void)this_val;
@@ -4886,6 +4908,25 @@ static JSValue js_set_receive_shadow(JSContext *ctx, JSValueConst this_val, int 
       return JS_NewBool(ctx, false);
    mesh->receive_shadow = argc > 1 ? JS_ToBool(ctx, argv[1]) : true;
    return JS_NewBool(ctx, true);
+}
+
+static JSValue js_set_shadow_quality(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc > 0 && JS_IsString(argv[0])) {
+      const char *q = JS_ToCString(ctx, argv[0]);
+      if (!strcmp(q, "high"))        g_shadow_map_size = 2048;
+      else if (!strcmp(q, "medium")) g_shadow_map_size = 1024;
+      else if (!strcmp(q, "low"))    g_shadow_map_size = 512;
+      else if (!strcmp(q, "off") || !strcmp(q, "none")) g_shadow_map_size = 0;
+      JS_FreeCString(ctx, q);
+   } else if (argc > 0 && JS_IsNumber(argv[0])) {
+      int32_t n = 0;
+      JS_ToInt32(ctx, &n, argv[0]);
+      g_shadow_map_size = (n <= 0) ? 0 : (n >= 512 && n <= 4096) ? n : 1024;
+   }
+   gles_destroy_shadow_resources();
+   return JS_UNDEFINED;
 }
 
 static JSValue js_set_mesh_color(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
@@ -5018,6 +5059,7 @@ static JSValue js_get_backend_capabilities(JSContext *ctx, JSValueConst this_val
    JS_SetPropertyStr(ctx, object, "meshMetalness", JS_NewBool(ctx, true));
    JS_SetPropertyStr(ctx, object, "meshUVTransform", JS_NewBool(ctx, true));
    JS_SetPropertyStr(ctx, object, "meshBlend", JS_NewBool(ctx, true));
+   JS_SetPropertyStr(ctx, object, "shadowMaps", JS_NewBool(ctx, gles.active));
    return object;
 }
 
@@ -7244,6 +7286,7 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, scene, "setMeshOpacity", js_set_mesh_opacity, 2);
    set_function(ctx, scene, "setCastShadow", js_set_cast_shadow, 2);
    set_function(ctx, scene, "setReceiveShadow", js_set_receive_shadow, 2);
+   set_function(ctx, scene, "setShadowQuality", js_set_shadow_quality, 1);
    set_function(ctx, scene, "setMeshColor", js_set_mesh_color, 2);
    set_function(ctx, scene, "setMeshEmissive", js_set_mesh_emissive, 3);
    set_function(ctx, scene, "setMeshAlpha", js_set_mesh_alpha, 2);
@@ -7513,6 +7556,7 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, global, "setMeshOpacity", js_set_mesh_opacity, 2);
    set_function(ctx, global, "setCastShadow", js_set_cast_shadow, 2);
    set_function(ctx, global, "setReceiveShadow", js_set_receive_shadow, 2);
+   set_function(ctx, global, "setShadowQuality", js_set_shadow_quality, 1);
    set_function(ctx, global, "setMeshColor", js_set_mesh_color, 2);
    set_function(ctx, global, "setMeshEmissive", js_set_mesh_emissive, 3);
    set_function(ctx, global, "setMeshAlpha", js_set_mesh_alpha, 2);
@@ -8004,9 +8048,11 @@ static bool gles_create_cube_program(void)
       "uniform vec4 u_light_direction;\n"
       "uniform vec2 u_uv_offset;\n"
       "uniform vec2 u_uv_scale;\n"
+      "uniform mat4 u_shadow_mvp;\n"
       "varying float v_light;\n"
       "varying float v_depth;\n"
       "varying vec2 v_uv;\n"
+      "varying vec4 v_shadow_coord;\n"
       "void main() {\n"
       "  vec3 n = normalize(u_normal_matrix * a_normal);\n"
       "  vec3 l = normalize(-u_light_direction.xyz);\n"
@@ -8015,12 +8061,14 @@ static bool gles_create_cube_program(void)
       "  gl_Position = u_mvp * vec4(a_position, 1.0);\n"
       "  v_depth = gl_Position.z / gl_Position.w;\n"
       "  v_uv = (a_position.xz + 0.5) * u_uv_scale + u_uv_offset;\n"
+      "  v_shadow_coord = u_shadow_mvp * vec4(a_position, 1.0);\n"
       "}\n";
    static const char *fragment_source =
       "precision mediump float;\n"
       "varying float v_light;\n"
       "varying float v_depth;\n"
       "varying vec2 v_uv;\n"
+      "varying vec4 v_shadow_coord;\n"
       "uniform vec4 u_color;\n"
       "uniform vec4 u_ambient_color;\n"
       "uniform int u_fog_enabled;\n"
@@ -8033,12 +8081,36 @@ static bool gles_create_cube_program(void)
       "uniform float u_emissive_intensity;\n"
       "uniform float u_roughness;\n"
       "uniform float u_metalness;\n"
+      "uniform sampler2D u_shadow_map;\n"
+      "uniform float u_shadow_texel_size;\n"
+      "uniform int u_shadow_enabled;\n"
+      "float shadow_tap(vec2 uv, float depth) {\n"
+      "  return depth - 0.005 > texture2D(u_shadow_map, uv).r ? 0.0 : 1.0;\n"
+      "}\n"
       "void main() {\n"
       "  vec3 ambient = u_ambient_color.rgb * 0.35;\n"
       "  vec4 base = (u_has_texture != 0) ? texture2D(u_texture, v_uv) * u_color : u_color;\n"
       "  float diff = mix(v_light, 0.75, u_roughness * 0.5);\n"
       "  vec3 metal_ambient = mix(ambient, ambient * base.rgb, u_metalness);\n"
       "  vec3 lit = clamp(base.rgb * diff + metal_ambient, 0.0, 1.0);\n"
+      "  if (u_shadow_enabled != 0) {\n"
+      "    vec3 sc = v_shadow_coord.xyz / v_shadow_coord.w;\n"
+      "    sc = sc * 0.5 + 0.5;\n"
+      "    if (sc.x >= 0.0 && sc.x <= 1.0 && sc.y >= 0.0 && sc.y <= 1.0\n"
+      "        && sc.z >= 0.0 && sc.z <= 1.0) {\n"
+      "      float ts = u_shadow_texel_size;\n"
+      "      float s = shadow_tap(sc.xy+vec2(-ts,-ts),sc.z)\n"
+      "              + shadow_tap(sc.xy+vec2(0.0,-ts),sc.z)\n"
+      "              + shadow_tap(sc.xy+vec2( ts,-ts),sc.z)\n"
+      "              + shadow_tap(sc.xy+vec2(-ts,0.0),sc.z)\n"
+      "              + shadow_tap(sc.xy+vec2(0.0,0.0),sc.z)\n"
+      "              + shadow_tap(sc.xy+vec2( ts,0.0),sc.z)\n"
+      "              + shadow_tap(sc.xy+vec2(-ts, ts),sc.z)\n"
+      "              + shadow_tap(sc.xy+vec2(0.0, ts),sc.z)\n"
+      "              + shadow_tap(sc.xy+vec2( ts, ts),sc.z);\n"
+      "      lit *= (0.35 + 0.65 * (s / 9.0));\n"
+      "    }\n"
+      "  }\n"
       "  if (u_fog_enabled != 0) {\n"
       "    float depth_linear = v_depth * 0.5 + 0.5;\n"
       "    float fog_t = clamp((depth_linear - u_fog_near / (u_fog_far + 0.001)) / ((u_fog_far - u_fog_near) / (u_fog_far + 0.001)), 0.0, 1.0);\n"
@@ -8099,10 +8171,183 @@ static bool gles_create_cube_program(void)
    gles.cube_metalness_uniform = gles.GetUniformLocation(program, "u_metalness");
    gles.cube_uv_offset_uniform = gles.GetUniformLocation(program, "u_uv_offset");
    gles.cube_uv_scale_uniform = gles.GetUniformLocation(program, "u_uv_scale");
+   gles.cube_shadow_map_uniform = gles.GetUniformLocation(program, "u_shadow_map");
+   gles.cube_shadow_mvp_uniform = gles.GetUniformLocation(program, "u_shadow_mvp");
+   gles.cube_shadow_texel_size_uniform = gles.GetUniformLocation(program, "u_shadow_texel_size");
+   gles.cube_shadow_enabled_uniform = gles.GetUniformLocation(program, "u_shadow_enabled");
    return gles.cube_position_attrib >= 0 && gles.cube_normal_attrib >= 0 &&
       gles.cube_mvp_uniform >= 0 && gles.cube_normal_matrix_uniform >= 0 &&
       gles.cube_color_uniform >= 0 && gles.cube_ambient_uniform >= 0 &&
       gles.cube_light_direction_uniform >= 0;
+}
+
+static bool gles_create_shadow_program(void)
+{
+   static const char *vertex_source =
+      "attribute vec3 a_position;\n"
+      "uniform mat4 u_mvp;\n"
+      "void main() {\n"
+      "  gl_Position = u_mvp * vec4(a_position, 1.0);\n"
+      "}\n";
+   static const char *fragment_source =
+      "precision mediump float;\n"
+      "void main() {}\n";
+
+   GLuint vertex = gles_compile_shader(GL_VERTEX_SHADER, vertex_source);
+   GLuint fragment = gles_compile_shader(GL_FRAGMENT_SHADER, fragment_source);
+   if (!vertex || !fragment) {
+      if (vertex)  gles.DeleteShader(vertex);
+      if (fragment) gles.DeleteShader(fragment);
+      return false;
+   }
+   GLuint program = gles.CreateProgram();
+   gles.AttachShader(program, vertex);
+   gles.AttachShader(program, fragment);
+   gles.LinkProgram(program);
+   gles.DeleteShader(vertex);
+   gles.DeleteShader(fragment);
+   GLint status = 0;
+   gles.GetProgramiv(program, GL_LINK_STATUS, &status);
+   if (!status) { gles.DeleteProgram(program); return false; }
+   gles.shadow_program = program;
+   gles.shadow_position_attrib = gles.GetAttribLocation(program, "a_position");
+   gles.shadow_mvp_uniform = gles.GetUniformLocation(program, "u_mvp");
+   return gles.shadow_mvp_uniform >= 0 && gles.shadow_position_attrib >= 0;
+}
+
+static bool gles_init_shadow_resources(void)
+{
+   if (g_shadow_map_size <= 0) return false;
+   if (gles.shadow_resources_ready) return true;
+   if (!gles.GenFramebuffers || !gles.GenTextures || !gles.GenRenderbuffers) return false;
+   if (!gles_create_shadow_program()) return false;
+
+   gles.GenTextures(1, &gles.shadow_depth_tex);
+   gles.BindTexture(GL_TEXTURE_2D, gles.shadow_depth_tex);
+   gles.TexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT16,
+      g_shadow_map_size, g_shadow_map_size, 0, GL_DEPTH_COMPONENT, GL_UNSIGNED_SHORT, NULL);
+   gles.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+   gles.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+   gles.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+   gles.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+   gles.BindTexture(GL_TEXTURE_2D, 0);
+
+   gles.GenRenderbuffers(1, &gles.shadow_rbo);
+   gles.BindRenderbuffer(GL_RENDERBUFFER, gles.shadow_rbo);
+   gles.RenderbufferStorage(GL_RENDERBUFFER, GL_RGB565, g_shadow_map_size, g_shadow_map_size);
+   gles.BindRenderbuffer(GL_RENDERBUFFER, 0);
+
+   gles.GenFramebuffers(1, &gles.shadow_fbo);
+   gles.BindFramebuffer(GL_FRAMEBUFFER, gles.shadow_fbo);
+   gles.FramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
+      GL_TEXTURE_2D, gles.shadow_depth_tex, 0);
+   gles.FramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+      GL_RENDERBUFFER, gles.shadow_rbo);
+   GLenum status = gles.CheckFramebufferStatus(GL_FRAMEBUFFER);
+   gles.BindFramebuffer(GL_FRAMEBUFFER, 0);
+
+   if (status != GL_FRAMEBUFFER_COMPLETE) {
+      gles.DeleteFramebuffers(1, &gles.shadow_fbo);
+      gles.DeleteTextures(1, &gles.shadow_depth_tex);
+      gles.DeleteRenderbuffers(1, &gles.shadow_rbo);
+      gles.DeleteProgram(gles.shadow_program);
+      gles.shadow_fbo = 0; gles.shadow_depth_tex = 0;
+      gles.shadow_rbo = 0; gles.shadow_program = 0;
+      return false;
+   }
+   gles.shadow_resources_ready = true;
+   return true;
+}
+
+static void gles_destroy_shadow_resources(void)
+{
+   if (gles.shadow_fbo && gles.DeleteFramebuffers)
+      gles.DeleteFramebuffers(1, &gles.shadow_fbo);
+   if (gles.shadow_depth_tex && gles.DeleteTextures)
+      gles.DeleteTextures(1, &gles.shadow_depth_tex);
+   if (gles.shadow_rbo && gles.DeleteRenderbuffers)
+      gles.DeleteRenderbuffers(1, &gles.shadow_rbo);
+   if (gles.shadow_program && gles.DeleteProgram)
+      gles.DeleteProgram(gles.shadow_program);
+   gles.shadow_fbo = 0; gles.shadow_depth_tex = 0;
+   gles.shadow_rbo = 0; gles.shadow_program = 0;
+   gles.shadow_resources_ready = false;
+}
+
+static void build_shadow_light_vp(float out[16])
+{
+   float ldir[3] = {
+      light_state.direction[0],
+      light_state.direction[1],
+      light_state.direction[2]
+   };
+   float len = sqrtf(ldir[0]*ldir[0] + ldir[1]*ldir[1] + ldir[2]*ldir[2]);
+   if (len < 0.0001f) { ldir[0] = 0.0f; ldir[1] = -1.0f; ldir[2] = 0.0f; len = 1.0f; }
+   ldir[0] /= len; ldir[1] /= len; ldir[2] /= len;
+
+   float eye[3] = { -ldir[0] * 20.0f, -ldir[1] * 20.0f, -ldir[2] * 20.0f };
+   float target[3] = { 0.0f, 0.0f, 0.0f };
+   float up[3] = { 0.0f, 1.0f, 0.0f };
+   if (fabsf(ldir[1]) > 0.99f) { up[0] = 1.0f; up[1] = 0.0f; up[2] = 0.0f; }
+
+   float view[16], proj[16];
+   mat4_look_at(view, eye, target, up);
+   mat4_ortho(proj, -12.0f, 12.0f, -12.0f, 12.0f, 1.0f, 50.0f);
+   mat4_multiply(out, proj, view);
+}
+
+static bool gles_any_cast_shadow_mesh(void)
+{
+   for (int i = 0; i < NOVA64_MAX_MESHES; i++)
+      if (meshes[i].used && meshes[i].visible && meshes[i].cast_shadow)
+         return true;
+   return false;
+}
+
+static void render_gles_shadow_pass(const float light_vp[16])
+{
+   if (!gles.shadow_fbo || !gles.shadow_program) return;
+   GLuint hw_fbo = hw_render.get_current_framebuffer ? hw_render.get_current_framebuffer() : 0;
+   gles.BindFramebuffer(GL_FRAMEBUFFER, gles.shadow_fbo);
+   gles.Viewport(0, 0, g_shadow_map_size, g_shadow_map_size);
+   gles.Clear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+   gles.Enable(GL_DEPTH_TEST);
+   gles.UseProgram(gles.shadow_program);
+
+   for (int i = 0; i < NOVA64_MAX_MESHES; i++) {
+      const struct nova64_mesh *mesh = &meshes[i];
+      if (!mesh->used || !mesh->visible || !mesh->cast_shadow || mesh->opacity <= 0.0f)
+         continue;
+      float model[16], shadow_mvp[16];
+      mat4_world_transform(model, mesh);
+      mat4_multiply(shadow_mvp, light_vp, model);
+      gles.UniformMatrix4fv(gles.shadow_mvp_uniform, 1, GL_FALSE, shadow_mvp);
+
+      GLuint vbo, ibo; GLsizei idx_count;
+      switch (mesh->type) {
+         case NOVA64_MESH_CUBE:
+            vbo = gles.cube_vbo; ibo = gles.cube_ibo; idx_count = 36; break;
+         case NOVA64_MESH_PLANE:
+            vbo = gles.plane_vbo; ibo = gles.plane_ibo; idx_count = 6; break;
+         case NOVA64_MESH_SPHERE:
+         case NOVA64_MESH_CAPSULE:
+         case NOVA64_MESH_CYLINDER:
+            vbo = gles.sphere_vbo; ibo = gles.sphere_ibo; idx_count = 24; break;
+         case NOVA64_MESH_CUSTOM:
+            if (!mesh->gl_custom_vbo || !mesh->gl_custom_ibo || !mesh->custom_index_count) continue;
+            vbo = mesh->gl_custom_vbo; ibo = mesh->gl_custom_ibo;
+            idx_count = (GLsizei)mesh->custom_index_count; break;
+         default: continue;
+      }
+      gles.BindBuffer(GL_ARRAY_BUFFER, vbo);
+      gles.BindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo);
+      gles.EnableVertexAttribArray((GLuint)gles.shadow_position_attrib);
+      gles.VertexAttribPointer((GLuint)gles.shadow_position_attrib, 3, GL_FLOAT, GL_FALSE,
+         (GLsizei)(sizeof(GLfloat) * 6), NULL);
+      gles.DrawElements(GL_TRIANGLES, idx_count, GL_UNSIGNED_SHORT, NULL);
+      gles.DisableVertexAttribArray((GLuint)gles.shadow_position_attrib);
+   }
+   gles.BindFramebuffer(GL_FRAMEBUFFER, hw_fbo);
 }
 
 static bool gles_create_overlay_program(void)
@@ -8196,6 +8441,7 @@ static void gles_destroy_resources(void)
    gles.overlay_texture = 0;
    gles.cube_program = 0;
    gles.overlay_program = 0;
+   gles_destroy_shadow_resources();
    gles.resources_ready = false;
 }
 
@@ -8545,6 +8791,35 @@ static void render_gles_primitive(const struct nova64_mesh *mesh, const float vi
       gles.Uniform2f(gles.cube_uv_offset_uniform, mesh->uv_offset[0], mesh->uv_offset[1]);
    if (gles.cube_uv_scale_uniform >= 0 && gles.Uniform2f)
       gles.Uniform2f(gles.cube_uv_scale_uniform, mesh->uv_scale[0], mesh->uv_scale[1]);
+   /* shadow map */
+   {
+      bool do_shadow = gles.shadow_depth_tex && mesh->receive_shadow && g_shadow_map_size > 0;
+      if (gles.cube_shadow_enabled_uniform >= 0)
+         gles.Uniform1i(gles.cube_shadow_enabled_uniform, do_shadow ? 1 : 0);
+      if (do_shadow) {
+         float model2[16], shadow_mvp[16];
+         mat4_world_transform(model2, mesh);
+         mat4_multiply(shadow_mvp, g_shadow_light_vp, model2);
+         if (gles.cube_shadow_mvp_uniform >= 0)
+            gles.UniformMatrix4fv(gles.cube_shadow_mvp_uniform, 1, GL_FALSE, shadow_mvp);
+         if (gles.cube_shadow_texel_size_uniform >= 0 && gles.Uniform1f)
+            gles.Uniform1f(gles.cube_shadow_texel_size_uniform, 1.0f / (float)g_shadow_map_size);
+         if (gles.cube_shadow_map_uniform >= 0) {
+            gles.ActiveTexture(GL_TEXTURE1);
+            gles.BindTexture(GL_TEXTURE_2D, gles.shadow_depth_tex);
+            gles.Uniform1i(gles.cube_shadow_map_uniform, 1);
+            gles.ActiveTexture(GL_TEXTURE0);
+         }
+      } else {
+         if (gles.cube_shadow_mvp_uniform >= 0) {
+            /* Identity matrix so v_shadow_coord stays valid */
+            static const float identity[16] = {
+               1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1
+            };
+            gles.UniformMatrix4fv(gles.cube_shadow_mvp_uniform, 1, GL_FALSE, identity);
+         }
+      }
+   }
    /* blend mode */
    bool mesh_transparent = mesh->opacity < 0.999f;
    bool did_blend = false;
@@ -8901,7 +9176,21 @@ static void render_gles_scene(void)
    bool use_post = post_is_active() && gles_init_post_resources();
    GLuint hw_fbo = hw_render.get_current_framebuffer ? hw_render.get_current_framebuffer() : 0;
 
-   if (use_post)
+   /* Shadow pass — depth-only render from the light's perspective */
+   bool use_shadow = g_shadow_map_size > 0 && gles_any_cast_shadow_mesh()
+      && gles_init_shadow_resources();
+   if (use_shadow) {
+      build_shadow_light_vp(g_shadow_light_vp);
+      render_gles_shadow_pass(g_shadow_light_vp);
+      /* Restore main viewport and framebuffer */
+      if (use_post)
+         gles.BindFramebuffer(GL_FRAMEBUFFER, gles.post_fbo);
+      else
+         gles.BindFramebuffer(GL_FRAMEBUFFER, hw_fbo);
+      gles.Viewport(0, 0, NOVA64_WIDTH, NOVA64_HEIGHT);
+   }
+
+   if (!use_shadow && use_post)
       gles.BindFramebuffer(GL_FRAMEBUFFER, gles.post_fbo);
 
    uint32_t clear_color;

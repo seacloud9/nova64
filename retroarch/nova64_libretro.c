@@ -4601,7 +4601,7 @@ static JSValue js_create_cube(JSContext *ctx, JSValueConst this_val, int argc, J
       mesh->color = color_from_js(ctx, argv[3], mesh->color);
       if (argc > 4)
          set_position_from_js(ctx, argv[4], mesh->position);
-   } else if (argc >= 2 && JS_IsNumber(argv[0])) {
+   } else if (argc >= 2 && JS_IsNumber(argv[0]) && !JS_IsArray(argv[1])) {
       double size = clamp_double(fabs(double_from_js(ctx, argv[0], 1.0)), 0.001, 10000.0);
       mesh->scale[0] = (float)size;
       mesh->scale[1] = (float)size;
@@ -4611,6 +4611,8 @@ static JSValue js_create_cube(JSContext *ctx, JSValueConst this_val, int argc, J
          set_position_from_js(ctx, argv[2], mesh->position);
    } else if (argc > 0) {
       mesh->color = color_from_js(ctx, argv[0], mesh->color);
+      if (argc > 1)
+         set_position_from_js(ctx, argv[1], mesh->position);
    }
    return JS_NewInt32(ctx, handle);
 }
@@ -4626,7 +4628,7 @@ static JSValue js_create_sphere(JSContext *ctx, JSValueConst this_val, int argc,
    if (!mesh)
       return JS_NewInt32(ctx, handle);
 
-   if (argc >= 2 && JS_IsNumber(argv[0])) {
+   if (argc >= 2 && JS_IsNumber(argv[0]) && !JS_IsArray(argv[1])) {
       double radius = clamp_double(fabs(double_from_js(ctx, argv[0], 1.0)), 0.001, 10000.0);
       mesh->scale[0] = (float)(radius * 2.0);
       mesh->scale[1] = (float)(radius * 2.0);
@@ -4636,6 +4638,8 @@ static JSValue js_create_sphere(JSContext *ctx, JSValueConst this_val, int argc,
          set_position_from_js(ctx, argv[2], mesh->position);
    } else if (argc > 0) {
       mesh->color = color_from_js(ctx, argv[0], mesh->color);
+      if (argc > 1)
+         set_position_from_js(ctx, argv[1], mesh->position);
    }
    return JS_NewInt32(ctx, handle);
 }

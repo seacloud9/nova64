@@ -683,6 +683,17 @@ static struct nova64_collider g_colliders[NOVA64_MAX_COLLIDERS];
 
 static void reset_colliders(void) { memset(g_colliders, 0, sizeof(g_colliders)); }
 
+/* ── Bitmap font store ──────────────────────────────────────── */
+#define NOVA64_MAX_FONTS 8
+struct nova64_bitmap_font { bool active; uint8_t *pixels; int glyph_w, glyph_h, atlas_w, atlas_h; };
+static struct nova64_bitmap_font g_fonts[NOVA64_MAX_FONTS];
+static void reset_fonts(void) {
+   for (int i = 0; i < NOVA64_MAX_FONTS; i++) {
+      if (g_fonts[i].active) free(g_fonts[i].pixels);
+   }
+   memset(g_fonts, 0, sizeof(g_fonts));
+}
+
 static int alloc_collider(void) {
    for (int i = 1; i < NOVA64_MAX_COLLIDERS; i++)
       if (!g_colliders[i].active) { g_colliders[i].active = true; return i; }
@@ -919,7 +930,8 @@ static void set_core_variables(void)
       return;
 
    static struct retro_variable variables[] = {
-      {"nova64_renderer", "Renderer backend; opengles3|vulkan12"},
+      {"nova64_renderer",   "Renderer backend; opengles3|vulkan12"},
+      {"nova64_resolution", "Resolution; 640x360|320x180|1280x720"},
       {NULL, NULL},
    };
    environ_cb(RETRO_ENVIRONMENT_SET_VARIABLES, variables);
@@ -6400,6 +6412,242 @@ static JSValue js_destroy_collider(JSContext *ctx, JSValueConst this_val, int ar
    return JS_UNDEFINED;
 }
 
+/* ── Storage: cartIds ─────────────────────────────────────── */
+#ifndef _WIN32
+static JSValue js_storage_cart_ids(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val; (void)argc; (void)argv;
+   JSValue arr = JS_NewArray(ctx);
+   uint32_t arr_idx = 0;
+   char root[1200];
+   if (!storage_root_dir(root, sizeof(root)))
+      return arr;
+   DIR *dir = opendir(root);
+   if (!dir) return arr;
+   char seen[32][128];
+   int seen_count = 0;
+   struct dirent *entry;
+   while ((entry = readdir(dir)) != NULL) {
+      const char *name = entry->d_name;
+      size_t name_len = strlen(name);
+      if (name_len < 7) continue;
+      if (strcmp(name + name_len - 5, ".json") != 0) continue;
+      const char *sep = strchr(name, '_');
+      if (!sep) continue;
+      size_t cid_len = (size_t)(sep - name);
+      if (cid_len == 0 || cid_len >= 128) continue;
+      bool found = false;
+      for (int s = 0; s < seen_count; s++) {
+         if (strlen(seen[s]) == cid_len && strncmp(seen[s], name, cid_len) == 0) { found = true; break; }
+      }
+      if (!found && seen_count < 32) {
+         strncpy(seen[seen_count], name, cid_len);
+         seen[seen_count][cid_len] = '\0';
+         seen_count++;
+         JS_SetPropertyUint32(ctx, arr, arr_idx++, JS_NewStringLen(ctx, name, cid_len));
+      }
+   }
+   closedir(dir);
+   return arr;
+}
+#else
+static JSValue js_storage_cart_ids(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val; (void)argc; (void)argv; (void)ctx;
+   return JS_NewArray(ctx);
+}
+#endif
+
+/* ── 3D Raycast ───────────────────────────────────────────── */
+static JSValue js_raycast(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 6) return JS_NULL;
+   float ox = (float)double_from_js(ctx, argv[0], 0.0);
+   float oy = (float)double_from_js(ctx, argv[1], 0.0);
+   float oz = (float)double_from_js(ctx, argv[2], 0.0);
+   float dx = (float)double_from_js(ctx, argv[3], 0.0);
+   float dy = (float)double_from_js(ctx, argv[4], 0.0);
+   float dz = (float)double_from_js(ctx, argv[5], 0.0);
+   float max_dist = (float)double_from_js(ctx, argc > 6 ? argv[6] : JS_UNDEFINED, 1000.0);
+
+   float dl = sqrtf(dx*dx + dy*dy + dz*dz);
+   if (dl < 1e-6f) return JS_NULL;
+   dx /= dl; dy /= dl; dz /= dl;
+
+   float best_t = max_dist;
+   int best_i = -1;
+   for (int i = 0; i < NOVA64_MAX_MESHES; i++) {
+      if (!meshes[i].used) continue;
+      float cx = meshes[i].position[0] - ox;
+      float cy = meshes[i].position[1] - oy;
+      float cz = meshes[i].position[2] - oz;
+      float r = (fabsf(meshes[i].scale[0]) + fabsf(meshes[i].scale[1]) + fabsf(meshes[i].scale[2])) / 6.0f;
+      if (r < 1e-4f) r = 0.5f;
+      float b = cx*dx + cy*dy + cz*dz;
+      float c2 = cx*cx + cy*cy + cz*cz - r*r;
+      float disc = b*b - c2;
+      if (disc < 0.0f) continue;
+      float sq = sqrtf(disc);
+      float t = b - sq;
+      if (t < 0.0f) t = b + sq;
+      if (t < 0.0f || t >= best_t) continue;
+      best_t = t;
+      best_i = i;
+   }
+   if (best_i < 0) return JS_NULL;
+
+   float hx = ox + dx * best_t;
+   float hy = oy + dy * best_t;
+   float hz = oz + dz * best_t;
+   float nx = hx - meshes[best_i].position[0];
+   float ny = hy - meshes[best_i].position[1];
+   float nz = hz - meshes[best_i].position[2];
+   float nl = sqrtf(nx*nx + ny*ny + nz*nz);
+   if (nl > 1e-6f) { nx /= nl; ny /= nl; nz /= nl; }
+
+   JSValue result = JS_NewObject(ctx);
+   JSValue point  = JS_NewObject(ctx);
+   JSValue normal = JS_NewObject(ctx);
+   JS_SetPropertyStr(ctx, result, "handle",   JS_NewInt32(ctx, best_i + 1));
+   JS_SetPropertyStr(ctx, result, "distance", JS_NewFloat64(ctx, (double)best_t));
+   JS_SetPropertyStr(ctx, point,  "x", JS_NewFloat64(ctx, (double)hx));
+   JS_SetPropertyStr(ctx, point,  "y", JS_NewFloat64(ctx, (double)hy));
+   JS_SetPropertyStr(ctx, point,  "z", JS_NewFloat64(ctx, (double)hz));
+   JS_SetPropertyStr(ctx, result, "point",  point);
+   JS_SetPropertyStr(ctx, normal, "x", JS_NewFloat64(ctx, (double)nx));
+   JS_SetPropertyStr(ctx, normal, "y", JS_NewFloat64(ctx, (double)ny));
+   JS_SetPropertyStr(ctx, normal, "z", JS_NewFloat64(ctx, (double)nz));
+   JS_SetPropertyStr(ctx, result, "normal", normal);
+   return result;
+}
+
+/* ── Bitmap font functions ───────────────────────────────── */
+static JSValue js_load_font(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 1) return JS_NewInt32(ctx, 0);
+   const char *path = JS_ToCString(ctx, argv[0]);
+   if (!path) return JS_NewInt32(ctx, 0);
+   int glyph_w = argc > 1 ? int_from_js(ctx, argv[1], 8) : 8;
+   int glyph_h = argc > 2 ? int_from_js(ctx, argv[2], 8) : 8;
+   if (glyph_w < 1) glyph_w = 1;
+   if (glyph_h < 1) glyph_h = 1;
+
+   const struct nova64_package_asset *asset = find_package_asset(path);
+   bool is_png = path_is_png(path);
+   JS_FreeCString(ctx, path);
+   if (!asset || !asset->data || asset->size < 4)
+      return JS_NewInt32(ctx, 0);
+
+   int pw = 0, ph = 0;
+   uint8_t *pixels = NULL;
+   if (is_png) {
+      pixels = decode_png_asset(asset->data, asset->size, &pw, &ph);
+   } else {
+      int side = (int)sqrt((double)(asset->size / 4));
+      pw = side > 0 ? side : 1;
+      ph = (int)((asset->size / 4) / (size_t)(unsigned)pw);
+      if (ph < 1) ph = 1;
+      pixels = (uint8_t *)malloc(asset->size);
+      if (pixels) memcpy(pixels, asset->data, asset->size);
+   }
+   if (!pixels || pw < glyph_w || ph < glyph_h) { free(pixels); return JS_NewInt32(ctx, 0); }
+
+   for (int i = 0; i < NOVA64_MAX_FONTS; i++) {
+      if (!g_fonts[i].active) {
+         g_fonts[i].active  = true;
+         g_fonts[i].pixels  = pixels;
+         g_fonts[i].glyph_w = glyph_w;
+         g_fonts[i].glyph_h = glyph_h;
+         g_fonts[i].atlas_w = pw;
+         g_fonts[i].atlas_h = ph;
+         return JS_NewInt32(ctx, i + 1);
+      }
+   }
+   free(pixels);
+   return JS_NewInt32(ctx, 0);
+}
+
+static JSValue js_print_font(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 5) return JS_UNDEFINED;
+   const char *text = JS_ToCString(ctx, argv[0]);
+   if (!text) return JS_UNDEFINED;
+   int wx = int_from_js(ctx, argv[1], 0);
+   int wy = int_from_js(ctx, argv[2], 0);
+   uint32_t color = color_from_js(ctx, argv[3], rgba8(255, 255, 255, 255));
+   int handle = int_from_js(ctx, argv[4], 0);
+
+   struct nova64_bitmap_font *fnt = (handle >= 1 && handle <= NOVA64_MAX_FONTS && g_fonts[handle-1].active)
+      ? &g_fonts[handle - 1] : NULL;
+   if (!fnt) { JS_FreeCString(ctx, text); return JS_UNDEFINED; }
+
+   int screen_x, screen_y;
+   transform_2d_point(wx, wy, &screen_x, &screen_y);
+
+   float cr = (float)((color >> 24) & 0xff) / 255.0f;
+   float cg = (float)((color >> 16) & 0xff) / 255.0f;
+   float cb = (float)((color >>  8) & 0xff) / 255.0f;
+   float ca = (float)( color        & 0xff) / 255.0f;
+   int cols = fnt->atlas_w / fnt->glyph_w;
+   int rows = fnt->atlas_h / fnt->glyph_h;
+   int total_glyphs = cols * rows;
+
+   int cx_pos = screen_x;
+   for (const char *p = text; *p; p++) {
+      int ch = (unsigned char)*p - 32;
+      if (ch < 0 || ch >= total_glyphs) { cx_pos += fnt->glyph_w; continue; }
+      int gc = ch % cols;
+      int gr = ch / cols;
+      int src_x = gc * fnt->glyph_w;
+      int src_y = gr * fnt->glyph_h;
+      for (int gy = 0; gy < fnt->glyph_h; gy++) {
+         for (int gx = 0; gx < fnt->glyph_w; gx++) {
+            int px = cx_pos + gx, py = screen_y + gy;
+            if (px < 0 || py < 0 || px >= NOVA64_WIDTH || py >= NOVA64_HEIGHT) continue;
+            size_t si = ((size_t)(src_y + gy) * (size_t)fnt->atlas_w + (size_t)(src_x + gx)) * 4;
+            float fr = fnt->pixels[si  ] / 255.0f;
+            float fg = fnt->pixels[si+1] / 255.0f;
+            float fb = fnt->pixels[si+2] / 255.0f;
+            float fa = fnt->pixels[si+3] / 255.0f * ca;
+            if (fa < 0.004f) continue;
+            float inv_fa = 1.0f - fa;
+            uint32_t dst = framebuffer[(size_t)py * NOVA64_WIDTH + (size_t)px];
+            uint8_t nr = (uint8_t)(fr * cr * fa * 255.0f + (float)((dst >> 24) & 0xff) * inv_fa);
+            uint8_t ng = (uint8_t)(fg * cg * fa * 255.0f + (float)((dst >> 16) & 0xff) * inv_fa);
+            uint8_t nb = (uint8_t)(fb * cb * fa * 255.0f + (float)((dst >>  8) & 0xff) * inv_fa);
+            framebuffer[(size_t)py * NOVA64_WIDTH + (size_t)px] = rgba8(nr, ng, nb, 255);
+         }
+      }
+      cx_pos += fnt->glyph_w;
+   }
+   JS_FreeCString(ctx, text);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_destroy_font(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int handle = argc > 0 ? int_from_js(ctx, argv[0], 0) : 0;
+   if (handle >= 1 && handle <= NOVA64_MAX_FONTS && g_fonts[handle-1].active) {
+      free(g_fonts[handle-1].pixels);
+      memset(&g_fonts[handle-1], 0, sizeof(g_fonts[handle-1]));
+   }
+   return JS_UNDEFINED;
+}
+
+/* ── Resolution query ────────────────────────────────────── */
+static JSValue js_get_resolution(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val; (void)argc; (void)argv;
+   JSValue obj = JS_NewObject(ctx);
+   JS_SetPropertyStr(ctx, obj, "width",  JS_NewInt32(ctx, NOVA64_WIDTH));
+   JS_SetPropertyStr(ctx, obj, "height", JS_NewInt32(ctx, NOVA64_HEIGHT));
+   return obj;
+}
+
 static void set_function(JSContext *ctx, JSValue object, const char *name, JSCFunction *fn, int length)
 {
    JS_SetPropertyStr(ctx, object, name, JS_NewCFunction(ctx, fn, name, length));
@@ -6916,6 +7164,38 @@ static bool install_nova64_api(JSContext *ctx)
       set_function(ctx, phys, "destroy",         js_destroy_collider,  1);
       JS_SetPropertyStr(ctx, nova64, "physics", phys);
    }
+
+   /* Storage: cartIds (8G) */
+   set_function(ctx, global, "cartIds", js_storage_cart_ids, 0);
+   {
+      JSValue st = JS_GetPropertyStr(ctx, nova64, "storage");
+      set_function(ctx, st, "cartIds", js_storage_cart_ids, 0);
+      JS_FreeValue(ctx, st);
+   }
+
+   /* 3D Raycast (8H) */
+   set_function(ctx, global, "raycast", js_raycast, 7);
+   {
+      JSValue sc = JS_GetPropertyStr(ctx, nova64, "scene");
+      set_function(ctx, sc, "raycast", js_raycast, 7);
+      JS_FreeValue(ctx, sc);
+   }
+
+   /* Bitmap fonts (8B) */
+   set_function(ctx, global, "loadFont",    js_load_font,    3);
+   set_function(ctx, global, "printFont",   js_print_font,   5);
+   set_function(ctx, global, "destroyFont", js_destroy_font, 1);
+   {
+      JSValue dr = JS_GetPropertyStr(ctx, nova64, "draw");
+      set_function(ctx, dr, "loadFont",    js_load_font,    3);
+      set_function(ctx, dr, "printFont",   js_print_font,   5);
+      set_function(ctx, dr, "destroyFont", js_destroy_font, 1);
+      JS_FreeValue(ctx, dr);
+   }
+
+   /* Resolution query (8I) */
+   set_function(ctx, global, "getResolution", js_get_resolution, 0);
+   set_function(ctx, nova64, "getResolution", js_get_resolution, 0);
 
    JS_FreeValue(ctx, global);
    return true;
@@ -8884,6 +9164,7 @@ void RETRO_CALLCONV retro_reset(void)
    clear_all_spritesheets();
    memset(perf_timers, 0, sizeof(perf_timers));
    reset_colliders();
+   reset_fonts();
    memset(audio_channels, 0, sizeof(audio_channels));
    rng_seed_from_environment();
    if (cart_content && cart_size)
@@ -8964,6 +9245,7 @@ bool RETRO_CALLCONV retro_load_game(const struct retro_game_info *info)
    destroy_all_tilemaps();
    clear_all_spritesheets();
    reset_colliders();
+   reset_fonts();
    memset(audio_channels, 0, sizeof(audio_channels));
    memset(perf_timers, 0, sizeof(perf_timers));
    rng_seed_from_environment();

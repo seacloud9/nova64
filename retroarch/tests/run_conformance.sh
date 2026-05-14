@@ -466,4 +466,9 @@ run_visual_case "81 png sprite"      "81-png-sprite"      "${PACKAGE_DIR}/png-sp
 run_visual_case "82 scene hierarchy" "82-scene-hierarchy" "retroarch/conformance/82-scene-hierarchy.js" "63489e6061ea6404"
 run_visual_case "83 audio channels"  "83-audio-channels"  "retroarch/conformance/83-audio-channels.js"  "eb6c1c11ccb03969"
 
+NOVA64_SAVE_DIR="${SAVE_DIR}" run_visual_case "84 storage cart ids" "84-storage-cart-ids" "retroarch/conformance/84-storage-cart-ids.js" "23faa2d53016edd2"
+run_visual_case "85 raycast"       "85-raycast"       "retroarch/conformance/85-raycast.js"       "74ba13fecf04c622"
+run_visual_case "86 bitmap font"   "86-bitmap-font"   "retroarch/conformance/86-bitmap-font.js"   "2bc8c5bfa38e71dc"
+run_visual_case "87 resolution"    "87-resolution"    "retroarch/conformance/87-resolution.js"    "814d1457723bb11b"
+
 echo "Conformance passed."

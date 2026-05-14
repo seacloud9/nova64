@@ -805,6 +805,29 @@ static float echo_wet   = 0.5f;
 static float listener_pos[3]; /* defaults 0,0,0; update with setListenerPos */
 static bool g_developer_mode = false;
 
+/* RetroAchievements cart RAM (8J) — 256 bytes exposed via SET_MEMORY_MAPS */
+#define NOVA64_CHEEVOS_RAM_SIZE 256
+static uint8_t g_cheevos_ram[NOVA64_CHEEVOS_RAM_SIZE];
+
+/* Minimal memory-map structs (not present in all libretro.h versions) */
+#ifndef RETRO_MEMDESC_SYSTEM_RAM
+#define RETRO_MEMDESC_SYSTEM_RAM (1 << 0)
+struct retro_memory_descriptor {
+   uint64_t flags;
+   void    *ptr;
+   size_t   offset;
+   size_t   start;
+   size_t   select;
+   size_t   disconnect;
+   size_t   len;
+   const char *addrspace;
+};
+struct retro_memory_map {
+   const struct retro_memory_descriptor *descriptors;
+   unsigned num_descriptors;
+};
+#endif
+
 /* In-cart developer console (8J) */
 #define NOVA64_DEV_CON_LINES 12
 #define NOVA64_DEV_CON_COLS  80
@@ -983,6 +1006,7 @@ static void set_core_variables(void)
       {"nova64_renderer",       "Renderer backend; opengles3|vulkan12"},
       {"nova64_resolution",     "Resolution; 640x360|320x180|1280x720"},
       {"nova64_developer_mode", "Developer mode; disable|enable"},
+      {"nova64_audio_latency",  "Audio latency; normal|low|high"},
       {NULL, NULL},
    };
    environ_cb(RETRO_ENVIRONMENT_SET_VARIABLES, variables);
@@ -1002,6 +1026,19 @@ static enum nova64_renderer_backend read_renderer_preference(void)
          return parse_renderer_backend(variable.value);
    }
    return NOVA64_RENDERER_GLES3;
+}
+
+/* Return the preferred audio latency in ms (0 = default / let frontend decide). */
+static unsigned read_audio_latency_ms(void)
+{
+   if (environ_cb) {
+      struct retro_variable v = { "nova64_audio_latency", NULL };
+      if (environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &v) && v.value) {
+         if (v.value[0] == 'l') return 32;  /* "low"  */
+         if (v.value[0] == 'h') return 128; /* "high" */
+      }
+   }
+   return 0; /* "normal" — let frontend choose */
 }
 
 static uint32_t rgba8(uint32_t r, uint32_t g, uint32_t b, uint32_t a)
@@ -6859,6 +6896,35 @@ static JSValue js_play_sound_3d(JSContext *ctx, JSValueConst this_val, int argc,
    return result;
 }
 
+/* ── RetroAchievements cart RAM peek/poke ─────────────── */
+static JSValue js_cheevos_peek(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 1) return JS_NewInt32(ctx, 0);
+   uint32_t addr;
+   if (JS_ToUint32(ctx, &addr, argv[0])) return JS_NewInt32(ctx, 0);
+   if (addr >= NOVA64_CHEEVOS_RAM_SIZE) return JS_NewInt32(ctx, 0);
+   return JS_NewInt32(ctx, g_cheevos_ram[addr]);
+}
+
+static JSValue js_cheevos_poke(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 2) return JS_UNDEFINED;
+   uint32_t addr, val;
+   if (JS_ToUint32(ctx, &addr, argv[0])) return JS_UNDEFINED;
+   if (JS_ToUint32(ctx, &val,  argv[1])) return JS_UNDEFINED;
+   if (addr >= NOVA64_CHEEVOS_RAM_SIZE) return JS_UNDEFINED;
+   g_cheevos_ram[addr] = (uint8_t)(val & 0xFF);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_cheevos_ram_size(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val; (void)argc; (void)argv;
+   return JS_NewInt32(ctx, NOVA64_CHEEVOS_RAM_SIZE);
+}
+
 /* ── Developer mode (8I batch4) ──────────────────────── */
 static JSValue js_is_developer_mode(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
@@ -7551,6 +7617,17 @@ static bool install_nova64_api(JSContext *ctx)
       JS_SetPropertyStr(ctx, nova64, "console", con);
    }
    set_function(ctx, global, "devPrint", js_dev_console_print, 1);
+
+   /* RetroAchievements cart RAM (M8) */
+   set_function(ctx, global, "peek", js_cheevos_peek, 1);
+   set_function(ctx, global, "poke", js_cheevos_poke, 2);
+   {
+      JSValue cheevos = JS_NewObject(ctx);
+      set_function(ctx, cheevos, "peek",    js_cheevos_peek,     1);
+      set_function(ctx, cheevos, "poke",    js_cheevos_poke,     2);
+      set_function(ctx, cheevos, "ramSize", js_cheevos_ram_size, 0);
+      JS_SetPropertyStr(ctx, nova64, "cheevos", cheevos);
+   }
 
    /* Custom mesh (M8) */
    set_function(ctx, global, "createMesh", js_create_mesh, 3);
@@ -9496,6 +9573,27 @@ void RETRO_CALLCONV retro_set_environment(retro_environment_t cb)
    /* Signal achievement support stub (RETRO_ENVIRONMENT_SET_SUPPORT_ACHIEVEMENTS = 63) */
    bool achievements_supported = true;
    cb(63, &achievements_supported);
+
+   /* Apply audio latency hint (RETRO_ENVIRONMENT_SET_MINIMUM_AUDIO_LATENCY = 62) */
+   {
+      unsigned latency_ms = read_audio_latency_ms();
+      if (latency_ms > 0)
+         cb(62, &latency_ms);
+   }
+
+   /* Expose cheevos RAM via SET_MEMORY_MAPS (RETRO_ENVIRONMENT = 36) */
+   {
+      static struct retro_memory_descriptor mdesc;
+      static struct retro_memory_map mmap;
+      memset(&mdesc, 0, sizeof(mdesc));
+      mdesc.flags    = RETRO_MEMDESC_SYSTEM_RAM;
+      mdesc.ptr      = g_cheevos_ram;
+      mdesc.start    = 0x0000;
+      mdesc.len      = NOVA64_CHEEVOS_RAM_SIZE;
+      mmap.descriptors = &mdesc;
+      mmap.num_descriptors = 1;
+      cb(36, &mmap);
+   }
 }
 
 void RETRO_CALLCONV retro_set_audio_sample(retro_audio_sample_t cb)

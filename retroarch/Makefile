@@ -186,4 +186,12 @@ conformance: harness $(TARGET)
 info:
 	@cat nova64_libretro.info 2>/dev/null || echo "(not found)"
 
-.PHONY: clean harness conformance info
+release: $(TARGET)
+	mkdir -p release
+	cp $(TARGET) release/
+	cp nova64_libretro.info release/ 2>/dev/null || echo "(info file not found, skipping)"
+	tar -czf nova64_libretro-$(VERSION).tar.gz -C release .
+	rm -rf release
+	@echo "Release archive: nova64_libretro-$(VERSION).tar.gz"
+
+.PHONY: clean harness conformance info release

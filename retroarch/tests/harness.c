@@ -268,6 +268,7 @@ static unsigned g_video_frames;
 static unsigned g_audio_frames;
 static bool g_joypad[16];       /* port 0 joypad */
 static bool g_joypad_mp[4][16]; /* multi-port joypad (port 0 mirrors g_joypad) */
+static int  g_active_port = 0;  /* port target for --btn injections */
 static bool g_keyboard[512];
 static int16_t g_mouse_x;
 static int16_t g_mouse_y;
@@ -420,6 +421,28 @@ static size_t harness_audio_batch(const int16_t *data, size_t frames)
 }
 
 static void harness_input_poll(void) {}
+
+static int harness_btn_id(const char *name)
+{
+   if (!name) return -1;
+   if (!strcmp(name, "b"))      return RETRO_DEVICE_ID_JOYPAD_B;
+   if (!strcmp(name, "y"))      return RETRO_DEVICE_ID_JOYPAD_Y;
+   if (!strcmp(name, "select")) return RETRO_DEVICE_ID_JOYPAD_SELECT;
+   if (!strcmp(name, "start"))  return RETRO_DEVICE_ID_JOYPAD_START;
+   if (!strcmp(name, "up"))     return RETRO_DEVICE_ID_JOYPAD_UP;
+   if (!strcmp(name, "down"))   return RETRO_DEVICE_ID_JOYPAD_DOWN;
+   if (!strcmp(name, "left"))   return RETRO_DEVICE_ID_JOYPAD_LEFT;
+   if (!strcmp(name, "right"))  return RETRO_DEVICE_ID_JOYPAD_RIGHT;
+   if (!strcmp(name, "a"))      return RETRO_DEVICE_ID_JOYPAD_A;
+   if (!strcmp(name, "x"))      return RETRO_DEVICE_ID_JOYPAD_X;
+   if (!strcmp(name, "l"))      return RETRO_DEVICE_ID_JOYPAD_L;
+   if (!strcmp(name, "r"))      return RETRO_DEVICE_ID_JOYPAD_R;
+   if (!strcmp(name, "l2"))     return RETRO_DEVICE_ID_JOYPAD_L2;
+   if (!strcmp(name, "r2"))     return RETRO_DEVICE_ID_JOYPAD_R2;
+   if (!strcmp(name, "l3"))     return RETRO_DEVICE_ID_JOYPAD_L3;
+   if (!strcmp(name, "r3"))     return RETRO_DEVICE_ID_JOYPAD_R3;
+   return -1;
+}
 
 static int harness_key_code(const char *name)
 {
@@ -574,7 +597,7 @@ static void *load_symbol(void *core, const char *name)
 int main(int argc, char **argv)
 {
    if (argc < 3) {
-      fprintf(stderr, "usage: %s <nova64_libretro.so> <cart.js|cart.nova> [--capture path] [--command-log path] [--renderer opengles3|vulkan12] [--gles] [--expect checksum] [--expect-audio checksum] [--frames n] [--seed n] [--perf] [--verbose] [--key name] [--touch-x n --touch-y n --touch-count n]\n", argv[0]);
+      fprintf(stderr, "usage: %s <nova64_libretro.so> <cart.js|cart.nova> [--capture path] [--command-log path] [--renderer opengles3|vulkan12] [--gles] [--expect checksum] [--expect-audio checksum] [--frames n] [--seed n] [--perf] [--verbose] [--key name] [--port 0-3] [--btn name] [--touch-x n --touch-y n --touch-count n]\n", argv[0]);
       return 2;
    }
 
@@ -685,11 +708,18 @@ int main(int argc, char **argv)
          g_touch_count = (int16_t)strtol(argv[i], NULL, 10);
          g_touch_pressed = g_touch_count > 0;
       } else if (!strcmp(argv[i], "--port")) {
-         /* --port N sets subsequent joypad state to that port (0-3) */
          if (++i >= argc) { fprintf(stderr, "--port requires 0-3\n"); return 2; }
-         /* handled via --btn below; for now just parse and ignore as we inject
-            per-port via g_joypad_mp directly after all flags are parsed */
-         (void)strtoul(argv[i], NULL, 10); /* parsed below */
+         g_active_port = (int)strtoul(argv[i], NULL, 10);
+         if (g_active_port < 0 || g_active_port > 3) {
+            fprintf(stderr, "--port: port must be 0-3\n"); return 2;
+         }
+      } else if (!strcmp(argv[i], "--btn")) {
+         if (++i >= argc) { fprintf(stderr, "--btn requires a button name\n"); return 2; }
+         int bid = harness_btn_id(argv[i]);
+         if (bid < 0) { fprintf(stderr, "--btn: unknown button '%s'\n", argv[i]); return 2; }
+         unsigned p = (unsigned)(g_active_port < 4 ? g_active_port : 0);
+         g_joypad_mp[p][bid] = true;
+         if (p == 0) g_joypad[bid] = true;
       } else if (!strcmp(argv[i], "--analog-lx")) {
          if (++i >= argc) { fprintf(stderr, "--analog-lx requires a value\n"); return 2; }
          g_analog[0][0][0] = (int16_t)strtol(argv[i], NULL, 10);

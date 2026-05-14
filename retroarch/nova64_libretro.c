@@ -3494,7 +3494,15 @@ static JSValue js_text_width(JSContext *ctx, JSValueConst this_val, int argc, JS
    (void)this_val;
    if (argc < 1) return JS_NewInt32(ctx, 0);
    const char *text = JS_ToCString(ctx, argv[0]);
-   int w = text_pixel_width(text);
+   int w;
+   int fhandle = argc > 1 ? int_from_js(ctx, argv[1], 0) : 0;
+   if (fhandle >= 1 && fhandle <= NOVA64_MAX_FONTS && g_fonts[fhandle-1].active) {
+      /* measure using custom font glyph width */
+      size_t len = text ? strlen(text) : 0;
+      w = (int)(len * (size_t)g_fonts[fhandle-1].glyph_w);
+   } else {
+      w = text_pixel_width(text);
+   }
    if (text) JS_FreeCString(ctx, text);
    return JS_NewInt32(ctx, w);
 }

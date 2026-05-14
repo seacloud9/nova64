@@ -20,6 +20,15 @@ Optional debug build:
 make -C retroarch DEBUG=1
 ```
 
+Alternatively use the Makefile shorthand from the `retroarch/` directory:
+
+```bash
+cd retroarch && make        # build .so
+make harness                # build the headless test harness
+make conformance            # build + run full conformance suite
+make release                # produce nova64_libretro-<ver>.tar.gz
+```
+
 ## 2. Conformance Suite
 
 ```bash
@@ -28,7 +37,7 @@ bash retroarch/tests/run_conformance.sh
 
 Expected final line: `Conformance passed.`
 
-All 30 conformance carts must pass. If any fail:
+All numbered conformance carts must pass. If any fail:
 
 - A checksum mismatch prints `expected=<hex> actual=<hex>` to stderr.
 - A command-log mismatch prints `command log mismatch: expected=<sha> actual=<sha>`.
@@ -98,13 +107,12 @@ RetroArch cores directory and confirm the core browser shows:
 The following are tracked gaps, not bugs. Confirm they are still documented in
 `README_RETROARCH.md` under "Known Gaps And Unsupported APIs":
 
-- [ ] QuickJS heap is not serialized in save states
-- [ ] Tilemap API not yet implemented
-- [ ] Streamed music (`playMusic`) not implemented
-- [ ] Texture binding in software/headless mode is no-op
-- [ ] Shadow maps record state but do not affect shading
-- [ ] Orthographic camera not implemented
+- [ ] QuickJS heap is not serialized in save states (rollback covers only host state)
+- [ ] Shadow maps record state but do not affect shading in GLES path
+- [ ] PBR roughness/metalness stored but not applied in lit shader
+- [ ] Orthographic camera (`setCameraOrthographic`) not implemented
 - [ ] Vulkan backend staged but not functional
+- [ ] Texture sampling in software/headless mode is no-op (GL path only)
 
 ## 8. Version Bump
 

@@ -453,22 +453,22 @@ The current audio covers procedural SFX and single-channel PCM playback.
     `musicActive()`. All exposed under `nova64.audio.*` and as globals.
   - `33-music.js` conformance cart covers all API binding and behavior contracts.
 
-Still missing in audio:
+**Done this milestone:**
 
-- Multi-channel audio:
-  - Named channels: `playSound(path, vol, loop, channel)` plays on a named
-    channel so carts can manage sound groups (e.g. 'sfx', 'ambient').
-  - `setChannelVolume(channel, vol)`, `stopChannel(channel)`.
-- Audio effects:
-  - Simple reverb/echo: `setReverb(mix, delay)`, `clearReverb()`.
-  - Pitch shift: `setPlaybackRate(voice, rate)` for sound stretching tricks.
-- Positional 3D audio:
-  - `playSound3D(path, x, y, z [, maxDist])` for spatial panning based on
-    camera position. Low cost: simple left/right pan from angle to listener.
-- ~~Better PCM format support~~:
-  - ~~OGG Vorbis decode~~ **Done** via stb_vorbis.
-  - Stereo PCM/WAV asset playback (current path only handles mono).
-- Conformance coverage for music loop, channel groups, and OGG.
+- ~~Multi-channel audio~~ **Done** — `playSound(path, vol, loop, channel, pitch)`;
+  `setChannelVolume(channel, vol)`, `setChannelPitch(channel, pitch)`,
+  `getChannelVolume(channel)`, `getChannelPitch(channel)`, `stopChannel(channel)`.
+  Conformance carts 95 and 96.
+- ~~Audio pitch~~ **Done** — per-voice `pitch` arg in `playSound`/`sfx`; per-channel
+  `setChannelPitch`; live voice control `setVoicePitch(handle, pitch)`,
+  `stopVoice(handle)`. Conformance cart 99.
+- ~~Echo/reverb~~ **Done** — `setEcho(mix, delay, decay)` / `clearEcho()`.
+- ~~Positional 3D audio~~ **Done** — `setListenerPos(x,y,z)`, `playSound3D(path, x,y,z,vol,maxDist)`.
+
+Still missing:
+
+- Stereo PCM/WAV asset playback (current path only handles mono).
+- `getVoicePitch(handle)` / `getVoiceVolume(handle)` live state accessors.
 
 ### 8D: Input Expansion
 
@@ -485,22 +485,15 @@ Current: keyboard, mouse, single gamepad, analog sticks, triggers, multi-port. D
     `RETRO_DEVICE_POINTER`, with harness `--touch-x`, `--touch-y`, and
     `--touch-count` injection. `42-touch.js` covers pointer input.
 
-Still missing:
+All 8D items now done:
 
-- Analog sticks:
-  - `axis(side, axis)` → float −1..1 for `RETRO_DEVICE_ANALOG`.
-    `side` is `'left'|'right'`, `axis` is `'x'|'y'`.
-  - `RETRO_DEVICE_ANALOG` is device 5, index 0/1, id 0/1.
-  - Conformance: `34-analog.js` with harness `--analog-lx N` injection.
-- Trigger axes:
-  - `trigger('left'|'right')` → float 0..1 from analog L2/R2.
-- Multiple controllers:
-  - Port argument to `btn`, `btnp`, `key`, `axis`: `btn('a', port)` where
-    port is 0–3.
-  - Harness `--port N` flag to inject input on a specific port.
-- Controller rumble:
-  - `rumble(strong, weak [, duration])` — calls `RETRO_ENVIRONMENT_SET_RUMBLE_INTERFACE`.
-- Conformance updates.
+- ~~Analog sticks~~ **Done** — `axis('left'|'right', 'x'|'y' [, port])`.
+- ~~Trigger axes~~ **Done** — `trigger('left'|'right' [, port])`.
+- ~~Multiple controllers~~ **Done** — port arg on `btn`, `btnp`, `axis`, `trigger`.
+  Harness `--port N` / `--btn name` inject joypad on any port (0–3).
+  Conformance cart 97.
+- ~~Controller rumble~~ **Done** — `rumble(strong, weak)` calls
+  `RETRO_ENVIRONMENT_GET_RUMBLE_INTERFACE`; no-op when unavailable.
 
 ### 8E: Scripting And Runtime
 
@@ -599,55 +592,53 @@ built-in physics layer removes this burden without adding a heavy dependency.
 
 ### 8I: Platform, RetroArch Parity, And Packaging
 
+**Done this milestone:**
+
+- Core option expansion:
+  - ~~`nova64_resolution`~~ **Done** — reads `640x360|320x180|1280x720` from
+    `RETRO_ENVIRONMENT_GET_VARIABLE` and applies `RETRO_ENVIRONMENT_SET_GEOMETRY`
+    on change; `retro_get_system_av_info` uses runtime `g_res_width`/`g_res_height`.
+  - ~~`nova64_audio_latency`~~ **Done** — `normal|low|high` maps to a
+    `RETRO_ENVIRONMENT_SET_MINIMUM_AUDIO_LATENCY` hint (0/32/128 ms).
+  - ~~`nova64_developer_mode`~~ **Done** — toggles hot reload and dev console overlay.
+- RetroAchievements foundation:
+  - ~~`RETRO_ENVIRONMENT_SET_MEMORY_MAPS`~~ **Done** — 256-byte `g_cheevos_ram`
+    exposed; JS `peek(addr)` / `poke(addr, val)` and `nova64.cheevos.*` namespace.
+    Conformance cart 98.
+- Platform packaging:
+  - ~~`make info`~~ **Done**, ~~`make conformance`~~ **Done**,
+    ~~`make harness`~~ **Done**, ~~`make release`~~ **Done** — `nova64_libretro.info`
+    bundled in tar.gz.
+
+Still missing:
+
 - Real hardware GLES smoke matrix:
   - Manual test log for: RetroArch GL, GLES, Vulkan video drivers on Linux/Android.
-  - Confirm overlay texture compositing, post FBO, and input work in a live
-    RetroArch install, not just the harness.
-- Core option expansion:
-  - `nova64_resolution` — 640×360, 320×180, 1280×720 options feeding
-    `RETRO_ENVIRONMENT_SET_GEOMETRY`.
-  - `nova64_audio_latency` — control the audio batch size for low-latency vs.
-    stable audio.
-  - `nova64_developer_mode` — enables hot reload and perf overlay.
 - Netplay compatibility:
   - Review which cart-facing state is non-deterministic (audio RNG, time sources).
-  - Mark all harness-injectable inputs as the sole source of non-determinism.
   - Document save-state coverage so netplay rollback knows what it controls.
-- RetroAchievements (cheevos) foundation:
-  - Expose memory map via `RETRO_ENVIRONMENT_SET_MEMORY_MAPS` so achievement
-    scripts can watch cart-accessible storage fields.
-- Platform packaging:
-  - `retroarch/nova64_libretro.info` is done. Add makefile target `make info`.
-  - Document build steps for Linux, Windows (WSL), and macOS (native clang).
-  - CI-friendly single-command test: `make -C retroarch conformance`.
-  - Reproducible release archive: `make -C retroarch release` produces
-    `nova64_libretro.so` + `nova64_libretro.info` + README in a tar.gz.
 
 ### 8J: Developer Experience And Tooling
 
-- Harness improvements (first pass done):
-  - Auto-save failure PPM at `/tmp/nova64-fail-<cart>.ppm` on checksum mismatch.
-  - Print frame dimensions in the summary line.
-  - `--verbose` flag: echo each JS API call through the render command log path.
-  - `--seed N`: inject deterministic RNG seed.
-  - `run_conformance.sh --recent N` runs only the newest numbered conformance
-    carts for fast iteration; full `pnpm run retroarch:test` remains the
-    pre-commit gate.
-  - `--port N`: inject input on a specific controller port.
-  - `--frames N`: already done; confirm it works for all cart types.
-- Command-log diff tooling:
-  - `retroarch/tests/diff_commands.sh old.commands new.commands` — line-by-line
-    diff with friendly field names instead of raw hex.
-- In-cart developer console:
-  - `nova64.console.print(text)` — writes to a small on-screen debug overlay
-    toggled by `nova64_developer_mode`. Does not corrupt the game framebuffer.
-- Cart migration guide:
-  - `retroarch/MIGRATION.md` — step-by-step guide for porting a browser/Godot
-    cart to a `.nova` package, including shim replacements for `window`,
-    `THREE`, `BABYLON`, and async patterns.
-- Auto-generated API reference:
-  - A script that reads the JS binding registrations from `nova64_libretro.c`
-    and emits a Markdown function reference table.
+**Done this milestone:**
+
+- ~~Auto-save failure PPM~~ **Done** — written to `/tmp/nova64-fail-<cart>.ppm`
+  on checksum mismatch when no `--capture` path is given.
+- ~~`--verbose` flag~~ **Done** — echoes each JS API call via the render command log.
+- ~~`--seed N`~~ **Done** — injects deterministic RNG state before `init()`.
+- ~~`run_conformance.sh --recent N`~~ **Done** — runs only the newest N carts.
+- ~~`--port N` / `--btn name`~~ **Done** — injects joypad input on a specific port.
+- ~~Command-log diff tooling~~ **Done** — `diff_commands.sh old.commands new.commands`.
+- ~~In-cart developer console~~ **Done** — `devPrint` / `nova64.console.print`;
+  12-line ring buffer overlay; toggled by `nova64_developer_mode`.
+- ~~Cart migration guide~~ **Done** — `MIGRATION.md` covers all shim replacements
+  and has been updated to reflect M8 additions.
+- ~~Auto-generated API reference~~ **Done** — `gen_api_ref.py` emits a Markdown
+  function table from `set_function()` calls in `nova64_libretro.c`.
+
+Still missing:
+
+- `--frames N` conformance for all cart types (currently 3 frames for all carts).
 
 Exit criteria:
 

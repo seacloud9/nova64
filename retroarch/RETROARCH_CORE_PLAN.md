@@ -325,31 +325,28 @@ directional lighting. Everything below is missing or incomplete.
     `44-capsule.js` conformance cart covers type check and scale validation.
   - Cylinder: `createCylinder(radiusTop, radiusBottom, height, color [, position])` —
     software renderer draws trapezoid body + top ellipse; GLES proxy. `45-cylinder.js`.
+- Custom geometry: `createMesh(vertices, normals, uvs, indices, color)` for
+  runtime-assembled geometry. `94-create-mesh.js` covers the full build path.
+- Scene hierarchy: `setParent(child, parent)` / `clearParent(child)` with world-space
+  transform propagation. `82-scene-hierarchy.js` covers parent/child transforms.
+- Richer material model:
+  - `setMeshRoughness`, `setMeshMetalness` (PBR-style): `100-pbr-material.js`.
+  - UV transforms: `setMeshUVOffset`, `setMeshUVScale`: `101-uv-transform.js`.
+  - Blend modes: `setMeshBlend('opaque'|'additive'|'multiply')`.
+- Orthographic camera: `setCameraOrthographic(width, height)` / `setCameraPerspective()`.
+  `47-camera-ortho.js` covers the projection toggle.
+- Skybox / background: `setSkyColor(top, bottom)` sky gradient, `68-sky-gradient.js`.
+  GLES renders a full-screen gradient quad before 3D geometry.
+- 3D raycast: `raycast(origin, direction, maxDist)` — returns hit handle, point, normal.
+  `85-raycast.js` covers mouse-picking and no-hit cases.
+- Shadow maps: directional depth-FBO pass with PCF 3×3 filtering.
+  `setCastShadow`, `setReceiveShadow`, `setShadowQuality('high'|'medium'|'low'|'off')`.
+  `shadowMaps` capability flag. `103-shadow-map.js` covers the full API surface.
 
 Still missing:
-  - Custom geometry: `createMesh(vertices, normals, uvs, indices, color)` for
-    runtime-assembled geometry.
-- Scene hierarchy and parent-child transforms:
-  - `setParent(child, parent)`, `clearParent(child)`, world vs. local transform
-    distinction. Required by any cart that assembles compound objects.
-- Richer material model:
-  - `setMeshRoughness(handle, value)` and `setMeshMetalness(handle, value)` for
-    PBR-style shading in the GLES lit shader.
-  - Normal map support: `setMeshNormalMap(handle, texHandle)`.
-  - UV transforms: `setMeshUVOffset(handle, u, v)` and
-    `setMeshUVScale(handle, u, v)`.
-  - Blend modes: `setMeshBlend(handle, 'opaque'|'additive'|'multiply')`.
-- Shadow maps:
-  - Directional shadow map (shadow-casting and receiving already record state;
-    the GLES shader needs a shadow sampler pass).
-  - `setShadowQuality(resolution)` core option for performance/quality tradeoff.
-- Orthographic camera:
-  - `setCameraOrthographic(width, height)` / `setCameraPerspective()` toggle.
-- Skybox / background:
-  - ~~`setSkyColor(top, bottom)` gradient background~~ **Done** for software
-    conformance and state reporting; GLES still uses the top color as its clear
-    color until the hardware gradient shader path lands.
-  - `setSkybox(texHandle)` cube-map skybox for environments that supply one.
+
+- Normal map support: `setMeshNormalMap(handle, texHandle)`.
+- `setSkybox(texHandle)` cube-map skybox for environments that supply one.
 - Offscreen render targets:
   - `createRenderTarget(width, height)`, `destroyRenderTarget(rt)`,
     `renderScene(rt)`, `renderTargetAsTexture(rt)`.

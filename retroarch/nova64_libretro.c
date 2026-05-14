@@ -176,7 +176,8 @@ enum nova64_mesh_type {
    NOVA64_MESH_SPHERE,
    NOVA64_MESH_PLANE,
    NOVA64_MESH_CAPSULE,
-   NOVA64_MESH_CYLINDER
+   NOVA64_MESH_CYLINDER,
+   NOVA64_MESH_CUSTOM
 };
 
 /* Mesh-level blend mode for 3D meshes */
@@ -207,6 +208,13 @@ struct nova64_mesh {
    float uv_scale[2];       /* UV tiling scale (u, v) */
    enum nova64_mesh_blend mesh_blend;
    int parent_handle;       /* 0 = no parent (8A scene hierarchy) */
+   /* Custom mesh geometry (NOVA64_MESH_CUSTOM) */
+   float *custom_verts;       /* interleaved pos[3]+normal[3] per vertex, malloced */
+   unsigned custom_vert_count;
+   uint16_t *custom_indices;  /* triangle indices, malloced */
+   unsigned custom_index_count;
+   unsigned gl_custom_vbo;    /* GPU buffer handles, 0 = not uploaded */
+   unsigned gl_custom_ibo;
 };
 
 struct nova64_camera {
@@ -282,6 +290,7 @@ struct nova64_audio_voice {
    int16_t *ogg_decoded_data; /* owned malloc'd PCM from OGG decode, NULL otherwise */
    char channel[32];          /* named channel for volume grouping (8C) */
    float pan;                 /* stereo pan: -1 left, 0 center, +1 right (8C batch4) */
+   float pitch;               /* playback pitch multiplier: 1.0 = normal, 2.0 = octave up */
 };
 
 struct nova64_sfx_params {
@@ -775,6 +784,13 @@ static float echo_wet   = 0.5f;
 static float listener_pos[3]; /* defaults 0,0,0; update with setListenerPos */
 static bool g_developer_mode = false;
 
+/* In-cart developer console (8J) */
+#define NOVA64_DEV_CON_LINES 12
+#define NOVA64_DEV_CON_COLS  80
+static char g_dev_con[NOVA64_DEV_CON_LINES][NOVA64_DEV_CON_COLS];
+static int  g_dev_con_count = 0;
+static int  g_dev_con_head  = 0;
+
 /* Dedicated music state — looping background track, one at a time */
 struct nova64_music_state {
    bool active;
@@ -1068,6 +1084,14 @@ static bool set_position_from_js(JSContext *ctx, JSValueConst value, float targe
 
 static void clear_scene_objects(void)
 {
+   for (int i = 0; i < NOVA64_MAX_MESHES; i++) {
+      if (meshes[i].custom_verts)  { free(meshes[i].custom_verts);  meshes[i].custom_verts = NULL; }
+      if (meshes[i].custom_indices){ free(meshes[i].custom_indices); meshes[i].custom_indices = NULL; }
+      if (meshes[i].gl_custom_vbo && gles.active && gles.DeleteBuffers)
+         gles.DeleteBuffers(1, &meshes[i].gl_custom_vbo);
+      if (meshes[i].gl_custom_ibo && gles.active && gles.DeleteBuffers)
+         gles.DeleteBuffers(1, &meshes[i].gl_custom_ibo);
+   }
    memset(meshes, 0, sizeof(meshes));
    memset(point_lights, 0, sizeof(point_lights));
 }
@@ -1432,7 +1456,10 @@ static double audio_sample_voice(struct nova64_audio_voice *voice)
       size_t ch = voice->pcm_channels > 1 ? voice->pcm_channels : 1;
       double left  = (double)voice->pcm_data[frame * ch] / 32768.0;
       double right = ch > 1 ? (double)voice->pcm_data[frame * ch + 1] / 32768.0 : left;
-      voice->pcm_pos += voice->pcm_rate / NOVA64_SAMPLE_RATE;
+      double advance = voice->pcm_rate / NOVA64_SAMPLE_RATE;
+      if (voice->pitch > 0.01f && voice->pitch != 1.0f)
+         advance *= (double)voice->pitch;
+      voice->pcm_pos += advance;
       return ((left + right) * 0.5) * voice->vol * channel_volume(voice->channel);
    }
 
@@ -1459,6 +1486,8 @@ static double audio_sample_voice(struct nova64_audio_voice *voice)
 
    double t = voice->dur > 0.0 ? (double)voice->elapsed_samples / (voice->dur * NOVA64_SAMPLE_RATE) : 1.0;
    double current_freq = clamp_double(voice->freq + voice->sweep * t, 1.0, 20000.0);
+   if (voice->pitch > 0.01f && voice->pitch != 1.0f)
+      current_freq = clamp_double(current_freq * (double)voice->pitch, 1.0, 20000.0);
    voice->phase += current_freq / NOVA64_SAMPLE_RATE;
    voice->phase -= floor(voice->phase);
    voice->elapsed_samples++;
@@ -2641,6 +2670,10 @@ static void render_software_scene(void)
          case NOVA64_MESH_CYLINDER:
             draw_software_cylinder(mesh);
             break;
+         case NOVA64_MESH_CUSTOM:
+            /* software preview: draw a sphere proxy at mesh origin */
+            draw_software_sphere(mesh);
+            break;
          default:
             break;
       }
@@ -2661,6 +2694,8 @@ static const char *mesh_type_name(enum nova64_mesh_type type)
          return "capsule";
       case NOVA64_MESH_CYLINDER:
          return "cylinder";
+      case NOVA64_MESH_CUSTOM:
+         return "custom";
       default:
          return "none";
    }
@@ -5266,9 +5301,10 @@ static JSValue js_play_sound(JSContext *ctx, JSValueConst this_val, int argc, JS
    if (!asset || !asset->data || asset->size < 4)
       return JS_NewBool(ctx, false);
 
-   double vol = argc > 1 ? double_from_js(ctx, argv[1], 1.0) : 1.0;
-   bool loop  = argc > 2 ? JS_ToBool(ctx, argv[2]) != 0 : false;
+   double vol   = argc > 1 ? double_from_js(ctx, argv[1], 1.0) : 1.0;
+   bool loop    = argc > 2 ? JS_ToBool(ctx, argv[2]) != 0 : false;
    const char *channel_name = argc > 3 ? JS_ToCString(ctx, argv[3]) : NULL;
+   float pitch  = argc > 4 ? (float)double_from_js(ctx, argv[4], 1.0) : 1.0f;
 
    /* Find a free voice */
    size_t slot = 0;
@@ -5315,6 +5351,7 @@ static JSValue js_play_sound(JSContext *ctx, JSValueConst this_val, int argc, JS
    voice->pcm_rate         = rate;
    voice->pcm_pos          = 0.0;
    voice->pcm_loop         = loop;
+   voice->pitch            = (pitch > 0.01f && pitch < 100.0f) ? pitch : 1.0f;
    if (channel_name) {
       strncpy(voice->channel, channel_name, sizeof(voice->channel) - 1);
       JS_FreeCString(ctx, channel_name);
@@ -6784,6 +6821,98 @@ static JSValue js_is_developer_mode(JSContext *ctx, JSValueConst this_val, int a
    return JS_NewBool(ctx, g_developer_mode);
 }
 
+/* ── Developer console (8J) ───────────────────────────────────────── */
+static JSValue js_dev_console_print(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 1) return JS_UNDEFINED;
+   const char *text = JS_ToCString(ctx, argv[0]);
+   if (!text) return JS_UNDEFINED;
+   int idx = (g_dev_con_head + g_dev_con_count) % NOVA64_DEV_CON_LINES;
+   if (g_dev_con_count < NOVA64_DEV_CON_LINES) {
+      g_dev_con_count++;
+   } else {
+      g_dev_con_head = (g_dev_con_head + 1) % NOVA64_DEV_CON_LINES;
+   }
+   strncpy(g_dev_con[idx], text, NOVA64_DEV_CON_COLS - 1);
+   g_dev_con[idx][NOVA64_DEV_CON_COLS - 1] = '\0';
+   JS_FreeCString(ctx, text);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_dev_console_clear(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)ctx; (void)this_val; (void)argc; (void)argv;
+   g_dev_con_count = 0;
+   g_dev_con_head  = 0;
+   return JS_UNDEFINED;
+}
+
+static JSValue js_dev_console_get_lines(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val; (void)argc; (void)argv;
+   JSValue arr = JS_NewArray(ctx);
+   for (int i = 0; i < g_dev_con_count; i++) {
+      int ridx = (g_dev_con_head + i) % NOVA64_DEV_CON_LINES;
+      JS_SetPropertyUint32(ctx, arr, (uint32_t)i, JS_NewString(ctx, g_dev_con[ridx]));
+   }
+   return arr;
+}
+
+/* ── Custom mesh geometry (8E/M8) ────────────────────────────────── */
+static float read_float_from_js_arr(JSContext *ctx, JSValueConst arr, unsigned ai)
+{
+   JSValue v = JS_GetPropertyUint32(ctx, arr, ai);
+   double d = 0.0;
+   JS_ToFloat64(ctx, &d, v);
+   JS_FreeValue(ctx, v);
+   return (float)d;
+}
+
+static JSValue js_create_mesh(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 3) return JS_NewInt32(ctx, 0);
+   JSValue len_val = JS_GetPropertyStr(ctx, argv[0], "length");
+   uint32_t pos_len = 0;
+   JS_ToUint32(ctx, &pos_len, len_val);
+   JS_FreeValue(ctx, len_val);
+   if (pos_len == 0 || pos_len % 3 != 0) return JS_NewInt32(ctx, 0);
+   unsigned vert_count = pos_len / 3;
+   JSValue idx_len_val = JS_GetPropertyStr(ctx, argv[2], "length");
+   uint32_t idx_len = 0;
+   JS_ToUint32(ctx, &idx_len, idx_len_val);
+   JS_FreeValue(ctx, idx_len_val);
+   if (idx_len == 0 || idx_len % 3 != 0) return JS_NewInt32(ctx, 0);
+   int handle = allocate_mesh(NOVA64_MESH_CUSTOM);
+   if (!handle) return JS_NewInt32(ctx, 0);
+   struct nova64_mesh *mesh = mesh_from_handle(handle);
+   float *verts = (float *)malloc(vert_count * 6 * sizeof(float));
+   if (!verts) { mesh->used = false; return JS_NewInt32(ctx, 0); }
+   for (unsigned vi = 0; vi < vert_count; vi++) {
+      verts[vi*6+0] = read_float_from_js_arr(ctx, argv[0], vi*3+0);
+      verts[vi*6+1] = read_float_from_js_arr(ctx, argv[0], vi*3+1);
+      verts[vi*6+2] = read_float_from_js_arr(ctx, argv[0], vi*3+2);
+      verts[vi*6+3] = read_float_from_js_arr(ctx, argv[1], vi*3+0);
+      verts[vi*6+4] = read_float_from_js_arr(ctx, argv[1], vi*3+1);
+      verts[vi*6+5] = read_float_from_js_arr(ctx, argv[1], vi*3+2);
+   }
+   uint16_t *indices = (uint16_t *)malloc(idx_len * sizeof(uint16_t));
+   if (!indices) { free(verts); mesh->used = false; return JS_NewInt32(ctx, 0); }
+   for (uint32_t ii = 0; ii < idx_len; ii++) {
+      JSValue iv = JS_GetPropertyUint32(ctx, argv[2], ii);
+      uint32_t iu = 0;
+      JS_ToUint32(ctx, &iu, iv);
+      JS_FreeValue(ctx, iv);
+      indices[ii] = (uint16_t)iu;
+   }
+   mesh->custom_verts       = verts;
+   mesh->custom_vert_count  = vert_count;
+   mesh->custom_indices     = indices;
+   mesh->custom_index_count = idx_len;
+   return JS_NewInt32(ctx, handle);
+}
+
 static void set_function(JSContext *ctx, JSValue object, const char *name, JSCFunction *fn, int length)
 {
    JS_SetPropertyStr(ctx, object, name, JS_NewCFunction(ctx, fn, name, length));
@@ -7356,6 +7485,25 @@ static bool install_nova64_api(JSContext *ctx)
    /* Developer mode (8I batch4) */
    set_function(ctx, global, "isDeveloperMode", js_is_developer_mode, 0);
    set_function(ctx, nova64, "isDeveloperMode", js_is_developer_mode, 0);
+
+   /* Developer console (8J) */
+   {
+      JSValue con = JS_NewObject(ctx);
+      set_function(ctx, con, "print",    js_dev_console_print,     1);
+      set_function(ctx, con, "clear",    js_dev_console_clear,     0);
+      set_function(ctx, con, "lines",    js_dev_console_get_lines, 0);
+      JS_SetPropertyStr(ctx, nova64, "console", con);
+   }
+   set_function(ctx, global, "devPrint", js_dev_console_print, 1);
+
+   /* Custom mesh (M8) */
+   set_function(ctx, global, "createMesh", js_create_mesh, 3);
+   {
+      JSValue sc = JS_GetPropertyStr(ctx, nova64, "scene");
+      if (!JS_IsUndefined(sc))
+         set_function(ctx, sc, "createMesh", js_create_mesh, 3);
+      JS_FreeValue(ctx, sc);
+   }
 
    JS_FreeValue(ctx, global);
    return true;
@@ -8184,6 +8332,31 @@ static void render_gles_cylinder(const struct nova64_mesh *mesh, const float vie
    render_gles_primitive(mesh, view_projection, gles.sphere_vbo, gles.sphere_ibo, 24);
 }
 
+static void render_gles_custom_mesh(struct nova64_mesh *mesh, const float view_projection[16])
+{
+   if (!mesh->custom_verts || mesh->custom_vert_count == 0 ||
+       !mesh->custom_indices || mesh->custom_index_count == 0)
+      return;
+   /* Lazy GPU upload on first draw */
+   if (!mesh->gl_custom_vbo && gles.GenBuffers && gles.BindBuffer && gles.BufferData) {
+      gles.GenBuffers(1, &mesh->gl_custom_vbo);
+      gles.BindBuffer(GL_ARRAY_BUFFER, mesh->gl_custom_vbo);
+      gles.BufferData(GL_ARRAY_BUFFER,
+         (GLsizeiptr)(mesh->custom_vert_count * 6 * sizeof(float)),
+         mesh->custom_verts, GL_STATIC_DRAW);
+      gles.GenBuffers(1, &mesh->gl_custom_ibo);
+      gles.BindBuffer(GL_ELEMENT_ARRAY_BUFFER, mesh->gl_custom_ibo);
+      gles.BufferData(GL_ELEMENT_ARRAY_BUFFER,
+         (GLsizeiptr)(mesh->custom_index_count * sizeof(uint16_t)),
+         mesh->custom_indices, GL_STATIC_DRAW);
+      gles.BindBuffer(GL_ARRAY_BUFFER, 0);
+      gles.BindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+   }
+   if (mesh->gl_custom_vbo && mesh->gl_custom_ibo)
+      render_gles_primitive(mesh, view_projection,
+         mesh->gl_custom_vbo, mesh->gl_custom_ibo, (GLsizei)mesh->custom_index_count);
+}
+
 static void render_gles_overlay(void)
 {
    if (!convert_framebuffer_to_overlay_rgba())
@@ -8502,6 +8675,8 @@ static void render_gles_scene(void)
          render_gles_capsule(&meshes[i], view_projection);
       else if (meshes[i].type == NOVA64_MESH_CYLINDER)
          render_gles_cylinder(&meshes[i], view_projection);
+      else if (meshes[i].type == NOVA64_MESH_CUSTOM)
+         render_gles_custom_mesh(&meshes[i], view_projection);
    }
 
    if (use_post) {
@@ -9331,6 +9506,17 @@ void RETRO_CALLCONV retro_reset(void)
    reset_fonts();
    memset(audio_channels, 0, sizeof(audio_channels));
    rng_seed_from_environment();
+   /* Hot reload: re-read cart from disk if NOVA64_HOT_RELOAD=1 */
+   const char *hot_reload_env = getenv("NOVA64_HOT_RELOAD");
+   if (hot_reload_env && hot_reload_env[0] == '1' && cart_path[0]) {
+      size_t new_size = 0;
+      char *new_data = read_file_to_memory(cart_path, &new_size);
+      if (new_data) {
+         free(cart_content);
+         cart_content = new_data;
+         cart_size    = new_size;
+      }
+   }
    if (cart_content && cart_size)
       js_host_load_cart(cart_content, cart_size, cart_path[0] ? cart_path : "<nova64-cart>");
 }
@@ -9342,6 +9528,16 @@ void RETRO_CALLCONV retro_run(void)
 
    update_input();
    js_host_call_frame(1.0 / NOVA64_FPS);
+
+   /* Developer console overlay: draw lines at bottom of software framebuffer */
+   if (g_developer_mode && g_dev_con_count > 0) {
+      int con_y = NOVA64_HEIGHT - g_dev_con_count * 10 - 2;
+      for (int ci = 0; ci < g_dev_con_count; ci++) {
+         int ridx = (g_dev_con_head + ci) % NOVA64_DEV_CON_LINES;
+         draw_text_pixels(g_dev_con[ridx], 2, con_y + ci * 10, rgba8(0, 220, 255, 255));
+      }
+   }
+
    write_renderer_command_log();
    audio_mix_frame();
 

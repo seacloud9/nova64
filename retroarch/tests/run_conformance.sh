@@ -323,7 +323,7 @@ run_visual_case "08 sphere" "08-sphere" "retroarch/conformance/08-sphere.js" "6c
 run_visual_case "09 overlay scene" "09-overlay-scene" "retroarch/conformance/09-overlay-scene.js" "7122077fc2c8b827"
 run_visual_case "10 lighting" "10-lighting" "retroarch/conformance/10-lighting.js" "e3b1a52e585e46f2"
 NOVA64_SAVE_DIR="${SAVE_DIR}" run_case "11 storage" "retroarch/conformance/11-storage.js" "5dd5226aa3467474"
-run_audio_case "12 audio" "retroarch/conformance/12-audio.js" "c0e5bade62febc47" "a18315634c550da3"
+run_audio_case "12 audio" "retroarch/conformance/12-audio.js" "c0e5bade62febc47" "8c17792ab2c39e1b"
 run_case "13 assets" "${PACKAGE_DIR}/asset-runtime.nova" "294b9bd45b20fb27"
 run_case "14 plane dimensions" "retroarch/conformance/14-plane-dimensions.js" "d4e415a9e874e0af"
 run_case "15 primitive args" "retroarch/conformance/15-primitive-args.js" "1294ed2cc0033448"
@@ -345,7 +345,7 @@ run_mouse_case() {
 run_mouse_case "25 mouse" "retroarch/conformance/25-mouse.js" "c921e3d3b2b7c551"
 run_visual_case "26 draw2d" "26-draw2d" "retroarch/conformance/26-draw2d.js" "5c927cbdf07816e8"
 run_visual_case "27 sprite" "27-sprite" "${PACKAGE_DIR}/sprite.nova" "f6ca57a33e1c1b09"
-run_audio_case "28 play sound" "${PACKAGE_DIR}/play-sound.nova" "c731ab8067d773d7" "1e5796287c9800a7"
+run_audio_case "28 play sound" "${PACKAGE_DIR}/play-sound.nova" "c731ab8067d773d7" "5688d0029f712693"
 run_visual_case "29 runtime utils" "29-runtime-utils" "retroarch/conformance/29-runtime-utils.js" "14ba8d2d1685cbbf"
 
 run_showcase_case() {
@@ -364,7 +364,7 @@ run_showcase_case() {
   rm -f "${ppm}"
 }
 
-run_showcase_case "30 showcase" "30-showcase" "retroarch/conformance/30-showcase.js" "8edfc5576738b943" "a96055c2163c4413"
+run_showcase_case "30 showcase" "30-showcase" "retroarch/conformance/30-showcase.js" "8edfc5576738b943" "c888ebc87f460853"
 
 run_analog_case() {
   local label="$1"
@@ -475,5 +475,9 @@ run_visual_case "88 echo api"        "88-echo"             "retroarch/conformanc
 run_visual_case "89 positional audio" "89-positional-audio" "retroarch/conformance/89-positional-audio.js" "fbb4bb11cac086fa"
 run_visual_case "90 developer mode"  "90-developer-mode"   "retroarch/conformance/90-developer-mode.js"   "4fc5aba23dda88d6"
 run_visual_case "91 stereo pan"      "91-stereo-pan"       "retroarch/conformance/91-stereo-pan.js"       "14e58194e07a35b0"
+run_visual_case "92 hot reload"      "92-hot-reload"       "retroarch/conformance/92-hot-reload.js"       "e1e85852c9e7a8b8"
+run_visual_case "93 dev console"     "93-dev-console"      "retroarch/conformance/93-dev-console.js"      "499d83798b7a231a"
+run_visual_case "94 create mesh"     "94-create-mesh"      "retroarch/conformance/94-create-mesh.js"      "79cbd3d3d92c1840"
+run_visual_case "95 audio pitch"     "95-audio-pitch"      "retroarch/conformance/95-audio-pitch.js"      "37a3290c34b4ffd2"
 
 echo "Conformance passed."

@@ -20,6 +20,18 @@
 #include "libretro.h"
 #include "quickjs.h"
 
+/* stb_vorbis: single-header OGG Vorbis decoder */
+#define STB_VORBIS_NO_PUSHDATA_API
+#define STB_VORBIS_NO_STDIO
+#if defined(__GNUC__) || defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
+#endif
+#include "stb_vorbis.c"
+#if defined(__GNUC__) || defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
+
 #define NOVA64_WIDTH 640
 #define NOVA64_HEIGHT 360
 #define NOVA64_FPS 60.0
@@ -162,7 +174,16 @@ enum nova64_mesh_type {
    NOVA64_MESH_NONE = 0,
    NOVA64_MESH_CUBE,
    NOVA64_MESH_SPHERE,
-   NOVA64_MESH_PLANE
+   NOVA64_MESH_PLANE,
+   NOVA64_MESH_CAPSULE,
+   NOVA64_MESH_CYLINDER
+};
+
+/* Mesh-level blend mode for 3D meshes */
+enum nova64_mesh_blend {
+   NOVA64_MESH_BLEND_OPAQUE = 0,
+   NOVA64_MESH_BLEND_ADDITIVE,
+   NOVA64_MESH_BLEND_MULTIPLY
 };
 
 struct nova64_mesh {
@@ -180,12 +201,20 @@ struct nova64_mesh {
    int texture_handle;      /* 0 = no texture */
    uint32_t emissive_color; /* 0 = none, else RGBA8 */
    float emissive_intensity; /* 0 = off */
+   float roughness;         /* 0 = smooth, 1 = rough — stored, not yet wired to shader */
+   float metalness;         /* 0 = non-metal, 1 = metal — stored */
+   float uv_offset[2];      /* UV scroll offset (u, v) */
+   float uv_scale[2];       /* UV tiling scale (u, v) */
+   enum nova64_mesh_blend mesh_blend;
 };
 
 struct nova64_camera {
    float position[3];
    float target[3];
    float fov;
+   bool is_ortho;
+   float ortho_width;
+   float ortho_height;
 };
 
 struct nova64_light {
@@ -249,6 +278,7 @@ struct nova64_audio_voice {
    double pcm_rate;     /* source sample rate */
    double pcm_pos;      /* fractional playback position */
    bool pcm_loop;
+   int16_t *ogg_decoded_data; /* owned malloc'd PCM from OGG decode, NULL otherwise */
 };
 
 struct nova64_sfx_params {
@@ -446,9 +476,57 @@ static bool key_prev_held[NOVA64_KEY_TABLE_SIZE];
 static int clip_x, clip_y, clip_w, clip_h;
 static bool clip_active;
 
+#define NOVA64_DRAW_STACK_MAX 16
+struct nova64_clip_state {
+   bool active;
+   int x, y, w, h;
+};
+static struct nova64_clip_state clip_stack[NOVA64_DRAW_STACK_MAX];
+static int clip_stack_depth;
+
+/* 2D blend mode (reset on cart reload) */
+enum nova64_blend_mode {
+   NOVA64_BLEND_NORMAL = 0,
+   NOVA64_BLEND_ALPHA,
+   NOVA64_BLEND_ADDITIVE,
+   NOVA64_BLEND_MULTIPLY,
+   NOVA64_BLEND_SCREEN
+};
+static enum nova64_blend_mode blend_2d_mode = NOVA64_BLEND_NORMAL;
+static enum nova64_blend_mode blend_stack[NOVA64_DRAW_STACK_MAX];
+static int blend_stack_depth;
+
+/* Sky/background color — used as GLES clear color when enabled */
+static bool sky_color_enabled = false;
+static uint32_t sky_top_color    = 0x000000FFU;
+static uint32_t sky_bottom_color = 0x000000FFU;
+
+/* 16-color draw palette plus one exact-color swap for retro palette tricks. */
+static uint32_t draw_palette[16];
+static bool palette_swap_enabled = false;
+static uint32_t palette_swap_from = 0;
+static uint32_t palette_swap_to = 0;
+struct nova64_palette_state {
+   uint32_t colors[16];
+   bool swap_enabled;
+   uint32_t swap_from;
+   uint32_t swap_to;
+};
+static struct nova64_palette_state palette_stack[NOVA64_DRAW_STACK_MAX];
+static int palette_stack_depth;
+
 /* 2D camera offset — subtracted from all 2D draw coordinates */
 static int cam2d_x = 0;
 static int cam2d_y = 0;
+static float cam2d_zoom = 1.0f;
+static float cam2d_rotation = 0.0f;
+struct nova64_camera2d_state {
+   int x, y;
+   float zoom;
+   float rotation;
+};
+static struct nova64_camera2d_state camera2d_stack[NOVA64_DRAW_STACK_MAX];
+static int camera2d_stack_depth;
 
 /* Mouse */
 #define NOVA64_MOUSE_X       0
@@ -597,6 +675,21 @@ static struct nova64_light light_state;
 static struct nova64_audio_voice audio_voices[NOVA64_AUDIO_MAX_VOICES];
 static int16_t audio_mix_buffer[NOVA64_AUDIO_FRAME_SAMPLES * 2];
 static double audio_master_volume = 0.4;
+
+/* Dedicated music state — looping background track, one at a time */
+struct nova64_music_state {
+   bool active;
+   bool paused;
+   float vol;
+   const int16_t *pcm_data;
+   int16_t *ogg_decoded_data;  /* owned malloc'd PCM from OGG decode */
+   size_t pcm_frames;
+   size_t pcm_channels;
+   double pcm_rate;
+   double pcm_pos;
+   const struct nova64_package_asset *pcm_asset;
+};
+static struct nova64_music_state music_state;
 static struct nova64_js_host js_host;
 static struct nova64_gles_backend gles;
 static enum nova64_renderer_backend renderer_preference = NOVA64_RENDERER_GLES3;
@@ -633,6 +726,53 @@ static bool post_is_active(void)
       || post_state.bloom > 0.0f || post_state.chromatic > 0.0f || post_state.posterize > 0
       || post_state.color_grade[0] != 1.0f || post_state.color_grade[1] != 1.0f
       || post_state.color_grade[2] != 1.0f;
+}
+
+static void reset_palette_state(void)
+{
+   static const uint32_t defaults[16] = {
+      0x000000FFU, 0x1D2B53FFU, 0x7E2553FFU, 0x008751FFU,
+      0xAB5236FFU, 0x5F574FFFU, 0xC2C3C7FFU, 0xFFF1E8FFU,
+      0xFF004DFFU, 0xFFA300FFU, 0xFFEC27FFU, 0x00E436FFU,
+      0x29ADFFFFU, 0x83769CFFU, 0xFF77A8FFU, 0xFFCCAAFFU
+   };
+   memcpy(draw_palette, defaults, sizeof(draw_palette));
+   palette_swap_enabled = false;
+   palette_swap_from = 0;
+   palette_swap_to = 0;
+}
+
+static uint32_t apply_palette_swap(uint32_t color)
+{
+   return (palette_swap_enabled && color == palette_swap_from) ? palette_swap_to : color;
+}
+
+static void transform_2d_point(int world_x, int world_y, int *screen_x, int *screen_y)
+{
+   float x = (float)(world_x - cam2d_x);
+   float y = (float)(world_y - cam2d_y);
+   if (cam2d_zoom != 1.0f || cam2d_rotation != 0.0f) {
+      float cx = (float)NOVA64_WIDTH * 0.5f;
+      float cy = (float)NOVA64_HEIGHT * 0.5f;
+      float dx = (x - cx) * cam2d_zoom;
+      float dy = (y - cy) * cam2d_zoom;
+      float s = sinf(cam2d_rotation);
+      float c = cosf(cam2d_rotation);
+      x = cx + dx * c - dy * s;
+      y = cy + dx * s + dy * c;
+   }
+   *screen_x = (int)lrintf(x);
+   *screen_y = (int)lrintf(y);
+}
+
+static int transform_2d_size(int size)
+{
+   int out = (int)lrintf((float)size * cam2d_zoom);
+   if (size > 0 && out < 1)
+      out = 1;
+   if (size < 0 && out > -1)
+      out = -1;
+   return out;
 }
 
 static bool scene_has_visible_meshes(void);
@@ -905,6 +1045,24 @@ static uint32_t color_with_opacity(uint32_t color, float opacity)
    return (color & 0xffffff00U) | (a & 0xffU);
 }
 
+static uint32_t lerp_color(uint32_t top, uint32_t bottom, float t)
+{
+   t = clamp_float(t, 0.0f, 1.0f);
+   uint32_t tr = (top >> 24) & 0xffU;
+   uint32_t tg = (top >> 16) & 0xffU;
+   uint32_t tb = (top >> 8) & 0xffU;
+   uint32_t ta = top & 0xffU;
+   uint32_t br = (bottom >> 24) & 0xffU;
+   uint32_t bg = (bottom >> 16) & 0xffU;
+   uint32_t bb = (bottom >> 8) & 0xffU;
+   uint32_t ba = bottom & 0xffU;
+   uint32_t r = (uint32_t)((float)tr + ((float)br - (float)tr) * t);
+   uint32_t g = (uint32_t)((float)tg + ((float)bg - (float)tg) * t);
+   uint32_t b = (uint32_t)((float)tb + ((float)bb - (float)tb) * t);
+   uint32_t a = (uint32_t)((float)ta + ((float)ba - (float)ta) * t);
+   return rgba8(r, g, b, a);
+}
+
 static int allocate_point_light(void)
 {
    for (int i = 0; i < NOVA64_MAX_POINT_LIGHTS; i++) {
@@ -968,6 +1126,12 @@ static void reset_scene_state(void)
    light_state.fog_color = rgba8(0, 0, 0, 255);
    light_state.fog_near = 10.0f;
    light_state.fog_far = 50.0f;
+   camera_state.is_ortho = false;
+   camera_state.ortho_width = 10.0f;
+   camera_state.ortho_height = 5.625f; /* 16:9 at ortho_width=10 */
+   sky_color_enabled = false;
+   sky_top_color    = 0x000000FFU;
+   sky_bottom_color = 0x000000FFU;
 }
 
 static enum nova64_audio_wave audio_wave_from_name(const char *name, enum nova64_audio_wave fallback)
@@ -1213,6 +1377,23 @@ static void audio_mix_frame(void)
          if (audio_voices[v].active)
             mixed += audio_sample_voice(&audio_voices[v]);
       }
+      /* Mix music track */
+      if (music_state.active && !music_state.paused && music_state.pcm_data) {
+         size_t mi = (size_t)music_state.pcm_pos;
+         if (mi < music_state.pcm_frames) {
+            double s0 = (double)music_state.pcm_data[mi * music_state.pcm_channels] / 32768.0;
+            double s1 = (mi + 1 < music_state.pcm_frames)
+               ? (double)music_state.pcm_data[(mi + 1) * music_state.pcm_channels] / 32768.0
+               : s0;
+            double frac = music_state.pcm_pos - (double)mi;
+            mixed += (s0 + (s1 - s0) * frac) * music_state.vol;
+         }
+         music_state.pcm_pos += music_state.pcm_rate / NOVA64_SAMPLE_RATE;
+         if ((size_t)music_state.pcm_pos >= music_state.pcm_frames) {
+            /* Loop back to start */
+            music_state.pcm_pos = 0.0;
+         }
+      }
       mixed = clamp_double(mixed * audio_master_volume, -1.0, 1.0);
       int16_t sample = (int16_t)(mixed * 32767.0);
       audio_mix_buffer[i * 2 + 0] = sample;
@@ -1223,9 +1404,17 @@ static void audio_mix_frame(void)
 
 static void reset_audio_state(void)
 {
+   for (size_t i = 0; i < NOVA64_AUDIO_MAX_VOICES; i++) {
+      if (audio_voices[i].ogg_decoded_data)
+         free(audio_voices[i].ogg_decoded_data);
+   }
    memset(audio_voices, 0, sizeof(audio_voices));
    memset(audio_mix_buffer, 0, sizeof(audio_mix_buffer));
    audio_master_volume = 0.4;
+   if (music_state.ogg_decoded_data)
+      free(music_state.ogg_decoded_data);
+   memset(&music_state, 0, sizeof(music_state));
+   music_state.vol = 1.0f;
 }
 
 static void clear_framebuffer(uint32_t color)
@@ -1237,17 +1426,62 @@ static void clear_framebuffer(uint32_t color)
       framebuffer[i] = color;
 }
 
+static void clear_framebuffer_sky_gradient(void)
+{
+   if (!framebuffer)
+      return;
+   framebuffer_clear_color = sky_top_color;
+   for (int y = 0; y < NOVA64_HEIGHT; y++) {
+      float t = NOVA64_HEIGHT > 1 ? (float)y / (float)(NOVA64_HEIGHT - 1) : 0.0f;
+      uint32_t color = lerp_color(sky_top_color, sky_bottom_color, t);
+      for (int x = 0; x < NOVA64_WIDTH; x++)
+         framebuffer[(size_t)y * NOVA64_WIDTH + (size_t)x] = color;
+   }
+}
+
 static void set_pixel(int x, int y, uint32_t color)
 {
    if (!framebuffer)
       return;
+   color = apply_palette_swap(color);
    if (x < 0 || y < 0 || x >= NOVA64_WIDTH || y >= NOVA64_HEIGHT)
       return;
    if (clip_active) {
       if (x < clip_x || y < clip_y || x >= clip_x + clip_w || y >= clip_y + clip_h)
          return;
    }
-   framebuffer[(size_t)y * NOVA64_WIDTH + (size_t)x] = color;
+   if (blend_2d_mode == NOVA64_BLEND_NORMAL) {
+      framebuffer[(size_t)y * NOVA64_WIDTH + (size_t)x] = color;
+   } else {
+      uint32_t dst = framebuffer[(size_t)y * NOVA64_WIDTH + (size_t)x];
+      uint8_t sr = (color >> 24) & 0xff;
+      uint8_t sg = (color >> 16) & 0xff;
+      uint8_t sb = (color >>  8) & 0xff;
+      uint8_t sa = color & 0xff;
+      uint8_t dr = (dst   >> 24) & 0xff;
+      uint8_t dg = (dst   >> 16) & 0xff;
+      uint8_t db = (dst   >>  8) & 0xff;
+      uint8_t nr, ng, nb;
+      if (blend_2d_mode == NOVA64_BLEND_ALPHA) {
+         uint32_t inv = 255U - sa;
+         nr = (uint8_t)(((uint32_t)sr * sa + (uint32_t)dr * inv) / 255U);
+         ng = (uint8_t)(((uint32_t)sg * sa + (uint32_t)dg * inv) / 255U);
+         nb = (uint8_t)(((uint32_t)sb * sa + (uint32_t)db * inv) / 255U);
+      } else if (blend_2d_mode == NOVA64_BLEND_ADDITIVE) {
+         nr = (uint8_t)(sr + dr > 255 ? 255 : sr + dr);
+         ng = (uint8_t)(sg + dg > 255 ? 255 : sg + dg);
+         nb = (uint8_t)(sb + db > 255 ? 255 : sb + db);
+      } else if (blend_2d_mode == NOVA64_BLEND_MULTIPLY) {
+         nr = (uint8_t)((sr * dr) / 255);
+         ng = (uint8_t)((sg * dg) / 255);
+         nb = (uint8_t)((sb * db) / 255);
+      } else { /* SCREEN */
+         nr = (uint8_t)(255 - (((255 - sr) * (255 - dr)) / 255));
+         ng = (uint8_t)(255 - (((255 - sg) * (255 - dg)) / 255));
+         nb = (uint8_t)(255 - (((255 - sb) * (255 - db)) / 255));
+      }
+      framebuffer[(size_t)y * NOVA64_WIDTH + (size_t)x] = rgba8(nr, ng, nb, 255);
+   }
 }
 
 static void draw_line_pixels(int x0, int y0, int x1, int y1, uint32_t color)
@@ -1270,6 +1504,48 @@ static void draw_line_pixels(int x0, int y0, int x1, int y1, uint32_t color)
       if (e2 <= dx) {
          err += dx;
          y0 += sy;
+      }
+   }
+}
+
+static void draw_thick_line_pixels(int x0, int y0, int x1, int y1, uint32_t color, int thickness)
+{
+   if (thickness <= 1) {
+      draw_line_pixels(x0, y0, x1, y1, color);
+      return;
+   }
+   int radius = thickness / 2;
+   for (int oy = -radius; oy <= radius; oy++) {
+      for (int ox = -radius; ox <= radius; ox++) {
+         if (ox * ox + oy * oy <= radius * radius)
+            draw_line_pixels(x0 + ox, y0 + oy, x1 + ox, y1 + oy, color);
+      }
+   }
+}
+
+static void draw_line_gradient_pixels(int x0, int y0, int x1, int y1,
+      uint32_t a, uint32_t b, int thickness)
+{
+   int dx = abs(x1 - x0);
+   int dy = abs(y1 - y0);
+   int steps = dx > dy ? dx : dy;
+   if (steps <= 0) {
+      set_pixel(x0, y0, a);
+      return;
+   }
+   int radius = thickness > 1 ? thickness / 2 : 0;
+   for (int i = 0; i <= steps; i++) {
+      float t = (float)i / (float)steps;
+      int x = (int)lrintf((float)x0 + (float)(x1 - x0) * t);
+      int y = (int)lrintf((float)y0 + (float)(y1 - y0) * t);
+      uint32_t color = lerp_color(a, b, t);
+      if (radius <= 0) {
+         set_pixel(x, y, color);
+      } else {
+         for (int oy = -radius; oy <= radius; oy++)
+            for (int ox = -radius; ox <= radius; ox++)
+               if (ox * ox + oy * oy <= radius * radius)
+                  set_pixel(x + ox, y + oy, color);
       }
    }
 }
@@ -1298,6 +1574,134 @@ static void draw_rect_pixels(int x, int y, int w, int h, uint32_t color, bool fi
    draw_line_pixels(x, y + h - 1, x + w - 1, y + h - 1, color);
    draw_line_pixels(x, y, x, y + h - 1, color);
    draw_line_pixels(x + w - 1, y, x + w - 1, y + h - 1, color);
+}
+
+static void draw_rect_gradient_pixels(int x, int y, int w, int h, uint32_t a, uint32_t b, bool vertical)
+{
+   if (w < 0) {
+      x += w;
+      w = -w;
+   }
+   if (h < 0) {
+      y += h;
+      h = -h;
+   }
+   if (w <= 0 || h <= 0)
+      return;
+   for (int yy = 0; yy < h; yy++) {
+      for (int xx = 0; xx < w; xx++) {
+         float denom = (float)((vertical ? h : w) - 1);
+         float t = denom > 0.0f ? (float)(vertical ? yy : xx) / denom : 0.0f;
+         set_pixel(x + xx, y + yy, lerp_color(a, b, t));
+      }
+   }
+}
+
+static void draw_ellipse_pixels(int cx, int cy, int rx, int ry, uint32_t color, bool filled)
+{
+   rx = abs(rx);
+   ry = abs(ry);
+   if (rx <= 0 || ry <= 0)
+      return;
+   if (filled) {
+      for (int y = -ry; y <= ry; y++) {
+         float frac = (float)(y * y) / (float)(ry * ry);
+         int span = (int)(sqrtf(fmaxf(0.0f, 1.0f - frac)) * (float)rx);
+         for (int x = -span; x <= span; x++)
+            set_pixel(cx + x, cy + y, color);
+      }
+      return;
+   }
+   for (int i = 0; i < 360; i++) {
+      float r = (float)i * (float)M_PI / 180.0f;
+      int x = cx + (int)lrintf(cosf(r) * (float)rx);
+      int y = cy + (int)lrintf(sinf(r) * (float)ry);
+      set_pixel(x, y, color);
+   }
+}
+
+static void draw_triangle_outline_pixels(int x0, int y0, int x1, int y1,
+      int x2, int y2, uint32_t color)
+{
+   draw_line_pixels(x0, y0, x1, y1, color);
+   draw_line_pixels(x1, y1, x2, y2, color);
+   draw_line_pixels(x2, y2, x0, y0, color);
+}
+
+static float edge_function(int ax, int ay, int bx, int by, int px, int py)
+{
+   return (float)(px - ax) * (float)(by - ay) - (float)(py - ay) * (float)(bx - ax);
+}
+
+static void draw_triangle_filled_pixels(int x0, int y0, int x1, int y1,
+      int x2, int y2, uint32_t color)
+{
+   int min_x = x0 < x1 ? (x0 < x2 ? x0 : x2) : (x1 < x2 ? x1 : x2);
+   int max_x = x0 > x1 ? (x0 > x2 ? x0 : x2) : (x1 > x2 ? x1 : x2);
+   int min_y = y0 < y1 ? (y0 < y2 ? y0 : y2) : (y1 < y2 ? y1 : y2);
+   int max_y = y0 > y1 ? (y0 > y2 ? y0 : y2) : (y1 > y2 ? y1 : y2);
+   if (min_x < 0) min_x = 0;
+   if (min_y < 0) min_y = 0;
+   if (max_x >= NOVA64_WIDTH) max_x = NOVA64_WIDTH - 1;
+   if (max_y >= NOVA64_HEIGHT) max_y = NOVA64_HEIGHT - 1;
+   float area = edge_function(x0, y0, x1, y1, x2, y2);
+   if (area == 0.0f)
+      return;
+   for (int y = min_y; y <= max_y; y++) {
+      for (int x = min_x; x <= max_x; x++) {
+         float w0 = edge_function(x1, y1, x2, y2, x, y);
+         float w1 = edge_function(x2, y2, x0, y0, x, y);
+         float w2 = edge_function(x0, y0, x1, y1, x, y);
+         if ((w0 >= 0.0f && w1 >= 0.0f && w2 >= 0.0f) ||
+               (w0 <= 0.0f && w1 <= 0.0f && w2 <= 0.0f))
+            set_pixel(x, y, color);
+      }
+   }
+}
+
+static void draw_round_rect_fill_pixels(int x, int y, int w, int h, int r, uint32_t color)
+{
+   if (w < 0) { x += w; w = -w; }
+   if (h < 0) { y += h; h = -h; }
+   if (w <= 0 || h <= 0)
+      return;
+   r = abs(r);
+   int max_r = (w < h ? w : h) / 2;
+   if (r > max_r) r = max_r;
+   if (r <= 0) {
+      draw_rect_pixels(x, y, w, h, color, true);
+      return;
+   }
+   draw_rect_pixels(x + r, y, w - r * 2, h, color, true);
+   draw_rect_pixels(x, y + r, r, h - r * 2, color, true);
+   draw_rect_pixels(x + w - r, y + r, r, h - r * 2, color, true);
+   draw_ellipse_pixels(x + r, y + r, r, r, color, true);
+   draw_ellipse_pixels(x + w - r - 1, y + r, r, r, color, true);
+   draw_ellipse_pixels(x + r, y + h - r - 1, r, r, color, true);
+   draw_ellipse_pixels(x + w - r - 1, y + h - r - 1, r, r, color, true);
+}
+
+static void draw_round_rect_outline_pixels(int x, int y, int w, int h, int r, uint32_t color)
+{
+   if (w < 0) { x += w; w = -w; }
+   if (h < 0) { y += h; h = -h; }
+   if (w <= 0 || h <= 0)
+      return;
+   r = abs(r);
+   int max_r = (w < h ? w : h) / 2;
+   if (r > max_r) r = max_r;
+   if (r <= 0) {
+      draw_rect_pixels(x, y, w, h, color, false);
+      return;
+   }
+   draw_line_pixels(x + r, y, x + w - r - 1, y, color);
+   draw_line_pixels(x + r, y + h - 1, x + w - r - 1, y + h - 1, color);
+   draw_line_pixels(x, y + r, x, y + h - r - 1, color);
+   draw_line_pixels(x + w - 1, y + r, x + w - 1, y + h - r - 1, color);
+   draw_ellipse_pixels(x + r, y + r, r, r, color, false);
+   draw_ellipse_pixels(x + w - r - 1, y + r, r, r, color, false);
+   draw_ellipse_pixels(x + r, y + h - r - 1, r, r, color, false);
+   draw_ellipse_pixels(x + w - r - 1, y + h - r - 1, r, r, color, false);
 }
 
 static uint8_t glyph_row(char ch, int row)
@@ -1399,6 +1803,23 @@ static int text_pixel_width(const char *text)
    }
    if (cur_w > max_w) max_w = cur_w;
    return max_w > 0 ? max_w - 1 : 0; /* trim trailing space */
+}
+
+static int text_line_count(const char *text)
+{
+   if (!text || !text[0])
+      return 0;
+   int lines = 1;
+   for (const char *p = text; *p; p++)
+      if (*p == '\n')
+         lines++;
+   return lines;
+}
+
+static int text_pixel_height(const char *text)
+{
+   int lines = text_line_count(text);
+   return lines > 0 ? (lines - 1) * 9 + 7 : 0;
 }
 
 static void draw_text_aligned(const char *text, int x, int y, uint32_t color, int align)
@@ -1632,6 +2053,18 @@ static void mat4_perspective(float out[16], float fov_degrees, float aspect, flo
    out[10] = (far_z + near_z) / (near_z - far_z);
    out[11] = -1.0f;
    out[14] = (2.0f * far_z * near_z) / (near_z - far_z);
+}
+
+static void mat4_ortho(float out[16], float left, float right, float bottom, float top, float near_z, float far_z)
+{
+   memset(out, 0, sizeof(float) * 16);
+   out[0]  =  2.0f / (right - left);
+   out[5]  =  2.0f / (top - bottom);
+   out[10] = -2.0f / (far_z - near_z);
+   out[12] = -(right + left) / (right - left);
+   out[13] = -(top + bottom) / (top - bottom);
+   out[14] = -(far_z + near_z) / (far_z - near_z);
+   out[15] =  1.0f;
 }
 
 static void mat4_look_at(float out[16], const float eye[3], const float target[3], const float up_hint[3])
@@ -1927,12 +2360,117 @@ static void draw_software_sphere(const struct nova64_mesh *mesh)
    }
 }
 
+/* Capsule: scale[0]=scale[2]=diameter, scale[1]=total height */
+static void draw_software_capsule(const struct nova64_mesh *mesh)
+{
+   float center[3];
+   mesh_local_to_world(mesh, (float[3]){0.0f, 0.0f, 0.0f}, center);
+   int sx = 0, sy = 0;
+   float depth = 1.0f;
+   if (!project_world_point(center, &sx, &sy, &depth))
+      return;
+
+   float radius_world = fabsf(mesh->scale[0]) * 0.5f;
+   float half_height  = fabsf(mesh->scale[1]) * 0.5f;
+   float focal = ((float)NOVA64_HEIGHT * 0.5f) / tanf((camera_state.fov * 0.5f) * (float)M_PI / 180.0f);
+   int r  = (int)(radius_world * focal / depth);
+   int hh = (int)(half_height  * focal / depth);
+   if (r < 2) r = 2;
+   if (hh < r) hh = r;
+
+   uint32_t base_color = color_with_opacity(mesh->color, mesh->opacity);
+   uint32_t color = color_add_emissive(shade_color(base_color, 1.10f), mesh->emissive_color, mesh->emissive_intensity);
+
+   /* Body rectangle */
+   int body_top    = sy - hh + r;
+   int body_bottom = sy + hh - r;
+   for (int py = body_top; py <= body_bottom; py++) {
+      for (int px = sx - r; px <= sx + r; px++) {
+         float nx = r > 0 ? (float)(px - sx) / (float)r : 0.0f;
+         float light = 0.78f + (-nx * 0.25f);
+         set_pixel(px, py, shade_color(color, light));
+      }
+   }
+   /* Top cap */
+   for (int y = -r; y <= 0; y++) {
+      int span = (int)sqrtf((float)(r * r - y * y));
+      for (int x = -span; x <= span; x++) {
+         float nx = r > 0 ? (float)x / (float)r : 0.0f;
+         float light = 0.78f + (-nx * 0.25f) + 0.1f;
+         set_pixel(sx + x, body_top + y, shade_color(color, light));
+      }
+   }
+   /* Bottom cap */
+   for (int y = 0; y <= r; y++) {
+      int span = (int)sqrtf((float)(r * r - y * y));
+      for (int x = -span; x <= span; x++) {
+         float nx = r > 0 ? (float)x / (float)r : 0.0f;
+         float light = 0.78f + (-nx * 0.25f) - 0.1f;
+         set_pixel(sx + x, body_bottom + y, shade_color(color, light));
+      }
+   }
+}
+
+/* Cylinder: scale[0]=2*radiusTop, scale[2]=2*radiusBottom, scale[1]=height */
+static void draw_software_cylinder(const struct nova64_mesh *mesh)
+{
+   float center[3];
+   mesh_local_to_world(mesh, (float[3]){0.0f, 0.0f, 0.0f}, center);
+   int sx = 0, sy = 0;
+   float depth = 1.0f;
+   if (!project_world_point(center, &sx, &sy, &depth))
+      return;
+
+   float r_top    = fabsf(mesh->scale[0]) * 0.5f;
+   float r_bottom = fabsf(mesh->scale[2]) * 0.5f;
+   float half_h   = fabsf(mesh->scale[1]) * 0.5f;
+   float focal = ((float)NOVA64_HEIGHT * 0.5f) / tanf((camera_state.fov * 0.5f) * (float)M_PI / 180.0f);
+   int rt = (int)(r_top    * focal / depth);
+   int rb = (int)(r_bottom * focal / depth);
+   int sh = (int)(half_h   * focal / depth);
+   if (rt < 1) rt = 1;
+   if (rb < 1) rb = 1;
+   if (sh < 1) sh = 1;
+
+   uint32_t base_color = color_with_opacity(mesh->color, mesh->opacity);
+   uint32_t color = color_add_emissive(shade_color(base_color, 1.10f), mesh->emissive_color, mesh->emissive_intensity);
+
+   /* Draw body as a trapezoid */
+   for (int row = -sh; row <= sh; row++) {
+      float t = (sh > 0) ? (float)(row + sh) / (float)(2 * sh) : 0.5f;
+      int half_w = (int)(rt + (rb - rt) * t);
+      if (half_w < 1) half_w = 1;
+      for (int px = sx - half_w; px <= sx + half_w; px++) {
+         float nx = half_w > 0 ? (float)(px - sx) / (float)half_w : 0.0f;
+         float light = 0.78f + (-nx * 0.30f);
+         set_pixel(px, sy + row, shade_color(color, light));
+      }
+   }
+   /* Top ellipse outline */
+   {
+      int ell_b = rt / 3 + 1;
+      for (int px = -rt; px <= rt; px++) {
+         float frac = (rt > 0) ? (float)px / (float)rt : 0.0f;
+         int ey = (int)(sqrtf(1.0f - frac * frac) * (float)ell_b);
+         set_pixel(sx + px, sy - sh - ey, shade_color(color, 1.2f));
+         set_pixel(sx + px, sy - sh + ey, shade_color(color, 0.9f));
+      }
+   }
+}
+
 static void render_software_scene(void)
 {
-   if (!scene_has_visible_meshes())
+   bool has_visible_meshes = scene_has_visible_meshes();
+   if (!has_visible_meshes && !sky_color_enabled)
       return;
 
    drawing_scene_preview = true;
+   if (sky_color_enabled)
+      clear_framebuffer_sky_gradient();
+   if (!has_visible_meshes) {
+      drawing_scene_preview = false;
+      return;
+   }
    for (int i = 0; i < NOVA64_MAX_MESHES; i++) {
       const struct nova64_mesh *mesh = &meshes[i];
       if (!mesh->used || !mesh->visible || mesh->opacity <= 0.0f)
@@ -1946,6 +2484,12 @@ static void render_software_scene(void)
             break;
          case NOVA64_MESH_PLANE:
             draw_software_plane(mesh);
+            break;
+         case NOVA64_MESH_CAPSULE:
+            draw_software_capsule(mesh);
+            break;
+         case NOVA64_MESH_CYLINDER:
+            draw_software_cylinder(mesh);
             break;
          default:
             break;
@@ -1963,6 +2507,10 @@ static const char *mesh_type_name(enum nova64_mesh_type type)
          return "sphere";
       case NOVA64_MESH_PLANE:
          return "plane";
+      case NOVA64_MESH_CAPSULE:
+         return "capsule";
+      case NOVA64_MESH_CYLINDER:
+         return "cylinder";
       default:
          return "none";
    }
@@ -2103,6 +2651,16 @@ static int allocate_mesh(enum nova64_mesh_type type)
          meshes[i].cast_shadow = false;
          meshes[i].receive_shadow = false;
          meshes[i].color = rgba8(255, 255, 255, 255);
+         meshes[i].emissive_color = 0;
+         meshes[i].emissive_intensity = 0.0f;
+         meshes[i].roughness = 0.5f;
+         meshes[i].metalness = 0.0f;
+         meshes[i].uv_offset[0] = 0.0f;
+         meshes[i].uv_offset[1] = 0.0f;
+         meshes[i].uv_scale[0] = 1.0f;
+         meshes[i].uv_scale[1] = 1.0f;
+         meshes[i].mesh_blend = NOVA64_MESH_BLEND_OPAQUE;
+         meshes[i].texture_handle = 0;
          return i + 1;
       }
    }
@@ -2126,6 +2684,10 @@ static size_t mesh_triangle_count(enum nova64_mesh_type type)
          return 2;
       case NOVA64_MESH_SPHERE:
          return 96;
+      case NOVA64_MESH_CAPSULE:
+         return 128;
+      case NOVA64_MESH_CYLINDER:
+         return 64;
       default:
          return 0;
    }
@@ -2264,10 +2826,72 @@ static JSValue js_rgba8(JSContext *ctx, JSValueConst this_val, int argc, JSValue
    return JS_NewUint32(ctx, rgba8(r, g, b, a));
 }
 
+static JSValue js_color_lerp(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   uint32_t a = color_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, rgba8(0, 0, 0, 255));
+   uint32_t b = color_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, rgba8(255, 255, 255, 255));
+   float t = (float)double_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 0.5);
+   return JS_NewUint32(ctx, lerp_color(a, b, t));
+}
+
+static JSValue js_color_r(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   uint32_t c = color_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0);
+   return JS_NewInt32(ctx, (int)((c >> 24) & 0xffU));
+}
+
+static JSValue js_color_g(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   uint32_t c = color_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0);
+   return JS_NewInt32(ctx, (int)((c >> 16) & 0xffU));
+}
+
+static JSValue js_color_b(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   uint32_t c = color_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0);
+   return JS_NewInt32(ctx, (int)((c >> 8) & 0xffU));
+}
+
+static JSValue js_color_a(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   uint32_t c = color_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0);
+   return JS_NewInt32(ctx, (int)(c & 0xffU));
+}
+
+static JSValue js_screen_width(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val; (void)argc; (void)argv;
+   return JS_NewInt32(ctx, NOVA64_WIDTH);
+}
+
+static JSValue js_screen_height(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val; (void)argc; (void)argv;
+   return JS_NewInt32(ctx, NOVA64_HEIGHT);
+}
+
 static JSValue js_cls(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
    uint32_t color = color_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, rgba8(0, 0, 0, 255));
    clear_framebuffer(color);
+   if (!drawing_scene_preview && (scene_has_visible_meshes() || sky_color_enabled))
+      render_software_scene();
+   return JS_UNDEFINED;
+}
+
+static JSValue js_cls_gradient(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   uint32_t a = color_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, rgba8(0, 0, 0, 255));
+   uint32_t b = color_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, a);
+   bool vertical = argc > 2 ? JS_ToBool(ctx, argv[2]) : true;
+   framebuffer_clear_color = a;
+   draw_rect_gradient_pixels(0, 0, NOVA64_WIDTH, NOVA64_HEIGHT, a, b, vertical);
    if (!drawing_scene_preview && scene_has_visible_meshes())
       render_software_scene();
    return JS_UNDEFINED;
@@ -2275,33 +2899,297 @@ static JSValue js_cls(JSContext *ctx, JSValueConst this_val, int argc, JSValueCo
 
 static JSValue js_pset(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
-   int x = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0) - cam2d_x;
-   int y = int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0) - cam2d_y;
+   int x = 0, y = 0;
+   transform_2d_point(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0),
+         int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0), &x, &y);
    uint32_t color = color_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, rgba8(255, 255, 255, 255));
    set_pixel(x, y, color);
    return JS_UNDEFINED;
 }
 
+static JSValue js_pget(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int x = 0, y = 0;
+   transform_2d_point(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0),
+         int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0), &x, &y);
+   return JS_NewUint32(ctx, get_pixel(x, y));
+}
+
+static JSValue js_replace_color(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   uint32_t from = color_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0);
+   uint32_t to = color_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0);
+   int count = 0;
+   if (!framebuffer)
+      return JS_NewInt32(ctx, 0);
+   for (size_t i = 0; i < (size_t)NOVA64_WIDTH * NOVA64_HEIGHT; i++) {
+      if (framebuffer[i] == from) {
+         framebuffer[i] = to;
+         count++;
+      }
+   }
+   return JS_NewInt32(ctx, count);
+}
+
+static JSValue js_screen_fade(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   uint32_t color = color_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, rgba8(0, 0, 0, 255));
+   float amount = (float)clamp_double(double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0.5), 0.0, 1.0);
+   if (framebuffer)
+      for (size_t i = 0; i < (size_t)NOVA64_WIDTH * NOVA64_HEIGHT; i++)
+         framebuffer[i] = lerp_color(framebuffer[i], color, amount);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_screen_tint(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   uint32_t tint = color_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, rgba8(255, 255, 255, 255));
+   float amount = (float)clamp_double(double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0.5), 0.0, 1.0);
+   float tr = (float)((tint >> 24) & 0xffU) / 255.0f;
+   float tg = (float)((tint >> 16) & 0xffU) / 255.0f;
+   float tb = (float)((tint >> 8) & 0xffU) / 255.0f;
+   if (!framebuffer)
+      return JS_UNDEFINED;
+   for (size_t i = 0; i < (size_t)NOVA64_WIDTH * NOVA64_HEIGHT; i++) {
+      uint32_t c = framebuffer[i];
+      uint32_t r = (c >> 24) & 0xffU;
+      uint32_t g = (c >> 16) & 0xffU;
+      uint32_t b = (c >> 8) & 0xffU;
+      uint32_t a = c & 0xffU;
+      uint32_t nr = (uint32_t)((float)r * (1.0f - amount) + (float)r * tr * amount);
+      uint32_t ng = (uint32_t)((float)g * (1.0f - amount) + (float)g * tg * amount);
+      uint32_t nb = (uint32_t)((float)b * (1.0f - amount) + (float)b * tb * amount);
+      framebuffer[i] = rgba8(nr, ng, nb, a);
+   }
+   return JS_UNDEFINED;
+}
+
+static JSValue js_screen_invert(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)ctx; (void)this_val; (void)argc; (void)argv;
+   if (!framebuffer)
+      return JS_UNDEFINED;
+   for (size_t i = 0; i < (size_t)NOVA64_WIDTH * NOVA64_HEIGHT; i++) {
+      uint32_t c = framebuffer[i];
+      framebuffer[i] = rgba8(255U - ((c >> 24) & 0xffU),
+            255U - ((c >> 16) & 0xffU), 255U - ((c >> 8) & 0xffU), c & 0xffU);
+   }
+   return JS_UNDEFINED;
+}
+
+static JSValue js_screen_grayscale(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)ctx; (void)this_val; (void)argc; (void)argv;
+   if (!framebuffer)
+      return JS_UNDEFINED;
+   for (size_t i = 0; i < (size_t)NOVA64_WIDTH * NOVA64_HEIGHT; i++) {
+      uint32_t c = framebuffer[i];
+      uint32_t l = (((c >> 24) & 0xffU) * 30U + ((c >> 16) & 0xffU) * 59U + ((c >> 8) & 0xffU) * 11U) / 100U;
+      framebuffer[i] = rgba8(l, l, l, c & 0xffU);
+   }
+   return JS_UNDEFINED;
+}
+
+static JSValue js_screen_posterize(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int levels = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 4);
+   if (levels < 2) levels = 2;
+   if (levels > 32) levels = 32;
+   if (!framebuffer)
+      return JS_UNDEFINED;
+   for (size_t i = 0; i < (size_t)NOVA64_WIDTH * NOVA64_HEIGHT; i++) {
+      uint32_t c = framebuffer[i];
+      uint32_t r = (((c >> 24) & 0xffU) * (uint32_t)(levels - 1) + 127U) / 255U;
+      uint32_t g = (((c >> 16) & 0xffU) * (uint32_t)(levels - 1) + 127U) / 255U;
+      uint32_t b = (((c >> 8) & 0xffU) * (uint32_t)(levels - 1) + 127U) / 255U;
+      framebuffer[i] = rgba8((r * 255U) / (uint32_t)(levels - 1),
+            (g * 255U) / (uint32_t)(levels - 1),
+            (b * 255U) / (uint32_t)(levels - 1), c & 0xffU);
+   }
+   return JS_UNDEFINED;
+}
+
+static JSValue js_screen_threshold(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int threshold = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 128);
+   uint32_t low = color_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, rgba8(0, 0, 0, 255));
+   uint32_t high = color_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, rgba8(255, 255, 255, 255));
+   if (!framebuffer)
+      return JS_UNDEFINED;
+   for (size_t i = 0; i < (size_t)NOVA64_WIDTH * NOVA64_HEIGHT; i++) {
+      uint32_t c = framebuffer[i];
+      uint32_t l = (((c >> 24) & 0xffU) * 30U + ((c >> 16) & 0xffU) * 59U + ((c >> 8) & 0xffU) * 11U) / 100U;
+      framebuffer[i] = (int)l >= threshold ? high : low;
+   }
+   return JS_UNDEFINED;
+}
+
+static JSValue js_screen_scanlines(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   uint32_t color = color_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, rgba8(0, 0, 0, 255));
+   float amount = (float)clamp_double(double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0.35), 0.0, 1.0);
+   int step = int_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 2);
+   if (step < 2) step = 2;
+   if (!framebuffer)
+      return JS_UNDEFINED;
+   for (int y = 0; y < NOVA64_HEIGHT; y++) {
+      if ((y % step) != step - 1)
+         continue;
+      for (int x = 0; x < NOVA64_WIDTH; x++) {
+         size_t i = (size_t)y * NOVA64_WIDTH + (size_t)x;
+         framebuffer[i] = lerp_color(framebuffer[i], color, amount);
+      }
+   }
+   return JS_UNDEFINED;
+}
+
+static JSValue js_screen_vignette(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   float amount = (float)clamp_double(double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0.5), 0.0, 1.0);
+   uint32_t color = color_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, rgba8(0, 0, 0, 255));
+   if (!framebuffer)
+      return JS_UNDEFINED;
+   float cx = (float)(NOVA64_WIDTH - 1) * 0.5f;
+   float cy = (float)(NOVA64_HEIGHT - 1) * 0.5f;
+   float max_d = sqrtf(cx * cx + cy * cy);
+   for (int y = 0; y < NOVA64_HEIGHT; y++) {
+      for (int x = 0; x < NOVA64_WIDTH; x++) {
+         float dx = ((float)x - cx);
+         float dy = ((float)y - cy);
+         float t = sqrtf(dx * dx + dy * dy) / max_d;
+         t = clamp_float((t - 0.45f) / 0.55f, 0.0f, 1.0f) * amount;
+         size_t i = (size_t)y * NOVA64_WIDTH + (size_t)x;
+         framebuffer[i] = lerp_color(framebuffer[i], color, t);
+      }
+   }
+   return JS_UNDEFINED;
+}
+
 static JSValue js_line(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
-   int x0 = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0) - cam2d_x;
-   int y0 = int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0) - cam2d_y;
-   int x1 = int_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 0) - cam2d_x;
-   int y1 = int_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, 0) - cam2d_y;
+   int x0 = 0, y0 = 0, x1 = 0, y1 = 0;
+   transform_2d_point(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0),
+         int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0), &x0, &y0);
+   transform_2d_point(int_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 0),
+         int_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, 0), &x1, &y1);
    uint32_t color = color_from_js(ctx, argc > 4 ? argv[4] : JS_UNDEFINED, rgba8(255, 255, 255, 255));
+   int thickness = transform_2d_size(argc > 5 ? int_from_js(ctx, argv[5], 1) : 1);
+   draw_thick_line_pixels(x0, y0, x1, y1, color, abs(thickness));
+   return JS_UNDEFINED;
+}
+
+static JSValue js_hline(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int x0 = 0, y0 = 0, x1 = 0, y1 = 0;
+   int y = int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0);
+   transform_2d_point(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0), y, &x0, &y0);
+   transform_2d_point(int_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 0), y, &x1, &y1);
+   uint32_t color = color_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, rgba8(255, 255, 255, 255));
    draw_line_pixels(x0, y0, x1, y1, color);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_vline(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int x0 = 0, y0 = 0, x1 = 0, y1 = 0;
+   int x = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0);
+   transform_2d_point(x, int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0), &x0, &y0);
+   transform_2d_point(x, int_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 0), &x1, &y1);
+   uint32_t color = color_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, rgba8(255, 255, 255, 255));
+   draw_line_pixels(x0, y0, x1, y1, color);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_line_gradient(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int x0 = 0, y0 = 0, x1 = 0, y1 = 0;
+   transform_2d_point(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0),
+         int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0), &x0, &y0);
+   transform_2d_point(int_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 0),
+         int_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, 0), &x1, &y1);
+   uint32_t a = color_from_js(ctx, argc > 4 ? argv[4] : JS_UNDEFINED, rgba8(255, 255, 255, 255));
+   uint32_t b = color_from_js(ctx, argc > 5 ? argv[5] : JS_UNDEFINED, a);
+   int thickness = transform_2d_size(argc > 6 ? int_from_js(ctx, argv[6], 1) : 1);
+   draw_line_gradient_pixels(x0, y0, x1, y1, a, b, abs(thickness));
    return JS_UNDEFINED;
 }
 
 static JSValue js_rect(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
-   int x = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0) - cam2d_x;
-   int y = int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0) - cam2d_y;
-   int w = int_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 0);
-   int h = int_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, 0);
+   int x = 0, y = 0;
+   transform_2d_point(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0),
+         int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0), &x, &y);
+   int w = transform_2d_size(int_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 0));
+   int h = transform_2d_size(int_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, 0));
    uint32_t color = color_from_js(ctx, argc > 4 ? argv[4] : JS_UNDEFINED, rgba8(255, 255, 255, 255));
    bool filled = argc > 5 ? JS_ToBool(ctx, argv[5]) : true;
    draw_rect_pixels(x, y, w, h, color, filled);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_rect_gradient(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int x = 0, y = 0;
+   transform_2d_point(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0),
+         int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0), &x, &y);
+   int w = transform_2d_size(int_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 0));
+   int h = transform_2d_size(int_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, 0));
+   uint32_t a = color_from_js(ctx, argc > 4 ? argv[4] : JS_UNDEFINED, rgba8(255, 255, 255, 255));
+   uint32_t b = color_from_js(ctx, argc > 5 ? argv[5] : JS_UNDEFINED, rgba8(0, 0, 0, 255));
+   bool vertical = argc > 6 ? JS_ToBool(ctx, argv[6]) : true;
+   draw_rect_gradient_pixels(x, y, w, h, a, b, vertical);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_rectfill(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   int x = 0, y = 0;
+   transform_2d_point(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0),
+         int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0), &x, &y);
+   int w = transform_2d_size(int_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 0));
+   int h = transform_2d_size(int_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, 0));
+   uint32_t color = color_from_js(ctx, argc > 4 ? argv[4] : JS_UNDEFINED, rgba8(255, 255, 255, 255));
+   draw_rect_pixels(x, y, w, h, color, true);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_round_rect(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int x = 0, y = 0;
+   transform_2d_point(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0),
+         int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0), &x, &y);
+   int w = transform_2d_size(int_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 0));
+   int h = transform_2d_size(int_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, 0));
+   int r = transform_2d_size(int_from_js(ctx, argc > 4 ? argv[4] : JS_UNDEFINED, 4));
+   uint32_t color = color_from_js(ctx, argc > 5 ? argv[5] : JS_UNDEFINED, rgba8(255, 255, 255, 255));
+   draw_round_rect_outline_pixels(x, y, w, h, r, color);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_round_rect_fill(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int x = 0, y = 0;
+   transform_2d_point(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0),
+         int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0), &x, &y);
+   int w = transform_2d_size(int_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 0));
+   int h = transform_2d_size(int_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, 0));
+   int r = transform_2d_size(int_from_js(ctx, argc > 4 ? argv[4] : JS_UNDEFINED, 4));
+   uint32_t color = color_from_js(ctx, argc > 5 ? argv[5] : JS_UNDEFINED, rgba8(255, 255, 255, 255));
+   draw_round_rect_fill_pixels(x, y, w, h, r, color);
    return JS_UNDEFINED;
 }
 
@@ -2325,8 +3213,8 @@ static JSValue js_draw_print(JSContext *ctx, JSValueConst this_val, int argc, JS
    if (argc < 3)
       return js_console_log(ctx, this_val, argc, argv);
    const char *text = JS_ToCString(ctx, argv[0]);
-   int x = int_from_js(ctx, argv[1], 0) - cam2d_x;
-   int y = int_from_js(ctx, argv[2], 0) - cam2d_y;
+   int x = 0, y = 0;
+   transform_2d_point(int_from_js(ctx, argv[1], 0), int_from_js(ctx, argv[2], 0), &x, &y);
    uint32_t color = color_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, rgba8(255, 255, 255, 255));
    int align = argc > 4 ? text_align_from_js(ctx, argv[4]) : 0;
    draw_text_aligned(text, x, y, color, align);
@@ -2345,12 +3233,72 @@ static JSValue js_text_width(JSContext *ctx, JSValueConst this_val, int argc, JS
    return JS_NewInt32(ctx, w);
 }
 
+static JSValue js_text_height(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 1) return JS_NewInt32(ctx, 0);
+   const char *text = JS_ToCString(ctx, argv[0]);
+   int h = text_pixel_height(text);
+   if (text) JS_FreeCString(ctx, text);
+   return JS_NewInt32(ctx, h);
+}
+
+static JSValue js_text_size(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   const char *text = argc > 0 ? JS_ToCString(ctx, argv[0]) : NULL;
+   JSValue object = JS_NewObject(ctx);
+   JS_SetPropertyStr(ctx, object, "w", JS_NewInt32(ctx, text_pixel_width(text)));
+   JS_SetPropertyStr(ctx, object, "h", JS_NewInt32(ctx, text_pixel_height(text)));
+   JS_SetPropertyStr(ctx, object, "lines", JS_NewInt32(ctx, text_line_count(text)));
+   if (text) JS_FreeCString(ctx, text);
+   return object;
+}
+
+static JSValue js_print_shadow(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   if (argc < 3)
+      return JS_UNDEFINED;
+   const char *text = JS_ToCString(ctx, argv[0]);
+   int x = 0, y = 0;
+   transform_2d_point(int_from_js(ctx, argv[1], 0), int_from_js(ctx, argv[2], 0), &x, &y);
+   uint32_t color = color_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, rgba8(255, 255, 255, 255));
+   uint32_t shadow = color_from_js(ctx, argc > 4 ? argv[4] : JS_UNDEFINED, rgba8(0, 0, 0, 255));
+   int dx = argc > 5 ? int_from_js(ctx, argv[5], 1) : 1;
+   int dy = argc > 6 ? int_from_js(ctx, argv[6], 1) : 1;
+   int align = argc > 7 ? text_align_from_js(ctx, argv[7]) : 0;
+   draw_text_aligned(text, x + dx, y + dy, shadow, align);
+   draw_text_aligned(text, x, y, color, align);
+   if (text) JS_FreeCString(ctx, text);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_print_outline(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   if (argc < 3)
+      return JS_UNDEFINED;
+   const char *text = JS_ToCString(ctx, argv[0]);
+   int x = 0, y = 0;
+   transform_2d_point(int_from_js(ctx, argv[1], 0), int_from_js(ctx, argv[2], 0), &x, &y);
+   uint32_t color = color_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, rgba8(255, 255, 255, 255));
+   uint32_t outline = color_from_js(ctx, argc > 4 ? argv[4] : JS_UNDEFINED, rgba8(0, 0, 0, 255));
+   int align = argc > 5 ? text_align_from_js(ctx, argv[5]) : 0;
+   draw_text_aligned(text, x - 1, y, outline, align);
+   draw_text_aligned(text, x + 1, y, outline, align);
+   draw_text_aligned(text, x, y - 1, outline, align);
+   draw_text_aligned(text, x, y + 1, outline, align);
+   draw_text_aligned(text, x, y, color, align);
+   if (text) JS_FreeCString(ctx, text);
+   return JS_UNDEFINED;
+}
+
 static JSValue js_circ(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
    (void)this_val;
-   int cx = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0) - cam2d_x;
-   int cy = int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0) - cam2d_y;
-   int r  = int_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 0);
+   int cx = 0, cy = 0;
+   transform_2d_point(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0),
+         int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0), &cx, &cy);
+   int r  = transform_2d_size(int_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 0));
    uint32_t color = color_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, rgba8(255, 255, 255, 255));
    draw_circle_pixels(cx, cy, r, color, false);
    return JS_UNDEFINED;
@@ -2359,11 +3307,68 @@ static JSValue js_circ(JSContext *ctx, JSValueConst this_val, int argc, JSValueC
 static JSValue js_circfill(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
    (void)this_val;
-   int cx = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0) - cam2d_x;
-   int cy = int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0) - cam2d_y;
-   int r  = int_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 0);
+   int cx = 0, cy = 0;
+   transform_2d_point(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0),
+         int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0), &cx, &cy);
+   int r  = transform_2d_size(int_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 0));
    uint32_t color = color_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, rgba8(255, 255, 255, 255));
    draw_circle_pixels(cx, cy, r, color, true);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_oval(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int cx = 0, cy = 0;
+   transform_2d_point(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0),
+         int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0), &cx, &cy);
+   int rx = transform_2d_size(int_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 0));
+   int ry = transform_2d_size(int_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, rx));
+   uint32_t color = color_from_js(ctx, argc > 4 ? argv[4] : JS_UNDEFINED, rgba8(255, 255, 255, 255));
+   draw_ellipse_pixels(cx, cy, rx, ry, color, false);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_ovalfill(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int cx = 0, cy = 0;
+   transform_2d_point(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0),
+         int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0), &cx, &cy);
+   int rx = transform_2d_size(int_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 0));
+   int ry = transform_2d_size(int_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, rx));
+   uint32_t color = color_from_js(ctx, argc > 4 ? argv[4] : JS_UNDEFINED, rgba8(255, 255, 255, 255));
+   draw_ellipse_pixels(cx, cy, rx, ry, color, true);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_tri(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int x0 = 0, y0 = 0, x1 = 0, y1 = 0, x2 = 0, y2 = 0;
+   transform_2d_point(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0),
+         int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0), &x0, &y0);
+   transform_2d_point(int_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 0),
+         int_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, 0), &x1, &y1);
+   transform_2d_point(int_from_js(ctx, argc > 4 ? argv[4] : JS_UNDEFINED, 0),
+         int_from_js(ctx, argc > 5 ? argv[5] : JS_UNDEFINED, 0), &x2, &y2);
+   uint32_t color = color_from_js(ctx, argc > 6 ? argv[6] : JS_UNDEFINED, rgba8(255, 255, 255, 255));
+   draw_triangle_outline_pixels(x0, y0, x1, y1, x2, y2, color);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_trifill(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int x0 = 0, y0 = 0, x1 = 0, y1 = 0, x2 = 0, y2 = 0;
+   transform_2d_point(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0),
+         int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0), &x0, &y0);
+   transform_2d_point(int_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 0),
+         int_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, 0), &x1, &y1);
+   transform_2d_point(int_from_js(ctx, argc > 4 ? argv[4] : JS_UNDEFINED, 0),
+         int_from_js(ctx, argc > 5 ? argv[5] : JS_UNDEFINED, 0), &x2, &y2);
+   uint32_t color = color_from_js(ctx, argc > 6 ? argv[6] : JS_UNDEFINED, rgba8(255, 255, 255, 255));
+   draw_triangle_filled_pixels(x0, y0, x1, y1, x2, y2, color);
    return JS_UNDEFINED;
 }
 
@@ -2622,12 +3627,49 @@ static JSValue js_clear_clip(JSContext *ctx, JSValueConst this_val, int argc, JS
    return JS_UNDEFINED;
 }
 
-/* setCamera2D(x, y) — set 2D camera world-space scroll offset */
+static JSValue js_get_clip(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val; (void)argc; (void)argv;
+   JSValue object = JS_NewObject(ctx);
+   JS_SetPropertyStr(ctx, object, "active", JS_NewBool(ctx, clip_active));
+   JS_SetPropertyStr(ctx, object, "x", JS_NewInt32(ctx, clip_x));
+   JS_SetPropertyStr(ctx, object, "y", JS_NewInt32(ctx, clip_y));
+   JS_SetPropertyStr(ctx, object, "w", JS_NewInt32(ctx, clip_w));
+   JS_SetPropertyStr(ctx, object, "h", JS_NewInt32(ctx, clip_h));
+   return object;
+}
+
+static JSValue js_push_clip(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)ctx; (void)this_val; (void)argc; (void)argv;
+   if (clip_stack_depth >= NOVA64_DRAW_STACK_MAX)
+      return JS_NewBool(ctx, false);
+   clip_stack[clip_stack_depth++] = (struct nova64_clip_state){clip_active, clip_x, clip_y, clip_w, clip_h};
+   return JS_NewBool(ctx, true);
+}
+
+static JSValue js_pop_clip(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val; (void)argc; (void)argv;
+   if (clip_stack_depth <= 0)
+      return JS_NewBool(ctx, false);
+   struct nova64_clip_state state = clip_stack[--clip_stack_depth];
+   clip_active = state.active;
+   clip_x = state.x;
+   clip_y = state.y;
+   clip_w = state.w;
+   clip_h = state.h;
+   return JS_NewBool(ctx, true);
+}
+
+/* setCamera2D(x, y [, zoom [, rotation]]) — 2D camera transform */
 static JSValue js_set_camera2d(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
    (void)this_val;
    cam2d_x = argc > 0 ? int_from_js(ctx, argv[0], 0) : 0;
    cam2d_y = argc > 1 ? int_from_js(ctx, argv[1], 0) : 0;
+   cam2d_zoom = (float)clamp_double(double_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 1.0), 0.05, 16.0);
+   cam2d_rotation = (float)double_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, 0.0);
    return JS_UNDEFINED;
 }
 
@@ -2635,7 +3677,43 @@ static JSValue js_clear_camera2d(JSContext *ctx, JSValueConst this_val, int argc
 {
    (void)this_val; (void)argc; (void)argv;
    cam2d_x = cam2d_y = 0;
+   cam2d_zoom = 1.0f;
+   cam2d_rotation = 0.0f;
    return JS_UNDEFINED;
+}
+
+static JSValue js_get_camera2d(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val; (void)argc; (void)argv;
+   JSValue object = JS_NewObject(ctx);
+   JS_SetPropertyStr(ctx, object, "x", JS_NewInt32(ctx, cam2d_x));
+   JS_SetPropertyStr(ctx, object, "y", JS_NewInt32(ctx, cam2d_y));
+   JS_SetPropertyStr(ctx, object, "zoom", JS_NewFloat64(ctx, cam2d_zoom));
+   JS_SetPropertyStr(ctx, object, "rotation", JS_NewFloat64(ctx, cam2d_rotation));
+   return object;
+}
+
+static JSValue js_push_camera2d(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)ctx; (void)this_val; (void)argc; (void)argv;
+   if (camera2d_stack_depth >= NOVA64_DRAW_STACK_MAX)
+      return JS_NewBool(ctx, false);
+   camera2d_stack[camera2d_stack_depth++] =
+      (struct nova64_camera2d_state){cam2d_x, cam2d_y, cam2d_zoom, cam2d_rotation};
+   return JS_NewBool(ctx, true);
+}
+
+static JSValue js_pop_camera2d(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val; (void)argc; (void)argv;
+   if (camera2d_stack_depth <= 0)
+      return JS_NewBool(ctx, false);
+   struct nova64_camera2d_state state = camera2d_stack[--camera2d_stack_depth];
+   cam2d_x = state.x;
+   cam2d_y = state.y;
+   cam2d_zoom = state.zoom;
+   cam2d_rotation = state.rotation;
+   return JS_NewBool(ctx, true);
 }
 
 /* axis(side, axis [, port]) — analog stick value -1..1 */
@@ -3188,6 +4266,61 @@ static JSValue js_create_plane(JSContext *ctx, JSValueConst this_val, int argc, 
    return JS_NewInt32(ctx, handle);
 }
 
+/* createCapsule(radius, height, color [, position]) */
+static JSValue js_create_capsule(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int handle = allocate_mesh(NOVA64_MESH_CAPSULE);
+   if (!handle)
+      return JS_ThrowInternalError(ctx, "Nova64 mesh table is full");
+   struct nova64_mesh *mesh = mesh_from_handle(handle);
+   if (!mesh)
+      return JS_NewInt32(ctx, handle);
+
+   if (argc >= 3 && JS_IsNumber(argv[0]) && JS_IsNumber(argv[1])) {
+      double radius = clamp_double(fabs(double_from_js(ctx, argv[0], 0.5)), 0.001, 10000.0);
+      double height = clamp_double(fabs(double_from_js(ctx, argv[1], 1.0)), 0.001, 10000.0);
+      /* scale[0]=scale[2]=diameter, scale[1]=total height */
+      mesh->scale[0] = (float)(radius * 2.0);
+      mesh->scale[1] = (float)height;
+      mesh->scale[2] = (float)(radius * 2.0);
+      mesh->color = color_from_js(ctx, argv[2], mesh->color);
+      if (argc > 3)
+         set_position_from_js(ctx, argv[3], mesh->position);
+   } else if (argc > 0) {
+      mesh->color = color_from_js(ctx, argv[0], mesh->color);
+   }
+   return JS_NewInt32(ctx, handle);
+}
+
+/* createCylinder(radiusTop, radiusBottom, height, color [, position]) */
+static JSValue js_create_cylinder(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int handle = allocate_mesh(NOVA64_MESH_CYLINDER);
+   if (!handle)
+      return JS_ThrowInternalError(ctx, "Nova64 mesh table is full");
+   struct nova64_mesh *mesh = mesh_from_handle(handle);
+   if (!mesh)
+      return JS_NewInt32(ctx, handle);
+
+   if (argc >= 4 && JS_IsNumber(argv[0]) && JS_IsNumber(argv[1]) && JS_IsNumber(argv[2])) {
+      double rTop    = clamp_double(fabs(double_from_js(ctx, argv[0], 0.5)), 0.001, 10000.0);
+      double rBottom = clamp_double(fabs(double_from_js(ctx, argv[1], 0.5)), 0.001, 10000.0);
+      double height  = clamp_double(fabs(double_from_js(ctx, argv[2], 1.0)), 0.001, 10000.0);
+      /* scale[0]=2*rTop, scale[2]=2*rBottom, scale[1]=height */
+      mesh->scale[0] = (float)(rTop    * 2.0);
+      mesh->scale[1] = (float)height;
+      mesh->scale[2] = (float)(rBottom * 2.0);
+      mesh->color = color_from_js(ctx, argv[3], mesh->color);
+      if (argc > 4)
+         set_position_from_js(ctx, argv[4], mesh->position);
+   } else if (argc > 0) {
+      mesh->color = color_from_js(ctx, argv[0], mesh->color);
+   }
+   return JS_NewInt32(ctx, handle);
+}
+
 static JSValue js_vec3_array(JSContext *ctx, const float value[3])
 {
    JSValue array = JS_NewArray(ctx);
@@ -3382,6 +4515,27 @@ static JSValue js_get_mesh(JSContext *ctx, JSValueConst this_val, int argc, JSVa
    JS_SetPropertyStr(ctx, object, "position", js_vec3_array(ctx, mesh->position));
    JS_SetPropertyStr(ctx, object, "rotation", js_vec3_array(ctx, mesh->rotation));
    JS_SetPropertyStr(ctx, object, "scale", js_vec3_array(ctx, mesh->scale));
+   JS_SetPropertyStr(ctx, object, "roughness", JS_NewFloat64(ctx, mesh->roughness));
+   JS_SetPropertyStr(ctx, object, "metalness", JS_NewFloat64(ctx, mesh->metalness));
+   JS_SetPropertyStr(ctx, object, "emissiveColor", JS_NewUint32(ctx, mesh->emissive_color));
+   JS_SetPropertyStr(ctx, object, "emissiveIntensity", JS_NewFloat64(ctx, mesh->emissive_intensity));
+   /* uvOffset / uvScale as 2-element JS arrays */
+   {
+      JSValue uvo = JS_NewArray(ctx);
+      JS_SetPropertyUint32(ctx, uvo, 0, JS_NewFloat64(ctx, mesh->uv_offset[0]));
+      JS_SetPropertyUint32(ctx, uvo, 1, JS_NewFloat64(ctx, mesh->uv_offset[1]));
+      JS_SetPropertyStr(ctx, object, "uvOffset", uvo);
+      JSValue uvs = JS_NewArray(ctx);
+      JS_SetPropertyUint32(ctx, uvs, 0, JS_NewFloat64(ctx, mesh->uv_scale[0]));
+      JS_SetPropertyUint32(ctx, uvs, 1, JS_NewFloat64(ctx, mesh->uv_scale[1]));
+      JS_SetPropertyStr(ctx, object, "uvScale", uvs);
+   }
+   {
+      const char *blend_name = "opaque";
+      if (mesh->mesh_blend == NOVA64_MESH_BLEND_ADDITIVE)  blend_name = "additive";
+      else if (mesh->mesh_blend == NOVA64_MESH_BLEND_MULTIPLY) blend_name = "multiply";
+      JS_SetPropertyStr(ctx, object, "meshBlend", JS_NewString(ctx, blend_name));
+   }
    return object;
 }
 
@@ -3438,6 +4592,24 @@ static JSValue js_get_backend_capabilities(JSContext *ctx, JSValueConst this_val
    JS_SetPropertyStr(ctx, object, "postProcessing", JS_NewBool(ctx, gles.active));
    JS_SetPropertyStr(ctx, object, "emissive", JS_NewBool(ctx, true));
    JS_SetPropertyStr(ctx, object, "meshAlpha", JS_NewBool(ctx, true));
+   JS_SetPropertyStr(ctx, object, "orthographicCamera", JS_NewBool(ctx, true));
+   JS_SetPropertyStr(ctx, object, "skyColor", JS_NewBool(ctx, true));
+   JS_SetPropertyStr(ctx, object, "skyGradient", JS_NewBool(ctx, true));
+   JS_SetPropertyStr(ctx, object, "paletteSwap", JS_NewBool(ctx, true));
+   JS_SetPropertyStr(ctx, object, "alphaBlend2D", JS_NewBool(ctx, true));
+   JS_SetPropertyStr(ctx, object, "primitive2DShapes", JS_NewBool(ctx, true));
+   JS_SetPropertyStr(ctx, object, "camera2DTransform", JS_NewBool(ctx, true));
+   JS_SetPropertyStr(ctx, object, "drawStateQueries", JS_NewBool(ctx, true));
+   JS_SetPropertyStr(ctx, object, "roundedRects", JS_NewBool(ctx, true));
+   JS_SetPropertyStr(ctx, object, "lineGradients", JS_NewBool(ctx, true));
+   JS_SetPropertyStr(ctx, object, "colorChannels", JS_NewBool(ctx, true));
+   JS_SetPropertyStr(ctx, object, "screenEffects2D", JS_NewBool(ctx, true));
+   JS_SetPropertyStr(ctx, object, "drawStateStack", JS_NewBool(ctx, true));
+   JS_SetPropertyStr(ctx, object, "textEffects", JS_NewBool(ctx, true));
+   JS_SetPropertyStr(ctx, object, "meshRoughness", JS_NewBool(ctx, true));
+   JS_SetPropertyStr(ctx, object, "meshMetalness", JS_NewBool(ctx, true));
+   JS_SetPropertyStr(ctx, object, "meshUVTransform", JS_NewBool(ctx, true));
+   JS_SetPropertyStr(ctx, object, "meshBlend", JS_NewBool(ctx, true));
    return object;
 }
 
@@ -3473,6 +4645,144 @@ static JSValue js_set_camera_look_at(JSContext *ctx, JSValueConst this_val, int 
    camera_state.target[2] = camera_state.position[2] + direction[2];
    return JS_UNDEFINED;
 }
+
+/* getCameraPosition() → [x, y, z] */
+static JSValue js_get_camera_position(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val; (void)argc; (void)argv;
+   return js_vec3_array(ctx, camera_state.position);
+}
+
+/* getCameraTarget() → [x, y, z] */
+static JSValue js_get_camera_target(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val; (void)argc; (void)argv;
+   return js_vec3_array(ctx, camera_state.target);
+}
+
+/* getCameraFOV() → number */
+static JSValue js_get_camera_fov(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val; (void)argc; (void)argv;
+   return JS_NewFloat64(ctx, camera_state.fov);
+}
+
+/* setCameraOrthographic(width [, height])
+   Switches the projection to orthographic. height defaults to width * 9/16. */
+static JSValue js_set_camera_orthographic(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double w = double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, (double)camera_state.ortho_width);
+   double h = double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, w * ((double)NOVA64_HEIGHT / (double)NOVA64_WIDTH));
+   camera_state.ortho_width  = (float)w;
+   camera_state.ortho_height = (float)h;
+   camera_state.is_ortho     = true;
+   return JS_UNDEFINED;
+}
+
+/* setCameraPerspective() — restores perspective projection */
+static JSValue js_set_camera_perspective(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)ctx; (void)this_val; (void)argc; (void)argv;
+   camera_state.is_ortho = false;
+   return JS_UNDEFINED;
+}
+
+/* setSkyColor(topColor [, bottomColor])
+   Sets a sky background color. In GLES mode the clear color is set to topColor.
+   bottomColor is stored but the gradient is a future shader extension. */
+static JSValue js_set_sky_color(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   sky_top_color    = color_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, sky_top_color);
+   sky_bottom_color = color_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, sky_top_color);
+   sky_color_enabled = true;
+   return JS_UNDEFINED;
+}
+
+/* clearSkyColor() — reverts to ambient-derived clear color */
+static JSValue js_clear_sky_color(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)ctx; (void)this_val; (void)argc; (void)argv;
+   sky_color_enabled = false;
+   return JS_UNDEFINED;
+}
+
+static JSValue js_get_sky_color(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val; (void)argc; (void)argv;
+   JSValue object = JS_NewObject(ctx);
+   JS_SetPropertyStr(ctx, object, "enabled", JS_NewBool(ctx, sky_color_enabled));
+   JS_SetPropertyStr(ctx, object, "top", JS_NewUint32(ctx, sky_top_color));
+   JS_SetPropertyStr(ctx, object, "bottom", JS_NewUint32(ctx, sky_bottom_color));
+   return object;
+}
+
+/* setMeshRoughness(handle, value) */
+static JSValue js_set_mesh_roughness(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   struct nova64_mesh *mesh = mesh_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (mesh)
+      mesh->roughness = (float)clamp_double(double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, mesh->roughness), 0.0, 1.0);
+   return JS_UNDEFINED;
+}
+
+/* setMeshMetalness(handle, value) */
+static JSValue js_set_mesh_metalness(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   struct nova64_mesh *mesh = mesh_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (mesh)
+      mesh->metalness = (float)clamp_double(double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, mesh->metalness), 0.0, 1.0);
+   return JS_UNDEFINED;
+}
+
+/* setMeshUVOffset(handle, u, v) */
+static JSValue js_set_mesh_uv_offset(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   struct nova64_mesh *mesh = mesh_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (mesh) {
+      mesh->uv_offset[0] = (float)double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, mesh->uv_offset[0]);
+      mesh->uv_offset[1] = (float)double_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, mesh->uv_offset[1]);
+   }
+   return JS_UNDEFINED;
+}
+
+/* setMeshUVScale(handle, u, v) */
+static JSValue js_set_mesh_uv_scale(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   struct nova64_mesh *mesh = mesh_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (mesh) {
+      mesh->uv_scale[0] = (float)double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, mesh->uv_scale[0]);
+      mesh->uv_scale[1] = (float)double_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, mesh->uv_scale[1]);
+   }
+   return JS_UNDEFINED;
+}
+
+/* setMeshBlend(handle, 'opaque'|'additive'|'multiply') */
+static JSValue js_set_mesh_blend(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   struct nova64_mesh *mesh = mesh_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (mesh && argc > 1) {
+      const char *mode = JS_ToCString(ctx, argv[1]);
+      if (mode) {
+         if (!strcmp(mode, "additive"))
+            mesh->mesh_blend = NOVA64_MESH_BLEND_ADDITIVE;
+         else if (!strcmp(mode, "multiply"))
+            mesh->mesh_blend = NOVA64_MESH_BLEND_MULTIPLY;
+         else
+            mesh->mesh_blend = NOVA64_MESH_BLEND_OPAQUE;
+         JS_FreeCString(ctx, mode);
+      }
+   }
+   return JS_UNDEFINED;
+}
+
+
 
 static JSValue js_set_ambient_light(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
@@ -3645,14 +4955,48 @@ static bool wav_parse(const char *data, size_t size,
    return true;
 }
 
+/* Detect .ogg extension (case-insensitive last 4 chars) */
+static bool path_is_ogg(const char *path)
+{
+   if (!path) return false;
+   size_t len = strlen(path);
+   if (len < 4) return false;
+   const char *ext = path + len - 4;
+   return (ext[0] == '.' &&
+           (ext[1] == 'o' || ext[1] == 'O') &&
+           (ext[2] == 'g' || ext[2] == 'G') &&
+           (ext[3] == 'g' || ext[3] == 'G'));
+}
+
+/* Decode an OGG asset to a malloc'd int16 buffer.  Returns NULL on failure.
+   *out_frames, *out_channels, *out_rate are set on success. */
+static int16_t *ogg_decode_asset(const struct nova64_package_asset *asset,
+                                  size_t *out_frames, size_t *out_channels, double *out_rate)
+{
+   int channels = 0, sample_rate = 0;
+   short *decoded = NULL;
+   int total_samples = stb_vorbis_decode_memory(
+      (const unsigned char *)asset->data, (int)asset->size,
+      &channels, &sample_rate, &decoded);
+   if (total_samples <= 0 || !decoded || channels <= 0 || sample_rate <= 0) {
+      if (decoded) free(decoded);
+      return NULL;
+   }
+   *out_frames   = (size_t)total_samples;
+   *out_channels = (size_t)channels;
+   *out_rate     = (double)sample_rate;
+   return (int16_t *)decoded;
+}
+
 static JSValue js_play_sound(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
    (void)this_val;
    if (argc < 1) return JS_NewBool(ctx, false);
-   const char *path = JS_ToCString(ctx, argv[0]);
-   if (!path) return JS_NewBool(ctx, false);
-   const struct nova64_package_asset *asset = find_package_asset(path);
-   JS_FreeCString(ctx, path);
+   const char *path_str = JS_ToCString(ctx, argv[0]);
+   if (!path_str) return JS_NewBool(ctx, false);
+   const struct nova64_package_asset *asset = find_package_asset(path_str);
+   bool is_ogg = path_is_ogg(path_str);
+   JS_FreeCString(ctx, path_str);
    if (!asset || !asset->data || asset->size < 4)
       return JS_NewBool(ctx, false);
 
@@ -3665,31 +5009,45 @@ static JSValue js_play_sound(JSContext *ctx, JSValueConst this_val, int argc, JS
       if (!audio_voices[i].active) { slot = i; break; }
    }
    struct nova64_audio_voice *voice = &audio_voices[slot];
+   /* Free any previously owned OGG buffer */
+   if (voice->ogg_decoded_data) {
+      free(voice->ogg_decoded_data);
+      voice->ogg_decoded_data = NULL;
+   }
    memset(voice, 0, sizeof(*voice));
 
    const int16_t *pcm = NULL;
    size_t frames = 0, channels = 1;
    double rate = NOVA64_SAMPLE_RATE;
+   int16_t *owned = NULL;
 
-   if (!wav_parse((const char *)asset->data, asset->size, &pcm, &frames, &channels, &rate)) {
+   if (is_ogg) {
+      owned = ogg_decode_asset(asset, &frames, &channels, &rate);
+      if (!owned) return JS_NewBool(ctx, false);
+      pcm = owned;
+   } else if (!wav_parse((const char *)asset->data, asset->size, &pcm, &frames, &channels, &rate)) {
       /* Treat as raw int16 LE mono at 44100Hz */
       pcm      = (const int16_t *)asset->data;
       frames   = asset->size / sizeof(int16_t);
       channels = 1;
       rate     = NOVA64_SAMPLE_RATE;
    }
-   if (frames == 0) return JS_NewBool(ctx, false);
+   if (frames == 0) {
+      if (owned) free(owned);
+      return JS_NewBool(ctx, false);
+   }
 
-   voice->active      = true;
-   voice->wave        = NOVA64_AUDIO_PCM;
-   voice->vol         = clamp_double(vol, 0.0, 1.0);
-   voice->pcm_data    = pcm;
-   voice->pcm_asset   = asset;
-   voice->pcm_frames  = frames;
-   voice->pcm_channels= channels;
-   voice->pcm_rate    = rate;
-   voice->pcm_pos     = 0.0;
-   voice->pcm_loop    = loop;
+   voice->active           = true;
+   voice->wave             = NOVA64_AUDIO_PCM;
+   voice->vol              = clamp_double(vol, 0.0, 1.0);
+   voice->pcm_data         = pcm;
+   voice->ogg_decoded_data = owned;
+   voice->pcm_asset        = asset;
+   voice->pcm_frames       = frames;
+   voice->pcm_channels     = channels;
+   voice->pcm_rate         = rate;
+   voice->pcm_pos          = 0.0;
+   voice->pcm_loop         = loop;
    return JS_NewBool(ctx, true);
 }
 
@@ -3724,6 +5082,284 @@ static JSValue js_stop_all_sounds(JSContext *ctx, JSValueConst this_val, int arg
    (void)this_val; (void)argc; (void)argv;
    for (size_t i = 0; i < NOVA64_AUDIO_MAX_VOICES; i++)
       audio_voices[i].active = false;
+   return JS_UNDEFINED;
+}
+
+/* ---- Music playback API ---- */
+
+static void music_stop_current(void)
+{
+   if (music_state.ogg_decoded_data) {
+      free(music_state.ogg_decoded_data);
+      music_state.ogg_decoded_data = NULL;
+   }
+   memset(&music_state, 0, sizeof(music_state));
+   music_state.vol = 1.0f;
+}
+
+static JSValue js_play_music(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 1) return JS_NewBool(ctx, false);
+   const char *path_str = JS_ToCString(ctx, argv[0]);
+   if (!path_str) return JS_NewBool(ctx, false);
+   const struct nova64_package_asset *asset = find_package_asset(path_str);
+   bool is_ogg = path_is_ogg(path_str);
+   JS_FreeCString(ctx, path_str);
+   if (!asset || !asset->data || asset->size < 4)
+      return JS_NewBool(ctx, false);
+
+   double vol = argc > 1 ? double_from_js(ctx, argv[1], 1.0) : 1.0;
+
+   music_stop_current();
+
+   const int16_t *pcm = NULL;
+   size_t frames = 0, channels = 1;
+   double rate = NOVA64_SAMPLE_RATE;
+   int16_t *owned = NULL;
+
+   if (is_ogg) {
+      owned = ogg_decode_asset(asset, &frames, &channels, &rate);
+      if (!owned) return JS_NewBool(ctx, false);
+      pcm = owned;
+   } else if (!wav_parse((const char *)asset->data, asset->size, &pcm, &frames, &channels, &rate)) {
+      pcm      = (const int16_t *)asset->data;
+      frames   = asset->size / sizeof(int16_t);
+      channels = 1;
+      rate     = NOVA64_SAMPLE_RATE;
+   }
+   if (frames == 0) {
+      if (owned) free(owned);
+      return JS_NewBool(ctx, false);
+   }
+
+   music_state.active           = true;
+   music_state.paused           = false;
+   music_state.vol              = (float)clamp_double(vol, 0.0, 1.0);
+   music_state.pcm_data         = pcm;
+   music_state.ogg_decoded_data = owned;
+   music_state.pcm_frames       = frames;
+   music_state.pcm_channels     = channels;
+   music_state.pcm_rate         = rate;
+   music_state.pcm_pos          = 0.0;
+   music_state.pcm_asset        = asset;
+   return JS_NewBool(ctx, true);
+}
+
+static JSValue js_stop_music(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)ctx; (void)this_val; (void)argc; (void)argv;
+   music_stop_current();
+   return JS_UNDEFINED;
+}
+
+static JSValue js_set_music_volume(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 1) return JS_UNDEFINED;
+   music_state.vol = (float)clamp_double(double_from_js(ctx, argv[0], 1.0), 0.0, 1.0);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_pause_music(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)ctx; (void)this_val; (void)argc; (void)argv;
+   music_state.paused = true;
+   return JS_UNDEFINED;
+}
+
+static JSValue js_resume_music(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)ctx; (void)this_val; (void)argc; (void)argv;
+   if (music_state.active)
+      music_state.paused = false;
+   return JS_UNDEFINED;
+}
+
+static JSValue js_music_active(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)ctx; (void)this_val; (void)argc; (void)argv;
+   return JS_NewBool(ctx, music_state.active);
+}
+
+/* ---- Blend 2D API ---- */
+
+static JSValue js_set_blend_2d(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 1) return JS_UNDEFINED;
+   const char *mode = JS_ToCString(ctx, argv[0]);
+   if (!mode) return JS_UNDEFINED;
+   if (strcmp(mode, "alpha") == 0)
+      blend_2d_mode = NOVA64_BLEND_ALPHA;
+   else if (strcmp(mode, "additive") == 0)
+      blend_2d_mode = NOVA64_BLEND_ADDITIVE;
+   else if (strcmp(mode, "multiply") == 0)
+      blend_2d_mode = NOVA64_BLEND_MULTIPLY;
+   else if (strcmp(mode, "screen") == 0)
+      blend_2d_mode = NOVA64_BLEND_SCREEN;
+   else
+      blend_2d_mode = NOVA64_BLEND_NORMAL;
+   JS_FreeCString(ctx, mode);
+   return JS_UNDEFINED;
+}
+
+static const char *blend_2d_name(enum nova64_blend_mode mode)
+{
+   switch (mode) {
+      case NOVA64_BLEND_ALPHA: return "alpha";
+      case NOVA64_BLEND_ADDITIVE: return "additive";
+      case NOVA64_BLEND_MULTIPLY: return "multiply";
+      case NOVA64_BLEND_SCREEN: return "screen";
+      case NOVA64_BLEND_NORMAL:
+      default:
+         return "normal";
+   }
+}
+
+static JSValue js_get_blend_2d(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val; (void)argc; (void)argv;
+   return JS_NewString(ctx, blend_2d_name(blend_2d_mode));
+}
+
+static JSValue js_push_blend_2d(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)ctx; (void)this_val; (void)argc; (void)argv;
+   if (blend_stack_depth >= NOVA64_DRAW_STACK_MAX)
+      return JS_NewBool(ctx, false);
+   blend_stack[blend_stack_depth++] = blend_2d_mode;
+   return JS_NewBool(ctx, true);
+}
+
+static JSValue js_pop_blend_2d(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val; (void)argc; (void)argv;
+   if (blend_stack_depth <= 0)
+      return JS_NewBool(ctx, false);
+   blend_2d_mode = blend_stack[--blend_stack_depth];
+   return JS_NewBool(ctx, true);
+}
+
+static JSValue js_clear_blend_2d(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)ctx; (void)this_val; (void)argc; (void)argv;
+   blend_2d_mode = NOVA64_BLEND_NORMAL;
+   return JS_UNDEFINED;
+}
+
+static JSValue js_set_palette(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int index = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, -1);
+   if (index < 0 || index >= 16)
+      return JS_NewBool(ctx, false);
+   draw_palette[index] = color_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, draw_palette[index]);
+   return JS_NewBool(ctx, true);
+}
+
+static JSValue js_get_palette(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int index = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, -1);
+   if (index < 0 || index >= 16)
+      return JS_NULL;
+   return JS_NewUint32(ctx, draw_palette[index]);
+}
+
+static JSValue js_apply_palette_swap(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int from = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, -1);
+   int to = int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, -1);
+   if (from < 0 || from >= 16 || to < 0 || to >= 16) {
+      palette_swap_enabled = false;
+      return JS_NewBool(ctx, false);
+   }
+   palette_swap_from = draw_palette[from];
+   palette_swap_to = draw_palette[to];
+   palette_swap_enabled = true;
+   return JS_NewBool(ctx, true);
+}
+
+static JSValue js_clear_palette_swap(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)ctx; (void)this_val; (void)argc; (void)argv;
+   palette_swap_enabled = false;
+   return JS_UNDEFINED;
+}
+
+static JSValue js_reset_palette(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)ctx; (void)this_val; (void)argc; (void)argv;
+   reset_palette_state();
+   return JS_UNDEFINED;
+}
+
+static JSValue js_push_palette(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)ctx; (void)this_val; (void)argc; (void)argv;
+   if (palette_stack_depth >= NOVA64_DRAW_STACK_MAX)
+      return JS_NewBool(ctx, false);
+   struct nova64_palette_state *state = &palette_stack[palette_stack_depth++];
+   memcpy(state->colors, draw_palette, sizeof(draw_palette));
+   state->swap_enabled = palette_swap_enabled;
+   state->swap_from = palette_swap_from;
+   state->swap_to = palette_swap_to;
+   return JS_NewBool(ctx, true);
+}
+
+static JSValue js_pop_palette(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val; (void)argc; (void)argv;
+   if (palette_stack_depth <= 0)
+      return JS_NewBool(ctx, false);
+   struct nova64_palette_state *state = &palette_stack[--palette_stack_depth];
+   memcpy(draw_palette, state->colors, sizeof(draw_palette));
+   palette_swap_enabled = state->swap_enabled;
+   palette_swap_from = state->swap_from;
+   palette_swap_to = state->swap_to;
+   return JS_NewBool(ctx, true);
+}
+
+static JSValue js_get_draw_state(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val; (void)argc; (void)argv;
+   JSValue object = JS_NewObject(ctx);
+   JSValue clip = JS_NewObject(ctx);
+   JS_SetPropertyStr(ctx, clip, "active", JS_NewBool(ctx, clip_active));
+   JS_SetPropertyStr(ctx, clip, "x", JS_NewInt32(ctx, clip_x));
+   JS_SetPropertyStr(ctx, clip, "y", JS_NewInt32(ctx, clip_y));
+   JS_SetPropertyStr(ctx, clip, "w", JS_NewInt32(ctx, clip_w));
+   JS_SetPropertyStr(ctx, clip, "h", JS_NewInt32(ctx, clip_h));
+   JS_SetPropertyStr(ctx, object, "clip", clip);
+
+   JSValue camera = JS_NewObject(ctx);
+   JS_SetPropertyStr(ctx, camera, "x", JS_NewInt32(ctx, cam2d_x));
+   JS_SetPropertyStr(ctx, camera, "y", JS_NewInt32(ctx, cam2d_y));
+   JS_SetPropertyStr(ctx, camera, "zoom", JS_NewFloat64(ctx, cam2d_zoom));
+   JS_SetPropertyStr(ctx, camera, "rotation", JS_NewFloat64(ctx, cam2d_rotation));
+   JS_SetPropertyStr(ctx, object, "camera2D", camera);
+
+   JS_SetPropertyStr(ctx, object, "blend", JS_NewString(ctx, blend_2d_name(blend_2d_mode)));
+   JSValue palette = JS_NewObject(ctx);
+   JS_SetPropertyStr(ctx, palette, "swapEnabled", JS_NewBool(ctx, palette_swap_enabled));
+   JS_SetPropertyStr(ctx, palette, "swapFrom", JS_NewUint32(ctx, palette_swap_from));
+   JS_SetPropertyStr(ctx, palette, "swapTo", JS_NewUint32(ctx, palette_swap_to));
+   JS_SetPropertyStr(ctx, object, "palette", palette);
+   return object;
+}
+
+static JSValue js_clear_draw_state(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)ctx; (void)this_val; (void)argc; (void)argv;
+   clip_active = false;
+   cam2d_x = cam2d_y = 0;
+   cam2d_zoom = 1.0f;
+   cam2d_rotation = 0.0f;
+   blend_2d_mode = NOVA64_BLEND_NORMAL;
+   palette_swap_enabled = false;
+   clip_stack_depth = camera2d_stack_depth = blend_stack_depth = palette_stack_depth = 0;
    return JS_UNDEFINED;
 }
 
@@ -4344,22 +5980,75 @@ static bool install_nova64_api(JSContext *ctx)
    JSValue storage = JS_NewObject(ctx);
 
    set_function(ctx, draw, "rgba8", js_rgba8, 4);
+   set_function(ctx, draw, "colorLerp", js_color_lerp, 3);
+   set_function(ctx, draw, "colorR", js_color_r, 1);
+   set_function(ctx, draw, "colorG", js_color_g, 1);
+   set_function(ctx, draw, "colorB", js_color_b, 1);
+   set_function(ctx, draw, "colorA", js_color_a, 1);
+   set_function(ctx, draw, "screenWidth", js_screen_width, 0);
+   set_function(ctx, draw, "screenHeight", js_screen_height, 0);
    set_function(ctx, draw, "cls", js_cls, 1);
+   set_function(ctx, draw, "clsGradient", js_cls_gradient, 3);
    set_function(ctx, draw, "pset", js_pset, 3);
+   set_function(ctx, draw, "pget", js_pget, 2);
+   set_function(ctx, draw, "replaceColor", js_replace_color, 2);
+   set_function(ctx, draw, "screenFade", js_screen_fade, 2);
+   set_function(ctx, draw, "screenTint", js_screen_tint, 2);
+   set_function(ctx, draw, "screenInvert", js_screen_invert, 0);
+   set_function(ctx, draw, "screenGrayscale", js_screen_grayscale, 0);
+   set_function(ctx, draw, "screenPosterize", js_screen_posterize, 1);
+   set_function(ctx, draw, "screenThreshold", js_screen_threshold, 3);
+   set_function(ctx, draw, "screenScanlines", js_screen_scanlines, 3);
+   set_function(ctx, draw, "screenVignette", js_screen_vignette, 2);
    set_function(ctx, draw, "line", js_line, 5);
+   set_function(ctx, draw, "hline", js_hline, 4);
+   set_function(ctx, draw, "vline", js_vline, 4);
+   set_function(ctx, draw, "lineGradient", js_line_gradient, 7);
    set_function(ctx, draw, "rect", js_rect, 6);
+   set_function(ctx, draw, "rectfill", js_rectfill, 5);
+   set_function(ctx, draw, "rectGradient", js_rect_gradient, 7);
+   set_function(ctx, draw, "roundRect", js_round_rect, 6);
+   set_function(ctx, draw, "roundRectFill", js_round_rect_fill, 6);
    set_function(ctx, draw, "circ", js_circ, 4);
    set_function(ctx, draw, "circfill", js_circfill, 4);
+   set_function(ctx, draw, "oval", js_oval, 5);
+   set_function(ctx, draw, "ovalfill", js_ovalfill, 5);
+   set_function(ctx, draw, "tri", js_tri, 7);
+   set_function(ctx, draw, "trifill", js_trifill, 7);
    set_function(ctx, draw, "print", js_draw_print, 5);
    set_function(ctx, draw, "textWidth", js_text_width, 1);
+   set_function(ctx, draw, "textHeight", js_text_height, 1);
+   set_function(ctx, draw, "textSize", js_text_size, 1);
+   set_function(ctx, draw, "printShadow", js_print_shadow, 8);
+   set_function(ctx, draw, "printOutline", js_print_outline, 6);
    set_function(ctx, draw, "spr", js_spr, 9);
    set_function(ctx, draw, "createSpriteSheet", js_create_spritesheet, 3);
    set_function(ctx, draw, "sprFrame", js_spr_frame, 4);
    set_function(ctx, draw, "sprNamed", js_spr_named, 4);
    set_function(ctx, draw, "setClip", js_set_clip, 4);
    set_function(ctx, draw, "clearClip", js_clear_clip, 0);
-   set_function(ctx, draw, "setCamera2D", js_set_camera2d, 2);
+   set_function(ctx, draw, "getClip", js_get_clip, 0);
+   set_function(ctx, draw, "pushClip", js_push_clip, 0);
+   set_function(ctx, draw, "popClip", js_pop_clip, 0);
+   set_function(ctx, draw, "setCamera2D", js_set_camera2d, 4);
    set_function(ctx, draw, "clearCamera2D", js_clear_camera2d, 0);
+   set_function(ctx, draw, "getCamera2D", js_get_camera2d, 0);
+   set_function(ctx, draw, "pushCamera2D", js_push_camera2d, 0);
+   set_function(ctx, draw, "popCamera2D", js_pop_camera2d, 0);
+   set_function(ctx, draw, "setBlend2D", js_set_blend_2d, 1);
+   set_function(ctx, draw, "getBlend2D", js_get_blend_2d, 0);
+   set_function(ctx, draw, "pushBlend2D", js_push_blend_2d, 0);
+   set_function(ctx, draw, "popBlend2D", js_pop_blend_2d, 0);
+   set_function(ctx, draw, "clearBlend2D", js_clear_blend_2d, 0);
+   set_function(ctx, draw, "setPalette", js_set_palette, 2);
+   set_function(ctx, draw, "getPalette", js_get_palette, 1);
+   set_function(ctx, draw, "applyPaletteSwap", js_apply_palette_swap, 2);
+   set_function(ctx, draw, "clearPaletteSwap", js_clear_palette_swap, 0);
+   set_function(ctx, draw, "resetPalette", js_reset_palette, 0);
+   set_function(ctx, draw, "pushPalette", js_push_palette, 0);
+   set_function(ctx, draw, "popPalette", js_pop_palette, 0);
+   set_function(ctx, draw, "getDrawState", js_get_draw_state, 0);
+   set_function(ctx, draw, "clearDrawState", js_clear_draw_state, 0);
 
    set_function(ctx, input, "btn", js_btn, 2);
    set_function(ctx, input, "btnp", js_btnp, 2);
@@ -4378,6 +6067,8 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, scene, "createCube", js_create_cube, 1);
    set_function(ctx, scene, "createSphere", js_create_sphere, 1);
    set_function(ctx, scene, "createPlane", js_create_plane, 1);
+   set_function(ctx, scene, "createCapsule", js_create_capsule, 4);
+   set_function(ctx, scene, "createCylinder", js_create_cylinder, 5);
    set_function(ctx, scene, "destroyMesh", js_destroy_mesh, 1);
    set_function(ctx, scene, "removeMesh", js_destroy_mesh, 1);
    set_function(ctx, scene, "getMesh", js_get_mesh, 1);
@@ -4405,6 +6096,14 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, scene, "createTexture", js_create_texture, 3);
    set_function(ctx, scene, "setMeshTexture", js_set_mesh_texture, 2);
    set_function(ctx, scene, "destroyTexture", js_destroy_texture, 1);
+   set_function(ctx, scene, "setSkyColor", js_set_sky_color, 2);
+   set_function(ctx, scene, "clearSkyColor", js_clear_sky_color, 0);
+   set_function(ctx, scene, "getSkyColor", js_get_sky_color, 0);
+   set_function(ctx, scene, "setMeshRoughness", js_set_mesh_roughness, 2);
+   set_function(ctx, scene, "setMeshMetalness", js_set_mesh_metalness, 2);
+   set_function(ctx, scene, "setMeshUVOffset", js_set_mesh_uv_offset, 3);
+   set_function(ctx, scene, "setMeshUVScale", js_set_mesh_uv_scale, 3);
+   set_function(ctx, scene, "setMeshBlend", js_set_mesh_blend, 2);
 
    set_function(ctx, camera, "setPosition", js_set_camera_position, 3);
    set_function(ctx, camera, "setTarget", js_set_camera_target, 3);
@@ -4413,6 +6112,16 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, camera, "setCameraTarget", js_set_camera_target, 3);
    set_function(ctx, camera, "setCameraFOV", js_set_camera_fov, 1);
    set_function(ctx, camera, "setCameraLookAt", js_set_camera_look_at, 1);
+   set_function(ctx, camera, "setCameraOrthographic", js_set_camera_orthographic, 2);
+   set_function(ctx, camera, "setCameraPerspective", js_set_camera_perspective, 0);
+   set_function(ctx, camera, "setOrthographic", js_set_camera_orthographic, 2);
+   set_function(ctx, camera, "setPerspective", js_set_camera_perspective, 0);
+   set_function(ctx, camera, "getCameraPosition", js_get_camera_position, 0);
+   set_function(ctx, camera, "getCameraTarget", js_get_camera_target, 0);
+   set_function(ctx, camera, "getCameraFOV", js_get_camera_fov, 0);
+   set_function(ctx, camera, "getPosition", js_get_camera_position, 0);
+   set_function(ctx, camera, "getTarget", js_get_camera_target, 0);
+   set_function(ctx, camera, "getFOV", js_get_camera_fov, 0);
 
    set_function(ctx, light, "setAmbient", js_set_ambient_light, 2);
    set_function(ctx, light, "setDirection", js_set_light_direction, 3);
@@ -4432,6 +6141,12 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, audio, "playSound", js_play_sound, 3);
    set_function(ctx, audio, "stopSound", js_stop_sound, 1);
    set_function(ctx, audio, "stopAll", js_stop_all_sounds, 0);
+   set_function(ctx, audio, "playMusic", js_play_music, 3);
+   set_function(ctx, audio, "stopMusic", js_stop_music, 0);
+   set_function(ctx, audio, "setMusicVolume", js_set_music_volume, 1);
+   set_function(ctx, audio, "pauseMusic", js_pause_music, 0);
+   set_function(ctx, audio, "resumeMusic", js_resume_music, 0);
+   set_function(ctx, audio, "musicActive", js_music_active, 0);
 
    set_function(ctx, assets, "has", js_assets_has, 1);
    set_function(ctx, assets, "size", js_assets_size, 1);
@@ -4450,6 +6165,9 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, storage, "has", js_storage_has_data, 1);
    set_function(ctx, storage, "keys", js_storage_keys, 0);
    set_function(ctx, storage, "clear", js_storage_clear, 0);
+   set_function(ctx, storage, "hasData", js_storage_has_data, 1);
+   set_function(ctx, storage, "storageKeys", js_storage_keys, 0);
+   set_function(ctx, storage, "storageClear", js_storage_clear, 0);
    set_function(ctx, storage, "open", js_storage_open, 1);
 
    /* nova64.tilemap namespace */
@@ -4519,25 +6237,84 @@ static bool install_nova64_api(JSContext *ctx)
    JS_SetPropertyStr(ctx, global, "nova64", nova64);
 
    set_function(ctx, global, "rgba8", js_rgba8, 4);
+   set_function(ctx, global, "colorLerp", js_color_lerp, 3);
+   set_function(ctx, global, "colorR", js_color_r, 1);
+   set_function(ctx, global, "colorG", js_color_g, 1);
+   set_function(ctx, global, "colorB", js_color_b, 1);
+   set_function(ctx, global, "colorA", js_color_a, 1);
+   set_function(ctx, global, "screenWidth", js_screen_width, 0);
+   set_function(ctx, global, "screenHeight", js_screen_height, 0);
    set_function(ctx, global, "cls", js_cls, 1);
+   set_function(ctx, global, "clsGradient", js_cls_gradient, 3);
    set_function(ctx, global, "pset", js_pset, 3);
+   set_function(ctx, global, "pget", js_pget, 2);
+   set_function(ctx, global, "replaceColor", js_replace_color, 2);
+   set_function(ctx, global, "screenFade", js_screen_fade, 2);
+   set_function(ctx, global, "screenTint", js_screen_tint, 2);
+   set_function(ctx, global, "screenInvert", js_screen_invert, 0);
+   set_function(ctx, global, "screenGrayscale", js_screen_grayscale, 0);
+   set_function(ctx, global, "screenPosterize", js_screen_posterize, 1);
+   set_function(ctx, global, "screenThreshold", js_screen_threshold, 3);
+   set_function(ctx, global, "screenScanlines", js_screen_scanlines, 3);
+   set_function(ctx, global, "screenVignette", js_screen_vignette, 2);
    set_function(ctx, global, "line", js_line, 5);
+   set_function(ctx, global, "hline", js_hline, 4);
+   set_function(ctx, global, "vline", js_vline, 4);
+   set_function(ctx, global, "lineGradient", js_line_gradient, 7);
    set_function(ctx, global, "rect", js_rect, 6);
+   set_function(ctx, global, "rectfill", js_rectfill, 5);
+   set_function(ctx, global, "rectGradient", js_rect_gradient, 7);
+   set_function(ctx, global, "roundRect", js_round_rect, 6);
+   set_function(ctx, global, "roundRectFill", js_round_rect_fill, 6);
    set_function(ctx, global, "circ", js_circ, 4);
    set_function(ctx, global, "circfill", js_circfill, 4);
+   set_function(ctx, global, "oval", js_oval, 5);
+   set_function(ctx, global, "ovalfill", js_ovalfill, 5);
+   set_function(ctx, global, "tri", js_tri, 7);
+   set_function(ctx, global, "trifill", js_trifill, 7);
    set_function(ctx, global, "print", js_draw_print, 5);
    set_function(ctx, global, "textWidth", js_text_width, 1);
+   set_function(ctx, global, "textHeight", js_text_height, 1);
+   set_function(ctx, global, "textSize", js_text_size, 1);
+   set_function(ctx, global, "printShadow", js_print_shadow, 8);
+   set_function(ctx, global, "printOutline", js_print_outline, 6);
    set_function(ctx, global, "spr", js_spr, 9);
    set_function(ctx, global, "createSpriteSheet", js_create_spritesheet, 3);
    set_function(ctx, global, "sprFrame", js_spr_frame, 4);
    set_function(ctx, global, "sprNamed", js_spr_named, 4);
    set_function(ctx, global, "setClip", js_set_clip, 4);
    set_function(ctx, global, "clearClip", js_clear_clip, 0);
-   set_function(ctx, global, "setCamera2D", js_set_camera2d, 2);
+   set_function(ctx, global, "getClip", js_get_clip, 0);
+   set_function(ctx, global, "pushClip", js_push_clip, 0);
+   set_function(ctx, global, "popClip", js_pop_clip, 0);
+   set_function(ctx, global, "setCamera2D", js_set_camera2d, 4);
    set_function(ctx, global, "clearCamera2D", js_clear_camera2d, 0);
+   set_function(ctx, global, "getCamera2D", js_get_camera2d, 0);
+   set_function(ctx, global, "pushCamera2D", js_push_camera2d, 0);
+   set_function(ctx, global, "popCamera2D", js_pop_camera2d, 0);
+   set_function(ctx, global, "setBlend2D", js_set_blend_2d, 1);
+   set_function(ctx, global, "getBlend2D", js_get_blend_2d, 0);
+   set_function(ctx, global, "pushBlend2D", js_push_blend_2d, 0);
+   set_function(ctx, global, "popBlend2D", js_pop_blend_2d, 0);
+   set_function(ctx, global, "clearBlend2D", js_clear_blend_2d, 0);
+   set_function(ctx, global, "setPalette", js_set_palette, 2);
+   set_function(ctx, global, "getPalette", js_get_palette, 1);
+   set_function(ctx, global, "applyPaletteSwap", js_apply_palette_swap, 2);
+   set_function(ctx, global, "clearPaletteSwap", js_clear_palette_swap, 0);
+   set_function(ctx, global, "resetPalette", js_reset_palette, 0);
+   set_function(ctx, global, "pushPalette", js_push_palette, 0);
+   set_function(ctx, global, "popPalette", js_pop_palette, 0);
+   set_function(ctx, global, "getDrawState", js_get_draw_state, 0);
+   set_function(ctx, global, "clearDrawState", js_clear_draw_state, 0);
    set_function(ctx, global, "playSound", js_play_sound, 3);
    set_function(ctx, global, "stopSound", js_stop_sound, 1);
    set_function(ctx, global, "stopAllSounds", js_stop_all_sounds, 0);
+   set_function(ctx, global, "playMusic", js_play_music, 3);
+   set_function(ctx, global, "stopMusic", js_stop_music, 0);
+   set_function(ctx, global, "setMusicVolume", js_set_music_volume, 1);
+   set_function(ctx, global, "pauseMusic", js_pause_music, 0);
+   set_function(ctx, global, "resumeMusic", js_resume_music, 0);
+   set_function(ctx, global, "musicActive", js_music_active, 0);
    set_function(ctx, global, "btn", js_btn, 2);
    set_function(ctx, global, "btnp", js_btnp, 2);
    set_function(ctx, global, "key", js_key, 1);
@@ -4559,6 +6336,8 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, global, "createCube", js_create_cube, 1);
    set_function(ctx, global, "createSphere", js_create_sphere, 1);
    set_function(ctx, global, "createPlane", js_create_plane, 1);
+   set_function(ctx, global, "createCapsule", js_create_capsule, 4);
+   set_function(ctx, global, "createCylinder", js_create_cylinder, 5);
    set_function(ctx, global, "destroyMesh", js_destroy_mesh, 1);
    set_function(ctx, global, "removeMesh", js_destroy_mesh, 1);
    set_function(ctx, global, "getMesh", js_get_mesh, 1);
@@ -4598,6 +6377,19 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, global, "setFog", js_set_fog, 3);
    set_function(ctx, global, "clearFog", js_clear_fog, 0);
    set_function(ctx, global, "clearScene", js_clear_scene, 0);
+   set_function(ctx, global, "setSkyColor", js_set_sky_color, 2);
+   set_function(ctx, global, "clearSkyColor", js_clear_sky_color, 0);
+   set_function(ctx, global, "getSkyColor", js_get_sky_color, 0);
+   set_function(ctx, global, "setCameraOrthographic", js_set_camera_orthographic, 2);
+   set_function(ctx, global, "setCameraPerspective", js_set_camera_perspective, 0);
+   set_function(ctx, global, "getCameraPosition", js_get_camera_position, 0);
+   set_function(ctx, global, "getCameraTarget", js_get_camera_target, 0);
+   set_function(ctx, global, "getCameraFOV", js_get_camera_fov, 0);
+   set_function(ctx, global, "setMeshRoughness", js_set_mesh_roughness, 2);
+   set_function(ctx, global, "setMeshMetalness", js_set_mesh_metalness, 2);
+   set_function(ctx, global, "setMeshUVOffset", js_set_mesh_uv_offset, 3);
+   set_function(ctx, global, "setMeshUVScale", js_set_mesh_uv_scale, 3);
+   set_function(ctx, global, "setMeshBlend", js_set_mesh_blend, 2);
    set_function(ctx, global, "sfx", js_sfx, 2);
    set_function(ctx, global, "setVolume", js_set_volume, 1);
    set_function(ctx, global, "playSound", js_play_sound, 3);
@@ -5434,6 +7226,17 @@ static void render_gles_sphere(const struct nova64_mesh *mesh, const float view_
    render_gles_primitive(mesh, view_projection, gles.sphere_vbo, gles.sphere_ibo, 24);
 }
 
+/* Capsule and cylinder use the sphere proxy geometry until dedicated VBOs are built */
+static void render_gles_capsule(const struct nova64_mesh *mesh, const float view_projection[16])
+{
+   render_gles_primitive(mesh, view_projection, gles.sphere_vbo, gles.sphere_ibo, 24);
+}
+
+static void render_gles_cylinder(const struct nova64_mesh *mesh, const float view_projection[16])
+{
+   render_gles_primitive(mesh, view_projection, gles.sphere_vbo, gles.sphere_ibo, 24);
+}
+
 static void render_gles_overlay(void)
 {
    if (!convert_framebuffer_to_overlay_rgba())
@@ -5711,10 +7514,15 @@ static void render_gles_scene(void)
    if (use_post)
       gles.BindFramebuffer(GL_FRAMEBUFFER, gles.post_fbo);
 
-   uint32_t ambient = color_with_intensity(light_state.ambient, light_state.ambient_intensity);
-   float r = (float)((ambient >> 24) & 0xffU) / 255.0f;
-   float g = (float)((ambient >> 16) & 0xffU) / 255.0f;
-   float b = (float)((ambient >>  8) & 0xffU) / 255.0f;
+   uint32_t clear_color;
+   if (sky_color_enabled) {
+      clear_color = sky_top_color;
+   } else {
+      clear_color = color_with_intensity(light_state.ambient, light_state.ambient_intensity);
+   }
+   float r = (float)((clear_color >> 24) & 0xffU) / 255.0f;
+   float g = (float)((clear_color >> 16) & 0xffU) / 255.0f;
+   float b = (float)((clear_color >>  8) & 0xffU) / 255.0f;
    gles.Viewport(0, 0, NOVA64_WIDTH, NOVA64_HEIGHT);
    gles.Enable(GL_DEPTH_TEST);
    gles.ClearColor(r, g, b, 1.0f);
@@ -5724,7 +7532,13 @@ static void render_gles_scene(void)
    float view[16];
    float view_projection[16];
    float up[3] = {0.0f, 1.0f, 0.0f};
-   mat4_perspective(projection, camera_state.fov, (float)NOVA64_WIDTH / (float)NOVA64_HEIGHT, 0.05f, 100.0f);
+   if (camera_state.is_ortho) {
+      float hw = camera_state.ortho_width  * 0.5f;
+      float hh = camera_state.ortho_height * 0.5f;
+      mat4_ortho(projection, -hw, hw, -hh, hh, 0.05f, 100.0f);
+   } else {
+      mat4_perspective(projection, camera_state.fov, (float)NOVA64_WIDTH / (float)NOVA64_HEIGHT, 0.05f, 100.0f);
+   }
    mat4_look_at(view, camera_state.position, camera_state.target, up);
    mat4_multiply(view_projection, projection, view);
 
@@ -5737,6 +7551,10 @@ static void render_gles_scene(void)
          render_gles_plane(&meshes[i], view_projection);
       else if (meshes[i].type == NOVA64_MESH_SPHERE)
          render_gles_sphere(&meshes[i], view_projection);
+      else if (meshes[i].type == NOVA64_MESH_CAPSULE)
+         render_gles_capsule(&meshes[i], view_projection);
+      else if (meshes[i].type == NOVA64_MESH_CYLINDER)
+         render_gles_cylinder(&meshes[i], view_projection);
    }
 
    if (use_post) {
@@ -6534,7 +8352,15 @@ void RETRO_CALLCONV retro_reset(void)
    memset(mp_prev_buttons, 0, sizeof(mp_prev_buttons));
    memset(mp_pressed_buttons, 0, sizeof(mp_pressed_buttons));
    clip_active = false;
+   clip_stack_depth = 0;
    cam2d_x = cam2d_y = 0;
+   cam2d_zoom = 1.0f;
+   cam2d_rotation = 0.0f;
+   camera2d_stack_depth = 0;
+   blend_2d_mode = NOVA64_BLEND_NORMAL;
+   blend_stack_depth = 0;
+   palette_stack_depth = 0;
+   reset_palette_state();
    frame_count = 0;
    clear_framebuffer(rgba8(0, 0, 0, 255));
    reset_scene_state();

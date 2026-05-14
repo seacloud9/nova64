@@ -127,20 +127,67 @@ export function draw() {}
 
 ```js
 rgba8(r, g, b, a)                        // color constant
+colorLerp(a, b, t)
+colorR(color) / colorG(color) / colorB(color) / colorA(color)
+screenWidth() / screenHeight()
 cls(color)                                // clear framebuffer
+clsGradient(colorA, colorB [, vertical])
 pset(x, y, color)
-line(x0, y0, x1, y1, color)
+pget(x, y)
+replaceColor(fromColor, toColor)
+screenFade(color, amount)
+screenTint(color, amount)
+screenInvert()
+screenGrayscale()
+screenPosterize(levels)
+screenThreshold(threshold, lowColor, highColor)
+screenScanlines(color, amount [, step])
+screenVignette(amount [, color])
+line(x0, y0, x1, y1, color [, thickness])
+hline(x0, y, x1, color)
+vline(x, y0, y1, color)
+lineGradient(x0, y0, x1, y1, colorA, colorB [, thickness])
 rect(x, y, w, h, color, filled)
+rectfill(x, y, w, h, color)
+rectGradient(x, y, w, h, colorA, colorB [, vertical])
+roundRect(x, y, w, h, radius, color)
+roundRectFill(x, y, w, h, radius, color)
 circ(cx, cy, r, color)                    // Bresenham outline circle
 circfill(cx, cy, r, color)               // filled circle
+oval(cx, cy, rx, ry, color)
+ovalfill(cx, cy, rx, ry, color)
+tri(x0, y0, x1, y1, x2, y2, color)
+trifill(x0, y0, x1, y1, x2, y2, color)
 print(text, x, y, color [, align])       // align: 'left'|'center'|'right'
 textWidth(text)                           // pixel width of text string
+textHeight(text)
+textSize(text)                            // { w, h, lines }
+printShadow(text, x, y, color, shadowColor [, dx [, dy [, align]]])
+printOutline(text, x, y, color, outlineColor [, align])
 spr(path, dx, dy [, imgW, imgH [, sx, sy [, bw, bh]]])  // blit RGBA asset
 createSpriteSheet(path, frameW, frameH)  // auto-slice RGBA sheet
 sprFrame(sheet, frame, dx, dy)            // draw indexed frame
 sprNamed(sheet, name, dx, dy)             // draw atlas JSON region
 setClip(x, y, w, h)                      // set 2D clip region
 clearClip()                               // remove clip region
+getClip()                                 // { active, x, y, w, h }
+pushClip() / popClip()
+setCamera2D(x, y [, zoom [, rotation]])
+getCamera2D()                             // { x, y, zoom, rotation }
+clearCamera2D()
+pushCamera2D() / popCamera2D()
+setBlend2D(mode)                          // normal|alpha|additive|multiply|screen
+getBlend2D()
+clearBlend2D()
+pushBlend2D() / popBlend2D()
+setPalette(index, color)                  // update 16-color draw palette
+getPalette(index)                         // read palette color or null
+applyPaletteSwap(from, to)                // exact-color palette substitution
+clearPaletteSwap()                        // disable active palette swap
+resetPalette()
+pushPalette() / popPalette()
+getDrawState()                            // { clip, camera2D, blend, palette }
+clearDrawState()
 draw3d()                                  // flush 3D scene to framebuffer
 ```
 
@@ -302,6 +349,9 @@ removeLight(light)
 setFog(color, near, far)
 clearFog()
 clearScene()
+setSkyColor(topColor [, bottomColor])
+getSkyColor()                 // { enabled, top, bottom }
+clearSkyColor()
 ```
 
 ### Post Processing
@@ -394,3 +444,13 @@ These browser-side Nova64 or Three.js features are not implemented:
 | `41-asset-quota.js` | asset quota reporting and rejection |
 | `42-touch.js` | pointer/touch input |
 | `43-storage-namespace.js` | namespaced storage stores |
+| `68-sky-gradient.js` | software sky gradient + sky state |
+| `69-palette-swap.js` | 16-color palette helpers and palette swap |
+| `70-draw-shapes.js` | gradients, thick lines, triangles, ovals, alpha blend |
+| `71-camera2d-transform.js` | 2D camera zoom/rotation and state |
+| `72-draw-state.js` | screen size, pget, color channels, clip/palette state |
+| `73-lines-rounded.js` | h/v lines, line gradients, rounded rectangles |
+| `74-screen-effects.js` | framebuffer fade/tint/posterize/scanline/vignette |
+| `75-screen-threshold.js` | invert/grayscale/threshold/replaceColor |
+| `76-text-effects.js` | text size, shadow, and outline helpers |
+| `77-draw-state-stack.js` | push/pop draw state helpers |

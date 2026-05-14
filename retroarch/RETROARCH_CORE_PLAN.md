@@ -185,6 +185,9 @@ Areas:
     basic shadows where feasible, and command-log conformance for state changes.
   - Camera look-at, ambient intensity, directional color/intensity, fog state, and
     point-light lifecycle are now exposed with command-log conformance coverage.
+  - Sky gradient background: `setSkyColor(top, bottom)` now renders a vertical
+    software-harness gradient and exposes `getSkyColor()` state. `68-sky-gradient.js`
+    covers the visual path and capability flag.
 - Expand input:
   - Keyboard mappings, mouse buttons, relative mouse movement where RetroArch
     exposes it, touch/lightgun-style affordances if they map cleanly, and
@@ -314,10 +317,16 @@ surface — this milestone is the big parity push.
 The current GLES renderer covers cube, sphere, and plane with basic ambient and
 directional lighting. Everything below is missing or incomplete.
 
+**Done this milestone:**
+
 - Additional primitives:
-  - Capsule: `createCapsule(radius, height, color, position)`.
-  - Cylinder: `createCylinder(radiusTop, radiusBottom, height, color, position)`.
-  - Torus: `createTorus(radius, tube, color, position)`.
+  - Capsule: `createCapsule(radius, height, color [, position])` — software renderer
+    draws rounded-rect body + hemispherical caps; GLES uses sphere proxy geometry.
+    `44-capsule.js` conformance cart covers type check and scale validation.
+  - Cylinder: `createCylinder(radiusTop, radiusBottom, height, color [, position])` —
+    software renderer draws trapezoid body + top ellipse; GLES proxy. `45-cylinder.js`.
+
+Still missing:
   - Custom geometry: `createMesh(vertices, normals, uvs, indices, color)` for
     runtime-assembled geometry.
 - Scene hierarchy and parent-child transforms:
@@ -337,7 +346,9 @@ directional lighting. Everything below is missing or incomplete.
 - Orthographic camera:
   - `setCameraOrthographic(width, height)` / `setCameraPerspective()` toggle.
 - Skybox / background:
-  - `setSkyColor(top, bottom)` gradient background.
+  - ~~`setSkyColor(top, bottom)` gradient background~~ **Done** for software
+    conformance and state reporting; GLES still uses the top color as its clear
+    color until the hardware gradient shader path lands.
   - `setSkybox(texHandle)` cube-map skybox for environments that supply one.
 - Offscreen render targets:
   - `createRenderTarget(width, height)`, `destroyRenderTarget(rt)`,
@@ -363,6 +374,32 @@ Tilemap first pass done:
     from all 2D draw coordinate inputs: pset, line, rect, circ, circfill, print,
     spr, drawTilemap. `clearCamera2D()` resets to (0, 0). Offset is reset on
     cart reload. `36-camera2d.js` verifies offset shifts and clear.
+  - Advanced camera transform: `setCamera2D(x, y, zoom, rotation)` now tracks
+    zoom/rotation for core 2D primitives and `getCamera2D()` reports state.
+    `71-camera2d-transform.js` covers the state and visual path.
+
+Expanded 2D primitives done:
+
+  - `line(..., thickness)`, `rectGradient()`, `tri()`, `trifill()`, `oval()`,
+    and `ovalfill()` are exposed globally and under `nova64.draw`.
+    `70-draw-shapes.js` covers the visual output.
+  - Fast helper expansion: `screenWidth()`, `screenHeight()`, `pget()`,
+    `clsGradient()`, `hline()`, `vline()`, `lineGradient()`, `rectfill()`,
+    `roundRect()`, `roundRectFill()`, `getClip()`, `resetPalette()`,
+    `colorLerp()`, and `colorR/G/B/A()` are exposed globally and under
+    `nova64.draw`. `72-draw-state.js` and `73-lines-rounded.js` cover the
+    state and visual paths.
+  - Framebuffer effects: `replaceColor()`, `screenFade()`, `screenTint()`,
+    `screenInvert()`, `screenGrayscale()`, `screenPosterize()`,
+    `screenThreshold()`, `screenScanlines()`, and `screenVignette()` are exposed
+    globally and under `nova64.draw`. `74-screen-effects.js` and
+    `75-screen-threshold.js` cover the visual paths.
+  - Text and draw-state ergonomics: `textHeight()`, `textSize()`,
+    `printShadow()`, `printOutline()`, `push/popClip()`,
+    `push/popCamera2D()`, `push/popBlend2D()`, `push/popPalette()`,
+    `getDrawState()`, and `clearDrawState()` are exposed globally and under
+    `nova64.draw`. `76-text-effects.js` and `77-draw-state-stack.js` cover the
+    visual and state paths.
 
 Sprite-sheet first pass done:
 
@@ -372,7 +409,7 @@ Sprite-sheet first pass done:
     `sprNamed(sheet, name, dx, dy)` draws named atlas regions. `32-spritesheet.js`
     covers indexed and named blits from a generated package asset.
 
-Still missing:
+Still missing in 8B:
 
 - Full tilemap API (Godot/web parity):
   - `createTilemap(tileW, tileH, cols, rows)` — allocates a tilemap buffer.
@@ -381,34 +418,43 @@ Still missing:
     tilesheet. The tilesheet is an RGBA image; tile index picks the source crop.
   - `clearTilemap(map)`, `destroyTilemap(map)`.
   - Conformance: `31-tilemap.js` with a generated 4×4 tilesheet asset.
-- 2D camera zoom/rotation:
-  - Extend `setCamera2D(x, y [, zoom [, rotation]])` beyond the current offset
-    implementation for zoomed and rotated 2D views.
-- Blend modes for 2D:
-  - `setBlend2D('normal'|'additive'|'multiply'|'screen')` — applied per-pixel in
-    the software framebuffer blit path.
+- ~~2D camera zoom/rotation~~ **Done** for core primitive placement and state
+  reporting; sprite/tilemap scaling and rotated blits remain future polish.
+- ~~Blend modes for 2D~~ **Done**: `setBlend2D('normal'|'additive'|'multiply'|'screen')`
+  applied per-pixel in the software framebuffer blit path; `clearBlend2D()` resets.
+  `46-blend2d.js` conformance cart covers API existence and all four modes.
+  `alpha` blend mode and `getBlend2D()` are now covered by `70-draw-shapes.js`.
 - Custom bitmap fonts:
   - `loadFont(path [, glyphW, glyphH])` — loads a package RGBA glyph sheet.
   - `print(text, x, y, color [, align [, font]])` — use a loaded font handle.
   - `textWidth(text, font)` — measure with a custom font.
-- Palette helpers:
-  - `setPalette(index, color)` — set entry in a 16-color palette.
-  - `applyPaletteSwap(from, to)` — per-frame pixel-level color substitution for
-    retro-style palette tricks.
+- ~~Palette helpers~~ **Done**:
+  - `setPalette(index, color)` / `getPalette(index)` manage a 16-color palette.
+  - `applyPaletteSwap(from, to)` / `clearPaletteSwap()` provide exact-color
+    palette substitution for retro-style palette tricks.
+  - `69-palette-swap.js` covers bindings, capability reporting, and visual output.
 - Draw-order / z-sorting for 2D sprites:
   - `spr(path, dx, dy, ..., z)` optional z depth for painter's sort.
 - Conformance updates for all new 2D features.
 
 ### 8C: Audio Completion
 
-The current audio covers procedural SFX and single-channel PCM playback. Missing:
+The current audio covers procedural SFX and single-channel PCM playback.
 
-- Streamed music:
-  - `playMusic(path [, vol [, fadeIn]])` — stream a looping PCM/WAV from a
-    package asset with optional fade-in time.
-  - `stopMusic([fadeOut])` — stop with optional fade-out.
-  - `setMusicVolume(vol)` and `pauseMusic()` / `resumeMusic()`.
-  - Conformance: `33-music.js` with a generated 1-second loop.
+**Done this milestone:**
+
+- OGG Vorbis decode via stb_vorbis: `playSound()` auto-detects `.ogg` extension
+  and decodes via `stb_vorbis_decode_memory()` at play time. Owned buffer freed on
+  voice reuse or reset.
+- Streamed music API:
+  - `playMusic(path [, vol [, loop]])` — loads a looping PCM/WAV or OGG asset
+    into the dedicated `nova64_music_state`, mixed into every audio frame.
+  - `stopMusic()`, `setMusicVolume(vol)`, `pauseMusic()`, `resumeMusic()`,
+    `musicActive()`. All exposed under `nova64.audio.*` and as globals.
+  - `33-music.js` conformance cart covers all API binding and behavior contracts.
+
+Still missing in audio:
+
 - Multi-channel audio:
   - Named channels: `playSound(path, vol, loop, channel)` plays on a named
     channel so carts can manage sound groups (e.g. 'sfx', 'ambient').
@@ -419,8 +465,8 @@ The current audio covers procedural SFX and single-channel PCM playback. Missing
 - Positional 3D audio:
   - `playSound3D(path, x, y, z [, maxDist])` for spatial panning based on
     camera position. Low cost: simple left/right pan from angle to listener.
-- Better PCM format support:
-  - OGG Vorbis decode (via stb_vorbis or minimp3): most cart audio will be OGG.
+- ~~Better PCM format support~~:
+  - ~~OGG Vorbis decode~~ **Done** via stb_vorbis.
   - Stereo PCM/WAV asset playback (current path only handles mono).
 - Conformance coverage for music loop, channel groups, and OGG.
 

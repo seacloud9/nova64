@@ -249,6 +249,17 @@ run_visual_case() {
   rm -f "${ppm}"
 }
 
+# run_pending_case: runs a cart without a locked checksum (for new cases not yet recorded).
+# Prints the actual checksum to stdout so it can be recorded.
+run_pending_case() {
+  local label="$1"
+  local cart="$2"
+  should_run_label "${label}" || return 0
+  echo "== ${label} (pending checksum)"
+  local out
+  out=$("${HARNESS}" "${CORE}" "${cart}" 2>/dev/null) && echo "${out}" || true
+}
+
 run_seed_visual_case() {
   local label="$1"
   local name="$2"
@@ -381,5 +392,43 @@ run_command_log_case "06-cube-vulkan12" "retroarch/conformance/06-cube.js" "14c4
 run_case "nova fallback" "${PACKAGE_DIR}/cube-fallback.nova" "53584f0993f3ff6a"
 run_case "nova manifest main" "${PACKAGE_DIR}/cube-manifest.nova" "53584f0993f3ff6a"
 run_command_log_case "nova-asset-manifest" "${PACKAGE_DIR}/asset-manifest.nova" "5d839b3ea526b233d21fdce08190848adc73a7ba8f4d88d5cc7d24105b3d6f34"
+
+run_visual_case "33 music api" "33-music" "retroarch/conformance/33-music.js" "0b4d0a8036b90b97"
+run_visual_case "44 capsule" "44-capsule" "retroarch/conformance/44-capsule.js" "65a1cc1395e81d96"
+run_visual_case "45 cylinder" "45-cylinder" "retroarch/conformance/45-cylinder.js" "24497981dc726b1a"
+run_visual_case "46 blend2d" "46-blend2d" "retroarch/conformance/46-blend2d.js" "db4581a1620a7c61"
+run_visual_case "47 camera ortho" "47-camera-ortho" "retroarch/conformance/47-camera-ortho.js" "5259ad834c36f30b"
+run_visual_case "48 sky color" "48-sky-color" "retroarch/conformance/48-sky-color.js" "a716a1fbb3b6af37"
+run_visual_case "49 mesh material" "49-mesh-material" "retroarch/conformance/49-mesh-material.js" "445c76953fa43187"
+
+run_visual_case "50 get3d stats"    "50-get3d-stats"    "retroarch/conformance/50-get3d-stats.js"    "a839eb25fa0c6c42"
+run_visual_case "51 clear scene"    "51-clear-scene"    "retroarch/conformance/51-clear-scene.js"    "9c6fc2049b8eb703"
+run_visual_case "52 camera getters" "52-camera-getters" "retroarch/conformance/52-camera-getters.js" "20128d8541d9abbf"
+run_visual_case "53 mesh opacity"   "53-mesh-opacity"   "retroarch/conformance/53-mesh-opacity.js"   "2c25aa6fe03e337b"
+run_visual_case "54 emissive"       "54-emissive"       "retroarch/conformance/54-emissive.js"       "497d99583fa33baf"
+run_visual_case "55 shadow flags"   "55-shadow-flags"   "retroarch/conformance/55-shadow-flags.js"   "2bf0a9e547af2a4e"
+
+run_visual_case "56 point lights"   "56-point-lights"   "retroarch/conformance/56-point-lights.js"   "2db1046ebf0c9857"
+run_visual_case "57 destroy mesh"   "57-destroy-mesh"   "retroarch/conformance/57-destroy-mesh.js"   "e884797117e811db"
+run_visual_case "58 mesh color"     "58-mesh-color"     "retroarch/conformance/58-mesh-color.js"     "236e1073826504f3"
+run_visual_case "59 move rotate"    "59-move-rotate"    "retroarch/conformance/59-move-rotate.js"    "5c0e948e4ba5eee1"
+run_visual_case "60 fog"            "60-fog"            "retroarch/conformance/60-fog.js"            "62c35f59fc3812ad"
+run_visual_case "61 camera lookat"  "61-camera-lookat"  "retroarch/conformance/61-camera-lookat.js"  "a428a99083d5340d"
+run_visual_case "62 set position rotation" "62-set-position-rotation" "retroarch/conformance/62-set-position-rotation.js" "71cb86633f08cb27"
+run_visual_case "63 texture lifecycle"     "63-texture-lifecycle"     "retroarch/conformance/63-texture-lifecycle.js"     "188d0ce17c72c04b"
+run_visual_case "64 directional light"     "64-directional-light"     "retroarch/conformance/64-directional-light.js"     "239195214596f1dd"
+run_visual_case "65 backend caps"          "65-backend-caps"          "retroarch/conformance/65-backend-caps.js"          "90aad08b54c4e79c"
+run_visual_case "66 draw3d callback"       "66-draw3d-callback"       "retroarch/conformance/66-draw3d-callback.js"       "d7ee44844dd967e8"
+run_visual_case "67 storage"               "67-storage"               "retroarch/conformance/67-storage.js"               "f0ad60f44c4e75c5"
+run_visual_case "68 sky gradient"          "68-sky-gradient"          "retroarch/conformance/68-sky-gradient.js"          "12998e317e45b2f9"
+run_visual_case "69 palette swap"          "69-palette-swap"          "retroarch/conformance/69-palette-swap.js"          "d45401990c2663bf"
+run_visual_case "70 draw shapes"           "70-draw-shapes"           "retroarch/conformance/70-draw-shapes.js"           "068b6a7212946fdc"
+run_visual_case "71 camera2d transform"    "71-camera2d-transform"    "retroarch/conformance/71-camera2d-transform.js"    "0c2589763809fdc2"
+run_visual_case "72 draw state"            "72-draw-state"            "retroarch/conformance/72-draw-state.js"            "1c1b8532b4324031"
+run_visual_case "73 lines rounded"         "73-lines-rounded"         "retroarch/conformance/73-lines-rounded.js"         "34bc83f4db789544"
+run_visual_case "74 screen effects"        "74-screen-effects"        "retroarch/conformance/74-screen-effects.js"        "6b9cf41e81ddc625"
+run_visual_case "75 screen threshold"      "75-screen-threshold"      "retroarch/conformance/75-screen-threshold.js"      "104e12a896802584"
+run_visual_case "76 text effects"          "76-text-effects"          "retroarch/conformance/76-text-effects.js"          "928ae301c7921006"
+run_visual_case "77 draw state stack"      "77-draw-state-stack"      "retroarch/conformance/77-draw-state-stack.js"      "d3e98b012451f138"
 
 echo "Conformance passed."

@@ -3,6 +3,7 @@ git s https://help.github.com/articles/ignoring-files/ for more about ignoring f
 # secrets and enviorment variables 
 # .env
 # dependencies
+/screenshots
 /node_modules
 /os9-shell/node_modules
 /os9-shellMobile/node_modules

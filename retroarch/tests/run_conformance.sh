@@ -101,6 +101,34 @@ with ZipFile(package_dir / "meta.nova", "w", ZIP_DEFLATED) as package:
         '{"name":"meta-cart","title":"Meta Cart","author":"Nova Team","version":"1.2.3","main":"src/main.js"}\n',
     )
 
+# 4x4 RGBA PNG sprite (red TL, blue BR, grey elsewhere) for PNG decode conformance
+import zlib as _zlib
+def _make_4x4_png():
+    import struct as _s
+    raw = bytearray()
+    for row in range(4):
+        raw.append(0)
+        for col in range(4):
+            if row < 2 and col < 2:   raw += bytes([255, 60, 60, 255])
+            elif row >= 2 and col >= 2: raw += bytes([60, 100, 255, 255])
+            else:                      raw += bytes([200, 200, 200, 255])
+    comp = _zlib.compress(bytes(raw))
+    def _chunk(tag, data):
+        c = _s.pack('>I', len(data)) + tag + data
+        return c + _s.pack('>I', _zlib.crc32(tag + data) & 0xffffffff)
+    p  = b'\x89PNG\r\n\x1a\n'
+    p += _chunk(b'IHDR', _s.pack('>IIBBBBB', 4, 4, 8, 6, 0, 0, 0))
+    p += _chunk(b'IDAT', comp)
+    p += _chunk(b'IEND', b'')
+    return p
+with ZipFile(package_dir / "png-sprite.nova", "w", ZIP_DEFLATED) as package:
+    package.write("retroarch/conformance/81-png-sprite.js", "src/main.js")
+    package.writestr("sprites/dot.png", _make_4x4_png())
+    package.writestr(
+        "manifest.json",
+        '{"name":"png-sprite","main":"src/main.js","assets":["sprites/dot.png"]}\n',
+    )
+
 with ZipFile(package_dir / "asset-quota.nova", "w", ZIP_DEFLATED) as package:
     package.write("retroarch/conformance/41-asset-quota.js", "src/main.js")
     package.writestr("assets/small.txt", "small")
@@ -434,5 +462,8 @@ run_visual_case "77 draw state stack"      "77-draw-state-stack"      "retroarch
 run_visual_case "78 rumble"          "78-rumble"          "retroarch/conformance/78-rumble.js"          "25a42de0e518a7bb"
 NOVA64_SAVE_DIR="${SAVE_DIR}" run_visual_case "79 storage version" "79-storage-version" "retroarch/conformance/79-storage-version.js" "afbb20120e528a32"
 run_visual_case "80 physics"         "80-physics"         "retroarch/conformance/80-physics.js"         "e8b0edf6b4c2dc6b"
+run_visual_case "81 png sprite"      "81-png-sprite"      "${PACKAGE_DIR}/png-sprite.nova"              "10a5ad47d0a0a973"
+run_visual_case "82 scene hierarchy" "82-scene-hierarchy" "retroarch/conformance/82-scene-hierarchy.js" "63489e6061ea6404"
+run_visual_case "83 audio channels"  "83-audio-channels"  "retroarch/conformance/83-audio-channels.js"  "eb6c1c11ccb03969"
 
 echo "Conformance passed."

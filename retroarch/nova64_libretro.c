@@ -206,6 +206,7 @@ struct nova64_mesh {
    float uv_offset[2];      /* UV scroll offset (u, v) */
    float uv_scale[2];       /* UV tiling scale (u, v) */
    enum nova64_mesh_blend mesh_blend;
+   int parent_handle;       /* 0 = no parent (8A scene hierarchy) */
 };
 
 struct nova64_camera {
@@ -279,6 +280,7 @@ struct nova64_audio_voice {
    double pcm_pos;      /* fractional playback position */
    bool pcm_loop;
    int16_t *ogg_decoded_data; /* owned malloc'd PCM from OGG decode, NULL otherwise */
+   char channel[32];          /* named channel for volume grouping (8C) */
 };
 
 struct nova64_sfx_params {
@@ -443,6 +445,33 @@ static retro_log_printf_t log_cb;
 typedef bool (RETRO_CALLCONV *nova64_rumble_set_fn)(unsigned port, int effect, uint16_t strength);
 struct nova64_rumble_iface { nova64_rumble_set_fn set_rumble_state; };
 static nova64_rumble_set_fn rumble_fn;
+
+/* Named audio channel volumes (8C) */
+#define NOVA64_AUDIO_MAX_CHANNELS 16
+struct nova64_audio_channel { char name[32]; float volume; };
+static struct nova64_audio_channel audio_channels[NOVA64_AUDIO_MAX_CHANNELS];
+
+static float channel_volume(const char *name) {
+   if (!name || !name[0]) return 1.0f;
+   for (int i = 0; i < NOVA64_AUDIO_MAX_CHANNELS; i++)
+      if (audio_channels[i].name[0] && !strcmp(audio_channels[i].name, name))
+         return audio_channels[i].volume;
+   return 1.0f;
+}
+static void channel_set_volume(const char *name, float vol) {
+   if (!name || !name[0]) return;
+   for (int i = 0; i < NOVA64_AUDIO_MAX_CHANNELS; i++) {
+      if (audio_channels[i].name[0] && !strcmp(audio_channels[i].name, name)) {
+         audio_channels[i].volume = vol; return;
+      }
+   }
+   for (int i = 0; i < NOVA64_AUDIO_MAX_CHANNELS; i++) {
+      if (!audio_channels[i].name[0]) {
+         strncpy(audio_channels[i].name, name, sizeof(audio_channels[i].name)-1);
+         audio_channels[i].volume = vol; return;
+      }
+   }
+}
 
 static uint32_t *framebuffer;
 static uint16_t *rgb565_framebuffer;
@@ -1378,7 +1407,7 @@ static double audio_sample_voice(struct nova64_audio_voice *voice)
       double left  = (double)voice->pcm_data[frame * ch] / 32768.0;
       double right = ch > 1 ? (double)voice->pcm_data[frame * ch + 1] / 32768.0 : left;
       voice->pcm_pos += voice->pcm_rate / NOVA64_SAMPLE_RATE;
-      return ((left + right) * 0.5) * voice->vol;
+      return ((left + right) * 0.5) * voice->vol * channel_volume(voice->channel);
    }
 
    double value = 0.0;
@@ -1409,7 +1438,7 @@ static double audio_sample_voice(struct nova64_audio_voice *voice)
    voice->elapsed_samples++;
    if (voice->elapsed_samples >= voice->total_samples)
       voice->active = false;
-   return value * voice->vol;
+   return value * voice->vol * channel_volume(voice->channel);
 }
 
 static void audio_mix_frame(void)
@@ -2183,6 +2212,25 @@ static void mat4_from_mesh(float out[16], const struct nova64_mesh *mesh)
    out[12] = mesh->position[0];
    out[13] = mesh->position[1];
    out[14] = mesh->position[2];
+}
+
+/* Build world transform by composing parent chain (max depth 16 for cycle protection) */
+static void mat4_world_transform(float out[16], const struct nova64_mesh *mesh)
+{
+   mat4_from_mesh(out, mesh);
+   int depth = 0;
+   int ph = mesh->parent_handle;
+   while (ph > 0 && ph <= NOVA64_MAX_MESHES && depth < 16) {
+      const struct nova64_mesh *parent = &meshes[ph - 1];
+      if (!parent->used) break;
+      float parent_mat[16];
+      mat4_from_mesh(parent_mat, parent);
+      float tmp[16];
+      mat4_multiply(tmp, parent_mat, out);
+      memcpy(out, tmp, sizeof(tmp));
+      ph = parent->parent_handle;
+      depth++;
+   }
 }
 
 static void mat3_normal_from_mesh(float out[9], const struct nova64_mesh *mesh)
@@ -3418,6 +3466,109 @@ static JSValue js_trifill(JSContext *ctx, JSValueConst this_val, int argc, JSVal
    return JS_UNDEFINED;
 }
 
+/* ---- PNG decode (8F) — supports RGB/RGBA 8-bit non-interlaced via zlib ---- */
+static bool path_is_png(const char *path)
+{
+   if (!path) return false;
+   size_t len = strlen(path);
+   if (len < 4) return false;
+   const char *ext = path + len - 4;
+   return ext[0] == '.' &&
+          (ext[1] == 'p' || ext[1] == 'P') &&
+          (ext[2] == 'n' || ext[2] == 'N') &&
+          (ext[3] == 'g' || ext[3] == 'G');
+}
+
+/* Returns malloc'd RGBA buffer (4 bytes/pixel); caller must free(). */
+static uint8_t *decode_png_asset(const uint8_t *png, size_t png_size, int *out_w, int *out_h)
+{
+   static const uint8_t SIG[8] = {0x89,0x50,0x4E,0x47,0x0D,0x0A,0x1A,0x0A};
+   if (!png || png_size < 33 || memcmp(png, SIG, 8) != 0) return NULL;
+
+   int w = 0, h = 0, depth = 0, ctype = 0;
+   size_t idat_total = 0;
+
+   /* First pass: parse IHDR and count IDAT bytes */
+   const uint8_t *p = png + 8;
+   const uint8_t *end = png + png_size;
+   while (p + 12 <= end) {
+      uint32_t len = ((uint32_t)p[0]<<24)|((uint32_t)p[1]<<16)|((uint32_t)p[2]<<8)|p[3];
+      if (p + 12 + len > end) break;
+      if (memcmp(p+4, "IHDR", 4) == 0 && len >= 13) {
+         const uint8_t *d = p + 8;
+         w = (int)(((uint32_t)d[0]<<24)|((uint32_t)d[1]<<16)|((uint32_t)d[2]<<8)|d[3]);
+         h = (int)(((uint32_t)d[4]<<24)|((uint32_t)d[5]<<16)|((uint32_t)d[6]<<8)|d[7]);
+         depth = d[8]; ctype = d[9];
+         if (d[12] != 0) return NULL; /* no interlace support */
+      } else if (memcmp(p+4, "IDAT", 4) == 0) {
+         idat_total += len;
+      }
+      p += 12 + len;
+   }
+   if (w <= 0 || h <= 0 || depth != 8 || idat_total == 0) return NULL;
+   if (ctype != 2 && ctype != 6) return NULL; /* RGB or RGBA only */
+   int src_bpp = (ctype == 6) ? 4 : 3;
+
+   /* Collect IDAT chunks */
+   uint8_t *idat = (uint8_t *)malloc(idat_total);
+   if (!idat) return NULL;
+   size_t idat_off = 0;
+   p = png + 8;
+   while (p + 12 <= end) {
+      uint32_t len = ((uint32_t)p[0]<<24)|((uint32_t)p[1]<<16)|((uint32_t)p[2]<<8)|p[3];
+      if (memcmp(p+4, "IDAT", 4) == 0 && p + 12 + len <= end) {
+         memcpy(idat + idat_off, p + 8, len);
+         idat_off += len;
+      }
+      p += 12 + len;
+   }
+
+   /* Decompress zlib */
+   uLong raw_cap = (uLong)(h * (1 + w * src_bpp));
+   uint8_t *raw = (uint8_t *)malloc(raw_cap);
+   if (!raw) { free(idat); return NULL; }
+   uLong raw_size = raw_cap;
+   if (uncompress(raw, &raw_size, idat, (uLong)idat_total) != Z_OK) {
+      free(idat); free(raw); return NULL;
+   }
+   free(idat);
+
+   /* Decode scanline filters + convert to RGBA */
+   uint8_t *rgba = (uint8_t *)malloc((size_t)w * h * 4);
+   if (!rgba) { free(raw); return NULL; }
+   int stride = w * src_bpp;
+   const uint8_t *src = raw;
+   uint8_t *dst = rgba;
+   uint8_t *prev = NULL;
+   for (int y = 0; y < h; y++) {
+      uint8_t filter = *src++;
+      uint8_t *row = (uint8_t *)src;
+      for (int x = 0; x < stride; x++) {
+         int a = x >= src_bpp ? (int)row[x - src_bpp] : 0;
+         int b = prev ? (int)prev[x] : 0;
+         int c = (x >= src_bpp && prev) ? (int)prev[x - src_bpp] : 0;
+         switch (filter) {
+            case 1: row[x] = (uint8_t)(row[x] + a); break;
+            case 2: row[x] = (uint8_t)(row[x] + b); break;
+            case 3: row[x] = (uint8_t)(row[x] + ((a + b) >> 1)); break;
+            case 4: { int pa=abs(a+b-c-a),pb=abs(a+b-c-b),pc=abs(a+b-c-c);
+                      int pr=pa<=pb&&pa<=pc?a:pb<=pc?b:c;
+                      row[x]=(uint8_t)(row[x]+pr); break; }
+            default: break;
+         }
+      }
+      for (int x = 0; x < w; x++, dst += 4) {
+         dst[0] = row[x*src_bpp];   dst[1] = row[x*src_bpp+1];
+         dst[2] = row[x*src_bpp+2]; dst[3] = src_bpp==4 ? row[x*src_bpp+3] : 255;
+      }
+      prev = row;
+      src += stride;
+   }
+   free(raw);
+   *out_w = w; *out_h = h;
+   return rgba;
+}
+
 /* spr(path, dx, dy [, imgw, imgh [, sx, sy [, bw, bh]]]) — blit RGBA asset */
 static JSValue js_spr(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
@@ -3426,6 +3577,7 @@ static JSValue js_spr(JSContext *ctx, JSValueConst this_val, int argc, JSValueCo
    const char *path = JS_ToCString(ctx, argv[0]);
    if (!path) return JS_NewBool(ctx, false);
    const struct nova64_package_asset *asset = find_package_asset(path);
+   bool is_png = path_is_png(path);
    JS_FreeCString(ctx, path);
    if (!asset || !asset->data || asset->size < 4)
       return JS_NewBool(ctx, false);
@@ -3433,8 +3585,20 @@ static JSValue js_spr(JSContext *ctx, JSValueConst this_val, int argc, JSValueCo
    int dx = int_from_js(ctx, argv[1], 0) - cam2d_x;
    int dy = int_from_js(ctx, argv[2], 0) - cam2d_y;
 
+   /* Decode PNG on the fly; fallback to raw RGBA */
+   uint8_t *png_pixels = NULL;
+   const uint8_t *pixels = (const uint8_t *)asset->data;
    int img_w = argc > 3 ? int_from_js(ctx, argv[3], 0) : 0;
    int img_h = argc > 4 ? int_from_js(ctx, argv[4], 0) : 0;
+
+   if (is_png) {
+      int pw = 0, ph = 0;
+      png_pixels = decode_png_asset(asset->data, asset->size, &pw, &ph);
+      if (!png_pixels) return JS_NewBool(ctx, false);
+      pixels = png_pixels;
+      if (img_w <= 0) img_w = pw;
+      if (img_h <= 0) img_h = ph;
+   }
    if (img_w <= 0 || img_h <= 0) {
       int side = (int)sqrt((double)(asset->size / 4));
       img_w = side > 0 ? side : 1;
@@ -3446,10 +3610,10 @@ static JSValue js_spr(JSContext *ctx, JSValueConst this_val, int argc, JSValueCo
    int sy = argc > 6 ? int_from_js(ctx, argv[6], 0) : 0;
    int bw = argc > 7 ? int_from_js(ctx, argv[7], 0) : (img_w - sx);
    int bh = argc > 8 ? int_from_js(ctx, argv[8], 0) : (img_h - sy);
-   if (bw <= 0 || bh <= 0) return JS_NewBool(ctx, false);
-
-   blit_rgba((const uint8_t *)asset->data, img_w, img_h, dx, dy, sx, sy, bw, bh);
-   return JS_NewBool(ctx, true);
+   if (bw > 0 && bh > 0)
+      blit_rgba(pixels, img_w, img_h, dx, dy, sx, sy, bw, bh);
+   free(png_pixels);
+   return JS_NewBool(ctx, bw > 0 && bh > 0);
 }
 
 static void atlas_path_for_image(const char *path, char *out, size_t out_size)
@@ -5048,6 +5212,7 @@ static JSValue js_play_sound(JSContext *ctx, JSValueConst this_val, int argc, JS
 
    double vol = argc > 1 ? double_from_js(ctx, argv[1], 1.0) : 1.0;
    bool loop  = argc > 2 ? JS_ToBool(ctx, argv[2]) != 0 : false;
+   const char *channel_name = argc > 3 ? JS_ToCString(ctx, argv[3]) : NULL;
 
    /* Find a free voice */
    size_t slot = 0;
@@ -5094,6 +5259,12 @@ static JSValue js_play_sound(JSContext *ctx, JSValueConst this_val, int argc, JS
    voice->pcm_rate         = rate;
    voice->pcm_pos          = 0.0;
    voice->pcm_loop         = loop;
+   if (channel_name) {
+      strncpy(voice->channel, channel_name, sizeof(voice->channel) - 1);
+      JS_FreeCString(ctx, channel_name);
+   } else {
+      voice->channel[0] = '\0';
+   }
    return JS_NewBool(ctx, true);
 }
 
@@ -5585,6 +5756,7 @@ static JSValue js_create_texture(JSContext *ctx, JSValueConst this_val, int argc
    if (!path)
       return JS_NewInt32(ctx, 0);
    const struct nova64_package_asset *asset = find_package_asset(path);
+   bool tex_is_png = path_is_png(path);
    JS_FreeCString(ctx, path);
    if (!asset || !asset->data || asset->size < 4)
       return JS_NewInt32(ctx, 0);
@@ -5592,17 +5764,24 @@ static JSValue js_create_texture(JSContext *ctx, JSValueConst this_val, int argc
    int handle = allocate_texture();
    if (!handle)
       return JS_NewInt32(ctx, 0);
-
    struct nova64_texture *tex = texture_from_handle(handle);
-   if (!tex) {
+   if (!tex)
       return JS_NewInt32(ctx, 0);
-   }
 
-   /* Determine dimensions from optional width/height args or square-root guess */
+   uint8_t *png_pixels = NULL;
+   const uint8_t *pixels = asset->data;
    int w = argc > 1 ? int_from_js(ctx, argv[1], 0) : 0;
    int h = argc > 2 ? int_from_js(ctx, argv[2], 0) : 0;
+
+   if (tex_is_png) {
+      int pw = 0, ph = 0;
+      png_pixels = decode_png_asset(asset->data, asset->size, &pw, &ph);
+      if (!png_pixels) return JS_NewInt32(ctx, 0);
+      pixels = png_pixels;
+      if (w <= 0) w = pw;
+      if (h <= 0) h = ph;
+   }
    if (w <= 0 || h <= 0) {
-      /* Guess square texture */
       int side = (int)sqrt((double)(asset->size / 4));
       w = side > 0 ? side : 1;
       h = side > 0 ? side : 1;
@@ -5619,9 +5798,10 @@ static JSValue js_create_texture(JSContext *ctx, JSValueConst this_val, int argc
       gles.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
       gles.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
       gles.TexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, (GLsizei)w, (GLsizei)h, 0,
-         GL_RGBA, GL_UNSIGNED_BYTE, asset->data);
+         GL_RGBA, GL_UNSIGNED_BYTE, pixels);
       gles.BindTexture(GL_TEXTURE_2D, 0);
    }
+   free(png_pixels);
    return JS_NewInt32(ctx, handle);
 }
 
@@ -6005,6 +6185,82 @@ static JSValue js_storage_open(JSContext *ctx, JSValueConst this_val, int argc, 
    set_function(ctx, store, "remove", js_storage_delete_data, 1);
    set_function(ctx, store, "has", js_storage_has_data, 1);
    return store;
+}
+
+/* ---- Multi-channel audio control (8C) ---- */
+static JSValue js_set_channel_volume(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 2) return JS_UNDEFINED;
+   const char *name = JS_ToCString(ctx, argv[0]);
+   if (!name) return JS_UNDEFINED;
+   float vol = (float)clamp_double(double_from_js(ctx, argv[1], 1.0), 0.0, 1.0);
+   channel_set_volume(name, vol);
+   JS_FreeCString(ctx, name);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_get_channel_volume(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 1) return JS_NewFloat64(ctx, 1.0);
+   const char *name = JS_ToCString(ctx, argv[0]);
+   if (!name) return JS_NewFloat64(ctx, 1.0);
+   float vol = channel_volume(name);
+   JS_FreeCString(ctx, name);
+   return JS_NewFloat64(ctx, vol);
+}
+
+static JSValue js_stop_channel(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 1) return JS_UNDEFINED;
+   const char *name = JS_ToCString(ctx, argv[0]);
+   if (!name) return JS_UNDEFINED;
+   for (size_t i = 0; i < NOVA64_AUDIO_MAX_VOICES; i++)
+      if (audio_voices[i].active && !strcmp(audio_voices[i].channel, name))
+         audio_voices[i].active = false;
+   JS_FreeCString(ctx, name);
+   return JS_UNDEFINED;
+}
+
+/* ---- Scene hierarchy (8A) ---- */
+static JSValue js_set_parent(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 2) return JS_UNDEFINED;
+   int child_h  = int_from_js(ctx, argv[0], 0);
+   int parent_h = int_from_js(ctx, argv[1], 0);
+   struct nova64_mesh *child = (child_h > 0 && child_h <= NOVA64_MAX_MESHES) ? &meshes[child_h - 1] : NULL;
+   if (!child || !child->used) return JS_UNDEFINED;
+   /* Guard against self-parenting or simple cycles */
+   if (parent_h == child_h) return JS_UNDEFINED;
+   child->parent_handle = (parent_h > 0 && parent_h <= NOVA64_MAX_MESHES) ? parent_h : 0;
+   return JS_UNDEFINED;
+}
+
+static JSValue js_clear_parent(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int h = argc > 0 ? int_from_js(ctx, argv[0], 0) : 0;
+   struct nova64_mesh *mesh = (h > 0 && h <= NOVA64_MAX_MESHES) ? &meshes[h - 1] : NULL;
+   if (mesh && mesh->used) mesh->parent_handle = 0;
+   return JS_UNDEFINED;
+}
+
+static JSValue js_get_world_position(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int h = argc > 0 ? int_from_js(ctx, argv[0], 0) : 0;
+   struct nova64_mesh *mesh = (h > 0 && h <= NOVA64_MAX_MESHES) ? &meshes[h - 1] : NULL;
+   if (!mesh || !mesh->used) return JS_NULL;
+   float mat[16];
+   mat4_world_transform(mat, mesh);
+   JSValue obj = JS_NewObject(ctx);
+   JS_SetPropertyStr(ctx, obj, "x", JS_NewFloat64(ctx, mat[12]));
+   JS_SetPropertyStr(ctx, obj, "y", JS_NewFloat64(ctx, mat[13]));
+   JS_SetPropertyStr(ctx, obj, "z", JS_NewFloat64(ctx, mat[14]));
+   return obj;
 }
 
 /* ---- Storage versioning (8G) ---- */
@@ -6621,6 +6877,32 @@ static bool install_nova64_api(JSContext *ctx)
       JSValue inp = JS_GetPropertyStr(ctx, nova64, "input");
       set_function(ctx, inp, "rumble", js_rumble, 2);
       JS_FreeValue(ctx, inp);
+   }
+
+   /* Scene hierarchy (8A) */
+   set_function(ctx, global, "setParent",        js_set_parent,        2);
+   set_function(ctx, global, "clearParent",       js_clear_parent,      1);
+   set_function(ctx, global, "getWorldPosition",  js_get_world_position, 1);
+
+   /* Multi-channel audio (8C) */
+   set_function(ctx, global, "setChannelVolume",  js_set_channel_volume, 2);
+   set_function(ctx, global, "getChannelVolume",  js_get_channel_volume, 1);
+   set_function(ctx, global, "stopChannel",       js_stop_channel,       1);
+   {
+      JSValue aud = JS_GetPropertyStr(ctx, nova64, "audio");
+      set_function(ctx, aud, "setChannelVolume", js_set_channel_volume, 2);
+      set_function(ctx, aud, "getChannelVolume", js_get_channel_volume, 1);
+      set_function(ctx, aud, "stopChannel",      js_stop_channel,       1);
+      JS_FreeValue(ctx, aud);
+   }
+
+   /* Scene hierarchy on nova64.scene namespace */
+   {
+      JSValue sc = JS_GetPropertyStr(ctx, nova64, "scene");
+      set_function(ctx, sc, "setParent",       js_set_parent,         2);
+      set_function(ctx, sc, "clearParent",     js_clear_parent,       1);
+      set_function(ctx, sc, "getWorldPosition",js_get_world_position, 1);
+      JS_FreeValue(ctx, sc);
    }
 
    /* Register on nova64.physics namespace */
@@ -7353,7 +7635,7 @@ static void render_gles_primitive(const struct nova64_mesh *mesh, const float vi
    float model[16];
    float normal_matrix[9];
    float mvp[16];
-   mat4_from_mesh(model, mesh);
+   mat4_world_transform(model, mesh);
    mat3_normal_from_mesh(normal_matrix, mesh);
    mat4_multiply(mvp, view_projection, model);
 
@@ -8602,6 +8884,7 @@ void RETRO_CALLCONV retro_reset(void)
    clear_all_spritesheets();
    memset(perf_timers, 0, sizeof(perf_timers));
    reset_colliders();
+   memset(audio_channels, 0, sizeof(audio_channels));
    rng_seed_from_environment();
    if (cart_content && cart_size)
       js_host_load_cart(cart_content, cart_size, cart_path[0] ? cart_path : "<nova64-cart>");
@@ -8681,6 +8964,7 @@ bool RETRO_CALLCONV retro_load_game(const struct retro_game_info *info)
    destroy_all_tilemaps();
    clear_all_spritesheets();
    reset_colliders();
+   memset(audio_channels, 0, sizeof(audio_channels));
    memset(perf_timers, 0, sizeof(perf_timers));
    rng_seed_from_environment();
    frame_count = 0;

@@ -225,6 +225,19 @@ with ZipFile(package_dir / "tilemap.nova", "w", ZIP_DEFLATED) as package:
     )
 PY
 
+# run_gles_case: like run_visual_case but uses --gles for hardware-rendered pixel checksums.
+# Skipped silently when NOVA64_GLES_TESTS is unset.
+run_gles_case() {
+  local label="$1"
+  local name="$2"
+  local cart="$3"
+  local checksum="$4"
+  [[ -n "${NOVA64_GLES_TESTS:-}" ]] || return 0
+  should_run_label "${label}" || return 0
+  echo "== ${label} (gles)"
+  "${HARNESS}" "${CORE}" "${cart}" --gles --expect "${checksum}"
+}
+
 run_case() {
   local label="$1"
   local cart="$2"
@@ -500,5 +513,10 @@ run_visual_case "99 voice handle"    "99-voice-handle"     "retroarch/conformanc
 run_visual_case "100 pbr material"     "100-pbr-material"     "retroarch/conformance/100-pbr-material.js"     "1cebb4a284ffc988"
 run_visual_case "101 uv transform"     "101-uv-transform"     "retroarch/conformance/101-uv-transform.js"     "5e3fdb809fd92a33"
 run_visual_case "102 audio resilience" "102-audio-resilience" "retroarch/conformance/102-stereo-audio.js"     "58b3c68b8833ca3a"
+
+# GLES hardware-rendered locked checksums (run with NOVA64_GLES_TESTS=1)
+run_gles_case "100 pbr material"     "100-pbr-material"     "retroarch/conformance/100-pbr-material.js"     "73caba476790550e"
+run_gles_case "101 uv transform"     "101-uv-transform"     "retroarch/conformance/101-uv-transform.js"     "44002286e0e4fba6"
+run_gles_case "102 audio resilience" "102-audio-resilience" "retroarch/conformance/102-stereo-audio.js"     "b9ab1f7141236d75"
 
 echo "Conformance passed."

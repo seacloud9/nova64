@@ -8032,7 +8032,7 @@ static bool gles_create_cube_program(void)
       "void main() {\n"
       "  vec3 ambient = u_ambient_color.rgb * 0.35;\n"
       "  vec4 base = (u_has_texture != 0) ? texture2D(u_texture, v_uv) * u_color : u_color;\n"
-      "  float diff = pow(v_light, mix(1.0, 0.3, u_roughness));\n"
+      "  float diff = mix(v_light, 0.75, u_roughness * 0.5);\n"
       "  vec3 metal_ambient = mix(ambient, ambient * base.rgb, u_metalness);\n"
       "  vec3 lit = clamp(base.rgb * diff + metal_ambient, 0.0, 1.0);\n"
       "  if (u_fog_enabled != 0) {\n"

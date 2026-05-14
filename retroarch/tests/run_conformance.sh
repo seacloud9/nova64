@@ -482,5 +482,6 @@ run_visual_case "95 audio pitch"     "95-audio-pitch"      "retroarch/conformanc
 run_visual_case "96 channel pitch"   "96-channel-pitch"    "retroarch/conformance/96-channel-pitch.js"    "844d5878fcded8e8"
 run_visual_case "97 multiport input" "97-multiport-input"  "retroarch/conformance/97-multiport-input.js"  "986ec7433a2db70c"
 run_visual_case "98 cheevos ram"     "98-cheevos-ram"      "retroarch/conformance/98-cheevos-ram.js"      "552966b5304b031e"
+run_visual_case "99 voice handle"    "99-voice-handle"     "retroarch/conformance/99-voice-handle.js"     "94ade054edea55c8"
 
 echo "Conformance passed."

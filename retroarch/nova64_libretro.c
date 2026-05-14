@@ -32,6 +32,7 @@
 #pragma GCC diagnostic pop
 #endif
 
+
 #define NOVA64_WIDTH 640
 #define NOVA64_HEIGHT 360
 #define NOVA64_FPS 60.0
@@ -1475,7 +1476,8 @@ static void audio_apply_js_options(JSContext *ctx, JSValueConst value, struct no
    js_get_number_property(ctx, value, "sweep", &params->sweep);
 }
 
-static void audio_start_sfx(const struct nova64_sfx_params *input)
+/* Returns 1-based voice handle, or 0 on failure. */
+static int audio_start_sfx(const struct nova64_sfx_params *input)
 {
    struct nova64_sfx_params params = *input;
    params.freq = clamp_double(params.freq, 1.0, 20000.0);
@@ -1503,6 +1505,7 @@ static void audio_start_sfx(const struct nova64_sfx_params *input)
       voice->total_samples = 1;
    voice->noise_state = 0x6e6f7661U ^ (uint32_t)(params.freq * 17.0) ^
       ((uint32_t)voice->total_samples << 1);
+   return (int)(slot + 1);
 }
 
 static double audio_sample_voice(struct nova64_audio_voice *voice)
@@ -5436,7 +5439,29 @@ static JSValue js_play_sound(JSContext *ctx, JSValueConst this_val, int argc, JS
    } else {
       voice->channel[0] = '\0';
    }
-   return JS_NewBool(ctx, true);
+   /* Return 1-based voice handle; backward-compat: non-zero is truthy like true */
+   return JS_NewInt32(ctx, (int)(slot + 1));
+}
+
+static JSValue js_set_voice_pitch(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 2) return JS_UNDEFINED;
+   int handle = int_from_js(ctx, argv[0], 0);
+   if (handle < 1 || handle > (int)NOVA64_AUDIO_MAX_VOICES) return JS_UNDEFINED;
+   float pitch = (float)double_from_js(ctx, argv[1], 1.0);
+   audio_voices[handle - 1].pitch = (pitch > 0.0f) ? pitch : 0.0f;
+   return JS_UNDEFINED;
+}
+
+static JSValue js_stop_voice(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 1) return JS_UNDEFINED;
+   int handle = int_from_js(ctx, argv[0], 0);
+   if (handle < 1 || handle > (int)NOVA64_AUDIO_MAX_VOICES) return JS_UNDEFINED;
+   audio_voices[handle - 1].active = false;
+   return JS_UNDEFINED;
 }
 
 static JSValue js_stop_sound(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
@@ -5778,8 +5803,8 @@ static JSValue js_sfx(JSContext *ctx, JSValueConst this_val, int argc, JSValueCo
       }
    }
 
-   audio_start_sfx(&params);
-   return JS_UNDEFINED;
+   int handle = audio_start_sfx(&params);
+   return JS_NewInt32(ctx, handle);
 }
 
 static JSValue js_set_volume(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
@@ -7613,6 +7638,16 @@ static bool install_nova64_api(JSContext *ctx)
       JSValue aud = JS_GetPropertyStr(ctx, nova64, "audio");
       set_function(ctx, aud, "setListenerPos", js_set_listener_pos, 3);
       set_function(ctx, aud, "playSound3D",    js_play_sound_3d,    6);
+      JS_FreeValue(ctx, aud);
+   }
+
+   /* Voice handle control (M8 batch 10) */
+   set_function(ctx, global, "setVoicePitch", js_set_voice_pitch, 2);
+   set_function(ctx, global, "stopVoice",     js_stop_voice,      1);
+   {
+      JSValue aud = JS_GetPropertyStr(ctx, nova64, "audio");
+      set_function(ctx, aud, "setVoicePitch", js_set_voice_pitch, 2);
+      set_function(ctx, aud, "stopVoice",     js_stop_voice,      1);
       JS_FreeValue(ctx, aud);
    }
 

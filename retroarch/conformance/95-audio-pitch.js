@@ -8,12 +8,12 @@
 let ok = false;
 
 export function init() {
-   // playSound with pitch arg (missing asset → false, not throw)
+   // playSound with pitch arg (missing asset → falsy, not throw)
    const r1 = playSound('sfx/missing.ogg', 0.5, false, 'sfx', 1.5);
-   if (typeof r1 !== 'boolean') throw new Error('playSound must return boolean');
+   if (r1) throw new Error('playSound missing asset must be falsy, got ' + r1);
 
    const r2 = playSound('sfx/missing.ogg', 0.5, false, 'sfx', 0.5);
-   if (typeof r2 !== 'boolean') throw new Error('playSound(pitch=0.5) must return boolean');
+   if (r2) throw new Error('playSound(pitch=0.5) missing asset must be falsy, got ' + r2);
 
    // Pitch 0 and negative should not throw
    playSound('sfx/missing.ogg', 0.5, false, null, 0);

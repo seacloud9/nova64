@@ -431,4 +431,8 @@ run_visual_case "75 screen threshold"      "75-screen-threshold"      "retroarch
 run_visual_case "76 text effects"          "76-text-effects"          "retroarch/conformance/76-text-effects.js"          "928ae301c7921006"
 run_visual_case "77 draw state stack"      "77-draw-state-stack"      "retroarch/conformance/77-draw-state-stack.js"      "d3e98b012451f138"
 
+run_visual_case "78 rumble"          "78-rumble"          "retroarch/conformance/78-rumble.js"          "25a42de0e518a7bb"
+NOVA64_SAVE_DIR="${SAVE_DIR}" run_visual_case "79 storage version" "79-storage-version" "retroarch/conformance/79-storage-version.js" "afbb20120e528a32"
+run_visual_case "80 physics"         "80-physics"         "retroarch/conformance/80-physics.js"         "e8b0edf6b4c2dc6b"
+
 echo "Conformance passed."

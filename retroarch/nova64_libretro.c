@@ -439,6 +439,11 @@ static retro_input_poll_t input_poll_cb;
 static retro_input_state_t input_state_cb;
 static retro_log_printf_t log_cb;
 
+/* Rumble (retro_rumble_interface not in our local libretro.h stub) */
+typedef bool (RETRO_CALLCONV *nova64_rumble_set_fn)(unsigned port, int effect, uint16_t strength);
+struct nova64_rumble_iface { nova64_rumble_set_fn set_rumble_state; };
+static nova64_rumble_set_fn rumble_fn;
+
 static uint32_t *framebuffer;
 static uint16_t *rgb565_framebuffer;
 static uint8_t *overlay_rgba_framebuffer;
@@ -632,6 +637,47 @@ static double rng_next_impl(void)
    rng_state ^= rng_state >> 7;
    rng_state ^= rng_state << 17;
    return (double)(rng_state >> 11) / (double)(UINT64_C(1) << 53);
+}
+
+/* Physics AABB/Circle colliders (8H) */
+#define NOVA64_MAX_COLLIDERS  64
+#define NOVA64_COLLIDER_BOX    0
+#define NOVA64_COLLIDER_CIRCLE 1
+
+struct nova64_collider {
+   bool     active;
+   int      type;   /* NOVA64_COLLIDER_BOX or CIRCLE */
+   float    x, y;   /* box: top-left; circle: center */
+   float    w, h;   /* box: width/height; circle: w=h=radius */
+};
+static struct nova64_collider g_colliders[NOVA64_MAX_COLLIDERS];
+
+static void reset_colliders(void) { memset(g_colliders, 0, sizeof(g_colliders)); }
+
+static int alloc_collider(void) {
+   for (int i = 1; i < NOVA64_MAX_COLLIDERS; i++)
+      if (!g_colliders[i].active) { g_colliders[i].active = true; return i; }
+   return 0;
+}
+static struct nova64_collider *collider_ptr(int h) {
+   return (h >= 1 && h < NOVA64_MAX_COLLIDERS && g_colliders[h].active) ? &g_colliders[h] : NULL;
+}
+static bool colliders_overlap(const struct nova64_collider *a, const struct nova64_collider *b) {
+   if (!a || !b) return false;
+   if (a->type == NOVA64_COLLIDER_BOX && b->type == NOVA64_COLLIDER_BOX)
+      return a->x < b->x+b->w && a->x+a->w > b->x && a->y < b->y+b->h && a->y+a->h > b->y;
+   if (a->type == NOVA64_COLLIDER_CIRCLE && b->type == NOVA64_COLLIDER_CIRCLE) {
+      float dx = a->x - b->x, dy = a->y - b->y, r = a->w + b->w;
+      return dx*dx + dy*dy < r*r;
+   }
+   /* box vs circle */
+   const struct nova64_collider *box = (a->type == NOVA64_COLLIDER_BOX) ? a : b;
+   const struct nova64_collider *cir = (a->type == NOVA64_COLLIDER_CIRCLE) ? a : b;
+   float cx = cir->x, cy = cir->y;
+   float nx = cx < box->x ? box->x : (cx > box->x+box->w ? box->x+box->w : cx);
+   float ny = cy < box->y ? box->y : (cy > box->y+box->h ? box->y+box->h : cy);
+   float dx = cx-nx, dy = cy-ny;
+   return dx*dx + dy*dy < cir->w * cir->w;
 }
 
 /* Standard RETROK key codes (from libretro spec) */
@@ -5961,6 +6007,143 @@ static JSValue js_storage_open(JSContext *ctx, JSValueConst this_val, int argc, 
    return store;
 }
 
+/* ---- Storage versioning (8G) ---- */
+static JSValue js_storage_version(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val; (void)argc; (void)argv;
+   char path[2048];
+   if (!storage_path_for_key("__version", path, sizeof(path)))
+      return JS_NewInt32(ctx, 0);
+   size_t sz = 0;
+   char *data = read_file_to_memory(path, &sz);
+   if (!data) return JS_NewInt32(ctx, 0);
+   int v = (int)strtol(data, NULL, 10);
+   free(data);
+   return JS_NewInt32(ctx, v);
+}
+
+static JSValue js_storage_set_version(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int v = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0);
+   char path[2048];
+   if (!storage_path_for_key("__version", path, sizeof(path)))
+      return JS_NewBool(ctx, false);
+   char buf[32];
+   snprintf(buf, sizeof(buf), "%d", v);
+   FILE *f = fopen(path, "wb");
+   if (!f) return JS_NewBool(ctx, false);
+   fwrite(buf, 1, strlen(buf), f);
+   fclose(f);
+   return JS_NewBool(ctx, true);
+}
+
+/* ---- Rumble (8D) ---- */
+static JSValue js_rumble(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double strong = clamp_double(double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0.0), 0.0, 1.0);
+   double weak   = clamp_double(double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0.0), 0.0, 1.0);
+   if (rumble_fn) {
+      rumble_fn(0, 0 /* STRONG */, (uint16_t)(strong * 65535.0));
+      rumble_fn(0, 1 /* WEAK */,   (uint16_t)(weak   * 65535.0));
+   }
+   return JS_UNDEFINED;
+}
+
+/* ---- Physics colliders (8H) ---- */
+static JSValue js_create_collider(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 1) return JS_NewInt32(ctx, 0);
+   const char *ts = JS_ToCString(ctx, argv[0]);
+   if (!ts) return JS_NewInt32(ctx, 0);
+   int type = (!strcmp(ts, "circle")) ? NOVA64_COLLIDER_CIRCLE : NOVA64_COLLIDER_BOX;
+   JS_FreeCString(ctx, ts);
+   int h = alloc_collider();
+   if (!h) return JS_NewInt32(ctx, 0);
+   struct nova64_collider *c = &g_colliders[h];
+   c->type = type;
+   if (type == NOVA64_COLLIDER_BOX) {
+      c->w = (float)double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 1.0);
+      c->h = (float)double_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, c->w);
+   } else {
+      c->w = c->h = (float)double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 1.0);
+   }
+   return JS_NewInt32(ctx, h);
+}
+
+static JSValue js_set_collider_pos(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   struct nova64_collider *c = argc > 0 ? collider_ptr(int_from_js(ctx, argv[0], 0)) : NULL;
+   if (!c || argc < 3) return JS_UNDEFINED;
+   c->x = (float)double_from_js(ctx, argv[1], 0.0);
+   c->y = (float)double_from_js(ctx, argv[2], 0.0);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_get_collider_pos(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   struct nova64_collider *c = argc > 0 ? collider_ptr(int_from_js(ctx, argv[0], 0)) : NULL;
+   if (!c) return JS_NULL;
+   JSValue obj = JS_NewObject(ctx);
+   JS_SetPropertyStr(ctx, obj, "x", JS_NewFloat64(ctx, c->x));
+   JS_SetPropertyStr(ctx, obj, "y", JS_NewFloat64(ctx, c->y));
+   return obj;
+}
+
+static JSValue js_check_collision(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 2) return JS_FALSE;
+   struct nova64_collider *a = collider_ptr(int_from_js(ctx, argv[0], 0));
+   struct nova64_collider *b = collider_ptr(int_from_js(ctx, argv[1], 0));
+   return JS_NewBool(ctx, colliders_overlap(a, b));
+}
+
+static JSValue js_move_and_collide(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   struct nova64_collider *c = argc > 0 ? collider_ptr(int_from_js(ctx, argv[0], 0)) : NULL;
+   if (!c || argc < 3) return JS_NULL;
+   float dx = (float)double_from_js(ctx, argv[1], 0.0);
+   float dy = (float)double_from_js(ctx, argv[2], 0.0);
+   c->x += dx;
+   c->y += dy;
+   bool hit = false;
+   if (argc > 3 && JS_IsArray(argv[3])) {
+      JSValue lv = JS_GetPropertyStr(ctx, argv[3], "length");
+      int len = 0;
+      JS_ToInt32(ctx, &len, lv);
+      JS_FreeValue(ctx, lv);
+      for (int i = 0; i < len && !hit; i++) {
+         JSValue ev = JS_GetPropertyUint32(ctx, argv[3], (uint32_t)i);
+         struct nova64_collider *other = collider_ptr(int_from_js(ctx, ev, 0));
+         JS_FreeValue(ctx, ev);
+         if (other != c && colliders_overlap(c, other)) {
+            hit = true;
+            c->x -= dx;
+            c->y -= dy;
+         }
+      }
+   }
+   JSValue obj = JS_NewObject(ctx);
+   JS_SetPropertyStr(ctx, obj, "x",   JS_NewFloat64(ctx, c->x));
+   JS_SetPropertyStr(ctx, obj, "y",   JS_NewFloat64(ctx, c->y));
+   JS_SetPropertyStr(ctx, obj, "hit", JS_NewBool(ctx, hit));
+   return obj;
+}
+
+static JSValue js_destroy_collider(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val; (void)ctx;
+   struct nova64_collider *c = argc > 0 ? collider_ptr(int_from_js(ctx, argv[0], 0)) : NULL;
+   if (c) memset(c, 0, sizeof(*c));
+   return JS_UNDEFINED;
+}
+
 static void set_function(JSContext *ctx, JSValue object, const char *name, JSCFunction *fn, int length)
 {
    JS_SetPropertyStr(ctx, object, name, JS_NewCFunction(ctx, fn, name, length));
@@ -6409,6 +6592,48 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, global, "hasData", js_storage_has_data, 1);
    set_function(ctx, global, "storageKeys", js_storage_keys, 0);
    set_function(ctx, global, "storageClear", js_storage_clear, 0);
+
+   /* Storage versioning (8G) */
+   set_function(ctx, global, "storageVersion",    js_storage_version,     0);
+   set_function(ctx, global, "storageSetVersion", js_storage_set_version, 1);
+
+   /* Rumble (8D) */
+   set_function(ctx, global, "rumble", js_rumble, 2);
+
+   /* Physics colliders (8H) */
+   set_function(ctx, global, "createCollider",   js_create_collider,   3);
+   set_function(ctx, global, "setColliderPos",   js_set_collider_pos,  3);
+   set_function(ctx, global, "getColliderPos",   js_get_collider_pos,  1);
+   set_function(ctx, global, "checkCollision",   js_check_collision,   2);
+   set_function(ctx, global, "moveAndCollide",   js_move_and_collide,  4);
+   set_function(ctx, global, "destroyCollider",  js_destroy_collider,  1);
+
+   /* Register on nova64.storage namespace */
+   {
+      JSValue store = JS_GetPropertyStr(ctx, nova64, "storage");
+      set_function(ctx, store, "version",    js_storage_version,     0);
+      set_function(ctx, store, "setVersion", js_storage_set_version, 1);
+      JS_FreeValue(ctx, store);
+   }
+
+   /* Register on nova64.input namespace */
+   {
+      JSValue inp = JS_GetPropertyStr(ctx, nova64, "input");
+      set_function(ctx, inp, "rumble", js_rumble, 2);
+      JS_FreeValue(ctx, inp);
+   }
+
+   /* Register on nova64.physics namespace */
+   {
+      JSValue phys = JS_NewObject(ctx);
+      set_function(ctx, phys, "createCollider",  js_create_collider,   3);
+      set_function(ctx, phys, "setPos",          js_set_collider_pos,  3);
+      set_function(ctx, phys, "getPos",          js_get_collider_pos,  1);
+      set_function(ctx, phys, "check",           js_check_collision,   2);
+      set_function(ctx, phys, "move",            js_move_and_collide,  4);
+      set_function(ctx, phys, "destroy",         js_destroy_collider,  1);
+      JS_SetPropertyStr(ctx, nova64, "physics", phys);
+   }
 
    JS_FreeValue(ctx, global);
    return true;
@@ -8308,6 +8533,12 @@ void RETRO_CALLCONV retro_set_environment(retro_environment_t cb)
    set_core_variables();
    cb(RETRO_ENVIRONMENT_SET_PIXEL_FORMAT, &pixel_format);
    renderer_request_hardware_context(cb);
+
+   /* Try to acquire rumble interface */
+   struct nova64_rumble_iface rif;
+   memset(&rif, 0, sizeof(rif));
+   if (cb(RETRO_ENVIRONMENT_GET_RUMBLE_INTERFACE, &rif) && rif.set_rumble_state)
+      rumble_fn = rif.set_rumble_state;
 }
 
 void RETRO_CALLCONV retro_set_audio_sample(retro_audio_sample_t cb)
@@ -8370,6 +8601,7 @@ void RETRO_CALLCONV retro_reset(void)
    destroy_all_tilemaps();
    clear_all_spritesheets();
    memset(perf_timers, 0, sizeof(perf_timers));
+   reset_colliders();
    rng_seed_from_environment();
    if (cart_content && cart_size)
       js_host_load_cart(cart_content, cart_size, cart_path[0] ? cart_path : "<nova64-cart>");
@@ -8448,6 +8680,7 @@ bool RETRO_CALLCONV retro_load_game(const struct retro_game_info *info)
    reset_audio_state();
    destroy_all_tilemaps();
    clear_all_spritesheets();
+   reset_colliders();
    memset(perf_timers, 0, sizeof(perf_timers));
    rng_seed_from_environment();
    frame_count = 0;

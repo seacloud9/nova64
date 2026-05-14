@@ -273,7 +273,7 @@ static void *load_symbol(void *core, const char *name)
 int main(int argc, char **argv)
 {
    if (argc < 3) {
-      fprintf(stderr, "usage: %s <nova64_libretro.so> <cart.js|cart.nova> [--capture path] [--command-log path] [--renderer opengles3|vulkan12] [--expect checksum] [--expect-audio checksum] [--frames n] [--seed n] [--perf] [--key name] [--touch-x n --touch-y n --touch-count n]\n", argv[0]);
+      fprintf(stderr, "usage: %s <nova64_libretro.so> <cart.js|cart.nova> [--capture path] [--command-log path] [--renderer opengles3|vulkan12] [--expect checksum] [--expect-audio checksum] [--frames n] [--seed n] [--perf] [--verbose] [--key name] [--touch-x n --touch-y n --touch-count n]\n", argv[0]);
       return 2;
    }
 
@@ -334,6 +334,8 @@ int main(int argc, char **argv)
          seed_option = argv[i];
       } else if (!strcmp(argv[i], "--perf")) {
          perf_enabled = true;
+      } else if (!strcmp(argv[i], "--verbose")) {
+         setenv("NOVA64_VERBOSE", "1", 1);
       } else if (!strcmp(argv[i], "--key")) {
          if (++i >= argc) {
             fprintf(stderr, "--key requires a key name\n");

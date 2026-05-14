@@ -200,9 +200,23 @@ retroarch/build/harness retroarch/nova64_libretro.so my-cart.nova --verbose
 These browser / Godot features have no native equivalent yet:
 
 - **PNG asset input** — convert to raw RGBA before bundling (stb_image decode pending)
-- **Custom 3D geometry** — `createMesh(vertices, ...)` not yet implemented
 - **Scene hierarchy** — `setParent` not yet implemented
 - **3D physics / raycast** — raycast not yet implemented (2D AABB via `createCollider` is available)
 - **Networking / WebSocket** — not available; use storage for local persistence
-- **Multi-channel named audio** — planned in 8C
 - **Controller rumble** — `rumble(strong, weak)` calls the RetroArch rumble interface; no-op in harness
+
+## Implemented since guide was first written
+
+- **Custom 3D geometry** — `createMesh(name, vertices, indices)` where vertices are
+  interleaved `[x,y,z, nx,ny,nz, ...]` floats and indices are 16-bit integers.
+- **Multi-channel audio** — `setChannelVolume(name, vol)`, `setChannelPitch(name, pitch)`,
+  `getChannelVolume(name)`, `getChannelPitch(name)`. Assign voices to channels with
+  `playSound(path, { channel: 'music' })`.
+- **Hot reload** — set `NOVA64_HOT_RELOAD=1` env var; calling `nova64.reset()` or
+  pressing RetroArch reset will re-read the cart from disk.
+- **Developer console** — `devPrint(text)` / `nova64.console.print(text)` overlays a
+  12-line ring-buffer on screen when developer mode is enabled.
+- **RetroAchievements RAM** — `peek(addr)` / `poke(addr, val)` read/write a 256-byte
+  buffer that achievement scripts can watch via `nova64.cheevos.*`.
+- **Audio pitch** — `setVoicePitch(id, pitch)` adjusts a playing voice's speed;
+  `setChannelPitch(name, pitch)` applies to all voices on a channel.

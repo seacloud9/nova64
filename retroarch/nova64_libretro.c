@@ -804,6 +804,8 @@ static float echo_wet   = 0.5f;
 /* ── Positional audio ─────────────────────────────────────── */
 static float listener_pos[3]; /* defaults 0,0,0; update with setListenerPos */
 static bool g_developer_mode = false;
+static unsigned g_res_width  = NOVA64_WIDTH;
+static unsigned g_res_height = NOVA64_HEIGHT;
 
 /* RetroAchievements cart RAM (8J) — 256 bytes exposed via SET_MEMORY_MAPS */
 #define NOVA64_CHEEVOS_RAM_SIZE 256
@@ -1026,6 +1028,16 @@ static enum nova64_renderer_backend read_renderer_preference(void)
          return parse_renderer_backend(variable.value);
    }
    return NOVA64_RENDERER_GLES3;
+}
+
+/* Parse a "WxH" resolution string into w/h; returns false if unrecognised. */
+static bool parse_resolution(const char *s, unsigned *w, unsigned *h)
+{
+   if (!s) return false;
+   if (!strcmp(s, "640x360"))  { *w = 640; *h = 360; return true; }
+   if (!strcmp(s, "320x180"))  { *w = 320; *h = 180; return true; }
+   if (!strcmp(s, "1280x720")) { *w = 1280; *h = 720; return true; }
+   return false;
 }
 
 /* Return the preferred audio latency in ms (0 = default / let frontend decide). */
@@ -9542,11 +9554,11 @@ void RETRO_CALLCONV retro_get_system_av_info(struct retro_system_av_info *info)
    memset(info, 0, sizeof(*info));
    info->timing.fps = NOVA64_FPS;
    info->timing.sample_rate = NOVA64_SAMPLE_RATE;
-   info->geometry.base_width = NOVA64_WIDTH;
-   info->geometry.base_height = NOVA64_HEIGHT;
-   info->geometry.max_width = NOVA64_WIDTH;
-   info->geometry.max_height = NOVA64_HEIGHT;
-   info->geometry.aspect_ratio = (float)NOVA64_WIDTH / (float)NOVA64_HEIGHT;
+   info->geometry.base_width  = g_res_width;
+   info->geometry.base_height = g_res_height;
+   info->geometry.max_width   = 1280;
+   info->geometry.max_height  = 720;
+   info->geometry.aspect_ratio = (float)g_res_width / (float)g_res_height;
 }
 
 void RETRO_CALLCONV retro_set_environment(retro_environment_t cb)
@@ -9679,6 +9691,29 @@ void RETRO_CALLCONV retro_run(void)
 {
    if (!initialized || !video_cb)
       return;
+
+   /* Re-read resolution option each frame in case user changed it */
+   if (environ_cb) {
+      bool updated = false;
+      if (environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE, &updated) && updated) {
+         struct retro_variable v = { "nova64_resolution", NULL };
+         if (environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &v) && v.value) {
+            unsigned nw = g_res_width, nh = g_res_height;
+            if (parse_resolution(v.value, &nw, &nh) && (nw != g_res_width || nh != g_res_height)) {
+               g_res_width  = nw;
+               g_res_height = nh;
+               struct retro_game_geometry geom;
+               memset(&geom, 0, sizeof(geom));
+               geom.base_width  = g_res_width;
+               geom.base_height = g_res_height;
+               geom.max_width   = 1280;
+               geom.max_height  = 720;
+               geom.aspect_ratio = (float)g_res_width / (float)g_res_height;
+               environ_cb(RETRO_ENVIRONMENT_SET_GEOMETRY, &geom);
+            }
+         }
+      }
+   }
 
    update_input();
    js_host_call_frame(1.0 / NOVA64_FPS);

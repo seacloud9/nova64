@@ -635,4 +635,17 @@ run_visual_case "132 screen blur"   "132-screen-blur"   "retroarch/conformance/1
 run_visual_case "133 canvas"        "133-canvas"        "retroarch/conformance/133-canvas.js"        "cb823500597436f8"
 run_visual_case "134 nine slice"    "134-nine-slice"    "retroarch/conformance/134-nine-slice.js"    "6866435d8d75ceef"
 
+run_visual_case "135 tilemap getters"      "135-tilemap-getters"      "retroarch/conformance/135-tilemap-getters.js"      "6567f5e36838809f"
+run_visual_case "136 btn repeat"           "136-btn-repeat"           "retroarch/conformance/136-btn-repeat.js"           "ef95620d2e70e8a2"
+run_visual_case "137 str utils"            "137-str-utils"            "retroarch/conformance/137-str-utils.js"            "4c5f365ce5ebeaaf"
+run_visual_case "138 hotspots"             "138-hotspots"             "retroarch/conformance/138-hotspots.js"             "bf65c07646f33cd1"
+run_visual_case "139 chromatic aberration" "139-chromatic-aberration" "retroarch/conformance/139-chromatic-aberration.js" "2c3ed453ce593223"
+run_visual_case "140 dashed lines"         "140-dashed-lines"         "retroarch/conformance/140-dashed-lines.js"         "4dc213673bbd763b"
+run_visual_case "141 screen wave"          "141-screen-wave"          "retroarch/conformance/141-screen-wave.js"          "aa1d9dc4f4bccc2b"
+run_visual_case "142 frame utils"          "142-frame-utils"          "retroarch/conformance/142-frame-utils.js"          "a4d463bb8e715300"
+run_visual_case "143 color utils"          "143-color-utils"          "retroarch/conformance/143-color-utils.js"          "cbcdd87f2736def5"
+run_visual_case "144 screen dissolve"      "144-screen-dissolve"      "retroarch/conformance/144-screen-dissolve.js"      "80a99081fa353431"
+run_visual_case "145 number format"        "145-number-format"        "retroarch/conformance/145-number-format.js"        "106bfc58765e3b24"
+run_visual_case "146 spr flip"             "146-spr-flip"             "retroarch/conformance/146-spr-flip.js"             "c4a83a0fcefc6501"
+
 echo "Conformance passed."

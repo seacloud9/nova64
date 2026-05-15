@@ -1023,6 +1023,15 @@ static float g_path_pts[NOVA64_MAX_PATH_PTS * 2]; /* x0,y0, x1,y1 ... */
 static int   g_path_count  = 0;
 static int   g_path_closed = 0;
 
+/* ── Button auto-repeat ──────────────────────────────────── */
+struct nova64_btn_repeat_state { int count; };
+static struct nova64_btn_repeat_state g_btn_repeat[NOVA64_BUTTON_COUNT];
+
+/* ── AABB hotspots ───────────────────────────────────────── */
+#define NOVA64_MAX_HOTSPOTS 32
+struct nova64_hotspot { int used; int x, y, w, h; };
+static struct nova64_hotspot g_hotspots[NOVA64_MAX_HOTSPOTS];
+
 /* ── Echo / delay ────────────────────────────────────────── */
 #define NOVA64_ECHO_BUF_SIZE 44100   /* 1-second ring buffer */
 static int16_t echo_buf[NOVA64_ECHO_BUF_SIZE * 2]; /* L,R interleaved */
@@ -5169,6 +5178,634 @@ static JSValue js_fill_path(JSContext *ctx, JSValueConst this_val, int argc, JSV
       }
    }
    return JS_UNDEFINED;
+}
+
+/* forward declaration needed by js_btn_repeat */
+static int button_index_from_js(JSContext *ctx, JSValueConst value);
+
+/* ── Tilemap getters ─────────────────────────────────────────────────── */
+static JSValue js_get_tile(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 3) return JS_NewInt32(ctx, -1);
+   int idx = int_from_js(ctx, argv[0], 0) - 1;
+   if (idx < 0 || idx >= NOVA64_MAX_TILEMAPS || !tilemaps[idx].active || !tilemaps[idx].cells)
+      return JS_NewInt32(ctx, -1);
+   int col = int_from_js(ctx, argv[1], 0);
+   int row = int_from_js(ctx, argv[2], 0);
+   if (col < 0 || col >= tilemaps[idx].cols || row < 0 || row >= tilemaps[idx].rows)
+      return JS_NewInt32(ctx, -1);
+   return JS_NewInt32(ctx, tilemaps[idx].cells[row * tilemaps[idx].cols + col]);
+}
+static JSValue js_tilemap_cols(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int idx = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0) - 1;
+   if (idx < 0 || idx >= NOVA64_MAX_TILEMAPS || !tilemaps[idx].active) return JS_NewInt32(ctx, 0);
+   return JS_NewInt32(ctx, tilemaps[idx].cols);
+}
+static JSValue js_tilemap_rows(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int idx = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0) - 1;
+   if (idx < 0 || idx >= NOVA64_MAX_TILEMAPS || !tilemaps[idx].active) return JS_NewInt32(ctx, 0);
+   return JS_NewInt32(ctx, tilemaps[idx].rows);
+}
+static JSValue js_tilemap_tile_w(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int idx = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0) - 1;
+   if (idx < 0 || idx >= NOVA64_MAX_TILEMAPS || !tilemaps[idx].active) return JS_NewInt32(ctx, 0);
+   return JS_NewInt32(ctx, tilemaps[idx].tile_w);
+}
+static JSValue js_tilemap_tile_h(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int idx = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0) - 1;
+   if (idx < 0 || idx >= NOVA64_MAX_TILEMAPS || !tilemaps[idx].active) return JS_NewInt32(ctx, 0);
+   return JS_NewInt32(ctx, tilemaps[idx].tile_h);
+}
+
+/* ── btnRepeat ───────────────────────────────────────────────────────── */
+/* btnRepeat(b, delay, rate) — true on first press, then every rate frames after delay */
+static JSValue js_btn_repeat(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int index = argc > 0 ? button_index_from_js(ctx, argv[0]) : -1;
+   if (index < 0 || index >= NOVA64_BUTTON_COUNT) return JS_NewBool(ctx, false);
+   int delay = argc > 1 ? int_from_js(ctx, argv[1], 15) : 15;
+   int rate  = argc > 2 ? int_from_js(ctx, argv[2], 4)  : 4;
+   if (delay < 1) delay = 1;
+   if (rate < 1)  rate  = 1;
+   int cnt = g_btn_repeat[index].count;
+   if (cnt <= 0) return JS_NewBool(ctx, false);
+   if (cnt == 1) return JS_NewBool(ctx, true);
+   int extra = cnt - delay;
+   if (extra < 0) return JS_NewBool(ctx, false);
+   return JS_NewBool(ctx, extra % rate == 0);
+}
+
+/* ── String utilities ────────────────────────────────────────────────── */
+static JSValue js_str_split(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   JSValue arr = JS_NewArray(ctx);
+   if (argc < 1) return arr;
+   const char *str = JS_ToCString(ctx, argv[0]);
+   if (!str) return arr;
+   const char *sep = argc > 1 ? JS_ToCString(ctx, argv[1]) : NULL;
+   uint32_t idx = 0;
+   if (!sep || sep[0] == '\0') {
+      for (size_t i = 0; str[i]; i++) {
+         char buf[2] = { str[i], 0 };
+         JS_SetPropertyUint32(ctx, arr, idx++, JS_NewString(ctx, buf));
+      }
+   } else {
+      const char *p = str;
+      size_t sep_len = strlen(sep);
+      while (1) {
+         const char *found = strstr(p, sep);
+         if (!found) {
+            JS_SetPropertyUint32(ctx, arr, idx++, JS_NewString(ctx, p));
+            break;
+         }
+         size_t slen = (size_t)(found - p);
+         char *seg = (char *)malloc(slen + 1);
+         memcpy(seg, p, slen);
+         seg[slen] = '\0';
+         JS_SetPropertyUint32(ctx, arr, idx++, JS_NewString(ctx, seg));
+         free(seg);
+         p = found + sep_len;
+      }
+   }
+   JS_FreeCString(ctx, str);
+   if (sep) JS_FreeCString(ctx, sep);
+   return arr;
+}
+static JSValue js_str_trim(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 1) return JS_NewString(ctx, "");
+   const char *s = JS_ToCString(ctx, argv[0]);
+   if (!s) return JS_NewString(ctx, "");
+   const char *start = s;
+   while (*start == ' ' || *start == '\t' || *start == '\n' || *start == '\r') start++;
+   const char *end = s + strlen(s);
+   while (end > start && (*(end-1) == ' ' || *(end-1) == '\t' || *(end-1) == '\n' || *(end-1) == '\r')) end--;
+   size_t len = (size_t)(end - start);
+   char *buf = (char *)malloc(len + 1);
+   memcpy(buf, start, len); buf[len] = '\0';
+   JSValue ret = JS_NewString(ctx, buf);
+   free(buf); JS_FreeCString(ctx, s);
+   return ret;
+}
+static JSValue js_str_pad_start(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 2) return JS_NewString(ctx, "");
+   const char *s = JS_ToCString(ctx, argv[0]);
+   if (!s) return JS_NewString(ctx, "");
+   int target = int_from_js(ctx, argv[1], 0);
+   const char *pad_str = argc > 2 ? JS_ToCString(ctx, argv[2]) : NULL;
+   char pad_ch = (pad_str && pad_str[0]) ? pad_str[0] : ' ';
+   int slen = (int)strlen(s);
+   int needed = target - slen;
+   if (needed <= 0) {
+      JSValue r = JS_NewString(ctx, s);
+      JS_FreeCString(ctx, s); if (pad_str) JS_FreeCString(ctx, pad_str);
+      return r;
+   }
+   if (target > 256) target = 256;
+   char *buf = (char *)malloc((size_t)target + 1);
+   for (int i = 0; i < needed; i++) buf[i] = pad_ch;
+   memcpy(buf + needed, s, (size_t)slen); buf[target] = '\0';
+   JSValue ret = JS_NewString(ctx, buf);
+   free(buf); JS_FreeCString(ctx, s); if (pad_str) JS_FreeCString(ctx, pad_str);
+   return ret;
+}
+static JSValue js_str_pad_end(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 2) return JS_NewString(ctx, "");
+   const char *s = JS_ToCString(ctx, argv[0]);
+   if (!s) return JS_NewString(ctx, "");
+   int target = int_from_js(ctx, argv[1], 0);
+   const char *pad_str = argc > 2 ? JS_ToCString(ctx, argv[2]) : NULL;
+   char pad_ch = (pad_str && pad_str[0]) ? pad_str[0] : ' ';
+   int slen = (int)strlen(s);
+   int needed = target - slen;
+   if (needed <= 0) {
+      JSValue r = JS_NewString(ctx, s);
+      JS_FreeCString(ctx, s); if (pad_str) JS_FreeCString(ctx, pad_str);
+      return r;
+   }
+   if (target > 256) target = 256;
+   char *buf = (char *)malloc((size_t)target + 1);
+   memcpy(buf, s, (size_t)slen);
+   for (int i = slen; i < target; i++) buf[i] = pad_ch;
+   buf[target] = '\0';
+   JSValue ret = JS_NewString(ctx, buf);
+   free(buf); JS_FreeCString(ctx, s); if (pad_str) JS_FreeCString(ctx, pad_str);
+   return ret;
+}
+static JSValue js_str_starts_with(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 2) return JS_NewBool(ctx, false);
+   const char *s   = JS_ToCString(ctx, argv[0]);
+   const char *pfx = JS_ToCString(ctx, argv[1]);
+   if (!s || !pfx) { JS_FreeCString(ctx, s); JS_FreeCString(ctx, pfx); return JS_NewBool(ctx, false); }
+   bool result = strncmp(s, pfx, strlen(pfx)) == 0;
+   JS_FreeCString(ctx, s); JS_FreeCString(ctx, pfx);
+   return JS_NewBool(ctx, result);
+}
+static JSValue js_str_ends_with(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 2) return JS_NewBool(ctx, false);
+   const char *s   = JS_ToCString(ctx, argv[0]);
+   const char *sfx = JS_ToCString(ctx, argv[1]);
+   if (!s || !sfx) { JS_FreeCString(ctx, s); JS_FreeCString(ctx, sfx); return JS_NewBool(ctx, false); }
+   size_t slen = strlen(s), sfxlen = strlen(sfx);
+   bool result = (slen >= sfxlen) && strcmp(s + slen - sfxlen, sfx) == 0;
+   JS_FreeCString(ctx, s); JS_FreeCString(ctx, sfx);
+   return JS_NewBool(ctx, result);
+}
+static JSValue js_str_repeat(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 2) return JS_NewString(ctx, "");
+   const char *s = JS_ToCString(ctx, argv[0]);
+   int n = argc > 1 ? int_from_js(ctx, argv[1], 0) : 0;
+   if (!s || n <= 0) { JS_FreeCString(ctx, s); return JS_NewString(ctx, ""); }
+   size_t slen = strlen(s);
+   size_t total = slen * (size_t)n;
+   if (total > 65535) total = 65535;
+   char *buf = (char *)malloc(total + 1);
+   for (size_t i = 0; i < (size_t)n && i * slen < total; i++)
+      memcpy(buf + i * slen, s, slen);
+   buf[total] = '\0';
+   JSValue ret = JS_NewString(ctx, buf);
+   free(buf); JS_FreeCString(ctx, s);
+   return ret;
+}
+
+/* ── AABB hotspots ───────────────────────────────────────────────────── */
+static JSValue js_create_hotspot(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int x = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0);
+   int y = int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0);
+   int w = int_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 0);
+   int h = int_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, 0);
+   for (int i = 0; i < NOVA64_MAX_HOTSPOTS; i++) {
+      if (!g_hotspots[i].used) {
+         g_hotspots[i].used = 1; g_hotspots[i].x = x; g_hotspots[i].y = y;
+         g_hotspots[i].w = w; g_hotspots[i].h = h;
+         return JS_NewInt32(ctx, i + 1);
+      }
+   }
+   return JS_NewInt32(ctx, 0);
+}
+static JSValue js_set_hotspot(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 5) return JS_UNDEFINED;
+   int idx = int_from_js(ctx, argv[0], 0) - 1;
+   if (idx < 0 || idx >= NOVA64_MAX_HOTSPOTS || !g_hotspots[idx].used) return JS_UNDEFINED;
+   g_hotspots[idx].x = int_from_js(ctx, argv[1], 0);
+   g_hotspots[idx].y = int_from_js(ctx, argv[2], 0);
+   g_hotspots[idx].w = int_from_js(ctx, argv[3], 0);
+   g_hotspots[idx].h = int_from_js(ctx, argv[4], 0);
+   return JS_UNDEFINED;
+}
+static JSValue js_hotspot_contains(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 3) return JS_NewBool(ctx, false);
+   int idx = int_from_js(ctx, argv[0], 0) - 1;
+   if (idx < 0 || idx >= NOVA64_MAX_HOTSPOTS || !g_hotspots[idx].used) return JS_NewBool(ctx, false);
+   int px = int_from_js(ctx, argv[1], 0);
+   int py = int_from_js(ctx, argv[2], 0);
+   struct nova64_hotspot *hs = &g_hotspots[idx];
+   return JS_NewBool(ctx, px >= hs->x && px < hs->x + hs->w && py >= hs->y && py < hs->y + hs->h);
+}
+static JSValue js_hotspot_overlap(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 2) return JS_NewBool(ctx, false);
+   int ai = int_from_js(ctx, argv[0], 0) - 1;
+   int bi = int_from_js(ctx, argv[1], 0) - 1;
+   if (ai < 0 || ai >= NOVA64_MAX_HOTSPOTS || !g_hotspots[ai].used) return JS_NewBool(ctx, false);
+   if (bi < 0 || bi >= NOVA64_MAX_HOTSPOTS || !g_hotspots[bi].used) return JS_NewBool(ctx, false);
+   struct nova64_hotspot *ha = &g_hotspots[ai];
+   struct nova64_hotspot *hb = &g_hotspots[bi];
+   bool ov = !(ha->x + ha->w <= hb->x || hb->x + hb->w <= ha->x ||
+               ha->y + ha->h <= hb->y || hb->y + hb->h <= ha->y);
+   return JS_NewBool(ctx, ov);
+}
+static JSValue js_destroy_hotspot(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val; (void)ctx;
+   int idx = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0) - 1;
+   if (idx >= 0 && idx < NOVA64_MAX_HOTSPOTS) memset(&g_hotspots[idx], 0, sizeof(g_hotspots[idx]));
+   return JS_UNDEFINED;
+}
+static JSValue js_hotspot_x(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int idx = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0) - 1;
+   if (idx < 0 || idx >= NOVA64_MAX_HOTSPOTS || !g_hotspots[idx].used) return JS_NewInt32(ctx, 0);
+   return JS_NewInt32(ctx, g_hotspots[idx].x);
+}
+static JSValue js_hotspot_y(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int idx = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0) - 1;
+   if (idx < 0 || idx >= NOVA64_MAX_HOTSPOTS || !g_hotspots[idx].used) return JS_NewInt32(ctx, 0);
+   return JS_NewInt32(ctx, g_hotspots[idx].y);
+}
+static JSValue js_hotspot_w(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int idx = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0) - 1;
+   if (idx < 0 || idx >= NOVA64_MAX_HOTSPOTS || !g_hotspots[idx].used) return JS_NewInt32(ctx, 0);
+   return JS_NewInt32(ctx, g_hotspots[idx].w);
+}
+static JSValue js_hotspot_h(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int idx = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0) - 1;
+   if (idx < 0 || idx >= NOVA64_MAX_HOTSPOTS || !g_hotspots[idx].used) return JS_NewInt32(ctx, 0);
+   return JS_NewInt32(ctx, g_hotspots[idx].h);
+}
+
+/* ── screenChromaticAberration ───────────────────────────────────────── */
+static JSValue js_screen_chromatic_aberration(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int offset = argc > 0 ? int_from_js(ctx, argv[0], 2) : 2;
+   if (offset < 1) offset = 1;
+   if (offset > 16) offset = 16;
+   if (!framebuffer) return JS_UNDEFINED;
+   uint32_t *tmp = (uint32_t *)malloc((size_t)NOVA64_WIDTH * sizeof(uint32_t));
+   if (!tmp) return JS_UNDEFINED;
+   for (int y = 0; y < NOVA64_HEIGHT; y++) {
+      uint32_t *row = &framebuffer[(size_t)y * NOVA64_WIDTH];
+      memcpy(tmp, row, (size_t)NOVA64_WIDTH * sizeof(uint32_t));
+      for (int x = 0; x < NOVA64_WIDTH; x++) {
+         int rx2 = x + offset;
+         uint8_t cr = (rx2 < NOVA64_WIDTH) ? (uint8_t)((tmp[rx2] >> 24) & 0xff) : 0;
+         uint8_t cg = (uint8_t)((tmp[x] >> 16) & 0xff);
+         int bx2 = x - offset;
+         uint8_t cb = (bx2 >= 0) ? (uint8_t)((tmp[bx2] >> 8) & 0xff) : 0;
+         row[x] = rgba8(cr, cg, cb, 255);
+      }
+   }
+   free(tmp);
+   return JS_UNDEFINED;
+}
+
+/* ── drawDashedLine / drawDashedRect ─────────────────────────────────── */
+static JSValue js_draw_dashed_line(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 7) return JS_UNDEFINED;
+   int x0 = int_from_js(ctx, argv[0], 0) - cam2d_x;
+   int y0 = int_from_js(ctx, argv[1], 0) - cam2d_y;
+   int x1 = int_from_js(ctx, argv[2], 0) - cam2d_x;
+   int y1 = int_from_js(ctx, argv[3], 0) - cam2d_y;
+   int dash = int_from_js(ctx, argv[4], 4);
+   int gap  = int_from_js(ctx, argv[5], 4);
+   uint32_t color = color_from_js(ctx, argv[6], rgba8(255, 255, 255, 255));
+   if (dash < 1) dash = 1;
+   if (gap  < 1) gap  = 1;
+   int dx = abs(x1 - x0), dy = abs(y1 - y0);
+   int steps = dx > dy ? dx : dy;
+   if (steps == 0) { set_pixel(x0, y0, color); return JS_UNDEFINED; }
+   float fx = (float)x0, fy = (float)y0;
+   float sx = (float)(x1 - x0) / (float)steps;
+   float sy = (float)(y1 - y0) / (float)steps;
+   int pat = dash + gap;
+   for (int i = 0; i <= steps; i++, fx += sx, fy += sy)
+      if (i % pat < dash) set_pixel((int)(fx + 0.5f), (int)(fy + 0.5f), color);
+   return JS_UNDEFINED;
+}
+static JSValue js_draw_dashed_rect(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 7) return JS_UNDEFINED;
+   int x1v = int_from_js(ctx, argv[0], 0) - cam2d_x;
+   int y1v = int_from_js(ctx, argv[1], 0) - cam2d_y;
+   int x2v = int_from_js(ctx, argv[2], 0) - cam2d_x;
+   int y2v = int_from_js(ctx, argv[3], 0) - cam2d_y;
+   int dash = int_from_js(ctx, argv[4], 4);
+   int gap  = int_from_js(ctx, argv[5], 4);
+   uint32_t color = color_from_js(ctx, argv[6], rgba8(255, 255, 255, 255));
+   if (dash < 1) dash = 1;
+   if (gap  < 1) gap  = 1;
+   int pat = dash + gap;
+   /* top */
+   for (int x = x1v, i = 0; x <= x2v; x++, i++) if (i % pat < dash) set_pixel(x, y1v, color);
+   /* bottom */
+   for (int x = x1v, i = 0; x <= x2v; x++, i++) if (i % pat < dash) set_pixel(x, y2v, color);
+   /* left */
+   for (int y = y1v, i = 0; y <= y2v; y++, i++) if (i % pat < dash) set_pixel(x1v, y, color);
+   /* right */
+   for (int y = y1v, i = 0; y <= y2v; y++, i++) if (i % pat < dash) set_pixel(x2v, y, color);
+   return JS_UNDEFINED;
+}
+
+/* ── screenWave ──────────────────────────────────────────────────────── */
+static JSValue js_screen_wave(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   float amp   = (float)double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 3.0);
+   float freq  = (float)double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0.05);
+   float phase = (float)double_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 0.0);
+   if (!framebuffer) return JS_UNDEFINED;
+   uint32_t *tmp = (uint32_t *)malloc((size_t)NOVA64_WIDTH * (size_t)NOVA64_HEIGHT * sizeof(uint32_t));
+   if (!tmp) return JS_UNDEFINED;
+   memcpy(tmp, framebuffer, (size_t)NOVA64_WIDTH * (size_t)NOVA64_HEIGHT * sizeof(uint32_t));
+   for (int y = 0; y < NOVA64_HEIGHT; y++) {
+      int shift = (int)(amp * sinf((float)y * freq + phase));
+      for (int x = 0; x < NOVA64_WIDTH; x++) {
+         int sx2 = x - shift;
+         uint32_t src = (sx2 >= 0 && sx2 < NOVA64_WIDTH)
+            ? tmp[(size_t)y * NOVA64_WIDTH + (size_t)sx2]
+            : rgba8(0, 0, 0, 255);
+         framebuffer[(size_t)y * NOVA64_WIDTH + (size_t)x] = src;
+      }
+   }
+   free(tmp);
+   return JS_UNDEFINED;
+}
+
+/* ── Frame utilities ─────────────────────────────────────────────────── */
+static JSValue js_every(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int n = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 1);
+   if (n <= 1) return JS_NewBool(ctx, true);
+   return JS_NewBool(ctx, (frame_count % (uint64_t)n) == 0);
+}
+static JSValue js_frame_count_fn(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val; (void)argc; (void)argv;
+   return JS_NewInt64(ctx, (int64_t)frame_count);
+}
+static JSValue js_sin_osc(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double hz = double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 1.0);
+   return JS_NewFloat64(ctx, sin(2.0 * 3.14159265358979323846 * hz * (double)frame_count / NOVA64_FPS));
+}
+static JSValue js_cos_osc(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double hz = double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 1.0);
+   return JS_NewFloat64(ctx, cos(2.0 * 3.14159265358979323846 * hz * (double)frame_count / NOVA64_FPS));
+}
+
+/* ── Color utilities ─────────────────────────────────────────────────── */
+static JSValue js_color_brighter(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   uint32_t c = color_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, rgba8(128, 128, 128, 255));
+   int amt = argc > 1 ? int_from_js(ctx, argv[1], 40) : 40;
+   uint8_t r = (uint8_t)((c >> 24) & 0xff);
+   uint8_t g = (uint8_t)((c >> 16) & 0xff);
+   uint8_t b = (uint8_t)((c >>  8) & 0xff);
+   r = (uint8_t)((int)r + amt > 255 ? 255 : (int)r + amt < 0 ? 0 : (int)r + amt);
+   g = (uint8_t)((int)g + amt > 255 ? 255 : (int)g + amt < 0 ? 0 : (int)g + amt);
+   b = (uint8_t)((int)b + amt > 255 ? 255 : (int)b + amt < 0 ? 0 : (int)b + amt);
+   return JS_NewInt32(ctx, (int32_t)rgba8(r, g, b, 255));
+}
+static JSValue js_color_darker(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   uint32_t c = color_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, rgba8(128, 128, 128, 255));
+   int amt = argc > 1 ? int_from_js(ctx, argv[1], 40) : 40;
+   uint8_t r = (uint8_t)((c >> 24) & 0xff);
+   uint8_t g = (uint8_t)((c >> 16) & 0xff);
+   uint8_t b = (uint8_t)((c >>  8) & 0xff);
+   r = (uint8_t)((int)r - amt < 0 ? 0 : (int)r - amt > 255 ? 255 : (int)r - amt);
+   g = (uint8_t)((int)g - amt < 0 ? 0 : (int)g - amt > 255 ? 255 : (int)g - amt);
+   b = (uint8_t)((int)b - amt < 0 ? 0 : (int)b - amt > 255 ? 255 : (int)b - amt);
+   return JS_NewInt32(ctx, (int32_t)rgba8(r, g, b, 255));
+}
+static JSValue js_color_mix(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   uint32_t a = color_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0);
+   uint32_t b = color_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0);
+   float t = (float)clamp_double(double_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 0.5), 0.0, 1.0);
+   return JS_NewInt32(ctx, (int32_t)lerp_color(a, b, t));
+}
+
+/* ── screenDissolve ──────────────────────────────────────────────────── */
+static JSValue js_screen_dissolve(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   float t = (float)clamp_double(double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 1.0), 0.0, 1.0);
+   if (!framebuffer) return JS_UNDEFINED;
+   static const uint8_t bayer[4][4] = {
+      {  0,  8,  2, 10 },
+      { 12,  4, 14,  6 },
+      {  3, 11,  1,  9 },
+      { 15,  7, 13,  5 }
+   };
+   int threshold = (int)(t * 16.0f);
+   if (threshold >= 16) return JS_UNDEFINED;
+   for (int y = 0; y < NOVA64_HEIGHT; y++) {
+      for (int x = 0; x < NOVA64_WIDTH; x++) {
+         if (bayer[y & 3][x & 3] >= threshold)
+            framebuffer[(size_t)y * NOVA64_WIDTH + (size_t)x] = rgba8(0, 0, 0, 255);
+      }
+   }
+   return JS_UNDEFINED;
+}
+
+/* ── Number formatting ───────────────────────────────────────────────── */
+static JSValue js_zero_pad(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 2) return JS_NewString(ctx, "0");
+   int n = int_from_js(ctx, argv[0], 0);
+   int w = int_from_js(ctx, argv[1], 1);
+   if (w < 1) w = 1; if (w > 20) w = 20;
+   char buf[32];
+   snprintf(buf, sizeof(buf), "%0*d", w, n);
+   return JS_NewString(ctx, buf);
+}
+static JSValue js_format_number(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 1) return JS_NewString(ctx, "0");
+   double n = double_from_js(ctx, argv[0], 0.0);
+   int decimals = argc > 1 ? int_from_js(ctx, argv[1], 2) : 2;
+   if (decimals < 0) decimals = 0; if (decimals > 10) decimals = 10;
+   char buf[64];
+   snprintf(buf, sizeof(buf), "%.*f", decimals, n);
+   return JS_NewString(ctx, buf);
+}
+static JSValue js_comma_number(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 1) return JS_NewString(ctx, "0");
+   long long n = (long long)double_from_js(ctx, argv[0], 0.0);
+   bool neg = n < 0; if (neg) n = -n;
+   char raw[32]; snprintf(raw, sizeof(raw), "%lld", n);
+   int rlen = (int)strlen(raw);
+   char out[48]; int oi = 0;
+   if (neg) out[oi++] = '-';
+   for (int i = 0; i < rlen; i++) {
+      if (i > 0 && (rlen - i) % 3 == 0) out[oi++] = ',';
+      out[oi++] = raw[i];
+   }
+   out[oi] = '\0';
+   return JS_NewString(ctx, out);
+}
+
+/* ── sprFlipX / sprFlipY ─────────────────────────────────────────────── */
+/* sprFlipX(path, dx, dy [, imgw, imgh [, sx, sy, bw, bh]]) */
+static JSValue js_spr_flip_x(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 3) return JS_NewBool(ctx, false);
+   const char *path = JS_ToCString(ctx, argv[0]);
+   if (!path) return JS_NewBool(ctx, false);
+   const struct nova64_package_asset *asset = find_package_asset(path);
+   bool is_png = path_is_png(path);
+   JS_FreeCString(ctx, path);
+   if (!asset || !asset->data || asset->size < 4) return JS_NewBool(ctx, false);
+   int dx = int_from_js(ctx, argv[1], 0) - cam2d_x;
+   int dy = int_from_js(ctx, argv[2], 0) - cam2d_y;
+   uint8_t *png_pixels = NULL;
+   const uint8_t *pixels = (const uint8_t *)asset->data;
+   int img_w = argc > 3 ? int_from_js(ctx, argv[3], 0) : 0;
+   int img_h = argc > 4 ? int_from_js(ctx, argv[4], 0) : 0;
+   if (is_png) {
+      int pw = 0, ph = 0;
+      png_pixels = decode_png_asset(asset->data, asset->size, &pw, &ph);
+      if (!png_pixels) return JS_NewBool(ctx, false);
+      pixels = png_pixels;
+      if (img_w <= 0) img_w = pw;
+      if (img_h <= 0) img_h = ph;
+   }
+   if (img_w <= 0 || img_h <= 0) {
+      int side = (int)sqrt((double)(asset->size / 4));
+      img_w = side > 0 ? side : 1;
+      img_h = (int)((asset->size / 4) / (size_t)img_w);
+      if (img_h <= 0) img_h = img_w;
+   }
+   int src_x = argc > 5 ? int_from_js(ctx, argv[5], 0) : 0;
+   int src_y = argc > 6 ? int_from_js(ctx, argv[6], 0) : 0;
+   int bw    = argc > 7 ? int_from_js(ctx, argv[7], 0) : (img_w - src_x);
+   int bh    = argc > 8 ? int_from_js(ctx, argv[8], 0) : (img_h - src_y);
+   if (bw <= 0 || bh <= 0) { free(png_pixels); return JS_NewBool(ctx, false); }
+   for (int row = 0; row < bh; row++) {
+      for (int col = 0; col < bw; col++) {
+         int sx2 = src_x + (bw - 1 - col);
+         int sy2 = src_y + row;
+         if (sx2 < 0 || sx2 >= img_w || sy2 < 0 || sy2 >= img_h) continue;
+         size_t si = ((size_t)sy2 * (size_t)img_w + (size_t)sx2) * 4;
+         uint8_t r2 = pixels[si], g2 = pixels[si+1], b2 = pixels[si+2], a2 = pixels[si+3];
+         if (a2 == 0) continue;
+         set_pixel(dx + col, dy + row, rgba8(r2, g2, b2, 255));
+      }
+   }
+   free(png_pixels);
+   return JS_NewBool(ctx, true);
+}
+static JSValue js_spr_flip_y(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 3) return JS_NewBool(ctx, false);
+   const char *path = JS_ToCString(ctx, argv[0]);
+   if (!path) return JS_NewBool(ctx, false);
+   const struct nova64_package_asset *asset = find_package_asset(path);
+   bool is_png = path_is_png(path);
+   JS_FreeCString(ctx, path);
+   if (!asset || !asset->data || asset->size < 4) return JS_NewBool(ctx, false);
+   int dx = int_from_js(ctx, argv[1], 0) - cam2d_x;
+   int dy = int_from_js(ctx, argv[2], 0) - cam2d_y;
+   uint8_t *png_pixels = NULL;
+   const uint8_t *pixels = (const uint8_t *)asset->data;
+   int img_w = argc > 3 ? int_from_js(ctx, argv[3], 0) : 0;
+   int img_h = argc > 4 ? int_from_js(ctx, argv[4], 0) : 0;
+   if (is_png) {
+      int pw = 0, ph = 0;
+      png_pixels = decode_png_asset(asset->data, asset->size, &pw, &ph);
+      if (!png_pixels) return JS_NewBool(ctx, false);
+      pixels = png_pixels;
+      if (img_w <= 0) img_w = pw;
+      if (img_h <= 0) img_h = ph;
+   }
+   if (img_w <= 0 || img_h <= 0) {
+      int side = (int)sqrt((double)(asset->size / 4));
+      img_w = side > 0 ? side : 1;
+      img_h = (int)((asset->size / 4) / (size_t)img_w);
+      if (img_h <= 0) img_h = img_w;
+   }
+   int src_x = argc > 5 ? int_from_js(ctx, argv[5], 0) : 0;
+   int src_y = argc > 6 ? int_from_js(ctx, argv[6], 0) : 0;
+   int bw    = argc > 7 ? int_from_js(ctx, argv[7], 0) : (img_w - src_x);
+   int bh    = argc > 8 ? int_from_js(ctx, argv[8], 0) : (img_h - src_y);
+   if (bw <= 0 || bh <= 0) { free(png_pixels); return JS_NewBool(ctx, false); }
+   for (int row = 0; row < bh; row++) {
+      for (int col = 0; col < bw; col++) {
+         int sx2 = src_x + col;
+         int sy2 = src_y + (bh - 1 - row);
+         if (sx2 < 0 || sx2 >= img_w || sy2 < 0 || sy2 >= img_h) continue;
+         size_t si = ((size_t)sy2 * (size_t)img_w + (size_t)sx2) * 4;
+         uint8_t r2 = pixels[si], g2 = pixels[si+1], b2 = pixels[si+2], a2 = pixels[si+3];
+         if (a2 == 0) continue;
+         set_pixel(dx + col, dy + row, rgba8(r2, g2, b2, 255));
+      }
+   }
+   free(png_pixels);
+   return JS_NewBool(ctx, true);
 }
 
 /* ── setPixels / getPixels / printRight ──────────────────────────────── */
@@ -10262,6 +10899,56 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, global, "destroyTween",  js_destroy_tween,  1);
    set_function(ctx, global, "resetTween",    js_reset_tween,    1);
 
+   /* Tilemap getters */
+   set_function(ctx, global, "getTile",       js_get_tile,       3);
+   set_function(ctx, global, "tilemapCols",   js_tilemap_cols,   1);
+   set_function(ctx, global, "tilemapRows",   js_tilemap_rows,   1);
+   set_function(ctx, global, "tilemapTileW",  js_tilemap_tile_w, 1);
+   set_function(ctx, global, "tilemapTileH",  js_tilemap_tile_h, 1);
+   /* Button repeat */
+   set_function(ctx, global, "btnRepeat",     js_btn_repeat,     3);
+   /* String utilities */
+   set_function(ctx, global, "strSplit",      js_str_split,      2);
+   set_function(ctx, global, "strTrim",       js_str_trim,       1);
+   set_function(ctx, global, "strPadStart",   js_str_pad_start,  3);
+   set_function(ctx, global, "strPadEnd",     js_str_pad_end,    3);
+   set_function(ctx, global, "strStartsWith", js_str_starts_with,2);
+   set_function(ctx, global, "strEndsWith",   js_str_ends_with,  2);
+   set_function(ctx, global, "strRepeat",     js_str_repeat,     2);
+   /* AABB hotspots */
+   set_function(ctx, global, "createHotspot",   js_create_hotspot,   4);
+   set_function(ctx, global, "setHotspot",      js_set_hotspot,      5);
+   set_function(ctx, global, "hotspotContains", js_hotspot_contains, 3);
+   set_function(ctx, global, "hotspotOverlap",  js_hotspot_overlap,  2);
+   set_function(ctx, global, "destroyHotspot",  js_destroy_hotspot,  1);
+   set_function(ctx, global, "hotspotX",        js_hotspot_x,        1);
+   set_function(ctx, global, "hotspotY",        js_hotspot_y,        1);
+   set_function(ctx, global, "hotspotW",        js_hotspot_w,        1);
+   set_function(ctx, global, "hotspotH",        js_hotspot_h,        1);
+   /* Screen effects */
+   set_function(ctx, global, "screenChromaticAberration", js_screen_chromatic_aberration, 1);
+   set_function(ctx, global, "screenWave",      js_screen_wave,      3);
+   set_function(ctx, global, "screenDissolve",  js_screen_dissolve,  1);
+   /* Dashed lines */
+   set_function(ctx, global, "drawDashedLine",  js_draw_dashed_line, 7);
+   set_function(ctx, global, "drawDashedRect",  js_draw_dashed_rect, 7);
+   /* Frame utilities */
+   set_function(ctx, global, "every",       js_every,          1);
+   set_function(ctx, global, "frameCount",  js_frame_count_fn, 0);
+   set_function(ctx, global, "sinOsc",      js_sin_osc,        1);
+   set_function(ctx, global, "cosOsc",      js_cos_osc,        1);
+   /* Color utilities */
+   set_function(ctx, global, "colorBrighter", js_color_brighter, 2);
+   set_function(ctx, global, "colorDarker",   js_color_darker,   2);
+   set_function(ctx, global, "colorMix",      js_color_mix,      3);
+   /* Number formatting */
+   set_function(ctx, global, "zeroPad",      js_zero_pad,      2);
+   set_function(ctx, global, "formatNumber", js_format_number, 2);
+   set_function(ctx, global, "commaNumber",  js_comma_number,  1);
+   /* Sprite flip */
+   set_function(ctx, global, "sprFlipX",     js_spr_flip_x,    9);
+   set_function(ctx, global, "sprFlipY",     js_spr_flip_y,    9);
+
    JS_FreeValue(ctx, global);
    return true;
 }
@@ -12789,6 +13476,8 @@ void RETRO_CALLCONV retro_reset(void)
    g_shake_intensity = 0.0f; g_shake_timer = 0.0f; g_shake_duration = 0.0f;
    g_flash_timer = 0.0f; g_flash_duration = 0.0f;
    g_path_count = 0; g_path_closed = 0;
+   memset(g_hotspots,  0, sizeof(g_hotspots));
+   memset(g_btn_repeat, 0, sizeof(g_btn_repeat));
    rng_seed_from_environment();
    /* Hot reload: re-read cart from disk if NOVA64_HOT_RELOAD=1 */
    const char *hot_reload_env = getenv("NOVA64_HOT_RELOAD");
@@ -12863,6 +13552,12 @@ void RETRO_CALLCONV retro_run(void)
    if (g_flash_timer > 0.0f) {
       g_flash_timer -= (float)(1.0 / NOVA64_FPS);
       if (g_flash_timer < 0.0f) g_flash_timer = 0.0f;
+   }
+
+   /* advance btn repeat counters */
+   for (int _bri = 0; _bri < NOVA64_BUTTON_COUNT; _bri++) {
+      if (buttons[_bri]) g_btn_repeat[_bri].count++;
+      else g_btn_repeat[_bri].count = 0;
    }
 
    js_host_call_frame(1.0 / NOVA64_FPS);
@@ -12972,6 +13667,8 @@ bool RETRO_CALLCONV retro_load_game(const struct retro_game_info *info)
    g_shake_intensity = 0.0f; g_shake_timer = 0.0f; g_shake_duration = 0.0f;
    g_flash_timer = 0.0f; g_flash_duration = 0.0f;
    g_path_count = 0; g_path_closed = 0;
+   memset(g_hotspots,  0, sizeof(g_hotspots));
+   memset(g_btn_repeat, 0, sizeof(g_btn_repeat));
    rng_seed_from_environment();
    frame_count = 0;
 

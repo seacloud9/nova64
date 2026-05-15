@@ -5140,6 +5140,196 @@ static JSValue js_fill_path(JSContext *ctx, JSValueConst this_val, int argc, JSV
    return JS_UNDEFINED;
 }
 
+/* forward declaration for parse_poly_pts (defined later) */
+static int parse_poly_pts(JSContext *ctx, JSValue arr, float *pts, int max_pts);
+
+/* ── drawArc ──────────────────────────────────────────────────────────── */
+/* drawArc(cx, cy, radius, startDeg, endDeg, color [, segments]) */
+static JSValue js_draw_arc(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 6) return JS_UNDEFINED;
+   float cx2 = (float)double_from_js(ctx, argv[0], 0.0) - (float)cam2d_x;
+   float cy2 = (float)double_from_js(ctx, argv[1], 0.0) - (float)cam2d_y;
+   float r   = (float)double_from_js(ctx, argv[2], 0.0);
+   float a0  = (float)double_from_js(ctx, argv[3], 0.0) * (float)(3.14159265358979323846 / 180.0);
+   float a1  = (float)double_from_js(ctx, argv[4], 360.0) * (float)(3.14159265358979323846 / 180.0);
+   uint32_t color = color_from_js(ctx, argv[5], rgba8(255, 255, 255, 255));
+   int segs = argc > 6 ? int_from_js(ctx, argv[6], 0) : 0;
+   if (segs <= 0) {
+      int rr = (int)fabsf(r);
+      segs = rr < 8 ? 16 : (rr < 32 ? 32 : 64);
+   }
+   if (segs < 3) segs = 3;
+   if (segs > 256) segs = 256;
+   float span = a1 - a0;
+   for (int i = 0; i < segs; i++) {
+      float ta = a0 + span * (float)i / (float)segs;
+      float tb = a0 + span * (float)(i + 1) / (float)segs;
+      int x0 = (int)roundf(cx2 + cosf(ta) * r);
+      int y0 = (int)roundf(cy2 + sinf(ta) * r);
+      int x1 = (int)roundf(cx2 + cosf(tb) * r);
+      int y1 = (int)roundf(cy2 + sinf(tb) * r);
+      path_draw_line_segment((float)x0, (float)y0, (float)x1, (float)y1, color);
+   }
+   return JS_UNDEFINED;
+}
+
+/* fillArc: filled sector (pie slice) */
+static JSValue js_fill_arc(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 6) return JS_UNDEFINED;
+   float cx2 = (float)double_from_js(ctx, argv[0], 0.0) - (float)cam2d_x;
+   float cy2 = (float)double_from_js(ctx, argv[1], 0.0) - (float)cam2d_y;
+   float r   = (float)double_from_js(ctx, argv[2], 0.0);
+   float a0  = (float)double_from_js(ctx, argv[3], 0.0) * (float)(3.14159265358979323846 / 180.0);
+   float a1  = (float)double_from_js(ctx, argv[4], 360.0) * (float)(3.14159265358979323846 / 180.0);
+   uint32_t color = color_from_js(ctx, argv[5], rgba8(255, 255, 255, 255));
+   int segs = argc > 6 ? int_from_js(ctx, argv[6], 0) : 0;
+   if (segs <= 0) {
+      int rr = (int)fabsf(r);
+      segs = rr < 8 ? 16 : (rr < 32 ? 32 : 64);
+   }
+   if (segs < 3) segs = 3;
+   if (segs > 256) segs = 256;
+   float pts[258 * 2];
+   int n = 0;
+   pts[n * 2] = cx2; pts[n * 2 + 1] = cy2; n++;
+   float span = a1 - a0;
+   for (int i = 0; i <= segs; i++) {
+      float ta = a0 + span * (float)i / (float)segs;
+      pts[n * 2]     = cx2 + cosf(ta) * r;
+      pts[n * 2 + 1] = cy2 + sinf(ta) * r;
+      n++;
+      if (n >= 258) break;
+   }
+   /* Scanline fill */
+   float y_min = pts[1], y_max = pts[1];
+   for (int i = 1; i < n; i++) {
+      if (pts[i*2+1] < y_min) y_min = pts[i*2+1];
+      if (pts[i*2+1] > y_max) y_max = pts[i*2+1];
+   }
+   float xs[258];
+   for (int scanY = (int)floorf(y_min); scanY <= (int)ceilf(y_max); scanY++) {
+      float fy = (float)scanY + 0.5f;
+      int cnt = 0;
+      for (int i = 0; i < n; i++) {
+         int j = (i + 1) % n;
+         float ay = pts[i*2+1], by = pts[j*2+1];
+         float ax = pts[i*2],   bx = pts[j*2];
+         if ((ay <= fy && by > fy) || (by <= fy && ay > fy)) {
+            float t = (fy - ay) / (by - ay);
+            xs[cnt++] = ax + t * (bx - ax);
+         }
+      }
+      for (int aa = 0; aa < cnt - 1; aa++)
+         for (int bb = aa + 1; bb < cnt; bb++)
+            if (xs[aa] > xs[bb]) { float tmp = xs[aa]; xs[aa] = xs[bb]; xs[bb] = tmp; }
+      for (int k = 0; k + 1 < cnt; k += 2) {
+         int xL = (int)ceilf(xs[k]), xR = (int)floorf(xs[k + 1]);
+         for (int xp = xL; xp <= xR; xp++)
+            set_pixel(xp, scanY, color);
+      }
+   }
+   return JS_UNDEFINED;
+}
+
+/* ── drawSpline — Catmull-Rom smooth curve ────────────────────────────── */
+/* drawSpline(points, color [, segments_per_seg [, closed]]) */
+static JSValue js_draw_spline(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 2 || !JS_IsArray(argv[0])) return JS_UNDEFINED;
+   uint32_t color = color_from_js(ctx, argv[1], rgba8(255, 255, 255, 255));
+   int seg_steps = argc > 2 ? int_from_js(ctx, argv[2], 16) : 16;
+   bool closed = (argc > 3) && JS_ToBool(ctx, argv[3]);
+   if (seg_steps < 2) seg_steps = 2;
+   if (seg_steps > 64) seg_steps = 64;
+   float pts[NOVA64_MAX_PATH_PTS * 2];
+   int n = parse_poly_pts(ctx, argv[0], pts, NOVA64_MAX_PATH_PTS);
+   if (n < 2) return JS_UNDEFINED;
+   /* Catmull-Rom: P(t) = 0.5 * [(2*P1) + (-P0+P2)*t + (2P0-5P1+4P2-P3)*t^2 + (-P0+3P1-3P2+P3)*t^3] */
+   int segs = closed ? n : (n - 1);
+   for (int s = 0; s < segs; s++) {
+      int i0 = closed ? ((s - 1 + n) % n) : (s == 0 ? 0 : s - 1);
+      int i1 = s;
+      int i2 = (s + 1) % n;
+      int i3 = (s + 2) % n;
+      float p0x = pts[i0*2], p0y = pts[i0*2+1];
+      float p1x = pts[i1*2], p1y = pts[i1*2+1];
+      float p2x = pts[i2*2], p2y = pts[i2*2+1];
+      float p3x = pts[i3*2], p3y = pts[i3*2+1];
+      float px = p1x, py = p1y;
+      for (int step = 1; step <= seg_steps; step++) {
+         float t = (float)step / (float)seg_steps;
+         float t2 = t * t, t3 = t2 * t;
+         float nx = 0.5f * ((2.0f*p1x) + (-p0x+p2x)*t + (2.0f*p0x-5.0f*p1x+4.0f*p2x-p3x)*t2 + (-p0x+3.0f*p1x-3.0f*p2x+p3x)*t3);
+         float ny = 0.5f * ((2.0f*p1y) + (-p0y+p2y)*t + (2.0f*p0y-5.0f*p1y+4.0f*p2y-p3y)*t2 + (-p0y+3.0f*p1y-3.0f*p2y+p3y)*t3);
+         path_draw_line_segment(px, py, nx, ny, color);
+         px = nx; py = ny;
+      }
+   }
+   return JS_UNDEFINED;
+}
+
+/* ── colorLerp2D — bilinear color interpolation ───────────────────────── */
+/* colorLerp2D(c00, c10, c01, c11, tx, ty) */
+static JSValue js_color_lerp2d(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 6) return JS_NewUint32(ctx, 0);
+   uint32_t c00 = color_from_js(ctx, argv[0], 0);
+   uint32_t c10 = color_from_js(ctx, argv[1], 0);
+   uint32_t c01 = color_from_js(ctx, argv[2], 0);
+   uint32_t c11 = color_from_js(ctx, argv[3], 0);
+   float tx = (float)clamp_double(double_from_js(ctx, argv[4], 0.0), 0.0, 1.0);
+   float ty = (float)clamp_double(double_from_js(ctx, argv[5], 0.0), 0.0, 1.0);
+   uint32_t top    = lerp_color(c00, c10, tx);
+   uint32_t bottom = lerp_color(c01, c11, tx);
+   return JS_NewUint32(ctx, lerp_color(top, bottom, ty));
+}
+
+/* ── stampText — integer-scaled text ─────────────────────────────────── */
+/* stampText(text, x, y, scaleX, scaleY, color) */
+static JSValue js_stamp_text(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 3) return JS_UNDEFINED;
+   const char *text = JS_ToCString(ctx, argv[0]);
+   if (!text) return JS_UNDEFINED;
+   int bx  = int_from_js(ctx, argv[1], 0) - cam2d_x;
+   int by2 = int_from_js(ctx, argv[2], 0) - cam2d_y;
+   int sx  = argc > 3 ? int_from_js(ctx, argv[3], 2) : 2;
+   int sy  = argc > 4 ? int_from_js(ctx, argv[4], 2) : 2;
+   uint32_t color = color_from_js(ctx, argc > 5 ? argv[5] : JS_UNDEFINED, rgba8(255, 255, 255, 255));
+   if (sx < 1) sx = 1;
+   if (sy < 1) sy = 1;
+   if (sx > 16) sx = 16;
+   if (sy > 16) sy = 16;
+   int cur_x = bx;
+   for (const char *p = text; *p; p++) {
+      if (*p == '\n') {
+         cur_x = bx;
+         by2 += 9 * sy;
+         continue;
+      }
+      for (int row = 0; row < 7; row++) {
+         uint8_t bits = glyph_row(*p, row);
+         for (int col = 0; col < 5; col++) {
+            if (bits & (1U << (4 - col))) {
+               for (int dy2 = 0; dy2 < sy; dy2++)
+                  for (int dx2 = 0; dx2 < sx; dx2++)
+                     set_pixel(cur_x + col * sx + dx2, by2 + row * sy + dy2, color);
+            }
+         }
+      }
+      cur_x += 6 * sx;
+   }
+   JS_FreeCString(ctx, text);
+   return JS_UNDEFINED;
+}
+
 /* ── colorHSV ─────────────────────────────────────────────────────────── */
 /* colorHSV(h, s, v [, a]) — h:0-360  s:0-255  v:0-255  a:0-255 */
 static JSValue js_color_hsv(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
@@ -9470,6 +9660,19 @@ static bool install_nova64_api(JSContext *ctx)
       }
       JS_FreeValue(ctx, sc);
    }
+
+   /* Arc drawing */
+   set_function(ctx, global, "drawArc",  js_draw_arc,  7);
+   set_function(ctx, global, "fillArc",  js_fill_arc,  7);
+
+   /* Catmull-Rom spline */
+   set_function(ctx, global, "drawSpline", js_draw_spline, 4);
+
+   /* Bilinear color interpolation */
+   set_function(ctx, global, "colorLerp2D", js_color_lerp2d, 6);
+
+   /* Scaled text stamp */
+   set_function(ctx, global, "stampText", js_stamp_text, 6);
 
    /* Color HSV */
    set_function(ctx, global, "colorHSV", js_color_hsv, 4);

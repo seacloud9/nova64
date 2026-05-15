@@ -580,10 +580,37 @@ Noise values are deterministic (same inputs always produce the same output). Use
 `fbm` for terrain heights, animated clouds, water surfaces, and other fractal
 patterns.
 
+### Arc Drawing
+
+```js
+drawArc(cx, cy, radius, startDeg, endDeg, color [, segments])
+                            // stroke an arc (portion of circle)
+fillArc(cx, cy, radius, startDeg, endDeg, color [, segments])
+                            // filled pie sector
+```
+
+### Spline
+
+```js
+drawSpline(points, color [, stepsPerSeg [, closed]])
+                            // Catmull-Rom smooth curve through control points
+                            // points: flat [x0,y0,...] or [[x,y],...]
+                            // stepsPerSeg default 16; closed=true closes the loop
+```
+
+### Scaled Text
+
+```js
+stampText(text, x, y [, scaleX [, scaleY [, color]]])
+                            // integer-scaled pixel-font text; scaleX/Y default 2
+```
+
 ### Color Utilities
 
 ```js
 colorHSV(h, s, v [, a])    // h:0-360  s:0-255  v:0-255  a:0-255 → packed color
+colorLerp2D(c00, c10, c01, c11, tx, ty)
+                            // bilinear interpolation between 4 corner colors
 ```
 
 ### Polygon Draw/Fill
@@ -855,3 +882,7 @@ These browser-side Nova64 or Three.js features are not implemented:
 | `121-draw-fill-poly.js` | drawPoly/fillPoly from flat and nested point arrays |
 | `122-screen-pixelate.js` | screenPixelate block-average post-process |
 | `123-text-box.js` | textBox word-wrapped text block |
+| `124-arc.js` | drawArc/fillArc circle arc and pie sector |
+| `125-spline.js` | drawSpline Catmull-Rom smooth curve |
+| `126-color-lerp2d.js` | colorLerp2D bilinear four-corner interpolation |
+| `127-stamp-text.js` | stampText integer-scaled pixel-font text |

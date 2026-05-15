@@ -623,5 +623,9 @@ run_visual_case "120 color hsv"     "120-color-hsv"     "retroarch/conformance/1
 run_visual_case "121 draw fill poly" "121-draw-fill-poly" "retroarch/conformance/121-draw-fill-poly.js" "bb89cb3322b46dcb"
 run_visual_case "122 screen pixelate" "122-screen-pixelate" "retroarch/conformance/122-screen-pixelate.js" "2544efee1fe138ef"
 run_visual_case "123 text box"      "123-text-box"      "retroarch/conformance/123-text-box.js"      "2926263c73799bac"
+run_visual_case "124 arc"           "124-arc"           "retroarch/conformance/124-arc.js"           "f0aa02a5dada96ff"
+run_visual_case "125 spline"        "125-spline"        "retroarch/conformance/125-spline.js"        "96e28181a5705f48"
+run_visual_case "126 color lerp2d"  "126-color-lerp2d"  "retroarch/conformance/126-color-lerp2d.js"  "5a1a7dd34eca9313"
+run_visual_case "127 stamp text"    "127-stamp-text"    "retroarch/conformance/127-stamp-text.js"    "158b69c572d1f8e4"
 
 echo "Conformance passed."

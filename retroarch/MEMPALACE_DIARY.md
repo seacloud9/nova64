@@ -70,3 +70,33 @@ canonical repository instructions in `../AGENTS.md`.
 
 ### Current true M8 gaps (all else is done)
 - **All 8A–8J items complete** as of 2026-05-15
+
+## 2026-05-15 — Post-M8 documentation + noise API session
+
+### What landed this session (commits 1b68724..d48cce1)
+- **Comprehensive README update** (commit 1b68724): Fixed 3 stale Known Gaps
+  (shadow maps, ortho camera, streamed music — all implemented). Added ~20 missing
+  API sections: capsule/cylinder, createMesh, scene hierarchy, ortho camera, PBR,
+  UV transforms, normal maps, shadow quality, blend modes, render targets, instanced
+  mesh, skybox, music, voice handles, channels, positional audio, echo, physics,
+  raycast, bitmap font, compressed storage, dev console, resolution, cheevos RAM,
+  multi-port input, rumble, procedural noise. Extended conformance table from cart
+  77 to 111. RELEASE_CHECKLIST.md: removed 4 stale gaps, added GLES screenshot checks.
+- **MIGRATION.md** (commit d48cce1): Replaced stale known-gaps list (PNG decode,
+  scene hierarchy, raycast all wrongly listed as missing) with accurate M8 state.
+- **Procedural noise API** (commit d48cce1): `noise(x)`, `noise(x,y)`, `noise(x,y,z)`
+  2D/3D Perlin gradient noise using classic 256-entry permutation table + quintic smoothing.
+  `fbm(x, y, octaves, lacunarity, gain)` fractal Brownian motion normalized to [-1,1].
+  `nova64.random.noise` / `nova64.random.fbm` aliases. Conformance cart 111
+  sw=4847bd983f0c57e0.
+
+### Full conformance sweep result
+- Carts 0–50: all pass (build + harness)
+- Carts 51–99: all pass
+- Carts 100–111: all pass
+- Total: 111 conformance carts passing
+
+### State of the codebase
+- All M1–M8 complete; no known pending gaps except Vulkan backend (M4, staged)
+  and QuickJS heap serialization (out of scope per plan).
+- next candidate: consider particle system, more math utilities, or Vulkan M4.

@@ -6702,6 +6702,102 @@ static JSValue js_storage_save_data(JSContext *ctx, JSValueConst this_val, int a
    return JS_NewBool(ctx, ok);
 }
 
+/* Compressed storage: JSON + zlib deflate, stored in <key>.z files */
+static JSValue js_storage_save_compressed(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   if (argc < 2) return JS_NewBool(ctx, false);
+   char effective_key[256];
+   if (!storage_effective_key(ctx, this_val, argv[0], effective_key, sizeof(effective_key)))
+      return JS_NewBool(ctx, false);
+   char path[2052];
+   if (!storage_path_for_key(effective_key, path, sizeof(path) - 2))
+      return JS_NewBool(ctx, false);
+   strcat(path, ".z");
+
+   JSValue json_value = JS_JSONStringify(ctx, argv[1], JS_UNDEFINED, JS_UNDEFINED);
+   if (JS_IsException(json_value)) return JS_NewBool(ctx, false);
+   const char *json = JS_ToCString(ctx, json_value);
+   if (!json) { JS_FreeValue(ctx, json_value); return JS_NewBool(ctx, false); }
+
+   size_t json_len = strlen(json);
+   uLongf bound = compressBound((uLong)json_len) + 4;
+   uint8_t *buf = (uint8_t *)malloc(bound);
+   bool ok = false;
+   if (buf) {
+      /* 4-byte uncompressed length prefix (little-endian) */
+      buf[0] = (uint8_t)(json_len & 0xff);
+      buf[1] = (uint8_t)((json_len >> 8) & 0xff);
+      buf[2] = (uint8_t)((json_len >> 16) & 0xff);
+      buf[3] = (uint8_t)((json_len >> 24) & 0xff);
+      uLongf clen = bound - 4;
+      if (compress2(buf + 4, &clen, (const Bytef *)json, (uLong)json_len, Z_DEFAULT_COMPRESSION) == Z_OK) {
+         FILE *f = fopen(path, "wb");
+         if (f) {
+            ok = fwrite(buf, 1, clen + 4, f) == clen + 4;
+            fclose(f);
+         }
+      }
+      free(buf);
+   }
+   JS_FreeCString(ctx, json);
+   JS_FreeValue(ctx, json_value);
+   return JS_NewBool(ctx, ok);
+}
+
+static JSValue js_storage_load_compressed(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   if (argc < 1) return argc > 1 ? JS_DupValue(ctx, argv[1]) : JS_NULL;
+   char effective_key[256];
+   if (!storage_effective_key(ctx, this_val, argv[0], effective_key, sizeof(effective_key)))
+      return argc > 1 ? JS_DupValue(ctx, argv[1]) : JS_NULL;
+   char path[2052];
+   if (!storage_path_for_key(effective_key, path, sizeof(path) - 2))
+      return argc > 1 ? JS_DupValue(ctx, argv[1]) : JS_NULL;
+   strcat(path, ".z");
+
+   size_t file_size = 0;
+   uint8_t *raw = (uint8_t *)read_file_to_memory(path, &file_size);
+   if (!raw || file_size < 4) {
+      free(raw);
+      return argc > 1 ? JS_DupValue(ctx, argv[1]) : JS_NULL;
+   }
+   uLongf json_len = (uLongf)(raw[0] | ((uint32_t)raw[1] << 8) | ((uint32_t)raw[2] << 16) | ((uint32_t)raw[3] << 24));
+   if (json_len == 0 || json_len > 16 * 1024 * 1024) {
+      free(raw); return argc > 1 ? JS_DupValue(ctx, argv[1]) : JS_NULL;
+   }
+   char *json = (char *)malloc(json_len + 1);
+   if (!json) { free(raw); return argc > 1 ? JS_DupValue(ctx, argv[1]) : JS_NULL; }
+   uLongf dest_len = json_len;
+   if (uncompress((Bytef *)json, &dest_len, raw + 4, (uLong)(file_size - 4)) != Z_OK || dest_len != json_len) {
+      free(json); free(raw);
+      return argc > 1 ? JS_DupValue(ctx, argv[1]) : JS_NULL;
+   }
+   json[json_len] = '\0';
+   free(raw);
+   JSValue parsed = JS_ParseJSON(ctx, json, json_len, path);
+   free(json);
+   if (JS_IsException(parsed)) {
+      js_log_exception(ctx, "storage.loadCompressed");
+      return argc > 1 ? JS_DupValue(ctx, argv[1]) : JS_NULL;
+   }
+   return parsed;
+}
+
+static JSValue js_storage_has_compressed(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   if (argc < 1) return JS_NewBool(ctx, false);
+   char effective_key[256];
+   if (!storage_effective_key(ctx, this_val, argv[0], effective_key, sizeof(effective_key)))
+      return JS_NewBool(ctx, false);
+   char path[2052];
+   if (!storage_path_for_key(effective_key, path, sizeof(path) - 2))
+      return JS_NewBool(ctx, false);
+   strcat(path, ".z");
+   FILE *f = fopen(path, "rb");
+   if (f) { fclose(f); return JS_NewBool(ctx, true); }
+   return JS_NewBool(ctx, false);
+}
+
 static JSValue js_storage_load_data(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
    if (argc < 1)
@@ -7853,6 +7949,9 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, storage, "storageKeys", js_storage_keys, 0);
    set_function(ctx, storage, "storageClear", js_storage_clear, 0);
    set_function(ctx, storage, "open", js_storage_open, 1);
+   set_function(ctx, storage, "saveCompressed",  js_storage_save_compressed, 2);
+   set_function(ctx, storage, "loadCompressed",  js_storage_load_compressed, 2);
+   set_function(ctx, storage, "hasCompressed",   js_storage_has_compressed,  1);
 
    /* nova64.tilemap namespace */
    JSValue tilemap_ns = JS_NewObject(ctx);
@@ -8102,9 +8201,12 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, global, "storageKeys", js_storage_keys, 0);
    set_function(ctx, global, "storageClear", js_storage_clear, 0);
 
-   /* Storage versioning (8G) */
-   set_function(ctx, global, "storageVersion",    js_storage_version,     0);
-   set_function(ctx, global, "storageSetVersion", js_storage_set_version, 1);
+   /* Storage versioning + compression (8G) */
+   set_function(ctx, global, "storageVersion",        js_storage_version,          0);
+   set_function(ctx, global, "storageSetVersion",     js_storage_set_version,      1);
+   set_function(ctx, global, "storageSetCompressed",  js_storage_save_compressed,  2);
+   set_function(ctx, global, "storageGetCompressed",  js_storage_load_compressed,  2);
+   set_function(ctx, global, "storageHasCompressed",  js_storage_has_compressed,   1);
 
    /* Rumble (8D) */
    set_function(ctx, global, "rumble", js_rumble, 2);

@@ -362,6 +362,9 @@ directional lighting. Everything below is missing or incomplete.
   equirectangular mapping. `skybox` capability flag. `108-skybox.js` cart
   sw=38f18480f256541a gles=a4ad0833d5acff46.
 
+- ~~Conformance coverage for new shader features~~ **Done**: `109-blend-modes.js` covers
+  additive/multiply/opaque blend round-trips with GLES visual output.
+
 All 8A items complete.
 
 ### 8B: 2D Draw API Completion
@@ -552,9 +555,12 @@ Namespaced storage done:
 - ~~Migration helpers~~ **Done**: `storageVersion()` / `storageSetVersion(n)` / `nova64.storage.version()`. `84-storage-cart-ids.js`.
 - ~~Enumerate all carts~~ **Done**: `cartIds()` / `nova64.storage.cartIds()`. `84-storage-cart-ids.js`.
 
-Still missing:
+- ~~Key compression~~ **Done**: `storageSetCompressed(key, value)` / `storageGetCompressed(key, default)` /
+  `storageHasCompressed(key)` — JSON + zlib deflate, 4-byte length prefix, stored in `<key>.z`.
+  `nova64.storage.saveCompressed` / `loadCompressed` / `hasCompressed` namespace aliases.
+  `110-storage-compressed.js` conformance cart.
 
-- Key compression: optionally store values as compressed JSON to reduce save-directory file sizes for large cart state (low priority).
+All 8G items complete.
 
 ### 8H: Physics (Lightweight)
 

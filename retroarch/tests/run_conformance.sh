@@ -560,6 +560,8 @@ run_visual_case "105 z-sort sprites"  "105-z-sort-sprites"  "${PACKAGE_DIR}/z-so
 run_visual_case "106 render target"   "106-render-target"   "retroarch/conformance/106-render-target.js"       "44044eca0be4f87f"
 run_visual_case "107 instanced mesh"  "107-instanced-mesh"  "retroarch/conformance/107-instanced-mesh.js"      "4fd99c7a95f90255"
 run_visual_case "108 skybox"          "108-skybox"          "${PACKAGE_DIR}/skybox.nova"                        "38f18480f256541a"
+run_visual_case "109 blend modes"     "109-blend-modes"     "retroarch/conformance/109-blend-modes.js"          "fa453f7b8dbaf14d"
+NOVA64_SAVE_DIR="${SAVE_DIR}" run_case "110 storage compressed" "retroarch/conformance/110-storage-compressed.js" "8845ba9c4e550a4b"
 
 # GLES hardware-rendered locked checksums (run with NOVA64_GLES_TESTS=1)
 # 20-post skipped: GLES FBO crash
@@ -606,5 +608,6 @@ run_gles_case "104 normal map"        "104-normal-map"         "retroarch/confor
 run_gles_case "106 render target"     "106-render-target"      "retroarch/conformance/106-render-target.js"      "f05b3c17d784bd72"
 run_gles_case "107 instanced mesh"    "107-instanced-mesh"     "retroarch/conformance/107-instanced-mesh.js"     "f01a0e0dc49c9e0e"
 run_gles_case "108 skybox"            "108-skybox"             "${PACKAGE_DIR}/skybox.nova"                      "a4ad0833d5acff46"
+run_gles_case "109 blend modes"       "109-blend-modes"        "retroarch/conformance/109-blend-modes.js"        "92a54db75fa95ea1"
 
 echo "Conformance passed."

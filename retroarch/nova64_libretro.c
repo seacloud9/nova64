@@ -619,6 +619,20 @@ static int cam2d_x = 0;
 static int cam2d_y = 0;
 static float cam2d_zoom = 1.0f;
 static float cam2d_rotation = 0.0f;
+
+/* Z-sorted sprite buffer — deferred draws flushed after draw() returns */
+#define NOVA64_MAX_SORTED_SPRITES 256
+struct nova64_sorted_sprite {
+   const uint8_t *pixels;  /* points into asset data or owned_pixels */
+   uint8_t *owned_pixels;  /* non-NULL for PNG-decoded; freed after flush */
+   int dx, dy;
+   int img_w, img_h;
+   int sx, sy, bw, bh;
+   int z;
+};
+static struct nova64_sorted_sprite sorted_sprites[NOVA64_MAX_SORTED_SPRITES];
+static int sorted_sprite_count = 0;
+
 struct nova64_camera2d_state {
    int x, y;
    float zoom;
@@ -1361,6 +1375,10 @@ static void reset_scene_state(void)
    sky_color_enabled = false;
    sky_top_color    = 0x000000FFU;
    sky_bottom_color = 0x000000FFU;
+   /* Discard any buffered z-sorted sprites from the previous cart */
+   for (int _i = 0; _i < sorted_sprite_count; _i++)
+      free(sorted_sprites[_i].owned_pixels);
+   sorted_sprite_count = 0;
 }
 
 static enum nova64_audio_wave audio_wave_from_name(const char *name, enum nova64_audio_wave fallback)
@@ -3175,9 +3193,13 @@ static JSValue js_screen_height(JSContext *ctx, JSValueConst this_val, int argc,
    return JS_NewInt32(ctx, NOVA64_HEIGHT);
 }
 
+static void spr_sorted_flush(void);
+
 static JSValue js_cls(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
    uint32_t color = color_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, rgba8(0, 0, 0, 255));
+   /* Flush any pending z-sorted sprites before clearing so they are not lost silently */
+   spr_sorted_flush();
    clear_framebuffer(color);
    if (!drawing_scene_preview && (scene_has_visible_meshes() || sky_color_enabled))
       render_software_scene();
@@ -3783,7 +3805,27 @@ static uint8_t *decode_png_asset(const uint8_t *png, size_t png_size, int *out_w
    return rgba;
 }
 
-/* spr(path, dx, dy [, imgw, imgh [, sx, sy [, bw, bh]]]) — blit RGBA asset */
+static int sorted_sprite_z_cmp(const void *a, const void *b) {
+   return ((const struct nova64_sorted_sprite *)a)->z -
+          ((const struct nova64_sorted_sprite *)b)->z;
+}
+
+static void spr_sorted_flush(void)
+{
+   if (sorted_sprite_count <= 0) return;
+   qsort(sorted_sprites, (size_t)sorted_sprite_count, sizeof(sorted_sprites[0]),
+         sorted_sprite_z_cmp);
+   for (int i = 0; i < sorted_sprite_count; i++) {
+      struct nova64_sorted_sprite *s = &sorted_sprites[i];
+      if (s->bw > 0 && s->bh > 0)
+         blit_rgba(s->pixels, s->img_w, s->img_h, s->dx, s->dy,
+                   s->sx, s->sy, s->bw, s->bh);
+      free(s->owned_pixels);
+   }
+   sorted_sprite_count = 0;
+}
+
+/* spr(path, dx, dy [, imgw, imgh [, sx, sy [, bw, bh [, z]]]]) — blit RGBA asset */
 static JSValue js_spr(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
    (void)this_val;
@@ -3824,6 +3866,19 @@ static JSValue js_spr(JSContext *ctx, JSValueConst this_val, int argc, JSValueCo
    int sy = argc > 6 ? int_from_js(ctx, argv[6], 0) : 0;
    int bw = argc > 7 ? int_from_js(ctx, argv[7], 0) : (img_w - sx);
    int bh = argc > 8 ? int_from_js(ctx, argv[8], 0) : (img_h - sy);
+   /* z arg: queue for painter's sort, flushed after draw() */
+   if (argc > 9 && !JS_IsUndefined(argv[9]) && sorted_sprite_count < NOVA64_MAX_SORTED_SPRITES) {
+      int z = int_from_js(ctx, argv[9], 0);
+      struct nova64_sorted_sprite *s = &sorted_sprites[sorted_sprite_count++];
+      s->pixels = pixels;
+      s->owned_pixels = png_pixels;
+      png_pixels = NULL; /* ownership transferred */
+      s->dx = dx; s->dy = dy;
+      s->img_w = img_w; s->img_h = img_h;
+      s->sx = sx; s->sy = sy; s->bw = bw; s->bh = bh;
+      s->z = z;
+      return JS_NewBool(ctx, bw > 0 && bh > 0);
+   }
    if (bw > 0 && bh > 0)
       blit_rgba(pixels, img_w, img_h, dx, dy, sx, sy, bw, bh);
    free(png_pixels);
@@ -7239,7 +7294,7 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, draw, "textSize", js_text_size, 1);
    set_function(ctx, draw, "printShadow", js_print_shadow, 8);
    set_function(ctx, draw, "printOutline", js_print_outline, 6);
-   set_function(ctx, draw, "spr", js_spr, 9);
+   set_function(ctx, draw, "spr", js_spr, 10);
    set_function(ctx, draw, "createSpriteSheet", js_create_spritesheet, 3);
    set_function(ctx, draw, "sprFrame", js_spr_frame, 4);
    set_function(ctx, draw, "sprNamed", js_spr_named, 4);
@@ -7498,7 +7553,7 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, global, "textSize", js_text_size, 1);
    set_function(ctx, global, "printShadow", js_print_shadow, 8);
    set_function(ctx, global, "printOutline", js_print_outline, 6);
-   set_function(ctx, global, "spr", js_spr, 9);
+   set_function(ctx, global, "spr", js_spr, 10);
    set_function(ctx, global, "createSpriteSheet", js_create_spritesheet, 3);
    set_function(ctx, global, "sprFrame", js_spr_frame, 4);
    set_function(ctx, global, "sprNamed", js_spr_named, 4);
@@ -7940,6 +7995,7 @@ static void js_host_call_frame(double dt)
          JS_FreeValue(ctx, result);
       }
    }
+   spr_sorted_flush();
 }
 
 static void update_input(void)

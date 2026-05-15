@@ -187,6 +187,21 @@ with ZipFile(package_dir / "sprite.nova", "w", ZIP_DEFLATED) as package:
         '{"name":"sprite","main":"src/main.js","assets":["sprites/dot.rgba"]}\n',
     )
 
+# z-sort sprites: solid-red and solid-blue 4x4 RGBA for depth ordering test
+red_spr = bytearray(4 * 4 * 4)
+blue_spr = bytearray(4 * 4 * 4)
+for _i in range(4 * 4):
+    red_spr[_i*4:_i*4+4] = [220, 60, 60, 255]
+    blue_spr[_i*4:_i*4+4] = [60, 100, 220, 255]
+with ZipFile(package_dir / "z-sort-sprites.nova", "w", ZIP_DEFLATED) as package:
+    package.write("retroarch/conformance/105-z-sort-sprites.js", "src/main.js")
+    package.writestr("sprites/red.rgba", bytes(red_spr))
+    package.writestr("sprites/blue.rgba", bytes(blue_spr))
+    package.writestr(
+        "manifest.json",
+        '{"name":"z-sort-sprites","main":"src/main.js","assets":["sprites/red.rgba","sprites/blue.rgba"]}\n',
+    )
+
 # 4-frame 16x4 RGBA sprite sheet with atlas metadata for named regions
 sheet = bytearray(16 * 4 * 4)
 frame_colors = [(240, 70, 70, 255), (70, 220, 90, 255), (80, 130, 250, 255), (245, 220, 70, 255)]
@@ -515,6 +530,7 @@ run_visual_case "101 uv transform"     "101-uv-transform"     "retroarch/conform
 run_visual_case "102 audio resilience" "102-audio-resilience" "retroarch/conformance/102-stereo-audio.js"     "58b3c68b8833ca3a"
 run_visual_case "103 shadow map"      "103-shadow-map"      "retroarch/conformance/103-shadow-map.js"          "2af3ff820f1a8741"
 run_visual_case "104 normal map"      "104-normal-map"      "retroarch/conformance/104-normal-map.js"          "a8343a25d2f84a97"
+run_visual_case "105 z-sort sprites"  "105-z-sort-sprites"  "${PACKAGE_DIR}/z-sort-sprites.nova"              "5ad25226be812307"
 
 # GLES hardware-rendered locked checksums (run with NOVA64_GLES_TESTS=1)
 # 20-post skipped: GLES FBO crash

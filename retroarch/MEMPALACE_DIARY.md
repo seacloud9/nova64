@@ -100,3 +100,50 @@ canonical repository instructions in `../AGENTS.md`.
 - All M1–M8 complete; no known pending gaps except Vulkan backend (M4, staged)
   and QuickJS heap serialization (out of scope per plan).
 - next candidate: consider particle system, more math utilities, or Vulkan M4.
+
+## 2026-05-15 — Post-M8 API expansion sprint (carts 112-134)
+
+### What landed this session (commits d48cce1..d10f0f6)
+- **2D Particle system** (cart 112): createParticles2D/emitParticles2D/setEmitterPos2D/
+  setEmitterActive2D/destroyParticles2D/updateParticles/drawParticles/getParticleCount.
+  CPU-side, 512 particles × 8 emitters. Continuous mode with rate accumulator.
+- **Math utilities** (cart 113): lerp, clamp, map, smoothstep, wrap, approach, between.
+- **Camera orbit** (cart 114): setCameraOrbit(tx,ty,tz,dist,azimuth_deg,elev_deg).
+- **Camera shake** (cart 115): addCameraShake/stopCameraShake; noise-based, linear decay;
+  applied at both GLES mat4_look_at sites.
+- **Tween system** (cart 116): createTween/getTweenValue/tweenDone/destroyTween/resetTween;
+  9 easing curves; auto-advance in retro_run; 16 max tweens.
+- **sprTransform** (cart 117): rotated/scaled sprite blit via inverse-transform sampling.
+- **Path drawing** (cart 118): beginPath/moveTo/lineTo/closePath/strokePath/fillPath;
+  even-odd scanline fill; 128 point max.
+- **Screen flash** (cart 119): screenFlash(color,duration); auto-fading overlay post-draw.
+- **colorHSV** (cart 120): HSV → packed RGBA8; h:0-360, s/v/a:0-255.
+- **drawPoly/fillPoly** (cart 121): polygon from flat or nested JS arrays.
+- **screenPixelate** (cart 122): block-average pixelate; 2-64 block size.
+- **textBox** (cart 123): word-wrapped text block.
+- **drawArc/fillArc** (cart 124): arc and pie sector; angle in degrees.
+- **drawSpline** (cart 125): Catmull-Rom smooth curve; open/closed; flat/nested arrays.
+- **colorLerp2D** (cart 126): bilinear 4-corner color interpolation.
+- **stampText** (cart 127): integer-scaled pixel-font text; 1-16x.
+- **Timers** (cart 128): createTimer/timerDone/timerElapsed/timerProgress/resetTimer/
+  destroyTimer; 32 slots; auto-advance in retro_run.
+- **Logical grid** (cart 129): createGrid/setCell/getCell/clearGrid/gridCols/gridRows/
+  destroyGrid; 8 grids × 4096 int cells.
+- **measureText/printCentered** (cart 130): {width,height,lines} object; centered text.
+- **setPixels/getPixels/printRight** (cart 131): batch framebuffer I/O; right-aligned text.
+- **screenBlur** (cart 132): separable box blur; radius 1-8; deterministic cart.
+- **Off-screen canvas** (cart 133): createCanvas/canvasClear/canvasPset/canvasPget/
+  canvasBlit/destroyCanvas/canvasWidth/canvasHeight; 4 max; heap-allocated; freed on reset.
+- **drawNineSlice** (cart 134): 9-slice panel scaling for UI.
+
+### Key lessons
+- JS_IsArray() takes 1 arg (not ctx+val) in this QuickJS version.
+- Always use deterministic patterns in draw() — Math.random() breaks checksums.
+- Forward declarations needed when new functions reference later-defined helpers
+  (e.g., parse_poly_pts forward decl for drawSpline).
+- Conformance carts using screen.draw() must call from draw(), not init(), or the
+  fill pixels won't be in the expected frame.
+
+### Current state: 134 conformance carts passing
+- All M1–M8 + 23 new post-M8 APIs; no regressions in carts 110-134.
+- All state (tweens, timers, grids, canvas, shake, flash, path) reset on retro_reset.

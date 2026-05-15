@@ -49,6 +49,7 @@ CARTS=(
   101-uv-transform
   103-shadow-map
   104-normal-map
+  106-render-target
 )
 
 echo "# Software renderer checksums — $(date)"

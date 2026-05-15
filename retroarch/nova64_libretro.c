@@ -94,6 +94,7 @@ typedef char GLchar;
 #define GL_TEXTURE_WRAP_S 0x2802
 #define GL_TEXTURE_WRAP_T 0x2803
 #define GL_NEAREST 0x2600
+#define GL_LINEAR  0x2601
 #define GL_CLAMP_TO_EDGE 0x812F
 #define GL_RGBA 0x1908
 #define GL_UNSIGNED_BYTE 0x1401
@@ -259,9 +260,20 @@ struct nova64_point_light {
 #define NOVA64_MAX_TEXTURES 64
 struct nova64_texture {
    bool used;
+   bool borrowed; /* if true, gl_name is owned by a render target — don't delete */
    GLuint gl_name; /* 0 = not uploaded / software mode */
    int width;
    int height;
+};
+
+#define NOVA64_MAX_RENDER_TARGETS 8
+struct nova64_render_target {
+   bool used;
+   int width, height;
+   GLuint fbo;
+   GLuint color_tex;
+   GLuint depth_rbo;
+   int texture_handle; /* borrowed nova64_texture handle; 0 = not yet created */
 };
 
 enum nova64_renderer_backend {
@@ -835,6 +847,7 @@ static const int nova64_tracked_keys[] = {
 static struct nova64_mesh meshes[NOVA64_MAX_MESHES];
 static struct nova64_point_light point_lights[NOVA64_MAX_POINT_LIGHTS];
 static struct nova64_texture textures[NOVA64_MAX_TEXTURES];
+static struct nova64_render_target render_targets[NOVA64_MAX_RENDER_TARGETS];
 static struct nova64_camera camera_state;
 static struct nova64_light light_state;
 static struct nova64_audio_voice audio_voices[NOVA64_AUDIO_MAX_VOICES];
@@ -1219,6 +1232,7 @@ static int allocate_texture(void)
    for (int i = 0; i < NOVA64_MAX_TEXTURES; i++) {
       if (!textures[i].used) {
          textures[i].used = true;
+         textures[i].borrowed = false;
          textures[i].gl_name = 0;
          textures[i].width = 0;
          textures[i].height = 0;
@@ -1238,7 +1252,7 @@ static struct nova64_texture *texture_from_handle(int handle)
 
 static void free_texture_gl(struct nova64_texture *tex)
 {
-   if (tex && tex->gl_name && gles.active && gles.DeleteTextures)
+   if (tex && tex->gl_name && !tex->borrowed && gles.active && gles.DeleteTextures)
       gles.DeleteTextures(1, &tex->gl_name);
    if (tex)
       tex->gl_name = 0;
@@ -1250,6 +1264,14 @@ static void clear_textures(void)
       free_texture_gl(&textures[i]);
       memset(&textures[i], 0, sizeof(textures[i]));
    }
+}
+
+static void rt_destroy_gl(struct nova64_render_target *rt);
+
+static void clear_render_targets(void)
+{
+   for (int i = 0; i < NOVA64_MAX_RENDER_TARGETS; i++)
+      rt_destroy_gl(&render_targets[i]);
 }
 
 static float clamp_float(float value, float min_value, float max_value)
@@ -5121,6 +5143,7 @@ static JSValue js_get_backend_capabilities(JSContext *ctx, JSValueConst this_val
    JS_SetPropertyStr(ctx, object, "meshBlend", JS_NewBool(ctx, true));
    JS_SetPropertyStr(ctx, object, "shadowMaps", JS_NewBool(ctx, gles.active));
    JS_SetPropertyStr(ctx, object, "normalMaps", JS_NewBool(ctx, gles.active));
+   JS_SetPropertyStr(ctx, object, "renderTargets", JS_NewBool(ctx, gles.active));
    return object;
 }
 
@@ -6188,6 +6211,202 @@ static JSValue js_destroy_texture(JSContext *ctx, JSValueConst this_val, int arg
    free_texture_gl(tex);
    memset(tex, 0, sizeof(*tex));
    return JS_NewBool(ctx, true);
+}
+
+/* ── Render targets (8A offscreen rendering) ─────────────────────────── */
+
+static struct nova64_render_target *rt_from_handle(int handle)
+{
+   if (handle < 1 || handle > NOVA64_MAX_RENDER_TARGETS) return NULL;
+   struct nova64_render_target *rt = &render_targets[handle - 1];
+   return rt->used ? rt : NULL;
+}
+
+static void rt_destroy_gl(struct nova64_render_target *rt)
+{
+   if (!rt) return;
+   /* Release borrowed texture handle */
+   if (rt->texture_handle > 0) {
+      struct nova64_texture *tex = texture_from_handle(rt->texture_handle);
+      if (tex) memset(tex, 0, sizeof(*tex));
+      rt->texture_handle = 0;
+   }
+   if (gles.active) {
+      if (rt->fbo && gles.DeleteFramebuffers)
+         gles.DeleteFramebuffers(1, &rt->fbo);
+      if (rt->color_tex && gles.DeleteTextures)
+         gles.DeleteTextures(1, &rt->color_tex);
+      if (rt->depth_rbo && gles.DeleteRenderbuffers)
+         gles.DeleteRenderbuffers(1, &rt->depth_rbo);
+   }
+   memset(rt, 0, sizeof(*rt));
+}
+
+static JSValue js_create_render_target(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int w = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 256);
+   int h = int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 256);
+   if (w <= 0 || w > 2048) w = 256;
+   if (h <= 0 || h > 2048) h = 256;
+
+   /* Find free slot */
+   int slot = -1;
+   for (int i = 0; i < NOVA64_MAX_RENDER_TARGETS; i++) {
+      if (!render_targets[i].used) { slot = i; break; }
+   }
+   if (slot < 0) return JS_NewInt32(ctx, 0);
+
+   struct nova64_render_target *rt = &render_targets[slot];
+   memset(rt, 0, sizeof(*rt));
+   rt->used = true;
+   rt->width = w;
+   rt->height = h;
+
+   if (!gles.active || !gles.GenFramebuffers || !gles.GenTextures || !gles.GenRenderbuffers)
+      return JS_NewInt32(ctx, slot + 1); /* software mode: handle but no GL */
+
+   /* Color texture */
+   gles.GenTextures(1, &rt->color_tex);
+   gles.BindTexture(GL_TEXTURE_2D, rt->color_tex);
+   gles.TexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+   gles.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+   gles.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+   gles.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+   gles.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+   gles.BindTexture(GL_TEXTURE_2D, 0);
+
+   /* Depth renderbuffer */
+   gles.GenRenderbuffers(1, &rt->depth_rbo);
+   gles.BindRenderbuffer(GL_RENDERBUFFER, rt->depth_rbo);
+   gles.RenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT16, w, h);
+   gles.BindRenderbuffer(GL_RENDERBUFFER, 0);
+
+   /* FBO */
+   gles.GenFramebuffers(1, &rt->fbo);
+   gles.BindFramebuffer(GL_FRAMEBUFFER, rt->fbo);
+   gles.FramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, rt->color_tex, 0);
+   gles.FramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, rt->depth_rbo);
+   GLenum status = gles.CheckFramebufferStatus(GL_FRAMEBUFFER);
+   gles.BindFramebuffer(GL_FRAMEBUFFER, 0);
+
+   if (status != GL_FRAMEBUFFER_COMPLETE) {
+      rt_destroy_gl(rt);
+      return JS_NewInt32(ctx, 0);
+   }
+
+   return JS_NewInt32(ctx, slot + 1);
+}
+
+static JSValue js_destroy_render_target(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)ctx; (void)this_val;
+   int handle = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0);
+   struct nova64_render_target *rt = rt_from_handle(handle);
+   if (!rt) return JS_NewBool(ctx, false);
+   rt_destroy_gl(rt);
+   return JS_NewBool(ctx, true);
+}
+
+/* Forward declarations for render functions defined later */
+static void render_gles_cube(const struct nova64_mesh *mesh, const float view_projection[16]);
+static void render_gles_plane(const struct nova64_mesh *mesh, const float view_projection[16]);
+static void render_gles_sphere(const struct nova64_mesh *mesh, const float view_projection[16]);
+static void render_gles_capsule(const struct nova64_mesh *mesh, const float view_projection[16]);
+static void render_gles_cylinder(const struct nova64_mesh *mesh, const float view_projection[16]);
+static void render_gles_custom_mesh(struct nova64_mesh *mesh, const float view_projection[16]);
+static bool gles_any_cast_shadow_mesh(void);
+static bool gles_init_shadow_resources(void);
+static void build_shadow_light_vp(float out[16]);
+static void render_gles_shadow_pass(const float light_vp[16]);
+static bool gles_load_functions(void);
+static bool gles_init_resources(void);
+
+static void render_gles_scene_to_rt(struct nova64_render_target *rt)
+{
+   if (!gles.active || !rt->fbo) return;
+
+   /* Optional shadow pass into existing shadow map */
+   bool use_shadow = g_shadow_map_size > 0 && gles_any_cast_shadow_mesh()
+      && gles_init_shadow_resources();
+   if (use_shadow) {
+      build_shadow_light_vp(g_shadow_light_vp);
+      render_gles_shadow_pass(g_shadow_light_vp);
+   }
+
+   gles.BindFramebuffer(GL_FRAMEBUFFER, rt->fbo);
+   gles.Viewport(0, 0, rt->width, rt->height);
+
+   uint32_t clear_color = sky_color_enabled ? sky_top_color
+      : color_with_intensity(light_state.ambient, light_state.ambient_intensity);
+   gles.ClearColor(
+      (float)((clear_color >> 24) & 0xffU) / 255.0f,
+      (float)((clear_color >> 16) & 0xffU) / 255.0f,
+      (float)((clear_color >>  8) & 0xffU) / 255.0f, 1.0f);
+   gles.Enable(GL_DEPTH_TEST);
+   gles.Clear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+   float projection[16], view[16], view_projection[16];
+   float up[3] = {0.0f, 1.0f, 0.0f};
+   float aspect = (float)rt->width / (float)(rt->height > 0 ? rt->height : 1);
+   if (camera_state.is_ortho) {
+      float hw = camera_state.ortho_width  * 0.5f;
+      float hh = camera_state.ortho_height * 0.5f;
+      mat4_ortho(projection, -hw, hw, -hh, hh, 0.05f, 100.0f);
+   } else {
+      mat4_perspective(projection, camera_state.fov, aspect, 0.05f, 100.0f);
+   }
+   mat4_look_at(view, camera_state.position, camera_state.target, up);
+   mat4_multiply(view_projection, projection, view);
+
+   for (int i = 0; i < NOVA64_MAX_MESHES; i++) {
+      if (!meshes[i].used || !meshes[i].visible || meshes[i].opacity <= 0.0f) continue;
+      if (meshes[i].type == NOVA64_MESH_CUBE)        render_gles_cube(&meshes[i], view_projection);
+      else if (meshes[i].type == NOVA64_MESH_PLANE)  render_gles_plane(&meshes[i], view_projection);
+      else if (meshes[i].type == NOVA64_MESH_SPHERE) render_gles_sphere(&meshes[i], view_projection);
+      else if (meshes[i].type == NOVA64_MESH_CAPSULE)  render_gles_capsule(&meshes[i], view_projection);
+      else if (meshes[i].type == NOVA64_MESH_CYLINDER) render_gles_cylinder(&meshes[i], view_projection);
+      else if (meshes[i].type == NOVA64_MESH_CUSTOM)   render_gles_custom_mesh(&meshes[i], view_projection);
+   }
+
+   /* Restore default viewport */
+   gles.Viewport(0, 0, NOVA64_WIDTH, NOVA64_HEIGHT);
+   GLuint hw_fbo = hw_render.get_current_framebuffer ? hw_render.get_current_framebuffer() : 0;
+   gles.BindFramebuffer(GL_FRAMEBUFFER, hw_fbo);
+}
+
+static JSValue js_render_scene_to_target(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)ctx; (void)this_val;
+   int handle = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0);
+   struct nova64_render_target *rt = rt_from_handle(handle);
+   if (!rt || !gles.active || !rt->fbo) return JS_NewBool(ctx, false);
+   if (!gles_load_functions() || !gles_init_resources()) return JS_NewBool(ctx, false);
+
+   render_gles_scene_to_rt(rt);
+   return JS_NewBool(ctx, true);
+}
+
+static JSValue js_render_target_as_texture(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int handle = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0);
+   struct nova64_render_target *rt = rt_from_handle(handle);
+   if (!rt) return JS_NewInt32(ctx, 0);
+
+   /* Return cached texture handle */
+   if (rt->texture_handle > 0) return JS_NewInt32(ctx, rt->texture_handle);
+
+   /* Allocate a borrowed texture entry */
+   int th = allocate_texture();
+   if (!th) return JS_NewInt32(ctx, 0);
+   struct nova64_texture *tex = texture_from_handle(th);
+   tex->gl_name = rt->color_tex;
+   tex->borrowed = true;
+   tex->width = rt->width;
+   tex->height = rt->height;
+   rt->texture_handle = th;
+   return JS_NewInt32(ctx, th);
 }
 
 static JSValue js_assets_has(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
@@ -7371,6 +7590,10 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, scene, "setMeshTexture", js_set_mesh_texture, 2);
    set_function(ctx, scene, "setMeshNormalMap", js_set_mesh_normal_map, 2);
    set_function(ctx, scene, "destroyTexture", js_destroy_texture, 1);
+   set_function(ctx, scene, "createRenderTarget", js_create_render_target, 2);
+   set_function(ctx, scene, "destroyRenderTarget", js_destroy_render_target, 1);
+   set_function(ctx, scene, "renderScene", js_render_scene_to_target, 1);
+   set_function(ctx, scene, "renderTargetAsTexture", js_render_target_as_texture, 1);
    set_function(ctx, scene, "setSkyColor", js_set_sky_color, 2);
    set_function(ctx, scene, "clearSkyColor", js_clear_sky_color, 0);
    set_function(ctx, scene, "getSkyColor", js_get_sky_color, 0);
@@ -7637,6 +7860,10 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, global, "setMeshTexture", js_set_mesh_texture, 2);
    set_function(ctx, global, "setMeshNormalMap", js_set_mesh_normal_map, 2);
    set_function(ctx, global, "destroyTexture", js_destroy_texture, 1);
+   set_function(ctx, global, "createRenderTarget", js_create_render_target, 2);
+   set_function(ctx, global, "destroyRenderTarget", js_destroy_render_target, 1);
+   set_function(ctx, global, "renderScene", js_render_scene_to_target, 1);
+   set_function(ctx, global, "renderTargetAsTexture", js_render_target_as_texture, 1);
    set_function(ctx, global, "get3DStats", js_get_3d_stats, 0);
    set_function(ctx, global, "getBackendCapabilities", js_get_backend_capabilities, 0);
    set_function(ctx, global, "setCameraPosition", js_set_camera_position, 3);
@@ -10037,6 +10264,7 @@ void RETRO_CALLCONV retro_deinit(void)
 {
    js_host_free();
    clear_textures();
+   clear_render_targets();
    reset_package_manifest_metadata();
    free(framebuffer);
    free(rgb565_framebuffer);
@@ -10187,6 +10415,7 @@ void RETRO_CALLCONV retro_reset(void)
    reset_audio_state();
    reset_post_state();
    clear_textures();
+   clear_render_targets();
    destroy_all_tilemaps();
    clear_all_spritesheets();
    memset(perf_timers, 0, sizeof(perf_timers));
@@ -10345,6 +10574,7 @@ void RETRO_CALLCONV retro_unload_game(void)
    log_perf_report_if_requested();
    js_host_free();
    clear_textures();
+   clear_render_targets();
    destroy_all_tilemaps();
    clear_all_spritesheets();
    memset(perf_timers, 0, sizeof(perf_timers));

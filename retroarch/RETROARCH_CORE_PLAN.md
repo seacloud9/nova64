@@ -342,15 +342,16 @@ directional lighting. Everything below is missing or incomplete.
 - Shadow maps: directional depth-FBO pass with PCF 3×3 filtering.
   `setCastShadow`, `setReceiveShadow`, `setShadowQuality('high'|'medium'|'low'|'off')`.
   `shadowMaps` capability flag. `103-shadow-map.js` covers the full API surface.
+- Normal maps: object-space normal map on texture unit 2. `setMeshNormalMap(handle, texHandle)`.
+  `normalMaps` capability flag. `104-normal-map.js` covers the full API surface.
+- Offscreen render targets: `createRenderTarget(w, h)` → FBO + color RGBA tex + depth RBO.
+  `renderScene(rt)` renders 3D scene into rt at rt dimensions. `renderTargetAsTexture(rt)`
+  returns a borrowed texture handle usable with `setMeshTexture`. `destroyRenderTarget(rt)`.
+  `renderTargets` capability flag. `106-render-target.js` covers the full API surface.
 
 Still missing:
 
-- Normal map support: `setMeshNormalMap(handle, texHandle)`.
 - `setSkybox(texHandle)` cube-map skybox for environments that supply one.
-- Offscreen render targets:
-  - `createRenderTarget(width, height)`, `destroyRenderTarget(rt)`,
-    `renderScene(rt)`, `renderTargetAsTexture(rt)`.
-  - Needed for rear-view mirrors, portals, and preview thumbnails in carts.
 - Instanced rendering:
   - `createInstancedMesh(geometry, count)`, `setInstanceTransform(mesh, i, mat)`
     for particle systems and tile-based 3D scenes.

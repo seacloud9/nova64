@@ -540,6 +540,7 @@ run_visual_case "103 shadow map"      "103-shadow-map"      "retroarch/conforman
 run_visual_case "104 normal map"      "104-normal-map"      "retroarch/conformance/104-normal-map.js"          "a8343a25d2f84a97"
 run_visual_case "105 z-sort sprites"  "105-z-sort-sprites"  "${PACKAGE_DIR}/z-sort-sprites.nova"              "5ad25226be812307"
 run_visual_case "106 render target"   "106-render-target"   "retroarch/conformance/106-render-target.js"       "44044eca0be4f87f"
+run_visual_case "107 instanced mesh"  "107-instanced-mesh"  "retroarch/conformance/107-instanced-mesh.js"      "4fd99c7a95f90255"
 
 # GLES hardware-rendered locked checksums (run with NOVA64_GLES_TESTS=1)
 # 20-post skipped: GLES FBO crash
@@ -584,5 +585,6 @@ run_gles_case "102 audio resilience"  "102-audio-resilience"   "retroarch/confor
 run_gles_case "103 shadow map"        "103-shadow-map"         "retroarch/conformance/103-shadow-map.js"         "b059978553d8413e"
 run_gles_case "104 normal map"        "104-normal-map"         "retroarch/conformance/104-normal-map.js"         "acdf60ad7ccc086f"
 run_gles_case "106 render target"     "106-render-target"      "retroarch/conformance/106-render-target.js"      "f05b3c17d784bd72"
+run_gles_case "107 instanced mesh"    "107-instanced-mesh"     "retroarch/conformance/107-instanced-mesh.js"     "f01a0e0dc49c9e0e"
 
 echo "Conformance passed."

@@ -50,6 +50,7 @@ CARTS=(
   103-shadow-map
   104-normal-map
   106-render-target
+  107-instanced-mesh
 )
 
 echo "# Software renderer checksums — $(date)"

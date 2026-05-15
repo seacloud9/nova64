@@ -187,7 +187,8 @@ enum nova64_mesh_type {
    NOVA64_MESH_PLANE,
    NOVA64_MESH_CAPSULE,
    NOVA64_MESH_CYLINDER,
-   NOVA64_MESH_CUSTOM
+   NOVA64_MESH_CUSTOM,
+   NOVA64_MESH_INSTANCED
 };
 
 /* Mesh-level blend mode for 3D meshes */
@@ -226,6 +227,10 @@ struct nova64_mesh {
    unsigned custom_index_count;
    unsigned gl_custom_vbo;    /* GPU buffer handles, 0 = not uploaded */
    unsigned gl_custom_ibo;
+   /* Instanced mesh (NOVA64_MESH_INSTANCED) */
+   int instance_count;           /* number of instances */
+   int instance_geometry;        /* 0=cube 1=sphere 2=plane 3=capsule 4=cylinder */
+   float *instance_transforms;   /* instance_count * 16 floats (column-major mat4 per instance) */
 };
 
 struct nova64_camera {
@@ -1218,6 +1223,7 @@ static void clear_scene_objects(void)
    for (int i = 0; i < NOVA64_MAX_MESHES; i++) {
       if (meshes[i].custom_verts)  { free(meshes[i].custom_verts);  meshes[i].custom_verts = NULL; }
       if (meshes[i].custom_indices){ free(meshes[i].custom_indices); meshes[i].custom_indices = NULL; }
+      if (meshes[i].instance_transforms) { free(meshes[i].instance_transforms); meshes[i].instance_transforms = NULL; }
       if (meshes[i].gl_custom_vbo && gles.active && gles.DeleteBuffers)
          gles.DeleteBuffers(1, &meshes[i].gl_custom_vbo);
       if (meshes[i].gl_custom_ibo && gles.active && gles.DeleteBuffers)
@@ -2828,6 +2834,25 @@ static void render_software_scene(void)
             /* software preview: draw a sphere proxy at mesh origin */
             draw_software_sphere(mesh);
             break;
+         case NOVA64_MESH_INSTANCED: {
+            /* Software fallback: draw a proxy cube at each instance's translation */
+            for (int j = 0; j < mesh->instance_count; j++) {
+               const float *m = mesh->instance_transforms + j * 16;
+               struct nova64_mesh proxy = *mesh;
+               proxy.type = NOVA64_MESH_CUBE;
+               proxy.position[0] = m[12];
+               proxy.position[1] = m[13];
+               proxy.position[2] = m[14];
+               /* scale from column vector lengths */
+               proxy.scale[0] = sqrtf(m[0]*m[0] + m[1]*m[1] + m[2]*m[2]);
+               proxy.scale[1] = sqrtf(m[4]*m[4] + m[5]*m[5] + m[6]*m[6]);
+               proxy.scale[2] = sqrtf(m[8]*m[8] + m[9]*m[9] + m[10]*m[10]);
+               proxy.instance_count = 0;
+               proxy.instance_transforms = NULL;
+               draw_software_cube(&proxy);
+            }
+            break;
+         }
          default:
             break;
       }
@@ -2850,6 +2875,8 @@ static const char *mesh_type_name(enum nova64_mesh_type type)
          return "cylinder";
       case NOVA64_MESH_CUSTOM:
          return "custom";
+      case NOVA64_MESH_INSTANCED:
+         return "instanced";
       default:
          return "none";
    }
@@ -3028,6 +3055,8 @@ static size_t mesh_triangle_count(enum nova64_mesh_type type)
          return 128;
       case NOVA64_MESH_CYLINDER:
          return 64;
+      case NOVA64_MESH_INSTANCED:
+         return 12; /* per instance, approximate */
       default:
          return 0;
    }
@@ -4869,8 +4898,12 @@ static JSValue js_destroy_mesh(JSContext *ctx, JSValueConst this_val, int argc, 
 {
    int handle = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0);
    struct nova64_mesh *mesh = mesh_from_handle(handle);
-   if (mesh)
+   if (mesh) {
+      free(mesh->custom_verts);
+      free(mesh->custom_indices);
+      free(mesh->instance_transforms);
       memset(mesh, 0, sizeof(*mesh));
+   }
    return JS_UNDEFINED;
 }
 
@@ -6315,6 +6348,7 @@ static void render_gles_sphere(const struct nova64_mesh *mesh, const float view_
 static void render_gles_capsule(const struct nova64_mesh *mesh, const float view_projection[16]);
 static void render_gles_cylinder(const struct nova64_mesh *mesh, const float view_projection[16]);
 static void render_gles_custom_mesh(struct nova64_mesh *mesh, const float view_projection[16]);
+static void render_gles_instanced_mesh(const struct nova64_mesh *mesh, const float view_projection[16]);
 static bool gles_any_cast_shadow_mesh(void);
 static bool gles_init_shadow_resources(void);
 static void build_shadow_light_vp(float out[16]);
@@ -6366,7 +6400,8 @@ static void render_gles_scene_to_rt(struct nova64_render_target *rt)
       else if (meshes[i].type == NOVA64_MESH_SPHERE) render_gles_sphere(&meshes[i], view_projection);
       else if (meshes[i].type == NOVA64_MESH_CAPSULE)  render_gles_capsule(&meshes[i], view_projection);
       else if (meshes[i].type == NOVA64_MESH_CYLINDER) render_gles_cylinder(&meshes[i], view_projection);
-      else if (meshes[i].type == NOVA64_MESH_CUSTOM)   render_gles_custom_mesh(&meshes[i], view_projection);
+      else if (meshes[i].type == NOVA64_MESH_CUSTOM)      render_gles_custom_mesh(&meshes[i], view_projection);
+      else if (meshes[i].type == NOVA64_MESH_INSTANCED)   render_gles_instanced_mesh(&meshes[i], view_projection);
    }
 
    /* Restore default viewport */
@@ -7453,6 +7488,75 @@ static JSValue js_create_mesh(JSContext *ctx, JSValueConst this_val, int argc, J
    return JS_NewInt32(ctx, handle);
 }
 
+static JSValue js_create_instanced_mesh(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   const char *geo_str = argc > 0 ? JS_ToCString(ctx, argv[0]) : NULL;
+   int count = int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 1);
+   if (count < 1) count = 1;
+   if (count > 4096) count = 4096;
+
+   int geo = 0; /* default: cube */
+   if (geo_str) {
+      if (!strcmp(geo_str, "sphere"))        geo = 1;
+      else if (!strcmp(geo_str, "plane"))    geo = 2;
+      else if (!strcmp(geo_str, "capsule"))  geo = 3;
+      else if (!strcmp(geo_str, "cylinder")) geo = 4;
+      JS_FreeCString(ctx, geo_str);
+   }
+
+   int handle = allocate_mesh(NOVA64_MESH_INSTANCED);
+   if (!handle) return JS_NewInt32(ctx, 0);
+   struct nova64_mesh *mesh = &meshes[handle - 1];
+   mesh->instance_geometry = geo;
+   mesh->instance_count = count;
+   mesh->instance_transforms = (float *)calloc((size_t)count * 16, sizeof(float));
+   if (!mesh->instance_transforms) {
+      memset(mesh, 0, sizeof(*mesh));
+      return JS_NewInt32(ctx, 0);
+   }
+   /* Initialize each instance to identity matrix */
+   for (int i = 0; i < count; i++) {
+      float *m = mesh->instance_transforms + i * 16;
+      m[0] = m[5] = m[10] = m[15] = 1.0f;
+   }
+   mesh->color = 0xffffffff;
+   mesh->opacity = 1.0f;
+   mesh->scale[0] = mesh->scale[1] = mesh->scale[2] = 1.0f;
+   mesh->visible = true;
+   return JS_NewInt32(ctx, handle);
+}
+
+static JSValue js_set_instance_transform(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int handle = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0);
+   int idx    = int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0);
+   struct nova64_mesh *mesh = mesh_from_handle(handle);
+   if (!mesh || mesh->type != NOVA64_MESH_INSTANCED) return JS_UNDEFINED;
+   if (idx < 0 || idx >= mesh->instance_count)       return JS_UNDEFINED;
+   if (argc < 3 || !JS_IsArray(argv[2]))               return JS_UNDEFINED;
+
+   float *m = mesh->instance_transforms + idx * 16;
+   for (int i = 0; i < 16; i++) {
+      JSValue v = JS_GetPropertyUint32(ctx, argv[2], (uint32_t)i);
+      double d = 0.0;
+      JS_ToFloat64(ctx, &d, v);
+      JS_FreeValue(ctx, v);
+      m[i] = (float)d;
+   }
+   return JS_UNDEFINED;
+}
+
+static JSValue js_get_instance_count(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int handle = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0);
+   struct nova64_mesh *mesh = mesh_from_handle(handle);
+   if (!mesh || mesh->type != NOVA64_MESH_INSTANCED) return JS_NewInt32(ctx, 0);
+   return JS_NewInt32(ctx, mesh->instance_count);
+}
+
 static void set_function(JSContext *ctx, JSValue object, const char *name, JSCFunction *fn, int length)
 {
    JS_SetPropertyStr(ctx, object, name, JS_NewCFunction(ctx, fn, name, length));
@@ -8081,10 +8185,17 @@ static bool install_nova64_api(JSContext *ctx)
 
    /* Custom mesh (M8) */
    set_function(ctx, global, "createMesh", js_create_mesh, 3);
+   set_function(ctx, global, "createInstancedMesh", js_create_instanced_mesh, 2);
+   set_function(ctx, global, "setInstanceTransform", js_set_instance_transform, 3);
+   set_function(ctx, global, "getInstanceCount", js_get_instance_count, 1);
    {
       JSValue sc = JS_GetPropertyStr(ctx, nova64, "scene");
-      if (!JS_IsUndefined(sc))
+      if (!JS_IsUndefined(sc)) {
          set_function(ctx, sc, "createMesh", js_create_mesh, 3);
+         set_function(ctx, sc, "createInstancedMesh", js_create_instanced_mesh, 2);
+         set_function(ctx, sc, "setInstanceTransform", js_set_instance_transform, 3);
+         set_function(ctx, sc, "getInstanceCount", js_get_instance_count, 1);
+      }
       JS_FreeValue(ctx, sc);
    }
 
@@ -9237,6 +9348,75 @@ static void render_gles_custom_mesh(struct nova64_mesh *mesh, const float view_p
          mesh->gl_custom_vbo, mesh->gl_custom_ibo, (GLsizei)mesh->custom_index_count);
 }
 
+static void render_gles_instanced_mesh(const struct nova64_mesh *mesh, const float view_projection[16])
+{
+   if (!mesh->instance_transforms || mesh->instance_count <= 0) return;
+
+   GLuint vbo, ibo; GLsizei idx_count;
+   switch (mesh->instance_geometry) {
+      case 1: vbo = gles.sphere_vbo; ibo = gles.sphere_ibo; idx_count = 24; break;
+      case 2: vbo = gles.plane_vbo;  ibo = gles.plane_ibo;  idx_count = 6;  break;
+      case 3: /* capsule */ vbo = gles.sphere_vbo; ibo = gles.sphere_ibo; idx_count = 24; break;
+      case 4: /* cylinder */ vbo = gles.sphere_vbo; ibo = gles.sphere_ibo; idx_count = 24; break;
+      default: vbo = gles.cube_vbo; ibo = gles.cube_ibo; idx_count = 36; break;
+   }
+
+   /* Set material uniforms once — shared across all instances */
+   uint32_t color = mesh->color;
+   float r = (float)((color >> 24) & 0xffU) / 255.0f;
+   float g = (float)((color >> 16) & 0xffU) / 255.0f;
+   float b = (float)((color >> 8)  & 0xffU) / 255.0f;
+   float a = ((float)(color & 0xffU) / 255.0f) * clamp_float(mesh->opacity, 0.0f, 1.0f);
+
+   gles.UseProgram(gles.cube_program);
+   gles.Uniform4f(gles.cube_color_uniform, r, g, b, a);
+
+   uint32_t ambient = color_with_intensity(light_state.ambient, light_state.ambient_intensity);
+   gles.Uniform4f(gles.cube_ambient_uniform,
+      (float)((ambient >> 24) & 0xffU) / 255.0f,
+      (float)((ambient >> 16) & 0xffU) / 255.0f,
+      (float)((ambient >> 8)  & 0xffU) / 255.0f,
+      (float)(ambient & 0xffU) / 255.0f);
+   gles.Uniform4f(gles.cube_light_direction_uniform,
+      light_state.direction[0], light_state.direction[1], light_state.direction[2], 0.0f);
+   if (gles.cube_fog_enabled_uniform >= 0)
+      gles.Uniform1i(gles.cube_fog_enabled_uniform, light_state.fog_enabled ? 1 : 0);
+   if (gles.cube_shadow_enabled_uniform >= 0)
+      gles.Uniform1i(gles.cube_shadow_enabled_uniform, 0);
+   if (gles.cube_has_texture_uniform >= 0)
+      gles.Uniform1i(gles.cube_has_texture_uniform, 0);
+   if (gles.cube_has_normal_map_uniform >= 0)
+      gles.Uniform1i(gles.cube_has_normal_map_uniform, 0);
+
+   /* Per-instance draw loop */
+   gles.BindBuffer(GL_ARRAY_BUFFER, vbo);
+   gles.BindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo);
+   gles.EnableVertexAttribArray((GLuint)gles.cube_position_attrib);
+   gles.EnableVertexAttribArray((GLuint)gles.cube_normal_attrib);
+   gles.VertexAttribPointer((GLuint)gles.cube_position_attrib, 3, GL_FLOAT, GL_FALSE,
+      (GLsizei)(sizeof(GLfloat) * 6), NULL);
+   gles.VertexAttribPointer((GLuint)gles.cube_normal_attrib, 3, GL_FLOAT, GL_FALSE,
+      (GLsizei)(sizeof(GLfloat) * 6), (const void *)(uintptr_t)(sizeof(GLfloat) * 3));
+
+   for (int j = 0; j < mesh->instance_count; j++) {
+      const float *model = mesh->instance_transforms + j * 16;
+      float mvp[16];
+      mat4_multiply(mvp, view_projection, model);
+      gles.UniformMatrix4fv(gles.cube_mvp_uniform, 1, GL_FALSE, mvp);
+      /* Normal matrix: upper-left 3x3 of model (adequate for rigid + uniform scale) */
+      float nm[9] = {
+         model[0], model[1], model[2],
+         model[4], model[5], model[6],
+         model[8], model[9], model[10]
+      };
+      gles.UniformMatrix3fv(gles.cube_normal_matrix_uniform, 1, GL_FALSE, nm);
+      gles.DrawElements(GL_TRIANGLES, idx_count, GL_UNSIGNED_SHORT, NULL);
+   }
+
+   gles.DisableVertexAttribArray((GLuint)gles.cube_normal_attrib);
+   gles.DisableVertexAttribArray((GLuint)gles.cube_position_attrib);
+}
+
 static void render_gles_overlay(void)
 {
    if (!convert_framebuffer_to_overlay_rgba())
@@ -9571,6 +9751,8 @@ static void render_gles_scene(void)
          render_gles_cylinder(&meshes[i], view_projection);
       else if (meshes[i].type == NOVA64_MESH_CUSTOM)
          render_gles_custom_mesh(&meshes[i], view_projection);
+      else if (meshes[i].type == NOVA64_MESH_INSTANCED)
+         render_gles_instanced_mesh(&meshes[i], view_projection);
    }
 
    if (use_post) {

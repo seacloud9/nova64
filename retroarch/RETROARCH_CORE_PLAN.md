@@ -349,12 +349,16 @@ directional lighting. Everything below is missing or incomplete.
   returns a borrowed texture handle usable with `setMeshTexture`. `destroyRenderTarget(rt)`.
   `renderTargets` capability flag. `106-render-target.js` covers the full API surface.
 
+- Instanced mesh: `createInstancedMesh(geometry, count)` → NOVA64_MESH_INSTANCED handle.
+  `setInstanceTransform(mesh, i, mat16)` sets per-instance column-major mat4.
+  `getInstanceCount(mesh)` returns count. GLES path: shared material uniforms once,
+  per-instance MVP + 3×3 normal matrix, one DrawElements call per instance (soft loop).
+  Software path: proxy cube at translation column of each instance matrix.
+  `107-instanced-mesh.js` conformance cart sw=4fd99c7a95f90255 gles=f01a0e0dc49c9e0e.
+
 Still missing:
 
 - `setSkybox(texHandle)` cube-map skybox for environments that supply one.
-- Instanced rendering:
-  - `createInstancedMesh(geometry, count)`, `setInstanceTransform(mesh, i, mat)`
-    for particle systems and tile-based 3D scenes.
 - Conformance coverage for each new primitive type and shader feature.
 
 ### 8B: 2D Draw API Completion

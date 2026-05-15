@@ -981,6 +981,21 @@ static struct nova64_audio_voice audio_voices[NOVA64_AUDIO_MAX_VOICES];
 static int16_t audio_mix_buffer[NOVA64_AUDIO_FRAME_SAMPLES * 2];
 static double audio_master_volume = 0.4;
 
+/* ── Off-screen canvas ────────────────────────────────────── */
+#define NOVA64_MAX_CANVASES 4
+struct nova64_canvas {
+   int used;
+   int w, h;
+   uint32_t *pixels;
+};
+static struct nova64_canvas g_canvases[NOVA64_MAX_CANVASES];
+static void reset_canvases(void) {
+   for (int i = 0; i < NOVA64_MAX_CANVASES; i++) {
+      free(g_canvases[i].pixels);
+      memset(&g_canvases[i], 0, sizeof(g_canvases[i]));
+   }
+}
+
 /* ── Timer system ─────────────────────────────────────────── */
 #define NOVA64_MAX_TIMERS 32
 struct nova64_timer { int used; float duration; float elapsed; };
@@ -5153,6 +5168,308 @@ static JSValue js_fill_path(JSContext *ctx, JSValueConst this_val, int argc, JSV
             set_pixel(xp, scanY, color);
       }
    }
+   return JS_UNDEFINED;
+}
+
+/* ── setPixels / getPixels / printRight ──────────────────────────────── */
+static JSValue js_set_pixels(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 5 || !JS_IsArray(argv[4])) return JS_UNDEFINED;
+   int ox = int_from_js(ctx, argv[0], 0);
+   int oy = int_from_js(ctx, argv[1], 0);
+   int w  = int_from_js(ctx, argv[2], 0);
+   int h  = int_from_js(ctx, argv[3], 0);
+   if (w <= 0 || h <= 0) return JS_UNDEFINED;
+   JSValue arr = argv[4];
+   JSValue lv = JS_GetPropertyStr(ctx, arr, "length");
+   int len = int_from_js(ctx, lv, 0);
+   JS_FreeValue(ctx, lv);
+   int n = w * h;
+   if (n > len) n = len;
+   for (int i = 0; i < n; i++) {
+      JSValue cv = JS_GetPropertyUint32(ctx, arr, (unsigned)i);
+      uint32_t c = color_from_js(ctx, cv, 0);
+      JS_FreeValue(ctx, cv);
+      int px = ox + (i % w);
+      int py = oy + (i / w);
+      set_pixel(px, py, c);
+   }
+   return JS_UNDEFINED;
+}
+static JSValue js_get_pixels(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 4) return JS_NewArray(ctx);
+   int ox = int_from_js(ctx, argv[0], 0);
+   int oy = int_from_js(ctx, argv[1], 0);
+   int w  = int_from_js(ctx, argv[2], 0);
+   int h  = int_from_js(ctx, argv[3], 0);
+   if (w <= 0 || h <= 0) return JS_NewArray(ctx);
+   JSValue arr = JS_NewArray(ctx);
+   for (int r = 0; r < h; r++) {
+      for (int c = 0; c < w; c++) {
+         uint32_t pxv = get_pixel(ox + c, oy + r);
+         JS_SetPropertyUint32(ctx, arr, (unsigned)(r * w + c), JS_NewUint32(ctx, pxv));
+      }
+   }
+   return arr;
+}
+static JSValue js_print_right(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 3) return JS_UNDEFINED;
+   const char *text = JS_ToCString(ctx, argv[0]);
+   if (!text) return JS_UNDEFINED;
+   int x = int_from_js(ctx, argv[1], 0) - cam2d_x;
+   int y = int_from_js(ctx, argv[2], 0) - cam2d_y;
+   uint32_t color = color_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, rgba8(255, 255, 255, 255));
+   x -= text_pixel_width(text);
+   draw_text_pixels(text, x, y, color);
+   JS_FreeCString(ctx, text);
+   return JS_UNDEFINED;
+}
+
+/* ── screenBlur — separable box blur ─────────────────────────────────── */
+static JSValue js_screen_blur(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (!framebuffer) return JS_UNDEFINED;
+   int r = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 1);
+   if (r < 1) r = 1;
+   if (r > 8) r = 8;
+   int W = NOVA64_WIDTH, H = NOVA64_HEIGHT;
+   uint32_t *tmp = (uint32_t *)malloc((size_t)W * (size_t)H * sizeof(uint32_t));
+   if (!tmp) return JS_UNDEFINED;
+   /* Horizontal pass */
+   for (int y = 0; y < H; y++) {
+      for (int x = 0; x < W; x++) {
+         unsigned sr = 0, sg = 0, sb = 0, cnt = 0;
+         for (int dx = -r; dx <= r; dx++) {
+            int sx = x + dx;
+            if (sx < 0) sx = 0;
+            if (sx >= W) sx = W - 1;
+            uint32_t c = framebuffer[(size_t)y * W + (size_t)sx];
+            sr += (c >> 24) & 0xff; sg += (c >> 16) & 0xff; sb += (c >> 8) & 0xff;
+            cnt++;
+         }
+         tmp[(size_t)y * W + (size_t)x] = rgba8(sr/cnt, sg/cnt, sb/cnt, 255);
+      }
+   }
+   /* Vertical pass */
+   for (int y = 0; y < H; y++) {
+      for (int x = 0; x < W; x++) {
+         unsigned sr = 0, sg = 0, sb = 0, cnt = 0;
+         for (int dy = -r; dy <= r; dy++) {
+            int sy = y + dy;
+            if (sy < 0) sy = 0;
+            if (sy >= H) sy = H - 1;
+            uint32_t c = tmp[(size_t)sy * W + (size_t)x];
+            sr += (c >> 24) & 0xff; sg += (c >> 16) & 0xff; sb += (c >> 8) & 0xff;
+            cnt++;
+         }
+         framebuffer[(size_t)y * W + (size_t)x] = rgba8(sr/cnt, sg/cnt, sb/cnt, 255);
+      }
+   }
+   free(tmp);
+   return JS_UNDEFINED;
+}
+
+/* ── Off-screen canvas JS functions ──────────────────────────────────── */
+static JSValue js_create_canvas(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int w = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 64);
+   int h = int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 64);
+   if (w < 1 || h < 1 || w > 1280 || h > 720) return JS_NewInt32(ctx, 0);
+   for (int i = 0; i < NOVA64_MAX_CANVASES; i++) {
+      if (!g_canvases[i].used) {
+         g_canvases[i].pixels = (uint32_t *)calloc((size_t)w * (size_t)h, sizeof(uint32_t));
+         if (!g_canvases[i].pixels) return JS_NewInt32(ctx, 0);
+         g_canvases[i].used = 1;
+         g_canvases[i].w = w;
+         g_canvases[i].h = h;
+         return JS_NewInt32(ctx, i + 1);
+      }
+   }
+   return JS_NewInt32(ctx, 0);
+}
+static JSValue js_canvas_clear(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int idx = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0) - 1;
+   if (idx < 0 || idx >= NOVA64_MAX_CANVASES || !g_canvases[idx].used) return JS_UNDEFINED;
+   uint32_t c = color_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, rgba8(0, 0, 0, 255));
+   size_t n = (size_t)g_canvases[idx].w * (size_t)g_canvases[idx].h;
+   for (size_t i = 0; i < n; i++) g_canvases[idx].pixels[i] = c;
+   return JS_UNDEFINED;
+}
+static JSValue js_canvas_pset(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int idx = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0) - 1;
+   if (idx < 0 || idx >= NOVA64_MAX_CANVASES || !g_canvases[idx].used) return JS_UNDEFINED;
+   int x = int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0);
+   int y = int_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 0);
+   uint32_t c = color_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, rgba8(255, 255, 255, 255));
+   if (x < 0 || x >= g_canvases[idx].w || y < 0 || y >= g_canvases[idx].h) return JS_UNDEFINED;
+   g_canvases[idx].pixels[(size_t)y * g_canvases[idx].w + (size_t)x] = c;
+   return JS_UNDEFINED;
+}
+static JSValue js_canvas_pget(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int idx = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0) - 1;
+   if (idx < 0 || idx >= NOVA64_MAX_CANVASES || !g_canvases[idx].used) return JS_NewUint32(ctx, 0);
+   int x = int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0);
+   int y = int_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 0);
+   if (x < 0 || x >= g_canvases[idx].w || y < 0 || y >= g_canvases[idx].h) return JS_NewUint32(ctx, 0);
+   return JS_NewUint32(ctx, g_canvases[idx].pixels[(size_t)y * g_canvases[idx].w + (size_t)x]);
+}
+static JSValue js_canvas_blit(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int idx = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0) - 1;
+   if (idx < 0 || idx >= NOVA64_MAX_CANVASES || !g_canvases[idx].used) return JS_UNDEFINED;
+   int dx = int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0) - cam2d_x;
+   int dy = int_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 0) - cam2d_y;
+   int sx = argc > 3 ? int_from_js(ctx, argv[3], 0) : 0;
+   int sy = argc > 4 ? int_from_js(ctx, argv[4], 0) : 0;
+   int sw = argc > 5 ? int_from_js(ctx, argv[5], g_canvases[idx].w) : g_canvases[idx].w;
+   int sh = argc > 6 ? int_from_js(ctx, argv[6], g_canvases[idx].h) : g_canvases[idx].h;
+   int cw = g_canvases[idx].w, ch = g_canvases[idx].h;
+   for (int row = 0; row < sh; row++) {
+      int sry = sy + row;
+      if (sry < 0 || sry >= ch) continue;
+      for (int col = 0; col < sw; col++) {
+         int srx = sx + col;
+         if (srx < 0 || srx >= cw) continue;
+         uint32_t c = g_canvases[idx].pixels[(size_t)sry * cw + (size_t)srx];
+         uint8_t a = c & 0xff;
+         if (a == 0) continue;
+         if (a == 255) {
+            set_pixel(dx + col, dy + row, c);
+         } else {
+            uint32_t dst = get_pixel(dx + col, dy + row);
+            uint8_t dr = (uint8_t)((dst >> 24) & 0xff);
+            uint8_t dg = (uint8_t)((dst >> 16) & 0xff);
+            uint8_t db = (uint8_t)((dst >>  8) & 0xff);
+            float fa = (float)a / 255.0f;
+            set_pixel(dx + col, dy + row, rgba8(
+               (uint8_t)(((c >> 24) & 0xff) * fa + dr * (1.0f - fa)),
+               (uint8_t)(((c >> 16) & 0xff) * fa + dg * (1.0f - fa)),
+               (uint8_t)(((c >>  8) & 0xff) * fa + db * (1.0f - fa)), 255));
+         }
+      }
+   }
+   return JS_UNDEFINED;
+}
+static JSValue js_destroy_canvas(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val; (void)ctx;
+   int idx = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0) - 1;
+   if (idx >= 0 && idx < NOVA64_MAX_CANVASES) {
+      free(g_canvases[idx].pixels);
+      memset(&g_canvases[idx], 0, sizeof(g_canvases[idx]));
+   }
+   return JS_UNDEFINED;
+}
+static JSValue js_canvas_width(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int idx = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0) - 1;
+   if (idx < 0 || idx >= NOVA64_MAX_CANVASES || !g_canvases[idx].used) return JS_NewInt32(ctx, 0);
+   return JS_NewInt32(ctx, g_canvases[idx].w);
+}
+static JSValue js_canvas_height(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int idx = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0) - 1;
+   if (idx < 0 || idx >= NOVA64_MAX_CANVASES || !g_canvases[idx].used) return JS_NewInt32(ctx, 0);
+   return JS_NewInt32(ctx, g_canvases[idx].h);
+}
+
+/* ── drawNineSlice ────────────────────────────────────────────────────── */
+/* drawNineSlice(path, dx, dy, dw, dh, border [, imgw, imgh]) */
+static JSValue js_draw_nine_slice(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 6) return JS_UNDEFINED;
+   const char *path = JS_ToCString(ctx, argv[0]);
+   if (!path) return JS_UNDEFINED;
+   const struct nova64_package_asset *asset = find_package_asset(path);
+   bool is_png = path_is_png(path);
+   JS_FreeCString(ctx, path);
+   if (!asset || !asset->data || asset->size < 4) return JS_UNDEFINED;
+
+   int dx = int_from_js(ctx, argv[1], 0) - cam2d_x;
+   int dy = int_from_js(ctx, argv[2], 0) - cam2d_y;
+   int dw = int_from_js(ctx, argv[3], 0);
+   int dh = int_from_js(ctx, argv[4], 0);
+   int b  = int_from_js(ctx, argv[5], 0);
+   if (dw <= 0 || dh <= 0 || b <= 0) return JS_UNDEFINED;
+
+   uint8_t *png_pixels = NULL;
+   const uint8_t *pixels = (const uint8_t *)asset->data;
+   int img_w = argc > 6 ? int_from_js(ctx, argv[6], 0) : 0;
+   int img_h = argc > 7 ? int_from_js(ctx, argv[7], 0) : 0;
+   if (is_png) {
+      int pw = 0, ph = 0;
+      png_pixels = decode_png_asset(asset->data, asset->size, &pw, &ph);
+      if (!png_pixels) return JS_UNDEFINED;
+      pixels = png_pixels;
+      if (img_w <= 0) img_w = pw;
+      if (img_h <= 0) img_h = ph;
+   }
+   if (img_w <= 0 || img_h <= 0) {
+      int side = (int)sqrt((double)(asset->size / 4));
+      img_w = side > 0 ? side : 1;
+      img_h = (int)((asset->size / 4) / (size_t)img_w);
+      if (img_h <= 0) img_h = img_w;
+   }
+   /* Clamp border */
+   int sb = b;
+   if (sb * 2 >= img_w) sb = (img_w - 1) / 2;
+   if (sb * 2 >= img_h) sb = (img_h - 1) / 2;
+   if (sb < 1) { free(png_pixels); return JS_UNDEFINED; }
+   int db = b;
+   if (db * 2 >= dw) db = (dw - 1) / 2;
+   if (db * 2 >= dh) db = (dh - 1) / 2;
+   if (db < 1) { free(png_pixels); return JS_UNDEFINED; }
+
+   /* 9 regions: corners, edges, center */
+   /* Source regions: top-left corner = (0,0,sb,sb), etc. */
+   /* Dest regions: top-left = (dx,dy,db,db), etc. */
+   struct { int sx, sy, sw, sh, ddx, ddy, ddw, ddh; } regions[9] = {
+      /* TL */ { 0,       0,       sb,            sb,            dx,       dy,       db,    db    },
+      /* TR */ { img_w-sb, 0,      sb,            sb,            dx+dw-db, dy,       db,    db    },
+      /* BL */ { 0,       img_h-sb, sb,           sb,            dx,       dy+dh-db, db,    db    },
+      /* BR */ { img_w-sb, img_h-sb, sb,          sb,            dx+dw-db, dy+dh-db, db,    db    },
+      /* T  */ { sb,      0,       img_w-sb*2,    sb,            dx+db,    dy,       dw-db*2, db  },
+      /* B  */ { sb,      img_h-sb, img_w-sb*2,  sb,            dx+db,    dy+dh-db, dw-db*2, db  },
+      /* L  */ { 0,       sb,      sb,            img_h-sb*2,    dx,       dy+db,    db,    dh-db*2},
+      /* R  */ { img_w-sb, sb,     sb,            img_h-sb*2,    dx+dw-db, dy+db,    db,    dh-db*2},
+      /* C  */ { sb,      sb,      img_w-sb*2,    img_h-sb*2,    dx+db,    dy+db,    dw-db*2, dh-db*2},
+   };
+   for (int ri = 0; ri < 9; ri++) {
+      int sw2 = regions[ri].sw, sh2 = regions[ri].sh;
+      int ddw = regions[ri].ddw, ddh = regions[ri].ddh;
+      if (sw2 <= 0 || sh2 <= 0 || ddw <= 0 || ddh <= 0) continue;
+      /* Scale each region: sample source and write to dest */
+      for (int row = 0; row < ddh; row++) {
+         int sry = regions[ri].sy + (int)((float)row / (float)ddh * sh2);
+         if (sry < 0 || sry >= img_h) continue;
+         for (int col = 0; col < ddw; col++) {
+            int srx = regions[ri].sx + (int)((float)col / (float)ddw * sw2);
+            if (srx < 0 || srx >= img_w) continue;
+            size_t si = ((size_t)sry * img_w + (size_t)srx) * 4;
+            uint8_t r2 = pixels[si], g2 = pixels[si+1], b2 = pixels[si+2], a2 = pixels[si+3];
+            if (a2 == 0) continue;
+            set_pixel(regions[ri].ddx + col, regions[ri].ddy + row, rgba8(r2, g2, b2, 255));
+         }
+      }
+   }
+   free(png_pixels);
    return JS_UNDEFINED;
 }
 
@@ -9840,6 +10157,29 @@ static bool install_nova64_api(JSContext *ctx)
       JS_FreeValue(ctx, sc);
    }
 
+   /* Batch pixel I/O */
+   set_function(ctx, global, "setPixels",  js_set_pixels,  5);
+   set_function(ctx, global, "getPixels",  js_get_pixels,  4);
+
+   /* Right-aligned text */
+   set_function(ctx, global, "printRight", js_print_right, 4);
+
+   /* Screen blur */
+   set_function(ctx, global, "screenBlur", js_screen_blur, 1);
+
+   /* Off-screen canvas */
+   set_function(ctx, global, "createCanvas",  js_create_canvas,  2);
+   set_function(ctx, global, "canvasClear",   js_canvas_clear,   2);
+   set_function(ctx, global, "canvasPset",    js_canvas_pset,    4);
+   set_function(ctx, global, "canvasPget",    js_canvas_pget,    3);
+   set_function(ctx, global, "canvasBlit",    js_canvas_blit,    7);
+   set_function(ctx, global, "destroyCanvas", js_destroy_canvas, 1);
+   set_function(ctx, global, "canvasWidth",   js_canvas_width,   1);
+   set_function(ctx, global, "canvasHeight",  js_canvas_height,  1);
+
+   /* Nine-slice */
+   set_function(ctx, global, "drawNineSlice", js_draw_nine_slice, 8);
+
    /* Timers */
    set_function(ctx, global, "createTimer",   js_create_timer,   1);
    set_function(ctx, global, "timerDone",     js_timer_done,     1);
@@ -12445,6 +12785,7 @@ void RETRO_CALLCONV retro_reset(void)
    memset(g_tweens, 0, sizeof(g_tweens));
    memset(g_timers, 0, sizeof(g_timers));
    memset(g_grids,  0, sizeof(g_grids));
+   reset_canvases();
    g_shake_intensity = 0.0f; g_shake_timer = 0.0f; g_shake_duration = 0.0f;
    g_flash_timer = 0.0f; g_flash_duration = 0.0f;
    g_path_count = 0; g_path_closed = 0;
@@ -12627,6 +12968,7 @@ bool RETRO_CALLCONV retro_load_game(const struct retro_game_info *info)
    memset(g_tweens, 0, sizeof(g_tweens));
    memset(g_timers, 0, sizeof(g_timers));
    memset(g_grids,  0, sizeof(g_grids));
+   reset_canvases();
    g_shake_intensity = 0.0f; g_shake_timer = 0.0f; g_shake_duration = 0.0f;
    g_flash_timer = 0.0f; g_flash_duration = 0.0f;
    g_path_count = 0; g_path_closed = 0;

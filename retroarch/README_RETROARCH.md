@@ -580,6 +580,50 @@ Noise values are deterministic (same inputs always produce the same output). Use
 `fbm` for terrain heights, animated clouds, water surfaces, and other fractal
 patterns.
 
+### Batch Pixel I/O
+
+```js
+setPixels(x, y, w, h, array)   // write w×h packed colors from flat array to framebuffer
+getPixels(x, y, w, h)           // read w×h region as flat packed-color array
+```
+
+### Off-Screen Canvas
+
+```js
+createCanvas(w, h)              // allocate off-screen pixel buffer → handle
+canvasClear(handle, color)      // fill canvas with color
+canvasPset(handle, x, y, color) // set pixel in canvas
+canvasPget(handle, x, y)        // read pixel from canvas
+canvasBlit(handle, dx, dy [, sx, sy, sw, sh])
+                                // copy canvas region to main framebuffer; alpha-blended
+canvasWidth(handle)             // canvas pixel width
+canvasHeight(handle)            // canvas pixel height
+destroyCanvas(handle)           // free canvas memory
+```
+
+Up to 4 canvases. Maximum size 1280×720.
+
+### Nine-Slice
+
+```js
+drawNineSlice(path, dx, dy, dw, dh, border [, imgw, imgh])
+                                // scale RGBA asset as a 9-slice panel; border sets
+                                // corner/edge pixel thickness in both source and dest
+```
+
+### Screen Blur
+
+```js
+screenBlur(radius)              // separable box blur over the framebuffer; radius 1–8
+```
+
+### Text Alignment
+
+```js
+printRight(text, x, y [, color])    // right-aligned: text ends at x
+printCentered(text, x, y [, color]) // horizontally centered at x
+```
+
 ### Timers
 
 ```js
@@ -923,3 +967,7 @@ These browser-side Nova64 or Three.js features are not implemented:
 | `128-timers.js` | createTimer/timerDone/timerElapsed/timerProgress/resetTimer lifecycle |
 | `129-grid.js` | createGrid/setCell/getCell/clearGrid/gridCols/gridRows logical grid |
 | `130-measure-text.js` | measureText dimensions object; printCentered alignment |
+| `131-pixels-print-right.js` | setPixels/getPixels batch I/O; printRight right-aligned text |
+| `132-screen-blur.js` | screenBlur separable box blur post-process |
+| `133-canvas.js` | createCanvas/canvasPset/canvasBlit off-screen pixel buffer |
+| `134-nine-slice.js` | drawNineSlice 9-slice sprite panel API smoke test |

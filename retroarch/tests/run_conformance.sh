@@ -630,5 +630,9 @@ run_visual_case "127 stamp text"    "127-stamp-text"    "retroarch/conformance/1
 run_visual_case "128 timers"        "128-timers"        "retroarch/conformance/128-timers.js"        "9b3c11980dd22361"
 run_visual_case "129 grid"          "129-grid"          "retroarch/conformance/129-grid.js"          "bd89f08e64c79c8c"
 run_visual_case "130 measure text"  "130-measure-text"  "retroarch/conformance/130-measure-text.js"  "de2a65891af55681"
+run_visual_case "131 pixels print right" "131-pixels-print-right" "retroarch/conformance/131-pixels-print-right.js" "12d34e344a273c53"
+run_visual_case "132 screen blur"   "132-screen-blur"   "retroarch/conformance/132-screen-blur.js"   "4b938a5c442437ab"
+run_visual_case "133 canvas"        "133-canvas"        "retroarch/conformance/133-canvas.js"        "cb823500597436f8"
+run_visual_case "134 nine slice"    "134-nine-slice"    "retroarch/conformance/134-nine-slice.js"    "6866435d8d75ceef"
 
 echo "Conformance passed."

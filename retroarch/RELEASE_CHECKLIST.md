@@ -4,6 +4,8 @@ Run this checklist before tagging a release. Each step can be performed by
 someone who did not implement the core. All commands assume WSL on Windows;
 adapt paths for Linux/macOS natively.
 
+Core status: Milestones 1–8 complete. 110 conformance carts passing.
+
 ## 1. Build
 
 ```bash
@@ -61,6 +63,10 @@ Check that the following render correctly (no blank/all-black frames):
 - `20-post.png` — CRT/vignette effect visible
 - `26-draw2d.png` — circles and aligned text
 - `30-showcase.png` — 3D scene with HUD, score, indicator dot
+- `103-shadow-map.png` — shadow cast on ground plane (GLES)
+- `106-render-target.png` — scene rendered into texture (GLES)
+- `107-instanced-mesh.png` — ring of instanced cubes (GLES)
+- `108-skybox.png` — equirectangular panorama background (GLES)
 
 ## 4. Manual RetroArch Smoke Test
 
@@ -108,11 +114,9 @@ The following are tracked gaps, not bugs. Confirm they are still documented in
 `README_RETROARCH.md` under "Known Gaps And Unsupported APIs":
 
 - [ ] QuickJS heap is not serialized in save states (rollback covers only host state)
-- [ ] Shadow maps record state but do not affect shading in GLES path
-- [ ] PBR roughness/metalness stored but not applied in lit shader
-- [ ] Orthographic camera (`setCameraOrthographic`) not implemented
-- [ ] Vulkan backend staged but not functional
+- [ ] Vulkan backend staged but not functional (selects GLES fallback)
 - [ ] Texture sampling in software/headless mode is no-op (GL path only)
+- [ ] Skybox and render targets require GLES 3.1 context (`caps.skybox`/`caps.renderTargets` false in software mode)
 
 ## 8. Version Bump
 

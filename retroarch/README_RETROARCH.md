@@ -5,30 +5,58 @@ Three.js, or Babylon.js. Carts run through QuickJS and call native Nova64 host A
 
 ## Status
 
-Milestones 1–7 are complete. The core is in Milestone 8 (Release Hardening).
+Milestones 1–8 are complete.
 
 Implemented and conformance-tested:
 
 - QuickJS ES module cart execution with `init()`, `update(dt)`, `draw()` lifecycle.
 - 640×360 software 2D framebuffer; RGB565 output when hardware is unavailable.
 - OpenGL ES 3.1 hardware renderer via RetroArch-owned hardware context.
-- Cube, plane, and low-poly sphere primitives with ambient/directional lighting.
+- Cube, plane, low-poly sphere, capsule, and cylinder primitives with ambient/directional lighting.
+- Orthographic and perspective camera projection.
 - 2D overlay texture compositor (software framebuffer over GLES 3D output).
 - Post-processing pipeline: CRT, vignette, pixelate, bloom, chromatic aberration,
   color grade, and posterize effects via GLES FBO.
-- Texture handle allocation and per-mesh texture binding.
-- Material effects: emissive color and per-mesh alpha/transparency.
+- Texture handle allocation and per-mesh texture binding (GLES; software-mode handles
+  are valid but no-op for GL upload).
+- Material effects: emissive color, per-mesh alpha/transparency, roughness, metalness.
+- UV offset and UV scale per mesh.
+- Per-mesh blend modes: opaque, additive, multiply.
+- Normal map support via `setMeshNormalMap`.
+- Directional shadow maps with PCF 3×3 filtering and configurable quality.
+- Scene hierarchy: parent/child mesh transforms via `setParent`/`clearParent`.
+- Z-sorted sprite draw queue for 2D sprites with depth ordering.
+- Custom mesh geometry via `createMesh`.
+- Instanced mesh rendering via `createInstancedMesh` / `setInstanceTransform`.
+- Equirectangular skybox via `setSkybox`.
+- Offscreen render targets: `createRenderTarget`, `renderScene`, `renderTargetAsTexture`.
 - Procedural SFX and PCM asset audio mixing through RetroArch audio callbacks.
+- Streamed music: `playMusic`/`stopMusic`/`pauseMusic`/`resumeMusic`/`setMusicVolume`.
+- Named audio channels with per-channel volume and pitch.
+- Voice handle API: `sfx()` and `playSound()` return numeric voice handles.
+- Positional 3D audio via `playSound3D` / `setListenerPos`.
+- Audio echo effect via `setEcho`/`clearEcho`.
+- Stereo panning.
 - Persistent JSON cart storage using the RetroArch save directory.
+- Compressed storage via zlib: `storageSetCompressed`/`storageGetCompressed`.
 - `.nova` zip-style package format with manifest asset staging and relative
   ES module imports.
+- PNG asset decode for sprites and textures.
+- Bitmap font loading and rendering via `loadFont`/`printFont`.
 - Full keyboard and mouse input with per-frame hold/edge detection.
+- Multi-port gamepad input (ports 0–3).
+- Rumble output via `rumble()`.
+- 2D AABB/circle physics colliders via `createCollider`/`moveAndCollide`.
+- 3D raycast via `raycast()`.
+- RetroAchievements cart RAM via `peek`/`poke`.
+- In-cart developer console via `nova64.console`.
+- Hot reload when `NOVA64_HOT_RELOAD=1`.
 - Versioned save-state headers for deterministic host-owned state.
 
 ## Build
 
 Use WSL for all build and test operations on Windows.
-The core links zlib for zip-style `.nova` source extraction.
+The core links zlib for zip-style `.nova` source extraction and compressed storage.
 
 ```bash
 cd /mnt/c/Users/brend/exp/nova64
@@ -68,15 +96,19 @@ Harness flags:
 | `--renderer opengles3\|vulkan12` | Select renderer backend |
 | `--seed <n>` | Inject deterministic initial RNG seed |
 | `--perf` | Log `nova64.perf` report on unload |
+| `--frames <n>` | Run for N frames instead of the default 2 |
 | `--key <name>` | Inject held keyboard key (e.g. `space`, `left`) |
 | `--mouse-x <n>` | Inject relative mouse X movement |
 | `--mouse-y <n>` | Inject relative mouse Y movement |
 | `--mouse-btn left\|right\|middle` | Inject held mouse button |
 | `--touch-x <n>` / `--touch-y <n>` | Inject pointer/touch coordinates |
 | `--touch-count <n>` | Inject active pointer/touch count |
+| `--gles` | Request GLES hardware context (Mesa headless) |
 
 `NOVA64_SAVE_DIR=<path>` sets the cart storage directory for harness runs.
 `NOVA64_RENDER_COMMAND_LOG=<path>` enables command logging outside the harness.
+`NOVA64_HOT_RELOAD=1` causes `retro_reset` to re-read the cart from disk.
+`NOVA64_GLES_TESTS=1` enables GLES conformance cases in the test suite.
 
 Run the full conformance suite:
 
@@ -164,7 +196,7 @@ textHeight(text)
 textSize(text)                            // { w, h, lines }
 printShadow(text, x, y, color, shadowColor [, dx [, dy [, align]]])
 printOutline(text, x, y, color, outlineColor [, align])
-spr(path, dx, dy [, imgW, imgH [, sx, sy [, bw, bh]]])  // blit RGBA asset
+spr(path, dx, dy [, imgW, imgH [, sx, sy [, bw, bh [, z]]]])  // blit RGBA/PNG asset; z for depth sort
 createSpriteSheet(path, frameW, frameH)  // auto-slice RGBA sheet
 sprFrame(sheet, frame, dx, dy)            // draw indexed frame
 sprNamed(sheet, name, dx, dy)             // draw atlas JSON region
@@ -189,13 +221,23 @@ pushPalette() / popPalette()
 getDrawState()                            // { clip, camera2D, blend, palette }
 clearDrawState()
 draw3d()                                  // flush 3D scene to framebuffer
+draw3d(fn)                                // flush 3D scene, invoke callback after
+```
+
+### Font
+
+```js
+loadFont(path [, size])       // load bitmap font from package asset; returns handle
+printFont(handle, text, x, y, color [, align])
+destroyFont(handle)
 ```
 
 ### Input — Gamepad
 
 ```js
-btn(nameOrIndex)   // held: 'up','down','left','right','a','b','x','y', or 0-7
-btnp(nameOrIndex)  // edge (just pressed)
+btn(nameOrIndex [, port])   // held: 'up','down','left','right','a','b','x','y', or 0-7
+btnp(nameOrIndex [, port])  // edge (just pressed); port 0-3 for multi-player
+rumble(strength)             // controller rumble 0.0–1.0
 ```
 
 ### Input — Keyboard
@@ -222,11 +264,43 @@ touchCount()              // active pointer/touch count
 ### Audio
 
 ```js
-sfx(idOrOpts [, opts])          // procedural synth SFX
-setVolume(value)                 // global volume 0.0–1.0
-playSound(path [, vol [, loop]]) // play PCM asset (.pcm raw int16 or .wav)
-stopSound(path)                  // stop a specific looping sound
-stopAllSounds()                  // stop all active audio voices
+sfx(idOrOpts [, opts])               // procedural synth SFX; returns voice handle
+setVolume(value)                      // global volume 0.0–1.0
+playSound(path [, vol [, loop [, channel [, pitch]]]])  // play PCM/WAV asset; returns voice handle
+stopSound(path)                       // stop a specific looping sound
+stopAllSounds()                       // stop all active audio voices
+
+// Music (streamed)
+playMusic(path [, volume [, loop]])
+stopMusic()
+pauseMusic()
+resumeMusic()
+setMusicVolume(volume)
+musicActive()                         // true if music is currently playing
+
+// Named channels
+setChannelVolume(channel, volume)
+getChannelVolume(channel)             // 0.0–1.0
+stopChannel(channel)
+setChannelPitch(channel, pitch)
+getChannelPitch(channel)
+nova64.audio.setChannelVolume / getChannelVolume / stopChannel
+nova64.audio.setChannelPitch / getChannelPitch
+
+// Voice handles (returned by sfx/playSound)
+stopVoice(handle)
+setVoicePitch(handle, pitch)
+getVoicePitch(handle)
+getVoiceVolume(handle)
+voiceActive(handle)                   // true if voice is still playing
+
+// Effects
+setEcho(delay, decay)                 // echo/delay effect
+clearEcho()
+
+// Positional 3D audio
+setListenerPos(x, y, z)
+playSound3D(path, x, y, z [, vol [, loop [, channel]]])
 ```
 
 SFX option keys: `wave` ('square'|'sine'|'triangle'|'noise'), `freq`, `dur`,
@@ -245,10 +319,24 @@ nova64.storage.has(key)          // true if key exists
 nova64.storage.keys()            // array of stored key names for this cart
 nova64.storage.clear()           // delete all keys for this cart; returns count
 nova64.storage.open(namespace)   // isolated store: save/load/delete/has
+nova64.storage.cartIds()         // array of cart IDs that have stored data
+
+// Compressed storage (zlib deflate — stored as <key>.z)
+storageSetCompressed(key, value)            // JSON-stringify + compress; returns bool
+storageGetCompressed(key [, fallback])      // decompress + JSON-parse; returns fallback if missing
+storageHasCompressed(key)                   // true if <key>.z exists
+nova64.storage.saveCompressed / loadCompressed / hasCompressed
 ```
 
 Top-level aliases: `saveData`, `loadData`, `deleteData`, `saveJSON`, `loadJSON`,
 `remove`, `hasData`, `storageKeys`, `storageClear`.
+
+Storage versioning:
+
+```js
+storageVersion()             // returns current version number
+storageSetVersion(n)         // set version; triggers migration hooks on load
+```
 
 ### Assets
 
@@ -291,11 +379,18 @@ createSphere(color)
 createSphere(radius, color [, position])
 createPlane(color)
 createPlane(width, depth, color)
+createCapsule(radius, height, color [, position])
+createCylinder(radius, height, color [, position])
+
+// Custom geometry
+createMesh(positions, normals, indices)  // Float32Array positions, Float32Array normals, Uint16Array indices
 
 // Mesh lifecycle
 destroyMesh(handle)
 removeMesh(handle)
-getMesh(handle)              // snapshot: { x, y, z, rx, ry, rz, sx, sy, sz, visible }
+getMesh(handle)    // snapshot: { x, y, z, rx, ry, rz, sx, sy, sz, visible,
+                   //             opacity, castShadow, receiveShadow, flatShading,
+                   //             blendMode, emissiveColor, emissiveIntensity }
 
 // Transforms
 setPosition(handle, x, y, z)
@@ -306,9 +401,14 @@ getRotation(handle)          // { x, y, z }
 rotateMesh(handle, dx, dy, dz)
 moveMesh(handle, dx, dy, dz)
 
+// Scene hierarchy
+setParent(child, parent)     // child inherits parent's world transform
+clearParent(child)
+getWorldPosition(handle)     // { x, y, z } in world space
+
 // Material
 setMeshVisible(handle, visible)
-setMeshOpacity(handle, opacity)     // 0.0–1.0
+setMeshOpacity(handle, opacity)           // 0.0–1.0
 setFlatShading(handle, enabled)
 setCastShadow(handle, enabled)
 setReceiveShadow(handle, enabled)
@@ -316,14 +416,24 @@ setMeshColor(handle, color)
 setMeshEmissive(handle, color, intensity)
 setMeshAlpha(handle, alpha)
 setMeshTexture(handle, texHandle)
+setMeshNormalMap(handle, texHandle)       // tangent-space normal map
+setMeshRoughness(handle, value)           // 0.0–1.0 (PBR roughness)
+setMeshMetalness(handle, value)           // 0.0–1.0 (PBR metalness)
+setMeshUVOffset(handle, u, v)
+setMeshUVScale(handle, u, v)
+setMeshBlend(handle, mode)                // 'opaque'|'additive'|'multiply'
+
+// Shadow quality
+setShadowQuality(quality)   // 'low'|'medium'|'high' — changes shadow map resolution
 
 // Textures
 createTexture(width, height, rgbaBytes)
 destroyTexture(texHandle)
 
 // Stats and capabilities
-get3DStats()               // { meshCount, lightCount }
-getBackendCapabilities()   // { emissive, meshAlpha, textures }
+get3DStats()               // { meshCount, triangleCount, visibleMeshes, pointLights, backend }
+getBackendCapabilities()   // { hardwareGLES, softwareFallback, emissive, meshAlpha,
+                           //   textures, normalMaps, shadowMaps, renderTargets, skybox, ... }
 ```
 
 ### Camera
@@ -333,6 +443,12 @@ setCameraPosition(x, y, z)
 setCameraTarget(x, y, z)
 setCameraFOV(degrees)
 setCameraLookAt(direction)
+getCameraPosition()          // { x, y, z }
+getCameraTarget()            // { x, y, z }
+getCameraFOV()               // degrees
+
+setCameraOrthographic(left, right, bottom, top, near, far)
+setCameraPerspective()       // restore perspective projection
 ```
 
 ### Lighting
@@ -354,6 +470,51 @@ getSkyColor()                 // { enabled, top, bottom }
 clearSkyColor()
 ```
 
+### Skybox
+
+```js
+setSkybox(texHandle)          // equirectangular panoramic texture as background (GLES only)
+clearSkybox()                 // revert to gradient/solid background
+```
+
+`caps.skybox` reports whether the current backend supports skybox rendering.
+
+### Render Targets
+
+```js
+createRenderTarget(width, height)   // returns handle; GLES only (software: handle 0)
+renderScene(rtHandle)               // render current 3D scene into the render target
+renderTargetAsTexture(rtHandle)     // returns a texture handle for use with setMeshTexture
+destroyRenderTarget(rtHandle)
+```
+
+`caps.renderTargets` reports whether the current backend supports render targets.
+
+### Instanced Mesh
+
+```js
+createInstancedMesh(geometry, count)         // geometry: 'cube'|'sphere'|'plane'|'capsule'|'cylinder'
+setInstanceTransform(mesh, index, mat16)     // mat16: 16-element column-major Float32 model matrix
+getInstanceCount(mesh)                       // returns instance count
+```
+
+### Physics
+
+```js
+createCollider(type, x, y, w, h)   // type: 'aabb'|'circle'; w/h for aabb, w as radius for circle
+setColliderPos(handle, x, y)
+checkCollision(a, b)               // { colliding, normal, depth }
+moveAndCollide(handle, dx, dy, colliders)   // resolved movement vector
+destroyCollider(handle)
+```
+
+### Raycast
+
+```js
+raycast(ox, oy, oz, dx, dy, dz [, maxDist])
+// Returns { handle, distance, point: {x,y,z}, normal: {x,y,z} } or null if no hit
+```
+
 ### Post Processing
 
 ```js
@@ -371,8 +532,28 @@ nova64.post.getState()              // returns current effect state object
 ### Runtime Utilities
 
 ```js
-nova64.frame()   // current frame counter (integer, increments each retro_run)
-nova64.time()    // elapsed seconds (float)
+nova64.frame()              // current frame counter (integer, increments each retro_run)
+nova64.time()               // elapsed seconds (float)
+getResolution()             // { width, height }
+nova64.getResolution()      // alias
+isDeveloperMode()           // true when core is running in developer mode
+nova64.isDeveloperMode()    // alias
+devPrint(text)              // print to RetroArch on-screen notification (developer mode)
+```
+
+### RetroAchievements Cart RAM
+
+```js
+peek(addr)           // read byte at cheevos RAM address
+poke(addr, value)    // write byte to cheevos RAM address
+nova64.cheevos.peek / poke / ramSize
+```
+
+### Developer Console
+
+```js
+nova64.console.print(text)   // append line to in-cart overlay ring buffer
+nova64.console.clear()       // clear overlay buffer
 ```
 
 ## Known Gaps And Unsupported APIs
@@ -383,17 +564,12 @@ These browser-side Nova64 or Three.js features are not implemented:
   (framebuffer, input, camera, lights, mesh table). JS object state is reset on
   load. Carts must re-derive JS state from persistent storage or use deterministic
   init logic.
-- **Advanced tilemap and sprite-sheet tooling**: first-pass tilemaps and
-  sprite-sheet frame/atlas blits are implemented, but richer browser tooling
-  such as z-sorted draw queues and complex atlas formats is not yet mapped.
-- **Streamed music**: `playMusic()`, track looping, and crossfade are not
-  implemented. Use `playSound(..., vol, true)` for looping PCM clips.
-- **Texture binding in software mode**: `createTexture`/`setMeshTexture` allocate
+- **Texture sampling in software mode**: `createTexture`/`setMeshTexture` allocate
   valid handles and track state but do not upload to GL in headless/software
   captures.
-- **Shadow maps**: `setCastShadow`/`setReceiveShadow` record state but shading
-  does not vary by shadow in the current GLES shader.
-- **Orthographic camera**: only perspective projection is implemented.
+- **Skybox and render targets in software mode**: `caps.skybox` and
+  `caps.renderTargets` report `false` without a GLES context. Both features require
+  GLES 3.1.
 - **Browser-only globals**: `window`, `document`, `THREE`, `BABYLON`, and any
   DOM/Web APIs are not available and will throw at cart load time.
 - **Multiplayer/network**: no networking APIs.
@@ -434,6 +610,7 @@ These browser-side Nova64 or Three.js features are not implemented:
 | `30-showcase.js` | multi-API cross-subsystem demo |
 | `31-tilemap.js` | tilemap draw from RGBA tilesheet |
 | `32-spritesheet.js` | sprite-sheet frame and named atlas blit |
+| `33-music.js` | playMusic/stopMusic/pauseMusic/resumeMusic/setMusicVolume |
 | `34-analog.js` | analog stick and trigger input |
 | `35-rng.js` | deterministic RNG |
 | `36-camera2d.js` | 2D camera offset and clear |
@@ -444,6 +621,30 @@ These browser-side Nova64 or Three.js features are not implemented:
 | `41-asset-quota.js` | asset quota reporting and rejection |
 | `42-touch.js` | pointer/touch input |
 | `43-storage-namespace.js` | namespaced storage stores |
+| `44-capsule.js` | capsule primitive |
+| `45-cylinder.js` | cylinder primitive |
+| `46-blend2d.js` | 2D blend mode set/clear/visual |
+| `47-camera-ortho.js` | setCameraOrthographic / setCameraPerspective |
+| `48-sky-color.js` | setSkyColor / clearSkyColor |
+| `49-mesh-material.js` | roughness, metalness, UV offset/scale, blendMode round-trips |
+| `50-get3d-stats.js` | get3DStats fields and counts |
+| `51-clear-scene.js` | clearScene mesh invalidation |
+| `52-camera-getters.js` | getCameraPosition / getCameraTarget / getCameraFOV |
+| `53-mesh-opacity.js` | setMeshOpacity round-trip and visible mesh count |
+| `54-emissive.js` | setMeshEmissive round-trip |
+| `55-shadow-flags.js` | setCastShadow / setReceiveShadow / setFlatShading round-trips |
+| `56-point-lights.js` | createPointLight / setPointLightPosition / removeLight |
+| `57-destroy-mesh.js` | destroyMesh / removeMesh handle invalidation |
+| `58-mesh-color.js` | setMeshColor / setMeshAlpha round-trips |
+| `59-move-rotate.js` | moveMesh / rotateMesh delta accumulation |
+| `60-fog.js` | setFog / clearFog visual |
+| `61-camera-lookat.js` | setCameraLookAt direction |
+| `62-set-position-rotation.js` | setPosition / setRotation absolute vs delta |
+| `63-texture-lifecycle.js` | createTexture / setMeshTexture / destroyTexture |
+| `64-directional-light.js` | setAmbientLight / setLightDirection / setDirectionalLight |
+| `65-backend-caps.js` | getBackendCapabilities full field validation |
+| `66-draw3d-callback.js` | draw3d() no-arg + draw3d(fn) callback |
+| `67-storage.js` | saveData / loadData / hasData / deleteData / storageKeys / storageClear |
 | `68-sky-gradient.js` | software sky gradient + sky state |
 | `69-palette-swap.js` | 16-color palette helpers and palette swap |
 | `70-draw-shapes.js` | gradients, thick lines, triangles, ovals, alpha blend |
@@ -454,3 +655,36 @@ These browser-side Nova64 or Three.js features are not implemented:
 | `75-screen-threshold.js` | invert/grayscale/threshold/replaceColor |
 | `76-text-effects.js` | text size, shadow, and outline helpers |
 | `77-draw-state-stack.js` | push/pop draw state helpers |
+| `78-rumble.js` | rumble() API |
+| `79-storage-version.js` | storageVersion / storageSetVersion round-trip |
+| `80-physics.js` | AABB/circle colliders: createCollider/checkCollision/moveAndCollide |
+| `81-png-sprite.js` | PNG asset decode in spr() and createTexture() |
+| `82-scene-hierarchy.js` | setParent / clearParent / getWorldPosition |
+| `83-audio-channels.js` | named channels: setChannelVolume / stopChannel |
+| `84-storage-cart-ids.js` | storage.cartIds() |
+| `85-raycast.js` | raycast() hit result and null miss |
+| `86-bitmap-font.js` | loadFont / printFont / destroyFont |
+| `87-resolution.js` | getResolution() |
+| `88-echo.js` | setEcho / clearEcho |
+| `89-positional-audio.js` | setListenerPos / playSound3D |
+| `90-developer-mode.js` | isDeveloperMode() |
+| `91-stereo-pan.js` | stereo panning via playSound3D |
+| `92-hot-reload.js` | NOVA64_HOT_RELOAD=1 cart re-read on reset |
+| `93-dev-console.js` | nova64.console.print / clear |
+| `94-create-mesh.js` | createMesh custom geometry |
+| `95-audio-pitch.js` | playSound pitch parameter |
+| `96-channel-pitch.js` | setChannelPitch / getChannelPitch |
+| `97-multiport-input.js` | btn/btnp port argument (multi-player) |
+| `98-cheevos-ram.js` | peek / poke / ramSize |
+| `99-voice-handle.js` | voice handles: stopVoice / setVoicePitch / voiceActive |
+| `100-pbr-material.js` | PBR: roughness, metalness, blendMode |
+| `101-uv-transform.js` | setMeshUVOffset / setMeshUVScale |
+| `102-stereo-audio.js` | audio format resilience; missing asset graceful fail |
+| `103-shadow-map.js` | setShadowQuality, shadowMaps cap, PCF shadow rendering |
+| `104-normal-map.js` | setMeshNormalMap, normalMaps cap |
+| `105-z-sort-sprites.js` | spr() z-depth parameter and draw order |
+| `106-render-target.js` | createRenderTarget / renderScene / renderTargetAsTexture / destroyRenderTarget |
+| `107-instanced-mesh.js` | createInstancedMesh / setInstanceTransform / getInstanceCount |
+| `108-skybox.js` | setSkybox equirectangular panorama / clearSkybox |
+| `109-blend-modes.js` | setMeshBlend opaque/additive/multiply; getMesh().blendMode round-trip |
+| `110-storage-compressed.js` | storageSetCompressed / storageGetCompressed / storageHasCompressed |

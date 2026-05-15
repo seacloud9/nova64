@@ -39,6 +39,7 @@ Implemented and conformance-tested:
 - Stereo panning.
 - Persistent JSON cart storage using the RetroArch save directory.
 - Compressed storage via zlib: `storageSetCompressed`/`storageGetCompressed`.
+- Procedural noise: 1D/2D/3D Perlin gradient noise and fractal Brownian motion via `noise()`/`fbm()`.
 - `.nova` zip-style package format with manifest asset staging and relative
   ES module imports.
 - PNG asset decode for sprites and textures.
@@ -529,6 +530,22 @@ nova64.post.clear()                 // reset all post effects
 nova64.post.getState()              // returns current effect state object
 ```
 
+### Procedural Noise
+
+```js
+noise(x)                    // 1D Perlin gradient noise → approximately [-1, 1]
+noise(x, y)                 // 2D Perlin gradient noise
+noise(x, y, z)              // 3D Perlin gradient noise
+fbm(x, y [, octaves [, lacunarity [, gain]]])
+                            // fractal Brownian motion (layered noise); octaves default 6
+nova64.random.noise(...)    // namespace alias
+nova64.random.fbm(...)      // namespace alias
+```
+
+Noise values are deterministic (same inputs always produce the same output). Use
+`fbm` for terrain heights, animated clouds, water surfaces, and other fractal
+patterns.
+
 ### Runtime Utilities
 
 ```js
@@ -688,3 +705,4 @@ These browser-side Nova64 or Three.js features are not implemented:
 | `108-skybox.js` | setSkybox equirectangular panorama / clearSkybox |
 | `109-blend-modes.js` | setMeshBlend opaque/additive/multiply; getMesh().blendMode round-trip |
 | `110-storage-compressed.js` | storageSetCompressed / storageGetCompressed / storageHasCompressed |
+| `111-noise.js` | noise(x/y/z) Perlin gradient noise; fbm() fractal Brownian motion |

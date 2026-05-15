@@ -4463,6 +4463,132 @@ static JSValue js_rng_int(JSContext *ctx, JSValueConst this_val, int argc, JSVal
    return JS_NewInt32(ctx, lo + (int)(r * range));
 }
 
+/* ---------- Perlin gradient noise ----------
+ * Classic 256-entry permutation table with 2D/3D gradient noise.
+ * noise(x), noise(x,y), noise(x,y,z) → approximately [-1, 1].
+ * fbm(x, y [, octaves [, lacunarity [, gain]]]) → fractal Brownian motion.
+ */
+
+static const int PERM_SRC[256] = {
+   151,160,137, 91, 90, 15,131, 13,201, 95, 96, 53,194,233,  7,225,
+   140, 36,103, 30, 69,142,  8, 99, 37,240, 21, 10, 23,190,  6,148,
+   247,120,234, 75,  0, 26,197, 62, 94,252,219,203,117, 35, 11, 32,
+    57,177, 33, 88,237,149, 56, 87,174, 20,125,136,171,168, 68,175,
+    74,165, 71,134,139, 48, 27,166, 77,146,158,231, 83,111,229,122,
+    60,211,133,230,220,105, 92, 41, 55, 46,245, 40,244,102,143, 54,
+    65, 25, 63,161,  1,216, 80, 73,209, 76,132,187,208, 89, 18,169,
+   200,196,135,130,116,188,159, 86,164,100,109,198,173,186,  3, 64,
+    52,217,226,250,124,123,  5,202, 38,147,118,126,255, 82, 85,212,
+   207,206, 59,227, 47, 16, 58, 17,182,189, 28, 42,223,183,170,213,
+   119,248,152,  2, 44,154,163, 70,221,153,101,155,167, 43,172,  9,
+   129, 22, 39,253, 19, 98,108,110, 79,113,224,232,178,185,112,104,
+   218,246, 97,228,251, 34,242,193,238,210,144, 12,191,179,162,241,
+    81, 51,145,235,249, 14,239,107, 49,192,214, 31,181,199,106,157,
+   184, 84,204,176,115,121, 50, 45,127,  4,150,254,138,236,205, 93,
+   222,114, 67, 29, 24, 72,243,141,128,195, 78, 66,215, 61,156,180
+};
+
+static int g_perm[512];
+static int g_noise_init_done = 0;
+
+static void noise_ensure_init(void)
+{
+   if (g_noise_init_done) return;
+   for (int i = 0; i < 256; i++) g_perm[i] = g_perm[i + 256] = PERM_SRC[i];
+   g_noise_init_done = 1;
+}
+
+static double noise_fade(double t) { return t * t * t * (t * (t * 6.0 - 15.0) + 10.0); }
+static double noise_lerp(double t, double a, double b) { return a + t * (b - a); }
+
+static double noise_grad2(int hash, double x, double y)
+{
+   switch (hash & 7) {
+      case 0: return  x + y; case 1: return -x + y;
+      case 2: return  x - y; case 3: return -x - y;
+      case 4: return  x;     case 5: return -x;
+      case 6: return  y;     case 7: return -y;
+      default: return 0.0;
+   }
+}
+
+static double noise_grad3(int hash, double x, double y, double z)
+{
+   int h = hash & 15;
+   double u = h < 8 ? x : y;
+   double v = h < 4 ? y : (h == 12 || h == 14 ? x : z);
+   return ((h & 1) ? -u : u) + ((h & 2) ? -v : v);
+}
+
+static double perlin_noise_2d(double x, double y)
+{
+   noise_ensure_init();
+   int ix = (int)floor(x) & 255, iy = (int)floor(y) & 255;
+   double fx = x - floor(x), fy = y - floor(y);
+   double u = noise_fade(fx), v = noise_fade(fy);
+   int aa = g_perm[g_perm[ix    ] + iy];
+   int ab = g_perm[g_perm[ix    ] + iy + 1];
+   int ba = g_perm[g_perm[ix + 1] + iy];
+   int bb = g_perm[g_perm[ix + 1] + iy + 1];
+   return noise_lerp(v,
+      noise_lerp(u, noise_grad2(aa, fx, fy),     noise_grad2(ba, fx - 1, fy)),
+      noise_lerp(u, noise_grad2(ab, fx, fy - 1), noise_grad2(bb, fx - 1, fy - 1)));
+}
+
+static double perlin_noise_3d(double x, double y, double z)
+{
+   noise_ensure_init();
+   int ix = (int)floor(x) & 255, iy = (int)floor(y) & 255, iz = (int)floor(z) & 255;
+   double fx = x - floor(x), fy = y - floor(y), fz = z - floor(z);
+   double u = noise_fade(fx), v = noise_fade(fy), w = noise_fade(fz);
+   int aaa = g_perm[g_perm[g_perm[ix    ] + iy    ] + iz    ];
+   int aab = g_perm[g_perm[g_perm[ix    ] + iy    ] + iz + 1];
+   int aba = g_perm[g_perm[g_perm[ix    ] + iy + 1] + iz    ];
+   int abb = g_perm[g_perm[g_perm[ix    ] + iy + 1] + iz + 1];
+   int baa = g_perm[g_perm[g_perm[ix + 1] + iy    ] + iz    ];
+   int bab = g_perm[g_perm[g_perm[ix + 1] + iy    ] + iz + 1];
+   int bba = g_perm[g_perm[g_perm[ix + 1] + iy + 1] + iz    ];
+   int bbb = g_perm[g_perm[g_perm[ix + 1] + iy + 1] + iz + 1];
+   double x1 = noise_lerp(u, noise_grad3(aaa, fx, fy, fz),     noise_grad3(baa, fx-1, fy,   fz));
+   double x2 = noise_lerp(u, noise_grad3(aba, fx, fy-1, fz),   noise_grad3(bba, fx-1, fy-1, fz));
+   double x3 = noise_lerp(u, noise_grad3(aab, fx, fy,   fz-1), noise_grad3(bab, fx-1, fy,   fz-1));
+   double x4 = noise_lerp(u, noise_grad3(abb, fx, fy-1, fz-1), noise_grad3(bbb, fx-1, fy-1, fz-1));
+   return noise_lerp(w, noise_lerp(v, x1, x2), noise_lerp(v, x3, x4));
+}
+
+static JSValue js_noise(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc == 0) return JS_NewFloat64(ctx, 0.0);
+   double x = double_from_js(ctx, argv[0], 0.0);
+   if (argc == 1) return JS_NewFloat64(ctx, perlin_noise_2d(x, 0.0));
+   double y = double_from_js(ctx, argv[1], 0.0);
+   if (argc == 2) return JS_NewFloat64(ctx, perlin_noise_2d(x, y));
+   double z = double_from_js(ctx, argv[2], 0.0);
+   return JS_NewFloat64(ctx, perlin_noise_3d(x, y, z));
+}
+
+static JSValue js_fbm(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 2) return JS_NewFloat64(ctx, 0.0);
+   double x = double_from_js(ctx, argv[0], 0.0);
+   double y = double_from_js(ctx, argv[1], 0.0);
+   int    octaves    = argc > 2 ? int_from_js(ctx, argv[2], 6)         : 6;
+   double lacunarity = argc > 3 ? double_from_js(ctx, argv[3], 2.0)    : 2.0;
+   double gain       = argc > 4 ? double_from_js(ctx, argv[4], 0.5)    : 0.5;
+   if (octaves < 1) octaves = 1;
+   if (octaves > 16) octaves = 16;
+   double value = 0.0, amplitude = 0.5, frequency = 1.0, max_val = 0.0;
+   for (int i = 0; i < octaves; i++) {
+      value    += perlin_noise_2d(x * frequency, y * frequency) * amplitude;
+      max_val  += amplitude;
+      amplitude *= gain;
+      frequency *= lacunarity;
+   }
+   return JS_NewFloat64(ctx, max_val > 0.0 ? value / max_val : 0.0);
+}
+
 static JSValue js_get_frame(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
    (void)this_val; (void)argc; (void)argv;
@@ -7974,6 +8100,8 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, random_ns, "seed", js_rng_seed, 1);
    set_function(ctx, random_ns, "next", js_rng_next, 0);
    set_function(ctx, random_ns, "int", js_rng_int, 2);
+   set_function(ctx, random_ns, "noise", js_noise, 3);
+   set_function(ctx, random_ns, "fbm", js_fbm, 5);
    JS_SetPropertyStr(ctx, nova64, "random", random_ns);
 
    JS_SetPropertyStr(ctx, nova64, "draw", draw);
@@ -8207,6 +8335,10 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, global, "storageSetCompressed",  js_storage_save_compressed,  2);
    set_function(ctx, global, "storageGetCompressed",  js_storage_load_compressed,  2);
    set_function(ctx, global, "storageHasCompressed",  js_storage_has_compressed,   1);
+
+   /* Procedural noise */
+   set_function(ctx, global, "noise", js_noise, 3);
+   set_function(ctx, global, "fbm",   js_fbm,   5);
 
    /* Rumble (8D) */
    set_function(ctx, global, "rumble", js_rumble, 2);

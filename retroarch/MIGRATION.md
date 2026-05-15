@@ -199,24 +199,22 @@ retroarch/build/harness retroarch/nova64_libretro.so my-cart.nova --verbose
 
 These browser / Godot features have no native equivalent yet:
 
-- **PNG asset input** — convert to raw RGBA before bundling (stb_image decode pending)
-- **Scene hierarchy** — `setParent` not yet implemented
-- **3D physics / raycast** — raycast not yet implemented (2D AABB via `createCollider` is available)
 - **Networking / WebSocket** — not available; use storage for local persistence
-- **Controller rumble** — `rumble(strong, weak)` calls the RetroArch rumble interface; no-op in harness
+- **QuickJS heap serialization** — save states restore only native host state
+  (camera, lights, meshes, framebuffer). JS object state resets; re-derive it
+  from persistent storage or deterministic init logic.
+- **Vulkan renderer** — staged but not yet functional; the core falls back to GLES.
+- **Skybox / render targets in software mode** — require a GLES 3.1 context;
+  `caps.skybox` and `caps.renderTargets` are false in headless/software runs.
 
-## Implemented since guide was first written
+## All other M1–M8 features are implemented
 
-- **Custom 3D geometry** — `createMesh(name, vertices, indices)` where vertices are
-  interleaved `[x,y,z, nx,ny,nz, ...]` floats and indices are 16-bit integers.
-- **Multi-channel audio** — `setChannelVolume(name, vol)`, `setChannelPitch(name, pitch)`,
-  `getChannelVolume(name)`, `getChannelPitch(name)`. Assign voices to channels with
-  `playSound(path, { channel: 'music' })`.
-- **Hot reload** — set `NOVA64_HOT_RELOAD=1` env var; calling `nova64.reset()` or
-  pressing RetroArch reset will re-read the cart from disk.
-- **Developer console** — `devPrint(text)` / `nova64.console.print(text)` overlays a
-  12-line ring-buffer on screen when developer mode is enabled.
-- **RetroAchievements RAM** — `peek(addr)` / `poke(addr, val)` read/write a 256-byte
-  buffer that achievement scripts can watch via `nova64.cheevos.*`.
-- **Audio pitch** — `setVoicePitch(id, pitch)` adjusts a playing voice's speed;
-  `setChannelPitch(name, pitch)` applies to all voices on a channel.
+PNG sprites and textures, scene hierarchy (`setParent`/`clearParent`),
+3D raycast, 2D AABB physics, controller rumble, custom mesh geometry,
+multi-channel audio, OGG Vorbis, music streaming, hot reload, developer
+console, RetroAchievements RAM, instanced mesh, equirectangular skybox,
+offscreen render targets, PBR materials, normal maps, shadow maps,
+orthographic camera, UV transforms, mesh blend modes, and compressed
+storage are all implemented and conformance-tested.
+
+See `README_RETROARCH.md` for the full API reference.

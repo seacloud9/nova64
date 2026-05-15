@@ -580,6 +580,35 @@ Noise values are deterministic (same inputs always produce the same output). Use
 `fbm` for terrain heights, animated clouds, water surfaces, and other fractal
 patterns.
 
+### Color Utilities
+
+```js
+colorHSV(h, s, v [, a])    // h:0-360  s:0-255  v:0-255  a:0-255 → packed color
+```
+
+### Polygon Draw/Fill
+
+```js
+drawPoly(points, color [, closed])   // stroke polyline; points = flat [x0,y0,...] or [[x,y],...]
+fillPoly(points, color)              // scanline fill polygon (even-odd rule)
+```
+
+Up to 128 points; same format as `moveTo`/`lineTo` but as a one-shot array call.
+
+### Screen Pixelate
+
+```js
+screenPixelate(blockSize)   // average-downsample framebuffer into blockSize×blockSize blocks
+```
+
+### Text Box
+
+```js
+textBox(text, x, y [, maxWidth [, color]])   // word-wrapped text block
+```
+
+Wraps on spaces; line height is 9 pixels. Respects `\n` in text.
+
 ### Sprite Transform
 
 ```js
@@ -822,3 +851,7 @@ These browser-side Nova64 or Three.js features are not implemented:
 | `117-spr-transform.js` | sprTransform rotated/scaled sprite blit |
 | `118-path-draw.js` | beginPath/moveTo/lineTo/closePath/strokePath/fillPath polygon draw |
 | `119-screen-flash.js` | screenFlash auto-fading color overlay |
+| `120-color-hsv.js` | colorHSV hue/saturation/value color constructor |
+| `121-draw-fill-poly.js` | drawPoly/fillPoly from flat and nested point arrays |
+| `122-screen-pixelate.js` | screenPixelate block-average post-process |
+| `123-text-box.js` | textBox word-wrapped text block |

@@ -619,5 +619,9 @@ run_visual_case "116 tweens"        "116-tweens"        "retroarch/conformance/1
 run_visual_case "117 spr transform" "117-spr-transform" "retroarch/conformance/117-spr-transform.js" "ef5eefc1c8114453"
 run_visual_case "118 path draw"     "118-path-draw"     "retroarch/conformance/118-path-draw.js"     "d23b07ee034d6e57"
 run_visual_case "119 screen flash"  "119-screen-flash"  "retroarch/conformance/119-screen-flash.js"  "d47c00d3fed78dbc"
+run_visual_case "120 color hsv"     "120-color-hsv"     "retroarch/conformance/120-color-hsv.js"     "66e6a074cdcc7d74"
+run_visual_case "121 draw fill poly" "121-draw-fill-poly" "retroarch/conformance/121-draw-fill-poly.js" "bb89cb3322b46dcb"
+run_visual_case "122 screen pixelate" "122-screen-pixelate" "retroarch/conformance/122-screen-pixelate.js" "2544efee1fe138ef"
+run_visual_case "123 text box"      "123-text-box"      "retroarch/conformance/123-text-box.js"      "2926263c73799bac"
 
 echo "Conformance passed."

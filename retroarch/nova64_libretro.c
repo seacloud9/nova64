@@ -5140,6 +5140,206 @@ static JSValue js_fill_path(JSContext *ctx, JSValueConst this_val, int argc, JSV
    return JS_UNDEFINED;
 }
 
+/* ── colorHSV ─────────────────────────────────────────────────────────── */
+/* colorHSV(h, s, v [, a]) — h:0-360  s:0-255  v:0-255  a:0-255 */
+static JSValue js_color_hsv(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   float h = (float)double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0.0);
+   float s = (float)clamp_double(double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 255.0) / 255.0, 0.0, 1.0);
+   float v = (float)clamp_double(double_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 255.0) / 255.0, 0.0, 1.0);
+   uint32_t a = (uint32_t)(int)clamp_double(double_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, 255.0), 0.0, 255.0);
+   while (h < 0.0f) h += 360.0f;
+   h = fmodf(h, 360.0f);
+   float c = v * s;
+   float x = c * (1.0f - fabsf(fmodf(h / 60.0f, 2.0f) - 1.0f));
+   float m = v - c;
+   float r1, g1, b1;
+   if      (h < 60.0f)  { r1 = c; g1 = x; b1 = 0.0f; }
+   else if (h < 120.0f) { r1 = x; g1 = c; b1 = 0.0f; }
+   else if (h < 180.0f) { r1 = 0.0f; g1 = c; b1 = x; }
+   else if (h < 240.0f) { r1 = 0.0f; g1 = x; b1 = c; }
+   else if (h < 300.0f) { r1 = x; g1 = 0.0f; b1 = c; }
+   else                 { r1 = c; g1 = 0.0f; b1 = x; }
+   return JS_NewUint32(ctx, rgba8(
+      (uint32_t)((r1 + m) * 255.0f + 0.5f),
+      (uint32_t)((g1 + m) * 255.0f + 0.5f),
+      (uint32_t)((b1 + m) * 255.0f + 0.5f),
+      a));
+}
+
+/* ── drawPoly / fillPoly ──────────────────────────────────────────────── */
+/* Accept flat [x0,y0, x1,y1,...] or nested [[x,y],[x,y],...] JS arrays */
+static int parse_poly_pts(JSContext *ctx, JSValue arr, float *pts, int max_pts)
+{
+   if (!JS_IsArray(arr)) return 0;
+   JSValue lv = JS_GetPropertyStr(ctx, arr, "length");
+   int len = int_from_js(ctx, lv, 0);
+   JS_FreeValue(ctx, lv);
+   if (len < 2) return 0;
+   int count = 0;
+   JSValue first = JS_GetPropertyUint32(ctx, arr, 0);
+   bool nested = JS_IsArray(first);
+   JS_FreeValue(ctx, first);
+   if (nested) {
+      for (int i = 0; i < len && count < max_pts; i++) {
+         JSValue pair = JS_GetPropertyUint32(ctx, arr, (unsigned)i);
+         JSValue xv = JS_GetPropertyUint32(ctx, pair, 0);
+         JSValue yv = JS_GetPropertyUint32(ctx, pair, 1);
+         pts[count * 2    ] = (float)double_from_js(ctx, xv, 0.0) - (float)cam2d_x;
+         pts[count * 2 + 1] = (float)double_from_js(ctx, yv, 0.0) - (float)cam2d_y;
+         count++;
+         JS_FreeValue(ctx, xv); JS_FreeValue(ctx, yv); JS_FreeValue(ctx, pair);
+      }
+   } else {
+      for (int i = 0; i + 1 < len && count < max_pts; i += 2) {
+         JSValue xv = JS_GetPropertyUint32(ctx, arr, (unsigned)i);
+         JSValue yv = JS_GetPropertyUint32(ctx, arr, (unsigned)(i + 1));
+         pts[count * 2    ] = (float)double_from_js(ctx, xv, 0.0) - (float)cam2d_x;
+         pts[count * 2 + 1] = (float)double_from_js(ctx, yv, 0.0) - (float)cam2d_y;
+         count++;
+         JS_FreeValue(ctx, xv); JS_FreeValue(ctx, yv);
+      }
+   }
+   return count;
+}
+
+static JSValue js_draw_poly(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 2 || !JS_IsArray(argv[0])) return JS_UNDEFINED;
+   uint32_t color = color_from_js(ctx, argv[1], rgba8(255, 255, 255, 255));
+   float pts[NOVA64_MAX_PATH_PTS * 2];
+   int n = parse_poly_pts(ctx, argv[0], pts, NOVA64_MAX_PATH_PTS);
+   if (n < 2) return JS_UNDEFINED;
+   bool closed = (argc > 2) && JS_ToBool(ctx, argv[2]);
+   for (int i = 0; i < n - 1; i++)
+      path_draw_line_segment(pts[i*2], pts[i*2+1], pts[(i+1)*2], pts[(i+1)*2+1], color);
+   if (closed)
+      path_draw_line_segment(pts[(n-1)*2], pts[(n-1)*2+1], pts[0], pts[1], color);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_fill_poly(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 2 || !JS_IsArray(argv[0])) return JS_UNDEFINED;
+   uint32_t color = color_from_js(ctx, argv[1], rgba8(255, 255, 255, 255));
+   float pts[NOVA64_MAX_PATH_PTS * 2];
+   int n = parse_poly_pts(ctx, argv[0], pts, NOVA64_MAX_PATH_PTS);
+   if (n < 3) return JS_UNDEFINED;
+   float y_min = pts[1], y_max = pts[1];
+   for (int i = 1; i < n; i++) {
+      if (pts[i*2+1] < y_min) y_min = pts[i*2+1];
+      if (pts[i*2+1] > y_max) y_max = pts[i*2+1];
+   }
+   float xs[NOVA64_MAX_PATH_PTS];
+   for (int scanY = (int)floorf(y_min); scanY <= (int)ceilf(y_max); scanY++) {
+      float fy = (float)scanY + 0.5f;
+      int cnt = 0;
+      for (int i = 0; i < n; i++) {
+         int j = (i + 1) % n;
+         float ay = pts[i*2+1], by = pts[j*2+1];
+         float ax = pts[i*2],   bx = pts[j*2];
+         if ((ay <= fy && by > fy) || (by <= fy && ay > fy)) {
+            float t = (fy - ay) / (by - ay);
+            xs[cnt++] = ax + t * (bx - ax);
+         }
+      }
+      for (int aa = 0; aa < cnt - 1; aa++)
+         for (int bb = aa + 1; bb < cnt; bb++)
+            if (xs[aa] > xs[bb]) { float tmp = xs[aa]; xs[aa] = xs[bb]; xs[bb] = tmp; }
+      for (int k = 0; k + 1 < cnt; k += 2) {
+         int xL = (int)ceilf(xs[k]), xR = (int)floorf(xs[k + 1]);
+         for (int xp = xL; xp <= xR; xp++)
+            set_pixel(xp, scanY, color);
+      }
+   }
+   return JS_UNDEFINED;
+}
+
+/* ── screenPixelate ────────────────────────────────────────────────────── */
+static JSValue js_screen_pixelate(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int block = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 4);
+   if (block < 2)  block = 2;
+   if (block > 64) block = 64;
+   if (!framebuffer) return JS_UNDEFINED;
+   for (int by2 = 0; by2 < NOVA64_HEIGHT; by2 += block) {
+      for (int bx = 0; bx < NOVA64_WIDTH; bx += block) {
+         unsigned sr = 0, sg = 0, sb = 0, cnt = 0;
+         int xend = bx + block; if (xend > NOVA64_WIDTH)  xend = NOVA64_WIDTH;
+         int yend = by2 + block; if (yend > NOVA64_HEIGHT) yend = NOVA64_HEIGHT;
+         for (int y = by2; y < yend; y++)
+            for (int x = bx; x < xend; x++) {
+               uint32_t c = framebuffer[(size_t)y * NOVA64_WIDTH + (size_t)x];
+               sr += (c >> 24) & 0xff; sg += (c >> 16) & 0xff; sb += (c >> 8) & 0xff;
+               cnt++;
+            }
+         if (!cnt) continue;
+         uint32_t avg = rgba8(sr / cnt, sg / cnt, sb / cnt, 255);
+         for (int y = by2; y < yend; y++)
+            for (int x = bx; x < xend; x++)
+               framebuffer[(size_t)y * NOVA64_WIDTH + (size_t)x] = avg;
+      }
+   }
+   return JS_UNDEFINED;
+}
+
+/* ── textBox ──────────────────────────────────────────────────────────── */
+/* textBox(text, x, y [, maxWidth [, color]]) — word-wrap text */
+static JSValue js_text_box(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 3) return JS_UNDEFINED;
+   const char *text = JS_ToCString(ctx, argv[0]);
+   if (!text) return JS_UNDEFINED;
+   int bx = int_from_js(ctx, argv[1], 0) - cam2d_x;
+   int by2 = int_from_js(ctx, argv[2], 0) - cam2d_y;
+   int maxW = argc > 3 ? int_from_js(ctx, argv[3], NOVA64_WIDTH) : NOVA64_WIDTH;
+   uint32_t color = color_from_js(ctx, argc > 4 ? argv[4] : JS_UNDEFINED, rgba8(255, 255, 255, 255));
+   if (maxW <= 0) maxW = NOVA64_WIDTH;
+   char line_buf[256];
+   int line_len = 0;
+   int cur_y = by2;
+   const char *p = text;
+   while (*p) {
+      /* Hard newline */
+      if (*p == '\n') {
+         line_buf[line_len] = '\0';
+         if (line_len > 0) draw_text_pixels(line_buf, bx, cur_y, color);
+         cur_y += 9; line_len = 0; p++; continue;
+      }
+      /* Extract next word */
+      const char *ws = p;
+      while (*p && *p != ' ' && *p != '\n') p++;
+      int wl = (int)(p - ws);
+      if (*p == ' ') p++;
+      if (wl == 0) continue;
+      int word_px = wl * 6;
+      int space_px = line_len > 0 ? 6 : 0;
+      if (line_len > 0 && (line_len * 6) + space_px + word_px > maxW) {
+         line_buf[line_len] = '\0';
+         draw_text_pixels(line_buf, bx, cur_y, color);
+         cur_y += 9; line_len = 0; space_px = 0;
+      }
+      if (line_len > 0 && line_len < (int)sizeof(line_buf) - 1)
+         line_buf[line_len++] = ' ';
+      if (line_len + wl < (int)sizeof(line_buf) - 1) {
+         memcpy(line_buf + line_len, ws, (size_t)wl);
+         line_len += wl;
+      }
+      (void)space_px;
+   }
+   if (line_len > 0) {
+      line_buf[line_len] = '\0';
+      draw_text_pixels(line_buf, bx, cur_y, color);
+   }
+   JS_FreeCString(ctx, text);
+   return JS_UNDEFINED;
+}
+
 /* ── Screen flash ─────────────────────────────────────────────────────── */
 static JSValue js_screen_flash(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
@@ -9270,6 +9470,19 @@ static bool install_nova64_api(JSContext *ctx)
       }
       JS_FreeValue(ctx, sc);
    }
+
+   /* Color HSV */
+   set_function(ctx, global, "colorHSV", js_color_hsv, 4);
+
+   /* Polygon draw/fill from JS arrays */
+   set_function(ctx, global, "drawPoly", js_draw_poly, 3);
+   set_function(ctx, global, "fillPoly", js_fill_poly, 2);
+
+   /* Screen pixelate */
+   set_function(ctx, global, "screenPixelate", js_screen_pixelate, 1);
+
+   /* Word-wrap text box */
+   set_function(ctx, global, "textBox", js_text_box, 5);
 
    /* Sprite transform */
    set_function(ctx, global, "sprTransform", js_spr_transform, 12);

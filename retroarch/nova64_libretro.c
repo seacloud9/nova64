@@ -88,6 +88,7 @@ typedef char GLchar;
 #define GL_TEXTURE_2D 0x0DE1
 #define GL_TEXTURE0 0x84C0
 #define GL_TEXTURE1 0x84C1
+#define GL_TEXTURE2 0x84C2
 #define GL_TEXTURE_MIN_FILTER 0x2801
 #define GL_TEXTURE_MAG_FILTER 0x2800
 #define GL_TEXTURE_WRAP_S 0x2802
@@ -208,6 +209,7 @@ struct nova64_mesh {
    float opacity;
    uint32_t color;
    int texture_handle;      /* 0 = no texture */
+   int normal_map_handle;   /* 0 = no normal map */
    uint32_t emissive_color; /* 0 = none, else RGBA8 */
    float emissive_intensity; /* 0 = off */
    float roughness;         /* 0 = smooth, 1 = rough */
@@ -445,6 +447,8 @@ struct nova64_gles_backend {
    GLint cube_fog_far_uniform;
    GLint cube_has_texture_uniform;
    GLint cube_texture_uniform;
+   GLint cube_has_normal_map_uniform;
+   GLint cube_normal_map_uniform;
    GLint cube_emissive_color_uniform;
    GLint cube_emissive_intensity_uniform;
    GLint cube_roughness_uniform;
@@ -2956,6 +2960,7 @@ static int allocate_mesh(enum nova64_mesh_type type)
          meshes[i].uv_scale[1] = 1.0f;
          meshes[i].mesh_blend = NOVA64_MESH_BLEND_OPAQUE;
          meshes[i].texture_handle = 0;
+         meshes[i].normal_map_handle = 0;
          return i + 1;
       }
    }
@@ -5060,6 +5065,7 @@ static JSValue js_get_backend_capabilities(JSContext *ctx, JSValueConst this_val
    JS_SetPropertyStr(ctx, object, "meshUVTransform", JS_NewBool(ctx, true));
    JS_SetPropertyStr(ctx, object, "meshBlend", JS_NewBool(ctx, true));
    JS_SetPropertyStr(ctx, object, "shadowMaps", JS_NewBool(ctx, gles.active));
+   JS_SetPropertyStr(ctx, object, "normalMaps", JS_NewBool(ctx, gles.active));
    return object;
 }
 
@@ -6103,6 +6109,16 @@ static JSValue js_set_mesh_texture(JSContext *ctx, JSValueConst this_val, int ar
    if (!mesh)
       return JS_NewBool(ctx, false);
    mesh->texture_handle = int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0);
+   return JS_NewBool(ctx, true);
+}
+
+static JSValue js_set_mesh_normal_map(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   struct nova64_mesh *mesh = mesh_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!mesh)
+      return JS_NewBool(ctx, false);
+   mesh->normal_map_handle = int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0);
    return JS_NewBool(ctx, true);
 }
 
@@ -7298,6 +7314,7 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, scene, "draw3d", js_draw3d, 1);
    set_function(ctx, scene, "createTexture", js_create_texture, 3);
    set_function(ctx, scene, "setMeshTexture", js_set_mesh_texture, 2);
+   set_function(ctx, scene, "setMeshNormalMap", js_set_mesh_normal_map, 2);
    set_function(ctx, scene, "destroyTexture", js_destroy_texture, 1);
    set_function(ctx, scene, "setSkyColor", js_set_sky_color, 2);
    set_function(ctx, scene, "clearSkyColor", js_clear_sky_color, 0);
@@ -7563,6 +7580,7 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, global, "draw3d", js_draw3d, 1);
    set_function(ctx, global, "createTexture", js_create_texture, 3);
    set_function(ctx, global, "setMeshTexture", js_set_mesh_texture, 2);
+   set_function(ctx, global, "setMeshNormalMap", js_set_mesh_normal_map, 2);
    set_function(ctx, global, "destroyTexture", js_destroy_texture, 1);
    set_function(ctx, global, "get3DStats", js_get_3d_stats, 0);
    set_function(ctx, global, "getBackendCapabilities", js_get_backend_capabilities, 0);
@@ -8053,11 +8071,13 @@ static bool gles_create_cube_program(void)
       "varying float v_depth;\n"
       "varying vec2 v_uv;\n"
       "varying vec4 v_shadow_coord;\n"
+      "varying vec3 v_normal;\n"
       "void main() {\n"
       "  vec3 n = normalize(u_normal_matrix * a_normal);\n"
       "  vec3 l = normalize(-u_light_direction.xyz);\n"
       "  float diffuse = max(dot(n, l), 0.0);\n"
       "  v_light = 0.58 + diffuse * 0.42;\n"
+      "  v_normal = n;\n"
       "  gl_Position = u_mvp * vec4(a_position, 1.0);\n"
       "  v_depth = gl_Position.z / gl_Position.w;\n"
       "  v_uv = (a_position.xz + 0.5) * u_uv_scale + u_uv_offset;\n"
@@ -8069,14 +8089,18 @@ static bool gles_create_cube_program(void)
       "varying float v_depth;\n"
       "varying vec2 v_uv;\n"
       "varying vec4 v_shadow_coord;\n"
+      "varying vec3 v_normal;\n"
       "uniform vec4 u_color;\n"
       "uniform vec4 u_ambient_color;\n"
+      "uniform highp vec4 u_light_direction;\n"
       "uniform int u_fog_enabled;\n"
       "uniform vec4 u_fog_color;\n"
       "uniform float u_fog_near;\n"
       "uniform float u_fog_far;\n"
       "uniform int u_has_texture;\n"
       "uniform sampler2D u_texture;\n"
+      "uniform int u_has_normal_map;\n"
+      "uniform sampler2D u_normal_map;\n"
       "uniform vec4 u_emissive_color;\n"
       "uniform float u_emissive_intensity;\n"
       "uniform float u_roughness;\n"
@@ -8090,7 +8114,17 @@ static bool gles_create_cube_program(void)
       "void main() {\n"
       "  vec3 ambient = u_ambient_color.rgb * 0.35;\n"
       "  vec4 base = (u_has_texture != 0) ? texture2D(u_texture, v_uv) * u_color : u_color;\n"
-      "  float diff = mix(v_light, 0.75, u_roughness * 0.5);\n"
+      "  float surface_light;\n"
+      "  if (u_has_normal_map != 0) {\n"
+      "    vec3 nm = texture2D(u_normal_map, v_uv).rgb * 2.0 - 1.0;\n"
+      "    vec3 perturbed = normalize(v_normal + nm * 0.6);\n"
+      "    vec3 l = normalize(-u_light_direction.xyz);\n"
+      "    float diffuse = max(dot(perturbed, l), 0.0);\n"
+      "    surface_light = 0.58 + diffuse * 0.42;\n"
+      "  } else {\n"
+      "    surface_light = v_light;\n"
+      "  }\n"
+      "  float diff = mix(surface_light, 0.75, u_roughness * 0.5);\n"
       "  vec3 metal_ambient = mix(ambient, ambient * base.rgb, u_metalness);\n"
       "  vec3 lit = clamp(base.rgb * diff + metal_ambient, 0.0, 1.0);\n"
       "  if (u_shadow_enabled != 0) {\n"
@@ -8165,6 +8199,8 @@ static bool gles_create_cube_program(void)
    gles.cube_fog_far_uniform = gles.GetUniformLocation(program, "u_fog_far");
    gles.cube_has_texture_uniform = gles.GetUniformLocation(program, "u_has_texture");
    gles.cube_texture_uniform = gles.GetUniformLocation(program, "u_texture");
+   gles.cube_has_normal_map_uniform = gles.GetUniformLocation(program, "u_has_normal_map");
+   gles.cube_normal_map_uniform = gles.GetUniformLocation(program, "u_normal_map");
    gles.cube_emissive_color_uniform = gles.GetUniformLocation(program, "u_emissive_color");
    gles.cube_emissive_intensity_uniform = gles.GetUniformLocation(program, "u_emissive_intensity");
    gles.cube_roughness_uniform = gles.GetUniformLocation(program, "u_roughness");
@@ -8755,7 +8791,7 @@ static void render_gles_primitive(const struct nova64_mesh *mesh, const float vi
       if (gles.cube_fog_far_uniform >= 0 && gles.Uniform1f)
          gles.Uniform1f(gles.cube_fog_far_uniform, light_state.fog_far);
    }
-   /* texture */
+   /* texture (unit 0) */
    GLuint mesh_gl_tex = 0;
    if (mesh->texture_handle > 0) {
       struct nova64_texture *tex = texture_from_handle(mesh->texture_handle);
@@ -8769,6 +8805,22 @@ static void render_gles_primitive(const struct nova64_mesh *mesh, const float vi
       gles.BindTexture(GL_TEXTURE_2D, mesh_gl_tex);
       if (gles.cube_texture_uniform >= 0)
          gles.Uniform1i(gles.cube_texture_uniform, 0);
+   }
+   /* normal map (unit 2) */
+   GLuint mesh_gl_nrm = 0;
+   if (mesh->normal_map_handle > 0) {
+      struct nova64_texture *ntex = texture_from_handle(mesh->normal_map_handle);
+      if (ntex && ntex->gl_name)
+         mesh_gl_nrm = ntex->gl_name;
+   }
+   if (gles.cube_has_normal_map_uniform >= 0)
+      gles.Uniform1i(gles.cube_has_normal_map_uniform, mesh_gl_nrm ? 1 : 0);
+   if (mesh_gl_nrm) {
+      gles.ActiveTexture(GL_TEXTURE2);
+      gles.BindTexture(GL_TEXTURE_2D, mesh_gl_nrm);
+      if (gles.cube_normal_map_uniform >= 0)
+         gles.Uniform1i(gles.cube_normal_map_uniform, 2);
+      gles.ActiveTexture(GL_TEXTURE0);
    }
    /* emissive */
    if (gles.cube_emissive_color_uniform >= 0) {

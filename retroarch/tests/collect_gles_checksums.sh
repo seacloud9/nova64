@@ -47,6 +47,7 @@ CARTS=(
   100-pbr-material
   101-uv-transform
   103-shadow-map
+  104-normal-map
 )
 
 echo "# GLES hardware checksums — $(date)"

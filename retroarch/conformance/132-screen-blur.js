@@ -31,11 +31,11 @@ export function draw() {
       return;
    }
 
-   // Draw noise, then blur
-   for (let y = 40; y < 180; y += 4) {
-      for (let x = 40; x < 240; x += 4) {
-         const v = Math.floor(Math.random() * 255);
-         rectfill(x, y, x + 3, y + 3, rgba8(v, 128, 255 - v, 255));
+   // Draw deterministic gradient stripes, then blur
+   for (let y = 40; y < 180; y++) {
+      for (let x = 40; x < 240; x++) {
+         const v = (x - 40 + y - 40) % 256;
+         pset(x, y, rgba8(v, 128, 255 - v, 255));
       }
    }
    screenBlur(2);

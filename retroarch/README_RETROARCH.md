@@ -580,6 +580,46 @@ Noise values are deterministic (same inputs always produce the same output). Use
 `fbm` for terrain heights, animated clouds, water surfaces, and other fractal
 patterns.
 
+### Math Utilities
+
+```js
+lerp(a, b, t)               // linear interpolation between a and b by t ∈ [0,1]
+clamp(v, lo, hi)            // clamp v to [lo, hi]
+map(v, a, b, c, d)          // remap v from [a,b] to [c,d]
+smoothstep(lo, hi, x)       // cubic Hermite smooth step: 0 below lo, 1 above hi
+wrap(v, lo, hi)             // modular wrap: keeps v within [lo, hi)
+approach(cur, target, step) // move cur toward target by at most step
+between(v, lo, hi)          // true if v ∈ [lo, hi]
+```
+
+### Camera Orbit And Shake
+
+```js
+setCameraOrbit(tx, ty, tz, distance, azimuth, elevation)
+                            // position camera on a sphere of radius distance around (tx,ty,tz);
+                            // azimuth and elevation in degrees
+addCameraShake(intensity, duration)
+                            // add noise-based camera shake; decays linearly over duration seconds
+stopCameraShake()           // immediately stop all shake
+```
+
+### Tweens
+
+```js
+createTween(from, to, duration [, easing])
+                            // create a tween from `from` to `to` over `duration` seconds;
+                            // easing string: 'linear' (default), 'quadIn', 'quadOut',
+                            // 'sineIn', 'sineOut', 'cubicIn', 'cubicOut',
+                            // 'bounceOut', 'elasticOut'
+getTweenValue(handle)       // current interpolated value
+tweenDone(handle)           // true when tween has finished
+destroyTween(handle)        // free tween slot
+resetTween(handle)          // restart tween from beginning
+```
+
+Tweens advance automatically each frame (`retro_run`). Up to 16 tweens may be
+active simultaneously.
+
 ### Runtime Utilities
 
 ```js
@@ -741,3 +781,7 @@ These browser-side Nova64 or Three.js features are not implemented:
 | `110-storage-compressed.js` | storageSetCompressed / storageGetCompressed / storageHasCompressed |
 | `111-noise.js` | noise(x/y/z) Perlin gradient noise; fbm() fractal Brownian motion |
 | `112-particles2d.js` | createParticles2D/emitParticles2D/updateParticles/drawParticles lifecycle |
+| `113-math-utils.js` | lerp/clamp/map/smoothstep/wrap/approach/between |
+| `114-camera-orbit.js` | setCameraOrbit azimuth/elevation sphere positioning |
+| `115-camera-shake.js` | addCameraShake/stopCameraShake noise-based screen shake |
+| `116-tweens.js` | createTween/getTweenValue/tweenDone/destroyTween/resetTween with easing |

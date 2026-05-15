@@ -612,4 +612,9 @@ run_gles_case "107 instanced mesh"    "107-instanced-mesh"     "retroarch/confor
 run_gles_case "108 skybox"            "108-skybox"             "${PACKAGE_DIR}/skybox.nova"                      "a4ad0833d5acff46"
 run_gles_case "109 blend modes"       "109-blend-modes"        "retroarch/conformance/109-blend-modes.js"        "92a54db75fa95ea1"
 
+run_visual_case "113 math utils"    "113-math-utils"    "retroarch/conformance/113-math-utils.js"    "00d37dc756a875d0"
+run_visual_case "114 camera orbit"  "114-camera-orbit"  "retroarch/conformance/114-camera-orbit.js"  "700cde1a721f5d04"
+run_visual_case "115 camera shake"  "115-camera-shake"  "retroarch/conformance/115-camera-shake.js"  "9aaa5169a1fccf9f"
+run_visual_case "116 tweens"        "116-tweens"        "retroarch/conformance/116-tweens.js"        "207a23c0db80b5f2"
+
 echo "Conformance passed."

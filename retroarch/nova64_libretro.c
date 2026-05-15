@@ -949,6 +949,34 @@ static struct nova64_texture textures[NOVA64_MAX_TEXTURES];
 static struct nova64_render_target render_targets[NOVA64_MAX_RENDER_TARGETS];
 static struct nova64_camera camera_state;
 static struct nova64_light light_state;
+
+/* ── Camera shake ─────────────────────────────────────────── */
+static float g_shake_intensity = 0.0f;  /* current intensity (pixels/units) */
+static float g_shake_timer     = 0.0f;  /* seconds remaining */
+static float g_shake_duration  = 0.0f;  /* total duration of current shake */
+
+/* ── Tween system ─────────────────────────────────────────── */
+#define NOVA64_MAX_TWEENS 16
+#define NOVA64_TWEEN_LINEAR     0
+#define NOVA64_TWEEN_QUAD_IN    1
+#define NOVA64_TWEEN_QUAD_OUT   2
+#define NOVA64_TWEEN_QUAD_INOUT 3
+#define NOVA64_TWEEN_SINE_IN    4
+#define NOVA64_TWEEN_SINE_OUT   5
+#define NOVA64_TWEEN_BOUNCE_OUT 6
+#define NOVA64_TWEEN_ELASTIC_OUT 7
+#define NOVA64_TWEEN_CUBIC_IN   8
+#define NOVA64_TWEEN_CUBIC_OUT  9
+
+struct nova64_tween {
+   int    used;
+   int    done;
+   float  from, to;
+   float  duration;
+   float  elapsed;
+   int    easing;
+};
+static struct nova64_tween g_tweens[NOVA64_MAX_TWEENS];
 static struct nova64_audio_voice audio_voices[NOVA64_AUDIO_MAX_VOICES];
 static int16_t audio_mix_buffer[NOVA64_AUDIO_FRAME_SAMPLES * 2];
 static double audio_master_volume = 0.4;
@@ -4675,6 +4703,230 @@ static JSValue js_fbm(JSContext *ctx, JSValueConst this_val, int argc, JSValueCo
    return JS_NewFloat64(ctx, max_val > 0.0 ? value / max_val : 0.0);
 }
 
+/* ---------- Game math utilities ---------- */
+
+static JSValue js_lerp(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double a = double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0.0);
+   double b = double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0.0);
+   double t = double_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 0.0);
+   return JS_NewFloat64(ctx, a + (b - a) * t);
+}
+
+static JSValue js_clamp(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double v  = double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0.0);
+   double lo = double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0.0);
+   double hi = double_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 1.0);
+   return JS_NewFloat64(ctx, v < lo ? lo : (v > hi ? hi : v));
+}
+
+static JSValue js_map(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double v  = double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0.0);
+   double a  = double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0.0);
+   double b  = double_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 1.0);
+   double c  = double_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, 0.0);
+   double d  = double_from_js(ctx, argc > 4 ? argv[4] : JS_UNDEFINED, 1.0);
+   if (b == a) return JS_NewFloat64(ctx, c);
+   return JS_NewFloat64(ctx, c + (v - a) / (b - a) * (d - c));
+}
+
+static JSValue js_smoothstep(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double lo = double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0.0);
+   double hi = double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 1.0);
+   double x  = double_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 0.0);
+   double t  = (hi != lo) ? (x - lo) / (hi - lo) : 0.0;
+   t = t < 0.0 ? 0.0 : (t > 1.0 ? 1.0 : t);
+   return JS_NewFloat64(ctx, t * t * (3.0 - 2.0 * t));
+}
+
+static JSValue js_wrap(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double v  = double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0.0);
+   double lo = double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0.0);
+   double hi = double_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 1.0);
+   double range = hi - lo;
+   if (range <= 0.0) return JS_NewFloat64(ctx, lo);
+   double r = fmod(v - lo, range);
+   return JS_NewFloat64(ctx, lo + (r < 0.0 ? r + range : r));
+}
+
+static JSValue js_approach(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double cur    = double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0.0);
+   double target = double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0.0);
+   double step   = double_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 0.0);
+   if (step <= 0.0) return JS_NewFloat64(ctx, cur);
+   double diff = target - cur;
+   double absdiff = diff < 0.0 ? -diff : diff;
+   if (absdiff <= step) return JS_NewFloat64(ctx, target);
+   return JS_NewFloat64(ctx, cur + (diff > 0.0 ? step : -step));
+}
+
+static JSValue js_between(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double v  = double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0.0);
+   double lo = double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0.0);
+   double hi = double_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 0.0);
+   return JS_NewBool(ctx, v >= lo && v <= hi);
+}
+
+/* ---------- Camera orbit ---------- */
+
+static JSValue js_set_camera_orbit(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   float tx  = (float)double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0.0);
+   float ty  = (float)double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0.0);
+   float tz  = (float)double_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 0.0);
+   float dist = (float)double_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, 5.0);
+   float az  = (float)(double_from_js(ctx, argc > 4 ? argv[4] : JS_UNDEFINED, 0.0) * M_PI / 180.0);
+   float el  = (float)(double_from_js(ctx, argc > 5 ? argv[5] : JS_UNDEFINED, 0.0) * M_PI / 180.0);
+   float cosEl = cosf(el), sinEl = sinf(el);
+   camera_state.position[0] = tx + dist * cosEl * sinf(az);
+   camera_state.position[1] = ty + dist * sinEl;
+   camera_state.position[2] = tz + dist * cosEl * cosf(az);
+   camera_state.target[0] = tx;
+   camera_state.target[1] = ty;
+   camera_state.target[2] = tz;
+   return JS_UNDEFINED;
+}
+
+/* ---------- Camera shake ---------- */
+
+static JSValue js_add_camera_shake(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val; (void)ctx;
+   float intensity = (float)double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0.1);
+   float duration  = (float)double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0.3);
+   if (intensity > g_shake_intensity) g_shake_intensity = intensity;
+   if (duration  > g_shake_timer)     g_shake_timer     = duration;
+   g_shake_duration = g_shake_timer;
+   return JS_UNDEFINED;
+}
+
+static JSValue js_stop_camera_shake(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val; (void)ctx; (void)argc; (void)argv;
+   g_shake_intensity = 0.0f; g_shake_timer = 0.0f; g_shake_duration = 0.0f;
+   return JS_UNDEFINED;
+}
+
+/* ---------- Tween system ---------- */
+
+static double tween_ease(int easing, double t)
+{
+   switch (easing) {
+      case NOVA64_TWEEN_QUAD_IN:     return t * t;
+      case NOVA64_TWEEN_QUAD_OUT:    return t * (2.0 - t);
+      case NOVA64_TWEEN_QUAD_INOUT:  return t < 0.5 ? 2.0*t*t : -1.0+(4.0-2.0*t)*t;
+      case NOVA64_TWEEN_SINE_IN:     return 1.0 - cos(t * M_PI * 0.5);
+      case NOVA64_TWEEN_SINE_OUT:    return sin(t * M_PI * 0.5);
+      case NOVA64_TWEEN_CUBIC_IN:    return t * t * t;
+      case NOVA64_TWEEN_CUBIC_OUT:   { double s = 1.0 - t; return 1.0 - s*s*s; }
+      case NOVA64_TWEEN_BOUNCE_OUT: {
+         if (t < 1.0/2.75)       return 7.5625*t*t;
+         else if (t < 2.0/2.75)  { t -= 1.5/2.75;  return 7.5625*t*t+0.75; }
+         else if (t < 2.5/2.75)  { t -= 2.25/2.75; return 7.5625*t*t+0.9375; }
+         else                     { t -= 2.625/2.75;return 7.5625*t*t+0.984375; }
+      }
+      case NOVA64_TWEEN_ELASTIC_OUT: {
+         if (t == 0.0 || t == 1.0) return t;
+         return pow(2.0, -10.0*t) * sin((t*10.0-0.75)*(2.0*M_PI/3.0)) + 1.0;
+      }
+      default: return t; /* linear */
+   }
+}
+
+static int tween_easing_id(JSContext *ctx, JSValueConst v)
+{
+   if (!JS_IsString(v)) return NOVA64_TWEEN_LINEAR;
+   const char *s = JS_ToCString(ctx, v);
+   int id = NOVA64_TWEEN_LINEAR;
+   if      (!strcmp(s, "quadIn"))    id = NOVA64_TWEEN_QUAD_IN;
+   else if (!strcmp(s, "quadOut"))   id = NOVA64_TWEEN_QUAD_OUT;
+   else if (!strcmp(s, "quadInOut")) id = NOVA64_TWEEN_QUAD_INOUT;
+   else if (!strcmp(s, "sineIn"))    id = NOVA64_TWEEN_SINE_IN;
+   else if (!strcmp(s, "sineOut"))   id = NOVA64_TWEEN_SINE_OUT;
+   else if (!strcmp(s, "cubicIn"))   id = NOVA64_TWEEN_CUBIC_IN;
+   else if (!strcmp(s, "cubicOut"))  id = NOVA64_TWEEN_CUBIC_OUT;
+   else if (!strcmp(s, "bounceOut")) id = NOVA64_TWEEN_BOUNCE_OUT;
+   else if (!strcmp(s, "elasticOut"))id = NOVA64_TWEEN_ELASTIC_OUT;
+   JS_FreeCString(ctx, s);
+   return id;
+}
+
+static JSValue js_create_tween(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int slot = -1;
+   for (int i = 0; i < NOVA64_MAX_TWEENS; i++) {
+      if (!g_tweens[i].used) { slot = i; break; }
+   }
+   if (slot < 0) return JS_NewInt32(ctx, 0);
+   struct nova64_tween *tw = &g_tweens[slot];
+   tw->from     = (float)double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0.0);
+   tw->to       = (float)double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0.0);
+   tw->duration = (float)double_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 1.0);
+   tw->easing   = argc > 3 ? tween_easing_id(ctx, argv[3]) : NOVA64_TWEEN_LINEAR;
+   tw->elapsed  = 0.0f;
+   tw->done     = 0;
+   tw->used     = 1;
+   return JS_NewInt32(ctx, slot + 1);
+}
+
+static JSValue js_get_tween_value(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int handle = argc > 0 ? int_from_js(ctx, argv[0], 0) : 0;
+   int idx = handle - 1;
+   if (idx < 0 || idx >= NOVA64_MAX_TWEENS || !g_tweens[idx].used)
+      return JS_NewFloat64(ctx, 0.0);
+   struct nova64_tween *tw = &g_tweens[idx];
+   double t = (tw->duration > 0.0f) ? (double)(tw->elapsed / tw->duration) : 1.0;
+   t = t < 0.0 ? 0.0 : (t > 1.0 ? 1.0 : t);
+   double et = tween_ease(tw->easing, t);
+   return JS_NewFloat64(ctx, (double)tw->from + ((double)tw->to - (double)tw->from) * et);
+}
+
+static JSValue js_tween_done(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int handle = argc > 0 ? int_from_js(ctx, argv[0], 0) : 0;
+   int idx = handle - 1;
+   if (idx < 0 || idx >= NOVA64_MAX_TWEENS || !g_tweens[idx].used) return JS_TRUE;
+   return JS_NewBool(ctx, g_tweens[idx].done);
+}
+
+static JSValue js_destroy_tween(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val; (void)ctx;
+   int handle = argc > 0 ? int_from_js(ctx, argv[0], 0) : 0;
+   int idx = handle - 1;
+   if (idx >= 0 && idx < NOVA64_MAX_TWEENS) memset(&g_tweens[idx], 0, sizeof(g_tweens[idx]));
+   return JS_UNDEFINED;
+}
+
+static JSValue js_reset_tween(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val; (void)ctx;
+   int handle = argc > 0 ? int_from_js(ctx, argv[0], 0) : 0;
+   int idx = handle - 1;
+   if (idx >= 0 && idx < NOVA64_MAX_TWEENS && g_tweens[idx].used) {
+      g_tweens[idx].elapsed = 0.0f; g_tweens[idx].done = 0;
+   }
+   return JS_UNDEFINED;
+}
+
 static JSValue js_get_frame(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
    (void)this_val; (void)argc; (void)argv;
@@ -6679,7 +6931,14 @@ static void render_gles_scene_to_rt(struct nova64_render_target *rt)
    } else {
       mat4_perspective(projection, camera_state.fov, aspect, 0.05f, 100.0f);
    }
-   mat4_look_at(view, camera_state.position, camera_state.target, up);
+   {
+      float eye[3], tgt[3];
+      float sx = (g_shake_intensity > 0.0f) ? (float)(perlin_noise_2d((double)frame_count * 0.31, 0.0) * g_shake_intensity) : 0.0f;
+      float sy = (g_shake_intensity > 0.0f) ? (float)(perlin_noise_2d((double)frame_count * 0.31, 1.7) * g_shake_intensity) : 0.0f;
+      eye[0] = camera_state.position[0] + sx; eye[1] = camera_state.position[1] + sy; eye[2] = camera_state.position[2];
+      tgt[0] = camera_state.target[0]   + sx; tgt[1] = camera_state.target[1]   + sy; tgt[2] = camera_state.target[2];
+      mat4_look_at(view, eye, tgt, up);
+   }
    mat4_multiply(view_projection, projection, view);
 
    /* Draw equirectangular skybox behind all geometry (GLES only) */
@@ -8789,6 +9048,27 @@ static bool install_nova64_api(JSContext *ctx)
       JS_FreeValue(ctx, sc);
    }
 
+   /* Math utilities */
+   set_function(ctx, global, "lerp",       js_lerp,       3);
+   set_function(ctx, global, "clamp",      js_clamp,      3);
+   set_function(ctx, global, "map",        js_map,        5);
+   set_function(ctx, global, "smoothstep", js_smoothstep, 3);
+   set_function(ctx, global, "wrap",       js_wrap,       3);
+   set_function(ctx, global, "approach",   js_approach,   3);
+   set_function(ctx, global, "between",    js_between,    3);
+
+   /* Camera orbit + shake */
+   set_function(ctx, global, "setCameraOrbit",  js_set_camera_orbit,  6);
+   set_function(ctx, global, "addCameraShake",  js_add_camera_shake,  2);
+   set_function(ctx, global, "stopCameraShake", js_stop_camera_shake, 0);
+
+   /* Tweens */
+   set_function(ctx, global, "createTween",   js_create_tween,   4);
+   set_function(ctx, global, "getTweenValue", js_get_tween_value, 1);
+   set_function(ctx, global, "tweenDone",     js_tween_done,     1);
+   set_function(ctx, global, "destroyTween",  js_destroy_tween,  1);
+   set_function(ctx, global, "resetTween",    js_reset_tween,    1);
+
    JS_FreeValue(ctx, global);
    return true;
 }
@@ -10427,7 +10707,14 @@ static void render_gles_scene(void)
    } else {
       mat4_perspective(projection, camera_state.fov, (float)NOVA64_WIDTH / (float)NOVA64_HEIGHT, 0.05f, 100.0f);
    }
-   mat4_look_at(view, camera_state.position, camera_state.target, up);
+   {
+      float eye[3], tgt[3];
+      float sx = (g_shake_intensity > 0.0f) ? (float)(perlin_noise_2d((double)frame_count * 0.31, 0.0) * g_shake_intensity) : 0.0f;
+      float sy = (g_shake_intensity > 0.0f) ? (float)(perlin_noise_2d((double)frame_count * 0.31, 1.7) * g_shake_intensity) : 0.0f;
+      eye[0] = camera_state.position[0] + sx; eye[1] = camera_state.position[1] + sy; eye[2] = camera_state.position[2];
+      tgt[0] = camera_state.target[0]   + sx; tgt[1] = camera_state.target[1]   + sy; tgt[2] = camera_state.target[2];
+      mat4_look_at(view, eye, tgt, up);
+   }
    mat4_multiply(view_projection, projection, view);
 
    /* Draw equirectangular skybox behind all geometry (GLES only) */
@@ -11347,6 +11634,23 @@ void RETRO_CALLCONV retro_run(void)
    }
 
    update_input();
+
+   /* advance camera shake */
+   if (g_shake_timer > 0.0f) {
+      g_shake_timer -= (float)(1.0 / NOVA64_FPS);
+      if (g_shake_timer <= 0.0f) { g_shake_timer = 0.0f; g_shake_intensity = 0.0f; }
+      else if (g_shake_duration > 0.0f)
+         g_shake_intensity = g_shake_intensity * (g_shake_timer / g_shake_duration);
+   }
+
+   /* advance tweens */
+   for (int _ti = 0; _ti < NOVA64_MAX_TWEENS; _ti++) {
+      struct nova64_tween *tw = &g_tweens[_ti];
+      if (!tw->used || tw->done) continue;
+      tw->elapsed += (float)(1.0 / NOVA64_FPS);
+      if (tw->elapsed >= tw->duration) { tw->elapsed = tw->duration; tw->done = 1; }
+   }
+
    js_host_call_frame(1.0 / NOVA64_FPS);
 
    /* Developer console overlay: draw lines at bottom of software framebuffer */

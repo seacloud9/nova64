@@ -247,19 +247,23 @@ run_gles_case() {
   local name="$2"
   local cart="$3"
   local checksum="$4"
+  local frames="${5:-}"
   [[ -n "${NOVA64_GLES_TESTS:-}" ]] || return 0
   should_run_label "${label}" || return 0
   echo "== ${label} (gles)"
-  "${HARNESS}" "${CORE}" "${cart}" --gles --expect "${checksum}"
+  local frames_arg=(); [[ -n "${frames}" ]] && frames_arg=(--frames "${frames}")
+  "${HARNESS}" "${CORE}" "${cart}" --gles "${frames_arg[@]}" --expect "${checksum}"
 }
 
 run_case() {
   local label="$1"
   local cart="$2"
   local checksum="$3"
+  local frames="${4:-}"
   should_run_label "${label}" || return 0
   echo "== ${label}"
-  "${HARNESS}" "${CORE}" "${cart}" --expect "${checksum}"
+  local frames_arg=(); [[ -n "${frames}" ]] && frames_arg=(--frames "${frames}")
+  "${HARNESS}" "${CORE}" "${cart}" "${frames_arg[@]}" --expect "${checksum}"
 }
 
 should_run_label() {
@@ -299,9 +303,11 @@ run_audio_case() {
   local cart="$2"
   local checksum="$3"
   local audio_checksum="$4"
+  local frames="${5:-}"
   should_run_label "${label}" || return 0
   echo "== ${label}"
-  "${HARNESS}" "${CORE}" "${cart}" --expect "${checksum}" --expect-audio "${audio_checksum}"
+  local frames_arg=(); [[ -n "${frames}" ]] && frames_arg=(--frames "${frames}")
+  "${HARNESS}" "${CORE}" "${cart}" "${frames_arg[@]}" --expect "${checksum}" --expect-audio "${audio_checksum}"
 }
 
 run_visual_case() {
@@ -309,11 +315,13 @@ run_visual_case() {
   local name="$2"
   local cart="$3"
   local checksum="$4"
+  local frames="${5:-}"
   local ppm="${SCREENSHOT_DIR}/${name}.ppm"
   local png="${SCREENSHOT_DIR}/${name}.png"
   should_run_label "${label}" || return 0
   echo "== ${label}"
-  "${HARNESS}" "${CORE}" "${cart}" --expect "${checksum}" --capture "${ppm}"
+  local frames_arg=(); [[ -n "${frames}" ]] && frames_arg=(--frames "${frames}")
+  "${HARNESS}" "${CORE}" "${cart}" "${frames_arg[@]}" --expect "${checksum}" --capture "${ppm}"
   python3 retroarch/tests/ppm_to_png.py "${ppm}" "${png}"
   rm -f "${ppm}"
 }

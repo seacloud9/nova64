@@ -581,13 +581,12 @@ All 8H items complete.
     ~~`make harness`~~ **Done**, ~~`make release`~~ **Done** — `nova64_libretro.info`
     bundled in tar.gz.
 
-Still missing:
-
-- Real hardware GLES smoke matrix:
-  - Manual test log for: RetroArch GL, GLES, Vulkan video drivers on Linux/Android.
-- Netplay compatibility:
-  - Review which cart-facing state is non-deterministic (audio RNG, time sources).
-  - Document save-state coverage so netplay rollback knows what it controls.
+- Real hardware GLES smoke matrix: `GLES_SMOKE_MATRIX.md` — platform/driver matrix
+  with pass/fail status and known gaps (Vulkan not yet implemented, GLES 3.1
+  tested via Mesa softpipe automated; real Android/RPi rows marked todo).
+- Netplay compatibility: `NETPLAY_NOTES.md` — documents that `retro_serialize` is
+  not yet implemented, lists all non-deterministic state sources, and gives cart
+  author guidance for staying in frame-sync until save-states land.
 
 ### 8J: Developer Experience And Tooling
 
@@ -607,9 +606,10 @@ Still missing:
 - ~~Auto-generated API reference~~ **Done** — `gen_api_ref.py` emits a Markdown
   function table from `set_function()` calls in `nova64_libretro.c`.
 
-Still missing:
-
-- `--frames N` conformance for all cart types (currently 3 frames for all carts).
+- ~~`--frames N` conformance for all cart types~~ **Done** — optional 5th parameter
+  added to `run_case`, `run_visual_case`, `run_audio_case`, and `run_gles_case`.
+  Pass a frame count to any call: `run_visual_case "label" name cart checksum 10`.
+  Harness already supported `--frames N`; the runners now propagate it.
 
 Exit criteria:
 

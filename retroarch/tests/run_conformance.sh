@@ -648,4 +648,17 @@ run_visual_case "144 screen dissolve"      "144-screen-dissolve"      "retroarch
 run_visual_case "145 number format"        "145-number-format"        "retroarch/conformance/145-number-format.js"        "106bfc58765e3b24"
 run_visual_case "146 spr flip"             "146-spr-flip"             "retroarch/conformance/146-spr-flip.js"             "c4a83a0fcefc6501"
 
+run_visual_case "147 scroll text"       "147-scroll-text"       "retroarch/conformance/147-scroll-text.js"       "7bef7ffc086ec71f"
+run_visual_case "148 bit ops"           "148-bit-ops"           "retroarch/conformance/148-bit-ops.js"           "6393c327b7d2f640"
+run_visual_case "149 print lines"       "149-print-lines"       "retroarch/conformance/149-print-lines.js"       "df728746c0750fe8"
+run_visual_case "150 pattern fills"     "150-pattern-fills"     "retroarch/conformance/150-pattern-fills.js"     "2a32759d86eb8f23"
+run_visual_case "151 circle gradient"   "151-circle-gradient"   "retroarch/conformance/151-circle-gradient.js"   "4f1ddb6468bfc546"
+run_visual_case "152 easing"            "152-easing"            "retroarch/conformance/152-easing.js"            "d76eab00cb11122d"
+run_visual_case "153 color hex"         "153-color-hex"         "retroarch/conformance/153-color-hex.js"         "6d8edcf039a63815"
+run_visual_case "154 screen border"     "154-screen-border"     "retroarch/conformance/154-screen-border.js"     "226d059fa15c0320"
+run_visual_case "155 spr scale"         "155-spr-scale"         "retroarch/conformance/155-spr-scale.js"         "931cc8bb705ff224"
+run_visual_case "156 format time"       "156-format-time"       "retroarch/conformance/156-format-time.js"       "fd5d19929439db24"
+run_visual_case "157 draw arrow"        "157-draw-arrow"        "retroarch/conformance/157-draw-arrow.js"        "1b2beec67eec3c5c"
+run_visual_case "158 color pulse"       "158-color-pulse"       "retroarch/conformance/158-color-pulse.js"       "7393c430d41f8d1a"
+
 echo "Conformance passed."

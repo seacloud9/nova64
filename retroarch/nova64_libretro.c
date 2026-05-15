@@ -1023,6 +1023,18 @@ static float g_path_pts[NOVA64_MAX_PATH_PTS * 2]; /* x0,y0, x1,y1 ... */
 static int   g_path_count  = 0;
 static int   g_path_closed = 0;
 
+/* ── Scrolling text ──────────────────────────────────────── */
+#define NOVA64_MAX_SCROLL_TEXTS 8
+#define NOVA64_SCROLL_TEXT_MAX  512
+struct nova64_scroll_text {
+   int used;
+   char text[NOVA64_SCROLL_TEXT_MAX];
+   float speed;
+   float pos;
+   int   total_w;
+};
+static struct nova64_scroll_text g_scroll_texts[NOVA64_MAX_SCROLL_TEXTS];
+
 /* ── Button auto-repeat ──────────────────────────────────── */
 struct nova64_btn_repeat_state { int count; };
 static struct nova64_btn_repeat_state g_btn_repeat[NOVA64_BUTTON_COUNT];
@@ -5180,8 +5192,463 @@ static JSValue js_fill_path(JSContext *ctx, JSValueConst this_val, int argc, JSV
    return JS_UNDEFINED;
 }
 
-/* forward declaration needed by js_btn_repeat */
+/* forward declarations needed by batch-8 functions */
 static int button_index_from_js(JSContext *ctx, JSValueConst value);
+
+/* ── Scrolling text ──────────────────────────────────────────────────── */
+static JSValue js_create_scroll_text(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 1) return JS_NewInt32(ctx, 0);
+   const char *text = JS_ToCString(ctx, argv[0]);
+   if (!text) return JS_NewInt32(ctx, 0);
+   float speed = argc > 1 ? (float)clamp_double(double_from_js(ctx, argv[1], 60.0), 1.0, 1000.0) : 60.0f;
+   for (int i = 0; i < NOVA64_MAX_SCROLL_TEXTS; i++) {
+      if (!g_scroll_texts[i].used) {
+         g_scroll_texts[i].used  = 1;
+         strncpy(g_scroll_texts[i].text, text, NOVA64_SCROLL_TEXT_MAX - 1);
+         g_scroll_texts[i].text[NOVA64_SCROLL_TEXT_MAX - 1] = '\0';
+         g_scroll_texts[i].speed   = speed;
+         g_scroll_texts[i].pos     = 0.0f;
+         g_scroll_texts[i].total_w = text_pixel_width(g_scroll_texts[i].text);
+         JS_FreeCString(ctx, text);
+         return JS_NewInt32(ctx, i + 1);
+      }
+   }
+   JS_FreeCString(ctx, text);
+   return JS_NewInt32(ctx, 0);
+}
+static JSValue js_draw_scroll_text(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 4) return JS_UNDEFINED;
+   int idx = int_from_js(ctx, argv[0], 0) - 1;
+   if (idx < 0 || idx >= NOVA64_MAX_SCROLL_TEXTS || !g_scroll_texts[idx].used) return JS_UNDEFINED;
+   int dx = int_from_js(ctx, argv[1], 0) - cam2d_x;
+   int dy = int_from_js(ctx, argv[2], 0) - cam2d_y;
+   int dw = int_from_js(ctx, argv[3], 0);
+   uint32_t color = color_from_js(ctx, argc > 4 ? argv[4] : JS_UNDEFINED, rgba8(255, 255, 255, 255));
+   if (dw <= 0) return JS_UNDEFINED;
+   /* save/restore clip */
+   bool prev_active = clip_active;
+   int px = clip_x, py = clip_y, pw = clip_w, ph = clip_h;
+   clip_x = dx; clip_y = dy - 2; clip_w = dw; clip_h = 12;
+   clip_active = true;
+   draw_text_pixels(g_scroll_texts[idx].text, dx - (int)g_scroll_texts[idx].pos, dy, color);
+   clip_active = prev_active; clip_x = px; clip_y = py; clip_w = pw; clip_h = ph;
+   return JS_UNDEFINED;
+}
+static JSValue js_destroy_scroll_text(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val; (void)ctx;
+   int idx = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0) - 1;
+   if (idx >= 0 && idx < NOVA64_MAX_SCROLL_TEXTS) memset(&g_scroll_texts[idx], 0, sizeof(g_scroll_texts[idx]));
+   return JS_UNDEFINED;
+}
+static JSValue js_reset_scroll_text(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val; (void)ctx;
+   int idx = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0) - 1;
+   if (idx >= 0 && idx < NOVA64_MAX_SCROLL_TEXTS && g_scroll_texts[idx].used)
+      g_scroll_texts[idx].pos = 0.0f;
+   return JS_UNDEFINED;
+}
+static JSValue js_scroll_text_x(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int idx = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0) - 1;
+   if (idx < 0 || idx >= NOVA64_MAX_SCROLL_TEXTS || !g_scroll_texts[idx].used) return JS_NewFloat64(ctx, 0.0);
+   return JS_NewFloat64(ctx, (double)g_scroll_texts[idx].pos);
+}
+static JSValue js_scroll_text_done(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int idx = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0) - 1;
+   if (idx < 0 || idx >= NOVA64_MAX_SCROLL_TEXTS || !g_scroll_texts[idx].used) return JS_NewBool(ctx, true);
+   return JS_NewBool(ctx, g_scroll_texts[idx].pos >= (float)g_scroll_texts[idx].total_w);
+}
+
+/* ── Bitmask ops ─────────────────────────────────────────────────────── */
+static JSValue js_bit_and(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int32_t a = (int32_t)int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0);
+   int32_t b = (int32_t)int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0);
+   return JS_NewInt32(ctx, a & b);
+}
+static JSValue js_bit_or(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int32_t a = (int32_t)int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0);
+   int32_t b = (int32_t)int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0);
+   return JS_NewInt32(ctx, a | b);
+}
+static JSValue js_bit_xor(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int32_t a = (int32_t)int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0);
+   int32_t b = (int32_t)int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0);
+   return JS_NewInt32(ctx, a ^ b);
+}
+static JSValue js_bit_not(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int32_t a = (int32_t)int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0);
+   return JS_NewInt32(ctx, ~a);
+}
+static JSValue js_bit_shl(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int32_t a = (int32_t)int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0);
+   int n = int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0);
+   if (n < 0 || n > 31) return JS_NewInt32(ctx, 0);
+   return JS_NewInt32(ctx, a << n);
+}
+static JSValue js_bit_shr(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int32_t a = (int32_t)int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0);
+   int n = int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0);
+   if (n < 0 || n > 31) return JS_NewInt32(ctx, 0);
+   return JS_NewInt32(ctx, a >> n);
+}
+static JSValue js_bit_test(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int32_t a = (int32_t)int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0);
+   int b = int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0);
+   if (b < 0 || b > 31) return JS_NewBool(ctx, false);
+   return JS_NewBool(ctx, (a >> b) & 1);
+}
+static JSValue js_bit_set(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int32_t a = (int32_t)int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0);
+   int b = int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0);
+   if (b < 0 || b > 31) return JS_NewInt32(ctx, a);
+   return JS_NewInt32(ctx, a | (1 << b));
+}
+static JSValue js_bit_clear(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int32_t a = (int32_t)int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0);
+   int b = int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0);
+   if (b < 0 || b > 31) return JS_NewInt32(ctx, a);
+   return JS_NewInt32(ctx, a & ~(1 << b));
+}
+static JSValue js_bit_toggle(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int32_t a = (int32_t)int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0);
+   int b = int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0);
+   if (b < 0 || b > 31) return JS_NewInt32(ctx, a);
+   return JS_NewInt32(ctx, a ^ (1 << b));
+}
+
+/* ── printLines ──────────────────────────────────────────────────────── */
+static JSValue js_print_lines(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 3 || !JS_IsArray(argv[0])) return JS_UNDEFINED;
+   int x = int_from_js(ctx, argv[1], 0) - cam2d_x;
+   int y = int_from_js(ctx, argv[2], 0) - cam2d_y;
+   int lineH = argc > 3 ? int_from_js(ctx, argv[3], 10) : 10;
+   uint32_t color = color_from_js(ctx, argc > 4 ? argv[4] : JS_UNDEFINED, rgba8(255, 255, 255, 255));
+   JSValue len_val = JS_GetPropertyStr(ctx, argv[0], "length");
+   int len = int_from_js(ctx, len_val, 0);
+   JS_FreeValue(ctx, len_val);
+   for (int i = 0; i < len; i++) {
+      JSValue item = JS_GetPropertyUint32(ctx, argv[0], (uint32_t)i);
+      const char *s = JS_ToCString(ctx, item);
+      if (s) {
+         draw_text_pixels(s, x, y + i * lineH, color);
+         JS_FreeCString(ctx, s);
+      }
+      JS_FreeValue(ctx, item);
+   }
+   return JS_UNDEFINED;
+}
+
+/* ── Pattern fills ───────────────────────────────────────────────────── */
+static JSValue js_fill_checkerboard(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 6) return JS_UNDEFINED;
+   int x1v = int_from_js(ctx, argv[0], 0) - cam2d_x;
+   int y1v = int_from_js(ctx, argv[1], 0) - cam2d_y;
+   int x2v = int_from_js(ctx, argv[2], 0) - cam2d_x;
+   int y2v = int_from_js(ctx, argv[3], 0) - cam2d_y;
+   uint32_t c1 = color_from_js(ctx, argv[4], rgba8(255, 255, 255, 255));
+   uint32_t c2 = color_from_js(ctx, argv[5], rgba8(0, 0, 0, 255));
+   int sz = argc > 6 ? int_from_js(ctx, argv[6], 8) : 8;
+   if (sz < 1) sz = 1;
+   for (int y = y1v; y < y2v; y++) {
+      for (int x = x1v; x < x2v; x++) {
+         int bx = (x - x1v) / sz, by = (y - y1v) / sz;
+         set_pixel(x, y, (bx + by) % 2 == 0 ? c1 : c2);
+      }
+   }
+   return JS_UNDEFINED;
+}
+static JSValue js_fill_stripes(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 6) return JS_UNDEFINED;
+   int x1v = int_from_js(ctx, argv[0], 0) - cam2d_x;
+   int y1v = int_from_js(ctx, argv[1], 0) - cam2d_y;
+   int x2v = int_from_js(ctx, argv[2], 0) - cam2d_x;
+   int y2v = int_from_js(ctx, argv[3], 0) - cam2d_y;
+   uint32_t c1 = color_from_js(ctx, argv[4], rgba8(255, 255, 255, 255));
+   uint32_t c2 = color_from_js(ctx, argv[5], rgba8(0, 0, 0, 255));
+   int sz = argc > 6 ? int_from_js(ctx, argv[6], 8) : 8;
+   int vert = argc > 7 ? int_from_js(ctx, argv[7], 0) : 0;
+   if (sz < 1) sz = 1;
+   for (int y = y1v; y < y2v; y++) {
+      for (int x = x1v; x < x2v; x++) {
+         int band = vert ? (x - x1v) / sz : (y - y1v) / sz;
+         set_pixel(x, y, band % 2 == 0 ? c1 : c2);
+      }
+   }
+   return JS_UNDEFINED;
+}
+
+/* ── fillCircleGradient ──────────────────────────────────────────────── */
+static JSValue js_fill_circle_gradient(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 5) return JS_UNDEFINED;
+   float cx2 = (float)double_from_js(ctx, argv[0], 0.0) - (float)cam2d_x;
+   float cy2 = (float)double_from_js(ctx, argv[1], 0.0) - (float)cam2d_y;
+   float r   = (float)double_from_js(ctx, argv[2], 0.0);
+   uint32_t cc = color_from_js(ctx, argv[3], rgba8(255, 255, 255, 255));
+   uint32_t ce = color_from_js(ctx, argv[4], rgba8(0, 0, 0, 255));
+   if (r <= 0.0f) return JS_UNDEFINED;
+   int ir = (int)ceilf(r);
+   for (int dy2 = -ir; dy2 <= ir; dy2++) {
+      for (int dx2 = -ir; dx2 <= ir; dx2++) {
+         float d = sqrtf((float)(dx2 * dx2 + dy2 * dy2));
+         if (d > r) continue;
+         float t = d / r;
+         set_pixel((int)cx2 + dx2, (int)cy2 + dy2, lerp_color(cc, ce, t));
+      }
+   }
+   return JS_UNDEFINED;
+}
+
+/* ── Standalone easing ───────────────────────────────────────────────── */
+static JSValue js_ease_in(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double t = clamp_double(double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0.0), 0.0, 1.0);
+   double n = argc > 1 ? clamp_double(double_from_js(ctx, argv[1], 2.0), 1.0, 10.0) : 2.0;
+   return JS_NewFloat64(ctx, pow(t, n));
+}
+static JSValue js_ease_out(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double t = clamp_double(double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0.0), 0.0, 1.0);
+   double n = argc > 1 ? clamp_double(double_from_js(ctx, argv[1], 2.0), 1.0, 10.0) : 2.0;
+   return JS_NewFloat64(ctx, 1.0 - pow(1.0 - t, n));
+}
+static JSValue js_ease_in_out(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double t = clamp_double(double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0.0), 0.0, 1.0);
+   if (t < 0.5) return JS_NewFloat64(ctx, 2.0 * t * t);
+   return JS_NewFloat64(ctx, -1.0 + (4.0 - 2.0 * t) * t);
+}
+static JSValue js_ease_bounce(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double t = clamp_double(double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0.0), 0.0, 1.0);
+   /* bounce-out formula */
+   if (t < 1.0 / 2.75)       return JS_NewFloat64(ctx, 7.5625 * t * t);
+   if (t < 2.0 / 2.75)       { t -= 1.5 / 2.75;   return JS_NewFloat64(ctx, 7.5625 * t * t + 0.75); }
+   if (t < 2.5 / 2.75)       { t -= 2.25 / 2.75;  return JS_NewFloat64(ctx, 7.5625 * t * t + 0.9375); }
+   t -= 2.625 / 2.75;        return JS_NewFloat64(ctx, 7.5625 * t * t + 0.984375);
+}
+static JSValue js_ease_elastic(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double t = clamp_double(double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0.0), 0.0, 1.0);
+   if (t == 0.0 || t == 1.0) return JS_NewFloat64(ctx, t);
+   return JS_NewFloat64(ctx, pow(2.0, -10.0 * t) * sin((t - 0.075) * 2.0 * 3.14159265358979 / 0.3) + 1.0);
+}
+
+/* ── Color hex I/O ───────────────────────────────────────────────────── */
+static JSValue js_color_to_hex(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   uint32_t c = color_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0);
+   char buf[8];
+   snprintf(buf, sizeof(buf), "#%02x%02x%02x",
+            (unsigned)((c >> 24) & 0xff),
+            (unsigned)((c >> 16) & 0xff),
+            (unsigned)((c >>  8) & 0xff));
+   return JS_NewString(ctx, buf);
+}
+static JSValue js_hex_to_color(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 1) return JS_NewInt32(ctx, (int32_t)rgba8(0, 0, 0, 255));
+   const char *s = JS_ToCString(ctx, argv[0]);
+   if (!s) return JS_NewInt32(ctx, (int32_t)rgba8(0, 0, 0, 255));
+   const char *p = s;
+   if (*p == '#') p++;
+   unsigned rv = 0, gv = 0, bv = 0;
+   if (strlen(p) >= 6) {
+      char rb[3] = { p[0], p[1], 0 };
+      char gb[3] = { p[2], p[3], 0 };
+      char bb[3] = { p[4], p[5], 0 };
+      rv = (unsigned)strtol(rb, NULL, 16);
+      gv = (unsigned)strtol(gb, NULL, 16);
+      bv = (unsigned)strtol(bb, NULL, 16);
+   }
+   JS_FreeCString(ctx, s);
+   return JS_NewInt32(ctx, (int32_t)rgba8((uint8_t)rv, (uint8_t)gv, (uint8_t)bv, 255));
+}
+
+/* ── screenBorder ────────────────────────────────────────────────────── */
+static JSValue js_screen_border(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int sz = argc > 0 ? int_from_js(ctx, argv[0], 4) : 4;
+   uint32_t color = color_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, rgba8(0, 0, 0, 255));
+   if (sz <= 0 || !framebuffer) return JS_UNDEFINED;
+   /* top */
+   for (int y = 0; y < sz && y < NOVA64_HEIGHT; y++)
+      for (int x = 0; x < NOVA64_WIDTH; x++) set_pixel(x, y, color);
+   /* bottom */
+   for (int y = NOVA64_HEIGHT - sz; y < NOVA64_HEIGHT; y++)
+      for (int x = 0; x < NOVA64_WIDTH; x++) if (y >= 0) set_pixel(x, y, color);
+   /* left */
+   for (int y = sz; y < NOVA64_HEIGHT - sz; y++)
+      for (int x = 0; x < sz && x < NOVA64_WIDTH; x++) set_pixel(x, y, color);
+   /* right */
+   for (int y = sz; y < NOVA64_HEIGHT - sz; y++)
+      for (int x = NOVA64_WIDTH - sz; x < NOVA64_WIDTH; x++) if (x >= 0) set_pixel(x, y, color);
+   return JS_UNDEFINED;
+}
+
+/* ── sprScale ────────────────────────────────────────────────────────── */
+/* sprScale(path, dx, dy, scale [, imgw, imgh [, sx, sy, sw, sh]]) */
+static JSValue js_spr_scale(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 4) return JS_NewBool(ctx, false);
+   const char *path = JS_ToCString(ctx, argv[0]);
+   if (!path) return JS_NewBool(ctx, false);
+   const struct nova64_package_asset *asset = find_package_asset(path);
+   bool is_png = path_is_png(path);
+   JS_FreeCString(ctx, path);
+   if (!asset || !asset->data || asset->size < 4) return JS_NewBool(ctx, false);
+   int dx = int_from_js(ctx, argv[1], 0) - cam2d_x;
+   int dy = int_from_js(ctx, argv[2], 0) - cam2d_y;
+   float scale = (float)clamp_double(double_from_js(ctx, argv[3], 1.0), 0.1, 16.0);
+   uint8_t *png_pixels = NULL;
+   const uint8_t *pixels = (const uint8_t *)asset->data;
+   int img_w = argc > 4 ? int_from_js(ctx, argv[4], 0) : 0;
+   int img_h = argc > 5 ? int_from_js(ctx, argv[5], 0) : 0;
+   if (is_png) {
+      int pw = 0, ph = 0;
+      png_pixels = decode_png_asset(asset->data, asset->size, &pw, &ph);
+      if (!png_pixels) return JS_NewBool(ctx, false);
+      pixels = png_pixels;
+      if (img_w <= 0) img_w = pw;
+      if (img_h <= 0) img_h = ph;
+   }
+   if (img_w <= 0 || img_h <= 0) {
+      int side = (int)sqrt((double)(asset->size / 4));
+      img_w = side > 0 ? side : 1;
+      img_h = (int)((asset->size / 4) / (size_t)img_w);
+      if (img_h <= 0) img_h = img_w;
+   }
+   int src_x = argc > 6 ? int_from_js(ctx, argv[6], 0) : 0;
+   int src_y = argc > 7 ? int_from_js(ctx, argv[7], 0) : 0;
+   int bw    = argc > 8 ? int_from_js(ctx, argv[8], 0) : (img_w - src_x);
+   int bh    = argc > 9 ? int_from_js(ctx, argv[9], 0) : (img_h - src_y);
+   if (bw <= 0 || bh <= 0) { free(png_pixels); return JS_NewBool(ctx, false); }
+   int dw = (int)((float)bw * scale);
+   int dh = (int)((float)bh * scale);
+   for (int row = 0; row < dh; row++) {
+      int sy2 = src_y + (int)((float)row / scale);
+      if (sy2 < 0 || sy2 >= img_h) continue;
+      for (int col = 0; col < dw; col++) {
+         int sx2 = src_x + (int)((float)col / scale);
+         if (sx2 < 0 || sx2 >= img_w) continue;
+         size_t si = ((size_t)sy2 * (size_t)img_w + (size_t)sx2) * 4;
+         uint8_t r2 = pixels[si], g2 = pixels[si+1], b2 = pixels[si+2], a2 = pixels[si+3];
+         if (a2 == 0) continue;
+         set_pixel(dx + col, dy + row, rgba8(r2, g2, b2, 255));
+      }
+   }
+   free(png_pixels);
+   return JS_NewBool(ctx, true);
+}
+
+/* ── formatTime ──────────────────────────────────────────────────────── */
+static JSValue js_format_time(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 1) return JS_NewString(ctx, "00:00");
+   double secs = double_from_js(ctx, argv[0], 0.0);
+   if (secs < 0.0) secs = 0.0;
+   int total = (int)secs;
+   int h = total / 3600, m = (total % 3600) / 60, s = total % 60;
+   char buf[16];
+   if (h > 0) snprintf(buf, sizeof(buf), "%d:%02d:%02d", h, m, s);
+   else        snprintf(buf, sizeof(buf), "%02d:%02d", m, s);
+   return JS_NewString(ctx, buf);
+}
+static JSValue js_format_time_ms(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 1) return JS_NewString(ctx, "00:00.000");
+   double ms = double_from_js(ctx, argv[0], 0.0);
+   if (ms < 0.0) ms = 0.0;
+   int total_ms = (int)ms;
+   int m = (total_ms / 60000), sv = (total_ms % 60000) / 1000, frac = total_ms % 1000;
+   char buf[16];
+   snprintf(buf, sizeof(buf), "%02d:%02d.%03d", m, sv, frac);
+   return JS_NewString(ctx, buf);
+}
+
+/* ── drawArrow ───────────────────────────────────────────────────────── */
+static JSValue js_draw_arrow(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 5) return JS_UNDEFINED;
+   int x0 = int_from_js(ctx, argv[0], 0) - cam2d_x;
+   int y0 = int_from_js(ctx, argv[1], 0) - cam2d_y;
+   int x1 = int_from_js(ctx, argv[2], 0) - cam2d_x;
+   int y1 = int_from_js(ctx, argv[3], 0) - cam2d_y;
+   uint32_t color = color_from_js(ctx, argv[4], rgba8(255, 255, 255, 255));
+   int hs = argc > 5 ? int_from_js(ctx, argv[5], 6) : 6;
+   /* Draw the shaft */
+   path_draw_line_segment(x0, y0, x1, y1, color);
+   /* Compute arrowhead: two lines back at ±30° from (x1,y1) */
+   float ang = atan2f((float)(y1 - y0), (float)(x1 - x0));
+   float a1 = ang + (float)(3.14159265358979323846 * 5.0 / 6.0);
+   float a2 = ang - (float)(3.14159265358979323846 * 5.0 / 6.0);
+   path_draw_line_segment(x1, y1, x1 + (int)(cosf(a1) * hs), y1 + (int)(sinf(a1) * hs), color);
+   path_draw_line_segment(x1, y1, x1 + (int)(cosf(a2) * hs), y1 + (int)(sinf(a2) * hs), color);
+   return JS_UNDEFINED;
+}
+
+/* ── colorPulse ──────────────────────────────────────────────────────── */
+static JSValue js_color_pulse(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   uint32_t c = color_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, rgba8(255, 255, 255, 255));
+   double speed = argc > 1 ? double_from_js(ctx, argv[1], 1.0) : 1.0;
+   double minB  = argc > 2 ? clamp_double(double_from_js(ctx, argv[2], 0.2), 0.0, 1.0) : 0.2;
+   double t = (sin(2.0 * 3.14159265358979 * speed * (double)frame_count / NOVA64_FPS) + 1.0) * 0.5;
+   float factor = (float)(minB + (1.0 - minB) * t);
+   uint8_t r2 = (uint8_t)((float)((c >> 24) & 0xff) * factor);
+   uint8_t g2 = (uint8_t)((float)((c >> 16) & 0xff) * factor);
+   uint8_t b2 = (uint8_t)((float)((c >>  8) & 0xff) * factor);
+   return JS_NewInt32(ctx, (int32_t)rgba8(r2, g2, b2, 255));
+}
 
 /* ── Tilemap getters ─────────────────────────────────────────────────── */
 static JSValue js_get_tile(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
@@ -10949,6 +11416,52 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, global, "sprFlipX",     js_spr_flip_x,    9);
    set_function(ctx, global, "sprFlipY",     js_spr_flip_y,    9);
 
+   /* Scrolling text */
+   set_function(ctx, global, "createScrollText",  js_create_scroll_text,  2);
+   set_function(ctx, global, "drawScrollText",    js_draw_scroll_text,    5);
+   set_function(ctx, global, "destroyScrollText", js_destroy_scroll_text, 1);
+   set_function(ctx, global, "resetScrollText",   js_reset_scroll_text,   1);
+   set_function(ctx, global, "scrollTextX",       js_scroll_text_x,       1);
+   set_function(ctx, global, "scrollTextDone",    js_scroll_text_done,    1);
+   /* Bitmask ops */
+   set_function(ctx, global, "bitAnd",    js_bit_and,    2);
+   set_function(ctx, global, "bitOr",     js_bit_or,     2);
+   set_function(ctx, global, "bitXor",    js_bit_xor,    2);
+   set_function(ctx, global, "bitNot",    js_bit_not,    1);
+   set_function(ctx, global, "bitShL",    js_bit_shl,    2);
+   set_function(ctx, global, "bitShR",    js_bit_shr,    2);
+   set_function(ctx, global, "bitTest",   js_bit_test,   2);
+   set_function(ctx, global, "bitSet",    js_bit_set,    2);
+   set_function(ctx, global, "bitClear",  js_bit_clear,  2);
+   set_function(ctx, global, "bitToggle", js_bit_toggle, 2);
+   /* Multi-line print */
+   set_function(ctx, global, "printLines", js_print_lines, 5);
+   /* Pattern fills */
+   set_function(ctx, global, "fillCheckerboard", js_fill_checkerboard, 7);
+   set_function(ctx, global, "fillStripes",      js_fill_stripes,      8);
+   /* Circle gradient */
+   set_function(ctx, global, "fillCircleGradient", js_fill_circle_gradient, 5);
+   /* Standalone easing */
+   set_function(ctx, global, "easeIn",      js_ease_in,      2);
+   set_function(ctx, global, "easeOut",     js_ease_out,     2);
+   set_function(ctx, global, "easeInOut",   js_ease_in_out,  1);
+   set_function(ctx, global, "easeBounce",  js_ease_bounce,  1);
+   set_function(ctx, global, "easeElastic", js_ease_elastic, 1);
+   /* Color hex */
+   set_function(ctx, global, "colorToHex",  js_color_to_hex,  1);
+   set_function(ctx, global, "hexToColor",  js_hex_to_color,  1);
+   /* Screen border */
+   set_function(ctx, global, "screenBorder", js_screen_border, 2);
+   /* Sprite scale */
+   set_function(ctx, global, "sprScale", js_spr_scale, 10);
+   /* Time format */
+   set_function(ctx, global, "formatTime",   js_format_time,    1);
+   set_function(ctx, global, "formatTimeMs", js_format_time_ms, 1);
+   /* Arrow */
+   set_function(ctx, global, "drawArrow", js_draw_arrow, 6);
+   /* Color pulse */
+   set_function(ctx, global, "colorPulse", js_color_pulse, 3);
+
    JS_FreeValue(ctx, global);
    return true;
 }
@@ -13476,8 +13989,9 @@ void RETRO_CALLCONV retro_reset(void)
    g_shake_intensity = 0.0f; g_shake_timer = 0.0f; g_shake_duration = 0.0f;
    g_flash_timer = 0.0f; g_flash_duration = 0.0f;
    g_path_count = 0; g_path_closed = 0;
-   memset(g_hotspots,  0, sizeof(g_hotspots));
-   memset(g_btn_repeat, 0, sizeof(g_btn_repeat));
+   memset(g_hotspots,    0, sizeof(g_hotspots));
+   memset(g_btn_repeat,  0, sizeof(g_btn_repeat));
+   memset(g_scroll_texts, 0, sizeof(g_scroll_texts));
    rng_seed_from_environment();
    /* Hot reload: re-read cart from disk if NOVA64_HOT_RELOAD=1 */
    const char *hot_reload_env = getenv("NOVA64_HOT_RELOAD");
@@ -13552,6 +14066,12 @@ void RETRO_CALLCONV retro_run(void)
    if (g_flash_timer > 0.0f) {
       g_flash_timer -= (float)(1.0 / NOVA64_FPS);
       if (g_flash_timer < 0.0f) g_flash_timer = 0.0f;
+   }
+
+   /* advance scroll texts */
+   for (int _sti = 0; _sti < NOVA64_MAX_SCROLL_TEXTS; _sti++) {
+      if (!g_scroll_texts[_sti].used) continue;
+      g_scroll_texts[_sti].pos += g_scroll_texts[_sti].speed * (float)(1.0 / NOVA64_FPS);
    }
 
    /* advance btn repeat counters */
@@ -13667,8 +14187,9 @@ bool RETRO_CALLCONV retro_load_game(const struct retro_game_info *info)
    g_shake_intensity = 0.0f; g_shake_timer = 0.0f; g_shake_duration = 0.0f;
    g_flash_timer = 0.0f; g_flash_duration = 0.0f;
    g_path_count = 0; g_path_closed = 0;
-   memset(g_hotspots,  0, sizeof(g_hotspots));
-   memset(g_btn_repeat, 0, sizeof(g_btn_repeat));
+   memset(g_hotspots,    0, sizeof(g_hotspots));
+   memset(g_btn_repeat,  0, sizeof(g_btn_repeat));
+   memset(g_scroll_texts, 0, sizeof(g_scroll_texts));
    rng_seed_from_environment();
    frame_count = 0;
 

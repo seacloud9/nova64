@@ -488,6 +488,12 @@ struct nova64_gles_backend {
    GLint overlay_position_attrib;
    GLint overlay_uv_attrib;
    GLint overlay_texture_uniform;
+   /* Equirectangular skybox program */
+   GLuint skybox_program;
+   GLint skybox_position_attrib;
+   GLint skybox_inv_view_proj_uniform;
+   GLint skybox_texture_uniform;
+   bool skybox_resources_ready;
 };
 
 static retro_environment_t environ_cb;
@@ -616,6 +622,8 @@ static float g_shadow_light_vp[16];
 static bool sky_color_enabled = false;
 static uint32_t sky_top_color    = 0x000000FFU;
 static uint32_t sky_bottom_color = 0x000000FFU;
+/* Equirectangular skybox texture handle; 0 = disabled (GLES only) */
+static int g_skybox_tex_handle = 0;
 
 /* 16-color draw palette plus one exact-color swap for retro palette tricks. */
 static uint32_t draw_palette[16];
@@ -2476,6 +2484,55 @@ static void mat4_world_transform(float out[16], const struct nova64_mesh *mesh)
       ph = parent->parent_handle;
       depth++;
    }
+}
+
+/* Standard 4×4 matrix inverse via cofactor/adjugate expansion.
+   Column-major layout (same convention as the rest of the engine).
+   Returns identity if the determinant is ~zero. */
+static void mat4_inverse(float out[16], const float m[16])
+{
+   float t[16];
+   t[ 0] =  m[5]*m[10]*m[15] - m[5]*m[11]*m[14] - m[9]*m[6]*m[15]
+           + m[9]*m[7]*m[14] + m[13]*m[6]*m[11] - m[13]*m[7]*m[10];
+   t[ 4] = -m[4]*m[10]*m[15] + m[4]*m[11]*m[14] + m[8]*m[6]*m[15]
+           - m[8]*m[7]*m[14] - m[12]*m[6]*m[11] + m[12]*m[7]*m[10];
+   t[ 8] =  m[4]*m[9]*m[15]  - m[4]*m[11]*m[13] - m[8]*m[5]*m[15]
+           + m[8]*m[7]*m[13] + m[12]*m[5]*m[11] - m[12]*m[7]*m[9];
+   t[12] = -m[4]*m[9]*m[14]  + m[4]*m[10]*m[13] + m[8]*m[5]*m[14]
+           - m[8]*m[6]*m[13] - m[12]*m[5]*m[10] + m[12]*m[6]*m[9];
+   t[ 1] = -m[1]*m[10]*m[15] + m[1]*m[11]*m[14] + m[9]*m[2]*m[15]
+           - m[9]*m[3]*m[14] - m[13]*m[2]*m[11] + m[13]*m[3]*m[10];
+   t[ 5] =  m[0]*m[10]*m[15] - m[0]*m[11]*m[14] - m[8]*m[2]*m[15]
+           + m[8]*m[3]*m[14] + m[12]*m[2]*m[11] - m[12]*m[3]*m[10];
+   t[ 9] = -m[0]*m[9]*m[15]  + m[0]*m[11]*m[13] + m[8]*m[1]*m[15]
+           - m[8]*m[3]*m[13] - m[12]*m[1]*m[11] + m[12]*m[3]*m[9];
+   t[13] =  m[0]*m[9]*m[14]  - m[0]*m[10]*m[13] - m[8]*m[1]*m[14]
+           + m[8]*m[2]*m[13] + m[12]*m[1]*m[10] - m[12]*m[2]*m[9];
+   t[ 2] =  m[1]*m[6]*m[15]  - m[1]*m[7]*m[14]  - m[5]*m[2]*m[15]
+           + m[5]*m[3]*m[14] + m[13]*m[2]*m[7]  - m[13]*m[3]*m[6];
+   t[ 6] = -m[0]*m[6]*m[15]  + m[0]*m[7]*m[14]  + m[4]*m[2]*m[15]
+           - m[4]*m[3]*m[14] - m[12]*m[2]*m[7]  + m[12]*m[3]*m[6];
+   t[10] =  m[0]*m[5]*m[15]  - m[0]*m[7]*m[13]  - m[4]*m[1]*m[15]
+           + m[4]*m[3]*m[13] + m[12]*m[1]*m[7]  - m[12]*m[3]*m[5];
+   t[14] = -m[0]*m[5]*m[14]  + m[0]*m[6]*m[13]  + m[4]*m[1]*m[14]
+           - m[4]*m[2]*m[13] - m[12]*m[1]*m[6]  + m[12]*m[2]*m[5];
+   t[ 3] = -m[1]*m[6]*m[11]  + m[1]*m[7]*m[10]  + m[5]*m[2]*m[11]
+           - m[5]*m[3]*m[10] - m[9]*m[2]*m[7]   + m[9]*m[3]*m[6];
+   t[ 7] =  m[0]*m[6]*m[11]  - m[0]*m[7]*m[10]  - m[4]*m[2]*m[11]
+           + m[4]*m[3]*m[10] + m[8]*m[2]*m[7]   - m[8]*m[3]*m[6];
+   t[11] = -m[0]*m[5]*m[11]  + m[0]*m[7]*m[9]   + m[4]*m[1]*m[11]
+           - m[4]*m[3]*m[9]  - m[8]*m[1]*m[7]   + m[8]*m[3]*m[5];
+   t[15] =  m[0]*m[5]*m[10]  - m[0]*m[6]*m[9]   - m[4]*m[1]*m[10]
+           + m[4]*m[2]*m[9]  + m[8]*m[1]*m[6]   - m[8]*m[2]*m[5];
+
+   float det = m[0]*t[0] + m[1]*t[4] + m[2]*t[8] + m[3]*t[12];
+   if (det > -1e-8f && det < 1e-8f) {
+      mat4_identity(out);
+      return;
+   }
+   float inv_det = 1.0f / det;
+   for (int i = 0; i < 16; i++)
+      out[i] = t[i] * inv_det;
 }
 
 static void mat3_normal_from_mesh(float out[9], const struct nova64_mesh *mesh)
@@ -5004,6 +5061,7 @@ static JSValue js_set_mesh_opacity(JSContext *ctx, JSValueConst this_val, int ar
 }
 
 static void gles_destroy_shadow_resources(void);
+static void gles_destroy_skybox_resources(void);
 
 static JSValue js_set_cast_shadow(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
@@ -5177,6 +5235,7 @@ static JSValue js_get_backend_capabilities(JSContext *ctx, JSValueConst this_val
    JS_SetPropertyStr(ctx, object, "shadowMaps", JS_NewBool(ctx, gles.active));
    JS_SetPropertyStr(ctx, object, "normalMaps", JS_NewBool(ctx, gles.active));
    JS_SetPropertyStr(ctx, object, "renderTargets", JS_NewBool(ctx, gles.active));
+   JS_SetPropertyStr(ctx, object, "skybox", JS_NewBool(ctx, gles.active));
    return object;
 }
 
@@ -5283,6 +5342,23 @@ static JSValue js_get_sky_color(JSContext *ctx, JSValueConst this_val, int argc,
    JS_SetPropertyStr(ctx, object, "top", JS_NewUint32(ctx, sky_top_color));
    JS_SetPropertyStr(ctx, object, "bottom", JS_NewUint32(ctx, sky_bottom_color));
    return object;
+}
+
+/* setSkybox(texHandle) — sets equirectangular skybox texture (GLES only).
+   Software renderer ignores this and falls back to sky color. */
+static JSValue js_set_skybox(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)ctx; (void)this_val;
+   g_skybox_tex_handle = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0);
+   return JS_UNDEFINED;
+}
+
+/* clearSkybox() — disables the equirectangular skybox */
+static JSValue js_clear_skybox(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)ctx; (void)this_val; (void)argc; (void)argv;
+   g_skybox_tex_handle = 0;
+   return JS_UNDEFINED;
 }
 
 /* setMeshRoughness(handle, value) */
@@ -6355,6 +6431,7 @@ static void build_shadow_light_vp(float out[16]);
 static void render_gles_shadow_pass(const float light_vp[16]);
 static bool gles_load_functions(void);
 static bool gles_init_resources(void);
+static void render_gles_skybox(const float view[16], const float projection[16]);
 
 static void render_gles_scene_to_rt(struct nova64_render_target *rt)
 {
@@ -6392,6 +6469,9 @@ static void render_gles_scene_to_rt(struct nova64_render_target *rt)
    }
    mat4_look_at(view, camera_state.position, camera_state.target, up);
    mat4_multiply(view_projection, projection, view);
+
+   /* Draw equirectangular skybox behind all geometry (GLES only) */
+   render_gles_skybox(view, projection);
 
    for (int i = 0; i < NOVA64_MAX_MESHES; i++) {
       if (!meshes[i].used || !meshes[i].visible || meshes[i].opacity <= 0.0f) continue;
@@ -7701,6 +7781,8 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, scene, "setSkyColor", js_set_sky_color, 2);
    set_function(ctx, scene, "clearSkyColor", js_clear_sky_color, 0);
    set_function(ctx, scene, "getSkyColor", js_get_sky_color, 0);
+   set_function(ctx, scene, "setSkybox", js_set_skybox, 1);
+   set_function(ctx, scene, "clearSkybox", js_clear_skybox, 0);
    set_function(ctx, scene, "setMeshRoughness", js_set_mesh_roughness, 2);
    set_function(ctx, scene, "setMeshMetalness", js_set_mesh_metalness, 2);
    set_function(ctx, scene, "setMeshUVOffset", js_set_mesh_uv_offset, 3);
@@ -7988,6 +8070,8 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, global, "setSkyColor", js_set_sky_color, 2);
    set_function(ctx, global, "clearSkyColor", js_clear_sky_color, 0);
    set_function(ctx, global, "getSkyColor", js_get_sky_color, 0);
+   set_function(ctx, global, "setSkybox", js_set_skybox, 1);
+   set_function(ctx, global, "clearSkybox", js_clear_skybox, 0);
    set_function(ctx, global, "setCameraOrthographic", js_set_camera_orthographic, 2);
    set_function(ctx, global, "setCameraPerspective", js_set_camera_perspective, 0);
    set_function(ctx, global, "getCameraPosition", js_get_camera_position, 0);
@@ -8872,6 +8956,7 @@ static void gles_destroy_resources(void)
    gles.cube_program = 0;
    gles.overlay_program = 0;
    gles_destroy_shadow_resources();
+   gles_destroy_skybox_resources();
    gles.resources_ready = false;
 }
 
@@ -9417,6 +9502,109 @@ static void render_gles_instanced_mesh(const struct nova64_mesh *mesh, const flo
    gles.DisableVertexAttribArray((GLuint)gles.cube_position_attrib);
 }
 
+/* ---- Equirectangular skybox ------------------------------------------------ */
+
+static bool gles_create_skybox_program(void)
+{
+   static const char *vertex_source =
+      "attribute vec2 a_position;\n"
+      "varying vec2 v_ndc;\n"
+      "void main() {\n"
+      "  v_ndc = a_position;\n"
+      "  gl_Position = vec4(a_position, 0.999, 1.0);\n"
+      "}\n";
+   static const char *fragment_source =
+      "precision mediump float;\n"
+      "varying vec2 v_ndc;\n"
+      "uniform mat4 u_inv_vp;\n"
+      "uniform sampler2D u_skybox_tex;\n"
+      "void main() {\n"
+      "  vec4 world = u_inv_vp * vec4(v_ndc, 1.0, 1.0);\n"
+      "  vec3 dir = normalize(world.xyz / world.w);\n"
+      "  float u = atan(dir.z, dir.x) / (2.0 * 3.14159265) + 0.5;\n"
+      "  float v = asin(clamp(dir.y, -1.0, 1.0)) / 3.14159265 + 0.5;\n"
+      "  gl_FragColor = texture2D(u_skybox_tex, vec2(u, v));\n"
+      "}\n";
+
+   GLuint vertex = gles_compile_shader(GL_VERTEX_SHADER, vertex_source);
+   GLuint fragment = gles_compile_shader(GL_FRAGMENT_SHADER, fragment_source);
+   if (!vertex || !fragment) {
+      if (vertex)  gles.DeleteShader(vertex);
+      if (fragment) gles.DeleteShader(fragment);
+      return false;
+   }
+   GLuint program = gles.CreateProgram();
+   gles.AttachShader(program, vertex);
+   gles.AttachShader(program, fragment);
+   gles.LinkProgram(program);
+   gles.DeleteShader(vertex);
+   gles.DeleteShader(fragment);
+   GLint status = 0;
+   gles.GetProgramiv(program, GL_LINK_STATUS, &status);
+   if (!status) {
+      gles.DeleteProgram(program);
+      nova64_log_line(RETRO_LOG_WARN, "[nova64] skybox program link failed; skybox disabled");
+      return false;
+   }
+   gles.skybox_program = program;
+   gles.skybox_position_attrib    = gles.GetAttribLocation(program, "a_position");
+   gles.skybox_inv_view_proj_uniform = gles.GetUniformLocation(program, "u_inv_vp");
+   gles.skybox_texture_uniform    = gles.GetUniformLocation(program, "u_skybox_tex");
+   gles.skybox_resources_ready = true;
+   return gles.skybox_position_attrib >= 0;
+}
+
+static void gles_destroy_skybox_resources(void)
+{
+   if (gles.skybox_program && gles.DeleteProgram)
+      gles.DeleteProgram(gles.skybox_program);
+   gles.skybox_program = 0;
+   gles.skybox_resources_ready = false;
+}
+
+/* Renders a full-screen equirectangular skybox using the texture at
+   g_skybox_tex_handle.  Must be called after Clear() and before any
+   geometry so depth writes overwrite the background pixels. */
+static void render_gles_skybox(const float view[16], const float projection[16])
+{
+   if (g_skybox_tex_handle <= 0)
+      return;
+   struct nova64_texture *tex = texture_from_handle(g_skybox_tex_handle);
+   if (!tex || !tex->gl_name)
+      return;
+
+   if (!gles.skybox_resources_ready) {
+      if (!gles_create_skybox_program())
+         return;
+   }
+
+   float vp[16];
+   float inv_vp[16];
+   mat4_multiply(vp, projection, view);
+   mat4_inverse(inv_vp, vp);
+
+   gles.Disable(GL_DEPTH_TEST);
+   gles.UseProgram(gles.skybox_program);
+
+   gles.ActiveTexture(GL_TEXTURE0);
+   gles.BindTexture(GL_TEXTURE_2D, tex->gl_name);
+   gles.Uniform1i(gles.skybox_texture_uniform, 0);
+   gles.UniformMatrix4fv(gles.skybox_inv_view_proj_uniform, 1, GL_FALSE, inv_vp);
+
+   /* Re-use the overlay quad VBO (x, y, u, v interleaved — stride = 4 floats) */
+   gles.BindBuffer(GL_ARRAY_BUFFER, gles.overlay_vbo);
+   gles.BindBuffer(GL_ELEMENT_ARRAY_BUFFER, gles.overlay_ibo);
+   gles.EnableVertexAttribArray((GLuint)gles.skybox_position_attrib);
+   gles.VertexAttribPointer((GLuint)gles.skybox_position_attrib, 2, GL_FLOAT, GL_FALSE,
+      (GLsizei)(sizeof(GLfloat) * 4), NULL);
+   gles.DrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, NULL);
+   gles.DisableVertexAttribArray((GLuint)gles.skybox_position_attrib);
+
+   gles.BindBuffer(GL_ARRAY_BUFFER, 0);
+   gles.BindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+   gles.Enable(GL_DEPTH_TEST);
+}
+
 static void render_gles_overlay(void)
 {
    if (!convert_framebuffer_to_overlay_rgba())
@@ -9735,6 +9923,9 @@ static void render_gles_scene(void)
    }
    mat4_look_at(view, camera_state.position, camera_state.target, up);
    mat4_multiply(view_projection, projection, view);
+
+   /* Draw equirectangular skybox behind all geometry (GLES only) */
+   render_gles_skybox(view, projection);
 
    for (int i = 0; i < NOVA64_MAX_MESHES; i++) {
       if (!meshes[i].used || !meshes[i].visible || meshes[i].opacity <= 0.0f)

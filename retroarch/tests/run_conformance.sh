@@ -202,6 +202,24 @@ with ZipFile(package_dir / "z-sort-sprites.nova", "w", ZIP_DEFLATED) as package:
         '{"name":"z-sort-sprites","main":"src/main.js","assets":["sprites/red.rgba","sprites/blue.rgba"]}\n',
     )
 
+# skybox panorama: 64x32 RGBA equirectangular gradient (top=sky blue, bottom=horizon orange)
+pano = bytearray(64 * 32 * 4)
+for py in range(32):
+    t = py / 31.0
+    r = int(30  + (200 - 30)  * t)
+    g = int(80  + (160 - 80)  * t)
+    b = int(180 + (80  - 180) * t)
+    for px in range(64):
+        i = (py * 64 + px) * 4
+        pano[i:i+4] = [r, g, b, 255]
+with ZipFile(package_dir / "skybox.nova", "w", ZIP_DEFLATED) as package:
+    package.write("retroarch/conformance/108-skybox.js", "src/main.js")
+    package.writestr("sky/panorama.rgba", bytes(pano))
+    package.writestr(
+        "manifest.json",
+        '{"name":"skybox","main":"src/main.js","assets":["sky/panorama.rgba"]}\n',
+    )
+
 # 4-frame 16x4 RGBA sprite sheet with atlas metadata for named regions
 sheet = bytearray(16 * 4 * 4)
 frame_colors = [(240, 70, 70, 255), (70, 220, 90, 255), (80, 130, 250, 255), (245, 220, 70, 255)]
@@ -541,6 +559,7 @@ run_visual_case "104 normal map"      "104-normal-map"      "retroarch/conforman
 run_visual_case "105 z-sort sprites"  "105-z-sort-sprites"  "${PACKAGE_DIR}/z-sort-sprites.nova"              "5ad25226be812307"
 run_visual_case "106 render target"   "106-render-target"   "retroarch/conformance/106-render-target.js"       "44044eca0be4f87f"
 run_visual_case "107 instanced mesh"  "107-instanced-mesh"  "retroarch/conformance/107-instanced-mesh.js"      "4fd99c7a95f90255"
+run_visual_case "108 skybox"          "108-skybox"          "${PACKAGE_DIR}/skybox.nova"                        "38f18480f256541a"
 
 # GLES hardware-rendered locked checksums (run with NOVA64_GLES_TESTS=1)
 # 20-post skipped: GLES FBO crash
@@ -586,5 +605,6 @@ run_gles_case "103 shadow map"        "103-shadow-map"         "retroarch/confor
 run_gles_case "104 normal map"        "104-normal-map"         "retroarch/conformance/104-normal-map.js"         "acdf60ad7ccc086f"
 run_gles_case "106 render target"     "106-render-target"      "retroarch/conformance/106-render-target.js"      "f05b3c17d784bd72"
 run_gles_case "107 instanced mesh"    "107-instanced-mesh"     "retroarch/conformance/107-instanced-mesh.js"     "f01a0e0dc49c9e0e"
+run_gles_case "108 skybox"            "108-skybox"             "${PACKAGE_DIR}/skybox.nova"                      "a4ad0833d5acff46"
 
 echo "Conformance passed."

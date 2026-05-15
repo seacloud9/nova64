@@ -356,10 +356,13 @@ directional lighting. Everything below is missing or incomplete.
   Software path: proxy cube at translation column of each instance matrix.
   `107-instanced-mesh.js` conformance cart sw=4fd99c7a95f90255 gles=f01a0e0dc49c9e0e.
 
-Still missing:
+- ~~`setSkybox(texHandle)`~~ **Done**: equirectangular panoramic skybox on GLES.
+  `setSkybox(texHandle)` sets background; `clearSkybox()` reverts to gradient.
+  Inverse-VP matrix used to reconstruct view ray per fragment; UV = atan2/asin
+  equirectangular mapping. `skybox` capability flag. `108-skybox.js` cart
+  sw=38f18480f256541a gles=a4ad0833d5acff46.
 
-- `setSkybox(texHandle)` cube-map skybox for environments that supply one.
-- Conformance coverage for each new primitive type and shader feature.
+All 8A items complete.
 
 ### 8B: 2D Draw API Completion
 
@@ -417,11 +420,11 @@ Sprite-sheet first pass done:
 - ~~Stereo pan / voice handle state~~ **Done**: `setVoicePitch`, `setVoiceVolume`, `stopVoice`, `getVoicePitch`, `getVoiceVolume`. `91-stereo-pan.js`, `99-voice-handle.js`.
 - ~~Hot reload~~ **Done**: `NOVA64_HOT_RELOAD=1` re-reads cart from disk on reset. `92-hot-reload.js`.
 
-Still missing in 8B:
+- ~~Draw-order / z-sorting for 2D sprites~~ **Done**: `spr(path, dx, dy, ..., z)` optional
+  10th arg; deferred queue flushed after `draw()` returns, sorted ascending by z.
+  Backward-compatible (sprites without z arg blit immediately). `105-z-sort-sprites.js`.
 
-- Draw-order / z-sorting for 2D sprites:
-  - `spr(path, dx, dy, ..., z)` optional z depth for painter's sort.
-- Conformance updates for any newly-added 2D features.
+All 8B items complete.
 
 ### 8C: Audio Completion
 

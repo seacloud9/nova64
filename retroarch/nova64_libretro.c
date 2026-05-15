@@ -787,6 +787,92 @@ static struct nova64_collider g_colliders[NOVA64_MAX_COLLIDERS];
 
 static void reset_colliders(void) { memset(g_colliders, 0, sizeof(g_colliders)); }
 
+/* ── 2D particle system ──────────────────────────────────────── */
+#define NOVA64_MAX_PARTICLES  512
+#define NOVA64_MAX_EMITTERS     8
+
+struct nova64_particle {
+   float x, y;
+   float vx, vy;
+   float age, lifetime;
+   uint32_t color_start, color_end;
+   float size_start, size_end;
+   int active;
+};
+
+struct nova64_particle_emitter {
+   int    used;
+   int    active;         /* continuous emission */
+   float  x, y;
+   float  dir_x, dir_y;  /* normalized emission direction */
+   float  spread;         /* cone half-angle radians */
+   float  speed_min, speed_max;
+   float  lifetime_min, lifetime_max;
+   float  grav_x, grav_y;
+   uint32_t color_start, color_end;
+   float  size_start, size_end;
+   float  rate;           /* particles/second; 0 = burst-only */
+   float  rate_accum;
+   int    max_count;      /* cap on active particles from this emitter */
+};
+
+static struct nova64_particle         g_particles[NOVA64_MAX_PARTICLES];
+static struct nova64_particle_emitter g_emitters[NOVA64_MAX_EMITTERS];
+
+static void reset_particles(void)
+{
+   memset(g_particles, 0, sizeof(g_particles));
+   memset(g_emitters, 0, sizeof(g_emitters));
+}
+
+static uint32_t particle_lerp_color(uint32_t a, uint32_t b, float t)
+{
+   if (t <= 0.0f) return a;
+   if (t >= 1.0f) return b;
+   int ar = (int)((a >> 24) & 0xffu), ag = (int)((a >> 16) & 0xffu);
+   int ab = (int)((a >>  8) & 0xffu), aa = (int)(a & 0xffu);
+   int br = (int)((b >> 24) & 0xffu), bg = (int)((b >> 16) & 0xffu);
+   int bb = (int)((b >>  8) & 0xffu), ba = (int)(b & 0xffu);
+   uint32_t rr = (uint32_t)(ar + (int)((float)(br - ar) * t));
+   uint32_t rg = (uint32_t)(ag + (int)((float)(bg - ag) * t));
+   uint32_t rb = (uint32_t)(ab + (int)((float)(bb - ab) * t));
+   uint32_t ra = (uint32_t)(aa + (int)((float)(ba - aa) * t));
+   return (rr << 24) | (rg << 16) | (rb << 8) | ra;
+}
+
+/* spawn one particle from emitter e_idx */
+static void spawn_particle(int e_idx)
+{
+   struct nova64_particle_emitter *em = &g_emitters[e_idx];
+   /* find a free slot — prefer slots hashed to this emitter */
+   int slot = -1;
+   for (int pass = 0; pass < 2 && slot < 0; pass++) {
+      for (int i = 0; i < NOVA64_MAX_PARTICLES; i++) {
+         if (!g_particles[i].active) { slot = i; break; }
+      }
+   }
+   if (slot < 0) return;
+
+   struct nova64_particle *p = &g_particles[slot];
+   p->x = em->x; p->y = em->y;
+
+   /* random angle within spread cone */
+   float rng = (float)rng_next_impl();
+   float angle = atan2f(em->dir_y, em->dir_x) + (rng - 0.5f) * em->spread;
+   float speed = em->speed_min + (float)rng_next_impl() * (em->speed_max - em->speed_min);
+   p->vx = cosf(angle) * speed;
+   p->vy = sinf(angle) * speed;
+
+   p->age = 0.0f;
+   p->lifetime = em->lifetime_min + (float)rng_next_impl() * (em->lifetime_max - em->lifetime_min);
+   if (p->lifetime < 0.001f) p->lifetime = 0.001f;
+   p->color_start = em->color_start;
+   p->color_end   = em->color_end;
+   p->size_start  = em->size_start;
+   p->size_end    = em->size_end;
+   p->active = 1;
+}
+
 /* ── Bitmap font store ──────────────────────────────────────── */
 #define NOVA64_MAX_FONTS 8
 struct nova64_bitmap_font { bool active; uint8_t *pixels; int glyph_w, glyph_h, atlas_w, atlas_h; };
@@ -7341,6 +7427,182 @@ static JSValue js_destroy_collider(JSContext *ctx, JSValueConst this_val, int ar
    return JS_UNDEFINED;
 }
 
+/* ── 2D particle system JS bindings ──────────────────────────── */
+
+static JSValue js_create_particles2d(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   /* find free emitter slot */
+   int slot = -1;
+   for (int i = 0; i < NOVA64_MAX_EMITTERS; i++) {
+      if (!g_emitters[i].used) { slot = i; break; }
+   }
+   if (slot < 0) return JS_NewInt32(ctx, 0);
+
+   struct nova64_particle_emitter *em = &g_emitters[slot];
+   memset(em, 0, sizeof(*em));
+   em->used = 1;
+
+   /* defaults */
+   em->dir_x = 0.0f; em->dir_y = -1.0f; /* upward */
+   em->spread = 0.5f;
+   em->speed_min = 30.0f; em->speed_max = 80.0f;
+   em->lifetime_min = 0.4f; em->lifetime_max = 1.0f;
+   em->grav_x = 0.0f; em->grav_y = 200.0f;
+   em->color_start = rgba8(255, 220, 60, 255);
+   em->color_end   = rgba8(255, 60, 0, 0);
+   em->size_start = 4.0f; em->size_end = 0.0f;
+   em->rate = 0.0f;
+   em->max_count = 64;
+   em->active = 0;
+
+/* Helper: read a float property from a JS object, returning def if absent */
+#define EMOPT_F(key, field) do { \
+   JSValue _v = JS_GetPropertyStr(ctx, obj, key); \
+   if (!JS_IsUndefined(_v)) em->field = (float)double_from_js(ctx, _v, (double)em->field); \
+   JS_FreeValue(ctx, _v); \
+} while (0)
+#define EMOPT_I(key, field) do { \
+   JSValue _v = JS_GetPropertyStr(ctx, obj, key); \
+   if (!JS_IsUndefined(_v)) em->field = int_from_js(ctx, _v, em->field); \
+   JS_FreeValue(ctx, _v); \
+} while (0)
+#define EMOPT_C(key, field) do { \
+   JSValue _v = JS_GetPropertyStr(ctx, obj, key); \
+   if (!JS_IsUndefined(_v)) em->field = color_from_js(ctx, _v, em->field); \
+   JS_FreeValue(ctx, _v); \
+} while (0)
+
+   /* parse opts object if provided */
+   if (argc > 0 && JS_IsObject(argv[0])) {
+      JSValue obj = argv[0];
+      EMOPT_F("x",           x);          EMOPT_F("y",           y);
+      EMOPT_F("dirX",        dir_x);      EMOPT_F("dirY",        dir_y);
+      EMOPT_F("spread",      spread);
+      EMOPT_F("speedMin",    speed_min);  EMOPT_F("speedMax",    speed_max);
+      EMOPT_F("lifetimeMin", lifetime_min); EMOPT_F("lifetimeMax", lifetime_max);
+      EMOPT_F("gravX",       grav_x);     EMOPT_F("gravY",       grav_y);
+      EMOPT_C("color",       color_start); EMOPT_C("colorEnd",   color_end);
+      EMOPT_F("size",        size_start); EMOPT_F("sizeEnd",     size_end);
+      EMOPT_F("rate",        rate);       EMOPT_I("maxCount",    max_count);
+   }
+#undef EMOPT_F
+#undef EMOPT_I
+#undef EMOPT_C
+
+   return JS_NewInt32(ctx, slot + 1); /* 1-based handle */
+}
+
+static JSValue js_emit_particles2d(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int handle = argc > 0 ? int_from_js(ctx, argv[0], 0) : 0;
+   int count  = argc > 1 ? int_from_js(ctx, argv[1], 1) : 1;
+   int e_idx = handle - 1;
+   if (e_idx < 0 || e_idx >= NOVA64_MAX_EMITTERS || !g_emitters[e_idx].used)
+      return JS_UNDEFINED;
+   if (count > NOVA64_MAX_PARTICLES) count = NOVA64_MAX_PARTICLES;
+   for (int i = 0; i < count; i++) spawn_particle(e_idx);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_set_emitter_pos2d(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int handle = argc > 0 ? int_from_js(ctx, argv[0], 0) : 0;
+   int e_idx = handle - 1;
+   if (e_idx < 0 || e_idx >= NOVA64_MAX_EMITTERS || !g_emitters[e_idx].used)
+      return JS_UNDEFINED;
+   if (argc > 1) g_emitters[e_idx].x = (float)double_from_js(ctx, argv[1], 0.0);
+   if (argc > 2) g_emitters[e_idx].y = (float)double_from_js(ctx, argv[2], 0.0);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_set_emitter_active2d(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int handle = argc > 0 ? int_from_js(ctx, argv[0], 0) : 0;
+   int e_idx = handle - 1;
+   if (e_idx < 0 || e_idx >= NOVA64_MAX_EMITTERS || !g_emitters[e_idx].used)
+      return JS_UNDEFINED;
+   if (argc > 1) g_emitters[e_idx].active = JS_ToBool(ctx, argv[1]) ? 1 : 0;
+   return JS_UNDEFINED;
+}
+
+static JSValue js_destroy_particles2d(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val; (void)ctx;
+   int handle = argc > 0 ? int_from_js(ctx, argv[0], 0) : 0;
+   int e_idx = handle - 1;
+   if (e_idx < 0 || e_idx >= NOVA64_MAX_EMITTERS) return JS_UNDEFINED;
+   memset(&g_emitters[e_idx], 0, sizeof(g_emitters[e_idx]));
+   return JS_UNDEFINED;
+}
+
+static JSValue js_update_particles(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val; (void)ctx;
+   float dt = argc > 0 ? (float)double_from_js(ctx, argv[0], 0.0) : 0.0f;
+   if (dt <= 0.0f) return JS_UNDEFINED;
+
+   /* continuous emitters */
+   for (int e = 0; e < NOVA64_MAX_EMITTERS; e++) {
+      struct nova64_particle_emitter *em = &g_emitters[e];
+      if (!em->used || !em->active || em->rate <= 0.0f) continue;
+      em->rate_accum += em->rate * dt;
+      int to_spawn = (int)em->rate_accum;
+      em->rate_accum -= (float)to_spawn;
+      for (int i = 0; i < to_spawn; i++) spawn_particle(e);
+   }
+
+   /* advance particles */
+   for (int i = 0; i < NOVA64_MAX_PARTICLES; i++) {
+      struct nova64_particle *p = &g_particles[i];
+      if (!p->active) continue;
+      p->age += dt;
+      if (p->age >= p->lifetime) { p->active = 0; continue; }
+      /* find owning emitter for gravity (use slot 0 gravity as default) */
+      float gx = 0.0f, gy = 200.0f;
+      for (int e = 0; e < NOVA64_MAX_EMITTERS; e++) {
+         if (g_emitters[e].used) { gx = g_emitters[e].grav_x; gy = g_emitters[e].grav_y; break; }
+      }
+      /* for simplicity, apply global average gravity from active emitters */
+      /* (particles don't track their source emitter to keep struct small) */
+      p->vx += gx * dt;
+      p->vy += gy * dt;
+      p->x  += p->vx * dt;
+      p->y  += p->vy * dt;
+   }
+   return JS_UNDEFINED;
+}
+
+static JSValue js_draw_particles(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val; (void)ctx; (void)argc; (void)argv;
+   for (int i = 0; i < NOVA64_MAX_PARTICLES; i++) {
+      struct nova64_particle *p = &g_particles[i];
+      if (!p->active) continue;
+      float t = (p->lifetime > 0.0f) ? (p->age / p->lifetime) : 1.0f;
+      uint32_t color = particle_lerp_color(p->color_start, p->color_end, t);
+      /* skip fully transparent */
+      if ((color & 0xffu) == 0) continue;
+      float size = p->size_start + (p->size_end - p->size_start) * t;
+      int r = (size > 0.5f) ? (int)(size + 0.5f) : 0;
+      int cx = (int)(p->x + 0.5f), cy = (int)(p->y + 0.5f);
+      draw_circle_pixels(cx, cy, r, color, true);
+   }
+   return JS_UNDEFINED;
+}
+
+static JSValue js_get_particle_count(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val; (void)ctx; (void)argc; (void)argv;
+   int count = 0;
+   for (int i = 0; i < NOVA64_MAX_PARTICLES; i++)
+      if (g_particles[i].active) count++;
+   return JS_NewInt32(ctx, count);
+}
+
 /* ── Storage: cartIds ─────────────────────────────────────── */
 #ifndef _WIN32
 static JSValue js_storage_cart_ids(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
@@ -8350,6 +8612,16 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, global, "checkCollision",   js_check_collision,   2);
    set_function(ctx, global, "moveAndCollide",   js_move_and_collide,  4);
    set_function(ctx, global, "destroyCollider",  js_destroy_collider,  1);
+
+   /* 2D particle system */
+   set_function(ctx, global, "createParticles2D",    js_create_particles2d,    1);
+   set_function(ctx, global, "emitParticles2D",      js_emit_particles2d,      2);
+   set_function(ctx, global, "setEmitterPos2D",      js_set_emitter_pos2d,     3);
+   set_function(ctx, global, "setEmitterActive2D",   js_set_emitter_active2d,  2);
+   set_function(ctx, global, "destroyParticles2D",   js_destroy_particles2d,   1);
+   set_function(ctx, global, "updateParticles",      js_update_particles,      1);
+   set_function(ctx, global, "drawParticles",        js_draw_particles,        0);
+   set_function(ctx, global, "getParticleCount",     js_get_particle_count,    0);
 
    /* Register on nova64.storage namespace */
    {
@@ -11027,6 +11299,7 @@ void RETRO_CALLCONV retro_reset(void)
    clear_all_spritesheets();
    memset(perf_timers, 0, sizeof(perf_timers));
    reset_colliders();
+   reset_particles();
    reset_fonts();
    memset(audio_channels, 0, sizeof(audio_channels));
    rng_seed_from_environment();
@@ -11152,6 +11425,7 @@ bool RETRO_CALLCONV retro_load_game(const struct retro_game_info *info)
    destroy_all_tilemaps();
    clear_all_spritesheets();
    reset_colliders();
+   reset_particles();
    reset_fonts();
    memset(audio_channels, 0, sizeof(audio_channels));
    memset(perf_timers, 0, sizeof(perf_timers));

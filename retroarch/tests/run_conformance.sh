@@ -563,6 +563,7 @@ run_visual_case "108 skybox"          "108-skybox"          "${PACKAGE_DIR}/skyb
 run_visual_case "109 blend modes"     "109-blend-modes"     "retroarch/conformance/109-blend-modes.js"          "fa453f7b8dbaf14d"
 NOVA64_SAVE_DIR="${SAVE_DIR}" run_case "110 storage compressed" "retroarch/conformance/110-storage-compressed.js" "8845ba9c4e550a4b"
 run_visual_case "111 noise"           "111-noise"           "retroarch/conformance/111-noise.js"                "4847bd983f0c57e0"
+run_visual_case "112 particles 2d"   "112-particles2d"     "retroarch/conformance/112-particles2d.js"          "184ec762e5008344"
 
 # GLES hardware-rendered locked checksums (run with NOVA64_GLES_TESTS=1)
 # 20-post skipped: GLES FBO crash

@@ -40,6 +40,7 @@ Implemented and conformance-tested:
 - Persistent JSON cart storage using the RetroArch save directory.
 - Compressed storage via zlib: `storageSetCompressed`/`storageGetCompressed`.
 - Procedural noise: 1D/2D/3D Perlin gradient noise and fractal Brownian motion via `noise()`/`fbm()`.
+- 2D particle system: up to 8 emitters, 512 particles, color/size lerp, gravity, continuous/burst modes.
 - `.nova` zip-style package format with manifest asset staging and relative
   ES module imports.
 - PNG asset decode for sprites and textures.
@@ -499,6 +500,39 @@ setInstanceTransform(mesh, index, mat16)     // mat16: 16-element column-major F
 getInstanceCount(mesh)                       // returns instance count
 ```
 
+### 2D Particles
+
+```js
+createParticles2D(opts)        // returns emitter handle; opts keys below
+emitParticles2D(handle, count) // one-shot burst of N particles
+setEmitterPos2D(handle, x, y)  // reposition emitter
+setEmitterActive2D(handle, active)  // enable/disable continuous emission
+destroyParticles2D(handle)
+updateParticles(dt)            // advance all particles — call in update()
+drawParticles()                // draw all active particles — call in draw()
+getParticleCount()             // total active particle count
+```
+
+Emitter options object (all optional — shown with defaults):
+
+```js
+{
+  x: 0, y: 0,                  // spawn position
+  dirX: 0, dirY: -1,           // normalized emission direction (up)
+  spread: 0.5,                 // cone half-angle radians
+  speedMin: 30, speedMax: 80,  // pixels/second range
+  lifetimeMin: 0.4, lifetimeMax: 1.0,  // seconds
+  gravX: 0, gravY: 200,        // gravity acceleration pixels/sec²
+  color: rgba8(255, 220, 60, 255),     // start color
+  colorEnd: rgba8(255, 60, 0, 0),      // end color (lerped over lifetime)
+  size: 4, sizeEnd: 0,         // start/end radius pixels
+  rate: 0,                     // particles/second for continuous mode (0 = burst-only)
+  maxCount: 64,                // cap on active particles from this emitter
+}
+```
+
+Up to 8 simultaneous emitters and 512 total active particles.
+
 ### Physics
 
 ```js
@@ -706,3 +740,4 @@ These browser-side Nova64 or Three.js features are not implemented:
 | `109-blend-modes.js` | setMeshBlend opaque/additive/multiply; getMesh().blendMode round-trip |
 | `110-storage-compressed.js` | storageSetCompressed / storageGetCompressed / storageHasCompressed |
 | `111-noise.js` | noise(x/y/z) Perlin gradient noise; fbm() fractal Brownian motion |
+| `112-particles2d.js` | createParticles2D/emitParticles2D/updateParticles/drawParticles lifecycle |

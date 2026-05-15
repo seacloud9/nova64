@@ -580,6 +580,40 @@ Noise values are deterministic (same inputs always produce the same output). Use
 `fbm` for terrain heights, animated clouds, water surfaces, and other fractal
 patterns.
 
+### Timers
+
+```js
+createTimer(duration)       // countdown timer over duration seconds → handle
+timerDone(handle)           // true when elapsed >= duration
+timerElapsed(handle)        // seconds elapsed since start/reset
+timerProgress(handle)       // normalized 0→1 progress
+resetTimer(handle)          // restart from 0
+destroyTimer(handle)        // free timer slot
+```
+
+Up to 32 timers active simultaneously. Advance automatically each frame.
+
+### Logical Grid
+
+```js
+createGrid(cols, rows [, cellW, cellH])  // create integer-value grid → handle
+setCell(handle, col, row, value)         // write integer cell value
+getCell(handle, col, row)                // read cell value (0 if OOB)
+clearGrid(handle [, value])              // fill all cells with value (default 0)
+gridCols(handle)                         // number of columns
+gridRows(handle)                         // number of rows
+destroyGrid(handle)                      // free grid slot
+```
+
+Up to 8 grids, 4096 cells each. Cells store 32-bit integers.
+
+### Text Measurement
+
+```js
+measureText(text)           // { width, height, lines } in pixels/lines
+printCentered(text, x, y [, color])     // horizontally centered text at x
+```
+
 ### Arc Drawing
 
 ```js
@@ -886,3 +920,6 @@ These browser-side Nova64 or Three.js features are not implemented:
 | `125-spline.js` | drawSpline Catmull-Rom smooth curve |
 | `126-color-lerp2d.js` | colorLerp2D bilinear four-corner interpolation |
 | `127-stamp-text.js` | stampText integer-scaled pixel-font text |
+| `128-timers.js` | createTimer/timerDone/timerElapsed/timerProgress/resetTimer lifecycle |
+| `129-grid.js` | createGrid/setCell/getCell/clearGrid/gridCols/gridRows logical grid |
+| `130-measure-text.js` | measureText dimensions object; printCentered alignment |

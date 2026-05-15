@@ -981,6 +981,22 @@ static struct nova64_audio_voice audio_voices[NOVA64_AUDIO_MAX_VOICES];
 static int16_t audio_mix_buffer[NOVA64_AUDIO_FRAME_SAMPLES * 2];
 static double audio_master_volume = 0.4;
 
+/* ── Timer system ─────────────────────────────────────────── */
+#define NOVA64_MAX_TIMERS 32
+struct nova64_timer { int used; float duration; float elapsed; };
+static struct nova64_timer g_timers[NOVA64_MAX_TIMERS];
+
+/* ── Logical grid ─────────────────────────────────────────── */
+#define NOVA64_MAX_GRIDS 8
+#define NOVA64_MAX_GRID_CELLS 4096
+struct nova64_grid {
+   int used;
+   int cols, rows;
+   int cell_w, cell_h;
+   int data[NOVA64_MAX_GRID_CELLS];
+};
+static struct nova64_grid g_grids[NOVA64_MAX_GRIDS];
+
 /* ── Screen flash ─────────────────────────────────────────── */
 static uint32_t g_flash_color    = 0;
 static float    g_flash_timer    = 0.0f;
@@ -5137,6 +5153,169 @@ static JSValue js_fill_path(JSContext *ctx, JSValueConst this_val, int argc, JSV
             set_pixel(xp, scanY, color);
       }
    }
+   return JS_UNDEFINED;
+}
+
+/* ── Timer JS functions ───────────────────────────────────────────────── */
+static JSValue js_create_timer(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   float dur = (float)clamp_double(double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 1.0), 0.0001, 3600.0);
+   for (int i = 0; i < NOVA64_MAX_TIMERS; i++) {
+      if (!g_timers[i].used) {
+         g_timers[i].used = 1;
+         g_timers[i].duration = dur;
+         g_timers[i].elapsed  = 0.0f;
+         return JS_NewInt32(ctx, i + 1);
+      }
+   }
+   return JS_NewInt32(ctx, 0);
+}
+static JSValue js_timer_done(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int idx = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0) - 1;
+   if (idx < 0 || idx >= NOVA64_MAX_TIMERS || !g_timers[idx].used)
+      return JS_NewBool(ctx, true);
+   return JS_NewBool(ctx, g_timers[idx].elapsed >= g_timers[idx].duration);
+}
+static JSValue js_timer_elapsed(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int idx = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0) - 1;
+   if (idx < 0 || idx >= NOVA64_MAX_TIMERS || !g_timers[idx].used)
+      return JS_NewFloat64(ctx, 0.0);
+   return JS_NewFloat64(ctx, (double)g_timers[idx].elapsed);
+}
+static JSValue js_timer_progress(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int idx = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0) - 1;
+   if (idx < 0 || idx >= NOVA64_MAX_TIMERS || !g_timers[idx].used || g_timers[idx].duration <= 0.0f)
+      return JS_NewFloat64(ctx, 0.0);
+   double p = (double)(g_timers[idx].elapsed / g_timers[idx].duration);
+   return JS_NewFloat64(ctx, p > 1.0 ? 1.0 : p);
+}
+static JSValue js_reset_timer(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val; (void)ctx;
+   int idx = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0) - 1;
+   if (idx >= 0 && idx < NOVA64_MAX_TIMERS && g_timers[idx].used)
+      g_timers[idx].elapsed = 0.0f;
+   return JS_UNDEFINED;
+}
+static JSValue js_destroy_timer(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val; (void)ctx;
+   int idx = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0) - 1;
+   if (idx >= 0 && idx < NOVA64_MAX_TIMERS)
+      memset(&g_timers[idx], 0, sizeof(g_timers[idx]));
+   return JS_UNDEFINED;
+}
+
+/* ── Logical grid JS functions ────────────────────────────────────────── */
+static JSValue js_create_grid(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int cols = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 8);
+   int rows = int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 8);
+   int cw   = argc > 2 ? int_from_js(ctx, argv[2], 16) : 16;
+   int ch   = argc > 3 ? int_from_js(ctx, argv[3], 16) : 16;
+   if (cols < 1 || rows < 1 || cols * rows > NOVA64_MAX_GRID_CELLS) return JS_NewInt32(ctx, 0);
+   for (int i = 0; i < NOVA64_MAX_GRIDS; i++) {
+      if (!g_grids[i].used) {
+         g_grids[i].used = 1;
+         g_grids[i].cols = cols;
+         g_grids[i].rows = rows;
+         g_grids[i].cell_w = cw;
+         g_grids[i].cell_h = ch;
+         memset(g_grids[i].data, 0, sizeof(int) * (size_t)(cols * rows));
+         return JS_NewInt32(ctx, i + 1);
+      }
+   }
+   return JS_NewInt32(ctx, 0);
+}
+static JSValue js_set_cell(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int idx = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0) - 1;
+   if (idx < 0 || idx >= NOVA64_MAX_GRIDS || !g_grids[idx].used) return JS_UNDEFINED;
+   int col = int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0);
+   int row = int_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 0);
+   int val = int_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, 0);
+   if (col < 0 || col >= g_grids[idx].cols || row < 0 || row >= g_grids[idx].rows) return JS_UNDEFINED;
+   g_grids[idx].data[row * g_grids[idx].cols + col] = val;
+   return JS_UNDEFINED;
+}
+static JSValue js_get_cell(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int idx = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0) - 1;
+   if (idx < 0 || idx >= NOVA64_MAX_GRIDS || !g_grids[idx].used) return JS_NewInt32(ctx, 0);
+   int col = int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0);
+   int row = int_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 0);
+   if (col < 0 || col >= g_grids[idx].cols || row < 0 || row >= g_grids[idx].rows) return JS_NewInt32(ctx, 0);
+   return JS_NewInt32(ctx, g_grids[idx].data[row * g_grids[idx].cols + col]);
+}
+static JSValue js_destroy_grid(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val; (void)ctx;
+   int idx = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0) - 1;
+   if (idx >= 0 && idx < NOVA64_MAX_GRIDS)
+      memset(&g_grids[idx], 0, sizeof(g_grids[idx]));
+   return JS_UNDEFINED;
+}
+static JSValue js_clear_grid(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val; (void)ctx;
+   int idx = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0) - 1;
+   int val = argc > 1 ? int_from_js(ctx, argv[1], 0) : 0;
+   if (idx < 0 || idx >= NOVA64_MAX_GRIDS || !g_grids[idx].used) return JS_UNDEFINED;
+   for (int i = 0; i < g_grids[idx].cols * g_grids[idx].rows; i++)
+      g_grids[idx].data[i] = val;
+   return JS_UNDEFINED;
+}
+static JSValue js_grid_cols(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int idx = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0) - 1;
+   if (idx < 0 || idx >= NOVA64_MAX_GRIDS || !g_grids[idx].used) return JS_NewInt32(ctx, 0);
+   return JS_NewInt32(ctx, g_grids[idx].cols);
+}
+static JSValue js_grid_rows(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int idx = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0) - 1;
+   if (idx < 0 || idx >= NOVA64_MAX_GRIDS || !g_grids[idx].used) return JS_NewInt32(ctx, 0);
+   return JS_NewInt32(ctx, g_grids[idx].rows);
+}
+
+/* ── measureText / printCentered ─────────────────────────────────────── */
+static JSValue js_measure_text(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 1) return JS_UNDEFINED;
+   const char *text = JS_ToCString(ctx, argv[0]);
+   if (!text) return JS_UNDEFINED;
+   JSValue obj = JS_NewObject(ctx);
+   JS_SetPropertyStr(ctx, obj, "width",  JS_NewInt32(ctx, text_pixel_width(text)));
+   JS_SetPropertyStr(ctx, obj, "height", JS_NewInt32(ctx, text_pixel_height(text)));
+   JS_SetPropertyStr(ctx, obj, "lines",  JS_NewInt32(ctx, text_line_count(text)));
+   JS_FreeCString(ctx, text);
+   return obj;
+}
+static JSValue js_print_centered(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 3) return JS_UNDEFINED;
+   const char *text = JS_ToCString(ctx, argv[0]);
+   if (!text) return JS_UNDEFINED;
+   int x = int_from_js(ctx, argv[1], 0) - cam2d_x;
+   int y = int_from_js(ctx, argv[2], 0) - cam2d_y;
+   uint32_t color = color_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, rgba8(255, 255, 255, 255));
+   x -= text_pixel_width(text) / 2;
+   draw_text_pixels(text, x, y, color);
+   JS_FreeCString(ctx, text);
    return JS_UNDEFINED;
 }
 
@@ -9661,6 +9840,27 @@ static bool install_nova64_api(JSContext *ctx)
       JS_FreeValue(ctx, sc);
    }
 
+   /* Timers */
+   set_function(ctx, global, "createTimer",   js_create_timer,   1);
+   set_function(ctx, global, "timerDone",     js_timer_done,     1);
+   set_function(ctx, global, "timerElapsed",  js_timer_elapsed,  1);
+   set_function(ctx, global, "timerProgress", js_timer_progress, 1);
+   set_function(ctx, global, "resetTimer",    js_reset_timer,    1);
+   set_function(ctx, global, "destroyTimer",  js_destroy_timer,  1);
+
+   /* Logical grid */
+   set_function(ctx, global, "createGrid",  js_create_grid,  4);
+   set_function(ctx, global, "setCell",     js_set_cell,     4);
+   set_function(ctx, global, "getCell",     js_get_cell,     3);
+   set_function(ctx, global, "destroyGrid", js_destroy_grid, 1);
+   set_function(ctx, global, "clearGrid",   js_clear_grid,   2);
+   set_function(ctx, global, "gridCols",    js_grid_cols,    1);
+   set_function(ctx, global, "gridRows",    js_grid_rows,    1);
+
+   /* Text measurement and centering */
+   set_function(ctx, global, "measureText",   js_measure_text,   1);
+   set_function(ctx, global, "printCentered", js_print_centered, 4);
+
    /* Arc drawing */
    set_function(ctx, global, "drawArc",  js_draw_arc,  7);
    set_function(ctx, global, "fillArc",  js_fill_arc,  7);
@@ -12243,6 +12443,8 @@ void RETRO_CALLCONV retro_reset(void)
    reset_fonts();
    memset(audio_channels, 0, sizeof(audio_channels));
    memset(g_tweens, 0, sizeof(g_tweens));
+   memset(g_timers, 0, sizeof(g_timers));
+   memset(g_grids,  0, sizeof(g_grids));
    g_shake_intensity = 0.0f; g_shake_timer = 0.0f; g_shake_duration = 0.0f;
    g_flash_timer = 0.0f; g_flash_duration = 0.0f;
    g_path_count = 0; g_path_closed = 0;
@@ -12306,6 +12508,14 @@ void RETRO_CALLCONV retro_run(void)
       if (!tw->used || tw->done) continue;
       tw->elapsed += (float)(1.0 / NOVA64_FPS);
       if (tw->elapsed >= tw->duration) { tw->elapsed = tw->duration; tw->done = 1; }
+   }
+
+   /* advance timers */
+   for (int _timer_i = 0; _timer_i < NOVA64_MAX_TIMERS; _timer_i++) {
+      struct nova64_timer *tmr = &g_timers[_timer_i];
+      if (!tmr->used || tmr->elapsed >= tmr->duration) continue;
+      tmr->elapsed += (float)(1.0 / NOVA64_FPS);
+      if (tmr->elapsed > tmr->duration) tmr->elapsed = tmr->duration;
    }
 
    /* advance screen flash */
@@ -12415,6 +12625,8 @@ bool RETRO_CALLCONV retro_load_game(const struct retro_game_info *info)
    memset(audio_channels, 0, sizeof(audio_channels));
    memset(perf_timers, 0, sizeof(perf_timers));
    memset(g_tweens, 0, sizeof(g_tweens));
+   memset(g_timers, 0, sizeof(g_timers));
+   memset(g_grids,  0, sizeof(g_grids));
    g_shake_intensity = 0.0f; g_shake_timer = 0.0f; g_shake_duration = 0.0f;
    g_flash_timer = 0.0f; g_flash_duration = 0.0f;
    g_path_count = 0; g_path_closed = 0;

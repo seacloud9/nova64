@@ -627,5 +627,8 @@ run_visual_case "124 arc"           "124-arc"           "retroarch/conformance/1
 run_visual_case "125 spline"        "125-spline"        "retroarch/conformance/125-spline.js"        "96e28181a5705f48"
 run_visual_case "126 color lerp2d"  "126-color-lerp2d"  "retroarch/conformance/126-color-lerp2d.js"  "5a1a7dd34eca9313"
 run_visual_case "127 stamp text"    "127-stamp-text"    "retroarch/conformance/127-stamp-text.js"    "158b69c572d1f8e4"
+run_visual_case "128 timers"        "128-timers"        "retroarch/conformance/128-timers.js"        "9b3c11980dd22361"
+run_visual_case "129 grid"          "129-grid"          "retroarch/conformance/129-grid.js"          "bd89f08e64c79c8c"
+run_visual_case "130 measure text"  "130-measure-text"  "retroarch/conformance/130-measure-text.js"  "de2a65891af55681"
 
 echo "Conformance passed."

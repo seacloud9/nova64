@@ -580,6 +580,40 @@ Noise values are deterministic (same inputs always produce the same output). Use
 `fbm` for terrain heights, animated clouds, water surfaces, and other fractal
 patterns.
 
+### Sprite Transform
+
+```js
+sprTransform(path, cx, cy, angle_deg, scaleX, scaleY
+             [, imgw, imgh [, srcx, srcy [, bw, bh]]])
+```
+
+Blits a sprite centered at `(cx, cy)` with rotation `angle_deg` (degrees) and
+independent x/y scale. Uses inverse-transform sampling for correct pixel mapping.
+Parameters match `spr()` crop convention: optional `srcx/srcy/bw/bh` select a
+sub-region of the source image.
+
+### Path Drawing
+
+```js
+beginPath()                 // reset the path point buffer
+moveTo(x, y)                // add first point
+lineTo(x, y)                // add subsequent point
+closePath()                 // mark path as closed (connects last point to first)
+strokePath(color)           // draw line segments along path
+fillPath(color)             // fill polygon (even-odd rule, scanline)
+```
+
+Up to 128 path points per path. Path is reset by each `beginPath()` call.
+
+### Screen Flash
+
+```js
+screenFlash(color, duration)   // overlay color that fades out over duration seconds
+```
+
+Applied automatically each frame after `draw()` returns. Useful for hit-flash,
+screen transitions, and damage indicators.
+
 ### Math Utilities
 
 ```js
@@ -785,3 +819,6 @@ These browser-side Nova64 or Three.js features are not implemented:
 | `114-camera-orbit.js` | setCameraOrbit azimuth/elevation sphere positioning |
 | `115-camera-shake.js` | addCameraShake/stopCameraShake noise-based screen shake |
 | `116-tweens.js` | createTween/getTweenValue/tweenDone/destroyTween/resetTween with easing |
+| `117-spr-transform.js` | sprTransform rotated/scaled sprite blit |
+| `118-path-draw.js` | beginPath/moveTo/lineTo/closePath/strokePath/fillPath polygon draw |
+| `119-screen-flash.js` | screenFlash auto-fading color overlay |

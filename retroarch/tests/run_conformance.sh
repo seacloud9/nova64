@@ -616,5 +616,8 @@ run_visual_case "113 math utils"    "113-math-utils"    "retroarch/conformance/1
 run_visual_case "114 camera orbit"  "114-camera-orbit"  "retroarch/conformance/114-camera-orbit.js"  "700cde1a721f5d04"
 run_visual_case "115 camera shake"  "115-camera-shake"  "retroarch/conformance/115-camera-shake.js"  "9aaa5169a1fccf9f"
 run_visual_case "116 tweens"        "116-tweens"        "retroarch/conformance/116-tweens.js"        "207a23c0db80b5f2"
+run_visual_case "117 spr transform" "117-spr-transform" "retroarch/conformance/117-spr-transform.js" "ef5eefc1c8114453"
+run_visual_case "118 path draw"     "118-path-draw"     "retroarch/conformance/118-path-draw.js"     "d23b07ee034d6e57"
+run_visual_case "119 screen flash"  "119-screen-flash"  "retroarch/conformance/119-screen-flash.js"  "d47c00d3fed78dbc"
 
 echo "Conformance passed."

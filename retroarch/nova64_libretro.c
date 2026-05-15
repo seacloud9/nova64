@@ -981,6 +981,17 @@ static struct nova64_audio_voice audio_voices[NOVA64_AUDIO_MAX_VOICES];
 static int16_t audio_mix_buffer[NOVA64_AUDIO_FRAME_SAMPLES * 2];
 static double audio_master_volume = 0.4;
 
+/* ── Screen flash ─────────────────────────────────────────── */
+static uint32_t g_flash_color    = 0;
+static float    g_flash_timer    = 0.0f;
+static float    g_flash_duration = 0.0f;
+
+/* ── Path drawing ─────────────────────────────────────────── */
+#define NOVA64_MAX_PATH_PTS 128
+static float g_path_pts[NOVA64_MAX_PATH_PTS * 2]; /* x0,y0, x1,y1 ... */
+static int   g_path_count  = 0;
+static int   g_path_closed = 0;
+
 /* ── Echo / delay ────────────────────────────────────────── */
 #define NOVA64_ECHO_BUF_SIZE 44100   /* 1-second ring buffer */
 static int16_t echo_buf[NOVA64_ECHO_BUF_SIZE * 2]; /* L,R interleaved */
@@ -4924,6 +4935,218 @@ static JSValue js_reset_tween(JSContext *ctx, JSValueConst this_val, int argc, J
    if (idx >= 0 && idx < NOVA64_MAX_TWEENS && g_tweens[idx].used) {
       g_tweens[idx].elapsed = 0.0f; g_tweens[idx].done = 0;
    }
+   return JS_UNDEFINED;
+}
+
+/* ── sprTransform — rotated/scaled sprite blit ─────────────────────────── */
+/* sprTransform(path, cx, cy, angle_deg, scaleX, scaleY
+               [, imgw, imgh [, srcx, srcy [, bw, bh]]]) */
+static JSValue js_spr_transform(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 6) return JS_NewBool(ctx, false);
+   const char *path = JS_ToCString(ctx, argv[0]);
+   if (!path) return JS_NewBool(ctx, false);
+   const struct nova64_package_asset *asset = find_package_asset(path);
+   bool is_png = path_is_png(path);
+   JS_FreeCString(ctx, path);
+   if (!asset || !asset->data || asset->size < 4)
+      return JS_NewBool(ctx, false);
+
+   float cx2  = (float)double_from_js(ctx, argv[1], 0.0) - (float)cam2d_x;
+   float cy2  = (float)double_from_js(ctx, argv[2], 0.0) - (float)cam2d_y;
+   float adeg = (float)double_from_js(ctx, argv[3], 0.0);
+   float scx  = (float)double_from_js(ctx, argv[4], 1.0);
+   float scy  = (float)double_from_js(ctx, argv[5], 1.0);
+   if (scx == 0.0f) scx = 0.0001f;
+   if (scy == 0.0f) scy = 0.0001f;
+
+   uint8_t *png_pixels = NULL;
+   const uint8_t *pixels = (const uint8_t *)asset->data;
+   int img_w = argc > 6 ? int_from_js(ctx, argv[6], 0) : 0;
+   int img_h = argc > 7 ? int_from_js(ctx, argv[7], 0) : 0;
+
+   if (is_png) {
+      int pw = 0, ph = 0;
+      png_pixels = decode_png_asset(asset->data, asset->size, &pw, &ph);
+      if (!png_pixels) return JS_NewBool(ctx, false);
+      pixels = png_pixels;
+      if (img_w <= 0) img_w = pw;
+      if (img_h <= 0) img_h = ph;
+   }
+   if (img_w <= 0 || img_h <= 0) {
+      int side = (int)sqrt((double)(asset->size / 4));
+      img_w = side > 0 ? side : 1;
+      img_h = (int)((asset->size / 4) / (size_t)img_w);
+      if (img_h <= 0) img_h = img_w;
+   }
+
+   int srcx = argc > 8  ? int_from_js(ctx, argv[8],  0) : 0;
+   int srcy = argc > 9  ? int_from_js(ctx, argv[9],  0) : 0;
+   int bw   = argc > 10 ? int_from_js(ctx, argv[10], 0) : (img_w - srcx);
+   int bh   = argc > 11 ? int_from_js(ctx, argv[11], 0) : (img_h - srcy);
+   if (bw <= 0 || bh <= 0) { free(png_pixels); return JS_NewBool(ctx, false); }
+
+   /* Inverse-transform sampling */
+   float arad  = adeg * (float)(3.14159265358979323846 / 180.0);
+   float cosA  =  cosf(arad);
+   float sinA  =  sinf(arad);
+
+   /* Bounding box: radius of the circumscribed rectangle */
+   float hw = (float)bw * fabsf(scx) * 0.5f;
+   float hh = (float)bh * fabsf(scy) * 0.5f;
+   float rad = sqrtf(hw * hw + hh * hh) + 1.0f;
+   int x0 = (int)floorf(cx2 - rad);
+   int x1 = (int)ceilf(cx2 + rad);
+   int y0 = (int)floorf(cy2 - rad);
+   int y1 = (int)ceilf(cy2 + rad);
+
+   for (int py = y0; py <= y1; py++) {
+      float dy2 = (float)py - cy2;
+      for (int px = x0; px <= x1; px++) {
+         float dx2 = (float)px - cx2;
+         /* Inverse rotate */
+         float rx =  dx2 * cosA + dy2 * sinA;
+         float ry = -dx2 * sinA + dy2 * cosA;
+         /* Inverse scale */
+         float fx = rx / scx + (float)bw  * 0.5f + (float)srcx;
+         float fy = ry / scy + (float)bh  * 0.5f + (float)srcy;
+         int si_x = (int)floorf(fx);
+         int si_y = (int)floorf(fy);
+         if (si_x < srcx || si_x >= srcx + bw) continue;
+         if (si_y < srcy || si_y >= srcy + bh)  continue;
+         if (si_x < 0 || si_x >= img_w || si_y < 0 || si_y >= img_h) continue;
+         size_t off = ((size_t)si_y * (size_t)img_w + (size_t)si_x) * 4;
+         uint8_t r = pixels[off], g = pixels[off+1], b = pixels[off+2], a = pixels[off+3];
+         if (a == 0) continue;
+         if (a == 255) {
+            set_pixel(px, py, rgba8(r, g, b, 255));
+         } else {
+            uint32_t dst = get_pixel(px, py);
+            uint8_t dr = (uint8_t)((dst >> 24) & 0xff);
+            uint8_t dg = (uint8_t)((dst >> 16) & 0xff);
+            uint8_t db = (uint8_t)((dst >>  8) & 0xff);
+            float fa = (float)a / 255.0f;
+            set_pixel(px, py, rgba8(
+               (uint8_t)(r * fa + dr * (1.0f - fa)),
+               (uint8_t)(g * fa + dg * (1.0f - fa)),
+               (uint8_t)(b * fa + db * (1.0f - fa)), 255));
+         }
+      }
+   }
+   free(png_pixels);
+   return JS_NewBool(ctx, true);
+}
+
+/* ── Path drawing ─────────────────────────────────────────────────────── */
+static JSValue js_begin_path(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)ctx; (void)this_val; (void)argc; (void)argv;
+   g_path_count = 0; g_path_closed = 0;
+   return JS_UNDEFINED;
+}
+static JSValue js_move_to(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 2 || g_path_count >= NOVA64_MAX_PATH_PTS) return JS_UNDEFINED;
+   g_path_pts[g_path_count * 2    ] = (float)double_from_js(ctx, argv[0], 0.0) - (float)cam2d_x;
+   g_path_pts[g_path_count * 2 + 1] = (float)double_from_js(ctx, argv[1], 0.0) - (float)cam2d_y;
+   g_path_count++;
+   return JS_UNDEFINED;
+}
+static JSValue js_line_to(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 2 || g_path_count >= NOVA64_MAX_PATH_PTS) return JS_UNDEFINED;
+   g_path_pts[g_path_count * 2    ] = (float)double_from_js(ctx, argv[0], 0.0) - (float)cam2d_x;
+   g_path_pts[g_path_count * 2 + 1] = (float)double_from_js(ctx, argv[1], 0.0) - (float)cam2d_y;
+   g_path_count++;
+   return JS_UNDEFINED;
+}
+static JSValue js_close_path(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)ctx; (void)this_val; (void)argc; (void)argv;
+   g_path_closed = 1;
+   return JS_UNDEFINED;
+}
+
+static void path_draw_line_segment(float x0f, float y0f, float x1f, float y1f, uint32_t color)
+{
+   int x0 = (int)roundf(x0f), y0 = (int)roundf(y0f);
+   int x1 = (int)roundf(x1f), y1 = (int)roundf(y1f);
+   int dx = abs(x1 - x0), dy = abs(y1 - y0);
+   int sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1;
+   int err = dx - dy;
+   while (1) {
+      set_pixel(x0, y0, color);
+      if (x0 == x1 && y0 == y1) break;
+      int e2 = 2 * err;
+      if (e2 > -dy) { err -= dy; x0 += sx; }
+      if (e2 <  dx) { err += dx; y0 += sy; }
+   }
+}
+
+static JSValue js_stroke_path(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (g_path_count < 2) return JS_UNDEFINED;
+   uint32_t color = color_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, rgba8(255,255,255,255));
+   int segs = g_path_count - 1;
+   for (int i = 0; i < segs; i++)
+      path_draw_line_segment(g_path_pts[i*2], g_path_pts[i*2+1],
+                             g_path_pts[(i+1)*2], g_path_pts[(i+1)*2+1], color);
+   if (g_path_closed && g_path_count >= 2)
+      path_draw_line_segment(g_path_pts[(g_path_count-1)*2], g_path_pts[(g_path_count-1)*2+1],
+                             g_path_pts[0], g_path_pts[1], color);
+   return JS_UNDEFINED;
+}
+
+/* Scanline polygon fill — even-odd rule */
+static JSValue js_fill_path(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (g_path_count < 3) return JS_UNDEFINED;
+   uint32_t color = color_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, rgba8(255,255,255,255));
+   int n = g_path_count;
+   float y_min = g_path_pts[1], y_max = g_path_pts[1];
+   for (int i = 1; i < n; i++) {
+      float y = g_path_pts[i*2+1];
+      if (y < y_min) y_min = y;
+      if (y > y_max) y_max = y;
+   }
+   float xs[NOVA64_MAX_PATH_PTS];
+   for (int scanY = (int)floorf(y_min); scanY <= (int)ceilf(y_max); scanY++) {
+      float fy = (float)scanY + 0.5f;
+      int cnt = 0;
+      for (int i = 0; i < n; i++) {
+         int j = (i + 1) % n;
+         float ay = g_path_pts[i*2+1], by = g_path_pts[j*2+1];
+         float ax = g_path_pts[i*2],   bx = g_path_pts[j*2];
+         if ((ay <= fy && by > fy) || (by <= fy && ay > fy)) {
+            float t = (fy - ay) / (by - ay);
+            xs[cnt++] = ax + t * (bx - ax);
+         }
+      }
+      /* bubble sort xs */
+      for (int a = 0; a < cnt - 1; a++)
+         for (int b = a+1; b < cnt; b++)
+            if (xs[a] > xs[b]) { float tmp = xs[a]; xs[a] = xs[b]; xs[b] = tmp; }
+      for (int k = 0; k + 1 < cnt; k += 2) {
+         int xL = (int)ceilf(xs[k]), xR = (int)floorf(xs[k+1]);
+         for (int xp = xL; xp <= xR; xp++)
+            set_pixel(xp, scanY, color);
+      }
+   }
+   return JS_UNDEFINED;
+}
+
+/* ── Screen flash ─────────────────────────────────────────────────────── */
+static JSValue js_screen_flash(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   g_flash_color    = color_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, rgba8(255,255,255,255));
+   g_flash_duration = (float)clamp_double(double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0.3), 0.01, 10.0);
+   g_flash_timer    = g_flash_duration;
    return JS_UNDEFINED;
 }
 
@@ -9048,6 +9271,20 @@ static bool install_nova64_api(JSContext *ctx)
       JS_FreeValue(ctx, sc);
    }
 
+   /* Sprite transform */
+   set_function(ctx, global, "sprTransform", js_spr_transform, 12);
+
+   /* Path drawing */
+   set_function(ctx, global, "beginPath",  js_begin_path, 0);
+   set_function(ctx, global, "moveTo",     js_move_to,    2);
+   set_function(ctx, global, "lineTo",     js_line_to,    2);
+   set_function(ctx, global, "closePath",  js_close_path, 0);
+   set_function(ctx, global, "strokePath", js_stroke_path, 2);
+   set_function(ctx, global, "fillPath",   js_fill_path,   1);
+
+   /* Screen flash */
+   set_function(ctx, global, "screenFlash", js_screen_flash, 2);
+
    /* Math utilities */
    set_function(ctx, global, "lerp",       js_lerp,       3);
    set_function(ctx, global, "clamp",      js_clamp,      3);
@@ -11589,6 +11826,10 @@ void RETRO_CALLCONV retro_reset(void)
    reset_particles();
    reset_fonts();
    memset(audio_channels, 0, sizeof(audio_channels));
+   memset(g_tweens, 0, sizeof(g_tweens));
+   g_shake_intensity = 0.0f; g_shake_timer = 0.0f; g_shake_duration = 0.0f;
+   g_flash_timer = 0.0f; g_flash_duration = 0.0f;
+   g_path_count = 0; g_path_closed = 0;
    rng_seed_from_environment();
    /* Hot reload: re-read cart from disk if NOVA64_HOT_RELOAD=1 */
    const char *hot_reload_env = getenv("NOVA64_HOT_RELOAD");
@@ -11651,7 +11892,31 @@ void RETRO_CALLCONV retro_run(void)
       if (tw->elapsed >= tw->duration) { tw->elapsed = tw->duration; tw->done = 1; }
    }
 
+   /* advance screen flash */
+   if (g_flash_timer > 0.0f) {
+      g_flash_timer -= (float)(1.0 / NOVA64_FPS);
+      if (g_flash_timer < 0.0f) g_flash_timer = 0.0f;
+   }
+
    js_host_call_frame(1.0 / NOVA64_FPS);
+
+   /* Apply screen flash overlay */
+   if (g_flash_timer > 0.0f && g_flash_duration > 0.0f && framebuffer) {
+      float alpha = g_flash_timer / g_flash_duration;
+      uint8_t fr = (uint8_t)((g_flash_color >> 24) & 0xff);
+      uint8_t fg = (uint8_t)((g_flash_color >> 16) & 0xff);
+      uint8_t fb = (uint8_t)((g_flash_color >>  8) & 0xff);
+      for (size_t _fi = 0; _fi < (size_t)NOVA64_WIDTH * NOVA64_HEIGHT; _fi++) {
+         uint32_t dst = framebuffer[_fi];
+         uint8_t dr = (uint8_t)((dst >> 24) & 0xff);
+         uint8_t dg = (uint8_t)((dst >> 16) & 0xff);
+         uint8_t db = (uint8_t)((dst >>  8) & 0xff);
+         framebuffer[_fi] = rgba8(
+            (uint8_t)(fr * alpha + dr * (1.0f - alpha)),
+            (uint8_t)(fg * alpha + dg * (1.0f - alpha)),
+            (uint8_t)(fb * alpha + db * (1.0f - alpha)), 255);
+      }
+   }
 
    /* Developer console overlay: draw lines at bottom of software framebuffer */
    if (g_developer_mode && g_dev_con_count > 0) {
@@ -11733,6 +11998,10 @@ bool RETRO_CALLCONV retro_load_game(const struct retro_game_info *info)
    reset_fonts();
    memset(audio_channels, 0, sizeof(audio_channels));
    memset(perf_timers, 0, sizeof(perf_timers));
+   memset(g_tweens, 0, sizeof(g_tweens));
+   g_shake_intensity = 0.0f; g_shake_timer = 0.0f; g_shake_duration = 0.0f;
+   g_flash_timer = 0.0f; g_flash_duration = 0.0f;
+   g_path_count = 0; g_path_closed = 0;
    rng_seed_from_environment();
    frame_count = 0;
 

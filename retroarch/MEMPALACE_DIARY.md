@@ -37,8 +37,7 @@ canonical repository instructions in `../AGENTS.md`.
   Conformance cart 104.
 
 ### Current true M8 gaps (all else is done)
-- **8A**: Offscreen render targets; instanced rendering
-- **8B**: Draw-order z-sorting for 2D sprites
+- **8A**: Instanced rendering (render targets done; normal maps done; z-sort done)
 - **8I**: Real hardware GLES smoke matrix; netplay review (manual/doc tasks)
 - **8J**: `--frames N` conformance for all cart types
 
@@ -49,3 +48,21 @@ canonical repository instructions in `../AGENTS.md`.
   adding `uniform highp vec4` in fragment shader matches the vertex default.
 - Shadow FBO needs a dummy color RBO (RGB565) for completeness — GLES does not allow
   depth-only FBOs on all drivers.
+
+## 2026-05-15 — M8 Render Targets session
+
+### What landed this session (commit 3e76598)
+- **Offscreen render targets** (commit 3e76598): GLES FBO + RGBA color texture + depth
+  RBO. `createRenderTarget(w, h)` allocates; `renderScene(rt)` renders 3D scene at rt
+  dimensions, reusing shadow map; `renderTargetAsTexture(rt)` returns borrowed texture
+  handle (new `borrowed` flag on nova64_texture prevents double-free);
+  `destroyRenderTarget(rt)`. `renderTargets` capability flag. Conformance cart 106
+  sw=44044eca0be4f87f gles=f05b3c17d784bd72.
+- Fixed forward declaration chain: `rt_destroy_gl`, `gles_any_cast_shadow_mesh`,
+  `gles_init_shadow_resources`, `build_shadow_light_vp`, `render_gles_shadow_pass`,
+  `gles_load_functions`, `gles_init_resources`. Added `#define GL_LINEAR 0x2601`.
+
+### Current true M8 gaps (all else is done)
+- **8A**: Instanced rendering only (render targets, normal maps, z-sort all done)
+- **8I**: Real hardware GLES smoke matrix; netplay review (manual/doc tasks)
+- **8J**: `--frames N` conformance for all cart types

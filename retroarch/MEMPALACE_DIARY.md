@@ -51,7 +51,7 @@ canonical repository instructions in `../AGENTS.md`.
 
 ## 2026-05-15 — M8 Render Targets session
 
-### What landed this session (commit 3e76598)
+### What landed this session (commits 3e76598..5db0963)
 - **Offscreen render targets** (commit 3e76598): GLES FBO + RGBA color texture + depth
   RBO. `createRenderTarget(w, h)` allocates; `renderScene(rt)` renders 3D scene at rt
   dimensions, reusing shadow map; `renderTargetAsTexture(rt)` returns borrowed texture
@@ -61,8 +61,12 @@ canonical repository instructions in `../AGENTS.md`.
 - Fixed forward declaration chain: `rt_destroy_gl`, `gles_any_cast_shadow_mesh`,
   `gles_init_shadow_resources`, `build_shadow_light_vp`, `render_gles_shadow_pass`,
   `gles_load_functions`, `gles_init_resources`. Added `#define GL_LINEAR 0x2601`.
+- **8I complete** (commit 7dbadc1): `GLES_SMOKE_MATRIX.md` + `NETPLAY_NOTES.md`.
+  `--frames N` propagation added to all conformance runner functions.
+- **Instanced rendering** (commit 5db0963): `NOVA64_MESH_INSTANCED` type.
+  `createInstancedMesh(geometry, count)`, `setInstanceTransform(mesh, i, mat16)`,
+  `getInstanceCount(mesh)`. GLES: shared material uniforms + per-instance MVP loop.
+  Conformance cart 107 sw=4fd99c7a95f90255 gles=f01a0e0dc49c9e0e.
 
 ### Current true M8 gaps (all else is done)
-- **8A**: Instanced rendering only (render targets, normal maps, z-sort all done)
-- **8I**: Real hardware GLES smoke matrix; netplay review (manual/doc tasks)
-- **8J**: `--frames N` conformance for all cart types
+- **All 8A–8J items complete** as of 2026-05-15

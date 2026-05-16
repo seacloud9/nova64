@@ -812,5 +812,9 @@ run_visual_case "380 bezier poly"         "380-bezier-poly"         "retroarch/c
 run_visual_case "381 kaleidoscope spoke"  "381-kaleidoscope-spoke"  "retroarch/conformance/381-kaleidoscope-spoke.js"  "8f162ee0737943ba"
 run_visual_case "382 pixelate vibrancy"   "382-pixelate-vibrancy-invert" "retroarch/conformance/382-pixelate-vibrancy-invert.js" "6198c48c065ee8c7"
 run_visual_case "391 batch28 showcase"    "391-batch28-showcase"    "retroarch/conformance/391-batch28-showcase.js"    "d95589eb9819df0f"
+run_visual_case "392 vector math"         "392-vector-math"         "retroarch/conformance/392-vector-math.js"         "ea074a2aa728a4fc"
+run_visual_case "393 charts"              "393-charts"              "retroarch/conformance/393-charts.js"              "c7adc9804bef2a14"
+run_visual_case "394 fibonacci penrose"   "394-fibonacci-penrose"   "retroarch/conformance/394-fibonacci-penrose.js"   "6683a2ac09402464"
+run_visual_case "403 batch29 showcase"    "403-batch29-showcase"    "retroarch/conformance/403-batch29-showcase.js"    "86cceb358d279594"
 
 echo "Conformance passed."

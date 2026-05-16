@@ -826,5 +826,10 @@ run_visual_case "417 pinwheel"             "417-pinwheel"             "retroarch
 run_visual_case "418 iso tile tunnel"      "418-iso-tile-tunnel"      "retroarch/conformance/418-iso-tile-tunnel.js"      "5171e03cd5ce5941"
 run_visual_case "419 bokeh neon"           "419-bokeh-neon"           "retroarch/conformance/419-bokeh-neon.js"           "82784eb69b89ecd8"
 run_visual_case "427 batch31 showcase"     "427-batch31-showcase"     "retroarch/conformance/427-batch31-showcase.js"     "400f3323db41f207"
+run_visual_case "428 dot grid zigzag"      "428-dot-grid-zigzag"      "retroarch/conformance/428-dot-grid-zigzag.js"      "04795eff2c95133a"
+run_visual_case "429 bullseye needle"      "429-bullseye-needle"      "retroarch/conformance/429-bullseye-needle.js"      "440df98a7eb1ed33"
+run_visual_case "430 vhs echo cycle"       "430-vhs-echo-cycle"       "retroarch/conformance/430-vhs-echo-cycle.js"       "39176a88a8f79d2b"
+run_visual_case "431 conveyor arc arrow"   "431-conveyor-arc-arrow"   "retroarch/conformance/431-conveyor-arc-arrow.js"   "98a3a88d8fbb0cb2"
+run_visual_case "439 batch32 showcase"     "439-batch32-showcase"     "retroarch/conformance/439-batch32-showcase.js"     "8adf585f75108d04"
 
 echo "Conformance passed."

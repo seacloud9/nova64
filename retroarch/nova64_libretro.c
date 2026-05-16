@@ -6314,6 +6314,291 @@ static JSValue js_vec_lerp(JSContext *ctx, JSValueConst this_val, int argc, JSVa
    return obj;
 }
 
+/* ── Batch 32: dot grid, zigzag, bullseye, needle, VHS, colorCycle ──────── */
+
+/* drawDotGrid(x,y,w,h,spacing,color) — dot grid pattern */
+static JSValue js_draw_dot_grid(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int xv=int_from_js(ctx,argv[0],0), yv=int_from_js(ctx,argv[1],0);
+   int wv=int_from_js(ctx,argv[2],200), hv=int_from_js(ctx,argv[3],200);
+   int sp=argc>4?(int)double_from_js(ctx,argv[4],16):16;
+   uint32_t col=(uint32_t)color_from_js(ctx,argv[5],0xFFFFFFFFu);
+   if(sp<2)sp=2;
+   for(int ys=yv;ys<yv+hv;ys+=sp)
+      for(int xs2=xv;xs2<xv+wv;xs2+=sp){
+         set_pixel(xs2,ys,col); set_pixel(xs2+1,ys,col);
+         set_pixel(xs2,ys+1,col); set_pixel(xs2+1,ys+1,col);
+      }
+   return JS_UNDEFINED;
+}
+
+/* fillDotGrid(x,y,w,h,spacing,color,bgColor) — filled rect with dot grid */
+static JSValue js_fill_dot_grid(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int xv=int_from_js(ctx,argv[0],0), yv=int_from_js(ctx,argv[1],0);
+   int wv=int_from_js(ctx,argv[2],200), hv=int_from_js(ctx,argv[3],200);
+   int sp=argc>4?(int)double_from_js(ctx,argv[4],16):16;
+   uint32_t fg=(uint32_t)color_from_js(ctx,argv[5],0xFFFFFFFFu);
+   uint32_t bg=argc>6?(uint32_t)color_from_js(ctx,argv[6],0x222233FFu):0x222233FFu;
+   if(sp<2)sp=2;
+   for(int ys=yv;ys<yv+hv;ys++) for(int xs2=xv;xs2<xv+wv;xs2++) set_pixel(xs2,ys,bg);
+   for(int ys=yv;ys<yv+hv;ys+=sp)
+      for(int xs2=xv;xs2<xv+wv;xs2+=sp){
+         set_pixel(xs2,ys,fg); set_pixel(xs2+1,ys,fg);
+         set_pixel(xs2,ys+1,fg); set_pixel(xs2+1,ys+1,fg);
+      }
+   return JS_UNDEFINED;
+}
+
+/* drawZigzag(x,y,w,amplitude,periods,color) — horizontal zigzag line */
+static JSValue js_draw_zigzag(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double xv=double_from_js(ctx,argv[0],0), yv=double_from_js(ctx,argv[1],0);
+   double wv=double_from_js(ctx,argv[2],200);
+   double amp=argc>3?double_from_js(ctx,argv[3],20):20;
+   double periods=argc>4?double_from_js(ctx,argv[4],4):4;
+   uint32_t col=(uint32_t)color_from_js(ctx,argv[5],0xFFFFFFFFu);
+   int N=64;
+   for(int i=0;i<N;i++){
+      double t1=(double)i/N, t2=(double)(i+1)/N;
+      double x1=xv+t1*wv, x2=xv+t2*wv;
+      double y1=yv+amp*(((fmod(t1*periods,1.0))<0.5)?4*fmod(t1*periods,1.0)-1:3-4*fmod(t1*periods,1.0));
+      double y2=yv+amp*(((fmod(t2*periods,1.0))<0.5)?4*fmod(t2*periods,1.0)-1:3-4*fmod(t2*periods,1.0));
+      path_draw_line_segment((int)x1,(int)y1,(int)x2,(int)y2,col);
+   }
+   return JS_UNDEFINED;
+}
+
+/* fillZigzag(x,y,w,h,amplitude,periods,color) — filled band under zigzag */
+static JSValue js_fill_zigzag(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double xv=double_from_js(ctx,argv[0],0), yv=double_from_js(ctx,argv[1],0);
+   double wv=double_from_js(ctx,argv[2],200), hv=double_from_js(ctx,argv[3],40);
+   double amp=argc>4?double_from_js(ctx,argv[4],20):20;
+   double periods=argc>5?double_from_js(ctx,argv[5],4):4;
+   uint32_t col=(uint32_t)color_from_js(ctx,argv[6],0xFFFFFFFFu);
+   int N=200;
+   for(int i=0;i<N;i++){
+      double t=(double)i/N;
+      double xc=xv+t*wv;
+      double top=yv+amp*(((fmod(t*periods,1.0))<0.5)?4*fmod(t*periods,1.0)-1:3-4*fmod(t*periods,1.0));
+      double bot=yv+hv;
+      for(int ys=(int)top;ys<=(int)bot;ys++) set_pixel((int)xc,ys,col);
+   }
+   return JS_UNDEFINED;
+}
+
+/* drawBullseye(cx,cy,r,rings,color) — bullseye concentric rings */
+static JSValue js_draw_bullseye(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double cx=double_from_js(ctx,argv[0],0), cy=double_from_js(ctx,argv[1],0);
+   double rv=double_from_js(ctx,argv[2],60);
+   int rings=argc>3?(int)double_from_js(ctx,argv[3],4):4;
+   uint32_t col=(uint32_t)color_from_js(ctx,argv[4],0xFFFFFFFFu);
+   if(rings<1)rings=1; if(rings>10)rings=10;
+   for(int r2=1;r2<=rings;r2++){
+      double rr=rv*r2/rings;
+      int N=64;
+      for(int i=0;i<N;i++){
+         double a1=2*M_PI*i/N, a2=2*M_PI*(i+1)/N;
+         path_draw_line_segment((int)(cx+cos(a1)*rr),(int)(cy+sin(a1)*rr),
+                                (int)(cx+cos(a2)*rr),(int)(cy+sin(a2)*rr),col);
+      }
+   }
+   /* cross-hairs */
+   path_draw_line_segment((int)(cx-rv),(int)cy,(int)(cx+rv),(int)cy,col);
+   path_draw_line_segment((int)cx,(int)(cy-rv),(int)cx,(int)(cy+rv),col);
+   return JS_UNDEFINED;
+}
+
+/* fillBullseye(cx,cy,r,rings,color1,color2) — alternating filled rings */
+static JSValue js_fill_bullseye(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double cx=double_from_js(ctx,argv[0],0), cy=double_from_js(ctx,argv[1],0);
+   double rv=double_from_js(ctx,argv[2],60);
+   int rings=argc>3?(int)double_from_js(ctx,argv[3],4):4;
+   uint32_t col1=(uint32_t)color_from_js(ctx,argv[4],0xFF3333FFu);
+   uint32_t col2=argc>5?(uint32_t)color_from_js(ctx,argv[5],0xFFFFFFFFu):0xFFFFFFFFu;
+   if(rings<1)rings=1; if(rings>10)rings=10;
+   for(int r2=rings;r2>=1;r2--){
+      double rr=rv*r2/rings;
+      uint32_t col=(r2%2==1)?col1:col2;
+      int iy=(int)(cy-rr), IY=(int)(cy+rr);
+      for(int ys=iy;ys<=IY;ys++){
+         double dy2=ys-cy; if(dy2*dy2>rr*rr) continue;
+         double dx2=sqrt(rr*rr-dy2*dy2);
+         for(int xv=(int)(cx-dx2);xv<=(int)(cx+dx2);xv++) set_pixel(xv,ys,col);
+      }
+   }
+   return JS_UNDEFINED;
+}
+
+/* drawNeedle(cx,cy,r,angle,color) — gauge needle */
+static JSValue js_draw_needle(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double cx=double_from_js(ctx,argv[0],0), cy=double_from_js(ctx,argv[1],0);
+   double rv=double_from_js(ctx,argv[2],60);
+   double ang=argc>3?double_from_js(ctx,argv[3],0):0;
+   uint32_t col=(uint32_t)color_from_js(ctx,argv[4],0xFF4040FFu);
+   double w2=rv*0.06;
+   double perp=ang+M_PI*0.5;
+   int x0=(int)(cx+cos(perp)*w2), y0=(int)(cy+sin(perp)*w2);
+   int x1=(int)(cx-cos(perp)*w2), y1=(int)(cy-sin(perp)*w2);
+   int x2=(int)(cx+cos(ang)*rv), y2=(int)(cy+sin(ang)*rv);
+   int xb=(int)(cx+cos(ang+M_PI)*rv*0.2), yb=(int)(cy+sin(ang+M_PI)*rv*0.2);
+   path_draw_line_segment(x0,y0,x2,y2,col);
+   path_draw_line_segment(x1,y1,x2,y2,col);
+   path_draw_line_segment(x0,y0,xb,yb,col);
+   path_draw_line_segment(x1,y1,xb,yb,col);
+   /* center dot */
+   set_pixel((int)cx,(int)cy,col); set_pixel((int)cx+1,(int)cy,col);
+   set_pixel((int)cx,(int)cy+1,col); set_pixel((int)cx+1,(int)cy+1,col);
+   return JS_UNDEFINED;
+}
+
+/* screenVHS(strength) — VHS scan-line distortion effect */
+static JSValue js_screen_vhs(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double str=argc>0?double_from_js(ctx,argv[0],0.5):0.5;
+   int W=640,H=360;
+   uint32_t *scratch=(uint32_t*)malloc(W*H*sizeof(uint32_t));
+   if(!scratch) return JS_UNDEFINED;
+   memcpy(scratch,framebuffer,W*H*sizeof(uint32_t));
+   uint32_t seed=0xCAFEBABEu;
+   for(int ys=0;ys<H;ys++){
+      seed=seed*1664525u+1013904223u;
+      int shift=(int)(((seed>>16)&0x7)*(str*3))-2;
+      for(int xv=0;xv<W;xv++){
+         int sx=xv+shift;
+         if(sx<0)sx=0; if(sx>=W)sx=W-1;
+         framebuffer[ys*W+xv]=scratch[ys*W+sx];
+      }
+      /* scan-line darkening on even lines */
+      if(ys%2==0){
+         for(int xv=0;xv<W;xv++){
+            uint32_t pc=framebuffer[ys*W+xv];
+            int rv2=((int)(pc>>24)&0xFF)*7/8, gv2=((int)(pc>>16)&0xFF)*7/8, bv2=((int)(pc>>8)&0xFF)*7/8;
+            framebuffer[ys*W+xv]=((uint32_t)rv2<<24)|((uint32_t)gv2<<16)|((uint32_t)bv2<<8)|(pc&0xFF);
+         }
+      }
+   }
+   free(scratch);
+   return JS_UNDEFINED;
+}
+
+/* colorCycle(color,amount) — rotate hue by amount degrees */
+static JSValue js_color_cycle(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   uint32_t col=(uint32_t)color_from_js(ctx,argv[0],0xFF0000FFu);
+   double amt=argc>1?double_from_js(ctx,argv[1],30):30;
+   double rf=((col>>24)&0xFF)/255.0, gf=((col>>16)&0xFF)/255.0, bf=((col>>8)&0xFF)/255.0;
+   double mx=rf>gf?(rf>bf?rf:bf):(gf>bf?gf:bf);
+   double mn=rf<gf?(rf<bf?rf:bf):(gf<bf?gf:bf);
+   double delta=mx-mn;
+   double hue=0;
+   if(delta>1e-6){
+      if(mx==rf) hue=60*fmod((gf-bf)/delta,6.0);
+      else if(mx==gf) hue=60*((bf-rf)/delta+2);
+      else hue=60*((rf-gf)/delta+4);
+   }
+   if(hue<0) hue+=360;
+   hue=fmod(hue+amt,360.0); if(hue<0)hue+=360;
+   double sat=(mx<1e-6)?0:delta/mx, val=mx;
+   double cv=val*sat, xv2=cv*(1-fabs(fmod(hue/60,2.0)-1)), mv=val-cv;
+   double rf2=mv,gf2=mv,bf2=mv;
+   int hi=(int)(hue/60)%6;
+   if(hi==0){rf2+=cv;gf2+=xv2;}
+   else if(hi==1){rf2+=xv2;gf2+=cv;}
+   else if(hi==2){gf2+=cv;bf2+=xv2;}
+   else if(hi==3){gf2+=xv2;bf2+=cv;}
+   else if(hi==4){rf2+=xv2;bf2+=cv;}
+   else{rf2+=cv;bf2+=xv2;}
+   return JS_NewInt32(ctx,(int32_t)(((uint32_t)(rf2*255))<<24)|(((uint32_t)(gf2*255))<<16)|(((uint32_t)(bf2*255))<<8)|(col&0xFF));
+}
+
+/* drawConveyorBelt(x,y,w,h,offset,color) — moving belt with chevrons */
+static JSValue js_draw_conveyor_belt(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double xv=double_from_js(ctx,argv[0],0), yv=double_from_js(ctx,argv[1],0);
+   double wv=double_from_js(ctx,argv[2],200), hv=double_from_js(ctx,argv[3],30);
+   double offset=argc>4?double_from_js(ctx,argv[4],0):0;
+   uint32_t col=(uint32_t)color_from_js(ctx,argv[5],0xFFFFFFFFu);
+   /* top and bottom rails */
+   path_draw_line_segment((int)xv,(int)yv,(int)(xv+wv),(int)yv,col);
+   path_draw_line_segment((int)xv,(int)(yv+hv),(int)(xv+wv),(int)(yv+hv),col);
+   /* chevrons */
+   double chevW=hv*1.2;
+   int start=(int)(fmod(offset,chevW)-chevW);
+   for(double cx2=start;cx2<wv+chevW;cx2+=chevW){
+      double ax=xv+cx2, bx=xv+cx2+hv*0.5;
+      path_draw_line_segment((int)ax,(int)yv,(int)bx,(int)(yv+hv*0.5),col);
+      path_draw_line_segment((int)bx,(int)(yv+hv*0.5),(int)ax,(int)(yv+hv),col);
+   }
+   return JS_UNDEFINED;
+}
+
+/* screenEcho(dx,dy,strength) — ghost echo/shadow of screen */
+static JSValue js_screen_echo(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int dx=argc>0?(int)double_from_js(ctx,argv[0],4):4;
+   int dy=argc>1?(int)double_from_js(ctx,argv[1],2):2;
+   double str=argc>2?double_from_js(ctx,argv[2],0.4):0.4;
+   int W=640,H=360;
+   uint8_t alpha=(uint8_t)(str*255);
+   for(int ys=0;ys<H;ys++){
+      for(int xv=0;xv<W;xv++){
+         int sx=xv-dx, sy=ys-dy;
+         if(sx<0||sx>=W||sy<0||sy>=H) continue;
+         uint32_t src=framebuffer[sy*W+sx];
+         uint32_t dst=framebuffer[ys*W+xv];
+         /* alpha-blend ghost over current */
+         int rv2=((src>>24)&0xFF)*alpha/255+((dst>>24)&0xFF)*(255-alpha)/255;
+         int gv2=((src>>16)&0xFF)*alpha/255+((dst>>16)&0xFF)*(255-alpha)/255;
+         int bv2=((src>>8)&0xFF)*alpha/255+((dst>>8)&0xFF)*(255-alpha)/255;
+         if(rv2>255)rv2=255; if(gv2>255)gv2=255; if(bv2>255)bv2=255;
+         framebuffer[ys*W+xv]=((uint32_t)rv2<<24)|((uint32_t)gv2<<16)|((uint32_t)bv2<<8)|(dst&0xFF);
+      }
+   }
+   return JS_UNDEFINED;
+}
+
+/* drawArcArrow(cx,cy,r,startAng,endAng,color) — arc with arrowhead at end */
+static JSValue js_draw_arc_arrow(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double cx=double_from_js(ctx,argv[0],0), cy=double_from_js(ctx,argv[1],0);
+   double rv=double_from_js(ctx,argv[2],60);
+   double a0=argc>3?double_from_js(ctx,argv[3],0):0;
+   double a1=argc>4?double_from_js(ctx,argv[4],M_PI*1.5):M_PI*1.5;
+   uint32_t col=(uint32_t)color_from_js(ctx,argv[5],0xFFFFFFFFu);
+   int N=48;
+   for(int i=0;i<N;i++){
+      double t1=a0+(a1-a0)*i/N, t2=a0+(a1-a0)*(i+1)/N;
+      path_draw_line_segment((int)(cx+cos(t1)*rv),(int)(cy+sin(t1)*rv),
+                             (int)(cx+cos(t2)*rv),(int)(cy+sin(t2)*rv),col);
+   }
+   /* arrowhead at a1 */
+   double perp=a1+M_PI*0.5;
+   double ax=(cx+cos(a1)*rv), ay=(cy+sin(a1)*rv);
+   double arrowLen=rv*0.2;
+   double backAng=a1-M_PI;
+   path_draw_line_segment((int)ax,(int)ay,(int)(ax+cos(backAng+0.4)*arrowLen),(int)(ay+sin(backAng+0.4)*arrowLen),col);
+   path_draw_line_segment((int)ax,(int)ay,(int)(ax+cos(backAng-0.4)*arrowLen),(int)(ay+sin(backAng-0.4)*arrowLen),col);
+   (void)perp;
+   return JS_UNDEFINED;
+}
+
 /* ── Batch 31: snowflake, venn, parabola, gear, iso tile, tunnel, bokeh ── */
 
 /* drawSnowflake(cx,cy,r,arms,color) — 6-arm snowflake with branches */
@@ -18911,6 +19196,20 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, global, "drawCompass",        js_draw_compass,        5);
    set_function(ctx, global, "screenBokeh",        js_screen_bokeh,        1);
    set_function(ctx, global, "colorNeon",          js_color_neon,          2);
+
+   /* Batch 32 */
+   set_function(ctx, global, "drawDotGrid",        js_draw_dot_grid,       6);
+   set_function(ctx, global, "fillDotGrid",        js_fill_dot_grid,       7);
+   set_function(ctx, global, "drawZigzag",         js_draw_zigzag,         6);
+   set_function(ctx, global, "fillZigzag",         js_fill_zigzag,         7);
+   set_function(ctx, global, "drawBullseye",       js_draw_bullseye,       5);
+   set_function(ctx, global, "fillBullseye",       js_fill_bullseye,       6);
+   set_function(ctx, global, "drawNeedle",         js_draw_needle,         5);
+   set_function(ctx, global, "screenVHS",          js_screen_vhs,          1);
+   set_function(ctx, global, "colorCycle",         js_color_cycle,         2);
+   set_function(ctx, global, "drawConveyorBelt",   js_draw_conveyor_belt,  6);
+   set_function(ctx, global, "screenEcho",         js_screen_echo,         3);
+   set_function(ctx, global, "drawArcArrow",       js_draw_arc_arrow,      6);
 
    JS_FreeValue(ctx, global);
    return true;

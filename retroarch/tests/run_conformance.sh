@@ -749,5 +749,11 @@ run_visual_case "244 draw cloud"         "244-draw-cloud"         "retroarch/con
 run_visual_case "245 screen night vision" "245-screen-night-vision" "retroarch/conformance/245-screen-night-vision.js" "0485d33c02ccd71b"
 run_visual_case "246 color from hsl"     "246-color-from-hsl"     "retroarch/conformance/246-color-from-hsl.js"     "5a615f3d98fd5846"
 run_visual_case "247 batch16 showcase"   "247-batch16-showcase"   "retroarch/conformance/247-batch16-showcase.js"   "44ade16f54350a4b"
+run_visual_case "248 reflect rotate"    "248-reflect-rotate-vector" "retroarch/conformance/248-reflect-rotate-vector.js" "9ea634ee12cd8300"
+run_visual_case "249 color blend modes" "249-color-blend-modes"  "retroarch/conformance/249-color-blend-modes.js"     "5ea294e3de76c511"
+run_visual_case "250 trig helpers"      "250-trig-helpers"       "retroarch/conformance/250-trig-helpers.js"          "d340ba0ca0906d4e"
+run_visual_case "251 screen glow"       "251-screen-glow"        "retroarch/conformance/251-screen-glow.js"           "9f125e222275afc1"
+run_visual_case "252 draw ruler"        "252-draw-ruler"         "retroarch/conformance/252-draw-ruler.js"            "cacf931e7c320da4"
+run_visual_case "259 batch17 showcase"  "259-batch17-showcase"   "retroarch/conformance/259-batch17-showcase.js"      "2bb81b13794cdc7c"
 
 echo "Conformance passed."

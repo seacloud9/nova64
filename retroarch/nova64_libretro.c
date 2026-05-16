@@ -6314,6 +6314,202 @@ static JSValue js_vec_lerp(JSContext *ctx, JSValueConst this_val, int argc, JSVa
    return obj;
 }
 
+/* ── Batch 17: vector math, color blends, trig helpers, glow, ruler ─── */
+
+/* reflectVector(vx,vy,nx,ny) → {x,y} — reflect v off unit normal n */
+static JSValue js_reflect_vector(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 4) return JS_UNDEFINED;
+   double vx   = double_from_js(ctx,argv[0],0.0);
+   double vy   = double_from_js(ctx,argv[1],0.0);
+   double nx   = double_from_js(ctx,argv[2],0.0);
+   double ny   = double_from_js(ctx,argv[3],1.0);
+   double dot2 = 2.0*(vx*nx + vy*ny);
+   JSValue obj = JS_NewObject(ctx);
+   JS_SetPropertyStr(ctx, obj, "x", JS_NewFloat64(ctx, vx - dot2*nx));
+   JS_SetPropertyStr(ctx, obj, "y", JS_NewFloat64(ctx, vy - dot2*ny));
+   return obj;
+}
+
+/* rotateVector(vx,vy,angle) → {x,y} — rotate by degrees */
+static JSValue js_rotate_vector(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 3) return JS_UNDEFINED;
+   double vx  = double_from_js(ctx,argv[0],0.0);
+   double vy  = double_from_js(ctx,argv[1],0.0);
+   double deg = double_from_js(ctx,argv[2],0.0);
+   double rad = deg * M_PI / 180.0;
+   double c   = cos(rad), s = sin(rad);
+   JSValue obj = JS_NewObject(ctx);
+   JS_SetPropertyStr(ctx, obj, "x", JS_NewFloat64(ctx, vx*c - vy*s));
+   JS_SetPropertyStr(ctx, obj, "y", JS_NewFloat64(ctx, vx*s + vy*c));
+   return obj;
+}
+
+/* colorMultiply(c1,c2) — multiply blend */
+static JSValue js_color_multiply(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 2) return JS_UNDEFINED;
+   uint32_t c1 = (uint32_t)color_from_js(ctx,argv[0],0xFF000000u);
+   uint32_t c2 = (uint32_t)color_from_js(ctx,argv[1],0xFF000000u);
+   uint32_t r  = ((c1>>24)&0xFF)*((c2>>24)&0xFF)/255;
+   uint32_t g  = ((c1>>16)&0xFF)*((c2>>16)&0xFF)/255;
+   uint32_t b  = ((c1>> 8)&0xFF)*((c2>> 8)&0xFF)/255;
+   uint32_t a  = ((c1    )&0xFF)*((c2    )&0xFF)/255;
+   return JS_NewInt32(ctx, (int32_t)((r<<24)|(g<<16)|(b<<8)|a));
+}
+
+/* colorScreen(c1,c2) — screen blend */
+static JSValue js_color_screen(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 2) return JS_UNDEFINED;
+   uint32_t c1 = (uint32_t)color_from_js(ctx,argv[0],0xFF000000u);
+   uint32_t c2 = (uint32_t)color_from_js(ctx,argv[1],0xFF000000u);
+#define SCR(a,b) (255-(255-(int)(a))*(255-(int)(b))/255)
+   uint32_t r = (uint32_t)SCR((c1>>24)&0xFF,(c2>>24)&0xFF);
+   uint32_t g = (uint32_t)SCR((c1>>16)&0xFF,(c2>>16)&0xFF);
+   uint32_t b = (uint32_t)SCR((c1>> 8)&0xFF,(c2>> 8)&0xFF);
+   uint32_t a = (uint32_t)SCR((c1    )&0xFF,(c2    )&0xFF);
+#undef SCR
+   return JS_NewInt32(ctx, (int32_t)((r<<24)|(g<<16)|(b<<8)|a));
+}
+
+/* colorOverlay(c1,c2) — overlay blend */
+static JSValue js_color_overlay(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 2) return JS_UNDEFINED;
+   uint32_t c1 = (uint32_t)color_from_js(ctx,argv[0],0xFF000000u);
+   uint32_t c2 = (uint32_t)color_from_js(ctx,argv[1],0xFF000000u);
+#define OVL(a,b) ((int)(a)<128 ? 2*(int)(a)*(int)(b)/255 : 255-2*(255-(int)(a))*(255-(int)(b))/255)
+   uint32_t r = (uint32_t)OVL((c1>>24)&0xFF,(c2>>24)&0xFF);
+   uint32_t g = (uint32_t)OVL((c1>>16)&0xFF,(c2>>16)&0xFF);
+   uint32_t b = (uint32_t)OVL((c1>> 8)&0xFF,(c2>> 8)&0xFF);
+   uint32_t a = (c1)&0xFF;
+#undef OVL
+   return JS_NewInt32(ctx, (int32_t)((r<<24)|(g<<16)|(b<<8)|a));
+}
+
+/* sinD(degrees) */
+static JSValue js_sin_d(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double d = argc>0 ? double_from_js(ctx,argv[0],0.0) : 0.0;
+   return JS_NewFloat64(ctx, sin(d*M_PI/180.0));
+}
+
+/* cosD(degrees) */
+static JSValue js_cos_d(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double d = argc>0 ? double_from_js(ctx,argv[0],0.0) : 0.0;
+   return JS_NewFloat64(ctx, cos(d*M_PI/180.0));
+}
+
+/* atan2D(y,x) → degrees */
+static JSValue js_atan2_d(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 2) return JS_NewFloat64(ctx, 0.0);
+   double y = double_from_js(ctx,argv[0],0.0);
+   double x = double_from_js(ctx,argv[1],1.0);
+   return JS_NewFloat64(ctx, atan2(y,x)*180.0/M_PI);
+}
+
+/* degToRad(d) */
+static JSValue js_deg_to_rad(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double d = argc>0 ? double_from_js(ctx,argv[0],0.0) : 0.0;
+   return JS_NewFloat64(ctx, d*M_PI/180.0);
+}
+
+/* radToDeg(r) */
+static JSValue js_rad_to_deg(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double r = argc>0 ? double_from_js(ctx,argv[0],0.0) : 0.0;
+   return JS_NewFloat64(ctx, r*180.0/M_PI);
+}
+
+/* screenGlow(radius, intensity) — box-blur + additive blend back */
+static JSValue js_screen_glow(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int    radius = (int)(argc>0 ? double_from_js(ctx,argv[0],3.0) : 3.0);
+   double intens = argc>1 ? double_from_js(ctx,argv[1],0.8) : 0.8;
+   if (radius<1) radius=1; if (radius>16) radius=16;
+   if (intens<0.0) intens=0.0; if (intens>2.0) intens=2.0;
+
+   int cx0=0,cy0=0,cw=NOVA64_WIDTH,ch=NOVA64_HEIGHT;
+   if (clip_active){cx0=clip_x;cy0=clip_y;cw=clip_w;ch=clip_h;}
+   int x1=cx0,y1=cy0,x2=cx0+cw-1,y2=cy0+ch-1;
+   if (x2>=NOVA64_WIDTH)  x2=NOVA64_WIDTH-1;
+   if (y2>=NOVA64_HEIGHT) y2=NOVA64_HEIGHT-1;
+   int W=x2-x1+1,H=y2-y1+1;
+   if (W<=0||H<=0) return JS_UNDEFINED;
+
+   uint32_t *tmp = (uint32_t*)malloc((size_t)(W*H)*sizeof(uint32_t));
+   if (!tmp) return JS_UNDEFINED;
+
+   /* horizontal box blur into tmp */
+   for (int row=0;row<H;row++){
+      for (int col=0;col<W;col++){
+         long rr=0,gg=0,bb=0,cnt=0;
+         for (int k=-radius;k<=radius;k++){
+            int sc=col+k; if(sc<0||sc>=W) continue;
+            uint32_t p=framebuffer[(y1+row)*NOVA64_WIDTH+(x1+sc)];
+            rr+=(p>>24)&0xFF; gg+=(p>>16)&0xFF; bb+=(p>>8)&0xFF; cnt++;
+         }
+         tmp[row*W+col]=((uint32_t)(rr/cnt)<<24)|((uint32_t)(gg/cnt)<<16)|((uint32_t)(bb/cnt)<<8)|0xFF;
+      }
+   }
+   /* vertical blur + additive blend back */
+   for (int row=0;row<H;row++){
+      for (int col=0;col<W;col++){
+         long rr=0,gg=0,bb=0,cnt=0;
+         for (int k=-radius;k<=radius;k++){
+            int sr=row+k; if(sr<0||sr>=H) continue;
+            uint32_t p=tmp[sr*W+col];
+            rr+=(p>>24)&0xFF; gg+=(p>>16)&0xFF; bb+=(p>>8)&0xFF; cnt++;
+         }
+         uint32_t orig=framebuffer[(y1+row)*NOVA64_WIDTH+(x1+col)];
+         int nr=(int)((orig>>24)&0xFF)+(int)((rr/cnt)*intens);
+         int ng=(int)((orig>>16)&0xFF)+(int)((gg/cnt)*intens);
+         int nb=(int)((orig>> 8)&0xFF)+(int)((bb/cnt)*intens);
+         if(nr>255)nr=255; if(ng>255)ng=255; if(nb>255)nb=255;
+         framebuffer[(y1+row)*NOVA64_WIDTH+(x1+col)]=
+            ((uint32_t)nr<<24)|((uint32_t)ng<<16)|((uint32_t)nb<<8)|((orig)&0xFF);
+      }
+   }
+   free(tmp);
+   return JS_UNDEFINED;
+}
+
+/* drawRuler(x,y,len,vertical,step,color) */
+static JSValue js_draw_ruler(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 6) return JS_UNDEFINED;
+   int rx   = (int)double_from_js(ctx,argv[0],0.0)-(int)cam2d_x;
+   int ry   = (int)double_from_js(ctx,argv[1],0.0)-(int)cam2d_y;
+   int len  = (int)double_from_js(ctx,argv[2],100.0);
+   int vert = (int)double_from_js(ctx,argv[3],0.0);
+   int step = (int)double_from_js(ctx,argv[4],10.0);
+   uint32_t col = (uint32_t)color_from_js(ctx,argv[5],0xFFFFFFFFu);
+   if (step<1) step=1;
+   for (int i=0;i<len;i++) vert ? set_pixel(rx,ry+i,col) : set_pixel(rx+i,ry,col);
+   for (int i=0;i<=len;i+=step){
+      int tl=(i%(step*5)==0)?8:4;
+      for (int t=1;t<=tl;t++) vert ? set_pixel(rx+t,ry+i,col) : set_pixel(rx+i,ry+t,col);
+   }
+   return JS_UNDEFINED;
+}
+
 /* ── Batch 16: thick line, arrow, check, waves, screen filters, cloud ─── */
 
 /* drawThickLine(x1,y1,x2,y2,w,color) — filled rectangle along line */
@@ -14452,6 +14648,20 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, global, "drawCloud",        js_draw_cloud,        4);
    set_function(ctx, global, "screenNightVision",js_screen_night_vision,1);
    set_function(ctx, global, "colorFromHSL",     js_color_from_hsl,    3);
+
+   /* Batch 17 */
+   set_function(ctx, global, "reflectVector",  js_reflect_vector,  4);
+   set_function(ctx, global, "rotateVector",   js_rotate_vector,   3);
+   set_function(ctx, global, "colorMultiply",  js_color_multiply,  2);
+   set_function(ctx, global, "colorScreen",    js_color_screen,    2);
+   set_function(ctx, global, "colorOverlay",   js_color_overlay,   2);
+   set_function(ctx, global, "sinD",           js_sin_d,           1);
+   set_function(ctx, global, "cosD",           js_cos_d,           1);
+   set_function(ctx, global, "atan2D",         js_atan2_d,         2);
+   set_function(ctx, global, "degToRad",       js_deg_to_rad,      1);
+   set_function(ctx, global, "radToDeg",       js_rad_to_deg,      1);
+   set_function(ctx, global, "screenGlow",     js_screen_glow,     2);
+   set_function(ctx, global, "drawRuler",      js_draw_ruler,      6);
 
    JS_FreeValue(ctx, global);
    return true;

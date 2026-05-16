@@ -783,5 +783,11 @@ run_visual_case "310 crescent"            "310-crescent"            "retroarch/c
 run_visual_case "311 bloom complement"    "311-bloom-complement"    "retroarch/conformance/311-bloom-complement.js"    "aeaa67a414ebaf81"
 run_visual_case "312 bit utils"           "312-bit-utils"           "retroarch/conformance/312-bit-utils.js"           "bc9f12b61b92f8c8"
 run_visual_case "319 batch22 showcase"    "319-batch22-showcase"    "retroarch/conformance/319-batch22-showcase.js"    "c27db12c2e47d8af"
+run_visual_case "320 lerp2d color utils"  "320-lerp2d-color-utils"  "retroarch/conformance/320-lerp2d-color-utils.js"  "25ba54cab2602476"
+run_visual_case "321 comet"               "321-comet"               "retroarch/conformance/321-comet.js"               "dc9ecdc37517064c"
+run_visual_case "322 rainbow helix"       "322-rainbow-helix"       "retroarch/conformance/322-rainbow-helix.js"       "8bcb86f5e300d153"
+run_visual_case "323 progress spiral wave" "323-progress-spiral-wave" "retroarch/conformance/323-progress-spiral-wave.js" "7897af39e548093a"
+run_visual_case "324 dither glow"         "324-dither-glow"         "retroarch/conformance/324-dither-glow.js"         "ba4e4f0a7b43893d"
+run_visual_case "331 batch23 showcase"    "331-batch23-showcase"    "retroarch/conformance/331-batch23-showcase.js"    "131e01f03670feed"
 
 echo "Conformance passed."

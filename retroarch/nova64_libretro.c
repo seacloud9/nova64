@@ -6314,6 +6314,298 @@ static JSValue js_vec_lerp(JSContext *ctx, JSValueConst this_val, int argc, JSVa
    return obj;
 }
 
+/* ── Batch 21: nested rects, parallelogram, trapezoid, polygon, duotone ─── */
+
+/* drawNestedRects(x,y,w,h,n,gap,color) */
+static JSValue js_draw_nested_rects(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 7) return JS_UNDEFINED;
+   int nx=(int)double_from_js(ctx,argv[0],0.0)-(int)cam2d_x;
+   int ny=(int)double_from_js(ctx,argv[1],0.0)-(int)cam2d_y;
+   int nw=(int)double_from_js(ctx,argv[2],100.0);
+   int nh=(int)double_from_js(ctx,argv[3],80.0);
+   int nn=(int)double_from_js(ctx,argv[4],4.0);
+   int ng=(int)double_from_js(ctx,argv[5],5.0);
+   uint32_t col=(uint32_t)color_from_js(ctx,argv[6],0xFFFFFFFFu);
+   for (int i=0;i<nn;i++){
+      int rw=nw-i*ng*2, rh=nh-i*ng*2;
+      if (rw<2||rh<2) break;
+      int rx=nx+i*ng, ry=ny+i*ng;
+      for (int x2=rx;x2<rx+rw;x2++) { set_pixel(x2,ry,col); set_pixel(x2,ry+rh-1,col); }
+      for (int y2=ry;y2<ry+rh;y2++) { set_pixel(rx,y2,col); set_pixel(rx+rw-1,y2,col); }
+   }
+   return JS_UNDEFINED;
+}
+
+/* fillNestedRects(x,y,w,h,n,gap,c1,c2) — alternating fill */
+static JSValue js_fill_nested_rects(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 8) return JS_UNDEFINED;
+   int nx=(int)double_from_js(ctx,argv[0],0.0)-(int)cam2d_x;
+   int ny=(int)double_from_js(ctx,argv[1],0.0)-(int)cam2d_y;
+   int nw=(int)double_from_js(ctx,argv[2],100.0);
+   int nh=(int)double_from_js(ctx,argv[3],80.0);
+   int nn=(int)double_from_js(ctx,argv[4],4.0);
+   int ng=(int)double_from_js(ctx,argv[5],5.0);
+   uint32_t c1=(uint32_t)color_from_js(ctx,argv[6],0xFFFFFFFFu);
+   uint32_t c2=(uint32_t)color_from_js(ctx,argv[7],0xFF000000u);
+   /* fill outermost to innermost */
+   for (int i=nn-1;i>=0;i--){
+      int rw=nw-i*ng*2, rh=nh-i*ng*2;
+      if (rw<1||rh<1) continue;
+      int rx=nx+i*ng, ry=ny+i*ng;
+      uint32_t col=(i%2==0)?c1:c2;
+      for (int y2=ry;y2<ry+rh;y2++)
+         for (int x2=rx;x2<rx+rw;x2++) set_pixel(x2,y2,col);
+   }
+   return JS_UNDEFINED;
+}
+
+/* drawParallelogram(x,y,w,h,skew,color) — outline parallelogram */
+static JSValue js_draw_parallelogram(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 6) return JS_UNDEFINED;
+   int px=(int)double_from_js(ctx,argv[0],0.0)-(int)cam2d_x;
+   int py=(int)double_from_js(ctx,argv[1],0.0)-(int)cam2d_y;
+   int pw=(int)double_from_js(ctx,argv[2],80.0);
+   int ph=(int)double_from_js(ctx,argv[3],40.0);
+   int sk=(int)double_from_js(ctx,argv[4],20.0);
+   uint32_t col=(uint32_t)color_from_js(ctx,argv[5],0xFFFFFFFFu);
+   /* corners: top-left=(px+sk,py), top-right=(px+sk+pw,py),
+               bottom-left=(px,py+ph), bottom-right=(px+pw,py+ph) */
+   path_draw_line_segment(px+sk, py,    px+sk+pw, py,    col);
+   path_draw_line_segment(px+sk+pw,py,  px+pw,   py+ph, col);
+   path_draw_line_segment(px+pw,  py+ph,px,      py+ph, col);
+   path_draw_line_segment(px,     py+ph,px+sk,   py,    col);
+   return JS_UNDEFINED;
+}
+
+/* fillParallelogram(x,y,w,h,skew,color) */
+static JSValue js_fill_parallelogram(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 6) return JS_UNDEFINED;
+   int px=(int)double_from_js(ctx,argv[0],0.0)-(int)cam2d_x;
+   int py=(int)double_from_js(ctx,argv[1],0.0)-(int)cam2d_y;
+   int pw=(int)double_from_js(ctx,argv[2],80.0);
+   int ph=(int)double_from_js(ctx,argv[3],40.0);
+   int sk=(int)double_from_js(ctx,argv[4],20.0);
+   uint32_t col=(uint32_t)color_from_js(ctx,argv[5],0xFFFFFFFFu);
+   for (int y2=py;y2<py+ph;y2++){
+      double t=(double)(y2-py)/ph;
+      int x0=px+(int)(sk*(1.0-t));
+      for (int x2=x0;x2<x0+pw;x2++) set_pixel(x2,y2,col);
+   }
+   return JS_UNDEFINED;
+}
+
+/* drawTrapezoid(x,y,w1,w2,h,color) — top width w1, bottom width w2 */
+static JSValue js_draw_trapezoid(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 6) return JS_UNDEFINED;
+   int tx=(int)double_from_js(ctx,argv[0],0.0)-(int)cam2d_x;
+   int ty=(int)double_from_js(ctx,argv[1],0.0)-(int)cam2d_y;
+   int w1=(int)double_from_js(ctx,argv[2],80.0);
+   int w2=(int)double_from_js(ctx,argv[3],60.0);
+   int th=(int)double_from_js(ctx,argv[4],40.0);
+   uint32_t col=(uint32_t)color_from_js(ctx,argv[5],0xFFFFFFFFu);
+   int off=(w2-w1)/2;
+   /* top edge */
+   path_draw_line_segment(tx,    ty,    tx+w1, ty,    col);
+   /* bottom edge */
+   path_draw_line_segment(tx+off,ty+th, tx+off+w2,ty+th, col);
+   /* sides */
+   path_draw_line_segment(tx,    ty,    tx+off,    ty+th, col);
+   path_draw_line_segment(tx+w1, ty,    tx+off+w2, ty+th, col);
+   return JS_UNDEFINED;
+}
+
+/* fillTrapezoid(x,y,w1,w2,h,color) */
+static JSValue js_fill_trapezoid(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 6) return JS_UNDEFINED;
+   int tx=(int)double_from_js(ctx,argv[0],0.0)-(int)cam2d_x;
+   int ty=(int)double_from_js(ctx,argv[1],0.0)-(int)cam2d_y;
+   int w1=(int)double_from_js(ctx,argv[2],80.0);
+   int w2=(int)double_from_js(ctx,argv[3],60.0);
+   int th=(int)double_from_js(ctx,argv[4],40.0);
+   uint32_t col=(uint32_t)color_from_js(ctx,argv[5],0xFFFFFFFFu);
+   if (th<=0) return JS_UNDEFINED;
+   for (int y2=ty;y2<ty+th;y2++){
+      double t=(double)(y2-ty)/th;
+      int cw=(int)(w1+(w2-w1)*t);
+      int off=(w2-w1)/2;
+      int x0=(int)(tx+off*(1.0-t));
+      for (int x2=x0;x2<x0+cw;x2++) set_pixel(x2,y2,col);
+   }
+   return JS_UNDEFINED;
+}
+
+/* drawConcentricPolygons(cx,cy,sides,r,n,gap,color) */
+static JSValue js_draw_concentric_polygons(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 7) return JS_UNDEFINED;
+   int pcx=(int)double_from_js(ctx,argv[0],0.0)-(int)cam2d_x;
+   int pcy=(int)double_from_js(ctx,argv[1],0.0)-(int)cam2d_y;
+   int sides=(int)double_from_js(ctx,argv[2],6.0);
+   double pr =double_from_js(ctx,argv[3],50.0);
+   int pn  =(int)double_from_js(ctx,argv[4],4.0);
+   double pg=double_from_js(ctx,argv[5],8.0);
+   uint32_t col=(uint32_t)color_from_js(ctx,argv[6],0xFFFFFFFFu);
+   if (sides<3) sides=3; if (pn<1) pn=1;
+   for (int i=0;i<pn;i++){
+      double ri=pr-i*pg;
+      if (ri<=0) break;
+      for (int s=0;s<sides;s++){
+         double a1=s*2.0*M_PI/sides, a2=(s+1)*2.0*M_PI/sides;
+         path_draw_line_segment((int)(pcx+cos(a1)*ri),(int)(pcy+sin(a1)*ri),
+                                (int)(pcx+cos(a2)*ri),(int)(pcy+sin(a2)*ri),col);
+      }
+   }
+   return JS_UNDEFINED;
+}
+
+/* fillCheckerCircle(cx,cy,r,step,c1,c2) — checkerboard clipped to circle */
+static JSValue js_fill_checker_circle(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 6) return JS_UNDEFINED;
+   int ccx=(int)double_from_js(ctx,argv[0],0.0)-(int)cam2d_x;
+   int ccy=(int)double_from_js(ctx,argv[1],0.0)-(int)cam2d_y;
+   int cr =(int)double_from_js(ctx,argv[2],40.0);
+   int cs =(int)double_from_js(ctx,argv[3],8.0);
+   uint32_t c1=(uint32_t)color_from_js(ctx,argv[4],0xFFFFFFFFu);
+   uint32_t c2=(uint32_t)color_from_js(ctx,argv[5],0xFF000000u);
+   if (cs<1) cs=1;
+   for (int y2=ccy-cr;y2<=ccy+cr;y2++)
+      for (int x2=ccx-cr;x2<=ccx+cr;x2++){
+         double dist=sqrt((double)(x2-ccx)*(x2-ccx)+(double)(y2-ccy)*(y2-ccy));
+         if (dist>cr) continue;
+         int tx=((x2-ccx+cr)/cs), ty=((y2-ccy+cr)/cs);
+         set_pixel(x2,y2,((tx+ty)%2==0)?c1:c2);
+      }
+   return JS_UNDEFINED;
+}
+
+/* colorFromRandom(seed) — seeded color (Xorshift32) */
+static JSValue js_color_from_random(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   uint32_t seed=(uint32_t)(argc>0?double_from_js(ctx,argv[0],1.0):1.0);
+   if (!seed) seed=1;
+   seed^=seed<<13; seed^=seed>>17; seed^=seed<<5;
+   uint32_t r2=(seed>>24)&0xFF, g2=(seed>>16)&0xFF, b2=(seed>>8)&0xFF;
+   return JS_NewInt32(ctx,(int32_t)((r2<<24)|(g2<<16)|(b2<<8)|0xFF));
+}
+
+/* drawNeonLine(x1,y1,x2,y2,glow,color) — line with additive glow */
+static JSValue js_draw_neon_line(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 6) return JS_UNDEFINED;
+   float nx1=(float)double_from_js(ctx,argv[0],0.0)-(float)cam2d_x;
+   float ny1=(float)double_from_js(ctx,argv[1],0.0)-(float)cam2d_y;
+   float nx2=(float)double_from_js(ctx,argv[2],100.0)-(float)cam2d_x;
+   float ny2=(float)double_from_js(ctx,argv[3],0.0)-(float)cam2d_y;
+   int   glow=(int)double_from_js(ctx,argv[4],3.0);
+   uint32_t col=(uint32_t)color_from_js(ctx,argv[5],0xFFFFFFFFu);
+   if (glow<0) glow=0; if (glow>10) glow=10;
+   uint32_t cr=(col>>24)&0xFF,cg=(col>>16)&0xFF,cb=(col>>8)&0xFF;
+   int steps=(int)(sqrtf((nx2-nx1)*(nx2-nx1)+(ny2-ny1)*(ny2-ny1))+1);
+   for (int s=0;s<=steps;s++){
+      float t=(float)s/steps;
+      int px2=(int)(nx1+(nx2-nx1)*t), py2=(int)(ny1+(ny2-ny1)*t);
+      /* core */
+      set_pixel(px2,py2,col);
+      /* glow layers */
+      for (int g2=1;g2<=glow;g2++){
+         double falloff=1.0-(double)g2/(glow+1);
+         uint32_t gr=(uint32_t)(cr*falloff), gg=(uint32_t)(cg*falloff), gb2=(uint32_t)(cb*falloff);
+         uint32_t gc2=(gr<<24)|(gg<<16)|(gb2<<8)|((uint32_t)(200*falloff));
+         for (int dy=-g2;dy<=g2;dy++)
+            for (int dx=-g2;dx<=g2;dx++){
+               if (dx==0&&dy==0) continue;
+               if (abs(dx)+abs(dy)>g2+1) continue;
+               int sx=px2+dx, sy=py2+dy;
+               if (sx<0||sx>=NOVA64_WIDTH||sy<0||sy>=NOVA64_HEIGHT) continue;
+               uint32_t ep=framebuffer[sy*NOVA64_WIDTH+sx];
+               int er=(int)((ep>>24)&0xFF)+(int)gr;
+               int eg=(int)((ep>>16)&0xFF)+(int)gg;
+               int eb=(int)((ep>> 8)&0xFF)+(int)gb2;
+               if(er>255)er=255;if(eg>255)eg=255;if(eb>255)eb=255;
+               framebuffer[sy*NOVA64_WIDTH+sx]=((uint32_t)er<<24)|((uint32_t)eg<<16)|((uint32_t)eb<<8)|((ep)&0xFF);
+               (void)gc2;
+            }
+      }
+   }
+   return JS_UNDEFINED;
+}
+
+/* screenDuotone(c1,c2) — map dark tones → c1, light tones → c2 */
+static JSValue js_screen_duotone(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 2) return JS_UNDEFINED;
+   uint32_t dc1=(uint32_t)color_from_js(ctx,argv[0],0xFF000000u);
+   uint32_t dc2=(uint32_t)color_from_js(ctx,argv[1],0xFFFFFFFFu);
+
+   int cx0=0,cy0=0,cw=NOVA64_WIDTH,ch=NOVA64_HEIGHT;
+   if (clip_active){cx0=clip_x;cy0=clip_y;cw=clip_w;ch=clip_h;}
+   int x1=cx0,y1=cy0,x2=cx0+cw-1,y2=cy0+ch-1;
+   if (x2>=NOVA64_WIDTH) x2=NOVA64_WIDTH-1;
+   if (y2>=NOVA64_HEIGHT) y2=NOVA64_HEIGHT-1;
+
+   for (int y=y1;y<=y2;y++){
+      for (int x=x1;x<=x2;x++){
+         uint32_t p=framebuffer[y*NOVA64_WIDTH+x];
+         int lum=((int)((p>>24)&0xFF)*299+(int)((p>>16)&0xFF)*587+(int)((p>>8)&0xFF)*114)/1000;
+         double t=lum/255.0;
+         double it=1.0-t;
+         uint32_t r=(uint32_t)(((dc1>>24)&0xFF)*it+((dc2>>24)&0xFF)*t+0.5);
+         uint32_t g=(uint32_t)(((dc1>>16)&0xFF)*it+((dc2>>16)&0xFF)*t+0.5);
+         uint32_t b=(uint32_t)(((dc1>> 8)&0xFF)*it+((dc2>> 8)&0xFF)*t+0.5);
+         framebuffer[y*NOVA64_WIDTH+x]=(r<<24)|(g<<16)|(b<<8)|((p)&0xFF);
+      }
+   }
+   return JS_UNDEFINED;
+}
+
+/* gradientCircle(cx,cy,r,c1,c2,angle) — linear gradient clipped to circle */
+static JSValue js_gradient_circle(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 5) return JS_UNDEFINED;
+   int gcx=(int)double_from_js(ctx,argv[0],0.0)-(int)cam2d_x;
+   int gcy=(int)double_from_js(ctx,argv[1],0.0)-(int)cam2d_y;
+   int gr =(int)double_from_js(ctx,argv[2],40.0);
+   uint32_t gc1=(uint32_t)color_from_js(ctx,argv[3],0xFF000000u);
+   uint32_t gc2=(uint32_t)color_from_js(ctx,argv[4],0xFFFFFFFFu);
+   double ang=(argc>5?double_from_js(ctx,argv[5],0.0):0.0)*M_PI/180.0;
+   double ca=cos(ang),sa=sin(ang);
+   for (int y2=gcy-gr;y2<=gcy+gr;y2++){
+      for (int x2=gcx-gr;x2<=gcx+gr;x2++){
+         double dist=sqrt((double)(x2-gcx)*(x2-gcx)+(double)(y2-gcy)*(y2-gcy));
+         if (dist>gr) continue;
+         double dot=((x2-gcx)*ca+(y2-gcy)*sa)/gr;
+         double t2=(dot+1.0)*0.5;
+         if(t2<0)t2=0;if(t2>1)t2=1;
+         double it2=1.0-t2;
+         uint32_t r=(uint32_t)(((gc1>>24)&0xFF)*it2+((gc2>>24)&0xFF)*t2+0.5);
+         uint32_t g=(uint32_t)(((gc1>>16)&0xFF)*it2+((gc2>>16)&0xFF)*t2+0.5);
+         uint32_t b=(uint32_t)(((gc1>> 8)&0xFF)*it2+((gc2>> 8)&0xFF)*t2+0.5);
+         uint32_t a=(uint32_t)(((gc1    )&0xFF)*it2+((gc2    )&0xFF)*t2+0.5);
+         set_pixel(x2,y2,(r<<24)|(g<<16)|(b<<8)|a);
+      }
+   }
+   return JS_UNDEFINED;
+}
+
 /* ── Batch 20: target, spider web, brick, wave shape, flame, zoom, util ─── */
 
 /* drawTarget(cx,cy,r,rings,color) — concentric ring target */
@@ -15633,6 +15925,20 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, global, "drawDotLine",      js_draw_dot_line,     7);
    set_function(ctx, global, "oscillate",        js_oscillate,         4);
    set_function(ctx, global, "pulseValue",       js_pulse_value,       2);
+
+   /* Batch 21 */
+   set_function(ctx, global, "drawNestedRects",         js_draw_nested_rects,         7);
+   set_function(ctx, global, "fillNestedRects",         js_fill_nested_rects,         8);
+   set_function(ctx, global, "drawParallelogram",       js_draw_parallelogram,        6);
+   set_function(ctx, global, "fillParallelogram",       js_fill_parallelogram,        6);
+   set_function(ctx, global, "drawTrapezoid",           js_draw_trapezoid,            6);
+   set_function(ctx, global, "fillTrapezoid",           js_fill_trapezoid,            6);
+   set_function(ctx, global, "drawConcentricPolygons",  js_draw_concentric_polygons,  7);
+   set_function(ctx, global, "fillCheckerCircle",       js_fill_checker_circle,       6);
+   set_function(ctx, global, "colorFromRandom",         js_color_from_random,         1);
+   set_function(ctx, global, "drawNeonLine",            js_draw_neon_line,            6);
+   set_function(ctx, global, "screenDuotone",           js_screen_duotone,            2);
+   set_function(ctx, global, "gradientCircle",          js_gradient_circle,           6);
 
    JS_FreeValue(ctx, global);
    return true;

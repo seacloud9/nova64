@@ -772,5 +772,10 @@ run_visual_case "285 brick wave flame"  "285-brick-wave-flame"  "retroarch/confo
 run_visual_case "286 color lab zoom"    "286-color-lab-zoom"    "retroarch/conformance/286-color-lab-zoom.js"    "07eaad071349141f"
 run_visual_case "287 dot line"          "287-dot-line"          "retroarch/conformance/287-dot-line.js"          "88deebe6a1334fb3"
 run_visual_case "295 batch20 showcase"  "295-batch20-showcase"  "retroarch/conformance/295-batch20-showcase.js"  "3a0d515e3c49acd2"
+run_visual_case "296 nested rects"            "296-nested-rects"            "retroarch/conformance/296-nested-rects.js"            "e41e7f26442bf10f"
+run_visual_case "297 parallelogram trapezoid" "297-parallelogram-trapezoid" "retroarch/conformance/297-parallelogram-trapezoid.js" "a798c1b71a8df5c4"
+run_visual_case "298 concentric checker"      "298-concentric-checker"      "retroarch/conformance/298-concentric-checker.js"      "6ede4f1126b019cd"
+run_visual_case "299 neon duotone"            "299-neon-duotone"            "retroarch/conformance/299-neon-duotone.js"            "f499ee0c080f180e"
+run_visual_case "307 batch21 showcase"        "307-batch21-showcase"        "retroarch/conformance/307-batch21-showcase.js"        "564a81e91af5818b"
 
 echo "Conformance passed."

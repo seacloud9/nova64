@@ -1088,6 +1088,10 @@ static struct nova64_btn_repeat_state g_btn_repeat[NOVA64_BUTTON_COUNT];
 struct nova64_hotspot { int used; int x, y, w, h; };
 static struct nova64_hotspot g_hotspots[NOVA64_MAX_HOTSPOTS];
 
+/* ── Flood fill queue ────────────────────────────────────── */
+#define NOVA64_FLOOD_QUEUE_SIZE 16384
+static struct { int16_t x, y; } g_flood_queue[NOVA64_FLOOD_QUEUE_SIZE];
+
 /* ── Echo / delay ────────────────────────────────────────── */
 #define NOVA64_ECHO_BUF_SIZE 44100   /* 1-second ring buffer */
 static int16_t echo_buf[NOVA64_ECHO_BUF_SIZE * 2]; /* L,R interleaved */
@@ -5874,6 +5878,440 @@ static JSValue js_color_temperature(JSContext *ctx, JSValueConst this_val, int a
       bv2 = (uint8_t)((1.0f - u) * 255);
    }
    return JS_NewInt32(ctx, (int32_t)rgba8(rv2, gv2, bv2, 255));
+}
+
+/* ── Batch 10: curves, math, geometry, text, color, string ──────────── */
+
+/* drawBezier(x0,y0, cx,cy, x1,y1, color [,steps]) — quadratic Bezier */
+static JSValue js_draw_bezier(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 7) return JS_UNDEFINED;
+   double x0 = double_from_js(ctx, argv[0], 0.0);
+   double y0 = double_from_js(ctx, argv[1], 0.0);
+   double cx2 = double_from_js(ctx, argv[2], 0.0);
+   double cy2 = double_from_js(ctx, argv[3], 0.0);
+   double x1 = double_from_js(ctx, argv[4], 0.0);
+   double y1 = double_from_js(ctx, argv[5], 0.0);
+   uint32_t color = color_from_js(ctx, argv[6], 0xffffffff);
+   int steps = argc > 7 ? int_from_js(ctx, argv[7], 32) : 32;
+   if (steps < 2) steps = 2;
+   if (steps > 256) steps = 256;
+   double px = x0, py = y0;
+   for (int i = 1; i <= steps; i++) {
+      double t = (double)i / (double)steps;
+      double mt = 1.0 - t;
+      double nx = mt*mt*x0 + 2.0*mt*t*cx2 + t*t*x1;
+      double ny = mt*mt*y0 + 2.0*mt*t*cy2 + t*t*y1;
+      path_draw_line_segment((int)round(px), (int)round(py), (int)round(nx), (int)round(ny), color);
+      px = nx; py = ny;
+   }
+   return JS_UNDEFINED;
+}
+
+/* polyline(points, color [,closed]) — array of x,y pairs connected by lines */
+static JSValue js_polyline(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 2) return JS_UNDEFINED;
+   if (!JS_IsArray(argv[0])) return JS_UNDEFINED;
+   uint32_t color = color_from_js(ctx, argv[1], 0xffffffff);
+   int closed = argc > 2 ? JS_ToBool(ctx, argv[2]) : 0;
+   JSValue len_v = JS_GetPropertyStr(ctx, argv[0], "length");
+   int len = 0;
+   JS_ToInt32(ctx, &len, len_v);
+   JS_FreeValue(ctx, len_v);
+   if (len < 4) return JS_UNDEFINED;
+   double px = 0, py = 0, fx = 0, fy = 0;
+   for (int i = 0; i + 1 < len; i += 2) {
+      JSValue xv = JS_GetPropertyUint32(ctx, argv[0], (uint32_t)i);
+      JSValue yv = JS_GetPropertyUint32(ctx, argv[0], (uint32_t)(i+1));
+      double x = double_from_js(ctx, xv, 0.0);
+      double y = double_from_js(ctx, yv, 0.0);
+      JS_FreeValue(ctx, xv); JS_FreeValue(ctx, yv);
+      if (i == 0) { fx = x; fy = y; }
+      else { path_draw_line_segment((int)round(px),(int)round(py),(int)round(x),(int)round(y),color); }
+      px = x; py = y;
+   }
+   if (closed) path_draw_line_segment((int)round(px),(int)round(py),(int)round(fx),(int)round(fy),color);
+   return JS_UNDEFINED;
+}
+
+/* printWrap(text, x, y, maxWidth, color [,lineH]) — word-wrap text */
+static JSValue js_print_wrap(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 5) return JS_UNDEFINED;
+   const char *text = JS_ToCString(ctx, argv[0]);
+   if (!text) return JS_UNDEFINED;
+   int x = int_from_js(ctx, argv[1], 0);
+   int y = int_from_js(ctx, argv[2], 0);
+   int maxW = int_from_js(ctx, argv[3], 100);
+   uint32_t color = color_from_js(ctx, argv[4], 0xffffffff);
+   int lineH = argc > 5 ? int_from_js(ctx, argv[5], 10) : 10;
+   if (lineH < 1) lineH = 1;
+   /* word-wrap: split on spaces, measure with text_pixel_width */
+   char line[512]; line[0] = '\0';
+   char word[128];
+   int curY = y;
+   const char *p = text;
+   while (*p) {
+      int wi = 0;
+      while (*p && *p != ' ' && *p != '\n' && wi < 127) word[wi++] = *p++;
+      word[wi] = '\0';
+      if (*p == ' ') p++;
+      if (wi == 0) { if (*p == '\n') { p++; draw_text_pixels(line, x + (int)cam2d_x, curY + (int)cam2d_y, color); line[0]='\0'; curY += lineH; } continue; }
+      char test[512];
+      snprintf(test, sizeof(test), "%s%s%s", line, line[0] ? " " : "", word);
+      if (text_pixel_width(test) > maxW && line[0]) {
+         draw_text_pixels(line, x + (int)cam2d_x, curY + (int)cam2d_y, color);
+         curY += lineH;
+         snprintf(line, sizeof(line), "%s", word);
+      } else {
+         snprintf(line, sizeof(line), "%s", test);
+      }
+      if (*p == '\n') { p++; draw_text_pixels(line, x + (int)cam2d_x, curY + (int)cam2d_y, color); line[0]='\0'; curY += lineH; }
+   }
+   if (line[0]) draw_text_pixels(line, x + (int)cam2d_x, curY + (int)cam2d_y, color);
+   JS_FreeCString(ctx, text);
+   return JS_UNDEFINED;
+}
+
+/* mapRange(v, inLo, inHi, outLo, outHi) */
+static JSValue js_map_range(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 5) return JS_NewFloat64(ctx, 0.0);
+   double v    = double_from_js(ctx, argv[0], 0.0);
+   double inLo = double_from_js(ctx, argv[1], 0.0);
+   double inHi = double_from_js(ctx, argv[2], 1.0);
+   double outLo= double_from_js(ctx, argv[3], 0.0);
+   double outHi= double_from_js(ctx, argv[4], 1.0);
+   double t = (inHi != inLo) ? (v - inLo) / (inHi - inLo) : 0.0;
+   return JS_NewFloat64(ctx, outLo + t * (outHi - outLo));
+}
+
+/* inverseLerp(a, b, v) — returns t such that lerp(a,b,t)=v */
+static JSValue js_inverse_lerp(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 3) return JS_NewFloat64(ctx, 0.0);
+   double a = double_from_js(ctx, argv[0], 0.0);
+   double b = double_from_js(ctx, argv[1], 1.0);
+   double v = double_from_js(ctx, argv[2], 0.0);
+   return JS_NewFloat64(ctx, (b != a) ? (v - a) / (b - a) : 0.0);
+}
+
+/* pingPong(t, len) — triangular oscillation 0..len..0 */
+static JSValue js_ping_pong(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double t   = argc > 0 ? double_from_js(ctx, argv[0], 0.0) : 0.0;
+   double len = argc > 1 ? double_from_js(ctx, argv[1], 1.0) : 1.0;
+   if (len <= 0.0) return JS_NewFloat64(ctx, 0.0);
+   double cycle = fmod(t, len * 2.0);
+   if (cycle < 0.0) cycle += len * 2.0;
+   return JS_NewFloat64(ctx, cycle < len ? cycle : len * 2.0 - cycle);
+}
+
+/* pointInRect(px, py, rx, ry, rw, rh) */
+static JSValue js_point_in_rect(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 6) return JS_FALSE;
+   double px2 = double_from_js(ctx, argv[0], 0.0);
+   double py2 = double_from_js(ctx, argv[1], 0.0);
+   double rx  = double_from_js(ctx, argv[2], 0.0);
+   double ry  = double_from_js(ctx, argv[3], 0.0);
+   double rw  = double_from_js(ctx, argv[4], 0.0);
+   double rh  = double_from_js(ctx, argv[5], 0.0);
+   return JS_NewBool(ctx, px2 >= rx && px2 < rx+rw && py2 >= ry && py2 < ry+rh);
+}
+
+/* pointInCirc(px, py, cx, cy, r) */
+static JSValue js_point_in_circ(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 5) return JS_FALSE;
+   double px2 = double_from_js(ctx, argv[0], 0.0);
+   double py2 = double_from_js(ctx, argv[1], 0.0);
+   double cx2 = double_from_js(ctx, argv[2], 0.0);
+   double cy2 = double_from_js(ctx, argv[3], 0.0);
+   double r2  = double_from_js(ctx, argv[4], 0.0);
+   double dx  = px2 - cx2, dy = py2 - cy2;
+   return JS_NewBool(ctx, dx*dx + dy*dy <= r2*r2);
+}
+
+/* rectIntersects(ax,ay,aw,ah, bx,by,bw,bh) */
+static JSValue js_rect_intersects(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 8) return JS_FALSE;
+   double ax = double_from_js(ctx, argv[0], 0.0), ay = double_from_js(ctx, argv[1], 0.0);
+   double aw = double_from_js(ctx, argv[2], 0.0), ah = double_from_js(ctx, argv[3], 0.0);
+   double bx = double_from_js(ctx, argv[4], 0.0), by = double_from_js(ctx, argv[5], 0.0);
+   double bw = double_from_js(ctx, argv[6], 0.0), bh = double_from_js(ctx, argv[7], 0.0);
+   return JS_NewBool(ctx, ax < bx+bw && ax+aw > bx && ay < by+bh && ay+ah > by);
+}
+
+/* circIntersects(ax,ay,ar, bx,by,br) */
+static JSValue js_circ_intersects(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 6) return JS_FALSE;
+   double ax = double_from_js(ctx, argv[0], 0.0), ay = double_from_js(ctx, argv[1], 0.0);
+   double ar = double_from_js(ctx, argv[2], 0.0);
+   double bx = double_from_js(ctx, argv[3], 0.0), by = double_from_js(ctx, argv[4], 0.0);
+   double br = double_from_js(ctx, argv[5], 0.0);
+   double dx = ax - bx, dy = ay - by, sum = ar + br;
+   return JS_NewBool(ctx, dx*dx + dy*dy <= sum*sum);
+}
+
+/* colorBlend(c1, c2, mode) — modes: 'add','multiply','screen','overlay' */
+static JSValue js_color_blend_mode(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 3) return JS_NewInt32(ctx, 0);
+   uint32_t c1 = (uint32_t)color_from_js(ctx, argv[0], 0);
+   uint32_t c2 = (uint32_t)color_from_js(ctx, argv[1], 0);
+   const char *mode = JS_ToCString(ctx, argv[2]);
+   if (!mode) return JS_NewInt32(ctx, (int32_t)c1);
+   uint8_t r1=(uint8_t)(c1>>24),g1=(uint8_t)(c1>>16),b1=(uint8_t)(c1>>8),a1=(uint8_t)c1;
+   uint8_t r2=(uint8_t)(c2>>24),g2=(uint8_t)(c2>>16),b2=(uint8_t)(c2>>8),a2=(uint8_t)c2;
+   uint8_t ro,go,bo,ao;
+   (void)a2;
+   ao = a1;
+   if (strcmp(mode, "add") == 0) {
+      ro = (uint8_t)(r1+r2 > 255 ? 255 : r1+r2);
+      go = (uint8_t)(g1+g2 > 255 ? 255 : g1+g2);
+      bo = (uint8_t)(b1+b2 > 255 ? 255 : b1+b2);
+   } else if (strcmp(mode, "multiply") == 0) {
+      ro = (uint8_t)(r1*r2/255); go = (uint8_t)(g1*g2/255); bo = (uint8_t)(b1*b2/255);
+   } else if (strcmp(mode, "screen") == 0) {
+      ro = (uint8_t)(255 - (255-r1)*(255-r2)/255);
+      go = (uint8_t)(255 - (255-g1)*(255-g2)/255);
+      bo = (uint8_t)(255 - (255-b1)*(255-b2)/255);
+   } else if (strcmp(mode, "overlay") == 0) {
+      ro = r1 < 128 ? (uint8_t)(2*r1*r2/255) : (uint8_t)(255 - 2*(255-r1)*(255-r2)/255);
+      go = g1 < 128 ? (uint8_t)(2*g1*g2/255) : (uint8_t)(255 - 2*(255-g1)*(255-g2)/255);
+      bo = b1 < 128 ? (uint8_t)(2*b1*b2/255) : (uint8_t)(255 - 2*(255-b1)*(255-b2)/255);
+   } else {
+      ro=r1; go=g1; bo=b1;
+   }
+   JS_FreeCString(ctx, mode);
+   return JS_NewInt32(ctx, (int32_t)((ro<<24)|(go<<16)|(bo<<8)|ao));
+}
+
+/* floodFill(x, y, color) — BFS flood fill on the 2D framebuffer */
+static JSValue js_flood_fill(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 3 || !framebuffer) return JS_UNDEFINED;
+   int fx = int_from_js(ctx, argv[0], 0) - (int)cam2d_x;
+   int fy = int_from_js(ctx, argv[1], 0) - (int)cam2d_y;
+   uint32_t fill_col = (uint32_t)color_from_js(ctx, argv[2], 0xffffffff);
+   if (fx < 0 || fx >= NOVA64_WIDTH || fy < 0 || fy >= NOVA64_HEIGHT) return JS_UNDEFINED;
+   uint32_t target = framebuffer[fy * NOVA64_WIDTH + fx];
+   if (target == fill_col) return JS_UNDEFINED;
+   int head = 0, tail = 0;
+   g_flood_queue[tail].x = (int16_t)fx; g_flood_queue[tail].y = (int16_t)fy;
+   tail = (tail + 1) & (NOVA64_FLOOD_QUEUE_SIZE - 1);
+   framebuffer[fy * NOVA64_WIDTH + fx] = fill_col;
+   static const int dx4[4] = {1,-1,0,0};
+   static const int dy4[4] = {0,0,1,-1};
+   while (head != tail) {
+      int cx2 = g_flood_queue[head].x, cy2 = g_flood_queue[head].y;
+      head = (head + 1) & (NOVA64_FLOOD_QUEUE_SIZE - 1);
+      for (int d = 0; d < 4; d++) {
+         int nx = cx2 + dx4[d], ny = cy2 + dy4[d];
+         if (nx < 0 || nx >= NOVA64_WIDTH || ny < 0 || ny >= NOVA64_HEIGHT) continue;
+         if (framebuffer[ny * NOVA64_WIDTH + nx] != target) continue;
+         framebuffer[ny * NOVA64_WIDTH + nx] = fill_col;
+         int next = (tail + 1) & (NOVA64_FLOOD_QUEUE_SIZE - 1);
+         if (next != head) {
+            g_flood_queue[tail].x = (int16_t)nx; g_flood_queue[tail].y = (int16_t)ny;
+            tail = next;
+         }
+      }
+   }
+   return JS_UNDEFINED;
+}
+
+/* strReplace(str, from, to) */
+static JSValue js_str_replace(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 3) return JS_NewString(ctx, "");
+   const char *s   = JS_ToCString(ctx, argv[0]);
+   const char *from= JS_ToCString(ctx, argv[1]);
+   const char *to  = JS_ToCString(ctx, argv[2]);
+   if (!s || !from || !to) {
+      if (s) JS_FreeCString(ctx, s); if (from) JS_FreeCString(ctx, from); if (to) JS_FreeCString(ctx, to);
+      return JS_NewString(ctx, s ? s : "");
+   }
+   size_t flen = strlen(from);
+   char buf[1024]; int bi = 0;
+   const char *p = s;
+   while (*p && bi < 1020) {
+      if (flen > 0 && strncmp(p, from, flen) == 0) {
+         for (int j = 0; to[j] && bi < 1020; j++) buf[bi++] = to[j];
+         p += flen;
+      } else { buf[bi++] = *p++; }
+   }
+   buf[bi] = '\0';
+   JS_FreeCString(ctx, s); JS_FreeCString(ctx, from); JS_FreeCString(ctx, to);
+   return JS_NewString(ctx, buf);
+}
+
+/* strContains(str, sub) */
+static JSValue js_str_contains(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 2) return JS_FALSE;
+   const char *s   = JS_ToCString(ctx, argv[0]);
+   const char *sub = JS_ToCString(ctx, argv[1]);
+   if (!s || !sub) { if(s) JS_FreeCString(ctx,s); if(sub) JS_FreeCString(ctx,sub); return JS_FALSE; }
+   int r = strstr(s, sub) != NULL;
+   JS_FreeCString(ctx, s); JS_FreeCString(ctx, sub);
+   return JS_NewBool(ctx, r);
+}
+
+/* strUpper(str) */
+static JSValue js_str_upper(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 1) return JS_NewString(ctx, "");
+   const char *s = JS_ToCString(ctx, argv[0]);
+   if (!s) return JS_NewString(ctx, "");
+   char buf[512]; int i;
+   for (i = 0; s[i] && i < 511; i++) buf[i] = (char)toupper((unsigned char)s[i]);
+   buf[i] = '\0';
+   JS_FreeCString(ctx, s);
+   return JS_NewString(ctx, buf);
+}
+
+/* strLower(str) */
+static JSValue js_str_lower(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 1) return JS_NewString(ctx, "");
+   const char *s = JS_ToCString(ctx, argv[0]);
+   if (!s) return JS_NewString(ctx, "");
+   char buf[512]; int i;
+   for (i = 0; s[i] && i < 511; i++) buf[i] = (char)tolower((unsigned char)s[i]);
+   buf[i] = '\0';
+   JS_FreeCString(ctx, s);
+   return JS_NewString(ctx, buf);
+}
+
+/* wrapAngle(a) — wraps angle to [0, 360) */
+static JSValue js_wrap_angle(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double a = argc > 0 ? double_from_js(ctx, argv[0], 0.0) : 0.0;
+   a = fmod(a, 360.0);
+   if (a < 0.0) a += 360.0;
+   return JS_NewFloat64(ctx, a);
+}
+
+/* angleDiff(a, b) — shortest angular difference in degrees, signed */
+static JSValue js_angle_diff(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 2) return JS_NewFloat64(ctx, 0.0);
+   double a = double_from_js(ctx, argv[0], 0.0);
+   double b = double_from_js(ctx, argv[1], 0.0);
+   double d = fmod(b - a + 360.0, 360.0);
+   if (d > 180.0) d -= 360.0;
+   return JS_NewFloat64(ctx, d);
+}
+
+/* angleLerp(a, b, t) — lerp angles (shortest path) */
+static JSValue js_angle_lerp(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 3) return JS_NewFloat64(ctx, 0.0);
+   double a = double_from_js(ctx, argv[0], 0.0);
+   double b = double_from_js(ctx, argv[1], 0.0);
+   double t = double_from_js(ctx, argv[2], 0.0);
+   double d = fmod(b - a + 360.0, 360.0);
+   if (d > 180.0) d -= 360.0;
+   double r = fmod(a + d * t + 360.0, 360.0);
+   return JS_NewFloat64(ctx, r);
+}
+
+/* moveToward(from, to, step) — move from toward to by at most step */
+static JSValue js_move_toward(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 3) return JS_NewFloat64(ctx, 0.0);
+   double from = double_from_js(ctx, argv[0], 0.0);
+   double to   = double_from_js(ctx, argv[1], 0.0);
+   double step = fabs(double_from_js(ctx, argv[2], 1.0));
+   double diff = to - from;
+   if (fabs(diff) <= step) return JS_NewFloat64(ctx, to);
+   return JS_NewFloat64(ctx, from + (diff > 0 ? step : -step));
+}
+
+/* vecLen(x, y) */
+static JSValue js_vec_len(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double x = argc > 0 ? double_from_js(ctx, argv[0], 0.0) : 0.0;
+   double y = argc > 1 ? double_from_js(ctx, argv[1], 0.0) : 0.0;
+   return JS_NewFloat64(ctx, sqrt(x*x + y*y));
+}
+
+/* vecNorm(x, y) → {x, y} */
+static JSValue js_vec_norm(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double x = argc > 0 ? double_from_js(ctx, argv[0], 0.0) : 0.0;
+   double y = argc > 1 ? double_from_js(ctx, argv[1], 0.0) : 0.0;
+   double len = sqrt(x*x + y*y);
+   JSValue obj = JS_NewObject(ctx);
+   if (len > 1e-12) {
+      JS_SetPropertyStr(ctx, obj, "x", JS_NewFloat64(ctx, x/len));
+      JS_SetPropertyStr(ctx, obj, "y", JS_NewFloat64(ctx, y/len));
+   } else {
+      JS_SetPropertyStr(ctx, obj, "x", JS_NewFloat64(ctx, 0.0));
+      JS_SetPropertyStr(ctx, obj, "y", JS_NewFloat64(ctx, 0.0));
+   }
+   return obj;
+}
+
+/* vecDot(x1,y1, x2,y2) */
+static JSValue js_vec_dot(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 4) return JS_NewFloat64(ctx, 0.0);
+   double x1 = double_from_js(ctx, argv[0], 0.0), y1 = double_from_js(ctx, argv[1], 0.0);
+   double x2 = double_from_js(ctx, argv[2], 0.0), y2 = double_from_js(ctx, argv[3], 0.0);
+   return JS_NewFloat64(ctx, x1*x2 + y1*y2);
+}
+
+/* vecCross(x1,y1, x2,y2) — 2D cross (z component) */
+static JSValue js_vec_cross(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 4) return JS_NewFloat64(ctx, 0.0);
+   double x1 = double_from_js(ctx, argv[0], 0.0), y1 = double_from_js(ctx, argv[1], 0.0);
+   double x2 = double_from_js(ctx, argv[2], 0.0), y2 = double_from_js(ctx, argv[3], 0.0);
+   return JS_NewFloat64(ctx, x1*y2 - y1*x2);
+}
+
+/* vecLerp(x1,y1, x2,y2, t) → {x,y} */
+static JSValue js_vec_lerp(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 5) return JS_NewObject(ctx);
+   double x1 = double_from_js(ctx, argv[0], 0.0), y1 = double_from_js(ctx, argv[1], 0.0);
+   double x2 = double_from_js(ctx, argv[2], 0.0), y2 = double_from_js(ctx, argv[3], 0.0);
+   double t  = double_from_js(ctx, argv[4], 0.0);
+   JSValue obj = JS_NewObject(ctx);
+   JS_SetPropertyStr(ctx, obj, "x", JS_NewFloat64(ctx, x1 + (x2-x1)*t));
+   JS_SetPropertyStr(ctx, obj, "y", JS_NewFloat64(ctx, y1 + (y2-y1)*t));
+   return obj;
 }
 
 /* ── Scrolling text ──────────────────────────────────────────────────── */
@@ -12202,6 +12640,32 @@ static bool install_nova64_api(JSContext *ctx)
    /* Color maps */
    set_function(ctx, global, "colorRainbow",     js_color_rainbow,     1);
    set_function(ctx, global, "colorTemperature", js_color_temperature, 1);
+   /* Batch 10: curves / math / geometry / text / color / string / vector */
+   set_function(ctx, global, "drawBezier",     js_draw_bezier,     8);
+   set_function(ctx, global, "polyline",       js_polyline,        3);
+   set_function(ctx, global, "printWrap",      js_print_wrap,      6);
+   set_function(ctx, global, "mapRange",       js_map_range,       5);
+   set_function(ctx, global, "inverseLerp",    js_inverse_lerp,    3);
+   set_function(ctx, global, "pingPong",       js_ping_pong,       2);
+   set_function(ctx, global, "pointInRect",    js_point_in_rect,   6);
+   set_function(ctx, global, "pointInCirc",    js_point_in_circ,   5);
+   set_function(ctx, global, "rectIntersects", js_rect_intersects, 8);
+   set_function(ctx, global, "circIntersects", js_circ_intersects, 6);
+   set_function(ctx, global, "colorBlendMode", js_color_blend_mode,3);
+   set_function(ctx, global, "floodFill",      js_flood_fill,      3);
+   set_function(ctx, global, "strReplace",     js_str_replace,     3);
+   set_function(ctx, global, "strContains",    js_str_contains,    2);
+   set_function(ctx, global, "strUpper",       js_str_upper,       1);
+   set_function(ctx, global, "strLower",       js_str_lower,       1);
+   set_function(ctx, global, "wrapAngle",      js_wrap_angle,      1);
+   set_function(ctx, global, "angleDiff",      js_angle_diff,      2);
+   set_function(ctx, global, "angleLerp",      js_angle_lerp,      3);
+   set_function(ctx, global, "moveToward",     js_move_toward,     3);
+   set_function(ctx, global, "vecLen",         js_vec_len,         2);
+   set_function(ctx, global, "vecNorm",        js_vec_norm,        2);
+   set_function(ctx, global, "vecDot",         js_vec_dot,         4);
+   set_function(ctx, global, "vecCross",       js_vec_cross,       4);
+   set_function(ctx, global, "vecLerp",        js_vec_lerp,        5);
 
    JS_FreeValue(ctx, global);
    return true;

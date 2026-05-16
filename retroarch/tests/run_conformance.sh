@@ -762,5 +762,10 @@ run_visual_case "263 radial gradient"      "263-radial-gradient"  "retroarch/con
 run_visual_case "264 screen crt oil"       "264-screen-crt-oil"   "retroarch/conformance/264-screen-crt-oil.js"   "1640e81536d979cf"
 run_visual_case "265 draw gear"            "265-draw-gear"        "retroarch/conformance/265-draw-gear.js"        "6ecad55c69626bcf"
 run_visual_case "271 batch18 showcase"     "271-batch18-showcase" "retroarch/conformance/271-batch18-showcase.js" "7e31b8c432a65316"
+run_visual_case "272 color lighten darken" "272-color-lighten-darken" "retroarch/conformance/272-color-lighten-darken.js" "b328b4a129b215dc"
+run_visual_case "273 screen brightness"    "273-screen-brightness"    "retroarch/conformance/273-screen-brightness.js"    "b7044cbac57e1b9a"
+run_visual_case "274 wave draw"            "274-wave-draw"            "retroarch/conformance/274-wave-draw.js"            "bf8208cc0c90ba5b"
+run_visual_case "275 bubble connector"     "275-bubble-connector"     "retroarch/conformance/275-bubble-connector.js"     "17b2e6120412c252"
+run_visual_case "283 batch19 showcase"     "283-batch19-showcase"     "retroarch/conformance/283-batch19-showcase.js"     "4a1e01e69489a958"
 
 echo "Conformance passed."

@@ -6314,6 +6314,310 @@ static JSValue js_vec_lerp(JSContext *ctx, JSValueConst this_val, int argc, JSVa
    return obj;
 }
 
+/* ── Batch 19: color blends, screen effects, wave draw, bubble, connector ─── */
+
+/* colorLighten(c1,c2) — lighten blend: max per channel */
+static JSValue js_color_lighten(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 2) return JS_UNDEFINED;
+   uint32_t c1=(uint32_t)color_from_js(ctx,argv[0],0xFF000000u);
+   uint32_t c2=(uint32_t)color_from_js(ctx,argv[1],0xFF000000u);
+#define MAX_CH(a,b) ((uint32_t)((a)>(b)?(a):(b)))
+   uint32_t r=MAX_CH((c1>>24)&0xFF,(c2>>24)&0xFF);
+   uint32_t g=MAX_CH((c1>>16)&0xFF,(c2>>16)&0xFF);
+   uint32_t b=MAX_CH((c1>> 8)&0xFF,(c2>> 8)&0xFF);
+   uint32_t a=(c1)&0xFF;
+#undef MAX_CH
+   return JS_NewInt32(ctx,(int32_t)((r<<24)|(g<<16)|(b<<8)|a));
+}
+
+/* colorDarken(c1,c2) — darken blend: min per channel */
+static JSValue js_color_darken(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 2) return JS_UNDEFINED;
+   uint32_t c1=(uint32_t)color_from_js(ctx,argv[0],0xFFFFFFFFu);
+   uint32_t c2=(uint32_t)color_from_js(ctx,argv[1],0xFFFFFFFFu);
+#define MIN_CH(a,b) ((uint32_t)((a)<(b)?(a):(b)))
+   uint32_t r=MIN_CH((c1>>24)&0xFF,(c2>>24)&0xFF);
+   uint32_t g=MIN_CH((c1>>16)&0xFF,(c2>>16)&0xFF);
+   uint32_t b=MIN_CH((c1>> 8)&0xFF,(c2>> 8)&0xFF);
+   uint32_t a=(c1)&0xFF;
+#undef MIN_CH
+   return JS_NewInt32(ctx,(int32_t)((r<<24)|(g<<16)|(b<<8)|a));
+}
+
+/* colorDifference(c1,c2) — absolute difference per channel */
+static JSValue js_color_difference(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 2) return JS_UNDEFINED;
+   uint32_t c1=(uint32_t)color_from_js(ctx,argv[0],0xFF000000u);
+   uint32_t c2=(uint32_t)color_from_js(ctx,argv[1],0xFF000000u);
+#define DIFF_CH(a,b) ((uint32_t)abs((int)(a)-(int)(b)))
+   uint32_t r=DIFF_CH((c1>>24)&0xFF,(c2>>24)&0xFF);
+   uint32_t g=DIFF_CH((c1>>16)&0xFF,(c2>>16)&0xFF);
+   uint32_t b=DIFF_CH((c1>> 8)&0xFF,(c2>> 8)&0xFF);
+   uint32_t a=(c1)&0xFF;
+#undef DIFF_CH
+   return JS_NewInt32(ctx,(int32_t)((r<<24)|(g<<16)|(b<<8)|a));
+}
+
+/* screenBrightnessContrast(brightness, contrast) — adjust levels */
+static JSValue js_screen_brightness_contrast(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double bright = argc>0 ? double_from_js(ctx,argv[0],0.0) : 0.0;
+   double cont   = argc>1 ? double_from_js(ctx,argv[1],1.0) : 1.0;
+
+   int cx0=0,cy0=0,cw=NOVA64_WIDTH,ch=NOVA64_HEIGHT;
+   if (clip_active){cx0=clip_x;cy0=clip_y;cw=clip_w;ch=clip_h;}
+   int x1=cx0,y1=cy0,x2=cx0+cw-1,y2=cy0+ch-1;
+   if (x2>=NOVA64_WIDTH) x2=NOVA64_WIDTH-1;
+   if (y2>=NOVA64_HEIGHT) y2=NOVA64_HEIGHT-1;
+
+   for (int y=y1;y<=y2;y++){
+      for (int x=x1;x<=x2;x++){
+         uint32_t p=framebuffer[y*NOVA64_WIDTH+x];
+         int r=(p>>24)&0xFF,g=(p>>16)&0xFF,b=(p>>8)&0xFF,a=(p)&0xFF;
+         /* apply brightness (additive) then contrast (scale around 128) */
+         int nr=(int)((r+bright*255-128)*cont+128+0.5);
+         int ng=(int)((g+bright*255-128)*cont+128+0.5);
+         int nb=(int)((b+bright*255-128)*cont+128+0.5);
+         if(nr<0)nr=0;if(nr>255)nr=255;
+         if(ng<0)ng=0;if(ng>255)ng=255;
+         if(nb<0)nb=0;if(nb>255)nb=255;
+         framebuffer[y*NOVA64_WIDTH+x]=((uint32_t)nr<<24)|((uint32_t)ng<<16)|((uint32_t)nb<<8)|(uint32_t)a;
+      }
+   }
+   return JS_UNDEFINED;
+}
+
+/* drawSineWave(x,y,w,amp,freq,phase,color) — draw a sine curve */
+static JSValue js_draw_sine_wave(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 7) return JS_UNDEFINED;
+   int sx   =(int)double_from_js(ctx,argv[0],0.0)-(int)cam2d_x;
+   int sy   =(int)double_from_js(ctx,argv[1],0.0)-(int)cam2d_y;
+   int sw   =(int)double_from_js(ctx,argv[2],100.0);
+   double amp  =double_from_js(ctx,argv[3],20.0);
+   double freq =double_from_js(ctx,argv[4],1.0);
+   double phase=double_from_js(ctx,argv[5],0.0);
+   uint32_t col=(uint32_t)color_from_js(ctx,argv[6],0xFFFFFFFFu);
+   int prevX=sx, prevY=sy;
+   for (int i=0;i<=sw;i++){
+      double t=(double)i/sw;
+      int cx2=sx+i;
+      int cy2=sy-(int)(amp*sin(freq*t*2.0*M_PI+phase));
+      if (i>0) path_draw_line_segment(prevX,prevY,cx2,cy2,col);
+      prevX=cx2; prevY=cy2;
+   }
+   return JS_UNDEFINED;
+}
+
+/* drawSquiggle(x1,y1,x2,y2,amp,freq,color) — perpendicular sine along line */
+static JSValue js_draw_squiggle(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 7) return JS_UNDEFINED;
+   double qx1=double_from_js(ctx,argv[0],0.0)-(double)cam2d_x;
+   double qy1=double_from_js(ctx,argv[1],0.0)-(double)cam2d_y;
+   double qx2=double_from_js(ctx,argv[2],100.0)-(double)cam2d_x;
+   double qy2=double_from_js(ctx,argv[3],0.0)-(double)cam2d_y;
+   double amp =double_from_js(ctx,argv[4],8.0);
+   double freq=double_from_js(ctx,argv[5],3.0);
+   uint32_t col=(uint32_t)color_from_js(ctx,argv[6],0xFFFFFFFFu);
+   double dx=qx2-qx1,dy=qy2-qy1;
+   double len=sqrt(dx*dx+dy*dy);
+   if (len<0.5) return JS_UNDEFINED;
+   double ux=dx/len,uy=dy/len;
+   double nx=-uy,ny=ux;
+   int steps=(int)len;
+   int prevX=(int)qx1,prevY=(int)qy1;
+   for (int i=1;i<=steps;i++){
+      double t=(double)i/steps;
+      double off=amp*sin(t*freq*2.0*M_PI);
+      int cx2=(int)(qx1+ux*len*t+nx*off);
+      int cy2=(int)(qy1+uy*len*t+ny*off);
+      path_draw_line_segment(prevX,prevY,cx2,cy2,col);
+      prevX=cx2; prevY=cy2;
+   }
+   return JS_UNDEFINED;
+}
+
+/* screenGlitch(amount) — RGB channel displacement */
+static JSValue js_screen_glitch(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int amt=(int)(argc>0?double_from_js(ctx,argv[0],4.0):4.0);
+   if (amt<1) amt=1; if (amt>20) amt=20;
+
+   int cx0=0,cy0=0,cw=NOVA64_WIDTH,ch=NOVA64_HEIGHT;
+   if (clip_active){cx0=clip_x;cy0=clip_y;cw=clip_w;ch=clip_h;}
+   int x1=cx0,y1=cy0,x2=cx0+cw-1,y2=cy0+ch-1;
+   if (x2>=NOVA64_WIDTH) x2=NOVA64_WIDTH-1;
+   if (y2>=NOVA64_HEIGHT) y2=NOVA64_HEIGHT-1;
+   int W=x2-x1+1,H=y2-y1+1;
+   if (W<=0||H<=0) return JS_UNDEFINED;
+
+   uint32_t *src=(uint32_t*)malloc((size_t)(W*H)*sizeof(uint32_t));
+   if (!src) return JS_UNDEFINED;
+   for (int r=0;r<H;r++)
+      for (int c=0;c<W;c++)
+         src[r*W+c]=framebuffer[(y1+r)*NOVA64_WIDTH+(x1+c)];
+
+   for (int r=0;r<H;r++){
+      int shift=((r*7+13)%17<9)?amt:0;
+      for (int c=0;c<W;c++){
+         int rc=c-shift; if(rc<0)rc=0; if(rc>=W)rc=W-1;
+         int gc=c;
+         int bc=c+shift; if(bc>=W)bc=W-1;
+         uint32_t rp=src[r*W+rc], gp=src[r*W+gc], bp=src[r*W+bc];
+         uint32_t rch=(rp>>24)&0xFF, gch=(gp>>16)&0xFF, bch=(bp>>8)&0xFF;
+         uint32_t ach=(src[r*W+c])&0xFF;
+         framebuffer[(y1+r)*NOVA64_WIDTH+(x1+c)]=(rch<<24)|(gch<<16)|(bch<<8)|ach;
+      }
+   }
+   free(src);
+   return JS_UNDEFINED;
+}
+
+/* drawBubble(cx,cy,r,color) — bubble outline with highlight arc */
+static JSValue js_draw_bubble(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 4) return JS_UNDEFINED;
+   int bcx=(int)double_from_js(ctx,argv[0],0.0)-(int)cam2d_x;
+   int bcy=(int)double_from_js(ctx,argv[1],0.0)-(int)cam2d_y;
+   int br =(int)double_from_js(ctx,argv[2],20.0);
+   uint32_t col=(uint32_t)color_from_js(ctx,argv[3],0xFFFFFFFFu);
+   /* draw main circle */
+   for (int y2=bcy-br;y2<=bcy+br;y2++){
+      for (int x2=bcx-br;x2<=bcx+br;x2++){
+         double dist=sqrt((double)(x2-bcx)*(x2-bcx)+(double)(y2-bcy)*(y2-bcy));
+         if (dist>br-1&&dist<=br) set_pixel(x2,y2,col);
+      }
+   }
+   /* specular arc highlight (upper-left) */
+   uint32_t hl=(col&0xFFFFFF00u)|((col&0xFF)+40>255?255:(col&0xFF)+40);
+   int hr=(int)(br*0.45), hcx=bcx-(int)(br*0.3), hcy=bcy-(int)(br*0.3);
+   for (int y2=hcy-hr;y2<=hcy+hr;y2++){
+      for (int x2=hcx-hr;x2<=hcx+hr;x2++){
+         double d=sqrt((double)(x2-hcx)*(x2-hcx)+(double)(y2-hcy)*(y2-hcy));
+         if (d>hr-1&&d<=hr) set_pixel(x2,y2,hl);
+      }
+   }
+   return JS_UNDEFINED;
+}
+
+/* fillBubble(cx,cy,r,color) — filled bubble with radial gradient */
+static JSValue js_fill_bubble(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 4) return JS_UNDEFINED;
+   int bcx=(int)double_from_js(ctx,argv[0],0.0)-(int)cam2d_x;
+   int bcy=(int)double_from_js(ctx,argv[1],0.0)-(int)cam2d_y;
+   int br =(int)double_from_js(ctx,argv[2],20.0);
+   uint32_t col=(uint32_t)color_from_js(ctx,argv[3],0xFFFFFFFFu);
+   uint32_t ri=(col>>24)&0xFF, gi=(col>>16)&0xFF, bi=(col>>8)&0xFF, ai=(col)&0xFF;
+   for (int y2=bcy-br;y2<=bcy+br;y2++){
+      for (int x2=bcx-br;x2<=bcx+br;x2++){
+         double dist=sqrt((double)(x2-bcx)*(x2-bcx)+(double)(y2-bcy)*(y2-bcy));
+         if (dist>br) continue;
+         double t=dist/br;
+         uint32_t nr=(uint32_t)(ri*(1.0-t*0.3)+0.5);
+         uint32_t ng=(uint32_t)(gi*(1.0-t*0.3)+0.5);
+         uint32_t nb=(uint32_t)(bi*(1.0-t*0.3)+255*t*0.1+0.5);
+         if(nr>255)nr=255;if(ng>255)ng=255;if(nb>255)nb=255;
+         set_pixel(x2,y2,(nr<<24)|(ng<<16)|(nb<<8)|ai);
+      }
+   }
+   /* specular dot */
+   int hx=bcx-(int)(br*0.3), hy=bcy-(int)(br*0.3), hr=(int)(br*0.25);
+   for (int y2=hy-hr;y2<=hy+hr;y2++)
+      for (int x2=hx-hr;x2<=hx+hr;x2++){
+         double d=sqrt((double)(x2-hx)*(x2-hx)+(double)(y2-hy)*(y2-hy));
+         if (d<=hr) set_pixel(x2,y2,rgba8(255,255,255,(uint8_t)(200*(1.0-d/hr))));
+      }
+   return JS_UNDEFINED;
+}
+
+/* colorPinLight(c1,c2) — pin light blend */
+static JSValue js_color_pin_light(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 2) return JS_UNDEFINED;
+   uint32_t c1=(uint32_t)color_from_js(ctx,argv[0],0xFF000000u);
+   uint32_t c2=(uint32_t)color_from_js(ctx,argv[1],0xFF000000u);
+#define PIN(a,b) ((int)(b)<128 ? ((int)(a)<2*(int)(b)?(int)(a):2*(int)(b)) : ((int)(a)>2*(int)(b)-255?(int)(a):2*(int)(b)-255))
+   uint32_t r=(uint32_t)PIN((c1>>24)&0xFF,(c2>>24)&0xFF);
+   uint32_t g=(uint32_t)PIN((c1>>16)&0xFF,(c2>>16)&0xFF);
+   uint32_t b=(uint32_t)PIN((c1>> 8)&0xFF,(c2>> 8)&0xFF);
+   uint32_t a=(c1)&0xFF;
+#undef PIN
+   if(r>255)r=255; if(g>255)g=255; if(b>255)b=255;
+   return JS_NewInt32(ctx,(int32_t)((r<<24)|(g<<16)|(b<<8)|a));
+}
+
+/* drawConnector(x1,y1,x2,y2,color) — smooth S-curve connector */
+static JSValue js_draw_connector(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 5) return JS_UNDEFINED;
+   double nx1=double_from_js(ctx,argv[0],0.0)-(double)cam2d_x;
+   double ny1=double_from_js(ctx,argv[1],0.0)-(double)cam2d_y;
+   double nx2=double_from_js(ctx,argv[2],100.0)-(double)cam2d_x;
+   double ny2=double_from_js(ctx,argv[3],0.0)-(double)cam2d_y;
+   uint32_t col=(uint32_t)color_from_js(ctx,argv[4],0xFFFFFFFFu);
+   /* cubic bezier with horizontal tangents */
+   double cx1=nx1+(nx2-nx1)*0.5, cy1=ny1;
+   double cx2=nx1+(nx2-nx1)*0.5, cy2=ny2;
+   int steps=80;
+   int prevX=(int)nx1,prevY=(int)ny1;
+   for (int i=1;i<=steps;i++){
+      double t=(double)i/steps, it=1.0-t;
+      double bx=it*it*it*nx1+3*it*it*t*cx1+3*it*t*t*cx2+t*t*t*nx2;
+      double by=it*it*it*ny1+3*it*it*t*cy1+3*it*t*t*cy2+t*t*t*ny2;
+      path_draw_line_segment(prevX,prevY,(int)bx,(int)by,col);
+      prevX=(int)bx; prevY=(int)by;
+   }
+   return JS_UNDEFINED;
+}
+
+/* drawHatch(x,y,w,h,angle,spacing,color) — hatching over a rect */
+static JSValue js_draw_hatch(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 7) return JS_UNDEFINED;
+   int hx=(int)double_from_js(ctx,argv[0],0.0)-(int)cam2d_x;
+   int hy=(int)double_from_js(ctx,argv[1],0.0)-(int)cam2d_y;
+   int hw=(int)double_from_js(ctx,argv[2],100.0);
+   int hh=(int)double_from_js(ctx,argv[3],100.0);
+   double ang  =double_from_js(ctx,argv[4],45.0)*M_PI/180.0;
+   int spacing =(int)double_from_js(ctx,argv[5],8.0);
+   uint32_t col=(uint32_t)color_from_js(ctx,argv[6],0xFFFFFFFFu);
+   if (spacing<1) spacing=1;
+   double ca=cos(ang), sa=sin(ang);
+   int diag=(int)sqrt((double)(hw*hw+hh*hh))+spacing;
+   for (int d=-diag; d<=diag+hw+hh; d+=spacing){
+      /* line in direction (ca,sa) passing through (hx+d*(-sa), hy+d*ca) */
+      double ox=hx+d*(-sa), oy=hy+d*ca;
+      int lx1=(int)(ox - ca*diag), ly1=(int)(oy - sa*diag);
+      int lx2=(int)(ox + ca*diag), ly2=(int)(oy + sa*diag);
+      /* clip to rect and draw */
+      for (int s=0; s<=diag*2; s++){
+         double t=(double)s/(diag*2);
+         int px2=(int)(lx1+(lx2-lx1)*t);
+         int py2=(int)(ly1+(ly2-ly1)*t);
+         if (px2>=hx&&px2<hx+hw&&py2>=hy&&py2<hy+hh)
+            set_pixel(px2,py2,col);
+      }
+   }
+   return JS_UNDEFINED;
+}
+
 /* ── Batch 18: vector utils, color blends, trail, gradients, gear, CRT ─── */
 
 /* vecFromAngle(degrees) → {x,y} unit vector */
@@ -15007,6 +15311,20 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, global, "drawGear",            js_draw_gear,             6);
    set_function(ctx, global, "fillGear",            js_fill_gear,             6);
    set_function(ctx, global, "colorFromFloats",     js_color_from_floats,     4);
+
+   /* Batch 19 */
+   set_function(ctx, global, "colorLighten",             js_color_lighten,             2);
+   set_function(ctx, global, "colorDarken",              js_color_darken,              2);
+   set_function(ctx, global, "colorDifference",          js_color_difference,          2);
+   set_function(ctx, global, "screenBrightnessContrast", js_screen_brightness_contrast,2);
+   set_function(ctx, global, "drawSineWave",             js_draw_sine_wave,            7);
+   set_function(ctx, global, "drawSquiggle",             js_draw_squiggle,             7);
+   set_function(ctx, global, "screenGlitch",             js_screen_glitch,             1);
+   set_function(ctx, global, "drawBubble",               js_draw_bubble,               4);
+   set_function(ctx, global, "fillBubble",               js_fill_bubble,               4);
+   set_function(ctx, global, "colorPinLight",            js_color_pin_light,           2);
+   set_function(ctx, global, "drawConnector",            js_draw_connector,            5);
+   set_function(ctx, global, "drawHatch",                js_draw_hatch,                7);
 
    JS_FreeValue(ctx, global);
    return true;

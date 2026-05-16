@@ -794,5 +794,10 @@ run_visual_case "333 mandala halftone"    "333-mandala-halftone"    "retroarch/c
 run_visual_case "334 label tag cloud"     "334-label-tag-cloud"     "retroarch/conformance/334-label-tag-cloud.js"     "d0b4862e236fccf0"
 run_visual_case "335 noise wheel pulse"   "335-noise-wheel-pulse"   "retroarch/conformance/335-noise-wheel-pulse.js"   "cc19097ff0641c14"
 run_visual_case "343 batch24 showcase"    "343-batch24-showcase"    "retroarch/conformance/343-batch24-showcase.js"    "031c51cb25102734"
+run_visual_case "344 explosion lightning" "344-explosion-lightning" "retroarch/conformance/344-explosion-lightning.js" "7d90857c26061106"
+run_visual_case "345 hex tri grid"        "345-hex-tri-grid"        "retroarch/conformance/345-hex-tri-grid.js"        "00ae8e57cd10d0f4"
+run_visual_case "346 border sobel"        "346-border-sobel"        "retroarch/conformance/346-border-sobel.js"        "096de02deb34ad8e"
+run_visual_case "347 color shift diamond" "347-color-shift-diamond" "retroarch/conformance/347-color-shift-diamond.js" "8b316a00a6609123"
+run_visual_case "355 batch25 showcase"    "355-batch25-showcase"    "retroarch/conformance/355-batch25-showcase.js"    "34a87fefe76b57ab"
 
 echo "Conformance passed."

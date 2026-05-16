@@ -816,5 +816,10 @@ run_visual_case "392 vector math"         "392-vector-math"         "retroarch/c
 run_visual_case "393 charts"              "393-charts"              "retroarch/conformance/393-charts.js"              "c7adc9804bef2a14"
 run_visual_case "394 fibonacci penrose"   "394-fibonacci-penrose"   "retroarch/conformance/394-fibonacci-penrose.js"   "6683a2ac09402464"
 run_visual_case "403 batch29 showcase"    "403-batch29-showcase"    "retroarch/conformance/403-batch29-showcase.js"    "86cceb358d279594"
+run_visual_case "404 matrix rain quantize" "404-matrix-rain-quantize" "retroarch/conformance/404-matrix-rain-quantize.js" "41405d5773aee464"
+run_visual_case "405 ripple sparkle"       "405-ripple-sparkle"       "retroarch/conformance/405-ripple-sparkle.js"       "17e267a412f775cc"
+run_visual_case "406 tilt wirebox"         "406-tilt-wirebox"         "retroarch/conformance/406-tilt-wirebox.js"         "b51387e7e7fb51d0"
+run_visual_case "407 crosshatch"           "407-crosshatch"           "retroarch/conformance/407-crosshatch.js"           "1dc5620e64f728cf"
+run_visual_case "415 batch30 showcase"     "415-batch30-showcase"     "retroarch/conformance/415-batch30-showcase.js"     "6a783f3ef2c7e9f9"
 
 echo "Conformance passed."

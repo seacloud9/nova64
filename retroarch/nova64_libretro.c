@@ -6314,6 +6314,271 @@ static JSValue js_vec_lerp(JSContext *ctx, JSValueConst this_val, int argc, JSVa
    return obj;
 }
 
+/* ── Batch 30: matrix rain, maze-like, ripple, sparkle, CMYK, wireBox ──── */
+
+/* drawMatrixRain(x,y,w,h,density,color) — matrix-style falling characters */
+static JSValue js_draw_matrix_rain(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int xv=int_from_js(ctx,argv[0],0), yv=int_from_js(ctx,argv[1],0);
+   int wv=int_from_js(ctx,argv[2],200), hv=int_from_js(ctx,argv[3],200);
+   double density=argc>4?double_from_js(ctx,argv[4],0.3):0.3;
+   uint32_t col=(uint32_t)color_from_js(ctx,argv[5],0x00FF00FFu);
+   uint32_t seed=0xDEADBEEFu;
+   int cols2=wv/6;
+   for(int c2=0;c2<cols2;c2++){
+      seed=seed*1664525u+1013904223u;
+      if(((seed>>16)&0xFF)/255.0 > density) continue;
+      int dropLen=(int)(((seed>>8)&0xFF)/255.0*(hv-4))+4;
+      seed=seed*1664525u+1013904223u;
+      int startY=yv+(int)(((seed>>16)&0xFF)/255.0*(hv-dropLen));
+      for(int r2=0;r2<dropLen;r2++){
+         double fade=(double)r2/dropLen;
+         uint8_t alpha=(uint8_t)(200*(1.0-fade*0.8));
+         uint32_t dc=(col&0xFFFFFF00u)|(uint32_t)alpha;
+         int px2=xv+c2*6, py2=startY+r2;
+         if(px2>=xv&&px2<xv+wv&&py2>=yv&&py2<yv+hv){
+            set_pixel(px2,py2,dc); set_pixel(px2+1,py2,dc);
+            set_pixel(px2,py2+1,dc); set_pixel(px2+1,py2+1,dc);
+         }
+      }
+   }
+   return JS_UNDEFINED;
+}
+
+/* screenQuantize(levels) — posterize each channel to N levels */
+static JSValue js_screen_quantize(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int levels=argc>0?(int)double_from_js(ctx,argv[0],4):4;
+   if(levels<2)levels=2; if(levels>32)levels=32;
+   int W=640,H=360, step=255/(levels-1);
+   for(int i=0;i<W*H;i++){
+      uint32_t pc=framebuffer[i];
+      int rv2=((pc>>24)&0xFF), gv2=((pc>>16)&0xFF), bv2=((pc>>8)&0xFF);
+      rv2=((rv2+step/2)/step)*step; if(rv2>255)rv2=255;
+      gv2=((gv2+step/2)/step)*step; if(gv2>255)gv2=255;
+      bv2=((bv2+step/2)/step)*step; if(bv2>255)bv2=255;
+      framebuffer[i]=((uint32_t)rv2<<24)|((uint32_t)gv2<<16)|((uint32_t)bv2<<8)|(pc&0xFF);
+   }
+   return JS_UNDEFINED;
+}
+
+/* colorFromCMYK(c,m,y,k) — CMYK 0..1 to rgba */
+static JSValue js_color_from_cmyk(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double cv=double_from_js(ctx,argv[0],0), mv=double_from_js(ctx,argv[1],0);
+   double yv2=double_from_js(ctx,argv[2],0), kv=double_from_js(ctx,argv[3],0);
+   double rv2=(1-cv)*(1-kv), gf2=(1-mv)*(1-kv), bf2=(1-yv2)*(1-kv);
+   return JS_NewInt32(ctx,(int32_t)(((uint32_t)(rv2*255))<<24)|(((uint32_t)(gf2*255))<<16)|(((uint32_t)(bf2*255))<<8)|0xFFu);
+}
+
+/* drawRipple(cx,cy,r,rings,color) — concentric ripple circles with fade */
+static JSValue js_draw_ripple(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double cx=double_from_js(ctx,argv[0],0), cy=double_from_js(ctx,argv[1],0);
+   double rv=double_from_js(ctx,argv[2],60);
+   int rings=argc>3?(int)double_from_js(ctx,argv[3],4):4;
+   uint32_t col=(uint32_t)color_from_js(ctx,argv[4],0xFFFFFFFFu);
+   if(rings<1)rings=1; if(rings>12)rings=12;
+   for(int r2=1;r2<=rings;r2++){
+      double rr=rv*r2/rings;
+      uint8_t alpha=(uint8_t)(200*(1.0-(double)(r2-1)/rings));
+      uint32_t dc=(col&0xFFFFFF00u)|(uint32_t)alpha;
+      int N=64;
+      for(int i=0;i<N;i++){
+         double a1=2*M_PI*i/N, a2=2*M_PI*(i+1)/N;
+         path_draw_line_segment((int)(cx+cos(a1)*rr),(int)(cy+sin(a1)*rr),
+                                (int)(cx+cos(a2)*rr),(int)(cy+sin(a2)*rr),dc);
+      }
+   }
+   return JS_UNDEFINED;
+}
+
+/* fillRipple(cx,cy,r,rings,color,bgColor) — filled alternating ripple rings */
+static JSValue js_fill_ripple(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double cx=double_from_js(ctx,argv[0],0), cy=double_from_js(ctx,argv[1],0);
+   double rv=double_from_js(ctx,argv[2],60);
+   int rings=argc>3?(int)double_from_js(ctx,argv[3],4):4;
+   uint32_t col1=(uint32_t)color_from_js(ctx,argv[4],0xFFFFFFFFu);
+   uint32_t col2=argc>5?(uint32_t)color_from_js(ctx,argv[5],0x333333FFu):0x333333FFu;
+   if(rings<1)rings=1; if(rings>12)rings=12;
+   /* draw from outside in, alternating */
+   for(int r2=rings;r2>=1;r2--){
+      double rr=rv*r2/rings;
+      uint32_t col=(r2%2==0)?col2:col1;
+      int iy=(int)(cy-rr), IY=(int)(cy+rr);
+      for(int ys=iy;ys<=IY;ys++){
+         double dy2=ys-cy; if(dy2*dy2>rr*rr) continue;
+         double dx2=sqrt(rr*rr-dy2*dy2);
+         for(int xv=(int)(cx-dx2);xv<=(int)(cx+dx2);xv++) set_pixel(xv,ys,col);
+      }
+   }
+   return JS_UNDEFINED;
+}
+
+/* drawSparkle(cx,cy,r,n,color) — sparkle star burst with thin rays */
+static JSValue js_draw_sparkle(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double cx=double_from_js(ctx,argv[0],0), cy=double_from_js(ctx,argv[1],0);
+   double rv=double_from_js(ctx,argv[2],30);
+   int nv=argc>3?(int)double_from_js(ctx,argv[3],8):8;
+   uint32_t col=(uint32_t)color_from_js(ctx,argv[4],0xFFFFFFFFu);
+   if(nv<3)nv=3; if(nv>24)nv=24;
+   double inner=rv*0.15;
+   for(int i=0;i<nv;i++){
+      double ang=2*M_PI*i/nv;
+      double ax=cos(ang), ay=sin(ang);
+      double bx=cos(ang+M_PI*0.5)*inner, by=sin(ang+M_PI*0.5)*inner;
+      path_draw_line_segment((int)(cx+bx),(int)(cy+by),(int)(cx+ax*rv),(int)(cy+ay*rv),col);
+      path_draw_line_segment((int)(cx-bx),(int)(cy-by),(int)(cx+ax*rv),(int)(cy+ay*rv),col);
+   }
+   return JS_UNDEFINED;
+}
+
+/* fillSparkle(cx,cy,r,n,color) — filled sparkle */
+static JSValue js_fill_sparkle(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double cx=double_from_js(ctx,argv[0],0), cy=double_from_js(ctx,argv[1],0);
+   double rv=double_from_js(ctx,argv[2],30);
+   int nv=argc>3?(int)double_from_js(ctx,argv[3],8):8;
+   uint32_t col=(uint32_t)color_from_js(ctx,argv[4],0xFFFFFFFFu);
+   if(nv<3)nv=3; if(nv>24)nv=24;
+   int N=nv*2;
+   double inner=rv*0.15;
+   int pts_x[48], pts_y[48];
+   for(int i=0;i<N;i++){
+      double ang=2*M_PI*i/N;
+      double rr=(i%2==0)?rv:inner;
+      pts_x[i]=(int)(cx+cos(ang)*rr);
+      pts_y[i]=(int)(cy+sin(ang)*rr);
+   }
+   int miny=pts_y[0],maxy=pts_y[0];
+   for(int i=1;i<N;i++){if(pts_y[i]<miny)miny=pts_y[i];if(pts_y[i]>maxy)maxy=pts_y[i];}
+   for(int ys=miny;ys<=maxy;ys++){
+      int xs[48]; int nc=0;
+      for(int i=0;i<N;i++){
+         int j=(i+1)%N, ay=pts_y[i],by=pts_y[j];
+         if((ay<=ys&&by>ys)||(by<=ys&&ay>ys))
+            xs[nc++]=pts_x[i]+(pts_x[j]-pts_x[i])*(ys-ay)/(by-ay);
+      }
+      for(int ii=0;ii<nc-1;ii++) for(int jj=ii+1;jj<nc;jj++) if(xs[jj]<xs[ii]){int t=xs[ii];xs[ii]=xs[jj];xs[jj]=t;}
+      for(int ii=0;ii+1<nc;ii+=2) for(int xv=xs[ii];xv<=xs[ii+1];xv++) set_pixel(xv,ys,col);
+   }
+   return JS_UNDEFINED;
+}
+
+/* screenTilt(angle) — rotate screen content by small angle */
+static JSValue js_screen_tilt(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double ang=argc>0?double_from_js(ctx,argv[0],0.1):0.1;
+   int W=640,H=360;
+   uint32_t *scratch=(uint32_t*)malloc(W*H*sizeof(uint32_t));
+   if(!scratch) return JS_UNDEFINED;
+   memcpy(scratch,framebuffer,W*H*sizeof(uint32_t));
+   memset(framebuffer,0,W*H*sizeof(uint32_t));
+   double cv=cos(ang), sv=sin(ang);
+   double ocx=W*0.5, ocy=H*0.5;
+   for(int ys=0;ys<H;ys++){
+      for(int xv=0;xv<W;xv++){
+         double dx2=xv-ocx, dy2=ys-ocy;
+         double sx=cv*dx2+sv*dy2+ocx;
+         double sy=-sv*dx2+cv*dy2+ocy;
+         int sxi=(int)sx, syi=(int)sy;
+         if(sxi>=0&&sxi<W&&syi>=0&&syi<H)
+            framebuffer[ys*W+xv]=scratch[syi*W+sxi];
+      }
+   }
+   free(scratch);
+   return JS_UNDEFINED;
+}
+
+/* drawWireBox(x,y,z,w,h,d,color) — projected wireframe box */
+static JSValue js_draw_wire_box(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double xv=double_from_js(ctx,argv[0],0), yv=double_from_js(ctx,argv[1],0);
+   double zv=double_from_js(ctx,argv[2],0);
+   double wv=double_from_js(ctx,argv[3],80), hv2=double_from_js(ctx,argv[4],60);
+   double dv=double_from_js(ctx,argv[5],40);
+   uint32_t col=(uint32_t)color_from_js(ctx,argv[6],0xFFFFFFFFu);
+   double isoX=0.707*0.5, isoY=0.5*0.5;
+   /* 8 corners: project with simple isometric offset */
+   double corners[8][3]={
+      {0,0,0},{wv,0,0},{wv,hv2,0},{0,hv2,0},
+      {0,0,dv},{wv,0,dv},{wv,hv2,dv},{0,hv2,dv}
+   };
+   int sx[8], sy2[8];
+   for(int i=0;i<8;i++){
+      sx[i]=(int)(xv+corners[i][0]+corners[i][2]*isoX-zv*0.2);
+      sy2[i]=(int)(yv+corners[i][1]-corners[i][2]*isoY+zv*0.1);
+   }
+   /* 12 edges */
+   int edges[12][2]={{0,1},{1,2},{2,3},{3,0},{4,5},{5,6},{6,7},{7,4},{0,4},{1,5},{2,6},{3,7}};
+   for(int e=0;e<12;e++)
+      path_draw_line_segment(sx[edges[e][0]],sy2[edges[e][0]],sx[edges[e][1]],sy2[edges[e][1]],col);
+   return JS_UNDEFINED;
+}
+
+/* fillWireBox — same but with filled front face */
+static JSValue js_fill_wire_box(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double xv=double_from_js(ctx,argv[0],0), yv=double_from_js(ctx,argv[1],0);
+   double zv=double_from_js(ctx,argv[2],0);
+   double wv=double_from_js(ctx,argv[3],80), hv2=double_from_js(ctx,argv[4],60);
+   double dv=double_from_js(ctx,argv[5],40);
+   uint32_t col=(uint32_t)color_from_js(ctx,argv[6],0xFFFFFFFFu);
+   /* dimmed fill */
+   uint32_t fillCol=(((col>>24)&0xFF)/2<<24)|(((col>>16)&0xFF)/2<<16)|(((col>>8)&0xFF)/2<<8)|(col&0xFF);
+   /* front face */
+   for(int ys=(int)yv;ys<(int)(yv+hv2);ys++)
+      for(int xs2=(int)xv;xs2<(int)(xv+wv);xs2++) set_pixel(xs2,ys,fillCol);
+   /* call draw for edges */
+   JSValue args[7];
+   for(int i=0;i<7;i++) args[i]=argv[i];
+   js_draw_wire_box(ctx,this_val,argc,argv);
+   return JS_UNDEFINED;
+}
+
+/* screenCrosshatch(spacing,color) — overlay crosshatch grid */
+static JSValue js_screen_crosshatch(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int spacing=argc>0?(int)double_from_js(ctx,argv[0],16):16;
+   uint32_t col=argc>1?(uint32_t)color_from_js(ctx,argv[1],0x80808080u):0x80808080u;
+   if(spacing<2)spacing=2;
+   int W=640,H=360;
+   for(int ys=0;ys<H;ys+=spacing)
+      for(int xv=0;xv<W;xv++) set_pixel(xv,ys,col);
+   for(int xv=0;xv<W;xv+=spacing)
+      for(int ys=0;ys<H;ys++) set_pixel(xv,ys,col);
+   return JS_UNDEFINED;
+}
+
+/* colorFromYUV(y,u,v) — BT.601 YUV 0..1 to rgba8 */
+static JSValue js_color_from_yuv(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double yv=double_from_js(ctx,argv[0],0.5);
+   double uv=argc>1?double_from_js(ctx,argv[1],0):0;
+   double vv=argc>2?double_from_js(ctx,argv[2],0):0;
+   double rf=yv+1.13983*vv;
+   double gf=yv-0.39465*uv-0.58060*vv;
+   double bf=yv+2.03211*uv;
+   if(rf<0)rf=0; if(rf>1)rf=1;
+   if(gf<0)gf=0; if(gf>1)gf=1;
+   if(bf<0)bf=0; if(bf>1)bf=1;
+   return JS_NewInt32(ctx,(int32_t)(((uint32_t)(rf*255))<<24)|(((uint32_t)(gf*255))<<16)|(((uint32_t)(bf*255))<<8)|0xFFu);
+}
+
 /* ── Batch 29: vector ops, charts, golden spiral, sand dune, oldTV ─────── */
 
 /* vectorNormalize(x,y) -> [nx,ny] */
@@ -18301,6 +18566,20 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, global, "drawPenrose",      js_draw_penrose,      4);
    set_function(ctx, global, "drawSandDune",     js_draw_sand_dune,    6);
    set_function(ctx, global, "fillSandDune",     js_fill_sand_dune,    6);
+
+   /* Batch 30 */
+   set_function(ctx, global, "drawMatrixRain",  js_draw_matrix_rain,  6);
+   set_function(ctx, global, "screenQuantize",  js_screen_quantize,   1);
+   set_function(ctx, global, "colorFromCMYK",   js_color_from_cmyk,   4);
+   set_function(ctx, global, "drawRipple",      js_draw_ripple,       5);
+   set_function(ctx, global, "fillRipple",      js_fill_ripple,       6);
+   set_function(ctx, global, "drawSparkle",     js_draw_sparkle,      5);
+   set_function(ctx, global, "fillSparkle",     js_fill_sparkle,      5);
+   set_function(ctx, global, "screenTilt",      js_screen_tilt,       1);
+   set_function(ctx, global, "drawWireBox",     js_draw_wire_box,     7);
+   set_function(ctx, global, "fillWireBox",     js_fill_wire_box,     7);
+   set_function(ctx, global, "screenCrosshatch",js_screen_crosshatch, 2);
+   set_function(ctx, global, "colorFromYUV",    js_color_from_yuv,    3);
 
    JS_FreeValue(ctx, global);
    return true;

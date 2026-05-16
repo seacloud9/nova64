@@ -6314,6 +6314,259 @@ static JSValue js_vec_lerp(JSContext *ctx, JSValueConst this_val, int argc, JSVa
    return obj;
 }
 
+/* ── Batch 26: star2, rosette, fractal tree, screen flip, colorFade ─────── */
+
+/* drawStar2(cx,cy,r,n,ratio,color) — n-pointed star */
+static JSValue js_draw_star2(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double cx=double_from_js(ctx,argv[0],0), cy=double_from_js(ctx,argv[1],0);
+   double rv=double_from_js(ctx,argv[2],40);
+   int nv=argc>3?(int)double_from_js(ctx,argv[3],5):5;
+   double ratio=argc>4?double_from_js(ctx,argv[4],0.4):0.4;
+   uint32_t col=(uint32_t)color_from_js(ctx,argv[5],0xFFFFFFFFu);
+   if(nv<3)nv=3; if(nv>24)nv=24;
+   double inner=rv*ratio;
+   for(int i=0;i<nv*2;i++){
+      double a1=M_PI*(2*i)/(nv*2)-M_PI/2;
+      double a2=M_PI*(2*i+1)/(nv*2)-M_PI/2;
+      double a3=M_PI*(2*i+2)/(nv*2)-M_PI/2;
+      double r1=(i%2==0)?rv:inner, r2=(i%2==0)?inner:rv;
+      (void)r2;
+      path_draw_line_segment((int)(cx+cos(a1)*r1),(int)(cy+sin(a1)*r1),
+                             (int)(cx+cos(a2)*inner),(int)(cy+sin(a2)*inner),col);
+      path_draw_line_segment((int)(cx+cos(a2)*inner),(int)(cy+sin(a2)*inner),
+                             (int)(cx+cos(a3)*rv),(int)(cy+sin(a3)*rv),col);
+      i++;
+   }
+   return JS_UNDEFINED;
+}
+
+/* fillStar2(cx,cy,r,n,ratio,color) */
+static JSValue js_fill_star2(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double cx=double_from_js(ctx,argv[0],0), cy=double_from_js(ctx,argv[1],0);
+   double rv=double_from_js(ctx,argv[2],40);
+   int nv=argc>3?(int)double_from_js(ctx,argv[3],5):5;
+   double ratio=argc>4?double_from_js(ctx,argv[4],0.4):0.4;
+   uint32_t col=(uint32_t)color_from_js(ctx,argv[5],0xFFFFFFFFu);
+   if(nv<3)nv=3; if(nv>24)nv=24;
+   double inner=rv*ratio;
+   int N=nv*2;
+   int pts_x[48], pts_y[48];
+   for(int i=0;i<N;i++){
+      double ang=M_PI*2*i/N - M_PI/2;
+      double rr=(i%2==0)?rv:inner;
+      pts_x[i]=(int)(cx+cos(ang)*rr);
+      pts_y[i]=(int)(cy+sin(ang)*rr);
+   }
+   int miny=pts_y[0],maxy=pts_y[0];
+   for(int i=1;i<N;i++){if(pts_y[i]<miny)miny=pts_y[i];if(pts_y[i]>maxy)maxy=pts_y[i];}
+   for(int ys=miny;ys<=maxy;ys++){
+      int xs[48]; int nc=0;
+      for(int i=0;i<N;i++){
+         int j=(i+1)%N, ay=pts_y[i],by=pts_y[j];
+         if((ay<=ys&&by>ys)||(by<=ys&&ay>ys))
+            xs[nc++]=pts_x[i]+(pts_x[j]-pts_x[i])*(ys-ay)/(by-ay);
+      }
+      for(int ii=0;ii<nc-1;ii++) for(int jj=ii+1;jj<nc;jj++) if(xs[jj]<xs[ii]){int t=xs[ii];xs[ii]=xs[jj];xs[jj]=t;}
+      for(int ii=0;ii+1<nc;ii+=2) for(int xv=xs[ii];xv<=xs[ii+1];xv++) set_pixel(xv,ys,col);
+   }
+   return JS_UNDEFINED;
+}
+
+/* drawRosette(cx,cy,r,k,color) — r*cos(k*theta) rose curve */
+static JSValue js_draw_rosette(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double cx=double_from_js(ctx,argv[0],0), cy=double_from_js(ctx,argv[1],0);
+   double rv=double_from_js(ctx,argv[2],50);
+   int kv=argc>3?(int)double_from_js(ctx,argv[3],4):4;
+   uint32_t col=(uint32_t)color_from_js(ctx,argv[4],0xFFFFFFFFu);
+   if(kv<1)kv=1; if(kv>12)kv=12;
+   int N=360;
+   for(int i=0;i<N;i++){
+      double t1=(double)i/N*2*M_PI, t2=(double)(i+1)/N*2*M_PI;
+      double r1=rv*cos(kv*t1), r2=rv*cos(kv*t2);
+      if(r1<0)r1=0; if(r2<0)r2=0;
+      path_draw_line_segment((int)(cx+cos(t1)*r1),(int)(cy+sin(t1)*r1),
+                             (int)(cx+cos(t2)*r2),(int)(cy+sin(t2)*r2),col);
+   }
+   return JS_UNDEFINED;
+}
+
+/* fillRosette(cx,cy,r,k,color) */
+static JSValue js_fill_rosette(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double cx=double_from_js(ctx,argv[0],0), cy=double_from_js(ctx,argv[1],0);
+   double rv=double_from_js(ctx,argv[2],50);
+   int kv=argc>3?(int)double_from_js(ctx,argv[3],4):4;
+   uint32_t col=(uint32_t)color_from_js(ctx,argv[4],0xFFFFFFFFu);
+   if(kv<1)kv=1; if(kv>12)kv=12;
+   int N=720;
+   for(int i=0;i<N;i++){
+      double t1=(double)i/N*2*M_PI;
+      double r1=rv*cos(kv*t1); if(r1<0)r1=-r1;
+      path_draw_line_segment((int)cx,(int)cy,(int)(cx+cos(t1)*r1),(int)(cy+sin(t1)*r1),col);
+   }
+   return JS_UNDEFINED;
+}
+
+/* drawFractalTree(x,y,length,angle,depth,color) */
+static void fractal_tree_branch(double x1, double y1, double len, double ang, int depth, uint32_t col)
+{
+   if(depth<=0||len<2) return;
+   double x2=x1+cos(ang)*len;
+   double y2=y1-sin(ang)*len;
+   path_draw_line_segment((int)x1,(int)y1,(int)x2,(int)y2,col);
+   fractal_tree_branch(x2,y2,len*0.7,ang+0.4,depth-1,col);
+   fractal_tree_branch(x2,y2,len*0.7,ang-0.4,depth-1,col);
+}
+static JSValue js_draw_fractal_tree(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double xv=double_from_js(ctx,argv[0],320), yv=double_from_js(ctx,argv[1],340);
+   double len=double_from_js(ctx,argv[2],60);
+   double ang=argc>3?double_from_js(ctx,argv[3],M_PI/2):M_PI/2;
+   int depth=argc>4?(int)double_from_js(ctx,argv[4],7):7;
+   uint32_t col=(uint32_t)color_from_js(ctx,argv[5],0xFFFFFFFFu);
+   if(depth>10)depth=10;
+   fractal_tree_branch(xv,yv,len,ang,depth,col);
+   return JS_UNDEFINED;
+}
+
+/* screenReflect(axis) 0=horizontal mirror, 1=vertical mirror */
+static JSValue js_screen_reflect(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int axis=argc>0?(int)double_from_js(ctx,argv[0],0):0;
+   int W=640,H=360;
+   if(axis==0){ /* left half mirrors right */
+      for(int ys=0;ys<H;ys++)
+         for(int xv=0;xv<W/2;xv++)
+            framebuffer[ys*W+xv]=framebuffer[ys*W+(W-1-xv)];
+   } else {
+      for(int ys=0;ys<H/2;ys++)
+         for(int xv=0;xv<W;xv++)
+            framebuffer[ys*W+xv]=framebuffer[(H-1-ys)*W+xv];
+   }
+   return JS_UNDEFINED;
+}
+
+/* screenFlipH() */
+static JSValue js_screen_flip_h(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val; (void)argc; (void)argv;
+   int W=640,H=360;
+   for(int ys=0;ys<H;ys++){
+      for(int xv=0;xv<W/2;xv++){
+         uint32_t t=framebuffer[ys*W+xv];
+         framebuffer[ys*W+xv]=framebuffer[ys*W+(W-1-xv)];
+         framebuffer[ys*W+(W-1-xv)]=t;
+      }
+   }
+   return JS_UNDEFINED;
+}
+
+/* screenFlipV() */
+static JSValue js_screen_flip_v(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val; (void)argc; (void)argv;
+   int W=640,H=360;
+   for(int ys=0;ys<H/2;ys++){
+      for(int xv=0;xv<W;xv++){
+         uint32_t tv=framebuffer[ys*W+xv];
+         framebuffer[ys*W+xv]=framebuffer[(H-1-ys)*W+xv];
+         framebuffer[(H-1-ys)*W+xv]=tv;
+      }
+   }
+   return JS_UNDEFINED;
+}
+
+/* colorFade(c, t) — lerp toward black */
+static JSValue js_color_fade(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   uint32_t col=(uint32_t)color_from_js(ctx,argv[0],0xFFFFFFFFu);
+   double tv=argc>1?double_from_js(ctx,argv[1],0.5):0.5;
+   if(tv<0)tv=0; if(tv>1)tv=1;
+   double keep=1.0-tv;
+   uint8_t rv2=(uint8_t)(((col>>24)&0xFF)*keep);
+   uint8_t gv2=(uint8_t)(((col>>16)&0xFF)*keep);
+   uint8_t bv2=(uint8_t)(((col>>8)&0xFF)*keep);
+   return JS_NewInt32(ctx,(int32_t)(((uint32_t)rv2<<24)|((uint32_t)gv2<<16)|((uint32_t)bv2<<8)|(col&0xFF)));
+}
+
+/* drawTextBox(x,y,w,h,text,color,bgColor) */
+static JSValue js_draw_text_box(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int xv=int_from_js(ctx,argv[0],0), yv=int_from_js(ctx,argv[1],0);
+   int wv=int_from_js(ctx,argv[2],80), hv=int_from_js(ctx,argv[3],20);
+   uint32_t col=(uint32_t)color_from_js(ctx,argv[5],0xFFFFFFFFu);
+   uint32_t bg=argc>6?(uint32_t)color_from_js(ctx,argv[6],0x000000FFu):0x000000FFu;
+   /* fill bg */
+   for(int ys=yv;ys<yv+hv;ys++) for(int xs=xv;xs<xv+wv;xs++) set_pixel(xs,ys,bg);
+   /* draw border */
+   path_draw_line_segment(xv,yv,xv+wv,yv,col);
+   path_draw_line_segment(xv,yv+hv,xv+wv,yv+hv,col);
+   path_draw_line_segment(xv,yv,xv,yv+hv,col);
+   path_draw_line_segment(xv+wv,yv,xv+wv,yv+hv,col);
+   return JS_UNDEFINED;
+}
+
+/* screenThermal() */
+static JSValue js_screen_thermal(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int W=640,H=360;
+   for(int i=0;i<W*H;i++){
+      uint32_t pc=framebuffer[i];
+      int lum=((int)((pc>>24)&0xFF)*3+(int)((pc>>16)&0xFF)*6+(int)((pc>>8)&0xFF))/10;
+      uint8_t rv2,gv2,bv2;
+      if(lum<64){ rv2=0; gv2=0; bv2=(uint8_t)(lum*4); }
+      else if(lum<128){ rv2=0; gv2=(uint8_t)((lum-64)*4); bv2=255-(uint8_t)((lum-64)*4); }
+      else if(lum<192){ rv2=(uint8_t)((lum-128)*4); gv2=255; bv2=0; }
+      else{ rv2=255; gv2=255-(uint8_t)((lum-192)*4); bv2=0; }
+      framebuffer[i]=((uint32_t)rv2<<24)|((uint32_t)gv2<<16)|((uint32_t)bv2<<8)|(pc&0xFF);
+   }
+   return JS_UNDEFINED;
+}
+
+/* drawArrowCurved(x1,y1,x2,y2,bend,color) — curved arrow via quadratic bezier */
+static JSValue js_draw_arrow_curved(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double x1=double_from_js(ctx,argv[0],0), y1=double_from_js(ctx,argv[1],0);
+   double x2=double_from_js(ctx,argv[2],100), y2=double_from_js(ctx,argv[3],0);
+   double bend=argc>4?double_from_js(ctx,argv[4],30):30;
+   uint32_t col=(uint32_t)color_from_js(ctx,argv[5],0xFFFFFFFFu);
+   /* midpoint control with bend offset */
+   double mx=(x1+x2)*0.5, my=(y1+y2)*0.5;
+   double dx=x2-x1, dy=y2-y1, len=sqrt(dx*dx+dy*dy)+0.001;
+   double nx2=-dy/len, ny2=dx/len;
+   double cpx=mx+nx2*bend, cpy=my+ny2*bend;
+   /* draw quadratic bezier */
+   int N=40; double px2=x1,py2=y1;
+   for(int i=1;i<=N;i++){
+      double tv=(double)i/N;
+      double inv=1-tv;
+      double nx3=inv*inv*x1+2*inv*tv*cpx+tv*tv*x2;
+      double ny3=inv*inv*y1+2*inv*tv*cpy+tv*tv*y2;
+      path_draw_line_segment((int)px2,(int)py2,(int)nx3,(int)ny3,col);
+      px2=nx3; py2=ny3;
+   }
+   /* arrowhead at end */
+   double ex=x2-cpx, ey=y2-cpy, elen=sqrt(ex*ex+ey*ey)+0.001;
+   ex/=elen; ey/=elen;
+   int ah=10;
+   path_draw_line_segment((int)x2,(int)y2,(int)(x2-ex*ah-ey*ah*0.5),(int)(y2-ey*ah+ex*ah*0.5),col);
+   path_draw_line_segment((int)x2,(int)y2,(int)(x2-ex*ah+ey*ah*0.5),(int)(y2-ey*ah-ex*ah*0.5),col);
+   return JS_UNDEFINED;
+}
+
 /* ── Batch 25: explosion, lightning, hex grid, border, sobel, diamond ──── */
 
 /* drawExplosion(cx,cy,r,spikes,color) */
@@ -17222,6 +17475,20 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, global, "screenSobel",     js_screen_sobel,      0);
    set_function(ctx, global, "colorShift2",     js_color_shift2,      4);
    set_function(ctx, global, "drawDiamond2",    js_draw_diamond2,     5);
+
+   /* Batch 26 */
+   set_function(ctx, global, "drawStar2",         js_draw_star2,         6);
+   set_function(ctx, global, "fillStar2",         js_fill_star2,         6);
+   set_function(ctx, global, "drawRosette",       js_draw_rosette,       5);
+   set_function(ctx, global, "fillRosette",       js_fill_rosette,       5);
+   set_function(ctx, global, "drawFractalTree",   js_draw_fractal_tree,  6);
+   set_function(ctx, global, "screenReflect",     js_screen_reflect,     1);
+   set_function(ctx, global, "screenFlipH",       js_screen_flip_h,      0);
+   set_function(ctx, global, "screenFlipV",       js_screen_flip_v,      0);
+   set_function(ctx, global, "colorFade",         js_color_fade,         2);
+   set_function(ctx, global, "drawTextBox",       js_draw_text_box,      7);
+   set_function(ctx, global, "screenThermal",     js_screen_thermal,     0);
+   set_function(ctx, global, "drawArrowCurved",   js_draw_arrow_curved,  6);
 
    JS_FreeValue(ctx, global);
    return true;

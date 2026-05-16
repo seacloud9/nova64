@@ -6314,6 +6314,317 @@ static JSValue js_vec_lerp(JSContext *ctx, JSValueConst this_val, int argc, JSVa
    return obj;
 }
 
+/* ── Batch 16: thick line, arrow, check, waves, screen filters, cloud ─── */
+
+/* drawThickLine(x1,y1,x2,y2,w,color) — filled rectangle along line */
+static JSValue js_draw_thick_line(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 6) return JS_UNDEFINED;
+   float fx1 = (float)double_from_js(ctx,argv[0],0.0)-(float)cam2d_x;
+   float fy1 = (float)double_from_js(ctx,argv[1],0.0)-(float)cam2d_y;
+   float fx2 = (float)double_from_js(ctx,argv[2],0.0)-(float)cam2d_x;
+   float fy2 = (float)double_from_js(ctx,argv[3],0.0)-(float)cam2d_y;
+   float hw  = (float)double_from_js(ctx,argv[4],2.0) * 0.5f;
+   uint32_t color = color_from_js(ctx, argv[5], 0xffffffff);
+   float dx = fx2-fx1, dy = fy2-fy1;
+   float len = sqrtf(dx*dx+dy*dy); if (len < 0.001f) return JS_UNDEFINED;
+   float nx = -dy/len*hw, ny = dx/len*hw; /* normal scaled by half-width */
+   float ax=fx1+nx, ay=fy1+ny, bx=fx1-nx, by=fy1-ny;
+   float cx3=fx2-nx, cy3=fy2-ny, ddx=fx2+nx, ddy2=fy2+ny;
+   /* Scanline fill the 4-vertex polygon: two triangles */
+   float vx[4]={ax,bx,cx3,ddx}, vy[4]={ay,by,cy3,ddy2};
+   int ibx0=(int)(ax<bx?ax:bx); if(cx3<ibx0)ibx0=(int)cx3; if(ddx<ibx0)ibx0=(int)ddx;
+   int ibx1=(int)(ax>bx?ax:bx); if(cx3>ibx1)ibx1=(int)cx3; if(ddx>ibx1)ibx1=(int)ddx+1;
+   int iby0=(int)(ay<by?ay:by); if(cy3<iby0)iby0=(int)cy3; if(ddy2<iby0)iby0=(int)ddy2;
+   int iby1=(int)(ay>by?ay:by); if(cy3>iby1)iby1=(int)cy3; if(ddy2>iby1)iby1=(int)ddy2+1;
+   /* For each scanline, find x-span by polygon edge tests */
+   for (int py = iby0; py <= iby1; py++) {
+      float xmin=1e9f, xmax=-1e9f;
+      for (int i=0, j=3; i<4; j=i++) {
+         float yi=vy[i], yj=vy[j];
+         if ((yi>(float)py) != (yj>(float)py)) {
+            float t2 = ((float)py-yj)/(yi-yj);
+            float xi = vx[j]+(vx[i]-vx[j])*t2;
+            if(xi<xmin)xmin=xi; if(xi>xmax)xmax=xi;
+         }
+      }
+      for (int px=(int)xmin; px<=(int)xmax; px++) {
+         if(px>=0&&px<NOVA64_WIDTH&&py>=0&&py<NOVA64_HEIGHT)
+            framebuffer[(size_t)py*NOVA64_WIDTH+(size_t)px]=color;
+      }
+   }
+   return JS_UNDEFINED;
+}
+
+/* drawArrowFilled(x1,y1,x2,y2,hw,hl,color) — line with filled triangle head */
+static JSValue js_draw_arrow_filled(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 7) return JS_UNDEFINED;
+   double x1=double_from_js(ctx,argv[0],0.0)-cam2d_x, y1=double_from_js(ctx,argv[1],0.0)-cam2d_y;
+   double x2=double_from_js(ctx,argv[2],0.0)-cam2d_x, y2=double_from_js(ctx,argv[3],0.0)-cam2d_y;
+   double hw=double_from_js(ctx,argv[4],8.0), hl=double_from_js(ctx,argv[5],12.0);
+   uint32_t color=color_from_js(ctx,argv[6],0xffffffff);
+   double dx=x2-x1, dy=y2-y1;
+   double len=sqrt(dx*dx+dy*dy); if(len<0.001) return JS_UNDEFINED;
+   double ux=dx/len, uy=dy/len;
+   double bx=x2-ux*hl, by=y2-uy*hl; /* base of arrowhead */
+   double nx=-uy*hw, ny=ux*hw;
+   /* Draw shaft */
+   path_draw_line_segment((float)x1,(float)y1,(float)bx,(float)by,color);
+   /* Fill arrowhead triangle */
+   float vx3[3]={(float)(bx+nx),(float)(bx-nx),(float)x2};
+   float vy3[3]={(float)(by+ny),(float)(by-ny),(float)y2};
+   int ibx0=(int)(vx3[0]<vx3[1]?vx3[0]:vx3[1]); if(vx3[2]<ibx0)ibx0=(int)vx3[2];
+   int ibx1=(int)(vx3[0]>vx3[1]?vx3[0]:vx3[1]); if(vx3[2]>ibx1)ibx1=(int)vx3[2]+1;
+   int iby0=(int)(vy3[0]<vy3[1]?vy3[0]:vy3[1]); if(vy3[2]<iby0)iby0=(int)vy3[2];
+   int iby1=(int)(vy3[0]>vy3[1]?vy3[0]:vy3[1]); if(vy3[2]>iby1)iby1=(int)vy3[2]+1;
+   float d=(vy3[1]-vy3[2])*(vx3[0]-vx3[2])+(vx3[2]-vx3[1])*(vy3[0]-vy3[2]);
+   if(fabsf(d)<0.001f) return JS_UNDEFINED;
+   for(int py=iby0;py<=iby1;py++){
+      for(int px=ibx0;px<=ibx1;px++){
+         if(px<0||px>=NOVA64_WIDTH||py<0||py>=NOVA64_HEIGHT) continue;
+         float u=((vy3[1]-vy3[2])*((float)px-vx3[2])+(vx3[2]-vx3[1])*((float)py-vy3[2]))/d;
+         float v=((vy3[2]-vy3[0])*((float)px-vx3[2])+(vx3[0]-vx3[2])*((float)py-vy3[2]))/d;
+         float w=1.0f-u-v;
+         if(u>=0&&v>=0&&w>=0) framebuffer[(size_t)py*NOVA64_WIDTH+(size_t)px]=color;
+      }
+   }
+   return JS_UNDEFINED;
+}
+
+/* drawCheck(cx, cy, size, color) — checkmark / tick symbol */
+static JSValue js_draw_check(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 4) return JS_UNDEFINED;
+   float cx2 = (float)double_from_js(ctx,argv[0],0.0)-(float)cam2d_x;
+   float cy2 = (float)double_from_js(ctx,argv[1],0.0)-(float)cam2d_y;
+   float sz  = (float)double_from_js(ctx,argv[2],10.0);
+   uint32_t color = color_from_js(ctx,argv[3],0xffffffff);
+   /* Checkmark: two segments — short down-right, then long up-right */
+   float mx = cx2 - sz*0.1f, my = cy2 + sz*0.3f; /* mid-point */
+   path_draw_line_segment(cx2 - sz*0.5f, cy2,         mx, my,       color);
+   path_draw_line_segment(mx,            my,           cx2 + sz*0.5f, cy2 - sz*0.6f, color);
+   return JS_UNDEFINED;
+}
+
+/* triangleWave(t) — triangle wave: 0→1→0 per unit cycle */
+static JSValue js_triangle_wave(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double t = double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0.0);
+   double f = fmod(t, 1.0); if (f < 0.0) f += 1.0;
+   return JS_NewFloat64(ctx, f < 0.5 ? f * 2.0 : 2.0 - f * 2.0);
+}
+
+/* squareWave(t) — square wave: 1 for first half, 0 for second half */
+static JSValue js_square_wave(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double t = double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0.0);
+   double f = fmod(t, 1.0); if (f < 0.0) f += 1.0;
+   return JS_NewFloat64(ctx, f < 0.5 ? 1.0 : 0.0);
+}
+
+/* sawWave(t) — sawtooth wave: 0→1 per unit cycle */
+static JSValue js_saw_wave(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double t = double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0.0);
+   double f = fmod(t, 1.0); if (f < 0.0) f += 1.0;
+   return JS_NewFloat64(ctx, f);
+}
+
+/* screenEdgeDetect(strength) — Sobel edge detection overlay */
+static JSValue js_screen_edge_detect(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (!framebuffer) return JS_UNDEFINED;
+   double str = double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 1.0);
+   int W = NOVA64_WIDTH, H = NOVA64_HEIGHT;
+   uint32_t *tmp = (uint32_t *)malloc((size_t)W * (size_t)H * sizeof(uint32_t));
+   if (!tmp) return JS_UNDEFINED;
+   memcpy(tmp, framebuffer, (size_t)W * (size_t)H * sizeof(uint32_t));
+   for (int y = 1; y < H-1; y++) {
+      for (int x = 1; x < W-1; x++) {
+         /* Sobel on luminance */
+         int lum[3][3];
+         for (int dy = -1; dy <= 1; dy++) {
+            for (int dx = -1; dx <= 1; dx++) {
+               uint32_t c = tmp[(y+dy)*W+(x+dx)];
+               lum[dy+1][dx+1] = (int)(0.299*((c>>24)&0xff)+0.587*((c>>16)&0xff)+0.114*((c>>8)&0xff));
+            }
+         }
+         int gx = -lum[0][0]+lum[0][2]-2*lum[1][0]+2*lum[1][2]-lum[2][0]+lum[2][2];
+         int gy = -lum[0][0]-2*lum[0][1]-lum[0][2]+lum[2][0]+2*lum[2][1]+lum[2][2];
+         int mag = (int)(sqrt((double)(gx*gx+gy*gy)) * str);
+         if (mag > 255) mag = 255;
+         framebuffer[y*W+x] = rgba8((uint8_t)mag,(uint8_t)mag,(uint8_t)mag,255);
+      }
+   }
+   free(tmp);
+   return JS_UNDEFINED;
+}
+
+/* screenEmboss() — emboss convolution filter */
+static JSValue js_screen_emboss(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val; (void)argc; (void)argv;
+   if (!framebuffer) return JS_UNDEFINED;
+   int W = NOVA64_WIDTH, H = NOVA64_HEIGHT;
+   uint32_t *tmp = (uint32_t *)malloc((size_t)W * (size_t)H * sizeof(uint32_t));
+   if (!tmp) return JS_UNDEFINED;
+   memcpy(tmp, framebuffer, (size_t)W * (size_t)H * sizeof(uint32_t));
+   /* Kernel: [-2,-1,0 / -1,1,1 / 0,1,2] + 128 bias */
+   static const int kx[3]={-1,0,1}, ky[3]={-1,0,1};
+   static const int kw[3][3]={{-2,-1,0},{-1,1,1},{0,1,2}};
+   for (int y = 1; y < H-1; y++) {
+      for (int x = 1; x < W-1; x++) {
+         int rv=128, gv=128, bv=128;
+         for (int dy=-1; dy<=1; dy++) {
+            for (int dx=-1; dx<=1; dx++) {
+               uint32_t c = tmp[(y+dy)*W+(x+dx)];
+               int k = kw[dy+1][dx+1];
+               rv += (int)((c>>24)&0xff)*k;
+               gv += (int)((c>>16)&0xff)*k;
+               bv += (int)((c>> 8)&0xff)*k;
+            }
+         }
+         if(rv<0)rv=0;if(rv>255)rv=255;
+         if(gv<0)gv=0;if(gv>255)gv=255;
+         if(bv<0)bv=0;if(bv>255)bv=255;
+         framebuffer[y*W+x]=rgba8((uint8_t)rv,(uint8_t)gv,(uint8_t)bv,255);
+         (void)kx; (void)ky;
+      }
+   }
+   free(tmp);
+   return JS_UNDEFINED;
+}
+
+/* screenSharpen(amount) — unsharp mask sharpening */
+static JSValue js_screen_sharpen(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (!framebuffer) return JS_UNDEFINED;
+   double amt = double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 1.0);
+   int W = NOVA64_WIDTH, H = NOVA64_HEIGHT;
+   uint32_t *tmp = (uint32_t *)malloc((size_t)W * (size_t)H * sizeof(uint32_t));
+   if (!tmp) return JS_UNDEFINED;
+   memcpy(tmp, framebuffer, (size_t)W * (size_t)H * sizeof(uint32_t));
+   float center = (float)(1.0 + 4.0 * amt), edge = (float)-amt;
+   for (int y = 1; y < H-1; y++) {
+      for (int x = 1; x < W-1; x++) {
+         uint32_t cc=tmp[y*W+x], ct=tmp[(y-1)*W+x], cb=tmp[(y+1)*W+x];
+         uint32_t cl=tmp[y*W+x-1], cr=tmp[y*W+x+1];
+         for (int ch=3; ch>=1; ch--) {
+            float v = center*((float)((cc>>(ch*8))&0xff))
+                     +edge*((float)((ct>>(ch*8))&0xff))
+                     +edge*((float)((cb>>(ch*8))&0xff))
+                     +edge*((float)((cl>>(ch*8))&0xff))
+                     +edge*((float)((cr>>(ch*8))&0xff));
+            int iv=(int)v; if(iv<0)iv=0;if(iv>255)iv=255;
+            framebuffer[y*W+x] = (framebuffer[y*W+x] & ~(0xffu<<(ch*8))) | ((uint32_t)iv<<(ch*8));
+         }
+      }
+   }
+   free(tmp);
+   return JS_UNDEFINED;
+}
+
+/* drawCloud(cx, cy, r, color) — cloud silhouette (5 overlapping circles) */
+static JSValue js_draw_cloud(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 4) return JS_UNDEFINED;
+   int cx2 = int_from_js(ctx,argv[0],0)-(int)cam2d_x;
+   int cy2 = int_from_js(ctx,argv[1],0)-(int)cam2d_y;
+   int r   = int_from_js(ctx,argv[2],20);
+   uint32_t color = color_from_js(ctx,argv[3],0xffffffff);
+   /* 5-bump cloud using filled circles */
+   int r2 = r * 3 / 5;
+   /* Bottom base: large circle */
+   float rsq = (float)(r*r), r2sq = (float)(r2*r2);
+   /* Use pixel test — for each pixel check if inside any of 5 circles */
+   int bx0=cx2-r-r2, bx1=cx2+r+r2, by0=cy2-r, by1=cy2+r2/2;
+   /* 5 circle centers */
+   int cxs[5]={cx2-r/2, cx2+r/2, cx2, cx2-r, cx2+r};
+   int cys[5]={cy2-r2/2, cy2-r2/2, cy2-r*2/3, cy2, cy2};
+   int rs2[5]; rs2[0]=r2*r2; rs2[1]=r2*r2; rs2[2]=(r*2/3)*(r*2/3); rs2[3]=r*r/4; rs2[4]=r*r/4;
+   /* Simpler: hardcoded cloud geometry proportional to r */
+   /* Bottom: rect from -r to +r, height r/2 */
+   for (int py=cy2; py<=cy2+r/2; py++)
+      for (int px=cx2-r; px<=cx2+r; px++) set_pixel(px, py, color);
+   /* 5 bumps */
+   int bumpX[5]={cx2-r+r/3, cx2-r/3, cx2+r/3, cx2+r-r/3, cx2};
+   int bumpY[5]={cy2, cy2, cy2, cy2, cy2-r/3};
+   int bumpR[5]={r/3, r/3, r/3, r/3, r*2/5};
+   for (int b=0; b<5; b++) {
+      int br2=bumpR[b]*bumpR[b];
+      for (int py=bumpY[b]-bumpR[b]; py<=bumpY[b]+bumpR[b]; py++)
+         for (int px=bumpX[b]-bumpR[b]; px<=bumpX[b]+bumpR[b]; px++) {
+            int ddx=px-bumpX[b], ddy=py-bumpY[b];
+            if(ddx*ddx+ddy*ddy<=br2) set_pixel(px,py,color);
+         }
+   }
+   (void)rsq; (void)r2sq; (void)bx0; (void)bx1; (void)by0; (void)by1;
+   (void)cxs; (void)cys; (void)rs2; (void)r2;
+   return JS_UNDEFINED;
+}
+
+/* screenNightVision(strength) — green tint + CRT scanlines + noise */
+static JSValue js_screen_night_vision(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (!framebuffer) return JS_UNDEFINED;
+   double str = double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0.8);
+   if (str < 0.0) str = 0.0; if (str > 1.0) str = 1.0;
+   int W = NOVA64_WIDTH, H = NOVA64_HEIGHT;
+   uint32_t seed = 0xA5C3E7B1u;
+   for (int y = 0; y < H; y++) {
+      for (int x = 0; x < W; x++) {
+         uint32_t c = framebuffer[y*W+x];
+         double lum = 0.299*((c>>24)&0xff)+0.587*((c>>16)&0xff)+0.114*((c>>8)&0xff);
+         /* Green tint */
+         int gv = (int)(lum * (1.0 + str * 0.5));
+         if (gv > 255) gv = 255;
+         /* Scanline darkening */
+         if (y % 2 == 0) gv = (int)(gv * (1.0 - str * 0.3));
+         /* Noise grain */
+         seed = seed * 1664525u + 1013904223u;
+         int grain = (int)(((seed >> 16) & 0x1f) * str) - 8;
+         gv += grain; if(gv<0)gv=0;if(gv>255)gv=255;
+         framebuffer[y*W+x] = rgba8(0, (uint8_t)gv, 0, 255);
+      }
+   }
+   return JS_UNDEFINED;
+}
+
+/* colorFromHSL(h, s, l) — create color from HSL (h 0-360, s 0-1, l 0-1) */
+static JSValue js_color_from_hsl(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double h = double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0.0);
+   double s = double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 1.0);
+   double l = double_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 0.5);
+   /* HSL to RGB */
+   double c2 = (1.0 - fabs(2.0*l - 1.0)) * s;
+   double h2 = fmod(h, 360.0) / 60.0;
+   double x2 = c2 * (1.0 - fabs(fmod(h2, 2.0) - 1.0));
+   double m  = l - c2 * 0.5;
+   double r2=0, g2=0, b2=0;
+   int hi = (int)h2 % 6;
+   switch(hi) {
+      case 0: r2=c2;g2=x2;b2=0; break; case 1: r2=x2;g2=c2;b2=0; break;
+      case 2: r2=0;g2=c2;b2=x2; break; case 3: r2=0;g2=x2;b2=c2; break;
+      case 4: r2=x2;g2=0;b2=c2; break; default: r2=c2;g2=0;b2=x2; break;
+   }
+   int rv=(int)((r2+m)*255+0.5), gv=(int)((g2+m)*255+0.5), bv=(int)((b2+m)*255+0.5);
+   if(rv<0)rv=0;if(rv>255)rv=255;if(gv<0)gv=0;if(gv>255)gv=255;if(bv<0)bv=0;if(bv>255)bv=255;
+   return JS_NewInt32(ctx, (int32_t)rgba8((uint8_t)rv,(uint8_t)gv,(uint8_t)bv,255));
+}
+
 /* ── Batch 15: copy pixels, lozenge, spiral, easing, tri gradient, etc. ─── */
 
 /* copyPixels(srcX,srcY,dstX,dstY,w,h) — blit framebuffer region */
@@ -14127,6 +14438,20 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, global, "fillTriGradient",  js_fill_tri_gradient, 9);
    set_function(ctx, global, "invertRegion",     js_invert_region,     4);
    set_function(ctx, global, "screenRetro",      js_screen_retro,      1);
+
+   /* Batch 16 */
+   set_function(ctx, global, "drawThickLine",    js_draw_thick_line,   6);
+   set_function(ctx, global, "drawArrowFilled",  js_draw_arrow_filled, 7);
+   set_function(ctx, global, "drawCheck",        js_draw_check,        4);
+   set_function(ctx, global, "triangleWave",     js_triangle_wave,     1);
+   set_function(ctx, global, "squareWave",       js_square_wave,       1);
+   set_function(ctx, global, "sawWave",          js_saw_wave,          1);
+   set_function(ctx, global, "screenEdgeDetect", js_screen_edge_detect,1);
+   set_function(ctx, global, "screenEmboss",     js_screen_emboss,     0);
+   set_function(ctx, global, "screenSharpen",    js_screen_sharpen,    1);
+   set_function(ctx, global, "drawCloud",        js_draw_cloud,        4);
+   set_function(ctx, global, "screenNightVision",js_screen_night_vision,1);
+   set_function(ctx, global, "colorFromHSL",     js_color_from_hsl,    3);
 
    JS_FreeValue(ctx, global);
    return true;

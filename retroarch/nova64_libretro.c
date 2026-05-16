@@ -6314,6 +6314,293 @@ static JSValue js_vec_lerp(JSContext *ctx, JSValueConst this_val, int argc, JSVa
    return obj;
 }
 
+/* ── Batch 28: rounded poly, bezier, kaleidoscope, spoke pie, dial ─────── */
+
+/* drawRoundedPoly(pts_arr, radius, color) — draw polygon with rounded corners
+   pts_arr is a flat JS array [x0,y0,x1,y1,...] */
+static JSValue js_draw_rounded_poly(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if(argc<3||!JS_IsArray(argv[0])) return JS_UNDEFINED;
+   int32_t len2=0;
+   JSValue lenVal=JS_GetPropertyStr(ctx,argv[0],"length");
+   JS_ToInt32(ctx,&len2,lenVal);
+   JS_FreeValue(ctx,lenVal);
+   if(len2<4||(len2%2)!=0) return JS_UNDEFINED;
+   int nv=len2/2;
+   double *px2=(double*)malloc(nv*sizeof(double));
+   double *py2=(double*)malloc(nv*sizeof(double));
+   if(!px2||!py2){free(px2);free(py2);return JS_UNDEFINED;}
+   for(int i=0;i<nv;i++){
+      JSValue xv=JS_GetPropertyUint32(ctx,argv[0],i*2);
+      JSValue yv2=JS_GetPropertyUint32(ctx,argv[0],i*2+1);
+      JS_ToFloat64(ctx,&px2[i],xv); JS_ToFloat64(ctx,&py2[i],yv2);
+      JS_FreeValue(ctx,xv); JS_FreeValue(ctx,yv2);
+   }
+   double rv=double_from_js(ctx,argv[1],8);
+   uint32_t col=(uint32_t)color_from_js(ctx,argv[2],0xFFFFFFFFu);
+   /* for each edge draw line segment with radius inset */
+   for(int i=0;i<nv;i++){
+      int j=(i+1)%nv;
+      double dx=px2[j]-px2[i], dy=py2[j]-py2[i], len3=sqrt(dx*dx+dy*dy);
+      if(len3<1){continue;}
+      double nx3=dx/len3, ny3=dy/len3;
+      double x1a=px2[i]+nx3*rv, y1a=py2[i]+ny3*rv;
+      double x2a=px2[j]-nx3*rv, y2a=py2[j]-ny3*rv;
+      path_draw_line_segment((int)x1a,(int)y1a,(int)x2a,(int)y2a,col);
+   }
+   free(px2); free(py2);
+   return JS_UNDEFINED;
+}
+
+/* fillRoundedPoly(pts_arr, radius, color) — filled rounded polygon */
+static JSValue js_fill_rounded_poly(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if(argc<3||!JS_IsArray(argv[0])) return JS_UNDEFINED;
+   int32_t len2=0;
+   JSValue lenVal=JS_GetPropertyStr(ctx,argv[0],"length");
+   JS_ToInt32(ctx,&len2,lenVal);
+   JS_FreeValue(ctx,lenVal);
+   if(len2<4||(len2%2)!=0) return JS_UNDEFINED;
+   int nv=len2/2;
+   double *px2=(double*)malloc(nv*sizeof(double));
+   double *py2=(double*)malloc(nv*sizeof(double));
+   if(!px2||!py2){free(px2);free(py2);return JS_UNDEFINED;}
+   for(int i=0;i<nv;i++){
+      JSValue xv=JS_GetPropertyUint32(ctx,argv[0],i*2);
+      JSValue yv2=JS_GetPropertyUint32(ctx,argv[0],i*2+1);
+      JS_ToFloat64(ctx,&px2[i],xv); JS_ToFloat64(ctx,&py2[i],yv2);
+      JS_FreeValue(ctx,xv); JS_FreeValue(ctx,yv2);
+   }
+   uint32_t col=(uint32_t)color_from_js(ctx,argv[2],0xFFFFFFFFu);
+   /* simple scanline fill on raw vertices */
+   double miny=py2[0],maxy=py2[0];
+   for(int i=1;i<nv;i++){if(py2[i]<miny)miny=py2[i];if(py2[i]>maxy)maxy=py2[i];}
+   for(int ys=(int)miny;ys<=(int)maxy;ys++){
+      double xs2[64]; int nc=0;
+      for(int i=0;i<nv;i++){
+         int j=(i+1)%nv;
+         double ay=py2[i],by=py2[j];
+         if((ay<=ys&&by>ys)||(by<=ys&&ay>ys))
+            xs2[nc++]=px2[i]+(px2[j]-px2[i])*(ys-ay)/(by-ay);
+      }
+      /* sort */
+      for(int ii=0;ii<nc-1;ii++) for(int jj=ii+1;jj<nc;jj++) if(xs2[jj]<xs2[ii]){double t=xs2[ii];xs2[ii]=xs2[jj];xs2[jj]=t;}
+      for(int ii=0;ii+1<nc;ii+=2) for(int xv2=(int)xs2[ii];xv2<=(int)xs2[ii+1];xv2++) set_pixel(xv2,ys,col);
+   }
+   free(px2); free(py2);
+   return JS_UNDEFINED;
+}
+
+/* drawBezierCurve(x1,y1,cx1,cy1,cx2,cy2,x2,y2,color) — cubic bezier */
+static JSValue js_draw_bezier_curve(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double x1=double_from_js(ctx,argv[0],0), y1=double_from_js(ctx,argv[1],0);
+   double cpx1=double_from_js(ctx,argv[2],0), cpy1=double_from_js(ctx,argv[3],0);
+   double cpx2=double_from_js(ctx,argv[4],0), cpy2=double_from_js(ctx,argv[5],0);
+   double x2=double_from_js(ctx,argv[6],0), y2=double_from_js(ctx,argv[7],0);
+   uint32_t col=(uint32_t)color_from_js(ctx,argv[8],0xFFFFFFFFu);
+   int N=80;
+   double px2=x1, py2=y1;
+   for(int i=1;i<=N;i++){
+      double tv=(double)i/N, inv=1-tv;
+      double nx3=inv*inv*inv*x1+3*inv*inv*tv*cpx1+3*inv*tv*tv*cpx2+tv*tv*tv*x2;
+      double ny3=inv*inv*inv*y1+3*inv*inv*tv*cpy1+3*inv*tv*tv*cpy2+tv*tv*tv*y2;
+      path_draw_line_segment((int)px2,(int)py2,(int)nx3,(int)ny3,col);
+      px2=nx3; py2=ny3;
+   }
+   return JS_UNDEFINED;
+}
+
+/* bezierPoint(x1,y1,cx1,cy1,cx2,cy2,x2,y2,t) -> [x,y] */
+static JSValue js_bezier_point(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double x1=double_from_js(ctx,argv[0],0), y1=double_from_js(ctx,argv[1],0);
+   double cpx1=double_from_js(ctx,argv[2],0), cpy1=double_from_js(ctx,argv[3],0);
+   double cpx2=double_from_js(ctx,argv[4],0), cpy2=double_from_js(ctx,argv[5],0);
+   double x2=double_from_js(ctx,argv[6],0), y2=double_from_js(ctx,argv[7],0);
+   double tv=double_from_js(ctx,argv[8],0.5);
+   double inv=1-tv;
+   double nx3=inv*inv*inv*x1+3*inv*inv*tv*cpx1+3*inv*tv*tv*cpx2+tv*tv*tv*x2;
+   double ny3=inv*inv*inv*y1+3*inv*inv*tv*cpy1+3*inv*tv*tv*cpy2+tv*tv*tv*y2;
+   JSValue arr=JS_NewArray(ctx);
+   JS_SetPropertyUint32(ctx,arr,0,JS_NewFloat64(ctx,nx3));
+   JS_SetPropertyUint32(ctx,arr,1,JS_NewFloat64(ctx,ny3));
+   return arr;
+}
+
+/* drawKaleidoscope(cx,cy,r,segments,color) — kaleidoscope-like mirrored pattern */
+static JSValue js_draw_kaleidoscope(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double cx=double_from_js(ctx,argv[0],0), cy=double_from_js(ctx,argv[1],0);
+   double rv=double_from_js(ctx,argv[2],80);
+   int segs=argc>3?(int)double_from_js(ctx,argv[3],6):6;
+   uint32_t col=(uint32_t)color_from_js(ctx,argv[4],0xFFFFFFFFu);
+   if(segs<2)segs=2; if(segs>16)segs=16;
+   double segAng=2*M_PI/segs;
+   /* draw a simple curved line in the first segment, mirrored */
+   int N=40;
+   for(int s=0;s<segs;s++){
+      double baseAng=s*segAng;
+      for(int i=0;i<N;i++){
+         double t1=(double)i/N, t2=(double)(i+1)/N;
+         double a1=baseAng+t1*segAng, a2=baseAng+t2*segAng;
+         double r1=rv*(0.3+0.7*t1), r2=rv*(0.3+0.7*t2);
+         path_draw_line_segment((int)(cx+cos(a1)*r1),(int)(cy+sin(a1)*r1),
+                                (int)(cx+cos(a2)*r2),(int)(cy+sin(a2)*r2),col);
+      }
+      /* inner ring line */
+      path_draw_line_segment((int)cx,(int)cy,(int)(cx+cos(baseAng)*rv*0.3),(int)(cy+sin(baseAng)*rv*0.3),col);
+   }
+   return JS_UNDEFINED;
+}
+
+/* screenPixelate2(size) */
+static JSValue js_screen_pixelate2(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int sz=argc>0?(int)double_from_js(ctx,argv[0],8):8;
+   if(sz<1)sz=1; if(sz>64)sz=64;
+   int W=640,H=360;
+   for(int ys=0;ys<H;ys+=sz){
+      for(int xv=0;xv<W;xv+=sz){
+         uint32_t pc=framebuffer[ys*W+xv];
+         for(int dy2=0;dy2<sz&&ys+dy2<H;dy2++)
+            for(int dx2=0;dx2<sz&&xv+dx2<W;dx2++)
+               framebuffer[(ys+dy2)*W+(xv+dx2)]=pc;
+      }
+   }
+   return JS_UNDEFINED;
+}
+
+/* colorVibrancy(c, amount) — boost saturation */
+static JSValue js_color_vibrancy(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   uint32_t col=(uint32_t)color_from_js(ctx,argv[0],0xFF8000FFu);
+   double amount=argc>1?double_from_js(ctx,argv[1],0.5):0.5;
+   uint8_t rv2=(col>>24)&0xFF, gv=(col>>16)&0xFF, bv2=(col>>8)&0xFF, av=(col)&0xFF;
+   double rf=rv2/255.0, gf=gv/255.0, bf=bv2/255.0;
+   double maxc=rf>gf?rf:gf; if(bf>maxc)maxc=bf;
+   double minc=rf<gf?rf:gf; if(bf<minc)minc=bf;
+   double hh=0,ss=0,vv=maxc,delta=maxc-minc;
+   if(delta>1e-6){ ss=delta/maxc;
+      if(maxc==rf) hh=(gf-bf)/delta+(gf<bf?6:0);
+      else if(maxc==gf) hh=(bf-rf)/delta+2;
+      else hh=(rf-gf)/delta+4;
+      hh/=6.0;
+   }
+   ss+=amount*(1-ss); if(ss>1)ss=1; if(ss<0)ss=0;
+   double h6=hh*6.0; int hi=(int)h6; double ff=h6-hi;
+   double pp=vv*(1-ss),qq=vv*(1-ss*ff),tv2=vv*(1-ss*(1-ff));
+   double nr=0,ng=0,nb=0;
+   switch(hi%6){case 0:nr=vv;ng=tv2;nb=pp;break;case 1:nr=qq;ng=vv;nb=pp;break;
+                case 2:nr=pp;ng=vv;nb=tv2;break;case 3:nr=pp;ng=qq;nb=vv;break;
+                case 4:nr=tv2;ng=pp;nb=vv;break;default:nr=vv;ng=pp;nb=qq;break;}
+   uint32_t nc=(((uint32_t)(nr*255))<<24)|(((uint32_t)(ng*255))<<16)|(((uint32_t)(nb*255))<<8)|(uint32_t)av;
+   return JS_NewInt32(ctx,(int32_t)nc);
+}
+
+/* drawSpokePie(cx,cy,r,n,color) — like clock face, n spokes */
+static JSValue js_draw_spoke_pie(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double cx=double_from_js(ctx,argv[0],0), cy=double_from_js(ctx,argv[1],0);
+   double rv=double_from_js(ctx,argv[2],50);
+   int nv=argc>3?(int)double_from_js(ctx,argv[3],6):6;
+   uint32_t col=(uint32_t)color_from_js(ctx,argv[4],0xFFFFFFFFu);
+   if(nv<2)nv=2; if(nv>32)nv=32;
+   /* outer ring */
+   int N=64;
+   for(int i=0;i<N;i++){
+      double a1=2*M_PI*i/N, a2=2*M_PI*(i+1)/N;
+      path_draw_line_segment((int)(cx+cos(a1)*rv),(int)(cy+sin(a1)*rv),
+                             (int)(cx+cos(a2)*rv),(int)(cy+sin(a2)*rv),col);
+   }
+   /* spokes */
+   for(int i=0;i<nv;i++){
+      double ang=2*M_PI*i/nv;
+      path_draw_line_segment((int)cx,(int)cy,(int)(cx+cos(ang)*rv),(int)(cy+sin(ang)*rv),col);
+   }
+   return JS_UNDEFINED;
+}
+
+/* fillSpokePie(cx,cy,r,n,fillColor,altColor) — alternating filled segments */
+static JSValue js_fill_spoke_pie(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double cx=double_from_js(ctx,argv[0],0), cy=double_from_js(ctx,argv[1],0);
+   double rv=double_from_js(ctx,argv[2],50);
+   int nv=argc>3?(int)double_from_js(ctx,argv[3],6):6;
+   uint32_t col1=(uint32_t)color_from_js(ctx,argv[4],0xFFFFFFFFu);
+   uint32_t col2=argc>5?(uint32_t)color_from_js(ctx,argv[5],0x333333FFu):0x333333FFu;
+   if(nv<2)nv=2; if(nv>32)nv=32;
+   int N=32;
+   for(int s=0;s<nv;s++){
+      double sa=2*M_PI*s/nv, ea=2*M_PI*(s+1)/nv;
+      uint32_t col=(s%2==0)?col1:col2;
+      for(int i=0;i<N;i++){
+         double av=sa+(ea-sa)*i/N;
+         path_draw_line_segment((int)cx,(int)cy,(int)(cx+cos(av)*rv),(int)(cy+sin(av)*rv),col);
+      }
+   }
+   return JS_UNDEFINED;
+}
+
+/* drawCounterDial(cx,cy,r,value,maxVal,color) — gauge needle */
+static JSValue js_draw_counter_dial(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double cx=double_from_js(ctx,argv[0],0), cy=double_from_js(ctx,argv[1],0);
+   double rv=double_from_js(ctx,argv[2],50);
+   double val=double_from_js(ctx,argv[3],0);
+   double maxVal=argc>4?double_from_js(ctx,argv[4],100):100;
+   uint32_t col=(uint32_t)color_from_js(ctx,argv[5],0xFFFFFFFFu);
+   if(maxVal==0)maxVal=1;
+   /* outer ring */
+   int N=64;
+   for(int i=0;i<N;i++){
+      double a1=2*M_PI*i/N, a2=2*M_PI*(i+1)/N;
+      path_draw_line_segment((int)(cx+cos(a1)*rv),(int)(cy+sin(a1)*rv),
+                             (int)(cx+cos(a2)*rv),(int)(cy+sin(a2)*rv),col);
+   }
+   /* tick marks */
+   for(int t=0;t<=10;t++){
+      double tAng=-M_PI*0.75+M_PI*1.5*(double)t/10;
+      double inner=(t%5==0)?rv*0.75:rv*0.85;
+      path_draw_line_segment((int)(cx+cos(tAng)*inner),(int)(cy+sin(tAng)*inner),
+                             (int)(cx+cos(tAng)*rv),(int)(cy+sin(tAng)*rv),col);
+   }
+   /* needle */
+   double ratio=val/maxVal; if(ratio<0)ratio=0; if(ratio>1)ratio=1;
+   double needleAng=-M_PI*0.75+M_PI*1.5*ratio;
+   path_draw_line_segment((int)cx,(int)cy,(int)(cx+cos(needleAng)*rv*0.8),(int)(cy+sin(needleAng)*rv*0.8),col);
+   return JS_UNDEFINED;
+}
+
+/* screenInvert2(amount) — partial invert */
+static JSValue js_screen_invert2(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double amount=argc>0?double_from_js(ctx,argv[0],1.0):1.0;
+   if(amount<0)amount=0; if(amount>1)amount=1;
+   int W=640,H=360;
+   for(int i=0;i<W*H;i++){
+      uint32_t pc=framebuffer[i];
+      int rv2=(pc>>24)&0xFF, gv2=(pc>>16)&0xFF, bv2=(pc>>8)&0xFF;
+      int ir=255-rv2, ig=255-gv2, ib=255-bv2;
+      rv2=(int)(rv2+(ir-rv2)*amount);
+      gv2=(int)(gv2+(ig-gv2)*amount);
+      bv2=(int)(bv2+(ib-bv2)*amount);
+      framebuffer[i]=((uint32_t)rv2<<24)|((uint32_t)gv2<<16)|((uint32_t)bv2<<8)|(pc&0xFF);
+   }
+   return JS_UNDEFINED;
+}
+
 /* ── Batch 27: sweep, lissajous, ellipse arc, starburst2, sepia, hex ────── */
 
 /* drawSweep(cx,cy,r,startAng,endAng,color) — arc outline + two radii */
@@ -17721,6 +18008,19 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, global, "screenSepia2",    js_screen_sepia2,     1);
    set_function(ctx, global, "colorFromHex",    js_color_from_hex,    1);
    set_function(ctx, global, "easeElastic2",    js_ease_elastic2,     1);
+
+   /* Batch 28 */
+   set_function(ctx, global, "drawRoundedPoly",  js_draw_rounded_poly,  3);
+   set_function(ctx, global, "fillRoundedPoly",  js_fill_rounded_poly,  3);
+   set_function(ctx, global, "drawBezierCurve",  js_draw_bezier_curve,  9);
+   set_function(ctx, global, "bezierPoint",      js_bezier_point,       9);
+   set_function(ctx, global, "drawKaleidoscope", js_draw_kaleidoscope,  5);
+   set_function(ctx, global, "screenPixelate2",  js_screen_pixelate2,   1);
+   set_function(ctx, global, "colorVibrancy",    js_color_vibrancy,     2);
+   set_function(ctx, global, "drawSpokePie",     js_draw_spoke_pie,     5);
+   set_function(ctx, global, "fillSpokePie",     js_fill_spoke_pie,     6);
+   set_function(ctx, global, "drawCounterDial",  js_draw_counter_dial,  6);
+   set_function(ctx, global, "screenInvert2",    js_screen_invert2,     1);
 
    JS_FreeValue(ctx, global);
    return true;

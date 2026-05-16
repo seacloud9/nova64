@@ -808,5 +808,9 @@ run_visual_case "368 sweep lissajous"     "368-sweep-lissajous"     "retroarch/c
 run_visual_case "369 ellipse arc starburst" "369-ellipse-arc-starburst" "retroarch/conformance/369-ellipse-arc-starburst.js" "dd47733674ef36a3"
 run_visual_case "370 sepia hex ease"      "370-sepia-hex-ease"      "retroarch/conformance/370-sepia-hex-ease.js"      "170242c6a1bea939"
 run_visual_case "379 batch27 showcase"    "379-batch27-showcase"    "retroarch/conformance/379-batch27-showcase.js"    "41fdf827afec38d1"
+run_visual_case "380 bezier poly"         "380-bezier-poly"         "retroarch/conformance/380-bezier-poly.js"         "117ae30900f0c31d"
+run_visual_case "381 kaleidoscope spoke"  "381-kaleidoscope-spoke"  "retroarch/conformance/381-kaleidoscope-spoke.js"  "8f162ee0737943ba"
+run_visual_case "382 pixelate vibrancy"   "382-pixelate-vibrancy-invert" "retroarch/conformance/382-pixelate-vibrancy-invert.js" "6198c48c065ee8c7"
+run_visual_case "391 batch28 showcase"    "391-batch28-showcase"    "retroarch/conformance/391-batch28-showcase.js"    "d95589eb9819df0f"
 
 echo "Conformance passed."

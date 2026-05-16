@@ -804,5 +804,9 @@ run_visual_case "357 fractal tree"        "357-fractal-tree"        "retroarch/c
 run_visual_case "358 screen flip thermal" "358-screen-flip-thermal" "retroarch/conformance/358-screen-flip-thermal.js" "e14e417db68c0441"
 run_visual_case "359 color fade arrow"    "359-color-fade-arrow"    "retroarch/conformance/359-color-fade-arrow.js"    "ad5c8b647aaffb04"
 run_visual_case "367 batch26 showcase"    "367-batch26-showcase"    "retroarch/conformance/367-batch26-showcase.js"    "25f6b4b1a49b82ca"
+run_visual_case "368 sweep lissajous"     "368-sweep-lissajous"     "retroarch/conformance/368-sweep-lissajous.js"     "6e3fb3794d927051"
+run_visual_case "369 ellipse arc starburst" "369-ellipse-arc-starburst" "retroarch/conformance/369-ellipse-arc-starburst.js" "dd47733674ef36a3"
+run_visual_case "370 sepia hex ease"      "370-sepia-hex-ease"      "retroarch/conformance/370-sepia-hex-ease.js"      "170242c6a1bea939"
+run_visual_case "379 batch27 showcase"    "379-batch27-showcase"    "retroarch/conformance/379-batch27-showcase.js"    "41fdf827afec38d1"
 
 echo "Conformance passed."

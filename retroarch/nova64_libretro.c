@@ -6314,6 +6314,224 @@ static JSValue js_vec_lerp(JSContext *ctx, JSValueConst this_val, int argc, JSVa
    return obj;
 }
 
+/* ── Batch 27: sweep, lissajous, ellipse arc, starburst2, sepia, hex ────── */
+
+/* drawSweep(cx,cy,r,startAng,endAng,color) — arc outline + two radii */
+static JSValue js_draw_sweep(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double cx=double_from_js(ctx,argv[0],0), cy=double_from_js(ctx,argv[1],0);
+   double rv=double_from_js(ctx,argv[2],40);
+   double sa=double_from_js(ctx,argv[3],0), ea=double_from_js(ctx,argv[4],M_PI);
+   uint32_t col=(uint32_t)color_from_js(ctx,argv[5],0xFFFFFFFFu);
+   int N=64;
+   double span=ea-sa; if(span<0)span+=2*M_PI;
+   for(int i=0;i<N;i++){
+      double a1=sa+span*i/N, a2=sa+span*(i+1)/N;
+      path_draw_line_segment((int)(cx+cos(a1)*rv),(int)(cy+sin(a1)*rv),
+                             (int)(cx+cos(a2)*rv),(int)(cy+sin(a2)*rv),col);
+   }
+   /* radii */
+   path_draw_line_segment((int)cx,(int)cy,(int)(cx+cos(sa)*rv),(int)(cy+sin(sa)*rv),col);
+   path_draw_line_segment((int)cx,(int)cy,(int)(cx+cos(ea)*rv),(int)(cy+sin(ea)*rv),col);
+   return JS_UNDEFINED;
+}
+
+/* fillSweep(cx,cy,r,startAng,endAng,color) — filled pie slice */
+static JSValue js_fill_sweep(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double cx=double_from_js(ctx,argv[0],0), cy=double_from_js(ctx,argv[1],0);
+   double rv=double_from_js(ctx,argv[2],40);
+   double sa=double_from_js(ctx,argv[3],0), ea=double_from_js(ctx,argv[4],M_PI);
+   uint32_t col=(uint32_t)color_from_js(ctx,argv[5],0xFFFFFFFFu);
+   int N=64;
+   double span=ea-sa; if(span<0)span+=2*M_PI;
+   for(int i=0;i<N;i++){
+      double a1=sa+span*i/N;
+      double px2=(int)(cx+cos(a1)*rv), py2=(int)(cy+sin(a1)*rv);
+      path_draw_line_segment((int)cx,(int)cy,(int)px2,(int)py2,col);
+   }
+   return JS_UNDEFINED;
+}
+
+/* drawLissajous(cx,cy,rx,ry,freqX,freqY,phase,color) */
+static JSValue js_draw_lissajous(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double cx=double_from_js(ctx,argv[0],0), cy=double_from_js(ctx,argv[1],0);
+   double rxv=double_from_js(ctx,argv[2],60), ryv=double_from_js(ctx,argv[3],60);
+   double fx=double_from_js(ctx,argv[4],3), fy=double_from_js(ctx,argv[5],2);
+   double ph=argc>6?double_from_js(ctx,argv[6],0):0;
+   uint32_t col=(uint32_t)color_from_js(ctx,argv[7],0xFFFFFFFFu);
+   int N=400;
+   double px2=cx+cos(0)*rxv, py2=cy+sin(ph)*ryv;
+   for(int i=1;i<=N;i++){
+      double tv=(double)i/N*2*M_PI;
+      double nx2=cx+cos(fx*tv)*rxv, ny2=cy+sin(fy*tv+ph)*ryv;
+      path_draw_line_segment((int)px2,(int)py2,(int)nx2,(int)ny2,col);
+      px2=nx2; py2=ny2;
+   }
+   return JS_UNDEFINED;
+}
+
+/* screenMirror(axis) — mirror right half to left (axis=0) or bottom to top (axis=1) */
+static JSValue js_screen_mirror(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int axis=argc>0?(int)double_from_js(ctx,argv[0],0):0;
+   int W=640,H=360;
+   if(axis==0){
+      for(int ys=0;ys<H;ys++)
+         for(int xv=0;xv<W/2;xv++)
+            framebuffer[ys*W+xv]=framebuffer[ys*W+(W-1-xv)];
+   } else {
+      for(int ys=0;ys<H/2;ys++)
+         for(int xv=0;xv<W;xv++)
+            framebuffer[ys*W+xv]=framebuffer[(H-1-ys)*W+xv];
+   }
+   return JS_UNDEFINED;
+}
+
+/* colorMix2(c1,c2,t) — lerp */
+static JSValue js_color_mix2(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   uint32_t c1=(uint32_t)color_from_js(ctx,argv[0],0x000000FFu);
+   uint32_t c2=(uint32_t)color_from_js(ctx,argv[1],0xFFFFFFFFu);
+   double tv=argc>2?double_from_js(ctx,argv[2],0.5):0.5;
+   if(tv<0)tv=0; if(tv>1)tv=1;
+   double inv=1.0-tv;
+   uint8_t rv2=(uint8_t)(((c1>>24)&0xFF)*inv+((c2>>24)&0xFF)*tv);
+   uint8_t gv2=(uint8_t)(((c1>>16)&0xFF)*inv+((c2>>16)&0xFF)*tv);
+   uint8_t bv2=(uint8_t)(((c1>>8)&0xFF)*inv+((c2>>8)&0xFF)*tv);
+   uint8_t av2=(uint8_t)((c1&0xFF)*inv+(c2&0xFF)*tv);
+   return JS_NewInt32(ctx,(int32_t)(((uint32_t)rv2<<24)|((uint32_t)gv2<<16)|((uint32_t)bv2<<8)|(uint32_t)av2));
+}
+
+/* drawEllipseArc(cx,cy,rx,ry,startAng,endAng,color) */
+static JSValue js_draw_ellipse_arc(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double cx=double_from_js(ctx,argv[0],0), cy=double_from_js(ctx,argv[1],0);
+   double rxv=double_from_js(ctx,argv[2],50), ryv=double_from_js(ctx,argv[3],30);
+   double sa=double_from_js(ctx,argv[4],0), ea=double_from_js(ctx,argv[5],M_PI);
+   uint32_t col=(uint32_t)color_from_js(ctx,argv[6],0xFFFFFFFFu);
+   int N=80;
+   double span=ea-sa; if(span<0)span+=2*M_PI;
+   for(int i=0;i<N;i++){
+      double a1=sa+span*i/N, a2=sa+span*(i+1)/N;
+      path_draw_line_segment((int)(cx+cos(a1)*rxv),(int)(cy+sin(a1)*ryv),
+                             (int)(cx+cos(a2)*rxv),(int)(cy+sin(a2)*ryv),col);
+   }
+   return JS_UNDEFINED;
+}
+
+/* fillEllipseArc(cx,cy,rx,ry,startAng,endAng,color) */
+static JSValue js_fill_ellipse_arc(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double cx=double_from_js(ctx,argv[0],0), cy=double_from_js(ctx,argv[1],0);
+   double rxv=double_from_js(ctx,argv[2],50), ryv=double_from_js(ctx,argv[3],30);
+   double sa=double_from_js(ctx,argv[4],0), ea=double_from_js(ctx,argv[5],M_PI);
+   uint32_t col=(uint32_t)color_from_js(ctx,argv[6],0xFFFFFFFFu);
+   int N=80;
+   double span=ea-sa; if(span<0)span+=2*M_PI;
+   for(int i=0;i<N;i++){
+      double av=sa+span*i/N;
+      path_draw_line_segment((int)cx,(int)cy,(int)(cx+cos(av)*rxv),(int)(cy+sin(av)*ryv),col);
+   }
+   return JS_UNDEFINED;
+}
+
+/* drawStarburst2(cx,cy,r,n,color) — radiating lines */
+static JSValue js_draw_starburst2(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double cx=double_from_js(ctx,argv[0],0), cy=double_from_js(ctx,argv[1],0);
+   double rv=double_from_js(ctx,argv[2],50);
+   int nv=argc>3?(int)double_from_js(ctx,argv[3],12):12;
+   uint32_t col=(uint32_t)color_from_js(ctx,argv[4],0xFFFFFFFFu);
+   if(nv<3)nv=3; if(nv>64)nv=64;
+   for(int i=0;i<nv;i++){
+      double ang=2*M_PI*i/nv;
+      path_draw_line_segment((int)cx,(int)cy,(int)(cx+cos(ang)*rv),(int)(cy+sin(ang)*rv),col);
+   }
+   return JS_UNDEFINED;
+}
+
+/* clampXY(x,y,x0,y0,x1,y1) -> [cx,cy] */
+static JSValue js_clamp_xy(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double xv=double_from_js(ctx,argv[0],0), yv=double_from_js(ctx,argv[1],0);
+   double x0=double_from_js(ctx,argv[2],0), y0=double_from_js(ctx,argv[3],0);
+   double x1=double_from_js(ctx,argv[4],100), y1=double_from_js(ctx,argv[5],100);
+   if(xv<x0)xv=x0; if(xv>x1)xv=x1;
+   if(yv<y0)yv=y0; if(yv>y1)yv=y1;
+   JSValue arr=JS_NewArray(ctx);
+   JS_SetPropertyUint32(ctx,arr,0,JS_NewFloat64(ctx,xv));
+   JS_SetPropertyUint32(ctx,arr,1,JS_NewFloat64(ctx,yv));
+   return arr;
+}
+
+/* screenSepia2(amount) */
+static JSValue js_screen_sepia2(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double amount=argc>0?double_from_js(ctx,argv[0],1.0):1.0;
+   if(amount<0)amount=0; if(amount>1)amount=1;
+   int W=640,H=360;
+   for(int i=0;i<W*H;i++){
+      uint32_t pc=framebuffer[i];
+      int rv2=(pc>>24)&0xFF, gv2=(pc>>16)&0xFF, bv2=(pc>>8)&0xFF;
+      int sr=(int)(rv2*0.393+gv2*0.769+bv2*0.189);
+      int sg=(int)(rv2*0.349+gv2*0.686+bv2*0.168);
+      int sb=(int)(rv2*0.272+gv2*0.534+bv2*0.131);
+      if(sr>255)sr=255; if(sg>255)sg=255; if(sb>255)sb=255;
+      int fr=(int)(rv2+(sr-rv2)*amount);
+      int fg=(int)(gv2+(sg-gv2)*amount);
+      int fb=(int)(bv2+(sb-bv2)*amount);
+      framebuffer[i]=((uint32_t)fr<<24)|((uint32_t)fg<<16)|((uint32_t)fb<<8)|(pc&0xFF);
+   }
+   return JS_UNDEFINED;
+}
+
+/* colorFromHex(hexString) */
+static JSValue js_color_from_hex(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if(argc<1||!JS_IsString(argv[0])) return JS_NewInt32(ctx,0);
+   const char *str=JS_ToCString(ctx,argv[0]);
+   if(!str) return JS_NewInt32(ctx,0);
+   const char *ptr=str;
+   if(*ptr=='#') ptr++;
+   unsigned long val=strtoul(ptr,NULL,16);
+   JS_FreeCString(ctx,str);
+   uint32_t col;
+   size_t len=strlen(ptr);
+   if(len<=6){
+      /* RRGGBB -> RRGGBBFF */
+      col=(uint32_t)((val<<8)|0xFF);
+   } else {
+      /* RRGGBBAA */
+      col=(uint32_t)val;
+   }
+   return JS_NewInt32(ctx,(int32_t)col);
+}
+
+/* easeElastic2(t) — elastic ease-out */
+static JSValue js_ease_elastic2(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double tv=double_from_js(ctx,argv[0],0);
+   if(tv<=0) return JS_NewFloat64(ctx,0);
+   if(tv>=1) return JS_NewFloat64(ctx,1);
+   double p=0.3;
+   double result=pow(2.0,-10*tv)*sin((tv-p/4)*(2*M_PI)/p)+1.0;
+   return JS_NewFloat64(ctx,result);
+}
+
 /* ── Batch 26: star2, rosette, fractal tree, screen flip, colorFade ─────── */
 
 /* drawStar2(cx,cy,r,n,ratio,color) — n-pointed star */
@@ -17489,6 +17707,20 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, global, "drawTextBox",       js_draw_text_box,      7);
    set_function(ctx, global, "screenThermal",     js_screen_thermal,     0);
    set_function(ctx, global, "drawArrowCurved",   js_draw_arrow_curved,  6);
+
+   /* Batch 27 */
+   set_function(ctx, global, "drawSweep",       js_draw_sweep,        6);
+   set_function(ctx, global, "fillSweep",       js_fill_sweep,        6);
+   set_function(ctx, global, "drawLissajous",   js_draw_lissajous,    8);
+   set_function(ctx, global, "screenMirror",    js_screen_mirror,     1);
+   set_function(ctx, global, "colorMix2",       js_color_mix2,        3);
+   set_function(ctx, global, "drawEllipseArc",  js_draw_ellipse_arc,  7);
+   set_function(ctx, global, "fillEllipseArc",  js_fill_ellipse_arc,  7);
+   set_function(ctx, global, "drawStarburst2",  js_draw_starburst2,   5);
+   set_function(ctx, global, "clampXY",         js_clamp_xy,          6);
+   set_function(ctx, global, "screenSepia2",    js_screen_sepia2,     1);
+   set_function(ctx, global, "colorFromHex",    js_color_from_hex,    1);
+   set_function(ctx, global, "easeElastic2",    js_ease_elastic2,     1);
 
    JS_FreeValue(ctx, global);
    return true;

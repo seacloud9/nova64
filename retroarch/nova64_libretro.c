@@ -6314,6 +6314,280 @@ static JSValue js_vec_lerp(JSContext *ctx, JSValueConst this_val, int argc, JSVa
    return obj;
 }
 
+/* ── Batch 12: italic/underline text, progress, grid, color matrix, UI ─ */
+
+/* printItalic(text, x, y, color) — shear text right by 1px per 2 rows */
+static JSValue js_print_italic(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 4) return JS_UNDEFINED;
+   const char *text = JS_ToCString(ctx, argv[0]);
+   if (!text) return JS_UNDEFINED;
+   int bx = int_from_js(ctx, argv[1], 0);
+   int by = int_from_js(ctx, argv[2], 0);
+   uint32_t color = color_from_js(ctx, argv[3], 0xffffffff);
+   /* 5×7 font: draw each row with a shear offset */
+   int font_h = 7;
+   for (int row = 0; row < font_h; row++) {
+      int shear = (font_h - 1 - row) / 2; /* 0 at bottom, increases toward top */
+      /* render just this row by clipping */
+      int save_clip = clip_active;
+      int save_cy = clip_y, save_ch = clip_h;
+      clip_active = 1;
+      clip_x = 0; clip_w = NOVA64_WIDTH;
+      clip_y = by + row; clip_h = 1;
+      draw_text_pixels(text, bx + shear + (int)cam2d_x, by + (int)cam2d_y, color);
+      clip_active = save_clip;
+      clip_y = save_cy; clip_h = save_ch;
+   }
+   JS_FreeCString(ctx, text);
+   return JS_UNDEFINED;
+}
+
+/* printUnderline(text, x, y, color) — print text + horizontal underline */
+static JSValue js_print_underline(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 4) return JS_UNDEFINED;
+   const char *text = JS_ToCString(ctx, argv[0]);
+   if (!text) return JS_UNDEFINED;
+   int x = int_from_js(ctx, argv[1], 0);
+   int y = int_from_js(ctx, argv[2], 0);
+   uint32_t color = color_from_js(ctx, argv[3], 0xffffffff);
+   draw_text_pixels(text, x + (int)cam2d_x, y + (int)cam2d_y, color);
+   int w = text_pixel_width(text);
+   for (int px2 = x; px2 < x + w; px2++) set_pixel(px2, y + 8, color);
+   JS_FreeCString(ctx, text);
+   return JS_UNDEFINED;
+}
+
+/* drawProgressBar(x,y,w,h, t, fgColor, bgColor) — filled progress bar [0,1] */
+static JSValue js_draw_progress_bar(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 7 || !framebuffer) return JS_UNDEFINED;
+   int x = int_from_js(ctx, argv[0], 0), y = int_from_js(ctx, argv[1], 0);
+   int w = int_from_js(ctx, argv[2], 100), h = int_from_js(ctx, argv[3], 10);
+   double t = clamp_double(double_from_js(ctx, argv[4], 0.0), 0.0, 1.0);
+   uint32_t fg = color_from_js(ctx, argv[5], rgba8(100, 200, 100, 255));
+   uint32_t bg = color_from_js(ctx, argv[6], rgba8(30, 40, 60, 255));
+   int filled = (int)round(t * w);
+   for (int py2 = y; py2 < y + h; py2++) {
+      for (int px2 = x; px2 < x + w; px2++) {
+         set_pixel(px2 - (int)cam2d_x, py2 - (int)cam2d_y, px2 - x < filled ? fg : bg);
+      }
+   }
+   return JS_UNDEFINED;
+}
+
+/* gridSnap(v, gridSize) — snap v to nearest gridSize multiple */
+static JSValue js_grid_snap(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 2) return JS_NewFloat64(ctx, 0.0);
+   double v    = double_from_js(ctx, argv[0], 0.0);
+   double grid = fabs(double_from_js(ctx, argv[1], 1.0));
+   if (grid < 1e-12) return JS_NewFloat64(ctx, v);
+   return JS_NewFloat64(ctx, round(v / grid) * grid);
+}
+
+/* colorMatrix(c, m9) — apply flat 3×3 matrix [r,g,b row-major] to RGB channels */
+static JSValue js_color_matrix(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 2 || !JS_IsArray(argv[1])) return JS_NewInt32(ctx, argc > 0 ? (int32_t)color_from_js(ctx, argv[0], 0) : 0);
+   uint32_t c = (uint32_t)color_from_js(ctx, argv[0], 0);
+   double r = (uint8_t)(c>>24), g = (uint8_t)(c>>16), b = (uint8_t)(c>>8);
+   double m[9] = {1,0,0, 0,1,0, 0,0,1};
+   for (int i = 0; i < 9; i++) {
+      JSValue mv = JS_GetPropertyUint32(ctx, argv[1], (uint32_t)i);
+      m[i] = JS_IsUndefined(mv) ? (i==0||i==4||i==8 ? 1.0 : 0.0) : double_from_js(ctx, mv, 0.0);
+      JS_FreeValue(ctx, mv);
+   }
+   int ro = (int)(m[0]*r + m[1]*g + m[2]*b);
+   int go = (int)(m[3]*r + m[4]*g + m[5]*b);
+   int bo = (int)(m[6]*r + m[7]*g + m[8]*b);
+   ro=ro<0?0:(ro>255?255:ro); go=go<0?0:(go>255?255:go); bo=bo<0?0:(bo>255?255:bo);
+   return JS_NewInt32(ctx, (int32_t)(((uint8_t)ro<<24)|((uint8_t)go<<16)|((uint8_t)bo<<8)|(uint8_t)c));
+}
+
+/* neonGlow(cx,cy, r, color, glowRadius) — draw circle with glow halo */
+static JSValue js_neon_glow(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 5 || !framebuffer) return JS_UNDEFINED;
+   int cx2   = int_from_js(ctx, argv[0], 0);
+   int cy2   = int_from_js(ctx, argv[1], 0);
+   int r2    = int_from_js(ctx, argv[2], 10);
+   uint32_t color = color_from_js(ctx, argv[3], 0xffffffff);
+   int glow  = int_from_js(ctx, argv[4], 4);
+   if (glow < 0) glow = 0;
+   uint8_t cr2=(uint8_t)(color>>24),cg2=(uint8_t)(color>>16),cb2=(uint8_t)(color>>8);
+   /* glow layers: alpha falloff */
+   for (int g2 = glow; g2 > 0; g2--) {
+      float alpha = (float)g2 / (glow + 1) * 0.4f;
+      uint32_t gc = rgba8(cr2, cg2, cb2, (uint8_t)(alpha * 255));
+      /* draw circle at radius r + g2 */
+      int rd = r2 + g2;
+      int xp = rd, yp = 0, err = 0;
+      while (xp >= yp) {
+         /* 8-point symmetry — blend with framebuffer */
+         int pts[8][2] = {{cx2+xp,cy2+yp},{cx2-xp,cy2+yp},{cx2+xp,cy2-yp},{cx2-xp,cy2-yp},
+                          {cx2+yp,cy2+xp},{cx2-yp,cy2+xp},{cx2+yp,cy2-xp},{cx2-yp,cy2-xp}};
+         for (int pi = 0; pi < 8; pi++) {
+            int sx = pts[pi][0], sy = pts[pi][1];
+            if (sx<0||sx>=NOVA64_WIDTH||sy<0||sy>=NOVA64_HEIGHT) continue;
+            uint32_t dst = framebuffer[sy*NOVA64_WIDTH+sx];
+            uint8_t dr=(uint8_t)(dst>>24),dg=(uint8_t)(dst>>16),db=(uint8_t)(dst>>8);
+            uint8_t nr=(uint8_t)(dr+(int)((cr2-dr)*alpha)),ng=(uint8_t)(dg+(int)((cg2-dg)*alpha)),nb=(uint8_t)(db+(int)((cb2-db)*alpha));
+            framebuffer[sy*NOVA64_WIDTH+sx]=(nr<<24)|(ng<<16)|(nb<<8)|0xff;
+         }
+         yp++; err += 1 + 2*yp;
+         if (2*(err-xp)+1 > 0) { xp--; err += 1 - 2*xp; }
+      }
+   }
+   /* draw solid circle outline */
+   {
+      int xp = r2, yp = 0, err = 0;
+      while (xp >= yp) {
+         int pts[8][2] = {{cx2+xp,cy2+yp},{cx2-xp,cy2+yp},{cx2+xp,cy2-yp},{cx2-xp,cy2-yp},
+                          {cx2+yp,cy2+xp},{cx2-yp,cy2+xp},{cx2+yp,cy2-xp},{cx2-yp,cy2-xp}};
+         for (int pi = 0; pi < 8; pi++) {
+            int sx = pts[pi][0], sy = pts[pi][1];
+            if (sx<0||sx>=NOVA64_WIDTH||sy<0||sy>=NOVA64_HEIGHT) continue;
+            framebuffer[sy*NOVA64_WIDTH+sx] = color | 0xff;
+         }
+         yp++; err += 1 + 2*yp;
+         if (2*(err-xp)+1 > 0) { xp--; err += 1 - 2*xp; }
+      }
+   }
+   return JS_UNDEFINED;
+}
+
+/* barChart(values, x,y,w,h, color [, bgColor]) — vertical bar chart */
+static JSValue js_bar_chart(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 6 || !JS_IsArray(argv[0]) || !framebuffer) return JS_UNDEFINED;
+   JSValue len_v = JS_GetPropertyStr(ctx, argv[0], "length");
+   int len = 0; JS_ToInt32(ctx, &len, len_v); JS_FreeValue(ctx, len_v);
+   if (len < 1) return JS_UNDEFINED;
+   int bx = int_from_js(ctx, argv[1], 0), by = int_from_js(ctx, argv[2], 0);
+   int bw = int_from_js(ctx, argv[3], 100), bh = int_from_js(ctx, argv[4], 60);
+   uint32_t color = color_from_js(ctx, argv[5], 0xffffffff);
+   uint32_t bgcol = argc > 6 ? color_from_js(ctx, argv[6], rgba8(20,30,50,255)) : rgba8(20,30,50,255);
+   /* find max */
+   double maxV = 0.0;
+   for (int i = 0; i < len; i++) {
+      JSValue vv = JS_GetPropertyUint32(ctx, argv[0], (uint32_t)i);
+      double v = double_from_js(ctx, vv, 0.0); JS_FreeValue(ctx, vv);
+      if (v > maxV) maxV = v;
+   }
+   if (maxV <= 0.0) maxV = 1.0;
+   double bw_each = (double)bw / len;
+   for (int i = 0; i < len; i++) {
+      JSValue vv = JS_GetPropertyUint32(ctx, argv[0], (uint32_t)i);
+      double v = double_from_js(ctx, vv, 0.0); JS_FreeValue(ctx, vv);
+      int bh2 = (int)(v / maxV * bh);
+      int x0 = bx + (int)(i * bw_each);
+      int x1 = bx + (int)((i + 1) * bw_each) - 1;
+      for (int py2 = by; py2 < by + bh; py2++) {
+         for (int px2 = x0; px2 <= x1; px2++) {
+            set_pixel(px2 - (int)cam2d_x, py2 - (int)cam2d_y,
+                      py2 >= by + bh - bh2 ? color : bgcol);
+         }
+      }
+   }
+   return JS_UNDEFINED;
+}
+
+/* drawMeter(x,y,w,h, value, minV,maxV, fgColor, bgColor) — filled meter */
+static JSValue js_draw_meter(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 9 || !framebuffer) return JS_UNDEFINED;
+   int x = int_from_js(ctx, argv[0], 0), y = int_from_js(ctx, argv[1], 0);
+   int w = int_from_js(ctx, argv[2], 100), h = int_from_js(ctx, argv[3], 10);
+   double v    = double_from_js(ctx, argv[4], 0.0);
+   double minV = double_from_js(ctx, argv[5], 0.0);
+   double maxV = double_from_js(ctx, argv[6], 1.0);
+   uint32_t fg = color_from_js(ctx, argv[7], rgba8(100,200,100,255));
+   uint32_t bg = color_from_js(ctx, argv[8], rgba8(30,40,60,255));
+   if (maxV == minV) maxV = minV + 1.0;
+   double t = (v - minV) / (maxV - minV);
+   if (t < 0.0) t = 0.0; if (t > 1.0) t = 1.0;
+   int filled = (int)round(t * w);
+   for (int py2 = y; py2 < y + h; py2++) {
+      for (int px2 = x; px2 < x + w; px2++) {
+         set_pixel(px2 - (int)cam2d_x, py2 - (int)cam2d_y, px2 - x < filled ? fg : bg);
+      }
+   }
+   return JS_UNDEFINED;
+}
+
+/* percentStr(v) — returns "75%" for v=0.75 */
+static JSValue js_percent_str(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double v = argc > 0 ? double_from_js(ctx, argv[0], 0.0) : 0.0;
+   char buf[16];
+   snprintf(buf, sizeof(buf), "%d%%", (int)round(v * 100.0));
+   return JS_NewString(ctx, buf);
+}
+
+/* toFixed(v, d) — format number to d decimal places */
+static JSValue js_to_fixed(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double v = argc > 0 ? double_from_js(ctx, argv[0], 0.0) : 0.0;
+   int d    = argc > 1 ? int_from_js(ctx, argv[1], 2) : 2;
+   if (d < 0) d = 0; if (d > 8) d = 8;
+   char fmt[8]; snprintf(fmt, sizeof(fmt), "%%.%df", d);
+   char buf[32]; snprintf(buf, sizeof(buf), fmt, v);
+   return JS_NewString(ctx, buf);
+}
+
+/* colorMix3(c1,w1, c2,w2, c3,w3) — weighted 3-color mix */
+static JSValue js_color_mix3(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 6) return JS_NewInt32(ctx, 0);
+   uint32_t c1=(uint32_t)color_from_js(ctx,argv[0],0), c2=(uint32_t)color_from_js(ctx,argv[2],0), c3=(uint32_t)color_from_js(ctx,argv[4],0);
+   double w1=double_from_js(ctx,argv[1],1.0), w2=double_from_js(ctx,argv[3],1.0), w3=double_from_js(ctx,argv[5],1.0);
+   double total = w1 + w2 + w3;
+   if (total < 1e-12) total = 1.0;
+   w1/=total; w2/=total; w3/=total;
+   int r=(int)(w1*(uint8_t)(c1>>24)+w2*(uint8_t)(c2>>24)+w3*(uint8_t)(c3>>24));
+   int g=(int)(w1*(uint8_t)(c1>>16)+w2*(uint8_t)(c2>>16)+w3*(uint8_t)(c3>>16));
+   int b=(int)(w1*(uint8_t)(c1>>8) +w2*(uint8_t)(c2>>8) +w3*(uint8_t)(c3>>8));
+   int a=(int)(w1*(uint8_t)c1      +w2*(uint8_t)c2      +w3*(uint8_t)c3);
+   r=r<0?0:(r>255?255:r); g=g<0?0:(g>255?255:g); b=b<0?0:(b>255?255:b); a=a<0?0:(a>255?255:a);
+   return JS_NewInt32(ctx, (int32_t)(((uint8_t)r<<24)|((uint8_t)g<<16)|((uint8_t)b<<8)|(uint8_t)a));
+}
+
+/* drawNoise(x,y,w,h, density, color) — scatter random pixels in region */
+static JSValue js_draw_noise(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 6 || !framebuffer) return JS_UNDEFINED;
+   int nx  = int_from_js(ctx, argv[0], 0), ny  = int_from_js(ctx, argv[1], 0);
+   int nw  = int_from_js(ctx, argv[2], 100), nh = int_from_js(ctx, argv[3], 100);
+   double density = clamp_double(double_from_js(ctx, argv[4], 0.1), 0.0, 1.0);
+   uint32_t color = color_from_js(ctx, argv[5], 0xffffffff);
+   /* use a fast LCG seeded from position for determinism */
+   uint32_t seed = (uint32_t)(nx * 1619 + ny * 31337 + (int)(density * 1000));
+   int total = nw * nh;
+   int count = (int)(total * density);
+   for (int i = 0; i < count; i++) {
+      seed = seed * 1664525u + 1013904223u;
+      int px2 = nx + (int)((seed >> 16) % (uint32_t)nw);
+      seed = seed * 1664525u + 1013904223u;
+      int py2 = ny + (int)((seed >> 16) % (uint32_t)nh);
+      set_pixel(px2 - (int)cam2d_x, py2 - (int)cam2d_y, color);
+   }
+   return JS_UNDEFINED;
+}
+
 /* ── Batch 11: cubic bezier, spline, hex grid, graph, color, waveform ── */
 
 /* drawCubicBezier(x0,y0, cx0,cy0, cx1,cy1, x1,y1, color [,steps]) */
@@ -12936,6 +13210,19 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, global, "printBold",        js_print_bold,        4);
    set_function(ctx, global, "dotGrid",          js_dot_grid,          7);
    set_function(ctx, global, "clampColor",       js_clamp_color,       3);
+   /* Batch 12: italic/underline, progress bar, grid snap, color matrix, neon, bar chart, meter */
+   set_function(ctx, global, "printItalic",      js_print_italic,      4);
+   set_function(ctx, global, "printUnderline",   js_print_underline,   4);
+   set_function(ctx, global, "drawProgressBar",  js_draw_progress_bar, 7);
+   set_function(ctx, global, "gridSnap",         js_grid_snap,         2);
+   set_function(ctx, global, "colorMatrix",      js_color_matrix,      2);
+   set_function(ctx, global, "neonGlow",         js_neon_glow,         5);
+   set_function(ctx, global, "barChart",         js_bar_chart,         7);
+   set_function(ctx, global, "drawMeter",        js_draw_meter,        9);
+   set_function(ctx, global, "percentStr",       js_percent_str,       1);
+   set_function(ctx, global, "toFixed",          js_to_fixed,          2);
+   set_function(ctx, global, "colorMix3",        js_color_mix3,        6);
+   set_function(ctx, global, "drawNoise",        js_draw_noise,        6);
 
    JS_FreeValue(ctx, global);
    return true;

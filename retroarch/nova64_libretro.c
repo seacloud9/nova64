@@ -6314,6 +6314,261 @@ static JSValue js_vec_lerp(JSContext *ctx, JSValueConst this_val, int argc, JSVa
    return obj;
 }
 
+/* ── Batch 15: copy pixels, lozenge, spiral, easing, tri gradient, etc. ─── */
+
+/* copyPixels(srcX,srcY,dstX,dstY,w,h) — blit framebuffer region */
+static JSValue js_copy_pixels(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (!framebuffer || argc < 6) return JS_UNDEFINED;
+   int sx = int_from_js(ctx, argv[0], 0), sy = int_from_js(ctx, argv[1], 0);
+   int dx = int_from_js(ctx, argv[2], 0), dy = int_from_js(ctx, argv[3], 0);
+   int w  = int_from_js(ctx, argv[4], 0), h  = int_from_js(ctx, argv[5], 0);
+   int W  = NOVA64_WIDTH, H = NOVA64_HEIGHT;
+   if (w <= 0 || h <= 0) return JS_UNDEFINED;
+   uint32_t *tmp = (uint32_t *)malloc((size_t)w * (size_t)h * sizeof(uint32_t));
+   if (!tmp) return JS_UNDEFINED;
+   for (int y = 0; y < h; y++) {
+      int sy2 = sy + y, dx2 = sx;
+      if (sy2 < 0 || sy2 >= H) { memset(tmp + (size_t)y * w, 0, (size_t)w * 4); continue; }
+      for (int x = 0; x < w; x++) {
+         int sx2 = dx2 + x;
+         tmp[(size_t)y * w + (size_t)x] = (sx2 >= 0 && sx2 < W) ? framebuffer[(size_t)sy2 * W + (size_t)sx2] : 0;
+      }
+   }
+   for (int y = 0; y < h; y++) {
+      int dy2 = dy + y; if (dy2 < 0 || dy2 >= H) continue;
+      for (int x = 0; x < w; x++) {
+         int dx3 = dx + x; if (dx3 < 0 || dx3 >= W) continue;
+         framebuffer[(size_t)dy2 * W + (size_t)dx3] = tmp[(size_t)y * w + (size_t)x];
+      }
+   }
+   free(tmp);
+   return JS_UNDEFINED;
+}
+
+/* colorAddRGB(c, r, g, b) — add offsets to each channel (clamped) */
+static JSValue js_color_add_rgb(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   uint32_t c = color_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0xffffffff);
+   int ra = int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0);
+   int ga = int_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 0);
+   int ba = int_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, 0);
+   int nr = (int)((c>>24)&0xff) + ra;
+   int ng = (int)((c>>16)&0xff) + ga;
+   int nb = (int)((c>> 8)&0xff) + ba;
+   if(nr<0)nr=0;if(nr>255)nr=255;
+   if(ng<0)ng=0;if(ng>255)ng=255;
+   if(nb<0)nb=0;if(nb>255)nb=255;
+   return JS_NewInt32(ctx, (int32_t)rgba8((uint8_t)nr,(uint8_t)ng,(uint8_t)nb,(uint8_t)(c&0xff)));
+}
+
+/* drawLozenge(cx,cy,w,h,color) — diamond / lozenge outline */
+static JSValue js_draw_lozenge(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 5) return JS_UNDEFINED;
+   float cx2 = (float)double_from_js(ctx, argv[0], 0.0) - (float)cam2d_x;
+   float cy2 = (float)double_from_js(ctx, argv[1], 0.0) - (float)cam2d_y;
+   float hw  = (float)double_from_js(ctx, argv[2], 10.0) * 0.5f;
+   float hh  = (float)double_from_js(ctx, argv[3], 10.0) * 0.5f;
+   uint32_t color = color_from_js(ctx, argv[4], 0xffffffff);
+   path_draw_line_segment(cx2,      cy2 - hh, cx2 + hw, cy2,       color);
+   path_draw_line_segment(cx2 + hw, cy2,      cx2,      cy2 + hh,  color);
+   path_draw_line_segment(cx2,      cy2 + hh, cx2 - hw, cy2,       color);
+   path_draw_line_segment(cx2 - hw, cy2,      cx2,      cy2 - hh,  color);
+   return JS_UNDEFINED;
+}
+
+/* fillLozenge(cx,cy,w,h,color) — filled diamond */
+static JSValue js_fill_lozenge(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 5) return JS_UNDEFINED;
+   int cx2 = int_from_js(ctx, argv[0], 0) - (int)cam2d_x;
+   int cy2 = int_from_js(ctx, argv[1], 0) - (int)cam2d_y;
+   int hw  = int_from_js(ctx, argv[2], 10) / 2;
+   int hh  = int_from_js(ctx, argv[3], 10) / 2;
+   uint32_t color = color_from_js(ctx, argv[4], 0xffffffff);
+   for (int dy = -hh; dy <= hh; dy++) {
+      int xw = (hh > 0) ? (int)((float)hw * (1.0f - (float)abs(dy) / (float)hh)) : 0;
+      for (int dx = -xw; dx <= xw; dx++)
+         set_pixel(cx2 + dx, cy2 + dy, color);
+   }
+   return JS_UNDEFINED;
+}
+
+/* drawSpiral(cx,cy,r1,r2,turns,color) — Archimedean spiral */
+static JSValue js_draw_spiral(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 6) return JS_UNDEFINED;
+   double cx2  = double_from_js(ctx, argv[0], 0.0) - cam2d_x;
+   double cy2  = double_from_js(ctx, argv[1], 0.0) - cam2d_y;
+   double r1   = double_from_js(ctx, argv[2], 0.0);
+   double r2   = double_from_js(ctx, argv[3], 40.0);
+   double turns= double_from_js(ctx, argv[4], 3.0);
+   uint32_t color = color_from_js(ctx, argv[5], 0xffffffff);
+   int steps = (int)(turns * 60.0); if (steps < 4) steps = 4; if (steps > 1024) steps = 1024;
+   double twopi = 2.0 * 3.14159265358979;
+   double px = cx2, py = cy2;
+   for (int i = 0; i <= steps; i++) {
+      double t = (double)i / steps;
+      double angle = t * turns * twopi;
+      double r = r1 + (r2 - r1) * t;
+      double nx = cx2 + cos(angle) * r;
+      double ny = cy2 + sin(angle) * r;
+      if (i > 0) path_draw_line_segment((float)px,(float)py,(float)nx,(float)ny,color);
+      px = nx; py = ny;
+   }
+   return JS_UNDEFINED;
+}
+
+/* colorWarm(c, t) — warm filter: boost R, reduce B */
+static JSValue js_color_warm(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   uint32_t c = color_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0xffffffff);
+   double   t = double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0.5);
+   int nr = (int)((c>>24)&0xff) + (int)(t * 40.0);
+   int nb = (int)((c>> 8)&0xff) - (int)(t * 40.0);
+   if(nr<0)nr=0;if(nr>255)nr=255; if(nb<0)nb=0;if(nb>255)nb=255;
+   return JS_NewInt32(ctx, (int32_t)rgba8((uint8_t)nr,(uint8_t)((c>>16)&0xff),(uint8_t)nb,(uint8_t)(c&0xff)));
+}
+
+/* colorCool(c, t) — cool filter: boost B, reduce R */
+static JSValue js_color_cool(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   uint32_t c = color_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0xffffffff);
+   double   t = double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0.5);
+   int nr = (int)((c>>24)&0xff) - (int)(t * 40.0);
+   int nb = (int)((c>> 8)&0xff) + (int)(t * 40.0);
+   if(nr<0)nr=0;if(nr>255)nr=255; if(nb<0)nb=0;if(nb>255)nb=255;
+   return JS_NewInt32(ctx, (int32_t)rgba8((uint8_t)nr,(uint8_t)((c>>16)&0xff),(uint8_t)nb,(uint8_t)(c&0xff)));
+}
+
+/* easeExpo(t) — exponential ease in */
+static JSValue js_ease_expo(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double t = double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0.0);
+   if (t <= 0.0) return JS_NewFloat64(ctx, 0.0);
+   if (t >= 1.0) return JS_NewFloat64(ctx, 1.0);
+   return JS_NewFloat64(ctx, pow(2.0, 10.0 * (t - 1.0)));
+}
+
+/* easePower(t, p) — power curve ease (t^p) */
+static JSValue js_ease_power(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double t = double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0.0);
+   double p = double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 2.0);
+   if (t < 0.0) t = 0.0; if (t > 1.0) t = 1.0;
+   return JS_NewFloat64(ctx, pow(t, p));
+}
+
+/* fillTriGradient(x1,y1,c1, x2,y2,c2, x3,y3,c3) — Gouraud triangle */
+static JSValue js_fill_tri_gradient(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 9) return JS_UNDEFINED;
+   float x1 = (float)double_from_js(ctx,argv[0],0.0)-(float)cam2d_x, y1=(float)double_from_js(ctx,argv[1],0.0)-(float)cam2d_y;
+   uint32_t c1 = color_from_js(ctx, argv[2], 0xffffffff);
+   float x2 = (float)double_from_js(ctx,argv[3],0.0)-(float)cam2d_x, y2=(float)double_from_js(ctx,argv[4],0.0)-(float)cam2d_y;
+   uint32_t c2 = color_from_js(ctx, argv[5], 0xffffffff);
+   float x3 = (float)double_from_js(ctx,argv[6],0.0)-(float)cam2d_x, y3=(float)double_from_js(ctx,argv[7],0.0)-(float)cam2d_y;
+   uint32_t c3 = color_from_js(ctx, argv[8], 0xffffffff);
+   float r1=(float)((c1>>24)&0xff),g1=(float)((c1>>16)&0xff),b1=(float)((c1>>8)&0xff);
+   float r2=(float)((c2>>24)&0xff),g2=(float)((c2>>16)&0xff),b2=(float)((c2>>8)&0xff);
+   float r3=(float)((c3>>24)&0xff),g3=(float)((c3>>16)&0xff),b3=(float)((c3>>8)&0xff);
+   int bx0=(int)(x1<x2?x1:x2); if(x3<bx0)bx0=(int)x3;
+   int bx1=(int)(x1>x2?x1:x2); if(x3>bx1)bx1=(int)x3+1;
+   int by0=(int)(y1<y2?y1:y2); if(y3<by0)by0=(int)y3;
+   int by1=(int)(y1>y2?y1:y2); if(y3>by1)by1=(int)y3+1;
+   float d = (y2-y3)*(x1-x3)+(x3-x2)*(y1-y3);
+   if (fabsf(d) < 0.001f) return JS_UNDEFINED;
+   for (int py = by0; py <= by1; py++) {
+      for (int px = bx0; px <= bx1; px++) {
+         if (px<0||px>=NOVA64_WIDTH||py<0||py>=NOVA64_HEIGHT) continue;
+         float u = ((y2-y3)*((float)px-x3)+(x3-x2)*((float)py-y3))/d;
+         float v = ((y3-y1)*((float)px-x3)+(x1-x3)*((float)py-y3))/d;
+         float w = 1.0f - u - v;
+         if (u < 0.0f || v < 0.0f || w < 0.0f) continue;
+         uint8_t nr=(uint8_t)(u*r1+v*r2+w*r3);
+         uint8_t ng=(uint8_t)(u*g1+v*g2+w*g3);
+         uint8_t nb2=(uint8_t)(u*b1+v*b2+w*b3);
+         framebuffer[(size_t)py*NOVA64_WIDTH+(size_t)px] = rgba8(nr,ng,nb2,255);
+      }
+   }
+   return JS_UNDEFINED;
+}
+
+/* invertRegion(x,y,w,h) — invert RGB in a screen region */
+static JSValue js_invert_region(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (!framebuffer) return JS_UNDEFINED;
+   int rx = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0);
+   int ry = int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0);
+   int rw = int_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 0);
+   int rh = int_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, 0);
+   int W  = NOVA64_WIDTH, H = NOVA64_HEIGHT;
+   for (int y = ry; y < ry + rh; y++) {
+      if (y < 0 || y >= H) continue;
+      for (int x = rx; x < rx + rw; x++) {
+         if (x < 0 || x >= W) continue;
+         uint32_t c = framebuffer[(size_t)y * W + (size_t)x];
+         framebuffer[(size_t)y * W + (size_t)x] =
+            rgba8((uint8_t)(255 - ((c>>24)&0xff)),
+                  (uint8_t)(255 - ((c>>16)&0xff)),
+                  (uint8_t)(255 - ((c>> 8)&0xff)),
+                  (uint8_t)(c & 0xff));
+      }
+   }
+   return JS_UNDEFINED;
+}
+
+/* screenRetro(strength) — scanlines + subtle noise + vignette combo */
+static JSValue js_screen_retro(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (!framebuffer) return JS_UNDEFINED;
+   double str = double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0.5);
+   if (str < 0.0) str = 0.0; if (str > 1.0) str = 1.0;
+   int W = NOVA64_WIDTH, H = NOVA64_HEIGHT;
+   /* Scanlines: darken every even row */
+   uint8_t scan_factor = (uint8_t)(255 - (int)(str * 100));
+   for (int y = 0; y < H; y += 2) {
+      for (int x = 0; x < W; x++) {
+         uint32_t c = framebuffer[(size_t)y * W + (size_t)x];
+         framebuffer[(size_t)y * W + (size_t)x] = rgba8(
+            (uint8_t)(((c>>24)&0xff) * scan_factor / 255),
+            (uint8_t)(((c>>16)&0xff) * scan_factor / 255),
+            (uint8_t)(((c>> 8)&0xff) * scan_factor / 255), 255);
+      }
+   }
+   /* Vignette: darken edges proportionally */
+   float cx3 = W * 0.5f, cy3 = H * 0.5f;
+   float max_d = cx3 * cx3 + cy3 * cy3;
+   float vig_str = (float)str;
+   for (int y = 0; y < H; y++) {
+      for (int x = 0; x < W; x++) {
+         float dx2 = (float)x - cx3, dy2 = (float)y - cy3;
+         float d2 = dx2*dx2 + dy2*dy2;
+         float vig = 1.0f - vig_str * 0.8f * (d2 / max_d);
+         if (vig < 0.0f) vig = 0.0f;
+         uint32_t c = framebuffer[(size_t)y * W + (size_t)x];
+         framebuffer[(size_t)y * W + (size_t)x] = rgba8(
+            (uint8_t)(((c>>24)&0xff) * vig),
+            (uint8_t)(((c>>16)&0xff) * vig),
+            (uint8_t)(((c>> 8)&0xff) * vig), 255);
+      }
+   }
+   return JS_UNDEFINED;
+}
+
 /* ── Batch 14: hue shift, luminance, easing, hex cell, X mark, etc. ────── */
 
 /* Internal: RGB → HSV (h 0-360, s 0-1, v 0-1) */
@@ -13858,6 +14113,20 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, global, "colorSepia",      js_color_sepia,       1);
    set_function(ctx, global, "colorVibrance",   js_color_vibrance,    2);
    set_function(ctx, global, "screenHSV",       js_screen_hsv,        3);
+
+   /* Batch 15 */
+   set_function(ctx, global, "copyPixels",       js_copy_pixels,       6);
+   set_function(ctx, global, "colorAddRGB",      js_color_add_rgb,     4);
+   set_function(ctx, global, "drawLozenge",      js_draw_lozenge,      5);
+   set_function(ctx, global, "fillLozenge",      js_fill_lozenge,      5);
+   set_function(ctx, global, "drawSpiral",       js_draw_spiral,       6);
+   set_function(ctx, global, "colorWarm",        js_color_warm,        2);
+   set_function(ctx, global, "colorCool",        js_color_cool,        2);
+   set_function(ctx, global, "easeExpo",         js_ease_expo,         1);
+   set_function(ctx, global, "easePower",        js_ease_power,        2);
+   set_function(ctx, global, "fillTriGradient",  js_fill_tri_gradient, 9);
+   set_function(ctx, global, "invertRegion",     js_invert_region,     4);
+   set_function(ctx, global, "screenRetro",      js_screen_retro,      1);
 
    JS_FreeValue(ctx, global);
    return true;

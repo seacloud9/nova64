@@ -6314,6 +6314,275 @@ static JSValue js_vec_lerp(JSContext *ctx, JSValueConst this_val, int argc, JSVa
    return obj;
 }
 
+/* ── Batch 14: hue shift, luminance, easing, hex cell, X mark, etc. ────── */
+
+/* Internal: RGB → HSV (h 0-360, s 0-1, v 0-1) */
+static void rgb_to_hsv(uint8_t r, uint8_t g, uint8_t b, double *h, double *s, double *v)
+{
+   double rf = r / 255.0, gf = g / 255.0, bf = b / 255.0;
+   double mx = rf > gf ? rf : gf; if (bf > mx) mx = bf;
+   double mn = rf < gf ? rf : gf; if (bf < mn) mn = bf;
+   *v = mx;
+   *s = mx > 0.0 ? (mx - mn) / mx : 0.0;
+   if (mx == mn) { *h = 0.0; return; }
+   double d = mx - mn;
+   if      (mx == rf) *h = 60.0 * fmod((gf - bf) / d, 6.0);
+   else if (mx == gf) *h = 60.0 * ((bf - rf) / d + 2.0);
+   else               *h = 60.0 * ((rf - gf) / d + 4.0);
+   if (*h < 0.0) *h += 360.0;
+}
+
+/* Internal: HSV → RGB */
+static void hsv_to_rgb(double h, double s, double v, uint8_t *r, uint8_t *g, uint8_t *b)
+{
+   if (s <= 0.0) { *r = *g = *b = (uint8_t)(v * 255.0); return; }
+   double hh = fmod(h, 360.0); if (hh < 0.0) hh += 360.0;
+   double hh6 = hh / 60.0;
+   int    i   = (int)hh6;
+   double f   = hh6 - i;
+   double p   = v * (1.0 - s);
+   double q   = v * (1.0 - f * s);
+   double t   = v * (1.0 - (1.0 - f) * s);
+   double rv, gv, bv;
+   switch (i % 6) {
+      case 0: rv=v; gv=t; bv=p; break;
+      case 1: rv=q; gv=v; bv=p; break;
+      case 2: rv=p; gv=v; bv=t; break;
+      case 3: rv=p; gv=q; bv=v; break;
+      case 4: rv=t; gv=p; bv=v; break;
+      default:rv=v; gv=p; bv=q; break;
+   }
+   *r = (uint8_t)(rv * 255.0 + 0.5);
+   *g = (uint8_t)(gv * 255.0 + 0.5);
+   *b = (uint8_t)(bv * 255.0 + 0.5);
+}
+
+/* colorShift(c, hueOffset) — rotate hue by degrees, preserve S/V */
+static JSValue js_color_shift(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   uint32_t c = color_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0xffffffff);
+   double   d = double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0.0);
+   double h, s, v;
+   rgb_to_hsv((c>>24)&0xff, (c>>16)&0xff, (c>>8)&0xff, &h, &s, &v);
+   h = fmod(h + d + 360.0, 360.0);
+   uint8_t r2, g2, b2;
+   hsv_to_rgb(h, s, v, &r2, &g2, &b2);
+   return JS_NewInt32(ctx, (int32_t)rgba8(r2, g2, b2, (uint8_t)(c & 0xff)));
+}
+
+/* colorLuminance(c) — BT.601 perceptual luminance 0-255 */
+static JSValue js_color_luminance(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   uint32_t c = color_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0xffffffff);
+   double lum = 0.299*(double)((c>>24)&0xff) + 0.587*(double)((c>>16)&0xff) + 0.114*(double)((c>>8)&0xff);
+   return JS_NewInt32(ctx, (int32_t)(lum + 0.5));
+}
+
+/* easeBack(t) — cubic back easing with overshoot */
+static JSValue js_ease_back(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double t = double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0.0);
+   if (t < 0.0) t = 0.0; if (t > 1.0) t = 1.0;
+   const double c1 = 1.70158, c3 = c1 + 1.0;
+   return JS_NewFloat64(ctx, 1.0 + c3 * (t - 1.0) * (t - 1.0) * (t - 1.0) + c1 * (t - 1.0) * (t - 1.0));
+}
+
+/* easeSine(t) — sine-based ease in */
+static JSValue js_ease_sine(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double t = double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0.0);
+   if (t < 0.0) t = 0.0; if (t > 1.0) t = 1.0;
+   return JS_NewFloat64(ctx, 1.0 - cos(t * 3.14159265358979 * 0.5));
+}
+
+/* drawHexCell(cx, cy, r, color) — hexagon outline (pointy-top) */
+static JSValue js_draw_hex_cell(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 4) return JS_UNDEFINED;
+   double cx2 = double_from_js(ctx, argv[0], 0.0) - cam2d_x;
+   double cy2 = double_from_js(ctx, argv[1], 0.0) - cam2d_y;
+   double r   = double_from_js(ctx, argv[2], 10.0);
+   uint32_t color = color_from_js(ctx, argv[3], 0xffffffff);
+   double step = 3.14159265358979 / 3.0;
+   double px = cx2, py = cy2;
+   for (int i = 0; i <= 6; i++) {
+      double angle = i * step - 3.14159265358979 / 6.0;
+      double nx = cx2 + cos(angle) * r;
+      double ny = cy2 + sin(angle) * r;
+      if (i > 0) path_draw_line_segment((float)px, (float)py, (float)nx, (float)ny, color);
+      px = nx; py = ny;
+   }
+   return JS_UNDEFINED;
+}
+
+/* fillHexCell(cx, cy, r, color) — filled hexagon (pointy-top) */
+static JSValue js_fill_hex_cell(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 4) return JS_UNDEFINED;
+   double cx2 = double_from_js(ctx, argv[0], 0.0) - cam2d_x;
+   double cy2 = double_from_js(ctx, argv[1], 0.0) - cam2d_y;
+   double r   = double_from_js(ctx, argv[2], 10.0);
+   uint32_t color = color_from_js(ctx, argv[3], 0xffffffff);
+   double step = 3.14159265358979 / 3.0;
+   double vx[6], vy[6];
+   for (int i = 0; i < 6; i++) {
+      double angle = i * step - 3.14159265358979 / 6.0;
+      vx[i] = cx2 + cos(angle) * r;
+      vy[i] = cy2 + sin(angle) * r;
+   }
+   int ibx0 = (int)(cx2 - r), ibx1 = (int)(cx2 + r + 1.0);
+   int iby0 = (int)(cy2 - r), iby1 = (int)(cy2 + r + 1.0);
+   for (int py = iby0; py <= iby1; py++) {
+      for (int px = ibx0; px <= ibx1; px++) {
+         if (px < 0 || px >= NOVA64_WIDTH || py < 0 || py >= NOVA64_HEIGHT) continue;
+         int inside = 0;
+         double fx = (double)px + 0.5, fy = (double)py + 0.5;
+         for (int i = 0, j = 5; i < 6; j = i++) {
+            double xi = vx[i], yi = vy[i], xj = vx[j], yj = vy[j];
+            if (((yi > fy) != (yj > fy)) &&
+                (fx < (xj - xi) * (fy - yi) / (yj - yi) + xi))
+               inside ^= 1;
+         }
+         if (inside) framebuffer[(size_t)py * NOVA64_WIDTH + (size_t)px] = color;
+      }
+   }
+   return JS_UNDEFINED;
+}
+
+/* drawX(cx, cy, size, color) — diagonal X mark outline */
+static JSValue js_draw_x_mark(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 4) return JS_UNDEFINED;
+   int cx2  = int_from_js(ctx, argv[0], 0) - (int)cam2d_x;
+   int cy2  = int_from_js(ctx, argv[1], 0) - (int)cam2d_y;
+   int size = int_from_js(ctx, argv[2], 8);
+   uint32_t color = color_from_js(ctx, argv[3], 0xffffffff);
+   path_draw_line_segment((float)(cx2 - size), (float)(cy2 - size),
+                          (float)(cx2 + size), (float)(cy2 + size), color);
+   path_draw_line_segment((float)(cx2 + size), (float)(cy2 - size),
+                          (float)(cx2 - size), (float)(cy2 + size), color);
+   return JS_UNDEFINED;
+}
+
+/* fillX(cx, cy, size, w, color) — filled X mark */
+static JSValue js_fill_x_mark(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 5) return JS_UNDEFINED;
+   int cx2  = int_from_js(ctx, argv[0], 0) - (int)cam2d_x;
+   int cy2  = int_from_js(ctx, argv[1], 0) - (int)cam2d_y;
+   int size = int_from_js(ctx, argv[2], 8);
+   int w    = int_from_js(ctx, argv[3], 2);
+   uint32_t color = color_from_js(ctx, argv[4], 0xffffffff);
+   for (int dy = -size; dy <= size; dy++) {
+      for (int dx = -size; dx <= size; dx++) {
+         int adiff1 = abs(abs(dx) - abs(dy));
+         int adiff2 = abs(dx + dy);
+         if (adiff1 <= w || adiff2 <= w)
+            set_pixel(cx2 + dx, cy2 + dy, color);
+      }
+   }
+   return JS_UNDEFINED;
+}
+
+/* drawChevron(x, y, size, dir, color) — chevron (dir: 0=right,1=down,2=left,3=up) */
+static JSValue js_draw_chevron(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 5) return JS_UNDEFINED;
+   int cx2  = int_from_js(ctx, argv[0], 0) - (int)cam2d_x;
+   int cy2  = int_from_js(ctx, argv[1], 0) - (int)cam2d_y;
+   int size = int_from_js(ctx, argv[2], 8);
+   int dir  = int_from_js(ctx, argv[3], 0);
+   uint32_t color = color_from_js(ctx, argv[4], 0xffffffff);
+   float ax, ay, bx, by, cx3, cy3;
+   switch (dir % 4) {
+      case 0: /* right > */
+         ax=(float)(cx2-size); ay=(float)(cy2-size);
+         bx=(float)(cx2+size); by=(float)cy2;
+         cx3=(float)(cx2-size);cy3=(float)(cy2+size); break;
+      case 1: /* down v */
+         ax=(float)(cx2-size); ay=(float)(cy2-size);
+         bx=(float)cx2;        by=(float)(cy2+size);
+         cx3=(float)(cx2+size);cy3=(float)(cy2-size); break;
+      case 2: /* left < */
+         ax=(float)(cx2+size); ay=(float)(cy2-size);
+         bx=(float)(cx2-size); by=(float)cy2;
+         cx3=(float)(cx2+size);cy3=(float)(cy2+size); break;
+      default:/* up ^ */
+         ax=(float)(cx2-size); ay=(float)(cy2+size);
+         bx=(float)cx2;        by=(float)(cy2-size);
+         cx3=(float)(cx2+size);cy3=(float)(cy2+size); break;
+   }
+   path_draw_line_segment(ax, ay, bx, by, color);
+   path_draw_line_segment(bx, by, cx3, cy3, color);
+   return JS_UNDEFINED;
+}
+
+/* colorSepia(c) — sepia-tone a single color */
+static JSValue js_color_sepia(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   uint32_t c = color_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0xffffffff);
+   double r = (double)((c>>24)&0xff), g = (double)((c>>16)&0xff), b = (double)((c>>8)&0xff);
+   int nr = (int)(r*0.393 + g*0.769 + b*0.189);
+   int ng = (int)(r*0.349 + g*0.686 + b*0.168);
+   int nb = (int)(r*0.272 + g*0.534 + b*0.131);
+   if (nr>255)nr=255; if (ng>255)ng=255; if (nb>255)nb=255;
+   return JS_NewInt32(ctx, (int32_t)rgba8((uint8_t)nr,(uint8_t)ng,(uint8_t)nb,(uint8_t)(c&0xff)));
+}
+
+/* colorVibrance(c, amount) — boost saturation of less-saturated pixels */
+static JSValue js_color_vibrance(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   uint32_t c   = color_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0xffffffff);
+   double   amt = double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 1.0);
+   double r = (double)((c>>24)&0xff), g = (double)((c>>16)&0xff), b = (double)((c>>8)&0xff);
+   double mx = r > g ? r : g; if (b > mx) mx = b;
+   double mn = r < g ? r : g; if (b < mn) mn = b;
+   double sat = mx > 0.0 ? (mx - mn) / mx : 0.0;
+   double boost = 1.0 + amt * (1.0 - sat);
+   double avg = (r + g + b) / 3.0;
+   int nr = (int)(avg + (r - avg) * boost);
+   int ng = (int)(avg + (g - avg) * boost);
+   int nb = (int)(avg + (b - avg) * boost);
+   if (nr<0)nr=0; if(nr>255)nr=255;
+   if (ng<0)ng=0; if(ng>255)ng=255;
+   if (nb<0)nb=0; if(nb>255)nb=255;
+   return JS_NewInt32(ctx, (int32_t)rgba8((uint8_t)nr,(uint8_t)ng,(uint8_t)nb,(uint8_t)(c&0xff)));
+}
+
+/* screenHSV(hShift, sMul, vMul) — apply HSV transform to full framebuffer */
+static JSValue js_screen_hsv(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (!framebuffer) return JS_UNDEFINED;
+   double hshift = double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0.0);
+   double smul   = double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 1.0);
+   double vmul   = double_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 1.0);
+   int total = NOVA64_WIDTH * NOVA64_HEIGHT;
+   for (int i = 0; i < total; i++) {
+      uint32_t px = framebuffer[i];
+      double h, s, v;
+      rgb_to_hsv((px>>24)&0xff, (px>>16)&0xff, (px>>8)&0xff, &h, &s, &v);
+      h = fmod(h + hshift + 360.0, 360.0);
+      s *= smul; if (s > 1.0) s = 1.0; if (s < 0.0) s = 0.0;
+      v *= vmul; if (v > 1.0) v = 1.0; if (v < 0.0) v = 0.0;
+      uint8_t r2, g2, b2;
+      hsv_to_rgb(h, s, v, &r2, &g2, &b2);
+      framebuffer[i] = rgba8(r2, g2, b2, (uint8_t)(px & 0xff));
+   }
+   return JS_UNDEFINED;
+}
+
 /* ── Batch 13: capsule, ring, region effects, gradient line, star, etc. ─ */
 
 /* colorWithAlpha(c, a) — replace alpha channel of color, keep RGB */
@@ -13575,6 +13844,20 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, global, "drawTextVertical", js_draw_text_vertical,4);
    set_function(ctx, global, "drawStar",         js_draw_star,         6);
    set_function(ctx, global, "fillStar",         js_fill_star,         6);
+
+   /* Batch 14 */
+   set_function(ctx, global, "colorShift",      js_color_shift,       2);
+   set_function(ctx, global, "colorLuminance",  js_color_luminance,   1);
+   set_function(ctx, global, "easeBack",        js_ease_back,         1);
+   set_function(ctx, global, "easeSine",        js_ease_sine,         1);
+   set_function(ctx, global, "drawHexCell",     js_draw_hex_cell,     4);
+   set_function(ctx, global, "fillHexCell",     js_fill_hex_cell,     4);
+   set_function(ctx, global, "drawXMark",       js_draw_x_mark,       4);
+   set_function(ctx, global, "fillXMark",       js_fill_x_mark,       5);
+   set_function(ctx, global, "drawChevron",     js_draw_chevron,      5);
+   set_function(ctx, global, "colorSepia",      js_color_sepia,       1);
+   set_function(ctx, global, "colorVibrance",   js_color_vibrance,    2);
+   set_function(ctx, global, "screenHSV",       js_screen_hsv,        3);
 
    JS_FreeValue(ctx, global);
    return true;

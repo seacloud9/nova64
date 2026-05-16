@@ -767,5 +767,10 @@ run_visual_case "273 screen brightness"    "273-screen-brightness"    "retroarch
 run_visual_case "274 wave draw"            "274-wave-draw"            "retroarch/conformance/274-wave-draw.js"            "bf8208cc0c90ba5b"
 run_visual_case "275 bubble connector"     "275-bubble-connector"     "retroarch/conformance/275-bubble-connector.js"     "17b2e6120412c252"
 run_visual_case "283 batch19 showcase"     "283-batch19-showcase"     "retroarch/conformance/283-batch19-showcase.js"     "4a1e01e69489a958"
+run_visual_case "284 target spider"     "284-target-spider"     "retroarch/conformance/284-target-spider.js"     "76564a87e90dff2e"
+run_visual_case "285 brick wave flame"  "285-brick-wave-flame"  "retroarch/conformance/285-brick-wave-flame.js"  "77260fcf0abb591e"
+run_visual_case "286 color lab zoom"    "286-color-lab-zoom"    "retroarch/conformance/286-color-lab-zoom.js"    "07eaad071349141f"
+run_visual_case "287 dot line"          "287-dot-line"          "retroarch/conformance/287-dot-line.js"          "88deebe6a1334fb3"
+run_visual_case "295 batch20 showcase"  "295-batch20-showcase"  "retroarch/conformance/295-batch20-showcase.js"  "3a0d515e3c49acd2"
 
 echo "Conformance passed."

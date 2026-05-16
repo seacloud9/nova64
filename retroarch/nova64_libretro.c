@@ -6314,6 +6314,300 @@ static JSValue js_vec_lerp(JSContext *ctx, JSValueConst this_val, int argc, JSVa
    return obj;
 }
 
+/* ── Batch 20: target, spider web, brick, wave shape, flame, zoom, util ─── */
+
+/* drawTarget(cx,cy,r,rings,color) — concentric ring target */
+static JSValue js_draw_target(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 5) return JS_UNDEFINED;
+   int tcx =(int)double_from_js(ctx,argv[0],0.0)-(int)cam2d_x;
+   int tcy =(int)double_from_js(ctx,argv[1],0.0)-(int)cam2d_y;
+   int tr  =(int)double_from_js(ctx,argv[2],40.0);
+   int rings=(int)double_from_js(ctx,argv[3],4.0);
+   uint32_t col=(uint32_t)color_from_js(ctx,argv[4],0xFFFFFFFFu);
+   if (rings<1) rings=1;
+   for (int i=1;i<=rings;i++){
+      int ri=tr*i/rings;
+      for (int y2=tcy-ri;y2<=tcy+ri;y2++)
+         for (int x2=tcx-ri;x2<=tcx+ri;x2++){
+            double d=sqrt((double)(x2-tcx)*(x2-tcx)+(double)(y2-tcy)*(y2-tcy));
+            if (d>ri-1&&d<=ri) set_pixel(x2,y2,col);
+         }
+   }
+   return JS_UNDEFINED;
+}
+
+/* fillTarget(cx,cy,r,rings,c1,c2) — alternating color bullseye */
+static JSValue js_fill_target(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 6) return JS_UNDEFINED;
+   int tcx  =(int)double_from_js(ctx,argv[0],0.0)-(int)cam2d_x;
+   int tcy  =(int)double_from_js(ctx,argv[1],0.0)-(int)cam2d_y;
+   int tr   =(int)double_from_js(ctx,argv[2],40.0);
+   int rings=(int)double_from_js(ctx,argv[3],4.0);
+   uint32_t c1=(uint32_t)color_from_js(ctx,argv[4],0xFFFFFFFFu);
+   uint32_t c2=(uint32_t)color_from_js(ctx,argv[5],0xFF0000FFu);
+   if (rings<1) rings=1;
+   for (int y2=tcy-tr;y2<=tcy+tr;y2++)
+      for (int x2=tcx-tr;x2<=tcx+tr;x2++){
+         double d=sqrt((double)(x2-tcx)*(x2-tcx)+(double)(y2-tcy)*(y2-tcy));
+         if (d>tr) continue;
+         int ring=(int)(d*rings/tr);
+         set_pixel(x2,y2,(ring%2==0)?c1:c2);
+      }
+   return JS_UNDEFINED;
+}
+
+/* drawSpiderWeb(cx,cy,r,rings,spokes,color) */
+static JSValue js_draw_spider_web(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 6) return JS_UNDEFINED;
+   int wcx   =(int)double_from_js(ctx,argv[0],0.0)-(int)cam2d_x;
+   int wcy   =(int)double_from_js(ctx,argv[1],0.0)-(int)cam2d_y;
+   double wr =double_from_js(ctx,argv[2],40.0);
+   int rings =(int)double_from_js(ctx,argv[3],4.0);
+   int spokes=(int)double_from_js(ctx,argv[4],8.0);
+   uint32_t col=(uint32_t)color_from_js(ctx,argv[5],0xFFFFFFFFu);
+   if (rings<1) rings=1; if (spokes<3) spokes=3;
+   /* draw spokes */
+   for (int s=0;s<spokes;s++){
+      double a=s*2.0*M_PI/spokes;
+      path_draw_line_segment(wcx,wcy,(int)(wcx+cos(a)*wr),(int)(wcy+sin(a)*wr),col);
+   }
+   /* draw rings */
+   for (int ri=1;ri<=rings;ri++){
+      double rr=wr*ri/rings;
+      int prevX=(int)(wcx+rr), prevY=wcy;
+      for (int s=1;s<=spokes;s++){
+         double a=s*2.0*M_PI/spokes;
+         int nx2=(int)(wcx+cos(a)*rr), ny2=(int)(wcy+sin(a)*rr);
+         path_draw_line_segment(prevX,prevY,nx2,ny2,col);
+         prevX=nx2; prevY=ny2;
+      }
+   }
+   return JS_UNDEFINED;
+}
+
+/* drawBrickPattern(x,y,w,h,bw,bh,color) */
+static JSValue js_draw_brick_pattern(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 7) return JS_UNDEFINED;
+   int bx=(int)double_from_js(ctx,argv[0],0.0)-(int)cam2d_x;
+   int by=(int)double_from_js(ctx,argv[1],0.0)-(int)cam2d_y;
+   int bw=(int)double_from_js(ctx,argv[2],100.0);
+   int bh=(int)double_from_js(ctx,argv[3],100.0);
+   int tw=(int)double_from_js(ctx,argv[4],20.0);
+   int th=(int)double_from_js(ctx,argv[5],10.0);
+   uint32_t col=(uint32_t)color_from_js(ctx,argv[6],0xFFFFFFFFu);
+   if (tw<2)tw=2; if (th<2)th=2;
+   /* horizontal mortar lines */
+   for (int y2=by;y2<by+bh;y2+=th)
+      for (int x2=bx;x2<bx+bw;x2++) set_pixel(x2,y2,col);
+   /* vertical mortar, offset per row */
+   for (int row=0;;row++){
+      int y2=by+row*th;
+      if (y2>=by+bh) break;
+      int offset=(row%2==0)?0:tw/2;
+      for (int x2=bx+offset;x2<bx+bw;x2+=tw)
+         for (int y3=y2;y3<y2+th&&y3<by+bh;y3++) set_pixel(x2,y3,col);
+   }
+   return JS_UNDEFINED;
+}
+
+/* fillWaveShape(x,y,w,h,amp,freq,color) — wave-topped filled shape */
+static JSValue js_fill_wave_shape(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 7) return JS_UNDEFINED;
+   int wx=(int)double_from_js(ctx,argv[0],0.0)-(int)cam2d_x;
+   int wy=(int)double_from_js(ctx,argv[1],0.0)-(int)cam2d_y;
+   int ww=(int)double_from_js(ctx,argv[2],100.0);
+   int wh=(int)double_from_js(ctx,argv[3],60.0);
+   double wamp =double_from_js(ctx,argv[4],10.0);
+   double wfreq=double_from_js(ctx,argv[5],2.0);
+   uint32_t col=(uint32_t)color_from_js(ctx,argv[6],0xFFFFFFFFu);
+   for (int x2=wx;x2<wx+ww;x2++){
+      double t=(double)(x2-wx)/ww;
+      int yTop=wy+(int)(wamp*sin(t*wfreq*2.0*M_PI));
+      for (int y2=yTop;y2<wy+wh;y2++) set_pixel(x2,y2,col);
+   }
+   return JS_UNDEFINED;
+}
+
+/* CIE Lab → RGB helper (D65 illuminant) */
+static uint32_t lab_to_rgba(double Llab, double astar, double bstar, uint8_t alpha)
+{
+   /* Lab → XYZ */
+   double fy=(Llab+16.0)/116.0;
+   double fx=astar/500.0+fy;
+   double fz=fy-bstar/200.0;
+   double x=(fx*fx*fx>0.008856)?fx*fx*fx:(fx-16.0/116.0)/7.787;
+   double y=(fy*fy*fy>0.008856)?fy*fy*fy:(fy-16.0/116.0)/7.787;
+   double z=(fz*fz*fz>0.008856)?fz*fz*fz:(fz-16.0/116.0)/7.787;
+   /* D65 reference */
+   x*=0.95047; z*=1.08883;
+   /* XYZ → linear sRGB */
+   double rl= 3.2406*x - 1.5372*y - 0.4986*z;
+   double gl=-0.9689*x + 1.8758*y + 0.0415*z;
+   double bl= 0.0557*x - 0.2040*y + 1.0570*z;
+   /* gamma */
+#define SRGB(v) ((v)<=0.0031308?12.92*(v):1.055*pow((v),1.0/2.4)-0.055)
+   rl=SRGB(rl); gl=SRGB(gl); bl=SRGB(bl);
+#undef SRGB
+   if(rl<0)rl=0;if(rl>1)rl=1;
+   if(gl<0)gl=0;if(gl>1)gl=1;
+   if(bl<0)bl=0;if(bl>1)bl=1;
+   return ((uint32_t)(rl*255+0.5)<<24)|((uint32_t)(gl*255+0.5)<<16)|((uint32_t)(bl*255+0.5)<<8)|alpha;
+}
+
+/* colorFromLab(Llab,alab,blab) → color */
+static JSValue js_color_from_lab(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double Lv=argc>0?double_from_js(ctx,argv[0],50.0):50.0;
+   double av=argc>1?double_from_js(ctx,argv[1],0.0):0.0;
+   double bv=argc>2?double_from_js(ctx,argv[2],0.0):0.0;
+   return JS_NewInt32(ctx,(int32_t)lab_to_rgba(Lv,av,bv,255));
+}
+
+/* drawFlame(cx,cy,h,color) — flame outline (teardrop) */
+static JSValue js_draw_flame(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 4) return JS_UNDEFINED;
+   int fcx=(int)double_from_js(ctx,argv[0],0.0)-(int)cam2d_x;
+   int fcy=(int)double_from_js(ctx,argv[1],0.0)-(int)cam2d_y;
+   int fh =(int)double_from_js(ctx,argv[2],40.0);
+   uint32_t col=(uint32_t)color_from_js(ctx,argv[3],0xFFFFFFFFu);
+   int fw=fh/3;
+   /* draw outer flame profile using parametric curve */
+   int steps=60;
+   int prevX=fcx,prevY=fcy;
+   for (int i=0;i<=steps;i++){
+      double t=(double)i/steps * 2.0 * M_PI;
+      /* flame parametric: x = fw*sin(t)*(1-0.4*sin(t/2)), y = -fh*0.5*(1-cos(t)) */
+      double xo=(double)fw*sin(t)*(1.0-0.3*sin(t*0.5));
+      double yo=-(double)fh*0.5*(1.0-cos(t));
+      int px2=fcx+(int)xo, py2=fcy+(int)yo;
+      if (i>0) path_draw_line_segment(prevX,prevY,px2,py2,col);
+      prevX=px2; prevY=py2;
+   }
+   return JS_UNDEFINED;
+}
+
+/* fillFlame(cx,cy,h,color) — filled flame */
+static JSValue js_fill_flame(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 4) return JS_UNDEFINED;
+   int fcx=(int)double_from_js(ctx,argv[0],0.0)-(int)cam2d_x;
+   int fcy=(int)double_from_js(ctx,argv[1],0.0)-(int)cam2d_y;
+   int fh =(int)double_from_js(ctx,argv[2],40.0);
+   uint32_t col=(uint32_t)color_from_js(ctx,argv[3],0xFFFFFFFFu);
+   int fw=fh/3;
+   for (int y2=fcy-fh;y2<=fcy;y2++){
+      double trel=(double)(fcy-y2)/(double)fh; /* 1 at top, 0 at base */
+      /* width narrows toward top */
+      int xw=(int)(fw*sin(trel*M_PI)*(1.0-0.2*trel));
+      for (int x2=fcx-xw;x2<=fcx+xw;x2++) set_pixel(x2,y2,col);
+   }
+   return JS_UNDEFINED;
+}
+
+/* screenZoom(factor,cx,cy) — zoom toward a point */
+static JSValue js_screen_zoom(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double factor = argc>0 ? double_from_js(ctx,argv[0],1.2) : 1.2;
+   double zcx    = argc>1 ? double_from_js(ctx,argv[1],NOVA64_WIDTH*0.5)  : NOVA64_WIDTH*0.5;
+   double zcy    = argc>2 ? double_from_js(ctx,argv[2],NOVA64_HEIGHT*0.5) : NOVA64_HEIGHT*0.5;
+   if (factor<=0.01) factor=0.01;
+
+   int cx0=0,cy0=0,cw=NOVA64_WIDTH,ch=NOVA64_HEIGHT;
+   if (clip_active){cx0=clip_x;cy0=clip_y;cw=clip_w;ch=clip_h;}
+   int x1=cx0,y1=cy0,x2=cx0+cw-1,y2=cy0+ch-1;
+   if (x2>=NOVA64_WIDTH) x2=NOVA64_WIDTH-1;
+   if (y2>=NOVA64_HEIGHT) y2=NOVA64_HEIGHT-1;
+   int W=x2-x1+1,H=y2-y1+1;
+   if (W<=0||H<=0) return JS_UNDEFINED;
+
+   uint32_t *src=(uint32_t*)malloc((size_t)(W*H)*sizeof(uint32_t));
+   if (!src) return JS_UNDEFINED;
+   for (int r=0;r<H;r++)
+      for (int c=0;c<W;c++)
+         src[r*W+c]=framebuffer[(y1+r)*NOVA64_WIDTH+(x1+c)];
+
+   for (int r=0;r<H;r++){
+      for (int c=0;c<W;c++){
+         double sx=(c+x1-zcx)/factor+zcx-x1;
+         double sy=(r+y1-zcy)/factor+zcy-y1;
+         int si=(int)(sx+0.5), sj=(int)(sy+0.5);
+         if (si>=0&&si<W&&sj>=0&&sj<H)
+            framebuffer[(y1+r)*NOVA64_WIDTH+(x1+c)]=src[sj*W+si];
+         else
+            framebuffer[(y1+r)*NOVA64_WIDTH+(x1+c)]=0xFF000000u;
+      }
+   }
+   free(src);
+   return JS_UNDEFINED;
+}
+
+/* drawDotLine(x1,y1,x2,y2,spacing,r,color) — dots along a line */
+static JSValue js_draw_dot_line(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 7) return JS_UNDEFINED;
+   double dx1=double_from_js(ctx,argv[0],0.0)-(double)cam2d_x;
+   double dy1=double_from_js(ctx,argv[1],0.0)-(double)cam2d_y;
+   double dx2=double_from_js(ctx,argv[2],100.0)-(double)cam2d_x;
+   double dy2=double_from_js(ctx,argv[3],0.0)-(double)cam2d_y;
+   int spacing=(int)double_from_js(ctx,argv[4],8.0);
+   int dr  =(int)double_from_js(ctx,argv[5],2.0);
+   uint32_t col=(uint32_t)color_from_js(ctx,argv[6],0xFFFFFFFFu);
+   if (spacing<1) spacing=1;
+   double ddx=dx2-dx1,ddy=dy2-dy1;
+   double len=sqrt(ddx*ddx+ddy*ddy);
+   if (len<0.5) return JS_UNDEFINED;
+   double ux=ddx/len,uy=ddy/len;
+   for (double d=0;d<=len;d+=spacing){
+      int cx2=(int)(dx1+ux*d), cy2=(int)(dy1+uy*d);
+      for (int y2=cy2-dr;y2<=cy2+dr;y2++)
+         for (int x2=cx2-dr;x2<=cx2+dr;x2++){
+            double dist=sqrt((double)(x2-cx2)*(x2-cx2)+(double)(y2-cy2)*(y2-cy2));
+            if (dist<=dr) set_pixel(x2,y2,col);
+         }
+   }
+   return JS_UNDEFINED;
+}
+
+/* oscillate(t,freq,lo,hi) — sine oscillation between lo and hi */
+static JSValue js_oscillate(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double t  = argc>0 ? double_from_js(ctx,argv[0],0.0) : 0.0;
+   double fr = argc>1 ? double_from_js(ctx,argv[1],1.0) : 1.0;
+   double lo = argc>2 ? double_from_js(ctx,argv[2],0.0) : 0.0;
+   double hi = argc>3 ? double_from_js(ctx,argv[3],1.0) : 1.0;
+   double v  = (sin(t*fr*2.0*M_PI)*0.5+0.5)*(hi-lo)+lo;
+   return JS_NewFloat64(ctx,v);
+}
+
+/* pulseValue(t,period) → t mod period normalized to 0-1 */
+static JSValue js_pulse_value(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double t  = argc>0 ? double_from_js(ctx,argv[0],0.0) : 0.0;
+   double per= argc>1 ? double_from_js(ctx,argv[1],1.0) : 1.0;
+   if (per<=0.0) per=1.0;
+   double v=fmod(t,per)/per;
+   if (v<0.0) v+=1.0;
+   return JS_NewFloat64(ctx,v);
+}
+
 /* ── Batch 19: color blends, screen effects, wave draw, bubble, connector ─── */
 
 /* colorLighten(c1,c2) — lighten blend: max per channel */
@@ -15325,6 +15619,20 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, global, "colorPinLight",            js_color_pin_light,           2);
    set_function(ctx, global, "drawConnector",            js_draw_connector,            5);
    set_function(ctx, global, "drawHatch",                js_draw_hatch,                7);
+
+   /* Batch 20 */
+   set_function(ctx, global, "drawTarget",       js_draw_target,       5);
+   set_function(ctx, global, "fillTarget",       js_fill_target,       6);
+   set_function(ctx, global, "drawSpiderWeb",    js_draw_spider_web,   6);
+   set_function(ctx, global, "drawBrickPattern", js_draw_brick_pattern,7);
+   set_function(ctx, global, "fillWaveShape",    js_fill_wave_shape,   7);
+   set_function(ctx, global, "colorFromLab",     js_color_from_lab,    3);
+   set_function(ctx, global, "drawFlame",        js_draw_flame,        4);
+   set_function(ctx, global, "fillFlame",        js_fill_flame,        4);
+   set_function(ctx, global, "screenZoom",       js_screen_zoom,       3);
+   set_function(ctx, global, "drawDotLine",      js_draw_dot_line,     7);
+   set_function(ctx, global, "oscillate",        js_oscillate,         4);
+   set_function(ctx, global, "pulseValue",       js_pulse_value,       2);
 
    JS_FreeValue(ctx, global);
    return true;

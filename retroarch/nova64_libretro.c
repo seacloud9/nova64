@@ -6314,6 +6314,263 @@ static JSValue js_vec_lerp(JSContext *ctx, JSValueConst this_val, int argc, JSVa
    return obj;
 }
 
+/* ── Batch 11: cubic bezier, spline, hex grid, graph, color, waveform ── */
+
+/* drawCubicBezier(x0,y0, cx0,cy0, cx1,cy1, x1,y1, color [,steps]) */
+static JSValue js_draw_cubic_bezier(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 9) return JS_UNDEFINED;
+   double x0  = double_from_js(ctx, argv[0], 0.0), y0  = double_from_js(ctx, argv[1], 0.0);
+   double cx0 = double_from_js(ctx, argv[2], 0.0), cy0 = double_from_js(ctx, argv[3], 0.0);
+   double cx1 = double_from_js(ctx, argv[4], 0.0), cy1 = double_from_js(ctx, argv[5], 0.0);
+   double x1  = double_from_js(ctx, argv[6], 0.0), y1  = double_from_js(ctx, argv[7], 0.0);
+   uint32_t color = color_from_js(ctx, argv[8], 0xffffffff);
+   int steps = argc > 9 ? int_from_js(ctx, argv[9], 48) : 48;
+   if (steps < 2) steps = 2; if (steps > 256) steps = 256;
+   double px = x0, py = y0;
+   for (int i = 1; i <= steps; i++) {
+      double t = (double)i / steps, mt = 1.0 - t;
+      double nx = mt*mt*mt*x0 + 3.0*mt*mt*t*cx0 + 3.0*mt*t*t*cx1 + t*t*t*x1;
+      double ny = mt*mt*mt*y0 + 3.0*mt*mt*t*cy0 + 3.0*mt*t*t*cy1 + t*t*t*y1;
+      path_draw_line_segment((int)round(px),(int)round(py),(int)round(nx),(int)round(ny),color);
+      px = nx; py = ny;
+   }
+   return JS_UNDEFINED;
+}
+
+/* splinePoint(points, t) → {x,y} — Catmull-Rom point (points = flat array x,y pairs, t in [0,1]) */
+static JSValue js_spline_point(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 2 || !JS_IsArray(argv[0])) return JS_NewObject(ctx);
+   JSValue len_v = JS_GetPropertyStr(ctx, argv[0], "length");
+   int len = 0; JS_ToInt32(ctx, &len, len_v); JS_FreeValue(ctx, len_v);
+   int npts = len / 2;
+   if (npts < 2) return JS_NewObject(ctx);
+   double t = double_from_js(ctx, argv[1], 0.0);
+   t = t < 0.0 ? 0.0 : (t > 1.0 ? 1.0 : t);
+   double seg_f = t * (npts - 1);
+   int seg = (int)seg_f; if (seg >= npts - 1) seg = npts - 2;
+   double u = seg_f - seg;
+   /* Catmull-Rom: p0,p1,p2,p3 — clamp endpoints */
+   int i0 = seg > 0 ? seg - 1 : 0;
+   int i1 = seg;
+   int i2 = seg + 1 < npts ? seg + 1 : npts - 1;
+   int i3 = seg + 2 < npts ? seg + 2 : npts - 1;
+   JSValue x0v=JS_GetPropertyUint32(ctx,argv[0],(uint32_t)(i0*2));
+   JSValue y0v=JS_GetPropertyUint32(ctx,argv[0],(uint32_t)(i0*2+1));
+   JSValue x1v=JS_GetPropertyUint32(ctx,argv[0],(uint32_t)(i1*2));
+   JSValue y1v=JS_GetPropertyUint32(ctx,argv[0],(uint32_t)(i1*2+1));
+   JSValue x2v=JS_GetPropertyUint32(ctx,argv[0],(uint32_t)(i2*2));
+   JSValue y2v=JS_GetPropertyUint32(ctx,argv[0],(uint32_t)(i2*2+1));
+   JSValue x3v=JS_GetPropertyUint32(ctx,argv[0],(uint32_t)(i3*2));
+   JSValue y3v=JS_GetPropertyUint32(ctx,argv[0],(uint32_t)(i3*2+1));
+   double p0x=double_from_js(ctx,x0v,0),p0y=double_from_js(ctx,y0v,0);
+   double p1x=double_from_js(ctx,x1v,0),p1y=double_from_js(ctx,y1v,0);
+   double p2x=double_from_js(ctx,x2v,0),p2y=double_from_js(ctx,y2v,0);
+   double p3x=double_from_js(ctx,x3v,0),p3y=double_from_js(ctx,y3v,0);
+   JS_FreeValue(ctx,x0v);JS_FreeValue(ctx,y0v);JS_FreeValue(ctx,x1v);JS_FreeValue(ctx,y1v);
+   JS_FreeValue(ctx,x2v);JS_FreeValue(ctx,y2v);JS_FreeValue(ctx,x3v);JS_FreeValue(ctx,y3v);
+   double u2=u*u, u3=u2*u;
+   double rx = 0.5*((-p0x+3*p1x-3*p2x+p3x)*u3+(2*p0x-5*p1x+4*p2x-p3x)*u2+(-p0x+p2x)*u+2*p1x);
+   double ry = 0.5*((-p0y+3*p1y-3*p2y+p3y)*u3+(2*p0y-5*p1y+4*p2y-p3y)*u2+(-p0y+p2y)*u+2*p1y);
+   JSValue obj = JS_NewObject(ctx);
+   JS_SetPropertyStr(ctx,obj,"x",JS_NewFloat64(ctx,rx));
+   JS_SetPropertyStr(ctx,obj,"y",JS_NewFloat64(ctx,ry));
+   return obj;
+}
+
+/* hexGrid(x,y, size, cols, rows, color) — draw hex grid outlines */
+static JSValue js_hex_grid(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 6) return JS_UNDEFINED;
+   double ox   = double_from_js(ctx, argv[0], 0.0);
+   double oy   = double_from_js(ctx, argv[1], 0.0);
+   double size = fabs(double_from_js(ctx, argv[2], 20.0));
+   int cols    = int_from_js(ctx, argv[3], 4);
+   int rows    = int_from_js(ctx, argv[4], 3);
+   uint32_t color = color_from_js(ctx, argv[5], 0xffffffff);
+   if (cols < 1 || rows < 1 || size < 1.0) return JS_UNDEFINED;
+   double hw = size * 1.7320508075688772 / 2.0; /* half-width */
+   double hh = size;                              /* half-height */
+   for (int row = 0; row < rows; row++) {
+      for (int col = 0; col < cols; col++) {
+         double cx2 = ox + col * hw * 2.0 + (row % 2 != 0 ? hw : 0.0);
+         double cy2 = oy + row * hh * 1.5;
+         /* 6 vertices of a pointy-top hexagon */
+         double pvx = 0, pvy = 0;
+         for (int v = 0; v <= 6; v++) {
+            double ang = (v % 6) * M_PI / 3.0 - M_PI / 6.0;
+            double vx = cx2 + size * cos(ang);
+            double vy = cy2 + size * sin(ang);
+            if (v > 0) path_draw_line_segment((int)round(pvx),(int)round(pvy),(int)round(vx),(int)round(vy),color);
+            pvx = vx; pvy = vy;
+         }
+      }
+   }
+   return JS_UNDEFINED;
+}
+
+/* drawGraph(values, x,y,w,h, minV,maxV, color) — line graph from array */
+static JSValue js_draw_graph(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 8 || !JS_IsArray(argv[0])) return JS_UNDEFINED;
+   JSValue len_v = JS_GetPropertyStr(ctx, argv[0], "length");
+   int len = 0; JS_ToInt32(ctx, &len, len_v); JS_FreeValue(ctx, len_v);
+   if (len < 2) return JS_UNDEFINED;
+   double gx = double_from_js(ctx, argv[1], 0.0), gy = double_from_js(ctx, argv[2], 0.0);
+   double gw = double_from_js(ctx, argv[3], 100.0), gh = double_from_js(ctx, argv[4], 50.0);
+   double minV = double_from_js(ctx, argv[5], 0.0), maxV = double_from_js(ctx, argv[6], 1.0);
+   uint32_t color = color_from_js(ctx, argv[7], 0xffffffff);
+   if (maxV == minV) maxV = minV + 1.0;
+   double px = 0, py = 0;
+   for (int i = 0; i < len; i++) {
+      JSValue vv = JS_GetPropertyUint32(ctx, argv[0], (uint32_t)i);
+      double v = double_from_js(ctx, vv, 0.0); JS_FreeValue(ctx, vv);
+      double nx = gx + (double)i / (len - 1) * gw;
+      double ny = gy + gh - (v - minV) / (maxV - minV) * gh;
+      if (i > 0) path_draw_line_segment((int)round(px),(int)round(py),(int)round(nx),(int)round(ny),color);
+      px = nx; py = ny;
+   }
+   return JS_UNDEFINED;
+}
+
+/* colorDesaturate(c, amount) — reduce saturation by amount [0,1] */
+static JSValue js_color_desaturate(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 2) return JS_NewInt32(ctx, 0);
+   uint32_t c = (uint32_t)color_from_js(ctx, argv[0], 0xffffffff);
+   double amt = clamp_double(double_from_js(ctx, argv[1], 0.0), 0.0, 1.0);
+   uint8_t r=(uint8_t)(c>>24),g=(uint8_t)(c>>16),b=(uint8_t)(c>>8),a=(uint8_t)c;
+   uint8_t gray = (uint8_t)(0.299*r + 0.587*g + 0.114*b);
+   r=(uint8_t)(r + (gray - r) * amt); g=(uint8_t)(g + (gray - g) * amt); b=(uint8_t)(b + (gray - b) * amt);
+   return JS_NewInt32(ctx, (int32_t)((r<<24)|(g<<16)|(b<<8)|a));
+}
+
+/* colorSaturate(c, amount) — boost saturation by amount [0,1] */
+static JSValue js_color_saturate(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 2) return JS_NewInt32(ctx, 0);
+   uint32_t c = (uint32_t)color_from_js(ctx, argv[0], 0xffffffff);
+   double amt = clamp_double(double_from_js(ctx, argv[1], 0.0), 0.0, 4.0);
+   uint8_t r=(uint8_t)(c>>24),g=(uint8_t)(c>>16),b=(uint8_t)(c>>8),a=(uint8_t)c;
+   uint8_t gray = (uint8_t)(0.299*r + 0.587*g + 0.114*b);
+   int ri=(int)r + (int)((r - gray) * amt); int gi=(int)g + (int)((g - gray) * amt); int bi=(int)b + (int)((b - gray) * amt);
+   ri=ri<0?0:(ri>255?255:ri); gi=gi<0?0:(gi>255?255:gi); bi=bi<0?0:(bi>255?255:bi);
+   return JS_NewInt32(ctx, (int32_t)(((uint8_t)ri<<24)|((uint8_t)gi<<16)|((uint8_t)bi<<8)|a));
+}
+
+/* waveformPlot(samples, x,y,w,h, color) — waveform from flat array of values in [-1,1] */
+static JSValue js_waveform_plot(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 6 || !JS_IsArray(argv[0])) return JS_UNDEFINED;
+   JSValue len_v = JS_GetPropertyStr(ctx, argv[0], "length");
+   int len = 0; JS_ToInt32(ctx, &len, len_v); JS_FreeValue(ctx, len_v);
+   if (len < 2) return JS_UNDEFINED;
+   double wx = double_from_js(ctx, argv[1], 0.0), wy = double_from_js(ctx, argv[2], 0.0);
+   double ww = double_from_js(ctx, argv[3], 100.0), wh = double_from_js(ctx, argv[4], 40.0);
+   uint32_t color = color_from_js(ctx, argv[5], 0xffffffff);
+   double midY = wy + wh * 0.5, halfH = wh * 0.5;
+   double px = 0, py = 0;
+   for (int i = 0; i < len; i++) {
+      JSValue vv = JS_GetPropertyUint32(ctx, argv[0], (uint32_t)i);
+      double v = double_from_js(ctx, vv, 0.0); JS_FreeValue(ctx, vv);
+      v = v < -1.0 ? -1.0 : (v > 1.0 ? 1.0 : v);
+      double nx = wx + (double)i / (len - 1) * ww;
+      double ny = midY - v * halfH;
+      if (i > 0) path_draw_line_segment((int)round(px),(int)round(py),(int)round(nx),(int)round(ny),color);
+      px = nx; py = ny;
+   }
+   return JS_UNDEFINED;
+}
+
+/* charCode(str) — returns codepoint of first character */
+static JSValue js_char_code(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 1) return JS_NewInt32(ctx, 0);
+   const char *s = JS_ToCString(ctx, argv[0]);
+   if (!s || !s[0]) { if(s) JS_FreeCString(ctx,s); return JS_NewInt32(ctx, 0); }
+   int code = (unsigned char)s[0];
+   JS_FreeCString(ctx, s);
+   return JS_NewInt32(ctx, code);
+}
+
+/* charFromCode(n) — returns 1-char string from codepoint */
+static JSValue js_char_from_code(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int code = argc > 0 ? int_from_js(ctx, argv[0], 0) : 0;
+   if (code < 0 || code > 127) code = 0;
+   char buf[2] = { (char)code, '\0' };
+   return JS_NewString(ctx, buf);
+}
+
+/* printBold(text, x, y, color) — double-pixel bold text approximation */
+static JSValue js_print_bold(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 4) return JS_UNDEFINED;
+   const char *text = JS_ToCString(ctx, argv[0]);
+   if (!text) return JS_UNDEFINED;
+   int x = int_from_js(ctx, argv[1], 0);
+   int y = int_from_js(ctx, argv[2], 0);
+   uint32_t color = color_from_js(ctx, argv[3], 0xffffffff);
+   draw_text_pixels(text, x + (int)cam2d_x,     y + (int)cam2d_y, color);
+   draw_text_pixels(text, x + (int)cam2d_x + 1, y + (int)cam2d_y, color);
+   JS_FreeCString(ctx, text);
+   return JS_UNDEFINED;
+}
+
+/* dotGrid(x,y, w,h, gap, r, color) — grid of filled dots */
+static JSValue js_dot_grid(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 7 || !framebuffer) return JS_UNDEFINED;
+   int ox  = int_from_js(ctx, argv[0], 0);
+   int oy  = int_from_js(ctx, argv[1], 0);
+   int w   = int_from_js(ctx, argv[2], 100);
+   int h   = int_from_js(ctx, argv[3], 100);
+   int gap = int_from_js(ctx, argv[4], 8);
+   int r   = int_from_js(ctx, argv[5], 2);
+   uint32_t color = color_from_js(ctx, argv[6], 0xffffffff);
+   if (gap < 1) gap = 1;
+   for (int dy = 0; dy <= h; dy += gap) {
+      for (int dx = 0; dx <= w; dx += gap) {
+         int cx2 = ox + dx, cy2 = oy + dy;
+         for (int py2 = cy2 - r; py2 <= cy2 + r; py2++) {
+            for (int px2 = cx2 - r; px2 <= cx2 + r; px2++) {
+               if ((px2-cx2)*(px2-cx2)+(py2-cy2)*(py2-cy2) <= r*r)
+                  set_pixel(px2 - (int)cam2d_x, py2 - (int)cam2d_y, color);
+            }
+         }
+      }
+   }
+   return JS_UNDEFINED;
+}
+
+/* clampColor(c, lo, hi) — clamp each RGB channel to [lo, hi] */
+static JSValue js_clamp_color(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 3) return JS_NewInt32(ctx, 0);
+   uint32_t c  = (uint32_t)color_from_js(ctx, argv[0], 0);
+   int lo = int_from_js(ctx, argv[1], 0);
+   int hi = int_from_js(ctx, argv[2], 255);
+   if (lo < 0) lo = 0; if (lo > 255) lo = 255;
+   if (hi < 0) hi = 0; if (hi > 255) hi = 255;
+   if (lo > hi) { int tmp=lo; lo=hi; hi=tmp; }
+   uint8_t r=(uint8_t)(c>>24),g=(uint8_t)(c>>16),b=(uint8_t)(c>>8),a=(uint8_t)c;
+   r=(r<lo)?lo:(r>hi?hi:r); g=(g<lo)?lo:(g>hi?hi:g); b=(b<lo)?lo:(b>hi?hi:b);
+   return JS_NewInt32(ctx, (int32_t)((r<<24)|(g<<16)|(b<<8)|a));
+}
+
 /* ── Scrolling text ──────────────────────────────────────────────────── */
 static JSValue js_create_scroll_text(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
@@ -12666,6 +12923,19 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, global, "vecDot",         js_vec_dot,         4);
    set_function(ctx, global, "vecCross",       js_vec_cross,       4);
    set_function(ctx, global, "vecLerp",        js_vec_lerp,        5);
+   /* Batch 11: cubic bezier, spline, hex grid, graph, color, waveform, char, bold, dots */
+   set_function(ctx, global, "drawCubicBezier",  js_draw_cubic_bezier, 10);
+   set_function(ctx, global, "splinePoint",      js_spline_point,      2);
+   set_function(ctx, global, "hexGrid",          js_hex_grid,          6);
+   set_function(ctx, global, "drawGraph",        js_draw_graph,        8);
+   set_function(ctx, global, "colorDesaturate",  js_color_desaturate,  2);
+   set_function(ctx, global, "colorSaturate",    js_color_saturate,    2);
+   set_function(ctx, global, "waveformPlot",     js_waveform_plot,     6);
+   set_function(ctx, global, "charCode",         js_char_code,         1);
+   set_function(ctx, global, "charFromCode",     js_char_from_code,    1);
+   set_function(ctx, global, "printBold",        js_print_bold,        4);
+   set_function(ctx, global, "dotGrid",          js_dot_grid,          7);
+   set_function(ctx, global, "clampColor",       js_clamp_color,       3);
 
    JS_FreeValue(ctx, global);
    return true;

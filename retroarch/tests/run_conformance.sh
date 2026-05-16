@@ -755,5 +755,12 @@ run_visual_case "250 trig helpers"      "250-trig-helpers"       "retroarch/conf
 run_visual_case "251 screen glow"       "251-screen-glow"        "retroarch/conformance/251-screen-glow.js"           "9f125e222275afc1"
 run_visual_case "252 draw ruler"        "252-draw-ruler"         "retroarch/conformance/252-draw-ruler.js"            "cacf931e7c320da4"
 run_visual_case "259 batch17 showcase"  "259-batch17-showcase"   "retroarch/conformance/259-batch17-showcase.js"      "2bb81b13794cdc7c"
+run_visual_case "260 vec from angle"       "260-vec-from-angle"   "retroarch/conformance/260-vec-from-angle.js"   "2184e2cf3a068d0d"
+run_visual_case "261 draw trail"           "261-draw-trail"       "retroarch/conformance/261-draw-trail.js"       "4802319c297ee779"
+run_visual_case "262 color dodge burn"     "262-color-dodge-burn" "retroarch/conformance/262-color-dodge-burn.js" "03e7def95720e1c9"
+run_visual_case "263 radial gradient"      "263-radial-gradient"  "retroarch/conformance/263-radial-gradient.js"  "a2f0018c5639d5f0"
+run_visual_case "264 screen crt oil"       "264-screen-crt-oil"   "retroarch/conformance/264-screen-crt-oil.js"   "1640e81536d979cf"
+run_visual_case "265 draw gear"            "265-draw-gear"        "retroarch/conformance/265-draw-gear.js"        "6ecad55c69626bcf"
+run_visual_case "271 batch18 showcase"     "271-batch18-showcase" "retroarch/conformance/271-batch18-showcase.js" "7e31b8c432a65316"
 
 echo "Conformance passed."

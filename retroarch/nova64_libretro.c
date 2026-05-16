@@ -6314,6 +6314,337 @@ static JSValue js_vec_lerp(JSContext *ctx, JSValueConst this_val, int argc, JSVa
    return obj;
 }
 
+/* ── Batch 18: vector utils, color blends, trail, gradients, gear, CRT ─── */
+
+/* vecFromAngle(degrees) → {x,y} unit vector */
+static JSValue js_vec_from_angle(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double deg = argc>0 ? double_from_js(ctx,argv[0],0.0) : 0.0;
+   double rad = deg * M_PI / 180.0;
+   JSValue obj = JS_NewObject(ctx);
+   JS_SetPropertyStr(ctx, obj, "x", JS_NewFloat64(ctx, cos(rad)));
+   JS_SetPropertyStr(ctx, obj, "y", JS_NewFloat64(ctx, sin(rad)));
+   return obj;
+}
+
+/* closestPointOnLine(px,py,x1,y1,x2,y2) → {x,y} nearest point on segment */
+static JSValue js_closest_point_on_line(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 6) return JS_UNDEFINED;
+   double px=double_from_js(ctx,argv[0],0.0), py=double_from_js(ctx,argv[1],0.0);
+   double x1=double_from_js(ctx,argv[2],0.0), y1=double_from_js(ctx,argv[3],0.0);
+   double x2=double_from_js(ctx,argv[4],0.0), y2=double_from_js(ctx,argv[5],0.0);
+   double dx=x2-x1, dy=y2-y1;
+   double lenSq=dx*dx+dy*dy;
+   double rx=x1, ry=y1;
+   if (lenSq > 1e-12) {
+      double t=((px-x1)*dx+(py-y1)*dy)/lenSq;
+      if (t<0.0) t=0.0; if (t>1.0) t=1.0;
+      rx=x1+t*dx; ry=y1+t*dy;
+   }
+   JSValue obj=JS_NewObject(ctx);
+   JS_SetPropertyStr(ctx,obj,"x",JS_NewFloat64(ctx,rx));
+   JS_SetPropertyStr(ctx,obj,"y",JS_NewFloat64(ctx,ry));
+   return obj;
+}
+
+/* distToLine(px,py,x1,y1,x2,y2) → distance from point to segment */
+static JSValue js_dist_to_line(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 6) return JS_NewFloat64(ctx,0.0);
+   double px=double_from_js(ctx,argv[0],0.0), py=double_from_js(ctx,argv[1],0.0);
+   double x1=double_from_js(ctx,argv[2],0.0), y1=double_from_js(ctx,argv[3],0.0);
+   double x2=double_from_js(ctx,argv[4],0.0), y2=double_from_js(ctx,argv[5],0.0);
+   double dx=x2-x1, dy=y2-y1;
+   double lenSq=dx*dx+dy*dy;
+   double cx=x1,cy=y1;
+   if (lenSq > 1e-12) {
+      double t=((px-x1)*dx+(py-y1)*dy)/lenSq;
+      if (t<0.0) t=0.0; if (t>1.0) t=1.0;
+      cx=x1+t*dx; cy=y1+t*dy;
+   }
+   double ex=px-cx, ey=py-cy;
+   return JS_NewFloat64(ctx, sqrt(ex*ex+ey*ey));
+}
+
+/* drawTrail(x1,y1,x2,y2,w1,w2,color) — tapered line (filled trapezoid) */
+static JSValue js_draw_trail(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 7) return JS_UNDEFINED;
+   float fx1=(float)double_from_js(ctx,argv[0],0.0)-(float)cam2d_x;
+   float fy1=(float)double_from_js(ctx,argv[1],0.0)-(float)cam2d_y;
+   float fx2=(float)double_from_js(ctx,argv[2],0.0)-(float)cam2d_x;
+   float fy2=(float)double_from_js(ctx,argv[3],0.0)-(float)cam2d_y;
+   float w1 =(float)double_from_js(ctx,argv[4],4.0)*0.5f;
+   float w2 =(float)double_from_js(ctx,argv[5],1.0)*0.5f;
+   uint32_t col=(uint32_t)color_from_js(ctx,argv[6],0xFFFFFFFFu);
+   float dx=fx2-fx1, dy=fy2-fy1;
+   float len=sqrtf(dx*dx+dy*dy);
+   if (len<0.5f) return JS_UNDEFINED;
+   float nx=-dy/len, ny=dx/len;
+   /* render as quads along line using scanline fill */
+   /* 4 corners of trapezoid */
+   float ax=fx1+nx*w1, ay=fy1+ny*w1;
+   float bx=fx1-nx*w1, by=fy1-ny*w1;
+   float cx2=fx2+nx*w2, cy2=fy2+ny*w2;
+   float dx2=fx2-nx*w2, dy2=fy2-ny*w2;
+   /* draw as two triangles */
+   /* triangle 1: a, b, c */
+   int minY=(int)fminf(fminf(ay,by),fminf(cy2,dy2));
+   int maxY=(int)fmaxf(fmaxf(ay,by),fmaxf(cy2,dy2));
+   for (int y=minY; y<=maxY; y++) {
+      /* for each y, find x extents via edge intersections */
+      float xmin=1e9f, xmax=-1e9f;
+      float edges[4][4]={{ax,ay,cx2,cy2},{ax,ay,bx,by},{bx,by,dx2,dy2},{cx2,cy2,dx2,dy2}};
+      for (int e=0;e<4;e++) {
+         float ey0=edges[e][1], ey1=edges[e][3];
+         if ((ey0<=y&&y<=ey1)||(ey1<=y&&y<=ey0)) {
+            float t=(ey0==ey1)?0.0f:(float)(y-ey0)/(ey1-ey0);
+            float xi=edges[e][0]+(edges[e][2]-edges[e][0])*t;
+            if (xi<xmin) xmin=xi;
+            if (xi>xmax) xmax=xi;
+         }
+      }
+      for (int x=(int)xmin; x<=(int)xmax; x++) set_pixel(x,y,col);
+   }
+   return JS_UNDEFINED;
+}
+
+/* colorDodge(c1,c2) — color dodge blend */
+static JSValue js_color_dodge(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 2) return JS_UNDEFINED;
+   uint32_t c1=(uint32_t)color_from_js(ctx,argv[0],0xFF000000u);
+   uint32_t c2=(uint32_t)color_from_js(ctx,argv[1],0xFF000000u);
+#define DODGE(a,b) ((int)(b)==255 ? 255 : (int)fmin(255.0,(int)(a)*255/(255-(int)(b))))
+   uint32_t r=(uint32_t)DODGE((c1>>24)&0xFF,(c2>>24)&0xFF);
+   uint32_t g=(uint32_t)DODGE((c1>>16)&0xFF,(c2>>16)&0xFF);
+   uint32_t b=(uint32_t)DODGE((c1>> 8)&0xFF,(c2>> 8)&0xFF);
+   uint32_t a=(c1)&0xFF;
+#undef DODGE
+   return JS_NewInt32(ctx,(int32_t)((r<<24)|(g<<16)|(b<<8)|a));
+}
+
+/* colorBurn(c1,c2) — color burn blend */
+static JSValue js_color_burn(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 2) return JS_UNDEFINED;
+   uint32_t c1=(uint32_t)color_from_js(ctx,argv[0],0xFF000000u);
+   uint32_t c2=(uint32_t)color_from_js(ctx,argv[1],0xFF000000u);
+#define BURN(a,b) ((int)(b)==0 ? 0 : (int)fmax(0.0,255-(255-(int)(a))*255/(int)(b)))
+   uint32_t r=(uint32_t)BURN((c1>>24)&0xFF,(c2>>24)&0xFF);
+   uint32_t g=(uint32_t)BURN((c1>>16)&0xFF,(c2>>16)&0xFF);
+   uint32_t b=(uint32_t)BURN((c1>> 8)&0xFF,(c2>> 8)&0xFF);
+   uint32_t a=(c1)&0xFF;
+#undef BURN
+   return JS_NewInt32(ctx,(int32_t)((r<<24)|(g<<16)|(b<<8)|a));
+}
+
+/* fillRadialGradient(cx,cy,r,c1,c2) — radial gradient from center to edge */
+static JSValue js_fill_radial_gradient(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 5) return JS_UNDEFINED;
+   int rcx=(int)double_from_js(ctx,argv[0],0.0)-(int)cam2d_x;
+   int rcy=(int)double_from_js(ctx,argv[1],0.0)-(int)cam2d_y;
+   double rad=double_from_js(ctx,argv[2],50.0);
+   uint32_t col1=(uint32_t)color_from_js(ctx,argv[3],0xFFFFFFFFu);
+   uint32_t col2=(uint32_t)color_from_js(ctx,argv[4],0x00000000u);
+   int ir=(int)rad+1;
+   for (int y=rcy-ir;y<=rcy+ir;y++){
+      for (int x=rcx-ir;x<=rcx+ir;x++){
+         double dist=sqrt((double)(x-rcx)*(x-rcx)+(double)(y-rcy)*(y-rcy));
+         if (dist>rad) continue;
+         double t=dist/rad;
+         double it=1.0-t;
+         uint32_t r=(uint32_t)((col1>>24&0xFF)*it+(col2>>24&0xFF)*t);
+         uint32_t g=(uint32_t)((col1>>16&0xFF)*it+(col2>>16&0xFF)*t);
+         uint32_t b=(uint32_t)((col1>> 8&0xFF)*it+(col2>> 8&0xFF)*t);
+         uint32_t a=(uint32_t)((col1    &0xFF)*it+(col2    &0xFF)*t);
+         set_pixel(x,y,(r<<24)|(g<<16)|(b<<8)|a);
+      }
+   }
+   return JS_UNDEFINED;
+}
+
+/* screenCRTWarp(strength) — barrel lens distortion */
+static JSValue js_screen_crt_warp(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double k = argc>0 ? double_from_js(ctx,argv[0],0.3) : 0.3;
+
+   int cx0=0,cy0=0,cw=NOVA64_WIDTH,ch=NOVA64_HEIGHT;
+   if (clip_active){cx0=clip_x;cy0=clip_y;cw=clip_w;ch=clip_h;}
+   int x1=cx0,y1=cy0,x2=cx0+cw-1,y2=cy0+ch-1;
+   if (x2>=NOVA64_WIDTH) x2=NOVA64_WIDTH-1;
+   if (y2>=NOVA64_HEIGHT) y2=NOVA64_HEIGHT-1;
+   int W=x2-x1+1,H=y2-y1+1;
+   if (W<=0||H<=0) return JS_UNDEFINED;
+
+   uint32_t *tmp=(uint32_t*)malloc((size_t)(W*H)*sizeof(uint32_t));
+   if (!tmp) return JS_UNDEFINED;
+   for (int r=0;r<H;r++)
+      for (int c=0;c<W;c++)
+         tmp[r*W+c]=framebuffer[(y1+r)*NOVA64_WIDTH+(x1+c)];
+
+   double hw=W*0.5, hh=H*0.5;
+   for (int r=0;r<H;r++){
+      for (int c=0;c<W;c++){
+         double nx2=(c-hw)/hw, ny2=(r-hh)/hh;
+         double r2=nx2*nx2+ny2*ny2;
+         double scale=1.0+k*r2;
+         double sx=(nx2*scale)*hw+hw;
+         double sy=(ny2*scale)*hh+hh;
+         int si=(int)sx,sj=(int)sy;
+         if (si>=0&&si<W&&sj>=0&&sj<H)
+            framebuffer[(y1+r)*NOVA64_WIDTH+(x1+c)]=tmp[sj*W+si];
+         else
+            framebuffer[(y1+r)*NOVA64_WIDTH+(x1+c)]=0x00000000u;
+      }
+   }
+   free(tmp);
+   return JS_UNDEFINED;
+}
+
+/* screenOilPaint(radius) — Kuwahara-style painterly effect */
+static JSValue js_screen_oil_paint(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int radius=(int)(argc>0?double_from_js(ctx,argv[0],2.0):2.0);
+   if (radius<1) radius=1; if (radius>6) radius=6;
+
+   int cx0=0,cy0=0,cw=NOVA64_WIDTH,ch=NOVA64_HEIGHT;
+   if (clip_active){cx0=clip_x;cy0=clip_y;cw=clip_w;ch=clip_h;}
+   int x1=cx0,y1=cy0,x2=cx0+cw-1,y2=cy0+ch-1;
+   if (x2>=NOVA64_WIDTH) x2=NOVA64_WIDTH-1;
+   if (y2>=NOVA64_HEIGHT) y2=NOVA64_HEIGHT-1;
+   int W=x2-x1+1,H=y2-y1+1;
+   if (W<=0||H<=0) return JS_UNDEFINED;
+
+   uint32_t *src=(uint32_t*)malloc((size_t)(W*H)*sizeof(uint32_t));
+   if (!src) return JS_UNDEFINED;
+   for (int r=0;r<H;r++)
+      for (int c=0;c<W;c++)
+         src[r*W+c]=framebuffer[(y1+r)*NOVA64_WIDTH+(x1+c)];
+
+   /* 4 quadrant Kuwahara */
+   for (int r=0;r<H;r++){
+      for (int c=0;c<W;c++){
+         double bestVar=1e18; uint32_t bestColor=src[r*W+c];
+         int qx[4]={0,-radius,0,-radius}, qy[4]={0,0,-radius,-radius};
+         for (int q=0;q<4;q++){
+            long sumR=0,sumG=0,sumB=0; int cnt=0;
+            for (int dy=qy[q];dy<=qy[q]+radius;dy++)
+               for (int dx=qx[q];dx<=qx[q]+radius;dx++){
+                  int sr=r+dy,sc=c+dx;
+                  if (sr<0||sr>=H||sc<0||sc>=W) continue;
+                  uint32_t p=src[sr*W+sc];
+                  sumR+=(p>>24)&0xFF; sumG+=(p>>16)&0xFF; sumB+=(p>>8)&0xFF; cnt++;
+               }
+            if (!cnt) continue;
+            double mr=sumR/cnt, mg=sumG/cnt, mb=sumB/cnt;
+            double var=0;
+            for (int dy=qy[q];dy<=qy[q]+radius;dy++)
+               for (int dx=qx[q];dx<=qx[q]+radius;dx++){
+                  int sr=r+dy,sc=c+dx;
+                  if (sr<0||sr>=H||sc<0||sc>=W) continue;
+                  uint32_t p=src[sr*W+sc];
+                  double dr=((p>>24)&0xFF)-mr;
+                  double dg=((p>>16)&0xFF)-mg;
+                  double db=((p>> 8)&0xFF)-mb;
+                  var+=dr*dr+dg*dg+db*db;
+               }
+            if (var<bestVar){
+               bestVar=var;
+               bestColor=((uint32_t)(mr+0.5)<<24)|((uint32_t)(mg+0.5)<<16)|((uint32_t)(mb+0.5)<<8)|(src[r*W+c]&0xFF);
+            }
+         }
+         framebuffer[(y1+r)*NOVA64_WIDTH+(x1+c)]=bestColor;
+      }
+   }
+   free(src);
+   return JS_UNDEFINED;
+}
+
+/* drawGear(cx,cy,r,teeth,toothH,color) — gear outline */
+static JSValue js_draw_gear(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 6) return JS_UNDEFINED;
+   int gcx=(int)double_from_js(ctx,argv[0],0.0)-(int)cam2d_x;
+   int gcy=(int)double_from_js(ctx,argv[1],0.0)-(int)cam2d_y;
+   double gr   =double_from_js(ctx,argv[2],30.0);
+   int    teeth=(int)double_from_js(ctx,argv[3],8.0);
+   double toothH=double_from_js(ctx,argv[4],6.0);
+   uint32_t col=(uint32_t)color_from_js(ctx,argv[5],0xFFFFFFFFu);
+   if (teeth<4) teeth=4;
+   int segs=teeth*4;
+   double outerR=gr+toothH, innerR=gr;
+   int prevX=0,prevY=0;
+   for (int i=0;i<=segs;i++){
+      double a=i*2.0*M_PI/segs;
+      int qi=i%4;
+      double r2=(qi==1||qi==2)?outerR:innerR;
+      int nx2=(int)(gcx+cos(a)*r2), ny2=(int)(gcy+sin(a)*r2);
+      if (i>0) path_draw_line_segment(prevX,prevY,nx2,ny2,col);
+      prevX=nx2; prevY=ny2;
+   }
+   return JS_UNDEFINED;
+}
+
+/* fillGear(cx,cy,r,teeth,toothH,color) — filled gear */
+static JSValue js_fill_gear(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 6) return JS_UNDEFINED;
+   int gcx=(int)double_from_js(ctx,argv[0],0.0)-(int)cam2d_x;
+   int gcy=(int)double_from_js(ctx,argv[1],0.0)-(int)cam2d_y;
+   double gr   =double_from_js(ctx,argv[2],30.0);
+   int    teeth=(int)double_from_js(ctx,argv[3],8.0);
+   double toothH=double_from_js(ctx,argv[4],6.0);
+   uint32_t col=(uint32_t)color_from_js(ctx,argv[5],0xFFFFFFFFu);
+   if (teeth<4) teeth=4;
+   double outerR=gr+toothH;
+   int maxR=(int)(outerR+2);
+   for (int py=gcy-maxR;py<=gcy+maxR;py++){
+      for (int px=gcx-maxR;px<=gcx+maxR;px++){
+         double dx=(double)(px-gcx), dy=(double)(py-gcy);
+         double dist=sqrt(dx*dx+dy*dy);
+         if (dist>outerR+1.0) continue;
+         if (dist<gr){set_pixel(px,py,col);continue;}
+         /* check if in a tooth */
+         double angle=atan2(dy,dx);
+         if (angle<0) angle+=2.0*M_PI;
+         double toothAngle=fmod(angle,2.0*M_PI/teeth)*teeth/(2.0*M_PI);
+         /* toothAngle in [0,1] per tooth; tooth occupies [0.25,0.75] */
+         if (toothAngle>=0.25&&toothAngle<=0.75&&dist<=outerR)
+            set_pixel(px,py,col);
+      }
+   }
+   return JS_UNDEFINED;
+}
+
+/* colorFromFloats(r,g,b,a) — create color from 0.0-1.0 float components */
+static JSValue js_color_from_floats(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double r=argc>0?double_from_js(ctx,argv[0],0.0):0.0;
+   double g=argc>1?double_from_js(ctx,argv[1],0.0):0.0;
+   double b=argc>2?double_from_js(ctx,argv[2],0.0):0.0;
+   double a=argc>3?double_from_js(ctx,argv[3],1.0):1.0;
+   if(r<0)r=0;if(r>1)r=1; if(g<0)g=0;if(g>1)g=1;
+   if(b<0)b=0;if(b>1)b=1; if(a<0)a=0;if(a>1)a=1;
+   uint32_t ri=(uint32_t)(r*255+0.5), gi=(uint32_t)(g*255+0.5);
+   uint32_t bi=(uint32_t)(b*255+0.5), ai=(uint32_t)(a*255+0.5);
+   return JS_NewInt32(ctx,(int32_t)((ri<<24)|(gi<<16)|(bi<<8)|ai));
+}
+
 /* ── Batch 17: vector math, color blends, trig helpers, glow, ruler ─── */
 
 /* reflectVector(vx,vy,nx,ny) → {x,y} — reflect v off unit normal n */
@@ -14662,6 +14993,20 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, global, "radToDeg",       js_rad_to_deg,      1);
    set_function(ctx, global, "screenGlow",     js_screen_glow,     2);
    set_function(ctx, global, "drawRuler",      js_draw_ruler,      6);
+
+   /* Batch 18 */
+   set_function(ctx, global, "vecFromAngle",        js_vec_from_angle,        1);
+   set_function(ctx, global, "closestPointOnLine",  js_closest_point_on_line, 6);
+   set_function(ctx, global, "distToLine",          js_dist_to_line,          6);
+   set_function(ctx, global, "drawTrail",           js_draw_trail,            7);
+   set_function(ctx, global, "colorDodge",          js_color_dodge,           2);
+   set_function(ctx, global, "colorBurn",           js_color_burn,            2);
+   set_function(ctx, global, "fillRadialGradient",  js_fill_radial_gradient,  5);
+   set_function(ctx, global, "screenCRTWarp",       js_screen_crt_warp,       1);
+   set_function(ctx, global, "screenOilPaint",      js_screen_oil_paint,      1);
+   set_function(ctx, global, "drawGear",            js_draw_gear,             6);
+   set_function(ctx, global, "fillGear",            js_fill_gear,             6);
+   set_function(ctx, global, "colorFromFloats",     js_color_from_floats,     4);
 
    JS_FreeValue(ctx, global);
    return true;

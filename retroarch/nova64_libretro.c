@@ -6314,6 +6314,344 @@ static JSValue js_vec_lerp(JSContext *ctx, JSValueConst this_val, int argc, JSVa
    return obj;
 }
 
+/* ── Batch 13: capsule, ring, region effects, gradient line, star, etc. ─ */
+
+/* colorWithAlpha(c, a) — replace alpha channel of color, keep RGB */
+static JSValue js_color_with_alpha(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   uint32_t c = color_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0xffffffff);
+   int a = int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 255);
+   if (a < 0) a = 0; if (a > 255) a = 255;
+   return JS_NewInt32(ctx, (int32_t)((c & 0xffffff00u) | (uint32_t)a));
+}
+
+/* drawCapsule(x1,y1,x2,y2,r,color) — capsule outline */
+static JSValue js_draw_capsule(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 6) return JS_UNDEFINED;
+   float fx1 = (float)double_from_js(ctx, argv[0], 0.0) - (float)cam2d_x;
+   float fy1 = (float)double_from_js(ctx, argv[1], 0.0) - (float)cam2d_y;
+   float fx2 = (float)double_from_js(ctx, argv[2], 0.0) - (float)cam2d_x;
+   float fy2 = (float)double_from_js(ctx, argv[3], 0.0) - (float)cam2d_y;
+   int r  = int_from_js(ctx, argv[4], 4);
+   if (r < 1) r = 1;
+   uint32_t color = color_from_js(ctx, argv[5], 0xffffffff);
+   float dx = fx2 - fx1, dy = fy2 - fy1;
+   float seg_sq = dx*dx + dy*dy;
+   float rsq_hi = (float)(r * r);
+   float rsq_lo = (float)((r-1) * (r-1));
+   int bx0 = (int)(fminf(fx1,fx2) - r - 1);
+   int by0 = (int)(fminf(fy1,fy2) - r - 1);
+   int bx1 = (int)(fmaxf(fx1,fx2) + r + 1);
+   int by1 = (int)(fmaxf(fy1,fy2) + r + 1);
+   for (int py = by0; py <= by1; py++) {
+      for (int px = bx0; px <= bx1; px++) {
+         if (px < 0 || px >= NOVA64_WIDTH || py < 0 || py >= NOVA64_HEIGHT) continue;
+         float ex = (float)px - fx1, ey = (float)py - fy1;
+         float t = seg_sq > 0.0f ? (ex*dx + ey*dy) / seg_sq : 0.0f;
+         if (t < 0.0f) t = 0.0f; if (t > 1.0f) t = 1.0f;
+         float cx = fx1 + t*dx - (float)px, cy = fy1 + t*dy - (float)py;
+         float d2 = cx*cx + cy*cy;
+         if (d2 <= rsq_hi && d2 >= rsq_lo) framebuffer[(size_t)py * NOVA64_WIDTH + (size_t)px] = color;
+      }
+   }
+   return JS_UNDEFINED;
+}
+
+/* fillCapsule(x1,y1,x2,y2,r,color) — filled pill/capsule shape */
+static JSValue js_fill_capsule(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 6) return JS_UNDEFINED;
+   float fx1 = (float)double_from_js(ctx, argv[0], 0.0) - (float)cam2d_x;
+   float fy1 = (float)double_from_js(ctx, argv[1], 0.0) - (float)cam2d_y;
+   float fx2 = (float)double_from_js(ctx, argv[2], 0.0) - (float)cam2d_x;
+   float fy2 = (float)double_from_js(ctx, argv[3], 0.0) - (float)cam2d_y;
+   int r  = int_from_js(ctx, argv[4], 4);
+   if (r < 1) r = 1;
+   uint32_t color = color_from_js(ctx, argv[5], 0xffffffff);
+   float dx = fx2 - fx1, dy = fy2 - fy1;
+   float seg_sq = dx*dx + dy*dy;
+   float rsq = (float)(r * r);
+   int bx0 = (int)(fminf(fx1,fx2) - r - 1);
+   int by0 = (int)(fminf(fy1,fy2) - r - 1);
+   int bx1 = (int)(fmaxf(fx1,fx2) + r + 1);
+   int by1 = (int)(fmaxf(fy1,fy2) + r + 1);
+   for (int py = by0; py <= by1; py++) {
+      for (int px = bx0; px <= bx1; px++) {
+         if (px < 0 || px >= NOVA64_WIDTH || py < 0 || py >= NOVA64_HEIGHT) continue;
+         float ex = (float)px - fx1, ey = (float)py - fy1;
+         float t = seg_sq > 0.0f ? (ex*dx + ey*dy) / seg_sq : 0.0f;
+         if (t < 0.0f) t = 0.0f; if (t > 1.0f) t = 1.0f;
+         float cx = fx1 + t*dx - (float)px, cy = fy1 + t*dy - (float)py;
+         if (cx*cx + cy*cy <= rsq) framebuffer[(size_t)py * NOVA64_WIDTH + (size_t)px] = color;
+      }
+   }
+   return JS_UNDEFINED;
+}
+
+/* drawRing(cx,cy,r1,r2,color) — filled ring between inner r1 and outer r2 */
+static JSValue js_draw_ring(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 5) return JS_UNDEFINED;
+   int cx2  = int_from_js(ctx, argv[0], 0) - (int)cam2d_x;
+   int cy2  = int_from_js(ctx, argv[1], 0) - (int)cam2d_y;
+   int r1   = int_from_js(ctx, argv[2], 10);
+   int r2   = int_from_js(ctx, argv[3], 20);
+   if (r1 < 0) r1 = 0; if (r2 < r1) r2 = r1;
+   uint32_t color = color_from_js(ctx, argv[4], 0xffffffff);
+   float r1sq = (float)(r1 * r1), r2sq = (float)(r2 * r2);
+   for (int py = cy2 - r2; py <= cy2 + r2; py++) {
+      for (int px = cx2 - r2; px <= cx2 + r2; px++) {
+         if (px < 0 || px >= NOVA64_WIDTH || py < 0 || py >= NOVA64_HEIGHT) continue;
+         float ddx = (float)(px - cx2), ddy = (float)(py - cy2);
+         float d2 = ddx*ddx + ddy*ddy;
+         if (d2 >= r1sq && d2 <= r2sq) framebuffer[(size_t)py * NOVA64_WIDTH + (size_t)px] = color;
+      }
+   }
+   return JS_UNDEFINED;
+}
+
+/* blurRegion(x,y,w,h,radius) — box-blur a rectangular screen region */
+static JSValue js_blur_region(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (!framebuffer) return JS_UNDEFINED;
+   int rx = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0);
+   int ry = int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0);
+   int rw = int_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 0);
+   int rh = int_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, 0);
+   int br = int_from_js(ctx, argc > 4 ? argv[4] : JS_UNDEFINED, 2);
+   if (br < 1) br = 1; if (br > 16) br = 16;
+   if (rx < 0) { rw += rx; rx = 0; }
+   if (ry < 0) { rh += ry; ry = 0; }
+   if (rx + rw > NOVA64_WIDTH)  rw = NOVA64_WIDTH  - rx;
+   if (ry + rh > NOVA64_HEIGHT) rh = NOVA64_HEIGHT - ry;
+   if (rw <= 0 || rh <= 0) return JS_UNDEFINED;
+   int W = NOVA64_WIDTH;
+   uint32_t *tmp = (uint32_t *)malloc((size_t)rw * (size_t)rh * sizeof(uint32_t));
+   if (!tmp) return JS_UNDEFINED;
+   for (int y = 0; y < rh; y++) {
+      for (int x = 0; x < rw; x++) {
+         unsigned sr = 0, sg = 0, sb = 0, cnt = 0;
+         for (int dx = -br; dx <= br; dx++) {
+            int sx = rx + x + dx;
+            if (sx < rx) sx = rx; if (sx >= rx + rw) sx = rx + rw - 1;
+            uint32_t c = framebuffer[(size_t)(ry + y) * W + (size_t)sx];
+            sr += (c >> 24) & 0xff; sg += (c >> 16) & 0xff; sb += (c >> 8) & 0xff; cnt++;
+         }
+         tmp[(size_t)y * rw + (size_t)x] = rgba8(sr/cnt, sg/cnt, sb/cnt, 255);
+      }
+   }
+   for (int y = 0; y < rh; y++) {
+      for (int x = 0; x < rw; x++) {
+         unsigned sr = 0, sg = 0, sb = 0, cnt = 0;
+         for (int dy = -br; dy <= br; dy++) {
+            int sy = y + dy;
+            if (sy < 0) sy = 0; if (sy >= rh) sy = rh - 1;
+            uint32_t c = tmp[(size_t)sy * rw + (size_t)x];
+            sr += (c >> 24) & 0xff; sg += (c >> 16) & 0xff; sb += (c >> 8) & 0xff; cnt++;
+         }
+         framebuffer[(size_t)(ry + y) * W + (size_t)(rx + x)] = rgba8(sr/cnt, sg/cnt, sb/cnt, 255);
+      }
+   }
+   free(tmp);
+   return JS_UNDEFINED;
+}
+
+/* drawGradientLine(x1,y1,x2,y2,c1,c2) — line with interpolated color */
+static JSValue js_draw_gradient_line(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 6) return JS_UNDEFINED;
+   int x1 = int_from_js(ctx, argv[0], 0) - (int)cam2d_x;
+   int y1 = int_from_js(ctx, argv[1], 0) - (int)cam2d_y;
+   int x2 = int_from_js(ctx, argv[2], 0) - (int)cam2d_x;
+   int y2 = int_from_js(ctx, argv[3], 0) - (int)cam2d_y;
+   uint32_t c1 = color_from_js(ctx, argv[4], 0xffffffff);
+   uint32_t c2 = color_from_js(ctx, argv[5], 0xffffffff);
+   int dx = x2 - x1, dy = y2 - y1;
+   int steps = abs(dx) > abs(dy) ? abs(dx) : abs(dy);
+   if (steps == 0) { set_pixel(x1, y1, c1); return JS_UNDEFINED; }
+   unsigned r1=(c1>>24)&0xff, g1=(c1>>16)&0xff, b1=(c1>>8)&0xff;
+   unsigned r2=(c2>>24)&0xff, g2=(c2>>16)&0xff, b2=(c2>>8)&0xff;
+   for (int i = 0; i <= steps; i++) {
+      int px = x1 + dx * i / steps;
+      int py = y1 + dy * i / steps;
+      unsigned r = r1 + (r2 - r1) * (unsigned)i / (unsigned)steps;
+      unsigned g = g1 + (g2 - g1) * (unsigned)i / (unsigned)steps;
+      unsigned b = b1 + (b2 - b1) * (unsigned)i / (unsigned)steps;
+      set_pixel(px, py, rgba8((uint8_t)r,(uint8_t)g,(uint8_t)b,255));
+   }
+   return JS_UNDEFINED;
+}
+
+/* colorContrast(c, amount) — adjust contrast (>1 boost, <1 reduce) */
+static JSValue js_color_contrast(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   uint32_t c = color_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0xffffffff);
+   double amt = double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 1.0);
+   int rv = (int)(128.0 + ((int)((c>>24)&0xff) - 128) * amt);
+   int gv = (int)(128.0 + ((int)((c>>16)&0xff) - 128) * amt);
+   int bv = (int)(128.0 + ((int)((c>> 8)&0xff) - 128) * amt);
+   if (rv<0)rv=0; if(rv>255)rv=255;
+   if (gv<0)gv=0; if(gv>255)gv=255;
+   if (bv<0)bv=0; if(bv>255)bv=255;
+   return JS_NewInt32(ctx, (int32_t)rgba8((uint8_t)rv,(uint8_t)gv,(uint8_t)bv,(uint8_t)((c)&0xff)));
+}
+
+/* pixelateRegion(x,y,w,h,blockSize) — nearest-block pixelate a screen region */
+static JSValue js_pixelate_region(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (!framebuffer) return JS_UNDEFINED;
+   int rx = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0);
+   int ry = int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0);
+   int rw = int_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 0);
+   int rh = int_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, 0);
+   int bs = int_from_js(ctx, argc > 4 ? argv[4] : JS_UNDEFINED, 4);
+   if (bs < 1) bs = 1;
+   int W = NOVA64_WIDTH, H = NOVA64_HEIGHT;
+   for (int by = 0; by < rh; by += bs) {
+      for (int bx = 0; bx < rw; bx += bs) {
+         int sx = rx + bx, sy = ry + by;
+         if (sx < 0 || sx >= W || sy < 0 || sy >= H) continue;
+         uint32_t sample = framebuffer[(size_t)sy * W + (size_t)sx];
+         for (int dy = 0; dy < bs; dy++) {
+            for (int dx = 0; dx < bs; dx++) {
+               int px = rx + bx + dx, py = ry + by + dy;
+               if (px >= 0 && px < W && py >= 0 && py < H)
+                  framebuffer[(size_t)py * W + (size_t)px] = sample;
+            }
+         }
+      }
+   }
+   return JS_UNDEFINED;
+}
+
+/* fillPlus(cx, cy, armLen, armW, color) — filled plus/cross shape */
+static JSValue js_fill_plus(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 5) return JS_UNDEFINED;
+   int cx2 = int_from_js(ctx, argv[0], 0) - (int)cam2d_x;
+   int cy2 = int_from_js(ctx, argv[1], 0) - (int)cam2d_y;
+   int arm = int_from_js(ctx, argv[2], 10);
+   int aw  = int_from_js(ctx, argv[3], 3);
+   uint32_t color = color_from_js(ctx, argv[4], 0xffffffff);
+   for (int py = cy2 - aw; py <= cy2 + aw; py++)
+      for (int px = cx2 - arm; px <= cx2 + arm; px++)
+         set_pixel(px, py, color);
+   for (int py = cy2 - arm; py <= cy2 + arm; py++)
+      for (int px = cx2 - aw; px <= cx2 + aw; px++)
+         set_pixel(px, py, color);
+   return JS_UNDEFINED;
+}
+
+/* drawTextVertical(text, x, y, color) — draw text rotated 90° CW */
+static JSValue js_draw_text_vertical(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 4) return JS_UNDEFINED;
+   const char *text = JS_ToCString(ctx, argv[0]);
+   if (!text) return JS_UNDEFINED;
+   int bx = int_from_js(ctx, argv[1], 0) - (int)cam2d_x;
+   int by = int_from_js(ctx, argv[2], 0) - (int)cam2d_y;
+   uint32_t color = color_from_js(ctx, argv[3], 0xffffffff);
+   int ci = 0;
+   for (const char *p = text; *p; p++, ci++) {
+      for (int row = 0; row < 7; row++) {
+         uint8_t bits = glyph_row((uint8_t)*p, row);
+         for (int col = 0; col < 5; col++) {
+            if (bits & (1U << (4 - col)))
+               set_pixel(bx + row, by + ci * 6 + (4 - col), color);
+         }
+      }
+   }
+   JS_FreeCString(ctx, text);
+   return JS_UNDEFINED;
+}
+
+/* drawStar(cx,cy,outerR,innerR,points,color) — star polygon outline */
+static JSValue js_draw_star(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 6) return JS_UNDEFINED;
+   double cx2   = double_from_js(ctx, argv[0], 0.0) - cam2d_x;
+   double cy2   = double_from_js(ctx, argv[1], 0.0) - cam2d_y;
+   double outer = double_from_js(ctx, argv[2], 20.0);
+   double inner = double_from_js(ctx, argv[3], 8.0);
+   int    pts   = int_from_js(ctx, argv[4], 5);
+   uint32_t color = color_from_js(ctx, argv[5], 0xffffffff);
+   if (pts < 3) pts = 3;
+   int total = pts * 2;
+   double step = (2.0 * 3.14159265358979) / total;
+   double px = cx2, py = cy2;
+   for (int i = 0; i < total; i++) {
+      double r  = (i % 2 == 0) ? outer : inner;
+      double angle = i * step - 3.14159265358979 / 2.0;
+      double nx = cx2 + cos(angle) * r;
+      double ny = cy2 + sin(angle) * r;
+      if (i > 0) path_draw_line_segment((float)px, (float)py, (float)nx, (float)ny, color);
+      px = nx; py = ny;
+   }
+   /* close the star */
+   double r0 = outer;
+   double a0 = -3.14159265358979 / 2.0;
+   path_draw_line_segment((float)px, (float)py, (float)(cx2 + cos(a0)*r0), (float)(cy2 + sin(a0)*r0), color);
+   return JS_UNDEFINED;
+}
+
+/* fillStar(cx,cy,outerR,innerR,points,color) — filled star polygon */
+static JSValue js_fill_star(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 6) return JS_UNDEFINED;
+   double cx2   = double_from_js(ctx, argv[0], 0.0) - cam2d_x;
+   double cy2   = double_from_js(ctx, argv[1], 0.0) - cam2d_y;
+   double outer = double_from_js(ctx, argv[2], 20.0);
+   double inner = double_from_js(ctx, argv[3], 8.0);
+   int    pts   = int_from_js(ctx, argv[4], 5);
+   uint32_t color = color_from_js(ctx, argv[5], 0xffffffff);
+   if (pts < 3) pts = 3;
+   int total = pts * 2;
+   double step = (2.0 * 3.14159265358979) / total;
+   /* build vertex list and fan from center */
+   double vx[64], vy[64];
+   if (total > 64) total = 64;
+   for (int i = 0; i < total; i++) {
+      double r     = (i % 2 == 0) ? outer : inner;
+      double angle = i * step - 3.14159265358979 / 2.0;
+      vx[i] = cx2 + cos(angle) * r;
+      vy[i] = cy2 + sin(angle) * r;
+   }
+   /* compute bounding box, scanline fill */
+   double bx0 = cx2 - outer, bx1 = cx2 + outer;
+   double by0 = cy2 - outer, by1 = cy2 + outer;
+   int ibx0 = (int)bx0, ibx1 = (int)(bx1 + 1.0);
+   int iby0 = (int)by0, iby1 = (int)(by1 + 1.0);
+   for (int py = iby0; py <= iby1; py++) {
+      for (int px = ibx0; px <= ibx1; px++) {
+         if (px < 0 || px >= NOVA64_WIDTH || py < 0 || py >= NOVA64_HEIGHT) continue;
+         /* point-in-polygon test */
+         int inside = 0;
+         double fx = (double)px + 0.5, fy = (double)py + 0.5;
+         for (int i = 0, j = total - 1; i < total; j = i++) {
+            double xi = vx[i], yi = vy[i], xj = vx[j], yj = vy[j];
+            if (((yi > fy) != (yj > fy)) &&
+                (fx < (xj - xi) * (fy - yi) / (yj - yi) + xi))
+               inside ^= 1;
+         }
+         if (inside) framebuffer[(size_t)py * NOVA64_WIDTH + (size_t)px] = color;
+      }
+   }
+   return JS_UNDEFINED;
+}
+
 /* ── Batch 12: italic/underline text, progress, grid, color matrix, UI ─ */
 
 /* printItalic(text, x, y, color) — shear text right by 1px per 2 rows */
@@ -13223,6 +13561,20 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, global, "toFixed",          js_to_fixed,          2);
    set_function(ctx, global, "colorMix3",        js_color_mix3,        6);
    set_function(ctx, global, "drawNoise",        js_draw_noise,        6);
+
+   /* Batch 13 */
+   set_function(ctx, global, "colorWithAlpha",   js_color_with_alpha,  2);
+   set_function(ctx, global, "drawCapsule",      js_draw_capsule,      6);
+   set_function(ctx, global, "fillCapsule",      js_fill_capsule,      6);
+   set_function(ctx, global, "drawRing",         js_draw_ring,         5);
+   set_function(ctx, global, "blurRegion",       js_blur_region,       5);
+   set_function(ctx, global, "drawGradientLine", js_draw_gradient_line,6);
+   set_function(ctx, global, "colorContrast",    js_color_contrast,    2);
+   set_function(ctx, global, "pixelateRegion",   js_pixelate_region,   5);
+   set_function(ctx, global, "fillPlus",         js_fill_plus,         5);
+   set_function(ctx, global, "drawTextVertical", js_draw_text_vertical,4);
+   set_function(ctx, global, "drawStar",         js_draw_star,         6);
+   set_function(ctx, global, "fillStar",         js_fill_star,         6);
 
    JS_FreeValue(ctx, global);
    return true;

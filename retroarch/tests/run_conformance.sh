@@ -789,5 +789,10 @@ run_visual_case "322 rainbow helix"       "322-rainbow-helix"       "retroarch/c
 run_visual_case "323 progress spiral wave" "323-progress-spiral-wave" "retroarch/conformance/323-progress-spiral-wave.js" "7897af39e548093a"
 run_visual_case "324 dither glow"         "324-dither-glow"         "retroarch/conformance/324-dither-glow.js"         "ba4e4f0a7b43893d"
 run_visual_case "331 batch23 showcase"    "331-batch23-showcase"    "retroarch/conformance/331-batch23-showcase.js"    "131e01f03670feed"
+run_visual_case "332 dna vortex"          "332-dna-vortex"          "retroarch/conformance/332-dna-vortex.js"          "e20a393e52081586"
+run_visual_case "333 mandala halftone"    "333-mandala-halftone"    "retroarch/conformance/333-mandala-halftone.js"    "629f7c3c9e6e036c"
+run_visual_case "334 label tag cloud"     "334-label-tag-cloud"     "retroarch/conformance/334-label-tag-cloud.js"     "d0b4862e236fccf0"
+run_visual_case "335 noise wheel pulse"   "335-noise-wheel-pulse"   "retroarch/conformance/335-noise-wheel-pulse.js"   "cc19097ff0641c14"
+run_visual_case "343 batch24 showcase"    "343-batch24-showcase"    "retroarch/conformance/343-batch24-showcase.js"    "031c51cb25102734"
 
 echo "Conformance passed."

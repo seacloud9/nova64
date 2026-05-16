@@ -821,5 +821,10 @@ run_visual_case "405 ripple sparkle"       "405-ripple-sparkle"       "retroarch
 run_visual_case "406 tilt wirebox"         "406-tilt-wirebox"         "retroarch/conformance/406-tilt-wirebox.js"         "b51387e7e7fb51d0"
 run_visual_case "407 crosshatch"           "407-crosshatch"           "retroarch/conformance/407-crosshatch.js"           "1dc5620e64f728cf"
 run_visual_case "415 batch30 showcase"     "415-batch30-showcase"     "retroarch/conformance/415-batch30-showcase.js"     "6a783f3ef2c7e9f9"
+run_visual_case "416 snowflake venn"       "416-snowflake-venn"       "retroarch/conformance/416-snowflake-venn.js"       "a39fcf048bbeffbb"
+run_visual_case "417 pinwheel"             "417-pinwheel"             "retroarch/conformance/417-pinwheel.js"             "daa817b93353d057"
+run_visual_case "418 iso tile tunnel"      "418-iso-tile-tunnel"      "retroarch/conformance/418-iso-tile-tunnel.js"      "5171e03cd5ce5941"
+run_visual_case "419 bokeh neon"           "419-bokeh-neon"           "retroarch/conformance/419-bokeh-neon.js"           "82784eb69b89ecd8"
+run_visual_case "427 batch31 showcase"     "427-batch31-showcase"     "retroarch/conformance/427-batch31-showcase.js"     "400f3323db41f207"
 
 echo "Conformance passed."

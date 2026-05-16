@@ -6314,6 +6314,323 @@ static JSValue js_vec_lerp(JSContext *ctx, JSValueConst this_val, int argc, JSVa
    return obj;
 }
 
+/* ── Batch 31: snowflake, venn, parabola, gear, iso tile, tunnel, bokeh ── */
+
+/* drawSnowflake(cx,cy,r,arms,color) — 6-arm snowflake with branches */
+static JSValue js_draw_snowflake(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double cx=double_from_js(ctx,argv[0],0), cy=double_from_js(ctx,argv[1],0);
+   double rv=double_from_js(ctx,argv[2],50);
+   int arms=argc>3?(int)double_from_js(ctx,argv[3],6):6;
+   uint32_t col=(uint32_t)color_from_js(ctx,argv[4],0xFFFFFFFFu);
+   if(arms<3)arms=3; if(arms>12)arms=12;
+   double branch=rv*0.4, inner=rv*0.55;
+   for(int i=0;i<arms;i++){
+      double ang=2*M_PI*i/arms;
+      int x2=(int)(cx+cos(ang)*rv), y2=(int)(cy+sin(ang)*rv);
+      path_draw_line_segment((int)cx,(int)cy,x2,y2,col);
+      /* two diagonal branches */
+      for(int s=-1;s<=1;s+=2){
+         double bang=ang+s*M_PI/4;
+         int bx=(int)(cx+cos(ang)*inner), by=(int)(cy+sin(ang)*inner);
+         path_draw_line_segment(bx,by,(int)(bx+cos(bang)*branch),(int)(by+sin(bang)*branch),col);
+      }
+   }
+   return JS_UNDEFINED;
+}
+
+/* fillSnowflake(cx,cy,r,arms,color) — filled snowflake polygon */
+static JSValue js_fill_snowflake(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double cx=double_from_js(ctx,argv[0],0), cy=double_from_js(ctx,argv[1],0);
+   double rv=double_from_js(ctx,argv[2],50);
+   int arms=argc>3?(int)double_from_js(ctx,argv[3],6):6;
+   uint32_t col=(uint32_t)color_from_js(ctx,argv[4],0xFFFFFFFFu);
+   if(arms<3)arms=3; if(arms>12)arms=12;
+   /* approximate fill: draw filled triangles from center to each arm */
+   double inner=rv*0.3;
+   for(int i=0;i<arms;i++){
+      double a1=2*M_PI*i/arms, a2=2*M_PI*(i+0.5)/arms, a3=2*M_PI*(i+1)/arms;
+      int ax=(int)(cx+cos(a1)*rv), ay=(int)(cy+sin(a1)*rv);
+      int bx=(int)(cx+cos(a2)*inner), by=(int)(cy+sin(a2)*inner);
+      int ex=(int)(cx+cos(a3)*rv), ey=(int)(cy+sin(a3)*rv);
+      /* fill the triangle */
+      int miny=ay, maxy=ay;
+      if(by<miny)miny=by; if(ey<miny)miny=ey;
+      if(by>maxy)maxy=by; if(ey>maxy)maxy=ey;
+      if((int)cy<miny)miny=(int)cy; if((int)cy>maxy)maxy=(int)cy;
+      int tpx[4]={(int)cx,ax,bx,ex}, tpy[4]={(int)cy,ay,by,ey};
+      int N4=4;
+      for(int ys=miny;ys<=maxy;ys++){
+         int xs[4]; int nc=0;
+         for(int ii=0;ii<N4;ii++){
+            int jj=(ii+1)%N4, ay2=tpy[ii],by2=tpy[jj];
+            if((ay2<=ys&&by2>ys)||(by2<=ys&&ay2>ys))
+               xs[nc++]=tpx[ii]+(tpx[jj]-tpx[ii])*(ys-ay2)/(by2-ay2);
+         }
+         for(int ii=0;ii<nc-1;ii++) for(int jj2=ii+1;jj2<nc;jj2++) if(xs[jj2]<xs[ii]){int tv=xs[ii];xs[ii]=xs[jj2];xs[jj2]=tv;}
+         for(int ii=0;ii+1<nc;ii+=2) for(int xv=xs[ii];xv<=xs[ii+1];xv++) set_pixel(xv,ys,col);
+      }
+   }
+   return JS_UNDEFINED;
+}
+
+/* drawVenn(cx,cy,r,overlap,color1,color2) — two overlapping circles */
+static JSValue js_draw_venn(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double cx=double_from_js(ctx,argv[0],0), cy=double_from_js(ctx,argv[1],0);
+   double rv=double_from_js(ctx,argv[2],60);
+   double overlap=argc>3?double_from_js(ctx,argv[3],0.4):0.4;
+   uint32_t col1=(uint32_t)color_from_js(ctx,argv[4],0xFF4444FFu);
+   uint32_t col2=argc>5?(uint32_t)color_from_js(ctx,argv[5],0x4444FFFFu):0x4444FFFFu;
+   double off=rv*(1.0-overlap*0.5);
+   int N=64;
+   for(int i=0;i<N;i++){
+      double a1=2*M_PI*i/N, a2=2*M_PI*(i+1)/N;
+      path_draw_line_segment((int)(cx-off*0.5+cos(a1)*rv),(int)(cy+sin(a1)*rv),
+                             (int)(cx-off*0.5+cos(a2)*rv),(int)(cy+sin(a2)*rv),col1);
+      path_draw_line_segment((int)(cx+off*0.5+cos(a1)*rv),(int)(cy+sin(a1)*rv),
+                             (int)(cx+off*0.5+cos(a2)*rv),(int)(cy+sin(a2)*rv),col2);
+   }
+   return JS_UNDEFINED;
+}
+
+/* drawParabola(x,y,w,h,color) — upward parabola arc */
+static JSValue js_draw_parabola(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double xv=double_from_js(ctx,argv[0],0), yv=double_from_js(ctx,argv[1],0);
+   double wv=double_from_js(ctx,argv[2],200), hv=double_from_js(ctx,argv[3],100);
+   uint32_t col=(uint32_t)color_from_js(ctx,argv[4],0xFFFFFFFFu);
+   int N=64;
+   for(int i=0;i<N;i++){
+      double t1=(double)i/N, t2=(double)(i+1)/N;
+      double x1=xv+t1*wv, x2=xv+t2*wv;
+      double y1=yv+hv*(2*t1-1)*(2*t1-1);
+      double y2=yv+hv*(2*t2-1)*(2*t2-1);
+      path_draw_line_segment((int)x1,(int)y1,(int)x2,(int)y2,col);
+   }
+   return JS_UNDEFINED;
+}
+
+/* drawPinwheel(cx,cy,r,blades,color) — pinwheel fan outline */
+static JSValue js_draw_pinwheel(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double cx=double_from_js(ctx,argv[0],0), cy=double_from_js(ctx,argv[1],0);
+   double rv=double_from_js(ctx,argv[2],50);
+   int blades=argc>3?(int)double_from_js(ctx,argv[3],6):6;
+   uint32_t col=(uint32_t)color_from_js(ctx,argv[4],0xFFFFFFFFu);
+   if(blades<3)blades=3; if(blades>12)blades=12;
+   for(int i=0;i<blades;i++){
+      double a0=2*M_PI*i/blades;
+      double a1=a0+M_PI/blades*0.8;
+      int N=12;
+      int px2=-1,py3=-1;
+      for(int k=0;k<=N;k++){
+         double t=(double)k/N;
+         double rr=rv*t;
+         double ang=a0+t*(a1-a0)+t*M_PI*0.25;
+         int qx=(int)(cx+cos(ang)*rr), qy=(int)(cy+sin(ang)*rr);
+         if(px2>=0) path_draw_line_segment(px2,py3,qx,qy,col);
+         px2=qx; py3=qy;
+      }
+   }
+   return JS_UNDEFINED;
+}
+
+/* fillPinwheel(cx,cy,r,blades,color) — filled pinwheel */
+static JSValue js_fill_pinwheel(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double cx=double_from_js(ctx,argv[0],0), cy=double_from_js(ctx,argv[1],0);
+   double rv=double_from_js(ctx,argv[2],50);
+   int blades=argc>3?(int)double_from_js(ctx,argv[3],6):6;
+   uint32_t col=(uint32_t)color_from_js(ctx,argv[4],0xFFFFFFFFu);
+   if(blades<3)blades=3; if(blades>12)blades=12;
+   for(int i=0;i<blades;i++){
+      double a0=2*M_PI*i/blades, a1=a0+2*M_PI/blades*0.7;
+      int N=16;
+      int pts_x2[18], pts_y2[18];
+      pts_x2[0]=(int)cx; pts_y2[0]=(int)cy;
+      for(int k=0;k<=N;k++){
+         double t=(double)k/N;
+         double rr=rv*(0.2+0.8*sin(t*M_PI));
+         double ang=a0+t*(a1-a0);
+         pts_x2[k+1]=(int)(cx+cos(ang)*rr);
+         pts_y2[k+1]=(int)(cy+sin(ang)*rr);
+      }
+      int np=N+2;
+      int miny2=pts_y2[0],maxy2=pts_y2[0];
+      for(int k=1;k<np;k++){if(pts_y2[k]<miny2)miny2=pts_y2[k];if(pts_y2[k]>maxy2)maxy2=pts_y2[k];}
+      for(int ys=miny2;ys<=maxy2;ys++){
+         int xs2[18]; int nc=0;
+         for(int k=0;k<np;k++){
+            int j=(k+1)%np;
+            if((pts_y2[k]<=ys&&pts_y2[j]>ys)||(pts_y2[j]<=ys&&pts_y2[k]>ys))
+               xs2[nc++]=pts_x2[k]+(pts_x2[j]-pts_x2[k])*(ys-pts_y2[k])/(pts_y2[j]-pts_y2[k]);
+         }
+         for(int ii=0;ii<nc-1;ii++) for(int jj=ii+1;jj<nc;jj++) if(xs2[jj]<xs2[ii]){int tv=xs2[ii];xs2[ii]=xs2[jj];xs2[jj]=tv;}
+         for(int ii=0;ii+1<nc;ii+=2) for(int xv=xs2[ii];xv<=xs2[ii+1];xv++) set_pixel(xv,ys,col);
+      }
+   }
+   return JS_UNDEFINED;
+}
+
+/* drawIsometricTile(x,y,w,h,color) — isometric diamond tile */
+static JSValue js_draw_isometric_tile(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double xv=double_from_js(ctx,argv[0],0), yv=double_from_js(ctx,argv[1],0);
+   double wv=double_from_js(ctx,argv[2],64), hv=double_from_js(ctx,argv[3],32);
+   uint32_t col=(uint32_t)color_from_js(ctx,argv[4],0xFFFFFFFFu);
+   double hw=wv*0.5, hh=hv*0.5;
+   int tx=(int)(xv+hw), ty=(int)yv;
+   int lx=(int)xv, ly=(int)(yv+hh);
+   int bx=(int)(xv+hw), by=(int)(yv+hv);
+   int rx=(int)(xv+wv), ry=(int)(yv+hh);
+   path_draw_line_segment(tx,ty,rx,ry,col);
+   path_draw_line_segment(rx,ry,bx,by,col);
+   path_draw_line_segment(bx,by,lx,ly,col);
+   path_draw_line_segment(lx,ly,tx,ty,col);
+   return JS_UNDEFINED;
+}
+
+/* fillIsometricTile(x,y,w,h,color) — filled isometric diamond */
+static JSValue js_fill_isometric_tile(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double xv=double_from_js(ctx,argv[0],0), yv=double_from_js(ctx,argv[1],0);
+   double wv=double_from_js(ctx,argv[2],64), hv=double_from_js(ctx,argv[3],32);
+   uint32_t col=(uint32_t)color_from_js(ctx,argv[4],0xFFFFFFFFu);
+   double hw=wv*0.5, hh=hv*0.5;
+   /* fill top half and bottom half */
+   for(int ys=(int)yv;ys<=(int)(yv+hv);ys++){
+      double t=(ys-yv)/hv;
+      int x1, x2;
+      if(t<=0.5){ double s=t/0.5; x1=(int)(xv+0); x2=(int)(xv+0); (void)s;
+         x1=(int)(xv+(1-t/0.5)*hw); x2=(int)(xv+hw+(t/0.5)*hw); }
+      else{ double s=(t-0.5)/0.5;
+         x1=(int)(xv+s*hw); x2=(int)(xv+wv-s*hw); }
+      for(int xc=x1;xc<=x2;xc++) set_pixel(xc,ys,col);
+   }
+   return JS_UNDEFINED;
+}
+
+/* drawTunnel(cx,cy,r,rings,color) — converging tunnel rings */
+static JSValue js_draw_tunnel(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double cx=double_from_js(ctx,argv[0],0), cy=double_from_js(ctx,argv[1],0);
+   double rv=double_from_js(ctx,argv[2],120);
+   int rings=argc>3?(int)double_from_js(ctx,argv[3],6):6;
+   uint32_t col=(uint32_t)color_from_js(ctx,argv[4],0xFFFFFFFFu);
+   if(rings<2)rings=2; if(rings>16)rings=16;
+   for(int r2=rings;r2>=1;r2--){
+      double rr=rv*r2/rings;
+      uint8_t alpha=(uint8_t)(80+150*(1.0-(double)r2/rings));
+      uint32_t dc=(col&0xFFFFFF00u)|(uint32_t)alpha;
+      int N=48;
+      for(int i=0;i<N;i++){
+         double a1=2*M_PI*i/N, a2=2*M_PI*(i+1)/N;
+         path_draw_line_segment((int)(cx+cos(a1)*rr),(int)(cy+sin(a1)*rr),
+                                (int)(cx+cos(a2)*rr),(int)(cy+sin(a2)*rr),dc);
+      }
+      /* perspective lines from outer to inner */
+      if(r2<rings){
+         double outerR=rv*r2/rings, innerR=rv*(r2-1)/rings;
+         for(int i=0;i<6;i++){
+            double ang=2*M_PI*i/6;
+            path_draw_line_segment((int)(cx+cos(ang)*outerR),(int)(cy+sin(ang)*outerR),
+                                   (int)(cx+cos(ang)*innerR),(int)(cy+sin(ang)*innerR),dc);
+         }
+      }
+   }
+   return JS_UNDEFINED;
+}
+
+/* drawCompass(cx,cy,r,angle,color) — compass rose */
+static JSValue js_draw_compass(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double cx=double_from_js(ctx,argv[0],0), cy=double_from_js(ctx,argv[1],0);
+   double rv=double_from_js(ctx,argv[2],50);
+   double ang=argc>3?double_from_js(ctx,argv[3],0):0;
+   uint32_t col=(uint32_t)color_from_js(ctx,argv[4],0xFFFFFFFFu);
+   /* outer circle */
+   int N=48;
+   for(int i=0;i<N;i++){
+      double a1=2*M_PI*i/N, a2=2*M_PI*(i+1)/N;
+      path_draw_line_segment((int)(cx+cos(a1)*rv),(int)(cy+sin(a1)*rv),
+                             (int)(cx+cos(a2)*rv),(int)(cy+sin(a2)*rv),col);
+   }
+   /* 8 cardinal ticks */
+   for(int i=0;i<8;i++){
+      double aa=ang+2*M_PI*i/8;
+      double len=(i%4==0)?rv*0.3:rv*0.15;
+      path_draw_line_segment((int)(cx+cos(aa)*(rv-len)),(int)(cy+sin(aa)*(rv-len)),
+                             (int)(cx+cos(aa)*rv),(int)(cy+sin(aa)*rv),col);
+   }
+   /* needle */
+   uint32_t red=0xFF4040FFu;
+   path_draw_line_segment((int)cx,(int)cy,(int)(cx+cos(ang)*rv*0.8),(int)(cy+sin(ang)*rv*0.8),red);
+   path_draw_line_segment((int)cx,(int)cy,(int)(cx+cos(ang+M_PI)*rv*0.4),(int)(cy+sin(ang+M_PI)*rv*0.4),col);
+   return JS_UNDEFINED;
+}
+
+/* screenBokeh(radius) — simple bokeh blur (box blur) */
+static JSValue js_screen_bokeh(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int rad=argc>0?(int)double_from_js(ctx,argv[0],4):4;
+   if(rad<1)rad=1; if(rad>12)rad=12;
+   int W=640,H=360;
+   uint32_t *scratch=(uint32_t*)malloc(W*H*sizeof(uint32_t));
+   if(!scratch) return JS_UNDEFINED;
+   memcpy(scratch,framebuffer,W*H*sizeof(uint32_t));
+   for(int ys=0;ys<H;ys++){
+      for(int xv=0;xv<W;xv++){
+         int rsum=0,gsum=0,bsum=0,cnt=0;
+         for(int dy=-rad;dy<=rad;dy+=2){
+            for(int dx=-rad;dx<=rad;dx+=2){
+               if(dx*dx+dy*dy>rad*rad) continue;
+               int sx=xv+dx, sy=ys+dy;
+               if(sx<0||sx>=W||sy<0||sy>=H) continue;
+               uint32_t pc=scratch[sy*W+sx];
+               rsum+=(pc>>24)&0xFF; gsum+=(pc>>16)&0xFF; bsum+=(pc>>8)&0xFF; cnt++;
+            }
+         }
+         if(cnt>0){
+            uint32_t ac=framebuffer[ys*W+xv]&0xFF;
+            framebuffer[ys*W+xv]=((uint32_t)(rsum/cnt)<<24)|((uint32_t)(gsum/cnt)<<16)|((uint32_t)(bsum/cnt)<<8)|ac;
+         }
+      }
+   }
+   free(scratch);
+   return JS_UNDEFINED;
+}
+
+/* colorNeon(color,strength) — saturate and brighten for neon look */
+static JSValue js_color_neon(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   uint32_t col=(uint32_t)color_from_js(ctx,argv[0],0xFF00FFFFu);
+   double str=argc>1?double_from_js(ctx,argv[1],1.0):1.0;
+   int rv2=(col>>24)&0xFF, gv2=(col>>16)&0xFF, bv2=(col>>8)&0xFF;
+   double mx=(rv2>gv2?(rv2>bv2?rv2:bv2):(gv2>bv2?gv2:bv2))/255.0;
+   if(mx<0.01) return JS_NewInt32(ctx,(int32_t)col);
+   /* boost toward max channel */
+   double rf=rv2/255.0/mx, gf=gv2/255.0/mx, bf=bv2/255.0/mx;
+   rf=1.0-(1.0-rf)*str; gf=1.0-(1.0-gf)*str; bf=1.0-(1.0-bf)*str;
+   if(rf<0)rf=0; if(rf>1)rf=1;
+   if(gf<0)gf=0; if(gf>1)gf=1;
+   if(bf<0)bf=0; if(bf>1)bf=1;
+   return JS_NewInt32(ctx,(int32_t)(((uint32_t)(rf*255))<<24)|(((uint32_t)(gf*255))<<16)|(((uint32_t)(bf*255))<<8)|(col&0xFF));
+}
+
 /* ── Batch 30: matrix rain, maze-like, ripple, sparkle, CMYK, wireBox ──── */
 
 /* drawMatrixRain(x,y,w,h,density,color) — matrix-style falling characters */
@@ -18580,6 +18897,20 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, global, "fillWireBox",     js_fill_wire_box,     7);
    set_function(ctx, global, "screenCrosshatch",js_screen_crosshatch, 2);
    set_function(ctx, global, "colorFromYUV",    js_color_from_yuv,    3);
+
+   /* Batch 31 */
+   set_function(ctx, global, "drawSnowflake",      js_draw_snowflake,      5);
+   set_function(ctx, global, "fillSnowflake",      js_fill_snowflake,      5);
+   set_function(ctx, global, "drawVenn",           js_draw_venn,           6);
+   set_function(ctx, global, "drawParabola",       js_draw_parabola,       5);
+   set_function(ctx, global, "drawPinwheel",       js_draw_pinwheel,       5);
+   set_function(ctx, global, "fillPinwheel",       js_fill_pinwheel,       5);
+   set_function(ctx, global, "drawIsometricTile",  js_draw_isometric_tile, 5);
+   set_function(ctx, global, "fillIsometricTile",  js_fill_isometric_tile, 5);
+   set_function(ctx, global, "drawTunnel",         js_draw_tunnel,         5);
+   set_function(ctx, global, "drawCompass",        js_draw_compass,        5);
+   set_function(ctx, global, "screenBokeh",        js_screen_bokeh,        1);
+   set_function(ctx, global, "colorNeon",          js_color_neon,          2);
 
    JS_FreeValue(ctx, global);
    return true;

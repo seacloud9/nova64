@@ -831,5 +831,10 @@ run_visual_case "429 bullseye needle"      "429-bullseye-needle"      "retroarch
 run_visual_case "430 vhs echo cycle"       "430-vhs-echo-cycle"       "retroarch/conformance/430-vhs-echo-cycle.js"       "39176a88a8f79d2b"
 run_visual_case "431 conveyor arc arrow"   "431-conveyor-arc-arrow"   "retroarch/conformance/431-conveyor-arc-arrow.js"   "98a3a88d8fbb0cb2"
 run_visual_case "439 batch32 showcase"     "439-batch32-showcase"     "retroarch/conformance/439-batch32-showcase.js"     "8adf585f75108d04"
+run_visual_case "440 meteor corona"        "440-meteor-corona"        "retroarch/conformance/440-meteor-corona.js"        "d143de6fd87f021d"
+run_visual_case "441 crystal crt"          "441-crystal-crt"          "retroarch/conformance/441-crystal-crt.js"          "873d7d70ef5a0a67"
+run_visual_case "442 galaxy orbit atom"    "442-galaxy-orbit-atom"    "retroarch/conformance/442-galaxy-orbit-atom.js"    "79a1f668c66900ee"
+run_visual_case "443 radar sunburst"       "443-radar-sunburst"       "retroarch/conformance/443-radar-sunburst.js"       "fecc8579ea148bf6"
+run_visual_case "451 batch33 showcase"     "451-batch33-showcase"     "retroarch/conformance/451-batch33-showcase.js"     "7c06411ac9804ed1"
 
 echo "Conformance passed."

@@ -6314,6 +6314,369 @@ static JSValue js_vec_lerp(JSContext *ctx, JSValueConst this_val, int argc, JSVa
    return obj;
 }
 
+/* ── Batch 33: meteor, corona, crystal, CRT, galaxy, orbit, atom, radar ── */
+
+/* drawMeteor(x,y,len,angle,color) — meteor streak with fading tail */
+static JSValue js_draw_meteor(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double xv=double_from_js(ctx,argv[0],0), yv=double_from_js(ctx,argv[1],0);
+   double len=argc>2?double_from_js(ctx,argv[2],80):80;
+   double ang=argc>3?double_from_js(ctx,argv[3],M_PI*0.25):M_PI*0.25;
+   uint32_t col=(uint32_t)color_from_js(ctx,argv[4],0xFFFFFFFFu);
+   int N=32;
+   for(int i=0;i<N;i++){
+      double t=(double)i/N;
+      double x1=xv+cos(ang)*(t*len), y1=yv+sin(ang)*(t*len);
+      double x2=xv+cos(ang)*((t+1.0/N)*len), y2=yv+sin(ang)*((t+1.0/N)*len);
+      uint8_t alpha=(uint8_t)((1.0-t)*(1.0-t)*255);
+      double width=3.0*(1.0-t)+0.5;
+      uint32_t dc=(col&0xFFFFFF00u)|(uint32_t)alpha;
+      for(int w2=0;w2<(int)width;w2++){
+         double perp=ang+M_PI*0.5;
+         path_draw_line_segment((int)(x1+cos(perp)*w2),(int)(y1+sin(perp)*w2),
+                                (int)(x2+cos(perp)*w2),(int)(y2+sin(perp)*w2),dc);
+      }
+   }
+   /* bright head */
+   set_pixel((int)xv,(int)yv,col);
+   set_pixel((int)xv+1,(int)yv,col);
+   set_pixel((int)xv,(int)yv+1,col);
+   set_pixel((int)xv+1,(int)yv+1,col);
+   return JS_UNDEFINED;
+}
+
+/* drawCorona(cx,cy,r,rays,color) — sun corona/halo with pointed rays */
+static JSValue js_draw_corona(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double cx=double_from_js(ctx,argv[0],0), cy=double_from_js(ctx,argv[1],0);
+   double rv=double_from_js(ctx,argv[2],60);
+   int rays=argc>3?(int)double_from_js(ctx,argv[3],12):12;
+   uint32_t col=(uint32_t)color_from_js(ctx,argv[4],0xFFFF80FFu);
+   if(rays<4)rays=4; if(rays>32)rays=32;
+   double inner=rv*0.7, outer=rv*1.4;
+   for(int i=0;i<rays;i++){
+      double a0=2*M_PI*i/rays;
+      double a1=a0+M_PI/rays;
+      int bx=(int)(cx+cos(a0)*outer), by=(int)(cy+sin(a0)*outer);
+      int lx=(int)(cx+cos(a1)*inner), ly=(int)(cy+sin(a1)*inner);
+      int rx=(int)(cx+cos(a0-M_PI/rays)*inner), ry=(int)(cy+sin(a0-M_PI/rays)*inner);
+      path_draw_line_segment(lx,ly,bx,by,col);
+      path_draw_line_segment(rx,ry,bx,by,col);
+   }
+   /* inner circle */
+   int N=48;
+   for(int i=0;i<N;i++){
+      double ang1=2*M_PI*i/N, ang2=2*M_PI*(i+1)/N;
+      path_draw_line_segment((int)(cx+cos(ang1)*rv),(int)(cy+sin(ang1)*rv),
+                             (int)(cx+cos(ang2)*rv),(int)(cy+sin(ang2)*rv),col);
+   }
+   return JS_UNDEFINED;
+}
+
+/* fillCorona(cx,cy,r,rays,color) — filled corona disk + ray triangles */
+static JSValue js_fill_corona(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double cx=double_from_js(ctx,argv[0],0), cy=double_from_js(ctx,argv[1],0);
+   double rv=double_from_js(ctx,argv[2],60);
+   int rays=argc>3?(int)double_from_js(ctx,argv[3],12):12;
+   uint32_t col=(uint32_t)color_from_js(ctx,argv[4],0xFFFF80FFu);
+   if(rays<4)rays=4; if(rays>32)rays=32;
+   /* fill inner circle */
+   int iy=(int)(cy-rv), IY=(int)(cy+rv);
+   for(int ys=iy;ys<=IY;ys++){
+      double dy2=ys-cy; if(dy2*dy2>rv*rv) continue;
+      double dx2=sqrt(rv*rv-dy2*dy2);
+      for(int xv=(int)(cx-dx2);xv<=(int)(cx+dx2);xv++) set_pixel(xv,ys,col);
+   }
+   /* fill ray triangles */
+   double inner=rv*0.9, outer=rv*1.4;
+   for(int i=0;i<rays;i++){
+      double a0=2*M_PI*i/rays, a1=a0+M_PI/rays;
+      int px2[3]={(int)(cx+cos(a0)*outer),(int)(cx+cos(a1)*inner),(int)(cx+cos(a0-M_PI/rays)*inner)};
+      int py2[3]={(int)(cy+sin(a0)*outer),(int)(cy+sin(a1)*inner),(int)(cy+sin(a0-M_PI/rays)*inner)};
+      int miny2=py2[0],maxy2=py2[0];
+      if(py2[1]<miny2)miny2=py2[1]; if(py2[2]<miny2)miny2=py2[2];
+      if(py2[1]>maxy2)maxy2=py2[1]; if(py2[2]>maxy2)maxy2=py2[2];
+      for(int ys=miny2;ys<=maxy2;ys++){
+         int xs2[4]; int nc=0;
+         for(int k=0;k<3;k++){
+            int j=(k+1)%3;
+            if((py2[k]<=ys&&py2[j]>ys)||(py2[j]<=ys&&py2[k]>ys))
+               xs2[nc++]=px2[k]+(px2[j]-px2[k])*(ys-py2[k])/(py2[j]-py2[k]);
+         }
+         if(nc>=2){if(xs2[1]<xs2[0]){int tv=xs2[0];xs2[0]=xs2[1];xs2[1]=tv;}
+            for(int xv=xs2[0];xv<=xs2[1];xv++) set_pixel(xv,ys,col);}
+      }
+   }
+   return JS_UNDEFINED;
+}
+
+/* drawCrystal(cx,cy,r,sides,color) — elongated crystal / gem shape */
+static JSValue js_draw_crystal(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double cx=double_from_js(ctx,argv[0],0), cy=double_from_js(ctx,argv[1],0);
+   double rv=double_from_js(ctx,argv[2],50);
+   int sides=argc>3?(int)double_from_js(ctx,argv[3],6):6;
+   uint32_t col=(uint32_t)color_from_js(ctx,argv[4],0xA0C0FFFFu);
+   if(sides<3)sides=3; if(sides>12)sides=12;
+   /* pointed top and bottom */
+   int px2[16], py2[16];
+   double topY=cy-rv*1.4, botY=cy+rv*1.4;
+   px2[0]=(int)cx; py2[0]=(int)topY;
+   for(int i=0;i<sides;i++){
+      double ang=-M_PI*0.5+2*M_PI*i/sides-M_PI*0.5+M_PI*(1.0/sides);
+      double yscale=(i<sides/2)?0.5:0.8;
+      px2[i+1]=(int)(cx+cos(ang)*rv);
+      py2[i+1]=(int)(cy+sin(ang)*rv*yscale);
+   }
+   px2[sides+1]=(int)cx; py2[sides+1]=(int)botY;
+   int N2=sides+2;
+   for(int i=0;i<N2;i++) path_draw_line_segment(px2[i],py2[i],px2[(i+1)%N2],py2[(i+1)%N2],col);
+   return JS_UNDEFINED;
+}
+
+/* fillCrystal(cx,cy,r,sides,color) — filled crystal */
+static JSValue js_fill_crystal(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double cx=double_from_js(ctx,argv[0],0), cy=double_from_js(ctx,argv[1],0);
+   double rv=double_from_js(ctx,argv[2],50);
+   int sides=argc>3?(int)double_from_js(ctx,argv[3],6):6;
+   uint32_t col=(uint32_t)color_from_js(ctx,argv[4],0xA0C0FFFFu);
+   if(sides<3)sides=3; if(sides>12)sides=12;
+   int px2[16], py2[16];
+   double topY=cy-rv*1.4, botY=cy+rv*1.4;
+   px2[0]=(int)cx; py2[0]=(int)topY;
+   for(int i=0;i<sides;i++){
+      double ang=-M_PI*0.5+2*M_PI*i/sides-M_PI*0.5+M_PI*(1.0/sides);
+      double yscale=(i<sides/2)?0.5:0.8;
+      px2[i+1]=(int)(cx+cos(ang)*rv);
+      py2[i+1]=(int)(cy+sin(ang)*rv*yscale);
+   }
+   px2[sides+1]=(int)cx; py2[sides+1]=(int)botY;
+   int N2=sides+2;
+   int miny2=py2[0],maxy2=py2[0];
+   for(int i=1;i<N2;i++){if(py2[i]<miny2)miny2=py2[i];if(py2[i]>maxy2)maxy2=py2[i];}
+   for(int ys=miny2;ys<=maxy2;ys++){
+      int xs2[16]; int nc=0;
+      for(int i=0;i<N2;i++){
+         int j=(i+1)%N2;
+         if((py2[i]<=ys&&py2[j]>ys)||(py2[j]<=ys&&py2[i]>ys))
+            xs2[nc++]=px2[i]+(px2[j]-px2[i])*(ys-py2[i])/(py2[j]-py2[i]);
+      }
+      for(int ii=0;ii<nc-1;ii++) for(int jj=ii+1;jj<nc;jj++) if(xs2[jj]<xs2[ii]){int tv=xs2[ii];xs2[ii]=xs2[jj];xs2[jj]=tv;}
+      for(int ii=0;ii+1<nc;ii+=2) for(int xv=xs2[ii];xv<=xs2[ii+1];xv++) set_pixel(xv,ys,col);
+   }
+   return JS_UNDEFINED;
+}
+
+/* screenCRT(curvature) — barrel distortion CRT effect */
+static JSValue js_screen_crt(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double curv=argc>0?double_from_js(ctx,argv[0],0.3):0.3;
+   int W=640,H=360;
+   uint32_t *scratch=(uint32_t*)malloc(W*H*sizeof(uint32_t));
+   if(!scratch) return JS_UNDEFINED;
+   memcpy(scratch,framebuffer,W*H*sizeof(uint32_t));
+   memset(framebuffer,0,W*H*sizeof(uint32_t));
+   double ocx=W*0.5, ocy=H*0.5;
+   for(int ys=0;ys<H;ys++){
+      for(int xv=0;xv<W;xv++){
+         double nx=(xv-ocx)/ocx, ny=(ys-ocy)/ocy;
+         double r2=nx*nx+ny*ny;
+         double dv=1.0+curv*r2;
+         double sx=nx/dv*ocx+ocx, sy=ny/dv*ocy+ocy;
+         int sxi=(int)sx, syi=(int)sy;
+         if(sxi>=0&&sxi<W&&syi>=0&&syi<H)
+            framebuffer[ys*W+xv]=scratch[syi*W+sxi];
+      }
+   }
+   free(scratch);
+   return JS_UNDEFINED;
+}
+
+/* colorClamp2(color,minBrightness,maxBrightness) — clamp luminance */
+static JSValue js_color_clamp2(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   uint32_t col=(uint32_t)color_from_js(ctx,argv[0],0xFFFFFFFFu);
+   double mn=argc>1?double_from_js(ctx,argv[1],0):0;
+   double mx=argc>2?double_from_js(ctx,argv[2],1):1;
+   double rf=((col>>24)&0xFF)/255.0, gf=((col>>16)&0xFF)/255.0, bf=((col>>8)&0xFF)/255.0;
+   double lum=0.2126*rf+0.7152*gf+0.0722*bf;
+   if(lum<1e-6) return JS_NewInt32(ctx,(int32_t)col);
+   double scale=lum;
+   if(lum<mn) scale=mn;
+   if(lum>mx) scale=mx;
+   double ratio=scale/lum;
+   rf*=ratio; gf*=ratio; bf*=ratio;
+   if(rf>1)rf=1; if(gf>1)gf=1; if(bf>1)bf=1;
+   return JS_NewInt32(ctx,(int32_t)(((uint32_t)(rf*255))<<24)|(((uint32_t)(gf*255))<<16)|(((uint32_t)(bf*255))<<8)|(col&0xFF));
+}
+
+/* drawSpiralGalaxy(cx,cy,r,arms,color) — spiral galaxy with arms */
+static JSValue js_draw_spiral_galaxy(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double cx=double_from_js(ctx,argv[0],0), cy=double_from_js(ctx,argv[1],0);
+   double rv=double_from_js(ctx,argv[2],80);
+   int arms=argc>3?(int)double_from_js(ctx,argv[3],2):2;
+   uint32_t col=(uint32_t)color_from_js(ctx,argv[4],0xC0C0FFFFu);
+   if(arms<1)arms=1; if(arms>6)arms=6;
+   int N=80;
+   for(int a=0;a<arms;a++){
+      double baseAng=2*M_PI*a/arms;
+      int px2=-1, py2=-1;
+      for(int i=0;i<=N;i++){
+         double t=(double)i/N;
+         double rr=rv*t;
+         double ang=baseAng+t*3*M_PI;
+         uint8_t alpha=(uint8_t)(200*t*(1.0-t*0.5)+20);
+         uint32_t dc=(col&0xFFFFFF00u)|(uint32_t)alpha;
+         int qx=(int)(cx+cos(ang)*rr), qy=(int)(cy+sin(ang)*rr);
+         if(px2>=0) path_draw_line_segment(px2,py2,qx,qy,dc);
+         /* star dots */
+         if(i%8==0) {set_pixel(qx,qy,col); set_pixel(qx+1,qy,col);}
+         px2=qx; py2=qy;
+      }
+   }
+   /* bright core */
+   int N2=24;
+   for(int i=0;i<N2;i++){
+      double a1=2*M_PI*i/N2, a2=2*M_PI*(i+1)/N2;
+      path_draw_line_segment((int)(cx+cos(a1)*rv*0.1),(int)(cy+sin(a1)*rv*0.1),
+                             (int)(cx+cos(a2)*rv*0.1),(int)(cy+sin(a2)*rv*0.1),col);
+   }
+   return JS_UNDEFINED;
+}
+
+/* drawOrbit(cx,cy,r,angle,dotSize,color) — planet on circular orbit */
+static JSValue js_draw_orbit(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double cx=double_from_js(ctx,argv[0],0), cy=double_from_js(ctx,argv[1],0);
+   double rv=double_from_js(ctx,argv[2],60);
+   double ang=argc>3?double_from_js(ctx,argv[3],0):0;
+   int dotSz=argc>4?(int)double_from_js(ctx,argv[4],6):6;
+   uint32_t col=(uint32_t)color_from_js(ctx,argv[5],0xFFFFFFFFu);
+   /* orbit ring */
+   uint32_t ringCol=(col&0xFFFFFF00u)|0x60u;
+   int N=64;
+   for(int i=0;i<N;i++){
+      double a1=2*M_PI*i/N, a2=2*M_PI*(i+1)/N;
+      path_draw_line_segment((int)(cx+cos(a1)*rv),(int)(cy+sin(a1)*rv),
+                             (int)(cx+cos(a2)*rv),(int)(cy+sin(a2)*rv),ringCol);
+   }
+   /* planet dot */
+   double px2=cx+cos(ang)*rv, py2=cy+sin(ang)*rv;
+   int iy=(int)(py2-dotSz*0.5), IY=(int)(py2+dotSz*0.5);
+   for(int ys=iy;ys<=IY;ys++){
+      double dy2=ys-py2; if(dy2*dy2>(dotSz*dotSz*0.25)) continue;
+      double dx2=sqrt(dotSz*dotSz*0.25-dy2*dy2);
+      for(int xv=(int)(px2-dx2);xv<=(int)(px2+dx2);xv++) set_pixel(xv,ys,col);
+   }
+   return JS_UNDEFINED;
+}
+
+/* drawAtom(cx,cy,r,electrons,color) — atom with electron orbits */
+static JSValue js_draw_atom(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double cx=double_from_js(ctx,argv[0],0), cy=double_from_js(ctx,argv[1],0);
+   double rv=double_from_js(ctx,argv[2],60);
+   int elec=argc>3?(int)double_from_js(ctx,argv[3],3):3;
+   uint32_t col=(uint32_t)color_from_js(ctx,argv[4],0x80C0FFFFu);
+   if(elec<1)elec=1; if(elec>6)elec=6;
+   /* nucleus */
+   int N2=24;
+   double nr=rv*0.12;
+   for(int i=0;i<N2;i++){
+      double a1=2*M_PI*i/N2, a2=2*M_PI*(i+1)/N2;
+      path_draw_line_segment((int)(cx+cos(a1)*nr),(int)(cy+sin(a1)*nr),
+                             (int)(cx+cos(a2)*nr),(int)(cy+sin(a2)*nr),col);
+   }
+   /* electron orbits (ellipses at different angles) */
+   for(int e=0;e<elec;e++){
+      double tilt=M_PI*e/elec;
+      double cv=cos(tilt), sv=sin(tilt);
+      int N=48;
+      int px2=-1,py3=-1;
+      for(int i=0;i<=N;i++){
+         double ang=2*M_PI*i/N;
+         double ex=cos(ang)*rv, ey2=sin(ang)*rv*0.35;
+         int qx=(int)(cx+ex*cv-ey2*sv), qy=(int)(cy+ex*sv+ey2*cv);
+         if(px2>=0) path_draw_line_segment(px2,py3,qx,qy,col);
+         px2=qx; py3=qy;
+         /* electron dot at 0 position */
+         if(i==N/4){ set_pixel(qx,qy,col); set_pixel(qx+1,qy,col);
+            set_pixel(qx,qy+1,col); set_pixel(qx+1,qy+1,col); }
+      }
+   }
+   return JS_UNDEFINED;
+}
+
+/* drawRadar(cx,cy,r,sweepAngle,color) — radar scope with sweep */
+static JSValue js_draw_radar(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double cx=double_from_js(ctx,argv[0],0), cy=double_from_js(ctx,argv[1],0);
+   double rv=double_from_js(ctx,argv[2],60);
+   double sweepAng=argc>3?double_from_js(ctx,argv[3],0):0;
+   uint32_t col=(uint32_t)color_from_js(ctx,argv[4],0x00FF80FFu);
+   /* outer circle + rings */
+   for(int ring=1;ring<=3;ring++){
+      double rr=rv*ring/3.0;
+      int N=48;
+      for(int i=0;i<N;i++){
+         double a1=2*M_PI*i/N, a2=2*M_PI*(i+1)/N;
+         path_draw_line_segment((int)(cx+cos(a1)*rr),(int)(cy+sin(a1)*rr),
+                                (int)(cx+cos(a2)*rr),(int)(cy+sin(a2)*rr),col);
+      }
+   }
+   /* crosshairs */
+   path_draw_line_segment((int)(cx-rv),(int)cy,(int)(cx+rv),(int)cy,col);
+   path_draw_line_segment((int)cx,(int)(cy-rv),(int)cx,(int)(cy+rv),col);
+   /* sweep line + glow trail */
+   for(int trail=0;trail<8;trail++){
+      double tang=sweepAng-trail*0.15;
+      uint8_t alpha=(uint8_t)(180-trail*20);
+      uint32_t tc=(col&0xFFFFFF00u)|(uint32_t)alpha;
+      path_draw_line_segment((int)cx,(int)cy,(int)(cx+cos(tang)*rv),(int)(cy+sin(tang)*rv),tc);
+   }
+   return JS_UNDEFINED;
+}
+
+/* drawSunburst(cx,cy,r,rays,color) — radial sunburst rays */
+static JSValue js_draw_sunburst(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double cx=double_from_js(ctx,argv[0],0), cy=double_from_js(ctx,argv[1],0);
+   double rv=double_from_js(ctx,argv[2],60);
+   int rays=argc>3?(int)double_from_js(ctx,argv[3],16):16;
+   uint32_t col=(uint32_t)color_from_js(ctx,argv[4],0xFFFF60FFu);
+   if(rays<4)rays=4; if(rays>48)rays=48;
+   double inner=rv*0.3;
+   for(int i=0;i<rays;i++){
+      double ang=2*M_PI*i/rays;
+      double outer2=(i%2==0)?rv:rv*0.7;
+      path_draw_line_segment((int)(cx+cos(ang)*inner),(int)(cy+sin(ang)*inner),
+                             (int)(cx+cos(ang)*outer2),(int)(cy+sin(ang)*outer2),col);
+   }
+   /* center circle */
+   int N=24;
+   for(int i=0;i<N;i++){
+      double a1=2*M_PI*i/N, a2=2*M_PI*(i+1)/N;
+      path_draw_line_segment((int)(cx+cos(a1)*inner),(int)(cy+sin(a1)*inner),
+                             (int)(cx+cos(a2)*inner),(int)(cy+sin(a2)*inner),col);
+   }
+   return JS_UNDEFINED;
+}
+
 /* ── Batch 32: dot grid, zigzag, bullseye, needle, VHS, colorCycle ──────── */
 
 /* drawDotGrid(x,y,w,h,spacing,color) — dot grid pattern */
@@ -19210,6 +19573,20 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, global, "drawConveyorBelt",   js_draw_conveyor_belt,  6);
    set_function(ctx, global, "screenEcho",         js_screen_echo,         3);
    set_function(ctx, global, "drawArcArrow",       js_draw_arc_arrow,      6);
+
+   /* Batch 33 */
+   set_function(ctx, global, "drawMeteor",         js_draw_meteor,         5);
+   set_function(ctx, global, "drawCorona",         js_draw_corona,         5);
+   set_function(ctx, global, "fillCorona",         js_fill_corona,         5);
+   set_function(ctx, global, "drawCrystal",        js_draw_crystal,        5);
+   set_function(ctx, global, "fillCrystal",        js_fill_crystal,        5);
+   set_function(ctx, global, "screenCRT",          js_screen_crt,          1);
+   set_function(ctx, global, "colorClamp2",        js_color_clamp2,        3);
+   set_function(ctx, global, "drawSpiralGalaxy",   js_draw_spiral_galaxy,  5);
+   set_function(ctx, global, "drawOrbit",          js_draw_orbit,          6);
+   set_function(ctx, global, "drawAtom",           js_draw_atom,           5);
+   set_function(ctx, global, "drawRadar",          js_draw_radar,          5);
+   set_function(ctx, global, "drawSunburst",       js_draw_sunburst,       5);
 
    JS_FreeValue(ctx, global);
    return true;

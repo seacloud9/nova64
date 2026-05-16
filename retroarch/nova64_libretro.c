@@ -6314,6 +6314,332 @@ static JSValue js_vec_lerp(JSContext *ctx, JSValueConst this_val, int argc, JSVa
    return obj;
 }
 
+/* ── Batch 34: aurora, windmill, honeycomb, chroma, nebula, raindrop ────── */
+
+/* drawAurora(x,y,w,h,bands,color) — northern lights wavy bands */
+static JSValue js_draw_aurora(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double xv=double_from_js(ctx,argv[0],0), yv=double_from_js(ctx,argv[1],0);
+   double wv=double_from_js(ctx,argv[2],400), hv=double_from_js(ctx,argv[3],120);
+   int bands=argc>4?(int)double_from_js(ctx,argv[4],4):4;
+   uint32_t col=(uint32_t)color_from_js(ctx,argv[5],0x40FF80FFu);
+   if(bands<1)bands=1; if(bands>8)bands=8;
+   for(int b=0;b<bands;b++){
+      double by=yv+hv*b/bands;
+      double amp=hv*0.12*(1.0-(double)b/bands);
+      uint8_t alpha=(uint8_t)(160*(1.0-(double)b/bands)+20);
+      uint32_t dc=(col&0xFFFFFF00u)|(uint32_t)alpha;
+      int N=80;
+      for(int i=0;i<N;i++){
+         double t1=(double)i/N, t2=(double)(i+1)/N;
+         double x1=xv+t1*wv, x2=xv+t2*wv;
+         double y1=by+sin(t1*M_PI*4+b)*amp;
+         double y2=by+sin(t2*M_PI*4+b)*amp;
+         for(int ys=(int)y1;ys<(int)(y1+hv*0.25/bands);ys++)
+            set_pixel((int)x1,ys,dc);
+         path_draw_line_segment((int)x1,(int)y1,(int)x2,(int)y2,dc);
+      }
+   }
+   return JS_UNDEFINED;
+}
+
+/* fillAurora(x,y,w,h,bands,color) — filled aurora glow */
+static JSValue js_fill_aurora(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double xv=double_from_js(ctx,argv[0],0), yv=double_from_js(ctx,argv[1],0);
+   double wv=double_from_js(ctx,argv[2],400), hv=double_from_js(ctx,argv[3],120);
+   int bands=argc>4?(int)double_from_js(ctx,argv[4],4):4;
+   uint32_t col=(uint32_t)color_from_js(ctx,argv[5],0x40FF80FFu);
+   if(bands<1)bands=1; if(bands>8)bands=8;
+   int N=120;
+   for(int i=0;i<N;i++){
+      double t=(double)i/N;
+      int xc=(int)(xv+t*wv);
+      for(int b=0;b<bands;b++){
+         double by=yv+hv*b/bands;
+         double amp=hv*0.12*(1.0-(double)b/bands);
+         double topY=by+sin(t*M_PI*4+b)*amp;
+         double botY=topY+hv*0.3/bands;
+         uint8_t alpha=(uint8_t)(120*(1.0-(double)b/bands)+15);
+         uint32_t dc=(col&0xFFFFFF00u)|(uint32_t)alpha;
+         for(int ys=(int)topY;ys<=(int)botY;ys++) set_pixel(xc,ys,dc);
+      }
+   }
+   return JS_UNDEFINED;
+}
+
+/* drawWindmill(cx,cy,r,blades,angle,color) — windmill with angled blades */
+static JSValue js_draw_windmill(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double cx=double_from_js(ctx,argv[0],0), cy=double_from_js(ctx,argv[1],0);
+   double rv=double_from_js(ctx,argv[2],60);
+   int blades=argc>3?(int)double_from_js(ctx,argv[3],4):4;
+   double ang=argc>4?double_from_js(ctx,argv[4],0):0;
+   uint32_t col=(uint32_t)color_from_js(ctx,argv[5],0xFFFFFFFFu);
+   if(blades<3)blades=3; if(blades>8)blades=8;
+   for(int i=0;i<blades;i++){
+      double a0=ang+2*M_PI*i/blades;
+      double a1=a0+M_PI*0.35;
+      double inner=rv*0.12;
+      int x0=(int)(cx+cos(a0)*inner), y0=(int)(cy+sin(a0)*inner);
+      int x1=(int)(cx+cos(a1)*rv), y1=(int)(cy+sin(a1)*rv);
+      int x2=(int)(cx+cos(a1+M_PI*0.3)*rv*0.7), y2=(int)(cy+sin(a1+M_PI*0.3)*rv*0.7);
+      path_draw_line_segment(x0,y0,x1,y1,col);
+      path_draw_line_segment(x1,y1,x2,y2,col);
+      path_draw_line_segment(x2,y2,x0,y0,col);
+   }
+   /* hub */
+   int N=16;
+   double hubR=rv*0.1;
+   for(int i=0;i<N;i++){
+      double a1=2*M_PI*i/N, a2=2*M_PI*(i+1)/N;
+      path_draw_line_segment((int)(cx+cos(a1)*hubR),(int)(cy+sin(a1)*hubR),
+                             (int)(cx+cos(a2)*hubR),(int)(cy+sin(a2)*hubR),col);
+   }
+   return JS_UNDEFINED;
+}
+
+/* fillWindmill(cx,cy,r,blades,angle,color) — filled windmill blades */
+static JSValue js_fill_windmill(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double cx=double_from_js(ctx,argv[0],0), cy=double_from_js(ctx,argv[1],0);
+   double rv=double_from_js(ctx,argv[2],60);
+   int blades=argc>3?(int)double_from_js(ctx,argv[3],4):4;
+   double ang=argc>4?double_from_js(ctx,argv[4],0):0;
+   uint32_t col=(uint32_t)color_from_js(ctx,argv[5],0xFFFFFFFFu);
+   if(blades<3)blades=3; if(blades>8)blades=8;
+   for(int i=0;i<blades;i++){
+      double a0=ang+2*M_PI*i/blades;
+      double a1=a0+M_PI*0.35;
+      double inner=rv*0.12;
+      int px2[3]={(int)(cx+cos(a0)*inner),(int)(cx+cos(a1)*rv),(int)(cx+cos(a1+M_PI*0.3)*rv*0.7)};
+      int py2[3]={(int)(cy+sin(a0)*inner),(int)(cy+sin(a1)*rv),(int)(cy+sin(a1+M_PI*0.3)*rv*0.7)};
+      int miny2=py2[0],maxy2=py2[0];
+      if(py2[1]<miny2)miny2=py2[1]; if(py2[2]<miny2)miny2=py2[2];
+      if(py2[1]>maxy2)maxy2=py2[1]; if(py2[2]>maxy2)maxy2=py2[2];
+      for(int ys=miny2;ys<=maxy2;ys++){
+         int xs2[4]; int nc=0;
+         for(int k=0;k<3;k++){
+            int j=(k+1)%3;
+            if((py2[k]<=ys&&py2[j]>ys)||(py2[j]<=ys&&py2[k]>ys))
+               xs2[nc++]=px2[k]+(px2[j]-px2[k])*(ys-py2[k])/(py2[j]-py2[k]);
+         }
+         if(nc>=2){if(xs2[1]<xs2[0]){int tv=xs2[0];xs2[0]=xs2[1];xs2[1]=tv;}
+            for(int xv=xs2[0];xv<=xs2[1];xv++) set_pixel(xv,ys,col);}
+      }
+   }
+   return JS_UNDEFINED;
+}
+
+/* drawHoneycomb(x,y,w,h,cellR,color) — hexagonal honeycomb grid */
+static JSValue js_draw_honeycomb(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double xv=double_from_js(ctx,argv[0],0), yv=double_from_js(ctx,argv[1],0);
+   double wv=double_from_js(ctx,argv[2],300), hv=double_from_js(ctx,argv[3],200);
+   double cellR=argc>4?double_from_js(ctx,argv[4],20):20;
+   uint32_t col=(uint32_t)color_from_js(ctx,argv[5],0xFFFFFFFFu);
+   double hex_w=cellR*2, hex_h=cellR*sqrt(3.0);
+   double col_step=hex_w*0.75, row_step=hex_h;
+   int cols2=(int)(wv/col_step)+2, rows=(int)(hv/row_step)+2;
+   for(int row=0;row<rows;row++){
+      for(int col2=0;col2<cols2;col2++){
+         double cx2=xv+col2*col_step;
+         double cy2=yv+row*row_step+(col2%2==1?hex_h*0.5:0);
+         int N=6;
+         for(int i=0;i<N;i++){
+            double a1=M_PI/6+M_PI*i/3, a2=M_PI/6+M_PI*(i+1)/3;
+            int x1=(int)(cx2+cos(a1)*cellR), y1=(int)(cy2+sin(a1)*cellR);
+            int x2=(int)(cx2+cos(a2)*cellR), y2=(int)(cy2+sin(a2)*cellR);
+            if(cx2>xv-cellR&&cx2<xv+wv+cellR&&cy2>yv-cellR&&cy2<yv+hv+cellR)
+               path_draw_line_segment(x1,y1,x2,y2,col);
+         }
+      }
+   }
+   return JS_UNDEFINED;
+}
+
+/* fillHoneycomb(x,y,w,h,cellR,color,altColor) — alternating filled hexagons */
+static JSValue js_fill_honeycomb(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double xv=double_from_js(ctx,argv[0],0), yv=double_from_js(ctx,argv[1],0);
+   double wv=double_from_js(ctx,argv[2],300), hv=double_from_js(ctx,argv[3],200);
+   double cellR=argc>4?double_from_js(ctx,argv[4],20):20;
+   uint32_t col1=(uint32_t)color_from_js(ctx,argv[5],0xFFAA00FFu);
+   uint32_t col2=argc>6?(uint32_t)color_from_js(ctx,argv[6],0xFF8800FFu):0xFF8800FFu;
+   double hex_h=cellR*sqrt(3.0), col_step=cellR*1.5, row_step=hex_h;
+   int cols2=(int)(wv/col_step)+2, rows=(int)(hv/row_step)+2;
+   for(int row=0;row<rows;row++){
+      for(int hc=0;hc<cols2;hc++){
+         double cx2=xv+hc*col_step;
+         double cy2=yv+row*row_step+(hc%2==1?hex_h*0.5:0);
+         if(cx2<xv-cellR||cx2>xv+wv+cellR||cy2<yv-cellR||cy2>yv+hv+cellR) continue;
+         uint32_t fc=((row+hc)%2==0)?col1:col2;
+         int pts_x2[6], pts_y2[6];
+         for(int i=0;i<6;i++){
+            double ang=M_PI/6+M_PI*i/3;
+            pts_x2[i]=(int)(cx2+cos(ang)*cellR);
+            pts_y2[i]=(int)(cy2+sin(ang)*cellR);
+         }
+         int miny2=pts_y2[0],maxy2=pts_y2[0];
+         for(int i=1;i<6;i++){if(pts_y2[i]<miny2)miny2=pts_y2[i];if(pts_y2[i]>maxy2)maxy2=pts_y2[i];}
+         for(int ys=miny2;ys<=maxy2;ys++){
+            int xs2[6]; int nc=0;
+            for(int i=0;i<6;i++){
+               int j=(i+1)%6;
+               if((pts_y2[i]<=ys&&pts_y2[j]>ys)||(pts_y2[j]<=ys&&pts_y2[i]>ys))
+                  xs2[nc++]=pts_x2[i]+(pts_x2[j]-pts_x2[i])*(ys-pts_y2[i])/(pts_y2[j]-pts_y2[i]);
+            }
+            for(int ii=0;ii<nc-1;ii++) for(int jj=ii+1;jj<nc;jj++) if(xs2[jj]<xs2[ii]){int tv=xs2[ii];xs2[ii]=xs2[jj];xs2[jj]=tv;}
+            for(int ii=0;ii+1<nc;ii+=2) for(int xv2=xs2[ii];xv2<=xs2[ii+1];xv2++) set_pixel(xv2,ys,fc);
+         }
+      }
+   }
+   return JS_UNDEFINED;
+}
+
+/* screenChromaShift(amount) — RGB chromatic aberration shift */
+static JSValue js_screen_chroma_shift(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int amt=argc>0?(int)double_from_js(ctx,argv[0],4):4;
+   if(amt<0)amt=0; if(amt>20)amt=20;
+   int W=640,H=360;
+   uint32_t *scratch=(uint32_t*)malloc(W*H*sizeof(uint32_t));
+   if(!scratch) return JS_UNDEFINED;
+   memcpy(scratch,framebuffer,W*H*sizeof(uint32_t));
+   for(int ys=0;ys<H;ys++){
+      for(int xv=0;xv<W;xv++){
+         int rx=xv+amt, bx=xv-amt;
+         if(rx>=W)rx=W-1; if(bx<0)bx=0;
+         uint32_t rp=scratch[ys*W+rx];
+         uint32_t gp=scratch[ys*W+xv];
+         uint32_t bp=scratch[ys*W+bx];
+         framebuffer[ys*W+xv]=(rp&0xFF000000u)|(gp&0x00FF0000u)|(bp&0x0000FF00u)|(gp&0xFFu);
+      }
+   }
+   free(scratch);
+   return JS_UNDEFINED;
+}
+
+/* colorSaturate2(color,amount) — adjust saturation by multiplier */
+static JSValue js_color_saturate2(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   uint32_t col=(uint32_t)color_from_js(ctx,argv[0],0xFF0000FFu);
+   double amt=argc>1?double_from_js(ctx,argv[1],1.5):1.5;
+   double rf=((col>>24)&0xFF)/255.0, gf=((col>>16)&0xFF)/255.0, bf=((col>>8)&0xFF)/255.0;
+   double lum=0.2126*rf+0.7152*gf+0.0722*bf;
+   rf=lum+(rf-lum)*amt; gf=lum+(gf-lum)*amt; bf=lum+(bf-lum)*amt;
+   if(rf<0)rf=0; if(rf>1)rf=1;
+   if(gf<0)gf=0; if(gf>1)gf=1;
+   if(bf<0)bf=0; if(bf>1)bf=1;
+   return JS_NewInt32(ctx,(int32_t)(((uint32_t)(rf*255))<<24)|(((uint32_t)(gf*255))<<16)|(((uint32_t)(bf*255))<<8)|(col&0xFF));
+}
+
+/* drawNebula(cx,cy,r,color) — soft nebula cloud using random dots */
+static JSValue js_draw_nebula(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double cx=double_from_js(ctx,argv[0],0), cy=double_from_js(ctx,argv[1],0);
+   double rv=double_from_js(ctx,argv[2],80);
+   uint32_t col=(uint32_t)color_from_js(ctx,argv[3],0x8040C0FFu);
+   uint32_t seed=0xABCDEF01u;
+   int pts=300;
+   for(int i=0;i<pts;i++){
+      seed=seed*1664525u+1013904223u;
+      double ang=((seed>>16)&0xFFFF)/65535.0*2*M_PI;
+      seed=seed*1664525u+1013904223u;
+      double rr=sqrt(((seed>>16)&0xFFFF)/65535.0)*rv;
+      seed=seed*1664525u+1013904223u;
+      uint8_t alpha=(uint8_t)(((seed>>16)&0xFF)*0.6+20);
+      uint32_t dc=(col&0xFFFFFF00u)|(uint32_t)alpha;
+      int px2=(int)(cx+cos(ang)*rr), py2=(int)(cy+sin(ang)*rr);
+      set_pixel(px2,py2,dc); set_pixel(px2+1,py2,dc);
+      set_pixel(px2,py2+1,dc); set_pixel(px2+1,py2+1,dc);
+   }
+   return JS_UNDEFINED;
+}
+
+/* drawRainDrop(x,y,len,color) — single raindrop streak */
+static JSValue js_draw_rain_drop(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double xv=double_from_js(ctx,argv[0],0), yv=double_from_js(ctx,argv[1],0);
+   double len=argc>2?double_from_js(ctx,argv[2],20):20;
+   uint32_t col=(uint32_t)color_from_js(ctx,argv[3],0x80C0FFB0u);
+   int N=12;
+   for(int i=0;i<N;i++){
+      double t1=(double)i/N, t2=(double)(i+1)/N;
+      uint8_t alpha=(uint8_t)((1.0-t1)*160+20);
+      uint32_t dc=(col&0xFFFFFF00u)|(uint32_t)alpha;
+      path_draw_line_segment((int)xv,(int)(yv+t1*len),(int)xv,(int)(yv+t2*len),dc);
+   }
+   return JS_UNDEFINED;
+}
+
+/* drawCheckerFade(x,y,w,h,cellSz,color1,color2) — checkerboard with fade */
+static JSValue js_draw_checker_fade(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int xv=int_from_js(ctx,argv[0],0), yv=int_from_js(ctx,argv[1],0);
+   int wv=int_from_js(ctx,argv[2],200), hv=int_from_js(ctx,argv[3],200);
+   int csz=argc>4?(int)double_from_js(ctx,argv[4],16):16;
+   uint32_t col1=(uint32_t)color_from_js(ctx,argv[5],0xFFFFFFFFu);
+   uint32_t col2=argc>6?(uint32_t)color_from_js(ctx,argv[6],0x333333FFu):0x333333FFu;
+   if(csz<2)csz=2;
+   for(int ys=yv;ys<yv+hv;ys++){
+      for(int xs2=xv;xs2<xv+wv;xs2++){
+         int cx2=(xs2-xv)/csz, cy2=(ys-yv)/csz;
+         double fade=1.0-((double)(xs2-xv)/wv)*0.6;
+         uint32_t base=(cx2+cy2)%2==0?col1:col2;
+         uint8_t alpha=(uint8_t)((base&0xFF)*fade);
+         set_pixel(xs2,ys,(base&0xFFFFFF00u)|(uint32_t)alpha);
+      }
+   }
+   return JS_UNDEFINED;
+}
+
+/* colorAdjust(color,dH,dS,dV) — HSV shift: dH in degrees, dS/dV in -1..1 */
+static JSValue js_color_adjust(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   uint32_t col=(uint32_t)color_from_js(ctx,argv[0],0xFF0000FFu);
+   double dH=argc>1?double_from_js(ctx,argv[1],0):0;
+   double dS=argc>2?double_from_js(ctx,argv[2],0):0;
+   double dV=argc>3?double_from_js(ctx,argv[3],0):0;
+   double rf=((col>>24)&0xFF)/255.0, gf=((col>>16)&0xFF)/255.0, bf=((col>>8)&0xFF)/255.0;
+   double mx=rf>gf?(rf>bf?rf:bf):(gf>bf?gf:bf);
+   double mn=rf<gf?(rf<bf?rf:bf):(gf<bf?gf:bf);
+   double delta=mx-mn;
+   double hue=0;
+   if(delta>1e-6){
+      if(mx==rf) hue=60*fmod((gf-bf)/delta,6.0);
+      else if(mx==gf) hue=60*((bf-rf)/delta+2);
+      else hue=60*((rf-gf)/delta+4);
+   }
+   if(hue<0) hue+=360;
+   double sat=(mx<1e-6)?0:delta/mx, val=mx;
+   hue=fmod(hue+dH,360.0); if(hue<0)hue+=360;
+   sat+=dS; if(sat<0)sat=0; if(sat>1)sat=1;
+   val+=dV; if(val<0)val=0; if(val>1)val=1;
+   double cv=val*sat, xv2=cv*(1-fabs(fmod(hue/60,2.0)-1)), mv=val-cv;
+   double rf2=mv,gf2=mv,bf2=mv;
+   int hi=(int)(hue/60)%6;
+   if(hi==0){rf2+=cv;gf2+=xv2;}
+   else if(hi==1){rf2+=xv2;gf2+=cv;}
+   else if(hi==2){gf2+=cv;bf2+=xv2;}
+   else if(hi==3){gf2+=xv2;bf2+=cv;}
+   else if(hi==4){rf2+=xv2;bf2+=cv;}
+   else{rf2+=cv;bf2+=xv2;}
+   return JS_NewInt32(ctx,(int32_t)(((uint32_t)(rf2*255))<<24)|(((uint32_t)(gf2*255))<<16)|(((uint32_t)(bf2*255))<<8)|(col&0xFF));
+}
+
 /* ── Batch 33: meteor, corona, crystal, CRT, galaxy, orbit, atom, radar ── */
 
 /* drawMeteor(x,y,len,angle,color) — meteor streak with fading tail */
@@ -19587,6 +19913,20 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, global, "drawAtom",           js_draw_atom,           5);
    set_function(ctx, global, "drawRadar",          js_draw_radar,          5);
    set_function(ctx, global, "drawSunburst",       js_draw_sunburst,       5);
+
+   /* Batch 34 */
+   set_function(ctx, global, "drawAurora",         js_draw_aurora,         6);
+   set_function(ctx, global, "fillAurora",         js_fill_aurora,         6);
+   set_function(ctx, global, "drawWindmill",       js_draw_windmill,       6);
+   set_function(ctx, global, "fillWindmill",       js_fill_windmill,       6);
+   set_function(ctx, global, "drawHoneycomb",      js_draw_honeycomb,      6);
+   set_function(ctx, global, "fillHoneycomb",      js_fill_honeycomb,      7);
+   set_function(ctx, global, "screenChromaShift",  js_screen_chroma_shift, 1);
+   set_function(ctx, global, "colorSaturate2",     js_color_saturate2,     2);
+   set_function(ctx, global, "drawNebula",         js_draw_nebula,         4);
+   set_function(ctx, global, "drawRainDrop",       js_draw_rain_drop,      4);
+   set_function(ctx, global, "drawCheckerFade",    js_draw_checker_fade,   7);
+   set_function(ctx, global, "colorAdjust",        js_color_adjust,        4);
 
    JS_FreeValue(ctx, global);
    return true;

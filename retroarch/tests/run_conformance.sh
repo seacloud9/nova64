@@ -836,5 +836,10 @@ run_visual_case "441 crystal crt"          "441-crystal-crt"          "retroarch
 run_visual_case "442 galaxy orbit atom"    "442-galaxy-orbit-atom"    "retroarch/conformance/442-galaxy-orbit-atom.js"    "79a1f668c66900ee"
 run_visual_case "443 radar sunburst"       "443-radar-sunburst"       "retroarch/conformance/443-radar-sunburst.js"       "fecc8579ea148bf6"
 run_visual_case "451 batch33 showcase"     "451-batch33-showcase"     "retroarch/conformance/451-batch33-showcase.js"     "7c06411ac9804ed1"
+run_visual_case "452 aurora windmill"      "452-aurora-windmill"      "retroarch/conformance/452-aurora-windmill.js"      "e5014eed3a8c9ef0"
+run_visual_case "453 honeycomb"            "453-honeycomb"            "retroarch/conformance/453-honeycomb.js"            "213fd9af3334cef4"
+run_visual_case "454 chroma saturate"      "454-chroma-saturate"      "retroarch/conformance/454-chroma-saturate.js"      "1eb9669736aeabbf"
+run_visual_case "455 nebula rain checker"  "455-nebula-rain-checker"  "retroarch/conformance/455-nebula-rain-checker.js"  "72bc8c88bea2bbe6"
+run_visual_case "463 batch34 showcase"     "463-batch34-showcase"     "retroarch/conformance/463-batch34-showcase.js"     "8af303b1b1879e83"
 
 echo "Conformance passed."

@@ -6314,6 +6314,285 @@ static JSValue js_vec_lerp(JSContext *ctx, JSValueConst this_val, int argc, JSVa
    return obj;
 }
 
+/* ── Batch 22: distance, intersect, pentagram, crescent, bloom, color ──── */
+
+/* distanceXY(x1,y1,x2,y2) */
+static JSValue js_distance_xy(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double x1=double_from_js(ctx,argv[0],0); double y1=double_from_js(ctx,argv[1],0);
+   double x2=double_from_js(ctx,argv[2],0); double y2=double_from_js(ctx,argv[3],0);
+   double dx=x2-x1, dy=y2-y1;
+   return JS_NewFloat64(ctx, sqrt(dx*dx+dy*dy));
+}
+
+/* lineIntersect(x1,y1,x2,y2,x3,y3,x4,y4) -> array [ix,iy,hit] */
+static JSValue js_line_intersect(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double px=double_from_js(ctx,argv[0],0), py=double_from_js(ctx,argv[1],0);
+   double rx=double_from_js(ctx,argv[2],0)-px, ry=double_from_js(ctx,argv[3],0)-py;
+   double qx=double_from_js(ctx,argv[4],0), qy=double_from_js(ctx,argv[5],0);
+   double sx=double_from_js(ctx,argv[6],0)-qx, sy=double_from_js(ctx,argv[7],0)-qy;
+   double denom = rx*sy - ry*sx;
+   JSValue arr = JS_NewArray(ctx);
+   if (fabs(denom) < 1e-10) {
+      JS_SetPropertyUint32(ctx, arr, 0, JS_NewFloat64(ctx, 0));
+      JS_SetPropertyUint32(ctx, arr, 1, JS_NewFloat64(ctx, 0));
+      JS_SetPropertyUint32(ctx, arr, 2, JS_NewBool(ctx, 0));
+   } else {
+      double tv = ((qx-px)*sy - (qy-py)*sx) / denom;
+      double uv = ((qx-px)*ry - (qy-py)*rx) / denom;
+      int hit = (tv>=0.0 && tv<=1.0 && uv>=0.0 && uv<=1.0);
+      JS_SetPropertyUint32(ctx, arr, 0, JS_NewFloat64(ctx, px+tv*rx));
+      JS_SetPropertyUint32(ctx, arr, 1, JS_NewFloat64(ctx, py+tv*ry));
+      JS_SetPropertyUint32(ctx, arr, 2, JS_NewBool(ctx, hit));
+   }
+   return arr;
+}
+
+/* drawPentagram(cx,cy,r,rot,color) */
+static JSValue js_draw_pentagram(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double cx=double_from_js(ctx,argv[0],0), cy=double_from_js(ctx,argv[1],0);
+   double rv=double_from_js(ctx,argv[2],50);
+   double rot=double_from_js(ctx,argv[3],0);
+   uint32_t col=(uint32_t)color_from_js(ctx,argv[4],0xFFFFFFFFu);
+   /* inner radius for pentagram points */
+   double ri = rv * 0.381966;
+   double pts_ox[10], pts_oy[10];
+   for (int i=0; i<10; i++) {
+      double ang = rot + (i * M_PI / 5.0) - M_PI/2.0;
+      double rr = (i%2==0) ? rv : ri;
+      pts_ox[i] = cx + cos(ang)*rr;
+      pts_oy[i] = cy + sin(ang)*rr;
+   }
+   for (int i=0; i<10; i++) {
+      int j=(i+1)%10;
+      path_draw_line_segment((int)pts_ox[i],(int)pts_oy[i],(int)pts_ox[j],(int)pts_oy[j],col);
+   }
+   return JS_UNDEFINED;
+}
+
+/* fillPentagram(cx,cy,r,rot,color) */
+static JSValue js_fill_pentagram(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double cx=double_from_js(ctx,argv[0],0), cy=double_from_js(ctx,argv[1],0);
+   double rv=double_from_js(ctx,argv[2],50);
+   double rot=double_from_js(ctx,argv[3],0);
+   uint32_t col=(uint32_t)color_from_js(ctx,argv[4],0xFFFFFFFFu);
+   double ri = rv * 0.381966;
+   int px_arr[10], py_arr[10];
+   for (int i=0; i<10; i++) {
+      double ang = rot + (i * M_PI / 5.0) - M_PI/2.0;
+      double rr = (i%2==0) ? rv : ri;
+      px_arr[i] = (int)(cx + cos(ang)*rr);
+      py_arr[i] = (int)(cy + sin(ang)*rr);
+   }
+   /* scan-line fill */
+   int miny = py_arr[0], maxy = py_arr[0];
+   for (int i=1; i<10; i++) {
+      if (py_arr[i]<miny) miny=py_arr[i];
+      if (py_arr[i]>maxy) maxy=py_arr[i];
+   }
+   for (int ys=miny; ys<=maxy; ys++) {
+      int xs[10]; int nc=0;
+      for (int i=0; i<10; i++) {
+         int j=(i+1)%10;
+         int ay=py_arr[i], by=py_arr[j];
+         if ((ay<=ys && by>ys)||(by<=ys && ay>ys)) {
+            xs[nc++] = px_arr[i] + (px_arr[j]-px_arr[i])*(ys-ay)/(by-ay);
+         }
+      }
+      /* sort xs */
+      for (int ii=0; ii<nc-1; ii++) for (int jj=ii+1; jj<nc; jj++) if (xs[jj]<xs[ii]) { int t=xs[ii]; xs[ii]=xs[jj]; xs[jj]=t; }
+      for (int ii=0; ii+1<nc; ii+=2) {
+         for (int xv=xs[ii]; xv<=xs[ii+1]; xv++) set_pixel(xv,ys,col);
+      }
+   }
+   return JS_UNDEFINED;
+}
+
+/* drawCrescent(cx,cy,r,offset,color) */
+static JSValue js_draw_crescent(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double cx=double_from_js(ctx,argv[0],0), cy=double_from_js(ctx,argv[1],0);
+   double rv=double_from_js(ctx,argv[2],40);
+   double off=double_from_js(ctx,argv[3],12);
+   uint32_t col=(uint32_t)color_from_js(ctx,argv[4],0xFFFFFFFFu);
+   int N=64;
+   for (int i=0; i<N; i++) {
+      double ang1 = 2*M_PI*i/N, ang2 = 2*M_PI*(i+1)/N;
+      path_draw_line_segment((int)(cx+cos(ang1)*rv),(int)(cy+sin(ang1)*rv),
+                             (int)(cx+cos(ang2)*rv),(int)(cy+sin(ang2)*rv), col);
+   }
+   /* inner circle */
+   double ir = rv * 0.7;
+   double ocx = cx + off;
+   for (int i=0; i<N; i++) {
+      double ang1 = 2*M_PI*i/N, ang2 = 2*M_PI*(i+1)/N;
+      path_draw_line_segment((int)(ocx+cos(ang1)*ir),(int)(cy+sin(ang1)*ir),
+                             (int)(ocx+cos(ang2)*ir),(int)(cy+sin(ang2)*ir), col);
+   }
+   return JS_UNDEFINED;
+}
+
+/* fillCrescent(cx,cy,r,offset,color) */
+static JSValue js_fill_crescent(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double cx=double_from_js(ctx,argv[0],0), cy=double_from_js(ctx,argv[1],0);
+   double rv=double_from_js(ctx,argv[2],40);
+   double off=double_from_js(ctx,argv[3],12);
+   uint32_t col=(uint32_t)color_from_js(ctx,argv[4],0xFFFFFFFFu);
+   double ir = rv * 0.7;
+   double ocx = cx + off;
+   int miny=(int)(cy-rv), maxy=(int)(cy+rv);
+   if (miny<0) miny=0; if (maxy>359) maxy=359;
+   for (int ys=miny; ys<=maxy; ys++) {
+      double dy = ys - cy;
+      if (fabs(dy)>rv) continue;
+      double dx = sqrt(rv*rv - dy*dy);
+      int x0=(int)(cx-dx), x1=(int)(cx+dx);
+      for (int xv=x0; xv<=x1; xv++) {
+         double ddx = xv - ocx;
+         if (ddx*ddx + dy*dy > ir*ir) {
+            set_pixel(xv, ys, col);
+         }
+      }
+   }
+   return JS_UNDEFINED;
+}
+
+/* screenBloom(radius, threshold, intensity) */
+static JSValue js_screen_bloom(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int radius = argc>0 ? (int)double_from_js(ctx,argv[0],4) : 4;
+   double threshold = argc>1 ? double_from_js(ctx,argv[1],0.7) : 0.7;
+   double intensity = argc>2 ? double_from_js(ctx,argv[2],0.5) : 0.5;
+   if (radius < 1) radius = 1; if (radius > 20) radius = 20;
+   int W=640, H=360;
+   uint32_t *scratch = (uint32_t*)malloc(W*H*sizeof(uint32_t));
+   if (!scratch) return JS_UNDEFINED;
+   memcpy(scratch, framebuffer, W*H*sizeof(uint32_t));
+   for (int ys=0; ys<H; ys++) {
+      for (int xv=0; xv<W; xv++) {
+         uint32_t pc = scratch[ys*W+xv];
+         double rr=((pc>>24)&0xFF)/255.0, gr=((pc>>16)&0xFF)/255.0, bv=((pc>>8)&0xFF)/255.0;
+         double brightness=(rr+gr+bv)/3.0;
+         if (brightness < threshold) continue;
+         double str = (brightness - threshold) / (1.0 - threshold + 0.001) * intensity;
+         for (int dy2=-radius; dy2<=radius; dy2++) {
+            for (int dx2=-radius; dx2<=radius; dx2++) {
+               int nx=xv+dx2, ny=ys+dy2;
+               if (nx<0||nx>=W||ny<0||ny>=H) continue;
+               double dist2 = dx2*dx2+dy2*dy2;
+               if (dist2 > radius*radius) continue;
+               double w = str*(1.0-sqrt(dist2)/(radius+1));
+               if (w<0) w=0;
+               uint32_t dc = framebuffer[ny*W+nx];
+               int dr=(dc>>24)&0xFF, dg=(dc>>16)&0xFF, db2=(dc>>8)&0xFF, da=(dc)&0xFF;
+               dr = (int)(dr + rr*255*w); if(dr>255)dr=255;
+               dg = (int)(dg + gr*255*w); if(dg>255)dg=255;
+               db2= (int)(db2+ bv*255*w); if(db2>255)db2=255;
+               framebuffer[ny*W+nx] = ((uint32_t)dr<<24)|((uint32_t)dg<<16)|((uint32_t)db2<<8)|(uint32_t)da;
+            }
+         }
+      }
+   }
+   free(scratch);
+   return JS_UNDEFINED;
+}
+
+/* colorComplement(c) -> hue+180 */
+static JSValue js_color_complement(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   uint32_t col=(uint32_t)color_from_js(ctx,argv[0],0xFF0000FFu);
+   uint8_t rv2=(col>>24)&0xFF, gv=(col>>16)&0xFF, bv2=(col>>8)&0xFF, av=(col)&0xFF;
+   double rf=rv2/255.0, gf=gv/255.0, bf=bv2/255.0;
+   double maxc=rf>gf?rf:gf; if(bf>maxc)maxc=bf;
+   double minc=rf<gf?rf:gf; if(bf<minc)minc=bf;
+   double hh=0,ss=0,vv=maxc;
+   double delta=maxc-minc;
+   if(delta>1e-6){ ss=delta/maxc;
+      if(maxc==rf) hh=(gf-bf)/delta + (gf<bf?6:0);
+      else if(maxc==gf) hh=(bf-rf)/delta+2;
+      else hh=(rf-gf)/delta+4;
+      hh/=6.0;
+   }
+   hh = fmod(hh+0.5, 1.0);
+   /* HSV back to RGB */
+   double h6=hh*6.0; int hi=(int)h6; double ff=h6-hi;
+   double pp=vv*(1-ss), qq=vv*(1-ss*ff), tv2=vv*(1-ss*(1-ff));
+   double nr,ng,nb;
+   switch(hi%6){
+      case 0: nr=vv;ng=tv2;nb=pp; break;
+      case 1: nr=qq;ng=vv;nb=pp; break;
+      case 2: nr=pp;ng=vv;nb=tv2;break;
+      case 3: nr=pp;ng=qq;nb=vv; break;
+      case 4: nr=tv2;ng=pp;nb=vv;break;
+      default:nr=vv;ng=pp;nb=qq; break;
+   }
+   uint8_t ro=(uint8_t)(nr*255), go=(uint8_t)(ng*255), bo=(uint8_t)(nb*255);
+   return JS_NewInt32(ctx,(int32_t)(((uint32_t)ro<<24)|((uint32_t)go<<16)|((uint32_t)bo<<8)|(uint32_t)av));
+}
+
+/* bitCount(n) */
+static JSValue js_bit_count(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int32_t nv=int_from_js(ctx,argv[0],0);
+   uint32_t uv=(uint32_t)nv;
+   uv = uv - ((uv>>1)&0x55555555u);
+   uv = (uv&0x33333333u) + ((uv>>2)&0x33333333u);
+   uv = (uv + (uv>>4)) & 0x0f0f0f0fu;
+   return JS_NewInt32(ctx,(int32_t)((uv*0x01010101u)>>24));
+}
+
+/* nextPow2(n) */
+static JSValue js_next_pow2(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int32_t nv=int_from_js(ctx,argv[0],1);
+   if (nv<=1) return JS_NewInt32(ctx,1);
+   uint32_t uv=(uint32_t)(nv-1);
+   uv|=uv>>1; uv|=uv>>2; uv|=uv>>4; uv|=uv>>8; uv|=uv>>16;
+   return JS_NewInt32(ctx,(int32_t)(uv+1));
+}
+
+/* formatBytes(n) -> string */
+static JSValue js_format_bytes(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double nv=double_from_js(ctx,argv[0],0);
+   char buf[64];
+   if (nv >= 1073741824.0)      snprintf(buf,sizeof(buf),"%.2f GB", nv/1073741824.0);
+   else if (nv >= 1048576.0)    snprintf(buf,sizeof(buf),"%.2f MB", nv/1048576.0);
+   else if (nv >= 1024.0)       snprintf(buf,sizeof(buf),"%.2f KB", nv/1024.0);
+   else                         snprintf(buf,sizeof(buf),"%.0f B",  nv);
+   return JS_NewString(ctx, buf);
+}
+
+/* stagger(index, count, t, staggerAmt) */
+static JSValue js_stagger(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double idx=double_from_js(ctx,argv[0],0);
+   double cnt=double_from_js(ctx,argv[1],1);
+   double tv=double_from_js(ctx,argv[2],0);
+   double amt=double_from_js(ctx,argv[3],0.1);
+   if(cnt<=1) cnt=1;
+   double delay = (idx/(cnt-1 < 1 ? 1 : cnt-1)) * amt;
+   double local_t = (tv - delay) / (1.0 - amt + 0.0001);
+   if(local_t<0) local_t=0; if(local_t>1) local_t=1;
+   return JS_NewFloat64(ctx, local_t);
+}
+
 /* ── Batch 21: nested rects, parallelogram, trapezoid, polygon, duotone ─── */
 
 /* drawNestedRects(x,y,w,h,n,gap,color) */
@@ -15939,6 +16218,20 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, global, "drawNeonLine",            js_draw_neon_line,            6);
    set_function(ctx, global, "screenDuotone",           js_screen_duotone,            2);
    set_function(ctx, global, "gradientCircle",          js_gradient_circle,           6);
+
+   /* Batch 22 */
+   set_function(ctx, global, "distanceXY",       js_distance_xy,       4);
+   set_function(ctx, global, "lineIntersect",    js_line_intersect,    8);
+   set_function(ctx, global, "drawPentagram",    js_draw_pentagram,    5);
+   set_function(ctx, global, "fillPentagram",    js_fill_pentagram,    5);
+   set_function(ctx, global, "drawCrescent",     js_draw_crescent,     5);
+   set_function(ctx, global, "fillCrescent",     js_fill_crescent,     5);
+   set_function(ctx, global, "screenBloom",      js_screen_bloom,      3);
+   set_function(ctx, global, "colorComplement",  js_color_complement,  1);
+   set_function(ctx, global, "bitCount",         js_bit_count,         1);
+   set_function(ctx, global, "nextPow2",         js_next_pow2,         1);
+   set_function(ctx, global, "formatBytes",      js_format_bytes,      1);
+   set_function(ctx, global, "stagger",          js_stagger,           4);
 
    JS_FreeValue(ctx, global);
    return true;

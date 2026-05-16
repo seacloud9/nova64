@@ -777,5 +777,11 @@ run_visual_case "297 parallelogram trapezoid" "297-parallelogram-trapezoid" "ret
 run_visual_case "298 concentric checker"      "298-concentric-checker"      "retroarch/conformance/298-concentric-checker.js"      "6ede4f1126b019cd"
 run_visual_case "299 neon duotone"            "299-neon-duotone"            "retroarch/conformance/299-neon-duotone.js"            "f499ee0c080f180e"
 run_visual_case "307 batch21 showcase"        "307-batch21-showcase"        "retroarch/conformance/307-batch21-showcase.js"        "564a81e91af5818b"
+run_visual_case "308 distance intersect"  "308-distance-intersect"  "retroarch/conformance/308-distance-intersect.js"  "5610b76c00b65abc"
+run_visual_case "309 pentagram"           "309-pentagram"           "retroarch/conformance/309-pentagram.js"           "56050cfe84bfb3da"
+run_visual_case "310 crescent"            "310-crescent"            "retroarch/conformance/310-crescent.js"            "041bcaef69df0c3d"
+run_visual_case "311 bloom complement"    "311-bloom-complement"    "retroarch/conformance/311-bloom-complement.js"    "aeaa67a414ebaf81"
+run_visual_case "312 bit utils"           "312-bit-utils"           "retroarch/conformance/312-bit-utils.js"           "bc9f12b61b92f8c8"
+run_visual_case "319 batch22 showcase"    "319-batch22-showcase"    "retroarch/conformance/319-batch22-showcase.js"    "c27db12c2e47d8af"
 
 echo "Conformance passed."

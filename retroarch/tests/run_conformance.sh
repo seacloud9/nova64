@@ -888,4 +888,8 @@ run_visual_case "620 raycast proximity"     "620-raycast-proximity"    "retroarc
 run_visual_case "621 seed input"            "621-seed-input"           "retroarch/conformance/621-seed-input.js"           "e129a3375564ea43"
 run_visual_case "631 batch48 showcase"      "631-batch48-showcase"     "retroarch/conformance/631-batch48-showcase.js"     "725146c25fb115a6"
 
+run_visual_case "632 vec3 math"             "632-vec3-math"            "retroarch/conformance/632-vec3-math.js"            "f6f71b992dd4c734"
+run_visual_case "633 input sticks"          "633-input-sticks"         "retroarch/conformance/633-input-sticks.js"         "fbfe02ef7241a6c5"
+run_visual_case "643 batch49 showcase"      "643-batch49-showcase"     "retroarch/conformance/643-batch49-showcase.js"     "909c9c10b4eb830d"
+
 echo "Conformance passed."

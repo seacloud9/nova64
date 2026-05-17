@@ -876,5 +876,8 @@ run_visual_case "583 batch44 showcase"    "583-batch44-showcase"     "retroarch/
 run_visual_case "584 aabb drawrect"       "584-aabb-drawrect"        "retroarch/conformance/584-aabb-drawrect.js"        "c6c1d256a9c39fca"
 run_visual_case "585 rng seed"            "585-rng-seed"             "retroarch/conformance/585-rng-seed.js"             "c93e26444571f963"
 run_visual_case "595 batch45 showcase"    "595-batch45-showcase"     "retroarch/conformance/595-batch45-showcase.js"     "20947972acaf6806"
+run_visual_case "596 circle camera path"    "596-circle-camera-path"   "retroarch/conformance/596-circle-camera-path.js"   "15fc3628debf0930"
+run_visual_case "597 reflect trigger color" "597-reflect-trigger-color" "retroarch/conformance/597-reflect-trigger-color.js" "1a84235822494610"
+run_visual_case "607 batch46 showcase"      "607-batch46-showcase"     "retroarch/conformance/607-batch46-showcase.js"     "50f33c55204226e3"
 
 echo "Conformance passed."

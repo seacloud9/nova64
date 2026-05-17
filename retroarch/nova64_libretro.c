@@ -6356,6 +6356,222 @@ static JSValue js_vec_lerp(JSContext *ctx, JSValueConst this_val, int argc, JSVa
    return obj;
 }
 
+/* ── Batch 46: circle, setCamera, getCamera, createSphereLayout,          ── */
+/*              createPathLayout, reflectVec2, projectVec2,                    */
+/*              createRandomTrigger, tickRandomTrigger,                        */
+/*              colorAlpha, colorScale, frac                                   */
+
+/* circle(x, y, r, color, fill=false) — unified outline/fill circle */
+static JSValue js_circle(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 4) return JS_UNDEFINED;
+   int cx = int_from_js(ctx, argv[0], 0) - cam2d_x;
+   int cy = int_from_js(ctx, argv[1], 0) - cam2d_y;
+   int r  = int_from_js(ctx, argv[2], 0);
+   uint32_t c = color_from_js(ctx, argv[3], 0xffffffff);
+   int fill = argc > 4 && JS_ToBool(ctx, argv[4]);
+   /* Bresenham midpoint circle */
+   {
+      int dx = r, dy = 0, err = 0;
+      while (dx >= dy) {
+         if (fill) {
+            /* scanline fill */
+            for (int px = cx - dx; px <= cx + dx; px++) {
+               set_pixel(px, cy + dy, c);
+               set_pixel(px, cy - dy, c);
+            }
+            for (int px = cx - dy; px <= cx + dy; px++) {
+               set_pixel(px, cy + dx, c);
+               set_pixel(px, cy - dx, c);
+            }
+         } else {
+            set_pixel(cx + dx, cy + dy, c); set_pixel(cx + dy, cy + dx, c);
+            set_pixel(cx - dy, cy + dx, c); set_pixel(cx - dx, cy + dy, c);
+            set_pixel(cx - dx, cy - dy, c); set_pixel(cx - dy, cy - dx, c);
+            set_pixel(cx + dy, cy - dx, c); set_pixel(cx + dx, cy - dy, c);
+         }
+         if (err <= 0) { dy++; err += 2 * dy + 1; }
+         if (err >  0) { dx--; err -= 2 * dx + 1; }
+      }
+   }
+   return JS_UNDEFINED;
+}
+
+/* setCamera(x, y) — set 2D camera offset */
+static JSValue js_set_camera(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc >= 2) {
+      cam2d_x = int_from_js(ctx, argv[0], 0);
+      cam2d_y = int_from_js(ctx, argv[1], 0);
+   }
+   return JS_UNDEFINED;
+}
+
+/* getCamera() → {x, y} */
+static JSValue js_get_camera(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val; (void)argc; (void)argv;
+   JSValue obj = JS_NewObject(ctx);
+   JS_SetPropertyStr(ctx, obj, "x", JS_NewInt32(ctx, cam2d_x));
+   JS_SetPropertyStr(ctx, obj, "y", JS_NewInt32(ctx, cam2d_y));
+   return obj;
+}
+
+/* createSphereLayout(count, cx, cy, cz, radius) → [{x,y,z}] */
+static JSValue js_create_sphere_layout(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int n      = argc > 0 ? int_from_js(ctx, argv[0], 20) : 20;
+   double cx2 = argc > 1 ? double_from_js(ctx, argv[1], 0.0) : 0.0;
+   double cy2 = argc > 2 ? double_from_js(ctx, argv[2], 0.0) : 0.0;
+   double cz2 = argc > 3 ? double_from_js(ctx, argv[3], 0.0) : 0.0;
+   double r2  = argc > 4 ? double_from_js(ctx, argv[4], 100.0) : 100.0;
+   if (n < 1) n = 1;
+   double golden = 3.14159265358979323846 * (3.0 - sqrt(5.0));
+   JSValue arr = JS_NewArray(ctx);
+   for (int i = 0; i < n; i++) {
+      double y = cx2 + (1.0 - (double)i / (double)(n > 1 ? n - 1 : 1) * 2.0) * r2;
+      double rad2 = sqrt(r2 * r2 - (y - cx2) * (y - cx2));
+      double theta = golden * i;
+      JSValue pt = JS_NewObject(ctx);
+      JS_SetPropertyStr(ctx, pt, "x", JS_NewFloat64(ctx, cx2 + cos(theta) * rad2));
+      JS_SetPropertyStr(ctx, pt, "y", JS_NewFloat64(ctx, cy2 + y - cx2));
+      JS_SetPropertyStr(ctx, pt, "z", JS_NewFloat64(ctx, cz2 + sin(theta) * rad2));
+      JS_SetPropertyUint32(ctx, arr, (uint32_t)i, pt);
+   }
+   return arr;
+}
+
+/* createPathLayout(points, count) → [{x,y,z,t}] — linear interpolation along polyline */
+static JSValue js_create_path_layout(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 1 || !JS_IsArray(argv[0])) return JS_NewArray(ctx);
+   int64_t npts = 0;
+   JSValue lenval = JS_GetPropertyStr(ctx, argv[0], "length");
+   JS_ToInt64(ctx, &npts, lenval); JS_FreeValue(ctx, lenval);
+   if (npts < 2) return JS_NewArray(ctx);
+   int count = argc > 1 ? int_from_js(ctx, argv[1], 10) : 10;
+   if (count < 1) count = 1;
+   JSValue arr = JS_NewArray(ctx);
+   for (int i = 0; i < count; i++) {
+      double t = (count > 1) ? (double)i / (double)(count - 1) : 0.0;
+      double segs = (double)(npts - 1);
+      int seg = (int)(t * segs);
+      if (seg >= npts - 1) seg = (int)(npts - 2);
+      double local = t * segs - seg;
+      JSValue pa = JS_GetPropertyUint32(ctx, argv[0], (uint32_t)seg);
+      JSValue pb = JS_GetPropertyUint32(ctx, argv[0], (uint32_t)(seg + 1));
+      double ax = 0, ay = 0, az = 0, bx = 0, by = 0, bz = 0;
+      JSValue tmp;
+      tmp = JS_GetPropertyStr(ctx, pa, "x"); JS_ToFloat64(ctx, &ax, tmp); JS_FreeValue(ctx, tmp);
+      tmp = JS_GetPropertyStr(ctx, pa, "y"); JS_ToFloat64(ctx, &ay, tmp); JS_FreeValue(ctx, tmp);
+      tmp = JS_GetPropertyStr(ctx, pa, "z"); if (!JS_IsUndefined(tmp)) JS_ToFloat64(ctx, &az, tmp); JS_FreeValue(ctx, tmp);
+      tmp = JS_GetPropertyStr(ctx, pb, "x"); JS_ToFloat64(ctx, &bx, tmp); JS_FreeValue(ctx, tmp);
+      tmp = JS_GetPropertyStr(ctx, pb, "y"); JS_ToFloat64(ctx, &by, tmp); JS_FreeValue(ctx, tmp);
+      tmp = JS_GetPropertyStr(ctx, pb, "z"); if (!JS_IsUndefined(tmp)) JS_ToFloat64(ctx, &bz, tmp); JS_FreeValue(ctx, tmp);
+      JS_FreeValue(ctx, pa); JS_FreeValue(ctx, pb);
+      JSValue pt = JS_NewObject(ctx);
+      JS_SetPropertyStr(ctx, pt, "x", JS_NewFloat64(ctx, ax + (bx - ax) * local));
+      JS_SetPropertyStr(ctx, pt, "y", JS_NewFloat64(ctx, ay + (by - ay) * local));
+      JS_SetPropertyStr(ctx, pt, "z", JS_NewFloat64(ctx, az + (bz - az) * local));
+      JS_SetPropertyStr(ctx, pt, "t", JS_NewFloat64(ctx, t));
+      JS_SetPropertyUint32(ctx, arr, (uint32_t)i, pt);
+   }
+   return arr;
+}
+
+/* reflectVec2(vx, vy, nx, ny) → {x, y} — reflect v over unit normal n */
+static JSValue js_reflect_vec2(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double vx = double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0.0);
+   double vy = double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0.0);
+   double nx = double_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 0.0);
+   double ny = double_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, 1.0);
+   double dot2 = 2.0 * (vx * nx + vy * ny);
+   JSValue obj = JS_NewObject(ctx);
+   JS_SetPropertyStr(ctx, obj, "x", JS_NewFloat64(ctx, vx - dot2 * nx));
+   JS_SetPropertyStr(ctx, obj, "y", JS_NewFloat64(ctx, vy - dot2 * ny));
+   return obj;
+}
+
+/* projectVec2(vx, vy, nx, ny) → {x, y} — project v onto unit normal n */
+static JSValue js_project_vec2(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double vx = double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0.0);
+   double vy = double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0.0);
+   double nx = double_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 0.0);
+   double ny = double_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, 1.0);
+   double d  = vx * nx + vy * ny;
+   JSValue obj = JS_NewObject(ctx);
+   JS_SetPropertyStr(ctx, obj, "x", JS_NewFloat64(ctx, nx * d));
+   JS_SetPropertyStr(ctx, obj, "y", JS_NewFloat64(ctx, ny * d));
+   return obj;
+}
+
+/* createRandomTrigger(chance) → {chance} */
+static JSValue js_create_random_trigger(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double chance = argc > 0 ? double_from_js(ctx, argv[0], 0.05) : 0.05;
+   if (chance < 0.0) chance = 0.0;
+   if (chance > 1.0) chance = 1.0;
+   JSValue obj = JS_NewObject(ctx);
+   JS_SetPropertyStr(ctx, obj, "chance", JS_NewFloat64(ctx, chance));
+   return obj;
+}
+
+/* tickRandomTrigger(rt) → bool — true if fired this tick */
+static JSValue js_tick_random_trigger(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 1 || !JS_IsObject(argv[0])) return JS_FALSE;
+   double chance = 0.05;
+   JSValue tmp = JS_GetPropertyStr(ctx, argv[0], "chance");
+   if (!JS_IsUndefined(tmp) && !JS_IsNull(tmp)) JS_ToFloat64(ctx, &chance, tmp);
+   JS_FreeValue(ctx, tmp);
+   double r = (double)rand() / ((double)RAND_MAX + 1.0);
+   return JS_NewBool(ctx, r < chance);
+}
+
+/* colorAlpha(color, alpha) → color with replaced alpha channel */
+static JSValue js_color_alpha(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 2) return argc > 0 ? JS_DupValue(ctx, argv[0]) : JS_NewInt32(ctx, 0);
+   uint32_t c  = color_from_js(ctx, argv[0], 0xffffffff);
+   int a       = int_from_js(ctx, argv[1], 255);
+   if (a < 0) a = 0; if (a > 255) a = 255;
+   return JS_NewInt32(ctx, (int32_t)((c & 0xffffff00u) | (uint32_t)a));
+}
+
+/* colorScale(color, factor) → color with RGB multiplied by factor */
+static JSValue js_color_scale(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 2) return argc > 0 ? JS_DupValue(ctx, argv[0]) : JS_NewInt32(ctx, 0);
+   uint32_t c = color_from_js(ctx, argv[0], 0xffffffff);
+   double f   = double_from_js(ctx, argv[1], 1.0);
+   if (f < 0.0) f = 0.0;
+   int r2 = (int)(((c >> 24) & 0xff) * f); if (r2 > 255) r2 = 255;
+   int g2 = (int)(((c >> 16) & 0xff) * f); if (g2 > 255) g2 = 255;
+   int b2 = (int)(((c >>  8) & 0xff) * f); if (b2 > 255) b2 = 255;
+   int a2 = (int)((c & 0xff));
+   return JS_NewInt32(ctx, (int32_t)((uint32_t)(r2<<24)|(uint32_t)(g2<<16)|(uint32_t)(b2<<8)|(uint32_t)a2));
+}
+
+/* frac(v) → v - floor(v) */
+static JSValue js_frac(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double v = double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0.0);
+   return JS_NewFloat64(ctx, v - floor(v));
+}
+
 /* ── Batch 45: aabb, circleOverlap, drawRect, rngRandom, rngFloat,        ── */
 /*              rngPick, rngShuffle, createSeedFromHash, getSeed, setSeed,     */
 /*              perpVec2, n64Palette                                           */
@@ -22628,6 +22844,20 @@ static bool install_nova64_api(JSContext *ctx)
       JS_SetPropertyStr(ctx, pal, "silver",    JS_NewInt32(ctx, (int32_t)0xc0c0d2ffu));
       JS_SetPropertyStr(ctx, global, "n64Palette", pal);
    }
+
+   /* Batch 46 */
+   set_function(ctx, global, "circle",              js_circle,              5);
+   set_function(ctx, global, "setCamera",           js_set_camera,          2);
+   set_function(ctx, global, "getCamera",           js_get_camera,          0);
+   set_function(ctx, global, "createSphereLayout",  js_create_sphere_layout,5);
+   set_function(ctx, global, "createPathLayout",    js_create_path_layout,  2);
+   set_function(ctx, global, "reflectVec2",         js_reflect_vec2,        4);
+   set_function(ctx, global, "projectVec2",         js_project_vec2,        4);
+   set_function(ctx, global, "createRandomTrigger", js_create_random_trigger,1);
+   set_function(ctx, global, "tickRandomTrigger",   js_tick_random_trigger, 1);
+   set_function(ctx, global, "colorAlpha",          js_color_alpha,         2);
+   set_function(ctx, global, "colorScale",          js_color_scale,         2);
+   set_function(ctx, global, "frac",                js_frac,                1);
 
    JS_FreeValue(ctx, global);
    return true;

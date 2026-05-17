@@ -1207,10 +1207,34 @@ static uint32_t apply_palette_swap(uint32_t color)
    return (palette_swap_enabled && color == palette_swap_from) ? palette_swap_to : color;
 }
 
+#define NOVA64_MATRIX_STACK_DEPTH 16
+typedef struct { float a, b, c, d, tx, ty; } Nova64Matrix2D;
+static Nova64Matrix2D g_matrix_stack[NOVA64_MATRIX_STACK_DEPTH];
+static int g_matrix_stack_top = 0;
+
+static void matrix2d_identity(Nova64Matrix2D *m)
+{
+   m->a = 1.0f; m->b = 0.0f; m->c = 0.0f; m->d = 1.0f; m->tx = 0.0f; m->ty = 0.0f;
+}
+
+static void matrix2d_multiply_right(Nova64Matrix2D *m, float a, float b, float c, float d, float tx, float ty)
+{
+   float na  = m->a * a  + m->b * c;
+   float nb  = m->a * b  + m->b * d;
+   float nc  = m->c * a  + m->d * c;
+   float nd  = m->c * b  + m->d * d;
+   float ntx = m->a * tx + m->b * ty + m->tx;
+   float nty = m->c * tx + m->d * ty + m->ty;
+   m->a = na; m->b = nb; m->c = nc; m->d = nd; m->tx = ntx; m->ty = nty;
+}
+
 static void transform_2d_point(int world_x, int world_y, int *screen_x, int *screen_y)
 {
-   float x = (float)(world_x - cam2d_x);
-   float y = (float)(world_y - cam2d_y);
+   Nova64Matrix2D *m = &g_matrix_stack[g_matrix_stack_top];
+   float fx = m->a * (float)world_x + m->b * (float)world_y + m->tx;
+   float fy = m->c * (float)world_x + m->d * (float)world_y + m->ty;
+   float x = fx - (float)cam2d_x;
+   float y = fy - (float)cam2d_y;
    if (cam2d_zoom != 1.0f || cam2d_rotation != 0.0f) {
       float cx = (float)NOVA64_WIDTH * 0.5f;
       float cy = (float)NOVA64_HEIGHT * 0.5f;
@@ -4715,6 +4739,8 @@ static const int PERM_SRC[256] = {
 
 static int g_perm[512];
 static int g_noise_init_done = 0;
+static int    g_noise_octaves = 1;
+static double g_noise_falloff = 0.5;
 
 static void noise_ensure_init(void)
 {
@@ -4786,11 +4812,25 @@ static JSValue js_noise(JSContext *ctx, JSValueConst this_val, int argc, JSValue
    (void)this_val;
    if (argc == 0) return JS_NewFloat64(ctx, 0.0);
    double x = double_from_js(ctx, argv[0], 0.0);
-   if (argc == 1) return JS_NewFloat64(ctx, perlin_noise_2d(x, 0.0));
-   double y = double_from_js(ctx, argv[1], 0.0);
-   if (argc == 2) return JS_NewFloat64(ctx, perlin_noise_2d(x, y));
-   double z = double_from_js(ctx, argv[2], 0.0);
-   return JS_NewFloat64(ctx, perlin_noise_3d(x, y, z));
+   double y = argc > 1 ? double_from_js(ctx, argv[1], 0.0) : 0.0;
+   double z = argc > 2 ? double_from_js(ctx, argv[2], 0.0) : 0.0;
+   if (g_noise_octaves <= 1) {
+      if (argc == 1) return JS_NewFloat64(ctx, perlin_noise_2d(x, 0.0));
+      if (argc == 2) return JS_NewFloat64(ctx, perlin_noise_2d(x, y));
+      return JS_NewFloat64(ctx, perlin_noise_3d(x, y, z));
+   }
+   double value = 0.0, amplitude = 1.0, frequency = 1.0, max_val = 0.0;
+   for (int i = 0; i < g_noise_octaves; i++) {
+      double n;
+      if (argc == 1) n = perlin_noise_2d(x * frequency, 0.0);
+      else if (argc == 2) n = perlin_noise_2d(x * frequency, y * frequency);
+      else n = perlin_noise_3d(x * frequency, y * frequency, z * frequency);
+      value += n * amplitude;
+      max_val += amplitude;
+      amplitude *= g_noise_falloff;
+      frequency *= 2.0;
+   }
+   return JS_NewFloat64(ctx, max_val > 0.0 ? value / max_val : 0.0);
 }
 
 static JSValue js_fbm(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
@@ -6312,6 +6352,173 @@ static JSValue js_vec_lerp(JSContext *ctx, JSValueConst this_val, int argc, JSVa
    JS_SetPropertyStr(ctx, obj, "x", JS_NewFloat64(ctx, x1 + (x2-x1)*t));
    JS_SetPropertyStr(ctx, obj, "y", JS_NewFloat64(ctx, y1 + (y2-y1)*t));
    return obj;
+}
+
+/* ── Batch 35: matrix stack, noise control, quadCurve, ellipse, hsb ─────── */
+
+static JSValue js_push_matrix(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)ctx; (void)this_val; (void)argc; (void)argv;
+   if (g_matrix_stack_top < NOVA64_MATRIX_STACK_DEPTH - 1) {
+      g_matrix_stack[g_matrix_stack_top + 1] = g_matrix_stack[g_matrix_stack_top];
+      g_matrix_stack_top++;
+   }
+   return JS_UNDEFINED;
+}
+
+static JSValue js_pop_matrix(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)ctx; (void)this_val; (void)argc; (void)argv;
+   if (g_matrix_stack_top > 0) g_matrix_stack_top--;
+   return JS_UNDEFINED;
+}
+
+static JSValue js_translate(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   float dx = (float)double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0.0);
+   float dy = (float)double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0.0);
+   matrix2d_multiply_right(&g_matrix_stack[g_matrix_stack_top], 1.0f, 0.0f, 0.0f, 1.0f, dx, dy);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_rotate_matrix(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   float angle = (float)double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0.0);
+   float co = cosf(angle), si = sinf(angle);
+   matrix2d_multiply_right(&g_matrix_stack[g_matrix_stack_top], co, -si, si, co, 0.0f, 0.0f);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_scale2d(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   float sx = (float)double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 1.0);
+   float sy = argc > 1 ? (float)double_from_js(ctx, argv[1], (double)sx) : sx;
+   matrix2d_multiply_right(&g_matrix_stack[g_matrix_stack_top], sx, 0.0f, 0.0f, sy, 0.0f, 0.0f);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_reset_matrix(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)ctx; (void)this_val; (void)argc; (void)argv;
+   matrix2d_identity(&g_matrix_stack[g_matrix_stack_top]);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_noise_seed(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   uint32_t seed = (uint32_t)int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0);
+   int perm[256];
+   for (int i = 0; i < 256; i++) perm[i] = i;
+   uint32_t s = seed ^ 0x1234567u;
+   for (int i = 255; i > 0; i--) {
+      s = s * 1664525u + 1013904223u;
+      int j = (int)((s >> 16) % (unsigned)(i + 1));
+      int tmp = perm[i]; perm[i] = perm[j]; perm[j] = tmp;
+   }
+   for (int i = 0; i < 256; i++) g_perm[i] = g_perm[i + 256] = perm[i];
+   g_noise_init_done = 1;
+   return JS_UNDEFINED;
+}
+
+static JSValue js_noise_detail(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   g_noise_octaves = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 1);
+   if (g_noise_octaves < 1) g_noise_octaves = 1;
+   if (g_noise_octaves > 8) g_noise_octaves = 8;
+   g_noise_falloff = double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0.5);
+   if (g_noise_falloff < 0.0) g_noise_falloff = 0.0;
+   if (g_noise_falloff > 1.0) g_noise_falloff = 1.0;
+   return JS_UNDEFINED;
+}
+
+static JSValue js_quad_curve(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   float qx0 = (float)double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0.0);
+   float qy0 = (float)double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0.0);
+   float qcx = (float)double_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 0.0);
+   float qcy = (float)double_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, 0.0);
+   float qx1 = (float)double_from_js(ctx, argc > 4 ? argv[4] : JS_UNDEFINED, 0.0);
+   float qy1 = (float)double_from_js(ctx, argc > 5 ? argv[5] : JS_UNDEFINED, 0.0);
+   uint32_t color = color_from_js(ctx, argc > 6 ? argv[6] : JS_UNDEFINED, rgba8(255, 255, 255, 255));
+   int steps = 40;
+   int spx, spy;
+   transform_2d_point((int)lrintf(qx0), (int)lrintf(qy0), &spx, &spy);
+   for (int i = 1; i <= steps; i++) {
+      float t  = (float)i / (float)steps;
+      float mt = 1.0f - t;
+      float nx = mt * mt * qx0 + 2.0f * mt * t * qcx + t * t * qx1;
+      float ny = mt * mt * qy0 + 2.0f * mt * t * qcy + t * t * qy1;
+      int enx, eny;
+      transform_2d_point((int)lrintf(nx), (int)lrintf(ny), &enx, &eny);
+      path_draw_line_segment(spx, spy, enx, eny, color);
+      spx = enx; spy = eny;
+   }
+   return JS_UNDEFINED;
+}
+
+static JSValue js_ellipse(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int ecx = 0, ecy = 0;
+   transform_2d_point(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0),
+         int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0), &ecx, &ecy);
+   int ew = int_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 0);
+   int eh = int_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, ew);
+   int rx = transform_2d_size(ew / 2);
+   int ry = transform_2d_size(eh / 2);
+   uint32_t color = color_from_js(ctx, argc > 4 ? argv[4] : JS_UNDEFINED, rgba8(255, 255, 255, 255));
+   draw_ellipse_pixels(ecx, ecy, rx, ry, color, false);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_ellipsefill(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int ecx = 0, ecy = 0;
+   transform_2d_point(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0),
+         int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0), &ecx, &ecy);
+   int ew = int_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 0);
+   int eh = int_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, ew);
+   int rx = transform_2d_size(ew / 2);
+   int ry = transform_2d_size(eh / 2);
+   uint32_t color = color_from_js(ctx, argc > 4 ? argv[4] : JS_UNDEFINED, rgba8(255, 255, 255, 255));
+   draw_ellipse_pixels(ecx, ecy, rx, ry, color, true);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_hsb(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   float h = (float)double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0.0);
+   float s = (float)double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 1.0);
+   float bv = (float)double_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 1.0);
+   int   a  = int_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, 255);
+   h = fmodf(h, 360.0f); if (h < 0.0f) h += 360.0f;
+   if (s < 0.0f) s = 0.0f; if (s > 1.0f) s = 1.0f;
+   if (bv < 0.0f) bv = 0.0f; if (bv > 1.0f) bv = 1.0f;
+   if (a < 0) a = 0; if (a > 255) a = 255;
+   float c2 = bv * s;
+   float x2 = c2 * (1.0f - fabsf(fmodf(h / 60.0f, 2.0f) - 1.0f));
+   float mv = bv - c2;
+   float r1 = mv, g1 = mv, b1 = mv;
+   int sector = (int)(h / 60.0f) % 6;
+   if      (sector == 0) { r1 += c2; g1 += x2; }
+   else if (sector == 1) { r1 += x2; g1 += c2; }
+   else if (sector == 2) { g1 += c2; b1 += x2; }
+   else if (sector == 3) { g1 += x2; b1 += c2; }
+   else if (sector == 4) { r1 += x2; b1 += c2; }
+   else                  { r1 += c2; b1 += x2; }
+   int ri = (int)(r1 * 255.0f + 0.5f);
+   int gi = (int)(g1 * 255.0f + 0.5f);
+   int bi = (int)(b1 * 255.0f + 0.5f);
+   if (ri > 255) ri = 255; if (gi > 255) gi = 255; if (bi > 255) bi = 255;
+   return JS_NewUint32(ctx, rgba8(ri, gi, bi, a));
 }
 
 /* ── Batch 34: aurora, windmill, honeycomb, chroma, nebula, raindrop ────── */
@@ -16785,6 +16992,10 @@ static JSValue js_clear_draw_state(JSContext *ctx, JSValueConst this_val, int ar
    blend_2d_mode = NOVA64_BLEND_NORMAL;
    palette_swap_enabled = false;
    clip_stack_depth = camera2d_stack_depth = blend_stack_depth = palette_stack_depth = 0;
+   g_matrix_stack_top = 0;
+   matrix2d_identity(&g_matrix_stack[0]);
+   g_noise_octaves = 1;
+   g_noise_falloff = 0.5;
    return JS_UNDEFINED;
 }
 
@@ -19928,6 +20139,20 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, global, "drawCheckerFade",    js_draw_checker_fade,   7);
    set_function(ctx, global, "colorAdjust",        js_color_adjust,        4);
 
+   /* Batch 35 */
+   set_function(ctx, global, "pushMatrix",   js_push_matrix,   0);
+   set_function(ctx, global, "popMatrix",    js_pop_matrix,    0);
+   set_function(ctx, global, "translate",    js_translate,     2);
+   set_function(ctx, global, "rotate",       js_rotate_matrix, 1);
+   set_function(ctx, global, "scale2d",      js_scale2d,       2);
+   set_function(ctx, global, "resetMatrix",  js_reset_matrix,  0);
+   set_function(ctx, global, "noiseSeed",    js_noise_seed,    1);
+   set_function(ctx, global, "noiseDetail",  js_noise_detail,  2);
+   set_function(ctx, global, "quadCurve",    js_quad_curve,    7);
+   set_function(ctx, global, "ellipse",      js_ellipse,       5);
+   set_function(ctx, global, "ellipsefill",  js_ellipsefill,   5);
+   set_function(ctx, global, "hsb",          js_hsb,           4);
+
    JS_FreeValue(ctx, global);
    return true;
 }
@@ -22434,6 +22659,10 @@ void RETRO_CALLCONV retro_reset(void)
    blend_stack_depth = 0;
    palette_stack_depth = 0;
    reset_palette_state();
+   g_matrix_stack_top = 0;
+   matrix2d_identity(&g_matrix_stack[0]);
+   g_noise_octaves = 1;
+   g_noise_falloff = 0.5;
    frame_count = 0;
    clear_framebuffer(rgba8(0, 0, 0, 255));
    reset_scene_state();

@@ -880,4 +880,8 @@ run_visual_case "596 circle camera path"    "596-circle-camera-path"   "retroarc
 run_visual_case "597 reflect trigger color" "597-reflect-trigger-color" "retroarch/conformance/597-reflect-trigger-color.js" "1a84235822494610"
 run_visual_case "607 batch46 showcase"      "607-batch46-showcase"     "retroarch/conformance/607-batch46-showcase.js"     "50f33c55204226e3"
 
+run_visual_case "608 camera2d hype"         "608-camera2d-hype"        "retroarch/conformance/608-camera2d-hype.js"        "5752f013176a0bdd"
+run_visual_case "609 hype registry"         "609-hype-registry"        "retroarch/conformance/609-hype-registry.js"        "8af1be9d34eb9d0c"
+run_visual_case "619 batch47 showcase"      "619-batch47-showcase"     "retroarch/conformance/619-batch47-showcase.js"     "be608021362ec97c"
+
 echo "Conformance passed."

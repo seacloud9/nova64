@@ -6356,6 +6356,577 @@ static JSValue js_vec_lerp(JSContext *ctx, JSValueConst this_val, int argc, JSVa
    return obj;
 }
 
+/* ── Batch 50: angleVec3, reflectVec3, projectVec3, clamp01, bilinear,     ── */
+/*              smootherstep, addScreen, switchScreen, switchToScreen,           */
+/*              isTransitioning, getCurrentScreen, startScreens                  */
+
+#define NOVA64_MAX_SCREENS 16
+typedef struct { char name[64]; JSValue def; } nova64_screen_t;
+static nova64_screen_t g_screens[NOVA64_MAX_SCREENS];
+static int             g_screen_count = 0;
+static char            g_current_screen[64] = "";
+static void reset_screen_manager(void) {
+   if (js_host.context) {
+      for (int i = 0; i < g_screen_count; i++)
+         JS_FreeValue(js_host.context, g_screens[i].def);
+   }
+   memset(g_screens, 0, sizeof(g_screens));
+   g_screen_count = 0;
+   g_current_screen[0] = '\0';
+}
+
+static JSValue js_angle_vec3(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   if (argc < 6) return JS_NewFloat64(ctx, 0.0);
+   double ax=double_from_js(ctx,argv[0],0),ay=double_from_js(ctx,argv[1],0),az=double_from_js(ctx,argv[2],0);
+   double bx=double_from_js(ctx,argv[3],0),by=double_from_js(ctx,argv[4],0),bz=double_from_js(ctx,argv[5],0);
+   double dot=ax*bx+ay*by+az*bz;
+   double la=sqrt(ax*ax+ay*ay+az*az), lb=sqrt(bx*bx+by*by+bz*bz);
+   if (la<1e-12||lb<1e-12) return JS_NewFloat64(ctx,0.0);
+   double c=dot/(la*lb); if(c>1)c=1; if(c<-1)c=-1;
+   return JS_NewFloat64(ctx,acos(c));
+}
+static JSValue js_reflect_vec3(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   if (argc < 6) return JS_NewObject(ctx);
+   double vx=double_from_js(ctx,argv[0],0),vy=double_from_js(ctx,argv[1],0),vz=double_from_js(ctx,argv[2],0);
+   double nx=double_from_js(ctx,argv[3],0),ny=double_from_js(ctx,argv[4],0),nz=double_from_js(ctx,argv[5],0);
+   double d=2*(vx*nx+vy*ny+vz*nz);
+   JSValue o=JS_NewObject(ctx);
+   JS_SetPropertyStr(ctx,o,"x",JS_NewFloat64(ctx,vx-d*nx));
+   JS_SetPropertyStr(ctx,o,"y",JS_NewFloat64(ctx,vy-d*ny));
+   JS_SetPropertyStr(ctx,o,"z",JS_NewFloat64(ctx,vz-d*nz));
+   return o;
+}
+static JSValue js_project_vec3(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   if (argc < 6) return JS_NewObject(ctx);
+   double vx=double_from_js(ctx,argv[0],0),vy=double_from_js(ctx,argv[1],0),vz=double_from_js(ctx,argv[2],0);
+   double nx=double_from_js(ctx,argv[3],0),ny=double_from_js(ctx,argv[4],0),nz=double_from_js(ctx,argv[5],0);
+   double d=vx*nx+vy*ny+vz*nz;
+   JSValue o=JS_NewObject(ctx);
+   JS_SetPropertyStr(ctx,o,"x",JS_NewFloat64(ctx,nx*d));
+   JS_SetPropertyStr(ctx,o,"y",JS_NewFloat64(ctx,ny*d));
+   JS_SetPropertyStr(ctx,o,"z",JS_NewFloat64(ctx,nz*d));
+   return o;
+}
+static JSValue js_clamp01(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   double v=argc>0?double_from_js(ctx,argv[0],0):0;
+   if(v<0)v=0; if(v>1)v=1;
+   return JS_NewFloat64(ctx,v);
+}
+static JSValue js_bilinear(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   if(argc<6) return JS_NewFloat64(ctx,0);
+   double v00=double_from_js(ctx,argv[0],0),v10=double_from_js(ctx,argv[1],0);
+   double v01=double_from_js(ctx,argv[2],0),v11=double_from_js(ctx,argv[3],0);
+   double tx=double_from_js(ctx,argv[4],0),ty=double_from_js(ctx,argv[5],0);
+   double top=v00+(v10-v00)*tx, bot=v01+(v11-v01)*tx;
+   return JS_NewFloat64(ctx,top+(bot-top)*ty);
+}
+static JSValue js_smootherstep(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   double t=argc>0?double_from_js(ctx,argv[0],0):0;
+   if(t<0)t=0; if(t>1)t=1;
+   return JS_NewFloat64(ctx,t*t*t*(t*(t*6-15)+10));
+}
+static JSValue js_add_screen(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   if(argc<2||!JS_IsObject(argv[1])) return JS_UNDEFINED;
+   const char *name=JS_ToCString(ctx,argv[0]);
+   if(!name) return JS_UNDEFINED;
+   for(int i=0;i<g_screen_count;i++) {
+      if(strcmp(g_screens[i].name,name)==0) {
+         JS_FreeValue(ctx,g_screens[i].def);
+         g_screens[i].def=JS_DupValue(ctx,argv[1]);
+         JS_FreeCString(ctx,name); return JS_UNDEFINED;
+      }
+   }
+   if(g_screen_count<NOVA64_MAX_SCREENS) {
+      snprintf(g_screens[g_screen_count].name,64,"%s",name);
+      g_screens[g_screen_count].def=JS_DupValue(ctx,argv[1]);
+      g_screen_count++;
+   }
+   JS_FreeCString(ctx,name);
+   return JS_UNDEFINED;
+}
+static JSValue js_switch_screen(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   if(argc<1) return JS_UNDEFINED;
+   const char *name=JS_ToCString(ctx,argv[0]);
+   if(!name) return JS_UNDEFINED;
+   snprintf(g_current_screen,sizeof(g_current_screen),"%s",name);
+   for(int i=0;i<g_screen_count;i++) {
+      if(strcmp(g_screens[i].name,name)==0) {
+         JSValue init_fn=JS_GetPropertyStr(ctx,g_screens[i].def,"init");
+         if(!JS_IsUndefined(init_fn)&&!JS_IsNull(init_fn)) {
+            JSValue data=argc>1?argv[1]:JS_UNDEFINED;
+            JSValue r=JS_Call(ctx,init_fn,JS_UNDEFINED,1,&data);
+            JS_FreeValue(ctx,r);
+         }
+         JS_FreeValue(ctx,init_fn);
+         break;
+      }
+   }
+   JS_FreeCString(ctx,name);
+   return JS_UNDEFINED;
+}
+static JSValue js_is_transitioning(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+   { (void)this_val;(void)argc;(void)argv; return JS_FALSE; }
+static JSValue js_get_current_screen(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+   { (void)this_val;(void)argc;(void)argv; return JS_NewString(ctx,g_current_screen); }
+static JSValue js_start_screens(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+   { return js_switch_screen(ctx,this_val,argc,argv); }
+
+/* ── Batch 49: rightStickY, leftStickX, leftStickY,                        ── */
+/*              addVec3, subVec3, scaleVec3, normVec3, dotVec3, magVec3,       */
+/*              crossVec3, lerpVec3, rotateVec2                                 */
+
+static JSValue js_right_stick_y(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+   { (void)this_val;(void)argc;(void)argv; return JS_NewFloat64(ctx,(double)analog_axes[0][NOVA64_ANALOG_RIGHT][NOVA64_ANALOG_Y]); }
+static JSValue js_left_stick_x(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+   { (void)this_val;(void)argc;(void)argv; return JS_NewFloat64(ctx,(double)analog_axes[0][NOVA64_ANALOG_LEFT][NOVA64_ANALOG_X]); }
+static JSValue js_left_stick_y(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+   { (void)this_val;(void)argc;(void)argv; return JS_NewFloat64(ctx,(double)analog_axes[0][NOVA64_ANALOG_LEFT][NOVA64_ANALOG_Y]); }
+static JSValue js_add_vec3(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   if(argc<6) return JS_NewObject(ctx);
+   double ax=double_from_js(ctx,argv[0],0),ay=double_from_js(ctx,argv[1],0),az=double_from_js(ctx,argv[2],0);
+   double bx=double_from_js(ctx,argv[3],0),by=double_from_js(ctx,argv[4],0),bz=double_from_js(ctx,argv[5],0);
+   JSValue o=JS_NewObject(ctx);
+   JS_SetPropertyStr(ctx,o,"x",JS_NewFloat64(ctx,ax+bx));
+   JS_SetPropertyStr(ctx,o,"y",JS_NewFloat64(ctx,ay+by));
+   JS_SetPropertyStr(ctx,o,"z",JS_NewFloat64(ctx,az+bz));
+   return o;
+}
+static JSValue js_sub_vec3(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   if(argc<6) return JS_NewObject(ctx);
+   double ax=double_from_js(ctx,argv[0],0),ay=double_from_js(ctx,argv[1],0),az=double_from_js(ctx,argv[2],0);
+   double bx=double_from_js(ctx,argv[3],0),by=double_from_js(ctx,argv[4],0),bz=double_from_js(ctx,argv[5],0);
+   JSValue o=JS_NewObject(ctx);
+   JS_SetPropertyStr(ctx,o,"x",JS_NewFloat64(ctx,ax-bx));
+   JS_SetPropertyStr(ctx,o,"y",JS_NewFloat64(ctx,ay-by));
+   JS_SetPropertyStr(ctx,o,"z",JS_NewFloat64(ctx,az-bz));
+   return o;
+}
+static JSValue js_scale_vec3(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   if(argc<4) return JS_NewObject(ctx);
+   double x=double_from_js(ctx,argv[0],0),y=double_from_js(ctx,argv[1],0),z=double_from_js(ctx,argv[2],0);
+   double s=double_from_js(ctx,argv[3],1);
+   JSValue o=JS_NewObject(ctx);
+   JS_SetPropertyStr(ctx,o,"x",JS_NewFloat64(ctx,x*s));
+   JS_SetPropertyStr(ctx,o,"y",JS_NewFloat64(ctx,y*s));
+   JS_SetPropertyStr(ctx,o,"z",JS_NewFloat64(ctx,z*s));
+   return o;
+}
+static JSValue js_norm_vec3(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   if(argc<3) return JS_NewObject(ctx);
+   double x=double_from_js(ctx,argv[0],0),y=double_from_js(ctx,argv[1],0),z=double_from_js(ctx,argv[2],0);
+   double len=sqrt(x*x+y*y+z*z);
+   JSValue o=JS_NewObject(ctx);
+   if(len>1e-12){x/=len;y/=len;z/=len;}
+   JS_SetPropertyStr(ctx,o,"x",JS_NewFloat64(ctx,x));
+   JS_SetPropertyStr(ctx,o,"y",JS_NewFloat64(ctx,y));
+   JS_SetPropertyStr(ctx,o,"z",JS_NewFloat64(ctx,z));
+   return o;
+}
+static JSValue js_dot_vec3(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   if(argc<6) return JS_NewFloat64(ctx,0);
+   double ax=double_from_js(ctx,argv[0],0),ay=double_from_js(ctx,argv[1],0),az=double_from_js(ctx,argv[2],0);
+   double bx=double_from_js(ctx,argv[3],0),by=double_from_js(ctx,argv[4],0),bz=double_from_js(ctx,argv[5],0);
+   return JS_NewFloat64(ctx,ax*bx+ay*by+az*bz);
+}
+static JSValue js_mag_vec3(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   if(argc<3) return JS_NewFloat64(ctx,0);
+   double x=double_from_js(ctx,argv[0],0),y=double_from_js(ctx,argv[1],0),z=double_from_js(ctx,argv[2],0);
+   return JS_NewFloat64(ctx,sqrt(x*x+y*y+z*z));
+}
+static JSValue js_cross_vec3(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   if(argc<6) return JS_NewObject(ctx);
+   double ax=double_from_js(ctx,argv[0],0),ay=double_from_js(ctx,argv[1],0),az=double_from_js(ctx,argv[2],0);
+   double bx=double_from_js(ctx,argv[3],0),by=double_from_js(ctx,argv[4],0),bz=double_from_js(ctx,argv[5],0);
+   JSValue o=JS_NewObject(ctx);
+   JS_SetPropertyStr(ctx,o,"x",JS_NewFloat64(ctx,ay*bz-az*by));
+   JS_SetPropertyStr(ctx,o,"y",JS_NewFloat64(ctx,az*bx-ax*bz));
+   JS_SetPropertyStr(ctx,o,"z",JS_NewFloat64(ctx,ax*by-ay*bx));
+   return o;
+}
+static JSValue js_lerp_vec3(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   if(argc<7) return JS_NewObject(ctx);
+   double ax=double_from_js(ctx,argv[0],0),ay=double_from_js(ctx,argv[1],0),az=double_from_js(ctx,argv[2],0);
+   double bx=double_from_js(ctx,argv[3],0),by=double_from_js(ctx,argv[4],0),bz=double_from_js(ctx,argv[5],0);
+   double t=double_from_js(ctx,argv[6],0);
+   JSValue o=JS_NewObject(ctx);
+   JS_SetPropertyStr(ctx,o,"x",JS_NewFloat64(ctx,ax+(bx-ax)*t));
+   JS_SetPropertyStr(ctx,o,"y",JS_NewFloat64(ctx,ay+(by-ay)*t));
+   JS_SetPropertyStr(ctx,o,"z",JS_NewFloat64(ctx,az+(bz-az)*t));
+   return o;
+}
+static JSValue js_rotate_vec2(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   if(argc<3) return JS_NewObject(ctx);
+   double x=double_from_js(ctx,argv[0],0),y=double_from_js(ctx,argv[1],0);
+   double a=double_from_js(ctx,argv[2],0);
+   double c=cos(a),s=sin(a);
+   JSValue o=JS_NewObject(ctx);
+   JS_SetPropertyStr(ctx,o,"x",JS_NewFloat64(ctx,x*c-y*s));
+   JS_SetPropertyStr(ctx,o,"y",JS_NewFloat64(ctx,x*s+y*c));
+   return o;
+}
+
+/* ── Batch 48: raycastTilemap, createProximityTrigger, tickProximityTrigger, ── */
+/*              createSeedRNG, getSeedRNG, seedToTraits, exportSeedMetadata,      */
+/*              mouseDown, mousePressed, gamepadAxis, gamepadConnected,            */
+/*              rightStickX                                                        */
+
+static JSValue js_raycast_tilemap(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   if (argc < 7) { JSValue o=JS_NewObject(ctx); JS_SetPropertyStr(ctx,o,"hit",JS_FALSE); return o; }
+   double x0=double_from_js(ctx,argv[0],0), y0=double_from_js(ctx,argv[1],0);
+   double dx=double_from_js(ctx,argv[2],0), dy=double_from_js(ctx,argv[3],0);
+   double maxDist=double_from_js(ctx,argv[4],1000), tileSize=double_from_js(ctx,argv[5],16);
+   JSValue tileFn=argv[6];
+   if (!JS_IsFunction(ctx,tileFn)) { JSValue o=JS_NewObject(ctx); JS_SetPropertyStr(ctx,o,"hit",JS_FALSE); return o; }
+   if (tileSize<0.001) tileSize=16;
+   int stepX=(dx>0)?1:((dx<0)?-1:1), stepY=(dy>0)?1:((dy<0)?-1:1);
+   double invDx=dx!=0?1.0/dx:1e9, invDy=dy!=0?1.0/dy:1e9;
+   int tx=(int)floor(x0/tileSize), ty=(int)floor(y0/tileSize);
+   double nextBX=(dx>0?(floor(x0/tileSize)+1)*tileSize:floor(x0/tileSize)*tileSize);
+   double nextBY=(dy>0?(floor(y0/tileSize)+1)*tileSize:floor(y0/tileSize)*tileSize);
+   double tMaxX=(nextBX-x0)*(dx!=0?invDx:1e9);
+   double tMaxY=(nextBY-y0)*(dy!=0?invDy:1e9);
+   double tDeltaX=fabs(tileSize*invDx), tDeltaY=fabs(tileSize*invDy);
+   double t=0;
+   { JSValue args2[2]={JS_NewInt32(ctx,tx),JS_NewInt32(ctx,ty)};
+     JSValue r=JS_Call(ctx,tileFn,JS_UNDEFINED,2,args2);
+     int hit=JS_ToBool(ctx,r);
+     JS_FreeValue(ctx,r); JS_FreeValue(ctx,args2[0]); JS_FreeValue(ctx,args2[1]);
+     if(hit){ JSValue o=JS_NewObject(ctx);
+       JS_SetPropertyStr(ctx,o,"hit",JS_TRUE);
+       JS_SetPropertyStr(ctx,o,"tx",JS_NewInt32(ctx,tx));
+       JS_SetPropertyStr(ctx,o,"ty",JS_NewInt32(ctx,ty));
+       JS_SetPropertyStr(ctx,o,"t",JS_NewFloat64(ctx,0));
+       JS_SetPropertyStr(ctx,o,"x",JS_NewFloat64(ctx,x0));
+       JS_SetPropertyStr(ctx,o,"y",JS_NewFloat64(ctx,y0));
+       return o; } }
+   int iters=0;
+   while(t<=maxDist && iters++<4096) {
+      if(tMaxX<tMaxY){t=tMaxX;tMaxX+=tDeltaX;tx+=stepX;}
+      else{t=tMaxY;tMaxY+=tDeltaY;ty+=stepY;}
+      if(t>maxDist) break;
+      JSValue args2[2]={JS_NewInt32(ctx,tx),JS_NewInt32(ctx,ty)};
+      JSValue r=JS_Call(ctx,tileFn,JS_UNDEFINED,2,args2);
+      int hit=JS_ToBool(ctx,r);
+      JS_FreeValue(ctx,r); JS_FreeValue(ctx,args2[0]); JS_FreeValue(ctx,args2[1]);
+      if(hit){ JSValue o=JS_NewObject(ctx);
+        JS_SetPropertyStr(ctx,o,"hit",JS_TRUE);
+        JS_SetPropertyStr(ctx,o,"tx",JS_NewInt32(ctx,tx));
+        JS_SetPropertyStr(ctx,o,"ty",JS_NewInt32(ctx,ty));
+        JS_SetPropertyStr(ctx,o,"t",JS_NewFloat64(ctx,t));
+        JS_SetPropertyStr(ctx,o,"x",JS_NewFloat64(ctx,x0+dx*t));
+        JS_SetPropertyStr(ctx,o,"y",JS_NewFloat64(ctx,y0+dy*t));
+        return o; }
+   }
+   JSValue o=JS_NewObject(ctx);
+   JS_SetPropertyStr(ctx,o,"hit",JS_FALSE);
+   return o;
+}
+static JSValue js_create_proximity_trigger(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   double radius=50, cooldown=0;
+   if(argc>0&&JS_IsObject(argv[0])){
+      JSValue vr=JS_GetPropertyStr(ctx,argv[0],"radius");
+      JSValue vc=JS_GetPropertyStr(ctx,argv[0],"cooldown");
+      if(!JS_IsUndefined(vr)) JS_ToFloat64(ctx,&radius,vr);
+      if(!JS_IsUndefined(vc)) JS_ToFloat64(ctx,&cooldown,vc);
+      JS_FreeValue(ctx,vr); JS_FreeValue(ctx,vc);
+   } else if(argc>0) {
+      JS_ToFloat64(ctx,&radius,argv[0]);
+   }
+   JSValue o=JS_NewObject(ctx);
+   JS_SetPropertyStr(ctx,o,"radius",  JS_NewFloat64(ctx,radius));
+   JS_SetPropertyStr(ctx,o,"cooldown",JS_NewFloat64(ctx,cooldown));
+   JS_SetPropertyStr(ctx,o,"_elapsed",JS_NewFloat64(ctx,0));
+   return o;
+}
+static JSValue js_tick_proximity_trigger(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   if(argc<5||!JS_IsObject(argv[0])) return JS_FALSE;
+   double ax=double_from_js(ctx,argv[1],0),ay=double_from_js(ctx,argv[2],0);
+   double bx=double_from_js(ctx,argv[3],0),by=double_from_js(ctx,argv[4],0);
+   double radius=50;
+   JSValue vr=JS_GetPropertyStr(ctx,argv[0],"radius");
+   if(!JS_IsUndefined(vr)) JS_ToFloat64(ctx,&radius,vr);
+   JS_FreeValue(ctx,vr);
+   double dx2=ax-bx,dy2=ay-by;
+   return JS_NewBool(ctx, dx2*dx2+dy2*dy2 <= radius*radius);
+}
+static JSValue js_create_seed_rng(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   /* createSeedRNG(seed) → same as createRNG(seed) */
+   extern JSValue js_create_rng(JSContext *, JSValueConst, int, JSValueConst *);
+   return js_create_rng(ctx, this_val, argc, argv);
+}
+static JSValue js_get_seed_rng(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   /* getSeedRNG() → createRNG(g_global_seed) */
+   JSValue seed_val = JS_NewInt32(ctx, (int32_t)g_global_seed);
+   JSValue result = js_create_seed_rng(ctx, this_val, 1, &seed_val);
+   JS_FreeValue(ctx, seed_val);
+   return result;
+}
+static JSValue js_seed_to_traits(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   if(argc<2||!JS_IsObject(argv[1])) return JS_NewObject(ctx);
+   uint32_t seed=(uint32_t)(argc>0?double_from_js(ctx,argv[0],0):0);
+   JSValue schema=argv[1];
+   JSValue result=JS_NewObject(ctx);
+   JSPropertyEnum *props=NULL; uint32_t prop_count=0;
+   if(JS_GetOwnPropertyNames(ctx,&props,&prop_count,schema,JS_GPN_STRING_MASK|JS_GPN_ENUM_ONLY)<0) return result;
+   for(uint32_t i=0;i<prop_count;i++){
+      JSValue trait_def=JS_GetProperty(ctx,schema,props[i].atom);
+      if(!JS_IsObject(trait_def)){JS_FreeValue(ctx,trait_def);continue;}
+      JSValue jvals=JS_GetPropertyStr(ctx,trait_def,"values");
+      JSValue jwts=JS_GetPropertyStr(ctx,trait_def,"weights");
+      uint32_t n=0;
+      if(JS_IsArray(jvals)) { JSValue jlen=JS_GetPropertyStr(ctx,jvals,"length"); JS_ToUint32(ctx,&n,jlen); JS_FreeValue(ctx,jlen); }
+      if(n>0){
+         double total=0;
+         if(JS_IsArray(jwts)){
+            JSValue jwlen=JS_GetPropertyStr(ctx,jwts,"length"); uint32_t wn=0; JS_ToUint32(ctx,&wn,jwlen); JS_FreeValue(ctx,jwlen);
+            for(uint32_t w=0;w<wn&&w<n;w++){ JSValue jw=JS_GetPropertyUint32(ctx,jwts,w); double wv=0; JS_ToFloat64(ctx,&wv,jw); JS_FreeValue(ctx,jw); total+=wv; }
+         } else total=(double)n;
+         seed=seed*1664525u+1013904223u;
+         double pick=(double)(seed>>8)/(double)0x00ffffffu*total;
+         uint32_t sel=0; double acc=0;
+         if(JS_IsArray(jwts)){
+            for(uint32_t w=0;w<n;w++){
+               JSValue jw2=JS_GetPropertyUint32(ctx,jwts,w); double wv2=0; JS_ToFloat64(ctx,&wv2,jw2); JS_FreeValue(ctx,jw2);
+               acc+=wv2; if(pick<acc){sel=w;break;} sel=n-1;
+            }
+         } else { sel=(uint32_t)(pick); if(sel>=n)sel=n-1; }
+         JSValue chosen=JS_GetPropertyUint32(ctx,jvals,sel);
+         const char *key=JS_AtomToCString(ctx,props[i].atom);
+         if(key){JS_SetPropertyStr(ctx,result,key,chosen);JS_FreeCString(ctx,key);}
+         else JS_FreeValue(ctx,chosen);
+      }
+      JS_FreeValue(ctx,jvals); JS_FreeValue(ctx,jwts); JS_FreeValue(ctx,trait_def);
+   }
+   for(uint32_t i=0;i<prop_count;i++) JS_FreeAtom(ctx,props[i].atom);
+   js_free(ctx,props);
+   return result;
+}
+static JSValue js_export_seed_metadata(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   double seed=argc>0?double_from_js(ctx,argv[0],0):0;
+   JSValue traits=argc>1?JS_DupValue(ctx,argv[1]):JS_NewObject(ctx);
+   JSValue opts=argc>2&&JS_IsObject(argv[2])?argv[2]:JS_UNDEFINED;
+   JSValue meta=JS_NewObject(ctx);
+   JS_SetPropertyStr(ctx,meta,"seed",JS_NewFloat64(ctx,seed));
+   JS_SetPropertyStr(ctx,meta,"traits",traits);
+   if(!JS_IsUndefined(opts)){
+      JSValue jname=JS_GetPropertyStr(ctx,opts,"name");
+      JSValue jdesc=JS_GetPropertyStr(ctx,opts,"description");
+      JSValue jimg=JS_GetPropertyStr(ctx,opts,"image");
+      if(!JS_IsUndefined(jname)) JS_SetPropertyStr(ctx,meta,"name",JS_DupValue(ctx,jname));
+      if(!JS_IsUndefined(jdesc)) JS_SetPropertyStr(ctx,meta,"description",JS_DupValue(ctx,jdesc));
+      if(!JS_IsUndefined(jimg))  JS_SetPropertyStr(ctx,meta,"image",JS_DupValue(ctx,jimg));
+      JS_FreeValue(ctx,jname); JS_FreeValue(ctx,jdesc); JS_FreeValue(ctx,jimg);
+   }
+   /* attributes array from traits */
+   JSValue attrs=JS_NewArray(ctx);
+   JSPropertyEnum *props=NULL; uint32_t prop_count=0;
+   if(JS_GetOwnPropertyNames(ctx,&props,&prop_count,traits,JS_GPN_STRING_MASK|JS_GPN_ENUM_ONLY)>=0){
+      for(uint32_t i=0;i<prop_count;i++){
+         JSValue val=JS_GetProperty(ctx,traits,props[i].atom);
+         const char *key=JS_AtomToCString(ctx,props[i].atom);
+         JSValue attr=JS_NewObject(ctx);
+         if(key){JS_SetPropertyStr(ctx,attr,"trait_type",JS_NewString(ctx,key));JS_FreeCString(ctx,key);}
+         JS_SetPropertyStr(ctx,attr,"value",val);
+         JS_SetPropertyUint32(ctx,attrs,i,attr);
+         JS_FreeAtom(ctx,props[i].atom);
+      }
+      js_free(ctx,props);
+   }
+   JS_SetPropertyStr(ctx,meta,"attributes",attrs);
+   return meta;
+}
+static JSValue js_mouse_down(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+   { (void)this_val;(void)argc;(void)argv; return JS_NewBool(ctx, mouse_btns[0]); }
+static JSValue js_mouse_pressed(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+   { (void)this_val;(void)argc;(void)argv; return JS_NewBool(ctx, mouse_btns[0]&&!mouse_prev_btns[0]); }
+static JSValue js_gamepad_axis(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   if(argc<1) return JS_NewFloat64(ctx,0);
+   const char *name=JS_ToCString(ctx,argv[0]);
+   float val=0;
+   if(name){
+      if(strcmp(name,"leftX")==0||strcmp(name,"left_x")==0)  val=analog_axes[0][NOVA64_ANALOG_LEFT][NOVA64_ANALOG_X];
+      else if(strcmp(name,"leftY")==0||strcmp(name,"left_y")==0) val=analog_axes[0][NOVA64_ANALOG_LEFT][NOVA64_ANALOG_Y];
+      else if(strcmp(name,"rightX")==0||strcmp(name,"right_x")==0) val=analog_axes[0][NOVA64_ANALOG_RIGHT][NOVA64_ANALOG_X];
+      else if(strcmp(name,"rightY")==0||strcmp(name,"right_y")==0) val=analog_axes[0][NOVA64_ANALOG_RIGHT][NOVA64_ANALOG_Y];
+      else if(strcmp(name,"triggerL")==0||strcmp(name,"l2")==0) val=analog_triggers[0][0];
+      else if(strcmp(name,"triggerR")==0||strcmp(name,"r2")==0) val=analog_triggers[0][1];
+      JS_FreeCString(ctx,name);
+   }
+   return JS_NewFloat64(ctx,(double)val);
+}
+static JSValue js_gamepad_connected(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+   { (void)this_val;(void)argc;(void)argv; return JS_TRUE; }
+static JSValue js_right_stick_x(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+   { (void)this_val;(void)argc;(void)argv; return JS_NewFloat64(ctx,(double)analog_axes[0][NOVA64_ANALOG_RIGHT][NOVA64_ANALOG_X]); }
+
+/* ── Batch 47: beginCamera2D, endCamera2D, cam2DApply, cam2DReset,         ── */
+/*              cam2DWorldToScreen, cam2DScreenToWorld, cam2DGetBounds,          */
+/*              hypeRegister, hypeUnregister, hypeUpdate, hypeReset, Ease        */
+
+static JSValue js_begin_camera_2d(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   if(argc<1||!JS_IsObject(argv[0])) return JS_UNDEFINED;
+   double cx=0,cy=0;
+   JSValue jx=JS_GetPropertyStr(ctx,argv[0],"x"), jy=JS_GetPropertyStr(ctx,argv[0],"y");
+   if(!JS_IsUndefined(jx)) JS_ToFloat64(ctx,&cx,jx);
+   if(!JS_IsUndefined(jy)) JS_ToFloat64(ctx,&cy,jy);
+   JS_FreeValue(ctx,jx); JS_FreeValue(ctx,jy);
+   cam2d_x=(int)cx; cam2d_y=(int)cy;
+   return JS_UNDEFINED;
+}
+static JSValue js_end_camera_2d(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+   { (void)this_val;(void)argc;(void)argv; cam2d_x=0; cam2d_y=0; return JS_UNDEFINED; }
+static JSValue js_cam2d_world_to_screen(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   if(argc<3) return JS_NewObject(ctx);
+   double cx=0,cy=0,wx=double_from_js(ctx,argv[1],0),wy=double_from_js(ctx,argv[2],0);
+   if(JS_IsObject(argv[0])){
+      JSValue jx=JS_GetPropertyStr(ctx,argv[0],"x"),jy=JS_GetPropertyStr(ctx,argv[0],"y");
+      if(!JS_IsUndefined(jx)) JS_ToFloat64(ctx,&cx,jx);
+      if(!JS_IsUndefined(jy)) JS_ToFloat64(ctx,&cy,jy);
+      JS_FreeValue(ctx,jx); JS_FreeValue(ctx,jy);
+   }
+   JSValue o=JS_NewObject(ctx);
+   JS_SetPropertyStr(ctx,o,"x",JS_NewFloat64(ctx,wx-cx));
+   JS_SetPropertyStr(ctx,o,"y",JS_NewFloat64(ctx,wy-cy));
+   return o;
+}
+static JSValue js_cam2d_screen_to_world(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   if(argc<3) return JS_NewObject(ctx);
+   double cx=0,cy=0,sx=double_from_js(ctx,argv[1],0),sy=double_from_js(ctx,argv[2],0);
+   if(JS_IsObject(argv[0])){
+      JSValue jx=JS_GetPropertyStr(ctx,argv[0],"x"),jy=JS_GetPropertyStr(ctx,argv[0],"y");
+      if(!JS_IsUndefined(jx)) JS_ToFloat64(ctx,&cx,jx);
+      if(!JS_IsUndefined(jy)) JS_ToFloat64(ctx,&cy,jy);
+      JS_FreeValue(ctx,jx); JS_FreeValue(ctx,jy);
+   }
+   JSValue o=JS_NewObject(ctx);
+   JS_SetPropertyStr(ctx,o,"x",JS_NewFloat64(ctx,sx+cx));
+   JS_SetPropertyStr(ctx,o,"y",JS_NewFloat64(ctx,sy+cy));
+   return o;
+}
+static JSValue js_cam2d_get_bounds(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   double cx=0,cy=0;
+   if(argc>0&&JS_IsObject(argv[0])){
+      JSValue jx=JS_GetPropertyStr(ctx,argv[0],"x"),jy=JS_GetPropertyStr(ctx,argv[0],"y");
+      if(!JS_IsUndefined(jx)) JS_ToFloat64(ctx,&cx,jx);
+      if(!JS_IsUndefined(jy)) JS_ToFloat64(ctx,&cy,jy);
+      JS_FreeValue(ctx,jx); JS_FreeValue(ctx,jy);
+   }
+   JSValue o=JS_NewObject(ctx);
+   JS_SetPropertyStr(ctx,o,"left",  JS_NewFloat64(ctx,cx));
+   JS_SetPropertyStr(ctx,o,"top",   JS_NewFloat64(ctx,cy));
+   JS_SetPropertyStr(ctx,o,"right", JS_NewFloat64(ctx,cx+640));
+   JS_SetPropertyStr(ctx,o,"bottom",JS_NewFloat64(ctx,cy+360));
+   return o;
+}
+/* hypeRegister: pushes behavior into globalThis.__hypeReg array */
+static JSValue js_hype_register(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   if(argc<1||!JS_IsObject(argv[0])) return JS_UNDEFINED;
+   JSValue global=JS_GetGlobalObject(ctx);
+   JSValue reg=JS_GetPropertyStr(ctx,global,"__hypeReg");
+   if(JS_IsUndefined(reg)||JS_IsNull(reg)){JS_FreeValue(ctx,reg);reg=JS_NewArray(ctx);JS_SetPropertyStr(ctx,global,"__hypeReg",JS_DupValue(ctx,reg));}
+   JSValue jlen=JS_GetPropertyStr(ctx,reg,"length"); uint32_t len=0; JS_ToUint32(ctx,&len,jlen); JS_FreeValue(ctx,jlen);
+   JS_SetPropertyUint32(ctx,reg,len,JS_DupValue(ctx,argv[0]));
+   JS_FreeValue(ctx,reg); JS_FreeValue(ctx,global);
+   return JS_UNDEFINED;
+}
+/* hypeUnregister: removes first matching behavior from __hypeReg */
+static JSValue js_hype_unregister(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   if(argc<1) return JS_UNDEFINED;
+   JSValue global=JS_GetGlobalObject(ctx);
+   JSValue reg=JS_GetPropertyStr(ctx,global,"__hypeReg");
+   if(JS_IsArray(reg)){
+      JSValue jlen=JS_GetPropertyStr(ctx,reg,"length"); uint32_t len=0; JS_ToUint32(ctx,&len,jlen); JS_FreeValue(ctx,jlen);
+      JSValue newArr=JS_NewArray(ctx); uint32_t ni=0;
+      for(uint32_t i=0;i<len;i++){
+         JSValue item=JS_GetPropertyUint32(ctx,reg,i);
+         if(JS_VALUE_GET_PTR(item)!=JS_VALUE_GET_PTR(argv[0]))
+            JS_SetPropertyUint32(ctx,newArr,ni++,item);
+         else JS_FreeValue(ctx,item);
+      }
+      JS_SetPropertyStr(ctx,global,"__hypeReg",newArr);
+   }
+   JS_FreeValue(ctx,reg); JS_FreeValue(ctx,global);
+   return JS_UNDEFINED;
+}
+/* forward declarations for hype_update dispatch (defined later in Batch 44) */
+static JSValue js_tick_oscillator(JSContext *, JSValueConst, int, JSValueConst *);
+static JSValue js_tick_time_trigger(JSContext *, JSValueConst, int, JSValueConst *);
+static JSValue js_tick_random_trigger(JSContext *, JSValueConst, int, JSValueConst *);
+/* hypeUpdate(dt): ticks each behavior in __hypeReg */
+static JSValue js_hype_update(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   double dt=argc>0?double_from_js(ctx,argv[0],0.016):0.016;
+   JSValue global=JS_GetGlobalObject(ctx);
+   JSValue reg=JS_GetPropertyStr(ctx,global,"__hypeReg");
+   if(JS_IsArray(reg)){
+      JSValue jlen=JS_GetPropertyStr(ctx,reg,"length"); uint32_t len=0; JS_ToUint32(ctx,&len,jlen); JS_FreeValue(ctx,jlen);
+      JSValue dt_val=JS_NewFloat64(ctx,dt);
+      for(uint32_t i=0;i<len;i++){
+         JSValue beh=JS_GetPropertyUint32(ctx,reg,i);
+         if(!JS_IsObject(beh)){JS_FreeValue(ctx,beh);continue;}
+         JSValue jwf=JS_GetPropertyStr(ctx,beh,"waveform");
+         JSValue jiv=JS_GetPropertyStr(ctx,beh,"interval");
+         JSValue jch=JS_GetPropertyStr(ctx,beh,"chance");
+         JSValue jra=JS_GetPropertyStr(ctx,beh,"radius");
+         int is_osc=!JS_IsUndefined(jwf)&&!JS_IsNull(jwf);
+         int is_timer=!JS_IsUndefined(jiv)&&!JS_IsNull(jiv)&&(JS_IsUndefined(jwf)||JS_IsNull(jwf));
+         int is_rand=!JS_IsUndefined(jch)&&!JS_IsNull(jch)&&(JS_IsUndefined(jra)||JS_IsNull(jra));
+         int is_prox=!JS_IsUndefined(jra)&&!JS_IsNull(jra);
+         JS_FreeValue(ctx,jwf); JS_FreeValue(ctx,jiv); JS_FreeValue(ctx,jch); JS_FreeValue(ctx,jra);
+         if(is_osc){
+            JSValue a2[2]={beh,dt_val};
+            JSValue r=js_tick_oscillator(ctx,JS_UNDEFINED,2,a2); JS_FreeValue(ctx,r);
+         } else if(is_timer){
+            JSValue a2[2]={beh,dt_val};
+            JSValue r=js_tick_time_trigger(ctx,JS_UNDEFINED,2,a2); JS_FreeValue(ctx,r);
+         } else if(is_rand){
+            JSValue r=js_tick_random_trigger(ctx,JS_UNDEFINED,1,&beh); JS_FreeValue(ctx,r);
+         } else if(is_prox){ (void)is_prox; /* prox needs pos args, skip */ }
+         JS_FreeValue(ctx,beh);
+      }
+      JS_FreeValue(ctx,dt_val);
+   }
+   JS_FreeValue(ctx,reg); JS_FreeValue(ctx,global);
+   return JS_UNDEFINED;
+}
+/* hypeReset: clears __hypeReg */
+static JSValue js_hype_reset(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;(void)argc;(void)argv;
+   JSValue global=JS_GetGlobalObject(ctx);
+   JS_SetPropertyStr(ctx,global,"__hypeReg",JS_NewArray(ctx));
+   JS_FreeValue(ctx,global);
+   return JS_UNDEFINED;
+}
+
 /* ── Batch 46: circle, setCamera, getCamera, createSphereLayout,          ── */
 /*              createPathLayout, reflectVec2, projectVec2,                    */
 /*              createRandomTrigger, tickRandomTrigger,                        */
@@ -22859,6 +23430,75 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, global, "colorScale",          js_color_scale,         2);
    set_function(ctx, global, "frac",                js_frac,                1);
 
+   /* Batch 47 */
+   set_function(ctx, global, "beginCamera2D",      js_begin_camera_2d,      1);
+   set_function(ctx, global, "endCamera2D",         js_end_camera_2d,        0);
+   set_function(ctx, global, "cam2DApply",          js_begin_camera_2d,      1);
+   set_function(ctx, global, "cam2DReset",          js_end_camera_2d,        0);
+   set_function(ctx, global, "cam2DWorldToScreen",  js_cam2d_world_to_screen,3);
+   set_function(ctx, global, "cam2DScreenToWorld",  js_cam2d_screen_to_world,3);
+   set_function(ctx, global, "cam2DGetBounds",      js_cam2d_get_bounds,     1);
+   set_function(ctx, global, "hypeRegister",        js_hype_register,        1);
+   set_function(ctx, global, "hypeUnregister",      js_hype_unregister,      1);
+   set_function(ctx, global, "hypeUpdate",          js_hype_update,          1);
+   set_function(ctx, global, "hypeReset",           js_hype_reset,           0);
+   { const char *ease_js =
+      "Object.freeze({linear:function(t){return t},"
+      "inQuad:function(t){return t*t},"
+      "outQuad:function(t){return t*(2-t)},"
+      "inCubic:function(t){return t*t*t},"
+      "outCubic:function(t){var u=t-1;return u*u*u+1},"
+      "inSine:function(t){return 1-Math.cos(t*Math.PI/2)},"
+      "outSine:function(t){return Math.sin(t*Math.PI/2)},"
+      "inExpo:function(t){return t===0?0:Math.pow(2,10*t-10)},"
+      "outExpo:function(t){return t===1?1:1-Math.pow(2,-10*t)},"
+      "inBack:function(t){var c=1.70158;return t*t*((c+1)*t-c)},"
+      "outBack:function(t){var c=1.70158;var u=t-1;return 1+u*u*((c+1)*u+c)}})";
+     JSValue ease_obj = JS_Eval(ctx, ease_js, strlen(ease_js), "<ease>", JS_EVAL_TYPE_GLOBAL);
+     JS_SetPropertyStr(ctx, global, "Ease", ease_obj); }
+
+   /* Batch 48 */
+   set_function(ctx, global, "raycastTilemap",         js_raycast_tilemap,           7);
+   set_function(ctx, global, "createProximityTrigger", js_create_proximity_trigger,  1);
+   set_function(ctx, global, "tickProximityTrigger",   js_tick_proximity_trigger,    5);
+   set_function(ctx, global, "createSeedRNG",          js_create_seed_rng,           1);
+   set_function(ctx, global, "getSeedRNG",             js_get_seed_rng,              0);
+   set_function(ctx, global, "seedToTraits",           js_seed_to_traits,            2);
+   set_function(ctx, global, "exportSeedMetadata",     js_export_seed_metadata,      3);
+   set_function(ctx, global, "mouseDown",              js_mouse_down,                0);
+   set_function(ctx, global, "mousePressed",           js_mouse_pressed,             0);
+   set_function(ctx, global, "gamepadAxis",            js_gamepad_axis,              1);
+   set_function(ctx, global, "gamepadConnected",       js_gamepad_connected,         0);
+   set_function(ctx, global, "rightStickX",            js_right_stick_x,             0);
+
+   /* Batch 49 */
+   set_function(ctx, global, "rightStickY",  js_right_stick_y,  0);
+   set_function(ctx, global, "leftStickX",   js_left_stick_x,   0);
+   set_function(ctx, global, "leftStickY",   js_left_stick_y,   0);
+   set_function(ctx, global, "addVec3",      js_add_vec3,       6);
+   set_function(ctx, global, "subVec3",      js_sub_vec3,       6);
+   set_function(ctx, global, "scaleVec3",    js_scale_vec3,     4);
+   set_function(ctx, global, "normVec3",     js_norm_vec3,      3);
+   set_function(ctx, global, "dotVec3",      js_dot_vec3,       6);
+   set_function(ctx, global, "magVec3",      js_mag_vec3,       3);
+   set_function(ctx, global, "crossVec3",    js_cross_vec3,     6);
+   set_function(ctx, global, "lerpVec3",     js_lerp_vec3,      7);
+   set_function(ctx, global, "rotateVec2",   js_rotate_vec2,    3);
+
+   /* Batch 50 */
+   set_function(ctx, global, "angleVec3",        js_angle_vec3,        6);
+   set_function(ctx, global, "reflectVec3",       js_reflect_vec3,      6);
+   set_function(ctx, global, "projectVec3",       js_project_vec3,      6);
+   set_function(ctx, global, "clamp01",           js_clamp01,           1);
+   set_function(ctx, global, "bilinear",          js_bilinear,          6);
+   set_function(ctx, global, "smootherstep",      js_smootherstep,      1);
+   set_function(ctx, global, "addScreen",         js_add_screen,        2);
+   set_function(ctx, global, "switchScreen",      js_switch_screen,     2);
+   set_function(ctx, global, "switchToScreen",    js_switch_screen,     2);
+   set_function(ctx, global, "isTransitioning",   js_is_transitioning,  0);
+   set_function(ctx, global, "getCurrentScreen",  js_get_current_screen,0);
+   set_function(ctx, global, "startScreens",      js_start_screens,     1);
+
    JS_FreeValue(ctx, global);
    return true;
 }
@@ -25625,6 +26265,7 @@ bool RETRO_CALLCONV retro_load_game(const struct retro_game_info *info)
    memset(g_dialogs,     0, sizeof(g_dialogs));
    memset(g_fsm,         0, sizeof(g_fsm));
    memset(g_rngs,        0, sizeof(g_rngs));
+   reset_screen_manager();
    rng_seed_from_environment();
    frame_count = 0;
 

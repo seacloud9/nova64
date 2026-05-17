@@ -188,7 +188,9 @@ enum nova64_mesh_type {
    NOVA64_MESH_CAPSULE,
    NOVA64_MESH_CYLINDER,
    NOVA64_MESH_CUSTOM,
-   NOVA64_MESH_INSTANCED
+   NOVA64_MESH_INSTANCED,
+   NOVA64_MESH_TORUS,
+   NOVA64_MESH_CONE
 };
 
 /* Mesh-level blend mode for 3D meshes */
@@ -231,6 +233,16 @@ struct nova64_mesh {
    int instance_count;           /* number of instances */
    int instance_geometry;        /* 0=cube 1=sphere 2=plane 3=capsule 4=cylinder */
    float *instance_transforms;   /* instance_count * 16 floats (column-major mat4 per instance) */
+   uint32_t *instance_colors;    /* per-instance color override (NULL = use mesh color) */
+   bool *instance_visible;       /* per-instance visibility */
+   /* Extended properties (Batch 51) */
+   bool wireframe;
+   bool double_sided;
+   int  layer;
+   int  mesh_group;
+   int  sort_order;
+   /* Torus-specific (majorR=scale[0], minorR=scale[1]) */
+   /* Cone-specific (radius=scale[0], height=scale[1]) */
 };
 
 struct nova64_camera {
@@ -821,10 +833,41 @@ struct nova64_particle_emitter {
 static struct nova64_particle         g_particles[NOVA64_MAX_PARTICLES];
 static struct nova64_particle_emitter g_emitters[NOVA64_MAX_EMITTERS];
 
+/* ── 3D Particle System (Batch 53) ── */
+#define NOVA64_MAX_PS3D           4
+#define NOVA64_MAX_3D_PARTICLES 256
+
+struct nova64_particle3d {
+   float x, y, z, vx, vy, vz;
+   float age, lifetime;
+   uint32_t color_start, color_end;
+   float size_start, size_end;
+   int  active;
+};
+
+struct nova64_ps3d {
+   int    used;
+   int    active;
+   float  x, y, z;
+   float  grav_x, grav_y, grav_z;
+   float  spread;
+   float  speed_min, speed_max;
+   float  lifetime_min, lifetime_max;
+   uint32_t color_start, color_end;
+   float  size_start, size_end;
+   float  rate, rate_accum;
+   int    max_count;
+};
+
+static struct nova64_particle3d g_particles3d[NOVA64_MAX_3D_PARTICLES];
+static struct nova64_ps3d       g_ps3d[NOVA64_MAX_PS3D];
+
 static void reset_particles(void)
 {
    memset(g_particles, 0, sizeof(g_particles));
    memset(g_emitters, 0, sizeof(g_emitters));
+   memset(g_particles3d, 0, sizeof(g_particles3d));
+   memset(g_ps3d, 0, sizeof(g_ps3d));
 }
 
 static uint32_t particle_lerp_color(uint32_t a, uint32_t b, float t)
@@ -950,6 +993,7 @@ static struct nova64_point_light point_lights[NOVA64_MAX_POINT_LIGHTS];
 static struct nova64_texture textures[NOVA64_MAX_TEXTURES];
 static struct nova64_render_target render_targets[NOVA64_MAX_RENDER_TARGETS];
 static struct nova64_camera camera_state;
+static float g_last_view_projection[16]; /* cached for project3DToScreen */
 static struct nova64_light light_state;
 
 /* ── Camera shake ─────────────────────────────────────────── */
@@ -3185,6 +3229,10 @@ static const char *mesh_type_name(enum nova64_mesh_type type)
          return "custom";
       case NOVA64_MESH_INSTANCED:
          return "instanced";
+      case NOVA64_MESH_TORUS:
+         return "torus";
+      case NOVA64_MESH_CONE:
+         return "cone";
       default:
          return "none";
    }
@@ -3365,6 +3413,10 @@ static size_t mesh_triangle_count(enum nova64_mesh_type type)
          return 64;
       case NOVA64_MESH_INSTANCED:
          return 12; /* per instance, approximate */
+      case NOVA64_MESH_TORUS:
+         return 128;
+      case NOVA64_MESH_CONE:
+         return 64;
       default:
          return 0;
    }
@@ -6781,6 +6833,567 @@ static JSValue js_gamepad_connected(JSContext *ctx, JSValueConst this_val, int a
    { (void)this_val;(void)argc;(void)argv; return JS_TRUE; }
 static JSValue js_right_stick_x(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
    { (void)this_val;(void)argc;(void)argv; return JS_NewFloat64(ctx,(double)analog_axes[0][NOVA64_ANALOG_RIGHT][NOVA64_ANALOG_X]); }
+
+/* forward declarations needed by Batch 51-54 (defined later in file) */
+static JSValue js_vec3_array(JSContext *ctx, const float value[3]);
+
+/* ── Batch 51: createTorus, createCone, setMeshWireframe, setMeshDoubleSided, ── */
+/*              cloneMesh, getMeshBounds, setMeshLayer, getMeshLayer,              */
+/*              setMeshGroup, getMeshGroup, getSceneMeshCount, setMeshSortOrder    */
+
+static JSValue js_create_torus(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int handle = allocate_mesh(NOVA64_MESH_TORUS);
+   if (!handle) return JS_ThrowInternalError(ctx, "Nova64 mesh table is full");
+   struct nova64_mesh *mesh = mesh_from_handle(handle);
+   if (!mesh) return JS_NewInt32(ctx, handle);
+   double majorR = clamp_double(fabs(double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 1.0)), 0.001, 10000.0);
+   double minorR = clamp_double(fabs(double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0.3)), 0.001, 10000.0);
+   mesh->scale[0] = (float)majorR;
+   mesh->scale[1] = (float)minorR;
+   mesh->scale[2] = (float)majorR;
+   if (argc > 2) mesh->color = color_from_js(ctx, argv[2], mesh->color);
+   if (argc > 3) set_position_from_js(ctx, argv[3], mesh->position);
+   return JS_NewInt32(ctx, handle);
+}
+
+static JSValue js_create_cone(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int handle = allocate_mesh(NOVA64_MESH_CONE);
+   if (!handle) return JS_ThrowInternalError(ctx, "Nova64 mesh table is full");
+   struct nova64_mesh *mesh = mesh_from_handle(handle);
+   if (!mesh) return JS_NewInt32(ctx, handle);
+   double radius = clamp_double(fabs(double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0.5)), 0.001, 10000.0);
+   double height = clamp_double(fabs(double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 1.0)), 0.001, 10000.0);
+   mesh->scale[0] = (float)radius;
+   mesh->scale[1] = (float)height;
+   mesh->scale[2] = (float)radius;
+   if (argc > 2) mesh->color = color_from_js(ctx, argv[2], mesh->color);
+   if (argc > 3) set_position_from_js(ctx, argv[3], mesh->position);
+   return JS_NewInt32(ctx, handle);
+}
+
+static JSValue js_set_mesh_wireframe(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)ctx; (void)this_val;
+   struct nova64_mesh *mesh = mesh_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (mesh) mesh->wireframe = (bool)JS_ToBool(ctx, argc > 1 ? argv[1] : JS_FALSE);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_set_mesh_double_sided(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)ctx; (void)this_val;
+   struct nova64_mesh *mesh = mesh_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (mesh) mesh->double_sided = (bool)JS_ToBool(ctx, argc > 1 ? argv[1] : JS_FALSE);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_clone_mesh(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   struct nova64_mesh *src = mesh_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!src) return JS_NewInt32(ctx, 0);
+   int handle = allocate_mesh(src->type);
+   if (!handle) return JS_NewInt32(ctx, 0);
+   struct nova64_mesh *dst = &meshes[handle - 1];
+   memcpy(dst, src, sizeof(*dst));
+   dst->custom_verts   = NULL;
+   dst->custom_indices = NULL;
+   dst->instance_transforms = NULL;
+   dst->instance_colors = NULL;
+   dst->instance_visible = NULL;
+   dst->gl_custom_vbo = 0;
+   dst->gl_custom_ibo = 0;
+   if (src->type == NOVA64_MESH_CUSTOM && src->custom_vert_count > 0) {
+      size_t vs = src->custom_vert_count * 6 * sizeof(float);
+      dst->custom_verts = (float *)malloc(vs);
+      if (dst->custom_verts) memcpy(dst->custom_verts, src->custom_verts, vs);
+      if (src->custom_index_count > 0) {
+         size_t is = src->custom_index_count * sizeof(uint16_t);
+         dst->custom_indices = (uint16_t *)malloc(is);
+         if (dst->custom_indices) memcpy(dst->custom_indices, src->custom_indices, is);
+      }
+   } else if (src->type == NOVA64_MESH_INSTANCED && src->instance_count > 0) {
+      size_t ts = (size_t)src->instance_count * 16 * sizeof(float);
+      dst->instance_transforms = (float *)malloc(ts);
+      if (dst->instance_transforms) memcpy(dst->instance_transforms, src->instance_transforms, ts);
+      if (src->instance_colors) {
+         dst->instance_colors = (uint32_t *)malloc((size_t)src->instance_count * sizeof(uint32_t));
+         if (dst->instance_colors) memcpy(dst->instance_colors, src->instance_colors, (size_t)src->instance_count * sizeof(uint32_t));
+      }
+      if (src->instance_visible) {
+         dst->instance_visible = (bool *)malloc((size_t)src->instance_count * sizeof(bool));
+         if (dst->instance_visible) memcpy(dst->instance_visible, src->instance_visible, (size_t)src->instance_count * sizeof(bool));
+      }
+   }
+   return JS_NewInt32(ctx, handle);
+}
+
+static JSValue js_get_mesh_bounds(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   struct nova64_mesh *mesh = mesh_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!mesh) return JS_NULL;
+   float cx = mesh->position[0], cy = mesh->position[1], cz = mesh->position[2];
+   float hx = fabsf(mesh->scale[0]) * 0.5f;
+   float hy = fabsf(mesh->scale[1]) * 0.5f;
+   float hz = fabsf(mesh->scale[2]) * 0.5f;
+   JSValue obj = JS_NewObject(ctx);
+   JSValue mn = JS_NewArray(ctx);
+   JS_SetPropertyUint32(ctx, mn, 0, JS_NewFloat64(ctx, cx - hx));
+   JS_SetPropertyUint32(ctx, mn, 1, JS_NewFloat64(ctx, cy - hy));
+   JS_SetPropertyUint32(ctx, mn, 2, JS_NewFloat64(ctx, cz - hz));
+   JSValue mx = JS_NewArray(ctx);
+   JS_SetPropertyUint32(ctx, mx, 0, JS_NewFloat64(ctx, cx + hx));
+   JS_SetPropertyUint32(ctx, mx, 1, JS_NewFloat64(ctx, cy + hy));
+   JS_SetPropertyUint32(ctx, mx, 2, JS_NewFloat64(ctx, cz + hz));
+   JSValue center = JS_NewArray(ctx);
+   JS_SetPropertyUint32(ctx, center, 0, JS_NewFloat64(ctx, cx));
+   JS_SetPropertyUint32(ctx, center, 1, JS_NewFloat64(ctx, cy));
+   JS_SetPropertyUint32(ctx, center, 2, JS_NewFloat64(ctx, cz));
+   JSValue size = JS_NewArray(ctx);
+   JS_SetPropertyUint32(ctx, size, 0, JS_NewFloat64(ctx, hx * 2.0f));
+   JS_SetPropertyUint32(ctx, size, 1, JS_NewFloat64(ctx, hy * 2.0f));
+   JS_SetPropertyUint32(ctx, size, 2, JS_NewFloat64(ctx, hz * 2.0f));
+   JS_SetPropertyStr(ctx, obj, "min", mn);
+   JS_SetPropertyStr(ctx, obj, "max", mx);
+   JS_SetPropertyStr(ctx, obj, "center", center);
+   JS_SetPropertyStr(ctx, obj, "size", size);
+   return obj;
+}
+
+static JSValue js_set_mesh_layer(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)ctx; (void)this_val;
+   struct nova64_mesh *mesh = mesh_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (mesh) mesh->layer = int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_get_mesh_layer(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   struct nova64_mesh *mesh = mesh_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   return JS_NewInt32(ctx, mesh ? mesh->layer : 0);
+}
+
+static JSValue js_set_mesh_group(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)ctx; (void)this_val;
+   struct nova64_mesh *mesh = mesh_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (mesh) mesh->mesh_group = int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_get_mesh_group(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   struct nova64_mesh *mesh = mesh_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   return JS_NewInt32(ctx, mesh ? mesh->mesh_group : 0);
+}
+
+static JSValue js_get_scene_mesh_count(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val; (void)argc; (void)argv;
+   int count = 0;
+   for (int i = 0; i < NOVA64_MAX_MESHES; i++)
+      if (meshes[i].used) count++;
+   return JS_NewInt32(ctx, count);
+}
+
+static JSValue js_set_mesh_sort_order(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)ctx; (void)this_val;
+   struct nova64_mesh *mesh = mesh_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (mesh) mesh->sort_order = int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0);
+   return JS_UNDEFINED;
+}
+
+/* ── Batch 52: project3DToScreen, screenToRay, getViewDirection,            ── */
+/*              cameraDistanceTo, isInFrustum, getMeshPos, getMeshRot,           */
+/*              getMeshScale, setMeshPos, setMeshRot, setMeshScl, getWorldUp     */
+
+static JSValue js_project_3d_to_screen(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double wx = double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0.0);
+   double wy = double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0.0);
+   double wz = double_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 0.0);
+   const float *vp = g_last_view_projection;
+   float cx = vp[0]*(float)wx + vp[4]*(float)wy + vp[8]*(float)wz  + vp[12];
+   float cy = vp[1]*(float)wx + vp[5]*(float)wy + vp[9]*(float)wz  + vp[13];
+   float cz = vp[2]*(float)wx + vp[6]*(float)wy + vp[10]*(float)wz + vp[14];
+   float cw = vp[3]*(float)wx + vp[7]*(float)wy + vp[11]*(float)wz + vp[15];
+   int visible = 0;
+   float sx = 0, sy = 0, sz = 0;
+   if (fabsf(cw) > 1e-7f) {
+      float ndcx = cx / cw, ndcy = cy / cw, ndcz = cz / cw;
+      visible = (cw > 0.0f && ndcx > -1.0f && ndcx < 1.0f && ndcy > -1.0f && ndcy < 1.0f && ndcz > -1.0f && ndcz < 1.0f) ? 1 : 0;
+      sx = (ndcx + 1.0f) * 0.5f * (float)NOVA64_WIDTH;
+      sy = (1.0f - ndcy) * 0.5f * (float)NOVA64_HEIGHT;
+      sz = ndcz;
+   }
+   JSValue obj = JS_NewObject(ctx);
+   JS_SetPropertyStr(ctx, obj, "x", JS_NewFloat64(ctx, sx));
+   JS_SetPropertyStr(ctx, obj, "y", JS_NewFloat64(ctx, sy));
+   JS_SetPropertyStr(ctx, obj, "z", JS_NewFloat64(ctx, sz));
+   JS_SetPropertyStr(ctx, obj, "visible", JS_NewBool(ctx, visible));
+   return obj;
+}
+
+static JSValue js_screen_to_ray(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double sxd = double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0.0);
+   double syd = double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0.0);
+   float ndcx = (float)(sxd / NOVA64_WIDTH)  * 2.0f - 1.0f;
+   float ndcy = 1.0f - (float)(syd / NOVA64_HEIGHT) * 2.0f;
+   float vp_inv[16];
+   mat4_inverse(vp_inv, g_last_view_projection);
+   /* unproject near and far plane points */
+   float near_c[4] = {ndcx, ndcy, -1.0f, 1.0f};
+   float far_c[4]  = {ndcx, ndcy,  1.0f, 1.0f};
+   float nw[4], fw[4];
+   for (int i = 0; i < 4; i++) {
+      nw[i] = vp_inv[i]*near_c[0] + vp_inv[i+4]*near_c[1] + vp_inv[i+8]*near_c[2] + vp_inv[i+12]*near_c[3];
+      fw[i] = vp_inv[i]*far_c[0]  + vp_inv[i+4]*far_c[1]  + vp_inv[i+8]*far_c[2]  + vp_inv[i+12]*far_c[3];
+   }
+   if (fabsf(nw[3]) > 1e-7f) { nw[0]/=nw[3]; nw[1]/=nw[3]; nw[2]/=nw[3]; }
+   if (fabsf(fw[3]) > 1e-7f) { fw[0]/=fw[3]; fw[1]/=fw[3]; fw[2]/=fw[3]; }
+   float dx = fw[0]-nw[0], dy = fw[1]-nw[1], dz = fw[2]-nw[2];
+   float len = sqrtf(dx*dx+dy*dy+dz*dz);
+   if (len > 1e-7f) { dx/=len; dy/=len; dz/=len; }
+   JSValue obj = JS_NewObject(ctx);
+   JSValue orig = JS_NewObject(ctx);
+   JS_SetPropertyStr(ctx, orig, "x", JS_NewFloat64(ctx, nw[0]));
+   JS_SetPropertyStr(ctx, orig, "y", JS_NewFloat64(ctx, nw[1]));
+   JS_SetPropertyStr(ctx, orig, "z", JS_NewFloat64(ctx, nw[2]));
+   JSValue dir = JS_NewObject(ctx);
+   JS_SetPropertyStr(ctx, dir, "x", JS_NewFloat64(ctx, dx));
+   JS_SetPropertyStr(ctx, dir, "y", JS_NewFloat64(ctx, dy));
+   JS_SetPropertyStr(ctx, dir, "z", JS_NewFloat64(ctx, dz));
+   JS_SetPropertyStr(ctx, obj, "origin", orig);
+   JS_SetPropertyStr(ctx, obj, "dir", dir);
+   return obj;
+}
+
+static JSValue js_get_view_direction(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val; (void)argc; (void)argv;
+   float dx = camera_state.target[0] - camera_state.position[0];
+   float dy = camera_state.target[1] - camera_state.position[1];
+   float dz = camera_state.target[2] - camera_state.position[2];
+   float len = sqrtf(dx*dx+dy*dy+dz*dz);
+   if (len > 1e-7f) { dx/=len; dy/=len; dz/=len; }
+   JSValue obj = JS_NewObject(ctx);
+   JS_SetPropertyStr(ctx, obj, "x", JS_NewFloat64(ctx, dx));
+   JS_SetPropertyStr(ctx, obj, "y", JS_NewFloat64(ctx, dy));
+   JS_SetPropertyStr(ctx, obj, "z", JS_NewFloat64(ctx, dz));
+   return obj;
+}
+
+static JSValue js_camera_distance_to(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   float dx = (float)double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0.0) - camera_state.position[0];
+   float dy = (float)double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0.0) - camera_state.position[1];
+   float dz = (float)double_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 0.0) - camera_state.position[2];
+   return JS_NewFloat64(ctx, sqrtf(dx*dx+dy*dy+dz*dz));
+}
+
+static JSValue js_is_in_frustum(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   float wx = (float)double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0.0);
+   float wy = (float)double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0.0);
+   float wz = (float)double_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 0.0);
+   float r  = (float)double_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, 0.0);
+   const float *vp = g_last_view_projection;
+   /* extract 6 frustum planes from VP and test sphere */
+   float planes[6][4];
+   /* left:   row3+row0, right: row3-row0, bottom: row3+row1, top: row3-row1, near: row3+row2, far: row3-row2 */
+   /* column-major: row i = vp[i], vp[i+4], vp[i+8], vp[i+12] */
+   for (int i = 0; i < 4; i++) {
+      planes[0][i] = vp[12*0+i > 15 ? 15 : 12] + vp[i];   /* left */
+      planes[1][i] = vp[12] - vp[i];                        /* right */
+      planes[2][i] = vp[13] + vp[i+4];                      /* bottom */
+      planes[3][i] = vp[13] - vp[i+4];                      /* top */
+      planes[4][i] = vp[14] + vp[i+8];                      /* near */
+      planes[5][i] = vp[14] - vp[i+8];                      /* far */
+   }
+   /* simplified: do MVP transform and check NDC */
+   float cw = vp[3]*wx + vp[7]*wy + vp[11]*wz + vp[15];
+   if (cw <= 0.0f) return JS_FALSE;
+   float cx = (vp[0]*wx + vp[4]*wy + vp[8]*wz  + vp[12]) / cw;
+   float cy = (vp[1]*wx + vp[5]*wy + vp[9]*wz  + vp[13]) / cw;
+   float cz = (vp[2]*wx + vp[6]*wy + vp[10]*wz + vp[14]) / cw;
+   float bias = (cw > 0.0f && r > 0.0f) ? r / cw : 0.0f;
+   return JS_NewBool(ctx,
+      cx > -1.0f - bias && cx < 1.0f + bias &&
+      cy > -1.0f - bias && cy < 1.0f + bias &&
+      cz > -1.0f && cz < 1.0f);
+}
+
+static JSValue js_get_mesh_pos(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   struct nova64_mesh *mesh = mesh_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   return mesh ? js_vec3_array(ctx, mesh->position) : JS_NULL;
+}
+
+static JSValue js_get_mesh_rot(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   struct nova64_mesh *mesh = mesh_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   return mesh ? js_vec3_array(ctx, mesh->rotation) : JS_NULL;
+}
+
+static JSValue js_get_mesh_scale_fn(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   struct nova64_mesh *mesh = mesh_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   return mesh ? js_vec3_array(ctx, mesh->scale) : JS_NULL;
+}
+
+static JSValue js_set_mesh_pos(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)ctx; (void)this_val;
+   struct nova64_mesh *mesh = mesh_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (mesh) {
+      mesh->position[0] = (float)double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0.0);
+      mesh->position[1] = (float)double_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 0.0);
+      mesh->position[2] = (float)double_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, 0.0);
+   }
+   return JS_UNDEFINED;
+}
+
+static JSValue js_set_mesh_rot(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)ctx; (void)this_val;
+   struct nova64_mesh *mesh = mesh_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (mesh) {
+      mesh->rotation[0] = (float)double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0.0);
+      mesh->rotation[1] = (float)double_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 0.0);
+      mesh->rotation[2] = (float)double_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, 0.0);
+   }
+   return JS_UNDEFINED;
+}
+
+static JSValue js_set_mesh_scl(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)ctx; (void)this_val;
+   struct nova64_mesh *mesh = mesh_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (mesh) {
+      float ux = (float)double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 1.0);
+      float uy = (float)double_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 1.0);
+      float uz = (float)double_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, 1.0);
+      mesh->scale[0] = fabsf(ux) < 0.001f ? 0.001f : ux;
+      mesh->scale[1] = fabsf(uy) < 0.001f ? 0.001f : uy;
+      mesh->scale[2] = fabsf(uz) < 0.001f ? 0.001f : uz;
+   }
+   return JS_UNDEFINED;
+}
+
+static JSValue js_get_world_up(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val; (void)argc; (void)argv;
+   JSValue arr = JS_NewArray(ctx);
+   JS_SetPropertyUint32(ctx, arr, 0, JS_NewFloat64(ctx, 0.0));
+   JS_SetPropertyUint32(ctx, arr, 1, JS_NewFloat64(ctx, 1.0));
+   JS_SetPropertyUint32(ctx, arr, 2, JS_NewFloat64(ctx, 0.0));
+   return arr;
+}
+
+/* ── Batch 53: setInstanceColor, getInstanceTransform, setInstanceVisible,  ── */
+/*              setInstanceScale, setInstanceRotation, removeInstancedMesh,      */
+/*              instanceCount, createLODMesh, setLODDistance, removeLODMesh,     */
+/*              updateLODs, finalizeInstances                                     */
+
+static JSValue js_set_instance_color(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int handle = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0);
+   int idx    = int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0);
+   struct nova64_mesh *mesh = mesh_from_handle(handle);
+   if (!mesh || mesh->type != NOVA64_MESH_INSTANCED) return JS_UNDEFINED;
+   if (idx < 0 || idx >= mesh->instance_count) return JS_UNDEFINED;
+   if (!mesh->instance_colors) {
+      mesh->instance_colors = (uint32_t *)calloc((size_t)mesh->instance_count, sizeof(uint32_t));
+      if (!mesh->instance_colors) return JS_UNDEFINED;
+      for (int i = 0; i < mesh->instance_count; i++) mesh->instance_colors[i] = mesh->color;
+   }
+   mesh->instance_colors[idx] = color_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, mesh->color);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_get_instance_transform(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int handle = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0);
+   int idx    = int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0);
+   struct nova64_mesh *mesh = mesh_from_handle(handle);
+   if (!mesh || mesh->type != NOVA64_MESH_INSTANCED) return JS_NULL;
+   if (idx < 0 || idx >= mesh->instance_count) return JS_NULL;
+   float *m = mesh->instance_transforms + idx * 16;
+   JSValue arr = JS_NewArray(ctx);
+   for (int i = 0; i < 16; i++)
+      JS_SetPropertyUint32(ctx, arr, (uint32_t)i, JS_NewFloat64(ctx, m[i]));
+   return arr;
+}
+
+static JSValue js_set_instance_visible(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int handle = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0);
+   int idx    = int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0);
+   struct nova64_mesh *mesh = mesh_from_handle(handle);
+   if (!mesh || mesh->type != NOVA64_MESH_INSTANCED) return JS_UNDEFINED;
+   if (idx < 0 || idx >= mesh->instance_count) return JS_UNDEFINED;
+   if (!mesh->instance_visible) {
+      mesh->instance_visible = (bool *)malloc((size_t)mesh->instance_count * sizeof(bool));
+      if (!mesh->instance_visible) return JS_UNDEFINED;
+      for (int i = 0; i < mesh->instance_count; i++) mesh->instance_visible[i] = true;
+   }
+   mesh->instance_visible[idx] = (bool)JS_ToBool(ctx, argc > 2 ? argv[2] : JS_TRUE);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_set_instance_scale(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int handle = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0);
+   int idx    = int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0);
+   struct nova64_mesh *mesh = mesh_from_handle(handle);
+   if (!mesh || mesh->type != NOVA64_MESH_INSTANCED) return JS_UNDEFINED;
+   if (idx < 0 || idx >= mesh->instance_count) return JS_UNDEFINED;
+   float sx = (float)double_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 1.0);
+   float sy = (float)double_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, 1.0);
+   float sz = (float)double_from_js(ctx, argc > 4 ? argv[4] : JS_UNDEFINED, 1.0);
+   float *m = mesh->instance_transforms + idx * 16;
+   /* rescale rotation columns to new magnitudes */
+   float l0 = sqrtf(m[0]*m[0]+m[1]*m[1]+m[2]*m[2]);
+   float l1 = sqrtf(m[4]*m[4]+m[5]*m[5]+m[6]*m[6]);
+   float l2 = sqrtf(m[8]*m[8]+m[9]*m[9]+m[10]*m[10]);
+   if (l0 > 1e-7f) { float f=sx/l0; m[0]*=f; m[1]*=f; m[2]*=f; } else { m[0]=sx; m[1]=0; m[2]=0; }
+   if (l1 > 1e-7f) { float f=sy/l1; m[4]*=f; m[5]*=f; m[6]*=f; } else { m[4]=0; m[5]=sy; m[6]=0; }
+   if (l2 > 1e-7f) { float f=sz/l2; m[8]*=f; m[9]*=f; m[10]*=f; } else { m[8]=0; m[9]=0; m[10]=sz; }
+   return JS_UNDEFINED;
+}
+
+static JSValue js_set_instance_rotation(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int handle = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0);
+   int idx    = int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0);
+   struct nova64_mesh *mesh = mesh_from_handle(handle);
+   if (!mesh || mesh->type != NOVA64_MESH_INSTANCED) return JS_UNDEFINED;
+   if (idx < 0 || idx >= mesh->instance_count) return JS_UNDEFINED;
+   float rx = (float)double_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 0.0);
+   float ry = (float)double_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, 0.0);
+   float rz = (float)double_from_js(ctx, argc > 4 ? argv[4] : JS_UNDEFINED, 0.0);
+   float *m = mesh->instance_transforms + idx * 16;
+   float sx = sqrtf(m[0]*m[0]+m[1]*m[1]+m[2]*m[2]);
+   float sy = sqrtf(m[4]*m[4]+m[5]*m[5]+m[6]*m[6]);
+   float sz = sqrtf(m[8]*m[8]+m[9]*m[9]+m[10]*m[10]);
+   if (sx < 1e-7f) sx = 1.0f;
+   if (sy < 1e-7f) sy = 1.0f;
+   if (sz < 1e-7f) sz = 1.0f;
+   float cx2 = cosf(rx), sx2 = sinf(rx);
+   float cy2 = cosf(ry), sy2 = sinf(ry);
+   float cz2 = cosf(rz), sz2 = sinf(rz);
+   m[0]  = cy2*cz2*sx;
+   m[1]  = (sx2*sy2*cz2 + cx2*sz2)*sx;
+   m[2]  = (-cx2*sy2*cz2 + sx2*sz2)*sx;
+   m[4]  = -cy2*sz2*sy;
+   m[5]  = (-sx2*sy2*sz2 + cx2*cz2)*sy;
+   m[6]  = (cx2*sy2*sz2 + sx2*cz2)*sy;
+   m[8]  = sy2*sz;
+   m[9]  = -sx2*cy2*sz;
+   m[10] = cx2*cy2*sz;
+   return JS_UNDEFINED;
+}
+
+static JSValue js_remove_instanced_mesh(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int handle = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0);
+   struct nova64_mesh *mesh = mesh_from_handle(handle);
+   if (!mesh) return JS_UNDEFINED;
+   free(mesh->custom_verts);
+   free(mesh->custom_indices);
+   free(mesh->instance_transforms);
+   free(mesh->instance_colors);
+   free(mesh->instance_visible);
+   memset(mesh, 0, sizeof(*mesh));
+   return JS_UNDEFINED;
+}
+
+static JSValue js_instance_count(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   struct nova64_mesh *mesh = mesh_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!mesh || mesh->type != NOVA64_MESH_INSTANCED) return JS_NewInt32(ctx, 0);
+   return JS_NewInt32(ctx, mesh->instance_count);
+}
+
+static JSValue js_create_lod_mesh(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+   { (void)ctx;(void)this_val;(void)argc;(void)argv; return JS_NewInt32(ctx, 0); }
+
+static JSValue js_set_lod_distance(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+   { (void)ctx;(void)this_val;(void)argc;(void)argv; return JS_UNDEFINED; }
+
+static JSValue js_remove_lod_mesh(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+   { (void)ctx;(void)this_val;(void)argc;(void)argv; return JS_UNDEFINED; }
+
+static JSValue js_update_lods(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+   { (void)ctx;(void)this_val;(void)argc;(void)argv; return JS_UNDEFINED; }
+
+static JSValue js_finalize_instances(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+   { (void)ctx;(void)this_val;(void)argc;(void)argv; return JS_UNDEFINED; }
+
+/* ── Batch 54: loadModel, loadVoxModel, playAnimation, stopAnimation,       ── */
+/*              updateAnimations, getAnimationNames, setAnimationSpeed,           */
+/*              isAnimationPlaying, animationProgress, createCustomMaterial,      */
+/*              destroyMaterial, setMeshMaterial                                  */
+
+static JSValue js_load_model(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+   { (void)ctx;(void)this_val;(void)argc;(void)argv; return JS_NewInt32(ctx, 0); }
+
+static JSValue js_load_vox_model(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+   { (void)ctx;(void)this_val;(void)argc;(void)argv; return JS_NewInt32(ctx, 0); }
+
+static JSValue js_play_animation(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+   { (void)ctx;(void)this_val;(void)argc;(void)argv; return JS_UNDEFINED; }
+
+static JSValue js_stop_animation(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+   { (void)ctx;(void)this_val;(void)argc;(void)argv; return JS_UNDEFINED; }
+
+static JSValue js_update_animations(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+   { (void)ctx;(void)this_val;(void)argc;(void)argv; return JS_UNDEFINED; }
+
+static JSValue js_get_animation_names(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+   { (void)this_val;(void)argc;(void)argv; return JS_NewArray(ctx); }
+
+static JSValue js_set_animation_speed(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+   { (void)ctx;(void)this_val;(void)argc;(void)argv; return JS_UNDEFINED; }
+
+static JSValue js_is_animation_playing(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+   { (void)ctx;(void)this_val;(void)argc;(void)argv; return JS_FALSE; }
+
+static JSValue js_animation_progress(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+   { (void)ctx;(void)this_val;(void)argc;(void)argv; return JS_NewFloat64(ctx, 0.0); }
+
+static JSValue js_create_custom_material(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+   { (void)ctx;(void)this_val;(void)argc;(void)argv; return JS_NewInt32(ctx, 0); }
+
+static JSValue js_destroy_material(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+   { (void)ctx;(void)this_val;(void)argc;(void)argv; return JS_UNDEFINED; }
+
+static JSValue js_set_mesh_material(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+   { (void)ctx;(void)this_val;(void)argc;(void)argv; return JS_UNDEFINED; }
 
 /* ── Batch 47: beginCamera2D, endCamera2D, cam2DApply, cam2DReset,         ── */
 /*              cam2DWorldToScreen, cam2DScreenToWorld, cam2DGetBounds,          */
@@ -20508,6 +21121,7 @@ static void render_gles_scene_to_rt(struct nova64_render_target *rt)
       mat4_look_at(view, eye, tgt, up);
    }
    mat4_multiply(view_projection, projection, view);
+   memcpy(g_last_view_projection, view_projection, sizeof(g_last_view_projection));
 
    /* Draw equirectangular skybox behind all geometry (GLES only) */
    render_gles_skybox(view, projection);
@@ -20521,6 +21135,8 @@ static void render_gles_scene_to_rt(struct nova64_render_target *rt)
       else if (meshes[i].type == NOVA64_MESH_CYLINDER) render_gles_cylinder(&meshes[i], view_projection);
       else if (meshes[i].type == NOVA64_MESH_CUSTOM)      render_gles_custom_mesh(&meshes[i], view_projection);
       else if (meshes[i].type == NOVA64_MESH_INSTANCED)   render_gles_instanced_mesh(&meshes[i], view_projection);
+      else if (meshes[i].type == NOVA64_MESH_TORUS)   render_gles_sphere(&meshes[i], view_projection);
+      else if (meshes[i].type == NOVA64_MESH_CONE)    render_gles_cylinder(&meshes[i], view_projection);
    }
 
    /* Restore default viewport */
@@ -23498,6 +24114,62 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, global, "isTransitioning",   js_is_transitioning,  0);
    set_function(ctx, global, "getCurrentScreen",  js_get_current_screen,0);
    set_function(ctx, global, "startScreens",      js_start_screens,     1);
+
+   /* Batch 51 */
+   set_function(ctx, global, "createTorus",        js_create_torus,        4);
+   set_function(ctx, global, "createCone",          js_create_cone,         4);
+   set_function(ctx, global, "setMeshWireframe",    js_set_mesh_wireframe,  2);
+   set_function(ctx, global, "setMeshDoubleSided",  js_set_mesh_double_sided,2);
+   set_function(ctx, global, "cloneMesh",           js_clone_mesh,          1);
+   set_function(ctx, global, "getMeshBounds",       js_get_mesh_bounds,     1);
+   set_function(ctx, global, "setMeshLayer",        js_set_mesh_layer,      2);
+   set_function(ctx, global, "getMeshLayer",        js_get_mesh_layer,      1);
+   set_function(ctx, global, "setMeshGroup",        js_set_mesh_group,      2);
+   set_function(ctx, global, "getMeshGroup",        js_get_mesh_group,      1);
+   set_function(ctx, global, "getSceneMeshCount",   js_get_scene_mesh_count,0);
+   set_function(ctx, global, "setMeshSortOrder",    js_set_mesh_sort_order, 2);
+
+   /* Batch 52 */
+   set_function(ctx, global, "project3DToScreen",  js_project_3d_to_screen, 3);
+   set_function(ctx, global, "screenToRay",         js_screen_to_ray,        2);
+   set_function(ctx, global, "getViewDirection",    js_get_view_direction,   0);
+   set_function(ctx, global, "cameraDistanceTo",    js_camera_distance_to,   3);
+   set_function(ctx, global, "isInFrustum",         js_is_in_frustum,        4);
+   set_function(ctx, global, "getMeshPos",          js_get_mesh_pos,         1);
+   set_function(ctx, global, "getMeshRot",          js_get_mesh_rot,         1);
+   set_function(ctx, global, "getMeshScale",        js_get_mesh_scale_fn,    1);
+   set_function(ctx, global, "setMeshPos",          js_set_mesh_pos,         4);
+   set_function(ctx, global, "setMeshRot",          js_set_mesh_rot,         4);
+   set_function(ctx, global, "setMeshScl",          js_set_mesh_scl,         4);
+   set_function(ctx, global, "getWorldUp",          js_get_world_up,         0);
+
+   /* Batch 53 */
+   set_function(ctx, global, "setInstanceColor",    js_set_instance_color,      3);
+   set_function(ctx, global, "getInstanceTransform",js_get_instance_transform,  2);
+   set_function(ctx, global, "setInstanceVisible",  js_set_instance_visible,    3);
+   set_function(ctx, global, "setInstanceScale",    js_set_instance_scale,      5);
+   set_function(ctx, global, "setInstanceRotation", js_set_instance_rotation,   5);
+   set_function(ctx, global, "removeInstancedMesh", js_remove_instanced_mesh,   1);
+   set_function(ctx, global, "instanceCount",       js_instance_count,          1);
+   set_function(ctx, global, "createLODMesh",       js_create_lod_mesh,         1);
+   set_function(ctx, global, "setLODDistance",      js_set_lod_distance,        3);
+   set_function(ctx, global, "removeLODMesh",       js_remove_lod_mesh,         1);
+   set_function(ctx, global, "updateLODs",          js_update_lods,             0);
+   set_function(ctx, global, "finalizeInstances",   js_finalize_instances,      1);
+
+   /* Batch 54 */
+   set_function(ctx, global, "loadModel",           js_load_model,              1);
+   set_function(ctx, global, "loadVoxModel",        js_load_vox_model,          1);
+   set_function(ctx, global, "playAnimation",       js_play_animation,          2);
+   set_function(ctx, global, "stopAnimation",       js_stop_animation,          1);
+   set_function(ctx, global, "updateAnimations",    js_update_animations,       1);
+   set_function(ctx, global, "getAnimationNames",   js_get_animation_names,     1);
+   set_function(ctx, global, "setAnimationSpeed",   js_set_animation_speed,     2);
+   set_function(ctx, global, "isAnimationPlaying",  js_is_animation_playing,    1);
+   set_function(ctx, global, "animationProgress",   js_animation_progress,      1);
+   set_function(ctx, global, "createCustomMaterial",js_create_custom_material,  1);
+   set_function(ctx, global, "destroyMaterial",     js_destroy_material,        1);
+   set_function(ctx, global, "setMeshMaterial",     js_set_mesh_material,       2);
 
    JS_FreeValue(ctx, global);
    return true;

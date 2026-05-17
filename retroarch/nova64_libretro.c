@@ -6355,6 +6355,195 @@ static JSValue js_vec_lerp(JSContext *ctx, JSValueConst this_val, int argc, JSVa
    return obj;
 }
 
+/* ── Batch 44: createCamera2D, cam2DFollow, cam2DShake, updateCamera2D,   ── */
+/*              updateTweens, killTween, killAllTweens, getTweenCount,         */
+/*              normVec2, dotVec2, magVec2, angleVec2                          */
+
+/* createCamera2D(opts?) → {x,y,zoom,rotation,_shakeX,_shakeY,...} */
+static JSValue js_create_camera_2d(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double cx = 0, cy = 0, zoom = 1, rotation = 0;
+   if (argc > 0 && JS_IsObject(argv[0])) {
+      JSValue tmp;
+      tmp = JS_GetPropertyStr(ctx, argv[0], "x");        if (!JS_IsUndefined(tmp) && !JS_IsNull(tmp)) JS_ToFloat64(ctx, &cx,       tmp); JS_FreeValue(ctx, tmp);
+      tmp = JS_GetPropertyStr(ctx, argv[0], "y");        if (!JS_IsUndefined(tmp) && !JS_IsNull(tmp)) JS_ToFloat64(ctx, &cy,       tmp); JS_FreeValue(ctx, tmp);
+      tmp = JS_GetPropertyStr(ctx, argv[0], "zoom");     if (!JS_IsUndefined(tmp) && !JS_IsNull(tmp)) JS_ToFloat64(ctx, &zoom,     tmp); JS_FreeValue(ctx, tmp);
+      tmp = JS_GetPropertyStr(ctx, argv[0], "rotation"); if (!JS_IsUndefined(tmp) && !JS_IsNull(tmp)) JS_ToFloat64(ctx, &rotation, tmp); JS_FreeValue(ctx, tmp);
+   }
+   JSValue obj = JS_NewObject(ctx);
+   JS_SetPropertyStr(ctx, obj, "x",           JS_NewFloat64(ctx, cx));
+   JS_SetPropertyStr(ctx, obj, "y",           JS_NewFloat64(ctx, cy));
+   JS_SetPropertyStr(ctx, obj, "zoom",        JS_NewFloat64(ctx, zoom));
+   JS_SetPropertyStr(ctx, obj, "rotation",    JS_NewFloat64(ctx, rotation));
+   JS_SetPropertyStr(ctx, obj, "_shakeX",     JS_NewFloat64(ctx, 0));
+   JS_SetPropertyStr(ctx, obj, "_shakeY",     JS_NewFloat64(ctx, 0));
+   JS_SetPropertyStr(ctx, obj, "_shakeMag",   JS_NewFloat64(ctx, 0));
+   JS_SetPropertyStr(ctx, obj, "_shakeDur",   JS_NewFloat64(ctx, 0));
+   JS_SetPropertyStr(ctx, obj, "_shakeTime",  JS_NewFloat64(ctx, 0));
+   JS_SetPropertyStr(ctx, obj, "_targetX",    JS_NULL);
+   JS_SetPropertyStr(ctx, obj, "_targetY",    JS_NULL);
+   JS_SetPropertyStr(ctx, obj, "_lerpFactor", JS_NewFloat64(ctx, 0.1));
+   return obj;
+}
+
+/* cam2DFollow(cam, targetX, targetY, dt, lerpFactor?) — set lerp target */
+static JSValue js_cam2d_follow(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 3 || !JS_IsObject(argv[0])) return JS_UNDEFINED;
+   double tx = double_from_js(ctx, argv[1], 0.0);
+   double ty = double_from_js(ctx, argv[2], 0.0);
+   JS_SetPropertyStr(ctx, argv[0], "_targetX", JS_NewFloat64(ctx, tx));
+   JS_SetPropertyStr(ctx, argv[0], "_targetY", JS_NewFloat64(ctx, ty));
+   if (argc > 4 && !JS_IsUndefined(argv[4]) && !JS_IsNull(argv[4])) {
+      double lf = double_from_js(ctx, argv[4], 0.1);
+      JS_SetPropertyStr(ctx, argv[0], "_lerpFactor", JS_NewFloat64(ctx, lf));
+   }
+   return JS_UNDEFINED;
+}
+
+/* cam2DShake(cam, magnitude, duration) — trigger screen shake */
+static JSValue js_cam2d_shake(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 3 || !JS_IsObject(argv[0])) return JS_UNDEFINED;
+   double mag = double_from_js(ctx, argv[1], 0.0);
+   double dur = double_from_js(ctx, argv[2], 0.0);
+   JS_SetPropertyStr(ctx, argv[0], "_shakeMag",  JS_NewFloat64(ctx, mag));
+   JS_SetPropertyStr(ctx, argv[0], "_shakeDur",  JS_NewFloat64(ctx, dur));
+   JS_SetPropertyStr(ctx, argv[0], "_shakeTime", JS_NewFloat64(ctx, dur));
+   return JS_UNDEFINED;
+}
+
+/* updateCamera2D(cam, dt) — advance lerp + shake */
+static JSValue js_update_camera_2d(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 2 || !JS_IsObject(argv[0])) return JS_UNDEFINED;
+   double dt        = double_from_js(ctx, argv[1], 0.016);
+   double cx = 0, cy = 0, lerpFactor = 0.1;
+   double shakeMag = 0, shakeDur = 1, shakeTime = 0;
+   int has_target = 0;
+   double targetX = 0, targetY = 0;
+   JSValue tmp;
+   tmp = JS_GetPropertyStr(ctx, argv[0], "x");          JS_ToFloat64(ctx, &cx,         tmp); JS_FreeValue(ctx, tmp);
+   tmp = JS_GetPropertyStr(ctx, argv[0], "y");          JS_ToFloat64(ctx, &cy,         tmp); JS_FreeValue(ctx, tmp);
+   tmp = JS_GetPropertyStr(ctx, argv[0], "_lerpFactor"); JS_ToFloat64(ctx, &lerpFactor, tmp); JS_FreeValue(ctx, tmp);
+   tmp = JS_GetPropertyStr(ctx, argv[0], "_shakeMag");  JS_ToFloat64(ctx, &shakeMag,   tmp); JS_FreeValue(ctx, tmp);
+   tmp = JS_GetPropertyStr(ctx, argv[0], "_shakeDur");  JS_ToFloat64(ctx, &shakeDur,   tmp); JS_FreeValue(ctx, tmp);
+   tmp = JS_GetPropertyStr(ctx, argv[0], "_shakeTime"); JS_ToFloat64(ctx, &shakeTime,  tmp); JS_FreeValue(ctx, tmp);
+   tmp = JS_GetPropertyStr(ctx, argv[0], "_targetX");
+   if (!JS_IsNull(tmp) && !JS_IsUndefined(tmp)) { JS_ToFloat64(ctx, &targetX, tmp); has_target = 1; }
+   JS_FreeValue(ctx, tmp);
+   if (has_target) {
+      tmp = JS_GetPropertyStr(ctx, argv[0], "_targetY"); JS_ToFloat64(ctx, &targetY, tmp); JS_FreeValue(ctx, tmp);
+      double a = 1.0 - pow(1.0 - lerpFactor, dt * 60.0);
+      cx += (targetX - cx) * a;
+      cy += (targetY - cy) * a;
+      JS_SetPropertyStr(ctx, argv[0], "x", JS_NewFloat64(ctx, cx));
+      JS_SetPropertyStr(ctx, argv[0], "y", JS_NewFloat64(ctx, cy));
+   }
+   if (shakeTime > 0.0) {
+      shakeTime -= dt;
+      double progress = (shakeDur > 0.0) ? shakeTime / shakeDur : 0.0;
+      if (progress < 0.0) progress = 0.0;
+      double mag = shakeMag * progress;
+      double sx = ((double)rand() / (double)RAND_MAX * 2.0 - 1.0) * mag;
+      double sy = ((double)rand() / (double)RAND_MAX * 2.0 - 1.0) * mag;
+      JS_SetPropertyStr(ctx, argv[0], "_shakeTime", JS_NewFloat64(ctx, shakeTime));
+      JS_SetPropertyStr(ctx, argv[0], "_shakeX",    JS_NewFloat64(ctx, sx));
+      JS_SetPropertyStr(ctx, argv[0], "_shakeY",    JS_NewFloat64(ctx, sy));
+   } else {
+      JS_SetPropertyStr(ctx, argv[0], "_shakeTime", JS_NewFloat64(ctx, 0.0));
+      JS_SetPropertyStr(ctx, argv[0], "_shakeX",    JS_NewFloat64(ctx, 0.0));
+      JS_SetPropertyStr(ctx, argv[0], "_shakeY",    JS_NewFloat64(ctx, 0.0));
+   }
+   return JS_UNDEFINED;
+}
+
+/* updateTweens(dt) — no-op; tweens auto-advance in the frame loop */
+static JSValue js_update_tweens(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val; (void)ctx; (void)argc; (void)argv;
+   return JS_UNDEFINED;
+}
+
+/* killTween(handle) — stop and free a tween slot */
+static JSValue js_kill_tween(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val; (void)ctx;
+   int handle = argc > 0 ? int_from_js(ctx, argv[0], 0) : 0;
+   int idx = handle - 1;
+   if (idx >= 0 && idx < NOVA64_MAX_TWEENS) memset(&g_tweens[idx], 0, sizeof(g_tweens[idx]));
+   return JS_UNDEFINED;
+}
+
+/* killAllTweens() — clear every active tween */
+static JSValue js_kill_all_tweens(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val; (void)ctx; (void)argc; (void)argv;
+   memset(g_tweens, 0, sizeof(g_tweens));
+   return JS_UNDEFINED;
+}
+
+/* getTweenCount() → number of live (non-done) tweens */
+static JSValue js_get_tween_count(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val; (void)argc; (void)argv;
+   int count = 0;
+   for (int i = 0; i < NOVA64_MAX_TWEENS; i++)
+      if (g_tweens[i].used && !g_tweens[i].done) count++;
+   return JS_NewInt32(ctx, count);
+}
+
+/* normVec2(x, y) → {x, y} unit vector */
+static JSValue js_norm_vec2(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double vx = double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0.0);
+   double vy = double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0.0);
+   double mag = sqrt(vx * vx + vy * vy);
+   JSValue obj = JS_NewObject(ctx);
+   if (mag > 0.0) {
+      JS_SetPropertyStr(ctx, obj, "x", JS_NewFloat64(ctx, vx / mag));
+      JS_SetPropertyStr(ctx, obj, "y", JS_NewFloat64(ctx, vy / mag));
+   } else {
+      JS_SetPropertyStr(ctx, obj, "x", JS_NewFloat64(ctx, 0.0));
+      JS_SetPropertyStr(ctx, obj, "y", JS_NewFloat64(ctx, 0.0));
+   }
+   return obj;
+}
+
+/* dotVec2(ax, ay, bx, by) → scalar dot product */
+static JSValue js_dot_vec2(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double ax = double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0.0);
+   double ay = double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0.0);
+   double bx = double_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 0.0);
+   double by = double_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, 0.0);
+   return JS_NewFloat64(ctx, ax * bx + ay * by);
+}
+
+/* magVec2(x, y) → vector magnitude */
+static JSValue js_mag_vec2(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double vx = double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0.0);
+   double vy = double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0.0);
+   return JS_NewFloat64(ctx, sqrt(vx * vx + vy * vy));
+}
+
+/* angleVec2(x, y) → atan2(y, x) in radians */
+static JSValue js_angle_vec2(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double vx = double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0.0);
+   double vy = double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0.0);
+   return JS_NewFloat64(ctx, atan2(vy, vx));
+}
+
 /* ── Batch 43: hitTest, circleHitTest, createColorPool, nextColor,        ── */
 /*              createGridLayout, createCircleLayout, shuffleArray,            */
 /*              pickRandom, weightedRandom, setRandomSeed, subVec2, scaleVec2 */
@@ -22234,6 +22423,20 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, global, "setRandomSeed",     js_set_random_seed,    1);
    set_function(ctx, global, "subVec2",           js_sub_vec2,           4);
    set_function(ctx, global, "scaleVec2",         js_scale_vec2,         3);
+
+   /* Batch 44 */
+   set_function(ctx, global, "createCamera2D",  js_create_camera_2d, 1);
+   set_function(ctx, global, "cam2DFollow",     js_cam2d_follow,     5);
+   set_function(ctx, global, "cam2DShake",      js_cam2d_shake,      3);
+   set_function(ctx, global, "updateCamera2D",  js_update_camera_2d, 2);
+   set_function(ctx, global, "updateTweens",    js_update_tweens,    1);
+   set_function(ctx, global, "killTween",       js_kill_tween,       1);
+   set_function(ctx, global, "killAllTweens",   js_kill_all_tweens,  0);
+   set_function(ctx, global, "getTweenCount",   js_get_tween_count,  0);
+   set_function(ctx, global, "normVec2",        js_norm_vec2,        2);
+   set_function(ctx, global, "dotVec2",         js_dot_vec2,         4);
+   set_function(ctx, global, "magVec2",         js_mag_vec2,         2);
+   set_function(ctx, global, "angleVec2",       js_angle_vec2,       2);
 
    JS_FreeValue(ctx, global);
    return true;

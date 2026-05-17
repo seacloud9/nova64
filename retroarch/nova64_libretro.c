@@ -6354,6 +6354,332 @@ static JSValue js_vec_lerp(JSContext *ctx, JSValueConst this_val, int argc, JSVa
    return obj;
 }
 
+/* ── Batch 40: createSpawner, updateSpawner, triggerWave, getSpawnerWave, ── */
+/*              createCooldownSet, updateCooldowns, drawFlash, drawPixelBorder,*/
+/*              hslColor, scrollingText, drawDiamond, poly                     */
+
+static JSValue js_create_spawner(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double interval = 5.0;
+   int perWave = 5, maxWaves = 0;
+   if (argc > 0 && JS_IsObject(argv[0])) {
+      JSValue iv = JS_GetPropertyStr(ctx, argv[0], "waveInterval");
+      JSValue pv = JS_GetPropertyStr(ctx, argv[0], "perWave");
+      JSValue mv = JS_GetPropertyStr(ctx, argv[0], "maxWaves");
+      if (!JS_IsUndefined(iv)) interval  = double_from_js(ctx, iv, 5.0);
+      if (!JS_IsUndefined(pv)) perWave   = int_from_js(ctx, pv, 5);
+      if (!JS_IsUndefined(mv)) maxWaves  = int_from_js(ctx, mv, 0);
+      JS_FreeValue(ctx, iv); JS_FreeValue(ctx, pv); JS_FreeValue(ctx, mv);
+   }
+   JSValue obj = JS_NewObject(ctx);
+   JS_SetPropertyStr(ctx, obj, "wave",         JS_NewInt32(ctx, 0));
+   JS_SetPropertyStr(ctx, obj, "timer",        JS_NewFloat64(ctx, 0.0));
+   JS_SetPropertyStr(ctx, obj, "waveInterval", JS_NewFloat64(ctx, interval));
+   JS_SetPropertyStr(ctx, obj, "perWave",      JS_NewInt32(ctx, perWave));
+   JS_SetPropertyStr(ctx, obj, "maxWaves",     JS_NewInt32(ctx, maxWaves));
+   JS_SetPropertyStr(ctx, obj, "pending",      JS_NewInt32(ctx, 0));
+   JS_SetPropertyStr(ctx, obj, "active",       JS_TRUE);
+   return obj;
+}
+
+static JSValue js_update_spawner(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 1 || !JS_IsObject(argv[0])) return JS_UNDEFINED;
+   JSValue av = JS_GetPropertyStr(ctx, argv[0], "active");
+   if (!JS_ToBool(ctx, av)) { JS_FreeValue(ctx, av); return JS_UNDEFINED; }
+   JS_FreeValue(ctx, av);
+   double dt2 = argc > 1 ? double_from_js(ctx, argv[1], 0.016) : 0.016;
+   JSValue tv  = JS_GetPropertyStr(ctx, argv[0], "timer");
+   JSValue iv  = JS_GetPropertyStr(ctx, argv[0], "waveInterval");
+   JSValue wv  = JS_GetPropertyStr(ctx, argv[0], "wave");
+   JSValue mv  = JS_GetPropertyStr(ctx, argv[0], "maxWaves");
+   JSValue pv  = JS_GetPropertyStr(ctx, argv[0], "pending");
+   double timer = double_from_js(ctx, tv, 0.0) + dt2;
+   double ivl   = double_from_js(ctx, iv, 5.0);
+   int wave     = int_from_js(ctx, wv, 0);
+   int maxW     = int_from_js(ctx, mv, 0);
+   int pending  = int_from_js(ctx, pv, 0);
+   int perW     = 0;
+   JSValue pwv  = JS_GetPropertyStr(ctx, argv[0], "perWave");
+   perW = int_from_js(ctx, pwv, 5);
+   JS_FreeValue(ctx, tv); JS_FreeValue(ctx, iv); JS_FreeValue(ctx, wv);
+   JS_FreeValue(ctx, mv); JS_FreeValue(ctx, pv); JS_FreeValue(ctx, pwv);
+   if (timer >= ivl && (maxW == 0 || wave < maxW)) {
+      timer -= ivl;
+      wave++;
+      pending += perW;
+      JS_SetPropertyStr(ctx, argv[0], "wave",    JS_NewInt32(ctx, wave));
+      JS_SetPropertyStr(ctx, argv[0], "pending", JS_NewInt32(ctx, pending));
+   }
+   JS_SetPropertyStr(ctx, argv[0], "timer", JS_NewFloat64(ctx, timer));
+   return JS_UNDEFINED;
+}
+
+static JSValue js_trigger_wave(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 1 || !JS_IsObject(argv[0])) return JS_UNDEFINED;
+   JSValue pv = JS_GetPropertyStr(ctx, argv[0], "pending");
+   JSValue pwv= JS_GetPropertyStr(ctx, argv[0], "perWave");
+   JSValue wv = JS_GetPropertyStr(ctx, argv[0], "wave");
+   int pending = int_from_js(ctx, pv, 0);
+   int perW    = int_from_js(ctx, pwv, 5);
+   int wave    = int_from_js(ctx, wv, 0);
+   JS_FreeValue(ctx, pv); JS_FreeValue(ctx, pwv); JS_FreeValue(ctx, wv);
+   JS_SetPropertyStr(ctx, argv[0], "pending", JS_NewInt32(ctx, pending + perW));
+   JS_SetPropertyStr(ctx, argv[0], "wave",    JS_NewInt32(ctx, wave + 1));
+   return JS_UNDEFINED;
+}
+
+static JSValue js_get_spawner_wave(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 1 || !JS_IsObject(argv[0])) return JS_NewInt32(ctx, 0);
+   JSValue wv = JS_GetPropertyStr(ctx, argv[0], "wave");
+   int wave = int_from_js(ctx, wv, 0);
+   JS_FreeValue(ctx, wv);
+   return JS_NewInt32(ctx, wave);
+}
+
+static JSValue js_create_cooldown_set(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   JSValue set = JS_NewObject(ctx);
+   if (argc > 0 && JS_IsObject(argv[0])) {
+      JSPropertyEnum *props = NULL;
+      uint32_t count = 0;
+      JS_GetOwnPropertyNames(ctx, &props, &count, argv[0], JS_GPN_STRING_MASK | JS_GPN_ENUM_ONLY);
+      for (uint32_t i = 0; i < count; i++) {
+         JSValue dur = JS_GetProperty(ctx, argv[0], props[i].atom);
+         double d = double_from_js(ctx, dur, 1.0);
+         JS_FreeValue(ctx, dur);
+         /* create cooldown object for each key */
+         JSValue cd = JS_NewObject(ctx);
+         JS_SetPropertyStr(ctx, cd, "duration", JS_NewFloat64(ctx, d));
+         JS_SetPropertyStr(ctx, cd, "elapsed",  JS_NewFloat64(ctx, d));
+         JS_SetProperty(ctx, set, props[i].atom, cd);
+         JS_FreeAtom(ctx, props[i].atom);
+      }
+      js_free(ctx, props);
+   }
+   return set;
+}
+
+static JSValue js_update_cooldowns(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 1 || !JS_IsObject(argv[0])) return JS_UNDEFINED;
+   double dt2 = argc > 1 ? double_from_js(ctx, argv[1], 0.016) : 0.016;
+   JSPropertyEnum *props = NULL;
+   uint32_t count = 0;
+   JS_GetOwnPropertyNames(ctx, &props, &count, argv[0], JS_GPN_STRING_MASK | JS_GPN_ENUM_ONLY);
+   for (uint32_t i = 0; i < count; i++) {
+      JSValue cd = JS_GetProperty(ctx, argv[0], props[i].atom);
+      if (JS_IsObject(cd)) {
+         JSValue ev = JS_GetPropertyStr(ctx, cd, "elapsed");
+         JSValue dv = JS_GetPropertyStr(ctx, cd, "duration");
+         double el  = double_from_js(ctx, ev, 0.0) + dt2;
+         double dur = double_from_js(ctx, dv, 1.0);
+         if (el > dur) el = dur;
+         JS_SetPropertyStr(ctx, cd, "elapsed", JS_NewFloat64(ctx, el));
+         JS_FreeValue(ctx, ev); JS_FreeValue(ctx, dv);
+      }
+      JS_FreeValue(ctx, cd);
+      JS_FreeAtom(ctx, props[i].atom);
+   }
+   js_free(ctx, props);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_draw_flash(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   uint32_t color = color_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, rgba8(255,255,255,128));
+   for (int fy = 0; fy < NOVA64_HEIGHT; fy++)
+      for (int fx = 0; fx < NOVA64_WIDTH; fx++) set_pixel(fx, fy, color);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_draw_pixel_border(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int bvx = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0);
+   int bvy = int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0);
+   int bvw = int_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 0);
+   int bvh = int_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, 0);
+   uint32_t lc = color_from_js(ctx, argc > 4 ? argv[4] : JS_UNDEFINED, rgba8(200,200,200,255));
+   uint32_t dc = color_from_js(ctx, argc > 5 ? argv[5] : JS_UNDEFINED, rgba8(60,60,60,255));
+   int th = argc > 6 ? int_from_js(ctx, argv[6], 2) : 2;
+   if (th < 1) th = 1;
+   int sx, sy; transform_2d_point(bvx, bvy, &sx, &sy);
+   int tw = transform_2d_size(bvw), tht = transform_2d_size(bvh), tt = transform_2d_size(th);
+   if (tt < 1) tt = 1;
+   /* top + left light */
+   draw_rect_pixels(sx, sy, tw, tt, lc, true);
+   draw_rect_pixels(sx, sy, tt, tht, lc, true);
+   /* bottom + right dark */
+   draw_rect_pixels(sx, sy + tht - tt, tw, tt, dc, true);
+   draw_rect_pixels(sx + tw - tt, sy, tt, tht, dc, true);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_hsl_color(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   float h = (float)double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0.0);
+   float s = (float)double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 1.0);
+   float l = (float)double_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 0.5);
+   int   a = int_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, 255);
+   h = fmodf(h, 360.0f); if (h < 0.0f) h += 360.0f;
+   if (s < 0.0f) s = 0.0f; if (s > 1.0f) s = 1.0f;
+   if (l < 0.0f) l = 0.0f; if (l > 1.0f) l = 1.0f;
+   if (a < 0) a = 0; if (a > 255) a = 255;
+   float c2 = (1.0f - fabsf(2.0f * l - 1.0f)) * s;
+   float x2 = c2 * (1.0f - fabsf(fmodf(h / 60.0f, 2.0f) - 1.0f));
+   float mv = l - c2 * 0.5f;
+   float r1 = mv, g1 = mv, b1 = mv;
+   int sector = (int)(h / 60.0f) % 6;
+   if      (sector == 0) { r1 += c2; g1 += x2; }
+   else if (sector == 1) { r1 += x2; g1 += c2; }
+   else if (sector == 2) { g1 += c2; b1 += x2; }
+   else if (sector == 3) { g1 += x2; b1 += c2; }
+   else if (sector == 4) { r1 += x2; b1 += c2; }
+   else                  { r1 += c2; b1 += x2; }
+   int ri = (int)(r1 * 255.0f + 0.5f);
+   int gi = (int)(g1 * 255.0f + 0.5f);
+   int bi = (int)(b1 * 255.0f + 0.5f);
+   if (ri > 255) ri = 255; if (gi > 255) gi = 255; if (bi > 255) bi = 255;
+   return JS_NewUint32(ctx, rgba8(ri, gi, bi, a));
+}
+
+static JSValue js_scrolling_text(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   const char *text = "";
+   int   sty    = argc > 1 ? int_from_js(ctx, argv[1], 0) : 0;
+   double speed = argc > 2 ? double_from_js(ctx, argv[2], 60.0) : 60.0;
+   double time  = argc > 3 ? double_from_js(ctx, argv[3], 0.0) : 0.0;
+   uint32_t color = color_from_js(ctx, argc > 4 ? argv[4] : JS_UNDEFINED, rgba8(255,255,255,255));
+   int scale  = argc > 5 ? int_from_js(ctx, argv[5], 1) : 1;
+   int width  = argc > 6 ? int_from_js(ctx, argv[6], NOVA64_WIDTH) : NOVA64_WIDTH;
+   char buf[512] = "";
+   if (argc > 0 && JS_IsString(argv[0])) {
+      const char *s = JS_ToCString(ctx, argv[0]);
+      if (s) { strncpy(buf, s, 511); buf[511] = '\0'; JS_FreeCString(ctx, s); }
+      text = buf;
+   }
+   if (scale < 1) scale = 1;
+   int cw = 6 * scale;
+   int textPx = (int)strlen(text) * cw;
+   int total  = textPx + width;
+   int offset = (int)(speed * time);
+   if (total > 0) offset = ((offset % total) + total) % total;
+   int startX = width - offset;
+   bool prev_clip = clip_active;
+   int px = clip_x, py = clip_y, pw2 = clip_w, ph = clip_h;
+   clip_active = true; clip_x = 0; clip_y = sty; clip_w = width; clip_h = 9 * scale;
+   if (scale == 1) {
+      draw_text_pixels(text, startX, sty, color);
+   } else {
+      for (const char *p = text; *p; p++) {
+         int cx2 = startX + (int)(p - text) * cw;
+         for (int row = 0; row < 7; row++) {
+            uint8_t bits = glyph_row(*p, row);
+            for (int col = 0; col < 5; col++) {
+               if (bits & (1U << (4 - col))) {
+                  for (int sy2 = 0; sy2 < scale; sy2++)
+                     for (int sx2 = 0; sx2 < scale; sx2++)
+                        set_pixel(cx2 + col * scale + sx2, sty + row * scale + sy2, color);
+               }
+            }
+         }
+      }
+   }
+   clip_active = prev_clip; clip_x = px; clip_y = py; clip_w = pw2; clip_h = ph;
+   return JS_UNDEFINED;
+}
+
+static JSValue js_draw_diamond(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int dcx = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0);
+   int dcy = int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0);
+   int dhw = int_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 10);
+   int dhh = int_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, 10);
+   uint32_t color = color_from_js(ctx, argc > 4 ? argv[4] : JS_UNDEFINED, rgba8(255,255,255,255));
+   bool filled = (argc > 5) ? JS_ToBool(ctx, argv[5]) != 0 : false;
+   /* 4 vertices: top, right, bottom, left */
+   int pts[4][2] = { {dcx, dcy-dhh}, {dcx+dhw, dcy}, {dcx, dcy+dhh}, {dcx-dhw, dcy} };
+   int spx, spy, fpx, fpy;
+   transform_2d_point(pts[0][0], pts[0][1], &spx, &spy);
+   fpx = spx; fpy = spy;
+   for (int di = 1; di <= 4; di++) {
+      int nx = pts[di % 4][0], ny = pts[di % 4][1];
+      int epx, epy; transform_2d_point(nx, ny, &epx, &epy);
+      if (filled) {
+         int cx2, cy2; transform_2d_point(dcx, dcy, &cx2, &cy2);
+         path_draw_line_segment(cx2, cy2, spx, spy, color);
+         path_draw_line_segment(cx2, cy2, epx, epy, color);
+      }
+      path_draw_line_segment(spx, spy, epx, epy, color);
+      spx = epx; spy = epy;
+   }
+   return JS_UNDEFINED;
+}
+
+static JSValue js_poly(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 1 || !JS_IsArray(argv[0])) return JS_UNDEFINED;
+   uint32_t color = color_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, rgba8(255,255,255,255));
+   bool filled = (argc > 2) ? JS_ToBool(ctx, argv[2]) != 0 : false;
+   JSValue lenV = JS_GetPropertyStr(ctx, argv[0], "length");
+   int n = int_from_js(ctx, lenV, 0);
+   JS_FreeValue(ctx, lenV);
+   if (n < 2) return JS_UNDEFINED;
+   int cx2 = 0, cy2 = 0;
+   if (filled) {
+      /* compute centroid for fan triangulation */
+      double sumx = 0, sumy = 0;
+      for (int pi = 0; pi < n; pi++) {
+         JSValue pv = JS_GetPropertyUint32(ctx, argv[0], (uint32_t)pi);
+         JSValue xv = JS_GetPropertyStr(ctx, pv, "x");
+         JSValue yv = JS_GetPropertyStr(ctx, pv, "y");
+         sumx += double_from_js(ctx, xv, 0.0);
+         sumy += double_from_js(ctx, yv, 0.0);
+         JS_FreeValue(ctx, xv); JS_FreeValue(ctx, yv); JS_FreeValue(ctx, pv);
+      }
+      transform_2d_point((int)lrintf((float)(sumx/n)), (int)lrintf((float)(sumy/n)), &cx2, &cy2);
+   }
+   int spx = 0, spy = 0, fpx = 0, fpy = 0;
+   {
+      JSValue p0 = JS_GetPropertyUint32(ctx, argv[0], 0);
+      JSValue x0 = JS_GetPropertyStr(ctx, p0, "x");
+      JSValue y0 = JS_GetPropertyStr(ctx, p0, "y");
+      transform_2d_point(int_from_js(ctx, x0, 0), int_from_js(ctx, y0, 0), &spx, &spy);
+      JS_FreeValue(ctx, x0); JS_FreeValue(ctx, y0); JS_FreeValue(ctx, p0);
+      fpx = spx; fpy = spy;
+   }
+   for (int pi = 1; pi <= n; pi++) {
+      JSValue pv = JS_GetPropertyUint32(ctx, argv[0], (uint32_t)(pi % n));
+      JSValue xv = JS_GetPropertyStr(ctx, pv, "x");
+      JSValue yv = JS_GetPropertyStr(ctx, pv, "y");
+      int epx, epy;
+      transform_2d_point(int_from_js(ctx, xv, 0), int_from_js(ctx, yv, 0), &epx, &epy);
+      JS_FreeValue(ctx, xv); JS_FreeValue(ctx, yv); JS_FreeValue(ctx, pv);
+      if (filled) {
+         path_draw_line_segment(cx2, cy2, spx, spy, color);
+         path_draw_line_segment(cx2, cy2, epx, epy, color);
+      }
+      path_draw_line_segment(spx, spy, epx, epy, color);
+      spx = epx; spy = epy;
+   }
+   (void)fpx; (void)fpy;
+   return JS_UNDEFINED;
+}
+
 /* ── Batch 39: lerp, clamp, dist, dist3d, remap, deg2rad, rad2deg, ──────── */
 /*              pulse, drawRoundedRect, drawStarburst, drawCheckerboard,       */
 /*              drawScanlines                                                   */
@@ -21087,6 +21413,20 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, global, "drawStarburst",     js_draw_starburst,    7);
    set_function(ctx, global, "drawCheckerboard",  js_draw_checkerboard, 7);
    set_function(ctx, global, "drawScanlines",     js_draw_scanlines,    2);
+
+   /* Batch 40 */
+   set_function(ctx, global, "createSpawner",     js_create_spawner,     1);
+   set_function(ctx, global, "updateSpawner",     js_update_spawner,     2);
+   set_function(ctx, global, "triggerWave",       js_trigger_wave,       1);
+   set_function(ctx, global, "getSpawnerWave",    js_get_spawner_wave,   1);
+   set_function(ctx, global, "createCooldownSet", js_create_cooldown_set,1);
+   set_function(ctx, global, "updateCooldowns",   js_update_cooldowns,   2);
+   set_function(ctx, global, "drawFlash",         js_draw_flash,         1);
+   set_function(ctx, global, "drawPixelBorder",   js_draw_pixel_border,  7);
+   set_function(ctx, global, "hslColor",          js_hsl_color,          4);
+   set_function(ctx, global, "scrollingText",     js_scrolling_text,     7);
+   set_function(ctx, global, "drawDiamond",       js_draw_diamond,       6);
+   set_function(ctx, global, "poly",              js_poly,               3);
 
    JS_FreeValue(ctx, global);
    return true;

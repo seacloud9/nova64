@@ -892,4 +892,8 @@ run_visual_case "632 vec3 math"             "632-vec3-math"            "retroarc
 run_visual_case "633 input sticks"          "633-input-sticks"         "retroarch/conformance/633-input-sticks.js"         "fbfe02ef7241a6c5"
 run_visual_case "643 batch49 showcase"      "643-batch49-showcase"     "retroarch/conformance/643-batch49-showcase.js"     "909c9c10b4eb830d"
 
+run_visual_case "644 vec3 advanced"         "644-vec3-advanced"        "retroarch/conformance/644-vec3-advanced.js"        "bf38c7c1e93a4b54"
+run_visual_case "645 screen manager"        "645-screen-manager"       "retroarch/conformance/645-screen-manager.js"       "b6ad9b104bdf46b9"
+run_visual_case "655 batch50 showcase"      "655-batch50-showcase"     "retroarch/conformance/655-batch50-showcase.js"     "1a5bcfc145f96383"
+
 echo "Conformance passed."

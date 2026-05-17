@@ -6354,6 +6354,318 @@ static JSValue js_vec_lerp(JSContext *ctx, JSValueConst this_val, int argc, JSVa
    return obj;
 }
 
+/* ── Batch 36: lerpColor, ease, arc, bezier, noiseMap, flowField, ────────── */
+/*              colorMode/color, drawGradient, drawRadialGradient,            */
+/*              drawSkyGradient, hexColor                                      */
+
+/* forward declaration — defined in Batch 35 below */
+static JSValue js_hsb(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv);
+
+static int g_color_mode = 0; /* 0=RGB, 1=HSB */
+
+static JSValue js_lerp_color(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   uint32_t c1 = color_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, rgba8(0,0,0,255));
+   uint32_t c2 = color_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, rgba8(255,255,255,255));
+   double t = argc > 2 ? double_from_js(ctx, argv[2], 0.0) : 0.0;
+   if (t < 0.0) t = 0.0; if (t > 1.0) t = 1.0;
+   int r1=(c1>>24)&0xFF, g1=(c1>>16)&0xFF, b1=(c1>>8)&0xFF, a1=c1&0xFF;
+   int r2=(c2>>24)&0xFF, g2=(c2>>16)&0xFF, b2=(c2>>8)&0xFF, a2=c2&0xFF;
+   int r=(int)(r1+(r2-r1)*t+0.5);
+   int g=(int)(g1+(g2-g1)*t+0.5);
+   int b=(int)(b1+(b2-b1)*t+0.5);
+   int a=(int)(a1+(a2-a1)*t+0.5);
+   return JS_NewUint32(ctx, rgba8(r,g,b,a));
+}
+
+static JSValue js_ease(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double t = argc > 0 ? double_from_js(ctx, argv[0], 0.0) : 0.0;
+   if (t < 0.0) t = 0.0; if (t > 1.0) t = 1.0;
+   const char *type = "linear";
+   char type_buf[32] = "linear";
+   if (argc > 1 && JS_IsString(argv[1])) {
+      const char *s = JS_ToCString(ctx, argv[1]);
+      if (s) { strncpy(type_buf, s, 31); type_buf[31] = '\0'; JS_FreeCString(ctx, s); }
+      type = type_buf;
+   }
+   double v = t;
+   if      (!strcmp(type, "linear"))        v = t;
+   else if (!strcmp(type, "quadIn"))        v = t * t;
+   else if (!strcmp(type, "quadOut"))       v = t * (2.0 - t);
+   else if (!strcmp(type, "quadInOut"))     v = t < 0.5 ? 2*t*t : -1+(4-2*t)*t;
+   else if (!strcmp(type, "cubicIn"))       v = t * t * t;
+   else if (!strcmp(type, "cubicOut"))      { double u=t-1; v=u*u*u+1; }
+   else if (!strcmp(type, "cubicInOut"))    v = t < 0.5 ? 4*t*t*t : (t-1)*(2*t-2)*(2*t-2)+1;
+   else if (!strcmp(type, "sineIn"))        v = 1.0-cos(t*M_PI*0.5);
+   else if (!strcmp(type, "sineOut"))       v = sin(t*M_PI*0.5);
+   else if (!strcmp(type, "sineInOut"))     v = -(cos(M_PI*t)-1)/2.0;
+   else if (!strcmp(type, "elasticOut"))  {
+      if (t == 0.0 || t == 1.0) v = t;
+      else { double c4=2.0*M_PI/3.0; v=pow(2,-10*t)*sin((t*10-0.75)*c4)+1; }
+   }
+   else if (!strcmp(type, "bounceOut")) {
+      const double n1=7.5625, d1=2.75;
+      if (t < 1/d1)      v = n1*t*t;
+      else if (t < 2/d1) { t-=1.5/d1;   v = n1*t*t+0.75; }
+      else if (t < 2.5/d1){ t-=2.25/d1; v = n1*t*t+0.9375; }
+      else               { t-=2.625/d1; v = n1*t*t+0.984375; }
+   }
+   else if (!strcmp(type, "bounceIn")) {
+      double tb=1.0-t;
+      const double n1=7.5625, d1=2.75;
+      double bv;
+      if (tb < 1/d1)       bv=n1*tb*tb;
+      else if (tb < 2/d1)  { tb-=1.5/d1;   bv=n1*tb*tb+0.75; }
+      else if (tb < 2.5/d1){ tb-=2.25/d1;  bv=n1*tb*tb+0.9375; }
+      else                 { tb-=2.625/d1; bv=n1*tb*tb+0.984375; }
+      v = 1.0 - bv;
+   }
+   return JS_NewFloat64(ctx, v);
+}
+
+static JSValue js_arc(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int acx = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0);
+   int acy = int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0);
+   int arx = int_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 0);
+   int ary = int_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, arx);
+   double a0 = argc > 4 ? double_from_js(ctx, argv[4], 0.0) : 0.0;
+   double a1 = argc > 5 ? double_from_js(ctx, argv[5], M_PI*2) : M_PI*2;
+   uint32_t color = color_from_js(ctx, argc > 6 ? argv[6] : JS_UNDEFINED, rgba8(255,255,255,255));
+   int steps = 48;
+   double da = (a1 - a0) / (double)steps;
+   int spx, spy;
+   transform_2d_point(acx + (int)lrintf((float)arx * cosf((float)a0)),
+                      acy + (int)lrintf((float)ary * sinf((float)a0)), &spx, &spy);
+   for (int i = 1; i <= steps; i++) {
+      double ang = a0 + da * (double)i;
+      int ex = acx + (int)lrintf((float)arx * cosf((float)ang));
+      int ey = acy + (int)lrintf((float)ary * sinf((float)ang));
+      int epx, epy;
+      transform_2d_point(ex, ey, &epx, &epy);
+      path_draw_line_segment(spx, spy, epx, epy, color);
+      spx = epx; spy = epy;
+   }
+   return JS_UNDEFINED;
+}
+
+static JSValue js_bezier(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   float bx0 = (float)double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0.0);
+   float by0 = (float)double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0.0);
+   float bc0x= (float)double_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 0.0);
+   float bc0y= (float)double_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, 0.0);
+   float bc1x= (float)double_from_js(ctx, argc > 4 ? argv[4] : JS_UNDEFINED, 0.0);
+   float bc1y= (float)double_from_js(ctx, argc > 5 ? argv[5] : JS_UNDEFINED, 0.0);
+   float bx1 = (float)double_from_js(ctx, argc > 6 ? argv[6] : JS_UNDEFINED, 0.0);
+   float by1 = (float)double_from_js(ctx, argc > 7 ? argv[7] : JS_UNDEFINED, 0.0);
+   uint32_t color = color_from_js(ctx, argc > 8 ? argv[8] : JS_UNDEFINED, rgba8(255,255,255,255));
+   int steps = 40;
+   int spx, spy;
+   transform_2d_point((int)lrintf(bx0), (int)lrintf(by0), &spx, &spy);
+   for (int i = 1; i <= steps; i++) {
+      float t = (float)i / (float)steps;
+      float mt = 1.0f - t;
+      float nx = mt*mt*mt*bx0 + 3.0f*mt*mt*t*bc0x + 3.0f*mt*t*t*bc1x + t*t*t*bx1;
+      float ny = mt*mt*mt*by0 + 3.0f*mt*mt*t*bc0y + 3.0f*mt*t*t*bc1y + t*t*t*by1;
+      int epx, epy;
+      transform_2d_point((int)lrintf(nx), (int)lrintf(ny), &epx, &epy);
+      path_draw_line_segment(spx, spy, epx, epy, color);
+      spx = epx; spy = epy;
+   }
+   return JS_UNDEFINED;
+}
+
+static JSValue js_noise_map(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int nmw = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 16);
+   int nmh = int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 16);
+   double nmscale = argc > 2 ? double_from_js(ctx, argv[2], 0.1) : 0.1;
+   double nmox    = argc > 3 ? double_from_js(ctx, argv[3], 0.0) : 0.0;
+   double nmoy    = argc > 4 ? double_from_js(ctx, argv[4], 0.0) : 0.0;
+   if (nmw < 1) nmw = 1; if (nmw > 512) nmw = 512;
+   if (nmh < 1) nmh = 1; if (nmh > 512) nmh = 512;
+   noise_ensure_init();
+   JSValue arr = JS_NewArray(ctx);
+   for (int iy = 0; iy < nmh; iy++) {
+      for (int ix = 0; ix < nmw; ix++) {
+         double n = perlin_noise_2d(nmox + ix * nmscale, nmoy + iy * nmscale);
+         n = n * 0.5 + 0.5; if (n < 0.0) n = 0.0; if (n > 1.0) n = 1.0;
+         JS_SetPropertyUint32(ctx, arr, (uint32_t)(iy * nmw + ix), JS_NewFloat64(ctx, n));
+      }
+   }
+   return arr;
+}
+
+static JSValue js_flow_field(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int ffc  = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 8);
+   int ffr  = int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 8);
+   double ffs  = argc > 2 ? double_from_js(ctx, argv[2], 0.1) : 0.1;
+   double fft  = argc > 3 ? double_from_js(ctx, argv[3], 0.0) : 0.0;
+   if (ffc < 1) ffc = 1; if (ffc > 256) ffc = 256;
+   if (ffr < 1) ffr = 1; if (ffr > 256) ffr = 256;
+   noise_ensure_init();
+   JSValue arr = JS_NewArray(ctx);
+   for (int ffy = 0; ffy < ffr; ffy++) {
+      for (int ffx = 0; ffx < ffc; ffx++) {
+         double n = perlin_noise_2d(ffx * ffs + fft, ffy * ffs + fft);
+         double angle = (n * 0.5 + 0.5) * M_PI * 4.0;
+         JS_SetPropertyUint32(ctx, arr, (uint32_t)(ffy * ffc + ffx), JS_NewFloat64(ctx, angle));
+      }
+   }
+   return arr;
+}
+
+static JSValue js_color_mode(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc > 0) {
+      if (JS_IsString(argv[0])) {
+         const char *s = JS_ToCString(ctx, argv[0]);
+         if (s) { g_color_mode = (!strcmp(s,"HSB")||!strcmp(s,"hsb")) ? 1 : 0; JS_FreeCString(ctx, s); }
+      } else {
+         g_color_mode = int_from_js(ctx, argv[0], 0) != 0 ? 1 : 0;
+      }
+   }
+   return JS_UNDEFINED;
+}
+
+static JSValue js_color(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (g_color_mode == 1) {
+      /* HSB mode: h 0-360, s 0-1, b 0-1, a 0-255 */
+      JSValue hsbargs[4];
+      hsbargs[0] = argc > 0 ? argv[0] : JS_NewFloat64(ctx, 0.0);
+      hsbargs[1] = argc > 1 ? argv[1] : JS_NewFloat64(ctx, 1.0);
+      hsbargs[2] = argc > 2 ? argv[2] : JS_NewFloat64(ctx, 1.0);
+      hsbargs[3] = argc > 3 ? argv[3] : JS_NewInt32(ctx, 255);
+      JSValue result = js_hsb(ctx, this_val, 4, hsbargs);
+      if (argc <= 0) JS_FreeValue(ctx, hsbargs[0]);
+      if (argc <= 1) JS_FreeValue(ctx, hsbargs[1]);
+      if (argc <= 2) JS_FreeValue(ctx, hsbargs[2]);
+      if (argc <= 3) JS_FreeValue(ctx, hsbargs[3]);
+      return result;
+   }
+   /* RGB mode */
+   int r = argc > 0 ? int_from_js(ctx, argv[0], 0) : 0;
+   int g = argc > 1 ? int_from_js(ctx, argv[1], r) : r;
+   int b = argc > 2 ? int_from_js(ctx, argv[2], r) : r;
+   int a = argc > 3 ? int_from_js(ctx, argv[3], 255) : 255;
+   if (r<0) r=0; if (r>255) r=255;
+   if (g<0) g=0; if (g>255) g=255;
+   if (b<0) b=0; if (b>255) b=255;
+   if (a<0) a=0; if (a>255) a=255;
+   return JS_NewUint32(ctx, rgba8(r,g,b,a));
+}
+
+static JSValue js_draw_gradient(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int gx = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0);
+   int gy = int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0);
+   int gw = int_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 0);
+   int gh = int_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, 0);
+   uint32_t gc1 = color_from_js(ctx, argc > 4 ? argv[4] : JS_UNDEFINED, rgba8(0,0,0,255));
+   uint32_t gc2 = color_from_js(ctx, argc > 5 ? argv[5] : JS_UNDEFINED, rgba8(255,255,255,255));
+   int gdir = 0;
+   if (argc > 6) {
+      if (JS_IsString(argv[6])) {
+         const char *s = JS_ToCString(ctx, argv[6]);
+         if (s) { gdir = (!strcmp(s,"vertical")||!strcmp(s,"v")) ? 1 : 0; JS_FreeCString(ctx, s); }
+      } else { gdir = int_from_js(ctx, argv[6], 0); }
+   }
+   int r1=(gc1>>24)&0xFF, g1=(gc1>>16)&0xFF, b1=(gc1>>8)&0xFF, a1=gc1&0xFF;
+   int r2=(gc2>>24)&0xFF, g2=(gc2>>16)&0xFF, b2=(gc2>>8)&0xFF, a2=gc2&0xFF;
+   if (gdir == 0) { /* horizontal */
+      if (gw <= 0) return JS_UNDEFINED;
+      for (int xi = 0; xi < gw; xi++) {
+         double t = (double)xi / (double)(gw - 1 > 0 ? gw - 1 : 1);
+         uint32_t lc = rgba8((int)(r1+(r2-r1)*t+0.5),(int)(g1+(g2-g1)*t+0.5),(int)(b1+(b2-b1)*t+0.5),(int)(a1+(a2-a1)*t+0.5));
+         int sx, sy, ex, ey;
+         transform_2d_point(gx+xi, gy, &sx, &sy);
+         transform_2d_point(gx+xi, gy+gh, &ex, &ey);
+         path_draw_line_segment(sx, sy, ex, ey, lc);
+      }
+   } else { /* vertical */
+      if (gh <= 0) return JS_UNDEFINED;
+      for (int yi = 0; yi < gh; yi++) {
+         double t = (double)yi / (double)(gh - 1 > 0 ? gh - 1 : 1);
+         uint32_t lc = rgba8((int)(r1+(r2-r1)*t+0.5),(int)(g1+(g2-g1)*t+0.5),(int)(b1+(b2-b1)*t+0.5),(int)(a1+(a2-a1)*t+0.5));
+         int sx, sy, ex, ey;
+         transform_2d_point(gx, gy+yi, &sx, &sy);
+         transform_2d_point(gx+gw, gy+yi, &ex, &ey);
+         path_draw_line_segment(sx, sy, ex, ey, lc);
+      }
+   }
+   return JS_UNDEFINED;
+}
+
+static JSValue js_draw_radial_gradient(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int rgcx = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0);
+   int rgcy = int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0);
+   int rgr  = int_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 0);
+   uint32_t rgic = color_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, rgba8(255,255,255,255));
+   uint32_t rgoc = color_from_js(ctx, argc > 4 ? argv[4] : JS_UNDEFINED, rgba8(0,0,0,0));
+   int ri1=(rgic>>24)&0xFF, gi1=(rgic>>16)&0xFF, bi1=(rgic>>8)&0xFF, ai1=rgic&0xFF;
+   int ro2=(rgoc>>24)&0xFF, go2=(rgoc>>16)&0xFF, bo2=(rgoc>>8)&0xFF, ao2=rgoc&0xFF;
+   for (int ri = rgr; ri >= 0; ri--) {
+      double t = (rgr > 0) ? (double)ri / (double)rgr : 0.0;
+      uint32_t rc = rgba8((int)(ri1+(ro2-ri1)*(1.0-t)+0.5),(int)(gi1+(go2-gi1)*(1.0-t)+0.5),(int)(bi1+(bo2-bi1)*(1.0-t)+0.5),(int)(ai1+(ao2-ai1)*(1.0-t)+0.5));
+      int sx, sy;
+      transform_2d_point(rgcx, rgcy, &sx, &sy);
+      int rts = transform_2d_size(ri);
+      draw_ellipse_pixels(sx, sy, rts, rts, rc, true);
+   }
+   return JS_UNDEFINED;
+}
+
+static JSValue js_draw_sky_gradient(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   uint32_t sgct = color_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, rgba8(20,20,80,255));
+   uint32_t sgcb = color_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, rgba8(80,140,200,255));
+   int rt=(sgct>>24)&0xFF, gt=(sgct>>16)&0xFF, bt=(sgct>>8)&0xFF, at=sgct&0xFF;
+   int rb=(sgcb>>24)&0xFF, gb=(sgcb>>16)&0xFF, bb=(sgcb>>8)&0xFF, ab=sgcb&0xFF;
+   for (int sgy = 0; sgy < NOVA64_HEIGHT; sgy++) {
+      double t = (double)sgy / (double)(NOVA64_HEIGHT - 1);
+      uint32_t lc = rgba8((int)(rt+(rb-rt)*t+0.5),(int)(gt+(gb-gt)*t+0.5),(int)(bt+(bb-bt)*t+0.5),(int)(at+(ab-at)*t+0.5));
+      for (int sgx = 0; sgx < NOVA64_WIDTH; sgx++) set_pixel(sgx, sgy, lc);
+   }
+   return JS_UNDEFINED;
+}
+
+static JSValue js_hex_color(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int a = argc > 1 ? int_from_js(ctx, argv[1], 255) : 255;
+   if (a < 0) a = 0; if (a > 255) a = 255;
+   if (argc > 0 && JS_IsString(argv[0])) {
+      const char *s = JS_ToCString(ctx, argv[0]);
+      if (!s) return JS_NewUint32(ctx, rgba8(0,0,0,a));
+      const char *p = s; if (*p == '#') p++;
+      unsigned long hv = strtoul(p, NULL, 16);
+      JS_FreeCString(ctx, s);
+      int r=(int)((hv>>16)&0xFF), g=(int)((hv>>8)&0xFF), b=(int)(hv&0xFF);
+      return JS_NewUint32(ctx, rgba8(r,g,b,a));
+   }
+   if (argc > 0 && !JS_IsUndefined(argv[0])) {
+      uint32_t hv = (uint32_t)int_from_js(ctx, argv[0], 0);
+      return JS_NewUint32(ctx, rgba8((hv>>16)&0xFF,(hv>>8)&0xFF,hv&0xFF,a));
+   }
+   return JS_NewUint32(ctx, rgba8(0,0,0,a));
+}
+
 /* ── Batch 35: matrix stack, noise control, quadCurve, ellipse, hsb ─────── */
 
 static JSValue js_push_matrix(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
@@ -20152,6 +20464,24 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, global, "ellipse",      js_ellipse,       5);
    set_function(ctx, global, "ellipsefill",  js_ellipsefill,   5);
    set_function(ctx, global, "hsb",          js_hsb,           4);
+
+   /* Batch 36 */
+   set_function(ctx, global, "lerpColor",          js_lerp_color,          3);
+   set_function(ctx, global, "ease",               js_ease,                2);
+   set_function(ctx, global, "arc",                js_arc,                 7);
+   set_function(ctx, global, "bezier",             js_bezier,              9);
+   set_function(ctx, global, "noiseMap",           js_noise_map,           5);
+   set_function(ctx, global, "flowField",          js_flow_field,          4);
+   set_function(ctx, global, "colorMode",          js_color_mode,          1);
+   set_function(ctx, global, "color",              js_color,               4);
+   set_function(ctx, global, "drawGradient",       js_draw_gradient,       7);
+   set_function(ctx, global, "drawRadialGradient", js_draw_radial_gradient,5);
+   set_function(ctx, global, "drawSkyGradient",    js_draw_sky_gradient,   2);
+   set_function(ctx, global, "hexColor",           js_hex_color,           2);
+   /* Math constants */
+   JS_SetPropertyStr(ctx, global, "TWO_PI",     JS_NewFloat64(ctx, 2.0 * M_PI));
+   JS_SetPropertyStr(ctx, global, "HALF_PI",    JS_NewFloat64(ctx, M_PI * 0.5));
+   JS_SetPropertyStr(ctx, global, "QUARTER_PI", JS_NewFloat64(ctx, M_PI * 0.25));
 
    JS_FreeValue(ctx, global);
    return true;

@@ -845,5 +845,9 @@ run_visual_case "464 matrix stack"         "464-matrix-stack"         "retroarch
 run_visual_case "465 noise control"        "465-noise-control"        "retroarch/conformance/465-noise-control.js"        "9635c0a9a238dd53"
 run_visual_case "466 curve ellipse hsb"    "466-curve-ellipse-hsb"    "retroarch/conformance/466-curve-ellipse-hsb.js"    "12a6b7ae9145b847"
 run_visual_case "475 batch35 showcase"     "475-batch35-showcase"     "retroarch/conformance/475-batch35-showcase.js"     "af655cf53a5881cc"
+run_visual_case "476 lerp ease arc bezier" "476-lerp-ease-arc-bezier" "retroarch/conformance/476-lerp-ease-arc-bezier.js" "0e5dd53f77feb977"
+run_visual_case "477 noisemap flowfield"   "477-noisemap-flowfield-color" "retroarch/conformance/477-noisemap-flowfield-color.js" "911a3295dc3a2ddb"
+run_visual_case "478 gradient hexcolor"    "478-gradient-hexcolor"    "retroarch/conformance/478-gradient-hexcolor.js"    "4dd92565e29367d0"
+run_visual_case "487 batch36 showcase"     "487-batch36-showcase"     "retroarch/conformance/487-batch36-showcase.js"     "470296c2d0deb764"
 
 echo "Conformance passed."

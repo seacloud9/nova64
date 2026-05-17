@@ -6354,6 +6354,171 @@ static JSValue js_vec_lerp(JSContext *ctx, JSValueConst this_val, int argc, JSVa
    return obj;
 }
 
+/* ── Batch 38: createEmitter2D wrappers, isInvulnerable, isFlashing,  ───── */
+/*              isVisible, createPool, createStateMachine, drawHealthBar       */
+
+/* forward declarations — defined later */
+static JSValue js_create_particles2d(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv);
+static JSValue js_emit_particles2d(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv);
+static JSValue js_set_emitter_active2d(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv);
+static JSValue js_update_particles(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv);
+static JSValue js_draw_particles(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv);
+static JSValue js_destroy_particles2d(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv);
+
+static JSValue js_create_emitter2d(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   JSValue handle = js_create_particles2d(ctx, this_val, argc, argv);
+   JSValue obj = JS_NewObject(ctx);
+   JS_SetPropertyStr(ctx, obj, "_h", handle);
+   return obj;
+}
+
+static JSValue js_burst_emitter2d(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   if (argc < 1 || !JS_IsObject(argv[0])) return JS_UNDEFINED;
+   JSValue hv = JS_GetPropertyStr(ctx, argv[0], "_h");
+   int cnt = argc > 1 ? int_from_js(ctx, argv[1], 10) : 10;
+   JSValue cv = JS_NewInt32(ctx, cnt);
+   JSValueConst a2[2]; a2[0] = hv; a2[1] = cv;
+   js_emit_particles2d(ctx, this_val, 2, a2);
+   JS_FreeValue(ctx, hv); JS_FreeValue(ctx, cv);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_set_emitter2d_active(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   if (argc < 1 || !JS_IsObject(argv[0])) return JS_UNDEFINED;
+   JSValue hv = JS_GetPropertyStr(ctx, argv[0], "_h");
+   JSValue av = argc > 1 ? JS_DupValue(ctx, argv[1]) : JS_TRUE;
+   JSValueConst a2[2]; a2[0] = hv; a2[1] = av;
+   js_set_emitter_active2d(ctx, this_val, 2, a2);
+   JS_FreeValue(ctx, hv); JS_FreeValue(ctx, av);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_update_emitter2d(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   JSValue dtv = (argc > 1) ? JS_DupValue(ctx, argv[1]) : JS_NewFloat64(ctx, 0.016);
+   JSValueConst a1[1]; a1[0] = dtv;
+   JSValue r = js_update_particles(ctx, this_val, 1, a1);
+   JS_FreeValue(ctx, dtv);
+   return r;
+}
+
+static JSValue js_draw_emitter2d(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)argc; (void)argv;
+   return js_draw_particles(ctx, this_val, 0, NULL);
+}
+
+static JSValue js_clear_emitter2d(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   if (argc < 1 || !JS_IsObject(argv[0])) return JS_UNDEFINED;
+   JSValue hv = JS_GetPropertyStr(ctx, argv[0], "_h");
+   JSValueConst a1[1]; a1[0] = hv;
+   js_destroy_particles2d(ctx, this_val, 1, a1);
+   JS_FreeValue(ctx, hv);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_is_invulnerable(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 1 || !JS_IsObject(argv[0])) return JS_FALSE;
+   JSValue ev = JS_GetPropertyStr(ctx, argv[0], "invulnElapsed");
+   JSValue dv = JS_GetPropertyStr(ctx, argv[0], "invulnDuration");
+   double el  = double_from_js(ctx, ev, 1.0);
+   double dur = double_from_js(ctx, dv, 1.0);
+   JS_FreeValue(ctx, ev); JS_FreeValue(ctx, dv);
+   return el < dur ? JS_TRUE : JS_FALSE;
+}
+
+static JSValue js_is_flashing(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 1 || !JS_IsObject(argv[0])) return JS_FALSE;
+   JSValue fev = JS_GetPropertyStr(ctx, argv[0], "flashElapsed");
+   double fe = double_from_js(ctx, fev, 1.0);
+   JS_FreeValue(ctx, fev);
+   return fe < 0.1 ? JS_TRUE : JS_FALSE;
+}
+
+static JSValue js_is_visible(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 1 || !JS_IsObject(argv[0])) return JS_TRUE;
+   JSValue ev = JS_GetPropertyStr(ctx, argv[0], "invulnElapsed");
+   JSValue dv = JS_GetPropertyStr(ctx, argv[0], "invulnDuration");
+   double el  = double_from_js(ctx, ev, 1.0);
+   double dur = double_from_js(ctx, dv, 1.0);
+   JS_FreeValue(ctx, ev); JS_FreeValue(ctx, dv);
+   if (el >= dur) return JS_TRUE;
+   double t = argc > 1 ? double_from_js(ctx, argv[1], el) : el;
+   return ((int)(t * 10.0) % 2 == 0) ? JS_TRUE : JS_FALSE;
+}
+
+static JSValue js_create_pool(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int msz = argc > 0 ? int_from_js(ctx, argv[0], 32) : 32;
+   if (msz < 0) msz = 0; if (msz > 1024) msz = 1024;
+   JSValue obj = JS_NewObject(ctx);
+   JSValue items = JS_NewArray(ctx);
+   if (argc > 1 && JS_IsFunction(ctx, argv[1])) {
+      for (int pi = 0; pi < msz; pi++) {
+         JSValue item = JS_Call(ctx, argv[1], JS_UNDEFINED, 0, NULL);
+         JS_SetPropertyUint32(ctx, items, (uint32_t)pi, item);
+      }
+   }
+   JS_SetPropertyStr(ctx, obj, "items",   items);
+   JS_SetPropertyStr(ctx, obj, "maxSize", JS_NewInt32(ctx, msz));
+   JS_SetPropertyStr(ctx, obj, "active",  JS_NewInt32(ctx, 0));
+   return obj;
+}
+
+static JSValue js_create_state_machine(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   JSValue sm = JS_NewObject(ctx);
+   JSValue state = argc > 0 ? JS_DupValue(ctx, argv[0]) : JS_NewString(ctx, "idle");
+   JS_SetPropertyStr(ctx, sm, "state",     state);
+   JS_SetPropertyStr(ctx, sm, "prevState", JS_NULL);
+   JS_SetPropertyStr(ctx, sm, "history",   JS_NewArray(ctx));
+   return sm;
+}
+
+static JSValue js_draw_health_bar(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int hbx = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0);
+   int hby = int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0);
+   int hbw = int_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 100);
+   int hbh = int_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, 16);
+   double cur = argc > 4 ? double_from_js(ctx, argv[4], 0.0) : 0.0;
+   double max = argc > 5 ? double_from_js(ctx, argv[5], 1.0) : 1.0;
+   if (max <= 0.0) max = 1.0;
+   double t = cur / max; if (t < 0.0) t = 0.0; if (t > 1.0) t = 1.0;
+   uint32_t bgc = rgba8(40, 40, 40, 200);
+   uint32_t fgc = t > 0.5f ? rgba8(80, 220, 80, 255) : t > 0.25f ? rgba8(220, 180, 60, 255) : rgba8(220, 60, 60, 255);
+   uint32_t bdc = rgba8(0, 0, 0, 180);
+   if (argc > 6 && JS_IsObject(argv[6])) {
+      JSValue bv = JS_GetPropertyStr(ctx, argv[6], "bgColor");
+      JSValue fv = JS_GetPropertyStr(ctx, argv[6], "fgColor");
+      JSValue bdv= JS_GetPropertyStr(ctx, argv[6], "borderColor");
+      if (!JS_IsUndefined(bv))  bgc = color_from_js(ctx, bv,  bgc);
+      if (!JS_IsUndefined(fv))  fgc = color_from_js(ctx, fv,  fgc);
+      if (!JS_IsUndefined(bdv)) bdc = color_from_js(ctx, bdv, bdc);
+      JS_FreeValue(ctx, bv); JS_FreeValue(ctx, fv); JS_FreeValue(ctx, bdv);
+   }
+   int sx, sy; transform_2d_point(hbx, hby, &sx, &sy);
+   int tw = transform_2d_size(hbw), th = transform_2d_size(hbh);
+   int fw = transform_2d_size((int)lrintf((float)hbw * (float)t));
+   draw_rect_pixels(sx, sy, tw, th, bgc, true);
+   if (fw > 0) draw_rect_pixels(sx, sy, fw, th, fgc, true);
+   draw_rect_pixels(sx, sy, tw, th, bdc, false);
+   return JS_UNDEFINED;
+}
+
 /* ── Batch 37: createShake, triggerShake, updateShake, getShakeOffset, ───── */
 /*              createCooldown, useCooldown, cooldownReady, cooldownProgress,  */
 /*              updateCooldown, createHitState, triggerHit, updateHitState     */
@@ -20696,6 +20861,20 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, global, "createHitState",   js_create_hit_state,  1);
    set_function(ctx, global, "triggerHit",       js_trigger_hit,       1);
    set_function(ctx, global, "updateHitState",   js_update_hit_state,  2);
+
+   /* Batch 38 */
+   set_function(ctx, global, "createEmitter2D",    js_create_emitter2d,    1);
+   set_function(ctx, global, "burstEmitter2D",     js_burst_emitter2d,     2);
+   set_function(ctx, global, "setEmitter2DActive", js_set_emitter2d_active,2);
+   set_function(ctx, global, "updateEmitter2D",    js_update_emitter2d,    2);
+   set_function(ctx, global, "drawEmitter2D",      js_draw_emitter2d,      1);
+   set_function(ctx, global, "clearEmitter2D",     js_clear_emitter2d,     1);
+   set_function(ctx, global, "isInvulnerable",     js_is_invulnerable,     1);
+   set_function(ctx, global, "isFlashing",         js_is_flashing,         1);
+   set_function(ctx, global, "isVisible",          js_is_visible,          2);
+   set_function(ctx, global, "createPool",         js_create_pool,         2);
+   set_function(ctx, global, "createStateMachine", js_create_state_machine,1);
+   set_function(ctx, global, "drawHealthBar",      js_draw_health_bar,     7);
 
    JS_FreeValue(ctx, global);
    return true;

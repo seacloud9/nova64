@@ -852,5 +852,8 @@ run_visual_case "487 batch36 showcase"     "487-batch36-showcase"     "retroarch
 run_visual_case "488 shake cooldown"       "488-shake-cooldown"       "retroarch/conformance/488-shake-cooldown.js"       "54cea062dee8a7cb"
 run_visual_case "489 hit state"            "489-hit-state"            "retroarch/conformance/489-hit-state.js"            "9a232d43a09942a7"
 run_visual_case "499 batch37 showcase"     "499-batch37-showcase"     "retroarch/conformance/499-batch37-showcase.js"     "488f0232d6bbb428"
+run_visual_case "500 emitter2d"            "500-emitter2d"            "retroarch/conformance/500-emitter2d.js"            "e5a44e2f955c1612"
+run_visual_case "501 pool sm healthbar"    "501-pool-statemachine-healthbar" "retroarch/conformance/501-pool-statemachine-healthbar.js" "b8ab69d427e929e7"
+run_visual_case "511 batch38 showcase"     "511-batch38-showcase"     "retroarch/conformance/511-batch38-showcase.js"     "6fe00d7b3fa9aa3f"
 
 echo "Conformance passed."

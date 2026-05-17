@@ -6354,6 +6354,302 @@ static JSValue js_vec_lerp(JSContext *ctx, JSValueConst this_val, int argc, JSVa
    return obj;
 }
 
+/* ── Batch 41: drawTriangle, drawGlowText, drawGlowTextCentered,          ── */
+/*              drawPulsingText, tristrip, drawFloatingTexts,                  */
+/*              createFloatingTextSystem                                        */
+
+/* drawTriangle(x0,y0, x1,y1, x2,y2, color, fill=true) */
+static JSValue js_draw_triangle(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   int x0, y0, x1, y1, x2, y2, fill;
+   uint32_t color;
+   JS_ToInt32(ctx, &x0, argv[0]); JS_ToInt32(ctx, &y0, argv[1]);
+   JS_ToInt32(ctx, &x1, argv[2]); JS_ToInt32(ctx, &y1, argv[3]);
+   JS_ToInt32(ctx, &x2, argv[4]); JS_ToInt32(ctx, &y2, argv[5]);
+   color = color_from_js(ctx, argv[6], 0xFFFFFFFF);
+   fill  = (argc < 8 || JS_IsUndefined(argv[7])) ? 1 : JS_ToBool(ctx, argv[7]);
+
+   int sx0, sy0, sx1, sy1, sx2, sy2;
+   transform_2d_point(x0, y0, &sx0, &sy0);
+   transform_2d_point(x1, y1, &sx1, &sy1);
+   transform_2d_point(x2, y2, &sx2, &sy2);
+
+   if (fill) {
+      int bx0 = sx0, bx1 = sx0, by0 = sy0, by1 = sy0;
+      if (sx1 < bx0) bx0 = sx1; if (sx1 > bx1) bx1 = sx1;
+      if (sx2 < bx0) bx0 = sx2; if (sx2 > bx1) bx1 = sx2;
+      if (sy1 < by0) by0 = sy1; if (sy1 > by1) by1 = sy1;
+      if (sy2 < by0) by0 = sy2; if (sy2 > by1) by1 = sy2;
+      for (int py = by0; py <= by1; py++) {
+         for (int px = bx0; px <= bx1; px++) {
+            int d0 = (sx1-sx0)*(py-sy0) - (sy1-sy0)*(px-sx0);
+            int d1 = (sx2-sx1)*(py-sy1) - (sy2-sy1)*(px-sx1);
+            int d2 = (sx0-sx2)*(py-sy2) - (sy0-sy2)*(px-sx2);
+            int neg = (d0<0)||(d1<0)||(d2<0);
+            int pos = (d0>0)||(d1>0)||(d2>0);
+            if (!(neg && pos)) set_pixel(px, py, color);
+         }
+      }
+   } else {
+      path_draw_line_segment(sx0, sy0, sx1, sy1, color);
+      path_draw_line_segment(sx1, sy1, sx2, sy2, color);
+      path_draw_line_segment(sx2, sy2, sx0, sy0, color);
+   }
+   return JS_UNDEFINED;
+}
+
+/* drawGlowText(text, x, y, color, glowColor, scale=1) */
+static JSValue js_draw_glow_text(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   const char *text = JS_ToCString(ctx, argv[0]);
+   if (!text) return JS_UNDEFINED;
+   int x, y;
+   uint32_t color, glow;
+   JS_ToInt32(ctx, &x, argv[1]);
+   JS_ToInt32(ctx, &y, argv[2]);
+   color = color_from_js(ctx, argv[3], 0xFFFFFFFF);
+   glow  = color_from_js(ctx, argv[4], 0x00000080);
+   (void)argc; /* scale arg ignored — draw_text_pixels has no scale */
+   static const int glow_off[8][2] = {{-1,-1},{0,-1},{1,-1},{-1,0},{1,0},{-1,1},{0,1},{1,1}};
+   for (int i = 0; i < 8; i++)
+      draw_text_pixels(text, x + glow_off[i][0], y + glow_off[i][1], glow);
+   draw_text_pixels(text, x, y, color);
+   JS_FreeCString(ctx, text);
+   return JS_UNDEFINED;
+}
+
+/* drawGlowTextCentered(text, cx, y, color, glowColor, scale=1) */
+static JSValue js_draw_glow_text_centered(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   const char *text = JS_ToCString(ctx, argv[0]);
+   if (!text) return JS_UNDEFINED;
+   int cx, y;
+   uint32_t color, glow;
+   JS_ToInt32(ctx, &cx, argv[1]);
+   JS_ToInt32(ctx, &y,  argv[2]);
+   color = color_from_js(ctx, argv[3], 0xFFFFFFFF);
+   glow  = color_from_js(ctx, argv[4], 0x00000080);
+   (void)argc;
+   int w = (int)strlen(text) * 6;
+   int x = cx - w / 2;
+   static const int gcen_off[8][2] = {{-1,-1},{0,-1},{1,-1},{-1,0},{1,0},{-1,1},{0,1},{1,1}};
+   for (int i = 0; i < 8; i++)
+      draw_text_pixels(text, x + gcen_off[i][0], y + gcen_off[i][1], glow);
+   draw_text_pixels(text, x, y, color);
+   JS_FreeCString(ctx, text);
+   return JS_UNDEFINED;
+}
+
+/* drawPulsingText(text, cx, y, color, time, frequency=3, minAlpha=120) */
+static JSValue js_draw_pulsing_text(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   const char *text = JS_ToCString(ctx, argv[0]);
+   if (!text) return JS_UNDEFINED;
+   int cx, y, minAlpha;
+   double t, freq;
+   uint32_t color;
+   JS_ToInt32(ctx, &cx, argv[1]);
+   JS_ToInt32(ctx, &y,  argv[2]);
+   color = color_from_js(ctx, argv[3], 0xFFFFFFFF);
+   JS_ToFloat64(ctx, &t, argv[4]);
+   freq = 3.0;
+   if (argc >= 6 && !JS_IsUndefined(argv[5])) JS_ToFloat64(ctx, &freq, argv[5]);
+   minAlpha = 120;
+   if (argc >= 7 && !JS_IsUndefined(argv[6])) JS_ToInt32(ctx, &minAlpha, argv[6]);
+   if (minAlpha < 0) minAlpha = 0; if (minAlpha > 255) minAlpha = 255;
+
+   int alpha = (int)(sin(t * freq) * 0.5 * (double)(255 - minAlpha) + 0.5 * (double)(255 - minAlpha) + minAlpha);
+   if (alpha < 0) alpha = 0; if (alpha > 255) alpha = 255;
+
+   uint32_t r = (color >> 24) & 0xFF;
+   uint32_t g = (color >> 16) & 0xFF;
+   uint32_t b = (color >>  8) & 0xFF;
+   uint32_t pulsed = (r << 24) | (g << 16) | (b << 8) | (uint32_t)alpha;
+
+   int w = (int)strlen(text) * 6;
+   int x = cx - w / 2;
+   draw_text_pixels(text, x, y, pulsed);
+   JS_FreeCString(ctx, text);
+   return JS_UNDEFINED;
+}
+
+/* tristrip(points, color) — triangle strip from array of {x,y} or [x,y] */
+static JSValue js_tristrip(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   if (!JS_IsArray(argv[0])) return JS_UNDEFINED;
+   uint32_t color = color_from_js(ctx, argv[1], 0xFFFFFFFF);
+
+   JSValue lenVal = JS_GetPropertyStr(ctx, argv[0], "length");
+   uint32_t len = 0;
+   JS_ToUint32(ctx, &len, lenVal);
+   JS_FreeValue(ctx, lenVal);
+   if (len < 3) return JS_UNDEFINED;
+
+   int *xs = (int*)js_malloc(ctx, len * sizeof(int));
+   int *ys = (int*)js_malloc(ctx, len * sizeof(int));
+   if (!xs || !ys) { js_free(ctx, xs); js_free(ctx, ys); return JS_UNDEFINED; }
+
+   for (uint32_t i = 0; i < len; i++) {
+      JSValue pt = JS_GetPropertyUint32(ctx, argv[0], i);
+      int wx = 0, wy = 0;
+      if (JS_IsArray(pt)) {
+         JSValue vx = JS_GetPropertyUint32(ctx, pt, 0);
+         JSValue vy = JS_GetPropertyUint32(ctx, pt, 1);
+         JS_ToInt32(ctx, &wx, vx); JS_ToInt32(ctx, &wy, vy);
+         JS_FreeValue(ctx, vx); JS_FreeValue(ctx, vy);
+      } else {
+         JSValue vx = JS_GetPropertyStr(ctx, pt, "x");
+         JSValue vy = JS_GetPropertyStr(ctx, pt, "y");
+         JS_ToInt32(ctx, &wx, vx); JS_ToInt32(ctx, &wy, vy);
+         JS_FreeValue(ctx, vx); JS_FreeValue(ctx, vy);
+      }
+      JS_FreeValue(ctx, pt);
+      transform_2d_point(wx, wy, &xs[i], &ys[i]);
+   }
+
+   for (uint32_t i = 0; i + 2 < len; i++) {
+      int ax = xs[i],   ay = ys[i];
+      int bx = xs[i+1], bby = ys[i+1];
+      int cx2 = xs[i+2], cy2 = ys[i+2];
+      int minBx = ax, maxBx = ax, minBy = ay, maxBy = ay;
+      if (bx  < minBx) minBx = bx;  if (bx  > maxBx) maxBx = bx;
+      if (cx2 < minBx) minBx = cx2; if (cx2 > maxBx) maxBx = cx2;
+      if (bby < minBy) minBy = bby; if (bby > maxBy) maxBy = bby;
+      if (cy2 < minBy) minBy = cy2; if (cy2 > maxBy) maxBy = cy2;
+      for (int py = minBy; py <= maxBy; py++) {
+         for (int px = minBx; px <= maxBx; px++) {
+            int d0 = (bx-ax)*(py-ay)   - (bby-ay)*(px-ax);
+            int d1 = (cx2-bx)*(py-bby) - (cy2-bby)*(px-bx);
+            int d2 = (ax-cx2)*(py-cy2) - (ay-cy2)*(px-cx2);
+            int neg = (d0<0)||(d1<0)||(d2<0);
+            int pos = (d0>0)||(d1>0)||(d2>0);
+            if (!(neg && pos)) set_pixel(px, py, color);
+         }
+      }
+   }
+
+   js_free(ctx, xs);
+   js_free(ctx, ys);
+   return JS_UNDEFINED;
+}
+
+/* drawFloatingTexts(system) — draw 2D floating texts from a JS system object */
+/* The system object has a _texts array of {text,x,y,color,scale,timer,maxTimer} */
+static JSValue js_draw_floating_texts(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   if (argc < 1 || JS_IsUndefined(argv[0]) || JS_IsNull(argv[0])) return JS_UNDEFINED;
+   JSValue textsArr = JS_GetPropertyStr(ctx, argv[0], "_texts");
+   if (!JS_IsArray(textsArr)) { JS_FreeValue(ctx, textsArr); return JS_UNDEFINED; }
+   JSValue lenVal = JS_GetPropertyStr(ctx, textsArr, "length");
+   uint32_t len = 0;
+   JS_ToUint32(ctx, &len, lenVal);
+   JS_FreeValue(ctx, lenVal);
+   for (uint32_t i = 0; i < len; i++) {
+      JSValue entry = JS_GetPropertyUint32(ctx, textsArr, i);
+      JSValue jtxt   = JS_GetPropertyStr(ctx, entry, "text");
+      JSValue jx     = JS_GetPropertyStr(ctx, entry, "x");
+      JSValue jy     = JS_GetPropertyStr(ctx, entry, "y");
+      JSValue jcolor = JS_GetPropertyStr(ctx, entry, "color");
+      JSValue jtimer = JS_GetPropertyStr(ctx, entry, "timer");
+      JSValue jmax   = JS_GetPropertyStr(ctx, entry, "maxTimer");
+      const char *txt = JS_ToCString(ctx, jtxt);
+      int ex = 0, ey = 0;
+      double timer = 1.0, maxTimer = 1.0;
+      JS_ToInt32(ctx, &ex, jx); JS_ToInt32(ctx, &ey, jy);
+      JS_ToFloat64(ctx, &timer, jtimer); JS_ToFloat64(ctx, &maxTimer, jmax);
+      uint32_t color = color_from_js(ctx, jcolor, 0xFFFFFFFF);
+      if (txt && maxTimer > 0.0) {
+         /* fade alpha by remaining lifetime */
+         double frac = timer / maxTimer;
+         if (frac < 0.0) frac = 0.0; if (frac > 1.0) frac = 1.0;
+         uint32_t cr = (color >> 24) & 0xFF;
+         uint32_t cg = (color >> 16) & 0xFF;
+         uint32_t cb = (color >>  8) & 0xFF;
+         uint32_t ca = (uint32_t)((double)((color) & 0xFF) * frac);
+         color = (cr<<24)|(cg<<16)|(cb<<8)|ca;
+         draw_text_pixels(txt, ex, ey, color);
+      }
+      if (txt) JS_FreeCString(ctx, txt);
+      JS_FreeValue(ctx, jtxt); JS_FreeValue(ctx, jx); JS_FreeValue(ctx, jy);
+      JS_FreeValue(ctx, jcolor); JS_FreeValue(ctx, jtimer); JS_FreeValue(ctx, jmax);
+      JS_FreeValue(ctx, entry);
+   }
+   JS_FreeValue(ctx, textsArr);
+   return JS_UNDEFINED;
+}
+
+/* ftsSpawn(sys, text, x, y, opts?) — spawn a floating text into a {_texts:[]} system */
+static JSValue js_fts_spawn(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   if (argc < 4 || !JS_IsObject(argv[0])) return JS_UNDEFINED;
+   JSValue texts = JS_GetPropertyStr(ctx, argv[0], "_texts");
+   if (!JS_IsArray(texts)) { JS_FreeValue(ctx, texts); return JS_UNDEFINED; }
+   JSValue entry = JS_NewObject(ctx);
+   const char *txt = JS_ToCString(ctx, argv[1]);
+   JS_SetPropertyStr(ctx, entry, "text", JS_NewString(ctx, txt ? txt : ""));
+   if (txt) JS_FreeCString(ctx, txt);
+   JS_SetPropertyStr(ctx, entry, "x", JS_DupValue(ctx, argv[2]));
+   JS_SetPropertyStr(ctx, entry, "y", JS_DupValue(ctx, argv[3]));
+   double dur = 1.0, riseSpeed = 30.0, vx = 0.0;
+   uint32_t col = 0xFFFFFFFF;
+   if (argc >= 5 && !JS_IsUndefined(argv[4]) && JS_IsObject(argv[4])) {
+      JSValue od  = JS_GetPropertyStr(ctx, argv[4], "duration");
+      JSValue ors = JS_GetPropertyStr(ctx, argv[4], "riseSpeed");
+      JSValue ovx = JS_GetPropertyStr(ctx, argv[4], "vx");
+      JSValue oc  = JS_GetPropertyStr(ctx, argv[4], "color");
+      if (!JS_IsUndefined(od))  JS_ToFloat64(ctx, &dur, od);
+      if (!JS_IsUndefined(ors)) JS_ToFloat64(ctx, &riseSpeed, ors);
+      if (!JS_IsUndefined(ovx)) JS_ToFloat64(ctx, &vx, ovx);
+      col = color_from_js(ctx, oc, 0xFFFFFFFF);
+      JS_FreeValue(ctx, od); JS_FreeValue(ctx, ors);
+      JS_FreeValue(ctx, ovx); JS_FreeValue(ctx, oc);
+   }
+   JS_SetPropertyStr(ctx, entry, "color",    JS_NewUint32(ctx, col));
+   JS_SetPropertyStr(ctx, entry, "timer",    JS_NewFloat64(ctx, dur));
+   JS_SetPropertyStr(ctx, entry, "maxTimer", JS_NewFloat64(ctx, dur));
+   JS_SetPropertyStr(ctx, entry, "vx",       JS_NewFloat64(ctx, vx));
+   JS_SetPropertyStr(ctx, entry, "vy",       JS_NewFloat64(ctx, -riseSpeed));
+   JSValue lenV = JS_GetPropertyStr(ctx, texts, "length");
+   uint32_t idx = 0; JS_ToUint32(ctx, &idx, lenV); JS_FreeValue(ctx, lenV);
+   JS_SetPropertyUint32(ctx, texts, idx, entry);
+   JS_FreeValue(ctx, texts);
+   return JS_UNDEFINED;
+}
+
+/* ftsUpdate(sys, dt) — tick floating text timers and positions */
+static JSValue js_fts_update(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   if (argc < 1 || !JS_IsObject(argv[0])) return JS_UNDEFINED;
+   double dt = 0.016;
+   if (argc >= 2) JS_ToFloat64(ctx, &dt, argv[1]);
+   JSValue texts = JS_GetPropertyStr(ctx, argv[0], "_texts");
+   if (!JS_IsArray(texts)) { JS_FreeValue(ctx, texts); return JS_UNDEFINED; }
+   JSValue lenV  = JS_GetPropertyStr(ctx, texts, "length");
+   uint32_t len  = 0; JS_ToUint32(ctx, &len, lenV); JS_FreeValue(ctx, lenV);
+   JSValue kept  = JS_NewArray(ctx);
+   uint32_t ki   = 0;
+   for (uint32_t i = 0; i < len; i++) {
+      JSValue e  = JS_GetPropertyUint32(ctx, texts, i);
+      JSValue jt = JS_GetPropertyStr(ctx, e, "timer");
+      double timer = 1.0; JS_ToFloat64(ctx, &timer, jt); JS_FreeValue(ctx, jt);
+      timer -= dt;
+      if (timer > 0.0) {
+         JS_SetPropertyStr(ctx, e, "timer", JS_NewFloat64(ctx, timer));
+         JSValue jx  = JS_GetPropertyStr(ctx, e, "x");
+         JSValue jy  = JS_GetPropertyStr(ctx, e, "y");
+         JSValue jvx = JS_GetPropertyStr(ctx, e, "vx");
+         JSValue jvy = JS_GetPropertyStr(ctx, e, "vy");
+         double ex=0,ey=0,evx=0,evy=0;
+         JS_ToFloat64(ctx,&ex,jx); JS_ToFloat64(ctx,&ey,jy);
+         JS_ToFloat64(ctx,&evx,jvx); JS_ToFloat64(ctx,&evy,jvy);
+         JS_SetPropertyStr(ctx,e,"x",JS_NewFloat64(ctx,ex+evx*dt));
+         JS_SetPropertyStr(ctx,e,"y",JS_NewFloat64(ctx,ey+evy*dt));
+         JS_FreeValue(ctx,jx); JS_FreeValue(ctx,jy);
+         JS_FreeValue(ctx,jvx); JS_FreeValue(ctx,jvy);
+         JS_SetPropertyUint32(ctx, kept, ki++, e);
+      } else {
+         JS_FreeValue(ctx, e);
+      }
+   }
+   JS_SetPropertyStr(ctx, argv[0], "_texts", kept);
+   JS_FreeValue(ctx, texts);
+   return JS_UNDEFINED;
+}
+
 /* ── Batch 40: createSpawner, updateSpawner, triggerWave, getSpawnerWave, ── */
 /*              createCooldownSet, updateCooldowns, drawFlash, drawPixelBorder,*/
 /*              hslColor, scrollingText, drawDiamond, poly                     */
@@ -21427,6 +21723,16 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, global, "scrollingText",     js_scrolling_text,     7);
    set_function(ctx, global, "drawDiamond",       js_draw_diamond,       6);
    set_function(ctx, global, "poly",              js_poly,               3);
+
+   /* Batch 41 */
+   set_function(ctx, global, "drawTriangle",         js_draw_triangle,          8);
+   set_function(ctx, global, "drawGlowText",         js_draw_glow_text,         6);
+   set_function(ctx, global, "drawGlowTextCentered", js_draw_glow_text_centered,6);
+   set_function(ctx, global, "drawPulsingText",      js_draw_pulsing_text,      7);
+   set_function(ctx, global, "tristrip",             js_tristrip,               2);
+   set_function(ctx, global, "drawFloatingTexts",    js_draw_floating_texts,    1);
+   set_function(ctx, global, "ftsSpawn",             js_fts_spawn,              5);
+   set_function(ctx, global, "ftsUpdate",            js_fts_update,             2);
 
    JS_FreeValue(ctx, global);
    return true;

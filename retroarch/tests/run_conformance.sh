@@ -861,5 +861,8 @@ run_visual_case "523 batch39 showcase"     "523-batch39-showcase"     "retroarch
 run_visual_case "524 spawner cooldownset"  "524-spawner-cooldownset"  "retroarch/conformance/524-spawner-cooldownset.js"  "dcf55beed556de83"
 run_visual_case "525 flash border hsl poly" "525-flash-border-hsl-poly" "retroarch/conformance/525-flash-border-hsl-poly.js" "b33bcf298972006f"
 run_visual_case "535 batch40 showcase"     "535-batch40-showcase"     "retroarch/conformance/535-batch40-showcase.js"     "23507732e1b44bdb"
+run_visual_case "536 draw text shapes"     "536-draw-text-shapes"     "retroarch/conformance/536-draw-text-shapes.js"     "b0b12f5051a40f54"
+run_visual_case "537 floating texts"       "537-floating-texts"       "retroarch/conformance/537-floating-texts.js"       "c8b3677f09a6c654"
+run_visual_case "547 batch41 showcase"     "547-batch41-showcase"     "retroarch/conformance/547-batch41-showcase.js"     "8ad86f62f83c0a72"
 
 echo "Conformance passed."

@@ -6355,6 +6355,192 @@ static JSValue js_vec_lerp(JSContext *ctx, JSValueConst this_val, int argc, JSVa
    return obj;
 }
 
+/* ── Batch 43: hitTest, circleHitTest, createColorPool, nextColor,        ── */
+/*              createGridLayout, createCircleLayout, shuffleArray,            */
+/*              pickRandom, weightedRandom, setRandomSeed, subVec2, scaleVec2 */
+
+/* hitTest(x, y, rx, ry, rw, rh) — point in rect */
+static JSValue js_hit_test(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   double px=0,py=0,rx=0,ry=0,rw=0,rh=0;
+   JS_ToFloat64(ctx,&px,argv[0]); JS_ToFloat64(ctx,&py,argv[1]);
+   JS_ToFloat64(ctx,&rx,argv[2]); JS_ToFloat64(ctx,&ry,argv[3]);
+   JS_ToFloat64(ctx,&rw,argv[4]); JS_ToFloat64(ctx,&rh,argv[5]);
+   return JS_NewBool(ctx, px>=rx && px<rx+rw && py>=ry && py<ry+rh);
+}
+
+/* circleHitTest(x, y, cx, cy, r) — point in circle */
+static JSValue js_circle_hit_test(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   double px=0,py=0,cx=0,cy=0,r=0;
+   JS_ToFloat64(ctx,&px,argv[0]); JS_ToFloat64(ctx,&py,argv[1]);
+   JS_ToFloat64(ctx,&cx,argv[2]); JS_ToFloat64(ctx,&cy,argv[3]);
+   JS_ToFloat64(ctx,&r,argv[4]);
+   double dx = px-cx, dy = py-cy;
+   return JS_NewBool(ctx, dx*dx+dy*dy <= r*r);
+}
+
+/* createColorPool(colors) — {_colors:[], _idx:0} */
+static JSValue js_create_color_pool(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   JSValue pool = JS_NewObject(ctx);
+   JSValue arr  = JS_NewArray(ctx);
+   if (argc > 0 && JS_IsArray(argv[0])) {
+      JSValue lv = JS_GetPropertyStr(ctx, argv[0], "length");
+      uint32_t len = 0; JS_ToUint32(ctx, &len, lv); JS_FreeValue(ctx, lv);
+      for (uint32_t i = 0; i < len; i++) {
+         JSValue c = JS_GetPropertyUint32(ctx, argv[0], i);
+         JS_SetPropertyUint32(ctx, arr, i, c);
+      }
+   }
+   JS_SetPropertyStr(ctx, pool, "_colors", arr);
+   JS_SetPropertyStr(ctx, pool, "_idx",    JS_NewInt32(ctx, 0));
+   return pool;
+}
+
+/* nextColor(pool) — advance and return current color */
+static JSValue js_next_color(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   if (argc < 1 || !JS_IsObject(argv[0])) return JS_NewUint32(ctx, 0xFFFFFFFF);
+   JSValue jarr = JS_GetPropertyStr(ctx, argv[0], "_colors");
+   JSValue jidx = JS_GetPropertyStr(ctx, argv[0], "_idx");
+   JSValue lv   = JS_GetPropertyStr(ctx, jarr, "length");
+   uint32_t len = 0, idx = 0;
+   JS_ToUint32(ctx, &len, lv); JS_ToUint32(ctx, &idx, jidx);
+   JS_FreeValue(ctx, lv); JS_FreeValue(ctx, jidx);
+   if (len == 0) { JS_FreeValue(ctx, jarr); return JS_NewUint32(ctx, 0xFFFFFFFF); }
+   JSValue color = JS_GetPropertyUint32(ctx, jarr, idx % len);
+   JS_SetPropertyStr(ctx, argv[0], "_idx", JS_NewInt32(ctx, (int)((idx + 1) % len)));
+   JS_FreeValue(ctx, jarr);
+   return color;
+}
+
+/* createGridLayout(cols, rows, x, y, w, h) — [{x,y},...] */
+static JSValue js_create_grid_layout(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   int cols=4, rows=4, ox=0, oy=0, ow=200, oh=200;
+   JS_ToInt32(ctx,&cols,argv[0]); JS_ToInt32(ctx,&rows,argv[1]);
+   JS_ToInt32(ctx,&ox,argv[2]);   JS_ToInt32(ctx,&oy,argv[3]);
+   JS_ToInt32(ctx,&ow,argv[4]);   JS_ToInt32(ctx,&oh,argv[5]);
+   if (cols < 1) cols = 1; if (rows < 1) rows = 1;
+   JSValue arr = JS_NewArray(ctx);
+   uint32_t idx = 0;
+   double sw = (double)ow / cols;
+   double sh = (double)oh / rows;
+   for (int r = 0; r < rows; r++) {
+      for (int c = 0; c < cols; c++) {
+         JSValue pt = JS_NewObject(ctx);
+         JS_SetPropertyStr(ctx, pt, "x", JS_NewFloat64(ctx, ox + (c + 0.5) * sw));
+         JS_SetPropertyStr(ctx, pt, "y", JS_NewFloat64(ctx, oy + (r + 0.5) * sh));
+         JS_SetPropertyUint32(ctx, arr, idx++, pt);
+      }
+   }
+   return arr;
+}
+
+/* createCircleLayout(n, cx, cy, r) — [{x,y},...] evenly on circle */
+static JSValue js_create_circle_layout(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   int n = 8;
+   double cx=0, cy=0, r=50;
+   JS_ToInt32(ctx,&n,argv[0]);
+   JS_ToFloat64(ctx,&cx,argv[1]); JS_ToFloat64(ctx,&cy,argv[2]);
+   JS_ToFloat64(ctx,&r,argv[3]);
+   if (n < 1) n = 1;
+   JSValue arr = JS_NewArray(ctx);
+   for (int i = 0; i < n; i++) {
+      double a = (2.0 * M_PI * i) / n;
+      JSValue pt = JS_NewObject(ctx);
+      JS_SetPropertyStr(ctx, pt, "x", JS_NewFloat64(ctx, cx + cos(a) * r));
+      JS_SetPropertyStr(ctx, pt, "y", JS_NewFloat64(ctx, cy + sin(a) * r));
+      JS_SetPropertyUint32(ctx, arr, (uint32_t)i, pt);
+   }
+   return arr;
+}
+
+/* shuffleArray(arr) — Fisher-Yates in-place shuffle, returns arr */
+static JSValue js_shuffle_array(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   if (argc < 1 || !JS_IsArray(argv[0])) return JS_UNDEFINED;
+   JSValue lv = JS_GetPropertyStr(ctx, argv[0], "length");
+   uint32_t len = 0; JS_ToUint32(ctx, &len, lv); JS_FreeValue(ctx, lv);
+   for (uint32_t i = len - 1; i > 0; i--) {
+      uint32_t j = (uint32_t)(rand() % (i + 1));
+      JSValue a = JS_GetPropertyUint32(ctx, argv[0], i);
+      JSValue b = JS_GetPropertyUint32(ctx, argv[0], j);
+      JS_SetPropertyUint32(ctx, argv[0], i, b);
+      JS_SetPropertyUint32(ctx, argv[0], j, a);
+   }
+   return JS_DupValue(ctx, argv[0]);
+}
+
+/* pickRandom(arr) — returns a random element */
+static JSValue js_pick_random(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   if (argc < 1 || !JS_IsArray(argv[0])) return JS_UNDEFINED;
+   JSValue lv = JS_GetPropertyStr(ctx, argv[0], "length");
+   uint32_t len = 0; JS_ToUint32(ctx, &len, lv); JS_FreeValue(ctx, lv);
+   if (len == 0) return JS_UNDEFINED;
+   return JS_GetPropertyUint32(ctx, argv[0], (uint32_t)(rand() % len));
+}
+
+/* weightedRandom(weights) — returns index proportional to weight */
+static JSValue js_weighted_random(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   if (argc < 1 || !JS_IsArray(argv[0])) return JS_NewInt32(ctx, 0);
+   JSValue lv = JS_GetPropertyStr(ctx, argv[0], "length");
+   uint32_t len = 0; JS_ToUint32(ctx, &len, lv); JS_FreeValue(ctx, lv);
+   if (len == 0) return JS_NewInt32(ctx, 0);
+   double total = 0.0;
+   for (uint32_t i = 0; i < len; i++) {
+      JSValue w = JS_GetPropertyUint32(ctx, argv[0], i);
+      double wv = 0.0; JS_ToFloat64(ctx, &wv, w); JS_FreeValue(ctx, w);
+      total += wv;
+   }
+   double r = ((double)rand() / (double)RAND_MAX) * total;
+   double acc = 0.0;
+   for (uint32_t i = 0; i < len; i++) {
+      JSValue w = JS_GetPropertyUint32(ctx, argv[0], i);
+      double wv = 0.0; JS_ToFloat64(ctx, &wv, w); JS_FreeValue(ctx, w);
+      acc += wv;
+      if (r <= acc) return JS_NewInt32(ctx, (int)i);
+   }
+   return JS_NewInt32(ctx, (int)(len - 1));
+}
+
+/* setRandomSeed(n) — seed the C RNG */
+static JSValue js_set_random_seed(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)ctx; (void)this_val;
+   int seed = 0;
+   if (argc >= 1) JS_ToInt32(ctx, &seed, argv[0]);
+   srand((unsigned)seed);
+   return JS_UNDEFINED;
+}
+
+/* subVec2(ax, ay, bx, by) — returns {x, y} */
+static JSValue js_sub_vec2(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   double ax=0,ay=0,bx=0,by=0;
+   JS_ToFloat64(ctx,&ax,argv[0]); JS_ToFloat64(ctx,&ay,argv[1]);
+   JS_ToFloat64(ctx,&bx,argv[2]); JS_ToFloat64(ctx,&by,argv[3]);
+   JSValue obj = JS_NewObject(ctx);
+   JS_SetPropertyStr(ctx, obj, "x", JS_NewFloat64(ctx, ax-bx));
+   JS_SetPropertyStr(ctx, obj, "y", JS_NewFloat64(ctx, ay-by));
+   return obj;
+}
+
+/* scaleVec2(x, y, s) — returns {x, y} */
+static JSValue js_scale_vec2(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   double vx=0,vy=0,s=1;
+   JS_ToFloat64(ctx,&vx,argv[0]); JS_ToFloat64(ctx,&vy,argv[1]);
+   JS_ToFloat64(ctx,&s,argv[2]);
+   JSValue obj = JS_NewObject(ctx);
+   JS_SetPropertyStr(ctx, obj, "x", JS_NewFloat64(ctx, vx*s));
+   JS_SetPropertyStr(ctx, obj, "y", JS_NewFloat64(ctx, vy*s));
+   return obj;
+}
+
 /* ── Batch 42: randInt, randRange, getDeltaTime, getFPS, createMinimap,   ── */
 /*              drawMinimap, createOscillator, tickOscillator,                 */
 /*              createTimeTrigger, tickTimeTrigger, lerpVec2, addVec2          */
@@ -22034,6 +22220,20 @@ static bool install_nova64_api(JSContext *ctx)
    JS_SetPropertyStr(ctx, global, "TWO_PI",     JS_NewFloat64(ctx, 6.283185307179586));
    JS_SetPropertyStr(ctx, global, "HALF_PI",    JS_NewFloat64(ctx, 1.5707963267948966));
    JS_SetPropertyStr(ctx, global, "QUARTER_PI", JS_NewFloat64(ctx, 0.7853981633974483));
+
+   /* Batch 43 */
+   set_function(ctx, global, "hitTest",           js_hit_test,           6);
+   set_function(ctx, global, "circleHitTest",     js_circle_hit_test,    5);
+   set_function(ctx, global, "createColorPool",   js_create_color_pool,  1);
+   set_function(ctx, global, "nextColor",         js_next_color,         1);
+   set_function(ctx, global, "createGridLayout",  js_create_grid_layout, 6);
+   set_function(ctx, global, "createCircleLayout",js_create_circle_layout,4);
+   set_function(ctx, global, "shuffleArray",      js_shuffle_array,      1);
+   set_function(ctx, global, "pickRandom",        js_pick_random,        1);
+   set_function(ctx, global, "weightedRandom",    js_weighted_random,    1);
+   set_function(ctx, global, "setRandomSeed",     js_set_random_seed,    1);
+   set_function(ctx, global, "subVec2",           js_sub_vec2,           4);
+   set_function(ctx, global, "scaleVec2",         js_scale_vec2,         3);
 
    JS_FreeValue(ctx, global);
    return true;

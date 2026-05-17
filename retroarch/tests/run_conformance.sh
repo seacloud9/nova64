@@ -867,5 +867,8 @@ run_visual_case "547 batch41 showcase"     "547-batch41-showcase"     "retroarch
 run_visual_case "548 rand delta minimap"   "548-rand-delta-minimap"   "retroarch/conformance/548-rand-delta-minimap.js"   "7a6e5e574e5f1a7c"
 run_visual_case "549 oscillator trigger vec" "549-oscillator-trigger-vec" "retroarch/conformance/549-oscillator-trigger-vec.js" "af4a6148600ab8a3"
 run_visual_case "559 batch42 showcase"     "559-batch42-showcase"     "retroarch/conformance/559-batch42-showcase.js"     "8d549d449322615c"
+run_visual_case "560 hittest colorpool"    "560-hittest-colorpool"    "retroarch/conformance/560-hittest-colorpool.js"    "d5cb8b3b7cdc411e"
+run_visual_case "561 shuffle vec2"        "561-shuffle-vec2"         "retroarch/conformance/561-shuffle-vec2.js"         "c75348b4ee7bb57d"
+run_visual_case "571 batch43 showcase"    "571-batch43-showcase"     "retroarch/conformance/571-batch43-showcase.js"     "7028ea5e138fda55"
 
 echo "Conformance passed."

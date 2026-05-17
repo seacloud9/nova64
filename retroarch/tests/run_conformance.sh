@@ -884,4 +884,8 @@ run_visual_case "608 camera2d hype"         "608-camera2d-hype"        "retroarc
 run_visual_case "609 hype registry"         "609-hype-registry"        "retroarch/conformance/609-hype-registry.js"        "8af1be9d34eb9d0c"
 run_visual_case "619 batch47 showcase"      "619-batch47-showcase"     "retroarch/conformance/619-batch47-showcase.js"     "be608021362ec97c"
 
+run_visual_case "620 raycast proximity"     "620-raycast-proximity"    "retroarch/conformance/620-raycast-proximity.js"    "dc6aef34f49c2f35"
+run_visual_case "621 seed input"            "621-seed-input"           "retroarch/conformance/621-seed-input.js"           "e129a3375564ea43"
+run_visual_case "631 batch48 showcase"      "631-batch48-showcase"     "retroarch/conformance/631-batch48-showcase.js"     "725146c25fb115a6"
+
 echo "Conformance passed."

@@ -915,5 +915,13 @@ run_visual_case "717 audio utils"           "717-audio-utils"          "retroarc
 run_visual_case "727 batch56 showcase"      "727-batch56-showcase"     "retroarch/conformance/727-batch56-showcase.js"     "df43329590844d6d"
 run_visual_case "728 batch57 showcase"      "728-batch57-showcase"     "retroarch/conformance/728-batch57-showcase.js"     "21ccf93875c8360a"
 run_visual_case "739 batch58 showcase"      "739-batch58-showcase"     "retroarch/conformance/739-batch58-showcase.js"     "9f59051c054eb5c1"
+run_visual_case "740 collision3d"           "740-collision3d"          "retroarch/conformance/740-collision3d.js"          "23194b908b6a433b"
+run_visual_case "741 steering"              "741-steering"             "retroarch/conformance/741-steering.js"             "f238f87b7e7ef85e"
+run_visual_case "742 mesh tags"             "742-mesh-tags"            "retroarch/conformance/742-mesh-tags.js"            "277a6ac2a891cb00"
+run_visual_case "743 cinematic"             "743-cinematic"            "retroarch/conformance/743-cinematic.js"            "6f9e31f9d4528e03"
+run_visual_case "750 batch59 showcase"      "750-batch59-showcase"     "retroarch/conformance/750-batch59-showcase.js"     "643b5572a1455291"
+run_visual_case "761 batch60 showcase"      "761-batch60-showcase"     "retroarch/conformance/761-batch60-showcase.js"     "3db81b9b51fbdd07"
+run_visual_case "772 batch61 showcase"      "772-batch61-showcase"     "retroarch/conformance/772-batch61-showcase.js"     "89f553d81f326f5b"
+run_visual_case "783 batch62 showcase"      "783-batch62-showcase"     "retroarch/conformance/783-batch62-showcase.js"     "d2ff72ac8fd2b023"
 
 echo "Conformance passed."

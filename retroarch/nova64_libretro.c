@@ -241,6 +241,11 @@ struct nova64_mesh {
    int  layer;
    int  mesh_group;
    int  sort_order;
+   /* Batch 61: tagging / per-mesh user data */
+   char tag[32];
+   char mesh_name[32];
+   int  user_int;
+   float user_float;
    /* Torus-specific (majorR=scale[0], minorR=scale[1]) */
    /* Cone-specific (radius=scale[0], height=scale[1]) */
 };
@@ -1060,6 +1065,26 @@ struct nova64_grid {
    int data[NOVA64_MAX_GRID_CELLS];
 };
 static struct nova64_grid g_grids[NOVA64_MAX_GRIDS];
+
+/* ── Batch 60: per-mesh wander angle ─────────────────────── */
+static float g_wander_angle[NOVA64_MAX_MESHES]; /* radians, per mesh handle-1 */
+
+/* ── Batch 62: cinematic screen effects ──────────────────── */
+static bool     g_letterbox_active  = false;
+static int      g_letterbox_height  = 32;
+static uint32_t g_letterbox_color   = 0x000000ff;
+static bool     g_overlay_scan_active    = false;
+static float    g_overlay_scan_intensity = 0.5f;
+static uint32_t g_overlay_scan_color     = 0x00000080;
+static float    g_screen_saturation = 1.0f;
+static float    g_screen_contrast   = 1.0f;
+#define NOVA64_TRANS_NONE       0
+#define NOVA64_TRANS_FADE_BLACK 1
+#define NOVA64_TRANS_FADE_FROM  2
+#define NOVA64_TRANS_FLASH_IN   3
+static int   g_trans_type     = NOVA64_TRANS_NONE;
+static float g_trans_timer    = 0.0f;
+static float g_trans_duration = 1.0f;
 
 /* ── Screen flash ─────────────────────────────────────────── */
 static uint32_t g_flash_color    = 0;
@@ -7482,6 +7507,532 @@ static JSValue js_crossfade(JSContext *ctx, JSValueConst this_val, int argc, JSV
 /* scheduleSound: stub — delay argument ignored, plays immediately */
 static JSValue js_schedule_sound(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
    { (void)ctx;(void)this_val;(void)argc;(void)argv; return JS_UNDEFINED; }
+
+/* ── Batch 59: sphereVsSphere, sphereVsAABB, pointInAABB3D,                  ── */
+/*              closestPointOnAABB3D, closestPointOnSeg3D, distToSeg3D,          */
+/*              meshesOverlap, meshOverlapOffset, castRaySphere3D,               */
+/*              overlapDepth3D, planeVsSphere, getMeshRadius                     */
+
+/* helper: estimated bounding sphere radius from mesh scale */
+static float mesh_estimated_radius(int handle) {
+   if (handle <= 0 || handle > NOVA64_MAX_MESHES) return 0.5f;
+   const struct nova64_mesh *m = &meshes[handle - 1];
+   if (!m->used) return 0.5f;
+   float sx = fabsf(m->scale[0]), sy = fabsf(m->scale[1]), sz = fabsf(m->scale[2]);
+   float maxS = sx > sy ? sx : sy; if (sz > maxS) maxS = sz;
+   return maxS > 0.001f ? maxS : 0.5f;
+}
+
+static JSValue js_spheres_vs_sphere(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   double x1=double_from_js(ctx,argc>0?argv[0]:JS_UNDEFINED,0),y1=double_from_js(ctx,argc>1?argv[1]:JS_UNDEFINED,0),z1=double_from_js(ctx,argc>2?argv[2]:JS_UNDEFINED,0);
+   double r1=double_from_js(ctx,argc>3?argv[3]:JS_UNDEFINED,1);
+   double x2=double_from_js(ctx,argc>4?argv[4]:JS_UNDEFINED,0),y2=double_from_js(ctx,argc>5?argv[5]:JS_UNDEFINED,0),z2=double_from_js(ctx,argc>6?argv[6]:JS_UNDEFINED,0);
+   double r2=double_from_js(ctx,argc>7?argv[7]:JS_UNDEFINED,1);
+   double dx=x2-x1,dy=y2-y1,dz=z2-z1; double sumR=r1+r2;
+   return JS_NewBool(ctx, dx*dx+dy*dy+dz*dz <= sumR*sumR);
+}
+
+static JSValue js_sphere_vs_aabb(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   double sx=double_from_js(ctx,argc>0?argv[0]:JS_UNDEFINED,0),sy=double_from_js(ctx,argc>1?argv[1]:JS_UNDEFINED,0),sz=double_from_js(ctx,argc>2?argv[2]:JS_UNDEFINED,0);
+   double sr=double_from_js(ctx,argc>3?argv[3]:JS_UNDEFINED,1);
+   double ax=double_from_js(ctx,argc>4?argv[4]:JS_UNDEFINED,0),ay=double_from_js(ctx,argc>5?argv[5]:JS_UNDEFINED,0),az=double_from_js(ctx,argc>6?argv[6]:JS_UNDEFINED,0);
+   double bx=double_from_js(ctx,argc>7?argv[7]:JS_UNDEFINED,1),by=double_from_js(ctx,argc>8?argv[8]:JS_UNDEFINED,1),bz=double_from_js(ctx,argc>9?argv[9]:JS_UNDEFINED,1);
+   double cx=(sx<ax?ax:sx>bx?bx:sx),cy=(sy<ay?ay:sy>by?by:sy),cz=(sz<az?az:sz>bz?bz:sz);
+   double dx=cx-sx,dy=cy-sy,dz=cz-sz;
+   return JS_NewBool(ctx, dx*dx+dy*dy+dz*dz <= sr*sr);
+}
+
+static JSValue js_point_in_aabb3d(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   double px=double_from_js(ctx,argc>0?argv[0]:JS_UNDEFINED,0),py=double_from_js(ctx,argc>1?argv[1]:JS_UNDEFINED,0),pz=double_from_js(ctx,argc>2?argv[2]:JS_UNDEFINED,0);
+   double ax=double_from_js(ctx,argc>3?argv[3]:JS_UNDEFINED,0),ay=double_from_js(ctx,argc>4?argv[4]:JS_UNDEFINED,0),az=double_from_js(ctx,argc>5?argv[5]:JS_UNDEFINED,0);
+   double bx=double_from_js(ctx,argc>6?argv[6]:JS_UNDEFINED,1),by=double_from_js(ctx,argc>7?argv[7]:JS_UNDEFINED,1),bz=double_from_js(ctx,argc>8?argv[8]:JS_UNDEFINED,1);
+   return JS_NewBool(ctx, px>=ax&&px<=bx&&py>=ay&&py<=by&&pz>=az&&pz<=bz);
+}
+
+static JSValue js_closest_point_on_aabb3d(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   double px=double_from_js(ctx,argc>0?argv[0]:JS_UNDEFINED,0),py=double_from_js(ctx,argc>1?argv[1]:JS_UNDEFINED,0),pz=double_from_js(ctx,argc>2?argv[2]:JS_UNDEFINED,0);
+   double ax=double_from_js(ctx,argc>3?argv[3]:JS_UNDEFINED,0),ay=double_from_js(ctx,argc>4?argv[4]:JS_UNDEFINED,0),az=double_from_js(ctx,argc>5?argv[5]:JS_UNDEFINED,0);
+   double bx=double_from_js(ctx,argc>6?argv[6]:JS_UNDEFINED,1),by=double_from_js(ctx,argc>7?argv[7]:JS_UNDEFINED,1),bz=double_from_js(ctx,argc>8?argv[8]:JS_UNDEFINED,1);
+   float out[3]={(float)(px<ax?ax:px>bx?bx:px),(float)(py<ay?ay:py>by?by:py),(float)(pz<az?az:pz>bz?bz:pz)};
+   return js_vec3_array(ctx, out);
+}
+
+static JSValue js_closest_point_on_seg3d(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   double px=double_from_js(ctx,argc>0?argv[0]:JS_UNDEFINED,0),py=double_from_js(ctx,argc>1?argv[1]:JS_UNDEFINED,0),pz=double_from_js(ctx,argc>2?argv[2]:JS_UNDEFINED,0);
+   double ax=double_from_js(ctx,argc>3?argv[3]:JS_UNDEFINED,0),ay=double_from_js(ctx,argc>4?argv[4]:JS_UNDEFINED,0),az=double_from_js(ctx,argc>5?argv[5]:JS_UNDEFINED,0);
+   double bx=double_from_js(ctx,argc>6?argv[6]:JS_UNDEFINED,0),by=double_from_js(ctx,argc>7?argv[7]:JS_UNDEFINED,0),bz=double_from_js(ctx,argc>8?argv[8]:JS_UNDEFINED,0);
+   double abx=bx-ax,aby=by-ay,abz=bz-az;
+   double len2=abx*abx+aby*aby+abz*abz;
+   double t=(len2>1e-10)?((px-ax)*abx+(py-ay)*aby+(pz-az)*abz)/len2:0.0;
+   if(t<0)t=0; if(t>1)t=1;
+   float out[3]={(float)(ax+t*abx),(float)(ay+t*aby),(float)(az+t*abz)};
+   return js_vec3_array(ctx, out);
+}
+
+static JSValue js_dist_to_seg3d(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   double px=double_from_js(ctx,argc>0?argv[0]:JS_UNDEFINED,0),py=double_from_js(ctx,argc>1?argv[1]:JS_UNDEFINED,0),pz=double_from_js(ctx,argc>2?argv[2]:JS_UNDEFINED,0);
+   double ax=double_from_js(ctx,argc>3?argv[3]:JS_UNDEFINED,0),ay=double_from_js(ctx,argc>4?argv[4]:JS_UNDEFINED,0),az=double_from_js(ctx,argc>5?argv[5]:JS_UNDEFINED,0);
+   double bx=double_from_js(ctx,argc>6?argv[6]:JS_UNDEFINED,0),by=double_from_js(ctx,argc>7?argv[7]:JS_UNDEFINED,0),bz=double_from_js(ctx,argc>8?argv[8]:JS_UNDEFINED,0);
+   double abx=bx-ax,aby=by-ay,abz=bz-az;
+   double len2=abx*abx+aby*aby+abz*abz;
+   double t=(len2>1e-10)?((px-ax)*abx+(py-ay)*aby+(pz-az)*abz)/len2:0.0;
+   if(t<0)t=0; if(t>1)t=1;
+   double cx=ax+t*abx,cy=ay+t*aby,cz=az+t*abz;
+   double dx=px-cx,dy=py-cy,dz=pz-cz;
+   return JS_NewFloat64(ctx, sqrt(dx*dx+dy*dy+dz*dz));
+}
+
+static JSValue js_meshes_overlap(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   int h1=(int)double_from_js(ctx,argc>0?argv[0]:JS_UNDEFINED,0);
+   int h2=(int)double_from_js(ctx,argc>1?argv[1]:JS_UNDEFINED,0);
+   if(h1<=0||h1>NOVA64_MAX_MESHES||h2<=0||h2>NOVA64_MAX_MESHES) return JS_FALSE;
+   const struct nova64_mesh *m1=&meshes[h1-1],*m2=&meshes[h2-1];
+   if(!m1->used||!m2->used) return JS_FALSE;
+   float r1=mesh_estimated_radius(h1),r2=mesh_estimated_radius(h2);
+   float dx=m1->position[0]-m2->position[0],dy=m1->position[1]-m2->position[1],dz=m1->position[2]-m2->position[2];
+   float sumR=r1+r2;
+   return JS_NewBool(ctx, dx*dx+dy*dy+dz*dz<=sumR*sumR);
+}
+
+static JSValue js_mesh_overlap_offset(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   int h1=(int)double_from_js(ctx,argc>0?argv[0]:JS_UNDEFINED,0);
+   int h2=(int)double_from_js(ctx,argc>1?argv[1]:JS_UNDEFINED,0);
+   if(h1<=0||h1>NOVA64_MAX_MESHES||h2<=0||h2>NOVA64_MAX_MESHES){ float z[3]={0,0,0}; return js_vec3_array(ctx,z); }
+   const struct nova64_mesh *m1=&meshes[h1-1],*m2=&meshes[h2-1];
+   if(!m1->used||!m2->used){ float z[3]={0,0,0}; return js_vec3_array(ctx,z); }
+   float r1=mesh_estimated_radius(h1),r2=mesh_estimated_radius(h2);
+   float dx=m1->position[0]-m2->position[0],dy=m1->position[1]-m2->position[1],dz=m1->position[2]-m2->position[2];
+   float dist2=dx*dx+dy*dy+dz*dz; float sumR=r1+r2;
+   if(dist2>sumR*sumR){ float z[3]={0,0,0}; return js_vec3_array(ctx,z); }
+   float dist=(float)(dist2>1e-10?sqrt((double)dist2):0.0001f);
+   float overlap=sumR-dist;
+   float nx=dist>1e-5f?dx/dist:1.0f,ny=dist>1e-5f?dy/dist:0.0f,nz=dist>1e-5f?dz/dist:0.0f;
+   float out[3]={nx*overlap,ny*overlap,nz*overlap};
+   return js_vec3_array(ctx, out);
+}
+
+static JSValue js_cast_ray_sphere3d(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   double ox=double_from_js(ctx,argc>0?argv[0]:JS_UNDEFINED,0),oy=double_from_js(ctx,argc>1?argv[1]:JS_UNDEFINED,0),oz=double_from_js(ctx,argc>2?argv[2]:JS_UNDEFINED,0);
+   double dx=double_from_js(ctx,argc>3?argv[3]:JS_UNDEFINED,0),dy=double_from_js(ctx,argc>4?argv[4]:JS_UNDEFINED,1),dz=double_from_js(ctx,argc>5?argv[5]:JS_UNDEFINED,0);
+   double cx=double_from_js(ctx,argc>6?argv[6]:JS_UNDEFINED,0),cy=double_from_js(ctx,argc>7?argv[7]:JS_UNDEFINED,0),cz=double_from_js(ctx,argc>8?argv[8]:JS_UNDEFINED,0);
+   double r=double_from_js(ctx,argc>9?argv[9]:JS_UNDEFINED,1);
+   double ex=ox-cx,ey=oy-cy,ez=oz-cz;
+   double a=dx*dx+dy*dy+dz*dz, b=2*(ex*dx+ey*dy+ez*dz), c=ex*ex+ey*ey+ez*ez-r*r;
+   double disc=b*b-4*a*c;
+   if(disc<0||a<1e-14) return JS_NewFloat64(ctx,-1.0);
+   double t=(-b-sqrt(disc))/(2*a);
+   return JS_NewFloat64(ctx, t<0?-1.0:t);
+}
+
+static JSValue js_overlap_depth3d(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   double x1=double_from_js(ctx,argc>0?argv[0]:JS_UNDEFINED,0),y1=double_from_js(ctx,argc>1?argv[1]:JS_UNDEFINED,0),z1=double_from_js(ctx,argc>2?argv[2]:JS_UNDEFINED,0);
+   double r1=double_from_js(ctx,argc>3?argv[3]:JS_UNDEFINED,1);
+   double x2=double_from_js(ctx,argc>4?argv[4]:JS_UNDEFINED,0),y2=double_from_js(ctx,argc>5?argv[5]:JS_UNDEFINED,0),z2=double_from_js(ctx,argc>6?argv[6]:JS_UNDEFINED,0);
+   double r2=double_from_js(ctx,argc>7?argv[7]:JS_UNDEFINED,1);
+   double dx=x2-x1,dy=y2-y1,dz=z2-z1;
+   double d=sqrt(dx*dx+dy*dy+dz*dz);
+   double ov=r1+r2-d;
+   return JS_NewFloat64(ctx, ov>0?ov:0.0);
+}
+
+static JSValue js_plane_vs_sphere(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   double nx=double_from_js(ctx,argc>0?argv[0]:JS_UNDEFINED,0),ny=double_from_js(ctx,argc>1?argv[1]:JS_UNDEFINED,1),nz=double_from_js(ctx,argc>2?argv[2]:JS_UNDEFINED,0);
+   double d=double_from_js(ctx,argc>3?argv[3]:JS_UNDEFINED,0);
+   double sx=double_from_js(ctx,argc>4?argv[4]:JS_UNDEFINED,0),sy=double_from_js(ctx,argc>5?argv[5]:JS_UNDEFINED,0),sz=double_from_js(ctx,argc>6?argv[6]:JS_UNDEFINED,0);
+   double r=double_from_js(ctx,argc>7?argv[7]:JS_UNDEFINED,1);
+   double dist=nx*sx+ny*sy+nz*sz-d;
+   return JS_NewBool(ctx, fabs(dist)<=r);
+}
+
+static JSValue js_get_mesh_radius(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   int h=(int)double_from_js(ctx,argc>0?argv[0]:JS_UNDEFINED,0);
+   return JS_NewFloat64(ctx,(double)mesh_estimated_radius(h));
+}
+
+/* ── Batch 60: AI steering vectors ────────────────────────────────────────── */
+/*              seekVec3, fleeVec3, arriveVec3, pursueVec3, evadeVec3,          */
+/*              faceToward3D, orbitPoint3D, moveToward3D, springFollow3D,       */
+/*              formationPos3D, wanderAngle3D, separateFromMeshes               */
+
+static float normalize3f(float *x, float *y, float *z) {
+   float len=(float)sqrt((double)((*x)*(*x)+(*y)*(*y)+(*z)*(*z)));
+   if(len>1e-6f){*x/=len;*y/=len;*z/=len;}
+   return len;
+}
+
+static JSValue js_seek_vec3(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   float px=(float)double_from_js(ctx,argc>0?argv[0]:JS_UNDEFINED,0),py=(float)double_from_js(ctx,argc>1?argv[1]:JS_UNDEFINED,0),pz=(float)double_from_js(ctx,argc>2?argv[2]:JS_UNDEFINED,0);
+   float tx=(float)double_from_js(ctx,argc>3?argv[3]:JS_UNDEFINED,0),ty=(float)double_from_js(ctx,argc>4?argv[4]:JS_UNDEFINED,0),tz=(float)double_from_js(ctx,argc>5?argv[5]:JS_UNDEFINED,0);
+   float speed=(float)double_from_js(ctx,argc>6?argv[6]:JS_UNDEFINED,1.0);
+   float dx=tx-px,dy=ty-py,dz=tz-pz; normalize3f(&dx,&dy,&dz);
+   float out[3]={dx*speed,dy*speed,dz*speed};
+   return js_vec3_array(ctx,out);
+}
+
+static JSValue js_flee_vec3(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   float px=(float)double_from_js(ctx,argc>0?argv[0]:JS_UNDEFINED,0),py=(float)double_from_js(ctx,argc>1?argv[1]:JS_UNDEFINED,0),pz=(float)double_from_js(ctx,argc>2?argv[2]:JS_UNDEFINED,0);
+   float tx=(float)double_from_js(ctx,argc>3?argv[3]:JS_UNDEFINED,0),ty=(float)double_from_js(ctx,argc>4?argv[4]:JS_UNDEFINED,0),tz=(float)double_from_js(ctx,argc>5?argv[5]:JS_UNDEFINED,0);
+   float speed=(float)double_from_js(ctx,argc>6?argv[6]:JS_UNDEFINED,1.0);
+   float dx=px-tx,dy=py-ty,dz=pz-tz; normalize3f(&dx,&dy,&dz);
+   float out[3]={dx*speed,dy*speed,dz*speed};
+   return js_vec3_array(ctx,out);
+}
+
+static JSValue js_arrive_vec3(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   float px=(float)double_from_js(ctx,argc>0?argv[0]:JS_UNDEFINED,0),py=(float)double_from_js(ctx,argc>1?argv[1]:JS_UNDEFINED,0),pz=(float)double_from_js(ctx,argc>2?argv[2]:JS_UNDEFINED,0);
+   float tx=(float)double_from_js(ctx,argc>3?argv[3]:JS_UNDEFINED,0),ty=(float)double_from_js(ctx,argc>4?argv[4]:JS_UNDEFINED,0),tz=(float)double_from_js(ctx,argc>5?argv[5]:JS_UNDEFINED,0);
+   float speed=(float)double_from_js(ctx,argc>6?argv[6]:JS_UNDEFINED,1.0);
+   float slowR=(float)double_from_js(ctx,argc>7?argv[7]:JS_UNDEFINED,2.0f);
+   float dx=tx-px,dy=ty-py,dz=tz-pz;
+   float dist=normalize3f(&dx,&dy,&dz);
+   float s=(dist<slowR&&slowR>1e-6f)?(speed*dist/slowR):speed;
+   float out[3]={dx*s,dy*s,dz*s};
+   return js_vec3_array(ctx,out);
+}
+
+static JSValue js_pursue_vec3(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   float px=(float)double_from_js(ctx,argc>0?argv[0]:JS_UNDEFINED,0),py=(float)double_from_js(ctx,argc>1?argv[1]:JS_UNDEFINED,0),pz=(float)double_from_js(ctx,argc>2?argv[2]:JS_UNDEFINED,0);
+   float tx=(float)double_from_js(ctx,argc>3?argv[3]:JS_UNDEFINED,0),ty=(float)double_from_js(ctx,argc>4?argv[4]:JS_UNDEFINED,0),tz=(float)double_from_js(ctx,argc>5?argv[5]:JS_UNDEFINED,0);
+   float tvx=(float)double_from_js(ctx,argc>6?argv[6]:JS_UNDEFINED,0),tvy=(float)double_from_js(ctx,argc>7?argv[7]:JS_UNDEFINED,0),tvz=(float)double_from_js(ctx,argc>8?argv[8]:JS_UNDEFINED,0);
+   float speed=(float)double_from_js(ctx,argc>9?argv[9]:JS_UNDEFINED,1.0f);
+   float dx=tx-px,dy=ty-py,dz=tz-pz;
+   float dist=(float)sqrt((double)(dx*dx+dy*dy+dz*dz));
+   float look=(speed>1e-6f)?dist/speed:0.0f;
+   float fdx=tx+tvx*look-px,fdy=ty+tvy*look-py,fdz=tz+tvz*look-pz;
+   normalize3f(&fdx,&fdy,&fdz);
+   float out[3]={fdx*speed,fdy*speed,fdz*speed};
+   return js_vec3_array(ctx,out);
+}
+
+static JSValue js_evade_vec3(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   float px=(float)double_from_js(ctx,argc>0?argv[0]:JS_UNDEFINED,0),py=(float)double_from_js(ctx,argc>1?argv[1]:JS_UNDEFINED,0),pz=(float)double_from_js(ctx,argc>2?argv[2]:JS_UNDEFINED,0);
+   float tx=(float)double_from_js(ctx,argc>3?argv[3]:JS_UNDEFINED,0),ty=(float)double_from_js(ctx,argc>4?argv[4]:JS_UNDEFINED,0),tz=(float)double_from_js(ctx,argc>5?argv[5]:JS_UNDEFINED,0);
+   float tvx=(float)double_from_js(ctx,argc>6?argv[6]:JS_UNDEFINED,0),tvy=(float)double_from_js(ctx,argc>7?argv[7]:JS_UNDEFINED,0),tvz=(float)double_from_js(ctx,argc>8?argv[8]:JS_UNDEFINED,0);
+   float speed=(float)double_from_js(ctx,argc>9?argv[9]:JS_UNDEFINED,1.0f);
+   float dx=tx-px,dy=ty-py,dz=tz-pz;
+   float dist=(float)sqrt((double)(dx*dx+dy*dy+dz*dz));
+   float look=(speed>1e-6f)?dist/speed:0.0f;
+   float fdx=px-(tx+tvx*look),fdy=py-(ty+tvy*look),fdz=pz-(tz+tvz*look);
+   normalize3f(&fdx,&fdy,&fdz);
+   float out[3]={fdx*speed,fdy*speed,fdz*speed};
+   return js_vec3_array(ctx,out);
+}
+
+static JSValue js_face_toward_3d(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   int h=(int)double_from_js(ctx,argc>0?argv[0]:JS_UNDEFINED,0);
+   if(h<=0||h>NOVA64_MAX_MESHES) return JS_UNDEFINED;
+   struct nova64_mesh *m=&meshes[h-1]; if(!m->used) return JS_UNDEFINED;
+   float tx=(float)double_from_js(ctx,argc>1?argv[1]:JS_UNDEFINED,0);
+   float tz=(float)double_from_js(ctx,argc>3?argv[3]:JS_UNDEFINED,0);
+   float dt=(float)double_from_js(ctx,argc>4?argv[4]:JS_UNDEFINED,0.016f);
+   float ts=(float)double_from_js(ctx,argc>5?argv[5]:JS_UNDEFINED,3.0f);
+   float targetYaw=(float)atan2((double)(tx-m->position[0]),(double)(tz-m->position[2]));
+   float diff=targetYaw-m->rotation[1];
+   while(diff>(float)M_PI) diff-=2*(float)M_PI;
+   while(diff<-(float)M_PI) diff+=2*(float)M_PI;
+   float step=ts*dt;
+   if(fabsf(diff)<=step) m->rotation[1]=targetYaw;
+   else m->rotation[1]+=diff>0?step:-step;
+   return JS_UNDEFINED;
+}
+
+static JSValue js_orbit_point3d(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   float cx=(float)double_from_js(ctx,argc>0?argv[0]:JS_UNDEFINED,0);
+   float cy=(float)double_from_js(ctx,argc>1?argv[1]:JS_UNDEFINED,0);
+   float cz=(float)double_from_js(ctx,argc>2?argv[2]:JS_UNDEFINED,0);
+   float angle=(float)double_from_js(ctx,argc>3?argv[3]:JS_UNDEFINED,0);
+   float radius=(float)double_from_js(ctx,argc>4?argv[4]:JS_UNDEFINED,1.0f);
+   float yOff=(float)double_from_js(ctx,argc>5?argv[5]:JS_UNDEFINED,0.0f);
+   float out[3]={cx+(float)cos((double)angle)*radius,cy+yOff,cz+(float)sin((double)angle)*radius};
+   return js_vec3_array(ctx,out);
+}
+
+static JSValue js_move_toward_3d(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   float px=(float)double_from_js(ctx,argc>0?argv[0]:JS_UNDEFINED,0);
+   float py=(float)double_from_js(ctx,argc>1?argv[1]:JS_UNDEFINED,0);
+   float pz=(float)double_from_js(ctx,argc>2?argv[2]:JS_UNDEFINED,0);
+   float tx=(float)double_from_js(ctx,argc>3?argv[3]:JS_UNDEFINED,0);
+   float ty=(float)double_from_js(ctx,argc>4?argv[4]:JS_UNDEFINED,0);
+   float tz=(float)double_from_js(ctx,argc>5?argv[5]:JS_UNDEFINED,0);
+   float step=(float)double_from_js(ctx,argc>6?argv[6]:JS_UNDEFINED,1.0f);
+   float dx=tx-px,dy=ty-py,dz=tz-pz;
+   float dist=(float)sqrt((double)(dx*dx+dy*dy+dz*dz));
+   if(dist<=step||dist<1e-6f){ float out[3]={tx,ty,tz}; return js_vec3_array(ctx,out); }
+   float s=step/dist;
+   float out[3]={px+dx*s,py+dy*s,pz+dz*s};
+   return js_vec3_array(ctx,out);
+}
+
+static JSValue js_spring_follow3d(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   float fx=(float)double_from_js(ctx,argc>0?argv[0]:JS_UNDEFINED,0),fy=(float)double_from_js(ctx,argc>1?argv[1]:JS_UNDEFINED,0),fz=(float)double_from_js(ctx,argc>2?argv[2]:JS_UNDEFINED,0);
+   float tx=(float)double_from_js(ctx,argc>3?argv[3]:JS_UNDEFINED,0),ty=(float)double_from_js(ctx,argc>4?argv[4]:JS_UNDEFINED,0),tz=(float)double_from_js(ctx,argc>5?argv[5]:JS_UNDEFINED,0);
+   float vx=(float)double_from_js(ctx,argc>6?argv[6]:JS_UNDEFINED,0),vy=(float)double_from_js(ctx,argc>7?argv[7]:JS_UNDEFINED,0),vz=(float)double_from_js(ctx,argc>8?argv[8]:JS_UNDEFINED,0);
+   float stiff=(float)double_from_js(ctx,argc>9?argv[9]:JS_UNDEFINED,8.0f);
+   float damp=(float)double_from_js(ctx,argc>10?argv[10]:JS_UNDEFINED,4.0f);
+   float dt=(float)double_from_js(ctx,argc>11?argv[11]:JS_UNDEFINED,0.016f);
+   vx+=(tx-fx)*stiff*dt-vx*damp*dt; vy+=(ty-fy)*stiff*dt-vy*damp*dt; vz+=(tz-fz)*stiff*dt-vz*damp*dt;
+   fx+=vx*dt; fy+=vy*dt; fz+=vz*dt;
+   JSValue arr=JS_NewArray(ctx);
+   JS_SetPropertyUint32(ctx,arr,0,JS_NewFloat64(ctx,(double)fx));
+   JS_SetPropertyUint32(ctx,arr,1,JS_NewFloat64(ctx,(double)fy));
+   JS_SetPropertyUint32(ctx,arr,2,JS_NewFloat64(ctx,(double)fz));
+   JS_SetPropertyUint32(ctx,arr,3,JS_NewFloat64(ctx,(double)vx));
+   JS_SetPropertyUint32(ctx,arr,4,JS_NewFloat64(ctx,(double)vy));
+   JS_SetPropertyUint32(ctx,arr,5,JS_NewFloat64(ctx,(double)vz));
+   return arr;
+}
+
+static JSValue js_formation_pos3d(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   float cx=(float)double_from_js(ctx,argc>0?argv[0]:JS_UNDEFINED,0),cy=(float)double_from_js(ctx,argc>1?argv[1]:JS_UNDEFINED,0),cz=(float)double_from_js(ctx,argc>2?argv[2]:JS_UNDEFINED,0);
+   int idx=(int)double_from_js(ctx,argc>3?argv[3]:JS_UNDEFINED,0);
+   int total=(int)double_from_js(ctx,argc>4?argv[4]:JS_UNDEFINED,1); if(total<1)total=1;
+   float radius=(float)double_from_js(ctx,argc>5?argv[5]:JS_UNDEFINED,2.0f);
+   float yOff=(float)double_from_js(ctx,argc>6?argv[6]:JS_UNDEFINED,0.0f);
+   float angle=(float)(2.0*M_PI*idx/total);
+   float out[3]={cx+(float)cos((double)angle)*radius,cy+yOff,cz+(float)sin((double)angle)*radius};
+   return js_vec3_array(ctx,out);
+}
+
+static JSValue js_wander_angle3d(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   int h=(int)double_from_js(ctx,argc>0?argv[0]:JS_UNDEFINED,0);
+   float jitter=(float)double_from_js(ctx,argc>1?argv[1]:JS_UNDEFINED,0.3f);
+   float dt=(float)double_from_js(ctx,argc>2?argv[2]:JS_UNDEFINED,0.016f);
+   if(h<=0||h>NOVA64_MAX_MESHES) return JS_NewFloat64(ctx,0.0);
+   g_wander_angle[h-1]+=(float)(rng_next_impl()*2.0-1.0)*jitter*dt*60.0f;
+   return JS_NewFloat64(ctx,(double)g_wander_angle[h-1]);
+}
+
+static JSValue js_separate_from_meshes(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   int h=(int)double_from_js(ctx,argc>0?argv[0]:JS_UNDEFINED,0);
+   float minDist=(float)double_from_js(ctx,argc>1?argv[1]:JS_UNDEFINED,1.5f);
+   if(h<=0||h>NOVA64_MAX_MESHES){ float z[3]={0,0,0}; return js_vec3_array(ctx,z); }
+   struct nova64_mesh *m=&meshes[h-1]; if(!m->used){ float z[3]={0,0,0}; return js_vec3_array(ctx,z); }
+   float sx=0,sy=0,sz=0, md2=minDist*minDist;
+   for(int i=0;i<NOVA64_MAX_MESHES;i++){
+      if(!meshes[i].used||i==h-1) continue;
+      float dx=m->position[0]-meshes[i].position[0],dy=m->position[1]-meshes[i].position[1],dz=m->position[2]-meshes[i].position[2];
+      float d2=dx*dx+dy*dy+dz*dz;
+      if(d2>0&&d2<md2){ float d=(float)sqrt((double)d2),w=(minDist-d)/minDist; sx+=dx/d*w; sy+=dy/d*w; sz+=dz/d*w; }
+   }
+   float out[3]={sx,sy,sz};
+   return js_vec3_array(ctx,out);
+}
+
+/* ── Batch 61: setMeshTag, getMeshTag, getMeshesByTag, setMeshName,           ── */
+/*              getMeshName, getMeshByName, getMeshesInRadius,                    */
+/*              countActiveMeshes, setMeshInt, getMeshInt,                        */
+/*              setMeshUserFloat, getMeshUserFloat                                */
+
+static JSValue js_set_mesh_tag(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   int h=(int)double_from_js(ctx,argc>0?argv[0]:JS_UNDEFINED,0);
+   if(h<=0||h>NOVA64_MAX_MESHES) return JS_UNDEFINED;
+   struct nova64_mesh *m=&meshes[h-1]; if(!m->used) return JS_UNDEFINED;
+   const char *s=JS_ToCString(ctx,argc>1?argv[1]:JS_UNDEFINED);
+   if(s){ snprintf(m->tag,sizeof(m->tag),"%s",s); JS_FreeCString(ctx,s); }
+   return JS_UNDEFINED;
+}
+
+static JSValue js_get_mesh_tag(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   int h=(int)double_from_js(ctx,argc>0?argv[0]:JS_UNDEFINED,0);
+   if(h<=0||h>NOVA64_MAX_MESHES) return JS_NewString(ctx,"");
+   const struct nova64_mesh *m=&meshes[h-1];
+   return m->used ? JS_NewString(ctx,m->tag) : JS_NewString(ctx,"");
+}
+
+static JSValue js_get_meshes_by_tag(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   const char *tag=JS_ToCString(ctx,argc>0?argv[0]:JS_UNDEFINED);
+   JSValue arr=JS_NewArray(ctx); int idx=0;
+   if(tag){
+      for(int i=0;i<NOVA64_MAX_MESHES;i++){
+         if(meshes[i].used&&strcmp(meshes[i].tag,tag)==0)
+            JS_SetPropertyUint32(ctx,arr,(uint32_t)idx++,JS_NewInt32(ctx,i+1));
+      }
+      JS_FreeCString(ctx,tag);
+   }
+   return arr;
+}
+
+static JSValue js_set_mesh_name(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   int h=(int)double_from_js(ctx,argc>0?argv[0]:JS_UNDEFINED,0);
+   if(h<=0||h>NOVA64_MAX_MESHES) return JS_UNDEFINED;
+   struct nova64_mesh *m=&meshes[h-1]; if(!m->used) return JS_UNDEFINED;
+   const char *s=JS_ToCString(ctx,argc>1?argv[1]:JS_UNDEFINED);
+   if(s){ snprintf(m->mesh_name,sizeof(m->mesh_name),"%s",s); JS_FreeCString(ctx,s); }
+   return JS_UNDEFINED;
+}
+
+static JSValue js_get_mesh_name(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   int h=(int)double_from_js(ctx,argc>0?argv[0]:JS_UNDEFINED,0);
+   if(h<=0||h>NOVA64_MAX_MESHES) return JS_NewString(ctx,"");
+   const struct nova64_mesh *m=&meshes[h-1];
+   return m->used ? JS_NewString(ctx,m->mesh_name) : JS_NewString(ctx,"");
+}
+
+static JSValue js_get_mesh_by_name(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   const char *name=JS_ToCString(ctx,argc>0?argv[0]:JS_UNDEFINED);
+   int result=-1;
+   if(name){
+      for(int i=0;i<NOVA64_MAX_MESHES;i++){
+         if(meshes[i].used&&strcmp(meshes[i].mesh_name,name)==0){ result=i+1; break; }
+      }
+      JS_FreeCString(ctx,name);
+   }
+   return JS_NewInt32(ctx,result);
+}
+
+static JSValue js_get_meshes_in_radius(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   float cx=(float)double_from_js(ctx,argc>0?argv[0]:JS_UNDEFINED,0);
+   float cy=(float)double_from_js(ctx,argc>1?argv[1]:JS_UNDEFINED,0);
+   float cz=(float)double_from_js(ctx,argc>2?argv[2]:JS_UNDEFINED,0);
+   float r=(float)double_from_js(ctx,argc>3?argv[3]:JS_UNDEFINED,5.0f);
+   float r2=r*r;
+   JSValue arr=JS_NewArray(ctx); int idx=0;
+   for(int i=0;i<NOVA64_MAX_MESHES;i++){
+      if(!meshes[i].used) continue;
+      float dx=meshes[i].position[0]-cx,dy=meshes[i].position[1]-cy,dz=meshes[i].position[2]-cz;
+      if(dx*dx+dy*dy+dz*dz<=r2)
+         JS_SetPropertyUint32(ctx,arr,(uint32_t)idx++,JS_NewInt32(ctx,i+1));
+   }
+   return arr;
+}
+
+static JSValue js_count_active_meshes(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;(void)argc;(void)argv;
+   int n=0;
+   for(int i=0;i<NOVA64_MAX_MESHES;i++) if(meshes[i].used) n++;
+   return JS_NewInt32(ctx,n);
+}
+
+static JSValue js_set_mesh_int(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   int h=(int)double_from_js(ctx,argc>0?argv[0]:JS_UNDEFINED,0);
+   if(h<=0||h>NOVA64_MAX_MESHES) return JS_UNDEFINED;
+   struct nova64_mesh *m=&meshes[h-1]; if(!m->used) return JS_UNDEFINED;
+   m->user_int=(int)double_from_js(ctx,argc>1?argv[1]:JS_UNDEFINED,0);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_get_mesh_int(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   int h=(int)double_from_js(ctx,argc>0?argv[0]:JS_UNDEFINED,0);
+   if(h<=0||h>NOVA64_MAX_MESHES) return JS_NewInt32(ctx,0);
+   const struct nova64_mesh *m=&meshes[h-1];
+   return JS_NewInt32(ctx, m->used ? m->user_int : 0);
+}
+
+static JSValue js_set_mesh_user_float(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   int h=(int)double_from_js(ctx,argc>0?argv[0]:JS_UNDEFINED,0);
+   if(h<=0||h>NOVA64_MAX_MESHES) return JS_UNDEFINED;
+   struct nova64_mesh *m=&meshes[h-1]; if(!m->used) return JS_UNDEFINED;
+   m->user_float=(float)double_from_js(ctx,argc>1?argv[1]:JS_UNDEFINED,0.0);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_get_mesh_user_float(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   int h=(int)double_from_js(ctx,argc>0?argv[0]:JS_UNDEFINED,0);
+   if(h<=0||h>NOVA64_MAX_MESHES) return JS_NewFloat64(ctx,0.0);
+   const struct nova64_mesh *m=&meshes[h-1];
+   return JS_NewFloat64(ctx, m->used ? (double)m->user_float : 0.0);
+}
+
+/* ── Batch 62: setLetterbox, clearLetterbox, isLetterboxActive,               ── */
+/*              setOverlayScan, clearOverlayScan, setScreenSaturation,            */
+/*              getScreenSaturation, setScreenContrast, getScreenContrast,        */
+/*              screenTransition, isTransitionActive, getTransitionProgress       */
+
+static JSValue js_set_letterbox(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   g_letterbox_height=(int)clamp_double(double_from_js(ctx,argc>0?argv[0]:JS_UNDEFINED,32),0,NOVA64_HEIGHT/2);
+   if(argc>1) g_letterbox_color=color_from_js(ctx,argv[1],0x000000ff);
+   g_letterbox_active=true;
+   return JS_UNDEFINED;
+}
+
+static JSValue js_clear_letterbox(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+   { (void)ctx;(void)this_val;(void)argc;(void)argv; g_letterbox_active=false; return JS_UNDEFINED; }
+
+static JSValue js_is_letterbox_active(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+   { (void)this_val;(void)argc;(void)argv; return JS_NewBool(ctx,g_letterbox_active); }
+
+static JSValue js_set_overlay_scan(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   g_overlay_scan_intensity=(float)clamp_double(double_from_js(ctx,argc>0?argv[0]:JS_UNDEFINED,0.5),0.0,1.0);
+   if(argc>1) g_overlay_scan_color=color_from_js(ctx,argv[1],0x00000080);
+   g_overlay_scan_active=true;
+   return JS_UNDEFINED;
+}
+
+static JSValue js_clear_overlay_scan(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+   { (void)ctx;(void)this_val;(void)argc;(void)argv; g_overlay_scan_active=false; return JS_UNDEFINED; }
+
+static JSValue js_set_screen_saturation(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   g_screen_saturation=(float)clamp_double(double_from_js(ctx,argc>0?argv[0]:JS_UNDEFINED,1.0),0.0,4.0);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_get_screen_saturation(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+   { (void)this_val;(void)argc;(void)argv; return JS_NewFloat64(ctx,(double)g_screen_saturation); }
+
+static JSValue js_set_screen_contrast(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   g_screen_contrast=(float)clamp_double(double_from_js(ctx,argc>0?argv[0]:JS_UNDEFINED,1.0),0.0,4.0);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_get_screen_contrast(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+   { (void)this_val;(void)argc;(void)argv; return JS_NewFloat64(ctx,(double)g_screen_contrast); }
+
+static JSValue js_screen_transition(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   g_trans_type=(int)clamp_double(double_from_js(ctx,argc>0?argv[0]:JS_UNDEFINED,1),0,3);
+   g_trans_duration=(float)clamp_double(double_from_js(ctx,argc>1?argv[1]:JS_UNDEFINED,1.0),0.01,30.0);
+   g_trans_timer=0.0f;
+   return JS_UNDEFINED;
+}
+
+static JSValue js_is_transition_active(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+   { (void)this_val;(void)argc;(void)argv; return JS_NewBool(ctx, g_trans_type!=NOVA64_TRANS_NONE&&g_trans_timer<g_trans_duration); }
+
+static JSValue js_get_transition_progress(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;(void)argc;(void)argv;
+   if(g_trans_type==NOVA64_TRANS_NONE||g_trans_duration<=0) return JS_NewFloat64(ctx,0.0);
+   float p=g_trans_timer/g_trans_duration; if(p<0)p=0; if(p>1)p=1;
+   return JS_NewFloat64(ctx,(double)p);
+}
 
 /* ── Batch 51: createTorus, createCone, setMeshWireframe, setMeshDoubleSided, ── */
 /*              cloneMesh, getMeshBounds, setMeshLayer, getMeshLayer,              */
@@ -24873,6 +25424,62 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, global, "crossfade",           js_crossfade,               3);
    set_function(ctx, global, "scheduleSound",       js_schedule_sound,          2);
 
+   /* Batch 59 */
+   set_function(ctx, global, "sphereVsSphere",         js_spheres_vs_sphere,         8);
+   set_function(ctx, global, "sphereVsAABB",           js_sphere_vs_aabb,           10);
+   set_function(ctx, global, "pointInAABB3D",          js_point_in_aabb3d,           9);
+   set_function(ctx, global, "closestPointOnAABB3D",   js_closest_point_on_aabb3d,   9);
+   set_function(ctx, global, "closestPointOnSeg3D",    js_closest_point_on_seg3d,    9);
+   set_function(ctx, global, "distToSeg3D",            js_dist_to_seg3d,             9);
+   set_function(ctx, global, "meshesOverlap",          js_meshes_overlap,            2);
+   set_function(ctx, global, "meshOverlapOffset",      js_mesh_overlap_offset,       2);
+   set_function(ctx, global, "castRaySphere3D",        js_cast_ray_sphere3d,        10);
+   set_function(ctx, global, "overlapDepth3D",         js_overlap_depth3d,           8);
+   set_function(ctx, global, "planeVsSphere",          js_plane_vs_sphere,           8);
+   set_function(ctx, global, "getMeshRadius",          js_get_mesh_radius,           1);
+
+   /* Batch 60 */
+   set_function(ctx, global, "seekVec3",              js_seek_vec3,              7);
+   set_function(ctx, global, "fleeVec3",              js_flee_vec3,              7);
+   set_function(ctx, global, "arriveVec3",            js_arrive_vec3,            8);
+   set_function(ctx, global, "pursueVec3",            js_pursue_vec3,           10);
+   set_function(ctx, global, "evadeVec3",             js_evade_vec3,            10);
+   set_function(ctx, global, "faceToward3D",          js_face_toward_3d,         6);
+   set_function(ctx, global, "orbitPoint3D",          js_orbit_point3d,          6);
+   set_function(ctx, global, "moveToward3D",          js_move_toward_3d,         7);
+   set_function(ctx, global, "springFollow3D",        js_spring_follow3d,       12);
+   set_function(ctx, global, "formationPos3D",        js_formation_pos3d,        7);
+   set_function(ctx, global, "wanderAngle3D",         js_wander_angle3d,         3);
+   set_function(ctx, global, "separateFromMeshes",    js_separate_from_meshes,   2);
+
+   /* Batch 61 */
+   set_function(ctx, global, "setMeshTag",            js_set_mesh_tag,           2);
+   set_function(ctx, global, "getMeshTag",            js_get_mesh_tag,           1);
+   set_function(ctx, global, "getMeshesByTag",        js_get_meshes_by_tag,      1);
+   set_function(ctx, global, "setMeshName",           js_set_mesh_name,          2);
+   set_function(ctx, global, "getMeshName",           js_get_mesh_name,          1);
+   set_function(ctx, global, "getMeshByName",         js_get_mesh_by_name,       1);
+   set_function(ctx, global, "getMeshesInRadius",     js_get_meshes_in_radius,   4);
+   set_function(ctx, global, "countActiveMeshes",     js_count_active_meshes,    0);
+   set_function(ctx, global, "setMeshInt",            js_set_mesh_int,           2);
+   set_function(ctx, global, "getMeshInt",            js_get_mesh_int,           1);
+   set_function(ctx, global, "setMeshUserFloat",      js_set_mesh_user_float,    2);
+   set_function(ctx, global, "getMeshUserFloat",      js_get_mesh_user_float,    1);
+
+   /* Batch 62 */
+   set_function(ctx, global, "setLetterbox",          js_set_letterbox,          2);
+   set_function(ctx, global, "clearLetterbox",        js_clear_letterbox,        0);
+   set_function(ctx, global, "isLetterboxActive",     js_is_letterbox_active,    0);
+   set_function(ctx, global, "setOverlayScan",        js_set_overlay_scan,       2);
+   set_function(ctx, global, "clearOverlayScan",      js_clear_overlay_scan,     0);
+   set_function(ctx, global, "setScreenSaturation",   js_set_screen_saturation,  1);
+   set_function(ctx, global, "getScreenSaturation",   js_get_screen_saturation,  0);
+   set_function(ctx, global, "setScreenContrast",     js_set_screen_contrast,    1);
+   set_function(ctx, global, "getScreenContrast",     js_get_screen_contrast,    0);
+   set_function(ctx, global, "screenTransition",      js_screen_transition,      2);
+   set_function(ctx, global, "isTransitionActive",    js_is_transition_active,   0);
+   set_function(ctx, global, "getTransitionProgress", js_get_transition_progress,0);
+
    JS_FreeValue(ctx, global);
    return true;
 }
@@ -27404,6 +28011,12 @@ void RETRO_CALLCONV retro_reset(void)
    reset_canvases();
    g_shake_intensity = 0.0f; g_shake_timer = 0.0f; g_shake_duration = 0.0f;
    g_flash_timer = 0.0f; g_flash_duration = 0.0f;
+   /* Batch 60-62 resets */
+   memset(g_wander_angle, 0, sizeof(g_wander_angle));
+   g_letterbox_active = false; g_letterbox_height = 32; g_letterbox_color = 0x000000ff;
+   g_overlay_scan_active = false; g_overlay_scan_intensity = 0.5f; g_overlay_scan_color = 0x00000080;
+   g_screen_saturation = 1.0f; g_screen_contrast = 1.0f;
+   g_trans_type = NOVA64_TRANS_NONE; g_trans_timer = 0.0f; g_trans_duration = 1.0f;
    g_path_count = 0; g_path_closed = 0;
    memset(g_hotspots,    0, sizeof(g_hotspots));
    memset(g_btn_repeat,  0, sizeof(g_btn_repeat));
@@ -27541,6 +28154,53 @@ void RETRO_CALLCONV retro_run(void)
             (uint8_t)(fr * alpha + dr * (1.0f - alpha)),
             (uint8_t)(fg * alpha + dg * (1.0f - alpha)),
             (uint8_t)(fb * alpha + db * (1.0f - alpha)), 255);
+      }
+   }
+
+   /* Batch 62: saturation + contrast (framebuffer pass) */
+   if (framebuffer && (g_screen_saturation != 1.0f || g_screen_contrast != 1.0f)) {
+      float sat = g_screen_saturation, con = g_screen_contrast;
+      for (int _sci = 0; _sci < NOVA64_WIDTH * NOVA64_HEIGHT; _sci++) {
+         uint32_t _p = framebuffer[_sci];
+         float _r = (float)((_p>>24)&0xff)/255.0f, _g = (float)((_p>>16)&0xff)/255.0f, _b = (float)((_p>>8)&0xff)/255.0f;
+         float _lum = 0.299f*_r + 0.587f*_g + 0.114f*_b;
+         _r = _lum+(_r-_lum)*sat; _g = _lum+(_g-_lum)*sat; _b = _lum+(_b-_lum)*sat;
+         _r = (_r-0.5f)*con+0.5f; _g = (_g-0.5f)*con+0.5f; _b = (_b-0.5f)*con+0.5f;
+         _r=(_r<0?0:_r>1?1:_r); _g=(_g<0?0:_g>1?1:_g); _b=(_b<0?0:_b>1?1:_b);
+         framebuffer[_sci]=rgba8((uint8_t)(_r*255),(uint8_t)(_g*255),(uint8_t)(_b*255),255);
+      }
+   }
+   /* Batch 62: overlay scanlines */
+   if (g_overlay_scan_active && framebuffer) {
+      float _sa = g_overlay_scan_intensity * 0.6f;
+      uint8_t _sar=(uint8_t)((g_overlay_scan_color>>24)&0xff),_sag=(uint8_t)((g_overlay_scan_color>>16)&0xff),_sab=(uint8_t)((g_overlay_scan_color>>8)&0xff);
+      for (int _sy = 0; _sy < NOVA64_HEIGHT; _sy += 2) {
+         for (int _sx = 0; _sx < NOVA64_WIDTH; _sx++) {
+            uint32_t *_px = &framebuffer[_sy*NOVA64_WIDTH+_sx];
+            uint8_t _pr=(uint8_t)((*_px>>24)&0xff),_pg=(uint8_t)((*_px>>16)&0xff),_pb=(uint8_t)((*_px>>8)&0xff);
+            *_px = rgba8((uint8_t)(_pr*(1-_sa)+_sar*_sa),(uint8_t)(_pg*(1-_sa)+_sag*_sa),(uint8_t)(_pb*(1-_sa)+_sab*_sa),255);
+         }
+      }
+   }
+   /* Batch 62: letterbox bars */
+   if (g_letterbox_active && g_letterbox_height > 0) {
+      int _lh = g_letterbox_height < NOVA64_HEIGHT/2 ? g_letterbox_height : NOVA64_HEIGHT/2;
+      draw_rect_pixels(0, 0, NOVA64_WIDTH, _lh, g_letterbox_color, true);
+      draw_rect_pixels(0, NOVA64_HEIGHT-_lh, NOVA64_WIDTH, _lh, g_letterbox_color, true);
+   }
+   /* Batch 62: screen transition overlay */
+   if (g_trans_type != NOVA64_TRANS_NONE && framebuffer) {
+      g_trans_timer += (float)(1.0 / NOVA64_FPS);
+      float _tp = g_trans_duration > 0 ? g_trans_timer / g_trans_duration : 1.0f;
+      if (_tp > 1.0f) { _tp = 1.0f; g_trans_type = NOVA64_TRANS_NONE; }
+      float _ta;
+      if (g_trans_type == NOVA64_TRANS_FADE_BLACK)      _ta = _tp;
+      else if (g_trans_type == NOVA64_TRANS_FADE_FROM)  _ta = 1.0f - _tp;
+      else /* FLASH_IN */                               _ta = _tp < 0.5f ? _tp * 2.0f : (1.0f - _tp) * 2.0f;
+      for (size_t _ti = 0; _ti < (size_t)NOVA64_WIDTH * NOVA64_HEIGHT; _ti++) {
+         uint32_t _td = framebuffer[_ti];
+         uint8_t _tdr=(uint8_t)((_td>>24)&0xff),_tdg=(uint8_t)((_td>>16)&0xff),_tdb=(uint8_t)((_td>>8)&0xff);
+         framebuffer[_ti]=rgba8((uint8_t)(_tdr*(1.0f-_ta)),(uint8_t)(_tdg*(1.0f-_ta)),(uint8_t)(_tdb*(1.0f-_ta)),255);
       }
    }
 

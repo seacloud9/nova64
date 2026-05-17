@@ -6354,6 +6354,206 @@ static JSValue js_vec_lerp(JSContext *ctx, JSValueConst this_val, int argc, JSVa
    return obj;
 }
 
+/* ── Batch 37: createShake, triggerShake, updateShake, getShakeOffset, ───── */
+/*              createCooldown, useCooldown, cooldownReady, cooldownProgress,  */
+/*              updateCooldown, createHitState, triggerHit, updateHitState     */
+
+/* Screen-shake object: {x, y, mag, decay, offsetX, offsetY} */
+static JSValue js_create_shake(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double decay = 0.9, mag = 0.0;
+   if (argc > 0 && JS_IsObject(argv[0])) {
+      JSValue dv = JS_GetPropertyStr(ctx, argv[0], "decay");
+      JSValue mv = JS_GetPropertyStr(ctx, argv[0], "magnitude");
+      if (!JS_IsUndefined(dv)) decay = double_from_js(ctx, dv, 0.9);
+      if (!JS_IsUndefined(mv)) mag   = double_from_js(ctx, mv, 0.0);
+      JS_FreeValue(ctx, dv); JS_FreeValue(ctx, mv);
+   }
+   JSValue obj = JS_NewObject(ctx);
+   JS_SetPropertyStr(ctx, obj, "magnitude", JS_NewFloat64(ctx, mag));
+   JS_SetPropertyStr(ctx, obj, "decay",     JS_NewFloat64(ctx, decay));
+   JS_SetPropertyStr(ctx, obj, "offsetX",   JS_NewFloat64(ctx, 0.0));
+   JS_SetPropertyStr(ctx, obj, "offsetY",   JS_NewFloat64(ctx, 0.0));
+   return obj;
+}
+
+static JSValue js_trigger_shake(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 1 || !JS_IsObject(argv[0])) return JS_UNDEFINED;
+   double mag = argc > 1 ? double_from_js(ctx, argv[1], 0.0) : 0.0;
+   JS_SetPropertyStr(ctx, argv[0], "magnitude", JS_NewFloat64(ctx, mag));
+   return JS_UNDEFINED;
+}
+
+static JSValue js_update_shake(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 1 || !JS_IsObject(argv[0])) return JS_UNDEFINED;
+   (void)argc;
+   JSValue mv = JS_GetPropertyStr(ctx, argv[0], "magnitude");
+   JSValue dv = JS_GetPropertyStr(ctx, argv[0], "decay");
+   double mag   = double_from_js(ctx, mv, 0.0);
+   double decay = double_from_js(ctx, dv, 0.9);
+   JS_FreeValue(ctx, mv); JS_FreeValue(ctx, dv);
+   if (mag > 0.001) {
+      double ox = ((double)rand() / (double)RAND_MAX * 2.0 - 1.0) * mag;
+      double oy = ((double)rand() / (double)RAND_MAX * 2.0 - 1.0) * mag;
+      JS_SetPropertyStr(ctx, argv[0], "offsetX",   JS_NewFloat64(ctx, ox));
+      JS_SetPropertyStr(ctx, argv[0], "offsetY",   JS_NewFloat64(ctx, oy));
+      JS_SetPropertyStr(ctx, argv[0], "magnitude", JS_NewFloat64(ctx, mag * decay));
+   } else {
+      JS_SetPropertyStr(ctx, argv[0], "offsetX",   JS_NewFloat64(ctx, 0.0));
+      JS_SetPropertyStr(ctx, argv[0], "offsetY",   JS_NewFloat64(ctx, 0.0));
+      JS_SetPropertyStr(ctx, argv[0], "magnitude", JS_NewFloat64(ctx, 0.0));
+   }
+   return JS_UNDEFINED;
+}
+
+static JSValue js_get_shake_offset(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double ox = 0.0, oy = 0.0;
+   if (argc > 0 && JS_IsObject(argv[0])) {
+      JSValue xv = JS_GetPropertyStr(ctx, argv[0], "offsetX");
+      JSValue yv = JS_GetPropertyStr(ctx, argv[0], "offsetY");
+      ox = double_from_js(ctx, xv, 0.0);
+      oy = double_from_js(ctx, yv, 0.0);
+      JS_FreeValue(ctx, xv); JS_FreeValue(ctx, yv);
+   }
+   JSValue arr = JS_NewArray(ctx);
+   JS_SetPropertyUint32(ctx, arr, 0, JS_NewFloat64(ctx, ox));
+   JS_SetPropertyUint32(ctx, arr, 1, JS_NewFloat64(ctx, oy));
+   return arr;
+}
+
+/* Cooldown object: {duration, elapsed, active} */
+static JSValue js_create_cooldown(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double dur = argc > 0 ? double_from_js(ctx, argv[0], 1.0) : 1.0;
+   JSValue obj = JS_NewObject(ctx);
+   JS_SetPropertyStr(ctx, obj, "duration", JS_NewFloat64(ctx, dur));
+   JS_SetPropertyStr(ctx, obj, "elapsed",  JS_NewFloat64(ctx, dur)); /* starts ready */
+   return obj;
+}
+
+static JSValue js_use_cooldown(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 1 || !JS_IsObject(argv[0])) return JS_FALSE;
+   JSValue ev = JS_GetPropertyStr(ctx, argv[0], "elapsed");
+   JSValue dv = JS_GetPropertyStr(ctx, argv[0], "duration");
+   double el  = double_from_js(ctx, ev, 0.0);
+   double dur = double_from_js(ctx, dv, 1.0);
+   JS_FreeValue(ctx, ev); JS_FreeValue(ctx, dv);
+   if (el >= dur) {
+      JS_SetPropertyStr(ctx, argv[0], "elapsed", JS_NewFloat64(ctx, 0.0));
+      return JS_TRUE;
+   }
+   return JS_FALSE;
+}
+
+static JSValue js_cooldown_ready(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 1 || !JS_IsObject(argv[0])) return JS_FALSE;
+   JSValue ev = JS_GetPropertyStr(ctx, argv[0], "elapsed");
+   JSValue dv = JS_GetPropertyStr(ctx, argv[0], "duration");
+   double el  = double_from_js(ctx, ev, 0.0);
+   double dur = double_from_js(ctx, dv, 1.0);
+   JS_FreeValue(ctx, ev); JS_FreeValue(ctx, dv);
+   return el >= dur ? JS_TRUE : JS_FALSE;
+}
+
+static JSValue js_cooldown_progress(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 1 || !JS_IsObject(argv[0])) return JS_NewFloat64(ctx, 0.0);
+   JSValue ev = JS_GetPropertyStr(ctx, argv[0], "elapsed");
+   JSValue dv = JS_GetPropertyStr(ctx, argv[0], "duration");
+   double el  = double_from_js(ctx, ev, 0.0);
+   double dur = double_from_js(ctx, dv, 1.0);
+   JS_FreeValue(ctx, ev); JS_FreeValue(ctx, dv);
+   double p = dur > 0.0 ? el / dur : 1.0;
+   if (p < 0.0) p = 0.0; if (p > 1.0) p = 1.0;
+   return JS_NewFloat64(ctx, p);
+}
+
+static JSValue js_update_cooldown(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 1 || !JS_IsObject(argv[0])) return JS_UNDEFINED;
+   double dt2 = argc > 1 ? double_from_js(ctx, argv[1], 0.016) : 0.016;
+   JSValue ev = JS_GetPropertyStr(ctx, argv[0], "elapsed");
+   JSValue dv = JS_GetPropertyStr(ctx, argv[0], "duration");
+   double el  = double_from_js(ctx, ev, 0.0);
+   double dur = double_from_js(ctx, dv, 1.0);
+   JS_FreeValue(ctx, ev); JS_FreeValue(ctx, dv);
+   el += dt2; if (el > dur) el = dur;
+   JS_SetPropertyStr(ctx, argv[0], "elapsed", JS_NewFloat64(ctx, el));
+   return JS_UNDEFINED;
+}
+
+/* Hit state object: {invulnDuration, invulnElapsed, flashElapsed, hitCount} */
+static JSValue js_create_hit_state(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double invulnDur = 1.0;
+   if (argc > 0 && JS_IsObject(argv[0])) {
+      JSValue iv = JS_GetPropertyStr(ctx, argv[0], "invulnDuration");
+      if (!JS_IsUndefined(iv)) invulnDur = double_from_js(ctx, iv, 1.0);
+      JS_FreeValue(ctx, iv);
+   }
+   JSValue obj = JS_NewObject(ctx);
+   JS_SetPropertyStr(ctx, obj, "invulnDuration", JS_NewFloat64(ctx, invulnDur));
+   JS_SetPropertyStr(ctx, obj, "invulnElapsed",  JS_NewFloat64(ctx, invulnDur)); /* starts not invuln */
+   JS_SetPropertyStr(ctx, obj, "flashElapsed",   JS_NewFloat64(ctx, 0.0));
+   JS_SetPropertyStr(ctx, obj, "hitCount",       JS_NewInt32(ctx, 0));
+   return obj;
+}
+
+static JSValue js_trigger_hit(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 1 || !JS_IsObject(argv[0])) return JS_FALSE;
+   JSValue ev = JS_GetPropertyStr(ctx, argv[0], "invulnElapsed");
+   JSValue dv = JS_GetPropertyStr(ctx, argv[0], "invulnDuration");
+   double el  = double_from_js(ctx, ev, 1.0);
+   double dur = double_from_js(ctx, dv, 1.0);
+   JS_FreeValue(ctx, ev); JS_FreeValue(ctx, dv);
+   if (el >= dur) {
+      JS_SetPropertyStr(ctx, argv[0], "invulnElapsed", JS_NewFloat64(ctx, 0.0));
+      JS_SetPropertyStr(ctx, argv[0], "flashElapsed",  JS_NewFloat64(ctx, 0.0));
+      JSValue hc = JS_GetPropertyStr(ctx, argv[0], "hitCount");
+      int cnt = int_from_js(ctx, hc, 0);
+      JS_FreeValue(ctx, hc);
+      JS_SetPropertyStr(ctx, argv[0], "hitCount", JS_NewInt32(ctx, cnt + 1));
+      return JS_TRUE;
+   }
+   return JS_FALSE;
+}
+
+static JSValue js_update_hit_state(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 1 || !JS_IsObject(argv[0])) return JS_UNDEFINED;
+   double dt2 = argc > 1 ? double_from_js(ctx, argv[1], 0.016) : 0.016;
+   JSValue ev  = JS_GetPropertyStr(ctx, argv[0], "invulnElapsed");
+   JSValue dv  = JS_GetPropertyStr(ctx, argv[0], "invulnDuration");
+   JSValue fev = JS_GetPropertyStr(ctx, argv[0], "flashElapsed");
+   double el  = double_from_js(ctx, ev,  0.0);
+   double dur = double_from_js(ctx, dv,  1.0);
+   double fe  = double_from_js(ctx, fev, 0.0);
+   JS_FreeValue(ctx, ev); JS_FreeValue(ctx, dv); JS_FreeValue(ctx, fev);
+   el += dt2; if (el > dur) el = dur;
+   fe += dt2;
+   JS_SetPropertyStr(ctx, argv[0], "invulnElapsed", JS_NewFloat64(ctx, el));
+   JS_SetPropertyStr(ctx, argv[0], "flashElapsed",  JS_NewFloat64(ctx, fe));
+   return JS_UNDEFINED;
+}
+
 /* ── Batch 36: lerpColor, ease, arc, bezier, noiseMap, flowField, ────────── */
 /*              colorMode/color, drawGradient, drawRadialGradient,            */
 /*              drawSkyGradient, hexColor                                      */
@@ -20482,6 +20682,20 @@ static bool install_nova64_api(JSContext *ctx)
    JS_SetPropertyStr(ctx, global, "TWO_PI",     JS_NewFloat64(ctx, 2.0 * M_PI));
    JS_SetPropertyStr(ctx, global, "HALF_PI",    JS_NewFloat64(ctx, M_PI * 0.5));
    JS_SetPropertyStr(ctx, global, "QUARTER_PI", JS_NewFloat64(ctx, M_PI * 0.25));
+
+   /* Batch 37 */
+   set_function(ctx, global, "createShake",      js_create_shake,      1);
+   set_function(ctx, global, "triggerShake",     js_trigger_shake,     2);
+   set_function(ctx, global, "updateShake",      js_update_shake,      2);
+   set_function(ctx, global, "getShakeOffset",   js_get_shake_offset,  1);
+   set_function(ctx, global, "createCooldown",   js_create_cooldown,   1);
+   set_function(ctx, global, "useCooldown",      js_use_cooldown,      1);
+   set_function(ctx, global, "cooldownReady",    js_cooldown_ready,    1);
+   set_function(ctx, global, "cooldownProgress", js_cooldown_progress, 1);
+   set_function(ctx, global, "updateCooldown",   js_update_cooldown,   2);
+   set_function(ctx, global, "createHitState",   js_create_hit_state,  1);
+   set_function(ctx, global, "triggerHit",       js_trigger_hit,       1);
+   set_function(ctx, global, "updateHitState",   js_update_hit_state,  2);
 
    JS_FreeValue(ctx, global);
    return true;

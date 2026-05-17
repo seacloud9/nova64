@@ -849,5 +849,8 @@ run_visual_case "476 lerp ease arc bezier" "476-lerp-ease-arc-bezier" "retroarch
 run_visual_case "477 noisemap flowfield"   "477-noisemap-flowfield-color" "retroarch/conformance/477-noisemap-flowfield-color.js" "911a3295dc3a2ddb"
 run_visual_case "478 gradient hexcolor"    "478-gradient-hexcolor"    "retroarch/conformance/478-gradient-hexcolor.js"    "4dd92565e29367d0"
 run_visual_case "487 batch36 showcase"     "487-batch36-showcase"     "retroarch/conformance/487-batch36-showcase.js"     "470296c2d0deb764"
+run_visual_case "488 shake cooldown"       "488-shake-cooldown"       "retroarch/conformance/488-shake-cooldown.js"       "54cea062dee8a7cb"
+run_visual_case "489 hit state"            "489-hit-state"            "retroarch/conformance/489-hit-state.js"            "9a232d43a09942a7"
+run_visual_case "499 batch37 showcase"     "499-batch37-showcase"     "retroarch/conformance/499-batch37-showcase.js"     "488f0232d6bbb428"
 
 echo "Conformance passed."

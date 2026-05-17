@@ -864,5 +864,8 @@ run_visual_case "535 batch40 showcase"     "535-batch40-showcase"     "retroarch
 run_visual_case "536 draw text shapes"     "536-draw-text-shapes"     "retroarch/conformance/536-draw-text-shapes.js"     "b0b12f5051a40f54"
 run_visual_case "537 floating texts"       "537-floating-texts"       "retroarch/conformance/537-floating-texts.js"       "c8b3677f09a6c654"
 run_visual_case "547 batch41 showcase"     "547-batch41-showcase"     "retroarch/conformance/547-batch41-showcase.js"     "8ad86f62f83c0a72"
+run_visual_case "548 rand delta minimap"   "548-rand-delta-minimap"   "retroarch/conformance/548-rand-delta-minimap.js"   "7a6e5e574e5f1a7c"
+run_visual_case "549 oscillator trigger vec" "549-oscillator-trigger-vec" "retroarch/conformance/549-oscillator-trigger-vec.js" "af4a6148600ab8a3"
+run_visual_case "559 batch42 showcase"     "559-batch42-showcase"     "retroarch/conformance/559-batch42-showcase.js"     "8d549d449322615c"
 
 echo "Conformance passed."

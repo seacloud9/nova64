@@ -581,6 +581,7 @@ static char storage_save_directory[1024];
 static char storage_cart_id[128];
 static bool initialized;
 static uint64_t frame_count;
+static double   g_last_dt = 0.016;
 
 static bool buttons[NOVA64_BUTTON_COUNT];
 static bool previous_buttons[NOVA64_BUTTON_COUNT];
@@ -6351,6 +6352,288 @@ static JSValue js_vec_lerp(JSContext *ctx, JSValueConst this_val, int argc, JSVa
    JSValue obj = JS_NewObject(ctx);
    JS_SetPropertyStr(ctx, obj, "x", JS_NewFloat64(ctx, x1 + (x2-x1)*t));
    JS_SetPropertyStr(ctx, obj, "y", JS_NewFloat64(ctx, y1 + (y2-y1)*t));
+   return obj;
+}
+
+/* ── Batch 42: randInt, randRange, getDeltaTime, getFPS, createMinimap,   ── */
+/*              drawMinimap, createOscillator, tickOscillator,                 */
+/*              createTimeTrigger, tickTimeTrigger, lerpVec2, addVec2          */
+
+/* randInt(min, max) — inclusive integer in [min, max] */
+static JSValue js_rand_int(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   int mn = 0, mx = 1;
+   JS_ToInt32(ctx, &mn, argv[0]);
+   JS_ToInt32(ctx, &mx, argv[1]);
+   if (mx < mn) { int t = mn; mn = mx; mx = t; }
+   int range = mx - mn + 1;
+   return JS_NewInt32(ctx, mn + (rand() % range));
+}
+
+/* randRange(min, max) — float in [min, max) */
+static JSValue js_rand_range(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   double mn = 0.0, mx = 1.0;
+   JS_ToFloat64(ctx, &mn, argv[0]);
+   JS_ToFloat64(ctx, &mx, argv[1]);
+   double r = (double)rand() / ((double)RAND_MAX + 1.0);
+   return JS_NewFloat64(ctx, mn + r * (mx - mn));
+}
+
+/* getDeltaTime() — last frame delta time in seconds */
+static JSValue js_get_delta_time(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)ctx; (void)this_val; (void)argc; (void)argv;
+   return JS_NewFloat64(ctx, g_last_dt);
+}
+
+/* getFPS() — approximate frames per second */
+static JSValue js_get_fps(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)ctx; (void)this_val; (void)argc; (void)argv;
+   return JS_NewFloat64(ctx, g_last_dt > 0.0 ? 1.0 / g_last_dt : 60.0);
+}
+
+/* createMinimap(opts) — returns minimap config object */
+static JSValue js_create_minimap(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   int mx = NOVA64_WIDTH - 90, my = 10, mw = 80, mh = 80;
+   uint32_t bg = 0x00000080, bdl = 0x969696FF, bdd = 0x323232FF;
+   double ww = 100.0, wh = 100.0;
+   if (argc > 0 && JS_IsObject(argv[0])) {
+      JSValue vx = JS_GetPropertyStr(ctx, argv[0], "x");
+      JSValue vy = JS_GetPropertyStr(ctx, argv[0], "y");
+      JSValue vw = JS_GetPropertyStr(ctx, argv[0], "width");
+      JSValue vh = JS_GetPropertyStr(ctx, argv[0], "height");
+      JSValue vww = JS_GetPropertyStr(ctx, argv[0], "worldW");
+      JSValue vwh = JS_GetPropertyStr(ctx, argv[0], "worldH");
+      if (!JS_IsUndefined(vx)) JS_ToInt32(ctx, &mx, vx);
+      if (!JS_IsUndefined(vy)) JS_ToInt32(ctx, &my, vy);
+      if (!JS_IsUndefined(vw)) JS_ToInt32(ctx, &mw, vw);
+      if (!JS_IsUndefined(vh)) JS_ToInt32(ctx, &mh, vh);
+      if (!JS_IsUndefined(vww)) JS_ToFloat64(ctx, &ww, vww);
+      if (!JS_IsUndefined(vwh)) JS_ToFloat64(ctx, &wh, vwh);
+      JSValue vbg = JS_GetPropertyStr(ctx, argv[0], "bgColor");
+      if (!JS_IsUndefined(vbg)) bg = color_from_js(ctx, vbg, bg);
+      JS_FreeValue(ctx, vbg);
+      JS_FreeValue(ctx, vx); JS_FreeValue(ctx, vy); JS_FreeValue(ctx, vw);
+      JS_FreeValue(ctx, vh); JS_FreeValue(ctx, vww); JS_FreeValue(ctx, vwh);
+   }
+   JSValue obj = JS_NewObject(ctx);
+   JS_SetPropertyStr(ctx, obj, "x",      JS_NewInt32(ctx, mx));
+   JS_SetPropertyStr(ctx, obj, "y",      JS_NewInt32(ctx, my));
+   JS_SetPropertyStr(ctx, obj, "width",  JS_NewInt32(ctx, mw));
+   JS_SetPropertyStr(ctx, obj, "height", JS_NewInt32(ctx, mh));
+   JS_SetPropertyStr(ctx, obj, "worldW", JS_NewFloat64(ctx, ww));
+   JS_SetPropertyStr(ctx, obj, "worldH", JS_NewFloat64(ctx, wh));
+   JS_SetPropertyStr(ctx, obj, "bgColor",      JS_NewUint32(ctx, bg));
+   JS_SetPropertyStr(ctx, obj, "borderLight",   JS_NewUint32(ctx, bdl));
+   JS_SetPropertyStr(ctx, obj, "borderDark",    JS_NewUint32(ctx, bdd));
+   return obj;
+}
+
+/* drawMinimap(mm, entities) — render minimap with entity dots
+   entities: array of {x, y, color?, size?} in world-space */
+static JSValue js_draw_minimap(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   if (argc < 1 || !JS_IsObject(argv[0])) return JS_UNDEFINED;
+   int mx=0, my=0, mw=80, mh=80;
+   double ww=100.0, wh=100.0;
+   uint32_t bg=0x00000080, bdl=0x969696FF, bdd=0x323232FF;
+   JSValue vx=JS_GetPropertyStr(ctx,argv[0],"x");
+   JSValue vy=JS_GetPropertyStr(ctx,argv[0],"y");
+   JSValue vw=JS_GetPropertyStr(ctx,argv[0],"width");
+   JSValue vh=JS_GetPropertyStr(ctx,argv[0],"height");
+   JSValue vww=JS_GetPropertyStr(ctx,argv[0],"worldW");
+   JSValue vwh=JS_GetPropertyStr(ctx,argv[0],"worldH");
+   JSValue vbg=JS_GetPropertyStr(ctx,argv[0],"bgColor");
+   JSValue vbl=JS_GetPropertyStr(ctx,argv[0],"borderLight");
+   JSValue vbd=JS_GetPropertyStr(ctx,argv[0],"borderDark");
+   JS_ToInt32(ctx,&mx,vx); JS_ToInt32(ctx,&my,vy);
+   JS_ToInt32(ctx,&mw,vw); JS_ToInt32(ctx,&mh,vh);
+   JS_ToFloat64(ctx,&ww,vww); JS_ToFloat64(ctx,&wh,vwh);
+   bg  = color_from_js(ctx, vbg, bg);
+   bdl = color_from_js(ctx, vbl, bdl);
+   bdd = color_from_js(ctx, vbd, bdd);
+   JS_FreeValue(ctx,vx);JS_FreeValue(ctx,vy);JS_FreeValue(ctx,vw);JS_FreeValue(ctx,vh);
+   JS_FreeValue(ctx,vww);JS_FreeValue(ctx,vwh);JS_FreeValue(ctx,vbg);
+   JS_FreeValue(ctx,vbl);JS_FreeValue(ctx,vbd);
+
+   /* Draw background */
+   draw_rect_pixels(mx, my, mw, mh, bg, true);
+   /* Border: top+left light, bottom+right dark */
+   for (int i = mx; i < mx+mw; i++) { set_pixel(i, my, bdl); set_pixel(i, my+mh-1, bdd); }
+   for (int i = my; i < my+mh; i++) { set_pixel(mx, i, bdl); set_pixel(mx+mw-1, i, bdd); }
+
+   /* Draw entities */
+   if (argc >= 2 && JS_IsArray(argv[1]) && ww > 0 && wh > 0) {
+      JSValue lenV = JS_GetPropertyStr(ctx, argv[1], "length");
+      uint32_t elen = 0; JS_ToUint32(ctx, &elen, lenV); JS_FreeValue(ctx, lenV);
+      for (uint32_t i = 0; i < elen; i++) {
+         JSValue e = JS_GetPropertyUint32(ctx, argv[1], i);
+         JSValue ex2 = JS_GetPropertyStr(ctx, e, "x");
+         JSValue ey2 = JS_GetPropertyStr(ctx, e, "y");
+         JSValue ec  = JS_GetPropertyStr(ctx, e, "color");
+         double ex=0, ey=0;
+         JS_ToFloat64(ctx, &ex, ex2); JS_ToFloat64(ctx, &ey, ey2);
+         uint32_t ec2 = color_from_js(ctx, ec, 0xFF4040FF);
+         int px = mx + (int)(ex / ww * mw);
+         int py = my + (int)(ey / wh * mh);
+         set_pixel(px, py, ec2);
+         set_pixel(px-1, py, ec2); set_pixel(px+1, py, ec2);
+         set_pixel(px, py-1, ec2); set_pixel(px, py+1, ec2);
+         JS_FreeValue(ctx, ex2); JS_FreeValue(ctx, ey2); JS_FreeValue(ctx, ec);
+         JS_FreeValue(ctx, e);
+      }
+   }
+   return JS_UNDEFINED;
+}
+
+/* createOscillator(opts) — {speed, min, max, waveform, _t, value} */
+static JSValue js_create_oscillator(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   double speed=1.0, mn=0.0, mx=1.0, offset=0.0;
+   const char *wf = "sin";
+   char wfbuf[16] = "sin";
+   if (argc > 0 && JS_IsObject(argv[0])) {
+      JSValue vs = JS_GetPropertyStr(ctx, argv[0], "speed");
+      JSValue vmn = JS_GetPropertyStr(ctx, argv[0], "min");
+      JSValue vmx = JS_GetPropertyStr(ctx, argv[0], "max");
+      JSValue vwf = JS_GetPropertyStr(ctx, argv[0], "waveform");
+      JSValue vo  = JS_GetPropertyStr(ctx, argv[0], "offset");
+      if (!JS_IsUndefined(vs))  JS_ToFloat64(ctx, &speed, vs);
+      if (!JS_IsUndefined(vmn)) JS_ToFloat64(ctx, &mn, vmn);
+      if (!JS_IsUndefined(vmx)) JS_ToFloat64(ctx, &mx, vmx);
+      if (!JS_IsUndefined(vwf)) {
+         const char *s = JS_ToCString(ctx, vwf);
+         if (s) { strncpy(wfbuf, s, 15); wfbuf[15]='\0'; JS_FreeCString(ctx, s); }
+      }
+      if (!JS_IsUndefined(vo))  JS_ToFloat64(ctx, &offset, vo);
+      JS_FreeValue(ctx, vs); JS_FreeValue(ctx, vmn); JS_FreeValue(ctx, vmx);
+      JS_FreeValue(ctx, vwf); JS_FreeValue(ctx, vo);
+      wf = wfbuf;
+   }
+   (void)wf;
+   double initVal = (mn + mx) * 0.5;
+   JSValue obj = JS_NewObject(ctx);
+   JS_SetPropertyStr(ctx, obj, "_t",       JS_NewFloat64(ctx, 0.0));
+   JS_SetPropertyStr(ctx, obj, "speed",    JS_NewFloat64(ctx, speed));
+   JS_SetPropertyStr(ctx, obj, "min",      JS_NewFloat64(ctx, mn));
+   JS_SetPropertyStr(ctx, obj, "max",      JS_NewFloat64(ctx, mx));
+   JS_SetPropertyStr(ctx, obj, "offset",   JS_NewFloat64(ctx, offset));
+   JS_SetPropertyStr(ctx, obj, "waveform", JS_NewString(ctx, wfbuf));
+   JS_SetPropertyStr(ctx, obj, "value",    JS_NewFloat64(ctx, initVal));
+   return obj;
+}
+
+/* tickOscillator(osc, dt) — advance osc._t, update osc.value, return value */
+static JSValue js_tick_oscillator(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   if (argc < 1 || !JS_IsObject(argv[0])) return JS_NewFloat64(ctx, 0.0);
+   double dt = 0.016, t2 = 0.0, speed = 1.0, mn = 0.0, mx = 1.0, offset = 0.0;
+   if (argc >= 2) JS_ToFloat64(ctx, &dt, argv[1]);
+   JSValue jt = JS_GetPropertyStr(ctx, argv[0], "_t");
+   JSValue js = JS_GetPropertyStr(ctx, argv[0], "speed");
+   JSValue jmn = JS_GetPropertyStr(ctx, argv[0], "min");
+   JSValue jmx = JS_GetPropertyStr(ctx, argv[0], "max");
+   JSValue jo  = JS_GetPropertyStr(ctx, argv[0], "offset");
+   JSValue jwf = JS_GetPropertyStr(ctx, argv[0], "waveform");
+   JS_ToFloat64(ctx, &t2, jt);
+   JS_ToFloat64(ctx, &speed, js);
+   JS_ToFloat64(ctx, &mn, jmn);
+   JS_ToFloat64(ctx, &mx, jmx);
+   JS_ToFloat64(ctx, &offset, jo);
+   const char *wfStr = JS_ToCString(ctx, jwf);
+   t2 += dt;
+   double phase = t2 * speed + offset;
+   double raw = 0.0;
+   if (!wfStr || strcmp(wfStr, "sin") == 0)
+      raw = sin(phase * M_PI * 2.0);
+   else if (strcmp(wfStr, "cos") == 0)
+      raw = cos(phase * M_PI * 2.0);
+   else if (strcmp(wfStr, "saw") == 0)
+      raw = 2.0 * (phase - floor(phase + 0.5));
+   else if (strcmp(wfStr, "tri") == 0)
+      raw = 1.0 - 4.0 * fabs(round(phase - 0.25) - (phase - 0.25));
+   if (wfStr) JS_FreeCString(ctx, wfStr);
+   JS_FreeValue(ctx, jt); JS_FreeValue(ctx, js);
+   JS_FreeValue(ctx, jmn); JS_FreeValue(ctx, jmx);
+   JS_FreeValue(ctx, jo); JS_FreeValue(ctx, jwf);
+   double value = mn + (raw * 0.5 + 0.5) * (mx - mn);
+   JS_SetPropertyStr(ctx, argv[0], "_t",   JS_NewFloat64(ctx, t2));
+   JS_SetPropertyStr(ctx, argv[0], "value", JS_NewFloat64(ctx, value));
+   return JS_NewFloat64(ctx, value);
+}
+
+/* createTimeTrigger(opts) — {elapsed, interval, repeat, fired} */
+static JSValue js_create_time_trigger(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   double interval = 1.0;
+   int repeat = 0;
+   if (argc > 0 && JS_IsObject(argv[0])) {
+      JSValue vi = JS_GetPropertyStr(ctx, argv[0], "interval");
+      JSValue vr = JS_GetPropertyStr(ctx, argv[0], "repeat");
+      if (!JS_IsUndefined(vi)) JS_ToFloat64(ctx, &interval, vi);
+      if (!JS_IsUndefined(vr)) repeat = JS_ToBool(ctx, vr);
+      JS_FreeValue(ctx, vi); JS_FreeValue(ctx, vr);
+   }
+   JSValue obj = JS_NewObject(ctx);
+   JS_SetPropertyStr(ctx, obj, "elapsed",  JS_NewFloat64(ctx, 0.0));
+   JS_SetPropertyStr(ctx, obj, "interval", JS_NewFloat64(ctx, interval));
+   JS_SetPropertyStr(ctx, obj, "repeat",   JS_NewBool(ctx, repeat));
+   JS_SetPropertyStr(ctx, obj, "fired",    JS_FALSE);
+   return obj;
+}
+
+/* tickTimeTrigger(tt, dt) — advance elapsed, return 1 if fired this tick */
+static JSValue js_tick_time_trigger(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   if (argc < 1 || !JS_IsObject(argv[0])) return JS_FALSE;
+   double dt = 0.016, elapsed = 0.0, interval = 1.0;
+   if (argc >= 2) JS_ToFloat64(ctx, &dt, argv[1]);
+   JSValue je = JS_GetPropertyStr(ctx, argv[0], "elapsed");
+   JSValue ji = JS_GetPropertyStr(ctx, argv[0], "interval");
+   JSValue jr = JS_GetPropertyStr(ctx, argv[0], "repeat");
+   JSValue jf = JS_GetPropertyStr(ctx, argv[0], "fired");
+   JS_ToFloat64(ctx, &elapsed,  je);
+   JS_ToFloat64(ctx, &interval, ji);
+   int repeat = JS_ToBool(ctx, jr);
+   int fired  = JS_ToBool(ctx, jf);
+   JS_FreeValue(ctx, je); JS_FreeValue(ctx, ji);
+   JS_FreeValue(ctx, jr); JS_FreeValue(ctx, jf);
+   if (fired && !repeat) return JS_FALSE;
+   elapsed += dt;
+   int didFire = 0;
+   if (elapsed >= interval) {
+      didFire = 1;
+      if (repeat) elapsed -= interval;
+      else { elapsed = interval; fired = 1; }
+   }
+   JS_SetPropertyStr(ctx, argv[0], "elapsed", JS_NewFloat64(ctx, elapsed));
+   JS_SetPropertyStr(ctx, argv[0], "fired",   JS_NewBool(ctx, fired));
+   return JS_NewBool(ctx, didFire);
+}
+
+/* lerpVec2(ax, ay, bx, by, t) — returns {x, y} */
+static JSValue js_lerp_vec2(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   double ax=0,ay=0,bx=0,by=0,t=0;
+   JS_ToFloat64(ctx,&ax,argv[0]); JS_ToFloat64(ctx,&ay,argv[1]);
+   JS_ToFloat64(ctx,&bx,argv[2]); JS_ToFloat64(ctx,&by,argv[3]);
+   JS_ToFloat64(ctx,&t,argv[4]);
+   JSValue obj = JS_NewObject(ctx);
+   JS_SetPropertyStr(ctx, obj, "x", JS_NewFloat64(ctx, ax + (bx-ax)*t));
+   JS_SetPropertyStr(ctx, obj, "y", JS_NewFloat64(ctx, ay + (by-ay)*t));
+   return obj;
+}
+
+/* addVec2(ax, ay, bx, by) — returns {x, y} */
+static JSValue js_add_vec2(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   double ax=0,ay=0,bx=0,by=0;
+   JS_ToFloat64(ctx,&ax,argv[0]); JS_ToFloat64(ctx,&ay,argv[1]);
+   JS_ToFloat64(ctx,&bx,argv[2]); JS_ToFloat64(ctx,&by,argv[3]);
+   JSValue obj = JS_NewObject(ctx);
+   JS_SetPropertyStr(ctx, obj, "x", JS_NewFloat64(ctx, ax+bx));
+   JS_SetPropertyStr(ctx, obj, "y", JS_NewFloat64(ctx, ay+by));
    return obj;
 }
 
@@ -21734,6 +22017,24 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, global, "ftsSpawn",             js_fts_spawn,              5);
    set_function(ctx, global, "ftsUpdate",            js_fts_update,             2);
 
+   /* Batch 42 */
+   set_function(ctx, global, "randInt",           js_rand_int,            2);
+   set_function(ctx, global, "randRange",         js_rand_range,          2);
+   set_function(ctx, global, "getDeltaTime",      js_get_delta_time,      0);
+   set_function(ctx, global, "getFPS",            js_get_fps,             0);
+   set_function(ctx, global, "createMinimap",     js_create_minimap,      1);
+   set_function(ctx, global, "drawMinimap",       js_draw_minimap,        2);
+   set_function(ctx, global, "createOscillator",  js_create_oscillator,   1);
+   set_function(ctx, global, "tickOscillator",    js_tick_oscillator,     2);
+   set_function(ctx, global, "createTimeTrigger", js_create_time_trigger, 1);
+   set_function(ctx, global, "tickTimeTrigger",   js_tick_time_trigger,   2);
+   set_function(ctx, global, "lerpVec2",          js_lerp_vec2,           5);
+   set_function(ctx, global, "addVec2",           js_add_vec2,            4);
+   /* constants */
+   JS_SetPropertyStr(ctx, global, "TWO_PI",     JS_NewFloat64(ctx, 6.283185307179586));
+   JS_SetPropertyStr(ctx, global, "HALF_PI",    JS_NewFloat64(ctx, 1.5707963267948966));
+   JS_SetPropertyStr(ctx, global, "QUARTER_PI", JS_NewFloat64(ctx, 0.7853981633974483));
+
    JS_FreeValue(ctx, global);
    return true;
 }
@@ -21847,6 +22148,7 @@ static void js_host_call_frame(double dt)
 {
    if (!js_host.loaded || !js_host.context)
       return;
+   g_last_dt = dt > 0.0 ? dt : 0.016;
 
    JSContext *ctx = js_host.context;
    if (!JS_IsUndefined(js_host.update)) {

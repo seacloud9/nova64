@@ -855,5 +855,8 @@ run_visual_case "499 batch37 showcase"     "499-batch37-showcase"     "retroarch
 run_visual_case "500 emitter2d"            "500-emitter2d"            "retroarch/conformance/500-emitter2d.js"            "e5a44e2f955c1612"
 run_visual_case "501 pool sm healthbar"    "501-pool-statemachine-healthbar" "retroarch/conformance/501-pool-statemachine-healthbar.js" "b8ab69d427e929e7"
 run_visual_case "511 batch38 showcase"     "511-batch38-showcase"     "retroarch/conformance/511-batch38-showcase.js"     "6fe00d7b3fa9aa3f"
+run_visual_case "512 math utils"           "512-math-utils"           "retroarch/conformance/512-math-utils.js"           "17f6485e996bb536"
+run_visual_case "513 draw shapes"          "513-draw-shapes"          "retroarch/conformance/513-draw-shapes.js"          "82edfc7f11e16e2e"
+run_visual_case "523 batch39 showcase"     "523-batch39-showcase"     "retroarch/conformance/523-batch39-showcase.js"     "6a4424090558f209"
 
 echo "Conformance passed."

@@ -6354,6 +6354,204 @@ static JSValue js_vec_lerp(JSContext *ctx, JSValueConst this_val, int argc, JSVa
    return obj;
 }
 
+/* ── Batch 39: lerp, clamp, dist, dist3d, remap, deg2rad, rad2deg, ──────── */
+/*              pulse, drawRoundedRect, drawStarburst, drawCheckerboard,       */
+/*              drawScanlines                                                   */
+
+static JSValue js_draw_crosshair(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int chcx = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0);
+   int chcy = int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0);
+   int chsz = int_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 10);
+   uint32_t color = color_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, rgba8(255,255,255,255));
+   int sx, sy; transform_2d_point(chcx, chcy, &sx, &sy);
+   int ts = transform_2d_size(chsz);
+   path_draw_line_segment(sx - ts, sy, sx + ts, sy, color);
+   path_draw_line_segment(sx, sy - ts, sx, sy + ts, color);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_draw_panel(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int px2 = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0);
+   int py2 = int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0);
+   int pw  = int_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 100);
+   int ph  = int_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, 60);
+   uint32_t bgc  = rgba8(20, 20, 40, 200);
+   uint32_t bdc  = rgba8(120, 140, 200, 220);
+   uint32_t hi   = rgba8(200, 220, 255, 100);
+   if (argc > 4 && JS_IsObject(argv[4])) {
+      JSValue bv = JS_GetPropertyStr(ctx, argv[4], "bgColor");
+      JSValue bdv= JS_GetPropertyStr(ctx, argv[4], "borderColor");
+      JSValue hv = JS_GetPropertyStr(ctx, argv[4], "highlight");
+      if (!JS_IsUndefined(bv))  bgc = color_from_js(ctx, bv,  bgc);
+      if (!JS_IsUndefined(bdv)) bdc = color_from_js(ctx, bdv, bdc);
+      if (!JS_IsUndefined(hv))  hi  = color_from_js(ctx, hv,  hi);
+      JS_FreeValue(ctx, bv); JS_FreeValue(ctx, bdv); JS_FreeValue(ctx, hv);
+   }
+   int sx, sy; transform_2d_point(px2, py2, &sx, &sy);
+   int tw = transform_2d_size(pw), th = transform_2d_size(ph);
+   draw_rect_pixels(sx, sy, tw, th, bgc, true);
+   draw_rect_pixels(sx, sy, tw, 1, hi, true);  /* top highlight */
+   draw_rect_pixels(sx, sy, tw, th, bdc, false);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_dist(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double x1 = double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0.0);
+   double y1 = double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0.0);
+   double x2 = double_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 0.0);
+   double y2 = double_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, 0.0);
+   double dx = x2 - x1, dy = y2 - y1;
+   return JS_NewFloat64(ctx, sqrt(dx*dx + dy*dy));
+}
+
+static JSValue js_dist3d(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double x1 = double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0.0);
+   double y1 = double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0.0);
+   double z1 = double_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 0.0);
+   double x2 = double_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, 0.0);
+   double y2 = double_from_js(ctx, argc > 4 ? argv[4] : JS_UNDEFINED, 0.0);
+   double z2 = double_from_js(ctx, argc > 5 ? argv[5] : JS_UNDEFINED, 0.0);
+   double dx=x2-x1, dy=y2-y1, dz=z2-z1;
+   return JS_NewFloat64(ctx, sqrt(dx*dx + dy*dy + dz*dz));
+}
+
+static JSValue js_remap(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double v    = double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0.0);
+   double ilo  = double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0.0);
+   double ihi  = double_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 1.0);
+   double olo  = double_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, 0.0);
+   double ohi  = double_from_js(ctx, argc > 4 ? argv[4] : JS_UNDEFINED, 1.0);
+   double span = ihi - ilo;
+   if (fabs(span) < 1e-12) return JS_NewFloat64(ctx, olo);
+   return JS_NewFloat64(ctx, olo + (v - ilo) / span * (ohi - olo));
+}
+
+static JSValue js_deg2rad(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   return JS_NewFloat64(ctx, double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0.0) * (M_PI / 180.0));
+}
+
+static JSValue js_rad2deg(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   return JS_NewFloat64(ctx, double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0.0) * (180.0 / M_PI));
+}
+
+static JSValue js_pulse(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double t   = double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0.0);
+   double freq= double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 1.0);
+   double v = (sin(t * freq * 2.0 * M_PI) * 0.5 + 0.5);
+   return JS_NewFloat64(ctx, v);
+}
+
+static JSValue js_draw_rounded_rect(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int rx2 = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0);
+   int ry2 = int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0);
+   int rw  = int_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 0);
+   int rh  = int_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, 0);
+   int r   = int_from_js(ctx, argc > 4 ? argv[4] : JS_UNDEFINED, 4);
+   uint32_t color = color_from_js(ctx, argc > 5 ? argv[5] : JS_UNDEFINED, rgba8(255,255,255,255));
+   bool filled = (argc > 6) ? JS_ToBool(ctx, argv[6]) != 0 : false;
+   int sx, sy; transform_2d_point(rx2, ry2, &sx, &sy);
+   int tw = transform_2d_size(rw), th = transform_2d_size(rh);
+   int tr = transform_2d_size(r);
+   if (filled)
+      draw_round_rect_fill_pixels(sx, sy, tw, th, tr, color);
+   else
+      draw_rect_pixels(sx, sy, tw, th, color, false);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_draw_starburst(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int scx = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0);
+   int scy = int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0);
+   int sor = int_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 20);
+   int sir = int_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, 10);
+   int spk = int_from_js(ctx, argc > 4 ? argv[4] : JS_UNDEFINED, 5);
+   uint32_t color = color_from_js(ctx, argc > 5 ? argv[5] : JS_UNDEFINED, rgba8(255,255,255,255));
+   bool filled = (argc > 6) ? JS_ToBool(ctx, argv[6]) != 0 : false;
+   if (spk < 2) spk = 2;
+   int n = spk * 2;
+   int spx, spy, fpx, fpy;
+   double a0 = -M_PI * 0.5;
+   transform_2d_point(scx + (int)lrintf(sor * cosf((float)a0)),
+                      scy + (int)lrintf(sor * sinf((float)a0)), &spx, &spy);
+   fpx = spx; fpy = spy;
+   for (int i = 1; i <= n; i++) {
+      double ang = a0 + M_PI * 2.0 * (double)i / (double)n;
+      int radius = (i % 2 == 0) ? sor : sir;
+      int nx = scx + (int)lrintf((float)radius * cosf((float)ang));
+      int ny = scy + (int)lrintf((float)radius * sinf((float)ang));
+      int epx, epy; transform_2d_point(nx, ny, &epx, &epy);
+      if (filled) {
+         int cx2, cy2; transform_2d_point(scx, scy, &cx2, &cy2);
+         path_draw_line_segment(cx2, cy2, spx, spy, color);
+         path_draw_line_segment(cx2, cy2, epx, epy, color);
+      }
+      path_draw_line_segment(spx, spy, epx, epy, color);
+      spx = epx; spy = epy;
+   }
+   path_draw_line_segment(spx, spy, fpx, fpy, color);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_draw_checkerboard(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int cbx = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0);
+   int cby = int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0);
+   int cbw = int_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 64);
+   int cbh = int_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, 64);
+   uint32_t c1 = color_from_js(ctx, argc > 4 ? argv[4] : JS_UNDEFINED, rgba8(0,0,0,255));
+   uint32_t c2 = color_from_js(ctx, argc > 5 ? argv[5] : JS_UNDEFINED, rgba8(255,255,255,255));
+   int csz = argc > 6 ? int_from_js(ctx, argv[6], 8) : 8;
+   if (csz < 1) csz = 1;
+   for (int cy = 0; cy < cbh; cy += csz) {
+      for (int cx = 0; cx < cbw; cx += csz) {
+         int cw2 = (cx + csz > cbw) ? cbw - cx : csz;
+         int ch2 = (cy + csz > cbh) ? cbh - cy : csz;
+         uint32_t fc = ((cx / csz + cy / csz) % 2 == 0) ? c1 : c2;
+         int sx, sy, ex, ey;
+         transform_2d_point(cbx + cx, cby + cy, &sx, &sy);
+         transform_2d_point(cbx + cx + cw2, cby + cy + ch2, &ex, &ey);
+         draw_rect_pixels(sx, sy, ex - sx, ey - sy, fc, true);
+      }
+   }
+   return JS_UNDEFINED;
+}
+
+static JSValue js_draw_scanlines(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double alpha = argc > 0 ? double_from_js(ctx, argv[0], 0.5) : 0.5;
+   int spacing  = argc > 1 ? int_from_js(ctx, argv[1], 2) : 2;
+   if (alpha <= 0.0) return JS_UNDEFINED;
+   if (spacing < 1) spacing = 1;
+   int a = (int)(alpha * 255.0 + 0.5); if (a > 255) a = 255;
+   uint32_t slc = rgba8(0, 0, 0, (uint8_t)a);
+   for (int y = 0; y < NOVA64_HEIGHT; y += spacing) {
+      for (int x = 0; x < NOVA64_WIDTH; x++) set_pixel(x, y, slc);
+   }
+   return JS_UNDEFINED;
+}
+
 /* ── Batch 38: createEmitter2D wrappers, isInvulnerable, isFlashing,  ───── */
 /*              isVisible, createPool, createStateMachine, drawHealthBar       */
 
@@ -20875,6 +21073,20 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, global, "createPool",         js_create_pool,         2);
    set_function(ctx, global, "createStateMachine", js_create_state_machine,1);
    set_function(ctx, global, "drawHealthBar",      js_draw_health_bar,     7);
+
+   /* Batch 39 */
+   set_function(ctx, global, "drawCrosshair",     js_draw_crosshair,    4);
+   set_function(ctx, global, "drawPanel",         js_draw_panel,        5);
+   set_function(ctx, global, "dist",              js_dist,              4);
+   set_function(ctx, global, "dist3d",            js_dist3d,            6);
+   set_function(ctx, global, "remap",             js_remap,             5);
+   set_function(ctx, global, "deg2rad",           js_deg2rad,           1);
+   set_function(ctx, global, "rad2deg",           js_rad2deg,           1);
+   set_function(ctx, global, "pulse",             js_pulse,             2);
+   set_function(ctx, global, "drawRoundedRect",   js_draw_rounded_rect, 7);
+   set_function(ctx, global, "drawStarburst",     js_draw_starburst,    7);
+   set_function(ctx, global, "drawCheckerboard",  js_draw_checkerboard, 7);
+   set_function(ctx, global, "drawScanlines",     js_draw_scanlines,    2);
 
    JS_FreeValue(ctx, global);
    return true;

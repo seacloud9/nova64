@@ -907,5 +907,13 @@ run_visual_case "691 batch53 showcase"      "691-batch53-showcase"     "retroarc
 run_visual_case "692 model stubs"           "692-model-stubs"          "retroarch/conformance/692-model-stubs.js"          "c7afb94176e82566"
 run_visual_case "693 material stubs"        "693-material-stubs"       "retroarch/conformance/693-material-stubs.js"       "e58eff0c1207d79f"
 run_visual_case "703 batch54 showcase"      "703-batch54-showcase"     "retroarch/conformance/703-batch54-showcase.js"     "52103b676eb84799"
+run_visual_case "704 ps3d basic"            "704-ps3d-basic"           "retroarch/conformance/704-ps3d-basic.js"           "d1e6d1d520a2488f"
+run_visual_case "705 debug3d"               "705-debug3d"              "retroarch/conformance/705-debug3d.js"              "9a3b01a200e68e60"
+run_visual_case "715 batch55 showcase"      "715-batch55-showcase"     "retroarch/conformance/715-batch55-showcase.js"     "57e98abc74e0183c"
+run_visual_case "716 scene hierarchy"       "716-scene-hierarchy"      "retroarch/conformance/716-scene-hierarchy.js"      "78fdde6ebcdf1375"
+run_visual_case "717 audio utils"           "717-audio-utils"          "retroarch/conformance/717-audio-utils.js"          "3c57b370d70435ff"
+run_visual_case "727 batch56 showcase"      "727-batch56-showcase"     "retroarch/conformance/727-batch56-showcase.js"     "df43329590844d6d"
+run_visual_case "728 batch57 showcase"      "728-batch57-showcase"     "retroarch/conformance/728-batch57-showcase.js"     "21ccf93875c8360a"
+run_visual_case "739 batch58 showcase"      "739-batch58-showcase"     "retroarch/conformance/739-batch58-showcase.js"     "9f59051c054eb5c1"
 
 echo "Conformance passed."

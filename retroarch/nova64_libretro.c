@@ -839,6 +839,7 @@ static struct nova64_particle_emitter g_emitters[NOVA64_MAX_EMITTERS];
 
 struct nova64_particle3d {
    float x, y, z, vx, vy, vz;
+   float grav_x, grav_y, grav_z;
    float age, lifetime;
    uint32_t color_start, color_end;
    float size_start, size_end;
@@ -1026,6 +1027,8 @@ static struct nova64_tween g_tweens[NOVA64_MAX_TWEENS];
 static struct nova64_audio_voice audio_voices[NOVA64_AUDIO_MAX_VOICES];
 static int16_t audio_mix_buffer[NOVA64_AUDIO_FRAME_SAMPLES * 2];
 static double audio_master_volume = 0.4;
+static float  g_audio_rolloff = 1.0f;
+static float  g_listener_dir[3] = {0.0f, 0.0f, -1.0f};
 
 /* ── Off-screen canvas ────────────────────────────────────── */
 #define NOVA64_MAX_CANVASES 4
@@ -6834,8 +6837,651 @@ static JSValue js_gamepad_connected(JSContext *ctx, JSValueConst this_val, int a
 static JSValue js_right_stick_x(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
    { (void)this_val;(void)argc;(void)argv; return JS_NewFloat64(ctx,(double)analog_axes[0][NOVA64_ANALOG_RIGHT][NOVA64_ANALOG_X]); }
 
-/* forward declarations needed by Batch 51-54 (defined later in file) */
+/* forward declarations needed by Batch 51-58 (defined later in file) */
 static JSValue js_vec3_array(JSContext *ctx, const float value[3]);
+
+/* ── Batch 55: createPS3D, destroyPS3D, emitPS3D, setPS3DPos, setPS3DGravity, ── */
+/*              setPS3DRate, setPS3DColor, setPS3DSize, setPS3DLifetime,            */
+/*              setPS3DSpeed, updatePS3D, drawParticles3D                           */
+
+static void emit_particle_3d_from(struct nova64_ps3d *ps)
+{
+   for (int i = 0; i < NOVA64_MAX_3D_PARTICLES; i++) {
+      if (g_particles3d[i].active) continue;
+      struct nova64_particle3d *p = &g_particles3d[i];
+      p->x = ps->x; p->y = ps->y; p->z = ps->z;
+      float rx = ((float)rand() / (float)RAND_MAX) * 2.0f - 1.0f;
+      float ry = ((float)rand() / (float)RAND_MAX) * 2.0f - 1.0f;
+      float rz = ((float)rand() / (float)RAND_MAX) * 2.0f - 1.0f;
+      float len = sqrtf(rx*rx + ry*ry + rz*rz);
+      if (len < 1e-7f) { rx = 0; ry = 1; rz = 0; len = 1.0f; }
+      float sp = ps->speed_min + ((float)rand() / (float)RAND_MAX) * (ps->speed_max - ps->speed_min);
+      p->vx = (rx / len) * sp * ps->spread;
+      p->vy = (ry / len) * sp * ps->spread;
+      p->vz = (rz / len) * sp * ps->spread;
+      p->grav_x = ps->grav_x;
+      p->grav_y = ps->grav_y;
+      p->grav_z = ps->grav_z;
+      p->age = 0.0f;
+      p->lifetime = ps->lifetime_min + ((float)rand() / (float)RAND_MAX) * (ps->lifetime_max - ps->lifetime_min);
+      if (p->lifetime < 0.01f) p->lifetime = 0.01f;
+      p->color_start = ps->color_start;
+      p->color_end   = ps->color_end;
+      p->size_start  = ps->size_start;
+      p->size_end    = ps->size_end;
+      p->active = 1;
+      break;
+   }
+}
+
+static JSValue js_create_ps3d(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int idx = -1;
+   for (int i = 0; i < NOVA64_MAX_PS3D; i++) { if (!g_ps3d[i].used) { idx = i; break; } }
+   if (idx < 0) return JS_NewInt32(ctx, 0);
+   struct nova64_ps3d *ps = &g_ps3d[idx];
+   memset(ps, 0, sizeof(*ps));
+   ps->used = 1; ps->active = 1;
+   ps->x = (float)double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0.0);
+   ps->y = (float)double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0.0);
+   ps->z = (float)double_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 0.0);
+   ps->grav_y = -4.0f; ps->spread = 1.0f;
+   ps->speed_min = 1.0f; ps->speed_max = 3.0f;
+   ps->lifetime_min = 0.6f; ps->lifetime_max = 1.4f;
+   ps->color_start = 0xffffffff; ps->color_end = 0xffffff00;
+   ps->size_start = 0.12f; ps->size_end = 0.02f;
+   ps->rate = 20.0f;
+   if (argc > 3 && JS_IsObject(argv[3])) {
+      JSValueConst o = argv[3];
+      JSValue v;
+#define PSOPT_F(field, key) v=JS_GetPropertyStr(ctx,o,key); if(!JS_IsUndefined(v)) ps->field=(float)double_from_js(ctx,v,(double)ps->field); JS_FreeValue(ctx,v)
+#define PSOPT_C(field, key) v=JS_GetPropertyStr(ctx,o,key); if(!JS_IsUndefined(v)) ps->field=color_from_js(ctx,v,ps->field); JS_FreeValue(ctx,v)
+      PSOPT_F(rate,"rate"); PSOPT_F(spread,"spread");
+      PSOPT_F(speed_min,"speedMin"); PSOPT_F(speed_max,"speedMax");
+      PSOPT_F(lifetime_min,"lifetimeMin"); PSOPT_F(lifetime_max,"lifetimeMax");
+      PSOPT_F(grav_x,"gravX"); PSOPT_F(grav_y,"gravY"); PSOPT_F(grav_z,"gravZ");
+      PSOPT_F(size_start,"sizeStart"); PSOPT_F(size_end,"sizeEnd");
+      PSOPT_C(color_start,"colorStart"); PSOPT_C(color_end,"colorEnd");
+#undef PSOPT_F
+#undef PSOPT_C
+   }
+   return JS_NewInt32(ctx, idx + 1);
+}
+
+static JSValue js_destroy_ps3d(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)ctx; (void)this_val;
+   int h = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0) - 1;
+   if (h >= 0 && h < NOVA64_MAX_PS3D) memset(&g_ps3d[h], 0, sizeof(g_ps3d[h]));
+   return JS_UNDEFINED;
+}
+
+static JSValue js_emit_ps3d(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int h = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0) - 1;
+   if (h < 0 || h >= NOVA64_MAX_PS3D || !g_ps3d[h].used) return JS_UNDEFINED;
+   int count = int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 1);
+   if (count < 0) count = 0; if (count > 64) count = 64;
+   for (int i = 0; i < count; i++) emit_particle_3d_from(&g_ps3d[h]);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_set_ps3d_pos(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int h = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0) - 1;
+   if (h < 0 || h >= NOVA64_MAX_PS3D || !g_ps3d[h].used) return JS_UNDEFINED;
+   g_ps3d[h].x = (float)double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0.0);
+   g_ps3d[h].y = (float)double_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 0.0);
+   g_ps3d[h].z = (float)double_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, 0.0);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_set_ps3d_gravity(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int h = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0) - 1;
+   if (h < 0 || h >= NOVA64_MAX_PS3D || !g_ps3d[h].used) return JS_UNDEFINED;
+   g_ps3d[h].grav_x = (float)double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0.0);
+   g_ps3d[h].grav_y = (float)double_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, -4.0);
+   g_ps3d[h].grav_z = (float)double_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, 0.0);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_set_ps3d_rate(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int h = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0) - 1;
+   if (h < 0 || h >= NOVA64_MAX_PS3D || !g_ps3d[h].used) return JS_UNDEFINED;
+   g_ps3d[h].rate = (float)clamp_double(double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 20.0), 0.0, 1000.0);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_set_ps3d_color(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int h = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0) - 1;
+   if (h < 0 || h >= NOVA64_MAX_PS3D || !g_ps3d[h].used) return JS_UNDEFINED;
+   g_ps3d[h].color_start = color_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, g_ps3d[h].color_start);
+   g_ps3d[h].color_end   = color_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, g_ps3d[h].color_end);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_set_ps3d_size(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int h = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0) - 1;
+   if (h < 0 || h >= NOVA64_MAX_PS3D || !g_ps3d[h].used) return JS_UNDEFINED;
+   g_ps3d[h].size_start = (float)clamp_double(double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0.1), 0.001, 10.0);
+   g_ps3d[h].size_end   = (float)clamp_double(double_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 0.02), 0.0, 10.0);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_set_ps3d_lifetime(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int h = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0) - 1;
+   if (h < 0 || h >= NOVA64_MAX_PS3D || !g_ps3d[h].used) return JS_UNDEFINED;
+   g_ps3d[h].lifetime_min = (float)clamp_double(double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0.6), 0.01, 60.0);
+   g_ps3d[h].lifetime_max = (float)clamp_double(double_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 1.4), 0.01, 60.0);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_set_ps3d_speed(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int h = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0) - 1;
+   if (h < 0 || h >= NOVA64_MAX_PS3D || !g_ps3d[h].used) return JS_UNDEFINED;
+   g_ps3d[h].speed_min = (float)clamp_double(double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 1.0), 0.0, 100.0);
+   g_ps3d[h].speed_max = (float)clamp_double(double_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 3.0), 0.0, 100.0);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_update_ps3d(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   float dt = (float)clamp_double(double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0.0166), 0.0, 1.0);
+   for (int i = 0; i < NOVA64_MAX_PS3D; i++) {
+      struct nova64_ps3d *ps = &g_ps3d[i];
+      if (!ps->used || !ps->active) continue;
+      ps->rate_accum += ps->rate * dt;
+      int cnt = (int)ps->rate_accum; if (cnt > 32) cnt = 32;
+      ps->rate_accum -= (float)cnt;
+      for (int j = 0; j < cnt; j++) emit_particle_3d_from(ps);
+   }
+   for (int i = 0; i < NOVA64_MAX_3D_PARTICLES; i++) {
+      struct nova64_particle3d *p = &g_particles3d[i];
+      if (!p->active) continue;
+      p->age += dt;
+      if (p->age >= p->lifetime) { p->active = 0; continue; }
+      p->vx += p->grav_x * dt;
+      p->vy += p->grav_y * dt;
+      p->vz += p->grav_z * dt;
+      p->x += p->vx * dt;
+      p->y += p->vy * dt;
+      p->z += p->vz * dt;
+   }
+   return JS_UNDEFINED;
+}
+
+static uint32_t lerp_color_u32(uint32_t a, uint32_t b, float t)
+{
+   uint8_t ar = (a >> 24) & 0xff, ag = (a >> 16) & 0xff, ab_= (a >> 8) & 0xff, aa = a & 0xff;
+   uint8_t br = (b >> 24) & 0xff, bg = (b >> 16) & 0xff, bb_= (b >> 8) & 0xff, ba = b & 0xff;
+   uint8_t r = (uint8_t)(ar + (br - ar) * t);
+   uint8_t g = (uint8_t)(ag + (bg - ag) * t);
+   uint8_t bl2= (uint8_t)(ab_ + (bb_ - ab_) * t);
+   uint8_t al = (uint8_t)(aa + (ba - aa) * t);
+   return ((uint32_t)r << 24) | ((uint32_t)g << 16) | ((uint32_t)bl2 << 8) | al;
+}
+
+static JSValue js_draw_particles_3d(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val; (void)argc; (void)argv;
+   const float *vp = g_last_view_projection;
+   for (int i = 0; i < NOVA64_MAX_3D_PARTICLES; i++) {
+      struct nova64_particle3d *p = &g_particles3d[i];
+      if (!p->active) continue;
+      float cw = vp[3]*p->x + vp[7]*p->y + vp[11]*p->z + vp[15];
+      if (cw <= 0.0f) continue;
+      float ndcx = (vp[0]*p->x + vp[4]*p->y + vp[8]*p->z  + vp[12]) / cw;
+      float ndcy = (vp[1]*p->x + vp[5]*p->y + vp[9]*p->z  + vp[13]) / cw;
+      float ndcz = (vp[2]*p->x + vp[6]*p->y + vp[10]*p->z + vp[14]) / cw;
+      if (ndcx < -1.0f || ndcx > 1.0f || ndcy < -1.0f || ndcy > 1.0f || ndcz < -1.0f || ndcz > 1.0f) continue;
+      int sx = (int)((ndcx + 1.0f) * 0.5f * NOVA64_WIDTH);
+      int sy = (int)((1.0f - ndcy) * 0.5f * NOVA64_HEIGHT);
+      float frac = p->lifetime > 1e-6f ? (p->age / p->lifetime) : 0.0f;
+      uint32_t col = lerp_color_u32(p->color_start, p->color_end, frac);
+      /* project size: approximate pixel radius */
+      float screen_r = (p->size_start + (p->size_end - p->size_start) * frac) * (float)NOVA64_HEIGHT / (2.0f * cw);
+      int r = (int)(screen_r + 0.5f); if (r < 1) r = 1; if (r > 20) r = 20;
+      for (int oy = -r; oy <= r; oy++) {
+         for (int ox = -r; ox <= r; ox++) {
+            if (ox*ox + oy*oy <= r*r)
+               set_pixel(sx + ox, sy + oy, col);
+         }
+      }
+   }
+   return JS_UNDEFINED;
+}
+
+/* ── Batch 56: drawLine3D, drawPoint3D, debugText3D, drawBounds3D,          ── */
+/*              drawAxis3D, screenToWorld, getSceneAABB, getNearestMesh,         */
+/*              getMeshCenter, isPointInBounds, countVisibleMeshes, drawCircle3D  */
+
+static bool project_3d_xy(float wx, float wy, float wz, int *out_sx, int *out_sy)
+{
+   const float *vp = g_last_view_projection;
+   float cw = vp[3]*wx + vp[7]*wy + vp[11]*wz + vp[15];
+   if (cw <= 0.0f) return false;
+   float ndcx = (vp[0]*wx + vp[4]*wy + vp[8]*wz  + vp[12]) / cw;
+   float ndcy = (vp[1]*wx + vp[5]*wy + vp[9]*wz  + vp[13]) / cw;
+   float ndcz = (vp[2]*wx + vp[6]*wy + vp[10]*wz + vp[14]) / cw;
+   if (ndcz < -1.0f || ndcz > 1.0f) return false;
+   *out_sx = (int)((ndcx + 1.0f) * 0.5f * NOVA64_WIDTH);
+   *out_sy = (int)((1.0f - ndcy) * 0.5f * NOVA64_HEIGHT);
+   return true;
+}
+
+static JSValue js_draw_line_3d(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   float x1=(float)double_from_js(ctx,argc>0?argv[0]:JS_UNDEFINED,0.0);
+   float y1=(float)double_from_js(ctx,argc>1?argv[1]:JS_UNDEFINED,0.0);
+   float z1=(float)double_from_js(ctx,argc>2?argv[2]:JS_UNDEFINED,0.0);
+   float x2=(float)double_from_js(ctx,argc>3?argv[3]:JS_UNDEFINED,0.0);
+   float y2=(float)double_from_js(ctx,argc>4?argv[4]:JS_UNDEFINED,0.0);
+   float z2=(float)double_from_js(ctx,argc>5?argv[5]:JS_UNDEFINED,0.0);
+   uint32_t col=color_from_js(ctx,argc>6?argv[6]:JS_UNDEFINED,0xffffffff);
+   int sx1,sy1,sx2,sy2;
+   bool v1=project_3d_xy(x1,y1,z1,&sx1,&sy1);
+   bool v2=project_3d_xy(x2,y2,z2,&sx2,&sy2);
+   if (v1 && v2) draw_line_pixels(sx1,sy1,sx2,sy2,col);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_draw_point_3d(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   float wx=(float)double_from_js(ctx,argc>0?argv[0]:JS_UNDEFINED,0.0);
+   float wy=(float)double_from_js(ctx,argc>1?argv[1]:JS_UNDEFINED,0.0);
+   float wz=(float)double_from_js(ctx,argc>2?argv[2]:JS_UNDEFINED,0.0);
+   int r  = int_from_js(ctx,argc>3?argv[3]:JS_UNDEFINED,3);
+   uint32_t col=color_from_js(ctx,argc>4?argv[4]:JS_UNDEFINED,0xffffffff);
+   if (r < 1) r = 1; if (r > 32) r = 32;
+   int sx,sy;
+   if (!project_3d_xy(wx,wy,wz,&sx,&sy)) return JS_UNDEFINED;
+   for (int oy=-r;oy<=r;oy++) for (int ox=-r;ox<=r;ox++)
+      if (ox*ox+oy*oy<=r*r) set_pixel(sx+ox,sy+oy,col);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_debug_text_3d(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   const char *text = argc > 0 ? JS_ToCString(ctx, argv[0]) : NULL;
+   float wx=(float)double_from_js(ctx,argc>1?argv[1]:JS_UNDEFINED,0.0);
+   float wy=(float)double_from_js(ctx,argc>2?argv[2]:JS_UNDEFINED,0.0);
+   float wz=(float)double_from_js(ctx,argc>3?argv[3]:JS_UNDEFINED,0.0);
+   uint32_t col=color_from_js(ctx,argc>4?argv[4]:JS_UNDEFINED,0xffffffff);
+   int sx,sy;
+   if (text && project_3d_xy(wx,wy,wz,&sx,&sy))
+      draw_text_pixels(text, sx, sy, col);
+   if (text) JS_FreeCString(ctx, text);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_draw_bounds_3d(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   struct nova64_mesh *mesh = mesh_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!mesh) return JS_UNDEFINED;
+   uint32_t col = color_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0xffffffff);
+   float cx=mesh->position[0], cy=mesh->position[1], cz=mesh->position[2];
+   float hx=fabsf(mesh->scale[0])*0.5f, hy=fabsf(mesh->scale[1])*0.5f, hz=fabsf(mesh->scale[2])*0.5f;
+   /* 8 corners */
+   float cr[8][3] = {
+      {cx-hx,cy-hy,cz-hz},{cx+hx,cy-hy,cz-hz},{cx+hx,cy+hy,cz-hz},{cx-hx,cy+hy,cz-hz},
+      {cx-hx,cy-hy,cz+hz},{cx+hx,cy-hy,cz+hz},{cx+hx,cy+hy,cz+hz},{cx-hx,cy+hy,cz+hz}
+   };
+   int edges[12][2] = {{0,1},{1,2},{2,3},{3,0},{4,5},{5,6},{6,7},{7,4},{0,4},{1,5},{2,6},{3,7}};
+   for (int e = 0; e < 12; e++) {
+      int a=edges[e][0], b=edges[e][1];
+      int sx1,sy1,sx2,sy2;
+      if (project_3d_xy(cr[a][0],cr[a][1],cr[a][2],&sx1,&sy1) &&
+          project_3d_xy(cr[b][0],cr[b][1],cr[b][2],&sx2,&sy2))
+         draw_line_pixels(sx1,sy1,sx2,sy2,col);
+   }
+   return JS_UNDEFINED;
+}
+
+static JSValue js_draw_axis_3d(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   float ox=(float)double_from_js(ctx,argc>0?argv[0]:JS_UNDEFINED,0.0);
+   float oy=(float)double_from_js(ctx,argc>1?argv[1]:JS_UNDEFINED,0.0);
+   float oz=(float)double_from_js(ctx,argc>2?argv[2]:JS_UNDEFINED,0.0);
+   float sz=(float)double_from_js(ctx,argc>3?argv[3]:JS_UNDEFINED,1.0);
+   int sx,sy,ex,ey;
+   if (project_3d_xy(ox,oy,oz,&sx,&sy)) {
+      if (project_3d_xy(ox+sz,oy,oz,&ex,&ey)) draw_line_pixels(sx,sy,ex,ey,0xff4040ff);
+      if (project_3d_xy(ox,oy+sz,oz,&ex,&ey)) draw_line_pixels(sx,sy,ex,ey,0x40ff40ff);
+      if (project_3d_xy(ox,oy,oz+sz,&ex,&ey)) draw_line_pixels(sx,sy,ex,ey,0x4080ffff);
+   }
+   return JS_UNDEFINED;
+}
+
+static JSValue js_screen_to_world(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double sxd = double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0.0);
+   double syd = double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0.0);
+   float world_y = (float)double_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 0.0);
+   float ndcx = (float)(sxd / NOVA64_WIDTH)  * 2.0f - 1.0f;
+   float ndcy = 1.0f - (float)(syd / NOVA64_HEIGHT) * 2.0f;
+   float vp_inv[16]; mat4_inverse(vp_inv, g_last_view_projection);
+   /* unproject near and far */
+   float nc[4]={ndcx,ndcy,-1.0f,1.0f}, fc[4]={ndcx,ndcy,1.0f,1.0f};
+   float nw[4],fw[4];
+   for (int i=0;i<4;i++) {
+      nw[i]=vp_inv[i]*nc[0]+vp_inv[i+4]*nc[1]+vp_inv[i+8]*nc[2]+vp_inv[i+12]*nc[3];
+      fw[i]=vp_inv[i]*fc[0]+vp_inv[i+4]*fc[1]+vp_inv[i+8]*fc[2]+vp_inv[i+12]*fc[3];
+   }
+   if (fabsf(nw[3])>1e-7f){nw[0]/=nw[3];nw[1]/=nw[3];nw[2]/=nw[3];}
+   if (fabsf(fw[3])>1e-7f){fw[0]/=fw[3];fw[1]/=fw[3];fw[2]/=fw[3];}
+   /* ray-plane intersection at y=world_y */
+   float dy = fw[1] - nw[1];
+   float t2 = (fabsf(dy) > 1e-7f) ? (world_y - nw[1]) / dy : 0.0f;
+   float wx = nw[0] + t2*(fw[0]-nw[0]);
+   float wz = nw[2] + t2*(fw[2]-nw[2]);
+   JSValue obj=JS_NewObject(ctx);
+   JS_SetPropertyStr(ctx,obj,"x",JS_NewFloat64(ctx,wx));
+   JS_SetPropertyStr(ctx,obj,"y",JS_NewFloat64(ctx,world_y));
+   JS_SetPropertyStr(ctx,obj,"z",JS_NewFloat64(ctx,wz));
+   return obj;
+}
+
+static JSValue js_get_scene_aabb(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val; (void)argc; (void)argv;
+   float mn[3]={1e9f,1e9f,1e9f}, mx[3]={-1e9f,-1e9f,-1e9f};
+   bool any = false;
+   for (int i=0;i<NOVA64_MAX_MESHES;i++) {
+      if (!meshes[i].used) continue;
+      any = true;
+      for (int j=0;j<3;j++) {
+         float h = fabsf(meshes[i].scale[j]) * 0.5f;
+         if (meshes[i].position[j]-h < mn[j]) mn[j]=meshes[i].position[j]-h;
+         if (meshes[i].position[j]+h > mx[j]) mx[j]=meshes[i].position[j]+h;
+      }
+   }
+   if (!any) { for(int j=0;j<3;j++){mn[j]=0;mx[j]=0;} }
+   JSValue obj=JS_NewObject(ctx);
+   JS_SetPropertyStr(ctx,obj,"min",js_vec3_array(ctx,mn));
+   JS_SetPropertyStr(ctx,obj,"max",js_vec3_array(ctx,mx));
+   return obj;
+}
+
+static JSValue js_get_nearest_mesh(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   float qx=(float)double_from_js(ctx,argc>0?argv[0]:JS_UNDEFINED,0.0);
+   float qy=(float)double_from_js(ctx,argc>1?argv[1]:JS_UNDEFINED,0.0);
+   float qz=(float)double_from_js(ctx,argc>2?argv[2]:JS_UNDEFINED,0.0);
+   float best=1e30f; int best_h=0;
+   for (int i=0;i<NOVA64_MAX_MESHES;i++) {
+      if (!meshes[i].used) continue;
+      float dx=meshes[i].position[0]-qx, dy=meshes[i].position[1]-qy, dz=meshes[i].position[2]-qz;
+      float d=dx*dx+dy*dy+dz*dz;
+      if (d<best){best=d;best_h=i+1;}
+   }
+   return JS_NewInt32(ctx, best_h);
+}
+
+static JSValue js_get_mesh_center(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   struct nova64_mesh *mesh = mesh_from_handle(int_from_js(ctx,argc>0?argv[0]:JS_UNDEFINED,0));
+   return mesh ? js_vec3_array(ctx, mesh->position) : JS_NULL;
+}
+
+static JSValue js_is_point_in_bounds(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   struct nova64_mesh *mesh = mesh_from_handle(int_from_js(ctx,argc>0?argv[0]:JS_UNDEFINED,0));
+   if (!mesh) return JS_FALSE;
+   float px=(float)double_from_js(ctx,argc>1?argv[1]:JS_UNDEFINED,0.0);
+   float py=(float)double_from_js(ctx,argc>2?argv[2]:JS_UNDEFINED,0.0);
+   float pz=(float)double_from_js(ctx,argc>3?argv[3]:JS_UNDEFINED,0.0);
+   return JS_NewBool(ctx,
+      fabsf(px-mesh->position[0]) <= fabsf(mesh->scale[0])*0.5f &&
+      fabsf(py-mesh->position[1]) <= fabsf(mesh->scale[1])*0.5f &&
+      fabsf(pz-mesh->position[2]) <= fabsf(mesh->scale[2])*0.5f);
+}
+
+static JSValue js_count_visible_meshes(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;(void)argc;(void)argv;
+   int n=0;
+   for (int i=0;i<NOVA64_MAX_MESHES;i++)
+      if (meshes[i].used && meshes[i].visible && meshes[i].opacity>0.0f) n++;
+   return JS_NewInt32(ctx,n);
+}
+
+static JSValue js_draw_circle_3d(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   float cx=(float)double_from_js(ctx,argc>0?argv[0]:JS_UNDEFINED,0.0);
+   float cy=(float)double_from_js(ctx,argc>1?argv[1]:JS_UNDEFINED,0.0);
+   float cz=(float)double_from_js(ctx,argc>2?argv[2]:JS_UNDEFINED,0.0);
+   float r =(float)double_from_js(ctx,argc>3?argv[3]:JS_UNDEFINED,1.0);
+   uint32_t col=color_from_js(ctx,argc>4?argv[4]:JS_UNDEFINED,0xffffffff);
+   int segs=int_from_js(ctx,argc>5?argv[5]:JS_UNDEFINED,16);
+   if (segs<3) segs=3; if (segs>64) segs=64;
+   int px0,py0,px1,py1;
+   bool prev=false;
+   for (int i=0;i<=segs;i++) {
+      float a=(float)i/(float)segs * (float)(2.0*M_PI);
+      float wx=cx+cosf(a)*r, wz=cz+sinf(a)*r;
+      if (project_3d_xy(wx,cy,wz,&px1,&py1)) {
+         if (prev) draw_line_pixels(px0,py0,px1,py1,col);
+         px0=px1; py0=py1; prev=true;
+      } else { prev=false; }
+   }
+   return JS_UNDEFINED;
+}
+
+/* ── Batch 57: attachMesh, detachMesh, getChildren, getParent,              ── */
+/*              setCRT, setVignette, setBloom, setChromatic,                     */
+/*              setPixelate, setPosterize, resetPost, getPostState               */
+
+static JSValue js_attach_mesh(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)ctx; (void)this_val;
+   int child_h  = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0);
+   int parent_h = int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0);
+   struct nova64_mesh *child = mesh_from_handle(child_h);
+   if (!child || child_h == parent_h) return JS_UNDEFINED;
+   child->parent_handle = (parent_h > 0 && parent_h <= NOVA64_MAX_MESHES) ? parent_h : 0;
+   return JS_UNDEFINED;
+}
+
+static JSValue js_detach_mesh(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)ctx; (void)this_val;
+   struct nova64_mesh *mesh = mesh_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (mesh) mesh->parent_handle = 0;
+   return JS_UNDEFINED;
+}
+
+static JSValue js_get_children(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int parent_h = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0);
+   JSValue arr = JS_NewArray(ctx);
+   uint32_t n = 0;
+   for (int i = 0; i < NOVA64_MAX_MESHES; i++) {
+      if (meshes[i].used && meshes[i].parent_handle == parent_h)
+         JS_SetPropertyUint32(ctx, arr, n++, JS_NewInt32(ctx, i + 1));
+   }
+   return arr;
+}
+
+static JSValue js_get_parent(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   struct nova64_mesh *mesh = mesh_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   return JS_NewInt32(ctx, mesh ? mesh->parent_handle : 0);
+}
+
+static JSValue js_set_crt(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double v = clamp_double(double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0.0), 0.0, 1.0);
+   post_state.crt_enabled = (v > 0.5);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_set_vignette(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   post_state.vignette = (float)clamp_double(double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0.0), 0.0, 2.0);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_set_bloom_global(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   post_state.bloom = (float)clamp_double(double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0.0), 0.0, 1.0);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_set_chromatic_global(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   post_state.chromatic = (float)clamp_double(double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0.0), 0.0, 1.0);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_set_pixelate_global(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int v = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 1);
+   if (v < 1) v = 1; if (v > 32) v = 32;
+   post_state.pixelate = v;
+   return JS_UNDEFINED;
+}
+
+static JSValue js_set_posterize_global(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int v = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0);
+   if (v < 0) v = 0; if (v > 32) v = 32;
+   post_state.posterize = v;
+   return JS_UNDEFINED;
+}
+
+static JSValue js_reset_post(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)ctx; (void)this_val; (void)argc; (void)argv;
+   post_state.crt_enabled = false; post_state.vignette = 0.0f;
+   post_state.bloom = 0.0f; post_state.chromatic = 0.0f;
+   post_state.pixelate = 0; post_state.posterize = 0;
+   post_state.color_grade[0] = 1.0f; post_state.color_grade[1] = 1.0f; post_state.color_grade[2] = 1.0f;
+   return JS_UNDEFINED;
+}
+
+/* forward declaration — defined later in file */
+static JSValue js_post_get_state(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv);
+
+static JSValue js_get_post_state(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+   { return js_post_get_state(ctx, this_val, argc, argv); }
+
+/* ── Batch 58: setMasterVolume, getMasterVolume, isMusicPlaying,            ── */
+/*              getActiveSoundCount, setListenerDir, getListenerPos,             */
+/*              setAudioRolloff, getAudioRolloff, stopAllSounds,                 */
+/*              setColorGrade, crossfade (JS), scheduleSound (JS)                */
+
+static JSValue js_set_master_volume(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   audio_master_volume = clamp_double(double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0.4), 0.0, 2.0);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_get_master_volume(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+   { (void)this_val;(void)argc;(void)argv; return JS_NewFloat64(ctx, audio_master_volume); }
+
+static JSValue js_is_music_playing(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;(void)argc;(void)argv;
+   for (size_t i = 0; i < NOVA64_AUDIO_MAX_VOICES; i++) {
+      if (audio_voices[i].active && audio_voices[i].pcm_loop)
+         return JS_TRUE;
+   }
+   return JS_FALSE;
+}
+
+static JSValue js_get_active_sound_count(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;(void)argc;(void)argv;
+   int n = 0;
+   for (size_t i = 0; i < NOVA64_AUDIO_MAX_VOICES; i++)
+      if (audio_voices[i].active) n++;
+   return JS_NewInt32(ctx, n);
+}
+
+static JSValue js_set_listener_dir(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   g_listener_dir[0] = (float)double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0.0);
+   g_listener_dir[1] = (float)double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0.0);
+   g_listener_dir[2] = (float)double_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, -1.0);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_get_listener_pos(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+   { (void)this_val;(void)argc;(void)argv; return js_vec3_array(ctx, listener_pos); }
+
+static JSValue js_set_audio_rolloff(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   g_audio_rolloff = (float)clamp_double(double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 1.0), 0.0, 100.0);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_get_audio_rolloff(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+   { (void)this_val;(void)argc;(void)argv; return JS_NewFloat64(ctx, g_audio_rolloff); }
+
+/* js_stop_all_sounds already defined later in file — forward declaration */
+static JSValue js_stop_all_sounds(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv);
+
+static JSValue js_set_color_grade(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   post_state.color_grade[0] = (float)clamp_double(double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 1.0), 0.0, 4.0);
+   post_state.color_grade[1] = (float)clamp_double(double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 1.0), 0.0, 4.0);
+   post_state.color_grade[2] = (float)clamp_double(double_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 1.0), 0.0, 4.0);
+   return JS_UNDEFINED;
+}
+
+/* crossfade(fromHandle, toHandle, duration): immediately mutes fromHandle, unmutes toHandle */
+static JSValue js_crossfade(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int from = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0);
+   int to   = int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0);
+   /* duration ignored in stub — instant crossfade */
+   if (from >= 1 && from <= (int)NOVA64_AUDIO_MAX_VOICES) audio_voices[from-1].active = false;
+   if (to   >= 1 && to   <= (int)NOVA64_AUDIO_MAX_VOICES) audio_voices[to-1].vol = 1.0f;
+   return JS_UNDEFINED;
+}
+
+/* scheduleSound: stub — delay argument ignored, plays immediately */
+static JSValue js_schedule_sound(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+   { (void)ctx;(void)this_val;(void)argc;(void)argv; return JS_UNDEFINED; }
 
 /* ── Batch 51: createTorus, createCone, setMeshWireframe, setMeshDoubleSided, ── */
 /*              cloneMesh, getMeshBounds, setMeshLayer, getMeshLayer,              */
@@ -24170,6 +24816,62 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, global, "createCustomMaterial",js_create_custom_material,  1);
    set_function(ctx, global, "destroyMaterial",     js_destroy_material,        1);
    set_function(ctx, global, "setMeshMaterial",     js_set_mesh_material,       2);
+
+   /* Batch 55 */
+   set_function(ctx, global, "createPS3D",          js_create_ps3d,             4);
+   set_function(ctx, global, "destroyPS3D",         js_destroy_ps3d,            1);
+   set_function(ctx, global, "emitPS3D",            js_emit_ps3d,               2);
+   set_function(ctx, global, "setPS3DPos",          js_set_ps3d_pos,            4);
+   set_function(ctx, global, "setPS3DGravity",      js_set_ps3d_gravity,        4);
+   set_function(ctx, global, "setPS3DRate",         js_set_ps3d_rate,           2);
+   set_function(ctx, global, "setPS3DColor",        js_set_ps3d_color,          3);
+   set_function(ctx, global, "setPS3DSize",         js_set_ps3d_size,           3);
+   set_function(ctx, global, "setPS3DLifetime",     js_set_ps3d_lifetime,       3);
+   set_function(ctx, global, "setPS3DSpeed",        js_set_ps3d_speed,          3);
+   set_function(ctx, global, "updatePS3D",          js_update_ps3d,             1);
+   set_function(ctx, global, "drawParticles3D",     js_draw_particles_3d,       0);
+
+   /* Batch 56 */
+   set_function(ctx, global, "drawLine3D",          js_draw_line_3d,            7);
+   set_function(ctx, global, "drawPoint3D",         js_draw_point_3d,           5);
+   set_function(ctx, global, "debugText3D",         js_debug_text_3d,           5);
+   set_function(ctx, global, "drawBounds3D",        js_draw_bounds_3d,          2);
+   set_function(ctx, global, "drawAxis3D",          js_draw_axis_3d,            5);
+   set_function(ctx, global, "screenToWorld",       js_screen_to_world,         3);
+   set_function(ctx, global, "getSceneAABB",        js_get_scene_aabb,          0);
+   set_function(ctx, global, "getNearestMesh",      js_get_nearest_mesh,        3);
+   set_function(ctx, global, "getMeshCenter",       js_get_mesh_center,         1);
+   set_function(ctx, global, "isPointInBounds",     js_is_point_in_bounds,      4);
+   set_function(ctx, global, "countVisibleMeshes",  js_count_visible_meshes,    0);
+   set_function(ctx, global, "drawCircle3D",        js_draw_circle_3d,          6);
+
+   /* Batch 57 */
+   set_function(ctx, global, "attachMesh",          js_attach_mesh,             2);
+   set_function(ctx, global, "detachMesh",          js_detach_mesh,             1);
+   set_function(ctx, global, "getChildren",         js_get_children,            1);
+   set_function(ctx, global, "getParent",           js_get_parent,              1);
+   set_function(ctx, global, "setCRT",              js_set_crt,                 1);
+   set_function(ctx, global, "setVignette",         js_set_vignette,            1);
+   set_function(ctx, global, "setBloom",            js_set_bloom_global,        1);
+   set_function(ctx, global, "setChromatic",        js_set_chromatic_global,    1);
+   set_function(ctx, global, "setPixelate",         js_set_pixelate_global,     1);
+   set_function(ctx, global, "setPosterize",        js_set_posterize_global,    1);
+   set_function(ctx, global, "resetPost",           js_reset_post,              0);
+   set_function(ctx, global, "getPostState",        js_get_post_state,          0);
+
+   /* Batch 58 */
+   set_function(ctx, global, "setMasterVolume",     js_set_master_volume,       1);
+   set_function(ctx, global, "getMasterVolume",     js_get_master_volume,       0);
+   set_function(ctx, global, "isMusicPlaying",      js_is_music_playing,        0);
+   set_function(ctx, global, "getActiveSoundCount", js_get_active_sound_count,  0);
+   set_function(ctx, global, "setListenerDir",      js_set_listener_dir,        3);
+   set_function(ctx, global, "getListenerPos",      js_get_listener_pos,        0);
+   set_function(ctx, global, "setAudioRolloff",     js_set_audio_rolloff,       1);
+   set_function(ctx, global, "getAudioRolloff",     js_get_audio_rolloff,       0);
+   set_function(ctx, global, "stopAllSounds",       js_stop_all_sounds,         0);
+   set_function(ctx, global, "setColorGrade",       js_set_color_grade,         3);
+   set_function(ctx, global, "crossfade",           js_crossfade,               3);
+   set_function(ctx, global, "scheduleSound",       js_schedule_sound,          2);
 
    JS_FreeValue(ctx, global);
    return true;

@@ -923,5 +923,13 @@ run_visual_case "750 batch59 showcase"      "750-batch59-showcase"     "retroarc
 run_visual_case "761 batch60 showcase"      "761-batch60-showcase"     "retroarch/conformance/761-batch60-showcase.js"     "3db81b9b51fbdd07"
 run_visual_case "772 batch61 showcase"      "772-batch61-showcase"     "retroarch/conformance/772-batch61-showcase.js"     "89f553d81f326f5b"
 run_visual_case "783 batch62 showcase"      "783-batch62-showcase"     "retroarch/conformance/783-batch62-showcase.js"     "d2ff72ac8fd2b023"
+run_visual_case "784 physics2d"            "784-physics2d"            "retroarch/conformance/784-physics2d.js"            "05d776216eec203f"
+run_visual_case "785 splines"              "785-splines"              "retroarch/conformance/785-splines.js"              "d861eff803da41f0"
+run_visual_case "786 world labels"         "786-world-labels"         "retroarch/conformance/786-world-labels.js"         "33b7b50aff01600f"
+run_visual_case "787 camera helpers"       "787-camera-helpers"       "retroarch/conformance/787-camera-helpers.js"       "64a8fb652a5d0745"
+run_visual_case "794 batch63 showcase"     "794-batch63-showcase"     "retroarch/conformance/794-batch63-showcase.js"     "72ba4cb36e482ad7"
+run_visual_case "805 batch64 showcase"     "805-batch64-showcase"     "retroarch/conformance/805-batch64-showcase.js"     "f230d990164e21a8"
+run_visual_case "816 batch65 showcase"     "816-batch65-showcase"     "retroarch/conformance/816-batch65-showcase.js"     "3f696112a35ab817"
+run_visual_case "827 batch66 showcase"     "827-batch66-showcase"     "retroarch/conformance/827-batch66-showcase.js"     "706434214e09104d"
 
 echo "Conformance passed."

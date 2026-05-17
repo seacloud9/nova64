@@ -582,6 +582,7 @@ static char storage_cart_id[128];
 static bool initialized;
 static uint64_t frame_count;
 static double   g_last_dt = 0.016;
+static uint32_t g_global_seed = 0;
 
 static bool buttons[NOVA64_BUTTON_COUNT];
 static bool previous_buttons[NOVA64_BUTTON_COUNT];
@@ -6352,6 +6353,160 @@ static JSValue js_vec_lerp(JSContext *ctx, JSValueConst this_val, int argc, JSVa
    JSValue obj = JS_NewObject(ctx);
    JS_SetPropertyStr(ctx, obj, "x", JS_NewFloat64(ctx, x1 + (x2-x1)*t));
    JS_SetPropertyStr(ctx, obj, "y", JS_NewFloat64(ctx, y1 + (y2-y1)*t));
+   return obj;
+}
+
+/* ── Batch 45: aabb, circleOverlap, drawRect, rngRandom, rngFloat,        ── */
+/*              rngPick, rngShuffle, createSeedFromHash, getSeed, setSeed,     */
+/*              perpVec2, n64Palette                                           */
+
+/* aabb(ax,ay,aw,ah, bx,by,bw,bh) → bool — axis-aligned rect overlap */
+static JSValue js_aabb(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 8) return JS_FALSE;
+   double ax = double_from_js(ctx, argv[0], 0), ay = double_from_js(ctx, argv[1], 0);
+   double aw = double_from_js(ctx, argv[2], 0), ah = double_from_js(ctx, argv[3], 0);
+   double bx = double_from_js(ctx, argv[4], 0), by = double_from_js(ctx, argv[5], 0);
+   double bw = double_from_js(ctx, argv[6], 0), bh = double_from_js(ctx, argv[7], 0);
+   return JS_NewBool(ctx, ax < bx + bw && ax + aw > bx && ay < by + bh && ay + ah > by);
+}
+
+/* circleOverlap(ax,ay,ar, bx,by,br) → bool — circle-circle overlap */
+static JSValue js_circle_overlap(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 6) return JS_FALSE;
+   double ax = double_from_js(ctx, argv[0], 0), ay = double_from_js(ctx, argv[1], 0);
+   double ar = double_from_js(ctx, argv[2], 0);
+   double bx = double_from_js(ctx, argv[3], 0), by = double_from_js(ctx, argv[4], 0);
+   double br = double_from_js(ctx, argv[5], 0);
+   double dx = ax - bx, dy = ay - by, sr = ar + br;
+   return JS_NewBool(ctx, dx * dx + dy * dy <= sr * sr);
+}
+
+/* drawRect(x, y, w, h, color) — filled rect in (x,y,w,h) form */
+static JSValue js_draw_rect(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 5) return JS_UNDEFINED;
+   int x  = int_from_js(ctx, argv[0], 0) - cam2d_x;
+   int y  = int_from_js(ctx, argv[1], 0) - cam2d_y;
+   int w  = int_from_js(ctx, argv[2], 0);
+   int h  = int_from_js(ctx, argv[3], 0);
+   uint32_t c = color_from_js(ctx, argv[4], 0xffffffff);
+   draw_rect_pixels(x, y, w, h, c, 1);
+   return JS_UNDEFINED;
+}
+
+/* rngRandom(handle) → float [0,1) */
+static JSValue js_rng_random(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int idx = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0) - 1;
+   if (idx < 0 || idx >= NOVA64_MAX_RNGS || !g_rngs[idx].used) return JS_NewFloat64(ctx, 0.0);
+   g_rngs[idx].seed = g_rngs[idx].seed * 1664525u + 1013904223u;
+   return JS_NewFloat64(ctx, (double)(g_rngs[idx].seed >> 8) / (double)0x00ffffffu);
+}
+
+/* rngFloat(handle, min, max) → float [min, max) */
+static JSValue js_rng_float(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 3) return JS_NewFloat64(ctx, 0.0);
+   int idx = int_from_js(ctx, argv[0], 0) - 1;
+   if (idx < 0 || idx >= NOVA64_MAX_RNGS || !g_rngs[idx].used) return JS_NewFloat64(ctx, 0.0);
+   double lo = double_from_js(ctx, argv[1], 0.0);
+   double hi = double_from_js(ctx, argv[2], 1.0);
+   g_rngs[idx].seed = g_rngs[idx].seed * 1664525u + 1013904223u;
+   double t = (double)(g_rngs[idx].seed >> 8) / (double)0x00ffffffu;
+   return JS_NewFloat64(ctx, lo + t * (hi - lo));
+}
+
+/* rngPick(handle, array) → random element */
+static JSValue js_rng_pick(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 2) return JS_UNDEFINED;
+   int idx = int_from_js(ctx, argv[0], 0) - 1;
+   if (idx < 0 || idx >= NOVA64_MAX_RNGS || !g_rngs[idx].used) return JS_UNDEFINED;
+   int64_t len = 0;
+   JSValue lenval = JS_GetPropertyStr(ctx, argv[1], "length");
+   JS_ToInt64(ctx, &len, lenval);
+   JS_FreeValue(ctx, lenval);
+   if (len <= 0) return JS_UNDEFINED;
+   g_rngs[idx].seed = g_rngs[idx].seed * 1664525u + 1013904223u;
+   int pick = (int)(g_rngs[idx].seed % (uint32_t)len);
+   return JS_GetPropertyUint32(ctx, argv[1], (uint32_t)pick);
+}
+
+/* rngShuffle(handle, array) — Fisher-Yates in-place shuffle */
+static JSValue js_rng_shuffle(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 2) return JS_UNDEFINED;
+   int idx = int_from_js(ctx, argv[0], 0) - 1;
+   if (idx < 0 || idx >= NOVA64_MAX_RNGS || !g_rngs[idx].used) return JS_UNDEFINED;
+   int64_t len = 0;
+   JSValue lenval = JS_GetPropertyStr(ctx, argv[1], "length");
+   JS_ToInt64(ctx, &len, lenval);
+   JS_FreeValue(ctx, lenval);
+   for (int64_t i = len - 1; i > 0; i--) {
+      g_rngs[idx].seed = g_rngs[idx].seed * 1664525u + 1013904223u;
+      int64_t j = g_rngs[idx].seed % (uint32_t)(i + 1);
+      JSValue a = JS_GetPropertyUint32(ctx, argv[1], (uint32_t)i);
+      JSValue b = JS_GetPropertyUint32(ctx, argv[1], (uint32_t)j);
+      JS_SetPropertyUint32(ctx, argv[1], (uint32_t)i, b);
+      JS_SetPropertyUint32(ctx, argv[1], (uint32_t)j, a);
+   }
+   return JS_UNDEFINED;
+}
+
+/* createSeedFromHash(str) → uint32 — FNV-1a hash of string */
+static JSValue js_create_seed_from_hash(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 1) return JS_NewInt32(ctx, 0);
+   const char *s = JS_ToCString(ctx, argv[0]);
+   if (!s) return JS_NewInt32(ctx, 0);
+   uint32_t hash = 0x811c9dc5u;
+   const char *p = s;
+   /* Skip leading 0x if present */
+   if (p[0] == '0' && (p[1] == 'x' || p[1] == 'X')) p += 2;
+   while (*p) {
+      hash ^= (uint8_t)*p++;
+      hash *= 0x01000193u;
+   }
+   JS_FreeCString(ctx, s);
+   return JS_NewInt32(ctx, (int32_t)hash);
+}
+
+/* getSeed() → current global seed */
+static JSValue js_get_seed(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val; (void)argc; (void)argv;
+   return JS_NewInt32(ctx, (int32_t)g_global_seed);
+}
+
+/* setSeed(n) — set global seed */
+static JSValue js_set_seed(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   uint32_t seed = argc > 0 ? (uint32_t)int_from_js(ctx, argv[0], 0) : 0u;
+   g_global_seed = seed;
+   srand(seed);
+   return JS_NewInt32(ctx, (int32_t)seed);
+}
+
+/* perpVec2(x, y) → {x: -y, y: x} — 90° CCW perpendicular */
+static JSValue js_perp_vec2(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   double vx = double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0.0);
+   double vy = double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0.0);
+   JSValue obj = JS_NewObject(ctx);
+   JS_SetPropertyStr(ctx, obj, "x", JS_NewFloat64(ctx, -vy));
+   JS_SetPropertyStr(ctx, obj, "y", JS_NewFloat64(ctx,  vx));
    return obj;
 }
 
@@ -22437,6 +22592,42 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, global, "dotVec2",         js_dot_vec2,         4);
    set_function(ctx, global, "magVec2",         js_mag_vec2,         2);
    set_function(ctx, global, "angleVec2",       js_angle_vec2,       2);
+
+   /* Batch 45 */
+   set_function(ctx, global, "aabb",             js_aabb,                8);
+   set_function(ctx, global, "circleOverlap",    js_circle_overlap,      6);
+   set_function(ctx, global, "drawRect",         js_draw_rect,           5);
+   set_function(ctx, global, "rngRandom",        js_rng_random,          1);
+   set_function(ctx, global, "rngFloat",         js_rng_float,           3);
+   set_function(ctx, global, "rngPick",          js_rng_pick,            2);
+   set_function(ctx, global, "rngShuffle",       js_rng_shuffle,         2);
+   set_function(ctx, global, "createSeedFromHash", js_create_seed_from_hash, 1);
+   set_function(ctx, global, "getSeed",          js_get_seed,            0);
+   set_function(ctx, global, "setSeed",          js_set_seed,            1);
+   set_function(ctx, global, "perpVec2",         js_perp_vec2,           2);
+   /* n64Palette constant object */
+   {
+      JSValue pal = JS_NewObject(ctx);
+      JS_SetPropertyStr(ctx, pal, "black",     JS_NewInt32(ctx, (int32_t)0x000000ffu));
+      JS_SetPropertyStr(ctx, pal, "white",     JS_NewInt32(ctx, (int32_t)0xffffffffu));
+      JS_SetPropertyStr(ctx, pal, "red",       JS_NewInt32(ctx, (int32_t)0xdc1e1effu));
+      JS_SetPropertyStr(ctx, pal, "green",     JS_NewInt32(ctx, (int32_t)0x1ec83cffu));
+      JS_SetPropertyStr(ctx, pal, "blue",      JS_NewInt32(ctx, (int32_t)0x1e50dcffu));
+      JS_SetPropertyStr(ctx, pal, "yellow",    JS_NewInt32(ctx, (int32_t)0xffdc00ffu));
+      JS_SetPropertyStr(ctx, pal, "cyan",      JS_NewInt32(ctx, (int32_t)0x00dcdcffu));
+      JS_SetPropertyStr(ctx, pal, "magenta",   JS_NewInt32(ctx, (int32_t)0xc800c8ffu));
+      JS_SetPropertyStr(ctx, pal, "orange",    JS_NewInt32(ctx, (int32_t)0xff8c00ffu));
+      JS_SetPropertyStr(ctx, pal, "purple",    JS_NewInt32(ctx, (int32_t)0x7800c8ffu));
+      JS_SetPropertyStr(ctx, pal, "teal",      JS_NewInt32(ctx, (int32_t)0x00a0a0ffu));
+      JS_SetPropertyStr(ctx, pal, "brown",     JS_NewInt32(ctx, (int32_t)0x8c501effu));
+      JS_SetPropertyStr(ctx, pal, "grey",      JS_NewInt32(ctx, (int32_t)0x808080ffu));
+      JS_SetPropertyStr(ctx, pal, "darkGrey",  JS_NewInt32(ctx, (int32_t)0x3c3c3cffu));
+      JS_SetPropertyStr(ctx, pal, "lightGrey", JS_NewInt32(ctx, (int32_t)0xc8c8c8ffu));
+      JS_SetPropertyStr(ctx, pal, "sky",       JS_NewInt32(ctx, (int32_t)0x4682c8ffu));
+      JS_SetPropertyStr(ctx, pal, "gold",      JS_NewInt32(ctx, (int32_t)0xffd232ffu));
+      JS_SetPropertyStr(ctx, pal, "silver",    JS_NewInt32(ctx, (int32_t)0xc0c0d2ffu));
+      JS_SetPropertyStr(ctx, global, "n64Palette", pal);
+   }
 
    JS_FreeValue(ctx, global);
    return true;

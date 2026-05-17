@@ -873,5 +873,8 @@ run_visual_case "571 batch43 showcase"    "571-batch43-showcase"     "retroarch/
 run_visual_case "572 camera2d"            "572-camera2d"             "retroarch/conformance/572-camera2d.js"             "f806e9022487a2c3"
 run_visual_case "573 tween vec2"          "573-tween-vec2"           "retroarch/conformance/573-tween-vec2.js"           "a007066d88dc9c7f"
 run_visual_case "583 batch44 showcase"    "583-batch44-showcase"     "retroarch/conformance/583-batch44-showcase.js"     "affa9caca735a9aa"
+run_visual_case "584 aabb drawrect"       "584-aabb-drawrect"        "retroarch/conformance/584-aabb-drawrect.js"        "c6c1d256a9c39fca"
+run_visual_case "585 rng seed"            "585-rng-seed"             "retroarch/conformance/585-rng-seed.js"             "c93e26444571f963"
+run_visual_case "595 batch45 showcase"    "595-batch45-showcase"     "retroarch/conformance/595-batch45-showcase.js"     "20947972acaf6806"
 
 echo "Conformance passed."

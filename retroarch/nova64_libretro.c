@@ -1128,6 +1128,56 @@ static struct nova64_world_label g_world_labels[NOVA64_MAX_WORLD_LABELS];
 /* ── Batch 66: Camera roll ──────────────────────────────────── */
 static float g_camera_roll = 0.0f;
 
+/* ── Batch 78: Scrolling starfield ──────────────────────────── */
+#define NOVA64_MAX_STARFIELDS  4
+#define NOVA64_MAX_STARS       192
+struct nova64_star {
+   float x, y;
+   int   layer;   /* 0=far, 1=mid, 2=near */
+};
+struct nova64_starfield {
+   bool               used;
+   struct nova64_star stars[NOVA64_MAX_STARS];
+   int                count;
+   float              speed;   /* base scroll speed px/s (layer multiplied) */
+   float              angle;   /* scroll direction radians; 0=right, PI/2=down */
+   uint32_t           col_far, col_mid, col_near;
+};
+static struct nova64_starfield g_starfields[NOVA64_MAX_STARFIELDS];
+
+/* ── Batch 77: Animated HP bars ─────────────────────────────── */
+#define NOVA64_MAX_HP_BARS 16
+struct nova64_hp_bar {
+   bool     used;
+   int      x, y, w, h;
+   float    max_hp;
+   float    current_hp;   /* actual HP */
+   float    display_hp;   /* animated display value chasing current_hp */
+   float    speed;        /* display units per second */
+   uint32_t bg_color;
+   uint32_t fg_color;
+   uint32_t dmg_color;    /* lag bar color (shows recent damage) */
+};
+static struct nova64_hp_bar g_hp_bars[NOVA64_MAX_HP_BARS];
+
+/* ── Batch 76: 2D bullet pool ────────────────────────────────── */
+#define NOVA64_MAX_BULLET_POOLS      4
+#define NOVA64_MAX_BULLETS_PER_POOL  128
+struct nova64_bullet {
+   bool     active;
+   float    x, y, vx, vy;
+   float    life;     /* remaining seconds */
+   float    max_life;
+   uint32_t color;
+   int      radius;
+};
+struct nova64_bullet_pool {
+   bool                 used;
+   struct nova64_bullet bullets[NOVA64_MAX_BULLETS_PER_POOL];
+   int                  cap;   /* max usable slots */
+};
+static struct nova64_bullet_pool g_bullet_pools[NOVA64_MAX_BULLET_POOLS];
+
 /* ── Batch 75: Animated numeric counters ────────────────────── */
 #define NOVA64_MAX_COUNTERS 8
 struct nova64_counter {
@@ -9352,6 +9402,334 @@ static JSValue js_destroy_color_ramp(JSContext *ctx, JSValueConst this_val, int 
    if (!ramp) return JS_NewBool(ctx, false);
    memset(ramp, 0, sizeof(*ramp));
    return JS_NewBool(ctx, true);
+}
+
+/* ── Batch 78: createStarfield, updateStarfield, drawStarfield,               ── */
+/*              setStarfieldSpeed, setStarfieldAngle, setStarfieldColors,        */
+/*              destroyStarfield                                                  */
+
+static int alloc_starfield(void) {
+   for (int i = 0; i < NOVA64_MAX_STARFIELDS; i++)
+      if (!g_starfields[i].used) { g_starfields[i].used = true; return i + 1; }
+   return 0;
+}
+static struct nova64_starfield *sf_from_handle(int h) {
+   if (h < 1 || h > NOVA64_MAX_STARFIELDS) return NULL;
+   return g_starfields[h-1].used ? &g_starfields[h-1] : NULL;
+}
+
+static void starfield_seed(struct nova64_starfield *sf, int count) {
+   if (count < 1)  count = 1;
+   if (count > NOVA64_MAX_STARS) count = NOVA64_MAX_STARS;
+   sf->count = count;
+   /* deterministic LCG seed */
+   uint32_t rng = 0xdeadbeef;
+   for (int i = 0; i < count; i++) {
+      rng = rng * 1664525u + 1013904223u;
+      sf->stars[i].x = (float)(rng & 0xffff) / 65535.0f * NOVA64_WIDTH;
+      rng = rng * 1664525u + 1013904223u;
+      sf->stars[i].y = (float)(rng & 0xffff) / 65535.0f * NOVA64_HEIGHT;
+      sf->stars[i].layer = i % 3;
+   }
+}
+
+static JSValue js_create_starfield(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   int h = alloc_starfield();
+   if (!h) return JS_NewInt32(ctx, 0);
+   struct nova64_starfield *sf = &g_starfields[h-1];
+   int count = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 120);
+   sf->speed     = (float)double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 40.0);
+   sf->angle     = (float)(M_PI / 2.0); /* default: scroll downward */
+   sf->col_far   = rgba8(60,  70,  100, 160);
+   sf->col_mid   = rgba8(120, 140, 180, 200);
+   sf->col_near  = rgba8(200, 220, 255, 255);
+   starfield_seed(sf, count);
+   return JS_NewInt32(ctx, h);
+}
+
+static JSValue js_update_starfield(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   struct nova64_starfield *sf = sf_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!sf) return JS_UNDEFINED;
+   float dt  = (float)double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0.0);
+   float dx  = cosf(sf->angle);
+   float dy  = sinf(sf->angle);
+   float mults[3] = { 0.3f, 0.6f, 1.0f };
+   for (int i = 0; i < sf->count; i++) {
+      float m = mults[sf->stars[i].layer];
+      sf->stars[i].x += dx * sf->speed * m * dt;
+      sf->stars[i].y += dy * sf->speed * m * dt;
+      /* wrap */
+      if      (sf->stars[i].x < 0)              sf->stars[i].x += NOVA64_WIDTH;
+      else if (sf->stars[i].x >= NOVA64_WIDTH)   sf->stars[i].x -= NOVA64_WIDTH;
+      if      (sf->stars[i].y < 0)              sf->stars[i].y += NOVA64_HEIGHT;
+      else if (sf->stars[i].y >= NOVA64_HEIGHT)  sf->stars[i].y -= NOVA64_HEIGHT;
+   }
+   return JS_UNDEFINED;
+}
+
+static JSValue js_draw_starfield(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   struct nova64_starfield *sf = sf_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!sf) return JS_UNDEFINED;
+   uint32_t cols[3] = { sf->col_far, sf->col_mid, sf->col_near };
+   int       sizes[3] = { 1, 1, 2 };
+   for (int i = 0; i < sf->count; i++) {
+      int lyr = sf->stars[i].layer;
+      int sx  = (int)sf->stars[i].x;
+      int sy  = (int)sf->stars[i].y;
+      int sz  = sizes[lyr];
+      draw_rect_pixels(sx, sy, sz, sz, cols[lyr], true);
+   }
+   return JS_UNDEFINED;
+}
+
+static JSValue js_set_starfield_speed(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   struct nova64_starfield *sf = sf_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!sf) return JS_UNDEFINED;
+   sf->speed = (float)double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, (double)sf->speed);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_set_starfield_angle(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   struct nova64_starfield *sf = sf_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!sf) return JS_UNDEFINED;
+   sf->angle = (float)double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, (double)sf->angle);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_set_starfield_colors(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   struct nova64_starfield *sf = sf_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!sf) return JS_UNDEFINED;
+   sf->col_far  = color_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, sf->col_far);
+   sf->col_mid  = color_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, sf->col_mid);
+   sf->col_near = color_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, sf->col_near);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_destroy_starfield(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   struct nova64_starfield *sf = sf_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!sf) return JS_NewBool(ctx, 0);
+   memset(sf, 0, sizeof(*sf));
+   return JS_NewBool(ctx, 1);
+}
+
+/* ── Batch 77: createHPBar, hpBarDamage, hpBarHeal, updateHPBar,              ── */
+/*              drawHPBar, getHPRatio, destroyHPBar                              */
+
+static int alloc_hp_bar(void) {
+   for (int i = 0; i < NOVA64_MAX_HP_BARS; i++)
+      if (!g_hp_bars[i].used) { g_hp_bars[i].used = true; return i + 1; }
+   return 0;
+}
+static struct nova64_hp_bar *hpbar_from_handle(int h) {
+   if (h < 1 || h > NOVA64_MAX_HP_BARS) return NULL;
+   return g_hp_bars[h-1].used ? &g_hp_bars[h-1] : NULL;
+}
+
+static JSValue js_create_hp_bar(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   int hh = alloc_hp_bar();
+   if (!hh) return JS_NewInt32(ctx, 0);
+   struct nova64_hp_bar *b = &g_hp_bars[hh-1];
+   b->x         = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0);
+   b->y         = int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0);
+   b->w         = int_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 100);
+   b->h         = int_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, 12);
+   float mhp    = (float)double_from_js(ctx, argc > 4 ? argv[4] : JS_UNDEFINED, 100.0);
+   b->max_hp    = (mhp < 1e-6f) ? 1.0f : mhp;
+   b->current_hp  = b->max_hp;
+   b->display_hp  = b->max_hp;
+   b->speed       = b->max_hp * 0.8f; /* default: drain 80% maxHP per second */
+   b->bg_color    = rgba8(30, 30, 40, 220);
+   b->fg_color    = rgba8(80, 200, 80, 255);
+   b->dmg_color   = rgba8(220, 60, 60, 200);
+   return JS_NewInt32(ctx, hh);
+}
+
+static JSValue js_hp_bar_damage(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   struct nova64_hp_bar *b = hpbar_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!b) return JS_UNDEFINED;
+   float dmg = (float)double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0.0);
+   b->current_hp -= dmg;
+   if (b->current_hp < 0.0f) b->current_hp = 0.0f;
+   return JS_UNDEFINED;
+}
+
+static JSValue js_hp_bar_heal(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   struct nova64_hp_bar *b = hpbar_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!b) return JS_UNDEFINED;
+   float amt = (float)double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0.0);
+   b->current_hp += amt;
+   if (b->current_hp > b->max_hp) b->current_hp = b->max_hp;
+   /* Also pull display_hp up immediately on heal so it doesn't lag behind */
+   if (b->display_hp < b->current_hp) b->display_hp = b->current_hp;
+   return JS_UNDEFINED;
+}
+
+static JSValue js_update_hp_bar(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   struct nova64_hp_bar *b = hpbar_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!b) return JS_UNDEFINED;
+   float dt   = (float)double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0.0);
+   float diff = b->current_hp - b->display_hp;
+   float step = b->speed * dt;
+   if (diff < 0.0f) {
+      b->display_hp -= step;
+      if (b->display_hp < b->current_hp) b->display_hp = b->current_hp;
+   } else {
+      b->display_hp += step;
+      if (b->display_hp > b->current_hp) b->display_hp = b->current_hp;
+   }
+   return JS_UNDEFINED;
+}
+
+static JSValue js_draw_hp_bar(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   struct nova64_hp_bar *b = hpbar_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!b) return JS_UNDEFINED;
+   /* background */
+   draw_rect_pixels(b->x, b->y, b->w, b->h, b->bg_color, true);
+   /* damage lag bar (current_hp < display_hp shows pending drain) */
+   int dw = (int)(b->display_hp / b->max_hp * b->w);
+   if (dw > b->w) dw = b->w;
+   if (dw > 0) draw_rect_pixels(b->x, b->y, dw, b->h, b->dmg_color, true);
+   /* actual hp bar */
+   int fw = (int)(b->current_hp / b->max_hp * b->w);
+   if (fw > b->w) fw = b->w;
+   if (fw > 0) draw_rect_pixels(b->x, b->y, fw, b->h, b->fg_color, true);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_get_hp_ratio(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   struct nova64_hp_bar *b = hpbar_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!b) return JS_NewFloat64(ctx, 0.0);
+   float r = b->current_hp / b->max_hp;
+   if (r < 0.0f) r = 0.0f;
+   if (r > 1.0f) r = 1.0f;
+   return JS_NewFloat64(ctx, (double)r);
+}
+
+static JSValue js_destroy_hp_bar(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   struct nova64_hp_bar *b = hpbar_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!b) return JS_NewBool(ctx, 0);
+   memset(b, 0, sizeof(*b));
+   return JS_NewBool(ctx, 1);
+}
+
+/* ── Batch 76: createBulletPool, fireBullet, updateBullets, drawBullets,      ── */
+/*              getBulletCount, clearBullets, destroyBulletPool                  */
+
+static int alloc_bullet_pool(void) {
+   for (int i = 0; i < NOVA64_MAX_BULLET_POOLS; i++)
+      if (!g_bullet_pools[i].used) { g_bullet_pools[i].used = true; return i + 1; }
+   return 0;
+}
+static struct nova64_bullet_pool *bpool_from_handle(int h) {
+   if (h < 1 || h > NOVA64_MAX_BULLET_POOLS) return NULL;
+   return g_bullet_pools[h-1].used ? &g_bullet_pools[h-1] : NULL;
+}
+
+static JSValue js_create_bullet_pool(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   int h = alloc_bullet_pool();
+   if (!h) return JS_NewInt32(ctx, 0);
+   struct nova64_bullet_pool *bp = &g_bullet_pools[h-1];
+   int cap = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 64);
+   if (cap < 1)  cap = 1;
+   if (cap > NOVA64_MAX_BULLETS_PER_POOL) cap = NOVA64_MAX_BULLETS_PER_POOL;
+   bp->cap = cap;
+   memset(bp->bullets, 0, sizeof(bp->bullets));
+   return JS_NewInt32(ctx, h);
+}
+
+static JSValue js_fire_bullet(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   struct nova64_bullet_pool *bp = bpool_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!bp) return JS_NewBool(ctx, 0);
+   for (int i = 0; i < bp->cap; i++) {
+      if (!bp->bullets[i].active) {
+         struct nova64_bullet *b = &bp->bullets[i];
+         b->active   = true;
+         b->x        = (float)double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0.0);
+         b->y        = (float)double_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 0.0);
+         b->vx       = (float)double_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, 0.0);
+         b->vy       = (float)double_from_js(ctx, argc > 4 ? argv[4] : JS_UNDEFINED, 0.0);
+         b->color    = color_from_js(ctx, argc > 5 ? argv[5] : JS_UNDEFINED, rgba8(255, 255, 255, 255));
+         b->radius   = int_from_js(ctx, argc > 6 ? argv[6] : JS_UNDEFINED, 3);
+         float life  = (float)double_from_js(ctx, argc > 7 ? argv[7] : JS_UNDEFINED, 2.0);
+         b->life     = (life < 0.001f) ? 0.001f : life;
+         b->max_life = b->life;
+         return JS_NewBool(ctx, 1);
+      }
+   }
+   return JS_NewBool(ctx, 0); /* pool full */
+}
+
+static JSValue js_update_bullets(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   struct nova64_bullet_pool *bp = bpool_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!bp) return JS_UNDEFINED;
+   float dt = (float)double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0.0);
+   for (int i = 0; i < bp->cap; i++) {
+      struct nova64_bullet *b = &bp->bullets[i];
+      if (!b->active) continue;
+      b->x    += b->vx * dt;
+      b->y    += b->vy * dt;
+      b->life -= dt;
+      if (b->life <= 0.0f) b->active = false;
+   }
+   return JS_UNDEFINED;
+}
+
+static JSValue js_draw_bullets(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   struct nova64_bullet_pool *bp = bpool_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!bp) return JS_UNDEFINED;
+   for (int i = 0; i < bp->cap; i++) {
+      struct nova64_bullet *b = &bp->bullets[i];
+      if (!b->active) continue;
+      /* fade alpha as life runs out */
+      float fade  = (b->max_life > 1e-6f) ? (b->life / b->max_life) : 1.0f;
+      uint8_t a   = (uint8_t)((b->color & 0xff) * fade);
+      uint32_t col = (b->color & 0xffffff00u) | a;
+      draw_circle_pixels((int)b->x, (int)b->y, b->radius, col, true);
+   }
+   return JS_UNDEFINED;
+}
+
+static JSValue js_get_bullet_count(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   struct nova64_bullet_pool *bp = bpool_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!bp) return JS_NewInt32(ctx, 0);
+   int n = 0;
+   for (int i = 0; i < bp->cap; i++) if (bp->bullets[i].active) n++;
+   return JS_NewInt32(ctx, n);
+}
+
+static JSValue js_clear_bullets(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   struct nova64_bullet_pool *bp = bpool_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!bp) return JS_UNDEFINED;
+   for (int i = 0; i < bp->cap; i++) bp->bullets[i].active = false;
+   return JS_UNDEFINED;
+}
+
+static JSValue js_destroy_bullet_pool(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   struct nova64_bullet_pool *bp = bpool_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!bp) return JS_NewBool(ctx, 0);
+   memset(bp, 0, sizeof(*bp));
+   return JS_NewBool(ctx, 1);
 }
 
 /* ── Batch 75: createCounter, setCounterTarget, updateCounter, drawCounter,   ── */
@@ -27345,6 +27723,33 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, global, "colorRampStopCount",      js_color_ramp_stop_count,    1);
    set_function(ctx, global, "destroyColorRamp",        js_destroy_color_ramp,       1);
 
+   /* Batch 78 */
+   set_function(ctx, global, "createStarfield",         js_create_starfield,         2);
+   set_function(ctx, global, "updateStarfield",         js_update_starfield,         2);
+   set_function(ctx, global, "drawStarfield",           js_draw_starfield,           1);
+   set_function(ctx, global, "setStarfieldSpeed",       js_set_starfield_speed,      2);
+   set_function(ctx, global, "setStarfieldAngle",       js_set_starfield_angle,      2);
+   set_function(ctx, global, "setStarfieldColors",      js_set_starfield_colors,     4);
+   set_function(ctx, global, "destroyStarfield",        js_destroy_starfield,        1);
+
+   /* Batch 77 */
+   set_function(ctx, global, "createHPBar",             js_create_hp_bar,            5);
+   set_function(ctx, global, "hpBarDamage",             js_hp_bar_damage,            2);
+   set_function(ctx, global, "hpBarHeal",               js_hp_bar_heal,              2);
+   set_function(ctx, global, "updateHPBar",             js_update_hp_bar,            2);
+   set_function(ctx, global, "drawHPBar",               js_draw_hp_bar,              1);
+   set_function(ctx, global, "getHPRatio",              js_get_hp_ratio,             1);
+   set_function(ctx, global, "destroyHPBar",            js_destroy_hp_bar,           1);
+
+   /* Batch 76 */
+   set_function(ctx, global, "createBulletPool",        js_create_bullet_pool,       1);
+   set_function(ctx, global, "fireBullet",              js_fire_bullet,              8);
+   set_function(ctx, global, "updateBullets",           js_update_bullets,           2);
+   set_function(ctx, global, "drawBullets",             js_draw_bullets,             1);
+   set_function(ctx, global, "getBulletCount",          js_get_bullet_count,         1);
+   set_function(ctx, global, "clearBullets",            js_clear_bullets,            1);
+   set_function(ctx, global, "destroyBulletPool",       js_destroy_bullet_pool,      1);
+
    /* Batch 75 */
    set_function(ctx, global, "createCounter",           js_create_counter,           4);
    set_function(ctx, global, "setCounterTarget",        js_set_counter_target,       2);
@@ -29918,8 +30323,11 @@ void RETRO_CALLCONV retro_reset(void)
    g_overlay_scan_active = false; g_overlay_scan_intensity = 0.5f; g_overlay_scan_color = 0x00000080;
    g_screen_saturation = 1.0f; g_screen_contrast = 1.0f;
    g_trans_type = NOVA64_TRANS_NONE; g_trans_timer = 0.0f; g_trans_duration = 1.0f;
-   /* Batch 63-75 resets */
-   memset(g_counters,    0, sizeof(g_counters));
+   /* Batch 63-78 resets */
+   memset(g_starfields,   0, sizeof(g_starfields));
+   memset(g_hp_bars,      0, sizeof(g_hp_bars));
+   memset(g_bullet_pools, 0, sizeof(g_bullet_pools));
+   memset(g_counters,     0, sizeof(g_counters));
    memset(g_typewriters, 0, sizeof(g_typewriters));
    memset(g_gauges,      0, sizeof(g_gauges));
    memset(g_wipes,  0, sizeof(g_wipes));

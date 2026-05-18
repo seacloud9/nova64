@@ -945,5 +945,7 @@ run_visual_case "793 screen wipe"          "793-screen-wipe"          "retroarch
 run_visual_case "893 batch72 showcase"     "893-batch72-showcase"     "retroarch/conformance/893-batch72-showcase.js"     "c17b76804d476dd9"
 run_visual_case "795 gauge"                "795-gauge"                "retroarch/conformance/795-gauge.js"                "2609bf9afea471e7"
 run_visual_case "904 batch73 showcase"     "904-batch73-showcase"     "retroarch/conformance/904-batch73-showcase.js"     "a14a94e569ea5fcc"
+run_visual_case "796 typewriter"           "796-typewriter"           "retroarch/conformance/796-typewriter.js"           "ad130bd04563f2ca"
+run_visual_case "915 batch74 showcase"     "915-batch74-showcase"     "retroarch/conformance/915-batch74-showcase.js"     "97d93da807800b2e"
 
 echo "Conformance passed."

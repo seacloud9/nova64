@@ -1128,6 +1128,21 @@ static struct nova64_world_label g_world_labels[NOVA64_MAX_WORLD_LABELS];
 /* ── Batch 66: Camera roll ──────────────────────────────────── */
 static float g_camera_roll = 0.0f;
 
+/* ── Batch 74: Typewriter text effect ───────────────────────── */
+#define NOVA64_MAX_TYPEWRITERS    8
+#define NOVA64_TYPEWRITER_MAX_LEN 256
+struct nova64_typewriter {
+   bool     used;
+   char     text[NOVA64_TYPEWRITER_MAX_LEN];
+   int      len;        /* total chars */
+   int      x, y;
+   uint32_t color;
+   float    speed;      /* chars per second */
+   float    elapsed;    /* seconds since start */
+   bool     done;
+};
+static struct nova64_typewriter g_typewriters[NOVA64_MAX_TYPEWRITERS];
+
 /* ── Batch 73: Radial arc gauges ────────────────────────────── */
 #define NOVA64_MAX_GAUGES 8
 struct nova64_gauge {
@@ -9325,6 +9340,107 @@ static JSValue js_destroy_color_ramp(JSContext *ctx, JSValueConst this_val, int 
    if (!ramp) return JS_NewBool(ctx, false);
    memset(ramp, 0, sizeof(*ramp));
    return JS_NewBool(ctx, true);
+}
+
+/* ── Batch 74: createTypewriter, updateTypewriter, drawTypewriter,             ── */
+/*              isTypewriterDone, typewriterProgress, setTypewriterText,          */
+/*              destroyTypewriter                                                  */
+
+static int alloc_typewriter(void) {
+   for (int i = 0; i < NOVA64_MAX_TYPEWRITERS; i++)
+      if (!g_typewriters[i].used) { g_typewriters[i].used = true; return i + 1; }
+   return 0;
+}
+static struct nova64_typewriter *tw_from_handle(int h) {
+   if (h < 1 || h > NOVA64_MAX_TYPEWRITERS) return NULL;
+   return g_typewriters[h-1].used ? &g_typewriters[h-1] : NULL;
+}
+
+static void typewriter_set_text(struct nova64_typewriter *tw, const char *s) {
+   if (!s) s = "";
+   int n = (int)strlen(s);
+   if (n >= NOVA64_TYPEWRITER_MAX_LEN) n = NOVA64_TYPEWRITER_MAX_LEN - 1;
+   memcpy(tw->text, s, n);
+   tw->text[n] = '\0';
+   tw->len     = n;
+   tw->elapsed = 0.0f;
+   tw->done    = false;
+}
+
+static JSValue js_create_typewriter(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   int h = alloc_typewriter();
+   if (!h) return JS_NewInt32(ctx, 0);
+   struct nova64_typewriter *tw = &g_typewriters[h-1];
+   const char *s = (argc > 0 && JS_IsString(argv[0])) ? JS_ToCString(ctx, argv[0]) : NULL;
+   typewriter_set_text(tw, s ? s : "");
+   if (s) JS_FreeCString(ctx, s);
+   tw->x     = int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0);
+   tw->y     = int_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 0);
+   tw->color = color_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, rgba8(255, 255, 255, 255));
+   float spd = (float)double_from_js(ctx, argc > 4 ? argv[4] : JS_UNDEFINED, 20.0);
+   tw->speed = (spd < 0.001f) ? 0.001f : spd;
+   return JS_NewInt32(ctx, h);
+}
+
+static JSValue js_update_typewriter(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   struct nova64_typewriter *tw = tw_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!tw || tw->done) return JS_UNDEFINED;
+   float dt = (float)double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0.0);
+   tw->elapsed += dt;
+   float needed = (tw->len > 0) ? (float)tw->len / tw->speed : 0.0f;
+   if (tw->elapsed >= needed) { tw->elapsed = needed; tw->done = true; }
+   return JS_UNDEFINED;
+}
+
+static JSValue js_draw_typewriter(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   struct nova64_typewriter *tw = tw_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!tw) return JS_UNDEFINED;
+   int visible = (tw->len > 0) ? (int)(tw->elapsed * tw->speed) : 0;
+   if (visible > tw->len) visible = tw->len;
+   if (visible <= 0) return JS_UNDEFINED;
+   char buf[NOVA64_TYPEWRITER_MAX_LEN];
+   memcpy(buf, tw->text, visible);
+   buf[visible] = '\0';
+   draw_text_pixels(buf, tw->x, tw->y, tw->color);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_is_typewriter_done(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   struct nova64_typewriter *tw = tw_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   return JS_NewBool(ctx, tw ? (int)tw->done : 1);
+}
+
+static JSValue js_typewriter_progress(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   struct nova64_typewriter *tw = tw_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!tw || tw->len == 0) return JS_NewFloat64(ctx, 1.0);
+   float needed = (float)tw->len / tw->speed;
+   float p = (needed > 1e-6f) ? (tw->elapsed / needed) : 1.0f;
+   if (p < 0.0f) p = 0.0f;
+   if (p > 1.0f) p = 1.0f;
+   return JS_NewFloat64(ctx, (double)p);
+}
+
+static JSValue js_set_typewriter_text(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   struct nova64_typewriter *tw = tw_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!tw) return JS_UNDEFINED;
+   const char *s = (argc > 1 && JS_IsString(argv[1])) ? JS_ToCString(ctx, argv[1]) : NULL;
+   typewriter_set_text(tw, s ? s : "");
+   if (s) JS_FreeCString(ctx, s);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_destroy_typewriter(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   struct nova64_typewriter *tw = tw_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!tw) return JS_NewBool(ctx, 0);
+   memset(tw, 0, sizeof(*tw));
+   return JS_NewBool(ctx, 1);
 }
 
 /* ── Batch 73: createGauge, setGaugeValue, setGaugeAngles, setGaugeColors,    ── */
@@ -27130,6 +27246,15 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, global, "colorRampStopCount",      js_color_ramp_stop_count,    1);
    set_function(ctx, global, "destroyColorRamp",        js_destroy_color_ramp,       1);
 
+   /* Batch 74 */
+   set_function(ctx, global, "createTypewriter",        js_create_typewriter,        5);
+   set_function(ctx, global, "updateTypewriter",        js_update_typewriter,        2);
+   set_function(ctx, global, "drawTypewriter",          js_draw_typewriter,          1);
+   set_function(ctx, global, "isTypewriterDone",        js_is_typewriter_done,       1);
+   set_function(ctx, global, "typewriterProgress",      js_typewriter_progress,      1);
+   set_function(ctx, global, "setTypewriterText",       js_set_typewriter_text,      2);
+   set_function(ctx, global, "destroyTypewriter",       js_destroy_typewriter,       1);
+
    /* Batch 73 */
    set_function(ctx, global, "createGauge",             js_create_gauge,             4);
    set_function(ctx, global, "setGaugeValue",           js_set_gauge_value,          3);
@@ -29685,8 +29810,9 @@ void RETRO_CALLCONV retro_reset(void)
    g_overlay_scan_active = false; g_overlay_scan_intensity = 0.5f; g_overlay_scan_color = 0x00000080;
    g_screen_saturation = 1.0f; g_screen_contrast = 1.0f;
    g_trans_type = NOVA64_TRANS_NONE; g_trans_timer = 0.0f; g_trans_duration = 1.0f;
-   /* Batch 63-73 resets */
-   memset(g_gauges, 0, sizeof(g_gauges));
+   /* Batch 63-74 resets */
+   memset(g_typewriters, 0, sizeof(g_typewriters));
+   memset(g_gauges,      0, sizeof(g_gauges));
    memset(g_wipes,  0, sizeof(g_wipes));
    memset(g_bodies, 0, sizeof(g_bodies));
    memset(g_splines, 0, sizeof(g_splines));

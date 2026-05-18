@@ -169,7 +169,47 @@ canonical repository instructions in `../AGENTS.md`.
 - Use `JS_ToCString(ctx, argv[N])` not `string_from_js` — no such helper exists in this QuickJS build.
 - The `run_conformance.sh` runner stops at first mismatch; run harness directly without `--expect` to collect checksums.
 
+### Current conformance state (after B82–B84)
+- Feature carts up to 806, showcase up to 1025
+- All B79–B84 carts passing
+
+---
+
+## Session: Batches 85–90 + 3 game carts (2026-05-18)
+
+### APIs added
+- **Batch 85: Particle burst** — `createBurst`, `triggerBurst`, `updateBurst`, `drawBurst`,
+  `isBurstDone`, `setBurstColors`, `destroyBurst`. NOVA64_MAX_BURSTS=8, 24 particles each.
+  Radial emission via rng_next_impl(), gravity, life fade. Conformance carts 807, 1036-showcase.
+- **Batch 86: Text effects** — `printGradient`, `printWave`, `printFlash`, `printShake`,
+  `printRainbow`. Stateless; all render char-by-char using glyph_row(). hsv_to_rgba8() helper
+  added for rainbow hue cycling. Conformance carts 808, 1047-showcase.
+- **Batch 87: Speech bubble** — `createBubble`, `setBubbleText`, `setBubbleTail`, `setBubbleColors`,
+  `drawSpeechBubble`, `destroySpeechBubble`. NOVA64_MAX_BUBBLES=8. Renamed to `drawSpeechBubble`
+  because `drawBubble`/`js_draw_bubble` already existed (circle outline API).
+  Conformance carts 809, 1058-showcase.
+- **Batch 88: Smooth 2D camera** — `createCam2D`, `setCam2DTarget`, `setCam2DZoom`, `updateCam2D`,
+  `applyCam2D`, `getCam2DX`, `getCam2DY`, `destroyCam2D`. NOVA64_MAX_SMOOTH_CAMS=4.
+  Lerps via `1 - exp(-lerp*dt)`. applyCam2D writes to global cam2d_x/y/zoom. Conformance 810, 1069.
+- **Batch 89: Spotlight overlay** — `createSpotlight`, `setSpotlightPos`, `setSpotlightRadius`,
+  `setSpotlightColor`, `drawSpotlight`, `destroySpotlight`. NOVA64_MAX_SPOTLIGHTS=4.
+  Scanline renderer: draws shadow strips around a circular hole. Conformance 811, 1080.
+- **Batch 90: Wave manager** — `createWaveManager`, `startWave`, `getWaveNumber`, `isWaveActive`,
+  `enemyDefeated`, `getRemainingEnemies`, `nextWave`, `setWaveDelay`, `getWaveDelay`,
+  `destroyWaveManager`. NOVA64_MAX_WAVE_MANAGERS=4. Conformance 812, 1091.
+
+### Game carts added
+- `wave-survival.js` — arena shooter; wave manager + particle bursts on kill
+- `stealth-runner.js` — spotlight avoidance game; moving spotlights, level progression
+- `neon-pinball.js` — glow-rendered pinball; bumper collisions + rainbow score text
+
+### Key lessons (this session)
+- `drawBubble`/`js_draw_bubble` already existed as a circle-outline primitive — speech bubble
+  API must use `drawSpeechBubble`/`js_draw_speech_bub` to avoid duplicate symbol errors.
+- Input API uses string names: `btn("left")`, `btn("z")`, `btnp("z")` — NOT numeric constants.
+  Existing game carts use undefined `BUTTON_LEFT` (produces JS exception but still renders).
+- Global sed on 31k-line file is dangerous; use `sed -i 'Ns/.../.../'` for line-specific fixups.
+
 ### Current conformance state
-- 455 conformance files in retroarch/conformance/
-- Feature carts up to 803, showcase up to 992
-- All M1–M8 + post-M8 expansions passing
+- Feature carts up to 812, showcase up to 1091
+- All B85–B90 (12 new carts) passing; pre-B79 ranges have pre-existing failures unrelated to new work

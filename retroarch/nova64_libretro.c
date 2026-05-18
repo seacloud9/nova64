@@ -1128,6 +1128,22 @@ static struct nova64_world_label g_world_labels[NOVA64_MAX_WORLD_LABELS];
 /* ── Batch 66: Camera roll ──────────────────────────────────── */
 static float g_camera_roll = 0.0f;
 
+/* ── Batch 73: Radial arc gauges ────────────────────────────── */
+#define NOVA64_MAX_GAUGES 8
+struct nova64_gauge {
+   bool     used;
+   int      cx, cy;
+   int      radius;
+   int      width;
+   float    start_angle; /* radians, 0=right, -PI/2=top */
+   float    end_angle;
+   float    value;
+   float    max_value;
+   uint32_t bg_color;
+   uint32_t fg_color;
+};
+static struct nova64_gauge g_gauges[NOVA64_MAX_GAUGES];
+
 /* ── Batch 72: Screen wipe transitions ──────────────────────── */
 #define NOVA64_MAX_WIPES 8
 /* type: 0=slide-left 1=slide-down 2=iris 3=checker 4=blinds     */
@@ -9309,6 +9325,116 @@ static JSValue js_destroy_color_ramp(JSContext *ctx, JSValueConst this_val, int 
    if (!ramp) return JS_NewBool(ctx, false);
    memset(ramp, 0, sizeof(*ramp));
    return JS_NewBool(ctx, true);
+}
+
+/* ── Batch 73: createGauge, setGaugeValue, setGaugeAngles, setGaugeColors,    ── */
+/*              drawGauge, getGaugeRatio, destroyGauge                            */
+
+static int alloc_gauge(void) {
+   for (int i = 0; i < NOVA64_MAX_GAUGES; i++)
+      if (!g_gauges[i].used) { g_gauges[i].used = true; return i + 1; }
+   return 0;
+}
+static struct nova64_gauge *gauge_from_handle(int h) {
+   if (h < 1 || h > NOVA64_MAX_GAUGES) return NULL;
+   return g_gauges[h-1].used ? &g_gauges[h-1] : NULL;
+}
+
+static void draw_arc_pixels(int cx, int cy, int radius, float a0, float a1, int w, uint32_t color) {
+   float span = a1 - a0;
+   if (span < 0.0001f) return;
+   int steps = (int)(fabsf(span) * radius);
+   if (steps < 2)  steps = 2;
+   if (steps > 720) steps = 720;
+   int hw = w / 2;
+   for (int i = 0; i <= steps; i++) {
+      float a = a0 + span * (float)i / (float)steps;
+      int x = cx + (int)(cosf(a) * (float)radius);
+      int y = cy + (int)(sinf(a) * (float)radius);
+      draw_rect_pixels(x - hw, y - hw, w, w, color, true);
+   }
+}
+
+static JSValue js_create_gauge(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   int h = alloc_gauge();
+   if (!h) return JS_NewInt32(ctx, 0);
+   struct nova64_gauge *g = &g_gauges[h-1];
+   g->cx          = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 320);
+   g->cy          = int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 180);
+   g->radius      = int_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 60);
+   g->width       = int_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, 8);
+   if (g->radius < 1)  g->radius = 1;
+   if (g->width  < 1)  g->width  = 1;
+   g->start_angle = (float)(-M_PI / 2.0);   /* top */
+   g->end_angle   = (float)( M_PI * 1.5);   /* full circle clockwise */
+   g->value       = 0.0f;
+   g->max_value   = 1.0f;
+   g->bg_color    = rgba8(40, 44, 60, 255);
+   g->fg_color    = rgba8(80, 220, 80, 255);
+   return JS_NewInt32(ctx, h);
+}
+
+static JSValue js_set_gauge_value(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   struct nova64_gauge *g = gauge_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!g) return JS_UNDEFINED;
+   g->value     = (float)double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0.0);
+   g->max_value = (float)double_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 1.0);
+   if (g->max_value < 1e-6f) g->max_value = 1e-6f;
+   return JS_UNDEFINED;
+}
+
+static JSValue js_set_gauge_angles(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   struct nova64_gauge *g = gauge_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!g) return JS_UNDEFINED;
+   g->start_angle = (float)double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, (double)g->start_angle);
+   g->end_angle   = (float)double_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, (double)g->end_angle);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_set_gauge_colors(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   struct nova64_gauge *g = gauge_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!g) return JS_UNDEFINED;
+   g->bg_color = color_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, g->bg_color);
+   g->fg_color = color_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, g->fg_color);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_draw_gauge(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   struct nova64_gauge *g = gauge_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!g) return JS_UNDEFINED;
+   float ratio = g->value / g->max_value;
+   if (ratio < 0.0f) ratio = 0.0f;
+   if (ratio > 1.0f) ratio = 1.0f;
+   float mid = g->start_angle + (g->end_angle - g->start_angle) * ratio;
+   /* background arc */
+   draw_arc_pixels(g->cx, g->cy, g->radius, g->start_angle, g->end_angle, g->width, g->bg_color);
+   /* foreground arc */
+   if (ratio > 0.0f)
+      draw_arc_pixels(g->cx, g->cy, g->radius, g->start_angle, mid, g->width, g->fg_color);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_get_gauge_ratio(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   struct nova64_gauge *g = gauge_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!g) return JS_NewFloat64(ctx, 0.0);
+   float r = g->value / g->max_value;
+   if (r < 0.0f) r = 0.0f;
+   if (r > 1.0f) r = 1.0f;
+   return JS_NewFloat64(ctx, (double)r);
+}
+
+static JSValue js_destroy_gauge(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   struct nova64_gauge *g = gauge_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!g) return JS_NewBool(ctx, 0);
+   memset(g, 0, sizeof(*g));
+   return JS_NewBool(ctx, 1);
 }
 
 /* ── Batch 72: createWipe, startWipe, updateWipe, drawWipe,                    ── */
@@ -27004,6 +27130,15 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, global, "colorRampStopCount",      js_color_ramp_stop_count,    1);
    set_function(ctx, global, "destroyColorRamp",        js_destroy_color_ramp,       1);
 
+   /* Batch 73 */
+   set_function(ctx, global, "createGauge",             js_create_gauge,             4);
+   set_function(ctx, global, "setGaugeValue",           js_set_gauge_value,          3);
+   set_function(ctx, global, "setGaugeAngles",          js_set_gauge_angles,         3);
+   set_function(ctx, global, "setGaugeColors",          js_set_gauge_colors,         3);
+   set_function(ctx, global, "drawGauge",               js_draw_gauge,               1);
+   set_function(ctx, global, "getGaugeRatio",           js_get_gauge_ratio,          1);
+   set_function(ctx, global, "destroyGauge",            js_destroy_gauge,            1);
+
    /* Batch 72 */
    set_function(ctx, global, "createWipe",              js_create_wipe,              1);
    set_function(ctx, global, "startWipe",               js_start_wipe,               3);
@@ -29550,7 +29685,8 @@ void RETRO_CALLCONV retro_reset(void)
    g_overlay_scan_active = false; g_overlay_scan_intensity = 0.5f; g_overlay_scan_color = 0x00000080;
    g_screen_saturation = 1.0f; g_screen_contrast = 1.0f;
    g_trans_type = NOVA64_TRANS_NONE; g_trans_timer = 0.0f; g_trans_duration = 1.0f;
-   /* Batch 63-72 resets */
+   /* Batch 63-73 resets */
+   memset(g_gauges, 0, sizeof(g_gauges));
    memset(g_wipes,  0, sizeof(g_wipes));
    memset(g_bodies, 0, sizeof(g_bodies));
    memset(g_splines, 0, sizeof(g_splines));

@@ -943,5 +943,7 @@ run_visual_case "792 color ramp"           "792-color-ramp"           "retroarch
 run_visual_case "882 batch71 showcase"     "882-batch71-showcase"     "retroarch/conformance/882-batch71-showcase.js"     "d6200d68fc0f2298"
 run_visual_case "793 screen wipe"          "793-screen-wipe"          "retroarch/conformance/793-screen-wipe.js"          "33b1f13c34148b52"
 run_visual_case "893 batch72 showcase"     "893-batch72-showcase"     "retroarch/conformance/893-batch72-showcase.js"     "c17b76804d476dd9"
+run_visual_case "795 gauge"                "795-gauge"                "retroarch/conformance/795-gauge.js"                "2609bf9afea471e7"
+run_visual_case "904 batch73 showcase"     "904-batch73-showcase"     "retroarch/conformance/904-batch73-showcase.js"     "a14a94e569ea5fcc"
 
 echo "Conformance passed."

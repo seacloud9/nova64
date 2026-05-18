@@ -1128,6 +1128,18 @@ static struct nova64_world_label g_world_labels[NOVA64_MAX_WORLD_LABELS];
 /* ── Batch 66: Camera roll ──────────────────────────────────── */
 static float g_camera_roll = 0.0f;
 
+/* ── Batch 75: Animated numeric counters ────────────────────── */
+#define NOVA64_MAX_COUNTERS 8
+struct nova64_counter {
+   bool     used;
+   int      x, y;
+   uint32_t color;
+   float    speed;   /* units per second; 0 = instant snap */
+   float    value;   /* current displayed value */
+   float    target;  /* value being chased */
+};
+static struct nova64_counter g_counters[NOVA64_MAX_COUNTERS];
+
 /* ── Batch 74: Typewriter text effect ───────────────────────── */
 #define NOVA64_MAX_TYPEWRITERS    8
 #define NOVA64_TYPEWRITER_MAX_LEN 256
@@ -9340,6 +9352,93 @@ static JSValue js_destroy_color_ramp(JSContext *ctx, JSValueConst this_val, int 
    if (!ramp) return JS_NewBool(ctx, false);
    memset(ramp, 0, sizeof(*ramp));
    return JS_NewBool(ctx, true);
+}
+
+/* ── Batch 75: createCounter, setCounterTarget, updateCounter, drawCounter,   ── */
+/*              getCounterValue, isCounterAtTarget, destroyCounter               */
+
+static int alloc_counter(void) {
+   for (int i = 0; i < NOVA64_MAX_COUNTERS; i++)
+      if (!g_counters[i].used) { g_counters[i].used = true; return i + 1; }
+   return 0;
+}
+static struct nova64_counter *counter_from_handle(int h) {
+   if (h < 1 || h > NOVA64_MAX_COUNTERS) return NULL;
+   return g_counters[h-1].used ? &g_counters[h-1] : NULL;
+}
+
+static JSValue js_create_counter(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   int h = alloc_counter();
+   if (!h) return JS_NewInt32(ctx, 0);
+   struct nova64_counter *c = &g_counters[h-1];
+   c->x      = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0);
+   c->y      = int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0);
+   c->color  = color_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, rgba8(255, 255, 255, 255));
+   float spd = (float)double_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, 100.0);
+   c->speed  = (spd < 0.0f) ? 0.0f : spd;
+   c->value  = 0.0f;
+   c->target = 0.0f;
+   return JS_NewInt32(ctx, h);
+}
+
+static JSValue js_set_counter_target(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   struct nova64_counter *c = counter_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!c) return JS_UNDEFINED;
+   c->target = (float)double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0.0);
+   if (c->speed < 1e-6f) c->value = c->target; /* instant snap */
+   return JS_UNDEFINED;
+}
+
+static JSValue js_update_counter(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   struct nova64_counter *c = counter_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!c) return JS_UNDEFINED;
+   if (c->speed < 1e-6f) { c->value = c->target; return JS_UNDEFINED; }
+   float dt   = (float)double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0.0);
+   float diff = c->target - c->value;
+   float step = c->speed * dt;
+   if (diff < 0.0f) {
+      c->value -= step;
+      if (c->value < c->target) c->value = c->target;
+   } else {
+      c->value += step;
+      if (c->value > c->target) c->value = c->target;
+   }
+   return JS_UNDEFINED;
+}
+
+static JSValue js_draw_counter(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   struct nova64_counter *c = counter_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!c) return JS_UNDEFINED;
+   char buf[32];
+   snprintf(buf, sizeof(buf), "%d", (int)c->value);
+   draw_text_pixels(buf, c->x, c->y, c->color);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_get_counter_value(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   struct nova64_counter *c = counter_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   return JS_NewFloat64(ctx, c ? (double)c->value : 0.0);
+}
+
+static JSValue js_is_counter_at_target(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   struct nova64_counter *c = counter_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!c) return JS_NewBool(ctx, 1);
+   float diff = c->target - c->value;
+   return JS_NewBool(ctx, (diff < 0.5f && diff > -0.5f) ? 1 : 0);
+}
+
+static JSValue js_destroy_counter(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   struct nova64_counter *c = counter_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!c) return JS_NewBool(ctx, 0);
+   memset(c, 0, sizeof(*c));
+   return JS_NewBool(ctx, 1);
 }
 
 /* ── Batch 74: createTypewriter, updateTypewriter, drawTypewriter,             ── */
@@ -27246,6 +27345,15 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, global, "colorRampStopCount",      js_color_ramp_stop_count,    1);
    set_function(ctx, global, "destroyColorRamp",        js_destroy_color_ramp,       1);
 
+   /* Batch 75 */
+   set_function(ctx, global, "createCounter",           js_create_counter,           4);
+   set_function(ctx, global, "setCounterTarget",        js_set_counter_target,       2);
+   set_function(ctx, global, "updateCounter",           js_update_counter,           2);
+   set_function(ctx, global, "drawCounter",             js_draw_counter,             1);
+   set_function(ctx, global, "getCounterValue",         js_get_counter_value,        1);
+   set_function(ctx, global, "isCounterAtTarget",       js_is_counter_at_target,     1);
+   set_function(ctx, global, "destroyCounter",          js_destroy_counter,          1);
+
    /* Batch 74 */
    set_function(ctx, global, "createTypewriter",        js_create_typewriter,        5);
    set_function(ctx, global, "updateTypewriter",        js_update_typewriter,        2);
@@ -29810,7 +29918,8 @@ void RETRO_CALLCONV retro_reset(void)
    g_overlay_scan_active = false; g_overlay_scan_intensity = 0.5f; g_overlay_scan_color = 0x00000080;
    g_screen_saturation = 1.0f; g_screen_contrast = 1.0f;
    g_trans_type = NOVA64_TRANS_NONE; g_trans_timer = 0.0f; g_trans_duration = 1.0f;
-   /* Batch 63-74 resets */
+   /* Batch 63-75 resets */
+   memset(g_counters,    0, sizeof(g_counters));
    memset(g_typewriters, 0, sizeof(g_typewriters));
    memset(g_gauges,      0, sizeof(g_gauges));
    memset(g_wipes,  0, sizeof(g_wipes));

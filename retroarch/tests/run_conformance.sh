@@ -947,5 +947,7 @@ run_visual_case "795 gauge"                "795-gauge"                "retroarch
 run_visual_case "904 batch73 showcase"     "904-batch73-showcase"     "retroarch/conformance/904-batch73-showcase.js"     "a14a94e569ea5fcc"
 run_visual_case "796 typewriter"           "796-typewriter"           "retroarch/conformance/796-typewriter.js"           "ad130bd04563f2ca"
 run_visual_case "915 batch74 showcase"     "915-batch74-showcase"     "retroarch/conformance/915-batch74-showcase.js"     "97d93da807800b2e"
+run_visual_case "797 counter"              "797-counter"              "retroarch/conformance/797-counter.js"              "89a05b927029228d"
+run_visual_case "926 batch75 showcase"     "926-batch75-showcase"     "retroarch/conformance/926-batch75-showcase.js"     "40916799a06eb2be"
 
 echo "Conformance passed."

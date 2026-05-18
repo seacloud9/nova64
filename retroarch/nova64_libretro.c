@@ -1128,6 +1128,23 @@ static struct nova64_world_label g_world_labels[NOVA64_MAX_WORLD_LABELS];
 /* ── Batch 66: Camera roll ──────────────────────────────────── */
 static float g_camera_roll = 0.0f;
 
+/* ── Batch 69: 2D persistent trails ─────────────────────────── */
+#define NOVA64_MAX_TRAILS    8
+#define NOVA64_MAX_TRAIL_PTS 64
+
+struct nova64_trail2d {
+   bool     used;
+   float    pts[NOVA64_MAX_TRAIL_PTS][2];
+   int      head;      /* index of newest entry in ring buffer */
+   int      count;     /* number of valid entries */
+   int      max_pts;   /* user-requested cap */
+   uint32_t color_head;
+   uint32_t color_tail;
+   float    width_head;
+   float    width_tail;
+};
+static struct nova64_trail2d g_trails[NOVA64_MAX_TRAILS];
+
 /* ── Batch 68: Mesh path followers ──────────────────────────── */
 #define NOVA64_MAX_FOLLOWERS 8
 #define NOVA64_FOLLOWER_STOPPED 0
@@ -8970,6 +8987,119 @@ static JSValue js_destroy_follower(JSContext *ctx, JSValueConst this_val, int ar
    struct nova64_follower *f = follower_from_handle(int_from_js(ctx, argc>0?argv[0]:JS_UNDEFINED, 0));
    if (!f) return JS_NewBool(ctx, false);
    memset(f, 0, sizeof(*f));
+   return JS_NewBool(ctx, true);
+}
+
+/* ── Batch 69: createTrail2D, addTrail2DPoint, setTrail2DColors,             ── */
+/*              setTrail2DWidth, drawTrail2D, clearTrail2D, getTrail2DCount,     */
+/*              destroyTrail2D                                                    */
+
+static int alloc_trail(void) {
+   for (int i = 0; i < NOVA64_MAX_TRAILS; i++)
+      if (!g_trails[i].used) { g_trails[i].used = true; return i + 1; }
+   return 0;
+}
+
+static struct nova64_trail2d *trail_from_handle(int h) {
+   if (h < 1 || h > NOVA64_MAX_TRAILS) return NULL;
+   return g_trails[h-1].used ? &g_trails[h-1] : NULL;
+}
+
+static JSValue js_create_trail2d(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   int h = alloc_trail(); if (!h) return JS_NewInt32(ctx, 0);
+   struct nova64_trail2d *tr = &g_trails[h-1];
+   int max = argc > 0 ? int_from_js(ctx, argv[0], 16) : 16;
+   if (max < 2)  max = 2;
+   if (max > NOVA64_MAX_TRAIL_PTS) max = NOVA64_MAX_TRAIL_PTS;
+   tr->max_pts   = max;
+   tr->head      = 0; tr->count = 0;
+   tr->color_head = 0xffffffff;
+   tr->color_tail = 0xffffff00; /* white fading to transparent */
+   tr->width_head = 3.0f;
+   tr->width_tail = 1.0f;
+   return JS_NewInt32(ctx, h);
+}
+
+static JSValue js_add_trail2d_point(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   struct nova64_trail2d *tr = trail_from_handle(int_from_js(ctx, argc>0?argv[0]:JS_UNDEFINED, 0));
+   if (!tr) return JS_UNDEFINED;
+   float x = (float)double_from_js(ctx, argc>1?argv[1]:JS_UNDEFINED, 0);
+   float y = (float)double_from_js(ctx, argc>2?argv[2]:JS_UNDEFINED, 0);
+   /* Push to front: shift indices in ring buffer */
+   tr->head = (tr->head + 1) % tr->max_pts;
+   tr->pts[tr->head][0] = x;
+   tr->pts[tr->head][1] = y;
+   if (tr->count < tr->max_pts) tr->count++;
+   return JS_UNDEFINED;
+}
+
+static JSValue js_set_trail2d_colors(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   struct nova64_trail2d *tr = trail_from_handle(int_from_js(ctx, argc>0?argv[0]:JS_UNDEFINED, 0));
+   if (!tr) return JS_UNDEFINED;
+   tr->color_head = (uint32_t)int_from_js(ctx, argc>1?argv[1]:JS_UNDEFINED, (int)0xffffffff);
+   tr->color_tail = (uint32_t)int_from_js(ctx, argc>2?argv[2]:JS_UNDEFINED, (int)0xffffff00);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_set_trail2d_width(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   struct nova64_trail2d *tr = trail_from_handle(int_from_js(ctx, argc>0?argv[0]:JS_UNDEFINED, 0));
+   if (!tr) return JS_UNDEFINED;
+   tr->width_head = (float)double_from_js(ctx, argc>1?argv[1]:JS_UNDEFINED, 3.0);
+   tr->width_tail = (float)double_from_js(ctx, argc>2?argv[2]:JS_UNDEFINED, 1.0);
+   return JS_UNDEFINED;
+}
+
+/* Blend two RGBA8 packed colors by factor t (0=a, 1=b). */
+static uint32_t blend_rgba8(uint32_t a, uint32_t b, float t) {
+   if (t <= 0) return a; if (t >= 1) return b;
+   uint8_t ar=(a>>24)&0xff, ag=(a>>16)&0xff, ab=(a>>8)&0xff, aa=a&0xff;
+   uint8_t br=(b>>24)&0xff, bg=(b>>16)&0xff, bb=(b>>8)&0xff, ba=b&0xff;
+   uint8_t r=(uint8_t)(ar+(int)((br-ar)*t));
+   uint8_t g=(uint8_t)(ag+(int)((bg-ag)*t));
+   uint8_t bl2=(uint8_t)(ab+(int)((bb-ab)*t));
+   uint8_t al=(uint8_t)(aa+(int)((ba-aa)*t));
+   return ((uint32_t)r<<24)|((uint32_t)g<<16)|((uint32_t)bl2<<8)|al;
+}
+
+static JSValue js_draw_trail2d(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   struct nova64_trail2d *tr = trail_from_handle(int_from_js(ctx, argc>0?argv[0]:JS_UNDEFINED, 0));
+   if (!tr || tr->count < 2) return JS_UNDEFINED;
+   /* Draw from newest (head) to oldest; each segment fades toward tail color */
+   for (int i = 0; i < tr->count - 1; i++) {
+      int idx0 = ((tr->head - i) % tr->max_pts + tr->max_pts) % tr->max_pts;
+      int idx1 = ((tr->head - i - 1) % tr->max_pts + tr->max_pts) % tr->max_pts;
+      float t = (tr->count > 1) ? (float)i / (float)(tr->count - 1) : 0;
+      uint32_t col = blend_rgba8(tr->color_head, tr->color_tail, t);
+      int x0 = (int)tr->pts[idx0][0], y0 = (int)tr->pts[idx0][1];
+      int x1 = (int)tr->pts[idx1][0], y1 = (int)tr->pts[idx1][1];
+      draw_line_pixels(x0, y0, x1, y1, col);
+   }
+   return JS_UNDEFINED;
+}
+
+static JSValue js_clear_trail2d(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   struct nova64_trail2d *tr = trail_from_handle(int_from_js(ctx, argc>0?argv[0]:JS_UNDEFINED, 0));
+   if (tr) { tr->head = 0; tr->count = 0; }
+   return JS_UNDEFINED;
+}
+
+static JSValue js_get_trail2d_count(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   struct nova64_trail2d *tr = trail_from_handle(int_from_js(ctx, argc>0?argv[0]:JS_UNDEFINED, 0));
+   return JS_NewInt32(ctx, tr ? tr->count : 0);
+}
+
+static JSValue js_destroy_trail2d(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   struct nova64_trail2d *tr = trail_from_handle(int_from_js(ctx, argc>0?argv[0]:JS_UNDEFINED, 0));
+   if (!tr) return JS_NewBool(ctx, false);
+   memset(tr, 0, sizeof(*tr));
    return JS_NewBool(ctx, true);
 }
 
@@ -26502,6 +26632,16 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, global, "getFollowerPos",          js_get_follower_pos,         1);
    set_function(ctx, global, "destroyFollower",         js_destroy_follower,         1);
 
+   /* Batch 69 */
+   set_function(ctx, global, "createTrail2D",           js_create_trail2d,           1);
+   set_function(ctx, global, "addTrail2DPoint",         js_add_trail2d_point,        3);
+   set_function(ctx, global, "setTrail2DColors",        js_set_trail2d_colors,       3);
+   set_function(ctx, global, "setTrail2DWidth",         js_set_trail2d_width,        3);
+   set_function(ctx, global, "drawTrail2D",             js_draw_trail2d,             1);
+   set_function(ctx, global, "clearTrail2D",            js_clear_trail2d,            1);
+   set_function(ctx, global, "getTrail2DCount",         js_get_trail2d_count,        1);
+   set_function(ctx, global, "destroyTrail2D",          js_destroy_trail2d,          1);
+
    JS_FreeValue(ctx, global);
    return true;
 }
@@ -29039,13 +29179,14 @@ void RETRO_CALLCONV retro_reset(void)
    g_overlay_scan_active = false; g_overlay_scan_intensity = 0.5f; g_overlay_scan_color = 0x00000080;
    g_screen_saturation = 1.0f; g_screen_contrast = 1.0f;
    g_trans_type = NOVA64_TRANS_NONE; g_trans_timer = 0.0f; g_trans_duration = 1.0f;
-   /* Batch 63-68 resets */
+   /* Batch 63-69 resets */
    memset(g_bodies, 0, sizeof(g_bodies));
    memset(g_splines, 0, sizeof(g_splines));
    memset(g_world_labels, 0, sizeof(g_world_labels));
    g_camera_roll = 0.0f;
    memset(g_camera_paths, 0, sizeof(g_camera_paths));
    memset(g_followers, 0, sizeof(g_followers));
+   memset(g_trails, 0, sizeof(g_trails));
    g_path_count = 0; g_path_closed = 0;
    memset(g_hotspots,    0, sizeof(g_hotspots));
    memset(g_btn_repeat,  0, sizeof(g_btn_repeat));

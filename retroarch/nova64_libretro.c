@@ -1128,6 +1128,19 @@ static struct nova64_world_label g_world_labels[NOVA64_MAX_WORLD_LABELS];
 /* ── Batch 66: Camera roll ──────────────────────────────────── */
 static float g_camera_roll = 0.0f;
 
+/* ── Batch 70: Mesh hit flash ────────────────────────────────── */
+#define NOVA64_MAX_FLASH 16
+
+struct nova64_mesh_flash {
+   bool     used;
+   int      mesh_handle;
+   uint32_t saved_color;
+   uint32_t flash_color;
+   float    timer;
+   float    duration;
+};
+static struct nova64_mesh_flash g_mesh_flashes[NOVA64_MAX_FLASH];
+
 /* ── Batch 69: 2D persistent trails ─────────────────────────── */
 #define NOVA64_MAX_TRAILS    8
 #define NOVA64_MAX_TRAIL_PTS 64
@@ -9100,6 +9113,78 @@ static JSValue js_destroy_trail2d(JSContext *ctx, JSValueConst this_val, int arg
    struct nova64_trail2d *tr = trail_from_handle(int_from_js(ctx, argc>0?argv[0]:JS_UNDEFINED, 0));
    if (!tr) return JS_NewBool(ctx, false);
    memset(tr, 0, sizeof(*tr));
+   return JS_NewBool(ctx, true);
+}
+
+/* ── Batch 70: triggerMeshFlash, updateMeshFlashes, isMeshFlashing,         ── */
+/*              cancelMeshFlash                                                   */
+
+static struct nova64_mesh_flash *flash_for_mesh(int mesh_h) {
+   for (int i = 0; i < NOVA64_MAX_FLASH; i++)
+      if (g_mesh_flashes[i].used && g_mesh_flashes[i].mesh_handle == mesh_h)
+         return &g_mesh_flashes[i];
+   return NULL;
+}
+
+static struct nova64_mesh_flash *alloc_flash(void) {
+   for (int i = 0; i < NOVA64_MAX_FLASH; i++)
+      if (!g_mesh_flashes[i].used) { g_mesh_flashes[i].used = true; return &g_mesh_flashes[i]; }
+   return NULL;
+}
+
+static JSValue js_trigger_mesh_flash(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   int mesh_h = int_from_js(ctx, argc>0?argv[0]:JS_UNDEFINED, 0);
+   struct nova64_mesh *mesh = mesh_from_handle(mesh_h);
+   if (!mesh) return JS_UNDEFINED;
+   uint32_t fcolor  = (uint32_t)int_from_js(ctx, argc>1?argv[1]:JS_UNDEFINED, (int)0xffffffff);
+   float    dur     = (float)double_from_js(ctx, argc>2?argv[2]:JS_UNDEFINED, 0.15);
+   if (dur < 0.001f) dur = 0.001f;
+   /* Reuse existing flash slot for this mesh if any */
+   struct nova64_mesh_flash *fl = flash_for_mesh(mesh_h);
+   if (!fl) {
+      fl = alloc_flash();
+      if (!fl) return JS_UNDEFINED;
+      fl->mesh_handle = mesh_h;
+      fl->saved_color = mesh->color;
+   }
+   fl->flash_color = fcolor;
+   fl->duration    = dur;
+   fl->timer       = dur;
+   mesh->color     = fcolor;
+   return JS_UNDEFINED;
+}
+
+static JSValue js_update_mesh_flashes(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   float dt = (float)double_from_js(ctx, argc>0?argv[0]:JS_UNDEFINED, 0);
+   for (int i = 0; i < NOVA64_MAX_FLASH; i++) {
+      struct nova64_mesh_flash *fl = &g_mesh_flashes[i];
+      if (!fl->used) continue;
+      fl->timer -= dt;
+      if (fl->timer <= 0) {
+         struct nova64_mesh *mesh = mesh_from_handle(fl->mesh_handle);
+         if (mesh) mesh->color = fl->saved_color;
+         memset(fl, 0, sizeof(*fl));
+      }
+   }
+   return JS_UNDEFINED;
+}
+
+static JSValue js_is_mesh_flashing(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   int mesh_h = int_from_js(ctx, argc>0?argv[0]:JS_UNDEFINED, 0);
+   return JS_NewBool(ctx, flash_for_mesh(mesh_h) != NULL);
+}
+
+static JSValue js_cancel_mesh_flash(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   int mesh_h = int_from_js(ctx, argc>0?argv[0]:JS_UNDEFINED, 0);
+   struct nova64_mesh_flash *fl = flash_for_mesh(mesh_h);
+   if (!fl) return JS_NewBool(ctx, false);
+   struct nova64_mesh *mesh = mesh_from_handle(mesh_h);
+   if (mesh) mesh->color = fl->saved_color;
+   memset(fl, 0, sizeof(*fl));
    return JS_NewBool(ctx, true);
 }
 
@@ -26642,6 +26727,12 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, global, "getTrail2DCount",         js_get_trail2d_count,        1);
    set_function(ctx, global, "destroyTrail2D",          js_destroy_trail2d,          1);
 
+   /* Batch 70 */
+   set_function(ctx, global, "triggerMeshFlash",        js_trigger_mesh_flash,       3);
+   set_function(ctx, global, "updateMeshFlashes",       js_update_mesh_flashes,      1);
+   set_function(ctx, global, "isMeshFlashing",          js_is_mesh_flashing,         1);
+   set_function(ctx, global, "cancelMeshFlash",         js_cancel_mesh_flash,        1);
+
    JS_FreeValue(ctx, global);
    return true;
 }
@@ -29179,7 +29270,7 @@ void RETRO_CALLCONV retro_reset(void)
    g_overlay_scan_active = false; g_overlay_scan_intensity = 0.5f; g_overlay_scan_color = 0x00000080;
    g_screen_saturation = 1.0f; g_screen_contrast = 1.0f;
    g_trans_type = NOVA64_TRANS_NONE; g_trans_timer = 0.0f; g_trans_duration = 1.0f;
-   /* Batch 63-69 resets */
+   /* Batch 63-70 resets */
    memset(g_bodies, 0, sizeof(g_bodies));
    memset(g_splines, 0, sizeof(g_splines));
    memset(g_world_labels, 0, sizeof(g_world_labels));
@@ -29187,6 +29278,7 @@ void RETRO_CALLCONV retro_reset(void)
    memset(g_camera_paths, 0, sizeof(g_camera_paths));
    memset(g_followers, 0, sizeof(g_followers));
    memset(g_trails, 0, sizeof(g_trails));
+   memset(g_mesh_flashes, 0, sizeof(g_mesh_flashes));
    g_path_count = 0; g_path_closed = 0;
    memset(g_hotspots,    0, sizeof(g_hotspots));
    memset(g_btn_repeat,  0, sizeof(g_btn_repeat));

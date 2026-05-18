@@ -937,5 +937,7 @@ run_visual_case "789 mesh follower"        "789-mesh-follower"        "retroarch
 run_visual_case "849 batch68 showcase"     "849-batch68-showcase"     "retroarch/conformance/849-batch68-showcase.js"     "6c3d1c4a7b805fdf"
 run_visual_case "790 trail2d"              "790-trail2d"              "retroarch/conformance/790-trail2d.js"              "52013d2b770c47b0"
 run_visual_case "860 batch69 showcase"     "860-batch69-showcase"     "retroarch/conformance/860-batch69-showcase.js"     "fcbac31907209745"
+run_visual_case "791 mesh flash"           "791-mesh-flash"           "retroarch/conformance/791-mesh-flash.js"           "4b6c0688ed28a46f"
+run_visual_case "871 batch70 showcase"     "871-batch70-showcase"     "retroarch/conformance/871-batch70-showcase.js"     "8717fba04231d2e0"
 
 echo "Conformance passed."

@@ -1128,6 +1128,38 @@ static struct nova64_world_label g_world_labels[NOVA64_MAX_WORLD_LABELS];
 /* ── Batch 66: Camera roll ──────────────────────────────────── */
 static float g_camera_roll = 0.0f;
 
+/* ── Batch 84: Neon / glow shapes ───────────────────────────── */
+/* (stateless — no global state needed; functions declared later) */
+
+/* ── Batch 83: Animated progress bar ────────────────────────── */
+#define NOVA64_MAX_PROGRESS_BARS 8
+struct nova64_progress_bar {
+   bool     used;
+   int      x, y, w, h;
+   float    value;         /* current displayed 0-1 */
+   float    target;        /* target 0-1 */
+   float    speed;         /* units/sec toward target */
+   uint32_t bg_color;
+   uint32_t fill_color;
+   uint32_t border_color;
+};
+static struct nova64_progress_bar g_progress_bars[NOVA64_MAX_PROGRESS_BARS];
+
+/* ── Batch 82: Combo counter ─────────────────────────────────── */
+#define NOVA64_MAX_COMBOS        4
+#define NOVA64_COMBO_FLASH_TIME  0.15f
+struct nova64_combo {
+   bool     used;
+   int      count;
+   int      x, y;
+   float    timeout;       /* seconds before combo expires */
+   float    timer;         /* counts up; reset on hit */
+   float    flash;         /* flash timer (0 = no flash) */
+   uint32_t color;
+   uint32_t flash_color;
+};
+static struct nova64_combo g_combos[NOVA64_MAX_COMBOS];
+
 /* ── Batch 81: Toast notifications ─────────────────────────── */
 #define NOVA64_MAX_TOASTS      4
 #define NOVA64_TOAST_TEXT_LEN  64
@@ -9458,6 +9490,311 @@ static JSValue js_destroy_color_ramp(JSContext *ctx, JSValueConst this_val, int 
    if (!ramp) return JS_NewBool(ctx, false);
    memset(ramp, 0, sizeof(*ramp));
    return JS_NewBool(ctx, true);
+}
+
+/* ── Batch 84: glowRect, glowCircle, glowLine, glowPset                      ── */
+/* Soft-bloom effect: draw a dim halo then the bright core. Stateless.           */
+
+static void draw_glow_halo(int cx, int cy, int w, int h, uint32_t color, int radius) {
+   if (radius < 1) return;
+   uint8_t r = (color >> 24) & 0xff;
+   uint8_t g = (color >> 16) & 0xff;
+   uint8_t b = (color >>  8) & 0xff;
+   for (int step = radius; step >= 1; step--) {
+      float t     = 1.0f - (float)step / (float)(radius + 1);
+      uint8_t a   = (uint8_t)(60.0f * t * t);
+      uint32_t hc = ((uint32_t)r << 24) | ((uint32_t)g << 16) | ((uint32_t)b << 8) | a;
+      draw_rect_pixels(cx - step, cy - step, w + step * 2, h + step * 2, hc, false);
+   }
+}
+
+static JSValue js_glow_rect(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   int x      = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0);
+   int y      = int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0);
+   int w      = int_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 10);
+   int h      = int_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, 10);
+   uint32_t c = color_from_js(ctx, argc > 4 ? argv[4] : JS_UNDEFINED, 0xffffffff);
+   int rad    = int_from_js(ctx, argc > 5 ? argv[5] : JS_UNDEFINED, 4);
+   draw_glow_halo(x, y, w, h, c, rad);
+   draw_rect_pixels(x, y, w, h, c, false);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_glow_rect_fill(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   int x      = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0);
+   int y      = int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0);
+   int w      = int_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 10);
+   int h      = int_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, 10);
+   uint32_t c = color_from_js(ctx, argc > 4 ? argv[4] : JS_UNDEFINED, 0xffffffff);
+   int rad    = int_from_js(ctx, argc > 5 ? argv[5] : JS_UNDEFINED, 4);
+   draw_glow_halo(x, y, w, h, c, rad);
+   draw_rect_pixels(x, y, w, h, c, true);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_glow_circle(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   int cx     = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0);
+   int cy     = int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0);
+   int r      = int_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 10);
+   uint32_t c = color_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, 0xffffffff);
+   int rad    = int_from_js(ctx, argc > 4 ? argv[4] : JS_UNDEFINED, 4);
+   if (r < 1) r = 1;
+   uint8_t cr = (c >> 24) & 0xff, cg = (c >> 16) & 0xff, cb = (c >> 8) & 0xff;
+   /* halo rings */
+   for (int step = rad; step >= 1; step--) {
+      float t   = 1.0f - (float)step / (float)(rad + 1);
+      uint8_t a = (uint8_t)(60.0f * t * t);
+      uint32_t hc = ((uint32_t)cr<<24)|((uint32_t)cg<<16)|((uint32_t)cb<<8)|a;
+      draw_circle_pixels(cx, cy, r + step, hc, false);
+   }
+   draw_circle_pixels(cx, cy, r, c, false);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_glow_line(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   int x1     = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0);
+   int y1     = int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0);
+   int x2     = int_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 0);
+   int y2     = int_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, 0);
+   uint32_t c = color_from_js(ctx, argc > 4 ? argv[4] : JS_UNDEFINED, 0xffffffff);
+   int rad    = int_from_js(ctx, argc > 5 ? argv[5] : JS_UNDEFINED, 3);
+   uint8_t cr = (c >> 24) & 0xff, cg = (c >> 16) & 0xff, cb = (c >> 8) & 0xff;
+   for (int step = rad; step >= 1; step--) {
+      float t   = 1.0f - (float)step / (float)(rad + 1);
+      uint8_t a = (uint8_t)(55.0f * t * t);
+      uint32_t hc = ((uint32_t)cr<<24)|((uint32_t)cg<<16)|((uint32_t)cb<<8)|a;
+      draw_line_pixels(x1, y1 - step, x2, y2 - step, hc);
+      draw_line_pixels(x1, y1 + step, x2, y2 + step, hc);
+      draw_line_pixels(x1 - step, y1, x2 - step, y2, hc);
+      draw_line_pixels(x1 + step, y1, x2 + step, y2, hc);
+   }
+   draw_line_pixels(x1, y1, x2, y2, c);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_glow_pset(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   int x      = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0);
+   int y      = int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0);
+   uint32_t c = color_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 0xffffffff);
+   int rad    = int_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, 4);
+   uint8_t cr = (c >> 24) & 0xff, cg = (c >> 16) & 0xff, cb = (c >> 8) & 0xff;
+   for (int step = rad; step >= 1; step--) {
+      float t   = 1.0f - (float)step / (float)(rad + 1);
+      uint8_t a = (uint8_t)(80.0f * t * t);
+      uint32_t hc = ((uint32_t)cr<<24)|((uint32_t)cg<<16)|((uint32_t)cb<<8)|a;
+      draw_rect_pixels(x - step, y - step, step * 2 + 1, step * 2 + 1, hc, true);
+   }
+   set_pixel(x, y, c);
+   return JS_UNDEFINED;
+}
+
+/* ── Batch 83: createBar, setBarValue, setBarTarget, updateBar,               ── */
+/*              drawBar, getBarValue, setBarColors, destroyBar                       */
+
+
+static int alloc_progress_bar(void) {
+   for (int i = 0; i < NOVA64_MAX_PROGRESS_BARS; i++)
+      if (!g_progress_bars[i].used) { g_progress_bars[i].used = true; return i + 1; }
+   return 0;
+}
+static struct nova64_progress_bar *pb_from_handle(int h) {
+   if (h < 1 || h > NOVA64_MAX_PROGRESS_BARS) return NULL;
+   return g_progress_bars[h-1].used ? &g_progress_bars[h-1] : NULL;
+}
+
+static JSValue js_create_bar(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   int h = alloc_progress_bar();
+   if (!h) return JS_NewInt32(ctx, 0);
+   struct nova64_progress_bar *pb = &g_progress_bars[h-1];
+   pb->x            = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0);
+   pb->y            = int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0);
+   pb->w            = int_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 200);
+   pb->h            = int_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, 14);
+   float v          = (float)double_from_js(ctx, argc > 4 ? argv[4] : JS_UNDEFINED, 0.0);
+   pb->value        = (v < 0.f) ? 0.f : (v > 1.f) ? 1.f : v;
+   pb->target       = pb->value;
+   pb->speed        = 1.0f;   /* full bar per second */
+   pb->bg_color     = rgba8(20, 22, 36, 220);
+   pb->fill_color   = rgba8(60, 180, 80, 255);
+   pb->border_color = rgba8(80, 100, 160, 255);
+   return JS_NewInt32(ctx, h);
+}
+
+static JSValue js_set_bar_value(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   struct nova64_progress_bar *pb = pb_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!pb) return JS_UNDEFINED;
+   float v = (float)double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0.0);
+   pb->value = pb->target = (v < 0.f) ? 0.f : (v > 1.f) ? 1.f : v;
+   return JS_UNDEFINED;
+}
+
+static JSValue js_set_bar_target(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   struct nova64_progress_bar *pb = pb_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!pb) return JS_UNDEFINED;
+   float v = (float)double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0.0);
+   pb->target = (v < 0.f) ? 0.f : (v > 1.f) ? 1.f : v;
+   return JS_UNDEFINED;
+}
+
+static JSValue js_update_bar(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   struct nova64_progress_bar *pb = pb_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!pb) return JS_UNDEFINED;
+   float dt   = (float)double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0.0);
+   float diff = pb->target - pb->value;
+   float step = pb->speed * dt;
+   if (diff > 0.f) { pb->value += step; if (pb->value > pb->target) pb->value = pb->target; }
+   else            { pb->value -= step; if (pb->value < pb->target) pb->value = pb->target; }
+   return JS_UNDEFINED;
+}
+
+static JSValue js_draw_bar(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   struct nova64_progress_bar *pb = pb_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!pb) return JS_UNDEFINED;
+   draw_rect_pixels(pb->x, pb->y, pb->w, pb->h, pb->bg_color, true);
+   int fw = (int)(pb->value * (float)pb->w);
+   if (fw > pb->w) fw = pb->w;
+   if (fw > 0) draw_rect_pixels(pb->x, pb->y, fw, pb->h, pb->fill_color, true);
+   draw_rect_pixels(pb->x, pb->y, pb->w, 1, pb->border_color, true);
+   draw_rect_pixels(pb->x, pb->y + pb->h - 1, pb->w, 1, pb->border_color, true);
+   draw_rect_pixels(pb->x, pb->y, 1, pb->h, pb->border_color, true);
+   draw_rect_pixels(pb->x + pb->w - 1, pb->y, 1, pb->h, pb->border_color, true);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_get_bar_value(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   struct nova64_progress_bar *pb = pb_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   return JS_NewFloat64(ctx, pb ? (double)pb->value : 0.0);
+}
+
+static JSValue js_set_bar_colors(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   struct nova64_progress_bar *pb = pb_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!pb) return JS_UNDEFINED;
+   pb->bg_color     = color_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, pb->bg_color);
+   pb->fill_color   = color_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, pb->fill_color);
+   pb->border_color = color_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, pb->border_color);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_destroy_bar(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   struct nova64_progress_bar *pb = pb_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!pb) return JS_NewBool(ctx, 0);
+   memset(pb, 0, sizeof(*pb));
+   return JS_NewBool(ctx, 1);
+}
+
+/* ── Batch 82: createCombo, hitCombo, resetCombo, updateCombo,               ── */
+/*              drawCombo, getComboCount, isComboActive, destroyCombo             */
+
+static int alloc_combo(void) {
+   for (int i = 0; i < NOVA64_MAX_COMBOS; i++)
+      if (!g_combos[i].used) { g_combos[i].used = true; return i + 1; }
+   return 0;
+}
+static struct nova64_combo *combo_from_handle(int h) {
+   if (h < 1 || h > NOVA64_MAX_COMBOS) return NULL;
+   return g_combos[h-1].used ? &g_combos[h-1] : NULL;
+}
+
+static JSValue js_create_combo(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   int h = alloc_combo();
+   if (!h) return JS_NewInt32(ctx, 0);
+   struct nova64_combo *c = &g_combos[h-1];
+   c->x           = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 100);
+   c->y           = int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 100);
+   c->timeout     = (float)double_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 1.5);
+   if (c->timeout < 0.1f) c->timeout = 0.1f;
+   c->color       = rgba8(255, 220, 60, 255);
+   c->flash_color = rgba8(255, 255, 255, 255);
+   c->count = 0; c->timer = 0.f; c->flash = 0.f;
+   return JS_NewInt32(ctx, h);
+}
+
+static JSValue js_hit_combo(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   struct nova64_combo *c = combo_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!c) return JS_UNDEFINED;
+   c->count++;
+   c->timer = 0.f;
+   c->flash = NOVA64_COMBO_FLASH_TIME;
+   return JS_UNDEFINED;
+}
+
+static JSValue js_reset_combo(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   struct nova64_combo *c = combo_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!c) return JS_UNDEFINED;
+   c->count = 0; c->timer = 0.f; c->flash = 0.f;
+   return JS_UNDEFINED;
+}
+
+static JSValue js_update_combo(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   struct nova64_combo *c = combo_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!c || c->count == 0) return JS_UNDEFINED;
+   float dt = (float)double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0.0);
+   c->timer += dt;
+   if (c->flash > 0.f) { c->flash -= dt; if (c->flash < 0.f) c->flash = 0.f; }
+   if (c->timer >= c->timeout) { c->count = 0; c->timer = 0.f; c->flash = 0.f; }
+   return JS_UNDEFINED;
+}
+
+static JSValue js_draw_combo(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   struct nova64_combo *c = combo_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!c || c->count == 0) return JS_UNDEFINED;
+   uint32_t col = (c->flash > 0.f) ? c->flash_color : c->color;
+   /* scale: larger number = bigger text via repeated pixel font */
+   char buf[16];
+   int n = c->count;
+   int digits = n < 10 ? 1 : n < 100 ? 2 : n < 1000 ? 3 : 4;
+   snprintf(buf, sizeof(buf), "%d", n);
+   /* draw shadow */
+   draw_text_pixels(buf, c->x + 2, c->y + 2, rgba8(0, 0, 0, 160));
+   draw_text_pixels(buf, c->x,     c->y,     col);
+   /* "HIT" / "COMBO" label */
+   const char *lbl = (c->count >= 5) ? "COMBO!" : "HIT";
+   draw_text_pixels(lbl, c->x + digits * 6, c->y + 2, rgba8(200, 200, 200, 180));
+   /* decay bar showing time left */
+   float frac = 1.0f - (c->timer / c->timeout);
+   if (frac < 0.f) frac = 0.f;
+   int bw = 40;
+   draw_rect_pixels(c->x, c->y + 12, bw, 3, rgba8(30, 30, 40, 200), true);
+   draw_rect_pixels(c->x, c->y + 12, (int)(frac * bw), 3, col, true);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_get_combo_count(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   struct nova64_combo *c = combo_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   return JS_NewInt32(ctx, c ? c->count : 0);
+}
+
+static JSValue js_is_combo_active(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   struct nova64_combo *c = combo_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   return JS_NewBool(ctx, c && c->count > 0);
+}
+
+static JSValue js_destroy_combo(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   struct nova64_combo *c = combo_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!c) return JS_NewBool(ctx, 0);
+   memset(c, 0, sizeof(*c));
+   return JS_NewBool(ctx, 1);
 }
 
 /* ── Batch 81: createToast, showToast, updateToast, drawToast,               ── */
@@ -28171,6 +28508,33 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, global, "colorRampStopCount",      js_color_ramp_stop_count,    1);
    set_function(ctx, global, "destroyColorRamp",        js_destroy_color_ramp,       1);
 
+   /* Batch 84 */
+   set_function(ctx, global, "glowRect",                js_glow_rect,                6);
+   set_function(ctx, global, "glowRectFill",            js_glow_rect_fill,           6);
+   set_function(ctx, global, "glowCircle",              js_glow_circle,              5);
+   set_function(ctx, global, "glowLine",                js_glow_line,                6);
+   set_function(ctx, global, "glowPset",                js_glow_pset,                4);
+
+   /* Batch 83 */
+   set_function(ctx, global, "createBar",       js_create_bar,      5);
+   set_function(ctx, global, "setBarValue",             js_set_bar_value,             2);
+   set_function(ctx, global, "setBarTarget",       js_set_bar_target,      2);
+   set_function(ctx, global, "updateBar",       js_update_bar,      2);
+   set_function(ctx, global, "drawBar",         js_draw_bar,        1);
+   set_function(ctx, global, "getBarValue",             js_get_bar_value,             1);
+   set_function(ctx, global, "setBarColors",       js_set_bar_colors,      4);
+   set_function(ctx, global, "destroyBar",      js_destroy_bar,     1);
+
+   /* Batch 82 */
+   set_function(ctx, global, "createCombo",             js_create_combo,             3);
+   set_function(ctx, global, "hitCombo",                js_hit_combo,                1);
+   set_function(ctx, global, "resetCombo",              js_reset_combo,              1);
+   set_function(ctx, global, "updateCombo",             js_update_combo,             2);
+   set_function(ctx, global, "drawCombo",               js_draw_combo,               1);
+   set_function(ctx, global, "getComboCount",           js_get_combo_count,          1);
+   set_function(ctx, global, "isComboActive",           js_is_combo_active,          1);
+   set_function(ctx, global, "destroyCombo",            js_destroy_combo,            1);
+
    /* Batch 81 */
    set_function(ctx, global, "createToast",             js_create_toast,             2);
    set_function(ctx, global, "showToast",               js_show_toast,               3);
@@ -30806,6 +31170,8 @@ void RETRO_CALLCONV retro_reset(void)
    memset(g_inventories,     0, sizeof(g_inventories));
    memset(g_dialogue_boxes,  0, sizeof(g_dialogue_boxes));
    memset(g_toasts,          0, sizeof(g_toasts));
+   memset(g_combos,          0, sizeof(g_combos));
+   memset(g_progress_bars,   0, sizeof(g_progress_bars));
    memset(g_counters,     0, sizeof(g_counters));
    memset(g_typewriters, 0, sizeof(g_typewriters));
    memset(g_gauges,      0, sizeof(g_gauges));

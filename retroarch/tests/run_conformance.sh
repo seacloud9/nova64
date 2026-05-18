@@ -961,5 +961,11 @@ run_visual_case "802 dialogue"             "802-dialogue"             "retroarch
 run_visual_case "981 batch80 showcase"     "981-batch80-showcase"     "retroarch/conformance/981-batch80-showcase.js"     "18bb799e427bfb73"
 run_visual_case "803 toast"                "803-toast"                "retroarch/conformance/803-toast.js"                "42c07be8da8a1c64"
 run_visual_case "992 batch81 showcase"     "992-batch81-showcase"     "retroarch/conformance/992-batch81-showcase.js"     "37c3be468c5c6b9b"
+run_visual_case "804 combo"                "804-combo"                "retroarch/conformance/804-combo.js"                "45a93a904450bd48"
+run_visual_case "1003 batch82 showcase"    "1003-batch82-showcase"    "retroarch/conformance/1003-batch82-showcase.js"    "7e13cc4e2870bb5a"
+run_visual_case "805 bar"                  "805-bar"                  "retroarch/conformance/805-bar.js"                  "cbe5fbc42e19b74e"
+run_visual_case "1014 batch83 showcase"    "1014-batch83-showcase"    "retroarch/conformance/1014-batch83-showcase.js"    "ce7e417fd9a743b7"
+run_visual_case "806 glow"                 "806-glow"                 "retroarch/conformance/806-glow.js"                 "3b2eb018b4a635de"
+run_visual_case "1025 batch84 showcase"    "1025-batch84-showcase"    "retroarch/conformance/1025-batch84-showcase.js"    "d594af6b3eafb2dc"
 
 echo "Conformance passed."

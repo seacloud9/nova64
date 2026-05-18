@@ -1128,6 +1128,70 @@ static struct nova64_world_label g_world_labels[NOVA64_MAX_WORLD_LABELS];
 /* ── Batch 66: Camera roll ──────────────────────────────────── */
 static float g_camera_roll = 0.0f;
 
+/* ── Batch 90: Wave manager ──────────────────────────────────── */
+#define NOVA64_MAX_WAVE_MANAGERS 4
+struct nova64_wave_manager {
+   bool used;
+   int  wave_number;
+   int  enemy_count;
+   int  enemies_remaining;
+   int  active;
+   float wave_delay;
+};
+static struct nova64_wave_manager g_wave_managers[NOVA64_MAX_WAVE_MANAGERS];
+
+/* ── Batch 89: Spotlight overlay ─────────────────────────────── */
+#define NOVA64_MAX_SPOTLIGHTS 4
+struct nova64_spotlight {
+   bool used;
+   int  cx, cy, radius;
+   uint32_t shadow_color;
+};
+static struct nova64_spotlight g_spotlights[NOVA64_MAX_SPOTLIGHTS];
+
+/* ── Batch 88: Smooth 2D camera ──────────────────────────────── */
+#define NOVA64_MAX_SMOOTH_CAMS 4
+struct nova64_smooth_cam {
+   bool  used;
+   float x, y;
+   float tx, ty;
+   float lerp;
+   float zoom, zoom_target;
+};
+static struct nova64_smooth_cam g_smooth_cams[NOVA64_MAX_SMOOTH_CAMS];
+
+/* ── Batch 87: Speech bubble ─────────────────────────────────── */
+#define NOVA64_MAX_BUBBLES 8
+struct nova64_bubble {
+   bool used;
+   char text[128];
+   int  x, y, w, h;
+   int  tail_x, tail_y, tail_side;
+   uint32_t bg_color, border_color, text_color;
+};
+static struct nova64_bubble g_bubbles[NOVA64_MAX_BUBBLES];
+
+/* ── Batch 86: Text effects ──────────────────────────────────── */
+/* (stateless — no global state needed; functions declared later) */
+
+/* ── Batch 85: Particle burst ────────────────────────────────── */
+#define NOVA64_MAX_BURSTS 8
+#define NOVA64_BURST_PARTICLES 24
+struct nova64_burst {
+   bool  used;
+   float px[NOVA64_BURST_PARTICLES];
+   float py[NOVA64_BURST_PARTICLES];
+   float vx[NOVA64_BURST_PARTICLES];
+   float vy[NOVA64_BURST_PARTICLES];
+   float life[NOVA64_BURST_PARTICLES];
+   float max_life[NOVA64_BURST_PARTICLES];
+   int   count;
+   uint32_t colors[4];
+   int   ncolors;
+   float gravity;
+};
+static struct nova64_burst g_bursts[NOVA64_MAX_BURSTS];
+
 /* ── Batch 84: Neon / glow shapes ───────────────────────────── */
 /* (stateless — no global state needed; functions declared later) */
 
@@ -9489,6 +9553,697 @@ static JSValue js_destroy_color_ramp(JSContext *ctx, JSValueConst this_val, int 
    struct nova64_color_ramp *ramp = ramp_from_handle(int_from_js(ctx, argc>0?argv[0]:JS_UNDEFINED, 0));
    if (!ramp) return JS_NewBool(ctx, false);
    memset(ramp, 0, sizeof(*ramp));
+   return JS_NewBool(ctx, true);
+}
+
+/* ── Batch 85: Particle burst ─────────────────────────────────────────────── */
+
+static struct nova64_burst *burst_from_handle(int h)
+{
+   if (h < 1 || h > NOVA64_MAX_BURSTS) return NULL;
+   struct nova64_burst *b = &g_bursts[h - 1];
+   return b->used ? b : NULL;
+}
+
+static void burst_spawn(struct nova64_burst *b, float ox, float oy, float speed)
+{
+   for (int i = 0; i < b->count && i < NOVA64_BURST_PARTICLES; i++) {
+      float angle = (float)(rng_next_impl() * 6.2831853);
+      float sp    = speed * (0.4f + (float)rng_next_impl() * 0.6f);
+      b->px[i]    = ox;
+      b->py[i]    = oy;
+      b->vx[i]    = cosf(angle) * sp;
+      b->vy[i]    = sinf(angle) * sp;
+      b->max_life[i] = 0.6f + (float)rng_next_impl() * 0.6f;
+      b->life[i]  = b->max_life[i];
+   }
+}
+
+static JSValue js_create_burst(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   float ox    = (float)double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0.0);
+   float oy    = (float)double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0.0);
+   int   count = int_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 12);
+   float speed = (float)double_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, 80.0);
+   if (count < 1) count = 1;
+   if (count > NOVA64_BURST_PARTICLES) count = NOVA64_BURST_PARTICLES;
+   for (int i = 0; i < NOVA64_MAX_BURSTS; i++) {
+      if (!g_bursts[i].used) {
+         memset(&g_bursts[i], 0, sizeof(g_bursts[i]));
+         g_bursts[i].used    = true;
+         g_bursts[i].count   = count;
+         g_bursts[i].gravity = 120.0f;
+         g_bursts[i].ncolors = 1;
+         g_bursts[i].colors[0] = 0xffffffff;
+         burst_spawn(&g_bursts[i], ox, oy, speed);
+         return JS_NewInt32(ctx, i + 1);
+      }
+   }
+   return JS_NewInt32(ctx, 0);
+}
+
+static JSValue js_trigger_burst(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   struct nova64_burst *b = burst_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!b) return JS_UNDEFINED;
+   float ox    = (float)double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0.0);
+   float oy    = (float)double_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 0.0);
+   float speed = (float)double_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, 80.0);
+   burst_spawn(b, ox, oy, speed);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_update_burst(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   struct nova64_burst *b = burst_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!b) return JS_UNDEFINED;
+   float dt = (float)double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0.0);
+   for (int i = 0; i < b->count; i++) {
+      if (b->life[i] <= 0.0f) continue;
+      b->vy[i] += b->gravity * dt;
+      b->px[i] += b->vx[i] * dt;
+      b->py[i] += b->vy[i] * dt;
+      b->life[i] -= dt;
+   }
+   return JS_UNDEFINED;
+}
+
+static JSValue js_draw_burst(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   struct nova64_burst *b = burst_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!b) return JS_UNDEFINED;
+   for (int i = 0; i < b->count; i++) {
+      if (b->life[i] <= 0.0f) continue;
+      float frac  = b->life[i] / (b->max_life[i] > 0.0f ? b->max_life[i] : 1.0f);
+      int ci      = b->ncolors > 0 ? (i % b->ncolors) : 0;
+      uint32_t c  = b->colors[ci];
+      uint8_t  a  = (uint8_t)((float)((c) & 0xff) * frac);
+      uint32_t fc = (c & 0xffffff00u) | a;
+      set_pixel((int)b->px[i], (int)b->py[i], fc);
+   }
+   return JS_UNDEFINED;
+}
+
+static JSValue js_is_burst_done(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   struct nova64_burst *b = burst_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!b) return JS_NewBool(ctx, true);
+   for (int i = 0; i < b->count; i++)
+      if (b->life[i] > 0.0f) return JS_NewBool(ctx, false);
+   return JS_NewBool(ctx, true);
+}
+
+static JSValue js_set_burst_colors(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   struct nova64_burst *b = burst_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!b) return JS_UNDEFINED;
+   b->ncolors = 0;
+   for (int i = 1; i < argc && b->ncolors < 4; i++) {
+      uint32_t v = 0;
+      JS_ToUint32(ctx, &v, argv[i]);
+      b->colors[b->ncolors++] = v;
+   }
+   return JS_UNDEFINED;
+}
+
+static JSValue js_destroy_burst(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   struct nova64_burst *b = burst_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!b) return JS_NewBool(ctx, false);
+   b->used = false;
+   return JS_NewBool(ctx, true);
+}
+
+/* ── Batch 86: Text effects ────────────────────────────────────────────────── */
+
+static void draw_text_gradient(const char *text, int x, int y, uint32_t ctop, uint32_t cbot)
+{
+   if (!text) return;
+   int cursor = x;
+   for (const char *p = text; *p; p++) {
+      if (*p == '\n') { cursor = x; y += 9; continue; }
+      for (int row = 0; row < 7; row++) {
+         uint8_t bits = glyph_row(*p, row);
+         float t2 = (float)row / 6.0f;
+         uint8_t r2 = (uint8_t)((float)((ctop>>24)&0xff)*(1.0f-t2) + (float)((cbot>>24)&0xff)*t2);
+         uint8_t g2 = (uint8_t)((float)((ctop>>16)&0xff)*(1.0f-t2) + (float)((cbot>>16)&0xff)*t2);
+         uint8_t b2 = (uint8_t)((float)((ctop>>8) &0xff)*(1.0f-t2) + (float)((cbot>>8) &0xff)*t2);
+         uint8_t a2 = (uint8_t)((float)((ctop>>0) &0xff)*(1.0f-t2) + (float)((cbot>>0) &0xff)*t2);
+         uint32_t col = ((uint32_t)r2<<24)|((uint32_t)g2<<16)|((uint32_t)b2<<8)|a2;
+         for (int col2 = 0; col2 < 5; col2++)
+            if (bits & (1U << (4 - col2)))
+               set_pixel(cursor + col2, y + row, col);
+      }
+      cursor += 6;
+   }
+}
+
+static JSValue js_print_gradient(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int x = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0);
+   int y = int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0);
+   const char *text = JS_ToCString(ctx, argc > 2 ? argv[2] : JS_UNDEFINED);
+   uint32_t ctop = 0; JS_ToUint32(ctx, &ctop, argc > 3 ? argv[3] : JS_UNDEFINED);
+   uint32_t cbot = 0; JS_ToUint32(ctx, &cbot, argc > 4 ? argv[4] : JS_UNDEFINED);
+   draw_text_gradient(text, x, y, ctop, cbot);
+   JS_FreeCString(ctx, text);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_print_wave(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int x    = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0);
+   int y    = int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0);
+   const char *text = JS_ToCString(ctx, argc > 2 ? argv[2] : JS_UNDEFINED);
+   uint32_t color = 0; JS_ToUint32(ctx, &color, argc > 3 ? argv[3] : JS_UNDEFINED);
+   float amp  = (float)double_from_js(ctx, argc > 4 ? argv[4] : JS_UNDEFINED, 4.0);
+   float freq = (float)double_from_js(ctx, argc > 5 ? argv[5] : JS_UNDEFINED, 0.8f);
+   float t2   = (float)double_from_js(ctx, argc > 6 ? argv[6] : JS_UNDEFINED, 0.0);
+   if (text) {
+      int cursor = x;
+      int ci = 0;
+      for (const char *p = text; *p; p++, ci++) {
+         if (*p == '\n') { cursor = x; y += 9; ci = 0; continue; }
+         int dy = (int)(amp * sinf(ci * freq + t2));
+         for (int row = 0; row < 7; row++) {
+            uint8_t bits = glyph_row(*p, row);
+            for (int col2 = 0; col2 < 5; col2++)
+               if (bits & (1U << (4 - col2)))
+                  set_pixel(cursor + col2, y + row + dy, color);
+         }
+         cursor += 6;
+      }
+   }
+   JS_FreeCString(ctx, text);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_print_flash(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int x = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0);
+   int y = int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0);
+   const char *text = JS_ToCString(ctx, argc > 2 ? argv[2] : JS_UNDEFINED);
+   uint32_t color = 0; JS_ToUint32(ctx, &color, argc > 3 ? argv[3] : JS_UNDEFINED);
+   float t2  = (float)double_from_js(ctx, argc > 4 ? argv[4] : JS_UNDEFINED, 0.0);
+   float hz  = (float)double_from_js(ctx, argc > 5 ? argv[5] : JS_UNDEFINED, 2.0);
+   if (text && ((int)(t2 * hz * 2.0f) & 1) == 0) {
+      int cursor = x;
+      for (const char *p = text; *p; p++) {
+         if (*p == '\n') { cursor = x; y += 9; continue; }
+         for (int row = 0; row < 7; row++) {
+            uint8_t bits = glyph_row(*p, row);
+            for (int col2 = 0; col2 < 5; col2++)
+               if (bits & (1U << (4 - col2)))
+                  set_pixel(cursor + col2, y + row, color);
+         }
+         cursor += 6;
+      }
+   }
+   JS_FreeCString(ctx, text);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_print_shake(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int x = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0);
+   int y = int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0);
+   const char *text = JS_ToCString(ctx, argc > 2 ? argv[2] : JS_UNDEFINED);
+   uint32_t color = 0; JS_ToUint32(ctx, &color, argc > 3 ? argv[3] : JS_UNDEFINED);
+   float t2     = (float)double_from_js(ctx, argc > 4 ? argv[4] : JS_UNDEFINED, 0.0);
+   float amount = (float)double_from_js(ctx, argc > 5 ? argv[5] : JS_UNDEFINED, 2.0);
+   if (text) {
+      int cursor = x;
+      int ci = 0;
+      for (const char *p = text; *p; p++, ci++) {
+         if (*p == '\n') { cursor = x; y += 9; ci = 0; continue; }
+         int ox = (int)(sinf((float)(ci * 7) + t2 * 20.0f) * amount);
+         int oy = (int)(cosf((float)(ci * 5) + t2 * 17.0f) * amount);
+         for (int row = 0; row < 7; row++) {
+            uint8_t bits = glyph_row(*p, row);
+            for (int col2 = 0; col2 < 5; col2++)
+               if (bits & (1U << (4 - col2)))
+                  set_pixel(cursor + col2 + ox, y + row + oy, color);
+         }
+         cursor += 6;
+      }
+   }
+   JS_FreeCString(ctx, text);
+   return JS_UNDEFINED;
+}
+
+static uint32_t hsv_to_rgba8(float h, float s, float v, uint8_t a)
+{
+   h = fmodf(h, 360.0f);
+   if (h < 0.0f) h += 360.0f;
+   float c = v * s;
+   float x = c * (1.0f - fabsf(fmodf(h / 60.0f, 2.0f) - 1.0f));
+   float m = v - c;
+   float r2, g2, b2;
+   if      (h < 60.0f)  { r2=c; g2=x; b2=0; }
+   else if (h < 120.0f) { r2=x; g2=c; b2=0; }
+   else if (h < 180.0f) { r2=0; g2=c; b2=x; }
+   else if (h < 240.0f) { r2=0; g2=x; b2=c; }
+   else if (h < 300.0f) { r2=x; g2=0; b2=c; }
+   else                 { r2=c; g2=0; b2=x; }
+   return ((uint32_t)((r2+m)*255)<<24)|((uint32_t)((g2+m)*255)<<16)|((uint32_t)((b2+m)*255)<<8)|a;
+}
+
+static JSValue js_print_rainbow(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int x = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0);
+   int y = int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0);
+   const char *text = JS_ToCString(ctx, argc > 2 ? argv[2] : JS_UNDEFINED);
+   float t2 = (float)double_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, 0.0);
+   if (text) {
+      int cursor = x;
+      int ci = 0;
+      for (const char *p = text; *p; p++, ci++) {
+         if (*p == '\n') { cursor = x; y += 9; ci = 0; continue; }
+         float hue   = fmodf((float)ci * 30.0f + t2 * 100.0f, 360.0f);
+         uint32_t col = hsv_to_rgba8(hue, 1.0f, 1.0f, 255);
+         for (int row = 0; row < 7; row++) {
+            uint8_t bits = glyph_row(*p, row);
+            for (int col2 = 0; col2 < 5; col2++)
+               if (bits & (1U << (4 - col2)))
+                  set_pixel(cursor + col2, y + row, col);
+         }
+         cursor += 6;
+      }
+   }
+   JS_FreeCString(ctx, text);
+   return JS_UNDEFINED;
+}
+
+/* ── Batch 87: Speech bubble ───────────────────────────────────────────────── */
+
+static struct nova64_bubble *bubble_from_handle(int h)
+{
+   if (h < 1 || h > NOVA64_MAX_BUBBLES) return NULL;
+   struct nova64_bubble *b = &g_bubbles[h - 1];
+   return b->used ? b : NULL;
+}
+
+static JSValue js_create_speech_bubble(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int x = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0);
+   int y = int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0);
+   int w = int_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 120);
+   int h = int_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, 50);
+   for (int i = 0; i < NOVA64_MAX_BUBBLES; i++) {
+      if (!g_bubbles[i].used) {
+         memset(&g_bubbles[i], 0, sizeof(g_bubbles[i]));
+         g_bubbles[i].used         = true;
+         g_bubbles[i].x            = x;
+         g_bubbles[i].y            = y;
+         g_bubbles[i].w            = w;
+         g_bubbles[i].h            = h;
+         g_bubbles[i].tail_x       = x + w / 2;
+         g_bubbles[i].tail_y       = y + h;
+         g_bubbles[i].tail_side    = 0;
+         g_bubbles[i].bg_color     = 0xffffffff;
+         g_bubbles[i].border_color = 0x222222ff;
+         g_bubbles[i].text_color   = 0x111111ff;
+         return JS_NewInt32(ctx, i + 1);
+      }
+   }
+   return JS_NewInt32(ctx, 0);
+}
+
+static JSValue js_set_speech_bubble_text(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   struct nova64_bubble *b = bubble_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!b) return JS_UNDEFINED;
+   const char *t2 = JS_ToCString(ctx, argc > 1 ? argv[1] : JS_UNDEFINED);
+   if (t2) {
+      strncpy(b->text, t2, sizeof(b->text) - 1);
+      b->text[sizeof(b->text) - 1] = '\0';
+      JS_FreeCString(ctx, t2);
+   }
+   return JS_UNDEFINED;
+}
+
+static JSValue js_set_speech_bubble_tail(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   struct nova64_bubble *b = bubble_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!b) return JS_UNDEFINED;
+   b->tail_x    = int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, b->tail_x);
+   b->tail_y    = int_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, b->tail_y);
+   b->tail_side = int_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, b->tail_side);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_set_speech_bubble_colors(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   struct nova64_bubble *b = bubble_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!b) return JS_UNDEFINED;
+   if (argc > 1) JS_ToUint32(ctx, &b->bg_color,     argv[1]);
+   if (argc > 2) JS_ToUint32(ctx, &b->border_color, argv[2]);
+   if (argc > 3) JS_ToUint32(ctx, &b->text_color,   argv[3]);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_draw_speech_bub(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   struct nova64_bubble *b = bubble_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!b) return JS_UNDEFINED;
+   draw_rect_pixels(b->x, b->y, b->w, b->h, b->bg_color, true);
+   draw_rect_pixels(b->x, b->y, b->w, b->h, b->border_color, false);
+   /* tail triangle (side 0 = bottom-center, 1 = top-center) */
+   int tx = b->tail_x;
+   int ty = b->tail_y;
+   int ts = 8;
+   if (b->tail_side == 0) {
+      for (int i = 0; i <= ts; i++) {
+         set_pixel(tx - i, ty + i, b->bg_color);
+         set_pixel(tx + i, ty + i, b->bg_color);
+         set_pixel(tx - i, ty + i, b->border_color);
+         set_pixel(tx + i, ty + i, b->border_color);
+      }
+      set_pixel(tx, ty + ts + 1, b->border_color);
+   } else if (b->tail_side == 1) {
+      for (int i = 0; i <= ts; i++) {
+         set_pixel(tx - i, ty - i, b->bg_color);
+         set_pixel(tx + i, ty - i, b->bg_color);
+      }
+   }
+   /* text */
+   if (b->text[0])
+      draw_text_pixels(b->text, b->x + 5, b->y + 5, b->text_color);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_destroy_speech_bub(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   struct nova64_bubble *b = bubble_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!b) return JS_NewBool(ctx, false);
+   b->used = false;
+   return JS_NewBool(ctx, true);
+}
+
+/* ── Batch 88: Smooth 2D camera ────────────────────────────────────────────── */
+
+static struct nova64_smooth_cam *smooth_cam_from_handle(int h)
+{
+   if (h < 1 || h > NOVA64_MAX_SMOOTH_CAMS) return NULL;
+   struct nova64_smooth_cam *c = &g_smooth_cams[h - 1];
+   return c->used ? c : NULL;
+}
+
+static JSValue js_create_cam2d(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   float tx   = (float)double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0.0);
+   float ty   = (float)double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0.0);
+   float lerp = (float)double_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 5.0);
+   for (int i = 0; i < NOVA64_MAX_SMOOTH_CAMS; i++) {
+      if (!g_smooth_cams[i].used) {
+         memset(&g_smooth_cams[i], 0, sizeof(g_smooth_cams[i]));
+         g_smooth_cams[i].used        = true;
+         g_smooth_cams[i].x           = tx;
+         g_smooth_cams[i].y           = ty;
+         g_smooth_cams[i].tx          = tx;
+         g_smooth_cams[i].ty          = ty;
+         g_smooth_cams[i].lerp        = lerp;
+         g_smooth_cams[i].zoom        = 1.0f;
+         g_smooth_cams[i].zoom_target = 1.0f;
+         return JS_NewInt32(ctx, i + 1);
+      }
+   }
+   return JS_NewInt32(ctx, 0);
+}
+
+static JSValue js_set_cam2d_target(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   struct nova64_smooth_cam *c = smooth_cam_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!c) return JS_UNDEFINED;
+   c->tx = (float)double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, c->tx);
+   c->ty = (float)double_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, c->ty);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_set_cam2d_zoom(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   struct nova64_smooth_cam *c = smooth_cam_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!c) return JS_UNDEFINED;
+   c->zoom_target = (float)double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 1.0);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_update_cam2d(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   struct nova64_smooth_cam *c = smooth_cam_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!c) return JS_UNDEFINED;
+   float dt = (float)double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0.0);
+   float k  = 1.0f - expf(-c->lerp * dt);
+   c->x    += (c->tx - c->x) * k;
+   c->y    += (c->ty - c->y) * k;
+   c->zoom += (c->zoom_target - c->zoom) * k;
+   return JS_UNDEFINED;
+}
+
+static JSValue js_apply_cam2d(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   struct nova64_smooth_cam *c = smooth_cam_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!c) return JS_UNDEFINED;
+   cam2d_x    = (int)c->x;
+   cam2d_y    = (int)c->y;
+   cam2d_zoom = c->zoom;
+   return JS_UNDEFINED;
+}
+
+static JSValue js_get_cam2d_x(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   struct nova64_smooth_cam *c = smooth_cam_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   return JS_NewFloat64(ctx, c ? c->x : 0.0);
+}
+
+static JSValue js_get_cam2d_y(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   struct nova64_smooth_cam *c = smooth_cam_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   return JS_NewFloat64(ctx, c ? c->y : 0.0);
+}
+
+static JSValue js_destroy_cam2d(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   struct nova64_smooth_cam *c = smooth_cam_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!c) return JS_NewBool(ctx, false);
+   c->used = false;
+   return JS_NewBool(ctx, true);
+}
+
+/* ── Batch 89: Spotlight overlay ───────────────────────────────────────────── */
+
+static struct nova64_spotlight *spotlight_from_handle(int h)
+{
+   if (h < 1 || h > NOVA64_MAX_SPOTLIGHTS) return NULL;
+   struct nova64_spotlight *s = &g_spotlights[h - 1];
+   return s->used ? s : NULL;
+}
+
+static JSValue js_create_spotlight(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int cx = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 320);
+   int cy = int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 180);
+   int r  = int_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 80);
+   for (int i = 0; i < NOVA64_MAX_SPOTLIGHTS; i++) {
+      if (!g_spotlights[i].used) {
+         memset(&g_spotlights[i], 0, sizeof(g_spotlights[i]));
+         g_spotlights[i].used         = true;
+         g_spotlights[i].cx           = cx;
+         g_spotlights[i].cy           = cy;
+         g_spotlights[i].radius       = r;
+         g_spotlights[i].shadow_color = 0x000000c0;
+         return JS_NewInt32(ctx, i + 1);
+      }
+   }
+   return JS_NewInt32(ctx, 0);
+}
+
+static JSValue js_set_spotlight_pos(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   struct nova64_spotlight *s = spotlight_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!s) return JS_UNDEFINED;
+   s->cx = int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, s->cx);
+   s->cy = int_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, s->cy);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_set_spotlight_radius(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   struct nova64_spotlight *s = spotlight_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!s) return JS_UNDEFINED;
+   s->radius = int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, s->radius);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_set_spotlight_color(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   struct nova64_spotlight *s = spotlight_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!s) return JS_UNDEFINED;
+   JS_ToUint32(ctx, &s->shadow_color, argc > 1 ? argv[1] : JS_UNDEFINED);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_draw_spotlight(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   struct nova64_spotlight *s = spotlight_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!s) return JS_UNDEFINED;
+   int r2 = s->radius * s->radius;
+   for (int row = 0; row < 360; row++) {
+      int dy = row - s->cy;
+      if (dy < -s->radius || dy > s->radius) {
+         draw_rect_pixels(0, row, 640, 1, s->shadow_color, true);
+      } else {
+         int hw = (int)sqrtf((float)(r2 - dy * dy));
+         int lx = s->cx - hw;
+         int rx = s->cx + hw;
+         if (lx > 0)   draw_rect_pixels(0,   row, lx,       1, s->shadow_color, true);
+         if (rx < 640) draw_rect_pixels(rx,  row, 640 - rx, 1, s->shadow_color, true);
+      }
+   }
+   return JS_UNDEFINED;
+}
+
+static JSValue js_destroy_spotlight(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   struct nova64_spotlight *s = spotlight_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!s) return JS_NewBool(ctx, false);
+   s->used = false;
+   return JS_NewBool(ctx, true);
+}
+
+/* ── Batch 90: Wave manager ────────────────────────────────────────────────── */
+
+static struct nova64_wave_manager *wave_mgr_from_handle(int h)
+{
+   if (h < 1 || h > NOVA64_MAX_WAVE_MANAGERS) return NULL;
+   struct nova64_wave_manager *w = &g_wave_managers[h - 1];
+   return w->used ? w : NULL;
+}
+
+static JSValue js_create_wave_manager(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val; (void)argc; (void)argv;
+   for (int i = 0; i < NOVA64_MAX_WAVE_MANAGERS; i++) {
+      if (!g_wave_managers[i].used) {
+         memset(&g_wave_managers[i], 0, sizeof(g_wave_managers[i]));
+         g_wave_managers[i].used        = true;
+         g_wave_managers[i].wave_number = 0;
+         g_wave_managers[i].active      = 0;
+         g_wave_managers[i].wave_delay  = 3.0f;
+         return JS_NewInt32(ctx, i + 1);
+      }
+   }
+   return JS_NewInt32(ctx, 0);
+}
+
+static JSValue js_start_wave(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   struct nova64_wave_manager *w = wave_mgr_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!w) return JS_UNDEFINED;
+   int count = int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 5);
+   w->wave_number++;
+   w->enemy_count      = count;
+   w->enemies_remaining = count;
+   w->active           = 1;
+   return JS_UNDEFINED;
+}
+
+static JSValue js_get_wave_number(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   struct nova64_wave_manager *w = wave_mgr_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   return JS_NewInt32(ctx, w ? w->wave_number : 0);
+}
+
+static JSValue js_is_wave_active(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   struct nova64_wave_manager *w = wave_mgr_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   return JS_NewBool(ctx, w && w->active && w->enemies_remaining > 0);
+}
+
+static JSValue js_enemy_defeated(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   struct nova64_wave_manager *w = wave_mgr_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!w) return JS_UNDEFINED;
+   if (w->enemies_remaining > 0) w->enemies_remaining--;
+   if (w->enemies_remaining == 0) w->active = 0;
+   return JS_UNDEFINED;
+}
+
+static JSValue js_get_remaining_enemies(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   struct nova64_wave_manager *w = wave_mgr_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   return JS_NewInt32(ctx, w ? w->enemies_remaining : 0);
+}
+
+static JSValue js_next_wave(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   struct nova64_wave_manager *w = wave_mgr_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!w) return JS_UNDEFINED;
+   w->active = 0;
+   w->enemies_remaining = 0;
+   return JS_UNDEFINED;
+}
+
+static JSValue js_set_wave_delay(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   struct nova64_wave_manager *w = wave_mgr_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!w) return JS_UNDEFINED;
+   w->wave_delay = (float)double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 3.0);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_get_wave_delay(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   struct nova64_wave_manager *w = wave_mgr_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   return JS_NewFloat64(ctx, w ? w->wave_delay : 3.0);
+}
+
+static JSValue js_destroy_wave_manager(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   struct nova64_wave_manager *w = wave_mgr_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!w) return JS_NewBool(ctx, false);
+   w->used = false;
    return JS_NewBool(ctx, true);
 }
 
@@ -28508,6 +29263,60 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, global, "colorRampStopCount",      js_color_ramp_stop_count,    1);
    set_function(ctx, global, "destroyColorRamp",        js_destroy_color_ramp,       1);
 
+   /* Batch 90 */
+   set_function(ctx, global, "createWaveManager",       js_create_wave_manager,      0);
+   set_function(ctx, global, "startWave",               js_start_wave,               2);
+   set_function(ctx, global, "getWaveNumber",           js_get_wave_number,          1);
+   set_function(ctx, global, "isWaveActive",            js_is_wave_active,           1);
+   set_function(ctx, global, "enemyDefeated",           js_enemy_defeated,           1);
+   set_function(ctx, global, "getRemainingEnemies",     js_get_remaining_enemies,    1);
+   set_function(ctx, global, "nextWave",                js_next_wave,                1);
+   set_function(ctx, global, "setWaveDelay",            js_set_wave_delay,           2);
+   set_function(ctx, global, "getWaveDelay",            js_get_wave_delay,           1);
+   set_function(ctx, global, "destroyWaveManager",      js_destroy_wave_manager,     1);
+
+   /* Batch 89 */
+   set_function(ctx, global, "createSpotlight",         js_create_spotlight,         3);
+   set_function(ctx, global, "setSpotlightPos",         js_set_spotlight_pos,        3);
+   set_function(ctx, global, "setSpotlightRadius",      js_set_spotlight_radius,     2);
+   set_function(ctx, global, "setSpotlightColor",       js_set_spotlight_color,      2);
+   set_function(ctx, global, "drawSpotlight",           js_draw_spotlight,           1);
+   set_function(ctx, global, "destroySpotlight",        js_destroy_spotlight,        1);
+
+   /* Batch 88 */
+   set_function(ctx, global, "createCam2D",             js_create_cam2d,             3);
+   set_function(ctx, global, "setCam2DTarget",          js_set_cam2d_target,         3);
+   set_function(ctx, global, "setCam2DZoom",            js_set_cam2d_zoom,           2);
+   set_function(ctx, global, "updateCam2D",             js_update_cam2d,             2);
+   set_function(ctx, global, "applyCam2D",              js_apply_cam2d,              1);
+   set_function(ctx, global, "getCam2DX",               js_get_cam2d_x,              1);
+   set_function(ctx, global, "getCam2DY",               js_get_cam2d_y,              1);
+   set_function(ctx, global, "destroyCam2D",            js_destroy_cam2d,            1);
+
+   /* Batch 87 */
+   set_function(ctx, global, "createBubble",            js_create_speech_bubble,            4);
+   set_function(ctx, global, "setBubbleText",           js_set_speech_bubble_text,          2);
+   set_function(ctx, global, "setBubbleTail",           js_set_speech_bubble_tail,          4);
+   set_function(ctx, global, "setBubbleColors",         js_set_speech_bubble_colors,        4);
+   set_function(ctx, global, "drawSpeechBubble",              js_draw_speech_bub,              1);
+   set_function(ctx, global, "destroySpeechBubble",           js_destroy_speech_bub,           1);
+
+   /* Batch 86 */
+   set_function(ctx, global, "printGradient",           js_print_gradient,           5);
+   set_function(ctx, global, "printWave",               js_print_wave,               7);
+   set_function(ctx, global, "printFlash",              js_print_flash,              6);
+   set_function(ctx, global, "printShake",              js_print_shake,              6);
+   set_function(ctx, global, "printRainbow",            js_print_rainbow,            4);
+
+   /* Batch 85 */
+   set_function(ctx, global, "createBurst",             js_create_burst,             4);
+   set_function(ctx, global, "triggerBurst",            js_trigger_burst,            4);
+   set_function(ctx, global, "updateBurst",             js_update_burst,             2);
+   set_function(ctx, global, "drawBurst",               js_draw_burst,               1);
+   set_function(ctx, global, "isBurstDone",             js_is_burst_done,            1);
+   set_function(ctx, global, "setBurstColors",          js_set_burst_colors,         5);
+   set_function(ctx, global, "destroyBurst",            js_destroy_burst,            1);
+
    /* Batch 84 */
    set_function(ctx, global, "glowRect",                js_glow_rect,                6);
    set_function(ctx, global, "glowRectFill",            js_glow_rect_fill,           6);
@@ -31172,6 +31981,11 @@ void RETRO_CALLCONV retro_reset(void)
    memset(g_toasts,          0, sizeof(g_toasts));
    memset(g_combos,          0, sizeof(g_combos));
    memset(g_progress_bars,   0, sizeof(g_progress_bars));
+   memset(g_bursts,          0, sizeof(g_bursts));
+   memset(g_bubbles,         0, sizeof(g_bubbles));
+   memset(g_smooth_cams,     0, sizeof(g_smooth_cams));
+   memset(g_spotlights,      0, sizeof(g_spotlights));
+   memset(g_wave_managers,   0, sizeof(g_wave_managers));
    memset(g_counters,     0, sizeof(g_counters));
    memset(g_typewriters, 0, sizeof(g_typewriters));
    memset(g_gauges,      0, sizeof(g_gauges));

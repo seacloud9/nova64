@@ -1128,6 +1128,19 @@ static struct nova64_world_label g_world_labels[NOVA64_MAX_WORLD_LABELS];
 /* ── Batch 66: Camera roll ──────────────────────────────────── */
 static float g_camera_roll = 0.0f;
 
+/* ── Batch 71: Color ramps ───────────────────────────────────── */
+#define NOVA64_MAX_RAMPS      8
+#define NOVA64_MAX_RAMP_STOPS 16
+
+struct nova64_ramp_stop { float t; uint32_t color; };
+
+struct nova64_color_ramp {
+   bool                    used;
+   struct nova64_ramp_stop stops[NOVA64_MAX_RAMP_STOPS];
+   int                     count;
+};
+static struct nova64_color_ramp g_color_ramps[NOVA64_MAX_RAMPS];
+
 /* ── Batch 70: Mesh hit flash ────────────────────────────────── */
 #define NOVA64_MAX_FLASH 16
 
@@ -9185,6 +9198,103 @@ static JSValue js_cancel_mesh_flash(JSContext *ctx, JSValueConst this_val, int a
    struct nova64_mesh *mesh = mesh_from_handle(mesh_h);
    if (mesh) mesh->color = fl->saved_color;
    memset(fl, 0, sizeof(*fl));
+   return JS_NewBool(ctx, true);
+}
+
+/* ── Batch 71: createColorRamp, addColorRampStop, sampleColorRamp,          ── */
+/*              colorRampStopCount, destroyColorRamp                             */
+
+static int alloc_ramp(void) {
+   for (int i = 0; i < NOVA64_MAX_RAMPS; i++)
+      if (!g_color_ramps[i].used) { g_color_ramps[i].used = true; return i + 1; }
+   return 0;
+}
+
+static struct nova64_color_ramp *ramp_from_handle(int h) {
+   if (h < 1 || h > NOVA64_MAX_RAMPS) return NULL;
+   return g_color_ramps[h-1].used ? &g_color_ramps[h-1] : NULL;
+}
+
+/* Insert stop maintaining sorted order by t; clamps t to [0,1]. */
+static void ramp_add_stop(struct nova64_color_ramp *ramp, float t, uint32_t color) {
+   if (ramp->count >= NOVA64_MAX_RAMP_STOPS) return;
+   if (t < 0) t = 0; if (t > 1) t = 1;
+   int pos = ramp->count;
+   for (int i = 0; i < ramp->count; i++) {
+      if (t <= ramp->stops[i].t) { pos = i; break; }
+   }
+   /* Shift right */
+   for (int i = ramp->count; i > pos; i--)
+      ramp->stops[i] = ramp->stops[i-1];
+   ramp->stops[pos].t     = t;
+   ramp->stops[pos].color = color;
+   ramp->count++;
+}
+
+static JSValue js_create_color_ramp(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   int h = alloc_ramp(); if (!h) return JS_NewInt32(ctx, 0);
+   struct nova64_color_ramp *ramp = &g_color_ramps[h-1];
+   /* Argument: flat array of colors → evenly spaced stops */
+   if (argc > 0 && JS_IsArray(argv[0])) {
+      JSValue lenV = JS_GetPropertyStr(ctx, argv[0], "length");
+      int len = int_from_js(ctx, lenV, 0); JS_FreeValue(ctx, lenV);
+      if (len >= 2) {
+         for (int i = 0; i < len && i < NOVA64_MAX_RAMP_STOPS; i++) {
+            JSValue cv = JS_GetPropertyUint32(ctx, argv[0], (uint32_t)i);
+            uint32_t col = (uint32_t)int_from_js(ctx, cv, (int)0xffffffff);
+            JS_FreeValue(ctx, cv);
+            float t = (len > 1) ? (float)i / (float)(len - 1) : 0;
+            ramp_add_stop(ramp, t, col);
+         }
+      }
+   }
+   /* Default: white→transparent if no stops given */
+   if (ramp->count == 0) {
+      ramp_add_stop(ramp, 0.0f, 0xffffffff);
+      ramp_add_stop(ramp, 1.0f, 0xffffff00);
+   }
+   return JS_NewInt32(ctx, h);
+}
+
+static JSValue js_add_color_ramp_stop(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   struct nova64_color_ramp *ramp = ramp_from_handle(int_from_js(ctx, argc>0?argv[0]:JS_UNDEFINED, 0));
+   if (!ramp) return JS_UNDEFINED;
+   float    t   = (float)double_from_js(ctx, argc>1?argv[1]:JS_UNDEFINED, 0);
+   uint32_t col = (uint32_t)int_from_js(ctx, argc>2?argv[2]:JS_UNDEFINED, (int)0xffffffff);
+   ramp_add_stop(ramp, t, col);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_sample_color_ramp(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   struct nova64_color_ramp *ramp = ramp_from_handle(int_from_js(ctx, argc>0?argv[0]:JS_UNDEFINED, 0));
+   if (!ramp || ramp->count == 0) return JS_NewInt32(ctx, (int)0xffffffff);
+   float t = (float)clamp_double(double_from_js(ctx, argc>1?argv[1]:JS_UNDEFINED, 0), 0, 1);
+   if (ramp->count == 1) return JS_NewInt32(ctx, (int)ramp->stops[0].color);
+   /* Find surrounding stops */
+   int lo = 0, hi = ramp->count - 1;
+   for (int i = 0; i < ramp->count - 1; i++) {
+      if (t <= ramp->stops[i+1].t) { lo = i; hi = i + 1; break; }
+   }
+   float dt = ramp->stops[hi].t - ramp->stops[lo].t;
+   float frac = (dt > 1e-6f) ? (t - ramp->stops[lo].t) / dt : 0;
+   uint32_t col = blend_rgba8(ramp->stops[lo].color, ramp->stops[hi].color, frac);
+   return JS_NewInt32(ctx, (int)col);
+}
+
+static JSValue js_color_ramp_stop_count(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   struct nova64_color_ramp *ramp = ramp_from_handle(int_from_js(ctx, argc>0?argv[0]:JS_UNDEFINED, 0));
+   return JS_NewInt32(ctx, ramp ? ramp->count : 0);
+}
+
+static JSValue js_destroy_color_ramp(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   struct nova64_color_ramp *ramp = ramp_from_handle(int_from_js(ctx, argc>0?argv[0]:JS_UNDEFINED, 0));
+   if (!ramp) return JS_NewBool(ctx, false);
+   memset(ramp, 0, sizeof(*ramp));
    return JS_NewBool(ctx, true);
 }
 
@@ -26733,6 +26843,13 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, global, "isMeshFlashing",          js_is_mesh_flashing,         1);
    set_function(ctx, global, "cancelMeshFlash",         js_cancel_mesh_flash,        1);
 
+   /* Batch 71 */
+   set_function(ctx, global, "createColorRamp",         js_create_color_ramp,        1);
+   set_function(ctx, global, "addColorRampStop",        js_add_color_ramp_stop,      3);
+   set_function(ctx, global, "sampleColorRamp",         js_sample_color_ramp,        2);
+   set_function(ctx, global, "colorRampStopCount",      js_color_ramp_stop_count,    1);
+   set_function(ctx, global, "destroyColorRamp",        js_destroy_color_ramp,       1);
+
    JS_FreeValue(ctx, global);
    return true;
 }
@@ -29270,7 +29387,7 @@ void RETRO_CALLCONV retro_reset(void)
    g_overlay_scan_active = false; g_overlay_scan_intensity = 0.5f; g_overlay_scan_color = 0x00000080;
    g_screen_saturation = 1.0f; g_screen_contrast = 1.0f;
    g_trans_type = NOVA64_TRANS_NONE; g_trans_timer = 0.0f; g_trans_duration = 1.0f;
-   /* Batch 63-70 resets */
+   /* Batch 63-71 resets */
    memset(g_bodies, 0, sizeof(g_bodies));
    memset(g_splines, 0, sizeof(g_splines));
    memset(g_world_labels, 0, sizeof(g_world_labels));
@@ -29279,6 +29396,7 @@ void RETRO_CALLCONV retro_reset(void)
    memset(g_followers, 0, sizeof(g_followers));
    memset(g_trails, 0, sizeof(g_trails));
    memset(g_mesh_flashes, 0, sizeof(g_mesh_flashes));
+   memset(g_color_ramps, 0, sizeof(g_color_ramps));
    g_path_count = 0; g_path_closed = 0;
    memset(g_hotspots,    0, sizeof(g_hotspots));
    memset(g_btn_repeat,  0, sizeof(g_btn_repeat));

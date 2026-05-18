@@ -939,5 +939,7 @@ run_visual_case "790 trail2d"              "790-trail2d"              "retroarch
 run_visual_case "860 batch69 showcase"     "860-batch69-showcase"     "retroarch/conformance/860-batch69-showcase.js"     "fcbac31907209745"
 run_visual_case "791 mesh flash"           "791-mesh-flash"           "retroarch/conformance/791-mesh-flash.js"           "4b6c0688ed28a46f"
 run_visual_case "871 batch70 showcase"     "871-batch70-showcase"     "retroarch/conformance/871-batch70-showcase.js"     "8717fba04231d2e0"
+run_visual_case "792 color ramp"           "792-color-ramp"           "retroarch/conformance/792-color-ramp.js"           "37b1f32f068bfb22"
+run_visual_case "882 batch71 showcase"     "882-batch71-showcase"     "retroarch/conformance/882-batch71-showcase.js"     "d6200d68fc0f2298"
 
 echo "Conformance passed."

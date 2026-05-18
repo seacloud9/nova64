@@ -955,5 +955,11 @@ run_visual_case "799 hp bar"               "799-hp-bar"               "retroarch
 run_visual_case "948 batch77 showcase"     "948-batch77-showcase"     "retroarch/conformance/948-batch77-showcase.js"     "e6c54a937b708118"
 run_visual_case "800 starfield"            "800-starfield"            "retroarch/conformance/800-starfield.js"            "248d80d079d8b431"
 run_visual_case "959 batch78 showcase"     "959-batch78-showcase"     "retroarch/conformance/959-batch78-showcase.js"     "c387e3a433a9de9d"
+run_visual_case "801 inventory"            "801-inventory"            "retroarch/conformance/801-inventory.js"            "6aa3bf957f9352b4"
+run_visual_case "970 batch79 showcase"     "970-batch79-showcase"     "retroarch/conformance/970-batch79-showcase.js"     "748caa96474f3ea9"
+run_visual_case "802 dialogue"             "802-dialogue"             "retroarch/conformance/802-dialogue.js"             "95b31584bc521897"
+run_visual_case "981 batch80 showcase"     "981-batch80-showcase"     "retroarch/conformance/981-batch80-showcase.js"     "18bb799e427bfb73"
+run_visual_case "803 toast"                "803-toast"                "retroarch/conformance/803-toast.js"                "42c07be8da8a1c64"
+run_visual_case "992 batch81 showcase"     "992-batch81-showcase"     "retroarch/conformance/992-batch81-showcase.js"     "37c3be468c5c6b9b"
 
 echo "Conformance passed."

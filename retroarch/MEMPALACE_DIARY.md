@@ -147,3 +147,29 @@ canonical repository instructions in `../AGENTS.md`.
 ### Current state: 134 conformance carts passing
 - All M1–M8 + 23 new post-M8 APIs; no regressions in carts 110-134.
 - All state (tweens, timers, grids, canvas, shake, flash, path) reset on retro_reset.
+
+## 2026-05-18 — Batch 79-81 session (game utility APIs)
+
+### What landed this session
+- **Batch 79: 2D Inventory grid** — `createInventory`, `setSlot`, `getSlotColor`, `getSlotCount`,
+  `clearSlot`, `drawInventory`, `setInventorySelected`, `destroyInventory`.
+  NOVA64_MAX_INVENTORIES=4, up to 8×8 slots. Gap+border layout, selection highlight,
+  item count label. Conformance carts 801 (sw=6aa3bf957f9352b4), 970-showcase (sw=748caa96474f3ea9).
+- **Batch 80: Dialogue box** — `createDialogue`, `setDialogueSpeaker`, `setDialogueText`,
+  `advanceDialogue`, `isDialogueDone`, `updateDialogue`, `drawDialogue`, `destroyDialogue`.
+  NOVA64_MAX_DIALOGUES=4. Typewriter char-by-char reveal, word-wrap, speaker label box,
+  blinking cursor. Conformance carts 802 (sw=95b31584bc521897), 981-showcase (sw=18bb799e427bfb73).
+- **Batch 81: Toast notifications** — `createToast`, `showToast`, `updateToast`, `drawToast`,
+  `isToastDone`, `destroyToast`. NOVA64_MAX_TOASTS=4. Slide-in from left, auto-fade at
+  start/end 10% of duration. Conformance carts 803 (sw=42c07be8da8a1c64), 992-showcase (sw=37c3be468c5c6b9b).
+- All 6 carts pass; range 801-992 (21 carts) clean.
+
+### Key lessons
+- Existing codebase already had `tilemaps[]` API (sprite-sheet based); avoid `createTilemap` name clash.
+- Use `JS_ToCString(ctx, argv[N])` not `string_from_js` — no such helper exists in this QuickJS build.
+- The `run_conformance.sh` runner stops at first mismatch; run harness directly without `--expect` to collect checksums.
+
+### Current conformance state
+- 455 conformance files in retroarch/conformance/
+- Feature carts up to 803, showcase up to 992
+- All M1–M8 + post-M8 expansions passing

@@ -1128,6 +1128,62 @@ static struct nova64_world_label g_world_labels[NOVA64_MAX_WORLD_LABELS];
 /* ── Batch 66: Camera roll ──────────────────────────────────── */
 static float g_camera_roll = 0.0f;
 
+/* ── Batch 81: Toast notifications ─────────────────────────── */
+#define NOVA64_MAX_TOASTS      4
+#define NOVA64_TOAST_TEXT_LEN  64
+struct nova64_toast {
+   bool     used;
+   char     text[NOVA64_TOAST_TEXT_LEN];
+   float    duration;   /* total display time */
+   float    life;       /* remaining time */
+   int      x, y, w;   /* position and width */
+   float    slide;      /* 0=hidden, 1=fully visible (slide-in progress) */
+   uint32_t bg_color;
+   uint32_t text_color;
+};
+static struct nova64_toast g_toasts[NOVA64_MAX_TOASTS];
+
+/* ── Batch 80: Dialogue box ─────────────────────────────────── */
+#define NOVA64_MAX_DIALOGUES         4
+#define NOVA64_DIALOGUE_TEXT_LEN     256
+#define NOVA64_DIALOGUE_SPEAKER_LEN  32
+struct nova64_dialogue {
+   bool  used;
+   char  text[NOVA64_DIALOGUE_TEXT_LEN];
+   char  speaker[NOVA64_DIALOGUE_SPEAKER_LEN];
+   int   x, y, w, h;
+   int   visible_chars;
+   float chars_per_sec;
+   float accum;
+   int   done;
+   uint32_t bg_color;
+   uint32_t border_color;
+   uint32_t text_color;
+   uint32_t speaker_color;
+};
+static struct nova64_dialogue g_dialogue_boxes[NOVA64_MAX_DIALOGUES];
+
+/* ── Batch 79: 2D Inventory grid ─────────────────────────────── */
+#define NOVA64_MAX_INVENTORIES     4
+#define NOVA64_INVENTORY_MAX_COLS  8
+#define NOVA64_INVENTORY_MAX_ROWS  8
+struct nova64_inv_slot {
+   uint32_t color;
+   int      count;
+};
+struct nova64_inventory {
+   bool   used;
+   int    cols, rows;
+   int    slot_w, slot_h;
+   int    x, y;
+   int    sel_col, sel_row;
+   struct nova64_inv_slot slots[NOVA64_INVENTORY_MAX_COLS * NOVA64_INVENTORY_MAX_ROWS];
+   uint32_t bg_color;
+   uint32_t border_color;
+   uint32_t sel_color;
+};
+static struct nova64_inventory g_inventories[NOVA64_MAX_INVENTORIES];
+
 /* ── Batch 78: Scrolling starfield ──────────────────────────── */
 #define NOVA64_MAX_STARFIELDS  4
 #define NOVA64_MAX_STARS       192
@@ -9402,6 +9458,398 @@ static JSValue js_destroy_color_ramp(JSContext *ctx, JSValueConst this_val, int 
    if (!ramp) return JS_NewBool(ctx, false);
    memset(ramp, 0, sizeof(*ramp));
    return JS_NewBool(ctx, true);
+}
+
+/* ── Batch 81: createToast, showToast, updateToast, drawToast,               ── */
+/*              isToastDone, destroyToast                                         */
+
+static int alloc_toast(void) {
+   for (int i = 0; i < NOVA64_MAX_TOASTS; i++)
+      if (!g_toasts[i].used) { g_toasts[i].used = true; return i + 1; }
+   return 0;
+}
+static struct nova64_toast *toast_from_handle(int h) {
+   if (h < 1 || h > NOVA64_MAX_TOASTS) return NULL;
+   return g_toasts[h-1].used ? &g_toasts[h-1] : NULL;
+}
+
+static JSValue js_create_toast(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   int h = alloc_toast();
+   if (!h) return JS_NewInt32(ctx, 0);
+   struct nova64_toast *t = &g_toasts[h-1];
+   const char *text = JS_ToCString(ctx, argc > 0 ? argv[0] : JS_UNDEFINED);
+   float dur = (float)double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 2.0);
+   if (text) { strncpy(t->text, text, NOVA64_TOAST_TEXT_LEN - 1); JS_FreeCString(ctx, text); }
+   t->duration   = (dur < 0.1f) ? 0.1f : dur;
+   t->life       = t->duration;
+   t->x          = 8;
+   t->y          = 8;
+   t->w          = 300;
+   t->slide      = 0.0f;
+   t->bg_color   = rgba8(20, 20, 30, 220);
+   t->text_color = rgba8(200, 220, 255, 255);
+   return JS_NewInt32(ctx, h);
+}
+
+static JSValue js_show_toast(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   struct nova64_toast *t = toast_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!t) return JS_UNDEFINED;
+   const char *text = JS_ToCString(ctx, argc > 1 ? argv[1] : JS_UNDEFINED);
+   if (text) { strncpy(t->text, text, NOVA64_TOAST_TEXT_LEN - 1); t->text[NOVA64_TOAST_TEXT_LEN-1] = '\0'; JS_FreeCString(ctx, text); }
+   float dur = (float)double_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, (double)t->duration);
+   t->duration = (dur < 0.1f) ? 0.1f : dur;
+   t->life     = t->duration;
+   t->slide    = 0.0f;
+   return JS_UNDEFINED;
+}
+
+static JSValue js_update_toast(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   struct nova64_toast *t = toast_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!t) return JS_UNDEFINED;
+   float dt = (float)double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0.0);
+   t->life -= dt;
+   if (t->life < 0.0f) t->life = 0.0f;
+   /* slide-in during first 10% of duration, slide-out during last 10% */
+   float progress = 1.0f - (t->life / t->duration);
+   float fade_zone = 0.1f;
+   if (progress < fade_zone)
+      t->slide = progress / fade_zone;
+   else if (progress > 1.0f - fade_zone)
+      t->slide = (1.0f - progress) / fade_zone;
+   else
+      t->slide = 1.0f;
+   if (t->slide > 1.0f) t->slide = 1.0f;
+   if (t->slide < 0.0f) t->slide = 0.0f;
+   return JS_UNDEFINED;
+}
+
+static JSValue js_draw_toast(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   struct nova64_toast *t = toast_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!t || t->life <= 0.0f) return JS_UNDEFINED;
+   /* slide from left: x offset by (1-slide)*w */
+   int off_x = (int)((1.0f - t->slide) * (float)(t->w + t->x));
+   int rx = t->x - off_x;
+   int ry = t->y;
+   int rh = 18;
+   draw_rect_pixels(rx, ry, t->w, rh, t->bg_color, true);
+   draw_rect_pixels(rx, ry, t->w, 1, t->text_color, true);
+   draw_rect_pixels(rx, ry + rh - 1, t->w, 1, t->text_color, true);
+   draw_text_pixels(t->text, rx + 4, ry + 5, t->text_color);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_is_toast_done(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   struct nova64_toast *t = toast_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   return JS_NewBool(ctx, !t || t->life <= 0.0f);
+}
+
+static JSValue js_destroy_toast(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   struct nova64_toast *t = toast_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!t) return JS_NewBool(ctx, 0);
+   memset(t, 0, sizeof(*t));
+   return JS_NewBool(ctx, 1);
+}
+
+/* ── Batch 80: createDialogue, setDialogueSpeaker, advanceDialogue,          ── */
+/*              isDialogueDone, updateDialogue, drawDialogue, destroyDialogue     */
+
+static int alloc_dialogue(void) {
+   for (int i = 0; i < NOVA64_MAX_DIALOGUES; i++)
+      if (!g_dialogue_boxes[i].used) { g_dialogue_boxes[i].used = true; return i + 1; }
+   return 0;
+}
+static struct nova64_dialogue *dlg_from_handle(int h) {
+   if (h < 1 || h > NOVA64_MAX_DIALOGUES) return NULL;
+   return g_dialogue_boxes[h-1].used ? &g_dialogue_boxes[h-1] : NULL;
+}
+
+static JSValue js_create_dialogue(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   int h = alloc_dialogue();
+   if (!h) return JS_NewInt32(ctx, 0);
+   struct nova64_dialogue *d = &g_dialogue_boxes[h-1];
+   const char *text = JS_ToCString(ctx, argc > 0 ? argv[0] : JS_UNDEFINED);
+   if (text) { strncpy(d->text, text, NOVA64_DIALOGUE_TEXT_LEN - 1); JS_FreeCString(ctx, text); }
+   d->x             = int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 20);
+   d->y             = int_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 280);
+   d->w             = int_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, 600);
+   d->h             = int_from_js(ctx, argc > 4 ? argv[4] : JS_UNDEFINED, 60);
+   d->chars_per_sec = (float)double_from_js(ctx, argc > 5 ? argv[5] : JS_UNDEFINED, 30.0);
+   d->visible_chars = 0;
+   d->accum         = 0.0f;
+   d->done          = 0;
+   d->bg_color      = rgba8(10, 12, 22, 230);
+   d->border_color  = rgba8(100, 140, 220, 255);
+   d->text_color    = rgba8(220, 225, 255, 255);
+   d->speaker_color = rgba8(100, 200, 255, 255);
+   return JS_NewInt32(ctx, h);
+}
+
+static JSValue js_set_dialogue_speaker(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   struct nova64_dialogue *d = dlg_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!d) return JS_UNDEFINED;
+   const char *name = JS_ToCString(ctx, argc > 1 ? argv[1] : JS_UNDEFINED);
+   if (name) { strncpy(d->speaker, name, NOVA64_DIALOGUE_SPEAKER_LEN - 1); d->speaker[NOVA64_DIALOGUE_SPEAKER_LEN-1] = '\0'; JS_FreeCString(ctx, name); }
+   return JS_UNDEFINED;
+}
+
+static JSValue js_set_dialogue_text(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   struct nova64_dialogue *d = dlg_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!d) return JS_UNDEFINED;
+   const char *text = JS_ToCString(ctx, argc > 1 ? argv[1] : JS_UNDEFINED);
+   if (text) { strncpy(d->text, text, NOVA64_DIALOGUE_TEXT_LEN - 1); d->text[NOVA64_DIALOGUE_TEXT_LEN-1] = '\0'; JS_FreeCString(ctx, text); }
+   d->visible_chars = 0;
+   d->accum         = 0.0f;
+   d->done          = 0;
+   return JS_UNDEFINED;
+}
+
+static JSValue js_advance_dialogue(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   struct nova64_dialogue *d = dlg_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!d) return JS_UNDEFINED;
+   int total = (int)strlen(d->text);
+   if (!d->done && d->visible_chars < total)
+      d->visible_chars = total;  /* skip to end */
+   d->done = 1;
+   return JS_UNDEFINED;
+}
+
+static JSValue js_is_dialogue_done(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   struct nova64_dialogue *d = dlg_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   return JS_NewBool(ctx, !d || d->done);
+}
+
+static JSValue js_update_dialogue(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   struct nova64_dialogue *d = dlg_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!d || d->done) return JS_UNDEFINED;
+   float dt = (float)double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0.0);
+   int total = (int)strlen(d->text);
+   d->accum += dt * d->chars_per_sec;
+   int add = (int)d->accum;
+   d->accum -= (float)add;
+   d->visible_chars += add;
+   if (d->visible_chars >= total) { d->visible_chars = total; d->done = 1; }
+   return JS_UNDEFINED;
+}
+
+static JSValue js_draw_dialogue(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   struct nova64_dialogue *d = dlg_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!d) return JS_UNDEFINED;
+   /* background box */
+   draw_rect_pixels(d->x, d->y, d->w, d->h, d->bg_color, true);
+   /* border */
+   draw_rect_pixels(d->x, d->y, d->w, 1, d->border_color, true);
+   draw_rect_pixels(d->x, d->y + d->h - 1, d->w, 1, d->border_color, true);
+   draw_rect_pixels(d->x, d->y, 1, d->h, d->border_color, true);
+   draw_rect_pixels(d->x + d->w - 1, d->y, 1, d->h, d->border_color, true);
+   /* speaker name above box */
+   if (d->speaker[0]) {
+      draw_rect_pixels(d->x, d->y - 14, 120, 14, d->bg_color, true);
+      draw_rect_pixels(d->x, d->y - 14, 120, 1, d->border_color, true);
+      draw_rect_pixels(d->x, d->y - 14, 1, 14, d->border_color, true);
+      draw_rect_pixels(d->x + 119, d->y - 14, 1, 14, d->border_color, true);
+      draw_text_pixels(d->speaker, d->x + 4, d->y - 11, d->speaker_color);
+   }
+   /* visible text (word-wrap by pixel width not implemented; simple truncated reveal) */
+   if (d->visible_chars > 0) {
+      char buf[NOVA64_DIALOGUE_TEXT_LEN];
+      int vlen = d->visible_chars;
+      if (vlen >= NOVA64_DIALOGUE_TEXT_LEN) vlen = NOVA64_DIALOGUE_TEXT_LEN - 1;
+      memcpy(buf, d->text, (size_t)vlen);
+      buf[vlen] = '\0';
+      /* draw line by line, 8px per char, max ~72 chars per line in 600px box */
+      int cx = d->x + 6, cy = d->y + 8;
+      int line_h = 10;
+      int chars_per_line = (d->w - 12) / 6;
+      if (chars_per_line < 1) chars_per_line = 1;
+      int pos = 0, total = vlen;
+      while (pos < total && cy + line_h <= d->y + d->h) {
+         char line[128]; int llen = 0;
+         /* word-wrap: find last space within chars_per_line */
+         int avail = total - pos;
+         if (avail > chars_per_line) {
+            int cut = chars_per_line;
+            int sp = cut;
+            while (sp > 0 && d->text[pos + sp] != ' ') sp--;
+            if (sp > 0) cut = sp + 1;
+            llen = cut;
+         } else {
+            llen = avail;
+         }
+         if (llen > 127) llen = 127;
+         memcpy(line, d->text + pos, (size_t)llen);
+         line[llen] = '\0';
+         draw_text_pixels(line, cx, cy, d->text_color);
+         pos += llen;
+         cy  += line_h;
+      }
+   }
+   /* blinking cursor when not done */
+   if (!d->done) {
+      draw_rect_pixels(d->x + 6, d->y + d->h - 8, 4, 4, d->border_color, true);
+   }
+   return JS_UNDEFINED;
+}
+
+static JSValue js_destroy_dialogue(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   struct nova64_dialogue *d = dlg_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!d) return JS_NewBool(ctx, 0);
+   memset(d, 0, sizeof(*d));
+   return JS_NewBool(ctx, 1);
+}
+
+/* ── Batch 79: createInventory, setSlot, getSlotColor, getSlotCount,         ── */
+/*              clearSlot, drawInventory, setInventorySelected, destroyInventory  */
+
+static int alloc_inventory(void) {
+   for (int i = 0; i < NOVA64_MAX_INVENTORIES; i++)
+      if (!g_inventories[i].used) { g_inventories[i].used = true; return i + 1; }
+   return 0;
+}
+static struct nova64_inventory *inv_from_handle(int h) {
+   if (h < 1 || h > NOVA64_MAX_INVENTORIES) return NULL;
+   return g_inventories[h-1].used ? &g_inventories[h-1] : NULL;
+}
+
+static JSValue js_create_inventory(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   int h = alloc_inventory();
+   if (!h) return JS_NewInt32(ctx, 0);
+   struct nova64_inventory *inv = &g_inventories[h-1];
+   int cols = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 4);
+   int rows = int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 4);
+   int sw   = int_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 32);
+   int sh   = int_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, 32);
+   int x    = int_from_js(ctx, argc > 4 ? argv[4] : JS_UNDEFINED, 0);
+   int y    = int_from_js(ctx, argc > 5 ? argv[5] : JS_UNDEFINED, 0);
+   if (cols < 1) cols = 1; if (cols > NOVA64_INVENTORY_MAX_COLS) cols = NOVA64_INVENTORY_MAX_COLS;
+   if (rows < 1) rows = 1; if (rows > NOVA64_INVENTORY_MAX_ROWS) rows = NOVA64_INVENTORY_MAX_ROWS;
+   if (sw < 4) sw = 4; if (sh < 4) sh = 4;
+   inv->cols = cols; inv->rows = rows; inv->slot_w = sw; inv->slot_h = sh;
+   inv->x = x; inv->y = y;
+   inv->sel_col = -1; inv->sel_row = -1;
+   inv->bg_color     = rgba8(18, 20, 34, 220);
+   inv->border_color = rgba8(80, 100, 160, 255);
+   inv->sel_color    = rgba8(255, 200, 60, 255);
+   memset(inv->slots, 0, sizeof(inv->slots));
+   return JS_NewInt32(ctx, h);
+}
+
+static JSValue js_set_slot(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   struct nova64_inventory *inv = inv_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!inv) return JS_UNDEFINED;
+   int col = int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0);
+   int row = int_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 0);
+   if (col < 0 || col >= inv->cols || row < 0 || row >= inv->rows) return JS_UNDEFINED;
+   inv->slots[row * inv->cols + col].color = color_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, 0);
+   inv->slots[row * inv->cols + col].count = int_from_js(ctx, argc > 4 ? argv[4] : JS_UNDEFINED, 1);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_get_slot_color(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   struct nova64_inventory *inv = inv_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!inv) return JS_NewInt32(ctx, 0);
+   int col = int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0);
+   int row = int_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 0);
+   if (col < 0 || col >= inv->cols || row < 0 || row >= inv->rows) return JS_NewInt32(ctx, 0);
+   return JS_NewInt32(ctx, (int)inv->slots[row * inv->cols + col].color);
+}
+
+static JSValue js_get_slot_count(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   struct nova64_inventory *inv = inv_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!inv) return JS_NewInt32(ctx, 0);
+   int col = int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0);
+   int row = int_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 0);
+   if (col < 0 || col >= inv->cols || row < 0 || row >= inv->rows) return JS_NewInt32(ctx, 0);
+   return JS_NewInt32(ctx, inv->slots[row * inv->cols + col].count);
+}
+
+static JSValue js_clear_slot(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   struct nova64_inventory *inv = inv_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!inv) return JS_UNDEFINED;
+   int col = int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0);
+   int row = int_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 0);
+   if (col < 0 || col >= inv->cols || row < 0 || row >= inv->rows) return JS_UNDEFINED;
+   memset(&inv->slots[row * inv->cols + col], 0, sizeof(inv->slots[0]));
+   return JS_UNDEFINED;
+}
+
+static JSValue js_draw_inventory(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   struct nova64_inventory *inv = inv_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!inv) return JS_UNDEFINED;
+   int gap = 2;
+   int total_w = inv->cols * (inv->slot_w + gap) + gap;
+   int total_h = inv->rows * (inv->slot_h + gap) + gap;
+   /* outer background */
+   draw_rect_pixels(inv->x, inv->y, total_w, total_h, inv->bg_color, true);
+   for (int row = 0; row < inv->rows; row++) {
+      for (int col = 0; col < inv->cols; col++) {
+         int sx = inv->x + gap + col * (inv->slot_w + gap);
+         int sy = inv->y + gap + row * (inv->slot_h + gap);
+         /* slot background */
+         draw_rect_pixels(sx, sy, inv->slot_w, inv->slot_h, rgba8(30, 32, 50, 255), true);
+         /* item color fill */
+         uint32_t ic = inv->slots[row * inv->cols + col].color;
+         if (ic & 0xff) {
+            int pad = 3;
+            draw_rect_pixels(sx + pad, sy + pad, inv->slot_w - pad*2, inv->slot_h - pad*2, ic, true);
+         }
+         /* slot border */
+         draw_rect_pixels(sx, sy, inv->slot_w, 1, inv->border_color, true);
+         draw_rect_pixels(sx, sy + inv->slot_h - 1, inv->slot_w, 1, inv->border_color, true);
+         draw_rect_pixels(sx, sy, 1, inv->slot_h, inv->border_color, true);
+         draw_rect_pixels(sx + inv->slot_w - 1, sy, 1, inv->slot_h, inv->border_color, true);
+         /* count label */
+         int cnt = inv->slots[row * inv->cols + col].count;
+         if ((ic & 0xff) && cnt > 1) {
+            char buf[12]; snprintf(buf, sizeof(buf), "%d", cnt);
+            draw_text_pixels(buf, sx + inv->slot_w - 8, sy + inv->slot_h - 8, rgba8(255, 255, 200, 220));
+         }
+         /* selection highlight */
+         if (col == inv->sel_col && row == inv->sel_row) {
+            draw_rect_pixels(sx, sy, inv->slot_w, 2, inv->sel_color, true);
+            draw_rect_pixels(sx, sy + inv->slot_h - 2, inv->slot_w, 2, inv->sel_color, true);
+            draw_rect_pixels(sx, sy, 2, inv->slot_h, inv->sel_color, true);
+            draw_rect_pixels(sx + inv->slot_w - 2, sy, 2, inv->slot_h, inv->sel_color, true);
+         }
+      }
+   }
+   return JS_UNDEFINED;
+}
+
+static JSValue js_set_inventory_selected(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   struct nova64_inventory *inv = inv_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!inv) return JS_UNDEFINED;
+   inv->sel_col = int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, -1);
+   inv->sel_row = int_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, -1);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_destroy_inventory(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   struct nova64_inventory *inv = inv_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!inv) return JS_NewBool(ctx, 0);
+   memset(inv, 0, sizeof(*inv));
+   return JS_NewBool(ctx, 1);
 }
 
 /* ── Batch 78: createStarfield, updateStarfield, drawStarfield,               ── */
@@ -27723,6 +28171,34 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, global, "colorRampStopCount",      js_color_ramp_stop_count,    1);
    set_function(ctx, global, "destroyColorRamp",        js_destroy_color_ramp,       1);
 
+   /* Batch 81 */
+   set_function(ctx, global, "createToast",             js_create_toast,             2);
+   set_function(ctx, global, "showToast",               js_show_toast,               3);
+   set_function(ctx, global, "updateToast",             js_update_toast,             2);
+   set_function(ctx, global, "drawToast",               js_draw_toast,               1);
+   set_function(ctx, global, "isToastDone",             js_is_toast_done,            1);
+   set_function(ctx, global, "destroyToast",            js_destroy_toast,            1);
+
+   /* Batch 80 */
+   set_function(ctx, global, "createDialogue",          js_create_dialogue,          6);
+   set_function(ctx, global, "setDialogueSpeaker",      js_set_dialogue_speaker,     2);
+   set_function(ctx, global, "setDialogueText",         js_set_dialogue_text,        2);
+   set_function(ctx, global, "advanceDialogue",         js_advance_dialogue,         1);
+   set_function(ctx, global, "isDialogueDone",          js_is_dialogue_done,         1);
+   set_function(ctx, global, "updateDialogue",          js_update_dialogue,          2);
+   set_function(ctx, global, "drawDialogue",            js_draw_dialogue,            1);
+   set_function(ctx, global, "destroyDialogue",         js_destroy_dialogue,         1);
+
+   /* Batch 79 */
+   set_function(ctx, global, "createInventory",         js_create_inventory,         6);
+   set_function(ctx, global, "setSlot",                 js_set_slot,                 5);
+   set_function(ctx, global, "getSlotColor",            js_get_slot_color,           3);
+   set_function(ctx, global, "getSlotCount",            js_get_slot_count,           3);
+   set_function(ctx, global, "clearSlot",               js_clear_slot,               3);
+   set_function(ctx, global, "drawInventory",           js_draw_inventory,           1);
+   set_function(ctx, global, "setInventorySelected",    js_set_inventory_selected,   3);
+   set_function(ctx, global, "destroyInventory",        js_destroy_inventory,        1);
+
    /* Batch 78 */
    set_function(ctx, global, "createStarfield",         js_create_starfield,         2);
    set_function(ctx, global, "updateStarfield",         js_update_starfield,         2);
@@ -30323,10 +30799,13 @@ void RETRO_CALLCONV retro_reset(void)
    g_overlay_scan_active = false; g_overlay_scan_intensity = 0.5f; g_overlay_scan_color = 0x00000080;
    g_screen_saturation = 1.0f; g_screen_contrast = 1.0f;
    g_trans_type = NOVA64_TRANS_NONE; g_trans_timer = 0.0f; g_trans_duration = 1.0f;
-   /* Batch 63-78 resets */
-   memset(g_starfields,   0, sizeof(g_starfields));
-   memset(g_hp_bars,      0, sizeof(g_hp_bars));
-   memset(g_bullet_pools, 0, sizeof(g_bullet_pools));
+   /* Batch 63-81 resets */
+   memset(g_starfields,      0, sizeof(g_starfields));
+   memset(g_hp_bars,         0, sizeof(g_hp_bars));
+   memset(g_bullet_pools,    0, sizeof(g_bullet_pools));
+   memset(g_inventories,     0, sizeof(g_inventories));
+   memset(g_dialogue_boxes,  0, sizeof(g_dialogue_boxes));
+   memset(g_toasts,          0, sizeof(g_toasts));
    memset(g_counters,     0, sizeof(g_counters));
    memset(g_typewriters, 0, sizeof(g_typewriters));
    memset(g_gauges,      0, sizeof(g_gauges));

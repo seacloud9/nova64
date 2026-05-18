@@ -931,5 +931,7 @@ run_visual_case "794 batch63 showcase"     "794-batch63-showcase"     "retroarch
 run_visual_case "805 batch64 showcase"     "805-batch64-showcase"     "retroarch/conformance/805-batch64-showcase.js"     "f230d990164e21a8"
 run_visual_case "816 batch65 showcase"     "816-batch65-showcase"     "retroarch/conformance/816-batch65-showcase.js"     "3f696112a35ab817"
 run_visual_case "827 batch66 showcase"     "827-batch66-showcase"     "retroarch/conformance/827-batch66-showcase.js"     "706434214e09104d"
+run_visual_case "788 camera path"          "788-camera-path"          "retroarch/conformance/788-camera-path.js"          "0f706c67b11fd948"
+run_visual_case "838 batch67 showcase"     "838-batch67-showcase"     "retroarch/conformance/838-batch67-showcase.js"     "bbec40076d7f7c32"
 
 echo "Conformance passed."

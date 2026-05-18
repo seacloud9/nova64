@@ -1128,6 +1128,26 @@ static struct nova64_world_label g_world_labels[NOVA64_MAX_WORLD_LABELS];
 /* ── Batch 66: Camera roll ──────────────────────────────────── */
 static float g_camera_roll = 0.0f;
 
+/* ── Batch 67: Camera paths ──────────────────────────────────── */
+#define NOVA64_MAX_CAMERA_PATHS 8
+#define NOVA64_MAX_CAMPATH_PTS  16
+#define NOVA64_CAMPATH_STOPPED  0
+#define NOVA64_CAMPATH_PLAYING  1
+#define NOVA64_CAMPATH_PAUSED   2
+#define NOVA64_CAMPATH_DONE     3
+
+struct nova64_camera_path {
+   bool  used;
+   float positions[NOVA64_MAX_CAMPATH_PTS][3];
+   float targets[NOVA64_MAX_CAMPATH_PTS][3];
+   int   num_pts;
+   float duration;
+   float t;
+   int   state;
+   bool  loop;
+};
+static struct nova64_camera_path g_camera_paths[NOVA64_MAX_CAMERA_PATHS];
+
 /* ── Path drawing ─────────────────────────────────────────── */
 #define NOVA64_MAX_PATH_PTS 128
 static float g_path_pts[NOVA64_MAX_PATH_PTS * 2]; /* x0,y0, x1,y1 ... */
@@ -8610,6 +8630,163 @@ static JSValue js_zoom_camera(JSContext *ctx, JSValueConst this_val, int argc, J
 
 static JSValue js_reset_camera_roll(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
    { (void)ctx;(void)this_val;(void)argc;(void)argv; g_camera_roll=0.0f; return JS_UNDEFINED; }
+
+/* ── Batch 67: createCameraPath, playCameraPath, stopCameraPath,             ── */
+/*              pauseCameraPath, resumeCameraPath, setCameraPathLoop,            */
+/*              updateCameraPaths, isCameraPathDone, getCameraPathProgress,      */
+/*              destroyCameraPath                                                 */
+
+static int alloc_camera_path(void) {
+   for (int i = 0; i < NOVA64_MAX_CAMERA_PATHS; i++)
+      if (!g_camera_paths[i].used) { g_camera_paths[i].used = true; return i + 1; }
+   return 0;
+}
+
+static struct nova64_camera_path *camera_path_from_handle(int h) {
+   if (h < 1 || h > NOVA64_MAX_CAMERA_PATHS) return NULL;
+   return g_camera_paths[h-1].used ? &g_camera_paths[h-1] : NULL;
+}
+
+/* Parse a flat JS array [x0,y0,z0, x1,y1,z1, ...] into a float[][3] buffer. */
+static int parse_vec3_flat(JSContext *ctx, JSValueConst arr, float out[][3], int max) {
+   if (!JS_IsArray(arr)) return 0;
+   JSValue lenV = JS_GetPropertyStr(ctx, arr, "length");
+   int len = int_from_js(ctx, lenV, 0); JS_FreeValue(ctx, lenV);
+   int count = 0;
+   for (int i = 0; i + 2 < len && count < max; i += 3, count++) {
+      JSValue xv = JS_GetPropertyUint32(ctx, arr, (uint32_t)i);
+      JSValue yv = JS_GetPropertyUint32(ctx, arr, (uint32_t)(i+1));
+      JSValue zv = JS_GetPropertyUint32(ctx, arr, (uint32_t)(i+2));
+      out[count][0] = (float)double_from_js(ctx, xv, 0);
+      out[count][1] = (float)double_from_js(ctx, yv, 0);
+      out[count][2] = (float)double_from_js(ctx, zv, 0);
+      JS_FreeValue(ctx, xv); JS_FreeValue(ctx, yv); JS_FreeValue(ctx, zv);
+   }
+   return count;
+}
+
+/* Sample interpolated position/target for a camera path at time t. */
+static void camera_path_sample(struct nova64_camera_path *cp, float t,
+                                float pos_out[3], float tgt_out[3]) {
+   if (cp->num_pts < 1) {
+      pos_out[0]=pos_out[1]=pos_out[2]=0;
+      tgt_out[0]=tgt_out[1]=tgt_out[2]=0; return;
+   }
+   if (cp->num_pts == 1) {
+      pos_out[0]=cp->positions[0][0]; pos_out[1]=cp->positions[0][1]; pos_out[2]=cp->positions[0][2];
+      tgt_out[0]=cp->targets[0][0];   tgt_out[1]=cp->targets[0][1];   tgt_out[2]=cp->targets[0][2];
+      return;
+   }
+   float s = (t / (cp->duration > 1e-6f ? cp->duration : 1e-6f)) * (float)(cp->num_pts - 1);
+   if (s < 0) s = 0;
+   if (s > (float)(cp->num_pts - 1)) s = (float)(cp->num_pts - 1);
+   int idx = (int)s;
+   float frac = s - (float)idx;
+   int idx1 = idx + 1 < cp->num_pts ? idx + 1 : cp->num_pts - 1;
+   for (int k = 0; k < 3; k++) {
+      pos_out[k] = cp->positions[idx][k] + frac * (cp->positions[idx1][k] - cp->positions[idx][k]);
+      tgt_out[k] = cp->targets[idx][k]   + frac * (cp->targets[idx1][k]   - cp->targets[idx][k]);
+   }
+}
+
+static JSValue js_create_camera_path(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   int h = alloc_camera_path(); if (!h) return JS_NewInt32(ctx, 0);
+   struct nova64_camera_path *cp = &g_camera_paths[h-1];
+   float pos[NOVA64_MAX_CAMPATH_PTS][3], tgt[NOVA64_MAX_CAMPATH_PTS][3];
+   int np = argc > 0 ? parse_vec3_flat(ctx, argv[0], pos, NOVA64_MAX_CAMPATH_PTS) : 0;
+   int nt = argc > 1 ? parse_vec3_flat(ctx, argv[1], tgt, NOVA64_MAX_CAMPATH_PTS) : 0;
+   cp->num_pts = np < nt ? np : nt; /* use minimum count */
+   if (cp->num_pts < 1) { cp->used = false; return JS_NewInt32(ctx, 0); }
+   for (int i = 0; i < cp->num_pts; i++) {
+      cp->positions[i][0]=pos[i][0]; cp->positions[i][1]=pos[i][1]; cp->positions[i][2]=pos[i][2];
+      cp->targets[i][0]  =tgt[i][0]; cp->targets[i][1]  =tgt[i][1]; cp->targets[i][2]  =tgt[i][2];
+   }
+   cp->duration = argc > 2 ? (float)double_from_js(ctx, argv[2], 4.0) : 4.0f;
+   if (cp->duration < 0.001f) cp->duration = 0.001f;
+   cp->t = 0; cp->state = NOVA64_CAMPATH_STOPPED; cp->loop = false;
+   return JS_NewInt32(ctx, h);
+}
+
+static JSValue js_play_camera_path(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   struct nova64_camera_path *cp = camera_path_from_handle(int_from_js(ctx, argc>0?argv[0]:JS_UNDEFINED, 0));
+   if (!cp) return JS_UNDEFINED;
+   cp->t = 0; cp->state = NOVA64_CAMPATH_PLAYING; return JS_UNDEFINED;
+}
+
+static JSValue js_stop_camera_path(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   struct nova64_camera_path *cp = camera_path_from_handle(int_from_js(ctx, argc>0?argv[0]:JS_UNDEFINED, 0));
+   if (!cp) return JS_UNDEFINED;
+   cp->t = 0; cp->state = NOVA64_CAMPATH_STOPPED; return JS_UNDEFINED;
+}
+
+static JSValue js_pause_camera_path(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   struct nova64_camera_path *cp = camera_path_from_handle(int_from_js(ctx, argc>0?argv[0]:JS_UNDEFINED, 0));
+   if (!cp) return JS_UNDEFINED;
+   if (cp->state == NOVA64_CAMPATH_PLAYING) cp->state = NOVA64_CAMPATH_PAUSED;
+   return JS_UNDEFINED;
+}
+
+static JSValue js_resume_camera_path(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   struct nova64_camera_path *cp = camera_path_from_handle(int_from_js(ctx, argc>0?argv[0]:JS_UNDEFINED, 0));
+   if (!cp) return JS_UNDEFINED;
+   if (cp->state == NOVA64_CAMPATH_PAUSED) cp->state = NOVA64_CAMPATH_PLAYING;
+   return JS_UNDEFINED;
+}
+
+static JSValue js_set_camera_path_loop(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   struct nova64_camera_path *cp = camera_path_from_handle(int_from_js(ctx, argc>0?argv[0]:JS_UNDEFINED, 0));
+   if (!cp) return JS_UNDEFINED;
+   cp->loop = argc > 1 ? JS_ToBool(ctx, argv[1]) != 0 : true;
+   return JS_UNDEFINED;
+}
+
+static JSValue js_update_camera_paths(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   float dt = (float)double_from_js(ctx, argc>0?argv[0]:JS_UNDEFINED, 0);
+   for (int i = 0; i < NOVA64_MAX_CAMERA_PATHS; i++) {
+      struct nova64_camera_path *cp = &g_camera_paths[i];
+      if (!cp->used || cp->state != NOVA64_CAMPATH_PLAYING) continue;
+      cp->t += dt;
+      if (cp->t >= cp->duration) {
+         if (cp->loop) { cp->t = (float)fmod((double)cp->t, (double)cp->duration); }
+         else          { cp->t = cp->duration; cp->state = NOVA64_CAMPATH_DONE; }
+      }
+      float pos[3], tgt[3];
+      camera_path_sample(cp, cp->t, pos, tgt);
+      camera_state.position[0]=pos[0]; camera_state.position[1]=pos[1]; camera_state.position[2]=pos[2];
+      camera_state.target[0]  =tgt[0]; camera_state.target[1]  =tgt[1]; camera_state.target[2]  =tgt[2];
+   }
+   return JS_UNDEFINED;
+}
+
+static JSValue js_is_camera_path_done(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   struct nova64_camera_path *cp = camera_path_from_handle(int_from_js(ctx, argc>0?argv[0]:JS_UNDEFINED, 0));
+   return JS_NewBool(ctx, cp ? cp->state == NOVA64_CAMPATH_DONE : true);
+}
+
+static JSValue js_get_camera_path_progress(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   struct nova64_camera_path *cp = camera_path_from_handle(int_from_js(ctx, argc>0?argv[0]:JS_UNDEFINED, 0));
+   if (!cp || cp->duration < 1e-6f) return JS_NewFloat64(ctx, 0.0);
+   double prog = (double)cp->t / (double)cp->duration;
+   if (prog > 1.0) prog = 1.0;
+   return JS_NewFloat64(ctx, prog);
+}
+
+static JSValue js_destroy_camera_path(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   struct nova64_camera_path *cp = camera_path_from_handle(int_from_js(ctx, argc>0?argv[0]:JS_UNDEFINED, 0));
+   if (!cp) return JS_NewBool(ctx, false);
+   memset(cp, 0, sizeof(*cp));
+   return JS_NewBool(ctx, true);
+}
 
 /* ── Batch 51: createTorus, createCone, setMeshWireframe, setMeshDoubleSided, ── */
 /*              cloneMesh, getMeshBounds, setMeshLayer, getMeshLayer,              */
@@ -26113,6 +26290,18 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, global, "zoomCamera",            js_zoom_camera,             1);
    set_function(ctx, global, "resetCameraRoll",       js_reset_camera_roll,       0);
 
+   /* Batch 67 */
+   set_function(ctx, global, "createCameraPath",       js_create_camera_path,       3);
+   set_function(ctx, global, "playCameraPath",          js_play_camera_path,         1);
+   set_function(ctx, global, "stopCameraPath",          js_stop_camera_path,         1);
+   set_function(ctx, global, "pauseCameraPath",         js_pause_camera_path,        1);
+   set_function(ctx, global, "resumeCameraPath",        js_resume_camera_path,       1);
+   set_function(ctx, global, "setCameraPathLoop",       js_set_camera_path_loop,     2);
+   set_function(ctx, global, "updateCameraPaths",       js_update_camera_paths,      1);
+   set_function(ctx, global, "isCameraPathDone",        js_is_camera_path_done,      1);
+   set_function(ctx, global, "getCameraPathProgress",   js_get_camera_path_progress, 1);
+   set_function(ctx, global, "destroyCameraPath",       js_destroy_camera_path,      1);
+
    JS_FreeValue(ctx, global);
    return true;
 }
@@ -28650,11 +28839,12 @@ void RETRO_CALLCONV retro_reset(void)
    g_overlay_scan_active = false; g_overlay_scan_intensity = 0.5f; g_overlay_scan_color = 0x00000080;
    g_screen_saturation = 1.0f; g_screen_contrast = 1.0f;
    g_trans_type = NOVA64_TRANS_NONE; g_trans_timer = 0.0f; g_trans_duration = 1.0f;
-   /* Batch 63-66 resets */
+   /* Batch 63-67 resets */
    memset(g_bodies, 0, sizeof(g_bodies));
    memset(g_splines, 0, sizeof(g_splines));
    memset(g_world_labels, 0, sizeof(g_world_labels));
    g_camera_roll = 0.0f;
+   memset(g_camera_paths, 0, sizeof(g_camera_paths));
    g_path_count = 0; g_path_closed = 0;
    memset(g_hotspots,    0, sizeof(g_hotspots));
    memset(g_btn_repeat,  0, sizeof(g_btn_repeat));

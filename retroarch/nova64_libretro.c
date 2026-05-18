@@ -1128,6 +1128,19 @@ static struct nova64_world_label g_world_labels[NOVA64_MAX_WORLD_LABELS];
 /* ── Batch 66: Camera roll ──────────────────────────────────── */
 static float g_camera_roll = 0.0f;
 
+/* ── Batch 72: Screen wipe transitions ──────────────────────── */
+#define NOVA64_MAX_WIPES 8
+/* type: 0=slide-left 1=slide-down 2=iris 3=checker 4=blinds     */
+struct nova64_wipe {
+   bool  used;
+   int   type;       /* 0-4 */
+   int   direction;  /* 0=out(visible→black) 1=in(black→visible) */
+   float timer;
+   float duration;
+   bool  done;
+};
+static struct nova64_wipe g_wipes[NOVA64_MAX_WIPES];
+
 /* ── Batch 71: Color ramps ───────────────────────────────────── */
 #define NOVA64_MAX_RAMPS      8
 #define NOVA64_MAX_RAMP_STOPS 16
@@ -9296,6 +9309,147 @@ static JSValue js_destroy_color_ramp(JSContext *ctx, JSValueConst this_val, int 
    if (!ramp) return JS_NewBool(ctx, false);
    memset(ramp, 0, sizeof(*ramp));
    return JS_NewBool(ctx, true);
+}
+
+/* ── Batch 72: createWipe, startWipe, updateWipe, drawWipe,                    ── */
+/*              isWipeDone, wipeProgress, destroyWipe                              */
+
+static int alloc_wipe(void) {
+   for (int i = 0; i < NOVA64_MAX_WIPES; i++)
+      if (!g_wipes[i].used) { g_wipes[i].used = true; return i + 1; }
+   return 0;
+}
+static struct nova64_wipe *wipe_from_handle(int h) {
+   if (h < 1 || h > NOVA64_MAX_WIPES) return NULL;
+   return g_wipes[h-1].used ? &g_wipes[h-1] : NULL;
+}
+
+static JSValue js_create_wipe(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   int h = alloc_wipe();
+   if (!h) return JS_NewInt32(ctx, 0);
+   struct nova64_wipe *w = &g_wipes[h-1];
+   w->type      = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0);
+   if (w->type < 0 || w->type > 4) w->type = 0;
+   w->direction = 0;
+   w->timer     = 0.0f;
+   w->duration  = 1.0f;
+   w->done      = false;
+   return JS_NewInt32(ctx, h);
+}
+
+static JSValue js_start_wipe(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   struct nova64_wipe *w = wipe_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!w) return JS_UNDEFINED;
+   float dur = (float)double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 1.0);
+   if (dur < 0.001f) dur = 0.001f;
+   w->duration  = dur;
+   w->direction = int_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 0) ? 1 : 0;
+   w->timer     = 0.0f;
+   w->done      = false;
+   return JS_UNDEFINED;
+}
+
+static JSValue js_update_wipe(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   struct nova64_wipe *w = wipe_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!w || w->done) return JS_UNDEFINED;
+   float dt = (float)double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0.0);
+   w->timer += dt;
+   if (w->timer >= w->duration) { w->timer = w->duration; w->done = true; }
+   return JS_UNDEFINED;
+}
+
+static void draw_wipe_internal(struct nova64_wipe *w) {
+   float progress = (w->duration > 1e-6f) ? (w->timer / w->duration) : 1.0f;
+   if (progress < 0.0f) progress = 0.0f;
+   if (progress > 1.0f) progress = 1.0f;
+   float cov = (w->direction == 0) ? progress : (1.0f - progress);
+   if (cov <= 0.0f) return;
+   int W = NOVA64_WIDTH, H = NOVA64_HEIGHT;
+   uint32_t black = 0x000000ffu;
+   if (cov >= 1.0f) { draw_rect_pixels(0, 0, W, H, black, true); return; }
+   switch (w->type) {
+      case 0: { /* slide-left: black rect grows from right */
+         int bw = (int)(cov * W + 0.5f);
+         if (bw > 0) draw_rect_pixels(W - bw, 0, bw, H, black, true);
+         break;
+      }
+      case 1: { /* slide-down: black rect grows from bottom */
+         int bh = (int)(cov * H + 0.5f);
+         if (bh > 0) draw_rect_pixels(0, H - bh, W, bh, black, true);
+         break;
+      }
+      case 2: { /* iris: black border, window shrinks toward centre */
+         int px = (int)(cov * (W / 2) + 0.5f);
+         int py = (int)(cov * (H / 2) + 0.5f);
+         if (py > 0) {
+            draw_rect_pixels(0, 0,    W, py,         black, true);
+            draw_rect_pixels(0, H-py, W, py,         black, true);
+         }
+         if (px > 0) {
+            draw_rect_pixels(0,    py, px,      H-2*py, black, true);
+            draw_rect_pixels(W-px, py, px,      H-2*py, black, true);
+         }
+         break;
+      }
+      case 3: { /* checker: row-major tile fill (8×5 grid) */
+         int COLS = 8, ROWS = 5;
+         int cw = W / COLS, ch = H / ROWS;
+         int filled = (int)(cov * COLS * ROWS);
+         int idx = 0;
+         for (int r = 0; r < ROWS; r++)
+            for (int c = 0; c < COLS; c++, idx++)
+               if (idx < filled)
+                  draw_rect_pixels(c*cw, r*ch, cw, ch, black, true);
+         break;
+      }
+      case 4: { /* blinds: 6 horizontal strips, each grows from top */
+         int N = 6;
+         int strip_h = H / N;
+         int bh = (int)(cov * strip_h + 0.5f);
+         if (bh > strip_h) bh = strip_h;
+         for (int i = 0; i < N; i++)
+            if (bh > 0) draw_rect_pixels(0, i * strip_h, W, bh, black, true);
+         break;
+      }
+      default:
+         draw_rect_pixels(0, 0, W, H, black, true);
+         break;
+   }
+}
+
+static JSValue js_draw_wipe(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   struct nova64_wipe *w = wipe_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!w) return JS_UNDEFINED;
+   draw_wipe_internal(w);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_is_wipe_done(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   struct nova64_wipe *w = wipe_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   return JS_NewBool(ctx, w ? (int)w->done : 1);
+}
+
+static JSValue js_wipe_progress(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   struct nova64_wipe *w = wipe_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!w) return JS_NewFloat64(ctx, 0.0);
+   float p = (w->duration > 1e-6f) ? (w->timer / w->duration) : 1.0f;
+   if (p < 0.0f) p = 0.0f;
+   if (p > 1.0f) p = 1.0f;
+   return JS_NewFloat64(ctx, (double)p);
+}
+
+static JSValue js_destroy_wipe(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   struct nova64_wipe *w = wipe_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!w) return JS_NewBool(ctx, 0);
+   memset(w, 0, sizeof(*w));
+   return JS_NewBool(ctx, 1);
 }
 
 /* ── Batch 51: createTorus, createCone, setMeshWireframe, setMeshDoubleSided, ── */
@@ -26850,6 +27004,15 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, global, "colorRampStopCount",      js_color_ramp_stop_count,    1);
    set_function(ctx, global, "destroyColorRamp",        js_destroy_color_ramp,       1);
 
+   /* Batch 72 */
+   set_function(ctx, global, "createWipe",              js_create_wipe,              1);
+   set_function(ctx, global, "startWipe",               js_start_wipe,               3);
+   set_function(ctx, global, "updateWipe",              js_update_wipe,              2);
+   set_function(ctx, global, "drawWipe",                js_draw_wipe,                1);
+   set_function(ctx, global, "isWipeDone",              js_is_wipe_done,             1);
+   set_function(ctx, global, "wipeProgress",            js_wipe_progress,            1);
+   set_function(ctx, global, "destroyWipe",             js_destroy_wipe,             1);
+
    JS_FreeValue(ctx, global);
    return true;
 }
@@ -29387,7 +29550,8 @@ void RETRO_CALLCONV retro_reset(void)
    g_overlay_scan_active = false; g_overlay_scan_intensity = 0.5f; g_overlay_scan_color = 0x00000080;
    g_screen_saturation = 1.0f; g_screen_contrast = 1.0f;
    g_trans_type = NOVA64_TRANS_NONE; g_trans_timer = 0.0f; g_trans_duration = 1.0f;
-   /* Batch 63-71 resets */
+   /* Batch 63-72 resets */
+   memset(g_wipes,  0, sizeof(g_wipes));
    memset(g_bodies, 0, sizeof(g_bodies));
    memset(g_splines, 0, sizeof(g_splines));
    memset(g_world_labels, 0, sizeof(g_world_labels));

@@ -941,5 +941,7 @@ run_visual_case "791 mesh flash"           "791-mesh-flash"           "retroarch
 run_visual_case "871 batch70 showcase"     "871-batch70-showcase"     "retroarch/conformance/871-batch70-showcase.js"     "8717fba04231d2e0"
 run_visual_case "792 color ramp"           "792-color-ramp"           "retroarch/conformance/792-color-ramp.js"           "37b1f32f068bfb22"
 run_visual_case "882 batch71 showcase"     "882-batch71-showcase"     "retroarch/conformance/882-batch71-showcase.js"     "d6200d68fc0f2298"
+run_visual_case "793 screen wipe"          "793-screen-wipe"          "retroarch/conformance/793-screen-wipe.js"          "33b1f13c34148b52"
+run_visual_case "893 batch72 showcase"     "893-batch72-showcase"     "retroarch/conformance/893-batch72-showcase.js"     "c17b76804d476dd9"
 
 echo "Conformance passed."

@@ -933,5 +933,7 @@ run_visual_case "816 batch65 showcase"     "816-batch65-showcase"     "retroarch
 run_visual_case "827 batch66 showcase"     "827-batch66-showcase"     "retroarch/conformance/827-batch66-showcase.js"     "706434214e09104d"
 run_visual_case "788 camera path"          "788-camera-path"          "retroarch/conformance/788-camera-path.js"          "0f706c67b11fd948"
 run_visual_case "838 batch67 showcase"     "838-batch67-showcase"     "retroarch/conformance/838-batch67-showcase.js"     "bbec40076d7f7c32"
+run_visual_case "789 mesh follower"        "789-mesh-follower"        "retroarch/conformance/789-mesh-follower.js"        "80003dc401eb85fc"
+run_visual_case "849 batch68 showcase"     "849-batch68-showcase"     "retroarch/conformance/849-batch68-showcase.js"     "6c3d1c4a7b805fdf"
 
 echo "Conformance passed."

@@ -1128,6 +1128,26 @@ static struct nova64_world_label g_world_labels[NOVA64_MAX_WORLD_LABELS];
 /* ── Batch 66: Camera roll ──────────────────────────────────── */
 static float g_camera_roll = 0.0f;
 
+/* ── Batch 68: Mesh path followers ──────────────────────────── */
+#define NOVA64_MAX_FOLLOWERS 8
+#define NOVA64_FOLLOWER_STOPPED 0
+#define NOVA64_FOLLOWER_PLAYING 1
+#define NOVA64_FOLLOWER_PAUSED  2
+#define NOVA64_FOLLOWER_DONE    3
+
+struct nova64_follower {
+   bool  used;
+   int   mesh_handle;
+   int   spline_handle;
+   float t;          /* 0..1 along the spline */
+   float speed;      /* world units per second */
+   float spline_len; /* cached arc length */
+   int   state;
+   bool  loop;
+   bool  look_ahead; /* orient mesh along path forward direction */
+};
+static struct nova64_follower g_followers[NOVA64_MAX_FOLLOWERS];
+
 /* ── Batch 67: Camera paths ──────────────────────────────────── */
 #define NOVA64_MAX_CAMERA_PATHS 8
 #define NOVA64_MAX_CAMPATH_PTS  16
@@ -8785,6 +8805,171 @@ static JSValue js_destroy_camera_path(JSContext *ctx, JSValueConst this_val, int
    struct nova64_camera_path *cp = camera_path_from_handle(int_from_js(ctx, argc>0?argv[0]:JS_UNDEFINED, 0));
    if (!cp) return JS_NewBool(ctx, false);
    memset(cp, 0, sizeof(*cp));
+   return JS_NewBool(ctx, true);
+}
+
+/* ── Batch 68: createMeshFollower, setFollowerSpeed, setFollowerLooping,     ── */
+/*              setFollowerLookAhead, pauseFollower, resumeFollower,              */
+/*              stopFollower, updateFollowers, isFollowerDone,                    */
+/*              getFollowerProgress, getFollowerPos, destroyFollower              */
+
+static float spline_arc_length_3d(const struct nova64_spline *sp) {
+   if (!sp || sp->count < 2) return 1.0f;
+   int steps = 64; float prev[3], cur[3], len = 0;
+   spline_sample(sp, 0, prev);
+   for (int i = 1; i <= steps; i++) {
+      spline_sample(sp, (float)i / steps, cur);
+      float dx = cur[0]-prev[0], dy = cur[1]-prev[1], dz = cur[2]-prev[2];
+      len += (float)sqrt((double)(dx*dx+dy*dy+dz*dz));
+      prev[0]=cur[0]; prev[1]=cur[1]; prev[2]=cur[2];
+   }
+   return len > 1e-6f ? len : 1.0f;
+}
+
+static int alloc_follower(void) {
+   for (int i = 0; i < NOVA64_MAX_FOLLOWERS; i++)
+      if (!g_followers[i].used) { g_followers[i].used = true; return i+1; }
+   return 0;
+}
+
+static struct nova64_follower *follower_from_handle(int h) {
+   if (h < 1 || h > NOVA64_MAX_FOLLOWERS) return NULL;
+   return g_followers[h-1].used ? &g_followers[h-1] : NULL;
+}
+
+static JSValue js_create_mesh_follower(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   int mesh_h   = int_from_js(ctx, argc>0?argv[0]:JS_UNDEFINED, 0);
+   int spline_h = int_from_js(ctx, argc>1?argv[1]:JS_UNDEFINED, 0);
+   struct nova64_spline *sp = spline_from_handle(spline_h);
+   if (!sp || sp->count < 2 || !sp->is3d) return JS_NewInt32(ctx, 0);
+   int h = alloc_follower(); if (!h) return JS_NewInt32(ctx, 0);
+   struct nova64_follower *f = &g_followers[h-1];
+   f->mesh_handle   = mesh_h;
+   f->spline_handle = spline_h;
+   f->t             = 0;
+   f->speed         = argc > 2 ? (float)double_from_js(ctx, argv[2], 1.0) : 1.0f;
+   f->spline_len    = spline_arc_length_3d(sp);
+   f->state         = NOVA64_FOLLOWER_STOPPED;
+   f->loop          = false;
+   f->look_ahead    = false;
+   return JS_NewInt32(ctx, h);
+}
+
+static JSValue js_set_follower_speed(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   struct nova64_follower *f = follower_from_handle(int_from_js(ctx, argc>0?argv[0]:JS_UNDEFINED, 0));
+   if (f) f->speed = (float)double_from_js(ctx, argc>1?argv[1]:JS_UNDEFINED, 1.0);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_set_follower_looping(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   struct nova64_follower *f = follower_from_handle(int_from_js(ctx, argc>0?argv[0]:JS_UNDEFINED, 0));
+   if (f) f->loop = argc > 1 ? JS_ToBool(ctx, argv[1]) != 0 : true;
+   return JS_UNDEFINED;
+}
+
+static JSValue js_set_follower_look_ahead(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   struct nova64_follower *f = follower_from_handle(int_from_js(ctx, argc>0?argv[0]:JS_UNDEFINED, 0));
+   if (f) f->look_ahead = argc > 1 ? JS_ToBool(ctx, argv[1]) != 0 : true;
+   return JS_UNDEFINED;
+}
+
+static JSValue js_play_follower(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   struct nova64_follower *f = follower_from_handle(int_from_js(ctx, argc>0?argv[0]:JS_UNDEFINED, 0));
+   if (f) { f->t = 0; f->state = NOVA64_FOLLOWER_PLAYING; }
+   return JS_UNDEFINED;
+}
+
+static JSValue js_pause_follower(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   struct nova64_follower *f = follower_from_handle(int_from_js(ctx, argc>0?argv[0]:JS_UNDEFINED, 0));
+   if (f && f->state == NOVA64_FOLLOWER_PLAYING) f->state = NOVA64_FOLLOWER_PAUSED;
+   return JS_UNDEFINED;
+}
+
+static JSValue js_resume_follower(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   struct nova64_follower *f = follower_from_handle(int_from_js(ctx, argc>0?argv[0]:JS_UNDEFINED, 0));
+   if (f && f->state == NOVA64_FOLLOWER_PAUSED) f->state = NOVA64_FOLLOWER_PLAYING;
+   return JS_UNDEFINED;
+}
+
+static JSValue js_stop_follower(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   struct nova64_follower *f = follower_from_handle(int_from_js(ctx, argc>0?argv[0]:JS_UNDEFINED, 0));
+   if (f) { f->t = 0; f->state = NOVA64_FOLLOWER_STOPPED; }
+   return JS_UNDEFINED;
+}
+
+static JSValue js_update_followers(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   float dt = (float)double_from_js(ctx, argc>0?argv[0]:JS_UNDEFINED, 0);
+   for (int i = 0; i < NOVA64_MAX_FOLLOWERS; i++) {
+      struct nova64_follower *f = &g_followers[i];
+      if (!f->used || f->state != NOVA64_FOLLOWER_PLAYING) continue;
+      struct nova64_spline *sp = spline_from_handle(f->spline_handle);
+      if (!sp) continue;
+      float dt_inc = (f->spline_len > 1e-6f) ? f->speed * dt / f->spline_len : 0;
+      f->t += dt_inc;
+      if (f->t >= 1.0f) {
+         if (f->loop) { f->t = (float)fmod((double)f->t, 1.0); }
+         else         { f->t = 1.0f; f->state = NOVA64_FOLLOWER_DONE; }
+      }
+      /* Apply position to mesh */
+      float pos[3]; spline_sample(sp, f->t, pos);
+      struct nova64_mesh *mesh = mesh_from_handle(f->mesh_handle);
+      if (mesh) {
+         mesh->position[0]=pos[0]; mesh->position[1]=pos[1]; mesh->position[2]=pos[2];
+         /* Look-ahead: orient mesh toward tangent */
+         if (f->look_ahead) {
+            float eps = 0.01f;
+            float t1 = f->t + eps; if (t1 > 1.0f) t1 = 1.0f;
+            float t0 = f->t - eps; if (t0 < 0.0f) t0 = 0.0f;
+            float a[3], b[3];
+            spline_sample(sp, t0, a); spline_sample(sp, t1, b);
+            float dx=b[0]-a[0], dz=b[2]-a[2];
+            float yaw = (float)atan2((double)dx, (double)dz);
+            mesh->rotation[0]=0; mesh->rotation[1]=yaw; mesh->rotation[2]=0;
+         }
+      }
+   }
+   return JS_UNDEFINED;
+}
+
+static JSValue js_is_follower_done(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   struct nova64_follower *f = follower_from_handle(int_from_js(ctx, argc>0?argv[0]:JS_UNDEFINED, 0));
+   return JS_NewBool(ctx, f ? f->state == NOVA64_FOLLOWER_DONE : true);
+}
+
+static JSValue js_get_follower_progress(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   struct nova64_follower *f = follower_from_handle(int_from_js(ctx, argc>0?argv[0]:JS_UNDEFINED, 0));
+   double t = f ? (double)f->t : 0.0;
+   if (t > 1.0) t = 1.0;
+   return JS_NewFloat64(ctx, t);
+}
+
+static JSValue js_get_follower_pos(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   struct nova64_follower *f = follower_from_handle(int_from_js(ctx, argc>0?argv[0]:JS_UNDEFINED, 0));
+   float pos[3] = {0,0,0};
+   if (f) {
+      struct nova64_spline *sp = spline_from_handle(f->spline_handle);
+      if (sp) spline_sample(sp, f->t, pos);
+   }
+   return js_vec3_array(ctx, pos);
+}
+
+static JSValue js_destroy_follower(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   struct nova64_follower *f = follower_from_handle(int_from_js(ctx, argc>0?argv[0]:JS_UNDEFINED, 0));
+   if (!f) return JS_NewBool(ctx, false);
+   memset(f, 0, sizeof(*f));
    return JS_NewBool(ctx, true);
 }
 
@@ -26302,6 +26487,21 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, global, "getCameraPathProgress",   js_get_camera_path_progress, 1);
    set_function(ctx, global, "destroyCameraPath",       js_destroy_camera_path,      1);
 
+   /* Batch 68 */
+   set_function(ctx, global, "createMeshFollower",      js_create_mesh_follower,     3);
+   set_function(ctx, global, "setFollowerSpeed",        js_set_follower_speed,       2);
+   set_function(ctx, global, "setFollowerLooping",      js_set_follower_looping,     2);
+   set_function(ctx, global, "setFollowerLookAhead",    js_set_follower_look_ahead,  2);
+   set_function(ctx, global, "playFollower",            js_play_follower,            1);
+   set_function(ctx, global, "pauseFollower",           js_pause_follower,           1);
+   set_function(ctx, global, "resumeFollower",          js_resume_follower,          1);
+   set_function(ctx, global, "stopFollower",            js_stop_follower,            1);
+   set_function(ctx, global, "updateFollowers",         js_update_followers,         1);
+   set_function(ctx, global, "isFollowerDone",          js_is_follower_done,         1);
+   set_function(ctx, global, "getFollowerProgress",     js_get_follower_progress,    1);
+   set_function(ctx, global, "getFollowerPos",          js_get_follower_pos,         1);
+   set_function(ctx, global, "destroyFollower",         js_destroy_follower,         1);
+
    JS_FreeValue(ctx, global);
    return true;
 }
@@ -28839,12 +29039,13 @@ void RETRO_CALLCONV retro_reset(void)
    g_overlay_scan_active = false; g_overlay_scan_intensity = 0.5f; g_overlay_scan_color = 0x00000080;
    g_screen_saturation = 1.0f; g_screen_contrast = 1.0f;
    g_trans_type = NOVA64_TRANS_NONE; g_trans_timer = 0.0f; g_trans_duration = 1.0f;
-   /* Batch 63-67 resets */
+   /* Batch 63-68 resets */
    memset(g_bodies, 0, sizeof(g_bodies));
    memset(g_splines, 0, sizeof(g_splines));
    memset(g_world_labels, 0, sizeof(g_world_labels));
    g_camera_roll = 0.0f;
    memset(g_camera_paths, 0, sizeof(g_camera_paths));
+   memset(g_followers, 0, sizeof(g_followers));
    g_path_count = 0; g_path_closed = 0;
    memset(g_hotspots,    0, sizeof(g_hotspots));
    memset(g_btn_repeat,  0, sizeof(g_btn_repeat));

@@ -558,10 +558,11 @@ static bool write_ppm(const char *path)
    fprintf(file, "P6\n%u %u\n255\n", g_last_width, g_last_height);
 
    if (g_hw_last_frame && g_hw_pixels) {
-      /* RGBA8 readback — write R,G,B; skip A */
+      /* RGBA8 readback is bottom-up from glReadPixels; PPM rows are top-down. */
       for (unsigned y = 0; y < g_last_height; y++) {
+         unsigned src_y = g_last_height - 1 - y;
          for (unsigned x = 0; x < g_last_width; x++) {
-            const uint8_t *p = g_hw_pixels + ((size_t)y * g_last_width + x) * 4;
+            const uint8_t *p = g_hw_pixels + ((size_t)src_y * g_last_width + x) * 4;
             fwrite(p, 1, 3, file);
          }
       }

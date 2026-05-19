@@ -23,6 +23,8 @@ let scene = 0;
 let state = 'start', startT = 0;
 
 let gridMesh, cityMesh, groundMesh, centralSphere;
+let skyPanel, horizonGlow;
+let gridMeshes = [], gridCells = [];
 let rings = [], towers = [], voidSpheres = [];
 let coreBurst = [], burstTimer = 0;
 
@@ -32,6 +34,9 @@ function mat4(sx, sy, sz, tx, ty, tz) {
 
 function clearScene3D() {
    if (gridMesh)      { destroyMesh(gridMesh);      gridMesh      = null; }
+   for (const gm of gridMeshes) destroyMesh(gm.mesh);
+   if (skyPanel)      { destroyMesh(skyPanel);       skyPanel      = null; }
+   if (horizonGlow)   { destroyMesh(horizonGlow);    horizonGlow   = null; }
    if (cityMesh)      { destroyMesh(cityMesh);       cityMesh      = null; }
    if (groundMesh)    { destroyMesh(groundMesh);     groundMesh    = null; }
    if (centralSphere) { destroyMesh(centralSphere);  centralSphere = null; }
@@ -40,56 +45,91 @@ function clearScene3D() {
    for (const v of voidSpheres) destroyMesh(v.mesh);
    for (const b of coreBurst)   destroyBurst(b);
    rings = []; towers = []; voidSpheres = []; coreBurst = [];
+   gridMeshes = []; gridCells = [];
    nova64.post.clear();
+   clearSkyColor();
 }
 
 // ── Scene 0: GRID AWAKENING ───────────────────────────────────────────────────
 function buildScene0() {
-   nova64.post.setBloom(0.7);
-   setLightDirection(-0.4, -1, -0.5);
-   setFog(rgba8(4, 6, 18, 255), 25, 80);
+   nova64.post.setBloom(0.9);
+   nova64.post.setChromatic(0.003);
+   nova64.post.setCRT(true);
+   nova64.post.setVignette(0.9, 0.82);
+   setSkyColor(rgba8(82, 0, 46, 255), rgba8(7, 2, 22, 255));
+   setAmbientLight(rgba8(220, 220, 240, 255), 1.0);
+   setLightDirection(0, -1, -0.2);
+   setFog(rgba8(82, 0, 46, 255), 115, 260);
    setCameraFOV(65);
 
+   skyPanel = createCube(90, 34, 0.2, rgba8(130, 0, 76, 255));
+   setMeshEmissive(skyPanel, rgba8(210, 12, 110, 255), 0.32);
+   setPosition(skyPanel, 0, 16, -54);
+
+   horizonGlow = createSphere(12, rgba8(0, 240, 255, 255));
+   setMeshEmissive(horizonGlow, rgba8(0, 240, 255, 255), 1.65);
+   setScale(horizonGlow, 2.8, 0.34, 0.85);
+   setPosition(horizonGlow, 18, -2.2, -24);
+
    const COLS = 18, ROWS = 18;
-   gridMesh = createInstancedMesh('cube', COLS * ROWS);
-   let idx = 0;
+   const PALETTE = [
+      rgba8(0, 240, 255, 255),
+      rgba8(255, 40, 220, 255),
+      rgba8(60, 120, 255, 255),
+   ];
+   const groups = [[], [], []];
    for (let r = 0; r < ROWS; r++) {
       for (let c = 0; c < COLS; c++) {
+         groups[(c + r) % 3].push({ c, r });
+      }
+   }
+
+   for (let g = 0; g < groups.length; g++) {
+      const mesh = createInstancedMesh('cube', groups[g].length);
+      const col = PALETTE[g];
+      setMeshColor(mesh, col);
+      setMeshEmissive(mesh, col, g === 1 ? 0.24 : 0.18);
+      gridMeshes.push({ mesh, color: col });
+
+      for (let i = 0; i < groups[g].length; i++) {
+         const { c, r } = groups[g][i];
          const x = (c - COLS/2 + 0.5) * 3.2;
          const z = (r - ROWS/2 + 0.5) * 3.2;
          const h = 0.1 + rng() * 0.2;
-         setInstanceTransform(gridMesh, idx, mat4(3.0, h, 3.0, x, -3 + h/2, z));
-         // Bright cyan to blue gradient by position
-         const cx = Math.floor(30 + (c/COLS) * 80);
-         setInstanceColor(gridMesh, idx, rgba8(cx, 180 + Math.floor(rng()*75), 255, 255));
-         idx++;
+         setInstanceTransform(mesh, i, mat4(1.85, h, 1.85, x, -3 + h/2, z));
+         setInstanceColor(mesh, i, col);
+         gridCells.push({ mesh, idx: i, x, z });
       }
    }
 
    // Central landmark: tall glowing pillar
    groundMesh = createCube(0.8, 6, 0.8, rgba8(0, 240, 255, 255));
+   setMeshEmissive(groundMesh, rgba8(0, 240, 255, 255), 0.9);
    setPosition(groundMesh, 0, 0, 0);
 }
 
 // ── Scene 1: DATA TUNNEL ──────────────────────────────────────────────────────
 function buildScene1() {
-   nova64.post.setBloom(1.4);
+   nova64.post.setBloom(1.65);
    nova64.post.setChromatic(0.005);
-   setLightDirection(0, -1, 0);
-   setFog(rgba8(2, 0, 10, 255), 10, 60);
-   setCameraFOV(85);
+   nova64.post.setCRT(true);
+   setSkyColor(rgba8(4, 0, 14, 255), rgba8(34, 0, 58, 255));
+   setAmbientLight(rgba8(34, 8, 56, 255), 1.1);
+   setLightDirection(0, -1, -0.2);
+   setFog(rgba8(8, 0, 20, 255), 50, 160);
+   setCameraFOV(78);
 
    rings = [];
    for (let i = 0; i < 28; i++) {
-      const z = -i * 5;
-      // Alternate large and medium rings; thick tube so they're visible
-      const outer = (i % 3 === 0) ? 3.2 : 2.6;
-      const tube  = 0.38;
+      const z = -12 - i * 5.5;
+      const outer = (i % 3 === 0) ? 4.2 : 3.45;
+      const tube  = 0.58;
       const hue   = i / 28;
       const col = hue < 0.5
          ? rgba8(255, Math.floor(40 + hue*180), 220, 255)
          : rgba8(Math.floor(255 - (hue-0.5)*360), 40, 255, 255);
       const m = createTorus(outer, tube, col);
+      setMeshEmissive(m, col, 1.4);
       setPosition(m, 0, 0, z);
       rings.push({ mesh: m, z, rot: (i % 2 === 0) ? 1 : -0.7, phase: rng() * 6.28 });
    }
@@ -98,6 +138,8 @@ function buildScene1() {
 // ── Scene 2: DIGITAL CITY ─────────────────────────────────────────────────────
 function buildScene2() {
    nova64.post.setBloom(0.9);
+   nova64.post.setCRT(true);
+   setAmbientLight(rgba8(18, 24, 58, 255), 1.15);
    setLightDirection(-0.6, -1, -0.4);
    setFog(rgba8(6, 4, 16, 255), 20, 90);
    setCameraFOV(62);
@@ -131,6 +173,8 @@ function buildScene2() {
 function buildScene3() {
    nova64.post.setBloom(2.0);
    nova64.post.setVignette(1.4, 0.82);
+   nova64.post.setCRT(true);
+   setAmbientLight(rgba8(40, 8, 36, 255), 1.2);
    setLightDirection(0, -0.5, -1);
    setFog(rgba8(4, 0, 8, 255), 12, 50);
    setCameraFOV(75);
@@ -157,6 +201,8 @@ function buildScene3() {
 function buildScene4() {
    nova64.post.setBloom(2.8);
    nova64.post.setVignette(2.0, 0.68);
+   nova64.post.setCRT(true);
+   setAmbientLight(rgba8(8, 10, 28, 255), 0.9);
    setLightDirection(0.2, -1, 0.4);
    setFog(rgba8(0, 0, 6, 255), 8, 45);
    setCameraFOV(58);
@@ -180,6 +226,14 @@ function buildScene4() {
 }
 
 const BUILD = [buildScene0, buildScene1, buildScene2, buildScene3, buildScene4];
+
+const SCENE_DESCRIPTIONS = [
+   'GRID AWAKENING - DIGITAL REALM ONLINE',
+   'DATA TUNNEL - INFORMATION STREAM',
+   'DIGITAL CITY - LIGHT AND GEOMETRY',
+   'ENERGY CORE - SYSTEM HEARTBEAT',
+   'THE VOID - RETURN TO INFINITY',
+];
 
 // ── Init ───────────────────────────────────────────────────────────────────────
 export function init() {
@@ -253,16 +307,10 @@ export function update(dt) {
    // Per-scene animations
    if (scene === 0) {
       // Wave animation on grid heights
-      let idx = 0;
-      const COLS = 18, ROWS = 18;
-      for (let r = 0; r < ROWS; r++) {
-         for (let c = 0; c < COLS; c++) {
-            const x = (c-COLS/2+0.5)*3.2, z = (r-ROWS/2+0.5)*3.2;
-            const wave = Math.sin(x*0.35 + t*2.2) * Math.cos(z*0.35 + t*1.6);
-            const h = 0.1 + (wave*0.5+0.5) * 2.5;
-            setInstanceTransform(gridMesh, idx, mat4(3.0, h, 3.0, x, -3+h/2, z));
-            idx++;
-         }
+      for (const cell of gridCells) {
+         const wave = Math.sin(cell.x*0.35 + t*2.2) * Math.cos(cell.z*0.35 + t*1.6);
+         const h = 0.1 + (wave*0.5+0.5) * 2.5;
+         setInstanceTransform(cell.mesh, cell.idx, mat4(1.85, h, 1.85, cell.x, -3+h/2, cell.z));
       }
       // Pillar pulse
       const ph = 5 + Math.sin(t*2)*1;
@@ -323,14 +371,14 @@ export function draw() {
       rectfill(80, 80, 480, 220, rgba8(4, 6, 20, 250));
       glowRect(80, 80, 480, 220, rgba8(0, 230, 255, 220), 8);
       printBold('TRON ODYSSEY', 190, 98, rgba8(0, 240, 255, 255));
-      print('RetroArch Edition  —  GLES3', 192, 118, rgba8(160, 200, 255, 200));
+      print('RETROARCH EDITION - GLES3', 192, 118, rgba8(160, 200, 255, 200));
       glowLine(100, 134, 560, 134, rgba8(0,160,255,160), 1);
-      print('5 scenes  ·  auto  ·  Z=skip', 204, 144, rgba8(130,180,255,190));
+      print('5 SCENES - AUTO - Z=SKIP', 204, 144, rgba8(130,180,255,190));
       for (let i = 0; i < SCENES.length; i++) {
          print((i+1) + '. ' + SCENES[i].name, 184, 160 + i*14, rgba8(60+i*30, 180, 255-i*20, 180));
       }
       glowLine(100, 234, 560, 234, rgba8(0,160,255,160), 1);
-      printFlash(240, 246, 'Z or X to begin', rgba8(255,220,60,255), -startT, 1.8);
+      printFlash(240, 246, 'Z OR X TO BEGIN', rgba8(255,220,60,255), -startT, 1.8);
       return;
    }
 
@@ -346,18 +394,39 @@ export function draw() {
    // ── Burst particles (energy core) ─────────────────────────────────────────
    for (const b of coreBurst) drawBurst(b);
 
-   // ── HUD — always drawn AFTER the flash so it stays readable ───────────────
-   rectfill(0, 0, 640, 34, rgba8(2, 4, 12, 220));
-   glowLine(0, 34, 640, 34, rgba8(0,160,255,140), 2);
-   printBold('TRON ODYSSEY', 8, 6, rgba8(0, 220, 255, 210));
-   print('scene ' + (scene+1) + '/' + SCENES.length + '   ' + sc.name,
-         160, 8, rgba8(255,230,60,220));
-   print('Z:skip', 596, 8, rgba8(70,110,190,140));
+   // ── Web-style HUD panels ──────────────────────────────────────────────────
+   const panelColor = rgba8(4, 4, 34, 214);
+   const sceneAccent = scene === 0 ? rgba8(0, 255, 255, 255)
+      : scene === 1 ? rgba8(255, 0, 255, 255)
+      : scene === 2 ? rgba8(255, 236, 40, 255)
+      : scene === 3 ? rgba8(255, 0, 153, 255)
+      : rgba8(0, 153, 255, 255);
 
-   // Progress bar
-   const BAR_X = 8, BAR_Y = 344, BAR_W = 300;
-   rect(BAR_X, BAR_Y, BAR_W, 7, rgba8(15,30,60,200));
-   rectfill(BAR_X+1, BAR_Y+1, Math.floor((BAR_W-2)*prog), 5, rgba8(0,200,255,220));
+   rectfill(16, 16, 280, 90, panelColor);
+   rect(16, 16, 280, 90, sceneAccent, false);
+   print('DEMOSCENE', 28, 25, rgba8(255, 255, 255, 255));
+   print('SCENE ' + (scene + 1) + '/' + SCENES.length + ': ' + sc.name,
+      24, 46, rgba8(210, 220, 255, 255));
+   rectfill(24, 63, 264, 7, rgba8(42, 42, 70, 210));
+   rectfill(24, 63, Math.floor(264 * prog), 7, sceneAccent);
+   rect(24, 63, 264, 7, rgba8(255, 255, 255, 90), false);
+   print((prog * 100).toFixed(1) + '%', 24, 79, rgba8(170, 170, 215, 255));
+   print('TIME: ' + sceneT.toFixed(1) + 'S / ' + sc.dur + 'S',
+      24, 92, rgba8(170, 170, 215, 255));
+
+   rectfill(424, 16, 200, 65, panelColor);
+   rect(424, 16, 200, 65, rgba8(255, 0, 255, 255), false);
+   print('EFFECTS ACTIVE:', 438, 25, rgba8(255, 255, 255, 255));
+   print('BLOOM', 438, 38, rgba8(60, 255, 90, 255));
+   print('FXAA', 438, 49, rgba8(60, 255, 90, 255));
+   print('POST', 438, 60, rgba8(60, 255, 90, 255));
+   print('FOG', 438, 71, rgba8(60, 255, 90, 255));
+
+   rectfill(16, 315, 608, 30, rgba8(0, 0, 28, 224));
+   print(SCENE_DESCRIPTIONS[scene], 320, 326, rgba8(255, 255, 120, 255), 'center');
+   print('NOVA64 - POWERED BY RETROARCH GLES3', 320, 341, rgba8(120, 130, 180, 210), 'center');
+
+   print('Z:SKIP', 596, 8, rgba8(70,110,190,140));
 
    // Scene name flash at top of scene (printed ON TOP of HUD)
    if (sceneT < 0.8) {

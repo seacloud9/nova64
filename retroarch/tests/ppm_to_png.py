@@ -6,29 +6,34 @@ import zlib
 
 def convert(ppm_path: str, png_path: str) -> None:
     with open(ppm_path, "rb") as f:
-        # Read header tokens (format, width, height, maxval)
         tokens: list[bytes] = []
-        buf = b""
+        buf = bytearray()
         while len(tokens) < 4:
             ch = f.read(1)
             if not ch:
                 raise ValueError("truncated PPM header")
+            if ch == b"#":
+                while ch not in (b"", b"\n", b"\r"):
+                    ch = f.read(1)
+                continue
             if ch in (b" ", b"\t", b"\r", b"\n"):
                 if buf:
-                    tokens.append(buf)
-                    buf = b""
-                if len(tokens) == 3 and ch in (b"\r", b"\n"):
-                    # single whitespace after maxval
-                    break
+                    tokens.append(bytes(buf))
+                    buf.clear()
             else:
-                buf += ch
-        if buf and len(tokens) < 4:
-            tokens.append(buf)
+                buf.extend(ch)
         if tokens[0] != b"P6":
             raise ValueError(f"not a P6 PPM: {tokens[0]}")
         width = int(tokens[1])
         height = int(tokens[2])
+        maxval = int(tokens[3])
+        if maxval != 255:
+            raise ValueError(f"unsupported PPM maxval: {maxval}")
         raw = f.read()
+        expected = width * height * 3
+        if len(raw) < expected:
+            raise ValueError(f"truncated PPM pixel data: expected {expected}, got {len(raw)}")
+        raw = raw[:expected]
 
     def chunk(tag: bytes, data: bytes) -> bytes:
         crc = zlib.crc32(tag + data) & 0xFFFFFFFF

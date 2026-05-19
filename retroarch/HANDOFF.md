@@ -1,4 +1,88 @@
-# Nova64 Handoff — 2026-05-18
+# Nova64 Handoff — 2026-05-19
+
+## 2026-05-19 update
+
+The original post-state black-output fix is already committed in history. The current
+RetroArch parity pass moved on to the remaining GLES visual mismatches in the
+demoscene cart and renderer:
+
+- `cls()` / `clsGradient()` no longer draw the software 3D preview over an active
+  GLES hardware scene.
+- GLES scene clears now honor cart `cls()` / framebuffer clear values when no sky
+  color is active.
+- GLES post shader uniforms now match the C uniform uploads (`vec4` for resolution
+  and color grade), so post color-grade output no longer goes black.
+- GLES post processing now has a visible fullscreen pass: linear post-FBO
+  sampling, FXAA-style edge smoothing for post-active scenes, and a wider
+  bright-pass bloom sample pattern. RetroArch/libretro does not expose an MSAA
+  flag in this core's `retro_hw_render_callback`, so this pass is the current
+  anti-aliasing path for demoscene/post-enabled carts.
+- GLES instanced meshes now apply per-instance colors and set their normal,
+  emissive, roughness, metalness, UV, fog, and texture-related uniforms explicitly.
+- GLES torus meshes no longer double-apply radius scale after baking geometry.
+- Core/cart reset now initializes the 2D draw transform to identity before cart
+  code runs. This fixes the RetroArch HUD collapsing to `(0,0)` and appearing
+  upside-down/backwards while leaving the 3D camera and post path unchanged.
+- `retroarch/games/demoscene.js` has first-pass scene tuning for sky colors,
+  ambient light, bloom, fog, torus thickness, and grid density. Scene 0 now
+  splits the grid into three instanced meshes so cyan/magenta/blue tiles can
+  keep separate emissive colors on the GLES path. The HUD now uses RetroArch's
+  `rect(..., false)` outline semantics so panels match the web-style overlay
+  instead of filling with accent colors.
+- `retroarch/tests/ppm_to_png.py` now reads the full P6 header through `maxval`
+  before copying pixel data. The previous parser stopped after width/height for
+  the harness header shape, causing converted PNG screenshots to display shifted
+  colors even when the raw PPM was correct.
+- Added GLES-only regression carts:
+  - `retroarch/conformance/gles-clear-color.js`
+  - `retroarch/conformance/gles-post-color-grade.js`
+  - `retroarch/conformance/gles-instance-colors.js`
+  - `retroarch/conformance/gles-torus-scale.js`
+  - `retroarch/conformance/gles-overlay-orientation.js`
+- `retroarch/tests/run_conformance.sh` now locks those GLES checksums, plus the
+  updated GLES checksums for overlay/text-bearing tests after the draw-state
+  initialization fix.
+
+Validated:
+
+```bash
+cd /mnt/c/Users/brend/exp/nova64/retroarch && make
+cd /mnt/c/Users/brend/exp/nova64
+bash -n retroarch/tests/run_conformance.sh
+retroarch/build/harness retroarch/nova64_libretro.so retroarch/conformance/21-post-effects.js --gles --expect 702c95f9f4112efc
+retroarch/build/harness retroarch/nova64_libretro.so retroarch/conformance/107-instanced-mesh.js --gles --expect ca8b6fa284e8a82b
+retroarch/build/harness retroarch/nova64_libretro.so retroarch/conformance/gles-clear-color.js --gles --frames 3 --expect cfc2e94e23f70383
+retroarch/build/harness retroarch/nova64_libretro.so retroarch/conformance/gles-post-color-grade.js --gles --frames 3 --expect bedad38d3f3f5612
+retroarch/build/harness retroarch/nova64_libretro.so retroarch/conformance/gles-instance-colors.js --gles --frames 3 --expect abcd5e293f0c7187
+retroarch/build/harness retroarch/nova64_libretro.so retroarch/conformance/gles-torus-scale.js --gles --frames 3 --expect db701fac656d76cd
+retroarch/build/harness retroarch/nova64_libretro.so retroarch/conformance/gles-overlay-orientation.js --gles --frames 3 --expect 837f452f8df778a3
+```
+
+Latest local visual captures from this pass:
+
+```text
+retroarch/build/demoscene-scene0-split.png
+retroarch/build/demoscene-scene0-post-aa.png
+retroarch/build/demoscene-scene1-post-aa.png
+retroarch/build/gles-post-fxaa-bloom.png
+retroarch/build/gles-instance-colors-after.png
+retroarch/build/gles-overlay-orientation-fixed.png
+retroarch/build/demoscene-webparity-s0-hudfixed2.png
+retroarch/build/demoscene-webparity-s1-hudfixed2.png
+```
+
+Remaining parity work:
+
+- Compare the captures above against the web renderer reference once a reference
+  capture is available.
+- Scene 1 is now correctly sized after the torus scale fix. The earlier
+  yellow/green capture was a PNG conversion artifact, not a renderer output issue.
+- `run_conformance.sh --from 107 --to 110 --skip-build` still trips the known
+  stale `108 skybox` software checksum (`expected=38f18480f256541a`,
+  `actual=34dab61bf1f4ebb9` in this workspace). Touched GLES checks were
+  validated directly.
+- Package `hello-3d.js`, `particle-fireworks.js`, and `demoscene.js` as `.nova`
+  carts if that is still needed for the RetroArch distribution flow.
 
 ## What was just fixed
 

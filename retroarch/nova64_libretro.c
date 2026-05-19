@@ -1692,6 +1692,22 @@ static void matrix2d_multiply_right(Nova64Matrix2D *m, float a, float b, float c
    m->a = na; m->b = nb; m->c = nc; m->d = nd; m->tx = ntx; m->ty = nty;
 }
 
+static void reset_draw_state(void)
+{
+   clip_active = false;
+   clip_stack_depth = 0;
+   cam2d_x = cam2d_y = 0;
+   cam2d_zoom = 1.0f;
+   cam2d_rotation = 0.0f;
+   camera2d_stack_depth = 0;
+   blend_2d_mode = NOVA64_BLEND_NORMAL;
+   blend_stack_depth = 0;
+   palette_stack_depth = 0;
+   reset_palette_state();
+   g_matrix_stack_top = 0;
+   matrix2d_identity(&g_matrix_stack[0]);
+}
+
 static void transform_2d_point(int world_x, int world_y, int *screen_x, int *screen_y)
 {
    Nova64Matrix2D *m = &g_matrix_stack[g_matrix_stack_top];
@@ -3271,6 +3287,32 @@ static void mat3_normal_from_mesh(float out[9], const struct nova64_mesh *mesh)
    out[8] = rotation[10];
 }
 
+static void mat3_normal_from_model(float out[9], const float model[16])
+{
+   float columns[3][3] = {
+      { model[0], model[1], model[2] },
+      { model[4], model[5], model[6] },
+      { model[8], model[9], model[10] },
+   };
+   for (int i = 0; i < 3; i++) {
+      float len = sqrtf(columns[i][0] * columns[i][0]
+         + columns[i][1] * columns[i][1]
+         + columns[i][2] * columns[i][2]);
+      if (len > 1e-7f) {
+         columns[i][0] /= len;
+         columns[i][1] /= len;
+         columns[i][2] /= len;
+      } else {
+         columns[i][0] = (i == 0) ? 1.0f : 0.0f;
+         columns[i][1] = (i == 1) ? 1.0f : 0.0f;
+         columns[i][2] = (i == 2) ? 1.0f : 0.0f;
+      }
+   }
+   out[0] = columns[0][0]; out[1] = columns[0][1]; out[2] = columns[0][2];
+   out[3] = columns[1][0]; out[4] = columns[1][1]; out[5] = columns[1][2];
+   out[6] = columns[2][0]; out[7] = columns[2][1]; out[8] = columns[2][2];
+}
+
 static float edge2d(float ax, float ay, float bx, float by, float cx, float cy)
 {
    return (cx - ax) * (by - ay) - (cy - ay) * (bx - ax);
@@ -4030,7 +4072,7 @@ static JSValue js_cls(JSContext *ctx, JSValueConst this_val, int argc, JSValueCo
    /* Flush any pending z-sorted sprites before clearing so they are not lost silently */
    spr_sorted_flush();
    clear_framebuffer(color);
-   if (!drawing_scene_preview && (scene_has_visible_meshes() || sky_color_enabled))
+   if (!drawing_scene_preview && !gles.active && (scene_has_visible_meshes() || sky_color_enabled))
       render_software_scene();
    return JS_UNDEFINED;
 }
@@ -4043,7 +4085,7 @@ static JSValue js_cls_gradient(JSContext *ctx, JSValueConst this_val, int argc, 
    bool vertical = argc > 2 ? JS_ToBool(ctx, argv[2]) : true;
    framebuffer_clear_color = a;
    draw_rect_gradient_pixels(0, 0, NOVA64_WIDTH, NOVA64_HEIGHT, a, b, vertical);
-   if (!drawing_scene_preview && scene_has_visible_meshes())
+   if (!drawing_scene_preview && !gles.active && scene_has_visible_meshes())
       render_software_scene();
    return JS_UNDEFINED;
 }
@@ -25587,15 +25629,7 @@ static JSValue js_get_draw_state(JSContext *ctx, JSValueConst this_val, int argc
 static JSValue js_clear_draw_state(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
    (void)ctx; (void)this_val; (void)argc; (void)argv;
-   clip_active = false;
-   cam2d_x = cam2d_y = 0;
-   cam2d_zoom = 1.0f;
-   cam2d_rotation = 0.0f;
-   blend_2d_mode = NOVA64_BLEND_NORMAL;
-   palette_swap_enabled = false;
-   clip_stack_depth = camera2d_stack_depth = blend_stack_depth = palette_stack_depth = 0;
-   g_matrix_stack_top = 0;
-   matrix2d_identity(&g_matrix_stack[0]);
+   reset_draw_state();
    g_noise_octaves = 1;
    g_noise_falloff = 0.5;
    return JS_UNDEFINED;
@@ -25986,8 +26020,7 @@ static void render_gles_scene_to_rt(struct nova64_render_target *rt)
    gles.BindFramebuffer(GL_FRAMEBUFFER, rt->fbo);
    gles.Viewport(0, 0, rt->width, rt->height);
 
-   uint32_t clear_color = sky_color_enabled ? sky_top_color
-      : color_with_intensity(light_state.ambient, light_state.ambient_intensity);
+   uint32_t clear_color = sky_color_enabled ? sky_top_color : framebuffer_clear_color;
    gles.ClearColor(
       (float)((clear_color >> 24) & 0xffU) / 255.0f,
       (float)((clear_color >> 16) & 0xffU) / 255.0f,
@@ -30760,7 +30793,11 @@ static void render_gles_torus(struct nova64_mesh *mesh, const float view_project
    }
    if (!mesh->gl_custom_vbo || !mesh->gl_custom_ibo) return;
 
-   render_gles_primitive(mesh, view_projection, mesh->gl_custom_vbo, mesh->gl_custom_ibo,
+   struct nova64_mesh draw_mesh = *mesh;
+   draw_mesh.scale[0] = 1.0f;
+   draw_mesh.scale[1] = 1.0f;
+   draw_mesh.scale[2] = 1.0f;
+   render_gles_primitive(&draw_mesh, view_projection, mesh->gl_custom_vbo, mesh->gl_custom_ibo,
       (GLsizei)mesh->custom_index_count);
 }
 
@@ -30818,15 +30855,7 @@ static void render_gles_instanced_mesh(const struct nova64_mesh *mesh, const flo
       default: vbo = gles.cube_vbo; ibo = gles.cube_ibo; idx_count = 36; break;
    }
 
-   /* Set material uniforms once — shared across all instances */
-   uint32_t color = mesh->color;
-   float r = (float)((color >> 24) & 0xffU) / 255.0f;
-   float g = (float)((color >> 16) & 0xffU) / 255.0f;
-   float b = (float)((color >> 8)  & 0xffU) / 255.0f;
-   float a = ((float)(color & 0xffU) / 255.0f) * clamp_float(mesh->opacity, 0.0f, 1.0f);
-
    gles.UseProgram(gles.cube_program);
-   gles.Uniform4f(gles.cube_color_uniform, r, g, b, a);
 
    uint32_t ambient = color_with_intensity(light_state.ambient, light_state.ambient_intensity);
    gles.Uniform4f(gles.cube_ambient_uniform,
@@ -30838,12 +30867,38 @@ static void render_gles_instanced_mesh(const struct nova64_mesh *mesh, const flo
       light_state.direction[0], light_state.direction[1], light_state.direction[2], 0.0f);
    if (gles.cube_fog_enabled_uniform >= 0)
       gles.Uniform1i(gles.cube_fog_enabled_uniform, light_state.fog_enabled ? 1 : 0);
+   if (gles.cube_fog_color_uniform >= 0)
+      gles.Uniform4f(gles.cube_fog_color_uniform,
+         (float)((light_state.fog_color >> 24) & 0xffU) / 255.0f,
+         (float)((light_state.fog_color >> 16) & 0xffU) / 255.0f,
+         (float)((light_state.fog_color >>  8) & 0xffU) / 255.0f,
+         1.0f);
+   if (gles.cube_fog_near_uniform >= 0 && gles.Uniform1f)
+      gles.Uniform1f(gles.cube_fog_near_uniform, light_state.fog_near);
+   if (gles.cube_fog_far_uniform >= 0 && gles.Uniform1f)
+      gles.Uniform1f(gles.cube_fog_far_uniform, light_state.fog_far);
    if (gles.cube_shadow_enabled_uniform >= 0)
       gles.Uniform1i(gles.cube_shadow_enabled_uniform, 0);
    if (gles.cube_has_texture_uniform >= 0)
       gles.Uniform1i(gles.cube_has_texture_uniform, 0);
    if (gles.cube_has_normal_map_uniform >= 0)
       gles.Uniform1i(gles.cube_has_normal_map_uniform, 0);
+   if (gles.cube_emissive_color_uniform >= 0)
+      gles.Uniform4f(gles.cube_emissive_color_uniform,
+         (float)((mesh->emissive_color >> 24) & 0xffU) / 255.0f,
+         (float)((mesh->emissive_color >> 16) & 0xffU) / 255.0f,
+         (float)((mesh->emissive_color >>  8) & 0xffU) / 255.0f,
+         1.0f);
+   if (gles.cube_emissive_intensity_uniform >= 0 && gles.Uniform1f)
+      gles.Uniform1f(gles.cube_emissive_intensity_uniform, mesh->emissive_intensity);
+   if (gles.cube_roughness_uniform >= 0 && gles.Uniform1f)
+      gles.Uniform1f(gles.cube_roughness_uniform, mesh->roughness);
+   if (gles.cube_metalness_uniform >= 0 && gles.Uniform1f)
+      gles.Uniform1f(gles.cube_metalness_uniform, mesh->metalness);
+   if (gles.cube_uv_offset_uniform >= 0 && gles.Uniform2f)
+      gles.Uniform2f(gles.cube_uv_offset_uniform, mesh->uv_offset[0], mesh->uv_offset[1]);
+   if (gles.cube_uv_scale_uniform >= 0 && gles.Uniform2f)
+      gles.Uniform2f(gles.cube_uv_scale_uniform, mesh->uv_scale[0], mesh->uv_scale[1]);
 
    /* Per-instance draw loop */
    gles.BindBuffer(GL_ARRAY_BUFFER, vbo);
@@ -30857,15 +30912,17 @@ static void render_gles_instanced_mesh(const struct nova64_mesh *mesh, const flo
 
    for (int j = 0; j < mesh->instance_count; j++) {
       const float *model = mesh->instance_transforms + j * 16;
+      uint32_t color = mesh->instance_colors ? mesh->instance_colors[j] : mesh->color;
+      gles.Uniform4f(gles.cube_color_uniform,
+         (float)((color >> 24) & 0xffU) / 255.0f,
+         (float)((color >> 16) & 0xffU) / 255.0f,
+         (float)((color >>  8) & 0xffU) / 255.0f,
+         ((float)(color & 0xffU) / 255.0f) * clamp_float(mesh->opacity, 0.0f, 1.0f));
       float mvp[16];
       mat4_multiply(mvp, view_projection, model);
       gles.UniformMatrix4fv(gles.cube_mvp_uniform, 1, GL_FALSE, mvp);
-      /* Normal matrix: upper-left 3x3 of model (adequate for rigid + uniform scale) */
-      float nm[9] = {
-         model[0], model[1], model[2],
-         model[4], model[5], model[6],
-         model[8], model[9], model[10]
-      };
+      float nm[9];
+      mat3_normal_from_model(nm, model);
       gles.UniformMatrix3fv(gles.cube_normal_matrix_uniform, 1, GL_FALSE, nm);
       gles.DrawElements(GL_TRIANGLES, idx_count, GL_UNSIGNED_SHORT, NULL);
    }
@@ -31035,12 +31092,18 @@ static bool gles_create_post_program(void)
       "uniform int u_crt;\n"
       "uniform float u_vignette;\n"
       "uniform int u_pixelate;\n"
-      "uniform vec2 u_resolution;\n"
+      "uniform vec4 u_resolution;\n"
       "uniform float u_bloom;\n"
       "uniform float u_chromatic;\n"
-      "uniform vec3 u_color_grade;\n"
+      "uniform vec4 u_color_grade;\n"
       "uniform int u_posterize;\n"
       "out vec4 fragColor;\n"
+      "float post_luma(vec3 c) {\n"
+      "  return dot(c, vec3(0.299, 0.587, 0.114));\n"
+      "}\n"
+      "vec3 post_bright(vec3 c) {\n"
+      "  return c * smoothstep(0.34, 0.92, post_luma(c));\n"
+      "}\n"
       "void main() {\n"
       "  vec2 uv = v_uv;\n"
       "  if (u_pixelate > 0) {\n"
@@ -31048,16 +31111,30 @@ static bool gles_create_post_program(void)
       "    float py = float(u_pixelate) / u_resolution.y;\n"
       "    uv = floor(uv / vec2(px, py)) * vec2(px, py) + vec2(px, py) * 0.5;\n"
       "  }\n"
+      "  vec2 texel = 1.0 / u_resolution.xy;\n"
+      "  vec4 center = texture(u_scene, uv);\n"
+      "  vec3 px_n = texture(u_scene, uv + vec2(0.0, texel.y)).rgb;\n"
+      "  vec3 px_s = texture(u_scene, uv - vec2(0.0, texel.y)).rgb;\n"
+      "  vec3 px_e = texture(u_scene, uv + vec2(texel.x, 0.0)).rgb;\n"
+      "  vec3 px_w = texture(u_scene, uv - vec2(texel.x, 0.0)).rgb;\n"
+      "  float lc = post_luma(center.rgb);\n"
+      "  float lmin = min(lc, min(min(post_luma(px_n), post_luma(px_s)), min(post_luma(px_e), post_luma(px_w))));\n"
+      "  float lmax = max(lc, max(max(post_luma(px_n), post_luma(px_s)), max(post_luma(px_e), post_luma(px_w))));\n"
+      "  float aa_t = smoothstep(0.035, 0.18, lmax - lmin) * 0.65;\n"
+      "  vec3 aa_color = (px_n + px_s + px_e + px_w) * 0.25;\n"
       /* chromatic aberration: shift R/B channels along screen radial */
       "  vec4 color;\n"
       "  if (u_chromatic > 0.0) {\n"
       "    vec2 dir = (uv - 0.5) * u_chromatic;\n"
       "    color.r = texture(u_scene, uv + dir).r;\n"
-      "    color.g = texture(u_scene, uv).g;\n"
+      "    color.g = center.g;\n"
       "    color.b = texture(u_scene, uv - dir).b;\n"
       "    color.a = 1.0;\n"
       "  } else {\n"
-      "    color = texture(u_scene, uv);\n"
+      "    color = center;\n"
+      "  }\n"
+      "  if (u_pixelate <= 0) {\n"
+      "    color.rgb = mix(color.rgb, aa_color, aa_t);\n"
       "  }\n"
       "  if (u_crt != 0) {\n"
       "    float line = sin(v_uv.y * u_resolution.y * 3.14159265);\n"
@@ -31071,16 +31148,22 @@ static bool gles_create_post_program(void)
       "    else\n"
       "      color = texture(u_scene, uv) * vec4(color.rgb / (texture(u_scene, v_uv).rgb + 0.001), color.a);\n"
       "  }\n"
-      /* bloom: 5-tap cross bright-pass added back */
+      /* bloom: wider bright-pass blur in one fullscreen pass */
       "  if (u_bloom > 0.0) {\n"
-      "    vec2 ts = vec2(2.0 / u_resolution.x, 2.0 / u_resolution.y);\n"
-      "    vec3 s = texture(u_scene, uv + vec2(ts.x, 0.0)).rgb\n"
-      "           + texture(u_scene, uv - vec2(ts.x, 0.0)).rgb\n"
-      "           + texture(u_scene, uv + vec2(0.0, ts.y)).rgb\n"
-      "           + texture(u_scene, uv - vec2(0.0, ts.y)).rgb;\n"
-      "    vec3 avg = s * 0.25;\n"
-      "    float luma = dot(avg, vec3(0.299, 0.587, 0.114));\n"
-      "    color.rgb += avg * max(0.0, luma - 0.45) * u_bloom * 2.2;\n"
+      "    vec3 bloom = post_bright(center.rgb) * 0.20;\n"
+      "    bloom += (post_bright(texture(u_scene, uv + vec2(texel.x * 2.0, 0.0)).rgb)\n"
+      "            + post_bright(texture(u_scene, uv - vec2(texel.x * 2.0, 0.0)).rgb)\n"
+      "            + post_bright(texture(u_scene, uv + vec2(0.0, texel.y * 2.0)).rgb)\n"
+      "            + post_bright(texture(u_scene, uv - vec2(0.0, texel.y * 2.0)).rgb)) * 0.18;\n"
+      "    bloom += (post_bright(texture(u_scene, uv + vec2(texel.x * 5.0, texel.y * 3.0)).rgb)\n"
+      "            + post_bright(texture(u_scene, uv + vec2(-texel.x * 5.0, texel.y * 3.0)).rgb)\n"
+      "            + post_bright(texture(u_scene, uv + vec2(texel.x * 5.0, -texel.y * 3.0)).rgb)\n"
+      "            + post_bright(texture(u_scene, uv + vec2(-texel.x * 5.0, -texel.y * 3.0)).rgb)) * 0.12;\n"
+      "    bloom += (post_bright(texture(u_scene, uv + vec2(texel.x * 9.0, 0.0)).rgb)\n"
+      "            + post_bright(texture(u_scene, uv - vec2(texel.x * 9.0, 0.0)).rgb)\n"
+      "            + post_bright(texture(u_scene, uv + vec2(0.0, texel.y * 9.0)).rgb)\n"
+      "            + post_bright(texture(u_scene, uv - vec2(0.0, texel.y * 9.0)).rgb)) * 0.07;\n"
+      "    color.rgb += bloom * u_bloom * 1.15;\n"
       "  }\n"
       /* posterize: quantize to N levels */
       "  if (u_posterize > 1) {\n"
@@ -31088,7 +31171,7 @@ static bool gles_create_post_program(void)
       "    color.rgb = floor(color.rgb * levels + 0.5) / levels;\n"
       "  }\n"
       /* color grade: per-channel tint multiply */
-      "  color.rgb *= u_color_grade;\n"
+      "  color.rgb *= u_color_grade.rgb;\n"
       "  if (u_vignette > 0.0) {\n"
       "    vec2 cv = v_uv - 0.5;\n"
       "    float vt = clamp(1.0 - dot(cv, cv) * 4.0 * u_vignette, 0.0, 1.0);\n"
@@ -31162,8 +31245,8 @@ static bool gles_init_post_resources(void)
 
    gles.GenTextures(1, &gles.post_color_texture);
    gles.BindTexture(GL_TEXTURE_2D, gles.post_color_texture);
-   gles.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-   gles.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+   gles.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+   gles.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
    gles.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
    gles.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
    gles.TexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, NOVA64_WIDTH, NOVA64_HEIGHT, 0,
@@ -31198,6 +31281,7 @@ static void render_gles_post_pass(GLuint hw_fbo)
    gles.BindFramebuffer(GL_FRAMEBUFFER, hw_fbo);
    gles.Viewport(0, 0, NOVA64_WIDTH, NOVA64_HEIGHT);
    gles.Disable(GL_DEPTH_TEST);
+   gles.Disable(GL_BLEND);
    gles.ClearColor(0.0f, 0.0f, 0.0f, 1.0f);
    gles.Clear(GL_COLOR_BUFFER_BIT);
 
@@ -31273,12 +31357,7 @@ static void render_gles_scene(void)
    else if (!use_shadow)
       gles.BindFramebuffer(GL_FRAMEBUFFER, hw_fbo);
 
-   uint32_t clear_color;
-   if (sky_color_enabled) {
-      clear_color = sky_top_color;
-   } else {
-      clear_color = color_with_intensity(light_state.ambient, light_state.ambient_intensity);
-   }
+   uint32_t clear_color = sky_color_enabled ? sky_top_color : framebuffer_clear_color;
    float r = (float)((clear_color >> 24) & 0xffU) / 255.0f;
    float g = (float)((clear_color >> 16) & 0xffU) / 255.0f;
    float b = (float)((clear_color >>  8) & 0xffU) / 255.0f;
@@ -32006,6 +32085,9 @@ void RETRO_CALLCONV retro_init(void)
 
    clear_framebuffer(rgba8(0, 0, 0, 255));
    reset_scene_state();
+   reset_draw_state();
+   g_noise_octaves = 1;
+   g_noise_falloff = 0.5;
    reset_post_state();
    const char *command_log = getenv("NOVA64_RENDER_COMMAND_LOG");
    if (command_log && command_log[0]) {
@@ -32159,23 +32241,15 @@ void RETRO_CALLCONV retro_reset(void)
    memset(mp_buttons, 0, sizeof(mp_buttons));
    memset(mp_prev_buttons, 0, sizeof(mp_prev_buttons));
    memset(mp_pressed_buttons, 0, sizeof(mp_pressed_buttons));
-   clip_active = false;
-   clip_stack_depth = 0;
-   cam2d_x = cam2d_y = 0;
-   cam2d_zoom = 1.0f;
-   cam2d_rotation = 0.0f;
-   camera2d_stack_depth = 0;
-   blend_2d_mode = NOVA64_BLEND_NORMAL;
-   blend_stack_depth = 0;
-   palette_stack_depth = 0;
-   reset_palette_state();
-   g_matrix_stack_top = 0;
-   matrix2d_identity(&g_matrix_stack[0]);
+   reset_draw_state();
    g_noise_octaves = 1;
    g_noise_falloff = 0.5;
    frame_count = 0;
    clear_framebuffer(rgba8(0, 0, 0, 255));
    reset_scene_state();
+   reset_draw_state();
+   g_noise_octaves = 1;
+   g_noise_falloff = 0.5;
    reset_audio_state();
    reset_post_state();
    clear_textures();

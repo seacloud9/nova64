@@ -817,16 +817,22 @@ int main(int argc, char **argv)
    unload_game();
    if (g_gles_active && g_hw_render.context_destroy)
       g_hw_render.context_destroy();
+
+   /* Write capture BEFORE teardown so g_hw_pixels is still valid */
+   if (capture_path && !write_ppm(capture_path)) {
+      fprintf(stderr, "failed to write capture: %s\n", capture_path);
+      harness_teardown_gles3();
+      deinit();
+      free(cart);
+      dlclose(core);
+      free(g_last_frame);
+      return 1;
+   }
+
    harness_teardown_gles3();
    deinit();
    free(cart);
    dlclose(core);
-
-   if (capture_path && !write_ppm(capture_path)) {
-      fprintf(stderr, "failed to write capture: %s\n", capture_path);
-      free(g_last_frame);
-      return 1;
-   }
 
    if (has_expected_checksum && g_checksum != expected_checksum) {
       fprintf(stderr, "checksum mismatch: expected=%016llx actual=%016llx\n",

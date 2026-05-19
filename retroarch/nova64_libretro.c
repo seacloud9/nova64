@@ -69,6 +69,7 @@ typedef int GLsizei;
 typedef ptrdiff_t GLsizeiptr;
 typedef float GLfloat;
 typedef char GLchar;
+typedef unsigned char GLubyte;
 
 #define GL_COLOR_BUFFER_BIT 0x00004000
 #define GL_DEPTH_BUFFER_BIT 0x00000100
@@ -113,8 +114,13 @@ typedef char GLchar;
 #define GL_DEPTH_COMPONENT16 0x81A5
 #define GL_DEPTH_COMPONENT   0x1902
 #define GL_RGB565            0x8D62
+#define GL_RGB8              0x8051
 
 typedef void (*PFNGLVIEWPORTPROC)(GLint x, GLint y, GLsizei width, GLsizei height);
+typedef const GLubyte *(*PFNGLGETSTRINGPROC)(GLenum name);
+typedef void (*PFNGLGENVERTEXARRAYSPROC)(GLsizei n, GLuint *arrays);
+typedef void (*PFNGLBINDVERTEXARRAYPROC)(GLuint array);
+typedef void (*PFNGLDELETEVERTEXARRAYSPROC)(GLsizei n, const GLuint *arrays);
 typedef void (*PFNGLCLEARCOLORPROC)(GLfloat red, GLfloat green, GLfloat blue, GLfloat alpha);
 typedef void (*PFNGLCLEARPROC)(GLbitfield mask);
 typedef void (*PFNGLENABLEPROC)(GLenum cap);
@@ -429,6 +435,12 @@ struct nova64_gles_backend {
    PFNGLUNIFORM1FPROC Uniform1f;
    PFNGLUNIFORM2FPROC Uniform2f;
    PFNGLBLENDFUNCPROC BlendFunc;
+   /* VAO + debug procs */
+   PFNGLGENVERTEXARRAYSPROC GenVertexArrays;
+   PFNGLBINDVERTEXARRAYPROC BindVertexArray;
+   PFNGLDELETEVERTEXARRAYSPROC DeleteVertexArrays;
+   PFNGLGETSTRINGPROC GetString;
+   GLuint default_vao;
    /* FBO procs */
    PFNGLGENFRAMEBUFFERSPROC GenFramebuffers;
    PFNGLBINDFRAMEBUFFERPROC BindFramebuffer;
@@ -24474,6 +24486,12 @@ static JSValue js_destroy_mesh(JSContext *ctx, JSValueConst this_val, int argc, 
       free(mesh->custom_verts);
       free(mesh->custom_indices);
       free(mesh->instance_transforms);
+      free(mesh->instance_colors);
+      free(mesh->instance_visible);
+      if (gles.active && gles.DeleteBuffers) {
+         if (mesh->gl_custom_vbo) gles.DeleteBuffers(1, &mesh->gl_custom_vbo);
+         if (mesh->gl_custom_ibo) gles.DeleteBuffers(1, &mesh->gl_custom_ibo);
+      }
       memset(mesh, 0, sizeof(*mesh));
    }
    return JS_UNDEFINED;
@@ -25942,6 +25960,7 @@ static void render_gles_plane(const struct nova64_mesh *mesh, const float view_p
 static void render_gles_sphere(const struct nova64_mesh *mesh, const float view_projection[16]);
 static void render_gles_capsule(const struct nova64_mesh *mesh, const float view_projection[16]);
 static void render_gles_cylinder(const struct nova64_mesh *mesh, const float view_projection[16]);
+static void render_gles_torus(struct nova64_mesh *mesh, const float view_projection[16]);
 static void render_gles_custom_mesh(struct nova64_mesh *mesh, const float view_projection[16]);
 static void render_gles_instanced_mesh(const struct nova64_mesh *mesh, const float view_projection[16]);
 static bool gles_any_cast_shadow_mesh(void);
@@ -26009,7 +26028,7 @@ static void render_gles_scene_to_rt(struct nova64_render_target *rt)
       else if (meshes[i].type == NOVA64_MESH_CYLINDER) render_gles_cylinder(&meshes[i], view_projection);
       else if (meshes[i].type == NOVA64_MESH_CUSTOM)      render_gles_custom_mesh(&meshes[i], view_projection);
       else if (meshes[i].type == NOVA64_MESH_INSTANCED)   render_gles_instanced_mesh(&meshes[i], view_projection);
-      else if (meshes[i].type == NOVA64_MESH_TORUS)   render_gles_sphere(&meshes[i], view_projection);
+      else if (meshes[i].type == NOVA64_MESH_TORUS)   render_gles_torus(&meshes[i], view_projection);
       else if (meshes[i].type == NOVA64_MESH_CONE)    render_gles_cylinder(&meshes[i], view_projection);
    }
 
@@ -27526,6 +27545,14 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, draw, "popPalette", js_pop_palette, 0);
    set_function(ctx, draw, "getDrawState", js_get_draw_state, 0);
    set_function(ctx, draw, "clearDrawState", js_clear_draw_state, 0);
+   /* BM blend-mode constants — mirrors web/godot nova64.draw.BM */
+   {  JSValue bm = JS_NewObject(ctx);
+      JS_SetPropertyStr(ctx, bm, "NORMAL",   JS_NewString(ctx, "normal"));
+      JS_SetPropertyStr(ctx, bm, "ALPHA",    JS_NewString(ctx, "alpha"));
+      JS_SetPropertyStr(ctx, bm, "ADD",      JS_NewString(ctx, "additive"));
+      JS_SetPropertyStr(ctx, bm, "MULTIPLY", JS_NewString(ctx, "multiply"));
+      JS_SetPropertyStr(ctx, bm, "SCREEN",   JS_NewString(ctx, "screen"));
+      JS_SetPropertyStr(ctx, draw, "BM", bm); }
 
    set_function(ctx, input, "btn", js_btn, 2);
    set_function(ctx, input, "btnp", js_btnp, 2);
@@ -27540,6 +27567,8 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, input, "touchCount", js_touch_count, 0);
    set_function(ctx, input, "axis", js_axis, 3);
    set_function(ctx, input, "trigger", js_trigger, 2);
+   set_function(ctx, input, "isKeyDown",    js_key,  1);   /* alias: key() */
+   set_function(ctx, input, "isKeyPressed", js_keyp, 1);   /* alias: keyp() */
 
    set_function(ctx, scene, "createCube", js_create_cube, 1);
    set_function(ctx, scene, "createSphere", js_create_sphere, 1);
@@ -27725,6 +27754,96 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, nova64, "time", js_get_time, 0);
 
    JS_SetPropertyStr(ctx, global, "nova64", nova64);
+
+   /* ── nova64.fx / nova64.util / BM global ── compatibility shims evaluated
+      after nova64 is on the global so they can reference it directly.       */
+   {  static const char compat_js[] =
+         /* nova64.fx — post-processing aliases + emitter2D bridge */
+         "nova64.fx=(function(){"
+           "var p=nova64.post;"
+           "return{"
+             "enableBloom:function(s,r,t){p.setBloom(s==null?1:s);},"
+             "disableBloom:function(){p.setBloom(0);},"
+             "setBloomStrength:function(s){p.setBloom(s);},"
+             "enableVignette:function(d,o){p.setVignette(d==null?1:d,o==null?0.9:o);},"
+             "disableVignette:function(){p.setVignette(0,1);},"
+             "enableCRT:function(s){p.setCRT(s==null?1:s);},"
+             "disableCRT:function(){p.setCRT(0);},"
+             "enableChromatic:function(a){p.setChromatic(a==null?0.002:a);},"
+             "disableChromatic:function(){p.setChromatic(0);},"
+             "enableFXAA:function(){},"
+             "disableFXAA:function(){},"
+             "disableAll:function(){p.clear();},"
+             /* emitter2D bridged to burst API */
+             "createEmitter2D:function(x,y,n,life){return createBurst(x,y,n==null?20:n,life==null?60:life);},"
+             "burstEmitter2D:function(e,n){triggerBurst(e,0,0,n==null?20:n);},"
+             "updateEmitter2D:function(e,dt){updateBurst(e,dt);},"
+             "drawEmitter2D:function(e){drawBurst(e);},"
+             "isEmitter2DDone:function(e){return isBurstDone(e);},"
+             "destroyEmitter2D:function(e){destroyBurst(e);},"
+             "setBurstColors:function(e,c1,c2,c3,c4){return setBurstColors(e,c1,c2,c3,c4);}"
+           "};"
+         "})();"
+
+         /* nova64.util — shake, cooldown, hit-state, math helpers */
+         "nova64.util=(function(){"
+           "function createShake(o){"
+             "o=o||{};"
+             "return{mag:0,x:0,y:0,decay:o.decay==null?4:o.decay,maxMag:o.maxMag==null?20:o.maxMag};"
+           "}"
+           "function triggerShake(s,m){s.mag=Math.min(s.maxMag,s.mag+m);}"
+           "function updateShake(s,dt){"
+             "if(s.mag>0.01){"
+               "var a=Math.random()*6.2832;"
+               "s.x=Math.cos(a)*s.mag;s.y=Math.sin(a)*s.mag;"
+               "s.mag*=Math.max(0,1-s.decay*dt);"
+             "}else{s.mag=0;s.x=0;s.y=0;}"
+           "}"
+           "function getShakeOffset(s){return[s.x,s.y];}"
+           "function createCooldown(dur){return{remaining:0,duration:dur};}"
+           "function updateCooldown(cd,dt){if(cd.remaining>0)cd.remaining=Math.max(0,cd.remaining-dt);}"
+           "function useCooldown(cd){if(cd.remaining<=0){cd.remaining=cd.duration;return true;}return false;}"
+           "function cooldownReady(cd){return cd.remaining<=0;}"
+           "function cooldownProgress(cd){return cd.remaining<=0?1:1-(cd.remaining/cd.duration);}"
+           "function createCooldownSet(defs){"
+             "var s={};for(var k in defs)s[k]=createCooldown(defs[k]);return s;"
+           "}"
+           "function updateCooldowns(set,dt){for(var k in set)updateCooldown(set[k],dt);}"
+           "function createHitState(o){"
+             "o=o||{};"
+             "return{invuln:0,invulnDuration:o.invulnDuration==null?0.8:o.invulnDuration,"
+               "blinkRate:o.blinkRate==null?25:o.blinkRate};"
+           "}"
+           "function triggerHit(h){if(h.invuln>0)return false;h.invuln=h.invulnDuration;return true;}"
+           "function isInvulnerable(h){return h.invuln>0;}"
+           "function updateHitState(h,dt){if(h.invuln>0)h.invuln=Math.max(0,h.invuln-dt);}"
+           "function isVisible(h,t){return h.invuln<=0||Math.floor(t*h.blinkRate)%2===0;}"
+           "function lerp(a,b,t){return a+(b-a)*t;}"
+           "function clamp(v,mn,mx){return v<mn?mn:v>mx?mx:v;}"
+           "function randRange(a,b){return a+(b-a)*rngRandom();}"
+           "function randInt(a,b){return Math.floor(a+(b-a+1)*rngRandom());}"
+           "function dist(x1,y1,x2,y2){var dx=x2-x1,dy=y2-y1;return Math.sqrt(dx*dx+dy*dy);}"
+           "function remap(v,i0,i1,o0,o1){return o0+(v-i0)/(i1-i0)*(o1-o0);}"
+           "return{createShake,triggerShake,updateShake,getShakeOffset,"
+             "createCooldown,updateCooldown,useCooldown,cooldownReady,cooldownProgress,"
+             "createCooldownSet,updateCooldowns,"
+             "createHitState,triggerHit,isInvulnerable,updateHitState,isVisible,"
+             "lerp,clamp,randRange,randInt,dist,remap};"
+         "})();"
+
+         /* Global BM object for top-level setBlend2D(BM.ADD) usage */
+         "var BM={NORMAL:'normal',ALPHA:'alpha',ADD:'additive',MULTIPLY:'multiply',SCREEN:'screen'};";
+
+      JSValue r = JS_Eval(ctx, compat_js, sizeof(compat_js)-1, "<nova64-compat>", JS_EVAL_TYPE_GLOBAL);
+      if (JS_IsException(r)) {
+         JSValue exc = JS_GetException(ctx);
+         const char *msg = JS_ToCString(ctx, exc);
+         log_cb(RETRO_LOG_ERROR, "nova64-compat eval: %s\n", msg ? msg : "unknown");
+         if (msg) JS_FreeCString(ctx, msg);
+         JS_FreeValue(ctx, exc);
+      }
+      JS_FreeValue(ctx, r);
+   }
 
    set_function(ctx, global, "rgba8", js_rgba8, 4);
    set_function(ctx, global, "colorLerp", js_color_lerp, 3);
@@ -29690,19 +29809,20 @@ static GLuint gles_compile_shader(GLenum type, const char *source)
 static bool gles_create_cube_program(void)
 {
    static const char *vertex_source =
-      "attribute vec3 a_position;\n"
-      "attribute vec3 a_normal;\n"
+      "#version 300 es\nprecision highp float;\n"
+      "in vec3 a_position;\n"
+      "in vec3 a_normal;\n"
       "uniform mat4 u_mvp;\n"
       "uniform mat3 u_normal_matrix;\n"
       "uniform vec4 u_light_direction;\n"
       "uniform vec2 u_uv_offset;\n"
       "uniform vec2 u_uv_scale;\n"
       "uniform mat4 u_shadow_mvp;\n"
-      "varying float v_light;\n"
-      "varying float v_depth;\n"
-      "varying vec2 v_uv;\n"
-      "varying vec4 v_shadow_coord;\n"
-      "varying vec3 v_normal;\n"
+      "out float v_light;\n"
+      "out float v_depth;\n"
+      "out vec2 v_uv;\n"
+      "out vec4 v_shadow_coord;\n"
+      "out vec3 v_normal;\n"
       "void main() {\n"
       "  vec3 n = normalize(u_normal_matrix * a_normal);\n"
       "  vec3 l = normalize(-u_light_direction.xyz);\n"
@@ -29715,15 +29835,15 @@ static bool gles_create_cube_program(void)
       "  v_shadow_coord = u_shadow_mvp * vec4(a_position, 1.0);\n"
       "}\n";
    static const char *fragment_source =
-      "precision mediump float;\n"
-      "varying float v_light;\n"
-      "varying float v_depth;\n"
-      "varying vec2 v_uv;\n"
-      "varying vec4 v_shadow_coord;\n"
-      "varying vec3 v_normal;\n"
+      "#version 300 es\nprecision highp float;\n"
+      "in float v_light;\n"
+      "in float v_depth;\n"
+      "in vec2 v_uv;\n"
+      "in vec4 v_shadow_coord;\n"
+      "in vec3 v_normal;\n"
       "uniform vec4 u_color;\n"
       "uniform vec4 u_ambient_color;\n"
-      "uniform highp vec4 u_light_direction;\n"
+      "uniform vec4 u_light_direction;\n"
       "uniform int u_fog_enabled;\n"
       "uniform vec4 u_fog_color;\n"
       "uniform float u_fog_near;\n"
@@ -29739,15 +29859,16 @@ static bool gles_create_cube_program(void)
       "uniform sampler2D u_shadow_map;\n"
       "uniform float u_shadow_texel_size;\n"
       "uniform int u_shadow_enabled;\n"
+      "out vec4 fragColor;\n"
       "float shadow_tap(vec2 uv, float depth) {\n"
-      "  return depth - 0.005 > texture2D(u_shadow_map, uv).r ? 0.0 : 1.0;\n"
+      "  return depth - 0.005 > texture(u_shadow_map, uv).r ? 0.0 : 1.0;\n"
       "}\n"
       "void main() {\n"
       "  vec3 ambient = u_ambient_color.rgb * 0.35;\n"
-      "  vec4 base = (u_has_texture != 0) ? texture2D(u_texture, v_uv) * u_color : u_color;\n"
+      "  vec4 base = (u_has_texture != 0) ? texture(u_texture, v_uv) * u_color : u_color;\n"
       "  float surface_light;\n"
       "  if (u_has_normal_map != 0) {\n"
-      "    vec3 nm = texture2D(u_normal_map, v_uv).rgb * 2.0 - 1.0;\n"
+      "    vec3 nm = texture(u_normal_map, v_uv).rgb * 2.0 - 1.0;\n"
       "    vec3 perturbed = normalize(v_normal + nm * 0.6);\n"
       "    vec3 l = normalize(-u_light_direction.xyz);\n"
       "    float diffuse = max(dot(perturbed, l), 0.0);\n"
@@ -29782,7 +29903,7 @@ static bool gles_create_cube_program(void)
       "    lit = mix(lit, u_fog_color.rgb, fog_t);\n"
       "  }\n"
       "  lit = clamp(lit + u_emissive_color.rgb * u_emissive_intensity, 0.0, 1.0);\n"
-      "  gl_FragColor = vec4(lit, base.a);\n"
+      "  fragColor = vec4(lit, base.a);\n"
       "}\n";
 
    GLuint vertex = gles_compile_shader(GL_VERTEX_SHADER, vertex_source);
@@ -29851,14 +29972,16 @@ static bool gles_create_cube_program(void)
 static bool gles_create_shadow_program(void)
 {
    static const char *vertex_source =
-      "attribute vec3 a_position;\n"
+      "#version 300 es\nprecision highp float;\n"
+      "in vec3 a_position;\n"
       "uniform mat4 u_mvp;\n"
       "void main() {\n"
       "  gl_Position = u_mvp * vec4(a_position, 1.0);\n"
       "}\n";
    static const char *fragment_source =
-      "precision mediump float;\n"
-      "void main() {}\n";
+      "#version 300 es\nprecision highp float;\n"
+      "out vec4 fragColor;\n"
+      "void main() { fragColor = vec4(0.0); }\n";
 
    GLuint vertex = gles_compile_shader(GL_VERTEX_SHADER, vertex_source);
    GLuint fragment = gles_compile_shader(GL_FRAGMENT_SHADER, fragment_source);
@@ -29901,7 +30024,7 @@ static bool gles_init_shadow_resources(void)
 
    gles.GenRenderbuffers(1, &gles.shadow_rbo);
    gles.BindRenderbuffer(GL_RENDERBUFFER, gles.shadow_rbo);
-   gles.RenderbufferStorage(GL_RENDERBUFFER, GL_RGB565, g_shadow_map_size, g_shadow_map_size);
+   gles.RenderbufferStorage(GL_RENDERBUFFER, GL_RGB8, g_shadow_map_size, g_shadow_map_size);
    gles.BindRenderbuffer(GL_RENDERBUFFER, 0);
 
    gles.GenFramebuffers(1, &gles.shadow_fbo);
@@ -30020,19 +30143,21 @@ static void render_gles_shadow_pass(const float light_vp[16])
 static bool gles_create_overlay_program(void)
 {
    static const char *vertex_source =
-      "attribute vec2 a_position;\n"
-      "attribute vec2 a_uv;\n"
-      "varying vec2 v_uv;\n"
+      "#version 300 es\nprecision highp float;\n"
+      "in vec2 a_position;\n"
+      "in vec2 a_uv;\n"
+      "out vec2 v_uv;\n"
       "void main() {\n"
       "  v_uv = a_uv;\n"
       "  gl_Position = vec4(a_position, 0.0, 1.0);\n"
       "}\n";
    static const char *fragment_source =
-      "precision mediump float;\n"
-      "varying vec2 v_uv;\n"
+      "#version 300 es\nprecision highp float;\n"
+      "in vec2 v_uv;\n"
       "uniform sampler2D u_overlay;\n"
+      "out vec4 fragColor;\n"
       "void main() {\n"
-      "  gl_FragColor = texture2D(u_overlay, v_uv);\n"
+      "  fragColor = texture(u_overlay, v_uv);\n"
       "}\n";
 
    GLuint vertex = gles_compile_shader(GL_VERTEX_SHADER, vertex_source);
@@ -30108,6 +30233,9 @@ static void gles_destroy_resources(void)
    gles.overlay_texture = 0;
    gles.cube_program = 0;
    gles.overlay_program = 0;
+   if (gles.default_vao && gles.DeleteVertexArrays)
+      gles.DeleteVertexArrays(1, &gles.default_vao);
+   gles.default_vao = 0;
    gles_destroy_shadow_resources();
    gles_destroy_skybox_resources();
    gles.resources_ready = false;
@@ -30188,6 +30316,13 @@ static bool gles_init_resources(void)
    static const unsigned short overlay_indices[] = {
       0, 1, 2, 0, 2, 3,
    };
+
+   /* OpenGL Core profile requires a bound VAO before any vertex array calls */
+   if (gles.GenVertexArrays && gles.BindVertexArray && !gles.default_vao) {
+      gles.GenVertexArrays(1, &gles.default_vao);
+      gles.BindVertexArray(gles.default_vao);
+      nova64_log_line(RETRO_LOG_INFO, "[nova64] GL Core: default VAO created and bound");
+   }
 
    if (!gles_create_cube_program())
       return false;
@@ -30282,6 +30417,11 @@ static bool gles_load_functions(void)
    gles.Uniform1f = (PFNGLUNIFORM1FPROC)load_gles_proc("glUniform1f");
    gles.Uniform2f = (PFNGLUNIFORM2FPROC)load_gles_proc("glUniform2f");
    gles.BlendFunc = (PFNGLBLENDFUNCPROC)load_gles_proc("glBlendFunc");
+   /* Core profile requirements */
+   gles.GenVertexArrays  = (PFNGLGENVERTEXARRAYSPROC)load_gles_proc("glGenVertexArrays");
+   gles.BindVertexArray  = (PFNGLBINDVERTEXARRAYPROC)load_gles_proc("glBindVertexArray");
+   gles.DeleteVertexArrays = (PFNGLDELETEVERTEXARRAYSPROC)load_gles_proc("glDeleteVertexArrays");
+   gles.GetString        = (PFNGLGETSTRINGPROC)load_gles_proc("glGetString");
    /* FBO procs — optional; post-processing degrades gracefully if absent */
    gles.GenFramebuffers = (PFNGLGENFRAMEBUFFERSPROC)load_gles_proc("glGenFramebuffers");
    gles.BindFramebuffer = (PFNGLBINDFRAMEBUFFERPROC)load_gles_proc("glBindFramebuffer");
@@ -30314,7 +30454,15 @@ static void gles_context_reset(void)
 {
    gles.active = true;
    gles_load_functions();
-   nova64_log_line(RETRO_LOG_INFO, "[nova64] GLES3 hardware context reset");
+   if (gles.GetString) {
+      const GLubyte *ver  = gles.GetString(0x1F02 /* GL_VERSION */);
+      const GLubyte *rend = gles.GetString(0x1F01 /* GL_RENDERER */);
+      if (log_cb) {
+         log_cb(RETRO_LOG_INFO, "[nova64] GL version  : %s\n", ver  ? (const char *)ver  : "unknown");
+         log_cb(RETRO_LOG_INFO, "[nova64] GL renderer : %s\n", rend ? (const char *)rend : "unknown");
+      }
+   }
+   nova64_log_line(RETRO_LOG_INFO, "[nova64] OpenGL 3.3 hardware context ready");
 }
 
 static void gles_context_destroy(void)
@@ -30363,6 +30511,11 @@ static void gles_context_destroy(void)
    gles.Uniform1i = NULL;
    gles.Uniform1f = NULL;
    gles.BlendFunc = NULL;
+   gles.GenVertexArrays = NULL;
+   gles.BindVertexArray = NULL;
+   gles.DeleteVertexArrays = NULL;
+   gles.GetString = NULL;
+   gles.default_vao = 0;
    gles.GenFramebuffers = NULL;
    gles.BindFramebuffer = NULL;
    gles.FramebufferTexture2D = NULL;
@@ -30545,6 +30698,72 @@ static void render_gles_plane(const struct nova64_mesh *mesh, const float view_p
    render_gles_primitive(mesh, view_projection, gles.plane_vbo, gles.plane_ibo, 6);
 }
 
+/* Torus renderer — generates and caches per-mesh VBO using actual majorR/tubeR from scale[0,1].
+   The ring lies in the XY plane (perpendicular to Z) so it looks like a ring when flown through. */
+static void render_gles_torus(struct nova64_mesh *mesh, const float view_projection[16])
+{
+   static const int MAJ = 24, MIN_S = 12;
+
+   /* Lazy geometry generation — cached in gl_custom_vbo/ibo fields */
+   if (!mesh->gl_custom_vbo && gles.GenBuffers && gles.BindBuffer && gles.BufferData) {
+      float mR = mesh->scale[0]; /* major radius */
+      float tR = mesh->scale[1]; /* tube radius  */
+      if (mR < 0.001f) mR = 1.0f;
+      if (tR < 0.001f) tR = 0.3f;
+      int nv = MAJ * MIN_S;
+      int ni = MAJ * MIN_S * 6;
+
+      float *verts = (float *)malloc((size_t)nv * 6 * sizeof(float));
+      uint16_t *idx = (uint16_t *)malloc((size_t)ni * sizeof(uint16_t));
+      if (!verts || !idx) { free(verts); free(idx); return; }
+
+      /* Ring in XY plane: x=(mR+tR*cv)*cu, y=(mR+tR*cv)*su, z=tR*sv */
+      for (int j = 0; j < MAJ; j++) {
+         float u = (float)j / (float)MAJ * 6.28318530f;
+         float cu = cosf(u), su = sinf(u);
+         for (int k = 0; k < MIN_S; k++) {
+            float v = (float)k / (float)MIN_S * 6.28318530f;
+            float cv = cosf(v), sv = sinf(v);
+            int vi = (j * MIN_S + k) * 6;
+            verts[vi+0] = (mR + tR * cv) * cu;
+            verts[vi+1] = (mR + tR * cv) * su;
+            verts[vi+2] = tR * sv;
+            verts[vi+3] = cv * cu;
+            verts[vi+4] = cv * su;
+            verts[vi+5] = sv;
+         }
+      }
+      int ii = 0;
+      for (int j = 0; j < MAJ; j++) {
+         int nj = (j + 1) % MAJ;
+         for (int k = 0; k < MIN_S; k++) {
+            int nk = (k + 1) % MIN_S;
+            uint16_t a = (uint16_t)(j  * MIN_S + k );
+            uint16_t b = (uint16_t)(nj * MIN_S + k );
+            uint16_t c = (uint16_t)(nj * MIN_S + nk);
+            uint16_t d = (uint16_t)(j  * MIN_S + nk);
+            idx[ii++]=a; idx[ii++]=b; idx[ii++]=c;
+            idx[ii++]=a; idx[ii++]=c; idx[ii++]=d;
+         }
+      }
+
+      gles.GenBuffers(1, &mesh->gl_custom_vbo);
+      gles.BindBuffer(GL_ARRAY_BUFFER, mesh->gl_custom_vbo);
+      gles.BufferData(GL_ARRAY_BUFFER, (GLsizeiptr)((size_t)nv*6*sizeof(float)), verts, GL_STATIC_DRAW);
+      gles.GenBuffers(1, &mesh->gl_custom_ibo);
+      gles.BindBuffer(GL_ELEMENT_ARRAY_BUFFER, mesh->gl_custom_ibo);
+      gles.BufferData(GL_ELEMENT_ARRAY_BUFFER, (GLsizeiptr)((size_t)ni*sizeof(uint16_t)), idx, GL_STATIC_DRAW);
+      gles.BindBuffer(GL_ARRAY_BUFFER, 0);
+      gles.BindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+      mesh->custom_index_count = (unsigned)ni;
+      free(verts); free(idx);
+   }
+   if (!mesh->gl_custom_vbo || !mesh->gl_custom_ibo) return;
+
+   render_gles_primitive(mesh, view_projection, mesh->gl_custom_vbo, mesh->gl_custom_ibo,
+      (GLsizei)mesh->custom_index_count);
+}
+
 static void render_gles_sphere(const struct nova64_mesh *mesh, const float view_projection[16])
 {
    render_gles_primitive(mesh, view_projection, gles.sphere_vbo, gles.sphere_ibo, 24);
@@ -30660,23 +30879,25 @@ static void render_gles_instanced_mesh(const struct nova64_mesh *mesh, const flo
 static bool gles_create_skybox_program(void)
 {
    static const char *vertex_source =
-      "attribute vec2 a_position;\n"
-      "varying vec2 v_ndc;\n"
+      "#version 300 es\nprecision highp float;\n"
+      "in vec2 a_position;\n"
+      "out vec2 v_ndc;\n"
       "void main() {\n"
       "  v_ndc = a_position;\n"
       "  gl_Position = vec4(a_position, 0.999, 1.0);\n"
       "}\n";
    static const char *fragment_source =
-      "precision mediump float;\n"
-      "varying vec2 v_ndc;\n"
+      "#version 300 es\nprecision highp float;\n"
+      "in vec2 v_ndc;\n"
       "uniform mat4 u_inv_vp;\n"
       "uniform sampler2D u_skybox_tex;\n"
+      "out vec4 fragColor;\n"
       "void main() {\n"
       "  vec4 world = u_inv_vp * vec4(v_ndc, 1.0, 1.0);\n"
       "  vec3 dir = normalize(world.xyz / world.w);\n"
       "  float u = atan(dir.z, dir.x) / (2.0 * 3.14159265) + 0.5;\n"
       "  float v = asin(clamp(dir.y, -1.0, 1.0)) / 3.14159265 + 0.5;\n"
-      "  gl_FragColor = texture2D(u_skybox_tex, vec2(u, v));\n"
+      "  fragColor = texture(u_skybox_tex, vec2(u, v));\n"
       "}\n";
 
    GLuint vertex = gles_compile_shader(GL_VERTEX_SHADER, vertex_source);
@@ -30762,7 +30983,6 @@ static void render_gles_overlay(void)
 {
    if (!convert_framebuffer_to_overlay_rgba())
       return;
-
    gles.ActiveTexture(GL_TEXTURE0);
    gles.BindTexture(GL_TEXTURE_2D, gles.overlay_texture);
    gles.TexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, NOVA64_WIDTH, NOVA64_HEIGHT,
@@ -30799,17 +31019,18 @@ static bool gles_has_fbo_procs(void)
 static bool gles_create_post_program(void)
 {
    static const char *vertex_source =
-      "attribute vec2 a_position;\n"
-      "attribute vec2 a_uv;\n"
-      "varying vec2 v_uv;\n"
+      "#version 300 es\nprecision highp float;\n"
+      "in vec2 a_position;\n"
+      "in vec2 a_uv;\n"
+      "out vec2 v_uv;\n"
       "void main() {\n"
       "  v_uv = a_uv;\n"
       "  gl_Position = vec4(a_position, 0.0, 1.0);\n"
       "}\n";
    /* Post-processing fragment shader: CRT, vignette, pixelate, bloom, chromatic, colorgrade, posterize */
    static const char *fragment_source =
-      "precision mediump float;\n"
-      "varying vec2 v_uv;\n"
+      "#version 300 es\nprecision highp float;\n"
+      "in vec2 v_uv;\n"
       "uniform sampler2D u_scene;\n"
       "uniform int u_crt;\n"
       "uniform float u_vignette;\n"
@@ -30819,6 +31040,7 @@ static bool gles_create_post_program(void)
       "uniform float u_chromatic;\n"
       "uniform vec3 u_color_grade;\n"
       "uniform int u_posterize;\n"
+      "out vec4 fragColor;\n"
       "void main() {\n"
       "  vec2 uv = v_uv;\n"
       "  if (u_pixelate > 0) {\n"
@@ -30830,12 +31052,12 @@ static bool gles_create_post_program(void)
       "  vec4 color;\n"
       "  if (u_chromatic > 0.0) {\n"
       "    vec2 dir = (uv - 0.5) * u_chromatic;\n"
-      "    color.r = texture2D(u_scene, uv + dir).r;\n"
-      "    color.g = texture2D(u_scene, uv).g;\n"
-      "    color.b = texture2D(u_scene, uv - dir).b;\n"
+      "    color.r = texture(u_scene, uv + dir).r;\n"
+      "    color.g = texture(u_scene, uv).g;\n"
+      "    color.b = texture(u_scene, uv - dir).b;\n"
       "    color.a = 1.0;\n"
       "  } else {\n"
-      "    color = texture2D(u_scene, uv);\n"
+      "    color = texture(u_scene, uv);\n"
       "  }\n"
       "  if (u_crt != 0) {\n"
       "    float line = sin(v_uv.y * u_resolution.y * 3.14159265);\n"
@@ -30847,15 +31069,15 @@ static bool gles_create_post_program(void)
       "    if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0)\n"
       "      color = vec4(0.0, 0.0, 0.0, 1.0);\n"
       "    else\n"
-      "      color = texture2D(u_scene, uv) * vec4(color.rgb / (texture2D(u_scene, v_uv).rgb + 0.001), color.a);\n"
+      "      color = texture(u_scene, uv) * vec4(color.rgb / (texture(u_scene, v_uv).rgb + 0.001), color.a);\n"
       "  }\n"
       /* bloom: 5-tap cross bright-pass added back */
       "  if (u_bloom > 0.0) {\n"
       "    vec2 ts = vec2(2.0 / u_resolution.x, 2.0 / u_resolution.y);\n"
-      "    vec3 s = texture2D(u_scene, uv + vec2(ts.x, 0.0)).rgb\n"
-      "           + texture2D(u_scene, uv - vec2(ts.x, 0.0)).rgb\n"
-      "           + texture2D(u_scene, uv + vec2(0.0, ts.y)).rgb\n"
-      "           + texture2D(u_scene, uv - vec2(0.0, ts.y)).rgb;\n"
+      "    vec3 s = texture(u_scene, uv + vec2(ts.x, 0.0)).rgb\n"
+      "           + texture(u_scene, uv - vec2(ts.x, 0.0)).rgb\n"
+      "           + texture(u_scene, uv + vec2(0.0, ts.y)).rgb\n"
+      "           + texture(u_scene, uv - vec2(0.0, ts.y)).rgb;\n"
       "    vec3 avg = s * 0.25;\n"
       "    float luma = dot(avg, vec3(0.299, 0.587, 0.114));\n"
       "    color.rgb += avg * max(0.0, luma - 0.45) * u_bloom * 2.2;\n"
@@ -30872,7 +31094,7 @@ static bool gles_create_post_program(void)
       "    float vt = clamp(1.0 - dot(cv, cv) * 4.0 * u_vignette, 0.0, 1.0);\n"
       "    color.rgb *= vt;\n"
       "  }\n"
-      "  gl_FragColor = vec4(clamp(color.rgb, 0.0, 1.0), 1.0);\n"
+      "  fragColor = vec4(clamp(color.rgb, 0.0, 1.0), 1.0);\n"
       "}\n";
 
    GLuint vertex = gles_compile_shader(GL_VERTEX_SHADER, vertex_source);
@@ -31048,6 +31270,8 @@ static void render_gles_scene(void)
 
    if (!use_shadow && use_post)
       gles.BindFramebuffer(GL_FRAMEBUFFER, gles.post_fbo);
+   else if (!use_shadow)
+      gles.BindFramebuffer(GL_FRAMEBUFFER, hw_fbo);
 
    uint32_t clear_color;
    if (sky_color_enabled) {
@@ -31104,6 +31328,10 @@ static void render_gles_scene(void)
          render_gles_custom_mesh(&meshes[i], view_projection);
       else if (meshes[i].type == NOVA64_MESH_INSTANCED)
          render_gles_instanced_mesh(&meshes[i], view_projection);
+      else if (meshes[i].type == NOVA64_MESH_TORUS)
+         render_gles_torus(&meshes[i], view_projection);
+      else if (meshes[i].type == NOVA64_MESH_CONE)
+         render_gles_cylinder(&meshes[i], view_projection);
    }
 
    if (use_post) {
@@ -31151,19 +31379,22 @@ static void renderer_request_hardware_context(retro_environment_t cb)
       nova64_log_line(RETRO_LOG_INFO, renderer_message);
    }
 
+   nova64_log_line(RETRO_LOG_INFO, "[nova64] requesting OpenGL 3.3 hardware context");
    memset(&hw_render, 0, sizeof(hw_render));
-   hw_render.context_type = RETRO_HW_CONTEXT_OPENGLES3;
+   hw_render.context_type = RETRO_HW_CONTEXT_OPENGL;
    hw_render.context_reset = renderer_context_reset;
    hw_render.context_destroy = renderer_context_destroy;
    hw_render.depth = true;
    hw_render.stencil = false;
    hw_render.bottom_left_origin = true;
    hw_render.version_major = 3;
-   hw_render.version_minor = 1;
+   hw_render.version_minor = 3;
    hw_render.cache_context = false;
    gles.requested = cb(RETRO_ENVIRONMENT_SET_HW_RENDER, &hw_render);
-   if (!gles.requested)
-      nova64_log_line(RETRO_LOG_WARN, "[nova64] GLES3 hardware rendering unavailable; using software 2D output");
+   if (gles.requested)
+      nova64_log_line(RETRO_LOG_INFO, "[nova64] OpenGL 3.3 context accepted by frontend");
+   else
+      nova64_log_line(RETRO_LOG_WARN, "[nova64] OpenGL 3.3 unavailable; using software 2D output (switch video driver to 'gl' or 'glcore' in RetroArch settings for 3D)");
 }
 
 static bool renderer_has_hardware_frame(void)
@@ -31775,6 +32006,7 @@ void RETRO_CALLCONV retro_init(void)
 
    clear_framebuffer(rgba8(0, 0, 0, 255));
    reset_scene_state();
+   reset_post_state();
    const char *command_log = getenv("NOVA64_RENDER_COMMAND_LOG");
    if (command_log && command_log[0]) {
       snprintf(renderer_command_log_path, sizeof(renderer_command_log_path), "%s", command_log);
@@ -31865,16 +32097,11 @@ void RETRO_CALLCONV retro_set_environment(retro_environment_t cb)
    if (cb(RETRO_ENVIRONMENT_GET_RUMBLE_INTERFACE, &rif) && rif.set_rumble_state)
       rumble_fn = rif.set_rumble_state;
 
-   /* Signal achievement support stub (RETRO_ENVIRONMENT_SET_SUPPORT_ACHIEVEMENTS = 63) */
-   bool achievements_supported = true;
-   cb(63, &achievements_supported);
-
-   /* Apply audio latency hint (RETRO_ENVIRONMENT_SET_MINIMUM_AUDIO_LATENCY = 62) */
-   {
-      unsigned latency_ms = read_audio_latency_ms();
-      if (latency_ms > 0)
-         cb(62, &latency_ms);
-   }
+   /* SET_SUPPORT_ACHIEVEMENTS / SET_MINIMUM_AUDIO_LATENCY removed:
+      env IDs 62/63 were wrong (63 maps to SET_MINIMUM_AUDIO_LATENCY in
+      current RetroArch, which read a bool as unsigned and produced a
+      garbage latency clamped to 512ms). Cheevos still work via SET_MEMORY_MAPS. */
+   (void)read_audio_latency_ms;
 
    /* Expose cheevos RAM via SET_MEMORY_MAPS (RETRO_ENVIRONMENT = 36) */
    {

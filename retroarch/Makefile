@@ -111,8 +111,17 @@ else ifeq ($(platform), linux-portable)
 else ifeq ($(platform), win)
    CC = gcc
    TARGET := $(TARGET_NAME).dll
-   SHARED := -shared -static-libgcc -static-libstdc++ -s -Wl,--version-script=$(LIBRETRO_DIR)/link.T
+   SHARED := -shared -static-libgcc -s
    CFLAGS += -I.
+else ifeq ($(platform), win-cross)
+   # Cross-compile a Windows x86_64 DLL from Linux/WSL using mingw-w64.
+   CC = x86_64-w64-mingw32-gcc
+   TARGET := $(TARGET_NAME).dll
+   SHARED := -shared -static-libgcc -s
+   CFLAGS += -I.
+   LIBM := -lm
+   # Link statically against zlib (libz.a is provided by libz-mingw-w64-dev).
+   override LIBM := -lm -Wl,-Bstatic -lz -Wl,-Bdynamic
 else ifeq ($(platform), ctr)
    TARGET := $(TARGET_NAME)_ctr.a
    CC = $(DEVKITARM)/bin/arm-none-eabi-gcc$(EXE_EXT)

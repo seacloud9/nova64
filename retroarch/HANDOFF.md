@@ -29,6 +29,10 @@ demoscene cart and renderer:
   keep separate emissive colors on the GLES path. The HUD now uses RetroArch's
   `rect(..., false)` outline semantics so panels match the web-style overlay
   instead of filling with accent colors.
+- Follow-up cart-only parity pass added web-reference cues without changing the
+  renderer: orbiting crystals and expanding pulse rings in scene 0, longer
+  neon data streams in scene 1, and brighter emissive city lighting plus a
+  central beacon in scene 2.
 - `retroarch/tests/ppm_to_png.py` now reads the full P6 header through `maxval`
   before copying pixel data. The previous parser stopped after width/height for
   the harness header shape, causing converted PNG screenshots to display shifted
@@ -69,6 +73,9 @@ retroarch/build/gles-instance-colors-after.png
 retroarch/build/gles-overlay-orientation-fixed.png
 retroarch/build/demoscene-webparity-s0-hudfixed2.png
 retroarch/build/demoscene-webparity-s1-hudfixed2.png
+retroarch/build/demoscene-webparity-s0-90pass3.png
+retroarch/build/demoscene-webparity-s1-90pass2.png
+retroarch/build/demoscene-webparity-s2-90pass3.png
 ```
 
 Remaining parity work:

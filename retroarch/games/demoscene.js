@@ -25,7 +25,7 @@ let state = 'start', startT = 0;
 let gridMesh, cityMesh, groundMesh, centralSphere;
 let skyPanel, horizonGlow;
 let gridMeshes = [], gridCells = [];
-let rings = [], towers = [], voidSpheres = [];
+let rings = [], towers = [], voidSpheres = [], pulseRings = [], dataStreams = [];
 let coreBurst = [], burstTimer = 0;
 
 function mat4(sx, sy, sz, tx, ty, tz) {
@@ -43,8 +43,10 @@ function clearScene3D() {
    for (const r of rings)       destroyMesh(r.mesh);
    for (const tw of towers)     destroyMesh(tw.mesh);
    for (const v of voidSpheres) destroyMesh(v.mesh);
+   for (const p of pulseRings)  destroyMesh(p.mesh);
+   for (const s of dataStreams) destroyMesh(s.mesh);
    for (const b of coreBurst)   destroyBurst(b);
-   rings = []; towers = []; voidSpheres = []; coreBurst = [];
+   rings = []; towers = []; voidSpheres = []; pulseRings = []; dataStreams = []; coreBurst = [];
    gridMeshes = []; gridCells = [];
    nova64.post.clear();
    clearSkyColor();
@@ -106,6 +108,20 @@ function buildScene0() {
    groundMesh = createCube(0.8, 6, 0.8, rgba8(0, 240, 255, 255));
    setMeshEmissive(groundMesh, rgba8(0, 240, 255, 255), 0.9);
    setPosition(groundMesh, 0, 0, 0);
+
+   const crystalColors = [
+      rgba8(255, 236, 40, 255),
+      rgba8(0, 240, 255, 255),
+      rgba8(255, 40, 220, 255),
+   ];
+   for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2;
+      const m = createCube(1.2, 3.6 + rng() * 1.6, 1.2, crystalColors[i % crystalColors.length]);
+      setMeshEmissive(m, crystalColors[i % crystalColors.length], 0.72);
+      setPosition(m, Math.cos(a) * 22, 1.2 + rng() * 3.8, Math.sin(a) * 22);
+      setRotation(m, Math.PI / 4, a, Math.PI / 6);
+      towers.push({ mesh: m, type: 'crystal', angle: a, radius: 22, phase: rng() * 6.28, speed: 0.35 + rng() * 0.5 });
+   }
 }
 
 // ── Scene 1: DATA TUNNEL ──────────────────────────────────────────────────────
@@ -133,22 +149,50 @@ function buildScene1() {
       setPosition(m, 0, 0, z);
       rings.push({ mesh: m, z, rot: (i % 2 === 0) ? 1 : -0.7, phase: rng() * 6.28 });
    }
+
+   const streamColors = [
+      rgba8(0, 240, 255, 255),
+      rgba8(255, 40, 220, 255),
+      rgba8(255, 236, 40, 255),
+      rgba8(0, 255, 150, 255),
+   ];
+   for (let i = 0; i < 24; i++) {
+      const a = rng() * Math.PI * 2;
+      const r = 5.5 + rng() * 6.5;
+      const col = streamColors[i % streamColors.length];
+      const m = createCube(0.5, 0.5, 8.0 + rng() * 4.0, col);
+      setMeshEmissive(m, col, 1.15);
+      dataStreams.push({
+         mesh: m,
+         x: Math.cos(a) * r,
+         y: Math.sin(a) * r,
+         z: -12 - rng() * 85,
+         speed: 34 + rng() * 30,
+         roll: a,
+      });
+      setPosition(m, dataStreams[i].x, dataStreams[i].y, dataStreams[i].z);
+      setRotation(m, 0, 0, a);
+   }
 }
 
 // ── Scene 2: DIGITAL CITY ─────────────────────────────────────────────────────
 function buildScene2() {
-   nova64.post.setBloom(0.9);
+   nova64.post.setBloom(1.25);
+   nova64.post.setChromatic(0.003);
    nova64.post.setCRT(true);
-   setAmbientLight(rgba8(18, 24, 58, 255), 1.15);
+   setSkyColor(rgba8(4, 5, 28, 255), rgba8(20, 0, 42, 255));
+   setAmbientLight(rgba8(70, 82, 140, 255), 1.35);
    setLightDirection(-0.6, -1, -0.4);
-   setFog(rgba8(6, 4, 16, 255), 20, 90);
+   setFog(rgba8(10, 4, 28, 255), 35, 140);
    setCameraFOV(62);
 
    groundMesh = createCube(56, 0.2, 56, rgba8(10, 10, 26, 255));
+   setMeshEmissive(groundMesh, rgba8(40, 60, 150, 255), 0.18);
    setPosition(groundMesh, 0, -0.1, 0);
 
    const COLS = 7, ROWS = 7;
    cityMesh = createInstancedMesh('cube', COLS * ROWS);
+   setMeshEmissive(cityMesh, rgba8(0, 220, 255, 255), 0.42);
    towers = [];
    let idx = 0;
    for (let r = 0; r < ROWS; r++) {
@@ -167,6 +211,11 @@ function buildScene2() {
          idx++;
       }
    }
+
+   horizonGlow = createSphere(7, rgba8(255, 236, 40, 255));
+   setMeshEmissive(horizonGlow, rgba8(255, 236, 40, 255), 1.2);
+   setScale(horizonGlow, 0.45, 3.5, 0.45);
+   setPosition(horizonGlow, 0, 6, 0);
 }
 
 // ── Scene 3: ENERGY CORE ──────────────────────────────────────────────────────
@@ -316,15 +365,51 @@ export function update(dt) {
       const ph = 5 + Math.sin(t*2)*1;
       setScale(groundMesh, 0.8, ph, 0.8);
       setPosition(groundMesh, 0, ph/2 - 3, 0);
+
+      if (Math.floor(t * 1.8) !== Math.floor((t - dt) * 1.8)) {
+         const colors = [rgba8(0,240,255,180), rgba8(255,40,220,180), rgba8(255,236,40,160)];
+         const col = colors[Math.floor(rng() * colors.length)];
+         const m = createSphere(1, col);
+         setMeshEmissive(m, col, 0.95);
+         setPosition(m, 0, -2.6, 0);
+         pulseRings.push({ mesh: m, life: 1.7, scale: 1.0 });
+      }
+      for (let i = pulseRings.length - 1; i >= 0; i--) {
+         const p = pulseRings[i];
+         p.life -= dt;
+         p.scale += dt * 11;
+         setScale(p.mesh, p.scale, 0.035, p.scale);
+         setMeshOpacity(p.mesh, Math.max(0, p.life / 1.7) * 0.72);
+         if (p.life <= 0) { destroyMesh(p.mesh); pulseRings.splice(i, 1); }
+      }
+      for (const tw of towers) {
+         if (tw.type !== 'crystal') continue;
+         const bob = Math.sin(t * 1.7 + tw.phase) * 2.4;
+         const a = tw.angle + t * tw.speed;
+         setPosition(tw.mesh, Math.cos(a) * tw.radius, 2.8 + bob, Math.sin(a) * tw.radius);
+         setRotation(tw.mesh, Math.PI / 4 + Math.sin(t + tw.phase) * 0.18, a, t * 0.45);
+      }
    }
 
    if (scene === 1) {
       for (const ring of rings) {
          setRotation(ring.mesh, t*ring.rot + ring.phase, t*ring.rot*0.6, ring.phase*0.5);
       }
+      const camZ = -sceneT * 3 + 8;
+      for (const stream of dataStreams) {
+         stream.z += stream.speed * dt;
+         if (stream.z > camZ + 18)
+            stream.z = camZ - 95 - rng() * 45;
+         setPosition(stream.mesh, stream.x, stream.y, stream.z);
+         setRotation(stream.mesh, 0, 0, stream.roll + t * 0.6);
+      }
    }
 
    if (scene === 2) {
+      if (horizonGlow) {
+         setRotation(horizonGlow, 0, t * 0.8, 0);
+         setScale(horizonGlow, 0.45 + Math.sin(t * 2.4) * 0.08, 3.5, 0.45 + Math.sin(t * 2.4) * 0.08);
+      }
       for (const tw of towers) {
          const h = tw.baseH * (0.7 + 0.3*Math.sin(t*1.8 + tw.phase));
          setInstanceTransform(cityMesh, tw.idx, mat4(2.6, h, 2.6, tw.x, h/2, tw.z));

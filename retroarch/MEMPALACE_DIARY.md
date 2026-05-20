@@ -145,6 +145,22 @@ canonical repository instructions in `../AGENTS.md`.
   - `retroarch/build/gles-cylinder-primitive.png`
   - `retroarch/build/dungeon-crawler-cylinder-gles.png`
 
+### GLES transparent z sorting
+- Audited the GLES draw order after primitive work to avoid depth artifacts in
+  alpha/blended meshes.
+- Added an opaque pass followed by a transparent pass. Transparent meshes are
+  sorted back-to-front by camera depth, with `sort_order` available as an
+  explicit layer/tie override.
+- Transparent/blended draws now disable depth writes through `glDepthMask(false)`
+  while preserving depth testing against opaque geometry.
+- Instanced meshes now enable the same alpha/additive/multiply blend modes when
+  their mesh opacity or per-instance colors require blending.
+- Added GLES-only regression cart:
+  `retroarch/conformance/gles-transparent-z-sort.js`.
+- Focused captures:
+  - `retroarch/build/gles-transparent-z-sort.png`
+  - `retroarch/build/demoscene-zsort-smoke.png`
+
 ### Caveat
 - The metric is now useful as a trend baseline, but it still penalizes
   hard-edged GLES approximations versus Three.js/TSL shader gradients,

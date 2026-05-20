@@ -59,6 +59,10 @@ Latest continuation:
   cylinders respect separate top/bottom radii, including tapered cylinders.
   Main scene draws, render-target draws, and shadow passes all share the same
   generated buffers.
+- GLES mesh drawing now uses an explicit opaque-then-transparent pass. Blended
+  and alpha meshes sort back-to-front by camera depth, honor `sort_order` as a
+  tie/layer override, and render with depth writes disabled so far transparent
+  meshes are not incorrectly hidden by nearer transparent meshes.
 - Current comparator baseline after the sphere fix: average visual score `85.5`,
   strict average `84.4` across five sampled beats. This is up from the original `49.0`
   comparator baseline and the prior exact-scene `81.2` baseline. Remaining
@@ -123,6 +127,7 @@ retroarch/build/harness retroarch/nova64_libretro.so retroarch/conformance/gles-
 NOVA64_GLES_TESTS=1 retroarch/tests/run_conformance.sh --from 44 --to 45 --skip-build
 retroarch/build/harness retroarch/nova64_libretro.so retroarch/conformance/gles-capsule-primitive.js --gles --frames 30 --expect 9d391e819fbf015c
 retroarch/build/harness retroarch/nova64_libretro.so retroarch/conformance/gles-cylinder-primitive.js --gles --frames 30 --expect 1e4f4200a01e2927
+retroarch/build/harness retroarch/nova64_libretro.so retroarch/conformance/gles-transparent-z-sort.js --gles --frames 30 --expect 2a96f2795ca969f3
 pnpm run retroarch:visual:demoscene
 pnpm run mempalace:mine:retroarch
 ```
@@ -152,6 +157,8 @@ retroarch/build/demoscene-parity/report.json
 retroarch/build/gles-capsule-primitive.png
 retroarch/build/gles-cylinder-primitive.png
 retroarch/build/dungeon-crawler-cylinder-gles.png
+retroarch/build/gles-transparent-z-sort.png
+retroarch/build/demoscene-zsort-smoke.png
 ```
 
 Remaining parity work:

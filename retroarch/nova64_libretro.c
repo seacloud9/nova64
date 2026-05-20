@@ -84,6 +84,7 @@ typedef unsigned char GLubyte;
 #define GL_STATIC_DRAW 0x88E4
 #define GL_FLOAT 0x1406
 #define GL_FALSE 0
+#define GL_TRUE 1
 #define GL_TRIANGLES 0x0004
 #define GL_UNSIGNED_SHORT 0x1403
 #define GL_TEXTURE_2D 0x0DE1
@@ -162,6 +163,7 @@ typedef void (*PFNGLUNIFORM1IPROC)(GLint location, GLint v0);
 typedef void (*PFNGLUNIFORM1FPROC)(GLint location, GLfloat v0);
 typedef void (*PFNGLUNIFORM2FPROC)(GLint location, GLfloat v0, GLfloat v1);
 typedef void (*PFNGLBLENDFUNCPROC)(GLenum sfactor, GLenum dfactor);
+typedef void (*PFNGLDEPTHMASKPROC)(GLboolean flag);
 /* FBO */
 typedef void (*PFNGLGENFRAMEBUFFERSPROC)(GLsizei n, GLuint *framebuffers);
 typedef void (*PFNGLBINDFRAMEBUFFERPROC)(GLenum target, GLuint framebuffer);
@@ -437,6 +439,7 @@ struct nova64_gles_backend {
    PFNGLUNIFORM1FPROC Uniform1f;
    PFNGLUNIFORM2FPROC Uniform2f;
    PFNGLBLENDFUNCPROC BlendFunc;
+   PFNGLDEPTHMASKPROC DepthMask;
    /* VAO + debug procs */
    PFNGLGENVERTEXARRAYSPROC GenVertexArrays;
    PFNGLBINDVERTEXARRAYPROC BindVertexArray;
@@ -26019,6 +26022,7 @@ static bool gles_any_cast_shadow_mesh(void);
 static bool gles_init_shadow_resources(void);
 static void build_shadow_light_vp(float out[16]);
 static void render_gles_shadow_pass(const float light_vp[16]);
+static void render_gles_meshes_sorted(const float view_projection[16]);
 static bool gles_ensure_capsule_mesh(struct nova64_mesh *mesh);
 static bool gles_ensure_cylinder_mesh(struct nova64_mesh *mesh);
 static bool gles_load_functions(void);
@@ -26072,18 +26076,7 @@ static void render_gles_scene_to_rt(struct nova64_render_target *rt)
    /* Draw equirectangular skybox behind all geometry (GLES only) */
    render_gles_skybox(view, projection);
 
-   for (int i = 0; i < NOVA64_MAX_MESHES; i++) {
-      if (!meshes[i].used || !meshes[i].visible || meshes[i].opacity <= 0.0f) continue;
-      if (meshes[i].type == NOVA64_MESH_CUBE)        render_gles_cube(&meshes[i], view_projection);
-      else if (meshes[i].type == NOVA64_MESH_PLANE)  render_gles_plane(&meshes[i], view_projection);
-      else if (meshes[i].type == NOVA64_MESH_SPHERE) render_gles_sphere(&meshes[i], view_projection);
-      else if (meshes[i].type == NOVA64_MESH_CAPSULE)  render_gles_capsule(&meshes[i], view_projection);
-      else if (meshes[i].type == NOVA64_MESH_CYLINDER) render_gles_cylinder(&meshes[i], view_projection);
-      else if (meshes[i].type == NOVA64_MESH_CUSTOM)      render_gles_custom_mesh(&meshes[i], view_projection);
-      else if (meshes[i].type == NOVA64_MESH_INSTANCED)   render_gles_instanced_mesh(&meshes[i], view_projection);
-      else if (meshes[i].type == NOVA64_MESH_TORUS)   render_gles_torus(&meshes[i], view_projection);
-      else if (meshes[i].type == NOVA64_MESH_CONE)    render_gles_cone(&meshes[i], view_projection);
-   }
+   render_gles_meshes_sorted(view_projection);
 
    /* Restore default viewport */
    gles.Viewport(0, 0, NOVA64_WIDTH, NOVA64_HEIGHT);
@@ -30603,6 +30596,7 @@ static bool gles_load_functions(void)
    gles.Uniform1f = (PFNGLUNIFORM1FPROC)load_gles_proc("glUniform1f");
    gles.Uniform2f = (PFNGLUNIFORM2FPROC)load_gles_proc("glUniform2f");
    gles.BlendFunc = (PFNGLBLENDFUNCPROC)load_gles_proc("glBlendFunc");
+   gles.DepthMask = (PFNGLDEPTHMASKPROC)load_gles_proc("glDepthMask");
    /* Core profile requirements */
    gles.GenVertexArrays  = (PFNGLGENVERTEXARRAYSPROC)load_gles_proc("glGenVertexArrays");
    gles.BindVertexArray  = (PFNGLBINDVERTEXARRAYPROC)load_gles_proc("glBindVertexArray");
@@ -30630,7 +30624,7 @@ static bool gles_load_functions(void)
       gles.VertexAttribPointer && gles.DrawElements && gles.GenTextures &&
       gles.DeleteTextures && gles.ActiveTexture && gles.BindTexture &&
       gles.TexParameteri && gles.TexImage2D && gles.TexSubImage2D &&
-      gles.Uniform1i && gles.Uniform1f && gles.BlendFunc;
+      gles.Uniform1i && gles.Uniform1f && gles.BlendFunc && gles.DepthMask;
    if (!gles.functions_loaded)
       nova64_log_line(RETRO_LOG_WARN, "[nova64] GLES proc-address callback did not provide the primitive renderer path");
    return gles.functions_loaded;
@@ -30697,6 +30691,7 @@ static void gles_context_destroy(void)
    gles.Uniform1i = NULL;
    gles.Uniform1f = NULL;
    gles.BlendFunc = NULL;
+   gles.DepthMask = NULL;
    gles.GenVertexArrays = NULL;
    gles.BindVertexArray = NULL;
    gles.DeleteVertexArrays = NULL;
@@ -30882,6 +30877,118 @@ static void render_gles_cube(const struct nova64_mesh *mesh, const float view_pr
 static void render_gles_plane(const struct nova64_mesh *mesh, const float view_projection[16])
 {
    render_gles_primitive(mesh, view_projection, gles.plane_vbo, gles.plane_ibo, 6);
+}
+
+struct nova64_gles_sort_item {
+   int mesh_index;
+   float depth;
+   int sort_order;
+};
+
+static bool gles_mesh_uses_blend(const struct nova64_mesh *mesh)
+{
+   if (!mesh)
+      return false;
+   if (mesh->mesh_blend != NOVA64_MESH_BLEND_OPAQUE)
+      return true;
+   if (mesh->opacity < 0.999f || (mesh->color & 0xffU) < 255U)
+      return true;
+   if (mesh->type == NOVA64_MESH_INSTANCED && mesh->instance_colors) {
+      for (int i = 0; i < mesh->instance_count; i++) {
+         if ((mesh->instance_colors[i] & 0xffU) < 255U)
+            return true;
+      }
+   }
+   return false;
+}
+
+static float gles_mesh_depth_key(const struct nova64_mesh *mesh)
+{
+   float center[3];
+   float forward[3] = {
+      camera_state.target[0] - camera_state.position[0],
+      camera_state.target[1] - camera_state.position[1],
+      camera_state.target[2] - camera_state.position[2]
+   };
+   float len = sqrtf(forward[0] * forward[0] + forward[1] * forward[1] + forward[2] * forward[2]);
+   if (len < 0.0001f) {
+      forward[0] = 0.0f;
+      forward[1] = 0.0f;
+      forward[2] = -1.0f;
+      len = 1.0f;
+   }
+   forward[0] /= len;
+   forward[1] /= len;
+   forward[2] /= len;
+   mesh_local_to_world(mesh, (float[3]){0.0f, 0.0f, 0.0f}, center);
+   return (center[0] - camera_state.position[0]) * forward[0] +
+      (center[1] - camera_state.position[1]) * forward[1] +
+      (center[2] - camera_state.position[2]) * forward[2];
+}
+
+static int gles_transparent_mesh_cmp(const void *left, const void *right)
+{
+   const struct nova64_gles_sort_item *a = (const struct nova64_gles_sort_item *)left;
+   const struct nova64_gles_sort_item *b = (const struct nova64_gles_sort_item *)right;
+   if (a->sort_order != b->sort_order)
+      return a->sort_order - b->sort_order;
+   if (a->depth < b->depth)
+      return 1;
+   if (a->depth > b->depth)
+      return -1;
+   return a->mesh_index - b->mesh_index;
+}
+
+static void render_gles_mesh_by_type(struct nova64_mesh *mesh, const float view_projection[16])
+{
+   if (mesh->type == NOVA64_MESH_CUBE)
+      render_gles_cube(mesh, view_projection);
+   else if (mesh->type == NOVA64_MESH_PLANE)
+      render_gles_plane(mesh, view_projection);
+   else if (mesh->type == NOVA64_MESH_SPHERE)
+      render_gles_sphere(mesh, view_projection);
+   else if (mesh->type == NOVA64_MESH_CAPSULE)
+      render_gles_capsule(mesh, view_projection);
+   else if (mesh->type == NOVA64_MESH_CYLINDER)
+      render_gles_cylinder(mesh, view_projection);
+   else if (mesh->type == NOVA64_MESH_CUSTOM)
+      render_gles_custom_mesh(mesh, view_projection);
+   else if (mesh->type == NOVA64_MESH_INSTANCED)
+      render_gles_instanced_mesh(mesh, view_projection);
+   else if (mesh->type == NOVA64_MESH_TORUS)
+      render_gles_torus(mesh, view_projection);
+   else if (mesh->type == NOVA64_MESH_CONE)
+      render_gles_cone(mesh, view_projection);
+}
+
+static void render_gles_meshes_sorted(const float view_projection[16])
+{
+   struct nova64_gles_sort_item transparent[NOVA64_MAX_MESHES];
+   int transparent_count = 0;
+
+   for (int i = 0; i < NOVA64_MAX_MESHES; i++) {
+      struct nova64_mesh *mesh = &meshes[i];
+      if (!mesh->used || !mesh->visible || mesh->opacity <= 0.0f)
+         continue;
+      if (gles_mesh_uses_blend(mesh)) {
+         transparent[transparent_count].mesh_index = i;
+         transparent[transparent_count].depth = gles_mesh_depth_key(mesh);
+         transparent[transparent_count].sort_order = mesh->sort_order;
+         transparent_count++;
+      } else {
+         render_gles_mesh_by_type(mesh, view_projection);
+      }
+   }
+
+   if (transparent_count <= 0)
+      return;
+
+   qsort(transparent, (size_t)transparent_count, sizeof(transparent[0]),
+      gles_transparent_mesh_cmp);
+   gles.DepthMask(GL_FALSE);
+   for (int i = 0; i < transparent_count; i++)
+      render_gles_mesh_by_type(&meshes[transparent[i].mesh_index], view_projection);
+   gles.DepthMask(GL_TRUE);
 }
 
 static void gles_delete_mesh_gpu_buffers(struct nova64_mesh *mesh)
@@ -31333,6 +31440,21 @@ static void render_gles_instanced_mesh(const struct nova64_mesh *mesh, const flo
    if (gles.cube_uv_scale_uniform >= 0 && gles.Uniform2f)
       gles.Uniform2f(gles.cube_uv_scale_uniform, mesh->uv_scale[0], mesh->uv_scale[1]);
 
+   bool did_blend = false;
+   if (mesh->mesh_blend == NOVA64_MESH_BLEND_ADDITIVE) {
+      gles.Enable(GL_BLEND);
+      gles.BlendFunc(GL_SRC_ALPHA, GL_ONE);
+      did_blend = true;
+   } else if (mesh->mesh_blend == NOVA64_MESH_BLEND_MULTIPLY) {
+      gles.Enable(GL_BLEND);
+      gles.BlendFunc(GL_DST_COLOR, GL_ZERO);
+      did_blend = true;
+   } else if (gles_mesh_uses_blend(mesh)) {
+      gles.Enable(GL_BLEND);
+      gles.BlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+      did_blend = true;
+   }
+
    /* Per-instance draw loop */
    gles.BindBuffer(GL_ARRAY_BUFFER, vbo);
    gles.BindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo);
@@ -31362,6 +31484,8 @@ static void render_gles_instanced_mesh(const struct nova64_mesh *mesh, const flo
 
    gles.DisableVertexAttribArray((GLuint)gles.cube_normal_attrib);
    gles.DisableVertexAttribArray((GLuint)gles.cube_position_attrib);
+   if (did_blend)
+      gles.Disable(GL_BLEND);
 }
 
 /* ---- Equirectangular skybox ------------------------------------------------ */
@@ -31823,28 +31947,7 @@ static void render_gles_scene(void)
    /* Draw equirectangular skybox behind all geometry (GLES only) */
    render_gles_skybox(view, projection);
 
-   for (int i = 0; i < NOVA64_MAX_MESHES; i++) {
-      if (!meshes[i].used || !meshes[i].visible || meshes[i].opacity <= 0.0f)
-         continue;
-      if (meshes[i].type == NOVA64_MESH_CUBE)
-         render_gles_cube(&meshes[i], view_projection);
-      else if (meshes[i].type == NOVA64_MESH_PLANE)
-         render_gles_plane(&meshes[i], view_projection);
-      else if (meshes[i].type == NOVA64_MESH_SPHERE)
-         render_gles_sphere(&meshes[i], view_projection);
-      else if (meshes[i].type == NOVA64_MESH_CAPSULE)
-         render_gles_capsule(&meshes[i], view_projection);
-      else if (meshes[i].type == NOVA64_MESH_CYLINDER)
-         render_gles_cylinder(&meshes[i], view_projection);
-      else if (meshes[i].type == NOVA64_MESH_CUSTOM)
-         render_gles_custom_mesh(&meshes[i], view_projection);
-      else if (meshes[i].type == NOVA64_MESH_INSTANCED)
-         render_gles_instanced_mesh(&meshes[i], view_projection);
-      else if (meshes[i].type == NOVA64_MESH_TORUS)
-         render_gles_torus(&meshes[i], view_projection);
-      else if (meshes[i].type == NOVA64_MESH_CONE)
-         render_gles_cone(&meshes[i], view_projection);
-   }
+   render_gles_meshes_sorted(view_projection);
 
    if (use_post) {
       /* Post pass: blit the FBO color texture to the RetroArch HW framebuffer */

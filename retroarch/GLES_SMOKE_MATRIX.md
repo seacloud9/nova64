@@ -66,3 +66,7 @@ real-driver integration notes only.
   - `retroarch/build/gles-capsule-primitive.png`
   - `retroarch/build/gles-cylinder-primitive.png`
   - `retroarch/build/dungeon-crawler-cylinder-gles.png`
+- GLES transparent z-sort smoke coverage was added after moving blended/alpha
+  meshes to a back-to-front pass with depth writes disabled:
+  - `retroarch/build/gles-transparent-z-sort.png`
+  - `retroarch/build/demoscene-zsort-smoke.png`

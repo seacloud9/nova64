@@ -386,32 +386,52 @@ const SCENE_DESCRIPTIONS = [
    "The void - Journey's end, returning to infinite darkness",
 ];
 
+function mixByte(a, b, t) {
+   return Math.floor(a + (b - a) * t);
+}
+
+function gradientX(x, y, w, h, steps, a, b) {
+   for (let i = 0; i < steps; i++) {
+      const t = steps <= 1 ? 1 : i / (steps - 1);
+      const sx = x + Math.floor((i * w) / steps);
+      const ex = x + Math.floor(((i + 1) * w) / steps);
+      rectfill(sx, y, Math.max(1, ex - sx), h, rgba8(
+         mixByte(a[0], b[0], t),
+         mixByte(a[1], b[1], t),
+         mixByte(a[2], b[2], t),
+         255
+      ));
+   }
+}
+
 function drawWebBloomWash() {
    if (scene === 0) {
       rectfill(0, 0, 640, 315, rgba8(255, 70, 220, 255));
-      rectfill(284, 0, 356, 315, rgba8(255, 255, 255, 255));
-      rectfill(0, 245, 640, 70, rgba8(255, 90, 230, 190));
+      gradientX(226, 0, 132, 315, 14, [255, 70, 220], [255, 255, 255]);
+      rectfill(358, 0, 282, 315, rgba8(255, 255, 255, 255));
       return;
    }
    if (scene === 1) {
-      rectfill(0, 0, 640, 315, rgba8(0, 240, 255, 252));
-      rectfill(0, 0, 120, 315, rgba8(0, 90, 255, 76));
+      rectfill(0, 0, 640, 315, rgba8(0, 240, 255, 255));
+      rectfill(0, 0, 78, 315, rgba8(20, 176, 210, 255));
       return;
    }
    if (scene === 2) {
       rectfill(0, 0, 640, 315, rgba8(255, 255, 255, 255));
-      rectfill(0, 0, 145, 315, rgba8(255, 75, 225, 210));
+      rectfill(0, 0, 145, 315, rgba8(255, 132, 226, 255));
       return;
    }
    if (scene === 3) {
       rectfill(0, 0, 640, 315, rgba8(255, 255, 255, 255));
-      rectfill(0, 0, 640, 86, rgba8(255, 88, 230, 208));
-      rectfill(0, 0, 170, 315, rgba8(255, 40, 220, 170));
+      rectfill(0, 0, 640, 86, rgba8(255, 126, 232, 255));
+      gradientX(0, 178, 190, 137, 14, [255, 126, 226], [255, 255, 255]);
       return;
    }
    rectfill(0, 0, 640, 315, rgba8(255, 70, 220, 255));
-   rectfill(120, 0, 410, 315, rgba8(255, 255, 255, 255));
-   rectfill(520, 0, 120, 315, rgba8(0, 240, 255, 220));
+   rectfill(172, 82, 350, 64, rgba8(255, 255, 255, 255));
+   rectfill(138, 146, 398, 68, rgba8(255, 255, 255, 255));
+   rectfill(104, 214, 456, 101, rgba8(255, 255, 255, 255));
+   rectfill(548, 150, 92, 165, rgba8(176, 226, 238, 255));
 }
 
 // ── Init ───────────────────────────────────────────────────────────────────────
@@ -689,4 +709,5 @@ export function draw() {
       const ta = Math.floor((1 - sceneT/0.8) * 255);
       printBold(sc.name, 320 - sc.name.length * 6, 166, rgba8(0,240,255,ta));
    }
+
 }

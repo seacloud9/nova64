@@ -43,11 +43,15 @@ Latest continuation:
 - RetroArch now adds a web-parity bloom wash layer behind the HUD and aligns
   HUD wording (`PARTICLES`, browser descriptions, `POWERED BY THREE.JS`) with
   the web capture.
-- Current comparator baseline: average visual score `81.2`, strict average
-  `79.5` across five sampled beats. This is up from the original `49.0`
-  comparator baseline. Remaining distance to 90 is mostly from hard-edged GLES
-  approximations versus Three.js/TSL shader gradients and scanline/post
-  treatment.
+- Follow-up bloom-wash tuning softened scene 0 and scene 3 transition bands,
+  corrected scene 1's over-dark left cyan field, and reshaped scene 4's final
+  void wash to better match the displayed web capture.
+- Current comparator baseline: average visual score `85.6`, strict average
+  `84.5` across five sampled beats. This is up from the original `49.0`
+  comparator baseline and the prior exact-scene `81.2` baseline. Remaining
+  distance to 90 is mostly from hard-edged GLES/cart approximations versus the
+  browser's Three.js/TSL shader gradients, display-scale scanline treatment, and
+  exact post-processing blend behavior.
 
 - `cls()` / `clsGradient()` no longer draw the software 3D preview over an active
   GLES hardware scene.

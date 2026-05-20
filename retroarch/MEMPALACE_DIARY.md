@@ -87,13 +87,24 @@ canonical repository instructions in `../AGENTS.md`.
 - Original full run completed successfully with average conservative perceptual
   score `49.0`.
 - Latest exact-scene full run completed successfully with average visual score
-  `81.2` and strict average `79.5`.
+  `85.6` and strict average `84.5`.
 - Latest per-scene visual report:
-  - s0 GRID_AWAKENING: `82.5`
-  - s1 DATA_TUNNEL: `80.8`
-  - s2 DIGITAL_CITY: `84.4`
-  - s3 ENERGY_CORE: `79.9`
-  - s4 THE_VOID: `78.2`
+  - s0 GRID_AWAKENING: `86.5`
+  - s1 DATA_TUNNEL: `86.0`
+  - s2 DIGITAL_CITY: `86.5`
+  - s3 ENERGY_CORE: `85.6`
+  - s4 THE_VOID: `83.6`
+
+### Follow-up parity tuning
+- RetroArch scene 1 no longer uses an over-dark left cyan field; it now matches
+  the web capture's lighter data-tunnel wash.
+- Scene 0 and scene 3 use strip-gradient bloom transitions where the browser
+  capture has softer post-processed boundaries.
+- Scene 4 uses a stepped white/magenta/cyan wash that scores better than a
+  naive gradient against the displayed web capture.
+- Manual scanline and raw-canvas capture experiments were rejected because they
+  lowered the trend score; the current comparator intentionally tracks the
+  displayed web console surface.
 
 ### Caveat
 - The metric is now useful as a trend baseline, but it still penalizes

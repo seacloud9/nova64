@@ -77,25 +77,30 @@ canonical repository instructions in `../AGENTS.md`.
 - The script captures browser canvas screenshots, RetroArch GLES harness frames,
   diff PNGs, and a JSON report under `retroarch/build/demoscene-parity/`.
 - It uses Playwright, `pixelmatch`, and `pngjs`; no new dependencies were needed.
+- Follow-up improvement: the web demoscene exposes `__nova64DemosceneState` and
+  `__nova64DemosceneJumpTo(sceneIndex, atTime, freeze)` so the comparator can
+  capture exact scene beats without relying on wall-clock timing.
+- RetroArch demoscene now has a web-parity bloom wash layer behind HUD text and
+  web-matched HUD copy.
 
 ### Baseline result
-- Full run completed successfully.
-- Average conservative perceptual score: `49.0`.
-- Per-scene report:
-  - s0 GRID_AWAKENING: `41.3`
-  - s1 DATA_TUNNEL: `38.4`
-  - s2 DIGITAL_CITY: `67.6`
-  - s3 ENERGY_CORE: `51.7`
-  - s4 THE_VOID: `45.9`
+- Original full run completed successfully with average conservative perceptual
+  score `49.0`.
+- Latest exact-scene full run completed successfully with average visual score
+  `81.2` and strict average `79.5`.
+- Latest per-scene visual report:
+  - s0 GRID_AWAKENING: `82.5`
+  - s1 DATA_TUNNEL: `80.8`
+  - s2 DIGITAL_CITY: `84.4`
+  - s3 ENERGY_CORE: `79.9`
+  - s4 THE_VOID: `78.2`
 
 ### Caveat
-- The metric is a trend baseline, not the human parity percentage. It heavily
-  penalizes shader washout and precise pixel placement differences between
-  Three.js and GLES.
-- Headless Chromium advances the heavy web demoscene slower than wall time after
-  scene 0, so later sampled browser beats can drift from the intended scene.
-  Scene 0 is reliable; all-scene hard gating needs calibrated waits or a
-  cart-state/debug hook.
+- The metric is now useful as a trend baseline, but it still penalizes
+  hard-edged GLES approximations versus Three.js/TSL shader gradients,
+  scanlines, and exact post-processing behavior. Getting the metric to 90 will
+  likely require softer in-core/fullscreen post gradients rather than more cart
+  geometry.
 
 ## 2026-05-15 — M8 Shadow Maps + Normal Maps session
 

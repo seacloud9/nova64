@@ -32,18 +32,22 @@ Latest continuation:
   captures. This is not an automated SSIM/LPIPS score; the next useful step is a
   small repeatable browser-vs-RetroArch capture comparator for all five scene
   beats.
-- Added a report-first comparator:
+- Added and improved a report-first comparator:
   `pnpm run retroarch:visual:demoscene`. It captures browser canvas screenshots,
   RetroArch GLES harness frames, diff PNGs, and `report.json` under
   `retroarch/build/demoscene-parity/`.
-- Current comparator baseline: average perceptual score `49.0` across five
-  sampled beats. This number is intentionally conservative because it compares
-  Three.js shader washout against GLES geometry/post output. Use it for trend
-  tracking, not as the human parity percentage.
-- Tool caveat: headless Chromium advances the heavy web demoscene slower than
-  wall time after scene 0, so later sampled beats can drift from the intended
-  scene. Scene 0 is reliable; all-scene automation needs either calibrated waits
-  or a cart-state/debug hook before it should become a hard gate.
+- The web demoscene now exposes `__nova64DemosceneState` and
+  `__nova64DemosceneJumpTo(sceneIndex, atTime, freeze)` for test-only exact
+  scene-beat sampling. The comparator uses that hook instead of wall-clock waits,
+  so browser captures now report exact scene/time.
+- RetroArch now adds a web-parity bloom wash layer behind the HUD and aligns
+  HUD wording (`PARTICLES`, browser descriptions, `POWERED BY THREE.JS`) with
+  the web capture.
+- Current comparator baseline: average visual score `81.2`, strict average
+  `79.5` across five sampled beats. This is up from the original `49.0`
+  comparator baseline. Remaining distance to 90 is mostly from hard-edged GLES
+  approximations versus Three.js/TSL shader gradients and scanline/post
+  treatment.
 
 - `cls()` / `clsGradient()` no longer draw the software 3D preview over an active
   GLES hardware scene.

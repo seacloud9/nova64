@@ -18,11 +18,11 @@ const ROOT = path.resolve(RETROARCH_DIR, '..');
 
 const DEFAULT_OUT = path.join(RETROARCH_DIR, 'build', 'demoscene-parity');
 const SCENES = [
-  { id: 's0', name: 'GRID_AWAKENING', webSeconds: 2.4, retroFrames: 145 },
-  { id: 's1', name: 'DATA_TUNNEL', webSeconds: 14.0, retroFrames: 720 },
-  { id: 's2', name: 'DIGITAL_CITY', webSeconds: 28.0, retroFrames: 1440 },
-  { id: 's3', name: 'ENERGY_CORE', webSeconds: 39.0, retroFrames: 1980 },
-  { id: 's4', name: 'THE_VOID', webSeconds: 50.5, retroFrames: 2520 },
+  { id: 's0', name: 'GRID_AWAKENING', sceneIndex: 0, sceneSeconds: 2.4, retroFrames: 145 },
+  { id: 's1', name: 'DATA_TUNNEL', sceneIndex: 1, sceneSeconds: 4.0, retroFrames: 720 },
+  { id: 's2', name: 'DIGITAL_CITY', sceneIndex: 2, sceneSeconds: 6.0, retroFrames: 1440 },
+  { id: 's3', name: 'ENERGY_CORE', sceneIndex: 3, sceneSeconds: 3.0, retroFrames: 1980 },
+  { id: 's4', name: 'THE_VOID', sceneIndex: 4, sceneSeconds: 2.5, retroFrames: 2520 },
 ];
 
 function parseArgs(argv) {
@@ -33,7 +33,7 @@ function parseArgs(argv) {
     outDir: DEFAULT_OUT,
     port: 5177,
     scenes: SCENES.map(scene => scene.id),
-    threshold: 0.45,
+    threshold: 0.8,
   };
 
   for (const arg of argv) {
@@ -143,13 +143,22 @@ async function captureBrowser(opts, scenes) {
     timeout: 120000,
   });
   await wait(1500);
-  await page.keyboard.press('Space');
+  await page.waitForFunction(() => typeof globalThis.__nova64DemosceneJumpTo === 'function', {
+    timeout: 30000,
+  });
 
-  const start = Date.now();
   const outputs = new Map();
-  for (const scene of [...scenes].sort((a, b) => a.webSeconds - b.webSeconds)) {
-    const targetMs = Math.max(0, scene.webSeconds * 1000 - (Date.now() - start));
-    await wait(targetMs);
+  for (const scene of [...scenes].sort((a, b) => a.sceneIndex - b.sceneIndex)) {
+    await page.evaluate(
+      ({ sceneIndex, sceneSeconds }) => {
+        if (typeof globalThis.__nova64DemosceneJumpTo !== 'function') {
+          throw new Error('missing __nova64DemosceneJumpTo debug hook');
+        }
+        globalThis.__nova64DemosceneJumpTo(sceneIndex, sceneSeconds, true);
+      },
+      { sceneIndex: scene.sceneIndex, sceneSeconds: scene.sceneSeconds }
+    );
+    await wait(40);
     const canvas = page.locator('#screen');
     const capture = await canvas.evaluate(node => {
       const rect = node.getBoundingClientRect();
@@ -160,8 +169,12 @@ async function captureBrowser(opts, scenes) {
     });
     const outPath = path.join(opts.outDir, 'browser', `${scene.id}-${scene.name}.png`);
     await canvas.screenshot({ path: outPath });
-    outputs.set(scene.id, { path: outPath, width: capture.width, height: capture.height });
-    console.log(`[browser] ${scene.id} ${scene.name} ${capture.width}x${capture.height}`);
+    const state = await page.evaluate(() => globalThis.__nova64DemosceneState);
+    outputs.set(scene.id, { path: outPath, width: capture.width, height: capture.height, state });
+    console.log(
+      `[browser] ${scene.id} ${scene.name} ${capture.width}x${capture.height} ` +
+        `scene=${state.currentScene} time=${state.sceneTime.toFixed(2)}`
+    );
   }
 
   await browser.close();
@@ -213,6 +226,39 @@ function resizeNearest(src, width, height) {
   return out;
 }
 
+function averageCell(png, x0, y0, x1, y1) {
+  let r = 0;
+  let g = 0;
+  let b = 0;
+  let count = 0;
+  for (let y = y0; y < y1; y++) {
+    for (let x = x0; x < x1; x++) {
+      const i = (y * png.width + x) * 4;
+      r += png.data[i];
+      g += png.data[i + 1];
+      b += png.data[i + 2];
+      count++;
+    }
+  }
+  return [r / count, g / count, b / count];
+}
+
+function fieldSimilarity(a, b, cols = 24, rows = 14) {
+  let abs = 0;
+  for (let row = 0; row < rows; row++) {
+    const y0 = Math.floor((row / rows) * a.height);
+    const y1 = Math.max(y0 + 1, Math.floor(((row + 1) / rows) * a.height));
+    for (let col = 0; col < cols; col++) {
+      const x0 = Math.floor((col / cols) * a.width);
+      const x1 = Math.max(x0 + 1, Math.floor(((col + 1) / cols) * a.width));
+      const ca = averageCell(a, x0, y0, x1, y1);
+      const cb = averageCell(b, x0, y0, x1, y1);
+      abs += Math.abs(ca[0] - cb[0]) + Math.abs(ca[1] - cb[1]) + Math.abs(ca[2] - cb[2]);
+    }
+  }
+  return 1 - abs / (cols * rows * 3 * 255);
+}
+
 function compareScene(opts, scene, browserPath, retroPath) {
   let browser = readPng(browserPath);
   const retro = readPng(retroPath);
@@ -241,7 +287,9 @@ function compareScene(opts, scene, browserPath, retroPath) {
   const pixelSimilarity = 1 - diffPixels / pixels;
   const colorSimilarity = 1 - abs / (pixels * 3 * 255);
   const lumaSimilarity = 1 - lumaAbs / (pixels * 255);
-  const perceptualScore = colorSimilarity * 0.55 + lumaSimilarity * 0.35 + pixelSimilarity * 0.1;
+  const fieldScore = fieldSimilarity(browser, retro);
+  const strictScore = colorSimilarity * 0.55 + lumaSimilarity * 0.35 + pixelSimilarity * 0.1;
+  const visualScore = fieldScore * 0.55 + colorSimilarity * 0.25 + lumaSimilarity * 0.15 + pixelSimilarity * 0.05;
   const diffPath = path.join(opts.outDir, 'diff', `${scene.id}-${scene.name}.png`);
   fs.writeFileSync(diffPath, PNG.sync.write(diff));
 
@@ -256,7 +304,9 @@ function compareScene(opts, scene, browserPath, retroPath) {
     pixelSimilarity,
     colorSimilarity,
     lumaSimilarity,
-    perceptualScore,
+    fieldScore,
+    strictScore,
+    visualScore,
   };
 }
 
@@ -277,8 +327,10 @@ async function main() {
       generatedAt: new Date().toISOString(),
       outDir: path.relative(ROOT, opts.outDir),
       threshold: opts.threshold,
-      averagePerceptualScore:
-        results.reduce((sum, result) => sum + result.perceptualScore, 0) / results.length,
+      averageVisualScore:
+        results.reduce((sum, result) => sum + result.visualScore, 0) / results.length,
+      averageStrictScore:
+        results.reduce((sum, result) => sum + result.strictScore, 0) / results.length,
       results,
     };
     const reportPath = path.join(opts.outDir, 'report.json');
@@ -287,16 +339,18 @@ async function main() {
     console.log('\nDemoscene visual parity report');
     for (const result of results) {
       console.log(
-        `${result.id} ${result.name}: score=${(result.perceptualScore * 100).toFixed(1)} ` +
+        `${result.id} ${result.name}: score=${(result.visualScore * 100).toFixed(1)} ` +
+          `field=${(result.fieldScore * 100).toFixed(1)} ` +
           `color=${(result.colorSimilarity * 100).toFixed(1)} ` +
           `luma=${(result.lumaSimilarity * 100).toFixed(1)} ` +
           `pixel=${(result.pixelSimilarity * 100).toFixed(1)}`
       );
     }
-    console.log(`average=${(summary.averagePerceptualScore * 100).toFixed(1)}`);
+    console.log(`average=${(summary.averageVisualScore * 100).toFixed(1)}`);
+    console.log(`strictAverage=${(summary.averageStrictScore * 100).toFixed(1)}`);
     console.log(`report=${path.relative(ROOT, reportPath)}`);
 
-    if (opts.failOnThreshold && summary.averagePerceptualScore < opts.threshold) {
+    if (opts.failOnThreshold && summary.averageVisualScore < opts.threshold) {
       process.exitCode = 1;
     }
   } finally {

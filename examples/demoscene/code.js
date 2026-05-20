@@ -80,6 +80,39 @@ let camera = {
 let gameState = 'start';
 let startScreenTime = 0;
 let rngState = 0x64d00d;
+let debugFreeze = false;
+
+function exposeDebugState() {
+  globalThis.__nova64DemosceneState = {
+    gameState,
+    currentScene,
+    sceneName: SCENES[currentScene]?.name || '',
+    sceneTime,
+    gameTime,
+    transitioning,
+    transitionProgress,
+    debugFreeze,
+  };
+}
+
+function installDebugControls() {
+  globalThis.__nova64DemosceneJumpTo = (sceneIndex, atTime = 0, freeze = true) => {
+    const next = Math.max(0, Math.min(SCENES.length - 1, Number(sceneIndex) || 0));
+    cleanupScene();
+    gameState = 'playing';
+    currentScene = next;
+    sceneTime = Math.max(0, Number(atTime) || 0);
+    transitioning = false;
+    transitionProgress = 0;
+    debugFreeze = !!freeze;
+    nova64.ui.clearButtons();
+    _local_setupScene(currentScene);
+    updateCurrentScene(0);
+    updateCamera(0);
+    exposeDebugState();
+  };
+  exposeDebugState();
+}
 
 function resetRandom(seed = 0x64d00d) {
   rngState = seed >>> 0;
@@ -117,6 +150,7 @@ export async function init() {
   console.log('========================================');
   console.log('Initial gameState:', gameState);
   resetRandom();
+  installDebugControls();
 
   // Initial camera setup
   nova64.camera.setCameraPosition(camera.x, camera.y, camera.z);
@@ -345,6 +379,11 @@ async function createParticleField() {
 }
 
 export function update(dt) {
+  if (debugFreeze) {
+    exposeDebugState();
+    return;
+  }
+
   gameTime += dt;
 
   // Start screen state
@@ -385,6 +424,7 @@ export function update(dt) {
     // Animate start scene objects
     updateStartSceneAnimation(dt);
     _local_updateParticles(dt);
+    exposeDebugState();
 
     return;
   }
@@ -443,6 +483,7 @@ export function update(dt) {
   updateCurrentScene(dt);
   updateCamera(dt);
   _local_updateParticles(dt);
+  exposeDebugState();
 }
 
 function updateStartSceneAnimation(dt) {

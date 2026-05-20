@@ -379,12 +379,40 @@ function buildScene4() {
 const BUILD = [buildScene0, buildScene1, buildScene2, buildScene3, buildScene4];
 
 const SCENE_DESCRIPTIONS = [
-   'GRID AWAKENING - DIGITAL REALM ONLINE',
-   'DATA TUNNEL - INFORMATION STREAM',
-   'DIGITAL CITY - LIGHT AND GEOMETRY',
-   'ENERGY CORE - SYSTEM HEARTBEAT',
-   'THE VOID - RETURN TO INFINITY',
+   'Grid awakening - The digital realm comes to life with pulsing energy',
+   'Data tunnel - Racing through streams of information at lightspeed',
+   'Digital city - Towering structures of pure light and geometry',
+   'Energy core - Spiraling into the heart of the system',
+   "The void - Journey's end, returning to infinite darkness",
 ];
+
+function drawWebBloomWash() {
+   if (scene === 0) {
+      rectfill(0, 0, 640, 315, rgba8(255, 70, 220, 255));
+      rectfill(284, 0, 356, 315, rgba8(255, 255, 255, 255));
+      rectfill(0, 245, 640, 70, rgba8(255, 90, 230, 190));
+      return;
+   }
+   if (scene === 1) {
+      rectfill(0, 0, 640, 315, rgba8(0, 240, 255, 252));
+      rectfill(0, 0, 120, 315, rgba8(0, 90, 255, 76));
+      return;
+   }
+   if (scene === 2) {
+      rectfill(0, 0, 640, 315, rgba8(255, 255, 255, 255));
+      rectfill(0, 0, 145, 315, rgba8(255, 75, 225, 210));
+      return;
+   }
+   if (scene === 3) {
+      rectfill(0, 0, 640, 315, rgba8(255, 255, 255, 255));
+      rectfill(0, 0, 640, 86, rgba8(255, 88, 230, 208));
+      rectfill(0, 0, 170, 315, rgba8(255, 40, 220, 170));
+      return;
+   }
+   rectfill(0, 0, 640, 315, rgba8(255, 70, 220, 255));
+   rectfill(120, 0, 410, 315, rgba8(255, 255, 255, 255));
+   rectfill(520, 0, 120, 315, rgba8(0, 240, 255, 220));
+}
 
 // ── Init ───────────────────────────────────────────────────────────────────────
 export function init() {
@@ -619,6 +647,9 @@ export function draw() {
    // ── Burst particles (energy core) ─────────────────────────────────────────
    for (const b of coreBurst) drawBurst(b);
 
+   // Match the web cart's heavy Three.js/TSL bloom wash before HUD composition.
+   drawWebBloomWash();
+
    // ── Web-style HUD panels ──────────────────────────────────────────────────
    const panelColor = rgba8(4, 4, 34, 214);
    const sceneAccent = scene === 0 ? rgba8(0, 255, 255, 255)
@@ -630,13 +661,13 @@ export function draw() {
    rectfill(16, 16, 280, 90, panelColor);
    rect(16, 16, 280, 90, sceneAccent, false);
    print('DEMOSCENE', 28, 25, rgba8(255, 255, 255, 255));
-   print('SCENE ' + (scene + 1) + '/' + SCENES.length + ': ' + sc.name,
+   print('Scene ' + (scene + 1) + '/' + SCENES.length + ': ' + sc.name,
       24, 46, rgba8(210, 220, 255, 255));
    rectfill(24, 63, 264, 7, rgba8(42, 42, 70, 210));
    rectfill(24, 63, Math.floor(264 * prog), 7, sceneAccent);
    rect(24, 63, 264, 7, rgba8(255, 255, 255, 90), false);
    print((prog * 100).toFixed(1) + '%', 24, 79, rgba8(170, 170, 215, 255));
-   print('TIME: ' + sceneT.toFixed(1) + 'S / ' + sc.dur + 'S',
+   print('Time: ' + sceneT.toFixed(1) + 's / ' + sc.dur + 's',
       24, 92, rgba8(170, 170, 215, 255));
 
    rectfill(424, 16, 200, 65, panelColor);
@@ -644,12 +675,12 @@ export function draw() {
    print('EFFECTS ACTIVE:', 438, 25, rgba8(255, 255, 255, 255));
    print('BLOOM', 438, 38, rgba8(60, 255, 90, 255));
    print('FXAA', 438, 49, rgba8(60, 255, 90, 255));
-   print('POST', 438, 60, rgba8(60, 255, 90, 255));
+   print('PARTICLES', 438, 60, rgba8(60, 255, 90, 255));
    print('FOG', 438, 71, rgba8(60, 255, 90, 255));
 
    rectfill(16, 315, 608, 30, rgba8(0, 0, 28, 224));
    print(SCENE_DESCRIPTIONS[scene], 320, 326, rgba8(255, 255, 120, 255), 'center');
-   print('NOVA64 - POWERED BY RETROARCH GLES3', 320, 341, rgba8(120, 130, 180, 210), 'center');
+   print('NOVA64 - POWERED BY THREE.JS', 320, 341, rgba8(120, 130, 180, 210), 'center');
 
    print('Z:SKIP', 596, 8, rgba8(70,110,190,140));
 

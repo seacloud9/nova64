@@ -87,13 +87,13 @@ canonical repository instructions in `../AGENTS.md`.
 - Original full run completed successfully with average conservative perceptual
   score `49.0`.
 - Latest exact-scene full run completed successfully with average visual score
-  `85.6` and strict average `84.5`.
+  `85.5` and strict average `84.4` after the GLES sphere geometry fix.
 - Latest per-scene visual report:
-  - s0 GRID_AWAKENING: `86.5`
-  - s1 DATA_TUNNEL: `86.0`
+  - s0 GRID_AWAKENING: `85.4`
+  - s1 DATA_TUNNEL: `85.8`
   - s2 DIGITAL_CITY: `86.5`
-  - s3 ENERGY_CORE: `85.6`
-  - s4 THE_VOID: `83.6`
+  - s3 ENERGY_CORE: `85.8`
+  - s4 THE_VOID: `84.0`
 
 ### Follow-up parity tuning
 - RetroArch scene 1 no longer uses an over-dark left cyan field; it now matches
@@ -105,6 +105,18 @@ canonical repository instructions in `../AGENTS.md`.
 - Manual scanline and raw-canvas capture experiments were rejected because they
   lowered the trend score; the current comparator intentionally tracks the
   displayed web console surface.
+
+### GLES sphere rendering fix
+- User noticed spheres sometimes looked wrong in RetroArch. Investigation found
+  the GLES path was drawing `createSphere()` with a 6-vertex octahedron proxy
+  and only 24 indices.
+- Replaced the GLES sphere buffer with a generated 12x16 UV sphere
+  (`1152` indices), and routed sphere shadows, instanced sphere draws, and the
+  capsule/cylinder proxy paths through the new index count.
+- Updated affected GLES conformance checksums for sphere, overlay scene,
+  lighting, mesh helpers, post effects, material, capsule, cylinder, get3d
+  stats, clear scene, destroy mesh, shadow map, and normal map.
+- Focused capture: `retroarch/build/sphere-uv-gles.png`.
 
 ### Caveat
 - The metric is now useful as a trend baseline, but it still penalizes

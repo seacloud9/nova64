@@ -1616,6 +1616,14 @@ struct nova64_music_state {
 static struct nova64_music_state music_state;
 static struct nova64_js_host js_host;
 static struct nova64_gles_backend gles;
+enum {
+   NOVA64_GLES_SPHERE_LAT_SEGMENTS = 12,
+   NOVA64_GLES_SPHERE_LON_SEGMENTS = 16,
+   NOVA64_GLES_SPHERE_VERTEX_COUNT =
+      (NOVA64_GLES_SPHERE_LAT_SEGMENTS + 1) * (NOVA64_GLES_SPHERE_LON_SEGMENTS + 1),
+   NOVA64_GLES_SPHERE_INDEX_COUNT =
+      NOVA64_GLES_SPHERE_LAT_SEGMENTS * NOVA64_GLES_SPHERE_LON_SEGMENTS * 6
+};
 static enum nova64_renderer_backend renderer_preference = NOVA64_RENDERER_GLES3;
 static struct retro_hw_render_callback hw_render;
 static enum retro_pixel_format pixel_format = RETRO_PIXEL_FORMAT_RGB565;
@@ -30155,7 +30163,8 @@ static void render_gles_shadow_pass(const float light_vp[16])
          case NOVA64_MESH_SPHERE:
          case NOVA64_MESH_CAPSULE:
          case NOVA64_MESH_CYLINDER:
-            vbo = gles.sphere_vbo; ibo = gles.sphere_ibo; idx_count = 24; break;
+            vbo = gles.sphere_vbo; ibo = gles.sphere_ibo;
+            idx_count = NOVA64_GLES_SPHERE_INDEX_COUNT; break;
          case NOVA64_MESH_CUSTOM:
             if (!mesh->gl_custom_vbo || !mesh->gl_custom_ibo || !mesh->custom_index_count) continue;
             vbo = mesh->gl_custom_vbo; ibo = mesh->gl_custom_ibo;
@@ -30274,6 +30283,66 @@ static void gles_destroy_resources(void)
    gles.resources_ready = false;
 }
 
+static bool gles_upload_sphere_geometry(void)
+{
+   GLfloat *vertices = (GLfloat *)calloc((size_t)NOVA64_GLES_SPHERE_VERTEX_COUNT * 6,
+      sizeof(GLfloat));
+   unsigned short *indices = (unsigned short *)malloc(
+      (size_t)NOVA64_GLES_SPHERE_INDEX_COUNT * sizeof(unsigned short));
+   if (!vertices || !indices) {
+      free(vertices);
+      free(indices);
+      return false;
+   }
+
+   for (int lat = 0; lat <= NOVA64_GLES_SPHERE_LAT_SEGMENTS; lat++) {
+      float v = (float)lat / (float)NOVA64_GLES_SPHERE_LAT_SEGMENTS;
+      float theta = v * (float)M_PI;
+      float sy = cosf(theta);
+      float sr = sinf(theta);
+      for (int lon = 0; lon <= NOVA64_GLES_SPHERE_LON_SEGMENTS; lon++) {
+         float u = (float)lon / (float)NOVA64_GLES_SPHERE_LON_SEGMENTS;
+         float phi = u * (float)M_PI * 2.0f;
+         float sx = cosf(phi) * sr;
+         float sz = sinf(phi) * sr;
+         int vi = (lat * (NOVA64_GLES_SPHERE_LON_SEGMENTS + 1) + lon) * 6;
+         vertices[vi + 0] = sx * 0.5f;
+         vertices[vi + 1] = sy * 0.5f;
+         vertices[vi + 2] = sz * 0.5f;
+         vertices[vi + 3] = sx;
+         vertices[vi + 4] = sy;
+         vertices[vi + 5] = sz;
+      }
+   }
+
+   int ii = 0;
+   for (int lat = 0; lat < NOVA64_GLES_SPHERE_LAT_SEGMENTS; lat++) {
+      for (int lon = 0; lon < NOVA64_GLES_SPHERE_LON_SEGMENTS; lon++) {
+         unsigned short a = (unsigned short)(lat * (NOVA64_GLES_SPHERE_LON_SEGMENTS + 1) + lon);
+         unsigned short b = (unsigned short)((lat + 1) * (NOVA64_GLES_SPHERE_LON_SEGMENTS + 1) + lon);
+         unsigned short c = (unsigned short)(b + 1);
+         unsigned short d = (unsigned short)(a + 1);
+         indices[ii++] = a; indices[ii++] = b; indices[ii++] = c;
+         indices[ii++] = a; indices[ii++] = c; indices[ii++] = d;
+      }
+   }
+
+   gles.GenBuffers(1, &gles.sphere_vbo);
+   gles.BindBuffer(GL_ARRAY_BUFFER, gles.sphere_vbo);
+   gles.BufferData(GL_ARRAY_BUFFER,
+      (GLsizeiptr)((size_t)NOVA64_GLES_SPHERE_VERTEX_COUNT * 6 * sizeof(GLfloat)),
+      vertices, GL_STATIC_DRAW);
+   gles.GenBuffers(1, &gles.sphere_ibo);
+   gles.BindBuffer(GL_ELEMENT_ARRAY_BUFFER, gles.sphere_ibo);
+   gles.BufferData(GL_ELEMENT_ARRAY_BUFFER,
+      (GLsizeiptr)((size_t)NOVA64_GLES_SPHERE_INDEX_COUNT * sizeof(unsigned short)),
+      indices, GL_STATIC_DRAW);
+
+   free(vertices);
+   free(indices);
+   return true;
+}
+
 static bool gles_init_resources(void)
 {
    if (gles.resources_ready)
@@ -30322,24 +30391,6 @@ static bool gles_init_resources(void)
    static const unsigned short plane_indices[] = {
       0, 1, 2, 0, 2, 3,
    };
-   static const GLfloat sphere_vertices[] = {
-       0.0f,  0.5f,  0.0f,  0.0f,  1.0f,  0.0f,
-       0.5f,  0.0f,  0.0f,  1.0f,  0.0f,  0.0f,
-       0.0f,  0.0f,  0.5f,  0.0f,  0.0f,  1.0f,
-      -0.5f,  0.0f,  0.0f, -1.0f,  0.0f,  0.0f,
-       0.0f,  0.0f, -0.5f,  0.0f,  0.0f, -1.0f,
-       0.0f, -0.5f,  0.0f,  0.0f, -1.0f,  0.0f,
-   };
-   static const unsigned short sphere_indices[] = {
-      0, 1, 2,
-      0, 2, 3,
-      0, 3, 4,
-      0, 4, 1,
-      5, 2, 1,
-      5, 3, 2,
-      5, 4, 3,
-      5, 1, 4,
-   };
    static const GLfloat overlay_vertices[] = {
       -1.0f, -1.0f, 0.0f, 1.0f,
        1.0f, -1.0f, 1.0f, 1.0f,
@@ -30376,12 +30427,8 @@ static bool gles_init_resources(void)
    gles.BindBuffer(GL_ELEMENT_ARRAY_BUFFER, gles.plane_ibo);
    gles.BufferData(GL_ELEMENT_ARRAY_BUFFER, (GLsizeiptr)sizeof(plane_indices), plane_indices, GL_STATIC_DRAW);
 
-   gles.GenBuffers(1, &gles.sphere_vbo);
-   gles.BindBuffer(GL_ARRAY_BUFFER, gles.sphere_vbo);
-   gles.BufferData(GL_ARRAY_BUFFER, (GLsizeiptr)sizeof(sphere_vertices), sphere_vertices, GL_STATIC_DRAW);
-   gles.GenBuffers(1, &gles.sphere_ibo);
-   gles.BindBuffer(GL_ELEMENT_ARRAY_BUFFER, gles.sphere_ibo);
-   gles.BufferData(GL_ELEMENT_ARRAY_BUFFER, (GLsizeiptr)sizeof(sphere_indices), sphere_indices, GL_STATIC_DRAW);
+   if (!gles_upload_sphere_geometry())
+      return false;
 
    gles.GenBuffers(1, &gles.overlay_vbo);
    gles.BindBuffer(GL_ARRAY_BUFFER, gles.overlay_vbo);
@@ -30803,18 +30850,21 @@ static void render_gles_torus(struct nova64_mesh *mesh, const float view_project
 
 static void render_gles_sphere(const struct nova64_mesh *mesh, const float view_projection[16])
 {
-   render_gles_primitive(mesh, view_projection, gles.sphere_vbo, gles.sphere_ibo, 24);
+   render_gles_primitive(mesh, view_projection, gles.sphere_vbo, gles.sphere_ibo,
+      NOVA64_GLES_SPHERE_INDEX_COUNT);
 }
 
 /* Capsule and cylinder use the sphere proxy geometry until dedicated VBOs are built */
 static void render_gles_capsule(const struct nova64_mesh *mesh, const float view_projection[16])
 {
-   render_gles_primitive(mesh, view_projection, gles.sphere_vbo, gles.sphere_ibo, 24);
+   render_gles_primitive(mesh, view_projection, gles.sphere_vbo, gles.sphere_ibo,
+      NOVA64_GLES_SPHERE_INDEX_COUNT);
 }
 
 static void render_gles_cylinder(const struct nova64_mesh *mesh, const float view_projection[16])
 {
-   render_gles_primitive(mesh, view_projection, gles.sphere_vbo, gles.sphere_ibo, 24);
+   render_gles_primitive(mesh, view_projection, gles.sphere_vbo, gles.sphere_ibo,
+      NOVA64_GLES_SPHERE_INDEX_COUNT);
 }
 
 static void render_gles_custom_mesh(struct nova64_mesh *mesh, const float view_projection[16])
@@ -30848,10 +30898,13 @@ static void render_gles_instanced_mesh(const struct nova64_mesh *mesh, const flo
 
    GLuint vbo, ibo; GLsizei idx_count;
    switch (mesh->instance_geometry) {
-      case 1: vbo = gles.sphere_vbo; ibo = gles.sphere_ibo; idx_count = 24; break;
+      case 1: vbo = gles.sphere_vbo; ibo = gles.sphere_ibo;
+         idx_count = NOVA64_GLES_SPHERE_INDEX_COUNT; break;
       case 2: vbo = gles.plane_vbo;  ibo = gles.plane_ibo;  idx_count = 6;  break;
-      case 3: /* capsule */ vbo = gles.sphere_vbo; ibo = gles.sphere_ibo; idx_count = 24; break;
-      case 4: /* cylinder */ vbo = gles.sphere_vbo; ibo = gles.sphere_ibo; idx_count = 24; break;
+      case 3: /* capsule */ vbo = gles.sphere_vbo; ibo = gles.sphere_ibo;
+         idx_count = NOVA64_GLES_SPHERE_INDEX_COUNT; break;
+      case 4: /* cylinder */ vbo = gles.sphere_vbo; ibo = gles.sphere_ibo;
+         idx_count = NOVA64_GLES_SPHERE_INDEX_COUNT; break;
       default: vbo = gles.cube_vbo; ibo = gles.cube_ibo; idx_count = 36; break;
    }
 

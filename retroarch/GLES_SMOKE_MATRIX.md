@@ -51,3 +51,11 @@ When you smoke-test on a new platform, add a row to the matrix above with:
 Automated conformance checksums live in `tests/run_conformance.sh` and are
 the ground truth for pixel-exact regression testing. This file is for
 real-driver integration notes only.
+
+## 2026-05-20 note
+
+- GLES sphere smoke coverage was refreshed after replacing the old octahedron
+  sphere proxy with a generated 12x16 UV sphere. Headless Mesa capture:
+  `retroarch/build/sphere-uv-gles.png`.
+- Affected GLES conformance locks were updated for sphere-based carts and the
+  capsule/cylinder proxy paths.

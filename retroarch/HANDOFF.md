@@ -46,8 +46,12 @@ Latest continuation:
 - Follow-up bloom-wash tuning softened scene 0 and scene 3 transition bands,
   corrected scene 1's over-dark left cyan field, and reshaped scene 4's final
   void wash to better match the displayed web capture.
-- Current comparator baseline: average visual score `85.6`, strict average
-  `84.5` across five sampled beats. This is up from the original `49.0`
+- GLES spheres now use a real 12x16 UV sphere buffer instead of the old 6-vertex
+  octahedron proxy. This fixes visibly faceted/diamond-like spheres in carts and
+  demoscene glow objects. Capsule/cylinder proxy paths and sphere shadow/instance
+  paths now use the same updated index count.
+- Current comparator baseline after the sphere fix: average visual score `85.5`,
+  strict average `84.4` across five sampled beats. This is up from the original `49.0`
   comparator baseline and the prior exact-scene `81.2` baseline. Remaining
   distance to 90 is mostly from hard-edged GLES/cart approximations versus the
   browser's Three.js/TSL shader gradients, display-scale scanline treatment, and

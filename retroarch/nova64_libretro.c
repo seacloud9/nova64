@@ -235,9 +235,11 @@ struct nova64_mesh {
    unsigned custom_index_count;
    unsigned gl_custom_vbo;    /* GPU buffer handles, 0 = not uploaded */
    unsigned gl_custom_ibo;
+   enum nova64_mesh_type gl_generated_type;
+   float gl_generated_scale[3];
    /* Instanced mesh (NOVA64_MESH_INSTANCED) */
    int instance_count;           /* number of instances */
-   int instance_geometry;        /* 0=cube 1=sphere 2=plane 3=capsule 4=cylinder */
+   int instance_geometry;        /* 0=cube 1=sphere 2=plane 3=capsule 4=cylinder 5=cone */
    float *instance_transforms;   /* instance_count * 16 floats (column-major mat4 per instance) */
    uint32_t *instance_colors;    /* per-instance color override (NULL = use mesh color) */
    bool *instance_visible;       /* per-instance visibility */
@@ -26007,8 +26009,8 @@ static JSValue js_destroy_render_target(JSContext *ctx, JSValueConst this_val, i
 static void render_gles_cube(const struct nova64_mesh *mesh, const float view_projection[16]);
 static void render_gles_plane(const struct nova64_mesh *mesh, const float view_projection[16]);
 static void render_gles_sphere(const struct nova64_mesh *mesh, const float view_projection[16]);
-static void render_gles_capsule(const struct nova64_mesh *mesh, const float view_projection[16]);
-static void render_gles_cylinder(const struct nova64_mesh *mesh, const float view_projection[16]);
+static void render_gles_capsule(struct nova64_mesh *mesh, const float view_projection[16]);
+static void render_gles_cylinder(struct nova64_mesh *mesh, const float view_projection[16]);
 static void render_gles_cone(const struct nova64_mesh *mesh, const float view_projection[16]);
 static void render_gles_torus(struct nova64_mesh *mesh, const float view_projection[16]);
 static void render_gles_custom_mesh(struct nova64_mesh *mesh, const float view_projection[16]);
@@ -26017,6 +26019,8 @@ static bool gles_any_cast_shadow_mesh(void);
 static bool gles_init_shadow_resources(void);
 static void build_shadow_light_vp(float out[16]);
 static void render_gles_shadow_pass(const float light_vp[16]);
+static bool gles_ensure_capsule_mesh(struct nova64_mesh *mesh);
+static bool gles_ensure_cylinder_mesh(struct nova64_mesh *mesh);
 static bool gles_load_functions(void);
 static bool gles_init_resources(void);
 static void render_gles_skybox(const float view[16], const float projection[16]);
@@ -30155,7 +30159,7 @@ static void render_gles_shadow_pass(const float light_vp[16])
    gles.UseProgram(gles.shadow_program);
 
    for (int i = 0; i < NOVA64_MAX_MESHES; i++) {
-      const struct nova64_mesh *mesh = &meshes[i];
+      struct nova64_mesh *mesh = &meshes[i];
       if (!mesh->used || !mesh->visible || !mesh->cast_shadow || mesh->opacity <= 0.0f)
          continue;
       float model[16], shadow_mvp[16];
@@ -30170,10 +30174,16 @@ static void render_gles_shadow_pass(const float light_vp[16])
          case NOVA64_MESH_PLANE:
             vbo = gles.plane_vbo; ibo = gles.plane_ibo; idx_count = 6; break;
          case NOVA64_MESH_SPHERE:
-         case NOVA64_MESH_CAPSULE:
-         case NOVA64_MESH_CYLINDER:
             vbo = gles.sphere_vbo; ibo = gles.sphere_ibo;
             idx_count = NOVA64_GLES_SPHERE_INDEX_COUNT; break;
+         case NOVA64_MESH_CAPSULE:
+            if (!gles_ensure_capsule_mesh(mesh)) continue;
+            vbo = mesh->gl_custom_vbo; ibo = mesh->gl_custom_ibo;
+            idx_count = (GLsizei)mesh->custom_index_count; break;
+         case NOVA64_MESH_CYLINDER:
+            if (!gles_ensure_cylinder_mesh(mesh)) continue;
+            vbo = mesh->gl_custom_vbo; ibo = mesh->gl_custom_ibo;
+            idx_count = (GLsizei)mesh->custom_index_count; break;
          case NOVA64_MESH_CONE:
             vbo = gles.cone_vbo; ibo = gles.cone_ibo;
             idx_count = NOVA64_GLES_CONE_INDEX_COUNT; break;
@@ -30874,6 +30884,259 @@ static void render_gles_plane(const struct nova64_mesh *mesh, const float view_p
    render_gles_primitive(mesh, view_projection, gles.plane_vbo, gles.plane_ibo, 6);
 }
 
+static void gles_delete_mesh_gpu_buffers(struct nova64_mesh *mesh)
+{
+   if (!mesh || !gles.active || !gles.DeleteBuffers)
+      return;
+   if (mesh->gl_custom_vbo)
+      gles.DeleteBuffers(1, &mesh->gl_custom_vbo);
+   if (mesh->gl_custom_ibo)
+      gles.DeleteBuffers(1, &mesh->gl_custom_ibo);
+   mesh->gl_custom_vbo = 0;
+   mesh->gl_custom_ibo = 0;
+}
+
+static bool gles_generated_mesh_matches(const struct nova64_mesh *mesh, enum nova64_mesh_type type)
+{
+   return mesh->gl_generated_type == type &&
+      fabsf(mesh->gl_generated_scale[0] - mesh->scale[0]) < 0.0001f &&
+      fabsf(mesh->gl_generated_scale[1] - mesh->scale[1]) < 0.0001f &&
+      fabsf(mesh->gl_generated_scale[2] - mesh->scale[2]) < 0.0001f;
+}
+
+static void gles_mark_generated_mesh(struct nova64_mesh *mesh, enum nova64_mesh_type type)
+{
+   mesh->gl_generated_type = type;
+   mesh->gl_generated_scale[0] = mesh->scale[0];
+   mesh->gl_generated_scale[1] = mesh->scale[1];
+   mesh->gl_generated_scale[2] = mesh->scale[2];
+}
+
+static bool gles_ensure_capsule_mesh(struct nova64_mesh *mesh)
+{
+   enum { CAP_SEGMENTS = 24, CAP_HEMI_STEPS = 6,
+      CAP_RING_COUNT = CAP_HEMI_STEPS * 2 + 2,
+      CAP_VERTEX_COUNT = CAP_RING_COUNT * CAP_SEGMENTS,
+      CAP_INDEX_COUNT = (CAP_RING_COUNT - 1) * CAP_SEGMENTS * 6 };
+
+   if (!mesh)
+      return false;
+   if (mesh->gl_custom_vbo && mesh->gl_custom_ibo &&
+       gles_generated_mesh_matches(mesh, NOVA64_MESH_CAPSULE))
+      return true;
+   if (!gles.GenBuffers || !gles.BindBuffer || !gles.BufferData)
+      return false;
+
+   gles_delete_mesh_gpu_buffers(mesh);
+
+   float radius = fabsf(mesh->scale[0]) * 0.5f;
+   float total_height = fabsf(mesh->scale[1]);
+   if (radius < 0.0005f) radius = 0.0005f;
+   if (total_height < radius * 2.0f)
+      total_height = radius * 2.0f;
+   float cylinder_half = (total_height - radius * 2.0f) * 0.5f;
+
+   float *vertices = (float *)calloc((size_t)CAP_VERTEX_COUNT * 6, sizeof(float));
+   uint16_t *indices = (uint16_t *)malloc((size_t)CAP_INDEX_COUNT * sizeof(uint16_t));
+   if (!vertices || !indices) {
+      free(vertices);
+      free(indices);
+      return false;
+   }
+
+   for (int ring = 0; ring < CAP_RING_COUNT; ring++) {
+      float y = 0.0f;
+      float ring_radius = radius;
+      float normal_y = 0.0f;
+
+      if (ring <= CAP_HEMI_STEPS) {
+         float theta = ((float)ring / (float)CAP_HEMI_STEPS) * ((float)M_PI * 0.5f);
+         ring_radius = sinf(theta) * radius;
+         y = cylinder_half + cosf(theta) * radius;
+         normal_y = cosf(theta);
+      } else {
+         int lower = ring - (CAP_HEMI_STEPS + 1);
+         float theta = ((float)lower / (float)CAP_HEMI_STEPS) * ((float)M_PI * 0.5f);
+         ring_radius = cosf(theta) * radius;
+         y = -cylinder_half - sinf(theta) * radius;
+         normal_y = -sinf(theta);
+      }
+
+      float normal_radius = radius > 0.0f ? ring_radius / radius : 0.0f;
+      for (int i = 0; i < CAP_SEGMENTS; i++) {
+         float a = ((float)i / (float)CAP_SEGMENTS) * 6.28318530f;
+         float x = cosf(a);
+         float z = sinf(a);
+         int vi = (ring * CAP_SEGMENTS + i) * 6;
+         vertices[vi + 0] = x * ring_radius;
+         vertices[vi + 1] = y;
+         vertices[vi + 2] = z * ring_radius;
+         vertices[vi + 3] = x * normal_radius;
+         vertices[vi + 4] = normal_y;
+         vertices[vi + 5] = z * normal_radius;
+      }
+   }
+
+   int ii = 0;
+   for (int ring = 0; ring < CAP_RING_COUNT - 1; ring++) {
+      for (int i = 0; i < CAP_SEGMENTS; i++) {
+         uint16_t a = (uint16_t)(ring * CAP_SEGMENTS + i);
+         uint16_t b = (uint16_t)((ring + 1) * CAP_SEGMENTS + i);
+         uint16_t c = (uint16_t)((ring + 1) * CAP_SEGMENTS + ((i + 1) % CAP_SEGMENTS));
+         uint16_t d = (uint16_t)(ring * CAP_SEGMENTS + ((i + 1) % CAP_SEGMENTS));
+         indices[ii++] = a; indices[ii++] = b; indices[ii++] = c;
+         indices[ii++] = a; indices[ii++] = c; indices[ii++] = d;
+      }
+   }
+
+   gles.GenBuffers(1, &mesh->gl_custom_vbo);
+   gles.BindBuffer(GL_ARRAY_BUFFER, mesh->gl_custom_vbo);
+   gles.BufferData(GL_ARRAY_BUFFER,
+      (GLsizeiptr)((size_t)CAP_VERTEX_COUNT * 6 * sizeof(float)),
+      vertices, GL_STATIC_DRAW);
+   gles.GenBuffers(1, &mesh->gl_custom_ibo);
+   gles.BindBuffer(GL_ELEMENT_ARRAY_BUFFER, mesh->gl_custom_ibo);
+   gles.BufferData(GL_ELEMENT_ARRAY_BUFFER,
+      (GLsizeiptr)((size_t)CAP_INDEX_COUNT * sizeof(uint16_t)),
+      indices, GL_STATIC_DRAW);
+   gles.BindBuffer(GL_ARRAY_BUFFER, 0);
+   gles.BindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+
+   mesh->custom_index_count = (unsigned)CAP_INDEX_COUNT;
+   gles_mark_generated_mesh(mesh, NOVA64_MESH_CAPSULE);
+
+   free(vertices);
+   free(indices);
+   return true;
+}
+
+static bool gles_ensure_cylinder_mesh(struct nova64_mesh *mesh)
+{
+   enum { CYL_SEGMENTS = 32, CYL_VERTEX_COUNT = CYL_SEGMENTS * 4 + 2,
+      CYL_INDEX_COUNT = CYL_SEGMENTS * 12 };
+
+   if (!mesh)
+      return false;
+   if (mesh->gl_custom_vbo && mesh->gl_custom_ibo &&
+       gles_generated_mesh_matches(mesh, NOVA64_MESH_CYLINDER))
+      return true;
+   if (!gles.GenBuffers || !gles.BindBuffer || !gles.BufferData)
+      return false;
+
+   gles_delete_mesh_gpu_buffers(mesh);
+
+   float top_radius = fabsf(mesh->scale[0]) * 0.5f;
+   float height = fabsf(mesh->scale[1]);
+   float bottom_radius = fabsf(mesh->scale[2]) * 0.5f;
+   if (top_radius < 0.0005f) top_radius = 0.0005f;
+   if (bottom_radius < 0.0005f) bottom_radius = 0.0005f;
+   if (height < 0.001f) height = 0.001f;
+
+   float *vertices = (float *)calloc((size_t)CYL_VERTEX_COUNT * 6, sizeof(float));
+   uint16_t *indices = (uint16_t *)malloc((size_t)CYL_INDEX_COUNT * sizeof(uint16_t));
+   if (!vertices || !indices) {
+      free(vertices);
+      free(indices);
+      return false;
+   }
+
+   float half_h = height * 0.5f;
+   float slope = (bottom_radius - top_radius) / height;
+   int top_side = 0;
+   int bottom_side = CYL_SEGMENTS;
+   int top_cap_center = CYL_SEGMENTS * 2;
+   int top_cap_ring = top_cap_center + 1;
+   int bottom_cap_center = top_cap_ring + CYL_SEGMENTS;
+   int bottom_cap_ring = bottom_cap_center + 1;
+
+   for (int i = 0; i < CYL_SEGMENTS; i++) {
+      float a = ((float)i / (float)CYL_SEGMENTS) * 6.28318530f;
+      float x = cosf(a);
+      float z = sinf(a);
+      float inv_len = 1.0f / sqrtf(x * x + slope * slope + z * z);
+      float nx = x * inv_len;
+      float ny = slope * inv_len;
+      float nz = z * inv_len;
+
+      int vi = (top_side + i) * 6;
+      vertices[vi + 0] = x * top_radius;
+      vertices[vi + 1] = half_h;
+      vertices[vi + 2] = z * top_radius;
+      vertices[vi + 3] = nx;
+      vertices[vi + 4] = ny;
+      vertices[vi + 5] = nz;
+
+      vi = (bottom_side + i) * 6;
+      vertices[vi + 0] = x * bottom_radius;
+      vertices[vi + 1] = -half_h;
+      vertices[vi + 2] = z * bottom_radius;
+      vertices[vi + 3] = nx;
+      vertices[vi + 4] = ny;
+      vertices[vi + 5] = nz;
+
+      vi = (top_cap_ring + i) * 6;
+      vertices[vi + 0] = x * top_radius;
+      vertices[vi + 1] = half_h;
+      vertices[vi + 2] = z * top_radius;
+      vertices[vi + 3] = 0.0f;
+      vertices[vi + 4] = 1.0f;
+      vertices[vi + 5] = 0.0f;
+
+      vi = (bottom_cap_ring + i) * 6;
+      vertices[vi + 0] = x * bottom_radius;
+      vertices[vi + 1] = -half_h;
+      vertices[vi + 2] = z * bottom_radius;
+      vertices[vi + 3] = 0.0f;
+      vertices[vi + 4] = -1.0f;
+      vertices[vi + 5] = 0.0f;
+   }
+
+   vertices[top_cap_center * 6 + 1] = half_h;
+   vertices[top_cap_center * 6 + 4] = 1.0f;
+   vertices[bottom_cap_center * 6 + 1] = -half_h;
+   vertices[bottom_cap_center * 6 + 4] = -1.0f;
+
+   int ii = 0;
+   for (int i = 0; i < CYL_SEGMENTS; i++) {
+      uint16_t t0 = (uint16_t)(top_side + i);
+      uint16_t t1 = (uint16_t)(top_side + ((i + 1) % CYL_SEGMENTS));
+      uint16_t b0 = (uint16_t)(bottom_side + i);
+      uint16_t b1 = (uint16_t)(bottom_side + ((i + 1) % CYL_SEGMENTS));
+      indices[ii++] = b0; indices[ii++] = t0; indices[ii++] = t1;
+      indices[ii++] = b0; indices[ii++] = t1; indices[ii++] = b1;
+   }
+   for (int i = 0; i < CYL_SEGMENTS; i++) {
+      uint16_t a = (uint16_t)(top_cap_ring + i);
+      uint16_t b = (uint16_t)(top_cap_ring + ((i + 1) % CYL_SEGMENTS));
+      indices[ii++] = (uint16_t)top_cap_center; indices[ii++] = a; indices[ii++] = b;
+   }
+   for (int i = 0; i < CYL_SEGMENTS; i++) {
+      uint16_t a = (uint16_t)(bottom_cap_ring + i);
+      uint16_t b = (uint16_t)(bottom_cap_ring + ((i + 1) % CYL_SEGMENTS));
+      indices[ii++] = (uint16_t)bottom_cap_center; indices[ii++] = b; indices[ii++] = a;
+   }
+
+   gles.GenBuffers(1, &mesh->gl_custom_vbo);
+   gles.BindBuffer(GL_ARRAY_BUFFER, mesh->gl_custom_vbo);
+   gles.BufferData(GL_ARRAY_BUFFER,
+      (GLsizeiptr)((size_t)CYL_VERTEX_COUNT * 6 * sizeof(float)),
+      vertices, GL_STATIC_DRAW);
+   gles.GenBuffers(1, &mesh->gl_custom_ibo);
+   gles.BindBuffer(GL_ELEMENT_ARRAY_BUFFER, mesh->gl_custom_ibo);
+   gles.BufferData(GL_ELEMENT_ARRAY_BUFFER,
+      (GLsizeiptr)((size_t)CYL_INDEX_COUNT * sizeof(uint16_t)),
+      indices, GL_STATIC_DRAW);
+   gles.BindBuffer(GL_ARRAY_BUFFER, 0);
+   gles.BindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+
+   mesh->custom_index_count = (unsigned)CYL_INDEX_COUNT;
+   gles_mark_generated_mesh(mesh, NOVA64_MESH_CYLINDER);
+
+   free(vertices);
+   free(indices);
+   return true;
+}
+
 /* Torus renderer — generates and caches per-mesh VBO using actual majorR/tubeR from scale[0,1].
    The ring lies in the XY plane (perpendicular to Z) so it looks like a ring when flown through. */
 static void render_gles_torus(struct nova64_mesh *mesh, const float view_projection[16])
@@ -30950,17 +31213,30 @@ static void render_gles_sphere(const struct nova64_mesh *mesh, const float view_
       NOVA64_GLES_SPHERE_INDEX_COUNT);
 }
 
-/* Capsule and cylinder use the sphere proxy geometry until dedicated VBOs are built */
-static void render_gles_capsule(const struct nova64_mesh *mesh, const float view_projection[16])
+static void render_gles_capsule(struct nova64_mesh *mesh, const float view_projection[16])
 {
-   render_gles_primitive(mesh, view_projection, gles.sphere_vbo, gles.sphere_ibo,
-      NOVA64_GLES_SPHERE_INDEX_COUNT);
+   if (!gles_ensure_capsule_mesh(mesh))
+      return;
+
+   struct nova64_mesh draw_mesh = *mesh;
+   draw_mesh.scale[0] = 1.0f;
+   draw_mesh.scale[1] = 1.0f;
+   draw_mesh.scale[2] = 1.0f;
+   render_gles_primitive(&draw_mesh, view_projection, mesh->gl_custom_vbo, mesh->gl_custom_ibo,
+      (GLsizei)mesh->custom_index_count);
 }
 
-static void render_gles_cylinder(const struct nova64_mesh *mesh, const float view_projection[16])
+static void render_gles_cylinder(struct nova64_mesh *mesh, const float view_projection[16])
 {
-   render_gles_primitive(mesh, view_projection, gles.sphere_vbo, gles.sphere_ibo,
-      NOVA64_GLES_SPHERE_INDEX_COUNT);
+   if (!gles_ensure_cylinder_mesh(mesh))
+      return;
+
+   struct nova64_mesh draw_mesh = *mesh;
+   draw_mesh.scale[0] = 1.0f;
+   draw_mesh.scale[1] = 1.0f;
+   draw_mesh.scale[2] = 1.0f;
+   render_gles_primitive(&draw_mesh, view_projection, mesh->gl_custom_vbo, mesh->gl_custom_ibo,
+      (GLsizei)mesh->custom_index_count);
 }
 
 static void render_gles_cone(const struct nova64_mesh *mesh, const float view_projection[16])

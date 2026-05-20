@@ -57,8 +57,12 @@ real-driver integration notes only.
 - GLES sphere smoke coverage was refreshed after replacing the old octahedron
   sphere proxy with a generated 12x16 UV sphere. Headless Mesa capture:
   `retroarch/build/sphere-uv-gles.png`.
-- Affected GLES conformance locks were updated for sphere-based carts and the
-  capsule/cylinder proxy paths.
+- Affected GLES conformance locks were updated for sphere-based carts.
 - GLES cone smoke coverage was added for the new real cone primitive:
   `retroarch/build/gles-cone-primitive.png`. `space-shooter.js` also captures
   the pointed player ship at `retroarch/build/space-shooter-cone-gles.png`.
+- GLES capsule/cylinder smoke coverage was added for the new generated geometry
+  paths:
+  - `retroarch/build/gles-capsule-primitive.png`
+  - `retroarch/build/gles-cylinder-primitive.png`
+  - `retroarch/build/dungeon-crawler-cylinder-gles.png`

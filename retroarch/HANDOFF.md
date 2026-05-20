@@ -48,12 +48,17 @@ Latest continuation:
   void wash to better match the displayed web capture.
 - GLES spheres now use a real 12x16 UV sphere buffer instead of the old 6-vertex
   octahedron proxy. This fixes visibly faceted/diamond-like spheres in carts and
-  demoscene glow objects. Capsule/cylinder proxy paths and sphere shadow/instance
-  paths now use the same updated index count.
+  demoscene glow objects. Sphere shadow/instance paths now use the same updated
+  index count.
 - GLES cones now use a real 32-segment cone mesh instead of falling through the
   cylinder/sphere proxy path. This affects direct `createCone()` draws,
   render-target scene draws, shadow rendering, and `createInstancedMesh('cone')`.
   `space-shooter.js` now shows a pointed player ship on the GLES path.
+- GLES capsules and cylinders now use real generated per-mesh VBO/IBO geometry
+  instead of the old sphere proxy. Capsules render as hemispheres plus a barrel;
+  cylinders respect separate top/bottom radii, including tapered cylinders.
+  Main scene draws, render-target draws, and shadow passes all share the same
+  generated buffers.
 - Current comparator baseline after the sphere fix: average visual score `85.5`,
   strict average `84.4` across five sampled beats. This is up from the original `49.0`
   comparator baseline and the prior exact-scene `81.2` baseline. Remaining
@@ -115,6 +120,11 @@ retroarch/build/harness retroarch/nova64_libretro.so retroarch/conformance/gles-
 retroarch/build/harness retroarch/nova64_libretro.so retroarch/conformance/gles-instance-colors.js --gles --frames 3 --expect abcd5e293f0c7187
 retroarch/build/harness retroarch/nova64_libretro.so retroarch/conformance/gles-torus-scale.js --gles --frames 3 --expect db701fac656d76cd
 retroarch/build/harness retroarch/nova64_libretro.so retroarch/conformance/gles-overlay-orientation.js --gles --frames 3 --expect 837f452f8df778a3
+NOVA64_GLES_TESTS=1 retroarch/tests/run_conformance.sh --from 44 --to 45 --skip-build
+retroarch/build/harness retroarch/nova64_libretro.so retroarch/conformance/gles-capsule-primitive.js --gles --frames 30 --expect 9d391e819fbf015c
+retroarch/build/harness retroarch/nova64_libretro.so retroarch/conformance/gles-cylinder-primitive.js --gles --frames 30 --expect 1e4f4200a01e2927
+pnpm run retroarch:visual:demoscene
+pnpm run mempalace:mine:retroarch
 ```
 
 Latest local visual captures from this pass:
@@ -139,6 +149,9 @@ retroarch/build/demoscene-browser-canvas-s0-current.png
 retroarch/build/demoscene-browser-canvas-s0-late-current.png
 retroarch/build/demoscene-webparity-s0-sunmatch6.png
 retroarch/build/demoscene-parity/report.json
+retroarch/build/gles-capsule-primitive.png
+retroarch/build/gles-cylinder-primitive.png
+retroarch/build/dungeon-crawler-cylinder-gles.png
 ```
 
 Remaining parity work:

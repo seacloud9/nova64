@@ -495,7 +495,7 @@ destroyRenderTarget(rtHandle)
 ### Instanced Mesh
 
 ```js
-createInstancedMesh(geometry, count)         // geometry: 'cube'|'sphere'|'plane'|'capsule'|'cylinder'
+createInstancedMesh(geometry, count)         // geometry: 'cube'|'sphere'|'plane'|'capsule'|'cylinder'|'cone'
 setInstanceTransform(mesh, index, mat16)     // mat16: 16-element column-major Float32 model matrix
 getInstanceCount(mesh)                       // returns instance count
 ```

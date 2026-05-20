@@ -489,8 +489,8 @@ run_case "nova manifest main" "${PACKAGE_DIR}/cube-manifest.nova" "e5898ee6b3ae4
 run_command_log_case "nova-asset-manifest" "${PACKAGE_DIR}/asset-manifest.nova" "5d839b3ea526b233d21fdce08190848adc73a7ba8f4d88d5cc7d24105b3d6f34"
 
 run_visual_case "33 music api" "33-music" "retroarch/conformance/33-music.js" "0b4d0a8036b90b97"
-run_visual_case "44 capsule" "44-capsule" "retroarch/conformance/44-capsule.js" "c51b2dff390ec6c6"
-run_visual_case "45 cylinder" "45-cylinder" "retroarch/conformance/45-cylinder.js" "785788ba3eea532a"
+run_visual_case "44 capsule" "44-capsule" "retroarch/conformance/44-capsule.js" "65a1cc1395e81d96"
+run_visual_case "45 cylinder" "45-cylinder" "retroarch/conformance/45-cylinder.js" "24497981dc726b1a"
 run_visual_case "46 blend2d" "46-blend2d" "retroarch/conformance/46-blend2d.js" "db4581a1620a7c61"
 run_visual_case "47 camera ortho" "47-camera-ortho" "retroarch/conformance/47-camera-ortho.js" "532d5901f05725cb"
 run_visual_case "48 sky color" "48-sky-color" "retroarch/conformance/48-sky-color.js" "1424cfc7aac2238b"
@@ -577,8 +577,8 @@ run_gles_case "18 mesh helpers"       "18-mesh-helpers"        "retroarch/confor
 run_gles_case "19 texture"            "19-texture"             "retroarch/conformance/19-texture.js"             "e06b4c2bc33b02dc"
 run_gles_case "21 post effects"       "21-post-effects"        "retroarch/conformance/21-post-effects.js"        "8ec607d13ab472d5"
 run_gles_case "22 material"           "22-material"            "retroarch/conformance/22-material.js"            "5ee01819ceed29f8"
-run_gles_case "44 capsule"            "44-capsule"             "retroarch/conformance/44-capsule.js"             "d2206e93df2c301d"
-run_gles_case "45 cylinder"           "45-cylinder"            "retroarch/conformance/45-cylinder.js"            "a66bfa036bd5557e"
+run_gles_case "44 capsule"            "44-capsule"             "retroarch/conformance/44-capsule.js"             "669ba984311f506a"
+run_gles_case "45 cylinder"           "45-cylinder"            "retroarch/conformance/45-cylinder.js"            "a46f2a8d57faf4a0"
 run_gles_case "47 camera ortho"       "47-camera-ortho"        "retroarch/conformance/47-camera-ortho.js"        "3f8946cbd99395e5"
 run_gles_case "48 sky color"          "48-sky-color"           "retroarch/conformance/48-sky-color.js"           "0206ebaf1a171f24"
 run_gles_case "49 mesh material"      "49-mesh-material"       "retroarch/conformance/49-mesh-material.js"       "b1f7d650bd520d1d"
@@ -618,6 +618,8 @@ run_gles_case "GLES instance colors"  "gles-instance-colors"   "retroarch/confor
 run_gles_case "GLES torus scale"      "gles-torus-scale"       "retroarch/conformance/gles-torus-scale.js"       "db701fac656d76cd" 3
 run_gles_case "GLES overlay orientation" "gles-overlay-orientation" "retroarch/conformance/gles-overlay-orientation.js" "837f452f8df778a3" 3
 run_gles_case "GLES cone primitive"   "gles-cone-primitive"    "retroarch/conformance/gles-cone-primitive.js"    "84341bf183c85fa6" 30
+run_gles_case "GLES capsule primitive" "gles-capsule-primitive" "retroarch/conformance/gles-capsule-primitive.js" "9d391e819fbf015c" 30
+run_gles_case "GLES cylinder primitive" "gles-cylinder-primitive" "retroarch/conformance/gles-cylinder-primitive.js" "1e4f4200a01e2927" 30
 
 run_visual_case "113 math utils"    "113-math-utils"    "retroarch/conformance/113-math-utils.js"    "00d37dc756a875d0"
 run_visual_case "114 camera orbit"  "114-camera-orbit"  "retroarch/conformance/114-camera-orbit.js"  "700cde1a721f5d04"

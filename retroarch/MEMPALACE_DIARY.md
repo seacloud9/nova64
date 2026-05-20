@@ -111,8 +111,8 @@ canonical repository instructions in `../AGENTS.md`.
   the GLES path was drawing `createSphere()` with a 6-vertex octahedron proxy
   and only 24 indices.
 - Replaced the GLES sphere buffer with a generated 12x16 UV sphere
-  (`1152` indices), and routed sphere shadows, instanced sphere draws, and the
-  capsule/cylinder proxy paths through the new index count.
+  (`1152` indices), and routed sphere shadows and instanced sphere draws through
+  the new index count.
 - Updated affected GLES conformance checksums for sphere, overlay scene,
   lighting, mesh helpers, post effects, material, capsule, cylinder, get3d
   stats, clear scene, destroy mesh, shadow map, and normal map.
@@ -127,6 +127,23 @@ canonical repository instructions in `../AGENTS.md`.
 - Focused captures:
   - `retroarch/build/gles-cone-primitive.png`
   - `retroarch/build/space-shooter-cone-gles.png`
+
+### GLES capsule/cylinder primitives
+- `createCapsule()` and `createCylinder()` no longer draw as sphere proxies on
+  the GLES path.
+- Added generated per-mesh VBO/IBO caches for capsule and cylinder geometry.
+  The cylinder path keeps separate top and bottom radii, so tapered cylinders
+  render correctly; the capsule path builds two hemispheres plus the middle
+  barrel.
+- Shadow rendering and render-target scene draws reuse the same generated
+  buffers.
+- Added GLES-only conformance carts:
+  - `retroarch/conformance/gles-capsule-primitive.js`
+  - `retroarch/conformance/gles-cylinder-primitive.js`
+- Focused captures:
+  - `retroarch/build/gles-capsule-primitive.png`
+  - `retroarch/build/gles-cylinder-primitive.png`
+  - `retroarch/build/dungeon-crawler-cylinder-gles.png`
 
 ### Caveat
 - The metric is now useful as a trend baseline, but it still penalizes

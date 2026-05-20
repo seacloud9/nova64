@@ -71,6 +71,7 @@
     "retroarch:scons:debug": "scons -f retroarch/SConstruct DEBUG=1",
     "retroarch:test": "bash retroarch/tests/run_conformance.sh",
     "retroarch:test:recent": "bash retroarch/tests/run_conformance.sh --recent 2",
+    "retroarch:visual:demoscene": "node retroarch/tests/demoscene_visual_parity.mjs",
     "retroarch:validate": "pnpm run retroarch:test && pnpm run retroarch:build && pnpm run retroarch:build:debug && pnpm run retroarch:scons:debug",
     "mempalace:mine": "bash -lc 'cd ~/ai-tools && pipenv run mempalace mine /mnt/c/Users/brend/exp/nova64 --mode projects --wing nova64'",
     "mempalace:mine:runtime": "bash -lc 'cd ~/ai-tools && pipenv run mempalace mine /mnt/c/Users/brend/exp/nova64/runtime/ --mode projects --wing nova64_runtime'",

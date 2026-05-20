@@ -69,6 +69,34 @@ canonical repository instructions in `../AGENTS.md`.
   shader-style washout than the Three.js/TSL path, but the scene composition,
   HUD, palette, post pass, and dominant visual read now line up closely.
 
+## 2026-05-19 — Browser-vs-RetroArch visual comparator
+
+### What landed
+- Added `retroarch/tests/demoscene_visual_parity.mjs`.
+- Added `pnpm run retroarch:visual:demoscene`.
+- The script captures browser canvas screenshots, RetroArch GLES harness frames,
+  diff PNGs, and a JSON report under `retroarch/build/demoscene-parity/`.
+- It uses Playwright, `pixelmatch`, and `pngjs`; no new dependencies were needed.
+
+### Baseline result
+- Full run completed successfully.
+- Average conservative perceptual score: `49.0`.
+- Per-scene report:
+  - s0 GRID_AWAKENING: `41.3`
+  - s1 DATA_TUNNEL: `38.4`
+  - s2 DIGITAL_CITY: `67.6`
+  - s3 ENERGY_CORE: `51.7`
+  - s4 THE_VOID: `45.9`
+
+### Caveat
+- The metric is a trend baseline, not the human parity percentage. It heavily
+  penalizes shader washout and precise pixel placement differences between
+  Three.js and GLES.
+- Headless Chromium advances the heavy web demoscene slower than wall time after
+  scene 0, so later sampled browser beats can drift from the intended scene.
+  Scene 0 is reliable; all-scene hard gating needs calibrated waits or a
+  cart-state/debug hook.
+
 ## 2026-05-15 — M8 Shadow Maps + Normal Maps session
 
 ### What landed this session (commits 11e8309..b0ecd65)

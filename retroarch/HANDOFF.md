@@ -32,6 +32,18 @@ Latest continuation:
   captures. This is not an automated SSIM/LPIPS score; the next useful step is a
   small repeatable browser-vs-RetroArch capture comparator for all five scene
   beats.
+- Added a report-first comparator:
+  `pnpm run retroarch:visual:demoscene`. It captures browser canvas screenshots,
+  RetroArch GLES harness frames, diff PNGs, and `report.json` under
+  `retroarch/build/demoscene-parity/`.
+- Current comparator baseline: average perceptual score `49.0` across five
+  sampled beats. This number is intentionally conservative because it compares
+  Three.js shader washout against GLES geometry/post output. Use it for trend
+  tracking, not as the human parity percentage.
+- Tool caveat: headless Chromium advances the heavy web demoscene slower than
+  wall time after scene 0, so later sampled beats can drift from the intended
+  scene. Scene 0 is reliable; all-scene automation needs either calibrated waits
+  or a cart-state/debug hook before it should become a hard gate.
 
 - `cls()` / `clsGradient()` no longer draw the software 3D preview over an active
   GLES hardware scene.
@@ -110,6 +122,7 @@ retroarch/build/demoscene-webparity-s4-90pass.png
 retroarch/build/demoscene-browser-canvas-s0-current.png
 retroarch/build/demoscene-browser-canvas-s0-late-current.png
 retroarch/build/demoscene-webparity-s0-sunmatch6.png
+retroarch/build/demoscene-parity/report.json
 ```
 
 Remaining parity work:

@@ -49,8 +49,7 @@ export function init() {
    hp = maxHp; attackTimer = 0; invincTimer = 0;
 
    // Floor
-   floorMesh = createCube(ROOM_W * CELL, 0.1, rgba8(30, 40, 60, 255));
-   setScale(floorMesh, ROOM_W * CELL, 0.1, ROOM_H * CELL);
+   floorMesh = createCube(ROOM_W * CELL, 0.1, ROOM_H * CELL, rgba8(30, 40, 60, 255));
    setPosition(floorMesh, (ROOM_W - 1) * CELL / 2, -0.05, (ROOM_H - 1) * CELL / 2);
 
    // Walls via instanced mesh
@@ -72,7 +71,7 @@ export function init() {
 
    // Exit tile
    const [ex, ez] = tileToWorld(7, 5);
-   exitMesh = createCylinder(0.6, 0.08, rgba8(80, 255, 120, 200));
+   exitMesh = createCylinder(0.6, 0.6, 0.08, rgba8(80, 255, 120, 200));
    setPosition(exitMesh, ex, 0.04, ez);
 
    // Crystal on exit
@@ -86,7 +85,7 @@ export function init() {
    setPosition(player, px, 0.38, pz);
 
    // Attack swing indicator (thin cylinder)
-   swingMesh = createCylinder(0.06, 1.4, rgba8(255, 200, 40, 200));
+   swingMesh = createCylinder(0.06, 0.06, 1.4, rgba8(255, 200, 40, 200));
    setMeshVisible(swingMesh, false);
 
    // Enemies
@@ -99,7 +98,8 @@ export function init() {
    }
 
    // Camera: top-down perspective
-   setCamera([px, CAM_H, pz + 2], [px, 0, pz]);
+   setCameraPosition(px, CAM_H, pz + 2);
+   setCameraTarget(px, 0, pz);
 }
 
 function countTiles(v) {
@@ -126,7 +126,7 @@ function canMove(wx, wz) {
 
 // ─── Update ───────────────────────────────────────────────────────────────────
 export function update(dt) {
-   if (won || dead) { if (btnp(BUTTON_Z)) init(); return; }
+   if (won || dead) { if (btnp("z")) init(); return; }
    t += dt;
    attackTimer -= dt;
    invincTimer -= dt;
@@ -134,10 +134,10 @@ export function update(dt) {
    // Player move
    const spd = 4 * dt;
    let mx = 0, mz = 0;
-   if (btn(BUTTON_LEFT))  { mx -= spd; pAngle = -Math.PI / 2; }
-   if (btn(BUTTON_RIGHT)) { mx += spd; pAngle =  Math.PI / 2; }
-   if (btn(BUTTON_UP))    { mz -= spd; pAngle = Math.PI; }
-   if (btn(BUTTON_DOWN))  { mz += spd; pAngle = 0; }
+   if (btn("left"))  { mx -= spd; pAngle = -Math.PI / 2; }
+   if (btn("right")) { mx += spd; pAngle =  Math.PI / 2; }
+   if (btn("up"))    { mz -= spd; pAngle = Math.PI; }
+   if (btn("down"))  { mz += spd; pAngle = 0; }
 
    if (canMove(px + mx, pz))    px += mx;
    if (canMove(px, pz + mz))    pz += mz;
@@ -145,13 +145,14 @@ export function update(dt) {
    setRotation(player, 0, pAngle, 0);
 
    // Camera follows
-   setCamera([px, CAM_H, pz + 3], [px, 0, pz]);
+   setCameraPosition(px, CAM_H, pz + 3);
+   setCameraTarget(px, 0, pz);
 
    // Crystal spin
    setRotation(crystalMesh, t * 0.8, t * 1.2, 0);
 
    // Attack
-   const attacking = btnp(BUTTON_Z) && attackTimer <= 0;
+   const attacking = btnp("z") && attackTimer <= 0;
    if (attacking) {
       attackTimer = ATTACK_COOLDOWN;
       swingActive = true; swingAngle = 0;

@@ -10,13 +10,8 @@
 #include <time.h>
 #ifdef _WIN32
 #include <direct.h>
-#define WIN32_LEAN_AND_MEAN
-#define NOMINMAX
-#define VC_EXTRA_LEAN
-#include <windows.h>
 #else
 #include <dirent.h>
-#include <sys/time.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #endif
@@ -87,10 +82,8 @@ typedef unsigned char GLubyte;
 #define GL_ARRAY_BUFFER 0x8892
 #define GL_ELEMENT_ARRAY_BUFFER 0x8893
 #define GL_STATIC_DRAW 0x88E4
-#define GL_DYNAMIC_DRAW 0x88E8
 #define GL_FLOAT 0x1406
 #define GL_FALSE 0
-#define GL_TRUE 1
 #define GL_TRIANGLES 0x0004
 #define GL_UNSIGNED_SHORT 0x1403
 #define GL_TEXTURE_2D 0x0DE1
@@ -130,7 +123,6 @@ typedef void (*PFNGLBINDVERTEXARRAYPROC)(GLuint array);
 typedef void (*PFNGLDELETEVERTEXARRAYSPROC)(GLsizei n, const GLuint *arrays);
 typedef void (*PFNGLCLEARCOLORPROC)(GLfloat red, GLfloat green, GLfloat blue, GLfloat alpha);
 typedef void (*PFNGLCLEARPROC)(GLbitfield mask);
-typedef void (*PFNGLFINISHPROC)(void);
 typedef void (*PFNGLENABLEPROC)(GLenum cap);
 typedef void (*PFNGLDISABLEPROC)(GLenum cap);
 typedef GLuint (*PFNGLCREATESHADERPROC)(GLenum type);
@@ -159,8 +151,6 @@ typedef void (*PFNGLENABLEVERTEXATTRIBARRAYPROC)(GLuint index);
 typedef void (*PFNGLDISABLEVERTEXATTRIBARRAYPROC)(GLuint index);
 typedef void (*PFNGLVERTEXATTRIBPOINTERPROC)(GLuint index, GLint size, GLenum type, GLboolean normalized, GLsizei stride, const void *pointer);
 typedef void (*PFNGLDRAWELEMENTSPROC)(GLenum mode, GLsizei count, GLenum type, const void *indices);
-typedef void (*PFNGLDRAWELEMENTSINSTANCEDPROC)(GLenum mode, GLsizei count, GLenum type, const void *indices, GLsizei instancecount);
-typedef void (*PFNGLVERTEXATTRIBDIVISORPROC)(GLuint index, GLuint divisor);
 typedef void (*PFNGLGENTEXTURESPROC)(GLsizei n, GLuint *textures);
 typedef void (*PFNGLDELETETEXTURESPROC)(GLsizei n, const GLuint *textures);
 typedef void (*PFNGLACTIVETEXTUREPROC)(GLenum texture);
@@ -172,7 +162,6 @@ typedef void (*PFNGLUNIFORM1IPROC)(GLint location, GLint v0);
 typedef void (*PFNGLUNIFORM1FPROC)(GLint location, GLfloat v0);
 typedef void (*PFNGLUNIFORM2FPROC)(GLint location, GLfloat v0, GLfloat v1);
 typedef void (*PFNGLBLENDFUNCPROC)(GLenum sfactor, GLenum dfactor);
-typedef void (*PFNGLDEPTHMASKPROC)(GLboolean flag);
 /* FBO */
 typedef void (*PFNGLGENFRAMEBUFFERSPROC)(GLsizei n, GLuint *framebuffers);
 typedef void (*PFNGLBINDFRAMEBUFFERPROC)(GLenum target, GLuint framebuffer);
@@ -246,11 +235,9 @@ struct nova64_mesh {
    unsigned custom_index_count;
    unsigned gl_custom_vbo;    /* GPU buffer handles, 0 = not uploaded */
    unsigned gl_custom_ibo;
-   enum nova64_mesh_type gl_generated_type;
-   float gl_generated_scale[3];
    /* Instanced mesh (NOVA64_MESH_INSTANCED) */
    int instance_count;           /* number of instances */
-   int instance_geometry;        /* 0=cube 1=sphere 2=plane 3=capsule 4=cylinder 5=cone */
+   int instance_geometry;        /* 0=cube 1=sphere 2=plane 3=capsule 4=cylinder */
    float *instance_transforms;   /* instance_count * 16 floats (column-major mat4 per instance) */
    uint32_t *instance_colors;    /* per-instance color override (NULL = use mesh color) */
    bool *instance_visible;       /* per-instance visibility */
@@ -409,7 +396,6 @@ struct nova64_gles_backend {
    PFNGLVIEWPORTPROC Viewport;
    PFNGLCLEARCOLORPROC ClearColor;
    PFNGLCLEARPROC Clear;
-   PFNGLFINISHPROC Finish;
    PFNGLENABLEPROC Enable;
    PFNGLDISABLEPROC Disable;
    PFNGLCREATESHADERPROC CreateShader;
@@ -438,8 +424,6 @@ struct nova64_gles_backend {
    PFNGLDISABLEVERTEXATTRIBARRAYPROC DisableVertexAttribArray;
    PFNGLVERTEXATTRIBPOINTERPROC VertexAttribPointer;
    PFNGLDRAWELEMENTSPROC DrawElements;
-   PFNGLDRAWELEMENTSINSTANCEDPROC DrawElementsInstanced;
-   PFNGLVERTEXATTRIBDIVISORPROC VertexAttribDivisor;
    PFNGLGENTEXTURESPROC GenTextures;
    PFNGLDELETETEXTURESPROC DeleteTextures;
    PFNGLACTIVETEXTUREPROC ActiveTexture;
@@ -451,7 +435,6 @@ struct nova64_gles_backend {
    PFNGLUNIFORM1FPROC Uniform1f;
    PFNGLUNIFORM2FPROC Uniform2f;
    PFNGLBLENDFUNCPROC BlendFunc;
-   PFNGLDEPTHMASKPROC DepthMask;
    /* VAO + debug procs */
    PFNGLGENVERTEXARRAYSPROC GenVertexArrays;
    PFNGLBINDVERTEXARRAYPROC BindVertexArray;
@@ -492,10 +475,6 @@ struct nova64_gles_backend {
    GLuint plane_ibo;
    GLuint sphere_vbo;
    GLuint sphere_ibo;
-   GLuint cone_vbo;
-   GLuint cone_ibo;
-   GLuint instance_transform_vbo;
-   GLuint instance_color_vbo;
    GLuint overlay_vbo;
    GLuint overlay_ibo;
    GLuint overlay_texture;
@@ -503,12 +482,9 @@ struct nova64_gles_backend {
    GLuint overlay_program;
    GLint cube_position_attrib;
    GLint cube_normal_attrib;
-   GLint cube_instance_model_attrib;
-   GLint cube_instance_color_attrib;
    GLint cube_mvp_uniform;
    GLint cube_normal_matrix_uniform;
    GLint cube_color_uniform;
-   GLint cube_use_instancing_uniform;
    GLint cube_ambient_uniform;
    GLint cube_light_direction_uniform;
    GLint cube_fog_enabled_uniform;
@@ -629,22 +605,6 @@ static size_t package_asset_quota_bytes = NOVA64_DEFAULT_ASSET_QUOTA_BYTES;
 static size_t package_asset_quota_rejected_count;
 static struct nova64_package_asset package_assets[NOVA64_MAX_PACKAGE_ASSETS];
 static struct nova64_perf_timer perf_timers[NOVA64_MAX_PERF_TIMERS];
-struct nova64_core_perf_state {
-   unsigned interval_frames;
-   uint64_t cart_total_us;
-   uint64_t cart_max_us;
-   uint64_t render_total_us;
-   uint64_t render_max_us;
-   uint64_t frame_total_us;
-   uint64_t frame_max_us;
-   uint64_t instance_transform_calls;
-   uint64_t draw_calls;
-   uint64_t overlay_uploads;
-};
-static struct nova64_core_perf_state core_perf;
-static uint64_t core_perf_frame_instance_transform_calls;
-static uint64_t core_perf_frame_draw_calls;
-static uint64_t core_perf_frame_overlay_uploads;
 static char renderer_command_log_path[1024];
 static char storage_save_directory[1024];
 static char storage_cart_id[128];
@@ -1656,19 +1616,6 @@ struct nova64_music_state {
 static struct nova64_music_state music_state;
 static struct nova64_js_host js_host;
 static struct nova64_gles_backend gles;
-enum {
-   NOVA64_GLES_SPHERE_LAT_SEGMENTS = 12,
-   NOVA64_GLES_SPHERE_LON_SEGMENTS = 16,
-   NOVA64_GLES_SPHERE_VERTEX_COUNT =
-      (NOVA64_GLES_SPHERE_LAT_SEGMENTS + 1) * (NOVA64_GLES_SPHERE_LON_SEGMENTS + 1),
-   NOVA64_GLES_SPHERE_INDEX_COUNT =
-      NOVA64_GLES_SPHERE_LAT_SEGMENTS * NOVA64_GLES_SPHERE_LON_SEGMENTS * 6
-};
-enum {
-   NOVA64_GLES_CONE_SEGMENTS = 32,
-   NOVA64_GLES_CONE_VERTEX_COUNT = 1 + NOVA64_GLES_CONE_SEGMENTS + 1 + NOVA64_GLES_CONE_SEGMENTS,
-   NOVA64_GLES_CONE_INDEX_COUNT = NOVA64_GLES_CONE_SEGMENTS * 6
-};
 static enum nova64_renderer_backend renderer_preference = NOVA64_RENDERER_GLES3;
 static struct retro_hw_render_callback hw_render;
 static enum retro_pixel_format pixel_format = RETRO_PIXEL_FORMAT_RGB565;
@@ -1679,7 +1626,7 @@ struct nova64_post_state {
    bool crt_enabled;
    float vignette;       /* 0.0 = off, 1.0 = full */
    int pixelate;         /* 0 = off, 1+ = block size in pixels */
-   float bloom;          /* 0.0 = off, up to 4.0 for web-style glow */
+   float bloom;          /* 0.0 = off, 0.0-1.0 intensity */
    float chromatic;      /* 0.0 = off, offset amount (try 0.003-0.01) */
    float color_grade[3]; /* RGB multipliers, default 1.0 each */
    int posterize;        /* 0 = off, 2-8 = quantize levels */
@@ -1743,22 +1690,6 @@ static void matrix2d_multiply_right(Nova64Matrix2D *m, float a, float b, float c
    float ntx = m->a * tx + m->b * ty + m->tx;
    float nty = m->c * tx + m->d * ty + m->ty;
    m->a = na; m->b = nb; m->c = nc; m->d = nd; m->tx = ntx; m->ty = nty;
-}
-
-static void reset_draw_state(void)
-{
-   clip_active = false;
-   clip_stack_depth = 0;
-   cam2d_x = cam2d_y = 0;
-   cam2d_zoom = 1.0f;
-   cam2d_rotation = 0.0f;
-   camera2d_stack_depth = 0;
-   blend_2d_mode = NOVA64_BLEND_NORMAL;
-   blend_stack_depth = 0;
-   palette_stack_depth = 0;
-   reset_palette_state();
-   g_matrix_stack_top = 0;
-   matrix2d_identity(&g_matrix_stack[0]);
 }
 
 static void transform_2d_point(int world_x, int world_y, int *screen_x, int *screen_y)
@@ -3340,32 +3271,6 @@ static void mat3_normal_from_mesh(float out[9], const struct nova64_mesh *mesh)
    out[8] = rotation[10];
 }
 
-static void mat3_normal_from_model(float out[9], const float model[16])
-{
-   float columns[3][3] = {
-      { model[0], model[1], model[2] },
-      { model[4], model[5], model[6] },
-      { model[8], model[9], model[10] },
-   };
-   for (int i = 0; i < 3; i++) {
-      float len = sqrtf(columns[i][0] * columns[i][0]
-         + columns[i][1] * columns[i][1]
-         + columns[i][2] * columns[i][2]);
-      if (len > 1e-7f) {
-         columns[i][0] /= len;
-         columns[i][1] /= len;
-         columns[i][2] /= len;
-      } else {
-         columns[i][0] = (i == 0) ? 1.0f : 0.0f;
-         columns[i][1] = (i == 1) ? 1.0f : 0.0f;
-         columns[i][2] = (i == 2) ? 1.0f : 0.0f;
-      }
-   }
-   out[0] = columns[0][0]; out[1] = columns[0][1]; out[2] = columns[0][2];
-   out[3] = columns[1][0]; out[4] = columns[1][1]; out[5] = columns[1][2];
-   out[6] = columns[2][0]; out[7] = columns[2][1]; out[8] = columns[2][2];
-}
-
 static float edge2d(float ax, float ay, float bx, float by, float cx, float cy)
 {
    return (cx - ax) * (by - ay) - (cy - ay) * (bx - ax);
@@ -4125,7 +4030,7 @@ static JSValue js_cls(JSContext *ctx, JSValueConst this_val, int argc, JSValueCo
    /* Flush any pending z-sorted sprites before clearing so they are not lost silently */
    spr_sorted_flush();
    clear_framebuffer(color);
-   if (!drawing_scene_preview && !gles.active && (scene_has_visible_meshes() || sky_color_enabled))
+   if (!drawing_scene_preview && (scene_has_visible_meshes() || sky_color_enabled))
       render_software_scene();
    return JS_UNDEFINED;
 }
@@ -4138,7 +4043,7 @@ static JSValue js_cls_gradient(JSContext *ctx, JSValueConst this_val, int argc, 
    bool vertical = argc > 2 ? JS_ToBool(ctx, argv[2]) : true;
    framebuffer_clear_color = a;
    draw_rect_gradient_pixels(0, 0, NOVA64_WIDTH, NOVA64_HEIGHT, a, b, vertical);
-   if (!drawing_scene_preview && !gles.active && scene_has_visible_meshes())
+   if (!drawing_scene_preview && scene_has_visible_meshes())
       render_software_scene();
    return JS_UNDEFINED;
 }
@@ -7864,7 +7769,7 @@ static JSValue js_set_vignette(JSContext *ctx, JSValueConst this_val, int argc, 
 static JSValue js_set_bloom_global(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
    (void)this_val;
-   post_state.bloom = (float)clamp_double(double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0.0), 0.0, 4.0);
+   post_state.bloom = (float)clamp_double(double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0.0), 0.0, 1.0);
    return JS_UNDEFINED;
 }
 
@@ -24127,77 +24032,6 @@ static JSValue js_meta_main(JSContext *ctx, JSValueConst this_val, int argc, JSV
    return JS_NewString(ctx, package_manifest_main);
 }
 
-static bool core_perf_enabled(void)
-{
-   const char *enabled = getenv("NOVA64_PERF");
-   return enabled && enabled[0] && strcmp(enabled, "0");
-}
-
-static uint64_t core_perf_now_us(void)
-{
-#ifdef _WIN32
-   static LARGE_INTEGER frequency;
-   static bool frequency_ready = false;
-   LARGE_INTEGER counter;
-   if (!frequency_ready) {
-      QueryPerformanceFrequency(&frequency);
-      frequency_ready = true;
-   }
-   QueryPerformanceCounter(&counter);
-   return (uint64_t)((counter.QuadPart * 1000000ULL) / (uint64_t)frequency.QuadPart);
-#else
-   struct timespec ts;
-   clock_gettime(CLOCK_MONOTONIC, &ts);
-   return (uint64_t)ts.tv_sec * 1000000ULL + (uint64_t)(ts.tv_nsec / 1000ULL);
-#endif
-}
-
-static void core_perf_begin_frame(void)
-{
-   core_perf_frame_instance_transform_calls = 0;
-   core_perf_frame_draw_calls = 0;
-   core_perf_frame_overlay_uploads = 0;
-}
-
-static void core_perf_record_frame(uint64_t cart_us, uint64_t render_us, uint64_t frame_us)
-{
-   if (!core_perf_enabled())
-      return;
-
-   core_perf.interval_frames++;
-   core_perf.cart_total_us += cart_us;
-   core_perf.render_total_us += render_us;
-   core_perf.frame_total_us += frame_us;
-   if (cart_us > core_perf.cart_max_us)
-      core_perf.cart_max_us = cart_us;
-   if (render_us > core_perf.render_max_us)
-      core_perf.render_max_us = render_us;
-   if (frame_us > core_perf.frame_max_us)
-      core_perf.frame_max_us = frame_us;
-   core_perf.instance_transform_calls += core_perf_frame_instance_transform_calls;
-   core_perf.draw_calls += core_perf_frame_draw_calls;
-   core_perf.overlay_uploads += core_perf_frame_overlay_uploads;
-
-   if (core_perf.interval_frames >= 60) {
-      unsigned frames = core_perf.interval_frames;
-      char message[512];
-      snprintf(message, sizeof(message),
-         "[nova64-perf] frames=%u cart_us avg=%llu max=%llu render_us avg=%llu max=%llu frame_us avg=%llu max=%llu inst_xform/frame=%llu draw_calls/frame=%llu overlay_uploads/frame=%llu",
-         frames,
-         (unsigned long long)(core_perf.cart_total_us / frames),
-         (unsigned long long)core_perf.cart_max_us,
-         (unsigned long long)(core_perf.render_total_us / frames),
-         (unsigned long long)core_perf.render_max_us,
-         (unsigned long long)(core_perf.frame_total_us / frames),
-         (unsigned long long)core_perf.frame_max_us,
-         (unsigned long long)(core_perf.instance_transform_calls / frames),
-         (unsigned long long)(core_perf.draw_calls / frames),
-         (unsigned long long)(core_perf.overlay_uploads / frames));
-      nova64_log_line(RETRO_LOG_INFO, message);
-      memset(&core_perf, 0, sizeof(core_perf));
-   }
-}
-
 static struct nova64_perf_timer *perf_timer_for_label(const char *label, bool create)
 {
    if (!label || !label[0])
@@ -24652,12 +24486,6 @@ static JSValue js_destroy_mesh(JSContext *ctx, JSValueConst this_val, int argc, 
       free(mesh->custom_verts);
       free(mesh->custom_indices);
       free(mesh->instance_transforms);
-      free(mesh->instance_colors);
-      free(mesh->instance_visible);
-      if (gles.active && gles.DeleteBuffers) {
-         if (mesh->gl_custom_vbo) gles.DeleteBuffers(1, &mesh->gl_custom_vbo);
-         if (mesh->gl_custom_ibo) gles.DeleteBuffers(1, &mesh->gl_custom_ibo);
-      }
       memset(mesh, 0, sizeof(*mesh));
    }
    return JS_UNDEFINED;
@@ -25753,7 +25581,15 @@ static JSValue js_get_draw_state(JSContext *ctx, JSValueConst this_val, int argc
 static JSValue js_clear_draw_state(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
    (void)ctx; (void)this_val; (void)argc; (void)argv;
-   reset_draw_state();
+   clip_active = false;
+   cam2d_x = cam2d_y = 0;
+   cam2d_zoom = 1.0f;
+   cam2d_rotation = 0.0f;
+   blend_2d_mode = NOVA64_BLEND_NORMAL;
+   palette_swap_enabled = false;
+   clip_stack_depth = camera2d_stack_depth = blend_stack_depth = palette_stack_depth = 0;
+   g_matrix_stack_top = 0;
+   matrix2d_identity(&g_matrix_stack[0]);
    g_noise_octaves = 1;
    g_noise_falloff = 0.5;
    return JS_UNDEFINED;
@@ -25825,7 +25661,7 @@ static JSValue js_post_set_vignette(JSContext *ctx, JSValueConst this_val, int a
 {
    (void)this_val;
    post_state.vignette = (float)clamp_double(
-      double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0.0), 0.0, 4.0);
+      double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0.0), 0.0, 1.0);
    return JS_UNDEFINED;
 }
 
@@ -26116,19 +25952,14 @@ static JSValue js_destroy_render_target(JSContext *ctx, JSValueConst this_val, i
 static void render_gles_cube(const struct nova64_mesh *mesh, const float view_projection[16]);
 static void render_gles_plane(const struct nova64_mesh *mesh, const float view_projection[16]);
 static void render_gles_sphere(const struct nova64_mesh *mesh, const float view_projection[16]);
-static void render_gles_capsule(struct nova64_mesh *mesh, const float view_projection[16]);
-static void render_gles_cylinder(struct nova64_mesh *mesh, const float view_projection[16]);
-static void render_gles_cone(const struct nova64_mesh *mesh, const float view_projection[16]);
-static void render_gles_torus(struct nova64_mesh *mesh, const float view_projection[16]);
+static void render_gles_capsule(const struct nova64_mesh *mesh, const float view_projection[16]);
+static void render_gles_cylinder(const struct nova64_mesh *mesh, const float view_projection[16]);
 static void render_gles_custom_mesh(struct nova64_mesh *mesh, const float view_projection[16]);
 static void render_gles_instanced_mesh(const struct nova64_mesh *mesh, const float view_projection[16]);
 static bool gles_any_cast_shadow_mesh(void);
 static bool gles_init_shadow_resources(void);
 static void build_shadow_light_vp(float out[16]);
 static void render_gles_shadow_pass(const float light_vp[16]);
-static void render_gles_meshes_sorted(const float view_projection[16]);
-static bool gles_ensure_capsule_mesh(struct nova64_mesh *mesh);
-static bool gles_ensure_cylinder_mesh(struct nova64_mesh *mesh);
 static bool gles_load_functions(void);
 static bool gles_init_resources(void);
 static void render_gles_skybox(const float view[16], const float projection[16]);
@@ -26148,7 +25979,8 @@ static void render_gles_scene_to_rt(struct nova64_render_target *rt)
    gles.BindFramebuffer(GL_FRAMEBUFFER, rt->fbo);
    gles.Viewport(0, 0, rt->width, rt->height);
 
-   uint32_t clear_color = sky_color_enabled ? sky_top_color : framebuffer_clear_color;
+   uint32_t clear_color = sky_color_enabled ? sky_top_color
+      : color_with_intensity(light_state.ambient, light_state.ambient_intensity);
    gles.ClearColor(
       (float)((clear_color >> 24) & 0xffU) / 255.0f,
       (float)((clear_color >> 16) & 0xffU) / 255.0f,
@@ -26180,13 +26012,22 @@ static void render_gles_scene_to_rt(struct nova64_render_target *rt)
    /* Draw equirectangular skybox behind all geometry (GLES only) */
    render_gles_skybox(view, projection);
 
-   render_gles_meshes_sorted(view_projection);
+   for (int i = 0; i < NOVA64_MAX_MESHES; i++) {
+      if (!meshes[i].used || !meshes[i].visible || meshes[i].opacity <= 0.0f) continue;
+      if (meshes[i].type == NOVA64_MESH_CUBE)        render_gles_cube(&meshes[i], view_projection);
+      else if (meshes[i].type == NOVA64_MESH_PLANE)  render_gles_plane(&meshes[i], view_projection);
+      else if (meshes[i].type == NOVA64_MESH_SPHERE) render_gles_sphere(&meshes[i], view_projection);
+      else if (meshes[i].type == NOVA64_MESH_CAPSULE)  render_gles_capsule(&meshes[i], view_projection);
+      else if (meshes[i].type == NOVA64_MESH_CYLINDER) render_gles_cylinder(&meshes[i], view_projection);
+      else if (meshes[i].type == NOVA64_MESH_CUSTOM)      render_gles_custom_mesh(&meshes[i], view_projection);
+      else if (meshes[i].type == NOVA64_MESH_INSTANCED)   render_gles_instanced_mesh(&meshes[i], view_projection);
+      else if (meshes[i].type == NOVA64_MESH_TORUS)   render_gles_sphere(&meshes[i], view_projection);
+      else if (meshes[i].type == NOVA64_MESH_CONE)    render_gles_cylinder(&meshes[i], view_projection);
+   }
 
-   /* Restore main viewport and HW framebuffer */
+   /* Restore default viewport */
    gles.Viewport(0, 0, NOVA64_WIDTH, NOVA64_HEIGHT);
-   GLuint hw_fbo = hw_render.get_current_framebuffer
-                   ? (GLuint)hw_render.get_current_framebuffer()
-                   : 0;
+   GLuint hw_fbo = hw_render.get_current_framebuffer ? hw_render.get_current_framebuffer() : 0;
    gles.BindFramebuffer(GL_FRAMEBUFFER, hw_fbo);
 }
 
@@ -27554,7 +27395,6 @@ static JSValue js_create_instanced_mesh(JSContext *ctx, JSValueConst this_val, i
       else if (!strcmp(geo_str, "plane"))    geo = 2;
       else if (!strcmp(geo_str, "capsule"))  geo = 3;
       else if (!strcmp(geo_str, "cylinder")) geo = 4;
-      else if (!strcmp(geo_str, "cone"))     geo = 5;
       JS_FreeCString(ctx, geo_str);
    }
 
@@ -27591,7 +27431,6 @@ static JSValue js_set_instance_transform(JSContext *ctx, JSValueConst this_val, 
    if (argc < 3 || !JS_IsArray(argv[2]))               return JS_UNDEFINED;
 
    float *m = mesh->instance_transforms + idx * 16;
-   core_perf_frame_instance_transform_calls++;
    for (int i = 0; i < 16; i++) {
       JSValue v = JS_GetPropertyUint32(ctx, argv[2], (uint32_t)i);
       double d = 0.0;
@@ -27699,14 +27538,6 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, draw, "popPalette", js_pop_palette, 0);
    set_function(ctx, draw, "getDrawState", js_get_draw_state, 0);
    set_function(ctx, draw, "clearDrawState", js_clear_draw_state, 0);
-   /* BM blend-mode constants — mirrors web/godot nova64.draw.BM */
-   {  JSValue bm = JS_NewObject(ctx);
-      JS_SetPropertyStr(ctx, bm, "NORMAL",   JS_NewString(ctx, "normal"));
-      JS_SetPropertyStr(ctx, bm, "ALPHA",    JS_NewString(ctx, "alpha"));
-      JS_SetPropertyStr(ctx, bm, "ADD",      JS_NewString(ctx, "additive"));
-      JS_SetPropertyStr(ctx, bm, "MULTIPLY", JS_NewString(ctx, "multiply"));
-      JS_SetPropertyStr(ctx, bm, "SCREEN",   JS_NewString(ctx, "screen"));
-      JS_SetPropertyStr(ctx, draw, "BM", bm); }
 
    set_function(ctx, input, "btn", js_btn, 2);
    set_function(ctx, input, "btnp", js_btnp, 2);
@@ -27721,8 +27552,6 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, input, "touchCount", js_touch_count, 0);
    set_function(ctx, input, "axis", js_axis, 3);
    set_function(ctx, input, "trigger", js_trigger, 2);
-   set_function(ctx, input, "isKeyDown",    js_key,  1);   /* alias: key() */
-   set_function(ctx, input, "isKeyPressed", js_keyp, 1);   /* alias: keyp() */
 
    set_function(ctx, scene, "createCube", js_create_cube, 1);
    set_function(ctx, scene, "createSphere", js_create_sphere, 1);
@@ -27908,96 +27737,6 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, nova64, "time", js_get_time, 0);
 
    JS_SetPropertyStr(ctx, global, "nova64", nova64);
-
-   /* ── nova64.fx / nova64.util / BM global ── compatibility shims evaluated
-      after nova64 is on the global so they can reference it directly.       */
-   {  static const char compat_js[] =
-         /* nova64.fx — post-processing aliases + emitter2D bridge */
-         "nova64.fx=(function(){"
-           "var p=nova64.post;"
-           "return{"
-             "enableBloom:function(s,r,t){p.setBloom(s==null?1:s);},"
-             "disableBloom:function(){p.setBloom(0);},"
-             "setBloomStrength:function(s){p.setBloom(s);},"
-             "enableVignette:function(d,o){p.setVignette(d==null?1:d,o==null?0.9:o);},"
-             "disableVignette:function(){p.setVignette(0,1);},"
-             "enableCRT:function(s){p.setCRT(s==null?1:s);},"
-             "disableCRT:function(){p.setCRT(0);},"
-             "enableChromatic:function(a){p.setChromatic(a==null?0.002:a);},"
-             "disableChromatic:function(){p.setChromatic(0);},"
-             "enableFXAA:function(){},"
-             "disableFXAA:function(){},"
-             "disableAll:function(){p.clear();},"
-             /* emitter2D bridged to burst API */
-             "createEmitter2D:function(x,y,n,life){return createBurst(x,y,n==null?20:n,life==null?60:life);},"
-             "burstEmitter2D:function(e,n){triggerBurst(e,0,0,n==null?20:n);},"
-             "updateEmitter2D:function(e,dt){updateBurst(e,dt);},"
-             "drawEmitter2D:function(e){drawBurst(e);},"
-             "isEmitter2DDone:function(e){return isBurstDone(e);},"
-             "destroyEmitter2D:function(e){destroyBurst(e);},"
-             "setBurstColors:function(e,c1,c2,c3,c4){return setBurstColors(e,c1,c2,c3,c4);}"
-           "};"
-         "})();"
-
-         /* nova64.util — shake, cooldown, hit-state, math helpers */
-         "nova64.util=(function(){"
-           "function createShake(o){"
-             "o=o||{};"
-             "return{mag:0,x:0,y:0,decay:o.decay==null?4:o.decay,maxMag:o.maxMag==null?20:o.maxMag};"
-           "}"
-           "function triggerShake(s,m){s.mag=Math.min(s.maxMag,s.mag+m);}"
-           "function updateShake(s,dt){"
-             "if(s.mag>0.01){"
-               "var a=Math.random()*6.2832;"
-               "s.x=Math.cos(a)*s.mag;s.y=Math.sin(a)*s.mag;"
-               "s.mag*=Math.max(0,1-s.decay*dt);"
-             "}else{s.mag=0;s.x=0;s.y=0;}"
-           "}"
-           "function getShakeOffset(s){return[s.x,s.y];}"
-           "function createCooldown(dur){return{remaining:0,duration:dur};}"
-           "function updateCooldown(cd,dt){if(cd.remaining>0)cd.remaining=Math.max(0,cd.remaining-dt);}"
-           "function useCooldown(cd){if(cd.remaining<=0){cd.remaining=cd.duration;return true;}return false;}"
-           "function cooldownReady(cd){return cd.remaining<=0;}"
-           "function cooldownProgress(cd){return cd.remaining<=0?1:1-(cd.remaining/cd.duration);}"
-           "function createCooldownSet(defs){"
-             "var s={};for(var k in defs)s[k]=createCooldown(defs[k]);return s;"
-           "}"
-           "function updateCooldowns(set,dt){for(var k in set)updateCooldown(set[k],dt);}"
-           "function createHitState(o){"
-             "o=o||{};"
-             "return{invuln:0,invulnDuration:o.invulnDuration==null?0.8:o.invulnDuration,"
-               "blinkRate:o.blinkRate==null?25:o.blinkRate};"
-           "}"
-           "function triggerHit(h){if(h.invuln>0)return false;h.invuln=h.invulnDuration;return true;}"
-           "function isInvulnerable(h){return h.invuln>0;}"
-           "function updateHitState(h,dt){if(h.invuln>0)h.invuln=Math.max(0,h.invuln-dt);}"
-           "function isVisible(h,t){return h.invuln<=0||Math.floor(t*h.blinkRate)%2===0;}"
-           "function lerp(a,b,t){return a+(b-a)*t;}"
-           "function clamp(v,mn,mx){return v<mn?mn:v>mx?mx:v;}"
-           "function randRange(a,b){return a+(b-a)*rngRandom();}"
-           "function randInt(a,b){return Math.floor(a+(b-a+1)*rngRandom());}"
-           "function dist(x1,y1,x2,y2){var dx=x2-x1,dy=y2-y1;return Math.sqrt(dx*dx+dy*dy);}"
-           "function remap(v,i0,i1,o0,o1){return o0+(v-i0)/(i1-i0)*(o1-o0);}"
-           "return{createShake,triggerShake,updateShake,getShakeOffset,"
-             "createCooldown,updateCooldown,useCooldown,cooldownReady,cooldownProgress,"
-             "createCooldownSet,updateCooldowns,"
-             "createHitState,triggerHit,isInvulnerable,updateHitState,isVisible,"
-             "lerp,clamp,randRange,randInt,dist,remap};"
-         "})();"
-
-         /* Global BM object for top-level setBlend2D(BM.ADD) usage */
-         "var BM={NORMAL:'normal',ALPHA:'alpha',ADD:'additive',MULTIPLY:'multiply',SCREEN:'screen'};";
-
-      JSValue r = JS_Eval(ctx, compat_js, sizeof(compat_js)-1, "<nova64-compat>", JS_EVAL_TYPE_GLOBAL);
-      if (JS_IsException(r)) {
-         JSValue exc = JS_GetException(ctx);
-         const char *msg = JS_ToCString(ctx, exc);
-         log_cb(RETRO_LOG_ERROR, "nova64-compat eval: %s\n", msg ? msg : "unknown");
-         if (msg) JS_FreeCString(ctx, msg);
-         JS_FreeValue(ctx, exc);
-      }
-      JS_FreeValue(ctx, r);
-   }
 
    set_function(ctx, global, "rgba8", js_rgba8, 4);
    set_function(ctx, global, "colorLerp", js_color_lerp, 3);
@@ -29930,34 +29669,9 @@ static void update_input(void)
 
 static retro_proc_address_t load_gles_proc(const char *name)
 {
-   /* Prefer RetroArch-provided loader (set by gl driver). */
-   if (hw_render.get_proc_address)
-      return hw_render.get_proc_address(name);
-
-   /* glcore driver on Windows leaves get_proc_address NULL.
-      Use GetModuleHandle to get the already-loaded opengl32.dll
-      and wglGetProcAddress for extension / ICD functions. */
-#ifdef _WIN32
-   {
-      typedef void* (WINAPI *wgl_fn_t)(const char*);
-      static wgl_fn_t s_wgl_get;
-      static HMODULE   s_gl32;
-      if (!s_gl32) {
-         s_gl32 = GetModuleHandleA("opengl32.dll");
-         if (!s_gl32) s_gl32 = LoadLibraryA("opengl32.dll");
-      }
-      if (!s_wgl_get && s_gl32)
-         s_wgl_get = (wgl_fn_t)(void*)GetProcAddress(s_gl32, "wglGetProcAddress");
-      /* Try wglGetProcAddress first (works for ARB/EXT and core >= 1.2 on ICD) */
-      void *addr = s_wgl_get ? (void*)s_wgl_get(name) : NULL;
-      /* Core 1.1 procs are exported directly from opengl32.dll */
-      if (!addr && s_gl32)
-         addr = (void*)GetProcAddress(s_gl32, name);
-      return (retro_proc_address_t)addr;
-   }
-#else
-   return NULL;
-#endif
+   if (!hw_render.get_proc_address)
+      return NULL;
+   return hw_render.get_proc_address(name);
 }
 
 static GLuint gles_compile_shader(GLenum type, const char *source)
@@ -29988,46 +29702,38 @@ static GLuint gles_compile_shader(GLenum type, const char *source)
 static bool gles_create_cube_program(void)
 {
    static const char *vertex_source =
-      "#version 300 es\nprecision highp float;\nprecision highp int;\n"
+      "#version 330\n"
       "in vec3 a_position;\n"
       "in vec3 a_normal;\n"
-      "in mat4 a_instance_model;\n"
-      "in vec4 a_instance_color;\n"
       "uniform mat4 u_mvp;\n"
       "uniform mat3 u_normal_matrix;\n"
       "uniform vec4 u_light_direction;\n"
       "uniform vec2 u_uv_offset;\n"
       "uniform vec2 u_uv_scale;\n"
       "uniform mat4 u_shadow_mvp;\n"
-      "uniform int u_use_instancing;\n"
       "out float v_light;\n"
       "out float v_depth;\n"
       "out vec2 v_uv;\n"
       "out vec4 v_shadow_coord;\n"
       "out vec3 v_normal;\n"
-      "out vec4 v_instance_color;\n"
       "void main() {\n"
-      "  vec4 local_pos = vec4(a_position, 1.0);\n"
-      "  vec4 world_pos = (u_use_instancing != 0) ? a_instance_model * local_pos : local_pos;\n"
-      "  vec3 n = (u_use_instancing != 0) ? normalize(mat3(a_instance_model) * a_normal) : normalize(u_normal_matrix * a_normal);\n"
+      "  vec3 n = normalize(u_normal_matrix * a_normal);\n"
       "  vec3 l = normalize(-u_light_direction.xyz);\n"
       "  float diffuse = max(dot(n, l), 0.0);\n"
       "  v_light = 0.58 + diffuse * 0.42;\n"
       "  v_normal = n;\n"
-      "  v_instance_color = a_instance_color;\n"
-      "  gl_Position = u_mvp * world_pos;\n"
+      "  gl_Position = u_mvp * vec4(a_position, 1.0);\n"
       "  v_depth = gl_Position.z / gl_Position.w;\n"
       "  v_uv = (a_position.xz + 0.5) * u_uv_scale + u_uv_offset;\n"
-      "  v_shadow_coord = u_shadow_mvp * world_pos;\n"
+      "  v_shadow_coord = u_shadow_mvp * vec4(a_position, 1.0);\n"
       "}\n";
    static const char *fragment_source =
-      "#version 300 es\nprecision highp float;\nprecision highp int;\n"
+      "#version 330\n"
       "in float v_light;\n"
       "in float v_depth;\n"
       "in vec2 v_uv;\n"
       "in vec4 v_shadow_coord;\n"
       "in vec3 v_normal;\n"
-      "in vec4 v_instance_color;\n"
       "uniform vec4 u_color;\n"
       "uniform vec4 u_ambient_color;\n"
       "uniform vec4 u_light_direction;\n"
@@ -30046,15 +29752,13 @@ static bool gles_create_cube_program(void)
       "uniform sampler2D u_shadow_map;\n"
       "uniform float u_shadow_texel_size;\n"
       "uniform int u_shadow_enabled;\n"
-      "uniform int u_use_instancing;\n"
       "out vec4 fragColor;\n"
       "float shadow_tap(vec2 uv, float depth) {\n"
       "  return depth - 0.005 > texture(u_shadow_map, uv).r ? 0.0 : 1.0;\n"
       "}\n"
       "void main() {\n"
       "  vec3 ambient = u_ambient_color.rgb * 0.35;\n"
-      "  vec4 draw_color = (u_use_instancing != 0) ? v_instance_color : u_color;\n"
-      "  vec4 base = (u_has_texture != 0) ? texture(u_texture, v_uv) * draw_color : draw_color;\n"
+      "  vec4 base = (u_has_texture != 0) ? texture(u_texture, v_uv) * u_color : u_color;\n"
       "  float surface_light;\n"
       "  if (u_has_normal_map != 0) {\n"
       "    vec3 nm = texture(u_normal_map, v_uv).rgb * 2.0 - 1.0;\n"
@@ -30129,12 +29833,9 @@ static bool gles_create_cube_program(void)
    gles.cube_program = program;
    gles.cube_position_attrib = gles.GetAttribLocation(program, "a_position");
    gles.cube_normal_attrib = gles.GetAttribLocation(program, "a_normal");
-   gles.cube_instance_model_attrib = gles.GetAttribLocation(program, "a_instance_model");
-   gles.cube_instance_color_attrib = gles.GetAttribLocation(program, "a_instance_color");
    gles.cube_mvp_uniform = gles.GetUniformLocation(program, "u_mvp");
    gles.cube_normal_matrix_uniform = gles.GetUniformLocation(program, "u_normal_matrix");
    gles.cube_color_uniform = gles.GetUniformLocation(program, "u_color");
-   gles.cube_use_instancing_uniform = gles.GetUniformLocation(program, "u_use_instancing");
    gles.cube_ambient_uniform = gles.GetUniformLocation(program, "u_ambient_color");
    gles.cube_light_direction_uniform = gles.GetUniformLocation(program, "u_light_direction");
    gles.cube_fog_enabled_uniform = gles.GetUniformLocation(program, "u_fog_enabled");
@@ -30164,14 +29865,14 @@ static bool gles_create_cube_program(void)
 static bool gles_create_shadow_program(void)
 {
    static const char *vertex_source =
-      "#version 300 es\nprecision highp float;\n"
+      "#version 330\n"
       "in vec3 a_position;\n"
       "uniform mat4 u_mvp;\n"
       "void main() {\n"
       "  gl_Position = u_mvp * vec4(a_position, 1.0);\n"
       "}\n";
    static const char *fragment_source =
-      "#version 300 es\nprecision highp float;\n"
+      "#version 330\n"
       "out vec4 fragColor;\n"
       "void main() { fragColor = vec4(0.0); }\n";
 
@@ -30289,7 +29990,7 @@ static bool gles_any_cast_shadow_mesh(void)
 static void render_gles_shadow_pass(const float light_vp[16])
 {
    if (!gles.shadow_fbo || !gles.shadow_program) return;
-   GLuint hw_fbo = 0; /* glcore provides FBO 0 as the render target */
+   GLuint hw_fbo = hw_render.get_current_framebuffer ? hw_render.get_current_framebuffer() : 0;
    gles.BindFramebuffer(GL_FRAMEBUFFER, gles.shadow_fbo);
    gles.Viewport(0, 0, g_shadow_map_size, g_shadow_map_size);
    gles.Clear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -30297,7 +29998,7 @@ static void render_gles_shadow_pass(const float light_vp[16])
    gles.UseProgram(gles.shadow_program);
 
    for (int i = 0; i < NOVA64_MAX_MESHES; i++) {
-      struct nova64_mesh *mesh = &meshes[i];
+      const struct nova64_mesh *mesh = &meshes[i];
       if (!mesh->used || !mesh->visible || !mesh->cast_shadow || mesh->opacity <= 0.0f)
          continue;
       float model[16], shadow_mvp[16];
@@ -30312,19 +30013,9 @@ static void render_gles_shadow_pass(const float light_vp[16])
          case NOVA64_MESH_PLANE:
             vbo = gles.plane_vbo; ibo = gles.plane_ibo; idx_count = 6; break;
          case NOVA64_MESH_SPHERE:
-            vbo = gles.sphere_vbo; ibo = gles.sphere_ibo;
-            idx_count = NOVA64_GLES_SPHERE_INDEX_COUNT; break;
          case NOVA64_MESH_CAPSULE:
-            if (!gles_ensure_capsule_mesh(mesh)) continue;
-            vbo = mesh->gl_custom_vbo; ibo = mesh->gl_custom_ibo;
-            idx_count = (GLsizei)mesh->custom_index_count; break;
          case NOVA64_MESH_CYLINDER:
-            if (!gles_ensure_cylinder_mesh(mesh)) continue;
-            vbo = mesh->gl_custom_vbo; ibo = mesh->gl_custom_ibo;
-            idx_count = (GLsizei)mesh->custom_index_count; break;
-         case NOVA64_MESH_CONE:
-            vbo = gles.cone_vbo; ibo = gles.cone_ibo;
-            idx_count = NOVA64_GLES_CONE_INDEX_COUNT; break;
+            vbo = gles.sphere_vbo; ibo = gles.sphere_ibo; idx_count = 24; break;
          case NOVA64_MESH_CUSTOM:
             if (!mesh->gl_custom_vbo || !mesh->gl_custom_ibo || !mesh->custom_index_count) continue;
             vbo = mesh->gl_custom_vbo; ibo = mesh->gl_custom_ibo;
@@ -30336,7 +30027,6 @@ static void render_gles_shadow_pass(const float light_vp[16])
       gles.EnableVertexAttribArray((GLuint)gles.shadow_position_attrib);
       gles.VertexAttribPointer((GLuint)gles.shadow_position_attrib, 3, GL_FLOAT, GL_FALSE,
          (GLsizei)(sizeof(GLfloat) * 6), NULL);
-      core_perf_frame_draw_calls++;
       gles.DrawElements(GL_TRIANGLES, idx_count, GL_UNSIGNED_SHORT, NULL);
       gles.DisableVertexAttribArray((GLuint)gles.shadow_position_attrib);
    }
@@ -30346,7 +30036,7 @@ static void render_gles_shadow_pass(const float light_vp[16])
 static bool gles_create_overlay_program(void)
 {
    static const char *vertex_source =
-      "#version 300 es\nprecision highp float;\n"
+      "#version 330\n"
       "in vec2 a_position;\n"
       "in vec2 a_uv;\n"
       "out vec2 v_uv;\n"
@@ -30355,7 +30045,7 @@ static bool gles_create_overlay_program(void)
       "  gl_Position = vec4(a_position, 0.0, 1.0);\n"
       "}\n";
    static const char *fragment_source =
-      "#version 300 es\nprecision highp float;\n"
+      "#version 330\n"
       "in vec2 v_uv;\n"
       "uniform sampler2D u_overlay;\n"
       "out vec4 fragColor;\n"
@@ -30415,14 +30105,6 @@ static void gles_destroy_resources(void)
       gles.DeleteBuffers(1, &gles.sphere_vbo);
    if (gles.sphere_ibo && gles.DeleteBuffers)
       gles.DeleteBuffers(1, &gles.sphere_ibo);
-   if (gles.cone_vbo && gles.DeleteBuffers)
-      gles.DeleteBuffers(1, &gles.cone_vbo);
-   if (gles.cone_ibo && gles.DeleteBuffers)
-      gles.DeleteBuffers(1, &gles.cone_ibo);
-   if (gles.instance_transform_vbo && gles.DeleteBuffers)
-      gles.DeleteBuffers(1, &gles.instance_transform_vbo);
-   if (gles.instance_color_vbo && gles.DeleteBuffers)
-      gles.DeleteBuffers(1, &gles.instance_color_vbo);
    if (gles.overlay_vbo && gles.DeleteBuffers)
       gles.DeleteBuffers(1, &gles.overlay_vbo);
    if (gles.overlay_ibo && gles.DeleteBuffers)
@@ -30439,10 +30121,6 @@ static void gles_destroy_resources(void)
    gles.plane_ibo = 0;
    gles.sphere_vbo = 0;
    gles.sphere_ibo = 0;
-   gles.cone_vbo = 0;
-   gles.cone_ibo = 0;
-   gles.instance_transform_vbo = 0;
-   gles.instance_color_vbo = 0;
    gles.overlay_vbo = 0;
    gles.overlay_ibo = 0;
    gles.overlay_texture = 0;
@@ -30454,142 +30132,6 @@ static void gles_destroy_resources(void)
    gles_destroy_shadow_resources();
    gles_destroy_skybox_resources();
    gles.resources_ready = false;
-}
-
-static bool gles_upload_sphere_geometry(void)
-{
-   GLfloat *vertices = (GLfloat *)calloc((size_t)NOVA64_GLES_SPHERE_VERTEX_COUNT * 6,
-      sizeof(GLfloat));
-   unsigned short *indices = (unsigned short *)malloc(
-      (size_t)NOVA64_GLES_SPHERE_INDEX_COUNT * sizeof(unsigned short));
-   if (!vertices || !indices) {
-      free(vertices);
-      free(indices);
-      return false;
-   }
-
-   for (int lat = 0; lat <= NOVA64_GLES_SPHERE_LAT_SEGMENTS; lat++) {
-      float v = (float)lat / (float)NOVA64_GLES_SPHERE_LAT_SEGMENTS;
-      float theta = v * (float)M_PI;
-      float sy = cosf(theta);
-      float sr = sinf(theta);
-      for (int lon = 0; lon <= NOVA64_GLES_SPHERE_LON_SEGMENTS; lon++) {
-         float u = (float)lon / (float)NOVA64_GLES_SPHERE_LON_SEGMENTS;
-         float phi = u * (float)M_PI * 2.0f;
-         float sx = cosf(phi) * sr;
-         float sz = sinf(phi) * sr;
-         int vi = (lat * (NOVA64_GLES_SPHERE_LON_SEGMENTS + 1) + lon) * 6;
-         vertices[vi + 0] = sx * 0.5f;
-         vertices[vi + 1] = sy * 0.5f;
-         vertices[vi + 2] = sz * 0.5f;
-         vertices[vi + 3] = sx;
-         vertices[vi + 4] = sy;
-         vertices[vi + 5] = sz;
-      }
-   }
-
-   int ii = 0;
-   for (int lat = 0; lat < NOVA64_GLES_SPHERE_LAT_SEGMENTS; lat++) {
-      for (int lon = 0; lon < NOVA64_GLES_SPHERE_LON_SEGMENTS; lon++) {
-         unsigned short a = (unsigned short)(lat * (NOVA64_GLES_SPHERE_LON_SEGMENTS + 1) + lon);
-         unsigned short b = (unsigned short)((lat + 1) * (NOVA64_GLES_SPHERE_LON_SEGMENTS + 1) + lon);
-         unsigned short c = (unsigned short)(b + 1);
-         unsigned short d = (unsigned short)(a + 1);
-         indices[ii++] = a; indices[ii++] = b; indices[ii++] = c;
-         indices[ii++] = a; indices[ii++] = c; indices[ii++] = d;
-      }
-   }
-
-   gles.GenBuffers(1, &gles.sphere_vbo);
-   gles.BindBuffer(GL_ARRAY_BUFFER, gles.sphere_vbo);
-   gles.BufferData(GL_ARRAY_BUFFER,
-      (GLsizeiptr)((size_t)NOVA64_GLES_SPHERE_VERTEX_COUNT * 6 * sizeof(GLfloat)),
-      vertices, GL_STATIC_DRAW);
-   gles.GenBuffers(1, &gles.sphere_ibo);
-   gles.BindBuffer(GL_ELEMENT_ARRAY_BUFFER, gles.sphere_ibo);
-   gles.BufferData(GL_ELEMENT_ARRAY_BUFFER,
-      (GLsizeiptr)((size_t)NOVA64_GLES_SPHERE_INDEX_COUNT * sizeof(unsigned short)),
-      indices, GL_STATIC_DRAW);
-
-   free(vertices);
-   free(indices);
-   return true;
-}
-
-static bool gles_upload_cone_geometry(void)
-{
-   GLfloat *vertices = (GLfloat *)calloc((size_t)NOVA64_GLES_CONE_VERTEX_COUNT * 6,
-      sizeof(GLfloat));
-   unsigned short *indices = (unsigned short *)malloc(
-      (size_t)NOVA64_GLES_CONE_INDEX_COUNT * sizeof(unsigned short));
-   if (!vertices || !indices) {
-      free(vertices);
-      free(indices);
-      return false;
-   }
-
-   vertices[0] = 0.0f; vertices[1] = 0.5f; vertices[2] = 0.0f;
-   vertices[3] = 0.0f; vertices[4] = 0.65f; vertices[5] = 0.0f;
-   for (int i = 0; i < NOVA64_GLES_CONE_SEGMENTS; i++) {
-      float a = ((float)i / (float)NOVA64_GLES_CONE_SEGMENTS) * (float)M_PI * 2.0f;
-      float x = cosf(a);
-      float z = sinf(a);
-      float nx = x * 0.70710678f;
-      float nz = z * 0.70710678f;
-      int vi = (1 + i) * 6;
-      vertices[vi + 0] = x;
-      vertices[vi + 1] = -0.5f;
-      vertices[vi + 2] = z;
-      vertices[vi + 3] = nx;
-      vertices[vi + 4] = 0.70710678f;
-      vertices[vi + 5] = nz;
-   }
-
-   int base_center = 1 + NOVA64_GLES_CONE_SEGMENTS;
-   int base_ring = base_center + 1;
-   vertices[base_center * 6 + 0] = 0.0f;
-   vertices[base_center * 6 + 1] = -0.5f;
-   vertices[base_center * 6 + 2] = 0.0f;
-   vertices[base_center * 6 + 3] = 0.0f;
-   vertices[base_center * 6 + 4] = -1.0f;
-   vertices[base_center * 6 + 5] = 0.0f;
-   for (int i = 0; i < NOVA64_GLES_CONE_SEGMENTS; i++) {
-      float a = ((float)i / (float)NOVA64_GLES_CONE_SEGMENTS) * (float)M_PI * 2.0f;
-      int vi = (base_ring + i) * 6;
-      vertices[vi + 0] = cosf(a);
-      vertices[vi + 1] = -0.5f;
-      vertices[vi + 2] = sinf(a);
-      vertices[vi + 3] = 0.0f;
-      vertices[vi + 4] = -1.0f;
-      vertices[vi + 5] = 0.0f;
-   }
-
-   int ii = 0;
-   for (int i = 0; i < NOVA64_GLES_CONE_SEGMENTS; i++) {
-      unsigned short a = (unsigned short)(1 + i);
-      unsigned short b = (unsigned short)(1 + ((i + 1) % NOVA64_GLES_CONE_SEGMENTS));
-      indices[ii++] = 0; indices[ii++] = a; indices[ii++] = b;
-   }
-   for (int i = 0; i < NOVA64_GLES_CONE_SEGMENTS; i++) {
-      unsigned short a = (unsigned short)(base_ring + i);
-      unsigned short b = (unsigned short)(base_ring + ((i + 1) % NOVA64_GLES_CONE_SEGMENTS));
-      indices[ii++] = (unsigned short)base_center; indices[ii++] = b; indices[ii++] = a;
-   }
-
-   gles.GenBuffers(1, &gles.cone_vbo);
-   gles.BindBuffer(GL_ARRAY_BUFFER, gles.cone_vbo);
-   gles.BufferData(GL_ARRAY_BUFFER,
-      (GLsizeiptr)((size_t)NOVA64_GLES_CONE_VERTEX_COUNT * 6 * sizeof(GLfloat)),
-      vertices, GL_STATIC_DRAW);
-   gles.GenBuffers(1, &gles.cone_ibo);
-   gles.BindBuffer(GL_ELEMENT_ARRAY_BUFFER, gles.cone_ibo);
-   gles.BufferData(GL_ELEMENT_ARRAY_BUFFER,
-      (GLsizeiptr)((size_t)NOVA64_GLES_CONE_INDEX_COUNT * sizeof(unsigned short)),
-      indices, GL_STATIC_DRAW);
-
-   free(vertices);
-   free(indices);
-   return true;
 }
 
 static bool gles_init_resources(void)
@@ -30640,6 +30182,24 @@ static bool gles_init_resources(void)
    static const unsigned short plane_indices[] = {
       0, 1, 2, 0, 2, 3,
    };
+   static const GLfloat sphere_vertices[] = {
+       0.0f,  0.5f,  0.0f,  0.0f,  1.0f,  0.0f,
+       0.5f,  0.0f,  0.0f,  1.0f,  0.0f,  0.0f,
+       0.0f,  0.0f,  0.5f,  0.0f,  0.0f,  1.0f,
+      -0.5f,  0.0f,  0.0f, -1.0f,  0.0f,  0.0f,
+       0.0f,  0.0f, -0.5f,  0.0f,  0.0f, -1.0f,
+       0.0f, -0.5f,  0.0f,  0.0f, -1.0f,  0.0f,
+   };
+   static const unsigned short sphere_indices[] = {
+      0, 1, 2,
+      0, 2, 3,
+      0, 3, 4,
+      0, 4, 1,
+      5, 2, 1,
+      5, 3, 2,
+      5, 4, 3,
+      5, 1, 4,
+   };
    static const GLfloat overlay_vertices[] = {
       -1.0f, -1.0f, 0.0f, 1.0f,
        1.0f, -1.0f, 1.0f, 1.0f,
@@ -30657,20 +30217,10 @@ static bool gles_init_resources(void)
       nova64_log_line(RETRO_LOG_INFO, "[nova64] GL Core: default VAO created and bound");
    }
 
-   if (log_cb)
-      log_cb(RETRO_LOG_INFO, "[nova64] init_resources: CreateShader=%p GenBuffers=%p\n",
-             (void*)gles.CreateShader, (void*)gles.GenBuffers);
-   if (!gles_create_cube_program()) {
-      nova64_log_line(RETRO_LOG_ERROR, "[nova64] init_resources: cube program FAILED");
+   if (!gles_create_cube_program())
       return false;
-   }
-   nova64_log_line(RETRO_LOG_INFO, "[nova64] init_resources: cube program OK");
-   if (!gles_create_overlay_program()) {
-      nova64_log_line(RETRO_LOG_ERROR, "[nova64] init_resources: overlay program FAILED");
+   if (!gles_create_overlay_program())
       return false;
-   }
-   nova64_log_line(RETRO_LOG_INFO, "[nova64] init_resources: overlay program OK");
-   nova64_log_line(RETRO_LOG_INFO, "[nova64] init_resources: creating buffers...");
 
    gles.GenBuffers(1, &gles.cube_vbo);
    gles.BindBuffer(GL_ARRAY_BUFFER, gles.cube_vbo);
@@ -30686,16 +30236,12 @@ static bool gles_init_resources(void)
    gles.BindBuffer(GL_ELEMENT_ARRAY_BUFFER, gles.plane_ibo);
    gles.BufferData(GL_ELEMENT_ARRAY_BUFFER, (GLsizeiptr)sizeof(plane_indices), plane_indices, GL_STATIC_DRAW);
 
-   nova64_log_line(RETRO_LOG_INFO, "[nova64] init_resources: uploading sphere geometry...");
-   if (!gles_upload_sphere_geometry())
-      return false;
-   nova64_log_line(RETRO_LOG_INFO, "[nova64] init_resources: uploading cone geometry...");
-   if (!gles_upload_cone_geometry())
-      return false;
-   nova64_log_line(RETRO_LOG_INFO, "[nova64] init_resources: overlay buffers...");
-
-   gles.GenBuffers(1, &gles.instance_transform_vbo);
-   gles.GenBuffers(1, &gles.instance_color_vbo);
+   gles.GenBuffers(1, &gles.sphere_vbo);
+   gles.BindBuffer(GL_ARRAY_BUFFER, gles.sphere_vbo);
+   gles.BufferData(GL_ARRAY_BUFFER, (GLsizeiptr)sizeof(sphere_vertices), sphere_vertices, GL_STATIC_DRAW);
+   gles.GenBuffers(1, &gles.sphere_ibo);
+   gles.BindBuffer(GL_ELEMENT_ARRAY_BUFFER, gles.sphere_ibo);
+   gles.BufferData(GL_ELEMENT_ARRAY_BUFFER, (GLsizeiptr)sizeof(sphere_indices), sphere_indices, GL_STATIC_DRAW);
 
    gles.GenBuffers(1, &gles.overlay_vbo);
    gles.BindBuffer(GL_ARRAY_BUFFER, gles.overlay_vbo);
@@ -30713,7 +30259,6 @@ static bool gles_init_resources(void)
    gles.TexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, NOVA64_WIDTH, NOVA64_HEIGHT, 0,
       GL_RGBA, GL_UNSIGNED_BYTE, NULL);
 
-   nova64_log_line(RETRO_LOG_INFO, "[nova64] init_resources: all done, resources_ready=true");
    gles.resources_ready = true;
    return true;
 }
@@ -30724,11 +30269,8 @@ static bool gles_load_functions(void)
       return true;
 
    gles.Viewport = (PFNGLVIEWPORTPROC)load_gles_proc("glViewport");
-   if (log_cb)
-      log_cb(RETRO_LOG_INFO, "[nova64] glViewport proc addr: %p\n", (void*)gles.Viewport);
    gles.ClearColor = (PFNGLCLEARCOLORPROC)load_gles_proc("glClearColor");
    gles.Clear = (PFNGLCLEARPROC)load_gles_proc("glClear");
-   gles.Finish = (PFNGLFINISHPROC)load_gles_proc("glFinish");
    gles.Enable = (PFNGLENABLEPROC)load_gles_proc("glEnable");
    gles.Disable = (PFNGLDISABLEPROC)load_gles_proc("glDisable");
    gles.CreateShader = (PFNGLCREATESHADERPROC)load_gles_proc("glCreateShader");
@@ -30757,8 +30299,6 @@ static bool gles_load_functions(void)
    gles.DisableVertexAttribArray = (PFNGLDISABLEVERTEXATTRIBARRAYPROC)load_gles_proc("glDisableVertexAttribArray");
    gles.VertexAttribPointer = (PFNGLVERTEXATTRIBPOINTERPROC)load_gles_proc("glVertexAttribPointer");
    gles.DrawElements = (PFNGLDRAWELEMENTSPROC)load_gles_proc("glDrawElements");
-   gles.DrawElementsInstanced = (PFNGLDRAWELEMENTSINSTANCEDPROC)load_gles_proc("glDrawElementsInstanced");
-   gles.VertexAttribDivisor = (PFNGLVERTEXATTRIBDIVISORPROC)load_gles_proc("glVertexAttribDivisor");
    gles.GenTextures = (PFNGLGENTEXTURESPROC)load_gles_proc("glGenTextures");
    gles.DeleteTextures = (PFNGLDELETETEXTURESPROC)load_gles_proc("glDeleteTextures");
    gles.ActiveTexture = (PFNGLACTIVETEXTUREPROC)load_gles_proc("glActiveTexture");
@@ -30770,7 +30310,6 @@ static bool gles_load_functions(void)
    gles.Uniform1f = (PFNGLUNIFORM1FPROC)load_gles_proc("glUniform1f");
    gles.Uniform2f = (PFNGLUNIFORM2FPROC)load_gles_proc("glUniform2f");
    gles.BlendFunc = (PFNGLBLENDFUNCPROC)load_gles_proc("glBlendFunc");
-   gles.DepthMask = (PFNGLDEPTHMASKPROC)load_gles_proc("glDepthMask");
    /* Core profile requirements */
    gles.GenVertexArrays  = (PFNGLGENVERTEXARRAYSPROC)load_gles_proc("glGenVertexArrays");
    gles.BindVertexArray  = (PFNGLBINDVERTEXARRAYPROC)load_gles_proc("glBindVertexArray");
@@ -30798,7 +30337,7 @@ static bool gles_load_functions(void)
       gles.VertexAttribPointer && gles.DrawElements && gles.GenTextures &&
       gles.DeleteTextures && gles.ActiveTexture && gles.BindTexture &&
       gles.TexParameteri && gles.TexImage2D && gles.TexSubImage2D &&
-      gles.Uniform1i && gles.Uniform1f && gles.BlendFunc && gles.DepthMask;
+      gles.Uniform1i && gles.Uniform1f && gles.BlendFunc;
    if (!gles.functions_loaded)
       nova64_log_line(RETRO_LOG_WARN, "[nova64] GLES proc-address callback did not provide the primitive renderer path");
    return gles.functions_loaded;
@@ -30827,7 +30366,6 @@ static void gles_context_destroy(void)
    gles.Viewport = NULL;
    gles.ClearColor = NULL;
    gles.Clear = NULL;
-   gles.Finish = NULL;
    gles.Enable = NULL;
    gles.Disable = NULL;
    gles.CreateShader = NULL;
@@ -30856,8 +30394,6 @@ static void gles_context_destroy(void)
    gles.DisableVertexAttribArray = NULL;
    gles.VertexAttribPointer = NULL;
    gles.DrawElements = NULL;
-   gles.DrawElementsInstanced = NULL;
-   gles.VertexAttribDivisor = NULL;
    gles.GenTextures = NULL;
    gles.DeleteTextures = NULL;
    gles.ActiveTexture = NULL;
@@ -30868,7 +30404,6 @@ static void gles_context_destroy(void)
    gles.Uniform1i = NULL;
    gles.Uniform1f = NULL;
    gles.BlendFunc = NULL;
-   gles.DepthMask = NULL;
    gles.GenVertexArrays = NULL;
    gles.BindVertexArray = NULL;
    gles.DeleteVertexArrays = NULL;
@@ -30912,8 +30447,6 @@ static void render_gles_primitive(const struct nova64_mesh *mesh, const float vi
    gles.UniformMatrix4fv(gles.cube_mvp_uniform, 1, GL_FALSE, mvp);
    gles.UniformMatrix3fv(gles.cube_normal_matrix_uniform, 1, GL_FALSE, normal_matrix);
    gles.Uniform4f(gles.cube_color_uniform, r, g, b, a);
-   if (gles.cube_use_instancing_uniform >= 0)
-      gles.Uniform1i(gles.cube_use_instancing_uniform, 0);
    uint32_t ambient = color_with_intensity(light_state.ambient, light_state.ambient_intensity);
    gles.Uniform4f(gles.cube_ambient_uniform,
       (float)((ambient >> 24) & 0xffU) / 255.0f,
@@ -31041,7 +30574,6 @@ static void render_gles_primitive(const struct nova64_mesh *mesh, const float vi
       (GLsizei)(sizeof(GLfloat) * 6), NULL);
    gles.VertexAttribPointer((GLuint)gles.cube_normal_attrib, 3, GL_FLOAT, GL_FALSE,
       (GLsizei)(sizeof(GLfloat) * 6), (const void *)(uintptr_t)(sizeof(GLfloat) * 3));
-   core_perf_frame_draw_calls++;
    gles.DrawElements(GL_TRIANGLES, index_count, GL_UNSIGNED_SHORT, NULL);
    gles.DisableVertexAttribArray((GLuint)gles.cube_normal_attrib);
    gles.DisableVertexAttribArray((GLuint)gles.cube_position_attrib);
@@ -31059,477 +30591,20 @@ static void render_gles_plane(const struct nova64_mesh *mesh, const float view_p
    render_gles_primitive(mesh, view_projection, gles.plane_vbo, gles.plane_ibo, 6);
 }
 
-struct nova64_gles_sort_item {
-   int mesh_index;
-   float depth;
-   int sort_order;
-};
-
-static bool gles_mesh_uses_blend(const struct nova64_mesh *mesh)
-{
-   if (!mesh)
-      return false;
-   if (mesh->mesh_blend != NOVA64_MESH_BLEND_OPAQUE)
-      return true;
-   if (mesh->opacity < 0.999f || (mesh->color & 0xffU) < 255U)
-      return true;
-   if (mesh->type == NOVA64_MESH_INSTANCED && mesh->instance_colors) {
-      for (int i = 0; i < mesh->instance_count; i++) {
-         if ((mesh->instance_colors[i] & 0xffU) < 255U)
-            return true;
-      }
-   }
-   return false;
-}
-
-static float gles_mesh_depth_key(const struct nova64_mesh *mesh)
-{
-   float center[3];
-   float forward[3] = {
-      camera_state.target[0] - camera_state.position[0],
-      camera_state.target[1] - camera_state.position[1],
-      camera_state.target[2] - camera_state.position[2]
-   };
-   float len = sqrtf(forward[0] * forward[0] + forward[1] * forward[1] + forward[2] * forward[2]);
-   if (len < 0.0001f) {
-      forward[0] = 0.0f;
-      forward[1] = 0.0f;
-      forward[2] = -1.0f;
-      len = 1.0f;
-   }
-   forward[0] /= len;
-   forward[1] /= len;
-   forward[2] /= len;
-   mesh_local_to_world(mesh, (float[3]){0.0f, 0.0f, 0.0f}, center);
-   return (center[0] - camera_state.position[0]) * forward[0] +
-      (center[1] - camera_state.position[1]) * forward[1] +
-      (center[2] - camera_state.position[2]) * forward[2];
-}
-
-static int gles_transparent_mesh_cmp(const void *left, const void *right)
-{
-   const struct nova64_gles_sort_item *a = (const struct nova64_gles_sort_item *)left;
-   const struct nova64_gles_sort_item *b = (const struct nova64_gles_sort_item *)right;
-   if (a->sort_order != b->sort_order)
-      return a->sort_order - b->sort_order;
-   if (a->depth < b->depth)
-      return 1;
-   if (a->depth > b->depth)
-      return -1;
-   return a->mesh_index - b->mesh_index;
-}
-
-static void render_gles_mesh_by_type(struct nova64_mesh *mesh, const float view_projection[16])
-{
-   if (mesh->type == NOVA64_MESH_CUBE)
-      render_gles_cube(mesh, view_projection);
-   else if (mesh->type == NOVA64_MESH_PLANE)
-      render_gles_plane(mesh, view_projection);
-   else if (mesh->type == NOVA64_MESH_SPHERE)
-      render_gles_sphere(mesh, view_projection);
-   else if (mesh->type == NOVA64_MESH_CAPSULE)
-      render_gles_capsule(mesh, view_projection);
-   else if (mesh->type == NOVA64_MESH_CYLINDER)
-      render_gles_cylinder(mesh, view_projection);
-   else if (mesh->type == NOVA64_MESH_CUSTOM)
-      render_gles_custom_mesh(mesh, view_projection);
-   else if (mesh->type == NOVA64_MESH_INSTANCED)
-      render_gles_instanced_mesh(mesh, view_projection);
-   else if (mesh->type == NOVA64_MESH_TORUS)
-      render_gles_torus(mesh, view_projection);
-   else if (mesh->type == NOVA64_MESH_CONE)
-      render_gles_cone(mesh, view_projection);
-}
-
-static void render_gles_meshes_sorted(const float view_projection[16])
-{
-   struct nova64_gles_sort_item transparent[NOVA64_MAX_MESHES];
-   int transparent_count = 0;
-
-   for (int i = 0; i < NOVA64_MAX_MESHES; i++) {
-      struct nova64_mesh *mesh = &meshes[i];
-      if (!mesh->used || !mesh->visible || mesh->opacity <= 0.0f)
-         continue;
-      if (gles_mesh_uses_blend(mesh)) {
-         transparent[transparent_count].mesh_index = i;
-         transparent[transparent_count].depth = gles_mesh_depth_key(mesh);
-         transparent[transparent_count].sort_order = mesh->sort_order;
-         transparent_count++;
-      } else {
-         render_gles_mesh_by_type(mesh, view_projection);
-      }
-   }
-
-   if (transparent_count <= 0)
-      return;
-
-   qsort(transparent, (size_t)transparent_count, sizeof(transparent[0]),
-      gles_transparent_mesh_cmp);
-   gles.DepthMask(GL_FALSE);
-   for (int i = 0; i < transparent_count; i++)
-      render_gles_mesh_by_type(&meshes[transparent[i].mesh_index], view_projection);
-   gles.DepthMask(GL_TRUE);
-}
-
-static void gles_delete_mesh_gpu_buffers(struct nova64_mesh *mesh)
-{
-   if (!mesh || !gles.active || !gles.DeleteBuffers)
-      return;
-   if (mesh->gl_custom_vbo)
-      gles.DeleteBuffers(1, &mesh->gl_custom_vbo);
-   if (mesh->gl_custom_ibo)
-      gles.DeleteBuffers(1, &mesh->gl_custom_ibo);
-   mesh->gl_custom_vbo = 0;
-   mesh->gl_custom_ibo = 0;
-}
-
-static bool gles_generated_mesh_matches(const struct nova64_mesh *mesh, enum nova64_mesh_type type)
-{
-   return mesh->gl_generated_type == type &&
-      fabsf(mesh->gl_generated_scale[0] - mesh->scale[0]) < 0.0001f &&
-      fabsf(mesh->gl_generated_scale[1] - mesh->scale[1]) < 0.0001f &&
-      fabsf(mesh->gl_generated_scale[2] - mesh->scale[2]) < 0.0001f;
-}
-
-static void gles_mark_generated_mesh(struct nova64_mesh *mesh, enum nova64_mesh_type type)
-{
-   mesh->gl_generated_type = type;
-   mesh->gl_generated_scale[0] = mesh->scale[0];
-   mesh->gl_generated_scale[1] = mesh->scale[1];
-   mesh->gl_generated_scale[2] = mesh->scale[2];
-}
-
-static bool gles_ensure_capsule_mesh(struct nova64_mesh *mesh)
-{
-   enum { CAP_SEGMENTS = 24, CAP_HEMI_STEPS = 6,
-      CAP_RING_COUNT = CAP_HEMI_STEPS * 2 + 2,
-      CAP_VERTEX_COUNT = CAP_RING_COUNT * CAP_SEGMENTS,
-      CAP_INDEX_COUNT = (CAP_RING_COUNT - 1) * CAP_SEGMENTS * 6 };
-
-   if (!mesh)
-      return false;
-   if (mesh->gl_custom_vbo && mesh->gl_custom_ibo &&
-       gles_generated_mesh_matches(mesh, NOVA64_MESH_CAPSULE))
-      return true;
-   if (!gles.GenBuffers || !gles.BindBuffer || !gles.BufferData)
-      return false;
-
-   gles_delete_mesh_gpu_buffers(mesh);
-
-   float radius = fabsf(mesh->scale[0]) * 0.5f;
-   float total_height = fabsf(mesh->scale[1]);
-   if (radius < 0.0005f) radius = 0.0005f;
-   if (total_height < radius * 2.0f)
-      total_height = radius * 2.0f;
-   float cylinder_half = (total_height - radius * 2.0f) * 0.5f;
-
-   float *vertices = (float *)calloc((size_t)CAP_VERTEX_COUNT * 6, sizeof(float));
-   uint16_t *indices = (uint16_t *)malloc((size_t)CAP_INDEX_COUNT * sizeof(uint16_t));
-   if (!vertices || !indices) {
-      free(vertices);
-      free(indices);
-      return false;
-   }
-
-   for (int ring = 0; ring < CAP_RING_COUNT; ring++) {
-      float y = 0.0f;
-      float ring_radius = radius;
-      float normal_y = 0.0f;
-
-      if (ring <= CAP_HEMI_STEPS) {
-         float theta = ((float)ring / (float)CAP_HEMI_STEPS) * ((float)M_PI * 0.5f);
-         ring_radius = sinf(theta) * radius;
-         y = cylinder_half + cosf(theta) * radius;
-         normal_y = cosf(theta);
-      } else {
-         int lower = ring - (CAP_HEMI_STEPS + 1);
-         float theta = ((float)lower / (float)CAP_HEMI_STEPS) * ((float)M_PI * 0.5f);
-         ring_radius = cosf(theta) * radius;
-         y = -cylinder_half - sinf(theta) * radius;
-         normal_y = -sinf(theta);
-      }
-
-      float normal_radius = radius > 0.0f ? ring_radius / radius : 0.0f;
-      for (int i = 0; i < CAP_SEGMENTS; i++) {
-         float a = ((float)i / (float)CAP_SEGMENTS) * 6.28318530f;
-         float x = cosf(a);
-         float z = sinf(a);
-         int vi = (ring * CAP_SEGMENTS + i) * 6;
-         vertices[vi + 0] = x * ring_radius;
-         vertices[vi + 1] = y;
-         vertices[vi + 2] = z * ring_radius;
-         vertices[vi + 3] = x * normal_radius;
-         vertices[vi + 4] = normal_y;
-         vertices[vi + 5] = z * normal_radius;
-      }
-   }
-
-   int ii = 0;
-   for (int ring = 0; ring < CAP_RING_COUNT - 1; ring++) {
-      for (int i = 0; i < CAP_SEGMENTS; i++) {
-         uint16_t a = (uint16_t)(ring * CAP_SEGMENTS + i);
-         uint16_t b = (uint16_t)((ring + 1) * CAP_SEGMENTS + i);
-         uint16_t c = (uint16_t)((ring + 1) * CAP_SEGMENTS + ((i + 1) % CAP_SEGMENTS));
-         uint16_t d = (uint16_t)(ring * CAP_SEGMENTS + ((i + 1) % CAP_SEGMENTS));
-         indices[ii++] = a; indices[ii++] = b; indices[ii++] = c;
-         indices[ii++] = a; indices[ii++] = c; indices[ii++] = d;
-      }
-   }
-
-   gles.GenBuffers(1, &mesh->gl_custom_vbo);
-   gles.BindBuffer(GL_ARRAY_BUFFER, mesh->gl_custom_vbo);
-   gles.BufferData(GL_ARRAY_BUFFER,
-      (GLsizeiptr)((size_t)CAP_VERTEX_COUNT * 6 * sizeof(float)),
-      vertices, GL_STATIC_DRAW);
-   gles.GenBuffers(1, &mesh->gl_custom_ibo);
-   gles.BindBuffer(GL_ELEMENT_ARRAY_BUFFER, mesh->gl_custom_ibo);
-   gles.BufferData(GL_ELEMENT_ARRAY_BUFFER,
-      (GLsizeiptr)((size_t)CAP_INDEX_COUNT * sizeof(uint16_t)),
-      indices, GL_STATIC_DRAW);
-   gles.BindBuffer(GL_ARRAY_BUFFER, 0);
-   gles.BindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
-
-   mesh->custom_index_count = (unsigned)CAP_INDEX_COUNT;
-   gles_mark_generated_mesh(mesh, NOVA64_MESH_CAPSULE);
-
-   free(vertices);
-   free(indices);
-   return true;
-}
-
-static bool gles_ensure_cylinder_mesh(struct nova64_mesh *mesh)
-{
-   enum { CYL_SEGMENTS = 32, CYL_VERTEX_COUNT = CYL_SEGMENTS * 4 + 2,
-      CYL_INDEX_COUNT = CYL_SEGMENTS * 12 };
-
-   if (!mesh)
-      return false;
-   if (mesh->gl_custom_vbo && mesh->gl_custom_ibo &&
-       gles_generated_mesh_matches(mesh, NOVA64_MESH_CYLINDER))
-      return true;
-   if (!gles.GenBuffers || !gles.BindBuffer || !gles.BufferData)
-      return false;
-
-   gles_delete_mesh_gpu_buffers(mesh);
-
-   float top_radius = fabsf(mesh->scale[0]) * 0.5f;
-   float height = fabsf(mesh->scale[1]);
-   float bottom_radius = fabsf(mesh->scale[2]) * 0.5f;
-   if (top_radius < 0.0005f) top_radius = 0.0005f;
-   if (bottom_radius < 0.0005f) bottom_radius = 0.0005f;
-   if (height < 0.001f) height = 0.001f;
-
-   float *vertices = (float *)calloc((size_t)CYL_VERTEX_COUNT * 6, sizeof(float));
-   uint16_t *indices = (uint16_t *)malloc((size_t)CYL_INDEX_COUNT * sizeof(uint16_t));
-   if (!vertices || !indices) {
-      free(vertices);
-      free(indices);
-      return false;
-   }
-
-   float half_h = height * 0.5f;
-   float slope = (bottom_radius - top_radius) / height;
-   int top_side = 0;
-   int bottom_side = CYL_SEGMENTS;
-   int top_cap_center = CYL_SEGMENTS * 2;
-   int top_cap_ring = top_cap_center + 1;
-   int bottom_cap_center = top_cap_ring + CYL_SEGMENTS;
-   int bottom_cap_ring = bottom_cap_center + 1;
-
-   for (int i = 0; i < CYL_SEGMENTS; i++) {
-      float a = ((float)i / (float)CYL_SEGMENTS) * 6.28318530f;
-      float x = cosf(a);
-      float z = sinf(a);
-      float inv_len = 1.0f / sqrtf(x * x + slope * slope + z * z);
-      float nx = x * inv_len;
-      float ny = slope * inv_len;
-      float nz = z * inv_len;
-
-      int vi = (top_side + i) * 6;
-      vertices[vi + 0] = x * top_radius;
-      vertices[vi + 1] = half_h;
-      vertices[vi + 2] = z * top_radius;
-      vertices[vi + 3] = nx;
-      vertices[vi + 4] = ny;
-      vertices[vi + 5] = nz;
-
-      vi = (bottom_side + i) * 6;
-      vertices[vi + 0] = x * bottom_radius;
-      vertices[vi + 1] = -half_h;
-      vertices[vi + 2] = z * bottom_radius;
-      vertices[vi + 3] = nx;
-      vertices[vi + 4] = ny;
-      vertices[vi + 5] = nz;
-
-      vi = (top_cap_ring + i) * 6;
-      vertices[vi + 0] = x * top_radius;
-      vertices[vi + 1] = half_h;
-      vertices[vi + 2] = z * top_radius;
-      vertices[vi + 3] = 0.0f;
-      vertices[vi + 4] = 1.0f;
-      vertices[vi + 5] = 0.0f;
-
-      vi = (bottom_cap_ring + i) * 6;
-      vertices[vi + 0] = x * bottom_radius;
-      vertices[vi + 1] = -half_h;
-      vertices[vi + 2] = z * bottom_radius;
-      vertices[vi + 3] = 0.0f;
-      vertices[vi + 4] = -1.0f;
-      vertices[vi + 5] = 0.0f;
-   }
-
-   vertices[top_cap_center * 6 + 1] = half_h;
-   vertices[top_cap_center * 6 + 4] = 1.0f;
-   vertices[bottom_cap_center * 6 + 1] = -half_h;
-   vertices[bottom_cap_center * 6 + 4] = -1.0f;
-
-   int ii = 0;
-   for (int i = 0; i < CYL_SEGMENTS; i++) {
-      uint16_t t0 = (uint16_t)(top_side + i);
-      uint16_t t1 = (uint16_t)(top_side + ((i + 1) % CYL_SEGMENTS));
-      uint16_t b0 = (uint16_t)(bottom_side + i);
-      uint16_t b1 = (uint16_t)(bottom_side + ((i + 1) % CYL_SEGMENTS));
-      indices[ii++] = b0; indices[ii++] = t0; indices[ii++] = t1;
-      indices[ii++] = b0; indices[ii++] = t1; indices[ii++] = b1;
-   }
-   for (int i = 0; i < CYL_SEGMENTS; i++) {
-      uint16_t a = (uint16_t)(top_cap_ring + i);
-      uint16_t b = (uint16_t)(top_cap_ring + ((i + 1) % CYL_SEGMENTS));
-      indices[ii++] = (uint16_t)top_cap_center; indices[ii++] = a; indices[ii++] = b;
-   }
-   for (int i = 0; i < CYL_SEGMENTS; i++) {
-      uint16_t a = (uint16_t)(bottom_cap_ring + i);
-      uint16_t b = (uint16_t)(bottom_cap_ring + ((i + 1) % CYL_SEGMENTS));
-      indices[ii++] = (uint16_t)bottom_cap_center; indices[ii++] = b; indices[ii++] = a;
-   }
-
-   gles.GenBuffers(1, &mesh->gl_custom_vbo);
-   gles.BindBuffer(GL_ARRAY_BUFFER, mesh->gl_custom_vbo);
-   gles.BufferData(GL_ARRAY_BUFFER,
-      (GLsizeiptr)((size_t)CYL_VERTEX_COUNT * 6 * sizeof(float)),
-      vertices, GL_STATIC_DRAW);
-   gles.GenBuffers(1, &mesh->gl_custom_ibo);
-   gles.BindBuffer(GL_ELEMENT_ARRAY_BUFFER, mesh->gl_custom_ibo);
-   gles.BufferData(GL_ELEMENT_ARRAY_BUFFER,
-      (GLsizeiptr)((size_t)CYL_INDEX_COUNT * sizeof(uint16_t)),
-      indices, GL_STATIC_DRAW);
-   gles.BindBuffer(GL_ARRAY_BUFFER, 0);
-   gles.BindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
-
-   mesh->custom_index_count = (unsigned)CYL_INDEX_COUNT;
-   gles_mark_generated_mesh(mesh, NOVA64_MESH_CYLINDER);
-
-   free(vertices);
-   free(indices);
-   return true;
-}
-
-/* Torus renderer — generates and caches per-mesh VBO using actual majorR/tubeR from scale[0,1].
-   The ring lies in the XY plane (perpendicular to Z) so it looks like a ring when flown through. */
-static void render_gles_torus(struct nova64_mesh *mesh, const float view_projection[16])
-{
-   static const int MAJ = 24, MIN_S = 12;
-
-   /* Lazy geometry generation — cached in gl_custom_vbo/ibo fields */
-   if (!mesh->gl_custom_vbo && gles.GenBuffers && gles.BindBuffer && gles.BufferData) {
-      float mR = mesh->scale[0]; /* major radius */
-      float tR = mesh->scale[1]; /* tube radius  */
-      if (mR < 0.001f) mR = 1.0f;
-      if (tR < 0.001f) tR = 0.3f;
-      int nv = MAJ * MIN_S;
-      int ni = MAJ * MIN_S * 6;
-
-      float *verts = (float *)malloc((size_t)nv * 6 * sizeof(float));
-      uint16_t *idx = (uint16_t *)malloc((size_t)ni * sizeof(uint16_t));
-      if (!verts || !idx) { free(verts); free(idx); return; }
-
-      /* Ring in XY plane: x=(mR+tR*cv)*cu, y=(mR+tR*cv)*su, z=tR*sv */
-      for (int j = 0; j < MAJ; j++) {
-         float u = (float)j / (float)MAJ * 6.28318530f;
-         float cu = cosf(u), su = sinf(u);
-         for (int k = 0; k < MIN_S; k++) {
-            float v = (float)k / (float)MIN_S * 6.28318530f;
-            float cv = cosf(v), sv = sinf(v);
-            int vi = (j * MIN_S + k) * 6;
-            verts[vi+0] = (mR + tR * cv) * cu;
-            verts[vi+1] = (mR + tR * cv) * su;
-            verts[vi+2] = tR * sv;
-            verts[vi+3] = cv * cu;
-            verts[vi+4] = cv * su;
-            verts[vi+5] = sv;
-         }
-      }
-      int ii = 0;
-      for (int j = 0; j < MAJ; j++) {
-         int nj = (j + 1) % MAJ;
-         for (int k = 0; k < MIN_S; k++) {
-            int nk = (k + 1) % MIN_S;
-            uint16_t a = (uint16_t)(j  * MIN_S + k );
-            uint16_t b = (uint16_t)(nj * MIN_S + k );
-            uint16_t c = (uint16_t)(nj * MIN_S + nk);
-            uint16_t d = (uint16_t)(j  * MIN_S + nk);
-            idx[ii++]=a; idx[ii++]=b; idx[ii++]=c;
-            idx[ii++]=a; idx[ii++]=c; idx[ii++]=d;
-         }
-      }
-
-      gles.GenBuffers(1, &mesh->gl_custom_vbo);
-      gles.BindBuffer(GL_ARRAY_BUFFER, mesh->gl_custom_vbo);
-      gles.BufferData(GL_ARRAY_BUFFER, (GLsizeiptr)((size_t)nv*6*sizeof(float)), verts, GL_STATIC_DRAW);
-      gles.GenBuffers(1, &mesh->gl_custom_ibo);
-      gles.BindBuffer(GL_ELEMENT_ARRAY_BUFFER, mesh->gl_custom_ibo);
-      gles.BufferData(GL_ELEMENT_ARRAY_BUFFER, (GLsizeiptr)((size_t)ni*sizeof(uint16_t)), idx, GL_STATIC_DRAW);
-      gles.BindBuffer(GL_ARRAY_BUFFER, 0);
-      gles.BindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
-      mesh->custom_index_count = (unsigned)ni;
-      free(verts); free(idx);
-   }
-   if (!mesh->gl_custom_vbo || !mesh->gl_custom_ibo) return;
-
-   struct nova64_mesh draw_mesh = *mesh;
-   draw_mesh.scale[0] = 1.0f;
-   draw_mesh.scale[1] = 1.0f;
-   draw_mesh.scale[2] = 1.0f;
-   render_gles_primitive(&draw_mesh, view_projection, mesh->gl_custom_vbo, mesh->gl_custom_ibo,
-      (GLsizei)mesh->custom_index_count);
-}
-
 static void render_gles_sphere(const struct nova64_mesh *mesh, const float view_projection[16])
 {
-   render_gles_primitive(mesh, view_projection, gles.sphere_vbo, gles.sphere_ibo,
-      NOVA64_GLES_SPHERE_INDEX_COUNT);
+   render_gles_primitive(mesh, view_projection, gles.sphere_vbo, gles.sphere_ibo, 24);
 }
 
-static void render_gles_capsule(struct nova64_mesh *mesh, const float view_projection[16])
+/* Capsule and cylinder use the sphere proxy geometry until dedicated VBOs are built */
+static void render_gles_capsule(const struct nova64_mesh *mesh, const float view_projection[16])
 {
-   if (!gles_ensure_capsule_mesh(mesh))
-      return;
-
-   struct nova64_mesh draw_mesh = *mesh;
-   draw_mesh.scale[0] = 1.0f;
-   draw_mesh.scale[1] = 1.0f;
-   draw_mesh.scale[2] = 1.0f;
-   render_gles_primitive(&draw_mesh, view_projection, mesh->gl_custom_vbo, mesh->gl_custom_ibo,
-      (GLsizei)mesh->custom_index_count);
+   render_gles_primitive(mesh, view_projection, gles.sphere_vbo, gles.sphere_ibo, 24);
 }
 
-static void render_gles_cylinder(struct nova64_mesh *mesh, const float view_projection[16])
+static void render_gles_cylinder(const struct nova64_mesh *mesh, const float view_projection[16])
 {
-   if (!gles_ensure_cylinder_mesh(mesh))
-      return;
-
-   struct nova64_mesh draw_mesh = *mesh;
-   draw_mesh.scale[0] = 1.0f;
-   draw_mesh.scale[1] = 1.0f;
-   draw_mesh.scale[2] = 1.0f;
-   render_gles_primitive(&draw_mesh, view_projection, mesh->gl_custom_vbo, mesh->gl_custom_ibo,
-      (GLsizei)mesh->custom_index_count);
-}
-
-static void render_gles_cone(const struct nova64_mesh *mesh, const float view_projection[16])
-{
-   render_gles_primitive(mesh, view_projection, gles.cone_vbo, gles.cone_ibo,
-      NOVA64_GLES_CONE_INDEX_COUNT);
+   render_gles_primitive(mesh, view_projection, gles.sphere_vbo, gles.sphere_ibo, 24);
 }
 
 static void render_gles_custom_mesh(struct nova64_mesh *mesh, const float view_projection[16])
@@ -31563,21 +30638,22 @@ static void render_gles_instanced_mesh(const struct nova64_mesh *mesh, const flo
 
    GLuint vbo, ibo; GLsizei idx_count;
    switch (mesh->instance_geometry) {
-      case 1: vbo = gles.sphere_vbo; ibo = gles.sphere_ibo;
-         idx_count = NOVA64_GLES_SPHERE_INDEX_COUNT; break;
+      case 1: vbo = gles.sphere_vbo; ibo = gles.sphere_ibo; idx_count = 24; break;
       case 2: vbo = gles.plane_vbo;  ibo = gles.plane_ibo;  idx_count = 6;  break;
-      case 3: /* capsule */ vbo = gles.sphere_vbo; ibo = gles.sphere_ibo;
-         idx_count = NOVA64_GLES_SPHERE_INDEX_COUNT; break;
-      case 4: /* cylinder */ vbo = gles.sphere_vbo; ibo = gles.sphere_ibo;
-         idx_count = NOVA64_GLES_SPHERE_INDEX_COUNT; break;
-      case 5: /* cone */ vbo = gles.cone_vbo; ibo = gles.cone_ibo;
-         idx_count = NOVA64_GLES_CONE_INDEX_COUNT; break;
+      case 3: /* capsule */ vbo = gles.sphere_vbo; ibo = gles.sphere_ibo; idx_count = 24; break;
+      case 4: /* cylinder */ vbo = gles.sphere_vbo; ibo = gles.sphere_ibo; idx_count = 24; break;
       default: vbo = gles.cube_vbo; ibo = gles.cube_ibo; idx_count = 36; break;
    }
 
+   /* Set material uniforms once — shared across all instances */
+   uint32_t color = mesh->color;
+   float r = (float)((color >> 24) & 0xffU) / 255.0f;
+   float g = (float)((color >> 16) & 0xffU) / 255.0f;
+   float b = (float)((color >> 8)  & 0xffU) / 255.0f;
+   float a = ((float)(color & 0xffU) / 255.0f) * clamp_float(mesh->opacity, 0.0f, 1.0f);
+
    gles.UseProgram(gles.cube_program);
-   if (gles.cube_use_instancing_uniform >= 0)
-      gles.Uniform1i(gles.cube_use_instancing_uniform, 0);
+   gles.Uniform4f(gles.cube_color_uniform, r, g, b, a);
 
    uint32_t ambient = color_with_intensity(light_state.ambient, light_state.ambient_intensity);
    gles.Uniform4f(gles.cube_ambient_uniform,
@@ -31589,53 +30665,12 @@ static void render_gles_instanced_mesh(const struct nova64_mesh *mesh, const flo
       light_state.direction[0], light_state.direction[1], light_state.direction[2], 0.0f);
    if (gles.cube_fog_enabled_uniform >= 0)
       gles.Uniform1i(gles.cube_fog_enabled_uniform, light_state.fog_enabled ? 1 : 0);
-   if (gles.cube_fog_color_uniform >= 0)
-      gles.Uniform4f(gles.cube_fog_color_uniform,
-         (float)((light_state.fog_color >> 24) & 0xffU) / 255.0f,
-         (float)((light_state.fog_color >> 16) & 0xffU) / 255.0f,
-         (float)((light_state.fog_color >>  8) & 0xffU) / 255.0f,
-         1.0f);
-   if (gles.cube_fog_near_uniform >= 0 && gles.Uniform1f)
-      gles.Uniform1f(gles.cube_fog_near_uniform, light_state.fog_near);
-   if (gles.cube_fog_far_uniform >= 0 && gles.Uniform1f)
-      gles.Uniform1f(gles.cube_fog_far_uniform, light_state.fog_far);
    if (gles.cube_shadow_enabled_uniform >= 0)
       gles.Uniform1i(gles.cube_shadow_enabled_uniform, 0);
    if (gles.cube_has_texture_uniform >= 0)
       gles.Uniform1i(gles.cube_has_texture_uniform, 0);
    if (gles.cube_has_normal_map_uniform >= 0)
       gles.Uniform1i(gles.cube_has_normal_map_uniform, 0);
-   if (gles.cube_emissive_color_uniform >= 0)
-      gles.Uniform4f(gles.cube_emissive_color_uniform,
-         (float)((mesh->emissive_color >> 24) & 0xffU) / 255.0f,
-         (float)((mesh->emissive_color >> 16) & 0xffU) / 255.0f,
-         (float)((mesh->emissive_color >>  8) & 0xffU) / 255.0f,
-         1.0f);
-   if (gles.cube_emissive_intensity_uniform >= 0 && gles.Uniform1f)
-      gles.Uniform1f(gles.cube_emissive_intensity_uniform, mesh->emissive_intensity);
-   if (gles.cube_roughness_uniform >= 0 && gles.Uniform1f)
-      gles.Uniform1f(gles.cube_roughness_uniform, mesh->roughness);
-   if (gles.cube_metalness_uniform >= 0 && gles.Uniform1f)
-      gles.Uniform1f(gles.cube_metalness_uniform, mesh->metalness);
-   if (gles.cube_uv_offset_uniform >= 0 && gles.Uniform2f)
-      gles.Uniform2f(gles.cube_uv_offset_uniform, mesh->uv_offset[0], mesh->uv_offset[1]);
-   if (gles.cube_uv_scale_uniform >= 0 && gles.Uniform2f)
-      gles.Uniform2f(gles.cube_uv_scale_uniform, mesh->uv_scale[0], mesh->uv_scale[1]);
-
-   bool did_blend = false;
-   if (mesh->mesh_blend == NOVA64_MESH_BLEND_ADDITIVE) {
-      gles.Enable(GL_BLEND);
-      gles.BlendFunc(GL_SRC_ALPHA, GL_ONE);
-      did_blend = true;
-   } else if (mesh->mesh_blend == NOVA64_MESH_BLEND_MULTIPLY) {
-      gles.Enable(GL_BLEND);
-      gles.BlendFunc(GL_DST_COLOR, GL_ZERO);
-      did_blend = true;
-   } else if (gles_mesh_uses_blend(mesh)) {
-      gles.Enable(GL_BLEND);
-      gles.BlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-      did_blend = true;
-   }
 
    /* Per-instance draw loop */
    gles.BindBuffer(GL_ARRAY_BUFFER, vbo);
@@ -31647,88 +30682,23 @@ static void render_gles_instanced_mesh(const struct nova64_mesh *mesh, const flo
    gles.VertexAttribPointer((GLuint)gles.cube_normal_attrib, 3, GL_FLOAT, GL_FALSE,
       (GLsizei)(sizeof(GLfloat) * 6), (const void *)(uintptr_t)(sizeof(GLfloat) * 3));
 
-   if (gles.DrawElementsInstanced && gles.VertexAttribDivisor &&
-       gles.instance_transform_vbo && gles.instance_color_vbo &&
-       gles.cube_instance_model_attrib >= 0 && gles.cube_instance_color_attrib >= 0 &&
-       gles.cube_use_instancing_uniform >= 0) {
-      size_t color_count = (size_t)mesh->instance_count * 4;
-      float *instance_colors = (float *)malloc(color_count * sizeof(float));
-      if (instance_colors) {
-         for (int j = 0; j < mesh->instance_count; j++) {
-            uint32_t color = mesh->instance_colors ? mesh->instance_colors[j] : mesh->color;
-            instance_colors[j * 4 + 0] = (float)((color >> 24) & 0xffU) / 255.0f;
-            instance_colors[j * 4 + 1] = (float)((color >> 16) & 0xffU) / 255.0f;
-            instance_colors[j * 4 + 2] = (float)((color >>  8) & 0xffU) / 255.0f;
-            instance_colors[j * 4 + 3] = ((float)(color & 0xffU) / 255.0f) *
-               clamp_float(mesh->opacity, 0.0f, 1.0f);
-         }
-
-         gles.Uniform1i(gles.cube_use_instancing_uniform, 1);
-         gles.UniformMatrix4fv(gles.cube_mvp_uniform, 1, GL_FALSE, view_projection);
-
-         gles.BindBuffer(GL_ARRAY_BUFFER, gles.instance_transform_vbo);
-         gles.BufferData(GL_ARRAY_BUFFER,
-            (GLsizeiptr)((size_t)mesh->instance_count * 16 * sizeof(float)),
-            mesh->instance_transforms, GL_DYNAMIC_DRAW);
-         for (int c = 0; c < 4; c++) {
-            GLuint attrib = (GLuint)(gles.cube_instance_model_attrib + c);
-            gles.EnableVertexAttribArray(attrib);
-            gles.VertexAttribPointer(attrib, 4, GL_FLOAT, GL_FALSE,
-               (GLsizei)(16 * sizeof(float)), (const void *)(uintptr_t)(c * 4 * sizeof(float)));
-            gles.VertexAttribDivisor(attrib, 1);
-         }
-
-         gles.BindBuffer(GL_ARRAY_BUFFER, gles.instance_color_vbo);
-         gles.BufferData(GL_ARRAY_BUFFER,
-            (GLsizeiptr)(color_count * sizeof(float)), instance_colors, GL_DYNAMIC_DRAW);
-         gles.EnableVertexAttribArray((GLuint)gles.cube_instance_color_attrib);
-         gles.VertexAttribPointer((GLuint)gles.cube_instance_color_attrib, 4, GL_FLOAT, GL_FALSE,
-            (GLsizei)(4 * sizeof(float)), NULL);
-         gles.VertexAttribDivisor((GLuint)gles.cube_instance_color_attrib, 1);
-
-         core_perf_frame_draw_calls++;
-         gles.DrawElementsInstanced(GL_TRIANGLES, idx_count, GL_UNSIGNED_SHORT, NULL,
-            (GLsizei)mesh->instance_count);
-
-         gles.VertexAttribDivisor((GLuint)gles.cube_instance_color_attrib, 0);
-         gles.DisableVertexAttribArray((GLuint)gles.cube_instance_color_attrib);
-         for (int c = 0; c < 4; c++) {
-            GLuint attrib = (GLuint)(gles.cube_instance_model_attrib + c);
-            gles.VertexAttribDivisor(attrib, 0);
-            gles.DisableVertexAttribArray(attrib);
-         }
-         gles.Uniform1i(gles.cube_use_instancing_uniform, 0);
-         free(instance_colors);
-         gles.DisableVertexAttribArray((GLuint)gles.cube_normal_attrib);
-         gles.DisableVertexAttribArray((GLuint)gles.cube_position_attrib);
-         if (did_blend)
-            gles.Disable(GL_BLEND);
-         return;
-      }
-   }
-
    for (int j = 0; j < mesh->instance_count; j++) {
       const float *model = mesh->instance_transforms + j * 16;
-      uint32_t color = mesh->instance_colors ? mesh->instance_colors[j] : mesh->color;
-      gles.Uniform4f(gles.cube_color_uniform,
-         (float)((color >> 24) & 0xffU) / 255.0f,
-         (float)((color >> 16) & 0xffU) / 255.0f,
-         (float)((color >>  8) & 0xffU) / 255.0f,
-         ((float)(color & 0xffU) / 255.0f) * clamp_float(mesh->opacity, 0.0f, 1.0f));
       float mvp[16];
       mat4_multiply(mvp, view_projection, model);
       gles.UniformMatrix4fv(gles.cube_mvp_uniform, 1, GL_FALSE, mvp);
-      float nm[9];
-      mat3_normal_from_model(nm, model);
+      /* Normal matrix: upper-left 3x3 of model (adequate for rigid + uniform scale) */
+      float nm[9] = {
+         model[0], model[1], model[2],
+         model[4], model[5], model[6],
+         model[8], model[9], model[10]
+      };
       gles.UniformMatrix3fv(gles.cube_normal_matrix_uniform, 1, GL_FALSE, nm);
-      core_perf_frame_draw_calls++;
       gles.DrawElements(GL_TRIANGLES, idx_count, GL_UNSIGNED_SHORT, NULL);
    }
 
    gles.DisableVertexAttribArray((GLuint)gles.cube_normal_attrib);
    gles.DisableVertexAttribArray((GLuint)gles.cube_position_attrib);
-   if (did_blend)
-      gles.Disable(GL_BLEND);
 }
 
 /* ---- Equirectangular skybox ------------------------------------------------ */
@@ -31736,7 +30706,7 @@ static void render_gles_instanced_mesh(const struct nova64_mesh *mesh, const flo
 static bool gles_create_skybox_program(void)
 {
    static const char *vertex_source =
-      "#version 300 es\nprecision highp float;\n"
+      "#version 330\n"
       "in vec2 a_position;\n"
       "out vec2 v_ndc;\n"
       "void main() {\n"
@@ -31744,7 +30714,7 @@ static bool gles_create_skybox_program(void)
       "  gl_Position = vec4(a_position, 0.999, 1.0);\n"
       "}\n";
    static const char *fragment_source =
-      "#version 300 es\nprecision highp float;\n"
+      "#version 330\n"
       "in vec2 v_ndc;\n"
       "uniform mat4 u_inv_vp;\n"
       "uniform sampler2D u_skybox_tex;\n"
@@ -31828,7 +30798,6 @@ static void render_gles_skybox(const float view[16], const float projection[16])
    gles.EnableVertexAttribArray((GLuint)gles.skybox_position_attrib);
    gles.VertexAttribPointer((GLuint)gles.skybox_position_attrib, 2, GL_FLOAT, GL_FALSE,
       (GLsizei)(sizeof(GLfloat) * 4), NULL);
-   core_perf_frame_draw_calls++;
    gles.DrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, NULL);
    gles.DisableVertexAttribArray((GLuint)gles.skybox_position_attrib);
 
@@ -31841,11 +30810,11 @@ static void render_gles_overlay(void)
 {
    if (!convert_framebuffer_to_overlay_rgba())
       return;
+
    gles.ActiveTexture(GL_TEXTURE0);
    gles.BindTexture(GL_TEXTURE_2D, gles.overlay_texture);
    gles.TexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, NOVA64_WIDTH, NOVA64_HEIGHT,
       GL_RGBA, GL_UNSIGNED_BYTE, overlay_rgba_framebuffer);
-   core_perf_frame_overlay_uploads++;
 
    gles.Disable(GL_DEPTH_TEST);
    gles.Enable(GL_BLEND);
@@ -31860,8 +30829,6 @@ static void render_gles_overlay(void)
       (GLsizei)(sizeof(GLfloat) * 4), NULL);
    gles.VertexAttribPointer((GLuint)gles.overlay_uv_attrib, 2, GL_FLOAT, GL_FALSE,
       (GLsizei)(sizeof(GLfloat) * 4), (const void *)(sizeof(GLfloat) * 2));
-   core_perf_frame_draw_calls++;
-   core_perf_frame_draw_calls++;
    gles.DrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, NULL);
    gles.DisableVertexAttribArray((GLuint)gles.overlay_uv_attrib);
    gles.DisableVertexAttribArray((GLuint)gles.overlay_position_attrib);
@@ -31880,7 +30847,7 @@ static bool gles_has_fbo_procs(void)
 static bool gles_create_post_program(void)
 {
    static const char *vertex_source =
-      "#version 300 es\nprecision highp float;\n"
+      "#version 330\n"
       "in vec2 a_position;\n"
       "in vec2 a_uv;\n"
       "out vec2 v_uv;\n"
@@ -31890,24 +30857,18 @@ static bool gles_create_post_program(void)
       "}\n";
    /* Post-processing fragment shader: CRT, vignette, pixelate, bloom, chromatic, colorgrade, posterize */
    static const char *fragment_source =
-      "#version 300 es\nprecision highp float;\n"
+      "#version 330\n"
       "in vec2 v_uv;\n"
       "uniform sampler2D u_scene;\n"
       "uniform int u_crt;\n"
       "uniform float u_vignette;\n"
       "uniform int u_pixelate;\n"
-      "uniform vec4 u_resolution;\n"
+      "uniform vec2 u_resolution;\n"
       "uniform float u_bloom;\n"
       "uniform float u_chromatic;\n"
-      "uniform vec4 u_color_grade;\n"
+      "uniform vec3 u_color_grade;\n"
       "uniform int u_posterize;\n"
       "out vec4 fragColor;\n"
-      "float post_luma(vec3 c) {\n"
-      "  return dot(c, vec3(0.299, 0.587, 0.114));\n"
-      "}\n"
-      "vec3 post_bright(vec3 c) {\n"
-      "  return c * smoothstep(0.58, 0.98, post_luma(c));\n"
-      "}\n"
       "void main() {\n"
       "  vec2 uv = v_uv;\n"
       "  if (u_pixelate > 0) {\n"
@@ -31915,58 +30876,39 @@ static bool gles_create_post_program(void)
       "    float py = float(u_pixelate) / u_resolution.y;\n"
       "    uv = floor(uv / vec2(px, py)) * vec2(px, py) + vec2(px, py) * 0.5;\n"
       "  }\n"
-      "  vec2 texel = 1.0 / u_resolution.xy;\n"
-      "  vec4 center = texture(u_scene, uv);\n"
-      "  vec3 px_n = texture(u_scene, uv + vec2(0.0, texel.y)).rgb;\n"
-      "  vec3 px_s = texture(u_scene, uv - vec2(0.0, texel.y)).rgb;\n"
-      "  vec3 px_e = texture(u_scene, uv + vec2(texel.x, 0.0)).rgb;\n"
-      "  vec3 px_w = texture(u_scene, uv - vec2(texel.x, 0.0)).rgb;\n"
-      "  float lc = post_luma(center.rgb);\n"
-      "  float lmin = min(lc, min(min(post_luma(px_n), post_luma(px_s)), min(post_luma(px_e), post_luma(px_w))));\n"
-      "  float lmax = max(lc, max(max(post_luma(px_n), post_luma(px_s)), max(post_luma(px_e), post_luma(px_w))));\n"
-      "  float aa_t = smoothstep(0.035, 0.18, lmax - lmin) * 0.65;\n"
-      "  vec3 aa_color = (px_n + px_s + px_e + px_w) * 0.25;\n"
       /* chromatic aberration: shift R/B channels along screen radial */
       "  vec4 color;\n"
       "  if (u_chromatic > 0.0) {\n"
       "    vec2 dir = (uv - 0.5) * u_chromatic;\n"
       "    color.r = texture(u_scene, uv + dir).r;\n"
-      "    color.g = center.g;\n"
+      "    color.g = texture(u_scene, uv).g;\n"
       "    color.b = texture(u_scene, uv - dir).b;\n"
       "    color.a = 1.0;\n"
       "  } else {\n"
-      "    color = center;\n"
+      "    color = texture(u_scene, uv);\n"
       "  }\n"
-      "  if (u_pixelate <= 0) {\n"
-      "    color.rgb = mix(color.rgb, aa_color, aa_t);\n"
-      "  }\n"
-      /* CRT barrel distortion. Scanlines + grille run AFTER bloom (further
-         below) so the additive bloom doesn't wash them out. */
       "  if (u_crt != 0) {\n"
+      "    float line = sin(v_uv.y * u_resolution.y * 3.14159265);\n"
+      "    float scanline = pow(abs(line) * 0.5 + 0.5, 0.35) * 0.88 + 0.12;\n"
+      "    color.rgb *= scanline;\n"
       "    vec2 centered = uv - 0.5;\n"
       "    float barrel = dot(centered, centered) * 0.08;\n"
       "    uv = uv + centered * barrel;\n"
       "    if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0)\n"
       "      color = vec4(0.0, 0.0, 0.0, 1.0);\n"
       "    else\n"
-      "      color = texture(u_scene, uv);\n"
+      "      color = texture(u_scene, uv) * vec4(color.rgb / (texture(u_scene, v_uv).rgb + 0.001), color.a);\n"
       "  }\n"
-      /* bloom: restrained bright-pass blur in one fullscreen pass */
+      /* bloom: 5-tap cross bright-pass added back */
       "  if (u_bloom > 0.0) {\n"
-      "    vec3 bloom = post_bright(center.rgb) * 0.06;\n"
-      "    bloom += (post_bright(texture(u_scene, uv + vec2(texel.x * 3.0, 0.0)).rgb)\n"
-      "            + post_bright(texture(u_scene, uv - vec2(texel.x * 3.0, 0.0)).rgb)\n"
-      "            + post_bright(texture(u_scene, uv + vec2(0.0, texel.y * 3.0)).rgb)\n"
-      "            + post_bright(texture(u_scene, uv - vec2(0.0, texel.y * 3.0)).rgb)) * 0.035;\n"
-      "    bloom += (post_bright(texture(u_scene, uv + vec2(texel.x * 8.0, texel.y * 5.0)).rgb)\n"
-      "            + post_bright(texture(u_scene, uv + vec2(-texel.x * 8.0, texel.y * 5.0)).rgb)\n"
-      "            + post_bright(texture(u_scene, uv + vec2(texel.x * 8.0, -texel.y * 5.0)).rgb)\n"
-      "            + post_bright(texture(u_scene, uv + vec2(-texel.x * 8.0, -texel.y * 5.0)).rgb)) * 0.025;\n"
-      "    bloom += (post_bright(texture(u_scene, uv + vec2(texel.x * 15.0, 0.0)).rgb)\n"
-      "            + post_bright(texture(u_scene, uv - vec2(texel.x * 15.0, 0.0)).rgb)\n"
-      "            + post_bright(texture(u_scene, uv + vec2(0.0, texel.y * 15.0)).rgb)\n"
-      "            + post_bright(texture(u_scene, uv - vec2(0.0, texel.y * 15.0)).rgb)) * 0.015;\n"
-      "    color.rgb += bloom * min(u_bloom, 3.0) * 0.55;\n"
+      "    vec2 ts = vec2(2.0 / u_resolution.x, 2.0 / u_resolution.y);\n"
+      "    vec3 s = texture(u_scene, uv + vec2(ts.x, 0.0)).rgb\n"
+      "           + texture(u_scene, uv - vec2(ts.x, 0.0)).rgb\n"
+      "           + texture(u_scene, uv + vec2(0.0, ts.y)).rgb\n"
+      "           + texture(u_scene, uv - vec2(0.0, ts.y)).rgb;\n"
+      "    vec3 avg = s * 0.25;\n"
+      "    float luma = dot(avg, vec3(0.299, 0.587, 0.114));\n"
+      "    color.rgb += avg * max(0.0, luma - 0.45) * u_bloom * 2.2;\n"
       "  }\n"
       /* posterize: quantize to N levels */
       "  if (u_posterize > 1) {\n"
@@ -31974,24 +30916,11 @@ static bool gles_create_post_program(void)
       "    color.rgb = floor(color.rgb * levels + 0.5) / levels;\n"
       "  }\n"
       /* color grade: per-channel tint multiply */
-      "  color.rgb *= u_color_grade.rgb;\n"
+      "  color.rgb *= u_color_grade;\n"
       "  if (u_vignette > 0.0) {\n"
       "    vec2 cv = v_uv - 0.5;\n"
       "    float vt = clamp(1.0 - dot(cv, cv) * 4.0 * u_vignette, 0.0, 1.0);\n"
       "    color.rgb *= vt;\n"
-      "  }\n"
-      /* CRT scanlines + aperture-grille applied LAST so the additive bloom
-         doesn't wash them out. */
-      "  if (u_crt != 0) {\n"
-      "    float row = mod(floor(v_uv.y * u_resolution.y), 2.0);\n"
-      "    float scan = mix(0.62, 1.0, row);\n"
-      "    color.rgb *= scan;\n"
-      "    float col = mod(floor(v_uv.x * u_resolution.x), 3.0);\n"
-      "    vec3 grille = vec3(0.93);\n"
-      "    if (col < 1.0)      grille.r = 1.08;\n"
-      "    else if (col < 2.0) grille.g = 1.08;\n"
-      "    else                grille.b = 1.08;\n"
-      "    color.rgb *= grille;\n"
       "  }\n"
       "  fragColor = vec4(clamp(color.rgb, 0.0, 1.0), 1.0);\n"
       "}\n";
@@ -32061,8 +30990,8 @@ static bool gles_init_post_resources(void)
 
    gles.GenTextures(1, &gles.post_color_texture);
    gles.BindTexture(GL_TEXTURE_2D, gles.post_color_texture);
-   gles.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-   gles.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+   gles.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+   gles.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
    gles.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
    gles.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
    gles.TexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, NOVA64_WIDTH, NOVA64_HEIGHT, 0,
@@ -32097,7 +31026,6 @@ static void render_gles_post_pass(GLuint hw_fbo)
    gles.BindFramebuffer(GL_FRAMEBUFFER, hw_fbo);
    gles.Viewport(0, 0, NOVA64_WIDTH, NOVA64_HEIGHT);
    gles.Disable(GL_DEPTH_TEST);
-   gles.Disable(GL_BLEND);
    gles.ClearColor(0.0f, 0.0f, 0.0f, 1.0f);
    gles.Clear(GL_COLOR_BUFFER_BIT);
 
@@ -32133,7 +31061,6 @@ static void render_gles_post_pass(GLuint hw_fbo)
       (GLsizei)(sizeof(GLfloat) * 4), NULL);
    gles.VertexAttribPointer((GLuint)gles.post_uv_attrib, 2, GL_FLOAT, GL_FALSE,
       (GLsizei)(sizeof(GLfloat) * 4), (const void *)(sizeof(GLfloat) * 2));
-   core_perf_frame_draw_calls++;
    gles.DrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, NULL);
    gles.DisableVertexAttribArray((GLuint)gles.post_uv_attrib);
    gles.DisableVertexAttribArray((GLuint)gles.post_position_attrib);
@@ -32153,9 +31080,7 @@ static void render_gles_scene(void)
       the offscreen post_fbo then blit to the RetroArch HW framebuffer via the
       post program. The 2D overlay is always composited last on top. */
    bool use_post = post_is_active() && gles_init_post_resources();
-   GLuint hw_fbo = hw_render.get_current_framebuffer
-                   ? (GLuint)hw_render.get_current_framebuffer()
-                   : 0;
+   GLuint hw_fbo = hw_render.get_current_framebuffer ? hw_render.get_current_framebuffer() : 0;
 
    /* Shadow pass — depth-only render from the light's perspective */
    bool use_shadow = g_shadow_map_size > 0 && gles_any_cast_shadow_mesh()
@@ -32173,10 +31098,13 @@ static void render_gles_scene(void)
 
    if (!use_shadow && use_post)
       gles.BindFramebuffer(GL_FRAMEBUFFER, gles.post_fbo);
-   else if (!use_shadow)
-      gles.BindFramebuffer(GL_FRAMEBUFFER, hw_fbo);
 
-   uint32_t clear_color = sky_color_enabled ? sky_top_color : framebuffer_clear_color;
+   uint32_t clear_color;
+   if (sky_color_enabled) {
+      clear_color = sky_top_color;
+   } else {
+      clear_color = color_with_intensity(light_state.ambient, light_state.ambient_intensity);
+   }
    float r = (float)((clear_color >> 24) & 0xffU) / 255.0f;
    float g = (float)((clear_color >> 16) & 0xffU) / 255.0f;
    float b = (float)((clear_color >>  8) & 0xffU) / 255.0f;
@@ -32209,7 +31137,24 @@ static void render_gles_scene(void)
    /* Draw equirectangular skybox behind all geometry (GLES only) */
    render_gles_skybox(view, projection);
 
-   render_gles_meshes_sorted(view_projection);
+   for (int i = 0; i < NOVA64_MAX_MESHES; i++) {
+      if (!meshes[i].used || !meshes[i].visible || meshes[i].opacity <= 0.0f)
+         continue;
+      if (meshes[i].type == NOVA64_MESH_CUBE)
+         render_gles_cube(&meshes[i], view_projection);
+      else if (meshes[i].type == NOVA64_MESH_PLANE)
+         render_gles_plane(&meshes[i], view_projection);
+      else if (meshes[i].type == NOVA64_MESH_SPHERE)
+         render_gles_sphere(&meshes[i], view_projection);
+      else if (meshes[i].type == NOVA64_MESH_CAPSULE)
+         render_gles_capsule(&meshes[i], view_projection);
+      else if (meshes[i].type == NOVA64_MESH_CYLINDER)
+         render_gles_cylinder(&meshes[i], view_projection);
+      else if (meshes[i].type == NOVA64_MESH_CUSTOM)
+         render_gles_custom_mesh(&meshes[i], view_projection);
+      else if (meshes[i].type == NOVA64_MESH_INSTANCED)
+         render_gles_instanced_mesh(&meshes[i], view_projection);
+   }
 
    if (use_post) {
       /* Post pass: blit the FBO color texture to the RetroArch HW framebuffer */
@@ -32256,14 +31201,9 @@ static void renderer_request_hardware_context(retro_environment_t cb)
       nova64_log_line(RETRO_LOG_INFO, renderer_message);
    }
 
-   /* Only request the HW context once — retro_set_environment is called 3 times by
-      RetroArch and later calls would overwrite gles.requested with false. */
-   if (gles.requested)
-      return;
-
-   nova64_log_line(RETRO_LOG_INFO, "[nova64] requesting OpenGL 3.3 Core Profile context");
+   nova64_log_line(RETRO_LOG_INFO, "[nova64] requesting OpenGL 3.3 hardware context");
    memset(&hw_render, 0, sizeof(hw_render));
-   hw_render.context_type = RETRO_HW_CONTEXT_OPENGL_CORE;
+   hw_render.context_type = RETRO_HW_CONTEXT_OPENGL;
    hw_render.context_reset = renderer_context_reset;
    hw_render.context_destroy = renderer_context_destroy;
    hw_render.depth = true;
@@ -32276,7 +31216,7 @@ static void renderer_request_hardware_context(retro_environment_t cb)
    if (gles.requested)
       nova64_log_line(RETRO_LOG_INFO, "[nova64] OpenGL 3.3 context accepted by frontend");
    else
-      nova64_log_line(RETRO_LOG_WARN, "[nova64] OpenGL 3.3 unavailable; using software 2D output (switch video driver to 'glcore' in RetroArch settings for 3D)");
+      nova64_log_line(RETRO_LOG_WARN, "[nova64] OpenGL 3.3 unavailable; using software 2D output (switch video driver to 'gl' or 'glcore' in RetroArch settings for 3D)");
 }
 
 static bool renderer_has_hardware_frame(void)
@@ -32888,10 +31828,6 @@ void RETRO_CALLCONV retro_init(void)
 
    clear_framebuffer(rgba8(0, 0, 0, 255));
    reset_scene_state();
-   reset_draw_state();
-   g_noise_octaves = 1;
-   g_noise_falloff = 0.5;
-   reset_post_state();
    const char *command_log = getenv("NOVA64_RENDER_COMMAND_LOG");
    if (command_log && command_log[0]) {
       snprintf(renderer_command_log_path, sizeof(renderer_command_log_path), "%s", command_log);
@@ -32974,7 +31910,7 @@ void RETRO_CALLCONV retro_set_environment(retro_environment_t cb)
 
    set_core_variables();
    cb(RETRO_ENVIRONMENT_SET_PIXEL_FORMAT, &pixel_format);
-   renderer_request_hardware_context(cb);
+   /* renderer_request_hardware_context(cb) */;
 
    /* Try to acquire rumble interface */
    struct nova64_rumble_iface rif;
@@ -33044,15 +31980,23 @@ void RETRO_CALLCONV retro_reset(void)
    memset(mp_buttons, 0, sizeof(mp_buttons));
    memset(mp_prev_buttons, 0, sizeof(mp_prev_buttons));
    memset(mp_pressed_buttons, 0, sizeof(mp_pressed_buttons));
-   reset_draw_state();
+   clip_active = false;
+   clip_stack_depth = 0;
+   cam2d_x = cam2d_y = 0;
+   cam2d_zoom = 1.0f;
+   cam2d_rotation = 0.0f;
+   camera2d_stack_depth = 0;
+   blend_2d_mode = NOVA64_BLEND_NORMAL;
+   blend_stack_depth = 0;
+   palette_stack_depth = 0;
+   reset_palette_state();
+   g_matrix_stack_top = 0;
+   matrix2d_identity(&g_matrix_stack[0]);
    g_noise_octaves = 1;
    g_noise_falloff = 0.5;
    frame_count = 0;
    clear_framebuffer(rgba8(0, 0, 0, 255));
    reset_scene_state();
-   reset_draw_state();
-   g_noise_octaves = 1;
-   g_noise_falloff = 0.5;
    reset_audio_state();
    reset_post_state();
    clear_textures();
@@ -33060,7 +32004,6 @@ void RETRO_CALLCONV retro_reset(void)
    destroy_all_tilemaps();
    clear_all_spritesheets();
    memset(perf_timers, 0, sizeof(perf_timers));
-   memset(&core_perf, 0, sizeof(core_perf));
    reset_colliders();
    reset_particles();
    reset_fonts();
@@ -33133,17 +32076,6 @@ void RETRO_CALLCONV retro_run(void)
 {
    if (!initialized || !video_cb)
       return;
-
-   bool perf_frame = core_perf_enabled();
-   uint64_t perf_frame_start_us = 0;
-   uint64_t perf_cart_start_us = 0;
-   uint64_t perf_cart_end_us = 0;
-   uint64_t perf_render_start_us = 0;
-   uint64_t perf_render_end_us = 0;
-   if (perf_frame) {
-      core_perf_begin_frame();
-      perf_frame_start_us = core_perf_now_us();
-   }
 
    /* Re-read resolution option each frame in case user changed it */
    if (environ_cb) {
@@ -33235,11 +32167,7 @@ void RETRO_CALLCONV retro_run(void)
       else g_btn_repeat[_bri].count = 0;
    }
 
-   if (perf_frame)
-      perf_cart_start_us = core_perf_now_us();
    js_host_call_frame(1.0 / NOVA64_FPS);
-   if (perf_frame)
-      perf_cart_end_us = core_perf_now_us();
 
    /* Apply screen flash overlay */
    if (g_flash_timer > 0.0f && g_flash_duration > 0.0f && framebuffer) {
@@ -33318,25 +32246,12 @@ void RETRO_CALLCONV retro_run(void)
    write_renderer_command_log();
    audio_mix_frame();
 
-   bool has_hardware_frame = renderer_has_hardware_frame();
-   if (perf_frame)
-      perf_render_start_us = core_perf_now_us();
-
-   if (has_hardware_frame) {
+   if (renderer_has_hardware_frame()) {
       renderer_render_hardware_frame();
-      if (perf_frame && gles.Finish)
-         gles.Finish();
       video_cb((const void *)RETRO_HW_FRAME_BUFFER_VALID, NOVA64_WIDTH, NOVA64_HEIGHT, 0);
    } else {
       convert_framebuffer_to_rgb565();
       video_cb(rgb565_framebuffer, NOVA64_WIDTH, NOVA64_HEIGHT, NOVA64_WIDTH * sizeof(uint16_t));
-   }
-   if (perf_frame) {
-      perf_render_end_us = core_perf_now_us();
-      core_perf_record_frame(
-         perf_cart_end_us - perf_cart_start_us,
-         perf_render_end_us - perf_render_start_us,
-         perf_render_end_us - perf_frame_start_us);
    }
 
    frame_count++;
@@ -33399,7 +32314,6 @@ bool RETRO_CALLCONV retro_load_game(const struct retro_game_info *info)
    reset_fonts();
    memset(audio_channels, 0, sizeof(audio_channels));
    memset(perf_timers, 0, sizeof(perf_timers));
-   memset(&core_perf, 0, sizeof(core_perf));
    memset(g_tweens, 0, sizeof(g_tweens));
    memset(g_timers, 0, sizeof(g_timers));
    memset(g_grids,  0, sizeof(g_grids));
@@ -33446,7 +32360,6 @@ void RETRO_CALLCONV retro_unload_game(void)
    destroy_all_tilemaps();
    clear_all_spritesheets();
    memset(perf_timers, 0, sizeof(perf_timers));
-   memset(&core_perf, 0, sizeof(core_perf));
    free(cart_content);
    cart_content = NULL;
    cart_size = 0;

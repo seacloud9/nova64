@@ -1,7 +1,5 @@
 {
   "permissions": {
-    "allow": [
-      "mcp__mempalace__mempalace_diary_write"
-    ]
+    "allow": []
   }
 }

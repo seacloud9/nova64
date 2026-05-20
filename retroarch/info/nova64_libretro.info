@@ -1,0 +1,12 @@
+﻿# Nova64 libretro core info
+display_name = "Nova64"
+authors = "Nova64"
+supported_extensions = "js"
+corename = "Nova64"
+categories = "Game Engine"
+systemname = "Nova64"
+systemid = "nova64"
+manufacturer = ""
+database = ""
+notes = "Load any .js cart file as content"
+description = "Nova64 - a fantasy game console with a JavaScript scripting engine"

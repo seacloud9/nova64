@@ -405,33 +405,9 @@ function gradientX(x, y, w, h, steps, a, b) {
 }
 
 function drawWebBloomWash() {
-   if (scene === 0) {
-      rectfill(0, 0, 640, 315, rgba8(255, 70, 220, 255));
-      gradientX(226, 0, 132, 315, 14, [255, 70, 220], [255, 255, 255]);
-      rectfill(358, 0, 282, 315, rgba8(255, 255, 255, 255));
-      return;
-   }
-   if (scene === 1) {
-      rectfill(0, 0, 640, 315, rgba8(0, 240, 255, 255));
-      rectfill(0, 0, 78, 315, rgba8(20, 176, 210, 255));
-      return;
-   }
-   if (scene === 2) {
-      rectfill(0, 0, 640, 315, rgba8(255, 255, 255, 255));
-      rectfill(0, 0, 145, 315, rgba8(255, 132, 226, 255));
-      return;
-   }
-   if (scene === 3) {
-      rectfill(0, 0, 640, 315, rgba8(255, 255, 255, 255));
-      rectfill(0, 0, 640, 86, rgba8(255, 126, 232, 255));
-      gradientX(0, 178, 190, 137, 14, [255, 126, 226], [255, 255, 255]);
-      return;
-   }
-   rectfill(0, 0, 640, 315, rgba8(255, 70, 220, 255));
-   rectfill(172, 82, 350, 64, rgba8(255, 255, 255, 255));
-   rectfill(138, 146, 398, 68, rgba8(255, 255, 255, 255));
-   rectfill(104, 214, 456, 101, rgba8(255, 255, 255, 255));
-   rectfill(548, 150, 92, 165, rgba8(176, 226, 238, 255));
+   // Native GLES bloom now owns the glow. The previous opaque parity wash hid
+   // the actual 3D scene behind solid color fields and made motion/detail look
+   // nothing like the browser demo.
 }
 
 // ── Init ───────────────────────────────────────────────────────────────────────
@@ -667,7 +643,8 @@ export function draw() {
    // ── Burst particles (energy core) ─────────────────────────────────────────
    for (const b of coreBurst) drawBurst(b);
 
-   // Match the web cart's heavy Three.js/TSL bloom wash before HUD composition.
+   // Keep HUD-only drawing here. Scene glow is handled by native post bloom so
+   // the underlying 3D forms stay visible.
    drawWebBloomWash();
 
    // ── Web-style HUD panels ──────────────────────────────────────────────────

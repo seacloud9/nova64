@@ -233,11 +233,14 @@ enum retro_hw_context_type
 
 #define RETRO_HW_FRAME_BUFFER_VALID ((uintptr_t)-1)
 
+/* Layout matches upstream libretro/RetroArch libretro.h. Do not reorder —
+   RetroArch writes get_current_framebuffer + get_proc_address at fixed
+   offsets and a mismatch causes an access violation when the core calls
+   these pointers. */
 struct retro_hw_render_callback
 {
    enum retro_hw_context_type context_type;
    retro_hw_context_reset_t context_reset;
-   retro_hw_context_reset_t context_destroy;
    retro_hw_get_current_framebuffer_t get_current_framebuffer;
    retro_hw_get_proc_address_t get_proc_address;
    bool depth;
@@ -246,7 +249,7 @@ struct retro_hw_render_callback
    unsigned version_major;
    unsigned version_minor;
    bool cache_context;
-   void *context_data;
+   retro_hw_context_reset_t context_destroy;
    bool debug_context;
 };
 

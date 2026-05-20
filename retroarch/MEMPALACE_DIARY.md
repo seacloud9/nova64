@@ -69,6 +69,45 @@ canonical repository instructions in `../AGENTS.md`.
   shader-style washout than the Three.js/TSL path, but the scene composition,
   HUD, palette, post pass, and dominant visual read now line up closely.
 
+## 2026-05-20 — Demoscene performance + parity recovery pass
+
+### What changed
+- Added `NOVA64_PERF` core telemetry for RetroArch runs. The harness `--perf`
+  path now reports cart time, render time, total frame time, instance transform
+  calls, draw calls, and overlay uploads every 60 frames.
+- Replaced the GLES instanced mesh draw loop with a real
+  `glDrawElementsInstanced` path when the driver exposes it. The old per-instance
+  loop remains as fallback.
+- Scene 0 demoscene profiling now shows roughly 40-41 draw calls per frame
+  instead of roughly 800 while preserving the same instance transform workload.
+- Raised native post bloom clamping from `1.0` to `4.0` so demoscene requests
+  such as `setBloom(2.6)` and `setBloom(3.2)` are no longer flattened.
+- Removed the lightweight web-parity bloom wash from the effective draw path
+  after live review showed it covered the real 3D scene with solid color fields.
+- Retuned the GLES post bloom bright-pass threshold and weights so bloom reads
+  as glow instead of saturating the whole scene.
+
+### Latest measured status
+- Focused perf smoke:
+  `retroarch/build/demoscene-webwash-instanced-smoke.ppm`.
+- Scene 0 steady-state headless llvmpipe profile after instancing:
+  - cart: roughly `0.8 ms`
+  - render: roughly `7.3-7.5 ms`
+  - draw calls: roughly `40-41/frame`
+  - instance transform calls: roughly `765/frame`
+- Formal visual comparator:
+  `NOVA64_GLES_TESTS=1 node retroarch/tests/demoscene_visual_parity.mjs`
+  completed with average visual score `85.4` and strict average `84.2`.
+- Correction: that `85.4` number is now treated as a metric mirage because it
+  rewarded the opaque wash. A targeted scene-0 run after removing the wash
+  reported visual `47.1` / strict `45.3`; this is the honest reset baseline.
+
+### Next parity target
+- The remaining gap to 90 should be attacked with real visual structure:
+  smoother native bloom, sky/gradient geometry, horizon-glow tuning, and
+  preserving 3D detail. Do not re-enable opaque wash rectfills to chase the old
+  score.
+
 ## 2026-05-19 — Browser-vs-RetroArch visual comparator
 
 ### What landed

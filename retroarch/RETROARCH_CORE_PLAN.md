@@ -637,6 +637,88 @@ Exit criteria:
 - Known remaining gaps (Vulkan, netplay dynamics, cheevos scripting) are tracked
   as explicit compatibility notes rather than surprises.
 
+## Alignment Batch: Web/Godot Parity Layer
+
+Status: **complete**. Closes the cart-portability gap so that carts written against
+the web/Godot runtime can run in RetroArch with no browser-only shims.
+
+### Compatibility Shims Added To `nova64_libretro.c`
+
+- **`nova64.input.isKeyDown` / `isKeyPressed`** — aliases for `key()` / `keyp()`.
+  Carts that destructure `{ isKeyDown } = nova64.input` now work without changes.
+
+- **`nova64.draw.BM` constants** — string constants matching the web enum:
+  `BM.NORMAL="normal"`, `BM.ALPHA="alpha"`, `BM.ADD="additive"`,
+  `BM.MULTIPLY="multiply"`, `BM.SCREEN="screen"`. Also exposed as a global `BM`
+  object for carts that call `setBlend2D(BM.ADD)` at the top level.
+
+- **`nova64.fx` namespace** (JS eval shim after global registration) — maps
+  web-style effect calls to existing retroarch primitives:
+  - Post-processing aliases: `enableBloom(s)`, `disableBloom()`, `enableVignette(d,o)`,
+    `disableVignette()`, `enableCRT(s)`, `disableCRT()`, `enableChromatic(a)`,
+    `disableChromatic()`, `enableFXAA()` (no-op), `disableAll()` → all route to
+    `nova64.post.*` equivalents.
+  - Emitter2D bridge: `createEmitter2D(x,y,n,life)`, `burstEmitter2D(e,n)`,
+    `updateEmitter2D(e,dt)`, `drawEmitter2D(e)`, `isEmitter2DDone(e)`,
+    `destroyEmitter2D(e)` → bridged to `createBurst` / `triggerBurst` /
+    `updateBurst` / `drawBurst` / `isBurstDone` / `destroyBurst`.
+  - `setBurstColors` re-exported directly.
+
+- **`nova64.util` namespace** (JS eval shim) — pure-JS utility layer:
+  - Screen shake: `createShake`, `triggerShake`, `updateShake`, `getShakeOffset`.
+  - Cooldowns: `createCooldown`, `updateCooldown`, `useCooldown`, `cooldownReady`,
+    `cooldownProgress`, `createCooldownSet`, `updateCooldowns`.
+  - Hit state / invulnerability: `createHitState`, `triggerHit`, `isInvulnerable`,
+    `updateHitState`, `isVisible`.
+  - Math helpers: `lerp`, `clamp`, `randRange`, `randInt`, `dist`, `remap`.
+
+### Game Cart Fixes
+
+These retroarch-only carts were broken by API mismatches and are now fixed:
+
+| Cart | Root Cause | Fix |
+|------|-----------|-----|
+| `space-shooter.js` | `setLight()` undefined; `BUTTON_*` globals not exported | Replaced with `setLightDirection()`; `btn("left")` etc. |
+| `neon-pinball.js` | Right flipper flips wrong direction; gap too wide; plain visuals | `rAngle = rFlip ? Math.PI+0.5 : Math.PI-0.4`; LFX/RFX moved inward; full visual rewrite with trail, combo, color-family bumpers |
+| `wave-survival.js` | 2D camera API unused; no visual polish | Full rewrite: glowRect arena, glowCircle enemies, bullet streaks, direction pointer |
+| `dungeon-crawler.js` | `setCamera(pos, target)` routed to 2D camera; `createCube`/`createCylinder` wrong arg forms | All `setCamera*` → `setCameraPosition`+`setCameraTarget`; fixed arg counts |
+
+### New Retroarch Game Carts
+
+Retroarch-native ports of existing web/Godot showcase demos:
+
+- **`hello-3d.js`** — 6 spinning cubes + 4 bouncing spheres, orbiting camera,
+  fog, directional light. Start screen, Z to begin. Seeded geometry for visual
+  regression testing.
+
+- **`particle-fireworks.js`** — Fireworks over a city skyline using `createBurst` /
+  `setBurstColors` / `drawBurst`. Rising trails, multi-color palette palettes,
+  seeded buildings.
+
+- **`demoscene.js`** — **TRON ODYSSEY** (RetroArch Edition). 5 auto-advancing
+  scenes (GRID AWAKENING → DATA TUNNEL → DIGITAL CITY → ENERGY CORE → THE VOID)
+  using instanced meshes, torus rings, post-processing bloom, seeded deterministic
+  geometry. Z to skip scenes. **Designated visual parity candidate** for
+  retroarch-vs-web regression testing.
+
+### Visual Parity Testing Plan
+
+`demoscene.js` is the designated visual regression target. Approach:
+
+1. Run retroarch harness: `NOVA64_GLES_TESTS=1 ./build/harness nova64_libretro.so games/demoscene.js --gles --capture out.ppm --frames 60`
+2. Run web version: Playwright screenshot at `localhost:5173/console.html?demo=demoscene`
+3. Compare key frames at scene transitions (frame ~60, ~300, ~600, ~900, ~1200)
+4. Metric: structural similarity on HUD text, scene title, and dominant color zones
+   (pixel-perfect parity is not expected — TSL materials and Three.js shaders have
+   no GLES equivalents; perceptual similarity on layout and palette is the target)
+
+### Always Use Hardware Acceleration
+
+All testing, screenshot capture, and visual regression must use GLES:
+- `NOVA64_GLES_TESTS=1` env var
+- `--gles` flag to the harness
+- Never use software fallback renderer for visual work
+
 ## Validation
 
 Use WSL on Windows:

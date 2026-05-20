@@ -31,8 +31,9 @@ let explosions = [];
 
 // ──────────────────────────────────────────────────────────────────────────────
 export function init() {
-   setCamera([0, 4, 12], [0, 0, 0]);
-   setLight([1, 2, 1]);
+   setCameraPosition(0, 4, 12);
+   setCameraTarget(0, 0, 0);
+   setLightDirection(1, 2, 1);
 
    // Player ship: cone pointing forward
    player = createCone(0.4, 0.9, rgba8(80, 200, 255, 255));
@@ -98,15 +99,15 @@ export function update(dt) {
 
    // Player movement
    const speed = playerSpeed * dt;
-   if (btn(BUTTON_LEFT)  && playerX > -FIELD_W / 2) playerX -= speed;
-   if (btn(BUTTON_RIGHT) && playerX <  FIELD_W / 2) playerX += speed;
-   if (btn(BUTTON_UP)    && playerY <  FIELD_H / 2 - 1) playerY += speed * 0.6;
-   if (btn(BUTTON_DOWN)  && playerY > -FIELD_H / 2) playerY -= speed * 0.6;
+   if (btn("left")  && playerX > -FIELD_W / 2) playerX -= speed;
+   if (btn("right") && playerX <  FIELD_W / 2) playerX += speed;
+   if (btn("up")    && playerY <  FIELD_H / 2 - 1) playerY += speed * 0.6;
+   if (btn("down")  && playerY > -FIELD_H / 2) playerY -= speed * 0.6;
    setPosition(player, playerX, playerY, 0);
    setRotation(player, Math.sin(t * 3) * 0.05, 0, -playerX * 0.05);
 
    // Shoot
-   if (btnp(BUTTON_Z) && shootTimer <= 0) {
+   if (btnp("z") && shootTimer <= 0) {
       spawnBullet(playerX, playerY + 0.5);
       shootTimer = SHOOT_COOLDOWN;
    }

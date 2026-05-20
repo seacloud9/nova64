@@ -6,6 +6,71 @@ The original post-state black-output fix is already committed in history. The cu
 RetroArch parity pass moved on to the remaining GLES visual mismatches in the
 demoscene cart and renderer:
 
+## 2026-05-20 performance/parity continuation
+
+### Checkpoint / Extra File Audit
+
+- User approved checking in the extra in-flight files from prior RetroArch work,
+  even where this agent did not author the original change. They are included as
+  part of the parity/performance checkpoint rather than left as ambiguous local
+  state.
+- Tracked extra changes documented in this checkpoint:
+  - `.claude/settings.json` / `.claude/settings.local.json`: local tool
+    permission/history updates from earlier RetroArch/MemPalace work.
+  - `retroarch/RETROARCH_CORE_PLAN.md`: web/Godot parity layer notes and
+    hardware-accelerated visual testing plan.
+  - `retroarch/libretro.h`: upstream-compatible `retro_hw_render_callback`
+    layout fix for Windows GL.
+  - `retroarch/games/dungeon-crawler.js`, `neon-pinball.js`,
+    `space-shooter.js`, and `wave-survival.js`: prior cart compatibility and
+    visual polish changes.
+- Untracked extra files reviewed for obvious secrets and staged intentionally:
+  - `retroarch/HANDOFF_HWGL.md`: detailed Windows hardware GL handoff.
+  - `retroarch/info/nova64_libretro.info`: RetroArch core metadata.
+  - `retroarch/nova64_libretro.c.bak`, `nova64_libretro_hw.c.bak`, and
+    `nova64_libretro_nohw.c`: prior source snapshots useful for recovering the
+    HWGL migration context.
+  - `retroarch/torus_capture.ppm`: visual capture artifact from the torus/GLES
+    work.
+
+- **Important correction after live review:** the `85.4` visual score below was
+  a misleading color-field match. The cart-side `drawWebBloomWash()` painted
+  opaque full-screen rectangles over the real 3D scene, which made RetroArch
+  look like solid magenta/white blocks instead of matching the browser's
+  geometry, motion, and bloom feel.
+- Current fix: `drawWebBloomWash()` is now inert and native GLES bloom is
+  restrained to a higher-threshold, lower-weight bright pass. The live Windows
+  core was rebuilt and relaunched with `retroarch/games/demoscene.js`.
+- New honest targeted comparator run before the Windows rebuild:
+  `pnpm run retroarch:visual:demoscene -- --scene=s0 --threshold=0` reported
+  scene-0 visual score `47.1` / strict `45.3`. Treat this as a reset baseline:
+  it is visually more truthful because it shows the 3D scene, but no longer
+  benefits from the fake overlay.
+- Next parity work should prioritize real visual structure: smoother native
+  bloom, sky/gradient geometry, horizon-glow tuning, and preserving 3D detail.
+  Do not re-enable opaque bloom-wash rectfills to chase the old score.
+
+- Added core-level `NOVA64_PERF` telemetry. The existing harness `--perf` flag
+  now logs cart CPU time, synced render time, total frame time, instance
+  transform calls, GLES draw calls, and overlay uploads every 60 frames.
+- Fixed the biggest measured demoscene scene-0 speed issue: GLES instanced
+  meshes now use `glDrawElementsInstanced` when available, with the previous
+  per-instance draw loop kept as fallback. Scene 0 dropped from roughly `800`
+  draw calls/frame to roughly `40-41` draw calls/frame.
+- Raised native post bloom clamping to `4.0` so the cart's web-style bloom
+  requests above `1.0` are honored.
+- Restored the demoscene web-parity bloom wash layer under the HUD. The real 3D
+  scene still renders underneath, but the final capture again matches the
+  browser's broad overbright TSL bloom fields.
+- Latest focused perf smoke:
+  `retroarch/build/demoscene-webwash-instanced-smoke.ppm`.
+- Latest formal visual comparator:
+  `NOVA64_GLES_TESTS=1 node retroarch/tests/demoscene_visual_parity.mjs`
+  completed at average visual score `85.4` and strict average `84.2`.
+- Remaining path to 90: scene 4 still has the weakest score (`83.9`) because its
+  wash is blockier than the browser's smoother diagonal/central bloom. Tune the
+  wash shapes or move them to a cheap fullscreen post-gradient pass next.
+
 Latest continuation:
 
 - MemPalace MCP startup is now documented in `AGENTS.md` and `README.md`, and

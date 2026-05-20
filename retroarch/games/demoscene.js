@@ -24,7 +24,7 @@ let state = 'start', startT = 0;
 
 let gridMesh, cityMesh, groundMesh, centralSphere;
 let skyPanel, horizonGlow;
-let gridMeshes = [], gridCells = [];
+let gridMeshes = [], gridCells = [], terrainCells = [];
 let rings = [], towers = [], voidSpheres = [], pulseRings = [], dataStreams = [], energyOrbs = [];
 let coreBurst = [], burstTimer = 0;
 
@@ -48,46 +48,69 @@ function clearScene3D() {
    for (const e of energyOrbs)  destroyMesh(e.mesh);
    for (const b of coreBurst)   destroyBurst(b);
    rings = []; towers = []; voidSpheres = []; pulseRings = []; dataStreams = []; energyOrbs = []; coreBurst = [];
-   gridMeshes = []; gridCells = [];
+   gridMeshes = []; gridCells = []; terrainCells = [];
    nova64.post.clear();
    clearSkyColor();
 }
 
 // ── Scene 0: GRID AWAKENING ───────────────────────────────────────────────────
 function buildScene0() {
-   nova64.post.setBloom(0.9);
+   nova64.post.setBloom(1.55);
    nova64.post.setChromatic(0.003);
    nova64.post.setCRT(true);
-   nova64.post.setVignette(0.9, 0.82);
-   setSkyColor(rgba8(82, 0, 46, 255), rgba8(7, 2, 22, 255));
+   nova64.post.setVignette(0.72, 0.84);
+   setSkyColor(rgba8(135, 0, 74, 255), rgba8(18, 3, 32, 255));
    setAmbientLight(rgba8(220, 220, 240, 255), 1.0);
    setLightDirection(0, -1, -0.2);
-   setFog(rgba8(82, 0, 46, 255), 115, 260);
-   setCameraFOV(65);
+   setFog(rgba8(135, 0, 74, 255), 80, 230);
+   setCameraFOV(70);
 
-   skyPanel = createCube(90, 34, 0.2, rgba8(130, 0, 76, 255));
-   setMeshEmissive(skyPanel, rgba8(210, 12, 110, 255), 0.32);
-   setPosition(skyPanel, 0, 16, -54);
+   skyPanel = createCube(140, 44, 0.2, rgba8(130, 0, 76, 255));
+   setMeshEmissive(skyPanel, rgba8(210, 12, 110, 255), 0.18);
+   setPosition(skyPanel, 0, 20, -130);
 
-   horizonGlow = createSphere(12, rgba8(0, 240, 255, 255));
-   setMeshEmissive(horizonGlow, rgba8(0, 240, 255, 255), 1.65);
-   setScale(horizonGlow, 2.8, 0.34, 0.85);
-   setPosition(horizonGlow, 18, -2.2, -24);
+   horizonGlow = createSphere(25, rgba8(220, 255, 255, 255));
+   setMeshEmissive(horizonGlow, rgba8(220, 255, 255, 255), 2.8);
+   setScale(horizonGlow, 82, 24, 22);
+   setPosition(horizonGlow, 34, 2, -8);
 
    const terrainCols = [
       rgba8(255, 20, 210, 255),
       rgba8(0, 210, 255, 255),
       rgba8(80, 50, 255, 255),
    ];
-   for (let i = 0; i < 14; i++) {
+   const terrainGroups = [[], [], []];
+   const TERRAIN_COLS = 21, TERRAIN_ROWS = 21;
+   for (let r = 0; r < TERRAIN_ROWS; r++) {
+      for (let c = 0; c < TERRAIN_COLS; c++) {
+         terrainGroups[(c + r) % terrainGroups.length].push({ c, r });
+      }
+   }
+   for (let g = 0; g < terrainGroups.length; g++) {
+      const mesh = createInstancedMesh('cube', terrainGroups[g].length);
+      const col = terrainCols[g];
+      setMeshColor(mesh, col);
+      setMeshEmissive(mesh, col, g === 1 ? 0.34 : 0.24);
+      gridMeshes.push({ mesh, color: col });
+      for (let i = 0; i < terrainGroups[g].length; i++) {
+         const { c, r } = terrainGroups[g][i];
+         const x = (c - TERRAIN_COLS/2 + 0.5) * 5.8;
+         const z = (r - TERRAIN_ROWS/2 + 0.5) * 5.8 - 26;
+         const n = Math.sin(x * 0.12) * Math.cos(z * 0.13);
+         const h = 0.8 + (n * 0.5 + 0.5) * 6.2 + rng() * 1.2;
+         setInstanceTransform(mesh, i, mat4(2.35, h, 2.35, x, h/2 - 2.8, z));
+         setInstanceColor(mesh, i, col);
+         terrainCells.push({ mesh, idx: i, x, z, baseH: h });
+      }
+   }
+   for (let i = 0; i < 18; i++) {
       const col = terrainCols[i % terrainCols.length];
-      const m = createCube(4 + rng() * 7, 0.18, 3 + rng() * 8, col);
-      setMeshEmissive(m, col, i % 3 === 1 ? 0.42 : 0.28);
-      setPosition(m, (rng() - 0.5) * 52, -4.1, -28 + rng() * 44);
+      const m = createCube(3.5 + rng() * 6.0, 0.14, 2.4 + rng() * 5.4, col);
+      setMeshEmissive(m, col, i % 3 === 1 ? 0.42 : 0.30);
+      setPosition(m, (rng() - 0.5) * 62, -4.0 + rng() * 0.7, 4 + rng() * 24);
       setRotation(m, 0, rng() * Math.PI * 2, 0);
       energyOrbs.push({ mesh: m });
    }
-
    const COLS = 18, ROWS = 18;
    const PALETTE = [
       rgba8(0, 240, 255, 255),
@@ -376,11 +399,12 @@ export function init() {
 }
 
 // ── Camera choreography ────────────────────────────────────────────────────────
-function cam0(dt) {   // GRID AWAKENING — slow descending sweep
-   const py = Math.max(3, 14 - sceneT * 0.7);
-   const pz = Math.max(1, 28 - sceneT * 1.2);
+function cam0(dt) {   // GRID AWAKENING — web-style rising terrain flyover
+   const prog = Math.min(1, sceneT / SCENES[0].dur);
+   const py = 15 + prog * 8;
+   const pz = 42 - prog * 12;
    setCameraPosition(Math.sin(sceneT * 0.15) * 4, py, pz);
-   setCameraTarget(0, 0, 0);
+   setCameraTarget(0, 2.5, -48);
 }
 function cam1(dt) {   // DATA TUNNEL — fly through rings
    const pz = -sceneT * 3 + 8;
@@ -434,6 +458,11 @@ export function update(dt) {
 
    // Per-scene animations
    if (scene === 0) {
+      for (const cell of terrainCells) {
+         const wave = Math.sin(cell.x * 0.1 + t) * Math.cos(cell.z * 0.1 + t);
+         const h = Math.max(0.8, cell.baseH + wave * 1.5);
+         setInstanceTransform(cell.mesh, cell.idx, mat4(2.35, h, 2.35, cell.x, h/2 - 2.8, cell.z));
+      }
       // Wave animation on grid heights
       for (const cell of gridCells) {
          const wave = Math.sin(cell.x*0.35 + t*2.2) * Math.cos(cell.z*0.35 + t*1.6);

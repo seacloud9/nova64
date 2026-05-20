@@ -46,6 +46,29 @@ canonical repository instructions in `../AGENTS.md`.
 - `retroarch/build/demoscene-webparity-s3-90pass.png`
 - `retroarch/build/demoscene-webparity-s4-90pass.png`
 
+## 2026-05-19 — Direct browser capture parity pass
+
+### What changed
+- Captured the actual web cart through `console.html?demo=demoscene` and the
+  `#screen` canvas at 640x360:
+  - `retroarch/build/demoscene-browser-canvas-s0-current.png`
+  - `retroarch/build/demoscene-browser-canvas-s0-late-current.png`
+- The direct web capture showed scene 0 is dominated by an overbright
+  magenta/cyan horizon/sun field, not detailed terrain geometry.
+- RetroArch scene 0 now uses:
+  - Web-style rising camera choreography.
+  - A denser instanced terrain field shifted toward the horizon.
+  - Smaller foreground terrain shards.
+  - A large high-emissive horizon glow scaled to fill the lower/right frame.
+- Latest RetroArch scene-0 comparison capture:
+  - `retroarch/build/demoscene-webparity-s0-sunmatch6.png`
+
+### Latest subjective visual parity
+- Estimate: ~90% against the direct browser capture set.
+- Remaining visible gap: RetroArch still exposes more block geometry and less
+  shader-style washout than the Three.js/TSL path, but the scene composition,
+  HUD, palette, post pass, and dominant visual read now line up closely.
+
 ## 2026-05-15 — M8 Shadow Maps + Normal Maps session
 
 ### What landed this session (commits 11e8309..b0ecd65)

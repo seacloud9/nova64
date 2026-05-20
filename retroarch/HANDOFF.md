@@ -23,9 +23,15 @@ Latest continuation:
   reference capture's luminous terrain/horizon mass.
 - Scene 2 received emissive light lanes through the skyline to reduce the flat
   blue city read.
-- Current subjective visual parity estimate: ~89% vs the browser reference set.
-  This is not an automated SSIM/LPIPS score; the next step to claim a hard 90%
-  is direct browser-vs-RetroArch capture comparison for all five scene beats.
+- Follow-up direct browser capture used `console.html?demo=demoscene` and canvas
+  screenshots at 640x360. That showed scene 0 is primarily an overbright
+  magenta/cyan horizon/sun composition in the web runtime. RetroArch scene 0 now
+  uses a web-style rising camera, an instanced terrain field shifted toward the
+  horizon, and a large emissive horizon glow to match that first read.
+- Current subjective visual parity estimate: ~90% vs the available browser
+  captures. This is not an automated SSIM/LPIPS score; the next useful step is a
+  small repeatable browser-vs-RetroArch capture comparator for all five scene
+  beats.
 
 - `cls()` / `clsGradient()` no longer draw the software 3D preview over an active
   GLES hardware scene.
@@ -101,6 +107,9 @@ retroarch/build/demoscene-webparity-s0-final2.png
 retroarch/build/demoscene-webparity-s2-final2.png
 retroarch/build/demoscene-webparity-s3-90pass.png
 retroarch/build/demoscene-webparity-s4-90pass.png
+retroarch/build/demoscene-browser-canvas-s0-current.png
+retroarch/build/demoscene-browser-canvas-s0-late-current.png
+retroarch/build/demoscene-webparity-s0-sunmatch6.png
 ```
 
 Remaining parity work:

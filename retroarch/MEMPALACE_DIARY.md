@@ -72,6 +72,14 @@ canonical repository instructions in `../AGENTS.md`.
 ## 2026-05-20 — Demoscene performance + parity recovery pass
 
 ### What changed
+- Added `setInstanceTransforms(mesh, start, mat16s)` for batched instanced mesh
+  matrix uploads. Demoscene scene 0 and scene 2 now use it for animated instance
+  grids/towers.
+- Focused scene-0 GLES perf smoke now reports `inst_xform/frame=5-6`, down from
+  the prior roughly `765/frame` path. Cart CPU is around `1.1-1.3 ms` in the
+  headless llvmpipe smoke; render/post remains the larger target.
+- Added `retroarch/conformance/681-instance-batch.js`; GLES checksum
+  `d87b8d3a42dd976d`.
 - Added `NOVA64_PERF` core telemetry for RetroArch runs. The harness `--perf`
   path now reports cart time, render time, total frame time, instance transform
   calls, draw calls, and overlay uploads every 60 frames.

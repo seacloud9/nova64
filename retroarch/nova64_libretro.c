@@ -27602,6 +27602,42 @@ static JSValue js_set_instance_transform(JSContext *ctx, JSValueConst this_val, 
    return JS_UNDEFINED;
 }
 
+static JSValue js_set_instance_transforms(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int handle = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0);
+   int start  = int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0);
+   struct nova64_mesh *mesh = mesh_from_handle(handle);
+   if (!mesh || mesh->type != NOVA64_MESH_INSTANCED) return JS_UNDEFINED;
+   if (start < 0 || start >= mesh->instance_count)    return JS_UNDEFINED;
+   if (argc < 3 || !JS_IsArray(argv[2]))              return JS_UNDEFINED;
+
+   JSValue len_val = JS_GetPropertyStr(ctx, argv[2], "length");
+   uint32_t len = 0;
+   JS_ToUint32(ctx, &len, len_val);
+   JS_FreeValue(ctx, len_val);
+   if (len < 16) return JS_UNDEFINED;
+
+   uint32_t matrix_count = len / 16;
+   uint32_t max_count = (uint32_t)(mesh->instance_count - start);
+   if (matrix_count > max_count)
+      matrix_count = max_count;
+
+   core_perf_frame_instance_transform_calls++;
+   for (uint32_t inst = 0; inst < matrix_count; inst++) {
+      float *m = mesh->instance_transforms + ((size_t)start + inst) * 16;
+      uint32_t base = inst * 16;
+      for (uint32_t i = 0; i < 16; i++) {
+         JSValue v = JS_GetPropertyUint32(ctx, argv[2], base + i);
+         double d = 0.0;
+         JS_ToFloat64(ctx, &d, v);
+         JS_FreeValue(ctx, v);
+         m[i] = (float)d;
+      }
+   }
+   return JS_UNDEFINED;
+}
+
 static JSValue js_get_instance_count(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
    (void)this_val;
@@ -28367,6 +28403,7 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, global, "createMesh", js_create_mesh, 3);
    set_function(ctx, global, "createInstancedMesh", js_create_instanced_mesh, 2);
    set_function(ctx, global, "setInstanceTransform", js_set_instance_transform, 3);
+   set_function(ctx, global, "setInstanceTransforms", js_set_instance_transforms, 3);
    set_function(ctx, global, "getInstanceCount", js_get_instance_count, 1);
    {
       JSValue sc = JS_GetPropertyStr(ctx, nova64, "scene");
@@ -28374,6 +28411,7 @@ static bool install_nova64_api(JSContext *ctx)
          set_function(ctx, sc, "createMesh", js_create_mesh, 3);
          set_function(ctx, sc, "createInstancedMesh", js_create_instanced_mesh, 2);
          set_function(ctx, sc, "setInstanceTransform", js_set_instance_transform, 3);
+         set_function(ctx, sc, "setInstanceTransforms", js_set_instance_transforms, 3);
          set_function(ctx, sc, "getInstanceCount", js_get_instance_count, 1);
       }
       JS_FreeValue(ctx, sc);

@@ -32,6 +32,26 @@ function mat4(sx, sy, sz, tx, ty, tz) {
    return [sx,0,0,0, 0,sy,0,0, 0,0,sz,0, tx,ty,tz,1];
 }
 
+function writeMat4(out, off, sx, sy, sz, tx, ty, tz) {
+   out[off + 0] = sx; out[off + 1] = 0;  out[off + 2] = 0;  out[off + 3] = 0;
+   out[off + 4] = 0;  out[off + 5] = sy; out[off + 6] = 0;  out[off + 7] = 0;
+   out[off + 8] = 0;  out[off + 9] = 0;  out[off + 10] = sz; out[off + 11] = 0;
+   out[off + 12] = tx; out[off + 13] = ty; out[off + 14] = tz; out[off + 15] = 1;
+}
+
+function batchInstanceTransforms(cells, writeCell) {
+   const batches = new Map();
+   for (const cell of cells) {
+      let data = batches.get(cell.mesh);
+      if (!data) {
+         data = new Array(getInstanceCount(cell.mesh) * 16);
+         batches.set(cell.mesh, data);
+      }
+      writeCell(cell, data, cell.idx * 16);
+   }
+   for (const [mesh, data] of batches) setInstanceTransforms(mesh, 0, data);
+}
+
 function clearScene3D() {
    if (gridMesh)      { destroyMesh(gridMesh);      gridMesh      = null; }
    for (const gm of gridMeshes) destroyMesh(gm.mesh);
@@ -245,7 +265,7 @@ function buildScene2() {
             : hue3 < 0.66 ? rgba8(255, 230, 0, 255)
             : rgba8(180,  0, 255, 255);
          setInstanceColor(cityMesh, idx, col);
-         towers.push({ x, z, baseH: h, phase: rng()*6.28, idx });
+         towers.push({ mesh: cityMesh, x, z, baseH: h, phase: rng()*6.28, idx });
          idx++;
       }
    }
@@ -482,17 +502,17 @@ export function update(dt) {
 
    // Per-scene animations
    if (scene === 0) {
-      for (const cell of terrainCells) {
+      batchInstanceTransforms(terrainCells, (cell, data, off) => {
          const wave = Math.sin(cell.x * 0.1 + t) * Math.cos(cell.z * 0.1 + t);
          const h = Math.max(0.8, cell.baseH + wave * 1.5);
-         setInstanceTransform(cell.mesh, cell.idx, mat4(2.35, h, 2.35, cell.x, h/2 - 2.8, cell.z));
-      }
+         writeMat4(data, off, 2.35, h, 2.35, cell.x, h/2 - 2.8, cell.z);
+      });
       // Wave animation on grid heights
-      for (const cell of gridCells) {
+      batchInstanceTransforms(gridCells, (cell, data, off) => {
          const wave = Math.sin(cell.x*0.35 + t*2.2) * Math.cos(cell.z*0.35 + t*1.6);
          const h = 0.1 + (wave*0.5+0.5) * 2.5;
-         setInstanceTransform(cell.mesh, cell.idx, mat4(1.85, h, 1.85, cell.x, -3+h/2, cell.z));
-      }
+         writeMat4(data, off, 1.85, h, 1.85, cell.x, -3+h/2, cell.z);
+      });
       // Pillar pulse
       const ph = 5 + Math.sin(t*2)*1;
       setScale(groundMesh, 0.8, ph, 0.8);
@@ -542,10 +562,10 @@ export function update(dt) {
          setRotation(horizonGlow, 0, t * 0.8, 0);
          setScale(horizonGlow, 0.45 + Math.sin(t * 2.4) * 0.08, 3.5, 0.45 + Math.sin(t * 2.4) * 0.08);
       }
-      for (const tw of towers) {
+      batchInstanceTransforms(towers, (tw, data, off) => {
          const h = tw.baseH * (0.7 + 0.3*Math.sin(t*1.8 + tw.phase));
-         setInstanceTransform(cityMesh, tw.idx, mat4(2.6, h, 2.6, tw.x, h/2, tw.z));
-      }
+         writeMat4(data, off, 2.6, h, 2.6, tw.x, h/2, tw.z);
+      });
    }
 
    if (scene === 3) {

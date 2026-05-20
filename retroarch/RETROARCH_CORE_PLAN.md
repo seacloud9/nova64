@@ -351,10 +351,13 @@ directional lighting. Everything below is missing or incomplete.
 
 - Instanced mesh: `createInstancedMesh(geometry, count)` → NOVA64_MESH_INSTANCED handle.
   `setInstanceTransform(mesh, i, mat16)` sets per-instance column-major mat4.
+  `setInstanceTransforms(mesh, start, mat16s)` uploads a flat array of
+  consecutive matrices in one JS-to-C call for hot animated grids.
   `getInstanceCount(mesh)` returns count. GLES path: shared material uniforms once,
   per-instance MVP + 3×3 normal matrix, one DrawElements call per instance (soft loop).
   Software path: proxy cube at translation column of each instance matrix.
   `107-instanced-mesh.js` conformance cart sw=4fd99c7a95f90255 gles=f01a0e0dc49c9e0e.
+  `681-instance-batch.js` covers the batched upload API.
 
 - ~~`setSkybox(texHandle)`~~ **Done**: equirectangular panoramic skybox on GLES.
   `setSkybox(texHandle)` sets background; `clearSkybox()` reverts to gradient.

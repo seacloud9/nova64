@@ -8,6 +8,22 @@ demoscene cart and renderer:
 
 ## 2026-05-20 performance/parity continuation
 
+### Latest continuation after checkpoint
+
+- Added `setInstanceTransforms(mesh, start, mat16s)`, a batched instanced-mesh
+  matrix upload API. It accepts a flat array of consecutive 16-float matrices and
+  is exposed globally and under `nova64.scene`.
+- Switched demoscene scene 0 terrain/grid animation and scene 2 city tower
+  animation to the batch API. Focused scene-0 perf smoke now reports
+  `inst_xform/frame=5-6` instead of the previous roughly `765/frame`.
+- Focused GLES perf smoke:
+  `NOVA64_GLES_TESTS=1 retroarch/build/harness retroarch/nova64_libretro.so retroarch/games/demoscene.js --gles --btn b --frames 180 --perf --capture retroarch/build/demoscene-batched-s0.ppm`
+  reported steady intervals around `cart_us avg=1157-1356`,
+  `render_us avg=8347-8810`, `draw_calls/frame=38-41`, and
+  `overlay_uploads/frame=1`.
+- Added `retroarch/conformance/681-instance-batch.js`.
+  GLES smoke: checksum `d87b8d3a42dd976d`.
+
 ### Checkpoint / Extra File Audit
 
 - User approved checking in the extra in-flight files from prior RetroArch work,

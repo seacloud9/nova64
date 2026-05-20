@@ -27,7 +27,8 @@ Implemented and conformance-tested:
 - Scene hierarchy: parent/child mesh transforms via `setParent`/`clearParent`.
 - Z-sorted sprite draw queue for 2D sprites with depth ordering.
 - Custom mesh geometry via `createMesh`.
-- Instanced mesh rendering via `createInstancedMesh` / `setInstanceTransform`.
+- Instanced mesh rendering via `createInstancedMesh`, `setInstanceTransform`,
+  and batched `setInstanceTransforms`.
 - Equirectangular skybox via `setSkybox`.
 - Offscreen render targets: `createRenderTarget`, `renderScene`, `renderTargetAsTexture`.
 - Procedural SFX and PCM asset audio mixing through RetroArch audio callbacks.
@@ -497,6 +498,7 @@ destroyRenderTarget(rtHandle)
 ```js
 createInstancedMesh(geometry, count)         // geometry: 'cube'|'sphere'|'plane'|'capsule'|'cylinder'|'cone'
 setInstanceTransform(mesh, index, mat16)     // mat16: 16-element column-major Float32 model matrix
+setInstanceTransforms(mesh, start, mat16s)   // flat array of consecutive mat16 values
 getInstanceCount(mesh)                       // returns instance count
 ```
 
@@ -944,6 +946,7 @@ These browser-side Nova64 or Three.js features are not implemented:
 | `105-z-sort-sprites.js` | spr() z-depth parameter and draw order |
 | `106-render-target.js` | createRenderTarget / renderScene / renderTargetAsTexture / destroyRenderTarget |
 | `107-instanced-mesh.js` | createInstancedMesh / setInstanceTransform / getInstanceCount |
+| `681-instance-batch.js` | setInstanceTransforms batched matrix upload |
 | `108-skybox.js` | setSkybox equirectangular panorama / clearSkybox |
 | `109-blend-modes.js` | setMeshBlend opaque/additive/multiply; getMesh().blendMode round-trip |
 | `110-storage-compressed.js` | storageSetCompressed / storageGetCompressed / storageHasCompressed |

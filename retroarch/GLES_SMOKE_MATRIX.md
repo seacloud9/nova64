@@ -59,3 +59,6 @@ real-driver integration notes only.
   `retroarch/build/sphere-uv-gles.png`.
 - Affected GLES conformance locks were updated for sphere-based carts and the
   capsule/cylinder proxy paths.
+- GLES cone smoke coverage was added for the new real cone primitive:
+  `retroarch/build/gles-cone-primitive.png`. `space-shooter.js` also captures
+  the pointed player ship at `retroarch/build/space-shooter-cone-gles.png`.

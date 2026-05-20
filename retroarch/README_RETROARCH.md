@@ -12,7 +12,7 @@ Implemented and conformance-tested:
 - QuickJS ES module cart execution with `init()`, `update(dt)`, `draw()` lifecycle.
 - 640×360 software 2D framebuffer; RGB565 output when hardware is unavailable.
 - OpenGL ES 3.1 hardware renderer via RetroArch-owned hardware context.
-- Cube, plane, low-poly sphere, capsule, and cylinder primitives with ambient/directional lighting.
+- Cube, plane, UV sphere, cone, capsule, and cylinder primitives with ambient/directional lighting.
 - Orthographic and perspective camera projection.
 - 2D overlay texture compositor (software framebuffer over GLES 3D output).
 - Post-processing pipeline: CRT, vignette, pixelate, bloom, chromatic aberration,

@@ -50,6 +50,10 @@ Latest continuation:
   octahedron proxy. This fixes visibly faceted/diamond-like spheres in carts and
   demoscene glow objects. Capsule/cylinder proxy paths and sphere shadow/instance
   paths now use the same updated index count.
+- GLES cones now use a real 32-segment cone mesh instead of falling through the
+  cylinder/sphere proxy path. This affects direct `createCone()` draws,
+  render-target scene draws, shadow rendering, and `createInstancedMesh('cone')`.
+  `space-shooter.js` now shows a pointed player ship on the GLES path.
 - Current comparator baseline after the sphere fix: average visual score `85.5`,
   strict average `84.4` across five sampled beats. This is up from the original `49.0`
   comparator baseline and the prior exact-scene `81.2` baseline. Remaining

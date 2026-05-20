@@ -617,6 +617,7 @@ run_gles_case "GLES post color grade" "gles-post-color-grade"  "retroarch/confor
 run_gles_case "GLES instance colors"  "gles-instance-colors"   "retroarch/conformance/gles-instance-colors.js"   "abcd5e293f0c7187" 3
 run_gles_case "GLES torus scale"      "gles-torus-scale"       "retroarch/conformance/gles-torus-scale.js"       "db701fac656d76cd" 3
 run_gles_case "GLES overlay orientation" "gles-overlay-orientation" "retroarch/conformance/gles-overlay-orientation.js" "837f452f8df778a3" 3
+run_gles_case "GLES cone primitive"   "gles-cone-primitive"    "retroarch/conformance/gles-cone-primitive.js"    "84341bf183c85fa6" 30
 
 run_visual_case "113 math utils"    "113-math-utils"    "retroarch/conformance/113-math-utils.js"    "00d37dc756a875d0"
 run_visual_case "114 camera orbit"  "114-camera-orbit"  "retroarch/conformance/114-camera-orbit.js"  "700cde1a721f5d04"

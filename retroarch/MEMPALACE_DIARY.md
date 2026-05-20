@@ -118,6 +118,16 @@ canonical repository instructions in `../AGENTS.md`.
   stats, clear scene, destroy mesh, shadow map, and normal map.
 - Focused capture: `retroarch/build/sphere-uv-gles.png`.
 
+### GLES cone primitive
+- `createCone()` no longer falls through the GLES cylinder/sphere proxy path.
+- Added a real 32-segment cone VBO/IBO, plus draw support for main scene,
+  render-target scene draws, shadows, and `createInstancedMesh('cone')`.
+- Added GLES-only conformance cart:
+  `retroarch/conformance/gles-cone-primitive.js`.
+- Focused captures:
+  - `retroarch/build/gles-cone-primitive.png`
+  - `retroarch/build/space-shooter-cone-gles.png`
+
 ### Caveat
 - The metric is now useful as a trend baseline, but it still penalizes
   hard-edged GLES approximations versus Three.js/TSL shader gradients,

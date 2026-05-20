@@ -475,6 +475,8 @@ struct nova64_gles_backend {
    GLuint plane_ibo;
    GLuint sphere_vbo;
    GLuint sphere_ibo;
+   GLuint cone_vbo;
+   GLuint cone_ibo;
    GLuint overlay_vbo;
    GLuint overlay_ibo;
    GLuint overlay_texture;
@@ -1623,6 +1625,11 @@ enum {
       (NOVA64_GLES_SPHERE_LAT_SEGMENTS + 1) * (NOVA64_GLES_SPHERE_LON_SEGMENTS + 1),
    NOVA64_GLES_SPHERE_INDEX_COUNT =
       NOVA64_GLES_SPHERE_LAT_SEGMENTS * NOVA64_GLES_SPHERE_LON_SEGMENTS * 6
+};
+enum {
+   NOVA64_GLES_CONE_SEGMENTS = 32,
+   NOVA64_GLES_CONE_VERTEX_COUNT = 1 + NOVA64_GLES_CONE_SEGMENTS + 1 + NOVA64_GLES_CONE_SEGMENTS,
+   NOVA64_GLES_CONE_INDEX_COUNT = NOVA64_GLES_CONE_SEGMENTS * 6
 };
 static enum nova64_renderer_backend renderer_preference = NOVA64_RENDERER_GLES3;
 static struct retro_hw_render_callback hw_render;
@@ -26002,6 +26009,7 @@ static void render_gles_plane(const struct nova64_mesh *mesh, const float view_p
 static void render_gles_sphere(const struct nova64_mesh *mesh, const float view_projection[16]);
 static void render_gles_capsule(const struct nova64_mesh *mesh, const float view_projection[16]);
 static void render_gles_cylinder(const struct nova64_mesh *mesh, const float view_projection[16]);
+static void render_gles_cone(const struct nova64_mesh *mesh, const float view_projection[16]);
 static void render_gles_torus(struct nova64_mesh *mesh, const float view_projection[16]);
 static void render_gles_custom_mesh(struct nova64_mesh *mesh, const float view_projection[16]);
 static void render_gles_instanced_mesh(const struct nova64_mesh *mesh, const float view_projection[16]);
@@ -26070,7 +26078,7 @@ static void render_gles_scene_to_rt(struct nova64_render_target *rt)
       else if (meshes[i].type == NOVA64_MESH_CUSTOM)      render_gles_custom_mesh(&meshes[i], view_projection);
       else if (meshes[i].type == NOVA64_MESH_INSTANCED)   render_gles_instanced_mesh(&meshes[i], view_projection);
       else if (meshes[i].type == NOVA64_MESH_TORUS)   render_gles_torus(&meshes[i], view_projection);
-      else if (meshes[i].type == NOVA64_MESH_CONE)    render_gles_cylinder(&meshes[i], view_projection);
+      else if (meshes[i].type == NOVA64_MESH_CONE)    render_gles_cone(&meshes[i], view_projection);
    }
 
    /* Restore default viewport */
@@ -27443,6 +27451,7 @@ static JSValue js_create_instanced_mesh(JSContext *ctx, JSValueConst this_val, i
       else if (!strcmp(geo_str, "plane"))    geo = 2;
       else if (!strcmp(geo_str, "capsule"))  geo = 3;
       else if (!strcmp(geo_str, "cylinder")) geo = 4;
+      else if (!strcmp(geo_str, "cone"))     geo = 5;
       JS_FreeCString(ctx, geo_str);
    }
 
@@ -30165,6 +30174,9 @@ static void render_gles_shadow_pass(const float light_vp[16])
          case NOVA64_MESH_CYLINDER:
             vbo = gles.sphere_vbo; ibo = gles.sphere_ibo;
             idx_count = NOVA64_GLES_SPHERE_INDEX_COUNT; break;
+         case NOVA64_MESH_CONE:
+            vbo = gles.cone_vbo; ibo = gles.cone_ibo;
+            idx_count = NOVA64_GLES_CONE_INDEX_COUNT; break;
          case NOVA64_MESH_CUSTOM:
             if (!mesh->gl_custom_vbo || !mesh->gl_custom_ibo || !mesh->custom_index_count) continue;
             vbo = mesh->gl_custom_vbo; ibo = mesh->gl_custom_ibo;
@@ -30254,6 +30266,10 @@ static void gles_destroy_resources(void)
       gles.DeleteBuffers(1, &gles.sphere_vbo);
    if (gles.sphere_ibo && gles.DeleteBuffers)
       gles.DeleteBuffers(1, &gles.sphere_ibo);
+   if (gles.cone_vbo && gles.DeleteBuffers)
+      gles.DeleteBuffers(1, &gles.cone_vbo);
+   if (gles.cone_ibo && gles.DeleteBuffers)
+      gles.DeleteBuffers(1, &gles.cone_ibo);
    if (gles.overlay_vbo && gles.DeleteBuffers)
       gles.DeleteBuffers(1, &gles.overlay_vbo);
    if (gles.overlay_ibo && gles.DeleteBuffers)
@@ -30270,6 +30286,8 @@ static void gles_destroy_resources(void)
    gles.plane_ibo = 0;
    gles.sphere_vbo = 0;
    gles.sphere_ibo = 0;
+   gles.cone_vbo = 0;
+   gles.cone_ibo = 0;
    gles.overlay_vbo = 0;
    gles.overlay_ibo = 0;
    gles.overlay_texture = 0;
@@ -30336,6 +30354,82 @@ static bool gles_upload_sphere_geometry(void)
    gles.BindBuffer(GL_ELEMENT_ARRAY_BUFFER, gles.sphere_ibo);
    gles.BufferData(GL_ELEMENT_ARRAY_BUFFER,
       (GLsizeiptr)((size_t)NOVA64_GLES_SPHERE_INDEX_COUNT * sizeof(unsigned short)),
+      indices, GL_STATIC_DRAW);
+
+   free(vertices);
+   free(indices);
+   return true;
+}
+
+static bool gles_upload_cone_geometry(void)
+{
+   GLfloat *vertices = (GLfloat *)calloc((size_t)NOVA64_GLES_CONE_VERTEX_COUNT * 6,
+      sizeof(GLfloat));
+   unsigned short *indices = (unsigned short *)malloc(
+      (size_t)NOVA64_GLES_CONE_INDEX_COUNT * sizeof(unsigned short));
+   if (!vertices || !indices) {
+      free(vertices);
+      free(indices);
+      return false;
+   }
+
+   vertices[0] = 0.0f; vertices[1] = 0.5f; vertices[2] = 0.0f;
+   vertices[3] = 0.0f; vertices[4] = 0.65f; vertices[5] = 0.0f;
+   for (int i = 0; i < NOVA64_GLES_CONE_SEGMENTS; i++) {
+      float a = ((float)i / (float)NOVA64_GLES_CONE_SEGMENTS) * (float)M_PI * 2.0f;
+      float x = cosf(a);
+      float z = sinf(a);
+      float nx = x * 0.70710678f;
+      float nz = z * 0.70710678f;
+      int vi = (1 + i) * 6;
+      vertices[vi + 0] = x;
+      vertices[vi + 1] = -0.5f;
+      vertices[vi + 2] = z;
+      vertices[vi + 3] = nx;
+      vertices[vi + 4] = 0.70710678f;
+      vertices[vi + 5] = nz;
+   }
+
+   int base_center = 1 + NOVA64_GLES_CONE_SEGMENTS;
+   int base_ring = base_center + 1;
+   vertices[base_center * 6 + 0] = 0.0f;
+   vertices[base_center * 6 + 1] = -0.5f;
+   vertices[base_center * 6 + 2] = 0.0f;
+   vertices[base_center * 6 + 3] = 0.0f;
+   vertices[base_center * 6 + 4] = -1.0f;
+   vertices[base_center * 6 + 5] = 0.0f;
+   for (int i = 0; i < NOVA64_GLES_CONE_SEGMENTS; i++) {
+      float a = ((float)i / (float)NOVA64_GLES_CONE_SEGMENTS) * (float)M_PI * 2.0f;
+      int vi = (base_ring + i) * 6;
+      vertices[vi + 0] = cosf(a);
+      vertices[vi + 1] = -0.5f;
+      vertices[vi + 2] = sinf(a);
+      vertices[vi + 3] = 0.0f;
+      vertices[vi + 4] = -1.0f;
+      vertices[vi + 5] = 0.0f;
+   }
+
+   int ii = 0;
+   for (int i = 0; i < NOVA64_GLES_CONE_SEGMENTS; i++) {
+      unsigned short a = (unsigned short)(1 + i);
+      unsigned short b = (unsigned short)(1 + ((i + 1) % NOVA64_GLES_CONE_SEGMENTS));
+      indices[ii++] = 0; indices[ii++] = a; indices[ii++] = b;
+   }
+   for (int i = 0; i < NOVA64_GLES_CONE_SEGMENTS; i++) {
+      unsigned short a = (unsigned short)(base_ring + i);
+      unsigned short b = (unsigned short)(base_ring + ((i + 1) % NOVA64_GLES_CONE_SEGMENTS));
+      indices[ii++] = (unsigned short)base_center; indices[ii++] = b; indices[ii++] = a;
+   }
+
+   gles.GenBuffers(1, &gles.cone_vbo);
+   gles.BindBuffer(GL_ARRAY_BUFFER, gles.cone_vbo);
+   gles.BufferData(GL_ARRAY_BUFFER,
+      (GLsizeiptr)((size_t)NOVA64_GLES_CONE_VERTEX_COUNT * 6 * sizeof(GLfloat)),
+      vertices, GL_STATIC_DRAW);
+   gles.GenBuffers(1, &gles.cone_ibo);
+   gles.BindBuffer(GL_ELEMENT_ARRAY_BUFFER, gles.cone_ibo);
+   gles.BufferData(GL_ELEMENT_ARRAY_BUFFER,
+      (GLsizeiptr)((size_t)NOVA64_GLES_CONE_INDEX_COUNT * sizeof(unsigned short)),
       indices, GL_STATIC_DRAW);
 
    free(vertices);
@@ -30428,6 +30522,8 @@ static bool gles_init_resources(void)
    gles.BufferData(GL_ELEMENT_ARRAY_BUFFER, (GLsizeiptr)sizeof(plane_indices), plane_indices, GL_STATIC_DRAW);
 
    if (!gles_upload_sphere_geometry())
+      return false;
+   if (!gles_upload_cone_geometry())
       return false;
 
    gles.GenBuffers(1, &gles.overlay_vbo);
@@ -30867,6 +30963,12 @@ static void render_gles_cylinder(const struct nova64_mesh *mesh, const float vie
       NOVA64_GLES_SPHERE_INDEX_COUNT);
 }
 
+static void render_gles_cone(const struct nova64_mesh *mesh, const float view_projection[16])
+{
+   render_gles_primitive(mesh, view_projection, gles.cone_vbo, gles.cone_ibo,
+      NOVA64_GLES_CONE_INDEX_COUNT);
+}
+
 static void render_gles_custom_mesh(struct nova64_mesh *mesh, const float view_projection[16])
 {
    if (!mesh->custom_verts || mesh->custom_vert_count == 0 ||
@@ -30905,6 +31007,8 @@ static void render_gles_instanced_mesh(const struct nova64_mesh *mesh, const flo
          idx_count = NOVA64_GLES_SPHERE_INDEX_COUNT; break;
       case 4: /* cylinder */ vbo = gles.sphere_vbo; ibo = gles.sphere_ibo;
          idx_count = NOVA64_GLES_SPHERE_INDEX_COUNT; break;
+      case 5: /* cone */ vbo = gles.cone_vbo; ibo = gles.cone_ibo;
+         idx_count = NOVA64_GLES_CONE_INDEX_COUNT; break;
       default: vbo = gles.cube_vbo; ibo = gles.cube_ibo; idx_count = 36; break;
    }
 
@@ -31463,7 +31567,7 @@ static void render_gles_scene(void)
       else if (meshes[i].type == NOVA64_MESH_TORUS)
          render_gles_torus(&meshes[i], view_projection);
       else if (meshes[i].type == NOVA64_MESH_CONE)
-         render_gles_cylinder(&meshes[i], view_projection);
+         render_gles_cone(&meshes[i], view_projection);
    }
 
    if (use_post) {

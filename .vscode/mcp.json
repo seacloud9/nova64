@@ -5,8 +5,8 @@
       "command": "wsl",
       "args": [
         "bash",
-        "-c",
-        "cd ~/ai-tools && pipenv run python -m mempalace.mcp_server"
+        "-lc",
+        "cd ~/ai-tools && pipenv run mempalace-mcp"
       ]
     }
   }

@@ -13,7 +13,7 @@ When changing agent workflow, commands, architecture notes, or repository rules:
 - Do not copy large instruction blocks into tool-specific files.
 - If another instruction file disagrees with `AGENTS.md`, verify against live source files and then reconcile the rule back here.
 
-Current package version: `0.4.9`.
+Current package version: `0.5.1`.
 
 ## 🖥️ **Windows Development Environment**
 
@@ -98,6 +98,35 @@ Additional guidance:
 - Treat `package.json` as the source of truth for available scripts.
 - Use the narrowest relevant script first when making targeted changes.
 - Expand to broader validation when a change affects shared runtime behavior, rendering, or cross-backend compatibility.
+
+## MemPalace / MCP Memory
+
+Nova64 uses MemPalace as the project memory layer. On Windows, launch MemPalace
+through WSL, matching `.vscode/mcp.json` and the Codex MCP config:
+
+```bash
+cd ~/ai-tools
+pipenv run mempalace-mcp
+```
+
+Useful repo scripts:
+
+```bash
+pnpm run mempalace:status
+pnpm run mempalace:wake
+pnpm run mempalace:repair-status
+pnpm run mempalace:mine
+pnpm run mempalace:mine:runtime
+pnpm run mempalace:mine:retroarch
+pnpm run mempalace:sync:retroarch
+```
+
+Memory workflow:
+
+- Start coding sessions by checking `pnpm run mempalace:wake` when project history matters.
+- Use `pnpm run mempalace:mine:retroarch` after meaningful RetroArch progress.
+- Use `pnpm run mempalace:status` and `pnpm run mempalace:repair-status` when MCP startup or retrieval looks suspicious.
+- Keep `.vscode/mcp.json` pointed at the WSL `mempalace-mcp` entrypoint so MCP clients can start the memory server automatically.
 
 ## CLI Tool (`bin/nova64.js`)
 

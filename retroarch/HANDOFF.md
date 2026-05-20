@@ -6,6 +6,27 @@ The original post-state black-output fix is already committed in history. The cu
 RetroArch parity pass moved on to the remaining GLES visual mismatches in the
 demoscene cart and renderer:
 
+Latest continuation:
+
+- MemPalace MCP startup is now documented in `AGENTS.md` and `README.md`, and
+  `.vscode/mcp.json` starts the server through WSL with `pipenv run
+  mempalace-mcp`.
+- Added focused `package.json` scripts for memory health and workflow:
+  `mempalace:status`, `mempalace:wake`, `mempalace:repair-status`, and
+  `mempalace:sync:retroarch`.
+- Scene 3, `ENERGY CORE`, now has a bright emissive core, vertical energy beam,
+  rotating neon rings, and orbiting energy shards so the RetroArch capture no
+  longer reads as HUD over a black scene.
+- Scene 4, `THE VOID`, now has a central glow, denser emissive void objects,
+  chromatic/vignette tuning, and rotating torus halos.
+- Scene 0 received broad magenta/cyan terrain shards to better match the browser
+  reference capture's luminous terrain/horizon mass.
+- Scene 2 received emissive light lanes through the skyline to reduce the flat
+  blue city read.
+- Current subjective visual parity estimate: ~89% vs the browser reference set.
+  This is not an automated SSIM/LPIPS score; the next step to claim a hard 90%
+  is direct browser-vs-RetroArch capture comparison for all five scene beats.
+
 - `cls()` / `clsGradient()` no longer draw the software 3D preview over an active
   GLES hardware scene.
 - GLES scene clears now honor cart `cls()` / framebuffer clear values when no sky
@@ -76,6 +97,10 @@ retroarch/build/demoscene-webparity-s1-hudfixed2.png
 retroarch/build/demoscene-webparity-s0-90pass3.png
 retroarch/build/demoscene-webparity-s1-90pass2.png
 retroarch/build/demoscene-webparity-s2-90pass3.png
+retroarch/build/demoscene-webparity-s0-final2.png
+retroarch/build/demoscene-webparity-s2-final2.png
+retroarch/build/demoscene-webparity-s3-90pass.png
+retroarch/build/demoscene-webparity-s4-90pass.png
 ```
 
 Remaining parity work:

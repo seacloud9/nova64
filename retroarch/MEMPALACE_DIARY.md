@@ -18,6 +18,34 @@ canonical repository instructions in `../AGENTS.md`.
   small deterministic visual/runtime helpers, prioritizing quick conformance
   coverage and visible screenshots.
 
+## 2026-05-19 — Demoscene parity + MemPalace wiring session
+
+### What landed
+- `.vscode/mcp.json` now launches MemPalace through WSL with
+  `pipenv run mempalace-mcp`.
+- `AGENTS.md` and `README.md` document the MemPalace/MCP startup path and daily
+  scripts.
+- `package.json` gained `mempalace:status`, `mempalace:wake`,
+  `mempalace:repair-status`, and `mempalace:sync:retroarch`.
+- Demoscene scene 3 was brightened with an emissive core, vertical beam, orbiting
+  energy shards, and stronger neon rings.
+- Demoscene scene 4 was brightened with denser void objects, a central glow,
+  rotating torus halos, chromatic tuning, and less crushing vignette/fog.
+- Scene 0 gained broad magenta/cyan terrain shards to better echo the browser
+  reference capture's luminous terrain/horizon mass.
+- Scene 2 gained emissive city light lanes.
+
+### Latest subjective visual parity
+- Estimate: ~89% against the available browser-style reference material.
+- Caveat: this is a human visual estimate, not a formal metric. A hard 90% claim
+  needs direct browser and RetroArch captures for all five scene beats.
+
+### Captures
+- `retroarch/build/demoscene-webparity-s0-final2.png`
+- `retroarch/build/demoscene-webparity-s2-final2.png`
+- `retroarch/build/demoscene-webparity-s3-90pass.png`
+- `retroarch/build/demoscene-webparity-s4-90pass.png`
+
 ## 2026-05-15 — M8 Shadow Maps + Normal Maps session
 
 ### What landed this session (commits 11e8309..b0ecd65)

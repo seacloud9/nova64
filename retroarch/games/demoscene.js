@@ -25,7 +25,7 @@ let state = 'start', startT = 0;
 let gridMesh, cityMesh, groundMesh, centralSphere;
 let skyPanel, horizonGlow;
 let gridMeshes = [], gridCells = [];
-let rings = [], towers = [], voidSpheres = [], pulseRings = [], dataStreams = [];
+let rings = [], towers = [], voidSpheres = [], pulseRings = [], dataStreams = [], energyOrbs = [];
 let coreBurst = [], burstTimer = 0;
 
 function mat4(sx, sy, sz, tx, ty, tz) {
@@ -45,8 +45,9 @@ function clearScene3D() {
    for (const v of voidSpheres) destroyMesh(v.mesh);
    for (const p of pulseRings)  destroyMesh(p.mesh);
    for (const s of dataStreams) destroyMesh(s.mesh);
+   for (const e of energyOrbs)  destroyMesh(e.mesh);
    for (const b of coreBurst)   destroyBurst(b);
-   rings = []; towers = []; voidSpheres = []; pulseRings = []; dataStreams = []; coreBurst = [];
+   rings = []; towers = []; voidSpheres = []; pulseRings = []; dataStreams = []; energyOrbs = []; coreBurst = [];
    gridMeshes = []; gridCells = [];
    nova64.post.clear();
    clearSkyColor();
@@ -72,6 +73,20 @@ function buildScene0() {
    setMeshEmissive(horizonGlow, rgba8(0, 240, 255, 255), 1.65);
    setScale(horizonGlow, 2.8, 0.34, 0.85);
    setPosition(horizonGlow, 18, -2.2, -24);
+
+   const terrainCols = [
+      rgba8(255, 20, 210, 255),
+      rgba8(0, 210, 255, 255),
+      rgba8(80, 50, 255, 255),
+   ];
+   for (let i = 0; i < 14; i++) {
+      const col = terrainCols[i % terrainCols.length];
+      const m = createCube(4 + rng() * 7, 0.18, 3 + rng() * 8, col);
+      setMeshEmissive(m, col, i % 3 === 1 ? 0.42 : 0.28);
+      setPosition(m, (rng() - 0.5) * 52, -4.1, -28 + rng() * 44);
+      setRotation(m, 0, rng() * Math.PI * 2, 0);
+      energyOrbs.push({ mesh: m });
+   }
 
    const COLS = 18, ROWS = 18;
    const PALETTE = [
@@ -216,19 +231,45 @@ function buildScene2() {
    setMeshEmissive(horizonGlow, rgba8(255, 236, 40, 255), 1.2);
    setScale(horizonGlow, 0.45, 3.5, 0.45);
    setPosition(horizonGlow, 0, 6, 0);
+
+   const lanes = [
+      rgba8(0, 240, 255, 255),
+      rgba8(255, 236, 40, 255),
+      rgba8(255, 40, 220, 255),
+   ];
+   for (let i = 0; i < 12; i++) {
+      const col = lanes[i % lanes.length];
+      const m = createCube(0.28, 0.22, 8 + rng() * 8, col);
+      setMeshEmissive(m, col, 1.25);
+      setPosition((rng() - 0.5) * 40, 0.22, (rng() - 0.5) * 42);
+      setRotation(m, 0, rng() * Math.PI * 2, 0);
+      energyOrbs.push({ mesh: m });
+   }
 }
 
 // ── Scene 3: ENERGY CORE ──────────────────────────────────────────────────────
 function buildScene3() {
-   nova64.post.setBloom(2.0);
-   nova64.post.setVignette(1.4, 0.82);
+   nova64.post.setBloom(2.6);
+   nova64.post.setChromatic(0.005);
+   nova64.post.setVignette(1.05, 0.76);
    nova64.post.setCRT(true);
-   setAmbientLight(rgba8(40, 8, 36, 255), 1.2);
+   setSkyColor(rgba8(52, 0, 56, 255), rgba8(2, 0, 12, 255));
+   setAmbientLight(rgba8(120, 50, 140, 255), 1.9);
    setLightDirection(0, -0.5, -1);
-   setFog(rgba8(4, 0, 8, 255), 12, 50);
+   setFog(rgba8(52, 0, 56, 255), 30, 82);
    setCameraFOV(75);
 
+   skyPanel = createCube(42, 30, 0.25, rgba8(70, 0, 80, 255));
+   setMeshEmissive(skyPanel, rgba8(255, 40, 220, 255), 0.26);
+   setPosition(skyPanel, 0, 1.5, -22);
+
+   horizonGlow = createSphere(2.4, rgba8(255, 236, 80, 255));
+   setMeshEmissive(horizonGlow, rgba8(255, 236, 80, 255), 2.4);
+   setScale(horizonGlow, 1.0, 7.5, 1.0);
+   setPosition(horizonGlow, 0, 0, 0);
+
    centralSphere = createSphere(1.4, rgba8(255, 60, 200, 255));
+   setMeshEmissive(centralSphere, rgba8(255, 60, 200, 255), 2.8);
    setPosition(centralSphere, 0, 0, 0);
 
    rings = [];
@@ -240,7 +281,25 @@ function buildScene3() {
    ];
    for (let i = 0; i < 4; i++) {
       const m = createTorus(3.5 + i * 1.4, 0.42, RING_COLS[i]);
+      setMeshEmissive(m, RING_COLS[i], 1.55);
       rings.push({ mesh: m, phase: i * Math.PI / 4, speed: 0.8 + i * 0.2 });
+   }
+
+   for (let i = 0; i < 24; i++) {
+      const col = RING_COLS[i % RING_COLS.length];
+      const m = (i % 3 === 0)
+         ? createCube(0.42, 1.6 + rng() * 1.2, 0.42, col)
+         : createSphere(0.28 + rng() * 0.22, col);
+      setMeshEmissive(m, col, 1.8);
+      energyOrbs.push({
+         mesh: m,
+         r: 3.2 + rng() * 7.8,
+         a: rng() * Math.PI * 2,
+         y: (rng() - 0.5) * 5.8,
+         speed: 0.55 + rng() * 1.25,
+         phase: rng() * Math.PI * 2,
+         scale: 0.75 + rng() * 0.75,
+      });
    }
 
    burstTimer = 0.5;
@@ -248,29 +307,49 @@ function buildScene3() {
 
 // ── Scene 4: THE VOID ─────────────────────────────────────────────────────────
 function buildScene4() {
-   nova64.post.setBloom(2.8);
-   nova64.post.setVignette(2.0, 0.68);
+   nova64.post.setBloom(3.2);
+   nova64.post.setChromatic(0.007);
+   nova64.post.setVignette(1.35, 0.7);
    nova64.post.setCRT(true);
-   setAmbientLight(rgba8(8, 10, 28, 255), 0.9);
+   setSkyColor(rgba8(0, 18, 44, 255), rgba8(0, 0, 10, 255));
+   setAmbientLight(rgba8(54, 70, 150, 255), 1.55);
    setLightDirection(0.2, -1, 0.4);
-   setFog(rgba8(0, 0, 6, 255), 8, 45);
+   setFog(rgba8(0, 12, 36, 255), 22, 72);
    setCameraFOV(58);
+
+   horizonGlow = createSphere(3.2, rgba8(0, 210, 255, 255));
+   setMeshEmissive(horizonGlow, rgba8(0, 210, 255, 255), 2.0);
+   setScale(horizonGlow, 1.0, 1.0, 1.0);
+   setPosition(horizonGlow, 0, 0, -2);
 
    const VCOLS = [
       rgba8(40,100,255,255), rgba8(100,40,255,255),
       rgba8(40,200,255,255), rgba8(180,40,255,255),
       rgba8(60,140,255,255), rgba8(220,80,255,255),
+      rgba8(255,236,80,255), rgba8(0,255,210,255),
    ];
-   for (let i = 0; i < 14; i++) {
-      const a = (i/14) * Math.PI * 2;
-      const r = 4 + rng() * 7;
-      const m = createSphere(0.35 + rng() * 0.7, VCOLS[i % VCOLS.length]);
+   for (let i = 0; i < 34; i++) {
+      const a = (i/34) * Math.PI * 2;
+      const r = 3 + rng() * 10;
+      const col = VCOLS[i % VCOLS.length];
+      const m = (i % 4 === 0)
+         ? createCube(0.55 + rng() * 0.7, 0.55 + rng() * 0.7, 0.55 + rng() * 0.7, col)
+         : createSphere(0.28 + rng() * 0.65, col);
+      setMeshEmissive(m, col, 1.45);
       voidSpheres.push({
          mesh: m, r, a,
-         y: (rng()-0.5) * 9,
-         speed: 0.18 + rng() * 0.45,
+         y: (rng()-0.5) * 10,
+         speed: 0.12 + rng() * 0.55,
          phase: rng() * 6.28,
+         scale: 0.65 + rng() * 1.1,
       });
+   }
+
+   for (let i = 0; i < 3; i++) {
+      const col = VCOLS[(i * 2 + 1) % VCOLS.length];
+      const m = createTorus(4.2 + i * 2.4, 0.25, col);
+      setMeshEmissive(m, col, 1.05);
+      rings.push({ mesh: m, phase: i * 0.7, speed: 0.22 + i * 0.1 });
    }
 }
 
@@ -418,6 +497,12 @@ export function update(dt) {
 
    if (scene === 3) {
       setRotation(centralSphere, t*1.4, t*0.9, 0);
+      const corePulse = 1.0 + Math.sin(t * 4.0) * 0.18;
+      setScale(centralSphere, corePulse, corePulse, corePulse);
+      if (horizonGlow) {
+         const beamPulse = 1.0 + Math.sin(t * 3.0) * 0.16;
+         setScale(horizonGlow, beamPulse, 7.5 + Math.sin(t * 2.2) * 1.0, beamPulse);
+      }
       for (let i = 0; i < rings.length; i++) {
          const ring = rings[i];
          const s = ring.speed;
@@ -425,6 +510,17 @@ export function update(dt) {
             (i%3===0 ? t*s + ring.phase : 0),
             (i%3===1 ? t*s + ring.phase : 0),
             (i%3===2 ? t*s + ring.phase : 0));
+      }
+      for (const orb of energyOrbs) {
+         orb.a += dt * orb.speed;
+         const wobble = Math.sin(t * 1.9 + orb.phase);
+         const x = Math.cos(orb.a) * orb.r;
+         const z = Math.sin(orb.a) * orb.r;
+         const y = orb.y + wobble * 1.5;
+         const pulse = orb.scale * (0.85 + 0.28 * Math.sin(t * 4.2 + orb.phase));
+         setPosition(orb.mesh, x, y, z);
+         setRotation(orb.mesh, t * 1.1 + orb.phase, orb.a, t * 0.7);
+         setScale(orb.mesh, pulse, pulse, pulse);
       }
       burstTimer -= dt;
       if (burstTimer <= 0) {
@@ -440,9 +536,24 @@ export function update(dt) {
    }
 
    if (scene === 4) {
+      if (horizonGlow) {
+         const pulse = 1.0 + Math.sin(t * 1.7) * 0.28;
+         setScale(horizonGlow, pulse, pulse, pulse);
+         setRotation(horizonGlow, t * 0.25, t * 0.4, 0);
+      }
+      for (let i = 0; i < rings.length; i++) {
+         const ring = rings[i];
+         setRotation(ring.mesh,
+            t * ring.speed + ring.phase,
+            t * (ring.speed * 0.7) + ring.phase,
+            t * (ring.speed * 1.2));
+      }
       for (const vs of voidSpheres) {
          vs.a += dt * vs.speed;
+         const pulse = vs.scale * (0.8 + 0.25 * Math.sin(t * 2.3 + vs.phase));
          setPosition(vs.mesh, Math.cos(vs.a)*vs.r, vs.y + Math.sin(t*0.7+vs.phase)*1.4, Math.sin(vs.a)*vs.r);
+         setRotation(vs.mesh, t * 0.45 + vs.phase, vs.a, t * 0.35);
+         setScale(vs.mesh, pulse, pulse, pulse);
       }
    }
 }

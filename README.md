@@ -13,6 +13,31 @@
 
 ---
 
+## Project Memory / MCP
+
+Nova64 is wired for MemPalace-backed project memory through `.vscode/mcp.json`.
+On Windows, the MCP server starts through WSL and uses the shared `~/ai-tools`
+Pipenv environment:
+
+```bash
+cd ~/ai-tools
+pipenv run mempalace-mcp
+```
+
+For day-to-day work, use the repo shortcuts:
+
+```bash
+pnpm run mempalace:wake
+pnpm run mempalace:status
+pnpm run mempalace:repair-status
+pnpm run mempalace:mine:retroarch
+```
+
+Use `mempalace:mine:retroarch` after meaningful RetroArch renderer or cart
+progress so future sessions can recover the latest parity context quickly.
+
+---
+
 ## Godot Native Host — **Now in trunk** 🎉
 
 Nova64 carts run end-to-end through a native **Godot 4.x** host via a

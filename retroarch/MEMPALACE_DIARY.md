@@ -3,6 +3,39 @@
 This is a memory/progress note for MemPalace mining, not a replacement for the
 canonical repository instructions in `../AGENTS.md`.
 
+## 2026-05-21 - HDR post target and multi-mip bloom pass
+
+### What landed
+- Implemented the selected visual feature from `retroarch/BACKLOG.md`:
+  guarded HDR post target plus multi-mip bloom.
+- `gles_init_post_resources()` now tries `RGBA16F` first and falls back to the
+  old `RGBA8` post target if framebuffer completeness fails.
+- Added 5 bloom mip levels, each with color FBO/texture and ping FBO/texture.
+- Added downsample and separable blur shaders, then combined all 5 bloom mips
+  in the final post shader.
+- Kept the old 13-tap single-pass bloom as fallback if mip bloom resources fail.
+- Resource teardown now releases post/bloom resources during GLES context
+  destroy, avoiding extra FBO/texture leaks across resets.
+
+### Validation
+- `make platform=unix` passed.
+- `make harness` passed after `make clean` removed the harness binary.
+- Focused harness capture succeeded and logged:
+  `post-processing FBO ready alloc=640x360 format=RGBA16F bloom_mips=5`.
+- Full comparator:
+  `NOVA64_GLES_TESTS=1 node retroarch/tests/demoscene_visual_parity.mjs`
+  passed with `average=46.2`, `strictAverage=44.6`.
+- Windows cross build passed:
+  `make clean && make platform=win-cross`.
+
+### Visual notes
+- The new s0 and s1 captures show softer bloom halos without returning to the
+  earlier fake fullscreen wash. RetroArch still preserves more geometry detail
+  than the browser capture in several scenes, so the numeric parity score is
+  still not a simple measure of perceived quality.
+- Next work should tune bloom threshold/weights and scene emissive values from
+  the fresh captures instead of reworking camera or HUD orientation.
+
 ## 2026-05-21 - RetroArch HDR bloom handoff checkpoint
 
 ### Current request

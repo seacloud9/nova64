@@ -1,8 +1,8 @@
 # Nova64 Hardware GL on Windows — Status & Handover
 
-**Last updated:** 2026-05-21 (Codex handoff/backlog checkpoint)
+**Last updated:** 2026-05-21 (Codex HDR/multi-mip bloom pass)
 **Branch:** `main`
-**Working tree:** dirty before checkpoint commit — see "Current 2026-05-21 handoff state" below
+**Working tree:** expected clean after committing this pass; source changes listed below
 
 ---
 
@@ -18,18 +18,19 @@
 - ✅ Browser-style `nova64.draw` aliases now include Batch 41 text/shape helpers (`drawTriangle`, glow/pulsing text, `tristrip`, floating text)
 - ⚠️ User reports performance feels slow on Windows (~38–40 FPS, 31–35 ms/frame on AMD Radeon 780M)
 - ⚠️ Linux Mesa software harness hits ~110 FPS at ~9 ms/frame, so Windows hardware *should* be vastly faster — Windows-specific bottleneck unidentified
-- ⚠️ Numeric visual-parity score: 44.7% average / 43.2% strict average as of a fresh `NOVA64_GLES_TESTS=1 node retroarch/tests/demoscene_visual_parity.mjs` run after the glow text scale pass (the "85% mirage" is documented below — it was matching flat-color web wash to flat-color retroarch wash; real 3D detail intentionally diverges)
+- ⚠️ Numeric visual-parity score: 46.2% average / 44.6% strict average after HDR + multi-mip bloom. This is up from 44.7% / 43.2% after the glow text scale pass, but the "85% mirage" is still relevant: high scores previously rewarded flat washed-out captures rather than real 3D detail.
 - ✅ New `retroarch/BACKLOG.md` captures deferred Windows perf work, queued visual features, stale-file cleanup, and code-anchored TODOs
-- ✅ User selected the next visual feature: **HDR post target (`RGBA16F`) + multi-mip bloom**, with `RGBA8` fallback if float render targets are not supported
-- ✅ Current uncommitted C change is lightweight perf/diagnostic UI: Shift+F now forces perf timing on, publishes 60-frame stage averages into the overlay, and logs one frame-0 viewport/FBO diagnostic after context reset
+- ✅ Implemented the selected visual feature: **HDR post target (`RGBA16F`) + multi-mip bloom**, with `RGBA8` fallback if float render targets are not supported and old single-pass bloom kept as fallback
+- ✅ Recent C changes include the Shift+F perf overlay diagnostics plus the new HDR/multi-mip bloom post-processing path
 
 ---
 
-## Current 2026-05-21 handoff state
+## Current 2026-05-21 HDR/multi-mip bloom state
 
-Latest committed work before this checkpoint:
+Latest committed work before this HDR/mip pass:
 
 ```
+72eaf39 docs: add RetroArch HDR bloom handoff
 94d9a9f feat: expose RetroArch text effects on nova64.draw
 2c8bb5e fix: honor RetroArch glow text scale
 a285271 feat: add tight RetroArch HUD text
@@ -37,21 +38,24 @@ a285271 feat: add tight RetroArch HUD text
 b25e80f feat: batch instanced transform uploads
 ```
 
-Working tree before the handoff commit:
+New `nova64_libretro.c` implementation points:
 
 ```
 M  retroarch/nova64_libretro.c
-A  retroarch/BACKLOG.md
+M  retroarch/BACKLOG.md
+M  retroarch/HANDOFF_HWGL.md
+M  retroarch/MEMPALACE_DIARY.md
 ```
 
-What's in the `nova64_libretro.c` delta:
+What's in the `nova64_libretro.c` delta from this pass:
 
-- `core_perf_enabled()` now returns true whenever the in-game FPS overlay is visible, so the user can press `Shift+F` and immediately get stage timings without setting `NOVA64_PERF`.
-- `core_perf_record_frame()` publishes 60-frame averages for cart, GL render, total frame, post, overlay, and draw-call count.
-- The FPS overlay now shows three lines: FPS/frame time, JS/GL/total, and post/overlay/draws, with health coloring on the FPS line.
-- `gles_context_reset()` re-arms a one-shot frame-0 diagnostic.
-- `render_gles_scene()` logs frame-0 GL viewport, draw framebuffer, max viewport, post FBO id, and configured core resolution. This is intentionally one-shot to avoid RetroArch log spam.
-- `gles_init_post_resources()` logs the post FBO allocation size when created.
+- Added `GL_RGBA16F` / `GL_HALF_FLOAT` constants and a guarded HDR post target path.
+- `gles_init_post_resources()` first attempts an `RGBA16F` color target, checks framebuffer completeness, and falls back to the old `RGBA8` path if unsupported.
+- Added `NOVA64_BLOOM_MIPS=5` bloom resources: fbo/texture + ping fbo/texture per level.
+- Added downsample and separable blur shaders. The first level applies a brightpass; later levels downsample the blurred previous level.
+- Final post shader samples the 5 bloom mips and combines them with broad weighted halos. If mip resources fail, it falls back to the old 13-tap single-pass bloom.
+- Post resource logs now include `format=RGBA16F|RGBA8` and `bloom_mips=N`.
+- `gles_destroy_resources()` now also releases post/bloom resources so context resets do not leak the extra FBOs/textures.
 
 MemPalace/MCP status:
 
@@ -59,13 +63,26 @@ MemPalace/MCP status:
 - `package.json` includes `mempalace:status`, `mempalace:wake`, `mempalace:repair-status`, `mempalace:mine`, `mempalace:mine:runtime`, `mempalace:mine:retroarch`, `mempalace:sync:retroarch`, and `mempalace:search`.
 - `pnpm run mempalace:status` completed on 2026-05-21. It quarantined two corrupt HNSW segment directories automatically and still reported the `nova64_retroarch` room as available.
 
-Next implementation target:
+Validation from this pass:
 
-1. Start feature A from `retroarch/BACKLOG.md`: HDR post backbuffer + multi-mip bloom.
-2. Keep the current single-pass 13-tap bloom as the compatibility fallback.
-3. First implementation slice should be guarded `RGBA16F` post-color allocation with framebuffer-completeness fallback to current `RGBA8`.
-4. Second slice should add a bounded mip/blur/combine chain approximating Three.js `UnrealBloomPass`.
-5. Do not touch the 3D camera/HUD orientation while doing bloom work; recent regressions came from broad render-path flips.
+- `make platform=unix` passes.
+- `make harness` passes.
+- Focused harness capture logs: `format=RGBA16F  bloom_mips=5`, checksum `880c5d0245871676`.
+- `NOVA64_GLES_TESTS=1 node retroarch/tests/demoscene_visual_parity.mjs` passes:
+  - s0 `58.5`
+  - s1 `49.6`
+  - s2 `38.0`
+  - s3 `47.1`
+  - s4 `37.7`
+  - average `46.2`
+  - strictAverage `44.6`
+- `make clean && make platform=win-cross` passes.
+
+Next target:
+
+1. Tune bloom weights/thresholds and scene emissive strengths from the new capture set; the infrastructure is no longer the blocker.
+2. Keep comparing real captures visually, not only the numeric metric.
+3. Windows perf investigation remains deferred unless the user asks; note the mip bloom path increases post draw calls when bloom is active.
 
 ---
 

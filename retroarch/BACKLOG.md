@@ -5,10 +5,10 @@ lives here. Update this file as items are picked up or completed.
 
 Last updated: 2026-05-21
 
-**Selected next feature:** A — HDR backbuffer (`RGBA16F`) plus multi-mip bloom.
-This is the next visual parity push. Start with a guarded float post target
-with `RGBA8` fallback, then add the mip/blur/combine chain behind the existing
-single-pass bloom path.
+**Latest feature shipped:** A — HDR backbuffer (`RGBA16F`) plus multi-mip bloom.
+The post target now attempts `RGBA16F` with `RGBA8` fallback, and bloom uses a
+guarded 5-level downsample/blur chain with the old 13-tap single-pass shader
+kept as compatibility fallback.
 
 ---
 
@@ -99,12 +99,10 @@ In rough priority order; pick what fits the user's mood.
 - **HUD font metrics for parity test** — `printTight()` helps density,
   but exact web-font metrics still differ; getting them aligned moves
   numeric parity scores up without losing detail.
-- **HDR backbuffer (RGBA16F) + multi-mip bloom.** **Selected next.** Promote the post FBO
-  to float16 so brightness > 1.0 survives until tonemap; replace the
-  current 13-tap single-pass bloom with 5-mip downsample + separable
-  Gaussian + upsample/combine. See TODO comment next to the bloom
-  shader in `nova64_libretro.c` for the full plan; also raises parity
-  numbers because it closer-matches Three.js UnrealBloomPass.
+- **Bloom tuning after HDR/mips.** The infrastructure is now in place:
+  guarded `RGBA16F` post target, 5 bloom mip levels, separable blur, and
+  final shader combine. Remaining work is visual tuning of thresholds,
+  weights, and scene-specific emissive values against current captures.
 
 ### Cleanup / technical debt
 - **Re-baseline conformance checksums.** The lowercase-font + `/` glyph
@@ -150,3 +148,4 @@ The last session arc closed out:
 - ★ `nova64.draw` namespace aliases for Batch 41 helpers (Codex)
 - ★ Per-stage perf telemetry (post / overlay convert / overlay upload / overlay draw)
 - ★ Diagnostic frame-0 one-shot log
+- ★ HDR post target (`RGBA16F` with `RGBA8` fallback) + guarded 5-mip bloom chain

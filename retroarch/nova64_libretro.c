@@ -106,6 +106,8 @@ typedef unsigned char GLubyte;
 #define GL_LINEAR  0x2601
 #define GL_CLAMP_TO_EDGE 0x812F
 #define GL_RGBA 0x1908
+#define GL_RGBA16F 0x881A
+#define GL_HALF_FLOAT 0x140B
 #define GL_UNSIGNED_BYTE 0x1401
 #define GL_BLEND 0x0BE2
 #define GL_ZERO 0x0000
@@ -123,6 +125,8 @@ typedef unsigned char GLubyte;
 #define GL_DEPTH_COMPONENT   0x1902
 #define GL_RGB565            0x8D62
 #define GL_RGB8              0x8051
+
+#define NOVA64_BLOOM_MIPS 5
 
 typedef void (*PFNGLVIEWPORTPROC)(GLint x, GLint y, GLsizei width, GLsizei height);
 typedef const GLubyte *(*PFNGLGETSTRINGPROC)(GLenum name);
@@ -475,6 +479,16 @@ struct nova64_gles_backend {
    GLuint post_rbo;
    GLuint post_color_texture;
    GLuint post_program;
+   GLuint bloom_downsample_program;
+   GLuint bloom_blur_program;
+   GLuint bloom_fbo[NOVA64_BLOOM_MIPS];
+   GLuint bloom_ping_fbo[NOVA64_BLOOM_MIPS];
+   GLuint bloom_texture[NOVA64_BLOOM_MIPS];
+   GLuint bloom_ping_texture[NOVA64_BLOOM_MIPS];
+   int bloom_width[NOVA64_BLOOM_MIPS];
+   int bloom_height[NOVA64_BLOOM_MIPS];
+   bool post_hdr_enabled;
+   bool bloom_resources_ready;
    bool post_resources_ready;
    GLint post_position_attrib;
    GLint post_uv_attrib;
@@ -484,9 +498,21 @@ struct nova64_gles_backend {
    GLint post_pixelate_uniform;
    GLint post_resolution_uniform;
    GLint post_bloom_uniform;
+   GLint post_use_mip_bloom_uniform;
+   GLint post_bloom_mip_uniform[NOVA64_BLOOM_MIPS];
    GLint post_chromatic_uniform;
    GLint post_color_grade_uniform;
    GLint post_posterize_uniform;
+   GLint bloom_downsample_position_attrib;
+   GLint bloom_downsample_uv_attrib;
+   GLint bloom_downsample_scene_uniform;
+   GLint bloom_downsample_resolution_uniform;
+   GLint bloom_downsample_threshold_uniform;
+   GLint bloom_blur_position_attrib;
+   GLint bloom_blur_uv_attrib;
+   GLint bloom_blur_scene_uniform;
+   GLint bloom_blur_resolution_uniform;
+   GLint bloom_blur_direction_uniform;
    GLuint cube_vbo;
    GLuint cube_ibo;
    GLuint plane_vbo;
@@ -26543,6 +26569,7 @@ static bool gles_ensure_capsule_mesh(struct nova64_mesh *mesh);
 static bool gles_ensure_cylinder_mesh(struct nova64_mesh *mesh);
 static bool gles_load_functions(void);
 static bool gles_init_resources(void);
+static void gles_destroy_post_resources(void);
 static void render_gles_skybox(const float view[16], const float projection[16]);
 
 static void render_gles_scene_to_rt(struct nova64_render_target *rt)
@@ -30903,6 +30930,7 @@ static void gles_destroy_resources(void)
       gles.DeleteProgram(gles.cube_program);
    if (gles.overlay_program && gles.DeleteProgram)
       gles.DeleteProgram(gles.overlay_program);
+   gles_destroy_post_resources();
    gles.cube_vbo = 0;
    gles.cube_ibo = 0;
    gles.plane_vbo = 0;
@@ -31342,6 +31370,7 @@ static void gles_context_destroy(void)
    gles.TexSubImage2D = NULL;
    gles.Uniform1i = NULL;
    gles.Uniform1f = NULL;
+   gles.Uniform2f = NULL;
    gles.BlendFunc = NULL;
    gles.DepthMask = NULL;
    gles.GenVertexArrays = NULL;
@@ -31363,6 +31392,14 @@ static void gles_context_destroy(void)
    gles.post_rbo = 0;
    gles.post_color_texture = 0;
    gles.post_program = 0;
+   gles.bloom_downsample_program = 0;
+   gles.bloom_blur_program = 0;
+   memset(gles.bloom_fbo, 0, sizeof(gles.bloom_fbo));
+   memset(gles.bloom_ping_fbo, 0, sizeof(gles.bloom_ping_fbo));
+   memset(gles.bloom_texture, 0, sizeof(gles.bloom_texture));
+   memset(gles.bloom_ping_texture, 0, sizeof(gles.bloom_ping_texture));
+   gles.post_hdr_enabled = false;
+   gles.bloom_resources_ready = false;
    gles.post_resources_ready = false;
    nova64_log_line(RETRO_LOG_INFO, "[nova64] GLES3 hardware context destroyed");
 }
@@ -32463,6 +32500,28 @@ static bool gles_has_fbo_procs(void)
           gles.FramebufferRenderbuffer && gles.DeleteRenderbuffers;
 }
 
+static void gles_draw_fullscreen_quad(GLint position_attrib, GLint uv_attrib)
+{
+   gles.BindBuffer(GL_ARRAY_BUFFER, gles.overlay_vbo);
+   gles.BindBuffer(GL_ELEMENT_ARRAY_BUFFER, gles.overlay_ibo);
+   if (position_attrib >= 0) {
+      gles.EnableVertexAttribArray((GLuint)position_attrib);
+      gles.VertexAttribPointer((GLuint)position_attrib, 2, GL_FLOAT, GL_FALSE,
+         (GLsizei)(sizeof(GLfloat) * 4), NULL);
+   }
+   if (uv_attrib >= 0) {
+      gles.EnableVertexAttribArray((GLuint)uv_attrib);
+      gles.VertexAttribPointer((GLuint)uv_attrib, 2, GL_FLOAT, GL_FALSE,
+         (GLsizei)(sizeof(GLfloat) * 4), (const void *)(sizeof(GLfloat) * 2));
+   }
+   core_perf_frame_draw_calls++;
+   gles.DrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, NULL);
+   if (uv_attrib >= 0)
+      gles.DisableVertexAttribArray((GLuint)uv_attrib);
+   if (position_attrib >= 0)
+      gles.DisableVertexAttribArray((GLuint)position_attrib);
+}
+
 static bool gles_create_post_program(void)
 {
    static const char *vertex_source =
@@ -32484,6 +32543,12 @@ static bool gles_create_post_program(void)
       "uniform int u_pixelate;\n"
       "uniform vec4 u_resolution;\n"
       "uniform float u_bloom;\n"
+      "uniform int u_use_mip_bloom;\n"
+      "uniform sampler2D u_bloom_mip0;\n"
+      "uniform sampler2D u_bloom_mip1;\n"
+      "uniform sampler2D u_bloom_mip2;\n"
+      "uniform sampler2D u_bloom_mip3;\n"
+      "uniform sampler2D u_bloom_mip4;\n"
       "uniform float u_chromatic;\n"
       "uniform vec4 u_color_grade;\n"
       "uniform int u_posterize;\n"
@@ -32554,7 +32619,14 @@ static bool gles_create_post_program(void)
          final tonemap, giving the proper bloom rolloff the web reference
          has. See MemPalace diary topic 'nova64-bloom-tuning-three-js-style'
          (2026-05-20) for context. */
-      "  if (u_bloom > 0.0) {\n"
+      "  if (u_bloom > 0.0 && u_use_mip_bloom != 0) {\n"
+      "    vec3 bloom = texture(u_bloom_mip0, v_uv).rgb * 0.34;\n"
+      "    bloom += texture(u_bloom_mip1, v_uv).rgb * 0.26;\n"
+      "    bloom += texture(u_bloom_mip2, v_uv).rgb * 0.19;\n"
+      "    bloom += texture(u_bloom_mip3, v_uv).rgb * 0.13;\n"
+      "    bloom += texture(u_bloom_mip4, v_uv).rgb * 0.08;\n"
+      "    color.rgb += bloom * min(u_bloom, 4.0) * 1.25;\n"
+      "  } else if (u_bloom > 0.0) {\n"
       "    vec3 bloom = post_bright(center.rgb) * 0.16;\n"
       "    bloom += (post_bright(texture(u_scene, uv + vec2(texel.x * 4.0, 0.0)).rgb)\n"
       "            + post_bright(texture(u_scene, uv - vec2(texel.x * 4.0, 0.0)).rgb)\n"
@@ -32627,16 +32699,245 @@ static bool gles_create_post_program(void)
    gles.post_pixelate_uniform = gles.GetUniformLocation(program, "u_pixelate");
    gles.post_resolution_uniform = gles.GetUniformLocation(program, "u_resolution");
    gles.post_bloom_uniform = gles.GetUniformLocation(program, "u_bloom");
+   gles.post_use_mip_bloom_uniform = gles.GetUniformLocation(program, "u_use_mip_bloom");
+   gles.post_bloom_mip_uniform[0] = gles.GetUniformLocation(program, "u_bloom_mip0");
+   gles.post_bloom_mip_uniform[1] = gles.GetUniformLocation(program, "u_bloom_mip1");
+   gles.post_bloom_mip_uniform[2] = gles.GetUniformLocation(program, "u_bloom_mip2");
+   gles.post_bloom_mip_uniform[3] = gles.GetUniformLocation(program, "u_bloom_mip3");
+   gles.post_bloom_mip_uniform[4] = gles.GetUniformLocation(program, "u_bloom_mip4");
    gles.post_chromatic_uniform = gles.GetUniformLocation(program, "u_chromatic");
    gles.post_color_grade_uniform = gles.GetUniformLocation(program, "u_color_grade");
    gles.post_posterize_uniform = gles.GetUniformLocation(program, "u_posterize");
    return gles.post_position_attrib >= 0 && gles.post_uv_attrib >= 0;
 }
 
+static bool gles_create_bloom_programs(void)
+{
+   static const char *vertex_source =
+      "#version 300 es\nprecision highp float;\n"
+      "in vec2 a_position;\n"
+      "in vec2 a_uv;\n"
+      "out vec2 v_uv;\n"
+      "void main() {\n"
+      "  v_uv = a_uv;\n"
+      "  gl_Position = vec4(a_position, 0.0, 1.0);\n"
+      "}\n";
+   static const char *downsample_fragment =
+      "#version 300 es\nprecision highp float;\n"
+      "in vec2 v_uv;\n"
+      "uniform sampler2D u_scene;\n"
+      "uniform vec2 u_resolution;\n"
+      "uniform float u_threshold;\n"
+      "out vec4 fragColor;\n"
+      "float luma(vec3 c) { return dot(c, vec3(0.299, 0.587, 0.114)); }\n"
+      "vec3 bright(vec3 c) {\n"
+      "  if (u_threshold <= 0.0) return c;\n"
+      "  return c * smoothstep(u_threshold, u_threshold + 0.45, luma(c));\n"
+      "}\n"
+      "void main() {\n"
+      "  vec2 texel = 1.0 / u_resolution;\n"
+      "  vec3 c = texture(u_scene, v_uv + texel * vec2(-0.5, -0.5)).rgb;\n"
+      "  c += texture(u_scene, v_uv + texel * vec2( 0.5, -0.5)).rgb;\n"
+      "  c += texture(u_scene, v_uv + texel * vec2(-0.5,  0.5)).rgb;\n"
+      "  c += texture(u_scene, v_uv + texel * vec2( 0.5,  0.5)).rgb;\n"
+      "  fragColor = vec4(bright(c * 0.25), 1.0);\n"
+      "}\n";
+   static const char *blur_fragment =
+      "#version 300 es\nprecision highp float;\n"
+      "in vec2 v_uv;\n"
+      "uniform sampler2D u_scene;\n"
+      "uniform vec2 u_resolution;\n"
+      "uniform vec2 u_direction;\n"
+      "out vec4 fragColor;\n"
+      "void main() {\n"
+      "  vec2 texel = u_direction / u_resolution;\n"
+      "  vec3 c = texture(u_scene, v_uv).rgb * 0.227027;\n"
+      "  c += texture(u_scene, v_uv + texel * 1.384615).rgb * 0.316216;\n"
+      "  c += texture(u_scene, v_uv - texel * 1.384615).rgb * 0.316216;\n"
+      "  c += texture(u_scene, v_uv + texel * 3.230769).rgb * 0.070270;\n"
+      "  c += texture(u_scene, v_uv - texel * 3.230769).rgb * 0.070270;\n"
+      "  fragColor = vec4(c, 1.0);\n"
+      "}\n";
+   GLuint vertex = 0;
+   GLuint fragment = 0;
+   GLuint program = 0;
+   GLint status = 0;
+
+   vertex = gles_compile_shader(GL_VERTEX_SHADER, vertex_source);
+   fragment = gles_compile_shader(GL_FRAGMENT_SHADER, downsample_fragment);
+   if (!vertex || !fragment)
+      goto fail;
+   program = gles.CreateProgram();
+   gles.AttachShader(program, vertex);
+   gles.AttachShader(program, fragment);
+   gles.LinkProgram(program);
+   gles.DeleteShader(vertex);
+   gles.DeleteShader(fragment);
+   vertex = fragment = 0;
+   gles.GetProgramiv(program, GL_LINK_STATUS, &status);
+   if (!status)
+      goto fail;
+   gles.bloom_downsample_program = program;
+   program = 0;
+
+   vertex = gles_compile_shader(GL_VERTEX_SHADER, vertex_source);
+   fragment = gles_compile_shader(GL_FRAGMENT_SHADER, blur_fragment);
+   if (!vertex || !fragment)
+      goto fail;
+   program = gles.CreateProgram();
+   gles.AttachShader(program, vertex);
+   gles.AttachShader(program, fragment);
+   gles.LinkProgram(program);
+   gles.DeleteShader(vertex);
+   gles.DeleteShader(fragment);
+   vertex = fragment = 0;
+   gles.GetProgramiv(program, GL_LINK_STATUS, &status);
+   if (!status)
+      goto fail;
+   gles.bloom_blur_program = program;
+
+   gles.bloom_downsample_position_attrib =
+      gles.GetAttribLocation(gles.bloom_downsample_program, "a_position");
+   gles.bloom_downsample_uv_attrib =
+      gles.GetAttribLocation(gles.bloom_downsample_program, "a_uv");
+   gles.bloom_downsample_scene_uniform =
+      gles.GetUniformLocation(gles.bloom_downsample_program, "u_scene");
+   gles.bloom_downsample_resolution_uniform =
+      gles.GetUniformLocation(gles.bloom_downsample_program, "u_resolution");
+   gles.bloom_downsample_threshold_uniform =
+      gles.GetUniformLocation(gles.bloom_downsample_program, "u_threshold");
+   gles.bloom_blur_position_attrib =
+      gles.GetAttribLocation(gles.bloom_blur_program, "a_position");
+   gles.bloom_blur_uv_attrib =
+      gles.GetAttribLocation(gles.bloom_blur_program, "a_uv");
+   gles.bloom_blur_scene_uniform =
+      gles.GetUniformLocation(gles.bloom_blur_program, "u_scene");
+   gles.bloom_blur_resolution_uniform =
+      gles.GetUniformLocation(gles.bloom_blur_program, "u_resolution");
+   gles.bloom_blur_direction_uniform =
+      gles.GetUniformLocation(gles.bloom_blur_program, "u_direction");
+
+   return gles.bloom_downsample_position_attrib >= 0 &&
+          gles.bloom_downsample_uv_attrib >= 0 &&
+          gles.bloom_blur_position_attrib >= 0 &&
+          gles.bloom_blur_uv_attrib >= 0;
+
+fail:
+   if (vertex)
+      gles.DeleteShader(vertex);
+   if (fragment)
+      gles.DeleteShader(fragment);
+   if (program)
+      gles.DeleteProgram(program);
+   if (gles.bloom_downsample_program) {
+      gles.DeleteProgram(gles.bloom_downsample_program);
+      gles.bloom_downsample_program = 0;
+   }
+   if (gles.bloom_blur_program) {
+      gles.DeleteProgram(gles.bloom_blur_program);
+      gles.bloom_blur_program = 0;
+   }
+   nova64_log_line(RETRO_LOG_WARN, "[nova64] bloom mip shader link failed; using single-pass bloom");
+   return false;
+}
+
+static bool gles_create_color_fbo(GLuint *out_fbo, GLuint *out_texture,
+      int width, int height, GLint internal_format, GLenum format, GLenum type)
+{
+   GLuint texture = 0;
+   GLuint fbo = 0;
+   GLenum status;
+
+   gles.GenTextures(1, &texture);
+   gles.BindTexture(GL_TEXTURE_2D, texture);
+   gles.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+   gles.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+   gles.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+   gles.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+   gles.TexImage2D(GL_TEXTURE_2D, 0, internal_format, width, height, 0,
+      format, type, NULL);
+   gles.BindTexture(GL_TEXTURE_2D, 0);
+
+   gles.GenFramebuffers(1, &fbo);
+   gles.BindFramebuffer(GL_FRAMEBUFFER, fbo);
+   gles.FramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, texture, 0);
+   status = gles.CheckFramebufferStatus(GL_FRAMEBUFFER);
+   gles.BindFramebuffer(GL_FRAMEBUFFER, 0);
+   if (status != GL_FRAMEBUFFER_COMPLETE) {
+      if (fbo)
+         gles.DeleteFramebuffers(1, &fbo);
+      if (texture)
+         gles.DeleteTextures(1, &texture);
+      return false;
+   }
+
+   *out_fbo = fbo;
+   *out_texture = texture;
+   return true;
+}
+
+static void gles_destroy_bloom_resources(void)
+{
+   for (int i = 0; i < NOVA64_BLOOM_MIPS; i++) {
+      if (gles.bloom_fbo[i])
+         gles.DeleteFramebuffers(1, &gles.bloom_fbo[i]);
+      if (gles.bloom_ping_fbo[i])
+         gles.DeleteFramebuffers(1, &gles.bloom_ping_fbo[i]);
+      if (gles.bloom_texture[i] && gles.DeleteTextures)
+         gles.DeleteTextures(1, &gles.bloom_texture[i]);
+      if (gles.bloom_ping_texture[i] && gles.DeleteTextures)
+         gles.DeleteTextures(1, &gles.bloom_ping_texture[i]);
+      gles.bloom_fbo[i] = 0;
+      gles.bloom_ping_fbo[i] = 0;
+      gles.bloom_texture[i] = 0;
+      gles.bloom_ping_texture[i] = 0;
+      gles.bloom_width[i] = 0;
+      gles.bloom_height[i] = 0;
+   }
+   if (gles.bloom_downsample_program && gles.DeleteProgram)
+      gles.DeleteProgram(gles.bloom_downsample_program);
+   if (gles.bloom_blur_program && gles.DeleteProgram)
+      gles.DeleteProgram(gles.bloom_blur_program);
+   gles.bloom_downsample_program = 0;
+   gles.bloom_blur_program = 0;
+   gles.bloom_resources_ready = false;
+}
+
+static bool gles_init_bloom_resources(GLint internal_format, GLenum texture_type)
+{
+   if (gles.bloom_resources_ready)
+      return true;
+   if (!gles_create_bloom_programs())
+      return false;
+
+   for (int i = 0; i < NOVA64_BLOOM_MIPS; i++) {
+      int div = 2 << i;
+      int w = NOVA64_WIDTH / div;
+      int h = NOVA64_HEIGHT / div;
+      if (w < 2) w = 2;
+      if (h < 2) h = 2;
+      gles.bloom_width[i] = w;
+      gles.bloom_height[i] = h;
+      if (!gles_create_color_fbo(&gles.bloom_fbo[i], &gles.bloom_texture[i],
+               w, h, internal_format, GL_RGBA, texture_type) ||
+          !gles_create_color_fbo(&gles.bloom_ping_fbo[i], &gles.bloom_ping_texture[i],
+               w, h, internal_format, GL_RGBA, texture_type)) {
+         gles_destroy_bloom_resources();
+         nova64_log_line(RETRO_LOG_WARN, "[nova64] bloom mip FBO incomplete; using single-pass bloom");
+         return false;
+      }
+   }
+
+   gles.bloom_resources_ready = true;
+   nova64_log_line(RETRO_LOG_INFO, "[nova64] multi-mip bloom resources ready");
+   return true;
+}
+
 static void gles_destroy_post_resources(void)
 {
    if (!gles_has_fbo_procs())
       return;
+   gles_destroy_bloom_resources();
    if (gles.post_fbo)
       gles.DeleteFramebuffers(1, &gles.post_fbo);
    if (gles.post_rbo)
@@ -32649,11 +32950,13 @@ static void gles_destroy_post_resources(void)
    gles.post_rbo = 0;
    gles.post_color_texture = 0;
    gles.post_program = 0;
+   gles.post_hdr_enabled = false;
    gles.post_resources_ready = false;
 }
 
 static bool gles_init_post_resources(void)
 {
+   bool post_fbo_ready = false;
    if (gles.post_resources_ready)
       return true;
    if (!gles_has_fbo_procs())
@@ -32661,40 +32964,146 @@ static bool gles_init_post_resources(void)
    if (!gles_create_post_program())
       return false;
 
-   gles.GenTextures(1, &gles.post_color_texture);
-   gles.BindTexture(GL_TEXTURE_2D, gles.post_color_texture);
-   gles.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-   gles.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-   gles.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-   gles.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-   gles.TexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, NOVA64_WIDTH, NOVA64_HEIGHT, 0,
-      GL_RGBA, GL_UNSIGNED_BYTE, NULL);
-   gles.BindTexture(GL_TEXTURE_2D, 0);
+   for (int attempt = 0; attempt < 2 && !post_fbo_ready; attempt++) {
+      GLint internal_format = (attempt == 0) ? GL_RGBA16F : GL_RGBA;
+      GLenum texture_type = (attempt == 0) ? GL_HALF_FLOAT : GL_UNSIGNED_BYTE;
+      GLenum status = 0;
 
-   gles.GenRenderbuffers(1, &gles.post_rbo);
-   gles.BindRenderbuffer(GL_RENDERBUFFER, gles.post_rbo);
-   gles.RenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT16, NOVA64_WIDTH, NOVA64_HEIGHT);
-   gles.BindRenderbuffer(GL_RENDERBUFFER, 0);
+      gles.GenTextures(1, &gles.post_color_texture);
+      gles.BindTexture(GL_TEXTURE_2D, gles.post_color_texture);
+      gles.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+      gles.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+      gles.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+      gles.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+      gles.TexImage2D(GL_TEXTURE_2D, 0, internal_format, NOVA64_WIDTH, NOVA64_HEIGHT, 0,
+         GL_RGBA, texture_type, NULL);
+      gles.BindTexture(GL_TEXTURE_2D, 0);
 
-   gles.GenFramebuffers(1, &gles.post_fbo);
-   gles.BindFramebuffer(GL_FRAMEBUFFER, gles.post_fbo);
-   gles.FramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, gles.post_color_texture, 0);
-   gles.FramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, gles.post_rbo);
-   GLenum status = gles.CheckFramebufferStatus(GL_FRAMEBUFFER);
-   gles.BindFramebuffer(GL_FRAMEBUFFER, 0);
-   if (status != GL_FRAMEBUFFER_COMPLETE) {
+      gles.GenRenderbuffers(1, &gles.post_rbo);
+      gles.BindRenderbuffer(GL_RENDERBUFFER, gles.post_rbo);
+      gles.RenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT16, NOVA64_WIDTH, NOVA64_HEIGHT);
+      gles.BindRenderbuffer(GL_RENDERBUFFER, 0);
+
+      gles.GenFramebuffers(1, &gles.post_fbo);
+      gles.BindFramebuffer(GL_FRAMEBUFFER, gles.post_fbo);
+      gles.FramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, gles.post_color_texture, 0);
+      gles.FramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, gles.post_rbo);
+      status = gles.CheckFramebufferStatus(GL_FRAMEBUFFER);
+      gles.BindFramebuffer(GL_FRAMEBUFFER, 0);
+
+      if (status == GL_FRAMEBUFFER_COMPLETE) {
+         gles.post_hdr_enabled = (attempt == 0);
+         post_fbo_ready = true;
+      } else {
+         if (gles.post_fbo)
+            gles.DeleteFramebuffers(1, &gles.post_fbo);
+         if (gles.post_rbo)
+            gles.DeleteRenderbuffers(1, &gles.post_rbo);
+         if (gles.post_color_texture && gles.DeleteTextures)
+            gles.DeleteTextures(1, &gles.post_color_texture);
+         gles.post_fbo = 0;
+         gles.post_rbo = 0;
+         gles.post_color_texture = 0;
+         if (attempt == 0)
+            nova64_log_line(RETRO_LOG_WARN, "[nova64] RGBA16F post FBO incomplete; falling back to RGBA8 post target");
+      }
+   }
+
+   if (!post_fbo_ready) {
       gles_destroy_post_resources();
       nova64_log_line(RETRO_LOG_WARN, "[nova64] post FBO incomplete; effects disabled");
       return false;
    }
+
+   if (post_state.bloom > 0.0f) {
+      GLint bloom_internal = gles.post_hdr_enabled ? GL_RGBA16F : GL_RGBA;
+      GLenum bloom_type = gles.post_hdr_enabled ? GL_HALF_FLOAT : GL_UNSIGNED_BYTE;
+      gles_init_bloom_resources(bloom_internal, bloom_type);
+   }
+
    gles.post_resources_ready = true;
    {
       char msg[160];
       snprintf(msg, sizeof(msg),
-         "[nova64] post-processing FBO ready  alloc=%dx%d  NOVA64=%dx%d",
-         NOVA64_WIDTH, NOVA64_HEIGHT, NOVA64_WIDTH, NOVA64_HEIGHT);
+         "[nova64] post-processing FBO ready  alloc=%dx%d  format=%s  bloom_mips=%d",
+         NOVA64_WIDTH, NOVA64_HEIGHT,
+         gles.post_hdr_enabled ? "RGBA16F" : "RGBA8",
+         gles.bloom_resources_ready ? NOVA64_BLOOM_MIPS : 0);
       nova64_log_line(RETRO_LOG_INFO, msg);
    }
+   return true;
+}
+
+static bool render_gles_bloom_chain(void)
+{
+   GLuint source_texture = gles.post_color_texture;
+   int source_width = NOVA64_WIDTH;
+   int source_height = NOVA64_HEIGHT;
+
+   if (post_state.bloom <= 0.0f)
+      return false;
+   if (!gles.bloom_resources_ready) {
+      GLint bloom_internal = gles.post_hdr_enabled ? GL_RGBA16F : GL_RGBA;
+      GLenum bloom_type = gles.post_hdr_enabled ? GL_HALF_FLOAT : GL_UNSIGNED_BYTE;
+      if (!gles_init_bloom_resources(bloom_internal, bloom_type))
+         return false;
+   }
+
+   gles.Disable(GL_DEPTH_TEST);
+   gles.Disable(GL_BLEND);
+
+   for (int i = 0; i < NOVA64_BLOOM_MIPS; i++) {
+      int w = gles.bloom_width[i];
+      int h = gles.bloom_height[i];
+
+      gles.BindFramebuffer(GL_FRAMEBUFFER, gles.bloom_fbo[i]);
+      gles.Viewport(0, 0, w, h);
+      gles.ClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+      gles.Clear(GL_COLOR_BUFFER_BIT);
+      gles.UseProgram(gles.bloom_downsample_program);
+      gles.ActiveTexture(GL_TEXTURE0);
+      gles.BindTexture(GL_TEXTURE_2D, source_texture);
+      if (gles.bloom_downsample_scene_uniform >= 0)
+         gles.Uniform1i(gles.bloom_downsample_scene_uniform, 0);
+      if (gles.bloom_downsample_resolution_uniform >= 0)
+         gles.Uniform2f(gles.bloom_downsample_resolution_uniform,
+            (float)source_width, (float)source_height);
+      if (gles.bloom_downsample_threshold_uniform >= 0)
+         gles.Uniform1f(gles.bloom_downsample_threshold_uniform, i == 0 ? 0.32f : 0.0f);
+      gles_draw_fullscreen_quad(gles.bloom_downsample_position_attrib,
+         gles.bloom_downsample_uv_attrib);
+
+      gles.UseProgram(gles.bloom_blur_program);
+      if (gles.bloom_blur_scene_uniform >= 0)
+         gles.Uniform1i(gles.bloom_blur_scene_uniform, 0);
+      if (gles.bloom_blur_resolution_uniform >= 0)
+         gles.Uniform2f(gles.bloom_blur_resolution_uniform, (float)w, (float)h);
+
+      gles.BindFramebuffer(GL_FRAMEBUFFER, gles.bloom_ping_fbo[i]);
+      gles.Viewport(0, 0, w, h);
+      gles.Clear(GL_COLOR_BUFFER_BIT);
+      gles.BindTexture(GL_TEXTURE_2D, gles.bloom_texture[i]);
+      if (gles.bloom_blur_direction_uniform >= 0)
+         gles.Uniform2f(gles.bloom_blur_direction_uniform, 1.0f, 0.0f);
+      gles_draw_fullscreen_quad(gles.bloom_blur_position_attrib,
+         gles.bloom_blur_uv_attrib);
+
+      gles.BindFramebuffer(GL_FRAMEBUFFER, gles.bloom_fbo[i]);
+      gles.Viewport(0, 0, w, h);
+      gles.Clear(GL_COLOR_BUFFER_BIT);
+      gles.BindTexture(GL_TEXTURE_2D, gles.bloom_ping_texture[i]);
+      if (gles.bloom_blur_direction_uniform >= 0)
+         gles.Uniform2f(gles.bloom_blur_direction_uniform, 0.0f, 1.0f);
+      gles_draw_fullscreen_quad(gles.bloom_blur_position_attrib,
+         gles.bloom_blur_uv_attrib);
+
+      source_texture = gles.bloom_texture[i];
+      source_width = w;
+      source_height = h;
+   }
+
+   gles.BindTexture(GL_TEXTURE_2D, 0);
+   gles.Enable(GL_DEPTH_TEST);
    return true;
 }
 
@@ -32704,6 +33113,7 @@ static void render_gles_post_pass(GLuint hw_fbo)
 {
    bool perf_frame = core_perf_enabled();
    uint64_t t0 = perf_frame ? core_perf_now_us() : 0;
+   bool use_mip_bloom = render_gles_bloom_chain();
    gles.BindFramebuffer(GL_FRAMEBUFFER, hw_fbo);
    gles.Viewport(0, 0, NOVA64_WIDTH, NOVA64_HEIGHT);
    gles.Disable(GL_DEPTH_TEST);
@@ -32727,6 +33137,17 @@ static void render_gles_post_pass(GLuint hw_fbo)
          (float)NOVA64_WIDTH, (float)NOVA64_HEIGHT, 0.0f, 0.0f);
    if (gles.post_bloom_uniform >= 0 && gles.Uniform1f)
       gles.Uniform1f(gles.post_bloom_uniform, post_state.bloom);
+   if (gles.post_use_mip_bloom_uniform >= 0)
+      gles.Uniform1i(gles.post_use_mip_bloom_uniform, use_mip_bloom ? 1 : 0);
+   if (use_mip_bloom) {
+      for (int i = 0; i < NOVA64_BLOOM_MIPS; i++) {
+         gles.ActiveTexture((GLenum)(GL_TEXTURE0 + 1 + i));
+         gles.BindTexture(GL_TEXTURE_2D, gles.bloom_texture[i]);
+         if (gles.post_bloom_mip_uniform[i] >= 0)
+            gles.Uniform1i(gles.post_bloom_mip_uniform[i], 1 + i);
+      }
+      gles.ActiveTexture(GL_TEXTURE0);
+   }
    if (gles.post_chromatic_uniform >= 0 && gles.Uniform1f)
       gles.Uniform1f(gles.post_chromatic_uniform, post_state.chromatic);
    if (gles.post_color_grade_uniform >= 0 && gles.Uniform4f)
@@ -32735,18 +33156,7 @@ static void render_gles_post_pass(GLuint hw_fbo)
    if (gles.post_posterize_uniform >= 0)
       gles.Uniform1i(gles.post_posterize_uniform, post_state.posterize);
 
-   gles.BindBuffer(GL_ARRAY_BUFFER, gles.overlay_vbo);
-   gles.BindBuffer(GL_ELEMENT_ARRAY_BUFFER, gles.overlay_ibo);
-   gles.EnableVertexAttribArray((GLuint)gles.post_position_attrib);
-   gles.EnableVertexAttribArray((GLuint)gles.post_uv_attrib);
-   gles.VertexAttribPointer((GLuint)gles.post_position_attrib, 2, GL_FLOAT, GL_FALSE,
-      (GLsizei)(sizeof(GLfloat) * 4), NULL);
-   gles.VertexAttribPointer((GLuint)gles.post_uv_attrib, 2, GL_FLOAT, GL_FALSE,
-      (GLsizei)(sizeof(GLfloat) * 4), (const void *)(sizeof(GLfloat) * 2));
-   core_perf_frame_draw_calls++;
-   gles.DrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, NULL);
-   gles.DisableVertexAttribArray((GLuint)gles.post_uv_attrib);
-   gles.DisableVertexAttribArray((GLuint)gles.post_position_attrib);
+   gles_draw_fullscreen_quad(gles.post_position_attrib, gles.post_uv_attrib);
    gles.BindTexture(GL_TEXTURE_2D, 0);
    gles.Enable(GL_DEPTH_TEST);
    if (perf_frame)

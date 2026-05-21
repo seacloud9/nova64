@@ -702,3 +702,29 @@ canonical repository instructions in `../AGENTS.md`.
 
 - Feature carts up to 812, showcase up to 1091
 - All B85–B90 (12 new carts) passing; pre-B79 ranges have pre-existing failures unrelated to new work
+
+---
+
+## 2026-05-21 - RetroArch post-chain bloom/AA tuning
+
+Topic seed for MemPalace: `nova64-retroarch-post-chain-bloom-aa-20260521`
+
+AAAK:
+
+- **Anchor:** User asked to keep forging ahead toward visual parity after the
+  RetroArch docs cleanup and scaled-text pass. Focus stayed on visual feature
+  work, not the deferred Windows slowdown.
+- **Actions:** Tuned the GLES post chain in `nova64_libretro.c`: shifted
+  multi-mip bloom weights toward wider low-frequency mips, softened the
+  brightpass ramp, lightened final CRT scanline/grille strength, and fixed the
+  active CRT-path AA bug by moving edge smoothing after CRT barrel-warp UV
+  selection.
+- **Artifacts:** Updated `HANDOFF.md`, `HANDOFF_HWGL.md`, `BACKLOG.md`, and this
+  diary with the new baseline and the reasoning for keeping the AA fix even
+  though a bloom-only tuning run scored slightly higher.
+- **Knowledge:** Comparator score improved from the scaled-text baseline
+  `average=44.4`, `strictAverage=42.7` to committed `average=46.3`,
+  `strictAverage=44.6`. A bloom-only run peaked at `47.4` / `45.8`, but it did
+  not include the CRT-path AA correction. Browser captures remain heavily
+  bloom-washed in several frames, while RetroArch intentionally preserves real
+  3D geometry; do not chase 90% by restoring fake fullscreen wash rectangles.

@@ -24,6 +24,8 @@ Implemented and conformance-tested:
 - HDR post-processing target: guarded `RGBA16F` color FBO with `RGBA8` fallback.
 - Multi-mip bloom: guarded 5-level downsample/blur/combine chain with the older
   single-pass bloom shader kept as fallback.
+- CRT-path edge smoothing: the post pass applies its FXAA-like smoothing after
+  CRT barrel-warp sampling so CRT-enabled carts do not bypass anti-aliasing.
 - Texture handle allocation and per-mesh texture binding (GLES; software-mode handles
   are valid but no-op for GL upload).
 - Material effects: emissive color, per-mesh alpha/transparency, roughness, metalness.

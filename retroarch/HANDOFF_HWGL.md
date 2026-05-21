@@ -1,6 +1,6 @@
 # Nova64 Hardware GL on Windows — Status & Handover
 
-**Last updated:** 2026-05-21 (Codex scaled-text parity pass)
+**Last updated:** 2026-05-21 (Codex post-chain bloom/AA pass)
 **Branch:** `main`
 **Working tree:** expected clean after committing this pass; source changes listed below
 
@@ -19,10 +19,58 @@
 - ✅ Browser-style `nova64.draw` aliases now include Batch 41 text/shape helpers (`drawTriangle`, glow/pulsing text, `tristrip`, floating text)
 - ⚠️ User reports performance feels slow on Windows (~38–40 FPS, 31–35 ms/frame on AMD Radeon 780M)
 - ⚠️ Linux Mesa software harness hits ~110 FPS at ~9 ms/frame, so Windows hardware _should_ be vastly faster — Windows-specific bottleneck unidentified
-- ⚠️ Numeric visual-parity score: 44.4% average / 42.7% strict average after the scaled-text API pass. The HDR/multi-mip bloom pass previously measured 46.2% / 44.6%; the "85% mirage" is still relevant because high scores previously rewarded flat washed-out captures rather than real 3D detail.
+- ⚠️ Numeric visual-parity score: 46.3% average / 44.6% strict average after the post-chain bloom/AA pass. A bloom-only tuning run reached 47.4% / 45.8%, but the committed state keeps the CRT-path anti-aliasing fix because visible edge quality matters more than a small metric-only gain. The "85% mirage" is still relevant because high scores previously rewarded flat washed-out captures rather than real 3D detail.
 - ✅ New `retroarch/BACKLOG.md` captures deferred Windows perf work, queued visual features, stale-file cleanup, and code-anchored TODOs
 - ✅ Implemented the selected visual feature: **HDR post target (`RGBA16F`) + multi-mip bloom**, with `RGBA8` fallback if float render targets are not supported and old single-pass bloom kept as fallback
 - ✅ Recent C changes include the Shift+F perf overlay diagnostics plus the new HDR/multi-mip bloom post-processing path
+
+---
+
+## Current 2026-05-21 post-chain bloom/AA state
+
+Latest work after the scaled-text pass:
+
+```
+accddaa feat: add scaled RetroArch text helpers
+cf556eb docs: clean up RetroArch notes
+72eaf39 docs: add RetroArch HDR bloom handoff
+```
+
+What's in the post-chain delta:
+
+- Rebalanced multi-mip bloom combine weights toward the wider, lower-frequency
+  mips so glow reads broader and less like a tight outline.
+- Softened the first brightpass ramp (`threshold + 0.38`) so mid-bright neon
+  contributes to bloom without painting fake fullscreen wash rectangles.
+- Lightened the final CRT scanline/grille pass so bloom and dark-scene detail
+  survive the CRT overlay better.
+- Fixed a real AA bug: the previous FXAA-like smoothing happened before CRT
+  barrel warp, then CRT overwrote the smoothed color with a fresh sample. The
+  smoothing now runs after the final CRT UV is known, so CRT-enabled demoscene
+  scenes no longer bypass it.
+
+Validation from this pass:
+
+- `make clean && make platform=unix && make harness` passes.
+- `NOVA64_GLES_TESTS=1 pnpm run retroarch:visual:demoscene` passes:
+  - s0 `54.0`
+  - s1 `50.4`
+  - s2 `39.0`
+  - s3 `49.7`
+  - s4 `38.5`
+  - average `46.3`
+  - strictAverage `44.6`
+- A bloom-only tuning run measured average `47.4`, strictAverage `45.8`; that
+  run was not kept as-is because it did not include the CRT-path AA fix.
+
+Next target:
+
+1. Scene-by-scene composition/emissive matching against browser captures. The
+   browser reference is still heavily bloom-washed in several comparator frames,
+   while RetroArch intentionally keeps real 3D geometry visible.
+2. Variable-width glyph tuning inside `printTight()` if HUD density remains a
+   focus.
+3. Windows perf investigation remains deferred unless the user asks.
 
 ---
 

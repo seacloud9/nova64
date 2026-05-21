@@ -5,10 +5,11 @@ lives here. Update this file as items are picked up or completed.
 
 Last updated: 2026-05-21
 
-**Latest feature shipped:** A — HDR backbuffer (`RGBA16F`) plus multi-mip bloom.
-The post target now attempts `RGBA16F` with `RGBA8` fallback, and bloom uses a
-guarded 5-level downsample/blur chain with the old 13-tap single-pass shader
-kept as compatibility fallback.
+**Latest feature shipped:** Post-chain bloom tuning plus CRT-path edge
+smoothing. The HDR/multi-mip bloom path now favors broader low-frequency mips,
+uses a softer brightpass ramp, keeps scanlines less crushing, and applies the
+FXAA-like smoothing after CRT barrel warp so CRT-enabled scenes do not bypass
+anti-aliasing.
 
 ---
 
@@ -99,10 +100,10 @@ In rough priority order; pick what fits the user's mood.
 - **HUD font metrics for parity test** — `printTight()` helps density,
   but exact web-font metrics still differ; getting them aligned moves
   numeric parity scores up without losing detail.
-- **Bloom tuning after HDR/mips.** The infrastructure is now in place:
-  guarded `RGBA16F` post target, 5 bloom mip levels, separable blur, and
-  final shader combine. Remaining work is visual tuning of thresholds,
-  weights, and scene-specific emissive values against current captures.
+- **Scene-by-scene emissive/camera parity.** Bloom infrastructure and first
+  tuning pass are in place. Remaining parity work should now focus on matching
+  scene composition, fog/emissive strengths, and web capture timing without
+  returning to fake fullscreen wash rectangles.
 
 ### Cleanup / technical debt
 
@@ -157,3 +158,6 @@ The last session arc closed out:
   tracked backup/capture files removed
 - ★ Browser-style scaled text: `print(..., scale)`, `printCentered(..., scale)`,
   `printRight(..., scale)`, `printScaled()`, and `printTightScaled()`
+- ★ Post-chain tuning after HDR/mips: wider bloom mip weighting, softer
+  brightpass ramp, lighter CRT scanlines/grille, and edge smoothing moved after
+  CRT barrel warp

@@ -17,13 +17,18 @@ Read these in order:
 
 ## Current Visual Baseline
 
-As of 2026-05-21 after the browser-style scaled-text pass:
+As of 2026-05-21 after the post-chain tuning / CRT AA pass:
 
-- Visual parity comparator: `average=44.4`, `strictAverage=42.7`.
+- Visual parity comparator: `average=46.3`, `strictAverage=44.6`.
+- A bloom-only tuning run peaked at `average=47.4`, `strictAverage=45.8`,
+  but the committed state keeps the CRT-path anti-aliasing fix because visible
+  edge quality matters more than a small metric-only gain.
 - HDR post target is guarded: `RGBA16F` is attempted first, `RGBA8` is the
   fallback.
 - Bloom now uses a guarded 5-mip downsample/blur/combine chain, with the old
   13-tap single-pass bloom kept as fallback.
+- CRT-enabled post now applies edge smoothing after the barrel-warp sample, so
+  demoscene scenes no longer bypass the FXAA-like smoothing path.
 - Text helpers now honor browser-style scaling: `print(..., scale)`,
   `printCentered(..., scale)`, `printRight(..., scale)`, plus explicit
   `printScaled()` and `printTightScaled()`.

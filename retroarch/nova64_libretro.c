@@ -3114,6 +3114,93 @@ static void draw_text_aligned(const char *text, int x, int y, uint32_t color, in
    draw_text_pixels(text, x, y, color);
 }
 
+static bool glyph_tight_bounds(char ch, int *min_col, int *max_col)
+{
+   int minc = 5;
+   int maxc = -1;
+   for (int row = 0; row < 7; row++) {
+      uint8_t bits = glyph_row(ch, row);
+      for (int col = 0; col < 5; col++) {
+         if (bits & (1U << (4 - col))) {
+            if (col < minc)
+               minc = col;
+            if (col > maxc)
+               maxc = col;
+         }
+      }
+   }
+   if (maxc < minc)
+      return false;
+   if (min_col)
+      *min_col = minc;
+   if (max_col)
+      *max_col = maxc;
+   return true;
+}
+
+static int glyph_tight_advance(char ch)
+{
+   if (ch == ' ')
+      return 4;
+   int minc = 0, maxc = 0;
+   if (!glyph_tight_bounds(ch, &minc, &maxc))
+      return 4;
+   return (maxc - minc + 1) + 1;
+}
+
+static void draw_text_tight_pixels(const char *text, int x, int y, uint32_t color)
+{
+   if (!text)
+      return;
+   int cursor = x;
+   for (const char *p = text; *p; p++) {
+      if (*p == '\n') {
+         cursor = x;
+         y += 9;
+         continue;
+      }
+      int minc = 0, maxc = 0;
+      if (glyph_tight_bounds(*p, &minc, &maxc)) {
+         for (int row = 0; row < 7; row++) {
+            uint8_t bits = glyph_row(*p, row);
+            for (int col = minc; col <= maxc; col++) {
+               if (bits & (1U << (4 - col)))
+                  set_pixel(cursor + (col - minc), y + row, color);
+            }
+         }
+      }
+      cursor += glyph_tight_advance(*p);
+   }
+}
+
+static int tight_text_pixel_width(const char *text)
+{
+   if (!text || !text[0])
+      return 0;
+   int max_w = 0, cur_w = 0;
+   for (const char *p = text; *p; p++) {
+      if (*p == '\n') {
+         if (cur_w > max_w)
+            max_w = cur_w;
+         cur_w = 0;
+      } else {
+         cur_w += glyph_tight_advance(*p);
+      }
+   }
+   if (cur_w > max_w)
+      max_w = cur_w;
+   return max_w > 0 ? max_w - 1 : 0;
+}
+
+static void draw_text_tight_aligned(const char *text, int x, int y, uint32_t color, int align)
+{
+   if (align == 1)
+      x -= tight_text_pixel_width(text) / 2;
+   else if (align == 2)
+      x -= tight_text_pixel_width(text);
+   draw_text_tight_pixels(text, x, y, color);
+}
+
 static uint32_t get_pixel(int x, int y)
 {
    if (!framebuffer || x < 0 || y < 0 || x >= NOVA64_WIDTH || y >= NOVA64_HEIGHT)
@@ -4641,6 +4728,21 @@ static JSValue js_draw_print(JSContext *ctx, JSValueConst this_val, int argc, JS
    return JS_UNDEFINED;
 }
 
+static JSValue js_draw_print_tight(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   if (argc < 3)
+      return JS_UNDEFINED;
+   const char *text = JS_ToCString(ctx, argv[0]);
+   int x = 0, y = 0;
+   transform_2d_point(int_from_js(ctx, argv[1], 0), int_from_js(ctx, argv[2], 0), &x, &y);
+   uint32_t color = color_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, rgba8(255, 255, 255, 255));
+   int align = argc > 4 ? text_align_from_js(ctx, argv[4]) : 0;
+   draw_text_tight_aligned(text, x, y, color, align);
+   if (text)
+      JS_FreeCString(ctx, text);
+   return JS_UNDEFINED;
+}
+
 static JSValue js_text_width(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
    (void)this_val;
@@ -4656,6 +4758,18 @@ static JSValue js_text_width(JSContext *ctx, JSValueConst this_val, int argc, JS
       w = text_pixel_width(text);
    }
    if (text) JS_FreeCString(ctx, text);
+   return JS_NewInt32(ctx, w);
+}
+
+static JSValue js_tight_text_width(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 1)
+      return JS_NewInt32(ctx, 0);
+   const char *text = JS_ToCString(ctx, argv[0]);
+   int w = tight_text_pixel_width(text);
+   if (text)
+      JS_FreeCString(ctx, text);
    return JS_NewInt32(ctx, w);
 }
 
@@ -27898,7 +28012,9 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, draw, "tri", js_tri, 7);
    set_function(ctx, draw, "trifill", js_trifill, 7);
    set_function(ctx, draw, "print", js_draw_print, 5);
+   set_function(ctx, draw, "printTight", js_draw_print_tight, 5);
    set_function(ctx, draw, "textWidth", js_text_width, 1);
+   set_function(ctx, draw, "tightTextWidth", js_tight_text_width, 1);
    set_function(ctx, draw, "textHeight", js_text_height, 1);
    set_function(ctx, draw, "textSize", js_text_size, 1);
    set_function(ctx, draw, "printShadow", js_print_shadow, 8);
@@ -28268,7 +28384,9 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, global, "tri", js_tri, 7);
    set_function(ctx, global, "trifill", js_trifill, 7);
    set_function(ctx, global, "print", js_draw_print, 5);
+   set_function(ctx, global, "printTight", js_draw_print_tight, 5);
    set_function(ctx, global, "textWidth", js_text_width, 1);
+   set_function(ctx, global, "tightTextWidth", js_tight_text_width, 1);
    set_function(ctx, global, "textHeight", js_text_height, 1);
    set_function(ctx, global, "textSize", js_text_size, 1);
    set_function(ctx, global, "printShadow", js_print_shadow, 8);

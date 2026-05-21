@@ -1,6 +1,6 @@
 # Nova64 Hardware GL on Windows — Status & Handover
 
-**Last updated:** 2026-05-20 (late evening, handover to next LLM)
+**Last updated:** 2026-05-20 (late evening, Codex tight HUD text pass)
 **Branch:** `main`
 **Working tree:** dirty — see "Files modified this session" below
 
@@ -13,9 +13,10 @@
 - ✅ CRT scanlines + RGB aperture-grille post effect (visible on dark scenes)
 - ✅ FPS overlay built in (`Shift + F` toggle, works in any cart)
 - ✅ Bitmap font now covers nearly all ASCII printable chars including proper lowercase
+- ✅ Opt-in `printTight()` / `tightTextWidth()` variable-width text path is wired for denser HUDs without changing legacy `print()`
 - ⚠️ User reports performance feels slow on Windows (~38–40 FPS, 31–35 ms/frame on AMD Radeon 780M)
 - ⚠️ Linux Mesa software harness hits ~110 FPS at ~9 ms/frame, so Windows hardware *should* be vastly faster — Windows-specific bottleneck unidentified
-- ⚠️ Numeric visual-parity score: 43.0% average / 41.4% strict average as of a fresh `NOVA64_GLES_TESTS=1 node retroarch/tests/demoscene_visual_parity.mjs` run after adding scene-2 light cycles (the "85% mirage" is documented below — it was matching flat-color web wash to flat-color retroarch wash; real 3D detail intentionally diverges)
+- ⚠️ Numeric visual-parity score: 44.1% average / 42.6% strict average as of a fresh `NOVA64_GLES_TESTS=1 node retroarch/tests/demoscene_visual_parity.mjs` run after the tight HUD text pass (the "85% mirage" is documented below — it was matching flat-color web wash to flat-color retroarch wash; real 3D detail intentionally diverges)
 
 ---
 
@@ -46,6 +47,7 @@
 - Lowercase has proper x-height, ascenders, descenders, and i/j dots
 - Forward slash bug fixed (it was rendering as a backslash shape before)
 - Anything outside this set still falls back to the 0x1F solid block
+- `printTight(text, x, y, color, align?)` and `tightTextWidth(text)` trim empty glyph columns for HUD text density. Existing `print()` / `textWidth()` stay fixed-width for compatibility.
 
 ### Tooling
 - `make platform=unix` — Linux .so (used by the harness for headless GLES testing)
@@ -131,6 +133,7 @@ Recent score progression on visual parity test:
 - After heavier bloom: 43.0%
 - Fresh Codex validation after handover review: 44.1% average / 42.6% strict average
 - After scene-2 light cycles + placement fix: 43.0% average / 41.4% strict average
+- After tight HUD text pass: 44.1% average / 42.6% strict average
 
 Score barely moves because every visual improvement diverges further from the web's flat-color reference. Visually we keep getting closer to a *good-looking* render; numerically we keep moving away from the web's *blown-out* render. Don't optimise for the number.
 
@@ -178,6 +181,8 @@ M retroarch/games/demoscene.js
 M retroarch/nova64_libretro.c
 M retroarch/HANDOFF_HWGL.md
 M retroarch/MEMPALACE_DIARY.md
+A retroarch/conformance/813-tight-text.js
+M retroarch/tests/run_conformance.sh
 ```
 
 ### What's in `nova64_libretro.c`
@@ -194,32 +199,36 @@ M retroarch/MEMPALACE_DIARY.md
 - `NOVA64_PERF=1` telemetry now splits post pass, overlay conversion, overlay
   upload, and overlay draw timing; overlay draw-call counting no longer double
   counts the fullscreen overlay quad.
+- Added `printTight()` / `tightTextWidth()` on both the global API and
+  `nova64.draw`. The new path trims empty glyph columns per character while
+  keeping the legacy fixed-width print metrics unchanged.
 
 ### What's in `games/demoscene.js`
 - `skyPanel = createCube(...)` removed from `buildScene0()` and `buildScene3()` (the gradient quad now handles sky)
 - Fixed a missing mesh handle in scene 2's lane `setPosition(...)` call.
 - Added deterministic scene-2 light cycles with glowing trail meshes to recover
   a browser-visible city feature without reintroducing fake bloom wash blocks.
+- Switched the demoscene start screen and HUD copy to `printTight()` so the
+  panels read closer to the web capture without disturbing the 3D camera path.
+
+### What's in conformance/tests
+- Added `retroarch/conformance/813-tight-text.js` to lock the new tight text
+  API surface, width behavior, and center/right alignment rendering.
+- Added the case to `retroarch/tests/run_conformance.sh` with checksum
+  `0941661bd8f54b16`.
 
 ### Suggested commit message
 ```
-feat: sky gradient shader, lowercase font, FPS overlay, heavier bloom
+feat: add tight RetroArch HUD text
 
-- Add render_gles_sky_gradient: real fullscreen NDC quad for setSkyColor
-  with smoothstep top→bottom blend. Falls back from skybox texture path
-  when no equirectangular texture is bound.
-- Drop skyPanel cube hack from demoscene scenes 0 and 3 — gradient now
-  produces a proper sky without the giant flat cube.
-- Add Shift+F on-screen FPS overlay (core-level, works in any cart).
-  Yellow text with drop shadow, 500 ms rolling window, shows "FPS N M ms".
-- Add proper lowercase a-z bitmap font (was auto-uppercased before).
-  Includes x-height, ascenders, descenders, i/j dots.
-- Fix forward slash glyph (was rendering as backslash shape).
-- Add backslash and curly brace + pipe/caret/tilde/dollar glyphs.
-- Tune bloom shader: lower brightpass threshold, wider kernel, larger
-  weights to approximate Three.js UnrealBloomPass intensity.
-- Add scene-2 light cycles with glowing trail meshes and fix a missing
-  setPosition mesh handle in the city lanes.
+- Add printTight and tightTextWidth as opt-in variable-width bitmap text APIs.
+- Keep legacy print and textWidth fixed-width for existing cart compatibility.
+- Switch the demoscene HUD/start-screen copy to tight text for better panel
+  density and more browser-like layout.
+- Add conformance cart 813 to lock API presence, tight width behavior, and
+  center/right alignment output.
+- Validate with retroarch:build, conformance 813, and the demoscene visual
+  parity capture.
 ```
 
 ---
@@ -267,10 +276,9 @@ In priority order — pick whichever the user asks for:
 1. **Windows perf investigation** (highest impact). Start with the FBO size hypothesis. The handover doc above has the candidate list ranked. Telemetry already wired.
 2. **Commit current working tree.** Files listed above; suggested commit message provided.
 3. **Larger font variant.** 8×16 or doubled 5×7 for titles. Useful for HUD text that wants more weight.
-4. **Variable-width font.** Narrow `i` = 3 cols, wide `m` = 5 cols. Improves text density and looks more professional.
-5. **HDR backbuffer for bloom.** RGBA16F post FBO + multi-mip blur (see TODO note in shader). Would let bloom roll off properly above 1.0 brightness.
-6. **HUD font metrics for parity test.** Make the demoscene HUD widths match the web reference more closely (small numerical bump in parity score).
-7. **Re-baseline conformance checksums.** The `/` glyph fix shifts hashes for any cart that prints a forward slash.
+4. **HDR backbuffer for bloom.** RGBA16F post FBO + multi-mip blur (see TODO note in shader). Would let bloom roll off properly above 1.0 brightness.
+5. **HUD font metrics for parity test.** The tight text path helps density, but exact web-font metrics still differ.
+6. **Re-baseline conformance checksums.** The `/` glyph fix shifts hashes for any cart that prints a forward slash.
 
 ### Things to avoid
 

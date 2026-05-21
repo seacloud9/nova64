@@ -669,14 +669,14 @@ export function draw() {
       rectfill(80, 80, 480, 220, rgba8(4, 6, 20, 250));
       glowRect(80, 80, 480, 220, rgba8(0, 230, 255, 220), 8);
       printBold('TRON ODYSSEY', 190, 98, rgba8(0, 240, 255, 255));
-      print('RETROARCH EDITION - GLES3', 192, 118, rgba8(160, 200, 255, 200));
+      printTight('RETROARCH EDITION - GLES3', 192, 118, rgba8(160, 200, 255, 200));
       glowLine(100, 134, 560, 134, rgba8(0,160,255,160), 1);
-      print('5 SCENES - AUTO - Z=SKIP', 204, 144, rgba8(130,180,255,190));
+      printTight('5 SCENES - AUTO - Z=SKIP', 204, 144, rgba8(130,180,255,190));
       for (let i = 0; i < SCENES.length; i++) {
-         print((i+1) + '. ' + SCENES[i].name, 184, 160 + i*14, rgba8(60+i*30, 180, 255-i*20, 180));
+         printTight((i+1) + '. ' + SCENES[i].name, 184, 160 + i*14, rgba8(60+i*30, 180, 255-i*20, 180));
       }
       glowLine(100, 234, 560, 234, rgba8(0,160,255,160), 1);
-      printFlash(240, 246, 'Z OR X TO BEGIN', rgba8(255,220,60,255), -startT, 1.8);
+      printTight('Z OR X TO BEGIN', 320, 246, rgba8(255,220,60,255), 'center');
       return;
    }
 
@@ -706,34 +706,34 @@ export function draw() {
 
    rectfill(16, 16, 280, 90, panelColor);
    rect(16, 16, 280, 90, sceneAccent, false);
-   print('DEMOSCENE', 28, 25, rgba8(255, 255, 255, 255));
-   print('Scene ' + (scene + 1) + '/' + SCENES.length + ': ' + sc.name,
+   printTight('DEMOSCENE', 28, 25, rgba8(255, 255, 255, 255));
+   printTight('Scene ' + (scene + 1) + '/' + SCENES.length + ': ' + sc.name,
       24, 46, rgba8(210, 220, 255, 255));
    rectfill(24, 63, 264, 7, rgba8(42, 42, 70, 210));
    rectfill(24, 63, Math.floor(264 * prog), 7, sceneAccent);
    rect(24, 63, 264, 7, rgba8(255, 255, 255, 90), false);
-   print((prog * 100).toFixed(1) + '%', 24, 79, rgba8(170, 170, 215, 255));
-   print('Time: ' + sceneT.toFixed(1) + 's / ' + sc.dur + 's',
+   printTight((prog * 100).toFixed(1) + '%', 24, 79, rgba8(170, 170, 215, 255));
+   printTight('Time: ' + sceneT.toFixed(1) + 's / ' + sc.dur + 's',
       24, 92, rgba8(170, 170, 215, 255));
 
    rectfill(424, 16, 200, 65, panelColor);
    rect(424, 16, 200, 65, rgba8(255, 0, 255, 255), false);
-   print('EFFECTS ACTIVE:', 438, 25, rgba8(255, 255, 255, 255));
-   print('BLOOM', 438, 38, rgba8(60, 255, 90, 255));
-   print('FXAA', 438, 49, rgba8(60, 255, 90, 255));
-   print('PARTICLES', 438, 60, rgba8(60, 255, 90, 255));
-   print('FOG', 438, 71, rgba8(60, 255, 90, 255));
+   printTight('EFFECTS ACTIVE:', 438, 25, rgba8(255, 255, 255, 255));
+   printTight('BLOOM', 438, 38, rgba8(60, 255, 90, 255));
+   printTight('FXAA', 438, 49, rgba8(60, 255, 90, 255));
+   printTight('PARTICLES', 438, 60, rgba8(60, 255, 90, 255));
+   printTight('FOG', 438, 71, rgba8(60, 255, 90, 255));
 
    rectfill(16, 315, 608, 30, rgba8(0, 0, 28, 224));
-   print(SCENE_DESCRIPTIONS[scene], 320, 326, rgba8(255, 255, 120, 255), 'center');
-   print('NOVA64 - POWERED BY THREE.JS', 320, 341, rgba8(120, 130, 180, 210), 'center');
+   printTight(SCENE_DESCRIPTIONS[scene], 320, 326, rgba8(255, 255, 120, 255), 'center');
+   printTight('NOVA64 - POWERED BY THREE.JS', 320, 341, rgba8(120, 130, 180, 210), 'center');
 
-   print('Z:SKIP', 596, 8, rgba8(70,110,190,140));
+   printTight('Z:SKIP', 596, 8, rgba8(70,110,190,140));
 
    // Scene name flash at top of scene (printed ON TOP of HUD)
    if (sceneT < 0.8) {
       const ta = Math.floor((1 - sceneT/0.8) * 255);
-      printBold(sc.name, 320 - sc.name.length * 6, 166, rgba8(0,240,255,ta));
+      printTight(sc.name, 320, 166, rgba8(0,240,255,ta), 'center');
    }
 
 }

@@ -988,6 +988,7 @@ run_visual_case "1069 batch88 showcase"    "1069-batch88-showcase"    "retroarch
 run_visual_case "811 spotlight"            "811-spotlight"            "retroarch/conformance/811-spotlight.js"            "77f3d2e12c16adbc"
 run_visual_case "1080 batch89 showcase"    "1080-batch89-showcase"    "retroarch/conformance/1080-batch89-showcase.js"    "0c1048950a657807"
 run_visual_case "812 wavemgr"              "812-wavemgr"              "retroarch/conformance/812-wavemgr.js"              "4194c8acbe61993e"
+run_visual_case "813 tight text"           "813-tight-text"           "retroarch/conformance/813-tight-text.js"           "0941661bd8f54b16"
 run_visual_case "1091 batch90 showcase"    "1091-batch90-showcase"    "retroarch/conformance/1091-batch90-showcase.js"    "54e8bacea9fdadd4"
 
 echo "Conformance passed."

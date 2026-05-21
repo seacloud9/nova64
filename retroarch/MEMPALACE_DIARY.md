@@ -5,6 +5,25 @@ canonical repository instructions in `../AGENTS.md`.
 
 ## 2026-05-20 - HWGL handoff review checkpoint
 
+### Tight HUD text parity pass
+- Added opt-in `printTight(text, x, y, color, align?)` and
+  `tightTextWidth(text)` to the RetroArch core on both the global API and
+  `nova64.draw`.
+- Kept legacy `print()` and `textWidth()` fixed-width for compatibility.
+- Switched the demoscene start screen and HUD copy to tight text so the panels
+  read denser and closer to the browser HUD without touching the 3D camera.
+- Added `retroarch/conformance/813-tight-text.js` and locked it in
+  `retroarch/tests/run_conformance.sh` with checksum `0941661bd8f54b16`.
+- Validation:
+  - `pnpm run retroarch:build` passes from WSL/Node 20.
+  - `retroarch/tests/run_conformance.sh --from 813 --to 813 --skip-build`
+    passes.
+  - `NOVA64_GLES_TESTS=1 node retroarch/tests/demoscene_visual_parity.mjs`
+    reports `average=44.1`, `strictAverage=42.6`.
+- Visual note: the direct parity metric is still noisy because the browser
+  reference capture is heavily overbright/washed out while RetroArch preserves
+  more 3D detail. Do not chase the number by reintroducing opaque wash blocks.
+
 ### MemPalace / MCP status
 - Repo wiring is present: `.vscode/mcp.json` launches `mempalace-mcp` through
   WSL, and `AGENTS.md`, `README.md`, and `package.json` document the workflow.

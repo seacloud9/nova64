@@ -3,9 +3,38 @@
 This is a memory/progress note for MemPalace mining, not a replacement for the
 canonical repository instructions in `../AGENTS.md`.
 
+## 2026-05-21 - RetroArch documentation cleanup
+
+### What changed
+
+- Renamed `retroarch/README_RETROARCH.md` to `retroarch/README.md` so the
+  RetroArch folder has a normal local README.
+- Replaced the stale long `retroarch/HANDOFF.md` body with a short index that
+  points to `HANDOFF_HWGL.md`, `BACKLOG.md`, `MEMPALACE_DIARY.md`, `README.md`,
+  and `GLES_SMOKE_MATRIX.md`.
+- Removed tracked stale backup/capture files:
+  - `retroarch/nova64_libretro_nohw.c`
+  - `retroarch/nova64_libretro_hw.c.bak`
+  - `retroarch/nova64_libretro.c.bak`
+  - `retroarch/torus_capture.ppm`
+- Updated root `README.md`, `retroarch/BACKLOG.md`, and
+  `retroarch/GLES_SMOKE_MATRIX.md` to reflect the cleaned doc structure and the
+  new HDR/multi-mip bloom status.
+- Removed ignored root backup instruction files (`CLAUDE.md.bak`,
+  `CODEX.md.bak`, `COPILOT.md.bak`) because `AGENTS.md` is the canonical agent
+  instruction source and the live tool-specific files are already thin pointers.
+
+### Ongoing preference
+
+- Keep generated binaries and captures out of commits.
+- Keep `HANDOFF.md` short. Put current implementation state in
+  `HANDOFF_HWGL.md`, stable usage docs in `README.md`, queued tasks in
+  `BACKLOG.md`, and session memory here for MemPalace mining.
+
 ## 2026-05-21 - HDR post target and multi-mip bloom pass
 
 ### What landed
+
 - Implemented the selected visual feature from `retroarch/BACKLOG.md`:
   guarded HDR post target plus multi-mip bloom.
 - `gles_init_post_resources()` now tries `RGBA16F` first and falls back to the
@@ -18,6 +47,7 @@ canonical repository instructions in `../AGENTS.md`.
   destroy, avoiding extra FBO/texture leaks across resets.
 
 ### Validation
+
 - `make platform=unix` passed.
 - `make harness` passed after `make clean` removed the harness binary.
 - Focused harness capture succeeded and logged:
@@ -29,6 +59,7 @@ canonical repository instructions in `../AGENTS.md`.
   `make clean && make platform=win-cross`.
 
 ### Visual notes
+
 - The new s0 and s1 captures show softer bloom halos without returning to the
   earlier fake fullscreen wash. RetroArch still preserves more geometry detail
   than the browser capture in several scenes, so the numeric parity score is
@@ -39,12 +70,14 @@ canonical repository instructions in `../AGENTS.md`.
 ## 2026-05-21 - RetroArch HDR bloom handoff checkpoint
 
 ### Current request
+
 - User wants the next visual parity feature to be **HDR backbuffer
   (`RGBA16F`) + multi-mip bloom** from `retroarch/BACKLOG.md`.
 - User also asked to document the state clearly for a model switch and to keep
   MemPalace updated before continuing.
 
 ### Working tree before checkpoint commit
+
 - `retroarch/BACKLOG.md` added with deferred Windows perf diagnosis, queued
   visual features, code-anchored TODO notes, stale-file cleanup, and recently
   shipped context.
@@ -59,6 +92,7 @@ canonical repository instructions in `../AGENTS.md`.
   - Post FBO creation logs allocation size.
 
 ### Next implementation target
+
 - Start with guarded `RGBA16F` allocation for the post color target, using a
   framebuffer-completeness check and falling back to the current `RGBA8` path.
 - Keep the existing 13-tap single-pass bloom alive as fallback.
@@ -69,6 +103,7 @@ canonical repository instructions in `../AGENTS.md`.
   aligned with the web demo and only alter post-processing.
 
 ### MemPalace/MCP status
+
 - `.vscode/mcp.json` launches `mempalace-mcp` via WSL.
 - `pnpm run mempalace:status` was run on 2026-05-21. It completed and
   automatically quarantined two corrupt HNSW segment directories; the
@@ -79,6 +114,7 @@ canonical repository instructions in `../AGENTS.md`.
 ## 2026-05-20 - HWGL handoff review checkpoint
 
 ### Draw namespace text effects parity pass
+
 - Added `nova64.draw` aliases for the Batch 41 helpers that the browser runtime
   exposes under `nova64.draw`: `drawTriangle`, `drawGlowText`,
   `drawGlowTextCentered`, `drawPulsingText`, `tristrip`, and
@@ -97,6 +133,7 @@ canonical repository instructions in `../AGENTS.md`.
     `screenshots/retroarch/815-draw-namespace-textfx.png`.
 
 ### Glow text scale parity pass
+
 - Fixed the RetroArch implementation of `drawGlowText` and
   `drawGlowTextCentered` so the existing `scale` argument now renders scaled
   bitmap glyphs instead of being ignored.
@@ -122,6 +159,7 @@ canonical repository instructions in `../AGENTS.md`.
   locked checksum.
 
 ### Tight HUD text parity pass
+
 - Added opt-in `printTight(text, x, y, color, align?)` and
   `tightTextWidth(text)` to the RetroArch core on both the global API and
   `nova64.draw`.
@@ -141,6 +179,7 @@ canonical repository instructions in `../AGENTS.md`.
   more 3D detail. Do not chase the number by reintroducing opaque wash blocks.
 
 ### MemPalace / MCP status
+
 - Repo wiring is present: `.vscode/mcp.json` launches `mempalace-mcp` through
   WSL, and `AGENTS.md`, `README.md`, and `package.json` document the workflow.
 - `pnpm run mempalace:status`, `pnpm run mempalace:wake`, and
@@ -150,6 +189,7 @@ canonical repository instructions in `../AGENTS.md`.
   HNSW flushed metadata, so keep checking status if retrieval looks odd.
 
 ### Current RetroArch parity state
+
 - Working tree is intentionally dirty with the late handoff changes:
   `retroarch/HANDOFF_HWGL.md`, `retroarch/games/demoscene.js`, and
   `retroarch/nova64_libretro.c`.
@@ -164,6 +204,7 @@ canonical repository instructions in `../AGENTS.md`.
   than assuming the post target itself is window-sized.
 
 ### Follow-up feature/bug pass
+
 - User asked to prioritize feature creation and bug fixing over spending much
   more time on the Windows slowdown.
 - Fixed scene 2 lane bars: a `setPosition(...)` call was missing the mesh
@@ -195,6 +236,7 @@ canonical repository instructions in `../AGENTS.md`.
 ## 2026-05-19 — Demoscene parity + MemPalace wiring session
 
 ### What landed
+
 - `.vscode/mcp.json` now launches MemPalace through WSL with
   `pipenv run mempalace-mcp`.
 - `AGENTS.md` and `README.md` document the MemPalace/MCP startup path and daily
@@ -210,11 +252,13 @@ canonical repository instructions in `../AGENTS.md`.
 - Scene 2 gained emissive city light lanes.
 
 ### Latest subjective visual parity
+
 - Estimate: ~89% against the available browser-style reference material.
 - Caveat: this is a human visual estimate, not a formal metric. A hard 90% claim
   needs direct browser and RetroArch captures for all five scene beats.
 
 ### Captures
+
 - `retroarch/build/demoscene-webparity-s0-final2.png`
 - `retroarch/build/demoscene-webparity-s2-final2.png`
 - `retroarch/build/demoscene-webparity-s3-90pass.png`
@@ -223,6 +267,7 @@ canonical repository instructions in `../AGENTS.md`.
 ## 2026-05-19 — Direct browser capture parity pass
 
 ### What changed
+
 - Captured the actual web cart through `console.html?demo=demoscene` and the
   `#screen` canvas at 640x360:
   - `retroarch/build/demoscene-browser-canvas-s0-current.png`
@@ -238,6 +283,7 @@ canonical repository instructions in `../AGENTS.md`.
   - `retroarch/build/demoscene-webparity-s0-sunmatch6.png`
 
 ### Latest subjective visual parity
+
 - Estimate: ~90% against the direct browser capture set.
 - Remaining visible gap: RetroArch still exposes more block geometry and less
   shader-style washout than the Three.js/TSL path, but the scene composition,
@@ -246,6 +292,7 @@ canonical repository instructions in `../AGENTS.md`.
 ## 2026-05-20 — Demoscene performance + parity recovery pass
 
 ### What changed
+
 - Added `setInstanceTransforms(mesh, start, mat16s)` for batched instanced mesh
   matrix uploads. Demoscene scene 0 and scene 2 now use it for animated instance
   grids/towers.
@@ -270,6 +317,7 @@ canonical repository instructions in `../AGENTS.md`.
   as glow instead of saturating the whole scene.
 
 ### Latest measured status
+
 - Focused perf smoke:
   `retroarch/build/demoscene-webwash-instanced-smoke.ppm`.
 - Scene 0 steady-state headless llvmpipe profile after instancing:
@@ -285,6 +333,7 @@ canonical repository instructions in `../AGENTS.md`.
   reported visual `47.1` / strict `45.3`; this is the honest reset baseline.
 
 ### Next parity target
+
 - The remaining gap to 90 should be attacked with real visual structure:
   smoother native bloom, sky/gradient geometry, horizon-glow tuning, and
   preserving 3D detail. Do not re-enable opaque wash rectfills to chase the old
@@ -293,6 +342,7 @@ canonical repository instructions in `../AGENTS.md`.
 ## 2026-05-19 — Browser-vs-RetroArch visual comparator
 
 ### What landed
+
 - Added `retroarch/tests/demoscene_visual_parity.mjs`.
 - Added `pnpm run retroarch:visual:demoscene`.
 - The script captures browser canvas screenshots, RetroArch GLES harness frames,
@@ -305,6 +355,7 @@ canonical repository instructions in `../AGENTS.md`.
   web-matched HUD copy.
 
 ### Baseline result
+
 - Original full run completed successfully with average conservative perceptual
   score `49.0`.
 - Latest exact-scene full run completed successfully with average visual score
@@ -317,6 +368,7 @@ canonical repository instructions in `../AGENTS.md`.
   - s4 THE_VOID: `84.0`
 
 ### Follow-up parity tuning
+
 - RetroArch scene 1 no longer uses an over-dark left cyan field; it now matches
   the web capture's lighter data-tunnel wash.
 - Scene 0 and scene 3 use strip-gradient bloom transitions where the browser
@@ -328,6 +380,7 @@ canonical repository instructions in `../AGENTS.md`.
   displayed web console surface.
 
 ### GLES sphere rendering fix
+
 - User noticed spheres sometimes looked wrong in RetroArch. Investigation found
   the GLES path was drawing `createSphere()` with a 6-vertex octahedron proxy
   and only 24 indices.
@@ -340,6 +393,7 @@ canonical repository instructions in `../AGENTS.md`.
 - Focused capture: `retroarch/build/sphere-uv-gles.png`.
 
 ### GLES cone primitive
+
 - `createCone()` no longer falls through the GLES cylinder/sphere proxy path.
 - Added a real 32-segment cone VBO/IBO, plus draw support for main scene,
   render-target scene draws, shadows, and `createInstancedMesh('cone')`.
@@ -350,6 +404,7 @@ canonical repository instructions in `../AGENTS.md`.
   - `retroarch/build/space-shooter-cone-gles.png`
 
 ### GLES capsule/cylinder primitives
+
 - `createCapsule()` and `createCylinder()` no longer draw as sphere proxies on
   the GLES path.
 - Added generated per-mesh VBO/IBO caches for capsule and cylinder geometry.
@@ -367,6 +422,7 @@ canonical repository instructions in `../AGENTS.md`.
   - `retroarch/build/dungeon-crawler-cylinder-gles.png`
 
 ### GLES transparent z sorting
+
 - Audited the GLES draw order after primitive work to avoid depth artifacts in
   alpha/blended meshes.
 - Added an opaque pass followed by a transparent pass. Transparent meshes are
@@ -383,6 +439,7 @@ canonical repository instructions in `../AGENTS.md`.
   - `retroarch/build/demoscene-zsort-smoke.png`
 
 ### Caveat
+
 - The metric is now useful as a trend baseline, but it still penalizes
   hard-edged GLES approximations versus Three.js/TSL shader gradients,
   scanlines, and exact post-processing behavior. Getting the metric to 90 will
@@ -392,6 +449,7 @@ canonical repository instructions in `../AGENTS.md`.
 ## 2026-05-15 — M8 Shadow Maps + Normal Maps session
 
 ### What landed this session (commits 11e8309..b0ecd65)
+
 - **createCube/createSphere color-first arg fix** (commit 11e8309): Added
   `&& !JS_IsArray(argv[1])` guard so `createCube(rgba8(...), [x,y,z])` is
   correctly detected. Re-collected software checksums for ~40 affected carts.
@@ -408,11 +466,13 @@ canonical repository instructions in `../AGENTS.md`.
   Conformance cart 104.
 
 ### Current true M8 gaps (all else is done)
+
 - **8A**: Instanced rendering (render targets done; normal maps done; z-sort done)
 - **8I**: Real hardware GLES smoke matrix; netplay review (manual/doc tasks)
 - **8J**: `--frames N` conformance for all cart types
 
 ### Lessons
+
 - Always `wsl -e bash` for git/make; PowerShell breaks husky hooks.
 - GLES conformance needs `GALLIUM_DRIVER=softpipe MESA_LOADER_DRIVER_OVERRIDE=swrast`.
 - GLSL ES 1.00 uniforms shared between vertex+fragment need matching precision;
@@ -423,6 +483,7 @@ canonical repository instructions in `../AGENTS.md`.
 ## 2026-05-15 — M8 Render Targets session
 
 ### What landed this session (commits 3e76598..5db0963)
+
 - **Offscreen render targets** (commit 3e76598): GLES FBO + RGBA color texture + depth
   RBO. `createRenderTarget(w, h)` allocates; `renderScene(rt)` renders 3D scene at rt
   dimensions, reusing shadow map; `renderTargetAsTexture(rt)` returns borrowed texture
@@ -440,11 +501,13 @@ canonical repository instructions in `../AGENTS.md`.
   Conformance cart 107 sw=4fd99c7a95f90255 gles=f01a0e0dc49c9e0e.
 
 ### Current true M8 gaps (all else is done)
+
 - **All 8A–8J items complete** as of 2026-05-15
 
 ## 2026-05-15 — Post-M8 documentation + noise API session
 
 ### What landed this session (commits 1b68724..d48cce1)
+
 - **Comprehensive README update** (commit 1b68724): Fixed 3 stale Known Gaps
   (shadow maps, ortho camera, streamed music — all implemented). Added ~20 missing
   API sections: capsule/cylinder, createMesh, scene hierarchy, ortho camera, PBR,
@@ -462,12 +525,14 @@ canonical repository instructions in `../AGENTS.md`.
   sw=4847bd983f0c57e0.
 
 ### Full conformance sweep result
+
 - Carts 0–50: all pass (build + harness)
 - Carts 51–99: all pass
 - Carts 100–111: all pass
 - Total: 111 conformance carts passing
 
 ### State of the codebase
+
 - All M1–M8 complete; no known pending gaps except Vulkan backend (M4, staged)
   and QuickJS heap serialization (out of scope per plan).
 - next candidate: consider particle system, more math utilities, or Vulkan M4.
@@ -475,6 +540,7 @@ canonical repository instructions in `../AGENTS.md`.
 ## 2026-05-15 — Post-M8 API expansion sprint (carts 112-134)
 
 ### What landed this session (commits d48cce1..d10f0f6)
+
 - **2D Particle system** (cart 112): createParticles2D/emitParticles2D/setEmitterPos2D/
   setEmitterActive2D/destroyParticles2D/updateParticles/drawParticles/getParticleCount.
   CPU-side, 512 particles × 8 emitters. Continuous mode with rate accumulator.
@@ -508,6 +574,7 @@ canonical repository instructions in `../AGENTS.md`.
 - **drawNineSlice** (cart 134): 9-slice panel scaling for UI.
 
 ### Key lessons
+
 - JS_IsArray() takes 1 arg (not ctx+val) in this QuickJS version.
 - Always use deterministic patterns in draw() — Math.random() breaks checksums.
 - Forward declarations needed when new functions reference later-defined helpers
@@ -516,12 +583,14 @@ canonical repository instructions in `../AGENTS.md`.
   fill pixels won't be in the expected frame.
 
 ### Current state: 134 conformance carts passing
+
 - All M1–M8 + 23 new post-M8 APIs; no regressions in carts 110-134.
 - All state (tweens, timers, grids, canvas, shake, flash, path) reset on retro_reset.
 
 ## 2026-05-18 — Batch 79-81 session (game utility APIs)
 
 ### What landed this session
+
 - **Batch 79: 2D Inventory grid** — `createInventory`, `setSlot`, `getSlotColor`, `getSlotCount`,
   `clearSlot`, `drawInventory`, `setInventorySelected`, `destroyInventory`.
   NOVA64_MAX_INVENTORIES=4, up to 8×8 slots. Gap+border layout, selection highlight,
@@ -536,11 +605,13 @@ canonical repository instructions in `../AGENTS.md`.
 - All 6 carts pass; range 801-992 (21 carts) clean.
 
 ### Key lessons
+
 - Existing codebase already had `tilemaps[]` API (sprite-sheet based); avoid `createTilemap` name clash.
 - Use `JS_ToCString(ctx, argv[N])` not `string_from_js` — no such helper exists in this QuickJS build.
 - The `run_conformance.sh` runner stops at first mismatch; run harness directly without `--expect` to collect checksums.
 
 ### Current conformance state (after B82–B84)
+
 - Feature carts up to 806, showcase up to 1025
 - All B79–B84 carts passing
 
@@ -549,6 +620,7 @@ canonical repository instructions in `../AGENTS.md`.
 ## Session: Batches 85–90 + 3 game carts (2026-05-18)
 
 ### APIs added
+
 - **Batch 85: Particle burst** — `createBurst`, `triggerBurst`, `updateBurst`, `drawBurst`,
   `isBurstDone`, `setBurstColors`, `destroyBurst`. NOVA64_MAX_BURSTS=8, 24 particles each.
   Radial emission via rng_next_impl(), gravity, life fade. Conformance carts 807, 1036-showcase.
@@ -570,11 +642,13 @@ canonical repository instructions in `../AGENTS.md`.
   `destroyWaveManager`. NOVA64_MAX_WAVE_MANAGERS=4. Conformance 812, 1091.
 
 ### Game carts added
+
 - `wave-survival.js` — arena shooter; wave manager + particle bursts on kill
 - `stealth-runner.js` — spotlight avoidance game; moving spotlights, level progression
 - `neon-pinball.js` — glow-rendered pinball; bumper collisions + rainbow score text
 
 ### Key lessons (this session)
+
 - `drawBubble`/`js_draw_bubble` already existed as a circle-outline primitive — speech bubble
   API must use `drawSpeechBubble`/`js_draw_speech_bub` to avoid duplicate symbol errors.
 - Input API uses string names: `btn("left")`, `btn("z")`, `btnp("z")` — NOT numeric constants.
@@ -582,5 +656,6 @@ canonical repository instructions in `../AGENTS.md`.
 - Global sed on 31k-line file is dangerous; use `sed -i 'Ns/.../.../'` for line-specific fixups.
 
 ### Current conformance state
+
 - Feature carts up to 812, showcase up to 1091
 - All B85–B90 (12 new carts) passing; pre-B79 ranges have pre-existing failures unrelated to new work

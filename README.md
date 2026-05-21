@@ -38,6 +38,24 @@ progress so future sessions can recover the latest parity context quickly.
 
 ---
 
+## RetroArch Native Core
+
+The native libretro core lives in [`retroarch/README.md`](retroarch/README.md).
+That folder also carries the active RetroArch handoff, backlog, smoke matrix, and
+MemPalace diary:
+
+- [`retroarch/HANDOFF_HWGL.md`](retroarch/HANDOFF_HWGL.md) - current hardware-GL
+  implementation state and validation numbers.
+- [`retroarch/BACKLOG.md`](retroarch/BACKLOG.md) - queued RetroArch parity and
+  cleanup work.
+- [`retroarch/GLES_SMOKE_MATRIX.md`](retroarch/GLES_SMOKE_MATRIX.md) - manual
+  real-driver smoke coverage.
+
+Generated RetroArch binaries, build outputs, and capture artifacts should stay
+out of commits.
+
+---
+
 ## Godot Native Host — **Now in trunk** 🎉
 
 Nova64 carts run end-to-end through a native **Godot 4.x** host via a
@@ -66,18 +84,20 @@ sub-plans.
   plus `setInstanceTransform` / `setInstancePosition` for instanced
   meshes — HUDs in f-zero / star-fox / space-harrier render correctly
   under Godot.
-- **Build**: `cd nova64-godot/gdextension && scons platform=linux
-  target=template_debug` (and the matching Windows MinGW invocation).
+- **Build**: run
+  `cd nova64-godot/gdextension && scons platform=linux target=template_debug`
+  (and the matching Windows MinGW invocation).
   See [nova64-godot/README.md](nova64-godot/README.md).
-- **Smoke**: `powershell -File nova64-godot/scripts/run-cart-smoke.ps1
-  <cart-name>` runs each cart for 300 frames against the conformance
+- **Smoke**: run
+  `powershell -File nova64-godot/scripts/run-cart-smoke.ps1 <cart-name>`
+  for each cart for 300 frames against the conformance
   harness.
 
 ### Improving Godot WAD rendering (without regressing voxels)
 
 The Godot WAD renderer currently uses a partial flat-shaded path for
 several wall/flat cases. Bringing it to Three.js/Babylon parity is
-tracked in [ROADMAP.md](ROADMAP.md) Phase 3 → *WAD Sub-Roadmap*. Open
+tracked in [ROADMAP.md](ROADMAP.md) Phase 3 → _WAD Sub-Roadmap_. Open
 items:
 
 - Route WAD wall/flat textures through the same engine-assigned
@@ -122,7 +142,7 @@ items:
 
 ---
 
-## 🌟 **Recent Updates (v0.5.0)** — *The Great Namespace Push*
+## 🌟 **Recent Updates (v0.5.0)** — _The Great Namespace Push_
 
 ### 🎯 **NEW: Grouped `nova64.*` Namespace** ⭐
 
@@ -872,7 +892,7 @@ MIT — see `LICENSE` for details.
 
 ## Version History
 
-### v0.5.0 (Current) — *The Great Namespace Push*
+### v0.5.0 (Current) — _The Great Namespace Push_
 
 - **Grouped `nova64.*` namespace**: 100+ bare globals retired; all 71+ demo carts and every runtime callsite migrated to `nova64.draw.*`, `nova64.scene.*`, `nova64.fx.*`, `nova64.voxel.*`, etc. Single canonical contract in `runtime/namespace.js`
 - **Babylon Noa voxel adapter**: `runtime/backends/babylon/noa-adapter.js` lets Babylon back the shared voxel API with native chunk meshing

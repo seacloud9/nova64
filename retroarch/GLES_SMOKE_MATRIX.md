@@ -17,15 +17,15 @@ RetroArch installation or a real OpenGL ES driver stack.
 
 ## Platform matrix
 
-| Platform         | Video driver  | GLES version | Status  | Notes                                      |
-|------------------|---------------|--------------|---------|--------------------------------------------|
-| Linux x86-64     | glcore        | GLES 3.1     | ✅ pass | Tested via Mesa EGL headless (automated)    |
-| Linux x86-64     | gl            | GL 3.3       | 🔲 todo | Context type mismatch — needs field check   |
-| Linux x86-64     | vulkan        | n/a          | 🔲 todo | Vulkan renderer not yet implemented         |
-| Windows WSL2     | glcore (EGL)  | GLES 3.1     | ✅ pass | Mesa softpipe via WSL; all conformance pass |
-| Android          | glcore        | GLES 3.1     | 🔲 todo | Needs arm64 build + RetroArch Android APK   |
-| Android          | vulkan        | n/a          | 🔲 todo | Not yet implemented                         |
-| Raspberry Pi 4   | glcore        | GLES 3.1     | 🔲 todo | VideoCore VI; needs field check             |
+| Platform       | Video driver | GLES version | Status  | Notes                                       |
+| -------------- | ------------ | ------------ | ------- | ------------------------------------------- |
+| Linux x86-64   | glcore       | GLES 3.1     | ✅ pass | Tested via Mesa EGL headless (automated)    |
+| Linux x86-64   | gl           | GL 3.3       | 🔲 todo | Context type mismatch — needs field check   |
+| Linux x86-64   | vulkan       | n/a          | 🔲 todo | Vulkan renderer not yet implemented         |
+| Windows WSL2   | glcore (EGL) | GLES 3.1     | ✅ pass | Mesa softpipe via WSL; all conformance pass |
+| Android        | glcore       | GLES 3.1     | 🔲 todo | Needs arm64 build + RetroArch Android APK   |
+| Android        | vulkan       | n/a          | 🔲 todo | Not yet implemented                         |
+| Raspberry Pi 4 | glcore       | GLES 3.1     | 🔲 todo | VideoCore VI; needs field check             |
 
 ## Known issues / gaps
 
@@ -37,12 +37,14 @@ RetroArch installation or a real OpenGL ES driver stack.
 - **Shadow FBO on older GLES**: `GL_DEPTH_COMPONENT16` + dummy RGB565 RBO
   matches what older Mali/Adreno drivers require for depth-only FBO completeness.
   Tested on Mesa softpipe; real Adreno/Mali coverage still needed.
-- **Post-processing FBO**: Uses `glBlitFramebuffer`; may fail on GLES 2 drivers
-  that lack the extension. Core targets GLES 3.1 — no GLES 2 fallback planned.
+- **Post-processing FBO**: Core targets GLES 3.1. The post target now attempts
+  `RGBA16F` for HDR bloom and falls back to `RGBA8` if the framebuffer is
+  incomplete. Real mobile/embedded drivers should verify this fallback path.
 
 ## How to update this file
 
 When you smoke-test on a new platform, add a row to the matrix above with:
+
 - Platform + GPU/driver version
 - Video driver selected in RetroArch
 - GLES version reported (check RetroArch log)
@@ -70,3 +72,11 @@ real-driver integration notes only.
   meshes to a back-to-front pass with depth writes disabled:
   - `retroarch/build/gles-transparent-z-sort.png`
   - `retroarch/build/demoscene-zsort-smoke.png`
+
+## 2026-05-21 note
+
+- HDR/multi-mip bloom was validated under Mesa llvmpipe through the GLES harness.
+  The post log reported `format=RGBA16F` and `bloom_mips=5`.
+- Windows cross-build passed, but real Windows/AMD RetroArch smoke should verify
+  that the `RGBA16F` path is accepted and that the `RGBA8` fallback behaves
+  cleanly if a driver rejects float color attachments.

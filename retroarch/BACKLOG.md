@@ -66,8 +66,8 @@ per-program VAO and only change uniforms + draw per call.
    - Settings → Video → Synchronization → **Hard GPU Sync** = OFF
    - Settings → Drivers → **Threaded Video** = OFF
 3. **VAO refactor** for the cube/sphere/torus path. Configure vertex
-   attribs once at program init. Per-draw: `glBindVertexArray` + uniforms
-   + `DrawElements` only. Expected: 5–10× speedup on AMD.
+   attribs once at program init. Per draw, bind the VAO, update uniforms,
+   and call `DrawElements` only. Expected: 5–10× speedup on AMD.
 4. Re-measure with the FPS overlay after each change.
 
 ### Diagnostic infra already in tree (no work needed to repro)
@@ -81,6 +81,7 @@ per-program VAO and only change uniforms + draw per call.
 - Color preview swatch: `c:\tmp\fps_swatch_preview.png`
 
 ### MemPalace context
+
 - Topic: `nova64-windows-perf-3d-mesh-pass-bottleneck` (2026-05-21)
 - Topic: `nova64-catchup-after-codex-textfx` (2026-05-20)
 
@@ -91,6 +92,7 @@ per-program VAO and only change uniforms + draw per call.
 In rough priority order; pick what fits the user's mood.
 
 ### Parity / polish
+
 - **Larger font variant** — 8×16 or doubled 5×7 for titles. Useful for HUD
   text that wants more weight.
 - **Variable-width characters** — narrow `i` (3 cols), wide `m` (5 cols);
@@ -105,15 +107,17 @@ In rough priority order; pick what fits the user's mood.
   weights, and scene-specific emissive values against current captures.
 
 ### Cleanup / technical debt
+
 - **Re-baseline conformance checksums.** The lowercase-font + `/` glyph
   fixes shift hashes for any cart that prints text. Codex flagged cart
   `536 draw text shapes` (`actual=2e174a2556f278f8`); others likely
   affected. Sweep and re-run conformance to update expected hashes.
-- **Delete stale files** in working tree root: `retroarch/nova64_libretro_nohw.c`,
-  `retroarch/nova64_libretro_hw.c.bak`, `retroarch/nova64_libretro.c.bak`,
-  `retroarch/torus_capture.ppm`, `shot_959.png`.
+- **Keep docs tidy.** `retroarch/README.md` is the stable folder README,
+  `HANDOFF_HWGL.md` is the active implementation handoff, `HANDOFF.md` is only
+  a short index, and generated captures/binaries should stay untracked.
 
 ### Driver / platform coverage
+
 - **Fill out `GLES_SMOKE_MATRIX.md`** — real-hardware smoke tests for
   Linux `gl` driver, Vulkan, Android, Raspberry Pi 4. Currently only
   Mesa softpipe + glcore are ✅ passed.
@@ -149,3 +153,5 @@ The last session arc closed out:
 - ★ Per-stage perf telemetry (post / overlay convert / overlay upload / overlay draw)
 - ★ Diagnostic frame-0 one-shot log
 - ★ HDR post target (`RGBA16F` with `RGBA8` fallback) + guarded 5-mip bloom chain
+- ★ RetroArch docs cleanup: folder-local README, short handoff index, stale
+  tracked backup/capture files removed

@@ -3,6 +3,45 @@
 This is a memory/progress note for MemPalace mining, not a replacement for the
 canonical repository instructions in `../AGENTS.md`.
 
+## 2026-05-20 - HWGL handoff review checkpoint
+
+### MemPalace / MCP status
+- Repo wiring is present: `.vscode/mcp.json` launches `mempalace-mcp` through
+  WSL, and `AGENTS.md`, `README.md`, and `package.json` document the workflow.
+- `pnpm run mempalace:status`, `pnpm run mempalace:wake`, and
+  `pnpm run mempalace:repair-status` were run from WSL with Node 20.
+- The late handover diary entry `nova64-session-handover-late-2026-05-20`
+  was retrieved from `wing_claude/diary`. Repair status still reports unknown
+  HNSW flushed metadata, so keep checking status if retrieval looks odd.
+
+### Current RetroArch parity state
+- Working tree is intentionally dirty with the late handoff changes:
+  `retroarch/HANDOFF_HWGL.md`, `retroarch/games/demoscene.js`, and
+  `retroarch/nova64_libretro.c`.
+- Linux libretro build passes after the handoff edits.
+- `make -C retroarch harness` was needed because `make clean all` removes the
+  harness binary used by the visual comparator.
+- Fresh visual comparator result:
+  `average=44.1`, `strictAverage=42.6`.
+- The post FBO allocation currently uses `NOVA64_WIDTH x NOVA64_HEIGHT`
+  (640x360) in source, so the Windows performance investigation should log the
+  post allocation, HW framebuffer id, viewport, and frontend output size rather
+  than assuming the post target itself is window-sized.
+
+### Follow-up feature/bug pass
+- User asked to prioritize feature creation and bug fixing over spending much
+  more time on the Windows slowdown.
+- Fixed scene 2 lane bars: a `setPosition(...)` call was missing the mesh
+  handle, so one group of city accent meshes was not being positioned.
+- Added deterministic scene-2 light cycles with separate glowing trail meshes,
+  matching a browser demoscene feature while keeping the object count bounded.
+- Kept the perf work lightweight: `NOVA64_PERF=1` now breaks out post pass,
+  overlay conversion, overlay upload, and overlay draw timing.
+- Fixed the overlay draw-call counter double-counting one fullscreen overlay
+  draw as two draw calls.
+- Build passed. Fresh visual comparator after light cycles:
+  `average=43.0`, `strictAverage=41.4`.
+
 - Use WSL for Nova64 repo work on Windows.
 - Before `pnpm` commands, run `nvm use 20`.
 - Use `pnpm`, not npm or yarn.

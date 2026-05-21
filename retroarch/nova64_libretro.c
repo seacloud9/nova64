@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <ctype.h>
 #ifdef _WIN32
 #include <direct.h>
 #define WIN32_LEAN_AND_MEAN
@@ -547,6 +548,13 @@ struct nova64_gles_backend {
    GLint skybox_inv_view_proj_uniform;
    GLint skybox_texture_uniform;
    bool skybox_resources_ready;
+   /* Two-colour sky gradient program (used when setSkyColor is set but no
+      skybox texture is bound). */
+   GLuint sky_gradient_program;
+   GLint  sky_gradient_position_attrib;
+   GLint  sky_gradient_top_uniform;
+   GLint  sky_gradient_bottom_uniform;
+   bool   sky_gradient_resources_ready;
 };
 
 static retro_environment_t environ_cb;
@@ -637,6 +645,14 @@ struct nova64_core_perf_state {
    uint64_t render_max_us;
    uint64_t frame_total_us;
    uint64_t frame_max_us;
+   uint64_t post_total_us;
+   uint64_t post_max_us;
+   uint64_t overlay_convert_total_us;
+   uint64_t overlay_convert_max_us;
+   uint64_t overlay_upload_total_us;
+   uint64_t overlay_upload_max_us;
+   uint64_t overlay_draw_total_us;
+   uint64_t overlay_draw_max_us;
    uint64_t instance_transform_calls;
    uint64_t draw_calls;
    uint64_t overlay_uploads;
@@ -645,6 +661,10 @@ static struct nova64_core_perf_state core_perf;
 static uint64_t core_perf_frame_instance_transform_calls;
 static uint64_t core_perf_frame_draw_calls;
 static uint64_t core_perf_frame_overlay_uploads;
+static uint64_t core_perf_frame_post_us;
+static uint64_t core_perf_frame_overlay_convert_us;
+static uint64_t core_perf_frame_overlay_upload_us;
+static uint64_t core_perf_frame_overlay_draw_us;
 static char renderer_command_log_path[1024];
 static char storage_save_directory[1024];
 static char storage_cart_id[128];
@@ -1609,6 +1629,14 @@ static float listener_pos[3]; /* defaults 0,0,0; update with setListenerPos */
 static bool g_developer_mode = false;
 static unsigned g_res_width  = NOVA64_WIDTH;
 static unsigned g_res_height = NOVA64_HEIGHT;
+
+/* On-screen FPS overlay (toggle: Shift+F). Measured over a 500 ms window. */
+static bool     g_fps_overlay_enabled = false;
+static uint64_t g_fps_window_start_us = 0;
+static unsigned g_fps_window_frames   = 0;
+static float    g_fps_value           = 0.0f;
+static uint64_t g_fps_last_frame_us   = 0;
+static float    g_fps_last_frame_ms   = 0.0f;
 
 /* RetroAchievements cart RAM (8J) — 256 bytes exposed via SET_MEMORY_MAPS */
 #define NOVA64_CHEEVOS_RAM_SIZE 256
@@ -2856,13 +2884,44 @@ static uint8_t glyph_row(char ch, int row)
       {0x11, 0x11, 0x0a, 0x04, 0x04, 0x04, 0x04},
       {0x1f, 0x01, 0x02, 0x04, 0x08, 0x10, 0x1f},
    };
+   /* Lowercase 5×7 — fits in the same row count as uppercase by shrinking
+      x-height letters to rows 2-6 and giving ascenders/descenders the full
+      7 rows. Descender letters (g/j/p/q/y) reuse row 6 as their tail. */
+   static const uint8_t lowers[26][7] = {
+      {0x00, 0x00, 0x0e, 0x02, 0x0f, 0x11, 0x0f},  /* a */
+      {0x10, 0x10, 0x1e, 0x11, 0x11, 0x11, 0x1e},  /* b */
+      {0x00, 0x00, 0x0f, 0x10, 0x10, 0x10, 0x0f},  /* c */
+      {0x01, 0x01, 0x0f, 0x11, 0x11, 0x11, 0x0f},  /* d */
+      {0x00, 0x00, 0x0e, 0x11, 0x1f, 0x10, 0x0e},  /* e */
+      {0x06, 0x08, 0x1c, 0x08, 0x08, 0x08, 0x08},  /* f */
+      {0x00, 0x00, 0x0f, 0x11, 0x0f, 0x01, 0x0e},  /* g (descender) */
+      {0x10, 0x10, 0x1e, 0x11, 0x11, 0x11, 0x11},  /* h */
+      {0x04, 0x00, 0x04, 0x04, 0x04, 0x04, 0x04},  /* i (with dot) */
+      {0x02, 0x00, 0x02, 0x02, 0x02, 0x02, 0x0c},  /* j (dot + tail) */
+      {0x10, 0x10, 0x12, 0x14, 0x18, 0x14, 0x12},  /* k */
+      {0x0c, 0x04, 0x04, 0x04, 0x04, 0x04, 0x0e},  /* l */
+      {0x00, 0x00, 0x1a, 0x15, 0x15, 0x15, 0x15},  /* m */
+      {0x00, 0x00, 0x1e, 0x11, 0x11, 0x11, 0x11},  /* n */
+      {0x00, 0x00, 0x0e, 0x11, 0x11, 0x11, 0x0e},  /* o */
+      {0x00, 0x00, 0x1e, 0x11, 0x11, 0x1e, 0x10},  /* p (descender) */
+      {0x00, 0x00, 0x0f, 0x11, 0x11, 0x0f, 0x01},  /* q (descender) */
+      {0x00, 0x00, 0x16, 0x18, 0x10, 0x10, 0x10},  /* r */
+      {0x00, 0x00, 0x0f, 0x10, 0x0e, 0x01, 0x1e},  /* s */
+      {0x08, 0x08, 0x1c, 0x08, 0x08, 0x08, 0x06},  /* t */
+      {0x00, 0x00, 0x11, 0x11, 0x11, 0x11, 0x0f},  /* u */
+      {0x00, 0x00, 0x11, 0x11, 0x11, 0x0a, 0x04},  /* v */
+      {0x00, 0x00, 0x11, 0x11, 0x15, 0x15, 0x0a},  /* w */
+      {0x00, 0x00, 0x11, 0x0a, 0x04, 0x0a, 0x11},  /* x */
+      {0x00, 0x00, 0x11, 0x11, 0x0f, 0x01, 0x1e},  /* y (descender) */
+      {0x00, 0x00, 0x1f, 0x02, 0x04, 0x08, 0x1f},  /* z */
+   };
 
    if (row < 0 || row >= 7)
       return 0;
    if (ch >= '0' && ch <= '9')
       return digits[ch - '0'][row];
    if (ch >= 'a' && ch <= 'z')
-      ch = (char)(ch - 'a' + 'A');
+      return lowers[ch - 'a'][row];
    if (ch >= 'A' && ch <= 'Z')
       return letters[ch - 'A'][row];
    if (ch == '-')
@@ -2871,8 +2930,121 @@ static uint8_t glyph_row(char ch, int row)
       return row == 6 ? 0x04 : 0x00;
    if (ch == ':')
       return row == 2 || row == 5 ? 0x04 : 0x00;
-   if (ch == '/')
-      return (uint8_t)(0x01 << (6 - row > 4 ? 4 : 6 - row));
+   if (ch == '/') {
+      /* Forward slash: top-right to bottom-left. */
+      static const uint8_t fwd[7] = {0x01, 0x02, 0x04, 0x04, 0x08, 0x10, 0x10};
+      return fwd[row];
+   }
+   if (ch == '\\') {
+      /* Backslash: top-left to bottom-right. */
+      static const uint8_t back[7] = {0x10, 0x08, 0x08, 0x04, 0x04, 0x02, 0x01};
+      return back[row];
+   }
+   /* Extra ASCII punctuation — 5×7 bitmaps, MSB = leftmost column. */
+   if (ch == '\'' || ch == '`') {
+      /* tick at top-center, two rows tall */
+      static const uint8_t apos[7] = {0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00};
+      return apos[row];
+   }
+   if (ch == ',') {
+      /* small comma with tail going down-left */
+      static const uint8_t comma[7] = {0x00, 0x00, 0x00, 0x00, 0x04, 0x04, 0x08};
+      return comma[row];
+   }
+   if (ch == '!') {
+      static const uint8_t bang[7] = {0x04, 0x04, 0x04, 0x04, 0x04, 0x00, 0x04};
+      return bang[row];
+   }
+   if (ch == '?') {
+      static const uint8_t qmark[7] = {0x0e, 0x11, 0x01, 0x02, 0x04, 0x00, 0x04};
+      return qmark[row];
+   }
+   if (ch == '(') {
+      static const uint8_t lp[7] = {0x02, 0x04, 0x04, 0x04, 0x04, 0x04, 0x02};
+      return lp[row];
+   }
+   if (ch == ')') {
+      static const uint8_t rp[7] = {0x08, 0x04, 0x04, 0x04, 0x04, 0x04, 0x08};
+      return rp[row];
+   }
+   if (ch == '[') {
+      static const uint8_t lb[7] = {0x0e, 0x08, 0x08, 0x08, 0x08, 0x08, 0x0e};
+      return lb[row];
+   }
+   if (ch == ']') {
+      static const uint8_t rb[7] = {0x0e, 0x02, 0x02, 0x02, 0x02, 0x02, 0x0e};
+      return rb[row];
+   }
+   if (ch == '{') {
+      static const uint8_t lc[7] = {0x06, 0x08, 0x08, 0x10, 0x08, 0x08, 0x06};
+      return lc[row];
+   }
+   if (ch == '}') {
+      static const uint8_t rc[7] = {0x0c, 0x02, 0x02, 0x01, 0x02, 0x02, 0x0c};
+      return rc[row];
+   }
+   if (ch == '|') {
+      static const uint8_t pipe[7] = {0x04, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04};
+      return pipe[row];
+   }
+   if (ch == '^') {
+      static const uint8_t caret[7] = {0x04, 0x0a, 0x11, 0x00, 0x00, 0x00, 0x00};
+      return caret[row];
+   }
+   if (ch == '~') {
+      static const uint8_t tilde[7] = {0x00, 0x00, 0x0a, 0x15, 0x05, 0x00, 0x00};
+      return tilde[row];
+   }
+   if (ch == '$') {
+      static const uint8_t dollar[7] = {0x04, 0x0f, 0x14, 0x0e, 0x05, 0x1e, 0x04};
+      return dollar[row];
+   }
+   if (ch == '"') {
+      static const uint8_t dq[7] = {0x0a, 0x0a, 0x00, 0x00, 0x00, 0x00, 0x00};
+      return dq[row];
+   }
+   if (ch == ';') {
+      static const uint8_t semi[7] = {0x00, 0x00, 0x04, 0x00, 0x00, 0x04, 0x08};
+      return semi[row];
+   }
+   if (ch == '+') {
+      static const uint8_t plus[7] = {0x00, 0x00, 0x04, 0x0e, 0x04, 0x00, 0x00};
+      return plus[row];
+   }
+   if (ch == '=') {
+      static const uint8_t eq[7] = {0x00, 0x00, 0x1f, 0x00, 0x1f, 0x00, 0x00};
+      return eq[row];
+   }
+   if (ch == '_')
+      return row == 6 ? 0x1f : 0x00;
+   if (ch == '*') {
+      static const uint8_t star[7] = {0x00, 0x15, 0x0e, 0x1f, 0x0e, 0x15, 0x00};
+      return star[row];
+   }
+   if (ch == '#') {
+      static const uint8_t hash[7] = {0x0a, 0x0a, 0x1f, 0x0a, 0x1f, 0x0a, 0x0a};
+      return hash[row];
+   }
+   if (ch == '%') {
+      static const uint8_t pct[7] = {0x19, 0x19, 0x02, 0x04, 0x08, 0x13, 0x13};
+      return pct[row];
+   }
+   if (ch == '&') {
+      static const uint8_t amp[7] = {0x0c, 0x12, 0x12, 0x0c, 0x15, 0x12, 0x0d};
+      return amp[row];
+   }
+   if (ch == '<') {
+      static const uint8_t lt[7] = {0x00, 0x02, 0x04, 0x08, 0x04, 0x02, 0x00};
+      return lt[row];
+   }
+   if (ch == '>') {
+      static const uint8_t gt[7] = {0x00, 0x08, 0x04, 0x02, 0x04, 0x08, 0x00};
+      return gt[row];
+   }
+   if (ch == '@') {
+      static const uint8_t at[7] = {0x0e, 0x11, 0x17, 0x15, 0x17, 0x10, 0x0e};
+      return at[row];
+   }
    return ch == ' ' ? 0x00 : 0x1f;
 }
 
@@ -24157,6 +24329,10 @@ static void core_perf_begin_frame(void)
    core_perf_frame_instance_transform_calls = 0;
    core_perf_frame_draw_calls = 0;
    core_perf_frame_overlay_uploads = 0;
+   core_perf_frame_post_us = 0;
+   core_perf_frame_overlay_convert_us = 0;
+   core_perf_frame_overlay_upload_us = 0;
+   core_perf_frame_overlay_draw_us = 0;
 }
 
 static void core_perf_record_frame(uint64_t cart_us, uint64_t render_us, uint64_t frame_us)
@@ -24174,15 +24350,27 @@ static void core_perf_record_frame(uint64_t cart_us, uint64_t render_us, uint64_
       core_perf.render_max_us = render_us;
    if (frame_us > core_perf.frame_max_us)
       core_perf.frame_max_us = frame_us;
+   core_perf.post_total_us += core_perf_frame_post_us;
+   if (core_perf_frame_post_us > core_perf.post_max_us)
+      core_perf.post_max_us = core_perf_frame_post_us;
+   core_perf.overlay_convert_total_us += core_perf_frame_overlay_convert_us;
+   if (core_perf_frame_overlay_convert_us > core_perf.overlay_convert_max_us)
+      core_perf.overlay_convert_max_us = core_perf_frame_overlay_convert_us;
+   core_perf.overlay_upload_total_us += core_perf_frame_overlay_upload_us;
+   if (core_perf_frame_overlay_upload_us > core_perf.overlay_upload_max_us)
+      core_perf.overlay_upload_max_us = core_perf_frame_overlay_upload_us;
+   core_perf.overlay_draw_total_us += core_perf_frame_overlay_draw_us;
+   if (core_perf_frame_overlay_draw_us > core_perf.overlay_draw_max_us)
+      core_perf.overlay_draw_max_us = core_perf_frame_overlay_draw_us;
    core_perf.instance_transform_calls += core_perf_frame_instance_transform_calls;
    core_perf.draw_calls += core_perf_frame_draw_calls;
    core_perf.overlay_uploads += core_perf_frame_overlay_uploads;
 
    if (core_perf.interval_frames >= 60) {
       unsigned frames = core_perf.interval_frames;
-      char message[512];
+      char message[768];
       snprintf(message, sizeof(message),
-         "[nova64-perf] frames=%u cart_us avg=%llu max=%llu render_us avg=%llu max=%llu frame_us avg=%llu max=%llu inst_xform/frame=%llu draw_calls/frame=%llu overlay_uploads/frame=%llu",
+         "[nova64-perf] frames=%u cart_us avg=%llu max=%llu render_us avg=%llu max=%llu frame_us avg=%llu max=%llu post_us avg=%llu max=%llu overlay_convert_us avg=%llu max=%llu overlay_upload_us avg=%llu max=%llu overlay_draw_us avg=%llu max=%llu inst_xform/frame=%llu draw_calls/frame=%llu overlay_uploads/frame=%llu",
          frames,
          (unsigned long long)(core_perf.cart_total_us / frames),
          (unsigned long long)core_perf.cart_max_us,
@@ -24190,6 +24378,14 @@ static void core_perf_record_frame(uint64_t cart_us, uint64_t render_us, uint64_
          (unsigned long long)core_perf.render_max_us,
          (unsigned long long)(core_perf.frame_total_us / frames),
          (unsigned long long)core_perf.frame_max_us,
+         (unsigned long long)(core_perf.post_total_us / frames),
+         (unsigned long long)core_perf.post_max_us,
+         (unsigned long long)(core_perf.overlay_convert_total_us / frames),
+         (unsigned long long)core_perf.overlay_convert_max_us,
+         (unsigned long long)(core_perf.overlay_upload_total_us / frames),
+         (unsigned long long)core_perf.overlay_upload_max_us,
+         (unsigned long long)(core_perf.overlay_draw_total_us / frames),
+         (unsigned long long)core_perf.overlay_draw_max_us,
          (unsigned long long)(core_perf.instance_transform_calls / frames),
          (unsigned long long)(core_perf.draw_calls / frames),
          (unsigned long long)(core_perf.overlay_uploads / frames));
@@ -29915,6 +30111,16 @@ static void update_input(void)
          key_held[code] = input_state_cb(0, RETRO_DEVICE_KEYBOARD, 0, (unsigned)code) != 0;
    }
 
+   /* Shift+F toggles the on-screen FPS overlay. Trigger on the edge where F
+      transitions from up to down while either Shift is held. */
+   {
+      bool shift_held = key_held[NOVA64_RETROK_LSHIFT] || key_held[NOVA64_RETROK_RSHIFT];
+      bool f_now  = key_held[102];        /* 'f' */
+      bool f_prev = key_prev_held[102];
+      if (shift_held && f_now && !f_prev)
+         g_fps_overlay_enabled = !g_fps_overlay_enabled;
+   }
+
    memcpy(mouse_prev_btns, mouse_btns, sizeof(mouse_btns));
    mouse_rel_x = (int32_t)input_state_cb(0, RETRO_DEVICE_MOUSE, 0, NOVA64_MOUSE_X);
    mouse_rel_y = (int32_t)input_state_cb(0, RETRO_DEVICE_MOUSE, 0, NOVA64_MOUSE_Y);
@@ -31771,6 +31977,93 @@ static void render_gles_instanced_mesh(const struct nova64_mesh *mesh, const flo
 
 /* ---- Equirectangular skybox ------------------------------------------------ */
 
+static bool gles_create_sky_gradient_program(void)
+{
+   static const char *vertex_source =
+      "#version 300 es\nprecision highp float;\n"
+      "in vec2 a_position;\n"
+      "out vec2 v_ndc;\n"
+      "void main() {\n"
+      "  v_ndc = a_position;\n"
+      "  gl_Position = vec4(a_position, 0.999, 1.0);\n"
+      "}\n";
+   static const char *fragment_source =
+      "#version 300 es\nprecision highp float;\n"
+      "in vec2 v_ndc;\n"
+      "uniform vec4 u_top;\n"
+      "uniform vec4 u_bottom;\n"
+      "out vec4 fragColor;\n"
+      "void main() {\n"
+      /* v_ndc.y in [-1, +1]; t=0 at bottom, t=1 at top. smoothstep softens
+         the horizon line so it doesn't look like a hard mid-screen split. */
+      "  float t = clamp(v_ndc.y * 0.5 + 0.5, 0.0, 1.0);\n"
+      "  t = smoothstep(0.0, 1.0, t);\n"
+      "  fragColor = mix(u_bottom, u_top, t);\n"
+      "}\n";
+
+   GLuint vertex   = gles_compile_shader(GL_VERTEX_SHADER, vertex_source);
+   GLuint fragment = gles_compile_shader(GL_FRAGMENT_SHADER, fragment_source);
+   if (!vertex || !fragment) {
+      if (vertex)   gles.DeleteShader(vertex);
+      if (fragment) gles.DeleteShader(fragment);
+      return false;
+   }
+   GLuint program = gles.CreateProgram();
+   gles.AttachShader(program, vertex);
+   gles.AttachShader(program, fragment);
+   gles.LinkProgram(program);
+   gles.DeleteShader(vertex);
+   gles.DeleteShader(fragment);
+   GLint status = 0;
+   gles.GetProgramiv(program, GL_LINK_STATUS, &status);
+   if (!status) {
+      gles.DeleteProgram(program);
+      nova64_log_line(RETRO_LOG_WARN, "[nova64] sky gradient program link failed");
+      return false;
+   }
+   gles.sky_gradient_program           = program;
+   gles.sky_gradient_position_attrib   = gles.GetAttribLocation(program, "a_position");
+   gles.sky_gradient_top_uniform       = gles.GetUniformLocation(program, "u_top");
+   gles.sky_gradient_bottom_uniform    = gles.GetUniformLocation(program, "u_bottom");
+   gles.sky_gradient_resources_ready   = true;
+   return gles.sky_gradient_position_attrib >= 0;
+}
+
+static void render_gles_sky_gradient(void)
+{
+   if (!sky_color_enabled)
+      return;
+   if (!gles.sky_gradient_resources_ready) {
+      if (!gles_create_sky_gradient_program())
+         return;
+   }
+
+   float tr = (float)((sky_top_color    >> 24) & 0xffU) / 255.0f;
+   float tg = (float)((sky_top_color    >> 16) & 0xffU) / 255.0f;
+   float tb = (float)((sky_top_color    >>  8) & 0xffU) / 255.0f;
+   float br = (float)((sky_bottom_color >> 24) & 0xffU) / 255.0f;
+   float bg = (float)((sky_bottom_color >> 16) & 0xffU) / 255.0f;
+   float bb = (float)((sky_bottom_color >>  8) & 0xffU) / 255.0f;
+
+   gles.Disable(GL_DEPTH_TEST);
+   gles.DepthMask(GL_FALSE);
+   gles.UseProgram(gles.sky_gradient_program);
+   gles.Uniform4f(gles.sky_gradient_top_uniform,    tr, tg, tb, 1.0f);
+   gles.Uniform4f(gles.sky_gradient_bottom_uniform, br, bg, bb, 1.0f);
+
+   gles.BindBuffer(GL_ARRAY_BUFFER, gles.overlay_vbo);
+   gles.BindBuffer(GL_ELEMENT_ARRAY_BUFFER, gles.overlay_ibo);
+   gles.EnableVertexAttribArray((GLuint)gles.sky_gradient_position_attrib);
+   gles.VertexAttribPointer((GLuint)gles.sky_gradient_position_attrib, 2, GL_FLOAT, GL_FALSE,
+      (GLsizei)(sizeof(GLfloat) * 4), NULL);
+   core_perf_frame_draw_calls++;
+   gles.DrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, NULL);
+   gles.DisableVertexAttribArray((GLuint)gles.sky_gradient_position_attrib);
+
+   gles.DepthMask(GL_TRUE);
+   gles.Enable(GL_DEPTH_TEST);
+}
+
 static bool gles_create_skybox_program(void)
 {
    static const char *vertex_source =
@@ -31829,6 +32122,10 @@ static void gles_destroy_skybox_resources(void)
       gles.DeleteProgram(gles.skybox_program);
    gles.skybox_program = 0;
    gles.skybox_resources_ready = false;
+   if (gles.sky_gradient_program && gles.DeleteProgram)
+      gles.DeleteProgram(gles.sky_gradient_program);
+   gles.sky_gradient_program = 0;
+   gles.sky_gradient_resources_ready = false;
 }
 
 /* Renders a full-screen equirectangular skybox using the texture at
@@ -31836,11 +32133,18 @@ static void gles_destroy_skybox_resources(void)
    geometry so depth writes overwrite the background pixels. */
 static void render_gles_skybox(const float view[16], const float projection[16])
 {
-   if (g_skybox_tex_handle <= 0)
+   /* No equirectangular texture? Fall back to the two-colour gradient if the
+      cart has set one. The gradient runs *before* the textured skybox path
+      so a texture, when present, overrides it. */
+   if (g_skybox_tex_handle <= 0) {
+      render_gles_sky_gradient();
       return;
+   }
    struct nova64_texture *tex = texture_from_handle(g_skybox_tex_handle);
-   if (!tex || !tex->gl_name)
+   if (!tex || !tex->gl_name) {
+      render_gles_sky_gradient();
       return;
+   }
 
    if (!gles.skybox_resources_ready) {
       if (!gles_create_skybox_program())
@@ -31877,13 +32181,25 @@ static void render_gles_skybox(const float view[16], const float projection[16])
 
 static void render_gles_overlay(void)
 {
+   bool perf_frame = core_perf_enabled();
+   uint64_t t0 = perf_frame ? core_perf_now_us() : 0;
    if (!convert_framebuffer_to_overlay_rgba())
       return;
+   if (perf_frame) {
+      uint64_t t1 = core_perf_now_us();
+      core_perf_frame_overlay_convert_us += t1 - t0;
+      t0 = t1;
+   }
    gles.ActiveTexture(GL_TEXTURE0);
    gles.BindTexture(GL_TEXTURE_2D, gles.overlay_texture);
    gles.TexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, NOVA64_WIDTH, NOVA64_HEIGHT,
       GL_RGBA, GL_UNSIGNED_BYTE, overlay_rgba_framebuffer);
    core_perf_frame_overlay_uploads++;
+   if (perf_frame) {
+      uint64_t t1 = core_perf_now_us();
+      core_perf_frame_overlay_upload_us += t1 - t0;
+      t0 = t1;
+   }
 
    gles.Disable(GL_DEPTH_TEST);
    gles.Enable(GL_BLEND);
@@ -31899,12 +32215,13 @@ static void render_gles_overlay(void)
    gles.VertexAttribPointer((GLuint)gles.overlay_uv_attrib, 2, GL_FLOAT, GL_FALSE,
       (GLsizei)(sizeof(GLfloat) * 4), (const void *)(sizeof(GLfloat) * 2));
    core_perf_frame_draw_calls++;
-   core_perf_frame_draw_calls++;
    gles.DrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, NULL);
    gles.DisableVertexAttribArray((GLuint)gles.overlay_uv_attrib);
    gles.DisableVertexAttribArray((GLuint)gles.overlay_position_attrib);
    gles.Disable(GL_BLEND);
    gles.Enable(GL_DEPTH_TEST);
+   if (perf_frame)
+      core_perf_frame_overlay_draw_us += core_perf_now_us() - t0;
 }
 
 static bool gles_has_fbo_procs(void)
@@ -31944,7 +32261,10 @@ static bool gles_create_post_program(void)
       "  return dot(c, vec3(0.299, 0.587, 0.114));\n"
       "}\n"
       "vec3 post_bright(vec3 c) {\n"
-      "  return c * smoothstep(0.58, 0.98, post_luma(c));\n"
+      /* Brightpass: keep some contribution from mid-tones so the bloom
+         spreads broadly like Three.js UnrealBloomPass instead of only
+         haloing the very brightest pixels. */
+      "  return c * smoothstep(0.32, 0.85, post_luma(c));\n"
       "}\n"
       "void main() {\n"
       "  vec2 uv = v_uv;\n"
@@ -31989,22 +32309,35 @@ static bool gles_create_post_program(void)
       "    else\n"
       "      color = texture(u_scene, uv);\n"
       "  }\n"
-      /* bloom: restrained bright-pass blur in one fullscreen pass */
+      /* Bloom: 13-tap single-pass approximation of Three.js UnrealBloomPass.
+         Wider kernel + larger weights than before so halos spread softly
+         instead of staying tight on the brightest pixels.
+
+         TODO(explore-later): for a much closer match to UnrealBloomPass at
+         comparable or better perf, swap this for a multi-mip approach —
+         brightpass → downsample to 5 mip levels at 1/2, 1/4, 1/8, 1/16,
+         1/32 → 2-pass separable Gaussian per level → upsample/combine.
+         Cuts texture reads per output pixel and produces much wider, softer
+         halos than a single-pass kernel can. Also consider promoting the
+         post FBO to RGBA16F so HDR brightness > 1.0 survives until the
+         final tonemap, giving the proper bloom rolloff the web reference
+         has. See MemPalace diary topic 'nova64-bloom-tuning-three-js-style'
+         (2026-05-20) for context. */
       "  if (u_bloom > 0.0) {\n"
-      "    vec3 bloom = post_bright(center.rgb) * 0.06;\n"
-      "    bloom += (post_bright(texture(u_scene, uv + vec2(texel.x * 3.0, 0.0)).rgb)\n"
-      "            + post_bright(texture(u_scene, uv - vec2(texel.x * 3.0, 0.0)).rgb)\n"
-      "            + post_bright(texture(u_scene, uv + vec2(0.0, texel.y * 3.0)).rgb)\n"
-      "            + post_bright(texture(u_scene, uv - vec2(0.0, texel.y * 3.0)).rgb)) * 0.035;\n"
-      "    bloom += (post_bright(texture(u_scene, uv + vec2(texel.x * 8.0, texel.y * 5.0)).rgb)\n"
-      "            + post_bright(texture(u_scene, uv + vec2(-texel.x * 8.0, texel.y * 5.0)).rgb)\n"
-      "            + post_bright(texture(u_scene, uv + vec2(texel.x * 8.0, -texel.y * 5.0)).rgb)\n"
-      "            + post_bright(texture(u_scene, uv + vec2(-texel.x * 8.0, -texel.y * 5.0)).rgb)) * 0.025;\n"
-      "    bloom += (post_bright(texture(u_scene, uv + vec2(texel.x * 15.0, 0.0)).rgb)\n"
-      "            + post_bright(texture(u_scene, uv - vec2(texel.x * 15.0, 0.0)).rgb)\n"
-      "            + post_bright(texture(u_scene, uv + vec2(0.0, texel.y * 15.0)).rgb)\n"
-      "            + post_bright(texture(u_scene, uv - vec2(0.0, texel.y * 15.0)).rgb)) * 0.015;\n"
-      "    color.rgb += bloom * min(u_bloom, 3.0) * 0.55;\n"
+      "    vec3 bloom = post_bright(center.rgb) * 0.16;\n"
+      "    bloom += (post_bright(texture(u_scene, uv + vec2(texel.x * 4.0, 0.0)).rgb)\n"
+      "            + post_bright(texture(u_scene, uv - vec2(texel.x * 4.0, 0.0)).rgb)\n"
+      "            + post_bright(texture(u_scene, uv + vec2(0.0, texel.y * 4.0)).rgb)\n"
+      "            + post_bright(texture(u_scene, uv - vec2(0.0, texel.y * 4.0)).rgb)) * 0.10;\n"
+      "    bloom += (post_bright(texture(u_scene, uv + vec2(texel.x * 10.0, texel.y * 6.0)).rgb)\n"
+      "            + post_bright(texture(u_scene, uv + vec2(-texel.x * 10.0, texel.y * 6.0)).rgb)\n"
+      "            + post_bright(texture(u_scene, uv + vec2(texel.x * 10.0, -texel.y * 6.0)).rgb)\n"
+      "            + post_bright(texture(u_scene, uv + vec2(-texel.x * 10.0, -texel.y * 6.0)).rgb)) * 0.07;\n"
+      "    bloom += (post_bright(texture(u_scene, uv + vec2(texel.x * 18.0, 0.0)).rgb)\n"
+      "            + post_bright(texture(u_scene, uv - vec2(texel.x * 18.0, 0.0)).rgb)\n"
+      "            + post_bright(texture(u_scene, uv + vec2(0.0, texel.y * 18.0)).rgb)\n"
+      "            + post_bright(texture(u_scene, uv - vec2(0.0, texel.y * 18.0)).rgb)) * 0.045;\n"
+      "    color.rgb += bloom * min(u_bloom, 4.0) * 1.0;\n"
       "  }\n"
       /* posterize: quantize to N levels */
       "  if (u_posterize > 1) {\n"
@@ -32132,6 +32465,8 @@ static bool gles_init_post_resources(void)
    Uses the same overlay VBO/IBO quad (reused geometry, different program). */
 static void render_gles_post_pass(GLuint hw_fbo)
 {
+   bool perf_frame = core_perf_enabled();
+   uint64_t t0 = perf_frame ? core_perf_now_us() : 0;
    gles.BindFramebuffer(GL_FRAMEBUFFER, hw_fbo);
    gles.Viewport(0, 0, NOVA64_WIDTH, NOVA64_HEIGHT);
    gles.Disable(GL_DEPTH_TEST);
@@ -32177,6 +32512,8 @@ static void render_gles_post_pass(GLuint hw_fbo)
    gles.DisableVertexAttribArray((GLuint)gles.post_position_attrib);
    gles.BindTexture(GL_TEXTURE_2D, 0);
    gles.Enable(GL_DEPTH_TEST);
+   if (perf_frame)
+      core_perf_frame_post_us += core_perf_now_us() - t0;
 }
 
 static void render_gles_scene(void)
@@ -33350,6 +33687,37 @@ void RETRO_CALLCONV retro_run(void)
       for (int ci = 0; ci < g_dev_con_count; ci++) {
          int ridx = (g_dev_con_head + ci) % NOVA64_DEV_CON_LINES;
          draw_text_pixels(g_dev_con[ridx], 2, con_y + ci * 10, rgba8(0, 220, 255, 255));
+      }
+   }
+
+   /* FPS overlay (toggle: Shift+F). Counts frames over a 500 ms wall-clock
+      window so the displayed value reflects real call-rate even when frames
+      take less than 1/60 s — not a target rate. */
+   {
+      uint64_t now_us = core_perf_now_us();
+      if (g_fps_last_frame_us != 0) {
+         g_fps_last_frame_ms = (float)(now_us - g_fps_last_frame_us) / 1000.0f;
+      }
+      g_fps_last_frame_us = now_us;
+
+      if (g_fps_window_start_us == 0)
+         g_fps_window_start_us = now_us;
+      g_fps_window_frames++;
+      uint64_t window_us = now_us - g_fps_window_start_us;
+      if (window_us >= 500000ULL) {
+         g_fps_value = (float)g_fps_window_frames * 1000000.0f / (float)window_us;
+         g_fps_window_start_us = now_us;
+         g_fps_window_frames   = 0;
+      }
+
+      if (g_fps_overlay_enabled && framebuffer) {
+         char fps_text[48];
+         int  fps_int = (int)(g_fps_value + 0.5f);
+         int  ms_int  = (int)(g_fps_last_frame_ms + 0.5f);
+         snprintf(fps_text, sizeof(fps_text), "FPS %d  %d ms", fps_int, ms_int);
+         /* 1px black drop-shadow for legibility over bright scenes */
+         draw_text_pixels(fps_text, 5, 5, rgba8(0, 0, 0, 220));
+         draw_text_pixels(fps_text, 4, 4, rgba8(255, 255, 80, 255));
       }
    }
 

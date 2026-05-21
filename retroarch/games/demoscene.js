@@ -26,6 +26,7 @@ let gridMesh, cityMesh, groundMesh, centralSphere;
 let skyPanel, horizonGlow;
 let gridMeshes = [], gridCells = [], terrainCells = [];
 let rings = [], towers = [], voidSpheres = [], pulseRings = [], dataStreams = [], energyOrbs = [];
+let lightCycles = [];
 let coreBurst = [], burstTimer = 0;
 
 function mat4(sx, sy, sz, tx, ty, tz) {
@@ -66,8 +67,9 @@ function clearScene3D() {
    for (const p of pulseRings)  destroyMesh(p.mesh);
    for (const s of dataStreams) destroyMesh(s.mesh);
    for (const e of energyOrbs)  destroyMesh(e.mesh);
+   for (const c of lightCycles) { destroyMesh(c.body); destroyMesh(c.trail); }
    for (const b of coreBurst)   destroyBurst(b);
-   rings = []; towers = []; voidSpheres = []; pulseRings = []; dataStreams = []; energyOrbs = []; coreBurst = [];
+   rings = []; towers = []; voidSpheres = []; pulseRings = []; dataStreams = []; energyOrbs = []; lightCycles = []; coreBurst = [];
    gridMeshes = []; gridCells = []; terrainCells = [];
    nova64.post.clear();
    clearSkyColor();
@@ -85,9 +87,8 @@ function buildScene0() {
    setFog(rgba8(135, 0, 74, 255), 80, 230);
    setCameraFOV(70);
 
-   skyPanel = createCube(140, 44, 0.2, rgba8(130, 0, 76, 255));
-   setMeshEmissive(skyPanel, rgba8(210, 12, 110, 255), 0.18);
-   setPosition(skyPanel, 0, 20, -130);
+   // skyPanel cube removed — setSkyColor() above now renders a real fullscreen
+   // gradient quad behind the 3D pass.
 
    horizonGlow = createSphere(25, rgba8(220, 255, 255, 255));
    setMeshEmissive(horizonGlow, rgba8(220, 255, 255, 255), 2.8);
@@ -284,9 +285,26 @@ function buildScene2() {
       const col = lanes[i % lanes.length];
       const m = createCube(0.28, 0.22, 8 + rng() * 8, col);
       setMeshEmissive(m, col, 1.25);
-      setPosition((rng() - 0.5) * 40, 0.22, (rng() - 0.5) * 42);
+      setPosition(m, (rng() - 0.5) * 40, 0.22, (rng() - 0.5) * 42);
       setRotation(m, 0, rng() * Math.PI * 2, 0);
       energyOrbs.push({ mesh: m });
+   }
+
+   for (let i = 0; i < 6; i++) {
+      const col = lanes[i % lanes.length];
+      const body = createCube(2.2, 0.55, 1.0, col);
+      const trail = createCube(0.45, 0.35, 8.5, col);
+      const angle = (i / 6) * Math.PI * 2 + rng() * 0.3;
+      setMeshEmissive(body, col, 1.05);
+      setMeshEmissive(trail, col, 0.72);
+      lightCycles.push({
+         body,
+         trail,
+         angle,
+         radius: 24 + rng() * 7,
+         speed: 0.55 + rng() * 0.38,
+         phase: rng() * Math.PI * 2,
+      });
    }
 }
 
@@ -302,9 +320,7 @@ function buildScene3() {
    setFog(rgba8(52, 0, 56, 255), 30, 82);
    setCameraFOV(75);
 
-   skyPanel = createCube(42, 30, 0.25, rgba8(70, 0, 80, 255));
-   setMeshEmissive(skyPanel, rgba8(255, 40, 220, 255), 0.26);
-   setPosition(skyPanel, 0, 1.5, -22);
+   // skyPanel cube removed — setSkyColor() above renders the gradient now.
 
    horizonGlow = createSphere(2.4, rgba8(255, 236, 80, 255));
    setMeshEmissive(horizonGlow, rgba8(255, 236, 80, 255), 2.4);
@@ -566,6 +582,19 @@ export function update(dt) {
          const h = tw.baseH * (0.7 + 0.3*Math.sin(t*1.8 + tw.phase));
          writeMat4(data, off, 2.6, h, 2.6, tw.x, h/2, tw.z);
       });
+      for (const cycle of lightCycles) {
+         cycle.angle += dt * cycle.speed;
+         const wobble = Math.sin(t * 1.4 + cycle.phase) * 1.8;
+         const x = Math.cos(cycle.angle) * (cycle.radius + wobble);
+         const z = Math.sin(cycle.angle) * (cycle.radius + wobble);
+         const yaw = cycle.angle + Math.PI / 2;
+         const trailX = x - Math.cos(yaw) * 4.7;
+         const trailZ = z - Math.sin(yaw) * 4.7;
+         setPosition(cycle.body, x, 0.55, z);
+         setRotation(cycle.body, 0, yaw, 0);
+         setPosition(cycle.trail, trailX, 0.38, trailZ);
+         setRotation(cycle.trail, 0, yaw, 0);
+      }
    }
 
    if (scene === 3) {

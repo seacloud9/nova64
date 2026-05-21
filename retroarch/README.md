@@ -214,10 +214,17 @@ oval(cx, cy, rx, ry, color)
 ovalfill(cx, cy, rx, ry, color)
 tri(x0, y0, x1, y1, x2, y2, color)
 trifill(x0, y0, x1, y1, x2, y2, color)
-print(text, x, y, color [, align])       // align: 'left'|'center'|'right'
+print(text, x, y, color [, scaleOrAlign [, align]])
+printScaled(text, x, y, color [, scale [, align]])
+printTight(text, x, y, color [, align [, scale]])
+printTightScaled(text, x, y, color [, scale [, align]])
 textWidth(text)                           // pixel width of text string
+tightTextWidth(text [, scale])            // trimmed glyph width
 textHeight(text)
 textSize(text)                            // { w, h, lines }
+measureText(text [, scale])               // { width, height, lines }
+printCentered(text, x, y [, color [, scale]])
+printRight(text, x, y [, color [, scale]])
 printShadow(text, x, y, color, shadowColor [, dx [, dy [, align]]])
 printOutline(text, x, y, color, outlineColor [, align])
 spr(path, dx, dy [, imgW, imgH [, sx, sy [, bw, bh [, z]]]])  // blit RGBA/PNG asset; z for depth sort
@@ -643,8 +650,8 @@ screenBlur(radius); // separable box blur over the framebuffer; radius 1–8
 ### Text Alignment
 
 ```js
-printRight(text, x, y [, color])    // right-aligned: text ends at x
-printCentered(text, x, y [, color]) // horizontally centered at x
+printRight(text, x, y [, color [, scale]])    // right-aligned: text ends at x
+printCentered(text, x, y [, color [, scale]]) // horizontally centered at x
 ```
 
 ### Timers
@@ -677,8 +684,8 @@ Up to 8 grids, 4096 cells each. Cells store 32-bit integers.
 ### Text Measurement
 
 ```js
-measureText(text)           // { width, height, lines } in pixels/lines
-printCentered(text, x, y [, color])     // horizontally centered text at x
+measureText(text [, scale])           // { width, height, lines } in pixels/lines
+printCentered(text, x, y [, color [, scale]]) // horizontally centered text at x
 ```
 
 ### Arc Drawing

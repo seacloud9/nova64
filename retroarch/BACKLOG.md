@@ -93,8 +93,6 @@ In rough priority order; pick what fits the user's mood.
 
 ### Parity / polish
 
-- **Larger font variant** — 8×16 or doubled 5×7 for titles. Useful for HUD
-  text that wants more weight.
 - **Variable-width characters** — narrow `i` (3 cols), wide `m` (5 cols);
   improves text density and looks more professional. `printTight()`
   already exists; this would feed into it.
@@ -110,8 +108,10 @@ In rough priority order; pick what fits the user's mood.
 
 - **Re-baseline conformance checksums.** The lowercase-font + `/` glyph
   fixes shift hashes for any cart that prints text. Codex flagged cart
-  `536 draw text shapes` (`actual=2e174a2556f278f8`); others likely
-  affected. Sweep and re-run conformance to update expected hashes.
+  `536 draw text shapes` (`actual=2e174a2556f278f8`) and the scaled-text pass
+  confirmed `130 measure text` is also stale
+  (`actual=090b644857ea88cd`). Sweep and re-run conformance to update expected
+  hashes.
 - **Keep docs tidy.** `retroarch/README.md` is the stable folder README,
   `HANDOFF_HWGL.md` is the active implementation handoff, `HANDOFF.md` is only
   a short index, and generated captures/binaries should stay untracked.
@@ -155,3 +155,5 @@ The last session arc closed out:
 - ★ HDR post target (`RGBA16F` with `RGBA8` fallback) + guarded 5-mip bloom chain
 - ★ RetroArch docs cleanup: folder-local README, short handoff index, stale
   tracked backup/capture files removed
+- ★ Browser-style scaled text: `print(..., scale)`, `printCentered(..., scale)`,
+  `printRight(..., scale)`, `printScaled()`, and `printTightScaled()`

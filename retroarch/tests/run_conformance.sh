@@ -992,5 +992,6 @@ run_visual_case "813 tight text"           "813-tight-text"           "retroarch
 run_visual_case "814 glow text scale"      "814-glow-text-scale"      "retroarch/conformance/814-glow-text-scale.js"      "6d22128444356212"
 run_visual_case "815 draw namespace textfx" "815-draw-namespace-textfx" "retroarch/conformance/815-draw-namespace-textfx.js" "c1913cd545eb788f"
 run_visual_case "1091 batch90 showcase"    "1091-batch90-showcase"    "retroarch/conformance/1091-batch90-showcase.js"    "54e8bacea9fdadd4"
+run_visual_case "1092 scaled text"         "1092-scaled-text"         "retroarch/conformance/1092-scaled-text.js"         "305d05942969cdcd"
 
 echo "Conformance passed."

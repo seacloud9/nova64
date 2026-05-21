@@ -677,7 +677,7 @@ export function draw() {
          printTight((i+1) + '. ' + SCENES[i].name, 184, 160 + i*14, rgba8(60+i*30, 180, 255-i*20, 180));
       }
       glowLine(100, 234, 560, 234, rgba8(0,160,255,160), 1);
-      printTight('Z OR X TO BEGIN', 320, 246, rgba8(255,220,60,255), 'center');
+      printTightScaled('Z OR X TO BEGIN', 320, 244, rgba8(255,220,60,255), 2, 'center');
       return;
    }
 

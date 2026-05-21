@@ -17,13 +17,16 @@ Read these in order:
 
 ## Current Visual Baseline
 
-As of 2026-05-21 after the HDR/multi-mip bloom pass:
+As of 2026-05-21 after the browser-style scaled-text pass:
 
-- Visual parity comparator: `average=46.2`, `strictAverage=44.6`.
+- Visual parity comparator: `average=44.4`, `strictAverage=42.7`.
 - HDR post target is guarded: `RGBA16F` is attempted first, `RGBA8` is the
   fallback.
 - Bloom now uses a guarded 5-mip downsample/blur/combine chain, with the old
   13-tap single-pass bloom kept as fallback.
+- Text helpers now honor browser-style scaling: `print(..., scale)`,
+  `printCentered(..., scale)`, `printRight(..., scale)`, plus explicit
+  `printScaled()` and `printTightScaled()`.
 - The earlier 85%+ number was a mirage caused by flat bloom-wash fields. Do not
   chase it by hiding real 3D detail.
 

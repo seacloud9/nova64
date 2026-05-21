@@ -1,6 +1,6 @@
 # Nova64 Hardware GL on Windows — Status & Handover
 
-**Last updated:** 2026-05-21 (Codex HDR/multi-mip bloom pass)
+**Last updated:** 2026-05-21 (Codex scaled-text parity pass)
 **Branch:** `main`
 **Working tree:** expected clean after committing this pass; source changes listed below
 
@@ -13,15 +13,74 @@
 - ✅ CRT scanlines + RGB aperture-grille post effect (visible on dark scenes)
 - ✅ FPS overlay built in (`Shift + F` toggle, works in any cart)
 - ✅ Bitmap font now covers nearly all ASCII printable chars including proper lowercase
-- ✅ Opt-in `printTight()` / `tightTextWidth()` variable-width text path is wired for denser HUDs without changing legacy `print()`
+- ✅ Opt-in `printTight()` / `tightTextWidth()` variable-width text path is wired for denser HUDs
+- ✅ Browser-style scaled text is wired: `print(..., scale)`, `printCentered(..., scale)`, `printRight(..., scale)`, `printScaled()`, and `printTightScaled()`
 - ✅ `drawGlowText(..., scale)` and `drawGlowTextCentered(..., scale)` now honor the web API scale argument for larger glowing titles
 - ✅ Browser-style `nova64.draw` aliases now include Batch 41 text/shape helpers (`drawTriangle`, glow/pulsing text, `tristrip`, floating text)
 - ⚠️ User reports performance feels slow on Windows (~38–40 FPS, 31–35 ms/frame on AMD Radeon 780M)
-- ⚠️ Linux Mesa software harness hits ~110 FPS at ~9 ms/frame, so Windows hardware *should* be vastly faster — Windows-specific bottleneck unidentified
-- ⚠️ Numeric visual-parity score: 46.2% average / 44.6% strict average after HDR + multi-mip bloom. This is up from 44.7% / 43.2% after the glow text scale pass, but the "85% mirage" is still relevant: high scores previously rewarded flat washed-out captures rather than real 3D detail.
+- ⚠️ Linux Mesa software harness hits ~110 FPS at ~9 ms/frame, so Windows hardware _should_ be vastly faster — Windows-specific bottleneck unidentified
+- ⚠️ Numeric visual-parity score: 44.4% average / 42.7% strict average after the scaled-text API pass. The HDR/multi-mip bloom pass previously measured 46.2% / 44.6%; the "85% mirage" is still relevant because high scores previously rewarded flat washed-out captures rather than real 3D detail.
 - ✅ New `retroarch/BACKLOG.md` captures deferred Windows perf work, queued visual features, stale-file cleanup, and code-anchored TODOs
 - ✅ Implemented the selected visual feature: **HDR post target (`RGBA16F`) + multi-mip bloom**, with `RGBA8` fallback if float render targets are not supported and old single-pass bloom kept as fallback
 - ✅ Recent C changes include the Shift+F perf overlay diagnostics plus the new HDR/multi-mip bloom post-processing path
+
+---
+
+## Current 2026-05-21 scaled-text state
+
+Latest work after the HDR/mip pass:
+
+```
+cf556eb docs: clean up RetroArch notes
+72eaf39 docs: add RetroArch HDR bloom handoff
+94d9a9f feat: expose RetroArch text effects on nova64.draw
+2c8bb5e fix: honor RetroArch glow text scale
+a285271 feat: add tight RetroArch HUD text
+```
+
+What's in the scaled-text delta:
+
+- `print(text, x, y, color, scale)` now treats a numeric fifth argument as
+  browser-style scale. Existing string alignment still works, and an optional
+  sixth argument can carry alignment.
+- Added explicit `printScaled(text, x, y, color, scale, align)` and
+  `printTightScaled(text, x, y, color, scale, align)` on both global and
+  `nova64.draw`.
+- `printTight(text, x, y, color, align, scale)` and
+  `tightTextWidth(text, scale)` now support scaled tight text without changing
+  the default scale-1 output.
+- `measureText(text, scale)`, `printCentered(..., scale)`, and
+  `printRight(..., scale)` now support the browser helper scale argument.
+- Added `retroarch/conformance/1092-scaled-text.js` and locked checksum
+  `305d05942969cdcd`.
+- Demoscene start-screen call-to-action now uses the larger tight text path.
+  The in-scene HUD intentionally stays web-sized so the parity target does not
+  drift for a styling experiment.
+
+Validation from this pass:
+
+- `make clean && make platform=unix && make harness` passes.
+- `make platform=unix && make harness` passes after the final cleanup.
+- `bash retroarch/tests/run_conformance.sh --from 813 --to 815 --skip-build` passes.
+- `bash retroarch/tests/run_conformance.sh --from 1092 --to 1092 --skip-build` passes.
+- `NOVA64_GLES_TESTS=1 pnpm run retroarch:visual:demoscene` passes:
+  - s0 `51.7`
+  - s1 `49.4`
+  - s2 `37.8`
+  - s3 `46.1`
+  - s4 `37.1`
+  - average `44.4`
+  - strictAverage `42.7`
+- `130 measure text` still renders OK but its locked checksum is stale after
+  earlier font/glyph changes: actual `090b644857ea88cd`.
+
+Next target:
+
+1. Bloom/emissive tuning against the current capture set, judging the actual
+   images rather than only the metric.
+2. Variable-width glyph tuning inside `printTight()` if HUD density remains a
+   focus.
+3. Windows perf investigation remains deferred unless the user asks.
 
 ---
 
@@ -89,11 +148,13 @@ Next target:
 ## What works now
 
 ### Hardware GL on Windows
+
 - Driver: AMD Radeon 780M, OpenGL 4.6 Core Profile (reports as 3.3 Core to the libretro callback)
 - Video driver: `glcore` in `retroarch.cfg`
 - DLL: `C:\RetroArch-Win64\cores\nova64_libretro.dll` (built by `make platform=win-cross` in WSL)
 
 ### Demoscene runs with real 3D, gradient sky, and bloom
+
 - s0 GRID_AWAKENING: voxel terrain + bright sun + magenta→purple sky gradient
 - s1 DATA_TUNNEL: magenta torus portals with soft bloom halos + data streams
 - s2 DIGITAL_CITY: towers and structures, restrained bloom
@@ -101,15 +162,17 @@ Next target:
 - s4 THE_VOID: floating glowing spheres with soft halos
 
 ### FPS overlay
+
 - Toggle: `Shift + F` (edge-triggered, no spam from holding)
 - Display: top-left yellow text `FPS N  M ms` with black drop shadow
 - 500 ms wall-clock measurement window
 - Core-level — works in every cart
 
 ### Font
+
 - 5×7 bitmap font
 - Coverage: A-Z, a-z (proper lowercase, not auto-upper), 0-9, and:
-  - `! " ' ( ) * + , - . / : ; < = > ? @ [ \ ] _ # % & { | } ~ $ \``
+  - `! " ' ( ) \* + , - . / : ; < = > ? @ [ \ ] \_ # % & { | } ~ $ \``
 - Lowercase has proper x-height, ascenders, descenders, and i/j dots
 - Forward slash bug fixed (it was rendering as a backslash shape before)
 - Anything outside this set still falls back to the 0x1F solid block
@@ -117,8 +180,15 @@ Next target:
 - `drawGlowText(text, x, y, color, glowColor, scale?)` and
   `drawGlowTextCentered(text, cx, y, color, glowColor, scale?)` now scale the
   bitmap glyphs instead of ignoring the argument.
+- `print(text, x, y, color, scaleOrAlign?, align?)` accepts browser-style
+  numeric scaling while preserving string alignment.
+- `printScaled()` and `printTightScaled()` provide explicit fixed-width and
+  tight-glyph scaled variants for larger titles and prompts.
+- `measureText(text, scale)`, `printCentered(..., scale)`, and
+  `printRight(..., scale)` support the browser helper scale argument.
 
 ### Tooling
+
 - `make platform=unix` — Linux .so (used by the harness for headless GLES testing)
 - `make platform=win-cross` — Windows DLL via mingw64
 - `make harness` — builds the EGL-based headless test harness
@@ -130,7 +200,7 @@ Next target:
 
 ## Bugs fixed this session arc
 
-### 1. `libretro.h` struct layout mismatch *(root cause of all Windows GL issues)*
+### 1. `libretro.h` struct layout mismatch _(root cause of all Windows GL issues)_
 
 `retroarch/libretro.h` had `retro_hw_render_callback` fields in the wrong order and contained a `void *context_data` field not present upstream. RetroArch writes `get_current_framebuffer` at offset 16 (its layout); we read it at offset 24 (our layout) so the read got `get_proc_address` instead — calling it crashed with `0xC0000005`.
 
@@ -170,7 +240,7 @@ Cart drew fullscreen flat-color rectfills from `y=0` to `y=315`, hiding the actu
 
 ### 8. CRT scanlines washed out by additive bloom
 
-Original shader applied scanlines inside the CRT block, then bloom *added* brightness on top, saturating to white and erasing the lines.
+Original shader applied scanlines inside the CRT block, then bloom _added_ brightness on top, saturating to white and erasing the lines.
 
 **Fix:** moved scanlines + RGB aperture-grille to the END of the post pipeline (after vignette, after bloom, after color grade) so they survive the additive bloom. Already committed.
 
@@ -197,6 +267,7 @@ Once the wash was removed, retroarch shows actual detailed 3D geometry with scan
 The decision point: chase the 85% number (by re-enabling fake washes or destroying detail with extreme bloom), or keep authentic rendering at lower numeric parity. We went with **authentic rendering**.
 
 Recent score progression on visual parity test:
+
 - After wash removal: 45.6%
 - After sky gradient: 42.6%
 - After heavier bloom: 43.0%
@@ -205,7 +276,7 @@ Recent score progression on visual parity test:
 - After tight HUD text pass: 44.1% average / 42.6% strict average
 - After glow text scale pass: 44.7% average / 43.2% strict average
 
-Score barely moves because every visual improvement diverges further from the web's flat-color reference. Visually we keep getting closer to a *good-looking* render; numerically we keep moving away from the web's *blown-out* render. Don't optimise for the number.
+Score barely moves because every visual improvement diverges further from the web's flat-color reference. Visually we keep getting closer to a _good-looking_ render; numerically we keep moving away from the web's _blown-out_ render. Don't optimise for the number.
 
 ---
 
@@ -227,10 +298,12 @@ Linux Mesa software harness hits ~110 FPS at ~9 ms/frame. Windows AMD GPU should
 ### How to diagnose
 
 Perf telemetry is already wired (`NOVA64_PERF=1`). On Linux harness we get:
+
 - `cart_us avg=150–1100`, `render_us avg=6200–9970`, `frame_us avg=6900–10200`
 - `draw_calls/frame=18–55`, `overlay_uploads/frame=1`, `inst_xform/frame=0–6`
 
 Next-session plan:
+
 1. Run `NOVA64_PERF=1 retroarch.exe -L cores/nova64_libretro.dll <cart>` on Windows and capture the perf log.
 2. Add logs around `gles_init_post_resources()` / `render_gles_post_pass()` for post FBO allocation, HW framebuffer id, viewport, and frontend output size. If any expensive pass is 1920×1080 instead of 640×360, that's our smoking gun.
 3. If FBO is correct: instrument the post pass and overlay upload separately to find which segment is heaviest on Windows.
@@ -262,6 +335,7 @@ These were committed across:
 - `94d9a9f feat: expose RetroArch text effects on nova64.draw`
 
 ### What's in `nova64_libretro.c`
+
 - FPS overlay state (`g_fps_overlay_enabled`, `g_fps_value`, etc.) at ~line 1613
 - `Shift+F` edge detect in `update_input()` around line 29900
 - FPS overlay drawing in `retro_run()` next to developer console block (~line 33370)
@@ -290,6 +364,7 @@ These were committed across:
   numeric `frequency, minAlpha` call style.
 
 ### What's in `games/demoscene.js`
+
 - `skyPanel = createCube(...)` removed from `buildScene0()` and `buildScene3()` (the gradient quad now handles sky)
 - Fixed a missing mesh handle in scene 2's lane `setPosition(...)` call.
 - Added deterministic scene-2 light cycles with glowing trail meshes to recover
@@ -301,6 +376,7 @@ These were committed across:
   already supports.
 
 ### What's in conformance/tests
+
 - Added `retroarch/conformance/813-tight-text.js` to lock the new tight text
   API surface, width behavior, and center/right alignment rendering.
 - Added the case to `retroarch/tests/run_conformance.sh` with checksum
@@ -312,6 +388,7 @@ These were committed across:
   path. Checksum: `c1913cd545eb788f`.
 
 ### Suggested commit message
+
 ```
 feat: expose RetroArch text effects on nova64.draw
 
@@ -330,6 +407,7 @@ feat: expose RetroArch text effects on nova64.draw
 ## Untracked files in working tree
 
 These are old test artifacts the user can safely delete:
+
 - `retroarch/nova64_libretro_nohw.c`
 - `retroarch/nova64_libretro_hw.c.bak`
 - `retroarch/nova64_libretro.c.bak`
@@ -367,12 +445,16 @@ Note: `make platform=unix` and `make platform=win-cross` produce different binar
 
 In priority order — pick whichever the user asks for:
 
-1. **HDR backbuffer for bloom.** User picked this from `retroarch/BACKLOG.md`. Implement guarded `RGBA16F` post target + multi-mip blur/combine, keeping the existing single-pass bloom fallback.
-2. **Windows perf investigation** (deferred by user). The backlog preserves the full diagnosis. Telemetry is now better through the Shift+F overlay.
-3. **Larger font variant.** 8×16 or doubled 5×7 for titles. Useful for HUD text that wants more weight.
-4. **Commit current working tree** if this handoff checkpoint has not already been committed.
-5. **HUD font metrics for parity test.** The tight text path helps density, but exact web-font metrics still differ.
-6. **Re-baseline conformance checksums.** The lowercase/font and `/` glyph fixes shift hashes for older visual carts that print text. Example checked during the glow-text pass: `536 draw text shapes` now renders correctly but its locked checksum is stale (`actual=2e174a2556f278f8`).
+1. **Bloom/emissive tuning.** HDR/mip infrastructure is in; tune thresholds,
+   weights, and cart emissive values from the actual capture set.
+2. **Windows perf investigation** (deferred by user). The backlog preserves the
+   full diagnosis. Telemetry is now better through the Shift+F overlay.
+3. **HUD font metrics for parity test.** The tight text path helps density, but
+   exact web-font metrics still differ.
+4. **Re-baseline conformance checksums.** The lowercase/font and `/` glyph fixes
+   shift hashes for older visual carts that print text. Known stale examples:
+   `536 draw text shapes` actual `2e174a2556f278f8`; `130 measure text` actual
+   `090b644857ea88cd`.
 
 ### Things to avoid
 
@@ -386,6 +468,7 @@ In priority order — pick whichever the user asks for:
 ## MemPalace diary entries this session arc
 
 Topics (newest first), all under agent `claude`:
+
 - `nova64-font-lowercase-and-symbols`
 - `nova64-bloom-tuning-three-js-style`
 - `nova64-sky-gradient-shader`

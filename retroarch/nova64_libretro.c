@@ -3126,6 +3126,15 @@ static void draw_text_scaled_pixels(const char *text, int x, int y, uint32_t col
    }
 }
 
+static int clamp_text_scale(int scale)
+{
+   if (scale < 1)
+      return 1;
+   if (scale > 8)
+      return 8;
+   return scale;
+}
+
 static int text_pixel_width(const char *text)
 {
    if (!text || !text[0])
@@ -3158,6 +3167,18 @@ static int text_pixel_height(const char *text)
 {
    int lines = text_line_count(text);
    return lines > 0 ? (lines - 1) * 9 + 7 : 0;
+}
+
+static int text_pixel_width_scaled(const char *text, int scale)
+{
+   scale = clamp_text_scale(scale);
+   return text_pixel_width(text) * scale;
+}
+
+static int text_pixel_height_scaled(const char *text, int scale)
+{
+   scale = clamp_text_scale(scale);
+   return text_pixel_height(text) * scale;
 }
 
 static void draw_text_aligned(const char *text, int x, int y, uint32_t color, int align)
@@ -3229,6 +3250,38 @@ static void draw_text_tight_pixels(const char *text, int x, int y, uint32_t colo
    }
 }
 
+static void draw_text_tight_scaled_pixels(const char *text, int x, int y, uint32_t color, int scale)
+{
+   if (!text)
+      return;
+   scale = clamp_text_scale(scale);
+   if (scale <= 1) {
+      draw_text_tight_pixels(text, x, y, color);
+      return;
+   }
+
+   int cursor = x;
+   for (const char *p = text; *p; p++) {
+      if (*p == '\n') {
+         cursor = x;
+         y += 9 * scale;
+         continue;
+      }
+      int minc = 0, maxc = 0;
+      if (glyph_tight_bounds(*p, &minc, &maxc)) {
+         for (int row = 0; row < 7; row++) {
+            uint8_t bits = glyph_row(*p, row);
+            for (int col = minc; col <= maxc; col++) {
+               if (bits & (1U << (4 - col)))
+                  draw_rect_pixels(cursor + (col - minc) * scale,
+                        y + row * scale, scale, scale, color, true);
+            }
+         }
+      }
+      cursor += glyph_tight_advance(*p) * scale;
+   }
+}
+
 static int tight_text_pixel_width(const char *text)
 {
    if (!text || !text[0])
@@ -3248,13 +3301,30 @@ static int tight_text_pixel_width(const char *text)
    return max_w > 0 ? max_w - 1 : 0;
 }
 
-static void draw_text_tight_aligned(const char *text, int x, int y, uint32_t color, int align)
+static int tight_text_pixel_width_scaled(const char *text, int scale)
 {
+   scale = clamp_text_scale(scale);
+   return tight_text_pixel_width(text) * scale;
+}
+
+static void draw_text_scaled_aligned(const char *text, int x, int y, uint32_t color, int scale, int align)
+{
+   scale = clamp_text_scale(scale);
    if (align == 1)
-      x -= tight_text_pixel_width(text) / 2;
+      x -= text_pixel_width_scaled(text, scale) / 2;
    else if (align == 2)
-      x -= tight_text_pixel_width(text);
-   draw_text_tight_pixels(text, x, y, color);
+      x -= text_pixel_width_scaled(text, scale);
+   draw_text_scaled_pixels(text, x, y, color, scale);
+}
+
+static void draw_text_tight_scaled_aligned(const char *text, int x, int y, uint32_t color, int scale, int align)
+{
+   scale = clamp_text_scale(scale);
+   if (align == 1)
+      x -= tight_text_pixel_width_scaled(text, scale) / 2;
+   else if (align == 2)
+      x -= tight_text_pixel_width_scaled(text, scale);
+   draw_text_tight_scaled_pixels(text, x, y, color, scale);
 }
 
 static uint32_t get_pixel(int x, int y)
@@ -4777,8 +4847,20 @@ static JSValue js_draw_print(JSContext *ctx, JSValueConst this_val, int argc, JS
    int x = 0, y = 0;
    transform_2d_point(int_from_js(ctx, argv[1], 0), int_from_js(ctx, argv[2], 0), &x, &y);
    uint32_t color = color_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, rgba8(255, 255, 255, 255));
-   int align = argc > 4 ? text_align_from_js(ctx, argv[4]) : 0;
-   draw_text_aligned(text, x, y, color, align);
+   int scale = 1;
+   int align = 0;
+   if (argc > 4 && !JS_IsUndefined(argv[4]) && !JS_IsNull(argv[4])) {
+      if (JS_IsNumber(argv[4])) {
+         scale = int_from_js(ctx, argv[4], 1);
+         if (argc > 5)
+            align = text_align_from_js(ctx, argv[5]);
+      } else {
+         align = text_align_from_js(ctx, argv[4]);
+         if (argc > 5)
+            scale = int_from_js(ctx, argv[5], 1);
+      }
+   }
+   draw_text_scaled_aligned(text, x, y, color, scale, align);
    if (text)
       JS_FreeCString(ctx, text);
    return JS_UNDEFINED;
@@ -4793,7 +4875,42 @@ static JSValue js_draw_print_tight(JSContext *ctx, JSValueConst this_val, int ar
    transform_2d_point(int_from_js(ctx, argv[1], 0), int_from_js(ctx, argv[2], 0), &x, &y);
    uint32_t color = color_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, rgba8(255, 255, 255, 255));
    int align = argc > 4 ? text_align_from_js(ctx, argv[4]) : 0;
-   draw_text_tight_aligned(text, x, y, color, align);
+   int scale = argc > 5 ? int_from_js(ctx, argv[5], 1) : 1;
+   draw_text_tight_scaled_aligned(text, x, y, color, scale, align);
+   if (text)
+      JS_FreeCString(ctx, text);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_draw_print_scaled(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 3)
+      return JS_UNDEFINED;
+   const char *text = JS_ToCString(ctx, argv[0]);
+   int x = 0, y = 0;
+   transform_2d_point(int_from_js(ctx, argv[1], 0), int_from_js(ctx, argv[2], 0), &x, &y);
+   uint32_t color = color_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, rgba8(255, 255, 255, 255));
+   int scale = argc > 4 ? int_from_js(ctx, argv[4], 2) : 2;
+   int align = argc > 5 ? text_align_from_js(ctx, argv[5]) : 0;
+   draw_text_scaled_aligned(text, x, y, color, scale, align);
+   if (text)
+      JS_FreeCString(ctx, text);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_draw_print_tight_scaled(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 3)
+      return JS_UNDEFINED;
+   const char *text = JS_ToCString(ctx, argv[0]);
+   int x = 0, y = 0;
+   transform_2d_point(int_from_js(ctx, argv[1], 0), int_from_js(ctx, argv[2], 0), &x, &y);
+   uint32_t color = color_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, rgba8(255, 255, 255, 255));
+   int scale = argc > 4 ? int_from_js(ctx, argv[4], 2) : 2;
+   int align = argc > 5 ? text_align_from_js(ctx, argv[5]) : 0;
+   draw_text_tight_scaled_aligned(text, x, y, color, scale, align);
    if (text)
       JS_FreeCString(ctx, text);
    return JS_UNDEFINED;
@@ -4823,7 +4940,8 @@ static JSValue js_tight_text_width(JSContext *ctx, JSValueConst this_val, int ar
    if (argc < 1)
       return JS_NewInt32(ctx, 0);
    const char *text = JS_ToCString(ctx, argv[0]);
-   int w = tight_text_pixel_width(text);
+   int scale = argc > 1 ? int_from_js(ctx, argv[1], 1) : 1;
+   int w = tight_text_pixel_width_scaled(text, scale);
    if (text)
       JS_FreeCString(ctx, text);
    return JS_NewInt32(ctx, w);
@@ -23661,8 +23779,9 @@ static JSValue js_print_right(JSContext *ctx, JSValueConst this_val, int argc, J
    int x = int_from_js(ctx, argv[1], 0) - cam2d_x;
    int y = int_from_js(ctx, argv[2], 0) - cam2d_y;
    uint32_t color = color_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, rgba8(255, 255, 255, 255));
-   x -= text_pixel_width(text);
-   draw_text_pixels(text, x, y, color);
+   int scale = argc > 4 ? int_from_js(ctx, argv[4], 1) : 1;
+   x -= text_pixel_width_scaled(text, scale);
+   draw_text_scaled_pixels(text, x, y, color, scale);
    JS_FreeCString(ctx, text);
    return JS_UNDEFINED;
 }
@@ -24051,9 +24170,10 @@ static JSValue js_measure_text(JSContext *ctx, JSValueConst this_val, int argc, 
    if (argc < 1) return JS_UNDEFINED;
    const char *text = JS_ToCString(ctx, argv[0]);
    if (!text) return JS_UNDEFINED;
+   int scale = argc > 1 ? int_from_js(ctx, argv[1], 1) : 1;
    JSValue obj = JS_NewObject(ctx);
-   JS_SetPropertyStr(ctx, obj, "width",  JS_NewInt32(ctx, text_pixel_width(text)));
-   JS_SetPropertyStr(ctx, obj, "height", JS_NewInt32(ctx, text_pixel_height(text)));
+   JS_SetPropertyStr(ctx, obj, "width",  JS_NewInt32(ctx, text_pixel_width_scaled(text, scale)));
+   JS_SetPropertyStr(ctx, obj, "height", JS_NewInt32(ctx, text_pixel_height_scaled(text, scale)));
    JS_SetPropertyStr(ctx, obj, "lines",  JS_NewInt32(ctx, text_line_count(text)));
    JS_FreeCString(ctx, text);
    return obj;
@@ -24067,8 +24187,9 @@ static JSValue js_print_centered(JSContext *ctx, JSValueConst this_val, int argc
    int x = int_from_js(ctx, argv[1], 0) - cam2d_x;
    int y = int_from_js(ctx, argv[2], 0) - cam2d_y;
    uint32_t color = color_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, rgba8(255, 255, 255, 255));
-   x -= text_pixel_width(text) / 2;
-   draw_text_pixels(text, x, y, color);
+   int scale = argc > 4 ? int_from_js(ctx, argv[4], 1) : 1;
+   x -= text_pixel_width_scaled(text, scale) / 2;
+   draw_text_scaled_pixels(text, x, y, color, scale);
    JS_FreeCString(ctx, text);
    return JS_UNDEFINED;
 }
@@ -28140,12 +28261,17 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, draw, "ovalfill", js_ovalfill, 5);
    set_function(ctx, draw, "tri", js_tri, 7);
    set_function(ctx, draw, "trifill", js_trifill, 7);
-   set_function(ctx, draw, "print", js_draw_print, 5);
-   set_function(ctx, draw, "printTight", js_draw_print_tight, 5);
+   set_function(ctx, draw, "print", js_draw_print, 6);
+   set_function(ctx, draw, "printScaled", js_draw_print_scaled, 6);
+   set_function(ctx, draw, "printTight", js_draw_print_tight, 6);
+   set_function(ctx, draw, "printTightScaled", js_draw_print_tight_scaled, 6);
    set_function(ctx, draw, "textWidth", js_text_width, 1);
-   set_function(ctx, draw, "tightTextWidth", js_tight_text_width, 1);
+   set_function(ctx, draw, "tightTextWidth", js_tight_text_width, 2);
    set_function(ctx, draw, "textHeight", js_text_height, 1);
    set_function(ctx, draw, "textSize", js_text_size, 1);
+   set_function(ctx, draw, "measureText", js_measure_text, 2);
+   set_function(ctx, draw, "printCentered", js_print_centered, 5);
+   set_function(ctx, draw, "printRight", js_print_right, 5);
    set_function(ctx, draw, "printShadow", js_print_shadow, 8);
    set_function(ctx, draw, "printOutline", js_print_outline, 6);
    set_function(ctx, draw, "spr", js_spr, 10);
@@ -28518,10 +28644,12 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, global, "ovalfill", js_ovalfill, 5);
    set_function(ctx, global, "tri", js_tri, 7);
    set_function(ctx, global, "trifill", js_trifill, 7);
-   set_function(ctx, global, "print", js_draw_print, 5);
-   set_function(ctx, global, "printTight", js_draw_print_tight, 5);
+   set_function(ctx, global, "print", js_draw_print, 6);
+   set_function(ctx, global, "printScaled", js_draw_print_scaled, 6);
+   set_function(ctx, global, "printTight", js_draw_print_tight, 6);
+   set_function(ctx, global, "printTightScaled", js_draw_print_tight_scaled, 6);
    set_function(ctx, global, "textWidth", js_text_width, 1);
-   set_function(ctx, global, "tightTextWidth", js_tight_text_width, 1);
+   set_function(ctx, global, "tightTextWidth", js_tight_text_width, 2);
    set_function(ctx, global, "textHeight", js_text_height, 1);
    set_function(ctx, global, "textSize", js_text_size, 1);
    set_function(ctx, global, "printShadow", js_print_shadow, 8);
@@ -28871,7 +28999,7 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, global, "getPixels",  js_get_pixels,  4);
 
    /* Right-aligned text */
-   set_function(ctx, global, "printRight", js_print_right, 4);
+   set_function(ctx, global, "printRight", js_print_right, 5);
 
    /* Screen blur */
    set_function(ctx, global, "screenBlur", js_screen_blur, 1);
@@ -28907,8 +29035,8 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, global, "gridRows",    js_grid_rows,    1);
 
    /* Text measurement and centering */
-   set_function(ctx, global, "measureText",   js_measure_text,   1);
-   set_function(ctx, global, "printCentered", js_print_centered, 4);
+   set_function(ctx, global, "measureText",   js_measure_text,   2);
+   set_function(ctx, global, "printCentered", js_print_centered, 5);
 
    /* Arc drawing */
    set_function(ctx, global, "drawArc",  js_draw_arc,  7);

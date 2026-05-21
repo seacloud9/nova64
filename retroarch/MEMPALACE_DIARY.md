@@ -3,6 +3,49 @@
 This is a memory/progress note for MemPalace mining, not a replacement for the
 canonical repository instructions in `../AGENTS.md`.
 
+## 2026-05-21 - Browser-style scaled text pass
+
+### What landed
+
+- Added browser-compatible text scaling to the RetroArch core:
+  - `print(text, x, y, color, scale)` now treats a numeric fifth argument as
+    scale.
+  - String alignment remains supported, and a sixth argument can carry
+    alignment after numeric scale.
+  - `printScaled()` and `printTightScaled()` are exposed on both global and
+    `nova64.draw`.
+  - `printTight(..., align, scale)` and `tightTextWidth(text, scale)` support
+    scaled tight glyphs.
+  - `measureText(text, scale)`, `printCentered(..., scale)`, and
+    `printRight(..., scale)` now support browser helper scaling.
+- Added `retroarch/conformance/1092-scaled-text.js` and locked checksum
+  `305d05942969cdcd`.
+- Used the new larger tight text only on the demoscene start-screen prompt.
+  The in-scene HUD was deliberately left web-sized after the comparator showed
+  larger HUD text reduced numeric parity.
+
+### Validation
+
+- `make clean && make platform=unix && make harness` passed.
+- `make platform=unix && make harness` passed after the final helper cleanup.
+- `bash retroarch/tests/run_conformance.sh --from 813 --to 815 --skip-build`
+  passed.
+- `bash retroarch/tests/run_conformance.sh --from 1092 --to 1092 --skip-build`
+  passed.
+- `NOVA64_GLES_TESTS=1 pnpm run retroarch:visual:demoscene` passed with
+  `average=44.4`, `strictAverage=42.7`.
+
+### Notes
+
+- The visual parity number is lower than the HDR/mip pass
+  (`46.2`/`44.6`), but the main cause remains the reference/browser capture's
+  heavy wash versus RetroArch's more detailed scene. Do not chase the number by
+  reintroducing opaque bloom blocks.
+- `130 measure text` still renders OK, but the locked checksum is stale after
+  the broader font/glyph arc. Actual observed checksum: `090b644857ea88cd`.
+- Next good visual target is bloom/emissive tuning against captures, not Windows
+  performance unless the user explicitly pivots back to it.
+
 ## 2026-05-21 - RetroArch documentation cleanup
 
 ### What changed

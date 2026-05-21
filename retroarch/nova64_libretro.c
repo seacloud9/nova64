@@ -3070,6 +3070,36 @@ static void draw_text_pixels(const char *text, int x, int y, uint32_t color)
    }
 }
 
+static void draw_text_scaled_pixels(const char *text, int x, int y, uint32_t color, int scale)
+{
+   if (!text)
+      return;
+   if (scale <= 1) {
+      draw_text_pixels(text, x, y, color);
+      return;
+   }
+   if (scale > 8)
+      scale = 8;
+
+   int cursor = x;
+   for (const char *p = text; *p; p++) {
+      if (*p == '\n') {
+         cursor = x;
+         y += 9 * scale;
+         continue;
+      }
+      for (int row = 0; row < 7; row++) {
+         uint8_t bits = glyph_row(*p, row);
+         for (int col = 0; col < 5; col++) {
+            if (bits & (1U << (4 - col)))
+               draw_rect_pixels(cursor + col * scale, y + row * scale,
+                     scale, scale, color, true);
+         }
+      }
+      cursor += 6 * scale;
+   }
+}
+
 static int text_pixel_width(const char *text)
 {
    if (!text || !text[0])
@@ -13879,6 +13909,9 @@ static JSValue js_draw_triangle(JSContext *ctx, JSValueConst this_val, int argc,
 
 /* drawGlowText(text, x, y, color, glowColor, scale=1) */
 static JSValue js_draw_glow_text(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   if (argc < 5)
+      return JS_UNDEFINED;
    const char *text = JS_ToCString(ctx, argv[0]);
    if (!text) return JS_UNDEFINED;
    int x, y;
@@ -13887,17 +13920,22 @@ static JSValue js_draw_glow_text(JSContext *ctx, JSValueConst this_val, int argc
    JS_ToInt32(ctx, &y, argv[2]);
    color = color_from_js(ctx, argv[3], 0xFFFFFFFF);
    glow  = color_from_js(ctx, argv[4], 0x00000080);
-   (void)argc; /* scale arg ignored — draw_text_pixels has no scale */
+   int scale = argc > 5 ? int_from_js(ctx, argv[5], 1) : 1;
+   if (scale < 1) scale = 1;
+   if (scale > 8) scale = 8;
    static const int glow_off[8][2] = {{-1,-1},{0,-1},{1,-1},{-1,0},{1,0},{-1,1},{0,1},{1,1}};
    for (int i = 0; i < 8; i++)
-      draw_text_pixels(text, x + glow_off[i][0], y + glow_off[i][1], glow);
-   draw_text_pixels(text, x, y, color);
+      draw_text_scaled_pixels(text, x + glow_off[i][0], y + glow_off[i][1], glow, scale);
+   draw_text_scaled_pixels(text, x, y, color, scale);
    JS_FreeCString(ctx, text);
    return JS_UNDEFINED;
 }
 
 /* drawGlowTextCentered(text, cx, y, color, glowColor, scale=1) */
 static JSValue js_draw_glow_text_centered(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   if (argc < 5)
+      return JS_UNDEFINED;
    const char *text = JS_ToCString(ctx, argv[0]);
    if (!text) return JS_UNDEFINED;
    int cx, y;
@@ -13906,13 +13944,15 @@ static JSValue js_draw_glow_text_centered(JSContext *ctx, JSValueConst this_val,
    JS_ToInt32(ctx, &y,  argv[2]);
    color = color_from_js(ctx, argv[3], 0xFFFFFFFF);
    glow  = color_from_js(ctx, argv[4], 0x00000080);
-   (void)argc;
-   int w = (int)strlen(text) * 6;
+   int scale = argc > 5 ? int_from_js(ctx, argv[5], 1) : 1;
+   if (scale < 1) scale = 1;
+   if (scale > 8) scale = 8;
+   int w = (int)strlen(text) * 6 * scale;
    int x = cx - w / 2;
    static const int gcen_off[8][2] = {{-1,-1},{0,-1},{1,-1},{-1,0},{1,0},{-1,1},{0,1},{1,1}};
    for (int i = 0; i < 8; i++)
-      draw_text_pixels(text, x + gcen_off[i][0], y + gcen_off[i][1], glow);
-   draw_text_pixels(text, x, y, color);
+      draw_text_scaled_pixels(text, x + gcen_off[i][0], y + gcen_off[i][1], glow, scale);
+   draw_text_scaled_pixels(text, x, y, color, scale);
    JS_FreeCString(ctx, text);
    return JS_UNDEFINED;
 }

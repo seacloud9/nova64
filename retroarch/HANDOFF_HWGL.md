@@ -1,6 +1,6 @@
 # Nova64 Hardware GL on Windows — Status & Handover
 
-**Last updated:** 2026-05-20 (late evening, Codex tight HUD text pass)
+**Last updated:** 2026-05-20 (late evening, Codex glow text scale pass)
 **Branch:** `main`
 **Working tree:** dirty — see "Files modified this session" below
 
@@ -14,9 +14,10 @@
 - ✅ FPS overlay built in (`Shift + F` toggle, works in any cart)
 - ✅ Bitmap font now covers nearly all ASCII printable chars including proper lowercase
 - ✅ Opt-in `printTight()` / `tightTextWidth()` variable-width text path is wired for denser HUDs without changing legacy `print()`
+- ✅ `drawGlowText(..., scale)` and `drawGlowTextCentered(..., scale)` now honor the web API scale argument for larger glowing titles
 - ⚠️ User reports performance feels slow on Windows (~38–40 FPS, 31–35 ms/frame on AMD Radeon 780M)
 - ⚠️ Linux Mesa software harness hits ~110 FPS at ~9 ms/frame, so Windows hardware *should* be vastly faster — Windows-specific bottleneck unidentified
-- ⚠️ Numeric visual-parity score: 44.1% average / 42.6% strict average as of a fresh `NOVA64_GLES_TESTS=1 node retroarch/tests/demoscene_visual_parity.mjs` run after the tight HUD text pass (the "85% mirage" is documented below — it was matching flat-color web wash to flat-color retroarch wash; real 3D detail intentionally diverges)
+- ⚠️ Numeric visual-parity score: 44.7% average / 43.2% strict average as of a fresh `NOVA64_GLES_TESTS=1 node retroarch/tests/demoscene_visual_parity.mjs` run after the glow text scale pass (the "85% mirage" is documented below — it was matching flat-color web wash to flat-color retroarch wash; real 3D detail intentionally diverges)
 
 ---
 
@@ -48,6 +49,9 @@
 - Forward slash bug fixed (it was rendering as a backslash shape before)
 - Anything outside this set still falls back to the 0x1F solid block
 - `printTight(text, x, y, color, align?)` and `tightTextWidth(text)` trim empty glyph columns for HUD text density. Existing `print()` / `textWidth()` stay fixed-width for compatibility.
+- `drawGlowText(text, x, y, color, glowColor, scale?)` and
+  `drawGlowTextCentered(text, cx, y, color, glowColor, scale?)` now scale the
+  bitmap glyphs instead of ignoring the argument.
 
 ### Tooling
 - `make platform=unix` — Linux .so (used by the harness for headless GLES testing)
@@ -134,6 +138,7 @@ Recent score progression on visual parity test:
 - Fresh Codex validation after handover review: 44.1% average / 42.6% strict average
 - After scene-2 light cycles + placement fix: 43.0% average / 41.4% strict average
 - After tight HUD text pass: 44.1% average / 42.6% strict average
+- After glow text scale pass: 44.7% average / 43.2% strict average
 
 Score barely moves because every visual improvement diverges further from the web's flat-color reference. Visually we keep getting closer to a *good-looking* render; numerically we keep moving away from the web's *blown-out* render. Don't optimise for the number.
 
@@ -181,7 +186,7 @@ M retroarch/games/demoscene.js
 M retroarch/nova64_libretro.c
 M retroarch/HANDOFF_HWGL.md
 M retroarch/MEMPALACE_DIARY.md
-A retroarch/conformance/813-tight-text.js
+A retroarch/conformance/814-glow-text-scale.js
 M retroarch/tests/run_conformance.sh
 ```
 
@@ -202,6 +207,10 @@ M retroarch/tests/run_conformance.sh
 - Added `printTight()` / `tightTextWidth()` on both the global API and
   `nova64.draw`. The new path trims empty glyph columns per character while
   keeping the legacy fixed-width print metrics unchanged.
+- Fixed `drawGlowText` / `drawGlowTextCentered` so their `scale` argument
+  actually draws scaled glyph pixels. Centering uses the web runtime's
+  fixed-advance width (`text.length * 6 * scale`) for parity with
+  `runtime/api-2d.js`.
 
 ### What's in `games/demoscene.js`
 - `skyPanel = createCube(...)` removed from `buildScene0()` and `buildScene3()` (the gradient quad now handles sky)
@@ -210,25 +219,29 @@ M retroarch/tests/run_conformance.sh
   a browser-visible city feature without reintroducing fake bloom wash blocks.
 - Switched the demoscene start screen and HUD copy to `printTight()` so the
   panels read closer to the web capture without disturbing the 3D camera path.
+- Switched the start title and scene-title flash to scaled `drawGlowTextCentered`
+  so the RetroArch demoscene has the larger glowing title treatment the web API
+  already supports.
 
 ### What's in conformance/tests
 - Added `retroarch/conformance/813-tight-text.js` to lock the new tight text
   API surface, width behavior, and center/right alignment rendering.
 - Added the case to `retroarch/tests/run_conformance.sh` with checksum
   `0941661bd8f54b16`.
+- Added `retroarch/conformance/814-glow-text-scale.js` to lock scaled glow
+  text rendering. Checksum: `6d22128444356212`.
 
 ### Suggested commit message
 ```
-feat: add tight RetroArch HUD text
+fix: honor glow text scale in RetroArch
 
-- Add printTight and tightTextWidth as opt-in variable-width bitmap text APIs.
-- Keep legacy print and textWidth fixed-width for existing cart compatibility.
-- Switch the demoscene HUD/start-screen copy to tight text for better panel
-  density and more browser-like layout.
-- Add conformance cart 813 to lock API presence, tight width behavior, and
-  center/right alignment output.
-- Validate with retroarch:build, conformance 813, and the demoscene visual
-  parity capture.
+- Add scaled bitmap text drawing for drawGlowText and drawGlowTextCentered.
+- Match the web runtime's fixed-advance centered width when scale is used.
+- Switch demoscene title treatments to scaled glow text for a stronger
+  browser-like presentation.
+- Add conformance cart 814 to lock scaled glow text output.
+- Validate with retroarch:build, conformance 814, demoscene captures, and the
+  visual parity comparator at 44.7% average / 43.2% strict.
 ```
 
 ---
@@ -278,7 +291,7 @@ In priority order — pick whichever the user asks for:
 3. **Larger font variant.** 8×16 or doubled 5×7 for titles. Useful for HUD text that wants more weight.
 4. **HDR backbuffer for bloom.** RGBA16F post FBO + multi-mip blur (see TODO note in shader). Would let bloom roll off properly above 1.0 brightness.
 5. **HUD font metrics for parity test.** The tight text path helps density, but exact web-font metrics still differ.
-6. **Re-baseline conformance checksums.** The `/` glyph fix shifts hashes for any cart that prints a forward slash.
+6. **Re-baseline conformance checksums.** The lowercase/font and `/` glyph fixes shift hashes for older visual carts that print text. Example checked during the glow-text pass: `536 draw text shapes` now renders correctly but its locked checksum is stale (`actual=2e174a2556f278f8`).
 
 ### Things to avoid
 

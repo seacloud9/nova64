@@ -668,10 +668,11 @@ export function draw() {
    if (state === 'start') {
       rectfill(80, 80, 480, 220, rgba8(4, 6, 20, 250));
       glowRect(80, 80, 480, 220, rgba8(0, 230, 255, 220), 8);
-      printBold('TRON ODYSSEY', 190, 98, rgba8(0, 240, 255, 255));
-      printTight('RETROARCH EDITION - GLES3', 192, 118, rgba8(160, 200, 255, 200));
+      drawGlowTextCentered('TRON ODYSSEY', 320, 96,
+         rgba8(0, 240, 255, 255), rgba8(0, 110, 255, 150), 2);
+      printTight('RETROARCH EDITION - GLES3', 320, 118, rgba8(160, 200, 255, 200), 'center');
       glowLine(100, 134, 560, 134, rgba8(0,160,255,160), 1);
-      printTight('5 SCENES - AUTO - Z=SKIP', 204, 144, rgba8(130,180,255,190));
+      printTight('5 SCENES - AUTO - Z=SKIP', 320, 144, rgba8(130,180,255,190), 'center');
       for (let i = 0; i < SCENES.length; i++) {
          printTight((i+1) + '. ' + SCENES[i].name, 184, 160 + i*14, rgba8(60+i*30, 180, 255-i*20, 180));
       }
@@ -733,7 +734,8 @@ export function draw() {
    // Scene name flash at top of scene (printed ON TOP of HUD)
    if (sceneT < 0.8) {
       const ta = Math.floor((1 - sceneT/0.8) * 255);
-      printTight(sc.name, 320, 166, rgba8(0,240,255,ta), 'center');
+      drawGlowTextCentered(sc.name, 320, 160,
+         rgba8(0,240,255,ta), rgba8(0,80,255,Math.floor(ta * 0.55)), 2);
    }
 
 }

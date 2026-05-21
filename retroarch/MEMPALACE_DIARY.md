@@ -5,6 +5,31 @@ canonical repository instructions in `../AGENTS.md`.
 
 ## 2026-05-20 - HWGL handoff review checkpoint
 
+### Glow text scale parity pass
+- Fixed the RetroArch implementation of `drawGlowText` and
+  `drawGlowTextCentered` so the existing `scale` argument now renders scaled
+  bitmap glyphs instead of being ignored.
+- Kept centered glow text aligned with the web runtime's simple fixed-advance
+  metric: `text.length * 6 * scale`.
+- Switched the demoscene title card and scene-name flash to scaled
+  `drawGlowTextCentered`, giving RetroArch a larger browser-like title
+  treatment without touching scene cameras or post-processing.
+- Added `retroarch/conformance/814-glow-text-scale.js` and locked it in
+  `retroarch/tests/run_conformance.sh` with checksum `6d22128444356212`.
+- Validation:
+  - `pnpm run retroarch:build` / `make -C retroarch all` pass from WSL.
+  - `retroarch/tests/run_conformance.sh --from 814 --to 814 --skip-build`
+    passes.
+  - Demoscene screenshots inspected:
+    `retroarch/build/demoscene-start-glowtext.png` and
+    `retroarch/build/demoscene-scene-title-glowtext.png`.
+  - `NOVA64_GLES_TESTS=1 node retroarch/tests/demoscene_visual_parity.mjs`
+    reports `average=44.7`, `strictAverage=43.2`.
+- Note for a later rebaseline: older text-heavy conformance checksums are stale
+  from the recent font work. Example checked here: `536 draw text shapes`
+  renders correctly but now reports `actual=2e174a2556f278f8` against its old
+  locked checksum.
+
 ### Tight HUD text parity pass
 - Added opt-in `printTight(text, x, y, color, align?)` and
   `tightTextWidth(text)` to the RetroArch core on both the global API and

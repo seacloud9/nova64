@@ -5,6 +5,24 @@ canonical repository instructions in `../AGENTS.md`.
 
 ## 2026-05-20 - HWGL handoff review checkpoint
 
+### Draw namespace text effects parity pass
+- Added `nova64.draw` aliases for the Batch 41 helpers that the browser runtime
+  exposes under `nova64.draw`: `drawTriangle`, `drawGlowText`,
+  `drawGlowTextCentered`, `drawPulsingText`, `tristrip`, and
+  `drawFloatingTexts`.
+- Extended `drawPulsingText` to accept the browser-style options object
+  (`{ frequency, minAlpha, glowColor, scale }`) while preserving the older
+  numeric `frequency, minAlpha` calling style used by existing RetroArch
+  conformance carts.
+- Added `retroarch/conformance/815-draw-namespace-textfx.js` and locked it in
+  `retroarch/tests/run_conformance.sh` with checksum `c1913cd545eb788f`.
+- Validation:
+  - `pnpm run retroarch:build` passes from WSL/Node 20.
+  - `retroarch/tests/run_conformance.sh --from 814 --to 815 --skip-build`
+    passes.
+  - Screenshot inspected:
+    `screenshots/retroarch/815-draw-namespace-textfx.png`.
+
 ### Glow text scale parity pass
 - Fixed the RetroArch implementation of `drawGlowText` and
   `drawGlowTextCentered` so the existing `scale` argument now renders scaled

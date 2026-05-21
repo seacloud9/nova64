@@ -990,6 +990,7 @@ run_visual_case "1080 batch89 showcase"    "1080-batch89-showcase"    "retroarch
 run_visual_case "812 wavemgr"              "812-wavemgr"              "retroarch/conformance/812-wavemgr.js"              "4194c8acbe61993e"
 run_visual_case "813 tight text"           "813-tight-text"           "retroarch/conformance/813-tight-text.js"           "0941661bd8f54b16"
 run_visual_case "814 glow text scale"      "814-glow-text-scale"      "retroarch/conformance/814-glow-text-scale.js"      "6d22128444356212"
+run_visual_case "815 draw namespace textfx" "815-draw-namespace-textfx" "retroarch/conformance/815-draw-namespace-textfx.js" "c1913cd545eb788f"
 run_visual_case "1091 batch90 showcase"    "1091-batch90-showcase"    "retroarch/conformance/1091-batch90-showcase.js"    "54e8bacea9fdadd4"
 
 echo "Conformance passed."

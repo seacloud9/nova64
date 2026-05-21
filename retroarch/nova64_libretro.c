@@ -13957,22 +13957,53 @@ static JSValue js_draw_glow_text_centered(JSContext *ctx, JSValueConst this_val,
    return JS_UNDEFINED;
 }
 
-/* drawPulsingText(text, cx, y, color, time, frequency=3, minAlpha=120) */
+/* drawPulsingText(text, cx, y, color, time, optsOrFrequency=3, minAlpha=120) */
 static JSValue js_draw_pulsing_text(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+   (void)this_val;
+   if (argc < 5)
+      return JS_UNDEFINED;
    const char *text = JS_ToCString(ctx, argv[0]);
    if (!text) return JS_UNDEFINED;
-   int cx, y, minAlpha;
+   int cx, y, minAlpha, scale;
    double t, freq;
    uint32_t color;
+   uint32_t glow = 0;
+   bool has_glow = false;
    JS_ToInt32(ctx, &cx, argv[1]);
    JS_ToInt32(ctx, &y,  argv[2]);
    color = color_from_js(ctx, argv[3], 0xFFFFFFFF);
    JS_ToFloat64(ctx, &t, argv[4]);
    freq = 3.0;
-   if (argc >= 6 && !JS_IsUndefined(argv[5])) JS_ToFloat64(ctx, &freq, argv[5]);
    minAlpha = 120;
-   if (argc >= 7 && !JS_IsUndefined(argv[6])) JS_ToInt32(ctx, &minAlpha, argv[6]);
+   scale = 1;
+   if (argc >= 6 && !JS_IsUndefined(argv[5])) {
+      if (JS_IsObject(argv[5]) && !JS_IsArray(argv[5])) {
+         JSValue v = JS_GetPropertyStr(ctx, argv[5], "frequency");
+         if (!JS_IsUndefined(v) && !JS_IsNull(v))
+            JS_ToFloat64(ctx, &freq, v);
+         JS_FreeValue(ctx, v);
+         v = JS_GetPropertyStr(ctx, argv[5], "minAlpha");
+         if (!JS_IsUndefined(v) && !JS_IsNull(v))
+            JS_ToInt32(ctx, &minAlpha, v);
+         JS_FreeValue(ctx, v);
+         v = JS_GetPropertyStr(ctx, argv[5], "scale");
+         if (!JS_IsUndefined(v) && !JS_IsNull(v))
+            JS_ToInt32(ctx, &scale, v);
+         JS_FreeValue(ctx, v);
+         v = JS_GetPropertyStr(ctx, argv[5], "glowColor");
+         if (!JS_IsUndefined(v) && !JS_IsNull(v)) {
+            glow = color_from_js(ctx, v, 0x00000080);
+            has_glow = true;
+         }
+         JS_FreeValue(ctx, v);
+      } else {
+         JS_ToFloat64(ctx, &freq, argv[5]);
+         if (argc >= 7 && !JS_IsUndefined(argv[6]))
+            JS_ToInt32(ctx, &minAlpha, argv[6]);
+      }
+   }
    if (minAlpha < 0) minAlpha = 0; if (minAlpha > 255) minAlpha = 255;
+   if (scale < 1) scale = 1; if (scale > 8) scale = 8;
 
    int alpha = (int)(sin(t * freq) * 0.5 * (double)(255 - minAlpha) + 0.5 * (double)(255 - minAlpha) + minAlpha);
    if (alpha < 0) alpha = 0; if (alpha > 255) alpha = 255;
@@ -13982,9 +14013,14 @@ static JSValue js_draw_pulsing_text(JSContext *ctx, JSValueConst this_val, int a
    uint32_t b = (color >>  8) & 0xFF;
    uint32_t pulsed = (r << 24) | (g << 16) | (b << 8) | (uint32_t)alpha;
 
-   int w = (int)strlen(text) * 6;
+   int w = (int)strlen(text) * 6 * scale;
    int x = cx - w / 2;
-   draw_text_pixels(text, x, y, pulsed);
+   if (has_glow) {
+      static const int glow_off[8][2] = {{-1,-1},{0,-1},{1,-1},{-1,0},{1,0},{-1,1},{0,1},{1,1}};
+      for (int i = 0; i < 8; i++)
+         draw_text_scaled_pixels(text, x + glow_off[i][0], y + glow_off[i][1], glow, scale);
+   }
+   draw_text_scaled_pixels(text, x, y, pulsed, scale);
    JS_FreeCString(ctx, text);
    return JS_UNDEFINED;
 }
@@ -28087,6 +28123,12 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, draw, "popPalette", js_pop_palette, 0);
    set_function(ctx, draw, "getDrawState", js_get_draw_state, 0);
    set_function(ctx, draw, "clearDrawState", js_clear_draw_state, 0);
+   set_function(ctx, draw, "drawTriangle", js_draw_triangle, 8);
+   set_function(ctx, draw, "drawGlowText", js_draw_glow_text, 6);
+   set_function(ctx, draw, "drawGlowTextCentered", js_draw_glow_text_centered, 6);
+   set_function(ctx, draw, "drawPulsingText", js_draw_pulsing_text, 7);
+   set_function(ctx, draw, "tristrip", js_tristrip, 2);
+   set_function(ctx, draw, "drawFloatingTexts", js_draw_floating_texts, 1);
    /* BM blend-mode constants — mirrors web/godot nova64.draw.BM */
    {  JSValue bm = JS_NewObject(ctx);
       JS_SetPropertyStr(ctx, bm, "NORMAL",   JS_NewString(ctx, "normal"));

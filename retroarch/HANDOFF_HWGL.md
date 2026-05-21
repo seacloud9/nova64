@@ -1,6 +1,6 @@
 # Nova64 Hardware GL on Windows — Status & Handover
 
-**Last updated:** 2026-05-20 (late evening, Codex glow text scale pass)
+**Last updated:** 2026-05-20 (late evening, Codex draw namespace textfx pass)
 **Branch:** `main`
 **Working tree:** dirty — see "Files modified this session" below
 
@@ -15,6 +15,7 @@
 - ✅ Bitmap font now covers nearly all ASCII printable chars including proper lowercase
 - ✅ Opt-in `printTight()` / `tightTextWidth()` variable-width text path is wired for denser HUDs without changing legacy `print()`
 - ✅ `drawGlowText(..., scale)` and `drawGlowTextCentered(..., scale)` now honor the web API scale argument for larger glowing titles
+- ✅ Browser-style `nova64.draw` aliases now include Batch 41 text/shape helpers (`drawTriangle`, glow/pulsing text, `tristrip`, floating text)
 - ⚠️ User reports performance feels slow on Windows (~38–40 FPS, 31–35 ms/frame on AMD Radeon 780M)
 - ⚠️ Linux Mesa software harness hits ~110 FPS at ~9 ms/frame, so Windows hardware *should* be vastly faster — Windows-specific bottleneck unidentified
 - ⚠️ Numeric visual-parity score: 44.7% average / 43.2% strict average as of a fresh `NOVA64_GLES_TESTS=1 node retroarch/tests/demoscene_visual_parity.mjs` run after the glow text scale pass (the "85% mirage" is documented below — it was matching flat-color web wash to flat-color retroarch wash; real 3D detail intentionally diverges)
@@ -186,7 +187,7 @@ M retroarch/games/demoscene.js
 M retroarch/nova64_libretro.c
 M retroarch/HANDOFF_HWGL.md
 M retroarch/MEMPALACE_DIARY.md
-A retroarch/conformance/814-glow-text-scale.js
+A retroarch/conformance/815-draw-namespace-textfx.js
 M retroarch/tests/run_conformance.sh
 ```
 
@@ -211,6 +212,12 @@ M retroarch/tests/run_conformance.sh
   actually draws scaled glyph pixels. Centering uses the web runtime's
   fixed-advance width (`text.length * 6 * scale`) for parity with
   `runtime/api-2d.js`.
+- Added `nova64.draw` aliases for Batch 41 browser draw helpers:
+  `drawTriangle`, `drawGlowText`, `drawGlowTextCentered`, `drawPulsingText`,
+  `tristrip`, and `drawFloatingTexts`.
+- `drawPulsingText` now accepts the browser-style options object
+  (`{ frequency, minAlpha, glowColor, scale }`) while preserving the old
+  numeric `frequency, minAlpha` call style.
 
 ### What's in `games/demoscene.js`
 - `skyPanel = createCube(...)` removed from `buildScene0()` and `buildScene3()` (the gradient quad now handles sky)
@@ -230,18 +237,22 @@ M retroarch/tests/run_conformance.sh
   `0941661bd8f54b16`.
 - Added `retroarch/conformance/814-glow-text-scale.js` to lock scaled glow
   text rendering. Checksum: `6d22128444356212`.
+- Added `retroarch/conformance/815-draw-namespace-textfx.js` to lock the
+  `nova64.draw` namespace aliases and the `drawPulsingText` options-object
+  path. Checksum: `c1913cd545eb788f`.
 
 ### Suggested commit message
 ```
-fix: honor glow text scale in RetroArch
+feat: expose RetroArch text effects on nova64.draw
 
-- Add scaled bitmap text drawing for drawGlowText and drawGlowTextCentered.
-- Match the web runtime's fixed-advance centered width when scale is used.
-- Switch demoscene title treatments to scaled glow text for a stronger
-  browser-like presentation.
-- Add conformance cart 814 to lock scaled glow text output.
-- Validate with retroarch:build, conformance 814, demoscene captures, and the
-  visual parity comparator at 44.7% average / 43.2% strict.
+- Add nova64.draw aliases for Batch 41 text/shape helpers used by browser
+  carts: drawTriangle, drawGlowText, drawGlowTextCentered, drawPulsingText,
+  tristrip, and drawFloatingTexts.
+- Extend drawPulsingText to accept the browser-style options object with
+  frequency, minAlpha, glowColor, and scale while preserving numeric arguments.
+- Add conformance cart 815 to lock namespace availability and options-object
+  rendering.
+- Validate with retroarch:build and conformance 814-815.
 ```
 
 ---

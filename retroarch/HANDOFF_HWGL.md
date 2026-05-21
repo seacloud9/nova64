@@ -1,8 +1,8 @@
 # Nova64 Hardware GL on Windows — Status & Handover
 
-**Last updated:** 2026-05-20 (late evening, Codex draw namespace textfx pass)
+**Last updated:** 2026-05-21 (Codex handoff/backlog checkpoint)
 **Branch:** `main`
-**Working tree:** dirty — see "Files modified this session" below
+**Working tree:** dirty before checkpoint commit — see "Current 2026-05-21 handoff state" below
 
 ---
 
@@ -19,6 +19,53 @@
 - ⚠️ User reports performance feels slow on Windows (~38–40 FPS, 31–35 ms/frame on AMD Radeon 780M)
 - ⚠️ Linux Mesa software harness hits ~110 FPS at ~9 ms/frame, so Windows hardware *should* be vastly faster — Windows-specific bottleneck unidentified
 - ⚠️ Numeric visual-parity score: 44.7% average / 43.2% strict average as of a fresh `NOVA64_GLES_TESTS=1 node retroarch/tests/demoscene_visual_parity.mjs` run after the glow text scale pass (the "85% mirage" is documented below — it was matching flat-color web wash to flat-color retroarch wash; real 3D detail intentionally diverges)
+- ✅ New `retroarch/BACKLOG.md` captures deferred Windows perf work, queued visual features, stale-file cleanup, and code-anchored TODOs
+- ✅ User selected the next visual feature: **HDR post target (`RGBA16F`) + multi-mip bloom**, with `RGBA8` fallback if float render targets are not supported
+- ✅ Current uncommitted C change is lightweight perf/diagnostic UI: Shift+F now forces perf timing on, publishes 60-frame stage averages into the overlay, and logs one frame-0 viewport/FBO diagnostic after context reset
+
+---
+
+## Current 2026-05-21 handoff state
+
+Latest committed work before this checkpoint:
+
+```
+94d9a9f feat: expose RetroArch text effects on nova64.draw
+2c8bb5e fix: honor RetroArch glow text scale
+a285271 feat: add tight RetroArch HUD text
+7b415ff feat: add demoscene light cycles
+b25e80f feat: batch instanced transform uploads
+```
+
+Working tree before the handoff commit:
+
+```
+M  retroarch/nova64_libretro.c
+A  retroarch/BACKLOG.md
+```
+
+What's in the `nova64_libretro.c` delta:
+
+- `core_perf_enabled()` now returns true whenever the in-game FPS overlay is visible, so the user can press `Shift+F` and immediately get stage timings without setting `NOVA64_PERF`.
+- `core_perf_record_frame()` publishes 60-frame averages for cart, GL render, total frame, post, overlay, and draw-call count.
+- The FPS overlay now shows three lines: FPS/frame time, JS/GL/total, and post/overlay/draws, with health coloring on the FPS line.
+- `gles_context_reset()` re-arms a one-shot frame-0 diagnostic.
+- `render_gles_scene()` logs frame-0 GL viewport, draw framebuffer, max viewport, post FBO id, and configured core resolution. This is intentionally one-shot to avoid RetroArch log spam.
+- `gles_init_post_resources()` logs the post FBO allocation size when created.
+
+MemPalace/MCP status:
+
+- `.vscode/mcp.json` is wired to launch `mempalace-mcp` through WSL.
+- `package.json` includes `mempalace:status`, `mempalace:wake`, `mempalace:repair-status`, `mempalace:mine`, `mempalace:mine:runtime`, `mempalace:mine:retroarch`, `mempalace:sync:retroarch`, and `mempalace:search`.
+- `pnpm run mempalace:status` completed on 2026-05-21. It quarantined two corrupt HNSW segment directories automatically and still reported the `nova64_retroarch` room as available.
+
+Next implementation target:
+
+1. Start feature A from `retroarch/BACKLOG.md`: HDR post backbuffer + multi-mip bloom.
+2. Keep the current single-pass 13-tap bloom as the compatibility fallback.
+3. First implementation slice should be guarded `RGBA16F` post-color allocation with framebuffer-completeness fallback to current `RGBA8`.
+4. Second slice should add a bounded mip/blur/combine chain approximating Three.js `UnrealBloomPass`.
+5. Do not touch the 3D camera/HUD orientation while doing bloom work; recent regressions came from broad render-path flips.
 
 ---
 
@@ -180,7 +227,7 @@ Next-session plan:
 
 ---
 
-## Files modified this session (still uncommitted)
+## Files modified in the previous text-effects session (already committed)
 
 ```
 M retroarch/games/demoscene.js
@@ -190,6 +237,12 @@ M retroarch/MEMPALACE_DIARY.md
 A retroarch/conformance/815-draw-namespace-textfx.js
 M retroarch/tests/run_conformance.sh
 ```
+
+These were committed across:
+
+- `a285271 feat: add tight RetroArch HUD text`
+- `2c8bb5e fix: honor RetroArch glow text scale`
+- `94d9a9f feat: expose RetroArch text effects on nova64.draw`
 
 ### What's in `nova64_libretro.c`
 - FPS overlay state (`g_fps_overlay_enabled`, `g_fps_value`, etc.) at ~line 1613
@@ -297,10 +350,10 @@ Note: `make platform=unix` and `make platform=win-cross` produce different binar
 
 In priority order — pick whichever the user asks for:
 
-1. **Windows perf investigation** (highest impact). Start with the FBO size hypothesis. The handover doc above has the candidate list ranked. Telemetry already wired.
-2. **Commit current working tree.** Files listed above; suggested commit message provided.
+1. **HDR backbuffer for bloom.** User picked this from `retroarch/BACKLOG.md`. Implement guarded `RGBA16F` post target + multi-mip blur/combine, keeping the existing single-pass bloom fallback.
+2. **Windows perf investigation** (deferred by user). The backlog preserves the full diagnosis. Telemetry is now better through the Shift+F overlay.
 3. **Larger font variant.** 8×16 or doubled 5×7 for titles. Useful for HUD text that wants more weight.
-4. **HDR backbuffer for bloom.** RGBA16F post FBO + multi-mip blur (see TODO note in shader). Would let bloom roll off properly above 1.0 brightness.
+4. **Commit current working tree** if this handoff checkpoint has not already been committed.
 5. **HUD font metrics for parity test.** The tight text path helps density, but exact web-font metrics still differ.
 6. **Re-baseline conformance checksums.** The lowercase/font and `/` glyph fixes shift hashes for older visual carts that print text. Example checked during the glow-text pass: `536 draw text shapes` now renders correctly but its locked checksum is stale (`actual=2e174a2556f278f8`).
 

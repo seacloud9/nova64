@@ -3,6 +3,46 @@
 This is a memory/progress note for MemPalace mining, not a replacement for the
 canonical repository instructions in `../AGENTS.md`.
 
+## 2026-05-21 - RetroArch HDR bloom handoff checkpoint
+
+### Current request
+- User wants the next visual parity feature to be **HDR backbuffer
+  (`RGBA16F`) + multi-mip bloom** from `retroarch/BACKLOG.md`.
+- User also asked to document the state clearly for a model switch and to keep
+  MemPalace updated before continuing.
+
+### Working tree before checkpoint commit
+- `retroarch/BACKLOG.md` added with deferred Windows perf diagnosis, queued
+  visual features, code-anchored TODO notes, stale-file cleanup, and recently
+  shipped context.
+- `retroarch/nova64_libretro.c` modified with the lightweight perf overlay
+  diagnostics from the previous session:
+  - Shift+F overlay makes perf timing always-on while visible.
+  - 60-frame averages are published for cart, GL, total frame, post, overlay,
+    and draw calls.
+  - FPS overlay now shows JS/GL/total plus post/overlay/draws.
+  - Frame-0 one-shot log records GL viewport, draw framebuffer, max viewport,
+    post FBO id, and core resolution.
+  - Post FBO creation logs allocation size.
+
+### Next implementation target
+- Start with guarded `RGBA16F` allocation for the post color target, using a
+  framebuffer-completeness check and falling back to the current `RGBA8` path.
+- Keep the existing 13-tap single-pass bloom alive as fallback.
+- Then add bounded multi-mip bloom: downsample, separable blur, upsample/combine,
+  and final tonemap. Anchor point is the TODO above the bloom shader in
+  `retroarch/nova64_libretro.c` near the `u_bloom` block.
+- Avoid camera/HUD orientation changes during bloom work; keep the 3D scene
+  aligned with the web demo and only alter post-processing.
+
+### MemPalace/MCP status
+- `.vscode/mcp.json` launches `mempalace-mcp` via WSL.
+- `pnpm run mempalace:status` was run on 2026-05-21. It completed and
+  automatically quarantined two corrupt HNSW segment directories; the
+  `nova64_retroarch` room remained available.
+- Run `pnpm run mempalace:mine:retroarch` after this documentation checkpoint
+  and again after the HDR bloom implementation lands.
+
 ## 2026-05-20 - HWGL handoff review checkpoint
 
 ### Draw namespace text effects parity pass

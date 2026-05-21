@@ -24491,9 +24491,23 @@ static JSValue js_meta_main(JSContext *ctx, JSValueConst this_val, int argc, JSV
 
 static bool core_perf_enabled(void)
 {
+   /* Always-on when the in-game FPS overlay is showing so the overlay can
+      surface per-stage timings without needing the env var or log fishing. */
+   if (g_fps_overlay_enabled)
+      return true;
    const char *enabled = getenv("NOVA64_PERF");
    return enabled && enabled[0] && strcmp(enabled, "0");
 }
+
+/* Snapshot of the most-recent 60-frame averages, written by
+   core_perf_record_frame and read by the FPS overlay so it can show
+   per-stage breakdowns live. Updated once every 60 frames (~1 s at 60 fps). */
+static float g_fps_avg_cart_ms          = 0.0f;
+static float g_fps_avg_render_ms        = 0.0f;
+static float g_fps_avg_frame_ms         = 0.0f;
+static float g_fps_avg_post_ms          = 0.0f;
+static float g_fps_avg_overlay_total_ms = 0.0f;
+static unsigned g_fps_avg_draw_calls    = 0;
 
 static uint64_t core_perf_now_us(void)
 {
@@ -24580,6 +24594,18 @@ static void core_perf_record_frame(uint64_t cart_us, uint64_t render_us, uint64_
          (unsigned long long)(core_perf.draw_calls / frames),
          (unsigned long long)(core_perf.overlay_uploads / frames));
       nova64_log_line(RETRO_LOG_INFO, message);
+
+      /* Publish averages for the FPS overlay (microseconds → milliseconds). */
+      g_fps_avg_cart_ms          = (float)(core_perf.cart_total_us           / frames) / 1000.0f;
+      g_fps_avg_render_ms        = (float)(core_perf.render_total_us         / frames) / 1000.0f;
+      g_fps_avg_frame_ms         = (float)(core_perf.frame_total_us          / frames) / 1000.0f;
+      g_fps_avg_post_ms          = (float)(core_perf.post_total_us           / frames) / 1000.0f;
+      g_fps_avg_overlay_total_ms =
+         (float)((core_perf.overlay_convert_total_us
+                + core_perf.overlay_upload_total_us
+                + core_perf.overlay_draw_total_us) / frames) / 1000.0f;
+      g_fps_avg_draw_calls       = (unsigned)(core_perf.draw_calls           / frames);
+
       memset(&core_perf, 0, sizeof(core_perf));
    }
 }
@@ -31248,9 +31274,14 @@ static bool gles_load_functions(void)
    return gles.functions_loaded;
 }
 
+static bool g_perf_frame0_logged = false;
+
 static void gles_context_reset(void)
 {
    gles.active = true;
+   /* Re-arm the one-shot frame-0 perf diagnostic on every context reset
+      (covers cart reload / driver-reset cases). */
+   g_perf_frame0_logged = false;
    gles_load_functions();
    if (gles.GetString) {
       const GLubyte *ver  = gles.GetString(0x1F02 /* GL_VERSION */);
@@ -32657,7 +32688,13 @@ static bool gles_init_post_resources(void)
       return false;
    }
    gles.post_resources_ready = true;
-   nova64_log_line(RETRO_LOG_INFO, "[nova64] post-processing FBO ready");
+   {
+      char msg[160];
+      snprintf(msg, sizeof(msg),
+         "[nova64] post-processing FBO ready  alloc=%dx%d  NOVA64=%dx%d",
+         NOVA64_WIDTH, NOVA64_HEIGHT, NOVA64_WIDTH, NOVA64_HEIGHT);
+      nova64_log_line(RETRO_LOG_INFO, msg);
+   }
    return true;
 }
 
@@ -32731,6 +32768,38 @@ static void render_gles_scene(void)
    GLuint hw_fbo = hw_render.get_current_framebuffer
                    ? (GLuint)hw_render.get_current_framebuffer()
                    : 0;
+
+   /* One-shot perf diagnostic: log the actual GL viewport dimensions the
+      frontend has set up for us, the FBO id chain, and a few env-reported
+      output sizes. Helps confirm whether a Windows AMD path is somehow
+      running fragment work at a window-sized resolution rather than at the
+      640x360 the core asked for. Fires once per context_reset (see
+      gles_context_reset, which clears g_perf_frame0_logged). */
+   {
+      if (!g_perf_frame0_logged) {
+         g_perf_frame0_logged = true;
+         GLint vp[4] = {0, 0, 0, 0};
+         GLint cur_fbo = 0;
+         GLint max_vp[2] = {0, 0};
+         typedef void (*get_int_t)(GLenum, GLint *);
+         get_int_t get_int = (get_int_t)load_gles_proc("glGetIntegerv");
+         if (get_int) {
+            get_int(0x0BA2 /* GL_VIEWPORT */,           vp);
+            get_int(0x8CA6 /* GL_DRAW_FRAMEBUFFER_BINDING */, &cur_fbo);
+            get_int(0x0D3A /* GL_MAX_VIEWPORT_DIMS */,  max_vp);
+         }
+         char msg[256];
+         snprintf(msg, sizeof(msg),
+            "[nova64-perf] frame0  NOVA64=%dx%d  hw_fbo=%u  GL_DRAW_FBO=%d  GL_VIEWPORT=%d,%d %dx%d  MAX_VP=%dx%d  use_post=%d  post_fbo=%u  res_opt=%ux%u",
+            NOVA64_WIDTH, NOVA64_HEIGHT,
+            (unsigned)hw_fbo, (int)cur_fbo,
+            vp[0], vp[1], vp[2], vp[3],
+            max_vp[0], max_vp[1],
+            (int)use_post, (unsigned)gles.post_fbo,
+            g_res_width, g_res_height);
+         nova64_log_line(RETRO_LOG_INFO, msg);
+      }
+   }
 
    /* Shadow pass — depth-only render from the light's perspective */
    bool use_shadow = g_shadow_map_size > 0 && gles_any_cast_shadow_mesh()
@@ -33911,13 +33980,41 @@ void RETRO_CALLCONV retro_run(void)
       }
 
       if (g_fps_overlay_enabled && framebuffer) {
-         char fps_text[48];
-         int  fps_int = (int)(g_fps_value + 0.5f);
-         int  ms_int  = (int)(g_fps_last_frame_ms + 0.5f);
-         snprintf(fps_text, sizeof(fps_text), "FPS %d  %d ms", fps_int, ms_int);
-         /* 1px black drop-shadow for legibility over bright scenes */
-         draw_text_pixels(fps_text, 5, 5, rgba8(0, 0, 0, 220));
-         draw_text_pixels(fps_text, 4, 4, rgba8(255, 255, 80, 255));
+         char line1[48], line2[48], line3[48];
+         int fps_int = (int)(g_fps_value + 0.5f);
+         int ms_int  = (int)(g_fps_last_frame_ms + 0.5f);
+         snprintf(line1, sizeof(line1), "FPS %d  %d ms", fps_int, ms_int);
+         /* Per-stage averages — populated by core_perf once we've accumulated
+            60 frames after the overlay was first toggled on. Until then the
+            values are 0 and the overlay still shows FPS only. */
+         snprintf(line2, sizeof(line2), "js %2dms gl %2dms tot %2dms",
+            (int)(g_fps_avg_cart_ms   + 0.5f),
+            (int)(g_fps_avg_render_ms + 0.5f),
+            (int)(g_fps_avg_frame_ms  + 0.5f));
+         snprintf(line3, sizeof(line3), "post %2dms ovl %2dms draws %u",
+            (int)(g_fps_avg_post_ms          + 0.5f),
+            (int)(g_fps_avg_overlay_total_ms + 0.5f),
+            g_fps_avg_draw_calls);
+         /* Color the FPS line by health so you can read the screen at a
+            glance instead of doing the math:
+              FPS >= 55  -> green  (healthy; full 60 Hz)
+              FPS >= 40  -> yellow (degraded but playable)
+              FPS <  40  -> red    (bad; the user reports 38-40 here)
+            ms uses the same bands inverted (low ms = green). */
+         uint32_t shadow = rgba8(0, 0, 0, 220);
+         uint32_t fps_c;
+         if      (g_fps_value >= 55.0f) fps_c = rgba8(120, 255, 120, 255);   /* green */
+         else if (g_fps_value >= 40.0f) fps_c = rgba8(255, 230, 80,  255);   /* yellow */
+         else                           fps_c = rgba8(255, 90,  90,  255);   /* red */
+         /* The breakdown stays in a cool blue so it's clearly secondary
+            data — the FPS line is what you watch for go/no-go. */
+         uint32_t sub_c = rgba8(180, 220, 255, 255);
+         draw_text_pixels(line1, 5, 5,  shadow);
+         draw_text_pixels(line1, 4, 4,  fps_c);
+         draw_text_pixels(line2, 5, 15, shadow);
+         draw_text_pixels(line2, 4, 14, sub_c);
+         draw_text_pixels(line3, 5, 25, shadow);
+         draw_text_pixels(line3, 4, 24, sub_c);
       }
    }
 

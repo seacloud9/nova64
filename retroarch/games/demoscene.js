@@ -77,14 +77,18 @@ function clearScene3D() {
 
 // ── Scene 0: GRID AWAKENING ───────────────────────────────────────────────────
 function buildScene0() {
+   /* Brighter pink top + lighter vignette so the dark navy corners that
+      previously pulled the colour distribution away from the web's pink
+      wash fill in. Bottom stays a hint dark to keep the foreground city
+      readable. */
    nova64.post.setBloom(1.55);
    nova64.post.setChromatic(0.003);
    nova64.post.setCRT(true);
-   nova64.post.setVignette(0.72, 0.84);
-   setSkyColor(rgba8(135, 0, 74, 255), rgba8(18, 3, 32, 255));
-   setAmbientLight(rgba8(220, 220, 240, 255), 1.0);
+   nova64.post.setVignette(0.45, 0.82);
+   setSkyColor(rgba8(220, 50, 160, 255), rgba8(50, 8, 60, 255));
+   setAmbientLight(rgba8(240, 220, 240, 255), 1.15);
    setLightDirection(0, -1, -0.2);
-   setFog(rgba8(135, 0, 74, 255), 80, 230);
+   setFog(rgba8(190, 40, 130, 255), 80, 230);
    setCameraFOV(70);
 
    // skyPanel cube removed — setSkyColor() above now renders a real fullscreen
@@ -185,13 +189,16 @@ function buildScene0() {
 
 // ── Scene 1: DATA TUNNEL ──────────────────────────────────────────────────────
 function buildScene1() {
+   /* Cyan-leaning sky + cyan-tinted fog to match the web reference's
+      flat cyan bloom wash. The magenta torus rings still pop because
+      they're emissive and their colour is far from cyan. */
    nova64.post.setBloom(1.65);
    nova64.post.setChromatic(0.005);
    nova64.post.setCRT(true);
-   setSkyColor(rgba8(4, 0, 14, 255), rgba8(34, 0, 58, 255));
-   setAmbientLight(rgba8(34, 8, 56, 255), 1.1);
+   setSkyColor(rgba8(16, 168, 198, 255), rgba8(8, 32, 58, 255));
+   setAmbientLight(rgba8(78, 168, 198, 255), 1.3);
    setLightDirection(0, -1, -0.2);
-   setFog(rgba8(8, 0, 20, 255), 50, 160);
+   setFog(rgba8(20, 96, 132, 255), 56, 170);
    setCameraFOV(78);
 
    rings = [];
@@ -236,13 +243,17 @@ function buildScene1() {
 
 // ── Scene 2: DIGITAL CITY ─────────────────────────────────────────────────────
 function buildScene2() {
-   nova64.post.setBloom(1.25);
+   /* Second-pass tuning: bright pink sky + softer vignette, and brighter
+      pink fog so the city silhouettes wash toward the web reference
+      while individual tower colours still differentiate. */
+   nova64.post.setBloom(1.65);
    nova64.post.setChromatic(0.003);
    nova64.post.setCRT(true);
-   setSkyColor(rgba8(4, 5, 28, 255), rgba8(20, 0, 42, 255));
-   setAmbientLight(rgba8(70, 82, 140, 255), 1.35);
+   nova64.post.setVignette(0.4, 0.82);
+   setSkyColor(rgba8(190, 40, 180, 255), rgba8(40, 8, 70, 255));
+   setAmbientLight(rgba8(200, 130, 210, 255), 1.85);
    setLightDirection(-0.6, -1, -0.4);
-   setFog(rgba8(10, 4, 28, 255), 35, 140);
+   setFog(rgba8(140, 30, 130, 255), 42, 160);
    setCameraFOV(62);
 
    groundMesh = createCube(56, 0.2, 56, rgba8(10, 10, 26, 255));
@@ -251,7 +262,10 @@ function buildScene2() {
 
    const COLS = 7, ROWS = 7;
    cityMesh = createInstancedMesh('cube', COLS * ROWS);
-   setMeshEmissive(cityMesh, rgba8(0, 220, 255, 255), 0.42);
+   /* Pink-tinted emissive shared across the city. Per-instance colours
+      still differentiate individual towers (cyan / yellow / magenta), but
+      the unified glow biases the overall hue toward the web's wash. */
+   setMeshEmissive(cityMesh, rgba8(220, 80, 200, 255), 0.55);
    towers = [];
    let idx = 0;
    for (let r = 0; r < ROWS; r++) {
@@ -310,14 +324,17 @@ function buildScene2() {
 
 // ── Scene 3: ENERGY CORE ──────────────────────────────────────────────────────
 function buildScene3() {
+   /* Brighter pink sky + softened vignette so the overall wash leans
+      toward the web reference's saturated magenta bloom field. The
+      orbiting core meshes are emissive enough to read through it. */
    nova64.post.setBloom(2.6);
    nova64.post.setChromatic(0.005);
-   nova64.post.setVignette(1.05, 0.76);
+   nova64.post.setVignette(0.78, 0.7);
    nova64.post.setCRT(true);
-   setSkyColor(rgba8(52, 0, 56, 255), rgba8(2, 0, 12, 255));
-   setAmbientLight(rgba8(120, 50, 140, 255), 1.9);
+   setSkyColor(rgba8(178, 28, 148, 255), rgba8(40, 4, 50, 255));
+   setAmbientLight(rgba8(180, 80, 180, 255), 1.95);
    setLightDirection(0, -0.5, -1);
-   setFog(rgba8(52, 0, 56, 255), 30, 82);
+   setFog(rgba8(118, 18, 110, 255), 32, 90);
    setCameraFOV(75);
 
    // skyPanel cube removed — setSkyColor() above renders the gradient now.
@@ -366,14 +383,18 @@ function buildScene3() {
 
 // ── Scene 4: THE VOID ─────────────────────────────────────────────────────────
 function buildScene4() {
+   /* Second-pass tuning: the web reference is essentially a bright
+      pink wash with subtle structure inside; we approximate by bumping
+      sky/ambient/fog all toward saturated magenta and dropping vignette
+      further. Orbiting spheres still pop because they're emissive. */
    nova64.post.setBloom(3.2);
    nova64.post.setChromatic(0.007);
-   nova64.post.setVignette(1.35, 0.7);
+   nova64.post.setVignette(0.42, 0.7);
    nova64.post.setCRT(true);
-   setSkyColor(rgba8(0, 18, 44, 255), rgba8(0, 0, 10, 255));
-   setAmbientLight(rgba8(54, 70, 150, 255), 1.55);
+   setSkyColor(rgba8(220, 60, 170, 255), rgba8(80, 18, 80, 255));
+   setAmbientLight(rgba8(220, 130, 200, 255), 1.7);
    setLightDirection(0.2, -1, 0.4);
-   setFog(rgba8(0, 12, 36, 255), 22, 72);
+   setFog(rgba8(170, 50, 140, 255), 26, 86);
    setCameraFOV(58);
 
    horizonGlow = createSphere(3.2, rgba8(0, 210, 255, 255));

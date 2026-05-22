@@ -100,19 +100,16 @@ In rough priority order; pick what fits the user's mood.
 - **HUD font metrics for parity test** — `printTight()` helps density,
   but exact web-font metrics still differ; getting them aligned moves
   numeric parity scores up without losing detail.
-- **Scene-by-scene emissive/camera parity.** Bloom infrastructure and first
-  tuning pass are in place. Remaining parity work should now focus on matching
-  scene composition, fog/emissive strengths, and web capture timing without
-  returning to fake fullscreen wash rectangles.
+- ~~**Scene-by-scene emissive/camera parity.**~~ Initial scene-by-scene
+  pass shipped (see Recently shipped). Further refinement (e.g., matching
+  web capture timestamps, animation speeds, particle counts) is still on
+  the table when we want to push the numeric score past ~70.
 
 ### Cleanup / technical debt
 
-- **Re-baseline conformance checksums.** The lowercase-font + `/` glyph
-  fixes shift hashes for any cart that prints text. Codex flagged cart
-  `536 draw text shapes` (`actual=2e174a2556f278f8`) and the scaled-text pass
-  confirmed `130 measure text` is also stale
-  (`actual=090b644857ea88cd`). Sweep and re-run conformance to update expected
-  hashes.
+- ~~**Re-baseline conformance checksums.**~~ Done — full 519-case sweep
+  re-baselined; `bash retroarch/tests/run_conformance.sh --skip-build`
+  reports "Conformance passed." See Recently shipped.
 - **Keep docs tidy.** `retroarch/README.md` is the stable folder README,
   `HANDOFF_HWGL.md` is the active implementation handoff, `HANDOFF.md` is only
   a short index, and generated captures/binaries should stay untracked.
@@ -139,6 +136,33 @@ will trip over them while editing the relevant code:
 ## ✅ Recently shipped (for context)
 
 The last session arc closed out:
+
+- ★ Full conformance suite re-baseline. Swept all 519 cases, captured
+  current actual checksums, and updated `retroarch/tests/run_conformance.sh`.
+  Most of the drift came from the lowercase font + corrected `/` glyph
+  - scene-by-scene tuning + HDR/multi-mip bloom — all intentional changes
+    with visual confirmation. `bash retroarch/tests/run_conformance.sh
+--skip-build` now reports "Conformance passed." across the board
+    (previously failing on the first batch).
+- ★ Scene-by-scene parity tuning for the demoscene. Shifted each scene's
+  sky gradient, ambient, fog, and vignette toward the colour distribution
+  of the web Three.js reference (heavy bloom wash). Result: visual parity
+  numeric score jumped from 46.3% / 44.6% strict to **67.1% / 63.6% strict**
+  (+20.8 / +19.0). Per scene:
+  - s0 GRID_AWAKENING 54 → 72 (brighter pink sky, lighter vignette)
+  - s1 DATA_TUNNEL 50 → 71 (sky shifted from navy to cyan to match web's cyan wash)
+  - s2 DIGITAL_CITY 39 → 66 (magenta sky + pink-tinted city emissive, lighter vignette)
+  - s3 ENERGY_CORE 50 → 60 (brighter pink sky, softer vignette)
+  - s4 THE_VOID 38 → 66 (saturated magenta sky/fog/ambient, vignette 1.35 → 0.42)
+    Visually the scenes now read as authentic Three.js-style bloom-washed
+    cyberpunk while still showing 3D detail through the wash.
+- ★ Variable-width tight text effect variants: `printShadowTight`,
+  `printOutlineTight`, `printRainbowTight`, `printWaveTight`,
+  `printFlashTight`, `printShakeTight`, `printGradientTight`. Same call
+  shape as their fixed-width counterparts; glyphs advance by content
+  width + 1 px via the existing `glyph_tight_advance` path. Registered on
+  both global and `nova64.draw` namespaces. Side-by-side preview saved at
+  `c:\tmp\tight_effects_preview.png`.
 
 - ★ Windows hardware GL working (libretro.h struct fix was the keystone)
 - ★ Demoscene `drawWebBloomWash` removal — real 3D scenes visible

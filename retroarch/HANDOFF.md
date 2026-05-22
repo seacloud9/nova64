@@ -17,12 +17,13 @@ Read these in order:
 
 ## Current Visual Baseline
 
-As of 2026-05-21 after the post-chain tuning / CRT AA pass:
+As of 2026-05-21 after the scene-by-scene parity + conformance rebaseline pass:
 
-- Visual parity comparator: `average=46.3`, `strictAverage=44.6`.
-- A bloom-only tuning run peaked at `average=47.4`, `strictAverage=45.8`,
-  but the committed state keeps the CRT-path anti-aliasing fix because visible
-  edge quality matters more than a small metric-only gain.
+- Visual parity comparator: `average=67.1`, `strictAverage=63.6`.
+- Per-scene scores: s0 `72.4`, s1 `71.2`, s2 `66.2`, s3 `59.7`, s4 `66.1`.
+- Scene-by-scene sky, fog, ambient, vignette, and emissive tuning moved the
+  demoscene much closer to the web reference's heavy Three.js bloom wash while
+  still preserving real 3D geometry.
 - HDR post target is guarded: `RGBA16F` is attempted first, `RGBA8` is the
   fallback.
 - Bloom now uses a guarded 5-mip downsample/blur/combine chain, with the old
@@ -32,6 +33,12 @@ As of 2026-05-21 after the post-chain tuning / CRT AA pass:
 - Text helpers now honor browser-style scaling: `print(..., scale)`,
   `printCentered(..., scale)`, `printRight(..., scale)`, plus explicit
   `printScaled()` and `printTightScaled()`.
+- Tight text effect variants are wired globally and under `nova64.draw`:
+  `printShadowTight`, `printOutlineTight`, `printRainbowTight`,
+  `printWaveTight`, `printFlashTight`, `printShakeTight`,
+  `printGradientTight`.
+- Full conformance was re-baselined and passes with the current source and
+  screenshot set.
 - The earlier 85%+ number was a mirage caused by flat bloom-wash fields. Do not
   chase it by hiding real 3D detail.
 

@@ -2714,6 +2714,164 @@ static void draw_line_gradient_pixels(int x0, int y0, int x1, int y1,
    }
 }
 
+/* ── Lightning bolt primitive ─────────────────────────────────────────────────
+   Procedural jagged bolt between two endpoints via recursive midpoint-
+   displacement subdivision, with optional perpendicular branches and a
+   multi-pass glow halo. Deterministic per (seed, frame_count) so an
+   animated bolt shimmers without sliding around. */
+
+#define NOVA64_LIGHTNING_MAX_POINTS 256
+
+static uint32_t lightning_rng(uint32_t *state)
+{
+   uint32_t s = *state;
+   s ^= s << 13;
+   s ^= s >> 17;
+   s ^= s << 5;
+   *state = s ? s : 0xdeadbeefU;
+   return *state;
+}
+
+static float lightning_rng_signed(uint32_t *state)
+{
+   return ((float)(lightning_rng(state) & 0xFFFF) / 32768.0f) - 1.0f;
+}
+
+/* Tint two colours together using a 0..255 alpha-blend on top of the base. */
+static uint32_t lightning_dim(uint32_t color, int num, int den)
+{
+   uint8_t r = (uint8_t)((((color >> 24) & 0xff) * num) / den);
+   uint8_t g = (uint8_t)((((color >> 16) & 0xff) * num) / den);
+   uint8_t b = (uint8_t)((((color >>  8) & 0xff) * num) / den);
+   uint8_t a = (uint8_t)(color & 0xff);
+   return ((uint32_t)r << 24) | ((uint32_t)g << 16) | ((uint32_t)b << 8) | a;
+}
+
+static void draw_lightning_polyline(const float *xs, const float *ys, int n,
+                                    uint32_t core_color, uint32_t glow_color,
+                                    int glow_thickness)
+{
+   /* 3-pass glow: outer dim halo, mid halo, bright core. Each pass is a
+      chain of line segments through the displaced points. */
+   if (n < 2)
+      return;
+   int t_outer = glow_thickness;
+   int t_mid   = (glow_thickness > 2) ? glow_thickness - 1 : glow_thickness;
+   uint32_t c_outer = lightning_dim(glow_color, 1, 3);
+   uint32_t c_mid   = lightning_dim(glow_color, 2, 3);
+   uint32_t c_core  = core_color;
+
+   for (int i = 0; i + 1 < n; i++) {
+      int x0 = (int)xs[i],   y0 = (int)ys[i];
+      int x1 = (int)xs[i+1], y1 = (int)ys[i+1];
+      if (t_outer > 1) draw_thick_line_pixels(x0, y0, x1, y1, c_outer, t_outer);
+   }
+   for (int i = 0; i + 1 < n; i++) {
+      int x0 = (int)xs[i],   y0 = (int)ys[i];
+      int x1 = (int)xs[i+1], y1 = (int)ys[i+1];
+      if (t_mid > 1) draw_thick_line_pixels(x0, y0, x1, y1, c_mid, t_mid);
+   }
+   for (int i = 0; i + 1 < n; i++) {
+      int x0 = (int)xs[i],   y0 = (int)ys[i];
+      int x1 = (int)xs[i+1], y1 = (int)ys[i+1];
+      draw_line_pixels(x0, y0, x1, y1, c_core);
+   }
+}
+
+static int lightning_subdivide(float *xs, float *ys, int n,
+                               int iterations, float displacement,
+                               uint32_t *rng_state)
+{
+   /* Insert a displaced midpoint between each pair of adjacent points; halve
+      displacement each iteration. Result: jagged polyline whose detail
+      doubles per iteration. */
+   for (int it = 0; it < iterations; it++) {
+      int new_n = n * 2 - 1;
+      if (new_n > NOVA64_LIGHTNING_MAX_POINTS)
+         return n;
+      /* Walk backward so we can subdivide in-place. */
+      for (int i = n - 1; i > 0; i--) {
+         int src_i  = i;
+         int dst_i  = i * 2;
+         xs[dst_i] = xs[src_i];
+         ys[dst_i] = ys[src_i];
+         float mx = (xs[src_i] + xs[src_i - 1]) * 0.5f;
+         float my = (ys[src_i] + ys[src_i - 1]) * 0.5f;
+         /* Perpendicular direction to the segment. */
+         float sx = xs[src_i] - xs[src_i - 1];
+         float sy = ys[src_i] - ys[src_i - 1];
+         float len = sqrtf(sx * sx + sy * sy);
+         if (len < 0.001f) {
+            xs[dst_i - 1] = mx;
+            ys[dst_i - 1] = my;
+            continue;
+         }
+         float px = -sy / len;
+         float py =  sx / len;
+         float d = lightning_rng_signed(rng_state) * displacement;
+         xs[dst_i - 1] = mx + px * d;
+         ys[dst_i - 1] = my + py * d;
+      }
+      n = new_n;
+      displacement *= 0.55f;  /* shrink jaggedness as detail goes up */
+   }
+   return n;
+}
+
+static void draw_lightning_pixels(int x1, int y1, int x2, int y2,
+                                  uint32_t core_color, uint32_t glow_color,
+                                  int iterations, float displacement,
+                                  float branch_chance, int glow_thickness,
+                                  uint32_t seed)
+{
+   if (iterations < 1) iterations = 1;
+   if (iterations > 6) iterations = 6;
+   if (glow_thickness < 1) glow_thickness = 1;
+   if (glow_thickness > 9) glow_thickness = 9;
+
+   float xs[NOVA64_LIGHTNING_MAX_POINTS];
+   float ys[NOVA64_LIGHTNING_MAX_POINTS];
+   xs[0] = (float)x1; ys[0] = (float)y1;
+   xs[1] = (float)x2; ys[1] = (float)y2;
+
+   uint32_t rng = seed ? seed : 0x9e3779b9U;
+   int n = lightning_subdivide(xs, ys, 2, iterations, displacement, &rng);
+   draw_lightning_polyline(xs, ys, n, core_color, glow_color, glow_thickness);
+
+   /* Branches: pick a few mid-points along the main bolt and shoot a shorter
+      child bolt off in a roughly perpendicular direction. Branches are
+      dimmer + thinner + skip their own branches (no recursion). */
+   if (branch_chance > 0.0f && n >= 4) {
+      uint32_t branch_color_core = lightning_dim(core_color, 3, 4);
+      uint32_t branch_color_glow = lightning_dim(glow_color, 2, 3);
+      int branch_thick = glow_thickness > 2 ? glow_thickness - 1 : glow_thickness;
+      for (int i = 1; i < n - 1; i++) {
+         float roll = (float)(lightning_rng(&rng) & 0xFFFF) / 65535.0f;
+         if (roll >= branch_chance) continue;
+         float sx = xs[i + 1] - xs[i - 1];
+         float sy = ys[i + 1] - ys[i - 1];
+         float len = sqrtf(sx * sx + sy * sy);
+         if (len < 0.001f) continue;
+         float px = -sy / len;
+         float py =  sx / len;
+         /* Branch length: 30-60% of remaining bolt length, perpendicular-ish. */
+         float main_len = sqrtf((float)((x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1)));
+         float blen = main_len * (0.25f + ((float)(lightning_rng(&rng) & 0xFF) / 255.0f) * 0.35f);
+         float tilt = lightning_rng_signed(&rng) * 0.4f;
+         float bx = xs[i] + (px + tilt) * blen * (lightning_rng_signed(&rng) > 0 ? 1.0f : -1.0f);
+         float by = ys[i] + (py + tilt) * blen * (lightning_rng_signed(&rng) > 0 ? 1.0f : -1.0f);
+
+         float bxs[NOVA64_LIGHTNING_MAX_POINTS];
+         float bys[NOVA64_LIGHTNING_MAX_POINTS];
+         bxs[0] = xs[i]; bys[0] = ys[i];
+         bxs[1] = bx;    bys[1] = by;
+         int bn = lightning_subdivide(bxs, bys, 2, iterations - 1, displacement * 0.6f, &rng);
+         draw_lightning_polyline(bxs, bys, bn,
+                                 branch_color_core, branch_color_glow, branch_thick);
+      }
+   }
+}
+
 static void draw_rect_pixels(int x, int y, int w, int h, uint32_t color, bool filled)
 {
    if (w < 0) {
@@ -3189,6 +3347,20 @@ static void draw_text_aligned(const char *text, int x, int y, uint32_t color, in
    else if (align == 2)
       x -= text_pixel_width(text);
    draw_text_pixels(text, x, y, color);
+}
+
+/* Forward decls used by the tight aligned helper. The tight pixel +
+   width routines are defined below glyph_tight_bounds. */
+static void draw_text_tight_pixels(const char *text, int x, int y, uint32_t color);
+static int  tight_text_pixel_width(const char *text);
+
+static void draw_text_tight_aligned(const char *text, int x, int y, uint32_t color, int align)
+{
+   if (align == 1)
+      x -= tight_text_pixel_width(text) / 2;
+   else if (align == 2)
+      x -= tight_text_pixel_width(text);
+   draw_text_tight_pixels(text, x, y, color);
 }
 
 static bool glyph_tight_bounds(char ch, int *min_col, int *max_col)
@@ -5002,6 +5174,165 @@ static JSValue js_print_outline(JSContext *ctx, JSValueConst this_val, int argc,
    draw_text_aligned(text, x, y - 1, outline, align);
    draw_text_aligned(text, x, y + 1, outline, align);
    draw_text_aligned(text, x, y, color, align);
+   if (text) JS_FreeCString(ctx, text);
+   return JS_UNDEFINED;
+}
+
+static void path_draw_line_segment(float x0f, float y0f, float x1f, float y1f, uint32_t color);
+
+/* drawLightning(x1, y1, x2, y2, color, glowColor?, opts?)
+   Draws a jagged procedural lightning bolt between two points with a
+   multi-pass glow halo and optional perpendicular branches. Pass an
+   integer 'seed' in opts (or rely on the default frame_count-driven seed)
+   to control whether the bolt animates between frames or stays still.
+
+   opts: {
+      iterations:    1..6   (default 5)    -- subdivision depth (more = jaggier)
+      displacement:  number (default 16)   -- starting offset magnitude in px
+      branches:      0..1   (default 0.0)  -- chance of branch per midpoint
+      thickness:     1..9   (default 3)    -- glow halo thickness
+      seed:          uint32 (default auto) -- explicit seed for stable bolts
+      jitter:        number (default 0)    -- adds 'jitter * frame_count' to seed
+                                              for animated shimmering
+   }
+*/
+static JSValue js_draw_lightning(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 5) return JS_UNDEFINED;
+   int x1 = int_from_js(ctx, argv[0], 0);
+   int y1 = int_from_js(ctx, argv[1], 0);
+   int x2 = int_from_js(ctx, argv[2], 0);
+   int y2 = int_from_js(ctx, argv[3], 0);
+   /* Compatibility: the original Batch 25 helper was
+      drawLightning(x1, y1, x2, y2, segs, color). Keep that call shape alive
+      while allowing the richer glow/branch API below. */
+   bool legacy_args = false;
+   int legacy_segments = 0;
+   if (argc > 5 && !JS_IsObject(argv[4])) {
+      legacy_segments = int_from_js(ctx, argv[4], 0);
+      legacy_args = legacy_segments >= 1 && legacy_segments <= 32;
+   }
+   if (legacy_args) {
+      double lx1 = double_from_js(ctx, argv[0], 0.0);
+      double ly1 = double_from_js(ctx, argv[1], 0.0);
+      double lx2 = double_from_js(ctx, argv[2], 100.0);
+      double ly2 = double_from_js(ctx, argv[3], 100.0);
+      int segs = legacy_segments;
+      uint32_t col = color_from_js(ctx, argv[5], rgba8(255, 255, 255, 255));
+      double dx = (lx2 - lx1) / segs;
+      double dy = (ly2 - ly1) / segs;
+      double len = sqrt(dx * dx + dy * dy);
+      if (len <= 0.00001)
+         return JS_UNDEFINED;
+      double nx2 = -dy / len;
+      double ny2 = dx / len;
+      double cx2 = lx1;
+      double cy2 = ly1;
+      uint32_t seed = ((uint32_t)(lx1 * 7 + ly1 * 13 + lx2 * 17 + ly2 * 3)) ^ 0xABCDu;
+      for (int i = 0; i < segs; i++) {
+         seed = seed * 1664525u + 1013904223u;
+         double jitter = ((seed >> 8) & 0xFF) / 255.0 * 2.0 - 1.0;
+         double nx3 = lx1 + dx * (i + 1) + nx2 * jitter * len * 0.6;
+         double ny3 = ly1 + dy * (i + 1) + ny2 * jitter * len * 0.6;
+         if (i == segs - 1) { nx3 = lx2; ny3 = ly2; }
+         path_draw_line_segment((int)cx2, (int)cy2, (int)nx3, (int)ny3, col);
+         cx2 = nx3;
+         cy2 = ny3;
+      }
+      return JS_UNDEFINED;
+   }
+
+   uint32_t core = color_from_js(ctx, argv[4], rgba8(220, 240, 255, 255));
+   /* If no glow colour supplied, derive a soft tint from the core. */
+   uint32_t glow;
+   if (!legacy_args && argc > 5 && !JS_IsUndefined(argv[5]) && !JS_IsNull(argv[5])
+       && !JS_IsObject(argv[5])) {
+      glow = color_from_js(ctx, argv[5], core);
+   } else {
+      uint8_t r = (uint8_t)(((core >> 24) & 0xff) / 2 + 60);
+      uint8_t g = (uint8_t)(((core >> 16) & 0xff) / 2 + 60);
+      uint8_t b = (uint8_t)(((core >>  8) & 0xff) / 2 + 80);
+      glow = rgba8(r, g, b, 255);
+   }
+
+   int      iterations    = 5;
+   float    displacement  = 16.0f;
+   float    branch_chance = 0.0f;
+   int      thickness     = 3;
+   uint32_t seed          = 0x9e3779b9U ^ ((uint32_t)x1 * 2654435761U)
+                            ^ ((uint32_t)y1 * 40503U)
+                            ^ ((uint32_t)x2 * 2246822519U)
+                            ^ ((uint32_t)y2 * 3266489917U);
+   float    jitter        = 0.0f;
+
+   /* opts can appear in either argv[5] (if no separate glow colour) or argv[6]. */
+   JSValueConst opts = JS_UNDEFINED;
+   if (!legacy_args && argc > 5 && JS_IsObject(argv[5])) opts = argv[5];
+   if (!legacy_args && argc > 6 && JS_IsObject(argv[6])) opts = argv[6];
+   if (JS_IsObject(opts)) {
+      JSValue v;
+      v = JS_GetPropertyStr(ctx, opts, "iterations");
+      if (!JS_IsUndefined(v)) iterations = int_from_js(ctx, v, iterations);
+      JS_FreeValue(ctx, v);
+      v = JS_GetPropertyStr(ctx, opts, "displacement");
+      if (!JS_IsUndefined(v)) displacement = (float)double_from_js(ctx, v, displacement);
+      JS_FreeValue(ctx, v);
+      v = JS_GetPropertyStr(ctx, opts, "branches");
+      if (!JS_IsUndefined(v)) branch_chance = (float)double_from_js(ctx, v, branch_chance);
+      JS_FreeValue(ctx, v);
+      v = JS_GetPropertyStr(ctx, opts, "thickness");
+      if (!JS_IsUndefined(v)) thickness = int_from_js(ctx, v, thickness);
+      JS_FreeValue(ctx, v);
+      v = JS_GetPropertyStr(ctx, opts, "seed");
+      if (!JS_IsUndefined(v)) seed = (uint32_t)int_from_js(ctx, v, (int)seed);
+      JS_FreeValue(ctx, v);
+      v = JS_GetPropertyStr(ctx, opts, "jitter");
+      if (!JS_IsUndefined(v)) jitter = (float)double_from_js(ctx, v, jitter);
+      JS_FreeValue(ctx, v);
+   }
+   if (jitter > 0.0f)
+      seed ^= (uint32_t)((float)frame_count * jitter + 0.5f);
+   draw_lightning_pixels(x1, y1, x2, y2, core, glow,
+                         iterations, displacement, branch_chance,
+                         thickness, seed);
+   return JS_UNDEFINED;
+}
+
+/* Tight (variable-width) versions of the most-used HUD text effects. They
+   share argument shape with their fixed-width counterparts so swapping
+   `printShadow` -> `printShadowTight` is a one-word change in a cart. */
+static JSValue js_print_shadow_tight(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   if (argc < 3) return JS_UNDEFINED;
+   const char *text = JS_ToCString(ctx, argv[0]);
+   int x = 0, y = 0;
+   transform_2d_point(int_from_js(ctx, argv[1], 0), int_from_js(ctx, argv[2], 0), &x, &y);
+   uint32_t color  = color_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, rgba8(255, 255, 255, 255));
+   uint32_t shadow = color_from_js(ctx, argc > 4 ? argv[4] : JS_UNDEFINED, rgba8(0, 0, 0, 255));
+   int dx = argc > 5 ? int_from_js(ctx, argv[5], 1) : 1;
+   int dy = argc > 6 ? int_from_js(ctx, argv[6], 1) : 1;
+   int align = argc > 7 ? text_align_from_js(ctx, argv[7]) : 0;
+   draw_text_tight_aligned(text, x + dx, y + dy, shadow, align);
+   draw_text_tight_aligned(text, x, y, color, align);
+   if (text) JS_FreeCString(ctx, text);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_print_outline_tight(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   if (argc < 3) return JS_UNDEFINED;
+   const char *text = JS_ToCString(ctx, argv[0]);
+   int x = 0, y = 0;
+   transform_2d_point(int_from_js(ctx, argv[1], 0), int_from_js(ctx, argv[2], 0), &x, &y);
+   uint32_t color   = color_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, rgba8(255, 255, 255, 255));
+   uint32_t outline = color_from_js(ctx, argc > 4 ? argv[4] : JS_UNDEFINED, rgba8(0, 0, 0, 255));
+   int align = argc > 5 ? text_align_from_js(ctx, argv[5]) : 0;
+   draw_text_tight_aligned(text, x - 1, y, outline, align);
+   draw_text_tight_aligned(text, x + 1, y, outline, align);
+   draw_text_tight_aligned(text, x, y - 1, outline, align);
+   draw_text_tight_aligned(text, x, y + 1, outline, align);
+   draw_text_tight_aligned(text, x, y, color, align);
    if (text) JS_FreeCString(ctx, text);
    return JS_UNDEFINED;
 }
@@ -10272,6 +10603,31 @@ static void draw_text_gradient(const char *text, int x, int y, uint32_t ctop, ui
    }
 }
 
+static void draw_text_gradient_tight(const char *text, int x, int y, uint32_t ctop, uint32_t cbot)
+{
+   if (!text) return;
+   int cursor = x;
+   for (const char *p = text; *p; p++) {
+      if (*p == '\n') { cursor = x; y += 9; continue; }
+      int minc = 0, maxc = 0;
+      if (glyph_tight_bounds(*p, &minc, &maxc)) {
+         for (int row = 0; row < 7; row++) {
+            uint8_t bits = glyph_row(*p, row);
+            float t2 = (float)row / 6.0f;
+            uint8_t r2 = (uint8_t)((float)((ctop>>24)&0xff)*(1.0f-t2) + (float)((cbot>>24)&0xff)*t2);
+            uint8_t g2 = (uint8_t)((float)((ctop>>16)&0xff)*(1.0f-t2) + (float)((cbot>>16)&0xff)*t2);
+            uint8_t b2 = (uint8_t)((float)((ctop>>8) &0xff)*(1.0f-t2) + (float)((cbot>>8) &0xff)*t2);
+            uint8_t a2 = (uint8_t)((float)((ctop>>0) &0xff)*(1.0f-t2) + (float)((cbot>>0) &0xff)*t2);
+            uint32_t col = ((uint32_t)r2<<24)|((uint32_t)g2<<16)|((uint32_t)b2<<8)|a2;
+            for (int col2 = minc; col2 <= maxc; col2++)
+               if (bits & (1U << (4 - col2)))
+                  set_pixel(cursor + (col2 - minc), y + row, col);
+         }
+      }
+      cursor += glyph_tight_advance(*p);
+   }
+}
+
 static JSValue js_print_gradient(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
    (void)this_val;
@@ -10410,6 +10766,137 @@ static JSValue js_print_rainbow(JSContext *ctx, JSValueConst this_val, int argc,
       }
    }
    JS_FreeCString(ctx, text);
+   return JS_UNDEFINED;
+}
+
+/* ── Tight (variable-width) versions of animated text effects ──────────────
+   Identical argument shape to the fixed-width effects, but each glyph
+   advances by its content width + 1 px (via glyph_tight_advance) instead of
+   the flat 6 px. Carts opt in by calling the *Tight name. Drop-in for HUDs
+   where the chunky fixed-width look bothers you. */
+
+static JSValue js_print_wave_tight(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int x = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0);
+   int y = int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0);
+   const char *text = JS_ToCString(ctx, argc > 2 ? argv[2] : JS_UNDEFINED);
+   uint32_t color = 0; JS_ToUint32(ctx, &color, argc > 3 ? argv[3] : JS_UNDEFINED);
+   float amp  = (float)double_from_js(ctx, argc > 4 ? argv[4] : JS_UNDEFINED, 4.0);
+   float freq = (float)double_from_js(ctx, argc > 5 ? argv[5] : JS_UNDEFINED, 0.8f);
+   float t2   = (float)double_from_js(ctx, argc > 6 ? argv[6] : JS_UNDEFINED, 0.0);
+   if (text) {
+      int cursor = x;
+      int ci = 0;
+      for (const char *p = text; *p; p++, ci++) {
+         if (*p == '\n') { cursor = x; y += 9; ci = 0; continue; }
+         int dy = (int)(amp * sinf(ci * freq + t2));
+         int minc = 0, maxc = 0;
+         if (glyph_tight_bounds(*p, &minc, &maxc)) {
+            for (int row = 0; row < 7; row++) {
+               uint8_t bits = glyph_row(*p, row);
+               for (int col2 = minc; col2 <= maxc; col2++)
+                  if (bits & (1U << (4 - col2)))
+                     set_pixel(cursor + (col2 - minc), y + row + dy, color);
+            }
+         }
+         cursor += glyph_tight_advance(*p);
+      }
+   }
+   if (text) JS_FreeCString(ctx, text);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_print_flash_tight(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int x = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0);
+   int y = int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0);
+   const char *text = JS_ToCString(ctx, argc > 2 ? argv[2] : JS_UNDEFINED);
+   uint32_t color = 0; JS_ToUint32(ctx, &color, argc > 3 ? argv[3] : JS_UNDEFINED);
+   float t2  = (float)double_from_js(ctx, argc > 4 ? argv[4] : JS_UNDEFINED, 0.0);
+   float hz  = (float)double_from_js(ctx, argc > 5 ? argv[5] : JS_UNDEFINED, 2.0);
+   if (text && ((int)(t2 * hz * 2.0f) & 1) == 0) {
+      draw_text_tight_pixels(text, x, y, color);
+   }
+   if (text) JS_FreeCString(ctx, text);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_print_shake_tight(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int x = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0);
+   int y = int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0);
+   const char *text = JS_ToCString(ctx, argc > 2 ? argv[2] : JS_UNDEFINED);
+   uint32_t color = 0; JS_ToUint32(ctx, &color, argc > 3 ? argv[3] : JS_UNDEFINED);
+   float t2     = (float)double_from_js(ctx, argc > 4 ? argv[4] : JS_UNDEFINED, 0.0);
+   float amount = (float)double_from_js(ctx, argc > 5 ? argv[5] : JS_UNDEFINED, 2.0);
+   if (text) {
+      int cursor = x;
+      int ci = 0;
+      for (const char *p = text; *p; p++, ci++) {
+         if (*p == '\n') { cursor = x; y += 9; ci = 0; continue; }
+         int ox = (int)(sinf((float)(ci * 7) + t2 * 20.0f) * amount);
+         int oy = (int)(cosf((float)(ci * 5) + t2 * 17.0f) * amount);
+         int minc = 0, maxc = 0;
+         if (glyph_tight_bounds(*p, &minc, &maxc)) {
+            for (int row = 0; row < 7; row++) {
+               uint8_t bits = glyph_row(*p, row);
+               for (int col2 = minc; col2 <= maxc; col2++)
+                  if (bits & (1U << (4 - col2)))
+                     set_pixel(cursor + (col2 - minc) + ox, y + row + oy, color);
+            }
+         }
+         cursor += glyph_tight_advance(*p);
+      }
+   }
+   if (text) JS_FreeCString(ctx, text);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_print_rainbow_tight(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int x = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0);
+   int y = int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0);
+   const char *text = JS_ToCString(ctx, argc > 2 ? argv[2] : JS_UNDEFINED);
+   float t2 = (float)double_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, 0.0);
+   if (text) {
+      int cursor = x;
+      int ci = 0;
+      for (const char *p = text; *p; p++, ci++) {
+         if (*p == '\n') { cursor = x; y += 9; ci = 0; continue; }
+         float hue   = fmodf((float)ci * 30.0f + t2 * 100.0f, 360.0f);
+         uint32_t col = hsv_to_rgba8(hue, 1.0f, 1.0f, 255);
+         int minc = 0, maxc = 0;
+         if (glyph_tight_bounds(*p, &minc, &maxc)) {
+            for (int row = 0; row < 7; row++) {
+               uint8_t bits = glyph_row(*p, row);
+               for (int col2 = minc; col2 <= maxc; col2++)
+                  if (bits & (1U << (4 - col2)))
+                     set_pixel(cursor + (col2 - minc), y + row, col);
+            }
+         }
+         cursor += glyph_tight_advance(*p);
+      }
+   }
+   if (text) JS_FreeCString(ctx, text);
+   return JS_UNDEFINED;
+}
+
+static void draw_text_gradient_tight(const char *text, int x, int y, uint32_t ctop, uint32_t cbot);
+
+static JSValue js_print_gradient_tight(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   int x = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0);
+   int y = int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0);
+   const char *text = JS_ToCString(ctx, argc > 2 ? argv[2] : JS_UNDEFINED);
+   uint32_t ctop = 0; JS_ToUint32(ctx, &ctop, argc > 3 ? argv[3] : JS_UNDEFINED);
+   uint32_t cbot = 0; JS_ToUint32(ctx, &cbot, argc > 4 ? argv[4] : JS_UNDEFINED);
+   draw_text_gradient_tight(text, x, y, ctop, cbot);
+   if (text) JS_FreeCString(ctx, text);
    return JS_UNDEFINED;
 }
 
@@ -18354,32 +18841,6 @@ static JSValue js_fill_explosion(JSContext *ctx, JSValueConst this_val, int argc
       }
       for(int ii=0;ii<nc-1;ii++) for(int jj=ii+1;jj<nc;jj++) if(xs[jj]<xs[ii]){int t=xs[ii];xs[ii]=xs[jj];xs[jj]=t;}
       for(int ii=0;ii+1<nc;ii+=2) for(int xv=xs[ii];xv<=xs[ii+1];xv++) set_pixel(xv,ys,col);
-   }
-   return JS_UNDEFINED;
-}
-
-/* drawLightning(x1,y1,x2,y2,segs,color) */
-static JSValue js_draw_lightning(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
-{
-   (void)this_val;
-   double x1=double_from_js(ctx,argv[0],0), y1=double_from_js(ctx,argv[1],0);
-   double x2=double_from_js(ctx,argv[2],100), y2=double_from_js(ctx,argv[3],100);
-   int segs=argc>4?(int)double_from_js(ctx,argv[4],6):6;
-   uint32_t col=(uint32_t)color_from_js(ctx,argv[5],0xFFFFFFFFu);
-   if(segs<1)segs=1; if(segs>32)segs=32;
-   double dx=(x2-x1)/segs, dy=(y2-y1)/segs;
-   double len=sqrt(dx*dx+dy*dy);
-   double nx2=-dy/len, ny2=dx/len;
-   double cx2=x1, cy2=y1;
-   uint32_t seed=((uint32_t)(x1*7+y1*13+x2*17+y2*3))^0xABCDu;
-   for(int i=0;i<segs;i++){
-      seed=seed*1664525u+1013904223u;
-      double jitter=((seed>>8)&0xFF)/255.0*2.0-1.0;
-      double nx3=x1+dx*(i+1)+nx2*jitter*len*0.6;
-      double ny3=y1+dy*(i+1)+ny2*jitter*len*0.6;
-      if(i==segs-1){nx3=x2;ny3=y2;}
-      path_draw_line_segment((int)cx2,(int)cy2,(int)nx3,(int)ny3,col);
-      cx2=nx3; cy2=ny3;
    }
    return JS_UNDEFINED;
 }
@@ -28274,6 +28735,15 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, draw, "printRight", js_print_right, 5);
    set_function(ctx, draw, "printShadow", js_print_shadow, 8);
    set_function(ctx, draw, "printOutline", js_print_outline, 6);
+   /* Tight (variable-width) text effect variants. Same args as their
+      fixed-width counterparts; glyphs advance by content+1 instead of 6 px. */
+   set_function(ctx, draw, "printShadowTight",   js_print_shadow_tight,   8);
+   set_function(ctx, draw, "printOutlineTight",  js_print_outline_tight,  6);
+   set_function(ctx, draw, "printWaveTight",     js_print_wave_tight,     7);
+   set_function(ctx, draw, "printFlashTight",    js_print_flash_tight,    6);
+   set_function(ctx, draw, "printShakeTight",    js_print_shake_tight,    6);
+   set_function(ctx, draw, "printRainbowTight",  js_print_rainbow_tight,  4);
+   set_function(ctx, draw, "printGradientTight", js_print_gradient_tight, 5);
    set_function(ctx, draw, "spr", js_spr, 10);
    set_function(ctx, draw, "createSpriteSheet", js_create_spritesheet, 3);
    set_function(ctx, draw, "sprFrame", js_spr_frame, 4);
@@ -28654,6 +29124,14 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, global, "textSize", js_text_size, 1);
    set_function(ctx, global, "printShadow", js_print_shadow, 8);
    set_function(ctx, global, "printOutline", js_print_outline, 6);
+   /* Tight (variable-width) text effect variants — see nova64.draw above. */
+   set_function(ctx, global, "printShadowTight",   js_print_shadow_tight,   8);
+   set_function(ctx, global, "printOutlineTight",  js_print_outline_tight,  6);
+   set_function(ctx, global, "printWaveTight",     js_print_wave_tight,     7);
+   set_function(ctx, global, "printFlashTight",    js_print_flash_tight,    6);
+   set_function(ctx, global, "printShakeTight",    js_print_shake_tight,    6);
+   set_function(ctx, global, "printRainbowTight",  js_print_rainbow_tight,  4);
+   set_function(ctx, global, "printGradientTight", js_print_gradient_tight, 5);
    set_function(ctx, global, "spr", js_spr, 10);
    set_function(ctx, global, "createSpriteSheet", js_create_spritesheet, 3);
    set_function(ctx, global, "sprFrame", js_spr_frame, 4);

@@ -728,3 +728,34 @@ AAAK:
   not include the CRT-path AA correction. Browser captures remain heavily
   bloom-washed in several frames, while RetroArch intentionally preserves real
   3D geometry; do not chase 90% by restoring fake fullscreen wash rectangles.
+
+---
+
+## 2026-05-21 - RetroArch 67% parity, rebaseline, and lightning handoff
+
+Topic seed for MemPalace: `nova64-retroarch-scene-parity-67-tight-lightning-20260521`
+
+AAAK:
+
+- **Anchor:** User asked to continue after reviewing MemPalace. The live tree
+  contained newer uncommitted work beyond the indexed post-chain diary entry:
+  scene parity tuning, conformance re-baselining, tight text effects, and an
+  attempted `drawLightning` upgrade.
+- **Actions:** Fixed the immediate build blocker by reconciling duplicate
+  `js_draw_lightning` definitions. The newer glow/branch implementation is kept
+  for the modern call shape, while the legacy Batch 25
+  `drawLightning(x1, y1, x2, y2, segs, color)` path now uses the original
+  deterministic line-jitter algorithm so conformance cart 344 remains stable.
+  Documented the new state in `HANDOFF.md`, `HANDOFF_HWGL.md`, `README.md`, and
+  `BACKLOG.md`.
+- **Artifacts:** `retroarch/games/demoscene.js` carries scene-by-scene sky,
+  fog, ambient, vignette, bloom, and emissive tuning. `nova64_libretro.c` carries
+  tight text effect variants and lightning compatibility. `run_conformance.sh`
+  plus `screenshots/retroarch/*.png` are the updated visual baseline.
+- **Knowledge:** Current verified demoscene visual comparator is
+  `average=67.1`, `strictAverage=63.6` with per-scene scores s0 `72.4`,
+  s1 `71.2`, s2 `66.2`, s3 `59.7`, s4 `66.1`. Full conformance passes with
+  `bash retroarch/tests/run_conformance.sh --skip-build`; focused lightning
+  conformance 344 passes with checksum `aaf171a255fb3792`. Next good parity
+  targets are capture timing, animation speed, camera composition, particle
+  density, and HUD/font metrics. Keep `drawWebBloomWash()` disabled.

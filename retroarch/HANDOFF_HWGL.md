@@ -1,6 +1,6 @@
 # Nova64 Hardware GL on Windows — Status & Handover
 
-**Last updated:** 2026-05-21 (Codex post-chain bloom/AA pass)
+**Last updated:** 2026-05-21 (scene parity + conformance rebaseline pass)
 **Branch:** `main`
 **Working tree:** expected clean after committing this pass; source changes listed below
 
@@ -19,10 +19,69 @@
 - ✅ Browser-style `nova64.draw` aliases now include Batch 41 text/shape helpers (`drawTriangle`, glow/pulsing text, `tristrip`, floating text)
 - ⚠️ User reports performance feels slow on Windows (~38–40 FPS, 31–35 ms/frame on AMD Radeon 780M)
 - ⚠️ Linux Mesa software harness hits ~110 FPS at ~9 ms/frame, so Windows hardware _should_ be vastly faster — Windows-specific bottleneck unidentified
-- ⚠️ Numeric visual-parity score: 46.3% average / 44.6% strict average after the post-chain bloom/AA pass. A bloom-only tuning run reached 47.4% / 45.8%, but the committed state keeps the CRT-path anti-aliasing fix because visible edge quality matters more than a small metric-only gain. The "85% mirage" is still relevant because high scores previously rewarded flat washed-out captures rather than real 3D detail.
+- ⚠️ Numeric visual-parity score: 67.1% average / 63.6% strict average after the scene-by-scene parity pass. The "85% mirage" is still relevant because high scores previously rewarded flat washed-out captures rather than real 3D detail; this newer score comes from tuning actual scene sky/fog/ambient/emissive balance, not from restoring fake wash rectangles.
+- ✅ Full 519-case conformance sweep has been re-baselined and passes with the current screenshot set.
+- ✅ Tight text effect variants are wired globally and under `nova64.draw`.
+- ✅ `drawLightning` now keeps the legacy Batch 25 six-argument shape while also supporting a newer glow/branch options shape.
 - ✅ New `retroarch/BACKLOG.md` captures deferred Windows perf work, queued visual features, stale-file cleanup, and code-anchored TODOs
 - ✅ Implemented the selected visual feature: **HDR post target (`RGBA16F`) + multi-mip bloom**, with `RGBA8` fallback if float render targets are not supported and old single-pass bloom kept as fallback
 - ✅ Recent C changes include the Shift+F perf overlay diagnostics plus the new HDR/multi-mip bloom post-processing path
+
+---
+
+## Current 2026-05-21 scene parity / rebaseline state
+
+Latest work after the post-chain pass:
+
+```
+045f1a9 fix: tune RetroArch post bloom and CRT anti-aliasing
+accddaa feat: add scaled RetroArch text helpers
+cf556eb docs: clean up RetroArch notes
+```
+
+What's in this delta:
+
+- Demoscene scene-by-scene parity tuning in `retroarch/games/demoscene.js`.
+  Sky gradients, ambient, fog, vignette, bloom, and a few emissive values were
+  shifted toward the web Three.js reference's heavy bloom-wash color
+  distribution while preserving visible 3D geometry.
+- `nova64_libretro.c` adds tight variants of the text effects:
+  `printShadowTight`, `printOutlineTight`, `printRainbowTight`,
+  `printWaveTight`, `printFlashTight`, `printShakeTight`, and
+  `printGradientTight`. They are registered on both global and `nova64.draw`.
+- `drawLightning` was upgraded with a richer glow/branch implementation while
+  preserving the legacy `drawLightning(x1, y1, x2, y2, segs, color)` behavior
+  used by conformance cart 344.
+- `retroarch/tests/run_conformance.sh` was re-baselined for the current
+  screenshot set, including font/glyph fixes, post-chain changes, and the
+  scene-tuned captures. Updated `screenshots/retroarch/*.png` files are part
+  of this baseline.
+- `BACKLOG.md` records the shipped work and leaves future parity work focused
+  on scene timing, camera composition, particle density, and HUD/font metrics.
+
+Validation from this pass:
+
+- `make clean && make platform=unix && make harness` passes.
+- `bash retroarch/tests/run_conformance.sh --from 344 --to 344 --skip-build`
+  passes with checksum `aaf171a255fb3792`.
+- `bash retroarch/tests/run_conformance.sh --skip-build` passes across the
+  full suite.
+- `NOVA64_GLES_TESTS=1 pnpm run retroarch:visual:demoscene` passes:
+  - s0 `72.4`
+  - s1 `71.2`
+  - s2 `66.2`
+  - s3 `59.7`
+  - s4 `66.1`
+  - average `67.1`
+  - strictAverage `63.6`
+
+Next target:
+
+1. Push parity beyond ~70 by matching capture timing, animation speeds,
+   camera composition, particle counts, and HUD/font metrics.
+2. Keep the fake `drawWebBloomWash()` path disabled. The current score is a
+   real-scene score, not a mask.
+3. Windows perf investigation remains deferred unless the user asks.
 
 ---
 

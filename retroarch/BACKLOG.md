@@ -5,11 +5,9 @@ lives here. Update this file as items are picked up or completed.
 
 Last updated: 2026-05-21
 
-**Latest feature shipped:** Post-chain bloom tuning plus CRT-path edge
-smoothing. The HDR/multi-mip bloom path now favors broader low-frequency mips,
-uses a softer brightpass ramp, keeps scanlines less crushing, and applies the
-FXAA-like smoothing after CRT barrel warp so CRT-enabled scenes do not bypass
-anti-aliasing.
+**Latest feature shipped:** ENERGY_CORE luminous-volume parity tuning. Scene 3
+now uses brighter real sky/fog/ambient/emissive values instead of the old fake
+wash overlay, raising full demoscene parity to **74.1% / 70.9% strict**.
 
 ---
 
@@ -104,6 +102,10 @@ In rough priority order; pick what fits the user's mood.
   pass shipped (see Recently shipped). Further refinement (e.g., matching
   web capture timestamps, animation speeds, particle counts) is still on
   the table when we want to push the numeric score past ~70.
+- **Scene 2 + scene 4 luminous-volume pass** — scene 3 proved that matching
+  web exposure with real sky/fog/emissive volume can move the score without
+  hiding geometry. Apply the same screenshot-first approach to DIGITAL_CITY
+  and THE_VOID before revisiting camera timing.
 
 ### Cleanup / technical debt
 
@@ -156,6 +158,12 @@ The last session arc closed out:
   - s4 THE_VOID 38 → 66 (saturated magenta sky/fog/ambient, vignette 1.35 → 0.42)
     Visually the scenes now read as authentic Three.js-style bloom-washed
     cyberpunk while still showing 3D detail through the wash.
+- ★ ENERGY_CORE luminous-volume parity pass. Brighter magenta/pink sky, lighter
+  vignette, closer fog, stronger ambient, and higher emissive core/ring/orb
+  values moved scene 3 from about 60% to 89% and the full comparator from
+  **67.1% / 63.6% strict** to **74.1% / 70.9% strict**. A camera-only web
+  formula experiment regressed the scene to ~39%, so the winning path is
+  real exposure/volume matching, not camera displacement.
 - ★ Variable-width tight text effect variants: `printShadowTight`,
   `printOutlineTight`, `printRainbowTight`, `printWaveTight`,
   `printFlashTight`, `printShakeTight`, `printGradientTight`. Same call

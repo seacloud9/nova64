@@ -759,3 +759,29 @@ AAAK:
   conformance 344 passes with checksum `aaf171a255fb3792`. Next good parity
   targets are capture timing, animation speed, camera composition, particle
   density, and HUD/font metrics. Keep `drawWebBloomWash()` disabled.
+
+---
+
+## 2026-05-22 - RetroArch ENERGY_CORE luminous parity jump
+
+Topic seed for MemPalace: `nova64-retroarch-energy-core-luminous-parity-20260522`
+
+AAAK:
+
+- **Anchor:** User said "Continue!" after the 67% parity/rebaseline commit and
+  wanted forward feature work, not a Windows-performance detour.
+- **Actions:** Regenerated a focused scene-3 comparator and inspected the
+  browser/RetroArch captures. A direct web-camera formula experiment made
+  RetroArch too small and dropped the scene to roughly `39%`, so it was
+  reverted. The winning change was real luminous-volume tuning in
+  `retroarch/games/demoscene.js`: brighter magenta/pink sky, lighter vignette,
+  closer fog, stronger ambient, and higher emissive core/ring/orb values.
+- **Artifacts:** Full comparator report in
+  `retroarch/build/demoscene-parity/report.json` from the validation run. Docs
+  updated in `HANDOFF.md`, `HANDOFF_HWGL.md`, and `BACKLOG.md`.
+- **Knowledge:** Focused s3 improved from `59.7` to about `89.1`; full
+  demoscene visual parity is now `average=74.1`, `strictAverage=70.9` with
+  s0 `77.0`, s1 `71.2`, s2 `66.3`, s3 `89.3`, s4 `66.4`. Keep
+  `drawWebBloomWash()` disabled. Next best parity targets are scene 2 and scene
+  4 luminous-volume/exposure tuning, judged against screenshots before camera
+  changes.

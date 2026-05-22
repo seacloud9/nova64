@@ -1,6 +1,6 @@
 # Nova64 Hardware GL on Windows — Status & Handover
 
-**Last updated:** 2026-05-21 (scene parity + conformance rebaseline pass)
+**Last updated:** 2026-05-22 (ENERGY_CORE luminous-volume parity pass)
 **Branch:** `main`
 **Working tree:** expected clean after committing this pass; source changes listed below
 
@@ -19,13 +19,58 @@
 - ✅ Browser-style `nova64.draw` aliases now include Batch 41 text/shape helpers (`drawTriangle`, glow/pulsing text, `tristrip`, floating text)
 - ⚠️ User reports performance feels slow on Windows (~38–40 FPS, 31–35 ms/frame on AMD Radeon 780M)
 - ⚠️ Linux Mesa software harness hits ~110 FPS at ~9 ms/frame, so Windows hardware _should_ be vastly faster — Windows-specific bottleneck unidentified
-- ⚠️ Numeric visual-parity score: 67.1% average / 63.6% strict average after the scene-by-scene parity pass. The "85% mirage" is still relevant because high scores previously rewarded flat washed-out captures rather than real 3D detail; this newer score comes from tuning actual scene sky/fog/ambient/emissive balance, not from restoring fake wash rectangles.
+- ⚠️ Numeric visual-parity score: 74.1% average / 70.9% strict average after the ENERGY_CORE luminous-volume pass. The "85% mirage" is still relevant because high scores previously rewarded flat washed-out captures rather than real 3D detail; this newer score comes from tuning actual scene sky/fog/ambient/emissive balance, not from restoring fake wash rectangles.
 - ✅ Full 519-case conformance sweep has been re-baselined and passes with the current screenshot set.
 - ✅ Tight text effect variants are wired globally and under `nova64.draw`.
 - ✅ `drawLightning` now keeps the legacy Batch 25 six-argument shape while also supporting a newer glow/branch options shape.
 - ✅ New `retroarch/BACKLOG.md` captures deferred Windows perf work, queued visual features, stale-file cleanup, and code-anchored TODOs
 - ✅ Implemented the selected visual feature: **HDR post target (`RGBA16F`) + multi-mip bloom**, with `RGBA8` fallback if float render targets are not supported and old single-pass bloom kept as fallback
 - ✅ Recent C changes include the Shift+F perf overlay diagnostics plus the new HDR/multi-mip bloom post-processing path
+
+---
+
+## Current 2026-05-22 ENERGY_CORE parity state
+
+Latest work after the 67% rebaseline commit:
+
+```
+d7b4faa feat: tune RetroArch demoscene parity and rebaseline conformance
+```
+
+What's in this delta:
+
+- `retroarch/games/demoscene.js` scene 3 (`ENERGY_CORE`) now uses a brighter
+  magenta/pink sky gradient, much lighter vignette, closer fog, stronger
+  ambient light, and higher emissive values for the core beam, central sphere,
+  rings, and orbiting energy bodies.
+- A camera-only experiment that matched the web formula exactly dropped scene 3
+  from roughly `60` to `39`, so it was reverted. The useful match was luminous
+  volume and exposure, not moving the camera away from the core.
+- `drawWebBloomWash()` remains disabled. The current scene-3 frame is bright
+  like the web reference but still comes from 3D objects, fog, and post bloom.
+
+Validation from this pass:
+
+- `make clean && make platform=unix && make harness` passes.
+- Focused scene-3 run:
+  `NOVA64_GLES_TESTS=1 pnpm run retroarch:visual:demoscene -- --scene=s3`
+  reports `score=89.1`, `strictAverage=87.4`.
+- Full comparator run:
+  - s0 `77.0`
+  - s1 `71.2`
+  - s2 `66.3`
+  - s3 `89.3`
+  - s4 `66.4`
+  - average `74.1`
+  - strictAverage `70.9`
+
+Next target:
+
+1. Push the remaining low scenes, especially s2 and s4, by matching luminous
+   volume/exposure first and camera timing only if the image proves it helps.
+2. Keep judging screenshots alongside numbers; scene 3 proves legitimate bloom
+   volume can score well without bringing back the flat wash overlay.
+3. Windows perf investigation remains deferred unless the user asks.
 
 ---
 

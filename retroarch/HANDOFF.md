@@ -17,13 +17,15 @@ Read these in order:
 
 ## Current Visual Baseline
 
-As of 2026-05-21 after the scene-by-scene parity + conformance rebaseline pass:
+As of 2026-05-22 after the ENERGY_CORE luminous-volume parity pass:
 
-- Visual parity comparator: `average=67.1`, `strictAverage=63.6`.
-- Per-scene scores: s0 `72.4`, s1 `71.2`, s2 `66.2`, s3 `59.7`, s4 `66.1`.
+- Visual parity comparator: `average=74.1`, `strictAverage=70.9`.
+- Per-scene scores: s0 `77.0`, s1 `71.2`, s2 `66.3`, s3 `89.3`, s4 `66.4`.
 - Scene-by-scene sky, fog, ambient, vignette, and emissive tuning moved the
   demoscene much closer to the web reference's heavy Three.js bloom wash while
   still preserving real 3D geometry.
+- Scene 3 was retuned with real sky/fog/ambient/emissive changes, raising it
+  from roughly `59.7` to `89.3` without re-enabling `drawWebBloomWash()`.
 - HDR post target is guarded: `RGBA16F` is attempted first, `RGBA8` is the
   fallback.
 - Bloom now uses a guarded 5-mip downsample/blur/combine chain, with the old

@@ -327,25 +327,25 @@ function buildScene3() {
    /* Brighter pink sky + softened vignette so the overall wash leans
       toward the web reference's saturated magenta bloom field. The
       orbiting core meshes are emissive enough to read through it. */
-   nova64.post.setBloom(2.6);
+   nova64.post.setBloom(3.4);
    nova64.post.setChromatic(0.005);
-   nova64.post.setVignette(0.78, 0.7);
+   nova64.post.setVignette(0.28, 0.68);
    nova64.post.setCRT(true);
-   setSkyColor(rgba8(178, 28, 148, 255), rgba8(40, 4, 50, 255));
-   setAmbientLight(rgba8(180, 80, 180, 255), 1.95);
+   setSkyColor(rgba8(255, 185, 245, 255), rgba8(190, 45, 165, 255));
+   setAmbientLight(rgba8(255, 190, 240, 255), 2.4);
    setLightDirection(0, -0.5, -1);
-   setFog(rgba8(118, 18, 110, 255), 32, 90);
+   setFog(rgba8(230, 100, 205, 255), 18, 75);
    setCameraFOV(75);
 
    // skyPanel cube removed — setSkyColor() above renders the gradient now.
 
    horizonGlow = createSphere(2.4, rgba8(255, 236, 80, 255));
-   setMeshEmissive(horizonGlow, rgba8(255, 236, 80, 255), 2.4);
-   setScale(horizonGlow, 1.0, 7.5, 1.0);
+   setMeshEmissive(horizonGlow, rgba8(255, 236, 80, 255), 3.4);
+   setScale(horizonGlow, 1.4, 10.0, 1.4);
    setPosition(horizonGlow, 0, 0, 0);
 
    centralSphere = createSphere(1.4, rgba8(255, 60, 200, 255));
-   setMeshEmissive(centralSphere, rgba8(255, 60, 200, 255), 2.8);
+   setMeshEmissive(centralSphere, rgba8(255, 60, 200, 255), 3.6);
    setPosition(centralSphere, 0, 0, 0);
 
    rings = [];
@@ -357,7 +357,7 @@ function buildScene3() {
    ];
    for (let i = 0; i < 4; i++) {
       const m = createTorus(3.5 + i * 1.4, 0.42, RING_COLS[i]);
-      setMeshEmissive(m, RING_COLS[i], 1.55);
+      setMeshEmissive(m, RING_COLS[i], 2.2);
       rings.push({ mesh: m, phase: i * Math.PI / 4, speed: 0.8 + i * 0.2 });
    }
 
@@ -366,7 +366,7 @@ function buildScene3() {
       const m = (i % 3 === 0)
          ? createCube(0.42, 1.6 + rng() * 1.2, 0.42, col)
          : createSphere(0.28 + rng() * 0.22, col);
-      setMeshEmissive(m, col, 1.8);
+      setMeshEmissive(m, col, 2.4);
       energyOrbs.push({
          mesh: m,
          r: 3.2 + rng() * 7.8,

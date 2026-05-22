@@ -248,14 +248,14 @@ function buildScene2() {
    /* Second-pass tuning: bright pink sky + softer vignette, and brighter
       pink fog so the city silhouettes wash toward the web reference
       while individual tower colours still differentiate. */
-   nova64.post.setBloom(3.0);
+   nova64.post.setBloom(2.45);
    nova64.post.setChromatic(0.003);
    nova64.post.setCRT(true);
    nova64.post.setVignette(0.16, 0.76);
    setSkyColor(rgba8(255, 205, 248, 255), rgba8(214, 70, 190, 255));
-   setAmbientLight(rgba8(255, 205, 245, 255), 2.3);
+   setAmbientLight(rgba8(240, 155, 225, 255), 1.95);
    setLightDirection(-0.6, -1, -0.4);
-   setFog(rgba8(235, 115, 215, 255), 16, 95);
+   setFog(rgba8(224, 82, 204, 255), 20, 112);
    setCameraFOV(62);
 
    groundMesh = createCube(56, 0.2, 56, rgba8(10, 10, 26, 255));
@@ -333,10 +333,10 @@ function buildScene3() {
    nova64.post.setChromatic(0.005);
    nova64.post.setVignette(0.28, 0.68);
    nova64.post.setCRT(true);
-   setSkyColor(rgba8(255, 185, 245, 255), rgba8(190, 45, 165, 255));
-   setAmbientLight(rgba8(255, 190, 240, 255), 2.4);
+   setSkyColor(rgba8(255, 210, 250, 255), rgba8(204, 76, 184, 255));
+   setAmbientLight(rgba8(255, 205, 245, 255), 2.4);
    setLightDirection(0, -0.5, -1);
-   setFog(rgba8(230, 100, 205, 255), 18, 75);
+   setFog(rgba8(238, 124, 220, 255), 18, 75);
    setCameraFOV(75);
 
    // skyPanel cube removed — setSkyColor() above renders the gradient now.
@@ -393,15 +393,15 @@ function buildScene4() {
    nova64.post.setChromatic(0.007);
    nova64.post.setVignette(0.12, 0.68);
    nova64.post.setCRT(true);
-   setSkyColor(rgba8(255, 145, 230, 255), rgba8(222, 45, 184, 255));
-   setAmbientLight(rgba8(240, 130, 220, 255), 1.65);
+   setSkyColor(rgba8(245, 145, 230, 255), rgba8(210, 45, 184, 255));
+   setAmbientLight(rgba8(228, 130, 220, 255), 1.55);
    setLightDirection(0.2, -1, 0.4);
    setFog(rgba8(220, 65, 200, 255), 20, 86);
    setCameraFOV(58);
 
    horizonGlow = createSphere(3.2, rgba8(0, 210, 255, 255));
-   setMeshEmissive(horizonGlow, rgba8(0, 210, 255, 255), 1.8);
-   setScale(horizonGlow, 1.0, 1.0, 1.0);
+   setMeshEmissive(horizonGlow, rgba8(0, 210, 255, 255), 2.1);
+   setScale(horizonGlow, 1.1, 1.1, 1.1);
    setPosition(horizonGlow, 0, 0, -2);
 
    const VCOLS = [
@@ -721,7 +721,7 @@ export function draw() {
    drawWebBloomWash();
 
    // ── Web-style HUD panels ──────────────────────────────────────────────────
-   const panelColor = rgba8(4, 4, 34, 214);
+   const panelColor = rgba8(0, 0, 20, 200);
    const sceneAccent = scene === 0 ? rgba8(0, 255, 255, 255)
       : scene === 1 ? rgba8(255, 0, 255, 255)
       : scene === 2 ? rgba8(255, 236, 40, 255)
@@ -730,27 +730,27 @@ export function draw() {
 
    rectfill(16, 16, 280, 90, panelColor);
    rect(16, 16, 280, 90, sceneAccent, false);
-   printTight('DEMOSCENE', 28, 25, rgba8(255, 255, 255, 255));
+   print('DEMOSCENE', 24, 24, rgba8(255, 255, 255, 255));
    printTight('Scene ' + (scene + 1) + '/' + SCENES.length + ': ' + sc.name,
-      24, 46, rgba8(210, 220, 255, 255));
-   rectfill(24, 63, 264, 7, rgba8(42, 42, 70, 210));
-   rectfill(24, 63, Math.floor(264 * prog), 7, sceneAccent);
-   rect(24, 63, 264, 7, rgba8(255, 255, 255, 90), false);
-   printTight((prog * 100).toFixed(1) + '%', 24, 79, rgba8(170, 170, 215, 255));
+      24, 45, rgba8(200, 200, 255, 255));
+   rectfill(24, 62, 264, 8, rgba8(40, 40, 60, 200));
+   rectfill(24, 62, Math.floor(264 * prog), 8, sceneAccent);
+   rect(24, 62, 264, 8, rgba8(255, 255, 255, 100), false);
+   printTight((prog * 100).toFixed(1) + '%', 24, 78, rgba8(150, 150, 200, 255));
    printTight('Time: ' + sceneT.toFixed(1) + 's / ' + sc.dur + 's',
-      24, 92, rgba8(170, 170, 215, 255));
+      24, 90, rgba8(150, 150, 200, 255));
 
    rectfill(424, 16, 200, 65, panelColor);
    rect(424, 16, 200, 65, rgba8(255, 0, 255, 255), false);
-   printTight('EFFECTS ACTIVE:', 438, 25, rgba8(255, 255, 255, 255));
-   printTight('BLOOM', 438, 38, rgba8(60, 255, 90, 255));
-   printTight('FXAA', 438, 49, rgba8(60, 255, 90, 255));
-   printTight('PARTICLES', 438, 60, rgba8(60, 255, 90, 255));
-   printTight('FOG', 438, 71, rgba8(60, 255, 90, 255));
+   printTight('EFFECTS ACTIVE:', 432, 24, rgba8(255, 255, 255, 255));
+   printTight('BLOOM', 432, 37, rgba8(0, 255, 0, 255));
+   printTight('FXAA', 432, 48, rgba8(0, 255, 0, 255));
+   printTight('PARTICLES', 432, 59, rgba8(0, 255, 0, 255));
+   printTight('FOG', 432, 70, rgba8(0, 255, 0, 255));
 
-   rectfill(16, 315, 608, 30, rgba8(0, 0, 28, 224));
-   printTight(SCENE_DESCRIPTIONS[scene], 320, 326, rgba8(255, 255, 120, 255), 'center');
-   printTight('NOVA64 - POWERED BY THREE.JS', 320, 341, rgba8(120, 130, 180, 210), 'center');
+   rectfill(16, 315, 608, 30, rgba8(0, 0, 20, 220));
+   printTight(SCENE_DESCRIPTIONS[scene], 320, 325, rgba8(255, 255, 100, 255), 'center');
+   printTight('NOVA64 - POWERED BY THREE.JS', 320, 340, rgba8(100, 100, 150, 200), 'center');
 
    printTight('Z:SKIP', 596, 8, rgba8(70,110,190,140));
 

@@ -811,3 +811,27 @@ AAAK:
   s3 `89.1`, s4 `89.3`. Keep `drawWebBloomWash()` disabled. A durable final
   90% likely needs small scene-0/scene-3/scene-4 composition or localized
   exposure tweaks; more global bloom is unlikely to help.
+
+---
+
+## 2026-05-22 - RetroArch HUD and final-scene parity to 89.8
+
+Topic seed for MemPalace: `nova64-retroarch-hud-final-parity-898-20260522`
+
+AAAK:
+
+- **Anchor:** User asked to continue after the near-90 pass. Goal remained
+  honest visual parity with the browser, not restoring fake fullscreen wash.
+- **Actions:** Tested several final tweaks. Useful changes: top HUD
+  panel/color/position alignment with the web cart, scene-2 magenta balance,
+  scene-3 whiter/cooler atmospheric wash, and a small scene-4 cyan/less-red
+  correction. Rejected changes: moving bottom HUD text to x=320 regressed
+  focused scenes; lowering scene-4 object opacity regressed; over-expanding
+  scene-0 horizon glow regressed.
+- **Artifacts:** `retroarch/games/demoscene.js` carries the accepted scene/HUD
+  tweaks. `HANDOFF.md`, `HANDOFF_HWGL.md`, and `BACKLOG.md` are updated.
+- **Knowledge:** Current verified full comparator is `average=89.8`,
+  `strictAverage=88.1` with s0 `87.8`, s1 `91.3`, s2 `90.3`, s3 `90.4`,
+  s4 `89.4`. Scene 0 is now the main blocker; focused and full browser captures
+  vary there, so next work should investigate capture determinism/composition
+  before adding more bloom.

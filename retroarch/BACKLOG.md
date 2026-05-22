@@ -5,9 +5,8 @@ lives here. Update this file as items are picked up or completed.
 
 Last updated: 2026-05-21
 
-**Latest feature shipped:** All-scene luminous-volume parity tuning. The
-demoscene now reaches **89.4% / 87.6% strict** without restoring the old fake
-wash overlay.
+**Latest feature shipped:** HUD + final-scene parity tuning. The demoscene now
+reaches **89.8% / 88.1% strict** without restoring the old fake wash overlay.
 
 ---
 
@@ -102,9 +101,10 @@ In rough priority order; pick what fits the user's mood.
   pass shipped (see Recently shipped). Further refinement (e.g., matching
   web capture timestamps, animation speeds, particle counts) is still on
   the table when we want to push the numeric score past ~70.
-- **Final 90% push** — current verified comparator is `89.4% / 87.6% strict`.
-  Scene 0 is the lowest remaining frame at `87.6`; scene 3 and scene 4 are just
-  under 90. Use screenshot-first composition/exposure tweaks, not global bloom.
+- **Final 90% push** — current verified comparator is `89.8% / 88.1% strict`.
+  Scene 0 is the lowest remaining frame at `87.8`; focused and full browser
+  captures vary there, so investigate scene-0 capture determinism/composition
+  before pushing global bloom.
 
 ### Cleanup / technical debt
 
@@ -167,8 +167,13 @@ The last session arc closed out:
   DIGITAL_CITY, and THE_VOID with scene-specific sky/fog/ambient/emissive/post
   values. DATA_TUNNEL specifically reduced torus opacity/emissive so the frame
   reads as cyan atmospheric volume instead of a white-hot magenta ring. Full
-  comparator is now **89.4% / 87.6% strict** with s0 `87.6`, s1 `91.1`,
+  comparator reached **89.4% / 87.6% strict** with s0 `87.6`, s1 `91.1`,
   s2 `90.0`, s3 `89.1`, s4 `89.3`.
+- ★ HUD + final-scene parity pass. Aligned top HUD panel metrics/colors with the
+  web cart, kept bottom HUD text centered after an x=320 experiment regressed,
+  and nudged scenes 2/3/4. Current verified comparator is
+  **89.8% / 88.1% strict** with s0 `87.8`, s1 `91.3`, s2 `90.3`, s3 `90.4`,
+  s4 `89.4`.
 - ★ Variable-width tight text effect variants: `printShadowTight`,
   `printOutlineTight`, `printRainbowTight`, `printWaveTight`,
   `printFlashTight`, `printShakeTight`, `printGradientTight`. Same call

@@ -19,13 +19,57 @@
 - ✅ Browser-style `nova64.draw` aliases now include Batch 41 text/shape helpers (`drawTriangle`, glow/pulsing text, `tristrip`, floating text)
 - ⚠️ User reports performance feels slow on Windows (~38–40 FPS, 31–35 ms/frame on AMD Radeon 780M)
 - ⚠️ Linux Mesa software harness hits ~110 FPS at ~9 ms/frame, so Windows hardware _should_ be vastly faster — Windows-specific bottleneck unidentified
-- ⚠️ Numeric visual-parity score: 89.4% average / 87.6% strict average after the all-scene luminous-volume pass. The "85% mirage" warning is still relevant: do not reintroduce the old flat `drawWebBloomWash()` overlay. This score comes from scene-level sky/fog/ambient/emissive/post tuning against screenshots.
+- ⚠️ Numeric visual-parity score: 89.8% average / 88.1% strict average after the HUD + final-scene tuning pass. The "85% mirage" warning is still relevant: do not reintroduce the old flat `drawWebBloomWash()` overlay. This score comes from scene-level sky/fog/ambient/emissive/post tuning plus HUD metric alignment against screenshots.
 - ✅ Full 519-case conformance sweep has been re-baselined and passes with the current screenshot set.
 - ✅ Tight text effect variants are wired globally and under `nova64.draw`.
 - ✅ `drawLightning` now keeps the legacy Batch 25 six-argument shape while also supporting a newer glow/branch options shape.
 - ✅ New `retroarch/BACKLOG.md` captures deferred Windows perf work, queued visual features, stale-file cleanup, and code-anchored TODOs
 - ✅ Implemented the selected visual feature: **HDR post target (`RGBA16F`) + multi-mip bloom**, with `RGBA8` fallback if float render targets are not supported and old single-pass bloom kept as fallback
 - ✅ Recent C changes include the Shift+F perf overlay diagnostics plus the new HDR/multi-mip bloom post-processing path
+
+---
+
+## Current 2026-05-22 HUD + final-scene parity state
+
+Latest work after the near-90 pass:
+
+```
+c6b1d1e feat: push RetroArch demoscene parity near 90
+```
+
+What's in this delta:
+
+- Top HUD panel metrics now more closely follow the web cart:
+  panel fill color/alpha, title x/y, progress bar y/height/color, status panel
+  text x/y, and bottom panel fill/text colors were aligned.
+- Bottom description/watermark text stays centered in RetroArch. An experiment
+  to draw it from x=320 like the apparent web behavior regressed focused scene
+  scores and was reverted.
+- Scene 2 was backed off from an overly white city wash to a slightly more
+  magenta reference match.
+- Scene 3 was whitened/coolened slightly so the energy-core wash is less
+  saturated-magenta and closer to the browser capture.
+- Scene 4 received a small cyan horizon/less-red atmosphere correction.
+
+Validation from this pass:
+
+- `NOVA64_GLES_TESTS=1 pnpm run retroarch:visual:demoscene` passes:
+  - s0 `87.8`
+  - s1 `91.3`
+  - s2 `90.3`
+  - s3 `90.4`
+  - s4 `89.4`
+  - average `89.8`
+  - strictAverage `88.1`
+
+Next target:
+
+1. A durable 90% likely needs scene-0 composition/reference determinism work
+   rather than more bloom. Scene 0 still varies most between focused and full
+   browser captures.
+2. Do not move the bottom HUD text to x=320; that was tested and made focused
+   scenes worse.
+3. Windows perf investigation remains deferred unless the user asks.
 
 ---
 
@@ -52,7 +96,7 @@ What's in this delta:
 
 Validation from this pass:
 
-- `NOVA64_GLES_TESTS=1 pnpm run retroarch:visual:demoscene` passes:
+- Previous `NOVA64_GLES_TESTS=1 pnpm run retroarch:visual:demoscene` pass:
   - s0 `87.6`
   - s1 `91.1`
   - s2 `90.0`

@@ -19,8 +19,8 @@ Read these in order:
 
 As of 2026-05-22 after the all-scene luminous-volume parity pass:
 
-- Visual parity comparator: `average=89.4`, `strictAverage=87.6`.
-- Per-scene scores: s0 `87.6`, s1 `91.1`, s2 `90.0`, s3 `89.1`, s4 `89.3`.
+- Visual parity comparator: `average=89.8`, `strictAverage=88.1`.
+- Per-scene scores: s0 `87.8`, s1 `91.3`, s2 `90.3`, s3 `90.4`, s4 `89.4`.
 - Scene-by-scene sky, fog, ambient, vignette, and emissive tuning moved the
   demoscene much closer to the web reference's heavy Three.js bloom wash while
   still preserving real 3D geometry.
@@ -28,6 +28,9 @@ As of 2026-05-22 after the all-scene luminous-volume parity pass:
   from roughly `59.7` to `89.3` without re-enabling `drawWebBloomWash()`.
 - Scenes 0, 1, 2, and 4 were then retuned with the same screenshot-first
   luminous-volume approach, bringing the full comparator to just under 90%.
+- The latest pass aligned top-HUD panel metrics with the web cart and nudged
+  scenes 2, 3, and 4, improving strict parity while keeping bottom HUD text
+  centered because matching the web's apparent bottom-text offset regressed.
 - HDR post target is guarded: `RGBA16F` is attempted first, `RGBA8` is the
   fallback.
 - Bloom now uses a guarded 5-mip downsample/blur/combine chain, with the old

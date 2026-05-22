@@ -835,3 +835,28 @@ AAAK:
   s4 `89.4`. Scene 0 is now the main blocker; focused and full browser captures
   vary there, so next work should investigate capture determinism/composition
   before adding more bloom.
+
+---
+
+## 2026-05-22 - Deterministic browser reference and scene-0 softening
+
+Topic seed for MemPalace: `nova64-retroarch-demoscene-deterministic-reference-20260522`
+
+AAAK:
+
+- **Anchor:** User asked to pick up where the other LLM left off. The handoff
+  said scene 0 was the remaining blocker and that focused/full browser captures
+  varied there.
+- **Actions:** Fixed the web demoscene debug jump in
+  `examples/demoscene/code.js` so it resets RNG and sets `gameTime` to the
+  cumulative scene timeline before freezing the reference scene. Then tuned
+  RetroArch scene 0 by setting instanced terrain/grid mesh opacity to `0.42`,
+  reducing hard block silhouettes against the stabilized web reference.
+- **Artifacts:** `examples/demoscene/code.js`, `retroarch/games/demoscene.js`,
+  and updated handoff/backlog docs.
+- **Knowledge:** Honest deterministic comparator is now `average=89.6`,
+  `strictAverage=87.8` with s0 `86.7`, s1 `91.2`, s2 `90.2`, s3 `90.4`,
+  s4 `89.5`. Rejected during this pass: stronger scene-0 glow/atmosphere,
+  opacity on non-instanced scene-0 props, lower scene-4 object opacity, and a
+  larger cyan scene-4 horizon. Next 90% push should target scene-0 composition
+  now that the reference is stable.

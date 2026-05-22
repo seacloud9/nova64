@@ -85,18 +85,18 @@ function buildScene0() {
    nova64.post.setChromatic(0.003);
    nova64.post.setCRT(true);
    nova64.post.setVignette(0.12, 0.76);
-   setSkyColor(rgba8(255, 120, 220, 255), rgba8(226, 36, 166, 255));
-   setAmbientLight(rgba8(240, 125, 210, 255), 1.6);
+   setSkyColor(rgba8(244, 86, 200, 255), rgba8(218, 24, 150, 255));
+   setAmbientLight(rgba8(225, 86, 180, 255), 1.32);
    setLightDirection(0, -1, -0.2);
-   setFog(rgba8(220, 54, 186, 255), 24, 125);
+   setFog(rgba8(214, 38, 168, 255), 28, 130);
    setCameraFOV(70);
 
    // skyPanel cube removed — setSkyColor() above now renders a real fullscreen
    // gradient quad behind the 3D pass.
 
    horizonGlow = createSphere(25, rgba8(220, 255, 255, 255));
-   setMeshEmissive(horizonGlow, rgba8(240, 255, 255, 255), 2.85);
-   setScale(horizonGlow, 84, 25, 22);
+   setMeshEmissive(horizonGlow, rgba8(240, 255, 255, 255), 3.25);
+   setScale(horizonGlow, 92, 27, 23);
    setPosition(horizonGlow, 34, 2, -8);
 
    const terrainCols = [
@@ -116,6 +116,7 @@ function buildScene0() {
       const col = terrainCols[g];
       setMeshColor(mesh, col);
       setMeshEmissive(mesh, col, g === 1 ? 0.34 : 0.24);
+      setMeshOpacity(mesh, 0.42);
       gridMeshes.push({ mesh, color: col });
       for (let i = 0; i < terrainGroups[g].length; i++) {
          const { c, r } = terrainGroups[g][i];
@@ -154,6 +155,7 @@ function buildScene0() {
       const col = PALETTE[g];
       setMeshColor(mesh, col);
       setMeshEmissive(mesh, col, g === 1 ? 0.24 : 0.18);
+      setMeshOpacity(mesh, 0.42);
       gridMeshes.push({ mesh, color: col });
 
       for (let i = 0; i < groups[g].length; i++) {

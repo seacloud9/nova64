@@ -1,0 +1,12 @@
+wing: nova64_retroarch
+rooms:
+  - name: general
+    description: RetroArch libretro core, QuickJS host bridge, GLES renderer, conformance carts, smoke tests, parity notes, and native harness work.
+    keywords:
+      - retroarch
+      - libretro
+      - quickjs
+      - gles
+      - parity
+      - conformance
+      - demoscene

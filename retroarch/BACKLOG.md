@@ -5,8 +5,9 @@ lives here. Update this file as items are picked up or completed.
 
 Last updated: 2026-05-21
 
-**Latest feature shipped:** HUD + final-scene parity tuning. The demoscene now
-reaches **89.8% / 88.1% strict** without restoring the old fake wash overlay.
+**Latest feature shipped:** Deterministic web-reference capture plus scene-0
+terrain softening. The demoscene now reaches **89.6% / 87.8% strict** against a
+stabilized browser reference without restoring the old fake wash overlay.
 
 ---
 
@@ -101,10 +102,10 @@ In rough priority order; pick what fits the user's mood.
   pass shipped (see Recently shipped). Further refinement (e.g., matching
   web capture timestamps, animation speeds, particle counts) is still on
   the table when we want to push the numeric score past ~70.
-- **Final 90% push** — current verified comparator is `89.8% / 88.1% strict`.
-  Scene 0 is the lowest remaining frame at `87.8`; focused and full browser
-  captures vary there, so investigate scene-0 capture determinism/composition
-  before pushing global bloom.
+- **Final 90% push** — current verified comparator is `89.6% / 87.8% strict`.
+  Scene 0 is the lowest remaining frame at `86.7`; the browser reference is now
+  deterministic, so the next work should focus on scene-0 composition/geometry
+  rather than capture variance or global bloom.
 
 ### Cleanup / technical debt
 
@@ -174,6 +175,12 @@ The last session arc closed out:
   and nudged scenes 2/3/4. Current verified comparator is
   **89.8% / 88.1% strict** with s0 `87.8`, s1 `91.3`, s2 `90.3`, s3 `90.4`,
   s4 `89.4`.
+- ★ Deterministic web-reference capture + scene-0 terrain softening. The web
+  debug jump now resets RNG and cumulative `gameTime` before freezing a scene,
+  eliminating the scene-0 focused/full drift. Scene-0 instanced terrain/grid
+  opacity `0.42` softens hard block silhouettes. Current honest comparator is
+  **89.6% / 87.8% strict** with s0 `86.7`, s1 `91.2`, s2 `90.2`, s3 `90.4`,
+  s4 `89.5`.
 - ★ Variable-width tight text effect variants: `printShadowTight`,
   `printOutlineTight`, `printRainbowTight`, `printWaveTight`,
   `printFlashTight`, `printShakeTight`, `printGradientTight`. Same call

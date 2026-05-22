@@ -19,8 +19,9 @@ Read these in order:
 
 As of 2026-05-22 after the all-scene luminous-volume parity pass:
 
-- Visual parity comparator: `average=89.8`, `strictAverage=88.1`.
-- Per-scene scores: s0 `87.8`, s1 `91.3`, s2 `90.3`, s3 `90.4`, s4 `89.4`.
+- Visual parity comparator: `average=89.6`, `strictAverage=87.8` after
+  stabilizing the browser reference hook.
+- Per-scene scores: s0 `86.7`, s1 `91.2`, s2 `90.2`, s3 `90.4`, s4 `89.5`.
 - Scene-by-scene sky, fog, ambient, vignette, and emissive tuning moved the
   demoscene much closer to the web reference's heavy Three.js bloom wash while
   still preserving real 3D geometry.
@@ -31,6 +32,10 @@ As of 2026-05-22 after the all-scene luminous-volume parity pass:
 - The latest pass aligned top-HUD panel metrics with the web cart and nudged
   scenes 2, 3, and 4, improving strict parity while keeping bottom HUD text
   centered because matching the web's apparent bottom-text offset regressed.
+- The web demoscene debug jump now resets RNG and cumulative `gameTime`, so the
+  comparator captures deterministic reference frames instead of drifting with
+  page warmup time. Scene 0 terrain/grid opacity was softened to match that
+  stabilized reference.
 - HDR post target is guarded: `RGBA16F` is attempted first, `RGBA8` is the
   fallback.
 - Bloom now uses a guarded 5-mip downsample/blur/combine chain, with the old

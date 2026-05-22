@@ -95,13 +95,23 @@ function exposeDebugState() {
   };
 }
 
+function cumulativeSceneTime(sceneIndex, atTime) {
+  let total = Math.max(0, Number(atTime) || 0);
+  const last = Math.max(0, Math.min(SCENES.length - 1, Number(sceneIndex) || 0));
+  for (let i = 0; i < last; i++) total += SCENES[i].duration;
+  return total;
+}
+
 function installDebugControls() {
   globalThis.__nova64DemosceneJumpTo = (sceneIndex, atTime = 0, freeze = true) => {
     const next = Math.max(0, Math.min(SCENES.length - 1, Number(sceneIndex) || 0));
     cleanupScene();
+    resetRandom();
     gameState = 'playing';
     currentScene = next;
     sceneTime = Math.max(0, Number(atTime) || 0);
+    gameTime = cumulativeSceneTime(next, sceneTime);
+    startScreenTime = 0;
     transitioning = false;
     transitionProgress = 0;
     debugFreeze = !!freeze;

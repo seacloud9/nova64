@@ -1,6 +1,6 @@
 # Nova64 Hardware GL on Windows — Status & Handover
 
-**Last updated:** 2026-05-22 (all-scene luminous-volume parity pass)
+**Last updated:** 2026-05-22 (deterministic web reference + scene-0 softening pass)
 **Branch:** `main`
 **Working tree:** expected clean after committing this pass; source changes listed below
 
@@ -19,13 +19,55 @@
 - ✅ Browser-style `nova64.draw` aliases now include Batch 41 text/shape helpers (`drawTriangle`, glow/pulsing text, `tristrip`, floating text)
 - ⚠️ User reports performance feels slow on Windows (~38–40 FPS, 31–35 ms/frame on AMD Radeon 780M)
 - ⚠️ Linux Mesa software harness hits ~110 FPS at ~9 ms/frame, so Windows hardware _should_ be vastly faster — Windows-specific bottleneck unidentified
-- ⚠️ Numeric visual-parity score: 89.8% average / 88.1% strict average after the HUD + final-scene tuning pass. The "85% mirage" warning is still relevant: do not reintroduce the old flat `drawWebBloomWash()` overlay. This score comes from scene-level sky/fog/ambient/emissive/post tuning plus HUD metric alignment against screenshots.
+- ⚠️ Numeric visual-parity score: 89.6% average / 87.8% strict average after stabilizing the browser reference hook and softening scene-0 terrain. The "85% mirage" warning is still relevant: do not reintroduce the old flat `drawWebBloomWash()` overlay. This score comes from scene-level sky/fog/ambient/emissive/post tuning plus HUD metric alignment against deterministic screenshots.
 - ✅ Full 519-case conformance sweep has been re-baselined and passes with the current screenshot set.
 - ✅ Tight text effect variants are wired globally and under `nova64.draw`.
 - ✅ `drawLightning` now keeps the legacy Batch 25 six-argument shape while also supporting a newer glow/branch options shape.
 - ✅ New `retroarch/BACKLOG.md` captures deferred Windows perf work, queued visual features, stale-file cleanup, and code-anchored TODOs
 - ✅ Implemented the selected visual feature: **HDR post target (`RGBA16F`) + multi-mip bloom**, with `RGBA8` fallback if float render targets are not supported and old single-pass bloom kept as fallback
 - ✅ Recent C changes include the Shift+F perf overlay diagnostics plus the new HDR/multi-mip bloom post-processing path
+
+---
+
+## Current 2026-05-22 deterministic-reference parity state
+
+Latest work after the HUD/final-scene pass:
+
+```
+1d42aa8 feat: refine RetroArch demoscene HUD parity
+```
+
+What's in this delta:
+
+- `examples/demoscene/code.js` debug hook now calls `resetRandom()` and sets
+  `gameTime` to the cumulative scene timeline before capturing a frozen web
+  reference. Before this, scene 0 could drift depending on page warmup and
+  prior random work.
+- `retroarch/games/demoscene.js` scene 0 now softens the instanced terrain/grid
+  meshes with opacity `0.42`, which reduced the hard block silhouettes against
+  the stabilized browser reference.
+- Rejected during this pass: stronger scene-0 glow/atmosphere, extra opacity on
+  non-instanced scene-0 props, lower scene-4 object opacity, and a larger cyan
+  scene-4 horizon. These all regressed focused scores.
+
+Validation from this pass:
+
+- `NOVA64_GLES_TESTS=1 pnpm run retroarch:visual:demoscene` passes:
+  - s0 `86.7`
+  - s1 `91.2`
+  - s2 `90.2`
+  - s3 `90.4`
+  - s4 `89.5`
+  - average `89.6`
+  - strictAverage `87.8`
+
+Next target:
+
+1. The remaining 90% push is scene-0 composition. The deterministic reference
+   makes that target stable now.
+2. Keep `drawWebBloomWash()` disabled and avoid broad global bloom changes;
+   mesh opacity/scene composition moved the real blocker more than exposure did.
+3. Windows perf investigation remains deferred unless the user asks.
 
 ---
 

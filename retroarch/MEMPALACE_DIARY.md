@@ -785,3 +785,29 @@ AAAK:
   `drawWebBloomWash()` disabled. Next best parity targets are scene 2 and scene
   4 luminous-volume/exposure tuning, judged against screenshots before camera
   changes.
+
+---
+
+## 2026-05-22 - RetroArch all-scene luminous parity to 89.4
+
+Topic seed for MemPalace: `nova64-retroarch-demoscene-luminous-parity-894-20260522`
+
+AAAK:
+
+- **Anchor:** User asked to continue toward the 90% visual parity goal after the
+  ENERGY_CORE pass. Focus stayed on feature/visual work, not Windows
+  performance.
+- **Actions:** Regenerated focused browser/RetroArch captures for weak scenes
+  and tuned `retroarch/games/demoscene.js` scene parameters. Scene 2 and scene 4
+  got brighter sky/fog/ambient/emissive volume. Scene 1 improved most after
+  reducing torus emissive/opacity so the frame reads as cyan atmospheric tunnel
+  volume instead of a white-hot magenta ring. Scene 0 was balanced back toward
+  magenta while keeping a right-side white horizon glow.
+- **Artifacts:** Full comparator report in
+  `retroarch/build/demoscene-parity/report.json`. Updated `HANDOFF.md`,
+  `HANDOFF_HWGL.md`, and `BACKLOG.md`.
+- **Knowledge:** Current verified demoscene visual comparator is
+  `average=89.4`, `strictAverage=87.6` with s0 `87.6`, s1 `91.1`, s2 `90.0`,
+  s3 `89.1`, s4 `89.3`. Keep `drawWebBloomWash()` disabled. A durable final
+  90% likely needs small scene-0/scene-3/scene-4 composition or localized
+  exposure tweaks; more global bloom is unlikely to help.

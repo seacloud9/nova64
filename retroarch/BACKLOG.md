@@ -5,9 +5,9 @@ lives here. Update this file as items are picked up or completed.
 
 Last updated: 2026-05-21
 
-**Latest feature shipped:** ENERGY_CORE luminous-volume parity tuning. Scene 3
-now uses brighter real sky/fog/ambient/emissive values instead of the old fake
-wash overlay, raising full demoscene parity to **74.1% / 70.9% strict**.
+**Latest feature shipped:** All-scene luminous-volume parity tuning. The
+demoscene now reaches **89.4% / 87.6% strict** without restoring the old fake
+wash overlay.
 
 ---
 
@@ -102,10 +102,9 @@ In rough priority order; pick what fits the user's mood.
   pass shipped (see Recently shipped). Further refinement (e.g., matching
   web capture timestamps, animation speeds, particle counts) is still on
   the table when we want to push the numeric score past ~70.
-- **Scene 2 + scene 4 luminous-volume pass** — scene 3 proved that matching
-  web exposure with real sky/fog/emissive volume can move the score without
-  hiding geometry. Apply the same screenshot-first approach to DIGITAL_CITY
-  and THE_VOID before revisiting camera timing.
+- **Final 90% push** — current verified comparator is `89.4% / 87.6% strict`.
+  Scene 0 is the lowest remaining frame at `87.6`; scene 3 and scene 4 are just
+  under 90. Use screenshot-first composition/exposure tweaks, not global bloom.
 
 ### Cleanup / technical debt
 
@@ -164,6 +163,12 @@ The last session arc closed out:
   **67.1% / 63.6% strict** to **74.1% / 70.9% strict**. A camera-only web
   formula experiment regressed the scene to ~39%, so the winning path is
   real exposure/volume matching, not camera displacement.
+- ★ All-scene luminous-volume parity pass. Retuned GRID_AWAKENING, DATA_TUNNEL,
+  DIGITAL_CITY, and THE_VOID with scene-specific sky/fog/ambient/emissive/post
+  values. DATA_TUNNEL specifically reduced torus opacity/emissive so the frame
+  reads as cyan atmospheric volume instead of a white-hot magenta ring. Full
+  comparator is now **89.4% / 87.6% strict** with s0 `87.6`, s1 `91.1`,
+  s2 `90.0`, s3 `89.1`, s4 `89.3`.
 - ★ Variable-width tight text effect variants: `printShadowTight`,
   `printOutlineTight`, `printRainbowTight`, `printWaveTight`,
   `printFlashTight`, `printShakeTight`, `printGradientTight`. Same call

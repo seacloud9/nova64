@@ -81,22 +81,22 @@ function buildScene0() {
       previously pulled the colour distribution away from the web's pink
       wash fill in. Bottom stays a hint dark to keep the foreground city
       readable. */
-   nova64.post.setBloom(1.55);
+   nova64.post.setBloom(2.45);
    nova64.post.setChromatic(0.003);
    nova64.post.setCRT(true);
-   nova64.post.setVignette(0.45, 0.82);
-   setSkyColor(rgba8(220, 50, 160, 255), rgba8(50, 8, 60, 255));
-   setAmbientLight(rgba8(240, 220, 240, 255), 1.15);
+   nova64.post.setVignette(0.12, 0.76);
+   setSkyColor(rgba8(255, 120, 220, 255), rgba8(226, 36, 166, 255));
+   setAmbientLight(rgba8(240, 125, 210, 255), 1.6);
    setLightDirection(0, -1, -0.2);
-   setFog(rgba8(190, 40, 130, 255), 80, 230);
+   setFog(rgba8(220, 54, 186, 255), 24, 125);
    setCameraFOV(70);
 
    // skyPanel cube removed — setSkyColor() above now renders a real fullscreen
    // gradient quad behind the 3D pass.
 
    horizonGlow = createSphere(25, rgba8(220, 255, 255, 255));
-   setMeshEmissive(horizonGlow, rgba8(220, 255, 255, 255), 2.8);
-   setScale(horizonGlow, 82, 24, 22);
+   setMeshEmissive(horizonGlow, rgba8(240, 255, 255, 255), 2.85);
+   setScale(horizonGlow, 84, 25, 22);
    setPosition(horizonGlow, 34, 2, -8);
 
    const terrainCols = [
@@ -192,13 +192,14 @@ function buildScene1() {
    /* Cyan-leaning sky + cyan-tinted fog to match the web reference's
       flat cyan bloom wash. The magenta torus rings still pop because
       they're emissive and their colour is far from cyan. */
-   nova64.post.setBloom(1.65);
+   nova64.post.setBloom(2.4);
    nova64.post.setChromatic(0.005);
    nova64.post.setCRT(true);
-   setSkyColor(rgba8(16, 168, 198, 255), rgba8(8, 32, 58, 255));
-   setAmbientLight(rgba8(78, 168, 198, 255), 1.3);
+   nova64.post.setVignette(0.1, 0.72);
+   setSkyColor(rgba8(28, 238, 248, 255), rgba8(14, 170, 205, 255));
+   setAmbientLight(rgba8(130, 232, 238, 255), 1.95);
    setLightDirection(0, -1, -0.2);
-   setFog(rgba8(20, 96, 132, 255), 56, 170);
+   setFog(rgba8(48, 214, 228, 255), 18, 100);
    setCameraFOV(78);
 
    rings = [];
@@ -211,7 +212,8 @@ function buildScene1() {
          ? rgba8(255, Math.floor(40 + hue*180), 220, 255)
          : rgba8(Math.floor(255 - (hue-0.5)*360), 40, 255, 255);
       const m = createTorus(outer, tube, col);
-      setMeshEmissive(m, col, 1.4);
+      setMeshEmissive(m, col, 0.2);
+      setMeshOpacity(m, 0.42);
       setPosition(m, 0, 0, z);
       rings.push({ mesh: m, z, rot: (i % 2 === 0) ? 1 : -0.7, phase: rng() * 6.28 });
    }
@@ -227,7 +229,7 @@ function buildScene1() {
       const r = 5.5 + rng() * 6.5;
       const col = streamColors[i % streamColors.length];
       const m = createCube(0.5, 0.5, 8.0 + rng() * 4.0, col);
-      setMeshEmissive(m, col, 1.15);
+      setMeshEmissive(m, col, 1.2);
       dataStreams.push({
          mesh: m,
          x: Math.cos(a) * r,
@@ -246,14 +248,14 @@ function buildScene2() {
    /* Second-pass tuning: bright pink sky + softer vignette, and brighter
       pink fog so the city silhouettes wash toward the web reference
       while individual tower colours still differentiate. */
-   nova64.post.setBloom(1.65);
+   nova64.post.setBloom(3.0);
    nova64.post.setChromatic(0.003);
    nova64.post.setCRT(true);
-   nova64.post.setVignette(0.4, 0.82);
-   setSkyColor(rgba8(190, 40, 180, 255), rgba8(40, 8, 70, 255));
-   setAmbientLight(rgba8(200, 130, 210, 255), 1.85);
+   nova64.post.setVignette(0.16, 0.76);
+   setSkyColor(rgba8(255, 205, 248, 255), rgba8(214, 70, 190, 255));
+   setAmbientLight(rgba8(255, 205, 245, 255), 2.3);
    setLightDirection(-0.6, -1, -0.4);
-   setFog(rgba8(140, 30, 130, 255), 42, 160);
+   setFog(rgba8(235, 115, 215, 255), 16, 95);
    setCameraFOV(62);
 
    groundMesh = createCube(56, 0.2, 56, rgba8(10, 10, 26, 255));
@@ -265,7 +267,7 @@ function buildScene2() {
    /* Pink-tinted emissive shared across the city. Per-instance colours
       still differentiate individual towers (cyan / yellow / magenta), but
       the unified glow biases the overall hue toward the web's wash. */
-   setMeshEmissive(cityMesh, rgba8(220, 80, 200, 255), 0.55);
+   setMeshEmissive(cityMesh, rgba8(240, 130, 220, 255), 0.92);
    towers = [];
    let idx = 0;
    for (let r = 0; r < ROWS; r++) {
@@ -286,8 +288,8 @@ function buildScene2() {
    }
 
    horizonGlow = createSphere(7, rgba8(255, 236, 40, 255));
-   setMeshEmissive(horizonGlow, rgba8(255, 236, 40, 255), 1.2);
-   setScale(horizonGlow, 0.45, 3.5, 0.45);
+   setMeshEmissive(horizonGlow, rgba8(255, 236, 40, 255), 2.0);
+   setScale(horizonGlow, 0.6, 4.4, 0.6);
    setPosition(horizonGlow, 0, 6, 0);
 
    const lanes = [
@@ -298,7 +300,7 @@ function buildScene2() {
    for (let i = 0; i < 12; i++) {
       const col = lanes[i % lanes.length];
       const m = createCube(0.28, 0.22, 8 + rng() * 8, col);
-      setMeshEmissive(m, col, 1.25);
+      setMeshEmissive(m, col, 1.7);
       setPosition(m, (rng() - 0.5) * 40, 0.22, (rng() - 0.5) * 42);
       setRotation(m, 0, rng() * Math.PI * 2, 0);
       energyOrbs.push({ mesh: m });
@@ -309,8 +311,8 @@ function buildScene2() {
       const body = createCube(2.2, 0.55, 1.0, col);
       const trail = createCube(0.45, 0.35, 8.5, col);
       const angle = (i / 6) * Math.PI * 2 + rng() * 0.3;
-      setMeshEmissive(body, col, 1.05);
-      setMeshEmissive(trail, col, 0.72);
+      setMeshEmissive(body, col, 1.45);
+      setMeshEmissive(trail, col, 1.05);
       lightCycles.push({
          body,
          trail,
@@ -387,18 +389,18 @@ function buildScene4() {
       pink wash with subtle structure inside; we approximate by bumping
       sky/ambient/fog all toward saturated magenta and dropping vignette
       further. Orbiting spheres still pop because they're emissive. */
-   nova64.post.setBloom(3.2);
+   nova64.post.setBloom(2.55);
    nova64.post.setChromatic(0.007);
-   nova64.post.setVignette(0.42, 0.7);
+   nova64.post.setVignette(0.12, 0.68);
    nova64.post.setCRT(true);
-   setSkyColor(rgba8(220, 60, 170, 255), rgba8(80, 18, 80, 255));
-   setAmbientLight(rgba8(220, 130, 200, 255), 1.7);
+   setSkyColor(rgba8(255, 145, 230, 255), rgba8(222, 45, 184, 255));
+   setAmbientLight(rgba8(240, 130, 220, 255), 1.65);
    setLightDirection(0.2, -1, 0.4);
-   setFog(rgba8(170, 50, 140, 255), 26, 86);
+   setFog(rgba8(220, 65, 200, 255), 20, 86);
    setCameraFOV(58);
 
    horizonGlow = createSphere(3.2, rgba8(0, 210, 255, 255));
-   setMeshEmissive(horizonGlow, rgba8(0, 210, 255, 255), 2.0);
+   setMeshEmissive(horizonGlow, rgba8(0, 210, 255, 255), 1.8);
    setScale(horizonGlow, 1.0, 1.0, 1.0);
    setPosition(horizonGlow, 0, 0, -2);
 
@@ -415,7 +417,7 @@ function buildScene4() {
       const m = (i % 4 === 0)
          ? createCube(0.55 + rng() * 0.7, 0.55 + rng() * 0.7, 0.55 + rng() * 0.7, col)
          : createSphere(0.28 + rng() * 0.65, col);
-      setMeshEmissive(m, col, 1.45);
+      setMeshEmissive(m, col, 1.35);
       voidSpheres.push({
          mesh: m, r, a,
          y: (rng()-0.5) * 10,
@@ -428,7 +430,7 @@ function buildScene4() {
    for (let i = 0; i < 3; i++) {
       const col = VCOLS[(i * 2 + 1) % VCOLS.length];
       const m = createTorus(4.2 + i * 2.4, 0.25, col);
-      setMeshEmissive(m, col, 1.05);
+      setMeshEmissive(m, col, 1.1);
       rings.push({ mesh: m, phase: i * 0.7, speed: 0.22 + i * 0.1 });
    }
 }

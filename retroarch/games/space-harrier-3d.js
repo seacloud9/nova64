@@ -44,8 +44,7 @@ const MAX_ENEMIES = 16;
 const MAX_SCENERY = 40;
 const SPAWN_INTERVAL = 1.0;
 
-let tilesMesh = null;
-let tileCells = [];
+let tilePlanes = [];
 let player = {
    x: 0, y: 0, z: -5,
    meshes: {},
@@ -76,22 +75,20 @@ function writeMat4(out, off, sx, sy, sz, tx, ty, tz) {
 }
 
 function buildFloor() {
-   const total = TILE_ROWS * TILE_COLS;
-   tilesMesh = createInstancedMesh('cube', total);
-   const data = new Array(total * 16);
-   tileCells = [];
+   for (const t of tilePlanes) destroyMesh(t.mesh);
+   tilePlanes = [];
+   // Web-parity floor: rotated planes per tile (matches examples/space-harrier-3d).
    for (let r = 0; r < TILE_ROWS; r++) {
       for (let c = 0; c < TILE_COLS; c++) {
-         const idx = r * TILE_COLS + c;
          const wx = (c - (TILE_COLS - 1) / 2) * TILE;
          const wz = TILE_START_Z - r * TILE - TILE / 2;
-         writeMat4(data, idx * 16, TILE * 0.5, 0.02, TILE * 0.5, wx, FLOOR_Y, wz);
          const isAlt = ((r + c) & 1) === 0;
-         setInstanceColor(tilesMesh, idx, isAlt ? PALETTE.ground1 : PALETTE.ground2);
-         tileCells.push({ r, c, wx });
+         const col = isAlt ? PALETTE.ground1 : PALETTE.ground2;
+         const plane = createPlane(TILE, TILE, col, [wx, FLOOR_Y, wz]);
+         rotateMesh(plane, -Math.PI / 2, 0, 0);
+         tilePlanes.push({ mesh: plane, r, c, wx });
       }
    }
-   setInstanceTransforms(tilesMesh, 0, data);
 }
 
 function buildPlayer() {
@@ -204,7 +201,8 @@ function init_meshes() {
 }
 
 function destroyAll() {
-   if (tilesMesh) { destroyMesh(tilesMesh); tilesMesh = null; }
+   for (const t of tilePlanes) destroyMesh(t.mesh);
+   tilePlanes = [];
    if (bulletMesh) { destroyMesh(bulletMesh); bulletMesh = null; }
    if (enemyMesh)  { destroyMesh(enemyMesh);  enemyMesh = null; }
    if (sunMesh)    { destroyMesh(sunMesh);    sunMesh = null; }
@@ -240,8 +238,8 @@ export function init() {
    startT = 0;
    best = best || 0;
 
-   setCameraPosition(0, -5, 12);
-   setCameraTarget(0, -3, -50);
+   setCameraPosition(0, 5, 12);
+   setCameraTarget(0, 3, -50);
    setCameraFOV(70);
    setAmbientLight(rgba8(255, 255, 255, 255), 0.62);
    setLightDirection(-0.5, -1, -0.5);
@@ -278,21 +276,16 @@ function uploadInstances() {
       }
       setInstanceTransforms(enemyMesh, 0, data);
    }
-   if (tilesMesh) {
-      const data = new Array(TILE_ROWS * TILE_COLS * 16);
+   if (tilePlanes.length) {
       const totalLength = TILE_ROWS * TILE;
-      for (let r = 0; r < TILE_ROWS; r++) {
-         for (let c = 0; c < TILE_COLS; c++) {
-            const idx = r * TILE_COLS + c;
-            const cell = tileCells[idx];
-            let wz = TILE_START_Z - r * TILE - TILE / 2 + (scrollOff % totalLength);
-            if (wz > TILE_START_Z) wz -= totalLength;
-            writeMat4(data, idx * 16, TILE * 0.5, 0.02, TILE * 0.5, cell.wx, FLOOR_Y, wz);
-            const phase = Math.floor((r * TILE - scrollOff) / TILE) + c;
-            setInstanceColor(tilesMesh, idx, (phase & 1) ? PALETTE.ground2 : PALETTE.ground1);
-         }
+      const off = scrollOff % totalLength;
+      for (const t of tilePlanes) {
+         let wz = TILE_START_Z - t.r * TILE - TILE / 2 + off;
+         if (wz > TILE_START_Z) wz -= totalLength;
+         setPosition(t.mesh, t.wx, FLOOR_Y, wz);
+         const phase = Math.floor((t.r * TILE - scrollOff) / TILE) + t.c;
+         setMeshColor(t.mesh, (phase & 1) ? PALETTE.ground2 : PALETTE.ground1);
       }
-      setInstanceTransforms(tilesMesh, 0, data);
    }
 }
 

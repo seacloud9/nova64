@@ -33169,7 +33169,10 @@ static bool gles_create_post_program(void)
       "  return c * smoothstep(0.32, 0.85, post_luma(c));\n"
       "}\n"
       "void main() {\n"
-      "  vec2 uv = v_uv;\n"
+      /* Scene/bloom FBOs are GL bottom-up; the overlay VBO's UVs are
+         top-down (matched to the CPU-uploaded HUD texture). Flip V here so
+         GPU-rendered offscreen textures sample right-side-up. */
+      "  vec2 uv = vec2(v_uv.x, 1.0 - v_uv.y);\n"
       "  if (u_pixelate > 0) {\n"
       "    float px = float(u_pixelate) / u_resolution.x;\n"
       "    float py = float(u_pixelate) / u_resolution.y;\n"
@@ -33225,11 +33228,12 @@ static bool gles_create_post_program(void)
          has. See MemPalace diary topic 'nova64-bloom-tuning-three-js-style'
          (2026-05-20) for context. */
       "  if (u_bloom > 0.0 && u_use_mip_bloom != 0) {\n"
-      "    vec3 bloom = texture(u_bloom_mip0, v_uv).rgb * 0.18;\n"
-      "    bloom += texture(u_bloom_mip1, v_uv).rgb * 0.21;\n"
-      "    bloom += texture(u_bloom_mip2, v_uv).rgb * 0.23;\n"
-      "    bloom += texture(u_bloom_mip3, v_uv).rgb * 0.22;\n"
-      "    bloom += texture(u_bloom_mip4, v_uv).rgb * 0.16;\n"
+      "    vec2 buv = vec2(v_uv.x, 1.0 - v_uv.y);\n"
+      "    vec3 bloom = texture(u_bloom_mip0, buv).rgb * 0.18;\n"
+      "    bloom += texture(u_bloom_mip1, buv).rgb * 0.21;\n"
+      "    bloom += texture(u_bloom_mip2, buv).rgb * 0.23;\n"
+      "    bloom += texture(u_bloom_mip3, buv).rgb * 0.22;\n"
+      "    bloom += texture(u_bloom_mip4, buv).rgb * 0.16;\n"
       "    color.rgb += bloom * min(u_bloom, 4.0) * 1.45;\n"
       "  } else if (u_bloom > 0.0) {\n"
       "    vec3 bloom = post_bright(center.rgb) * 0.16;\n"
@@ -33569,49 +33573,51 @@ static bool gles_init_post_resources(void)
    if (!gles_create_post_program())
       return false;
 
-   for (int attempt = 0; attempt < 2 && !post_fbo_ready; attempt++) {
-      GLint internal_format = (attempt == 0) ? GL_RGBA16F : GL_RGBA;
-      GLenum texture_type = (attempt == 0) ? GL_HALF_FLOAT : GL_UNSIGNED_BYTE;
-      GLenum status = 0;
 
-      gles.GenTextures(1, &gles.post_color_texture);
-      gles.BindTexture(GL_TEXTURE_2D, gles.post_color_texture);
-      gles.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-      gles.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-      gles.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-      gles.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-      gles.TexImage2D(GL_TEXTURE_2D, 0, internal_format, NOVA64_WIDTH, NOVA64_HEIGHT, 0,
-         GL_RGBA, texture_type, NULL);
-      gles.BindTexture(GL_TEXTURE_2D, 0);
+   /* Only attempt RGBA16F (half-float) for post-processing. If not supported,
+      disable post effects; the RGBA8 fallback path exposed driver/parity bugs. */
+   GLint internal_format = GL_RGBA16F;
+   GLenum texture_type = GL_HALF_FLOAT;
+   GLenum status = 0;
 
-      gles.GenRenderbuffers(1, &gles.post_rbo);
-      gles.BindRenderbuffer(GL_RENDERBUFFER, gles.post_rbo);
-      gles.RenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT16, NOVA64_WIDTH, NOVA64_HEIGHT);
-      gles.BindRenderbuffer(GL_RENDERBUFFER, 0);
+   gles.GenTextures(1, &gles.post_color_texture);
+   gles.BindTexture(GL_TEXTURE_2D, gles.post_color_texture);
+   gles.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+   gles.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+   gles.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+   gles.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+   gles.TexImage2D(GL_TEXTURE_2D, 0, internal_format, NOVA64_WIDTH, NOVA64_HEIGHT, 0,
+      GL_RGBA, texture_type, NULL);
+   gles.BindTexture(GL_TEXTURE_2D, 0);
 
-      gles.GenFramebuffers(1, &gles.post_fbo);
-      gles.BindFramebuffer(GL_FRAMEBUFFER, gles.post_fbo);
-      gles.FramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, gles.post_color_texture, 0);
-      gles.FramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, gles.post_rbo);
-      status = gles.CheckFramebufferStatus(GL_FRAMEBUFFER);
-      gles.BindFramebuffer(GL_FRAMEBUFFER, 0);
+   gles.GenRenderbuffers(1, &gles.post_rbo);
+   gles.BindRenderbuffer(GL_RENDERBUFFER, gles.post_rbo);
+   gles.RenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT16, NOVA64_WIDTH, NOVA64_HEIGHT);
+   gles.BindRenderbuffer(GL_RENDERBUFFER, 0);
 
-      if (status == GL_FRAMEBUFFER_COMPLETE) {
-         gles.post_hdr_enabled = (attempt == 0);
-         post_fbo_ready = true;
-      } else {
-         if (gles.post_fbo)
-            gles.DeleteFramebuffers(1, &gles.post_fbo);
-         if (gles.post_rbo)
-            gles.DeleteRenderbuffers(1, &gles.post_rbo);
-         if (gles.post_color_texture && gles.DeleteTextures)
-            gles.DeleteTextures(1, &gles.post_color_texture);
-         gles.post_fbo = 0;
-         gles.post_rbo = 0;
-         gles.post_color_texture = 0;
-         if (attempt == 0)
-            nova64_log_line(RETRO_LOG_WARN, "[nova64] RGBA16F post FBO incomplete; falling back to RGBA8 post target");
-      }
+   gles.GenFramebuffers(1, &gles.post_fbo);
+   gles.BindFramebuffer(GL_FRAMEBUFFER, gles.post_fbo);
+   gles.FramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, gles.post_color_texture, 0);
+   gles.FramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, gles.post_rbo);
+   status = gles.CheckFramebufferStatus(GL_FRAMEBUFFER);
+   gles.BindFramebuffer(GL_FRAMEBUFFER, 0);
+
+   if (status == GL_FRAMEBUFFER_COMPLETE) {
+      gles.post_hdr_enabled = true;
+      post_fbo_ready = true;
+   } else {
+      if (gles.post_fbo)
+         gles.DeleteFramebuffers(1, &gles.post_fbo);
+      if (gles.post_rbo)
+         gles.DeleteRenderbuffers(1, &gles.post_rbo);
+      if (gles.post_color_texture && gles.DeleteTextures)
+         gles.DeleteTextures(1, &gles.post_color_texture);
+      gles.post_fbo = 0;
+      gles.post_rbo = 0;
+      gles.post_color_texture = 0;
+      nova64_log_line(RETRO_LOG_WARN, "[nova64] RGBA16F post FBO not supported; post effects disabled. For full color parity, use a GPU/driver with RGBA16F support.");
+      gles.post_resources_ready = false;
+      return false;
    }
 
    if (!post_fbo_ready) {
@@ -33621,9 +33627,8 @@ static bool gles_init_post_resources(void)
    }
 
    if (post_state.bloom > 0.0f) {
-      GLint bloom_internal = gles.post_hdr_enabled ? GL_RGBA16F : GL_RGBA;
-      GLenum bloom_type = gles.post_hdr_enabled ? GL_HALF_FLOAT : GL_UNSIGNED_BYTE;
-      gles_init_bloom_resources(bloom_internal, bloom_type);
+      /* Only allow bloom if RGBA16F is supported. */
+      gles_init_bloom_resources(GL_RGBA16F, GL_HALF_FLOAT);
    }
 
    gles.post_resources_ready = true;
@@ -33647,10 +33652,10 @@ static bool render_gles_bloom_chain(void)
 
    if (post_state.bloom <= 0.0f)
       return false;
+   if (!gles.post_hdr_enabled)
+      return false;
    if (!gles.bloom_resources_ready) {
-      GLint bloom_internal = gles.post_hdr_enabled ? GL_RGBA16F : GL_RGBA;
-      GLenum bloom_type = gles.post_hdr_enabled ? GL_HALF_FLOAT : GL_UNSIGNED_BYTE;
-      if (!gles_init_bloom_resources(bloom_internal, bloom_type))
+      if (!gles_init_bloom_resources(GL_RGBA16F, GL_HALF_FLOAT))
          return false;
    }
 

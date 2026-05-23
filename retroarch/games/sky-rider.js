@@ -31,8 +31,7 @@ const COL_ENEMY_B = rgba8(255, 180, 60, 255);
 const COL_SKY_TOP = rgba8(225, 60, 180, 255);
 const COL_SKY_BOT = rgba8(40, 6, 60, 255);
 
-let tilesMesh = null;
-let tileCells = [];
+let tilePlanes = [];
 let playerMesh = null;
 let bulletMesh = null;
 let bullets = [];
@@ -61,31 +60,27 @@ function writeMat4(out, off, sx, sy, sz, tx, ty, tz) {
 }
 
 function buildScene() {
-   if (tilesMesh) { destroyMesh(tilesMesh); tilesMesh = null; }
+   for (const t of tilePlanes) { destroyMesh(t.mesh); }
+   tilePlanes = [];
    if (playerMesh) { destroyMesh(playerMesh); playerMesh = null; }
    if (bulletMesh) { destroyMesh(bulletMesh); bulletMesh = null; }
    if (enemyMesh) { destroyMesh(enemyMesh); enemyMesh = null; }
    if (sunMesh) { destroyMesh(sunMesh); sunMesh = null; }
-   tileCells = [];
    bullets = [];
    enemies = [];
 
-   const total = TILE_ROWS * TILE_COLS;
-   tilesMesh = createInstancedMesh('cube', total);
-   setMeshEmissive(tilesMesh, COL_GROUND_B, 0.55);
-   const data = new Array(total * 16);
+   // Floor: web-parity approach, individual rotated planes per tile instead
+   // of flat-slab instanced cubes. This matches examples/space-harrier-3d.
    for (let r = 0; r < TILE_ROWS; r++) {
       for (let c = 0; c < TILE_COLS; c++) {
-         const idx = r * TILE_COLS + c;
          const wx = (c - (TILE_COLS - 1) / 2) * TILE;
          const wz = -r * TILE - 2;
-         writeMat4(data, idx * 16, TILE * 0.48, 0.2, TILE * 0.48, wx, FLOOR_Y, wz);
          const col = ((r + c) & 1) ? COL_GROUND_A : COL_GROUND_B;
-         setInstanceColor(tilesMesh, idx, col);
-         tileCells.push({ r, c, wx });
+         const plane = createPlane(TILE, TILE, col, [wx, FLOOR_Y, wz]);
+         rotateMesh(plane, -Math.PI / 2, 0, 0);
+         tilePlanes.push({ mesh: plane, r, c, wx });
       }
    }
-   setInstanceTransforms(tilesMesh, 0, data);
 
    playerMesh = createCube(1.4, 0.7, 1.4, COL_PLAYER);
    setMeshEmissive(playerMesh, COL_PLAYER, 1.4);
@@ -195,20 +190,14 @@ function uploadInstances() {
       setInstanceTransforms(enemyMesh, 0, data);
    }
 
-   if (tilesMesh) {
-      const data = new Array(TILE_ROWS * TILE_COLS * 16);
-      for (let r = 0; r < TILE_ROWS; r++) {
-         for (let c = 0; c < TILE_COLS; c++) {
-            const idx = r * TILE_COLS + c;
-            const cell = tileCells[idx];
-            const wz = -r * TILE - 2 + (scrollOff % TILE);
-            writeMat4(data, idx * 16, TILE * 0.48, 0.2, TILE * 0.48, cell.wx, FLOOR_Y, wz);
-            const phase = Math.floor((r * TILE - scrollOff) / TILE) + c;
-            const col = (phase & 1) ? COL_GROUND_A : COL_GROUND_B;
-            setInstanceColor(tilesMesh, idx, col);
-         }
-      }
-      setInstanceTransforms(tilesMesh, 0, data);
+   // Scroll floor planes: shift Z by scrollOff modulo TILE, recolor by phase.
+   const off = scrollOff % TILE;
+   for (const t of tilePlanes) {
+      const wz = -t.r * TILE - 2 + off;
+      setPosition(t.mesh, t.wx, FLOOR_Y, wz);
+      const phase = Math.floor((t.r * TILE - scrollOff) / TILE) + t.c;
+      const col = (phase & 1) ? COL_GROUND_A : COL_GROUND_B;
+      setMeshColor(t.mesh, col);
    }
 }
 

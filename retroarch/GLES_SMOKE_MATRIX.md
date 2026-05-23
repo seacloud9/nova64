@@ -37,9 +37,11 @@ RetroArch installation or a real OpenGL ES driver stack.
 - **Shadow FBO on older GLES**: `GL_DEPTH_COMPONENT16` + dummy RGB565 RBO
   matches what older Mali/Adreno drivers require for depth-only FBO completeness.
   Tested on Mesa softpipe; real Adreno/Mali coverage still needed.
-- **Post-processing FBO**: Core targets GLES 3.1. The post target now attempts
-  `RGBA16F` for HDR bloom and falls back to `RGBA8` if the framebuffer is
-  incomplete. Real mobile/embedded drivers should verify this fallback path.
+- **Post-processing FBO**: Core targets GLES 3.1. The post target now requires
+  `RGBA16F` for HDR bloom and disables post effects if the framebuffer is
+  incomplete. The previous `RGBA8` fallback exposed a GL driver/parity bug, so
+  real mobile/embedded drivers should verify clean disable behavior when float
+  color attachments are rejected.
 
 ## How to update this file
 
@@ -78,5 +80,5 @@ real-driver integration notes only.
 - HDR/multi-mip bloom was validated under Mesa llvmpipe through the GLES harness.
   The post log reported `format=RGBA16F` and `bloom_mips=5`.
 - Windows cross-build passed, but real Windows/AMD RetroArch smoke should verify
-  that the `RGBA16F` path is accepted and that the `RGBA8` fallback behaves
-  cleanly if a driver rejects float color attachments.
+  that the `RGBA16F` path is accepted and that post effects disable cleanly if a
+  driver rejects float color attachments.

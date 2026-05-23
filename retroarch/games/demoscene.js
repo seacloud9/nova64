@@ -88,7 +88,7 @@ function buildScene0() {
    setSkyColor(rgba8(244, 86, 200, 255), rgba8(218, 24, 150, 255));
    setAmbientLight(rgba8(225, 86, 180, 255), 1.32);
    setLightDirection(0, -1, -0.2);
-   setFog(rgba8(214, 38, 168, 255), 28, 130);
+   setFog(rgba8(232, 80, 196, 255), 12, 70);
    setCameraFOV(70);
 
    // skyPanel cube removed — setSkyColor() above now renders a real fullscreen
@@ -398,7 +398,7 @@ function buildScene4() {
    setSkyColor(rgba8(245, 145, 230, 255), rgba8(210, 45, 184, 255));
    setAmbientLight(rgba8(228, 130, 220, 255), 1.55);
    setLightDirection(0.2, -1, 0.4);
-   setFog(rgba8(220, 65, 200, 255), 20, 86);
+   setFog(rgba8(238, 110, 218, 255), 8, 56);
    setCameraFOV(58);
 
    horizonGlow = createSphere(3.2, rgba8(0, 210, 255, 255));

@@ -3,11 +3,12 @@
 Anything that's a known issue, a deferred investigation, or a queued feature
 lives here. Update this file as items are picked up or completed.
 
-Last updated: 2026-05-21
+Last updated: 2026-05-23
 
-**Latest feature shipped:** Deterministic web-reference capture plus scene-0
-terrain softening. The demoscene now reaches **89.6% / 87.8% strict** against a
-stabilized browser reference without restoring the old fake wash overlay.
+**Latest feature shipped:** Demoscene parity crosses the 90% line. Closer pink
+fog on scenes 0 and 4 dissolves the foreground geometry into the bloom wash,
+landing the comparator at **90.0% / 88.2% strict** (deterministic across
+multiple full runs).
 
 ---
 
@@ -102,10 +103,15 @@ In rough priority order; pick what fits the user's mood.
   pass shipped (see Recently shipped). Further refinement (e.g., matching
   web capture timestamps, animation speeds, particle counts) is still on
   the table when we want to push the numeric score past ~70.
-- **Final 90% push** — current verified comparator is `89.6% / 87.8% strict`.
-  Scene 0 is the lowest remaining frame at `86.7`; the browser reference is now
-  deterministic, so the next work should focus on scene-0 composition/geometry
-  rather than capture variance or global bloom.
+- ~~**Final 90% push.**~~ Done — avg crossed 90 on 2026-05-23 via the same
+  closer-fog recipe applied to scenes 0 and 4. Future work past 90% should be
+  aware: the comparator's `fieldScore`/`lumaSimilarity` reward bright bloom
+  contribution regardless of spatial alignment, so any tuning that *removes* a
+  bright object risks tanking pixel/luma even when the geometry visually looks
+  closer to the reference. Mirroring or shrinking horizonGlow was tested and
+  regressed. For per-scene experiments, trust full-suite numbers only:
+  `--scene=sN` mode jumps the browser straight to that scene with cleaner state
+  and reports inflated scores that don't survive in the canonical full sequence.
 
 ### Cleanup / technical debt
 
@@ -139,6 +145,69 @@ will trip over them while editing the relevant code:
 
 The last session arc closed out:
 
+- ★ **`space-harrier-3d` parity fix.** User reported the gameplay looked
+  "upside down and backwards" and "didn't look like web". Root cause: the
+  original port used gappy raised emissive cube tiles (`TILE*0.48` wide,
+  `0.16` tall, emissive 0.22) which created a "ceiling coffer" illusion
+  from the low-angle camera, and movement params were ~1/3 of web's. Fix:
+  - Floor → flat continuous planes (`TILE*0.5` wide, `0.02` tall, no
+    emissive), 35 rows starting at `z=20-TILE/2` matching web's
+    `startZ - r*size - size/2`
+  - Player movement bumped to web parity: `PLAYER_SPEED 14→45`, bounds
+    `X[-14,14]→[-22,22]` and `Y[-1,9]→[0,18]`, initial `y: 1→0`
+  - Bullet speed/cooldown to web (`BULLET_SPEED 80→180`, `FIRE_COOLDOWN
+    0.16→0.12`, `BULLET_LIFE 1.6→2.0`)
+  - Scenery scrolls at full `SCROLL_SPEED` (was `*0.6`), retains proper
+    `oy`/`topOy` per item (was reading non-existent `mesh._h`), wraps at
+    `z>20` like web, count `18→40`
+  - `MAX_SCENERY 18→40` to match web's initial spawn
+  Captures: `c:\tmp\sh-fixstart.png`, `c:\tmp\sh-fixup.png`.
+
+- ★ **Web→RA cart parity push batch 2.** Five more ported and packaged as
+  `.nova`. Total **9 cartridges** now in `C:\RetroArch-Win64\content\nova64\`:
+  sky-rider, neon-snake, space-harrier-3d, camera-platformer, hello-world,
+  hud-demo, nova-drift (=hello-skybox), tween-bounce, filter-glitch.
+  Batch-2 highlights:
+  - `hud-demo` — spirit port: replaced the web `parseCanvasUI` XML pipeline
+    with primitive `rectfill`/`circ`/`line` calls. Identical visual: HP/MP/XP
+    bars, 5 stars, score, radar with sweep + enemy dots, wave label, boss
+    warning + 6 spinning cubes behind.
+  - `nova-drift` (port of `examples/hello-skybox`) — 6DOF flyer with
+    instanced asteroid field + 15 collectible crystals. Web `createSpaceSkybox`
+    swapped for `setSkyColor` + deterministic LCG so the field is reproducible.
+  - `tween-bounce` — mapped web `tw.tick(dt)` / `tw.value` / `tw.loop:pingpong`
+    onto the runtime's `updateTweens(dt)` + `getTweenValue(handle)` + manual
+    ping-pong handle reset.
+  - `filter-glitch` — mapped web `applyFilter(name, opts)` onto runtime
+    `screenGlitch` / `screenChromaticAberration` / `screenGrayscale` /
+    `screenHsv` / `screenSepia2` / `screenPixelate`.
+  - `hello-world` — trivial smoke port (spinning cube + centered HUD).
+  See `retroarch/WEB_TO_RETROARCH.md` for the full mapping table + skip list.
+- ★ **Web→RA cart parity push begins.** New tracking doc at
+  `retroarch/WEB_TO_RETROARCH.md`. First batch:
+  - `space-harrier-3d.js` + `.nova` — visually-matched port of
+    `examples/space-harrier-3d` (purple sky, green checker, red player ship,
+    pillars). Pairable with the web sibling for parity work.
+  - `camera-platformer.js` + `.nova` — port of `examples/camera-platformer`.
+    Pure-2D parallax + cam2DFollow. Near-pixel-identical to web.
+  - Skip list documented (AR / VR / Babylon / NFT carts).
+- ★ **`sky-rider` cart (Space Harrier 2.5D).** Forward shooter with a
+  scrolling magenta-checker floor, bloomed distant sun, bullet pool, and
+  spawning waves of enemies. Ships as **both** `games/sky-rider.js` (editable
+  source) and `games/sky-rider.nova` (zipped `code.js` + `meta.json`,
+  drop-in playable). First in-tree `.nova` cart in `retroarch/games/`.
+  Smoke captures: `c:\tmp\sky-rider-start.png`, `c:\tmp\sky-rider-play.png`.
+- ★ **`neon-snake.js` cart.** Grid-based snake on a tilted 3D arena with
+  instanced cube trail, bloomed sphere food, magenta neon walls, and the full
+  post stack (bloom + CRT + vignette + chromatic). Arrows turn, Z starts /
+  retries, X pauses. ~210 lines. Start/playing/over states, best-score memory.
+  Smoke captures: `c:\tmp\neon-snake-start.png`, `c:\tmp\neon-snake-mid2.png`.
+- ★ **Demoscene parity crosses 90.** Closer pink fog applied to scenes 0
+  (`rgba8(232,80,196)` 12,70) and 4 (`rgba8(238,110,218)` 8,56) dissolves the
+  foreground geometry into the bloom wash. Net: s0 `87.2 → 88.1`, s4
+  `89.5 → 89.7`, full comparator `89.8 / 88.0 → 90.0 / 88.2`. Verified
+  deterministic across multiple full parity runs. One-line edit per scene; no
+  .so/.dll rebuild needed.
 - ★ Full conformance suite re-baseline. Swept all 519 cases, captured
   current actual checksums, and updated `retroarch/tests/run_conformance.sh`.
   Most of the drift came from the lowercase font + corrected `/` glyph

@@ -29018,6 +29018,7 @@ static bool install_nova64_api(JSContext *ctx)
          /* nova64.fx — post-processing aliases + emitter2D bridge */
          "nova64.fx=(function(){"
            "var p=nova64.post;"
+           "var _glitchT=0;"
            "return{"
              "enableBloom:function(s,r,t){p.setBloom(s==null?1:s);},"
              "disableBloom:function(){p.setBloom(0);},"
@@ -29030,6 +29031,13 @@ static bool install_nova64_api(JSContext *ctx)
              "disableChromatic:function(){p.setChromatic(0);},"
              "enableFXAA:function(){},"
              "disableFXAA:function(){},"
+             "enableDithering:function(){},"
+             "disableDithering:function(){},"
+             "enablePixelation:function(n){p.setPixelate(n==null?1:n);},"
+             "disablePixelation:function(){p.setPixelate(0);},"
+             "enableGlitch:function(i){_glitchT=i==null?0.3:i;p.setChromatic(0.01);},"
+             "disableGlitch:function(){_glitchT=0;p.setChromatic(0);},"
+             "setGlitchIntensity:function(i){_glitchT=i;p.setChromatic(Math.min(0.02,i*0.05));},"
              "disableAll:function(){p.clear();},"
              /* emitter2D bridged to burst API */
              "createEmitter2D:function(x,y,n,life){return createBurst(x,y,n==null?20:n,life==null?60:life);},"
@@ -29087,6 +29095,109 @@ static bool install_nova64_api(JSContext *ctx)
              "createHitState,triggerHit,isInvulnerable,updateHitState,isVisible,"
              "lerp,clamp,randRange,randInt,dist,remap};"
          "})();"
+
+         /* Extend nova64.util with web-cart math helpers */
+         "nova64.util.arc=function(cx,cy,r,a0,a1,n){n=n||16;"
+           "var pts=[];for(var i=0;i<=n;i++){var t=a0+(a1-a0)*i/n;"
+           "pts.push([cx+Math.cos(t)*r,cy+Math.sin(t)*r]);}return pts;};"
+         /* Simple value-noise impl in lieu of perlin (deterministic enough) */
+         "nova64.util.noise=function(x,y,z){"
+           "y=y||0;z=z||0;"
+           "var s=Math.sin(x*12.9898+y*78.233+z*37.719)*43758.5453;"
+           "return (s-Math.floor(s))*2-1;};"
+
+         /* Mirror global draw functions onto nova64.draw for namespaced carts */
+         "(function(){var d=nova64.draw,fns=["
+           "'drawGradient','drawNoise','drawPanel','drawRadialGradient',"
+           "'drawScanlines','drawStarburst','drawWave','drawWaveformLine',"
+           "'drawCircle','drawArc','drawTriangleFilled','drawHexGrid',"
+           "'drawColorWheel','drawColorPicker','glowRect','drawPanelInset',"
+           "'drawHealthBar','drawProgressBar','print','printCentered',"
+           "'printRight','printBold','printShadow','printOutline',"
+           "'printRainbow','printWave','printFlash','printShake',"
+           "'printGradient','printTight','printShadowTight','printOutlineTight',"
+           "'printRainbowTight','printWaveTight','printFlashTight','printShakeTight',"
+           "'printGradientTight','printScaled','printTightScaled',"
+           "'drawGlowText','drawGlowTextCentered'];"
+           "for(var i=0;i<fns.length;i++){var n=fns[i];"
+             "if(typeof globalThis[n]==='function'&&d&&typeof d[n]==='undefined')d[n]=globalThis[n];}})();"
+
+         /* scene.createAdvancedCube — web's holographic/emissive material */
+         "nova64.scene.createAdvancedCube=function(size,opts,pos){"
+           "opts=opts||{};"
+           "var col=opts.color!=null?opts.color:0xffffff;"
+           "var m=createCube(size,col);"
+           "if(pos)setPosition(m,pos[0]||0,pos[1]||0,pos[2]||0);"
+           "if(opts.emissive!=null)setMeshEmissive(m,opts.emissive,opts.emissiveIntensity!=null?opts.emissiveIntensity:1.0);"
+           "return m;};"
+
+         /* nova64.ui — UI engine shim mapping to draw + input primitives */
+         "nova64.ui=(function(){"
+           "var W=640,_buttons=[],_font='normal',_align='left';"
+           "var colors={"
+             /* uiColors as raw 0xAABBGGRR — must not call rgba8 here
+              because this shim evaluates before rgba8 is registered. */
+             "primary:0xffff64a0|0,"
+             "secondary:0xffc8b4b4|0,"
+             "success:0xff78dc3c|0,"
+             "danger:0xff5050ff|0,"
+             "warning:0xff3cd2ff|0,"
+             "info:0xffffc878|0,"
+             "light:0xfffaf0f0|0,"
+             "dark:0xff1e1414|0};"
+           "var fontScale={tiny:1,small:1,normal:1,large:2,huge:3};"
+           "function centerX(w){return Math.floor((W-w)/2);}"
+           "function clearButtons(){_buttons=[];}"
+           "function createButton(x,y,w,h,text,cb,opts){"
+             "opts=opts||{};"
+             "_buttons.push({x:x,y:y,w:w,h:h,text:text,cb:cb,"
+               "normal:opts.normalColor!=null?opts.normalColor:colors.primary,"
+               "hover:opts.hoverColor!=null?opts.hoverColor:colors.info,"
+               "text_color:opts.textColor!=null?opts.textColor:colors.light,"
+               "hot:false});"
+           "}"
+           "function createPanel(x,y,w,h,opts){"
+             "opts=opts||{};"
+             "return{x:x,y:y,w:w,h:h,"
+               "bgColor:opts.bgColor!=null?opts.bgColor:rgba8(20,20,30,200),"
+               "borderColor:opts.borderColor!=null?opts.borderColor:colors.light,"
+               "borderWidth:opts.borderWidth||1,shadow:!!opts.shadow};"
+           "}"
+           "function updateAllButtons(){}"
+           "function drawAllButtons(){"
+             "for(var i=0;i<_buttons.length;i++){var b=_buttons[i];"
+               "rectfill(b.x,b.y,b.w,b.h,b.normal);"
+               "rect(b.x,b.y,b.w,b.h,colors.light);"
+               "var s=fontScale[_font]||1;"
+               "var tw=(b.text.length*4)*s;"
+               "print(b.text,b.x+Math.floor((b.w-tw)/2),b.y+Math.floor((b.h-7*s)/2),b.text_color,s);}"
+           "}"
+           "function setFont(name){_font=name||'normal';}"
+           "function setTextAlign(a){_align=a||'left';}"
+           "function _textWidth(t,s){return t.length*4*s;}"
+           "function drawText(text,x,y,color,scale){"
+             "scale=scale||fontScale[_font]||1;"
+             "color=color!=null?color:colors.light;"
+             "var dx=x;"
+             "if(_align==='center')dx=x-Math.floor(_textWidth(text,scale)/2);"
+             "else if(_align==='right')dx=x-_textWidth(text,scale);"
+             "print(text,dx,y,color,scale);"
+           "}"
+           "function drawTextShadow(text,x,y,color,shadow,off,scale){"
+             "off=off||1;scale=scale||fontScale[_font]||1;"
+             "var dx=x;"
+             "if(_align==='center')dx=x-Math.floor(_textWidth(text,scale)/2);"
+             "else if(_align==='right')dx=x-_textWidth(text,scale);"
+             "print(text,dx+off,y+off,shadow,scale);"
+             "print(text,dx,y,color,scale);"
+           "}"
+           "return{centerX:centerX,clearButtons:clearButtons,createButton:createButton,"
+             "createPanel:createPanel,updateAllButtons:updateAllButtons,"
+             "drawAllButtons:drawAllButtons,setFont:setFont,setTextAlign:setTextAlign,"
+             "drawText:drawText,drawTextShadow:drawTextShadow,uiColors:colors};"
+         "})();"
+         /* uiColors also globally available as web sometimes destructures it */
+         "var uiColors=nova64.ui.uiColors;"
 
          /* Global BM object for top-level setBlend2D(BM.ADD) usage */
          "var BM={NORMAL:'normal',ALPHA:'alpha',ADD:'additive',MULTIPLY:'multiply',SCREEN:'screen'};";
@@ -29466,6 +29577,20 @@ static bool install_nova64_api(JSContext *ctx)
       JS_SetPropertyStr(ctx, nova64, "console", con);
    }
    set_function(ctx, global, "devPrint", js_dev_console_print, 1);
+
+   /* Standard browser-style global `console` (log/warn/error/info/debug)
+    * so web carts written against the browser console API run unmodified.
+    * All variants route through js_console_log -> retro log INFO. */
+   {
+      JSValue browser_console = JS_NewObject(ctx);
+      set_function(ctx, browser_console, "log",   js_console_log, 1);
+      set_function(ctx, browser_console, "info",  js_console_log, 1);
+      set_function(ctx, browser_console, "warn",  js_console_log, 1);
+      set_function(ctx, browser_console, "error", js_console_log, 1);
+      set_function(ctx, browser_console, "debug", js_console_log, 1);
+      set_function(ctx, browser_console, "trace", js_console_log, 1);
+      JS_SetPropertyStr(ctx, global, "console", browser_console);
+   }
 
    /* RetroAchievements cart RAM (M8) */
    set_function(ctx, global, "peek", js_cheevos_peek, 1);
@@ -30824,6 +30949,34 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, global, "isWipeDone",              js_is_wipe_done,             1);
    set_function(ctx, global, "wipeProgress",            js_wipe_progress,            1);
    set_function(ctx, global, "destroyWipe",             js_destroy_wipe,             1);
+
+   /* Web-cart compatibility: mirror late-registered global draw functions
+    * onto nova64.draw so carts like examples/space-harrier-3d that
+    * destructure `const { drawGradient, drawNoise, ... } = nova64.draw;`
+    * can find them. Runs AFTER all set_function calls above. */
+   {
+      static const char compat_late_js[] =
+         "(function(){var d=nova64.draw,fns=["
+           "'drawGradient','drawNoise','drawPanel','drawRadialGradient',"
+           "'drawScanlines','drawStarburst','drawWave','drawWaveformLine',"
+           "'drawCircle','drawArc','drawTriangleFilled','drawHexGrid',"
+           "'drawColorWheel','drawColorPicker','glowRect','drawPanelInset',"
+           "'drawHealthBar','drawProgressBar','drawSpotlight',"
+           "'drawCubicBezier','drawSpline','drawGlowText','drawGlowTextCentered'];"
+           "for(var i=0;i<fns.length;i++){var n=fns[i];"
+             "if(typeof globalThis[n]==='function'&&d&&typeof d[n]==='undefined')"
+               "d[n]=globalThis[n];}})();";
+      JSValue r2 = JS_Eval(ctx, compat_late_js, sizeof(compat_late_js)-1,
+                           "<nova64-compat-late>", JS_EVAL_TYPE_GLOBAL);
+      if (JS_IsException(r2)) {
+         JSValue exc = JS_GetException(ctx);
+         const char *msg = JS_ToCString(ctx, exc);
+         if (log_cb) log_cb(RETRO_LOG_ERROR, "nova64-compat-late: %s\n", msg ? msg : "?");
+         if (msg) JS_FreeCString(ctx, msg);
+         JS_FreeValue(ctx, exc);
+      }
+      JS_FreeValue(ctx, r2);
+   }
 
    JS_FreeValue(ctx, global);
    return true;

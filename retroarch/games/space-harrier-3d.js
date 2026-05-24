@@ -29,10 +29,12 @@ const TILE_ROWS = 35;
 const TILE_START_Z = 20;
 const FOG_NEAR = 30;
 const FOG_FAR  = 150;
-const SKY_TOP = rgba8(44, 48, 70, 255);
-const SKY_BOTTOM = rgba8(35, 38, 55, 255);
-const START_SKY_TOP = rgba8(170, 34, 255, 255);
-const START_SKY_BOTTOM = rgba8(72, 12, 110, 255);
+// Gameplay sky tuned to web parity capture: neutral dark gray rgb(65,68,75)
+const SKY_TOP = rgba8(54, 58, 68, 255);
+const SKY_BOTTOM = rgba8(38, 40, 50, 255);
+// Start sky tuned to web parity: muted purple rgb(95,57,137)
+const START_SKY_TOP = rgba8(106, 64, 152, 255);
+const START_SKY_BOTTOM = rgba8(48, 24, 78, 255);
 const PLAYER_SPEED = 45;
 const PLAYER_X_BOUND = 22;
 const PLAYER_Y_MIN = 0;
@@ -274,7 +276,7 @@ export function init() {
    setCameraPosition(0, 5, 12);
    setCameraTarget(0, 3, -50);
    setCameraFOV(70);
-   setAmbientLight(rgba8(255, 255, 255, 255), 0.62);
+   setAmbientLight(rgba8(255, 255, 255, 255), 0.78);
    setLightDirection(-0.5, -1, -0.5);
    setLightColor(rgba8(255, 240, 221, 255));
    applyStartVisuals();
@@ -419,19 +421,26 @@ export function update(dt) {
 }
 
 function drawHud() {
-   printOutlineTight('SPACE HARRIER', 8, 6, rgba8(255, 240, 80, 255), rgba8(0, 0, 0, 220));
-   printTight('SCORE ' + score, 8, 22, rgba8(255, 220, 80, 255));
-   printTight('BEST  ' + best,  8, 34, rgba8(255, 140, 220, 255));
-   printTight('LIVES ' + lives, 8, 46, rgba8(255, 80, 120, 255));
-   printTight('WAVE  ' + wave,  8, 58, rgba8(120, 220, 255, 255));
-   printTight('T ' + time.toFixed(1) + 's', 560, 6, rgba8(180, 200, 255, 220));
+   // Web-parity HUD: yellow SCORE + cyan WAVE upper-left, lives squares right
+   // of WAVE row, health bar upper-right with red bg + green fill + border.
+   printOutlineTight('SCORE ' + score, 20, 16, rgba8(255, 210, 60, 255), rgba8(0, 0, 0, 220));
+   printOutlineTight('WAVE ' + wave, 20, 36, rgba8(0, 240, 255, 255), rgba8(0, 0, 0, 220));
+   for (let i = 0; i < lives; i++) {
+      rectfill(170 + i * 18, 22, 12, 12, rgba8(255, 50, 50, 255));
+   }
+   const health = 100;
+   rectfill(420, 16, 200, 20, rgba8(50, 0, 0, 200));
+   const hpw = Math.max(0, (health / 100) * 200) | 0;
+   rectfill(420, 16, hpw, 20, hpw > 80 ? rgba8(80, 220, 120, 255) : rgba8(255, 50, 60, 255));
+   rect(420, 16, 200, 20, rgba8(220, 230, 255, 240));
 }
 
 function drawStartScreen() {
    rectfill(0, 0, 640, 360, rgba8(8, 0, 28, 255));
-   drawGradient(0, 0, 640, 360, rgba8(138, 68, 230, 255), rgba8(45, 8, 100, 255), 'v');
+   drawGradient(0, 0, 640, 360, rgba8(128, 88, 200, 255), rgba8(42, 18, 90, 255), 'v');
    drawRadialGradient(320, 105, 230, rgba8(225, 95, 255, 76), rgba8(0, 0, 0, 0));
    drawRadialGradient(320, 440, 285, rgba8(120, 16, 190, 88), rgba8(0, 0, 0, 0));
+   drawScanlines(0.08, 2);
    drawNoise(0, 0, 640, 360, 0.02, rgba8(238, 225, 255, 180));
 
    const sp = Math.sin(startT * 2) * 0.5 + 0.5;
@@ -458,7 +467,6 @@ function drawStartScreen() {
    printTight('START MISSION', 256, 272, rgba8(115, 160, 160, 255));
    printTight('WASD / Arrows: Move   Space: Shoot', 188, 318, rgba8(200, 190, 255, 220));
    printFlash(226, 334, 'PRESS SPACE TO LAUNCH', rgba8(255, 210, 65, 255), -startT, 1.6);
-   drawScanlines(0.18, 2);
 }
 
 export function draw() {

@@ -15376,7 +15376,13 @@ static JSValue js_draw_scanlines(JSContext *ctx, JSValueConst this_val, int argc
    int spacing  = argc > 1 ? int_from_js(ctx, argv[1], 2) : 2;
    if (alpha <= 0.0) return JS_UNDEFINED;
    if (spacing < 1) spacing = 1;
-   int a = (int)(alpha * 255.0 + 0.5); if (a > 255) a = 255;
+   /* Accept either 0-1 (RA convention) OR 0-255 (web/browser convention).
+    * Values >1 are treated as 0-255 to keep both APIs working. */
+   int a = (alpha > 1.0)
+            ? (int)(alpha + 0.5)
+            : (int)(alpha * 255.0 + 0.5);
+   if (a > 255) a = 255;
+   if (a < 0) a = 0;
    uint32_t slc = rgba8(0, 0, 0, (uint8_t)a);
    for (int y = 0; y < NOVA64_HEIGHT; y += spacing) {
       for (int x = 0; x < NOVA64_WIDTH; x++) set_pixel(x, y, slc);
@@ -29105,6 +29111,29 @@ static bool install_nova64_api(JSContext *ctx)
            "y=y||0;z=z||0;"
            "var s=Math.sin(x*12.9898+y*78.233+z*37.719)*43758.5453;"
            "return (s-Math.floor(s))*2-1;};"
+         /* color() / colorMode() — web carts use processing.js-style HSB.
+            Track current mode; default RGB(255). Accepts 1/3/4 args. */
+         "nova64.util._cmode='rgb';nova64.util._cmax=[255,255,255,255];"
+         "nova64.util.colorMode=function(m,a,b,c,d){"
+           "nova64.util._cmode=(m||'rgb').toLowerCase();"
+           "if(a!=null){var mx=nova64.util._cmax;"
+             "mx[0]=a;mx[1]=b==null?a:b;mx[2]=c==null?a:c;mx[3]=d==null?255:d;}"
+           "};"
+         "nova64.util.color=function(r,g,b,a){"
+           "var mx=nova64.util._cmax;"
+           "if(g==null){g=r;b=r;}"
+           "if(a==null)a=mx[3];"
+           "if(nova64.util._cmode==='hsb'||nova64.util._cmode==='hsv'){"
+             "var h=(r%mx[0]+mx[0])%mx[0]/mx[0],s=g/mx[1],v=b/mx[2];"
+             "var i=Math.floor(h*6),f=h*6-i,p=v*(1-s),q=v*(1-f*s),t=v*(1-(1-f)*s);"
+             "var R,G,B;"
+             "switch(i%6){case 0:R=v;G=t;B=p;break;case 1:R=q;G=v;B=p;break;"
+             "case 2:R=p;G=v;B=t;break;case 3:R=p;G=q;B=v;break;"
+             "case 4:R=t;G=p;B=v;break;default:R=v;G=p;B=q;}"
+             "return rgba8(R*255|0,G*255|0,B*255|0,(a/mx[3])*255|0);"
+           "}"
+           "return rgba8((r/mx[0])*255|0,(g/mx[1])*255|0,(b/mx[2])*255|0,(a/mx[3])*255|0);"
+           "};"
 
          /* Mirror global draw functions onto nova64.draw for namespaced carts */
          "(function(){var d=nova64.draw,fns=["
@@ -29198,6 +29227,51 @@ static bool install_nova64_api(JSContext *ctx)
          "})();"
          /* uiColors also globally available as web sometimes destructures it */
          "var uiColors=nova64.ui.uiColors;"
+
+         /* nova64.data — text/translation + array helpers + WAD stubs.
+            Most web carts pull `t` for i18n (returns key by default). */
+         "nova64.data=(function(){"
+           "function t(key,fallback){return fallback!=null?fallback:(key||'');}"
+           "function remove(arr,item){var i=arr.indexOf(item);if(i>=0)arr.splice(i,1);return arr;}"
+           "function shuffle(arr){for(var i=arr.length-1;i>0;i--){"
+             "var j=Math.floor(Math.random()*(i+1));var tmp=arr[i];arr[i]=arr[j];arr[j]=tmp;}return arr;}"
+           "return{t:t,remove:remove,shuffle:shuffle};"
+         "})();"
+
+         /* nova64.fx extras — CM (color matrix) + withFilter wrapper.
+            Stubs preserve cart flow without crashing; advanced filters no-op. */
+         "nova64.fx.CM={"
+           "identity:[1,0,0,0,0, 0,1,0,0,0, 0,0,1,0,0, 0,0,0,1,0],"
+           "grayscale:[0.33,0.33,0.33,0,0, 0.33,0.33,0.33,0,0, 0.33,0.33,0.33,0,0, 0,0,0,1,0],"
+           "sepia:[0.39,0.77,0.19,0,0, 0.35,0.69,0.17,0,0, 0.27,0.53,0.13,0,0, 0,0,0,1,0],"
+           "invert:[-1,0,0,0,255, 0,-1,0,0,255, 0,0,-1,0,255, 0,0,0,1,0]"
+         "};"
+         "nova64.fx.withFilter=function(name,opts,fn){"
+           "if(typeof opts==='function'){fn=opts;opts={};}"
+           "opts=opts||{};"
+           "if(typeof fn==='function')fn();"
+           "};"
+         "nova64.fx.applyGlitch=function(intensity){"
+           "if(nova64.post&&nova64.post.setChromatic)nova64.post.setChromatic((intensity||0.3)*0.02);"
+         "};"
+         "nova64.fx.applyVHS=function(){};"
+         "nova64.fx.applyPixelate=function(n){if(nova64.post&&nova64.post.setPixelate)nova64.post.setPixelate(n||2);};"
+         "nova64.fx.applyBloom=function(s){if(nova64.post&&nova64.post.setBloom)nova64.post.setBloom(s||0.5);};"
+
+         /* nova64.scene.getMesh — pass-through (web treats meshes as opaque) */
+         "if(!nova64.scene.getMesh)nova64.scene.getMesh=function(id){return id;};"
+
+         /* nova64.draw.circle alias to circ (web uses both names) */
+         "if(typeof globalThis.circ==='function'&&!nova64.draw.circle)nova64.draw.circle=globalThis.circ;"
+         "if(typeof globalThis.circfill==='function'&&!nova64.draw.circleFilled)nova64.draw.circleFilled=globalThis.circfill;"
+
+         /* getMouseX/Y/getMouse — minimal pointer accessors. Returns 0 if no
+            mouse data available. Carts polling these in update() shouldn't crash. */
+         "if(typeof globalThis.getMouseX==='undefined'){"
+           "globalThis.getMouseX=function(){return (typeof nova64._mouseX==='number')?nova64._mouseX:0;};"
+           "globalThis.getMouseY=function(){return (typeof nova64._mouseY==='number')?nova64._mouseY:0;};"
+           "globalThis.getMouseDown=function(){return false;};"
+         "}"
 
          /* Global BM object for top-level setBlend2D(BM.ADD) usage */
          "var BM={NORMAL:'normal',ALPHA:'alpha',ADD:'additive',MULTIPLY:'multiply',SCREEN:'screen'};";
@@ -30950,22 +31024,93 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, global, "wipeProgress",            js_wipe_progress,            1);
    set_function(ctx, global, "destroyWipe",             js_destroy_wipe,             1);
 
-   /* Web-cart compatibility: mirror late-registered global draw functions
-    * onto nova64.draw so carts like examples/space-harrier-3d that
-    * destructure `const { drawGradient, drawNoise, ... } = nova64.draw;`
-    * can find them. Runs AFTER all set_function calls above. */
+   /* Web-cart compatibility: mirror late-registered global functions onto
+    * their proper nova64.* namespaces so destructured web carts find them.
+    * Runs AFTER all set_function calls above. */
    {
       static const char compat_late_js[] =
+         /* nova64.draw mirrors */
          "(function(){var d=nova64.draw,fns=["
            "'drawGradient','drawNoise','drawPanel','drawRadialGradient',"
            "'drawScanlines','drawStarburst','drawWave','drawWaveformLine',"
            "'drawCircle','drawArc','drawTriangleFilled','drawHexGrid',"
            "'drawColorWheel','drawColorPicker','glowRect','drawPanelInset',"
            "'drawHealthBar','drawProgressBar','drawSpotlight',"
-           "'drawCubicBezier','drawSpline','drawGlowText','drawGlowTextCentered'];"
+           "'drawCubicBezier','drawSpline','drawGlowText','drawGlowTextCentered',"
+           "'drawFloatingTexts3D','drawPixelBorder','drawMinimap','createMinimap'];"
            "for(var i=0;i<fns.length;i++){var n=fns[i];"
              "if(typeof globalThis[n]==='function'&&d&&typeof d[n]==='undefined')"
-               "d[n]=globalThis[n];}})();";
+               "d[n]=globalThis[n];}})();"
+         /* nova64.scene mirrors */
+         "(function(){var s=nova64.scene,fns=["
+           "'createCylinder','createTorus','createCapsule','clearScene',"
+           "'getMesh','setMeshColor','setMeshEmissive','setMeshAlpha','setMeshOpacity',"
+           "'destroyAllMeshes','meshCount'];"
+           "for(var i=0;i<fns.length;i++){var n=fns[i];"
+             "if(typeof globalThis[n]==='function'&&s&&typeof s[n]==='undefined')"
+               "s[n]=globalThis[n];}})();"
+         /* nova64.camera mirrors (2D camera helpers) */
+         "(function(){var c=nova64.camera,fns=["
+           "'createCamera2D','cam2DFollow','cam2DApply','cam2DReset',"
+           "'setCamera2DZoom','getCamera2D','project3DToScreen'];"
+           "for(var i=0;i<fns.length;i++){var n=fns[i];"
+             "if(typeof globalThis[n]==='function'&&c&&typeof c[n]==='undefined')"
+               "c[n]=globalThis[n];}})();"
+         /* nova64.input mirrors */
+         "(function(){var inp=nova64.input,fns=["
+           "'btnp','keyp','key','isKeyPressed','isKeyDown','mouseX','mouseY',"
+           "'getMouseX','getMouseY','getMouseDown','touchX','touchY','touchCount'];"
+           "for(var i=0;i<fns.length;i++){var n=fns[i];"
+             "if(typeof globalThis[n]==='function'&&inp&&typeof inp[n]==='undefined')"
+               "inp[n]=globalThis[n];}})();"
+         /* nova64.light mirrors */
+         "(function(){var l=nova64.light,fns=["
+           "'createPointLight','destroyPointLight','setPointLightPos',"
+           "'setPointLightColor','setPointLightRadius'];"
+           "for(var i=0;i<fns.length;i++){var n=fns[i];"
+             "if(typeof globalThis[n]==='function'&&l&&typeof l[n]==='undefined')"
+               "l[n]=globalThis[n];}})();"
+         /* nova64.tween namespace (web uses createTween/Ease patterns) */
+         "if(!nova64.tween)nova64.tween={};"
+         "(function(){var tw=nova64.tween,fns=["
+           "'createTween','updateTweens','getTweenValue','isTweenDone','destroyTween',"
+           "'tweenCancel','tweenPause','tweenResume'];"
+           "for(var i=0;i<fns.length;i++){var n=fns[i];"
+             "if(typeof globalThis[n]==='function'&&typeof tw[n]==='undefined')"
+               "tw[n]=globalThis[n];}})();"
+         /* Tween easing presets (Hype-style). Wire to runtime if available
+            else stub to identity. */
+         "if(!nova64.tween.Ease)nova64.tween.Ease={"
+           "linear:function(t){return t;},"
+           "inQuad:function(t){return t*t;},"
+           "outQuad:function(t){return 1-(1-t)*(1-t);},"
+           "inOutQuad:function(t){return t<0.5?2*t*t:1-Math.pow(-2*t+2,2)/2;},"
+           "outBounce:function(t){var n=7.5625,d=2.75;"
+             "if(t<1/d)return n*t*t;"
+             "if(t<2/d){t-=1.5/d;return n*t*t+0.75;}"
+             "if(t<2.5/d){t-=2.25/d;return n*t*t+0.9375;}"
+             "t-=2.625/d;return n*t*t+0.984375;}};"
+         /* nova64.util — add HSB color helper + perlin alias + math consts */
+         "(function(){var u=nova64.util;"
+           "u.TWO_PI=Math.PI*2;u.PI=Math.PI;u.HALF_PI=Math.PI/2;"
+           "if(typeof globalThis.hsb==='function'&&!u.hsb)u.hsb=globalThis.hsb;"
+           "if(!u.noiseSeed)u.noiseSeed=function(s){nova64._noiseSeed=s;};"
+           "if(!u.lerp)u.lerp=function(a,b,t){return a+(b-a)*t;};"
+           "if(!u.map)u.map=function(v,a,b,c,d){return c+(v-a)/(b-a)*(d-c);};"
+           "if(!u.clamp)u.clamp=function(v,a,b){return Math.max(a,Math.min(b,v));};"
+           "})();"
+         /* nova64.ui.grid — simple grid helper used by boids cart */
+         "if(!nova64.ui.grid)nova64.ui.grid=function(rows,cols,cb){"
+           "var w=640/cols,h=360/rows;"
+           "for(var r=0;r<rows;r++)for(var c=0;c<cols;c++)"
+             "cb(c*w,r*h,w,h,r,c);"
+         "};"
+         /* parseCanvasUI / renderCanvasUI / updateCanvasUI — minimal no-op stubs
+            so XML-UI carts at least load without crashing. Real rendering TODO. */
+         "if(!nova64.ui.parseCanvasUI)nova64.ui.parseCanvasUI=function(xml){return{xml:xml,data:{}};};"
+         "if(!nova64.ui.renderCanvasUI)nova64.ui.renderCanvasUI=function(ui,data){};"
+         "if(!nova64.ui.updateCanvasUI)nova64.ui.updateCanvasUI=function(ui,data){if(ui)ui.data=data||{};};"
+         ;
       JSValue r2 = JS_Eval(ctx, compat_late_js, sizeof(compat_late_js)-1,
                            "<nova64-compat-late>", JS_EVAL_TYPE_GLOBAL);
       if (JS_IsException(r2)) {

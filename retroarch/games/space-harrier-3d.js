@@ -4,8 +4,8 @@
 
 const PALETTE = {
    sky:        rgba8(170,  34, 255, 255),
-   ground1:    rgba8( 34, 204,  85, 255),
-   ground2:    rgba8( 17, 136,  51, 255),
+   ground1:    rgba8( 60, 220, 105, 255),
+   ground2:    rgba8( 14, 116,  44, 255),
    playerBody: rgba8(255,  51,  51, 255),
    playerHead: rgba8(255, 204, 170, 255),
    hair:       rgba8( 90,  45,  12, 255),
@@ -120,7 +120,9 @@ function buildPlayer() {
    const bx = p.x, by = p.y, bz = p.z;
    const m = {};
    m.body = createCube(1.2, 1.56, 0.96, PALETTE.playerBody);
+   setMeshEmissive(m.body, PALETTE.playerBody, 0.22);
    m.head = createSphere(0.6, PALETTE.playerHead);
+   setMeshEmissive(m.head, PALETTE.playerHead, 0.18);
    m.hair = createCube(0.77, 0.28, 0.77, PALETTE.hair);
    m.jetpack = createCube(0.96, 1.2, 0.4, PALETTE.jetpack);
    m.gun = createCube(0.3, 0.3, 1.75, PALETTE.gun);
@@ -130,6 +132,8 @@ function buildPlayer() {
    m.legR = createCube(0.32, 0.8, 0.32, PALETTE.playerBody);
    m.flameL = createCube(0.3, 0.3, 0.3, PALETTE.flame);
    m.flameR = createCube(0.3, 0.3, 0.3, PALETTE.flame);
+   setMeshEmissive(m.flameL, PALETTE.flame, 0.4);
+   setMeshEmissive(m.flameR, PALETTE.flame, 0.4);
    p.meshes = m;
    placePlayer();
 }
@@ -183,13 +187,13 @@ function spawnScenery(initial) {
       setPosition(m, x, oy, z);
       sceneryItems.push({ mesh: m, x, z, type: 'pillar', oy });
    } else {
-      const h = 3 + Math.random() * 5;
+      const h = 3 + Math.random() * 6;
       const trunk = createCube(1, h, 1, PALETTE.treeTrunk);
       const trunkY = FLOOR_Y + h / 2;
       setPosition(trunk, x, trunkY, z);
-      const top = createSphere(2.5 + Math.random(), PALETTE.treeLeaves);
-      setMeshEmissive(top, PALETTE.treeLeaves, 0.18);
-      const topY = FLOOR_Y + h + 1;
+      const top = createSphere(3.0 + Math.random() * 0.8, PALETTE.treeLeaves);
+      setMeshEmissive(top, PALETTE.treeLeaves, 0.35);
+      const topY = FLOOR_Y + h + 1.4;
       setPosition(top, x, topY, z);
       sceneryItems.push({ mesh: trunk, mesh2: top, x, z, oy: trunkY, topOy: topY, type: 'tree' });
    }
@@ -276,7 +280,8 @@ export function init() {
    setCameraPosition(0, 5, 12);
    setCameraTarget(0, 3, -50);
    setCameraFOV(70);
-   setAmbientLight(rgba8(255, 255, 255, 255), 0.78);
+   // Match web's exact ambient (web cart calls setAmbientLight(0xffffff, 0.62))
+   setAmbientLight(rgba8(255, 255, 255, 255), 0.62);
    setLightDirection(-0.5, -1, -0.5);
    setLightColor(rgba8(255, 240, 221, 255));
    applyStartVisuals();
@@ -421,12 +426,12 @@ export function update(dt) {
 }
 
 function drawHud() {
-   // Web-parity HUD: yellow SCORE + cyan WAVE upper-left, lives squares right
-   // of WAVE row, health bar upper-right with red bg + green fill + border.
-   printOutlineTight('SCORE ' + score, 20, 16, rgba8(255, 210, 60, 255), rgba8(0, 0, 0, 220));
-   printOutlineTight('WAVE ' + wave, 20, 36, rgba8(0, 240, 255, 255), rgba8(0, 0, 0, 220));
+   // Web-parity HUD: BIG yellow SCORE + cyan WAVE upper-left at 2x scale,
+   // red lives squares row, health bar upper-right with red bg + green fill.
+   print('SCORE: ' + score, 20, 14, rgba8(255, 200, 0, 255), 2);
+   print('WAVE ' + wave, 20, 36, rgba8(0, 240, 255, 255), 2);
    for (let i = 0; i < lives; i++) {
-      rectfill(170 + i * 18, 22, 12, 12, rgba8(255, 50, 50, 255));
+      rectfill(170 + i * 18, 22, 12, 12, rgba8(255, 80, 80, 255));
    }
    const health = 100;
    rectfill(420, 16, 200, 20, rgba8(50, 0, 0, 200));
@@ -451,22 +456,26 @@ function drawStartScreen() {
    drawWave(0, 185, 640, 6, 0.028, startT * 2.2, rgba8(180, 0, 255, 120), 2);
    drawWave(0, 190, 640, 4, 0.042, startT * 2.8 + 1.0, rgba8(255, 100, 0, 85), 2);
 
+   // Title (web uses drawGlowTextCentered with bob)
    const bob = Math.floor(Math.sin(startT * 1.8) * 7);
-   printBold('SPACE', 282, 44 + bob, rgba8(255, 210, 60, 255));
-   printBold('HARRIER', 270, 98 + bob, rgba8(255, 146, 48, 255));
-   printBold('NOVA 64 EDITION', 226, 142, rgba8(155, 215, 255, 245));
-   printTight('THE LEGENDARY RAIL SHOOTER RETURNS', 174, 164, rgba8(225, 190, 255, 225));
+   drawGlowTextCentered('SPACE', 320, 44 + bob, rgba8(255, 200, 0, 255), rgba8(180, 80, 0, 200), 2);
+   drawGlowTextCentered('HARRIER', 320, 92 + bob, rgba8(255, 110, 30, 255), rgba8(170, 40, 0, 200), 2);
+   printTight('NOVA 64 EDITION', 270, 144, rgba8(140, 210, 255, 245));
+   printTight('THE LEGENDARY RAIL SHOOTER RETURNS', 200, 162, rgba8(220, 180, 255, 225));
 
-   rectfill(90, 200, 440, 92, rgba8(15, 5, 35, 215));
-   rect(90, 200, 440, 92, rgba8(180, 60, 255, 255));
-   rect(180, 246, 216, 46, rgba8(184, 245, 220, 245));
-   rectfill(181, 247, 214, 44, rgba8(178, 238, 218, 230));
-   printTight('Blast through waves of alien enemies', 190, 218, rgba8(235, 240, 255, 245));
-   printTight('Dodge projectiles and collect power-ups', 184, 233, rgba8(235, 240, 255, 245));
-   printTight('Retro N64 rail-shooter with 3D visuals', 178, 248, rgba8(235, 240, 255, 245));
-   printTight('START MISSION', 256, 272, rgba8(115, 160, 160, 255));
-   printTight('WASD / Arrows: Move   Space: Shoot', 188, 318, rgba8(200, 190, 255, 220));
-   printFlash(226, 334, 'PRESS SPACE TO LAUNCH', rgba8(255, 210, 65, 255), -startT, 1.6);
+   // Narrower centered info panel (web uses ~440 wide, centered, magenta border with green glow)
+   rectfill(140, 196, 360, 78, rgba8(20, 8, 42, 220));
+   rect(140, 196, 360, 78, rgba8(190, 70, 255, 255));
+   printTight('Blast through waves of alien enemies', 188, 208, rgba8(225, 235, 255, 245));
+   printTight('Dodge projectiles and collect power-ups', 180, 224, rgba8(225, 235, 255, 245));
+   printTight('Retro N64 rail-shooter with 3D visuals', 184, 240, rgba8(225, 235, 255, 245));
+   // Start button
+   rectfill(228, 254, 184, 16, rgba8(40, 200, 110, 235));
+   rect(228, 254, 184, 16, rgba8(120, 245, 180, 255));
+   printTight('START MISSION', 268, 258, rgba8(8, 32, 16, 255));
+
+   printTight('WASD / Arrows: Move   Space: Shoot', 188, 308, rgba8(200, 190, 255, 220));
+   printFlash(196, 326, 'PRESS SPACE TO LAUNCH', rgba8(255, 180, 40, 255), -startT, 1.6);
 }
 
 export function draw() {

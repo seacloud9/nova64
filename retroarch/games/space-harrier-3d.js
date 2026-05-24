@@ -156,6 +156,17 @@ function setPlayerVisible(v) {
    for (const k in player.meshes) setMeshVisible(player.meshes[k], v);
 }
 
+function setSceneVisible(v) {
+   for (const t of tilePlanes) setMeshVisible(t.mesh, v);
+   for (const s of sceneryItems) {
+      setMeshVisible(s.mesh, v);
+      if (s.mesh2) setMeshVisible(s.mesh2, v);
+   }
+   if (sunMesh) setMeshVisible(sunMesh, v);
+   if (bulletMesh) setMeshVisible(bulletMesh, v);
+   if (enemyMesh) setMeshVisible(enemyMesh, v);
+}
+
 function spawnScenery(initial) {
    if (sceneryItems.length >= MAX_SCENERY) return;
    const isLeft = Math.random() > 0.5;
@@ -270,6 +281,7 @@ export function init() {
 
    init_meshes();
    setPlayerVisible(false);
+   setSceneVisible(false);
 }
 
 function uploadInstances() {
@@ -387,7 +399,7 @@ export function update(dt) {
    time += dt;
    if (state === 'start') {
       startT += dt;
-      if (btnp('z') || btnp('x')) { state = 'playing'; applyGameplayVisuals(); setPlayerVisible(true); resetRun(); }
+      if (btnp('z') || btnp('x')) { state = 'playing'; applyGameplayVisuals(); setSceneVisible(true); setPlayerVisible(true); resetRun(); }
       return;
    }
    if (state === 'over') {
@@ -446,7 +458,7 @@ function drawStartScreen() {
    printTight('START MISSION', 256, 272, rgba8(115, 160, 160, 255));
    printTight('WASD / Arrows: Move   Space: Shoot', 188, 318, rgba8(200, 190, 255, 220));
    printFlash(226, 334, 'PRESS SPACE TO LAUNCH', rgba8(255, 210, 65, 255), -startT, 1.6);
-   drawScanlines(45, 2);
+   drawScanlines(0.18, 2);
 }
 
 export function draw() {

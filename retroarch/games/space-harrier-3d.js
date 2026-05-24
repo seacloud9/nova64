@@ -4,8 +4,11 @@
 
 const PALETTE = {
    sky:        rgba8(170,  34, 255, 255),
-   ground1:    rgba8( 60, 220, 105, 255),
-   ground2:    rgba8( 14, 116,  44, 255),
+   // Match web's exact ground colors (0x22cc55 / 0x118833) — earlier bumped
+   // contrast caused a "stepped voxel" illusion; web's tighter contrast looks
+   // flatter and more like a real checker floor.
+   ground1:    rgba8( 34, 204,  85, 255),
+   ground2:    rgba8( 17, 136,  51, 255),
    playerBody: rgba8(255,  51,  51, 255),
    playerHead: rgba8(255, 204, 170, 255),
    hair:       rgba8( 90,  45,  12, 255),
@@ -21,6 +24,7 @@ const PALETTE = {
    pillar:     rgba8(255, 170,   0, 255),
    sun:        rgba8(255, 220, 120, 255),
    enemyShot:  rgba8(255,  60, 220, 255),
+   explosion:  rgba8(255, 140,  40, 255),
 };
 
 const FLOOR_Y = -2;
@@ -33,9 +37,9 @@ const TILE_START_Z = 20;
 // the close 12 rows of tiles clean and only fogs the far distance.
 const FOG_NEAR = 70;
 const FOG_FAR  = 160;
-// Gameplay sky tuned to web parity capture: neutral dark gray rgb(65,68,75)
-const SKY_TOP = rgba8(54, 58, 68, 255);
-const SKY_BOTTOM = rgba8(38, 40, 50, 255);
+// Gameplay sky tuned to web parity capture: neutral dark gray rgb(69,76,79)
+const SKY_TOP = rgba8(72, 80, 86, 255);
+const SKY_BOTTOM = rgba8(48, 54, 62, 255);
 // Start sky tuned to web parity: muted purple rgb(95,57,137)
 const START_SKY_TOP = rgba8(106, 64, 152, 255);
 const START_SKY_BOTTOM = rgba8(48, 24, 78, 255);
@@ -62,7 +66,10 @@ const MAX_BULLETS = 24;
 const MAX_ENEMIES = 16;
 const MAX_ENEMY_BULLETS = 24;
 const MAX_SCENERY = 40;
-const SPAWN_INTERVAL = 1.0;
+const MAX_PARTICLES = 64;
+const SCORE_PER_SEC = 25;          // distance score (web parity)
+const WAVE_CLEAR_HOLD = 2.0;
+const KILL_STREAK_WINDOW = 2.0;
 
 let tilePlanes = [];
 let player = {
@@ -94,6 +101,13 @@ let glitchT = 0;
 let baseChromatic = 0.003;
 let dmgPopups = [];   // floating "-25" texts: { x, y, life }
 let hpFlash = 0;      // health-bar red flash timer (0..1)
+// Wave / streak / particles
+let waveEnemiesLeft = 0;
+let waveClear = false;
+let waveClearT = 0;
+let killStreak = 0;
+let streakT = 0;
+let particles = [];   // explosion particles: { mesh, x, y, z, vx, vy, vz, life, maxLife }
 
 function applyStartVisuals() {
    setFog(PALETTE.sky, 18, 110);
@@ -107,7 +121,9 @@ function applyStartVisuals() {
 function applyGameplayVisuals() {
    setFog(PALETTE.sky, FOG_NEAR, FOG_FAR);
    setSkyColor(SKY_TOP, SKY_BOTTOM);
-   nova64.post.setBloom(0.38);
+   // Lower bloom (was 0.38) so bright tile edges don't bleed into a "raised"
+   // halo that makes the flat checker floor read as voxel cubes.
+   nova64.post.setBloom(0.28);
    nova64.post.setChromatic(0.003);
    nova64.post.setVignette(0.12);
    nova64.post.setCRT(true);
@@ -150,7 +166,10 @@ function buildPlayer() {
    setMeshEmissive(m.head, PALETTE.playerHead, 0.12);
    m.hair = createCube(0.77, 0.28, 0.77, PALETTE.hair);
    m.jetpack = createCube(0.96, 1.2, 0.4, PALETTE.jetpack);
+   // Bright gold halo around jetpack — matches web's golden glow around player
+   setMeshEmissive(m.jetpack, rgba8(255, 200, 60, 255), 0.55);
    m.gun = createCube(0.3, 0.3, 1.75, PALETTE.gun);
+   setMeshEmissive(m.gun, rgba8(255, 240, 180, 255), 0.35);
    m.armL = createCube(0.28, 0.72, 0.28, PALETTE.playerBody);
    m.armR = createCube(0.28, 0.72, 0.28, PALETTE.playerBody);
    m.legL = createCube(0.32, 0.8, 0.32, PALETTE.playerBody);
@@ -235,16 +254,15 @@ function spawnScenery(initial) {
    }
 }
 
-function spawnEnemy() {
+function spawnEnemy(forcedType) {
    if (enemies.length >= MAX_ENEMIES) return;
-   // Pick a type. Match web's distribution roughly:
-   //   ~25% fast (cyan, small, weak)
-   //   ~15% tank (orange-red, big, tough) — only after wave 4
-   //   else normal (purple)
-   const roll = Math.random();
-   let type = 'normal';
-   if (roll < 0.25) type = 'fast';
-   else if (roll < 0.40 && wave >= 4) type = 'tank';
+   // Pick a type — boss override > wave-based distribution
+   let type = forcedType || 'normal';
+   if (!forcedType) {
+      const roll = Math.random();
+      if (roll < 0.25) type = 'fast';
+      else if (roll < 0.40 && wave >= 4) type = 'tank';
+   }
 
    let color = PALETTE.enemy;
    let hp = 1;
@@ -260,6 +278,11 @@ function spawnEnemy() {
       hp = 3;
       speed = 22 + Math.random() * 10;
       size = 2.2;
+   } else if (type === 'boss') {
+      color = rgba8(255, 30, 30, 255);
+      hp = 20 + wave * 4;
+      speed = 14;
+      size = 3.6;
    }
 
    const x = (Math.random() - 0.5) * 36;
@@ -321,6 +344,35 @@ function spawnEnemyBullet(ex, ey, ez) {
       life: ENEMY_BULLET_LIFE,
       slot: enemyBullets.length,
    });
+}
+
+function spawnExplosion(x, y, z, color, count) {
+   count = count || 8;
+   for (let i = 0; i < count; i++) {
+      if (particles.length >= MAX_PARTICLES) break;
+      const p = createCube(0.4 + Math.random() * 0.3, color);
+      setMeshEmissive(p, color, 0.8);
+      setPosition(p, x, y, z);
+      const a1 = Math.random() * Math.PI * 2;
+      const a2 = Math.random() * Math.PI * 2;
+      const sp = 12 + Math.random() * 20;
+      particles.push({
+         mesh: p, x, y, z,
+         vx: Math.cos(a1) * Math.sin(a2) * sp,
+         vy: Math.sin(a1) * sp,
+         vz: Math.cos(a1) * Math.cos(a2) * sp,
+         life: 0.32 + Math.random() * 0.25,
+         maxLife: 0.5,
+      });
+   }
+}
+
+function startWave(n) {
+   wave = n;
+   const isBossWave = wave > 0 && (wave % 3 === 0);
+   waveEnemiesLeft = isBossWave ? 1 : (4 + n * 2);
+   spawnT = 0.5;
+   waveClear = false;
 }
 
 function triggerHitGlitch() {
@@ -387,6 +439,8 @@ function destroyAll() {
    player.meshes = {};
    for (const e of enemies) destroyEnemyMeshes(e);
    enemies = [];
+   for (const p of particles) destroyMesh(p.mesh);
+   particles = [];
    for (const s of sceneryItems) {
       destroyMesh(s.mesh);
       if (s.mesh2) destroyMesh(s.mesh2);
@@ -403,7 +457,6 @@ function resetRun() {
    scrollOff = 0;
    score = 0;
    lives = 3;
-   wave = 1;
    cooldown = 0;
    spawnT = 0;
    time = 0;
@@ -414,6 +467,13 @@ function resetRun() {
    for (const e of enemies) destroyEnemyMeshes(e);
    enemies = [];
    enemyBullets = [];
+   for (const p of particles) destroyMesh(p.mesh);
+   particles = [];
+   killStreak = 0;
+   streakT = 0;
+   waveClear = false;
+   waveClearT = 0;
+   startWave(1);
    clearGlitch();
    placePlayer();
 }
@@ -427,15 +487,15 @@ export function init() {
    setCameraPosition(0, 5, 12);
    setCameraTarget(0, 3, -50);
    setCameraFOV(70);
-   // Reduced ambient for stronger 3D depth — web's 0.62 plus its Babylon
-   // material chain produces less-flat shading than our cube shader. The
-   // shader's per-face surface_light range is 0.58..1.0, so heavy ambient
-   // ends up clipping the highlights and erasing the diffuse gradient.
-   // Drop to ~0.28 so darker faces stay visibly darker.
-   setAmbientLight(rgba8(255, 248, 230, 255), 0.28);
-   // Light angled more from the camera-side so player/enemies (camera-facing
-   // -Z surface) get more diffuse contribution than straight overhead would.
-   setLightDirection(-0.35, -0.7, 0.55);
+   // Web parity ambient: web uses 0.62 with Babylon. Our cube shader range
+   // is compressed (0.58..1.0 surface_light), so we settle around 0.42:
+   // enough lift to match web's average brightness without clipping the
+   // diffuse gradient on round meshes (trees, player head, enemy cores).
+   setAmbientLight(rgba8(255, 250, 232, 255), 0.42);
+   // Web's exact direction — keeps floor tile lighting UNIFORM across the
+   // checker (an angled light gives adjacent tiles different diffuse values
+   // which reads as a "stepped/voxel terrain" instead of flat floor).
+   setLightDirection(-0.5, -1, -0.5);
    setLightColor(rgba8(255, 232, 200, 255));
    applyStartVisuals();
 
@@ -495,7 +555,9 @@ function damagePlayer(amount) {
    spawnDamagePopup(amount);
    if (player.hp <= 0) {
       // Lose a life; respawn with shield + full hp unless game over.
+      spawnExplosion(player.x, player.y, player.z, PALETTE.playerBody, 14);
       lives -= 1;
+      killStreak = 0;
       if (lives <= 0) {
          state = 'over';
          if (score > best) best = score;
@@ -552,11 +614,35 @@ function updatePlay(dt) {
    }
 
    scrollOff += SCROLL_SPEED * dt;
+   // Distance-based score (web parity: game.score += dt * 25)
+   score += dt * SCORE_PER_SEC;
 
-   spawnT += dt;
-   if (spawnT >= SPAWN_INTERVAL) {
-      spawnT = 0;
-      spawnEnemy();
+   // Wave management
+   if (waveClear) {
+      waveClearT -= dt;
+      if (waveClearT <= 0) startWave(wave + 1);
+   } else if (waveEnemiesLeft <= 0 && enemies.length === 0) {
+      waveClear = true;
+      waveClearT = WAVE_CLEAR_HOLD;
+      score += wave * 200;   // wave-clear bonus, matches web
+   } else {
+      // Spawn at a wave-scaled rate
+      spawnT += dt;
+      const interval = Math.max(0.4, 1.4 - wave * 0.08);
+      if (spawnT >= interval && waveEnemiesLeft > 0) {
+         spawnT = 0;
+         waveEnemiesLeft--;
+         // Boss waves spawn one boss; otherwise normal/fast/tank mix
+         const isBossWave = wave > 0 && (wave % 3 === 0);
+         if (isBossWave && waveEnemiesLeft === 0) spawnEnemy('boss');
+         else spawnEnemy();
+      }
+   }
+
+   // Kill-streak timer
+   if (streakT > 0) {
+      streakT -= dt;
+      if (streakT <= 0) killStreak = 0;
    }
 
    // Player bullets
@@ -579,9 +665,15 @@ function updatePlay(dt) {
       if (e.y < 2 || e.y > 16) e.vy *= -1;
 
       // Occasionally fire at the player once close enough
-      if (e.timer > 1.2 && e.z > -80 && e.z < -8) {
-         const fireChance = e.type === 'tank' ? 0.012 : 0.006;
+      if (e.timer > 1.0 && e.z > -90 && e.z < -8) {
+         const fireChance = e.type === 'boss' ? 0.04
+                          : e.type === 'tank' ? 0.012
+                          : 0.006;
          if (Math.random() < fireChance) spawnEnemyBullet(e.x, e.y, e.z);
+         // Bosses also throw a spread shot occasionally
+         if (e.type === 'boss' && Math.random() < 0.012) {
+            for (let a = -2; a <= 2; a++) spawnEnemyBullet(e.x + a * 3, e.y, e.z);
+         }
       }
 
       // If enemy crosses near the player plane, check AABB collision
@@ -613,13 +705,39 @@ function updatePlay(dt) {
             e.hp -= 1;
             bullets.splice(j, 1);
             if (e.hp <= 0) {
-               score += e.type === 'tank' ? 500 : e.type === 'fast' ? 250 : 150;
+               const pts = e.type === 'boss' ? 3000
+                         : e.type === 'tank' ? 500
+                         : e.type === 'fast' ? 250
+                         : 150;
+               score += pts;
+               killStreak += 1;
+               streakT = KILL_STREAK_WINDOW;
+               if (killStreak >= 3) score += killStreak * 50;
+               spawnExplosion(e.x, e.y, e.z, e.type === 'boss' ? rgba8(255, 80, 30, 255) : PALETTE.explosion || rgba8(255, 140, 40, 255), e.type === 'boss' ? 18 : 10);
                destroyEnemyMeshes(e);
                enemies.splice(i, 1);
             }
             break;
          }
       }
+   }
+
+   // Particles (explosion shrapnel)
+   for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i];
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.z += p.vz * dt;
+      p.vy -= 28 * dt;        // gravity
+      p.life -= dt;
+      const a = Math.max(0, p.life / p.maxLife);
+      if (p.life <= 0 || a < 0.05) {
+         destroyMesh(p.mesh);
+         particles.splice(i, 1);
+         continue;
+      }
+      setPosition(p.mesh, p.x, p.y, p.z);
+      setScale(p.mesh, a, a, a);
    }
 
    // Enemy bullets
@@ -683,7 +801,7 @@ export function update(dt) {
 function drawHud() {
    // Web-parity HUD: BIG yellow SCORE + cyan WAVE upper-left at 2x scale,
    // red lives squares row, health bar upper-right (red bg + green fill).
-   print('SCORE: ' + score, 20, 14, rgba8(255, 200, 0, 255), 2);
+   print('SCORE: ' + (score | 0), 20, 14, rgba8(255, 200, 0, 255), 2);
    print('WAVE ' + wave, 20, 36, rgba8(0, 240, 255, 255), 2);
    for (let i = 0; i < lives; i++) {
       rectfill(170 + i * 18, 22, 12, 12, rgba8(255, 80, 80, 255));
@@ -708,6 +826,20 @@ function drawHud() {
    for (const p of dmgPopups) {
       const a = Math.max(0, Math.min(1, p.life)) * 255 | 0;
       printScaled('-' + p.amount, p.x, p.y, rgba8(255, 60, 60, a), 2);
+   }
+
+   // Kill streak banner (web shows after 3+ kills in 2s window)
+   if (killStreak >= 3) {
+      printScaled(killStreak + 'x STREAK!', 230, 70, rgba8(255, 220, 60, 255), 2);
+   }
+
+   // Wave clear banner
+   if (waveClear) {
+      const wy = 140;
+      rectfill(140, wy - 6, 360, 56, rgba8(0, 30, 0, 220));
+      rect(140, wy - 6, 360, 56, rgba8(80, 255, 120, 255));
+      printScaled('WAVE ' + wave + ' CLEAR!', 240, wy, rgba8(80, 255, 120, 255), 2);
+      printTight('+' + (wave * 200) + ' BONUS', 274, wy + 26, rgba8(255, 220, 100, 255));
    }
 }
 

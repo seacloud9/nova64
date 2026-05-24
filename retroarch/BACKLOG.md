@@ -81,7 +81,47 @@ Major additions:
 
 Remaining WARNs are not hard load blockers. They are the next parity queue:
 real model/VOX/WAD/fetch support, richer stage/canvas drawing, particle draw
-coverage, AR hand-tracking fallbacks, and cart-specific draw/update helpers.
+coverage, and cart-specific draw/update helpers.
+
+## ❌ Out of scope (per user, 2026-05-24)
+
+**No XR/AR support on RetroArch.** These carts can load via stubs but real
+hardware integration is not on the roadmap:
+
+- `ar-hand-demo` — webcam-based AR hand tracking (no libretro webcam API)
+- `vr-demo` — WebXR VR session (no libretro XR device support)
+- `vr-sword-combat` — WebXR + hand tracking
+
+Their compat WARN status is **acknowledged and intentional**; do not spend
+effort on them. `nova64.xr` namespace stubs exist so the carts at least
+load without crashing.
+
+## 🟡 Web-cart compat — third-round progress (2026-05-24)
+
+Third round (commit `decf293`) moved compat from 54/71 PASS → **67/71 PASS**.
+New shims added: `drawRoundedRect`, `drawRect`, `withBlend`, `fetch`,
+`loadModel`/`loadVoxModel`/`loadVoxelWorld`/`playAnimation`,
+`getMousePosition`/`setMouseButton`/`isMouseDown`/`setTextBaseline`,
+`uiProgressBar`/`drawAllPanels`, plus augments to `createMinimap` (added
+`.player`/`.entities`), `createEmitter2D` (now an object proxy with
+mutable `x`/`y`/`rate`), and `createPool` (added `.forEach`/`.filter`/`.length`).
+
+Newly-passing carts: blend-aurora, flash-demo, instancing-demo,
+model-viewer-3d, nature-explorer-3d, nft-art-generator, nft-worlds,
+particle-trail, particles-demo, pbr-showcase, skybox-showcase, ui-demo,
+vox-viewer, wad-demo.
+
+**Remaining 4 WARN** (after excluding XR-deferred):
+
+| Cart | Gap | Notes |
+|------|-----|-------|
+| `ar-hand-demo` | AR hand tracking | ❌ Out of scope per user |
+| `blend-aurora` | Canvas2D `ctx.createLinearGradient` | Big lift — would need HTML5 Canvas API |
+| `stage-cards` | Canvas2D `ctx.roundRect` | Same Canvas2D surface |
+| `wizardry-3d` | `nova64.util.createPool().forEach` | Namespace-specific augment didn't catch this path |
+
+So **effectively 3 real WARN remain** (XR-excluded). All are addressable;
+canvas2d ctx is the big shared surface.
 
 Bigger ticket items also pending:
 - **`nova64.ui.parseCanvasUI`**: currently a no-op stub. Implementing real

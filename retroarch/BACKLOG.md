@@ -3,12 +3,102 @@
 Anything that's a known issue, a deferred investigation, or a queued feature
 lives here. Update this file as items are picked up or completed.
 
-Last updated: 2026-05-23
+Last updated: 2026-05-24
 
-**Latest feature shipped:** Demoscene parity crosses the 90% line. Closer pink
-fog on scenes 0 and 4 dissolves the foreground geometry into the bloom wash,
-landing the comparator at **90.0% / 88.2% strict** (deterministic across
-multiple full runs).
+**Latest feature shipped:** Web-cart compatibility layer. `examples/*/code.js`
+files now load on the RA runtime **unmodified** — no manual port needed. Compat
+probe of 19 web carts: **9 PASS, 4 WARN (loads but errors mid-frame), 5 FAIL**.
+Newly working: `hello-world`, `hello-namespaced`, `filter-glitch`, `hud-demo`,
+`space-harrier-3d`, `particle-fireworks`, `screen-demo`, `input-showcase`,
+`boids-flocking`. The compat layer added `console`, `nova64.tween`,
+`nova64.data`, extended `nova64.fx`/`util`/`ui`/`scene`/`camera`/`light`/`input`
+namespaces, and a `drawScanlines` alpha-unit tolerance so the same call
+(`drawScanlines(45, 2)`) works on both web (0–255) and RA (0–1) without
+clamping to opaque black. See commits `d65d8e7` + `0e60c5b`.
+
+---
+
+## 🟡 Queued — push web-cart compat from 9/19 → all-green
+
+The compat layer landed on 2026-05-24. Remaining failures and the API gaps
+they need, in rough effort order (smallest first):
+
+| Cart                 | Status | Gap |
+| -------------------- | ------ | --- |
+| `hello-3d`           | WARN   | TypeError in draw — investigate which `nova64.scene.*` returns non-fn |
+| `hello-skybox`       | WARN   | TypeError in update — same investigation |
+| `3d-advanced`        | WARN   | TypeError in draw |
+| `camera-platformer`  | WARN   | TypeError in draw (loads now, was full FAIL pre-compat) |
+| `demoscene`          | WARN   | `debugFreeze is not initialized` — TDZ from earlier throw, likely a destructured key missing |
+| `tween-bounce`       | FAIL   | `nova64.scene.engine` — wants raw Babylon engine ref. Hard to stub. Maybe expose a fake `{getRenderingCanvas:()=>null}` or change cart to skip if undefined. |
+| `dungeon-crawler-3d` | FAIL   | Game-specific helpers: `createMinimap`, `drawMinimap`, `drawFloatingTexts3D`, `drawPixelBorder` — likely already exist as globals but unconfirmed |
+| `creative-coding`    | FAIL   | More `nova64.scene.*` helpers — investigate full destructuring |
+| `shader-showcase`    | FAIL   | TSL materials: `createHologramMaterial`, `createLavaMaterial`, `createPlasmaMaterial`, `createShockwaveMaterial`, `createTSLMaterial`, `createVortexMaterial` — Three.js Shading Language. Big work; stub to plain materials first. |
+| `minecraft-demo`     | FAIL   | `configureVoxelWorld` — entire voxel-world API surface |
+
+Also worth a probe pass: the **50 carts not yet tested** under `examples/`
+(adventure-comic-3d, audio-lab, crystal-cathedral-3d, cyberpunk-city-3d,
+f-zero-nova-3d, fps-demo-3d, game-of-life-3d, generative-art,
+mystical-realm-3d, nature-explorer-3d, particle-trail, particles-demo,
+shooter-demo-3d, super-plumber-64, etc.). Run via
+`/tmp/compat-test.sh` (the probe script lives in `c:\tmp\compat-test.sh`).
+
+Bigger ticket items also pending:
+- **`nova64.ui.parseCanvasUI`**: currently a no-op stub. Implementing real
+  XML parsing + render would unlock hud-demo's actual UI (and many other
+  XML-UI carts). Per-element tags to support: `<text>`, `<rect>`, `<circle>`,
+  `<progressbar>`, `<image>`, `<group>` with attributes for position,
+  color, data-bindings (`{var}` substitution), shadows, anchors.
+- **Per-mesh alpha / transparency**: `createAdvancedCube` accepts `opts.opacity`
+  and `opts.transparent` today but ignores them. Need a `setMeshAlpha(mesh, a)`
+  + a transparent z-sort pass in the GLES path. (z-sort pass already exists
+  for `setMeshAlpha`-like blending — verify whether it's wired up to a JS
+  binding.)
+- **`ui.createButton` input wiring**: stored callbacks aren't fired today.
+  Wire `updateAllButtons()` to poll `RETRO_DEVICE_POINTER` + joypad confirm.
+
+---
+
+## ✅ Web-cart compat — what landed (for context)
+
+The compat layer is a *runtime-side* feature: changes live in
+`retroarch/nova64_libretro.c`, no cart rewrites needed.
+
+Round 1 (commit `d65d8e7`):
+- Global `console.{log,info,warn,error,debug,trace}` — web carts use these
+  at module scope; missing them caused ReferenceError + TDZ on every `let`
+- Extended `nova64.fx`: `enableDithering`, `enablePixelation`,
+  `enableGlitch`, `disableGlitch`, `setGlitchIntensity`
+- Extended `nova64.util`: `arc(cx,cy,r,a0,a1,n)`, `noise(x,y,z)`
+- New `nova64.scene.createAdvancedCube(size, opts, pos)`
+- New whole `nova64.ui` namespace: `centerX`, `clearButtons`, `createButton`,
+  `createPanel`, `drawAllButtons`, `drawText`, `drawTextShadow`, `setFont`,
+  `setTextAlign`, `uiColors`, `updateAllButtons` (JS-only, renders via
+  `rectfill`/`rect`/`print`)
+- Late compat eval at end of `init_globals` that mirrors late-registered
+  global `drawGradient`/`drawNoise`/`drawScanlines`/etc onto `nova64.draw`
+
+Round 2 (commit `0e60c5b`):
+- `drawScanlines` accepts alpha >1 as 0–255 byte (web convention)
+- `nova64.util.color()` + `colorMode()` — processing.js HSB/RGB color factory
+- `nova64.util` math: `TWO_PI`/`PI`/`HALF_PI`/`lerp`/`map`/`clamp`/`noiseSeed`
+- `nova64.data` namespace: `t(key, fallback)` i18n stub, `remove`, `shuffle`
+- `nova64.fx.CM` color matrix presets + `withFilter` wrapper +
+  `applyGlitch`/`applyVHS`/`applyPixelate`/`applyBloom` shortcuts
+- Late-pass mirroring of `createCylinder`/`createTorus`/`clearScene`/
+  `getMesh`/`createCamera2D`/`cam2DFollow`/`btnp`/`keyp`/`createPointLight`
+  onto their proper `nova64.X` namespaces
+- New `nova64.tween` namespace with `createTween`, `Ease.{linear,inQuad,
+  outQuad,inOutQuad,outBounce}`
+- `nova64.ui.grid(rows, cols, cb)` helper
+- `nova64.ui.parseCanvasUI`/`renderCanvasUI`/`updateCanvasUI` no-op stubs
+  (real impl deferred — see queued list)
+- Companion fixes in `space-harrier-3d.js` cart commits `7aece38`, `9e6b8fc`,
+  `701b7f2`, `7fcabf1` — those refined the RA-port cart while the runtime
+  was learning to host the web cart directly. Both paths now work.
+
+Capture: web cart loaded directly on RA: `c:\tmp\web-on-ra-v2.png`. Native
+.so + cross-built .dll deployed to `C:\RetroArch-Win64\cores\`.
 
 ---
 

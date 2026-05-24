@@ -25398,33 +25398,46 @@ static int key_code_from_js(JSContext *ctx, JSValueConst value)
    const char *name = JS_ToCString(ctx, value);
    if (!name)
       return -1;
+   char key[64];
+   size_t key_len = strlen(name);
+   size_t copy_len = key_len < sizeof(key) - 1 ? key_len : sizeof(key) - 1;
+   for (size_t i = 0; i < copy_len; i++)
+      key[i] = (char)tolower((unsigned char)name[i]);
+   key[copy_len] = '\0';
    int code = -1;
-   if (!strcmp(name, "up"))          code = NOVA64_RETROK_UP;
-   else if (!strcmp(name, "down"))   code = NOVA64_RETROK_DOWN;
-   else if (!strcmp(name, "left"))   code = NOVA64_RETROK_LEFT;
-   else if (!strcmp(name, "right"))  code = NOVA64_RETROK_RIGHT;
-   else if (!strcmp(name, "space"))  code = NOVA64_RETROK_SPACE;
-   else if (!strcmp(name, "enter") || !strcmp(name, "return"))
+   if (!strcmp(key, "up") || !strcmp(key, "arrowup"))
+                                     code = NOVA64_RETROK_UP;
+   else if (!strcmp(key, "down") || !strcmp(key, "arrowdown"))
+                                     code = NOVA64_RETROK_DOWN;
+   else if (!strcmp(key, "left") || !strcmp(key, "arrowleft"))
+                                     code = NOVA64_RETROK_LEFT;
+   else if (!strcmp(key, "right") || !strcmp(key, "arrowright"))
+                                     code = NOVA64_RETROK_RIGHT;
+   else if (!strcmp(key, "space") || !strcmp(key, " "))
+                                     code = NOVA64_RETROK_SPACE;
+   else if (!strcmp(key, "enter") || !strcmp(key, "return"))
                                      code = NOVA64_RETROK_RETURN;
-   else if (!strcmp(name, "escape") || !strcmp(name, "esc"))
+   else if (!strcmp(key, "escape") || !strcmp(key, "esc"))
                                      code = NOVA64_RETROK_ESCAPE;
-   else if (!strcmp(name, "backspace")) code = NOVA64_RETROK_BACKSPACE;
-   else if (!strcmp(name, "tab"))    code = NOVA64_RETROK_TAB;
-   else if (!strcmp(name, "shift") || !strcmp(name, "lshift"))
+   else if (!strcmp(key, "backspace")) code = NOVA64_RETROK_BACKSPACE;
+   else if (!strcmp(key, "tab"))    code = NOVA64_RETROK_TAB;
+   else if (!strcmp(key, "shift") || !strcmp(key, "lshift"))
                                      code = NOVA64_RETROK_LSHIFT;
-   else if (!strcmp(name, "rshift")) code = NOVA64_RETROK_RSHIFT;
-   else if (!strcmp(name, "ctrl") || !strcmp(name, "lctrl"))
+   else if (!strcmp(key, "rshift")) code = NOVA64_RETROK_RSHIFT;
+   else if (!strcmp(key, "ctrl") || !strcmp(key, "control") ||
+            !strcmp(key, "lctrl") || !strcmp(key, "lcontrol"))
                                      code = NOVA64_RETROK_LCTRL;
-   else if (!strcmp(name, "rctrl"))  code = NOVA64_RETROK_RCTRL;
-   else if (!strcmp(name, "alt") || !strcmp(name, "lalt"))
+   else if (!strcmp(key, "rctrl") || !strcmp(key, "rcontrol"))
+                                     code = NOVA64_RETROK_RCTRL;
+   else if (!strcmp(key, "alt") || !strcmp(key, "lalt"))
                                      code = NOVA64_RETROK_LALT;
-   else if (!strcmp(name, "ralt"))   code = NOVA64_RETROK_RALT;
-   else if (name[0] >= 'a' && name[0] <= 'z' && name[1] == '\0')
-      code = (int)name[0]; /* a-z maps to RETROK 97-122 */
-   else if (name[0] >= '0' && name[0] <= '9' && name[1] == '\0')
-      code = (int)name[0]; /* 0-9 maps to RETROK 48-57 */
-   else if (name[0] == 'f' || name[0] == 'F') {
-      int fn = (int)strtol(name + 1, NULL, 10);
+   else if (!strcmp(key, "ralt"))   code = NOVA64_RETROK_RALT;
+   else if (key[0] >= 'a' && key[0] <= 'z' && key[1] == '\0')
+      code = (int)key[0]; /* a-z maps to RETROK 97-122 */
+   else if (key[0] >= '0' && key[0] <= '9' && key[1] == '\0')
+      code = (int)key[0]; /* 0-9 maps to RETROK 48-57 */
+   else if (key[0] == 'f') {
+      int fn = (int)strtol(key + 1, NULL, 10);
       if (fn >= 1 && fn <= 12)
          code = NOVA64_RETROK_F1 + (fn - 1);
    }
@@ -26184,6 +26197,7 @@ static JSValue js_set_ambient_light(JSContext *ctx, JSValueConst this_val, int a
          0.0, 4.0);
    return JS_UNDEFINED;
 }
+
 
 static JSValue js_set_light_direction(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
@@ -29045,14 +29059,20 @@ static bool install_nova64_api(JSContext *ctx)
              "disableGlitch:function(){_glitchT=0;p.setChromatic(0);},"
              "setGlitchIntensity:function(i){_glitchT=i;p.setChromatic(Math.min(0.02,i*0.05));},"
              "disableAll:function(){p.clear();},"
-             /* emitter2D bridged to burst API */
-             "createEmitter2D:function(x,y,n,life){return createBurst(x,y,n==null?20:n,life==null?60:life);},"
-             "burstEmitter2D:function(e,n){triggerBurst(e,0,0,n==null?20:n);},"
-             "updateEmitter2D:function(e,dt){updateBurst(e,dt);},"
-             "drawEmitter2D:function(e){drawBurst(e);},"
-             "isEmitter2DDone:function(e){return isBurstDone(e);},"
-             "destroyEmitter2D:function(e){destroyBurst(e);},"
-             "setBurstColors:function(e,c1,c2,c3,c4){return setBurstColors(e,c1,c2,c3,c4);}"
+             /* emitter2D bridged to burst API.
+                Web code (particle-trail etc.) mutates e.x / e.y / e.rate per
+                frame, so return an object proxy instead of the raw handle.
+                Helper functions coerce object -> handle. */
+             "createEmitter2D:function(x,y,n,life){"
+               "return{_h:createBurst(x||0,y||0,n==null?20:n,life==null?60:life),"
+                     "x:x||0,y:y||0,rate:1,active:true};},"
+             "burstEmitter2D:function(e,n){if(e&&e._h!=null)triggerBurst(e._h,e.x||0,e.y||0,n==null?20:n);},"
+             "updateEmitter2D:function(e,dt){if(e&&e._h!=null)updateBurst(e._h,dt);},"
+             "drawEmitter2D:function(e){if(e&&e._h!=null)drawBurst(e._h);},"
+             "isEmitter2DDone:function(e){return e&&e._h!=null?isBurstDone(e._h):true;},"
+             "destroyEmitter2D:function(e){if(e&&e._h!=null){destroyBurst(e._h);e._h=null;}},"
+             "setBurstColors:function(e,c1,c2,c3,c4){"
+               "var h=(e&&e._h!=null)?e._h:e;return setBurstColors(h,c1,c2,c3,c4);}"
            "};"
          "})();"
 
@@ -31166,10 +31186,17 @@ static bool install_nova64_api(JSContext *ctx)
            "'drawColorWheel','drawColorPicker','glowRect','drawPanelInset',"
            "'drawHealthBar','drawProgressBar','drawSpotlight',"
            "'drawCubicBezier','drawSpline','drawGlowText','drawGlowTextCentered',"
-           "'drawFloatingTexts3D','drawPixelBorder','drawMinimap','createMinimap'];"
+           "'drawFloatingTexts3D','drawPixelBorder','drawMinimap','createMinimap',"
+           "'circ','circfill','ellipse','ellipsefill','poly','polyfill',"
+           "'pset','pget','tri','trifill'];"
            "for(var i=0;i<fns.length;i++){var n=fns[i];"
              "if(typeof globalThis[n]==='function'&&d&&typeof d[n]==='undefined')"
-               "d[n]=globalThis[n];}})();"
+               "d[n]=globalThis[n];}"
+           /* circle is the canvas-style alias for circ — many web carts use
+              nova64.draw.circle(x,y,r,color,filled) rather than circ(). */
+           "if(typeof globalThis.circle==='function'&&!d.circle)d.circle=globalThis.circle;"
+           "else if(typeof globalThis.circ==='function'&&!d.circle)d.circle=globalThis.circ;"
+         "})();"
          /* nova64.scene mirrors */
          "(function(){var s=nova64.scene,fns=["
            "'createCone','createCylinder','createTorus','createCapsule','clearScene',"
@@ -31326,6 +31353,176 @@ static bool install_nova64_api(JSContext *ctx)
          "if(!nova64.ui.parseCanvasUI)nova64.ui.parseCanvasUI=function(xml){return{xml:xml,data:{}};};"
          "if(!nova64.ui.renderCanvasUI)nova64.ui.renderCanvasUI=function(ui,data){};"
          "if(!nova64.ui.updateCanvasUI)nova64.ui.updateCanvasUI=function(ui,data){if(ui)ui.data=data||{};};"
+
+         /* drawRoundedRect / drawRect / withBlend — used by particles-demo,
+            instancing-demo, pbr-showcase, skybox-showcase, nft-art-generator,
+            blend-aurora. drawRect is a filled-rect alias; withBlend runs a
+            callback in a particular blend mode (we just run the cb — blend
+            mode switching is approximate). */
+         "(function(){var d=nova64.draw;"
+           "if(!d.drawRoundedRect){d.drawRoundedRect=function(x,y,w,h,r,color){"
+             "if(typeof rectfill==='function')rectfill(x,y,w,h,color);"
+           "};globalThis.drawRoundedRect=d.drawRoundedRect;}"
+           "if(!d.drawRect){d.drawRect=function(x,y,w,h,color){"
+             "if(typeof rectfill==='function')rectfill(x,y,w,h,color);"
+           "};globalThis.drawRect=d.drawRect;}"
+           "if(!d.withBlend){d.withBlend=function(mode,cb){"
+             "var prev=(typeof getBlend2D==='function')?getBlend2D():null;"
+             "try{if(typeof setBlend2D==='function')setBlend2D(mode);"
+                 "if(typeof cb==='function')cb(d);}"
+             "finally{if(prev!=null&&typeof setBlend2D==='function')setBlend2D(prev);}"
+           "};globalThis.withBlend=d.withBlend;}"
+         "})();"
+
+         /* fetch — wad-demo and any web cart loading remote assets.
+            Returns a rejected promise so the cart's catch() runs cleanly
+            and reports the failure. Replace with real impl when libretro
+            grows a network-asset API. */
+         "if(typeof globalThis.fetch==='undefined'){"
+           "globalThis.fetch=function(url){"
+             "return Promise.reject(new Error('fetch not supported on RetroArch core (url=' + url + ')'));"
+           "};"
+         "}"
+
+         /* loadModel(url, pos, scale) — used by hero-demo, model-viewer-3d,
+            nature-explorer-3d. Real GLTF loading is a large project; for now
+            return a placeholder cube mesh resolved as a Promise so async
+            carts don't TDZ on the await. */
+         "if(typeof nova64.scene.loadModel!=='function'){"
+           "nova64.scene.loadModel=function(url,pos,scale){"
+             "scale=scale||1;"
+             "var m=createCube(scale,rgba8(160,160,200,255));"
+             "if(pos)setPosition(m,pos[0]||0,pos[1]||0,pos[2]||0);"
+             "if(setMeshEmissive)setMeshEmissive(m,rgba8(160,160,200,255),0.08);"
+             "return Promise.resolve(m);"
+           "};globalThis.loadModel=nova64.scene.loadModel;"
+         "}"
+
+         /* loadVoxelWorld(name) — minecraft-demo etc. Return rejected
+            Promise so the cart's then-chain triggers its fallback path. */
+         "if(typeof globalThis.loadVoxelWorld==='undefined'){"
+           "globalThis.loadVoxelWorld=function(name){"
+             "return Promise.reject(new Error('voxel-world preload not yet supported (name=' + name + ')'));"
+           "};"
+         "}"
+
+         /* playAnimation(meshId, name) — model-viewer-3d.glb animation API.
+            No-op stub; web Babylon plays imported animations. */
+         "if(typeof nova64.scene.playAnimation!=='function'){"
+           "nova64.scene.playAnimation=function(m,n){};"
+           "globalThis.playAnimation=nova64.scene.playAnimation;"
+         "}"
+
+         /* loadVoxModel(url, pos, scale, opts) — vox-viewer cart. Same
+            pattern as loadModel — placeholder cube + emissive so the cart
+            still renders something visible. */
+         "if(typeof nova64.scene.loadVoxModel!=='function'){"
+           "nova64.scene.loadVoxModel=function(url,pos,scale,opts){"
+             "scale=scale||1;"
+             "var col=opts&&opts.color!=null?opts.color:rgba8(220,200,120,255);"
+             "var m=createCube(scale,col);"
+             "if(pos)setPosition(m,pos[0]||0,pos[1]||0,pos[2]||0);"
+             "if(setMeshEmissive)setMeshEmissive(m,col,0.18);"
+             "return Promise.resolve(m);"
+           "};globalThis.loadVoxModel=nova64.scene.loadVoxModel;"
+         "}"
+
+         /* nova64.ui mouse + panel helpers used by ui-demo */
+         "if(typeof nova64.ui.getMousePosition!=='function'){"
+           "nova64.ui.getMousePosition=function(){"
+             "return{x:(typeof nova64._mouseX==='number')?nova64._mouseX:0,"
+                   "y:(typeof nova64._mouseY==='number')?nova64._mouseY:0};"
+           "};"
+         "}"
+         "if(typeof nova64.ui.setMouseButton!=='function'){"
+           "nova64.ui.setMouseButton=function(down){nova64._mouseDown=!!down;};"
+         "}"
+         /* nova64.ui.setTextBaseline used by ui-demo + several others */
+         "if(typeof nova64.ui.setTextBaseline!=='function'){"
+           "nova64.ui.setTextBaseline=function(b){nova64.ui._baseline=b||'top';};"
+         "}"
+
+         /* nova64.ui.uiProgressBar — ui-demo bars. Draws bg + fill + border. */
+         "if(typeof nova64.ui.uiProgressBar!=='function'){"
+           "nova64.ui.uiProgressBar=function(x,y,w,h,val,max,opts){"
+             "opts=opts||{};max=max||100;val=Math.max(0,Math.min(max,val));"
+             "var bg=opts.bgColor!=null?opts.bgColor:rgba8(30,30,40,200);"
+             "var fc=opts.fillColor!=null?opts.fillColor:rgba8(80,220,120,255);"
+             "var bd=opts.borderColor!=null?opts.borderColor:rgba8(220,230,255,240);"
+             "rectfill(x,y,w,h,bg);"
+             "rectfill(x,y,Math.floor((val/max)*w),h,fc);"
+             "rect(x,y,w,h,bd,false);"
+             "if(opts.showText&&typeof print==='function'){"
+               "print(Math.floor(val)+'/'+max,x+w/2-10,y+(h>>1)-3,rgba8(255,255,255,255),1);"
+             "}"
+           "};"
+         "}"
+
+         /* Wrap createPool (global + nova64.util) so the returned object is
+            iterable like an array. Some web carts (wizardry-3d) call
+            pool.forEach(...) directly. */
+         "(function(){"
+           "function augment(p){"
+             "if(!p||p.forEach)return p;"
+             "p.forEach=function(cb,thisArg){"
+               "if(this.items)for(var i=0;i<this.items.length;i++)cb.call(thisArg||this,this.items[i],i,this.items);"
+             "};"
+             "p.filter=function(cb,thisArg){"
+               "var out=[];if(this.items)for(var i=0;i<this.items.length;i++)"
+                 "if(cb.call(thisArg||this,this.items[i],i,this.items))out.push(this.items[i]);"
+               "return out;"
+             "};"
+             "Object.defineProperty(p,'length',{get:function(){return this.items?this.items.length:0;}});"
+             "return p;"
+           "}"
+           "function wrap(orig){return function(sz,factory){return augment(orig(sz,factory));};}"
+           "if(typeof globalThis.createPool==='function')"
+             "globalThis.createPool=wrap(globalThis.createPool);"
+           "if(nova64.util&&typeof nova64.util.createPool==='function')"
+             "nova64.util.createPool=wrap(nova64.util.createPool);"
+         "})();"
+
+         /* nova64.ui.isMouseDown — ui-demo uses to detect cursor highlight. */
+         "if(typeof nova64.ui.isMouseDown!=='function'){"
+           "nova64.ui.isMouseDown=function(){return !!nova64._mouseDown;};"
+         "}"
+
+         /* Augment createMinimap to include .player and .entities — web carts
+            (nature-explorer-3d, wizardry-3d, dungeon-crawler-3d) mutate these
+            sub-objects each frame. Native createMinimap returns config only. */
+         "(function(){"
+           "var orig=globalThis.createMinimap;"
+           "if(typeof orig!=='function')return;"
+           "var wrapped=function(opts){"
+             "var m=orig(opts);"
+             "if(m&&typeof m==='object'){"
+               "if(!m.player)m.player={x:0,y:0,color:0xff66ccff,size:3};"
+               "if(!m.entities)m.entities=[];"
+             "}"
+             "return m;"
+           "};"
+           "globalThis.createMinimap=wrapped;"
+           "if(nova64.draw)nova64.draw.createMinimap=wrapped;"
+         "})();"
+
+         "if(typeof nova64.ui.drawAllPanels!=='function'){"
+           /* Tracks the panels added via createPanel and draws each */
+           "var _panels=[];"
+           "var _origCreatePanel=nova64.ui.createPanel;"
+           "nova64.ui.createPanel=function(x,y,w,h,opts){"
+             "var p=_origCreatePanel?_origCreatePanel(x,y,w,h,opts):{x:x,y:y,w:w,h:h,opts:opts||{}};"
+             "_panels.push(p);return p;"
+           "};"
+           "nova64.ui.clearPanels=function(){_panels=[];};"
+           "nova64.ui.drawAllPanels=function(){"
+             "for(var i=0;i<_panels.length;i++){var p=_panels[i];"
+               "var bg=p.bgColor!=null?p.bgColor:rgba8(20,20,30,200);"
+               "var bd=p.borderColor!=null?p.borderColor:rgba8(240,240,250,255);"
+               "if(typeof rectfill==='function')rectfill(p.x,p.y,p.w,p.h,bg);"
+               "if(typeof rect==='function')rect(p.x,p.y,p.w,p.h,bd,false);"
+             "}"
+           "};"
+         "}"
          ;
       JSValue r2 = JS_Eval(ctx, compat_late_js, sizeof(compat_late_js)-1,
                            "<nova64-compat-late>", JS_EVAL_TYPE_GLOBAL);

@@ -121,9 +121,10 @@ function applyStartVisuals() {
 function applyGameplayVisuals() {
    setFog(PALETTE.sky, FOG_NEAR, FOG_FAR);
    setSkyColor(SKY_TOP, SKY_BOTTOM);
-   // Lower bloom (was 0.38) so bright tile edges don't bleed into a "raised"
-   // halo that makes the flat checker floor read as voxel cubes.
-   nova64.post.setBloom(0.28);
+   // Higher bloom (was 0.28, before that 0.38) so bright objects get a soft
+   // atmospheric halo like the web cart — the web's bloom is what made the
+   // scene feel 3D and cinematic instead of flat.
+   nova64.post.setBloom(0.55);
    nova64.post.setChromatic(0.003);
    nova64.post.setVignette(0.12);
    nova64.post.setCRT(true);
@@ -158,12 +159,12 @@ function buildPlayer() {
    const bx = p.x, by = p.y, bz = p.z;
    const m = {};
    m.body = createCube(1.2, 1.56, 0.96, PALETTE.playerBody);
-   // Light emissive — enough to pop against the floor, but low enough to
-   // preserve diffuse shading (a too-strong glow flattens the body to a flat
-   // colored block instead of a 3D figure).
-   setMeshEmissive(m.body, PALETTE.playerBody, 0.18);
+   // Web cart shows a strong pink halo around the player from bloom.
+   // 0.18 was too subtle to read at distance; 0.30 gives the bright halo
+   // while still preserving body shading.
+   setMeshEmissive(m.body, PALETTE.playerBody, 0.30);
    m.head = createSphere(0.6, PALETTE.playerHead);
-   setMeshEmissive(m.head, PALETTE.playerHead, 0.12);
+   setMeshEmissive(m.head, PALETTE.playerHead, 0.18);
    m.hair = createCube(0.77, 0.28, 0.77, PALETTE.hair);
    m.jetpack = createCube(0.96, 1.2, 0.4, PALETTE.jetpack);
    // Bright gold halo around jetpack — matches web's golden glow around player
@@ -560,7 +561,7 @@ function damagePlayer(amount) {
       killStreak = 0;
       if (lives <= 0) {
          state = 'over';
-         if (score > best) best = score;
+         if (score > best) best = score | 0;
          setPlayerVisible(false);
       } else {
          player.hp = PLAYER_MAX_HP;
@@ -815,7 +816,10 @@ function drawHud() {
                 : hp > 25 ? rgba8(255, 200, 60, 255)
                           : rgba8(255, 60, 60, 255);
    rectfill(420, 16, hpw, 20, hpFill);
-   rect(420, 16, 200, 20, rgba8(220, 230, 255, 240));
+   // false = outline only — without this, rect() defaults to filled and
+   // paints WHITE over the green fill (user-reported bug: 'bar is white,
+   // never changes'). With outline, the actual green hpFill shows through.
+   rect(420, 16, 200, 20, rgba8(220, 230, 255, 240), false);
    // HP number to the right of the bar so the change is unmistakable
    printTight('HP ' + hp, 626, 18, rgba8(255, 240, 240, 240), 'right');
    // Invuln/shield indicator (only when meaningfully active)
@@ -837,7 +841,7 @@ function drawHud() {
    if (waveClear) {
       const wy = 140;
       rectfill(140, wy - 6, 360, 56, rgba8(0, 30, 0, 220));
-      rect(140, wy - 6, 360, 56, rgba8(80, 255, 120, 255));
+      rect(140, wy - 6, 360, 56, rgba8(80, 255, 120, 255), false);
       printScaled('WAVE ' + wave + ' CLEAR!', 240, wy, rgba8(80, 255, 120, 255), 2);
       printTight('+' + (wave * 200) + ' BONUS', 274, wy + 26, rgba8(255, 220, 100, 255));
    }
@@ -868,13 +872,13 @@ function drawStartScreen() {
 
    // Narrower centered info panel (web uses ~440 wide, centered, magenta border with green glow)
    rectfill(140, 196, 360, 78, rgba8(20, 8, 42, 220));
-   rect(140, 196, 360, 78, rgba8(190, 70, 255, 255));
+   rect(140, 196, 360, 78, rgba8(190, 70, 255, 255), false);
    printTight('Blast through waves of alien enemies', 188, 208, rgba8(225, 235, 255, 245));
    printTight('Dodge projectiles and collect power-ups', 180, 224, rgba8(225, 235, 255, 245));
    printTight('Retro N64 rail-shooter with 3D visuals', 184, 240, rgba8(225, 235, 255, 245));
    // Start button
    rectfill(228, 254, 184, 16, rgba8(40, 200, 110, 235));
-   rect(228, 254, 184, 16, rgba8(120, 245, 180, 255));
+   rect(228, 254, 184, 16, rgba8(120, 245, 180, 255), false);
    printTight('START MISSION', 268, 258, rgba8(8, 32, 16, 255));
 
    printTight('WASD / Arrows: Move   Space: Shoot', 188, 308, rgba8(200, 190, 255, 220));
@@ -892,11 +896,28 @@ export function draw() {
    drawHud();
 
    if (state === 'over') {
-      rectfill(180, 120, 460, 224, rgba8(8, 4, 18, 240));
-      glowRect(180, 120, 460, 224, rgba8(255, 80, 160, 230), 6);
-      printBold('GAME OVER', 248, 134, rgba8(255, 80, 160, 255));
-      printTight('Final: ' + score, 268, 162, rgba8(255, 220, 80, 255));
-      printTight('Best:  ' + best,  268, 176, rgba8(120, 200, 255, 255));
-      printFlash(248, 200, 'Z to retry', rgba8(255, 220, 80, 255), -time, 1.6);
+      // Web parity: full-screen red translucent overlay + centered text.
+      // Previously the panel started at x=180 with width 460 -> overflowed
+      // the 640 screen by 0px on right and was visually off-center.
+      rectfill(0, 0, 640, 360, rgba8(100, 0, 0, 150));
+      // GAME OVER huge centered with black shadow (matches web drawTextShadow)
+      const goText = 'GAME OVER';
+      const goScale = 3;
+      const goW = goText.length * 4 * goScale;   // ~108
+      const goX = 320 - (goW >> 1);
+      printScaled(goText, goX + 3, 110 + 3, rgba8(0, 0, 0, 255), goScale);
+      printScaled(goText, goX,     110,     rgba8(255, 80, 160, 255), goScale);
+      // Score centered
+      const sf = 'FINAL SCORE: ' + (score | 0);
+      const sfW = sf.length * 4 * 2;
+      printScaled(sf, 320 - (sfW >> 1), 180, rgba8(255, 220, 80, 255), 2);
+      // Best centered (floor — score accumulates as float from distance)
+      const bs = 'BEST: ' + (best | 0);
+      const bsW = bs.length * 4 * 2;
+      printScaled(bs, 320 - (bsW >> 1), 210, rgba8(120, 200, 255, 255), 2);
+      // Retry hint flashing centered
+      const rt = 'PRESS Z TO RETRY';
+      const rtW = rt.length * 4 * 2;
+      printFlash(320 - (rtW >> 1), 270, rt, rgba8(255, 220, 80, 255), -time, 1.6);
    }
 }

@@ -67,6 +67,51 @@ Notes from this checkpoint:
   `ArrowLeft`, uppercase letters, etc. The web cart starts gameplay through
   `nova64.input.isKeyPressed('Space')`, so do not regress that shim.
 
+### Post/vignette parity follow-up
+
+User called out two likely causes for the softer RA look: post-process blur and
+an overwhelming vignette. Codex added whole-frame diagnostics to the Space
+Harrier visual parity report:
+
+- `browserSharpness` / `retroSharpness` / `sharpnessRatio`
+- `browserSaturation` / `retroSaturation`
+- `browserEdges` / `retroEdges` with `edgeToCenter`
+
+Baseline before the post adjustment showed the problem clearly:
+
+- Web-cart gameplay sharpness ratio: **25.2%**
+- Web-cart gameplay edge/center: browser **0.933**, RA **0.201**
+- Start/title edge/center: browser **0.652**, RA **0.166**
+
+Runtime changes made in this pass:
+
+- `nova64.fx.enableVignette(darkness, offset)` now maps web shader semantics
+  into the RA one-value post scale: `darkness * offset * offset * 0.25`.
+  This keeps web-cart `enableVignette(0.9, 0.95)` from driving corners to
+  black.
+- The GLES post-pass 4-neighbor smoothing weight was reduced from `0.58` to
+  `0.22`. It still behaves like lightweight FXAA, but no longer reads as a
+  broad blur.
+
+Validation after this pass:
+
+```bash
+pnpm run retroarch:visual:space-harrier -- --retro-cart=web --out=retroarch/build/space-harrier-web-parity --port=5178
+pnpm run retroarch:visual:space-harrier -- --retro-cart=port --out=retroarch/build/space-harrier-port-parity --port=5178
+NOVA64_GLES_TESTS=1 bash retroarch/tests/run_conformance.sh --skip-build --from 20 --to 21
+```
+
+Post-adjustment web-cart results:
+
+- Web-cart average: **79.8** (start 75.2 / play 84.5)
+- Start/title edge/center improved to RA **0.830** versus browser **0.654**
+- Gameplay edge/center improved to RA **0.652** versus browser **0.837**
+- Start/title sharpness ratio improved to **77.3%**
+- Gameplay sharpness is still low at **29.1%**, so remaining parity work is
+  probably material/lighting/fog/color contrast and not only post blur.
+
+Port-cart control check stayed healthy: **91.1 avg** (start 93.1 / play 89.1).
+
 ### Where Claude (Opus 4.7) left off
 
 This whole-day session pushed two parallel tracks:

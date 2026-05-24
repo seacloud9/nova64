@@ -241,6 +241,36 @@ function averageColor(png, region = { x: 0, y: 0, w: 1, h: 1 }) {
   return { r: r / count, g: g / count, b: b / count };
 }
 
+function luma(color) {
+  return color.r * 0.299 + color.g * 0.587 + color.b * 0.114;
+}
+
+function averageLuma(png, region) {
+  return luma(averageColor(png, region));
+}
+
+function averageSaturation(png, region = { x: 0, y: 0, w: 1, h: 1 }) {
+  const x0 = Math.floor(region.x * png.width);
+  const y0 = Math.floor(region.y * png.height);
+  const x1 = Math.max(x0 + 1, Math.floor((region.x + region.w) * png.width));
+  const y1 = Math.max(y0 + 1, Math.floor((region.y + region.h) * png.height));
+  let saturation = 0;
+  let count = 0;
+  for (let y = y0; y < y1; y++) {
+    for (let x = x0; x < x1; x++) {
+      const i = (y * png.width + x) * 4;
+      const r = png.data[i] / 255;
+      const g = png.data[i + 1] / 255;
+      const b = png.data[i + 2] / 255;
+      const max = Math.max(r, g, b);
+      const min = Math.min(r, g, b);
+      saturation += max <= 0 ? 0 : (max - min) / max;
+      count++;
+    }
+  }
+  return saturation / count;
+}
+
 function colorDistance(a, b) {
   return (Math.abs(a.r - b.r) + Math.abs(a.g - b.g) + Math.abs(a.b - b.b)) / (3 * 255);
 }
@@ -264,6 +294,45 @@ function fieldSimilarity(a, b, cols = 24, rows = 14) {
   return 1 - abs / (cols * rows);
 }
 
+function sharpnessScore(png, region = { x: 0, y: 0, w: 1, h: 1 }) {
+  const x0 = Math.max(1, Math.floor(region.x * png.width));
+  const y0 = Math.max(1, Math.floor(region.y * png.height));
+  const x1 = Math.min(png.width - 1, Math.floor((region.x + region.w) * png.width));
+  const y1 = Math.min(png.height - 1, Math.floor((region.y + region.h) * png.height));
+  let total = 0;
+  let count = 0;
+  for (let y = y0; y < y1; y++) {
+    for (let x = x0; x < x1; x++) {
+      const i = (y * png.width + x) * 4;
+      const e = (y * png.width + x + 1) * 4;
+      const s = ((y + 1) * png.width + x) * 4;
+      const c = luma({ r: png.data[i], g: png.data[i + 1], b: png.data[i + 2] });
+      const cx = luma({ r: png.data[e], g: png.data[e + 1], b: png.data[e + 2] });
+      const cy = luma({ r: png.data[s], g: png.data[s + 1], b: png.data[s + 2] });
+      total += Math.abs(c - cx) + Math.abs(c - cy);
+      count++;
+    }
+  }
+  return total / Math.max(1, count);
+}
+
+function edgeMetrics(png) {
+  const center = { x: 0.25, y: 0.25, w: 0.5, h: 0.5 };
+  const edgeRegions = [
+    { x: 0, y: 0, w: 1, h: 0.12 },
+    { x: 0, y: 0.88, w: 1, h: 0.12 },
+    { x: 0, y: 0.12, w: 0.12, h: 0.76 },
+    { x: 0.88, y: 0.12, w: 0.12, h: 0.76 },
+  ];
+  const centerLuma = averageLuma(png, center);
+  const edgeLuma = edgeRegions.reduce((sum, region) => sum + averageLuma(png, region), 0) / edgeRegions.length;
+  return {
+    centerLuma,
+    edgeLuma,
+    edgeToCenter: centerLuma <= 0 ? 0 : edgeLuma / centerLuma,
+  };
+}
+
 function compareMoment(opts, moment, browserPath, retroPath) {
   let browser = readPng(browserPath);
   const retro = readPng(retroPath);
@@ -285,6 +354,12 @@ function compareMoment(opts, moment, browserPath, retroPath) {
   const skyColorSimilarity = 1 - colorDistance(browserSky, retroSky);
   const pixelSimilarity = 1 - diffPixels / (retro.width * retro.height);
   const fieldScore = fieldSimilarity(browser, retro);
+  const browserSaturation = averageSaturation(browser);
+  const retroSaturation = averageSaturation(retro);
+  const browserSharpness = sharpnessScore(browser);
+  const retroSharpness = sharpnessScore(retro);
+  const browserEdges = edgeMetrics(browser);
+  const retroEdges = edgeMetrics(retro);
   const score = fieldScore * 0.5 + colorSimilarity * 0.25 + skyColorSimilarity * 0.2 + pixelSimilarity * 0.05;
 
   return {
@@ -304,6 +379,15 @@ function compareMoment(opts, moment, browserPath, retroPath) {
     skyColorSimilarity,
     fieldScore,
     pixelSimilarity,
+    browserSaturation,
+    retroSaturation,
+    saturationDelta: retroSaturation - browserSaturation,
+    browserSharpness,
+    retroSharpness,
+    sharpnessRatio: browserSharpness <= 0 ? 0 : retroSharpness / browserSharpness,
+    browserEdges,
+    retroEdges,
+    edgeToCenterDelta: retroEdges.edgeToCenter - browserEdges.edgeToCenter,
     score,
   };
 }
@@ -349,6 +433,16 @@ async function main() {
         `  sky web rgb(${bs.r.toFixed(0)},${bs.g.toFixed(0)},${bs.b.toFixed(0)}) ` +
           `ra rgb(${rs.r.toFixed(0)},${rs.g.toFixed(0)},${rs.b.toFixed(0)}) ` +
           `delta rgb(${result.skyDelta.r.toFixed(0)},${result.skyDelta.g.toFixed(0)},${result.skyDelta.b.toFixed(0)})`
+      );
+      console.log(
+        `  sharp web=${result.browserSharpness.toFixed(2)} ra=${result.retroSharpness.toFixed(2)} ` +
+          `ratio=${(result.sharpnessRatio * 100).toFixed(1)}% ` +
+          `sat web=${result.browserSaturation.toFixed(3)} ra=${result.retroSaturation.toFixed(3)}`
+      );
+      console.log(
+        `  edge/center web=${result.browserEdges.edgeToCenter.toFixed(3)} ` +
+          `ra=${result.retroEdges.edgeToCenter.toFixed(3)} ` +
+          `delta=${result.edgeToCenterDelta.toFixed(3)}`
       );
     }
     console.log(`average=${(summary.averageScore * 100).toFixed(1)}`);

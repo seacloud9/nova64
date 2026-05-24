@@ -92,6 +92,8 @@ let startT = 0;
 let shakeT = 0;
 let glitchT = 0;
 let baseChromatic = 0.003;
+let dmgPopups = [];   // floating "-25" texts: { x, y, life }
+let hpFlash = 0;      // health-bar red flash timer (0..1)
 
 function applyStartVisuals() {
    setFog(PALETTE.sky, 18, 110);
@@ -323,12 +325,25 @@ function spawnEnemyBullet(ex, ey, ez) {
 
 function triggerHitGlitch() {
    glitchT = GLITCH_FLASH_TIME;
-   if (nova64.post && nova64.post.setChromatic) nova64.post.setChromatic(0.022);
+   // Much stronger chromatic + slight bloom punch on hit — was 0.022 (subtle)
+   if (nova64.post) {
+      if (nova64.post.setChromatic) nova64.post.setChromatic(0.045);
+      if (nova64.post.setBloom)     nova64.post.setBloom(0.62);
+   }
 }
 
 function clearGlitch() {
    glitchT = 0;
-   if (nova64.post && nova64.post.setChromatic) nova64.post.setChromatic(baseChromatic);
+   if (nova64.post) {
+      if (nova64.post.setChromatic) nova64.post.setChromatic(baseChromatic);
+      if (nova64.post.setBloom)     nova64.post.setBloom(0.38);
+   }
+}
+
+function spawnDamagePopup(amount) {
+   // Floating "-25" red text rising from the HUD area
+   dmgPopups.push({ amount, x: 320, y: 200, life: 1.0 });
+   hpFlash = 1.0;
 }
 
 function init_meshes() {
@@ -393,6 +408,8 @@ function resetRun() {
    spawnT = 0;
    time = 0;
    shakeT = 0;
+   hpFlash = 0;
+   dmgPopups = [];
    bullets = [];
    for (const e of enemies) destroyEnemyMeshes(e);
    enemies = [];
@@ -410,10 +427,16 @@ export function init() {
    setCameraPosition(0, 5, 12);
    setCameraTarget(0, 3, -50);
    setCameraFOV(70);
-   // Match web's exact ambient (web cart calls setAmbientLight(0xffffff, 0.62))
-   setAmbientLight(rgba8(255, 255, 255, 255), 0.62);
-   setLightDirection(-0.5, -1, -0.5);
-   setLightColor(rgba8(255, 240, 221, 255));
+   // Reduced ambient for stronger 3D depth — web's 0.62 plus its Babylon
+   // material chain produces less-flat shading than our cube shader. The
+   // shader's per-face surface_light range is 0.58..1.0, so heavy ambient
+   // ends up clipping the highlights and erasing the diffuse gradient.
+   // Drop to ~0.28 so darker faces stay visibly darker.
+   setAmbientLight(rgba8(255, 248, 230, 255), 0.28);
+   // Light angled more from the camera-side so player/enemies (camera-facing
+   // -Z surface) get more diffuse contribution than straight overhead would.
+   setLightDirection(-0.35, -0.7, 0.55);
+   setLightColor(rgba8(255, 232, 200, 255));
    applyStartVisuals();
 
    init_meshes();
@@ -467,8 +490,9 @@ function damagePlayer(amount) {
    if (player.invuln > 0) return;
    player.hp -= amount;
    player.invuln = PLAYER_INVULN_TIME;
-   shakeT = Math.max(shakeT, 0.35);
+   shakeT = Math.max(shakeT, 0.6);   // bumped 0.35 -> 0.6 for clearer feedback
    triggerHitGlitch();
+   spawnDamagePopup(amount);
    if (player.hp <= 0) {
       // Lose a life; respawn with shield + full hp unless game over.
       lives -= 1;
@@ -510,6 +534,13 @@ function updatePlay(dt) {
    if (glitchT > 0) {
       glitchT -= dt;
       if (glitchT <= 0) clearGlitch();
+   }
+   if (hpFlash > 0) hpFlash = Math.max(0, hpFlash - dt * 1.6);
+   for (let i = dmgPopups.length - 1; i >= 0; i--) {
+      const p = dmgPopups[i];
+      p.life -= dt * 1.2;
+      p.y -= dt * 40;
+      if (p.life <= 0) dmgPopups.splice(i, 1);
    }
 
    cooldown -= dt;
@@ -658,13 +689,25 @@ function drawHud() {
       rectfill(170 + i * 18, 22, 12, 12, rgba8(255, 80, 80, 255));
    }
    const hp = Math.max(0, player.hp);
-   rectfill(420, 16, 200, 20, rgba8(50, 0, 0, 200));
+   // Health bar flashes red briefly when hit
+   const bgRed = hpFlash > 0 ? (50 + (hpFlash * 180)) | 0 : 50;
+   rectfill(420, 16, 200, 20, rgba8(bgRed, 0, 0, 220));
    const hpw = ((hp / PLAYER_MAX_HP) * 200) | 0;
-   rectfill(420, 16, hpw, 20, hpw > 80 ? rgba8(80, 220, 120, 255) : rgba8(255, 50, 60, 255));
+   const hpFill = hp > 60 ? rgba8(80, 220, 120, 255)
+                : hp > 25 ? rgba8(255, 200, 60, 255)
+                          : rgba8(255, 60, 60, 255);
+   rectfill(420, 16, hpw, 20, hpFill);
    rect(420, 16, 200, 20, rgba8(220, 230, 255, 240));
+   // HP number to the right of the bar so the change is unmistakable
+   printTight('HP ' + hp, 626, 18, rgba8(255, 240, 240, 240), 'right');
    // Invuln/shield indicator (only when meaningfully active)
    if (player.invuln > 0.1) {
       printTight('SHIELD ' + player.invuln.toFixed(1) + 's', 420, 40, rgba8(0, 220, 255, 230));
+   }
+   // Floating damage popups
+   for (const p of dmgPopups) {
+      const a = Math.max(0, Math.min(1, p.life)) * 255 | 0;
+      printScaled('-' + p.amount, p.x, p.y, rgba8(255, 60, 60, a), 2);
    }
 }
 

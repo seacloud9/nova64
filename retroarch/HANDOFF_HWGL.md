@@ -1,8 +1,118 @@
 # Nova64 Hardware GL on Windows — Status & Handover
 
-**Last updated:** 2026-05-24 (web-cart compatibility layer handoff)
-**Branch:** `main`
-**Working tree:** expected clean after committing this pass; source changes listed below
+**Last updated:** 2026-05-24 (compat round 3 + space-harrier gameplay parity)
+**Branch:** `main` (clean, 1+ commit ahead of origin/main)
+**Working tree:** clean as of `69a4962`
+
+---
+
+## 🔄 HANDOFF FOR CODEX (2026-05-24 evening)
+
+### Where Claude (Opus 4.7) left off
+
+This whole-day session pushed two parallel tracks:
+
+**Track 1 — `space-harrier-3d` RA-port cart**: now a real game with web-parity gameplay
+- Visual parity score (`--retro-cart=port`): **91.0 avg** (start 92.4 / play 89.5)
+- Health system: 100 HP, 25 dmg/hit, 1.4s invuln, 3s respawn shield, lives 3
+- Hit feedback: red bg flash on health bar + HP numeric readout + tiered fill color + floating `-25` popup + 0.6 shake + chromatic glitch + bloom punch
+- Enemy mesh groups (core sphere + green eye + 2 dark-purple wing slabs) match web exactly
+- Tiered enemy types: normal, fast (cyan), tank (orange, wave 4+), boss (red, every 3rd wave with spread shot)
+- Enemy bullets that aim at player
+- Wave system with WAVE CLEAR banner + 200×wave bonus + escalating spawn rate
+- Explosion particles on kill (pool of 64, color varies by type)
+- Distance scoring + kill streak counter with bonus
+- Game over screen full-screen red overlay with centered text (was off-screen earlier)
+- **Critical bug fixed**: `rect(x,y,w,h,color)` defaults to filled=true in the runtime — my outline `rect()` calls were painting WHITE over the green health fill. All 4 cart `rect()` calls now pass `false` explicitly. Likely silent in other carts; worth an audit.
+- Shadow casting on (`setShadowQuality('medium')`) for 3D depth
+- Bloom tuned to web's exact 0.38 (was 0.55 → "out of focus" per user)
+
+**Track 2 — web-cart runtime compat**: 54/71 → **67/71 PASS** (excluding XR)
+- New shims (commit `decf293`, 228 lines): `drawRoundedRect`, `drawRect`, `withBlend`, `fetch`, `loadModel`/`loadVoxModel`/`loadVoxelWorld`/`playAnimation`, `getMousePosition`/`setMouseButton`/`isMouseDown`/`setTextBaseline`, `uiProgressBar`/`drawAllPanels`
+- Augments: `createMinimap` now returns object with `.player {x,y,color,size}` + `.entities []`. `createEmitter2D` returns proxy object with mutable `.x/.y/.rate`. `createPool` (global) returns object with `.forEach/.filter/.length`.
+- `nova64.draw.circle` properly aliased to global 5-arg `circle()` (not 4-arg `circ`)
+- 14 carts newly passing this round: blend-aurora, flash-demo, instancing-demo, model-viewer-3d, nature-explorer-3d, nft-art-generator, nft-worlds, particle-trail, particles-demo, pbr-showcase, skybox-showcase, ui-demo, vox-viewer, wad-demo
+
+### ❌ Out of scope (DO NOT WORK ON — user-confirmed)
+
+- **All XR/AR carts**: `ar-hand-demo`, `vr-demo`, `vr-sword-combat`. No libretro webcam/XR device API. They load via stubs but real integration is not on the roadmap. Their WARN status is acknowledged and intentional.
+
+### Remaining 3 real WARN carts
+
+| Cart | Gap | Effort |
+|---|---|---|
+| `blend-aurora` | Canvas2D `ctx.createLinearGradient` inside `withBlend(mode, cb=>...)` | Big — needs HTML5 Canvas API surface |
+| `stage-cards` | Canvas2D `ctx.roundRect` (same surface) | Big — shares lift with blend-aurora |
+| `wizardry-3d` | `nova64.util.createPool().forEach` (my global augment didn't reach this namespace path) | Small — wrap nova64.util.createPool too |
+
+### Suggested next picks (in effort order, smallest first)
+
+1. **Fix wizardry-3d**: my createPool augment didn't catch nova64.util.createPool — it runs after codex's mirror but maybe out-of-order. Re-check `compat_late_js` order in `nova64_libretro.c`. 10 minutes.
+2. **Audit other carts for the `rect()` filled-bug** — many carts likely have the same silent issue. Grep for `rect\(.*,.*,.*,.*,[^,]*\)$` (5-arg) in `retroarch/games/*.js` and `examples/*/code.js`.
+3. **Implement real `parseCanvasUI`** — currently a no-op stub. Would unlock hud-demo's actual XML UI rendering. Spec listed in BACKLOG.
+4. **Per-mesh alpha API** — `createAdvancedCube` accepts `opts.opacity`/`opts.transparent` but ignores. Wire `setMeshAlpha(mesh, a)` + transparent z-sort pass.
+5. **Canvas2D `ctx` API** — big lift but unlocks blend-aurora + stage-cards + future drawn-from-web carts.
+6. **`ui.createButton` callback wiring** — `updateAllButtons()` currently doesn't poll pointer/joypad to fire stored callbacks.
+
+### Current deployed state
+
+| Artifact | Path | Source commit |
+|---|---|---|
+| Windows .dll | `C:\RetroArch-Win64\cores\nova64_libretro.dll` | `decf293` (compat round 3) |
+| Linux .so | `retroarch/nova64_libretro.so` | `decf293` |
+| 9 .nova carts | `C:\RetroArch-Win64\content\nova64\*.nova` | all latest |
+| 18 playlist entries | `C:\RetroArch-Win64\playlists\games.lpl` | 1:1 with `retroarch/games/*.js` |
+
+All synced and ready to play in RetroArch.
+
+### Probe + iterate workflow
+
+```bash
+# Compat probe (all 71 web carts)
+/tmp/compat-all.sh    # (script at c:\tmp\compat-all.sh — packages each, runs harness, reports PASS/WARN/FAIL)
+
+# Visual parity (web vs RA side-by-side)
+node retroarch/tests/space_harrier_visual_parity.mjs --retro-cart=port
+# Outputs PNGs to retroarch/build/space-harrier-parity/{browser,retroarch,diff}/
+
+# Iterate cart-side
+# 1. Edit retroarch/games/<cart>.js
+# 2. Repack: python3 -c "import zipfile; z=zipfile.ZipFile('retroarch/games/<cart>.nova','w',zipfile.ZIP_DEFLATED); z.write('retroarch/games/<cart>.js','code.js'); z.write('examples/<cart>/meta.json','meta.json'); z.close()"
+# 3. Sync: cp retroarch/games/<cart>.nova /mnt/c/RetroArch-Win64/content/nova64/
+
+# Iterate runtime-side
+cd retroarch && make all                # builds .so (Linux harness)
+# Then cross-build Windows for live testing:
+cp -r build build-linux && rm -rf build && \
+  make platform=win-cross && \
+  cp nova64_libretro.dll /mnt/c/RetroArch-Win64/cores/ && \
+  rm -rf build && mv build-linux build
+```
+
+### Key gotchas saved to mempalace (read these before touching anything)
+
+- **`nova64.rect()` defaults to filled=true** when 5 args. Always pass `false` as 6th arg for outlines. Silent bug magnet.
+- **`drawScanlines` alpha** — runtime now tolerates both 0-1 (RA) and 0-255 (web).
+- **Cube shader range is compressed** (`0.58 + diffuse * 0.42`). Ambient ≥ 0.6 clips diffuse → flat look. Use 0.30-0.42. Web carts default to 0.62 which works in Babylon but flattens in RA. There's an in-progress attempt at an opt-in `setShadingContrast(c)` runtime API but it was reverted due to conformance instability — pre-existing `16-transforms.js` checksum is nondeterministic across runs. Future attempt: stable rebaseline first, then add the uniform.
+- **Angled directional light** makes adjacent flat floor tiles look stepped/voxel. Use straight-down `(-0.5, -1, -0.5)`.
+- **Too-high emissive flattens spheres into disks.** 0.05-0.20 for shaded-but-visible, 0.5+ for intentional glow.
+- **Score-as-float** (from `score += dt * 25` distance scoring) — always `(score | 0)` for display + comparison to best.
+- **DLL must be redeployed after runtime changes** — user runs Windows RA; if the .dll is stale even the latest cart code uses the old runtime.
+
+### Commit chain this session (oldest → newest)
+
+```
+dae78e1 feat(space-harrier-3d): real gameplay parity — health, enemies, hit glitch
+9a429b9 feat(space-harrier-3d): real 3D shading + visceral hit feedback
+9322f80 feat(space-harrier-3d): wave mgmt + explosions + streaks + boss
+d61697b fix(space-harrier-3d): health bar GREEN + centered game over + float BEST
+d88d515 fix(space-harrier-3d): bloom 0.55->0.38 + enable shadow casting
+decf293 feat(runtime): web-cart compat round 3 — 54/71 -> 67/71 PASS
+9fd61a0 docs(backlog): pin XR/AR out-of-scope + reflect 67/71 PASS
+69a4962 chore: commit Codex parity harness WIP (--retro-cart flag + npm script)
+```
+
+---
 
 ---
 

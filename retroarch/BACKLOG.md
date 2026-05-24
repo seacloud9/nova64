@@ -7,41 +7,53 @@ Last updated: 2026-05-24
 
 **Latest feature shipped:** Web-cart compatibility layer. `examples/*/code.js`
 files now load on the RA runtime **unmodified** — no manual port needed. Compat
-probe of 19 web carts: **9 PASS, 4 WARN (loads but errors mid-frame), 5 FAIL**.
-Newly working: `hello-world`, `hello-namespaced`, `filter-glitch`, `hud-demo`,
-`space-harrier-3d`, `particle-fireworks`, `screen-demo`, `input-showcase`,
-`boids-flocking`. The compat layer added `console`, `nova64.tween`,
-`nova64.data`, extended `nova64.fx`/`util`/`ui`/`scene`/`camera`/`light`/`input`
-namespaces, and a `drawScanlines` alpha-unit tolerance so the same call
-(`drawScanlines(45, 2)`) works on both web (0–255) and RA (0–1) without
-clamping to opaque black. See commits `d65d8e7` + `0e60c5b`.
+probe of the first 20 web carts: **19 PASS, 0 FAIL, 1 MISSING** (`neon-snake`
+has no `examples/neon-snake/code.js`). Newly working since the first compat
+landing: `hello-3d`, `hello-skybox`, `tween-bounce`, `camera-platformer`,
+`demoscene`, `dungeon-crawler-3d`, `shader-showcase`, `creative-coding`,
+`3d-advanced`, and `minecraft-demo`. The compat layer added `console`,
+`nova64.tween`, `nova64.data`, extended
+`nova64.fx`/`util`/`ui`/`scene`/`camera`/`light`/`input` namespaces, shader and
+voxel fallback namespaces, web-style mesh proxies, QuickJS module resolve/await
+handling, and a larger mesh table for heavy web scenes. See commits `d65d8e7` +
+`0e60c5b`, plus the in-progress 2026-05-24 follow-up.
 
 ---
 
-## 🟡 Queued — push web-cart compat from 9/19 → all-green
+## ✅ Web-cart compat first probe — 19/19 runnable carts green
 
-The compat layer landed on 2026-05-24. Remaining failures and the API gaps
-they need, in rough effort order (smallest first):
+The 2026-05-24 follow-up moved the original probe from 9 PASS / 5 WARN / 5 FAIL
+to **19 PASS / 0 FAIL** for runnable carts. Validation command:
+`/mnt/c/tmp/compat-test.sh` from WSL.
 
-| Cart                 | Status | Gap |
-| -------------------- | ------ | --- |
-| `hello-3d`           | WARN   | TypeError in draw — investigate which `nova64.scene.*` returns non-fn |
-| `hello-skybox`       | WARN   | TypeError in update — same investigation |
-| `3d-advanced`        | WARN   | TypeError in draw |
-| `camera-platformer`  | WARN   | TypeError in draw (loads now, was full FAIL pre-compat) |
-| `demoscene`          | WARN   | `debugFreeze is not initialized` — TDZ from earlier throw, likely a destructured key missing |
-| `tween-bounce`       | FAIL   | `nova64.scene.engine` — wants raw Babylon engine ref. Hard to stub. Maybe expose a fake `{getRenderingCanvas:()=>null}` or change cart to skip if undefined. |
-| `dungeon-crawler-3d` | FAIL   | Game-specific helpers: `createMinimap`, `drawMinimap`, `drawFloatingTexts3D`, `drawPixelBorder` — likely already exist as globals but unconfirmed |
-| `creative-coding`    | FAIL   | More `nova64.scene.*` helpers — investigate full destructuring |
-| `shader-showcase`    | FAIL   | TSL materials: `createHologramMaterial`, `createLavaMaterial`, `createPlasmaMaterial`, `createShockwaveMaterial`, `createTSLMaterial`, `createVortexMaterial` — Three.js Shading Language. Big work; stub to plain materials first. |
-| `minecraft-demo`     | FAIL   | `configureVoxelWorld` — entire voxel-world API surface |
+Key follow-up fixes:
+- QuickJS modules are now resolved and awaited before lifecycle exports run,
+  preventing half-initialized module state / TDZ-looking errors.
+- `nova64.ui` gained `drawGradientRect`, `drawTextOutline`, and a small screen
+  manager surface.
+- `nova64.light` gained skybox API shims.
+- `nova64.util` gained `ellipse`/`ellipsefill` mirrors and
+  `createFloatingTextSystem`.
+- `nova64.tween.createTween({ ... })` now returns a web-style object with
+  `tick`, `pause`, `play`, and `value`.
+- `nova64.shader` gained TSL/material factory fallback handles.
+- `nova64.voxel` gained deterministic gameplay-compatible fallback methods.
+- `nova64.scene` namespace mesh creation now returns web-style mesh proxies
+  that still coerce to native handles for C-backed functions.
+- Mesh capacity increased from 1024 to 4096 for heavy web scenes such as
+  `demoscene`.
 
-Also worth a probe pass: the **50 carts not yet tested** under `examples/`
+Next worth a probe pass: the **50 carts not yet tested** under `examples/`
 (adventure-comic-3d, audio-lab, crystal-cathedral-3d, cyberpunk-city-3d,
 f-zero-nova-3d, fps-demo-3d, game-of-life-3d, generative-art,
 mystical-realm-3d, nature-explorer-3d, particle-trail, particles-demo,
 shooter-demo-3d, super-plumber-64, etc.). Run via
 `/tmp/compat-test.sh` (the probe script lives in `c:\tmp\compat-test.sh`).
+
+Important caveat: this is **load/runtime API parity**, not final visual parity.
+Shader and voxel namespaces currently use fallback handles/simulation so carts
+run unchanged; they do not yet render browser-identical TSL materials or full
+voxel terrain.
 
 Bigger ticket items also pending:
 - **`nova64.ui.parseCanvasUI`**: currently a no-op stub. Implementing real

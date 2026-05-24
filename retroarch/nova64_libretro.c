@@ -46,7 +46,7 @@
 #define NOVA64_AUDIO_FRAME_SAMPLES 735
 #define NOVA64_AUDIO_MAX_VOICES 8
 #define NOVA64_CORE_VERSION "0.3.0"
-#define NOVA64_MAX_MESHES 1024
+#define NOVA64_MAX_MESHES 4096
 #define NOVA64_MAX_POINT_LIGHTS 64
 #define NOVA64_SAVE_MAGIC 0x5344364eU
 #define NOVA64_SAVE_VERSION 3U
@@ -29212,6 +29212,18 @@ static bool install_nova64_api(JSContext *ctx)
              "else if(_align==='right')dx=x-_textWidth(text,scale);"
              "print(text,dx,y,color,scale);"
            "}"
+           "function drawTextOutline(text,x,y,color,outline,scale){"
+             "scale=scale||fontScale[_font]||1;"
+             "color=color!=null?color:colors.light;"
+             "outline=outline!=null?outline:colors.dark;"
+             "var dx=x;"
+             "if(_align==='center')dx=x-Math.floor(_textWidth(text,scale)/2);"
+             "else if(_align==='right')dx=x-_textWidth(text,scale);"
+             "var off=Math.max(1,Math.floor(scale));"
+             "print(text,dx-off,y,outline,scale);print(text,dx+off,y,outline,scale);"
+             "print(text,dx,y-off,outline,scale);print(text,dx,y+off,outline,scale);"
+             "print(text,dx,y,color,scale);"
+           "}"
            "function drawTextShadow(text,x,y,color,shadow,off,scale){"
              "off=off||1;scale=scale||fontScale[_font]||1;"
              "var dx=x;"
@@ -29220,13 +29232,30 @@ static bool install_nova64_api(JSContext *ctx)
              "print(text,dx+off,y+off,shadow,scale);"
              "print(text,dx,y,color,scale);"
            "}"
+           "function drawGradientRect(x,y,w,h,c1,c2,vertical){"
+             "if(typeof drawGradient==='function')drawGradient(x,y,w,h,c1,c2,vertical?'v':0);"
+             "else rectfill(x,y,w,h,c1);"
+           "}"
            "return{centerX:centerX,clearButtons:clearButtons,createButton:createButton,"
              "createPanel:createPanel,updateAllButtons:updateAllButtons,"
              "drawAllButtons:drawAllButtons,setFont:setFont,setTextAlign:setTextAlign,"
-             "drawText:drawText,drawTextShadow:drawTextShadow,uiColors:colors};"
+             "drawText:drawText,drawTextOutline:drawTextOutline,drawTextShadow:drawTextShadow,"
+             "drawGradientRect:drawGradientRect,uiColors:colors};"
          "})();"
          /* uiColors also globally available as web sometimes destructures it */
          "var uiColors=nova64.ui.uiColors;"
+         "var drawGradientRect=nova64.ui.drawGradientRect;"
+         "var drawTextOutline=nova64.ui.drawTextOutline;"
+         "nova64.ui._screens={};nova64.ui._currentScreen=null;"
+         "nova64.ui.Screen=function(def){if(def)for(var k in def)this[k]=def[k];};"
+         "nova64.ui.addScreen=function(name,def){this._screens[name]=def;return def;};"
+         "nova64.ui.switchToScreen=function(name,data){var cur=this._currentScreen&&this._screens[this._currentScreen];if(cur&&typeof cur.exit==='function')cur.exit();this._currentScreen=name;var s=this._screens[name];if(s&&typeof s.enter==='function')s.enter(data||{});return s;};"
+         "nova64.ui.switchScreen=nova64.ui.switchToScreen;"
+         "nova64.ui.startScreens=function(initial){var first=initial; if(!first){for(var k in this._screens){first=k;break;}} return first?this.switchToScreen(first):null;};"
+         "nova64.ui.getCurrentScreen=function(){return this._currentScreen?this._screens[this._currentScreen]:null;};"
+         "nova64.ui.centerY=function(h){return Math.floor((360-(h||0))/2);};"
+         "nova64.ui.__screenUpdate=function(dt){var s=this.getCurrentScreen();if(s&&typeof s.update==='function')s.update(dt);};"
+         "nova64.ui.__screenDraw=function(){var s=this.getCurrentScreen();if(s&&typeof s.draw==='function')s.draw();};"
 
          /* nova64.data — text/translation + array helpers + WAD stubs.
             Most web carts pull `t` for i18n (returns key by default). */
@@ -29257,9 +29286,42 @@ static bool install_nova64_api(JSContext *ctx)
          "nova64.fx.applyVHS=function(){};"
          "nova64.fx.applyPixelate=function(n){if(nova64.post&&nova64.post.setPixelate)nova64.post.setPixelate(n||2);};"
          "nova64.fx.applyBloom=function(s){if(nova64.post&&nova64.post.setBloom)nova64.post.setBloom(s||0.5);};"
+         "nova64.fx.enableChromaticAberration=nova64.fx.enableChromaticAberration||nova64.fx.enableChromatic;"
+         "nova64.fx.disableChromaticAberration=nova64.fx.disableChromaticAberration||nova64.fx.disableChromatic;"
 
-         /* nova64.scene.getMesh — pass-through (web treats meshes as opaque) */
-         "if(!nova64.scene.getMesh)nova64.scene.getMesh=function(id){return id;};"
+         /* nova64.shader — lightweight material handles for web shader carts */
+         "nova64.shader=(function(){var next=1;"
+           "function mat(kind,preset,opts){return{__nova64Material:true,id:next++,kind:kind,preset:preset||kind,options:opts||{},uniforms:{}};}"
+           "function createTSLMaterial(preset,opts){return mat('tsl',preset,opts);}"
+           "function createShaderMaterial(name,opts){return mat('shader',name,opts);}"
+           "function updateShaderUniform(m,n,v){if(m&&m.uniforms)m.uniforms[n]=v;return m;}"
+           "return{createTSLMaterial:createTSLMaterial,createTSLShaderMaterial:createTSLMaterial,createShaderMaterial:createShaderMaterial,updateShaderUniform:updateShaderUniform,"
+             "createLavaMaterial:function(o){return createTSLMaterial('lava2',o);},createVortexMaterial:function(o){return createTSLMaterial('vortex',o);},"
+             "createPlasmaMaterial:function(o){return createTSLMaterial('plasma2',o);},createWaterMaterial:function(o){return createTSLMaterial('water',o);},"
+             "createHologramMaterial:function(o){return createTSLMaterial('hologram',o);},createShockwaveMaterial:function(o){return createTSLMaterial('shockwave',o);}};"
+         "})();"
+
+         /* nova64.voxel — deterministic gameplay-compatible fallback surface */
+         "nova64.voxel=(function(){var cfg={renderDistance:3},blocks={},entities=[],eid=1;"
+           "function key(x,y,z){return(x|0)+','+(y|0)+','+(z|0);}"
+           "function noise2(x,z){var s=Math.sin(x*12.9898+z*78.233+(cfg.seed||0))*43758.5453;return s-Math.floor(s);}"
+           "function height(x,z){return Math.floor(24+noise2(x*0.07,z*0.07)*10);}"
+           "function configureVoxelWorld(o){if(o)for(var k in o)cfg[k]=o[k];return cfg;}"
+           "function getVoxelHighestBlock(x,z){return height(x,z);}"
+           "function getVoxelBlock(x,y,z){var k=key(x,y,z);if(blocks[k]!=null)return blocks[k];return y<=height(x,z)?(y<height(x,z)-3?3:1):0;}"
+           "function setVoxelBlock(x,y,z,b){blocks[key(x,y,z)]=b|0;return true;}"
+           "function moveVoxelEntity(pos,vel,size,dt){dt=dt||1;var p=[pos[0]+vel[0]*dt,pos[1]+vel[1]*dt,pos[2]+vel[2]*dt];var g=getVoxelHighestBlock(Math.floor(p[0]),Math.floor(p[2]))+1;if(p[1]<g){p[1]=g;vel=[vel[0],0,vel[2]];return{position:p,velocity:vel,grounded:true,inWater:false};}return{position:p,velocity:vel,grounded:false,inWater:false};}"
+           "function spawnVoxelEntity(type,pos,opts){var e={id:eid++,type:type||'mob',position:pos||[0,0,0],opts:opts||{}};entities.push(e);return e;}"
+           "function simplexNoise2D(x,z,oct,pers,scale,freq){return(noise2((x||0)*(freq||1),(z||0)*(freq||1))*2-1)*(scale||1);}"
+           "function simplexNoise3D(x,y,z,oct,pers,scale,freq){return simplexNoise2D((x||0)+(y||0)*0.37,z,oct,pers,scale,freq);}"
+           "return{configureVoxelWorld:configureVoxelWorld,getVoxelConfig:function(){return cfg;},enableVoxelTextures:function(v){cfg.textures=!!v;},forceLoadVoxelChunks:function(){},updateVoxelWorld:function(){},resetVoxelWorld:function(){blocks={};entities=[];},"
+             "setVoxelDayTime:function(t){cfg.dayTime=t;},getVoxelBiome:function(){return'Plains';},getVoxelBlock:getVoxelBlock,setVoxelBlock:setVoxelBlock,getVoxelHighestBlock:getVoxelHighestBlock,raycastVoxelBlock:function(){return{hit:false};},checkVoxelCollision:function(){return false;},"
+             "moveVoxelEntity:moveVoxelEntity,spawnVoxelEntity:spawnVoxelEntity,updateVoxelEntities:function(){},cleanupVoxelEntities:function(){},getVoxelEntityCount:function(){return entities.length;},getVoxelEntitiesByType:function(t){return entities.filter(function(e){return e.type===t;});},"
+             "damageVoxelEntity:function(id){entities=entities.filter(function(e){return e.id!==id;});},saveVoxelWorld:function(){return Promise.resolve(true);},loadVoxelWorld:function(){return Promise.resolve(false);},simplexNoise2D:simplexNoise2D,simplexNoise3D:simplexNoise3D};"
+         "})();"
+
+         /* nova64.scene.getMesh — object proxy for carts that inspect meshes */
+         "nova64.scene.getMesh=function(id){return{id:id,position:{x:0,y:0,z:0},rotation:{x:0,y:0,z:0},scale:{x:1,y:1,z:1},traverse:function(cb){if(typeof cb==='function')cb({isMesh:true,material:null});}};};"
 
          /* nova64.draw.circle alias to circ (web uses both names) */
          "if(typeof globalThis.circ==='function'&&!nova64.draw.circle)nova64.draw.circle=globalThis.circ;"
@@ -31049,6 +31111,14 @@ static bool install_nova64_api(JSContext *ctx)
            "for(var i=0;i<fns.length;i++){var n=fns[i];"
              "if(typeof globalThis[n]==='function'&&s&&typeof s[n]==='undefined')"
                "s[n]=globalThis[n];}})();"
+         "(function(){var s=nova64.scene;if(s.__meshCompatWrapped)return;s.__meshCompatWrapped=true;"
+           "function wrap(h){if(h&&h.__meshHandle)return h;return{__meshHandle:h,valueOf:function(){return h;},toString:function(){return String(h);},"
+             "position:{x:0,y:0,z:0},rotation:{x:0,y:0,z:0},scale:{x:1,y:1,z:1},material:null,"
+             "traverse:function(cb){if(typeof cb==='function')cb({isMesh:true,material:this.material});}};}"
+           "function wrapCreate(n){var raw=s[n];if(typeof raw==='function')s[n]=function(){return wrap(raw.apply(this,arguments));};}"
+           "['createCube','createSphere','createPlane','createCylinder','createTorus','createCapsule','createAdvancedCube'].forEach(wrapCreate);"
+           "var rawGet=s.getMesh;s.getMesh=function(id){return(id&&id.__meshHandle)?id:wrap(rawGet?rawGet(id):id);};"
+         "})();"
          /* nova64.camera mirrors (2D camera helpers) */
          "(function(){var c=nova64.camera,fns=["
            "'createCamera2D','cam2DFollow','cam2DApply','cam2DReset',"
@@ -31066,10 +31136,23 @@ static bool install_nova64_api(JSContext *ctx)
          /* nova64.light mirrors */
          "(function(){var l=nova64.light,fns=["
            "'createPointLight','destroyPointLight','setPointLightPos',"
-           "'setPointLightColor','setPointLightRadius'];"
+           "'setPointLightColor','setPointLightRadius','clearSkybox'];"
            "for(var i=0;i<fns.length;i++){var n=fns[i];"
              "if(typeof globalThis[n]==='function'&&l&&typeof l[n]==='undefined')"
                "l[n]=globalThis[n];}})();"
+         "(function(){var l=nova64.light;"
+           "if(!l.createSolidSkybox)l.createSolidSkybox=function(color){nova64._skybox={type:'solid',color:color};};"
+           "if(!l.createGradientSkybox)l.createGradientSkybox=function(top,bottom,horizon){nova64._skybox={type:'gradient',top:top,bottom:bottom,horizon:horizon};};"
+           "if(!l.createSpaceSkybox)l.createSpaceSkybox=function(opts){nova64._skybox={type:'space',opts:opts||{}};};"
+           "if(!l.animateSkybox)l.animateSkybox=function(dt){nova64._skyboxTime=(nova64._skyboxTime||0)+(dt||0);};"
+           "if(!l.setSkyboxSpeed)l.setSkyboxSpeed=function(speed){nova64._skyboxSpeed=speed==null?1:speed;};"
+           "if(!l.enableSkyboxAutoAnimate)l.enableSkyboxAutoAnimate=function(speed){nova64._skyboxAuto=true;nova64._skyboxSpeed=speed==null?1:speed;};"
+           "if(!l.disableSkyboxAutoAnimate)l.disableSkyboxAutoAnimate=function(){nova64._skyboxAuto=false;};"
+           "if(!l.clearSkybox)l.clearSkybox=function(){nova64._skybox=null;};"
+           "if(typeof globalThis.createSolidSkybox==='undefined')globalThis.createSolidSkybox=l.createSolidSkybox;"
+           "if(typeof globalThis.createGradientSkybox==='undefined')globalThis.createGradientSkybox=l.createGradientSkybox;"
+           "if(typeof globalThis.createSpaceSkybox==='undefined')globalThis.createSpaceSkybox=l.createSpaceSkybox;"
+         "})();"
          /* nova64.tween namespace (web uses createTween/Ease patterns) */
          "if(!nova64.tween)nova64.tween={};"
          "(function(){var tw=nova64.tween,fns=["
@@ -31090,10 +31173,46 @@ static bool install_nova64_api(JSContext *ctx)
              "if(t<2/d){t-=1.5/d;return n*t*t+0.75;}"
              "if(t<2.5/d){t-=2.25/d;return n*t*t+0.9375;}"
              "t-=2.625/d;return n*t*t+0.984375;}};"
+         "(function(){var tw=nova64.tween,raw=tw.createTween;"
+           "function num(v,d){v=Number(v);return isFinite(v)?v:d;}"
+           "function easeFn(e){if(typeof e==='function')return e;var E=tw.Ease||{};"
+             "if(e==='easeOutBounce'||e==='outBounce')return E.outBounce;"
+             "if(e==='easeInQuad'||e==='inQuad')return E.inQuad;"
+             "if(e==='easeOutQuad'||e==='outQuad')return E.outQuad;"
+             "if(e==='easeInOutQuad'||e==='inOutQuad')return E.inOutQuad;"
+             "return E.linear||function(t){return t;};}"
+           "tw.createTween=function(opts){"
+             "if(arguments.length>1||!opts||typeof opts!=='object')return raw?raw.apply(this,arguments):0;"
+             "var from=num(opts.from,0),to=num(opts.to,1),dur=Math.max(0.0001,num(opts.duration,1));"
+             "var e=easeFn(opts.ease),loop=opts.loop||false,elapsed=0,dir=1,playing=true,done=false;"
+             "var obj={value:from,"
+               "tick:function(dt){if(!playing||done)return obj;elapsed+=num(dt,0)*dir;"
+                 "if(elapsed>=dur){if(loop==='pingpong'){elapsed=dur;dir=-1;}else if(loop){elapsed=0;}else{elapsed=dur;done=true;}}"
+                 "else if(elapsed<=0&&dir<0){if(loop==='pingpong'){elapsed=0;dir=1;}else elapsed=0;}"
+                 "var t=Math.max(0,Math.min(1,elapsed/dur));obj.value=from+(to-from)*e(t);return obj;},"
+               "play:function(){playing=true;return obj;},pause:function(){playing=false;return obj;},"
+               "stop:function(){playing=false;return obj;},restart:function(){elapsed=0;dir=1;done=false;playing=true;obj.value=from;return obj;},"
+               "isDone:function(){return done;}};"
+             "return obj;};"
+           "if(typeof globalThis.setTimeout==='undefined')globalThis.setTimeout=function(fn,ms){if(typeof fn==='function')fn();return 0;};"
+           "if(typeof globalThis.clearTimeout==='undefined')globalThis.clearTimeout=function(id){};"
+         "})();"
          /* nova64.util — add HSB color helper + perlin alias + math consts */
          "(function(){var u=nova64.util;"
            "u.TWO_PI=Math.PI*2;u.PI=Math.PI;u.HALF_PI=Math.PI/2;"
            "if(typeof globalThis.hsb==='function'&&!u.hsb)u.hsb=globalThis.hsb;"
+           "if(typeof globalThis.ellipse==='function'&&!u.ellipse)u.ellipse=globalThis.ellipse;"
+           "if(typeof globalThis.ellipsefill==='function'&&!u.ellipsefill)u.ellipsefill=globalThis.ellipsefill;"
+           "if(typeof globalThis.ftsSpawn==='function'&&!u.createFloatingTextSystem)u.createFloatingTextSystem=function(){"
+             "var sys={_texts:[]};"
+             "sys.spawn=function(text,x,y,opts){opts=opts||{};ftsSpawn(sys,text,x,y,opts);"
+               "var t=sys._texts[sys._texts.length-1];if(t){"
+                 "if(opts.z!==undefined)t.z=opts.z;if(opts.vz!==undefined)t.vz=opts.vz;"
+                 "if(opts.vy!==undefined)t.vy=opts.vy;if(opts.scale!==undefined)t.scale=opts.scale;}"
+               "return sys;};"
+             "sys.update=function(dt){ftsUpdate(sys,dt);for(var i=0;i<sys._texts.length;i++){var t=sys._texts[i];if(t.z!==undefined)t.z+=(t.vz||0)*(dt||0);}return sys;};"
+             "sys.getTexts=function(){return sys._texts;};sys.clear=function(){sys._texts.length=0;};"
+             "return sys;};"
            "if(!u.noiseSeed)u.noiseSeed=function(s){nova64._noiseSeed=s;};"
            "if(!u.lerp)u.lerp=function(a,b,t){return a+(b-a)*t;};"
            "if(!u.map)u.map=function(v,a,b,c,d){return c+(v-a)/(b-a)*(d-c);};"
@@ -31184,6 +31303,49 @@ static bool cache_lifecycle_export(JSContext *ctx, JSValue namespace, const char
    return true;
 }
 
+static bool js_host_drain_jobs(const char *where)
+{
+   if (!js_host.runtime)
+      return true;
+   JSContext *job_ctx = NULL;
+   int result = 0;
+   while ((result = JS_ExecutePendingJob(js_host.runtime, &job_ctx)) > 0) {
+   }
+   if (result < 0) {
+      js_log_exception(job_ctx ? job_ctx : js_host.context, where);
+      return false;
+   }
+   return true;
+}
+
+static JSValue js_host_await(JSContext *ctx, JSValue value, const char *where)
+{
+   for (;;) {
+      JSPromiseStateEnum state = JS_PromiseState(ctx, value);
+      if (state == JS_PROMISE_FULFILLED) {
+         JSValue result = JS_PromiseResult(ctx, value);
+         JS_FreeValue(ctx, value);
+         return result;
+      }
+      if (state == JS_PROMISE_REJECTED) {
+         JSValue result = JS_Throw(ctx, JS_PromiseResult(ctx, value));
+         JS_FreeValue(ctx, value);
+         return result;
+      }
+      if (state != JS_PROMISE_PENDING)
+         return value;
+
+      JSContext *job_ctx = NULL;
+      int job = JS_ExecutePendingJob(js_host.runtime, &job_ctx);
+      if (job < 0) {
+         js_log_exception(job_ctx ? job_ctx : ctx, where);
+         return JS_EXCEPTION;
+      }
+      if (job == 0)
+         return value;
+   }
+}
+
 static bool js_host_load_cart(const char *source, size_t source_size, const char *filename)
 {
    if (!js_host_create())
@@ -31198,14 +31360,22 @@ static bool js_host_load_cart(const char *source, size_t source_size, const char
       js_log_exception(ctx, "compile");
       return false;
    }
+   if (JS_ResolveModule(ctx, compiled) < 0) {
+      js_log_exception(ctx, "module resolve");
+      JS_FreeValue(ctx, compiled);
+      return false;
+   }
 
    JSModuleDef *module = JS_VALUE_GET_PTR(compiled);
    JSValue result = JS_EvalFunction(ctx, compiled);
+   result = js_host_await(ctx, result, "module jobs");
    if (JS_IsException(result)) {
       js_log_exception(ctx, "module evaluation");
       return false;
    }
    JS_FreeValue(ctx, result);
+   if (!js_host_drain_jobs("module jobs"))
+      return false;
 
    JSValue namespace = JS_GetModuleNamespace(ctx, module);
    if (JS_IsException(namespace)) {
@@ -31223,11 +31393,14 @@ static bool js_host_load_cart(const char *source, size_t source_size, const char
    js_host.loaded = true;
    if (!JS_IsUndefined(js_host.init)) {
       JSValue call_result = JS_Call(ctx, js_host.init, JS_UNDEFINED, 0, NULL);
+      call_result = js_host_await(ctx, call_result, "init jobs");
       if (JS_IsException(call_result)) {
          js_log_exception(ctx, "init");
          return false;
       }
       JS_FreeValue(ctx, call_result);
+      if (!js_host_drain_jobs("init jobs"))
+         return false;
    }
    return true;
 }

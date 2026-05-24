@@ -1,12 +1,76 @@
 # Nova64 Hardware GL on Windows — Status & Handover
 
-**Last updated:** 2026-05-24 (compat round 3 + visual parity handoff refresh)
+**Last updated:** 2026-05-24 (Space Harrier visual parity guard + output pipeline checkpoint)
 **Branch:** `main`
-**Working tree:** clean before this handoff refresh at `2cc92f6`
+**Working tree:** clean before this handoff refresh at `7d3157c`
 
 ---
 
 ## 🔄 HANDOFF FOR CODEX (2026-05-24 evening)
+
+### Visual parity regression guard added
+
+The Space Harrier visual parity harness now has optional failing guard profiles
+so dark edges, soft output, and major color/sky regressions do not silently
+slide by as console-only metrics.
+
+Commands validated on 2026-05-24:
+
+```bash
+pnpm run retroarch:visual:space-harrier -- --retro-cart=web --out=retroarch/build/space-harrier-web-parity --port=5178 --guard=web
+pnpm run retroarch:visual:space-harrier -- --retro-cart=port --out=retroarch/build/space-harrier-port-parity --port=5178 --guard=port
+```
+
+Guard behavior:
+
+- `--guard=web` is the source-of-truth compat floor for the unmodified
+  `examples/space-harrier-3d/code.js` cart packaged into `.nova`.
+- `--guard=port` is a stricter control floor for the hand-tuned
+  `retroarch/games/space-harrier-3d.js` cart.
+- Custom thresholds are also supported:
+  `--min-average`, `--min-moment-score`, `--min-sky`,
+  `--min-edge-luma-ratio`, `--min-edge-center`,
+  `--min-sharpness-ratio`, and `--max-saturation-delta`.
+- The report now records `edgeLumaRatio` (`retro edge luma / browser edge
+  luma`) in addition to `edgeToCenter`, because relative edge/center can look
+  okay even while the whole RA image is still much darker than web.
+
+Latest guard results:
+
+- Web-cart guard passed at **72.8 avg** (start 73.6 / play 71.9).
+- Web-cart gameplay is still visibly behind: edge luma ratio **41.6%** and
+  sharpness ratio **22.4%**. This is now pinned as a known baseline, not an
+  acceptable final target.
+- Port-cart guard passed at **91.3 avg** (start 93.1 / play 89.5).
+- Port-cart gameplay edge luma ratio **84.1%** and sharpness ratio **205.1%**,
+  which makes it a useful control that the harness catches source-cart runtime
+  gaps rather than only visual design differences.
+
+### Three/Babylon output pipeline checkpoint
+
+I reviewed the local Three.js and Babylon.js post/effects sources while chasing
+the remaining color/brightness gap:
+
+- `runtime/backends/threejs/gpu-threejs.js` sets
+  `renderer.outputColorSpace = THREE.SRGBColorSpace`,
+  `renderer.toneMapping = THREE.ACESFilmicToneMapping`, and
+  `renderer.toneMappingExposure = 1.25`.
+- `runtime/api-effects.js` uses `EffectComposer`, `RenderPass`,
+  `UnrealBloomPass`, and `ShaderPass`, but currently does **not** add
+  Three's `OutputPass`.
+- Local Three's `EffectComposer` marks the last enabled pass as
+  `renderToScreen`; Three's own postprocessing examples use `OutputPass` for
+  the final tone-mapping/color-space stage when a composer chain is active.
+- `runtime/backends/babylon/effects.js` enables Babylon image processing for
+  the default pipeline but explicitly disables tone mapping there.
+- RA GLES currently folds final output through its post shader with
+  `linear_to_srgb(aces_filmic(color.rgb))`.
+
+Next high-value parity target: compare a browser capture with and without an
+explicit Three `OutputPass` in the web composer path, then align RA to the
+actual web source behavior. Do this experimentally first; the user has been
+clear that web is the source of truth and RetroArch should move toward it, not
+the other way around.
 
 ### Codex follow-up checkpoint — visual parity baseline
 

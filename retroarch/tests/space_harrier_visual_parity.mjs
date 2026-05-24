@@ -17,6 +17,24 @@ const RETROARCH_DIR = path.resolve(SCRIPT_DIR, '..');
 const ROOT = path.resolve(RETROARCH_DIR, '..');
 const DEFAULT_OUT = path.join(RETROARCH_DIR, 'build', 'space-harrier-parity');
 const RETRO_CART_MODES = new Set(['web', 'port']);
+const GUARD_PROFILES = {
+  web: {
+    minAverageScore: 0.7,
+    minMomentScore: 0.7,
+    minSkyColorSimilarity: 0.65,
+    minEdgeLumaRatio: 0.38,
+    minSharpnessRatio: 0.2,
+    maxAbsSaturationDelta: 0.35,
+  },
+  port: {
+    minAverageScore: 0.88,
+    minMomentScore: 0.85,
+    minSkyColorSimilarity: 0.95,
+    minEdgeLumaRatio: 0.75,
+    minSharpnessRatio: 0.85,
+    maxAbsSaturationDelta: 0.15,
+  },
+};
 
 const MOMENTS = [
   { id: 'start', label: 'START_SCREEN', webAction: null, retroFrames: 120, retroArgs: {} },
@@ -39,6 +57,8 @@ function parseArgs(argv) {
     outDir: DEFAULT_OUT,
     port: 5178,
     retroCart: 'web',
+    guard: null,
+    thresholds: {},
   };
 
   for (const arg of argv) {
@@ -47,6 +67,26 @@ function parseArgs(argv) {
     else if (arg.startsWith('--base-url=')) opts.baseUrl = arg.slice('--base-url='.length);
     else if (arg.startsWith('--out=')) opts.outDir = path.resolve(arg.slice('--out='.length));
     else if (arg.startsWith('--port=')) opts.port = Number(arg.slice('--port='.length));
+    else if (arg.startsWith('--guard=')) {
+      opts.guard = arg.slice('--guard='.length);
+      if (!GUARD_PROFILES[opts.guard]) {
+        throw new Error(`--guard must be one of: ${Object.keys(GUARD_PROFILES).join(', ')}`);
+      }
+    }
+    else if (arg.startsWith('--min-average=')) opts.thresholds.minAverageScore = parseThreshold(arg, '--min-average=');
+    else if (arg.startsWith('--min-score=')) opts.thresholds.minAverageScore = parseThreshold(arg, '--min-score=');
+    else if (arg.startsWith('--min-moment-score=')) opts.thresholds.minMomentScore = parseThreshold(arg, '--min-moment-score=');
+    else if (arg.startsWith('--min-sky=')) opts.thresholds.minSkyColorSimilarity = parseThreshold(arg, '--min-sky=');
+    else if (arg.startsWith('--min-edge-luma-ratio=')) {
+      opts.thresholds.minEdgeLumaRatio = parseThreshold(arg, '--min-edge-luma-ratio=');
+    }
+    else if (arg.startsWith('--min-edge-center=')) opts.thresholds.minEdgeToCenter = parseThreshold(arg, '--min-edge-center=');
+    else if (arg.startsWith('--min-sharpness-ratio=')) {
+      opts.thresholds.minSharpnessRatio = parseThreshold(arg, '--min-sharpness-ratio=');
+    }
+    else if (arg.startsWith('--max-saturation-delta=')) {
+      opts.thresholds.maxAbsSaturationDelta = parseThreshold(arg, '--max-saturation-delta=');
+    }
     else if (arg.startsWith('--retro-cart=')) {
       opts.retroCart = arg.slice('--retro-cart='.length);
       if (!RETRO_CART_MODES.has(opts.retroCart)) {
@@ -57,7 +97,15 @@ function parseArgs(argv) {
   }
 
   opts.baseUrl ||= `http://127.0.0.1:${opts.port}`;
+  opts.thresholds = { ...(opts.guard ? GUARD_PROFILES[opts.guard] : {}), ...opts.thresholds };
   return opts;
+}
+
+function parseThreshold(arg, prefix) {
+  const raw = arg.slice(prefix.length);
+  const value = Number(raw.endsWith('%') ? raw.slice(0, -1) : raw);
+  if (!Number.isFinite(value)) throw new Error(`${prefix}${raw} must be a number`);
+  return value > 1 ? value / 100 : value;
 }
 
 function ensureDirs(outDir) {
@@ -387,9 +435,55 @@ function compareMoment(opts, moment, browserPath, retroPath) {
     sharpnessRatio: browserSharpness <= 0 ? 0 : retroSharpness / browserSharpness,
     browserEdges,
     retroEdges,
+    edgeLumaRatio: browserEdges.edgeLuma <= 0 ? 0 : retroEdges.edgeLuma / browserEdges.edgeLuma,
     edgeToCenterDelta: retroEdges.edgeToCenter - browserEdges.edgeToCenter,
     score,
   };
+}
+
+function pushGuardFailure(failures, metric, actual, expected, detail = '') {
+  failures.push(
+    `${metric}: got ${(actual * 100).toFixed(1)}%, expected >= ${(expected * 100).toFixed(1)}%${detail ? ` (${detail})` : ''}`
+  );
+}
+
+function evaluateGuards(summary, thresholds) {
+  const failures = [];
+  if (!Object.keys(thresholds).length) return failures;
+
+  if (thresholds.minAverageScore != null && summary.averageScore < thresholds.minAverageScore) {
+    pushGuardFailure(failures, 'average score', summary.averageScore, thresholds.minAverageScore);
+  }
+
+  for (const result of summary.results) {
+    const prefix = result.id;
+    if (thresholds.minMomentScore != null && result.score < thresholds.minMomentScore) {
+      pushGuardFailure(failures, `${prefix} score`, result.score, thresholds.minMomentScore);
+    }
+    if (thresholds.minSkyColorSimilarity != null && result.skyColorSimilarity < thresholds.minSkyColorSimilarity) {
+      pushGuardFailure(failures, `${prefix} sky similarity`, result.skyColorSimilarity, thresholds.minSkyColorSimilarity);
+    }
+    if (thresholds.minEdgeLumaRatio != null && result.edgeLumaRatio < thresholds.minEdgeLumaRatio) {
+      pushGuardFailure(failures, `${prefix} edge luma ratio`, result.edgeLumaRatio, thresholds.minEdgeLumaRatio);
+    }
+    if (thresholds.minEdgeToCenter != null && result.retroEdges.edgeToCenter < thresholds.minEdgeToCenter) {
+      pushGuardFailure(failures, `${prefix} RA edge/center`, result.retroEdges.edgeToCenter, thresholds.minEdgeToCenter);
+    }
+    if (thresholds.minSharpnessRatio != null && result.sharpnessRatio < thresholds.minSharpnessRatio) {
+      pushGuardFailure(failures, `${prefix} sharpness ratio`, result.sharpnessRatio, thresholds.minSharpnessRatio);
+    }
+    if (
+      thresholds.maxAbsSaturationDelta != null &&
+      Math.abs(result.saturationDelta) > thresholds.maxAbsSaturationDelta
+    ) {
+      failures.push(
+        `${prefix} saturation delta: got ${(result.saturationDelta * 100).toFixed(1)}%, ` +
+          `expected abs <= ${(thresholds.maxAbsSaturationDelta * 100).toFixed(1)}%`
+      );
+    }
+  }
+
+  return failures;
 }
 
 async function main() {
@@ -405,6 +499,8 @@ async function main() {
       outDir: path.relative(ROOT, opts.outDir),
       retroCart: opts.retroCart,
       retroCartPath: path.relative(ROOT, retro.get(MOMENTS[0].id).cart),
+      guard: opts.guard,
+      thresholds: opts.thresholds,
       averageScore: results.reduce((sum, result) => sum + result.score, 0) / results.length,
       results,
     };
@@ -442,11 +538,21 @@ async function main() {
       console.log(
         `  edge/center web=${result.browserEdges.edgeToCenter.toFixed(3)} ` +
           `ra=${result.retroEdges.edgeToCenter.toFixed(3)} ` +
-          `delta=${result.edgeToCenterDelta.toFixed(3)}`
+          `delta=${result.edgeToCenterDelta.toFixed(3)} ` +
+          `edge luma ratio=${(result.edgeLumaRatio * 100).toFixed(1)}%`
       );
     }
     console.log(`average=${(summary.averageScore * 100).toFixed(1)}`);
     console.log(`report=${path.relative(ROOT, reportPath)}`);
+    const guardFailures = evaluateGuards(summary, opts.thresholds);
+    if (guardFailures.length) {
+      console.error('\nVisual parity guard failed:');
+      for (const failure of guardFailures) console.error(`  - ${failure}`);
+      throw new Error(`Space Harrier visual parity guard failed (${guardFailures.length} checks)`);
+    }
+    if (Object.keys(opts.thresholds).length) {
+      console.log(`guard=${opts.guard || 'custom'} passed`);
+    }
   } finally {
     if (server) server.kill('SIGTERM');
   }

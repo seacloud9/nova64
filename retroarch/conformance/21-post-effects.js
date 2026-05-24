@@ -1,5 +1,5 @@
 // Conformance cart 21: extended post-processing effects
-// Verifies bloom, chromatic, setColorGrade, setPosterize state round-trips.
+// Verifies bloom, bloom radius/threshold, chromatic, setColorGrade, setPosterize state round-trips.
 // In software/headless mode the FBO is absent but state must hold correctly.
 
 let cube;
@@ -13,7 +13,7 @@ export function init() {
    setLightDirection(-0.5, -1, -0.8);
 
    // Bloom
-   nova64.post.setBloom(0.7);
+   nova64.post.setBloom(0.7, 0.35, 0.8);
    // Chromatic aberration
    nova64.post.setChromatic(0.006);
    // Color grade: warm tint (boost red/green, reduce blue)
@@ -23,6 +23,8 @@ export function init() {
 
    const s = nova64.post.getState();
    if (Math.abs(s.bloom - 0.7) > 0.01) throw new Error('bloom mismatch: ' + s.bloom);
+   if (Math.abs(s.bloomRadius - 0.35) > 0.01) throw new Error('bloom radius mismatch: ' + s.bloomRadius);
+   if (Math.abs(s.bloomThreshold - 0.8) > 0.01) throw new Error('bloom threshold mismatch: ' + s.bloomThreshold);
    if (Math.abs(s.chromatic - 0.006) > 0.0005) throw new Error('chromatic mismatch: ' + s.chromatic);
    if (Math.abs(s.colorGrade[0] - 1.3) > 0.01) throw new Error('grade[0] mismatch');
    if (Math.abs(s.colorGrade[1] - 1.1) > 0.01) throw new Error('grade[1] mismatch');
@@ -34,6 +36,8 @@ export function init() {
    nova64.post.clear();
    const s2 = nova64.post.getState();
    if (s2.bloom !== 0) throw new Error('bloom should be 0 after clear');
+   if (s2.bloomRadius !== 0) throw new Error('bloomRadius should be 0 after clear');
+   if (Math.abs(s2.bloomThreshold - 0.32) > 0.01) throw new Error('bloomThreshold should reset');
    if (s2.posterize !== 0) throw new Error('posterize should be 0 after clear');
    if (s2.colorGrade[0] !== 1 || s2.colorGrade[1] !== 1 || s2.colorGrade[2] !== 1)
       throw new Error('colorGrade should be [1,1,1] after clear');

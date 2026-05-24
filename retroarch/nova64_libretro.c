@@ -498,6 +498,7 @@ struct nova64_gles_backend {
    GLint post_pixelate_uniform;
    GLint post_resolution_uniform;
    GLint post_bloom_uniform;
+   GLint post_bloom_radius_uniform;
    GLint post_use_mip_bloom_uniform;
    GLint post_bloom_mip_uniform[NOVA64_BLOOM_MIPS];
    GLint post_chromatic_uniform;
@@ -1748,6 +1749,8 @@ struct nova64_post_state {
    float vignette;       /* 0.0 = off, 1.0 = full */
    int pixelate;         /* 0 = off, 1+ = block size in pixels */
    float bloom;          /* 0.0 = off, up to 4.0 for web-style glow */
+   float bloom_radius;   /* 0.0 = tight, 1.0 = broad mip glow */
+   float bloom_threshold;/* luma threshold for bright-pass extraction */
    float chromatic;      /* 0.0 = off, offset amount (try 0.003-0.01) */
    float color_grade[3]; /* RGB multipliers, default 1.0 each */
    int posterize;        /* 0 = off, 2-8 = quantize levels */
@@ -1760,6 +1763,8 @@ static void reset_post_state(void)
    post_state.vignette = 0.0f;
    post_state.pixelate = 0;
    post_state.bloom = 0.0f;
+   post_state.bloom_radius = 0.0f;
+   post_state.bloom_threshold = 0.32f;
    post_state.chromatic = 0.0f;
    post_state.color_grade[0] = post_state.color_grade[1] = post_state.color_grade[2] = 1.0f;
    post_state.posterize = 0;
@@ -8681,6 +8686,10 @@ static JSValue js_set_bloom_global(JSContext *ctx, JSValueConst this_val, int ar
 {
    (void)this_val;
    post_state.bloom = (float)clamp_double(double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0.0), 0.0, 4.0);
+   if (argc > 1 && !JS_IsUndefined(argv[1]))
+      post_state.bloom_radius = (float)clamp_double(double_from_js(ctx, argv[1], post_state.bloom_radius), 0.0, 1.0);
+   if (argc > 2 && !JS_IsUndefined(argv[2]))
+      post_state.bloom_threshold = (float)clamp_double(double_from_js(ctx, argv[2], post_state.bloom_threshold), 0.0, 4.0);
    return JS_UNDEFINED;
 }
 
@@ -8713,7 +8722,7 @@ static JSValue js_reset_post(JSContext *ctx, JSValueConst this_val, int argc, JS
 {
    (void)ctx; (void)this_val; (void)argc; (void)argv;
    post_state.crt_enabled = false; post_state.vignette = 0.0f;
-   post_state.bloom = 0.0f; post_state.chromatic = 0.0f;
+   post_state.bloom = 0.0f; post_state.bloom_radius = 0.0f; post_state.bloom_threshold = 0.32f; post_state.chromatic = 0.0f;
    post_state.pixelate = 0; post_state.posterize = 0;
    post_state.color_grade[0] = 1.0f; post_state.color_grade[1] = 1.0f; post_state.color_grade[2] = 1.0f;
    return JS_UNDEFINED;
@@ -26922,6 +26931,8 @@ static JSValue js_post_get_state(JSContext *ctx, JSValueConst this_val, int argc
    JS_SetPropertyStr(ctx, obj, "vignette", JS_NewFloat64(ctx, (double)post_state.vignette));
    JS_SetPropertyStr(ctx, obj, "pixelate", JS_NewInt32(ctx, post_state.pixelate));
    JS_SetPropertyStr(ctx, obj, "bloom", JS_NewFloat64(ctx, (double)post_state.bloom));
+   JS_SetPropertyStr(ctx, obj, "bloomRadius", JS_NewFloat64(ctx, (double)post_state.bloom_radius));
+   JS_SetPropertyStr(ctx, obj, "bloomThreshold", JS_NewFloat64(ctx, (double)post_state.bloom_threshold));
    JS_SetPropertyStr(ctx, obj, "chromatic", JS_NewFloat64(ctx, (double)post_state.chromatic));
    JSValue grade = JS_NewArray(ctx);
    JS_SetPropertyUint32(ctx, grade, 0, JS_NewFloat64(ctx, (double)post_state.color_grade[0]));
@@ -26939,6 +26950,26 @@ static JSValue js_post_set_bloom(JSContext *ctx, JSValueConst this_val, int argc
    (void)this_val;
    post_state.bloom = (float)clamp_double(
       double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0.0), 0.0, 1.0);
+   if (argc > 1 && !JS_IsUndefined(argv[1]))
+      post_state.bloom_radius = (float)clamp_double(double_from_js(ctx, argv[1], post_state.bloom_radius), 0.0, 1.0);
+   if (argc > 2 && !JS_IsUndefined(argv[2]))
+      post_state.bloom_threshold = (float)clamp_double(double_from_js(ctx, argv[2], post_state.bloom_threshold), 0.0, 4.0);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_post_set_bloom_radius(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   post_state.bloom_radius = (float)clamp_double(
+      double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, post_state.bloom_radius), 0.0, 1.0);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_post_set_bloom_threshold(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   post_state.bloom_threshold = (float)clamp_double(
+      double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, post_state.bloom_threshold), 0.0, 4.0);
    return JS_UNDEFINED;
 }
 
@@ -29007,6 +29038,8 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, post, "setVignette", js_post_set_vignette, 1);
    set_function(ctx, post, "setPixelate", js_post_set_pixelate, 1);
    set_function(ctx, post, "setBloom", js_post_set_bloom, 1);
+   set_function(ctx, post, "setBloomRadius", js_post_set_bloom_radius, 1);
+   set_function(ctx, post, "setBloomThreshold", js_post_set_bloom_threshold, 1);
    set_function(ctx, post, "setChromatic", js_post_set_chromatic, 1);
    set_function(ctx, post, "setColorGrade", js_post_set_color_grade, 3);
    set_function(ctx, post, "setPosterize", js_post_set_posterize, 1);
@@ -29042,9 +29075,11 @@ static bool install_nova64_api(JSContext *ctx)
            "var p=nova64.post;"
            "var _glitchT=0;"
            "return{"
-             "enableBloom:function(s,r,t){p.setBloom(s==null?1:s);},"
+             "enableBloom:function(s,r,t){p.setBloom(s==null?1:s,r,t);},"
              "disableBloom:function(){p.setBloom(0);},"
              "setBloomStrength:function(s){p.setBloom(s);},"
+             "setBloomRadius:function(r){p.setBloomRadius(r);},"
+             "setBloomThreshold:function(t){p.setBloomThreshold(t);},"
              "enableVignette:function(d,o){"
                "d=d==null?1:d;o=o==null?0.9:o;"
                "p.setVignette(0);"
@@ -29363,8 +29398,6 @@ static bool install_nova64_api(JSContext *ctx)
          "nova64.fx.getParticleStats=function(){var n=0,c=0;for(var k in nova64.fx._particleSystems){n++;c+=nova64.fx._particleSystems[k].count||0;}return{systems:n,particles:c};};"
          "nova64.fx.enableRetroEffects=function(opts){nova64.fx._retroEffects=opts||{};};"
          "nova64.fx.disableRetroEffects=function(){nova64.fx._retroEffects=null;};"
-         "nova64.fx.setBloomRadius=function(r){nova64.fx._bloomRadius=r;};"
-         "nova64.fx.setBloomThreshold=function(t){nova64.fx._bloomThreshold=t;};"
          "nova64.fx.isEffectsEnabled=function(){return true;};"
          "nova64.fx.enableN64Mode=function(){};nova64.fx.enablePSXMode=function(){};nova64.fx.enableLowPolyMode=function(){};nova64.fx.disablePresetMode=function(){};"
          "nova64.fx.emitParticle=function(id,p){return id;};"
@@ -34173,6 +34206,7 @@ static bool gles_create_post_program(void)
       "uniform int u_pixelate;\n"
       "uniform vec4 u_resolution;\n"
       "uniform float u_bloom;\n"
+      "uniform float u_bloom_radius;\n"
       "uniform int u_use_mip_bloom;\n"
       "uniform sampler2D u_bloom_mip0;\n"
       "uniform sampler2D u_bloom_mip1;\n"
@@ -34274,11 +34308,12 @@ static bool gles_create_post_program(void)
          (2026-05-20) for context. */
       "  if (u_bloom > 0.0 && u_use_mip_bloom != 0) {\n"
       "    vec2 buv = vec2(v_uv.x, 1.0 - v_uv.y);\n"
-      "    vec3 bloom = texture(u_bloom_mip0, buv).rgb * 0.18;\n"
-      "    bloom += texture(u_bloom_mip1, buv).rgb * 0.21;\n"
-      "    bloom += texture(u_bloom_mip2, buv).rgb * 0.23;\n"
-      "    bloom += texture(u_bloom_mip3, buv).rgb * 0.22;\n"
-      "    bloom += texture(u_bloom_mip4, buv).rgb * 0.16;\n"
+      "    float br = clamp(u_bloom_radius, 0.0, 1.0);\n"
+      "    vec3 bloom = texture(u_bloom_mip0, buv).rgb * mix(0.18, 0.10, br);\n"
+      "    bloom += texture(u_bloom_mip1, buv).rgb * mix(0.21, 0.16, br);\n"
+      "    bloom += texture(u_bloom_mip2, buv).rgb * mix(0.23, 0.22, br);\n"
+      "    bloom += texture(u_bloom_mip3, buv).rgb * mix(0.22, 0.26, br);\n"
+      "    bloom += texture(u_bloom_mip4, buv).rgb * mix(0.16, 0.26, br);\n"
       "    color.rgb += bloom * min(u_bloom, 4.0) * 1.45;\n"
       "  } else if (u_bloom > 0.0) {\n"
       "    vec3 bloom = post_bright(center.rgb) * 0.16;\n"
@@ -34353,6 +34388,7 @@ static bool gles_create_post_program(void)
    gles.post_pixelate_uniform = gles.GetUniformLocation(program, "u_pixelate");
    gles.post_resolution_uniform = gles.GetUniformLocation(program, "u_resolution");
    gles.post_bloom_uniform = gles.GetUniformLocation(program, "u_bloom");
+   gles.post_bloom_radius_uniform = gles.GetUniformLocation(program, "u_bloom_radius");
    gles.post_use_mip_bloom_uniform = gles.GetUniformLocation(program, "u_use_mip_bloom");
    gles.post_bloom_mip_uniform[0] = gles.GetUniformLocation(program, "u_bloom_mip0");
    gles.post_bloom_mip_uniform[1] = gles.GetUniformLocation(program, "u_bloom_mip1");
@@ -34724,7 +34760,7 @@ static bool render_gles_bloom_chain(void)
          gles.Uniform2f(gles.bloom_downsample_resolution_uniform,
             (float)source_width, (float)source_height);
       if (gles.bloom_downsample_threshold_uniform >= 0)
-         gles.Uniform1f(gles.bloom_downsample_threshold_uniform, i == 0 ? 0.32f : 0.0f);
+         gles.Uniform1f(gles.bloom_downsample_threshold_uniform, i == 0 ? post_state.bloom_threshold : 0.0f);
       gles_draw_fullscreen_quad(gles.bloom_downsample_position_attrib,
          gles.bloom_downsample_uv_attrib);
 
@@ -34792,6 +34828,8 @@ static void render_gles_post_pass(GLuint hw_fbo)
          (float)NOVA64_WIDTH, (float)NOVA64_HEIGHT, 0.0f, 0.0f);
    if (gles.post_bloom_uniform >= 0 && gles.Uniform1f)
       gles.Uniform1f(gles.post_bloom_uniform, post_state.bloom);
+   if (gles.post_bloom_radius_uniform >= 0 && gles.Uniform1f)
+      gles.Uniform1f(gles.post_bloom_radius_uniform, post_state.bloom_radius);
    if (gles.post_use_mip_bloom_uniform >= 0)
       gles.Uniform1i(gles.post_use_mip_bloom_uniform, use_mip_bloom ? 1 : 0);
    if (use_mip_bloom) {

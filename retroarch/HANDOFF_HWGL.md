@@ -168,6 +168,57 @@ path. The web composer currently does not add an explicit `OutputPass` in
 `runtime/api-effects.js`, so tone/output ordering may differ from the GLES
 single-pass approximation.
 
+### Bloom radius/threshold shader follow-up
+
+The user specifically asked to pay close attention to Three.js and Babylon.js
+shader/effects code to bring more visual "wow" to RetroArch. Codex reviewed:
+
+- `node_modules/three/examples/jsm/postprocessing/UnrealBloomPass.js`
+- `node_modules/three/examples/jsm/shaders/LuminosityHighPassShader.js`
+- `node_modules/three/examples/jsm/postprocessing/OutputPass.js`
+- `runtime/backends/babylon/effects.js`
+
+Findings:
+
+- Three `UnrealBloomPass` uses a luminosity high-pass threshold, five blurred
+  mip levels, and `bloomRadius` to shift weight toward wider mips.
+- Babylon's `DefaultRenderingPipeline` bloom similarly exposes bloom weight,
+  kernel/radius, threshold, and scale.
+- RA already had a multi-mip bloom chain and a threshold uniform, but
+  web-style `nova64.fx.enableBloom(strength, radius, threshold)` only forwarded
+  strength. Radius/threshold were effectively ignored.
+
+Runtime change:
+
+- `nova64.post.setBloom(strength, radius, threshold)` now accepts optional
+  radius/threshold args.
+- `nova64.post.setBloomRadius()` and `nova64.post.setBloomThreshold()` were
+  added, and `nova64.fx.enableBloom()` / `setBloomRadius()` /
+  `setBloomThreshold()` now forward to the real post state.
+- The GLES bloom chain now uses `post_state.bloom_threshold` for the first
+  bright-pass and `u_bloom_radius` to shift final composite weight toward
+  broader mips, inspired by Three's `lerpBloomFactor()`.
+- Direct `setBloom(strength)` keeps the old defaults (`radius=0`,
+  `threshold=0.32`), so existing post checksums remain stable.
+
+Validation:
+
+```bash
+make -C retroarch all
+NOVA64_GLES_TESTS=1 bash retroarch/tests/run_conformance.sh --skip-build --from 20 --to 21
+pnpm run retroarch:visual:space-harrier -- --retro-cart=web --out=retroarch/build/space-harrier-web-parity --port=5178
+pnpm run retroarch:visual:space-harrier -- --retro-cart=port --out=retroarch/build/space-harrier-port-parity --port=5178
+```
+
+Results:
+
+- `21-post-effects` now asserts bloom radius/threshold state round-trips.
+- GLES post checksum stayed `d5f674e4aa5e28a0` for old direct post defaults.
+- Web-cart Space Harrier was **73.4 avg** after honoring its
+  `enableBloom(0.38, 0.22, 0.78)` arguments. The high web threshold makes RA
+  bloom more selective, so this does not solve the dark image by itself.
+- Port-cart control stayed healthy at **90.9 avg**.
+
 ### Three.js shader investigation note
 
 Codex reviewed the local Three.js shader sources:

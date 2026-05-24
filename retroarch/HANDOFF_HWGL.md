@@ -1,8 +1,103 @@
 # Nova64 Hardware GL on Windows — Status & Handover
 
-**Last updated:** 2026-05-24 (Space Harrier visual parity guard + output pipeline checkpoint)
+**Last updated:** 2026-05-24 (tone-map exposure + 24-bit color shift root cause)
 **Branch:** `main`
-**Working tree:** clean before this handoff refresh at `7d3157c`
+**Working tree:** clean at `8abbcbd`
+
+---
+
+## 🔥 Next-session pickup: 24-bit hex color shift (root cause identified, fix not landed)
+
+**The user-reported "blue/cyan instead of green/orange" in web-cart-on-RA captures is
+a packing convention mismatch.** I diagnosed it this session but the safe runtime
+fix is not yet shipped.
+
+### The bug
+
+Side-by-side capture at `c:\tmp\web-play-now.png` (web) vs
+`c:\tmp\ra-play-now.png` (web cart on RA) shows:
+
+- **Web**: green checker floor, orange/yellow pillars, green tree spheres, red+yellow player, magenta fog glow
+- **RA**: BLUE floor, cyan pillars, cyan trees, yellow player (no red), cyan fog glow
+
+That's not brightness — it's R↔B channel rotation. Tracked it to:
+
+1. Web carts use `0xRRGGBB` hex literals (e.g. `PALETTE.sky = 0xaa22ff` = magenta).
+   Three.js/Babylon treat these as 24-bit color with implicit alpha 1.0.
+2. RA's `color_from_js` (line ~2004 of `nova64_libretro.c`) returns the int
+   directly as `uint32_t`.
+3. RA's rgba8 packing is `R<<24 | G<<16 | B<<8 | A`, so `0x00AA22FF` (the
+   web literal padded to 32 bits) gets read as **R=0, G=0xAA, B=0x22, A=0xFF**.
+4. Result: red drops to zero, what was magenta in web renders as green-ish
+   tinted by the bottom byte. Combined with bloom/lighting this lands as
+   blue/cyan in the final image.
+
+### Why my obvious fix didn't ship
+
+I tried adding a heuristic in `color_from_js` that promotes any value with
+top byte 0 and middle/low bytes set to `<<8 | 0xFF`. Two attempts:
+
+- `(u & 0xff000000)==0 && (u & 0x00ffffff)!=0` — broke `02-input.js`
+  conformance because `rgba8(0,0,0,255)=0xff` got promoted to blue.
+- `(u & 0xff000000)==0 && (u & 0x00ffff00)!=0` — broke `18-mesh-helpers.js`
+  too. Plenty of RA-side carts use rgba8 with R=0 and the heuristic can't
+  reliably distinguish them from web-style 0xRRGGBB literals.
+
+The change is currently reverted. `color_from_js` is back to its original
+3-line body.
+
+### Three viable approaches for the next picker
+
+1. **Opt-in runtime flag** — add `nova64.compat.use24BitColors(true)`. Web
+   compat shim flips it when `nova64.fx.enableBloom` (web-style API) fires.
+   `color_from_js` checks the flag; only promotes when on. **Cleanest.**
+2. **Per-API JS wrappers** — wrap every color-accepting setter in the late
+   compat eval (`setFog`, `setMeshColor`, `setMeshEmissive`, `setAmbientLight`,
+   `setLightColor`, `createCube`, `createSphere`, `createPlane`,
+   `setSkyColor`, etc.). Pre-translate 24-bit hex to 32-bit before calling
+   native. Verbose but doesn't touch conformance at all.
+3. **Stable rebaseline** — flip color_from_js to always promote, then
+   rebaseline the ~10-30 affected conformance tests. Riskier but simpler
+   final code path.
+
+I'd pick option 1 — surgical, opt-in, defaulted to current behavior so all
+existing conformance is preserved.
+
+### Validation when shipping the fix
+
+```bash
+# Before: web cart shows blue/cyan scene
+node retroarch/tests/space_harrier_visual_parity.mjs --retro-cart=web
+# Capture web-play-now.png + ra-play-now.png side-by-side
+# After fix: RA should show green floor + orange pillars + red player
+
+# Conformance must still pass at 17+ (16-transforms is pre-existing flaky)
+NOVA64_GLES_TESTS=1 bash retroarch/tests/run_conformance.sh --skip-build --from 0 --to 100
+```
+
+---
+
+## ⚡ Latest shipped: tone-map exposure for brightness parity (commit `8abbcbd`)
+
+Codex's prior handoff identified the brightness gap (gameplay edge luma
+browser 108.5 vs RA 54.9). Three sets `renderer.toneMappingExposure = 1.25`
+in `runtime/backends/threejs/gpu-threejs.js` — RA's GLES post shader was
+applying `linear_to_srgb(aces_filmic(color))` with no exposure scalar.
+
+Runtime change:
+- `nova64_post_state.exposure` field, default 1.0
+- Post fragment shader multiplies `color.rgb * max(u_exposure, 0)` before ACES
+- `nova64.post.setExposure(e)` JS API (range 0..8)
+- Web compat shim: `nova64.fx.enableBloom` now also calls
+  `p.setExposure(1.25)` so unmodified web carts get Three's default
+
+Verification:
+- `21-post-effects` checksum stayed `d5f674e4aa5e28a0` (default 1.0 = identical math)
+- Web-cart edge luma ratio: **41.6% → 53.7%** (Codex baseline → after)
+- Web-cart average score: 74.5 → 73.3 (slight wobble — the color shift
+  above dominates whatever brightness helps)
+
+---
 
 ---
 

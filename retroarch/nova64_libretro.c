@@ -2008,8 +2008,20 @@ static uint32_t color_from_js(JSContext *ctx, JSValueConst value, uint32_t fallb
       return fallback;
    if (JS_ToInt64(ctx, &out, value) < 0)
       return fallback;
-   return (uint32_t)out;
+   uint32_t u = (uint32_t)out;
+   /* Opt-in web compat: when use24BitColors flag is on, treat values with
+    * top byte 0 and any color bits set as 0xRRGGBB literals from Three/Babylon
+    * and promote to 0xRRGGBBFF. Off by default so RA-side rgba8() callers
+    * (especially rgba8(0,0,0,255) = 0xff) are unaffected. */
+   extern bool nova64_compat_24bit_colors;
+   if (nova64_compat_24bit_colors
+         && (u & 0xff000000u) == 0u
+         && (u & 0x00ffff00u) != 0u)
+      u = (u << 8) | 0xffu;
+   return u;
 }
+
+bool nova64_compat_24bit_colors = false;
 
 static int int_from_js(JSContext *ctx, JSValueConst value, int fallback)
 {
@@ -26972,6 +26984,16 @@ static JSValue js_post_set_exposure(JSContext *ctx, JSValueConst this_val, int a
    return JS_UNDEFINED;
 }
 
+/* use24BitColors(on): toggle Three/Babylon-style 0xRRGGBB hex literal
+ * promotion. Off by default. Web compat layer flips it on so unmodified
+ * web carts' PALETTE = { sky: 0xaa22ff, ... } values render correctly. */
+static JSValue js_compat_use_24bit_colors(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   nova64_compat_24bit_colors = (argc > 0) ? JS_ToBool(ctx, argv[0]) : true;
+   return JS_UNDEFINED;
+}
+
 static JSValue js_post_set_bloom_radius(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
    (void)this_val;
@@ -29054,6 +29076,7 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, post, "setPixelate", js_post_set_pixelate, 1);
    set_function(ctx, post, "setBloom", js_post_set_bloom, 1);
    set_function(ctx, post, "setExposure", js_post_set_exposure, 1);
+   set_function(ctx, post, "use24BitColors", js_compat_use_24bit_colors, 1);
    set_function(ctx, post, "setBloomRadius", js_post_set_bloom_radius, 1);
    set_function(ctx, post, "setBloomThreshold", js_post_set_bloom_threshold, 1);
    set_function(ctx, post, "setChromatic", js_post_set_chromatic, 1);
@@ -29093,9 +29116,13 @@ static bool install_nova64_api(JSContext *ctx)
            "return{"
              /* enableBloom also lifts exposure to Three's 1.25 default — web
                 renderer.toneMappingExposure=1.25 in gpu-threejs.js. Single
-                biggest brightness lever for web-cart parity on RA. */
+                biggest brightness lever for web-cart parity on RA. Also
+                flips the 24-bit color promotion flag since carts calling
+                enableBloom (web signature) almost certainly use 0xRRGGBB
+                hex literals throughout. */
              "enableBloom:function(s,r,t){p.setBloom(s==null?1:s,r,t);"
-               "if(p.setExposure)p.setExposure(1.25);},"
+               "if(p.setExposure)p.setExposure(1.25);"
+               "if(p.use24BitColors)p.use24BitColors(true);},"
              "disableBloom:function(){p.setBloom(0);},"
              "setBloomStrength:function(s){p.setBloom(s);},"
              "setBloomRadius:function(r){p.setBloomRadius(r);},"

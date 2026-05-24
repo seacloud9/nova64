@@ -20,6 +20,7 @@ const PALETTE = {
    treeLeaves: rgba8( 17, 170,  85, 255),
    pillar:     rgba8(255, 170,   0, 255),
    sun:        rgba8(255, 220, 120, 255),
+   enemyShot:  rgba8(255,  60, 220, 255),
 };
 
 const FLOOR_Y = -2;
@@ -42,26 +43,40 @@ const PLAYER_SPEED = 45;
 const PLAYER_X_BOUND = 22;
 const PLAYER_Y_MIN = 0;
 const PLAYER_Y_MAX = 18;
+const PLAYER_MAX_HP = 100;
+const PLAYER_HIT_DMG = 25;
+const PLAYER_INVULN_TIME = 1.4;   // brief i-frames after taking a hit
+const PLAYER_RESPAWN_INVULN = 3.0; // longer shield after losing a life
+const GLITCH_FLASH_TIME = 0.18;
 const BULLET_SPEED = 180;
 const BULLET_LIFE = 2.0;
 const FIRE_COOLDOWN = 0.12;
 const ENEMY_SPEED = 32;
-const ENEMY_HIT_RADIUS = 2.0;
+const ENEMY_BULLET_SPEED = 70;
+const ENEMY_BULLET_LIFE = 3.0;
+const PLAYER_HIT_X = 1.6;  // half-width of player hit box (matches web ~1.5)
+const PLAYER_HIT_Y = 2.0;
+const PLAYER_HIT_Z = 2.0;
 const SCROLL_SPEED = 45;
-const MAX_BULLETS = 16;
+const MAX_BULLETS = 24;
 const MAX_ENEMIES = 16;
+const MAX_ENEMY_BULLETS = 24;
 const MAX_SCENERY = 40;
 const SPAWN_INTERVAL = 1.0;
 
 let tilePlanes = [];
 let player = {
-   x: 0, y: 0, z: -5,
+   x: 0, y: 2, z: -5,
+   hp: PLAYER_MAX_HP,
+   invuln: 0,    // remaining seconds of invulnerability
    meshes: {},
 };
 let bulletMesh = null;
 let bullets = [];
-let enemyMesh = null;
+// Enemies are now per-enemy mesh groups (core sphere + eye + wings) to match web
 let enemies = [];
+let enemyBullets = [];
+let enemyBulletMesh = null;
 let sceneryItems = [];
 let sunMesh = null;
 let scrollOff = 0;
@@ -75,6 +90,8 @@ let time = 0;
 let state = 'start';
 let startT = 0;
 let shakeT = 0;
+let glitchT = 0;
+let baseChromatic = 0.003;
 
 function applyStartVisuals() {
    setFog(PALETTE.sky, 18, 110);
@@ -123,9 +140,12 @@ function buildPlayer() {
    const bx = p.x, by = p.y, bz = p.z;
    const m = {};
    m.body = createCube(1.2, 1.56, 0.96, PALETTE.playerBody);
-   setMeshEmissive(m.body, PALETTE.playerBody, 0.22);
+   // Light emissive — enough to pop against the floor, but low enough to
+   // preserve diffuse shading (a too-strong glow flattens the body to a flat
+   // colored block instead of a 3D figure).
+   setMeshEmissive(m.body, PALETTE.playerBody, 0.18);
    m.head = createSphere(0.6, PALETTE.playerHead);
-   setMeshEmissive(m.head, PALETTE.playerHead, 0.18);
+   setMeshEmissive(m.head, PALETTE.playerHead, 0.12);
    m.hair = createCube(0.77, 0.28, 0.77, PALETTE.hair);
    m.jetpack = createCube(0.96, 1.2, 0.4, PALETTE.jetpack);
    m.gun = createCube(0.3, 0.3, 1.75, PALETTE.gun);
@@ -135,8 +155,10 @@ function buildPlayer() {
    m.legR = createCube(0.32, 0.8, 0.32, PALETTE.playerBody);
    m.flameL = createCube(0.3, 0.3, 0.3, PALETTE.flame);
    m.flameR = createCube(0.3, 0.3, 0.3, PALETTE.flame);
-   setMeshEmissive(m.flameL, PALETTE.flame, 0.4);
-   setMeshEmissive(m.flameR, PALETTE.flame, 0.4);
+   // Flames stay strongly emissive — they're meant to glow, and the bloom
+   // halo around them is what actually marks the player's position at distance.
+   setMeshEmissive(m.flameL, PALETTE.flame, 1.0);
+   setMeshEmissive(m.flameR, PALETTE.flame, 1.0);
    p.meshes = m;
    placePlayer();
 }
@@ -173,7 +195,14 @@ function setSceneVisible(v) {
    }
    if (sunMesh) setMeshVisible(sunMesh, v);
    if (bulletMesh) setMeshVisible(bulletMesh, v);
-   if (enemyMesh) setMeshVisible(enemyMesh, v);
+   if (enemyBulletMesh) setMeshVisible(enemyBulletMesh, v);
+   for (const e of enemies) {
+      if (!e.meshes) continue;
+      setMeshVisible(e.meshes.core, v);
+      setMeshVisible(e.meshes.eye, v);
+      setMeshVisible(e.meshes.wingL, v);
+      setMeshVisible(e.meshes.wingR, v);
+   }
 }
 
 function spawnScenery(initial) {
@@ -195,7 +224,9 @@ function spawnScenery(initial) {
       const trunkY = FLOOR_Y + h / 2;
       setPosition(trunk, x, trunkY, z);
       const top = createSphere(3.0 + Math.random() * 0.8, PALETTE.treeLeaves);
-      setMeshEmissive(top, PALETTE.treeLeaves, 0.35);
+      // Subtle emissive only — keep most of the sphere's diffuse gradient so
+      // trees read as round, not flat green disks (web uses 0 emissive).
+      setMeshEmissive(top, PALETTE.treeLeaves, 0.06);
       const topY = FLOOR_Y + h + 1.4;
       setPosition(top, x, topY, z);
       sceneryItems.push({ mesh: trunk, mesh2: top, x, z, oy: trunkY, topOy: topY, type: 'tree' });
@@ -204,16 +235,100 @@ function spawnScenery(initial) {
 
 function spawnEnemy() {
    if (enemies.length >= MAX_ENEMIES) return;
-   const fast = Math.random() < 0.3;
+   // Pick a type. Match web's distribution roughly:
+   //   ~25% fast (cyan, small, weak)
+   //   ~15% tank (orange-red, big, tough) — only after wave 4
+   //   else normal (purple)
+   const roll = Math.random();
+   let type = 'normal';
+   if (roll < 0.25) type = 'fast';
+   else if (roll < 0.40 && wave >= 4) type = 'tank';
+
+   let color = PALETTE.enemy;
+   let hp = 1;
+   let speed = 32 + Math.random() * 14;
+   let size = 1.6;
+   if (type === 'fast') {
+      color = PALETTE.enemyFast;
+      hp = 1;
+      speed = 56 + Math.random() * 20;
+      size = 1.2;
+   } else if (type === 'tank') {
+      color = rgba8(255, 80, 30, 255);
+      hp = 3;
+      speed = 22 + Math.random() * 10;
+      size = 2.2;
+   }
+
+   const x = (Math.random() - 0.5) * 36;
+   const y = 3 + Math.random() * 10;
+   const z = -120;
+
+   // Per-enemy mesh group (core + eye + two wings) — matches web exactly
+   const core = createSphere(size, color);
+   // Subtle core emissive — keep sphere gradient, let bloom do the popping
+   setMeshEmissive(core, color, 0.18);
+   setPosition(core, x, y, z);
+
+   const eye = createSphere(size * 0.42, PALETTE.enemyEye);
+   // Eye keeps high emissive — it's meant to look like a glowing eye
+   setMeshEmissive(eye, PALETTE.enemyEye, 1.0);
+   setPosition(eye, x, y, z + size * 0.6);
+
+   const wingL = createCube(size * 1.8, 0.18, size * 0.6, rgba8(85, 0, 170, 255));
+   setMeshEmissive(wingL, rgba8(85, 0, 170, 255), 0.1);
+   setPosition(wingL, x - size * 1.0, y, z);
+
+   const wingR = createCube(size * 1.8, 0.18, size * 0.6, rgba8(85, 0, 170, 255));
+   setMeshEmissive(wingR, rgba8(85, 0, 170, 255), 0.1);
+   setPosition(wingR, x + size * 1.0, y, z);
+
    enemies.push({
-      x: (Math.random() - 0.5) * 36,
-      y: 3 + Math.random() * 10,
-      z: -120,
-      speed: fast ? 56 : 32 + Math.random() * 14,
+      x, y, z,
+      vx: (Math.random() - 0.5) * 14,
+      vy: (Math.random() - 0.5) * 6,
+      speed,
+      hp,
+      type,
+      size,
       seed: Math.random() * Math.PI * 2,
-      fast,
-      slot: enemies.length,
+      timer: 0,
+      meshes: { core, eye, wingL, wingR },
    });
+}
+
+function destroyEnemyMeshes(e) {
+   if (!e || !e.meshes) return;
+   destroyMesh(e.meshes.core);
+   destroyMesh(e.meshes.eye);
+   destroyMesh(e.meshes.wingL);
+   destroyMesh(e.meshes.wingR);
+   e.meshes = null;
+}
+
+function spawnEnemyBullet(ex, ey, ez) {
+   if (enemyBullets.length >= MAX_ENEMY_BULLETS) return;
+   const dx = player.x - ex, dy = player.y - ey, dz = player.z - ez;
+   const len = Math.sqrt(dx*dx + dy*dy + dz*dz) || 1;
+   const sp = ENEMY_BULLET_SPEED;
+   enemyBullets.push({
+      x: ex, y: ey, z: ez,
+      vx: (dx / len) * sp,
+      vy: (dy / len) * sp,
+      vz: (dz / len) * sp,
+      life: ENEMY_BULLET_LIFE,
+      slot: enemyBullets.length,
+   });
+}
+
+function triggerHitGlitch() {
+   glitchT = GLITCH_FLASH_TIME;
+   if (nova64.post && nova64.post.setChromatic) nova64.post.setChromatic(0.022);
+}
+
+function clearGlitch() {
+   glitchT = 0;
+   if (nova64.post && nova64.post.setChromatic) nova64.post.setChromatic(baseChromatic);
 }
 
 function init_meshes() {
@@ -229,11 +344,16 @@ function init_meshes() {
    }
    setInstanceTransforms(bulletMesh, 0, hb);
 
-   enemyMesh = createInstancedMesh('cube', MAX_ENEMIES);
-   setMeshEmissive(enemyMesh, PALETTE.enemy, 0.4);
-   const he = new Array(MAX_ENEMIES * 16).fill(0);
-   for (let i = 0; i < MAX_ENEMIES; i++) he[i*16+15] = 1;
-   setInstanceTransforms(enemyMesh, 0, he);
+   // Enemy bullets — magenta spheres (instanced). Enemies themselves are
+   // per-enemy mesh groups so the wings/eyes match the web cart visually.
+   enemyBulletMesh = createInstancedMesh('cube', MAX_ENEMY_BULLETS);
+   setMeshEmissive(enemyBulletMesh, PALETTE.enemyShot, 1.6);
+   const heb = new Array(MAX_ENEMY_BULLETS * 16).fill(0);
+   for (let i = 0; i < MAX_ENEMY_BULLETS; i++) {
+      heb[i*16+15] = 1;
+      setInstanceColor(enemyBulletMesh, i, PALETTE.enemyShot);
+   }
+   setInstanceTransforms(enemyBulletMesh, 0, heb);
 
    sunMesh = createSphere(14, PALETTE.sun);
    setMeshEmissive(sunMesh, PALETTE.sun, 1.0);
@@ -245,22 +365,26 @@ function init_meshes() {
 function destroyAll() {
    for (const t of tilePlanes) destroyMesh(t.mesh);
    tilePlanes = [];
-   if (bulletMesh) { destroyMesh(bulletMesh); bulletMesh = null; }
-   if (enemyMesh)  { destroyMesh(enemyMesh);  enemyMesh = null; }
-   if (sunMesh)    { destroyMesh(sunMesh);    sunMesh = null; }
+   if (bulletMesh)      { destroyMesh(bulletMesh);      bulletMesh = null; }
+   if (enemyBulletMesh) { destroyMesh(enemyBulletMesh); enemyBulletMesh = null; }
+   if (sunMesh)         { destroyMesh(sunMesh);         sunMesh = null; }
    for (const k in player.meshes) destroyMesh(player.meshes[k]);
    player.meshes = {};
+   for (const e of enemies) destroyEnemyMeshes(e);
+   enemies = [];
    for (const s of sceneryItems) {
       destroyMesh(s.mesh);
       if (s.mesh2) destroyMesh(s.mesh2);
    }
    sceneryItems = [];
    bullets = [];
-   enemies = [];
+   enemyBullets = [];
 }
 
 function resetRun() {
-   player.x = 0; player.y = 0;
+   player.x = 0; player.y = 2;
+   player.hp = PLAYER_MAX_HP;
+   player.invuln = PLAYER_RESPAWN_INVULN;
    scrollOff = 0;
    score = 0;
    lives = 3;
@@ -270,7 +394,10 @@ function resetRun() {
    time = 0;
    shakeT = 0;
    bullets = [];
+   for (const e of enemies) destroyEnemyMeshes(e);
    enemies = [];
+   enemyBullets = [];
+   clearGlitch();
    placePlayer();
 }
 
@@ -304,16 +431,24 @@ function uploadInstances() {
       }
       setInstanceTransforms(bulletMesh, 0, data);
    }
-   if (enemyMesh) {
-      const N = MAX_ENEMIES;
+   // Enemy mesh groups (core/eye/wings) — position each part relative to enemy
+   for (const e of enemies) {
+      if (!e.meshes) continue;
+      const bob = Math.sin(e.timer * 4 + e.seed) * 1.6;
+      setPosition(e.meshes.core,  e.x,                  e.y + bob,        e.z);
+      setPosition(e.meshes.eye,   e.x,                  e.y + bob,        e.z + e.size * 0.6);
+      setPosition(e.meshes.wingL, e.x - e.size * 1.0,   e.y + bob,        e.z);
+      setPosition(e.meshes.wingR, e.x + e.size * 1.0,   e.y + bob,        e.z);
+   }
+   if (enemyBulletMesh) {
+      const N = MAX_ENEMY_BULLETS;
       const data = new Array(N * 16).fill(0);
       for (let i = 0; i < N; i++) data[i*16+15] = 1;
-      for (const e of enemies) {
-         const s = e.fast ? 1.0 : 1.25;
-         writeMat4(data, e.slot * 16, s, s, s, e.x, e.y, e.z);
-         setInstanceColor(enemyMesh, e.slot, e.fast ? PALETTE.enemyFast : PALETTE.enemy);
+      for (let i = 0; i < enemyBullets.length; i++) {
+         const b = enemyBullets[i];
+         writeMat4(data, i * 16, 0.6, 0.6, 0.6, b.x, b.y, b.z);
       }
-      setInstanceTransforms(enemyMesh, 0, data);
+      setInstanceTransforms(enemyBulletMesh, 0, data);
    }
    if (tilePlanes.length) {
       const totalLength = TILE_ROWS * TILE;
@@ -328,6 +463,28 @@ function uploadInstances() {
    }
 }
 
+function damagePlayer(amount) {
+   if (player.invuln > 0) return;
+   player.hp -= amount;
+   player.invuln = PLAYER_INVULN_TIME;
+   shakeT = Math.max(shakeT, 0.35);
+   triggerHitGlitch();
+   if (player.hp <= 0) {
+      // Lose a life; respawn with shield + full hp unless game over.
+      lives -= 1;
+      if (lives <= 0) {
+         state = 'over';
+         if (score > best) best = score;
+         setPlayerVisible(false);
+      } else {
+         player.hp = PLAYER_MAX_HP;
+         player.x = 0;
+         player.y = 4;
+         player.invuln = PLAYER_RESPAWN_INVULN;
+      }
+   }
+}
+
 function updatePlay(dt) {
    if (btn('left'))  player.x -= PLAYER_SPEED * dt;
    if (btn('right')) player.x += PLAYER_SPEED * dt;
@@ -337,6 +494,23 @@ function updatePlay(dt) {
    if (player.x >  PLAYER_X_BOUND) player.x =  PLAYER_X_BOUND;
    if (player.y < PLAYER_Y_MIN) player.y = PLAYER_Y_MIN;
    if (player.y > PLAYER_Y_MAX) player.y = PLAYER_Y_MAX;
+
+   if (player.invuln > 0) {
+      player.invuln = Math.max(0, player.invuln - dt);
+      // Blink player parts while invulnerable
+      const visible = Math.floor(time * 18) % 2 === 0;
+      setMeshVisible(player.meshes.body, visible);
+      setMeshVisible(player.meshes.head, visible);
+   } else {
+      // Make sure body/head are visible after invuln ends
+      if (player.meshes.body) setMeshVisible(player.meshes.body, true);
+      if (player.meshes.head) setMeshVisible(player.meshes.head, true);
+   }
+
+   if (glitchT > 0) {
+      glitchT -= dt;
+      if (glitchT <= 0) clearGlitch();
+   }
 
    cooldown -= dt;
    if (btn('z') && cooldown <= 0) {
@@ -354,6 +528,7 @@ function updatePlay(dt) {
       spawnEnemy();
    }
 
+   // Player bullets
    for (let i = bullets.length - 1; i >= 0; i--) {
       const b = bullets[i];
       b.z -= BULLET_SPEED * dt;
@@ -361,34 +536,80 @@ function updatePlay(dt) {
       if (b.life <= 0 || b.z < -130) bullets.splice(i, 1);
    }
 
+   // Enemy update + collision (proper AABB against player, not just z>plane)
    for (let i = enemies.length - 1; i >= 0; i--) {
       const e = enemies[i];
+      e.timer += dt;
+      // Per-frame motion (forward + drift)
       e.z += e.speed * dt;
-      e.x += Math.sin(time * 1.8 + e.seed) * 5 * dt;
-      e.y += Math.cos(time * 2.1 + e.seed) * 2 * dt;
-      if (e.z > 8) {
-         enemies.splice(i, 1);
-         lives -= 1;
-         shakeT = 0.4;
-         if (lives <= 0) {
-            state = 'over';
-            if (score > best) best = score;
+      e.x += e.vx * dt + Math.sin(time * 1.8 + e.seed) * 4 * dt;
+      e.y += e.vy * dt + Math.cos(time * 2.1 + e.seed) * 2 * dt;
+      if (e.x < -28 || e.x > 28) e.vx *= -1;
+      if (e.y < 2 || e.y > 16) e.vy *= -1;
+
+      // Occasionally fire at the player once close enough
+      if (e.timer > 1.2 && e.z > -80 && e.z < -8) {
+         const fireChance = e.type === 'tank' ? 0.012 : 0.006;
+         if (Math.random() < fireChance) spawnEnemyBullet(e.x, e.y, e.z);
+      }
+
+      // If enemy crosses near the player plane, check AABB collision
+      if (e.z > -8 && e.z < 6) {
+         const dx = Math.abs(e.x - player.x);
+         const dy = Math.abs(e.y - player.y);
+         const dz = Math.abs(e.z - player.z);
+         if (dx < (PLAYER_HIT_X + e.size) && dy < (PLAYER_HIT_Y + e.size) && dz < (PLAYER_HIT_Z + e.size)) {
+            damagePlayer(PLAYER_HIT_DMG);
+            destroyEnemyMeshes(e);
+            enemies.splice(i, 1);
+            continue;
          }
+      }
+
+      // Off-screen behind camera — flew past
+      if (e.z > 10) {
+         destroyEnemyMeshes(e);
+         enemies.splice(i, 1);
          continue;
       }
+
+      // Bullet vs enemy collision
       for (let j = bullets.length - 1; j >= 0; j--) {
          const b = bullets[j];
          const dx = b.x - e.x, dy = b.y - e.y, dz = b.z - e.z;
-         if (dx*dx + dy*dy + dz*dz < ENEMY_HIT_RADIUS * ENEMY_HIT_RADIUS) {
-            enemies.splice(i, 1);
+         const r = e.size + 0.4;
+         if (dx*dx + dy*dy + dz*dz < r * r) {
+            e.hp -= 1;
             bullets.splice(j, 1);
-            score += e.fast ? 200 : 100;
+            if (e.hp <= 0) {
+               score += e.type === 'tank' ? 500 : e.type === 'fast' ? 250 : 150;
+               destroyEnemyMeshes(e);
+               enemies.splice(i, 1);
+            }
             break;
          }
       }
    }
+
+   // Enemy bullets
+   for (let i = enemyBullets.length - 1; i >= 0; i--) {
+      const b = enemyBullets[i];
+      b.x += b.vx * dt;
+      b.y += b.vy * dt;
+      b.z += b.vz * dt;
+      b.life -= dt;
+      const dx = Math.abs(b.x - player.x);
+      const dy = Math.abs(b.y - player.y);
+      const dz = Math.abs(b.z - player.z);
+      if (dx < PLAYER_HIT_X && dy < PLAYER_HIT_Y && dz < PLAYER_HIT_Z) {
+         damagePlayer(PLAYER_HIT_DMG);
+         enemyBullets.splice(i, 1);
+         continue;
+      }
+      if (b.life <= 0 || b.z > 14 || b.z < -130) enemyBullets.splice(i, 1);
+   }
+
    for (let i = 0; i < bullets.length; i++) bullets[i].slot = i;
-   for (let i = 0; i < enemies.length; i++) enemies[i].slot = i;
 
    for (let i = sceneryItems.length - 1; i >= 0; i--) {
       const s = sceneryItems[i];
@@ -430,17 +651,21 @@ export function update(dt) {
 
 function drawHud() {
    // Web-parity HUD: BIG yellow SCORE + cyan WAVE upper-left at 2x scale,
-   // red lives squares row, health bar upper-right with red bg + green fill.
+   // red lives squares row, health bar upper-right (red bg + green fill).
    print('SCORE: ' + score, 20, 14, rgba8(255, 200, 0, 255), 2);
    print('WAVE ' + wave, 20, 36, rgba8(0, 240, 255, 255), 2);
    for (let i = 0; i < lives; i++) {
       rectfill(170 + i * 18, 22, 12, 12, rgba8(255, 80, 80, 255));
    }
-   const health = 100;
+   const hp = Math.max(0, player.hp);
    rectfill(420, 16, 200, 20, rgba8(50, 0, 0, 200));
-   const hpw = Math.max(0, (health / 100) * 200) | 0;
+   const hpw = ((hp / PLAYER_MAX_HP) * 200) | 0;
    rectfill(420, 16, hpw, 20, hpw > 80 ? rgba8(80, 220, 120, 255) : rgba8(255, 50, 60, 255));
    rect(420, 16, 200, 20, rgba8(220, 230, 255, 240));
+   // Invuln/shield indicator (only when meaningfully active)
+   if (player.invuln > 0.1) {
+      printTight('SHIELD ' + player.invuln.toFixed(1) + 's', 420, 40, rgba8(0, 220, 255, 230));
+   }
 }
 
 function drawStartScreen() {

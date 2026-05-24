@@ -1,12 +1,71 @@
 # Nova64 Hardware GL on Windows — Status & Handover
 
-**Last updated:** 2026-05-24 (compat round 3 + space-harrier gameplay parity)
-**Branch:** `main` (clean, 1+ commit ahead of origin/main)
-**Working tree:** clean as of `69a4962`
+**Last updated:** 2026-05-24 (compat round 3 + visual parity handoff refresh)
+**Branch:** `main`
+**Working tree:** clean before this handoff refresh at `2cc92f6`
 
 ---
 
 ## 🔄 HANDOFF FOR CODEX (2026-05-24 evening)
+
+### Codex follow-up checkpoint — visual parity baseline
+
+I reviewed this handoff, woke MemPalace (`pnpm run mempalace:wake`), and reran
+the focused Space Harrier visual parity checks. Important distinction:
+
+- **`--retro-cart=port`** tests `retroarch/games/space-harrier-3d.js`, the
+  dedicated RA-port cart. It is useful for the hand-tuned port but is **not**
+  the web source-of-truth path. Latest report in
+  `retroarch/build/space-harrier-parity/report.json`: **91.0 avg**
+  (start 92.4 / play 89.5).
+- **`--retro-cart=web`** packages `examples/space-harrier-3d/code.js` directly
+  into a temporary `.nova` and runs that unchanged web cart through the RA
+  compat/runtime layer. This is the right check for implementation parity.
+  Latest command:
+
+```bash
+pnpm run retroarch:visual:space-harrier -- --retro-cart=web --out=retroarch/build/space-harrier-web-parity --port=5178
+```
+
+Latest web-cart-on-RA result: **79.7 avg** (start 74.5 / play 85.0).
+
+Key color deltas from the web-cart check:
+
+- Start/title average: RA is `rgb(-66,-15,-62)` versus browser; sky is
+  `rgb(-86,-37,-115)`. This is the big purple/sky loss the user is seeing.
+- Gameplay average: RA is `rgb(-23,-37,+29)` versus browser; sky is
+  `rgb(-21,-8,-10)`. Gameplay is less bad than title but still darker,
+  cooler/blue-shifted, and visibly less saturated.
+- Pixel similarity is still only 53.2% on start and 64.1% in gameplay.
+
+User-observed visual target:
+
+- Browser/web carts are the source of truth.
+- RA currently looks less sharp and less colorful. The web capture has crisper
+  checkerboard edges, stronger saturation, and brighter magenta/green/orange
+  material response.
+- Prefer runtime/renderer parity fixes over editing `examples/*/code.js`.
+  Only touch `retroarch/games/*` when explicitly improving the dedicated port.
+
+Suggested next parity work:
+
+1. Extend `space_harrier_visual_parity.mjs` with objective sharpness/chroma
+   metrics: average saturation, edge/gradient magnitude, and center-vs-edge
+   brightness so blur/vignette/color regressions are measurable.
+2. Audit the RA post stack for unintended softness or darkening: scanlines,
+   CRT/aperture pass, vignette, bloom resolve, and any framebuffer scaling.
+3. Audit color pipeline differences: RGB565/RGBA8/float paths, sRGB vs linear
+   assumptions, fog color mixing, tone/exposure, and material diffuse range.
+4. Keep rerunning both modes: `--retro-cart=web` for implementation parity and
+   `--retro-cart=port` only as a useful tuned-port comparison.
+
+Notes from this checkpoint:
+
+- The parity harness now has `--retro-cart=web|port` and a package script:
+  `pnpm run retroarch:visual:space-harrier`.
+- Runtime key names are already browser-tolerant in `decf293`: `Space`,
+  `ArrowLeft`, uppercase letters, etc. The web cart starts gameplay through
+  `nova64.input.isKeyPressed('Space')`, so do not regress that shim.
 
 ### Where Claude (Opus 4.7) left off
 
@@ -110,6 +169,7 @@ d88d515 fix(space-harrier-3d): bloom 0.55->0.38 + enable shadow casting
 decf293 feat(runtime): web-cart compat round 3 — 54/71 -> 67/71 PASS
 9fd61a0 docs(backlog): pin XR/AR out-of-scope + reflect 67/71 PASS
 69a4962 chore: commit Codex parity harness WIP (--retro-cart flag + npm script)
+2cc92f6 docs(handoff): prepend Codex handoff section — full session status
 ```
 
 ---

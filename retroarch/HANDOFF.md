@@ -15,6 +15,21 @@ Read these in order:
 4. `README.md` - stable RetroArch core usage, build, harness, and API docs.
 5. `GLES_SMOKE_MATRIX.md` - real-driver/manual smoke coverage.
 
+## Current Runtime Baseline
+
+As of 2026-05-24, the latest shipped work is the web-cart compatibility layer:
+
+- Latest commit: `ef10683 docs(backlog): document web-cart compat layer landing + remaining gaps`.
+- `examples/*/code.js` carts are now a first-class RetroArch target. Web remains
+  the source of truth; prefer runtime compatibility fixes over editing web carts.
+- Current compat probe: `9 PASS`, `4 WARN`, `5 FAIL` across the first 19 web carts.
+- Newly loading unmodified through the RA runtime: `hello-world`,
+  `hello-namespaced`, `filter-glitch`, `hud-demo`, `space-harrier-3d`,
+  `particle-fireworks`, `screen-demo`, `input-showcase`, and `boids-flocking`.
+- The next target is in `BACKLOG.md`: push web-cart compat from `9/19` toward
+  all-green by filling missing `nova64.scene`, UI, tween, voxel, and material
+  compatibility gaps.
+
 ## Current Visual Baseline
 
 As of 2026-05-22 after the all-scene luminous-volume parity pass:

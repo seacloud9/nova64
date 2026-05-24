@@ -1,6 +1,6 @@
 # Nova64 Hardware GL on Windows — Status & Handover
 
-**Last updated:** 2026-05-22 (deterministic web reference + scene-0 softening pass)
+**Last updated:** 2026-05-24 (web-cart compatibility layer handoff)
 **Branch:** `main`
 **Working tree:** expected clean after committing this pass; source changes listed below
 
@@ -8,6 +8,12 @@
 
 ## TL;DR
 
+- ✅ Latest shipped work: web-cart compatibility layer. `examples/*/code.js`
+  carts can now be loaded directly by the RA runtime without manual ports.
+- ✅ First compat probe is `9 PASS`, `4 WARN`, `5 FAIL` across 19 web carts.
+  Details and remaining API gaps are tracked in `BACKLOG.md`.
+- ✅ `examples/space-harrier-3d/code.js` now loads unmodified on RA. Treat web
+  carts as source of truth; make RA runtime/compat changes to reach parity.
 - ✅ Hardware OpenGL (Core 3.3 / GLES 3) rendering works on Windows RetroArch
 - ✅ Demoscene cart renders real 3D scenes with cinematic bloom + sky gradient
 - ✅ CRT scanlines + RGB aperture-grille post effect (visible on dark scenes)
@@ -26,6 +32,49 @@
 - ✅ New `retroarch/BACKLOG.md` captures deferred Windows perf work, queued visual features, stale-file cleanup, and code-anchored TODOs
 - ✅ Implemented the selected visual feature: **HDR post target (`RGBA16F`) + multi-mip bloom**, with `RGBA8` fallback if float render targets are not supported and old single-pass bloom kept as fallback
 - ✅ Recent C changes include the Shift+F perf overlay diagnostics plus the new HDR/multi-mip bloom post-processing path
+
+---
+
+## Current 2026-05-24 web-cart compat state
+
+Latest commits:
+
+```
+d65d8e7 feat(runtime): web-cart compat layer - examples/space-harrier-3d.js now loads unmodified
+0e60c5b feat(runtime): expand web-cart compat - 5/19 -> 9/19 carts now load
+ef10683 docs(backlog): document web-cart compat layer landing + remaining gaps
+```
+
+What's in this delta:
+
+- Runtime-side compatibility landed in `retroarch/nova64_libretro.c`; no web
+  cart rewrites are required for the working set.
+- New and expanded namespaces include `console`, `nova64.fx`, `nova64.util`,
+  `nova64.scene`, `nova64.ui`, `nova64.camera`, `nova64.light`,
+  `nova64.input`, `nova64.data`, and `nova64.tween`.
+- `drawScanlines` now accepts the web convention of alpha values in the
+  `0..255` range, avoiding opaque-black scanline output from unchanged web
+  carts.
+- `space-harrier-3d` can run both as the existing RA port and as the unmodified
+  web cart loaded through the compat layer.
+
+Validation / probe notes:
+
+- First 19-cart compat probe: `9 PASS`, `4 WARN`, `5 FAIL`.
+- Working unmodified web carts include `hello-world`, `hello-namespaced`,
+  `filter-glitch`, `hud-demo`, `space-harrier-3d`, `particle-fireworks`,
+  `screen-demo`, `input-showcase`, and `boids-flocking`.
+- Remaining gaps are listed in `BACKLOG.md` under "push web-cart compat from
+  9/19 -> all-green".
+
+Next target:
+
+1. Investigate the WARN carts first: `hello-3d`, `hello-skybox`,
+   `3d-advanced`, `camera-platformer`, and `demoscene`.
+2. Keep web carts as the source of truth. Prefer RA runtime compatibility
+   shims over changing `examples/*/code.js`.
+3. After each compat improvement, rerun the small probe and update `BACKLOG.md`
+   with the changed pass/warn/fail counts.
 
 ---
 

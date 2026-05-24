@@ -544,6 +544,8 @@ struct nova64_gles_backend {
    GLint cube_use_instancing_uniform;
    GLint cube_ambient_uniform;
    GLint cube_light_direction_uniform;
+   GLint cube_light_color_uniform;
+   GLint cube_light_intensity_uniform;
    GLint cube_fog_enabled_uniform;
    GLint cube_fog_color_uniform;
    GLint cube_fog_near_uniform;
@@ -31929,6 +31931,8 @@ static bool gles_create_cube_program(void)
       "uniform vec4 u_color;\n"
       "uniform vec4 u_ambient_color;\n"
       "uniform vec4 u_light_direction;\n"
+      "uniform vec4 u_light_color;\n"
+      "uniform float u_light_intensity;\n"
       "uniform int u_fog_enabled;\n"
       "uniform vec4 u_fog_color;\n"
       "uniform float u_fog_near;\n"
@@ -31994,8 +31998,11 @@ static bool gles_create_cube_program(void)
       "    surface_light = v_light;\n"
       "  }\n"
       "  float diff = mix(surface_light, 0.75, u_roughness * 0.5);\n"
+      "  vec3 light_color = srgb_to_linear(u_light_color.rgb);\n"
+      "  float light_luma = max(dot(light_color, vec3(0.299, 0.587, 0.114)), 0.001);\n"
+      "  light_color = light_color / light_luma * max(u_light_intensity, 0.0);\n"
       "  vec3 metal_ambient = mix(ambient, ambient * base.rgb, u_metalness);\n"
-      "  vec3 lit = max(base.rgb * diff + metal_ambient, vec3(0.0));\n"
+      "  vec3 lit = max(base.rgb * diff * light_color + metal_ambient, vec3(0.0));\n"
       "  if (u_shadow_enabled != 0) {\n"
       "    vec3 sc = v_shadow_coord.xyz / v_shadow_coord.w;\n"
       "    sc = sc * 0.5 + 0.5;\n"
@@ -32068,6 +32075,8 @@ static bool gles_create_cube_program(void)
    gles.cube_use_instancing_uniform = gles.GetUniformLocation(program, "u_use_instancing");
    gles.cube_ambient_uniform = gles.GetUniformLocation(program, "u_ambient_color");
    gles.cube_light_direction_uniform = gles.GetUniformLocation(program, "u_light_direction");
+   gles.cube_light_color_uniform = gles.GetUniformLocation(program, "u_light_color");
+   gles.cube_light_intensity_uniform = gles.GetUniformLocation(program, "u_light_intensity");
    gles.cube_fog_enabled_uniform = gles.GetUniformLocation(program, "u_fog_enabled");
    gles.cube_fog_color_uniform = gles.GetUniformLocation(program, "u_fog_color");
    gles.cube_fog_near_uniform = gles.GetUniformLocation(program, "u_fog_near");
@@ -32091,7 +32100,8 @@ static bool gles_create_cube_program(void)
       gles.cube_mvp_uniform >= 0 && gles.cube_model_uniform >= 0 &&
       gles.cube_view_uniform >= 0 && gles.cube_normal_matrix_uniform >= 0 &&
       gles.cube_color_uniform >= 0 && gles.cube_ambient_uniform >= 0 &&
-      gles.cube_light_direction_uniform >= 0;
+      gles.cube_light_direction_uniform >= 0 && gles.cube_light_color_uniform >= 0 &&
+      gles.cube_light_intensity_uniform >= 0;
 }
 
 static bool gles_create_shadow_program(void)
@@ -32936,6 +32946,14 @@ static void render_gles_primitive(const struct nova64_mesh *mesh, const float vi
       (float)(ambient & 0xffU) / 255.0f);
    gles.Uniform4f(gles.cube_light_direction_uniform,
       light_state.direction[0], light_state.direction[1], light_state.direction[2], 0.0f);
+   if (gles.cube_light_color_uniform >= 0)
+      gles.Uniform4f(gles.cube_light_color_uniform,
+         (float)((light_state.color >> 24) & 0xffU) / 255.0f,
+         (float)((light_state.color >> 16) & 0xffU) / 255.0f,
+         (float)((light_state.color >>  8) & 0xffU) / 255.0f,
+         1.0f);
+   if (gles.cube_light_intensity_uniform >= 0 && gles.Uniform1f)
+      gles.Uniform1f(gles.cube_light_intensity_uniform, light_state.intensity);
    /* fog */
    if (gles.cube_fog_enabled_uniform >= 0) {
       gles.Uniform1i(gles.cube_fog_enabled_uniform, light_state.fog_enabled ? 1 : 0);
@@ -33618,6 +33636,14 @@ static void render_gles_instanced_mesh(const struct nova64_mesh *mesh, const flo
       (float)(ambient & 0xffU) / 255.0f);
    gles.Uniform4f(gles.cube_light_direction_uniform,
       light_state.direction[0], light_state.direction[1], light_state.direction[2], 0.0f);
+   if (gles.cube_light_color_uniform >= 0)
+      gles.Uniform4f(gles.cube_light_color_uniform,
+         (float)((light_state.color >> 24) & 0xffU) / 255.0f,
+         (float)((light_state.color >> 16) & 0xffU) / 255.0f,
+         (float)((light_state.color >>  8) & 0xffU) / 255.0f,
+         1.0f);
+   if (gles.cube_light_intensity_uniform >= 0 && gles.Uniform1f)
+      gles.Uniform1f(gles.cube_light_intensity_uniform, light_state.intensity);
    if (gles.cube_fog_enabled_uniform >= 0)
       gles.Uniform1i(gles.cube_fog_enabled_uniform, light_state.fog_enabled ? 1 : 0);
    if (gles.cube_fog_color_uniform >= 0)

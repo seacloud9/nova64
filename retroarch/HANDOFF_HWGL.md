@@ -129,6 +129,45 @@ Follow-up edge-darkness check on 2026-05-24:
   still passed with the existing GLES post-effects checksum
   `d5f674e4aa5e28a0`.
 
+### Directional light color/intensity parity follow-up
+
+The Three.js backend routes cart-facing light controls into real
+`THREE.DirectionalLight` color/intensity, and `createN64Material()` uses
+`MeshStandardMaterial`. RA GLES previously accepted `setLightColor()` and
+`setDirectionalLight(direction, color, intensity)` but only used the direction
+in the shader, so warm/cool key lights were ignored.
+
+Runtime change:
+
+- The GLES cube/material shader now has `u_light_color` and
+  `u_light_intensity` uniforms.
+- Direct light is tinted in linear color space and luminance-normalized before
+  applying intensity. This keeps default white-light checksums stable while
+  letting colored cart lights behave more like the Three.js source path.
+- The uniforms are applied in both normal mesh and instanced mesh draw paths.
+
+Validation:
+
+```bash
+make -C retroarch all
+pnpm run retroarch:visual:space-harrier -- --retro-cart=web --out=retroarch/build/space-harrier-web-parity --port=5178
+pnpm run retroarch:visual:space-harrier -- --retro-cart=port --out=retroarch/build/space-harrier-port-parity --port=5178
+NOVA64_GLES_TESTS=1 bash retroarch/tests/run_conformance.sh --skip-build --from 17 --to 17
+NOVA64_GLES_TESTS=1 bash retroarch/tests/run_conformance.sh --skip-build --from 64 --to 64
+NOVA64_GLES_TESTS=1 bash retroarch/tests/run_conformance.sh --skip-build --from 20 --to 21
+```
+
+Latest web-cart result after this narrow light-color pass: **74.6 avg** (start
+73.9 / play 75.3). This is only a small improvement over the post-vignette
+baseline and does **not** solve the broad brightness gap. Latest port-cart
+control result remained healthy at **91.3 avg** (start 93.1 / play 89.4).
+
+Next likely higher-impact target: compare Three.js `EffectComposer`/renderer
+output behavior against the RA post shader and final `linear_to_srgb(ACES)`
+path. The web composer currently does not add an explicit `OutputPass` in
+`runtime/api-effects.js`, so tone/output ordering may differ from the GLES
+single-pass approximation.
+
 ### Three.js shader investigation note
 
 Codex reviewed the local Three.js shader sources:

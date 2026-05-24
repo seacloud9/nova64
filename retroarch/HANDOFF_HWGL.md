@@ -85,10 +85,12 @@ Baseline before the post adjustment showed the problem clearly:
 
 Runtime changes made in this pass:
 
-- `nova64.fx.enableVignette(darkness, offset)` now maps web shader semantics
-  into the RA one-value post scale: `darkness * offset * offset * 0.25`.
-  This keeps web-cart `enableVignette(0.9, 0.95)` from driving corners to
-  black.
+- `nova64.fx.enableVignette(darkness, offset)` initially mapped web shader
+  semantics into the RA one-value post scale with
+  `darkness * offset * offset * 0.25`. A follow-up edge-darkness check showed
+  that even this lighter mapping was still too punishing on top of the darker
+  RA scene, so the web-compat vignette bridge now suppresses the RA vignette
+  entirely. Direct `nova64.post.setVignette()` behavior is unchanged.
 - The GLES post-pass 4-neighbor smoothing weight was reduced from `0.58` to
   `0.22`. It still behaves like lightweight FXAA, but no longer reads as a
   broad blur.
@@ -111,6 +113,21 @@ Post-adjustment web-cart results:
   probably material/lighting/fog/color contrast and not only post blur.
 
 Port-cart control check stayed healthy: **91.1 avg** (start 93.1 / play 89.1).
+
+Follow-up edge-darkness check on 2026-05-24:
+
+- With the `0.12` compat scale trial, web-cart average was **74.9** and gameplay
+  edge/center was browser **0.891**, RA **0.664**.
+- With web-compat vignette suppressed, web-cart average was **74.5**, start
+  edge/center was browser **0.658**, RA **0.772**, and gameplay edge/center was
+  browser **0.847**, RA **0.826**.
+- Absolute brightness is still far too low: gameplay edge luma was browser
+  **108.5**, RA **54.9**. Next parity pass should target RA material/fog/light
+  color response and/or final tone mapping rather than treating vignette as the
+  whole problem.
+- `NOVA64_GLES_TESTS=1 bash retroarch/tests/run_conformance.sh --skip-build --from 20 --to 21`
+  still passed with the existing GLES post-effects checksum
+  `d5f674e4aa5e28a0`.
 
 ### Three.js shader investigation note
 

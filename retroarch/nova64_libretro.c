@@ -29045,7 +29045,7 @@ static bool install_nova64_api(JSContext *ctx)
              "setBloomStrength:function(s){p.setBloom(s);},"
              "enableVignette:function(d,o){"
                "d=d==null?1:d;o=o==null?0.9:o;"
-               "p.setVignette(Math.max(0,d*o*o*0.25));"
+               "p.setVignette(0);"
              "},"
              "disableVignette:function(){p.setVignette(0,1);},"
              "enableCRT:function(s){p.setCRT(s==null?1:s);},"

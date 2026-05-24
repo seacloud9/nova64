@@ -537,6 +537,8 @@ struct nova64_gles_backend {
    GLint cube_instance_model_attrib;
    GLint cube_instance_color_attrib;
    GLint cube_mvp_uniform;
+   GLint cube_model_uniform;
+   GLint cube_view_uniform;
    GLint cube_normal_matrix_uniform;
    GLint cube_color_uniform;
    GLint cube_use_instancing_uniform;
@@ -1107,6 +1109,7 @@ static struct nova64_texture textures[NOVA64_MAX_TEXTURES];
 static struct nova64_render_target render_targets[NOVA64_MAX_RENDER_TARGETS];
 static struct nova64_camera camera_state;
 static float g_last_view_projection[16]; /* cached for project3DToScreen */
+static float g_last_view[16];            /* cached for GLES view-space fog */
 static struct nova64_light light_state;
 
 /* ── Camera shake ─────────────────────────────────────────── */
@@ -27216,6 +27219,7 @@ static void render_gles_scene_to_rt(struct nova64_render_target *rt)
       mat4_look_at(view, eye, tgt, up);
    }
    mat4_multiply(view_projection, projection, view);
+   memcpy(g_last_view, view, sizeof(g_last_view));
    memcpy(g_last_view_projection, view_projection, sizeof(g_last_view_projection));
 
    /* Draw equirectangular skybox behind all geometry (GLES only) */
@@ -31117,6 +31121,8 @@ static bool gles_create_cube_program(void)
       "in mat4 a_instance_model;\n"
       "in vec4 a_instance_color;\n"
       "uniform mat4 u_mvp;\n"
+      "uniform mat4 u_model;\n"
+      "uniform mat4 u_view;\n"
       "uniform mat3 u_normal_matrix;\n"
       "uniform vec4 u_light_direction;\n"
       "uniform vec2 u_uv_offset;\n"
@@ -31124,29 +31130,30 @@ static bool gles_create_cube_program(void)
       "uniform mat4 u_shadow_mvp;\n"
       "uniform int u_use_instancing;\n"
       "out float v_light;\n"
-      "out float v_depth;\n"
+      "out float v_fog_depth;\n"
       "out vec2 v_uv;\n"
       "out vec4 v_shadow_coord;\n"
       "out vec3 v_normal;\n"
       "out vec4 v_instance_color;\n"
       "void main() {\n"
       "  vec4 local_pos = vec4(a_position, 1.0);\n"
-      "  vec4 world_pos = (u_use_instancing != 0) ? a_instance_model * local_pos : local_pos;\n"
+      "  vec4 world_pos = (u_use_instancing != 0) ? a_instance_model * local_pos : u_model * local_pos;\n"
       "  vec3 n = (u_use_instancing != 0) ? normalize(mat3(a_instance_model) * a_normal) : normalize(u_normal_matrix * a_normal);\n"
       "  vec3 l = normalize(-u_light_direction.xyz);\n"
       "  float diffuse = max(dot(n, l), 0.0);\n"
       "  v_light = 0.58 + diffuse * 0.42;\n"
       "  v_normal = n;\n"
       "  v_instance_color = a_instance_color;\n"
-      "  gl_Position = u_mvp * world_pos;\n"
-      "  v_depth = gl_Position.z / gl_Position.w;\n"
+      "  gl_Position = (u_use_instancing != 0) ? u_mvp * world_pos : u_mvp * local_pos;\n"
+      "  vec4 view_pos = u_view * world_pos;\n"
+      "  v_fog_depth = max(0.0, -view_pos.z);\n"
       "  v_uv = (a_position.xz + 0.5) * u_uv_scale + u_uv_offset;\n"
       "  v_shadow_coord = u_shadow_mvp * world_pos;\n"
       "}\n";
    static const char *fragment_source =
       "#version 300 es\nprecision highp float;\nprecision highp int;\n"
       "in float v_light;\n"
-      "in float v_depth;\n"
+      "in float v_fog_depth;\n"
       "in vec2 v_uv;\n"
       "in vec4 v_shadow_coord;\n"
       "in vec3 v_normal;\n"
@@ -31240,8 +31247,7 @@ static bool gles_create_cube_program(void)
       "    }\n"
       "  }\n"
       "  if (u_fog_enabled != 0) {\n"
-      "    float depth_linear = v_depth * 0.5 + 0.5;\n"
-      "    float fog_t = clamp((depth_linear - u_fog_near / (u_fog_far + 0.001)) / ((u_fog_far - u_fog_near) / (u_fog_far + 0.001)), 0.0, 1.0);\n"
+      "    float fog_t = clamp((v_fog_depth - u_fog_near) / max(u_fog_far - u_fog_near, 0.001), 0.0, 1.0);\n"
       "    lit = mix(lit, srgb_to_linear(u_fog_color.rgb), fog_t);\n"
       "  }\n"
       "  lit = max(lit + srgb_to_linear(u_emissive_color.rgb) * u_emissive_intensity, vec3(0.0));\n"
@@ -31287,6 +31293,8 @@ static bool gles_create_cube_program(void)
    gles.cube_instance_model_attrib = gles.GetAttribLocation(program, "a_instance_model");
    gles.cube_instance_color_attrib = gles.GetAttribLocation(program, "a_instance_color");
    gles.cube_mvp_uniform = gles.GetUniformLocation(program, "u_mvp");
+   gles.cube_model_uniform = gles.GetUniformLocation(program, "u_model");
+   gles.cube_view_uniform = gles.GetUniformLocation(program, "u_view");
    gles.cube_normal_matrix_uniform = gles.GetUniformLocation(program, "u_normal_matrix");
    gles.cube_color_uniform = gles.GetUniformLocation(program, "u_color");
    gles.cube_use_instancing_uniform = gles.GetUniformLocation(program, "u_use_instancing");
@@ -31312,7 +31320,8 @@ static bool gles_create_cube_program(void)
    gles.cube_shadow_texel_size_uniform = gles.GetUniformLocation(program, "u_shadow_texel_size");
    gles.cube_shadow_enabled_uniform = gles.GetUniformLocation(program, "u_shadow_enabled");
    return gles.cube_position_attrib >= 0 && gles.cube_normal_attrib >= 0 &&
-      gles.cube_mvp_uniform >= 0 && gles.cube_normal_matrix_uniform >= 0 &&
+      gles.cube_mvp_uniform >= 0 && gles.cube_model_uniform >= 0 &&
+      gles.cube_view_uniform >= 0 && gles.cube_normal_matrix_uniform >= 0 &&
       gles.cube_color_uniform >= 0 && gles.cube_ambient_uniform >= 0 &&
       gles.cube_light_direction_uniform >= 0;
 }
@@ -32143,6 +32152,8 @@ static void render_gles_primitive(const struct nova64_mesh *mesh, const float vi
 
    gles.UseProgram(gles.cube_program);
    gles.UniformMatrix4fv(gles.cube_mvp_uniform, 1, GL_FALSE, mvp);
+   gles.UniformMatrix4fv(gles.cube_model_uniform, 1, GL_FALSE, model);
+   gles.UniformMatrix4fv(gles.cube_view_uniform, 1, GL_FALSE, g_last_view);
    gles.UniformMatrix3fv(gles.cube_normal_matrix_uniform, 1, GL_FALSE, normal_matrix);
    gles.Uniform4f(gles.cube_color_uniform, r, g, b, a);
    if (gles.cube_use_instancing_uniform >= 0)
@@ -32820,6 +32831,12 @@ static void render_gles_instanced_mesh(const struct nova64_mesh *mesh, const flo
    }
 
    gles.UseProgram(gles.cube_program);
+   {
+      float identity[16];
+      mat4_identity(identity);
+      gles.UniformMatrix4fv(gles.cube_model_uniform, 1, GL_FALSE, identity);
+      gles.UniformMatrix4fv(gles.cube_view_uniform, 1, GL_FALSE, g_last_view);
+   }
    if (gles.cube_use_instancing_uniform >= 0)
       gles.Uniform1i(gles.cube_use_instancing_uniform, 0);
    if (gles.cube_output_srgb_uniform >= 0)
@@ -32973,6 +32990,7 @@ static void render_gles_instanced_mesh(const struct nova64_mesh *mesh, const flo
       float mvp[16];
       mat4_multiply(mvp, view_projection, model);
       gles.UniformMatrix4fv(gles.cube_mvp_uniform, 1, GL_FALSE, mvp);
+      gles.UniformMatrix4fv(gles.cube_model_uniform, 1, GL_FALSE, model);
       float nm[9];
       mat3_normal_from_model(nm, model);
       gles.UniformMatrix3fv(gles.cube_normal_matrix_uniform, 1, GL_FALSE, nm);
@@ -34108,6 +34126,7 @@ static void render_gles_scene(void)
       mat4_look_at(view, eye, tgt, up);
    }
    mat4_multiply(view_projection, projection, view);
+   memcpy(g_last_view, view, sizeof(g_last_view));
 
    /* Draw equirectangular skybox behind all geometry (GLES only) */
    render_gles_skybox(view, projection);

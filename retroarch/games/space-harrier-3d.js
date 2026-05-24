@@ -29,6 +29,10 @@ const TILE_ROWS = 35;
 const TILE_START_Z = 20;
 const FOG_NEAR = 30;
 const FOG_FAR  = 150;
+const SKY_TOP = rgba8(44, 48, 70, 255);
+const SKY_BOTTOM = rgba8(35, 38, 55, 255);
+const START_SKY_TOP = rgba8(170, 34, 255, 255);
+const START_SKY_BOTTOM = rgba8(72, 12, 110, 255);
 const PLAYER_SPEED = 45;
 const PLAYER_X_BOUND = 22;
 const PLAYER_Y_MIN = 0;
@@ -66,6 +70,24 @@ let time = 0;
 let state = 'start';
 let startT = 0;
 let shakeT = 0;
+
+function applyStartVisuals() {
+   setFog(PALETTE.sky, 18, 110);
+   setSkyColor(START_SKY_TOP, START_SKY_BOTTOM);
+   nova64.post.setBloom(0.38);
+   nova64.post.setChromatic(0.003);
+   nova64.post.setVignette(0.12);
+   nova64.post.setCRT(true);
+}
+
+function applyGameplayVisuals() {
+   setFog(PALETTE.sky, FOG_NEAR, FOG_FAR);
+   setSkyColor(SKY_TOP, SKY_BOTTOM);
+   nova64.post.setBloom(0.38);
+   nova64.post.setChromatic(0.003);
+   nova64.post.setVignette(0.12);
+   nova64.post.setCRT(true);
+}
 
 function writeMat4(out, off, sx, sy, sz, tx, ty, tz) {
    out[off+0]=sx; out[off+1]=0;  out[off+2]=0;  out[off+3]=0;
@@ -243,13 +265,8 @@ export function init() {
    setCameraFOV(70);
    setAmbientLight(rgba8(255, 255, 255, 255), 0.62);
    setLightDirection(-0.5, -1, -0.5);
-   setFog(PALETTE.sky, FOG_NEAR, FOG_FAR);
-   setSkyColor(PALETTE.sky, rgba8(72, 12, 110, 255));
-
-   nova64.post.setBloom(0.38);
-   nova64.post.setChromatic(0.003);
-   nova64.post.setVignette(0.9, 0.95);
-   nova64.post.setCRT(true);
+   setLightColor(rgba8(255, 240, 221, 255));
+   applyStartVisuals();
 
    init_meshes();
    setPlayerVisible(false);
@@ -370,11 +387,11 @@ export function update(dt) {
    time += dt;
    if (state === 'start') {
       startT += dt;
-      if (btnp('z') || btnp('x')) { state = 'playing'; setPlayerVisible(true); resetRun(); }
+      if (btnp('z') || btnp('x')) { state = 'playing'; applyGameplayVisuals(); setPlayerVisible(true); resetRun(); }
       return;
    }
    if (state === 'over') {
-      if (btnp('z') || btnp('x')) { state = 'playing'; resetRun(); }
+      if (btnp('z') || btnp('x')) { state = 'playing'; applyGameplayVisuals(); resetRun(); }
       return;
    }
 
@@ -382,8 +399,9 @@ export function update(dt) {
 
    const shake = shakeT > 0 ? Math.sin(time * 50) * shakeT * 0.6 : 0;
    shakeT = Math.max(0, shakeT - dt);
-   setCameraPosition(shake, 5, 12);
-   setCameraTarget(0, 3, -50);
+   const camFollow = 0.05;
+   setCameraPosition(player.x * camFollow + shake, 5 + player.y * camFollow, 12);
+   setCameraTarget(player.x * camFollow, 3 + player.y * camFollow, -50);
    placePlayer();
    uploadInstances();
 }
@@ -397,18 +415,45 @@ function drawHud() {
    printTight('T ' + time.toFixed(1) + 's', 560, 6, rgba8(180, 200, 255, 220));
 }
 
+function drawStartScreen() {
+   rectfill(0, 0, 640, 360, rgba8(8, 0, 28, 255));
+   drawGradient(0, 0, 640, 360, rgba8(138, 68, 230, 255), rgba8(45, 8, 100, 255), 'v');
+   drawRadialGradient(320, 105, 230, rgba8(225, 95, 255, 76), rgba8(0, 0, 0, 0));
+   drawRadialGradient(320, 440, 285, rgba8(120, 16, 190, 88), rgba8(0, 0, 0, 0));
+   drawNoise(0, 0, 640, 360, 0.02, rgba8(238, 225, 255, 180));
+
+   const sp = Math.sin(startT * 2) * 0.5 + 0.5;
+   drawStarburst(30, 30, 18, 7, 6, rgba8(255, 210, 65, Math.floor(sp * 210)), true);
+   drawStarburst(610, 30, 18, 7, 6, rgba8(255, 210, 65, Math.floor(sp * 210)), true);
+   drawStarburst(80, 66, 7, 3, 4, rgba8(245, 245, 210, 170), true);
+   drawStarburst(432, 72, 5, 2, 4, rgba8(245, 245, 220, 150), true);
+   drawWave(0, 185, 640, 6, 0.028, startT * 2.2, rgba8(180, 0, 255, 120), 2);
+   drawWave(0, 190, 640, 4, 0.042, startT * 2.8 + 1.0, rgba8(255, 100, 0, 85), 2);
+
+   const bob = Math.floor(Math.sin(startT * 1.8) * 7);
+   printBold('SPACE', 282, 44 + bob, rgba8(255, 210, 60, 255));
+   printBold('HARRIER', 270, 98 + bob, rgba8(255, 146, 48, 255));
+   printBold('NOVA 64 EDITION', 226, 142, rgba8(155, 215, 255, 245));
+   printTight('THE LEGENDARY RAIL SHOOTER RETURNS', 174, 164, rgba8(225, 190, 255, 225));
+
+   rectfill(90, 200, 440, 92, rgba8(15, 5, 35, 215));
+   rect(90, 200, 440, 92, rgba8(180, 60, 255, 255));
+   rect(180, 246, 216, 46, rgba8(184, 245, 220, 245));
+   rectfill(181, 247, 214, 44, rgba8(178, 238, 218, 230));
+   printTight('Blast through waves of alien enemies', 190, 218, rgba8(235, 240, 255, 245));
+   printTight('Dodge projectiles and collect power-ups', 184, 233, rgba8(235, 240, 255, 245));
+   printTight('Retro N64 rail-shooter with 3D visuals', 178, 248, rgba8(235, 240, 255, 245));
+   printTight('START MISSION', 256, 272, rgba8(115, 160, 160, 255));
+   printTight('WASD / Arrows: Move   Space: Shoot', 188, 318, rgba8(200, 190, 255, 220));
+   printFlash(226, 334, 'PRESS SPACE TO LAUNCH', rgba8(255, 210, 65, 255), -startT, 1.6);
+   drawScanlines(45, 2);
+}
+
 export function draw() {
    cls(rgba8(2, 2, 14, 255));
 
    if (state === 'start') {
-      rectfill(108, 80, 532, 210, rgba8(8, 4, 26, 232));
-      glowRect(108, 80, 532, 210, rgba8(170, 80, 255, 220), 6);
-      printBold('SPACE HARRIER', 222, 96, rgba8(255, 80, 120, 255));
-      printBold('NOVA 64', 274, 116, rgba8(255, 240, 80, 255));
-      printTight('Rail-shooter port of examples/space-harrier-3d.', 134, 140, rgba8(220, 230, 255, 230));
-      printTight('Arrows: bank / climb / dive', 196, 158, rgba8(200, 220, 255, 220));
-      printTight('Z: fire   X: confirm', 222, 172, rgba8(200, 220, 255, 220));
-      printFlash(248, 192, 'Z to start', rgba8(255, 220, 80, 255), -startT, 1.6);
+      drawStartScreen();
       return;
    }
 

@@ -162,11 +162,40 @@ will trip over them while editing the relevant code:
 
 The last session arc closed out:
 
-- ★ **`space-harrier-3d` parity fix.** User reported the gameplay looked
-  "upside down and backwards" and "didn't look like web". Root cause: the
-  original port used gappy raised emissive cube tiles (`TILE*0.48` wide,
-  `0.16` tall, emissive 0.22) which created a "ceiling coffer" illusion
-  from the low-angle camera, and movement params were ~1/3 of web's. Fix:
+- ★ **`space-harrier-3d` true fix — view-space fog shader.** Root cause of
+  the "upside down and backwards" complaint was *not* geometry — it was the
+  GLES cube fog shader. The old formula `depth_linear - u_fog_near / (u_fog_far
+  + 0.001)` was missing parentheses and used clip-space `gl_Position.z /
+  gl_Position.w` (non-linear in camera distance). Result: ground tiles near
+  the camera got fully fogged to sky color, painting the lower half of the
+  screen pink-purple and visually inverting the scene. The shader now passes
+  a `u_view` uniform + computes `v_fog_depth = -view_pos.z` (real camera
+  distance) and lerps `(v_fog_depth - near) / (far - near)`. Conformance
+  checksums for `17-light-fog` and `60-fog` rebaselined. Companion cart
+  polish from this arc:
+  - Floor → real `createPlane` + `rotateMesh` per tile (matches web exactly,
+    replaces the original instanced-cube floor)
+  - Movement to web parity: speed 45, X[-22,22], Y[0,18], initial y=0
+  - Scenery scrolls at full speed with proper `oy`/`topOy` retention
+  - Bloom `0.95→0.38`, removed flame/body emissive overload
+  - Camera follow uses matched 0.05× multipliers on pos+tgt (no inversion when flying high)
+  - Split `applyStartVisuals()`/`applyGameplayVisuals()` so the gameplay sky is
+    dark blue (matches web's night look) while the start screen keeps the
+    bright magenta wash
+  - New parity harness at `retroarch/tests/space_harrier_visual_parity.mjs`
+    captures web + RA at start + gameplay moments and scores via
+    field/color/sky similarity (run with `node retroarch/tests/space_harrier_visual_parity.mjs`)
+  - Windows .dll cross-built via `make platform=win-cross` and deployed to
+    `C:\RetroArch-Win64\cores\` — old .dll from before 547a7e0 was missing the
+    fog fix
+  - Captures: `c:\tmp\sh-fin2-play.png`, `c:\tmp\sh-fin2-up.png`
+  - **Known follow-up:** start screen 2D primitives (`drawNoise`, `drawGradient`,
+    `rectfill`) don't fully cover the 3D scene under the post-FX stack — the
+    start screen shows the dim scene behind it. Cosmetic; gameplay unaffected.
+
+- ★ **`space-harrier-3d` first attempt (partially correct).** Initially
+  diagnosed as "ceiling coffer" illusion from gappy raised emissive cube tiles
+  + ~1/3 of web's movement speed. Those fixes shipped:
   - Floor → flat continuous planes (`TILE*0.5` wide, `0.02` tall, no
     emissive), 35 rows starting at `z=20-TILE/2` matching web's
     `startZ - r*size - size/2`

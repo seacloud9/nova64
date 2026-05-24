@@ -1,0 +1,305 @@
+#!/usr/bin/env node
+// Focused web-vs-RetroArch captures for the Space Harrier 3D port. The report
+// emphasizes average color and broad field similarity so palette drift is easy
+// to spot before chasing smaller geometry differences.
+
+import { chromium } from 'playwright';
+import pixelmatch from 'pixelmatch';
+import { PNG } from 'pngjs';
+import { spawn, spawnSync } from 'node:child_process';
+import fs from 'node:fs';
+import path from 'node:path';
+import process from 'node:process';
+import { fileURLToPath } from 'node:url';
+
+const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
+const RETROARCH_DIR = path.resolve(SCRIPT_DIR, '..');
+const ROOT = path.resolve(RETROARCH_DIR, '..');
+const DEFAULT_OUT = path.join(RETROARCH_DIR, 'build', 'space-harrier-parity');
+
+const MOMENTS = [
+  { id: 'start', label: 'START_SCREEN', webAction: null, retroFrames: 120, retroArgs: [] },
+  { id: 'play', label: 'GAMEPLAY', webAction: 'start', retroFrames: 180, retroArgs: ['--btn', 'b'] },
+];
+
+function parseArgs(argv) {
+  const opts = {
+    baseUrl: '',
+    noStartServer: false,
+    outDir: DEFAULT_OUT,
+    port: 5178,
+  };
+
+  for (const arg of argv) {
+    if (arg === '--') continue;
+    else if (arg === '--no-start-server') opts.noStartServer = true;
+    else if (arg.startsWith('--base-url=')) opts.baseUrl = arg.slice('--base-url='.length);
+    else if (arg.startsWith('--out=')) opts.outDir = path.resolve(arg.slice('--out='.length));
+    else if (arg.startsWith('--port=')) opts.port = Number(arg.slice('--port='.length));
+    else throw new Error(`unknown option: ${arg}`);
+  }
+
+  opts.baseUrl ||= `http://127.0.0.1:${opts.port}`;
+  return opts;
+}
+
+function ensureDirs(outDir) {
+  for (const dir of [outDir, path.join(outDir, 'browser'), path.join(outDir, 'retroarch'), path.join(outDir, 'diff')]) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+}
+
+function run(command, args, options = {}) {
+  const result = spawnSync(command, args, {
+    cwd: ROOT,
+    encoding: 'utf8',
+    stdio: options.stdio || 'pipe',
+    env: { ...process.env, ...options.env },
+  });
+  if (result.status !== 0) {
+    throw new Error(`${command} ${args.join(' ')} failed\n${result.stdout || ''}\n${result.stderr || ''}`);
+  }
+  return result;
+}
+
+async function wait(ms) {
+  await new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function isServerReady(baseUrl) {
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 1500);
+    const res = await fetch(baseUrl, { signal: controller.signal });
+    clearTimeout(timer);
+    return res.ok || res.status < 500;
+  } catch {
+    return false;
+  }
+}
+
+async function ensureServer(opts) {
+  if (await isServerReady(opts.baseUrl)) return null;
+  if (opts.noStartServer) throw new Error(`${opts.baseUrl} is not reachable and --no-start-server was used`);
+
+  const child = spawn('pnpm', ['exec', 'vite', '--host', '127.0.0.1', '--port', String(opts.port)], {
+    cwd: ROOT,
+    env: process.env,
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  child.stdout.on('data', chunk => process.stdout.write(`[vite] ${chunk}`));
+  child.stderr.on('data', chunk => process.stderr.write(`[vite] ${chunk}`));
+
+  const started = Date.now();
+  while (!(await isServerReady(opts.baseUrl))) {
+    if (Date.now() - started > 120000) {
+      child.kill('SIGTERM');
+      throw new Error(`timed out waiting for ${opts.baseUrl}`);
+    }
+    await wait(500);
+  }
+  return child;
+}
+
+async function captureBrowser(opts) {
+  const browser = await chromium.launch({ headless: true });
+  const page = await browser.newPage({
+    viewport: { width: 1024, height: 768 },
+    deviceScaleFactor: 1,
+  });
+
+  await page.goto(`${opts.baseUrl}/console.html?demo=space-harrier-3d`, {
+    waitUntil: 'networkidle',
+    timeout: 120000,
+  });
+  await page.waitForSelector('#screen', { timeout: 30000 });
+  await wait(1800);
+
+  const outputs = new Map();
+  for (const moment of MOMENTS) {
+    if (moment.webAction === 'start') {
+      await page.keyboard.press('Space');
+      await wait(1800);
+    }
+    const outPath = path.join(opts.outDir, 'browser', `${moment.id}-${moment.label}.png`);
+    await page.locator('#screen').screenshot({ path: outPath });
+    outputs.set(moment.id, { path: outPath });
+    console.log(`[browser] ${moment.id} ${path.relative(ROOT, outPath)}`);
+  }
+
+  await browser.close();
+  return outputs;
+}
+
+function captureRetroArch(opts) {
+  const outputs = new Map();
+  for (const moment of MOMENTS) {
+    const ppmPath = path.join(opts.outDir, 'retroarch', `${moment.id}-${moment.label}.ppm`);
+    const pngPath = path.join(opts.outDir, 'retroarch', `${moment.id}-${moment.label}.png`);
+    run(path.join(RETROARCH_DIR, 'build', 'harness'), [
+      path.join(RETROARCH_DIR, 'nova64_libretro.so'),
+      path.join(RETROARCH_DIR, 'games', 'space-harrier-3d.js'),
+      '--gles',
+      ...moment.retroArgs,
+      '--frames',
+      String(moment.retroFrames),
+      '--capture',
+      ppmPath,
+    ]);
+    run('python3', [path.join(RETROARCH_DIR, 'tests', 'ppm_to_png.py'), ppmPath, pngPath]);
+    outputs.set(moment.id, { path: pngPath });
+    console.log(`[retroarch] ${moment.id} ${path.relative(ROOT, pngPath)}`);
+  }
+  return outputs;
+}
+
+function readPng(filePath) {
+  return PNG.sync.read(fs.readFileSync(filePath));
+}
+
+function resizeNearest(src, width, height) {
+  if (src.width === width && src.height === height) return src;
+  const out = new PNG({ width, height });
+  for (let y = 0; y < height; y++) {
+    const sy = Math.min(src.height - 1, Math.floor((y / height) * src.height));
+    for (let x = 0; x < width; x++) {
+      const sx = Math.min(src.width - 1, Math.floor((x / width) * src.width));
+      const si = (sy * src.width + sx) * 4;
+      const di = (y * width + x) * 4;
+      out.data[di] = src.data[si];
+      out.data[di + 1] = src.data[si + 1];
+      out.data[di + 2] = src.data[si + 2];
+      out.data[di + 3] = src.data[si + 3];
+    }
+  }
+  return out;
+}
+
+function averageColor(png, region = { x: 0, y: 0, w: 1, h: 1 }) {
+  const x0 = Math.floor(region.x * png.width);
+  const y0 = Math.floor(region.y * png.height);
+  const x1 = Math.max(x0 + 1, Math.floor((region.x + region.w) * png.width));
+  const y1 = Math.max(y0 + 1, Math.floor((region.y + region.h) * png.height));
+  let r = 0;
+  let g = 0;
+  let b = 0;
+  let count = 0;
+  for (let y = y0; y < y1; y++) {
+    for (let x = x0; x < x1; x++) {
+      const i = (y * png.width + x) * 4;
+      r += png.data[i];
+      g += png.data[i + 1];
+      b += png.data[i + 2];
+      count++;
+    }
+  }
+  return { r: r / count, g: g / count, b: b / count };
+}
+
+function colorDistance(a, b) {
+  return (Math.abs(a.r - b.r) + Math.abs(a.g - b.g) + Math.abs(a.b - b.b)) / (3 * 255);
+}
+
+function fieldSimilarity(a, b, cols = 24, rows = 14) {
+  let abs = 0;
+  for (let row = 0; row < rows; row++) {
+    for (let col = 0; col < cols; col++) {
+      const region = { x: col / cols, y: row / rows, w: 1 / cols, h: 1 / rows };
+      abs += colorDistance(averageColor(a, region), averageColor(b, region));
+    }
+  }
+  return 1 - abs / (cols * rows);
+}
+
+function compareMoment(opts, moment, browserPath, retroPath) {
+  let browser = readPng(browserPath);
+  const retro = readPng(retroPath);
+  browser = resizeNearest(browser, retro.width, retro.height);
+
+  const diff = new PNG({ width: retro.width, height: retro.height });
+  const diffPixels = pixelmatch(browser.data, retro.data, diff.data, retro.width, retro.height, {
+    threshold: 0.24,
+    includeAA: true,
+  });
+  const diffPath = path.join(opts.outDir, 'diff', `${moment.id}-${moment.label}.png`);
+  fs.writeFileSync(diffPath, PNG.sync.write(diff));
+
+  const browserAverage = averageColor(browser);
+  const retroAverage = averageColor(retro);
+  const browserSky = averageColor(browser, { x: 0, y: 0, w: 1, h: 0.5 });
+  const retroSky = averageColor(retro, { x: 0, y: 0, w: 1, h: 0.5 });
+  const colorSimilarity = 1 - colorDistance(browserAverage, retroAverage);
+  const skyColorSimilarity = 1 - colorDistance(browserSky, retroSky);
+  const pixelSimilarity = 1 - diffPixels / (retro.width * retro.height);
+  const fieldScore = fieldSimilarity(browser, retro);
+  const score = fieldScore * 0.5 + colorSimilarity * 0.25 + skyColorSimilarity * 0.2 + pixelSimilarity * 0.05;
+
+  return {
+    id: moment.id,
+    label: moment.label,
+    browser: path.relative(ROOT, browserPath),
+    retroarch: path.relative(ROOT, retroPath),
+    diff: path.relative(ROOT, diffPath),
+    dimensions: `${retro.width}x${retro.height}`,
+    browserAverage,
+    retroAverage,
+    browserSky,
+    retroSky,
+    colorSimilarity,
+    skyColorSimilarity,
+    fieldScore,
+    pixelSimilarity,
+    score,
+  };
+}
+
+async function main() {
+  const opts = parseArgs(process.argv.slice(2));
+  ensureDirs(opts.outDir);
+  const server = await ensureServer(opts);
+  try {
+    const browser = await captureBrowser(opts);
+    const retro = captureRetroArch(opts);
+    const results = MOMENTS.map(moment => compareMoment(opts, moment, browser.get(moment.id).path, retro.get(moment.id).path));
+    const summary = {
+      generatedAt: new Date().toISOString(),
+      outDir: path.relative(ROOT, opts.outDir),
+      averageScore: results.reduce((sum, result) => sum + result.score, 0) / results.length,
+      results,
+    };
+    const reportPath = path.join(opts.outDir, 'report.json');
+    fs.writeFileSync(reportPath, `${JSON.stringify(summary, null, 2)}\n`);
+
+    console.log('\nSpace Harrier visual parity report');
+    for (const result of results) {
+      const ba = result.browserAverage;
+      const ra = result.retroAverage;
+      const bs = result.browserSky;
+      const rs = result.retroSky;
+      console.log(
+        `${result.id}: score=${(result.score * 100).toFixed(1)} ` +
+          `field=${(result.fieldScore * 100).toFixed(1)} ` +
+          `avg=${(result.colorSimilarity * 100).toFixed(1)} ` +
+          `sky=${(result.skyColorSimilarity * 100).toFixed(1)} ` +
+          `pixel=${(result.pixelSimilarity * 100).toFixed(1)}`
+      );
+      console.log(
+        `  avg web rgb(${ba.r.toFixed(0)},${ba.g.toFixed(0)},${ba.b.toFixed(0)}) ` +
+          `ra rgb(${ra.r.toFixed(0)},${ra.g.toFixed(0)},${ra.b.toFixed(0)})`
+      );
+      console.log(
+        `  sky web rgb(${bs.r.toFixed(0)},${bs.g.toFixed(0)},${bs.b.toFixed(0)}) ` +
+          `ra rgb(${rs.r.toFixed(0)},${rs.g.toFixed(0)},${rs.b.toFixed(0)})`
+      );
+    }
+    console.log(`average=${(summary.averageScore * 100).toFixed(1)}`);
+    console.log(`report=${path.relative(ROOT, reportPath)}`);
+  } finally {
+    if (server) server.kill('SIGTERM');
+  }
+}
+
+main().catch(error => {
+  console.error(error);
+  process.exit(1);
+});

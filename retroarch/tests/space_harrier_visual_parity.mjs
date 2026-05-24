@@ -16,10 +16,20 @@ const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const RETROARCH_DIR = path.resolve(SCRIPT_DIR, '..');
 const ROOT = path.resolve(RETROARCH_DIR, '..');
 const DEFAULT_OUT = path.join(RETROARCH_DIR, 'build', 'space-harrier-parity');
+const RETRO_CART_MODES = new Set(['web', 'port']);
 
 const MOMENTS = [
-  { id: 'start', label: 'START_SCREEN', webAction: null, retroFrames: 120, retroArgs: [] },
-  { id: 'play', label: 'GAMEPLAY', webAction: 'start', retroFrames: 180, retroArgs: ['--btn', 'b'] },
+  { id: 'start', label: 'START_SCREEN', webAction: null, retroFrames: 120, retroArgs: {} },
+  {
+    id: 'play',
+    label: 'GAMEPLAY',
+    webAction: 'start',
+    retroFrames: 180,
+    retroArgs: {
+      web: ['--key', 'space'],
+      port: ['--btn', 'b'],
+    },
+  },
 ];
 
 function parseArgs(argv) {
@@ -28,6 +38,7 @@ function parseArgs(argv) {
     noStartServer: false,
     outDir: DEFAULT_OUT,
     port: 5178,
+    retroCart: 'web',
   };
 
   for (const arg of argv) {
@@ -36,6 +47,12 @@ function parseArgs(argv) {
     else if (arg.startsWith('--base-url=')) opts.baseUrl = arg.slice('--base-url='.length);
     else if (arg.startsWith('--out=')) opts.outDir = path.resolve(arg.slice('--out='.length));
     else if (arg.startsWith('--port=')) opts.port = Number(arg.slice('--port='.length));
+    else if (arg.startsWith('--retro-cart=')) {
+      opts.retroCart = arg.slice('--retro-cart='.length);
+      if (!RETRO_CART_MODES.has(opts.retroCart)) {
+        throw new Error(`--retro-cart must be one of: ${[...RETRO_CART_MODES].join(', ')}`);
+      }
+    }
     else throw new Error(`unknown option: ${arg}`);
   }
 
@@ -44,7 +61,13 @@ function parseArgs(argv) {
 }
 
 function ensureDirs(outDir) {
-  for (const dir of [outDir, path.join(outDir, 'browser'), path.join(outDir, 'retroarch'), path.join(outDir, 'diff')]) {
+  for (const dir of [
+    outDir,
+    path.join(outDir, 'browser'),
+    path.join(outDir, 'retroarch'),
+    path.join(outDir, 'diff'),
+    path.join(outDir, 'packages'),
+  ]) {
     fs.mkdirSync(dir, { recursive: true });
   }
 }
@@ -60,6 +83,25 @@ function run(command, args, options = {}) {
     throw new Error(`${command} ${args.join(' ')} failed\n${result.stdout || ''}\n${result.stderr || ''}`);
   }
   return result;
+}
+
+function packageWebCart(opts) {
+  const novaPath = path.join(opts.outDir, 'packages', 'space-harrier-3d-web.nova');
+  const codePath = path.join(ROOT, 'examples', 'space-harrier-3d', 'code.js');
+  const metaPath = path.join(ROOT, 'examples', 'space-harrier-3d', 'meta.json');
+  const zipScript = `
+import os
+import sys
+import zipfile
+
+code_path, meta_path, nova_path = sys.argv[1:]
+with zipfile.ZipFile(nova_path, 'w', zipfile.ZIP_DEFLATED) as archive:
+    archive.write(code_path, 'code.js')
+    if os.path.exists(meta_path):
+        archive.write(meta_path, 'meta.json')
+`;
+  run('python3', ['-c', zipScript, codePath, metaPath, novaPath]);
+  return novaPath;
 }
 
 async function wait(ms) {
@@ -133,21 +175,24 @@ async function captureBrowser(opts) {
 
 function captureRetroArch(opts) {
   const outputs = new Map();
+  const retroCartPath =
+    opts.retroCart === 'web' ? packageWebCart(opts) : path.join(RETROARCH_DIR, 'games', 'space-harrier-3d.js');
+
   for (const moment of MOMENTS) {
     const ppmPath = path.join(opts.outDir, 'retroarch', `${moment.id}-${moment.label}.ppm`);
     const pngPath = path.join(opts.outDir, 'retroarch', `${moment.id}-${moment.label}.png`);
     run(path.join(RETROARCH_DIR, 'build', 'harness'), [
       path.join(RETROARCH_DIR, 'nova64_libretro.so'),
-      path.join(RETROARCH_DIR, 'games', 'space-harrier-3d.js'),
+      retroCartPath,
       '--gles',
-      ...moment.retroArgs,
+      ...(moment.retroArgs[opts.retroCart] || []),
       '--frames',
       String(moment.retroFrames),
       '--capture',
       ppmPath,
     ]);
     run('python3', [path.join(RETROARCH_DIR, 'tests', 'ppm_to_png.py'), ppmPath, pngPath]);
-    outputs.set(moment.id, { path: pngPath });
+    outputs.set(moment.id, { path: pngPath, cart: retroCartPath });
     console.log(`[retroarch] ${moment.id} ${path.relative(ROOT, pngPath)}`);
   }
   return outputs;
@@ -200,6 +245,14 @@ function colorDistance(a, b) {
   return (Math.abs(a.r - b.r) + Math.abs(a.g - b.g) + Math.abs(a.b - b.b)) / (3 * 255);
 }
 
+function colorDelta(a, b) {
+  return {
+    r: b.r - a.r,
+    g: b.g - a.g,
+    b: b.b - a.b,
+  };
+}
+
 function fieldSimilarity(a, b, cols = 24, rows = 14) {
   let abs = 0;
   for (let row = 0; row < rows; row++) {
@@ -243,8 +296,10 @@ function compareMoment(opts, moment, browserPath, retroPath) {
     dimensions: `${retro.width}x${retro.height}`,
     browserAverage,
     retroAverage,
+    averageDelta: colorDelta(browserAverage, retroAverage),
     browserSky,
     retroSky,
+    skyDelta: colorDelta(browserSky, retroSky),
     colorSimilarity,
     skyColorSimilarity,
     fieldScore,
@@ -264,13 +319,15 @@ async function main() {
     const summary = {
       generatedAt: new Date().toISOString(),
       outDir: path.relative(ROOT, opts.outDir),
+      retroCart: opts.retroCart,
+      retroCartPath: path.relative(ROOT, retro.get(MOMENTS[0].id).cart),
       averageScore: results.reduce((sum, result) => sum + result.score, 0) / results.length,
       results,
     };
     const reportPath = path.join(opts.outDir, 'report.json');
     fs.writeFileSync(reportPath, `${JSON.stringify(summary, null, 2)}\n`);
 
-    console.log('\nSpace Harrier visual parity report');
+    console.log(`\nSpace Harrier visual parity report (${opts.retroCart} cart on RetroArch)`);
     for (const result of results) {
       const ba = result.browserAverage;
       const ra = result.retroAverage;
@@ -285,11 +342,13 @@ async function main() {
       );
       console.log(
         `  avg web rgb(${ba.r.toFixed(0)},${ba.g.toFixed(0)},${ba.b.toFixed(0)}) ` +
-          `ra rgb(${ra.r.toFixed(0)},${ra.g.toFixed(0)},${ra.b.toFixed(0)})`
+          `ra rgb(${ra.r.toFixed(0)},${ra.g.toFixed(0)},${ra.b.toFixed(0)}) ` +
+          `delta rgb(${result.averageDelta.r.toFixed(0)},${result.averageDelta.g.toFixed(0)},${result.averageDelta.b.toFixed(0)})`
       );
       console.log(
         `  sky web rgb(${bs.r.toFixed(0)},${bs.g.toFixed(0)},${bs.b.toFixed(0)}) ` +
-          `ra rgb(${rs.r.toFixed(0)},${rs.g.toFixed(0)},${rs.b.toFixed(0)})`
+          `ra rgb(${rs.r.toFixed(0)},${rs.g.toFixed(0)},${rs.b.toFixed(0)}) ` +
+          `delta rgb(${result.skyDelta.r.toFixed(0)},${result.skyDelta.g.toFixed(0)},${result.skyDelta.b.toFixed(0)})`
       );
     }
     console.log(`average=${(summary.averageScore * 100).toFixed(1)}`);

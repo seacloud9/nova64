@@ -27,8 +27,11 @@ const TILE = 5;
 const TILE_COLS = 22;
 const TILE_ROWS = 35;
 const TILE_START_Z = 20;
-const FOG_NEAR = 30;
-const FOG_FAR  = 150;
+// Push fog start out: with FOG_NEAR=30 the floor's per-tile fog distance
+// shows as visible "stepped" bands across the near/mid floor. NEAR=70 keeps
+// the close 12 rows of tiles clean and only fogs the far distance.
+const FOG_NEAR = 70;
+const FOG_FAR  = 160;
 // Gameplay sky tuned to web parity capture: neutral dark gray rgb(65,68,75)
 const SKY_TOP = rgba8(54, 58, 68, 255);
 const SKY_BOTTOM = rgba8(38, 40, 50, 255);

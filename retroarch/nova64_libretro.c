@@ -550,6 +550,7 @@ struct nova64_gles_backend {
    GLint cube_emissive_intensity_uniform;
    GLint cube_roughness_uniform;
    GLint cube_metalness_uniform;
+   GLint cube_output_srgb_uniform;
    GLint cube_uv_offset_uniform;
    GLint cube_uv_scale_uniform;
    /* Shadow map uniforms in cube program */
@@ -573,6 +574,7 @@ struct nova64_gles_backend {
    GLint skybox_position_attrib;
    GLint skybox_inv_view_proj_uniform;
    GLint skybox_texture_uniform;
+   GLint skybox_output_srgb_uniform;
    bool skybox_resources_ready;
    /* Two-colour sky gradient program (used when setSkyColor is set but no
       skybox texture is bound). */
@@ -580,6 +582,7 @@ struct nova64_gles_backend {
    GLint  sky_gradient_position_attrib;
    GLint  sky_gradient_top_uniform;
    GLint  sky_gradient_bottom_uniform;
+   GLint  sky_gradient_output_srgb_uniform;
    bool   sky_gradient_resources_ready;
 };
 
@@ -741,6 +744,8 @@ static uint32_t sky_top_color    = 0x000000FFU;
 static uint32_t sky_bottom_color = 0x000000FFU;
 /* Equirectangular skybox texture handle; 0 = disabled (GLES only) */
 static int g_skybox_tex_handle = 0;
+/* True while the GLES scene is rendering into the linear HDR post target. */
+static bool gles_scene_post_active = false;
 
 /* 16-color draw palette plus one exact-color swap for retro palette tricks. */
 static uint32_t draw_palette[16];
@@ -1966,6 +1971,17 @@ static unsigned read_audio_latency_ms(void)
 static uint32_t rgba8(uint32_t r, uint32_t g, uint32_t b, uint32_t a)
 {
    return ((r & 0xffU) << 24) | ((g & 0xffU) << 16) | ((b & 0xffU) << 8) | (a & 0xffU);
+}
+
+static float srgb_channel_to_linear(float c)
+{
+   if (c < 0.0f)
+      c = 0.0f;
+   if (c > 1.0f)
+      c = 1.0f;
+   if (c <= 0.04045f)
+      return c / 12.92f;
+   return powf((c + 0.055f) / 1.055f, 2.4f);
 }
 
 static uint32_t color_from_js(JSContext *ctx, JSValueConst value, uint32_t fallback)
@@ -31146,18 +31162,48 @@ static bool gles_create_cube_program(void)
       "uniform float u_emissive_intensity;\n"
       "uniform float u_roughness;\n"
       "uniform float u_metalness;\n"
+      "uniform int u_output_srgb;\n"
       "uniform sampler2D u_shadow_map;\n"
       "uniform float u_shadow_texel_size;\n"
       "uniform int u_shadow_enabled;\n"
       "uniform int u_use_instancing;\n"
       "out vec4 fragColor;\n"
+      "float srgb_to_linear_channel(float c) {\n"
+      "  return (c <= 0.04045) ? c / 12.92 : pow((c + 0.055) / 1.055, 2.4);\n"
+      "}\n"
+      "float linear_to_srgb_channel(float c) {\n"
+      "  return (c <= 0.0031308) ? c * 12.92 : 1.055 * pow(c, 1.0 / 2.4) - 0.055;\n"
+      "}\n"
+      "vec3 srgb_to_linear(vec3 c) {\n"
+      "  c = clamp(c, 0.0, 1.0);\n"
+      "  return vec3(srgb_to_linear_channel(c.r), srgb_to_linear_channel(c.g), srgb_to_linear_channel(c.b));\n"
+      "}\n"
+      "vec3 linear_to_srgb(vec3 c) {\n"
+      "  c = max(c, vec3(0.0));\n"
+      "  return vec3(linear_to_srgb_channel(c.r), linear_to_srgb_channel(c.g), linear_to_srgb_channel(c.b));\n"
+      "}\n"
+      "vec3 rrt_and_odt_fit(vec3 v) {\n"
+      "  vec3 a = v * (v + 0.0245786) - 0.000090537;\n"
+      "  vec3 b = v * (0.983729 * v + 0.4329510) + 0.238081;\n"
+      "  return a / b;\n"
+      "}\n"
+      "vec3 aces_filmic(vec3 color) {\n"
+      "  const mat3 ACESInputMat = mat3(vec3(0.59719, 0.07600, 0.02840), vec3(0.35458, 0.90834, 0.13383), vec3(0.04823, 0.01566, 0.83777));\n"
+      "  const mat3 ACESOutputMat = mat3(vec3(1.60475, -0.10208, -0.00327), vec3(-0.53108, 1.10813, -0.07276), vec3(-0.07367, -0.00605, 1.07602));\n"
+      "  color *= 1.25 / 0.6;\n"
+      "  color = ACESInputMat * color;\n"
+      "  color = rrt_and_odt_fit(color);\n"
+      "  color = ACESOutputMat * color;\n"
+      "  return clamp(color, 0.0, 1.0);\n"
+      "}\n"
       "float shadow_tap(vec2 uv, float depth) {\n"
       "  return depth - 0.005 > texture(u_shadow_map, uv).r ? 0.0 : 1.0;\n"
       "}\n"
       "void main() {\n"
-      "  vec3 ambient = u_ambient_color.rgb * 0.35;\n"
+      "  vec3 ambient = srgb_to_linear(u_ambient_color.rgb) * 0.35;\n"
       "  vec4 draw_color = (u_use_instancing != 0) ? v_instance_color : u_color;\n"
-      "  vec4 base = (u_has_texture != 0) ? texture(u_texture, v_uv) * draw_color : draw_color;\n"
+      "  vec4 texel = (u_has_texture != 0) ? texture(u_texture, v_uv) : vec4(1.0);\n"
+      "  vec4 base = vec4(srgb_to_linear(texel.rgb) * srgb_to_linear(draw_color.rgb), texel.a * draw_color.a);\n"
       "  float surface_light;\n"
       "  if (u_has_normal_map != 0) {\n"
       "    vec3 nm = texture(u_normal_map, v_uv).rgb * 2.0 - 1.0;\n"
@@ -31170,7 +31216,7 @@ static bool gles_create_cube_program(void)
       "  }\n"
       "  float diff = mix(surface_light, 0.75, u_roughness * 0.5);\n"
       "  vec3 metal_ambient = mix(ambient, ambient * base.rgb, u_metalness);\n"
-      "  vec3 lit = clamp(base.rgb * diff + metal_ambient, 0.0, 1.0);\n"
+      "  vec3 lit = max(base.rgb * diff + metal_ambient, vec3(0.0));\n"
       "  if (u_shadow_enabled != 0) {\n"
       "    vec3 sc = v_shadow_coord.xyz / v_shadow_coord.w;\n"
       "    sc = sc * 0.5 + 0.5;\n"
@@ -31192,9 +31238,11 @@ static bool gles_create_cube_program(void)
       "  if (u_fog_enabled != 0) {\n"
       "    float depth_linear = v_depth * 0.5 + 0.5;\n"
       "    float fog_t = clamp((depth_linear - u_fog_near / (u_fog_far + 0.001)) / ((u_fog_far - u_fog_near) / (u_fog_far + 0.001)), 0.0, 1.0);\n"
-      "    lit = mix(lit, u_fog_color.rgb, fog_t);\n"
+      "    lit = mix(lit, srgb_to_linear(u_fog_color.rgb), fog_t);\n"
       "  }\n"
-      "  lit = clamp(lit + u_emissive_color.rgb * u_emissive_intensity, 0.0, 1.0);\n"
+      "  lit = max(lit + srgb_to_linear(u_emissive_color.rgb) * u_emissive_intensity, vec3(0.0));\n"
+      "  if (u_output_srgb != 0)\n"
+      "    lit = linear_to_srgb(aces_filmic(lit));\n"
       "  fragColor = vec4(lit, base.a);\n"
       "}\n";
 
@@ -31252,6 +31300,7 @@ static bool gles_create_cube_program(void)
    gles.cube_emissive_intensity_uniform = gles.GetUniformLocation(program, "u_emissive_intensity");
    gles.cube_roughness_uniform = gles.GetUniformLocation(program, "u_roughness");
    gles.cube_metalness_uniform = gles.GetUniformLocation(program, "u_metalness");
+   gles.cube_output_srgb_uniform = gles.GetUniformLocation(program, "u_output_srgb");
    gles.cube_uv_offset_uniform = gles.GetUniformLocation(program, "u_uv_offset");
    gles.cube_uv_scale_uniform = gles.GetUniformLocation(program, "u_uv_scale");
    gles.cube_shadow_map_uniform = gles.GetUniformLocation(program, "u_shadow_map");
@@ -32032,6 +32081,8 @@ static void render_gles_primitive(const struct nova64_mesh *mesh, const float vi
    gles.Uniform4f(gles.cube_color_uniform, r, g, b, a);
    if (gles.cube_use_instancing_uniform >= 0)
       gles.Uniform1i(gles.cube_use_instancing_uniform, 0);
+   if (gles.cube_output_srgb_uniform >= 0)
+      gles.Uniform1i(gles.cube_output_srgb_uniform, gles_scene_post_active ? 0 : 1);
    uint32_t ambient = color_with_intensity(light_state.ambient, light_state.ambient_intensity);
    gles.Uniform4f(gles.cube_ambient_uniform,
       (float)((ambient >> 24) & 0xffU) / 255.0f,
@@ -32696,6 +32747,8 @@ static void render_gles_instanced_mesh(const struct nova64_mesh *mesh, const flo
    gles.UseProgram(gles.cube_program);
    if (gles.cube_use_instancing_uniform >= 0)
       gles.Uniform1i(gles.cube_use_instancing_uniform, 0);
+   if (gles.cube_output_srgb_uniform >= 0)
+      gles.Uniform1i(gles.cube_output_srgb_uniform, gles_scene_post_active ? 0 : 1);
 
    uint32_t ambient = color_with_intensity(light_state.ambient, light_state.ambient_intensity);
    gles.Uniform4f(gles.cube_ambient_uniform,
@@ -32866,13 +32919,45 @@ static bool gles_create_sky_gradient_program(void)
       "in vec2 v_ndc;\n"
       "uniform vec4 u_top;\n"
       "uniform vec4 u_bottom;\n"
+      "uniform int u_output_srgb;\n"
       "out vec4 fragColor;\n"
+      "float srgb_to_linear_channel(float c) {\n"
+      "  return (c <= 0.04045) ? c / 12.92 : pow((c + 0.055) / 1.055, 2.4);\n"
+      "}\n"
+      "float linear_to_srgb_channel(float c) {\n"
+      "  return (c <= 0.0031308) ? c * 12.92 : 1.055 * pow(c, 1.0 / 2.4) - 0.055;\n"
+      "}\n"
+      "vec3 srgb_to_linear(vec3 c) {\n"
+      "  c = clamp(c, 0.0, 1.0);\n"
+      "  return vec3(srgb_to_linear_channel(c.r), srgb_to_linear_channel(c.g), srgb_to_linear_channel(c.b));\n"
+      "}\n"
+      "vec3 linear_to_srgb(vec3 c) {\n"
+      "  c = max(c, vec3(0.0));\n"
+      "  return vec3(linear_to_srgb_channel(c.r), linear_to_srgb_channel(c.g), linear_to_srgb_channel(c.b));\n"
+      "}\n"
+      "vec3 rrt_and_odt_fit(vec3 v) {\n"
+      "  vec3 a = v * (v + 0.0245786) - 0.000090537;\n"
+      "  vec3 b = v * (0.983729 * v + 0.4329510) + 0.238081;\n"
+      "  return a / b;\n"
+      "}\n"
+      "vec3 aces_filmic(vec3 color) {\n"
+      "  const mat3 ACESInputMat = mat3(vec3(0.59719, 0.07600, 0.02840), vec3(0.35458, 0.90834, 0.13383), vec3(0.04823, 0.01566, 0.83777));\n"
+      "  const mat3 ACESOutputMat = mat3(vec3(1.60475, -0.10208, -0.00327), vec3(-0.53108, 1.10813, -0.07276), vec3(-0.07367, -0.00605, 1.07602));\n"
+      "  color *= 1.25 / 0.6;\n"
+      "  color = ACESInputMat * color;\n"
+      "  color = rrt_and_odt_fit(color);\n"
+      "  color = ACESOutputMat * color;\n"
+      "  return clamp(color, 0.0, 1.0);\n"
+      "}\n"
       "void main() {\n"
       /* v_ndc.y in [-1, +1]; t=0 at bottom, t=1 at top. smoothstep softens
          the horizon line so it doesn't look like a hard mid-screen split. */
       "  float t = clamp(v_ndc.y * 0.5 + 0.5, 0.0, 1.0);\n"
       "  t = smoothstep(0.0, 1.0, t);\n"
-      "  fragColor = mix(u_bottom, u_top, t);\n"
+      "  vec3 color = mix(srgb_to_linear(u_bottom.rgb), srgb_to_linear(u_top.rgb), t);\n"
+      "  if (u_output_srgb != 0)\n"
+      "    color = linear_to_srgb(aces_filmic(color));\n"
+      "  fragColor = vec4(color, mix(u_bottom.a, u_top.a, t));\n"
       "}\n";
 
    GLuint vertex   = gles_compile_shader(GL_VERTEX_SHADER, vertex_source);
@@ -32899,6 +32984,7 @@ static bool gles_create_sky_gradient_program(void)
    gles.sky_gradient_position_attrib   = gles.GetAttribLocation(program, "a_position");
    gles.sky_gradient_top_uniform       = gles.GetUniformLocation(program, "u_top");
    gles.sky_gradient_bottom_uniform    = gles.GetUniformLocation(program, "u_bottom");
+   gles.sky_gradient_output_srgb_uniform = gles.GetUniformLocation(program, "u_output_srgb");
    gles.sky_gradient_resources_ready   = true;
    return gles.sky_gradient_position_attrib >= 0;
 }
@@ -32924,6 +33010,8 @@ static void render_gles_sky_gradient(void)
    gles.UseProgram(gles.sky_gradient_program);
    gles.Uniform4f(gles.sky_gradient_top_uniform,    tr, tg, tb, 1.0f);
    gles.Uniform4f(gles.sky_gradient_bottom_uniform, br, bg, bb, 1.0f);
+   if (gles.sky_gradient_output_srgb_uniform >= 0)
+      gles.Uniform1i(gles.sky_gradient_output_srgb_uniform, gles_scene_post_active ? 0 : 1);
 
    gles.BindBuffer(GL_ARRAY_BUFFER, gles.overlay_vbo);
    gles.BindBuffer(GL_ELEMENT_ARRAY_BUFFER, gles.overlay_ibo);
@@ -32953,13 +33041,46 @@ static bool gles_create_skybox_program(void)
       "in vec2 v_ndc;\n"
       "uniform mat4 u_inv_vp;\n"
       "uniform sampler2D u_skybox_tex;\n"
+      "uniform int u_output_srgb;\n"
       "out vec4 fragColor;\n"
+      "float srgb_to_linear_channel(float c) {\n"
+      "  return (c <= 0.04045) ? c / 12.92 : pow((c + 0.055) / 1.055, 2.4);\n"
+      "}\n"
+      "float linear_to_srgb_channel(float c) {\n"
+      "  return (c <= 0.0031308) ? c * 12.92 : 1.055 * pow(c, 1.0 / 2.4) - 0.055;\n"
+      "}\n"
+      "vec3 srgb_to_linear(vec3 c) {\n"
+      "  c = clamp(c, 0.0, 1.0);\n"
+      "  return vec3(srgb_to_linear_channel(c.r), srgb_to_linear_channel(c.g), srgb_to_linear_channel(c.b));\n"
+      "}\n"
+      "vec3 linear_to_srgb(vec3 c) {\n"
+      "  c = max(c, vec3(0.0));\n"
+      "  return vec3(linear_to_srgb_channel(c.r), linear_to_srgb_channel(c.g), linear_to_srgb_channel(c.b));\n"
+      "}\n"
+      "vec3 rrt_and_odt_fit(vec3 v) {\n"
+      "  vec3 a = v * (v + 0.0245786) - 0.000090537;\n"
+      "  vec3 b = v * (0.983729 * v + 0.4329510) + 0.238081;\n"
+      "  return a / b;\n"
+      "}\n"
+      "vec3 aces_filmic(vec3 color) {\n"
+      "  const mat3 ACESInputMat = mat3(vec3(0.59719, 0.07600, 0.02840), vec3(0.35458, 0.90834, 0.13383), vec3(0.04823, 0.01566, 0.83777));\n"
+      "  const mat3 ACESOutputMat = mat3(vec3(1.60475, -0.10208, -0.00327), vec3(-0.53108, 1.10813, -0.07276), vec3(-0.07367, -0.00605, 1.07602));\n"
+      "  color *= 1.25 / 0.6;\n"
+      "  color = ACESInputMat * color;\n"
+      "  color = rrt_and_odt_fit(color);\n"
+      "  color = ACESOutputMat * color;\n"
+      "  return clamp(color, 0.0, 1.0);\n"
+      "}\n"
       "void main() {\n"
       "  vec4 world = u_inv_vp * vec4(v_ndc, 1.0, 1.0);\n"
       "  vec3 dir = normalize(world.xyz / world.w);\n"
       "  float u = atan(dir.z, dir.x) / (2.0 * 3.14159265) + 0.5;\n"
       "  float v = asin(clamp(dir.y, -1.0, 1.0)) / 3.14159265 + 0.5;\n"
-      "  fragColor = texture(u_skybox_tex, vec2(u, v));\n"
+      "  vec4 texel = texture(u_skybox_tex, vec2(u, v));\n"
+      "  vec3 color = srgb_to_linear(texel.rgb);\n"
+      "  if (u_output_srgb != 0)\n"
+      "    color = linear_to_srgb(aces_filmic(color));\n"
+      "  fragColor = vec4(color, texel.a);\n"
       "}\n";
 
    GLuint vertex = gles_compile_shader(GL_VERTEX_SHADER, vertex_source);
@@ -32986,6 +33107,7 @@ static bool gles_create_skybox_program(void)
    gles.skybox_position_attrib    = gles.GetAttribLocation(program, "a_position");
    gles.skybox_inv_view_proj_uniform = gles.GetUniformLocation(program, "u_inv_vp");
    gles.skybox_texture_uniform    = gles.GetUniformLocation(program, "u_skybox_tex");
+   gles.skybox_output_srgb_uniform = gles.GetUniformLocation(program, "u_output_srgb");
    gles.skybox_resources_ready = true;
    return gles.skybox_position_attrib >= 0;
 }
@@ -33037,6 +33159,8 @@ static void render_gles_skybox(const float view[16], const float projection[16])
    gles.BindTexture(GL_TEXTURE_2D, tex->gl_name);
    gles.Uniform1i(gles.skybox_texture_uniform, 0);
    gles.UniformMatrix4fv(gles.skybox_inv_view_proj_uniform, 1, GL_FALSE, inv_vp);
+   if (gles.skybox_output_srgb_uniform >= 0)
+      gles.Uniform1i(gles.skybox_output_srgb_uniform, gles_scene_post_active ? 0 : 1);
 
    /* Re-use the overlay quad VBO (x, y, u, v interleaved — stride = 4 floats) */
    gles.BindBuffer(GL_ARRAY_BUFFER, gles.overlay_vbo);
@@ -33162,6 +33286,27 @@ static bool gles_create_post_program(void)
       "float post_luma(vec3 c) {\n"
       "  return dot(c, vec3(0.299, 0.587, 0.114));\n"
       "}\n"
+      "float linear_to_srgb_channel(float c) {\n"
+      "  return (c <= 0.0031308) ? c * 12.92 : 1.055 * pow(c, 1.0 / 2.4) - 0.055;\n"
+      "}\n"
+      "vec3 linear_to_srgb(vec3 c) {\n"
+      "  c = max(c, vec3(0.0));\n"
+      "  return vec3(linear_to_srgb_channel(c.r), linear_to_srgb_channel(c.g), linear_to_srgb_channel(c.b));\n"
+      "}\n"
+      "vec3 rrt_and_odt_fit(vec3 v) {\n"
+      "  vec3 a = v * (v + 0.0245786) - 0.000090537;\n"
+      "  vec3 b = v * (0.983729 * v + 0.4329510) + 0.238081;\n"
+      "  return a / b;\n"
+      "}\n"
+      "vec3 aces_filmic(vec3 color) {\n"
+      "  const mat3 ACESInputMat = mat3(vec3(0.59719, 0.07600, 0.02840), vec3(0.35458, 0.90834, 0.13383), vec3(0.04823, 0.01566, 0.83777));\n"
+      "  const mat3 ACESOutputMat = mat3(vec3(1.60475, -0.10208, -0.00327), vec3(-0.53108, 1.10813, -0.07276), vec3(-0.07367, -0.00605, 1.07602));\n"
+      "  color *= 1.25 / 0.6;\n"
+      "  color = ACESInputMat * color;\n"
+      "  color = rrt_and_odt_fit(color);\n"
+      "  color = ACESOutputMat * color;\n"
+      "  return clamp(color, 0.0, 1.0);\n"
+      "}\n"
       "vec3 post_bright(vec3 c) {\n"
       /* Brightpass: keep some contribution from mid-tones so the bloom
          spreads broadly like Three.js UnrealBloomPass instead of only
@@ -33276,7 +33421,7 @@ static bool gles_create_post_program(void)
       "    else                grille.b = 1.05;\n"
       "    color.rgb *= grille;\n"
       "  }\n"
-      "  fragColor = vec4(clamp(color.rgb, 0.0, 1.0), 1.0);\n"
+      "  fragColor = vec4(linear_to_srgb(aces_filmic(color.rgb)), 1.0);\n"
       "}\n";
 
    GLuint vertex = gles_compile_shader(GL_VERTEX_SHADER, vertex_source);
@@ -33844,6 +33989,12 @@ static void render_gles_scene(void)
    float r = (float)((clear_color >> 24) & 0xffU) / 255.0f;
    float g = (float)((clear_color >> 16) & 0xffU) / 255.0f;
    float b = (float)((clear_color >>  8) & 0xffU) / 255.0f;
+   gles_scene_post_active = use_post;
+   if (use_post) {
+      r = srgb_channel_to_linear(r);
+      g = srgb_channel_to_linear(g);
+      b = srgb_channel_to_linear(b);
+   }
    gles.Viewport(0, 0, NOVA64_WIDTH, NOVA64_HEIGHT);
    gles.Enable(GL_DEPTH_TEST);
    gles.ClearColor(r, g, b, 1.0f);
@@ -33883,6 +34034,7 @@ static void render_gles_scene(void)
    }
 
    render_gles_overlay();
+   gles_scene_post_active = false;
 }
 
 static void renderer_context_reset(void)

@@ -515,12 +515,16 @@ struct nova64_gles_backend {
    GLint bloom_blur_direction_uniform;
    GLuint cube_vbo;
    GLuint cube_ibo;
+   GLuint cube_vao;
    GLuint plane_vbo;
    GLuint plane_ibo;
+   GLuint plane_vao;
    GLuint sphere_vbo;
    GLuint sphere_ibo;
+   GLuint sphere_vao;
    GLuint cone_vbo;
    GLuint cone_ibo;
+   GLuint cone_vao;
    GLuint instance_transform_vbo;
    GLuint instance_color_vbo;
    GLuint overlay_vbo;
@@ -31559,18 +31563,26 @@ static void gles_destroy_resources(void)
       gles.DeleteBuffers(1, &gles.cube_vbo);
    if (gles.cube_ibo && gles.DeleteBuffers)
       gles.DeleteBuffers(1, &gles.cube_ibo);
+   if (gles.cube_vao && gles.DeleteVertexArrays)
+      gles.DeleteVertexArrays(1, &gles.cube_vao);
    if (gles.plane_vbo && gles.DeleteBuffers)
       gles.DeleteBuffers(1, &gles.plane_vbo);
    if (gles.plane_ibo && gles.DeleteBuffers)
       gles.DeleteBuffers(1, &gles.plane_ibo);
+   if (gles.plane_vao && gles.DeleteVertexArrays)
+      gles.DeleteVertexArrays(1, &gles.plane_vao);
    if (gles.sphere_vbo && gles.DeleteBuffers)
       gles.DeleteBuffers(1, &gles.sphere_vbo);
    if (gles.sphere_ibo && gles.DeleteBuffers)
       gles.DeleteBuffers(1, &gles.sphere_ibo);
+   if (gles.sphere_vao && gles.DeleteVertexArrays)
+      gles.DeleteVertexArrays(1, &gles.sphere_vao);
    if (gles.cone_vbo && gles.DeleteBuffers)
       gles.DeleteBuffers(1, &gles.cone_vbo);
    if (gles.cone_ibo && gles.DeleteBuffers)
       gles.DeleteBuffers(1, &gles.cone_ibo);
+   if (gles.cone_vao && gles.DeleteVertexArrays)
+      gles.DeleteVertexArrays(1, &gles.cone_vao);
    if (gles.instance_transform_vbo && gles.DeleteBuffers)
       gles.DeleteBuffers(1, &gles.instance_transform_vbo);
    if (gles.instance_color_vbo && gles.DeleteBuffers)
@@ -31588,12 +31600,16 @@ static void gles_destroy_resources(void)
    gles_destroy_post_resources();
    gles.cube_vbo = 0;
    gles.cube_ibo = 0;
+   gles.cube_vao = 0;
    gles.plane_vbo = 0;
    gles.plane_ibo = 0;
+   gles.plane_vao = 0;
    gles.sphere_vbo = 0;
    gles.sphere_ibo = 0;
+   gles.sphere_vao = 0;
    gles.cone_vbo = 0;
    gles.cone_ibo = 0;
+   gles.cone_vao = 0;
    gles.instance_transform_vbo = 0;
    gles.instance_color_vbo = 0;
    gles.overlay_vbo = 0;
@@ -31745,6 +31761,55 @@ static bool gles_upload_cone_geometry(void)
    return true;
 }
 
+static bool gles_create_static_mesh_vao(GLuint *vao, GLuint vbo, GLuint ibo)
+{
+   if (!vao || !gles.GenVertexArrays || !gles.BindVertexArray ||
+       !gles.BindBuffer || !gles.EnableVertexAttribArray || !gles.VertexAttribPointer ||
+       gles.cube_position_attrib < 0 || gles.cube_normal_attrib < 0)
+      return false;
+   if (*vao)
+      return true;
+
+   gles.GenVertexArrays(1, vao);
+   if (!*vao)
+      return false;
+
+   gles.BindVertexArray(*vao);
+   gles.BindBuffer(GL_ARRAY_BUFFER, vbo);
+   gles.BindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo);
+   gles.EnableVertexAttribArray((GLuint)gles.cube_position_attrib);
+   gles.EnableVertexAttribArray((GLuint)gles.cube_normal_attrib);
+   gles.VertexAttribPointer((GLuint)gles.cube_position_attrib, 3, GL_FLOAT, GL_FALSE,
+      (GLsizei)(sizeof(GLfloat) * 6), NULL);
+   gles.VertexAttribPointer((GLuint)gles.cube_normal_attrib, 3, GL_FLOAT, GL_FALSE,
+      (GLsizei)(sizeof(GLfloat) * 6), (const void *)(uintptr_t)(sizeof(GLfloat) * 3));
+   gles.BindVertexArray(gles.default_vao);
+   return true;
+}
+
+static void gles_create_static_mesh_vaos(void)
+{
+   if (!gles.GenVertexArrays || !gles.BindVertexArray)
+      return;
+   gles_create_static_mesh_vao(&gles.cube_vao, gles.cube_vbo, gles.cube_ibo);
+   gles_create_static_mesh_vao(&gles.plane_vao, gles.plane_vbo, gles.plane_ibo);
+   gles_create_static_mesh_vao(&gles.sphere_vao, gles.sphere_vbo, gles.sphere_ibo);
+   gles_create_static_mesh_vao(&gles.cone_vao, gles.cone_vbo, gles.cone_ibo);
+}
+
+static GLuint gles_static_mesh_vao(GLuint vbo, GLuint ibo)
+{
+   if (vbo == gles.cube_vbo && ibo == gles.cube_ibo)
+      return gles.cube_vao;
+   if (vbo == gles.plane_vbo && ibo == gles.plane_ibo)
+      return gles.plane_vao;
+   if (vbo == gles.sphere_vbo && ibo == gles.sphere_ibo)
+      return gles.sphere_vao;
+   if (vbo == gles.cone_vbo && ibo == gles.cone_ibo)
+      return gles.cone_vao;
+   return 0;
+}
+
 static bool gles_init_resources(void)
 {
    if (gles.resources_ready)
@@ -31845,6 +31910,7 @@ static bool gles_init_resources(void)
    nova64_log_line(RETRO_LOG_INFO, "[nova64] init_resources: uploading cone geometry...");
    if (!gles_upload_cone_geometry())
       return false;
+   gles_create_static_mesh_vaos();
    nova64_log_line(RETRO_LOG_INFO, "[nova64] init_resources: overlay buffers...");
 
    gles.GenBuffers(1, &gles.instance_transform_vbo);
@@ -32202,18 +32268,27 @@ static void render_gles_primitive(const struct nova64_mesh *mesh, const float vi
       gles.BlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
       did_blend = true;
    }
-   gles.BindBuffer(GL_ARRAY_BUFFER, vbo);
-   gles.BindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo);
-   gles.EnableVertexAttribArray((GLuint)gles.cube_position_attrib);
-   gles.EnableVertexAttribArray((GLuint)gles.cube_normal_attrib);
-   gles.VertexAttribPointer((GLuint)gles.cube_position_attrib, 3, GL_FLOAT, GL_FALSE,
-      (GLsizei)(sizeof(GLfloat) * 6), NULL);
-   gles.VertexAttribPointer((GLuint)gles.cube_normal_attrib, 3, GL_FLOAT, GL_FALSE,
-      (GLsizei)(sizeof(GLfloat) * 6), (const void *)(uintptr_t)(sizeof(GLfloat) * 3));
+   GLuint vao = gles_static_mesh_vao(vbo, ibo);
+   if (vao && gles.BindVertexArray) {
+      gles.BindVertexArray(vao);
+   } else {
+      gles.BindBuffer(GL_ARRAY_BUFFER, vbo);
+      gles.BindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo);
+      gles.EnableVertexAttribArray((GLuint)gles.cube_position_attrib);
+      gles.EnableVertexAttribArray((GLuint)gles.cube_normal_attrib);
+      gles.VertexAttribPointer((GLuint)gles.cube_position_attrib, 3, GL_FLOAT, GL_FALSE,
+         (GLsizei)(sizeof(GLfloat) * 6), NULL);
+      gles.VertexAttribPointer((GLuint)gles.cube_normal_attrib, 3, GL_FLOAT, GL_FALSE,
+         (GLsizei)(sizeof(GLfloat) * 6), (const void *)(uintptr_t)(sizeof(GLfloat) * 3));
+   }
    core_perf_frame_draw_calls++;
    gles.DrawElements(GL_TRIANGLES, index_count, GL_UNSIGNED_SHORT, NULL);
-   gles.DisableVertexAttribArray((GLuint)gles.cube_normal_attrib);
-   gles.DisableVertexAttribArray((GLuint)gles.cube_position_attrib);
+   if (vao && gles.BindVertexArray) {
+      gles.BindVertexArray(gles.default_vao);
+   } else {
+      gles.DisableVertexAttribArray((GLuint)gles.cube_normal_attrib);
+      gles.DisableVertexAttribArray((GLuint)gles.cube_position_attrib);
+   }
    if (did_blend)
       gles.Disable(GL_BLEND);
 }
@@ -32809,14 +32884,19 @@ static void render_gles_instanced_mesh(const struct nova64_mesh *mesh, const flo
    }
 
    /* Per-instance draw loop */
-   gles.BindBuffer(GL_ARRAY_BUFFER, vbo);
-   gles.BindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo);
-   gles.EnableVertexAttribArray((GLuint)gles.cube_position_attrib);
-   gles.EnableVertexAttribArray((GLuint)gles.cube_normal_attrib);
-   gles.VertexAttribPointer((GLuint)gles.cube_position_attrib, 3, GL_FLOAT, GL_FALSE,
-      (GLsizei)(sizeof(GLfloat) * 6), NULL);
-   gles.VertexAttribPointer((GLuint)gles.cube_normal_attrib, 3, GL_FLOAT, GL_FALSE,
-      (GLsizei)(sizeof(GLfloat) * 6), (const void *)(uintptr_t)(sizeof(GLfloat) * 3));
+   GLuint vao = gles_static_mesh_vao(vbo, ibo);
+   if (vao && gles.BindVertexArray) {
+      gles.BindVertexArray(vao);
+   } else {
+      gles.BindBuffer(GL_ARRAY_BUFFER, vbo);
+      gles.BindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo);
+      gles.EnableVertexAttribArray((GLuint)gles.cube_position_attrib);
+      gles.EnableVertexAttribArray((GLuint)gles.cube_normal_attrib);
+      gles.VertexAttribPointer((GLuint)gles.cube_position_attrib, 3, GL_FLOAT, GL_FALSE,
+         (GLsizei)(sizeof(GLfloat) * 6), NULL);
+      gles.VertexAttribPointer((GLuint)gles.cube_normal_attrib, 3, GL_FLOAT, GL_FALSE,
+         (GLsizei)(sizeof(GLfloat) * 6), (const void *)(uintptr_t)(sizeof(GLfloat) * 3));
+   }
 
    if (gles.DrawElementsInstanced && gles.VertexAttribDivisor &&
        gles.instance_transform_vbo && gles.instance_color_vbo &&
@@ -32870,8 +32950,12 @@ static void render_gles_instanced_mesh(const struct nova64_mesh *mesh, const flo
          }
          gles.Uniform1i(gles.cube_use_instancing_uniform, 0);
          free(instance_colors);
-         gles.DisableVertexAttribArray((GLuint)gles.cube_normal_attrib);
-         gles.DisableVertexAttribArray((GLuint)gles.cube_position_attrib);
+         if (vao && gles.BindVertexArray) {
+            gles.BindVertexArray(gles.default_vao);
+         } else {
+            gles.DisableVertexAttribArray((GLuint)gles.cube_normal_attrib);
+            gles.DisableVertexAttribArray((GLuint)gles.cube_position_attrib);
+         }
          if (did_blend)
             gles.Disable(GL_BLEND);
          return;
@@ -32896,8 +32980,12 @@ static void render_gles_instanced_mesh(const struct nova64_mesh *mesh, const flo
       gles.DrawElements(GL_TRIANGLES, idx_count, GL_UNSIGNED_SHORT, NULL);
    }
 
-   gles.DisableVertexAttribArray((GLuint)gles.cube_normal_attrib);
-   gles.DisableVertexAttribArray((GLuint)gles.cube_position_attrib);
+   if (vao && gles.BindVertexArray) {
+      gles.BindVertexArray(gles.default_vao);
+   } else {
+      gles.DisableVertexAttribArray((GLuint)gles.cube_normal_attrib);
+      gles.DisableVertexAttribArray((GLuint)gles.cube_position_attrib);
+   }
    if (did_blend)
       gles.Disable(GL_BLEND);
 }

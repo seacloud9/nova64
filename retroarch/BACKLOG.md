@@ -14,7 +14,24 @@ multiple full runs).
 
 ## 🔴 Deferred — Windows performance investigation
 
-**Status:** diagnosis complete, fix not applied. Carry forward.
+**Status:** first VAO fix applied for built-in static meshes. Carry forward
+with real Windows/AMD RetroArch measurement.
+
+### 2026-05-23 update
+
+The GLES draw path now caches VAOs for the built-in cube, plane, sphere, and
+cone buffers. Regular and instanced built-in mesh draws bind those VAOs instead
+of re-running base `VertexAttribPointer` setup on every draw. Custom/generated
+meshes still use the old dynamic attribute setup path.
+
+Validated with:
+
+- `make -C retroarch all`
+- `git diff --check`
+- `NOVA64_GLES_TESTS=1 bash retroarch/tests/run_conformance.sh --skip-build --from 21 --to 22`
+- `retroarch/build/harness retroarch/nova64_libretro.so retroarch/conformance/gles-instance-colors.js --gles --frames 3 --expect 11e6f45f37eaf28b`
+- `NOVA64_GLES_TESTS=1 bash retroarch/tests/run_conformance.sh --skip-build --from 44 --to 66`
+- `NOVA64_GLES_TESTS=1 bash retroarch/tests/run_conformance.sh --skip-build --from 100 --to 110`
 
 ### What we know
 

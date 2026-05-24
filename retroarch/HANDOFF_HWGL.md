@@ -112,6 +112,33 @@ Post-adjustment web-cart results:
 
 Port-cart control check stayed healthy: **91.1 avg** (start 93.1 / play 89.1).
 
+### Three.js shader investigation note
+
+Codex reviewed the local Three.js shader sources:
+
+- `node_modules/three/examples/jsm/shaders/FXAAShader.js`
+- `node_modules/three/examples/jsm/postprocessing/UnrealBloomPass.js`
+- Nova64 web wiring in `runtime/api-effects.js`
+
+Findings:
+
+- Web uses a real `FXAAShader`; RA previously used a small 4-neighbor
+  smoothing approximation. A direct GLES adaptation of the Three FXAA logic was
+  tested in the RA post shader. It compiled and ran, but did **not** improve
+  Space Harrier web-cart gameplay parity; gameplay sharpness/score regressed in
+  the tested capture. Do not reapply that direct port without also changing pass
+  ordering, because web FXAA runs as an `EffectComposer` pass after bloom,
+  whereas RA's single post shader samples the pre-bloom scene texture.
+- Web `UnrealBloomPass` uses strength, radius, and threshold. RA currently
+  forwards only bloom strength from `nova64.fx.enableBloom(s, r, t)` and uses a
+  hard-coded GLES bright-pass threshold. A quick threshold-forwarding experiment
+  was inconclusive and not retained. A proper future bloom parity pass should
+  mirror the Three sequence: bright pass at half-res, progressive blur mips,
+  radius-aware composite, then additive blend before FXAA/vignette.
+- The retained change from this area remains the vignette semantic mapping and
+  reduced smoothing weight from commit `62552ad`; that had a clear edge/center
+  improvement without hurting the tuned port.
+
 ### Where Claude (Opus 4.7) left off
 
 This whole-day session pushed two parallel tracks:

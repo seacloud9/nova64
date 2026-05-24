@@ -503,6 +503,7 @@ struct nova64_gles_backend {
    GLint post_bloom_mip_uniform[NOVA64_BLOOM_MIPS];
    GLint post_chromatic_uniform;
    GLint post_color_grade_uniform;
+   GLint post_exposure_uniform;
    GLint post_posterize_uniform;
    GLint bloom_downsample_position_attrib;
    GLint bloom_downsample_uv_attrib;
@@ -1754,6 +1755,7 @@ struct nova64_post_state {
    float chromatic;      /* 0.0 = off, offset amount (try 0.003-0.01) */
    float color_grade[3]; /* RGB multipliers, default 1.0 each */
    int posterize;        /* 0 = off, 2-8 = quantize levels */
+   float exposure;       /* pre-ACES scalar, default 1.0; Three uses 1.25 */
 };
 static struct nova64_post_state post_state;
 
@@ -1768,6 +1770,7 @@ static void reset_post_state(void)
    post_state.chromatic = 0.0f;
    post_state.color_grade[0] = post_state.color_grade[1] = post_state.color_grade[2] = 1.0f;
    post_state.posterize = 0;
+   post_state.exposure = 1.0f;
 }
 
 static bool post_is_active(void)
@@ -1775,7 +1778,7 @@ static bool post_is_active(void)
    return post_state.crt_enabled || post_state.vignette > 0.0f || post_state.pixelate > 0
       || post_state.bloom > 0.0f || post_state.chromatic > 0.0f || post_state.posterize > 0
       || post_state.color_grade[0] != 1.0f || post_state.color_grade[1] != 1.0f
-      || post_state.color_grade[2] != 1.0f;
+      || post_state.color_grade[2] != 1.0f || post_state.exposure != 1.0f;
 }
 
 static void reset_palette_state(void)
@@ -26957,6 +26960,18 @@ static JSValue js_post_set_bloom(JSContext *ctx, JSValueConst this_val, int argc
    return JS_UNDEFINED;
 }
 
+/* setExposure(e): pre-ACES brightness scalar. Default 1.0 matches existing
+ * conformance. Three.js sets renderer.toneMappingExposure = 1.25 in
+ * gpu-threejs.js — web compat layer pins this so unmodified web carts get
+ * the same brightness on RA. Carts can also call this directly. */
+static JSValue js_post_set_exposure(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   post_state.exposure = (float)clamp_double(
+      double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 1.0), 0.0, 8.0);
+   return JS_UNDEFINED;
+}
+
 static JSValue js_post_set_bloom_radius(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
    (void)this_val;
@@ -29038,6 +29053,7 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, post, "setVignette", js_post_set_vignette, 1);
    set_function(ctx, post, "setPixelate", js_post_set_pixelate, 1);
    set_function(ctx, post, "setBloom", js_post_set_bloom, 1);
+   set_function(ctx, post, "setExposure", js_post_set_exposure, 1);
    set_function(ctx, post, "setBloomRadius", js_post_set_bloom_radius, 1);
    set_function(ctx, post, "setBloomThreshold", js_post_set_bloom_threshold, 1);
    set_function(ctx, post, "setChromatic", js_post_set_chromatic, 1);
@@ -29075,7 +29091,11 @@ static bool install_nova64_api(JSContext *ctx)
            "var p=nova64.post;"
            "var _glitchT=0;"
            "return{"
-             "enableBloom:function(s,r,t){p.setBloom(s==null?1:s,r,t);},"
+             /* enableBloom also lifts exposure to Three's 1.25 default — web
+                renderer.toneMappingExposure=1.25 in gpu-threejs.js. Single
+                biggest brightness lever for web-cart parity on RA. */
+             "enableBloom:function(s,r,t){p.setBloom(s==null?1:s,r,t);"
+               "if(p.setExposure)p.setExposure(1.25);},"
              "disableBloom:function(){p.setBloom(0);},"
              "setBloomStrength:function(s){p.setBloom(s);},"
              "setBloomRadius:function(r){p.setBloomRadius(r);},"
@@ -34215,6 +34235,10 @@ static bool gles_create_post_program(void)
       "uniform sampler2D u_bloom_mip4;\n"
       "uniform float u_chromatic;\n"
       "uniform vec4 u_color_grade;\n"
+      /* u_exposure: pre-tone-map scalar. Default 1.0 (current behavior).
+         Web Three.js carts use renderer.toneMappingExposure = 1.25, so the
+         web compat layer can set this to lift RA brightness toward web parity. */
+      "uniform float u_exposure;\n"
       "uniform int u_posterize;\n"
       "out vec4 fragColor;\n"
       "float post_luma(vec3 c) {\n"
@@ -34356,7 +34380,10 @@ static bool gles_create_post_program(void)
       "    else                grille.b = 1.05;\n"
       "    color.rgb *= grille;\n"
       "  }\n"
-      "  fragColor = vec4(linear_to_srgb(aces_filmic(color.rgb)), 1.0);\n"
+      /* Apply exposure scalar before ACES (matches Three's toneMappingExposure
+         which multiplies the input to the tone-map). Default exposure 1.0
+         keeps existing conformance checksums stable. */
+      "  fragColor = vec4(linear_to_srgb(aces_filmic(color.rgb * max(u_exposure, 0.0))), 1.0);\n"
       "}\n";
 
    GLuint vertex = gles_compile_shader(GL_VERTEX_SHADER, vertex_source);
@@ -34398,6 +34425,7 @@ static bool gles_create_post_program(void)
    gles.post_chromatic_uniform = gles.GetUniformLocation(program, "u_chromatic");
    gles.post_color_grade_uniform = gles.GetUniformLocation(program, "u_color_grade");
    gles.post_posterize_uniform = gles.GetUniformLocation(program, "u_posterize");
+   gles.post_exposure_uniform = gles.GetUniformLocation(program, "u_exposure");
    return gles.post_position_attrib >= 0 && gles.post_uv_attrib >= 0;
 }
 
@@ -34848,6 +34876,8 @@ static void render_gles_post_pass(GLuint hw_fbo)
          post_state.color_grade[0], post_state.color_grade[1], post_state.color_grade[2], 0.0f);
    if (gles.post_posterize_uniform >= 0)
       gles.Uniform1i(gles.post_posterize_uniform, post_state.posterize);
+   if (gles.post_exposure_uniform >= 0 && gles.Uniform1f)
+      gles.Uniform1f(gles.post_exposure_uniform, post_state.exposure);
 
    gles_draw_fullscreen_quad(gles.post_position_attrib, gles.post_uv_attrib);
    gles.BindTexture(GL_TEXTURE_2D, 0);

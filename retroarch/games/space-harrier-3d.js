@@ -121,10 +121,10 @@ function applyStartVisuals() {
 function applyGameplayVisuals() {
    setFog(PALETTE.sky, FOG_NEAR, FOG_FAR);
    setSkyColor(SKY_TOP, SKY_BOTTOM);
-   // Higher bloom (was 0.28, before that 0.38) so bright objects get a soft
-   // atmospheric halo like the web cart — the web's bloom is what made the
-   // scene feel 3D and cinematic instead of flat.
-   nova64.post.setBloom(0.55);
+   // Web's exact bloom: enableBloom(0.38, 0.22, 0.78). 0.55 was making the
+   // scene feel "out of focus" (user feedback) because the heavier bloom
+   // smeared bright pixels across the screen.
+   nova64.post.setBloom(0.38);
    nova64.post.setChromatic(0.003);
    nova64.post.setVignette(0.12);
    nova64.post.setCRT(true);
@@ -489,15 +489,19 @@ export function init() {
    setCameraTarget(0, 3, -50);
    setCameraFOV(70);
    // Web parity ambient: web uses 0.62 with Babylon. Our cube shader range
-   // is compressed (0.58..1.0 surface_light), so we settle around 0.42:
-   // enough lift to match web's average brightness without clipping the
-   // diffuse gradient on round meshes (trees, player head, enemy cores).
+   // is compressed (0.58..1.0 surface_light), so 0.42 lifts brightness to
+   // match web's average without clipping diffuse on round meshes.
    setAmbientLight(rgba8(255, 250, 232, 255), 0.42);
-   // Web's exact direction — keeps floor tile lighting UNIFORM across the
-   // checker (an angled light gives adjacent tiles different diffuse values
-   // which reads as a "stepped/voxel terrain" instead of flat floor).
+   // Web's exact direction — keeps floor tile lighting uniform across the
+   // checker (angled light gives adjacent tiles different diffuse values
+   // which reads as "stepped/voxel terrain" instead of flat floor).
    setLightDirection(-0.5, -1, -0.5);
    setLightColor(rgba8(255, 232, 200, 255));
+   // Enable shadow casting — player + enemies cast onto the floor. This is
+   // the single biggest 3D-depth cue we can add without shader changes;
+   // the cube shader has u_shadow_enabled built in but the cart has to
+   // opt-in via setShadowQuality.
+   if (typeof setShadowQuality === 'function') setShadowQuality('medium');
    applyStartVisuals();
 
    init_meshes();

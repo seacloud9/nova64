@@ -7,16 +7,14 @@ Last updated: 2026-05-24
 
 **Latest feature shipped:** Web-cart compatibility layer. `examples/*/code.js`
 files now load on the RA runtime **unmodified** — no manual port needed. Compat
-probe of the first 20 web carts: **19 PASS, 0 FAIL, 1 MISSING** (`neon-snake`
-has no `examples/neon-snake/code.js`). Newly working since the first compat
-landing: `hello-3d`, `hello-skybox`, `tween-bounce`, `camera-platformer`,
-`demoscene`, `dungeon-crawler-3d`, `shader-showcase`, `creative-coding`,
-`3d-advanced`, and `minecraft-demo`. The compat layer added `console`,
-`nova64.tween`, `nova64.data`, extended
-`nova64.fx`/`util`/`ui`/`scene`/`camera`/`light`/`input` namespaces, shader and
-voxel fallback namespaces, web-style mesh proxies, QuickJS module resolve/await
-handling, and a larger mesh table for heavy web scenes. See commits `d65d8e7` +
-`0e60c5b`, plus the in-progress 2026-05-24 follow-up.
+probe of all 71 `examples/*/code.js` carts: **54 PASS, 17 WARN, 0 FAIL**. The
+compat layer added `console`, `nova64.tween`, `nova64.data`, extended
+`nova64.fx`/`util`/`ui`/`scene`/`camera`/`light`/`input` namespaces, shader,
+voxel, XR, model-loading, DOM, store, particle, Hype/layout, stage, and
+movie-clip fallback surfaces, web-style mesh proxies, QuickJS module
+resolve/await handling, and a larger mesh table for heavy web scenes. See
+commits `d65d8e7`, `0e60c5b`, `a07dc84`, plus the in-progress 2026-05-24
+follow-up.
 
 ---
 
@@ -54,6 +52,36 @@ Important caveat: this is **load/runtime API parity**, not final visual parity.
 Shader and voxel namespaces currently use fallback handles/simulation so carts
 run unchanged; they do not yet render browser-identical TSL materials or full
 voxel terrain.
+
+## ✅ Web-cart compat full examples probe — 71/71 load without hard failure
+
+The second 2026-05-24 follow-up expanded the probe to every
+`examples/*/code.js` cart and moved the full set to **54 PASS / 17 WARN /
+0 FAIL** under the GLES harness. Validation used temporary `.nova` packages in
+`/tmp/compat-all` and ran each cart for 20 frames.
+
+Major additions:
+- Browser-ish `document`/`window` stubs for optional event-handler setup.
+- `nova64.xr` stubs so VR carts can load outside WebXR.
+- Stage/display-list helpers: `createContainer`, `createGraphicsNode`,
+  `createTextNode`, `drawStage`, `hitTest`, and node `tweenTo()`.
+- Movie clip helpers: `createMovieClip`, `gotoAndStop`, `gotoAndPlay`,
+  `playClip`, and `pauseClip`.
+- Hype/layout helpers: color pools, circle/grid/sphere/path layouts,
+  oscillators, triggers, pools, and swarm fallback state.
+- FX particle-system fallbacks plus retro/preset/bloom helper aliases.
+- Data/store helpers: `loadData`, `saveData`, `deleteData`,
+  seeded RNG helpers, NFT trait helpers, `createGameStore`, and `novaStore`.
+- Scene/model/PBR compatibility: `loadModel`, `setPBRProperties`,
+  `scene.engine` geometry factory stubs, `createAdvancedSphere`, `createCone`
+  namespace mirroring, and instancing namespace mirrors.
+- Utility mirrors for game-utils/math globals such as `createPool`,
+  `createSpawner`, `createTimer`, `createStateMachine`, matrix helpers, noise
+  helpers, and curve helpers.
+
+Remaining WARNs are not hard load blockers. They are the next parity queue:
+real model/VOX/WAD/fetch support, richer stage/canvas drawing, particle draw
+coverage, AR hand-tracking fallbacks, and cart-specific draw/update helpers.
 
 Bigger ticket items also pending:
 - **`nova64.ui.parseCanvasUI`**: currently a no-op stub. Implementing real

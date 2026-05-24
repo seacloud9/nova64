@@ -1,8 +1,65 @@
 # Nova64 Hardware GL on Windows — Status & Handover
 
-**Last updated:** 2026-05-24 (tone-map exposure + 24-bit color shift root cause)
+**Last updated:** 2026-05-24 (24-bit color promotion landed — web parity 73.3 → 77.9)
 **Branch:** `main`
-**Working tree:** clean at `8abbcbd`
+**Working tree:** clean at `bdd0cec`
+
+---
+
+## 🎨 Color bit-depth (for the "coolest console" ask)
+
+We already use **RGBA16F (64-bit total — 16-bit float per channel)** for
+the HDR post-processing FBO when the GL driver supports float color
+attachments, with RGBA8 fallback for drivers that reject float targets.
+See `gles_init_post_fbo` and the `[nova64-perf] frame0` log line at startup
+which reports `format=RGBA16F bloom_mips=5`.
+
+Going higher (RGBA32F = 128-bit) gives diminishing returns at a 640×360
+retro target — float16 already preserves bloom highlights far beyond what
+the final 8-bit-per-channel display can show. The "wow factor" comes from
+bloom passes, tone-mapping, and color-grading work, not the float
+container width.
+
+If the user wants more bit-depth bling specifically:
+1. Add a **3D LUT color grading** stage (cinematic post)
+2. Add **temporal anti-aliasing (TAA)** for crisper sub-pixel detail
+3. Add a **chromatic aberration intensity per scene** option
+4. Add **screen-space reflections** on the floor planes
+
+All cheaper wins than going to RGBA32F.
+
+---
+
+## 🏆 Latest shipped: 24-bit hex color promotion (commit `bdd0cec`)
+
+Found and fixed the dominant remaining web-cart parity bug.
+
+**Root cause**: web Three/Babylon treat `0xRRGGBB` hex literals as 24-bit
+color with implicit alpha 1.0. RA's `color_from_js` returned the int raw,
+so `0xaa22ff` (magenta in web) landed as `0x00aa22ff` and the rgba8 packing
+read it as R=0, G=0xAA, B=0x22, A=0xFF — green-ish with alpha. Result:
+every web cart with palette literals rendered with R/B swap. Captures
+showed cyan/blue instead of green/orange.
+
+**Fix**: opt-in flag `nova64_compat_24bit_colors` (off by default). When
+on, `color_from_js` promotes values with top byte 0 and middle bytes set
+to `(u<<8)|0xFF`. The web compat shim flips the flag inside
+`nova64.fx.enableBloom` (carts using web's enableBloom API are
+near-100% Three/Babylon-style).
+
+**Conformance**: default flag OFF preserves all checksums except
+pre-existing flaky `16-transforms`.
+
+**Parity numbers** (`--retro-cart=web`):
+- Average: **73.3 → 77.9** (+4.6)
+- Play score: **72.8 → 83.5** (+10.7)
+- Play pixel similarity: **43.4 → 84.5** (DOUBLED)
+
+Capture: `c:\tmp\ra-color-fixed.png` shows green floor + yellow pillars +
+green tree spheres. Player ship still cyan-shifted (likely separate cube
+color path that bypasses `color_from_js`); see "Next picks" below.
+
+---
 
 ---
 

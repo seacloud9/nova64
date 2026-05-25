@@ -112,3 +112,9 @@ Use a feature subset of the runtime not yet wired into the C core. Listed so fut
    python3 -c "import zipfile; z=zipfile.ZipFile('retroarch/games/<name>.nova','w',zipfile.ZIP_DEFLATED); z.write('retroarch/games/<name>.js','code.js'); z.write('examples/<name>/meta.json','meta.json'); z.close()"
    ```
 6. Move the entry from "Queued" to "Ported" in this file.
+
+7. Refresh the Windows RetroArch review playlist from the current
+   `retroarch/games/*.js` set:
+   ```
+   pnpm run retroarch:refresh:windows
+   ```

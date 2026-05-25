@@ -6,6 +6,21 @@
 
 ---
 
+## Windows RetroArch game import refresh
+
+When delivering new or renamed RetroArch carts for Windows review, refresh the
+RetroArch playlist directly from `retroarch/games/*.js`:
+
+```bash
+pnpm run retroarch:refresh:windows
+```
+
+The command updates `C:\RetroArch-Win64\playlists\games.lpl`, keeps a backup at
+`C:\RetroArch-Win64\playlists\games.lpl.bak`, and points every entry at the dev
+cart in `C:\Users\brend\exp\nova64\retroarch\games`.
+
+---
+
 ## 🎯 FINAL HANDOFF (Codex 2026-05-25 late)
 
 User feedback: the Space Harrier web cart was still too purple/dark in

@@ -586,6 +586,7 @@ struct nova64_gles_backend {
    GLint overlay_position_attrib;
    GLint overlay_uv_attrib;
    GLint overlay_texture_uniform;
+   GLint overlay_web_colors_uniform;
    /* Equirectangular skybox program */
    GLuint skybox_program;
    GLint skybox_position_attrib;
@@ -2040,6 +2041,7 @@ static uint32_t color_from_js(JSContext *ctx, JSValueConst value, uint32_t fallb
 }
 
 bool nova64_compat_24bit_colors = false;
+bool nova64_compat_web_overlay_colors = false;
 /* RGBA32F by default — "use all 128 bits!" per user. Auto-falls back to
  * RGBA16F on drivers that don't support full float color targets, so this
  * is safe across the matrix. */
@@ -27199,7 +27201,9 @@ static JSValue js_post_set_exposure(JSContext *ctx, JSValueConst this_val, int a
 static JSValue js_compat_use_24bit_colors(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
    (void)this_val;
-   nova64_compat_24bit_colors = (argc > 0) ? JS_ToBool(ctx, argv[0]) : true;
+   bool enabled = (argc > 0) ? JS_ToBool(ctx, argv[0]) : true;
+   nova64_compat_24bit_colors = enabled;
+   nova64_compat_web_overlay_colors = enabled;
    return JS_UNDEFINED;
 }
 
@@ -29576,7 +29580,7 @@ static bool install_nova64_api(JSContext *ctx)
            "function drawAllButtons(){"
              "for(var i=0;i<_buttons.length;i++){var b=_buttons[i];"
                "rectfill(b.x,b.y,b.w,b.h,b.normal);"
-               "rect(b.x,b.y,b.w,b.h,colors.light);"
+               "rect(b.x,b.y,b.w,b.h,colors.light,false);"
                "var s=fontScale[_font]||1;"
                "var tw=(b.text.length*4)*s;"
                "print(b.text,b.x+Math.floor((b.w-tw)/2),b.y+Math.floor((b.h-7*s)/2),b.text_color,s);}"
@@ -32659,9 +32663,20 @@ static bool gles_create_overlay_program(void)
       "#version 300 es\nprecision highp float;\n"
       "in vec2 v_uv;\n"
       "uniform sampler2D u_overlay;\n"
+      "uniform int u_web_colors;\n"
       "out vec4 fragColor;\n"
+      "float linear_to_srgb_channel(float c) {\n"
+      "  return (c <= 0.0031308) ? c * 12.92 : 1.055 * pow(c, 1.0 / 2.4) - 0.055;\n"
+      "}\n"
+      "vec3 linear_to_srgb(vec3 c) {\n"
+      "  c = max(c, vec3(0.0));\n"
+      "  return vec3(linear_to_srgb_channel(c.r), linear_to_srgb_channel(c.g), linear_to_srgb_channel(c.b));\n"
+      "}\n"
       "void main() {\n"
-      "  fragColor = texture(u_overlay, v_uv);\n"
+      "  vec4 color = texture(u_overlay, v_uv);\n"
+      "  if (u_web_colors != 0)\n"
+      "    color.rgb = linear_to_srgb(color.rgb);\n"
+      "  fragColor = color;\n"
       "}\n";
 
    GLuint vertex = gles_compile_shader(GL_VERTEX_SHADER, vertex_source);
@@ -32699,6 +32714,7 @@ static bool gles_create_overlay_program(void)
    gles.overlay_position_attrib = gles.GetAttribLocation(program, "a_position");
    gles.overlay_uv_attrib = gles.GetAttribLocation(program, "a_uv");
    gles.overlay_texture_uniform = gles.GetUniformLocation(program, "u_overlay");
+   gles.overlay_web_colors_uniform = gles.GetUniformLocation(program, "u_web_colors");
    return gles.overlay_position_attrib >= 0 && gles.overlay_uv_attrib >= 0 && gles.overlay_texture_uniform >= 0;
 }
 
@@ -34462,6 +34478,8 @@ static void render_gles_overlay(void)
    gles.BlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
    gles.UseProgram(gles.overlay_program);
    gles.Uniform1i(gles.overlay_texture_uniform, 0);
+   if (gles.overlay_web_colors_uniform >= 0)
+      gles.Uniform1i(gles.overlay_web_colors_uniform, nova64_compat_web_overlay_colors ? 1 : 0);
    gles.BindBuffer(GL_ARRAY_BUFFER, gles.overlay_vbo);
    gles.BindBuffer(GL_ELEMENT_ARRAY_BUFFER, gles.overlay_ibo);
    gles.EnableVertexAttribArray((GLuint)gles.overlay_position_attrib);
@@ -36063,6 +36081,8 @@ void RETRO_CALLCONV retro_init(void)
    g_noise_octaves = 1;
    g_noise_falloff = 0.5;
    reset_post_state();
+   nova64_compat_24bit_colors = false;
+   nova64_compat_web_overlay_colors = false;
    const char *command_log = getenv("NOVA64_RENDER_COMMAND_LOG");
    if (command_log && command_log[0]) {
       snprintf(renderer_command_log_path, sizeof(renderer_command_log_path), "%s", command_log);
@@ -36226,6 +36246,8 @@ void RETRO_CALLCONV retro_reset(void)
    g_noise_falloff = 0.5;
    reset_audio_state();
    reset_post_state();
+   nova64_compat_24bit_colors = false;
+   nova64_compat_web_overlay_colors = false;
    clear_textures();
    clear_render_targets();
    destroy_all_tilemaps();

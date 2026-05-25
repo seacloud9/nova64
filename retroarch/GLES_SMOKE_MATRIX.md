@@ -105,3 +105,17 @@ real-driver integration notes only.
   RetroArch GLES driver: the 3D world should no longer bleed through the title
   backdrop, but the web-cart purple layer is still darker than browser and is
   the next parity target.
+
+## 2026-05-25 late note
+
+- Space Harrier web-cart overlay color parity was fixed after comparing browser
+  and RetroArch captures. The GLES overlay shader now applies linear-to-sRGB for
+  web-compat overlays, matching the Three.js framebuffer `DataTexture` path.
+- The compat UI shim now passes `false` to the button border `rect()` call so
+  the light outline no longer overwrites the green/mint button fill.
+- Headless validation passed:
+  - `make -C retroarch all`
+  - `pnpm exec node retroarch/tests/space_harrier_visual_parity.mjs --retro-cart=web --guard=web`
+  - focused conformance checks for `151`, `204-205`, and `513-523`
+- Space Harrier web guard improved to `93.6` average and passes. The hand-tuned
+  RetroArch port cart still needs separate sharpness/edge-luma tuning.

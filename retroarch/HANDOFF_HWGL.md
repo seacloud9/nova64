@@ -1,8 +1,60 @@
 # Nova64 Hardware GL on Windows — Status & Handover
 
-**Last updated:** 2026-05-25 (HUD wash fix + sharpness pass + default 128-bit HDR — commit `b0aea9d`)
+**Last updated:** 2026-05-25 (web overlay color-space parity + green UI button recovery)
 **Branch:** `main`
-**Working tree:** clean at `b0aea9d`
+**Working tree:** clean after committing this checkpoint
+
+---
+
+## 🎯 FINAL HANDOFF (Codex 2026-05-25 late)
+
+User feedback: the Space Harrier web cart was still too purple/dark in
+RetroArch, the edges stayed too dim, and the START button was white/gray rather
+than mint green. The browser web cart remains the source of truth; no changes
+were made to `examples/space-harrier-3d/code.js`.
+
+### Latest fix
+
+1. **Web overlay color-space parity.** The Three.js backend uploads the 2D
+   framebuffer as a `DataTexture` and renders it through the renderer output
+   transform. RetroArch's overlay shader was sampling the 8-bit upload raw,
+   which left the start-screen purples around `rgb(35,23,55)` instead of the
+   browser's much brighter `rgb(83,59,124)`. Web-compat overlay rendering now
+   applies linear-to-sRGB in the overlay shader when `use24BitColors(true)` is
+   active. This is intentionally tied to web compat, not global RetroArch carts.
+
+2. **Button border no longer erases button fill.** The compat UI shim drew
+   `rect(..., colors.light)` after `rectfill(...)`; this core defaults `rect()`
+   to filled when the sixth argument is omitted. The shim now passes `false`,
+   so `uiColors.success` remains the visible mint START button.
+
+3. **Conformance baselines for the already-normalized scanline path were
+   refreshed.** `513-draw-shapes` and `523-batch39-showcase` now match the
+   stable browser-style scanline output.
+
+### Current validation
+
+```bash
+make -C retroarch all
+pnpm exec node retroarch/tests/space_harrier_visual_parity.mjs --retro-cart=web --guard=web
+NOVA64_GLES_TESTS=1 bash retroarch/tests/run_conformance.sh --skip-build --from 151 --to 151
+NOVA64_GLES_TESTS=1 bash retroarch/tests/run_conformance.sh --skip-build --from 204 --to 205
+NOVA64_GLES_TESTS=1 bash retroarch/tests/run_conformance.sh --skip-build --from 513 --to 523
+```
+
+Web-cart Space Harrier is now passing:
+
+| Moment | Before | After |
+|---|---:|---:|
+| Start score | 77.7 | 95.6 |
+| Start average RGB | RA `35,23,55` vs web `83,59,124` | RA `76,61,115` vs web `83,59,124` |
+| Start sharpness ratio | 51.5% | 92.0% |
+| Web-cart average | 84.9, guard failed | 93.6, guard passed |
+
+Remaining caveat: the hand-tuned RetroArch port cart still fails its stricter
+guard (`90.0` average) on start sharpness and gameplay edge luma. Treat that as
+separate port-cart tuning work; the unmodified web cart is now much closer to
+browser truth.
 
 ---
 
@@ -40,7 +92,7 @@ compat shim now runs all of:
 |---|---|---|
 | `setBloom(s, r, t)` | strength + radius + threshold | Matches Three's `UnrealBloomPass` |
 | `setExposure(1.25)` | pre-ACES brightness multiplier | Matches Three's `renderer.toneMappingExposure` |
-| `use24BitColors(true)` | promotes `0xRRGGBB` → `0xRRGGBBFF` | Web hex palettes render correctly |
+| `use24BitColors(true)` | promotes `0xRRGGBB` → `0xRRGGBBFF` and enables web overlay output color | Web palettes and 2D overlays render correctly |
 | `setHDRMode('32f')` | RGBA32F post FBO | 128-bit precision (now also default) |
 | `setSaturation(1.0)` | neutral pivot | 1.10+ tints HUD — held at 1.0 |
 | `setSharpness(0.35)` | unsharp-mask pass | Crisp edges against bloom |

@@ -2018,6 +2018,12 @@ static uint32_t color_from_js(JSContext *ctx, JSValueConst value, uint32_t fallb
    int64_t out = 0;
    if (JS_IsUndefined(value) || JS_IsNull(value))
       return fallback;
+   if (JS_IsBigInt(value)) {
+      uint64_t big = 0;
+      if (JS_ToBigUint64(ctx, &big, value) < 0)
+         return fallback;
+      return (uint32_t)big;
+   }
    if (JS_ToInt64(ctx, &out, value) < 0)
       return fallback;
    uint32_t u = (uint32_t)out;
@@ -2995,6 +3001,36 @@ static void draw_rect_pixels(int x, int y, int w, int h, uint32_t color, bool fi
    draw_line_pixels(x, y + h - 1, x + w - 1, y + h - 1, color);
    draw_line_pixels(x, y, x, y + h - 1, color);
    draw_line_pixels(x + w - 1, y, x + w - 1, y + h - 1, color);
+}
+
+static void draw_rect_blend_pixels(int x, int y, int w, int h, uint32_t color, bool filled)
+{
+   if (w < 0) {
+      x += w;
+      w = -w;
+   }
+   if (h < 0) {
+      y += h;
+      h = -h;
+   }
+   if (w <= 0 || h <= 0)
+      return;
+
+   if (filled) {
+      for (int yy = 0; yy < h; yy++)
+         for (int xx = 0; xx < w; xx++)
+            blend_pixel_normal(x + xx, y + yy, color);
+      return;
+   }
+
+   for (int xx = 0; xx < w; xx++) {
+      blend_pixel_normal(x + xx, y, color);
+      blend_pixel_normal(x + xx, y + h - 1, color);
+   }
+   for (int yy = 0; yy < h; yy++) {
+      blend_pixel_normal(x, y + yy, color);
+      blend_pixel_normal(x + w - 1, y + yy, color);
+   }
 }
 
 static void draw_rect_gradient_pixels(int x, int y, int w, int h, uint32_t a, uint32_t b, bool vertical)
@@ -4721,7 +4757,7 @@ static JSValue js_rgba8(JSContext *ctx, JSValueConst this_val, int argc, JSValue
    uint32_t g = (uint32_t)int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 255);
    uint32_t b = (uint32_t)int_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 255);
    uint32_t a = (uint32_t)int_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, 255);
-   return JS_NewUint32(ctx, rgba8(r, g, b, a));
+   return JS_NewBigUint64(ctx, rgba8(r, g, b, a));
 }
 
 static JSValue js_color_lerp(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
@@ -15287,27 +15323,83 @@ static JSValue js_draw_crosshair(JSContext *ctx, JSValueConst this_val, int argc
 static JSValue js_draw_panel(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
    (void)this_val;
-   int px2 = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0);
-   int py2 = int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0);
-   int pw  = int_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 100);
-   int ph  = int_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, 60);
+   JSValueConst opts_arg = argc > 4 ? argv[4] : JS_UNDEFINED;
+   int px2 = 0, py2 = 0, pw = 100, ph = 60;
    uint32_t bgc  = rgba8(20, 20, 40, 200);
    uint32_t bdc  = rgba8(120, 140, 200, 220);
    uint32_t hi   = rgba8(200, 220, 255, 100);
-   if (argc > 4 && JS_IsObject(argv[4])) {
-      JSValue bv = JS_GetPropertyStr(ctx, argv[4], "bgColor");
-      JSValue bdv= JS_GetPropertyStr(ctx, argv[4], "borderColor");
-      JSValue hv = JS_GetPropertyStr(ctx, argv[4], "highlight");
+   int border_width = 1;
+   bool shadow = false;
+
+   if (argc > 0 && JS_IsObject(argv[0])) {
+      JSValue v;
+      v = JS_GetPropertyStr(ctx, argv[0], "x");
+      px2 = int_from_js(ctx, v, 0);
+      JS_FreeValue(ctx, v);
+      v = JS_GetPropertyStr(ctx, argv[0], "y");
+      py2 = int_from_js(ctx, v, 0);
+      JS_FreeValue(ctx, v);
+      v = JS_GetPropertyStr(ctx, argv[0], "width");
+      pw = int_from_js(ctx, v, 100);
+      JS_FreeValue(ctx, v);
+      if (pw == 100) {
+         v = JS_GetPropertyStr(ctx, argv[0], "w");
+         if (!JS_IsUndefined(v))
+            pw = int_from_js(ctx, v, pw);
+         JS_FreeValue(ctx, v);
+      }
+      v = JS_GetPropertyStr(ctx, argv[0], "height");
+      ph = int_from_js(ctx, v, 60);
+      JS_FreeValue(ctx, v);
+      if (ph == 60) {
+         v = JS_GetPropertyStr(ctx, argv[0], "h");
+         if (!JS_IsUndefined(v))
+            ph = int_from_js(ctx, v, ph);
+         JS_FreeValue(ctx, v);
+      }
+      v = JS_GetPropertyStr(ctx, argv[0], "bgColor");
+      if (!JS_IsUndefined(v)) bgc = color_from_js(ctx, v, bgc);
+      JS_FreeValue(ctx, v);
+      v = JS_GetPropertyStr(ctx, argv[0], "borderColor");
+      if (!JS_IsUndefined(v)) bdc = color_from_js(ctx, v, bdc);
+      JS_FreeValue(ctx, v);
+      v = JS_GetPropertyStr(ctx, argv[0], "borderWidth");
+      border_width = int_from_js(ctx, v, border_width);
+      JS_FreeValue(ctx, v);
+      v = JS_GetPropertyStr(ctx, argv[0], "shadow");
+      shadow = JS_ToBool(ctx, v) != 0;
+      JS_FreeValue(ctx, v);
+   } else {
+      px2 = int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0);
+      py2 = int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 0);
+      pw  = int_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 100);
+      ph  = int_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, 60);
+   }
+
+   if (JS_IsObject(opts_arg)) {
+      JSValue bv = JS_GetPropertyStr(ctx, opts_arg, "bgColor");
+      JSValue bdv= JS_GetPropertyStr(ctx, opts_arg, "borderColor");
+      JSValue hv = JS_GetPropertyStr(ctx, opts_arg, "highlight");
+      JSValue bwv= JS_GetPropertyStr(ctx, opts_arg, "borderWidth");
+      JSValue sv = JS_GetPropertyStr(ctx, opts_arg, "shadow");
       if (!JS_IsUndefined(bv))  bgc = color_from_js(ctx, bv,  bgc);
       if (!JS_IsUndefined(bdv)) bdc = color_from_js(ctx, bdv, bdc);
       if (!JS_IsUndefined(hv))  hi  = color_from_js(ctx, hv,  hi);
+      if (!JS_IsUndefined(bwv)) border_width = int_from_js(ctx, bwv, border_width);
+      if (!JS_IsUndefined(sv)) shadow = JS_ToBool(ctx, sv) != 0;
       JS_FreeValue(ctx, bv); JS_FreeValue(ctx, bdv); JS_FreeValue(ctx, hv);
+      JS_FreeValue(ctx, bwv); JS_FreeValue(ctx, sv);
    }
+   if (border_width < 0) border_width = 0;
+   if (border_width > 12) border_width = 12;
    int sx, sy; transform_2d_point(px2, py2, &sx, &sy);
    int tw = transform_2d_size(pw), th = transform_2d_size(ph);
-   draw_rect_pixels(sx, sy, tw, th, bgc, true);
-   draw_rect_pixels(sx, sy, tw, 1, hi, true);  /* top highlight */
-   draw_rect_pixels(sx, sy, tw, th, bdc, false);
+   if (shadow)
+      draw_rect_blend_pixels(sx + 4, sy + 4, tw, th, rgba8(0, 0, 0, 100), true);
+   draw_rect_blend_pixels(sx, sy, tw, th, bgc, true);
+   draw_rect_blend_pixels(sx, sy, tw, 1, hi, true);  /* top highlight */
+   for (int i = 0; i < border_width; i++)
+      draw_rect_blend_pixels(sx + i, sy + i, tw - i * 2, th - i * 2, bdc, false);
    return JS_UNDEFINED;
 }
 
@@ -15452,6 +15544,8 @@ static JSValue js_draw_checkerboard(JSContext *ctx, JSValueConst this_val, int a
 static JSValue js_draw_scanlines(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
    (void)this_val;
+   if (!framebuffer)
+      return JS_UNDEFINED;
    double alpha = argc > 0 ? double_from_js(ctx, argv[0], 0.5) : 0.5;
    int spacing  = argc > 1 ? int_from_js(ctx, argv[1], 2) : 2;
    if (alpha <= 0.0) return JS_UNDEFINED;
@@ -15463,9 +15557,16 @@ static JSValue js_draw_scanlines(JSContext *ctx, JSValueConst this_val, int argc
             : (int)(alpha * 255.0 + 0.5);
    if (a > 255) a = 255;
    if (a < 0) a = 0;
-   uint32_t slc = rgba8(0, 0, 0, (uint8_t)a);
+   uint32_t factor = 255U - (uint32_t)a;
    for (int y = 0; y < NOVA64_HEIGHT; y += spacing) {
-      for (int x = 0; x < NOVA64_WIDTH; x++) set_pixel(x, y, slc);
+      for (int x = 0; x < NOVA64_WIDTH; x++) {
+         uint32_t color = framebuffer[(size_t)y * NOVA64_WIDTH + (size_t)x];
+         uint8_t r = (uint8_t)((((color >> 24) & 0xffU) * factor) / 255U);
+         uint8_t g = (uint8_t)((((color >> 16) & 0xffU) * factor) / 255U);
+         uint8_t b = (uint8_t)((((color >>  8) & 0xffU) * factor) / 255U);
+         uint8_t old_a = (uint8_t)(color & 0xffU);
+         framebuffer[(size_t)y * NOVA64_WIDTH + (size_t)x] = rgba8(r, g, b, old_a);
+      }
    }
    return JS_UNDEFINED;
 }
@@ -29443,16 +29544,16 @@ static bool install_nova64_api(JSContext *ctx)
          "nova64.ui=(function(){"
            "var W=640,_buttons=[],_font='normal',_align='left';"
            "var colors={"
-             /* uiColors as raw 0xAABBGGRR — must not call rgba8 here
+             /* uiColors as raw 0xRRGGBBAA — must not call rgba8 here
               because this shim evaluates before rgba8 is registered. */
-             "primary:0xffff64a0|0,"
-             "secondary:0xffc8b4b4|0,"
-             "success:0xff78dc3c|0,"
-             "danger:0xff5050ff|0,"
-             "warning:0xff3cd2ff|0,"
-             "info:0xffffc878|0,"
-             "light:0xfffaf0f0|0,"
-             "dark:0xff1e1414|0};"
+             "primary:0x0078ffff|0,"
+             "secondary:0x6464ffff|0,"
+             "success:0x00ff64ff|0,"
+             "danger:0xff3232ff|0,"
+             "warning:0xffc800ff|0,"
+             "info:0x32dcffff|0,"
+             "light:0xf0f0faff|0,"
+             "dark:0x14141eff|0};"
            "var fontScale={tiny:1,small:1,normal:1,large:2,huge:3};"
            "function centerX(w){return Math.floor((W-w)/2);}"
            "function clearButtons(){_buttons=[];}"
@@ -31772,6 +31873,18 @@ static bool install_nova64_api(JSContext *ctx)
                "if(typeof rect==='function')rect(p.x,p.y,p.w,p.h,bd,false);"
              "}"
            "};"
+         "}"
+         "if(nova64.ui&&nova64.ui.uiColors&&typeof rgba8==='function'){"
+           "var _uic=nova64.ui.uiColors;"
+           "_uic.primary=rgba8(0,120,255,255);"
+           "_uic.secondary=rgba8(100,100,255,255);"
+           "_uic.success=rgba8(0,255,100,255);"
+           "_uic.danger=rgba8(255,50,50,255);"
+           "_uic.warning=rgba8(255,200,0,255);"
+           "_uic.info=rgba8(50,220,255,255);"
+           "_uic.light=rgba8(240,240,250,255);"
+           "_uic.dark=rgba8(20,20,30,255);"
+           "globalThis.uiColors=_uic;"
          "}"
          ;
       JSValue r2 = JS_Eval(ctx, compat_late_js, sizeof(compat_late_js)-1,

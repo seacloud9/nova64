@@ -2239,6 +2239,12 @@ static uint32_t lerp_color(uint32_t top, uint32_t bottom, float t)
    return rgba8(r, g, b, a);
 }
 
+static uint8_t blend_channel_normal(uint8_t src, uint8_t dst, uint8_t alpha)
+{
+   uint32_t inv = 255U - (uint32_t)alpha;
+   return (uint8_t)(((uint32_t)src * (uint32_t)alpha + (uint32_t)dst * inv + 127U) / 255U);
+}
+
 static int allocate_point_light(void)
 {
    for (int i = 0; i < NOVA64_MAX_POINT_LIGHTS; i++) {
@@ -2688,10 +2694,9 @@ static void set_pixel(int x, int y, uint32_t color)
       uint8_t db = (dst   >>  8) & 0xff;
       uint8_t nr, ng, nb;
       if (blend_2d_mode == NOVA64_BLEND_ALPHA) {
-         uint32_t inv = 255U - sa;
-         nr = (uint8_t)(((uint32_t)sr * sa + (uint32_t)dr * inv) / 255U);
-         ng = (uint8_t)(((uint32_t)sg * sa + (uint32_t)dg * inv) / 255U);
-         nb = (uint8_t)(((uint32_t)sb * sa + (uint32_t)db * inv) / 255U);
+         nr = blend_channel_normal(sr, dr, sa);
+         ng = blend_channel_normal(sg, dg, sa);
+         nb = blend_channel_normal(sb, db, sa);
       } else if (blend_2d_mode == NOVA64_BLEND_ADDITIVE) {
          nr = (uint8_t)(sr + dr > 255 ? 255 : sr + dr);
          ng = (uint8_t)(sg + dg > 255 ? 255 : sg + dg);
@@ -2736,10 +2741,9 @@ static void blend_pixel_normal(int x, int y, uint32_t color)
    uint8_t dr = (dst   >> 24) & 0xff;
    uint8_t dg = (dst   >> 16) & 0xff;
    uint8_t db = (dst   >>  8) & 0xff;
-   uint32_t inv = 255U - sa;
-   uint8_t nr = (uint8_t)(((uint32_t)sr * sa + (uint32_t)dr * inv) / 255U);
-   uint8_t ng = (uint8_t)(((uint32_t)sg * sa + (uint32_t)dg * inv) / 255U);
-   uint8_t nb = (uint8_t)(((uint32_t)sb * sa + (uint32_t)db * inv) / 255U);
+   uint8_t nr = blend_channel_normal(sr, dr, sa);
+   uint8_t ng = blend_channel_normal(sg, dg, sa);
+   uint8_t nb = blend_channel_normal(sb, db, sa);
    framebuffer[(size_t)y * NOVA64_WIDTH + (size_t)x] = rgba8(nr, ng, nb, 255);
 }
 
@@ -3007,7 +3011,7 @@ static void draw_rect_gradient_pixels(int x, int y, int w, int h, uint32_t a, ui
       return;
    for (int yy = 0; yy < h; yy++) {
       for (int xx = 0; xx < w; xx++) {
-         float denom = (float)((vertical ? h : w) - 1);
+         float denom = (float)(vertical ? h : w);
          float t = denom > 0.0f ? (float)(vertical ? yy : xx) / denom : 0.0f;
          blend_pixel_normal(x + xx, y + yy, lerp_color(a, b, t));
       }
@@ -16060,13 +16064,11 @@ static JSValue js_draw_gradient(JSContext *ctx, JSValueConst this_val, int argc,
          if (s) { gdir = (!strcmp(s,"vertical")||!strcmp(s,"v")) ? 1 : 0; JS_FreeCString(ctx, s); }
       } else { gdir = int_from_js(ctx, argv[6], 0); }
    }
-   int r1=(gc1>>24)&0xFF, g1=(gc1>>16)&0xFF, b1=(gc1>>8)&0xFF, a1=gc1&0xFF;
-   int r2=(gc2>>24)&0xFF, g2=(gc2>>16)&0xFF, b2=(gc2>>8)&0xFF, a2=gc2&0xFF;
    if (gdir == 0) { /* horizontal */
       if (gw <= 0) return JS_UNDEFINED;
       for (int xi = 0; xi < gw; xi++) {
-         double t = (double)xi / (double)(gw - 1 > 0 ? gw - 1 : 1);
-         uint32_t lc = rgba8((int)(r1+(r2-r1)*t+0.5),(int)(g1+(g2-g1)*t+0.5),(int)(b1+(b2-b1)*t+0.5),(int)(a1+(a2-a1)*t+0.5));
+         double t = (double)xi / (double)gw;
+         uint32_t lc = lerp_color(gc1, gc2, (float)t);
          int sx, sy, ex, ey;
          transform_2d_point(gx+xi, gy, &sx, &sy);
          transform_2d_point(gx+xi, gy+gh, &ex, &ey);
@@ -16075,8 +16077,8 @@ static JSValue js_draw_gradient(JSContext *ctx, JSValueConst this_val, int argc,
    } else { /* vertical */
       if (gh <= 0) return JS_UNDEFINED;
       for (int yi = 0; yi < gh; yi++) {
-         double t = (double)yi / (double)(gh - 1 > 0 ? gh - 1 : 1);
-         uint32_t lc = rgba8((int)(r1+(r2-r1)*t+0.5),(int)(g1+(g2-g1)*t+0.5),(int)(b1+(b2-b1)*t+0.5),(int)(a1+(a2-a1)*t+0.5));
+         double t = (double)yi / (double)gh;
+         uint32_t lc = lerp_color(gc1, gc2, (float)t);
          int sx, sy, ex, ey;
          transform_2d_point(gx, gy+yi, &sx, &sy);
          transform_2d_point(gx+gw, gy+yi, &ex, &ey);
@@ -16094,8 +16096,6 @@ static JSValue js_draw_radial_gradient(JSContext *ctx, JSValueConst this_val, in
    int rgr  = int_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 0);
    uint32_t rgic = color_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, rgba8(255,255,255,255));
    uint32_t rgoc = color_from_js(ctx, argc > 4 ? argv[4] : JS_UNDEFINED, rgba8(0,0,0,0));
-   int ri1=(rgic>>24)&0xFF, gi1=(rgic>>16)&0xFF, bi1=(rgic>>8)&0xFF, ai1=rgic&0xFF;
-   int ro2=(rgoc>>24)&0xFF, go2=(rgoc>>16)&0xFF, bo2=(rgoc>>8)&0xFF, ao2=rgoc&0xFF;
    int sx, sy;
    transform_2d_point(rgcx, rgcy, &sx, &sy);
    int rr = transform_2d_size(rgr);
@@ -16103,20 +16103,15 @@ static JSValue js_draw_radial_gradient(JSContext *ctx, JSValueConst this_val, in
       return JS_UNDEFINED;
    int x0 = sx - rr, y0 = sy - rr;
    int x1 = sx + rr, y1 = sy + rr;
-   for (int py = y0; py <= y1; py++) {
-      for (int px = x0; px <= x1; px++) {
+   for (int py = y0; py < y1; py++) {
+      for (int px = x0; px < x1; px++) {
          int dx = px - sx;
          int dy = py - sy;
          float dist = sqrtf((float)(dx * dx + dy * dy));
          if (dist > (float)rr)
             continue;
          float t = (float)(dist / (float)rr);
-         uint32_t rc = rgba8(
-            (int)((float)ri1 + (float)(ro2 - ri1) * t + 0.5f),
-            (int)((float)gi1 + (float)(go2 - gi1) * t + 0.5f),
-            (int)((float)bi1 + (float)(bo2 - bi1) * t + 0.5f),
-            (int)((float)ai1 + (float)(ao2 - ai1) * t + 0.5f));
-         blend_pixel_normal(px, py, rc);
+         blend_pixel_normal(px, py, lerp_color(rgic, rgoc, t));
       }
    }
    return JS_UNDEFINED;
@@ -22947,9 +22942,26 @@ static JSValue js_color_mix3(JSContext *ctx, JSValueConst this_val, int argc, JS
    return JS_NewInt32(ctx, (int32_t)(((uint8_t)r<<24)|((uint8_t)g<<16)|((uint8_t)b<<8)|(uint8_t)a));
 }
 
-/* drawNoise supports both legacy RA drawNoise(x,y,w,h,density,color) and
- * browser drawNoise(x,y,w,h,alpha,seed). The browser shape is used by web
- * carts for full-screen grain and must alpha-blend instead of overwriting. */
+typedef enum {
+   NOVA64_NOISE_LEGACY_DENSITY_COLOR,
+   NOVA64_NOISE_BROWSER_ALPHA_SEED
+} Nova64NoiseSignature;
+
+static Nova64NoiseSignature detect_draw_noise_signature(int argc, double amount, double sixth)
+{
+   if (amount <= 1.0)
+      return NOVA64_NOISE_LEGACY_DENSITY_COLOR;
+   if (argc < 6)
+      return NOVA64_NOISE_BROWSER_ALPHA_SEED;
+   if (sixth >= 0.0 && sixth <= 65535.0)
+      return NOVA64_NOISE_BROWSER_ALPHA_SEED;
+   return NOVA64_NOISE_LEGACY_DENSITY_COLOR;
+}
+
+/* Supports both API shapes:
+ * - RetroArch legacy: drawNoise(x,y,w,h,density,color)
+ * - Browser runtime:  drawNoise(x,y,w,h,alpha,seed)
+ */
 static JSValue js_draw_noise(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
    (void)this_val;
@@ -22958,9 +22970,9 @@ static JSValue js_draw_noise(JSContext *ctx, JSValueConst this_val, int argc, JS
    int nw  = int_from_js(ctx, argv[2], 100), nh = int_from_js(ctx, argv[3], 100);
    double amount = double_from_js(ctx, argv[4], 0.1);
    double sixth = argc > 5 ? double_from_js(ctx, argv[5], 0.0) : 0.0;
-   bool browser_shape = amount > 1.0 && (argc < 6 || (sixth >= 0.0 && sixth <= 65535.0));
+   Nova64NoiseSignature signature = detect_draw_noise_signature(argc, amount, sixth);
 
-   if (browser_shape) {
+   if (signature == NOVA64_NOISE_BROWSER_ALPHA_SEED) {
       int alpha = (int)clamp_double(amount, 0.0, 255.0);
       uint32_t seed = (uint32_t)int_from_js(ctx, argc > 5 ? argv[5] : JS_UNDEFINED, 12345) | 12345U;
       int x0 = nx < 0 ? 0 : nx;

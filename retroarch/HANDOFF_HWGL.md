@@ -1,6 +1,6 @@
 # Nova64 Hardware GL on Windows — Status & Handover
 
-**Last updated:** 2026-05-25 (overlay blend/noise parity push)
+**Last updated:** 2026-05-25 (normalized overlay blend/noise parity push)
 **Branch:** `main`
 **Working tree:** clean after committing this checkpoint
 
@@ -29,6 +29,12 @@ Root causes found and addressed:
 - The legacy RetroArch `drawNoise(...density,color)` path remains raw/scatter
   compatible for older carts and conformance tests; only the browser-style
   alpha/seed path uses full-screen blended grain.
+- Follow-up cleanup normalized the implementation so this is renderer policy
+  rather than duct tape: normal alpha blending now uses the browser-compatible
+  rounded channel helper, gradient interpolation uses the browser's endpoint
+  denominator/floor behavior, radial gradients reuse shared `lerp_color()`, and
+  `drawNoise` chooses between explicit named signatures instead of an inline
+  heuristic.
 
 RetroArch port-cart control was also retuned after the start-screen fix: its
 gameplay sky constants were reduced from the older bright neutral values to
@@ -44,26 +50,26 @@ NOVA64_GLES_TESTS=1 bash retroarch/tests/run_conformance.sh --skip-build --from 
 NOVA64_GLES_TESTS=1 bash retroarch/tests/run_conformance.sh --skip-build --from 151 --to 151
 NOVA64_GLES_TESTS=1 bash retroarch/tests/run_conformance.sh --skip-build --from 263 --to 263
 NOVA64_GLES_TESTS=1 bash retroarch/tests/run_conformance.sh --skip-build --from 478 --to 478
-pnpm run retroarch:visual:space-harrier -- --retro-cart=web --out=retroarch/build/space-harrier-web-parity --port=5181 --guard=web
-pnpm run retroarch:visual:space-harrier -- --retro-cart=port --out=retroarch/build/space-harrier-port-parity --port=5183 --guard=port
+pnpm run retroarch:visual:space-harrier -- --retro-cart=web --out=retroarch/build/space-harrier-web-parity --port=5184 --guard=web
+pnpm run retroarch:visual:space-harrier -- --retro-cart=port --out=retroarch/build/space-harrier-port-parity --port=5185 --guard=port
 ```
 
 Latest Space Harrier web-cart source-of-truth parity:
 
-- **86.1 avg** (start 82.0 / play 90.1), web guard passing.
+- **86.6 avg** (start 81.9 / play 91.2), web guard passing.
 - Start screen is now covered by blended purple/noise primitives instead of
   leaking the 3D world, but the score still says there is meaningful title-layer
-  color work left: RA start sky is `rgb(36,30,53)` vs browser `rgb(95,58,138)`.
+  color work left: RA start sky is `rgb(36,29,52)` vs browser `rgb(95,57,137)`.
 - Gameplay still passes but remains too dark in the sky and too soft on field
-  detail: RA gameplay sky `rgb(50,57,65)` vs browser `rgb(73,75,77)`,
-  gameplay sharpness ratio about **40.8%**.
-- Port-cart control remains healthy: **91.0 avg** (start 93.9 / play 88.2),
-  with gameplay sky similarity **98.9%** after the port sky retune.
+  detail: RA gameplay sky `rgb(48,51,60)` vs browser `rgb(68,69,74)`,
+  gameplay sharpness ratio about **37.8%**.
+- Port-cart control remains healthy: **91.8 avg** (start 93.8 / play 89.7),
+  with gameplay sky similarity **98.8%** after the port sky retune.
 
 Intentional baseline movement:
 
-- `478 gradient hexcolor` checksum changed to `21cecac942248b49` because
-  gradients now alpha-blend rather than raw-writing alpha over the framebuffer.
+- `478 gradient hexcolor` checksum changed to `6c55dcfa031d1ae9` after
+  gradient interpolation was normalized to browser endpoint semantics.
 
 Next recommended work:
 

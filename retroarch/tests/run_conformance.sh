@@ -857,7 +857,7 @@ run_visual_case "466 curve ellipse hsb"    "466-curve-ellipse-hsb"    "retroarch
 run_visual_case "475 batch35 showcase"     "475-batch35-showcase"     "retroarch/conformance/475-batch35-showcase.js"     "07a71bd0be90b4b4"
 run_visual_case "476 lerp ease arc bezier" "476-lerp-ease-arc-bezier" "retroarch/conformance/476-lerp-ease-arc-bezier.js" "57ec5bd04fd3851f"
 run_visual_case "477 noisemap flowfield"   "477-noisemap-flowfield-color" "retroarch/conformance/477-noisemap-flowfield-color.js" "dbe903f4311cdc66"
-run_visual_case "478 gradient hexcolor"    "478-gradient-hexcolor"    "retroarch/conformance/478-gradient-hexcolor.js"    "21cecac942248b49"
+run_visual_case "478 gradient hexcolor"    "478-gradient-hexcolor"    "retroarch/conformance/478-gradient-hexcolor.js"    "6c55dcfa031d1ae9"
 run_visual_case "487 batch36 showcase"     "487-batch36-showcase"     "retroarch/conformance/487-batch36-showcase.js"     "4cb5b3ddcc884092"
 run_visual_case "488 shake cooldown"       "488-shake-cooldown"       "retroarch/conformance/488-shake-cooldown.js"       "cf063915b7e193b8"
 run_visual_case "489 hit state"            "489-hit-state"            "retroarch/conformance/489-hit-state.js"            "2c4ba43145cff6eb"

@@ -1,5 +1,6 @@
 // Conformance cart 21: extended post-processing effects
-// Verifies bloom, bloom radius/threshold, chromatic, setColorGrade, setPosterize state round-trips.
+// Verifies bloom, bloom radius/threshold, chromatic, setColorGrade, setPosterize,
+// exposure, saturation, sharpness, and HDR target state round-trips.
 // In software/headless mode the FBO is absent but state must hold correctly.
 
 let cube;
@@ -20,6 +21,11 @@ export function init() {
    nova64.post.setColorGrade(1.3, 1.1, 0.7);
    // Posterize
    nova64.post.setPosterize(5);
+   // Output pipeline controls
+   nova64.post.setExposure(1.25);
+   nova64.post.setSaturation(1.1);
+   nova64.post.setSharpness(0.35);
+   nova64.post.setHDRMode('32f');
 
    const s = nova64.post.getState();
    if (Math.abs(s.bloom - 0.7) > 0.01) throw new Error('bloom mismatch: ' + s.bloom);
@@ -30,6 +36,10 @@ export function init() {
    if (Math.abs(s.colorGrade[1] - 1.1) > 0.01) throw new Error('grade[1] mismatch');
    if (Math.abs(s.colorGrade[2] - 0.7) > 0.01) throw new Error('grade[2] mismatch');
    if (s.posterize !== 5) throw new Error('posterize mismatch: ' + s.posterize);
+   if (Math.abs(s.exposure - 1.25) > 0.01) throw new Error('exposure mismatch: ' + s.exposure);
+   if (Math.abs(s.saturation - 1.1) > 0.01) throw new Error('saturation mismatch: ' + s.saturation);
+   if (Math.abs(s.sharpness - 0.35) > 0.01) throw new Error('sharpness mismatch: ' + s.sharpness);
+   if (s.hdrMode !== '32f') throw new Error('hdrMode mismatch: ' + s.hdrMode);
    if (!s.active) throw new Error('active expected true');
 
    // Round-trip clear then re-enable for visual frame
@@ -39,6 +49,9 @@ export function init() {
    if (s2.bloomRadius !== 0) throw new Error('bloomRadius should be 0 after clear');
    if (Math.abs(s2.bloomThreshold - 0.32) > 0.01) throw new Error('bloomThreshold should reset');
    if (s2.posterize !== 0) throw new Error('posterize should be 0 after clear');
+   if (Math.abs(s2.exposure - 1.0) > 0.01) throw new Error('exposure should reset');
+   if (Math.abs(s2.saturation - 1.0) > 0.01) throw new Error('saturation should reset');
+   if (s2.sharpness !== 0) throw new Error('sharpness should be 0 after clear');
    if (s2.colorGrade[0] !== 1 || s2.colorGrade[1] !== 1 || s2.colorGrade[2] !== 1)
       throw new Error('colorGrade should be [1,1,1] after clear');
 

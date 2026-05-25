@@ -1,32 +1,89 @@
 # Nova64 Hardware GL on Windows — Status & Handover
 
-**Last updated:** 2026-05-24 (24-bit color promotion landed — web parity 73.3 → 77.9)
+**Last updated:** 2026-05-24 (128-bit HDR + sharpness handoff)
 **Branch:** `main`
-**Working tree:** clean at `bdd0cec`
+**Working tree:** clean after committing this checkpoint
+
+---
+
+## 🔥 Latest handoff: 128-bit HDR + crisp post path
+
+Claude's latest committed checkpoint was `8b7120b`:
+
+- 24-bit web color promotion had already fixed the big blue/cyan palette bug.
+- Web-compat exposure was pinned to Three's `toneMappingExposure = 1.25`.
+- Web carts without an explicit sky now receive a dark navy default sky.
+- A broad `setSaturation(1.10)` lift improved parity but user/agent notes
+  flagged HUD tinting; the health bar could stop reading as clean green.
+- Optional RGBA32F support existed, and the user's next direction was to lean
+  into "128 bit mind blowing graphics and fx."
+
+This follow-up turns that into a validated runtime path:
+
+- `nova64_compat_hdr_32f` now defaults to `true`. GLES tries an **RGBA32F
+  128-bit/pixel post FBO** first and falls back to RGBA16F if the driver cannot
+  complete the framebuffer.
+- `nova64.post.setHDRMode('32f'|'16f'|boolean)` remains available for carts or
+  tests that need to force the target.
+- `nova64.post.setSharpness(amount)` adds a post-tone-map unsharp mask. Web
+  compat uses `0.35`, which improved Space Harrier title sharpness without
+  reintroducing the earlier broad FXAA-like blur.
+- The web compat `enableBloom()` bridge now keeps `setSaturation(1.0)` neutral
+  to avoid HUD tinting. Palette/color parity should come from 24-bit color
+  promotion, real cart colors, lighting, fog, and sky, not a global chroma shove.
+- `nova64.post.getState()` now exposes `exposure`, `saturation`, `sharpness`,
+  requested `hdrMode`, actual `hdrActual`, and `hdrFormat`.
+- `21-post-effects` now round-trips exposure/saturation/sharpness/HDR mode and
+  the GLES checksum has been intentionally rebaselined to
+  `89921835e5694410` for the RGBA32F path.
+
+Validation from this checkpoint:
+
+```bash
+make -C retroarch all
+NOVA64_GLES_TESTS=1 bash retroarch/tests/run_conformance.sh --skip-build --from 20 --to 22
+pnpm run retroarch:visual:space-harrier -- --retro-cart=web --out=retroarch/build/space-harrier-web-parity --port=5178 --guard=web
+pnpm run retroarch:visual:space-harrier -- --retro-cart=port --out=retroarch/build/space-harrier-port-parity --port=5178 --guard=port
+```
+
+Current visual parity:
+
+- Web-cart-on-RA source-of-truth path: **85.5 avg** (start 83.4 / play 87.7).
+- Web-cart start sharpness is now **94.5%** of browser; gameplay pixel
+  similarity is **86.8%**.
+- Gameplay sharpness is still the stubborn gap at **33.3%** of browser, so the
+  next parity move should be geometry/material/fog contrast or pass ordering,
+  not a stronger global sharpen.
+- Port-cart control remains healthy: **91.1 avg** (start 93.1 / play 89.0).
+
+Next recommended work:
+
+1. If the user wants Windows RetroArch testing, cross-build and redeploy the DLL.
+2. Investigate the remaining gameplay sharpness gap by comparing floor/cart
+   geometry contrast and post pass ordering against Three's `EffectComposer`.
+3. Avoid restoring broad saturation >1.05 globally unless HUD/UI paths are
+   isolated from the post chroma lift.
 
 ---
 
 ## 🎨 Color bit-depth (for the "coolest console" ask)
 
-We already use **RGBA16F (64-bit total — 16-bit float per channel)** for
-the HDR post-processing FBO when the GL driver supports float color
-attachments, with RGBA8 fallback for drivers that reject float targets.
-See `gles_init_post_fbo` and the `[nova64-perf] frame0` log line at startup
-which reports `format=RGBA16F bloom_mips=5`.
+Nova64 RetroArch now prefers **RGBA32F (128-bit total — 32-bit float per
+channel)** for the HDR post-processing FBO when the GL driver supports full
+float color attachments. It falls back to **RGBA16F** if RGBA32F is not
+framebuffer-complete. See `gles_init_post_resources` and the startup log line
+which reports `format=RGBA32F bloom_mips=5` in the GLES harness.
 
-Going higher (RGBA32F = 128-bit) gives diminishing returns at a 640×360
-retro target — float16 already preserves bloom highlights far beyond what
-the final 8-bit-per-channel display can show. The "wow factor" comes from
-bloom passes, tone-mapping, and color-grading work, not the float
-container width.
+Important: the bit depth is the headroom; the visible "wow factor" still comes
+from bloom passes, tone mapping, palette correctness, sky/fog/material parity,
+and careful sharpening. The 128-bit path is useful because it gives those
+effects more room before final tone mapping.
 
-If the user wants more bit-depth bling specifically:
+Good next "bling" targets:
 1. Add a **3D LUT color grading** stage (cinematic post)
 2. Add **temporal anti-aliasing (TAA)** for crisper sub-pixel detail
 3. Add a **chromatic aberration intensity per scene** option
 4. Add **screen-space reflections** on the floor planes
-
-All cheaper wins than going to RGBA32F.
 
 ---
 

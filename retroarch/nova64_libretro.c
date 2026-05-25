@@ -507,6 +507,7 @@ struct nova64_gles_backend {
    GLint post_color_grade_uniform;
    GLint post_exposure_uniform;
    GLint post_saturation_uniform;
+   GLint post_sharpness_uniform;
    GLint post_posterize_uniform;
    GLint bloom_downsample_position_attrib;
    GLint bloom_downsample_uv_attrib;
@@ -1760,6 +1761,7 @@ struct nova64_post_state {
    int posterize;        /* 0 = off, 2-8 = quantize levels */
    float exposure;       /* pre-ACES scalar, default 1.0; Three uses 1.25 */
    float saturation;     /* post-ACES saturation multiplier, default 1.0 */
+   float sharpness;      /* unsharp mask amount, default 0.0 = off */
 };
 static struct nova64_post_state post_state;
 
@@ -1776,6 +1778,7 @@ static void reset_post_state(void)
    post_state.posterize = 0;
    post_state.exposure = 1.0f;
    post_state.saturation = 1.0f;
+   post_state.sharpness = 0.0f;
 }
 
 static bool post_is_active(void)
@@ -1784,7 +1787,7 @@ static bool post_is_active(void)
       || post_state.bloom > 0.0f || post_state.chromatic > 0.0f || post_state.posterize > 0
       || post_state.color_grade[0] != 1.0f || post_state.color_grade[1] != 1.0f
       || post_state.color_grade[2] != 1.0f || post_state.exposure != 1.0f
-      || post_state.saturation != 1.0f;
+      || post_state.saturation != 1.0f || post_state.sharpness > 0.0f;
 }
 
 static void reset_palette_state(void)
@@ -2028,7 +2031,10 @@ static uint32_t color_from_js(JSContext *ctx, JSValueConst value, uint32_t fallb
 }
 
 bool nova64_compat_24bit_colors = false;
-bool nova64_compat_hdr_32f = false;  /* opt-in RGBA32F post FBO (128-bit/pixel) */
+/* RGBA32F by default — "use all 128 bits!" per user. Auto-falls back to
+ * RGBA16F on drivers that don't support full float color targets, so this
+ * is safe across the matrix. */
+bool nova64_compat_hdr_32f = true;
 
 static int int_from_js(JSContext *ctx, JSValueConst value, int fallback)
 {
@@ -26962,6 +26968,14 @@ static JSValue js_post_get_state(JSContext *ctx, JSValueConst this_val, int argc
    JS_SetPropertyUint32(ctx, grade, 2, JS_NewFloat64(ctx, (double)post_state.color_grade[2]));
    JS_SetPropertyStr(ctx, obj, "colorGrade", grade);
    JS_SetPropertyStr(ctx, obj, "posterize", JS_NewInt32(ctx, post_state.posterize));
+   JS_SetPropertyStr(ctx, obj, "exposure", JS_NewFloat64(ctx, (double)post_state.exposure));
+   JS_SetPropertyStr(ctx, obj, "saturation", JS_NewFloat64(ctx, (double)post_state.saturation));
+   JS_SetPropertyStr(ctx, obj, "sharpness", JS_NewFloat64(ctx, (double)post_state.sharpness));
+   JS_SetPropertyStr(ctx, obj, "hdrMode", JS_NewString(ctx, nova64_compat_hdr_32f ? "32f" : "16f"));
+   JS_SetPropertyStr(ctx, obj, "hdrActual", JS_NewString(ctx,
+      gles.post_hdr_is_float32 ? "32f" : (gles.post_hdr_enabled ? "16f" : "none")));
+   JS_SetPropertyStr(ctx, obj, "hdrFormat", JS_NewString(ctx,
+      gles.post_hdr_format_label ? gles.post_hdr_format_label : (gles.post_hdr_enabled ? "RGBA16F" : "none")));
    JS_SetPropertyStr(ctx, obj, "active", JS_NewBool(ctx, post_is_active()));
    JS_SetPropertyStr(ctx, obj, "fboReady", JS_NewBool(ctx, gles.post_resources_ready));
    return obj;
@@ -27001,14 +27015,26 @@ static JSValue js_compat_use_24bit_colors(JSContext *ctx, JSValueConst this_val,
    return JS_UNDEFINED;
 }
 
-/* setSaturation(s): post-ACES saturation multiplier. 1.0 = neutral,
- * 1.25 lifts colors back from ACES's natural desaturation toward the
- * vivid look web Three carts have. Web compat pins this to 1.25. */
+/* setSaturation(s): post-ACES saturation multiplier. 1.0 = neutral.
+ * Web compat currently pins this to 1.0 because a broad saturation lift
+ * visibly tints HUD primitives; palette parity now comes from 24-bit color
+ * promotion and per-cart color values instead. */
 static JSValue js_post_set_saturation(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
    (void)this_val;
    post_state.saturation = (float)clamp_double(
       double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 1.0), 0.0, 4.0);
+   return JS_UNDEFINED;
+}
+
+/* setSharpness(amount): unsharp-mask post pass. 0 = off (default),
+ * 0.3-0.6 = subtle crisp, 1.0+ = aggressive. Counteracts bloom blur
+ * by amplifying high-frequency detail vs a 4-tap cross average. */
+static JSValue js_post_set_sharpness(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   post_state.sharpness = (float)clamp_double(
+      double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0.0), 0.0, 4.0);
    return JS_UNDEFINED;
 }
 
@@ -29115,6 +29141,7 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, post, "use24BitColors", js_compat_use_24bit_colors, 1);
    set_function(ctx, post, "setHDRMode", js_post_set_hdr_mode, 1);
    set_function(ctx, post, "setSaturation", js_post_set_saturation, 1);
+   set_function(ctx, post, "setSharpness", js_post_set_sharpness, 1);
    set_function(ctx, post, "setBloomRadius", js_post_set_bloom_radius, 1);
    set_function(ctx, post, "setBloomThreshold", js_post_set_bloom_threshold, 1);
    set_function(ctx, post, "setChromatic", js_post_set_chromatic, 1);
@@ -29162,7 +29189,13 @@ static bool install_nova64_api(JSContext *ctx)
                "if(p.setExposure)p.setExposure(1.25);"
                "if(p.use24BitColors)p.use24BitColors(true);"
                "if(p.setHDRMode)p.setHDRMode('32f');"
-               "if(p.setSaturation)p.setSaturation(1.10);"
+               /* Saturation lift kept neutral — 1.10 visibly tinted HUD
+                  primitives (user-reported: 'health bar no longer green').
+                  Per-cart palette lands correctly via 24-bit promotion. */
+               "if(p.setSaturation)p.setSaturation(1.0);"
+               /* Subtle sharpness — counteracts bloom blur on geometry
+                  edges without going into FXAA-blur territory. */
+               "if(p.setSharpness)p.setSharpness(0.35);"
                /* Default dark blue sky matching Babylon clearColor +
                   ambient lift if cart hasn't called setSkyColor itself */
                "if(typeof setSkyColor==='function'&&!nova64._skySet)"
@@ -34311,10 +34344,14 @@ static bool gles_create_post_program(void)
          web compat layer can set this to lift RA brightness toward web parity. */
       "uniform float u_exposure;\n"
       /* u_saturation: post-tone-map saturation multiplier. Default 1.0
-         (neutral). ACES desaturates highlights; web compat lifts this to
-         ~1.25 so the final image keeps the bright saturated colors that
-         carts authored against the web reference. */
+         (neutral). Use sparingly: broad boosts can tint HUD primitives. */
       "uniform float u_saturation;\n"
+      /* u_sharpness: post unsharp-mask amount. Default 0.0 = no change.
+         Positive values run a 5-tap cross laplacian + adds back into the
+         pixel to crisp edges without the wide blur of FXAA. Pairs well
+         with bloom (which is intentionally blurry) by keeping geometry
+         edges crisp on top of the bloom halo. */
+      "uniform float u_sharpness;\n"
       "uniform int u_posterize;\n"
       "out vec4 fragColor;\n"
       "float post_luma(vec3 c) {\n"
@@ -34466,6 +34503,17 @@ static bool gles_create_post_program(void)
       "    float luma = dot(tone, vec3(0.299, 0.587, 0.114));\n"
       "    tone = mix(vec3(luma), tone, u_saturation);\n"
       "  }\n"
+      /* Optional unsharp mask. Cross-pattern 5-tap, then amplify the
+         difference between the center and the neighbor average. */
+      "  if (u_sharpness > 0.001) {\n"
+      "    vec2 tex = 1.0 / u_resolution.xy;\n"
+      "    vec3 n = aces_filmic(texture(u_scene, uv + vec2(0.0,  tex.y)).rgb * max(u_exposure, 0.0));\n"
+      "    vec3 s = aces_filmic(texture(u_scene, uv + vec2(0.0, -tex.y)).rgb * max(u_exposure, 0.0));\n"
+      "    vec3 e = aces_filmic(texture(u_scene, uv + vec2(tex.x, 0.0)).rgb * max(u_exposure, 0.0));\n"
+      "    vec3 w = aces_filmic(texture(u_scene, uv + vec2(-tex.x, 0.0)).rgb * max(u_exposure, 0.0));\n"
+      "    vec3 avg = (n + s + e + w) * 0.25;\n"
+      "    tone = clamp(tone + (tone - avg) * u_sharpness, 0.0, 8.0);\n"
+      "  }\n"
       "  fragColor = vec4(linear_to_srgb(tone), 1.0);\n"
       "}\n";
 
@@ -34510,6 +34558,7 @@ static bool gles_create_post_program(void)
    gles.post_posterize_uniform = gles.GetUniformLocation(program, "u_posterize");
    gles.post_exposure_uniform = gles.GetUniformLocation(program, "u_exposure");
    gles.post_saturation_uniform = gles.GetUniformLocation(program, "u_saturation");
+   gles.post_sharpness_uniform = gles.GetUniformLocation(program, "u_sharpness");
    return gles.post_position_attrib >= 0 && gles.post_uv_attrib >= 0;
 }
 
@@ -35011,6 +35060,8 @@ static void render_gles_post_pass(GLuint hw_fbo)
       gles.Uniform1f(gles.post_exposure_uniform, post_state.exposure);
    if (gles.post_saturation_uniform >= 0 && gles.Uniform1f)
       gles.Uniform1f(gles.post_saturation_uniform, post_state.saturation);
+   if (gles.post_sharpness_uniform >= 0 && gles.Uniform1f)
+      gles.Uniform1f(gles.post_sharpness_uniform, post_state.sharpness);
 
    gles_draw_fullscreen_quad(gles.post_position_attrib, gles.post_uv_attrib);
    gles.BindTexture(GL_TEXTURE_2D, 0);

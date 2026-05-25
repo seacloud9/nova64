@@ -506,6 +506,7 @@ struct nova64_gles_backend {
    GLint post_chromatic_uniform;
    GLint post_color_grade_uniform;
    GLint post_exposure_uniform;
+   GLint post_saturation_uniform;
    GLint post_posterize_uniform;
    GLint bloom_downsample_position_attrib;
    GLint bloom_downsample_uv_attrib;
@@ -1758,6 +1759,7 @@ struct nova64_post_state {
    float color_grade[3]; /* RGB multipliers, default 1.0 each */
    int posterize;        /* 0 = off, 2-8 = quantize levels */
    float exposure;       /* pre-ACES scalar, default 1.0; Three uses 1.25 */
+   float saturation;     /* post-ACES saturation multiplier, default 1.0 */
 };
 static struct nova64_post_state post_state;
 
@@ -1773,6 +1775,7 @@ static void reset_post_state(void)
    post_state.color_grade[0] = post_state.color_grade[1] = post_state.color_grade[2] = 1.0f;
    post_state.posterize = 0;
    post_state.exposure = 1.0f;
+   post_state.saturation = 1.0f;
 }
 
 static bool post_is_active(void)
@@ -1780,7 +1783,8 @@ static bool post_is_active(void)
    return post_state.crt_enabled || post_state.vignette > 0.0f || post_state.pixelate > 0
       || post_state.bloom > 0.0f || post_state.chromatic > 0.0f || post_state.posterize > 0
       || post_state.color_grade[0] != 1.0f || post_state.color_grade[1] != 1.0f
-      || post_state.color_grade[2] != 1.0f || post_state.exposure != 1.0f;
+      || post_state.color_grade[2] != 1.0f || post_state.exposure != 1.0f
+      || post_state.saturation != 1.0f;
 }
 
 static void reset_palette_state(void)
@@ -26997,6 +27001,17 @@ static JSValue js_compat_use_24bit_colors(JSContext *ctx, JSValueConst this_val,
    return JS_UNDEFINED;
 }
 
+/* setSaturation(s): post-ACES saturation multiplier. 1.0 = neutral,
+ * 1.25 lifts colors back from ACES's natural desaturation toward the
+ * vivid look web Three carts have. Web compat pins this to 1.25. */
+static JSValue js_post_set_saturation(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   post_state.saturation = (float)clamp_double(
+      double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 1.0), 0.0, 4.0);
+   return JS_UNDEFINED;
+}
+
 /* setHDRMode(mode): '32f' = RGBA32F overkill (128-bit/pixel HDR),
  * '16f' = default RGBA16F (64-bit/pixel). Takes effect on next post FBO
  * (re)allocation, i.e. context reset or initial bring-up. */
@@ -29099,6 +29114,7 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, post, "setExposure", js_post_set_exposure, 1);
    set_function(ctx, post, "use24BitColors", js_compat_use_24bit_colors, 1);
    set_function(ctx, post, "setHDRMode", js_post_set_hdr_mode, 1);
+   set_function(ctx, post, "setSaturation", js_post_set_saturation, 1);
    set_function(ctx, post, "setBloomRadius", js_post_set_bloom_radius, 1);
    set_function(ctx, post, "setBloomThreshold", js_post_set_bloom_threshold, 1);
    set_function(ctx, post, "setChromatic", js_post_set_chromatic, 1);
@@ -29145,7 +29161,12 @@ static bool install_nova64_api(JSContext *ctx)
              "enableBloom:function(s,r,t){p.setBloom(s==null?1:s,r,t);"
                "if(p.setExposure)p.setExposure(1.25);"
                "if(p.use24BitColors)p.use24BitColors(true);"
-               "if(p.setHDRMode)p.setHDRMode('32f');},"
+               "if(p.setHDRMode)p.setHDRMode('32f');"
+               "if(p.setSaturation)p.setSaturation(1.10);"
+               /* Default dark blue sky matching Babylon clearColor +
+                  ambient lift if cart hasn't called setSkyColor itself */
+               "if(typeof setSkyColor==='function'&&!nova64._skySet)"
+                 "setSkyColor(rgba8(74,76,84,255),rgba8(48,50,60,255));},"
              "disableBloom:function(){p.setBloom(0);},"
              "setBloomStrength:function(s){p.setBloom(s);},"
              "setBloomRadius:function(r){p.setBloomRadius(r);},"
@@ -34289,6 +34310,11 @@ static bool gles_create_post_program(void)
          Web Three.js carts use renderer.toneMappingExposure = 1.25, so the
          web compat layer can set this to lift RA brightness toward web parity. */
       "uniform float u_exposure;\n"
+      /* u_saturation: post-tone-map saturation multiplier. Default 1.0
+         (neutral). ACES desaturates highlights; web compat lifts this to
+         ~1.25 so the final image keeps the bright saturated colors that
+         carts authored against the web reference. */
+      "uniform float u_saturation;\n"
       "uniform int u_posterize;\n"
       "out vec4 fragColor;\n"
       "float post_luma(vec3 c) {\n"
@@ -34433,7 +34459,14 @@ static bool gles_create_post_program(void)
       /* Apply exposure scalar before ACES (matches Three's toneMappingExposure
          which multiplies the input to the tone-map). Default exposure 1.0
          keeps existing conformance checksums stable. */
-      "  fragColor = vec4(linear_to_srgb(aces_filmic(color.rgb * max(u_exposure, 0.0))), 1.0);\n"
+      "  vec3 tone = aces_filmic(color.rgb * max(u_exposure, 0.0));\n"
+      /* Optional post-tone-map saturation lift to counter ACES desaturation.
+         Default 1.0 = identity. Implemented as Rec.601 luma-based pivot. */
+      "  if (abs(u_saturation - 1.0) > 0.001) {\n"
+      "    float luma = dot(tone, vec3(0.299, 0.587, 0.114));\n"
+      "    tone = mix(vec3(luma), tone, u_saturation);\n"
+      "  }\n"
+      "  fragColor = vec4(linear_to_srgb(tone), 1.0);\n"
       "}\n";
 
    GLuint vertex = gles_compile_shader(GL_VERTEX_SHADER, vertex_source);
@@ -34476,6 +34509,7 @@ static bool gles_create_post_program(void)
    gles.post_color_grade_uniform = gles.GetUniformLocation(program, "u_color_grade");
    gles.post_posterize_uniform = gles.GetUniformLocation(program, "u_posterize");
    gles.post_exposure_uniform = gles.GetUniformLocation(program, "u_exposure");
+   gles.post_saturation_uniform = gles.GetUniformLocation(program, "u_saturation");
    return gles.post_position_attrib >= 0 && gles.post_uv_attrib >= 0;
 }
 
@@ -34975,6 +35009,8 @@ static void render_gles_post_pass(GLuint hw_fbo)
       gles.Uniform1i(gles.post_posterize_uniform, post_state.posterize);
    if (gles.post_exposure_uniform >= 0 && gles.Uniform1f)
       gles.Uniform1f(gles.post_exposure_uniform, post_state.exposure);
+   if (gles.post_saturation_uniform >= 0 && gles.Uniform1f)
+      gles.Uniform1f(gles.post_saturation_uniform, post_state.saturation);
 
    gles_draw_fullscreen_quad(gles.post_position_attrib, gles.post_uv_attrib);
    gles.BindTexture(GL_TEXTURE_2D, 0);

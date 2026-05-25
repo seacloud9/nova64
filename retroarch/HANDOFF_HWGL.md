@@ -1,8 +1,73 @@
 # Nova64 Hardware GL on Windows — Status & Handover
 
-**Last updated:** 2026-05-24 (128-bit HDR + sharpness handoff)
+**Last updated:** 2026-05-25 (128-bit exposure/color parity push)
 **Branch:** `main`
 **Working tree:** clean after committing this checkpoint
+
+---
+
+## 🔥 Latest handoff: 128-bit exposure + web-depth/color balance
+
+The user clarified the direction: RetroArch should use GLES advantages for
+fidelity, usability, beauty, and "128 bit exposure" while keeping web as the
+source of truth. Current interpretation:
+
+- The **RGBA32F 128-bit/pixel HDR post target** is the headroom.
+- `nova64.post.setExposure(1.25)` applies the Three-compatible exposure scalar
+  inside that HDR pipeline before ACES tone mapping.
+- Bloom, sharpness, color/sky/fog, and final output should be tuned with that
+  headroom, not by washing everything with a global saturation boost.
+
+Runtime changes in this checkpoint:
+
+- GLES camera projection now uses a far plane of **1000** instead of 100,
+  matching the Three.js browser camera (`PerspectiveCamera(..., 0.1, 1000)`).
+  This keeps distant Space Harrier floor rows and scenery alive instead of
+  clipping the horizon detail.
+- Web-compat default sky for carts that do not call `setSkyColor()` is now a
+  darker middle fallback: `rgba8(44,45,54)` to `rgba8(28,29,36)`. The previous
+  bright navy fallback helped during the old dark-image phase but became too
+  gray/cyan after 24-bit colors, exposure, and RGBA32F landed. Raw Three clear
+  color (`0x0a0a0f`) was tested and crushed the RA sky too far, so this middle
+  value currently gives the best browser-facing balance.
+
+Validation from this checkpoint:
+
+```bash
+make -C retroarch all
+NOVA64_GLES_TESTS=1 bash retroarch/tests/run_conformance.sh --skip-build --from 17 --to 22
+pnpm run retroarch:visual:space-harrier -- --retro-cart=web --out=retroarch/build/space-harrier-web-parity --port=5178 --guard=web
+pnpm run retroarch:visual:space-harrier -- --retro-cart=port --out=retroarch/build/space-harrier-port-parity --port=5178 --guard=port
+```
+
+Latest Space Harrier web-cart source-of-truth parity:
+
+- **86.0 avg** (start 79.6 / play 92.3).
+- Gameplay average color is much closer: browser `rgb(94,124,102)`, RA
+  `rgb(80,131,110)`.
+- Gameplay sky is now close: browser `rgb(60,63,73)`, RA `rgb(48,52,59)`.
+- Gameplay edge luma ratio is **99.7%**, so the old crushed-edge issue is gone.
+- Gameplay sharpness is **41.5%** of browser. It is improving, but do not solve
+  the rest with stronger global sharpening; next target should be scene/material
+  contrast, pass ordering, or primitive/fog semantics.
+- Port-cart control remains healthy: **91.0 avg** (start 93.2 / play 88.8).
+
+Conformance rebaselines were intentional and projection-related:
+
+- `18 mesh helpers` software checksum and command-log hash changed.
+- GLES checksums changed for `17 light fog`, `18 mesh helpers`, and
+  `22 material`.
+- `screenshots/retroarch/18-mesh-helpers.png` was regenerated as the tracked
+  visual baseline for the software projection change.
+
+Next recommended work:
+
+1. Investigate why the unmodified web cart start screen still lags: start score
+   is 79.6 while gameplay is already 92.3.
+2. Compare RA material/fog/scanline/pass ordering against Three's
+   `EffectComposer` before adding any stronger global grade.
+3. Consider a real color-grading/LUT stage for the "beat Dreamcast" goal, but
+   keep HUD/UI isolated from broad chroma boosts.
 
 ---
 

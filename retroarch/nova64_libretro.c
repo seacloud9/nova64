@@ -66,6 +66,9 @@
 #define M_PI 3.14159265358979323846
 #endif
 
+#define NOVA64_CAMERA_NEAR_Z 0.05f
+#define NOVA64_CAMERA_FAR_Z  1000.0f
+
 typedef unsigned int GLenum;
 typedef unsigned int GLbitfield;
 typedef unsigned int GLuint;
@@ -27358,9 +27361,9 @@ static void render_gles_scene_to_rt(struct nova64_render_target *rt)
    if (camera_state.is_ortho) {
       float hw = camera_state.ortho_width  * 0.5f;
       float hh = camera_state.ortho_height * 0.5f;
-      mat4_ortho(projection, -hw, hw, -hh, hh, 0.05f, 100.0f);
+      mat4_ortho(projection, -hw, hw, -hh, hh, NOVA64_CAMERA_NEAR_Z, NOVA64_CAMERA_FAR_Z);
    } else {
-      mat4_perspective(projection, camera_state.fov, aspect, 0.05f, 100.0f);
+      mat4_perspective(projection, camera_state.fov, aspect, NOVA64_CAMERA_NEAR_Z, NOVA64_CAMERA_FAR_Z);
    }
    {
       float eye[3], tgt[3];
@@ -29196,10 +29199,11 @@ static bool install_nova64_api(JSContext *ctx)
                /* Subtle sharpness — counteracts bloom blur on geometry
                   edges without going into FXAA-blur territory. */
                "if(p.setSharpness)p.setSharpness(0.35);"
-               /* Default dark blue sky matching Babylon clearColor +
-                  ambient lift if cart hasn't called setSkyColor itself */
+               /* Default near Three's dark clear color when the web cart has
+                  not explicitly set a sky. This middle value compensates for
+                  RA's post exposure without the old bright gray/cyan cast. */
                "if(typeof setSkyColor==='function'&&!nova64._skySet)"
-                 "setSkyColor(rgba8(74,76,84,255),rgba8(48,50,60,255));},"
+                 "setSkyColor(rgba8(44,45,54,255),rgba8(28,29,36,255));},"
              "disableBloom:function(){p.setBloom(0);},"
              "setBloomStrength:function(s){p.setBloom(s);},"
              "setBloomRadius:function(r){p.setBloomRadius(r);},"
@@ -35159,9 +35163,10 @@ static void render_gles_scene(void)
    if (camera_state.is_ortho) {
       float hw = camera_state.ortho_width  * 0.5f;
       float hh = camera_state.ortho_height * 0.5f;
-      mat4_ortho(projection, -hw, hw, -hh, hh, 0.05f, 100.0f);
+      mat4_ortho(projection, -hw, hw, -hh, hh, NOVA64_CAMERA_NEAR_Z, NOVA64_CAMERA_FAR_Z);
    } else {
-      mat4_perspective(projection, camera_state.fov, (float)NOVA64_WIDTH / (float)NOVA64_HEIGHT, 0.05f, 100.0f);
+      mat4_perspective(projection, camera_state.fov, (float)NOVA64_WIDTH / (float)NOVA64_HEIGHT,
+         NOVA64_CAMERA_NEAR_Z, NOVA64_CAMERA_FAR_Z);
    }
    {
       float eye[3], tgt[3];

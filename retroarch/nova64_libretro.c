@@ -4786,7 +4786,11 @@ static JSValue js_rgba8(JSContext *ctx, JSValueConst this_val, int argc, JSValue
    uint32_t g = (uint32_t)int_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, 255);
    uint32_t b = (uint32_t)int_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, 255);
    uint32_t a = (uint32_t)int_from_js(ctx, argc > 3 ? argv[3] : JS_UNDEFINED, 255);
-   return JS_NewBigUint64(ctx, rgba8(r, g, b, a));
+   /* Must be a regular Number, not BigInt — carts use bitwise `>>>` on
+      rgba8() results (e.g. conformance carts 597, 792). BigInt operands
+      are forbidden for unsigned right shift in QuickJS. JS_NewUint32
+      represents the full 0..0xffffffff range correctly as a Number. */
+   return JS_NewUint32(ctx, rgba8(r, g, b, a));
 }
 
 static JSValue js_color_lerp(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)

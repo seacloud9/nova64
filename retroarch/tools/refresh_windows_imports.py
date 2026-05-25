@@ -11,6 +11,18 @@ from pathlib import Path
 
 CORE_NAME = "nova64_libretro.dll"
 
+# Web carts that depend on browser-only APIs (WebXR, getUserMedia, Babylon,
+# web crypto). These load through the compat layer but either crash or run
+# without their intended visual, so they stay out of the RetroArch playlist.
+WEB_SKIP = {
+    "ar-hand-demo",
+    "vr-demo",
+    "vr-sword-combat",
+    "babylon-demo",
+    "nft-art-generator",
+    "nft-worlds",
+}
+
 
 def default_retroarch_root() -> Path:
     if os.name == "nt":
@@ -44,10 +56,18 @@ def old_value(old: dict, name: str, fallback):
     return old[name] if name in old else fallback
 
 
-def build_playlist(repo_root: Path, games_dir: Path, retroarch_root: Path, old: dict) -> dict:
+def build_playlist(
+    repo_root: Path,
+    games_dir: Path,
+    retroarch_root: Path,
+    old: dict,
+    include_web: bool = True,
+) -> dict:
     core_path = to_windows_path(retroarch_root / "cores" / CORE_NAME)
     items = []
+    seen_labels: set[str] = set()
     for cart in sorted(games_dir.glob("*.js")):
+        seen_labels.add(cart.stem)
         items.append(
             {
                 "path": to_windows_path(cart),
@@ -59,8 +79,31 @@ def build_playlist(repo_root: Path, games_dir: Path, retroarch_root: Path, old: 
             }
         )
 
+    if include_web:
+        examples_dir = repo_root / "examples"
+        if examples_dir.exists():
+            for cart in sorted(examples_dir.glob("*/code.js")):
+                slug = cart.parent.name
+                if slug in WEB_SKIP:
+                    continue
+                # Suffix web ports so they sort under their RA siblings and
+                # the user can tell which is which without opening the cart.
+                label = f"{slug} [web]" if slug in seen_labels else f"{slug}"
+                items.append(
+                    {
+                        "path": to_windows_path(cart),
+                        "label": label,
+                        "core_path": core_path,
+                        "core_name": CORE_NAME,
+                        "crc32": "00000000|crc",
+                        "db_name": "games.lpl",
+                    }
+                )
+
     if not items:
         raise SystemExit(f"No .js carts found in {games_dir}")
+
+    items.sort(key=lambda it: it["label"].lower())
 
     return {
         "version": old_value(old, "version", "1.5"),
@@ -89,6 +132,11 @@ def main() -> int:
     parser.add_argument("--repo-root", type=Path, default=repo_root_from_script())
     parser.add_argument("--retroarch-root", type=Path, default=default_retroarch_root())
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument(
+        "--no-web",
+        action="store_true",
+        help="Skip examples/*/code.js carts; ship only retroarch/games/*.js",
+    )
     args = parser.parse_args()
 
     repo_root = args.repo_root.resolve()
@@ -103,7 +151,9 @@ def main() -> int:
         raise SystemExit(f"Missing RetroArch playlist directory: {playlist.parent}")
 
     old = load_json(playlist)
-    data = build_playlist(repo_root, games_dir, retroarch_root, old)
+    data = build_playlist(
+        repo_root, games_dir, retroarch_root, old, include_web=not args.no_web
+    )
     labels = [item["label"] for item in data["items"]]
     had_playlist = playlist.exists()
 
@@ -117,7 +167,12 @@ def main() -> int:
         if had_playlist:
             print(f"Backed up previous playlist to {backup}")
 
-    print(f"Imported {len(labels)} carts from {games_dir}")
+    web_count = sum(1 for item in data["items"] if "examples/" in item["path"].replace("\\", "/"))
+    ra_count = len(labels) - web_count
+    if web_count:
+        print(f"Imported {len(labels)} carts: {ra_count} from {games_dir} + {web_count} from examples/*/code.js")
+    else:
+        print(f"Imported {len(labels)} carts from {games_dir}")
     for label in labels:
         print(label)
     return 0

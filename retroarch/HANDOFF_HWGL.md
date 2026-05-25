@@ -1,9 +1,121 @@
 # Nova64 Hardware GL on Windows — Status & Handover
 
-**Last updated:** 2026-05-25 (Codex continuation after Claude handoff)
+**Last updated:** 2026-05-25 (Claude pass after Codex shading/plane fix)
 **Branch:** `main`
-**Working tree:** uncommitted Codex changes for bloom default, GLES shading/color/sharpness, mesh shade contrast, and web-compatible plane geometry
-**Windows DLL deployed:** stale after the latest plane-geometry C change; cross-build/redeploy before Windows RetroArch smoke
+**Working tree:** clean after `f90e74c` (playlist imports web carts)
+**Windows DLL deployed:** fresh as of `ee0cf0c` (rgba8 fix + rebaseline); cross-built and copied to `C:\RetroArch-Win64\cores\nova64_libretro.dll`
+
+---
+
+## 🤝 HANDOFF FOR CODEX — 2026-05-25 (Claude second pass)
+
+Picked up after Codex's `83a4b69` (plane contract + shading style + bloom default
+= three). This pass focused on the user's three asks: API gaps, more games, and
+conformance. All three landed cleanly.
+
+### 1. Found and fixed a runtime regression — `rgba8` returning BigInt
+
+Conformance carts `597-reflect-trigger-color` and `792-color-ramp` were silently
+failing to compile/load with `TypeError: BigInt operands are forbidden for >>>`.
+Root cause: my earlier commit `b0aea9d6` incidentally switched `js_rgba8` from
+`JS_NewUint32` to `JS_NewBigUint64`. Bitwise unsigned-right-shift on a BigInt is
+forbidden per ECMAScript. Reverted to `JS_NewUint32` (full 0..0xffffffff range
+represented correctly as a regular Number). Both carts execute again.
+
+### 2. Finished the paused conformance refresh (clean across 0-999)
+
+Wrote two Python scanners (kept in `/tmp/find_drift.py` and
+`/tmp/find_cmdlog_drift.py`, throwaway) that iterate every `run_visual_case`,
+`run_command_log_case`, and `run_gles_case` row and report drifts. After the
+`rgba8` revert + Codex's shading change, rebaselined:
+
+- 13 software visual checksums (16, 70-77 sans 75, 237, 244, 487, 535, 692, 703)
+- 4 command-log hashes (06 vulkan12, 09, 10, 14, 16, 22)
+- 18 GLES checksums (06, 09, 10, 18, 45, 50, 59, 62, 66, 103, 107, plus 7 gles-*)
+
+Cart 16 is no longer non-deterministic — stable at `54a1c87d41f0e652`. Cart 30
+(`30-showcase`) remains non-deterministic in the showcase keypress path,
+baseline unchanged.
+
+Full validation passes:
+
+```bash
+NOVA64_GLES_TESTS=1 bash retroarch/tests/run_conformance.sh --skip-build --from 0 --to 35
+NOVA64_GLES_TESTS=1 bash retroarch/tests/run_conformance.sh --skip-build --from 36 --to 99
+NOVA64_GLES_TESTS=1 bash retroarch/tests/run_conformance.sh --skip-build --from 100 --to 200
+NOVA64_GLES_TESTS=1 bash retroarch/tests/run_conformance.sh --skip-build --from 201 --to 500
+NOVA64_GLES_TESTS=1 bash retroarch/tests/run_conformance.sh --skip-build --from 501 --to 999
+```
+
+### 3. No API gaps for web carts — all 51 unported ones load
+
+Probed every unported `examples/*/code.js` cart (minus the documented
+XR/Babylon/NFT skip list) through the harness. Every single one of the 51 loaded
+with no JS runtime errors. So the gap between "play any web cart in RetroArch"
+and current state is NOT a missing API surface — it's that `games.lpl` didn't
+know those paths.
+
+### 4. Playlist refresh now imports web examples too (21 → 86 entries)
+
+Extended `retroarch/tools/refresh_windows_imports.py` (`pnpm run
+retroarch:refresh:windows`) to also scan `examples/*/code.js` and add each as a
+playlist item. Web carts that have a hand-tuned RA sibling under the same slug
+get a `[web]` suffix in the label (e.g. `demoscene` vs `demoscene [web]`). New
+`--no-web` flag preserves the old retroarch/games-only behavior.
+
+The `WEB_SKIP` set inside the tool is the canonical "not playable in RA" list
+(XR/Babylon/NFT). Add to it when triaging new web carts.
+
+### Commits this pass (most recent first)
+
+```
+f90e74c feat(retroarch): playlist refresh imports web examples/*/code.js too
+ee0cf0c fix(retroarch): revert rgba8 BigUint64 + rebaseline carts shifted by Codex shading
+```
+
+Both built clean, Windows DLL deployed.
+
+---
+
+## What to do next — prioritized backlog (Claude second pass)
+
+1. **Visual parity sweep of the newly-playable web carts.** Loading clean
+   != rendering correctly. Pick a few high-value ones (`crystal-cathedral-3d`,
+   `cyberpunk-city-3d`, `f-zero-nova-3d`, `super-plumber-64`,
+   `star-fox-nova-3d`) and capture browser vs RA side-by-sides. The
+   shading-style + bloom-style + sharp-style stack is now Three-aligned by
+   default, so many should be close out of the box.
+
+2. **Add an edge-region-only sharpness metric to `space_harrier_visual_parity.mjs`.**
+   Still open from the earlier handoff. Current `sharpnessScore` (line 360) is
+   whole-image gradient-average, which penalizes CAS because cleaner flats
+   lower the metric even when edges go crisper.
+
+3. **Port Three's separable Gaussian blur to the bloom downsample chain.**
+   The composite is Three's UnrealBloomPass but the per-mip blur kernels are
+   still RA's older ones. Three uses radii `[6, 10, 14, 18, 22]` with
+   `0.39894 * exp(-0.5 * i² / σ²) / σ` where `σ = radius / 3`. Source at
+   `node_modules/.pnpm/three@0.182.0/node_modules/three/examples/jsm/postprocessing/UnrealBloomPass.js:379`.
+
+4. **Fix the pre/post-bloom asymmetry in the classic unsharp.** Same fix the
+   CAS branch already has — sample bloom mips at neighbor positions so the
+   classic unsharp also sees post-bloom contrast. Will rebaseline carts that
+   use bloom + sharpness in the classic path.
+
+5. **Tackle the Space Harrier port-cart guard.** Hand-tuned RA port still
+   has bespoke palette differences; re-run with `--guard=ra` after the
+   web-cart sweep.
+
+---
+
+## Don't redo (Claude second pass additions)
+
+- **Switching `js_rgba8` to `BigUint64`.** Carts use `(rgba8() >>> 8)` for
+  channel extraction; BigInt forbids `>>>`. Must stay `JS_NewUint32`.
+
+- **Cart 16 / cart 30 "nondeterministic" notes.** Cart 16 is now stable;
+  remove the warning from any docs you read. Cart 30 IS still
+  nondeterministic in the showcase keypress path.
 
 ---
 

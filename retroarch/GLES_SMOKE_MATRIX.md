@@ -126,3 +126,24 @@ real-driver integration notes only.
 - Web-compat sky calls are now wrapped so `enableBloom()` defaults do not
   overwrite an explicit cart sky later. The Space Harrier parity harness also
   seeds the web-cart `Math.random()` path to reduce capture noise across runs.
+- Film grain post coverage was added through `nova64.post.setFilmGrain()` and
+  global `setFilmGrain()`. The effect is deterministic, opt-in, and runs after
+  tone mapping so it textures the final camera image without feeding bloom.
+  Focused validation passed:
+  - `make -C retroarch all`
+  - `NOVA64_GLES_TESTS=1 bash retroarch/tests/run_conformance.sh --skip-build --from 21 --to 21`
+  - `21-post-effects` GLES checksum is now `1c086592b2ef23fc`.
+- Windows RetroArch core was cross-built from this checkpoint and redeployed to
+  `C:\RetroArch-Win64\cores\nova64_libretro.dll`; real Windows/AMD smoke should
+  verify the film-grain path on an actual RetroArch GLES driver.
+- Post temperature coverage was added through
+  `nova64.post.setTemperature(amount)` and global `setTemperature`. The effect
+  is opt-in, defaults to neutral, and applies warm/cool balance after tone
+  mapping with approximate luma preservation. Focused validation passed:
+  - `make -C retroarch all`
+  - `NOVA64_GLES_TESTS=1 bash retroarch/tests/run_conformance.sh --skip-build --from 21 --to 21`
+  - `21-post-effects` software checksum is now `db290147bd8f8c0b`.
+  - `21-post-effects` GLES checksum is now `16ebe9e50b3e1ec3`.
+- Windows RetroArch core was cross-built and redeployed again to
+  `C:\RetroArch-Win64\cores\nova64_libretro.dll` for the temperature API
+  checkpoint.

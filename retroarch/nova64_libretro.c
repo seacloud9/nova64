@@ -510,6 +510,7 @@ struct nova64_gles_backend {
    GLint post_color_grade_uniform;
    GLint post_exposure_uniform;
    GLint post_saturation_uniform;
+   GLint post_temperature_uniform;
    GLint post_sharpness_uniform;
    GLint post_film_grain_uniform;
    GLint post_posterize_uniform;
@@ -1766,6 +1767,7 @@ struct nova64_post_state {
    int posterize;        /* 0 = off, 2-8 = quantize levels */
    float exposure;       /* pre-ACES scalar, default 1.0; Three uses 1.25 */
    float saturation;     /* post-ACES saturation multiplier, default 1.0 */
+   float temperature;    /* post-ACES warm/cool balance, default 0.0 */
    float sharpness;      /* unsharp mask amount, default 0.0 = off */
    float film_grain;     /* post-tone-map grain amount, default 0.0 = off */
    float film_grain_seed;/* deterministic grain seed */
@@ -1785,6 +1787,7 @@ static void reset_post_state(void)
    post_state.posterize = 0;
    post_state.exposure = 1.0f;
    post_state.saturation = 1.0f;
+   post_state.temperature = 0.0f;
    post_state.sharpness = 0.0f;
    post_state.film_grain = 0.0f;
    post_state.film_grain_seed = 0.0f;
@@ -1796,8 +1799,8 @@ static bool post_is_active(void)
       || post_state.bloom > 0.0f || post_state.chromatic > 0.0f || post_state.posterize > 0
       || post_state.color_grade[0] != 1.0f || post_state.color_grade[1] != 1.0f
       || post_state.color_grade[2] != 1.0f || post_state.exposure != 1.0f
-      || post_state.saturation != 1.0f || post_state.sharpness > 0.0f
-      || post_state.film_grain > 0.0f;
+      || post_state.saturation != 1.0f || post_state.temperature != 0.0f
+      || post_state.sharpness > 0.0f || post_state.film_grain > 0.0f;
 }
 
 static void reset_palette_state(void)
@@ -4499,12 +4502,13 @@ static void write_renderer_command_log(void)
    fprintf(file, "overlay clear=%08x visible_pixels=%zu\n",
          framebuffer_clear_color, count_overlay_pixels());
    fprintf(file,
-         "post crt=%d vignette=%.4f pixelate=%d bloom=%.4f chromatic=%.4f colorgrade=%.4f,%.4f,%.4f posterize=%d exposure=%.4f saturation=%.4f sharpness=%.4f film_grain=%.4f seed=%.4f\n",
+         "post crt=%d vignette=%.4f pixelate=%d bloom=%.4f chromatic=%.4f colorgrade=%.4f,%.4f,%.4f posterize=%d exposure=%.4f saturation=%.4f temperature=%.4f sharpness=%.4f film_grain=%.4f seed=%.4f\n",
          post_state.crt_enabled ? 1 : 0, post_state.vignette, post_state.pixelate,
          post_state.bloom, post_state.chromatic,
          post_state.color_grade[0], post_state.color_grade[1], post_state.color_grade[2],
          post_state.posterize, post_state.exposure, post_state.saturation,
-         post_state.sharpness, post_state.film_grain, post_state.film_grain_seed);
+         post_state.temperature, post_state.sharpness,
+         post_state.film_grain, post_state.film_grain_seed);
 
    for (int i = 0; i < NOVA64_MAX_MESHES; i++) {
       const struct nova64_mesh *mesh = &meshes[i];
@@ -8846,6 +8850,14 @@ static JSValue js_set_film_grain_global(JSContext *ctx, JSValueConst this_val, i
       double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0.0), 0.0, 1.0);
    if (argc > 1 && !JS_IsUndefined(argv[1]))
       post_state.film_grain_seed = (float)double_from_js(ctx, argv[1], 0.0);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_set_temperature_global(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   post_state.temperature = (float)clamp_double(
+      double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0.0), -2.0, 2.0);
    return JS_UNDEFINED;
 }
 
@@ -27174,6 +27186,7 @@ static JSValue js_post_get_state(JSContext *ctx, JSValueConst this_val, int argc
    JS_SetPropertyStr(ctx, obj, "posterize", JS_NewInt32(ctx, post_state.posterize));
    JS_SetPropertyStr(ctx, obj, "exposure", JS_NewFloat64(ctx, (double)post_state.exposure));
    JS_SetPropertyStr(ctx, obj, "saturation", JS_NewFloat64(ctx, (double)post_state.saturation));
+   JS_SetPropertyStr(ctx, obj, "temperature", JS_NewFloat64(ctx, (double)post_state.temperature));
    JS_SetPropertyStr(ctx, obj, "sharpness", JS_NewFloat64(ctx, (double)post_state.sharpness));
    JS_SetPropertyStr(ctx, obj, "filmGrain", JS_NewFloat64(ctx, (double)post_state.film_grain));
    JS_SetPropertyStr(ctx, obj, "filmGrainSeed", JS_NewFloat64(ctx, (double)post_state.film_grain_seed));
@@ -27232,6 +27245,17 @@ static JSValue js_post_set_saturation(JSContext *ctx, JSValueConst this_val, int
    (void)this_val;
    post_state.saturation = (float)clamp_double(
       double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 1.0), 0.0, 4.0);
+   return JS_UNDEFINED;
+}
+
+/* setTemperature(amount): post-tone-map warm/cool balance. 0 = neutral,
+ * positive values warm the image, negative values cool it. The shader preserves
+ * approximate luma so this can tint scenes without broadly lifting brightness. */
+static JSValue js_post_set_temperature(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   post_state.temperature = (float)clamp_double(
+      double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0.0), -2.0, 2.0);
    return JS_UNDEFINED;
 }
 
@@ -29361,6 +29385,7 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, post, "use24BitColors", js_compat_use_24bit_colors, 1);
    set_function(ctx, post, "setHDRMode", js_post_set_hdr_mode, 1);
    set_function(ctx, post, "setSaturation", js_post_set_saturation, 1);
+   set_function(ctx, post, "setTemperature", js_post_set_temperature, 1);
    set_function(ctx, post, "setSharpness", js_post_set_sharpness, 1);
    set_function(ctx, post, "setFilmGrain", js_post_set_film_grain, 2);
    set_function(ctx, post, "setBloomRadius", js_post_set_bloom_radius, 1);
@@ -31208,6 +31233,7 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, global, "setPixelate",         js_set_pixelate_global,     1);
    set_function(ctx, global, "setPosterize",        js_set_posterize_global,    1);
    set_function(ctx, global, "setFilmGrain",        js_set_film_grain_global,   2);
+   set_function(ctx, global, "setTemperature",      js_set_temperature_global,  1);
    set_function(ctx, global, "resetPost",           js_reset_post,              0);
    set_function(ctx, global, "getPostState",        js_get_post_state,          0);
 
@@ -34617,6 +34643,10 @@ static bool gles_create_post_program(void)
       /* u_saturation: post-tone-map saturation multiplier. Default 1.0
          (neutral). Use sparingly: broad boosts can tint HUD primitives. */
       "uniform float u_saturation;\n"
+      /* u_temperature: post-tone-map warm/cool balance. 0.0 is neutral,
+         positive warms highlights, negative cools them while preserving
+         approximate luma. */
+      "uniform float u_temperature;\n"
       /* u_sharpness: post unsharp-mask amount. Default 0.0 = no change.
          Positive values run a 5-tap cross laplacian + adds back into the
          pixel to crisp edges without the wide blur of FXAA. Pairs well
@@ -34781,6 +34811,16 @@ static bool gles_create_post_program(void)
       "    float luma = dot(tone, vec3(0.299, 0.587, 0.114));\n"
       "    tone = mix(vec3(luma), tone, u_saturation);\n"
       "  }\n"
+      "  if (abs(u_temperature) > 0.001) {\n"
+      "    float t = clamp(u_temperature, -1.0, 1.0);\n"
+      "    float a = abs(t);\n"
+      "    vec3 grade = (t >= 0.0) ? mix(vec3(1.0), vec3(1.10, 1.03, 0.90), a)\n"
+      "                             : mix(vec3(1.0), vec3(0.90, 1.02, 1.12), a);\n"
+      "    float before = max(dot(tone, vec3(0.299, 0.587, 0.114)), 0.001);\n"
+      "    tone *= grade;\n"
+      "    float after = max(dot(tone, vec3(0.299, 0.587, 0.114)), 0.001);\n"
+      "    tone *= before / after;\n"
+      "  }\n"
       /* Optional unsharp mask. Cross-pattern 5-tap, then amplify the
          difference between the center and the neighbor average. */
       "  if (u_sharpness > 0.001) {\n"
@@ -34840,6 +34880,7 @@ static bool gles_create_post_program(void)
    gles.post_posterize_uniform = gles.GetUniformLocation(program, "u_posterize");
    gles.post_exposure_uniform = gles.GetUniformLocation(program, "u_exposure");
    gles.post_saturation_uniform = gles.GetUniformLocation(program, "u_saturation");
+   gles.post_temperature_uniform = gles.GetUniformLocation(program, "u_temperature");
    gles.post_sharpness_uniform = gles.GetUniformLocation(program, "u_sharpness");
    gles.post_film_grain_uniform = gles.GetUniformLocation(program, "u_film_grain");
    return gles.post_position_attrib >= 0 && gles.post_uv_attrib >= 0;
@@ -35343,6 +35384,8 @@ static void render_gles_post_pass(GLuint hw_fbo)
       gles.Uniform1f(gles.post_exposure_uniform, post_state.exposure);
    if (gles.post_saturation_uniform >= 0 && gles.Uniform1f)
       gles.Uniform1f(gles.post_saturation_uniform, post_state.saturation);
+   if (gles.post_temperature_uniform >= 0 && gles.Uniform1f)
+      gles.Uniform1f(gles.post_temperature_uniform, post_state.temperature);
    if (gles.post_sharpness_uniform >= 0 && gles.Uniform1f)
       gles.Uniform1f(gles.post_sharpness_uniform, post_state.sharpness);
    if (gles.post_film_grain_uniform >= 0 && gles.Uniform2f)

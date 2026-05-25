@@ -1,12 +1,23 @@
 # Nova64 Hardware GL on Windows — Status & Handover
 
-**Last updated:** 2026-05-25 (Windows import refresh + film grain post API)
+**Last updated:** 2026-05-25 (post temperature API)
 **Branch:** `main`
-**Working tree:** clean after committing this checkpoint
+**Working tree:** local post-temperature changes pending
 
 ---
 
 ## Latest API feature checkpoint
+
+- Added `nova64.post.setTemperature(amount)` and global `setTemperature`.
+  It is opt-in, defaults to neutral, accepts cool negative and warm positive
+  values, and runs after tone mapping with approximate luma preservation.
+- `nova64.post.getState()` now reports `temperature`, and `resetPost()` clears
+  it through the shared post reset path.
+- Focused conformance coverage lives in `21-post-effects.js`; the software
+  checksum intentionally moved to `db290147bd8f8c0b` for the visible state
+  readout and the GLES checksum intentionally moved to `16ebe9e50b3e1ec3`.
+
+### Previous API checkpoint
 
 - Added `nova64.post.setFilmGrain(amount, seed)` and global `setFilmGrain`.
   It is opt-in, deterministic, defaults to off, and runs after tone mapping so
@@ -94,21 +105,21 @@ NOVA64_GLES_TESTS=1 bash retroarch/tests/run_conformance.sh --skip-build --from 
 
 Web-cart Space Harrier is now passing:
 
-| Moment | Before | After |
-|---|---:|---:|
-| Start score | 77.7 | 95.6 |
-| Start average RGB | RA `35,23,55` vs web `83,59,124` | RA `76,61,115` vs web `83,59,124` |
-| Start sharpness ratio | 51.5% | 92.0% |
-| Web-cart average | 84.9, guard failed | 93.6, guard passed |
+| Moment                |                           Before |                             After |
+| --------------------- | -------------------------------: | --------------------------------: |
+| Start score           |                             77.7 |                              95.6 |
+| Start average RGB     | RA `35,23,55` vs web `83,59,124` | RA `76,61,115` vs web `83,59,124` |
+| Start sharpness ratio |                            51.5% |                             92.0% |
+| Web-cart average      |               84.9, guard failed |                93.6, guard passed |
 
 Follow-up gameplay tune:
 
-| Metric | After overlay fix | After gameplay tune |
-|---|---:|---:|
-| Gameplay score | 91.5 | 91.4 in the final conservative run |
-| Gameplay sky similarity | 94.7% | 99.2% |
-| Gameplay sharpness ratio | 39.3% | 54.7% |
-| Web-cart average | 93.6 | 93.5 |
+| Metric                   | After overlay fix |                After gameplay tune |
+| ------------------------ | ----------------: | ---------------------------------: |
+| Gameplay score           |              91.5 | 91.4 in the final conservative run |
+| Gameplay sky similarity  |             94.7% |                              99.2% |
+| Gameplay sharpness ratio |             39.3% |                              54.7% |
+| Web-cart average         |              93.6 |                               93.5 |
 
 Note: a stronger grade reached `94.3` average, but visually pushed the sky
 toward brown/magenta. The committed tune favors visual neutrality and sky
@@ -125,8 +136,8 @@ browser truth.
 
 ### Latest delta on top of Codex's overlay-parity work
 
-User feedback: *"the saturation looks very much off — the health bar is no
-longer green"* and *"we need to utilize all 128 bits!"*. Three runtime
+User feedback: _"the saturation looks very much off — the health bar is no
+longer green"_ and _"we need to utilize all 128 bits!"_. Three runtime
 tweaks shipped in `b0aea9d`:
 
 1. **Saturation backed off 1.10 → 1.0**. The previous 1.10 boost was
@@ -151,35 +162,35 @@ tweaks shipped in `b0aea9d`:
 When a web cart calls `nova64.fx.enableBloom(0.38, 0.22, 0.78)` the
 compat shim now runs all of:
 
-| Step | Effect | Why |
-|---|---|---|
-| `setBloom(s, r, t)` | strength + radius + threshold | Matches Three's `UnrealBloomPass` |
-| `setExposure(1.25)` | pre-ACES brightness multiplier | Matches Three's `renderer.toneMappingExposure` |
-| `use24BitColors(true)` | promotes `0xRRGGBB` → `0xRRGGBBFF` and enables web overlay output color | Web palettes and 2D overlays render correctly |
-| `setHDRMode('32f')` | RGBA32F post FBO | 128-bit precision (now also default) |
-| `setSaturation(1.0)` | neutral pivot | 1.10+ tints HUD — held at 1.0 |
-| `setSharpness(0.35)` | unsharp-mask pass | Crisp edges against bloom |
-| `setSkyColor(...)` if unset | default dark navy gray | Matches Babylon's default `scene.clearColor` |
+| Step                        | Effect                                                                  | Why                                            |
+| --------------------------- | ----------------------------------------------------------------------- | ---------------------------------------------- |
+| `setBloom(s, r, t)`         | strength + radius + threshold                                           | Matches Three's `UnrealBloomPass`              |
+| `setExposure(1.25)`         | pre-ACES brightness multiplier                                          | Matches Three's `renderer.toneMappingExposure` |
+| `use24BitColors(true)`      | promotes `0xRRGGBB` → `0xRRGGBBFF` and enables web overlay output color | Web palettes and 2D overlays render correctly  |
+| `setHDRMode('32f')`         | RGBA32F post FBO                                                        | 128-bit precision (now also default)           |
+| `setSaturation(1.0)`        | neutral pivot                                                           | 1.10+ tints HUD — held at 1.0                  |
+| `setSharpness(0.35)`        | unsharp-mask pass                                                       | Crisp edges against bloom                      |
+| `setSkyColor(...)` if unset | default dark navy gray                                                  | Matches Babylon's default `scene.clearColor`   |
 
 ### New runtime APIs (all opt-in, default = identity, NO conformance impact)
 
 ```javascript
-nova64.post.setExposure(e)            // 0..8, default 1.0
-nova64.post.setSaturation(s)          // 0..4, default 1.0
-nova64.post.setSharpness(amount)      // 0..4, default 0.0
-nova64.post.setHDRMode('32f'|'16f')   // takes effect on next context reset
-nova64.post.use24BitColors(on)        // toggle 0xRRGGBB hex promotion
+nova64.post.setExposure(e); // 0..8, default 1.0
+nova64.post.setSaturation(s); // 0..4, default 1.0
+nova64.post.setSharpness(amount); // 0..4, default 0.0
+nova64.post.setHDRMode('32f' | '16f'); // takes effect on next context reset
+nova64.post.use24BitColors(on); // toggle 0xRRGGBB hex promotion
 ```
 
 ### Parity progression (web cart `examples/space-harrier-3d/code.js` loaded unmodified)
 
-| Phase | Avg score | Play sky parity | Notes |
-|---|---|---|---|
-| Codex baseline (after vignette/bloom work) | 74.5 | 75.9% | edge luma 41.6% |
-| + tone-map exposure 1.25 | 73.3 | 76.5% | edge luma 53.7% |
-| + 24-bit hex color promotion | 77.9 | 77.9% | pixel sim **43.4 → 84.5** |
-| + saturation 1.10 + default sky | **85.2** | **90.3%** | trial run |
-| **+ saturation 1.0 + sharpness 0.35** | 83.0 | 93.6% | HUD-safe, current ship |
+| Phase                                      | Avg score | Play sky parity | Notes                     |
+| ------------------------------------------ | --------- | --------------- | ------------------------- |
+| Codex baseline (after vignette/bloom work) | 74.5      | 75.9%           | edge luma 41.6%           |
+| + tone-map exposure 1.25                   | 73.3      | 76.5%           | edge luma 53.7%           |
+| + 24-bit hex color promotion               | 77.9      | 77.9%           | pixel sim **43.4 → 84.5** |
+| + saturation 1.10 + default sky            | **85.2**  | **90.3%**       | trial run                 |
+| **+ saturation 1.0 + sharpness 0.35**      | 83.0      | 93.6%           | HUD-safe, current ship    |
 
 ### Commits this multi-day sweep (most recent first)
 
@@ -250,12 +261,12 @@ bdd0cec feat(retroarch): 24-bit hex color promotion (+15pts)
 
 ### Deployed state
 
-| Artifact | Path | Source commit |
-|---|---|---|
-| Windows .dll | `C:\RetroArch-Win64\cores\nova64_libretro.dll` | `b0aea9d` |
-| Linux .so | `retroarch/nova64_libretro.so` | `b0aea9d` |
-| 9 .nova carts | `C:\RetroArch-Win64\content\nova64\*.nova` | all latest |
-| 18 playlist entries | `C:\RetroArch-Win64\playlists\games.lpl` | 1:1 with dev folder |
+| Artifact            | Path                                           | Source commit       |
+| ------------------- | ---------------------------------------------- | ------------------- |
+| Windows .dll        | `C:\RetroArch-Win64\cores\nova64_libretro.dll` | `b0aea9d`           |
+| Linux .so           | `retroarch/nova64_libretro.so`                 | `b0aea9d`           |
+| 9 .nova carts       | `C:\RetroArch-Win64\content\nova64\*.nova`     | all latest          |
+| 18 playlist entries | `C:\RetroArch-Win64\playlists\games.lpl`       | 1:1 with dev folder |
 
 Working tree clean. User runs Windows RA so DLL must be redeployed after
 every runtime change — this is captured in `feedback_retroarch_playlist_sync`
@@ -507,6 +518,7 @@ and careful sharpening. The 128-bit path is useful because it gives those
 effects more room before final tone mapping.
 
 Good next "bling" targets:
+
 1. Add a **3D LUT color grading** stage (cinematic post)
 2. Add **temporal anti-aliasing (TAA)** for crisper sub-pixel detail
 3. Add a **chromatic aberration intensity per scene** option
@@ -535,6 +547,7 @@ near-100% Three/Babylon-style).
 pre-existing flaky `16-transforms`.
 
 **Parity numbers** (`--retro-cart=web`):
+
 - Average: **73.3 → 77.9** (+4.6)
 - Play score: **72.8 → 83.5** (+10.7)
 - Play pixel similarity: **43.4 → 84.5** (DOUBLED)
@@ -626,6 +639,7 @@ in `runtime/backends/threejs/gpu-threejs.js` — RA's GLES post shader was
 applying `linear_to_srgb(aces_filmic(color))` with no exposure scalar.
 
 Runtime change:
+
 - `nova64_post_state.exposure` field, default 1.0
 - Post fragment shader multiplies `color.rgb * max(u_exposure, 0)` before ACES
 - `nova64.post.setExposure(e)` JS API (range 0..8)
@@ -633,6 +647,7 @@ Runtime change:
   `p.setExposure(1.25)` so unmodified web carts get Three's default
 
 Verification:
+
 - `21-post-effects` checksum stayed `d5f674e4aa5e28a0` (default 1.0 = identical math)
 - Web-cart edge luma ratio: **41.6% → 53.7%** (Codex baseline → after)
 - Web-cart average score: 74.5 → 73.3 (slight wobble — the color shift
@@ -668,7 +683,7 @@ Guard behavior:
   `--min-edge-luma-ratio`, `--min-edge-center`,
   `--min-sharpness-ratio`, and `--max-saturation-delta`.
 - The report now records `edgeLumaRatio` (`retro edge luma / browser edge
-  luma`) in addition to `edgeToCenter`, because relative edge/center can look
+luma`) in addition to `edgeToCenter`, because relative edge/center can look
   okay even while the whole RA image is still much darker than web.
 
 Latest guard results:
@@ -951,6 +966,7 @@ Findings:
 This whole-day session pushed two parallel tracks:
 
 **Track 1 — `space-harrier-3d` RA-port cart**: now a real game with web-parity gameplay
+
 - Visual parity score (`--retro-cart=port`): **91.0 avg** (start 92.4 / play 89.5)
 - Health system: 100 HP, 25 dmg/hit, 1.4s invuln, 3s respawn shield, lives 3
 - Hit feedback: red bg flash on health bar + HP numeric readout + tiered fill color + floating `-25` popup + 0.6 shake + chromatic glitch + bloom punch
@@ -966,6 +982,7 @@ This whole-day session pushed two parallel tracks:
 - Bloom tuned to web's exact 0.38 (was 0.55 → "out of focus" per user)
 
 **Track 2 — web-cart runtime compat**: 54/71 → **67/71 PASS** (excluding XR)
+
 - New shims (commit `decf293`, 228 lines): `drawRoundedRect`, `drawRect`, `withBlend`, `fetch`, `loadModel`/`loadVoxModel`/`loadVoxelWorld`/`playAnimation`, `getMousePosition`/`setMouseButton`/`isMouseDown`/`setTextBaseline`, `uiProgressBar`/`drawAllPanels`
 - Augments: `createMinimap` now returns object with `.player {x,y,color,size}` + `.entities []`. `createEmitter2D` returns proxy object with mutable `.x/.y/.rate`. `createPool` (global) returns object with `.forEach/.filter/.length`.
 - `nova64.draw.circle` properly aliased to global 5-arg `circle()` (not 4-arg `circ`)
@@ -977,11 +994,11 @@ This whole-day session pushed two parallel tracks:
 
 ### Remaining 3 real WARN carts
 
-| Cart | Gap | Effort |
-|---|---|---|
-| `blend-aurora` | Canvas2D `ctx.createLinearGradient` inside `withBlend(mode, cb=>...)` | Big — needs HTML5 Canvas API surface |
-| `stage-cards` | Canvas2D `ctx.roundRect` (same surface) | Big — shares lift with blend-aurora |
-| `wizardry-3d` | `nova64.util.createPool().forEach` (my global augment didn't reach this namespace path) | Small — wrap nova64.util.createPool too |
+| Cart           | Gap                                                                                     | Effort                                  |
+| -------------- | --------------------------------------------------------------------------------------- | --------------------------------------- |
+| `blend-aurora` | Canvas2D `ctx.createLinearGradient` inside `withBlend(mode, cb=>...)`                   | Big — needs HTML5 Canvas API surface    |
+| `stage-cards`  | Canvas2D `ctx.roundRect` (same surface)                                                 | Big — shares lift with blend-aurora     |
+| `wizardry-3d`  | `nova64.util.createPool().forEach` (my global augment didn't reach this namespace path) | Small — wrap nova64.util.createPool too |
 
 ### Suggested next picks (in effort order, smallest first)
 
@@ -994,12 +1011,12 @@ This whole-day session pushed two parallel tracks:
 
 ### Current deployed state
 
-| Artifact | Path | Source commit |
-|---|---|---|
-| Windows .dll | `C:\RetroArch-Win64\cores\nova64_libretro.dll` | `decf293` (compat round 3) |
-| Linux .so | `retroarch/nova64_libretro.so` | `decf293` |
-| 9 .nova carts | `C:\RetroArch-Win64\content\nova64\*.nova` | all latest |
-| 18 playlist entries | `C:\RetroArch-Win64\playlists\games.lpl` | 1:1 with `retroarch/games/*.js` |
+| Artifact            | Path                                           | Source commit                   |
+| ------------------- | ---------------------------------------------- | ------------------------------- |
+| Windows .dll        | `C:\RetroArch-Win64\cores\nova64_libretro.dll` | `decf293` (compat round 3)      |
+| Linux .so           | `retroarch/nova64_libretro.so`                 | `decf293`                       |
+| 9 .nova carts       | `C:\RetroArch-Win64\content\nova64\*.nova`     | all latest                      |
+| 18 playlist entries | `C:\RetroArch-Win64\playlists\games.lpl`       | 1:1 with `retroarch/games/*.js` |
 
 All synced and ready to play in RetroArch.
 

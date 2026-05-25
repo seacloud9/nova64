@@ -222,8 +222,9 @@ function setSceneVisible(v) {
       if (!e.meshes) continue;
       setMeshVisible(e.meshes.core, v);
       setMeshVisible(e.meshes.eye, v);
-      setMeshVisible(e.meshes.wingL, v);
-      setMeshVisible(e.meshes.wingR, v);
+      // Wings stay hidden in RA per the spawnEnemy comment above.
+      setMeshVisible(e.meshes.wingL, false);
+      setMeshVisible(e.meshes.wingR, false);
    }
 }
 
@@ -301,13 +302,20 @@ function spawnEnemy(forcedType) {
    setMeshEmissive(eye, PALETTE.enemyEye, 1.0);
    setPosition(eye, x, y, z + size * 0.6);
 
+   // Wings exist in the web cart but read as accidental hit-boxes in RA's
+   // post pipeline (the bloom + sharpening pass makes the flat purple
+   // rectangles look like rigid floating blocks rather than wings). Hidden
+   // here per user feedback 2026-05-25; the meshes still exist so future
+   // tuning or a visibility toggle can bring them back without re-spawning.
    const wingL = createCube(size * 1.8, 0.18, size * 0.6, rgba8(85, 0, 170, 255));
    setMeshEmissive(wingL, rgba8(85, 0, 170, 255), 0.1);
    setPosition(wingL, x - size * 1.0, y, z);
+   setMeshVisible(wingL, false);
 
    const wingR = createCube(size * 1.8, 0.18, size * 0.6, rgba8(85, 0, 170, 255));
    setMeshEmissive(wingR, rgba8(85, 0, 170, 255), 0.1);
    setPosition(wingR, x + size * 1.0, y, z);
+   setMeshVisible(wingR, false);
 
    enemies.push({
       x, y, z,

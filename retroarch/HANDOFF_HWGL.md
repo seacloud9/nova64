@@ -1,12 +1,176 @@
 # Nova64 Hardware GL on Windows — Status & Handover
 
-**Last updated:** 2026-05-25 (normalized overlay blend/noise parity push)
+**Last updated:** 2026-05-25 (HUD wash fix + sharpness pass + default 128-bit HDR — commit `b0aea9d`)
 **Branch:** `main`
-**Working tree:** clean after committing this checkpoint
+**Working tree:** clean at `b0aea9d`
 
 ---
 
-## 🔥 Latest handoff: web overlay blending + Space Harrier start-screen parity
+## 🎬 FINAL HANDOFF (Claude 2026-05-25 evening)
+
+### Latest delta on top of Codex's overlay-parity work
+
+User feedback: *"the saturation looks very much off — the health bar is no
+longer green"* and *"we need to utilize all 128 bits!"*. Three runtime
+tweaks shipped in `b0aea9d`:
+
+1. **Saturation backed off 1.10 → 1.0**. The previous 1.10 boost was
+   running over HUD primitives too (overlay goes through the same post
+   shader as the scene), visibly tinting the green health-bar fill into a
+   muddy tone. Per-cart palette colors still land correctly via the
+   24-bit promotion alone.
+
+2. **New `u_sharpness` post knob** — 5-tap cross-pattern unsharp mask
+   after tone-map. Cart API `nova64.post.setSharpness(s)`, default 0 = off.
+   Web compat now pins it to 0.35 (subtle crisp). Counters the geometry-
+   edge softening that bloom inherently produces — bloom halo stays on
+   bright objects, silhouettes stay sharp.
+
+3. **RGBA32F HDR is now the DEFAULT** (was opt-in). Every cart now gets
+   128-bit/pixel float-per-channel HDR. The 32F→16F auto-fallback already
+   in place handles drivers without full-float color attachments. Mesa
+   llvmpipe confirms — startup log shows `format=RGBA32F bloom_mips=5`.
+
+### Full enableBloom → 7-step spell (web carts unmodified)
+
+When a web cart calls `nova64.fx.enableBloom(0.38, 0.22, 0.78)` the
+compat shim now runs all of:
+
+| Step | Effect | Why |
+|---|---|---|
+| `setBloom(s, r, t)` | strength + radius + threshold | Matches Three's `UnrealBloomPass` |
+| `setExposure(1.25)` | pre-ACES brightness multiplier | Matches Three's `renderer.toneMappingExposure` |
+| `use24BitColors(true)` | promotes `0xRRGGBB` → `0xRRGGBBFF` | Web hex palettes render correctly |
+| `setHDRMode('32f')` | RGBA32F post FBO | 128-bit precision (now also default) |
+| `setSaturation(1.0)` | neutral pivot | 1.10+ tints HUD — held at 1.0 |
+| `setSharpness(0.35)` | unsharp-mask pass | Crisp edges against bloom |
+| `setSkyColor(...)` if unset | default dark navy gray | Matches Babylon's default `scene.clearColor` |
+
+### New runtime APIs (all opt-in, default = identity, NO conformance impact)
+
+```javascript
+nova64.post.setExposure(e)            // 0..8, default 1.0
+nova64.post.setSaturation(s)          // 0..4, default 1.0
+nova64.post.setSharpness(amount)      // 0..4, default 0.0
+nova64.post.setHDRMode('32f'|'16f')   // takes effect on next context reset
+nova64.post.use24BitColors(on)        // toggle 0xRRGGBB hex promotion
+```
+
+### Parity progression (web cart `examples/space-harrier-3d/code.js` loaded unmodified)
+
+| Phase | Avg score | Play sky parity | Notes |
+|---|---|---|---|
+| Codex baseline (after vignette/bloom work) | 74.5 | 75.9% | edge luma 41.6% |
+| + tone-map exposure 1.25 | 73.3 | 76.5% | edge luma 53.7% |
+| + 24-bit hex color promotion | 77.9 | 77.9% | pixel sim **43.4 → 84.5** |
+| + saturation 1.10 + default sky | **85.2** | **90.3%** | trial run |
+| **+ saturation 1.0 + sharpness 0.35** | 83.0 | 93.6% | HUD-safe, current ship |
+
+### Commits this multi-day sweep (most recent first)
+
+```
+b0aea9d feat(retroarch): fix HUD wash + sharpness pass + default 128-bit HDR
+d6cbab1 docs(retroarch): document overlay parity checkpoint            [Codex]
+af4e238 refactor(retroarch): normalize overlay blending semantics      [Codex]
+bd6f224 fix(retroarch): blend web overlay gradients and noise          [Codex]
+14598b8 fix(retroarch): align web camera depth and sky balance         [Codex]
+d85aa0d feat(retroarch): default 128-bit HDR sharp post path           [Codex]
+8b7120b feat(retroarch): post saturation knob + default web sky -> 77.9 to 85.2
+5b17909 feat(retroarch): OVERKILL MODE - opt-in RGBA32F post FBO
+bdd0cec feat(retroarch): 24-bit hex color promotion (+15pts)
+8abbcbd feat(retroarch): wire tone-map exposure for web brightness parity
+```
+
+### 7 findings worth preserving (gotchas, design notes)
+
+1. **Three's `renderer.toneMappingExposure = 1.25` is the default in
+   `gpu-threejs.js`.** RA's GLES post shader was at 1.0 — that alone
+   accounts for ~12pp of the brightness gap.
+
+2. **`0xRRGGBB` hex literal interpretation differs by engine.** Three/Babylon
+   treat as 24-bit color with alpha implicitly 1.0. RA packs RGBA as
+   `R<<24 | G<<16 | B<<8 | A`, so a 24-bit literal lands as `0x00RRGGBB`
+   read as R=0, G=RR, B=GG, A=BB — R/B channel swap on the visible image.
+   **Two heuristic auto-detect attempts broke conformance** (`02-input`,
+   `18-mesh-helpers` legitimately use `rgba8(0, ...)`). Shipped fix is an
+   **opt-in flag** that the web compat layer flips.
+
+3. **Cube shader `surface_light = 0.58 + diffuse * 0.42` is compressed.**
+   Ambient ≥ 0.6 clips the diffuse gradient, flattening 3D shading. Web
+   uses 0.62 successfully because Babylon's StandardMaterial composes
+   ambient differently. For RA carts use ambient 0.30-0.42. An attempted
+   `u_shading_contrast` opt-in uniform was reverted because `16-transforms`
+   is pre-existing nondeterministic on Mesa llvmpipe.
+
+4. **HUD primitives go through the same post shader as the 3D scene.**
+   Saturation > 1.05 tints HUD colors visibly. For now saturation in web
+   compat is pinned to 1.0; future improvement: skip the saturation pass
+   when sampling an overlay pixel (stencil bit during overlay upload).
+
+5. **`16-transforms.js` checksum is nondeterministic on Mesa llvmpipe.**
+   Verified by stashing all changes and re-running. Not from this session.
+   Should be rebaselined or excluded from the conformance gate.
+
+6. **`drawScanlines` alpha differs.** Web 0-255 byte, RA 0.0-1.0. The
+   runtime now tolerates both (earlier commit).
+
+7. **`rect()` defaults to filled=true with 5 args.** Silent bug magnet —
+   discovered when health bar showed solid white (border rect filled over
+   green hpFill). Always pass `false` as 6th arg for outlines.
+
+### Remaining gaps (effort order, smallest first)
+
+1. **Trees still mint vs web's bright green** — `setMeshEmissive(..., color, intensity)`
+   likely doesn't run `color` through `color_from_js`'s 24-bit promotion.
+   Trace where `emissive_color` gets assigned.
+2. **Player cyan-shift in some captures** — `createCube`/`createSphere`
+   already use `color_from_js`, so promotion DOES reach them. Likely
+   bloom of nearby cyan enemies (`PALETTE.enemyFast = 0x00ccff`) is
+   bleeding onto the player. Lower bloom radius or threshold.
+3. **HUD-aware saturation** — bring 1.10 back but mask overlay region.
+4. **Real Three FXAA pass AFTER bloom** (Codex tried before bloom, regressed).
+5. **`16-transforms.js` rebaseline** — run 20×, pick stable checksum.
+6. **Per-cart `setSaturation`/`setSharpness` exposure** — RA-port carts
+   could call these for cinematic looks per scene.
+
+### Deployed state
+
+| Artifact | Path | Source commit |
+|---|---|---|
+| Windows .dll | `C:\RetroArch-Win64\cores\nova64_libretro.dll` | `b0aea9d` |
+| Linux .so | `retroarch/nova64_libretro.so` | `b0aea9d` |
+| 9 .nova carts | `C:\RetroArch-Win64\content\nova64\*.nova` | all latest |
+| 18 playlist entries | `C:\RetroArch-Win64\playlists\games.lpl` | 1:1 with dev folder |
+
+Working tree clean. User runs Windows RA so DLL must be redeployed after
+every runtime change — this is captured in `feedback_retroarch_playlist_sync`
+memory.
+
+### Workflow one-liners
+
+```bash
+# Visual parity check
+node retroarch/tests/space_harrier_visual_parity.mjs --retro-cart=web   # tests web cart on RA via compat
+node retroarch/tests/space_harrier_visual_parity.mjs --retro-cart=port  # tests hand-tuned RA port
+
+# Runtime iterate: build + cross-build + deploy
+cd retroarch && make all && \
+  cp -r build build-linux && rm -rf build && \
+  make platform=win-cross && \
+  cp nova64_libretro.dll /mnt/c/RetroArch-Win64/cores/ && \
+  rm -rf build && mv build-linux build
+
+# Cart iterate
+python3 -c "import zipfile; z=zipfile.ZipFile('retroarch/games/<cart>.nova','w',zipfile.ZIP_DEFLATED); z.write('retroarch/games/<cart>.js','code.js'); z.write('examples/<cart>/meta.json','meta.json'); z.close()"
+cp retroarch/games/<cart>.nova /mnt/c/RetroArch-Win64/content/nova64/
+
+# Compat probe (all 71 web carts)
+/tmp/compat-all.sh
+```
+
+---
+
+## 🔥 Prior checkpoint: web overlay blending + Space Harrier start-screen parity
 
 Checkpoint commits:
 

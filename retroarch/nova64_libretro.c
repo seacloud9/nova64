@@ -488,6 +488,8 @@ struct nova64_gles_backend {
    int bloom_width[NOVA64_BLOOM_MIPS];
    int bloom_height[NOVA64_BLOOM_MIPS];
    bool post_hdr_enabled;
+   bool post_hdr_is_float32;  /* true when post FBO is RGBA32F (overkill mode) */
+   const char *post_hdr_format_label;
    bool bloom_resources_ready;
    bool post_resources_ready;
    GLint post_position_attrib;
@@ -2022,6 +2024,7 @@ static uint32_t color_from_js(JSContext *ctx, JSValueConst value, uint32_t fallb
 }
 
 bool nova64_compat_24bit_colors = false;
+bool nova64_compat_hdr_32f = false;  /* opt-in RGBA32F post FBO (128-bit/pixel) */
 
 static int int_from_js(JSContext *ctx, JSValueConst value, int fallback)
 {
@@ -26994,6 +26997,24 @@ static JSValue js_compat_use_24bit_colors(JSContext *ctx, JSValueConst this_val,
    return JS_UNDEFINED;
 }
 
+/* setHDRMode(mode): '32f' = RGBA32F overkill (128-bit/pixel HDR),
+ * '16f' = default RGBA16F (64-bit/pixel). Takes effect on next post FBO
+ * (re)allocation, i.e. context reset or initial bring-up. */
+static JSValue js_post_set_hdr_mode(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc > 0 && JS_IsString(argv[0])) {
+      const char *m = JS_ToCString(ctx, argv[0]);
+      if (m) {
+         nova64_compat_hdr_32f = (!strcmp(m, "32f") || !strcmp(m, "rgba32f") || !strcmp(m, "overkill"));
+         JS_FreeCString(ctx, m);
+      }
+   } else if (argc > 0) {
+      nova64_compat_hdr_32f = JS_ToBool(ctx, argv[0]);
+   }
+   return JS_UNDEFINED;
+}
+
 static JSValue js_post_set_bloom_radius(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
    (void)this_val;
@@ -29077,6 +29098,7 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, post, "setBloom", js_post_set_bloom, 1);
    set_function(ctx, post, "setExposure", js_post_set_exposure, 1);
    set_function(ctx, post, "use24BitColors", js_compat_use_24bit_colors, 1);
+   set_function(ctx, post, "setHDRMode", js_post_set_hdr_mode, 1);
    set_function(ctx, post, "setBloomRadius", js_post_set_bloom_radius, 1);
    set_function(ctx, post, "setBloomThreshold", js_post_set_bloom_threshold, 1);
    set_function(ctx, post, "setChromatic", js_post_set_chromatic, 1);
@@ -29117,12 +29139,13 @@ static bool install_nova64_api(JSContext *ctx)
              /* enableBloom also lifts exposure to Three's 1.25 default — web
                 renderer.toneMappingExposure=1.25 in gpu-threejs.js. Single
                 biggest brightness lever for web-cart parity on RA. Also
-                flips the 24-bit color promotion flag since carts calling
-                enableBloom (web signature) almost certainly use 0xRRGGBB
-                hex literals throughout. */
+                flips the 24-bit color promotion flag (carts calling
+                enableBloom near-100% use 0xRRGGBB hex literals) and bumps
+                HDR FBO to RGBA32F "overkill mode" for max float precision. */
              "enableBloom:function(s,r,t){p.setBloom(s==null?1:s,r,t);"
                "if(p.setExposure)p.setExposure(1.25);"
-               "if(p.use24BitColors)p.use24BitColors(true);},"
+               "if(p.use24BitColors)p.use24BitColors(true);"
+               "if(p.setHDRMode)p.setHDRMode('32f');},"
              "disableBloom:function(){p.setBloom(0);},"
              "setBloomStrength:function(s){p.setBloom(s);},"
              "setBloomRadius:function(r){p.setBloomRadius(r);},"
@@ -34710,36 +34733,83 @@ static bool gles_init_post_resources(void)
       return false;
 
 
-   /* Only attempt RGBA16F (half-float) for post-processing. If not supported,
-      disable post effects; the RGBA8 fallback path exposed driver/parity bugs. */
+   /* HDR format selection. Default RGBA16F (64-bit). Opt-in 'overkill'
+    * RGBA32F (128-bit) via nova64.post.setHDRMode('32f') — tried first and
+    * falls back to 16F if driver doesn't support full float color targets. */
+   extern bool nova64_compat_hdr_32f;
    GLint internal_format = GL_RGBA16F;
    GLenum texture_type = GL_HALF_FLOAT;
+   const char *format_label = "RGBA16F";
    GLenum status = 0;
 
-   gles.GenTextures(1, &gles.post_color_texture);
-   gles.BindTexture(GL_TEXTURE_2D, gles.post_color_texture);
-   gles.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-   gles.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-   gles.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-   gles.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-   gles.TexImage2D(GL_TEXTURE_2D, 0, internal_format, NOVA64_WIDTH, NOVA64_HEIGHT, 0,
-      GL_RGBA, texture_type, NULL);
-   gles.BindTexture(GL_TEXTURE_2D, 0);
+   if (nova64_compat_hdr_32f) {
+      /* Try RGBA32F first */
+      internal_format = 0x8814; /* GL_RGBA32F */
+      texture_type = GL_FLOAT;
+      format_label = "RGBA32F";
 
-   gles.GenRenderbuffers(1, &gles.post_rbo);
-   gles.BindRenderbuffer(GL_RENDERBUFFER, gles.post_rbo);
-   gles.RenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT16, NOVA64_WIDTH, NOVA64_HEIGHT);
-   gles.BindRenderbuffer(GL_RENDERBUFFER, 0);
+      gles.GenTextures(1, &gles.post_color_texture);
+      gles.BindTexture(GL_TEXTURE_2D, gles.post_color_texture);
+      gles.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+      gles.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+      gles.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+      gles.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+      gles.TexImage2D(GL_TEXTURE_2D, 0, internal_format, NOVA64_WIDTH, NOVA64_HEIGHT, 0,
+         GL_RGBA, texture_type, NULL);
+      gles.BindTexture(GL_TEXTURE_2D, 0);
+      gles.GenRenderbuffers(1, &gles.post_rbo);
+      gles.BindRenderbuffer(GL_RENDERBUFFER, gles.post_rbo);
+      gles.RenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT16, NOVA64_WIDTH, NOVA64_HEIGHT);
+      gles.BindRenderbuffer(GL_RENDERBUFFER, 0);
+      gles.GenFramebuffers(1, &gles.post_fbo);
+      gles.BindFramebuffer(GL_FRAMEBUFFER, gles.post_fbo);
+      gles.FramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, gles.post_color_texture, 0);
+      gles.FramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, gles.post_rbo);
+      status = gles.CheckFramebufferStatus(GL_FRAMEBUFFER);
+      gles.BindFramebuffer(GL_FRAMEBUFFER, 0);
 
-   gles.GenFramebuffers(1, &gles.post_fbo);
-   gles.BindFramebuffer(GL_FRAMEBUFFER, gles.post_fbo);
-   gles.FramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, gles.post_color_texture, 0);
-   gles.FramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, gles.post_rbo);
-   status = gles.CheckFramebufferStatus(GL_FRAMEBUFFER);
-   gles.BindFramebuffer(GL_FRAMEBUFFER, 0);
+      if (status != GL_FRAMEBUFFER_COMPLETE) {
+         /* Driver doesn't support 32F — clean up and fall through to 16F */
+         if (gles.post_fbo)            { gles.DeleteFramebuffers(1, &gles.post_fbo);   gles.post_fbo = 0; }
+         if (gles.post_rbo)            { gles.DeleteRenderbuffers(1, &gles.post_rbo);  gles.post_rbo = 0; }
+         if (gles.post_color_texture && gles.DeleteTextures) {
+            gles.DeleteTextures(1, &gles.post_color_texture);
+            gles.post_color_texture = 0;
+         }
+         internal_format = GL_RGBA16F;
+         texture_type = GL_HALF_FLOAT;
+         format_label = "RGBA16F";
+         status = 0;
+      }
+   }
+
+   if (status != GL_FRAMEBUFFER_COMPLETE) {
+      /* Default RGBA16F path (preserves all conformance baselines) */
+      gles.GenTextures(1, &gles.post_color_texture);
+      gles.BindTexture(GL_TEXTURE_2D, gles.post_color_texture);
+      gles.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+      gles.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+      gles.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+      gles.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+      gles.TexImage2D(GL_TEXTURE_2D, 0, internal_format, NOVA64_WIDTH, NOVA64_HEIGHT, 0,
+         GL_RGBA, texture_type, NULL);
+      gles.BindTexture(GL_TEXTURE_2D, 0);
+      gles.GenRenderbuffers(1, &gles.post_rbo);
+      gles.BindRenderbuffer(GL_RENDERBUFFER, gles.post_rbo);
+      gles.RenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT16, NOVA64_WIDTH, NOVA64_HEIGHT);
+      gles.BindRenderbuffer(GL_RENDERBUFFER, 0);
+      gles.GenFramebuffers(1, &gles.post_fbo);
+      gles.BindFramebuffer(GL_FRAMEBUFFER, gles.post_fbo);
+      gles.FramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, gles.post_color_texture, 0);
+      gles.FramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, gles.post_rbo);
+      status = gles.CheckFramebufferStatus(GL_FRAMEBUFFER);
+      gles.BindFramebuffer(GL_FRAMEBUFFER, 0);
+   }
 
    if (status == GL_FRAMEBUFFER_COMPLETE) {
       gles.post_hdr_enabled = true;
+      gles.post_hdr_is_float32 = (internal_format == 0x8814);
+      gles.post_hdr_format_label = format_label;
       post_fbo_ready = true;
    } else {
       if (gles.post_fbo)
@@ -34764,7 +34834,7 @@ static bool gles_init_post_resources(void)
 
    if (post_state.bloom > 0.0f) {
       /* Only allow bloom if RGBA16F is supported. */
-      gles_init_bloom_resources(GL_RGBA16F, GL_HALF_FLOAT);
+      gles_init_bloom_resources(gles.post_hdr_is_float32 ? 0x8814 : GL_RGBA16F, gles.post_hdr_is_float32 ? GL_FLOAT : GL_HALF_FLOAT);
    }
 
    gles.post_resources_ready = true;
@@ -34773,7 +34843,7 @@ static bool gles_init_post_resources(void)
       snprintf(msg, sizeof(msg),
          "[nova64] post-processing FBO ready  alloc=%dx%d  format=%s  bloom_mips=%d",
          NOVA64_WIDTH, NOVA64_HEIGHT,
-         gles.post_hdr_enabled ? "RGBA16F" : "RGBA8",
+         gles.post_hdr_format_label ? gles.post_hdr_format_label : (gles.post_hdr_enabled ? "RGBA16F" : "RGBA8"),
          gles.bloom_resources_ready ? NOVA64_BLOOM_MIPS : 0);
       nova64_log_line(RETRO_LOG_INFO, msg);
    }
@@ -34791,7 +34861,7 @@ static bool render_gles_bloom_chain(void)
    if (!gles.post_hdr_enabled)
       return false;
    if (!gles.bloom_resources_ready) {
-      if (!gles_init_bloom_resources(GL_RGBA16F, GL_HALF_FLOAT))
+      if (!gles_init_bloom_resources(gles.post_hdr_is_float32 ? 0x8814 : GL_RGBA16F, gles.post_hdr_is_float32 ? GL_FLOAT : GL_HALF_FLOAT))
          return false;
    }
 

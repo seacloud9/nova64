@@ -22,6 +22,37 @@
   software state still readouts cleanly) and the GLES checksum intentionally
   moved to `aaba06aa0e6a85c9`.
 
+### AMD CAS-spirit contrast-adaptive sharpening — opt-in sharp style
+
+The legacy unsharp pass sharpens flat sky/HUD just as hard as real geometric
+edges, which produces visible noise lift and washes the perceived crispness
+out. Added a second sharpening path inspired by AMD FidelityFX CAS:
+
+- Per-pixel luma-gradient gate (no sharpening on flat regions; full
+  sharpening on high-contrast edges, smooth ramp via sqrt).
+- Anti-ringing clamp bounded by the local source min/max INCLUDING center,
+  so highlights cannot overshoot but real edge lifts are not clipped back.
+- Bloom-aware neighbor sampling (mip0 + mip1) so the gate measures
+  post-bloom contrast, not the smoother pre-bloom signal.
+
+API:
+
+- `nova64.post.setSharpStyle(s)` where `s in {unsharp, cas}` (default
+  `unsharp` preserves all historical conformance checksums).
+- `nova64.post.getState().sharpStyle` reports current style.
+
+Web compat `enableBloom` now auto-opts into CAS and bumps `setSharpness`
+from `0.95` → `1.45`. The higher amount is safe because CAS gates by
+contrast, so flat regions still pick up zero grain.
+
+Why the parity metric stays flat: Space Harrier `sharp` measure averages
+gradient magnitude over the whole image, but the play scene is dominated
+by smooth post-bloom sky, so cleaner gating actually pulls the metric down
+even when edges look crisper. Per-pixel inspection shows CAS edges are
+visibly sharper with cleaner flats; the parity score still improved
+(play 92.5 → 93.7 in one run, ~94 average across runs) from cleaner
+color matching.
+
 ### Three.js UnrealBloomPass composite — opt-in bloom style
 
 Mined Three's verbatim composite from

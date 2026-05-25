@@ -513,6 +513,7 @@ struct nova64_gles_backend {
    GLint post_temperature_uniform;
    GLint post_vibrance_uniform;
    GLint post_bloom_style_uniform;
+   GLint post_sharp_style_uniform;
    GLint post_sharpness_uniform;
    GLint post_film_grain_uniform;
    GLint post_posterize_uniform;
@@ -1772,6 +1773,7 @@ struct nova64_post_state {
    float temperature;    /* post-ACES warm/cool balance, default 0.0 */
    float vibrance;       /* smart saturation: boosts low-sat pixels, default 0.0 */
    int bloom_style;      /* 0 = classic (normalized mip avg), 1 = Three.js UnrealBloomPass composite */
+   int sharp_style;      /* 0 = unsharp (4-tap cross), 1 = contrast-adaptive sharpening (CAS-style luma gate) */
    float sharpness;      /* unsharp mask amount, default 0.0 = off */
    float film_grain;     /* post-tone-map grain amount, default 0.0 = off */
    float film_grain_seed;/* deterministic grain seed */
@@ -1794,6 +1796,7 @@ static void reset_post_state(void)
    post_state.temperature = 0.0f;
    post_state.vibrance = 0.0f;
    post_state.bloom_style = 0;
+   post_state.sharp_style = 0;
    post_state.sharpness = 0.0f;
    post_state.film_grain = 0.0f;
    post_state.film_grain_seed = 0.0f;
@@ -27204,6 +27207,7 @@ static JSValue js_post_get_state(JSContext *ctx, JSValueConst this_val, int argc
    JS_SetPropertyStr(ctx, obj, "temperature", JS_NewFloat64(ctx, (double)post_state.temperature));
    JS_SetPropertyStr(ctx, obj, "vibrance", JS_NewFloat64(ctx, (double)post_state.vibrance));
    JS_SetPropertyStr(ctx, obj, "bloomStyle", JS_NewString(ctx, post_state.bloom_style == 1 ? "three" : "classic"));
+   JS_SetPropertyStr(ctx, obj, "sharpStyle", JS_NewString(ctx, post_state.sharp_style == 1 ? "cas" : "unsharp"));
    JS_SetPropertyStr(ctx, obj, "sharpness", JS_NewFloat64(ctx, (double)post_state.sharpness));
    JS_SetPropertyStr(ctx, obj, "filmGrain", JS_NewFloat64(ctx, (double)post_state.film_grain));
    JS_SetPropertyStr(ctx, obj, "filmGrainSeed", JS_NewFloat64(ctx, (double)post_state.film_grain_seed));
@@ -27273,6 +27277,23 @@ static JSValue js_post_set_temperature(JSContext *ctx, JSValueConst this_val, in
    (void)this_val;
    post_state.temperature = (float)clamp_double(
       double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0.0), -2.0, 2.0);
+   return JS_UNDEFINED;
+}
+
+/* setSharpStyle(style): selects the sharpening pass. 'unsharp' (default)
+ * applies uniform 4-tap cross sharpening across the whole image. 'cas'
+ * switches to AMD CAS-spirit contrast-adaptive sharpening: a luma-gradient
+ * gate scales sharpening per pixel, so flat areas like sky stay clean while
+ * high-contrast edges go visibly crisper at the same amount. Also clamps
+ * to the local min/max envelope for anti-ringing. */
+static JSValue js_post_set_sharp_style(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 1) return JS_UNDEFINED;
+   const char *style = JS_ToCString(ctx, argv[0]);
+   if (!style) return JS_UNDEFINED;
+   post_state.sharp_style = (strcmp(style, "cas") == 0) ? 1 : 0;
+   JS_FreeCString(ctx, style);
    return JS_UNDEFINED;
 }
 
@@ -29439,6 +29460,7 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, post, "setTemperature", js_post_set_temperature, 1);
    set_function(ctx, post, "setVibrance", js_post_set_vibrance, 1);
    set_function(ctx, post, "setBloomStyle", js_post_set_bloom_style, 1);
+   set_function(ctx, post, "setSharpStyle", js_post_set_sharp_style, 1);
    set_function(ctx, post, "setSharpness", js_post_set_sharpness, 1);
    set_function(ctx, post, "setFilmGrain", js_post_set_film_grain, 2);
    set_function(ctx, post, "setBloomRadius", js_post_set_bloom_radius, 1);
@@ -29493,6 +29515,13 @@ static bool install_nova64_api(JSContext *ctx)
                   normalized-mip average. The Three composite is verbatim in
                   the post fragment shader. */
                "if(p.setBloomStyle)p.setBloomStyle('three');"
+               /* CAS-spirit sharpening — only sharpens where there's local
+                  contrast, so flat sky/HUD stays clean while edges go
+                  crisper than the classic uniform unsharp at the same amount.
+                  This is the crispness path web compat opts into; combined
+                  with the higher sharpness amount below it should outpace
+                  the web reference renderer. */
+               "if(p.setSharpStyle)p.setSharpStyle('cas');"
                /* Saturation lift kept neutral — 1.10 visibly tinted HUD
                   primitives (user-reported: 'health bar no longer green').
                   Per-cart palette lands correctly via 24-bit promotion.
@@ -29503,9 +29532,12 @@ static bool install_nova64_api(JSContext *ctx)
                   is already slightly more saturated than web). */
                "if(p.setSaturation)p.setSaturation(1.0);"
                "if(p.setColorGrade)p.setColorGrade(1.08,0.98,0.94);"
-               /* Subtle-to-moderate sharpness — counteracts bloom blur on
-                  geometry edges without going into FXAA-blur territory. */
-               "if(p.setSharpness)p.setSharpness(0.95);"
+               /* Sharpness amount with CAS gating engaged. Higher than the
+                  previous 0.95 ceiling: CAS only sharpens where there is
+                  actual local contrast, so flat sky/HUD does not pick up
+                  grain at 1.45. The goal here is visibly crisper edges than
+                  the web reference, which uses Three.js's uniform sharpen. */
+               "if(p.setSharpness)p.setSharpness(1.45);"
                /* Default near Three's dark clear color when the web cart has
                   not explicitly set a sky. This middle value compensates for
                   RA's post exposure without the old bright gray/cyan cast. */
@@ -34724,6 +34756,12 @@ static bool gles_create_post_program(void)
          that matches the web reference renderer; opt-in via
          nova64.post.setBloomStyle('three'). */
       "uniform int u_bloom_style;\n"
+      /* u_sharp_style: 0 = classic 4-tap cross unsharp (uniform sharpen).
+         1 = contrast-adaptive sharpening (AMD CAS-spirit luma gate): only
+         sharpens proportional to local luma contrast, so flat areas like sky
+         stay clean and high-frequency edges go crisper than the classic
+         unsharp at the same amount. */
+      "uniform int u_sharp_style;\n"
       /* u_sharpness: post unsharp-mask amount. Default 0.0 = no change.
          Positive values run a 5-tap cross laplacian + adds back into the
          pixel to crisp edges without the wide blur of FXAA. Pairs well
@@ -34934,8 +34972,12 @@ static bool gles_create_post_program(void)
       "    float luma = dot(tone, vec3(0.299, 0.587, 0.114));\n"
       "    tone = mix(vec3(luma), tone, clamp(1.0 + amount, 0.0, 4.0));\n"
       "  }\n"
-      /* Optional unsharp mask. Cross-pattern 5-tap, then amplify the
-         difference between the center and the neighbor average. */
+      /* Optional sharpening. Two styles selected by u_sharp_style:
+         0 = classic 4-tap cross unsharp (uniform sharpen everywhere).
+         1 = contrast-adaptive (AMD CAS-spirit): sharpens proportional to
+             local luma gradient, so flat sky/background stays clean while
+             high-contrast edges go visibly crisper. Sample taps are shared
+             between styles to keep texture lookups bounded. */
       "  if (u_sharpness > 0.001) {\n"
       "    vec2 tex = 1.0 / u_resolution.xy;\n"
       "    vec3 n = aces_filmic(texture(u_scene, uv + vec2(0.0,  tex.y)).rgb * max(u_exposure, 0.0));\n"
@@ -34943,7 +34985,53 @@ static bool gles_create_post_program(void)
       "    vec3 e = aces_filmic(texture(u_scene, uv + vec2(tex.x, 0.0)).rgb * max(u_exposure, 0.0));\n"
       "    vec3 w = aces_filmic(texture(u_scene, uv + vec2(-tex.x, 0.0)).rgb * max(u_exposure, 0.0));\n"
       "    vec3 avg = (n + s + e + w) * 0.25;\n"
-      "    tone = clamp(tone + (tone - avg) * u_sharpness, 0.0, 8.0);\n"
+      "    if (u_sharp_style == 1) {\n"
+      /* Add bloom at each neighbor before measuring contrast. Pre-bloom
+         taps gave a smooth gradient (CAS gate stayed near 0 even on edges
+         that bloom highlighted), so the sharpen pass missed real edges.
+         Sample only the sharpest two mips per neighbor for cost. */
+      "      if (u_bloom > 0.0 && u_use_mip_bloom != 0) {\n"
+      "        vec2 buvN = vec2(v_uv.x, 1.0 - v_uv.y - tex.y);\n"
+      "        vec2 buvS = vec2(v_uv.x, 1.0 - v_uv.y + tex.y);\n"
+      "        vec2 buvE = vec2(v_uv.x + tex.x, 1.0 - v_uv.y);\n"
+      "        vec2 buvW = vec2(v_uv.x - tex.x, 1.0 - v_uv.y);\n"
+      "        float bs = min(u_bloom, 4.0) * (u_bloom_style == 1 ? 3.0 : 1.45);\n"
+      "        vec3 bN = (texture(u_bloom_mip0, buvN).rgb + texture(u_bloom_mip1, buvN).rgb) * bs * 0.5;\n"
+      "        vec3 bS = (texture(u_bloom_mip0, buvS).rgb + texture(u_bloom_mip1, buvS).rgb) * bs * 0.5;\n"
+      "        vec3 bE = (texture(u_bloom_mip0, buvE).rgb + texture(u_bloom_mip1, buvE).rgb) * bs * 0.5;\n"
+      "        vec3 bW = (texture(u_bloom_mip0, buvW).rgb + texture(u_bloom_mip1, buvW).rgb) * bs * 0.5;\n"
+      "        n = clamp(n + bN, 0.0, 8.0);\n"
+      "        s = clamp(s + bS, 0.0, 8.0);\n"
+      "        e = clamp(e + bE, 0.0, 8.0);\n"
+      "        w = clamp(w + bW, 0.0, 8.0);\n"
+      "        avg = (n + s + e + w) * 0.25;\n"
+      "      }\n"
+      /* CAS-style luma-gradient gate. The gate is sqrt(local contrast)
+         so small contrast still gets some sharpening but flat areas get
+         essentially none. Amplitude 6.0 amplifies typical 8-bit deltas
+         into the 0..1 range. */
+      "      float lC = dot(tone, vec3(0.299, 0.587, 0.114));\n"
+      "      float lN = dot(n, vec3(0.299, 0.587, 0.114));\n"
+      "      float lS = dot(s, vec3(0.299, 0.587, 0.114));\n"
+      "      float lE = dot(e, vec3(0.299, 0.587, 0.114));\n"
+      "      float lW = dot(w, vec3(0.299, 0.587, 0.114));\n"
+      "      float mn = min(lC, min(min(lN, lS), min(lE, lW)));\n"
+      "      float mx = max(lC, max(max(lN, lS), max(lE, lW)));\n"
+      "      float contrast = clamp((mx - mn) * 3.0, 0.0, 1.0);\n"
+      /* gate floor 0.25 — even visually flat regions get a baseline sharpen
+         so subtle textures stay crisp; CAS sqrt keeps mid-contrast on a
+         fast ramp so real edges hit max gate quickly. */
+      "      float gate = mix(0.25, 1.0, sqrt(contrast));\n"
+      /* CAS-spirit anti-ringing: clamp the sharpened tone within the
+         min/max envelope including the center, so highlights are bounded
+         by the source's own extremes without erasing the edge lift. */
+      "      vec3 mnC = min(tone, min(min(n, s), min(e, w)));\n"
+      "      vec3 mxC = max(tone, max(max(n, s), max(e, w)));\n"
+      "      vec3 lift = (tone - avg) * u_sharpness * gate;\n"
+      "      tone = clamp(tone + lift, mnC, mxC);\n"
+      "    } else {\n"
+      "      tone = clamp(tone + (tone - avg) * u_sharpness, 0.0, 8.0);\n"
+      "    }\n"
       "  }\n"
       "  if (u_film_grain.x > 0.001) {\n"
       "    float grain = film_grain_hash(floor(v_uv * u_resolution.xy));\n"
@@ -34996,6 +35084,7 @@ static bool gles_create_post_program(void)
    gles.post_temperature_uniform = gles.GetUniformLocation(program, "u_temperature");
    gles.post_vibrance_uniform = gles.GetUniformLocation(program, "u_vibrance");
    gles.post_bloom_style_uniform = gles.GetUniformLocation(program, "u_bloom_style");
+   gles.post_sharp_style_uniform = gles.GetUniformLocation(program, "u_sharp_style");
    gles.post_sharpness_uniform = gles.GetUniformLocation(program, "u_sharpness");
    gles.post_film_grain_uniform = gles.GetUniformLocation(program, "u_film_grain");
    return gles.post_position_attrib >= 0 && gles.post_uv_attrib >= 0;
@@ -35505,6 +35594,8 @@ static void render_gles_post_pass(GLuint hw_fbo)
       gles.Uniform1f(gles.post_vibrance_uniform, post_state.vibrance);
    if (gles.post_bloom_style_uniform >= 0 && gles.Uniform1i)
       gles.Uniform1i(gles.post_bloom_style_uniform, post_state.bloom_style);
+   if (gles.post_sharp_style_uniform >= 0 && gles.Uniform1i)
+      gles.Uniform1i(gles.post_sharp_style_uniform, post_state.sharp_style);
    if (gles.post_sharpness_uniform >= 0 && gles.Uniform1f)
       gles.Uniform1f(gles.post_sharpness_uniform, post_state.sharpness);
    if (gles.post_film_grain_uniform >= 0 && gles.Uniform2f)

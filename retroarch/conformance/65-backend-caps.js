@@ -35,7 +35,7 @@ export function init() {
       'primitives', 'meshOpacity', 'meshShadowFlags', 'pointLights',
       'fogState', 'emissive', 'meshAlpha', 'orthographicCamera',
       'skyColor', 'meshRoughness', 'meshMetalness', 'meshUVTransform',
-      'meshBlend'
+      'meshShadeContrast', 'meshBlend'
    ];
    for (const key of alwaysOn) {
       if (caps[key] !== true)

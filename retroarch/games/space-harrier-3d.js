@@ -247,9 +247,8 @@ function spawnScenery(initial) {
       const trunkY = FLOOR_Y + h / 2;
       setPosition(trunk, x, trunkY, z);
       const top = createSphere(3.0 + Math.random() * 0.8, PALETTE.treeLeaves);
-      // Subtle emissive only — keep most of the sphere's diffuse gradient so
-      // trees read as round, not flat green disks (web uses 0 emissive).
-      setMeshEmissive(top, PALETTE.treeLeaves, 0.06);
+      if (typeof setMeshRoughness === 'function') setMeshRoughness(top, 0.22);
+      if (typeof setMeshShadeContrast === 'function') setMeshShadeContrast(top, 1.85);
       const topY = FLOOR_Y + h + 1.4;
       setPosition(top, x, topY, z);
       sceneryItems.push({ mesh: trunk, mesh2: top, x, z, oy: trunkY, topOy: topY, type: 'tree' });

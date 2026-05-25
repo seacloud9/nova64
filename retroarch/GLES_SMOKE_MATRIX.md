@@ -158,3 +158,43 @@ real-driver integration notes only.
   - `21-post-effects` GLES checksum is now `aaba06aa0e6a85c9`.
 - Windows RetroArch core was cross-built and redeployed again to
   `C:\RetroArch-Win64\cores\nova64_libretro.dll` for the vibrance API checkpoint.
+- Follow-up bloom/shading/color work changed `setBloomStyle` so default/reset is
+  now `three` (UnrealBloom-style composite) while `classic` remains available.
+  Focused validation passed:
+  - `make -C retroarch clean all harness`
+  - `NOVA64_GLES_TESTS=1 bash retroarch/tests/run_conformance.sh --skip-build --from 17 --to 22`
+  - `NOVA64_GLES_TESTS=1 bash retroarch/tests/run_conformance.sh --skip-build --from 64 --to 64`
+  - `21-post-effects` software checksum stays at `db290147bd8f8c0b`.
+  - `21-post-effects` GLES checksum is now `b9a78c64ab0a6ab8`.
+  - `64-directional-light` checksums are now software `cfff60f8dafc45cd`,
+    GLES `57f8d371260efd0c`.
+- Added `setShadingStyle('classic'|'three')`; web-compat `enableBloom()` now
+  selects the Three-style GLES material ramp, CAS sharpening, `setSharpness(1.90)`,
+  and `setColorGrade(1.12,0.98,1.08)`.
+- Space Harrier web-cart smoke after this tune: average `90.9`, start `95.7`,
+  gameplay `86.1`, gameplay sharpness ratio `52.4%`. Remaining real-driver
+  smoke target: gameplay field color is still too dark/green versus browser.
+- Windows RetroArch core was cross-built and redeployed again to
+  `C:\RetroArch-Win64\cores\nova64_libretro.dll` for the bloom/shading checkpoint.
+- Follow-up camera/horizon investigation found a primitive contract mismatch:
+  RetroArch `createPlane` was an X/Z plane while Three.js `PlaneGeometry` is
+  X/Y with a +Z normal. Web carts rotate planes by `-Math.PI / 2` for floors,
+  so RetroArch was turning Space Harrier floor tiles into vertical strips,
+  causing the smushed horizon/drop-off and the apparent loss of detail.
+- `createPlane` is now web-compatible in both software and GLES: local X/Y
+  geometry, +Z normals, width in `scale[0]`, height in `scale[1]`. Conformance
+  carts that wanted floor planes now explicitly rotate the plane like browser
+  carts do.
+- Space Harrier web-cart smoke after the plane fix:
+  - average `94.4`
+  - start `95.6`
+  - gameplay `93.2`
+  - gameplay sharpness ratio `100.6%`
+  - gameplay average color moved from severe dark/green drift
+    (`ra rgb(48,110,70)` before fix) to close browser parity
+    (`web rgb(96,125,101)`, `ra rgb(99,138,105)`).
+- Space Harrier hand-port smoke after the plane fix: average `92.2`, start
+  `93.1`, gameplay `91.3`. Remaining hand-port gaps are now mostly bespoke
+  palette/start-screen tuning instead of camera/floor projection.
+- Native validation passed with `make -C retroarch clean all harness`; Windows
+  DLL still needs a fresh cross-build/redeploy after this latest C change.

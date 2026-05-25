@@ -243,6 +243,7 @@ struct nova64_mesh {
    float emissive_intensity; /* 0 = off */
    float roughness;         /* 0 = smooth, 1 = rough */
    float metalness;         /* 0 = non-metal, 1 = metal */
+   float shade_contrast;    /* 1 = neutral, >1 deepens normal lighting */
    float uv_offset[2];      /* UV scroll offset (u, v) */
    float uv_scale[2];       /* UV tiling scale (u, v) */
    enum nova64_mesh_blend mesh_blend;
@@ -560,6 +561,7 @@ struct nova64_gles_backend {
    GLint cube_light_direction_uniform;
    GLint cube_light_color_uniform;
    GLint cube_light_intensity_uniform;
+   GLint cube_shading_style_uniform;
    GLint cube_fog_enabled_uniform;
    GLint cube_fog_color_uniform;
    GLint cube_fog_near_uniform;
@@ -572,6 +574,7 @@ struct nova64_gles_backend {
    GLint cube_emissive_intensity_uniform;
    GLint cube_roughness_uniform;
    GLint cube_metalness_uniform;
+   GLint cube_shade_contrast_uniform;
    GLint cube_output_srgb_uniform;
    GLint cube_uv_offset_uniform;
    GLint cube_uv_scale_uniform;
@@ -1128,6 +1131,7 @@ static struct nova64_camera camera_state;
 static float g_last_view_projection[16]; /* cached for project3DToScreen */
 static float g_last_view[16];            /* cached for GLES view-space fog */
 static struct nova64_light light_state;
+static int gles_shading_style;           /* 0 = classic RA, 1 = Three-style fill */
 
 /* ── Camera shake ─────────────────────────────────────────── */
 static float g_shake_intensity = 0.0f;  /* current intensity (pixels/units) */
@@ -1795,7 +1799,7 @@ static void reset_post_state(void)
    post_state.saturation = 1.0f;
    post_state.temperature = 0.0f;
    post_state.vibrance = 0.0f;
-   post_state.bloom_style = 0;
+   post_state.bloom_style = 1;
    post_state.sharp_style = 0;
    post_state.sharpness = 0.0f;
    post_state.film_grain = 0.0f;
@@ -2335,6 +2339,7 @@ static void reset_scene_state(void)
    light_state.fog_color = rgba8(0, 0, 0, 255);
    light_state.fog_near = 10.0f;
    light_state.fog_far = 50.0f;
+   gles_shading_style = 0;
    camera_state.is_ortho = false;
    camera_state.ortho_width = 10.0f;
    camera_state.ortho_height = 5.625f; /* 16:9 at ortho_width=10 */
@@ -4215,10 +4220,10 @@ static void draw_software_cube(const struct nova64_mesh *mesh)
 static void draw_software_plane(const struct nova64_mesh *mesh)
 {
    static const float corners[] = {
-      -0.5f, 0.0f, -0.5f,
-       0.5f, 0.0f, -0.5f,
-       0.5f, 0.0f,  0.5f,
-      -0.5f, 0.0f,  0.5f,
+      -0.5f, -0.5f, 0.0f,
+       0.5f, -0.5f, 0.0f,
+       0.5f,  0.5f, 0.0f,
+      -0.5f,  0.5f, 0.0f,
    };
 
    int screen[4][2];
@@ -4605,6 +4610,7 @@ static int allocate_mesh(enum nova64_mesh_type type)
          meshes[i].emissive_intensity = 0.0f;
          meshes[i].roughness = 0.5f;
          meshes[i].metalness = 0.0f;
+         meshes[i].shade_contrast = 1.0f;
          meshes[i].uv_offset[0] = 0.0f;
          meshes[i].uv_offset[1] = 0.0f;
          meshes[i].uv_scale[0] = 1.0f;
@@ -25872,9 +25878,10 @@ static JSValue js_create_plane(JSContext *ctx, JSValueConst this_val, int argc, 
 
    if (argc >= 2 && JS_IsNumber(argv[0]) && JS_IsNumber(argv[1])) {
       double width = double_from_js(ctx, argv[0], 1.0);
-      double depth = double_from_js(ctx, argv[1], 1.0);
+      double height = double_from_js(ctx, argv[1], 1.0);
       mesh->scale[0] = (float)clamp_double(fabs(width), 0.001, 10000.0);
-      mesh->scale[2] = (float)clamp_double(fabs(depth), 0.001, 10000.0);
+      mesh->scale[1] = (float)clamp_double(fabs(height), 0.001, 10000.0);
+      mesh->scale[2] = 1.0f;
       if (argc > 2)
          mesh->color = color_from_js(ctx, argv[2], mesh->color);
       if (argc > 3)
@@ -26168,6 +26175,7 @@ static JSValue js_get_mesh(JSContext *ctx, JSValueConst this_val, int argc, JSVa
    JS_SetPropertyStr(ctx, object, "scale", js_vec3_array(ctx, mesh->scale));
    JS_SetPropertyStr(ctx, object, "roughness", JS_NewFloat64(ctx, mesh->roughness));
    JS_SetPropertyStr(ctx, object, "metalness", JS_NewFloat64(ctx, mesh->metalness));
+   JS_SetPropertyStr(ctx, object, "shadeContrast", JS_NewFloat64(ctx, mesh->shade_contrast));
    JS_SetPropertyStr(ctx, object, "emissiveColor", JS_NewUint32(ctx, mesh->emissive_color));
    JS_SetPropertyStr(ctx, object, "emissiveIntensity", JS_NewFloat64(ctx, mesh->emissive_intensity));
    /* uvOffset / uvScale as 2-element JS arrays + flat scalar accessors */
@@ -26264,6 +26272,7 @@ static JSValue js_get_backend_capabilities(JSContext *ctx, JSValueConst this_val
    JS_SetPropertyStr(ctx, object, "textEffects", JS_NewBool(ctx, true));
    JS_SetPropertyStr(ctx, object, "meshRoughness", JS_NewBool(ctx, true));
    JS_SetPropertyStr(ctx, object, "meshMetalness", JS_NewBool(ctx, true));
+   JS_SetPropertyStr(ctx, object, "meshShadeContrast", JS_NewBool(ctx, true));
    JS_SetPropertyStr(ctx, object, "meshUVTransform", JS_NewBool(ctx, true));
    JS_SetPropertyStr(ctx, object, "meshBlend", JS_NewBool(ctx, true));
    JS_SetPropertyStr(ctx, object, "shadowMaps", JS_NewBool(ctx, gles.active));
@@ -26415,6 +26424,18 @@ static JSValue js_set_mesh_metalness(JSContext *ctx, JSValueConst this_val, int 
    return JS_UNDEFINED;
 }
 
+/* setMeshShadeContrast(handle, value): 1.0 = neutral, >1 deepens normal-based
+ * light/dark falloff for round or faceted objects without changing color. */
+static JSValue js_set_mesh_shade_contrast(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   struct nova64_mesh *mesh = mesh_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (mesh)
+      mesh->shade_contrast = (float)clamp_double(
+         double_from_js(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, mesh->shade_contrast), 0.0, 4.0);
+   return JS_UNDEFINED;
+}
+
 /* setMeshUVOffset(handle, u, v) */
 static JSValue js_set_mesh_uv_offset(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
@@ -26495,6 +26516,23 @@ static JSValue js_set_directional_light(JSContext *ctx, JSValueConst this_val, i
          double_from_js(ctx, argc > 2 ? argv[2] : JS_UNDEFINED, light_state.intensity),
          0.0, 8.0);
    return JS_NewBool(ctx, true);
+}
+
+/* setShadingStyle('classic'|'three'): GLES material lighting preset. The
+ * Three style adds a cool sky / neutral ground fill and opens the compressed
+ * diffuse ramp used by the legacy RetroArch shader. */
+static JSValue js_set_shading_style(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 1) return JS_UNDEFINED;
+   const char *style = JS_ToCString(ctx, argv[0]);
+   if (!style) return JS_UNDEFINED;
+   if (strcmp(style, "classic") == 0)
+      gles_shading_style = 0;
+   else if (strcmp(style, "three") == 0)
+      gles_shading_style = 1;
+   JS_FreeCString(ctx, style);
+   return JS_UNDEFINED;
 }
 
 static JSValue js_set_fog(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
@@ -27297,20 +27335,20 @@ static JSValue js_post_set_sharp_style(JSContext *ctx, JSValueConst this_val, in
    return JS_UNDEFINED;
 }
 
-/* setBloomStyle(style): selects the bloom composite formula. 'classic'
- * (default) preserves the historical normalized-mip average used by every
- * conformance cart up through this point. 'three' switches to the verbatim
- * Three.js UnrealBloomPass composite (per-mip factors [1.0,0.8,0.6,0.4,0.2],
- * lerpBloomFactor radius mix, 3.0 backwards-compat scale). The Three path
- * produces a brighter sharp halo with softer broad falloff and is what the
- * web reference renderer uses; web compat opts into it inside enableBloom. */
+/* setBloomStyle(style): selects the bloom composite formula. 'three' is the
+ * default because the browser reference renders with Three.js UnrealBloomPass.
+ * 'classic' preserves the older RetroArch normalized-mip average for carts that
+ * want that softer legacy look. */
 static JSValue js_post_set_bloom_style(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
    (void)this_val;
    if (argc < 1) return JS_UNDEFINED;
    const char *style = JS_ToCString(ctx, argv[0]);
    if (!style) return JS_UNDEFINED;
-   post_state.bloom_style = (strcmp(style, "three") == 0) ? 1 : 0;
+   if (strcmp(style, "classic") == 0)
+      post_state.bloom_style = 0;
+   else if (strcmp(style, "three") == 0)
+      post_state.bloom_style = 1;
    JS_FreeCString(ctx, style);
    return JS_UNDEFINED;
 }
@@ -29321,6 +29359,11 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, scene, "setMeshAlpha", js_set_mesh_alpha, 2);
    set_function(ctx, scene, "get3DStats", js_get_3d_stats, 0);
    set_function(ctx, scene, "getBackendCapabilities", js_get_backend_capabilities, 0);
+   set_function(ctx, scene, "setAmbientLight", js_set_ambient_light, 2);
+   set_function(ctx, scene, "setLightDirection", js_set_light_direction, 3);
+   set_function(ctx, scene, "setLightColor", js_set_light_color, 1);
+   set_function(ctx, scene, "setDirectionalLight", js_set_directional_light, 3);
+   set_function(ctx, scene, "setShadingStyle", js_set_shading_style, 1);
    set_function(ctx, scene, "setFog", js_set_fog, 3);
    set_function(ctx, scene, "clearFog", js_clear_fog, 0);
    set_function(ctx, scene, "clearScene", js_clear_scene, 0);
@@ -29340,6 +29383,7 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, scene, "clearSkybox", js_clear_skybox, 0);
    set_function(ctx, scene, "setMeshRoughness", js_set_mesh_roughness, 2);
    set_function(ctx, scene, "setMeshMetalness", js_set_mesh_metalness, 2);
+   set_function(ctx, scene, "setMeshShadeContrast", js_set_mesh_shade_contrast, 2);
    set_function(ctx, scene, "setMeshUVOffset", js_set_mesh_uv_offset, 3);
    set_function(ctx, scene, "setMeshUVScale", js_set_mesh_uv_scale, 3);
    set_function(ctx, scene, "setMeshBlend", js_set_mesh_blend, 2);
@@ -29368,6 +29412,7 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, light, "setLightDirection", js_set_light_direction, 3);
    set_function(ctx, light, "setLightColor", js_set_light_color, 1);
    set_function(ctx, light, "setDirectionalLight", js_set_directional_light, 3);
+   set_function(ctx, light, "setShadingStyle", js_set_shading_style, 1);
    set_function(ctx, light, "createPointLight", js_create_point_light, 6);
    set_function(ctx, light, "setPointLightPosition", js_set_point_light_position, 4);
    set_function(ctx, light, "setPointLightColor", js_set_point_light_color, 3);
@@ -29522,6 +29567,10 @@ static bool install_nova64_api(JSContext *ctx)
                   with the higher sharpness amount below it should outpace
                   the web reference renderer. */
                "if(p.setSharpStyle)p.setSharpStyle('cas');"
+               /* Three-style GLES material ramp: opens the compressed diffuse
+                  curve and adds a cool sky / neutral ground fill similar to
+                  the web renderer's AmbientLight + HemisphereLight stack. */
+               "if(nova64.light&&nova64.light.setShadingStyle)nova64.light.setShadingStyle('three');"
                /* Saturation lift kept neutral — 1.10 visibly tinted HUD
                   primitives (user-reported: 'health bar no longer green').
                   Per-cart palette lands correctly via 24-bit promotion.
@@ -29531,13 +29580,13 @@ static bool install_nova64_api(JSContext *ctx)
                   on regressed Space Harrier gameplay parity (the play scene
                   is already slightly more saturated than web). */
                "if(p.setSaturation)p.setSaturation(1.0);"
-               "if(p.setColorGrade)p.setColorGrade(1.08,0.98,0.94);"
+               "if(p.setColorGrade)p.setColorGrade(1.12,0.98,1.08);"
                /* Sharpness amount with CAS gating engaged. Higher than the
                   previous 0.95 ceiling: CAS only sharpens where there is
                   actual local contrast, so flat sky/HUD does not pick up
                   grain at 1.45. The goal here is visibly crisper edges than
                   the web reference, which uses Three.js's uniform sharpen. */
-               "if(p.setSharpness)p.setSharpness(1.45);"
+               "if(p.setSharpness)p.setSharpness(1.90);"
                /* Default near Three's dark clear color when the web cart has
                   not explicitly set a sky. This middle value compensates for
                   RA's post exposure without the old bright gray/cyan cast. */
@@ -30093,6 +30142,7 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, global, "setLightDirection", js_set_light_direction, 3);
    set_function(ctx, global, "setLightColor", js_set_light_color, 1);
    set_function(ctx, global, "setDirectionalLight", js_set_directional_light, 3);
+   set_function(ctx, global, "setShadingStyle", js_set_shading_style, 1);
    set_function(ctx, global, "createPointLight", js_create_point_light, 6);
    set_function(ctx, global, "setPointLightPosition", js_set_point_light_position, 4);
    set_function(ctx, global, "setPointLightColor", js_set_point_light_color, 3);
@@ -30112,6 +30162,7 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, global, "getCameraFOV", js_get_camera_fov, 0);
    set_function(ctx, global, "setMeshRoughness", js_set_mesh_roughness, 2);
    set_function(ctx, global, "setMeshMetalness", js_set_mesh_metalness, 2);
+   set_function(ctx, global, "setMeshShadeContrast", js_set_mesh_shade_contrast, 2);
    set_function(ctx, global, "setMeshUVOffset", js_set_mesh_uv_offset, 3);
    set_function(ctx, global, "setMeshUVScale", js_set_mesh_uv_scale, 3);
    set_function(ctx, global, "setMeshBlend", js_set_mesh_blend, 2);
@@ -32447,7 +32498,7 @@ static bool gles_create_cube_program(void)
       "  vec3 n = (u_use_instancing != 0) ? normalize(mat3(a_instance_model) * a_normal) : normalize(u_normal_matrix * a_normal);\n"
       "  vec3 l = normalize(-u_light_direction.xyz);\n"
       "  float diffuse = max(dot(n, l), 0.0);\n"
-      "  v_light = 0.58 + diffuse * 0.42;\n"
+      "  v_light = diffuse;\n"
       "  v_normal = n;\n"
       "  v_instance_color = a_instance_color;\n"
       "  gl_Position = (u_use_instancing != 0) ? u_mvp * world_pos : u_mvp * local_pos;\n"
@@ -32469,6 +32520,7 @@ static bool gles_create_cube_program(void)
       "uniform vec4 u_light_direction;\n"
       "uniform vec4 u_light_color;\n"
       "uniform float u_light_intensity;\n"
+      "uniform int u_shading_style;\n"
       "uniform int u_fog_enabled;\n"
       "uniform vec4 u_fog_color;\n"
       "uniform float u_fog_near;\n"
@@ -32481,6 +32533,7 @@ static bool gles_create_cube_program(void)
       "uniform float u_emissive_intensity;\n"
       "uniform float u_roughness;\n"
       "uniform float u_metalness;\n"
+      "uniform float u_shade_contrast;\n"
       "uniform int u_output_srgb;\n"
       "uniform sampler2D u_shadow_map;\n"
       "uniform float u_shadow_texel_size;\n"
@@ -32523,22 +32576,35 @@ static bool gles_create_cube_program(void)
       "  vec4 draw_color = (u_use_instancing != 0) ? v_instance_color : u_color;\n"
       "  vec4 texel = (u_has_texture != 0) ? texture(u_texture, v_uv) : vec4(1.0);\n"
       "  vec4 base = vec4(srgb_to_linear(texel.rgb) * srgb_to_linear(draw_color.rgb), texel.a * draw_color.a);\n"
-      "  float surface_light;\n"
+      "  float diffuse;\n"
       "  if (u_has_normal_map != 0) {\n"
       "    vec3 nm = texture(u_normal_map, v_uv).rgb * 2.0 - 1.0;\n"
       "    vec3 perturbed = normalize(v_normal + nm * 0.6);\n"
       "    vec3 l = normalize(-u_light_direction.xyz);\n"
-      "    float diffuse = max(dot(perturbed, l), 0.0);\n"
-      "    surface_light = 0.58 + diffuse * 0.42;\n"
+      "    diffuse = max(dot(perturbed, l), 0.0);\n"
       "  } else {\n"
-      "    surface_light = v_light;\n"
+      "    diffuse = v_light;\n"
       "  }\n"
+      "  diffuse = clamp(0.5 + (diffuse - 0.5) * max(u_shade_contrast, 0.0), 0.0, 1.0);\n"
+      "  float surface_light = 0.58 + diffuse * 0.42;\n"
       "  float diff = mix(surface_light, 0.75, u_roughness * 0.5);\n"
       "  vec3 light_color = srgb_to_linear(u_light_color.rgb);\n"
       "  float light_luma = max(dot(light_color, vec3(0.299, 0.587, 0.114)), 0.001);\n"
       "  light_color = light_color / light_luma * max(u_light_intensity, 0.0);\n"
       "  vec3 metal_ambient = mix(ambient, ambient * base.rgb, u_metalness);\n"
       "  vec3 lit = max(base.rgb * diff * light_color + metal_ambient, vec3(0.0));\n"
+      "  if (u_shading_style == 1) {\n"
+      "    float hemi_t = clamp(v_normal.y * 0.5 + 0.5, 0.0, 1.0);\n"
+      "    vec3 sky = srgb_to_linear(vec3(0.78, 0.85, 1.0)) * 0.22;\n"
+      "    vec3 ground = srgb_to_linear(vec3(0.22, 0.22, 0.24)) * 0.16;\n"
+      "    vec3 hemi = mix(ground, sky, hemi_t);\n"
+      "    float rough_cut = clamp(u_roughness, 0.0, 1.0) * 0.18;\n"
+      "    float shaped = 0.18 + diffuse * (0.96 - rough_cut);\n"
+      "    vec3 fill = base.rgb * (ambient * 0.78 + hemi);\n"
+      "    vec3 direct = base.rgb * shaped * light_color * 1.12;\n"
+      "    vec3 sheen = base.rgb * pow(max(diffuse, 0.0), 10.0) * (1.0 - clamp(u_roughness, 0.0, 1.0)) * 0.10;\n"
+      "    lit = max(direct + fill + sheen + metal_ambient * u_metalness * 0.35, vec3(0.0));\n"
+      "  }\n"
       "  if (u_shadow_enabled != 0) {\n"
       "    vec3 sc = v_shadow_coord.xyz / v_shadow_coord.w;\n"
       "    sc = sc * 0.5 + 0.5;\n"
@@ -32613,6 +32679,7 @@ static bool gles_create_cube_program(void)
    gles.cube_light_direction_uniform = gles.GetUniformLocation(program, "u_light_direction");
    gles.cube_light_color_uniform = gles.GetUniformLocation(program, "u_light_color");
    gles.cube_light_intensity_uniform = gles.GetUniformLocation(program, "u_light_intensity");
+   gles.cube_shading_style_uniform = gles.GetUniformLocation(program, "u_shading_style");
    gles.cube_fog_enabled_uniform = gles.GetUniformLocation(program, "u_fog_enabled");
    gles.cube_fog_color_uniform = gles.GetUniformLocation(program, "u_fog_color");
    gles.cube_fog_near_uniform = gles.GetUniformLocation(program, "u_fog_near");
@@ -32625,6 +32692,7 @@ static bool gles_create_cube_program(void)
    gles.cube_emissive_intensity_uniform = gles.GetUniformLocation(program, "u_emissive_intensity");
    gles.cube_roughness_uniform = gles.GetUniformLocation(program, "u_roughness");
    gles.cube_metalness_uniform = gles.GetUniformLocation(program, "u_metalness");
+   gles.cube_shade_contrast_uniform = gles.GetUniformLocation(program, "u_shade_contrast");
    gles.cube_output_srgb_uniform = gles.GetUniformLocation(program, "u_output_srgb");
    gles.cube_uv_offset_uniform = gles.GetUniformLocation(program, "u_uv_offset");
    gles.cube_uv_scale_uniform = gles.GetUniformLocation(program, "u_uv_scale");
@@ -32637,7 +32705,7 @@ static bool gles_create_cube_program(void)
       gles.cube_view_uniform >= 0 && gles.cube_normal_matrix_uniform >= 0 &&
       gles.cube_color_uniform >= 0 && gles.cube_ambient_uniform >= 0 &&
       gles.cube_light_direction_uniform >= 0 && gles.cube_light_color_uniform >= 0 &&
-      gles.cube_light_intensity_uniform >= 0;
+      gles.cube_light_intensity_uniform >= 0 && gles.cube_shading_style_uniform >= 0;
 }
 
 static bool gles_create_shadow_program(void)
@@ -33185,10 +33253,10 @@ static bool gles_init_resources(void)
       20, 21, 22, 20, 22, 23,
    };
    static const GLfloat plane_vertices[] = {
-      -0.5f, 0.0f, -0.5f, 0.0f, 1.0f, 0.0f,
-       0.5f, 0.0f, -0.5f, 0.0f, 1.0f, 0.0f,
-       0.5f, 0.0f,  0.5f, 0.0f, 1.0f, 0.0f,
-      -0.5f, 0.0f,  0.5f, 0.0f, 1.0f, 0.0f,
+      -0.5f, -0.5f, 0.0f, 0.0f, 0.0f, 1.0f,
+       0.5f, -0.5f, 0.0f, 0.0f, 0.0f, 1.0f,
+       0.5f,  0.5f, 0.0f, 0.0f, 0.0f, 1.0f,
+      -0.5f,  0.5f, 0.0f, 0.0f, 0.0f, 1.0f,
    };
    static const unsigned short plane_indices[] = {
       0, 1, 2, 0, 2, 3,
@@ -33502,6 +33570,8 @@ static void render_gles_primitive(const struct nova64_mesh *mesh, const float vi
          1.0f);
    if (gles.cube_light_intensity_uniform >= 0 && gles.Uniform1f)
       gles.Uniform1f(gles.cube_light_intensity_uniform, light_state.intensity);
+   if (gles.cube_shading_style_uniform >= 0 && gles.Uniform1i)
+      gles.Uniform1i(gles.cube_shading_style_uniform, gles_shading_style);
    /* fog */
    if (gles.cube_fog_enabled_uniform >= 0) {
       gles.Uniform1i(gles.cube_fog_enabled_uniform, light_state.fog_enabled ? 1 : 0);
@@ -33563,6 +33633,8 @@ static void render_gles_primitive(const struct nova64_mesh *mesh, const float vi
       gles.Uniform1f(gles.cube_roughness_uniform, mesh->roughness);
    if (gles.cube_metalness_uniform >= 0 && gles.Uniform1f)
       gles.Uniform1f(gles.cube_metalness_uniform, mesh->metalness);
+   if (gles.cube_shade_contrast_uniform >= 0 && gles.Uniform1f)
+      gles.Uniform1f(gles.cube_shade_contrast_uniform, mesh->shade_contrast);
    /* UV transforms */
    if (gles.cube_uv_offset_uniform >= 0 && gles.Uniform2f)
       gles.Uniform2f(gles.cube_uv_offset_uniform, mesh->uv_offset[0], mesh->uv_offset[1]);
@@ -34192,6 +34264,8 @@ static void render_gles_instanced_mesh(const struct nova64_mesh *mesh, const flo
          1.0f);
    if (gles.cube_light_intensity_uniform >= 0 && gles.Uniform1f)
       gles.Uniform1f(gles.cube_light_intensity_uniform, light_state.intensity);
+   if (gles.cube_shading_style_uniform >= 0 && gles.Uniform1i)
+      gles.Uniform1i(gles.cube_shading_style_uniform, gles_shading_style);
    if (gles.cube_fog_enabled_uniform >= 0)
       gles.Uniform1i(gles.cube_fog_enabled_uniform, light_state.fog_enabled ? 1 : 0);
    if (gles.cube_fog_color_uniform >= 0)
@@ -34222,6 +34296,8 @@ static void render_gles_instanced_mesh(const struct nova64_mesh *mesh, const flo
       gles.Uniform1f(gles.cube_roughness_uniform, mesh->roughness);
    if (gles.cube_metalness_uniform >= 0 && gles.Uniform1f)
       gles.Uniform1f(gles.cube_metalness_uniform, mesh->metalness);
+   if (gles.cube_shade_contrast_uniform >= 0 && gles.Uniform1f)
+      gles.Uniform1f(gles.cube_shade_contrast_uniform, mesh->shade_contrast);
    if (gles.cube_uv_offset_uniform >= 0 && gles.Uniform2f)
       gles.Uniform2f(gles.cube_uv_offset_uniform, mesh->uv_offset[0], mesh->uv_offset[1]);
    if (gles.cube_uv_scale_uniform >= 0 && gles.Uniform2f)
@@ -35022,13 +35098,15 @@ static bool gles_create_post_program(void)
          so subtle textures stay crisp; CAS sqrt keeps mid-contrast on a
          fast ramp so real edges hit max gate quickly. */
       "      float gate = mix(0.25, 1.0, sqrt(contrast));\n"
-      /* CAS-spirit anti-ringing: clamp the sharpened tone within the
-         min/max envelope including the center, so highlights are bounded
-         by the source's own extremes without erasing the edge lift. */
+      /* CAS-spirit anti-ringing: clamp close to the local min/max envelope,
+         with a small contrast-scaled margin. The margin allows real edge
+         crispness instead of pinning every bright-side lift back to the
+         center sample, while still bounding halos in flat regions. */
       "      vec3 mnC = min(tone, min(min(n, s), min(e, w)));\n"
       "      vec3 mxC = max(tone, max(max(n, s), max(e, w)));\n"
       "      vec3 lift = (tone - avg) * u_sharpness * gate;\n"
-      "      tone = clamp(tone + lift, mnC, mxC);\n"
+      "      float margin = contrast * clamp(u_sharpness, 0.0, 4.0) * 0.08;\n"
+      "      tone = clamp(tone + lift, mnC - vec3(margin), mxC + vec3(margin));\n"
       "    } else {\n"
       "      tone = clamp(tone + (tone - avg) * u_sharpness, 0.0, 8.0);\n"
       "    }\n"

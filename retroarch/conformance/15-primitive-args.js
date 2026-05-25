@@ -8,6 +8,7 @@ export function init() {
   box = createCube(0.65, 1.35, 0.9, rgba8(255, 210, 80, 255), { x: 1.05, y: -0.05, z: 0.05 })
   sphere = createSphere(0.5, rgba8(120, 230, 255, 255), [0.05, 0.15, -0.9])
   plane = createPlane(3.8, 1.6, rgba8(35, 210, 170, 255), { x: 0, y: -1.05, z: 0 })
+  rotateMesh(plane, -Math.PI / 2, 0, 0)
 
   setCameraPosition(0, 1.8, 5.3)
   setCameraTarget(0, -0.2, 0)

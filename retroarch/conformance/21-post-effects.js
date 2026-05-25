@@ -50,8 +50,14 @@ export function init() {
   if (Math.abs(s.filmGrain - 0.08) > 0.01) throw new Error('filmGrain mismatch: ' + s.filmGrain);
   if (Math.abs(s.filmGrainSeed - 7) > 0.01)
     throw new Error('filmGrainSeed mismatch: ' + s.filmGrainSeed);
+  if (s.bloomStyle !== 'three') throw new Error('bloomStyle should default to three: ' + s.bloomStyle);
   if (s.hdrMode !== '32f') throw new Error('hdrMode mismatch: ' + s.hdrMode);
   if (!s.active) throw new Error('active expected true');
+
+  nova64.post.setBloomStyle('classic');
+  if (nova64.post.getState().bloomStyle !== 'classic') throw new Error('bloomStyle classic mismatch');
+  nova64.post.setBloomStyle('three');
+  if (nova64.post.getState().bloomStyle !== 'three') throw new Error('bloomStyle three mismatch');
 
   // Round-trip clear then re-enable for visual frame
   nova64.post.clear();
@@ -67,6 +73,7 @@ export function init() {
   if (s2.sharpness !== 0) throw new Error('sharpness should be 0 after clear');
   if (s2.filmGrain !== 0) throw new Error('filmGrain should be 0 after clear');
   if (s2.filmGrainSeed !== 0) throw new Error('filmGrainSeed should be 0 after clear');
+  if (s2.bloomStyle !== 'three') throw new Error('bloomStyle should reset to three');
   if (s2.colorGrade[0] !== 1 || s2.colorGrade[1] !== 1 || s2.colorGrade[2] !== 1)
     throw new Error('colorGrade should be [1,1,1] after clear');
 

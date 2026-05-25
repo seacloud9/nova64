@@ -3,6 +3,7 @@ let marker = 0
 
 export function init() {
   floor = createPlane(6, 2.5, rgba8(32, 210, 180, 255))
+  rotateMesh(floor, -Math.PI / 2, 0, 0)
   setPosition(floor, 0, -0.9, 0)
 
   marker = createCube(rgba8(255, 210, 80, 255))

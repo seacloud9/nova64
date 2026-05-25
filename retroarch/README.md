@@ -942,7 +942,7 @@ These browser-side Nova64 or Three.js features are not implemented:
 | `61-camera-lookat.js`         | setCameraLookAt direction                                                      |
 | `62-set-position-rotation.js` | setPosition / setRotation absolute vs delta                                    |
 | `63-texture-lifecycle.js`     | createTexture / setMeshTexture / destroyTexture                                |
-| `64-directional-light.js`     | setAmbientLight / setLightDirection / setDirectionalLight                      |
+| `64-directional-light.js`     | setAmbientLight / setLightDirection / setDirectionalLight / setShadingStyle    |
 | `65-backend-caps.js`          | getBackendCapabilities full field validation                                   |
 | `66-draw3d-callback.js`       | draw3d() no-arg + draw3d(fn) callback                                          |
 | `67-storage.js`               | saveData / loadData / hasData / deleteData / storageKeys / storageClear        |

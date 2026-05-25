@@ -1,5 +1,5 @@
 // Conformance cart 64: setAmbientLight / setLightDirection / setLightColor /
-// setDirectionalLight. No getters exist for these, so tests verify the
+// setDirectionalLight / setShadingStyle. No getters exist for these, so tests verify the
 // bindings exist, accept valid args, and return expected values (setDirectionalLight
 // returns true). Visual shows a lit scene confirming no crash.
 
@@ -14,8 +14,12 @@ export function init() {
       throw new Error('setLightColor() binding missing');
    if (typeof setDirectionalLight !== 'function')
       throw new Error('setDirectionalLight() binding missing');
+   if (typeof setShadingStyle !== 'function')
+      throw new Error('setShadingStyle() binding missing');
 
    // Namespace checks
+   if (typeof nova64.light.setShadingStyle !== 'function')
+      errors.push('nova64.light.setShadingStyle-missing');
    if (typeof nova64.scene.setAmbientLight !== 'function')
       errors.push('nova64.scene.setAmbientLight-missing');
    if (typeof nova64.scene.setLightDirection !== 'function')
@@ -49,6 +53,8 @@ export function init() {
    // setAmbientLight intensity clamp [0, 4]
    setAmbientLight(rgba8(80, 80, 80, 255), 0.0);
    setAmbientLight(rgba8(80, 80, 80, 255), 4.0);
+   setShadingStyle('classic');
+   nova64.light.setShadingStyle('three');
 
    // Build a visual scene
    setAmbientLight(rgba8(50, 60, 90, 255), 0.6);

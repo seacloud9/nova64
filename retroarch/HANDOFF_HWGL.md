@@ -1,9 +1,152 @@
 # Nova64 Hardware GL on Windows — Status & Handover
 
-**Last updated:** 2026-05-25 (post Claude session — handoff to Codex)
+**Last updated:** 2026-05-25 (Codex continuation after Claude handoff)
 **Branch:** `main`
-**Working tree:** clean after wing-hide fix (`c0faf6a`)
-**Windows DLL deployed:** `C:\RetroArch-Win64\cores\nova64_libretro.dll` is fresh as of commit `4f96791` (CAS sharpening)
+**Working tree:** uncommitted Codex changes for bloom default, GLES shading/color/sharpness, mesh shade contrast, and web-compatible plane geometry
+**Windows DLL deployed:** stale after the latest plane-geometry C change; cross-build/redeploy before Windows RetroArch smoke
+
+---
+
+## Codex continuation — 2026-05-25
+
+Picked up from Claude's CAS/bloom/cart-port handoff. This pass focused on the
+user's two latest requests: `setBloomStyle` should default to `three`, and the
+GLES render path should look less dull than the web reference.
+
+- `nova64.post.setBloomStyle()` now defaults/resets to `three`; `classic`
+  remains available for the older normalized-mip bloom composite.
+- Added `setShadingStyle('classic'|'three')` as a global API plus
+  `nova64.light.setShadingStyle()` and `nova64.scene.setShadingStyle()`.
+  The `three` style opens the compressed diffuse ramp and adds a cool sky /
+  neutral ground fill inspired by the web renderer's AmbientLight +
+  HemisphereLight setup.
+- Web-compat `nova64.fx.enableBloom()` now opts into `setShadingStyle('three')`,
+  CAS sharpening, `setSharpness(1.90)`, and a red/blue-friendly
+  `setColorGrade(1.12, 0.98, 1.08)`.
+- CAS anti-ringing now has a small contrast-scaled margin around the local
+  min/max envelope. This keeps flat regions bounded while allowing real edge
+  lift instead of pinning every bright edge back to the center sample.
+- `64-directional-light.js` now covers `setShadingStyle`; conformance baselines
+  were updated for that intentional visual/API change.
+
+Focused validation passed:
+
+```bash
+make -C retroarch clean all harness
+NOVA64_GLES_TESTS=1 bash retroarch/tests/run_conformance.sh --skip-build --from 17 --to 22
+NOVA64_GLES_TESTS=1 bash retroarch/tests/run_conformance.sh --skip-build --from 64 --to 64
+pnpm run retroarch:visual:space-harrier -- --retro-cart=web --out=retroarch/build/space-harrier-web-shading-grade --port=5178
+make -C retroarch platform=win-cross clean all
+cp retroarch/nova64_libretro.dll /mnt/c/RetroArch-Win64/cores/nova64_libretro.dll
+make -C retroarch clean all harness
+```
+
+Current focused checksums:
+
+- `21-post-effects`: software `db290147bd8f8c0b`, GLES `b9a78c64ab0a6ab8`
+- `64-directional-light`: software `cfff60f8dafc45cd`, GLES `57f8d371260efd0c`
+
+Space Harrier web-cart smoke after the tune: average `90.9`, start `95.7`,
+gameplay `86.1`, gameplay sharpness ratio `52.4%`. Remaining gap: gameplay
+field color is still too dark/green and too saturated versus browser
+(`ra rgb(48,110,70)` vs `web rgb(95,125,101)`).
+
+MemPalace note: `pnpm run mempalace:wake` succeeded, but quarantined two HNSW
+segments for drift/integrity failure before returning project context.
+
+### Immediate follow-up: camera/horizon/detail fix — 2026-05-25
+
+User reported that the RetroArch Space Harrier camera/horizon looked smushed,
+dull, and far less detailed than the web renderer. The root cause was not the
+camera math: RetroArch's `createPlane` primitive used an X/Z local plane, while
+Three.js `PlaneGeometry` is an X/Y local plane with a +Z normal. Web carts,
+including `examples/space-harrier-3d`, correctly call
+`rotateMesh(plane, -Math.PI / 2, 0, 0)` to turn that X/Y plane into ground.
+Because the RetroArch primitive was already horizontal, the same cart rotation
+made checkerboard floor tiles vertical in RetroArch, producing the apparent
+horizon drop-off and loss of detail.
+
+Implemented fix:
+
+- `retroarch/nova64_libretro.c`
+  - GLES plane vertices are now X/Y local-space with +Z normals, matching
+    Three.js.
+  - Software plane corners now use the same X/Y contract.
+  - `createPlane(width, height, ...)` now stores width in `scale[0]`, height in
+    `scale[1]`, and leaves `scale[2]` at `1.0`.
+- Existing RetroArch conformance carts that intended horizontal floor planes
+  now explicitly rotate their planes by `-Math.PI / 2`, preserving the expected
+  scene while testing the web-compatible contract:
+  `07`, `09`, `10`, `14`, `15`, `18`, `22`, and `30`.
+- Space Harrier hand port already had the web-style rotation, so it benefits
+  directly from the primitive fix.
+
+Measured impact from fresh captures:
+
+```text
+Before plane fix, web cart on RetroArch:
+  average 90.9, start 95.7, play 86.1
+  play sharpness ratio 52.7%
+  play avg web rgb(95,125,101), RA rgb(48,110,70)
+
+After plane fix, web cart on RetroArch:
+  average 94.4, start 95.6, play 93.2
+  play sharpness ratio 100.6%
+  play avg web rgb(96,125,101), RA rgb(99,138,105)
+
+After plane fix, hand port on RetroArch:
+  average 92.2, start 93.1, play 91.3
+```
+
+Validation so far:
+
+```bash
+make -C retroarch clean all harness
+pnpm run retroarch:visual:space-harrier -- --retro-cart=web --out=retroarch/build/space-harrier-web-plane-fix --port=5178
+pnpm run retroarch:visual:space-harrier -- --retro-cart=port --out=retroarch/build/space-harrier-port-plane-fix --port=5178
+NOVA64_GLES_TESTS=1 bash retroarch/tests/run_conformance.sh --skip-build --from 7 --to 10
+NOVA64_GLES_TESTS=1 bash retroarch/tests/run_conformance.sh --skip-build --from 14 --to 22
+```
+
+Conformance status at handoff:
+
+- `07`/`09`/`10` visual checksums stayed stable after adding explicit plane
+  rotations.
+- `09-overlay-scene` command-log hash needs updating for the new `rotateMesh`
+  call. Observed actual hash: `5123bffc8a1ea64d55a906b0cf8f6ff66c46c211d507846b6c931dc214f4cf8c`.
+- `14-plane-dimensions` visual checksum stayed stable.
+- `15-primitive-args` now intentionally renders differently with the true
+  Three-style plane contract. Observed software checksum:
+  `d4051e86578b1be1`; continue the conformance refresh from there.
+- Still need to finish/record command-log hashes for `14`, `15`, `18`, and
+  `22`, plus any visual baselines changed by the X/Y plane contract.
+- Still need cross-build + copy
+  `retroarch/nova64_libretro.dll` to
+  `C:\RetroArch-Win64\cores\nova64_libretro.dll`.
+
+### Mesh shade contrast checkpoint — 2026-05-25
+
+Added `setMeshShadeContrast(handle, value)` to deepen or flatten normal-based
+lighting falloff per mesh without changing base color. This was added while
+investigating washed-out tree tops/bottoms in RetroArch versus Three.js.
+
+- New mesh field: `shadeContrast` (`1.0` neutral, clamp range `0.0..4.0`).
+- Exposed as global `setMeshShadeContrast` and
+  `nova64.scene.setMeshShadeContrast`.
+- `getMesh()` now reports `shadeContrast`.
+- `getBackendCapabilities()` now reports `meshShadeContrast: true`.
+- GLES cube/primitive shader applies contrast around diffuse `0.5` before the
+  material lighting ramp.
+- Space Harrier hand-port tree leaves now remove the old emissive crutch and
+  use lower roughness plus `setMeshShadeContrast(top, 1.85)`.
+
+Focused validation passed before the plane fix:
+
+```bash
+make -C retroarch clean all harness
+NOVA64_GLES_TESTS=1 bash retroarch/tests/run_conformance.sh --skip-build --from 49 --to 49
+NOVA64_GLES_TESTS=1 bash retroarch/tests/run_conformance.sh --skip-build --from 65 --to 65
+```
 
 ---
 
@@ -23,8 +166,9 @@ uncommitted on the working tree, fully wired with the predicted checksums
 | API | Style key | Where added | Web compat opt-in? |
 |---|---|---|---|
 | `nova64.post.setVibrance(amount)` | `vibrance` (float -2..2) | `5c39b08` | ❌ (regressed Space Harrier — see "Don't redo" below) |
-| `nova64.post.setBloomStyle(s)` | `'classic'` / `'three'` | `8f49866` | ✅ `enableBloom` auto-sets `'three'` |
-| `nova64.post.setSharpStyle(s)` | `'unsharp'` / `'cas'` | `4f96791` | ✅ `enableBloom` auto-sets `'cas'` + bumps sharpness 0.95 → 1.45 |
+| `nova64.post.setBloomStyle(s)` | `'classic'` / `'three'` | `8f49866` + Codex continuation | ✅ default/reset is now `'three'` |
+| `nova64.post.setSharpStyle(s)` | `'unsharp'` / `'cas'` | `4f96791` + Codex continuation | ✅ `enableBloom` auto-sets `'cas'` + bumps sharpness 0.95 → 1.90 |
+| `nova64.light.setShadingStyle(s)` | `'classic'` / `'three'` | Codex continuation | ✅ `enableBloom` auto-sets `'three'` |
 
 Plus three smoke-test cart ports (`26faf22`: `hello-namespaced`, `test-font`,
 `test-minimal`) and a one-cart bug fix (`c0faf6a`: hide enemy wing cubes in
@@ -42,20 +186,33 @@ than WebGL". Ported two algorithms verbatim from `three/examples/jsm/`:
 
 ## What to do next — prioritized backlog
 
-1. **Port Three's separable Gaussian blur to the bloom downsample chain.** The composite is now Three's, but the *blur kernels* feeding each mip still use RA's older kernel. Three uses radii `[6, 10, 14, 18, 22]` with Gaussian coefficients `0.39894 * exp(-0.5 * i² / σ²) / σ` where `σ = radius / 3`. Source is in `node_modules/.pnpm/three@0.182.0/node_modules/three/examples/jsm/postprocessing/UnrealBloomPass.js` line 379 (`_getSeparableBlurMaterial`). This will further match Three's soft halo shape — biggest remaining bloom-parity lever.
+1. **Finish the plane-contract conformance refresh.** Continue from the paused
+   `NOVA64_GLES_TESTS=1 bash retroarch/tests/run_conformance.sh --skip-build --from 14 --to 22`
+   run. Known actuals so far: `15-primitive-args` software checksum
+   `d4051e86578b1be1`; `09-overlay-scene` command-log hash
+   `5123bffc8a1ea64d55a906b0cf8f6ff66c46c211d507846b6c931dc214f4cf8c`.
+   Re-run and record any remaining visual/GLES/command-log changes for
+   `14`, `15`, `18`, `22`, and `30`.
 
-2. **Fix the pre/post-bloom asymmetry in the classic unsharp.** The classic unsharp branch samples `u_scene` (pre-bloom) for neighbors but operates on `tone` (post-bloom). So `(tone - avg)` conflates bloom halos with edges. The CAS branch already fixes this (samples bloom mips at neighbor positions); applying the same fix to classic will **rebaseline cart 21 GLES checksum** but cleans up the legacy path. Worth doing if you're already touching the file.
-
-3. **Add an edge-region-only sharpness metric to `space_harrier_visual_parity.mjs`.** The current `sharpnessScore` is whole-image gradient-average, which penalizes CAS because cleaner flats lower the metric even when edges go crisper. Add a second metric that samples only high-luma-gradient pixels so the CAS path can show its wins. Function lives at `retroarch/tests/space_harrier_visual_parity.mjs:360`.
-
-4. **Re-cross-build the Windows DLL after any of the above lands.** Command:
+2. **Cross-build and redeploy the Windows DLL after the plane fix.** The native
+   Linux build has been refreshed, but `C:\RetroArch-Win64\cores\nova64_libretro.dll`
+   predates the X/Y plane geometry change. Use:
    ```bash
-   make -C retroarch clean all          # MUST clean — mingw .o files from win-cross conflict with native build, and vice versa
    make -C retroarch platform=win-cross clean all
    cp retroarch/nova64_libretro.dll /mnt/c/RetroArch-Win64/cores/nova64_libretro.dll
+   make -C retroarch clean all harness
    ```
 
-5. **Tackle the Space Harrier port-cart guard.** The hand-tuned RA port still fails its stricter guard (90.0 average) on start sharpness and gameplay edge luma — separate from the web-cart parity work I focused on. The CAS sharpening upgrade might help here; worth re-running with `--guard=ra`.
+3. **Port Three's separable Gaussian blur to the bloom downsample chain.** The composite is now Three's, but the *blur kernels* feeding each mip still use RA's older kernel. Three uses radii `[6, 10, 14, 18, 22]` with Gaussian coefficients `0.39894 * exp(-0.5 * i² / σ²) / σ` where `σ = radius / 3`. Source is in `node_modules/.pnpm/three@0.182.0/node_modules/three/examples/jsm/postprocessing/UnrealBloomPass.js` line 379 (`_getSeparableBlurMaterial`). This will further match Three's soft halo shape — biggest remaining bloom-parity lever.
+
+4. **Fix the pre/post-bloom asymmetry in the classic unsharp.** The classic unsharp branch samples `u_scene` (pre-bloom) for neighbors but operates on `tone` (post-bloom). So `(tone - avg)` conflates bloom halos with edges. The CAS branch already fixes this (samples bloom mips at neighbor positions); applying the same fix to classic will **rebaseline cart 21 GLES checksum** but cleans up the legacy path. Worth doing if you're already touching the file.
+
+5. **Add an edge-region-only sharpness metric to `space_harrier_visual_parity.mjs`.** The current `sharpnessScore` is whole-image gradient-average, which penalizes CAS because cleaner flats lower the metric even when edges go crisper. Add a second metric that samples only high-luma-gradient pixels so the CAS path can show its wins. Function lives at `retroarch/tests/space_harrier_visual_parity.mjs:360`.
+
+6. **Tackle the Space Harrier port-cart guard.** The hand-tuned RA port now has
+   the correct horizon/floor projection and scores `92.2` average in the smoke
+   harness, but still has bespoke start-screen/palette differences from the web
+   cart. Re-run with the current guard profile after the conformance refresh.
 
 ---
 
@@ -65,7 +222,11 @@ than WebGL". Ported two algorithms verbatim from `three/examples/jsm/`:
 
 - **CAS anti-ringing with neighbor-only min/max clamp.** First attempt did `clamp(tone + lift, min(n,s,e,w), max(n,s,e,w))` — silently killed the lift on every edge because center is already at the neighbor max on an edge. Parity sharpness metric was pinned at exactly `3.04` regardless of `u_sharpness` amount until I switched to `clamp(tone + lift, min(tone,n,s,e,w), max(tone,n,s,e,w))`. Don't go back to neighbor-only.
 
-- **CAS sharpness > 1.45 in web compat.** Tried 2.25; play score went 93.7 → 93.2. The anti-ringing clamp caps the effective lift, so amounts past ~1.45 just add metric noise without crispness gains. Stick to 1.45.
+- **Old CAS sharpness > 1.45 note.** That ceiling applied before the
+  contrast-scaled clamp margin. With the new margin, `setSharpness(1.90)`
+  improved Space Harrier gameplay sharpness ratio `46.9% -> 52.4%` in the
+  latest web-cart smoke without hurting the start screen. Re-test before
+  pushing past 1.90.
 
 ---
 
@@ -78,11 +239,12 @@ make -C retroarch clean all harness
 # Cart 21 post-effects in both modes — anchors most of the post pipeline
 bash retroarch/tests/run_conformance.sh --skip-build --from 21 --to 21
 NOVA64_GLES_TESTS=1 bash retroarch/tests/run_conformance.sh --skip-build --from 21 --to 21
-# Expect: software db290147bd8f8c0b, GLES aaba06aa0e6a85c9
+# Expect: software db290147bd8f8c0b, GLES b9a78c64ab0a6ab8
 
 # Space Harrier web-cart parity
-pnpm exec node retroarch/tests/space_harrier_visual_parity.mjs --retro-cart=web --guard=web
-# Expect: average ~94.0-94.7 (run-to-run variance), guard=web passing
+pnpm run retroarch:visual:space-harrier -- --retro-cart=web --out=retroarch/build/space-harrier-web-plane-fix --port=5178
+# Current smoke after plane fix: average 94.4, start 95.6, play 93.2.
+# Gameplay sharpness ratio is now 100.6%; the horizon/floor detail bug is fixed.
 
 # Windows DLL refresh (do not skip if you touched any C path)
 make -C retroarch platform=win-cross clean all
@@ -93,9 +255,10 @@ cp retroarch/nova64_libretro.dll /mnt/c/RetroArch-Win64/cores/nova64_libretro.dl
 
 ## Files this session touched (for fast catch-up)
 
-- `retroarch/nova64_libretro.c` — temperature + vibrance + bloom-style + sharp-style APIs, all shader code, web compat shim updates
-- `retroarch/conformance/21-post-effects.js` — temperature + vibrance round-trips
-- `retroarch/tests/run_conformance.sh` — GLES baseline bumped to `aaba06aa0e6a85c9`
+- `retroarch/nova64_libretro.c` — temperature + vibrance + bloom-style + sharp-style APIs, Three-style GLES shading, all shader code, web compat shim updates
+- `retroarch/conformance/21-post-effects.js` — temperature + vibrance + bloom-style round-trips
+- `retroarch/conformance/64-directional-light.js` — `setShadingStyle` binding coverage
+- `retroarch/tests/run_conformance.sh` — GLES/software baselines for post and directional-light coverage
 - `retroarch/HANDOFF_HWGL.md` — checkpoints + measurements + this handoff
 - `retroarch/README.md` — post pipeline summary
 - `retroarch/GLES_SMOKE_MATRIX.md` — vibrance entry
@@ -142,7 +305,7 @@ API:
 - `nova64.post.getState().sharpStyle` reports current style.
 
 Web compat `enableBloom` now auto-opts into CAS and bumps `setSharpness`
-from `0.95` → `1.45`. The higher amount is safe because CAS gates by
+from `0.95` → `1.90`. The higher amount is safe because CAS gates by
 contrast, so flat regions still pick up zero grain.
 
 Why the parity metric stays flat: Space Harrier `sharp` measure averages
@@ -157,12 +320,11 @@ color matching.
 
 Mined Three's verbatim composite from
 `three/examples/jsm/postprocessing/UnrealBloomPass.js` and added it as a
-second bloom path in the post fragment shader. Default
-`nova64.post.getState().bloomStyle === 'classic'` (the historical
-normalized-mip average) so all five `setBloom`-using conformance carts keep
-their pre-change checksums; `nova64.post.setBloomStyle('three')` opts in to
-the Three composite per cart, and the web compat `enableBloom` shim auto-opts-
-in so web carts get the look the web reference is rendering.
+second bloom path in the post fragment shader. Default/reset is now
+`nova64.post.getState().bloomStyle === 'three'`, matching the browser
+reference renderer's UnrealBloomPass path. `nova64.post.setBloomStyle('classic')`
+still opts into the older normalized-mip average for carts that want the softer
+legacy look.
 
 Space Harrier web-cart parity after the opt-in: average `94.5`, play scene
 `92.5 → 93.3` from richer sky/halo match; start scene held at `95.7`.
@@ -340,7 +502,10 @@ compat shim now runs all of:
 | `use24BitColors(true)`      | promotes `0xRRGGBB` → `0xRRGGBBFF` and enables web overlay output color | Web palettes and 2D overlays render correctly  |
 | `setHDRMode('32f')`         | RGBA32F post FBO                                                        | 128-bit precision (now also default)           |
 | `setSaturation(1.0)`        | neutral pivot                                                           | 1.10+ tints HUD — held at 1.0                  |
-| `setSharpness(0.35)`        | unsharp-mask pass                                                       | Crisp edges against bloom                      |
+| `setColorGrade(1.12,0.98,1.08)` | red/blue lift                                                       | Helps gameplay field color and start-screen sky |
+| `setShadingStyle('three')`  | Three-like diffuse + sky/ground fill                                    | Reduces dull GLES material shading             |
+| `setSharpStyle('cas')`      | contrast-adaptive sharpening                                            | Cleaner flats, crisper edges                   |
+| `setSharpness(1.90)`        | stronger CAS amount                                                     | Latest tested sharpness lift                   |
 | `setSkyColor(...)` if unset | default dark navy gray                                                  | Matches Babylon's default `scene.clearColor`   |
 
 ### New runtime APIs (all opt-in, default = identity, NO conformance impact)

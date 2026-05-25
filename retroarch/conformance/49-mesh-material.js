@@ -1,6 +1,7 @@
 // Conformance cart 49: extended mesh material properties.
-// Tests setMeshRoughness, setMeshMetalness, setMeshUVOffset, setMeshUVScale,
-// setMeshBlend API existence and that they round-trip through getMesh().
+// Tests setMeshRoughness, setMeshMetalness, setMeshShadeContrast,
+// setMeshUVOffset, setMeshUVScale, setMeshBlend API existence and that they
+// round-trip through getMesh().
 
 let errors = [];
 let cube = 0;
@@ -8,7 +9,7 @@ let cube = 0;
 export function init() {
    // API existence checks
    const apis = [
-      'setMeshRoughness', 'setMeshMetalness',
+      'setMeshRoughness', 'setMeshMetalness', 'setMeshShadeContrast',
       'setMeshUVOffset', 'setMeshUVScale', 'setMeshBlend'
    ];
    for (const name of apis) {
@@ -19,6 +20,7 @@ export function init() {
    const caps = getBackendCapabilities();
    if (!caps.meshRoughness)  errors.push('caps.meshRoughness-false');
    if (!caps.meshMetalness)  errors.push('caps.meshMetalness-false');
+   if (!caps.meshShadeContrast) errors.push('caps.meshShadeContrast-false');
    if (!caps.meshUVTransform) errors.push('caps.meshUVTransform-false');
    if (!caps.meshBlend)      errors.push('caps.meshBlend-false');
 
@@ -28,6 +30,7 @@ export function init() {
    // Apply material properties — none should throw
    try { setMeshRoughness(cube, 0.3); } catch (e) { errors.push('setMeshRoughness-threw'); }
    try { setMeshMetalness(cube, 0.7); } catch (e) { errors.push('setMeshMetalness-threw'); }
+   try { setMeshShadeContrast(cube, 1.6); } catch (e) { errors.push('setMeshShadeContrast-threw'); }
    try { setMeshUVOffset(cube, 0.1, 0.2); } catch (e) { errors.push('setMeshUVOffset-threw'); }
    try { setMeshUVScale(cube, 2.0, 2.0); } catch (e) { errors.push('setMeshUVScale-threw'); }
    try { setMeshBlend(cube, 'opaque'); } catch (e) { errors.push('setMeshBlend-opaque-threw'); }
@@ -42,10 +45,12 @@ export function init() {
    const eps = 0.001;
    if (Math.abs(m.roughness - 0.3) > eps)  errors.push('roughness:' + m.roughness);
    if (Math.abs(m.metalness - 0.7) > eps)  errors.push('metalness:' + m.metalness);
+   if (Math.abs(m.shadeContrast - 1.6) > eps) errors.push('shadeContrast:' + m.shadeContrast);
    if (Math.abs(m.uvOffset[0] - 0.1) > eps) errors.push('uvOffset[0]:' + m.uvOffset[0]);
    if (Math.abs(m.uvOffset[1] - 0.2) > eps) errors.push('uvOffset[1]:' + m.uvOffset[1]);
    if (Math.abs(m.uvScale[0] - 2.0) > eps)  errors.push('uvScale[0]:' + m.uvScale[0]);
    if (Math.abs(m.uvScale[1] - 2.0) > eps)  errors.push('uvScale[1]:' + m.uvScale[1]);
+   setMeshShadeContrast(cube, 1.0);
 
    setCameraPosition(0, 1.5, 6);
    setCameraTarget(0, 0, 0);

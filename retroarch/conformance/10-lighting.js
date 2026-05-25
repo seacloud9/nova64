@@ -5,7 +5,8 @@ let t = 0
 
 export function init() {
   floor = createPlane(rgba8(44, 170, 124, 255))
-  setScale(floor, 5.4, 1, 4.6)
+  setScale(floor, 5.4, 4.6, 1)
+  rotateMesh(floor, -Math.PI / 2, 0, 0)
   setPosition(floor, 0, -1.18, -0.2)
 
   cube = createCube(rgba8(255, 184, 72, 255))

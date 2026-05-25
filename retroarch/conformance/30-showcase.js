@@ -18,6 +18,7 @@ export function init() {
    cube   = createCube(1, rgba8(80, 120, 220, 255), [-1.5, 0, 0]);
    sphere = createSphere(0.7, rgba8(220, 80, 80, 255), [0, 0, 0]);
    plane  = createPlane(6, 4, rgba8(50, 70, 50, 255));
+   rotateMesh(plane, -Math.PI / 2, 0, 0);
    setPosition(plane, 0, -1.2, 0);
 
    // Try to load a saved high score

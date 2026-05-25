@@ -10,6 +10,7 @@ export function init() {
   const cube = createCube(1, rgba8(255, 132, 72, 255), [-0.75, 0, 0])
   const sphere = createSphere(0.45, rgba8(120, 210, 255, 255), [0.8, 0, 0])
   const plane = createPlane(3, 2, rgba8(40, 110, 92, 255), [0, -0.72, 0])
+  rotateMesh(plane, -Math.PI / 2, 0, 0)
 
   setFlatShading(cube)
   setMeshOpacity(cube, 0.5)

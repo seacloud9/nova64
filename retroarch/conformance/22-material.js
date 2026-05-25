@@ -24,6 +24,7 @@ export function init() {
 
    // Ground plane
    plane = createPlane(4, 3, rgba8(60, 80, 60, 255));
+   rotateMesh(plane, -Math.PI / 2, 0, 0);
    setPosition(plane, 0, -1, -3);
 
    // Verify emissive state via getMesh

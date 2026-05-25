@@ -1,8 +1,24 @@
 # Nova64 Hardware GL on Windows — Status & Handover
 
-**Last updated:** 2026-05-25 (web overlay color-space parity + gameplay sky/sharpness tune)
+**Last updated:** 2026-05-25 (Windows import refresh + film grain post API)
 **Branch:** `main`
 **Working tree:** clean after committing this checkpoint
+
+---
+
+## Latest API feature checkpoint
+
+- Added `nova64.post.setFilmGrain(amount, seed)` and global `setFilmGrain`.
+  It is opt-in, deterministic, defaults to off, and runs after tone mapping so
+  it adds a final camera/film texture without feeding bloom or shifting palette
+  intent.
+- `nova64.post.getState()` now reports `filmGrain` and `filmGrainSeed`.
+- Global `resetPost()` now calls the shared reset path, so it also clears newer
+  exposure, saturation, sharpness, and film-grain state instead of only the
+  older post knobs.
+- Focused conformance coverage lives in `21-post-effects.js`; the software
+  checksum stayed stable and the GLES checksum intentionally moved to
+  `1c086592b2ef23fc`.
 
 ---
 

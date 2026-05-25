@@ -511,6 +511,7 @@ struct nova64_gles_backend {
    GLint post_exposure_uniform;
    GLint post_saturation_uniform;
    GLint post_sharpness_uniform;
+   GLint post_film_grain_uniform;
    GLint post_posterize_uniform;
    GLint bloom_downsample_position_attrib;
    GLint bloom_downsample_uv_attrib;
@@ -1766,6 +1767,8 @@ struct nova64_post_state {
    float exposure;       /* pre-ACES scalar, default 1.0; Three uses 1.25 */
    float saturation;     /* post-ACES saturation multiplier, default 1.0 */
    float sharpness;      /* unsharp mask amount, default 0.0 = off */
+   float film_grain;     /* post-tone-map grain amount, default 0.0 = off */
+   float film_grain_seed;/* deterministic grain seed */
 };
 static struct nova64_post_state post_state;
 
@@ -1783,6 +1786,8 @@ static void reset_post_state(void)
    post_state.exposure = 1.0f;
    post_state.saturation = 1.0f;
    post_state.sharpness = 0.0f;
+   post_state.film_grain = 0.0f;
+   post_state.film_grain_seed = 0.0f;
 }
 
 static bool post_is_active(void)
@@ -1791,7 +1796,8 @@ static bool post_is_active(void)
       || post_state.bloom > 0.0f || post_state.chromatic > 0.0f || post_state.posterize > 0
       || post_state.color_grade[0] != 1.0f || post_state.color_grade[1] != 1.0f
       || post_state.color_grade[2] != 1.0f || post_state.exposure != 1.0f
-      || post_state.saturation != 1.0f || post_state.sharpness > 0.0f;
+      || post_state.saturation != 1.0f || post_state.sharpness > 0.0f
+      || post_state.film_grain > 0.0f;
 }
 
 static void reset_palette_state(void)
@@ -4493,11 +4499,12 @@ static void write_renderer_command_log(void)
    fprintf(file, "overlay clear=%08x visible_pixels=%zu\n",
          framebuffer_clear_color, count_overlay_pixels());
    fprintf(file,
-         "post crt=%d vignette=%.4f pixelate=%d bloom=%.4f chromatic=%.4f colorgrade=%.4f,%.4f,%.4f posterize=%d\n",
+         "post crt=%d vignette=%.4f pixelate=%d bloom=%.4f chromatic=%.4f colorgrade=%.4f,%.4f,%.4f posterize=%d exposure=%.4f saturation=%.4f sharpness=%.4f film_grain=%.4f seed=%.4f\n",
          post_state.crt_enabled ? 1 : 0, post_state.vignette, post_state.pixelate,
          post_state.bloom, post_state.chromatic,
          post_state.color_grade[0], post_state.color_grade[1], post_state.color_grade[2],
-         post_state.posterize);
+         post_state.posterize, post_state.exposure, post_state.saturation,
+         post_state.sharpness, post_state.film_grain, post_state.film_grain_seed);
 
    for (int i = 0; i < NOVA64_MAX_MESHES; i++) {
       const struct nova64_mesh *mesh = &meshes[i];
@@ -8828,10 +8835,17 @@ static JSValue js_set_posterize_global(JSContext *ctx, JSValueConst this_val, in
 static JSValue js_reset_post(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
    (void)ctx; (void)this_val; (void)argc; (void)argv;
-   post_state.crt_enabled = false; post_state.vignette = 0.0f;
-   post_state.bloom = 0.0f; post_state.bloom_radius = 0.0f; post_state.bloom_threshold = 0.32f; post_state.chromatic = 0.0f;
-   post_state.pixelate = 0; post_state.posterize = 0;
-   post_state.color_grade[0] = 1.0f; post_state.color_grade[1] = 1.0f; post_state.color_grade[2] = 1.0f;
+   reset_post_state();
+   return JS_UNDEFINED;
+}
+
+static JSValue js_set_film_grain_global(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   post_state.film_grain = (float)clamp_double(
+      double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0.0), 0.0, 1.0);
+   if (argc > 1 && !JS_IsUndefined(argv[1]))
+      post_state.film_grain_seed = (float)double_from_js(ctx, argv[1], 0.0);
    return JS_UNDEFINED;
 }
 
@@ -27161,6 +27175,8 @@ static JSValue js_post_get_state(JSContext *ctx, JSValueConst this_val, int argc
    JS_SetPropertyStr(ctx, obj, "exposure", JS_NewFloat64(ctx, (double)post_state.exposure));
    JS_SetPropertyStr(ctx, obj, "saturation", JS_NewFloat64(ctx, (double)post_state.saturation));
    JS_SetPropertyStr(ctx, obj, "sharpness", JS_NewFloat64(ctx, (double)post_state.sharpness));
+   JS_SetPropertyStr(ctx, obj, "filmGrain", JS_NewFloat64(ctx, (double)post_state.film_grain));
+   JS_SetPropertyStr(ctx, obj, "filmGrainSeed", JS_NewFloat64(ctx, (double)post_state.film_grain_seed));
    JS_SetPropertyStr(ctx, obj, "hdrMode", JS_NewString(ctx, nova64_compat_hdr_32f ? "32f" : "16f"));
    JS_SetPropertyStr(ctx, obj, "hdrActual", JS_NewString(ctx,
       gles.post_hdr_is_float32 ? "32f" : (gles.post_hdr_enabled ? "16f" : "none")));
@@ -27227,6 +27243,18 @@ static JSValue js_post_set_sharpness(JSContext *ctx, JSValueConst this_val, int 
    (void)this_val;
    post_state.sharpness = (float)clamp_double(
       double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0.0), 0.0, 4.0);
+   return JS_UNDEFINED;
+}
+
+/* setFilmGrain(amount, seed): deterministic post-tone-map monochrome grain.
+ * 0 = off (default). Keep amounts subtle, e.g. 0.02-0.08. */
+static JSValue js_post_set_film_grain(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   post_state.film_grain = (float)clamp_double(
+      double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0.0), 0.0, 1.0);
+   if (argc > 1 && !JS_IsUndefined(argv[1]))
+      post_state.film_grain_seed = (float)double_from_js(ctx, argv[1], 0.0);
    return JS_UNDEFINED;
 }
 
@@ -29334,6 +29362,7 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, post, "setHDRMode", js_post_set_hdr_mode, 1);
    set_function(ctx, post, "setSaturation", js_post_set_saturation, 1);
    set_function(ctx, post, "setSharpness", js_post_set_sharpness, 1);
+   set_function(ctx, post, "setFilmGrain", js_post_set_film_grain, 2);
    set_function(ctx, post, "setBloomRadius", js_post_set_bloom_radius, 1);
    set_function(ctx, post, "setBloomThreshold", js_post_set_bloom_threshold, 1);
    set_function(ctx, post, "setChromatic", js_post_set_chromatic, 1);
@@ -31178,6 +31207,7 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, global, "setChromatic",        js_set_chromatic_global,    1);
    set_function(ctx, global, "setPixelate",         js_set_pixelate_global,     1);
    set_function(ctx, global, "setPosterize",        js_set_posterize_global,    1);
+   set_function(ctx, global, "setFilmGrain",        js_set_film_grain_global,   2);
    set_function(ctx, global, "resetPost",           js_reset_post,              0);
    set_function(ctx, global, "getPostState",        js_get_post_state,          0);
 
@@ -34593,6 +34623,10 @@ static bool gles_create_post_program(void)
          with bloom (which is intentionally blurry) by keeping geometry
          edges crisp on top of the bloom halo. */
       "uniform float u_sharpness;\n"
+      /* u_film_grain: x = grain amount, y = deterministic seed. The grain
+         runs after tone mapping so it reads like a final camera/film layer
+         without feeding the bloom chain or shifting cart palette intent. */
+      "uniform vec2 u_film_grain;\n"
       "uniform int u_posterize;\n"
       "out vec4 fragColor;\n"
       "float post_luma(vec3 c) {\n"
@@ -34618,6 +34652,9 @@ static bool gles_create_post_program(void)
       "  color = rrt_and_odt_fit(color);\n"
       "  color = ACESOutputMat * color;\n"
       "  return clamp(color, 0.0, 1.0);\n"
+      "}\n"
+      "float film_grain_hash(vec2 p) {\n"
+      "  return fract(sin(dot(p, vec2(12.9898, 78.233)) + u_film_grain.y * 37.719) * 43758.5453);\n"
       "}\n"
       "vec3 post_bright(vec3 c) {\n"
       /* Brightpass: keep some contribution from mid-tones so the bloom
@@ -34755,6 +34792,10 @@ static bool gles_create_post_program(void)
       "    vec3 avg = (n + s + e + w) * 0.25;\n"
       "    tone = clamp(tone + (tone - avg) * u_sharpness, 0.0, 8.0);\n"
       "  }\n"
+      "  if (u_film_grain.x > 0.001) {\n"
+      "    float grain = film_grain_hash(floor(v_uv * u_resolution.xy));\n"
+      "    tone = clamp(tone + vec3((grain - 0.5) * u_film_grain.x), 0.0, 8.0);\n"
+      "  }\n"
       "  fragColor = vec4(linear_to_srgb(tone), 1.0);\n"
       "}\n";
 
@@ -34800,6 +34841,7 @@ static bool gles_create_post_program(void)
    gles.post_exposure_uniform = gles.GetUniformLocation(program, "u_exposure");
    gles.post_saturation_uniform = gles.GetUniformLocation(program, "u_saturation");
    gles.post_sharpness_uniform = gles.GetUniformLocation(program, "u_sharpness");
+   gles.post_film_grain_uniform = gles.GetUniformLocation(program, "u_film_grain");
    return gles.post_position_attrib >= 0 && gles.post_uv_attrib >= 0;
 }
 
@@ -35303,6 +35345,9 @@ static void render_gles_post_pass(GLuint hw_fbo)
       gles.Uniform1f(gles.post_saturation_uniform, post_state.saturation);
    if (gles.post_sharpness_uniform >= 0 && gles.Uniform1f)
       gles.Uniform1f(gles.post_sharpness_uniform, post_state.sharpness);
+   if (gles.post_film_grain_uniform >= 0 && gles.Uniform2f)
+      gles.Uniform2f(gles.post_film_grain_uniform,
+         post_state.film_grain, post_state.film_grain_seed);
 
    gles_draw_fullscreen_quad(gles.post_position_attrib, gles.post_uv_attrib);
    gles.BindTexture(GL_TEXTURE_2D, 0);

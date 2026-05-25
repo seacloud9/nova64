@@ -1,6 +1,6 @@
 // Conformance cart 21: extended post-processing effects
 // Verifies bloom, bloom radius/threshold, chromatic, setColorGrade, setPosterize,
-// exposure, saturation, sharpness, and HDR target state round-trips.
+// exposure, saturation, sharpness, film grain, and HDR target state round-trips.
 // In software/headless mode the FBO is absent but state must hold correctly.
 
 let cube;
@@ -25,6 +25,7 @@ export function init() {
    nova64.post.setExposure(1.25);
    nova64.post.setSaturation(1.1);
    nova64.post.setSharpness(0.35);
+   nova64.post.setFilmGrain(0.08, 7);
    nova64.post.setHDRMode('32f');
 
    const s = nova64.post.getState();
@@ -39,6 +40,8 @@ export function init() {
    if (Math.abs(s.exposure - 1.25) > 0.01) throw new Error('exposure mismatch: ' + s.exposure);
    if (Math.abs(s.saturation - 1.1) > 0.01) throw new Error('saturation mismatch: ' + s.saturation);
    if (Math.abs(s.sharpness - 0.35) > 0.01) throw new Error('sharpness mismatch: ' + s.sharpness);
+   if (Math.abs(s.filmGrain - 0.08) > 0.01) throw new Error('filmGrain mismatch: ' + s.filmGrain);
+   if (Math.abs(s.filmGrainSeed - 7) > 0.01) throw new Error('filmGrainSeed mismatch: ' + s.filmGrainSeed);
    if (s.hdrMode !== '32f') throw new Error('hdrMode mismatch: ' + s.hdrMode);
    if (!s.active) throw new Error('active expected true');
 
@@ -52,6 +55,8 @@ export function init() {
    if (Math.abs(s2.exposure - 1.0) > 0.01) throw new Error('exposure should reset');
    if (Math.abs(s2.saturation - 1.0) > 0.01) throw new Error('saturation should reset');
    if (s2.sharpness !== 0) throw new Error('sharpness should be 0 after clear');
+   if (s2.filmGrain !== 0) throw new Error('filmGrain should be 0 after clear');
+   if (s2.filmGrainSeed !== 0) throw new Error('filmGrainSeed should be 0 after clear');
    if (s2.colorGrade[0] !== 1 || s2.colorGrade[1] !== 1 || s2.colorGrade[2] !== 1)
       throw new Error('colorGrade should be [1,1,1] after clear');
 
@@ -60,6 +65,7 @@ export function init() {
    nova64.post.setChromatic(0.005);
    nova64.post.setColorGrade(1.2, 1.0, 0.8);
    nova64.post.setPosterize(6);
+   nova64.post.setFilmGrain(0.05, 21);
    nova64.post.setVignette(0.4);
 }
 

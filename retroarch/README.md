@@ -898,7 +898,7 @@ These browser-side Nova64 or Three.js features are not implemented:
 | `18-mesh-helpers.js`          | opacity, visibility, flat-shading                                              |
 | `19-texture.js`               | createTexture/setMeshTexture                                                   |
 | `20-post.js`                  | CRT/vignette/pixelate post effects                                             |
-| `21-post-effects.js`          | bloom/chromatic/colorGrade/posterize                                           |
+| `21-post-effects.js`          | bloom/chromatic/colorGrade/posterize/HDR/sharpness/film grain                 |
 | `22-material.js`              | emissive + mesh alpha                                                          |
 | `23-keyboard.js`              | key hold, edge, false-positive                                                 |
 | `24-storage-keys.js`          | has/keys/clear round-trip                                                      |

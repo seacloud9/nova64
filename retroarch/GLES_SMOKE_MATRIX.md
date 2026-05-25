@@ -82,3 +82,26 @@ real-driver integration notes only.
 - Windows cross-build passed, but real Windows/AMD RetroArch smoke should verify
   that the `RGBA16F` path is accepted and that post effects disable cleanly if a
   driver rejects float color attachments.
+
+## 2026-05-25 note
+
+- Overlay parity was refreshed in commits `bd6f224` and `af4e238`.
+- Browser-style `drawNoise(x,y,w,h,alpha,seed)` now coexists with the legacy
+  RetroArch `drawNoise(x,y,w,h,density,color)` signature.
+- Rect/radial gradient overlays now alpha-blend with browser-compatible normal
+  blend math instead of overwriting transparent pixels.
+- The cleanup pass normalized the implementation: shared normal blend helper,
+  browser-style gradient interpolation, shared radial color interpolation, and
+  explicit `drawNoise` signature selection.
+- Headless validation passed:
+  - `make -C retroarch all`
+  - `NOVA64_GLES_TESTS=1 bash retroarch/tests/run_conformance.sh --skip-build --from 17 --to 22`
+  - focused 2D checks for `151`, `204-205`, `263`, and `478`
+  - Space Harrier web guard: `86.6` average, passing
+  - Space Harrier port guard: `91.8` average, passing
+- `478-gradient-hexcolor` checksum is now `6c55dcfa031d1ae9`, intentionally
+  updated for normalized gradient interpolation.
+- Real-driver smoke should verify the Space Harrier start screen under an actual
+  RetroArch GLES driver: the 3D world should no longer bleed through the title
+  backdrop, but the web-cart purple layer is still darker than browser and is
+  the next parity target.

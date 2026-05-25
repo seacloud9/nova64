@@ -8,6 +8,11 @@
 
 ## 🔥 Latest handoff: web overlay blending + Space Harrier start-screen parity
 
+Checkpoint commits:
+
+- `bd6f224` — fixed web overlay gradients/noise.
+- `af4e238` — normalized overlay blending semantics so the fix is shared policy.
+
 The latest parity pass focused on the Space Harrier web-cart start screen. The
 browser source-of-truth draws the title backdrop as layered 2D primitives over
 the 3D scene: opaque gradient, alpha radial glows, scanlines, and full-screen

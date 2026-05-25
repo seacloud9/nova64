@@ -1,23 +1,39 @@
 # Nova64 Hardware GL on Windows — Status & Handover
 
-**Last updated:** 2026-05-25 (post temperature API)
+**Last updated:** 2026-05-25 (post vibrance API)
 **Branch:** `main`
-**Working tree:** local post-temperature changes pending
+**Working tree:** clean after vibrance commit
 
 ---
 
 ## Latest API feature checkpoint
+
+- Added `nova64.post.setVibrance(amount)` and global `setVibrance`. It is a
+  smart-saturation pass that boosts low-chroma pixels much more than already
+  vivid ones, so HUD primaries and palette-pure surfaces stay close to their
+  authored hue. Web compat can lean on this without the uniform HUD tint that
+  broad `setSaturation` produced above 1.05.
+- Range is `[-2.0, 2.0]`, default `0.0` = identity. The pivot is per-pixel
+  chroma (`maxc - minc`) and the mix target is Rec.601 luma.
+- `nova64.post.getState()` now reports `vibrance`, and `resetPost()` clears it
+  through the shared post reset path.
+- Focused conformance coverage lives in `21-post-effects.js`; the software
+  checksum is stable at `db290147bd8f8c0b` (vibrance is a GLES-only effect, so
+  software state still readouts cleanly) and the GLES checksum intentionally
+  moved to `aaba06aa0e6a85c9`.
+
+### Previous API checkpoint
 
 - Added `nova64.post.setTemperature(amount)` and global `setTemperature`.
   It is opt-in, defaults to neutral, accepts cool negative and warm positive
   values, and runs after tone mapping with approximate luma preservation.
 - `nova64.post.getState()` now reports `temperature`, and `resetPost()` clears
   it through the shared post reset path.
-- Focused conformance coverage lives in `21-post-effects.js`; the software
-  checksum intentionally moved to `db290147bd8f8c0b` for the visible state
-  readout and the GLES checksum intentionally moved to `16ebe9e50b3e1ec3`.
+- Focused conformance coverage in `21-post-effects.js`; software checksum was
+  `db290147bd8f8c0b` and GLES checksum was `16ebe9e50b3e1ec3` before the
+  vibrance pass shifted GLES forward.
 
-### Previous API checkpoint
+### Earlier API checkpoint
 
 - Added `nova64.post.setFilmGrain(amount, seed)` and global `setFilmGrain`.
   It is opt-in, deterministic, defaults to off, and runs after tone mapping so
@@ -27,9 +43,6 @@
 - Global `resetPost()` now calls the shared reset path, so it also clears newer
   exposure, saturation, sharpness, and film-grain state instead of only the
   older post knobs.
-- Focused conformance coverage lives in `21-post-effects.js`; the software
-  checksum stayed stable and the GLES checksum intentionally moved to
-  `1c086592b2ef23fc`.
 
 ---
 

@@ -511,6 +511,7 @@ struct nova64_gles_backend {
    GLint post_exposure_uniform;
    GLint post_saturation_uniform;
    GLint post_temperature_uniform;
+   GLint post_vibrance_uniform;
    GLint post_sharpness_uniform;
    GLint post_film_grain_uniform;
    GLint post_posterize_uniform;
@@ -1768,6 +1769,7 @@ struct nova64_post_state {
    float exposure;       /* pre-ACES scalar, default 1.0; Three uses 1.25 */
    float saturation;     /* post-ACES saturation multiplier, default 1.0 */
    float temperature;    /* post-ACES warm/cool balance, default 0.0 */
+   float vibrance;       /* smart saturation: boosts low-sat pixels, default 0.0 */
    float sharpness;      /* unsharp mask amount, default 0.0 = off */
    float film_grain;     /* post-tone-map grain amount, default 0.0 = off */
    float film_grain_seed;/* deterministic grain seed */
@@ -1788,6 +1790,7 @@ static void reset_post_state(void)
    post_state.exposure = 1.0f;
    post_state.saturation = 1.0f;
    post_state.temperature = 0.0f;
+   post_state.vibrance = 0.0f;
    post_state.sharpness = 0.0f;
    post_state.film_grain = 0.0f;
    post_state.film_grain_seed = 0.0f;
@@ -1800,7 +1803,8 @@ static bool post_is_active(void)
       || post_state.color_grade[0] != 1.0f || post_state.color_grade[1] != 1.0f
       || post_state.color_grade[2] != 1.0f || post_state.exposure != 1.0f
       || post_state.saturation != 1.0f || post_state.temperature != 0.0f
-      || post_state.sharpness > 0.0f || post_state.film_grain > 0.0f;
+      || post_state.vibrance != 0.0f || post_state.sharpness > 0.0f
+      || post_state.film_grain > 0.0f;
 }
 
 static void reset_palette_state(void)
@@ -4502,12 +4506,12 @@ static void write_renderer_command_log(void)
    fprintf(file, "overlay clear=%08x visible_pixels=%zu\n",
          framebuffer_clear_color, count_overlay_pixels());
    fprintf(file,
-         "post crt=%d vignette=%.4f pixelate=%d bloom=%.4f chromatic=%.4f colorgrade=%.4f,%.4f,%.4f posterize=%d exposure=%.4f saturation=%.4f temperature=%.4f sharpness=%.4f film_grain=%.4f seed=%.4f\n",
+         "post crt=%d vignette=%.4f pixelate=%d bloom=%.4f chromatic=%.4f colorgrade=%.4f,%.4f,%.4f posterize=%d exposure=%.4f saturation=%.4f temperature=%.4f vibrance=%.4f sharpness=%.4f film_grain=%.4f seed=%.4f\n",
          post_state.crt_enabled ? 1 : 0, post_state.vignette, post_state.pixelate,
          post_state.bloom, post_state.chromatic,
          post_state.color_grade[0], post_state.color_grade[1], post_state.color_grade[2],
          post_state.posterize, post_state.exposure, post_state.saturation,
-         post_state.temperature, post_state.sharpness,
+         post_state.temperature, post_state.vibrance, post_state.sharpness,
          post_state.film_grain, post_state.film_grain_seed);
 
    for (int i = 0; i < NOVA64_MAX_MESHES; i++) {
@@ -8857,6 +8861,14 @@ static JSValue js_set_temperature_global(JSContext *ctx, JSValueConst this_val, 
 {
    (void)this_val;
    post_state.temperature = (float)clamp_double(
+      double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0.0), -2.0, 2.0);
+   return JS_UNDEFINED;
+}
+
+static JSValue js_set_vibrance_global(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   post_state.vibrance = (float)clamp_double(
       double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0.0), -2.0, 2.0);
    return JS_UNDEFINED;
 }
@@ -27187,6 +27199,7 @@ static JSValue js_post_get_state(JSContext *ctx, JSValueConst this_val, int argc
    JS_SetPropertyStr(ctx, obj, "exposure", JS_NewFloat64(ctx, (double)post_state.exposure));
    JS_SetPropertyStr(ctx, obj, "saturation", JS_NewFloat64(ctx, (double)post_state.saturation));
    JS_SetPropertyStr(ctx, obj, "temperature", JS_NewFloat64(ctx, (double)post_state.temperature));
+   JS_SetPropertyStr(ctx, obj, "vibrance", JS_NewFloat64(ctx, (double)post_state.vibrance));
    JS_SetPropertyStr(ctx, obj, "sharpness", JS_NewFloat64(ctx, (double)post_state.sharpness));
    JS_SetPropertyStr(ctx, obj, "filmGrain", JS_NewFloat64(ctx, (double)post_state.film_grain));
    JS_SetPropertyStr(ctx, obj, "filmGrainSeed", JS_NewFloat64(ctx, (double)post_state.film_grain_seed));
@@ -27255,6 +27268,22 @@ static JSValue js_post_set_temperature(JSContext *ctx, JSValueConst this_val, in
 {
    (void)this_val;
    post_state.temperature = (float)clamp_double(
+      double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0.0), -2.0, 2.0);
+   return JS_UNDEFINED;
+}
+
+/* setVibrance(amount): smart saturation. 0 = identity. Positive boosts
+ * under-saturated pixels more than already-saturated ones, so HUD primary
+ * colors and palette-pure surfaces stay close to their authored hue while
+ * muted mid-tones gain richness. Negative selectively desaturates the
+ * already-vivid regions. The pivot is per-pixel chroma (maxc - minc), so
+ * a flat HUD fill near full saturation is barely touched even at amount = 1.0.
+ * This is the saturation cousin web compat can safely lean on without the
+ * uniform HUD tint that broad u_saturation produces above 1.05. */
+static JSValue js_post_set_vibrance(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   post_state.vibrance = (float)clamp_double(
       double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0.0), -2.0, 2.0);
    return JS_UNDEFINED;
 }
@@ -29386,6 +29415,7 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, post, "setHDRMode", js_post_set_hdr_mode, 1);
    set_function(ctx, post, "setSaturation", js_post_set_saturation, 1);
    set_function(ctx, post, "setTemperature", js_post_set_temperature, 1);
+   set_function(ctx, post, "setVibrance", js_post_set_vibrance, 1);
    set_function(ctx, post, "setSharpness", js_post_set_sharpness, 1);
    set_function(ctx, post, "setFilmGrain", js_post_set_film_grain, 2);
    set_function(ctx, post, "setBloomRadius", js_post_set_bloom_radius, 1);
@@ -31234,6 +31264,7 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, global, "setPosterize",        js_set_posterize_global,    1);
    set_function(ctx, global, "setFilmGrain",        js_set_film_grain_global,   2);
    set_function(ctx, global, "setTemperature",      js_set_temperature_global,  1);
+   set_function(ctx, global, "setVibrance",         js_set_vibrance_global,     1);
    set_function(ctx, global, "resetPost",           js_reset_post,              0);
    set_function(ctx, global, "getPostState",        js_get_post_state,          0);
 
@@ -34647,6 +34678,11 @@ static bool gles_create_post_program(void)
          positive warms highlights, negative cools them while preserving
          approximate luma. */
       "uniform float u_temperature;\n"
+      /* u_vibrance: smart saturation. 0.0 is identity. Positive boosts
+         saturation more on under-saturated pixels and less on already
+         vivid ones (HUD primaries stay close to authored colors).
+         Negative selectively desaturates the most vivid regions. */
+      "uniform float u_vibrance;\n"
       /* u_sharpness: post unsharp-mask amount. Default 0.0 = no change.
          Positive values run a 5-tap cross laplacian + adds back into the
          pixel to crisp edges without the wide blur of FXAA. Pairs well
@@ -34821,6 +34857,19 @@ static bool gles_create_post_program(void)
       "    float after = max(dot(tone, vec3(0.299, 0.587, 0.114)), 0.001);\n"
       "    tone *= before / after;\n"
       "  }\n"
+      /* Optional vibrance pass. Per-pixel chroma (maxc - minc) gates the
+         strength so HUD primaries near full saturation stay close to their
+         authored hue while muted mid-tones gain richness. Pivot is the
+         Rec.601 luma. */
+      "  if (abs(u_vibrance) > 0.001) {\n"
+      "    float maxc = max(tone.r, max(tone.g, tone.b));\n"
+      "    float minc = min(tone.r, min(tone.g, tone.b));\n"
+      "    float chroma = clamp(maxc - minc, 0.0, 1.0);\n"
+      "    float gate = 1.0 - chroma;\n"
+      "    float amount = u_vibrance * gate;\n"
+      "    float luma = dot(tone, vec3(0.299, 0.587, 0.114));\n"
+      "    tone = mix(vec3(luma), tone, clamp(1.0 + amount, 0.0, 4.0));\n"
+      "  }\n"
       /* Optional unsharp mask. Cross-pattern 5-tap, then amplify the
          difference between the center and the neighbor average. */
       "  if (u_sharpness > 0.001) {\n"
@@ -34881,6 +34930,7 @@ static bool gles_create_post_program(void)
    gles.post_exposure_uniform = gles.GetUniformLocation(program, "u_exposure");
    gles.post_saturation_uniform = gles.GetUniformLocation(program, "u_saturation");
    gles.post_temperature_uniform = gles.GetUniformLocation(program, "u_temperature");
+   gles.post_vibrance_uniform = gles.GetUniformLocation(program, "u_vibrance");
    gles.post_sharpness_uniform = gles.GetUniformLocation(program, "u_sharpness");
    gles.post_film_grain_uniform = gles.GetUniformLocation(program, "u_film_grain");
    return gles.post_position_attrib >= 0 && gles.post_uv_attrib >= 0;
@@ -35386,6 +35436,8 @@ static void render_gles_post_pass(GLuint hw_fbo)
       gles.Uniform1f(gles.post_saturation_uniform, post_state.saturation);
    if (gles.post_temperature_uniform >= 0 && gles.Uniform1f)
       gles.Uniform1f(gles.post_temperature_uniform, post_state.temperature);
+   if (gles.post_vibrance_uniform >= 0 && gles.Uniform1f)
+      gles.Uniform1f(gles.post_vibrance_uniform, post_state.vibrance);
    if (gles.post_sharpness_uniform >= 0 && gles.Uniform1f)
       gles.Uniform1f(gles.post_sharpness_uniform, post_state.sharpness);
    if (gles.post_film_grain_uniform >= 0 && gles.Uniform2f)

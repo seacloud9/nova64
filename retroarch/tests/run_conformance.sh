@@ -575,7 +575,7 @@ run_gles_case "10 lighting"           "10-lighting"            "retroarch/confor
 run_gles_case "17 light fog"          "17-light-fog"           "retroarch/conformance/17-light-fog.js"           "1c1973cf1a217d00"
 run_gles_case "18 mesh helpers"       "18-mesh-helpers"        "retroarch/conformance/18-mesh-helpers.js"        "6bc74c39d55139b8"
 run_gles_case "19 texture"            "19-texture"             "retroarch/conformance/19-texture.js"             "205dc3b72303ecf6"
-run_gles_case "21 post effects"       "21-post-effects"        "retroarch/conformance/21-post-effects.js"        "16ebe9e50b3e1ec3"
+run_gles_case "21 post effects"       "21-post-effects"        "retroarch/conformance/21-post-effects.js"        "aaba06aa0e6a85c9"
 run_gles_case "22 material"           "22-material"            "retroarch/conformance/22-material.js"            "f047b343092eae22"
 run_gles_case "44 capsule"            "44-capsule"             "retroarch/conformance/44-capsule.js"             "aca0cfd51b996f16"
 run_gles_case "45 cylinder"           "45-cylinder"            "retroarch/conformance/45-cylinder.js"            "7ad719f4a2311584"

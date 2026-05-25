@@ -17,7 +17,7 @@ RetroArch installation or a real OpenGL ES driver stack.
 
 ## Platform matrix
 
-| Platform       | Video driver | GLES version | Status  | Notes                                       |
+| Platform       | Video driver | GLES version | Status  | 2Notes                                       |
 | -------------- | ------------ | ------------ | ------- | ------------------------------------------- |
 | Linux x86-64   | glcore       | GLES 3.1     | ✅ pass | Tested via Mesa EGL headless (automated)    |
 | Linux x86-64   | gl           | GL 3.3       | 🔲 todo | Context type mismatch — needs field check   |
@@ -147,3 +147,14 @@ real-driver integration notes only.
 - Windows RetroArch core was cross-built and redeployed again to
   `C:\RetroArch-Win64\cores\nova64_libretro.dll` for the temperature API
   checkpoint.
+- Post vibrance coverage was added through `nova64.post.setVibrance(amount)`
+  and global `setVibrance`. The effect is opt-in, defaults to identity, and
+  uses a per-pixel chroma gate so already-vivid HUD primaries stay close to
+  their authored color while muted mid-tones gain richness. Focused validation
+  passed:
+  - `make -C retroarch all`
+  - `NOVA64_GLES_TESTS=1 bash retroarch/tests/run_conformance.sh --skip-build --from 21 --to 21`
+  - `21-post-effects` software checksum stays at `db290147bd8f8c0b`.
+  - `21-post-effects` GLES checksum is now `aaba06aa0e6a85c9`.
+- Windows RetroArch core was cross-built and redeployed again to
+  `C:\RetroArch-Win64\cores\nova64_libretro.dll` for the vibrance API checkpoint.

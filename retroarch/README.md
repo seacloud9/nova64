@@ -20,8 +20,8 @@ Implemented and conformance-tested:
 - Orthographic and perspective camera projection.
 - 2D overlay texture compositor (software framebuffer over GLES 3D output).
 - Post-processing pipeline: CRT, vignette, pixelate, bloom, chromatic aberration,
-  color grade, posterize, exposure, saturation, temperature, sharpness, and film
-  grain effects via GLES FBO.
+  color grade, posterize, exposure, saturation, temperature, vibrance, sharpness,
+  and film grain effects via GLES FBO.
 - HDR post-processing target: guarded `RGBA32F` color FBO with `RGBA16F` fallback.
 - Multi-mip bloom: guarded 5-level downsample/blur/combine chain with the older
   single-pass bloom shader kept as fallback.
@@ -899,7 +899,7 @@ These browser-side Nova64 or Three.js features are not implemented:
 | `18-mesh-helpers.js`          | opacity, visibility, flat-shading                                              |
 | `19-texture.js`               | createTexture/setMeshTexture                                                   |
 | `20-post.js`                  | CRT/vignette/pixelate post effects                                             |
-| `21-post-effects.js`          | bloom/chromatic/colorGrade/posterize/HDR/temperature/sharpness/film grain      |
+| `21-post-effects.js`          | bloom/chromatic/colorGrade/posterize/HDR/temperature/vibrance/sharpness/grain  |
 | `22-material.js`              | emissive + mesh alpha                                                          |
 | `23-keyboard.js`              | key hold, edge, false-positive                                                 |
 | `24-storage-keys.js`          | has/keys/clear round-trip                                                      |

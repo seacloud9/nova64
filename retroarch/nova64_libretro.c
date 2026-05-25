@@ -31553,6 +31553,27 @@ static bool install_nova64_api(JSContext *ctx)
            "if(typeof globalThis.circle==='function'&&!d.circle)d.circle=globalThis.circle;"
            "else if(typeof globalThis.circ==='function'&&!d.circle)d.circle=globalThis.circ;"
          "})();"
+         /* Track explicit sky calls so web-compat bloom defaults do not
+            overwrite a cart's chosen sky later. Global sky helpers are
+            registered after the first compat pass, so this runs late. */
+         "(function(){"
+           "var rawSet=globalThis.setSkyColor;"
+           "if(typeof rawSet==='function'&&!rawSet.__nova64SkyWrapped){"
+             "var wrappedSet=function(){nova64._skySet=true;return rawSet.apply(this,arguments);};"
+             "wrappedSet.__nova64SkyWrapped=true;"
+             "globalThis.setSkyColor=wrappedSet;"
+             "if(nova64.scene)nova64.scene.setSkyColor=wrappedSet;"
+             "if(nova64.light)nova64.light.setSkyColor=wrappedSet;"
+           "}"
+           "var rawClear=globalThis.clearSkyColor;"
+           "if(typeof rawClear==='function'&&!rawClear.__nova64SkyWrapped){"
+             "var wrappedClear=function(){nova64._skySet=false;return rawClear.apply(this,arguments);};"
+             "wrappedClear.__nova64SkyWrapped=true;"
+             "globalThis.clearSkyColor=wrappedClear;"
+             "if(nova64.scene)nova64.scene.clearSkyColor=wrappedClear;"
+             "if(nova64.light)nova64.light.clearSkyColor=wrappedClear;"
+           "}"
+         "})();"
          /* nova64.scene mirrors */
          "(function(){var s=nova64.scene,fns=["
            "'createCone','createCylinder','createTorus','createCapsule','clearScene',"

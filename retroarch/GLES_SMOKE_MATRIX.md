@@ -123,3 +123,6 @@ real-driver integration notes only.
   gameplay sky similarity to `99.2%` and measured sharpness ratio to `54.7%`.
   A stronger grade scored higher but looked too brown/magenta, so the committed
   tune stays conservative.
+- Web-compat sky calls are now wrapped so `enableBloom()` defaults do not
+  overwrite an explicit cart sky later. The Space Harrier parity harness also
+  seeds the web-cart `Math.random()` path to reduce capture noise across runs.

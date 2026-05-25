@@ -50,6 +50,16 @@ const MOMENTS = [
   },
 ];
 
+const WEB_RANDOM_PRELUDE = `
+(() => {
+  let seed = 0x4e363432;
+  Math.random = function nova64ParityRandom() {
+    seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+    return seed / 0x100000000;
+  };
+})();
+`;
+
 function parseArgs(argv) {
   const opts = {
     baseUrl: '',
@@ -137,6 +147,8 @@ function packageWebCart(opts) {
   const novaPath = path.join(opts.outDir, 'packages', 'space-harrier-3d-web.nova');
   const codePath = path.join(ROOT, 'examples', 'space-harrier-3d', 'code.js');
   const metaPath = path.join(ROOT, 'examples', 'space-harrier-3d', 'meta.json');
+  const seededCodePath = path.join(opts.outDir, 'packages', 'space-harrier-3d-web-code.js');
+  fs.writeFileSync(seededCodePath, `${WEB_RANDOM_PRELUDE}\n${fs.readFileSync(codePath, 'utf8')}`);
   const zipScript = `
 import os
 import sys
@@ -148,7 +160,7 @@ with zipfile.ZipFile(nova_path, 'w', zipfile.ZIP_DEFLATED) as archive:
     if os.path.exists(meta_path):
         archive.write(meta_path, 'meta.json')
 `;
-  run('python3', ['-c', zipScript, codePath, metaPath, novaPath]);
+  run('python3', ['-c', zipScript, seededCodePath, metaPath, novaPath]);
   return novaPath;
 }
 
@@ -197,6 +209,9 @@ async function captureBrowser(opts) {
     viewport: { width: 1024, height: 768 },
     deviceScaleFactor: 1,
   });
+  if (opts.retroCart === 'web') {
+    await page.addInitScript({ content: WEB_RANDOM_PRELUDE });
+  }
 
   await page.goto(`${opts.baseUrl}/console.html?demo=space-harrier-3d`, {
     waitUntil: 'networkidle',

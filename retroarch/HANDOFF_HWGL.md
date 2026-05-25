@@ -40,6 +40,17 @@ were made to `examples/space-harrier-3d/code.js`.
    This keeps the start screen stable while improving gameplay sky parity and
    crispness without touching browser cart code.
 
+5. **Sky intent is now tracked in web compat.** The bloom shim only installs a
+   default sky when `nova64._skySet` is false, but the raw C `setSkyColor()`
+   helper did not update that flag. The late compat layer now wraps global and
+   namespaced `setSkyColor` / `clearSkyColor`, so explicit cart sky choices are
+   preserved if bloom is enabled later.
+
+6. **Space Harrier parity harness now seeds the web-cart `Math.random()` path.**
+   Browser internals still consume random values differently than RetroArch, so
+   layouts are not bit-identical, but both sides are deterministic run-to-run.
+   This makes future visual parity regressions easier to read.
+
 ### Current validation
 
 ```bash

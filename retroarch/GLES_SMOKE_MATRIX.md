@@ -119,3 +119,7 @@ real-driver integration notes only.
   - focused conformance checks for `151`, `204-205`, and `513-523`
 - Space Harrier web guard improved to `93.6` average and passes. The hand-tuned
   RetroArch port cart still needs separate sharpness/edge-luma tuning.
+- Follow-up web-compat gameplay tune kept the guard passing while improving
+  gameplay sky similarity to `99.2%` and measured sharpness ratio to `54.7%`.
+  A stronger grade scored higher but looked too brown/magenta, so the committed
+  tune stays conservative.

@@ -29385,14 +29385,15 @@ static bool install_nova64_api(JSContext *ctx)
                   primitives (user-reported: 'health bar no longer green').
                   Per-cart palette lands correctly via 24-bit promotion. */
                "if(p.setSaturation)p.setSaturation(1.0);"
-               /* Subtle sharpness — counteracts bloom blur on geometry
-                  edges without going into FXAA-blur territory. */
-               "if(p.setSharpness)p.setSharpness(0.35);"
+               "if(p.setColorGrade)p.setColorGrade(1.08,0.98,0.94);"
+               /* Subtle-to-moderate sharpness — counteracts bloom blur on
+                  geometry edges without going into FXAA-blur territory. */
+               "if(p.setSharpness)p.setSharpness(0.95);"
                /* Default near Three's dark clear color when the web cart has
                   not explicitly set a sky. This middle value compensates for
                   RA's post exposure without the old bright gray/cyan cast. */
                "if(typeof setSkyColor==='function'&&!nova64._skySet)"
-                 "setSkyColor(rgba8(44,45,54,255),rgba8(28,29,36,255));},"
+                 "setSkyColor(rgba8(55,56,68,255),rgba8(34,36,45,255));},"
              "disableBloom:function(){p.setBloom(0);},"
              "setBloomStrength:function(s){p.setBloom(s);},"
              "setBloomRadius:function(r){p.setBloomRadius(r);},"

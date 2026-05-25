@@ -1,6 +1,6 @@
 # Nova64 Hardware GL on Windows — Status & Handover
 
-**Last updated:** 2026-05-25 (web overlay color-space parity + green UI button recovery)
+**Last updated:** 2026-05-25 (web overlay color-space parity + gameplay sky/sharpness tune)
 **Branch:** `main`
 **Working tree:** clean after committing this checkpoint
 
@@ -32,6 +32,14 @@ were made to `examples/space-harrier-3d/code.js`.
    refreshed.** `513-draw-shapes` and `523-batch39-showcase` now match the
    stable browser-style scanline output.
 
+4. **Gameplay web-compat tune.** The unmodified web Space Harrier cart does
+   not call `setSkyColor`; it only sets fog to `PALETTE.sky`, so the compat
+   default sky is responsible for the RetroArch gameplay backdrop. That default
+   was raised to `rgba8(55,56,68)` / `rgba8(34,36,45)`, web compat now applies
+   a small scene-only color grade `1.08,0.98,0.94`, and sharpness is `0.95`.
+   This keeps the start screen stable while improving gameplay sky parity and
+   crispness without touching browser cart code.
+
 ### Current validation
 
 ```bash
@@ -50,6 +58,19 @@ Web-cart Space Harrier is now passing:
 | Start average RGB | RA `35,23,55` vs web `83,59,124` | RA `76,61,115` vs web `83,59,124` |
 | Start sharpness ratio | 51.5% | 92.0% |
 | Web-cart average | 84.9, guard failed | 93.6, guard passed |
+
+Follow-up gameplay tune:
+
+| Metric | After overlay fix | After gameplay tune |
+|---|---:|---:|
+| Gameplay score | 91.5 | 91.4 in the final conservative run |
+| Gameplay sky similarity | 94.7% | 99.2% |
+| Gameplay sharpness ratio | 39.3% | 54.7% |
+| Web-cart average | 93.6 | 93.5 |
+
+Note: a stronger grade reached `94.3` average, but visually pushed the sky
+toward brown/magenta. The committed tune favors visual neutrality and sky
+truth over the highest single-run score.
 
 Remaining caveat: the hand-tuned RetroArch port cart still fails its stricter
 guard (`90.0` average) on start sharpness and gameplay edge luma. Treat that as

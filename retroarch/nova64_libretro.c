@@ -29467,7 +29467,12 @@ static bool install_nova64_api(JSContext *ctx)
                "if(p.setHDRMode)p.setHDRMode('32f');"
                /* Saturation lift kept neutral — 1.10 visibly tinted HUD
                   primitives (user-reported: 'health bar no longer green').
-                  Per-cart palette lands correctly via 24-bit promotion. */
+                  Per-cart palette lands correctly via 24-bit promotion.
+                  Vibrance is intentionally NOT enabled here: a per-cart
+                  setVibrance(0.20-0.40) is the right tool when a scene
+                  is undersaturated vs the web reference, but defaulting it
+                  on regressed Space Harrier gameplay parity (the play scene
+                  is already slightly more saturated than web). */
                "if(p.setSaturation)p.setSaturation(1.0);"
                "if(p.setColorGrade)p.setColorGrade(1.08,0.98,0.94);"
                /* Subtle-to-moderate sharpness — counteracts bloom blur on

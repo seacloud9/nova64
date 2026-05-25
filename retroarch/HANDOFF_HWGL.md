@@ -22,6 +22,15 @@
   software state still readouts cleanly) and the GLES checksum intentionally
   moved to `aaba06aa0e6a85c9`.
 
+### Vibrance + web compat: tried, intentionally NOT default-on
+
+Enabling `setVibrance(0.30)` in the `enableBloom` compat shim was tested and
+regressed Space Harrier web-cart parity from `94.5` → `93.3` (play scene only;
+start scene stayed at `95.6` thanks to the chroma gate). The play scene was
+already slightly more saturated than the web reference (`ra 0.37` vs
+`web 0.32`), so vibrance pushed it further off. Vibrance stays opt-in per-cart
+for the scenes that actually need it; the compat shim comment documents this.
+
 ### Previous API checkpoint
 
 - Added `nova64.post.setTemperature(amount)` and global `setTemperature`.

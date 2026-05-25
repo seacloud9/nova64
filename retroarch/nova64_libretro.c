@@ -2709,6 +2709,40 @@ static void set_pixel(int x, int y, uint32_t color)
    }
 }
 
+static void blend_pixel_normal(int x, int y, uint32_t color)
+{
+   if (!framebuffer)
+      return;
+   color = apply_palette_swap(color);
+   if (x < 0 || y < 0 || x >= NOVA64_WIDTH || y >= NOVA64_HEIGHT)
+      return;
+   if (clip_active) {
+      if (x < clip_x || y < clip_y || x >= clip_x + clip_w || y >= clip_y + clip_h)
+         return;
+   }
+
+   uint8_t sa = (uint8_t)(color & 0xffU);
+   if (sa == 0)
+      return;
+   if (sa == 255) {
+      framebuffer[(size_t)y * NOVA64_WIDTH + (size_t)x] = color;
+      return;
+   }
+
+   uint32_t dst = framebuffer[(size_t)y * NOVA64_WIDTH + (size_t)x];
+   uint8_t sr = (color >> 24) & 0xff;
+   uint8_t sg = (color >> 16) & 0xff;
+   uint8_t sb = (color >>  8) & 0xff;
+   uint8_t dr = (dst   >> 24) & 0xff;
+   uint8_t dg = (dst   >> 16) & 0xff;
+   uint8_t db = (dst   >>  8) & 0xff;
+   uint32_t inv = 255U - sa;
+   uint8_t nr = (uint8_t)(((uint32_t)sr * sa + (uint32_t)dr * inv) / 255U);
+   uint8_t ng = (uint8_t)(((uint32_t)sg * sa + (uint32_t)dg * inv) / 255U);
+   uint8_t nb = (uint8_t)(((uint32_t)sb * sa + (uint32_t)db * inv) / 255U);
+   framebuffer[(size_t)y * NOVA64_WIDTH + (size_t)x] = rgba8(nr, ng, nb, 255);
+}
+
 static void draw_line_pixels(int x0, int y0, int x1, int y1, uint32_t color)
 {
    int dx = abs(x1 - x0);
@@ -2975,7 +3009,7 @@ static void draw_rect_gradient_pixels(int x, int y, int w, int h, uint32_t a, ui
       for (int xx = 0; xx < w; xx++) {
          float denom = (float)((vertical ? h : w) - 1);
          float t = denom > 0.0f ? (float)(vertical ? yy : xx) / denom : 0.0f;
-         set_pixel(x + xx, y + yy, lerp_color(a, b, t));
+         blend_pixel_normal(x + xx, y + yy, lerp_color(a, b, t));
       }
    }
 }
@@ -16062,13 +16096,28 @@ static JSValue js_draw_radial_gradient(JSContext *ctx, JSValueConst this_val, in
    uint32_t rgoc = color_from_js(ctx, argc > 4 ? argv[4] : JS_UNDEFINED, rgba8(0,0,0,0));
    int ri1=(rgic>>24)&0xFF, gi1=(rgic>>16)&0xFF, bi1=(rgic>>8)&0xFF, ai1=rgic&0xFF;
    int ro2=(rgoc>>24)&0xFF, go2=(rgoc>>16)&0xFF, bo2=(rgoc>>8)&0xFF, ao2=rgoc&0xFF;
-   for (int ri = rgr; ri >= 0; ri--) {
-      double t = (rgr > 0) ? (double)ri / (double)rgr : 0.0;
-      uint32_t rc = rgba8((int)(ri1+(ro2-ri1)*(1.0-t)+0.5),(int)(gi1+(go2-gi1)*(1.0-t)+0.5),(int)(bi1+(bo2-bi1)*(1.0-t)+0.5),(int)(ai1+(ao2-ai1)*(1.0-t)+0.5));
-      int sx, sy;
-      transform_2d_point(rgcx, rgcy, &sx, &sy);
-      int rts = transform_2d_size(ri);
-      draw_ellipse_pixels(sx, sy, rts, rts, rc, true);
+   int sx, sy;
+   transform_2d_point(rgcx, rgcy, &sx, &sy);
+   int rr = transform_2d_size(rgr);
+   if (rr <= 0)
+      return JS_UNDEFINED;
+   int x0 = sx - rr, y0 = sy - rr;
+   int x1 = sx + rr, y1 = sy + rr;
+   for (int py = y0; py <= y1; py++) {
+      for (int px = x0; px <= x1; px++) {
+         int dx = px - sx;
+         int dy = py - sy;
+         float dist = sqrtf((float)(dx * dx + dy * dy));
+         if (dist > (float)rr)
+            continue;
+         float t = (float)(dist / (float)rr);
+         uint32_t rc = rgba8(
+            (int)((float)ri1 + (float)(ro2 - ri1) * t + 0.5f),
+            (int)((float)gi1 + (float)(go2 - gi1) * t + 0.5f),
+            (int)((float)bi1 + (float)(bo2 - bi1) * t + 0.5f),
+            (int)((float)ai1 + (float)(ao2 - ai1) * t + 0.5f));
+         blend_pixel_normal(px, py, rc);
+      }
    }
    return JS_UNDEFINED;
 }
@@ -22898,16 +22947,39 @@ static JSValue js_color_mix3(JSContext *ctx, JSValueConst this_val, int argc, JS
    return JS_NewInt32(ctx, (int32_t)(((uint8_t)r<<24)|((uint8_t)g<<16)|((uint8_t)b<<8)|(uint8_t)a));
 }
 
-/* drawNoise(x,y,w,h, density, color) — scatter random pixels in region */
+/* drawNoise supports both legacy RA drawNoise(x,y,w,h,density,color) and
+ * browser drawNoise(x,y,w,h,alpha,seed). The browser shape is used by web
+ * carts for full-screen grain and must alpha-blend instead of overwriting. */
 static JSValue js_draw_noise(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
    (void)this_val;
-   if (argc < 6 || !framebuffer) return JS_UNDEFINED;
+   if (argc < 5 || !framebuffer) return JS_UNDEFINED;
    int nx  = int_from_js(ctx, argv[0], 0), ny  = int_from_js(ctx, argv[1], 0);
    int nw  = int_from_js(ctx, argv[2], 100), nh = int_from_js(ctx, argv[3], 100);
-   double density = clamp_double(double_from_js(ctx, argv[4], 0.1), 0.0, 1.0);
-   uint32_t color = color_from_js(ctx, argv[5], 0xffffffff);
-   /* use a fast LCG seeded from position for determinism */
+   double amount = double_from_js(ctx, argv[4], 0.1);
+   double sixth = argc > 5 ? double_from_js(ctx, argv[5], 0.0) : 0.0;
+   bool browser_shape = amount > 1.0 && (argc < 6 || (sixth >= 0.0 && sixth <= 65535.0));
+
+   if (browser_shape) {
+      int alpha = (int)clamp_double(amount, 0.0, 255.0);
+      uint32_t seed = (uint32_t)int_from_js(ctx, argc > 5 ? argv[5] : JS_UNDEFINED, 12345) | 12345U;
+      int x0 = nx < 0 ? 0 : nx;
+      int y0 = ny < 0 ? 0 : ny;
+      int x1 = nx + nw > NOVA64_WIDTH ? NOVA64_WIDTH : nx + nw;
+      int y1 = ny + nh > NOVA64_HEIGHT ? NOVA64_HEIGHT : ny + nh;
+      for (int py = y0; py < y1; py++) {
+         for (int px = x0; px < x1; px++) {
+            seed = seed * 1664525u + 1013904223u;
+            uint8_t n = (uint8_t)((seed >> 16) & 0xffU);
+            uint8_t a = (uint8_t)(((uint32_t)n * (uint32_t)alpha) / 255U);
+            blend_pixel_normal(px - (int)cam2d_x, py - (int)cam2d_y, rgba8(n, n, n, a));
+         }
+      }
+      return JS_UNDEFINED;
+   }
+
+   double density = clamp_double(amount, 0.0, 1.0);
+   uint32_t color = color_from_js(ctx, argc > 5 ? argv[5] : JS_UNDEFINED, 0xffffffff);
    uint32_t seed = (uint32_t)(nx * 1619 + ny * 31337 + (int)(density * 1000));
    int total = nw * nh;
    int count = (int)(total * density);

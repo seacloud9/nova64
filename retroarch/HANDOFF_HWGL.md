@@ -1,8 +1,80 @@
 # Nova64 Hardware GL on Windows — Status & Handover
 
-**Last updated:** 2026-05-25 (128-bit exposure/color parity push)
+**Last updated:** 2026-05-25 (overlay blend/noise parity push)
 **Branch:** `main`
 **Working tree:** clean after committing this checkpoint
+
+---
+
+## 🔥 Latest handoff: web overlay blending + Space Harrier start-screen parity
+
+The latest parity pass focused on the Space Harrier web-cart start screen. The
+browser source-of-truth draws the title backdrop as layered 2D primitives over
+the 3D scene: opaque gradient, alpha radial glows, scanlines, and full-screen
+cosmic noise. RetroArch was still letting the 3D scene show through too much,
+which made the start capture read dark/cyan instead of rich purple.
+
+Root causes found and addressed:
+
+- Browser `drawNoise(x, y, w, h, alpha, seed)` differs from the older RetroArch
+  helper shape `drawNoise(x, y, w, h, density, color)`. The web Space Harrier
+  call `drawNoise(0, 0, 640, 360, 22, seed)` was being interpreted as
+  `density=1.0` plus a tiny numeric color, which polluted the whole title layer.
+- Browser radial gradients alpha-blend per pixel. RetroArch's previous radial
+  implementation drew nested filled ellipses with raw pixel writes, so the
+  transparent outer rings could overwrite existing color and expose the scene
+  underneath.
+- Rect gradients now use the same alpha-blend helper, keeping transparent
+  gradient cases aligned with the browser while preserving fully opaque writes.
+- The legacy RetroArch `drawNoise(...density,color)` path remains raw/scatter
+  compatible for older carts and conformance tests; only the browser-style
+  alpha/seed path uses full-screen blended grain.
+
+RetroArch port-cart control was also retuned after the start-screen fix: its
+gameplay sky constants were reduced from the older bright neutral values to
+`rgba8(56,61,78)` / `rgba8(37,42,57)`, bringing the port guard sky sample back
+to web parity without touching the browser example cart.
+
+Validation from this checkpoint:
+
+```bash
+make -C retroarch all
+NOVA64_GLES_TESTS=1 bash retroarch/tests/run_conformance.sh --skip-build --from 204 --to 205
+NOVA64_GLES_TESTS=1 bash retroarch/tests/run_conformance.sh --skip-build --from 17 --to 22
+NOVA64_GLES_TESTS=1 bash retroarch/tests/run_conformance.sh --skip-build --from 151 --to 151
+NOVA64_GLES_TESTS=1 bash retroarch/tests/run_conformance.sh --skip-build --from 263 --to 263
+NOVA64_GLES_TESTS=1 bash retroarch/tests/run_conformance.sh --skip-build --from 478 --to 478
+pnpm run retroarch:visual:space-harrier -- --retro-cart=web --out=retroarch/build/space-harrier-web-parity --port=5181 --guard=web
+pnpm run retroarch:visual:space-harrier -- --retro-cart=port --out=retroarch/build/space-harrier-port-parity --port=5183 --guard=port
+```
+
+Latest Space Harrier web-cart source-of-truth parity:
+
+- **86.1 avg** (start 82.0 / play 90.1), web guard passing.
+- Start screen is now covered by blended purple/noise primitives instead of
+  leaking the 3D world, but the score still says there is meaningful title-layer
+  color work left: RA start sky is `rgb(36,30,53)` vs browser `rgb(95,58,138)`.
+- Gameplay still passes but remains too dark in the sky and too soft on field
+  detail: RA gameplay sky `rgb(50,57,65)` vs browser `rgb(73,75,77)`,
+  gameplay sharpness ratio about **40.8%**.
+- Port-cart control remains healthy: **91.0 avg** (start 93.9 / play 88.2),
+  with gameplay sky similarity **98.9%** after the port sky retune.
+
+Intentional baseline movement:
+
+- `478 gradient hexcolor` checksum changed to `21cecac942248b49` because
+  gradients now alpha-blend rather than raw-writing alpha over the framebuffer.
+
+Next recommended work:
+
+1. Continue from the web cart, not the port: match the browser start-screen
+   purple layer first, then revisit gameplay sky brightness.
+2. Compare browser `drawRadialGradient` and `drawNoise` outputs directly against
+   the RetroArch blended helper; the signatures now line up, but the random
+   distribution and alpha curve are still approximate.
+3. Gameplay sharpness is still a material/scene/fog/pass-order issue. Do not
+   solve it with stronger global sharpening alone, because the title layer is
+   already sharper than browser.
 
 ---
 

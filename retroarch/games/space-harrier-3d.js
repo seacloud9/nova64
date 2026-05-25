@@ -38,8 +38,8 @@ const TILE_START_Z = 20;
 const FOG_NEAR = 70;
 const FOG_FAR  = 160;
 // Gameplay sky tuned to web parity capture: neutral dark gray rgb(69,76,79)
-const SKY_TOP = rgba8(72, 80, 86, 255);
-const SKY_BOTTOM = rgba8(48, 54, 62, 255);
+const SKY_TOP = rgba8(56, 61, 78, 255);
+const SKY_BOTTOM = rgba8(37, 42, 57, 255);
 // Start sky tuned to web parity: muted purple rgb(95,57,137)
 const START_SKY_TOP = rgba8(106, 64, 152, 255);
 const START_SKY_BOTTOM = rgba8(48, 24, 78, 255);

@@ -22,6 +22,24 @@
   software state still readouts cleanly) and the GLES checksum intentionally
   moved to `aaba06aa0e6a85c9`.
 
+### Three.js UnrealBloomPass composite — opt-in bloom style
+
+Mined Three's verbatim composite from
+`three/examples/jsm/postprocessing/UnrealBloomPass.js` and added it as a
+second bloom path in the post fragment shader. Default
+`nova64.post.getState().bloomStyle === 'classic'` (the historical
+normalized-mip average) so all five `setBloom`-using conformance carts keep
+their pre-change checksums; `nova64.post.setBloomStyle('three')` opts in to
+the Three composite per cart, and the web compat `enableBloom` shim auto-opts-
+in so web carts get the look the web reference is rendering.
+
+Space Harrier web-cart parity after the opt-in: average `94.5`, play scene
+`92.5 → 93.3` from richer sky/halo match; start scene held at `95.7`.
+
+Sharpness is still the wider gap (`web=10.97 ra=5.21` on the play scene); see
+the AMD CAS upgrade plan in the **Next-step backlog** section below for the
+crispness work that will move the needle further.
+
 ### Vibrance + web compat: tried, intentionally NOT default-on
 
 Enabling `setVibrance(0.30)` in the `enableBloom` compat shim was tested and

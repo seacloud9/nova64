@@ -512,6 +512,7 @@ struct nova64_gles_backend {
    GLint post_saturation_uniform;
    GLint post_temperature_uniform;
    GLint post_vibrance_uniform;
+   GLint post_bloom_style_uniform;
    GLint post_sharpness_uniform;
    GLint post_film_grain_uniform;
    GLint post_posterize_uniform;
@@ -1770,6 +1771,7 @@ struct nova64_post_state {
    float saturation;     /* post-ACES saturation multiplier, default 1.0 */
    float temperature;    /* post-ACES warm/cool balance, default 0.0 */
    float vibrance;       /* smart saturation: boosts low-sat pixels, default 0.0 */
+   int bloom_style;      /* 0 = classic (normalized mip avg), 1 = Three.js UnrealBloomPass composite */
    float sharpness;      /* unsharp mask amount, default 0.0 = off */
    float film_grain;     /* post-tone-map grain amount, default 0.0 = off */
    float film_grain_seed;/* deterministic grain seed */
@@ -1791,6 +1793,7 @@ static void reset_post_state(void)
    post_state.saturation = 1.0f;
    post_state.temperature = 0.0f;
    post_state.vibrance = 0.0f;
+   post_state.bloom_style = 0;
    post_state.sharpness = 0.0f;
    post_state.film_grain = 0.0f;
    post_state.film_grain_seed = 0.0f;
@@ -27200,6 +27203,7 @@ static JSValue js_post_get_state(JSContext *ctx, JSValueConst this_val, int argc
    JS_SetPropertyStr(ctx, obj, "saturation", JS_NewFloat64(ctx, (double)post_state.saturation));
    JS_SetPropertyStr(ctx, obj, "temperature", JS_NewFloat64(ctx, (double)post_state.temperature));
    JS_SetPropertyStr(ctx, obj, "vibrance", JS_NewFloat64(ctx, (double)post_state.vibrance));
+   JS_SetPropertyStr(ctx, obj, "bloomStyle", JS_NewString(ctx, post_state.bloom_style == 1 ? "three" : "classic"));
    JS_SetPropertyStr(ctx, obj, "sharpness", JS_NewFloat64(ctx, (double)post_state.sharpness));
    JS_SetPropertyStr(ctx, obj, "filmGrain", JS_NewFloat64(ctx, (double)post_state.film_grain));
    JS_SetPropertyStr(ctx, obj, "filmGrainSeed", JS_NewFloat64(ctx, (double)post_state.film_grain_seed));
@@ -27269,6 +27273,24 @@ static JSValue js_post_set_temperature(JSContext *ctx, JSValueConst this_val, in
    (void)this_val;
    post_state.temperature = (float)clamp_double(
       double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0.0), -2.0, 2.0);
+   return JS_UNDEFINED;
+}
+
+/* setBloomStyle(style): selects the bloom composite formula. 'classic'
+ * (default) preserves the historical normalized-mip average used by every
+ * conformance cart up through this point. 'three' switches to the verbatim
+ * Three.js UnrealBloomPass composite (per-mip factors [1.0,0.8,0.6,0.4,0.2],
+ * lerpBloomFactor radius mix, 3.0 backwards-compat scale). The Three path
+ * produces a brighter sharp halo with softer broad falloff and is what the
+ * web reference renderer uses; web compat opts into it inside enableBloom. */
+static JSValue js_post_set_bloom_style(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 1) return JS_UNDEFINED;
+   const char *style = JS_ToCString(ctx, argv[0]);
+   if (!style) return JS_UNDEFINED;
+   post_state.bloom_style = (strcmp(style, "three") == 0) ? 1 : 0;
+   JS_FreeCString(ctx, style);
    return JS_UNDEFINED;
 }
 
@@ -29416,6 +29438,7 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, post, "setSaturation", js_post_set_saturation, 1);
    set_function(ctx, post, "setTemperature", js_post_set_temperature, 1);
    set_function(ctx, post, "setVibrance", js_post_set_vibrance, 1);
+   set_function(ctx, post, "setBloomStyle", js_post_set_bloom_style, 1);
    set_function(ctx, post, "setSharpness", js_post_set_sharpness, 1);
    set_function(ctx, post, "setFilmGrain", js_post_set_film_grain, 2);
    set_function(ctx, post, "setBloomRadius", js_post_set_bloom_radius, 1);
@@ -29465,6 +29488,11 @@ static bool install_nova64_api(JSContext *ctx)
                "if(p.setExposure)p.setExposure(1.25);"
                "if(p.use24BitColors)p.use24BitColors(true);"
                "if(p.setHDRMode)p.setHDRMode('32f');"
+               /* Web reference renders with Three's UnrealBloomPass; web carts
+                  calling enableBloom expect that look, not RA's classic
+                  normalized-mip average. The Three composite is verbatim in
+                  the post fragment shader. */
+               "if(p.setBloomStyle)p.setBloomStyle('three');"
                /* Saturation lift kept neutral — 1.10 visibly tinted HUD
                   primitives (user-reported: 'health bar no longer green').
                   Per-cart palette lands correctly via 24-bit promotion.
@@ -34688,6 +34716,14 @@ static bool gles_create_post_program(void)
          vivid ones (HUD primaries stay close to authored colors).
          Negative selectively desaturates the most vivid regions. */
       "uniform float u_vibrance;\n"
+      /* u_bloom_style: 0 = classic normalized-mip composite (RA legacy
+         weights, preserves historical conformance checksums). 1 = Three.js
+         UnrealBloomPass composite (per-mip [1.0,0.8,0.6,0.4,0.2] factors,
+         lerpBloomFactor radius mix, 3.0 backwards-compat scalar). The
+         Three path produces a brighter sharp halo + softer broad falloff
+         that matches the web reference renderer; opt-in via
+         nova64.post.setBloomStyle('three'). */
+      "uniform int u_bloom_style;\n"
       /* u_sharpness: post unsharp-mask amount. Default 0.0 = no change.
          Positive values run a 5-tap cross laplacian + adds back into the
          pixel to crisp edges without the wide blur of FXAA. Pairs well
@@ -34795,12 +34831,35 @@ static bool gles_create_post_program(void)
       "  if (u_bloom > 0.0 && u_use_mip_bloom != 0) {\n"
       "    vec2 buv = vec2(v_uv.x, 1.0 - v_uv.y);\n"
       "    float br = clamp(u_bloom_radius, 0.0, 1.0);\n"
-      "    vec3 bloom = texture(u_bloom_mip0, buv).rgb * mix(0.18, 0.10, br);\n"
-      "    bloom += texture(u_bloom_mip1, buv).rgb * mix(0.21, 0.16, br);\n"
-      "    bloom += texture(u_bloom_mip2, buv).rgb * mix(0.23, 0.22, br);\n"
-      "    bloom += texture(u_bloom_mip3, buv).rgb * mix(0.22, 0.26, br);\n"
-      "    bloom += texture(u_bloom_mip4, buv).rgb * mix(0.16, 0.26, br);\n"
-      "    color.rgb += bloom * min(u_bloom, 4.0) * 1.45;\n"
+      "    vec3 bloom;\n"
+      "    if (u_bloom_style == 1) {\n"
+      /* Three.js UnrealBloomPass composite (verbatim from three/examples/jsm
+         /postprocessing/UnrealBloomPass.js). mirror = 1.2 - factor, radius
+         lerps between factor and mirror so radius=0 favors the sharpest mip
+         and radius=1 favors the broadest. The trailing 3.0 is Three's
+         backwards-compat alpha-scale. Final strength still multiplied below. */
+      "      vec3 m0 = texture(u_bloom_mip0, buv).rgb;\n"
+      "      vec3 m1 = texture(u_bloom_mip1, buv).rgb;\n"
+      "      vec3 m2 = texture(u_bloom_mip2, buv).rgb;\n"
+      "      vec3 m3 = texture(u_bloom_mip3, buv).rgb;\n"
+      "      vec3 m4 = texture(u_bloom_mip4, buv).rgb;\n"
+      "      float f0 = mix(1.0, 1.2 - 1.0, br);\n"
+      "      float f1 = mix(0.8, 1.2 - 0.8, br);\n"
+      "      float f2 = mix(0.6, 1.2 - 0.6, br);\n"
+      "      float f3 = mix(0.4, 1.2 - 0.4, br);\n"
+      "      float f4 = mix(0.2, 1.2 - 0.2, br);\n"
+      "      bloom = 3.0 * (f0*m0 + f1*m1 + f2*m2 + f3*m3 + f4*m4);\n"
+      "      color.rgb += bloom * min(u_bloom, 4.0);\n"
+      "    } else {\n"
+      /* Classic normalized-average composite. Preserves all conformance
+         checksums committed before the Three-style branch landed. */
+      "      bloom = texture(u_bloom_mip0, buv).rgb * mix(0.18, 0.10, br);\n"
+      "      bloom += texture(u_bloom_mip1, buv).rgb * mix(0.21, 0.16, br);\n"
+      "      bloom += texture(u_bloom_mip2, buv).rgb * mix(0.23, 0.22, br);\n"
+      "      bloom += texture(u_bloom_mip3, buv).rgb * mix(0.22, 0.26, br);\n"
+      "      bloom += texture(u_bloom_mip4, buv).rgb * mix(0.16, 0.26, br);\n"
+      "      color.rgb += bloom * min(u_bloom, 4.0) * 1.45;\n"
+      "    }\n"
       "  } else if (u_bloom > 0.0) {\n"
       "    vec3 bloom = post_bright(center.rgb) * 0.16;\n"
       "    bloom += (post_bright(texture(u_scene, uv + vec2(texel.x * 4.0, 0.0)).rgb)\n"
@@ -34936,6 +34995,7 @@ static bool gles_create_post_program(void)
    gles.post_saturation_uniform = gles.GetUniformLocation(program, "u_saturation");
    gles.post_temperature_uniform = gles.GetUniformLocation(program, "u_temperature");
    gles.post_vibrance_uniform = gles.GetUniformLocation(program, "u_vibrance");
+   gles.post_bloom_style_uniform = gles.GetUniformLocation(program, "u_bloom_style");
    gles.post_sharpness_uniform = gles.GetUniformLocation(program, "u_sharpness");
    gles.post_film_grain_uniform = gles.GetUniformLocation(program, "u_film_grain");
    return gles.post_position_attrib >= 0 && gles.post_uv_attrib >= 0;
@@ -35443,6 +35503,8 @@ static void render_gles_post_pass(GLuint hw_fbo)
       gles.Uniform1f(gles.post_temperature_uniform, post_state.temperature);
    if (gles.post_vibrance_uniform >= 0 && gles.Uniform1f)
       gles.Uniform1f(gles.post_vibrance_uniform, post_state.vibrance);
+   if (gles.post_bloom_style_uniform >= 0 && gles.Uniform1i)
+      gles.Uniform1i(gles.post_bloom_style_uniform, post_state.bloom_style);
    if (gles.post_sharpness_uniform >= 0 && gles.Uniform1f)
       gles.Uniform1f(gles.post_sharpness_uniform, post_state.sharpness);
    if (gles.post_film_grain_uniform >= 0 && gles.Uniform2f)

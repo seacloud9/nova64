@@ -1,8 +1,108 @@
 # Nova64 Hardware GL on Windows — Status & Handover
 
-**Last updated:** 2026-05-25 (post vibrance API)
+**Last updated:** 2026-05-25 (post Claude session — handoff to Codex)
 **Branch:** `main`
-**Working tree:** clean after vibrance commit
+**Working tree:** clean after wing-hide fix (`c0faf6a`)
+**Windows DLL deployed:** `C:\RetroArch-Win64\cores\nova64_libretro.dll` is fresh as of commit `4f96791` (CAS sharpening)
+
+---
+
+## 🤝 HANDOFF FOR CODEX — 2026-05-25 (late)
+
+Picked up immediately after Codex's film-grain checkpoint (`0136411`), shipped
+7 commits, now passing back. The work splits into three threads:
+
+### 1. Codex's pending temperature work — committed clean
+
+`3e31a88 feat(retroarch): add temperature post effect` — this was sitting
+uncommitted on the working tree, fully wired with the predicted checksums
+(`db290147bd8f8c0b` software / `16ebe9e50b3e1ec3` GLES). Validated and shipped.
+
+### 2. New opt-in post APIs (all default-off so existing checksums hold)
+
+| API | Style key | Where added | Web compat opt-in? |
+|---|---|---|---|
+| `nova64.post.setVibrance(amount)` | `vibrance` (float -2..2) | `5c39b08` | ❌ (regressed Space Harrier — see "Don't redo" below) |
+| `nova64.post.setBloomStyle(s)` | `'classic'` / `'three'` | `8f49866` | ✅ `enableBloom` auto-sets `'three'` |
+| `nova64.post.setSharpStyle(s)` | `'unsharp'` / `'cas'` | `4f96791` | ✅ `enableBloom` auto-sets `'cas'` + bumps sharpness 0.95 → 1.45 |
+
+Plus three smoke-test cart ports (`26faf22`: `hello-namespaced`, `test-font`,
+`test-minimal`) and a one-cart bug fix (`c0faf6a`: hide enemy wing cubes in
+`space-harrier-3d`).
+
+### 3. Mined web-renderer code per user direction
+
+User asked for "copy more of the web code over" and "GLES should be better
+than WebGL". Ported two algorithms verbatim from `three/examples/jsm/`:
+
+- **Three.js `UnrealBloomPass` composite** — `lerpBloomFactor(f) = mix(f, 1.2 - f, bloomRadius)` against per-mip factors `[1.0, 0.8, 0.6, 0.4, 0.2]`, 3.0 backwards-compat scale. Lives behind `u_bloom_style == 1` in the post fragment shader.
+- **AMD CAS-spirit contrast-adaptive sharpening** — per-pixel luma-gradient gate with 0.25 floor + sqrt ramp, anti-ringing clamp bounded by source min/max (including center), bloom-aware neighbor sampling so the gate sees post-bloom contrast. Lives behind `u_sharp_style == 1`.
+
+---
+
+## What to do next — prioritized backlog
+
+1. **Port Three's separable Gaussian blur to the bloom downsample chain.** The composite is now Three's, but the *blur kernels* feeding each mip still use RA's older kernel. Three uses radii `[6, 10, 14, 18, 22]` with Gaussian coefficients `0.39894 * exp(-0.5 * i² / σ²) / σ` where `σ = radius / 3`. Source is in `node_modules/.pnpm/three@0.182.0/node_modules/three/examples/jsm/postprocessing/UnrealBloomPass.js` line 379 (`_getSeparableBlurMaterial`). This will further match Three's soft halo shape — biggest remaining bloom-parity lever.
+
+2. **Fix the pre/post-bloom asymmetry in the classic unsharp.** The classic unsharp branch samples `u_scene` (pre-bloom) for neighbors but operates on `tone` (post-bloom). So `(tone - avg)` conflates bloom halos with edges. The CAS branch already fixes this (samples bloom mips at neighbor positions); applying the same fix to classic will **rebaseline cart 21 GLES checksum** but cleans up the legacy path. Worth doing if you're already touching the file.
+
+3. **Add an edge-region-only sharpness metric to `space_harrier_visual_parity.mjs`.** The current `sharpnessScore` is whole-image gradient-average, which penalizes CAS because cleaner flats lower the metric even when edges go crisper. Add a second metric that samples only high-luma-gradient pixels so the CAS path can show its wins. Function lives at `retroarch/tests/space_harrier_visual_parity.mjs:360`.
+
+4. **Re-cross-build the Windows DLL after any of the above lands.** Command:
+   ```bash
+   make -C retroarch clean all          # MUST clean — mingw .o files from win-cross conflict with native build, and vice versa
+   make -C retroarch platform=win-cross clean all
+   cp retroarch/nova64_libretro.dll /mnt/c/RetroArch-Win64/cores/nova64_libretro.dll
+   ```
+
+5. **Tackle the Space Harrier port-cart guard.** The hand-tuned RA port still fails its stricter guard (90.0 average) on start sharpness and gameplay edge luma — separate from the web-cart parity work I focused on. The CAS sharpening upgrade might help here; worth re-running with `--guard=ra`.
+
+---
+
+## Don't redo — already tried this session
+
+- **Enabling vibrance in the `enableBloom` compat shim.** Tried `setVibrance(0.30)` default-on; Space Harrier play scene went 92.5 → 91.1 because the play scene is already slightly more saturated than the web reference (ra 0.37 vs web 0.32) and vibrance pushed it further off. The chroma gate did protect the HUD-heavy start scene (95.6 unchanged). Vibrance stays opt-in per-cart; the compat shim has a comment explaining this. (`771cd6f`)
+
+- **CAS anti-ringing with neighbor-only min/max clamp.** First attempt did `clamp(tone + lift, min(n,s,e,w), max(n,s,e,w))` — silently killed the lift on every edge because center is already at the neighbor max on an edge. Parity sharpness metric was pinned at exactly `3.04` regardless of `u_sharpness` amount until I switched to `clamp(tone + lift, min(tone,n,s,e,w), max(tone,n,s,e,w))`. Don't go back to neighbor-only.
+
+- **CAS sharpness > 1.45 in web compat.** Tried 2.25; play score went 93.7 → 93.2. The anti-ringing clamp caps the effective lift, so amounts past ~1.45 just add metric noise without crispness gains. Stick to 1.45.
+
+---
+
+## Validation commands (every session-end batch)
+
+```bash
+# Native Linux build
+make -C retroarch clean all harness
+
+# Cart 21 post-effects in both modes — anchors most of the post pipeline
+bash retroarch/tests/run_conformance.sh --skip-build --from 21 --to 21
+NOVA64_GLES_TESTS=1 bash retroarch/tests/run_conformance.sh --skip-build --from 21 --to 21
+# Expect: software db290147bd8f8c0b, GLES aaba06aa0e6a85c9
+
+# Space Harrier web-cart parity
+pnpm exec node retroarch/tests/space_harrier_visual_parity.mjs --retro-cart=web --guard=web
+# Expect: average ~94.0-94.7 (run-to-run variance), guard=web passing
+
+# Windows DLL refresh (do not skip if you touched any C path)
+make -C retroarch platform=win-cross clean all
+cp retroarch/nova64_libretro.dll /mnt/c/RetroArch-Win64/cores/nova64_libretro.dll
+```
+
+---
+
+## Files this session touched (for fast catch-up)
+
+- `retroarch/nova64_libretro.c` — temperature + vibrance + bloom-style + sharp-style APIs, all shader code, web compat shim updates
+- `retroarch/conformance/21-post-effects.js` — temperature + vibrance round-trips
+- `retroarch/tests/run_conformance.sh` — GLES baseline bumped to `aaba06aa0e6a85c9`
+- `retroarch/HANDOFF_HWGL.md` — checkpoints + measurements + this handoff
+- `retroarch/README.md` — post pipeline summary
+- `retroarch/GLES_SMOKE_MATRIX.md` — vibrance entry
+- `retroarch/games/{hello-namespaced,test-font,test-minimal}.js` — three smoke carts
+- `retroarch/games/space-harrier-3d.js` — wing-hide fix
+- `C:\RetroArch-Win64\cores\nova64_libretro.dll` — cross-built and deployed twice (post Three-bloom, post CAS)
+- `C:\RetroArch-Win64\playlists\games.lpl` — refreshed via `pnpm retroarch:refresh:windows` (18 → 21 entries)
 
 ---
 

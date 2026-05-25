@@ -56,7 +56,11 @@
 #define NOVA64_ZIP_MAX_EOCD_SEARCH 65557U
 #define NOVA64_MAX_PACKAGE_ASSETS 128
 #define NOVA64_MAX_PERF_TIMERS 32
-#define NOVA64_DEFAULT_ASSET_QUOTA_BYTES (16U * 1024U * 1024U)
+/* 64 MiB default — big enough to hold a Freedoom WAD (~29 MB) plus other
+ * media so .nova packages can ship as self-contained game bundles without
+ * the cart needing to fetch over the network. Override with the
+ * NOVA64_ASSET_QUOTA env var if a cart needs more. */
+#define NOVA64_DEFAULT_ASSET_QUOTA_BYTES (64U * 1024U * 1024U)
 #ifdef _WIN32
 #define NOVA64_PATH_SEPARATOR "\\"
 #else
@@ -25728,22 +25732,60 @@ static int key_code_from_js(JSContext *ctx, JSValueConst value)
    return code;
 }
 
+/* Map a keyboard key to one or more joypad button indices so keyboard-only
+ * web carts work on RetroArch gamepads. Returns the number of mapped indices
+ * (0..NOVA64_BUTTON_COUNT). Direction keys map to one button; "confirm" keys
+ * (Space, Enter) map to four (B, A, X, Y) so any of the face buttons fires
+ * the confirm regardless of platform convention. */
+static int joypad_buttons_for_key(int code, int out[NOVA64_BUTTON_COUNT])
+{
+   switch (code) {
+      case NOVA64_RETROK_LEFT:  out[0] = 0; return 1;  /* LEFT */
+      case NOVA64_RETROK_RIGHT: out[0] = 1; return 1;  /* RIGHT */
+      case NOVA64_RETROK_UP:    out[0] = 2; return 1;  /* UP */
+      case NOVA64_RETROK_DOWN:  out[0] = 3; return 1;  /* DOWN */
+      case NOVA64_RETROK_SPACE:
+      case NOVA64_RETROK_RETURN:
+         out[0] = 4; out[1] = 5; out[2] = 6; out[3] = 7;  /* B, A, Y, X */
+         return 4;
+      default: return 0;
+   }
+}
+
+static bool key_held_or_joypad(int code)
+{
+   if (code < 0 || code >= NOVA64_KEY_TABLE_SIZE) return false;
+   if (key_held[code]) return true;
+   int idx[NOVA64_BUTTON_COUNT];
+   int n = joypad_buttons_for_key(code, idx);
+   for (int i = 0; i < n; i++)
+      if (buttons[idx[i]]) return true;
+   return false;
+}
+
+static bool key_pressed_or_joypad(int code)
+{
+   if (code < 0 || code >= NOVA64_KEY_TABLE_SIZE) return false;
+   if (key_held[code] && !key_prev_held[code]) return true;
+   int idx[NOVA64_BUTTON_COUNT];
+   int n = joypad_buttons_for_key(code, idx);
+   for (int i = 0; i < n; i++)
+      if (pressed_buttons[idx[i]]) return true;
+   return false;
+}
+
 static JSValue js_key(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
    (void)this_val;
    int code = argc > 0 ? key_code_from_js(ctx, argv[0]) : -1;
-   if (code < 0 || code >= NOVA64_KEY_TABLE_SIZE)
-      return JS_NewBool(ctx, false);
-   return JS_NewBool(ctx, key_held[code]);
+   return JS_NewBool(ctx, key_held_or_joypad(code));
 }
 
 static JSValue js_keyp(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
    (void)this_val;
    int code = argc > 0 ? key_code_from_js(ctx, argv[0]) : -1;
-   if (code < 0 || code >= NOVA64_KEY_TABLE_SIZE)
-      return JS_NewBool(ctx, false);
-   return JS_NewBool(ctx, key_held[code] && !key_prev_held[code]);
+   return JS_NewBool(ctx, key_pressed_or_joypad(code));
 }
 
 static int mouse_btn_index(JSContext *ctx, JSValueConst value)
@@ -31962,8 +32004,38 @@ static bool install_nova64_api(JSContext *ctx)
             Returns a rejected promise so the cart's catch() runs cleanly
             and reports the failure. Replace with real impl when libretro
             grows a network-asset API. */
+         /* fetch() shim — tries the .nova package asset bundle first so a
+            cart that does fetch('/assets/foo.wad').arrayBuffer() works
+            unmodified when 'foo.wad' is packaged inside its .nova file.
+            Falls back to a rejected promise when the asset is missing,
+            matching the prior behavior. Strips leading '/' and 'assets/'
+            so common web paths (/assets/x.wad, assets/x.wad, x.wad) all
+            land at the same package-asset lookup. */
          "if(typeof globalThis.fetch==='undefined'){"
            "globalThis.fetch=function(url){"
+             "var key=String(url||'');"
+             "if(key.charAt(0)==='/')key=key.substr(1);"
+             "if(key.indexOf('assets/')===0)key=key.substr(7);"
+             "var bytes=null;"
+             "try{if(typeof readAssetBytes==='function')bytes=readAssetBytes(key);}catch(e){}"
+             "if(!bytes){try{if(typeof readAssetBytes==='function')bytes=readAssetBytes('assets/'+key);}catch(e){}}"
+             "if(bytes){"
+               "var bufView=new Uint8Array(bytes);"
+               "return Promise.resolve({"
+                 "ok:true,status:200,statusText:'OK',url:String(url),"
+                 "arrayBuffer:function(){return Promise.resolve(bytes);},"
+                 "bytes:function(){return Promise.resolve(bufView);},"
+                 "text:function(){"
+                   "var s='';for(var i=0;i<bufView.length;i++)s+=String.fromCharCode(bufView[i]);"
+                   "return Promise.resolve(s);"
+                 "},"
+                 "json:function(){"
+                   "var s='';for(var i=0;i<bufView.length;i++)s+=String.fromCharCode(bufView[i]);"
+                   "return Promise.resolve(JSON.parse(s));"
+                 "},"
+                 "blob:function(){return Promise.resolve({size:bufView.length,type:''});}"
+               "});"
+             "}"
              "return Promise.reject(new Error('fetch not supported on RetroArch core (url=' + url + ')'));"
            "};"
          "}"
@@ -31997,17 +32069,73 @@ static bool install_nova64_api(JSContext *ctx)
            "globalThis.playAnimation=nova64.scene.playAnimation;"
          "}"
 
-         /* loadVoxModel(url, pos, scale, opts) — vox-viewer cart. Same
-            pattern as loadModel — placeholder cube + emissive so the cart
-            still renders something visible. */
+         /* loadVoxModel(url, pos, scale, opts) — minimal MagicaVoxel .vox
+            parser. Reads SIZE + XYZI + RGBA chunks (skips nTRN/nGRP/nSHP
+            scene graph) and builds an instanced cube mesh, one cube per
+            voxel, colored from the .vox palette. Falls back to a single
+            placeholder cube if the asset is missing or unparseable. */
          "if(typeof nova64.scene.loadVoxModel!=='function'){"
            "nova64.scene.loadVoxModel=function(url,pos,scale,opts){"
-             "scale=scale||1;"
-             "var col=opts&&opts.color!=null?opts.color:rgba8(220,200,120,255);"
-             "var m=createCube(scale,col);"
-             "if(pos)setPosition(m,pos[0]||0,pos[1]||0,pos[2]||0);"
-             "if(setMeshEmissive)setMeshEmissive(m,col,0.18);"
-             "return Promise.resolve(m);"
+             "scale=scale||1;opts=opts||{};"
+             "var fbCol=opts.color!=null?opts.color:rgba8(220,200,120,255);"
+             "function placeholder(){"
+               "var m=createCube(scale,fbCol);"
+               "if(pos)setPosition(m,pos[0]||0,pos[1]||0,pos[2]||0);"
+               "if(setMeshEmissive)setMeshEmissive(m,fbCol,0.18);"
+               "return m;"
+             "}"
+             "if(typeof fetch!=='function')return Promise.resolve(placeholder());"
+             "return fetch(url).then(function(resp){"
+               "if(!resp||!resp.ok)throw new Error('vox fetch failed');"
+               "return resp.arrayBuffer();"
+             "}).then(function(buf){"
+               "var dv=new DataView(buf);"
+               "var u8=new Uint8Array(buf);"
+               "if(dv.getUint8(0)!==86||dv.getUint8(1)!==79||dv.getUint8(2)!==88||dv.getUint8(3)!==32)throw new Error('not .vox');"
+               /* MagicaVoxel default palette — used when the file omits RGBA. */
+               "var palette=new Uint32Array(256);"
+               "var DEFAULT_PAL=[0xffffffff,0xffccffff,0xff99ffff,0xff66ffff,0xff33ffff,0xff00ffff,0xffffccff,0xffccccff,0xff99ccff,0xff66ccff,0xff33ccff,0xff00ccff,0xffff99ff,0xffcc99ff,0xff9999ff,0xff6699ff,0xff3399ff,0xff0099ff,0xffff66ff,0xffcc66ff,0xff9966ff,0xff6666ff,0xff3366ff,0xff0066ff,0xffff33ff,0xffcc33ff,0xff9933ff,0xff6633ff,0xff3333ff,0xff0033ff,0xffff00ff,0xffcc00ff,0xff9900ff,0xff6600ff,0xff3300ff,0xff0000ff];"
+               "for(var i=0;i<256;i++)palette[i]=DEFAULT_PAL[i%DEFAULT_PAL.length];"
+               "var sx=0,sy=0,sz=0;var xyziStart=0,xyziCount=0;"
+               /* Walk top-level chunks after header (8 bytes) + MAIN header (12 bytes). */
+               "var off=20;"
+               "while(off+12<=u8.length){"
+                 "var id=String.fromCharCode(u8[off],u8[off+1],u8[off+2],u8[off+3]);"
+                 "var contentSize=dv.getUint32(off+4,true);"
+                 "var childSize=dv.getUint32(off+8,true);"
+                 "off+=12;"
+                 "if(id==='SIZE'&&contentSize>=12){"
+                   "sx=dv.getUint32(off,true);sy=dv.getUint32(off+4,true);sz=dv.getUint32(off+8,true);"
+                 "}else if(id==='XYZI'&&contentSize>=4){"
+                   "xyziCount=dv.getUint32(off,true);xyziStart=off+4;"
+                 "}else if(id==='RGBA'&&contentSize>=1024){"
+                   "for(var p=0;p<256;p++){"
+                     "var r=u8[off+p*4],g=u8[off+p*4+1],b=u8[off+p*4+2],a=u8[off+p*4+3];"
+                     "palette[p+1<256?p+1:0]=rgba8(r,g,b,a);"
+                   "}"
+                 "}"
+                 "off+=contentSize;"
+               "}"
+               "if(xyziCount===0||sx===0)return placeholder();"
+               "var maxInst=Math.min(xyziCount,opts.maxVoxels||4096);"
+               "var im=typeof createInstancedMesh==='function'?createInstancedMesh('cube',maxInst):0;"
+               "if(!im)return placeholder();"
+               "var cx=(pos&&pos[0])||0,cy=(pos&&pos[1])||0,cz=(pos&&pos[2])||0;"
+               "var hx=sx*0.5,hy=sy*0.5,hz=sz*0.5;"
+               /* Voxel side is `scale`. Center model on the requested position. */
+               "for(var v=0;v<maxInst;v++){"
+                 "var vx=u8[xyziStart+v*4],vy=u8[xyziStart+v*4+1],vz=u8[xyziStart+v*4+2],ci=u8[xyziStart+v*4+3];"
+                 "var col=palette[ci]||fbCol;"
+                 /* .vox uses Z-up (X,Y horizontal, Z vertical). Map Z->Y. */
+                 "var wx=cx+(vx-hx)*scale,wy=cy+(vz-hz)*scale,wz=cz+(vy-hy)*scale;"
+                 "if(typeof setInstanceTransform==='function')"
+                   "setInstanceTransform(im,v,[wx,wy,wz],[0,0,0,1],[scale,scale,scale],col);"
+               "}"
+               "return im;"
+             "}).catch(function(e){"
+               "if(typeof console!=='undefined'&&console.warn)console.warn('loadVoxModel:',e.message||e);"
+               "return placeholder();"
+             "});"
            "};globalThis.loadVoxModel=nova64.scene.loadVoxModel;"
          "}"
 

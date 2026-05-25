@@ -66,7 +66,25 @@ def build_playlist(
     core_path = to_windows_path(retroarch_root / "cores" / CORE_NAME)
     items = []
     seen_labels: set[str] = set()
+    seen_stems: set[str] = set()
+    # .nova packages take precedence over .js files of the same stem because
+    # they ship the bundled assets the cart needs (textures, WAD data, etc.)
+    for cart in sorted(games_dir.glob("*.nova")):
+        seen_labels.add(cart.stem)
+        seen_stems.add(cart.stem)
+        items.append(
+            {
+                "path": to_windows_path(cart),
+                "label": cart.stem,
+                "core_path": core_path,
+                "core_name": CORE_NAME,
+                "crc32": "00000000|crc",
+                "db_name": "games.lpl",
+            }
+        )
     for cart in sorted(games_dir.glob("*.js")):
+        if cart.stem in seen_stems:
+            continue
         seen_labels.add(cart.stem)
         items.append(
             {

@@ -112,7 +112,11 @@ let particles = [];   // explosion particles: { mesh, x, y, z, vx, vy, vz, life,
 function applyStartVisuals() {
    setFog(PALETTE.sky, 18, 110);
    setSkyColor(START_SKY_TOP, START_SKY_BOTTOM);
-   nova64.post.setBloom(0.38);
+   // Pass radius + threshold explicitly — RA defaults threshold to 0.32 which
+   // is far below Three's 0.85 convention, so unfiltered mid-luma floor pixels
+   // were bleeding into bloom mips and showing as a ghosted "floor reflection"
+   // in the sky. Web cart uses (0.38, 0.22, 0.78); matching it here.
+   nova64.post.setBloom(0.38, 0.22, 0.78);
    nova64.post.setChromatic(0.003);
    nova64.post.setVignette(0.12);
    nova64.post.setCRT(true);
@@ -123,8 +127,10 @@ function applyGameplayVisuals() {
    setSkyColor(SKY_TOP, SKY_BOTTOM);
    // Web's exact bloom: enableBloom(0.38, 0.22, 0.78). 0.55 was making the
    // scene feel "out of focus" (user feedback) because the heavier bloom
-   // smeared bright pixels across the screen.
-   nova64.post.setBloom(0.38);
+   // smeared bright pixels across the screen. Threshold 0.78 is critical —
+   // without it the bright floor checkers contribute to bloom mips and ghost
+   // into the sky as a faint floor reflection.
+   nova64.post.setBloom(0.38, 0.22, 0.78);
    nova64.post.setChromatic(0.003);
    nova64.post.setVignette(0.12);
    nova64.post.setCRT(true);
@@ -388,7 +394,9 @@ function triggerHitGlitch() {
    // Much stronger chromatic + slight bloom punch on hit — was 0.022 (subtle)
    if (nova64.post) {
       if (nova64.post.setChromatic) nova64.post.setChromatic(0.045);
-      if (nova64.post.setBloom)     nova64.post.setBloom(0.62);
+      // Keep the high threshold even on the hit-glitch punch so the brighter
+      // strength only haloes truly bright pixels, not the floor.
+      if (nova64.post.setBloom)     nova64.post.setBloom(0.62, 0.22, 0.78);
    }
 }
 
@@ -396,7 +404,7 @@ function clearGlitch() {
    glitchT = 0;
    if (nova64.post) {
       if (nova64.post.setChromatic) nova64.post.setChromatic(baseChromatic);
-      if (nova64.post.setBloom)     nova64.post.setBloom(0.38);
+      if (nova64.post.setBloom)     nova64.post.setBloom(0.38, 0.22, 0.78);
    }
 }
 

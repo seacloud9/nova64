@@ -30177,18 +30177,28 @@ static bool install_nova64_api(JSContext *ctx)
               Texture: if mat.map is a numeric texture handle (returned by
               engine.createDataTexture, see js_create_data_texture in C),
               wire it via setMeshTexture so WAD walls render their actual
-              textures instead of a solid color. */
+              textures instead of a solid color.
+              When a texture IS bound, we deliberately skip the color
+              multiplier — web carts pass createColor(bri,bri,bri) where
+              bri is a 0..1 sector brightness, which after multiplying with
+              an already-dim Doom texture and tinted ambient light produces
+              the "everything looks teal" wash the user reported. Letting
+              the texture render at full brightness preserves its actual
+              hue while the existing lighting still does sector dimming. */
            "setMeshMaterial:function(mesh,mat){"
              "if(mesh==null||!mat)return;"
+             "var hasTex=(typeof mat.map==='number'&&mat.map>0);"
              "var c=mat.color;"
-             "if(typeof c==='number'&&nova64.scene.setMeshColor){try{nova64.scene.setMeshColor(mesh,c);}catch(e){}}"
-             "else if(c&&typeof c==='object'&&typeof c.r==='number'&&nova64.scene.setMeshColor){"
-               "var r=Math.max(0,Math.min(255,(c.r||0)*255))|0;"
-               "var g=Math.max(0,Math.min(255,(c.g||0)*255))|0;"
-               "var b=Math.max(0,Math.min(255,(c.b||0)*255))|0;"
-               "try{nova64.scene.setMeshColor(mesh,(r<<16)|(g<<8)|b);}catch(e){}"
+             "if(!hasTex){"
+               "if(typeof c==='number'&&nova64.scene.setMeshColor){try{nova64.scene.setMeshColor(mesh,c);}catch(e){}}"
+               "else if(c&&typeof c==='object'&&typeof c.r==='number'&&nova64.scene.setMeshColor){"
+                 "var r=Math.max(0,Math.min(255,(c.r||0)*255))|0;"
+                 "var g=Math.max(0,Math.min(255,(c.g||0)*255))|0;"
+                 "var b=Math.max(0,Math.min(255,(c.b||0)*255))|0;"
+                 "try{nova64.scene.setMeshColor(mesh,(r<<16)|(g<<8)|b);}catch(e){}"
+               "}"
              "}"
-             "if(typeof mat.map==='number'&&mat.map>0&&nova64.scene.setMeshTexture){"
+             "if(hasTex&&nova64.scene.setMeshTexture){"
                "try{nova64.scene.setMeshTexture(mesh,mat.map);}catch(e){}"
                /* Switch the mesh to per-face UV (proper box mapping) so
                   the texture maps once across each face, not as a
@@ -30227,7 +30237,25 @@ static bool install_nova64_api(JSContext *ctx)
            "};"
          "}"
          "nova64.scene.loadModel=function(path,pos,scale){var m=nova64.scene.createCube?nova64.scene.createCube(scale||1,0xffffff,pos||[0,0,0]):0;return m;};"
-         "nova64.scene.getMesh=function(id){return{id:id,userData:{},position:{x:0,y:0,z:0},rotation:{x:0,y:0,z:0},scale:{x:1,y:1,z:1},geometry:{dispose:function(){}},material:{dispose:function(){}},traverse:function(cb){if(typeof cb==='function')cb({isMesh:true,material:null,geometry:{dispose:function(){}},userData:{}});}};};"
+         /* getMesh: returns a Three-ish proxy with a live `visible` setter
+            that calls nova64.scene.setMeshVisible(id, value) in C. Web carts
+            (wad-demo, fps-demo-3d) use `mesh.visible = false` to hide a
+            cube placeholder when a sprite billboard takes its place; with
+            an inert stub here those cubes stayed visible, causing the
+            enemy/pickup positions to look like emissive cyan blocks (and
+            washing the whole scene teal under bloom). The position/
+            rotation/scale fields are left as inert objects since the cart
+            doesn't currently mutate them per-frame. */
+         "nova64.scene.getMesh=function(id){"
+           "var stub={id:id,userData:{},position:{x:0,y:0,z:0},rotation:{x:0,y:0,z:0},scale:{x:1,y:1,z:1},geometry:{dispose:function(){}},material:{dispose:function(){}},traverse:function(cb){if(typeof cb==='function')cb({isMesh:true,material:null,geometry:{dispose:function(){}},userData:{}});}};"
+           "var v=true;"
+           "Object.defineProperty(stub,'visible',{"
+             "get:function(){return v;},"
+             "set:function(nv){v=!!nv;if(nova64.scene.setMeshVisible){try{nova64.scene.setMeshVisible(id,v);}catch(e){}}},"
+             "enumerable:true,configurable:true"
+           "});"
+           "return stub;"
+         "};"
 
          /* nova64.draw.circle alias to circ (web uses both names) */
          "if(typeof globalThis.circ==='function'&&!nova64.draw.circle)nova64.draw.circle=globalThis.circ;"
@@ -32111,9 +32139,25 @@ static bool install_nova64_api(JSContext *ctx)
              "if(typeof globalThis[n]==='function'&&s&&typeof s[n]==='undefined')"
                "s[n]=globalThis[n];}})();"
          "(function(){var s=nova64.scene;if(s.__meshCompatWrapped)return;s.__meshCompatWrapped=true;"
-           "function wrap(h){if(h&&h.__meshHandle)return h;return{__meshHandle:h,valueOf:function(){return h;},toString:function(){return String(h);},"
-             "userData:{},position:{x:0,y:0,z:0},rotation:{x:0,y:0,z:0},scale:{x:1,y:1,z:1},geometry:{dispose:function(){}},material:{dispose:function(){}},"
-             "traverse:function(cb){if(typeof cb==='function')cb({isMesh:true,material:this.material,geometry:this.geometry,userData:this.userData});}};}"
+           /* wrap(): every create* return is boxed in this proxy so the
+              cart can treat it as a Three-style Object3D. The `visible`
+              setter is wired to nova64.scene.setMeshVisible so
+              `mesh.visible = false` actually hides the mesh in C — wad-demo
+              and fps-demo-3d use this to hide a cube placeholder when a
+              sprite billboard takes its place. Without the setter the
+              cubes stayed visible and the scene washed with their emissive
+              color under bloom. */
+           "function wrap(h){if(h&&h.__meshHandle)return h;"
+             "var w={__meshHandle:h,valueOf:function(){return h;},toString:function(){return String(h);},"
+               "userData:{},position:{x:0,y:0,z:0},rotation:{x:0,y:0,z:0},scale:{x:1,y:1,z:1},geometry:{dispose:function(){}},material:{dispose:function(){}},"
+               "traverse:function(cb){if(typeof cb==='function')cb({isMesh:true,material:this.material,geometry:this.geometry,userData:this.userData});}};"
+             "var vis=true;"
+             "Object.defineProperty(w,'visible',{"
+               "get:function(){return vis;},"
+               "set:function(nv){vis=!!nv;if(s.setMeshVisible){try{s.setMeshVisible(h,vis);}catch(e){}}},"
+               "enumerable:true,configurable:true"
+             "});"
+             "return w;}"
            "function wrapCreate(n){var raw=s[n];if(typeof raw==='function')s[n]=function(){return wrap(raw.apply(this,arguments));};}"
            "['createCube','createSphere','createPlane','createCone','createCylinder','createTorus','createCapsule','createAdvancedCube','createAdvancedSphere'].forEach(wrapCreate);"
            "var rawGet=s.getMesh;s.getMesh=function(id){return(id&&id.__meshHandle)?id:wrap(rawGet?rawGet(id):id);};"

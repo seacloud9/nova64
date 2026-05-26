@@ -7,6 +7,69 @@
 
 ---
 
+## 🤝 HANDOFF FOR CODEX — 2026-05-25 (Claude WAD teal + sprites)
+
+User report: "it is teal way too teal solve that issue also items and
+enemies are not being rendered properly". Three more wad-demo issues
+debugged + fixed.
+
+### 1. Enemy/pickup cube placeholders never hid
+
+`spawnEnemy` / `spawnPickupAt` build a coloured cube first, then if a
+WAD sprite lookup succeeds they hide the cube with
+`nova64.scene.getMesh(handle).visible = false`. The compat layer's
+`createCube` returns a `wrap()` object (`__meshHandle:int, position,
+rotation, …`) so the cart can treat it as a Three Object3D. That
+wrap was inert — setting `.visible` just modified a JS field. So
+every enemy/pickup kept an emissive cyan cube glowing at its
+position on top of the sprite, and the scene filled with cyan-glow
+boxes. Wired the wrap's `visible` property through `Object.defineProperty`
+so its setter calls `nova64.scene.setMeshVisible(handle, value)` in
+C — cubes now actually hide.
+
+### 2. `engine.setMeshMaterial` double-darkened textured walls
+
+WAD walls pass `mat.color = engine.createColor(bri, bri, bri)` where
+`bri` is the WAD sector's 0..1 light level. My compat packed that
+into 0x7F7F7F and called `setMeshColor`, then the shader multiplied
+that 50% grey by the (already-dim Doom palette) texture — and the
+result blends into the tinted ambient as a uniform teal-ish smear.
+`setMeshMaterial` now skips the colour multiplier whenever a real
+texture is bound and lets the texture render at full brightness;
+the engine's lighting still does sector dimming via the directional
++ ambient lights. Solid-coloured fallback walls (no texture) keep
+the old colour path so they still tint correctly.
+
+### 3. WAD bundle now neutralises the cart's blue tint
+
+The cart's `init()` sets `setAmbientLight(0x334466, 0.4)` (blue-purple)
+and `setDirectionalLight(…, 0xaabbdd, 0.8)` (light-blue). On the web
+Three.js renderer with its built-in tone mapping that reads as
+atmospheric haze; in RA it multiplies straight onto the cyan accent
+walls and pushes the whole scene toward teal. The WAD bundle patches
+`nova64.light.setAmbientLight` / `setDirectionalLight` so any colour
+the cart passes is replaced with neutral grey/white (intensity
+preserved), and re-applies the neutral values once. Also calls
+`nova64.post.setSaturation(0.7)` to dial back the overall colour
+intensity without changing per-pixel hue identity — the cyan accent
+walls now read as muted blue-grey instead of overpowering teal.
+
+### Conformance
+
+Software 0-32 + GLES 0-99 both pass with no rebaselines. All three
+changes are opt-in (visible setter only fires when a cart sets
+`mesh.visible = false`; the lighting/saturation overrides live only
+in the WAD bundle; texture-vs-color branch in setMeshMaterial only
+diverges when both a color AND a texture are passed).
+
+### Commit
+
+```
+8e9c7cf fix(retroarch): wad-demo teal wash + sprite/cube visibility
+```
+
+---
+
 ## 🤝 HANDOFF FOR CODEX — 2026-05-25 (Claude WAD texture pipeline)
 
 User report: WAD demo loads + plays after the previous freeze-fix commit

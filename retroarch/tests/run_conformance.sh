@@ -575,7 +575,7 @@ run_gles_case "10 lighting"           "10-lighting"            "retroarch/confor
 run_gles_case "17 light fog"          "17-light-fog"           "retroarch/conformance/17-light-fog.js"           "1c1973cf1a217d00"
 run_gles_case "18 mesh helpers"       "18-mesh-helpers"        "retroarch/conformance/18-mesh-helpers.js"        "5c8d117910309241"
 run_gles_case "19 texture"            "19-texture"             "retroarch/conformance/19-texture.js"             "205dc3b72303ecf6"
-run_gles_case "21 post effects"       "21-post-effects"        "retroarch/conformance/21-post-effects.js"        "b9a78c64ab0a6ab8"
+run_gles_case "21 post effects"       "21-post-effects"        "retroarch/conformance/21-post-effects.js"        "90acde686e82075e"
 run_gles_case "22 material"           "22-material"            "retroarch/conformance/22-material.js"            "f047b343092eae22"
 run_gles_case "44 capsule"            "44-capsule"             "retroarch/conformance/44-capsule.js"             "aca0cfd51b996f16"
 run_gles_case "45 cylinder"           "45-cylinder"            "retroarch/conformance/45-cylinder.js"            "96373b6512fe0632"
@@ -613,10 +613,10 @@ run_gles_case "108 skybox"            "108-skybox"             "${PACKAGE_DIR}/s
 run_gles_case "109 blend modes"       "109-blend-modes"        "retroarch/conformance/109-blend-modes.js"        "6c7d2bbf8ea2cc2f"
 run_gles_case "110 torus"             "110-torus"              "retroarch/conformance/torus-test.js"             "cd825d347e147431"
 run_gles_case "GLES clear color"      "gles-clear-color"       "retroarch/conformance/gles-clear-color.js"       "cfc2e94e23f70383" 3
-run_gles_case "GLES post color grade" "gles-post-color-grade"  "retroarch/conformance/gles-post-color-grade.js"  "0017c0ba68124d54" 3
+run_gles_case "GLES post color grade" "gles-post-color-grade"  "retroarch/conformance/gles-post-color-grade.js"  "027ee4f023ff3ed9" 3
 run_gles_case "GLES instance colors"  "gles-instance-colors"   "retroarch/conformance/gles-instance-colors.js"   "11e6f45f37eaf28b" 3
 run_gles_case "GLES torus scale"      "gles-torus-scale"       "retroarch/conformance/gles-torus-scale.js"       "c3cde59e712c6f58" 3
-run_gles_case "GLES overlay orientation" "gles-overlay-orientation" "retroarch/conformance/gles-overlay-orientation.js" "98a24d3f5ac0f88f" 3
+run_gles_case "GLES overlay orientation" "gles-overlay-orientation" "retroarch/conformance/gles-overlay-orientation.js" "c69230c1869b0db3" 3
 run_gles_case "GLES cone primitive"   "gles-cone-primitive"    "retroarch/conformance/gles-cone-primitive.js"    "ee40793c5bbabba0" 30
 run_gles_case "GLES capsule primitive" "gles-capsule-primitive" "retroarch/conformance/gles-capsule-primitive.js" "fb69583980901cb3" 30
 run_gles_case "GLES cylinder primitive" "gles-cylinder-primitive" "retroarch/conformance/gles-cylinder-primitive.js" "1999ffe92dd21dd8" 30

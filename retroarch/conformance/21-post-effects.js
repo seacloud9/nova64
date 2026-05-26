@@ -64,7 +64,7 @@ export function init() {
   const s2 = nova64.post.getState();
   if (s2.bloom !== 0) throw new Error('bloom should be 0 after clear');
   if (s2.bloomRadius !== 0) throw new Error('bloomRadius should be 0 after clear');
-  if (Math.abs(s2.bloomThreshold - 0.32) > 0.01) throw new Error('bloomThreshold should reset');
+  if (Math.abs(s2.bloomThreshold - 0.85) > 0.01) throw new Error('bloomThreshold should reset');
   if (s2.posterize !== 0) throw new Error('posterize should be 0 after clear');
   if (Math.abs(s2.exposure - 1.0) > 0.01) throw new Error('exposure should reset');
   if (Math.abs(s2.saturation - 1.0) > 0.01) throw new Error('saturation should reset');

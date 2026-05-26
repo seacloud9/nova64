@@ -411,6 +411,7 @@ struct nova64_js_host {
    JSValue init;
    JSValue update;
    JSValue draw;
+   JSValue poll_dom_events;
    bool loaded;
 };
 
@@ -1795,7 +1796,7 @@ static void reset_post_state(void)
    post_state.pixelate = 0;
    post_state.bloom = 0.0f;
    post_state.bloom_radius = 0.0f;
-   post_state.bloom_threshold = 0.32f;
+   post_state.bloom_threshold = 0.85f;
    post_state.chromatic = 0.0f;
    post_state.color_grade[0] = post_state.color_grade[1] = post_state.color_grade[2] = 1.0f;
    post_state.posterize = 0;
@@ -30037,11 +30038,46 @@ static bool install_nova64_api(JSContext *ctx)
               an upload path (asset texture, drawImage), which is rare. */
            "var __nopGradient={addColorStop:function(){}};"
            "var __canvasCtx={save:function(){},restore:function(){},translate:function(){},rotate:function(){},scale:function(){},transform:function(){},setTransform:function(){},resetTransform:function(){},beginPath:function(){},closePath:function(){},moveTo:function(){},lineTo:function(){},arc:function(){},arcTo:function(){},rect:function(){},roundRect:function(){},ellipse:function(){},quadraticCurveTo:function(){},bezierCurveTo:function(){},fill:function(){},stroke:function(){},clip:function(){},fillRect:function(){},strokeRect:function(){},clearRect:function(){},drawImage:function(){},fillText:function(){},strokeText:function(){},measureText:function(t){return{width:String(t).length*6};},createLinearGradient:function(){return __nopGradient;},createRadialGradient:function(){return __nopGradient;},createConicGradient:function(){return __nopGradient;},createPattern:function(){return null;},getImageData:function(w,h){return{data:new Uint8ClampedArray((w||1)*(h||1)*4),width:w||1,height:h||1};},putImageData:function(){},createImageData:function(w,h){return{data:new Uint8ClampedArray((w||1)*(h||1)*4),width:w||1,height:h||1};},setLineDash:function(){},getLineDash:function(){return[];},isPointInPath:function(){return false;},isPointInStroke:function(){return false;}};"
-           "globalThis.document={pointerLockElement:null,body:{requestPointerLock:function(){document.pointerLockElement=document.body;return Promise.resolve();},appendChild:function(){},removeChild:function(){}},"
-             "addEventListener:function(){},removeEventListener:function(){},createElement:function(tag){return{tagName:String(tag||'').toUpperCase(),style:{},width:640,height:360,getContext:function(){return __canvasCtx;},addEventListener:function(){},removeEventListener:function(){},click:function(){},toDataURL:function(){return'';}};},"
+           /* Real DOM keydown/keyup bridge. Web carts like wad-demo and
+              fps-demo-3d register window/document keyboard listeners for
+              menu navigation; they used to be silently dropped, leaving
+              the user unable to pick a level. Here we collect the
+              listeners and __nova64_pollDomEvents() (called each frame
+              from C before update()) synthesizes events from the nova64
+              key table edges so those handlers actually fire. */
+           "var __nova64_kbd={hs:[],prev:{}};"
+           "function __nova64_addKbd(t,fn){if(typeof fn!=='function')return;__nova64_kbd.hs.push({t:t,fn:fn});}"
+           "function __nova64_rmKbd(t,fn){var h=__nova64_kbd.hs;for(var i=h.length-1;i>=0;i--)if(h[i].t===t&&h[i].fn===fn)h.splice(i,1);}"
+           "function __nova64_genericAdd(type,fn){if(type==='keydown'||type==='keyup'||type==='keypress')__nova64_addKbd(type,fn);}"
+           "function __nova64_genericRm(type,fn){if(type==='keydown'||type==='keyup'||type==='keypress')__nova64_rmKbd(type,fn);}"
+           "globalThis.document={pointerLockElement:null,body:{requestPointerLock:function(){document.pointerLockElement=document.body;return Promise.resolve();},appendChild:function(){},removeChild:function(){},addEventListener:__nova64_genericAdd,removeEventListener:__nova64_genericRm},"
+             "addEventListener:__nova64_genericAdd,removeEventListener:__nova64_genericRm,createElement:function(tag){return{tagName:String(tag||'').toUpperCase(),style:{},width:640,height:360,getContext:function(){return __canvasCtx;},addEventListener:function(){},removeEventListener:function(){},click:function(){},toDataURL:function(){return'';}};},"
              "getElementById:function(){return null;},querySelector:function(){return null;}};"
          "}"
-         "if(typeof globalThis.window==='undefined')globalThis.window={document:document,addEventListener:function(){},removeEventListener:function(){},innerWidth:640,innerHeight:360,devicePixelRatio:1};"
+         "if(typeof globalThis.window==='undefined')globalThis.window={document:document,addEventListener:__nova64_genericAdd,removeEventListener:__nova64_genericRm,innerWidth:640,innerHeight:360,devicePixelRatio:1};"
+         /* Code → key/keyCode tables for synthetic event payloads */
+         "var __nova64_codeMap=(function(){var m={};"
+           "m.ArrowUp=['ArrowUp',38];m.ArrowDown=['ArrowDown',40];m.ArrowLeft=['ArrowLeft',37];m.ArrowRight=['ArrowRight',39];"
+           "m.Space=[' ',32];m.Enter=['Enter',13];m.Escape=['Escape',27];m.Tab=['Tab',9];m.Backspace=['Backspace',8];m.Delete=['Delete',46];"
+           "m.Home=['Home',36];m.End=['End',35];m.PageUp=['PageUp',33];m.PageDown=['PageDown',34];m.Insert=['Insert',45];"
+           "m.ShiftLeft=['Shift',16];m.ShiftRight=['Shift',16];m.ControlLeft=['Control',17];m.ControlRight=['Control',17];m.AltLeft=['Alt',18];m.AltRight=['Alt',18];m.MetaLeft=['Meta',91];m.MetaRight=['Meta',92];"
+           "m.CapsLock=['CapsLock',20];"
+           "for(var i=0;i<26;i++){var c=String.fromCharCode(65+i);m['Key'+c]=[c.toLowerCase(),65+i];}"
+           "for(var d=0;d<10;d++)m['Digit'+d]=[String(d),48+d];"
+           "for(var f=1;f<=12;f++)m['F'+f]=['F'+f,111+f];"
+           "m.Minus=['-',189];m.Equal=['=',187];m.BracketLeft=['[',219];m.BracketRight=[']',221];m.Backslash=['\\\\',220];"
+           "m.Semicolon=[';',186];m.Quote=[\"'\",222];m.Comma=[',',188];m.Period=['.',190];m.Slash=['/',191];m.Backquote=['`',192];"
+           "return m;})();"
+         "var __nova64_codes=Object.keys(__nova64_codeMap);"
+         "globalThis.__nova64_pollDomEvents=function(){"
+           "var k=__nova64_kbd;if(!k.hs.length||!nova64||!nova64.input||!nova64.input.key)return;"
+           "var key=nova64.input.key,codes=__nova64_codes,map=__nova64_codeMap;"
+           "var shift=key('ShiftLeft')||key('ShiftRight'),ctrl=key('ControlLeft')||key('ControlRight'),alt=key('AltLeft')||key('AltRight');"
+           "for(var i=0;i<codes.length;i++){var code=codes[i],now=!!key(code),was=!!k.prev[code];if(now===was)continue;k.prev[code]=now;"
+             "var info=map[code],type=now?'keydown':'keyup',ev={code:code,key:info[0],keyCode:info[1],which:info[1],type:type,repeat:false,shiftKey:shift,ctrlKey:ctrl,altKey:alt,metaKey:false,bubbles:true,cancelable:true,defaultPrevented:false,preventDefault:function(){this.defaultPrevented=true;},stopPropagation:function(){},stopImmediatePropagation:function(){},target:null,currentTarget:null};"
+             "for(var j=0;j<k.hs.length;j++){if(k.hs[j].t===type){try{k.hs[j].fn(ev);}catch(e){}}}"
+           "}"
+         "};"
          "nova64.xr={enableVR:function(){return false;},disableVR:function(){},isXRActive:function(){return false;},getXRControllers:function(){return[];},getXRHands:function(){return[];}};"
 
          /* Global BM object for top-level setBlend2D(BM.ADD) usage */
@@ -32360,6 +32396,7 @@ static void js_host_free(void)
       JS_FreeValue(js_host.context, js_host.init);
       JS_FreeValue(js_host.context, js_host.update);
       JS_FreeValue(js_host.context, js_host.draw);
+      JS_FreeValue(js_host.context, js_host.poll_dom_events);
       JS_FreeContext(js_host.context);
    }
    if (js_host.runtime)
@@ -32390,7 +32427,20 @@ static bool js_host_create(void)
    js_host.init = JS_UNDEFINED;
    js_host.update = JS_UNDEFINED;
    js_host.draw = JS_UNDEFINED;
-   return install_nova64_api(js_host.context);
+   js_host.poll_dom_events = JS_UNDEFINED;
+   if (!install_nova64_api(js_host.context))
+      return false;
+   {
+      JSContext *ctx = js_host.context;
+      JSValue global = JS_GetGlobalObject(ctx);
+      JSValue poll = JS_GetPropertyStr(ctx, global, "__nova64_pollDomEvents");
+      if (JS_IsFunction(ctx, poll))
+         js_host.poll_dom_events = poll;
+      else
+         JS_FreeValue(ctx, poll);
+      JS_FreeValue(ctx, global);
+   }
+   return true;
 }
 
 static bool cache_lifecycle_export(JSContext *ctx, JSValue namespace, const char *name, JSValue *slot)
@@ -32520,6 +32570,13 @@ static void js_host_call_frame(double dt)
    g_last_dt = dt > 0.0 ? dt : 0.016;
 
    JSContext *ctx = js_host.context;
+   if (!JS_IsUndefined(js_host.poll_dom_events)) {
+      JSValue r = JS_Call(ctx, js_host.poll_dom_events, JS_UNDEFINED, 0, NULL);
+      if (JS_IsException(r))
+         js_log_exception(ctx, "poll_dom_events");
+      else
+         JS_FreeValue(ctx, r);
+   }
    if (!JS_IsUndefined(js_host.update)) {
       JSValue arg = JS_NewFloat64(ctx, dt);
       JSValue result = JS_Call(ctx, js_host.update, JS_UNDEFINED, 1, &arg);

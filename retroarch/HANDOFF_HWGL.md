@@ -1,9 +1,151 @@
 # Nova64 Hardware GL on Windows — Status & Handover
 
-**Last updated:** 2026-05-25 (Claude pass after Codex shading/plane fix)
+**Last updated:** 2026-05-25 (Claude pass — 4 user-reported fixes + 30-cart sweep)
 **Branch:** `main`
-**Working tree:** clean after `f90e74c` (playlist imports web carts)
-**Windows DLL deployed:** fresh as of `ee0cf0c` (rgba8 fix + rebaseline); cross-built and copied to `C:\RetroArch-Win64\cores\nova64_libretro.dll`
+**Working tree:** clean after `75f8f43` (compat shims for canvas-2D + pool API)
+**Windows DLL deployed:** fresh as of `75f8f43`; cross-built and copied to `C:\RetroArch-Win64\cores\nova64_libretro.dll`
+
+---
+
+## 🤝 HANDOFF FOR CODEX — 2026-05-25 (Claude third pass)
+
+Picked up after my own `f90e74c`/`24e7be2`. User reported four issues from real
+RetroArch play + asked for visual parity to continue. All four fixed plus a
+30-cart sweep that surfaced three more compat gaps, also fixed.
+
+### 1. Space Harrier "horizontal mirror" in the sky → bloom threshold (`8d3593a`)
+
+The hand-tuned RA port called `nova64.post.setBloom(0.38)` without a
+threshold. RA's default threshold is `0.32` — far below Three.js's `0.85`
+convention. The mid-luma green checker floor was contributing to the highest
+bloom mips, whose wide blur smeared it across the screen as a faint
+"floor reflection" in the sky region. Fixed by passing the web cart's exact
+triple at all four call sites: `setBloom(0.38, 0.22, 0.78)`. Comment block
+in the cart documents the trap so future ports don't repeat it.
+
+**Important pattern:** any cart that calls `setBloom(strength)` only will
+inherit the same bug. The fix is per-cart for now, but a follow-up could
+raise the global default threshold to `0.85` (would rebaseline ~5
+conformance carts using bloom without explicit threshold: 21, 716, 728,
+gles-overlay-orientation, gles-post-color-grade).
+
+### 2. TSL cart (and any keyboard-only web cart) ignored gamepad presses (`8d3593a`)
+
+`js_key` / `js_keyp` only checked the keyboard table. Added a small
+key→joypad fallback map:
+
+- Arrow keys → joypad d-pad buttons
+- Space / Enter → ANY of the four face buttons (B, A, Y, X)
+
+So `keyp('Space')`, `keyp('Enter')`, and `keyp('ArrowLeft/Right/Up/Down')`
+now also fire on the corresponding gamepad presses. Conformance unaffected
+because joypads aren't pressed by default in the harness.
+
+### 3. WAD demo runs in RetroArch with FreeDoom bundled (`8d3593a`)
+
+Three changes together:
+
+- **`fetch()` shim upgraded.** Now tries `.nova` package assets first via
+  `readAssetBytes`. Paths like `/assets/foo.wad`, `assets/foo.wad`, and
+  `foo.wad` all resolve via prefix strips. Any cart that fetches a
+  packaged asset works unmodified. Returns a real Response-shaped object
+  with `arrayBuffer()` / `text()` / `json()` / `blob()` / `bytes()`.
+- **Default asset quota raised 16 → 64 MiB** so a 29 MB WAD fits without
+  the user needing to set `NOVA64_ASSET_QUOTA`.
+- **New build script** `retroarch/tools/build_wad_nova.py` packs
+  `runtime/wad.js` (with engine-adapter texture stubs) into the .nova
+  alongside the cart and `freedoom1.wad`. `WADLoader`, `WADTextureManager`,
+  `convertWADMap`, `setWallUVs` are auto-exposed on `nova64.data` before
+  `code.js` runs. Loading `retroarch/games/wad-demo.nova` reports
+  `963 wall, 240 flats, 853 sprites`.
+
+### 4. vox-viewer loads real .vox models, not placeholder cubes (`8d3593a`)
+
+Replaced the `loadVoxModel` compat stub with a minimal MagicaVoxel parser.
+Walks SIZE + XYZI + RGBA chunks and builds an instanced cube mesh — one
+cube per voxel, colored from the palette (defaults to MagicaVoxel's
+standard palette when the RGBA chunk is absent). Falls back to the old
+placeholder cube on parse failure. Bundled `retroarch/games/vox-viewer.nova`
+includes `house.vox` at the path the cart expects.
+
+### 5. Visual sweep surfaced three more compat gaps (`75f8f43`)
+
+Ran 30 medium/large web carts (crystal-cathedral-3d, cyberpunk-city-3d,
+f-zero-nova-3d, super-plumber-64, star-fox-nova-3d, ...) for 60 frames in
+GLES. Three carts crashed with `TypeError: not a function`:
+
+- **wizardry-3d:** `sparkPool.kill(s)` and `nova64.draw.setCamera(0,0)`.
+  Added `kill / spawn / clear` to the pool augment shim. Registered
+  `setCamera` / `clearCamera` aliases for the existing 2D helpers.
+- **blend-aurora:** `ctx.createLinearGradient` inside `withBlend(...)`.
+  `withBlend` now passes a synthetic Canvas-2D adapter that maps fillRect
+  / strokeRect / fillText to nova64.draw primitives. Includes a CSS
+  color-string parser (`#rgb`, `#rrggbb`, `rgb()`, `rgba()`, `hsl()`,
+  `hsla()`) so cards/aurora carts that compose colors as CSS strings
+  render with the right hue. Gradients reduce to the middle color stop.
+- **stage-cards:** `ctx.roundRect` inside a `createGraphicsNode` callback.
+  Extended the stage stub ctx with `roundRect`, `arcTo`, `ellipse`,
+  `setLineDash`, all three `create*Gradient` factories, `getImageData /
+  putImageData / createImageData`, and the shadow* / textAlign / font
+  properties as no-op fields. Cart now renders (geometry approximated by
+  plain rectfill) instead of dead-ending.
+
+Final sweep result: **0 JS exceptions across 30 carts.**
+
+### 6. Conformance + Windows DLL
+
+- Cart 21 software `db290147bd8f8c0b`, GLES `b9a78c64ab0a6ab8` — unchanged.
+- Full batches 0-35 pass.
+- Windows DLL cross-built and redeployed at `75f8f43`.
+
+### Commits this pass (most recent first)
+
+```
+75f8f43 feat(retroarch): close 4 web-cart compat gaps surfaced by visual sweep
+8d3593a feat(retroarch): four user-reported fixes + bundled WAD/vox carts
+```
+
+---
+
+## What to do next — backlog (Claude third pass)
+
+1. **Raise global default bloom threshold from 0.32 → 0.85.** Would rebaseline
+   5 conformance carts (21, 716, 728, gles-overlay-orientation,
+   gles-post-color-grade) but fix the "sky reflection" bug for every cart that
+   calls `setBloom(strength)` only. Without this, every new cart inherits the
+   trap unless the cart author knows to pass a threshold.
+
+2. **Visual parity capture of the 30 swept carts.** They all run; nobody has
+   compared frame-by-frame to the web reference yet. Use the existing
+   `space_harrier_visual_parity.mjs` harness as a template — point it at any
+   of the carts and capture browser vs RA side-by-sides. Expect issues with
+   carts that use canvas-2D heavily (blend-aurora, stage-cards) because the
+   adapter is approximate, not pixel-perfect.
+
+3. **Port Three's separable Gaussian blur to the bloom downsample chain.**
+   Still open from earlier handoffs. Source at
+   `node_modules/.pnpm/three@0.182.0/node_modules/three/examples/jsm/postprocessing/UnrealBloomPass.js:379`.
+
+4. **Real WAD texture pipeline.** The WAD parser currently uses a texture
+   stub that returns opaque handles but doesn't actually upload pixels to
+   GLES. Walls render as solid colors. Wiring `engine.createDataTexture`
+   into the libretro texture API would make Doom levels look like Doom.
+
+5. **Add an edge-region-only sharpness metric to space_harrier_visual_parity.mjs.**
+   Still open. CAS path is penalized by the whole-image gradient-average.
+
+---
+
+## Don't redo (Claude third pass)
+
+- **Adding `setBloom(0.38)` without a threshold.** Defaults to 0.32 → wide
+  bloom mip bleed → sky reflection bug. Always pass the full triple.
+
+- **Stripping out the gradient/CSS-color parsing.** It looks like a lot of
+  shim code, but every web cart that draws gradients through nova64.draw
+  hits it. Keep the regex set even if it feels heavy.
+
+---
 
 ---
 

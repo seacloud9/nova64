@@ -41,7 +41,7 @@ const __wad_engine_stub = {
         && typeof globalThis.nova64.scene.createDataTexture === 'function') {
       try {
         const handle = globalThis.nova64.scene.createDataTexture(pixels, w, h, opts || {});
-        if (handle > 0) return handle;
+        if (typeof handle === 'number' && handle > 0) return handle;
       } catch (e) {}
     }
     return { __wadStubTex: true, width: w, height: h, opts: opts || {} };

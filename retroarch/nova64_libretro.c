@@ -314,7 +314,11 @@ struct nova64_point_light {
    float position[3];
 };
 
-#define NOVA64_MAX_TEXTURES 64
+/* WAD demos can easily exceed 64 unique textures: E1M1 alone produces
+ * 60+ wall composites plus per-enemy sprite atlases plus floor flats.
+ * 512 covers the largest FreeDoom maps without growing the static
+ * footprint much (~32 KB at sizeof(nova64_texture) ~64). */
+#define NOVA64_MAX_TEXTURES 512
 struct nova64_texture {
    bool used;
    bool borrowed; /* if true, gl_name is owned by a render target — don't delete */

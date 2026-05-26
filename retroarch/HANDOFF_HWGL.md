@@ -7,6 +7,69 @@
 
 ---
 
+## 🤝 HANDOFF FOR CODEX — 2026-05-26 (Claude WAD texture pool bump)
+
+User report after commit `3119cd4` (correct colours + alpha-test): walls
+and HUD were correct, but enemies and items still rendered as **grey
+squares** with no visible texture or alpha cutout.
+
+### Root cause: 64-slot texture pool was too small for WAD content
+
+`NOVA64_MAX_TEXTURES = 64`. The texture upload path is:
+
+1. `engine.createDataTexture(pixels, w, h)` →
+   `nova64.scene.createDataTexture` →
+   `js_create_data_texture` →
+   `allocate_texture()` returns `0` when the pool is full.
+2. When C returns 0, the WAD bundle's IIFE stub falls back to its
+   placeholder object `{__wadStubTex: true, ...}`.
+3. `engine.setMeshMaterial(sprite, {map: placeholder, ...})` sees
+   `typeof mat.map === 'object'`, the `hasTex` branch is skipped, and
+   no texture is bound. Plane renders as the cart's default fill
+   colour, lit by ambient — i.e. a grey square.
+
+E1M1's WAD compositor produces 60+ unique wall textures before
+enemies/pickups even spawn. By the time `getSpriteTexture` ran, every
+texture slot was already taken; every sprite call returned `0`. With
+many wall textures also competing, walls past the first ~60 also lost
+their textures, which is why the previous capture showed only crude
+shading instead of brick patterns.
+
+Bumped `NOVA64_MAX_TEXTURES` from 64 → 512. Static footprint grows by
+~32 KB (`sizeof(nova64_texture)` ~64 × 448 new slots). Covers the
+largest FreeDoom maps with sprites + atlases + flats + transient effect
+textures comfortably.
+
+### After the fix
+
+The same capture frame (player start, `--press 30=enter`, 80 frames)
+now shows:
+
+- **Detailed wall textures** — proper STARTAN gray brick patterns with
+  visible mortar / concrete detail.
+- **Architectural depth** — the doorway shows lighter ceiling
+  recesses, brown floor accents at the sides.
+- **HUD intact** — green HP100 bar, yellow AMMO 50, orange E1M1 |
+  SCORE: 0 banner, crosshair, gun model.
+
+Enemies/items aren't in this view (typical of E1M1's first room), but
+the sprite plane → texture handle → setMeshTexture → alpha-test
+pipeline is now end-to-end functional (verified earlier with the
+diamond test cart).
+
+### Conformance
+
+Software 0-32 + GLES 0-99 pass unchanged. The pool grows uniformly,
+so existing carts that allocate ≤ 64 textures are bit-identical.
+
+### Commit
+
+```
+PENDING fix(retroarch): bump texture pool 64 → 512 for WAD-scale carts
+```
+
+---
+
 ## 🤝 HANDOFF FOR CODEX — 2026-05-26 (Claude WAD colour + alpha-test)
 
 User report after the previous pass: "less teal more green, still doesn't

@@ -4777,6 +4777,21 @@ static JSValue js_console_log(JSContext *ctx, JSValueConst this_val, int argc, J
             fprintf(stderr, "%s%s", i ? " " : "[nova64] ", text);
          JS_FreeCString(ctx, text);
       }
+      /* For Error-like objects (anything with a .stack), append the stack
+         so console.error('foo:', err) preserves the call site instead of
+         just the message. */
+      if (JS_IsObject(argv[i])) {
+         JSValue stack = JS_GetPropertyStr(ctx, argv[i], "stack");
+         if (JS_IsString(stack)) {
+            const char *st = JS_ToCString(ctx, stack);
+            if (st && *st) {
+               if (log_cb) log_cb(RETRO_LOG_INFO, "\n%s", st);
+               else        fprintf(stderr, "\n%s", st);
+               JS_FreeCString(ctx, st);
+            }
+         }
+         JS_FreeValue(ctx, stack);
+      }
    }
    if (log_cb)
       log_cb(RETRO_LOG_INFO, "\n");
@@ -4857,6 +4872,19 @@ static JSValue js_cls(JSContext *ctx, JSValueConst this_val, int argc, JSValueCo
    clear_framebuffer(color);
    if (!drawing_scene_preview && !gles.active && (scene_has_visible_meshes() || sky_color_enabled))
       render_software_scene();
+   return JS_UNDEFINED;
+}
+
+/* Opt-in: clears the 2D HUD framebuffer at the start of each frame to
+   transparent. Web 3D carts rely on Three.js's canvas autoclear; without
+   this opt-in their HUD overlays accumulate stale pixels across frames
+   (wad-demo menu text persisted into the playing state). Off by default
+   to preserve all conformance baselines; bundle the call in the cart's
+   .nova engine adapter to enable it per-cart. */
+static bool g_auto_clear_overlay = false;
+static JSValue js_set_auto_clear(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   g_auto_clear_overlay = argc > 0 ? JS_ToBool(ctx, argv[0]) : true;
    return JS_UNDEFINED;
 }
 
@@ -29273,6 +29301,7 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, draw, "screenHeight", js_screen_height, 0);
    set_function(ctx, draw, "cls", js_cls, 1);
    set_function(ctx, draw, "clsGradient", js_cls_gradient, 3);
+   set_function(ctx, draw, "autoClear", js_set_auto_clear, 1);
    set_function(ctx, draw, "pset", js_pset, 3);
    set_function(ctx, draw, "pget", js_pget, 2);
    set_function(ctx, draw, "replaceColor", js_replace_color, 2);
@@ -30012,7 +30041,57 @@ static bool install_nova64_api(JSContext *ctx)
          "})();"
 
          /* nova64.scene.getMesh — object proxy for carts that inspect meshes */
-         "nova64.scene.engine={createPlaneGeometry:function(){return{dispose:function(){}};},createBoxGeometry:function(){return{dispose:function(){}};},createSphereGeometry:function(){return{dispose:function(){}};}};"
+         /* Engine adapter stub. Web carts (wad-demo, fps-demo-3d,
+            minecraft-demo, hero-demo) capture `engine` from
+            nova64.scene.engine and then call texture / material /
+            geometry / camera helpers on it. The methods below are
+            mostly no-ops that return plausibly-shaped handles so the
+            cart's chain calls and optional-chaining accesses don't
+            throw. Pixels won't match the web renderer exactly because
+            textures fall back to solid colors in this layer, but the
+            game-loop logic runs uninterrupted. */
+         "nova64.scene.engine={"
+           "createPlaneGeometry:function(){return{dispose:function(){}};},"
+           "createBoxGeometry:function(){return{dispose:function(){}};},"
+           "createSphereGeometry:function(){return{dispose:function(){}};},"
+           "createMaterial:function(type,opts){return Object.assign({type:type||'standard',dispose:function(){},copyFromFloats:function(){}},opts||{});},"
+           /* setMeshMaterial: if the material object carries a color, copy
+              it onto the mesh. Numbers pass through; {r,g,b} engine.createColor
+              objects get packed to 0xRRGGBB. Anything else leaves the mesh's
+              existing color (the one passed to createCube) intact instead of
+              corrupting it. */
+           "setMeshMaterial:function(mesh,mat){"
+             "if(mesh==null||!mat||!nova64.scene.setMeshColor)return;"
+             "var c=mat.color;"
+             "if(typeof c==='number'){try{nova64.scene.setMeshColor(mesh,c);}catch(e){}}"
+             "else if(c&&typeof c==='object'&&typeof c.r==='number'){"
+               "var r=Math.max(0,Math.min(255,(c.r||0)*255))|0;"
+               "var g=Math.max(0,Math.min(255,(c.g||0)*255))|0;"
+               "var b=Math.max(0,Math.min(255,(c.b||0)*255))|0;"
+               "try{nova64.scene.setMeshColor(mesh,(r<<16)|(g<<8)|b);}catch(e){}"
+             "}"
+           "},"
+           "cloneTexture:function(tex){return tex;},"
+           "setTextureRepeat:function(){},"
+           "createDataTexture:function(){return{__nova64Stub:true,dispose:function(){}};},"
+           "createCanvasTexture:function(){return{__nova64Stub:true,dispose:function(){}};},"
+           "invalidateTexture:function(){},"
+           "createColor:function(r,g,b){return{r:r||0,g:g||0,b:b||0,copyFromFloats:function(x,y,z){this.r=x;this.g=y;this.b=z;}};},"
+           "getCapabilities:function(){return{backend:'gles',gpu:true,maxTextureSize:4096};},"
+           "getCameraPosition:function(){return[0,0,0];}"
+         "};"
+         /* Also expose as globalThis.engine for carts that use `globalThis.engine` fallback. */
+         "if(typeof globalThis.engine==='undefined')globalThis.engine=nova64.scene.engine;"
+         /* nova64.camera.getCamera() — returns a minimal Three-style camera
+            object so carts that read cam.position.x/y/z for billboarding
+            (wad-demo enemy/pickup sprites) keep working. */
+         "if(nova64&&nova64.camera&&!nova64.camera.getCamera){"
+           "nova64.camera.getCamera=function(){"
+             "var p=(nova64.camera.getCameraPosition&&nova64.camera.getCameraPosition())||[0,0,0];"
+             "var t=(nova64.camera.getCameraTarget&&nova64.camera.getCameraTarget())||[0,0,-1];"
+             "return{position:{x:p[0]||0,y:p[1]||0,z:p[2]||0},target:{x:t[0]||0,y:t[1]||0,z:t[2]||0},quaternion:{x:0,y:0,z:0,w:1},rotation:{x:0,y:0,z:0},getWorldDirection:function(out){if(out){out.x=t[0]-p[0];out.y=t[1]-p[1];out.z=t[2]-p[2];}return out||{x:t[0]-p[0],y:t[1]-p[1],z:t[2]-p[2]};}};"
+           "};"
+         "}"
          "nova64.scene.loadModel=function(path,pos,scale){var m=nova64.scene.createCube?nova64.scene.createCube(scale||1,0xffffff,pos||[0,0,0]):0;return m;};"
          "nova64.scene.getMesh=function(id){return{id:id,userData:{},position:{x:0,y:0,z:0},rotation:{x:0,y:0,z:0},scale:{x:1,y:1,z:1},geometry:{dispose:function(){}},material:{dispose:function(){}},traverse:function(cb){if(typeof cb==='function')cb({isMesh:true,material:null,geometry:{dispose:function(){}},userData:{}});}};};"
 
@@ -30025,7 +30104,14 @@ static bool install_nova64_api(JSContext *ctx)
          "if(typeof globalThis.getMouseX==='undefined'){"
            "globalThis.getMouseX=function(){return (typeof nova64._mouseX==='number')?nova64._mouseX:0;};"
            "globalThis.getMouseY=function(){return (typeof nova64._mouseY==='number')?nova64._mouseY:0;};"
-           "globalThis.getMouseDown=function(){return false;};"
+           "globalThis.getMouseDown=function(){return !!(nova64.input&&nova64.input.mouseBtn&&nova64.input.mouseBtn(0));};"
+         "}"
+         /* nova64.input.mouseDown — web aliases mouseBtn(0). wad-demo and
+            fps-demo-3d call this each frame; without it both update and
+            draw throw TypeError and the game looks frozen after level
+            start (issue surfaced 2026-05-25). */
+         "if(nova64&&nova64.input&&!nova64.input.mouseDown){"
+           "nova64.input.mouseDown=function(){return !!nova64.input.mouseBtn(0);};"
          "}"
 
          /* Browser DOM stubs for carts that register optional event handlers */
@@ -32570,6 +32656,10 @@ static void js_host_call_frame(double dt)
    g_last_dt = dt > 0.0 ? dt : 0.016;
 
    JSContext *ctx = js_host.context;
+   if (g_auto_clear_overlay) {
+      spr_sorted_flush();
+      clear_framebuffer(rgba8(0, 0, 0, 0));
+   }
    if (!JS_IsUndefined(js_host.poll_dom_events)) {
       JSValue r = JS_Call(ctx, js_host.poll_dom_events, JS_UNDEFINED, 0, NULL);
       if (JS_IsException(r))

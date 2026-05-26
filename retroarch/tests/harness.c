@@ -612,6 +612,13 @@ int main(int argc, char **argv)
    const char *seed_option = NULL;
    bool perf_enabled = false;
 
+   /* --press FRAME=KEY scheduling: holds key for that frame only so the
+    * DOM-event bridge sees both a keydown (rising edge) and a keyup
+    * (falling edge on the next frame). */
+   struct press_event { unsigned frame; int code; };
+   struct press_event press_events[32];
+   unsigned press_count = 0;
+
    for (int i = 3; i < argc; i++) {
       if (!strcmp(argv[i], "--capture")) {
          if (++i >= argc) {
@@ -674,6 +681,25 @@ int main(int argc, char **argv)
             return 2;
          }
          g_keyboard[code] = true;
+      } else if (!strcmp(argv[i], "--press")) {
+         if (++i >= argc) {
+            fprintf(stderr, "--press requires FRAME=KEY\n");
+            return 2;
+         }
+         char *eq = strchr(argv[i], '=');
+         if (!eq) { fprintf(stderr, "--press needs FRAME=KEY\n"); return 2; }
+         *eq = '\0';
+         unsigned f = (unsigned)strtoul(argv[i], NULL, 10);
+         int code = harness_key_code(eq + 1);
+         if (code < 0 || code >= 512) {
+            fprintf(stderr, "--press: unknown key '%s'\n", eq + 1);
+            return 2;
+         }
+         if (press_count < 32) {
+            press_events[press_count].frame = f;
+            press_events[press_count].code = code;
+            press_count++;
+         }
       } else if (!strcmp(argv[i], "--mouse-x")) {
          if (++i >= argc) {
             fprintf(stderr, "--mouse-x requires a value\n");
@@ -810,6 +836,15 @@ int main(int argc, char **argv)
    if (ok) {
       for (unsigned frame = 0; frame < frames_to_run; frame++) {
          g_joypad[RETRO_DEVICE_ID_JOYPAD_B] = frame == 1;
+         for (unsigned p = 0; p < press_count; p++) {
+            if (press_events[p].frame == frame) {
+               g_keyboard[press_events[p].code] = true;
+               fprintf(stderr, "[harness] press frame=%u code=%d\n", frame, press_events[p].code);
+            }
+            if (press_events[p].frame + 1 == frame) {
+               g_keyboard[press_events[p].code] = false;
+            }
+         }
          run();
       }
       g_joypad[RETRO_DEVICE_ID_JOYPAD_B] = false;

@@ -63,6 +63,11 @@ def build_wrapped_cart() -> str:
         "  if (typeof globalThis.nova64 !== 'undefined' && globalThis.nova64.data && typeof wadApi === 'function') {\n"
         "    wadApi().exposeTo(globalThis.nova64.data);\n"
         "  }\n"
+        "  // Opt into per-frame overlay clear so menu pixels don't linger into the playing state\n"
+        "  // (Three.js canvas autoclears in web; the RA 2D overlay buffer otherwise persists).\n"
+        "  if (typeof globalThis.nova64 !== 'undefined' && nova64.draw && nova64.draw.autoClear) {\n"
+        "    nova64.draw.autoClear(true);\n"
+        "  }\n"
         "})();\n"
         "// --- END WAD bundle ---\n"
         + cart

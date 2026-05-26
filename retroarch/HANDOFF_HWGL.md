@@ -7,6 +7,75 @@
 
 ---
 
+## 🤝 HANDOFF FOR CODEX — 2026-05-26 (Claude WAD colour + alpha-test)
+
+User report after the previous pass: "less teal more green, still doesn't
+match web; enemies and items are squares". Two real bugs were stacked.
+
+### Root cause: 24-bit colour literals were being read as cyan
+
+nova64's native colour encoding is `0xRRGGBBAA`. wad-demo (and the rest
+of the Three-ecosystem cart corpus) writes colour as `0xRRGGBB` literals
+— so `0xffffff` was unpacked as `(R=0, G=255, B=255, A=255)` = **pure
+cyan**. Every wall, every mesh, every light colour the cart passed was
+secretly cyan, and the entire scene read as a teal wash.
+
+There's an existing `nova64.post.use24BitColors(true)` flag that
+promotes `0xRRGGBB → 0xRRGGBBFF` on the way through `color_from_js`,
+but it can't distinguish a Three-style literal from an `rgba8()` output
+that happens to have `R=0` (e.g. the green HUD bar at
+`rgba8(0, 255, 100, 255)`). The previous pass tried the global flag and
+the HUD turned magenta.
+
+The fix is surgical: the WAD bundle wraps the 3D-scene colour-accepting
+functions (`createCube`/`createSphere`/`createPlane`/`createCone`/
+`createCylinder`/`createTorus`/`createCapsule`, plus `setMeshColor`,
+`createPointLight`, `setFog`) and promotes any value `0x000000..0xFFFFFF`
+to `value << 8 | 0xFF` before it reaches C. The 2D draw functions (which
+take packed `rgba8()` results) keep the old interpretation, so the HUD
+stays correctly green/yellow/red.
+
+The bundle's earlier ambient/directional neutralisation also had to be
+fixed — passing `0xb0b0b0` to the C lighting setter unpacked as cyan
+ambient (which had been re-tinting everything teal). Now passes the
+fully-qualified `0xb0b0b0ff` / `0xffffffff`.
+
+### Alpha-test for Doom sprite cutouts
+
+Doom sprites have `alpha=0` for transparent background pixels. Without
+discard, those pixels rendered as opaque (showing whatever lit colour
+the shader produced) → sprites appeared as opaque rectangles around
+the actual painted shape.
+
+New per-mesh `alpha_test` field + `u_alpha_test` uniform in the cube
+shader. When non-zero, the fragment shader discards any sampled
+texel whose alpha is below the threshold. Wired through new
+`nova64.scene.setMeshAlphaTest(handle, threshold)` JS API; the
+compat layer's `engine.setMeshMaterial` opts the mesh in whenever
+`mat.alphaTest > 0` or `mat.transparent` is true. Default off so
+no conformance baseline shifts.
+
+### Visibility setter (carried over from the previous pass)
+
+The earlier `getMesh(handle).visible = false` fix is still in place —
+without it the cyan emissive cube placeholder under each sprite stayed
+visible. The new pass keeps that fix; combined with alpha-test + correct
+colours, enemies/pickups should render as proper Doom sprite cutouts.
+
+### Conformance
+
+Software 0-32 + GLES 0-99 pass unchanged. The alpha-test path is
+opt-in per mesh (default 0.0) and the colour promotion is scoped to
+the WAD bundle, so no existing conformance baseline shifts.
+
+### Commit
+
+```
+PENDING fix(retroarch): wad-demo correct colours + sprite alpha cutout
+```
+
+---
+
 ## 🤝 HANDOFF FOR CODEX — 2026-05-25 (Claude WAD teal + sprites)
 
 User report: "it is teal way too teal solve that issue also items and

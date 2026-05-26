@@ -252,6 +252,7 @@ struct nova64_mesh {
    float uv_offset[2];      /* UV scroll offset (u, v) */
    float uv_scale[2];       /* UV tiling scale (u, v) */
    bool face_uvs;           /* true: per-face UV from normal (correct box mapping); false: legacy XZ planar */
+   float alpha_test;        /* >0: fragment discards when texel.a < alpha_test (Doom sprite cutout) */
    enum nova64_mesh_blend mesh_blend;
    int parent_handle;       /* 0 = no parent (8A scene hierarchy) */
    /* Custom mesh geometry (NOVA64_MESH_CUSTOM) */
@@ -586,6 +587,7 @@ struct nova64_gles_backend {
    GLint cube_uv_offset_uniform;
    GLint cube_uv_scale_uniform;
    GLint cube_face_uvs_uniform;
+   GLint cube_alpha_test_uniform;
    /* Shadow map uniforms in cube program */
    GLint cube_shadow_map_uniform;
    GLint cube_shadow_mvp_uniform;
@@ -4624,6 +4626,7 @@ static int allocate_mesh(enum nova64_mesh_type type)
          meshes[i].uv_scale[0] = 1.0f;
          meshes[i].uv_scale[1] = 1.0f;
          meshes[i].face_uvs = false;
+         meshes[i].alpha_test = 0.0f;
          meshes[i].mesh_blend = NOVA64_MESH_BLEND_OPAQUE;
          meshes[i].texture_handle = 0;
          meshes[i].normal_map_handle = 0;
@@ -27637,6 +27640,20 @@ static JSValue js_set_mesh_face_uvs(JSContext *ctx, JSValueConst this_val, int a
    return JS_NewBool(ctx, true);
 }
 
+/* setMeshAlphaTest(handle, threshold) — per-mesh alpha discard. Pass 0
+   to disable; pass e.g. 0.5 to discard any fragment whose sampled
+   texel alpha is below 0.5. Used by Doom-style sprite cutouts so
+   enemies/pickups render as cut-out shapes instead of opaque squares. */
+static JSValue js_set_mesh_alpha_test(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   struct nova64_mesh *mesh = mesh_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!mesh) return JS_NewBool(ctx, false);
+   double t = argc > 1 ? double_from_js(ctx, argv[1], 0.0) : 0.0;
+   mesh->alpha_test = (float)clamp_double(t, 0.0, 1.0);
+   return JS_NewBool(ctx, true);
+}
+
 /* createDataTexture(pixels, width, height [, opts]) — accepts a Uint8Array
    or ArrayBuffer of RGBA bytes (length must be width*height*4) and uploads
    it to a GLES texture, returning an integer handle compatible with
@@ -29564,6 +29581,7 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, scene, "createDataTexture", js_create_data_texture, 4);
    set_function(ctx, scene, "setMeshTexture", js_set_mesh_texture, 2);
    set_function(ctx, scene, "setMeshFaceUVs", js_set_mesh_face_uvs, 2);
+   set_function(ctx, scene, "setMeshAlphaTest", js_set_mesh_alpha_test, 2);
    set_function(ctx, scene, "setMeshNormalMap", js_set_mesh_normal_map, 2);
    set_function(ctx, scene, "destroyTexture", js_destroy_texture, 1);
    set_function(ctx, scene, "createRenderTarget", js_create_render_target, 2);
@@ -30206,6 +30224,16 @@ static bool install_nova64_api(JSContext *ctx)
                   conformance carts that rely on the legacy UV calc stay
                   pixel-identical. */
                "if(nova64.scene.setMeshFaceUVs){try{nova64.scene.setMeshFaceUVs(mesh,true);}catch(e){}}"
+               /* Doom-style sprite cutout: when the material asks for
+                  alpha-test (Three convention: alphaTest>0 or transparent
+                  with alphaTest given), forward the threshold to the
+                  mesh so the shader discards transparent pixels and the
+                  sprite renders as its painted shape instead of an
+                  opaque rectangle. */
+               "if(nova64.scene.setMeshAlphaTest){"
+                 "var t=(typeof mat.alphaTest==='number'&&mat.alphaTest>0)?mat.alphaTest:(mat.transparent?0.5:0);"
+                 "try{nova64.scene.setMeshAlphaTest(mesh,t);}catch(e){}"
+               "}"
              "}"
            "},"
            "cloneTexture:function(tex){return tex;},"
@@ -33091,6 +33119,7 @@ static bool gles_create_cube_program(void)
       "uniform sampler2D u_texture;\n"
       "uniform int u_has_normal_map;\n"
       "uniform sampler2D u_normal_map;\n"
+      "uniform float u_alpha_test;\n"
       "uniform vec4 u_emissive_color;\n"
       "uniform float u_emissive_intensity;\n"
       "uniform float u_roughness;\n"
@@ -33137,6 +33166,13 @@ static bool gles_create_cube_program(void)
       "  vec3 ambient = srgb_to_linear(u_ambient_color.rgb) * 0.35;\n"
       "  vec4 draw_color = (u_use_instancing != 0) ? v_instance_color : u_color;\n"
       "  vec4 texel = (u_has_texture != 0) ? texture(u_texture, v_uv) : vec4(1.0);\n"
+      /* Doom-style sprite cutout: when alpha-test is enabled (set per-mesh
+         via setMeshAlphaTest, or implicitly when engine.setMeshMaterial
+         binds a transparent texture), discard fragments whose texel alpha
+         is below the threshold. This lets WAD enemy/pickup sprites show
+         only the painted pixels instead of the whole quad as an opaque
+         square. */
+      "  if (u_has_texture != 0 && u_alpha_test > 0.0 && texel.a < u_alpha_test) discard;\n"
       "  vec4 base = vec4(srgb_to_linear(texel.rgb) * srgb_to_linear(draw_color.rgb), texel.a * draw_color.a);\n"
       "  float diffuse;\n"
       "  if (u_has_normal_map != 0) {\n"
@@ -33249,6 +33285,7 @@ static bool gles_create_cube_program(void)
    gles.cube_has_texture_uniform = gles.GetUniformLocation(program, "u_has_texture");
    gles.cube_texture_uniform = gles.GetUniformLocation(program, "u_texture");
    gles.cube_face_uvs_uniform = gles.GetUniformLocation(program, "u_face_uvs");
+   gles.cube_alpha_test_uniform = gles.GetUniformLocation(program, "u_alpha_test");
    gles.cube_has_normal_map_uniform = gles.GetUniformLocation(program, "u_has_normal_map");
    gles.cube_normal_map_uniform = gles.GetUniformLocation(program, "u_normal_map");
    gles.cube_emissive_color_uniform = gles.GetUniformLocation(program, "u_emissive_color");
@@ -34205,6 +34242,8 @@ static void render_gles_primitive(const struct nova64_mesh *mesh, const float vi
       gles.Uniform2f(gles.cube_uv_scale_uniform, mesh->uv_scale[0], mesh->uv_scale[1]);
    if (gles.cube_face_uvs_uniform >= 0 && gles.Uniform1i)
       gles.Uniform1i(gles.cube_face_uvs_uniform, mesh->face_uvs ? 1 : 0);
+   if (gles.cube_alpha_test_uniform >= 0 && gles.Uniform1f)
+      gles.Uniform1f(gles.cube_alpha_test_uniform, mesh->alpha_test);
    /* shadow map */
    {
       bool do_shadow = gles.shadow_depth_tex && mesh->receive_shadow && g_shadow_map_size > 0;
@@ -34869,6 +34908,8 @@ static void render_gles_instanced_mesh(const struct nova64_mesh *mesh, const flo
       gles.Uniform2f(gles.cube_uv_scale_uniform, mesh->uv_scale[0], mesh->uv_scale[1]);
    if (gles.cube_face_uvs_uniform >= 0 && gles.Uniform1i)
       gles.Uniform1i(gles.cube_face_uvs_uniform, mesh->face_uvs ? 1 : 0);
+   if (gles.cube_alpha_test_uniform >= 0 && gles.Uniform1f)
+      gles.Uniform1f(gles.cube_alpha_test_uniform, mesh->alpha_test);
 
    bool did_blend = false;
    if (mesh->mesh_blend == NOVA64_MESH_BLEND_ADDITIVE) {

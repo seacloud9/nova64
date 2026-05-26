@@ -30158,20 +30158,78 @@ static bool install_nova64_api(JSContext *ctx)
              "createHologramMaterial:function(o){return createTSLMaterial('hologram',o);},createShockwaveMaterial:function(o){return createTSLMaterial('shockwave',o);}};"
          "})();"
 
-         /* nova64.voxel — deterministic gameplay-compatible fallback surface */
-         "nova64.voxel=(function(){var cfg={renderDistance:3},blocks={},entities=[],eid=1;"
+         /* nova64.voxel — deterministic gameplay-compatible fallback surface.
+            Carts that use voxel (minecraft-demo, voxel-terrain, etc.) are
+            Three-style world builders that expect the canvas to autoclear
+            each frame. Enable nova64.draw.autoClear here so the 2D HUD
+            buffer doesn't accumulate stale pixels (e.g. minecraft-demo
+            staying stuck on "GENERATING WORLD" text after the game starts). */
+         "if(typeof globalThis.nova64!=='undefined'&&nova64.draw&&nova64.draw.autoClear){try{nova64.draw.autoClear(true);}catch(e){}}"
+         /* Voxel stub now actually renders surface blocks via an
+            InstancedMesh built around the player. Not the full
+            chunk/biome/lighting story of runtime/api-voxel.js (which
+            needs Three.js), but enough that minecraft-demo / voxel-*
+            carts show terrain instead of an empty black void. */
+         "nova64.voxel=(function(){"
+           "var cfg={renderDistance:3,seed:1337},blocks={},entities=[],eid=1;"
+           "var surfaceMesh=0,surfaceCap=0,lastCenter=null,surfaceRadius=24;"
            "function key(x,y,z){return(x|0)+','+(y|0)+','+(z|0);}"
            "function noise2(x,z){var s=Math.sin(x*12.9898+z*78.233+(cfg.seed||0))*43758.5453;return s-Math.floor(s);}"
            "function height(x,z){return Math.floor(24+noise2(x*0.07,z*0.07)*10);}"
-           "function configureVoxelWorld(o){if(o)for(var k in o)cfg[k]=o[k];return cfg;}"
+           "function configureVoxelWorld(o){if(o)for(var k in o)cfg[k]=o[k];if(cfg.renderDistance)surfaceRadius=Math.min(48,Math.max(8,cfg.renderDistance*8));return cfg;}"
            "function getVoxelHighestBlock(x,z){return height(x,z);}"
            "function getVoxelBlock(x,y,z){var k=key(x,y,z);if(blocks[k]!=null)return blocks[k];return y<=height(x,z)?(y<height(x,z)-3?3:1):0;}"
-           "function setVoxelBlock(x,y,z,b){blocks[key(x,y,z)]=b|0;return true;}"
+           "function setVoxelBlock(x,y,z,b){blocks[key(x,y,z)]=b|0;rebuildSurface(lastCenter?lastCenter[0]:0,lastCenter?lastCenter[1]:0,true);return true;}"
            "function moveVoxelEntity(pos,vel,size,dt){dt=dt||1;var p=[pos[0]+vel[0]*dt,pos[1]+vel[1]*dt,pos[2]+vel[2]*dt];var g=getVoxelHighestBlock(Math.floor(p[0]),Math.floor(p[2]))+1;if(p[1]<g){p[1]=g;vel=[vel[0],0,vel[2]];return{position:p,velocity:vel,grounded:true,inWater:false};}return{position:p,velocity:vel,grounded:false,inWater:false};}"
            "function spawnVoxelEntity(type,pos,opts){var e={id:eid++,type:type||'mob',position:pos||[0,0,0],opts:opts||{}};entities.push(e);return e;}"
            "function simplexNoise2D(x,z,oct,pers,scale,freq){return(noise2((x||0)*(freq||1),(z||0)*(freq||1))*2-1)*(scale||1);}"
            "function simplexNoise3D(x,y,z,oct,pers,scale,freq){return simplexNoise2D((x||0)+(y||0)*0.37,z,oct,pers,scale,freq);}"
-           "return{configureVoxelWorld:configureVoxelWorld,getVoxelConfig:function(){return cfg;},enableVoxelTextures:function(v){cfg.textures=!!v;},forceLoadVoxelChunks:function(){},updateVoxelWorld:function(){},resetVoxelWorld:function(){blocks={};entities=[];},"
+           /* Build/update the surface InstancedMesh. One instance per
+              (x,z) cell in a square around the centre, positioned at
+              the local terrain height. Colour from a coarse biome
+              palette (sand/dirt/grass/stone). Mutates in-place when
+              the cap matches — avoids per-frame mesh allocation. */
+           /* Colours are full 32-bit RGBA (nova64 native), not 24-bit
+              hex literals — setInstanceColor passes the value straight
+              through to color_from_js which expects 0xRRGGBBAA. */
+           "function biomeColor(h){"
+             "if(h<22)return 0xc2a060ff;"   /* sand */
+             "if(h<30)return 0x4a8a3aff;"   /* grass */
+             "if(h<36)return 0x6b4f30ff;"   /* dirt */
+             "return 0x8f8f8fff;"            /* stone */
+           "}"
+           "function rebuildSurface(cx,cz,force){"
+             "if(!nova64.scene||!nova64.scene.createInstancedMesh||!nova64.scene.setInstanceTransform)return;"
+             "var step=2;var r=surfaceRadius;var w=Math.floor(r*2/step)+1;var count=w*w;"
+             "if(!force&&lastCenter&&Math.abs(cx-lastCenter[0])<step&&Math.abs(cz-lastCenter[1])<step&&surfaceMesh)return;"
+             "lastCenter=[cx,cz];"
+             "if(!surfaceMesh||surfaceCap<count){"
+               "if(surfaceMesh&&nova64.scene.destroyMesh){try{nova64.scene.destroyMesh(surfaceMesh);}catch(e){}}"
+               "try{surfaceMesh=nova64.scene.createInstancedMesh('cube',count);surfaceCap=count;}catch(e){surfaceMesh=0;return;}"
+             "}"
+             /* setInstanceTransform takes a 16-element column-major
+                mat4. For axis-aligned cubes the matrix is just scaled
+                identity with the position in the last column. */
+             "var idx=0,baseX=Math.floor(cx-r),baseZ=Math.floor(cz-r);"
+             "var sx=step,sy=1,sz=step;"
+             "for(var jz=0;jz<w;jz++)for(var jx=0;jx<w;jx++){"
+               "var bx=baseX+jx*step,bz=baseZ+jz*step;"
+               "var h=height(bx,bz);"
+               "var px=bx+step*0.5,py=h+0.5,pz=bz+step*0.5;"
+               "try{nova64.scene.setInstanceTransform(surfaceMesh,idx,["
+                 "sx,0,0,0,"
+                 "0,sy,0,0,"
+                 "0,0,sz,0,"
+                 "px,py,pz,1"
+               "]);}catch(e){}"
+               "if(nova64.scene.setInstanceColor){try{nova64.scene.setInstanceColor(surfaceMesh,idx,biomeColor(h));}catch(e){}}"
+               "idx++;"
+             "}"
+           "}"
+           "function forceLoadChunks(cx,cz){rebuildSurface(cx||0,cz||0,true);}"
+           "function updateChunks(cx,cz){rebuildSurface(cx||0,cz||0,false);}"
+           "function resetVoxelWorld(){blocks={};entities=[];if(surfaceMesh&&nova64.scene.destroyMesh){try{nova64.scene.destroyMesh(surfaceMesh);}catch(e){}}surfaceMesh=0;surfaceCap=0;lastCenter=null;}"
+           "return{configureVoxelWorld:configureVoxelWorld,getVoxelConfig:function(){return cfg;},enableVoxelTextures:function(v){cfg.textures=!!v;},forceLoadVoxelChunks:forceLoadChunks,updateVoxelWorld:updateChunks,resetVoxelWorld:resetVoxelWorld,"
              "setVoxelDayTime:function(t){cfg.dayTime=t;},getVoxelBiome:function(){return'Plains';},getVoxelBlock:getVoxelBlock,setVoxelBlock:setVoxelBlock,getVoxelHighestBlock:getVoxelHighestBlock,raycastVoxelBlock:function(){return{hit:false};},checkVoxelCollision:function(){return false;},"
              "moveVoxelEntity:moveVoxelEntity,spawnVoxelEntity:spawnVoxelEntity,updateVoxelEntities:function(){},cleanupVoxelEntities:function(){},getVoxelEntityCount:function(){return entities.length;},getVoxelEntitiesByType:function(t){return entities.filter(function(e){return e.type===t;});},"
              "damageVoxelEntity:function(id){entities=entities.filter(function(e){return e.id!==id;});},saveVoxelWorld:function(){return Promise.resolve(true);},loadVoxelWorld:function(){return Promise.resolve(false);},simplexNoise2D:simplexNoise2D,simplexNoise3D:simplexNoise3D};"

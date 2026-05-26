@@ -7,6 +7,77 @@
 
 ---
 
+## 🤝 HANDOFF FOR CODEX — 2026-05-26 (Claude minecraft-demo voxel terrain)
+
+User report: "minecraft demo gets stuck on creating terrain, terrain never
+loads". Two stacked bugs.
+
+### 1. The "stuck on GENERATING WORLD" screen — same overlay-persistence as wad-demo
+
+The cart's draw branches on `isLoaded`: paints a black rectfill + the
+"GENERATING WORLD..." text while loading; once the 3-frame load
+sequence completes it draws the game HUD instead. But the 2D HUD
+framebuffer didn't auto-clear between frames, so the loading text
+stayed on screen even after `isLoaded=true` (only the HUD elements
+that overdrew specific pixels would refresh).
+
+Fix: the `nova64.voxel` stub now calls `nova64.draw.autoClear(true)` on
+module init. Any cart that uses the voxel API is a 3D-world builder
+that expects canvas autoclear behaviour, so this is the right scope.
+
+### 2. The world was empty (no terrain rendering at all)
+
+`runtime/api-voxel.js` is a 5700-line Three.js voxel engine — too big
+to embed into the RA compat layer. The RA stub previously provided
+the data-side API (`getVoxelBlock`, `getVoxelHighestBlock`, etc.) but
+left `forceLoadVoxelChunks` and `updateVoxelWorld` as no-ops, so
+nothing actually got into the scene. Walls + sky stayed black.
+
+Built a minimal procedural-surface renderer inside the voxel stub:
+
+- `forceLoadVoxelChunks` / `updateVoxelWorld` call a `rebuildSurface(cx, cz)`
+  helper that creates a `nova64.scene.createInstancedMesh('cube', N)`
+  with one instance per (x,z) cell in a `renderDistance × 8` square
+  around the centre, positioned at `height(x,z)` and coloured from a
+  coarse biome palette (sand / grass / dirt / stone).
+- The instance count adapts to the cart's `renderDistance` (capped at
+  48 world units to bound the cube count to ~625).
+- Updates are step-quantised (only rebuild when the centre crosses an
+  integer step boundary) so movement re-meshes don't fire every frame.
+- Position is encoded as a **column-major mat4** in
+  `setInstanceTransform`'s third arg — that's the API contract; my
+  first attempt passing `[x,y,z]` made every transform a zero matrix
+  (invisible). Fixed to build the full identity-with-position matrix.
+
+### Colour gotcha (again)
+
+`biomeColor()` initially returned 24-bit literals like `0x4a8a3a` for
+grass; `setInstanceColor` unpacks 32-bit as `(R=0, G=0x4a, B=0x8a, A=0x3a)`
+= dark blue. Returns full 32-bit `0x4a8a3aff` etc now. Same lesson
+as wad-demo a few commits back — nova64 native is 32-bit RGBA, not
+Three-style 24-bit RGB.
+
+### Verified
+
+Frame 10 of minecraft-demo (no input) now shows:
+- "MINECRAFT ULTIMATE 64" title, "Plains" biome indicator, controls hint
+- Green grass blocks with visible elevation variation across the view
+- Brown dirt blocks at higher elevations
+- Crosshair, hotbar (1-9 block selector), HUD intact
+- No "GENERATING WORLD" persistence
+
+Conformance: software 0-32 + GLES 0-99 pass unchanged. The voxel
+rendering only activates when a cart calls voxel APIs, so existing
+3D carts that don't use `nova64.voxel` are bit-identical.
+
+### Commit
+
+```
+PENDING fix(retroarch): minecraft-demo terrain — autoclear + instanced voxel surface
+```
+
+---
+
 ## 🤝 HANDOFF FOR CODEX — 2026-05-26 (Claude WAD texture pool bump)
 
 User report after commit `3119cd4` (correct colours + alpha-test): walls

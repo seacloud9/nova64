@@ -1,9 +1,92 @@
 # Nova64 Hardware GL on Windows — Status & Handover
 
-**Last updated:** 2026-05-25 (Claude pass — 4 user-reported fixes + 30-cart sweep)
+**Last updated:** 2026-05-25 (Claude pass — WAD texture pipeline)
 **Branch:** `main`
-**Working tree:** clean after `75f8f43` (compat shims for canvas-2D + pool API)
-**Windows DLL deployed:** fresh as of `75f8f43`; cross-built and copied to `C:\RetroArch-Win64\cores\nova64_libretro.dll`
+**Working tree:** clean after this commit (WAD textures + face-UV cube shader)
+**Windows DLL deployed:** fresh; cross-built and copied to `C:\RetroArch-Win64\cores\nova64_libretro.dll`
+
+---
+
+## 🤝 HANDOFF FOR CODEX — 2026-05-25 (Claude WAD texture pipeline)
+
+User report: WAD demo loads + plays after the previous freeze-fix commit
+(`8b59683`), but walls render as solid teal blocks instead of WAD wall
+textures. Investigated end-to-end and shipped a real GPU texture pipeline
+plus a one-line cube shader fix that unblocks every cube-with-texture use
+case in the codebase.
+
+### What was missing
+
+1. **No data-texture API in C.** `js_create_texture` only loaded from a
+   `.nova` package asset path. WAD textures are composited at runtime
+   from palette + patch data in pure JS — no asset path. Added
+   `js_create_data_texture(pixels, w, h, opts)` that accepts a
+   `Uint8Array` (or `ArrayBuffer`) of RGBA bytes and uploads to GLES
+   via `gles.TexImage2D`. Returns an integer handle compatible with
+   `setMeshTexture`. Wraps `GL_REPEAT` by default for wall tiling.
+2. **Engine adapter stubs were one-line no-ops.** The bundled
+   `wad.js` IIFE used `__wad_engine_stub.createDataTexture` that just
+   returned `{__wadStubTex:true}` — placeholder objects that the cart
+   stored as "texture handles" but no GL upload ever happened. Now the
+   stub forwards into `nova64.scene.createDataTexture`, returning the
+   real handle.
+3. **`engine.setMeshMaterial` never bound textures.** My earlier compat
+   only copied the material color onto the mesh. Extended it: when
+   `mat.map` is a numeric texture handle, calls `setMeshTexture` AND
+   opts the mesh into per-face UVs (see #4).
+4. **🔥 Root cause of "blue walls": cube shader's auto-UV was
+   degenerate on side faces.** The vertex shader was computing
+   `v_uv = (a_position.xz + 0.5) * u_uv_scale + u_uv_offset`. For top/
+   bottom faces (normal aligned with Y), xz spans the face fine. For
+   the X- or Z-perpendicular faces (which is what you see on a wall),
+   one of x/z is constant — so the U sample is a single texture column
+   stretched vertically across the whole wall. Tiled patterns vanish
+   into one band of color. Added an opt-in path: when
+   `setMeshFaceUVs(mesh, true)` is called, the shader picks the 2D
+   plane perpendicular to the local normal and samples the texture
+   correctly. Default off so every conformance baseline stays
+   identical; `engine.setMeshMaterial` flips it on per-mesh when
+   binding a real texture.
+5. **`setWallUVs` was a no-op in RA.** Upstream `runtime/wad.js`
+   pokes Three.js `BufferAttribute.setXY` fields that don't exist on
+   the RA mesh stub. Wall textures used to render at the default
+   `(0..1, 0..1)` UV range (one tile stretched across the whole wall)
+   even if a texture was bound. The WAD bundle now monkey-patches
+   `nova64.data.setWallUVs` after `wadApi().exposeTo()` so the same
+   `tileU = doomLen / texW` math flows into `setMeshUVScale` /
+   `setMeshUVOffset` on the RA side. Web is untouched.
+
+### Verified
+
+- **Isolated brick-wall test cart** renders a 32×32 brick texture
+  tiling 4× across an 8-unit-long wall with the correct pattern on
+  the side face. (`/tmp/test_wall_tex.js`)
+- **WAD demo end-to-end** still loads E1M1 cleanly, walks through the
+  level for 150 frames without exceptions, and HUD remains clean.
+  Note: the player-start view in E1M1 is dominated by the cart's
+  designed-in emissive accent walls (`i % 4 === 0 || w.step` branch)
+  which by design render solid color regardless of texture binding.
+  To verify textures visually in real RetroArch, move the player
+  into a textured corridor (WAD walls with valid `texName` lookups).
+- **Conformance:** software batches 0-32, 33-65, 66-99 + GLES 0-99
+  all pass with no baseline drift (face-UV is opt-in per mesh).
+
+### New / changed C APIs
+
+- `nova64.scene.createDataTexture(pixelsUint8Array, w, h, opts)` →
+  integer texture handle (or 0 on failure). `opts.filter`
+  `'nearest'|'linear'`, `opts.wrap` `'repeat'|'clamp'`.
+- `nova64.scene.setMeshFaceUVs(meshId, on)` — switches per-mesh to
+  the correct box-mapping UV calc (normal-aware).
+- `engine.setMeshMaterial` (compat layer) now forwards `mat.map`
+  to `setMeshTexture` and opts the mesh into face-UVs.
+
+### Known-good baselines (no changes)
+
+- Cart 21 GLES `90acde686e82075e`
+- gles-post-color-grade `027ee4f023ff3ed9`
+- gles-overlay-orientation `c69230c1869b0db3`
+- Cart 21 software `db290147bd8f8c0b`
 
 ---
 

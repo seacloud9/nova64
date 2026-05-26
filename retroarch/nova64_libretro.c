@@ -112,6 +112,7 @@ typedef unsigned char GLubyte;
 #define GL_NEAREST 0x2600
 #define GL_LINEAR  0x2601
 #define GL_CLAMP_TO_EDGE 0x812F
+#define GL_REPEAT        0x2901
 #define GL_RGBA 0x1908
 #define GL_RGBA16F 0x881A
 #define GL_HALF_FLOAT 0x140B
@@ -250,6 +251,7 @@ struct nova64_mesh {
    float shade_contrast;    /* 1 = neutral, >1 deepens normal lighting */
    float uv_offset[2];      /* UV scroll offset (u, v) */
    float uv_scale[2];       /* UV tiling scale (u, v) */
+   bool face_uvs;           /* true: per-face UV from normal (correct box mapping); false: legacy XZ planar */
    enum nova64_mesh_blend mesh_blend;
    int parent_handle;       /* 0 = no parent (8A scene hierarchy) */
    /* Custom mesh geometry (NOVA64_MESH_CUSTOM) */
@@ -583,6 +585,7 @@ struct nova64_gles_backend {
    GLint cube_output_srgb_uniform;
    GLint cube_uv_offset_uniform;
    GLint cube_uv_scale_uniform;
+   GLint cube_face_uvs_uniform;
    /* Shadow map uniforms in cube program */
    GLint cube_shadow_map_uniform;
    GLint cube_shadow_mvp_uniform;
@@ -4620,6 +4623,7 @@ static int allocate_mesh(enum nova64_mesh_type type)
          meshes[i].uv_offset[1] = 0.0f;
          meshes[i].uv_scale[0] = 1.0f;
          meshes[i].uv_scale[1] = 1.0f;
+         meshes[i].face_uvs = false;
          meshes[i].mesh_blend = NOVA64_MESH_BLEND_OPAQUE;
          meshes[i].texture_handle = 0;
          meshes[i].normal_map_handle = 0;
@@ -27618,6 +27622,115 @@ static JSValue js_set_mesh_texture(JSContext *ctx, JSValueConst this_val, int ar
    return JS_NewBool(ctx, true);
 }
 
+/* setMeshFaceUVs(handle, on) — switches the cube vertex shader to the
+   per-face UV calc (correct box mapping) for this mesh. Default is off
+   so the legacy XZ-planar UV path stays the baseline for every existing
+   conformance cart; WAD walls (which need texture to tile along their
+   length on side faces) opt in via engine.setMeshMaterial when a real
+   texture is bound. */
+static JSValue js_set_mesh_face_uvs(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   struct nova64_mesh *mesh = mesh_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!mesh) return JS_NewBool(ctx, false);
+   mesh->face_uvs = argc > 1 ? JS_ToBool(ctx, argv[1]) : true;
+   return JS_NewBool(ctx, true);
+}
+
+/* createDataTexture(pixels, width, height [, opts]) — accepts a Uint8Array
+   or ArrayBuffer of RGBA bytes (length must be width*height*4) and uploads
+   it to a GLES texture, returning an integer handle compatible with
+   setMeshTexture(). Wraps to GL_REPEAT by default so WAD walls tile
+   correctly along their length when paired with setMeshUVScale.
+   opts.filter: 'nearest' (default) or 'linear'
+   opts.wrap: 'repeat' (default) or 'clamp' */
+static JSValue js_create_data_texture(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 3)
+      return JS_NewInt32(ctx, 0);
+
+   /* Extract pixel buffer: argv[0] may be a TypedArray (preferred) or an ArrayBuffer */
+   uint8_t *base = NULL;
+   size_t base_size = 0;
+   size_t pix_offset = 0;
+   size_t pix_length = 0;
+   JSValue underlying = JS_UNDEFINED;
+   int ta_kind = JS_GetTypedArrayType(argv[0]);
+   if (ta_kind >= 0) {
+      underlying = JS_GetTypedArrayBuffer(ctx, argv[0], &pix_offset, &pix_length, NULL);
+      if (JS_IsException(underlying))
+         return JS_NewInt32(ctx, 0);
+      base = JS_GetArrayBuffer(ctx, &base_size, underlying);
+   } else {
+      base = JS_GetArrayBuffer(ctx, &base_size, argv[0]);
+      pix_offset = 0;
+      pix_length = base_size;
+   }
+   if (!base) {
+      if (!JS_IsUndefined(underlying)) JS_FreeValue(ctx, underlying);
+      return JS_NewInt32(ctx, 0);
+   }
+
+   int w = int_from_js(ctx, argv[1], 0);
+   int h = int_from_js(ctx, argv[2], 0);
+   if (w <= 0 || h <= 0 || (size_t)(w * h * 4) > pix_length) {
+      if (!JS_IsUndefined(underlying)) JS_FreeValue(ctx, underlying);
+      return JS_NewInt32(ctx, 0);
+   }
+
+   bool linear = false;
+   bool clamp = false;
+   if (argc > 3 && JS_IsObject(argv[3])) {
+      JSValue f = JS_GetPropertyStr(ctx, argv[3], "filter");
+      if (JS_IsString(f)) {
+         const char *s = JS_ToCString(ctx, f);
+         if (s && !strcmp(s, "linear")) linear = true;
+         if (s) JS_FreeCString(ctx, s);
+      }
+      JS_FreeValue(ctx, f);
+      JSValue wr = JS_GetPropertyStr(ctx, argv[3], "wrap");
+      if (JS_IsString(wr)) {
+         const char *s = JS_ToCString(ctx, wr);
+         if (s && (!strcmp(s, "clamp") || !strcmp(s, "clamp-to-edge"))) clamp = true;
+         if (s) JS_FreeCString(ctx, s);
+      }
+      JS_FreeValue(ctx, wr);
+   }
+
+   int handle = allocate_texture();
+   if (!handle) {
+      if (!JS_IsUndefined(underlying)) JS_FreeValue(ctx, underlying);
+      return JS_NewInt32(ctx, 0);
+   }
+   struct nova64_texture *tex = texture_from_handle(handle);
+   if (!tex) {
+      if (!JS_IsUndefined(underlying)) JS_FreeValue(ctx, underlying);
+      return JS_NewInt32(ctx, 0);
+   }
+   tex->width = w;
+   tex->height = h;
+
+   if (gles.active && gles.GenTextures && gles.BindTexture && gles.TexImage2D) {
+      gles.GenTextures(1, &tex->gl_name);
+      gles.ActiveTexture(GL_TEXTURE0);
+      gles.BindTexture(GL_TEXTURE_2D, tex->gl_name);
+      GLint fmin = linear ? GL_LINEAR : GL_NEAREST;
+      GLint fmag = linear ? GL_LINEAR : GL_NEAREST;
+      GLint wrap = clamp ? GL_CLAMP_TO_EDGE : GL_REPEAT;
+      gles.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, fmin);
+      gles.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, fmag);
+      gles.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, wrap);
+      gles.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, wrap);
+      gles.TexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, (GLsizei)w, (GLsizei)h, 0,
+         GL_RGBA, GL_UNSIGNED_BYTE, base + pix_offset);
+      gles.BindTexture(GL_TEXTURE_2D, 0);
+   }
+
+   if (!JS_IsUndefined(underlying)) JS_FreeValue(ctx, underlying);
+   return JS_NewInt32(ctx, handle);
+}
+
 static JSValue js_set_mesh_normal_map(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
    (void)this_val;
@@ -29448,7 +29561,9 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, scene, "clearScene", js_clear_scene, 0);
    set_function(ctx, scene, "draw3d", js_draw3d, 1);
    set_function(ctx, scene, "createTexture", js_create_texture, 3);
+   set_function(ctx, scene, "createDataTexture", js_create_data_texture, 4);
    set_function(ctx, scene, "setMeshTexture", js_set_mesh_texture, 2);
+   set_function(ctx, scene, "setMeshFaceUVs", js_set_mesh_face_uvs, 2);
    set_function(ctx, scene, "setMeshNormalMap", js_set_mesh_normal_map, 2);
    set_function(ctx, scene, "destroyTexture", js_destroy_texture, 1);
    set_function(ctx, scene, "createRenderTarget", js_create_render_target, 2);
@@ -30055,25 +30170,44 @@ static bool install_nova64_api(JSContext *ctx)
            "createBoxGeometry:function(){return{dispose:function(){}};},"
            "createSphereGeometry:function(){return{dispose:function(){}};},"
            "createMaterial:function(type,opts){return Object.assign({type:type||'standard',dispose:function(){},copyFromFloats:function(){}},opts||{});},"
-           /* setMeshMaterial: if the material object carries a color, copy
-              it onto the mesh. Numbers pass through; {r,g,b} engine.createColor
-              objects get packed to 0xRRGGBB. Anything else leaves the mesh's
-              existing color (the one passed to createCube) intact instead of
-              corrupting it. */
+           /* setMeshMaterial: bind material's color + texture to the mesh.
+              Color: numbers pass through; {r,g,b} engine.createColor objects
+              get packed to 0xRRGGBB; anything else leaves the existing
+              createCube color intact.
+              Texture: if mat.map is a numeric texture handle (returned by
+              engine.createDataTexture, see js_create_data_texture in C),
+              wire it via setMeshTexture so WAD walls render their actual
+              textures instead of a solid color. */
            "setMeshMaterial:function(mesh,mat){"
-             "if(mesh==null||!mat||!nova64.scene.setMeshColor)return;"
+             "if(mesh==null||!mat)return;"
              "var c=mat.color;"
-             "if(typeof c==='number'){try{nova64.scene.setMeshColor(mesh,c);}catch(e){}}"
-             "else if(c&&typeof c==='object'&&typeof c.r==='number'){"
+             "if(typeof c==='number'&&nova64.scene.setMeshColor){try{nova64.scene.setMeshColor(mesh,c);}catch(e){}}"
+             "else if(c&&typeof c==='object'&&typeof c.r==='number'&&nova64.scene.setMeshColor){"
                "var r=Math.max(0,Math.min(255,(c.r||0)*255))|0;"
                "var g=Math.max(0,Math.min(255,(c.g||0)*255))|0;"
                "var b=Math.max(0,Math.min(255,(c.b||0)*255))|0;"
                "try{nova64.scene.setMeshColor(mesh,(r<<16)|(g<<8)|b);}catch(e){}"
              "}"
+             "if(typeof mat.map==='number'&&mat.map>0&&nova64.scene.setMeshTexture){"
+               "try{nova64.scene.setMeshTexture(mesh,mat.map);}catch(e){}"
+               /* Switch the mesh to per-face UV (proper box mapping) so
+                  the texture maps once across each face, not as a
+                  degenerate XZ-planar strip. Opt-in per mesh so existing
+                  conformance carts that rely on the legacy UV calc stay
+                  pixel-identical. */
+               "if(nova64.scene.setMeshFaceUVs){try{nova64.scene.setMeshFaceUVs(mesh,true);}catch(e){}}"
+             "}"
            "},"
            "cloneTexture:function(tex){return tex;},"
            "setTextureRepeat:function(){},"
-           "createDataTexture:function(){return{__nova64Stub:true,dispose:function(){}};},"
+           /* createDataTexture: forward to the real C-side js_create_data_texture
+              that uploads RGBA bytes to a GL texture. WADTextureManager calls
+              this once per unique wall/flat/sprite texture. Returns an integer
+              handle (engine.setMeshMaterial knows how to bind it) or 0 on
+              failure (in which case the wall falls back to solid color). */
+           "createDataTexture:function(pixels,w,h,opts){"
+             "try{return nova64.scene.createDataTexture(pixels,w,h,opts||{});}catch(e){return 0;}"
+           "},"
            "createCanvasTexture:function(){return{__nova64Stub:true,dispose:function(){}};},"
            "invalidateTexture:function(){},"
            "createColor:function(r,g,b){return{r:r||0,g:g||0,b:b||0,copyFromFloats:function(x,y,z){this.r=x;this.g=y;this.b=z;}};},"
@@ -32853,6 +32987,7 @@ static bool gles_create_cube_program(void)
       "uniform vec4 u_light_direction;\n"
       "uniform vec2 u_uv_offset;\n"
       "uniform vec2 u_uv_scale;\n"
+      "uniform int u_face_uvs;\n"
       "uniform mat4 u_shadow_mvp;\n"
       "uniform int u_use_instancing;\n"
       "out float v_light;\n"
@@ -32873,7 +33008,21 @@ static bool gles_create_cube_program(void)
       "  gl_Position = (u_use_instancing != 0) ? u_mvp * world_pos : u_mvp * local_pos;\n"
       "  vec4 view_pos = u_view * world_pos;\n"
       "  v_fog_depth = max(0.0, -view_pos.z);\n"
-      "  v_uv = (a_position.xz + 0.5) * u_uv_scale + u_uv_offset;\n"
+      /* UV generation: legacy path samples a_position.xz which produces
+         degenerate UVs (one constant axis) on the X- and Z-perpendicular
+         faces of a cube — fine for top/bottom but renders side-facing
+         walls as a single texture column stretched vertically. The
+         face-UV path (enabled per-mesh via setMeshFaceUVs) picks the
+         2D plane perpendicular to the local normal so all 6 faces map
+         the texture once. Opt-in to preserve every existing baseline. */
+      "  vec2 uv_planar = a_position.xz + 0.5;\n"
+      "  if (u_face_uvs != 0) {\n"
+      "    vec3 an = abs(a_normal);\n"
+      "    if (an.x > an.y && an.x > an.z) uv_planar = a_position.zy + 0.5;\n"
+      "    else if (an.y > an.z) uv_planar = a_position.xz + 0.5;\n"
+      "    else uv_planar = a_position.xy + 0.5;\n"
+      "  }\n"
+      "  v_uv = uv_planar * u_uv_scale + u_uv_offset;\n"
       "  v_shadow_coord = u_shadow_mvp * world_pos;\n"
       "}\n";
    static const char *fragment_source =
@@ -33055,6 +33204,7 @@ static bool gles_create_cube_program(void)
    gles.cube_fog_far_uniform = gles.GetUniformLocation(program, "u_fog_far");
    gles.cube_has_texture_uniform = gles.GetUniformLocation(program, "u_has_texture");
    gles.cube_texture_uniform = gles.GetUniformLocation(program, "u_texture");
+   gles.cube_face_uvs_uniform = gles.GetUniformLocation(program, "u_face_uvs");
    gles.cube_has_normal_map_uniform = gles.GetUniformLocation(program, "u_has_normal_map");
    gles.cube_normal_map_uniform = gles.GetUniformLocation(program, "u_normal_map");
    gles.cube_emissive_color_uniform = gles.GetUniformLocation(program, "u_emissive_color");
@@ -34009,6 +34159,8 @@ static void render_gles_primitive(const struct nova64_mesh *mesh, const float vi
       gles.Uniform2f(gles.cube_uv_offset_uniform, mesh->uv_offset[0], mesh->uv_offset[1]);
    if (gles.cube_uv_scale_uniform >= 0 && gles.Uniform2f)
       gles.Uniform2f(gles.cube_uv_scale_uniform, mesh->uv_scale[0], mesh->uv_scale[1]);
+   if (gles.cube_face_uvs_uniform >= 0 && gles.Uniform1i)
+      gles.Uniform1i(gles.cube_face_uvs_uniform, mesh->face_uvs ? 1 : 0);
    /* shadow map */
    {
       bool do_shadow = gles.shadow_depth_tex && mesh->receive_shadow && g_shadow_map_size > 0;
@@ -34671,6 +34823,8 @@ static void render_gles_instanced_mesh(const struct nova64_mesh *mesh, const flo
       gles.Uniform2f(gles.cube_uv_offset_uniform, mesh->uv_offset[0], mesh->uv_offset[1]);
    if (gles.cube_uv_scale_uniform >= 0 && gles.Uniform2f)
       gles.Uniform2f(gles.cube_uv_scale_uniform, mesh->uv_scale[0], mesh->uv_scale[1]);
+   if (gles.cube_face_uvs_uniform >= 0 && gles.Uniform1i)
+      gles.Uniform1i(gles.cube_face_uvs_uniform, mesh->face_uvs ? 1 : 0);
 
    bool did_blend = false;
    if (mesh->mesh_blend == NOVA64_MESH_BLEND_ADDITIVE) {

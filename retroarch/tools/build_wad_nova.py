@@ -27,11 +27,23 @@ META = REPO / "examples/wad-demo/meta.json"
 WAD_FILE = REPO / "public/assets/freedoom1.wad"
 
 ENGINE_STUB = """
-// Engine-adapter stub — WAD textures in RA fall back to solid colors per
-// surface. Returns opaque handles that the cart treats as valid texture refs
-// without crashing on null. setTextureRepeat / invalidateTexture are no-ops.
+// Engine-adapter stub for the WAD runtime. createDataTexture forwards
+// straight into the nova64 scene API so the WADTextureManager's
+// composited wall/flat/sprite RGBA buffers become real GL textures
+// (returns an integer handle that engine.setMeshMaterial in the host
+// compat layer wires up via setMeshTexture). Falls back to a sentinel
+// object if the host doesn't expose the data-texture path so the cart
+// never crashes on a null return.
 const __wad_engine_stub = {
   createDataTexture(pixels, w, h, opts) {
+    if (typeof globalThis.nova64 !== 'undefined'
+        && globalThis.nova64.scene
+        && typeof globalThis.nova64.scene.createDataTexture === 'function') {
+      try {
+        const handle = globalThis.nova64.scene.createDataTexture(pixels, w, h, opts || {});
+        if (handle > 0) return handle;
+      } catch (e) {}
+    }
     return { __wadStubTex: true, width: w, height: h, opts: opts || {} };
   },
   invalidateTexture(tex) {},
@@ -62,6 +74,21 @@ def build_wrapped_cart() -> str:
         + "\n"
         "  if (typeof globalThis.nova64 !== 'undefined' && globalThis.nova64.data && typeof wadApi === 'function') {\n"
         "    wadApi().exposeTo(globalThis.nova64.data);\n"
+        "    // Override setWallUVs for RA: the upstream implementation pokes\n"
+        "    // Three.js BufferAttribute fields that don't exist on the RA mesh\n"
+        "    // stub, so wall textures used to render at default 0..1 UVs (one\n"
+        "    // tile stretched across the whole wall). Map the same tileU/tileV\n"
+        "    // math to setMeshUVScale/Offset so the texture repeats correctly\n"
+        "    // along each wall's length and height.\n"
+        "    if (nova64.scene && nova64.scene.setMeshUVScale && nova64.scene.setMeshUVOffset) {\n"
+        "      nova64.data.setWallUVs = function(meshId, wallDoomLen, wallDoomH, texW, texH, xoff, yoff) {\n"
+        "        if (!meshId || !texW || !texH) return;\n"
+        "        var tileU = wallDoomLen / texW, tileV = wallDoomH / texH;\n"
+        "        var ofsU = (xoff || 0) / texW, ofsV = (yoff || 0) / texH;\n"
+        "        try { nova64.scene.setMeshUVScale(meshId, tileU, tileV); } catch(e) {}\n"
+        "        try { nova64.scene.setMeshUVOffset(meshId, ofsU, ofsV); } catch(e) {}\n"
+        "      };\n"
+        "    }\n"
         "  }\n"
         "  // Opt into per-frame overlay clear so menu pixels don't linger into the playing state\n"
         "  // (Three.js canvas autoclears in web; the RA 2D overlay buffer otherwise persists).\n"

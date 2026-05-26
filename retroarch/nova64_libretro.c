@@ -29330,7 +29330,10 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, draw, "pushClip", js_push_clip, 0);
    set_function(ctx, draw, "popClip", js_pop_clip, 0);
    set_function(ctx, draw, "setCamera2D", js_set_camera2d, 4);
+   /* setCamera is the short-name alias web carts (wizardry-3d, etc.) use. */
+   set_function(ctx, draw, "setCamera", js_set_camera2d, 4);
    set_function(ctx, draw, "clearCamera2D", js_clear_camera2d, 0);
+   set_function(ctx, draw, "clearCamera", js_clear_camera2d, 0);
    set_function(ctx, draw, "getCamera2D", js_get_camera2d, 0);
    set_function(ctx, draw, "pushCamera2D", js_push_camera2d, 0);
    set_function(ctx, draw, "popCamera2D", js_pop_camera2d, 0);
@@ -29888,10 +29891,22 @@ static bool install_nova64_api(JSContext *ctx)
          "(function(){function base(t){var n={_type:t,x:0,y:0,scaleX:1,scaleY:1,rotation:0,alpha:1,visible:true,blendMode:'source-over',children:[]};"
            "n.tweenTo=function(props,dur,opts){var tw={play:function(){if(props)for(var k in props)n[k]=props[k];return tw;},pause:function(){return tw;},stop:function(){return tw;},tick:function(){return tw;}};tw.play();return tw;};n.killTweens=function(){};return n;}"
            "function addChild(p,c){if(p&&p.children)p.children.push(c);return c;}"
-           "function ctx(){var c={fillStyle:'#fff',strokeStyle:'#fff',lineWidth:1,globalAlpha:1,globalCompositeOperation:'source-over'};"
-             "['save','restore','translate','rotate','scale','beginPath','closePath','moveTo','lineTo','arc','fill','stroke','clip','quadraticCurveTo','bezierCurveTo'].forEach(function(n){c[n]=function(){};});"
+           "function ctx(){var c={fillStyle:'#fff',strokeStyle:'#fff',lineWidth:1,globalAlpha:1,globalCompositeOperation:'source-over',shadowColor:'transparent',shadowBlur:0,shadowOffsetX:0,shadowOffsetY:0,font:'',textAlign:'left',textBaseline:'alphabetic'};"
+             /* Methods that are pure no-ops for the stage stub (no real ctx
+                under us). roundRect / ellipse / arcTo / etc. are listed too
+                so carts that call them inside graphics nodes don't crash. */
+             "['save','restore','translate','rotate','scale','transform','setTransform','resetTransform','beginPath','closePath','moveTo','lineTo','arc','arcTo','rect','roundRect','ellipse','fill','stroke','clip','quadraticCurveTo','bezierCurveTo','setLineDash','getLineDash','drawImage','putImageData'].forEach(function(n){c[n]=function(){};});"
+             /* Gradient/pattern factories return objects with addColorStop so
+                cart code that chains color stops doesn't crash. The eventual
+                fillStyle ends up reduced to a single color when we draw. */
+             "var grad=function(){var g={_stops:[],addColorStop:function(t,col){this._stops.push([t,col]);return this;}};return g;};"
+             "c.createLinearGradient=grad;c.createRadialGradient=grad;c.createConicGradient=grad;c.createPattern=function(){return null;};"
+             "c.getImageData=function(x,y,w,h){return{data:new Uint8ClampedArray((w||1)*(h||1)*4),width:w||1,height:h||1};};"
+             "c.createImageData=function(w,h){return{data:new Uint8ClampedArray((w||1)*(h||1)*4),width:w||1,height:h||1};};"
+             "c.isPointInPath=function(){return false;};c.isPointInStroke=function(){return false;};"
              "c.fillRect=function(x,y,w,h){if(typeof rectfill==='function')rectfill(x,y,w,h,0xffffffff);};"
              "c.strokeRect=function(x,y,w,h){if(typeof rect==='function')rect(x,y,w,h,0xffffffff);};"
+             "c.clearRect=function(x,y,w,h){if(typeof rectfill==='function')rectfill(x,y,w,h,0);};"
              "c.fillText=function(t,x,y){if(typeof print==='function')print(String(t),x,y,0xffffffff);};"
              "c.strokeText=function(t,x,y){};c.measureText=function(t){return{width:String(t).length*6};};return c;}"
            "function render(n,c){if(!n||n.visible===false)return;if(n._type==='graphics'&&typeof n.draw==='function')n.draw(c,n);"
@@ -30014,7 +30029,14 @@ static bool install_nova64_api(JSContext *ctx)
 
          /* Browser DOM stubs for carts that register optional event handlers */
          "if(typeof globalThis.document==='undefined'){"
-           "var __canvasCtx={save:function(){},restore:function(){},translate:function(){},rotate:function(){},scale:function(){},beginPath:function(){},closePath:function(){},moveTo:function(){},lineTo:function(){},arc:function(){},fill:function(){},stroke:function(){},fillRect:function(){},strokeRect:function(){},clearRect:function(){},drawImage:function(){},fillText:function(){},strokeText:function(){},measureText:function(t){return{width:String(t).length*6};}};"
+           /* Canvas 2D ctx stub — minimal no-op surface so web carts that draw
+              to an offscreen <canvas> for textures or HUD do not crash. The
+              gradient/pattern helpers return objects with addColorStop and
+              friends so cart code chained off them keeps running; the actual
+              pixels do not appear unless the cart later uses the canvas via
+              an upload path (asset texture, drawImage), which is rare. */
+           "var __nopGradient={addColorStop:function(){}};"
+           "var __canvasCtx={save:function(){},restore:function(){},translate:function(){},rotate:function(){},scale:function(){},transform:function(){},setTransform:function(){},resetTransform:function(){},beginPath:function(){},closePath:function(){},moveTo:function(){},lineTo:function(){},arc:function(){},arcTo:function(){},rect:function(){},roundRect:function(){},ellipse:function(){},quadraticCurveTo:function(){},bezierCurveTo:function(){},fill:function(){},stroke:function(){},clip:function(){},fillRect:function(){},strokeRect:function(){},clearRect:function(){},drawImage:function(){},fillText:function(){},strokeText:function(){},measureText:function(t){return{width:String(t).length*6};},createLinearGradient:function(){return __nopGradient;},createRadialGradient:function(){return __nopGradient;},createConicGradient:function(){return __nopGradient;},createPattern:function(){return null;},getImageData:function(w,h){return{data:new Uint8ClampedArray((w||1)*(h||1)*4),width:w||1,height:h||1};},putImageData:function(){},createImageData:function(w,h){return{data:new Uint8ClampedArray((w||1)*(h||1)*4),width:w||1,height:h||1};},setLineDash:function(){},getLineDash:function(){return[];},isPointInPath:function(){return false;},isPointInStroke:function(){return false;}};"
            "globalThis.document={pointerLockElement:null,body:{requestPointerLock:function(){document.pointerLockElement=document.body;return Promise.resolve();},appendChild:function(){},removeChild:function(){}},"
              "addEventListener:function(){},removeEventListener:function(){},createElement:function(tag){return{tagName:String(tag||'').toUpperCase(),style:{},width:640,height:360,getContext:function(){return __canvasCtx;},addEventListener:function(){},removeEventListener:function(){},click:function(){},toDataURL:function(){return'';}};},"
              "getElementById:function(){return null;},querySelector:function(){return null;}};"
@@ -31992,10 +32014,54 @@ static bool install_nova64_api(JSContext *ctx)
            "if(!d.drawRect){d.drawRect=function(x,y,w,h,color){"
              "if(typeof rectfill==='function')rectfill(x,y,w,h,color);"
            "};globalThis.drawRect=d.drawRect;}"
+           /* withBlend passes a Canvas 2D-ish ctx adapter so carts that draw
+              gradients/fills inside the callback (blend-aurora, stage-cards)
+              don't crash on ctx.createLinearGradient / ctx.fillRect. Color
+              values can be either ints (rgba8 packed) or CSS strings like
+              "hsla(..)" or "#rgb"; the adapter parses both. Gradients reduce
+              to their dominant color stop. */
+           "if(!d._cssToRGBA){d._cssToRGBA=function(s){"
+             "if(s==null)return 0xffffffff;"
+             "if(typeof s==='number')return s>>>0;"
+             "var m;"
+             "m=/^#([0-9a-f]{3})$/i.exec(s);"
+             "if(m){var x=m[1];return rgba8(parseInt(x[0]+x[0],16),parseInt(x[1]+x[1],16),parseInt(x[2]+x[2],16),255);}"
+             "m=/^#([0-9a-f]{6})$/i.exec(s);"
+             "if(m){var y=m[1];return rgba8(parseInt(y.slice(0,2),16),parseInt(y.slice(2,4),16),parseInt(y.slice(4,6),16),255);}"
+             "m=/^rgba?\\(\\s*([\\d.]+)[\\s,]+([\\d.]+)[\\s,]+([\\d.]+)(?:[\\s,]+([\\d.]+))?\\s*\\)$/i.exec(s);"
+             "if(m)return rgba8(Math.round(+m[1]),Math.round(+m[2]),Math.round(+m[3]),Math.round((m[4]==null?1:+m[4])*255));"
+             "m=/^hsla?\\(\\s*([\\d.]+)[\\s,]+([\\d.]+)%[\\s,]+([\\d.]+)%(?:[\\s,]+([\\d.]+))?\\s*\\)$/i.exec(s);"
+             "if(m){var h=+m[1]/360,sat=+m[2]/100,l=+m[3]/100,a=m[4]==null?1:+m[4];"
+               "function hueRGB(p,q,t){if(t<0)t+=1;if(t>1)t-=1;if(t<1/6)return p+(q-p)*6*t;if(t<1/2)return q;if(t<2/3)return p+(q-p)*(2/3-t)*6;return p;}"
+               "var q=l<0.5?l*(1+sat):l+sat-l*sat,p=2*l-q;"
+               "return rgba8(Math.round(hueRGB(p,q,h+1/3)*255),Math.round(hueRGB(p,q,h)*255),Math.round(hueRGB(p,q,h-1/3)*255),Math.round(a*255));"
+             "}"
+             "return 0xffffffff;"
+           "};}"
+           "if(!d._makeBlendCtx){d._makeBlendCtx=function(){"
+             "var c={fillStyle:'#fff',strokeStyle:'#fff',globalAlpha:1,lineWidth:1,font:'',"
+               "createLinearGradient:function(x0,y0,x1,y1){var g={_stops:[],addColorStop:function(t,col){this._stops.push([t,col]);return this;},_picked:function(){if(!this._stops.length)return 0xffffffff;var mid=this._stops[Math.floor(this._stops.length/2)];return d._cssToRGBA(mid[1]);}};return g;},"
+               "createRadialGradient:function(){return this.createLinearGradient();},"
+               "createConicGradient:function(){return this.createLinearGradient();},"
+               "save:function(){},restore:function(){},translate:function(){},rotate:function(){},scale:function(){},beginPath:function(){},closePath:function(){},moveTo:function(){},lineTo:function(){},arc:function(){},rect:function(){},roundRect:function(){},fill:function(){},stroke:function(){},clip:function(){},setTransform:function(){},setLineDash:function(){},measureText:function(t){return{width:String(t).length*6};},"
+               "fillRect:function(x,y,w,h){"
+                 "var s=this.fillStyle;var col=(s&&s._picked)?s._picked():d._cssToRGBA(s);"
+                 "if(typeof rectfill==='function')rectfill(x|0,y|0,(x+w)|0,(y+h)|0,col);"
+               "},"
+               "strokeRect:function(x,y,w,h){"
+                 "var col=d._cssToRGBA(this.strokeStyle);"
+                 "if(typeof rect==='function')rect(x|0,y|0,(x+w)|0,(y+h)|0,col,false);"
+               "},"
+               "clearRect:function(x,y,w,h){if(typeof rectfill==='function')rectfill(x|0,y|0,(x+w)|0,(y+h)|0,rgba8(0,0,0,0));},"
+               "fillText:function(t,x,y){var col=d._cssToRGBA(this.fillStyle);if(typeof print==='function')print(String(t),x|0,y|0,col);},"
+               "strokeText:function(t,x,y){var col=d._cssToRGBA(this.strokeStyle);if(typeof print==='function')print(String(t),x|0,y|0,col);},"
+               "drawImage:function(){}"
+             "};return c;"
+           "};}"
            "if(!d.withBlend){d.withBlend=function(mode,cb){"
              "var prev=(typeof getBlend2D==='function')?getBlend2D():null;"
              "try{if(typeof setBlend2D==='function')setBlend2D(mode);"
-                 "if(typeof cb==='function')cb(d);}"
+                 "if(typeof cb==='function')cb(d._makeBlendCtx());}"
              "finally{if(prev!=null&&typeof setBlend2D==='function')setBlend2D(prev);}"
            "};globalThis.withBlend=d.withBlend;}"
          "})();"
@@ -32183,6 +32249,30 @@ static bool install_nova64_api(JSContext *ctx)
                "var out=[];if(this.items)for(var i=0;i<this.items.length;i++)"
                  "if(cb.call(thisArg||this,this.items[i],i,this.items))out.push(this.items[i]);"
                "return out;"
+             "};"
+             /* kill(item) — splice item out of items[] and decrement active.
+                Web pool API expected by wizardry-3d and other carts. */
+             "p.kill=function(item){"
+               "if(!this.items)return false;"
+               "var i=this.items.indexOf(item);"
+               "if(i<0)return false;"
+               "this.items.splice(i,1);"
+               "if(this.active>0)this.active=this.active-1;"
+               "return true;"
+             "};"
+             /* spawn(init?) — append a new item (optionally seeded via init
+                callback) and bump active. Returns the new item. */
+             "p.spawn=function(init){"
+               "if(!this.items)this.items=[];"
+               "var it=typeof init==='function'?init():(init||{});"
+               "this.items.push(it);"
+               "this.active=(this.active||0)+1;"
+               "return it;"
+             "};"
+             /* clear() — drop everything, reset active. */
+             "p.clear=function(){"
+               "if(this.items)this.items.length=0;"
+               "this.active=0;"
              "};"
              "Object.defineProperty(p,'length',{get:function(){return this.items?this.items.length:0;}});"
              "return p;"

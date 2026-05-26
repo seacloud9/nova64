@@ -65,7 +65,7 @@ diverges when both a color AND a texture are passed).
 ### Commit
 
 ```
-8e9c7cf fix(retroarch): wad-demo teal wash + sprite/cube visibility
+c19e14d fix(retroarch): wad-demo teal wash + sprite/cube visibility
 ```
 
 ---

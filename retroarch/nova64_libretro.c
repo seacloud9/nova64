@@ -30182,8 +30182,10 @@ static bool install_nova64_api(JSContext *ctx)
              "nova64.light.setFog=function(c,n,f){try{if(typeof setSkyColor==='function')setSkyColor(c,c);}catch(e){}return _rawFog.call(nova64.light,c,n,f);};"
              "nova64.light._fogWrap=true;"
            "}"
-           /* Default sky in case the cart never set one. */
-           "if(typeof setSkyColor==='function'){try{setSkyColor(0x73afc9ff,0x73afc9ff);}catch(e){}}"
+           /* Default sky gradient: deeper blue overhead, paler at the
+              horizon so the atmosphere reads with depth even if the
+              cart only sets a single sky colour. */
+           "if(typeof setSkyColor==='function'){try{setSkyColor(0x5a9fcaff,0xa8d8e8ff);}catch(e){}}"
          "};"
          /* Voxel stub renders a dense surface, deterministic trees, and
             per-entity meshes. Not the full chunk/biome/lighting story of
@@ -30194,24 +30196,83 @@ static bool install_nova64_api(JSContext *ctx)
            "var cfg={renderDistance:3,seed:1337,dayTime:0.12,textures:true};"
            "var blocks={},entities=[],eid=1;"
            "var surfaceMesh=0,surfaceCap=0,trunkMesh=0,trunkCap=0,leavesMesh=0,leavesCap=0;"
+           "var sunMesh=0,grassTuftMesh=0,grassTuftCap=0;"
+           "var grassTex=0,woodTex=0,leafTex=0,texturesBuilt=false;"
            "var lastCenter=null,surfaceRadius=22;"
            "var BIOMES=['Frozen Tundra','Taiga','Desert','Jungle','Savanna','Forest','Plains','Snowy Hills'];"
-           /* 0xRRGGBB hex — promoted to RGBA by use24BitColors flag. */
-           "var GRASS=[0xd6eafc,0x64b48c,0xffdd88,0x50dc50,0xdcb464,0x64c864,0x55cc33,0xdce6ff];"
+           /* 0xRRGGBB hex — promoted to RGBA by use24BitColors flag.
+              Brightened slightly because the texture multiply darkens
+              the final pixel (texel.rgb * draw_color.rgb in the cube
+              shader). */
+           "var GRASS=[0xe0f0ff,0x78c896,0xffe19a,0x60e060,0xe8c878,0x78d878,0x6ae040,0xe8f0ff];"
            "function key(x,y,z){return(x|0)+','+(y|0)+','+(z|0);}"
            "function hash2(x,z){var s=Math.sin(x*12.9898+z*78.233+(cfg.seed||0))*43758.5453;return s-Math.floor(s);}"
+           "function rand(x,z,salt){var s=Math.sin(x*12.9898+z*78.233+(salt||0)+(cfg.seed||0))*43758.5453;return s-Math.floor(s);}"
+           /* Procedural texture builders — each tile is 16x16 RGBA bytes
+              uploaded via createDataTexture. The cube shader multiplies
+              texel * instance color, so the texture is mostly bright
+              (avg ~0.85) with darker speckles for detail. The biome /
+              block tint comes from setInstanceColor. */
+           "function pix(r,g,b){return((r&0xff)<<24)|((g&0xff)<<16)|((b&0xff)<<8)|0xff;}"
+           "function buildTex(W,H,fn){"
+             "if(!nova64.scene||!nova64.scene.createDataTexture)return 0;"
+             "var p=new Uint8Array(W*H*4);"
+             "for(var y=0;y<H;y++)for(var x=0;x<W;x++){"
+               "var v=fn(x,y,W,H);var i=(y*W+x)*4;"
+               "p[i]=(v>>>24)&0xff;p[i+1]=(v>>>16)&0xff;p[i+2]=(v>>>8)&0xff;p[i+3]=v&0xff;"
+             "}"
+             "try{return nova64.scene.createDataTexture(p,W,H,{filter:'nearest',wrap:'repeat'});}catch(e){return 0;}"
+           "}"
+           "function buildTextures(){"
+             "if(texturesBuilt)return;texturesBuilt=true;"
+             /* Grass: bright with small darker blade speckles + edge
+                shading so each tile has visible structure when tiled. */
+             "grassTex=buildTex(16,16,function(x,y){"
+               "var n=rand(x*1.3,y*1.7,11);"
+               "var v=230+(n-0.5)*30;"
+               "if(n<0.18)v=170;"
+               "if(y===0)v-=8;"
+               "if(v<60)v=60;if(v>255)v=255;"
+               "return pix(v|0,v|0,v|0);"
+             "});"
+             /* Wood: vertical bark bands with grain noise. */
+             "woodTex=buildTex(16,16,function(x,y){"
+               "var col=x%5;var v=220;"
+               "if(col===0||col===3)v=170;"
+               "if(col===2)v=235;"
+               "v+=(rand(x*2,y*3,7)-0.5)*22;"
+               "if(v<60)v=60;if(v>255)v=255;"
+               "return pix(v|0,v|0,v|0);"
+             "});"
+             /* Leaves: clumpy darker / lighter pattern. */
+             "leafTex=buildTex(16,16,function(x,y){"
+               "var n=rand(x*2.1,y*2.3,23);"
+               "var v=220+(n-0.5)*60;"
+               "if(n<0.12)v=130;"
+               "if(v<60)v=60;if(v>255)v=255;"
+               "return pix(v|0,v|0,v|0);"
+             "});"
+           "}"
            "function smooth(x,z){var ix=Math.floor(x),iz=Math.floor(z),fx=x-ix,fz=z-iz;"
              "var a=hash2(ix,iz),b=hash2(ix+1,iz),c=hash2(ix,iz+1),d=hash2(ix+1,iz+1);"
              "var ux=fx*fx*(3-2*fx),uz=fz*fz*(3-2*fz);"
              "return a*(1-ux)*(1-uz)+b*ux*(1-uz)+c*(1-ux)*uz+d*ux*uz;}"
            /* Multi-octave with decorrelated phase offsets so adjacent
-              cells produce distinct heights (correlated octaves were
-              flattening the visible area to a near-uniform plane). */
+              cells produce distinct heights. A low-freq mountain
+              octave with a soft mask adds visible peaks past the play
+              area; the mask suppresses the contribution near the
+              origin so the spawn stays flat-ish and the player
+              doesn't materialise on a mountainside. */
+           "function mountainMask(x,z){"
+             "var m=smooth(x*0.013+101,z*0.013+131);"
+             "var d2=x*x+z*z;var spawnFade=Math.max(0,1-1600/(d2+1600));"
+             "var t=Math.max(0,m*2-1);return t*t*spawnFade;}"
            "function height(x,z){"
-             "var h=smooth(x*0.06+7,z*0.06+13)*14"
-                  "+smooth(x*0.18+91,z*0.18+57)*5"
-                  "+smooth(x*0.45+33,z*0.45+71)*1.8;"
-             "return Math.floor(16+h);}"
+             "var h=smooth(x*0.06+7,z*0.06+13)*10"
+                  "+smooth(x*0.18+91,z*0.18+57)*4"
+                  "+smooth(x*0.45+33,z*0.45+71)*1.5"
+                  "+mountainMask(x,z)*16;"
+             "return Math.floor(18+h);}"
            "function biomeIdx(x,z){"
              /* Spawn-region bias: keep the area near origin as plains so
                 the first view (web reference shows plains) doesn't roll
@@ -30241,13 +30302,15 @@ static bool install_nova64_api(JSContext *ctx)
            "function hideInst(mesh,idx){"
              "try{nova64.scene.setInstanceTransform(mesh,idx,[0.001,0,0,0,0,0.001,0,0,0,0,0.001,0,0,-9999,0,1]);}catch(e){}"
            "}"
-           /* rebuildSurface: dense step=1 ground, deterministic tree
-              placement with trunk + 3x3x3 leaf cluster, all in three
-              separate InstancedMeshes so each material/color group can
-              be set distinctly. Cap surfaceRadius so per-mesh instance
-              count stays under 4096 (the C-side cap). */
+           /* rebuildSurface: dense step=1 ground, variable-shape trees
+              (3-6 trunk cubes, 1-2 leaf-cluster radius), grass tufts on
+              top of grass blocks, all in separate InstancedMeshes so
+              textures + tints can be set per group. Cap surfaceRadius
+              so per-mesh instance count stays under 4096 (the C-side
+              cap). */
            "function rebuildSurface(cx,cz,force){"
              "if(!nova64.scene||!nova64.scene.createInstancedMesh||!nova64.scene.setInstanceTransform)return;"
+             "buildTextures();"
              "var r=surfaceRadius,w=r*2+1,count=w*w;"
              "if(count>4000){r=Math.floor((Math.sqrt(4000)-1)/2);w=r*2+1;count=w*w;}"
              "if(!force&&lastCenter&&Math.abs(cx-lastCenter[0])<1&&Math.abs(cz-lastCenter[1])<1&&surfaceMesh)return;"
@@ -30256,61 +30319,120 @@ static bool install_nova64_api(JSContext *ctx)
              "if(!surfaceMesh||surfaceCap<count){"
                "if(surfaceMesh&&nova64.scene.destroyMesh){try{nova64.scene.destroyMesh(surfaceMesh);}catch(e){}}"
                "try{surfaceMesh=nova64.scene.createInstancedMesh('cube',count);surfaceCap=count;}catch(e){surfaceMesh=0;return;}"
+               "if(grassTex&&nova64.scene.setMeshTexture){try{nova64.scene.setMeshTexture(surfaceMesh,grassTex);}catch(e){}}"
+               "if(nova64.scene.setMeshFaceUVs){try{nova64.scene.setMeshFaceUVs(surfaceMesh,true);}catch(e){}}"
              "}"
-             /* Scan for tree positions. Probability + spacing tuned so a
-                plains vista looks like the web reference (sparse trees
-                with clear ground between them). The 5-cell spawn clear
-                radius keeps the camera from spawning inside a canopy
-                (where leaf undersides shade the sky and make the view
-                look black). */
-             "var trees=[];var maxTrees=20;"
-             "for(var jz=0;jz<w&&trees.length<maxTrees;jz+=4){"
-               "for(var jx=0;jx<w&&trees.length<maxTrees;jx+=4){"
+             /* Scan for tree positions with per-tree size/leaf-radius
+                from a deterministic hash so the forest looks varied. */
+             "var trees=[];var maxTrees=18;"
+             "for(var jz=0;jz<w&&trees.length<maxTrees;jz+=5){"
+               "for(var jx=0;jx<w&&trees.length<maxTrees;jx+=5){"
                  "var bx=ccx-r+jx,bz=ccz-r+jz;var bi=biomeIdx(bx,bz);"
                  "if(bi===2)continue;"
-                 "var dx=bx-cx,dz=bz-cz;if(dx*dx+dz*dz<25)continue;"
-                 "if(hash2(bx*7.13+0.5,bz*13.7+0.5)<0.18){trees.push([bx,height(bx,bz)+1,bz,bi]);}"
+                 "var dx=bx-cx,dz=bz-cz;if(dx*dx+dz*dz<36)continue;"
+                 "if(hash2(bx*7.13+0.5,bz*13.7+0.5)<0.14){"
+                   "var th=3+Math.floor(rand(bx,bz,17)*4);"  /* trunk 3-6 */
+                   "var lr=rand(bx,bz,29)<0.4?1:2;"  /* leaf radius 1 or 2 */
+                   "var lh=rand(bx,bz,41)<0.5?3:4;"  /* leaf cluster height 3 or 4 */
+                   "trees.push([bx,height(bx,bz)+1,bz,bi,th,lr,lh]);"
+                 "}"
                "}"
              "}"
-             "var trunkCount=Math.max(1,trees.length*4),leafCount=Math.max(1,trees.length*27);"
+             /* Compute exact trunk + leaf instance counts so caps fit
+                the varied tree shapes. */
+             "var trunkCount=0,leafCount=0;"
+             "for(var p=0;p<trees.length;p++){trunkCount+=trees[p][4];var s=trees[p][5]*2+1;leafCount+=s*s*trees[p][6];}"
+             "trunkCount=Math.max(1,trunkCount);leafCount=Math.max(1,leafCount);"
              "if(!trunkMesh||trunkCap<trunkCount){"
                "if(trunkMesh&&nova64.scene.destroyMesh){try{nova64.scene.destroyMesh(trunkMesh);}catch(e){}}"
                "try{trunkMesh=nova64.scene.createInstancedMesh('cube',trunkCount);trunkCap=trunkCount;}catch(e){trunkMesh=0;}"
+               "if(trunkMesh&&woodTex&&nova64.scene.setMeshTexture){try{nova64.scene.setMeshTexture(trunkMesh,woodTex);}catch(e){}}"
+               "if(trunkMesh&&nova64.scene.setMeshFaceUVs){try{nova64.scene.setMeshFaceUVs(trunkMesh,true);}catch(e){}}"
              "}"
              "if(!leavesMesh||leavesCap<leafCount){"
                "if(leavesMesh&&nova64.scene.destroyMesh){try{nova64.scene.destroyMesh(leavesMesh);}catch(e){}}"
                "try{leavesMesh=nova64.scene.createInstancedMesh('cube',leafCount);leavesCap=leafCount;}catch(e){leavesMesh=0;}"
+               "if(leavesMesh&&leafTex&&nova64.scene.setMeshTexture){try{nova64.scene.setMeshTexture(leavesMesh,leafTex);}catch(e){}}"
+               "if(leavesMesh&&nova64.scene.setMeshFaceUVs){try{nova64.scene.setMeshFaceUVs(leavesMesh,true);}catch(e){}}"
              "}"
-             /* Fill surface */
-             "var idx=0;"
+             /* Fill surface. Grass tufts on top of grass cells get
+                their own slot list for a final pass. */
+             "var idx=0;var tufts=[];var maxTufts=180;"
              "for(var jz2=0;jz2<w;jz2++){"
                "for(var jx2=0;jx2<w;jx2++){"
                  "if(idx>=surfaceCap)break;"
                  "var bx2=ccx-r+jx2,bz2=ccz-r+jz2;"
                  "var h2=height(bx2,bz2),bi2=biomeIdx(bx2,bz2);"
                  "setInst(surfaceMesh,idx,bx2+0.5,h2+0.5,bz2+0.5,1,1,1,biomeColor(bi2,h2));"
+                 "if(bi2!==2&&h2<=30&&tufts.length<maxTufts&&rand(bx2,bz2,53)<0.06){"
+                   "tufts.push([bx2,h2+1,bz2,bi2]);"
+                 "}"
                  "idx++;"
                "}"
              "}"
              "for(;idx<surfaceCap;idx++)hideInst(surfaceMesh,idx);"
-             /* Fill trees */
+             /* Fill trees with per-tree shape. Trunk color varies
+                slightly per tree for visual variety. */
              "var tIdx=0,lIdx=0;"
              "for(var ti=0;ti<trees.length;ti++){"
                "var tx=trees[ti][0],ty=trees[ti][1],tz=trees[ti][2];"
-               "for(var th=0;th<4;th++){"
-                 "if(trunkMesh&&tIdx<trunkCap)setInst(trunkMesh,tIdx,tx+0.5,ty+th+0.5,tz+0.5,1,1,1,0x774422);"
+               "var th2=trees[ti][4],lr=trees[ti][5],lh=trees[ti][6];"
+               "var trunkCol=rand(tx,tz,73)<0.5?0x6b4220:0x553218;"
+               "for(var th3=0;th3<th2;th3++){"
+                 "if(trunkMesh&&tIdx<trunkCap)setInst(trunkMesh,tIdx,tx+0.5,ty+th3+0.5,tz+0.5,1,1,1,trunkCol);"
                  "tIdx++;"
                "}"
-               "for(var lx=-1;lx<=1;lx++)for(var ly=3;ly<=5;ly++)for(var lz=-1;lz<=1;lz++){"
-                 /* Very bright leaf green so canopy undersides (which
-                    get the darkest face shading) still read as green
-                    rather than near-black against the sky. */
-                 "if(leavesMesh&&lIdx<leafCount)setInst(leavesMesh,lIdx,tx+lx+0.5,ty+ly+0.5,tz+lz+0.5,1,1,1,0x7adf6a);"
+               /* Leaf tint per-tree: vary green slightly. */
+               "var leafCol=rand(tx,tz,89)<0.33?0x9aef7a:(rand(tx,tz,89)<0.66?0x7adf6a:0x6acf5a);"
+               "var topY=th2;"
+               "for(var lx=-lr;lx<=lr;lx++)for(var ly=topY;ly<topY+lh;ly++)for(var lz=-lr;lz<=lr;lz++){"
+                 /* Trim the corners on the largest leaf radius so the
+                    canopy reads more rounded than blocky. */
+                 "if(lr===2&&Math.abs(lx)===2&&Math.abs(lz)===2&&(ly===topY||ly===topY+lh-1))continue;"
+                 "if(leavesMesh&&lIdx<leavesCap)setInst(leavesMesh,lIdx,tx+lx+0.5,ty+ly+0.5,tz+lz+0.5,1,1,1,leafCol);"
                  "lIdx++;"
                "}"
              "}"
              "if(trunkMesh)for(var ti2=tIdx;ti2<trunkCap;ti2++)hideInst(trunkMesh,ti2);"
-             "if(leavesMesh)for(var li2=lIdx;li2<leafCount;li2++)hideInst(leavesMesh,li2);"
+             "if(leavesMesh)for(var li2=lIdx;li2<leavesCap;li2++)hideInst(leavesMesh,li2);"
+             /* Grass tufts: small thin cubes sitting on top of grass
+                cells, tinted darker green than the surface. */
+             "if(!grassTuftMesh||grassTuftCap<maxTufts){"
+               "if(grassTuftMesh&&nova64.scene.destroyMesh){try{nova64.scene.destroyMesh(grassTuftMesh);}catch(e){}}"
+               "try{grassTuftMesh=nova64.scene.createInstancedMesh('cube',maxTufts);grassTuftCap=maxTufts;}catch(e){grassTuftMesh=0;}"
+             "}"
+             "if(grassTuftMesh){"
+               "var gi=0;"
+               "for(var u=0;u<tufts.length;u++){"
+                 "var t=tufts[u];"
+                 "var ox=(rand(t[0],t[2],61)-0.5)*0.6,oz=(rand(t[0],t[2],67)-0.5)*0.6;"
+                 "setInst(grassTuftMesh,gi,t[0]+0.5+ox,t[1]+0.15,t[2]+0.5+oz,0.10,0.24,0.10,0x3a9b2a);"
+                 "gi++;"
+               "}"
+               "for(;gi<grassTuftCap;gi++)hideInst(grassTuftMesh,gi);"
+             "}"
+             /* Sun: a single large bright cube positioned high in the
+                sky relative to the camera so it stays "up there"
+                regardless of where the player roams. Emissive so the
+                lighting model doesn't dim it. Positioned high enough
+                (y=140) and far enough behind the player's look direction
+                that it sits in the sky-above-horizon band, not in the
+                HUD overlay area. */
+             "if(!sunMesh){"
+               "try{sunMesh=nova64.scene.createCube(0xfff4baff);}catch(e){sunMesh=0;}"
+               "if(sunMesh){"
+                 "if(nova64.scene.setMeshEmissive){try{nova64.scene.setMeshEmissive(sunMesh,0xffe066,1.5);}catch(e){}}"
+                 "if(nova64.scene.setScale){try{nova64.scene.setScale(sunMesh,8,8,8);}catch(e){}}"
+                 "if(nova64.scene.setCastShadow){try{nova64.scene.setCastShadow(sunMesh,false);}catch(e){}}"
+               "}"
+             "}"
+             "if(sunMesh&&nova64.scene.setPosition){"
+               /* Place sun within the camera's vertical FOV (default 60°
+                  → ~36° vertical at 16:9) so it actually appears in
+                  frame. Forward-left so it doesn't sit behind the
+                  crosshair. */
+               "try{nova64.scene.setPosition(sunMesh,cx-40,55,cz-100);}catch(e){}"
+             "}"
            "}"
            "function spawnVoxelEntity(type,pos,opts){"
              "var e={id:eid++,type:type||'mob',x:pos[0],y:pos[1],z:pos[2],vx:0,vy:0,vz:0,onGround:false,data:{},opts:opts||{},mesh:0};"

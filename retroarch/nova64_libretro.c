@@ -30158,81 +30158,204 @@ static bool install_nova64_api(JSContext *ctx)
              "createHologramMaterial:function(o){return createTSLMaterial('hologram',o);},createShockwaveMaterial:function(o){return createTSLMaterial('shockwave',o);}};"
          "})();"
 
-         /* nova64.voxel — deterministic gameplay-compatible fallback surface.
-            Carts that use voxel (minecraft-demo, voxel-terrain, etc.) are
-            Three-style world builders that expect the canvas to autoclear
-            each frame. Enable nova64.draw.autoClear here so the 2D HUD
-            buffer doesn't accumulate stale pixels (e.g. minecraft-demo
-            staying stuck on "GENERATING WORLD" text after the game starts). */
-         "if(typeof globalThis.nova64!=='undefined'&&nova64.draw&&nova64.draw.autoClear){try{nova64.draw.autoClear(true);}catch(e){}}"
-         /* Voxel stub now actually renders surface blocks via an
-            InstancedMesh built around the player. Not the full
-            chunk/biome/lighting story of runtime/api-voxel.js (which
-            needs Three.js), but enough that minecraft-demo / voxel-*
-            carts show terrain instead of an empty black void. */
+         /* Voxel-cart compat hooks live on globalThis._voxelCompatInit so
+            non-voxel carts (06-cube, sprite tests, etc.) stay bit-identical
+            with the global rendering state. The voxel module's
+            configureVoxelWorld / forceLoadVoxelChunks call it lazily. */
+         "globalThis._voxelCompatInit=function(){"
+           "if(globalThis._voxelCompatDone)return;"
+           "globalThis._voxelCompatDone=true;"
+           /* 3D world builders expect canvas autoclear. */
+           "if(nova64.draw&&nova64.draw.autoClear){try{nova64.draw.autoClear(true);}catch(e){}}"
+           /* Voxel carts use Three-style 0xRRGGBB hex throughout (block
+              colors, mob colors, sky color). */
+           "if(nova64.post&&nova64.post.use24BitColors){try{nova64.post.use24BitColors(true);}catch(e){}}"
+           /* Map globalThis.setClearColor → setSkyColor so the cart's
+              setClearColor(skyColor) call applies the gradient sky. */
+           "if(typeof globalThis.setClearColor!=='function'){"
+             "globalThis.setClearColor=function(c){try{if(typeof setSkyColor==='function')setSkyColor(c,c);}catch(e){}};"
+           "}"
+           /* Wrap nova64.light.setFog so the fog color doubles as the
+              sky bg — voxel carts always pair them. */
+           "if(nova64.light&&nova64.light.setFog&&!nova64.light._fogWrap){"
+             "var _rawFog=nova64.light.setFog;"
+             "nova64.light.setFog=function(c,n,f){try{if(typeof setSkyColor==='function')setSkyColor(c,c);}catch(e){}return _rawFog.call(nova64.light,c,n,f);};"
+             "nova64.light._fogWrap=true;"
+           "}"
+           /* Default sky in case the cart never set one. */
+           "if(typeof setSkyColor==='function'){try{setSkyColor(0x73afc9ff,0x73afc9ff);}catch(e){}}"
+         "};"
+         /* Voxel stub renders a dense surface, deterministic trees, and
+            per-entity meshes. Not the full chunk/biome/lighting story of
+            runtime/api-voxel.js (which needs Three.js), but enough that
+            minecraft-demo / voxel-* carts visually approach the web
+            reference (solid voxel terrain + tree canopy + mob cubes). */
          "nova64.voxel=(function(){"
-           "var cfg={renderDistance:3,seed:1337},blocks={},entities=[],eid=1;"
-           "var surfaceMesh=0,surfaceCap=0,lastCenter=null,surfaceRadius=24;"
+           "var cfg={renderDistance:3,seed:1337,dayTime:0.12,textures:true};"
+           "var blocks={},entities=[],eid=1;"
+           "var surfaceMesh=0,surfaceCap=0,trunkMesh=0,trunkCap=0,leavesMesh=0,leavesCap=0;"
+           "var lastCenter=null,surfaceRadius=22;"
+           "var BIOMES=['Frozen Tundra','Taiga','Desert','Jungle','Savanna','Forest','Plains','Snowy Hills'];"
+           /* 0xRRGGBB hex — promoted to RGBA by use24BitColors flag. */
+           "var GRASS=[0xd6eafc,0x64b48c,0xffdd88,0x50dc50,0xdcb464,0x64c864,0x55cc33,0xdce6ff];"
            "function key(x,y,z){return(x|0)+','+(y|0)+','+(z|0);}"
-           "function noise2(x,z){var s=Math.sin(x*12.9898+z*78.233+(cfg.seed||0))*43758.5453;return s-Math.floor(s);}"
-           "function height(x,z){return Math.floor(24+noise2(x*0.07,z*0.07)*10);}"
-           "function configureVoxelWorld(o){if(o)for(var k in o)cfg[k]=o[k];if(cfg.renderDistance)surfaceRadius=Math.min(48,Math.max(8,cfg.renderDistance*8));return cfg;}"
+           "function hash2(x,z){var s=Math.sin(x*12.9898+z*78.233+(cfg.seed||0))*43758.5453;return s-Math.floor(s);}"
+           "function smooth(x,z){var ix=Math.floor(x),iz=Math.floor(z),fx=x-ix,fz=z-iz;"
+             "var a=hash2(ix,iz),b=hash2(ix+1,iz),c=hash2(ix,iz+1),d=hash2(ix+1,iz+1);"
+             "var ux=fx*fx*(3-2*fx),uz=fz*fz*(3-2*fz);"
+             "return a*(1-ux)*(1-uz)+b*ux*(1-uz)+c*(1-ux)*uz+d*ux*uz;}"
+           /* Multi-octave with decorrelated phase offsets so adjacent
+              cells produce distinct heights (correlated octaves were
+              flattening the visible area to a near-uniform plane). */
+           "function height(x,z){"
+             "var h=smooth(x*0.06+7,z*0.06+13)*14"
+                  "+smooth(x*0.18+91,z*0.18+57)*5"
+                  "+smooth(x*0.45+33,z*0.45+71)*1.8;"
+             "return Math.floor(16+h);}"
+           "function biomeIdx(x,z){"
+             /* Spawn-region bias: keep the area near origin as plains so
+                the first view (web reference shows plains) doesn't roll
+                tundra/snow whose grass color sits on top of the sky. */
+             "var d2=x*x+z*z;if(d2<4900)return 6;"
+             "var n=smooth(x*0.008,z*0.008),t=smooth((x+1000)*0.008,(z+1000)*0.008);"
+             "if(n<0.3)return t<0.4?0:1;"
+             "if(n<0.55)return 6;"
+             "if(n<0.75)return t<0.5?5:4;"
+             "return t<0.5?3:2;}"
+           "function biomeColor(idx,h){"
+             "if(idx===2)return 0xffdd88;"  /* desert sand */
+             "if(h>34)return 0x8f8f8f;"      /* stone */
+             "if(h>30)return 0x6b4f30;"      /* dirt */
+             "return GRASS[idx]||0x55cc33;}"
+           "function configureVoxelWorld(o){globalThis._voxelCompatInit&&globalThis._voxelCompatInit();if(o)for(var k in o)cfg[k]=o[k];if(cfg.renderDistance)surfaceRadius=Math.min(31,Math.max(8,cfg.renderDistance*8));return cfg;}"
            "function getVoxelHighestBlock(x,z){return height(x,z);}"
            "function getVoxelBlock(x,y,z){var k=key(x,y,z);if(blocks[k]!=null)return blocks[k];return y<=height(x,z)?(y<height(x,z)-3?3:1):0;}"
            "function setVoxelBlock(x,y,z,b){blocks[key(x,y,z)]=b|0;rebuildSurface(lastCenter?lastCenter[0]:0,lastCenter?lastCenter[1]:0,true);return true;}"
            "function moveVoxelEntity(pos,vel,size,dt){dt=dt||1;var p=[pos[0]+vel[0]*dt,pos[1]+vel[1]*dt,pos[2]+vel[2]*dt];var g=getVoxelHighestBlock(Math.floor(p[0]),Math.floor(p[2]))+1;if(p[1]<g){p[1]=g;vel=[vel[0],0,vel[2]];return{position:p,velocity:vel,grounded:true,inWater:false};}return{position:p,velocity:vel,grounded:false,inWater:false};}"
-           "function spawnVoxelEntity(type,pos,opts){var e={id:eid++,type:type||'mob',position:pos||[0,0,0],opts:opts||{}};entities.push(e);return e;}"
-           "function simplexNoise2D(x,z,oct,pers,scale,freq){return(noise2((x||0)*(freq||1),(z||0)*(freq||1))*2-1)*(scale||1);}"
+           "function simplexNoise2D(x,z,oct,pers,scale,freq){return(hash2((x||0)*(freq||1),(z||0)*(freq||1))*2-1)*(scale||1);}"
            "function simplexNoise3D(x,y,z,oct,pers,scale,freq){return simplexNoise2D((x||0)+(y||0)*0.37,z,oct,pers,scale,freq);}"
-           /* Build/update the surface InstancedMesh. One instance per
-              (x,z) cell in a square around the centre, positioned at
-              the local terrain height. Colour from a coarse biome
-              palette (sand/dirt/grass/stone). Mutates in-place when
-              the cap matches — avoids per-frame mesh allocation. */
-           /* Colours are full 32-bit RGBA (nova64 native), not 24-bit
-              hex literals — setInstanceColor passes the value straight
-              through to color_from_js which expects 0xRRGGBBAA. */
-           "function biomeColor(h){"
-             "if(h<22)return 0xc2a060ff;"   /* sand */
-             "if(h<30)return 0x4a8a3aff;"   /* grass */
-             "if(h<36)return 0x6b4f30ff;"   /* dirt */
-             "return 0x8f8f8fff;"            /* stone */
+           "function setInst(mesh,idx,x,y,z,sx,sy,sz,col){"
+             "try{nova64.scene.setInstanceTransform(mesh,idx,[sx,0,0,0,0,sy,0,0,0,0,sz,0,x,y,z,1]);}catch(e){}"
+             "if(nova64.scene.setInstanceColor&&col!=null){try{nova64.scene.setInstanceColor(mesh,idx,col);}catch(e){}}"
            "}"
+           "function hideInst(mesh,idx){"
+             "try{nova64.scene.setInstanceTransform(mesh,idx,[0.001,0,0,0,0,0.001,0,0,0,0,0.001,0,0,-9999,0,1]);}catch(e){}"
+           "}"
+           /* rebuildSurface: dense step=1 ground, deterministic tree
+              placement with trunk + 3x3x3 leaf cluster, all in three
+              separate InstancedMeshes so each material/color group can
+              be set distinctly. Cap surfaceRadius so per-mesh instance
+              count stays under 4096 (the C-side cap). */
            "function rebuildSurface(cx,cz,force){"
              "if(!nova64.scene||!nova64.scene.createInstancedMesh||!nova64.scene.setInstanceTransform)return;"
-             "var step=2;var r=surfaceRadius;var w=Math.floor(r*2/step)+1;var count=w*w;"
-             "if(!force&&lastCenter&&Math.abs(cx-lastCenter[0])<step&&Math.abs(cz-lastCenter[1])<step&&surfaceMesh)return;"
+             "var r=surfaceRadius,w=r*2+1,count=w*w;"
+             "if(count>4000){r=Math.floor((Math.sqrt(4000)-1)/2);w=r*2+1;count=w*w;}"
+             "if(!force&&lastCenter&&Math.abs(cx-lastCenter[0])<1&&Math.abs(cz-lastCenter[1])<1&&surfaceMesh)return;"
              "lastCenter=[cx,cz];"
+             "var ccx=Math.floor(cx),ccz=Math.floor(cz);"
              "if(!surfaceMesh||surfaceCap<count){"
                "if(surfaceMesh&&nova64.scene.destroyMesh){try{nova64.scene.destroyMesh(surfaceMesh);}catch(e){}}"
                "try{surfaceMesh=nova64.scene.createInstancedMesh('cube',count);surfaceCap=count;}catch(e){surfaceMesh=0;return;}"
              "}"
-             /* setInstanceTransform takes a 16-element column-major
-                mat4. For axis-aligned cubes the matrix is just scaled
-                identity with the position in the last column. */
-             "var idx=0,baseX=Math.floor(cx-r),baseZ=Math.floor(cz-r);"
-             "var sx=step,sy=1,sz=step;"
-             "for(var jz=0;jz<w;jz++)for(var jx=0;jx<w;jx++){"
-               "var bx=baseX+jx*step,bz=baseZ+jz*step;"
-               "var h=height(bx,bz);"
-               "var px=bx+step*0.5,py=h+0.5,pz=bz+step*0.5;"
-               "try{nova64.scene.setInstanceTransform(surfaceMesh,idx,["
-                 "sx,0,0,0,"
-                 "0,sy,0,0,"
-                 "0,0,sz,0,"
-                 "px,py,pz,1"
-               "]);}catch(e){}"
-               "if(nova64.scene.setInstanceColor){try{nova64.scene.setInstanceColor(surfaceMesh,idx,biomeColor(h));}catch(e){}}"
-               "idx++;"
+             /* Scan for tree positions. Probability + spacing tuned so a
+                plains vista looks like the web reference (sparse trees
+                with clear ground between them). The 5-cell spawn clear
+                radius keeps the camera from spawning inside a canopy
+                (where leaf undersides shade the sky and make the view
+                look black). */
+             "var trees=[];var maxTrees=20;"
+             "for(var jz=0;jz<w&&trees.length<maxTrees;jz+=4){"
+               "for(var jx=0;jx<w&&trees.length<maxTrees;jx+=4){"
+                 "var bx=ccx-r+jx,bz=ccz-r+jz;var bi=biomeIdx(bx,bz);"
+                 "if(bi===2)continue;"
+                 "var dx=bx-cx,dz=bz-cz;if(dx*dx+dz*dz<25)continue;"
+                 "if(hash2(bx*7.13+0.5,bz*13.7+0.5)<0.18){trees.push([bx,height(bx,bz)+1,bz,bi]);}"
+               "}"
+             "}"
+             "var trunkCount=Math.max(1,trees.length*4),leafCount=Math.max(1,trees.length*27);"
+             "if(!trunkMesh||trunkCap<trunkCount){"
+               "if(trunkMesh&&nova64.scene.destroyMesh){try{nova64.scene.destroyMesh(trunkMesh);}catch(e){}}"
+               "try{trunkMesh=nova64.scene.createInstancedMesh('cube',trunkCount);trunkCap=trunkCount;}catch(e){trunkMesh=0;}"
+             "}"
+             "if(!leavesMesh||leavesCap<leafCount){"
+               "if(leavesMesh&&nova64.scene.destroyMesh){try{nova64.scene.destroyMesh(leavesMesh);}catch(e){}}"
+               "try{leavesMesh=nova64.scene.createInstancedMesh('cube',leafCount);leavesCap=leafCount;}catch(e){leavesMesh=0;}"
+             "}"
+             /* Fill surface */
+             "var idx=0;"
+             "for(var jz2=0;jz2<w;jz2++){"
+               "for(var jx2=0;jx2<w;jx2++){"
+                 "if(idx>=surfaceCap)break;"
+                 "var bx2=ccx-r+jx2,bz2=ccz-r+jz2;"
+                 "var h2=height(bx2,bz2),bi2=biomeIdx(bx2,bz2);"
+                 "setInst(surfaceMesh,idx,bx2+0.5,h2+0.5,bz2+0.5,1,1,1,biomeColor(bi2,h2));"
+                 "idx++;"
+               "}"
+             "}"
+             "for(;idx<surfaceCap;idx++)hideInst(surfaceMesh,idx);"
+             /* Fill trees */
+             "var tIdx=0,lIdx=0;"
+             "for(var ti=0;ti<trees.length;ti++){"
+               "var tx=trees[ti][0],ty=trees[ti][1],tz=trees[ti][2];"
+               "for(var th=0;th<4;th++){"
+                 "if(trunkMesh&&tIdx<trunkCap)setInst(trunkMesh,tIdx,tx+0.5,ty+th+0.5,tz+0.5,1,1,1,0x774422);"
+                 "tIdx++;"
+               "}"
+               "for(var lx=-1;lx<=1;lx++)for(var ly=3;ly<=5;ly++)for(var lz=-1;lz<=1;lz++){"
+                 /* Very bright leaf green so canopy undersides (which
+                    get the darkest face shading) still read as green
+                    rather than near-black against the sky. */
+                 "if(leavesMesh&&lIdx<leafCount)setInst(leavesMesh,lIdx,tx+lx+0.5,ty+ly+0.5,tz+lz+0.5,1,1,1,0x7adf6a);"
+                 "lIdx++;"
+               "}"
+             "}"
+             "if(trunkMesh)for(var ti2=tIdx;ti2<trunkCap;ti2++)hideInst(trunkMesh,ti2);"
+             "if(leavesMesh)for(var li2=lIdx;li2<leafCount;li2++)hideInst(leavesMesh,li2);"
+           "}"
+           "function spawnVoxelEntity(type,pos,opts){"
+             "var e={id:eid++,type:type||'mob',x:pos[0],y:pos[1],z:pos[2],vx:0,vy:0,vz:0,onGround:false,data:{},opts:opts||{},mesh:0};"
+             "var sz=(opts&&opts.size)||[0.8,0.8,0.8];e.scale=sz;"
+             "e.col=(opts&&opts.color!=null)?opts.color:0xffaaaa;"
+             "if(nova64.scene.createInstancedMesh){"
+               "try{e.mesh=nova64.scene.createInstancedMesh('cube',1);setInst(e.mesh,0,e.x,e.y+sz[1]*0.5,e.z,sz[0],sz[1],sz[2],e.col);}catch(_){e.mesh=0;}"
+             "}"
+             "entities.push(e);return e;"
+           "}"
+           "function updateVoxelEntities(dt,playerPos){"
+             "for(var i=0;i<entities.length;i++){"
+               "var e=entities[i];"
+               "if(e.opts&&e.opts.ai){try{e.opts.ai(e,dt);}catch(_){}}"
+               "if(e.opts&&e.opts.gravity)e.vy-=9.8*dt;"
+               "e.x+=(e.vx||0)*dt;e.y+=(e.vy||0)*dt;e.z+=(e.vz||0)*dt;"
+               "var gh=height(e.x|0,e.z|0)+1;"
+               "if(e.y<gh){e.y=gh;e.vy=0;e.onGround=true;}else{e.onGround=false;}"
+               "if(e.mesh)setInst(e.mesh,0,e.x,e.y+e.scale[1]*0.5,e.z,e.scale[0],e.scale[1],e.scale[2],e.col);"
              "}"
            "}"
-           "function forceLoadChunks(cx,cz){rebuildSurface(cx||0,cz||0,true);}"
-           "function updateChunks(cx,cz){rebuildSurface(cx||0,cz||0,false);}"
-           "function resetVoxelWorld(){blocks={};entities=[];if(surfaceMesh&&nova64.scene.destroyMesh){try{nova64.scene.destroyMesh(surfaceMesh);}catch(e){}}surfaceMesh=0;surfaceCap=0;lastCenter=null;}"
+           "function forceLoadChunks(cx,cz){globalThis._voxelCompatInit&&globalThis._voxelCompatInit();rebuildSurface(cx||0,cz||0,true);}"
+           "function updateChunks(cx,cz){globalThis._voxelCompatInit&&globalThis._voxelCompatInit();rebuildSurface(cx||0,cz||0,false);}"
+           "function resetVoxelWorld(){"
+             "blocks={};"
+             "for(var i=0;i<entities.length;i++){if(entities[i].mesh&&nova64.scene.destroyMesh)try{nova64.scene.destroyMesh(entities[i].mesh);}catch(_){}}"
+             "entities=[];"
+             "if(surfaceMesh&&nova64.scene.destroyMesh)try{nova64.scene.destroyMesh(surfaceMesh);}catch(_){}"
+             "if(trunkMesh&&nova64.scene.destroyMesh)try{nova64.scene.destroyMesh(trunkMesh);}catch(_){}"
+             "if(leavesMesh&&nova64.scene.destroyMesh)try{nova64.scene.destroyMesh(leavesMesh);}catch(_){}"
+             "surfaceMesh=0;surfaceCap=0;trunkMesh=0;trunkCap=0;leavesMesh=0;leavesCap=0;lastCenter=null;"
+           "}"
+           "function cleanupEntities(){"
+             "var alive=[];"
+             "for(var i=0;i<entities.length;i++){"
+               "var e=entities[i];"
+               "if(e.health!=null&&e.health<=0){if(e.mesh&&nova64.scene.destroyMesh)try{nova64.scene.destroyMesh(e.mesh);}catch(_){}continue;}"
+               "alive.push(e);"
+             "}"
+             "entities=alive;"
+           "}"
            "return{configureVoxelWorld:configureVoxelWorld,getVoxelConfig:function(){return cfg;},enableVoxelTextures:function(v){cfg.textures=!!v;},forceLoadVoxelChunks:forceLoadChunks,updateVoxelWorld:updateChunks,resetVoxelWorld:resetVoxelWorld,"
-             "setVoxelDayTime:function(t){cfg.dayTime=t;},getVoxelBiome:function(){return'Plains';},getVoxelBlock:getVoxelBlock,setVoxelBlock:setVoxelBlock,getVoxelHighestBlock:getVoxelHighestBlock,raycastVoxelBlock:function(){return{hit:false};},checkVoxelCollision:function(){return false;},"
-             "moveVoxelEntity:moveVoxelEntity,spawnVoxelEntity:spawnVoxelEntity,updateVoxelEntities:function(){},cleanupVoxelEntities:function(){},getVoxelEntityCount:function(){return entities.length;},getVoxelEntitiesByType:function(t){return entities.filter(function(e){return e.type===t;});},"
-             "damageVoxelEntity:function(id){entities=entities.filter(function(e){return e.id!==id;});},saveVoxelWorld:function(){return Promise.resolve(true);},loadVoxelWorld:function(){return Promise.resolve(false);},simplexNoise2D:simplexNoise2D,simplexNoise3D:simplexNoise3D};"
+             "setVoxelDayTime:function(t){cfg.dayTime=t;},getVoxelBiome:function(x,z){return BIOMES[biomeIdx((x||0)|0,(z||0)|0)]||'Plains';},getVoxelBlock:getVoxelBlock,setVoxelBlock:setVoxelBlock,getVoxelHighestBlock:getVoxelHighestBlock,raycastVoxelBlock:function(){return{hit:false};},checkVoxelCollision:function(){return false;},"
+             "moveVoxelEntity:moveVoxelEntity,spawnVoxelEntity:spawnVoxelEntity,updateVoxelEntities:updateVoxelEntities,cleanupVoxelEntities:cleanupEntities,getVoxelEntityCount:function(){return entities.length;},getVoxelEntitiesByType:function(t){return entities.filter(function(e){return e.type===t;});},"
+             "damageVoxelEntity:function(id,dmg){for(var i=0;i<entities.length;i++)if(entities[i].id===id){entities[i].health=(entities[i].health||0)-(dmg||1);return true;}return false;},saveVoxelWorld:function(){return Promise.resolve(true);},loadVoxelWorld:function(){return Promise.resolve(false);},simplexNoise2D:simplexNoise2D,simplexNoise3D:simplexNoise3D};"
          "})();"
 
          /* nova64.scene.getMesh — object proxy for carts that inspect meshes */

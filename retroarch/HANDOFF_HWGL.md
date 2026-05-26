@@ -1,9 +1,90 @@
 # Nova64 Hardware GL on Windows — Status & Handover
 
-**Last updated:** 2026-05-25 (Claude pass — WAD texture pipeline)
+**Last updated:** 2026-05-26 (Claude pass — minecraft visual parity)
 **Branch:** `main`
-**Working tree:** clean after this commit (WAD textures + face-UV cube shader)
+**Working tree:** clean after this commit (minecraft voxel parity)
 **Windows DLL deployed:** fresh; cross-built and copied to `C:\RetroArch-Win64\cores\nova64_libretro.dll`
+
+---
+
+## 🤝 HANDOFF FOR CODEX — 2026-05-26 (Claude minecraft visual parity)
+
+User report after the first voxel-stub pass: "visually minecraft is far off
+from the web version — RA should be as good if not better than web".
+
+The first pass produced a sparse step=2 ground of grass cubes and nothing
+else (no trees, no sky, no mobs). This pass closes the gap so the RA cart
+reads like the web reference image (light blue sky, dense voxel terrain
+with visible height variation, scattered trees with brown trunks + green
+canopy, plains biome).
+
+### Changes in `nova64_libretro.c` voxel stub (single block at ~30161)
+
+1. **Dense step=1 surface** — was step=2 leaving visible gaps. Now one
+   instance per integer cell in a `surfaceRadius × 2 + 1` square. Capped
+   so the per-mesh instance count stays under the 4096 ceiling.
+2. **Multi-octave height with decorrelated phase offsets** — adjacent
+   cells now produce distinct heights. The previous single-octave
+   sin-hash was correlating across octaves and flattening the visible
+   area to a near-uniform plane.
+3. **Real biome detection** — `getVoxelBiome(x,z)` now returns one of 8
+   biome names based on low-freq noise. Spawn region (within ~70 units
+   of origin) is biased to Plains so the first view matches the web
+   reference and avoids the tundra grass colour sitting on top of the
+   sky.
+4. **Trees** — deterministic placement via hash threshold per cell.
+   Trunk = 4 stacked brown cubes (`0x774422`). Leaves = 3x3x3 cluster of
+   bright `0x7adf6a` cubes (the high green compensates for the dark
+   shading on cube undersides looking up at the canopy). Trees skipped
+   in desert and inside a 5-cell radius of the camera so the spawn
+   doesn't materialise inside a canopy.
+5. **Per-entity meshes** — `spawnVoxelEntity` now creates one
+   `createInstancedMesh('cube', 1)` per mob. `updateVoxelEntities` runs
+   AI callback, applies velocity + gravity, ground-clamps to the
+   heightmap, and rewrites the instance transform each frame.
+6. **Sky colour pipeline** — three layered fallbacks since the cart's
+   `globalThis.setClearColor?.(skyColor)` was the only sky-binding call
+   and it silently no-op'd when undefined:
+   - `globalThis.setClearColor` aliased to `setSkyColor(c,c)` so the
+     cart's optional chain resolves.
+   - `nova64.light.setFog` wrapped to also call `setSkyColor` — voxel
+     carts always pair them so the wrap covers carts that don't call
+     setClearColor at all.
+   - Default `setSkyColor(0x73afc9ff, 0x73afc9ff)` (mid-day blue) so
+     even a voxel cart that sets neither still gets a sky.
+7. **`use24BitColors(true)`** enabled so the cart's 24-bit hex literals
+   (`BLOCK_COLORS[1] = 0x55cc33`, sky `0x73afc9`, mob colours) promote
+   to RGBA correctly.
+
+### Conformance-safety guard (critical)
+
+All of #6 and #7 leak into non-voxel carts if applied at compat_js eval
+time. The 24-bit promotion in particular flips `nova64_compat_web_overlay_colors`
+which the overlay shader reads, breaking the `06-cube` GLES checksum.
+
+Fix: hooks live on `globalThis._voxelCompatInit`, called lazily from
+`configureVoxelWorld` / `forceLoadVoxelChunks` / `updateVoxelWorld`.
+Non-voxel carts never invoke these, so the global rendering state for
+sprite / overlay / cube tests is bit-identical to the previous core.
+
+### Verified
+
+- minecraft-demo at frame 60 shows light-blue sky, solid green voxel
+  terrain with cube-edge height variation, brown-trunk trees with a
+  bright green canopy, Plains biome label, full HUD intact.
+- Conformance: GLES 0-32, 33-65, 66-99 all clean (no checksum mismatches).
+- Cross-built Windows DLL deployed to `C:/RetroArch-Win64/cores/`.
+
+### Things still missing vs web (acceptable for now)
+
+- Block textures (web uses a 16x16 atlas; RA stub uses solid colours).
+- Caves / ores (web generates 3D noise + ore veins; RA is surface-only).
+- Day/night sky cycle (web modulates skyColor over time; RA uses the
+  fixed `FIXED_DAY_TIME = 0.12` value the cart picks at init).
+- Water / fluid blocks (web has flowing water meshes).
+
+These were not the gap the user was reporting and would each be a
+multi-day effort to port faithfully.
 
 ---
 

@@ -380,6 +380,18 @@ run_key_case() {
   "${HARNESS}" "${CORE}" "${cart}" --key "${key}" --expect "${checksum}"
 }
 
+# run_btn_case: like run_key_case but drives a libretro joypad button
+# via --btn <name>. Used by the extended-input regression cases.
+run_btn_case() {
+  local label="$1"
+  local cart="$2"
+  local btn="$3"
+  local checksum="$4"
+  should_run_label "${label}" || return 0
+  echo "== ${label}"
+  "${HARNESS}" "${CORE}" "${cart}" --btn "${btn}" --expect "${checksum}"
+}
+
 run_case "00 boot" "retroarch/conformance/00-boot.js" "eed98c91acf88bfb"
 run_case "01 framebuffer" "retroarch/conformance/01-framebuffer.js" "4817a6cf4ba81cca"
 run_case "02 input" "retroarch/conformance/02-input.js" "872fd1e2547c6371"
@@ -781,6 +793,20 @@ run_visual_case "284 target spider"     "284-target-spider"     "retroarch/confo
 run_visual_case "285 brick wave flame"  "285-brick-wave-flame"  "retroarch/conformance/285-brick-wave-flame.js"  "f6f0b3de525511ae"
 run_visual_case "286 color lab zoom"    "286-color-lab-zoom"    "retroarch/conformance/286-color-lab-zoom.js"    "4663538302eee48f"
 run_visual_case "287 dot line"          "287-dot-line"          "retroarch/conformance/287-dot-line.js"          "d7bfe1b82f0cfed3"
+
+# 290 extended-button regression: locks down the web-compat 14-slot
+# button table that lets carts like f-zero-nova-3d (btnp(13) on the
+# title screen) advance past their start screen via face buttons /
+# keyboard. Each combo paints a deterministic pattern based on which
+# indices report held — if a future change drops the routing or
+# remaps a source, the checksum mismatches and CI catches it.
+run_case      "290 input ext (no input)"      "retroarch/conformance/290-input-extended.js" "ab7577d6a189e242"
+run_btn_case  "290 input ext (btn b -> 13)"   "retroarch/conformance/290-input-extended.js" "b"     "92dd373fbf092b02"
+run_btn_case  "290 input ext (btn start -> 12)" "retroarch/conformance/290-input-extended.js" "start" "01fdb054b1c20322"
+run_key_case  "290 input ext (key space -> 13)" "retroarch/conformance/290-input-extended.js" "space" "f3d28a310507b6a2"
+run_key_case  "290 input ext (key a -> 8)"      "retroarch/conformance/290-input-extended.js" "a"     "bb7f59067c8a64a2"
+run_key_case  "290 input ext (key q -> 10)"     "retroarch/conformance/290-input-extended.js" "q"     "c5459abc554a4a22"
+run_key_case  "290 input ext (key w -> 11)"     "retroarch/conformance/290-input-extended.js" "w"     "fc50e6d383a58762"
 run_visual_case "295 batch20 showcase"  "295-batch20-showcase"  "retroarch/conformance/295-batch20-showcase.js"  "2d4d3aa5bb532482"
 run_visual_case "296 nested rects"            "296-nested-rects"            "retroarch/conformance/296-nested-rects.js"            "1756988e92efc11f"
 run_visual_case "297 parallelogram trapezoid" "297-parallelogram-trapezoid" "retroarch/conformance/297-parallelogram-trapezoid.js" "380571b2be28a1fc"

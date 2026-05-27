@@ -746,6 +746,19 @@ static bool buttons[NOVA64_BUTTON_COUNT];
 static bool previous_buttons[NOVA64_BUTTON_COUNT];
 static bool pressed_buttons[NOVA64_BUTTON_COUNT];
 
+/* Extended button table mirroring the web runtime's 14-slot KEYMAP +
+   GAMEPAD_BUTTONS layout. Web carts written for the browser call
+   btn(N) / btnp(N) with N up to 13 (e.g. 12 = Enter/Start, 13 =
+   Space/Action). The 8-element nova64 button table can't represent
+   those, leaving carts like f-zero-nova-3d stuck on the title screen
+   because btnp(13) always returned false. Indices 0-7 mirror buttons[],
+   indices 8-13 are populated from keyboard keys + RetroPad joypad
+   buttons that have no nova64-internal equivalent. */
+#define NOVA64_EXT_BUTTON_COUNT 14
+static bool ext_buttons[NOVA64_EXT_BUTTON_COUNT];
+static bool ext_prev_buttons[NOVA64_EXT_BUTTON_COUNT];
+static bool ext_pressed_buttons[NOVA64_EXT_BUTTON_COUNT];
+
 #define NOVA64_KEY_TABLE_SIZE 512
 static bool key_held[NOVA64_KEY_TABLE_SIZE];
 static bool key_prev_held[NOVA64_KEY_TABLE_SIZE];
@@ -25670,7 +25683,11 @@ static int button_index_from_js(JSContext *ctx, JSValueConst value)
 {
    if (JS_IsNumber(value)) {
       int index = int_from_js(ctx, value, -1);
-      return index >= 0 && index < NOVA64_BUTTON_COUNT ? index : -1;
+      /* Allow the extended 0-13 range; js_btn / js_btnp route indices
+         8-13 through ext_buttons[] which is populated from extra
+         keyboard / joypad sources. Carts ported from the browser use
+         these higher indices (web KEYMAP). */
+      return index >= 0 && index < NOVA64_EXT_BUTTON_COUNT ? index : -1;
    }
 
    const char *name = JS_ToCString(ctx, value);
@@ -25702,18 +25719,28 @@ static JSValue js_btn(JSContext *ctx, JSValueConst this_val, int argc, JSValueCo
 {
    int index = argc > 0 ? button_index_from_js(ctx, argv[0]) : -1;
    int port  = argc > 1 ? int_from_js(ctx, argv[1], 0) : 0;
-   if (port <= 0 || port >= NOVA64_MAX_PORTS)
-      return JS_NewBool(ctx, index >= 0 ? buttons[index] : false);
-   return JS_NewBool(ctx, index >= 0 ? mp_buttons[port][index] : false);
+   if (port <= 0 || port >= NOVA64_MAX_PORTS) {
+      if (index < 0) return JS_NewBool(ctx, false);
+      /* Indices 0-7 use buttons[] (existing behaviour); 8-13 route
+         through ext_buttons[] (web-compat extended layer). */
+      bool held = index < NOVA64_BUTTON_COUNT ? buttons[index] : ext_buttons[index];
+      return JS_NewBool(ctx, held);
+   }
+   /* Multi-port joypad: only the 8-button native layout is tracked
+      per port, so out-of-range indices return false. */
+   return JS_NewBool(ctx, (index >= 0 && index < NOVA64_BUTTON_COUNT) ? mp_buttons[port][index] : false);
 }
 
 static JSValue js_btnp(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
    int index = argc > 0 ? button_index_from_js(ctx, argv[0]) : -1;
    int port  = argc > 1 ? int_from_js(ctx, argv[1], 0) : 0;
-   if (port <= 0 || port >= NOVA64_MAX_PORTS)
-      return JS_NewBool(ctx, index >= 0 ? pressed_buttons[index] : false);
-   return JS_NewBool(ctx, index >= 0 ? mp_pressed_buttons[port][index] : false);
+   if (port <= 0 || port >= NOVA64_MAX_PORTS) {
+      if (index < 0) return JS_NewBool(ctx, false);
+      bool edge = index < NOVA64_BUTTON_COUNT ? pressed_buttons[index] : ext_pressed_buttons[index];
+      return JS_NewBool(ctx, edge);
+   }
+   return JS_NewBool(ctx, (index >= 0 && index < NOVA64_BUTTON_COUNT) ? mp_pressed_buttons[port][index] : false);
 }
 
 static int key_code_from_js(JSContext *ctx, JSValueConst value)
@@ -33157,6 +33184,8 @@ static void update_input(void)
 
    memcpy(key_prev_held, key_held, sizeof(key_held));
    memset(key_held, 0, sizeof(key_held));
+   /* Save extended-button previous state before re-populating. */
+   memcpy(ext_prev_buttons, ext_buttons, sizeof(ext_buttons));
    size_t num_tracked = sizeof(nova64_tracked_keys) / sizeof(nova64_tracked_keys[0]);
    for (size_t ki = 0; ki < num_tracked; ki++) {
       int code = nova64_tracked_keys[ki];
@@ -33223,6 +33252,36 @@ static void update_input(void)
    /* mirror port 0 edge state into mp */
    for (int i = 0; i < NOVA64_BUTTON_COUNT; i++)
       mp_pressed_buttons[0][i] = pressed_buttons[i];
+
+   /* Populate the extended 14-slot button table (web KEYMAP layout).
+      Indices 0-7 mirror buttons[]; 8-13 are keyboard / additional
+      joypad sources so carts written for the browser using btn(12)
+      (Enter/Start) or btn(13) (Space/Action) work in RetroArch too. */
+   for (int i = 0; i < NOVA64_BUTTON_COUNT; i++)
+      ext_buttons[i] = buttons[i];
+   bool jp_a      = input_state_cb(0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_A) != 0;
+   bool jp_b      = input_state_cb(0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_B) != 0;
+   bool jp_x      = input_state_cb(0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_X) != 0;
+   bool jp_y      = input_state_cb(0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_Y) != 0;
+   bool jp_l      = input_state_cb(0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_L) != 0;
+   bool jp_r      = input_state_cb(0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_R) != 0;
+   bool jp_start  = input_state_cb(0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_START)  != 0;
+   bool jp_select = input_state_cb(0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_SELECT) != 0;
+   /* Web KEYMAP: 8='KeyA', 9='KeyS', 10='KeyQ', 11='KeyW',
+      12='Enter' (Start), 13='Space' (Select / primary action).
+      The browser cart binds each gamepad face button to one of these
+      web-side indices; in RA we surface them via additional sources
+      (named keyboard keys + RetroPad START/SELECT/L/R + face buttons)
+      so the cart's start-screen check fires from any controller path. */
+   ext_buttons[8]  = key_held[97]; /* 'a' */
+   ext_buttons[9]  = key_held[115]; /* 's' */
+   ext_buttons[10] = key_held[113] || jp_l; /* 'q' / L shoulder */
+   ext_buttons[11] = key_held[119] || jp_r; /* 'w' / R shoulder */
+   ext_buttons[12] = key_held[NOVA64_RETROK_RETURN] || jp_start;
+   ext_buttons[13] = key_held[NOVA64_RETROK_SPACE]  || jp_select
+                  || jp_a || jp_b || jp_x || jp_y;
+   for (int i = 0; i < NOVA64_EXT_BUTTON_COUNT; i++)
+      ext_pressed_buttons[i] = ext_buttons[i] && !ext_prev_buttons[i];
 }
 
 static retro_proc_address_t load_gles_proc(const char *name)

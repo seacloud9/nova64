@@ -29796,8 +29796,22 @@ static bool install_nova64_api(JSContext *ctx)
                 flips the 24-bit color promotion flag (carts calling
                 enableBloom near-100% use 0xRRGGBB hex literals) and bumps
                 HDR FBO to RGBA32F "overkill mode" for max float precision. */
-             "enableBloom:function(s,r,t){p.setBloom(s==null?1:s,r,t);"
-               "if(p.setExposure)p.setExposure(1.25);"
+             /* enableBloom takes the cart's strength/radius/threshold and
+                clamps them to conservative values. Web carts (f-zero-
+                nova-3d) routinely pass strength=1.0 threshold=0.4 which
+                makes every bright HUD pixel bloom huge — the visible
+                symptom is "ship reflections in the sky" and red invuln
+                borders blooming into a yellow screen tint. The clamp
+                keeps the bloom present but well-behaved. Carts that
+                want stronger bloom can still call nova64.post.setBloom
+                directly (used by the conformance tests, which are
+                unaffected by this shim clamp). */
+             "enableBloom:function(s,r,t){"
+               "var ss=Math.min(0.55,s==null?0.45:s);"
+               "var rr=Math.min(0.35,r==null?0.30:r);"
+               "var tt=Math.max(0.70,t==null?0.85:t);"
+               "p.setBloom(ss,rr,tt);"
+               "if(p.setExposure)p.setExposure(1.15);"
                "if(p.use24BitColors)p.use24BitColors(true);"
                "if(p.setHDRMode)p.setHDRMode('32f');"
                /* Web reference renders with Three's UnrealBloomPass; web carts

@@ -30186,6 +30186,20 @@ static bool install_nova64_api(JSContext *ctx)
               the web reference (top + bottom the same so it reads as
               a uniform sky, not a gradient). */
            "if(typeof setSkyColor==='function'){try{setSkyColor(0x87ceebff,0x87ceebff);}catch(e){}}"
+           /* Crisper per-face shading. The Three-style shading path
+              opens the diffuse ramp to [0.18, 0.96] vs classic's
+              [0.58, 1.0]; combined with a slightly steeper light
+              direction this gives the dramatic top-vs-side contrast
+              that defines the Minecraft look. */
+           "if(typeof setShadingStyle==='function'){try{setShadingStyle('three');}catch(e){}}"
+           /* Steeper overhead light so cube tops read much brighter
+              than sides — was (-0.4, -0.8, -0.3) which left side
+              faces too close to top brightness. */
+           "if(typeof setLightDirection==='function'){try{setLightDirection(-0.25,-0.95,-0.20);}catch(e){}}"
+           /* Brighter directional light + neutral-white tint for crisp,
+              saturated cube faces. */
+           "if(typeof setLightColor==='function'){try{setLightColor(0xffffffff);}catch(e){}}"
+           "if(typeof setAmbientLight==='function'){try{setAmbientLight(0x8090a0ff,0.55);}catch(e){}}"
          "};"
          /* Voxel stub renders a dense surface, deterministic trees, and
             per-entity meshes. Not the full chunk/biome/lighting story of
@@ -30247,6 +30261,18 @@ static bool install_nova64_api(JSContext *ctx)
              "try{nova64.scene.setInstanceTransform(mesh,idx,[sx,0,0,0,0,sy,0,0,0,0,sz,0,x,y,z,1]);}catch(e){}"
              "if(nova64.scene.setInstanceColor&&col!=null){try{nova64.scene.setInstanceColor(mesh,idx,col);}catch(e){}}"
            "}"
+           /* Crisp per-face shading for voxel meshes: max shade
+              contrast (4.0) widens the diffuse ramp dramatically, zero
+              roughness skips the diffuse-to-0.75 blend that washes the
+              cubes out, no metalness so the ambient term doesn't tint
+              the color. */
+           "function tuneMesh(m){"
+             "if(!m)return;"
+             "if(nova64.scene.setMeshShadeContrast){try{nova64.scene.setMeshShadeContrast(m,4.0);}catch(e){}}"
+             "if(nova64.scene.setMeshRoughness){try{nova64.scene.setMeshRoughness(m,0.0);}catch(e){}}"
+             "if(nova64.scene.setMeshMetalness){try{nova64.scene.setMeshMetalness(m,0.0);}catch(e){}}"
+             "if(nova64.scene.setFlatShading){try{nova64.scene.setFlatShading(m,true);}catch(e){}}"
+           "}"
            "function hideInst(mesh,idx){"
              "try{nova64.scene.setInstanceTransform(mesh,idx,[0.001,0,0,0,0,0.001,0,0,0,0,0.001,0,0,-9999,0,1]);}catch(e){}"
            "}"
@@ -30267,6 +30293,7 @@ static bool install_nova64_api(JSContext *ctx)
              "if(!surfaceMesh||surfaceCap<count){"
                "if(surfaceMesh&&nova64.scene.destroyMesh){try{nova64.scene.destroyMesh(surfaceMesh);}catch(e){}}"
                "try{surfaceMesh=nova64.scene.createInstancedMesh('cube',count);surfaceCap=count;}catch(e){surfaceMesh=0;return;}"
+               "tuneMesh(surfaceMesh);"
              "}"
              /* Scan for tree positions. Web reference shows ~3-5 trees
                 in a frame of clearly distinct silhouettes. Skip a
@@ -30293,10 +30320,12 @@ static bool install_nova64_api(JSContext *ctx)
              "if(!trunkMesh||trunkCap<trunkCount){"
                "if(trunkMesh&&nova64.scene.destroyMesh){try{nova64.scene.destroyMesh(trunkMesh);}catch(e){}}"
                "try{trunkMesh=nova64.scene.createInstancedMesh('cube',trunkCount);trunkCap=trunkCount;}catch(e){trunkMesh=0;}"
+               "tuneMesh(trunkMesh);"
              "}"
              "if(!leavesMesh||leavesCap<leafCount){"
                "if(leavesMesh&&nova64.scene.destroyMesh){try{nova64.scene.destroyMesh(leavesMesh);}catch(e){}}"
                "try{leavesMesh=nova64.scene.createInstancedMesh('cube',leafCount);leavesCap=leafCount;}catch(e){leavesMesh=0;}"
+               "tuneMesh(leavesMesh);"
              "}"
              /* Fill surface. */
              "var idx=0;"

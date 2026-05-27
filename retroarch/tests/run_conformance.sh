@@ -807,6 +807,16 @@ run_key_case  "290 input ext (key space -> 13)" "retroarch/conformance/290-input
 run_key_case  "290 input ext (key a -> 8)"      "retroarch/conformance/290-input-extended.js" "a"     "bb7f59067c8a64a2"
 run_key_case  "290 input ext (key q -> 10)"     "retroarch/conformance/290-input-extended.js" "q"     "c5459abc554a4a22"
 run_key_case  "290 input ext (key w -> 11)"     "retroarch/conformance/290-input-extended.js" "w"     "fc50e6d383a58762"
+
+# 291 overlay autoclear regression: locks down the default
+# auto-clearing of the 2D HUD overlay between frames. Without
+# auto-clear, the F-Zero title screen vignette stayed under the
+# gameplay HUD even after the player pressed start, because the cart
+# only repaints the slim top/bottom HUD bars per frame and relies on
+# the canvas being transparent everywhere else. Frame 0 paints a
+# full-screen fill; frame 5 expects ONLY a small rectangle on a
+# transparent background — anything else means stale pixels leaked.
+run_case "291 overlay autoclear" "retroarch/conformance/291-overlay-autoclear.js" "826c74012c449883"
 run_visual_case "295 batch20 showcase"  "295-batch20-showcase"  "retroarch/conformance/295-batch20-showcase.js"  "2d4d3aa5bb532482"
 run_visual_case "296 nested rects"            "296-nested-rects"            "retroarch/conformance/296-nested-rects.js"            "1756988e92efc11f"
 run_visual_case "297 parallelogram trapezoid" "297-parallelogram-trapezoid" "retroarch/conformance/297-parallelogram-trapezoid.js" "380571b2be28a1fc"

@@ -4899,13 +4899,15 @@ static JSValue js_cls(JSContext *ctx, JSValueConst this_val, int argc, JSValueCo
    return JS_UNDEFINED;
 }
 
-/* Opt-in: clears the 2D HUD framebuffer at the start of each frame to
-   transparent. Web 3D carts rely on Three.js's canvas autoclear; without
-   this opt-in their HUD overlays accumulate stale pixels across frames
-   (wad-demo menu text persisted into the playing state). Off by default
-   to preserve all conformance baselines; bundle the call in the cart's
-   .nova engine adapter to enable it per-cart. */
-static bool g_auto_clear_overlay = false;
+/* Defaults to ON: web nova64 auto-clears the canvas between frames,
+   so carts ported from the browser (f-zero-nova-3d, minecraft-demo,
+   wad-demo, ...) expect a transparent overlay at the start of each
+   draw() and only repaint the pixels they care about. Without this,
+   transitioning gameStates leaves stale pixels stuck (F-Zero's title
+   vignette stayed under the gameplay HUD even after pressing start).
+   Carts that intentionally want trail / persistence call
+   nova64.draw.autoClear(false) to opt out. */
+static bool g_auto_clear_overlay = true;
 static JSValue js_set_auto_clear(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
    g_auto_clear_overlay = argc > 0 ? JS_ToBool(ctx, argv[0]) : true;

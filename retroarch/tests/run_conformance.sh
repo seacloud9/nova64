@@ -1029,5 +1029,6 @@ run_visual_case "814 glow text scale"      "814-glow-text-scale"      "retroarch
 run_visual_case "815 draw namespace textfx" "815-draw-namespace-textfx" "retroarch/conformance/815-draw-namespace-textfx.js" "c1913cd545eb788f"
 run_visual_case "1091 batch90 showcase"    "1091-batch90-showcase"    "retroarch/conformance/1091-batch90-showcase.js"    "6b598704e72fafdc"
 run_visual_case "1092 scaled text"         "1092-scaled-text"         "retroarch/conformance/1092-scaled-text.js"         "305d05942969cdcd"
+run_visual_case "1093 minimap tiles"       "1093-minimap-tiles"       "retroarch/conformance/1093-minimap-tiles.js"       "f425605e4063648a"
 
 echo "Conformance passed."

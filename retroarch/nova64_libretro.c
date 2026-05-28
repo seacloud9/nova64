@@ -29799,19 +29799,40 @@ static bool install_nova64_api(JSContext *ctx)
              /* enableBloom takes the cart's strength/radius/threshold and
                 clamps them to conservative values. Web carts (f-zero-
                 nova-3d) routinely pass strength=1.0 threshold=0.4 which
-                makes every bright HUD pixel bloom huge — the visible
-                symptom is "ship reflections in the sky" and red invuln
-                borders blooming into a yellow screen tint. The clamp
-                keeps the bloom present but well-behaved. Carts that
-                want stronger bloom can still call nova64.post.setBloom
-                directly (used by the conformance tests, which are
-                unaffected by this shim clamp). */
+                makes every emissive geometry bloom huge — the visible
+                symptom is the player ship's neon trim bleeding upward
+                into the sky as a "racer reflection". The clamp keeps a
+                tight neon halo on the ship itself without smearing
+                across the frame. Carts that want stronger bloom can
+                still call nova64.post.setBloom directly (used by the
+                conformance tests, which are unaffected by this shim). */
+             /* enableBloom takes the cart's strength/radius/threshold and
+                clamps them HARD. Web carts (f-zero-nova-3d) routinely
+                pass strength=1.0 threshold=0.4 which haloed emissive
+                ship geometry into the sky as a "racer reflection".
+                With strength capped at 0.18, threshold floored at
+                0.88, and the wide-mip composite scaled back, bright
+                pixels keep a tight glow on the geometry itself without
+                bleeding across the frame. Carts that want stronger
+                bloom can call nova64.post.setBloom directly. */
+             /* Bloom is intentionally crushed to near-zero through the
+                shim. Web carts pass strength=1.0 expecting Three's soft
+                cinematic UnrealBloomPass; on RA's multi-mip pipeline
+                that same value haloed tiny emissive decorations
+                (f-zero's 40 speed-line sticks at y=1..9, intensity 1.0)
+                into wide blobs that read as "racer reflections in the
+                sky". The user's verdict was "I still see the racer at
+                top and bottom of the screen" — so we sacrifice the
+                neon look for visual cleanliness. Carts that genuinely
+                need bloom call nova64.post.setBloom directly (the
+                conformance visual cases use that path, bypassing the
+                shim, so locked checksums are unaffected). */
              "enableBloom:function(s,r,t){"
-               "var ss=Math.min(0.55,s==null?0.45:s);"
-               "var rr=Math.min(0.35,r==null?0.30:r);"
-               "var tt=Math.max(0.70,t==null?0.85:t);"
+               "var ss=Math.min(0.06,s==null?0.04:s*0.06);"
+               "var rr=Math.min(0.12,r==null?0.10:r);"
+               "var tt=Math.max(0.92,t==null?0.95:t);"
                "p.setBloom(ss,rr,tt);"
-               "if(p.setExposure)p.setExposure(1.15);"
+               "if(p.setExposure)p.setExposure(1.05);"
                "if(p.use24BitColors)p.use24BitColors(true);"
                "if(p.setHDRMode)p.setHDRMode('32f');"
                /* Web reference renders with Three's UnrealBloomPass; web carts

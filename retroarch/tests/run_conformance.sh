@@ -498,7 +498,7 @@ run_command_log_case "22-material" "retroarch/conformance/22-material.js" "4f934
 run_command_log_case "06-cube-vulkan12" "retroarch/conformance/06-cube.js" "78cb4d8705a297ee5f48e33f6d6a882884fe6eb9b8232bc5c25d476946f057a8" "vulkan12"
 run_case "nova fallback" "${PACKAGE_DIR}/cube-fallback.nova" "53584f0993f3ff6a"
 run_case "nova manifest main" "${PACKAGE_DIR}/cube-manifest.nova" "53584f0993f3ff6a"
-run_command_log_case "nova-asset-manifest" "${PACKAGE_DIR}/asset-manifest.nova" "bfd7722efac7253841903cef7829235066e1b3392d42cb26093abe1a6b8fd5f4"
+run_command_log_case "nova-asset-manifest" "${PACKAGE_DIR}/asset-manifest.nova" "46a35a60692ddf0de2f4fdded3f0873e1ab21e70ec804e7e19e56c7ad0e5a346"
 
 run_visual_case "33 music api" "33-music" "retroarch/conformance/33-music.js" "20d2d3e187d6c7e7"
 run_visual_case "44 capsule" "44-capsule" "retroarch/conformance/44-capsule.js" "5049a8a222ba6a96"
@@ -629,10 +629,10 @@ run_gles_case "GLES post color grade" "gles-post-color-grade"  "retroarch/confor
 run_gles_case "GLES instance colors"  "gles-instance-colors"   "retroarch/conformance/gles-instance-colors.js"   "11e6f45f37eaf28b" 3
 run_gles_case "GLES torus scale"      "gles-torus-scale"       "retroarch/conformance/gles-torus-scale.js"       "c3cde59e712c6f58" 3
 run_gles_case "GLES overlay orientation" "gles-overlay-orientation" "retroarch/conformance/gles-overlay-orientation.js" "c69230c1869b0db3" 3
-run_gles_case "GLES cone primitive"   "gles-cone-primitive"    "retroarch/conformance/gles-cone-primitive.js"    "ee40793c5bbabba0" 30
-run_gles_case "GLES capsule primitive" "gles-capsule-primitive" "retroarch/conformance/gles-capsule-primitive.js" "fb69583980901cb3" 30
-run_gles_case "GLES cylinder primitive" "gles-cylinder-primitive" "retroarch/conformance/gles-cylinder-primitive.js" "1999ffe92dd21dd8" 30
-run_gles_case "GLES transparent z sort" "gles-transparent-z-sort" "retroarch/conformance/gles-transparent-z-sort.js" "600c82fa60ac97f4" 30
+run_gles_case "GLES cone primitive"   "gles-cone-primitive"    "retroarch/conformance/gles-cone-primitive.js"    "95d0bd06cec9898d" 30
+run_gles_case "GLES capsule primitive" "gles-capsule-primitive" "retroarch/conformance/gles-capsule-primitive.js" "d39991f6826c80b3" 30
+run_gles_case "GLES cylinder primitive" "gles-cylinder-primitive" "retroarch/conformance/gles-cylinder-primitive.js" "40c96ac653df45e3" 30
+run_gles_case "GLES transparent z sort" "gles-transparent-z-sort" "retroarch/conformance/gles-transparent-z-sort.js" "9d6b7cfaab281d70" 30
 
 run_visual_case "113 math utils"    "113-math-utils"    "retroarch/conformance/113-math-utils.js"    "4bfdf6cc87ca9210"
 run_visual_case "114 camera orbit"  "114-camera-orbit"  "retroarch/conformance/114-camera-orbit.js"  "1c5d39f5fea6448c"

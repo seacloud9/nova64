@@ -164,6 +164,7 @@ typedef GLint (*PFNGLGETUNIFORMLOCATIONPROC)(GLuint program, const GLchar *name)
 typedef void (*PFNGLUNIFORMMATRIX4FVPROC)(GLint location, GLsizei count, GLboolean transpose, const GLfloat *value);
 typedef void (*PFNGLUNIFORMMATRIX3FVPROC)(GLint location, GLsizei count, GLboolean transpose, const GLfloat *value);
 typedef void (*PFNGLUNIFORM4FPROC)(GLint location, GLfloat v0, GLfloat v1, GLfloat v2, GLfloat v3);
+typedef void (*PFNGLUNIFORM4FVPROC)(GLint location, GLsizei count, const GLfloat *value);
 typedef void (*PFNGLGENBUFFERSPROC)(GLsizei n, GLuint *buffers);
 typedef void (*PFNGLBINDBUFFERPROC)(GLenum target, GLuint buffer);
 typedef void (*PFNGLBUFFERDATAPROC)(GLenum target, GLsizeiptr size, const void *data, GLenum usage);
@@ -451,6 +452,7 @@ struct nova64_gles_backend {
    PFNGLUNIFORMMATRIX4FVPROC UniformMatrix4fv;
    PFNGLUNIFORMMATRIX3FVPROC UniformMatrix3fv;
    PFNGLUNIFORM4FPROC Uniform4f;
+   PFNGLUNIFORM4FVPROC Uniform4fv;
    PFNGLGENBUFFERSPROC GenBuffers;
    PFNGLBINDBUFFERPROC BindBuffer;
    PFNGLBUFFERDATAPROC BufferData;
@@ -584,6 +586,9 @@ struct nova64_gles_backend {
    GLint cube_normal_map_uniform;
    GLint cube_emissive_color_uniform;
    GLint cube_emissive_intensity_uniform;
+   GLint cube_point_light_count_uniform;
+   GLint cube_point_lights_pos_uniform;
+   GLint cube_point_lights_color_uniform;
    GLint cube_roughness_uniform;
    GLint cube_metalness_uniform;
    GLint cube_shade_contrast_uniform;
@@ -13029,6 +13034,8 @@ static JSValue js_destroy_wipe(JSContext *ctx, JSValueConst this_val, int argc, 
 /*              cloneMesh, getMeshBounds, setMeshLayer, getMeshLayer,              */
 /*              setMeshGroup, getMeshGroup, getSceneMeshCount, setMeshSortOrder    */
 
+static void apply_trailing_options(JSContext *ctx, struct nova64_mesh *mesh, int argc, JSValueConst *argv);
+
 static JSValue js_create_torus(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
    (void)this_val;
@@ -13043,6 +13050,7 @@ static JSValue js_create_torus(JSContext *ctx, JSValueConst this_val, int argc, 
    mesh->scale[2] = (float)majorR;
    if (argc > 2) mesh->color = color_from_js(ctx, argv[2], mesh->color);
    if (argc > 3) set_position_from_js(ctx, argv[3], mesh->position);
+   apply_trailing_options(ctx, mesh, argc, argv);
    return JS_NewInt32(ctx, handle);
 }
 
@@ -13060,6 +13068,7 @@ static JSValue js_create_cone(JSContext *ctx, JSValueConst this_val, int argc, J
    mesh->scale[2] = (float)radius;
    if (argc > 2) mesh->color = color_from_js(ctx, argv[2], mesh->color);
    if (argc > 3) set_position_from_js(ctx, argv[3], mesh->position);
+   apply_trailing_options(ctx, mesh, argc, argv);
    return JS_NewInt32(ctx, handle);
 }
 
@@ -25925,6 +25934,80 @@ static JSValue js_touch_count(JSContext *ctx, JSValueConst this_val, int argc, J
    return JS_NewInt32(ctx, touch_count);
 }
 
+/* Parse a trailing { material, emissive, emissiveIntensity, roughness,
+ * metalness, flatShading } options object from createCube / createSphere /
+ * etc. Web carts pass this as the last arg to set material properties at
+ * construction time. Without parsing, torches in wizardry-3d come back as
+ * solid colored cubes instead of glowing emissive bulbs. */
+static void apply_mesh_options(JSContext *ctx, struct nova64_mesh *mesh, JSValueConst opts)
+{
+   if (!mesh || !JS_IsObject(opts) || JS_IsArray(opts)) return;
+   JSValue v;
+
+   v = JS_GetPropertyStr(ctx, opts, "emissive");
+   if (!JS_IsUndefined(v) && !JS_IsNull(v)) {
+      mesh->emissive_color = color_from_js(ctx, v, mesh->emissive_color);
+      if (mesh->emissive_intensity <= 0.0f) mesh->emissive_intensity = 1.0f;
+   }
+   JS_FreeValue(ctx, v);
+
+   v = JS_GetPropertyStr(ctx, opts, "emissiveColor");
+   if (!JS_IsUndefined(v) && !JS_IsNull(v))
+      mesh->emissive_color = color_from_js(ctx, v, mesh->emissive_color);
+   JS_FreeValue(ctx, v);
+
+   v = JS_GetPropertyStr(ctx, opts, "emissiveIntensity");
+   if (JS_IsNumber(v))
+      mesh->emissive_intensity = (float)clamp_double(double_from_js(ctx, v, mesh->emissive_intensity), 0.0, 4.0);
+   JS_FreeValue(ctx, v);
+
+   /* Web carts also pass plain `intensity:` alongside `material:'emissive'`
+    * (wizardry-3d torches, portals). Accept it as emissive intensity when
+    * the material is emissive or when no explicit emissiveIntensity was set. */
+   v = JS_GetPropertyStr(ctx, opts, "intensity");
+   if (JS_IsNumber(v))
+      mesh->emissive_intensity = (float)clamp_double(double_from_js(ctx, v, mesh->emissive_intensity), 0.0, 4.0);
+   JS_FreeValue(ctx, v);
+
+   v = JS_GetPropertyStr(ctx, opts, "material");
+   if (JS_IsString(v)) {
+      const char *m = JS_ToCString(ctx, v);
+      if (m) {
+         if (!strcmp(m, "emissive") && mesh->emissive_intensity <= 0.0f)
+            mesh->emissive_intensity = 1.0f;
+         JS_FreeCString(ctx, m);
+      }
+   }
+   JS_FreeValue(ctx, v);
+
+   v = JS_GetPropertyStr(ctx, opts, "roughness");
+   if (JS_IsNumber(v))
+      mesh->roughness = (float)clamp_double(double_from_js(ctx, v, mesh->roughness), 0.0, 1.0);
+   JS_FreeValue(ctx, v);
+
+   v = JS_GetPropertyStr(ctx, opts, "metalness");
+   if (JS_IsNumber(v))
+      mesh->metalness = (float)clamp_double(double_from_js(ctx, v, mesh->metalness), 0.0, 1.0);
+   JS_FreeValue(ctx, v);
+
+   v = JS_GetPropertyStr(ctx, opts, "flatShading");
+   if (JS_IsBool(v))
+      mesh->flat_shading = JS_ToBool(ctx, v);
+   JS_FreeValue(ctx, v);
+}
+
+/* Find the trailing options object among argv (if any) and apply it to mesh.
+ * Web-cart pattern: createCube(size, color, [x,y,z], {emissive: 0xff8833}). */
+static void apply_trailing_options(JSContext *ctx, struct nova64_mesh *mesh, int argc, JSValueConst *argv)
+{
+   for (int i = argc - 1; i >= 0; i--) {
+      if (JS_IsObject(argv[i]) && !JS_IsArray(argv[i]) && !JS_IsFunction(ctx, argv[i])) {
+         apply_mesh_options(ctx, mesh, argv[i]);
+         return;
+      }
+   }
+}
+
 static JSValue js_create_cube(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
    (void)this_val;
@@ -25957,6 +26040,7 @@ static JSValue js_create_cube(JSContext *ctx, JSValueConst this_val, int argc, J
       if (argc > 1)
          set_position_from_js(ctx, argv[1], mesh->position);
    }
+   apply_trailing_options(ctx, mesh, argc, argv);
    return JS_NewInt32(ctx, handle);
 }
 
@@ -25984,6 +26068,7 @@ static JSValue js_create_sphere(JSContext *ctx, JSValueConst this_val, int argc,
       if (argc > 1)
          set_position_from_js(ctx, argv[1], mesh->position);
    }
+   apply_trailing_options(ctx, mesh, argc, argv);
    return JS_NewInt32(ctx, handle);
 }
 
@@ -26010,6 +26095,7 @@ static JSValue js_create_plane(JSContext *ctx, JSValueConst this_val, int argc, 
    } else if (argc > 0) {
       mesh->color = color_from_js(ctx, argv[0], mesh->color);
    }
+   apply_trailing_options(ctx, mesh, argc, argv);
    return JS_NewInt32(ctx, handle);
 }
 
@@ -26037,6 +26123,7 @@ static JSValue js_create_capsule(JSContext *ctx, JSValueConst this_val, int argc
    } else if (argc > 0) {
       mesh->color = color_from_js(ctx, argv[0], mesh->color);
    }
+   apply_trailing_options(ctx, mesh, argc, argv);
    return JS_NewInt32(ctx, handle);
 }
 
@@ -26065,6 +26152,7 @@ static JSValue js_create_cylinder(JSContext *ctx, JSValueConst this_val, int arg
    } else if (argc > 0) {
       mesh->color = color_from_js(ctx, argv[0], mesh->color);
    }
+   apply_trailing_options(ctx, mesh, argc, argv);
    return JS_NewInt32(ctx, handle);
 }
 
@@ -33525,6 +33613,7 @@ static bool gles_create_cube_program(void)
       "out vec2 v_uv;\n"
       "out vec4 v_shadow_coord;\n"
       "out vec3 v_normal;\n"
+      "out vec3 v_world_pos;\n"
       "out vec4 v_instance_color;\n"
       "void main() {\n"
       "  vec4 local_pos = vec4(a_position, 1.0);\n"
@@ -33534,6 +33623,7 @@ static bool gles_create_cube_program(void)
       "  float diffuse = max(dot(n, l), 0.0);\n"
       "  v_light = diffuse;\n"
       "  v_normal = n;\n"
+      "  v_world_pos = world_pos.xyz;\n"
       "  v_instance_color = a_instance_color;\n"
       "  gl_Position = (u_use_instancing != 0) ? u_mvp * world_pos : u_mvp * local_pos;\n"
       "  vec4 view_pos = u_view * world_pos;\n"
@@ -33562,7 +33652,13 @@ static bool gles_create_cube_program(void)
       "in vec2 v_uv;\n"
       "in vec4 v_shadow_coord;\n"
       "in vec3 v_normal;\n"
+      "in vec3 v_world_pos;\n"
       "in vec4 v_instance_color;\n"
+      /* Point lights: up to 8 active uploaded per draw. xyz=world pos,
+         w=intensity; rgb=color (sRGB), w=range. Count=0 -> empty loop. */
+      "uniform int u_point_light_count;\n"
+      "uniform vec4 u_point_lights_pos[8];\n"
+      "uniform vec4 u_point_lights_color[8];\n"
       "uniform vec4 u_color;\n"
       "uniform vec4 u_ambient_color;\n"
       "uniform vec4 u_light_direction;\n"
@@ -33679,6 +33775,26 @@ static bool gles_create_cube_program(void)
       "      lit *= (0.35 + 0.65 * (s / 9.0));\n"
       "    }\n"
       "  }\n"
+      /* Point-light accumulation: distance-attenuated diffuse from each
+         active light. Quadratic falloff so torches feel localized; clamped
+         to range so distant lights don't smear globally. Applied before
+         fog so atmospheric darkening can still swallow far light sources. */
+      "  for (int i = 0; i < u_point_light_count; i++) {\n"
+      "    if (i >= 8) break;\n"
+      "    vec3 lp = u_point_lights_pos[i].xyz;\n"
+      "    float intensity = u_point_lights_pos[i].w;\n"
+      "    float range = u_point_lights_color[i].w;\n"
+      "    if (intensity <= 0.0 || range <= 0.0) continue;\n"
+      "    vec3 ld = lp - v_world_pos;\n"
+      "    float dist = length(ld);\n"
+      "    if (dist >= range) continue;\n"
+      "    vec3 ldir = ld / max(dist, 0.001);\n"
+      "    float ndotl = max(dot(v_normal, ldir), 0.0);\n"
+      "    float f = 1.0 - dist / range;\n"
+      "    f *= f;\n"
+      "    vec3 pcol = srgb_to_linear(u_point_lights_color[i].rgb);\n"
+      "    lit += base.rgb * pcol * intensity * ndotl * f;\n"
+      "  }\n"
       "  if (u_fog_enabled != 0) {\n"
       "    float fog_t = clamp((v_fog_depth - u_fog_near) / max(u_fog_far - u_fog_near, 0.001), 0.0, 1.0);\n"
       "    lit = mix(lit, srgb_to_linear(u_fog_color.rgb), fog_t);\n"
@@ -33748,6 +33864,9 @@ static bool gles_create_cube_program(void)
    gles.cube_normal_map_uniform = gles.GetUniformLocation(program, "u_normal_map");
    gles.cube_emissive_color_uniform = gles.GetUniformLocation(program, "u_emissive_color");
    gles.cube_emissive_intensity_uniform = gles.GetUniformLocation(program, "u_emissive_intensity");
+   gles.cube_point_light_count_uniform = gles.GetUniformLocation(program, "u_point_light_count");
+   gles.cube_point_lights_pos_uniform = gles.GetUniformLocation(program, "u_point_lights_pos[0]");
+   gles.cube_point_lights_color_uniform = gles.GetUniformLocation(program, "u_point_lights_color[0]");
    gles.cube_roughness_uniform = gles.GetUniformLocation(program, "u_roughness");
    gles.cube_metalness_uniform = gles.GetUniformLocation(program, "u_metalness");
    gles.cube_shade_contrast_uniform = gles.GetUniformLocation(program, "u_shade_contrast");
@@ -34429,6 +34548,7 @@ static bool gles_load_functions(void)
    gles.UniformMatrix4fv = (PFNGLUNIFORMMATRIX4FVPROC)load_gles_proc("glUniformMatrix4fv");
    gles.UniformMatrix3fv = (PFNGLUNIFORMMATRIX3FVPROC)load_gles_proc("glUniformMatrix3fv");
    gles.Uniform4f = (PFNGLUNIFORM4FPROC)load_gles_proc("glUniform4f");
+   gles.Uniform4fv = (PFNGLUNIFORM4FVPROC)load_gles_proc("glUniform4fv");
    gles.GenBuffers = (PFNGLGENBUFFERSPROC)load_gles_proc("glGenBuffers");
    gles.BindBuffer = (PFNGLBINDBUFFERPROC)load_gles_proc("glBindBuffer");
    gles.BufferData = (PFNGLBUFFERDATAPROC)load_gles_proc("glBufferData");
@@ -34586,6 +34706,39 @@ static void gles_context_destroy(void)
    nova64_log_line(RETRO_LOG_INFO, "[nova64] GLES3 hardware context destroyed");
 }
 
+/* Collect up to 8 active point lights and upload to the cube shader. Each
+ * light fills one vec4 pos+intensity slot and one vec4 color+range slot.
+ * No-op when no point lights are allocated, leaving u_point_light_count=0
+ * so the in-shader loop is empty (conformance-safe). */
+static void gles_upload_point_lights(void)
+{
+   if (!gles.Uniform1i) return;
+   float pos_buf[8 * 4]   = {0};
+   float color_buf[8 * 4] = {0};
+   int   count = 0;
+   for (int i = 0; i < NOVA64_MAX_POINT_LIGHTS && count < 8; i++) {
+      const struct nova64_point_light *pl = &point_lights[i];
+      if (!pl->used || pl->intensity <= 0.0f || pl->distance <= 0.0f) continue;
+      pos_buf[count * 4 + 0] = pl->position[0];
+      pos_buf[count * 4 + 1] = pl->position[1];
+      pos_buf[count * 4 + 2] = pl->position[2];
+      pos_buf[count * 4 + 3] = pl->intensity;
+      color_buf[count * 4 + 0] = (float)((pl->color >> 24) & 0xffU) / 255.0f;
+      color_buf[count * 4 + 1] = (float)((pl->color >> 16) & 0xffU) / 255.0f;
+      color_buf[count * 4 + 2] = (float)((pl->color >>  8) & 0xffU) / 255.0f;
+      color_buf[count * 4 + 3] = pl->distance;
+      count++;
+   }
+   if (gles.cube_point_light_count_uniform >= 0)
+      gles.Uniform1i(gles.cube_point_light_count_uniform, count);
+   if (count > 0 && gles.Uniform4fv) {
+      if (gles.cube_point_lights_pos_uniform >= 0)
+         gles.Uniform4fv(gles.cube_point_lights_pos_uniform, 8, pos_buf);
+      if (gles.cube_point_lights_color_uniform >= 0)
+         gles.Uniform4fv(gles.cube_point_lights_color_uniform, 8, color_buf);
+   }
+}
+
 static void render_gles_primitive(const struct nova64_mesh *mesh, const float view_projection[16],
       GLuint vbo, GLuint ibo, GLsizei index_count)
 {
@@ -34630,6 +34783,7 @@ static void render_gles_primitive(const struct nova64_mesh *mesh, const float vi
       gles.Uniform1f(gles.cube_light_intensity_uniform, light_state.intensity);
    if (gles.cube_shading_style_uniform >= 0 && gles.Uniform1i)
       gles.Uniform1i(gles.cube_shading_style_uniform, gles_shading_style);
+   gles_upload_point_lights();
    /* fog */
    if (gles.cube_fog_enabled_uniform >= 0) {
       gles.Uniform1i(gles.cube_fog_enabled_uniform, light_state.fog_enabled ? 1 : 0);
@@ -35328,6 +35482,7 @@ static void render_gles_instanced_mesh(const struct nova64_mesh *mesh, const flo
       gles.Uniform1f(gles.cube_light_intensity_uniform, light_state.intensity);
    if (gles.cube_shading_style_uniform >= 0 && gles.Uniform1i)
       gles.Uniform1i(gles.cube_shading_style_uniform, gles_shading_style);
+   gles_upload_point_lights();
    if (gles.cube_fog_enabled_uniform >= 0)
       gles.Uniform1i(gles.cube_fog_enabled_uniform, light_state.fog_enabled ? 1 : 0);
    if (gles.cube_fog_color_uniform >= 0)

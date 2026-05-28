@@ -1,9 +1,73 @@
 # Nova64 Hardware GL on Windows — Status & Handover
 
-**Last updated:** 2026-05-27 (Claude pass — Wizardry playable + namespace mirror)
+**Last updated:** 2026-05-27 (Claude pass — point lights + mesh options)
 **Branch:** `main`
-**Working tree:** doc + core edits ahead of `722533b`
+**Working tree:** doc + core edits ahead of `ea39bc8`
 **Windows DLL deployed:** cross-built and copied to `C:\RetroArch-Win64\cores\nova64_libretro.dll`
+
+---
+
+## 🤝 HANDOFF FOR CODEX — 2026-05-27c (Claude point lights + mesh options)
+
+Closed the two visual-gap items flagged in the previous handoff:
+
+### 1. createCube / Sphere / Plane / Cone / Cylinder / Capsule / Torus — options arg
+
+These ctors used to silently drop the trailing options object. Wizardry
+torches and portals construct themselves with
+`{ material: 'emissive', emissive: 0xff8800, intensity: 2 }` and
+expect to glow on first frame. They were rendering as solid colored
+cubes instead.
+
+**Fix** ([retroarch/nova64_libretro.c](retroarch/nova64_libretro.c)):
+added `apply_mesh_options()` + `apply_trailing_options()` helpers that
+parse `emissive`, `emissiveColor`, `emissiveIntensity`, `intensity` (web
+alias), `material:'emissive'`, `roughness`, `metalness`, `flatShading`
+from the last object-arg of each ctor. Wired into all seven mesh
+ctors. Conformance untouched (no test passes options to these ctors).
+
+### 2. Point-light support in the cube fragment shader
+
+The libretro core stored point-light arrays (position, color, intensity,
+range) via `createPointLight`, but no shader ever read them — only
+ambient + directional contributed to mesh shading. Wizardry's torch
+glow, portal halo, FPS-demo muzzle-flash, etc. were all invisible.
+
+**Fix:**
+
+- Cube vertex shader now outputs `v_world_pos` so the fragment can
+  compute light distance per-pixel.
+- Cube fragment shader has new uniforms: `u_point_light_count`,
+  `u_point_lights_pos[8]` (xyz=world pos, w=intensity),
+  `u_point_lights_color[8]` (rgb=sRGB color, w=range). A simple loop
+  accumulates `base * color * intensity * NdotL * quadratic_falloff`
+  for each light within range. Applied before fog so atmospheric
+  darkening still swallows distant sources.
+- C side: helper `gles_upload_point_lights()` collects up to 8 active
+  lights from `point_lights[64]` and uploads via `Uniform4fv`. Called
+  from both cube draw paths. With `count = 0` (default), the loop is
+  empty — conformance carts that don't allocate point lights are
+  pixel-identical to before. Verified: 0..200 still clean.
+
+### Verified
+
+- Wizardry corridor now shows proper depth, warm torch contribution
+  near ceiling, atmospheric fog falloff. Side-by-side with web
+  reference: similar mood (warm low-light dungeon), more lit overall
+  because we don't crush exposure like the web bloom does, but the
+  flatness from the prior pass is gone.
+- Conformance: 0..200 clean.
+- DLL: cross-built and deployed.
+
+### Remaining gaps vs web
+
+- Bloom on emissive surfaces (web has soft glow halos around torches,
+  RA has crisp emissive without bloom contribution because the bloom
+  threshold is now clamped low for the F-Zero overbloom fix).
+- Specular highlights — point lights only contribute diffuse.
+- Shadows from point lights — directional only.
+
+These would need shader rework with a fresh conformance baseline.
 
 ---
 

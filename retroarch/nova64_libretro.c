@@ -2090,6 +2090,12 @@ static uint32_t color_from_js(JSContext *ctx, JSValueConst value, uint32_t fallb
    return u;
 }
 
+/* 24-bit color promotion: OFF by default because the heuristic
+ * (top byte zero + color bits set) is ambiguous — it false-positives on
+ * legitimate rgba8(0, anything, anything, anything) outputs and breaks
+ * conformance carts that use red-zero colors (e.g. cyan, green tints).
+ * Carts that need 24-bit literal support opt in via use24BitColors(true)
+ * or via compat shims (createCube wrapper, voxel-cart init). */
 bool nova64_compat_24bit_colors = false;
 bool nova64_compat_web_overlay_colors = false;
 /* RGBA32F by default — "use all 128 bits!" per user. Auto-falls back to
@@ -29455,6 +29461,7 @@ static bool install_nova64_api(JSContext *ctx)
    JSValue storage = JS_NewObject(ctx);
 
    set_function(ctx, draw, "rgba8", js_rgba8, 4);
+   set_function(ctx, draw, "hslColor", js_hsl_color, 4);
    set_function(ctx, draw, "colorLerp", js_color_lerp, 3);
    set_function(ctx, draw, "colorR", js_color_r, 1);
    set_function(ctx, draw, "colorG", js_color_g, 1);
@@ -29574,6 +29581,14 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, input, "trigger", js_trigger, 2);
    set_function(ctx, input, "isKeyDown",    js_key,  1);   /* alias: key() */
    set_function(ctx, input, "isKeyPressed", js_keyp, 1);   /* alias: keyp() */
+   set_function(ctx, input, "leftStickX",   js_left_stick_x,  0);
+   set_function(ctx, input, "leftStickY",   js_left_stick_y,  0);
+   set_function(ctx, input, "rightStickX",  js_right_stick_x, 0);
+   set_function(ctx, input, "rightStickY",  js_right_stick_y, 0);
+   set_function(ctx, input, "mouseDown",       js_mouse_down,        0);
+   set_function(ctx, input, "mousePressed",    js_mouse_pressed,     0);
+   set_function(ctx, input, "gamepadAxis",     js_gamepad_axis,      1);
+   set_function(ctx, input, "gamepadConnected",js_gamepad_connected, 0);
 
    set_function(ctx, scene, "createCube", js_create_cube, 1);
    set_function(ctx, scene, "createSphere", js_create_sphere, 1);
@@ -32419,6 +32434,41 @@ static bool install_nova64_api(JSContext *ctx)
     * Runs AFTER all set_function calls above. */
    {
       static const char compat_late_js[] =
+         /* Global -> namespace mirror. Web nova64 carts (wizardry-3d,
+            fps-demo-3d, neon-snake, etc.) call nova64.draw.* /
+            nova64.fx.* / nova64.util.* / etc. for helpers the libretro
+            core binds globally. Rather than touching hundreds of
+            set_function call-sites, this single pass walks globalThis
+            and mirrors every non-conflicting function onto the
+            matching nova64 namespace. Runs in compat_late_js so all
+            C-side set_function bindings are already attached.
+
+            Denylist: names where the C global returns a primitive
+            (integer handle, etc.) but web nova64 returns an object
+            with methods. We skip these so the explicit JS-side
+            re-implementations later in compat_late_js take precedence. */
+         "(function(){"
+           "if(!nova64)return;"
+           "var skip={"
+             "createTimer:1,createCooldownSet:1,createFloatingTextSystem:1,"
+             "createStateMachine:1,createSpawner:1,createShake:1,"
+             "createHitState:1,createPool:1,createSeedRNG:1,createGameStore:1"
+           "};"
+           "var nss=['draw','fx','util','light','audio','ui','physics','data','shader','camera','scene','input'];"
+           "var names=Object.getOwnPropertyNames(globalThis);"
+           "for(var i=0;i<names.length;i++){"
+             "var k=names[i];"
+             "if(k.charAt(0)==='_'||k==='nova64'||k==='globalThis'||skip[k])continue;"
+             "var fn=globalThis[k];"
+             "if(typeof fn!=='function')continue;"
+             "for(var j=0;j<nss.length;j++){"
+               "var ns=nova64[nss[j]];"
+               "if(ns&&typeof ns[k]==='undefined'){"
+                 "try{ns[k]=fn;}catch(e){}"
+               "}"
+             "}"
+           "}"
+         "})();"
          /* nova64.draw mirrors */
          "(function(){var d=nova64.draw,fns=["
            "'drawGradient','drawNoise','drawPanel','drawRadialGradient',"
@@ -32620,6 +32670,24 @@ static bool install_nova64_api(JSContext *ctx)
            "if(!u.createStateMachine)u.createStateMachine=function(initial){var cur=initial,elapsed=0,handlers={};return{on:function(s,f){handlers[s]=f;return this;},switchTo:function(s){if(handlers[cur]&&handlers[cur].exit)handlers[cur].exit();cur=s;elapsed=0;if(handlers[cur]&&handlers[cur].enter)handlers[cur].enter();return this;},update:function(dt){elapsed+=dt||0;if(handlers[cur]&&handlers[cur].update)handlers[cur].update(dt,elapsed);},getState:function(){return cur;},getElapsed:function(){return elapsed;},is:function(s){return cur===s;}};};"
            "if(!u.createTimer)u.createTimer=function(duration,opts){opts=opts||{};return{elapsed:0,duration:duration||1,loop:!!opts.loop,onComplete:opts.onComplete||null,done:false,update:function(dt){if(this.done&&!this.loop)return;this.elapsed+=dt||0;if(this.elapsed>=this.duration){if(this.loop)this.elapsed-=this.duration;else{this.elapsed=this.duration;this.done=true;}if(this.onComplete)this.onComplete();}},progress:function(){return Math.min(1,this.elapsed/this.duration);},reset:function(){this.elapsed=0;this.done=false;}};};"
            "})();"
+         /* drawFloatingTexts3D — wizardry-3d projects worldspace damage
+            numbers through a cart-supplied worldToScreen() callback and
+            paints them as 2D HUD text. Web nova64 ships this helper but
+            the libretro core does not bind it. Provide a JS shim that
+            walks the system's _texts array, projects each one, and
+            prints. The 2D fallback works since the cart computes screen
+            positions itself. */
+         "if(!nova64.draw.drawFloatingTexts3D)nova64.draw.drawFloatingTexts3D=function(sys,wts){"
+           "if(!sys||!sys._texts||!wts||typeof wts!=='function')return;"
+           "var prt=globalThis.printCentered||globalThis.print;"
+           "if(typeof prt!=='function')return;"
+           "for(var i=0;i<sys._texts.length;i++){"
+             "var t=sys._texts[i];"
+             "var sp=null;try{sp=wts(t.x||0,t.y||0,t.z||0);}catch(e){continue;}"
+             "if(!sp||sp.length<2)continue;"
+             "try{prt(t.text||'',sp[0]|0,sp[1]|0,t.color||0xffffffff);}catch(e){}"
+           "}"
+         "};"
          /* nova64.ui.grid — simple grid helper used by boids cart */
          "if(!nova64.ui.grid)nova64.ui.grid=function(rows,cols,cb){"
            "var w=640/cols,h=360/rows;"
@@ -33104,6 +33172,62 @@ static bool js_host_load_cart(const char *source, size_t source_size, const char
       return false;
 
    JSContext *ctx = js_host.context;
+
+   /* Per-cart auto-detect: web carts that pass 0xRRGGBB literals to
+    * createCube / createSphere / etc. need 24-bit color promotion. The
+    * libretro core can't tell a hex literal from rgba8(0,*,*,*) at the
+    * value level (both produce the same u32). So we sniff the cart source
+    * for the pattern `createCube|createSphere|...(...0xRRGGBB...` — if any
+    * mesh ctor takes a non-rgba8 hex literal, flip on 24-bit promotion
+    * for this cart's lifetime. Conformance carts use rgba8() exclusively,
+    * so they're unaffected. */
+   {
+      const char *needles[] = {"createCube(", "createSphere(", "createPlane(",
+                               "createCone(", "createCylinder(", "createCapsule(",
+                               "createTorus(", "createAdvancedCube(",
+                               "createAdvancedSphere(", "setMeshColor(",
+                               "setMeshEmissive(", NULL};
+      bool sniff_hit = false;
+      for (int i = 0; needles[i] && !sniff_hit; i++) {
+         const char *p = source;
+         size_t nlen = strlen(needles[i]);
+         while (p && p < source + source_size) {
+            const char *found = NULL;
+            for (const char *scan = p; scan + nlen <= source + source_size; scan++) {
+               if (memcmp(scan, needles[i], nlen) == 0) { found = scan; break; }
+            }
+            p = found;
+            if (!p) break;
+            const char *q = p + nlen;
+            const char *end = source + source_size;
+            int depth = 1;
+            while (q < end && depth > 0) {
+               if (*q == '(') depth++;
+               else if (*q == ')') depth--;
+               if (depth == 0) break;
+               if (q[0] == '0' && (q[1] == 'x' || q[1] == 'X')) {
+                  const char *hex = q + 2;
+                  int hex_len = 0;
+                  while (hex < end && hex_len < 9 &&
+                         ((*hex >= '0' && *hex <= '9') ||
+                          (*hex >= 'a' && *hex <= 'f') ||
+                          (*hex >= 'A' && *hex <= 'F'))) {
+                     hex++; hex_len++;
+                  }
+                  if (hex_len == 6) { sniff_hit = true; break; }
+               }
+               q++;
+            }
+            p = q;
+         }
+      }
+      if (sniff_hit) {
+         nova64_compat_24bit_colors = true;
+         if (log_cb) log_cb(RETRO_LOG_INFO,
+               "[nova64] cart uses 24-bit hex literals; enabling color promotion\n");
+      }
+   }
+
    const char *eval_filename = package_manifest_main[0] ? package_manifest_main :
       (filename ? filename : "<nova64-cart>");
    JSValue compiled = JS_Eval(ctx, source, source_size, eval_filename,

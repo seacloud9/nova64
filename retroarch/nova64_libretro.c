@@ -25807,6 +25807,17 @@ static int key_code_from_js(JSContext *ctx, JSValueConst value)
       code = (int)key[0]; /* a-z maps to RETROK 97-122 */
    else if (key[0] >= '0' && key[0] <= '9' && key[1] == '\0')
       code = (int)key[0]; /* 0-9 maps to RETROK 48-57 */
+   /* Web DOM event.code form: "KeyA".."KeyZ" -> single letter.
+    * Wizardry-3d uses `keyp('KeyA')` to toggle auto-combat, `keyp('KeyW')`
+    * for forward, etc.; without this branch every Key* check returns -1
+    * and the cart's keyboard hotkeys silently no-op on RA. */
+   else if (key_len == 4 && key[0] == 'k' && key[1] == 'e' && key[2] == 'y' &&
+            key[3] >= 'a' && key[3] <= 'z')
+      code = (int)key[3];
+   /* Web DOM event.code form: "Digit0".."Digit9" -> single digit. */
+   else if (key_len == 6 && key[0] == 'd' && key[1] == 'i' && key[2] == 'g' &&
+            key[3] == 'i' && key[4] == 't' && key[5] >= '0' && key[5] <= '9')
+      code = (int)key[5];
    else if (key[0] == 'f') {
       int fn = (int)strtol(key + 1, NULL, 10);
       if (fn >= 1 && fn <= 12)
@@ -25817,10 +25828,9 @@ static int key_code_from_js(JSContext *ctx, JSValueConst value)
 }
 
 /* Map a keyboard key to one or more joypad button indices so keyboard-only
- * web carts work on RetroArch gamepads. Returns the number of mapped indices
- * (0..NOVA64_BUTTON_COUNT). Direction keys map to one button; "confirm" keys
- * (Space, Enter) map to four (B, A, X, Y) so any of the face buttons fires
- * the confirm regardless of platform convention. */
+ * web carts work on RetroArch gamepads. Returns the number of mapped indices.
+ * Direction keys map to one native button; "confirm" keys (Space, Enter) map
+ * to four face buttons so any platform's "OK" convention fires. */
 static int joypad_buttons_for_key(int code, int out[NOVA64_BUTTON_COUNT])
 {
    switch (code) {
@@ -25836,6 +25846,23 @@ static int joypad_buttons_for_key(int code, int out[NOVA64_BUTTON_COUNT])
    }
 }
 
+/* For keys that have an extended-button overlay (web KEYMAP slots 8..13),
+ * return the ext_buttons[] index that mirrors the key. Lets controllers
+ * trigger cart-side keyp('KeyA') etc. via the extended mapping populated
+ * in update_input (SELECT->'a', L->'q', R->'w', START->Enter, etc.). */
+static int ext_button_for_key(int code)
+{
+   switch (code) {
+      case 97:  return 8;   /* 'a' / SELECT */
+      case 115: return 9;   /* 's' */
+      case 113: return 10;  /* 'q' / L */
+      case 119: return 11;  /* 'w' / R */
+      case NOVA64_RETROK_RETURN: return 12; /* Enter / START */
+      case NOVA64_RETROK_SPACE:  return 13; /* Space / SELECT-or-face */
+      default: return -1;
+   }
+}
+
 static bool key_held_or_joypad(int code)
 {
    if (code < 0 || code >= NOVA64_KEY_TABLE_SIZE) return false;
@@ -25844,6 +25871,8 @@ static bool key_held_or_joypad(int code)
    int n = joypad_buttons_for_key(code, idx);
    for (int i = 0; i < n; i++)
       if (buttons[idx[i]]) return true;
+   int ext = ext_button_for_key(code);
+   if (ext >= 0 && ext_buttons[ext]) return true;
    return false;
 }
 
@@ -25855,6 +25884,8 @@ static bool key_pressed_or_joypad(int code)
    int n = joypad_buttons_for_key(code, idx);
    for (int i = 0; i < n; i++)
       if (pressed_buttons[idx[i]]) return true;
+   int ext = ext_button_for_key(code);
+   if (ext >= 0 && ext_pressed_buttons[ext]) return true;
    return false;
 }
 
@@ -33522,7 +33553,9 @@ static void update_input(void)
       web-side indices; in RA we surface them via additional sources
       (named keyboard keys + RetroPad START/SELECT/L/R + face buttons)
       so the cart's start-screen check fires from any controller path. */
-   ext_buttons[8]  = key_held[97]; /* 'a' */
+   /* Map RetroPad SELECT to keyboard 'a' so carts whose secondary toggle
+    * is bound to KeyA (wizardry-3d auto-combat) work from a controller. */
+   ext_buttons[8]  = key_held[97] || jp_select; /* 'a' / SELECT */
    ext_buttons[9]  = key_held[115]; /* 's' */
    ext_buttons[10] = key_held[113] || jp_l; /* 'q' / L shoulder */
    ext_buttons[11] = key_held[119] || jp_r; /* 'w' / R shoulder */

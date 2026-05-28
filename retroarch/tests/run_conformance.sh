@@ -808,6 +808,16 @@ run_key_case  "290 input ext (key a -> 8)"      "retroarch/conformance/290-input
 run_key_case  "290 input ext (key q -> 10)"     "retroarch/conformance/290-input-extended.js" "q"     "c5459abc554a4a22"
 run_key_case  "290 input ext (key w -> 11)"     "retroarch/conformance/290-input-extended.js" "w"     "fc50e6d383a58762"
 
+# 292 browser DOM-code regression: locks down key('KeyA'),
+# key('KeyW'), key('Digit1'), key('ArrowUp'), plus the Wizardry
+# controller SELECT -> KeyA bridge used for auto-combat.
+run_case      "292 key dom (no input)"       "retroarch/conformance/292-key-dom-codes.js" "ad5ae284bcdf53dd"
+run_key_case  "292 key dom (key a -> KeyA)"  "retroarch/conformance/292-key-dom-codes.js" "a"      "d4cb340bf23add7d"
+run_key_case  "292 key dom (key w -> KeyW)"  "retroarch/conformance/292-key-dom-codes.js" "w"      "8e1597f170a31f4d"
+run_key_case  "292 key dom (key 1 -> Digit1)" "retroarch/conformance/292-key-dom-codes.js" "1"     "661f24b703eb3e4d"
+run_key_case  "292 key dom (key up -> ArrowUp)" "retroarch/conformance/292-key-dom-codes.js" "up"   "b89ff17d9c6a232d"
+run_btn_case  "292 key dom (select -> KeyA)" "retroarch/conformance/292-key-dom-codes.js" "select" "d4cb340bf23add7d"
+
 # 291 overlay autoclear regression: locks down the default
 # auto-clearing of the 2D HUD overlay between frames. Without
 # auto-clear, the F-Zero title screen vignette stayed under the

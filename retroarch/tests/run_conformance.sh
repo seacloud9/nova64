@@ -1030,5 +1030,6 @@ run_visual_case "815 draw namespace textfx" "815-draw-namespace-textfx" "retroar
 run_visual_case "1091 batch90 showcase"    "1091-batch90-showcase"    "retroarch/conformance/1091-batch90-showcase.js"    "6b598704e72fafdc"
 run_visual_case "1092 scaled text"         "1092-scaled-text"         "retroarch/conformance/1092-scaled-text.js"         "305d05942969cdcd"
 run_visual_case "1093 minimap tiles"       "1093-minimap-tiles"       "retroarch/conformance/1093-minimap-tiles.js"       "f425605e4063648a"
+run_visual_case "1094 minimap dynamic"     "1094-minimap-dynamic"     "retroarch/conformance/1094-minimap-dynamic.js"     "2a95250dc05c408b"
 
 echo "Conformance passed."

@@ -2352,7 +2352,7 @@ function rebuildMinimap() {
         return py;
       },
       color: nova64.draw.rgba8(255, 60, 60, 255),
-      blink: true,
+      blink: false,
     },
     tiles(tx, ty) {
       if (!explored.has(`${tx},${ty}`)) return null;

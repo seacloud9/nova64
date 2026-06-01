@@ -2297,9 +2297,11 @@ function enterFloor(newFloor) {
   // Richer noise detail on deeper floors for more complex fog wisps
   nova64.util.noiseDetail(Math.min(2 + floor, 6), 0.5);
 
-  // Dynamic bloom tuning per floor — deeper = tighter, more intense bloom
-  const bloomRad = nova64.util.remap(floor, 1, 5, 0.5, 0.25);
-  const bloomThresh = nova64.util.remap(floor, 1, 5, 0.3, 0.15);
+  // Dynamic bloom tuning per floor — deeper floors get slightly broader, more
+  // permissive halos. Stays inside the Three-style HDR knee range so only
+  // emissive/HDR surfaces drive visible bloom.
+  const bloomRad = nova64.util.remap(floor, 1, 5, 0.4, 0.55);
+  const bloomThresh = nova64.util.remap(floor, 1, 5, 0.85, 0.7);
   nova64.fx.setBloomRadius(bloomRad);
   nova64.fx.setBloomThreshold(bloomThresh);
   targetYaw = facing * HALF_PI;
@@ -2503,13 +2505,11 @@ export function init() {
 
   nova64.audio.setVolume(0.6);
   nova64.fx.enableRetroEffects({
-    bloom: { strength: 1.2, radius: 0.5, threshold: 0.2 },
+    bloom: { strength: 0.5, radius: 0.4, threshold: 0.85 },
     vignette: { darkness: 0.9, offset: 0.85 },
     fxaa: true,
     dithering: true,
   });
-  nova64.fx.setBloomRadius(0.5);
-  nova64.fx.setBloomThreshold(0.2);
   nova64.light.createGradientSkybox(0x0a0515, 0x020108);
   nova64.light.enableSkyboxAutoAnimate(0.3);
 

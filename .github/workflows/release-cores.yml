@@ -1,8 +1,9 @@
 name: Release RetroArch cores
 
-# Builds and publishes the Nova64 libretro core for Linux (.so) and Windows
-# (.dll). Triggered automatically when a v*.*.* tag is pushed, or manually
-# via the Actions tab so you can cut a one-off pre-release without retagging.
+# Builds and publishes the Nova64 libretro core for Linux (.so),
+# Windows (.dll), and macOS (.dylib universal x86_64 + arm64).
+# Triggered automatically when a v*.*.* tag is pushed, or manually via
+# the Actions tab so you can cut a one-off pre-release without retagging.
 
 on:
   push:
@@ -20,11 +21,33 @@ on:
         default: true
 
 jobs:
-  build-cores:
-    name: Build libretro cores
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write   # create release + upload assets
+  build:
+    name: Build core (${{ matrix.target }})
+    runs-on: ${{ matrix.runner }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: linux-x86_64
+            runner: ubuntu-latest
+            built_name: nova64_libretro.so
+            asset_name: nova64_libretro_linux_x86_64.so
+            make_args: ''
+            apt_deps: 'build-essential zlib1g-dev'
+          - target: windows-x86_64
+            runner: ubuntu-latest
+            built_name: nova64_libretro.dll
+            asset_name: nova64_libretro_windows_x86_64.dll
+            make_args: 'platform=win-cross'
+            apt_deps: 'build-essential gcc-mingw-w64-x86-64 libz-mingw-w64-dev'
+          - target: macos-universal
+            runner: macos-latest
+            built_name: nova64_libretro.dylib
+            asset_name: nova64_libretro_macos_universal.dylib
+            # Universal binary: clang accepts repeated -arch flags for fat output.
+            make_args: 'platform=osx CC=cc\ -arch\ x86_64\ -arch\ arm64'
+            apt_deps: ''
 
     steps:
       - name: Checkout (with submodules)
@@ -32,61 +55,74 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Install build deps
+      - name: Install build deps (Linux/Windows targets)
+        if: matrix.apt_deps != ''
         run: |
           sudo apt-get update
-          sudo apt-get install -y \
-            build-essential \
-            gcc-mingw-w64-x86-64 \
-            libz-mingw-w64-dev \
-            zlib1g-dev
+          sudo apt-get install -y ${{ matrix.apt_deps }}
 
-      - name: Build Linux .so
-        run: make -C retroarch clean all
+      - name: Build
+        run: make -C retroarch ${{ matrix.make_args }} clean all
 
-      - name: Stage Linux artifact
+      - name: Stage artifact under platform-named filename
+        run: |
+          mkdir -p staging
+          cp "retroarch/${{ matrix.built_name }}" "staging/${{ matrix.asset_name }}"
+          # Also keep the canonical (unprefixed) name so the Windows DLL drops
+          # straight into RetroArch's cores/ directory without renaming.
+          cp "retroarch/${{ matrix.built_name }}" "staging/${{ matrix.built_name }}"
+          ls -lh staging
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: core-${{ matrix.target }}
+          path: staging/
+          retention-days: 30
+
+  release:
+    name: Publish GitHub Release
+    runs-on: ubuntu-latest
+    needs: build
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download all platform artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Flatten + checksum + manifest
         run: |
           mkdir -p dist-cores
-          cp retroarch/nova64_libretro.so dist-cores/nova64_libretro.so
-          cp retroarch/nova64_libretro.so dist-cores/nova64_libretro_linux_x86_64.so
-
-      - name: Cross-build Windows .dll
-        run: make -C retroarch platform=win-cross clean all
-
-      - name: Stage Windows artifact
-        run: |
-          cp retroarch/nova64_libretro.dll dist-cores/nova64_libretro.dll
-          cp retroarch/nova64_libretro.dll dist-cores/nova64_libretro_windows_x86_64.dll
-
-      - name: Generate checksums + manifest
-        run: |
+          find artifacts -type f \( -name '*.so' -o -name '*.dll' -o -name '*.dylib' \) \
+            -exec cp -v {} dist-cores/ \;
           cd dist-cores
-          sha256sum nova64_libretro.so nova64_libretro.dll \
-                    nova64_libretro_linux_x86_64.so \
-                    nova64_libretro_windows_x86_64.dll \
-            > SHA256SUMS.txt
+          # SHA256SUMS over every shipped binary
+          sha256sum * > SHA256SUMS.txt
           cat > README.md <<'EOF'
           # Nova64 libretro cores
 
           Drop the file matching your platform into your RetroArch `cores/`
           directory:
 
-          - **Windows**: `nova64_libretro.dll` (x86_64)
-          - **Linux**: `nova64_libretro.so` (x86_64)
+          | Platform | File |
+          |----------|------|
+          | Windows (x86_64) | `nova64_libretro.dll` (= `nova64_libretro_windows_x86_64.dll`) |
+          | Linux (x86_64)   | `nova64_libretro.so`  (= `nova64_libretro_linux_x86_64.so`) |
+          | macOS (universal x86_64 + arm64) | `nova64_libretro.dylib` (= `nova64_libretro_macos_universal.dylib`) |
 
           `SHA256SUMS.txt` lets you verify the download.
+
+          On macOS, the binary is unsigned — you may need to clear quarantine:
+          `xattr -dr com.apple.quarantine nova64_libretro.dylib`
 
           Source: https://github.com/seacloud9/nova64
           EOF
           ls -lh
+          echo '----- SHA256SUMS.txt -----'
           cat SHA256SUMS.txt
-
-      - name: Upload artifacts (for workflow_dispatch runs)
-        uses: actions/upload-artifact@v4
-        with:
-          name: nova64-cores
-          path: dist-cores/
-          retention-days: 30
 
       - name: Resolve release tag
         id: tag
@@ -108,9 +144,4 @@ jobs:
           generate_release_notes: true
           fail_on_unmatched_files: true
           files: |
-            dist-cores/nova64_libretro.so
-            dist-cores/nova64_libretro.dll
-            dist-cores/nova64_libretro_linux_x86_64.so
-            dist-cores/nova64_libretro_windows_x86_64.dll
-            dist-cores/SHA256SUMS.txt
-            dist-cores/README.md
+            dist-cores/*

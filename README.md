@@ -51,6 +51,25 @@ MemPalace diary:
 - [`retroarch/GLES_SMOKE_MATRIX.md`](retroarch/GLES_SMOKE_MATRIX.md) - manual
   real-driver smoke coverage.
 
+### Pre-built cores
+
+You don't have to build from source. Pre-built RetroArch cores for Linux,
+Windows, and macOS are published on the [**GitHub Releases**](https://github.com/seacloud9/nova64/releases)
+page. Each release ships:
+
+- `nova64_libretro.dll` — Windows x86_64
+- `nova64_libretro.so` — Linux x86_64
+- `nova64_libretro.dylib` — macOS universal (x86_64 + arm64)
+- `SHA256SUMS.txt` — checksums for verification
+
+Drop the file matching your platform into your RetroArch `cores/` directory,
+then load any `.nova` cart from your Nova64 playlist.
+
+Builds are produced by the
+[`Release RetroArch cores`](.github/workflows/release-cores.yml) GitHub Action
+on every `v*.*.*` tag, and can also be triggered manually from the Actions tab
+for one-off releases.
+
 Generated RetroArch binaries, build outputs, and capture artifacts should stay
 out of commits.
 

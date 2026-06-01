@@ -1,9 +1,65 @@
 # Nova64 Hardware GL on Windows — Status & Handover
 
-**Last updated:** 2026-05-27 (Claude pass — point lights + mesh options)
+**Last updated:** 2026-06-01 (Claude session — bloom HDR knee, UI features, controller routing)
 **Branch:** `main`
-**Working tree:** doc + core edits ahead of `ea39bc8`
+**Working tree:** clean as of `7a5ab4b` (ESC→START routing)
 **Windows DLL deployed:** cross-built and copied to `C:\RetroArch-Win64\cores\nova64_libretro.dll`
+
+---
+
+## 🤝 HANDOFF — 2026-06-01 (Claude session — close all 3 visual-gap items, ship UI features)
+
+The three "Remaining gaps vs web" listed in the 2026-05-27 handoff are all
+**closed**:
+
+- ~~Bloom on emissive surfaces~~ — HDR-knee bright-pass shipped in `f2b2de8`.
+  Replaces `smoothstep(threshold, threshold + 0.38, luma)` with
+  `smoothstep(threshold, threshold + 2.0, luma)`. LDR pixels contribute ~5%,
+  HDR emissives (linear luma > 1) contribute fully. F-Zero `enableBloom`
+  shim no longer needs the global strength crush; Wizardry torches now
+  glow with proper halos.
+- ~~Specular highlights from point lights~~ — shipped in `387be32`.
+- ~~Shadows from point lights~~ — shipped in `aa7b860`.
+
+### UI features shipped this session
+
+- **`nova64.ui.createButton` input wiring** (`9a46d0c`). `updateAllButtons`
+  was a no-op shim; now polls mouse + d-pad + face-button confirm, tracks
+  a hot index, fires the stored `cb` on click/confirm. `drawAllButtons`
+  renders the hot button in its hover color.
+- **`nova64.ui.parseCanvasUI` MVP + `<button>` element** (`800693d`,
+  `10c459c`). Parses NML XML into an AST, renders via `nova64.draw`.
+  Tags: `<ui>`, `<rect>`, `<text>`, `<line>`, `<circle>`, `<group>`,
+  `<panel>`, `<progressbar>`, `<star>`, `<button>`. Attributes: `{var}`
+  data binding, percentage units, hex colors, `none` fill, `anchor-x`
+  left/center/right, `anchor="center"`. Verified against `hud-demo` and
+  `canvas-ui-showcase`. Not yet handled: `<svg>`, `<path>`, `<triangle>`,
+  `<ellipse>`, `<image>`, clip, text shadows/outlines, custom fonts.
+
+### Controller UX
+
+- **C-side ESC routing** (`7a5ab4b`). Added ext_buttons slot 14 fired by
+  Escape, Backspace, or RetroPad START. `ext_button_for_key` routes those
+  two keys to slot 14, so `keyp('Escape')` and `keyp('Backspace')` now
+  fire on START in every cart. Fixes the controller blind spot in every
+  cart that uses ESC for menu exit / dialog cancel / pause.
+- **Wizardry full menu controller pass** (`8b12d96`, `6a482b3`). Per-cart
+  `btnp(5)` (X = cancel) and `btnp(8)` (SELECT = toggle) for shop exit,
+  combat back, inventory open/close.
+- **Wizardry autoplay default ON** (`b00c3f2`) + bloom retune for the new
+  pipeline (`27afed0`).
+
+### Conformance
+
+Carts 17 (light-fog) and 18 (mesh-helpers) rebaselined to their current
+post-shadow/post-specular hashes (`7733eab140562091`, `aac2e27ecf9b38da`).
+Full 0–110 + named gles-* cases + 1095–1098 pass via
+`NOVA64_GLES_TESTS=1 bash retroarch/tests/run_conformance.sh --skip-build`.
+
+### Known remaining gaps
+
+Nothing acute. `parseCanvasUI` could grow `<svg>`/`<path>` support if a
+cart needs them; otherwise the cart library is in a good state.
 
 ---
 
@@ -61,13 +117,7 @@ glow, portal halo, FPS-demo muzzle-flash, etc. were all invisible.
 
 ### Remaining gaps vs web
 
-- Bloom on emissive surfaces (web has soft glow halos around torches,
-  RA has crisp emissive without bloom contribution because the bloom
-  threshold is now clamped low for the F-Zero overbloom fix).
-- Specular highlights — point lights only contribute diffuse.
-- Shadows from point lights — directional only.
-
-These would need shader rework with a fresh conformance baseline.
+~~All three closed — see the 2026-06-01 handoff section at the top.~~
 
 ---
 

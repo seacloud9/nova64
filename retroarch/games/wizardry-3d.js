@@ -2802,7 +2802,11 @@ function updateTitle(dt) {
 function updateExplore(dt) {
   if (!nova64.util.cooldownReady(cooldowns.move)) {
     // still in cooldown, but check non-move inputs
-    if (nova64.input.keyp('KeyI') || nova64.input.keyp('Tab')) switchState('inventory');
+    if (
+      nova64.input.keyp('KeyI') ||
+      nova64.input.keyp('Tab') ||
+      nova64.input.btnp(8)
+    ) switchState('inventory');
     updateCamera3D();
     return;
   }
@@ -2857,7 +2861,11 @@ function updateExplore(dt) {
     if (rStickX > 0.5) nova64.util.useCooldown(cooldowns.input);
   }
 
-  if (nova64.input.keyp('KeyI') || nova64.input.keyp('Tab')) switchState('inventory');
+  if (
+    nova64.input.keyp('KeyI') ||
+    nova64.input.keyp('Tab') ||
+    nova64.input.btnp(8)
+  ) switchState('inventory');
 
   // Click-to-inspect: raycast from camera on mouse click to identify tile ahead
   if (nova64.input.mousePressed() && nova64.input.mouseDown()) {
@@ -3063,7 +3071,11 @@ function updateCombat(dt) {
         }
       }
       advanceCombatTurn();
-    } else if (nova64.input.keyp('Escape') || nova64.input.keyp('Backspace')) {
+    } else if (
+      nova64.input.keyp('Escape') ||
+      nova64.input.keyp('Backspace') ||
+      nova64.input.btnp(5)
+    ) {
       nova64.util.useCooldown(cooldowns.input);
       combatAction = 'choose';
     }
@@ -3105,7 +3117,11 @@ function updateCombat(dt) {
       nova64.audio.sfx('laser');
       castSpellInCombat(member, spell);
       advanceCombatTurn();
-    } else if (nova64.input.keyp('Escape') || nova64.input.keyp('Backspace')) {
+    } else if (
+      nova64.input.keyp('Escape') ||
+      nova64.input.keyp('Backspace') ||
+      nova64.input.btnp(5)
+    ) {
       nova64.util.useCooldown(cooldowns.input);
       combatAction = 'choose';
     }
@@ -3113,7 +3129,13 @@ function updateCombat(dt) {
 }
 
 function updateInventory(dt) {
-  if (nova64.input.keyp('KeyI') || nova64.input.keyp('Tab') || nova64.input.keyp('Escape')) {
+  if (
+    nova64.input.keyp('KeyI') ||
+    nova64.input.keyp('Tab') ||
+    nova64.input.keyp('Escape') ||
+    nova64.input.btnp(5) ||
+    nova64.input.btnp(8)
+  ) {
     nova64.audio.setVolume(0.6); // restore exploration volume
     switchState('explore');
   }
@@ -3433,7 +3455,12 @@ function drawShopUI() {
         m.alive ? nova64.draw.rgba8(150, 180, 150, 200) : nova64.draw.rgba8(180, 50, 50, 200)
       );
     }
-    nova64.draw.print('Z/Space/(A)=Confirm  Esc/(X)=Back', 200, 248, nova64.draw.rgba8(100, 100, 120, 150));
+    nova64.draw.print(
+      'Z/Space/(A)=Confirm  Esc/(X)=Back',
+      200,
+      248,
+      nova64.draw.rgba8(100, 100, 120, 150)
+    );
   }
 
   // Controls

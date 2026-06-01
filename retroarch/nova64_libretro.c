@@ -30269,47 +30269,21 @@ static bool install_nova64_api(JSContext *ctx)
            "var p=nova64.post;"
            "var _glitchT=0;"
            "return{"
-             /* enableBloom also lifts exposure to Three's 1.25 default — web
-                renderer.toneMappingExposure=1.25 in gpu-threejs.js. Single
-                biggest brightness lever for web-cart parity on RA. Also
-                flips the 24-bit color promotion flag (carts calling
-                enableBloom near-100% use 0xRRGGBB hex literals) and bumps
-                HDR FBO to RGBA32F "overkill mode" for max float precision. */
-             /* enableBloom takes the cart's strength/radius/threshold and
-                clamps them to conservative values. Web carts (f-zero-
-                nova-3d) routinely pass strength=1.0 threshold=0.4 which
-                makes every emissive geometry bloom huge — the visible
-                symptom is the player ship's neon trim bleeding upward
-                into the sky as a "racer reflection". The clamp keeps a
-                tight neon halo on the ship itself without smearing
-                across the frame. Carts that want stronger bloom can
-                still call nova64.post.setBloom directly (used by the
-                conformance tests, which are unaffected by this shim). */
-             /* enableBloom takes the cart's strength/radius/threshold and
-                clamps them HARD. Web carts (f-zero-nova-3d) routinely
-                pass strength=1.0 threshold=0.4 which haloed emissive
-                ship geometry into the sky as a "racer reflection".
-                With strength capped at 0.18, threshold floored at
-                0.88, and the wide-mip composite scaled back, bright
-                pixels keep a tight glow on the geometry itself without
-                bleeding across the frame. Carts that want stronger
-                bloom can call nova64.post.setBloom directly. */
-             /* Bloom is intentionally crushed to near-zero through the
-                shim. Web carts pass strength=1.0 expecting Three's soft
-                cinematic UnrealBloomPass; on RA's multi-mip pipeline
-                that same value haloed tiny emissive decorations
-                (f-zero's 40 speed-line sticks at y=1..9, intensity 1.0)
-                into wide blobs that read as "racer reflections in the
-                sky". The user's verdict was "I still see the racer at
-                top and bottom of the screen" — so we sacrifice the
-                neon look for visual cleanliness. Carts that genuinely
-                need bloom call nova64.post.setBloom directly (the
-                conformance visual cases use that path, bypassing the
-                shim, so locked checksums are unaffected). */
+             /* enableBloom forwards the cart's strength/radius/threshold to
+                setBloom with light sanity caps only. The bright-pass shader
+                now has an HDR knee (smoothstep over luma ~0.85..2.85), so
+                LDR scene content (sky, lit geometry) contributes only ~5%
+                while genuinely emissive surfaces (intensity > 1) bloom at
+                full strength. This replaces the old global strength-crush
+                (ss = min(0.06, s*0.06)) that was the F-Zero overbloom
+                workaround — it killed Wizardry torch glow as collateral.
+                Exposure bump to Three's 1.25 default, 24-bit color
+                promotion, RGBA32F HDR mode, and Three-style bloom composite
+                are still applied since they're shared parity levers. */
              "enableBloom:function(s,r,t){"
-               "var ss=Math.min(0.06,s==null?0.04:s*0.06);"
-               "var rr=Math.min(0.12,r==null?0.10:r);"
-               "var tt=Math.max(0.92,t==null?0.95:t);"
+               "var ss=Math.min(1.5,s==null?0.6:s);"
+               "var rr=Math.min(0.85,r==null?0.4:r);"
+               "var tt=t==null?0.85:t;"
                "p.setBloom(ss,rr,tt);"
                "if(p.setExposure)p.setExposure(1.05);"
                "if(p.use24BitColors)p.use24BitColors(true);"
@@ -36931,9 +36905,17 @@ static bool gles_create_bloom_programs(void)
       "uniform float u_threshold;\n"
       "out vec4 fragColor;\n"
       "float luma(vec3 c) { return dot(c, vec3(0.299, 0.587, 0.114)); }\n"
+      /* HDR knee. The scene FBO is RGBA16F with linear-HDR mesh output, so
+         emissive surfaces (intensity > 1) drive luma > 1. The old narrow knee
+         (threshold..threshold+0.38) fully extracted any luma > ~1.2, so LDR
+         bright surfaces (sky, lit walls) bloomed nearly as hard as HDR
+         emissives — which forced the F-Zero enableBloom shim to crush global
+         strength to 0.06. Widening to threshold+2.0 makes the knee an HDR
+         ramp: LDR pixels at luma ~1.0 contribute ~5%, true HDR emissives at
+         luma 4.0 contribute 100%. Lets the strength clamp go away. */
       "vec3 bright(vec3 c) {\n"
       "  if (u_threshold <= 0.0) return c;\n"
-      "  return c * smoothstep(u_threshold, u_threshold + 0.38, luma(c));\n"
+      "  return c * smoothstep(u_threshold, u_threshold + 2.0, luma(c));\n"
       "}\n"
       "void main() {\n"
       "  vec2 texel = 1.0 / u_resolution;\n"

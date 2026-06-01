@@ -763,7 +763,7 @@ static bool pressed_buttons[NOVA64_BUTTON_COUNT];
    because btnp(13) always returned false. Indices 0-7 mirror buttons[],
    indices 8-13 are populated from keyboard keys + RetroPad joypad
    buttons that have no nova64-internal equivalent. */
-#define NOVA64_EXT_BUTTON_COUNT 14
+#define NOVA64_EXT_BUTTON_COUNT 15
 static bool ext_buttons[NOVA64_EXT_BUTTON_COUNT];
 static bool ext_prev_buttons[NOVA64_EXT_BUTTON_COUNT];
 static bool ext_pressed_buttons[NOVA64_EXT_BUTTON_COUNT];
@@ -26201,6 +26201,12 @@ static int ext_button_for_key(int code)
       case 119: return 11;  /* 'w' / R */
       case NOVA64_RETROK_RETURN: return 12; /* Enter / START */
       case NOVA64_RETROK_SPACE:  return 13; /* Space / SELECT-or-face */
+      /* Slot 14 = "menu / back". Routes Escape and Backspace to the START
+       * button so any cart using keyp('Escape') for menu exit / cancel
+       * also fires on a controller. Deliberately a fresh slot (not 12)
+       * so confirm-intent (Enter) and menu-intent (Esc) stay separable. */
+      case NOVA64_RETROK_ESCAPE:    return 14;
+      case NOVA64_RETROK_BACKSPACE: return 14;
       default: return -1;
    }
 }
@@ -34144,6 +34150,11 @@ static void update_input(void)
    ext_buttons[12] = key_held[NOVA64_RETROK_RETURN] || jp_start;
    ext_buttons[13] = key_held[NOVA64_RETROK_SPACE]  || jp_select
                   || jp_a || jp_b || jp_x || jp_y;
+   /* Slot 14 = "menu / back". START button + Escape + Backspace. Gives
+    * every cart that uses keyp('Escape') for menu exit a controller path. */
+   ext_buttons[14] = key_held[NOVA64_RETROK_ESCAPE]
+                  || key_held[NOVA64_RETROK_BACKSPACE]
+                  || jp_start;
    for (int i = 0; i < NOVA64_EXT_BUTTON_COUNT; i++)
       ext_pressed_buttons[i] = ext_buttons[i] && !ext_prev_buttons[i];
 }

@@ -2493,7 +2493,7 @@ export function init() {
   stateMachine = nova64.util.createStateMachine('title');
   animTimer = 0;
   enemyDelay = 0;
-  autoPlay = false;
+  autoPlay = true;
 
   nova64.light.setAmbientLight(0x332222, 0.5);
   nova64.light.setLightDirection(0, -1, 0);

@@ -1,0 +1,116 @@
+name: Release RetroArch cores
+
+# Builds and publishes the Nova64 libretro core for Linux (.so) and Windows
+# (.dll). Triggered automatically when a v*.*.* tag is pushed, or manually
+# via the Actions tab so you can cut a one-off pre-release without retagging.
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Release tag (e.g. v0.5.2-cores). Will be created if missing.'
+        required: true
+        default: 'cores-latest'
+      prerelease:
+        description: 'Mark as pre-release'
+        type: boolean
+        default: true
+
+jobs:
+  build-cores:
+    name: Build libretro cores
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # create release + upload assets
+
+    steps:
+      - name: Checkout (with submodules)
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            gcc-mingw-w64-x86-64 \
+            libz-mingw-w64-dev \
+            zlib1g-dev
+
+      - name: Build Linux .so
+        run: make -C retroarch clean all
+
+      - name: Stage Linux artifact
+        run: |
+          mkdir -p dist-cores
+          cp retroarch/nova64_libretro.so dist-cores/nova64_libretro.so
+          cp retroarch/nova64_libretro.so dist-cores/nova64_libretro_linux_x86_64.so
+
+      - name: Cross-build Windows .dll
+        run: make -C retroarch platform=win-cross clean all
+
+      - name: Stage Windows artifact
+        run: |
+          cp retroarch/nova64_libretro.dll dist-cores/nova64_libretro.dll
+          cp retroarch/nova64_libretro.dll dist-cores/nova64_libretro_windows_x86_64.dll
+
+      - name: Generate checksums + manifest
+        run: |
+          cd dist-cores
+          sha256sum nova64_libretro.so nova64_libretro.dll \
+                    nova64_libretro_linux_x86_64.so \
+                    nova64_libretro_windows_x86_64.dll \
+            > SHA256SUMS.txt
+          cat > README.md <<'EOF'
+          # Nova64 libretro cores
+
+          Drop the file matching your platform into your RetroArch `cores/`
+          directory:
+
+          - **Windows**: `nova64_libretro.dll` (x86_64)
+          - **Linux**: `nova64_libretro.so` (x86_64)
+
+          `SHA256SUMS.txt` lets you verify the download.
+
+          Source: https://github.com/seacloud9/nova64
+          EOF
+          ls -lh
+          cat SHA256SUMS.txt
+
+      - name: Upload artifacts (for workflow_dispatch runs)
+        uses: actions/upload-artifact@v4
+        with:
+          name: nova64-cores
+          path: dist-cores/
+          retention-days: 30
+
+      - name: Resolve release tag
+        id: tag
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            echo "name=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "name=${{ github.event.inputs.tag_name }}" >> "$GITHUB_OUTPUT"
+            echo "prerelease=${{ github.event.inputs.prerelease }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.name }}
+          name: ${{ steps.tag.outputs.name }} — RetroArch cores
+          prerelease: ${{ steps.tag.outputs.prerelease }}
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          files: |
+            dist-cores/nova64_libretro.so
+            dist-cores/nova64_libretro.dll
+            dist-cores/nova64_libretro_linux_x86_64.so
+            dist-cores/nova64_libretro_windows_x86_64.dll
+            dist-cores/SHA256SUMS.txt
+            dist-cores/README.md

@@ -3268,7 +3268,11 @@ function updateShop(dt) {
         }
       }
       shopTarget = -1;
-    } else if (nova64.input.keyp('Escape') || nova64.input.keyp('Backspace')) {
+    } else if (
+      nova64.input.keyp('Escape') ||
+      nova64.input.keyp('Backspace') ||
+      nova64.input.btnp(5)
+    ) {
       nova64.util.useCooldown(cooldowns.input);
       shopTarget = -1;
     }
@@ -3315,7 +3319,8 @@ function updateShop(dt) {
   } else if (
     nova64.input.keyp('Escape') ||
     nova64.input.keyp('Backspace') ||
-    nova64.input.keyp('KeyX')
+    nova64.input.keyp('KeyX') ||
+    nova64.input.btnp(5)
   ) {
     nova64.util.useCooldown(cooldowns.input);
     // Leave shop → continue to next floor
@@ -3428,12 +3433,12 @@ function drawShopUI() {
         m.alive ? nova64.draw.rgba8(150, 180, 150, 200) : nova64.draw.rgba8(180, 50, 50, 200)
       );
     }
-    nova64.draw.print('Z/Space=Confirm  Esc=Back', 200, 248, nova64.draw.rgba8(100, 100, 120, 150));
+    nova64.draw.print('Z/Space/(A)=Confirm  Esc/(X)=Back', 200, 248, nova64.draw.rgba8(100, 100, 120, 150));
   }
 
   // Controls
   nova64.draw.printCentered(
-    'W/S=Browse  Z/Space=Buy  ESC=Continue to next floor',
+    'W/S/(Stick)=Browse  Z/Space/(A)=Buy  ESC/(X)=Continue to next floor',
     320,
     H - 55,
     nova64.draw.rgba8(120, 120, 150, 200)

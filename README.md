@@ -53,14 +53,29 @@ MemPalace diary:
 
 ### Pre-built cores
 
-You don't have to build from source. Pre-built RetroArch cores for Linux,
-Windows, and macOS are published on the [**GitHub Releases**](https://github.com/seacloud9/nova64/releases)
-page. Each release ships:
+You don't have to build from source. Pre-built RetroArch cores for every
+major platform are published on the
+[**GitHub Releases**](https://github.com/seacloud9/nova64/releases) page.
+Each release ships:
+
+**Desktop**
 
 - `nova64_libretro.dll` — Windows x86_64
 - `nova64_libretro.so` — Linux x86_64
 - `nova64_libretro.dylib` — macOS universal (x86_64 + arm64)
-- `SHA256SUMS.txt` — checksums for verification
+
+**ARM single-board computers** (Raspberry Pi 4 / 5, etc.)
+
+- `nova64_libretro_linux_aarch64.so` — Linux ARM64
+
+**Android** (rename the matching file to `nova64_libretro_android.so` and drop
+into your RetroArch core path)
+
+- `nova64_libretro_android_arm64-v8a.so` — modern phones
+- `nova64_libretro_android_armeabi-v7a.so` — older 32-bit phones
+- `nova64_libretro_android_x86_64.so` — emulators, Chromebooks
+
+Plus `SHA256SUMS.txt` for verification.
 
 Drop the file matching your platform into your RetroArch `cores/` directory,
 then load any `.nova` cart from your Nova64 playlist.

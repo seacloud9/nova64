@@ -1,9 +1,16 @@
 name: Release RetroArch cores
 
-# Builds and publishes the Nova64 libretro core for Linux (.so),
-# Windows (.dll), and macOS (.dylib universal x86_64 + arm64).
-# Triggered automatically when a v*.*.* tag is pushed, or manually via
-# the Actions tab so you can cut a one-off pre-release without retagging.
+# Builds and publishes the Nova64 libretro core for:
+#   - Linux x86_64   (.so,  ubuntu-latest)
+#   - Linux aarch64  (.so,  dockcross/linux-arm64 — Raspberry Pi 4/5, ARM SBCs)
+#   - Windows x86_64 (.dll, mingw cross from ubuntu-latest)
+#   - macOS universal x86_64 + arm64 (.dylib, macos-latest)
+#   - Android arm64-v8a   (.so, NDK clang from ubuntu-latest)
+#   - Android armeabi-v7a (.so, NDK clang from ubuntu-latest)
+#   - Android x86_64      (.so, NDK clang from ubuntu-latest, for emulators)
+#
+# Triggered automatically when a v*.*.* tag is pushed, or manually via the
+# Actions tab so you can cut a one-off pre-release without retagging.
 
 on:
   push:
@@ -29,25 +36,61 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # ── Desktop targets ────────────────────────────────────────────
           - target: linux-x86_64
             runner: ubuntu-latest
+            kind: native
             built_name: nova64_libretro.so
             asset_name: nova64_libretro_linux_x86_64.so
             make_args: ''
             apt_deps: 'build-essential zlib1g-dev'
+
+          - target: linux-aarch64
+            runner: ubuntu-latest
+            kind: dockcross
+            dockcross_image: dockcross/linux-arm64
+            built_name: nova64_libretro.so
+            asset_name: nova64_libretro_linux_aarch64.so
+            make_args: ''
+
           - target: windows-x86_64
             runner: ubuntu-latest
+            kind: native
             built_name: nova64_libretro.dll
             asset_name: nova64_libretro_windows_x86_64.dll
             make_args: 'platform=win-cross'
             apt_deps: 'build-essential gcc-mingw-w64-x86-64 libz-mingw-w64-dev'
+
           - target: macos-universal
             runner: macos-latest
+            kind: native
             built_name: nova64_libretro.dylib
             asset_name: nova64_libretro_macos_universal.dylib
             # Universal binary: clang accepts repeated -arch flags for fat output.
             make_args: 'platform=osx CC=cc\ -arch\ x86_64\ -arch\ arm64'
             apt_deps: ''
+
+          # ── Android targets (NDK clang on ubuntu-latest) ───────────────
+          - target: android-arm64-v8a
+            runner: ubuntu-latest
+            kind: android
+            ndk_clang: aarch64-linux-android21-clang
+            built_name: nova64_libretro_android.so
+            asset_name: nova64_libretro_android_arm64-v8a.so
+
+          - target: android-armeabi-v7a
+            runner: ubuntu-latest
+            kind: android
+            ndk_clang: armv7a-linux-androideabi21-clang
+            built_name: nova64_libretro_android.so
+            asset_name: nova64_libretro_android_armeabi-v7a.so
+
+          - target: android-x86_64
+            runner: ubuntu-latest
+            kind: android
+            ndk_clang: x86_64-linux-android21-clang
+            built_name: nova64_libretro_android.so
+            asset_name: nova64_libretro_android_x86_64.so
 
     steps:
       - name: Checkout (with submodules)
@@ -55,22 +98,56 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Install build deps (Linux/Windows targets)
-        if: matrix.apt_deps != ''
+      # ── Native + cross builds on ubuntu-latest or macos-latest ────────
+      - name: Install apt build deps
+        if: matrix.kind == 'native' && matrix.apt_deps != ''
         run: |
           sudo apt-get update
           sudo apt-get install -y ${{ matrix.apt_deps }}
 
-      - name: Build
+      - name: Build (native)
+        if: matrix.kind == 'native'
         run: make -C retroarch ${{ matrix.make_args }} clean all
+
+      # ── Dockcross cross-build for Linux aarch64 (Raspberry Pi 4/5) ────
+      - name: Build (dockcross ${{ matrix.dockcross_image }})
+        if: matrix.kind == 'dockcross'
+        run: |
+          docker pull ${{ matrix.dockcross_image }}
+          docker run --rm \
+            -v "$PWD:/work" -w /work \
+            ${{ matrix.dockcross_image }} \
+            bash -c "make -C retroarch ${{ matrix.make_args }} clean all"
+
+      # ── Android via the NDK preinstalled on ubuntu-latest ─────────────
+      - name: Build (Android NDK — ${{ matrix.ndk_clang }})
+        if: matrix.kind == 'android'
+        run: |
+          NDK="${ANDROID_NDK_LATEST_HOME:-$ANDROID_NDK_HOME}"
+          if [ -z "$NDK" ] || [ ! -d "$NDK" ]; then
+            echo "Could not find Android NDK on runner"; exit 1
+          fi
+          CC="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/${{ matrix.ndk_clang }}"
+          if [ ! -x "$CC" ]; then
+            echo "NDK clang not found at $CC"; ls "$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/" | head -20; exit 1
+          fi
+          # The Makefile's `android` platform sets CFLAGS += -DANDROID and
+          # SHARED := -shared but doesn't pin CC — pass the NDK clang via env.
+          make -C retroarch platform=android CC="$CC" clean all
 
       - name: Stage artifact under platform-named filename
         run: |
           mkdir -p staging
           cp "retroarch/${{ matrix.built_name }}" "staging/${{ matrix.asset_name }}"
-          # Also keep the canonical (unprefixed) name so the Windows DLL drops
-          # straight into RetroArch's cores/ directory without renaming.
-          cp "retroarch/${{ matrix.built_name }}" "staging/${{ matrix.built_name }}"
+          # For desktop targets, also keep the canonical (unprefixed) name so
+          # Windows/Linux x86_64/macOS users can drop the file straight into
+          # RetroArch's cores/ directory without renaming. Mobile + ARM SBC
+          # users get only the descriptive filename (the build target matters).
+          if [ "${{ matrix.target }}" = "linux-x86_64" ] \
+              || [ "${{ matrix.target }}" = "windows-x86_64" ] \
+              || [ "${{ matrix.target }}" = "macos-universal" ]; then
+            cp "retroarch/${{ matrix.built_name }}" "staging/${{ matrix.built_name }}"
+          fi
           ls -lh staging
 
       - name: Upload artifact
@@ -99,7 +176,6 @@ jobs:
           find artifacts -type f \( -name '*.so' -o -name '*.dll' -o -name '*.dylib' \) \
             -exec cp -v {} dist-cores/ \;
           cd dist-cores
-          # SHA256SUMS over every shipped binary
           sha256sum * > SHA256SUMS.txt
           cat > README.md <<'EOF'
           # Nova64 libretro cores
@@ -107,16 +183,41 @@ jobs:
           Drop the file matching your platform into your RetroArch `cores/`
           directory:
 
+          ## Desktop
+
           | Platform | File |
           |----------|------|
           | Windows (x86_64) | `nova64_libretro.dll` (= `nova64_libretro_windows_x86_64.dll`) |
           | Linux (x86_64)   | `nova64_libretro.so`  (= `nova64_libretro_linux_x86_64.so`) |
           | macOS (universal x86_64 + arm64) | `nova64_libretro.dylib` (= `nova64_libretro_macos_universal.dylib`) |
 
-          `SHA256SUMS.txt` lets you verify the download.
-
-          On macOS, the binary is unsigned — you may need to clear quarantine:
+          On macOS the binary is unsigned — you may need to clear quarantine:
           `xattr -dr com.apple.quarantine nova64_libretro.dylib`
+
+          ## ARM single-board computers (Raspberry Pi 4 / 5, etc.)
+
+          | Platform | File |
+          |----------|------|
+          | Linux (aarch64) | `nova64_libretro_linux_aarch64.so` |
+
+          Rename to `nova64_libretro.so` after copying into the Pi's
+          `~/.config/retroarch/cores/` (or equivalent) directory.
+
+          ## Android
+
+          RetroArch on Android looks for cores under per-ABI directories.
+          Use the file matching your device's CPU architecture:
+
+          | ABI | File |
+          |-----|------|
+          | arm64-v8a   (modern phones)         | `nova64_libretro_android_arm64-v8a.so` |
+          | armeabi-v7a (older 32-bit phones)   | `nova64_libretro_android_armeabi-v7a.so` |
+          | x86_64      (emulators, Chromebooks)| `nova64_libretro_android_x86_64.so` |
+
+          Rename to `nova64_libretro_android.so` and place under
+          `/storage/emulated/0/RetroArch/cores/` (or your RetroArch core path).
+
+          `SHA256SUMS.txt` lets you verify any download.
 
           Source: https://github.com/seacloud9/nova64
           EOF

@@ -111,29 +111,32 @@ model-viewer-3d, nature-explorer-3d, nft-art-generator, nft-worlds,
 particle-trail, particles-demo, pbr-showcase, skybox-showcase, ui-demo,
 vox-viewer, wad-demo.
 
-**Remaining 4 WARN** (after excluding XR-deferred):
+**Remaining 1 WARN** (after excluding XR-deferred):
 
 | Cart | Gap | Notes |
 |------|-----|-------|
 | `ar-hand-demo` | AR hand tracking | ❌ Out of scope per user |
-| `blend-aurora` | Canvas2D `ctx.createLinearGradient` | Big lift — would need HTML5 Canvas API |
-| `stage-cards` | Canvas2D `ctx.roundRect` | Same Canvas2D surface |
-| `wizardry-3d` | `nova64.util.createPool().forEach` | Namespace-specific augment didn't catch this path |
+| ~~`blend-aurora`~~ | ~~Canvas2D `createLinearGradient`~~ | ✅ Addressed via the `withBlend` Canvas-2D adapter (2026-05-25). Cart loads + renders 20 frames clean. |
+| ~~`stage-cards`~~ | ~~Canvas2D `roundRect`~~ | ✅ Addressed via the stage stub ctx extension (2026-05-25). Cart loads clean. |
+| ~~`wizardry-3d`~~ | ~~`createPool().forEach`~~ | ✅ Addressed via the createPool wrap shim. Cart loads clean. |
 
-So **effectively 3 real WARN remain** (XR-excluded). All are addressable;
-canvas2d ctx is the big shared surface.
+The three "remaining" WARNs were already addressed by earlier compat work
+but never marked off. Verified: all three carts load and render 20 frames
+with no JS exceptions. AR/XR items remain explicitly out of scope.
 
 Bigger ticket items also pending:
 - ~~**`nova64.ui.parseCanvasUI`**~~ — MVP shipped. Tags: `<ui>`, `<rect>`,
   `<text>`, `<line>`, `<circle>`, `<group>`, `<panel>`, `<progressbar>`,
-  `<star>`. Attributes: `{var}` data binding, percentage units, hex colors
-  (`#rgb`/`#rrggbb`/`#rrggbbaa`), `none`, `anchor-x` left/center/right,
-  `anchor="center"`. Not yet handled (carts using these should fall back to
-  direct draw): `<svg>`, `<path>`, `<triangle>`, `<ellipse>`, `<image>`,
-  `<button>` (use `nova64.ui.createButton` instead), `clip`, text shadows
-  and outlines, custom fonts. Verified against `examples/hud-demo` and
-  `examples/canvas-ui-showcase` — both render clean (30 frames, no JS
-  exceptions, deterministic checksum).
+  `<star>`, `<button>`. Attributes: `{var}` data binding, percentage units,
+  hex colors (`#rgb`/`#rrggbb`/`#rrggbbaa`), `none`, `anchor-x` left/center/
+  right, `anchor="center"`. Buttons fire `handlers[onclick]` on mouse
+  hover+click (XML-button v1 is mouse-only — carts that want d-pad
+  navigation should call `nova64.ui.createButton` + `updateAllButtons`
+  directly). Not yet handled (carts using these should fall back to direct
+  draw): `<svg>`, `<path>`, `<triangle>`, `<ellipse>`, `<image>`, `clip`,
+  text shadows and outlines, custom fonts. Verified against
+  `examples/hud-demo` and `examples/canvas-ui-showcase` — both render
+  clean, no JS exceptions, deterministic checksums.
 - **Per-mesh alpha / transparency**: `createAdvancedCube` accepts `opts.opacity`
   and `opts.transparent` today but ignores them. Need a `setMeshAlpha(mesh, a)`
   + a transparent z-sort pass in the GLES path. (z-sort pass already exists

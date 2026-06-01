@@ -601,7 +601,7 @@ run_gles_case "52 camera getters"     "52-camera-getters"      "retroarch/confor
 run_gles_case "53 mesh opacity"       "53-mesh-opacity"        "retroarch/conformance/53-mesh-opacity.js"        "8636ee8bd0db026f"
 run_gles_case "54 emissive"           "54-emissive"            "retroarch/conformance/54-emissive.js"            "3bde6ed8e10e72f3"
 run_gles_case "55 shadow flags"       "55-shadow-flags"        "retroarch/conformance/55-shadow-flags.js"        "11dc4b657471fca0"
-run_gles_case "56 point lights"       "56-point-lights"        "retroarch/conformance/56-point-lights.js"        "cd2bc29d169b78d3"
+run_gles_case "56 point lights"       "56-point-lights"        "retroarch/conformance/56-point-lights.js"        "aa2510aa75bcb9fc"
 run_gles_case "57 destroy mesh"       "57-destroy-mesh"        "retroarch/conformance/57-destroy-mesh.js"        "6a8499aea149587b"
 run_gles_case "58 mesh color"         "58-mesh-color"          "retroarch/conformance/58-mesh-color.js"          "e9fb702f52aba6c3"
 run_gles_case "59 move rotate"        "59-move-rotate"         "retroarch/conformance/59-move-rotate.js"         "7f3c1ac28534429d"
@@ -634,7 +634,7 @@ run_gles_case "GLES cone primitive"   "gles-cone-primitive"    "retroarch/confor
 run_gles_case "GLES capsule primitive" "gles-capsule-primitive" "retroarch/conformance/gles-capsule-primitive.js" "d39991f6826c80b3" 30
 run_gles_case "GLES cylinder primitive" "gles-cylinder-primitive" "retroarch/conformance/gles-cylinder-primitive.js" "40c96ac653df45e3" 30
 run_gles_case "GLES transparent z sort" "gles-transparent-z-sort" "retroarch/conformance/gles-transparent-z-sort.js" "9d6b7cfaab281d70" 30
-run_gles_case "1095 material light opts" "1095-material-light-options" "retroarch/conformance/1095-material-light-options.js" "ebd1cb369e7bc77b" 3
+run_gles_case "1095 material light opts" "1095-material-light-options" "retroarch/conformance/1095-material-light-options.js" "d4940449161aa667" 3
 
 run_visual_case "113 math utils"    "113-math-utils"    "retroarch/conformance/113-math-utils.js"    "4bfdf6cc87ca9210"
 run_visual_case "114 camera orbit"  "114-camera-orbit"  "retroarch/conformance/114-camera-orbit.js"  "1c5d39f5fea6448c"

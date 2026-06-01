@@ -185,6 +185,7 @@ typedef void (*PFNGLTEXSUBIMAGE2DPROC)(GLenum target, GLint level, GLint xoffset
 typedef void (*PFNGLUNIFORM1IPROC)(GLint location, GLint v0);
 typedef void (*PFNGLUNIFORM1FPROC)(GLint location, GLfloat v0);
 typedef void (*PFNGLUNIFORM2FPROC)(GLint location, GLfloat v0, GLfloat v1);
+typedef void (*PFNGLUNIFORM3FPROC)(GLint location, GLfloat v0, GLfloat v1, GLfloat v2);
 typedef void (*PFNGLBLENDFUNCPROC)(GLenum sfactor, GLenum dfactor);
 typedef void (*PFNGLDEPTHMASKPROC)(GLboolean flag);
 /* FBO */
@@ -473,6 +474,7 @@ struct nova64_gles_backend {
    PFNGLUNIFORM1IPROC Uniform1i;
    PFNGLUNIFORM1FPROC Uniform1f;
    PFNGLUNIFORM2FPROC Uniform2f;
+   PFNGLUNIFORM3FPROC Uniform3f;
    PFNGLBLENDFUNCPROC BlendFunc;
    PFNGLDEPTHMASKPROC DepthMask;
    /* VAO + debug procs */
@@ -575,6 +577,7 @@ struct nova64_gles_backend {
    GLint cube_light_direction_uniform;
    GLint cube_light_color_uniform;
    GLint cube_light_intensity_uniform;
+   GLint cube_camera_pos_uniform;
    GLint cube_shading_style_uniform;
    GLint cube_fog_enabled_uniform;
    GLint cube_fog_color_uniform;
@@ -33878,6 +33881,7 @@ static bool gles_create_cube_program(void)
       "uniform vec4 u_light_direction;\n"
       "uniform vec4 u_light_color;\n"
       "uniform float u_light_intensity;\n"
+      "uniform vec3 u_camera_pos;\n"
       "uniform int u_shading_style;\n"
       "uniform int u_fog_enabled;\n"
       "uniform vec4 u_fog_color;\n"
@@ -33989,10 +33993,11 @@ static bool gles_create_cube_program(void)
       "      lit *= (0.35 + 0.65 * (s / 9.0));\n"
       "    }\n"
       "  }\n"
-      /* Point-light accumulation: distance-attenuated diffuse from each
-         active light. Quadratic falloff so torches feel localized; clamped
-         to range so distant lights don't smear globally. Applied before
-         fog so atmospheric darkening can still swallow far light sources. */
+      /* Point-light accumulation: distance-attenuated diffuse plus a modest
+         roughness/metalness-shaped highlight from each active light.
+         Quadratic falloff keeps torches localized; clamped to range so
+         distant lights don't smear globally. Applied before fog so
+         atmospheric darkening can still swallow far light sources. */
       "  for (int i = 0; i < u_point_light_count; i++) {\n"
       "    if (i >= 8) break;\n"
       "    vec3 lp = u_point_lights_pos[i].xyz;\n"
@@ -34008,6 +34013,14 @@ static bool gles_create_cube_program(void)
       "    f *= f;\n"
       "    vec3 pcol = srgb_to_linear(u_point_lights_color[i].rgb);\n"
       "    lit += base.rgb * pcol * intensity * ndotl * f;\n"
+      "    vec3 view_dir = normalize(u_camera_pos - v_world_pos);\n"
+      "    vec3 half_dir = normalize(ldir + view_dir);\n"
+      "    float rough = clamp(u_roughness, 0.0, 1.0);\n"
+      "    float metal = clamp(u_metalness, 0.0, 1.0);\n"
+      "    float spec_power = mix(64.0, 12.0, rough);\n"
+      "    float spec = pow(max(dot(normalize(v_normal), half_dir), 0.0), spec_power);\n"
+      "    spec *= (1.0 - rough) * mix(0.16, 0.52, metal);\n"
+      "    lit += pcol * intensity * spec * f;\n"
       "  }\n"
       "  if (u_fog_enabled != 0) {\n"
       "    float fog_t = clamp((v_fog_depth - u_fog_near) / max(u_fog_far - u_fog_near, 0.001), 0.0, 1.0);\n"
@@ -34065,6 +34078,7 @@ static bool gles_create_cube_program(void)
    gles.cube_light_direction_uniform = gles.GetUniformLocation(program, "u_light_direction");
    gles.cube_light_color_uniform = gles.GetUniformLocation(program, "u_light_color");
    gles.cube_light_intensity_uniform = gles.GetUniformLocation(program, "u_light_intensity");
+   gles.cube_camera_pos_uniform = gles.GetUniformLocation(program, "u_camera_pos");
    gles.cube_shading_style_uniform = gles.GetUniformLocation(program, "u_shading_style");
    gles.cube_fog_enabled_uniform = gles.GetUniformLocation(program, "u_fog_enabled");
    gles.cube_fog_color_uniform = gles.GetUniformLocation(program, "u_fog_color");
@@ -34783,6 +34797,7 @@ static bool gles_load_functions(void)
    gles.Uniform1i = (PFNGLUNIFORM1IPROC)load_gles_proc("glUniform1i");
    gles.Uniform1f = (PFNGLUNIFORM1FPROC)load_gles_proc("glUniform1f");
    gles.Uniform2f = (PFNGLUNIFORM2FPROC)load_gles_proc("glUniform2f");
+   gles.Uniform3f = (PFNGLUNIFORM3FPROC)load_gles_proc("glUniform3f");
    gles.BlendFunc = (PFNGLBLENDFUNCPROC)load_gles_proc("glBlendFunc");
    gles.DepthMask = (PFNGLDEPTHMASKPROC)load_gles_proc("glDepthMask");
    /* Core profile requirements */
@@ -34867,6 +34882,7 @@ static void gles_context_destroy(void)
    gles.UniformMatrix4fv = NULL;
    gles.UniformMatrix3fv = NULL;
    gles.Uniform4f = NULL;
+   gles.Uniform4fv = NULL;
    gles.GenBuffers = NULL;
    gles.BindBuffer = NULL;
    gles.BufferData = NULL;
@@ -34887,6 +34903,7 @@ static void gles_context_destroy(void)
    gles.Uniform1i = NULL;
    gles.Uniform1f = NULL;
    gles.Uniform2f = NULL;
+   gles.Uniform3f = NULL;
    gles.BlendFunc = NULL;
    gles.DepthMask = NULL;
    gles.GenVertexArrays = NULL;
@@ -34995,6 +35012,9 @@ static void render_gles_primitive(const struct nova64_mesh *mesh, const float vi
          1.0f);
    if (gles.cube_light_intensity_uniform >= 0 && gles.Uniform1f)
       gles.Uniform1f(gles.cube_light_intensity_uniform, light_state.intensity);
+   if (gles.cube_camera_pos_uniform >= 0 && gles.Uniform3f)
+      gles.Uniform3f(gles.cube_camera_pos_uniform,
+         camera_state.position[0], camera_state.position[1], camera_state.position[2]);
    if (gles.cube_shading_style_uniform >= 0 && gles.Uniform1i)
       gles.Uniform1i(gles.cube_shading_style_uniform, gles_shading_style);
    gles_upload_point_lights();
@@ -35694,6 +35714,9 @@ static void render_gles_instanced_mesh(const struct nova64_mesh *mesh, const flo
          1.0f);
    if (gles.cube_light_intensity_uniform >= 0 && gles.Uniform1f)
       gles.Uniform1f(gles.cube_light_intensity_uniform, light_state.intensity);
+   if (gles.cube_camera_pos_uniform >= 0 && gles.Uniform3f)
+      gles.Uniform3f(gles.cube_camera_pos_uniform,
+         camera_state.position[0], camera_state.position[1], camera_state.position[2]);
    if (gles.cube_shading_style_uniform >= 0 && gles.Uniform1i)
       gles.Uniform1i(gles.cube_shading_style_uniform, gles_shading_style);
    gles_upload_point_lights();

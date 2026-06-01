@@ -17,7 +17,7 @@ RetroArch installation or a real OpenGL ES driver stack.
 
 ## Platform matrix
 
-| Platform       | Video driver | GLES version | Status  | 2Notes                                       |
+| Platform       | Video driver | GLES version | Status  | Notes                                        |
 | -------------- | ------------ | ------------ | ------- | ------------------------------------------- |
 | Linux x86-64   | glcore       | GLES 3.1     | ✅ pass | Tested via Mesa EGL headless (automated)    |
 | Linux x86-64   | gl           | GL 3.3       | 🔲 todo | Context type mismatch — needs field check   |
@@ -198,3 +198,36 @@ real-driver integration notes only.
   palette/start-screen tuning instead of camera/floor projection.
 - Native validation passed with `make -C retroarch clean all harness`; Windows
   DLL still needs a fresh cross-build/redeploy after this latest C change.
+
+## 2026-06-01 note
+
+- Wizardry RetroArch playability/parity work now has focused minimap, material,
+  point-light, and retro-effect bloom coverage.
+- `createMinimap` / `drawMinimap` now support richer tile metadata, fog-of-war,
+  entity markers, following, and callback-driven tile rendering. The Wizardry
+  minimap player marker no longer blinks away during movement.
+- Browser key-code compatibility has focused coverage for DOM-style codes such
+  as `KeyA`, `KeyW`, `Digit1`, and `ArrowUp`.
+- GLES material lighting now includes:
+  - web-style mesh option coverage for emissive, roughness, metalness, and
+    flat-shading constructor options (`1095-material-light-options`);
+  - point-light diffuse plus roughness/metalness-shaped specular highlights;
+  - updated GLES locks for `56-point-lights` and `1095-material-light-options`.
+- `nova64.fx.enableRetroEffects({ bloom })` now applies its bloom strength,
+  radius, and threshold settings in RetroArch instead of only recording the
+  options object. This restores Wizardry's init-time bloom/post-FBO path.
+- New conformance locks:
+  - `1093-minimap-tiles`
+  - `1094-minimap-dynamic`
+  - `1095-material-light-options`
+  - `1096-retro-effects-bloom`
+- Focused validation passed:
+  - `make -C retroarch all harness`
+  - `bash retroarch/tests/run_conformance.sh --skip-build --from 20 --to 21`
+  - `bash retroarch/tests/run_conformance.sh --skip-build --from 1093 --to 1096`
+  - `NOVA64_GLES_TESTS=1 bash retroarch/tests/run_conformance.sh --skip-build --from 54 --to 56`
+  - `NOVA64_GLES_TESTS=1 bash retroarch/tests/run_conformance.sh --skip-build --from 1095 --to 1096`
+  - Wizardry GLES smoke: `retroarch/build/harness retroarch/nova64_libretro.so retroarch/games/wizardry-3d.js --gles --frames 5`
+- Remaining Wizardry visual parity gap: point-light shadows. Directional shadow
+  maps exist; point-light shadowing still needs separate cubemap/omni-shadow
+  design and new baselines.

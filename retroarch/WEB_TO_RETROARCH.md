@@ -2,7 +2,7 @@
 
 Tracking which carts from `examples/` have been ported to `retroarch/games/` for cross-platform parity testing. Each ported cart should produce visually comparable output to its web sibling when run through the parity harness.
 
-Last updated: 2026-05-23
+Last updated: 2026-06-01
 
 ## Legend
 
@@ -27,6 +27,7 @@ Last updated: 2026-05-23
 | `hello-skybox`            | `retroarch/games/nova-drift.js` + `.nova`      | 6DOF crystal hunter. Replaces createSpaceSkybox with setSkyColor; instanced asteroids; deterministic LCG so the field is reproducible |
 | `tween-bounce`            | `retroarch/games/tween-bounce.js` + `.nova`    | 6 balls bouncing with `easeOutBounce`. Web `tw.tick(dt)` ⇒ runtime `updateTweens(dt)` + `getTweenValue(handle)` |
 | `filter-glitch`           | `retroarch/games/filter-glitch.js` + `.nova`   | Plasma + auto-cycled CRT/VHS/Hyper-Sat/Sepia/Pixelate. Web `applyFilter(...)` ⇒ runtime `screenGlitch`/`screenChromaticAberration`/`screenGrayscale`/`screenHsv`/`screenSepia2`/`screenPixelate` |
+| `wizardry-3d`             | `retroarch/games/wizardry-3d.js`               | Playability port in progress. Recent parity work covers rich minimap tiles/dynamic marker updates, DOM key-code aliases, material option point lights, GLES point-light specular, and `enableRetroEffects({ bloom })` startup bloom. Remaining visual gap: point-light shadows. |
 
 ## Cards-only RA carts (no web sibling yet)
 
@@ -65,7 +66,7 @@ Larger ports (~1000+ lines each). Each ships visual parity for a distinct genre.
 - `wing-commander-space` — combat shmup
 - `shooter-demo-3d`, `fps-demo-3d`, `space-combat-3d` — shooter variants
 - `crystal-cathedral-3d`, `cyberpunk-city-3d`, `mystical-realm-3d`, `nature-explorer-3d` — explore/diorama
-- `adventure-comic-3d`, `wizardry-3d`, `strider-demo-3d` — adventure
+- `adventure-comic-3d`, `strider-demo-3d` — adventure
 
 ## Skipped — not portable to RetroArch (🔴)
 

@@ -661,6 +661,12 @@ the web/Godot runtime can run in RetroArch with no browser-only shims.
     `disableVignette()`, `enableCRT(s)`, `disableCRT()`, `enableChromatic(a)`,
     `disableChromatic()`, `enableFXAA()` (no-op), `disableAll()` → all route to
     `nova64.post.*` equivalents.
+  - `enableRetroEffects(opts)` applies browser-style bloom presets to
+    `nova64.post.setBloom(strength, radius, threshold)`, opts into the Three-style
+    bloom composite, CAS sharpening, web color promotion, and the Three-style
+    GLES material ramp. This is compatibility-sensitive for Wizardry-style carts
+    that initialize bloom through the combined retro-effects helper instead of
+    calling `enableBloom()` directly.
   - Emitter2D bridge: `createEmitter2D(x,y,n,life)`, `burstEmitter2D(e,n)`,
     `updateEmitter2D(e,dt)`, `drawEmitter2D(e)`, `isEmitter2DDone(e)`,
     `destroyEmitter2D(e)` → bridged to `createBurst` / `triggerBurst` /

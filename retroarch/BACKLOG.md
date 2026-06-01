@@ -124,11 +124,16 @@ So **effectively 3 real WARN remain** (XR-excluded). All are addressable;
 canvas2d ctx is the big shared surface.
 
 Bigger ticket items also pending:
-- **`nova64.ui.parseCanvasUI`**: currently a no-op stub. Implementing real
-  XML parsing + render would unlock hud-demo's actual UI (and many other
-  XML-UI carts). Per-element tags to support: `<text>`, `<rect>`, `<circle>`,
-  `<progressbar>`, `<image>`, `<group>` with attributes for position,
-  color, data-bindings (`{var}` substitution), shadows, anchors.
+- ~~**`nova64.ui.parseCanvasUI`**~~ — MVP shipped. Tags: `<ui>`, `<rect>`,
+  `<text>`, `<line>`, `<circle>`, `<group>`, `<panel>`, `<progressbar>`,
+  `<star>`. Attributes: `{var}` data binding, percentage units, hex colors
+  (`#rgb`/`#rrggbb`/`#rrggbbaa`), `none`, `anchor-x` left/center/right,
+  `anchor="center"`. Not yet handled (carts using these should fall back to
+  direct draw): `<svg>`, `<path>`, `<triangle>`, `<ellipse>`, `<image>`,
+  `<button>` (use `nova64.ui.createButton` instead), `clip`, text shadows
+  and outlines, custom fonts. Verified against `examples/hud-demo` and
+  `examples/canvas-ui-showcase` — both render clean (30 frames, no JS
+  exceptions, deterministic checksum).
 - **Per-mesh alpha / transparency**: `createAdvancedCube` accepts `opts.opacity`
   and `opts.transparent` today but ignores them. Need a `setMeshAlpha(mesh, a)`
   + a transparent z-sort pass in the GLES path. (z-sort pass already exists

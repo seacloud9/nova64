@@ -204,8 +204,9 @@ real-driver integration notes only.
 - Wizardry RetroArch playability/parity work now has focused minimap, material,
   point-light, and retro-effect bloom coverage.
 - `createMinimap` / `drawMinimap` now support richer tile metadata, fog-of-war,
-  entity markers, following, and callback-driven tile rendering. The Wizardry
-  minimap player marker no longer blinks away during movement.
+  entity markers, following, callback-driven tile rendering, circular maps,
+  grid lines, radar sweep animation, and the legacy five-argument draw signature.
+  The Wizardry minimap player marker no longer blinks away during movement.
 - Browser key-code compatibility has focused coverage for DOM-style codes such
   as `KeyA`, `KeyW`, `Digit1`, and `ArrowUp`.
 - GLES material lighting now includes:
@@ -225,14 +226,17 @@ real-driver integration notes only.
   - `1095-material-light-options`
   - `1096-retro-effects-bloom`
   - `1097-point-light-shadow`
+  - `1098-minimap-web-compat`
 - Focused validation passed:
   - `make -C retroarch all harness`
   - `bash retroarch/tests/run_conformance.sh --skip-build --from 103 --to 103`
   - `NOVA64_GLES_TESTS=1 bash retroarch/tests/run_conformance.sh --skip-build --from 103 --to 103`
   - `bash retroarch/tests/run_conformance.sh --skip-build --from 20 --to 21`
-  - `bash retroarch/tests/run_conformance.sh --skip-build --from 1093 --to 1097`
+  - `bash retroarch/tests/run_conformance.sh --skip-build --from 548 --to 548`
+  - `bash retroarch/tests/run_conformance.sh --skip-build --from 559 --to 559`
+  - `bash retroarch/tests/run_conformance.sh --skip-build --from 1093 --to 1098`
   - `NOVA64_GLES_TESTS=1 bash retroarch/tests/run_conformance.sh --skip-build --from 54 --to 56`
-  - `NOVA64_GLES_TESTS=1 bash retroarch/tests/run_conformance.sh --skip-build --from 1095 --to 1097`
+  - `NOVA64_GLES_TESTS=1 bash retroarch/tests/run_conformance.sh --skip-build --from 1095 --to 1098`
   - Wizardry GLES smoke: `retroarch/build/harness retroarch/nova64_libretro.so retroarch/games/wizardry-3d.js --gles --frames 5`
 - Remaining Wizardry visual parity gap: true cubemap/omni point-light shadows.
   The GLES path now supports a single projected point-light shadow source.

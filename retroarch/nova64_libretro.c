@@ -14634,47 +14634,125 @@ static bool minimap_object_bool(JSContext *ctx, JSValueConst object, const char 
    return out;
 }
 
-static void minimap_draw_square(int x, int y, int size, uint32_t color)
+static bool minimap_in_circle(int px, int py, double cx, double cy, double radius)
+{
+   double dx = (double)px - cx;
+   double dy = (double)py - cy;
+   return dx * dx + dy * dy <= radius * radius;
+}
+
+static void minimap_draw_square_clipped(int x, int y, int size, uint32_t color,
+   bool circle, double cx, double cy, double radius)
 {
    if (size < 1)
       size = 1;
-   for (int yy = 0; yy < size; yy++)
-      for (int xx = 0; xx < size; xx++)
-         set_pixel(x + xx, y + yy, color);
+   for (int yy = 0; yy < size; yy++) {
+      for (int xx = 0; xx < size; xx++) {
+         int px = x + xx;
+         int py = y + yy;
+         if (circle && !minimap_in_circle(px, py, cx, cy, radius))
+            continue;
+         set_pixel(px, py, color);
+      }
+   }
 }
 
-static void minimap_draw_dot(int cx, int cy, int size, uint32_t color)
+static void minimap_draw_dot_clipped(int cx, int cy, int size, uint32_t color,
+   int x, int y, int w, int h, bool circle, double ccx, double ccy, double radius)
 {
    if (size < 1)
       size = 1;
    int half = size / 2;
-   for (int yy = -half; yy < size - half; yy++)
-      for (int xx = -half; xx < size - half; xx++)
-         set_pixel(cx + xx, cy + yy, color);
+   for (int yy = -half; yy < size - half; yy++) {
+      for (int xx = -half; xx < size - half; xx++) {
+         int px = cx + xx;
+         int py = cy + yy;
+         if (px < x || px >= x + w || py < y || py >= y + h)
+            continue;
+         if (circle && !minimap_in_circle(px, py, ccx, ccy, radius))
+            continue;
+         set_pixel(px, py, color);
+      }
+   }
+}
+
+static void minimap_world_to_screen(int *out_x, int *out_y,
+   double wx, double wy, int mx, int my, int mw, int mh, double ww, double wh,
+   int tile_w, int tile_scale, bool has_follow, double follow_x, double follow_y)
+{
+   if (tile_w > 0) {
+      *out_x = mx + (int)floor(wx * (double)tile_scale);
+      *out_y = my + (int)floor(wy * (double)tile_scale);
+      return;
+   }
+   if (ww <= 0.0)
+      ww = 100.0;
+   if (wh <= 0.0)
+      wh = 100.0;
+   double nx = has_follow ? 0.5 + (wx - follow_x) / ww : wx / ww;
+   double ny = has_follow ? 0.5 + (wy - follow_y) / wh : wy / wh;
+   *out_x = mx + (int)floor(nx * (double)mw);
+   *out_y = my + (int)floor(ny * (double)mh);
 }
 
 /* drawMinimap(mm, entities) — render minimap with entity dots
    entities: array of {x, y, color?, size?} in world-space */
 static JSValue js_draw_minimap(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
    (void)this_val;
-   if (argc < 1 || !JS_IsObject(argv[0])) return JS_UNDEFINED;
+   if (argc < 1) return JS_UNDEFINED;
+   JSValue minimap_obj = JS_UNDEFINED;
+   JSValueConst mm_arg = argv[0];
+   bool legacy_signature = argc >= 3 && JS_IsNumber(argv[0]);
+   if (legacy_signature) {
+      int lx = 0, ly = 0, size = 80;
+      JS_ToInt32(ctx, &lx, argv[0]);
+      JS_ToInt32(ctx, &ly, argv[1]);
+      JS_ToInt32(ctx, &size, argv[2]);
+      JSValue opts = JS_NewObject(ctx);
+      JS_SetPropertyStr(ctx, opts, "x", JS_NewInt32(ctx, lx));
+      JS_SetPropertyStr(ctx, opts, "y", JS_NewInt32(ctx, ly));
+      JS_SetPropertyStr(ctx, opts, "width", JS_NewInt32(ctx, size));
+      JS_SetPropertyStr(ctx, opts, "height", JS_NewInt32(ctx, size));
+      JS_SetPropertyStr(ctx, opts, "worldW", JS_NewFloat64(ctx, 100.0));
+      JS_SetPropertyStr(ctx, opts, "worldH", JS_NewFloat64(ctx, 100.0));
+      if (argc >= 5)
+         JS_SetPropertyStr(ctx, opts, "bgColor", JS_DupValue(ctx, argv[4]));
+      if (argc >= 4 && JS_IsArray(argv[3])) {
+         JS_SetPropertyStr(ctx, opts, "entities", JS_DupValue(ctx, argv[3]));
+         JSValue first = JS_GetPropertyUint32(ctx, argv[3], 0);
+         if (JS_IsObject(first)) {
+            double legacy_ww = minimap_object_number(ctx, first, "worldW", 100.0);
+            double legacy_wh = minimap_object_number(ctx, first, "worldH", 100.0);
+            JS_SetPropertyStr(ctx, opts, "worldW", JS_NewFloat64(ctx, legacy_ww));
+            JS_SetPropertyStr(ctx, opts, "worldH", JS_NewFloat64(ctx, legacy_wh));
+         }
+         JS_FreeValue(ctx, first);
+      }
+      minimap_obj = js_create_minimap(ctx, this_val, 1, &opts);
+      JS_FreeValue(ctx, opts);
+      if (JS_IsException(minimap_obj))
+         return minimap_obj;
+      mm_arg = minimap_obj;
+   } else if (!JS_IsObject(argv[0])) {
+      return JS_UNDEFINED;
+   }
    int mx=0, my=0, mw=80, mh=80;
    double ww=100.0, wh=100.0;
    uint32_t bg=0x00000080, bdl=0x969696FF, bdd=0x323232FF;
    int tile_w = 0, tile_h = 0, tile_scale = 2, fog_of_war = 0;
    double time = 0.0;
-   bool legacy_entities_arg = argc >= 2 && JS_IsArray(argv[1]);
-   if (argc >= 2 && !legacy_entities_arg)
+   bool legacy_entities_arg = !legacy_signature && argc >= 2 && JS_IsArray(argv[1]);
+   if (!legacy_signature && argc >= 2 && !legacy_entities_arg)
       JS_ToFloat64(ctx, &time, argv[1]);
-   JSValue vx=JS_GetPropertyStr(ctx,argv[0],"x");
-   JSValue vy=JS_GetPropertyStr(ctx,argv[0],"y");
-   JSValue vw=JS_GetPropertyStr(ctx,argv[0],"width");
-   JSValue vh=JS_GetPropertyStr(ctx,argv[0],"height");
-   JSValue vww=JS_GetPropertyStr(ctx,argv[0],"worldW");
-   JSValue vwh=JS_GetPropertyStr(ctx,argv[0],"worldH");
-   JSValue vbg=JS_GetPropertyStr(ctx,argv[0],"bgColor");
-   JSValue vbl=JS_GetPropertyStr(ctx,argv[0],"borderLight");
-   JSValue vbd=JS_GetPropertyStr(ctx,argv[0],"borderDark");
+   JSValue vx=JS_GetPropertyStr(ctx,mm_arg,"x");
+   JSValue vy=JS_GetPropertyStr(ctx,mm_arg,"y");
+   JSValue vw=JS_GetPropertyStr(ctx,mm_arg,"width");
+   JSValue vh=JS_GetPropertyStr(ctx,mm_arg,"height");
+   JSValue vww=JS_GetPropertyStr(ctx,mm_arg,"worldW");
+   JSValue vwh=JS_GetPropertyStr(ctx,mm_arg,"worldH");
+   JSValue vbg=JS_GetPropertyStr(ctx,mm_arg,"bgColor");
+   JSValue vbl=JS_GetPropertyStr(ctx,mm_arg,"borderLight");
+   JSValue vbd=JS_GetPropertyStr(ctx,mm_arg,"borderDark");
    JS_ToInt32(ctx,&mx,vx); JS_ToInt32(ctx,&my,vy);
    JS_ToInt32(ctx,&mw,vw); JS_ToInt32(ctx,&mh,vh);
    JS_ToFloat64(ctx,&ww,vww); JS_ToFloat64(ctx,&wh,vwh);
@@ -14685,28 +14763,45 @@ static JSValue js_draw_minimap(JSContext *ctx, JSValueConst this_val, int argc, 
    JS_FreeValue(ctx,vww);JS_FreeValue(ctx,vwh);JS_FreeValue(ctx,vbg);
    JS_FreeValue(ctx,vbl);JS_FreeValue(ctx,vbd);
 
-   /* Draw background */
-   draw_rect_pixels(mx, my, mw, mh, bg, true);
+   JSValue shape = JS_GetPropertyStr(ctx, mm_arg, "shape");
+   const char *shape_str = JS_IsString(shape) ? JS_ToCString(ctx, shape) : NULL;
+   bool is_circle = shape_str && strcmp(shape_str, "circle") == 0;
+   if (shape_str)
+      JS_FreeCString(ctx, shape_str);
+   JS_FreeValue(ctx, shape);
+   double circle_cx = (double)mx + (double)mw * 0.5;
+   double circle_cy = (double)my + (double)mh * 0.5;
+   double circle_radius = (double)(mw < mh ? mw : mh) * 0.5;
 
-   tile_w = minimap_object_int(ctx, argv[0], "tileW", 0);
-   tile_h = minimap_object_int(ctx, argv[0], "tileH", 0);
-   tile_scale = minimap_object_int(ctx, argv[0], "tileScale", 2);
-   fog_of_war = minimap_object_int(ctx, argv[0], "fogOfWar", 0);
+   /* Draw background */
+   if (is_circle) {
+      for (int py = my; py < my + mh; py++)
+         for (int px = mx; px < mx + mw; px++)
+            if (minimap_in_circle(px, py, circle_cx, circle_cy, circle_radius))
+               set_pixel(px, py, bg);
+   } else {
+      draw_rect_pixels(mx, my, mw, mh, bg, true);
+   }
+
+   tile_w = minimap_object_int(ctx, mm_arg, "tileW", 0);
+   tile_h = minimap_object_int(ctx, mm_arg, "tileH", 0);
+   tile_scale = minimap_object_int(ctx, mm_arg, "tileScale", 2);
+   fog_of_war = minimap_object_int(ctx, mm_arg, "fogOfWar", 0);
    if (tile_scale < 1)
       tile_scale = 1;
 
-   JSValue tiles = JS_GetPropertyStr(ctx, argv[0], "tiles");
-   if (!JS_IsUndefined(tiles) && !JS_IsNull(tiles) && tile_w > 0 && tile_h > 0) {
-      double follow_x = 0.0, follow_y = 0.0;
-      bool has_follow = false;
-      JSValue follow = JS_GetPropertyStr(ctx, argv[0], "follow");
-      if (JS_IsObject(follow)) {
-         follow_x = minimap_object_number(ctx, follow, "x", 0.0);
-         follow_y = minimap_object_number(ctx, follow, "y", 0.0);
-         has_follow = true;
-      }
-      JS_FreeValue(ctx, follow);
+   double follow_x = 0.0, follow_y = 0.0;
+   bool has_follow = false;
+   JSValue follow = JS_GetPropertyStr(ctx, mm_arg, "follow");
+   if (JS_IsObject(follow)) {
+      follow_x = minimap_object_number(ctx, follow, "x", 0.0);
+      follow_y = minimap_object_number(ctx, follow, "y", 0.0);
+      has_follow = true;
+   }
+   JS_FreeValue(ctx, follow);
 
+   JSValue tiles = JS_GetPropertyStr(ctx, mm_arg, "tiles");
+   if (!JS_IsUndefined(tiles) && !JS_IsNull(tiles) && tile_w > 0 && tile_h > 0) {
       bool tiles_is_function = JS_IsFunction(ctx, tiles);
       for (int ty = 0; ty < tile_h; ty++) {
          for (int tx = 0; tx < tile_w; tx++) {
@@ -14724,6 +14819,7 @@ static JSValue js_draw_minimap(JSContext *ctx, JSValueConst this_val, int argc, 
                JS_FreeValue(ctx, args[1]);
                if (JS_IsException(tile_color)) {
                   JS_FreeValue(ctx, tiles);
+                  JS_FreeValue(ctx, minimap_obj);
                   return tile_color;
                }
             } else {
@@ -14735,7 +14831,8 @@ static JSValue js_draw_minimap(JSContext *ctx, JSValueConst this_val, int argc, 
 
             if (!JS_IsUndefined(tile_color) && !JS_IsNull(tile_color) && JS_ToBool(ctx, tile_color)) {
                uint32_t color = color_from_js(ctx, tile_color, 0);
-               minimap_draw_square(mx + tx * tile_scale, my + ty * tile_scale, tile_scale, color);
+               minimap_draw_square_clipped(mx + tx * tile_scale, my + ty * tile_scale,
+                  tile_scale, color, is_circle, circle_cx, circle_cy, circle_radius);
             }
             JS_FreeValue(ctx, tile_color);
          }
@@ -14743,12 +14840,50 @@ static JSValue js_draw_minimap(JSContext *ctx, JSValueConst this_val, int argc, 
    }
    JS_FreeValue(ctx, tiles);
 
+   int grid_lines = minimap_object_int(ctx, mm_arg, "gridLines", 0);
+   if (grid_lines > 0) {
+      uint32_t grid_color = minimap_object_color(ctx, mm_arg, "gridColor", 0x283C2878);
+      for (int i = 1; i < grid_lines; i++) {
+         int gx = mx + (int)floor((double)mw * (double)i / (double)grid_lines);
+         int gy = my + (int)floor((double)mh * (double)i / (double)grid_lines);
+         for (int py = my; py < my + mh; py++)
+            if (!is_circle || minimap_in_circle(gx, py, circle_cx, circle_cy, circle_radius))
+               set_pixel(gx, py, grid_color);
+         for (int px = mx; px < mx + mw; px++)
+            if (!is_circle || minimap_in_circle(px, gy, circle_cx, circle_cy, circle_radius))
+               set_pixel(px, gy, grid_color);
+      }
+   }
+
+   JSValue sweep = JS_GetPropertyStr(ctx, mm_arg, "sweep");
+   if (JS_IsObject(sweep)) {
+      double speed = minimap_object_number(ctx, sweep, "speed", 2.0);
+      uint32_t sweep_color = minimap_object_color(ctx, sweep, "color", 0x00FF0064);
+      double angle = time * speed;
+      double sx = cos(angle) * circle_radius;
+      double sy = sin(angle) * circle_radius;
+      int steps = (int)floor(fmax(fabs(sx), fabs(sy)));
+      if (steps > 0) {
+         for (int s = 0; s <= steps; s++) {
+            double t = (double)s / (double)steps;
+            int px = (int)floor(circle_cx + sx * t);
+            int py = (int)floor(circle_cy + sy * t);
+            if (px < mx || px >= mx + mw || py < my || py >= my + mh)
+               continue;
+            if (is_circle && !minimap_in_circle(px, py, circle_cx, circle_cy, circle_radius))
+               continue;
+            set_pixel(px, py, sweep_color);
+         }
+      }
+   }
+   JS_FreeValue(ctx, sweep);
+
    /* Draw entities */
    JSValue entities = JS_UNDEFINED;
    if (legacy_entities_arg)
       entities = JS_DupValue(ctx, argv[1]);
    else
-      entities = JS_GetPropertyStr(ctx, argv[0], "entities");
+      entities = JS_GetPropertyStr(ctx, mm_arg, "entities");
    if (JS_IsArray(entities) && ww > 0 && wh > 0) {
       JSValue lenV = JS_GetPropertyStr(ctx, entities, "length");
       uint32_t elen = 0; JS_ToUint32(ctx, &elen, lenV); JS_FreeValue(ctx, lenV);
@@ -14758,8 +14893,9 @@ static JSValue js_draw_minimap(JSContext *ctx, JSValueConst this_val, int argc, 
          double ey = minimap_object_number(ctx, e, "y", 0.0);
          uint32_t ec2 = minimap_object_color(ctx, e, "color", 0xFF4040FF);
          int size = minimap_object_int(ctx, e, "size", 3);
-         int px = tile_w > 0 ? mx + (int)floor(ex * tile_scale) : mx + (int)(ex / ww * mw);
-         int py = tile_h > 0 ? my + (int)floor(ey * tile_scale) : my + (int)(ey / wh * mh);
+         int px, py;
+         minimap_world_to_screen(&px, &py, ex, ey, mx, my, mw, mh, ww, wh,
+            tile_w, tile_scale, has_follow, follow_x, follow_y);
          if (legacy_entities_arg) {
             set_pixel(px, py, ec2);
             set_pixel(px - 1, py, ec2);
@@ -14767,7 +14903,8 @@ static JSValue js_draw_minimap(JSContext *ctx, JSValueConst this_val, int argc, 
             set_pixel(px, py - 1, ec2);
             set_pixel(px, py + 1, ec2);
          } else {
-            minimap_draw_dot(px, py, size, ec2);
+            minimap_draw_dot_clipped(px, py, size, ec2, mx, my, mw, mh,
+               is_circle, circle_cx, circle_cy, circle_radius);
          }
          JS_FreeValue(ctx, e);
       }
@@ -14775,7 +14912,7 @@ static JSValue js_draw_minimap(JSContext *ctx, JSValueConst this_val, int argc, 
    JS_FreeValue(ctx, entities);
 
    if (!legacy_entities_arg) {
-      JSValue player = JS_GetPropertyStr(ctx, argv[0], "player");
+      JSValue player = JS_GetPropertyStr(ctx, mm_arg, "player");
       if (JS_IsObject(player)) {
          bool blink = minimap_object_bool(ctx, player, "blink", true);
          if (!blink || sin(time * 8.0) > 0.0) {
@@ -14783,21 +14920,39 @@ static JSValue js_draw_minimap(JSContext *ctx, JSValueConst this_val, int argc, 
             double py_world = minimap_object_number(ctx, player, "y", 0.0);
             uint32_t pc = minimap_object_color(ctx, player, "color", 0x3296FFFF);
             int size = minimap_object_int(ctx, player, "size", 3);
-            int px = tile_w > 0 ? mx + (int)floor(px_world * tile_scale) : mx + (int)(px_world / ww * mw);
-            int py = tile_h > 0 ? my + (int)floor(py_world * tile_scale) : my + (int)(py_world / wh * mh);
-            minimap_draw_dot(px, py, size, pc);
+            int px, py;
+            minimap_world_to_screen(&px, &py, px_world, py_world, mx, my, mw, mh,
+               ww, wh, tile_w, tile_scale, has_follow, follow_x, follow_y);
+            minimap_draw_dot_clipped(px, py, size, pc, mx, my, mw, mh,
+               is_circle, circle_cx, circle_cy, circle_radius);
          }
       }
       JS_FreeValue(ctx, player);
    }
 
    /* Border: top+left light, bottom+right dark */
-   JSValue border_light = JS_GetPropertyStr(ctx, argv[0], "borderLight");
+   JSValue border_light = JS_GetPropertyStr(ctx, mm_arg, "borderLight");
    if (!JS_IsNull(border_light)) {
-      for (int i = mx; i < mx+mw; i++) { set_pixel(i, my, bdl); set_pixel(i, my+mh-1, bdd); }
-      for (int i = my; i < my+mh; i++) { set_pixel(mx, i, bdl); set_pixel(mx+mw-1, i, bdd); }
+      if (is_circle) {
+         double inner = circle_radius - 1.0;
+         double inner2 = inner * inner;
+         double outer2 = circle_radius * circle_radius;
+         for (int py = my; py < my + mh; py++) {
+            for (int px = mx; px < mx + mw; px++) {
+               double dx = (double)px - circle_cx;
+               double dy = (double)py - circle_cy;
+               double d2 = dx * dx + dy * dy;
+               if (d2 >= inner2 && d2 <= outer2)
+                  set_pixel(px, py, bdl);
+            }
+         }
+      } else {
+         for (int i = mx; i < mx+mw; i++) { set_pixel(i, my, bdl); set_pixel(i, my+mh-1, bdd); }
+         for (int i = my; i < my+mh; i++) { set_pixel(mx, i, bdl); set_pixel(mx+mw-1, i, bdd); }
+      }
    }
    JS_FreeValue(ctx, border_light);
+   JS_FreeValue(ctx, minimap_obj);
    return JS_UNDEFINED;
 }
 

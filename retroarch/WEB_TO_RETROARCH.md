@@ -27,7 +27,7 @@ Last updated: 2026-06-01
 | `hello-skybox`            | `retroarch/games/nova-drift.js` + `.nova`      | 6DOF crystal hunter. Replaces createSpaceSkybox with setSkyColor; instanced asteroids; deterministic LCG so the field is reproducible |
 | `tween-bounce`            | `retroarch/games/tween-bounce.js` + `.nova`    | 6 balls bouncing with `easeOutBounce`. Web `tw.tick(dt)` ⇒ runtime `updateTweens(dt)` + `getTweenValue(handle)` |
 | `filter-glitch`           | `retroarch/games/filter-glitch.js` + `.nova`   | Plasma + auto-cycled CRT/VHS/Hyper-Sat/Sepia/Pixelate. Web `applyFilter(...)` ⇒ runtime `screenGlitch`/`screenChromaticAberration`/`screenGrayscale`/`screenHsv`/`screenSepia2`/`screenPixelate` |
-| `wizardry-3d`             | `retroarch/games/wizardry-3d.js`               | Playability port in progress. Recent parity work covers rich minimap tiles/dynamic marker updates, DOM key-code aliases, material option point lights, GLES point-light specular, projected point-light shadows, and `enableRetroEffects({ bloom })` startup bloom. Remaining visual gap: true cubemap/omni point-light shadows. |
+| `wizardry-3d`             | `retroarch/games/wizardry-3d.js`               | Playability port in progress. Recent parity work covers rich minimap tiles/dynamic marker updates, circular/grid/sweep minimap compat, DOM key-code aliases, material option point lights, GLES point-light specular, projected point-light shadows, and `enableRetroEffects({ bloom })` startup bloom. Remaining visual gap: true cubemap/omni point-light shadows. |
 
 ## Cards-only RA carts (no web sibling yet)
 

@@ -134,8 +134,10 @@ Bigger ticket items also pending:
   + a transparent z-sort pass in the GLES path. (z-sort pass already exists
   for `setMeshAlpha`-like blending — verify whether it's wired up to a JS
   binding.)
-- **`ui.createButton` input wiring**: stored callbacks aren't fired today.
-  Wire `updateAllButtons()` to poll `RETRO_DEVICE_POINTER` + joypad confirm.
+- ~~**`ui.createButton` input wiring.**~~ Shipped. `updateAllButtons()` now
+  tracks hot index via mouse hover (taking precedence) or d-pad up/down,
+  and fires the button's stored `cb` callback on mouse click or
+  A button / Space / Enter confirm.
 
 ---
 
@@ -280,9 +282,9 @@ In rough priority order; pick what fits the user's mood.
 
 ### Parity / polish
 
-- **Variable-width characters** — narrow `i` (3 cols), wide `m` (5 cols);
-  improves text density and looks more professional. `printTight()`
-  already exists; this would feed into it.
+- ~~**Variable-width characters.**~~ Already shipped. `glyph_tight_advance()`
+  computes per-character advance from the bitmap bounds, so `i` advances
+  ~2px and `m` advances 6px. `printTight()` calls it on every character.
 - **HUD font metrics for parity test** — `printTight()` helps density,
   but exact web-font metrics still differ; getting them aligned moves
   numeric parity scores up without losing detail.

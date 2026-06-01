@@ -30478,7 +30478,7 @@ static bool install_nova64_api(JSContext *ctx)
 
          /* nova64.ui — UI engine shim mapping to draw + input primitives */
          "nova64.ui=(function(){"
-           "var W=640,_buttons=[],_font='normal',_align='left';"
+           "var W=640,_buttons=[],_font='normal',_align='left',_hotIdx=-1;"
            "var colors={"
              /* uiColors as raw 0xRRGGBBAA — must not call rgba8 here
               because this shim evaluates before rgba8 is registered. */
@@ -30492,7 +30492,7 @@ static bool install_nova64_api(JSContext *ctx)
              "dark:0x14141eff|0};"
            "var fontScale={tiny:1,small:1,normal:1,large:2,huge:3};"
            "function centerX(w){return Math.floor((W-w)/2);}"
-           "function clearButtons(){_buttons=[];}"
+           "function clearButtons(){_buttons=[];_hotIdx=-1;}"
            "function createButton(x,y,w,h,text,cb,opts){"
              "opts=opts||{};"
              "_buttons.push({x:x,y:y,w:w,h:h,text:text,cb:cb,"
@@ -30500,6 +30500,7 @@ static bool install_nova64_api(JSContext *ctx)
                "hover:opts.hoverColor!=null?opts.hoverColor:colors.info,"
                "text_color:opts.textColor!=null?opts.textColor:colors.light,"
                "hot:false});"
+             "if(_hotIdx<0)_hotIdx=0;"
            "}"
            "function createPanel(x,y,w,h,opts){"
              "opts=opts||{};"
@@ -30508,10 +30509,34 @@ static bool install_nova64_api(JSContext *ctx)
                "borderColor:opts.borderColor!=null?opts.borderColor:colors.light,"
                "borderWidth:opts.borderWidth||1,shadow:!!opts.shadow};"
            "}"
-           "function updateAllButtons(){}"
+           /* updateAllButtons polls mouse + joypad to track which button is
+              hot (highlighted) and fires the button's stored callback on
+              click/confirm. D-pad up/down cycles through buttons; A button
+              (btnp 4) or Space/Enter confirms; mouse hover overrides the
+              keyboard cursor. */
+           "function updateAllButtons(){"
+             "if(_buttons.length===0){_hotIdx=-1;return;}"
+             "var mx=(nova64.input.mouseX?nova64.input.mouseX():-1);"
+             "var my=(nova64.input.mouseY?nova64.input.mouseY():-1);"
+             "var clicked=(nova64.input.mousePressed&&nova64.input.mousePressed());"
+             "var down=(nova64.input.btnp&&nova64.input.btnp(3))||nova64.input.keyp('ArrowDown');"
+             "var up=(nova64.input.btnp&&nova64.input.btnp(2))||nova64.input.keyp('ArrowUp');"
+             "var pressOK=(nova64.input.btnp&&nova64.input.btnp(4))||nova64.input.keyp('Space')||nova64.input.keyp('Enter');"
+             "if(_hotIdx<0)_hotIdx=0;"
+             "if(down)_hotIdx=(_hotIdx+1)%_buttons.length;"
+             "else if(up)_hotIdx=(_hotIdx+_buttons.length-1)%_buttons.length;"
+             "var mouseIdx=-1;"
+             "for(var i=0;i<_buttons.length;i++){var b=_buttons[i];"
+               "if(mx>=b.x&&mx<b.x+b.w&&my>=b.y&&my<b.y+b.h)mouseIdx=i;}"
+             "if(mouseIdx>=0)_hotIdx=mouseIdx;"
+             "for(var j=0;j<_buttons.length;j++)_buttons[j].hot=(j===_hotIdx);"
+             "if(_hotIdx>=0){var hot=_buttons[_hotIdx];"
+               "if(((mouseIdx===_hotIdx)&&clicked)||pressOK){"
+                 "if(typeof hot.cb==='function')hot.cb();}}"
+           "}"
            "function drawAllButtons(){"
              "for(var i=0;i<_buttons.length;i++){var b=_buttons[i];"
-               "rectfill(b.x,b.y,b.w,b.h,b.normal);"
+               "rectfill(b.x,b.y,b.w,b.h,b.hot?b.hover:b.normal);"
                "rect(b.x,b.y,b.w,b.h,colors.light,false);"
                "var s=fontScale[_font]||1;"
                "var tw=(b.text.length*4)*s;"

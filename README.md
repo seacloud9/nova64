@@ -83,7 +83,9 @@ then load any `.nova` cart from your Nova64 playlist.
 Builds are produced by the
 [`Release RetroArch cores`](.github/workflows/release-cores.yml) GitHub Action
 on every `v*.*.*` tag, and can also be triggered manually from the Actions tab
-for one-off releases.
+for one-off releases. See [`RELEASING.md`](RELEASING.md) for the publisher's
+guide — what gets built, how to cut a release, how to add a new target
+platform, and troubleshooting.
 
 Generated RetroArch binaries, build outputs, and capture artifacts should stay
 out of commits.

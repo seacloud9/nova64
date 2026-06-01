@@ -212,6 +212,9 @@ real-driver integration notes only.
   - web-style mesh option coverage for emissive, roughness, metalness, and
     flat-shading constructor options (`1095-material-light-options`);
   - point-light diffuse plus roughness/metalness-shaped specular highlights;
+  - a projected single-shadow-map path sourced from the strongest active point
+    light (`1097-point-light-shadow`). This improves Wizardry room lighting but
+    is not a full cubemap/omnidirectional point-shadow implementation yet;
   - updated GLES locks for `56-point-lights` and `1095-material-light-options`.
 - `nova64.fx.enableRetroEffects({ bloom })` now applies its bloom strength,
   radius, and threshold settings in RetroArch instead of only recording the
@@ -221,13 +224,15 @@ real-driver integration notes only.
   - `1094-minimap-dynamic`
   - `1095-material-light-options`
   - `1096-retro-effects-bloom`
+  - `1097-point-light-shadow`
 - Focused validation passed:
   - `make -C retroarch all harness`
+  - `bash retroarch/tests/run_conformance.sh --skip-build --from 103 --to 103`
+  - `NOVA64_GLES_TESTS=1 bash retroarch/tests/run_conformance.sh --skip-build --from 103 --to 103`
   - `bash retroarch/tests/run_conformance.sh --skip-build --from 20 --to 21`
-  - `bash retroarch/tests/run_conformance.sh --skip-build --from 1093 --to 1096`
+  - `bash retroarch/tests/run_conformance.sh --skip-build --from 1093 --to 1097`
   - `NOVA64_GLES_TESTS=1 bash retroarch/tests/run_conformance.sh --skip-build --from 54 --to 56`
-  - `NOVA64_GLES_TESTS=1 bash retroarch/tests/run_conformance.sh --skip-build --from 1095 --to 1096`
+  - `NOVA64_GLES_TESTS=1 bash retroarch/tests/run_conformance.sh --skip-build --from 1095 --to 1097`
   - Wizardry GLES smoke: `retroarch/build/harness retroarch/nova64_libretro.so retroarch/games/wizardry-3d.js --gles --frames 5`
-- Remaining Wizardry visual parity gap: point-light shadows. Directional shadow
-  maps exist; point-light shadowing still needs separate cubemap/omni-shadow
-  design and new baselines.
+- Remaining Wizardry visual parity gap: true cubemap/omni point-light shadows.
+  The GLES path now supports a single projected point-light shadow source.

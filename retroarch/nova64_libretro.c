@@ -605,6 +605,7 @@ struct nova64_gles_backend {
    GLint cube_shadow_mvp_uniform;
    GLint cube_shadow_texel_size_uniform;
    GLint cube_shadow_enabled_uniform;
+   GLint cube_shadow_point_light_index_uniform;
    /* Shadow map resources */
    GLuint shadow_fbo;
    GLuint shadow_rbo;
@@ -798,6 +799,8 @@ static int blend_stack_depth;
 /* Shadow map configuration — 0 = disabled, power-of-2 size = enabled */
 static int g_shadow_map_size = 1024;
 static float g_shadow_light_vp[16];
+static int g_shadow_point_light_index = -1;
+static int g_shadow_point_light_slot = -1;
 
 /* Sky/background color — used as GLES clear color when enabled */
 static bool sky_color_enabled = false;
@@ -28220,6 +28223,7 @@ static void render_gles_custom_mesh(struct nova64_mesh *mesh, const float view_p
 static void render_gles_instanced_mesh(const struct nova64_mesh *mesh, const float view_projection[16]);
 static bool gles_any_cast_shadow_mesh(void);
 static bool gles_init_shadow_resources(void);
+static void gles_reset_shadow_point_light(void);
 static void build_shadow_light_vp(float out[16]);
 static void render_gles_shadow_pass(const float light_vp[16]);
 static void render_gles_meshes_sorted(const float view_projection[16]);
@@ -28240,6 +28244,8 @@ static void render_gles_scene_to_rt(struct nova64_render_target *rt)
    if (use_shadow) {
       build_shadow_light_vp(g_shadow_light_vp);
       render_gles_shadow_pass(g_shadow_light_vp);
+   } else {
+      gles_reset_shadow_point_light();
    }
 
    gles.BindFramebuffer(GL_FRAMEBUFFER, rt->fbo);
@@ -33880,7 +33886,7 @@ static bool gles_create_cube_program(void)
       "    else uv_planar = a_position.xy + 0.5;\n"
       "  }\n"
       "  v_uv = uv_planar * u_uv_scale + u_uv_offset;\n"
-      "  v_shadow_coord = u_shadow_mvp * world_pos;\n"
+      "  v_shadow_coord = (u_use_instancing != 0) ? u_shadow_mvp * world_pos : u_shadow_mvp * local_pos;\n"
       "}\n";
    static const char *fragment_source =
       "#version 300 es\nprecision highp float;\nprecision highp int;\n"
@@ -33921,6 +33927,7 @@ static bool gles_create_cube_program(void)
       "uniform sampler2D u_shadow_map;\n"
       "uniform float u_shadow_texel_size;\n"
       "uniform int u_shadow_enabled;\n"
+      "uniform int u_shadow_point_light_index;\n"
       "uniform int u_use_instancing;\n"
       "out vec4 fragColor;\n"
       "float srgb_to_linear_channel(float c) {\n"
@@ -33955,6 +33962,7 @@ static bool gles_create_cube_program(void)
       "  return depth - 0.005 > texture(u_shadow_map, uv).r ? 0.0 : 1.0;\n"
       "}\n"
       "void main() {\n"
+      "  float shadow_factor = 1.0;\n"
       "  vec3 ambient = srgb_to_linear(u_ambient_color.rgb) * 0.35;\n"
       "  vec4 draw_color = (u_use_instancing != 0) ? v_instance_color : u_color;\n"
       "  vec4 texel = (u_has_texture != 0) ? texture(u_texture, v_uv) : vec4(1.0);\n"
@@ -34010,7 +34018,9 @@ static bool gles_create_cube_program(void)
       "              + shadow_tap(sc.xy+vec2(-ts, ts),sc.z)\n"
       "              + shadow_tap(sc.xy+vec2(0.0, ts),sc.z)\n"
       "              + shadow_tap(sc.xy+vec2( ts, ts),sc.z);\n"
-      "      lit *= (0.35 + 0.65 * (s / 9.0));\n"
+      "      shadow_factor = 0.35 + 0.65 * (s / 9.0);\n"
+      "      if (u_shadow_point_light_index < 0)\n"
+      "        lit *= shadow_factor;\n"
       "    }\n"
       "  }\n"
       /* Point-light accumulation: distance-attenuated diffuse plus a modest
@@ -34032,7 +34042,8 @@ static bool gles_create_cube_program(void)
       "    float f = 1.0 - dist / range;\n"
       "    f *= f;\n"
       "    vec3 pcol = srgb_to_linear(u_point_lights_color[i].rgb);\n"
-      "    lit += base.rgb * pcol * intensity * ndotl * f;\n"
+      "    float light_shadow = (i == u_shadow_point_light_index) ? shadow_factor : 1.0;\n"
+      "    lit += base.rgb * pcol * intensity * ndotl * f * light_shadow;\n"
       "    vec3 view_dir = normalize(u_camera_pos - v_world_pos);\n"
       "    vec3 half_dir = normalize(ldir + view_dir);\n"
       "    float rough = clamp(u_roughness, 0.0, 1.0);\n"
@@ -34040,7 +34051,7 @@ static bool gles_create_cube_program(void)
       "    float spec_power = mix(64.0, 12.0, rough);\n"
       "    float spec = pow(max(dot(normalize(v_normal), half_dir), 0.0), spec_power);\n"
       "    spec *= (1.0 - rough) * mix(0.16, 0.52, metal);\n"
-      "    lit += pcol * intensity * spec * f;\n"
+      "    lit += pcol * intensity * spec * f * light_shadow;\n"
       "  }\n"
       "  if (u_fog_enabled != 0) {\n"
       "    float fog_t = clamp((v_fog_depth - u_fog_near) / max(u_fog_far - u_fog_near, 0.001), 0.0, 1.0);\n"
@@ -34125,6 +34136,7 @@ static bool gles_create_cube_program(void)
    gles.cube_shadow_mvp_uniform = gles.GetUniformLocation(program, "u_shadow_mvp");
    gles.cube_shadow_texel_size_uniform = gles.GetUniformLocation(program, "u_shadow_texel_size");
    gles.cube_shadow_enabled_uniform = gles.GetUniformLocation(program, "u_shadow_enabled");
+   gles.cube_shadow_point_light_index_uniform = gles.GetUniformLocation(program, "u_shadow_point_light_index");
    return gles.cube_position_attrib >= 0 && gles.cube_normal_attrib >= 0 &&
       gles.cube_mvp_uniform >= 0 && gles.cube_model_uniform >= 0 &&
       gles.cube_view_uniform >= 0 && gles.cube_normal_matrix_uniform >= 0 &&
@@ -34228,8 +34240,102 @@ static void gles_destroy_shadow_resources(void)
    gles.shadow_resources_ready = false;
 }
 
+static void gles_reset_shadow_point_light(void)
+{
+   g_shadow_point_light_index = -1;
+   g_shadow_point_light_slot = -1;
+}
+
+static int gles_point_light_upload_slot(int point_light_index)
+{
+   int slot = 0;
+   for (int i = 0; i < NOVA64_MAX_POINT_LIGHTS && slot < 8; i++) {
+      const struct nova64_point_light *pl = &point_lights[i];
+      if (!pl->used || pl->intensity <= 0.0f || pl->distance <= 0.0f)
+         continue;
+      if (i == point_light_index)
+         return slot;
+      slot++;
+   }
+   return -1;
+}
+
+static int gles_select_shadow_point_light(void)
+{
+   int best = -1;
+   float best_score = 0.0f;
+   for (int i = 0; i < NOVA64_MAX_POINT_LIGHTS; i++) {
+      const struct nova64_point_light *pl = &point_lights[i];
+      if (!pl->used || pl->intensity <= 0.0f || pl->distance <= 0.0f)
+         continue;
+      if (gles_point_light_upload_slot(i) < 0)
+         continue;
+      float score = pl->intensity * sqrtf(fmaxf(pl->distance, 0.0f));
+      if (score > best_score) {
+         best_score = score;
+         best = i;
+      }
+   }
+   return best;
+}
+
+static bool gles_shadow_scene_center(float out[3])
+{
+   float sum[3] = {0.0f, 0.0f, 0.0f};
+   int count = 0;
+   for (int i = 0; i < NOVA64_MAX_MESHES; i++) {
+      const struct nova64_mesh *mesh = &meshes[i];
+      if (!mesh->used || !mesh->visible || (!mesh->cast_shadow && !mesh->receive_shadow))
+         continue;
+      sum[0] += mesh->position[0];
+      sum[1] += mesh->position[1];
+      sum[2] += mesh->position[2];
+      count++;
+   }
+   if (count <= 0)
+      return false;
+   out[0] = sum[0] / (float)count;
+   out[1] = sum[1] / (float)count;
+   out[2] = sum[2] / (float)count;
+   return true;
+}
+
 static void build_shadow_light_vp(float out[16])
 {
+   g_shadow_point_light_index = gles_select_shadow_point_light();
+   g_shadow_point_light_slot = gles_point_light_upload_slot(g_shadow_point_light_index);
+   if (g_shadow_point_light_index >= 0 && g_shadow_point_light_slot >= 0) {
+      const struct nova64_point_light *pl = &point_lights[g_shadow_point_light_index];
+      float target[3];
+      if (!gles_shadow_scene_center(target)) {
+         target[0] = camera_state.target[0];
+         target[1] = camera_state.target[1];
+         target[2] = camera_state.target[2];
+      }
+      float dx = target[0] - pl->position[0];
+      float dy = target[1] - pl->position[1];
+      float dz = target[2] - pl->position[2];
+      if ((dx * dx + dy * dy + dz * dz) < 0.0001f) {
+         target[1] -= 1.0f;
+         target[2] -= 0.001f;
+      }
+      float up[3] = {0.0f, 1.0f, 0.0f};
+      float dir[3] = {
+         target[0] - pl->position[0],
+         target[1] - pl->position[1],
+         target[2] - pl->position[2]
+      };
+      normalize3(dir);
+      if (fabsf(dir[1]) > 0.95f) { up[0] = 1.0f; up[1] = 0.0f; up[2] = 0.0f; }
+
+      float view[16], proj[16];
+      mat4_look_at(view, pl->position, target, up);
+      mat4_perspective(proj, 100.0f, 1.0f, 0.05f, fmaxf(1.0f, pl->distance));
+      mat4_multiply(out, proj, view);
+      return;
+   }
+
+   gles_reset_shadow_point_light();
    float ldir[3] = {
       light_state.direction[0],
       light_state.direction[1],
@@ -35115,6 +35221,9 @@ static void render_gles_primitive(const struct nova64_mesh *mesh, const float vi
       bool do_shadow = gles.shadow_depth_tex && mesh->receive_shadow && g_shadow_map_size > 0;
       if (gles.cube_shadow_enabled_uniform >= 0)
          gles.Uniform1i(gles.cube_shadow_enabled_uniform, do_shadow ? 1 : 0);
+      if (gles.cube_shadow_point_light_index_uniform >= 0)
+         gles.Uniform1i(gles.cube_shadow_point_light_index_uniform,
+            do_shadow ? g_shadow_point_light_slot : -1);
       if (do_shadow) {
          float model2[16], shadow_mvp[16];
          mat4_world_transform(model2, mesh);
@@ -35754,6 +35863,8 @@ static void render_gles_instanced_mesh(const struct nova64_mesh *mesh, const flo
       gles.Uniform1f(gles.cube_fog_far_uniform, light_state.fog_far);
    if (gles.cube_shadow_enabled_uniform >= 0)
       gles.Uniform1i(gles.cube_shadow_enabled_uniform, 0);
+   if (gles.cube_shadow_point_light_index_uniform >= 0)
+      gles.Uniform1i(gles.cube_shadow_point_light_index_uniform, -1);
    if (gles.cube_has_texture_uniform >= 0)
       gles.Uniform1i(gles.cube_has_texture_uniform, 0);
    if (gles.cube_has_normal_map_uniform >= 0)
@@ -37225,6 +37336,8 @@ static void render_gles_scene(void)
       else
          gles.BindFramebuffer(GL_FRAMEBUFFER, hw_fbo);
       gles.Viewport(0, 0, NOVA64_WIDTH, NOVA64_HEIGHT);
+   } else {
+      gles_reset_shadow_point_light();
    }
 
    if (!use_shadow && use_post)

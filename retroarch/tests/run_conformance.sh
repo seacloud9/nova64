@@ -497,6 +497,7 @@ run_command_log_case "18-mesh-helpers" "retroarch/conformance/18-mesh-helpers.js
 run_command_log_case "22-material" "retroarch/conformance/22-material.js" "4f934b485b30f732a7e7e5c7d2b85fabfe10c9e3b80d8a74d6815af89a1ba659"
 run_command_log_case "1095-material-light-options" "retroarch/conformance/1095-material-light-options.js" "8678578c8d73bd743b002faf049a375aff4e626100fed6ddaa27c5aa9aed74eb"
 run_command_log_case "1096-retro-effects-bloom" "retroarch/conformance/1096-retro-effects-bloom.js" "5157b601d2bd6c1d92a626aa4bb391459a8c54da7a982e0d40b8b18cd7089d6f"
+run_command_log_case "1097-point-light-shadow" "retroarch/conformance/1097-point-light-shadow.js" "c44894edbbb3ba36cb14b8a659b0e29fdcfc8c991d536d4192cfdc9e134a0019"
 run_command_log_case "06-cube-vulkan12" "retroarch/conformance/06-cube.js" "78cb4d8705a297ee5f48e33f6d6a882884fe6eb9b8232bc5c25d476946f057a8" "vulkan12"
 run_case "nova fallback" "${PACKAGE_DIR}/cube-fallback.nova" "53584f0993f3ff6a"
 run_case "nova manifest main" "${PACKAGE_DIR}/cube-manifest.nova" "53584f0993f3ff6a"
@@ -619,7 +620,7 @@ run_gles_case "94 create mesh"        "94-create-mesh"         "retroarch/confor
 run_gles_case "100 pbr material"      "100-pbr-material"       "retroarch/conformance/100-pbr-material.js"       "cf25bda3297bf09a"
 run_gles_case "101 uv transform"      "101-uv-transform"       "retroarch/conformance/101-uv-transform.js"       "39fa3f984183130e"
 run_gles_case "102 audio resilience"  "102-audio-resilience"   "retroarch/conformance/102-stereo-audio.js"       "67d2dcb8246a6b39"
-run_gles_case "103 shadow map"        "103-shadow-map"         "retroarch/conformance/103-shadow-map.js"         "675c8a5118988561"
+run_gles_case "103 shadow map"        "103-shadow-map"         "retroarch/conformance/103-shadow-map.js"         "2688ce747f783472"
 run_gles_case "104 normal map"        "104-normal-map"         "retroarch/conformance/104-normal-map.js"         "084ff635c0793003"
 run_gles_case "106 render target"     "106-render-target"      "retroarch/conformance/106-render-target.js"      "86581f02984ca2b7"
 run_gles_case "107 instanced mesh"    "107-instanced-mesh"     "retroarch/conformance/107-instanced-mesh.js"     "525d4f13b0da066e"
@@ -637,6 +638,7 @@ run_gles_case "GLES cylinder primitive" "gles-cylinder-primitive" "retroarch/con
 run_gles_case "GLES transparent z sort" "gles-transparent-z-sort" "retroarch/conformance/gles-transparent-z-sort.js" "9d6b7cfaab281d70" 30
 run_gles_case "1095 material light opts" "1095-material-light-options" "retroarch/conformance/1095-material-light-options.js" "d4940449161aa667" 3
 run_gles_case "1096 retro effects bloom" "1096-retro-effects-bloom" "retroarch/conformance/1096-retro-effects-bloom.js" "4f24fc4de8bfced4" 3
+run_gles_case "1097 point light shadow" "1097-point-light-shadow" "retroarch/conformance/1097-point-light-shadow.js" "5dc260d7c4301957" 3
 
 run_visual_case "113 math utils"    "113-math-utils"    "retroarch/conformance/113-math-utils.js"    "4bfdf6cc87ca9210"
 run_visual_case "114 camera orbit"  "114-camera-orbit"  "retroarch/conformance/114-camera-orbit.js"  "1c5d39f5fea6448c"
@@ -1047,5 +1049,6 @@ run_visual_case "1093 minimap tiles"       "1093-minimap-tiles"       "retroarch
 run_visual_case "1094 minimap dynamic"     "1094-minimap-dynamic"     "retroarch/conformance/1094-minimap-dynamic.js"     "2a95250dc05c408b"
 run_visual_case "1095 material light opts" "1095-material-light-options" "retroarch/conformance/1095-material-light-options.js" "ffa98c4221c23fbf"
 run_visual_case "1096 retro effects bloom" "1096-retro-effects-bloom" "retroarch/conformance/1096-retro-effects-bloom.js" "1844207aa2c0fbee"
+run_visual_case "1097 point light shadow" "1097-point-light-shadow" "retroarch/conformance/1097-point-light-shadow.js" "f9e7cfc6d4a05719"
 
 echo "Conformance passed."

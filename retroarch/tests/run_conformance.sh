@@ -496,6 +496,7 @@ run_command_log_case "17-light-fog" "retroarch/conformance/17-light-fog.js" "7b5
 run_command_log_case "18-mesh-helpers" "retroarch/conformance/18-mesh-helpers.js" "c73b5576343833995f982d4f114606f7bf6777762bf43b46c0bab400115016fc"
 run_command_log_case "22-material" "retroarch/conformance/22-material.js" "4f934b485b30f732a7e7e5c7d2b85fabfe10c9e3b80d8a74d6815af89a1ba659"
 run_command_log_case "1095-material-light-options" "retroarch/conformance/1095-material-light-options.js" "8678578c8d73bd743b002faf049a375aff4e626100fed6ddaa27c5aa9aed74eb"
+run_command_log_case "1096-retro-effects-bloom" "retroarch/conformance/1096-retro-effects-bloom.js" "5157b601d2bd6c1d92a626aa4bb391459a8c54da7a982e0d40b8b18cd7089d6f"
 run_command_log_case "06-cube-vulkan12" "retroarch/conformance/06-cube.js" "78cb4d8705a297ee5f48e33f6d6a882884fe6eb9b8232bc5c25d476946f057a8" "vulkan12"
 run_case "nova fallback" "${PACKAGE_DIR}/cube-fallback.nova" "53584f0993f3ff6a"
 run_case "nova manifest main" "${PACKAGE_DIR}/cube-manifest.nova" "53584f0993f3ff6a"
@@ -635,6 +636,7 @@ run_gles_case "GLES capsule primitive" "gles-capsule-primitive" "retroarch/confo
 run_gles_case "GLES cylinder primitive" "gles-cylinder-primitive" "retroarch/conformance/gles-cylinder-primitive.js" "40c96ac653df45e3" 30
 run_gles_case "GLES transparent z sort" "gles-transparent-z-sort" "retroarch/conformance/gles-transparent-z-sort.js" "9d6b7cfaab281d70" 30
 run_gles_case "1095 material light opts" "1095-material-light-options" "retroarch/conformance/1095-material-light-options.js" "d4940449161aa667" 3
+run_gles_case "1096 retro effects bloom" "1096-retro-effects-bloom" "retroarch/conformance/1096-retro-effects-bloom.js" "4f24fc4de8bfced4" 3
 
 run_visual_case "113 math utils"    "113-math-utils"    "retroarch/conformance/113-math-utils.js"    "4bfdf6cc87ca9210"
 run_visual_case "114 camera orbit"  "114-camera-orbit"  "retroarch/conformance/114-camera-orbit.js"  "1c5d39f5fea6448c"
@@ -1044,5 +1046,6 @@ run_visual_case "1092 scaled text"         "1092-scaled-text"         "retroarch
 run_visual_case "1093 minimap tiles"       "1093-minimap-tiles"       "retroarch/conformance/1093-minimap-tiles.js"       "f425605e4063648a"
 run_visual_case "1094 minimap dynamic"     "1094-minimap-dynamic"     "retroarch/conformance/1094-minimap-dynamic.js"     "2a95250dc05c408b"
 run_visual_case "1095 material light opts" "1095-material-light-options" "retroarch/conformance/1095-material-light-options.js" "ffa98c4221c23fbf"
+run_visual_case "1096 retro effects bloom" "1096-retro-effects-bloom" "retroarch/conformance/1096-retro-effects-bloom.js" "1844207aa2c0fbee"
 
 echo "Conformance passed."

@@ -27687,7 +27687,7 @@ static JSValue js_post_set_bloom(JSContext *ctx, JSValueConst this_val, int argc
 {
    (void)this_val;
    post_state.bloom = (float)clamp_double(
-      double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0.0), 0.0, 1.0);
+      double_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0.0), 0.0, 4.0);
    if (argc > 1 && !JS_IsUndefined(argv[1]))
       post_state.bloom_radius = (float)clamp_double(double_from_js(ctx, argv[1], post_state.bloom_radius), 0.0, 1.0);
    if (argc > 2 && !JS_IsUndefined(argv[2]))
@@ -30522,7 +30522,27 @@ static bool install_nova64_api(JSContext *ctx)
          "nova64.fx.updateParticles=function(dt){};"
          "nova64.fx.burstParticles=function(id,n){};"
          "nova64.fx.getParticleStats=function(){var n=0,c=0;for(var k in nova64.fx._particleSystems){n++;c+=nova64.fx._particleSystems[k].count||0;}return{systems:n,particles:c};};"
-         "nova64.fx.enableRetroEffects=function(opts){nova64.fx._retroEffects=opts||{};};"
+         "nova64.fx.enableRetroEffects=function(opts){"
+           "opts=opts||{};var p=nova64.post;nova64.fx._retroEffects=opts;"
+           "var bloom=opts.bloom===undefined?{}:opts.bloom;"
+           "if(bloom!==false){"
+             "var b=(typeof bloom==='object'&&bloom)?bloom:{};"
+             "var s=b.strength==null?1.0:b.strength;"
+             "var r=b.radius==null?0.4:b.radius;"
+             "var t=b.threshold==null?0.6:b.threshold;"
+             "p.setBloom(s,r,t);"
+             "if(p.setExposure)p.setExposure(1.05);"
+             "if(p.use24BitColors)p.use24BitColors(true);"
+             "if(p.setHDRMode)p.setHDRMode('32f');"
+             "if(p.setBloomStyle)p.setBloomStyle('three');"
+             "if(p.setSharpStyle)p.setSharpStyle('cas');"
+             "if(nova64.light&&nova64.light.setShadingStyle)nova64.light.setShadingStyle('three');"
+             "if(p.setSaturation)p.setSaturation(1.0);"
+             "if(p.setColorGrade)p.setColorGrade(1.12,0.98,1.08);"
+             "if(p.setSharpness)p.setSharpness(1.90);"
+           "}"
+           "return true;"
+         "};"
          "nova64.fx.disableRetroEffects=function(){nova64.fx._retroEffects=null;};"
          "nova64.fx.isEffectsEnabled=function(){return true;};"
          "nova64.fx.enableN64Mode=function(){};nova64.fx.enablePSXMode=function(){};nova64.fx.enableLowPolyMode=function(){};nova64.fx.disablePresetMode=function(){};"

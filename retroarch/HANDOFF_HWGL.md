@@ -176,7 +176,7 @@ retroarch/build/harness retroarch/nova64_libretro.so \
 ### Known remaining gaps
 
 - `parseCanvasUI`: `clip` attribute on `<group>` (needs scissor-test or
-  per-pixel mask), custom font families, SVG path command `A/a`.
+  per-pixel mask) and custom font families.
   None of the in-tree carts hit these — low priority unless a cart asks.
 - Release pipeline preflight now runs live. `cores-pre-flight-1`
   published successfully after fixing dockcross Linux aarch64 zlib

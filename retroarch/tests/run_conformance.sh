@@ -850,6 +850,10 @@ run_case      "1099 canvas ui svg quadratic" "retroarch/conformance/1099-canvas-
 # previous cubic control point and uses the same deterministic polyline path.
 run_case      "1100 canvas ui svg smooth cubic" "retroarch/conformance/1100-canvas-ui-svg-smooth-cubic.js" "836db434a3c521fb"
 
+# 1101 parseCanvasUI SVG elliptical arcs: A/a converts endpoint arcs to
+# deterministic HUD polylines, including rotation and large/sweep flags.
+run_case      "1101 canvas ui svg arcs" "retroarch/conformance/1101-canvas-ui-svg-arcs.js" "ba97347581e117f1"
+
 # 291 overlay autoclear regression: locks down the default
 # auto-clearing of the 2D HUD overlay between frames. Without
 # auto-clear, the F-Zero title screen vignette stayed under the

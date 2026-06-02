@@ -64,9 +64,10 @@ Each release ships:
 - `nova64_libretro.so` — Linux x86_64
 - `nova64_libretro.dylib` — macOS universal (x86_64 + arm64)
 
-**ARM single-board computers** (Raspberry Pi 4 / 5, etc.)
+**ARM single-board computers**
 
-- `nova64_libretro_linux_aarch64.so` — Linux ARM64
+- `nova64_libretro_linux_aarch64.so` — Linux ARM64, Pi 4/5 with a 64-bit OS
+- `nova64_libretro_linux_armhf.so` — Linux ARMHF, Pi 2/3/Zero 2 with a 32-bit OS
 
 **Android** (rename the matching file to `nova64_libretro_android.so` and drop
 into your RetroArch core path)

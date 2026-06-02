@@ -118,12 +118,13 @@ shipped via `setMeshOpacity`). Two real ones built:
 
 **CI release pipeline.** Four commits (`f2def62`, `720ffa9`, `f21d612`,
 `6a2b4c0`) build a `.github/workflows/release-cores.yml` that publishes
-**seven** core binaries per release:
+**eight** core binaries per release:
 
 | Platform | Built filename | Asset name | Mechanism |
 |----------|----------------|------------|-----------|
 | Linux x86_64 | `nova64_libretro.so` | `nova64_libretro_linux_x86_64.so` | native gcc on `ubuntu-latest` |
 | Linux aarch64 (Pi 4/5) | `nova64_libretro.so` | `nova64_libretro_linux_aarch64.so` | `dockcross/linux-arm64` Docker image |
+| Linux armhf (Pi 2/3/Zero 2, 32-bit OS) | `nova64_libretro.so` | `nova64_libretro_linux_armhf.so` | `dockcross/linux-armv7` Docker image |
 | Windows x86_64 | `nova64_libretro.dll` | `nova64_libretro_windows_x86_64.dll` | mingw cross from `ubuntu-latest` |
 | macOS universal (x86_64+arm64) | `nova64_libretro.dylib` | `nova64_libretro_macos_universal.dylib` | `macos-latest` + `CC="cc -arch x86_64 -arch arm64"` |
 | Android arm64-v8a | `nova64_libretro_android.so` | `nova64_libretro_android_arm64-v8a.so` | NDK `aarch64-linux-android21-clang` |
@@ -210,13 +211,12 @@ retroarch/build/harness retroarch/nova64_libretro.so \
 1. **Real release-cores tag.** The `cores-pre-flight-1` pre-release
    published successfully; the next release step is a real `v0.5.x` tag
    after any live RetroArch spot checks you want.
-2. **Linux armhf** (Pi 2/3/Zero, 32-bit). One more dockcross target.
-   Adds the platform table entry from RELEASING.md → release-cores.yml.
-
 Controller audit follow-up landed after this handoff: the RetroArch key
 bridge now maps controller face buttons to DOM-style `KeyZ`/`KeyX`/
 `KeyC`/`KeyV`, and SELECT to `KeyI`/`Tab` for inventory-style toggles.
 `retroarch/conformance/293-controller-key-bridge.js` locks this down.
+Linux armhf follow-up also landed: release-cores now builds
+`nova64_libretro_linux_armhf.so` via `dockcross/linux-armv7`.
 
 The full backlog audit found that most "remaining" BACKLOG items were
 already shipped or out of scope. The list above is genuinely-open work.

@@ -3,6 +3,7 @@ name: Release RetroArch cores
 # Builds and publishes the Nova64 libretro core for:
 #   - Linux x86_64   (.so,  ubuntu-latest)
 #   - Linux aarch64  (.so,  dockcross/linux-arm64 — Raspberry Pi 4/5, ARM SBCs)
+#   - Linux armhf    (.so,  dockcross/linux-armv7 — Raspberry Pi 2/3/Zero 2)
 #   - Windows x86_64 (.dll, mingw cross from ubuntu-latest)
 #   - macOS universal x86_64 + arm64 (.dylib, macos-latest)
 #   - Android arm64-v8a   (.so, NDK clang from ubuntu-latest)
@@ -49,8 +50,20 @@ jobs:
             runner: ubuntu-latest
             kind: dockcross
             dockcross_image: dockcross/linux-arm64
+            zlib_cc_candidates: 'aarch64-unknown-linux-gnu-gcc aarch64-linux-gnu-gcc'
+            zlib_prefix: /tmp/zlib-linux-aarch64
             built_name: nova64_libretro.so
             asset_name: nova64_libretro_linux_aarch64.so
+            make_args: ''
+
+          - target: linux-armhf
+            runner: ubuntu-latest
+            kind: dockcross
+            dockcross_image: dockcross/linux-armv7
+            zlib_cc_candidates: 'arm-linux-gnueabihf-gcc armv7-unknown-linux-gnueabihf-gcc arm-unknown-linux-gnueabihf-gcc'
+            zlib_prefix: /tmp/zlib-linux-armhf
+            built_name: nova64_libretro.so
+            asset_name: nova64_libretro_linux_armhf.so
             make_args: ''
 
           - target: windows-x86_64
@@ -124,7 +137,7 @@ jobs:
             echo "$output" | grep -q 'ok=1'
           done
 
-      # ── Dockcross cross-build for Linux aarch64 (Raspberry Pi 4/5) ────
+      # ── Dockcross cross-builds for Linux ARM SBC targets ──────────────
       - name: Build (dockcross ${{ matrix.dockcross_image }})
         if: matrix.kind == 'dockcross'
         run: |
@@ -135,17 +148,33 @@ jobs:
             bash -c "
               set -euo pipefail
               git config --global --add safe.directory /work
+              ZLIB_CC=''
+              for candidate in ${{ matrix.zlib_cc_candidates }}; do
+                if command -v \"\$candidate\" >/dev/null 2>&1; then
+                  ZLIB_CC=\"\$candidate\"
+                  break
+                fi
+              done
+              if [ -z \"\$ZLIB_CC\" ] && [ -n \"\${CC:-}\" ] && command -v \"\$CC\" >/dev/null 2>&1; then
+                ZLIB_CC=\"\$CC\"
+              fi
+              if [ -z \"\$ZLIB_CC\" ]; then
+                echo 'Could not find a dockcross zlib compiler; candidates were: ${{ matrix.zlib_cc_candidates }}'
+                exit 1
+              fi
+              echo \"Using zlib/core compiler: \$ZLIB_CC\"
               curl -fsSL https://github.com/madler/zlib/archive/refs/tags/v1.3.1.tar.gz -o /tmp/zlib.tar.gz
               mkdir -p /tmp/zlib-src
               tar -xzf /tmp/zlib.tar.gz -C /tmp/zlib-src --strip-components=1
               cd /tmp/zlib-src
-              CC=aarch64-unknown-linux-gnu-gcc CFLAGS='-O3 -fPIC' ./configure --static --prefix=/tmp/zlib-aarch64
+              CC=\"\$ZLIB_CC\" CFLAGS='-O3 -fPIC' ./configure --static --prefix=${{ matrix.zlib_prefix }}
               make -j\$(nproc)
               make install
               cd /work
-              C_INCLUDE_PATH=/tmp/zlib-aarch64/include \
+              C_INCLUDE_PATH=${{ matrix.zlib_prefix }}/include \
+                CC=\"\$ZLIB_CC\" \
                 make -C retroarch ${{ matrix.make_args }} \
-                LIBM='-lm /tmp/zlib-aarch64/lib/libz.a' clean all
+                LIBM='-lm ${{ matrix.zlib_prefix }}/lib/libz.a' clean all
             "
 
       # ── Android via the NDK preinstalled on ubuntu-latest ─────────────
@@ -223,11 +252,12 @@ jobs:
           On macOS the binary is unsigned — you may need to clear quarantine:
           `xattr -dr com.apple.quarantine nova64_libretro.dylib`
 
-          ## ARM single-board computers (Raspberry Pi 4 / 5, etc.)
+          ## ARM single-board computers
 
           | Platform | File |
           |----------|------|
-          | Linux (aarch64) | `nova64_libretro_linux_aarch64.so` |
+          | Linux aarch64 (Pi 4/5, 64-bit OS) | `nova64_libretro_linux_aarch64.so` |
+          | Linux armhf (Pi 2/3/Zero 2, 32-bit OS) | `nova64_libretro_linux_armhf.so` |
 
           Rename to `nova64_libretro.so` after copying into the Pi's
           `~/.config/retroarch/cores/` (or equivalent) directory.

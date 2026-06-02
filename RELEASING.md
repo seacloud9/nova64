@@ -1,6 +1,6 @@
 # Releasing Nova64 RetroArch cores
 
-This repo ships pre-built libretro cores for seven platforms via a GitHub
+This repo ships pre-built libretro cores for eight platforms via a GitHub
 Actions workflow. End users download from the [GitHub Releases page](https://github.com/seacloud9/nova64/releases);
 this doc tells you how to publish a release.
 
@@ -36,13 +36,14 @@ The same `v*.*.*` tag also triggers the **Publish to npm** workflow
 ## What gets built
 
 The [`Release RetroArch cores`](.github/workflows/release-cores.yml)
-workflow runs a build matrix across three runners. **Seven** core
+workflow runs a build matrix across three runners. **Eight** core
 binaries are produced per release:
 
 | Platform | Built filename | Asset name | How |
 |----------|----------------|------------|-----|
 | Linux x86_64 | `nova64_libretro.so` | `nova64_libretro_linux_x86_64.so` | native gcc on `ubuntu-latest` |
 | Linux aarch64 (Pi 4/5) | `nova64_libretro.so` | `nova64_libretro_linux_aarch64.so` | `dockcross/linux-arm64` image |
+| Linux armhf (Pi 2/3/Zero 2, 32-bit OS) | `nova64_libretro.so` | `nova64_libretro_linux_armhf.so` | `dockcross/linux-armv7` image |
 | Windows x86_64 | `nova64_libretro.dll` | `nova64_libretro_windows_x86_64.dll` | mingw cross-compile on `ubuntu-latest` |
 | macOS universal (x86_64 + arm64) | `nova64_libretro.dylib` | `nova64_libretro_macos_universal.dylib` | `macos-latest` with `-arch x86_64 -arch arm64` |
 | Android arm64-v8a | `nova64_libretro_android.so` | `nova64_libretro_android_arm64-v8a.so` | NDK `aarch64-linux-android21-clang` |
@@ -68,7 +69,7 @@ git tag v0.5.2
 git push origin v0.5.2
 ```
 
-The workflow runs, all seven platforms build in parallel, and a non-prerelease
+The workflow runs, all eight platforms build in parallel, and a non-prerelease
 GitHub Release is published.
 
 ### Manual — Actions tab
@@ -105,6 +106,8 @@ The shape is:
   make_args: '<flags passed to make>'              # native + dockcross
   apt_deps: '<space-separated apt packages>'       # native (optional)
   dockcross_image: dockcross/<name>                # dockcross only
+  zlib_cc_candidates: '<compiler names>'           # dockcross only
+  zlib_prefix: /tmp/zlib-<target>                  # dockcross only
   ndk_clang: <abi>-linux-android21-clang           # android only
 ```
 
@@ -115,15 +118,18 @@ The job uses conditional steps gated on `matrix.kind`:
 - `android` — resolve `ANDROID_NDK_LATEST_HOME`, pick the right per-ABI
   clang, pass it as `CC=` to `make platform=android`.
 
-Adding e.g. **Linux armhf** (Pi 2/3/Zero) is a one-row addition:
+Adding another dockcross Linux target follows the same shape as the ARM SBC
+rows already in the matrix:
 
 ```yaml
-- target: linux-armhf
+- target: linux-riscv64
   runner: ubuntu-latest
   kind: dockcross
-  dockcross_image: dockcross/linux-armv7
+  dockcross_image: dockcross/linux-riscv64
+  zlib_cc_candidates: 'riscv64-unknown-linux-gnu-gcc riscv64-linux-gnu-gcc'
+  zlib_prefix: /tmp/zlib-linux-riscv64
   built_name: nova64_libretro.so
-  asset_name: nova64_libretro_linux_armhf.so
+  asset_name: nova64_libretro_linux_riscv64.so
   make_args: ''
 ```
 

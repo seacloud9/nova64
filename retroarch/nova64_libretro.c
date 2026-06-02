@@ -243,6 +243,7 @@ struct nova64_mesh {
    float rotation[3];
    float scale[3];
    float opacity;
+   bool transparent;
    uint32_t color;
    int texture_handle;      /* 0 = no texture */
    int normal_map_handle;   /* 0 = no normal map */
@@ -4647,6 +4648,7 @@ static int allocate_mesh(enum nova64_mesh_type type)
          meshes[i].scale[1] = 1.0f;
          meshes[i].scale[2] = 1.0f;
          meshes[i].opacity = 1.0f;
+         meshes[i].transparent = false;
          meshes[i].flat_shading = false;
          meshes[i].cast_shadow = false;
          meshes[i].receive_shadow = false;
@@ -26382,6 +26384,16 @@ static void apply_mesh_options(JSContext *ctx, struct nova64_mesh *mesh, JSValue
    if (JS_IsBool(v))
       mesh->flat_shading = JS_ToBool(ctx, v);
    JS_FreeValue(ctx, v);
+
+   v = JS_GetPropertyStr(ctx, opts, "opacity");
+   if (JS_IsNumber(v))
+      mesh->opacity = (float)clamp_double(double_from_js(ctx, v, mesh->opacity), 0.0, 1.0);
+   JS_FreeValue(ctx, v);
+
+   v = JS_GetPropertyStr(ctx, opts, "transparent");
+   if (JS_IsBool(v))
+      mesh->transparent = JS_ToBool(ctx, v);
+   JS_FreeValue(ctx, v);
 }
 
 /* Find the trailing options object among argv (if any) and apply it to mesh.
@@ -26698,6 +26710,16 @@ static JSValue js_set_mesh_opacity(JSContext *ctx, JSValueConst this_val, int ar
    return JS_NewBool(ctx, true);
 }
 
+static JSValue js_set_mesh_transparent(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   struct nova64_mesh *mesh = mesh_from_handle(int_from_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, 0));
+   if (!mesh)
+      return JS_NewBool(ctx, false);
+   mesh->transparent = argc > 1 ? JS_ToBool(ctx, argv[1]) : true;
+   return JS_NewBool(ctx, true);
+}
+
 static void gles_destroy_shadow_resources(void);
 static void gles_destroy_skybox_resources(void);
 
@@ -26763,6 +26785,7 @@ static JSValue js_get_mesh(JSContext *ctx, JSValueConst this_val, int argc, JSVa
    JS_SetPropertyStr(ctx, object, "type", JS_NewString(ctx, mesh_type_name(mesh->type)));
    JS_SetPropertyStr(ctx, object, "visible", JS_NewBool(ctx, mesh->visible));
    JS_SetPropertyStr(ctx, object, "opacity", JS_NewFloat64(ctx, mesh->opacity));
+   JS_SetPropertyStr(ctx, object, "transparent", JS_NewBool(ctx, mesh->transparent));
    JS_SetPropertyStr(ctx, object, "flatShading", JS_NewBool(ctx, mesh->flat_shading));
    JS_SetPropertyStr(ctx, object, "castShadow", JS_NewBool(ctx, mesh->cast_shadow));
    JS_SetPropertyStr(ctx, object, "receiveShadow", JS_NewBool(ctx, mesh->receive_shadow));
@@ -26846,6 +26869,7 @@ static JSValue js_get_backend_capabilities(JSContext *ctx, JSValueConst this_val
    JS_SetPropertyStr(ctx, object, "softwareFallback", JS_NewBool(ctx, !gles.active));
    JS_SetPropertyStr(ctx, object, "primitives", JS_NewBool(ctx, true));
    JS_SetPropertyStr(ctx, object, "meshOpacity", JS_NewBool(ctx, true));
+   JS_SetPropertyStr(ctx, object, "meshTransparency", JS_NewBool(ctx, true));
    JS_SetPropertyStr(ctx, object, "meshShadowFlags", JS_NewBool(ctx, true));
    JS_SetPropertyStr(ctx, object, "pointLights", JS_NewBool(ctx, true));
    JS_SetPropertyStr(ctx, object, "fogState", JS_NewBool(ctx, true));
@@ -30087,6 +30111,7 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, scene, "setMeshVisible", js_set_mesh_visible, 2);
    set_function(ctx, scene, "setFlatShading", js_set_flat_shading, 2);
    set_function(ctx, scene, "setMeshOpacity", js_set_mesh_opacity, 2);
+   set_function(ctx, scene, "setMeshTransparent", js_set_mesh_transparent, 2);
    set_function(ctx, scene, "setCastShadow", js_set_cast_shadow, 2);
    set_function(ctx, scene, "setReceiveShadow", js_set_receive_shadow, 2);
    set_function(ctx, scene, "setShadowQuality", js_set_shadow_quality, 1);
@@ -30479,9 +30504,10 @@ static bool install_nova64_api(JSContext *ctx)
          "nova64.scene.createAdvancedCube=function(size,opts,pos){"
            "opts=opts||{};"
            "var col=opts.color!=null?opts.color:0xffffff;"
-           "var m=createCube(size,col);"
-           "if(pos)setPosition(m,pos[0]||0,pos[1]||0,pos[2]||0);"
+           "var m=createCube(size,col,pos||[0,0,0],opts);"
            "if(opts.emissive!=null)setMeshEmissive(m,opts.emissive,opts.emissiveIntensity!=null?opts.emissiveIntensity:1.0);"
+           "if(opts.opacity!=null&&typeof setMeshAlpha==='function')setMeshAlpha(m,opts.opacity);"
+           "if(opts.transparent!=null&&typeof setMeshTransparent==='function')setMeshTransparent(m,!!opts.transparent);"
            "return m;};"
          "nova64.scene.createAdvancedSphere=function(size,opts,pos,segs){"
            "opts=opts||{};"
@@ -31312,6 +31338,7 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, global, "setMeshVisible", js_set_mesh_visible, 2);
    set_function(ctx, global, "setFlatShading", js_set_flat_shading, 2);
    set_function(ctx, global, "setMeshOpacity", js_set_mesh_opacity, 2);
+   set_function(ctx, global, "setMeshTransparent", js_set_mesh_transparent, 2);
    set_function(ctx, global, "setCastShadow", js_set_cast_shadow, 2);
    set_function(ctx, global, "setReceiveShadow", js_set_receive_shadow, 2);
    set_function(ctx, global, "setShadowQuality", js_set_shadow_quality, 1);
@@ -33010,7 +33037,7 @@ static bool install_nova64_api(JSContext *ctx)
          /* nova64.scene mirrors */
          "(function(){var s=nova64.scene,fns=["
            "'createCone','createCylinder','createTorus','createCapsule','clearScene',"
-           "'getMesh','setMeshColor','setMeshEmissive','setMeshAlpha','setMeshOpacity',"
+           "'getMesh','setMeshColor','setMeshEmissive','setMeshAlpha','setMeshOpacity','setMeshTransparent',"
            "'createInstancedMesh','setInstanceTransform','setInstanceColor','finalizeInstances','removeInstancedMesh',"
            "'createLODMesh','removeLODMesh','updateLODs','destroyAllMeshes','meshCount'];"
            "for(var i=0;i<fns.length;i++){var n=fns[i];"
@@ -35928,7 +35955,7 @@ static void render_gles_primitive(const struct nova64_mesh *mesh, const float vi
       }
    }
    /* blend mode */
-   bool mesh_transparent = mesh->opacity < 0.999f;
+   bool mesh_transparent = mesh->transparent || mesh->opacity < 0.999f || (mesh->color & 0xffU) < 255U;
    bool did_blend = false;
    if (mesh->mesh_blend == NOVA64_MESH_BLEND_ADDITIVE) {
       gles.Enable(GL_BLEND);
@@ -35989,6 +36016,8 @@ static bool gles_mesh_uses_blend(const struct nova64_mesh *mesh)
    if (!mesh)
       return false;
    if (mesh->mesh_blend != NOVA64_MESH_BLEND_OPAQUE)
+      return true;
+   if (mesh->transparent)
       return true;
    if (mesh->opacity < 0.999f || (mesh->color & 0xffU) < 255U)
       return true;

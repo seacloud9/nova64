@@ -858,6 +858,10 @@ run_case      "1101 canvas ui svg arcs" "retroarch/conformance/1101-canvas-ui-sv
 # draw clip stack and intersects nested clip regions.
 run_case      "1102 canvas ui group clip" "retroarch/conformance/1102-canvas-ui-group-clip.js" "f8c0740320d68af0"
 
+# 1103 createAdvancedCube transparency: opacity/transparent options flow
+# through the web-style shim into native mesh state.
+run_case      "1103 advanced cube transparency" "retroarch/conformance/1103-advanced-cube-transparency.js" "9a1c4be7b04b9177"
+
 # 291 overlay autoclear regression: locks down the default
 # auto-clearing of the 2D HUD overlay between frames. Without
 # auto-clear, the F-Zero title screen vignette stayed under the

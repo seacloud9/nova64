@@ -145,11 +145,11 @@ Bigger ticket items also pending:
   clean.
   Remaining gaps (carts that need these should fall back to direct draw):
   custom font families.
-- **Per-mesh alpha / transparency**: `createAdvancedCube` accepts `opts.opacity`
-  and `opts.transparent` today but ignores them. Need a `setMeshAlpha(mesh, a)`
-  + a transparent z-sort pass in the GLES path. (z-sort pass already exists
-  for `setMeshAlpha`-like blending — verify whether it's wired up to a JS
-  binding.)
+- ~~**Per-mesh alpha / transparency.**~~ Shipped. `createAdvancedCube` now
+  forwards `opts.opacity` and `opts.transparent` into native mesh state,
+  `setMeshTransparent(mesh, on)` is exposed, and the GLES transparent pass
+  includes explicitly transparent meshes. Covered by
+  `1103-advanced-cube-transparency` plus the existing GLES z-sort smoke.
 - ~~**`ui.createButton` input wiring.**~~ Shipped. `updateAllButtons()` now
   tracks hot index via mouse hover (taking precedence) or d-pad up/down,
   and fires the button's stored `cb` callback on mouse click or

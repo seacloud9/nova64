@@ -109,6 +109,21 @@ jobs:
         if: matrix.kind == 'native'
         run: make -C retroarch ${{ matrix.make_args }} clean all
 
+      - name: Smoke test Linux core
+        if: matrix.target == 'linux-x86_64'
+        run: |
+          make -C retroarch harness
+          for cart in \
+            retroarch/conformance/00-boot.js \
+            retroarch/conformance/01-framebuffer.js \
+            retroarch/conformance/110-storage-compressed.js
+          do
+            echo "Smoke testing $cart"
+            output=$(retroarch/build/harness retroarch/nova64_libretro.so "$cart" --frames 3)
+            echo "$output"
+            echo "$output" | grep -q 'ok=1'
+          done
+
       # ── Dockcross cross-build for Linux aarch64 (Raspberry Pi 4/5) ────
       - name: Build (dockcross ${{ matrix.dockcross_image }})
         if: matrix.kind == 'dockcross'

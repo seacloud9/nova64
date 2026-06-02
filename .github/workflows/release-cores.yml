@@ -124,13 +124,13 @@ jobs:
               mkdir -p /tmp/zlib-src
               tar -xzf /tmp/zlib.tar.gz -C /tmp/zlib-src --strip-components=1
               cd /tmp/zlib-src
-              CC=aarch64-unknown-linux-gnu-gcc CFLAGS="-O3 -fPIC" ./configure --static --prefix=/tmp/zlib-aarch64
+              CC=aarch64-unknown-linux-gnu-gcc CFLAGS='-O3 -fPIC' ./configure --static --prefix=/tmp/zlib-aarch64
               make -j\$(nproc)
               make install
               cd /work
               C_INCLUDE_PATH=/tmp/zlib-aarch64/include \
                 make -C retroarch ${{ matrix.make_args }} \
-                LIBM=\"-lm /tmp/zlib-aarch64/lib/libz.a\" clean all
+                LIBM='-lm /tmp/zlib-aarch64/lib/libz.a' clean all
             "
 
       # ── Android via the NDK preinstalled on ubuntu-latest ─────────────

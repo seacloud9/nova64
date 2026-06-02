@@ -129,8 +129,8 @@ jobs:
               make install
               cd /work
               C_INCLUDE_PATH=/tmp/zlib-aarch64/include \
-                LIBRARY_PATH=/tmp/zlib-aarch64/lib \
-                make -C retroarch ${{ matrix.make_args }} clean all
+                make -C retroarch ${{ matrix.make_args }} \
+                LIBM=\"-lm /tmp/zlib-aarch64/lib/libz.a\" clean all
             "
 
       # ── Android via the NDK preinstalled on ubuntu-latest ─────────────

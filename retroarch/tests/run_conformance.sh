@@ -846,6 +846,10 @@ run_case      "294 canvas ui text effects" "retroarch/conformance/294-canvas-ui-
 # approximated as deterministic HUD polylines.
 run_case      "1099 canvas ui svg quadratic" "retroarch/conformance/1099-canvas-ui-svg-quadratic.js" "c6644180c4170404"
 
+# 1100 parseCanvasUI SVG path smooth cubic curves: S/s reflects the
+# previous cubic control point and uses the same deterministic polyline path.
+run_case      "1100 canvas ui svg smooth cubic" "retroarch/conformance/1100-canvas-ui-svg-smooth-cubic.js" "836db434a3c521fb"
+
 # 291 overlay autoclear regression: locks down the default
 # auto-clearing of the 2D HUD overlay between frames. Without
 # auto-clear, the F-Zero title screen vignette stayed under the

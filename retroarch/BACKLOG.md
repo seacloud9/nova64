@@ -134,14 +134,15 @@ Bigger ticket items also pending:
   `handlers[onclick]` on mouse hover+click. Image tags render bundled
   package assets with `src`/`href`/`xlink:href`, scaling, rotation, and
   source-rect crop attributes. Path supports `M/m`, `L/l`, `H/h`, `V/v`,
-  `C/c` (16-segment bezier approximation), `Q/q`, `T/t`, `Z/z`. Text tags support
-  `shadow`/`shadow-color`/`shadow-blur` and `outline`/`outline-color`.
+  `C/c`, `S/s`, `Q/q`, `T/t` (16-segment bezier approximation), `Z/z`.
+  Text tags support `shadow`/`shadow-color`/`shadow-blur` and `outline`/`outline-color`.
   `<svg>` is a coordinate-translation container (no clip). Verified
   against `examples/hud-demo`, `examples/canvas-ui-showcase`, a packaged
   image-smoke cart, `294-canvas-ui-text-effects`, and
-  `1099-canvas-ui-svg-quadratic` — all render clean.
+  `1099-canvas-ui-svg-quadratic` / `1100-canvas-ui-svg-smooth-cubic` —
+  all render clean.
   Remaining gaps (carts that need these should fall back to direct draw):
-  `clip` on group, custom font families, SVG path `A/S` curves.
+  `clip` on group, custom font families, SVG path `A/a` arcs.
 - **Per-mesh alpha / transparency**: `createAdvancedCube` accepts `opts.opacity`
   and `opts.transparent` today but ignores them. Need a `setMeshAlpha(mesh, a)`
   + a transparent z-sort pass in the GLES path. (z-sort pass already exists

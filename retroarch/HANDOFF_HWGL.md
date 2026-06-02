@@ -174,16 +174,15 @@ retroarch/build/harness retroarch/nova64_libretro.so \
 
 ### Known remaining gaps
 
-- `parseCanvasUI`: `<image>` element (would need a JS image-load shim),
-  `clip` attribute on `<group>` (needs scissor-test or per-pixel mask),
-  text shadows / outlines (could call existing `printShadowTight` /
-  `printOutlineTight` shims), custom font families, SVG path commands
-  `Q/T/A/S`. None of the in-tree carts hit these — low priority unless
-  a cart asks.
-- Release pipeline never run live. First workflow_dispatch may surface
-  surprises: NDK path drift, dockcross rate limit, mac `-arch` escape.
-  Run a smoke test with `tag_name = cores-pre-flight-1` and the
-  pre-release checkbox before committing to a versioned `v0.5.x` tag.
+- `parseCanvasUI`: `clip` attribute on `<group>` (needs scissor-test or
+  per-pixel mask), text shadows / outlines (could call existing
+  `printShadowTight` / `printOutlineTight` shims), custom font families,
+  SVG path commands `Q/T/A/S`. None of the in-tree carts hit these —
+  low priority unless a cart asks.
+- Release pipeline preflight now runs live. `cores-pre-flight-1`
+  published successfully after fixing dockcross Linux aarch64 zlib
+  setup, and the linux-x86_64 release job smoke-tests the freshly-built
+  `.so` before publish. The real `v0.5.x` tag is still unrun.
 - Pre-built cores aren't tested against actual RetroArch installs on
   Pi / Android — produced but not verified runtime-loadable on those
   platforms. A real Pi 4/5 and an Android RetroArch install are the
@@ -208,23 +207,15 @@ retroarch/build/harness retroarch/nova64_libretro.so \
 
 ### Suggested next thread (pick what fits)
 
-1. **First live release-cores run.** Either tag `v0.5.2` or
-   workflow_dispatch with `cores-pre-flight-1`. Watch for the failure
-   modes documented in RELEASING.md. Fix anything that breaks. This is
-   the highest-confidence win because it unlocks user downloads.
-2. **CI smoke test before publish.** Add a step to the release-cores
-   linux-x86_64 job that runs a handful of conformance carts against
-   the freshly-built `.so` so a broken Linux build fails the workflow
-   instead of shipping. Maybe 30-cart fast subset to keep runtime down.
-3. **parseCanvasUI `<image>` support.** Would unlock any cart that
-   wants to embed a bundled asset image in its HUD. Needs a JS-side
-   image-load shim that reads `readAssetBytes`. Modest scope.
-4. **Cart-library controller audit.** Sweep `examples/` and
+1. **Real release-cores tag.** The `cores-pre-flight-1` pre-release
+   published successfully; the next release step is a real `v0.5.x` tag
+   after any live RetroArch spot checks you want.
+2. **Cart-library controller audit.** Sweep `examples/` and
    `retroarch/games/` for any non-ESC keyboard-only menu patterns I
    missed (`keyp('KeyM')`, `keyp('Backquote')`, etc.) and either add
    per-cart `btnp(N)` fallbacks or extend `ext_button_for_key` if the
    intent is universal.
-5. **Linux armhf** (Pi 2/3/Zero, 32-bit). One more dockcross target.
+3. **Linux armhf** (Pi 2/3/Zero, 32-bit). One more dockcross target.
    Adds the platform table entry from RELEASING.md → release-cores.yml.
 
 The full backlog audit found that most "remaining" BACKLOG items were

@@ -128,16 +128,18 @@ Bigger ticket items also pending:
 - ~~**`nova64.ui.parseCanvasUI`**~~ — Full element set shipped. Tags:
   `<ui>`, `<rect>`, `<text>`, `<line>`, `<circle>`, `<ellipse>`,
   `<triangle>`, `<star>`, `<group>`, `<panel>`, `<progressbar>`,
-  `<button>`, `<svg>`, `<path>`. Attributes: `{var}` data binding,
-  percentage units, hex colors (`#rgb`/`#rrggbb`/`#rrggbbaa`), `none`,
-  `anchor-x` left/center/right, `anchor="center"`. Buttons fire
-  `handlers[onclick]` on mouse hover+click. Path supports `M/m`, `L/l`,
-  `H/h`, `V/v`, `C/c` (16-segment bezier approximation), `Z/z`.
-  `<svg>` is a coordinate-translation container (no clip). Verified
-  against `examples/hud-demo` and `examples/canvas-ui-showcase` — both
-  render clean. Remaining gaps (carts that need these should fall back
-  to direct draw): `<image>`, `clip` on group, text shadows and
-  outlines, custom font families, SVG path `Q/T/A/S` curves.
+  `<button>`, `<image>`, `<svg>`, `<path>`. Attributes: `{var}` data
+  binding, percentage units, hex colors (`#rgb`/`#rrggbb`/`#rrggbbaa`),
+  `none`, `anchor-x` left/center/right, `anchor="center"`. Buttons fire
+  `handlers[onclick]` on mouse hover+click. Image tags render bundled
+  package assets with `src`/`href`/`xlink:href`, scaling, rotation, and
+  source-rect crop attributes. Path supports `M/m`, `L/l`, `H/h`, `V/v`,
+  `C/c` (16-segment bezier approximation), `Z/z`. `<svg>` is a
+  coordinate-translation container (no clip). Verified against
+  `examples/hud-demo`, `examples/canvas-ui-showcase`, and a packaged
+  image-smoke cart — all render clean. Remaining gaps (carts that need
+  these should fall back to direct draw): `clip` on group, text shadows
+  and outlines, custom font families, SVG path `Q/T/A/S` curves.
 - **Per-mesh alpha / transparency**: `createAdvancedCube` accepts `opts.opacity`
   and `opts.transparent` today but ignores them. Need a `setMeshAlpha(mesh, a)`
   + a transparent z-sort pass in the GLES path. (z-sort pass already exists

@@ -33185,14 +33185,14 @@ static bool install_nova64_api(JSContext *ctx)
          "};"
          /* nova64.ui.parseCanvasUI / renderCanvasUI / updateCanvasUI — MVP
             XML-UI implementation. Parses NML/SVG-flavoured XML into an AST,
-            renders via nova64.draw primitives. Supports: rect, text, line,
-            circle, group, panel, progressbar, star. Attributes: data binding
-            via {var}, percentage units relative to parent dimension, hex
-            colors (#rgb / #rrggbb / #rrggbbaa), 'none' fill, anchor-x left/
-            center/right, anchor=center, bold, size. Skipped (deliberate v1
-            scope): svg, path, triangle, ellipse, image, button, clip,
-            shadows, outlines, custom fonts. Carts that need those tags can
-            fall back to direct nova64.draw calls. */
+            renders via nova64.draw primitives. Supports: rect, text, image,
+            line, circle, group, panel, progressbar, star, svg, path,
+            triangle, ellipse, button. Attributes: data binding via {var},
+            percentage units relative to parent dimension, hex colors
+            (#rgb / #rrggbb / #rrggbbaa), 'none' fill, anchor-x left/center/
+            right, anchor=center, bold, size. Skipped (deliberate v1 scope):
+            clip, shadows, outlines, custom fonts. Carts that need those
+            features can fall back to direct nova64.draw calls. */
          "(function(){"
            "var W=640,H=360;"
            "function parseXml(xml){"
@@ -33320,6 +33320,40 @@ static bool install_nova64_api(JSContext *ctx)
                "var tw=(txt.length*4)*scale;"
                "var tx=x+anchorX(a['anchor-x'],tw);"
                "if(c>=0)nova64.draw.printTight(txt,tx,y,c,0,scale);"
+             "}else if(tag==='image'){"
+               "var src=bind(a.src||a.href||a['xlink:href']||'',data);"
+               "if(src){"
+                 "if(src.charAt(0)==='/')src=src.substr(1);"
+                 "if(typeof assetHas==='function'&&!assetHas(src)){"
+                   "if(src.indexOf('assets/')===0&&assetHas(src.substr(7)))src=src.substr(7);"
+                   "else if(assetHas('assets/'+src))src='assets/'+src;"
+                 "}"
+                 "function imageSize(path){"
+                   "try{"
+                     "if(typeof readAssetBytes!=='function')return null;"
+                     "var bytes=readAssetBytes(path);"
+                     "if(!bytes)return null;"
+                     "var u=new Uint8Array(bytes);"
+                     "if(u.length>=24&&u[0]===137&&u[1]===80&&u[2]===78&&u[3]===71)"
+                       "return{w:((u[16]<<24)|(u[17]<<16)|(u[18]<<8)|u[19])>>>0,h:((u[20]<<24)|(u[21]<<16)|(u[22]<<8)|u[23])>>>0};"
+                     "var px=Math.floor(u.length/4),side=Math.floor(Math.sqrt(px));"
+                     "return{w:side||1,h:side?Math.floor(px/side):1};"
+                   "}catch(e){return null;}"
+                 "}"
+                 "var info=imageSize(src)||{w:0,h:0};"
+                 "var iw=num(a['image-width']||a.imageWidth||a.imgw,data,0)||info.w;"
+                 "var ih=num(a['image-height']||a.imageHeight||a.imgh,data,0)||info.h;"
+                 "var sx2=num(a.sx||a['source-x'],data,iw)||0;"
+                 "var sy2=num(a.sy||a['source-y'],data,ih)||0;"
+                 "var sw2=num(a.sw||a['source-width'],data,iw)||Math.max(0,iw-sx2);"
+                 "var sh2=num(a.sh||a['source-height'],data,ih)||Math.max(0,ih-sy2);"
+                 "var dw=w||sw2,dh=h||sh2;"
+                 "if(iw>0&&ih>0&&sw2>0&&sh2>0&&dw>0&&dh>0){"
+                   "var rot=num(a.rotation,data,0);"
+                   "if(typeof sprTransform==='function')sprTransform(src,x+dw/2,y+dh/2,rot,dw/sw2,dh/sh2,iw,ih,sx2,sy2,sw2,sh2);"
+                   "else if(typeof spr==='function')spr(src,x,y,iw,ih,sx2,sy2,sw2,sh2);"
+                 "}"
+               "}"
              "}else if(tag==='group'||tag==='panel'){"
                "if(tag==='panel'){"
                  "var pfill=color(a.fill,data),pstroke=color(a.stroke,data);"

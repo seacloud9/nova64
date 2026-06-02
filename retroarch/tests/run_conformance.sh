@@ -842,6 +842,10 @@ run_key_case  "293 controller key bridge (key tab)"      "retroarch/conformance/
 # the software HUD text path while preserving normal printTight scale.
 run_case      "294 canvas ui text effects" "retroarch/conformance/294-canvas-ui-text-effects.js" "3bf3605a304fef58"
 
+# 1099 parseCanvasUI SVG path quadratic curves: Q/q and smooth T/t are
+# approximated as deterministic HUD polylines.
+run_case      "1099 canvas ui svg quadratic" "retroarch/conformance/1099-canvas-ui-svg-quadratic.js" "c6644180c4170404"
+
 # 291 overlay autoclear regression: locks down the default
 # auto-clearing of the 2D HUD overlay between frames. Without
 # auto-clear, the F-Zero title screen vignette stayed under the

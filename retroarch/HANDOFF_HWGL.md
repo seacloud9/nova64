@@ -210,13 +210,13 @@ retroarch/build/harness retroarch/nova64_libretro.so \
 1. **Real release-cores tag.** The `cores-pre-flight-1` pre-release
    published successfully; the next release step is a real `v0.5.x` tag
    after any live RetroArch spot checks you want.
-2. **Cart-library controller audit.** Sweep `examples/` and
-   `retroarch/games/` for any non-ESC keyboard-only menu patterns I
-   missed (`keyp('KeyM')`, `keyp('Backquote')`, etc.) and either add
-   per-cart `btnp(N)` fallbacks or extend `ext_button_for_key` if the
-   intent is universal.
-3. **Linux armhf** (Pi 2/3/Zero, 32-bit). One more dockcross target.
+2. **Linux armhf** (Pi 2/3/Zero, 32-bit). One more dockcross target.
    Adds the platform table entry from RELEASING.md → release-cores.yml.
+
+Controller audit follow-up landed after this handoff: the RetroArch key
+bridge now maps controller face buttons to DOM-style `KeyZ`/`KeyX`/
+`KeyC`/`KeyV`, and SELECT to `KeyI`/`Tab` for inventory-style toggles.
+`retroarch/conformance/293-controller-key-bridge.js` locks this down.
 
 The full backlog audit found that most "remaining" BACKLOG items were
 already shipped or out of scope. The list above is genuinely-open work.

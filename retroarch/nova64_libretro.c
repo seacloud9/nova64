@@ -755,15 +755,16 @@ static bool buttons[NOVA64_BUTTON_COUNT];
 static bool previous_buttons[NOVA64_BUTTON_COUNT];
 static bool pressed_buttons[NOVA64_BUTTON_COUNT];
 
-/* Extended button table mirroring the web runtime's 14-slot KEYMAP +
-   GAMEPAD_BUTTONS layout. Web carts written for the browser call
+/* Extended button table mirroring the web runtime's KEYMAP +
+   GAMEPAD_BUTTONS layout, plus RA-only controller bridges. Web carts written for the browser call
    btn(N) / btnp(N) with N up to 13 (e.g. 12 = Enter/Start, 13 =
    Space/Action). The 8-element nova64 button table can't represent
    those, leaving carts like f-zero-nova-3d stuck on the title screen
    because btnp(13) always returned false. Indices 0-7 mirror buttons[],
    indices 8-13 are populated from keyboard keys + RetroPad joypad
-   buttons that have no nova64-internal equivalent. */
-#define NOVA64_EXT_BUTTON_COUNT 15
+   buttons that have no nova64-internal equivalent. Slot 15 is an
+   RA-only inventory/menu-select bridge for Tab/KeyI. */
+#define NOVA64_EXT_BUTTON_COUNT 16
 static bool ext_buttons[NOVA64_EXT_BUTTON_COUNT];
 static bool ext_prev_buttons[NOVA64_EXT_BUTTON_COUNT];
 static bool ext_pressed_buttons[NOVA64_EXT_BUTTON_COUNT];
@@ -26042,10 +26043,10 @@ static int button_index_from_js(JSContext *ctx, JSValueConst value)
 {
    if (JS_IsNumber(value)) {
       int index = int_from_js(ctx, value, -1);
-      /* Allow the extended 0-13 range; js_btn / js_btnp route indices
-         8-13 through ext_buttons[] which is populated from extra
-         keyboard / joypad sources. Carts ported from the browser use
-         these higher indices (web KEYMAP). */
+      /* Allow the extended range; js_btn / js_btnp route indices 8+
+         through ext_buttons[] which is populated from extra keyboard /
+         joypad sources. Browser ports use 8-13 (web KEYMAP); RA-only
+         bridges live above that. */
       return index >= 0 && index < NOVA64_EXT_BUTTON_COUNT ? index : -1;
    }
 
@@ -26080,8 +26081,8 @@ static JSValue js_btn(JSContext *ctx, JSValueConst this_val, int argc, JSValueCo
    int port  = argc > 1 ? int_from_js(ctx, argv[1], 0) : 0;
    if (port <= 0 || port >= NOVA64_MAX_PORTS) {
       if (index < 0) return JS_NewBool(ctx, false);
-      /* Indices 0-7 use buttons[] (existing behaviour); 8-13 route
-         through ext_buttons[] (web-compat extended layer). */
+      /* Indices 0-7 use buttons[] (existing behaviour); 8+ route
+         through ext_buttons[] (web-compat extended layer + RA bridges). */
       bool held = index < NOVA64_BUTTON_COUNT ? buttons[index] : ext_buttons[index];
       return JS_NewBool(ctx, held);
    }
@@ -26184,6 +26185,10 @@ static int joypad_buttons_for_key(int code, int out[NOVA64_BUTTON_COUNT])
       case NOVA64_RETROK_RETURN:
          out[0] = 4; out[1] = 5; out[2] = 6; out[3] = 7;  /* B, A, Y, X */
          return 4;
+      case 'z': out[0] = NOVA64_BTN_Z; return 1; /* Web KeyZ -> virtual Z */
+      case 'x': out[0] = NOVA64_BTN_X; return 1; /* Web KeyX -> virtual X */
+      case 'c': out[0] = NOVA64_BTN_C; return 1; /* Web KeyC -> virtual C */
+      case 'v': out[0] = NOVA64_BTN_V; return 1; /* Web KeyV -> virtual V */
       default: return 0;
    }
 }
@@ -26207,6 +26212,10 @@ static int ext_button_for_key(int code)
        * so confirm-intent (Enter) and menu-intent (Esc) stay separable. */
       case NOVA64_RETROK_ESCAPE:    return 14;
       case NOVA64_RETROK_BACKSPACE: return 14;
+      /* Slot 15 = inventory/select. Keeps KeyI/Tab separate from slot 8
+       * so keyboard A does not accidentally open inventory. */
+      case 'i': return 15;
+      case NOVA64_RETROK_TAB: return 15;
       default: return -1;
    }
 }
@@ -34271,10 +34280,11 @@ static void update_input(void)
    for (int i = 0; i < NOVA64_BUTTON_COUNT; i++)
       mp_pressed_buttons[0][i] = pressed_buttons[i];
 
-   /* Populate the extended 14-slot button table (web KEYMAP layout).
+   /* Populate the extended button table (web KEYMAP layout + RA bridges).
       Indices 0-7 mirror buttons[]; 8-13 are keyboard / additional
       joypad sources so carts written for the browser using btn(12)
-      (Enter/Start) or btn(13) (Space/Action) work in RetroArch too. */
+      (Enter/Start) or btn(13) (Space/Action) work in RetroArch too.
+      Slot 15 is RA-only: SELECT as Tab/KeyI for inventory/menu toggles. */
    for (int i = 0; i < NOVA64_BUTTON_COUNT; i++)
       ext_buttons[i] = buttons[i];
    bool jp_a      = input_state_cb(0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_A) != 0;
@@ -34305,6 +34315,9 @@ static void update_input(void)
    ext_buttons[14] = key_held[NOVA64_RETROK_ESCAPE]
                   || key_held[NOVA64_RETROK_BACKSPACE]
                   || jp_start;
+   ext_buttons[15] = key_held['i']
+                  || key_held[NOVA64_RETROK_TAB]
+                  || jp_select;
    for (int i = 0; i < NOVA64_EXT_BUTTON_COUNT; i++)
       ext_pressed_buttons[i] = ext_buttons[i] && !ext_prev_buttons[i];
 }

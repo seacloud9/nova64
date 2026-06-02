@@ -826,6 +826,18 @@ run_key_case  "292 key dom (key 1 -> Digit1)" "retroarch/conformance/292-key-dom
 run_key_case  "292 key dom (key up -> ArrowUp)" "retroarch/conformance/292-key-dom-codes.js" "up"   "b89ff17d9c6a232d"
 run_btn_case  "292 key dom (select -> KeyA)" "retroarch/conformance/292-key-dom-codes.js" "select" "d4cb340bf23add7d"
 
+# 293 controller-key bridge: locks down controller fallback routes for
+# keyboard-first carts. Face buttons drive DOM-style KeyZ/KeyX/KeyC/KeyV;
+# SELECT drives Tab/KeyI and an RA-only inventory/menu-select slot.
+run_case      "293 controller key bridge (no input)"     "retroarch/conformance/293-controller-key-bridge.js" "c2be07577b5e8dcb"
+run_btn_case  "293 controller key bridge (btn b -> KeyZ)" "retroarch/conformance/293-controller-key-bridge.js" "b"      "89cdeb8dfc1879bb"
+run_btn_case  "293 controller key bridge (btn a -> KeyX)" "retroarch/conformance/293-controller-key-bridge.js" "a"      "02f12512c1a9b4bb"
+run_btn_case  "293 controller key bridge (btn y -> KeyC)" "retroarch/conformance/293-controller-key-bridge.js" "y"      "fb64a359e5e484bb"
+run_btn_case  "293 controller key bridge (btn x -> KeyV)" "retroarch/conformance/293-controller-key-bridge.js" "x"      "fdfe5bc4b87882cb"
+run_btn_case  "293 controller key bridge (select -> KeyI/Tab)" "retroarch/conformance/293-controller-key-bridge.js" "select" "6fd5dbc3c3c5090b"
+run_key_case  "293 controller key bridge (key i)"        "retroarch/conformance/293-controller-key-bridge.js" "i"      "6fd5dbc3c3c5090b"
+run_key_case  "293 controller key bridge (key tab)"      "retroarch/conformance/293-controller-key-bridge.js" "tab"    "6fd5dbc3c3c5090b"
+
 # 291 overlay autoclear regression: locks down the default
 # auto-clearing of the 2D HUD overlay between frames. Without
 # auto-clear, the F-Zero title screen vignette stayed under the

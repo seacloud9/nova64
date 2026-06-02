@@ -838,6 +838,10 @@ run_btn_case  "293 controller key bridge (select -> KeyI/Tab)" "retroarch/confor
 run_key_case  "293 controller key bridge (key i)"        "retroarch/conformance/293-controller-key-bridge.js" "i"      "6fd5dbc3c3c5090b"
 run_key_case  "293 controller key bridge (key tab)"      "retroarch/conformance/293-controller-key-bridge.js" "tab"    "6fd5dbc3c3c5090b"
 
+# 294 parseCanvasUI text effects: shadow / outline attributes render through
+# the software HUD text path while preserving normal printTight scale.
+run_case      "294 canvas ui text effects" "retroarch/conformance/294-canvas-ui-text-effects.js" "3bf3605a304fef58"
+
 # 291 overlay autoclear regression: locks down the default
 # auto-clearing of the 2D HUD overlay between frames. Without
 # auto-clear, the F-Zero title screen vignette stayed under the

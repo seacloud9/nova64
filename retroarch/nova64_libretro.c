@@ -33199,8 +33199,8 @@ static bool install_nova64_api(JSContext *ctx)
             triangle, ellipse, button. Attributes: data binding via {var},
             percentage units relative to parent dimension, hex colors
             (#rgb / #rrggbb / #rrggbbaa), 'none' fill, anchor-x left/center/
-            right, anchor=center, bold, size. Skipped (deliberate v1 scope):
-            clip, shadows, outlines, custom fonts. Carts that need those
+            right, anchor=center, bold, size, text shadows/outlines. Skipped
+            (deliberate v1 scope): clip, custom fonts. Carts that need those
             features can fall back to direct nova64.draw calls. */
          "(function(){"
            "var W=640,H=360;"
@@ -33328,7 +33328,31 @@ static bool install_nova64_api(JSContext *ctx)
                "var scale=size>=12?2:1;"
                "var tw=(txt.length*4)*scale;"
                "var tx=x+anchorX(a['anchor-x'],tw);"
-               "if(c>=0)nova64.draw.printTight(txt,tx,y,c,0,scale);"
+               "var outlineOn=(a.outline==='true'||a.outline===true||a['outline-color']!=null||a.outlineColor!=null);"
+               "var shadowOn=(a.shadow==='true'||a.shadow===true||a['shadow-color']!=null||a.shadowColor!=null||a['shadow-blur']!=null||a.shadowBlur!=null);"
+               "if(c>=0){"
+                 "if(shadowOn){"
+                   "var shc=color(a['shadow-color']||a.shadowColor,data);"
+                   "if(shc<0)shc=0x000000cc;"
+                   "var sxv=a['shadow-x']!=null?a['shadow-x']:(a.shadowX!=null?a.shadowX:(a['shadow-offset-x']!=null?a['shadow-offset-x']:a.shadowOffsetX));"
+                   "var syv=a['shadow-y']!=null?a['shadow-y']:(a.shadowY!=null?a.shadowY:(a['shadow-offset-y']!=null?a['shadow-offset-y']:a.shadowOffsetY));"
+                   "var sdx=sxv==null?1:num(sxv,data,0);"
+                   "var sdy=syv==null?1:num(syv,data,0);"
+                   "var blur=Math.min(3,Math.ceil((num(a['shadow-blur']||a.shadowBlur,data,0)||0)/4));"
+                   "if(blur>0){"
+                     "for(var by=-blur;by<=blur;by++)for(var bx=-blur;bx<=blur;bx++)"
+                       "if(bx*bx+by*by<=blur*blur)nova64.draw.printTight(txt,tx+sdx+bx,y+sdy+by,shc,0,scale);"
+                   "}else nova64.draw.printTight(txt,tx+sdx,y+sdy,shc,0,scale);"
+                 "}"
+                 "if(outlineOn){"
+                   "var oc=color(a['outline-color']||a.outlineColor||a.outline,data);"
+                   "if(oc<0)oc=0x000000ff;"
+                   "var ow=Math.max(1,Math.min(4,num(a['outline-width']||a.outlineWidth,data,0)||1));"
+                   "for(var oy=-ow;oy<=ow;oy++)for(var ox=-ow;ox<=ow;ox++)"
+                     "if((ox||oy)&&Math.abs(ox)+Math.abs(oy)<=ow)nova64.draw.printTight(txt,tx+ox,y+oy,oc,0,scale);"
+                 "}"
+                 "nova64.draw.printTight(txt,tx,y,c,0,scale);"
+               "}"
              "}else if(tag==='image'){"
                "var src=bind(a.src||a.href||a['xlink:href']||'',data);"
                "if(src){"

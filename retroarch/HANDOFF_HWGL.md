@@ -1,65 +1,234 @@
 # Nova64 Hardware GL on Windows — Status & Handover
 
-**Last updated:** 2026-06-01 (Claude session — bloom HDR knee, UI features, controller routing)
+**Last updated:** 2026-06-01 (Claude full-day session — bloom + UI + controller + release CI + SVG-ish UI tags)
 **Branch:** `main`
-**Working tree:** clean as of `7a5ab4b` (ESC→START routing)
-**Windows DLL deployed:** cross-built and copied to `C:\RetroArch-Win64\cores\nova64_libretro.dll`
+**Working tree:** clean as of `812ec47` (`parseCanvasUI` `<svg>`/`<path>`/`<triangle>`/`<ellipse>`)
+**Windows DLL deployed:** cross-built at `812ec47` and copied to `C:\RetroArch-Win64\cores\nova64_libretro.dll`
+**Linux .so:** restored after cross-build, harness rebuilt
 
 ---
 
-## 🤝 HANDOFF — 2026-06-01 (Claude session — close all 3 visual-gap items, ship UI features)
+## 🤝 HANDOFF FOR CODEX — 2026-06-01 full session
 
-The three "Remaining gaps vs web" listed in the 2026-05-27 handoff are all
-**closed**:
+Single-day stretch from "review the repo state" to landing 17 commits. The
+core, the cart library, and the publish pipeline are all in a good state.
 
-- ~~Bloom on emissive surfaces~~ — HDR-knee bright-pass shipped in `f2b2de8`.
-  Replaces `smoothstep(threshold, threshold + 0.38, luma)` with
-  `smoothstep(threshold, threshold + 2.0, luma)`. LDR pixels contribute ~5%,
-  HDR emissives (linear luma > 1) contribute fully. F-Zero `enableBloom`
-  shim no longer needs the global strength crush; Wizardry torches now
-  glow with proper halos.
-- ~~Specular highlights from point lights~~ — shipped in `387be32`.
-- ~~Shadows from point lights~~ — shipped in `aa7b860`.
+### Commits in chronological order
 
-### UI features shipped this session
+| # | Hash | Subject |
+|---|------|---------|
+| 1 | `f2b2de8` | fix(retroarch): HDR-knee bloom bright-pass — torches glow, F-Zero stays calm |
+| 2 | `b00c3f2` | fix(wizardry): default auto-combat to ON |
+| 3 | `27afed0` | fix(wizardry): tune bloom for Three-style HDR knee |
+| 4 | `8b12d96` | fix(wizardry): controller can exit shop to next floor |
+| 5 | `6a482b3` | fix(wizardry): controller fallbacks for all menu ESC/inventory bindings |
+| 6 | `9a46d0c` | feat(retroarch): wire `nova64.ui.createButton` input + close stale backlog items |
+| 7 | `800693d` | feat(retroarch): `nova64.ui.parseCanvasUI` MVP — render XML UI carts |
+| 8 | `10c459c` | feat(retroarch): parseCanvasUI `<button>` support + close stale WARN items |
+| 9 | `7a5ab4b` | feat(retroarch): route `keyp('Escape')`/`keyp('Backspace')` to START |
+| 10 | `b2da2bf` | chore(retroarch): rebaseline carts 17/18 + refresh HANDOFF |
+| 11 | `f2def62` | ci(retroarch): add release-cores workflow — auto-build .so + .dll on tag |
+| 12 | `720ffa9` | ci(retroarch): release-cores adds macOS universal build + README pointer |
+| 13 | `f21d612` | ci(retroarch): release-cores adds Linux ARM64 (Pi) + Android (3 ABIs) |
+| 14 | `6a2b4c0` | docs: `RELEASING.md` publisher guide + cross-link from README |
+| 15 | `812ec47` | feat(retroarch): parseCanvasUI adds `<triangle>`, `<ellipse>`, `<svg>`, `<path>` |
 
-- **`nova64.ui.createButton` input wiring** (`9a46d0c`). `updateAllButtons`
-  was a no-op shim; now polls mouse + d-pad + face-button confirm, tracks
-  a hot index, fires the stored `cb` on click/confirm. `drawAllButtons`
-  renders the hot button in its hover color.
-- **`nova64.ui.parseCanvasUI` MVP + `<button>` element** (`800693d`,
-  `10c459c`). Parses NML XML into an AST, renders via `nova64.draw`.
-  Tags: `<ui>`, `<rect>`, `<text>`, `<line>`, `<circle>`, `<group>`,
-  `<panel>`, `<progressbar>`, `<star>`, `<button>`. Attributes: `{var}`
-  data binding, percentage units, hex colors, `none` fill, `anchor-x`
-  left/center/right, `anchor="center"`. Verified against `hud-demo` and
-  `canvas-ui-showcase`. Not yet handled: `<svg>`, `<path>`, `<triangle>`,
-  `<ellipse>`, `<image>`, clip, text shadows/outlines, custom fonts.
+(Plus two cherry-picked along the way that aren't yours to worry about:
+`b00c3f2`'s lint-staged hook reformatted `examples/wizardry-3d/code.js`.)
 
-### Controller UX
+### What changed — by area
 
-- **C-side ESC routing** (`7a5ab4b`). Added ext_buttons slot 14 fired by
-  Escape, Backspace, or RetroPad START. `ext_button_for_key` routes those
-  two keys to slot 14, so `keyp('Escape')` and `keyp('Backspace')` now
-  fire on START in every cart. Fixes the controller blind spot in every
-  cart that uses ESC for menu exit / dialog cancel / pause.
-- **Wizardry full menu controller pass** (`8b12d96`, `6a482b3`). Per-cart
-  `btnp(5)` (X = cancel) and `btnp(8)` (SELECT = toggle) for shop exit,
-  combat back, inventory open/close.
-- **Wizardry autoplay default ON** (`b00c3f2`) + bloom retune for the new
-  pipeline (`27afed0`).
+**Rendering / shaders.** The 2026-05-27 handoff listed three remaining
+gaps vs web. All three are now closed:
 
-### Conformance
+- *Bloom on emissive surfaces* — the cube fragment already wrote linear
+  HDR to the RGBA16F post FBO when `gles_scene_post_active`. The actual
+  blocker was the bloom downsample bright-pass smoothstep range
+  (`threshold..threshold+0.38`) that fully extracted any LDR luma > ~1.2,
+  forcing the F-Zero `enableBloom` shim to clamp global strength to
+  `0.06` — which killed Wizardry torch contribution as collateral.
+  Widening to `threshold..threshold+2.0` (`f2b2de8`,
+  [retroarch/nova64_libretro.c:36918](retroarch/nova64_libretro.c#L36918))
+  turns the bright-pass into an HDR knee: LDR luma ~1.0 contributes ~5%,
+  HDR emissives at luma 4.0 contribute 100%. The shim's strength clamp
+  was dropped at [retroarch/nova64_libretro.c:30309](retroarch/nova64_libretro.c#L30309).
+  Cart 21, gles-post-color-grade, gles-overlay-orientation, and
+  1096-retro-effects-bloom all byte-identical in conformance.
+- *Specular highlights / shadows from point lights* — already shipped in
+  `387be32` / `aa7b860` before this session, just never reflected in the
+  HANDOFF doc.
 
-Carts 17 (light-fog) and 18 (mesh-helpers) rebaselined to their current
-post-shadow/post-specular hashes (`7733eab140562091`, `aac2e27ecf9b38da`).
-Full 0–110 + named gles-* cases + 1095–1098 pass via
-`NOVA64_GLES_TESTS=1 bash retroarch/tests/run_conformance.sh --skip-build`.
+**Cart-level Wizardry polish** (live-tested by the user end-to-end):
+
+- `b00c3f2` — `autoPlay = true` default at
+  [retroarch/games/wizardry-3d.js:2496](retroarch/games/wizardry-3d.js#L2496)
+  + mirror in `examples/wizardry-3d/code.js`. Fixed the practical
+  "battle never ends" report from players who didn't know about the
+  `KeyA` toggle.
+- `27afed0` — wizardry bloom tuned from `{strength: 1.2, radius: 0.5, threshold: 0.2}`
+  (calibrated for the old shim crush) to
+  `{strength: 0.5, radius: 0.4, threshold: 0.85}` (Three-style defaults
+  for the new HDR knee). Per-floor dynamic range shifted from
+  `radius 0.5..0.25 / threshold 0.3..0.15` to
+  `radius 0.4..0.55 / threshold 0.85..0.7`. Boss/spell/shop spikes
+  intentionally left at current values — only retune if they show new
+  artifacts. Resolved user-reported "random circles in lower half" =
+  bloom halos on point lights showing too strongly with cranked values.
+- `8b12d96` — `btnp(5)` (X face / KeyX equivalent) for shop "Continue
+  to next floor" and shop "Cancel target". On-screen hints updated to
+  show controller bindings (`Z/Space/(A)=Buy ESC/(X)=Continue to next floor`).
+- `6a482b3` — same `btnp(5)` for combat target-back and spell-back,
+  `btnp(8)` (SELECT) for inventory open in both explore-cooldown and
+  normal paths, `btnp(5) || btnp(8)` for inventory exit.
+
+**Controller — structural.** `7a5ab4b` adds `ext_buttons[14]` =
+"menu/back" slot fired by Escape key, Backspace key, or RetroPad START
+([retroarch/nova64_libretro.c:33902](retroarch/nova64_libretro.c#L33902)),
+and routes `NOVA64_RETROK_ESCAPE` / `NOVA64_RETROK_BACKSPACE` through
+`ext_button_for_key` to that slot
+([retroarch/nova64_libretro.c:26206](retroarch/nova64_libretro.c#L26206)).
+Every cart in the library that uses `keyp('Escape')` or `keyp('Backspace')`
+for menu exit / cancel / pause now works on a controller without
+per-cart edits. Deliberately a fresh slot (not 12 Enter/START for
+confirm) so confirm-intent and menu-back-intent stay distinguishable.
+
+**`nova64.ui` features.** Two stale backlog items closed (variable-width
+font already shipped via `glyph_tight_advance`; per-mesh alpha already
+shipped via `setMeshOpacity`). Two real ones built:
+
+- `9a46d0c` — `updateAllButtons` was a no-op shim. Now polls mouse
+  position + click, joypad d-pad up/down, and `btnp(4)` / `Space` /
+  `Enter` confirm. Tracks `_hotIdx`, fires the stored `cb` on confirm,
+  resets on `clearButtons` so menu transitions start clean.
+  `drawAllButtons` honors the hot state via the hover color.
+- `800693d` + `10c459c` + `812ec47` — `parseCanvasUI` / `renderCanvasUI` /
+  `updateCanvasUI` went from three no-op stubs to a real XML-UI engine
+  at [retroarch/nova64_libretro.c:33180](retroarch/nova64_libretro.c#L33180).
+  Tags supported: `<ui>`, `<rect>`, `<text>`, `<line>`, `<circle>`,
+  `<ellipse>`, `<triangle>`, `<star>`, `<group>`, `<panel>`,
+  `<progressbar>`, `<button>`, `<svg>` (coordinate-translation container),
+  `<path>` (M/m, L/l, H/h, V/v, C/c, Z/z — 16-segment bezier
+  approximation; A/Q/S/T deferred). Attributes: `{var}` data binding,
+  percentage units relative to parent dimension, hex colors
+  (`#rgb`/`#rrggbb`/`#rrggbbaa`), `none`, `anchor-x` left/center/right,
+  `anchor="center"`, `bold`, `size`, panel title with separator line.
+  Buttons fire `handlers[onclick]` on mouse hover+click (mouse-only —
+  carts that want d-pad nav over XML buttons should drop to
+  `createButton` directly).
+
+**CI release pipeline.** Four commits (`f2def62`, `720ffa9`, `f21d612`,
+`6a2b4c0`) build a `.github/workflows/release-cores.yml` that publishes
+**seven** core binaries per release:
+
+| Platform | Built filename | Asset name | Mechanism |
+|----------|----------------|------------|-----------|
+| Linux x86_64 | `nova64_libretro.so` | `nova64_libretro_linux_x86_64.so` | native gcc on `ubuntu-latest` |
+| Linux aarch64 (Pi 4/5) | `nova64_libretro.so` | `nova64_libretro_linux_aarch64.so` | `dockcross/linux-arm64` Docker image |
+| Windows x86_64 | `nova64_libretro.dll` | `nova64_libretro_windows_x86_64.dll` | mingw cross from `ubuntu-latest` |
+| macOS universal (x86_64+arm64) | `nova64_libretro.dylib` | `nova64_libretro_macos_universal.dylib` | `macos-latest` + `CC="cc -arch x86_64 -arch arm64"` |
+| Android arm64-v8a | `nova64_libretro_android.so` | `nova64_libretro_android_arm64-v8a.so` | NDK `aarch64-linux-android21-clang` |
+| Android armeabi-v7a | `nova64_libretro_android.so` | `nova64_libretro_android_armeabi-v7a.so` | NDK `armv7a-linux-androideabi21-clang` |
+| Android x86_64 | `nova64_libretro_android.so` | `nova64_libretro_android_x86_64.so` | NDK `x86_64-linux-android21-clang` |
+
+Plus a generated `SHA256SUMS.txt` and a drop-in install README per release.
+Trigger paths: push a `v*.*.*` tag (automatic) or run the workflow from
+the Actions tab (manual `workflow_dispatch` with a tag name + pre-release
+flag for safe smoke testing). **Not yet exercised live** — the user needs
+to do one workflow_dispatch run to surface anything that breaks in
+practice. Failure modes documented in [`RELEASING.md`](../RELEASING.md).
+
+**Conformance.** Carts 17 (light-fog) and 18 (mesh-helpers) had been
+drifting since `aa7b860` / `387be32` and were never rebaselined. Updated
+to `7733eab140562091` and `aac2e27ecf9b38da` in
+[retroarch/tests/run_conformance.sh:591-592](retroarch/tests/run_conformance.sh#L591-L592)
+(`b2da2bf`). Full sweep now reports `Conformance passed.` end-to-end.
+
+### Verification snapshot
+
+```text
+make -C retroarch clean all harness            → clean
+make -C retroarch platform=win-cross clean all → clean DLL
+NOVA64_GLES_TESTS=1 bash retroarch/tests/run_conformance.sh
+  → 0–110 software + GLES, named gles-* cases, 1095–1098 — all green
+bash retroarch/tests/collect_gles_checksums.sh
+  → 40/40 ok=1
+retroarch/build/harness retroarch/nova64_libretro.so \
+  examples/canvas-ui-showcase/code.js --frames 30
+  → ok=1 (renders triangles, ellipses, paths, inline svg)
+retroarch/build/harness retroarch/nova64_libretro.so \
+  examples/hud-demo/code.js --frames 30
+  → ok=1 (byte-identical, no regression)
+```
+
+### Things to verify in live RetroArch (cannot do headless)
+
+- Wizardry torches actually glow softly (not crisp emissive) — user
+  confirmed visually after `f2b2de8` / `27afed0`.
+- F-Zero speedlines don't smear into the sky as racer-reflection halos
+  after the shim's strength crush was removed — not yet user-tested.
+  If they do, the right knob is now cart-side `setBloom` strength, not
+  global shim crush.
+- ESC → START works in every cart that uses `keyp('Escape')` for menu
+  back/exit. Quick way to test: open any cart, press START on the
+  controller, observe whether the cart's ESC-bound behavior fires.
 
 ### Known remaining gaps
 
-Nothing acute. `parseCanvasUI` could grow `<svg>`/`<path>` support if a
-cart needs them; otherwise the cart library is in a good state.
+- `parseCanvasUI`: `<image>` element (would need a JS image-load shim),
+  `clip` attribute on `<group>` (needs scissor-test or per-pixel mask),
+  text shadows / outlines (could call existing `printShadowTight` /
+  `printOutlineTight` shims), custom font families, SVG path commands
+  `Q/T/A/S`. None of the in-tree carts hit these — low priority unless
+  a cart asks.
+- Release pipeline never run live. First workflow_dispatch may surface
+  surprises: NDK path drift, dockcross rate limit, mac `-arch` escape.
+  Run a smoke test with `tag_name = cores-pre-flight-1` and the
+  pre-release checkbox before committing to a versioned `v0.5.x` tag.
+- Pre-built cores aren't tested against actual RetroArch installs on
+  Pi / Android — produced but not verified runtime-loadable on those
+  platforms. A real Pi 4/5 and an Android RetroArch install are the
+  next milestones.
+
+### Documentation written this session
+
+- [`RELEASING.md`](../RELEASING.md) — repo-root publisher's guide with
+  quick start, platform table, trigger paths, "adding a new target",
+  troubleshooting, and verification.
+- [`README.md`](../README.md) — pre-built cores section with
+  per-platform download table, cross-linking RELEASING.md.
+- [`retroarch/BACKLOG.md`](BACKLOG.md) — closed 4 stale items, expanded
+  parseCanvasUI status with the full element list.
+- Six mempalace diary entries under topics
+  `nova64-retroarch-bloom-hdr-knee`,
+  `nova64-wizardry-autoplay-and-user-feedback`,
+  `nova64-wizardry-joystick-pass-and-bloom-retune`,
+  `nova64-feature-rollout-ui-button-and-parseCanvasUI`,
+  `nova64-release-cores-ci-7-platforms-and-docs`, and the
+  end-of-session marker.
+
+### Suggested next thread (pick what fits)
+
+1. **First live release-cores run.** Either tag `v0.5.2` or
+   workflow_dispatch with `cores-pre-flight-1`. Watch for the failure
+   modes documented in RELEASING.md. Fix anything that breaks. This is
+   the highest-confidence win because it unlocks user downloads.
+2. **CI smoke test before publish.** Add a step to the release-cores
+   linux-x86_64 job that runs a handful of conformance carts against
+   the freshly-built `.so` so a broken Linux build fails the workflow
+   instead of shipping. Maybe 30-cart fast subset to keep runtime down.
+3. **parseCanvasUI `<image>` support.** Would unlock any cart that
+   wants to embed a bundled asset image in its HUD. Needs a JS-side
+   image-load shim that reads `readAssetBytes`. Modest scope.
+4. **Cart-library controller audit.** Sweep `examples/` and
+   `retroarch/games/` for any non-ESC keyboard-only menu patterns I
+   missed (`keyp('KeyM')`, `keyp('Backquote')`, etc.) and either add
+   per-cart `btnp(N)` fallbacks or extend `ext_button_for_key` if the
+   intent is universal.
+5. **Linux armhf** (Pi 2/3/Zero, 32-bit). One more dockcross target.
+   Adds the platform table entry from RELEASING.md → release-cores.yml.
+
+The full backlog audit found that most "remaining" BACKLOG items were
+already shipped or out of scope. The list above is genuinely-open work.
 
 ---
 

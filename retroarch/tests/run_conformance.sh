@@ -854,6 +854,10 @@ run_case      "1100 canvas ui svg smooth cubic" "retroarch/conformance/1100-canv
 # deterministic HUD polylines, including rotation and large/sweep flags.
 run_case      "1101 canvas ui svg arcs" "retroarch/conformance/1101-canvas-ui-svg-arcs.js" "ba97347581e117f1"
 
+# 1102 parseCanvasUI group/panel clipping: clip=true uses the RetroArch
+# draw clip stack and intersects nested clip regions.
+run_case      "1102 canvas ui group clip" "retroarch/conformance/1102-canvas-ui-group-clip.js" "f8c0740320d68af0"
+
 # 291 overlay autoclear regression: locks down the default
 # auto-clearing of the 2D HUD overlay between frames. Without
 # auto-clear, the F-Zero title screen vignette stayed under the

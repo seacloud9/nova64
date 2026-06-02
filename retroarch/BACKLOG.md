@@ -141,9 +141,10 @@ Bigger ticket items also pending:
   against `examples/hud-demo`, `examples/canvas-ui-showcase`, a packaged
   image-smoke cart, `294-canvas-ui-text-effects`, and
   `1099-canvas-ui-svg-quadratic` / `1100-canvas-ui-svg-smooth-cubic` /
-  `1101-canvas-ui-svg-arcs` — all render clean.
+  `1101-canvas-ui-svg-arcs` / `1102-canvas-ui-group-clip` — all render
+  clean.
   Remaining gaps (carts that need these should fall back to direct draw):
-  `clip` on group, custom font families.
+  custom font families.
 - **Per-mesh alpha / transparency**: `createAdvancedCube` accepts `opts.opacity`
   and `opts.transparent` today but ignores them. Need a `setMeshAlpha(mesh, a)`
   + a transparent z-sort pass in the GLES path. (z-sort pass already exists

@@ -33199,9 +33199,10 @@ static bool install_nova64_api(JSContext *ctx)
             triangle, ellipse, button. Attributes: data binding via {var},
             percentage units relative to parent dimension, hex colors
             (#rgb / #rrggbb / #rrggbbaa), 'none' fill, anchor-x left/center/
-            right, anchor=center, bold, size, text shadows/outlines. Skipped
-            (deliberate v1 scope): clip, custom fonts. Carts that need those
-            features can fall back to direct nova64.draw calls. */
+            right, anchor=center, bold, size, group/panel clip, text shadows/
+            outlines. Skipped (deliberate v1 scope): custom fonts. Carts
+            that need those features can fall back to direct nova64.draw
+            calls. */
          "(function(){"
            "var W=640,H=360;"
            "function parseXml(xml){"
@@ -33405,8 +33406,31 @@ static bool install_nova64_api(JSContext *ctx)
                    "nova64.draw.line(x,y+titleH,x+w,y+titleH,titleColor);"
                  "}"
                "}"
-               "for(var j=0;j<node.children.length;j++)"
-                 "renderNode(node.children[j],data,handlers,x,y,w||pw,h||ph);"
+               "var doClip=(a.clip==='true'||a.clip===true||a.clip==='1'||a.overflow==='hidden');"
+               "if(doClip&&w>0&&h>0&&nova64.draw.pushClip&&nova64.draw.setClip&&nova64.draw.popClip){"
+                 "var clipX=x+num(a['clip-x'],data,w);"
+                 "var clipY=y+num(a['clip-y'],data,h);"
+                 "var clipW=num(a['clip-width'],data,w)||w;"
+                 "var clipH=num(a['clip-height'],data,h)||h;"
+                 "var oldClip=nova64.draw.getClip?nova64.draw.getClip():null;"
+                 "if(oldClip&&oldClip.active){"
+                   "var ix=Math.max(clipX,oldClip.x),iy=Math.max(clipY,oldClip.y);"
+                   "var ix2=Math.min(clipX+clipW,oldClip.x+oldClip.w),iy2=Math.min(clipY+clipH,oldClip.y+oldClip.h);"
+                   "clipX=ix;clipY=iy;clipW=Math.max(0,ix2-ix);clipH=Math.max(0,iy2-iy);"
+                 "}"
+                 "if(nova64.draw.pushClip()){"
+                   "nova64.draw.setClip(clipX,clipY,clipW,clipH);"
+                   "for(var j=0;j<node.children.length;j++)"
+                     "renderNode(node.children[j],data,handlers,x,y,w||pw,h||ph);"
+                   "nova64.draw.popClip();"
+                 "}else{"
+                   "for(var j=0;j<node.children.length;j++)"
+                     "renderNode(node.children[j],data,handlers,x,y,w||pw,h||ph);"
+                 "}"
+               "}else{"
+                 "for(var j=0;j<node.children.length;j++)"
+                   "renderNode(node.children[j],data,handlers,x,y,w||pw,h||ph);"
+               "}"
              "}else if(tag==='progressbar'){"
                "var v=num(a.value,data,0),mx=num(a.max,data,0)||100;"
                "var bg=color(a.background,data),fg=color(a.fill,data);"

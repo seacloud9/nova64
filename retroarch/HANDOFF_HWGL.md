@@ -183,7 +183,9 @@ retroarch/build/harness retroarch/nova64_libretro.so \
 - Release pipeline preflight now runs live. `cores-pre-flight-1`
   published successfully after fixing dockcross Linux aarch64 zlib
   setup, and the linux-x86_64 release job smoke-tests the freshly-built
-  `.so` before publish. The real `v0.5.x` tag is still unrun.
+  `.so` before publish. `cores-pre-flight-armhf-1` also published
+  successfully with `nova64_libretro_linux_armhf.so` from
+  `dockcross/linux-armv7`. The real `v0.5.x` tag is still unrun.
 - Pre-built cores aren't tested against actual RetroArch installs on
   Pi / Android — produced but not verified runtime-loadable on those
   platforms. A real Pi 4/5 and an Android RetroArch install are the

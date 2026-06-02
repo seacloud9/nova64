@@ -125,18 +125,19 @@ but never marked off. Verified: all three carts load and render 20 frames
 with no JS exceptions. AR/XR items remain explicitly out of scope.
 
 Bigger ticket items also pending:
-- ~~**`nova64.ui.parseCanvasUI`**~~ — MVP shipped. Tags: `<ui>`, `<rect>`,
-  `<text>`, `<line>`, `<circle>`, `<group>`, `<panel>`, `<progressbar>`,
-  `<star>`, `<button>`. Attributes: `{var}` data binding, percentage units,
-  hex colors (`#rgb`/`#rrggbb`/`#rrggbbaa`), `none`, `anchor-x` left/center/
-  right, `anchor="center"`. Buttons fire `handlers[onclick]` on mouse
-  hover+click (XML-button v1 is mouse-only — carts that want d-pad
-  navigation should call `nova64.ui.createButton` + `updateAllButtons`
-  directly). Not yet handled (carts using these should fall back to direct
-  draw): `<svg>`, `<path>`, `<triangle>`, `<ellipse>`, `<image>`, `clip`,
-  text shadows and outlines, custom fonts. Verified against
-  `examples/hud-demo` and `examples/canvas-ui-showcase` — both render
-  clean, no JS exceptions, deterministic checksums.
+- ~~**`nova64.ui.parseCanvasUI`**~~ — Full element set shipped. Tags:
+  `<ui>`, `<rect>`, `<text>`, `<line>`, `<circle>`, `<ellipse>`,
+  `<triangle>`, `<star>`, `<group>`, `<panel>`, `<progressbar>`,
+  `<button>`, `<svg>`, `<path>`. Attributes: `{var}` data binding,
+  percentage units, hex colors (`#rgb`/`#rrggbb`/`#rrggbbaa`), `none`,
+  `anchor-x` left/center/right, `anchor="center"`. Buttons fire
+  `handlers[onclick]` on mouse hover+click. Path supports `M/m`, `L/l`,
+  `H/h`, `V/v`, `C/c` (16-segment bezier approximation), `Z/z`.
+  `<svg>` is a coordinate-translation container (no clip). Verified
+  against `examples/hud-demo` and `examples/canvas-ui-showcase` — both
+  render clean. Remaining gaps (carts that need these should fall back
+  to direct draw): `<image>`, `clip` on group, text shadows and
+  outlines, custom font families, SVG path `Q/T/A/S` curves.
 - **Per-mesh alpha / transparency**: `createAdvancedCube` accepts `opts.opacity`
   and `opts.transparent` today but ignores them. Need a `setMeshAlpha(mesh, a)`
   + a transparent z-sort pass in the GLES path. (z-sort pass already exists

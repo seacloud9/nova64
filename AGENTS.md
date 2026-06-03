@@ -68,7 +68,7 @@ When changing agent workflow, commands, architecture notes, or repository rules:
 - Do not copy large instruction blocks into tool-specific files.
 - If another instruction file disagrees with `AGENTS.md`, verify against live source files and then reconcile the rule back here.
 
-Current package version: `0.5.1`.
+Current package version: `0.5.2`.
 
 ## 🖥️ **Windows Development Environment**
 

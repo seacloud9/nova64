@@ -1,6 +1,6 @@
 {
   "name": "nova64",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "description": "Nova64 — Ultimate 3D Fantasy Console runtime for JavaScript games powered by Three.js",
   "keywords": [
     "fantasy-console",
@@ -116,7 +116,7 @@
     "clean": "rm -rf dist node_modules",
     "reinstall": "pnpm run clean && pnpm install",
     "prepare": "husky",
-    "prepublishOnly": "pnpm run validate && pnpm run build",
+    "prepublishOnly": "pnpm run lint && pnpm run test:all && pnpm run build",
     "release:patch": "pnpm version patch && git push && git push --tags",
     "release:minor": "pnpm version minor && git push && git push --tags",
     "release:major": "pnpm version major && git push && git push --tags"

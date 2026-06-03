@@ -125,7 +125,9 @@ export function skyboxApi(gpu) {
       pmrem.dispose();
       gpu.scene.environment?.dispose();
       gpu.scene.environment = next;
-    } catch (_) {}
+    } catch (_) {
+      // Environment reflections are a visual bonus; skybox rendering still works without them.
+    }
 
     return skyboxMesh;
   }

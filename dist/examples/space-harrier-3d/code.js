@@ -19,7 +19,6 @@ const {
   createCube,
   createPlane,
   createSphere,
-  destroyMesh,
   rotateMesh,
   setMeshVisible,
   setPosition,
@@ -29,14 +28,11 @@ const {
 const { setCameraFOV, setCameraPosition, setCameraTarget } = nova64.camera;
 const { setAmbientLight, setFog, setLightColor, setLightDirection } = nova64.light;
 const {
-  disableGlitch,
   enableBloom,
   enableDithering,
   enableFXAA,
-  enableGlitch,
   enablePixelation,
   enableVignette,
-  setGlitchIntensity,
 } = nova64.fx;
 const { isKeyPressed, key } = nova64.input;
 const { sfx } = nova64.audio;
@@ -87,6 +83,9 @@ const PALETTE = {
   pillar: 0xffaa00,
   explosion: 0xff5500,
 };
+const PARTICLE_MIN_VISIBLE_SCALE = 0.28;
+const GLITCH_FLASH_DURATION = 0.12;
+const GLITCH_FLASH_INTENSITY = 0.24;
 
 let game = {
   player: {
@@ -124,6 +123,57 @@ let game = {
   enemySpawnTimer: 0,
 };
 
+function configureGameplayEffects() {
+  clearGlitchPass();
+
+  // Keep the neon feel without letting bloom accumulate into opaque white bands.
+  if (typeof nova64.fx.enableBloom === 'function') nova64.fx.enableBloom(0.38, 0.22, 0.78);
+  if (typeof nova64.fx.enableFXAA === 'function') nova64.fx.enableFXAA();
+  if (typeof nova64.fx.enableVignette === 'function') nova64.fx.enableVignette(0.9, 0.95);
+}
+
+function clearGlitchPass() {
+  if (typeof nova64.fx.setGlitchIntensity === 'function') nova64.fx.setGlitchIntensity(0);
+  if (typeof nova64.fx.disableGlitch === 'function') nova64.fx.disableGlitch();
+  game.glitchTimer = 0;
+}
+
+function triggerCleanGlitch() {
+  clearGlitchPass();
+  if (typeof nova64.fx.enableGlitch === 'function') {
+    nova64.fx.enableGlitch(GLITCH_FLASH_INTENSITY);
+    game.glitchTimer = GLITCH_FLASH_DURATION;
+  }
+}
+
+function updateCleanGlitch(dt) {
+  if (game.glitchTimer <= 0) return;
+
+  game.glitchTimer -= dt;
+  if (game.glitchTimer <= 0) {
+    clearGlitchPass();
+    configureGameplayEffects();
+    return;
+  }
+
+  const t = Math.max(0, game.glitchTimer / GLITCH_FLASH_DURATION);
+  if (typeof nova64.fx.setGlitchIntensity === 'function') {
+    nova64.fx.setGlitchIntensity(GLITCH_FLASH_INTENSITY * t);
+  }
+}
+
+function destroyVisualMesh(mesh) {
+  if (!mesh) return;
+  try {
+    nova64.scene.setMeshVisible(mesh, false);
+    nova64.scene.setScale(mesh, 0.001, 0.001, 0.001);
+    nova64.scene.setPosition(mesh, 0, -10000, 0);
+  } catch (_) {
+    // Best-effort hide before removal; destroyMesh is still the source of truth.
+  }
+  nova64.scene.destroyMesh(mesh);
+}
+
 export async function init() {
   console.log('🚀 SPACE HARRIER NOVA 64 - Loading...');
 
@@ -133,7 +183,7 @@ export async function init() {
     nova64.camera.setCameraFOV(70);
 
     // Vibrant alien sky and effects
-    nova64.light.setAmbientLight(0xffffff, 1.0);
+    nova64.light.setAmbientLight(0xffffff, 0.62);
     nova64.light.setLightDirection(-0.5, -1, -0.5);
     nova64.light.setLightColor(0xfff0dd);
     nova64.light.setFog(PALETTE.sky, 30, 150);
@@ -141,9 +191,7 @@ export async function init() {
     // Retro presentation with modern shader touch
     if (typeof enablePixelation === 'function') nova64.fx.enablePixelation(1);
     if (typeof enableDithering === 'function') nova64.fx.enableDithering(true);
-    nova64.fx.enableBloom(1.0, 0.5, 0.3); // Alien sky & bullet glow
-    nova64.fx.enableFXAA();
-    nova64.fx.enableVignette(1.0, 0.95);
+    configureGameplayEffects();
 
     createCheckeredFloor();
     createPlayer();
@@ -383,11 +431,12 @@ function fireEnemyBullet(ex, ey, ez) {
 }
 
 function createExplosion(x, y, z, color) {
-  for (let i = 0; i < 15; i++) {
-    const p = nova64.scene.createCube(0.8, color, [x, y, z]);
+  for (let i = 0; i < 10; i++) {
+    const p = nova64.scene.createCube(0.65, color, [x, y, z]);
     const speed = 15 + Math.random() * 25;
     const angle1 = Math.random() * Math.PI * 2;
     const angle2 = Math.random() * Math.PI * 2;
+    const life = 0.28 + Math.random() * 0.28;
 
     game.particles.push({
       mesh: p,
@@ -397,8 +446,8 @@ function createExplosion(x, y, z, color) {
       vx: Math.cos(angle1) * Math.sin(angle2) * speed,
       vy: Math.sin(angle1) * speed,
       vz: Math.cos(angle1) * Math.cos(angle2) * speed,
-      life: 0.5 + Math.random() * 0.5,
-      maxLife: 1.0,
+      life,
+      maxLife: life,
     });
   }
 }
@@ -424,16 +473,7 @@ export function update(dt) {
   game.speed = Math.min(100, 45 + game.wave * 3);
   nova64.util.updateShake(game.shake, dt);
 
-  // Glitch decay
-  if (game.glitchTimer > 0) {
-    game.glitchTimer -= dt;
-    if (game.glitchTimer <= 0) {
-      game.glitchTimer = 0;
-      nova64.fx.disableGlitch();
-    } else {
-      nova64.fx.setGlitchIntensity(game.glitchTimer * 1.5);
-    }
-  }
+  updateCleanGlitch(dt);
 
   // Kill streak timer
   if (game.streakTimer > 0) {
@@ -474,6 +514,7 @@ export function update(dt) {
 
 function startGame() {
   if (gameState === 'playing') return;
+  configureGameplayEffects();
   inputLockoutCD.timer = 0.3;
   gameState = 'playing';
   console.log('[space-harrier] ✅ gameState is now: playing');
@@ -489,15 +530,17 @@ function startGame() {
   game.streakTimer = 0;
   game.waveClear = false;
 
-  game.enemies.forEach(e => e.parts.forEach(p => nova64.scene.destroyMesh(p.mesh)));
-  game.enemyBullets.forEach(b => nova64.scene.destroyMesh(b.mesh));
-  game.bullets.forEach(b => nova64.scene.destroyMesh(b.mesh));
-  game.powerupPickups.forEach(p => nova64.scene.destroyMesh(p.mesh));
+  game.enemies.forEach(e => e.parts.forEach(p => destroyVisualMesh(p.mesh)));
+  game.enemyBullets.forEach(b => destroyVisualMesh(b.mesh));
+  game.bullets.forEach(b => destroyVisualMesh(b.mesh));
+  game.powerupPickups.forEach(p => destroyVisualMesh(p.mesh));
+  game.particles.forEach(p => destroyVisualMesh(p.mesh));
 
   game.enemies = [];
   game.enemyBullets = [];
   game.bullets = [];
   game.powerupPickups = [];
+  game.particles = [];
   nova64.ui.clearButtons();
 
   startWave(1);
@@ -536,13 +579,13 @@ function updatePowerupPickups(dt) {
         game.powerupTimer = 8;
       }
       nova64.audio.sfx('coin');
-      nova64.scene.destroyMesh(pu.mesh);
+      destroyVisualMesh(pu.mesh);
       game.powerupPickups.splice(i, 1);
       continue;
     }
 
     if (pu.z > 25) {
-      nova64.scene.destroyMesh(pu.mesh);
+      destroyVisualMesh(pu.mesh);
       game.powerupPickups.splice(i, 1);
     }
   }
@@ -708,7 +751,7 @@ function updateEnemies(dt) {
     }
 
     if (e.z > 20) {
-      e.parts.forEach(p => nova64.scene.destroyMesh(p.mesh));
+      e.parts.forEach(p => destroyVisualMesh(p.mesh));
       game.enemies.splice(i, 1);
     }
   }
@@ -722,7 +765,7 @@ function updateBullets(dt) {
     nova64.scene.setPosition(b.mesh, b.x, b.y, b.z);
 
     if (b.life <= 0 || b.z < -150) {
-      nova64.scene.destroyMesh(b.mesh);
+      destroyVisualMesh(b.mesh);
       game.bullets.splice(i, 1);
       continue;
     }
@@ -735,7 +778,7 @@ function updateBullets(dt) {
         hit = true;
         nova64.audio.sfx('hit');
         if (e.health <= 0) {
-          createExplosion(e.x, e.y, e.z, PALETTE.explosion);
+          triggerCleanGlitch();
           const killPoints =
             e.type === 'boss' ? 3000 : e.type === 'tank' ? 1000 : e.type === 'fast' ? 700 : 500;
           game.score += killPoints;
@@ -749,7 +792,7 @@ function updateBullets(dt) {
           if (Math.random() < 0.25) {
             spawnPowerup(e.x, e.y, e.z);
           }
-          e.parts.forEach(p => nova64.scene.destroyMesh(p.mesh));
+          e.parts.forEach(p => destroyVisualMesh(p.mesh));
           game.enemies.splice(j, 1);
         }
         break;
@@ -757,7 +800,7 @@ function updateBullets(dt) {
     }
 
     if (hit) {
-      nova64.scene.destroyMesh(b.mesh);
+      destroyVisualMesh(b.mesh);
       game.bullets.splice(i, 1);
     }
   }
@@ -780,18 +823,17 @@ function updateEnemyBullets(dt) {
       } else {
         p.health -= 25;
         nova64.util.triggerShake(game.shake, 0.4);
-        nova64.fx.enableGlitch(0.5);
-        game.glitchTimer = 0.3;
+        triggerCleanGlitch();
         nova64.audio.sfx('hit');
       }
       createExplosion(p.x, p.y, p.z, PALETTE.playerBody);
-      nova64.scene.destroyMesh(b.mesh);
+      destroyVisualMesh(b.mesh);
       game.enemyBullets.splice(i, 1);
       continue;
     }
 
     if (b.life <= 0 || b.z > 20) {
-      nova64.scene.destroyMesh(b.mesh);
+      destroyVisualMesh(b.mesh);
       game.enemyBullets.splice(i, 1);
     }
   }
@@ -805,15 +847,15 @@ function _local_updateParticles(dt) {
     p.z += p.vz * dt;
     p.life -= dt;
 
-    nova64.scene.setPosition(p.mesh, p.x, p.y, p.z);
-
     const alpha = p.life / p.maxLife;
-    nova64.scene.setScale(p.mesh, alpha, alpha, alpha);
-
-    if (p.life <= 0) {
-      nova64.scene.destroyMesh(p.mesh);
+    if (p.life <= 0 || alpha <= PARTICLE_MIN_VISIBLE_SCALE) {
+      destroyVisualMesh(p.mesh);
       game.particles.splice(i, 1);
+      continue;
     }
+
+    nova64.scene.setPosition(p.mesh, p.x, p.y, p.z);
+    nova64.scene.setScale(p.mesh, alpha, alpha, alpha);
   }
 }
 
@@ -1080,6 +1122,8 @@ export function draw() {
     nova64.ui.drawAllButtons();
     return;
   }
+
+  nova64.draw.cls(nova64.draw.rgba8(0, 0, 0, 0));
 
   nova64.ui.setFont('normal');
   nova64.ui.setTextAlign('left');

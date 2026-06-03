@@ -1,5 +1,6 @@
 ﻿# Nova64 libretro core info
 display_name = "Nova64"
+display_version = "v0.5.2"
 authors = "Nova64"
 supported_extensions = "js"
 corename = "Nova64"

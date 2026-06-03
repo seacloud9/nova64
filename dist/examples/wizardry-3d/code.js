@@ -2297,9 +2297,11 @@ function enterFloor(newFloor) {
   // Richer noise detail on deeper floors for more complex fog wisps
   nova64.util.noiseDetail(Math.min(2 + floor, 6), 0.5);
 
-  // Dynamic bloom tuning per floor — deeper = tighter, more intense bloom
-  const bloomRad = nova64.util.remap(floor, 1, 5, 0.5, 0.25);
-  const bloomThresh = nova64.util.remap(floor, 1, 5, 0.3, 0.15);
+  // Dynamic bloom tuning per floor — deeper floors get slightly broader, more
+  // permissive halos. Stays inside the Three-style HDR knee range so only
+  // emissive/HDR surfaces drive visible bloom.
+  const bloomRad = nova64.util.remap(floor, 1, 5, 0.4, 0.55);
+  const bloomThresh = nova64.util.remap(floor, 1, 5, 0.85, 0.7);
   nova64.fx.setBloomRadius(bloomRad);
   nova64.fx.setBloomThreshold(bloomThresh);
   targetYaw = facing * HALF_PI;
@@ -2352,7 +2354,7 @@ function rebuildMinimap() {
         return py;
       },
       color: nova64.draw.rgba8(255, 60, 60, 255),
-      blink: true,
+      blink: false,
     },
     tiles(tx, ty) {
       if (!explored.has(`${tx},${ty}`)) return null;
@@ -2493,7 +2495,7 @@ export function init() {
   stateMachine = nova64.util.createStateMachine('title');
   animTimer = 0;
   enemyDelay = 0;
-  autoPlay = false;
+  autoPlay = true;
 
   nova64.light.setAmbientLight(0x332222, 0.5);
   nova64.light.setLightDirection(0, -1, 0);
@@ -2503,13 +2505,11 @@ export function init() {
 
   nova64.audio.setVolume(0.6);
   nova64.fx.enableRetroEffects({
-    bloom: { strength: 1.2, radius: 0.5, threshold: 0.2 },
+    bloom: { strength: 0.5, radius: 0.4, threshold: 0.85 },
     vignette: { darkness: 0.9, offset: 0.85 },
     fxaa: true,
     dithering: true,
   });
-  nova64.fx.setBloomRadius(0.5);
-  nova64.fx.setBloomThreshold(0.2);
   nova64.light.createGradientSkybox(0x0a0515, 0x020108);
   nova64.light.enableSkyboxAutoAnimate(0.3);
 
@@ -2802,7 +2802,8 @@ function updateTitle(dt) {
 function updateExplore(dt) {
   if (!nova64.util.cooldownReady(cooldowns.move)) {
     // still in cooldown, but check non-move inputs
-    if (nova64.input.keyp('KeyI') || nova64.input.keyp('Tab')) switchState('inventory');
+    if (nova64.input.keyp('KeyI') || nova64.input.keyp('Tab') || nova64.input.btnp(8))
+      switchState('inventory');
     updateCamera3D();
     return;
   }
@@ -2857,7 +2858,8 @@ function updateExplore(dt) {
     if (rStickX > 0.5) nova64.util.useCooldown(cooldowns.input);
   }
 
-  if (nova64.input.keyp('KeyI') || nova64.input.keyp('Tab')) switchState('inventory');
+  if (nova64.input.keyp('KeyI') || nova64.input.keyp('Tab') || nova64.input.btnp(8))
+    switchState('inventory');
 
   // Click-to-inspect: raycast from camera on mouse click to identify tile ahead
   if (nova64.input.mousePressed() && nova64.input.mouseDown()) {
@@ -3063,7 +3065,11 @@ function updateCombat(dt) {
         }
       }
       advanceCombatTurn();
-    } else if (nova64.input.keyp('Escape') || nova64.input.keyp('Backspace')) {
+    } else if (
+      nova64.input.keyp('Escape') ||
+      nova64.input.keyp('Backspace') ||
+      nova64.input.btnp(5)
+    ) {
       nova64.util.useCooldown(cooldowns.input);
       combatAction = 'choose';
     }
@@ -3105,7 +3111,11 @@ function updateCombat(dt) {
       nova64.audio.sfx('laser');
       castSpellInCombat(member, spell);
       advanceCombatTurn();
-    } else if (nova64.input.keyp('Escape') || nova64.input.keyp('Backspace')) {
+    } else if (
+      nova64.input.keyp('Escape') ||
+      nova64.input.keyp('Backspace') ||
+      nova64.input.btnp(5)
+    ) {
       nova64.util.useCooldown(cooldowns.input);
       combatAction = 'choose';
     }
@@ -3113,7 +3123,13 @@ function updateCombat(dt) {
 }
 
 function updateInventory(dt) {
-  if (nova64.input.keyp('KeyI') || nova64.input.keyp('Tab') || nova64.input.keyp('Escape')) {
+  if (
+    nova64.input.keyp('KeyI') ||
+    nova64.input.keyp('Tab') ||
+    nova64.input.keyp('Escape') ||
+    nova64.input.btnp(5) ||
+    nova64.input.btnp(8)
+  ) {
     nova64.audio.setVolume(0.6); // restore exploration volume
     switchState('explore');
   }
@@ -3268,7 +3284,11 @@ function updateShop(dt) {
         }
       }
       shopTarget = -1;
-    } else if (nova64.input.keyp('Escape') || nova64.input.keyp('Backspace')) {
+    } else if (
+      nova64.input.keyp('Escape') ||
+      nova64.input.keyp('Backspace') ||
+      nova64.input.btnp(5)
+    ) {
       nova64.util.useCooldown(cooldowns.input);
       shopTarget = -1;
     }
@@ -3315,7 +3335,8 @@ function updateShop(dt) {
   } else if (
     nova64.input.keyp('Escape') ||
     nova64.input.keyp('Backspace') ||
-    nova64.input.keyp('KeyX')
+    nova64.input.keyp('KeyX') ||
+    nova64.input.btnp(5)
   ) {
     nova64.util.useCooldown(cooldowns.input);
     // Leave shop → continue to next floor
@@ -3428,12 +3449,17 @@ function drawShopUI() {
         m.alive ? nova64.draw.rgba8(150, 180, 150, 200) : nova64.draw.rgba8(180, 50, 50, 200)
       );
     }
-    nova64.draw.print('Z/Space=Confirm  Esc=Back', 200, 248, nova64.draw.rgba8(100, 100, 120, 150));
+    nova64.draw.print(
+      'Z/Space/(A)=Confirm  Esc/(X)=Back',
+      200,
+      248,
+      nova64.draw.rgba8(100, 100, 120, 150)
+    );
   }
 
   // Controls
   nova64.draw.printCentered(
-    'W/S=Browse  Z/Space=Buy  ESC=Continue to next floor',
+    'W/S/(Stick)=Browse  Z/Space/(A)=Buy  ESC/(X)=Continue to next floor',
     320,
     H - 55,
     nova64.draw.rgba8(120, 120, 150, 200)

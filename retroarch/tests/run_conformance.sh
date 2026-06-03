@@ -879,6 +879,13 @@ run_case      "1105 canvas ui gradient" "retroarch/conformance/1105-canvas-ui-gr
 # animateTransform translate/rotate/scale flowing into x/y, rotation, w/h.
 run_case      "1106 canvas ui animate" "retroarch/conformance/1106-canvas-ui-animate.js" "217aed984e49ece6"
 
+# 1107 parseCanvasUI <filter> with <feGaussianBlur> + <feDropShadow>:
+# filter="url(#id)" on rect/panel/circle renders a drop-shadow flood-color
+# copy at (dx,dy) under the main shape (with stdDeviation expanding the
+# shadow as a soft halo), or fakes Gaussian blur as a jittered shape
+# repaint at half-opacity around the original.
+run_case      "1107 canvas ui filter" "retroarch/conformance/1107-canvas-ui-filter.js" "b4f3d96c4069bc35"
+
 # 291 overlay autoclear regression: locks down the default
 # auto-clearing of the 2D HUD overlay between frames. Without
 # auto-clear, the F-Zero title screen vignette stayed under the

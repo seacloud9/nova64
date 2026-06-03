@@ -23,6 +23,15 @@ Last updated: 2026-06-03
    `<animateTransform>` supports `translate`/`rotate`/`scale` flowing
    into x/y, rotation, w/h. Coverage:
    [retroarch/conformance/1106-canvas-ui-animate.js](conformance/1106-canvas-ui-animate.js).
+3. **Filters** — `<filter>` defs with `<feDropShadow>` (dx/dy/stdDeviation/
+   flood-color/flood-opacity) and `<feGaussianBlur>` (stdDeviation) are
+   referenced via `filter="url(#id)"` on `<rect>`, `<panel>`, and
+   `<circle>`. Drop-shadow renders a flood-color shape copy at (dx,dy)
+   beneath the main fill (with optional soft halo from stdDeviation);
+   blur fakes Gaussian with jittered shape repaints at half-opacity.
+   Framebuffer is non-blending so flood-opacity attenuates RGB rather
+   than producing true transparency. Coverage:
+   [retroarch/conformance/1107-canvas-ui-filter.js](conformance/1107-canvas-ui-filter.js).
 
 **Latest feature shipped:** Web-cart compatibility layer. `examples/*/code.js`
 files now load on the RA runtime **unmodified** — no manual port needed. Compat

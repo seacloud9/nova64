@@ -1061,6 +1061,15 @@ function cleanupScene() {
 
   energyFields.forEach(f => nova64.scene.destroyMesh(f.mesh));
   energyFields = [];
+
+  tunnelSegments.forEach(t => nova64.scene.destroyMesh(t.mesh));
+  tunnelSegments = [];
+
+  digitalTowers.forEach(t => nova64.scene.destroyMesh(t.mesh));
+  digitalTowers = [];
+
+  particleSystems.forEach(p => nova64.scene.destroyMesh(p.mesh));
+  particleSystems = [];
 }
 
 function _local_setupScene(_sceneIndex) {

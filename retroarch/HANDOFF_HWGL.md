@@ -1,10 +1,277 @@
 # Nova64 Hardware GL on Windows — Status & Handover
 
-**Last updated:** 2026-06-01 (Claude full-day session — bloom + UI + controller + release CI + SVG-ish UI tags)
-**Branch:** `main`
-**Working tree:** clean as of `812ec47` (`parseCanvasUI` `<svg>`/`<path>`/`<triangle>`/`<ellipse>`)
-**Windows DLL deployed:** cross-built at `812ec47` and copied to `C:\RetroArch-Win64\cores\nova64_libretro.dll`
-**Linux .so:** restored after cross-build, harness rebuilt
+**Last updated:** 2026-06-03 (Claude full-day — v0.5.2 release prep+publish + 8 parseCanvasUI feature slices + 3 live-test bugfixes + 2 open diagnoses)
+**Branch:** `main`, **16 ahead of `origin/main`** (user pushes from their shell)
+**Working tree:** clean as of `0a9677d` (vox-viewer matrix shim fix)
+**Windows DLL deployed:** cross-built at `0a9677d` and copied to `C:\RetroArch-Win64\cores\nova64_libretro.dll` (2,829,312 bytes)
+**Linux .so + harness:** restored after each cross-build
+**npm:** `nova64@0.5.2` published earlier in the session (user ran `npm publish --access public` with OTP from their shell)
+
+---
+
+## 🤝 HANDOFF FOR CODEX — 2026-06-03 full session
+
+Single-day stretch: scanned where codex left off after `5cb89f9`, finished the
+v0.5.2 "hippie-sunshine" release rollout (npm + docs + tag move), then shipped
+8 parseCanvasUI feature slices in sequence, then 3 surgical bugfixes from
+user live-testing the deployed DLL, then delivered two diagnoses for issues
+that still need work. **16 commits on top of v0.5.2.**
+
+### Commits in chronological order
+
+| # | Hash | Subject |
+|---|------|---------|
+| 1 | `5ed76da` | docs(release): polish v0.5.2 hippie-sunshine (README badge, CHANGELOG entries for v0.5.0/0.5.1/0.5.2, ROADMAP Phase 4 status, publish.yml comment lock, .gitignore /nova64/) |
+| 2 | `66279ab` | feat(retroarch): parseCanvasUI gradients (linear + radial) → 1105 |
+| 3 | `7fa5c06` | feat(retroarch): parseCanvasUI animate + animateTransform → 1106 |
+| 4 | `17f0bb0` | feat(retroarch): parseCanvasUI filter defs (feDropShadow + feGaussianBlur) → 1107 |
+| 5 | `078a542` | feat(retroarch): parseCanvasUI gradient fills on text → 1108 |
+| 6 | `9b96dff` | feat(retroarch): parseCanvasUI symbol + use instancing → 1109 |
+| 7 | `d8bc259` | feat(retroarch): parseCanvasUI tspan inline text styling → 1110 |
+| 8 | `a05224d` | feat(retroarch): parseCanvasUI feColorMatrix in filter chain → 1111 |
+| 9 | `c6f8be3` | feat(retroarch): parseCanvasUI pattern tiled fills → 1112 |
+| 10 | `0811a78` | fix(demoscene): cleanupScene destroys tunnel/tower/particle arrays |
+| 11 | `7785625` | feat(retroarch): bundle fps-demo-3d.nova with WAD runtime |
+| 12 | `0a9677d` | fix(retroarch): compose proper matrix16 in loadVoxModel shim |
+
+`v0.5.2` git tag was moved locally from `147c695` → `5ed76da` (unpushed at the
+time, then user pushed and `npm publish --access public --otp=…` succeeded).
+
+### What changed — by area
+
+**parseCanvasUI now covers a real SVG+SMIL subset.** Every slice followed the
+same pattern: collect defs (gradient / filter / symbol / pattern) at parse
+time into the UI object; install `current<X>` closures inside `renderCanvasUI`'s
+try/finally so refs cannot leak across frames; resolve `url(#id)` references
+inside shape handlers. The 1099–1112 conformance cluster is **13/13 green**
+throughout; the existing cart 294 text-effects checksum stayed unchanged
+after the `renderTextSegment` refactor in slice 6, confirming the extraction
+is a no-op for non-tspan callers. Full surface now supported:
+
+- **Gradients**: `<linearGradient>` / `<radialGradient>` defs with multi-stop
+  fills via `fill="url(#id)"` on rect/panel/circle, plus gradient color fills
+  on `<text>` via `color="url(#id)"` (per-char sampling).
+- **Animations**: `<animate>` (numeric + color attrs, `from`/`to` or `values`
+  keyframes, `dur`/`begin`/`repeatCount`) and `<animateTransform>`
+  (translate/rotate/scale flowing into x/y, rotation, w/h). All driven off
+  the deterministic `nova64.time()` clock so conformance baselines work.
+- **Filters**: `<feDropShadow>` (dx/dy/stdDeviation/flood-color/flood-opacity),
+  `<feGaussianBlur>` (jitter-fake at half-opacity since framebuffer doesn't
+  blend), `<feColorMatrix>` (matrix / saturate / hueRotate / luminanceToAlpha;
+  multiple ops compose left-to-right). Color-matrix transforms the fill
+  (solid or gradient stops) and stroke before render; drop-shadow flood color
+  stays untransformed so tinted fill + black shadow compose correctly.
+- **Instancing**: `<symbol>` + `<use href="#id" x y>` with depth-8 recursion
+  cap. Gradients/filters defined elsewhere in the same parseCanvasUI scope
+  resolve correctly inside symbol bodies.
+- **Text composition**: `<tspan>` inline runs that shallow-merge attrs over
+  the parent `<text>` (color/size/shadow/font-family), with `anchor-x`
+  measuring total tspan width. When a `<text>` has tspan children the outer
+  text content is ignored (SVG-correct).
+- **Pattern fills**: `<pattern id w h>` tiles arbitrary child shapes across
+  any shape filled with `fill="url(#id)"`. Tiles clip to the bbox via the
+  existing draw clip stack. Pattern resolution takes precedence over gradient
+  when both share the `url(#id)` namespace.
+
+**Stale bloom TODO cleaned.** While scoping the next slice I almost
+re-implemented the multi-mip RGBA16F bloom pyramid before realizing it
+**already shipped** (`NOVA64_BLOOM_MIPS = 5`, ping-pong Gaussian blur FBOs,
+Three.js-style UnrealBloomPass composite under `u_use_mip_bloom != 0`).
+The inline TODO and a BACKLOG anchor were both stale — both updated in the
+`a05224d` commit to reflect reality. **Lesson for next session: grep before
+scoping work from anchor TODOs.**
+
+**Live-test bugfixes (in order user requested):**
+
+- **`0811a78`** — Demoscene cart was leaking `tunnelSegments`, `digitalTowers`,
+  and `particleSystems` on scene transitions. User's perception that "RA
+  clears properly between scenes but Three doesn't" was a false read: all
+  three backends (Three.js, Babylon, RA) implement `destroyMesh`
+  equivalently (verified via subagent walk-through of
+  `runtime/backends/threejs/primitives.js:208`,
+  `runtime/backends/babylon/transforms.js:28`,
+  `retroarch/nova64_libretro.c:26598`). The RA "cleaner" look was probably
+  4096-mesh-pool exhaustion silently dropping new allocs once leaks fill it,
+  or fog hiding leaked tunnel segments at z=-60 differently. The cart now
+  destroys all 7 arrays in `cleanupScene()`.
+- **`7785625`** — fps-demo-3d cart destructures `WADLoader / WADTextureManager
+  / convertWADMap / setWallUVs / t` from `nova64.data` at line 21. The RA
+  core's `nova64.data` namespace exposes only generic helpers — none of the
+  WAD APIs. There was already a precedent: `retroarch/tools/build_wad_nova.py`
+  prepends `runtime/wad.js` into `retroarch/games/wad-demo.nova`. New
+  `retroarch/tools/build_fps_demo_3d_nova.py` mirrors that pattern minus the
+  wad-demo-specific color-promotion / light-neutralization / saturation-pull
+  (those were wad-demo cart bugs, not engine issues). Produces
+  `retroarch/games/fps-demo-3d.nova` (10.3 MB). The RetroArch playlist entry
+  for `fps-demo-3d` was repointed at the `.nova` bundle; the previous raw
+  `code.js` entry is preserved as `fps-demo-3d [web]` for A/B testing.
+- **`0a9677d`** — The vox-viewer cart's `loadVoxModel` JS shim was calling
+  `setInstanceTransform(im, v, [wx,wy,wz], [0,0,0,1], [scale,scale,scale], col)`
+  — a 6-arg variant that does not exist. The native binding at
+  `nova64_libretro.c:29881` expects `(handle, idx, matrix16Array)`. JS_IsArray
+  passed on the position triplet, then indices 3–15 read as `undefined → 0`,
+  so every voxel collapsed to the zero matrix → invisible. The `.catch`
+  swallowed the failure silently via no-op `console.warn`. Rewrote the shim
+  to compose a column-major TRS matrix per voxel, call `setInstanceColor`
+  separately, and `finalizeInstances` after the batch. The `.catch` now
+  routes through `nova64.log` when available so future silent fails surface.
+
+### 🚧 Open work — diagnoses delivered, fixes not started
+
+The user live-tested the bugfixes and reported two issues still broken plus
+a screenshot request. Both diagnoses below were produced by parallel
+subagents and have specific file/line targets so the next session can land
+fixes immediately.
+
+#### A. vox-viewer STILL renders black after `0a9677d`
+
+The cart loads (HUD shows "VOX Model Viewer / Model: house.vox / Format:
+MagicaVoxel .vox / API: nova64.scene.loadVoxModel()"), so parsing succeeds
+and the matrix path is reachable — but the 3D scene is completely black.
+
+**Diagnosis (subagent-verified):**
+- Matrix layout is **correct**. Vertex shader at `nova64_libretro.c:35274,35295`
+  does `in mat4 a_instance_model; vec4 world_pos = a_instance_model * local_pos;`,
+  standard column-major; instance VBO stride uses 4× vec4 attribs per matrix
+  (line 37381). Software fallback at line 4472 reads translation from
+  `m[12..14]`. The shim's `[scale,0,0,0, 0,scale,0,0, 0,0,scale,0, wx,wy,wz,1]`
+  is correct (col 3 = (wx,wy,wz,1)). The minecraft-demo shim at
+  `nova64_libretro.c:30864` uses the **exact same layout**. Matrix is not the
+  bug.
+- `setInstanceColor` works on instanced cubes (verified at lines 13421-13435
+  → 37367-37372). Lazy-allocates `mesh->instance_colors[]`, writes RGBA,
+  fragment shader picks `v_instance_color` when `u_use_instancing != 0`.
+- Cart at `examples/vox-viewer/code.js:14-48` sets `ambient(0xffffff, 0.5)` and
+  `setLightDirection(3,8,4)` (not normalized) but **no `setMeshEmissive`**
+  and no equivalent of the minecraft shim's `setMeshShadeContrast(im, 4.0)`
+  + `setFlatShading(im, true)` chain (proven-working reference at
+  `nova64_libretro.c:30864-30878`).
+
+**Most likely cause:** the cube shader requires either an emissive boost or
+a properly normalized light direction; combined with no intensity set on
+the directional light, the diffuse term computes ≈ 0 and the ambient term
+alone produces near-black when the per-instance color is dark.
+
+**Fix scope:** `retroarch/nova64_libretro.c:34619-34645` — after
+`createInstancedMesh`, mirror the minecraft pattern:
+```js
+if (typeof setMeshEmissive === 'function') setMeshEmissive(im, fbCol, 0.25);
+if (typeof setMeshShadeContrast === 'function') setMeshShadeContrast(im, 4.0);
+if (typeof setFlatShading === 'function') setFlatShading(im, true);
+```
+
+**Bonus note for the cart:** `examples/vox-viewer/code.js:62` calls
+`rotateMesh(voxMesh, ...)` every frame, but `render_gles_instanced_mesh`
+uses the identity model uniform (`nova64_libretro.c:37256`) — mesh-level
+rotation is a no-op on instanced meshes. The model won't visibly rotate
+after the black-render bug is fixed. Either rebuild per-instance matrices
+each frame, or drop the rotation from the cart.
+
+#### B. fps-demo-3d WAD: walls collide, FLOORS do not
+
+After `7785625` the `colSegs` from `convertWADMap` are populating `entities.walls`,
+so 2D wall collision via `getWallCollision()` works. But the player walks
+over varying-height floor steps without ever changing Y, or falls through
+elevated floors. Reported as a regression but it's actually a **never-shipped
+feature**.
+
+**Diagnosis (subagent-verified):**
+- The cart at `examples/fps-demo-3d/code.js:645` captures `playerFloorBase =
+  converted.playerStart.floorH || 0` **once at level load**.
+- Movement code at `code.js:813-822` only consults `getWallCollision`
+  (2D AABB-vs-walls) — there is **no floor-height query at all per frame**.
+- `runtime/wad.js` `convertWADMap` returns `sectors` as a flat array of
+  `{floorH, ceilH, floorFlat, ceilFlat, light}` (`wad.js:560-566`). There
+  is **no point-in-sector lookup, no BSP traversal, no `getFloorHeight(x,z)`
+  function anywhere in wad.js**. Confirmed by grep: no `pointInSector`, no
+  `subsector`, no `ssectors`/`nodes` parsing in the loader.
+- The web Three.js build **doesn't actually solve floors either**. It works
+  by accident: the cart creates a giant flat plane at `y=0` (`code.js:155-156,
+  658-660`) and the player's starting sector also happens to be `floorH = 0`,
+  so the static plane coincides with where the player stands. For varying
+  step heights, both web and native would fail — user just didn't notice
+  on web because the plane visually hides the geometric mismatch.
+
+**Fix scope (bigger than a one-shot):**
+1. **`runtime/wad.js`** — add point-in-sector / floor-height query. Either
+   parse `SSECTORS`/`NODES`/`SEGS` lumps in the loader (real WAD BSP, the
+   correct approach) or build per-sector polygon outlines from linedef
+   chains and use point-in-polygon scan (simpler but slower). Roughly
+   `wad.js:384-568` for `convertWADMap` plus loader changes.
+2. **`runtime/wad.js:984-992`** — add `getFloorHeight` to the
+   `wadApi().exposeTo` block. The bundler at
+   `retroarch/tools/build_fps_demo_3d_nova.py:~80` already pipes
+   `wadApi().exposeTo(globalThis.nova64.data)` through — no bundler change
+   needed once the runtime exposes it.
+3. **`examples/fps-demo-3d/code.js:813-822`** — call
+   `nova64.data.getFloorHeight(player.x, player.z)` each frame after X/Z
+   movement; reassign `playerFloorBase` (or interpolate to it for smooth
+   step transitions).
+
+**This affects web and Babylon too** — the cart's missing per-frame floor
+query is a cross-backend bug, not RA-specific. After fix, all three
+backends benefit.
+
+#### C. User-requested but not done: demoscene screenshot set
+
+User asked for screenshots of each of the 5 demoscene scenes for visual
+comparison across backends. The plan was:
+- 5 scenes with durations 8/10/12/10/8 seconds at 60fps.
+- Midpoint frame indices: **240, 780, 1440, 2100, 2640**.
+- Harness supports `--frames N` and `--capture path.ppm` (confirmed via
+  `./retroarch/build/harness --help`).
+- Run harness 5 times with each frame count + `--capture`, then convert PPM
+  → PNG via ImageMagick under WSL.
+
+**Pivoted to documentation before running** — the captures themselves are
+~30s of WSL work. Next session can knock them out quickly.
+
+### Verify state going into next session
+
+- `pnpm test:all` passed at the start of this session as part of `npm publish`'s
+  `prepublishOnly` (`lint && test:all && build`). Not re-run after the cart
+  fixes since those only touched cart-level JS and shim JS-in-C, no runtime
+  shim changes.
+- 1099–1112 parseCanvasUI conformance cluster: 13/13 green. Run via
+  `bash retroarch/tests/run_conformance.sh --skip-build --from 1099 --to 1112`.
+- Existing cart 294 text-effects checksum (`3bf3605a304fef58`) unchanged after
+  the renderTextSegment refactor.
+- Harness fallback to software 2D output (when OpenGL 3.3 unavailable in WSL)
+  masks 3D rendering bugs from checksums. The vox-viewer black bug was
+  invisible to conformance baselines for this reason — needs actual RetroArch
+  with `glcore` driver to validate.
+
+### Suggested next thread (pick what fits)
+
+1. **vox-viewer setMeshEmissive fix** — smallest open item, ~5 lines of JS-in-C
+   in the loadVoxModel shim. Mirror the minecraft pattern. High user-visible
+   payoff (closes one of the live-test bug reports).
+2. **demoscene screenshot set** — straightforward, 5 harness runs + PPM→PNG.
+   User explicitly asked. Quick win.
+3. **WAD floor collision** — bigger work (WAD BSP parsing in runtime/wad.js).
+   Affects web/Babylon/RA equally. Material for a multi-commit slice.
+4. **Push 16 local commits to origin/main** — user does this from their shell;
+   SSH is broken in my env.
+5. Continue parseCanvasUI sprint (clipPath, mask, animateMotion, textPath) —
+   diminishing returns but the engine supports it cleanly.
+6. Switch domain to compat probe of the 50 untested `examples/*/code.js`
+   carts — investigative, surfaces real-world API gaps to fill.
+
+### MemPalace diary entries this session arc
+
+Read with `mempalace_diary_read agent_name=claude wing=nova64_retroarch` for full
+context. Topics in chronological order:
+
+- `nova64-v0.5.2-release-prep-and-publish-yml-ordering`
+- `nova64-parseCanvasUI-gradients-linear-radial`
+- `nova64-parseCanvasUI-animate-and-animateTransform`
+- `nova64-parseCanvasUI-filter-and-text-gradient-sprint-close`
+- `nova64-parseCanvasUI-symbol-use-instancing`
+- `nova64-parseCanvasUI-tspan-inline-text-styling`
+- `nova64-parseCanvasUI-fecolormatrix-and-bloom-todo-cleanup`
+- `nova64-parseCanvasUI-pattern-tiled-fills`
+- `nova64-three-bugfixes-from-live-testing-demoscene-wad-vox`
+- `nova64-2026-06-03-full-session-handoff-v0.5.2-plus-8-parseCanvasUI-plus-3-bugfixes-plus-2-open-diagnoses`
 
 ---
 

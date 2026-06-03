@@ -5,13 +5,24 @@ lives here. Update this file as items are picked up or completed.
 
 Last updated: 2026-06-03
 
-**Post-v0.5.2 features shipped:** `parseCanvasUI` now parses
-`<linearGradient>` / `<radialGradient>` defs and resolves multi-stop
-`fill="url(#id)"` references on `<rect>`, `<panel>`, and `<circle>`.
-Linear gradients rasterize via scanline `rectfill`; 2-stop radials
-reuse the native `fillRadialGradient`, multi-stop radials fall back to
-concentric-ring fills. Coverage:
-[retroarch/conformance/1105-canvas-ui-gradient.js](conformance/1105-canvas-ui-gradient.js).
+**Post-v0.5.2 features shipped:**
+
+1. **Gradients** — `parseCanvasUI` parses `<linearGradient>` /
+   `<radialGradient>` defs and resolves multi-stop `fill="url(#id)"`
+   references on `<rect>`, `<panel>`, and `<circle>`. Linear gradients
+   rasterize via scanline `rectfill`; 2-stop radials reuse the native
+   `fillRadialGradient`, multi-stop radials fall back to concentric-ring
+   fills. Coverage:
+   [retroarch/conformance/1105-canvas-ui-gradient.js](conformance/1105-canvas-ui-gradient.js).
+2. **Animations** — `<animate>` and `<animateTransform>` child tags drive
+   per-frame attribute keyframing off `nova64.time()`. `<animate>` works
+   on numeric attrs (x/y/width/height/r/opacity/font-size) and color
+   attrs (fill/stroke/color/stop-color/shadow-color/outline-color), with
+   `from`/`to` or semicolon `values=` keyframes, `dur` (s/ms), `begin`
+   delay, and `repeatCount` (numeric or `indefinite`).
+   `<animateTransform>` supports `translate`/`rotate`/`scale` flowing
+   into x/y, rotation, w/h. Coverage:
+   [retroarch/conformance/1106-canvas-ui-animate.js](conformance/1106-canvas-ui-animate.js).
 
 **Latest feature shipped:** Web-cart compatibility layer. `examples/*/code.js`
 files now load on the RA runtime **unmodified** — no manual port needed. Compat

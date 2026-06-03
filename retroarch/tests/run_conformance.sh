@@ -873,6 +873,12 @@ run_case      "1104 canvas ui font family" "retroarch/conformance/1104-canvas-ui
 # is omitted.
 run_case      "1105 canvas ui gradient" "retroarch/conformance/1105-canvas-ui-gradient.js" "affe28af2e7d1860"
 
+# 1106 parseCanvasUI <animate> + <animateTransform>: child animation tags
+# sample nova64.time() at render time and override parent attrs each frame.
+# Covers numeric (x, width, r), color (fill), values keyframes, and
+# animateTransform translate/rotate/scale flowing into x/y, rotation, w/h.
+run_case      "1106 canvas ui animate" "retroarch/conformance/1106-canvas-ui-animate.js" "217aed984e49ece6"
+
 # 291 overlay autoclear regression: locks down the default
 # auto-clearing of the 2D HUD overlay between frames. Without
 # auto-clear, the F-Zero title screen vignette stayed under the

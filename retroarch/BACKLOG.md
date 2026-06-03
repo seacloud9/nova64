@@ -58,6 +58,16 @@ Last updated: 2026-06-03
    tspan paths share it (cart 294 text-effects checksum unchanged
    confirms the refactor is a no-op for non-tspan callers). Coverage:
    [retroarch/conformance/1110-canvas-ui-tspan.js](conformance/1110-canvas-ui-tspan.js).
+7. **`<feColorMatrix>` in filter chain** — extends `<filter>` with
+   color-transform primitives: `type="matrix"` (explicit 4×5 row-major),
+   `saturate` (scalar 0..1+), `hueRotate` (degrees), and
+   `luminanceToAlpha`. Convenience types compile to a 4×5 matrix at
+   parse time so render-time is uniform. Multiple feColorMatrix ops in
+   a single `<filter>` compose left-to-right. The matrix transforms
+   the shape's fill (solid color or gradient stops) and stroke before
+   rendering; drop-shadow flood colors stay untransformed so shadow
+   and tinted fill compose correctly. Coverage:
+   [retroarch/conformance/1111-canvas-ui-fecolormatrix.js](conformance/1111-canvas-ui-fecolormatrix.js).
 
 **Latest feature shipped:** Web-cart compatibility layer. `examples/*/code.js`
 files now load on the RA runtime **unmodified** — no manual port needed. Compat
@@ -395,9 +405,11 @@ In rough priority order; pick what fits the user's mood.
 These have inline TODO comments in `nova64_libretro.c` so a future LLM
 will trip over them while editing the relevant code:
 
-- **Multi-mip / RGBA16F bloom** — see comment block above the bloom
-  shader (around `if (u_bloom > 0.0)`). References this backlog +
-  diary topic `nova64-bloom-tuning-three-js-style`.
+- ~~**Multi-mip / RGBA16F bloom**~~ Already shipped: 5-mip downsample +
+  ping-pong Gaussian blur + Three.js-style composite is the active code
+  path when `u_use_mip_bloom != 0`. Inline TODO in `nova64_libretro.c`
+  near the bloom shader is stale and refers to the upgrade that has
+  already landed.
 
 ---
 

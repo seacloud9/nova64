@@ -907,6 +907,14 @@ run_case      "1109 canvas ui symbol use" "retroarch/conformance/1109-canvas-ui-
 # content is ignored — all visible runs go in tspans.
 run_case      "1110 canvas ui tspan" "retroarch/conformance/1110-canvas-ui-tspan.js" "3e0d14ef21855ecf"
 
+# 1111 parseCanvasUI <feColorMatrix> in <filter> chain: supports
+# type=matrix (explicit 4x5), saturate (scalar), hueRotate (degrees),
+# and luminanceToAlpha. Matrix transforms the shape's fill (solid or
+# gradient stops) and stroke before rendering; multiple feColorMatrix
+# ops in a single <filter> compose left-to-right. Drop-shadow flood
+# colors are untouched so shadow renders independent of the transform.
+run_case      "1111 canvas ui fecolormatrix" "retroarch/conformance/1111-canvas-ui-fecolormatrix.js" "3ac68ed8e3521a3c"
+
 # 291 overlay autoclear regression: locks down the default
 # auto-clearing of the 2D HUD overlay between frames. Without
 # auto-clear, the F-Zero title screen vignette stayed under the

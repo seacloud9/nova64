@@ -33232,10 +33232,12 @@ static bool install_nova64_api(JSContext *ctx)
             multi-stop fills via fill="url(#id)", SVG <animate> /
             <animateTransform> children that drive numeric/color attribute
             keyframing off the deterministic nova64.time() clock, and
-            SVG <filter> defs with <feGaussianBlur> / <feDropShadow>
-            referenced via filter="url(#id)" on rect/panel/circle, and
-            <symbol> / <use href="#id" x y> instancing so a single
-            symbol definition can be reused at many positions. */
+            SVG <filter> defs with <feGaussianBlur> / <feDropShadow> /
+            <feColorMatrix> (matrix / saturate / hueRotate /
+            luminanceToAlpha) referenced via filter="url(#id)" on
+            rect/panel/circle, and <symbol> / <use href="#id" x y>
+            instancing so a single symbol definition can be reused at
+            many positions. */
          "(function(){"
            "var W=640,H=360;"
            "var fontFamilies={};"
@@ -33491,6 +33493,98 @@ static bool install_nova64_api(JSContext *ctx)
              "if(!m)return null;"
              "return currentFilters[m[1]]||null;"
            "}"
+           "function parseColorMatrixValues(type,raw){"
+             "var s=raw==null?'':String(raw);"
+             "if(type==='matrix'){"
+               "var parts=s.split(/[\\s,]+/);"
+               "var m=[];"
+               "for(var i=0;i<parts.length;i++){"
+                 "if(parts[i]==='')continue;"
+                 "var n=parseFloat(parts[i]);"
+                 "if(isNaN(n))n=0;"
+                 "m.push(n);"
+               "}"
+               "while(m.length<20)m.push(0);"
+               "return m.slice(0,20);"
+             "}"
+             "if(type==='saturate'){"
+               "var sv=parseFloat(s);"
+               "if(isNaN(sv))sv=1;"
+               "return["
+                 "0.213+0.787*sv,0.715-0.715*sv,0.072-0.072*sv,0,0,"
+                 "0.213-0.213*sv,0.715+0.285*sv,0.072-0.072*sv,0,0,"
+                 "0.213-0.213*sv,0.715-0.715*sv,0.072+0.928*sv,0,0,"
+                 "0,0,0,1,0"
+               "];"
+             "}"
+             "if(type==='hueRotate'){"
+               "var deg=parseFloat(s);"
+               "if(isNaN(deg))deg=0;"
+               "var rad=deg*Math.PI/180;"
+               "var co=Math.cos(rad),si=Math.sin(rad);"
+               "return["
+                 "0.213+co*0.787-si*0.213,0.715-co*0.715-si*0.715,0.072-co*0.072+si*0.928,0,0,"
+                 "0.213-co*0.213+si*0.143,0.715+co*0.285+si*0.140,0.072-co*0.072-si*0.283,0,0,"
+                 "0.213-co*0.213-si*0.787,0.715-co*0.715+si*0.715,0.072+co*0.928+si*0.072,0,0,"
+                 "0,0,0,1,0"
+               "];"
+             "}"
+             "if(type==='luminanceToAlpha'){"
+               "return["
+                 "0,0,0,0,0,"
+                 "0,0,0,0,0,"
+                 "0,0,0,0,0,"
+                 "0.2125,0.7154,0.0721,0,0"
+               "];"
+             "}"
+             /* default identity */
+             "return[1,0,0,0,0,0,1,0,0,0,0,0,1,0,0,0,0,0,1,0];"
+           "}"
+           "function multiplyColorMatrices(a,b){"
+             /* result = a * b (a applied after b). Both are 4x5 in row-major. */
+             "var r=[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0];"
+             "for(var row=0;row<4;row++){"
+               "for(var col=0;col<5;col++){"
+                 "var sum=0;"
+                 "for(var k=0;k<4;k++)sum+=a[row*5+k]*b[k*5+col];"
+                 "if(col===4)sum+=a[row*5+4];"
+                 "r[row*5+col]=sum;"
+               "}"
+             "}"
+             "return r;"
+           "}"
+           "function applyColorMatrix(c,m){"
+             "var r=((c>>>24)&0xff)/255;"
+             "var g=((c>>>16)&0xff)/255;"
+             "var b=((c>>>8)&0xff)/255;"
+             "var a=(c&0xff)/255;"
+             "var nr=m[0]*r+m[1]*g+m[2]*b+m[3]*a+m[4];"
+             "var ng=m[5]*r+m[6]*g+m[7]*b+m[8]*a+m[9];"
+             "var nb=m[10]*r+m[11]*g+m[12]*b+m[13]*a+m[14];"
+             "var na=m[15]*r+m[16]*g+m[17]*b+m[18]*a+m[19];"
+             "function cc(v){var k=Math.round(v*255);return k<0?0:(k>255?255:k);}"
+             "return((cc(nr)<<24)|(cc(ng)<<16)|(cc(nb)<<8)|cc(na))>>>0;"
+           "}"
+           "function combineColorMatrix(filter){"
+             "if(!filter)return null;"
+             "var combined=null;"
+             "for(var i=0;i<filter.length;i++){"
+               "if(filter[i].type!=='colorMatrix')continue;"
+               "combined=combined?multiplyColorMatrices(filter[i].m,combined):filter[i].m;"
+             "}"
+             "return combined;"
+           "}"
+           "function transformGradientByMatrix(grad,m){"
+             "var out={type:grad.type,stops:[]};"
+             "if(grad.type==='linear'){"
+               "out.x1=grad.x1;out.y1=grad.y1;out.x2=grad.x2;out.y2=grad.y2;"
+             "}else{"
+               "out.cx=grad.cx;out.cy=grad.cy;out.r=grad.r;"
+             "}"
+             "for(var i=0;i<grad.stops.length;i++)"
+               "out.stops.push({o:grad.stops[i].o,c:applyColorMatrix(grad.stops[i].c,m)});"
+             "return out;"
+           "}"
            "function parseFilterOps(node){"
              "var ops=[];"
              "if(!node||!node.children)return ops;"
@@ -33512,6 +33606,10 @@ static bool install_nova64_api(JSContext *ctx)
                           "floodOpacity:fo});"
                "}else if(c.tag==='feOffset'){"
                  "ops.push({type:'offset',dx:parseFloat(ca.dx)||0,dy:parseFloat(ca.dy)||0});"
+               "}else if(c.tag==='feColorMatrix'){"
+                 "var mt=ca.type||'matrix';"
+                 "var mv=ca.values!=null?ca.values:ca['matrix'];"
+                 "ops.push({type:'colorMatrix',m:parseColorMatrixValues(mt,mv)});"
                "}"
              "}"
              "return ops;"
@@ -33790,7 +33888,7 @@ static bool install_nova64_api(JSContext *ctx)
            "function renderNode(node,data,handlers,ox,oy,pw,ph){"
              "if(!node)return;"
              "var tag=node.tag;"
-             "if(tag==='defs'||tag==='linearGradient'||tag==='radialGradient'||tag==='stop'||tag==='animate'||tag==='animateTransform'||tag==='filter'||tag==='feGaussianBlur'||tag==='feDropShadow'||tag==='feOffset'||tag==='symbol'||tag==='tspan')return;"
+             "if(tag==='defs'||tag==='linearGradient'||tag==='radialGradient'||tag==='stop'||tag==='animate'||tag==='animateTransform'||tag==='filter'||tag==='feGaussianBlur'||tag==='feDropShadow'||tag==='feOffset'||tag==='feColorMatrix'||tag==='symbol'||tag==='tspan')return;"
              "var a=applyAnimations(node,node.attrs,data);"
              "if(tag==='ui'){"
                "for(var i=0;i<node.children.length;i++)"
@@ -33809,6 +33907,12 @@ static bool install_nova64_api(JSContext *ctx)
                "var radius=num(a.radius,data,0);"
                "var rectFilter=filterRef(a.filter);"
                "if(rectFilter)applyShapeFilter(rectFilter,'rect',x,y,w,h,0,radius,fill,fillGrad,data);"
+               "var rectCM=combineColorMatrix(rectFilter);"
+               "if(rectCM){"
+                 "if(fillGrad)fillGrad=transformGradientByMatrix(fillGrad,rectCM);"
+                 "else if(fill>=0)fill=applyColorMatrix(fill,rectCM);"
+                 "if(stroke>=0)stroke=applyColorMatrix(stroke,rectCM);"
+               "}"
                "if(fillGrad){"
                  "fillGradient(x,y,w,h,fillGrad);"
                "}else if(fill>=0){"
@@ -33823,6 +33927,12 @@ static bool install_nova64_api(JSContext *ctx)
                "var sc=color(a.stroke,data);"
                "var circFilter=filterRef(a.filter);"
                "if(circFilter)applyShapeFilter(circFilter,'circle',x,y,0,0,r,0,fc,fcGrad,data);"
+               "var circCM=combineColorMatrix(circFilter);"
+               "if(circCM){"
+                 "if(fcGrad)fcGrad=transformGradientByMatrix(fcGrad,circCM);"
+                 "else if(fc>=0)fc=applyColorMatrix(fc,circCM);"
+                 "if(sc>=0)sc=applyColorMatrix(sc,circCM);"
+               "}"
                "if(fcGrad){"
                  "fillGradient(x-r,y-r,r*2,r*2,fcGrad);"
                "}else if(fc>=0)nova64.draw.circfill(x,y,r,fc);"
@@ -33918,6 +34028,12 @@ static bool install_nova64_api(JSContext *ctx)
                  "var pradius=num(a.radius,data,0);"
                  "var pFilter=filterRef(a.filter);"
                  "if(pFilter)applyShapeFilter(pFilter,'panel',x,y,w,h,0,pradius,pfill,pfillGrad,data);"
+                 "var pCM=combineColorMatrix(pFilter);"
+                 "if(pCM){"
+                   "if(pfillGrad)pfillGrad=transformGradientByMatrix(pfillGrad,pCM);"
+                   "else if(pfill>=0)pfill=applyColorMatrix(pfill,pCM);"
+                   "if(pstroke>=0)pstroke=applyColorMatrix(pstroke,pCM);"
+                 "}"
                  "if(pfillGrad){"
                    "fillGradient(x,y,w,h,pfillGrad);"
                  "}else if(pfill>=0){"
@@ -37754,20 +37870,14 @@ static bool gles_create_post_program(void)
       "    float aa_t = smoothstep(0.030, 0.16, lmax - lmin) * 0.22;\n"
       "    color.rgb = mix(color.rgb, (px_n + px_s + px_e + px_w) * 0.25, aa_t);\n"
       "  }\n"
-      /* Bloom: 13-tap single-pass approximation of Three.js UnrealBloomPass.
-         Wider kernel + larger weights than before so halos spread softly
-         instead of staying tight on the brightest pixels.
-
-         TODO(explore-later): for a much closer match to UnrealBloomPass at
-         comparable or better perf, swap this for a multi-mip approach —
-         brightpass → downsample to 5 mip levels at 1/2, 1/4, 1/8, 1/16,
-         1/32 → 2-pass separable Gaussian per level → upsample/combine.
-         Cuts texture reads per output pixel and produces much wider, softer
-         halos than a single-pass kernel can. Also consider promoting the
-         post FBO to RGBA16F so HDR brightness > 1.0 survives until the
-         final tonemap, giving the proper bloom rolloff the web reference
-         has. See MemPalace diary topic 'nova64-bloom-tuning-three-js-style'
-         (2026-05-20) for context. */
+      /* Bloom: when u_use_mip_bloom != 0 the active path is the 5-mip
+         RGBA16F pyramid (brightpass → downsample → ping-pong separable
+         Gaussian blur per level → upsample/combine), with u_bloom_style
+         selecting between the verbatim Three.js UnrealBloomPass composite
+         and the classic normalized-average composite that locks earlier
+         conformance checksums. The `else if (u_bloom > 0.0)` branch
+         below is the legacy 13-tap single-pass fallback kept for the
+         rare cart that disables mip-bloom explicitly. */
       "  if (u_bloom > 0.0 && u_use_mip_bloom != 0) {\n"
       "    vec2 buv = vec2(v_uv.x, 1.0 - v_uv.y);\n"
       "    float br = clamp(u_bloom_radius, 0.0, 1.0);\n"

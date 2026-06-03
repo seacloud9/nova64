@@ -61,3 +61,6 @@ nova64-godot/godot_project/assets/
 
 # MemPalace generated entity registry (issue #185)
 entities.json
+
+# Local RetroArch cart save data (storage + highscore JSON written by the core)
+/nova64/

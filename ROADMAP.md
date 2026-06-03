@@ -238,7 +238,22 @@ Exit criteria:
 - bridge latency and frame cost are measured on a representative mobile device
 - Godot host contract is documented and versioned
 
-### Phase 4: RetroArch Core Support
+### Phase 4: RetroArch Core Support — **Shipping & expanding (v0.5.2)** ✅
+
+Status: The libretro core (`retroarch/nova64_libretro.c`) is live, ships
+through `release-cores.yml`, and runs the cart gallery natively. v0.5.2
+adds the **hippie-sunshine** release: `parseCanvasUI` extensions
+(`<image>`, text effects, quadratic / smooth cubic paths, SVG arcs,
+group clipping, advanced cube transparency, font families), RetroPad
+face-key → DOM-key bridging, a new Linux armhf release target via
+`dockcross/linux-armv7`, dockcross zlib hardening for arm64/armhf, and
+a pre-release Linux core smoke test in CI. Cores ship for Linux x86_64,
+Linux ARM64 (Pi), Linux armhf, macOS universal, Windows, and Android
+(arm64-v8a / armeabi-v7a / x86_64).
+
+Remaining work: continued cart-by-cart parity, `.nova` packaging CLI
+polish, and rounding out the smoke matrix on remaining targets
+(`retroarch/GLES_SMOKE_MATRIX.md`).
 
 Goal:
 

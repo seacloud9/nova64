@@ -6,7 +6,7 @@
 
 🌐 **Live Site:** [starcade9.github.io](https://starcade9.github.io/)
 
-[![Version](https://img.shields.io/badge/version-0.5.0-blue.svg)](https://github.com/seacloud9/nova64)
+[![Version](https://img.shields.io/badge/version-0.5.2-blue.svg)](https://github.com/seacloud9/nova64)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Tests](https://img.shields.io/badge/tests-passing-brightgreen.svg)](tests/)
 [![Build](https://img.shields.io/badge/build-passing-brightgreen.svg)](#)
@@ -176,6 +176,44 @@ items:
 - **Deterministic Galaxy Showcase**: The first `tsl-showcase` scene now uses seeded star placement so Babylon.js and Three.js screenshots compare the same galaxy layout
 - **High-Strength Bloom Mapping**: Babylon bloom parameters now better match Three.js for high-glow shader carts without forcing low-strength PBR scenes into the same over-bright path
 - **Focused Guardrail**: `tests/playwright/visual-regression.spec.js` includes a `tsl-showcase` Galaxy scene comparison so future shader/post-processing changes have a narrow parity check
+
+---
+
+## 🌟 **Recent Updates (v0.5.2)** — _Hippie Sunshine_
+
+### 🕹️ **RetroArch Core — Canvas UI + Controller + Cross-Platform CI**
+
+The libretro core (`retroarch/nova64_libretro.c`) gained another wave of
+parity work and a hardened release pipeline:
+
+- **`parseCanvasUI` extensions**: `<image>` tags, text effects, quadratic
+  paths, smooth cubic paths, SVG arcs, group clipping, advanced cube
+  transparency, and font families now render through the XML UI runtime.
+- **Controller face-key bridge**: RetroPad face buttons now map to
+  DOM-style `KeyZ`/`KeyX`/`KeyC`/`KeyV`, and SELECT to `KeyI`/`Tab`, so
+  inventory/menu-style carts work on a gamepad without per-cart edits.
+- **Linux armhf release target**: `release-cores.yml` now ships
+  `nova64_libretro_linux_armhf.so` via `dockcross/linux-armv7`, joining
+  Linux x86_64, macOS universal, Windows, Linux ARM64 (Pi), and Android
+  (3 ABIs).
+- **dockcross zlib hardening**: arm64/armhf cross-builds now build zlib
+  with `-fPIC` from a pinned GitHub tag and preserve shell quoting end-to-end.
+- **Linux core smoke test** runs in CI before release to catch broken
+  cores before they ship.
+
+### 🛡️ **Release Pipeline Hardening**
+
+- `prepublishOnly` strengthened from `validate && build` to
+  `lint && test:all && build` — npm publishes now block on lint + the
+  full test:all suite.
+- CI publish workflow runs tests **before** build (matches prepublishOnly
+  ordering), so a failing suite cannot ship a stale `dist/`.
+
+### 📜 **Agent Guardrails**
+
+[AGENTS.md](AGENTS.md) is now the single source of truth for repo
+guidance across all coding agents (Claude, Codex, Gemini, Copilot).
+`CLAUDE.md` and friends are thin pointers.
 
 ---
 
@@ -929,7 +967,22 @@ MIT — see `LICENSE` for details.
 
 ## Version History
 
-### v0.5.0 (Current) — _The Great Namespace Push_
+### v0.5.2 (Current) — _Hippie Sunshine_
+
+- **RetroArch `parseCanvasUI` extensions**: `<image>` tags, text effects, quadratic / smooth cubic paths, SVG arcs, group clipping, advanced cube transparency, font families
+- **Controller face-key bridge**: RetroPad face buttons → DOM-style `KeyZ`/`KeyX`/`KeyC`/`KeyV`, SELECT → `KeyI`/`Tab`
+- **Linux armhf release target** added to `release-cores.yml` via `dockcross/linux-armv7`
+- **dockcross zlib hardening**: `-fPIC` zlib from pinned GitHub tag, preserved shell quoting
+- **Linux core CI smoke test** before release
+- **`prepublishOnly` hardened** from `validate && build` to `lint && test:all && build`
+- **Publish workflow reordered** so tests run before build, matching `prepublishOnly`
+- **[AGENTS.md](AGENTS.md)** as single source of truth for agent repo guidance
+
+### v0.5.1
+
+- Package metadata refresh and post-namespace-migration polish
+
+### v0.5.0 — _The Great Namespace Push_
 
 - **Grouped `nova64.*` namespace**: 100+ bare globals retired; all 71+ demo carts and every runtime callsite migrated to `nova64.draw.*`, `nova64.scene.*`, `nova64.fx.*`, `nova64.voxel.*`, etc. Single canonical contract in `runtime/namespace.js`
 - **Babylon Noa voxel adapter**: `runtime/backends/babylon/noa-adapter.js` lets Babylon back the shared voxel API with native chunk meshing

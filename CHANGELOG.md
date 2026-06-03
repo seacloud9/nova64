@@ -2,7 +2,75 @@
 
 All notable changes to Nova64 are documented here.
 
-## v0.4.9 (Current)
+## v0.5.2 (Current) — _Hippie Sunshine_
+
+RetroArch core parity push + cross-platform release-cores expansion +
+publish-pipeline hardening.
+
+- **RetroArch core — Canvas UI extensions** (`retroarch/nova64_libretro.c`):
+  - `parseCanvasUI` now renders `<image>` tags, text effects, quadratic
+    Bézier paths, smooth cubic paths, SVG arcs, group clipping, advanced
+    cube transparency, and font-family selection.
+- **RetroArch core — controller face-key bridge**: RetroPad face buttons
+  bridge to DOM-style `KeyZ`/`KeyX`/`KeyC`/`KeyV`, and SELECT bridges to
+  `KeyI`/`Tab`, so inventory/menu carts work on a gamepad without
+  per-cart edits.
+- **release-cores Linux armhf target**: `nova64_libretro_linux_armhf.so`
+  now ships via `dockcross/linux-armv7`, alongside Linux x86_64, macOS
+  universal, Windows, Linux ARM64 (Pi), and Android (3 ABIs).
+- **dockcross zlib hardening**: arm64/armhf cross-builds now build zlib
+  with `-fPIC` from a pinned GitHub tag, with shell quoting preserved
+  end-to-end through CI.
+- **Linux core CI smoke test**: runs before the npm/release publish to
+  catch broken cores before they ship.
+- **`prepublishOnly` hardened**: was `validate && build`, now
+  `lint && test:all && build` — npm publishes are blocked on lint and
+  the full `test:all` suite.
+- **Publish workflow ordering**: `.github/workflows/publish.yml` runs
+  tests **before** build so a failing suite cannot ship a stale `dist/`
+  (matches the strengthened `prepublishOnly`).
+- **Agent guardrails consolidated**: `AGENTS.md` is now the single source
+  of truth for repo guidance across all coding agents. `CLAUDE.md`,
+  `CODEX.md`, `GEMINI.md`, `COPILOT.md` are thin pointers.
+- **Local cart save dir gitignored**: `/nova64/` (runtime save data
+  written by the RetroArch core under local testing) is no longer
+  surfaced in `git status`.
+
+## v0.5.1
+
+- Package metadata refresh and post-namespace-migration polish.
+
+## v0.5.0 — _The Great Namespace Push_
+
+- **Grouped `nova64.*` namespace**: 100+ bare globals retired. Every
+  cart in the official gallery (71+) and every internal runtime callsite
+  migrated to `nova64.draw.*`, `nova64.scene.*`, `nova64.camera.*`,
+  `nova64.light.*`, `nova64.fx.*`, `nova64.shader.*`, `nova64.input.*`,
+  `nova64.audio.*`, `nova64.physics.*`, `nova64.voxel.*`, `nova64.ui.*`,
+  `nova64.tween.*`, `nova64.sprite.*`, `nova64.data.*`, `nova64.util.*`,
+  `nova64.xr.*`, `nova64.wad.*`. `runtime/namespace.js` (`NAMESPACE_MAP`
+  + `buildNamespace()`) is the single canonical cart-facing contract
+  shared by Three.js, Babylon, and Godot.
+- **Babylon Noa voxel adapter**: `runtime/backends/babylon/noa-adapter.js`
+  + `noa-prototype.js` lets Babylon back the shared `nova64.voxel.*` API
+  with native chunk meshing — identical cart code, two voxel runtimes.
+- **Babylon WAD/XR/TSL parity**: WAD walls/floors/sprites flow through
+  the same engine-assigned mesh proxy path Three.js uses; native Babylon
+  WebXR (`@babylonjs/core` 9.4.1) with Cardboard fallback; deterministic
+  seeded TSL galaxy showcase guardrail.
+- **Godot native host trunk-class**: `minecraft-demo`, `f-zero-nova-3d`,
+  `star-fox-nova-3d`, `space-harrier-3d`, `fps-demo-3d` (with WAD map
+  picker) running natively via GDExtension + QuickJS; JS syntax
+  highlighting + ESLint wired into the Godot editor for cart `code.js`
+  files.
+- **Runtime hardening**: cart-reset hook registry
+  (`runtime/cart-reset.js`), `_loadGeneration` race guard in the cart
+  loader, namespace-aware effects pipeline so stale bindings cannot
+  silently no-op.
+- **Migration tooling shipped**: `scripts/migrate-to-namespace.{cjs,js}`,
+  `scripts/audit-carts.mjs`, `scripts/walk-carts.mjs`.
+
+## v0.4.9
 
 - **Godot native host — merged to trunk** 🎉:
   - The GDExtension (`nova64-godot/gdextension/`), QuickJS bridge,

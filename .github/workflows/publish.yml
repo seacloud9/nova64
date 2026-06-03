@@ -32,6 +32,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # Order intentional: must match package.json prepublishOnly
+      # (lint && test:all && build). Tests run before build so a failing
+      # suite cannot ship a stale dist/.
       - name: Run tests
         run: pnpm test
 

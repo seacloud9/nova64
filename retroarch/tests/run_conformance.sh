@@ -900,6 +900,13 @@ run_case      "1108 canvas ui text gradient" "retroarch/conformance/1108-canvas-
 # capped at depth 8 so a self-referencing symbol cannot lock the renderer.
 run_case      "1109 canvas ui symbol use" "retroarch/conformance/1109-canvas-ui-symbol-use.js" "eb898350553ffdbe"
 
+# 1110 parseCanvasUI <tspan> inline text styling: <text> with <tspan>
+# children renders each tspan as a left-to-right segment with its own
+# color/size/shadow merged over the parent attrs. anchor-x measures
+# total tspan width. When a text has tspan children the outer text
+# content is ignored — all visible runs go in tspans.
+run_case      "1110 canvas ui tspan" "retroarch/conformance/1110-canvas-ui-tspan.js" "3e0d14ef21855ecf"
+
 # 291 overlay autoclear regression: locks down the default
 # auto-clearing of the 2D HUD overlay between frames. Without
 # auto-clear, the F-Zero title screen vignette stayed under the

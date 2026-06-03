@@ -48,6 +48,16 @@ Last updated: 2026-06-03
    depth 8 so a self-referencing symbol cannot lock the renderer.
    Coverage:
    [retroarch/conformance/1109-canvas-ui-symbol-use.js](conformance/1109-canvas-ui-symbol-use.js).
+6. **`<tspan>` inline text styling** — `<text>` with `<tspan>` children
+   renders each tspan as a styled segment laid out left-to-right from
+   the text's `x`. Tspan attrs merge over the parent `<text>` attrs
+   (color, size, shadow, font-family, etc.), so `SCORE: <tspan
+   color="#ff0">123</tspan>` mixes label and value colors in one run.
+   `anchor-x` measures the total tspan width. Shadow/outline logic was
+   pulled into a `renderTextSegment` helper so both leaf-text and
+   tspan paths share it (cart 294 text-effects checksum unchanged
+   confirms the refactor is a no-op for non-tspan callers). Coverage:
+   [retroarch/conformance/1110-canvas-ui-tspan.js](conformance/1110-canvas-ui-tspan.js).
 
 **Latest feature shipped:** Web-cart compatibility layer. `examples/*/code.js`
 files now load on the RA runtime **unmodified** — no manual port needed. Compat

@@ -915,6 +915,13 @@ run_case      "1110 canvas ui tspan" "retroarch/conformance/1110-canvas-ui-tspan
 # colors are untouched so shadow renders independent of the transform.
 run_case      "1111 canvas ui fecolormatrix" "retroarch/conformance/1111-canvas-ui-fecolormatrix.js" "3ac68ed8e3521a3c"
 
+# 1112 parseCanvasUI <pattern> tiled fills: pattern children render
+# repeatedly across the filled bbox of a shape using fill="url(#id)".
+# Tile size comes from pattern width/height; clipping uses the draw
+# clip stack so tiles do not bleed outside the shape. Pattern resolution
+# takes precedence over gradient when both share the url(#id) namespace.
+run_case      "1112 canvas ui pattern" "retroarch/conformance/1112-canvas-ui-pattern.js" "19758a20e761715d"
+
 # 291 overlay autoclear regression: locks down the default
 # auto-clearing of the 2D HUD overlay between frames. Without
 # auto-clear, the F-Zero title screen vignette stayed under the

@@ -68,6 +68,14 @@ Last updated: 2026-06-03
    rendering; drop-shadow flood colors stay untransformed so shadow
    and tinted fill compose correctly. Coverage:
    [retroarch/conformance/1111-canvas-ui-fecolormatrix.js](conformance/1111-canvas-ui-fecolormatrix.js).
+8. **`<pattern>` tiled fills** — `<pattern id w h>` in `<defs>` hosts
+   arbitrary child shapes that render repeatedly across the bounds of
+   any shape filled with `fill="url(#id)"`. Tile size comes from
+   pattern `width`/`height` (default 20×20). Tiles render through the
+   existing draw clip stack so they do not bleed outside the shape's
+   bbox. Pattern resolution takes precedence over gradient when both
+   share the `url(#id)` namespace. Coverage:
+   [retroarch/conformance/1112-canvas-ui-pattern.js](conformance/1112-canvas-ui-pattern.js).
 
 **Latest feature shipped:** Web-cart compatibility layer. `examples/*/code.js`
 files now load on the RA runtime **unmodified** — no manual port needed. Compat

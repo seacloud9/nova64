@@ -32,6 +32,14 @@ Last updated: 2026-06-03
    Framebuffer is non-blending so flood-opacity attenuates RGB rather
    than producing true transparency. Coverage:
    [retroarch/conformance/1107-canvas-ui-filter.js](conformance/1107-canvas-ui-filter.js).
+4. **Text gradients** — `<text>` now accepts gradient fills via
+   `color="url(#id)"`. Each character samples the gradient at its
+   center mapped to the 0..1 axis on the gradient bbox, so linear and
+   radial gradients flow across the string. Solid `color="#xxxxxx"`
+   paths and the existing shadow/outline passes remain solid (gradient
+   only triggers when `color` resolves to 0, i.e. the `url()` fallback
+   case, so `shadow-color` and `outline-color` are unaffected). Coverage:
+   [retroarch/conformance/1108-canvas-ui-text-gradient.js](conformance/1108-canvas-ui-text-gradient.js).
 
 **Latest feature shipped:** Web-cart compatibility layer. `examples/*/code.js`
 files now load on the RA runtime **unmodified** — no manual port needed. Compat

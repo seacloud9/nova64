@@ -886,6 +886,13 @@ run_case      "1106 canvas ui animate" "retroarch/conformance/1106-canvas-ui-ani
 # repaint at half-opacity around the original.
 run_case      "1107 canvas ui filter" "retroarch/conformance/1107-canvas-ui-filter.js" "b4f3d96c4069bc35"
 
+# 1108 parseCanvasUI gradient fills on <text>: color="url(#id)" samples
+# the gradient per-character (each char's center maps to a 0..1 axis on
+# the gradient bbox). Solid color="#xxxxxx" paths and shadow/outline
+# passes remain solid (gradient only triggers when color resolves to 0,
+# i.e. the url() fallback case).
+run_case      "1108 canvas ui text gradient" "retroarch/conformance/1108-canvas-ui-text-gradient.js" "31f9650f67db914b"
+
 # 291 overlay autoclear regression: locks down the default
 # auto-clearing of the 2D HUD overlay between frames. Without
 # auto-clear, the F-Zero title screen vignette stayed under the

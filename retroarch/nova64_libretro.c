@@ -34622,17 +34622,34 @@ static bool install_nova64_api(JSContext *ctx)
                "var cx=(pos&&pos[0])||0,cy=(pos&&pos[1])||0,cz=(pos&&pos[2])||0;"
                "var hx=sx*0.5,hy=sy*0.5,hz=sz*0.5;"
                /* Voxel side is `scale`. Center model on the requested position. */
+               /* Native setInstanceTransform expects ONE 16-float column-major
+                  matrix as argv[2] — NOT (pos,quat,scale,color) separately.
+                  Compose a translation+uniform-scale TRS matrix per voxel and
+                  set the color via the separate setInstanceColor binding. */
                "for(var v=0;v<maxInst;v++){"
                  "var vx=u8[xyziStart+v*4],vy=u8[xyziStart+v*4+1],vz=u8[xyziStart+v*4+2],ci=u8[xyziStart+v*4+3];"
                  "var col=palette[ci]||fbCol;"
                  /* .vox uses Z-up (X,Y horizontal, Z vertical). Map Z->Y. */
                  "var wx=cx+(vx-hx)*scale,wy=cy+(vz-hz)*scale,wz=cz+(vy-hy)*scale;"
-                 "if(typeof setInstanceTransform==='function')"
-                   "setInstanceTransform(im,v,[wx,wy,wz],[0,0,0,1],[scale,scale,scale],col);"
+                 "if(typeof setInstanceTransform==='function'){"
+                   "setInstanceTransform(im,v,["
+                     "scale,0,0,0,"
+                     "0,scale,0,0,"
+                     "0,0,scale,0,"
+                     "wx,wy,wz,1"
+                   "]);"
+                 "}"
+                 "if(typeof setInstanceColor==='function')setInstanceColor(im,v,col);"
                "}"
+               "if(typeof finalizeInstances==='function')finalizeInstances(im);"
                "return im;"
              "}).catch(function(e){"
-               "if(typeof console!=='undefined'&&console.warn)console.warn('loadVoxModel:',e.message||e);"
+               /* Surface loader failures via nova64.log if available (the JS
+                  console.warn is typically a no-op in the libretro core), so
+                  silent .vox failures show up in [nova64] log lines. */
+               "var msg='loadVoxModel: '+(e&&e.message?e.message:e);"
+               "if(typeof nova64!=='undefined'&&nova64.log&&typeof nova64.log==='function')nova64.log(msg);"
+               "else if(typeof console!=='undefined'&&console.warn)console.warn(msg);"
                "return placeholder();"
              "});"
            "};globalThis.loadVoxModel=nova64.scene.loadVoxModel;"

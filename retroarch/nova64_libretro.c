@@ -33233,12 +33233,16 @@ static bool install_nova64_api(JSContext *ctx)
             <animateTransform> children that drive numeric/color attribute
             keyframing off the deterministic nova64.time() clock, and
             SVG <filter> defs with <feGaussianBlur> / <feDropShadow>
-            referenced via filter="url(#id)" on rect/panel/circle. */
+            referenced via filter="url(#id)" on rect/panel/circle, and
+            <symbol> / <use href="#id" x y> instancing so a single
+            symbol definition can be reused at many positions. */
          "(function(){"
            "var W=640,H=360;"
            "var fontFamilies={};"
            "var currentGradients=null;"
            "var currentFilters=null;"
+           "var currentSymbols=null;"
+           "var useDepth=0;"
            "function parseXml(xml){"
              "xml=xml.replace(/<!--[\\s\\S]*?-->/g,'');"
              "var pos=0;"
@@ -33496,6 +33500,23 @@ static bool install_nova64_api(JSContext *ctx)
                  "collectFilters(node.children[i],out);"
              "}"
            "}"
+           "function collectSymbols(node,out){"
+             "if(!node)return;"
+             "if(node.tag==='symbol'){"
+               "var a=node.attrs||{};"
+               "if(a.id)out[a.id]=node;"
+             "}"
+             "if(node.children){"
+               "for(var i=0;i<node.children.length;i++)"
+                 "collectSymbols(node.children[i],out);"
+             "}"
+           "}"
+           "function resolveUseHref(val){"
+             "if(!currentSymbols||typeof val!=='string')return null;"
+             "var s=val.replace(/^\\s+|\\s+$/g,'');"
+             "if(s.charAt(0)==='#')s=s.substring(1);"
+             "return currentSymbols[s]||null;"
+           "}"
            "function applyOpacityToColor(c,op){"
              "var r=(c>>>24)&0xff,g=(c>>>16)&0xff,b=(c>>>8)&0xff,a=c&0xff;"
              "var f=Math.max(0,Math.min(1,op));"
@@ -33742,7 +33763,7 @@ static bool install_nova64_api(JSContext *ctx)
            "function renderNode(node,data,handlers,ox,oy,pw,ph){"
              "if(!node)return;"
              "var tag=node.tag;"
-             "if(tag==='defs'||tag==='linearGradient'||tag==='radialGradient'||tag==='stop'||tag==='animate'||tag==='animateTransform'||tag==='filter'||tag==='feGaussianBlur'||tag==='feDropShadow'||tag==='feOffset')return;"
+             "if(tag==='defs'||tag==='linearGradient'||tag==='radialGradient'||tag==='stop'||tag==='animate'||tag==='animateTransform'||tag==='filter'||tag==='feGaussianBlur'||tag==='feDropShadow'||tag==='feOffset'||tag==='symbol')return;"
              "var a=applyAnimations(node,node.attrs,data);"
              "if(tag==='ui'){"
                "for(var i=0;i<node.children.length;i++)"
@@ -34125,6 +34146,18 @@ static bool install_nova64_api(JSContext *ctx)
                    "}"
                  "}"
                "}"
+             "}else if(tag==='use'){"
+               /* <use href="#id" x y> instances a <symbol> at a translated
+                  origin. Recursion is capped at depth 8 so a self-
+                  referencing symbol cannot lock the renderer. */
+               "if(useDepth>=8)return;"
+               "var sym=resolveUseHref(a.href||a['xlink:href']);"
+               "if(sym&&sym.children){"
+                 "useDepth++;"
+                 "for(var ui=0;ui<sym.children.length;ui++)"
+                   "renderNode(sym.children[ui],data,handlers,x,y,w||pw,h||ph);"
+                 "useDepth--;"
+               "}"
              "}else if(tag==='button'){"
                /* Mouse hover + click dispatches to handlers[onclick]. No
                   d-pad navigation in XML-button v1 — carts that want
@@ -34162,9 +34195,11 @@ static bool install_nova64_api(JSContext *ctx)
              "var root=parseXml(xml);"
              "var grads={};"
              "var filts={};"
+             "var syms={};"
              "collectGradients(root,grads);"
              "collectFilters(root,filts);"
-             "return{root:root,data:{},gradients:grads,filters:filts};"
+             "collectSymbols(root,syms);"
+             "return{root:root,data:{},gradients:grads,filters:filts,symbols:syms};"
            "};"
            "nova64.ui.registerFontFamily=registerFontFamily;"
            "nova64.ui.fontFamilies=fontFamilies;"
@@ -34174,8 +34209,10 @@ static bool install_nova64_api(JSContext *ctx)
              "var d=data||ui.data||{};"
              "currentGradients=ui.gradients||null;"
              "currentFilters=ui.filters||null;"
+             "currentSymbols=ui.symbols||null;"
+             "useDepth=0;"
              "try{renderNode(ui.root,d,handlers||{},0,0,W,H);}"
-             "finally{currentGradients=null;currentFilters=null;}"
+             "finally{currentGradients=null;currentFilters=null;currentSymbols=null;}"
            "};"
          "})();"
 

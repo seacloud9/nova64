@@ -40,6 +40,14 @@ Last updated: 2026-06-03
    only triggers when `color` resolves to 0, i.e. the `url()` fallback
    case, so `shadow-color` and `outline-color` are unaffected). Coverage:
    [retroarch/conformance/1108-canvas-ui-text-gradient.js](conformance/1108-canvas-ui-text-gradient.js).
+5. **Symbol + use instancing** — `<symbol id>` in `<defs>` can be
+   instanced many times via `<use href="#id" x y>`. The symbol's
+   children render with the use's `(x,y)` as their origin, and
+   gradients/filters defined elsewhere in the same parseCanvasUI scope
+   resolve correctly inside symbol bodies. Recursion is capped at
+   depth 8 so a self-referencing symbol cannot lock the renderer.
+   Coverage:
+   [retroarch/conformance/1109-canvas-ui-symbol-use.js](conformance/1109-canvas-ui-symbol-use.js).
 
 **Latest feature shipped:** Web-cart compatibility layer. `examples/*/code.js`
 files now load on the RA runtime **unmodified** — no manual port needed. Compat

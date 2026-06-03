@@ -893,6 +893,13 @@ run_case      "1107 canvas ui filter" "retroarch/conformance/1107-canvas-ui-filt
 # i.e. the url() fallback case).
 run_case      "1108 canvas ui text gradient" "retroarch/conformance/1108-canvas-ui-text-gradient.js" "31f9650f67db914b"
 
+# 1109 parseCanvasUI <symbol> + <use> instancing: <symbol id> in <defs>
+# can be instanced many times via <use href="#id" x y>. Symbol children
+# render with the use's (x,y) as their origin; gradients/filters inside
+# symbols resolve against the outer parseCanvasUI scope. Recursion is
+# capped at depth 8 so a self-referencing symbol cannot lock the renderer.
+run_case      "1109 canvas ui symbol use" "retroarch/conformance/1109-canvas-ui-symbol-use.js" "eb898350553ffdbe"
+
 # 291 overlay autoclear regression: locks down the default
 # auto-clearing of the 2D HUD overlay between frames. Without
 # auto-clear, the F-Zero title screen vignette stayed under the

@@ -866,6 +866,13 @@ run_case      "1103 advanced cube transparency" "retroarch/conformance/1103-adva
 # resolve registered bitmap-font handles or fall back deterministically.
 run_case      "1104 canvas ui font family" "retroarch/conformance/1104-canvas-ui-font-family.js" "711baf9cb621e9a3"
 
+# 1105 parseCanvasUI <linearGradient> / <radialGradient> defs: multi-stop
+# gradients referenced via fill="url(#id)" render via scanline fills (linear)
+# or native fillRadialGradient + ring fallback (radial). Stops accept hex
+# colors and stop-opacity, sorted by offset, with implicit 2nd stop when one
+# is omitted.
+run_case      "1105 canvas ui gradient" "retroarch/conformance/1105-canvas-ui-gradient.js" "affe28af2e7d1860"
+
 # 291 overlay autoclear regression: locks down the default
 # auto-clearing of the 2D HUD overlay between frames. Without
 # auto-clear, the F-Zero title screen vignette stayed under the

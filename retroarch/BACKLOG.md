@@ -3,7 +3,15 @@
 Anything that's a known issue, a deferred investigation, or a queued feature
 lives here. Update this file as items are picked up or completed.
 
-Last updated: 2026-05-24
+Last updated: 2026-06-03
+
+**Post-v0.5.2 features shipped:** `parseCanvasUI` now parses
+`<linearGradient>` / `<radialGradient>` defs and resolves multi-stop
+`fill="url(#id)"` references on `<rect>`, `<panel>`, and `<circle>`.
+Linear gradients rasterize via scanline `rectfill`; 2-stop radials
+reuse the native `fillRadialGradient`, multi-stop radials fall back to
+concentric-ring fills. Coverage:
+[retroarch/conformance/1105-canvas-ui-gradient.js](conformance/1105-canvas-ui-gradient.js).
 
 **Latest feature shipped:** Web-cart compatibility layer. `examples/*/code.js`
 files now load on the RA runtime **unmodified** — no manual port needed. Compat

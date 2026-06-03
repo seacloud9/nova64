@@ -12,7 +12,7 @@ SAVE_DIR="retroarch/build/conformance-saves"
 SCREENSHOT_DIR="screenshots/retroarch"
 RECENT_COUNT=0
 RANGE_FROM=0
-RANGE_TO=999
+RANGE_TO=9999
 SKIP_BUILD=0
 
 while [[ $# -gt 0 ]]; do
@@ -46,7 +46,7 @@ LATEST_CASE="${LATEST_CASE:-0}"
 if [[ "${RECENT_COUNT}" -gt 0 ]]; then
   RANGE_FROM=$((10#${LATEST_CASE} - RECENT_COUNT + 1))
   if [[ "${RANGE_FROM}" -lt 0 ]]; then RANGE_FROM=0; fi
-  RANGE_TO=999
+  RANGE_TO=9999
 fi
 
 if [[ "${SKIP_BUILD}" -eq 0 ]]; then
@@ -292,7 +292,7 @@ should_run_label() {
     return
   fi
   # Non-numeric labels (nova package cases) run only on full suite
-  [[ "${RANGE_FROM}" -eq 0 && "${RANGE_TO}" -eq 999 ]]
+  [[ "${RANGE_FROM}" -eq 0 && "${RANGE_TO}" -eq 9999 ]]
 }
 
 run_command_log_case() {
@@ -860,7 +860,11 @@ run_case      "1102 canvas ui group clip" "retroarch/conformance/1102-canvas-ui-
 
 # 1103 createAdvancedCube transparency: opacity/transparent options flow
 # through the web-style shim into native mesh state.
-run_case      "1103 advanced cube transparency" "retroarch/conformance/1103-advanced-cube-transparency.js" "9a1c4be7b04b9177"
+run_case      "1103 advanced cube transparency" "retroarch/conformance/1103-advanced-cube-transparency.js" "9a1c4be7b04b9177" 5
+
+# 1104 parseCanvasUI font families: font-family/fontFamily aliases can
+# resolve registered bitmap-font handles or fall back deterministically.
+run_case      "1104 canvas ui font family" "retroarch/conformance/1104-canvas-ui-font-family.js" "711baf9cb621e9a3"
 
 # 291 overlay autoclear regression: locks down the default
 # auto-clearing of the 2D HUD overlay between frames. Without

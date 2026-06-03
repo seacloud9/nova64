@@ -136,15 +136,16 @@ Bigger ticket items also pending:
   source-rect crop attributes. Path supports `M/m`, `L/l`, `H/h`, `V/v`,
   `C/c`, `S/s`, `Q/q`, `T/t` (16-segment bezier approximation),
   `A/a` (elliptical arc polyline approximation), `Z/z`. Text tags support
-  `shadow`/`shadow-color`/`shadow-blur` and `outline`/`outline-color`.
+  `shadow`/`shadow-color`/`shadow-blur`, `outline`/`outline-color`, and
+  `font-family`/`fontFamily` aliases backed by bitmap font handles or
+  deterministic fallback metrics.
   `<svg>` is a coordinate-translation container (no clip). Verified
   against `examples/hud-demo`, `examples/canvas-ui-showcase`, a packaged
   image-smoke cart, `294-canvas-ui-text-effects`, and
   `1099-canvas-ui-svg-quadratic` / `1100-canvas-ui-svg-smooth-cubic` /
-  `1101-canvas-ui-svg-arcs` / `1102-canvas-ui-group-clip` — all render
-  clean.
-  Remaining gaps (carts that need these should fall back to direct draw):
-  custom font families.
+  `1101-canvas-ui-svg-arcs` / `1102-canvas-ui-group-clip` /
+  `1104-canvas-ui-font-family` — all render clean.
+  No in-tree parseCanvasUI feature gaps are currently known.
 - ~~**Per-mesh alpha / transparency.**~~ Shipped. `createAdvancedCube` now
   forwards `opts.opacity` and `opts.transparent` into native mesh state,
   `setMeshTransparent(mesh, on)` is exposed, and the GLES transparent pass

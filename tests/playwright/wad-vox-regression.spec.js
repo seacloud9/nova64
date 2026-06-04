@@ -106,7 +106,10 @@ function distanceBetweenPoints(a, b) {
 }
 
 async function getNovaStoreState(page) {
-  return await page.evaluate(() => globalThis.novaStore?.getState?.() ?? null);
+  return await page.evaluate(
+    () =>
+      globalThis.nova64?.data?.novaStore?.getState?.() ?? globalThis.novaStore?.getState?.() ?? null
+  );
 }
 
 async function getHiddenSceneMeshCount(page) {
@@ -359,8 +362,8 @@ test.describe('Cart Reset Regression', () => {
       window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyW', bubbles: true }));
       window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Space', bubbles: true }));
       return {
-        w: globalThis.key?.('KeyW') ?? false,
-        space: globalThis.key?.('Space') ?? false,
+        w: globalThis.nova64?.input?.key?.('KeyW') ?? globalThis.key?.('KeyW') ?? false,
+        space: globalThis.nova64?.input?.key?.('Space') ?? globalThis.key?.('Space') ?? false,
       };
     });
 
@@ -373,8 +376,8 @@ test.describe('Cart Reset Regression', () => {
       .poll(
         async () =>
           await page.evaluate(() => ({
-            w: globalThis.key?.('KeyW') ?? false,
-            space: globalThis.key?.('Space') ?? false,
+            w: globalThis.nova64?.input?.key?.('KeyW') ?? globalThis.key?.('KeyW') ?? false,
+            space: globalThis.nova64?.input?.key?.('Space') ?? globalThis.key?.('Space') ?? false,
           })),
         { timeout: 10000 }
       )

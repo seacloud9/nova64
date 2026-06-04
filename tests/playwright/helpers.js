@@ -134,12 +134,15 @@ export async function waitFor3DScene(page, backend) {
   const canvasSelector = '#screen';
   await page.waitForSelector(canvasSelector, { timeout: 30000 });
 
-  // Wait for Nova64 API to be available (global functions exposed)
+  // Wait for Nova64 API to be available. Current carts use the namespaced API;
+  // older tests/carts may still expose flat globals.
   await page.waitForFunction(
     () => {
       return (
-        typeof globalThis.nova64?.createCube === 'function' &&
-        typeof globalThis.nova64?.setCameraPosition === 'function'
+        (typeof globalThis.nova64?.scene?.createCube === 'function' ||
+          typeof globalThis.nova64?.createCube === 'function') &&
+        (typeof globalThis.nova64?.camera?.setCameraPosition === 'function' ||
+          typeof globalThis.nova64?.setCameraPosition === 'function')
       );
     },
     { timeout: 30000 }

@@ -53,9 +53,10 @@ User reported three live issues after the prior handoff:
   returns low floor `0`, high floor `2`.
 - `pnpm exec playwright test tests/playwright/wad-vox-regression.spec.js -g 'WAD Regression' --reporter=line`:
   2/2 pass.
-- Full `tests/playwright/wad-vox-regression.spec.js` still has unrelated
-  existing failures after WAD tests, mostly `waitFor3DScene()` expecting flat
-  `globalThis.nova64.createCube` and two cart-reset assertions.
+- Follow-up slice modernized stale Playwright flat-global assumptions in
+  `tests/playwright/helpers.js` and `tests/playwright/wad-vox-regression.spec.js`;
+  full `tests/playwright/wad-vox-regression.spec.js --reporter=line` is now
+  13/13 pass.
 - RetroArch harness smokes:
   - `vox-viewer.nova --gles --frames 180`: pass, visible model captured.
   - `wad-demo.nova --gles --frames 240`: pass.

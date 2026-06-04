@@ -105,7 +105,7 @@ function cumulativeSceneTime(sceneIndex, atTime) {
 function installDebugControls() {
   globalThis.__nova64DemosceneJumpTo = (sceneIndex, atTime = 0, freeze = true) => {
     const next = Math.max(0, Math.min(SCENES.length - 1, Number(sceneIndex) || 0));
-    cleanupScene();
+    cleanupScene({ preserveIntroScene: next === 0 });
     resetRandom();
     gameState = 'playing';
     currentScene = next;
@@ -1045,7 +1045,8 @@ function transitionToNextScene() {
   console.log(`✨ Now showing: ${SCENES[currentScene].name}`);
 }
 
-function cleanupScene() {
+function cleanupScene(options = {}) {
+  const preserveIntroScene = !!options.preserveIntroScene;
   // Remove all dynamic objects (keep start scene for now)
   dataStreams.forEach(s => nova64.scene.destroyMesh(s.mesh));
   dataStreams = [];
@@ -1070,6 +1071,15 @@ function cleanupScene() {
 
   particleSystems.forEach(p => nova64.scene.destroyMesh(p.mesh));
   particleSystems = [];
+
+  if (!preserveIntroScene) {
+    if (gridFloor) {
+      nova64.scene.destroyMesh(gridFloor);
+      gridFloor = null;
+    }
+    terrainBlocks.forEach(t => nova64.scene.destroyMesh(t.mesh));
+    terrainBlocks = [];
+  }
 }
 
 function _local_setupScene(_sceneIndex) {

@@ -34573,7 +34573,9 @@ static bool install_nova64_api(JSContext *ctx)
             scene graph) and builds an instanced cube mesh, one cube per
             voxel, colored from the .vox palette. Falls back to a single
             placeholder cube if the asset is missing or unparseable. */
-         "if(typeof nova64.scene.loadVoxModel!=='function'){"
+         /* Replace the native loadVoxModel stub registered above; it only
+            returns 0, while this shim actually parses and renders .vox assets. */
+         "{"
            "nova64.scene.loadVoxModel=function(url,pos,scale,opts){"
              "scale=scale||1;opts=opts||{};"
              "var fbCol=opts.color!=null?opts.color:rgba8(220,200,120,255);"
@@ -34619,9 +34621,13 @@ static bool install_nova64_api(JSContext *ctx)
                "var maxInst=Math.min(xyziCount,opts.maxVoxels||4096);"
                "var im=typeof createInstancedMesh==='function'?createInstancedMesh('cube',maxInst):0;"
                "if(!im)return placeholder();"
+               "if(typeof setMeshEmissive==='function')setMeshEmissive(im,fbCol,0.25);"
+               "if(typeof setMeshShadeContrast==='function')setMeshShadeContrast(im,4.0);"
+               "if(typeof setFlatShading==='function')setFlatShading(im,true);"
                "var cx=(pos&&pos[0])||0,cy=(pos&&pos[1])||0,cz=(pos&&pos[2])||0;"
                "var hx=sx*0.5,hy=sy*0.5,hz=sz*0.5;"
-               /* Voxel side is `scale`. Center model on the requested position. */
+               /* Voxel side is `scale`. Center horizontally and keep the
+                  vertical floor grounded at the requested position. */
                /* Native setInstanceTransform expects ONE 16-float column-major
                   matrix as argv[2] — NOT (pos,quat,scale,color) separately.
                   Compose a translation+uniform-scale TRS matrix per voxel and
@@ -34630,7 +34636,7 @@ static bool install_nova64_api(JSContext *ctx)
                  "var vx=u8[xyziStart+v*4],vy=u8[xyziStart+v*4+1],vz=u8[xyziStart+v*4+2],ci=u8[xyziStart+v*4+3];"
                  "var col=palette[ci]||fbCol;"
                  /* .vox uses Z-up (X,Y horizontal, Z vertical). Map Z->Y. */
-                 "var wx=cx+(vx-hx)*scale,wy=cy+(vz-hz)*scale,wz=cz+(vy-hy)*scale;"
+                 "var wx=cx+(vx-hx)*scale,wy=cy+vz*scale,wz=cz+(vy-hy)*scale;"
                  "if(typeof setInstanceTransform==='function'){"
                    "setInstanceTransform(im,v,["
                      "scale,0,0,0,"

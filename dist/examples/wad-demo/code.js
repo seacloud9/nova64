@@ -37,6 +37,7 @@ let texturedFloorCount = 0;
 
 let player = { x: 0, y: 1.5, z: 0, yaw: 0, pitch: 0, health: 100, armor: 0, ammo: 50, score: 0 };
 let playerFloorBase = 0; // Y offset of the floor the player stands on
+let wadFloorHeightAt = null;
 let kills = 0;
 let totalEnemies = 0;
 let levelClearTimer = 0;
@@ -70,6 +71,7 @@ function exposeDebugState() {
     mapCount: mapNames.length,
     currentMap: mapNames[currentMapIdx] ?? null,
     playerHealth: player.health,
+    player: { x: player.x, y: player.y, z: player.z, floor: playerFloorBase },
     ammo: player.ammo,
     wallCount: entities.walls.length,
     enemyCount: entities.enemies.length,
@@ -272,6 +274,7 @@ function cleanupLevel() {
   texturedWallCount = 0;
   texturedSpriteCount = 0;
   texturedFloorCount = 0;
+  wadFloorHeightAt = null;
 }
 
 function startLevel() {
@@ -305,6 +308,8 @@ function _startLevelInner() {
   if (!mapData) return;
 
   const converted = nova64.data.convertWADMap(mapData);
+  wadFloorHeightAt =
+    typeof converted.getFloorHeight === 'function' ? converted.getFloorHeight : null;
   const accent = ACCENT_COLORS[currentMapIdx % ACCENT_COLORS.length];
   const SCALE = 1 / 20; // WAD coordinate scale factor
   const isBabylonBackend = engine.getCapabilities?.()?.backend === 'babylon';
@@ -812,6 +817,9 @@ export function update(dt) {
   let plrRadius = 0.8;
   if (!getWallCollision(player.x + dx, player.z, plrRadius)) player.x += dx;
   if (!getWallCollision(player.x, player.z + dz, plrRadius)) player.z += dz;
+  if (wadFloorHeightAt) {
+    playerFloorBase = wadFloorHeightAt(player.x, player.z, playerFloorBase);
+  }
 
   // Head bob
   let bobFreq = isSprinting ? 12 : 8;

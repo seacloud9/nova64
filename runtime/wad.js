@@ -185,6 +185,64 @@ function rasterSeg(out, x1, z1, x2, z2, r) {
   }
 }
 
+function pointNearSegment(px, pz, ax, az, bx, bz, epsilon) {
+  const dx = bx - ax;
+  const dz = bz - az;
+  const lenSq = dx * dx + dz * dz;
+  if (lenSq < 1e-8) return Math.hypot(px - ax, pz - az) <= epsilon;
+  let t = ((px - ax) * dx + (pz - az) * dz) / lenSq;
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(px - (ax + dx * t), pz - (az + dz * t)) <= epsilon;
+}
+
+function pointInEdges(px, pz, edges) {
+  let inside = false;
+  for (const edge of edges) {
+    if (pointNearSegment(px, pz, edge.x1, edge.z1, edge.x2, edge.z2, 0.02)) return true;
+    const crosses = edge.z1 > pz !== edge.z2 > pz;
+    if (!crosses) continue;
+    const xAtZ = edge.x1 + ((pz - edge.z1) * (edge.x2 - edge.x1)) / (edge.z2 - edge.z1);
+    if (px < xAtZ) inside = !inside;
+  }
+  return inside;
+}
+
+function buildFloorHeightLookup(vertexes, linedefs, sidedefs, sectors, cx, cy, scale, baseFloor) {
+  const sectorEdges = sectors.map((sector, index) => ({
+    index,
+    floorH: (sector.floorH - baseFloor) * scale,
+    edges: [],
+  }));
+
+  const addEdge = (sideIndex, x1, z1, x2, z2) => {
+    const side = sidedefs[sideIndex];
+    if (!side || !sectorEdges[side.sector]) return;
+    sectorEdges[side.sector].edges.push({ x1, z1, x2, z2 });
+  };
+
+  for (const line of linedefs) {
+    const va = vertexes[line.v1];
+    const vb = vertexes[line.v2];
+    if (!va || !vb) continue;
+    const x1 = (va.x - cx) * scale;
+    const z1 = (va.y - cy) * scale;
+    const x2 = (vb.x - cx) * scale;
+    const z2 = (vb.y - cy) * scale;
+    if (line.right >= 0) addEdge(line.right, x1, z1, x2, z2);
+    if (line.left >= 0) addEdge(line.left, x2, z2, x1, z1);
+  }
+
+  return function getFloorHeight(x, z, fallback = 0) {
+    let best = null;
+    for (const sector of sectorEdges) {
+      if (sector.edges.length > 0 && pointInEdges(x, z, sector.edges)) {
+        if (best == null || sector.floorH > best) best = sector.floorH;
+      }
+    }
+    return best == null ? fallback : best;
+  };
+}
+
 // ── WADLoader class ──
 
 class WADLoader {
@@ -564,8 +622,19 @@ function convertWADMap(map, scale) {
     ceilFlat: s.ceilFlat,
     light: Math.max(0.25, s.light / 255),
   }));
+  const getFloorHeight = buildFloorHeightLookup(
+    vertexes,
+    linedefs,
+    sidedefs,
+    sectors,
+    cx,
+    cy,
+    scale,
+    baseFloor
+  );
+  playerStart.floorH = getFloorHeight(playerStart.x, playerStart.z, playerStart.floorH);
 
-  return { walls, colSegs, enemies, items, playerStart, sectors: sectorData };
+  return { walls, colSegs, enemies, items, playerStart, sectors: sectorData, getFloorHeight };
 }
 
 // ── WADTextureManager class ──

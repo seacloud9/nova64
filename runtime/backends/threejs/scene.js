@@ -43,11 +43,12 @@ export function sceneModule(ctx) {
 
     // Dispose all cart meshes
     for (const [, mesh] of meshes) {
-      scene.remove(mesh);
-      if (mesh.geometry) mesh.geometry.dispose();
-      if (mesh.material) {
-        if (Array.isArray(mesh.material)) mesh.material.forEach(disposeMaterial);
-        else disposeMaterial(mesh.material);
+      const object = mesh.__threeObject ?? mesh;
+      scene.remove(object);
+      if (object.geometry) object.geometry.dispose();
+      if (object.material) {
+        if (Array.isArray(object.material)) object.material.forEach(disposeMaterial);
+        else disposeMaterial(object.material);
       }
     }
     meshes.clear();

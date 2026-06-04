@@ -57,6 +57,7 @@ let wadLoader = null;
 let wadTexMgr = null;
 let wadMapNames = [];
 let wadMapIndex = 0;
+let wadFloorHeightAt = null;
 
 // 3 maps with different layouts and enemy compositions
 const MAPS = [
@@ -226,6 +227,7 @@ function cleanupLevel() {
   for (let l of enemyLights) nova64.light.removeLight(l);
   enemyLights = [];
   entities = { walls: [], enemies: [], bullets: [], particles: [], pickups: [], enemyBullets: [] };
+  wadFloorHeightAt = null;
 }
 
 function startGame(lvl) {
@@ -556,6 +558,8 @@ function buildWADLevel(mapName) {
   if (!mapData) return;
 
   const converted = nova64.data.convertWADMap(mapData);
+  wadFloorHeightAt =
+    typeof converted.getFloorHeight === 'function' ? converted.getFloorHeight : null;
   const accentColors = [0x00aaff, 0xff6600, 0xcc00ff, 0x00ff88, 0xff0066, 0xffaa00];
   const accent = accentColors[wadMapIndex % accentColors.length];
   const SCALE = 1 / 20;
@@ -813,6 +817,9 @@ export function update(dt) {
   let plrRadius = 0.8;
   if (!getWallCollision(player.x + dx, player.z, plrRadius)) player.x += dx;
   if (!getWallCollision(player.x, player.z + dz, plrRadius)) player.z += dz;
+  if (wadFloorHeightAt) {
+    playerFloorBase = wadFloorHeightAt(player.x, player.z, playerFloorBase);
+  }
 
   // Head bob
   let isMoving = len > 0;

@@ -9,6 +9,72 @@
 
 ---
 
+## HANDOFF UPDATE — 2026-06-03 Codex continuation
+
+User reported three live issues after the prior handoff:
+
+- Web demoscene scene changes were not clearing previous scene objects.
+- RetroArch vox-viewer loaded `house.vox` but rendered no model.
+- WAD floor heights did not affect player movement/physics.
+
+### Fixes landed locally
+
+- **Three.js cleanup fixed.** `runtime/backends/threejs/primitives.js` stored
+  mesh proxies in the ID map while `scene.add()` received the real Three mesh.
+  `destroyMesh(proxy)` was therefore calling `scene.remove(proxy)`, leaving
+  old meshes in `scene.children`. Proxies now expose `__threeObject`, and both
+  `destroyMesh()` and `clearScene()` remove/dispose the real object.
+- **Demoscene cart cleanup tightened.** `examples/demoscene/code.js` now clears
+  intro terrain/grid meshes when jumping or transitioning away from scene 0.
+- **RetroArch VOX fixed.** `retroarch/nova64_libretro.c` now replaces the
+  native `loadVoxModel` no-op stub with the JS parser, grounds `.vox` vertical
+  coordinates at `pos.y`, and applies the proven instanced-cube emissive /
+  shade-contrast / flat-shading tuning. `tmp/focused-captures/vox-viewer-final.png`
+  shows the visible house model.
+- **WAD floor lookup added.** `runtime/wad.js` and the bundled
+  `examples/fps-demo-3d/wad-loader.js` now return `getFloorHeight(x,z)`.
+  `examples/fps-demo-3d/code.js` and `examples/wad-demo/code.js` sample it
+  after player movement so the camera/player base follows sector floors.
+- **Bundles rebuilt.** `retroarch/games/wad-demo.nova` and
+  `retroarch/games/fps-demo-3d.nova` were regenerated. `dist/` was rebuilt.
+
+### Verification snapshot
+
+- `node --check` on changed JS files: pass.
+- `pnpm run lint`: pass.
+- `pnpm run build`: pass; only known Vite warnings about unresolved
+  `nova64ConsoleBG.webp`, VOXLoader dynamic/static import, and large chunks.
+- `pnpm test`: 383/383 pass.
+- `node tmp/probe-demoscene-cleanup.mjs`: Three drops from 1684 scene meshes
+  to 14/4 after scene jumps; Babylon drops from 1686 to 50/12.
+- `node tmp/capture-demoscene-web.mjs`: refreshed Three/Babylon screenshots in
+  `tmp/demoscene-screenshots/`.
+- `node tmp/probe-wad-floor-height.mjs`: synthetic two-sector WAD floor lookup
+  returns low floor `0`, high floor `2`.
+- `pnpm exec playwright test tests/playwright/wad-vox-regression.spec.js -g 'WAD Regression' --reporter=line`:
+  2/2 pass.
+- Full `tests/playwright/wad-vox-regression.spec.js` still has unrelated
+  existing failures after WAD tests, mostly `waitFor3DScene()` expecting flat
+  `globalThis.nova64.createCube` and two cart-reset assertions.
+- RetroArch harness smokes:
+  - `vox-viewer.nova --gles --frames 180`: pass, visible model captured.
+  - `wad-demo.nova --gles --frames 240`: pass.
+  - `fps-demo-3d.nova --gles --frames 240`: pass.
+- Clean Windows cross-build completed and deployed to
+  `C:\RetroArch-Win64\cores\nova64_libretro.dll` at 2026-06-03 19:17.
+- Linux `.so` and harness rebuilt afterward and left current.
+
+### Remaining notes
+
+- WAD floor lookup is conservative point-in-sector over linedef/sidedef sector
+  edges. It handles ordinary sector floors/steps, but complex overlapping WAD
+  topology may still need full BSP/SSECTOR/NODE support.
+- `tmp/` contains the requested screenshots and scratch probes; it is untracked.
+- `.claude/scheduled_tasks.lock` is still untracked and should not be staged
+  unless the user explicitly wants it.
+
+---
+
 ## 🤝 HANDOFF FOR CODEX — 2026-06-03 full session
 
 Single-day stretch: scanned where codex left off after `5cb89f9`, finished the

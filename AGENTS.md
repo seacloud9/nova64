@@ -115,6 +115,7 @@ pnpm test:input
 pnpm test:starfox
 pnpm test:integration
 pnpm test:voxel
+pnpm test:wad
 pnpm test:resize
 pnpm test:cli
 pnpm test:all

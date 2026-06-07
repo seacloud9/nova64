@@ -75,6 +75,9 @@ User reported three live issues after the prior handoff:
   compatibility probes. Current result: 70 PASS, 1 WARN, 0 FAIL across 71
   carts; the only warning is the intentionally out-of-scope `ar-hand-demo`
   hand-tracking path.
+- 2026-06-07 follow-up promoted the WAD floor-height scratch probe into
+  `pnpm run test:wad` and folded it into `pnpm test`, covering sector-step
+  floor lookup and outside-sector fallback behavior.
 - `tmp/` contains the requested screenshots and scratch probes; it is untracked.
 - `.claude/scheduled_tasks.lock` is still untracked and should not be staged
   unless the user explicitly wants it.

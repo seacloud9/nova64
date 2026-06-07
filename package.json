@@ -61,6 +61,7 @@
     "test:starfox": "node tests/test-cli.js starfox",
     "test:integration": "node tests/test-cli.js integration",
     "test:voxel": "node tests/test-cli.js voxel",
+    "test:wad": "node tests/test-cli.js wad",
     "test:resize": "node tests/test-cli.js resize",
     "test:cli": "node tests/test-cli.js cli",
     "test:namespace": "node tests/test-namespace.js",

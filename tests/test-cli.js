@@ -985,6 +985,16 @@ async function main() {
         }
         break;
 
+      case 'wad':
+        console.log('🗺️ Running WAD Runtime Tests...');
+        try {
+          const { runWadTests } = await import('./test-wad.js');
+          results.push(await runWadTests());
+        } catch (error) {
+          console.log('⚠️  WAD tests not available:', error.message);
+        }
+        break;
+
       case 'cli':
         console.log('🖥️  Running CLI Server Tests...');
         try {
@@ -1093,7 +1103,15 @@ async function main() {
           console.log('⚠️  Voxel tests not available:', error.message);
         }
 
-        console.log('\n9️⃣ Manifest System Tests:');
+        console.log('\n9️⃣ WAD Runtime Tests:');
+        try {
+          const { runWadTests } = await import('./test-wad.js');
+          results.push(await runWadTests());
+        } catch (error) {
+          console.log('⚠️  WAD tests not available:', error.message);
+        }
+
+        console.log('\n🔟 Manifest System Tests:');
         try {
           const { runManifestTests } = await import('./test-manifest.js');
           results.push(await runManifestTests());
@@ -1101,7 +1119,7 @@ async function main() {
           console.log('⚠️  Manifest tests not available:', error.message);
         }
 
-        console.log('\n🔟 CLI Server Tests:');
+        console.log('\n1️⃣1️⃣ CLI Server Tests:');
         try {
           const { runCLIServerTests } = await import('./test-cli-server.js');
           results.push(await runCLIServerTests());
@@ -1109,7 +1127,7 @@ async function main() {
           console.log('⚠️  CLI server tests not available:', error.message);
         }
 
-        console.log('\n1️⃣1️⃣ Resize Regression Tests:');
+        console.log('\n1️⃣2️⃣ Resize Regression Tests:');
         try {
           const { runResizeTests } = await import('./test-resize.js');
           results.push(await runResizeTests());
@@ -1117,7 +1135,7 @@ async function main() {
           console.log('⚠️  Resize tests not available:', error.message);
         }
 
-        console.log('\n1️⃣2️⃣ HYPE Framework Tests:');
+        console.log('\n1️⃣3️⃣ HYPE Framework Tests:');
         try {
           const { runHypeTests } = await import('./test-hype.js');
           results.push(await runHypeTests());
@@ -1125,7 +1143,7 @@ async function main() {
           console.log('⚠️  HYPE tests not available:', error.message);
         }
 
-        console.log('\n1️⃣3️⃣ Tween Engine Tests:');
+        console.log('\n1️⃣4️⃣ Tween Engine Tests:');
         try {
           const { runTweenTests } = await import('./test-tween.js');
           results.push(await runTweenTests());
@@ -1133,7 +1151,7 @@ async function main() {
           console.log('⚠️  Tween tests not available:', error.message);
         }
 
-        console.log('\n1️⃣4️⃣ Adapter Contract Conformance Tests:');
+        console.log('\n1️⃣5️⃣ Adapter Contract Conformance Tests:');
         try {
           const { runAdapterConformanceSuite } = await import('./test-adapter-conformance.js');
           results.push(await runAdapterConformanceSuite());
@@ -1141,7 +1159,7 @@ async function main() {
           console.log('⚠️  Adapter conformance tests not available:', error.message);
         }
 
-        console.log('\n1️⃣5️⃣ Game Studio Executor Tests:');
+        console.log('\n1️⃣6️⃣ Game Studio Executor Tests:');
         try {
           const { runStudioExecutorTests } = await import('./test-studio-executor.js');
           results.push(await runStudioExecutorTests());
@@ -1149,7 +1167,7 @@ async function main() {
           console.log('⚠️  Game Studio executor tests not available:', error.message);
         }
 
-        console.log('\n1️⃣6️⃣ Namespace Tests:');
+        console.log('\n1️⃣7️⃣ Namespace Tests:');
         try {
           const { runNamespaceTests } = await import('./test-namespace.js');
           results.push(await runNamespaceTests());

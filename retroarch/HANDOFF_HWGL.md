@@ -70,6 +70,11 @@ User reported three live issues after the prior handoff:
 - WAD floor lookup is conservative point-in-sector over linedef/sidedef sector
   edges. It handles ordinary sector floors/steps, but complex overlapping WAD
   topology may still need full BSP/SSECTOR/NODE support.
+- 2026-06-07 follow-up added `pnpm run retroarch:compat:examples`
+  (`retroarch/tests/compat_all_probe.mjs`) for full example-cart RetroArch
+  compatibility probes. Current result: 70 PASS, 1 WARN, 0 FAIL across 71
+  carts; the only warning is the intentionally out-of-scope `ar-hand-demo`
+  hand-tracking path.
 - `tmp/` contains the requested screenshots and scratch probes; it is untracked.
 - `.claude/scheduled_tasks.lock` is still untracked and should not be staged
   unless the user explicitly wants it.

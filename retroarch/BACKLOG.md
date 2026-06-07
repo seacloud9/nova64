@@ -3,7 +3,7 @@
 Anything that's a known issue, a deferred investigation, or a queued feature
 lives here. Update this file as items are picked up or completed.
 
-Last updated: 2026-06-03
+Last updated: 2026-06-07
 
 **Post-v0.5.2 features shipped:**
 
@@ -87,6 +87,13 @@ movie-clip fallback surfaces, web-style mesh proxies, QuickJS module
 resolve/await handling, and a larger mesh table for heavy web scenes. See
 commits `d65d8e7`, `0e60c5b`, `a07dc84`, plus the in-progress 2026-05-24
 follow-up.
+
+**2026-06-07 refresh:** `pnpm run retroarch:compat:examples` now packages and
+smokes every `examples/*/code.js` cart through the GLES harness. Current result:
+**70 PASS, 1 WARN, 0 FAIL** across 71 carts. The only warning is
+`ar-hand-demo` (`AR hand tracking unavailable`), which remains intentionally
+out of scope for RetroArch. Probe implementation:
+[retroarch/tests/compat_all_probe.mjs](tests/compat_all_probe.mjs).
 
 ---
 

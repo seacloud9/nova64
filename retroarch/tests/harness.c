@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #include "../libretro.h"
 
@@ -595,10 +596,18 @@ static void *load_symbol(void *core, const char *name)
    return symbol;
 }
 
+static uint64_t harness_now_ns(void)
+{
+   struct timespec ts;
+   if (clock_gettime(CLOCK_MONOTONIC, &ts) != 0)
+      return 0;
+   return (uint64_t)ts.tv_sec * 1000000000ull + (uint64_t)ts.tv_nsec;
+}
+
 int main(int argc, char **argv)
 {
    if (argc < 3) {
-      fprintf(stderr, "usage: %s <nova64_libretro.so> <cart.js|cart.nova> [--capture path] [--command-log path] [--renderer opengles3|vulkan12] [--gles] [--expect checksum] [--expect-audio checksum] [--frames n] [--seed n] [--perf] [--verbose] [--key name] [--port 0-3] [--btn name] [--touch-x n --touch-y n --touch-count n]\n", argv[0]);
+      fprintf(stderr, "usage: %s <nova64_libretro.so> <cart.js|cart.nova> [--capture path] [--command-log path] [--renderer opengles3|vulkan12] [--gles] [--expect checksum] [--expect-audio checksum] [--frames n] [--warmup-frames n] [--measure-fps] [--seed n] [--perf] [--verbose] [--key name] [--port 0-3] [--btn name] [--touch-x n --touch-y n --touch-count n]\n", argv[0]);
       return 2;
    }
 
@@ -609,8 +618,12 @@ int main(int argc, char **argv)
    bool has_expected_audio_checksum = false;
    uint64_t expected_audio_checksum = 0;
    unsigned frames_to_run = 3;
+   unsigned warmup_frames = 0;
    const char *seed_option = NULL;
    bool perf_enabled = false;
+   bool measure_fps = false;
+   double measured_fps = 0.0;
+   double measured_frame_ms = 0.0;
 
    /* --press FRAME=KEY scheduling: holds key for that frame only so the
     * DOM-event bridge sees both a keydown (rising edge) and a keyup
@@ -658,6 +671,12 @@ int main(int argc, char **argv)
          frames_to_run = (unsigned)strtoul(argv[i], NULL, 10);
          if (frames_to_run == 0)
             frames_to_run = 1;
+      } else if (!strcmp(argv[i], "--warmup-frames")) {
+         if (++i >= argc) {
+            fprintf(stderr, "--warmup-frames requires a count\n");
+            return 2;
+         }
+         warmup_frames = (unsigned)strtoul(argv[i], NULL, 10);
       } else if (!strcmp(argv[i], "--seed")) {
          if (++i >= argc) {
             fprintf(stderr, "--seed requires a non-negative integer\n");
@@ -666,6 +685,8 @@ int main(int argc, char **argv)
          seed_option = argv[i];
       } else if (!strcmp(argv[i], "--gles")) {
          g_request_gles = true;
+      } else if (!strcmp(argv[i], "--measure-fps")) {
+         measure_fps = true;
       } else if (!strcmp(argv[i], "--perf")) {
          perf_enabled = true;
       } else if (!strcmp(argv[i], "--verbose")) {
@@ -834,7 +855,11 @@ int main(int argc, char **argv)
    if (ok && g_gles_active && g_hw_render.context_reset)
       g_hw_render.context_reset();
    if (ok) {
-      for (unsigned frame = 0; frame < frames_to_run; frame++) {
+      uint64_t run_start_ns = measure_fps && warmup_frames == 0 ? harness_now_ns() : 0;
+      unsigned total_frames = frames_to_run + warmup_frames;
+      for (unsigned frame = 0; frame < total_frames; frame++) {
+         if (measure_fps && frame == warmup_frames)
+            run_start_ns = harness_now_ns();
          g_joypad[RETRO_DEVICE_ID_JOYPAD_B] = frame == 1;
          for (unsigned p = 0; p < press_count; p++) {
             if (press_events[p].frame == frame) {
@@ -846,6 +871,12 @@ int main(int argc, char **argv)
             }
          }
          run();
+      }
+      uint64_t run_end_ns = measure_fps ? harness_now_ns() : 0;
+      if (measure_fps && run_end_ns > run_start_ns) {
+         double elapsed_s = (double)(run_end_ns - run_start_ns) / 1000000000.0;
+         measured_fps = (double)frames_to_run / elapsed_s;
+         measured_frame_ms = (elapsed_s * 1000.0) / (double)frames_to_run;
       }
       g_joypad[RETRO_DEVICE_ID_JOYPAD_B] = false;
    }
@@ -894,9 +925,16 @@ int main(int argc, char **argv)
    }
 
    free(g_last_frame);
-   printf("ok=%d frames=%u checksum=%016llx audio_frames=%u audio_checksum=%016llx width=%u height=%u\n",
-         ok ? 1 : 0, g_video_frames, (unsigned long long)g_checksum,
-         g_audio_frames, (unsigned long long)g_audio_checksum,
-         g_last_width, g_last_height);
+   if (measure_fps) {
+      printf("ok=%d frames=%u measured_frames=%u checksum=%016llx audio_frames=%u audio_checksum=%016llx width=%u height=%u measured_fps=%.2f frame_ms=%.4f\n",
+            ok ? 1 : 0, g_video_frames, frames_to_run, (unsigned long long)g_checksum,
+            g_audio_frames, (unsigned long long)g_audio_checksum,
+            g_last_width, g_last_height, measured_fps, measured_frame_ms);
+   } else {
+      printf("ok=%d frames=%u checksum=%016llx audio_frames=%u audio_checksum=%016llx width=%u height=%u\n",
+            ok ? 1 : 0, g_video_frames, (unsigned long long)g_checksum,
+            g_audio_frames, (unsigned long long)g_audio_checksum,
+            g_last_width, g_last_height);
+   }
    return ok ? 0 : 1;
 }

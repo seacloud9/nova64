@@ -251,10 +251,45 @@ function buildSectorFloorData(vertexes, linedefs, sidedefs, sectors, cx, cy, sca
 }
 
 function buildFloorHeightLookup(sectorFloors) {
+  const activeSectors = sectorFloors.filter(sector => sector.bounds && sector.edges.length > 0);
+  let minX = Infinity;
+  let minZ = Infinity;
+  for (const sector of activeSectors) {
+    minX = Math.min(minX, sector.bounds.minX);
+    minZ = Math.min(minZ, sector.bounds.minZ);
+  }
+
+  const cellSize = 8;
+  const grid = new Map();
+  for (const sector of activeSectors) {
+    const x0 = Math.floor((sector.bounds.minX - minX) / cellSize);
+    const x1 = Math.floor((sector.bounds.maxX - minX) / cellSize);
+    const z0 = Math.floor((sector.bounds.minZ - minZ) / cellSize);
+    const z1 = Math.floor((sector.bounds.maxZ - minZ) / cellSize);
+    for (let gz = z0; gz <= z1; gz++) {
+      for (let gx = x0; gx <= x1; gx++) {
+        const key = `${gx},${gz}`;
+        let bucket = grid.get(key);
+        if (!bucket) {
+          bucket = [];
+          grid.set(key, bucket);
+        }
+        bucket.push(sector);
+      }
+    }
+  }
+
   return function getFloorHeight(x, z, fallback = 0) {
+    if (activeSectors.length === 0) return fallback;
+    const gx = Math.floor((x - minX) / cellSize);
+    const gz = Math.floor((z - minZ) / cellSize);
+    const candidates = grid.get(`${gx},${gz}`) || activeSectors;
     let best = null;
-    for (const sector of sectorFloors) {
-      if (sector.edges.length > 0 && pointInEdges(x, z, sector.edges)) {
+    for (const sector of candidates) {
+      const b = sector.bounds;
+      if (x < b.minX - 0.02 || x > b.maxX + 0.02 || z < b.minZ - 0.02 || z > b.maxZ + 0.02)
+        continue;
+      if (pointInEdges(x, z, sector.edges)) {
         if (best == null || sector.floorH > best) best = sector.floorH;
       }
     }

@@ -34,6 +34,7 @@ let menuEnterTime = 0;
 let texturedWallCount = 0;
 let texturedSpriteCount = 0;
 let texturedFloorCount = 0;
+let floorPlaneCount = 0;
 
 let player = { x: 0, y: 1.5, z: 0, yaw: 0, pitch: 0, health: 100, armor: 0, ammo: 50, score: 0 };
 let playerFloorBase = 0; // Y offset of the floor the player stands on
@@ -53,6 +54,7 @@ let entities = {
 let enemyLights = [];
 let floorMesh = null;
 let ceilingMesh = null;
+let wadCullTimer = 0;
 
 let mouseInit = false;
 let shake = null;
@@ -78,6 +80,7 @@ function exposeDebugState() {
     texturedWallCount,
     texturedSpriteCount,
     texturedFloorCount,
+    floorPlaneCount,
   });
 }
 
@@ -271,14 +274,43 @@ function cleanupLevel() {
   for (let l of enemyLights) nova64.light.removeLight(l);
   enemyLights = [];
   entities = { walls: [], enemies: [], bullets: [], particles: [], pickups: [], enemyBullets: [] };
+  wadCullTimer = 0;
   texturedWallCount = 0;
   texturedSpriteCount = 0;
   texturedFloorCount = 0;
+  floorPlaneCount = 0;
   wadFloorHeightAt = null;
 }
 
 function getEntityFloorY(x, z, fallback = 0) {
   return wadFloorHeightAt ? wadFloorHeightAt(x, z, fallback) : fallback;
+}
+
+function setCullVisible(entry, visible) {
+  if (entry.visible === visible) return;
+  entry.visible = visible;
+  if (nova64.scene.setMeshVisible) nova64.scene.setMeshVisible(entry.m, visible);
+  else {
+    const mesh = nova64.scene.getMesh(entry.m);
+    if (mesh) mesh.visible = visible;
+  }
+}
+
+function updateWADRenderCulling(dt) {
+  wadCullTimer -= dt;
+  if (wadCullTimer > 0) return;
+  wadCullTimer = 0.12;
+
+  const defaultVisibleDistance = 62;
+  for (const entry of entities.walls) {
+    if (!entry.m || !entry.cull) continue;
+    const radius = entry.cullRadius || 0;
+    const visibleDistance = entry.cullDistance || defaultVisibleDistance;
+    const limit = visibleDistance + radius;
+    const dx = entry.x - player.x;
+    const dz = entry.z - player.z;
+    setCullVisible(entry, dx * dx + dz * dz <= limit * limit);
+  }
 }
 
 function createWADFloorMeshes(converted, floorTextureManager, isBabylonBackend) {
@@ -292,18 +324,30 @@ function createWADFloorMeshes(converted, floorTextureManager, isBabylonBackend) 
     const depth = b.maxZ - b.minZ;
     if (width <= 0.05 || depth <= 0.05) continue;
 
+    const floorH = Number.isFinite(s.floorH) ? s.floorH : 0;
+    const floorFlat = s.floorFlat || '';
     const x = (b.minX + b.maxX) / 2;
     const z = (b.minZ + b.maxZ) / 2;
-    const floor = nova64.scene.createPlane(width, depth, 0x222222, [x, s.floorH + 0.01, z]);
+    const floor = nova64.scene.createPlane(width, depth, 0x222222, [x, floorH + 0.01, z]);
     nova64.scene.setRotation(floor, -Math.PI / 2, 0, 0);
-    entities.walls.push({ m: floor, x, z, r: 0 });
+    entities.walls.push({
+      m: floor,
+      x,
+      z,
+      r: 0,
+      cull: true,
+      cullDistance: 84,
+      cullRadius: Math.hypot(width, depth) / 2 + 2,
+      visible: true,
+    });
     floorCount++;
+    floorPlaneCount++;
 
-    if (!floorTextureManager || !s.floorFlat || s.floorFlat === '-' || s.floorFlat === 'F_SKY1') {
+    if (!floorTextureManager || !floorFlat || floorFlat === '-' || floorFlat === 'F_SKY1') {
       continue;
     }
 
-    const flatTex = floorTextureManager.getFlatTexture(s.floorFlat);
+    const flatTex = floorTextureManager.getFlatTexture(floorFlat);
     if (!flatTex) continue;
 
     const floorTex = engine.cloneTexture(flatTex);
@@ -327,7 +371,7 @@ function createWADFloorMeshes(converted, floorTextureManager, isBabylonBackend) 
   const floorSize = 400;
   const floor = nova64.scene.createPlane(floorSize, floorSize, 0x222222, [0, 0, 0]);
   nova64.scene.setRotation(floor, -Math.PI / 2, 0, 0);
-  entities.walls.push({ m: floor, x: 0, z: 0, r: 0 });
+  entities.walls.push({ m: floor, x: 0, z: 0, r: 0, visible: true });
 }
 
 function startLevel() {
@@ -415,7 +459,15 @@ function _startLevelInner() {
           );
         }
 
-        entities.walls.push({ m, x: w.x, z: w.z, r: 0 });
+        entities.walls.push({
+          m,
+          x: w.x,
+          z: w.z,
+          r: 0,
+          cull: true,
+          cullRadius: w.len / 2 + 2,
+          visible: true,
+        });
         texturedWallCount++;
         textured = true;
       }
@@ -441,7 +493,15 @@ function _startLevelInner() {
       const m = nova64.scene.createCube(1, color, [w.x, w.y, w.z], mat);
       nova64.scene.setScale(m, w.len, w.h, 0.5);
       nova64.scene.setRotation(m, 0, w.ang, 0);
-      entities.walls.push({ m, x: w.x, z: w.z, r: 0 });
+      entities.walls.push({
+        m,
+        x: w.x,
+        z: w.z,
+        r: 0,
+        cull: true,
+        cullRadius: w.len / 2 + 2,
+        visible: true,
+      });
     }
   }
 
@@ -864,6 +924,7 @@ export function update(dt) {
     player.z + Math.cos(player.yaw) * Math.cos(player.pitch)
   );
   nova64.camera.setCameraFOV(isSprinting ? 95 : 85);
+  updateWADRenderCulling(dt);
 
   // Shooting
   if (nova64.input.mouseDown() || nova64.input.key('Space') || nova64.input.btn('A')) shoot();
@@ -1043,8 +1104,6 @@ export function update(dt) {
   for (let i = entities.pickups.length - 1; i >= 0; i--) {
     let p = entities.pickups[i];
     p.life -= dt;
-    p.floorY = getEntityFloorY(p.x, p.z, p.floorY || 0);
-    p.y = p.floorY + 1;
     let bobY = p.y + Math.sin(gameTime * 3 + i) * 0.3;
     nova64.scene.setPosition(p.m, p.x, bobY, p.z);
     nova64.scene.setRotation(p.m, 0, gameTime * 2, 0);

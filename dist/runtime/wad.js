@@ -207,17 +207,32 @@ function pointInEdges(px, pz, edges) {
   return inside;
 }
 
-function buildFloorHeightLookup(vertexes, linedefs, sidedefs, sectors, cx, cy, scale, baseFloor) {
-  const sectorEdges = sectors.map((sector, index) => ({
+function buildSectorFloorData(vertexes, linedefs, sidedefs, sectors, cx, cy, scale, baseFloor) {
+  const sectorFloors = sectors.map((sector, index) => ({
     index,
     floorH: (sector.floorH - baseFloor) * scale,
+    bounds: null,
     edges: [],
   }));
 
   const addEdge = (sideIndex, x1, z1, x2, z2) => {
     const side = sidedefs[sideIndex];
-    if (!side || !sectorEdges[side.sector]) return;
-    sectorEdges[side.sector].edges.push({ x1, z1, x2, z2 });
+    const floor = side ? sectorFloors[side.sector] : null;
+    if (!floor) return;
+    floor.edges.push({ x1, z1, x2, z2 });
+    if (!floor.bounds) {
+      floor.bounds = {
+        minX: Math.min(x1, x2),
+        maxX: Math.max(x1, x2),
+        minZ: Math.min(z1, z2),
+        maxZ: Math.max(z1, z2),
+      };
+      return;
+    }
+    floor.bounds.minX = Math.min(floor.bounds.minX, x1, x2);
+    floor.bounds.maxX = Math.max(floor.bounds.maxX, x1, x2);
+    floor.bounds.minZ = Math.min(floor.bounds.minZ, z1, z2);
+    floor.bounds.maxZ = Math.max(floor.bounds.maxZ, z1, z2);
   };
 
   for (const line of linedefs) {
@@ -232,9 +247,13 @@ function buildFloorHeightLookup(vertexes, linedefs, sidedefs, sectors, cx, cy, s
     if (line.left >= 0) addEdge(line.left, x2, z2, x1, z1);
   }
 
+  return sectorFloors;
+}
+
+function buildFloorHeightLookup(sectorFloors) {
   return function getFloorHeight(x, z, fallback = 0) {
     let best = null;
-    for (const sector of sectorEdges) {
+    for (const sector of sectorFloors) {
       if (sector.edges.length > 0 && pointInEdges(x, z, sector.edges)) {
         if (best == null || sector.floorH > best) best = sector.floorH;
       }
@@ -615,14 +634,7 @@ function convertWADMap(map, scale) {
     }
   }
 
-  const sectorData = sectors.map(s => ({
-    floorH: (s.floorH - baseFloor) * scale,
-    ceilH: (s.ceilH - baseFloor) * scale,
-    floorFlat: s.floorFlat,
-    ceilFlat: s.ceilFlat,
-    light: Math.max(0.25, s.light / 255),
-  }));
-  const getFloorHeight = buildFloorHeightLookup(
+  const sectorFloors = buildSectorFloorData(
     vertexes,
     linedefs,
     sidedefs,
@@ -632,7 +644,19 @@ function convertWADMap(map, scale) {
     scale,
     baseFloor
   );
+  const getFloorHeight = buildFloorHeightLookup(sectorFloors);
+
+  const sectorData = sectors.map((s, index) => ({
+    floorH: (s.floorH - baseFloor) * scale,
+    ceilH: (s.ceilH - baseFloor) * scale,
+    floorFlat: s.floorFlat,
+    ceilFlat: s.ceilFlat,
+    light: Math.max(0.25, s.light / 255),
+    bounds: sectorFloors[index]?.bounds || null,
+  }));
   playerStart.floorH = getFloorHeight(playerStart.x, playerStart.z, playerStart.floorH);
+  for (const e of enemies) e.floorH = getFloorHeight(e.x, e.z, 0);
+  for (const item of items) item.floorH = getFloorHeight(item.x, item.z, 0);
 
   return { walls, colSegs, enemies, items, playerStart, sectors: sectorData, getFloorHeight };
 }

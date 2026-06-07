@@ -78,6 +78,14 @@ User reported three live issues after the prior handoff:
 - 2026-06-07 follow-up promoted the WAD floor-height scratch probe into
   `pnpm run test:wad` and folded it into `pnpm test`, covering sector-step
   floor lookup and outside-sector fallback behavior.
+- 2026-06-07 follow-up fixed the next WAD visual/entity slice: WAD things now
+  inherit sector floor heights, `wad-demo` and `fps-demo-3d` keep enemies,
+  sprites, pickups, and dropped pickups floor-relative, and both carts draw
+  coarse per-sector floor planes instead of only one flat map-wide plane.
+  Rebuilt `dist/`, `retroarch/games/wad-demo.nova`,
+  `retroarch/games/fps-demo-3d.nova`, clean Linux `.so`/harness, and deployed
+  the Windows DLL to `C:\RetroArch-Win64\cores\nova64_libretro.dll`
+  (2,829,312 bytes, 2026-06-07 14:35).
 - `tmp/` contains the requested screenshots and scratch probes; it is untracked.
 - `.claude/scheduled_tasks.lock` is still untracked and should not be staged
   unless the user explicitly wants it.

@@ -53,6 +53,12 @@ function side(sector) {
 }
 
 function createSteppedSectorMap(playerThing = { type: 1, x: 50, y: 50, angle: 90 }) {
+  const things = [
+    { type: 3004, x: 150, y: 50, angle: 0 },
+    { type: 2011, x: 150, y: 50, angle: 0 },
+  ];
+  if (playerThing) things.unshift(playerThing);
+
   return {
     vertexes: [
       { x: 0, y: 0 },
@@ -79,7 +85,7 @@ function createSteppedSectorMap(playerThing = { type: 1, x: 50, y: 50, angle: 90
       { v1: 6, v2: 7, right: 6, left: -1, flags: 0 },
       { v1: 7, v2: 4, right: 7, left: -1, flags: 0 },
     ],
-    things: playerThing ? [playerThing] : [],
+    things,
   };
 }
 
@@ -119,6 +125,24 @@ export async function runWadTests() {
     const converted = api.convertWADMap(createSteppedSectorMap(), 1 / 20);
 
     assertEqual(converted.playerStart.floorH, 0, 'player start should use its containing floor');
+  });
+
+  runner.test('WAD - enemies and items inherit their containing sector floor', () => {
+    const api = createWadRuntime();
+    const converted = api.convertWADMap(createSteppedSectorMap(), 1 / 20);
+
+    assertEqual(converted.enemies[0].floorH, 2, 'enemy floor');
+    assertEqual(converted.items[0].floorH, 2, 'item floor');
+  });
+
+  runner.test('WAD - sectors expose bounds for visual floor planes', () => {
+    const api = createWadRuntime();
+    const converted = api.convertWADMap(createSteppedSectorMap(), 1 / 20);
+
+    assert(converted.sectors[0].bounds, 'low sector bounds should exist');
+    assert(converted.sectors[1].bounds, 'high sector bounds should exist');
+    assertEqual(converted.sectors[0].bounds.minX, -5, 'low sector minX');
+    assertEqual(converted.sectors[1].bounds.maxX, 5, 'high sector maxX');
   });
 
   return await runner.runAll();

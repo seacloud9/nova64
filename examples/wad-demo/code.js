@@ -277,6 +277,59 @@ function cleanupLevel() {
   wadFloorHeightAt = null;
 }
 
+function getEntityFloorY(x, z, fallback = 0) {
+  return wadFloorHeightAt ? wadFloorHeightAt(x, z, fallback) : fallback;
+}
+
+function createWADFloorMeshes(converted, floorTextureManager, isBabylonBackend) {
+  let floorCount = 0;
+  const sectors = converted.sectors || [];
+
+  for (const s of sectors) {
+    const b = s.bounds;
+    if (!b) continue;
+    const width = b.maxX - b.minX;
+    const depth = b.maxZ - b.minZ;
+    if (width <= 0.05 || depth <= 0.05) continue;
+
+    const x = (b.minX + b.maxX) / 2;
+    const z = (b.minZ + b.maxZ) / 2;
+    const floor = nova64.scene.createPlane(width, depth, 0x222222, [x, s.floorH + 0.01, z]);
+    nova64.scene.setRotation(floor, -Math.PI / 2, 0, 0);
+    entities.walls.push({ m: floor, x, z, r: 0 });
+    floorCount++;
+
+    if (!floorTextureManager || !s.floorFlat || s.floorFlat === '-' || s.floorFlat === 'F_SKY1') {
+      continue;
+    }
+
+    const flatTex = floorTextureManager.getFlatTexture(s.floorFlat);
+    if (!flatTex) continue;
+
+    const floorTex = engine.cloneTexture(flatTex);
+    const tilesPerUnit = 20 / 64;
+    engine.setTextureRepeat(floorTex, width * tilesPerUnit, depth * tilesPerUnit);
+    const floorMat = engine.createMaterial('phong', {
+      map: floorTex,
+      side: 'double',
+    });
+    if (isBabylonBackend) {
+      floorMat.diffuseColor?.copyFromFloats?.(0.5, 0.5, 0.55);
+      floorMat.specularColor?.copyFromFloats?.(0.02, 0.02, 0.02);
+      floorMat.ambientColor?.copyFromFloats?.(0.18, 0.18, 0.2);
+    }
+    engine.setMeshMaterial(floor, floorMat);
+    texturedFloorCount++;
+  }
+
+  if (floorCount > 0) return;
+
+  const floorSize = 400;
+  const floor = nova64.scene.createPlane(floorSize, floorSize, 0x222222, [0, 0, 0]);
+  nova64.scene.setRotation(floor, -Math.PI / 2, 0, 0);
+  entities.walls.push({ m: floor, x: 0, z: 0, r: 0 });
+}
+
 function startLevel() {
   try {
     _startLevelInner();
@@ -400,13 +453,13 @@ function _startLevelInner() {
   // Enemies (cap 60)
   const maxEnemies = 60;
   for (const e of converted.enemies.slice(0, maxEnemies)) {
-    spawnEnemy(e.x, e.z, e.type, e.doomType);
+    spawnEnemy(e.x, e.z, e.type, e.doomType, e.floorH);
     totalEnemies++;
   }
 
   // Pickups
   for (const item of converted.items) {
-    spawnPickupAt(item.x, 1, item.z, item.type, item.doomType);
+    spawnPickupAt(item.x, (item.floorH || 0) + 1, item.z, item.type, item.doomType);
   }
 
   // Player start — set Y to the sector floor height the player starts on
@@ -419,47 +472,12 @@ function _startLevelInner() {
 
   nova64.light.setFog(FOG_COLORS[currentMapIdx % FOG_COLORS.length], 20, 150);
 
-  // Add a floor plane
-  const floorSize = 400;
-  const floor = nova64.scene.createPlane(floorSize, floorSize, 0x222222, [0, 0, 0]);
-  nova64.scene.setRotation(floor, -Math.PI / 2, 0, 0);
-  entities.walls.push({ m: floor, x: 0, z: 0, r: 0 });
-
-  // Texture the floor with the most common floor flat
-  if (texMgr && converted.sectors) {
-    const flatCounts = {};
-    for (const s of converted.sectors) {
-      if (s.floorFlat && s.floorFlat !== '-' && s.floorFlat !== 'F_SKY1') {
-        flatCounts[s.floorFlat] = (flatCounts[s.floorFlat] || 0) + 1;
-      }
-    }
-    const sorted = Object.entries(flatCounts).sort((a, b) => b[1] - a[1]);
-    if (sorted.length > 0) {
-      const flatTex = texMgr.getFlatTexture(sorted[0][0]);
-      if (flatTex) {
-        const floorTex = engine.cloneTexture(flatTex);
-        // 64 DOOM pixels per flat tile at scale 1/20 = 3.2 world units
-        const tilesPerUnit = 20 / 64;
-        engine.setTextureRepeat(floorTex, floorSize * tilesPerUnit, floorSize * tilesPerUnit);
-        const floorMat = engine.createMaterial('phong', {
-          map: floorTex,
-          side: 'double',
-        });
-        if (isBabylonBackend) {
-          floorMat.diffuseColor?.copyFromFloats?.(0.5, 0.5, 0.55);
-          floorMat.specularColor?.copyFromFloats?.(0.02, 0.02, 0.02);
-          floorMat.ambientColor?.copyFromFloats?.(0.18, 0.18, 0.2);
-        }
-        engine.setMeshMaterial(floor, floorMat);
-        texturedFloorCount++;
-      }
-    }
-  }
+  createWADFloorMeshes(converted, texMgr, isBabylonBackend);
 }
 
 // ── Enemy spawning ──
 
-function spawnEnemy(x, z, type, doomType) {
+function spawnEnemy(x, z, type, doomType, floorY = 0) {
   let mat, hp, spd, size, dmg, detailMat;
   switch (type) {
     case 'shooter':
@@ -496,28 +514,31 @@ function spawnEnemy(x, z, type, doomType) {
       break;
   }
 
-  let body = nova64.scene.createCube(size, mat.color, [x, 2, z], mat);
+  floorY = getEntityFloorY(x, z, floorY);
+  const baseY = floorY + 2;
+
+  let body = nova64.scene.createCube(size, mat.color, [x, baseY, z], mat);
   nova64.scene.setScale(body, 0.7, 1.2, 0.7);
   let head = nova64.scene.createCube(
     size * 0.55,
     MAT.enemyEye.color,
-    [x, 2 + size * 0.7, z],
+    [x, baseY + size * 0.7, z],
     MAT.enemyEye
   );
   nova64.scene.setScale(head, 1, 0.6, 0.8);
 
   let detail = null;
   if (type === 'tank') {
-    detail = nova64.scene.createCube(size * 0.9, detailMat.color, [x, 2, z], detailMat);
+    detail = nova64.scene.createCube(size * 0.9, detailMat.color, [x, baseY, z], detailMat);
     nova64.scene.setScale(detail, 1.3, 0.3, 1.3);
   } else if (type === 'boss') {
-    detail = nova64.scene.createCube(size * 0.6, detailMat.color, [x, 2 + size, z], detailMat);
+    detail = nova64.scene.createCube(size * 0.6, detailMat.color, [x, baseY + size, z], detailMat);
     nova64.scene.setScale(detail, 1.5, 0.4, 0.5);
   } else if (type === 'shooter') {
     detail = nova64.scene.createCube(
       size * 0.2,
       detailMat.color,
-      [x, 2, z + size * 0.5],
+      [x, baseY, z + size * 0.5],
       detailMat
     );
     nova64.scene.setScale(detail, 0.4, 0.4, 2.0);
@@ -525,7 +546,7 @@ function spawnEnemy(x, z, type, doomType) {
 
   let light = null;
   if (enemyLights.length < 20) {
-    light = nova64.light.createPointLight(mat.color, 1.2, 12, [x, 3, z]);
+    light = nova64.light.createPointLight(mat.color, 1.2, 12, [x, floorY + 3, z]);
     enemyLights.push(light);
   }
 
@@ -538,7 +559,7 @@ function spawnEnemy(x, z, type, doomType) {
       const sc = 1 / 20;
       spriteH = spriteInfo.height * sc;
       const sprW = spriteInfo.width * sc;
-      sprite = nova64.scene.createPlane(sprW, spriteH, 0xffffff, [x, spriteH / 2, z]);
+      sprite = nova64.scene.createPlane(sprW, spriteH, 0xffffff, [x, floorY + spriteH / 2, z]);
       engine.setMeshMaterial(
         sprite,
         engine.createMaterial('basic', {
@@ -565,7 +586,8 @@ function spawnEnemy(x, z, type, doomType) {
     spriteH,
     x,
     z,
-    y: 2,
+    y: baseY,
+    floorY,
     health: hp,
     maxHealth: hp,
     speed: spd,
@@ -662,6 +684,8 @@ function enemyShoot(e, angleOffset) {
 function spawnPickupAt(x, y, z, type, doomType) {
   let mat =
     type === 'health' ? MAT.healthPickup : type === 'armor' ? MAT.armorPickup : MAT.ammoPickup;
+  const floorY = getEntityFloorY(x, z, y - 1);
+  y = floorY + 1;
   let m = nova64.scene.createCube(0.6, mat.color, [x, y, z], mat);
 
   // WAD sprite for pickup (if available)
@@ -673,7 +697,7 @@ function spawnPickupAt(x, y, z, type, doomType) {
       const sc = 1 / 20;
       spriteH = spriteInfo.height * sc;
       const sprW = spriteInfo.width * sc;
-      sprite = nova64.scene.createPlane(sprW, spriteH, 0xffffff, [x, spriteH / 2, z]);
+      sprite = nova64.scene.createPlane(sprW, spriteH, 0xffffff, [x, floorY + spriteH / 2, z]);
       engine.setMeshMaterial(
         sprite,
         engine.createMaterial('basic', {
@@ -688,7 +712,7 @@ function spawnPickupAt(x, y, z, type, doomType) {
     }
   }
 
-  entities.pickups.push({ m, sprite, spriteH, x, y, z, type, life: 30 });
+  entities.pickups.push({ m, sprite, spriteH, x, y, z, floorY, type, life: 30 });
 }
 
 function spawnPickupRandom(x, y, z) {
@@ -889,7 +913,7 @@ export function update(dt) {
           killFlash = 0.15;
           nova64.util.triggerShake(shake, 3);
           nova64.audio.sfx('explosion');
-          if (Math.random() < 0.55) spawnPickupRandom(e.x, 1, e.z);
+          if (Math.random() < 0.55) spawnPickupRandom(e.x, e.floorY + 1, e.z);
         } else {
           nova64.audio.sfx('hit');
         }
@@ -954,7 +978,8 @@ export function update(dt) {
     }
 
     let t = gameTime * 2 + i;
-    e.y = e.type === 'boss' ? 3 + Math.sin(t) * 0.6 : 2 + Math.sin(t * 1.5) * 0.3;
+    e.floorY = getEntityFloorY(e.x, e.z, e.floorY || 0);
+    e.y = e.floorY + (e.type === 'boss' ? 3 + Math.sin(t) * 0.6 : 2 + Math.sin(t * 1.5) * 0.3);
     let faceYaw = Math.atan2(player.x - e.x, player.z - e.z);
     nova64.scene.setPosition(e.body, e.x, e.y, e.z);
     nova64.scene.setRotation(e.body, 0, faceYaw, 0);
@@ -986,7 +1011,7 @@ export function update(dt) {
 
     // Update sprite billboard
     if (e.sprite) {
-      nova64.scene.setPosition(e.sprite, e.x, e.spriteH / 2, e.z);
+      nova64.scene.setPosition(e.sprite, e.x, e.floorY + e.spriteH / 2, e.z);
       const cam = nova64.camera.getCamera();
       const sdx = cam.position.x - e.x;
       const sdz = cam.position.z - e.z;
@@ -1018,6 +1043,8 @@ export function update(dt) {
   for (let i = entities.pickups.length - 1; i >= 0; i--) {
     let p = entities.pickups[i];
     p.life -= dt;
+    p.floorY = getEntityFloorY(p.x, p.z, p.floorY || 0);
+    p.y = p.floorY + 1;
     let bobY = p.y + Math.sin(gameTime * 3 + i) * 0.3;
     nova64.scene.setPosition(p.m, p.x, bobY, p.z);
     nova64.scene.setRotation(p.m, 0, gameTime * 2, 0);
@@ -1027,7 +1054,7 @@ export function update(dt) {
       nova64.scene.setPosition(
         p.sprite,
         p.x,
-        p.spriteH / 2 + Math.sin(gameTime * 3 + i) * 0.3,
+        p.floorY + p.spriteH / 2 + Math.sin(gameTime * 3 + i) * 0.3,
         p.z
       );
       const cam = nova64.camera.getCamera();

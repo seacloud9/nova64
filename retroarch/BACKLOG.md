@@ -93,7 +93,9 @@ smokes every `examples/*/code.js` cart through the GLES harness. Current result:
 **70 PASS, 1 WARN, 0 FAIL** across 71 carts. The only warning is
 `ar-hand-demo` (`AR hand tracking unavailable`), which remains intentionally
 out of scope for RetroArch. Probe implementation:
-[retroarch/tests/compat_all_probe.mjs](tests/compat_all_probe.mjs).
+[retroarch/tests/compat_all_probe.mjs](tests/compat_all_probe.mjs). The command
+exits nonzero on hard failures; set `NOVA64_COMPAT_FAIL_ON_WARN=1` when a strict
+no-warning probe is needed.
 
 ---
 

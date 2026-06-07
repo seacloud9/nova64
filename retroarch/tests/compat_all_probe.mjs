@@ -8,6 +8,7 @@ import zlib from 'node:zlib';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const outDir = process.env.NOVA64_COMPAT_OUT || '/tmp/compat-all';
 const frames = Number(process.env.NOVA64_COMPAT_FRAMES || 30);
+const failOnWarn = process.env.NOVA64_COMPAT_FAIL_ON_WARN === '1';
 fs.mkdirSync(outDir, { recursive: true });
 
 const carts = fs
@@ -173,3 +174,7 @@ for (const cart of carts) {
 
 console.log('---');
 console.log('passed=' + pass + ' warned=' + warn + ' failed=' + fail + ' total=' + carts.length);
+
+if (fail > 0 || (failOnWarn && warn > 0)) {
+  process.exitCode = 1;
+}

@@ -3,7 +3,7 @@
 Anything that's a known issue, a deferred investigation, or a queued feature
 lives here. Update this file as items are picked up or completed.
 
-Last updated: 2026-06-07
+Last updated: 2026-06-12
 
 **Post-v0.5.2 features shipped:**
 
@@ -433,14 +433,13 @@ In rough priority order; pick what fits the user's mood.
 
 ## 🟢 Definitely-explore-later notes (anchor points in code)
 
-These have inline TODO comments in `nova64_libretro.c` so a future LLM
-will trip over them while editing the relevant code:
+Reserved for inline TODO/FIXME comments in `nova64_libretro.c` so a
+future LLM will trip over them while editing the relevant code.
 
-- ~~**Multi-mip / RGBA16F bloom**~~ Already shipped: 5-mip downsample +
-  ping-pong Gaussian blur + Three.js-style composite is the active code
-  path when `u_use_mip_bloom != 0`. Inline TODO in `nova64_libretro.c`
-  near the bloom shader is stale and refers to the upgrade that has
-  already landed.
+(Empty as of 2026-06-12. The previous entry — multi-mip / RGBA16F
+bloom — has shipped and the inline TODO comment has been removed.
+Re-add items here only when the matching inline anchor is also added
+to the source.)
 
 ---
 

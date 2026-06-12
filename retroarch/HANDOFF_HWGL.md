@@ -3553,7 +3553,7 @@ Next-session plan:
 ### Quick wins if confirmed bottlenecks
 
 - **Reduce bloom from 13 taps to 5** if it's the bottleneck.
-- **2-pass separable Gaussian at 1/2 res** (see "Bloom: explore-later" TODO note in `nova64_libretro.c` next to the bloom shader for the full multi-mip plan).
+- **2-pass separable Gaussian at 1/2 res** — the multi-mip RGBA16F bloom path (`u_use_mip_bloom != 0`) already does 5-mip downsample + ping-pong blur + composite; reducing the brightpass radius is what's left if bloom is the bottleneck.
 - **Dirty-flag the software framebuffer** — skip `glTexSubImage2D` when nothing changed since last frame.
 - **Pre-build instance transforms in a Float32Array** — current `setInstanceTransforms` still iterates JS values one-at-a-time even after the batching helper.
 
@@ -3586,7 +3586,7 @@ These were committed across:
 - Sky gradient program: `gles_create_sky_gradient_program()` + `render_gles_sky_gradient()` (~line 31881)
 - `render_gles_skybox()` now falls back to gradient when no texture skybox is bound
 - `gles_destroy_skybox_resources()` cleans up the gradient program too
-- Bloom shader tuned: brightpass 0.32–0.85, wider kernel, final multiplier 1.0; explore-later note left in the shader source
+- Bloom shader tuned: brightpass 0.32–0.85, wider kernel, final multiplier 1.0 (the explore-later note that was left in the shader source has since been removed; the multi-mip upgrade it referenced shipped)
 
 - `NOVA64_PERF=1` telemetry now splits post pass, overlay conversion, overlay
   upload, and overlay draw timing; overlay draw-call counting no longer double

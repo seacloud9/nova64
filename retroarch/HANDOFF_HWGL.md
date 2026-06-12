@@ -1,11 +1,41 @@
 # Nova64 Hardware GL on Windows — Status & Handover
 
-**Last updated:** 2026-06-03 (Claude full-day — v0.5.2 release prep+publish + 8 parseCanvasUI feature slices + 3 live-test bugfixes + 2 open diagnoses)
-**Branch:** `main`, **16 ahead of `origin/main`** (user pushes from their shell)
-**Working tree:** clean as of `0a9677d` (vox-viewer matrix shim fix)
-**Windows DLL deployed:** cross-built at `0a9677d` and copied to `C:\RetroArch-Win64\cores\nova64_libretro.dll` (2,829,312 bytes)
-**Linux .so + harness:** restored after each cross-build
+**Last updated:** 2026-06-12 (Codex closeout — WAD/VOX follow-ups landed, focused validation rerun)
+**Branch:** `main`, synced with `origin/main` at `c9425a8` (`fix: restore wad floors at 60fps`)
+**Working tree:** tracked files clean before this handoff edit; untracked `tmp/` probes/screenshots and `.claude/scheduled_tasks.lock` intentionally ignored
+**Windows DLL deployed:** latest noted deployment was cross-built from the 2026-06-07 WAD floor/entity slice and copied to `C:\RetroArch-Win64\cores\nova64_libretro.dll` (2,829,312 bytes)
+**Linux .so + harness:** clean rebuilt in WSL on 2026-06-12 for frame-rate validation
 **npm:** `nova64@0.5.2` published earlier in the session (user ran `npm publish --access public` with OTP from their shell)
+
+---
+
+## HANDOFF UPDATE — 2026-06-12 Codex closeout
+
+The previously open RetroArch/WAD items are now closed in `main`:
+
+- VOX visibility and WAD/web cleanup landed in `435026e`.
+- WAD sector floor lookup regression coverage landed in `92cc540`.
+- WAD things/floor-relative gameplay and sector floor planes landed in `14f441e`.
+- WAD floor rendering/performance was restored at 60fps in `c9425a8`.
+- The requested demoscene screenshots are present under `tmp/demoscene-screenshots/`;
+  `tmp/` remains untracked by request.
+
+Focused validation rerun on 2026-06-12:
+
+- `pnpm run test:wad`: 6/6 pass.
+- `pnpm run retroarch:perf:framerate`: pass after clean Linux `.so` + harness
+  rebuild.
+  - `wad-demo`: 240 frames, 77.27 fps, 12.9417 ms/frame.
+  - `fps-demo-3d`: 240 frames, 141.62 fps, 7.0609 ms/frame.
+
+Notes:
+
+- The first frame-rate probe attempt failed because `retroarch/build/harness`
+  was missing. A clean WSL rebuild (`make clean && make platform=unix && make
+  harness`) fixed it.
+- The probe rebuilt the `.nova` bundles as part of its normal setup; same-size
+  generated churn was restored so the handoff edit is the only intended tracked
+  change from this closeout.
 
 ---
 

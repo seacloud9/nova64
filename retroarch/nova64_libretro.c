@@ -33280,7 +33280,10 @@ static bool install_nova64_api(JSContext *ctx)
             have a single alpha to scale. fill-opacity and stroke-opacity
             split the multiply: fill-opacity affects fill/stop-color only,
             stroke-opacity affects stroke only; both compose
-            multiplicatively with global opacity. */
+            multiplicatively with global opacity. display="none" and
+            visibility="hidden" both skip the entire subtree at the
+            renderNode top — parseCanvasUI flattens SVG's visibility
+            inheritance into a subtree skip for simplicity. */
          "(function(){"
            "var W=640,H=360;"
            "var fontFamilies={};"
@@ -34335,6 +34338,7 @@ static bool install_nova64_api(JSContext *ctx)
              "var tag=node.tag;"
              "if(tag==='defs'||tag==='linearGradient'||tag==='radialGradient'||tag==='stop'||tag==='animate'||tag==='animateTransform'||tag==='animateMotion'||tag==='filter'||tag==='feGaussianBlur'||tag==='feDropShadow'||tag==='feOffset'||tag==='feColorMatrix'||tag==='symbol'||tag==='tspan'||tag==='textPath'||tag==='pattern'||tag==='clipPath'||tag==='mask'||tag==='style')return;"
              "var a=applyAnimations(node,node.attrs,data);"
+             "if(a.display==='none'||a.visibility==='hidden')return;"
              "if(tag==='ui'){"
                "for(var i=0;i<node.children.length;i++)"
                  "renderNode(node.children[i],data,handlers,0,0,W,H);"

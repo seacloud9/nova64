@@ -1006,6 +1006,12 @@ run_case      "1125 canvas ui opacity" "retroarch/conformance/1125-canvas-ui-opa
 # global opacity attribute and with #rrggbbaa embedded alpha.
 run_case      "1126 canvas ui fill stroke opacity" "retroarch/conformance/1126-canvas-ui-fill-stroke-opacity.js" "ea2a129afac21476"
 
+# 1127 parseCanvasUI display="none" / visibility="hidden": both skip
+# the entire subtree at the renderNode top. parseCanvasUI flattens
+# SVG's visibility inheritance into a subtree skip for simplicity;
+# documented in source and cart.
+run_case      "1127 canvas ui display visibility" "retroarch/conformance/1127-canvas-ui-display-visibility.js" "785c7643a03e3daa"
+
 # 291 overlay autoclear regression: locks down the default
 # auto-clearing of the 2D HUD overlay between frames. Without
 # auto-clear, the F-Zero title screen vignette stayed under the

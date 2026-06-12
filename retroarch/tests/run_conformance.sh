@@ -941,6 +941,12 @@ run_case      "1115 canvas ui text path" "retroarch/conformance/1115-canvas-ui-t
 # point-list strings and x/y offsets.
 run_case      "1116 canvas ui polyline polygon" "retroarch/conformance/1116-canvas-ui-polyline-polygon.js" "739ba6d63cb67fda"
 
+# 1117 parseCanvasUI inline style="..." CSS attribute: parses semicolon-
+# separated key:value pairs (fill, stroke, color, font-size, etc.) and
+# overrides presentation attrs of the same name. font-size folds into the
+# parseCanvasUI size attr so SVG-style text sizing works.
+run_case      "1117 canvas ui style attr" "retroarch/conformance/1117-canvas-ui-style-attr.js" "74f48c199f4028f6"
+
 # 291 overlay autoclear regression: locks down the default
 # auto-clearing of the 2D HUD overlay between frames. Without
 # auto-clear, the F-Zero title screen vignette stayed under the

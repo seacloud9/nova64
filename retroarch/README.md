@@ -857,6 +857,62 @@ nova64.console.print(text); // append line to in-cart overlay ring buffer
 nova64.console.clear(); // clear overlay buffer
 ```
 
+### Canvas UI (SVG-Style Markup)
+
+`nova64.ui.parseCanvasUI(xmlString)` parses an SVG-flavored XML markup
+into a renderable UI tree; `nova64.ui.renderCanvasUI(ui, data, handlers)`
+draws it through the same 2D primitives carts already use. Designed so
+real SVG content (gradients, paths, viewBox, classes, opacity) can be
+dropped in with minimal renaming.
+
+```js
+const ui = nova64.ui.parseCanvasUI(`
+   <ui>
+      <defs>
+         <linearGradient id="g"><stop offset="0" stop-color="#ff4060" /><stop offset="1" stop-color="#80d0ff" /></linearGradient>
+         <style>.label { fill:#ffe080; font-size:14 }</style>
+      </defs>
+      <rect x="0" y="0" width="640" height="360" fill="#101820" />
+      <svg x="20" y="20" width="600" height="160" viewBox="0 0 300 80">
+         <rect x="0" y="0" width="300" height="80" fill="url(#g)" />
+         <text class="label" x="10" y="30">scaled into viewBox</text>
+      </svg>
+      <circle cx="100" cy="240" r="40" fill="#56d364" opacity="0.6" />
+   </ui>
+`);
+
+export function draw() {
+   cls(rgba8(16, 24, 32, 255));
+   nova64.ui.renderCanvasUI(ui, {});
+}
+```
+
+Supported elements: `<ui>`, `<rect>`, `<panel>`, `<group>`/`<g>`,
+`<svg>` (with `viewBox` coordinate scaling), `<circle>`, `<ellipse>`,
+`<line>`, `<text>` (with `<tspan>` / `<textPath>`), `<image>`, `<path>`
+(M/L/H/V/C/S/Q/T/A/Z), `<polyline>`, `<polygon>`, `<triangle>`,
+`<star>`, `<progressbar>`, `<button>`, and `<use>` instancing of
+`<symbol>` defs.
+
+Supported `<defs>`: `<linearGradient>`/`<radialGradient>`, `<filter>`
+(`<feGaussianBlur>`/`<feDropShadow>`/`<feColorMatrix>`), `<pattern>`,
+`<symbol>`, `<clipPath>`, `<mask>` (bounds-clip approximation), and
+`<style>` blocks with `.className` selectors.
+
+Supported animation: `<animate>`, `<animateTransform>`, and
+`<animateMotion>` children drive `nova64.time()`-based keyframing.
+
+Supported attributes: `class`, inline `style="..."`, static
+`transform="translate() scale() rotate()"`, `clip-path="url(#id)"`,
+`mask="url(#id)"`, `filter="url(#id)"`, `fill`/`stroke`/`color`
+(SVG `#rgb`/`#rrggbb`/`#rrggbbaa`, `none`, or `url(#id)`), `opacity`,
+`fill-opacity`, `stroke-opacity`, `text-anchor` (`start`/`middle`/`end`),
+and SVG center coords `cx`/`cy` on circle/ellipse. The cascade is
+presentation attrs → class rules → inline `style="..."` → animations →
+opacity tint.
+
+Conformance carts 1099–1126 lock the feature matrix end-to-end.
+
 ## Known Gaps And Unsupported APIs
 
 These browser-side Nova64 or Three.js features are not implemented:
@@ -1014,3 +1070,36 @@ These browser-side Nova64 or Three.js features are not implemented:
 | `132-screen-blur.js`          | screenBlur separable box blur post-process                                     |
 | `133-canvas.js`               | createCanvas/canvasPset/canvasBlit off-screen pixel buffer                     |
 | `134-nine-slice.js`           | drawNineSlice 9-slice sprite panel API smoke test                              |
+
+Canvas UI / parseCanvasUI cluster:
+
+| Cart                                       | What it covers                                                                 |
+| ------------------------------------------ | ------------------------------------------------------------------------------ |
+| `294-canvas-ui-text-effects.js`            | shadow/outline attributes on `<text>`                                          |
+| `1099-canvas-ui-svg-quadratic.js`          | `<path>` Q/q + T/t quadratic curves                                            |
+| `1100-canvas-ui-svg-smooth-cubic.js`       | `<path>` S/s smooth cubic curves                                               |
+| `1101-canvas-ui-svg-arcs.js`               | `<path>` A/a elliptical arcs                                                   |
+| `1102-canvas-ui-group-clip.js`             | `<group clip="true">` overflow clip rect                                       |
+| `1104-canvas-ui-font-family.js`            | `font-family` / `fontFamily` glyph-handle aliases                              |
+| `1105-canvas-ui-gradient.js`               | `<linearGradient>`/`<radialGradient>` multi-stop fills                         |
+| `1106-canvas-ui-animate.js`                | `<animate>` + `<animateTransform>` keyframing                                  |
+| `1107-canvas-ui-filter.js`                 | `<filter>` `<feGaussianBlur>` + `<feDropShadow>`                               |
+| `1108-canvas-ui-text-gradient.js`          | `<text color="url(#id)">` gradient fills on text                               |
+| `1109-canvas-ui-symbol-use.js`             | `<symbol>` + `<use href>` instancing                                           |
+| `1110-canvas-ui-tspan.js`                  | `<tspan>` inline styled text segments                                          |
+| `1111-canvas-ui-fecolormatrix.js`          | `<feColorMatrix>` matrix/saturate/hueRotate/luminanceToAlpha                   |
+| `1112-canvas-ui-pattern.js`                | `<pattern>` tiled fills referenced by `fill="url(#id)"`                        |
+| `1113-canvas-ui-clip-path.js`              | `<clipPath>` defs via `clip-path="url(#id)"`                                   |
+| `1114-canvas-ui-animate-motion.js`         | `<animateMotion>` x/y path-following                                           |
+| `1115-canvas-ui-text-path.js`              | `<textPath>` characters along a path polyline                                  |
+| `1116-canvas-ui-polyline-polygon.js`       | `<polyline>` / `<polygon>` SVG point lists                                     |
+| `1117-canvas-ui-style-attr.js`             | inline `style="..."` CSS attribute                                             |
+| `1118-canvas-ui-transform.js`              | static `transform="translate() scale() rotate()"`                              |
+| `1119-canvas-ui-svg-aliases.js`            | SVG aliases: `<g>` for group, cx/cy on circle/ellipse                          |
+| `1120-canvas-ui-svg-attrs.js`              | `<line stroke>` + `text-anchor` SVG attribute aliases                          |
+| `1121-canvas-ui-svg-viewbox.js`            | `<svg viewBox>` coordinate scaling on primitive shapes                         |
+| `1122-canvas-ui-viewbox-paths.js`          | viewBox scaling for `<path>` d-data + polyline points                          |
+| `1123-canvas-ui-mask.js`                   | `<mask>` defs as bounds-clip approximation                                     |
+| `1124-canvas-ui-style-block.js`            | `<style>` block with `.className` rule selectors                               |
+| `1125-canvas-ui-opacity.js`                | `opacity` alpha multiply across all color attrs                                |
+| `1126-canvas-ui-fill-stroke-opacity.js`    | `fill-opacity` / `stroke-opacity` split                                        |

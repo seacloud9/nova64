@@ -33271,8 +33271,11 @@ static bool install_nova64_api(JSContext *ctx)
             outer group clip. <style> blocks in <defs> are parsed as CSS-ish
             ".className { prop: val; }" rules; nodes with a
             class="name name2" attribute pull rule properties into their
-            attrs. Cascade: presentation attrs < class rules < inline
-            style="..." < animations. opacity="0..1" multiplies the alpha
+            attrs. Cascade: presentation attrs < element rules < class
+            rules < id rules < inline style="..." < animations. Selector
+            syntax inside <style>: ".name" for class, "#name" for id,
+            bare name for element selector. Combinators and pseudo-
+            classes are not supported. opacity="0..1" multiplies the alpha
             channel of every color-valued attr (fill, stroke, color,
             stop-color, shadow-color, outline-color) at the gateway, so
             all draw sites pick up reduced alpha without per-site changes.
@@ -33773,11 +33776,18 @@ static bool install_nova64_api(JSContext *ctx)
            "function parseStyleSheet(text,out){"
              "if(text==null)return;"
              "var s=String(text);"
-             "var re=/\\.([A-Za-z_][\\w-]*)\\s*\\{\\s*([^}]*)\\}/g;"
+             "var re=/([.#]?[A-Za-z_][\\w-]*)\\s*\\{\\s*([^}]*)\\}/g;"
              "var m;"
+             "if(!out.byTag)out.byTag={};"
+             "if(!out.byClass)out.byClass={};"
+             "if(!out.byId)out.byId={};"
              "while((m=re.exec(s))){"
-               "var cls=m[1],body=m[2];"
-               "if(!out[cls])out[cls]={};"
+               "var sel=m[1],body=m[2];"
+               "var bucket,key;"
+               "if(sel.charAt(0)==='.'){bucket=out.byClass;key=sel.substring(1);}"
+               "else if(sel.charAt(0)==='#'){bucket=out.byId;key=sel.substring(1);}"
+               "else{bucket=out.byTag;key=sel;}"
+               "if(!bucket[key])bucket[key]={};"
                "var rules=body.split(';');"
                "for(var i=0;i<rules.length;i++){"
                  "var r=rules[i];"
@@ -33787,7 +33797,7 @@ static bool install_nova64_api(JSContext *ctx)
                  "var v=r.substring(ci+1).replace(/^\\s+|\\s+$/g,'');"
                  "if(!k)continue;"
                  "if(k==='font-size')k='size';"
-                 "out[cls][k]=v;"
+                 "bucket[key][k]=v;"
                "}"
              "}"
            "}"
@@ -34249,16 +34259,25 @@ static bool install_nova64_api(JSContext *ctx)
              "tint(strokeKeys,oStroke);"
              "tint(otherKeys,oOther);"
            "}"
-           "function applyClassRules(classVal,out){"
-             "if(classVal==null||!currentStyleRules)return;"
-             "var cs=String(classVal).split(/\\s+/);"
-             "for(var i=0;i<cs.length;i++){"
-               "var c=cs[i];"
-               "if(!c)continue;"
-               "var rules=currentStyleRules[c];"
-               "if(!rules)continue;"
-               "for(var k in rules)if(Object.prototype.hasOwnProperty.call(rules,k))out[k]=rules[k];"
+           "function mergeRuleObj(rules,out){"
+             "if(!rules)return;"
+             "for(var k in rules)if(Object.prototype.hasOwnProperty.call(rules,k))out[k]=rules[k];"
+           "}"
+           "function applyStyleSheetRules(tag,idVal,classVal,out){"
+             "if(!currentStyleRules)return;"
+             /* SVG-ish cascade: element selector first (lowest specificity),
+                then class selectors, then id selector wins. Inline style
+                attr and animations apply after this gateway returns. */
+             "if(tag&&currentStyleRules.byTag)mergeRuleObj(currentStyleRules.byTag[tag],out);"
+             "if(classVal!=null&&currentStyleRules.byClass){"
+               "var cs=String(classVal).split(/\\s+/);"
+               "for(var i=0;i<cs.length;i++){"
+                 "var c=cs[i];"
+                 "if(!c)continue;"
+                 "mergeRuleObj(currentStyleRules.byClass[c],out);"
+               "}"
              "}"
+             "if(idVal!=null&&currentStyleRules.byId)mergeRuleObj(currentStyleRules.byId[idVal],out);"
            "}"
            "function applyStyleAttr(s,out){"
              "if(s==null)return;"
@@ -34284,12 +34303,15 @@ static bool install_nova64_api(JSContext *ctx)
              "}"
              "var hasStyle=attrs&&attrs.style!=null;"
              "var hasXform=attrs&&attrs.transform!=null;"
-             "var hasClass=attrs&&attrs['class']!=null&&currentStyleRules;"
+             "var hasSheet=currentStyleRules&&attrs&&("
+               "attrs['class']!=null||attrs.id!=null||"
+               "(currentStyleRules.byTag&&node.tag&&currentStyleRules.byTag[node.tag])"
+             ");"
              "var hasOpacity=attrs&&(attrs.opacity!=null||attrs['fill-opacity']!=null||attrs['stroke-opacity']!=null);"
-             "if(!hasAnim&&!hasStyle&&!hasXform&&!hasClass&&!hasOpacity)return attrs;"
+             "if(!hasAnim&&!hasStyle&&!hasXform&&!hasSheet&&!hasOpacity)return attrs;"
              "var out={};"
              "for(var k in attrs)if(Object.prototype.hasOwnProperty.call(attrs,k))out[k]=attrs[k];"
-             "if(hasClass)applyClassRules(attrs['class'],out);"
+             "if(hasSheet)applyStyleSheetRules(node.tag,attrs.id,attrs['class'],out);"
              "if(hasStyle)applyStyleAttr(attrs.style,out);"
              "if(hasXform)applyStaticTransform(attrs.transform,out);"
              "if(hasAnim){"

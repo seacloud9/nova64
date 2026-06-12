@@ -1017,6 +1017,12 @@ run_case      "1127 canvas ui display visibility" "retroarch/conformance/1127-ca
 # attribute via a closure-level push/pop in renderNode.
 run_case      "1128 canvas ui currentcolor" "retroarch/conformance/1128-canvas-ui-currentcolor.js" "5679fa2a521b597d"
 
+# 1129 parseCanvasUI <style> element + id selectors. Extends 1124 so
+# <style> rules can target by element name ("rect", "circle") or by
+# id ("#hero") in addition to class ".name". Cascade order is
+# element < class < id < inline style.
+run_case      "1129 canvas ui style selectors" "retroarch/conformance/1129-canvas-ui-style-selectors.js" "f7ee9c1dc3df5baf"
+
 # 291 overlay autoclear regression: locks down the default
 # auto-clearing of the 2D HUD overlay between frames. Without
 # auto-clear, the F-Zero title screen vignette stayed under the

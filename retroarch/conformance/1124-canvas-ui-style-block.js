@@ -53,7 +53,8 @@ export function init() {
 
       if (!ui || !ui.styleRules)
          errors.push('styleRules-missing');
-      else if (!ui.styleRules.red || ui.styleRules.red.fill !== '#ff4060')
+      else if (!ui.styleRules.byClass || !ui.styleRules.byClass.red ||
+               ui.styleRules.byClass.red.fill !== '#ff4060')
          errors.push('style-rule-not-parsed');
    }
 }

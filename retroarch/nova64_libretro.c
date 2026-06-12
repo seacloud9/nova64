@@ -1954,6 +1954,7 @@ static void update_storage_cart_id(void);
 static void audio_mix_frame(void);
 static void reset_audio_state(void);
 static const struct nova64_package_asset *find_package_asset(const char *path);
+static bool store_package_asset(const char *path, char *data, size_t size);
 static void sanitize_identifier(const char *input, char *out, size_t out_size, const char *fallback);
 static char *js_module_normalize(JSContext *ctx, const char *module_base_name,
       const char *module_name, void *opaque);
@@ -28537,6 +28538,63 @@ static JSValue js_assets_has(JSContext *ctx, JSValueConst this_val, int argc, JS
    return JS_NewBool(ctx, found);
 }
 
+/* registerBytes(path, uint8array) — store raw bytes under a synthetic
+   asset path so spr()/createTexture/etc. can find them via the normal
+   asset lookup. Used by parseCanvasUI to plumb data: URI images
+   through to the existing image draw path. */
+static JSValue js_assets_register_bytes(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 2)
+      return JS_NewBool(ctx, false);
+
+   const char *path = JS_ToCString(ctx, argv[0]);
+   if (!path)
+      return JS_NewBool(ctx, false);
+
+   uint8_t *base = NULL;
+   size_t base_size = 0;
+   size_t pix_offset = 0;
+   size_t pix_length = 0;
+   JSValue underlying = JS_UNDEFINED;
+   int ta_kind = JS_GetTypedArrayType(argv[1]);
+   if (ta_kind >= 0) {
+      underlying = JS_GetTypedArrayBuffer(ctx, argv[1], &pix_offset, &pix_length, NULL);
+      if (JS_IsException(underlying)) {
+         JS_FreeCString(ctx, path);
+         return JS_NewBool(ctx, false);
+      }
+      base = JS_GetArrayBuffer(ctx, &base_size, underlying);
+   } else {
+      base = JS_GetArrayBuffer(ctx, &base_size, argv[1]);
+      pix_offset = 0;
+      pix_length = base_size;
+   }
+   if (!base || pix_length == 0) {
+      if (!JS_IsUndefined(underlying)) JS_FreeValue(ctx, underlying);
+      JS_FreeCString(ctx, path);
+      return JS_NewBool(ctx, false);
+   }
+
+   /* Copy the bytes so we own them; store_package_asset takes ownership of `data`. */
+   char *copy = (char *)malloc(pix_length);
+   if (!copy) {
+      if (!JS_IsUndefined(underlying)) JS_FreeValue(ctx, underlying);
+      JS_FreeCString(ctx, path);
+      return JS_NewBool(ctx, false);
+   }
+   memcpy(copy, base + pix_offset, pix_length);
+   if (!JS_IsUndefined(underlying)) JS_FreeValue(ctx, underlying);
+
+   bool ok = store_package_asset(path, copy, pix_length);
+   JS_FreeCString(ctx, path);
+   if (!ok) {
+      free(copy);
+      return JS_NewBool(ctx, false);
+   }
+   return JS_NewBool(ctx, true);
+}
+
 static JSValue js_assets_size(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
    (void)this_val;
@@ -30204,6 +30262,7 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, assets, "readBytes", js_assets_read_bytes, 1);
    set_function(ctx, assets, "list", js_assets_list, 0);
    set_function(ctx, assets, "quota", js_assets_quota, 0);
+   set_function(ctx, assets, "registerBytes", js_assets_register_bytes, 2);
 
    set_function(ctx, storage, "saveData", js_storage_save_data, 2);
    set_function(ctx, storage, "loadData", js_storage_load_data, 2);
@@ -33302,7 +33361,12 @@ static bool install_nova64_api(JSContext *ctx)
             accumulate on the running cursor before each character is
             drawn, dy values are absolute baseline shifts per character
             (relative to text y). Lists shorter than the string use 0
-            for the rest. */
+            for the rest. <image href="data:image/png;base64,..."> is
+            base64-decoded in JS and registered via
+            nova64.assets.registerBytes under a generated key
+            (__data_uri_N.png), then routed through the existing image
+            draw path. Same src string reuses the same registered key
+            via dataUriCache so repeated rendering is not a hot loop. */
          "(function(){"
            "var W=640,H=360;"
            "var fontFamilies={};"
@@ -34223,6 +34287,49 @@ static bool install_nova64_api(JSContext *ctx)
              "for(var i=0;i+1<nums.length;i+=2)pts.push({x:nums[i],y:nums[i+1]});"
              "return pts;"
            "}"
+           "var dataUriCounter=0;"
+           "var dataUriCache={};"
+           "var b64Chars='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';"
+           "function base64Decode(s){"
+             "s=String(s).replace(/[\\s]/g,'').replace(/=+$/,'');"
+             "var len=s.length;"
+             "if(len===0)return new Uint8Array(0);"
+             "var byteLen=Math.floor(len*3/4);"
+             "var out=new Uint8Array(byteLen);"
+             "var oi=0;"
+             "for(var i=0;i<len;i+=4){"
+               "var a=b64Chars.indexOf(s.charAt(i));"
+               "var b=b64Chars.indexOf(s.charAt(i+1));"
+               "var c=b64Chars.indexOf(s.charAt(i+2));"
+               "var d=b64Chars.indexOf(s.charAt(i+3));"
+               "if(a<0||b<0)break;"
+               "out[oi++]=(a<<2)|(b>>4);"
+               "if(c<0)break;"
+               "out[oi++]=((b&0xf)<<4)|(c>>2);"
+               "if(d<0)break;"
+               "out[oi++]=((c&3)<<6)|d;"
+             "}"
+             "return out.subarray(0,oi);"
+           "}"
+           "function dataUriToAsset(src){"
+             "if(!src||src.substring(0,5)!=='data:')return null;"
+             "if(dataUriCache[src])return dataUriCache[src];"
+             "if(typeof nova64==='undefined'||!nova64.assets||typeof nova64.assets.registerBytes!=='function')return null;"
+             "var comma=src.indexOf(',');"
+             "if(comma<0)return null;"
+             "var header=src.substring(5,comma);"
+             "var body=src.substring(comma+1);"
+             "if(header.indexOf(';base64')<0)return null;"
+             "var mime=header.split(';')[0];"
+             "var ext=mime.indexOf('png')>=0?'.png':(mime.indexOf('jpeg')>=0||mime.indexOf('jpg')>=0?'.jpg':'.bin');"
+             "var bytes;"
+             "try{bytes=base64Decode(body);}catch(e){return null;}"
+             "if(!bytes||bytes.length===0)return null;"
+             "var key='__data_uri_'+(++dataUriCounter)+ext;"
+             "if(!nova64.assets.registerBytes(key,bytes))return null;"
+             "dataUriCache[src]=key;"
+             "return key;"
+           "}"
            "function parseNumList(s,data){"
              "if(s==null)return[];"
              "var raw=bind(String(s),data);"
@@ -34638,6 +34745,10 @@ static bool install_nova64_api(JSContext *ctx)
                "}"
              "}else if(tag==='image'){"
                "var src=bind(a.src||a.href||a['xlink:href']||'',data);"
+               "if(src&&src.substring(0,5)==='data:'){"
+                 "var dukey=dataUriToAsset(src);"
+                 "if(dukey)src=dukey;"
+               "}"
                "if(src){"
                  "if(src.charAt(0)==='/')src=src.substr(1);"
                  "if(typeof assetHas==='function'&&!assetHas(src)){"

@@ -1040,6 +1040,13 @@ run_case      "1131 canvas ui marker orient" "retroarch/conformance/1131-canvas-
 # dy values are absolute baseline shifts per character.
 run_case      "1132 canvas ui text dx dy" "retroarch/conformance/1132-canvas-ui-text-dxdy.js" "d85180e4dd193e19"
 
+# 1133 parseCanvasUI <image> data: URI support. data:image/png;base64
+# is decoded at parse time and registered as a dynamic asset
+# (__data_uri_N.png) via nova64.assets.registerBytes, then routed
+# through the existing image draw path. Same src string is cached so
+# only the first reference registers.
+run_case      "1133 canvas ui image data uri" "retroarch/conformance/1133-canvas-ui-image-data-uri.js" "5744e7812c94f3a7"
+
 # 291 overlay autoclear regression: locks down the default
 # auto-clearing of the 2D HUD overlay between frames. Without
 # auto-clear, the F-Zero title screen vignette stayed under the

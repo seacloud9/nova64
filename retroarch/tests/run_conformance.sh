@@ -987,6 +987,12 @@ run_case      "1122 canvas ui viewbox paths" "retroarch/conformance/1122-canvas-
 # clip. No per-pixel alpha mask; documented in source.
 run_case      "1123 canvas ui mask" "retroarch/conformance/1123-canvas-ui-mask.js" "08e6ffd1cbc887ea"
 
+# 1124 parseCanvasUI <style> block with .class rules: <style> tags in
+# <defs> are parsed as CSS-ish ".className { prop: val; }" rules and
+# applied to nodes with matching class="..." attrs. Cascade order is
+# presentation < class < inline style < animations, matching SVG.
+run_case      "1124 canvas ui style block" "retroarch/conformance/1124-canvas-ui-style-block.js" "d25b865086432140"
+
 # 291 overlay autoclear regression: locks down the default
 # auto-clearing of the 2D HUD overlay between frames. Without
 # auto-clear, the F-Zero title screen vignette stayed under the

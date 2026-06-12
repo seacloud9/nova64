@@ -33293,8 +33293,11 @@ static bool install_nova64_api(JSContext *ctx)
             collected and referenced via marker-start / marker-mid /
             marker-end on <line>; the marker's children render at the
             line endpoint translated by -refX/-refY. orient="auto"
-            rotation is not supported — markers render in their
-            authored orientation. */
+            rotates the marker's children around the anchor by the line
+            direction angle; rotation is only applied to child shapes
+            that rotate cleanly to themselves (polygon, polyline, line,
+            circle). Other tags (rect, path, text) inside a rotated
+            marker fall back to the un-rotated render. */
          "(function(){"
            "var W=640,H=360;"
            "var fontFamilies={};"
@@ -33797,15 +33800,72 @@ static bool install_nova64_api(JSContext *ctx)
              "if(!m)return null;"
              "return currentMarkers[m[1]]||null;"
            "}"
-           "function drawMarker(mk,px,py,data,handlers){"
+           "function drawMarkerChildRotated(node,px,py,rx,ry,cs,sn,data,handlers){"
+             /* Rotated-marker support is limited to shapes that rotate
+                cleanly to themselves: polygon / polyline / line / circle.
+                For other tags (rect, path, text, ...) we fall back to the
+                un-rotated translate-only render so the marker still draws
+                something — documented in the marker section of the source
+                comment. */
+             "var a=applyAnimations(node,node.attrs||{},data);"
+             "if(a.display==='none'||a.visibility==='hidden')return;"
+             "var tag=node.tag;"
+             "function tx(lx,ly){"
+               "var dx=lx-rx,dy=ly-ry;"
+               "return{x:px+dx*cs-dy*sn,y:py+dx*sn+dy*cs};"
+             "}"
+             "if(tag==='polygon'||tag==='polyline'){"
+               "var raw=parsePointList(a.points,data);"
+               "var pts=[];"
+               "for(var pi=0;pi<raw.length;pi++)pts.push(tx(raw[pi].x,raw[pi].y));"
+               "var fill=color(a.fill,data);"
+               "var stroke=color(a.stroke!=null?a.stroke:a.color,data);"
+               "var closed=tag==='polygon'||a.closed==='true'||a.closed===true||a.closed==='1';"
+               "if(tag==='polygon'&&fill>=0&&pts.length>=3&&typeof poly==='function')poly(pts,fill,true);"
+               "if(stroke>=0&&pts.length>=2){"
+                 "for(var lj=0;lj<pts.length-1;lj++)"
+                   "nova64.draw.line(pts[lj].x,pts[lj].y,pts[lj+1].x,pts[lj+1].y,stroke);"
+                 "if(closed)nova64.draw.line(pts[pts.length-1].x,pts[pts.length-1].y,pts[0].x,pts[0].y,stroke);"
+               "}"
+               "return;"
+             "}"
+             "if(tag==='circle'){"
+               "var lcx=a.cx!=null?num(a.cx,data,0):num(a.x,data,0);"
+               "var lcy=a.cy!=null?num(a.cy,data,0):num(a.y,data,0);"
+               "var rr=num(a.r,data,0);"
+               "var c=tx(lcx,lcy);"
+               "var fc=color(a.fill,data),sc=color(a.stroke,data);"
+               "if(fc>=0)nova64.draw.circfill(c.x,c.y,rr,fc);"
+               "if(sc>=0)nova64.draw.circle(c.x,c.y,rr,sc);"
+               "return;"
+             "}"
+             "if(tag==='line'){"
+               "var lp1=tx(num(a.x1,data,0),num(a.y1,data,0));"
+               "var lp2=tx(num(a.x2,data,0),num(a.y2,data,0));"
+               "var lc=color(a.stroke!=null?a.stroke:a.color,data);"
+               "if(lc>=0)nova64.draw.line(lp1.x,lp1.y,lp2.x,lp2.y,lc);"
+               "return;"
+             "}"
+             /* Fallback for unsupported tags: render un-rotated at the
+                anchor. */
+             "renderNode(node,data,handlers,px-rx,py-ry,0,0);"
+           "}"
+           "function drawMarker(mk,px,py,angle,data,handlers){"
              "if(!mk||!mk.children)return;"
              /* refX/refY anchor the marker so the children's (refX,refY)
-                point lands at (px,py). orient="auto" rotation is not
-                supported — marker children render in their authored
-                orientation. */
+                point lands at (px,py). orient="auto" rotates the children
+                around the anchor by the line direction angle; see the
+                drawMarkerChildRotated helper for the supported child
+                shape list. */
              "var ma=mk.attrs||{};"
              "var rx=num(ma.refX,data,0);"
              "var ry=num(ma.refY,data,0);"
+             "if(ma.orient==='auto'&&!isNaN(angle)){"
+               "var cs=Math.cos(angle),sn=Math.sin(angle);"
+               "for(var i=0;i<mk.children.length;i++)"
+                 "drawMarkerChildRotated(mk.children[i],px,py,rx,ry,cs,sn,data,handlers);"
+               "return;"
+             "}"
              "for(var i=0;i<mk.children.length;i++)"
                "renderNode(mk.children[i],data,handlers,px-rx,py-ry,0,0);"
            "}"
@@ -34470,12 +34530,13 @@ static bool install_nova64_api(JSContext *ctx)
                "var x2=ox+num(a.x2,data,pw)*coordSx,y2=oy+num(a.y2,data,ph)*coordSy;"
                "var lc=color(a.stroke!=null?a.stroke:a.color,data);"
                "if(lc>=0)nova64.draw.line(x1,y1,x2,y2,lc);"
+               "var lineAng=Math.atan2(y2-y1,x2-x1);"
                "var mS=markerRef(a['marker-start']);"
-               "if(mS)drawMarker(mS,x1,y1,data,handlers);"
+               "if(mS)drawMarker(mS,x1,y1,lineAng,data,handlers);"
                "var mE=markerRef(a['marker-end']);"
-               "if(mE)drawMarker(mE,x2,y2,data,handlers);"
+               "if(mE)drawMarker(mE,x2,y2,lineAng,data,handlers);"
                "var mM=markerRef(a['marker-mid']);"
-               "if(mM)drawMarker(mM,(x1+x2)/2,(y1+y2)/2,data,handlers);"
+               "if(mM)drawMarker(mM,(x1+x2)/2,(y1+y2)/2,lineAng,data,handlers);"
              "}else if(tag==='text'){"
                "var size=num(a.size,data,0);"
                "var scale=size>=12?2:1;"

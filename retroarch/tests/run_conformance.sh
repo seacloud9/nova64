@@ -1029,6 +1029,12 @@ run_case      "1129 canvas ui style selectors" "retroarch/conformance/1129-canva
 # documented in source.
 run_case      "1130 canvas ui marker" "retroarch/conformance/1130-canvas-ui-marker.js" "1a1ccc19181265b8"
 
+# 1131 parseCanvasUI <marker orient="auto"> rotation. Rotates marker
+# children around the anchor by atan2(dy,dx) of the line direction.
+# Limited to child shapes that rotate cleanly: polygon, polyline,
+# line, circle. Rect/path inside rotated markers render un-rotated.
+run_case      "1131 canvas ui marker orient" "retroarch/conformance/1131-canvas-ui-marker-orient.js" "14dd910125101adc"
+
 # 291 overlay autoclear regression: locks down the default
 # auto-clearing of the 2D HUD overlay between frames. Without
 # auto-clear, the F-Zero title screen vignette stayed under the

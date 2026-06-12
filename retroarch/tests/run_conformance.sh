@@ -980,6 +980,13 @@ run_case      "1121 canvas ui svg viewbox" "retroarch/conformance/1121-canvas-ui
 # scaled the primitive shape coords.
 run_case      "1122 canvas ui viewbox paths" "retroarch/conformance/1122-canvas-ui-viewbox-paths.js" "f7350fcdfe5e5e21"
 
+# 1123 parseCanvasUI <mask> defs: SVG <mask id> in <defs> is referenced
+# via mask="url(#id)" and approximated as a rectangular bounds clip
+# derived from the union of its child shape bounds — same machinery as
+# <clipPath>. mask intersects with any active clip-path and outer group
+# clip. No per-pixel alpha mask; documented in source.
+run_case      "1123 canvas ui mask" "retroarch/conformance/1123-canvas-ui-mask.js" "08e6ffd1cbc887ea"
+
 # 291 overlay autoclear regression: locks down the default
 # auto-clearing of the 2D HUD overlay between frames. Without
 # auto-clear, the F-Zero title screen vignette stayed under the

@@ -914,7 +914,7 @@ coords `cx`/`cy` on circle/ellipse. The cascade is presentation attrs →
 element-selector rules → class-selector rules → id-selector rules →
 inline `style="..."` → static transform → animations → opacity tint.
 
-Conformance carts 1099–1130 lock the feature matrix end-to-end.
+Conformance carts 1099–1132 lock the feature matrix end-to-end.
 
 ## Known Gaps And Unsupported APIs
 
@@ -1110,3 +1110,5 @@ Canvas UI / parseCanvasUI cluster:
 | `1128-canvas-ui-currentcolor.js`           | `currentColor` keyword inheritance from ancestor `color`                       |
 | `1129-canvas-ui-style-selectors.js`        | `<style>` element + `#id` selectors (extends `.class`)                         |
 | `1130-canvas-ui-marker.js`                 | `<marker>` defs on lines (marker-start / marker-mid / marker-end)              |
+| `1131-canvas-ui-marker-orient.js`          | `<marker orient="auto">` rotation on polygon/polyline/line/circle              |
+| `1132-canvas-ui-text-dxdy.js`              | per-character `dx` / `dy` offsets on `<text>`                                  |

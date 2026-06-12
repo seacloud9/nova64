@@ -1,11 +1,11 @@
 # Nova64 Hardware GL on Windows — Status & Handover
 
-**Last updated:** 2026-06-12 (Claude session arc — parseCanvasUI SVG compat 1117–1130, custom-mesh VAO cache, doc closeout)
-**Branch:** `main`, **21 ahead of `origin/main`** (user pushes from their shell)
+**Last updated:** 2026-06-12 (Claude session arc — parseCanvasUI SVG compat 1117–1132, custom-mesh VAO cache, doc closeout)
+**Branch:** `main`, **23 ahead of `origin/main`** (user pushes from their shell)
 **Working tree:** tracked files clean; untracked `tmp/`, `.claude/scheduled_tasks.lock`, and locally-modified `.claude/settings.json` are environmental
-**Windows DLL deployed:** cross-built at `8388ad3` (1130 marker) and copied to `C:\RetroArch-Win64\cores\nova64_libretro.dll` (2,846,208 bytes)
-**Linux .so + harness:** rebuilt at `8388ad3` for the conformance sweep
-**Playlist:** `C:\RetroArch-Win64\playlists\nova64-svg-compat.lpl` ships carts 1117–1130 (14 carts) for visual smoke-test on hwgl
+**Windows DLL deployed:** cross-built at `b09ecbb` (1132 text dx/dy) and copied to `C:\RetroArch-Win64\cores\nova64_libretro.dll` (2,848,256 bytes)
+**Linux .so + harness:** rebuilt at `b09ecbb` for the conformance sweep
+**Playlist:** `C:\RetroArch-Win64\playlists\nova64-svg-compat.lpl` ships carts 1117–1132 (16 carts) for visual smoke-test on hwgl
 **npm:** `nova64@0.5.2` was published earlier (no new publish this arc)
 
 ---
@@ -38,6 +38,8 @@ earlier canvas-ui cart). The full feature matrix is now documented in
 | `f01d6e9` | `currentColor` keyword inheritance via push/pop tracker (1128)       |
 | `3c0f954` | `<style>` element + `#id` selectors (1129)                           |
 | `8388ad3` | `<marker>` defs on lines (1130)                                      |
+| `dab1c28` | `<marker orient="auto">` rotation (1131)                             |
+| `b09ecbb` | per-character `<text dx dy>` offsets (1132)                          |
 
 `applyAnimations` is the unified attrs gateway now — it composes
 presentation → element-selector rules → class-selector rules → id-
@@ -111,12 +113,16 @@ both already wired (see BACKLOG "Diagnostic infra already in tree").
    cart 134; everything between 135 and 1098 is missing. Out of scope
    for a slice session but worth a focused pass.
 3. ~~**More parseCanvasUI defensive surface.**~~ Closed in this arc —
-   `<marker>` defs (1130, no orient-auto), `currentColor` keyword
-   resolution (1128), `display="none"`/`visibility="hidden"` subtree
-   skip (1127), and element + `#id` selectors in `<style>` blocks
-   (1129). The remaining stretch items are larger: `<marker>` orient
-   rotation (needs a small rotation matrix path through the renderer),
-   `<image>` data: URI support, per-character tspan dx/dy arrays.
+   `<marker>` defs (1130), `<marker orient="auto">` rotation (1131,
+   limited to polygon/polyline/line/circle children), `currentColor`
+   keyword resolution (1128), `display="none"`/`visibility="hidden"`
+   subtree skip (1127), element + `#id` selectors in `<style>` blocks
+   (1129), and per-character `<text dx dy>` offsets (1132).
+4. **`<image>` data: URI support.** The remaining stretch item from the
+   prior list. Needs either a JS-side PNG decoder (heavy) or a path to
+   inject decoded raster bytes into the package-asset system (cleaner
+   but cross-cutting). Punted as too big for a slice — a focused
+   session can pick this up.
 
 ---
 

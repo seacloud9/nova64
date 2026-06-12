@@ -973,6 +973,13 @@ run_case      "1120 canvas ui svg attrs" "retroarch/conformance/1120-canvas-ui-s
 # space. Scale composes via push/pop coordSx/coordSy on nesting.
 run_case      "1121 canvas ui svg viewbox" "retroarch/conformance/1121-canvas-ui-svg-viewbox.js" "c03ee386fd538289"
 
+# 1122 parseCanvasUI viewBox scaling for <path> d-data and <polyline>/
+# <polygon> point lists. Path subpaths are scaled around the path's
+# destination-space origin after parsing; polyline points are scaled
+# at point-list construction. Fills the gap left by 1121 which only
+# scaled the primitive shape coords.
+run_case      "1122 canvas ui viewbox paths" "retroarch/conformance/1122-canvas-ui-viewbox-paths.js" "f7350fcdfe5e5e21"
+
 # 291 overlay autoclear regression: locks down the default
 # auto-clearing of the 2D HUD overlay between frames. Without
 # auto-clear, the F-Zero title screen vignette stayed under the

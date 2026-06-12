@@ -33259,8 +33259,10 @@ static bool install_nova64_api(JSContext *ctx)
             space that scales into the svg's destination box (width/height);
             children's primitive coordinates (rect x/y/w/h, circle cx/cy/r,
             line x1/y1/x2/y2, ellipse cx/cy/rx/ry) are scaled and translated
-            into destination space. Scale composes through nested viewBoxes
-            via a push/pop coordSx/coordSy pair. */
+            into destination space. <path> d-data and <polyline>/<polygon>
+            point lists are also scaled under an active viewBox so SVG path
+            content tracks its container. Scale composes through nested
+            viewBoxes via a push/pop coordSx/coordSy pair. */
          "(function(){"
            "var W=640,H=360;"
            "var fontFamilies={};"
@@ -34647,6 +34649,15 @@ static bool install_nova64_api(JSContext *ctx)
                  "}"
                "}"
                "if(cur)subpaths.push(cur);"
+               "if(coordSx!==1||coordSy!==1){"
+                 "for(var spsc=0;spsc<subpaths.length;spsc++){"
+                   "var spp=subpaths[spsc];"
+                   "for(var psc=0;psc<spp.length;psc++){"
+                     "spp[psc].x=x+(spp[psc].x-x)*coordSx;"
+                     "spp[psc].y=y+(spp[psc].y-y)*coordSy;"
+                   "}"
+                 "}"
+               "}"
                "for(var spi=0;spi<subpaths.length;spi++){"
                  "var sp=subpaths[spi];"
                  "if(pfill>=0&&sp.length>=3&&typeof poly==='function')poly(sp,pfill,true);"
@@ -34660,7 +34671,7 @@ static bool install_nova64_api(JSContext *ctx)
             "}else if(tag==='polyline'||tag==='polygon'){"
               "var rawPts=parsePointList(a.points,data);"
               "var pts2=[];"
-              "for(var rpi=0;rpi<rawPts.length;rpi++)pts2.push({x:x+rawPts[rpi].x,y:y+rawPts[rpi].y});"
+              "for(var rpi=0;rpi<rawPts.length;rpi++)pts2.push({x:x+rawPts[rpi].x*coordSx,y:y+rawPts[rpi].y*coordSy});"
               "var closed=tag==='polygon'||a.closed==='true'||a.closed===true||a.closed==='1';"
               "var plFill=color(a.fill,data);"
               "var plStroke=color(a.stroke!=null?a.stroke:a.color,data);"

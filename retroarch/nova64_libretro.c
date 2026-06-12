@@ -33252,7 +33252,9 @@ static bool install_nova64_api(JSContext *ctx)
             attributes composed onto x/y/width/height the same way
             animateTransform mutates them. SVG aliases: <g> renders as
             <group>; <circle>/<ellipse> accept cx/cy as alternates to
-            x/y for the center position. */
+            x/y for the center position; <line> accepts stroke="..." in
+            addition to color="..."; <text> accepts text-anchor with the
+            SVG values "middle"/"end" (mapped to anchor-x center/right). */
          "(function(){"
            "var W=640,H=360;"
            "var fontFamilies={};"
@@ -33344,9 +33346,15 @@ static bool install_nova64_api(JSContext *ctx)
              "return 0;"
            "}"
            "function anchorX(val,w){"
-             "if(val==='center')return -Math.floor(w/2);"
-             "if(val==='right')return -w;"
+             "if(val==='center'||val==='middle')return -Math.floor(w/2);"
+             "if(val==='right'||val==='end')return -w;"
              "return 0;"
+           "}"
+           "function pickAnchorAttr(a){"
+             "if(a==null)return null;"
+             "if(a['anchor-x']!=null)return a['anchor-x'];"
+             "if(a['text-anchor']!=null)return a['text-anchor'];"
+             "return null;"
            "}"
            "function registerFontFamily(name,handle){"
              "if(name==null)return 0;"
@@ -34232,7 +34240,7 @@ static bool install_nova64_api(JSContext *ctx)
              "}else if(tag==='line'){"
                "var x1=ox+num(a.x1,data,pw),y1=oy+num(a.y1,data,ph);"
                "var x2=ox+num(a.x2,data,pw),y2=oy+num(a.y2,data,ph);"
-               "var lc=color(a.color,data);"
+               "var lc=color(a.stroke!=null?a.stroke:a.color,data);"
                "if(lc>=0)nova64.draw.line(x1,y1,x2,y2,lc);"
              "}else if(tag==='text'){"
                "var size=num(a.size,data,0);"
@@ -34279,7 +34287,7 @@ static bool install_nova64_api(JSContext *ctx)
                    "var segTxt=bind(seg.text||'',data);"
                    "totalW+=textWidth(segTxt,segScale,ma,data);"
                  "}"
-                 "var runX=x+anchorX(a['anchor-x'],totalW);"
+                 "var runX=x+anchorX(pickAnchorAttr(a),totalW);"
                  "for(var ti=0;ti<node.children.length;ti++){"
                    "var seg=node.children[ti];"
                    "if(seg.tag!=='tspan')continue;"
@@ -34296,7 +34304,7 @@ static bool install_nova64_api(JSContext *ctx)
                "}else{"
                  "var txt=bind(node.text||'',data);"
                  "var tw=textWidth(txt,scale,a,data);"
-                 "var tx=x+anchorX(a['anchor-x'],tw);"
+                 "var tx=x+anchorX(pickAnchorAttr(a),tw);"
                  "renderTextSegment(txt,tx,y,scale,a,data);"
                "}"
              "}else if(tag==='image'){"

@@ -960,6 +960,12 @@ run_case      "1118 canvas ui transform" "retroarch/conformance/1118-canvas-ui-t
 # position. Lets drop-in SVG snippets render without renaming.
 run_case      "1119 canvas ui svg aliases" "retroarch/conformance/1119-canvas-ui-svg-aliases.js" "7b55633cb524c571"
 
+# 1120 parseCanvasUI more SVG attribute aliases: <line> accepts SVG-
+# standard stroke="..." in addition to color="...". <text> accepts
+# text-anchor="middle"|"end" as aliases for anchor-x="center"|"right",
+# so drop-in SVG text lays out correctly.
+run_case      "1120 canvas ui svg attrs" "retroarch/conformance/1120-canvas-ui-svg-attrs.js" "ba79968c0479cd30"
+
 # 291 overlay autoclear regression: locks down the default
 # auto-clearing of the 2D HUD overlay between frames. Without
 # auto-clear, the F-Zero title screen vignette stayed under the

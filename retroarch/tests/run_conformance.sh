@@ -1023,6 +1023,12 @@ run_case      "1128 canvas ui currentcolor" "retroarch/conformance/1128-canvas-u
 # element < class < id < inline style.
 run_case      "1129 canvas ui style selectors" "retroarch/conformance/1129-canvas-ui-style-selectors.js" "f7ee9c1dc3df5baf"
 
+# 1130 parseCanvasUI <marker> defs on lines. marker-start / marker-mid /
+# marker-end="url(#id)" draw the marker's children at the line endpoints
+# translated by -refX/-refY. orient="auto" rotation not supported;
+# documented in source.
+run_case      "1130 canvas ui marker" "retroarch/conformance/1130-canvas-ui-marker.js" "1a1ccc19181265b8"
+
 # 291 overlay autoclear regression: locks down the default
 # auto-clearing of the 2D HUD overlay between frames. Without
 # auto-clear, the F-Zero title screen vignette stayed under the

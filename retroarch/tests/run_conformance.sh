@@ -966,6 +966,13 @@ run_case      "1119 canvas ui svg aliases" "retroarch/conformance/1119-canvas-ui
 # so drop-in SVG text lays out correctly.
 run_case      "1120 canvas ui svg attrs" "retroarch/conformance/1120-canvas-ui-svg-attrs.js" "ba79968c0479cd30"
 
+# 1121 parseCanvasUI <svg viewBox="..."> coordinate scaling: viewBox
+# establishes an internal coordinate space scaled into the svg's
+# destination width/height. Children's primitive coordinates (rect,
+# circle, line, ellipse) are scaled and translated into destination
+# space. Scale composes via push/pop coordSx/coordSy on nesting.
+run_case      "1121 canvas ui svg viewbox" "retroarch/conformance/1121-canvas-ui-svg-viewbox.js" "c03ee386fd538289"
+
 # 291 overlay autoclear regression: locks down the default
 # auto-clearing of the 2D HUD overlay between frames. Without
 # auto-clear, the F-Zero title screen vignette stayed under the

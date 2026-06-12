@@ -33254,7 +33254,13 @@ static bool install_nova64_api(JSContext *ctx)
             <group>; <circle>/<ellipse> accept cx/cy as alternates to
             x/y for the center position; <line> accepts stroke="..." in
             addition to color="..."; <text> accepts text-anchor with the
-            SVG values "middle"/"end" (mapped to anchor-x center/right). */
+            SVG values "middle"/"end" (mapped to anchor-x center/right).
+            <svg viewBox="vx vy vw vh"> establishes an internal coordinate
+            space that scales into the svg's destination box (width/height);
+            children's primitive coordinates (rect x/y/w/h, circle cx/cy/r,
+            line x1/y1/x2/y2, ellipse cx/cy/rx/ry) are scaled and translated
+            into destination space. Scale composes through nested viewBoxes
+            via a push/pop coordSx/coordSy pair. */
          "(function(){"
            "var W=640,H=360;"
            "var fontFamilies={};"
@@ -33264,6 +33270,16 @@ static bool install_nova64_api(JSContext *ctx)
            "var currentPatterns=null;"
            "var currentClipPaths=null;"
            "var useDepth=0;"
+           "var coordSx=1,coordSy=1;"
+           "function parseViewBox(s){"
+             "if(s==null)return null;"
+             "var p=String(s).replace(/^\\s+|\\s+$/g,'').split(/[,\\s]+/);"
+             "if(p.length<4)return null;"
+             "var vx=parseFloat(p[0]),vy=parseFloat(p[1]);"
+             "var vw=parseFloat(p[2]),vh=parseFloat(p[3]);"
+             "if(isNaN(vx)||isNaN(vy)||!(vw>0)||!(vh>0))return null;"
+             "return[vx,vy,vw,vh];"
+           "}"
            "function parseXml(xml){"
              "xml=xml.replace(/<!--[\\s\\S]*?-->/g,'');"
              "var pos=0;"
@@ -34186,10 +34202,10 @@ static bool install_nova64_api(JSContext *ctx)
                  "renderNode(node.children[i],data,handlers,0,0,W,H);"
                "return;"
              "}"
-             "var x=ox+num(a.x,data,pw);"
-             "var y=oy+num(a.y,data,ph);"
-             "var w=num(a.width,data,pw);"
-             "var h=num(a.height,data,ph);"
+             "var x=ox+num(a.x,data,pw)*coordSx;"
+             "var y=oy+num(a.y,data,ph)*coordSy;"
+             "var w=num(a.width,data,pw)*coordSx;"
+             "var h=num(a.height,data,ph)*coordSy;"
              "if(a.anchor==='center'){x-=Math.floor(w/2);y-=Math.floor(h/2);}"
              "var clipPushed=pushClipPath(a['clip-path']||a.clipPath,x,y,w||pw,h||ph,data);"
              "if(tag==='rect'){"
@@ -34216,9 +34232,9 @@ static bool install_nova64_api(JSContext *ctx)
                "}"
                "if(stroke>=0)nova64.draw.rect(x,y,w,h,stroke,false);"
              "}else if(tag==='circle'){"
-               "if(a.cx!=null)x=ox+num(a.cx,data,pw);"
-               "if(a.cy!=null)y=oy+num(a.cy,data,ph);"
-               "var r=num(a.r,data,0);"
+               "if(a.cx!=null)x=ox+num(a.cx,data,pw)*coordSx;"
+               "if(a.cy!=null)y=oy+num(a.cy,data,ph)*coordSy;"
+               "var r=num(a.r,data,0)*Math.min(coordSx,coordSy);"
                "var circPat=patternRef(a.fill);"
                "var fcGrad=circPat?null:gradientRef(a.fill);"
                "var fc=(circPat||fcGrad)?-1:color(a.fill,data);"
@@ -34238,8 +34254,8 @@ static bool install_nova64_api(JSContext *ctx)
                "}else if(fc>=0)nova64.draw.circfill(x,y,r,fc);"
                "if(sc>=0)nova64.draw.circle(x,y,r,sc);"
              "}else if(tag==='line'){"
-               "var x1=ox+num(a.x1,data,pw),y1=oy+num(a.y1,data,ph);"
-               "var x2=ox+num(a.x2,data,pw),y2=oy+num(a.y2,data,ph);"
+               "var x1=ox+num(a.x1,data,pw)*coordSx,y1=oy+num(a.y1,data,ph)*coordSy;"
+               "var x2=ox+num(a.x2,data,pw)*coordSx,y2=oy+num(a.y2,data,ph)*coordSy;"
                "var lc=color(a.stroke!=null?a.stroke:a.color,data);"
                "if(lc>=0)nova64.draw.line(x1,y1,x2,y2,lc);"
              "}else if(tag==='text'){"
@@ -34445,9 +34461,9 @@ static bool install_nova64_api(JSContext *ctx)
                   consecutive line() segments. 32 samples is smooth enough
                   for typical HUD sizes; bumps would help only for very
                   large ellipses which carts don't usually draw. */
-               "if(a.cx!=null)x=ox+num(a.cx,data,pw);"
-               "if(a.cy!=null)y=oy+num(a.cy,data,ph);"
-               "var rx=num(a.rx,data,0),ry=num(a.ry,data,0);"
+               "if(a.cx!=null)x=ox+num(a.cx,data,pw)*coordSx;"
+               "if(a.cy!=null)y=oy+num(a.cy,data,ph)*coordSy;"
+               "var rx=num(a.rx,data,0)*coordSx,ry=num(a.ry,data,0)*coordSy;"
                "var efill=color(a.fill,data),estroke=color(a.stroke,data);"
                "var epts=[];"
                "for(var ek=0;ek<32;ek++){"
@@ -34462,11 +34478,25 @@ static bool install_nova64_api(JSContext *ctx)
                  "}"
                "}"
              "}else if(tag==='svg'){"
-               /* Coordinate-translation container — no clip, no fill of its
-                  own, just translates child (x,y) by its own. Used by the
-                  canvas-ui-showcase for the inline SVG block. */
-               "for(var sg=0;sg<node.children.length;sg++)"
-                 "renderNode(node.children[sg],data,handlers,x,y,w||pw,h||ph);"
+               /* Coordinate-translation container. When viewBox="vx vy vw vh"
+                  is present, establish an internal coordinate space scaled
+                  into the destination box (w,h) via coordSx/coordSy; the
+                  scale composes with any outer viewBox via push/pop. Without
+                  viewBox, the svg is just a translation container (legacy
+                  canvas-ui-showcase behavior). */
+               "var vb=parseViewBox(a.viewBox);"
+               "if(vb&&w>0&&h>0){"
+                 "var prevSx=coordSx,prevSy=coordSy;"
+                 "var sx=w/vb[2],sy=h/vb[3];"
+                 "coordSx*=sx;coordSy*=sy;"
+                 "var nox=x-vb[0]*sx,noy=y-vb[1]*sy;"
+                 "for(var sg=0;sg<node.children.length;sg++)"
+                   "renderNode(node.children[sg],data,handlers,nox,noy,vb[2],vb[3]);"
+                 "coordSx=prevSx;coordSy=prevSy;"
+               "}else{"
+                 "for(var sg=0;sg<node.children.length;sg++)"
+                   "renderNode(node.children[sg],data,handlers,x,y,w||pw,h||ph);"
+               "}"
              "}else if(tag==='path'){"
                /* Minimal SVG path parser. Supports M/m (moveto), L/l
                   (lineto), H/h (horizontal), V/v (vertical), C/c (cubic
@@ -34718,8 +34748,9 @@ static bool install_nova64_api(JSContext *ctx)
              "currentPatterns=ui.patterns||null;"
              "currentClipPaths=ui.clipPaths||null;"
              "useDepth=0;"
+             "coordSx=1;coordSy=1;"
              "try{renderNode(ui.root,d,handlers||{},0,0,W,H);}"
-             "finally{currentGradients=null;currentFilters=null;currentSymbols=null;currentPatterns=null;currentClipPaths=null;}"
+             "finally{currentGradients=null;currentFilters=null;currentSymbols=null;currentPatterns=null;currentClipPaths=null;coordSx=1;coordSy=1;}"
            "};"
          "})();"
 

@@ -1074,6 +1074,365 @@ These browser-side Nova64 or Three.js features are not implemented:
 | `133-canvas.js`               | createCanvas/canvasPset/canvasBlit off-screen pixel buffer                     |
 | `134-nine-slice.js`           | drawNineSlice 9-slice sprite panel API smoke test                              |
 
+Carts 135-1098 — extended API surface (descriptions sourced from the cart's own header comment; see [tests/run_conformance.sh](tests/run_conformance.sh) for the canonical locked checksums):
+
+| Cart                          | What it covers                                                                 |
+| ----------------------------- | ------------------------------------------------------------------------------ |
+| `135-tilemap-getters.js` | tilemap getters — getTile, tilemapCols/Rows/TileW/TileH |
+| `136-btn-repeat.js` | btnRepeat(b, delay, rate) — auto-repeat helper |
+| `137-str-utils.js` | string utilities — strSplit/Trim/PadStart/PadEnd/StartsWith/EndsWith/Repeat |
+| `138-hotspots.js` | AABB hotspots — createHotspot/setHotspot/contains/overlap/destroy |
+| `139-chromatic-aberration.js` | screenChromaticAberration(offset) — R/B channel shift |
+| `140-dashed-lines.js` | drawDashedLine / drawDashedRect |
+| `141-screen-wave.js` | screenWave(amplitude, frequency, phase) — horizontal scanline shift |
+| `142-frame-utils.js` | every(n), frameCount(), sinOsc(hz), cosOsc(hz) |
+| `143-color-utils.js` | colorBrighter / colorDarker / colorMix |
+| `144-screen-dissolve.js` | screenDissolve(t) — ordered Bayer dither dissolve |
+| `145-number-format.js` | zeroPad / formatNumber / commaNumber |
+| `146-spr-flip.js` | sprFlipX / sprFlipY — API smoke test (no asset needed) |
+| `147-scroll-text.js` | createScrollText / drawScrollText / scrollTextDone / resetScrollText |
+| `148-bit-ops.js` | bitmask ops — bitAnd/Or/Xor/Not/ShL/ShR/Test/Set/Clear/Toggle |
+| `149-print-lines.js` | printLines(arr, x, y, lineH, color) — multi-line array print |
+| `150-pattern-fills.js` | fillCheckerboard / fillStripes — pattern fills |
+| `151-circle-gradient.js` | fillCircleGradient(cx, cy, r, colorCenter, colorEdge) |
+| `152-easing.js` | standalone easing — easeIn/Out/InOut/Bounce/Elastic |
+| `153-color-hex.js` | colorToHex / hexToColor — hex string I/O |
+| `154-screen-border.js` | screenBorder(size, color) — filled edge border |
+| `155-spr-scale.js` | sprScale(path, dx, dy, scale) — uniform scale blit |
+| `156-format-time.js` | formatTime(seconds) / formatTimeMs(ms) |
+| `157-draw-arrow.js` | drawArrow(x0, y0, x1, y1, color [, headSize]) |
+| `158-color-pulse.js` | colorPulse(c, speed, minBrightness) — oscillating brightness |
+| `159-create-anim.js` | createAnim / drawAnim / animFrame / animDone / setAnimFPS / resetAnim / destroyAnim |
+| `160-float-text.js` | createFloatText / drawFloatTexts / clearFloatTexts / floatTextCount |
+| `161-dialog.js` | createDialog / drawDialog / dialogDone / advanceDialog / destroyDialog / dialogCharCount |
+| `162-fsm.js` | createFSM / fsmSet / fsmGet / fsmPrev / fsmElapsed / destroyFSM |
+| `163-vstick.js` | vstickX / vstickY / vstickAngle / vstickLength |
+| `164-seeded-rng.js` | createRNG / rngNext / rngRange / destroyRNG |
+| `165-draw-grid.js` | drawGrid(x1, y1, x2, y2, cols, rows, color) |
+| `166-math-globals.js` | floor / ceil / round / fract / sign / pow / abs / sqrt |
+| `167-screen-mosaic.js` | screenMosaic(n) — pixelates screen using n×n blocks |
+| `168-color-inspect.js` | colorInvert / colorGrayscaleVal / colorToHSV |
+| `169-star-burst.js` | drawStarBurst / fillStarBurst |
+| `170-color-maps.js` | colorRainbow(t) / colorTemperature(t) |
+| `171-draw-bezier.js` | drawBezier(x0,y0, cx,cy, x1,y1, color [,steps]) |
+| `172-polyline.js` | polyline(points, color [,closed]) |
+| `173-print-wrap.js` | printWrap(text, x, y, maxWidth, color [,lineH]) |
+| `174-math-helpers.js` | mapRange / inverseLerp / pingPong |
+| `175-geometry-tests.js` | pointInRect / pointInCirc / rectIntersects / circIntersects |
+| `176-color-blend-mode.js` | colorBlendMode(c1, c2, mode) |
+| `177-flood-fill.js` | floodFill(x, y, color) |
+| `178-str-utils2.js` | strReplace / strContains / strUpper / strLower |
+| `179-angle-helpers.js` | wrapAngle / angleDiff / angleLerp / moveToward |
+| `180-vec2.js` | vecLen / vecNorm / vecDot / vecCross / vecLerp |
+| `181-draw-arc.js` | drawArc(cx,cy,r,startDeg,endDeg,color) / fillArc(...) |
+| `182-curves-showcase.js` | combined curves showcase — bezier, polyline, arc, flood fill |
+| `183-cubic-bezier.js` | drawCubicBezier(x0,y0, cx0,cy0, cx1,cy1, x1,y1, color) |
+| `184-spline-point.js` | splinePoint(points, t) — Catmull-Rom spline evaluation |
+| `185-hex-grid.js` | hexGrid(x,y, size, cols, rows, color) |
+| `186-draw-graph.js` | drawGraph(values, x,y,w,h, minV,maxV, color) |
+| `187-color-saturation.js` | colorDesaturate / colorSaturate |
+| `188-waveform-plot.js` | waveformPlot(samples, x,y,w,h, color) |
+| `189-char-utils.js` | charCode / charFromCode |
+| `190-print-bold.js` | printBold(text, x, y, color) |
+| `191-dot-grid.js` | dotGrid(x,y, w,h, gap, r, color) |
+| `192-clamp-color.js` | clampColor(c, lo, hi) |
+| `193-batch11-showcase.js` | batch 11 APIs combined showcase |
+| `194-spline-showcase.js` | splinePoint + drawCubicBezier combined visual |
+| `195-print-italic.js` | printItalic(text, x, y, color) |
+| `196-print-underline.js` | printUnderline(text, x, y, color) |
+| `197-progress-bar.js` | drawProgressBar(x,y,w,h, t, fgColor, bgColor) + drawMeter |
+| `198-grid-snap.js` | gridSnap(v, gridSize) |
+| `199-color-matrix.js` | colorMatrix(c, m9) |
+| `200-neon-glow.js` | neonGlow(cx,cy,r, color, glowRadius) |
+| `201-bar-chart.js` | barChart(values, x,y,w,h, color) |
+| `202-str-format.js` | percentStr / toFixed |
+| `203-color-mix3.js` | colorMix3(c1,w1, c2,w2, c3,w3) |
+| `204-draw-noise.js` | drawNoise(x,y,w,h, density, color) |
+| `205-batch12-showcase.js` | batch 12 APIs combined showcase |
+| `206-color-matrix-effects.js` | colorMatrix effects showcase (sepia, invert, channel-swap) |
+| `207-color-with-alpha.js` | colorWithAlpha(c, a) |
+| `208-draw-capsule.js` | drawCapsule(x1,y1,x2,y2,r,color) |
+| `209-fill-capsule.js` | fillCapsule(x1,y1,x2,y2,r,color) |
+| `210-draw-ring.js` | drawRing(cx,cy,r1,r2,color) |
+| `211-blur-region.js` | blurRegion(x,y,w,h,radius) |
+| `212-draw-gradient-line.js` | drawGradientLine(x1,y1,x2,y2,c1,c2) |
+| `213-color-contrast.js` | colorContrast(c, amount) |
+| `214-pixelate-region.js` | pixelateRegion(x,y,w,h,blockSize) |
+| `215-fill-plus.js` | fillPlus(cx,cy,armLen,armW,color) |
+| `216-draw-text-vertical.js` | drawTextVertical(text,x,y,color) |
+| `217-draw-star.js` | drawStar and fillStar(cx,cy,outerR,innerR,points,color) |
+| `218-batch13-showcase.js` | batch 13 APIs combined showcase |
+| `219-color-shift.js` | colorShift(c, hueOffset) |
+| `220-color-luminance.js` | colorLuminance(c) |
+| `221-ease-back-sine.js` | easeBack(t) and easeSine(t) |
+| `222-hex-cell.js` | drawHexCell and fillHexCell(cx,cy,r,color) |
+| `223-x-mark.js` | drawXMark and fillXMark(cx,cy,size,w,color) |
+| `224-draw-chevron.js` | drawChevron(x,y,size,dir,color) |
+| `225-color-sepia.js` | colorSepia(c) |
+| `226-color-vibrance.js` | colorVibrance(c, amount) |
+| `227-screen-hsv.js` | screenHSV(hShift, sMul, vMul) |
+| `228-batch14-showcase.js` | batch 14 APIs combined showcase |
+| `229-copy-pixels.js` | copyPixels(srcX,srcY,dstX,dstY,w,h) |
+| `230-color-add-rgb.js` | colorAddRGB(c, r, g, b) |
+| `231-lozenge.js` | drawLozenge and fillLozenge(cx,cy,w,h,color) |
+| `232-draw-spiral.js` | drawSpiral(cx,cy,r1,r2,turns,color) |
+| `233-color-warm-cool.js` | colorWarm(c,t) and colorCool(c,t) |
+| `234-ease-expo-power.js` | easeExpo(t) and easePower(t,p) |
+| `235-fill-tri-gradient.js` | fillTriGradient(x1,y1,c1, x2,y2,c2, x3,y3,c3) |
+| `236-invert-region.js` | invertRegion(x,y,w,h) |
+| `237-screen-retro.js` | screenRetro(strength) |
+| `238-batch15-showcase.js` | batch 15 APIs combined showcase |
+| `239-draw-thick-line.js` | drawThickLine(x1,y1,x2,y2,w,color) |
+| `240-draw-arrow-filled.js` | drawArrowFilled(x1,y1,x2,y2,hw,hl,color) |
+| `241-draw-check.js` | drawCheck(cx,cy,size,color) |
+| `242-wave-functions.js` | triangleWave, squareWave, sawWave |
+| `243-screen-filters.js` | screenEdgeDetect, screenEmboss, screenSharpen |
+| `244-draw-cloud.js` | drawCloud(cx,cy,r,color) |
+| `245-screen-night-vision.js` | screenNightVision(strength) |
+| `246-color-from-hsl.js` | colorFromHSL(h, s, l) |
+| `247-batch16-showcase.js` | batch 16 APIs combined showcase |
+| `248-reflect-rotate-vector.js` | reflectVector and rotateVector |
+| `249-color-blend-modes.js` | colorMultiply, colorScreen, colorOverlay |
+| `250-trig-helpers.js` | sinD, cosD, atan2D, degToRad, radToDeg |
+| `251-screen-glow.js` | screenGlow(radius, intensity) |
+| `252-draw-ruler.js` | drawRuler(x, y, len, vertical, step, color) |
+| `259-batch17-showcase.js` | batch 17 APIs combined showcase |
+| `260-vec-from-angle.js` | vecFromAngle, closestPointOnLine, distToLine |
+| `261-draw-trail.js` | drawTrail(x1,y1,x2,y2,w1,w2,color) |
+| `262-color-dodge-burn.js` | colorDodge, colorBurn, colorFromFloats |
+| `263-radial-gradient.js` | fillRadialGradient(cx, cy, r, c1, c2) |
+| `264-screen-crt-oil.js` | screenCRTWarp, screenOilPaint |
+| `265-draw-gear.js` | drawGear, fillGear |
+| `271-batch18-showcase.js` | batch 18 APIs combined showcase |
+| `272-color-lighten-darken.js` | colorLighten, colorDarken, colorDifference |
+| `273-screen-brightness.js` | screenBrightnessContrast, screenGlitch |
+| `274-wave-draw.js` | drawSineWave, drawSquiggle |
+| `275-bubble-connector.js` | drawBubble, fillBubble, drawConnector, drawHatch |
+| `283-batch19-showcase.js` | batch 19 APIs combined showcase |
+| `284-target-spider.js` | drawTarget, fillTarget, drawSpiderWeb |
+| `285-brick-wave-flame.js` | drawBrickPattern, fillWaveShape, drawFlame, fillFlame |
+| `286-color-lab-zoom.js` | colorFromLab, screenZoom, oscillate, pulseValue |
+| `287-dot-line.js` | drawDotLine |
+| `290-input-extended.js` | input extended |
+| `291-overlay-autoclear.js` | overlay autoclear |
+| `292-key-dom-codes.js` | browser-style key(code) routing |
+| `293-controller-key-bridge.js` | controller-to-key bridge for keyboard-first carts |
+| `295-batch20-showcase.js` | batch 20 APIs combined showcase |
+| `296-nested-rects.js` | drawNestedRects, fillNestedRects |
+| `297-parallelogram-trapezoid.js` | drawParallelogram, fillParallelogram, drawTrapezoid, fillTrapezoid |
+| `298-concentric-checker.js` | drawConcentricPolygons, fillCheckerCircle, colorFromRandom |
+| `299-neon-duotone.js` | drawNeonLine, screenDuotone, gradientCircle |
+| `307-batch21-showcase.js` | batch 21 APIs combined showcase |
+| `308-distance-intersect.js` | distanceXY, lineIntersect |
+| `309-pentagram.js` | drawPentagram, fillPentagram |
+| `310-crescent.js` | drawCrescent, fillCrescent |
+| `311-bloom-complement.js` | screenBloom, colorComplement |
+| `312-bit-utils.js` | bitCount, nextPow2, formatBytes, stagger |
+| `319-batch22-showcase.js` | batch 22 APIs combined showcase |
+| `320-lerp2d-color-utils.js` | lerp2D, colorAnalogous, colorSplit |
+| `321-comet.js` | drawComet, fillComet |
+| `322-rainbow-helix.js` | drawRainbow, drawHelix |
+| `323-progress-spiral-wave.js` | fillProgressBar, fillSpiral, drawWave |
+| `324-dither-glow.js` | screenDither, drawGlow |
+| `331-batch23-showcase.js` | batch 23 APIs combined showcase |
+| `332-dna-vortex.js` | drawDNA, fillDNA, drawVortex |
+| `333-mandala-halftone.js` | drawMandala, screenHalftone, smoothstep2 |
+| `334-label-tag-cloud.js` | drawLabel, drawTag, fillCloud |
+| `335-noise-wheel-pulse.js` | screenNoise, colorWheel, drawPulse |
+| `343-batch24-showcase.js` | batch 24 APIs combined showcase |
+| `344-explosion-lightning.js` | drawExplosion, fillExplosion, drawLightning |
+| `345-hex-tri-grid.js` | drawHexGrid, fillHexGrid, drawTriGrid |
+| `346-border-sobel.js` | drawBorder, fillBorder, screenSobel |
+| `347-color-shift-diamond.js` | screenPixelSort, colorShift2, drawDiamond2 |
+| `355-batch25-showcase.js` | batch 25 APIs combined showcase |
+| `356-star2-rosette.js` | drawStar2, fillStar2, drawRosette, fillRosette |
+| `357-fractal-tree.js` | drawFractalTree |
+| `358-screen-flip-thermal.js` | screenFlipH, screenFlipV, screenReflect, screenThermal |
+| `359-color-fade-arrow.js` | colorFade, drawTextBox, drawArrowCurved |
+| `367-batch26-showcase.js` | batch 26 APIs combined showcase |
+| `368-sweep-lissajous.js` | drawSweep, fillSweep, drawLissajous |
+| `369-ellipse-arc-starburst.js` | drawEllipseArc, fillEllipseArc, drawStarburst2, colorMix2 |
+| `370-sepia-hex-ease.js` | screenSepia2, colorFromHex, easeElastic2, clampXY, screenMirror |
+| `379-batch27-showcase.js` | batch 27 APIs combined showcase |
+| `380-bezier-poly.js` | drawBezierCurve, bezierPoint, drawRoundedPoly, fillRoundedPoly |
+| `381-kaleidoscope-spoke.js` | drawKaleidoscope, drawSpokePie, fillSpokePie, drawCounterDial |
+| `382-pixelate-vibrancy-invert.js` | screenPixelate2, colorVibrancy, screenInvert2 |
+| `391-batch28-showcase.js` | batch 28 APIs combined showcase |
+| `392-vector-math.js` | vectorNormalize, vectorDot, vectorCross |
+| `393-charts.js` | drawScatter, drawBarChart, drawPieChart |
+| `394-fibonacci-penrose.js` | drawFibonacci, drawPenrose, drawSandDune, fillSandDune |
+| `403-batch29-showcase.js` | batch 29 APIs combined showcase |
+| `404-matrix-rain-quantize.js` | drawMatrixRain, screenQuantize, colorFromCMYK, colorFromYUV |
+| `405-ripple-sparkle.js` | drawRipple, fillRipple, drawSparkle, fillSparkle |
+| `406-tilt-wirebox.js` | screenTilt, drawWireBox, fillWireBox |
+| `407-crosshatch.js` | screenCrosshatch |
+| `415-batch30-showcase.js` | batch 30 APIs combined showcase |
+| `416-snowflake-venn.js` | drawSnowflake, fillSnowflake, drawVenn, drawParabola |
+| `417-pinwheel.js` | drawPinwheel, fillPinwheel |
+| `418-iso-tile-tunnel.js` | drawIsometricTile, fillIsometricTile, drawTunnel, drawCompass |
+| `419-bokeh-neon.js` | screenBokeh, colorNeon |
+| `427-batch31-showcase.js` | batch 31 APIs combined showcase |
+| `428-dot-grid-zigzag.js` | drawDotGrid, fillDotGrid, drawZigzag, fillZigzag |
+| `429-bullseye-needle.js` | drawBullseye, fillBullseye, drawNeedle |
+| `430-vhs-echo-cycle.js` | screenVHS, screenEcho, colorCycle |
+| `431-conveyor-arc-arrow.js` | drawConveyorBelt, drawArcArrow |
+| `439-batch32-showcase.js` | batch 32 APIs combined showcase |
+| `440-meteor-corona.js` | drawMeteor, drawCorona, fillCorona |
+| `441-crystal-crt.js` | drawCrystal, fillCrystal, screenCRT, colorClamp2 |
+| `442-galaxy-orbit-atom.js` | drawSpiralGalaxy, drawOrbit, drawAtom |
+| `443-radar-sunburst.js` | drawRadar, drawSunburst |
+| `451-batch33-showcase.js` | batch 33 APIs combined showcase |
+| `452-aurora-windmill.js` | drawAurora, fillAurora, drawWindmill, fillWindmill |
+| `453-honeycomb.js` | drawHoneycomb, fillHoneycomb |
+| `454-chroma-saturate.js` | screenChromaShift, colorSaturate2, colorAdjust |
+| `455-nebula-rain-checker.js` | drawNebula, drawRainDrop, drawCheckerFade |
+| `463-batch34-showcase.js` | batch 34 APIs combined showcase — FINAL BATCH |
+| `464-matrix-stack.js` | pushMatrix, popMatrix, translate, rotate, scale2d, resetMatrix |
+| `465-noise-control.js` | noiseSeed, noiseDetail |
+| `466-curve-ellipse-hsb.js` | quadCurve, ellipse, ellipsefill, hsb |
+| `475-batch35-showcase.js` | batch 35 combined showcase — matrix stack, noise, curve, ellipse, hsb |
+| `476-lerp-ease-arc-bezier.js` | lerpColor, ease, arc, bezier |
+| `477-noisemap-flowfield-color.js` | noiseMap, flowField, colorMode, color, TWO_PI, HALF_PI, QUARTER_PI |
+| `478-gradient-hexcolor.js` | drawGradient, drawRadialGradient, drawSkyGradient, hexColor |
+| `487-batch36-showcase.js` | batch 36 combined showcase |
+| `488-shake-cooldown.js` | createShake, triggerShake, updateShake, getShakeOffset, |
+| `489-hit-state.js` | createHitState, triggerHit, updateHitState |
+| `499-batch37-showcase.js` | batch 37 combined showcase — shake, cooldown, hit state |
+| `500-emitter2d.js` | createEmitter2D, burstEmitter2D, setEmitter2DActive, |
+| `501-pool-statemachine-healthbar.js` | isInvulnerable, isFlashing, isVisible, |
+| `511-batch38-showcase.js` | batch 38 combined showcase |
+| `512-math-utils.js` | dist, dist3d, remap, deg2rad, rad2deg, pulse |
+| `513-draw-shapes.js` | drawRoundedRect, drawStarburst, drawCheckerboard, |
+| `523-batch39-showcase.js` | batch 39 combined showcase |
+| `524-spawner-cooldownset.js` | createSpawner, updateSpawner, triggerWave, getSpawnerWave, |
+| `525-flash-border-hsl-poly.js` | drawFlash, drawPixelBorder, hslColor, scrollingText, |
+| `535-batch40-showcase.js` | batch 40 combined showcase |
+| `536-draw-text-shapes.js` | drawTriangle, drawGlowText, drawGlowTextCentered, |
+| `537-floating-texts.js` | drawFloatingTexts, ftsSpawn, ftsUpdate |
+| `547-batch41-showcase.js` | batch 41 combined showcase |
+| `548-rand-delta-minimap.js` | randInt, randRange, getDeltaTime, getFPS, |
+| `549-oscillator-trigger-vec.js` | createOscillator, tickOscillator, createTimeTrigger, |
+| `559-batch42-showcase.js` | batch 42 combined showcase |
+| `560-hittest-colorpool.js` | hitTest, circleHitTest, createColorPool, nextColor, |
+| `561-shuffle-vec2.js` | shuffleArray, pickRandom, weightedRandom, setRandomSeed, |
+| `571-batch43-showcase.js` | batch 43 combined showcase |
+| `572-camera2d.js` | createCamera2D, cam2DFollow, cam2DShake, updateCamera2D |
+| `573-tween-vec2.js` | updateTweens, killTween, killAllTweens, getTweenCount, |
+| `583-batch44-showcase.js` | batch 44 combined showcase |
+| `584-aabb-drawrect.js` | aabb, circleOverlap, drawRect, perpVec2, n64Palette |
+| `585-rng-seed.js` | rngRandom, rngFloat, rngPick, rngShuffle, |
+| `595-batch45-showcase.js` | batch 45 combined showcase |
+| `596-circle-camera-path.js` | circle, setCamera, getCamera, |
+| `597-reflect-trigger-color.js` | reflectVec2, projectVec2, |
+| `607-batch46-showcase.js` | batch 46 combined showcase |
+| `608-camera2d-hype.js` | beginCamera2D, endCamera2D, |
+| `609-hype-registry.js` | hypeRegister, hypeUnregister, hypeUpdate, hypeReset |
+| `619-batch47-showcase.js` | batch 47 combined showcase |
+| `620-raycast-proximity.js` | raycastTilemap, createProximityTrigger, tickProximityTrigger |
+| `621-seed-input.js` | createSeedRNG, getSeedRNG, seedToTraits, |
+| `631-batch48-showcase.js` | batch 48 combined showcase |
+| `632-vec3-math.js` | addVec3, subVec3, scaleVec3, normVec3, |
+| `633-input-sticks.js` | rightStickY, leftStickX, leftStickY |
+| `643-batch49-showcase.js` | batch 49 combined showcase |
+| `644-vec3-advanced.js` | angleVec3, reflectVec3, projectVec3, |
+| `645-screen-manager.js` | addScreen, switchScreen, getCurrentScreen, |
+| `655-batch50-showcase.js` | batch 50 combined showcase |
+| `656-mesh-props.js` | createTorus, createCone, setMeshWireframe, setMeshDoubleSided, |
+| `657-clone-bounds.js` | cloneMesh, getMeshBounds |
+| `667-batch51-showcase.js` | Batch 51 combined showcase |
+| `668-project3d.js` | project3DToScreen, screenToRay, getViewDirection, |
+| `669-mesh-transform.js` | getMeshPos, getMeshRot, getMeshScale, setMeshPos, |
+| `679-batch52-showcase.js` | Batch 52 combined showcase |
+| `680-instance-extended.js` | setInstanceColor, getInstanceTransform, setInstanceVisible, |
+| `681-instance-batch.js` | setInstanceTransforms batched matrix upload |
+| `681-lod-stubs.js` | createLODMesh, setLODDistance, removeLODMesh, |
+| `691-batch53-showcase.js` | Batch 53 combined showcase |
+| `692-model-stubs.js` | loadModel, loadVoxModel, playAnimation, stopAnimation, |
+| `693-material-stubs.js` | createCustomMaterial, destroyMaterial, setMeshMaterial |
+| `703-batch54-showcase.js` | Batch 54 combined showcase |
+| `704-ps3d-basic.js` | createPS3D, destroyPS3D, emitPS3D, setPS3DPos, |
+| `705-debug3d.js` | drawLine3D, drawPoint3D, debugText3D, drawBounds3D, |
+| `715-batch55-showcase.js` | Batch 55 showcase — 3D particle system |
+| `716-scene-hierarchy.js` | attachMesh, detachMesh, getChildren, getParent, |
+| `717-audio-utils.js` | setMasterVolume, getMasterVolume, isMusicPlaying, |
+| `727-batch56-showcase.js` | Batch 56 showcase — 3D debug drawing |
+| `728-batch57-showcase.js` | Batch 57 showcase — scene hierarchy + global post |
+| `739-batch58-showcase.js` | Batch 58 showcase — audio utils + color grade |
+| `740-collision3d.js` | Batch 59 — 3D collision math core tests |
+| `741-steering.js` | Batch 60 — AI steering vectors |
+| `742-mesh-tags.js` | Batch 61 — mesh tagging + scene query |
+| `743-cinematic.js` | Batch 62 — cinematic screen effects |
+| `750-batch59-showcase.js` | Batch 59 showcase — 3D collision math visual demo |
+| `761-batch60-showcase.js` | Batch 60 showcase — AI steering visual demo |
+| `772-batch61-showcase.js` | Batch 61 showcase — mesh tagging + scene query |
+| `783-batch62-showcase.js` | Batch 62 showcase — cinematic screen effects |
+| `784-physics2d.js` | Batch 63 — 2D physics bodies |
+| `785-splines.js` | Batch 64 — spline paths |
+| `786-world-labels.js` | Batch 65 — world labels |
+| `787-camera-helpers.js` | Batch 66 — camera helpers |
+| `788-camera-path.js` | camera path API |
+| `789-mesh-follower.js` | mesh path follower API |
+| `790-trail2d.js` | 2D trail API |
+| `791-mesh-flash.js` | mesh hit flash API |
+| `792-color-ramp.js` | color ramp API |
+| `793-screen-wipe.js` | screen wipe transitions |
+| `794-batch63-showcase.js` | Batch 63 showcase — 2D physics bodies |
+| `795-gauge.js` | radial arc gauges |
+| `796-typewriter.js` | typewriter text effect |
+| `797-counter.js` | animated numeric counters |
+| `798-bullet-pool.js` | 2D bullet pool |
+| `799-hp-bar.js` | animated HP bars |
+| `800-starfield.js` | scrolling starfield |
+| `801-inventory.js` | inventory — createInventory, setSlot, getSlotColor, getSlotCount, |
+| `802-dialogue.js` | dialogue — createDialogue, setDialogueSpeaker, setDialogueText, |
+| `803-toast.js` | toast — createToast, showToast, updateToast, drawToast, |
+| `804-combo.js` | combo — createCombo, hitCombo, resetCombo, updateCombo, |
+| `805-bar.js` | bar — createBar, setBarValue, setBarTarget, updateBar, |
+| `805-batch64-showcase.js` | Batch 64 showcase — spline paths |
+| `806-glow.js` | glow — glowRect, glowRectFill, glowCircle, glowLine, glowPset |
+| `807-burst.js` | burst — createBurst, triggerBurst, updateBurst, |
+| `808-textfx.js` | textfx — printGradient, printWave, printFlash, |
+| `809-speechbubble.js` | speechbubble — createBubble, setBubbleText, |
+| `810-smoothcam.js` | smoothcam — createCam2D, setCam2DTarget, setCam2DZoom, |
+| `811-spotlight.js` | spotlight — createSpotlight, setSpotlightPos, |
+| `812-wavemgr.js` | wavemgr — createWaveManager, startWave, getWaveNumber, |
+| `813-tight-text.js` | printTight / tightTextWidth |
+| `814-glow-text-scale.js` | drawGlowText scale argument |
+| `815-draw-namespace-textfx.js` | nova64.draw aliases for browser-style text effects |
+| `816-batch65-showcase.js` | Batch 65 showcase — world labels |
+| `827-batch66-showcase.js` | Batch 66 showcase — camera helpers |
+| `838-batch67-showcase.js` | Batch 67 showcase — camera paths |
+| `849-batch68-showcase.js` | Batch 68 showcase — mesh path followers |
+| `860-batch69-showcase.js` | Batch 69 showcase — 2D trails |
+| `871-batch70-showcase.js` | Batch 70 showcase — mesh hit flash |
+| `882-batch71-showcase.js` | Batch 71 showcase — color ramps |
+| `893-batch72-showcase.js` | Batch 72 showcase — screen wipe transitions |
+| `904-batch73-showcase.js` | Batch 73 showcase — radial arc gauges |
+| `915-batch74-showcase.js` | Batch 74 showcase — typewriter text effect |
+| `926-batch75-showcase.js` | Batch 75 showcase — animated numeric counters |
+| `937-batch76-showcase.js` | Batch 76 showcase — bullet pool shooter demo |
+| `948-batch77-showcase.js` | Batch 77 showcase — animated HP bars (enemy wave) |
+| `959-batch78-showcase.js` | Batch 78 showcase — starfield + bullet pool space shooter |
+| `970-batch79-showcase.js` | Batch 79 showcase — 2D inventory grid |
+| `981-batch80-showcase.js` | Batch 80 showcase — dialogue box with typewriter effect |
+| `992-batch81-showcase.js` | Batch 81 showcase — toast notifications |
+| `1003-batch82-showcase.js` | Batch 82 showcase — combo counter |
+| `1014-batch83-showcase.js` | Batch 83 showcase — animated progress bars (loading screen) |
+| `1025-batch84-showcase.js` | Batch 84 showcase — neon/glow shapes scene |
+| `1036-batch85-showcase.js` | Batch 85 showcase — particle burst fireworks scene |
+| `1047-batch86-showcase.js` | Batch 86 showcase — text effects title screen |
+| `1058-batch87-showcase.js` | Batch 87 showcase — dialogue scene with speech bubbles |
+| `1069-batch88-showcase.js` | Batch 88 showcase — smooth camera following a moving target |
+| `1080-batch89-showcase.js` | Batch 89 showcase — spotlight stealth level |
+| `1091-batch90-showcase.js` | Batch 90 showcase — arena wave survival HUD |
+| `1092-scaled-text.js` | browser-style scaled text helpers |
+| `1093-minimap-tiles.js` | rich createMinimap/drawMinimap tile maps |
+| `1094-minimap-dynamic.js` | minimap reflects live follow/player object changes |
+| `1095-material-light-options.js` | web-style mesh options plus point lights |
+| `1096-retro-effects-bloom.js` | nova64.fx.enableRetroEffects applies bloom options |
+| `1097-point-light-shadow.js` | point-light shadow source for the GLES shadow map |
+| `1098-minimap-web-compat.js` | web-style minimap shape, sweep, grid, follow, and legacy draw signature |
+
 Canvas UI / parseCanvasUI cluster:
 
 | Cart                                       | What it covers                                                                 |

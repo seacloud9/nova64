@@ -922,6 +922,25 @@ run_case      "1111 canvas ui fecolormatrix" "retroarch/conformance/1111-canvas-
 # takes precedence over gradient when both share the url(#id) namespace.
 run_case      "1112 canvas ui pattern" "retroarch/conformance/1112-canvas-ui-pattern.js" "19758a20e761715d"
 
+# 1113 parseCanvasUI <clipPath> defs: clip-path="url(#id)" resolves
+# collected clip paths and maps supported child shape bounds to the
+# draw clip stack, intersecting with any existing group/panel clip.
+run_case      "1113 canvas ui clip path" "retroarch/conformance/1113-canvas-ui-clip-path.js" "2ab17fc2359ce5f8"
+
+# 1114 parseCanvasUI <animateMotion>: motion children offset x/y using
+# values/from-to coordinate pairs or simple SVG path polylines (M/L/H/V/Z),
+# sampled from the deterministic nova64.time() clock.
+run_case      "1114 canvas ui animate motion" "retroarch/conformance/1114-canvas-ui-animate-motion.js" "5e6347f5a0d28d3a"
+
+# 1115 parseCanvasUI <textPath>: textPath children inside <text> lay out
+# characters along simple path polylines using the animateMotion sampler.
+run_case      "1115 canvas ui text path" "retroarch/conformance/1115-canvas-ui-text-path.js" "e9bfd76787e22faa"
+
+# 1116 parseCanvasUI <polyline> / <polygon>: SVG-style point lists render
+# open polylines, closed polylines, and filled polygons, including bound
+# point-list strings and x/y offsets.
+run_case      "1116 canvas ui polyline polygon" "retroarch/conformance/1116-canvas-ui-polyline-polygon.js" "739ba6d63cb67fda"
+
 # 291 overlay autoclear regression: locks down the default
 # auto-clearing of the 2D HUD overlay between frames. Without
 # auto-clear, the F-Zero title screen vignette stayed under the

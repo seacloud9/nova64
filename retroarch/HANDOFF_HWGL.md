@@ -1,7 +1,7 @@
 # Nova64 Hardware GL on Windows — Status & Handover
 
 **Last updated:** 2026-06-12 (Claude session arc — parseCanvasUI SVG compat 1117–1132, custom-mesh VAO cache, doc closeout)
-**Branch:** `main`, **23 ahead of `origin/main`** (user pushes from their shell)
+**Branch:** `main`, **25 ahead of `origin/main`** (user pushes from their shell)
 **Working tree:** tracked files clean; untracked `tmp/`, `.claude/scheduled_tasks.lock`, and locally-modified `.claude/settings.json` are environmental
 **Windows DLL deployed:** cross-built at `b09ecbb` (1132 text dx/dy) and copied to `C:\RetroArch-Win64\cores\nova64_libretro.dll` (2,848,256 bytes)
 **Linux .so + harness:** rebuilt at `b09ecbb` for the conformance sweep
@@ -109,9 +109,12 @@ both already wired (see BACKLOG "Diagnostic infra already in tree").
    the next hypothesis to try is the `glTexSubImage2D` overlay sync
    stall on AMD (BACKLOG action plan step 2: try Max Swapchain Images = 2
    and Hard GPU Sync = OFF as no-code probes first).
-2. **README conformance-table catch-up.** The main table still ends at
-   cart 134; everything between 135 and 1098 is missing. Out of scope
-   for a slice session but worth a focused pass.
+2. ~~**README conformance-table catch-up.**~~ Closed at `94f0865`
+   (2026-06-12). 354 rows added between cart 134 and the Canvas UI
+   cluster, sourced from each cart's own first-line comment header
+   (`// Conformance cart NNN: ...`). The Canvas UI cluster row block
+   (294 + 1099-1132) was left untouched since it already had
+   hand-curated descriptions.
 3. ~~**More parseCanvasUI defensive surface.**~~ Closed in this arc —
    `<marker>` defs (1130), `<marker orient="auto">` rotation (1131,
    limited to polygon/polyline/line/circle children), `currentColor`

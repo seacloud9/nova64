@@ -896,22 +896,25 @@ Supported elements: `<ui>`, `<rect>`, `<panel>`, `<group>`/`<g>`,
 
 Supported `<defs>`: `<linearGradient>`/`<radialGradient>`, `<filter>`
 (`<feGaussianBlur>`/`<feDropShadow>`/`<feColorMatrix>`), `<pattern>`,
-`<symbol>`, `<clipPath>`, `<mask>` (bounds-clip approximation), and
-`<style>` blocks with `.className` selectors.
+`<symbol>`, `<clipPath>`, `<mask>` (bounds-clip approximation),
+`<marker>` (no orient-auto rotation), and `<style>` blocks with
+element / `.className` / `#id` selectors.
 
 Supported animation: `<animate>`, `<animateTransform>`, and
 `<animateMotion>` children drive `nova64.time()`-based keyframing.
 
-Supported attributes: `class`, inline `style="..."`, static
+Supported attributes: `id`, `class`, inline `style="..."`, static
 `transform="translate() scale() rotate()"`, `clip-path="url(#id)"`,
-`mask="url(#id)"`, `filter="url(#id)"`, `fill`/`stroke`/`color`
-(SVG `#rgb`/`#rrggbb`/`#rrggbbaa`, `none`, or `url(#id)`), `opacity`,
+`mask="url(#id)"`, `filter="url(#id)"`, `marker-start`/`marker-mid`/
+`marker-end="url(#id)"`, `fill`/`stroke`/`color` (SVG `#rgb`/`#rrggbb`/
+`#rrggbbaa`, `none`, `currentColor`, or `url(#id)`), `opacity`,
 `fill-opacity`, `stroke-opacity`, `text-anchor` (`start`/`middle`/`end`),
-and SVG center coords `cx`/`cy` on circle/ellipse. The cascade is
-presentation attrs → class rules → inline `style="..."` → animations →
-opacity tint.
+`display="none"` / `visibility="hidden"` subtree skip, and SVG center
+coords `cx`/`cy` on circle/ellipse. The cascade is presentation attrs →
+element-selector rules → class-selector rules → id-selector rules →
+inline `style="..."` → static transform → animations → opacity tint.
 
-Conformance carts 1099–1126 lock the feature matrix end-to-end.
+Conformance carts 1099–1130 lock the feature matrix end-to-end.
 
 ## Known Gaps And Unsupported APIs
 
@@ -1103,3 +1106,7 @@ Canvas UI / parseCanvasUI cluster:
 | `1124-canvas-ui-style-block.js`            | `<style>` block with `.className` rule selectors                               |
 | `1125-canvas-ui-opacity.js`                | `opacity` alpha multiply across all color attrs                                |
 | `1126-canvas-ui-fill-stroke-opacity.js`    | `fill-opacity` / `stroke-opacity` split                                        |
+| `1127-canvas-ui-display-visibility.js`     | `display="none"` / `visibility="hidden"` subtree skip                          |
+| `1128-canvas-ui-currentcolor.js`           | `currentColor` keyword inheritance from ancestor `color`                       |
+| `1129-canvas-ui-style-selectors.js`        | `<style>` element + `#id` selectors (extends `.class`)                         |
+| `1130-canvas-ui-marker.js`                 | `<marker>` defs on lines (marker-start / marker-mid / marker-end)              |

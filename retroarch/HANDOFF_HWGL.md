@@ -1,11 +1,11 @@
 # Nova64 Hardware GL on Windows — Status & Handover
 
-**Last updated:** 2026-06-12 (Claude session arc — parseCanvasUI SVG compat 1117–1126, custom-mesh VAO cache, README Canvas UI doc)
-**Branch:** `main`, **16 ahead of `origin/main`** (user pushes from their shell)
+**Last updated:** 2026-06-12 (Claude session arc — parseCanvasUI SVG compat 1117–1130, custom-mesh VAO cache, doc closeout)
+**Branch:** `main`, **21 ahead of `origin/main`** (user pushes from their shell)
 **Working tree:** tracked files clean; untracked `tmp/`, `.claude/scheduled_tasks.lock`, and locally-modified `.claude/settings.json` are environmental
-**Windows DLL deployed:** cross-built at `ade0f6f` (VAO refactor) and copied to `C:\RetroArch-Win64\cores\nova64_libretro.dll` (2,843,648 bytes)
-**Linux .so + harness:** rebuilt at `ade0f6f` for the conformance sweep
-**Playlist:** `C:\RetroArch-Win64\playlists\nova64-svg-compat.lpl` ships carts 1117–1126 for visual smoke-test on hwgl
+**Windows DLL deployed:** cross-built at `8388ad3` (1130 marker) and copied to `C:\RetroArch-Win64\cores\nova64_libretro.dll` (2,846,208 bytes)
+**Linux .so + harness:** rebuilt at `8388ad3` for the conformance sweep
+**Playlist:** `C:\RetroArch-Win64\playlists\nova64-svg-compat.lpl` ships carts 1117–1130 (14 carts) for visual smoke-test on hwgl
 **npm:** `nova64@0.5.2` was published earlier (no new publish this arc)
 
 ---
@@ -34,12 +34,25 @@ earlier canvas-ui cart). The full feature matrix is now documented in
 | `6ac9218` | `<style>` block with `.className` rules (1124)                       |
 | `0056984` | `opacity` alpha multiply via gateway hex rewrite (1125)              |
 | `d43a816` | `fill-opacity` / `stroke-opacity` split (1126)                       |
+| `9ba1b00` | `display="none"` / `visibility="hidden"` subtree skip (1127)         |
+| `f01d6e9` | `currentColor` keyword inheritance via push/pop tracker (1128)       |
+| `3c0f954` | `<style>` element + `#id` selectors (1129)                           |
+| `8388ad3` | `<marker>` defs on lines (1130)                                      |
 
 `applyAnimations` is the unified attrs gateway now — it composes
-presentation → class rules → inline style → static transform →
-animations (animate / animateTransform / animateMotion) → opacity tint.
-The opacity tint rewrites hex color attrs in-place so every draw site
-picks up reduced alpha without per-site edits.
+presentation → element-selector rules → class-selector rules → id-
+selector rules → inline style → static transform → animations
+(animate / animateTransform / animateMotion) → opacity tint. The
+opacity tint rewrites hex color attrs in-place so every draw site
+picks up reduced alpha without per-site edits. `renderNode` itself is
+wrapped in try/finally so the closure-level `currentColor` push/pop
+survives early returns and clip pops.
+
+The styleRules shape changed in 1129 from a flat
+`{ className: rules }` map to a bucketed
+`{ byTag, byClass, byId }` map; cart 1124's introspection assertion
+was updated to read `ui.styleRules.byClass.red.fill` and its visual
+checksum is unchanged.
 
 ### Windows perf VAO refactor (`ade0f6f`)
 
@@ -97,11 +110,13 @@ both already wired (see BACKLOG "Diagnostic infra already in tree").
 2. **README conformance-table catch-up.** The main table still ends at
    cart 134; everything between 135 and 1098 is missing. Out of scope
    for a slice session but worth a focused pass.
-3. **More parseCanvasUI defensive surface.** Open candidates: `<marker>`
-   arrowheads (needs draw API thought), `currentColor` keyword
-   resolution, `display="none"`/`visibility="hidden"` subtree skip,
-   element / id selectors in `<style>` blocks (currently only
-   `.className`).
+3. ~~**More parseCanvasUI defensive surface.**~~ Closed in this arc —
+   `<marker>` defs (1130, no orient-auto), `currentColor` keyword
+   resolution (1128), `display="none"`/`visibility="hidden"` subtree
+   skip (1127), and element + `#id` selectors in `<style>` blocks
+   (1129). The remaining stretch items are larger: `<marker>` orient
+   rotation (needs a small rotation matrix path through the renderer),
+   `<image>` data: URI support, per-character tspan dx/dy arrays.
 
 ---
 

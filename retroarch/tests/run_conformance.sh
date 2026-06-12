@@ -993,6 +993,13 @@ run_case      "1123 canvas ui mask" "retroarch/conformance/1123-canvas-ui-mask.j
 # presentation < class < inline style < animations, matching SVG.
 run_case      "1124 canvas ui style block" "retroarch/conformance/1124-canvas-ui-style-block.js" "d25b865086432140"
 
+# 1125 parseCanvasUI opacity attribute: opacity="0..1" multiplies the
+# alpha channel of every color-valued attr (fill, stroke, color,
+# stop-color, shadow-color, outline-color) at the applyAnimations
+# gateway, so all draw sites pick up reduced alpha without per-site
+# changes. url(#id) gradient/pattern fills are skipped.
+run_case      "1125 canvas ui opacity" "retroarch/conformance/1125-canvas-ui-opacity.js" "e2a5791a06d852ca"
+
 # 291 overlay autoclear regression: locks down the default
 # auto-clearing of the 2D HUD overlay between frames. Without
 # auto-clear, the F-Zero title screen vignette stayed under the

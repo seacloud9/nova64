@@ -33271,7 +33271,12 @@ static bool install_nova64_api(JSContext *ctx)
             ".className { prop: val; }" rules; nodes with a
             class="name name2" attribute pull rule properties into their
             attrs. Cascade: presentation attrs < class rules < inline
-            style="..." < animations. */
+            style="..." < animations. opacity="0..1" multiplies the alpha
+            channel of every color-valued attr (fill, stroke, color,
+            stop-color, shadow-color, outline-color) at the gateway, so
+            all draw sites pick up reduced alpha without per-site changes.
+            url(#id) gradient/pattern fills are skipped since they don't
+            have a single alpha to scale. */
          "(function(){"
            "var W=640,H=360;"
            "var fontFamilies={};"
@@ -34180,6 +34185,31 @@ static bool install_nova64_api(JSContext *ctx)
                "}"
              "}"
            "}"
+           "function applyOpacityToAttrs(out){"
+             "var o=parseFloat(out.opacity);"
+             "if(isNaN(o)||o>=1)return;"
+             "if(o<0)o=0;"
+             "var keys=['fill','stroke','color','stop-color','shadow-color','outline-color'];"
+             "for(var ki=0;ki<keys.length;ki++){"
+               "var k=keys[ki];"
+               "var v=out[k];"
+               "if(v==null)continue;"
+               "var s=String(v).replace(/^\\s+|\\s+$/g,'');"
+               "if(s===''||s==='none'||s.charAt(0)==='u')continue;"
+               "if(s.charAt(0)!=='#')continue;"
+               "var h=s.substring(1);"
+               "var rrggbb,alpha=0xff;"
+               "if(h.length===3)rrggbb=h.charAt(0)+h.charAt(0)+h.charAt(1)+h.charAt(1)+h.charAt(2)+h.charAt(2);"
+               "else if(h.length===6)rrggbb=h;"
+               "else if(h.length===8){rrggbb=h.substring(0,6);alpha=parseInt(h.substring(6,8),16);}"
+               "else continue;"
+               "var na=Math.floor(alpha*o);"
+               "if(na<0)na=0;if(na>0xff)na=0xff;"
+               "var ah=na.toString(16);"
+               "if(ah.length<2)ah='0'+ah;"
+               "out[k]='#'+rrggbb+ah;"
+             "}"
+           "}"
            "function applyClassRules(classVal,out){"
              "if(classVal==null||!currentStyleRules)return;"
              "var cs=String(classVal).split(/\\s+/);"
@@ -34216,7 +34246,8 @@ static bool install_nova64_api(JSContext *ctx)
              "var hasStyle=attrs&&attrs.style!=null;"
              "var hasXform=attrs&&attrs.transform!=null;"
              "var hasClass=attrs&&attrs['class']!=null&&currentStyleRules;"
-             "if(!hasAnim&&!hasStyle&&!hasXform&&!hasClass)return attrs;"
+             "var hasOpacity=attrs&&attrs.opacity!=null;"
+             "if(!hasAnim&&!hasStyle&&!hasXform&&!hasClass&&!hasOpacity)return attrs;"
              "var out={};"
              "for(var k in attrs)if(Object.prototype.hasOwnProperty.call(attrs,k))out[k]=attrs[k];"
              "if(hasClass)applyClassRules(attrs['class'],out);"
@@ -34231,6 +34262,7 @@ static bool install_nova64_api(JSContext *ctx)
                  "else if(c.tag==='animateMotion')applyAnimateMotion(c,now,data,out);"
                "}"
              "}"
+             "if(out.opacity!=null)applyOpacityToAttrs(out);"
              "return out;"
            "}"
            "function fillGradient(x,y,w,h,grad){"

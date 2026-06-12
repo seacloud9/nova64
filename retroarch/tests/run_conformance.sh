@@ -954,6 +954,12 @@ run_case      "1117 canvas ui style attr" "retroarch/conformance/1117-canvas-ui-
 # not visually consumed by the 2D UI renderer) for parity.
 run_case      "1118 canvas ui transform" "retroarch/conformance/1118-canvas-ui-transform.js" "174581d9d0500c51"
 
+# 1119 parseCanvasUI SVG element/attribute aliases: <g> renders as
+# <group> (real SVG content uses g); <circle> and <ellipse> accept the
+# standard SVG cx/cy attributes as alternates to x/y for the center
+# position. Lets drop-in SVG snippets render without renaming.
+run_case      "1119 canvas ui svg aliases" "retroarch/conformance/1119-canvas-ui-svg-aliases.js" "7b55633cb524c571"
+
 # 291 overlay autoclear regression: locks down the default
 # auto-clearing of the 2D HUD overlay between frames. Without
 # auto-clear, the F-Zero title screen vignette stayed under the

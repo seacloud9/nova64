@@ -33250,7 +33250,9 @@ static bool install_nova64_api(JSContext *ctx)
             name (font-size folds into the parseCanvasUI size attr), and
             static transform="translate(...) scale(...) rotate(...)"
             attributes composed onto x/y/width/height the same way
-            animateTransform mutates them. */
+            animateTransform mutates them. SVG aliases: <g> renders as
+            <group>; <circle>/<ellipse> accept cx/cy as alternates to
+            x/y for the center position. */
          "(function(){"
            "var W=640,H=360;"
            "var fontFamilies={};"
@@ -33708,9 +33710,19 @@ static bool install_nova64_api(JSContext *ctx)
              "var x=num(a.x,data,pw),y=num(a.y,data,ph);"
              "var w=num(a.width,data,pw),h=num(a.height,data,ph);"
              "if(a.anchor==='center'){x-=Math.floor(w/2);y-=Math.floor(h/2);}"
-             "if(tag==='rect'||tag==='panel'||tag==='group'||tag==='svg')return{x:x,y:y,w:w,h:h};"
-             "if(tag==='circle'){var r=num(a.r,data,0);return{x:x-r,y:y-r,w:r*2,h:r*2};}"
-             "if(tag==='ellipse'){var rx=num(a.rx,data,0),ry=num(a.ry,data,0);return{x:x-rx,y:y-ry,w:rx*2,h:ry*2};}"
+             "if(tag==='rect'||tag==='panel'||tag==='group'||tag==='g'||tag==='svg')return{x:x,y:y,w:w,h:h};"
+             "if(tag==='circle'){"
+               "var cx=a.cx!=null?num(a.cx,data,pw):x;"
+               "var cy=a.cy!=null?num(a.cy,data,ph):y;"
+               "var r=num(a.r,data,0);"
+               "return{x:cx-r,y:cy-r,w:r*2,h:r*2};"
+             "}"
+             "if(tag==='ellipse'){"
+               "var ecx=a.cx!=null?num(a.cx,data,pw):x;"
+               "var ecy=a.cy!=null?num(a.cy,data,ph):y;"
+               "var rx=num(a.rx,data,0),ry=num(a.ry,data,0);"
+               "return{x:ecx-rx,y:ecy-ry,w:rx*2,h:ry*2};"
+             "}"
              "if(tag==='line'){"
                "var x1=num(a.x1,data,pw),y1=num(a.y1,data,ph),x2=num(a.x2,data,pw),y2=num(a.y2,data,ph);"
                "return{x:Math.min(x1,x2),y:Math.min(y1,y2),w:Math.abs(x2-x1)||1,h:Math.abs(y2-y1)||1};"
@@ -34196,6 +34208,8 @@ static bool install_nova64_api(JSContext *ctx)
                "}"
                "if(stroke>=0)nova64.draw.rect(x,y,w,h,stroke,false);"
              "}else if(tag==='circle'){"
+               "if(a.cx!=null)x=ox+num(a.cx,data,pw);"
+               "if(a.cy!=null)y=oy+num(a.cy,data,ph);"
                "var r=num(a.r,data,0);"
                "var circPat=patternRef(a.fill);"
                "var fcGrad=circPat?null:gradientRef(a.fill);"
@@ -34319,7 +34333,7 @@ static bool install_nova64_api(JSContext *ctx)
                    "else if(typeof spr==='function')spr(src,x,y,iw,ih,sx2,sy2,sw2,sh2);"
                  "}"
                "}"
-             "}else if(tag==='group'||tag==='panel'){"
+             "}else if(tag==='group'||tag==='g'||tag==='panel'){"
                "if(tag==='panel'){"
                  "var pPat=patternRef(a.fill);"
                  "var pfillGrad=pPat?null:gradientRef(a.fill);"
@@ -34423,6 +34437,8 @@ static bool install_nova64_api(JSContext *ctx)
                   consecutive line() segments. 32 samples is smooth enough
                   for typical HUD sizes; bumps would help only for very
                   large ellipses which carts don't usually draw. */
+               "if(a.cx!=null)x=ox+num(a.cx,data,pw);"
+               "if(a.cy!=null)y=oy+num(a.cy,data,ph);"
                "var rx=num(a.rx,data,0),ry=num(a.ry,data,0);"
                "var efill=color(a.fill,data),estroke=color(a.stroke,data);"
                "var epts=[];"

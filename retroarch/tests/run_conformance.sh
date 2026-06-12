@@ -947,6 +947,13 @@ run_case      "1116 canvas ui polyline polygon" "retroarch/conformance/1116-canv
 # parseCanvasUI size attr so SVG-style text sizing works.
 run_case      "1117 canvas ui style attr" "retroarch/conformance/1117-canvas-ui-style-attr.js" "74f48c199f4028f6"
 
+# 1118 parseCanvasUI static transform="..." attribute: parses SVG-style
+# translate(tx,ty) / scale(sx,sy) / rotate(deg) functions and composes
+# them onto the node's x/y/width/height the same way animateTransform
+# children do. Rotate writes to the rotation attr (currently parsed but
+# not visually consumed by the 2D UI renderer) for parity.
+run_case      "1118 canvas ui transform" "retroarch/conformance/1118-canvas-ui-transform.js" "174581d9d0500c51"
+
 # 291 overlay autoclear regression: locks down the default
 # auto-clearing of the 2D HUD overlay between frames. Without
 # auto-clear, the F-Zero title screen vignette stayed under the

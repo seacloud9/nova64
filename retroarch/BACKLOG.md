@@ -294,6 +294,20 @@ cone buffers. Regular and instanced built-in mesh draws bind those VAOs instead
 of re-running base `VertexAttribPointer` setup on every draw. Custom/generated
 meshes still use the old dynamic attribute setup path.
 
+### 2026-06-12 update
+
+Custom/generated mesh VAO caching is now also wired. `nova64_mesh` carries a
+new `gl_custom_vao` field that is lazily created right after the VBO/IBO upload
+in `render_gles_custom_mesh`, `render_gles_torus`, `gles_ensure_capsule_mesh`,
+and `gles_ensure_cylinder_mesh`. `render_gles_primitive` consumes it via the
+existing static-vs-dynamic fallback so any subsequent draw of the same
+custom/generated mesh binds the cached VAO instead of re-running
+`VertexAttribPointer`. `gles_delete_mesh_gpu_buffers` clears the VAO alongside
+the VBO/IBO so capsule/cylinder scale changes (which delete+recreate the
+buffers) regenerate the VAO correctly. Validated against GLES tests 44, 45,
+110, gles-torus-scale, gles-capsule-primitive, gles-cylinder-primitive (all
+checksums unchanged).
+
 Validated with:
 
 - `make -C retroarch all`

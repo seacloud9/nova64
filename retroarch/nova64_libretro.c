@@ -265,6 +265,7 @@ struct nova64_mesh {
    unsigned custom_index_count;
    unsigned gl_custom_vbo;    /* GPU buffer handles, 0 = not uploaded */
    unsigned gl_custom_ibo;
+   unsigned gl_custom_vao;    /* Per-mesh VAO for torus/capsule/cylinder/custom */
    enum nova64_mesh_type gl_generated_type;
    float gl_generated_scale[3];
    /* Instanced mesh (NOVA64_MESH_INSTANCED) */
@@ -36579,6 +36580,7 @@ static bool gles_upload_cone_geometry(void)
    return true;
 }
 
+static void gles_ensure_custom_mesh_vao(struct nova64_mesh *mesh);
 static bool gles_create_static_mesh_vao(GLuint *vao, GLuint vbo, GLuint ibo)
 {
    if (!vao || !gles.GenVertexArrays || !gles.BindVertexArray ||
@@ -36626,6 +36628,19 @@ static GLuint gles_static_mesh_vao(GLuint vbo, GLuint ibo)
    if (vbo == gles.cone_vbo && ibo == gles.cone_ibo)
       return gles.cone_vao;
    return 0;
+}
+
+/* Per-mesh VAO for the generated/custom mesh path (torus, capsule,
+   cylinder, custom). Built lazily on the first draw after the
+   VBO/IBO are uploaded and cached on the mesh until the buffers are
+   recreated. Mirrors gles_create_static_mesh_vao's pos+normal layout
+   so the static VAO cache path and the per-mesh path share the same
+   shader binding contract. */
+static void gles_ensure_custom_mesh_vao(struct nova64_mesh *mesh)
+{
+   if (!mesh || mesh->gl_custom_vao || !mesh->gl_custom_vbo || !mesh->gl_custom_ibo)
+      return;
+   gles_create_static_mesh_vao(&mesh->gl_custom_vao, mesh->gl_custom_vbo, mesh->gl_custom_ibo);
 }
 
 static bool gles_init_resources(void)
@@ -37149,6 +37164,9 @@ static void render_gles_primitive(const struct nova64_mesh *mesh, const float vi
       did_blend = true;
    }
    GLuint vao = gles_static_mesh_vao(vbo, ibo);
+   if (!vao && mesh->gl_custom_vao &&
+       vbo == mesh->gl_custom_vbo && ibo == mesh->gl_custom_ibo)
+      vao = mesh->gl_custom_vao;
    if (vao && gles.BindVertexArray) {
       gles.BindVertexArray(vao);
    } else {
@@ -37305,8 +37323,11 @@ static void gles_delete_mesh_gpu_buffers(struct nova64_mesh *mesh)
       gles.DeleteBuffers(1, &mesh->gl_custom_vbo);
    if (mesh->gl_custom_ibo)
       gles.DeleteBuffers(1, &mesh->gl_custom_ibo);
+   if (mesh->gl_custom_vao && gles.DeleteVertexArrays)
+      gles.DeleteVertexArrays(1, &mesh->gl_custom_vao);
    mesh->gl_custom_vbo = 0;
    mesh->gl_custom_ibo = 0;
+   mesh->gl_custom_vao = 0;
 }
 
 static bool gles_generated_mesh_matches(const struct nova64_mesh *mesh, enum nova64_mesh_type type)
@@ -37611,6 +37632,7 @@ static void render_gles_torus(struct nova64_mesh *mesh, const float view_project
       free(verts); free(idx);
    }
    if (!mesh->gl_custom_vbo || !mesh->gl_custom_ibo) return;
+   gles_ensure_custom_mesh_vao(mesh);
 
    struct nova64_mesh draw_mesh = *mesh;
    draw_mesh.scale[0] = 1.0f;
@@ -37630,6 +37652,7 @@ static void render_gles_capsule(struct nova64_mesh *mesh, const float view_proje
 {
    if (!gles_ensure_capsule_mesh(mesh))
       return;
+   gles_ensure_custom_mesh_vao(mesh);
 
    struct nova64_mesh draw_mesh = *mesh;
    draw_mesh.scale[0] = 1.0f;
@@ -37643,6 +37666,7 @@ static void render_gles_cylinder(struct nova64_mesh *mesh, const float view_proj
 {
    if (!gles_ensure_cylinder_mesh(mesh))
       return;
+   gles_ensure_custom_mesh_vao(mesh);
 
    struct nova64_mesh draw_mesh = *mesh;
    draw_mesh.scale[0] = 1.0f;
@@ -37678,9 +37702,11 @@ static void render_gles_custom_mesh(struct nova64_mesh *mesh, const float view_p
       gles.BindBuffer(GL_ARRAY_BUFFER, 0);
       gles.BindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
    }
-   if (mesh->gl_custom_vbo && mesh->gl_custom_ibo)
+   if (mesh->gl_custom_vbo && mesh->gl_custom_ibo) {
+      gles_ensure_custom_mesh_vao(mesh);
       render_gles_primitive(mesh, view_projection,
          mesh->gl_custom_vbo, mesh->gl_custom_ibo, (GLsizei)mesh->custom_index_count);
+   }
 }
 
 static void render_gles_instanced_mesh(const struct nova64_mesh *mesh, const float view_projection[16])

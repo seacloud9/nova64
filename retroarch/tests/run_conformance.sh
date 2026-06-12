@@ -1000,6 +1000,12 @@ run_case      "1124 canvas ui style block" "retroarch/conformance/1124-canvas-ui
 # changes. url(#id) gradient/pattern fills are skipped.
 run_case      "1125 canvas ui opacity" "retroarch/conformance/1125-canvas-ui-opacity.js" "e2a5791a06d852ca"
 
+# 1126 parseCanvasUI fill-opacity / stroke-opacity split: SVG-standard
+# fill-opacity multiplies only fill/stop-color alphas, stroke-opacity
+# multiplies only stroke alpha. Both compose multiplicatively with the
+# global opacity attribute and with #rrggbbaa embedded alpha.
+run_case      "1126 canvas ui fill stroke opacity" "retroarch/conformance/1126-canvas-ui-fill-stroke-opacity.js" "ea2a129afac21476"
+
 # 291 overlay autoclear regression: locks down the default
 # auto-clearing of the 2D HUD overlay between frames. Without
 # auto-clear, the F-Zero title screen vignette stayed under the

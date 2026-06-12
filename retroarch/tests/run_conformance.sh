@@ -1035,6 +1035,11 @@ run_case      "1130 canvas ui marker" "retroarch/conformance/1130-canvas-ui-mark
 # line, circle. Rect/path inside rotated markers render un-rotated.
 run_case      "1131 canvas ui marker orient" "retroarch/conformance/1131-canvas-ui-marker-orient.js" "14dd910125101adc"
 
+# 1132 parseCanvasUI <text dx dy> per-character offsets. dx values
+# accumulate on the running cursor before each character is drawn;
+# dy values are absolute baseline shifts per character.
+run_case      "1132 canvas ui text dx dy" "retroarch/conformance/1132-canvas-ui-text-dxdy.js" "d85180e4dd193e19"
+
 # 291 overlay autoclear regression: locks down the default
 # auto-clearing of the 2D HUD overlay between frames. Without
 # auto-clear, the F-Zero title screen vignette stayed under the

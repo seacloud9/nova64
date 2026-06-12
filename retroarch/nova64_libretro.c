@@ -33297,7 +33297,12 @@ static bool install_nova64_api(JSContext *ctx)
             direction angle; rotation is only applied to child shapes
             that rotate cleanly to themselves (polygon, polyline, line,
             circle). Other tags (rect, path, text) inside a rotated
-            marker fall back to the un-rotated render. */
+            marker fall back to the un-rotated render. <text dx="a b c"
+            dy="..."> applies per-character offsets: dx values
+            accumulate on the running cursor before each character is
+            drawn, dy values are absolute baseline shifts per character
+            (relative to text y). Lists shorter than the string use 0
+            for the rest. */
          "(function(){"
            "var W=640,H=360;"
            "var fontFamilies={};"
@@ -34218,6 +34223,18 @@ static bool install_nova64_api(JSContext *ctx)
              "for(var i=0;i+1<nums.length;i+=2)pts.push({x:nums[i],y:nums[i+1]});"
              "return pts;"
            "}"
+           "function parseNumList(s,data){"
+             "if(s==null)return[];"
+             "var raw=bind(String(s),data);"
+             "var parts=raw.split(/[,\\s]+/);"
+             "var out=[];"
+             "for(var i=0;i<parts.length;i++){"
+               "if(parts[i].length===0)continue;"
+               "var n=parseFloat(parts[i]);"
+               "if(!isNaN(n))out.push(n);"
+             "}"
+             "return out;"
+           "}"
            "function pointListBounds(pts){"
              "if(!pts||pts.length===0)return null;"
              "var minX=pts[0].x,minY=pts[0].y,maxX=pts[0].x,maxY=pts[0].y;"
@@ -34600,7 +34617,24 @@ static bool install_nova64_api(JSContext *ctx)
                  "var txt=bind(node.text||'',data);"
                  "var tw=textWidth(txt,scale,a,data);"
                  "var tx=x+anchorX(pickAnchorAttr(a),tw);"
-                 "renderTextSegment(txt,tx,y,scale,a,data);"
+                 "if(a.dx!=null||a.dy!=null){"
+                   /* Per-character dx/dy: each dx value shifts the cursor
+                      before drawing the matching character; each dy
+                      applies an absolute baseline shift to that character.
+                      Lists shorter than the string use 0 for the rest. */
+                   "var dxs=parseNumList(a.dx,data);"
+                   "var dys=parseNumList(a.dy,data);"
+                   "var ccx=tx,ccy=y;"
+                   "for(var ci=0;ci<txt.length;ci++){"
+                     "if(ci<dxs.length)ccx+=dxs[ci];"
+                     "var charY=(ci<dys.length)?(y+dys[ci]):y;"
+                     "var ch=txt.charAt(ci);"
+                     "renderTextSegment(ch,ccx,charY,scale,a,data);"
+                     "ccx+=textWidth(ch,scale,a,data);"
+                   "}"
+                 "}else{"
+                   "renderTextSegment(txt,tx,y,scale,a,data);"
+                 "}"
                "}"
              "}else if(tag==='image'){"
                "var src=bind(a.src||a.href||a['xlink:href']||'',data);"

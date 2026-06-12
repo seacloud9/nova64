@@ -3693,10 +3693,10 @@ In priority order — pick whichever the user asks for:
    full diagnosis. Telemetry is now better through the Shift+F overlay.
 3. **HUD font metrics for parity test.** The tight text path helps density, but
    exact web-font metrics still differ.
-4. **Re-baseline conformance checksums.** The lowercase/font and `/` glyph fixes
-   shift hashes for older visual carts that print text. Known stale examples:
-   `536 draw text shapes` actual `2e174a2556f278f8`; `130 measure text` actual
-   `090b644857ea88cd`.
+4. **Re-baseline conformance checksums.** (Done — 2026-06-12.) `130 measure
+   text` is locked at `090b644857ea88cd` and `536 draw text shapes` at
+   `2e174a2556f278f8`; both pass on a clean Linux `.so` rebuild. No other
+   visual carts have flagged drift in the latest sweep.
 
 ### Things to avoid
 

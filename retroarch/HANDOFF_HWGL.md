@@ -1,11 +1,107 @@
 # Nova64 Hardware GL on Windows — Status & Handover
 
-**Last updated:** 2026-06-12 (Codex closeout — WAD/VOX follow-ups landed, focused validation rerun)
-**Branch:** `main`, synced with `origin/main` at `c9425a8` (`fix: restore wad floors at 60fps`)
-**Working tree:** tracked files clean before this handoff edit; untracked `tmp/` probes/screenshots and `.claude/scheduled_tasks.lock` intentionally ignored
-**Windows DLL deployed:** latest noted deployment was cross-built from the 2026-06-07 WAD floor/entity slice and copied to `C:\RetroArch-Win64\cores\nova64_libretro.dll` (2,829,312 bytes)
-**Linux .so + harness:** clean rebuilt in WSL on 2026-06-12 for frame-rate validation
-**npm:** `nova64@0.5.2` published earlier in the session (user ran `npm publish --access public` with OTP from their shell)
+**Last updated:** 2026-06-12 (Claude session arc — parseCanvasUI SVG compat 1117–1126, custom-mesh VAO cache, README Canvas UI doc)
+**Branch:** `main`, **16 ahead of `origin/main`** (user pushes from their shell)
+**Working tree:** tracked files clean; untracked `tmp/`, `.claude/scheduled_tasks.lock`, and locally-modified `.claude/settings.json` are environmental
+**Windows DLL deployed:** cross-built at `ade0f6f` (VAO refactor) and copied to `C:\RetroArch-Win64\cores\nova64_libretro.dll` (2,843,648 bytes)
+**Linux .so + harness:** rebuilt at `ade0f6f` for the conformance sweep
+**Playlist:** `C:\RetroArch-Win64\playlists\nova64-svg-compat.lpl` ships carts 1117–1126 for visual smoke-test on hwgl
+**npm:** `nova64@0.5.2` was published earlier (no new publish this arc)
+
+---
+
+## HANDOFF UPDATE — 2026-06-12 Claude session arc (parseCanvasUI SVG compat + VAO)
+
+This arc shipped 16 commits on top of the prior Codex closeout. Branch is now
+16 ahead of `origin/main`; user will push from their shell.
+
+### parseCanvasUI SVG-compat slice arc — carts 1117–1126
+
+Conformance baseline: `--from 1099 --to 1126` passes (no regression in any
+earlier canvas-ui cart). The full feature matrix is now documented in
+[README.md](README.md) under "Canvas UI (SVG-Style Markup)".
+
+| Commit    | Slice                                                                |
+| --------- | -------------------------------------------------------------------- |
+| `dfae609` | clipPath / animateMotion / textPath / polyline (1113–1116 bundle)    |
+| `dc56e8a` | inline `style="..."` (1117)                                          |
+| `605d4fb` | static `transform="translate() scale() rotate()"` (1118)             |
+| `43a10ba` | SVG aliases — `<g>` for group, cx/cy on circle/ellipse (1119)        |
+| `e4d4dae` | `<line stroke>` + SVG `text-anchor` (1120)                           |
+| `5328d9c` | `<svg viewBox>` primitive coord scaling (1121)                       |
+| `035b0dc` | viewBox scaling for `<path>` d-data + polyline points (1122)         |
+| `e4797c8` | `<mask>` defs as bounds-clip approximation (1123)                    |
+| `6ac9218` | `<style>` block with `.className` rules (1124)                       |
+| `0056984` | `opacity` alpha multiply via gateway hex rewrite (1125)              |
+| `d43a816` | `fill-opacity` / `stroke-opacity` split (1126)                       |
+
+`applyAnimations` is the unified attrs gateway now — it composes
+presentation → class rules → inline style → static transform →
+animations (animate / animateTransform / animateMotion) → opacity tint.
+The opacity tint rewrites hex color attrs in-place so every draw site
+picks up reduced alpha without per-site edits.
+
+### Windows perf VAO refactor (`ade0f6f`)
+
+The second half of the BACKLOG Windows perf VAO refactor item landed.
+The first half (built-in static cube/plane/sphere/cone VAOs) shipped
+2026-05-23; this commit extends VAO caching to the custom/generated
+mesh path (torus, capsule, cylinder, JS-built custom). `nova64_mesh`
+carries a new `gl_custom_vao` field; `gles_ensure_custom_mesh_vao(mesh)`
+lazily creates it after VBO/IBO upload, reusing
+`gles_create_static_mesh_vao`'s pos+normal stride-6 layout. The cleanup
+in `gles_delete_mesh_gpu_buffers` clears the VAO with the buffers so
+capsule/cylinder scale changes regenerate correctly.
+
+Validated against GLES tests 44, 45, 110, gles-torus-scale,
+gles-capsule-primitive, gles-cylinder-primitive — all checksums
+unchanged. Canvas-UI 1099–1126 unchanged.
+
+**Next-session perf retest** (user-only): run `NOVA64_PERF=1
+retroarch.exe -L cores\nova64_libretro.dll <fps-demo-3d.nova>` on the
+AMD Radeon 780M box. If the per-frame `gl` time drops from ~31 ms toward
+something Linux-Mesa-comparable, the VAO hypothesis was correct.
+The `[nova64-perf]` 60-frame summary and one-shot `frame0` log line are
+both already wired (see BACKLOG "Diagnostic infra already in tree").
+
+### Doc and cleanup follow-ons
+
+- `4a8039f` — HANDOFF closed the "Re-baseline conformance checksums" TODO
+  (130 and 536 were already re-baselined; the open-items entry was
+  ambiguously phrased).
+- `a09a87c` — BACKLOG "Definitely-explore-later notes" cleared (the
+  multi-mip bloom entry was the only one and its inline TODO anchor in
+  source had already been removed); HANDOFF references to that note
+  updated.
+- `9fd76d8` — README gained a Canvas UI (SVG-Style Markup) API section
+  plus a canvas-ui sub-cluster in the conformance carts table for
+  294 + 1099–1126.
+
+### Validation reruns this arc
+
+- Build: clean Linux `.so` rebuild at `ade0f6f`; clean Windows cross-build
+  same commit.
+- Canvas-UI conformance: `--from 1099 --to 1126` green (28 carts).
+- GLES mesh paths: 44 capsule, 45 cylinder, 110 torus, gles-torus-scale,
+  gles-capsule-primitive, gles-cylinder-primitive green.
+- Spot-check older canvas-ui: 294 text effects green at the unchanged
+  `3bf3605a304fef58`.
+
+### Open items for next agent (priority order)
+
+1. **Windows perf retest with redeployed DLL.** See above — user-only step.
+   If VAO did the trick, close out the Windows perf BACKLOG item. If not,
+   the next hypothesis to try is the `glTexSubImage2D` overlay sync
+   stall on AMD (BACKLOG action plan step 2: try Max Swapchain Images = 2
+   and Hard GPU Sync = OFF as no-code probes first).
+2. **README conformance-table catch-up.** The main table still ends at
+   cart 134; everything between 135 and 1098 is missing. Out of scope
+   for a slice session but worth a focused pass.
+3. **More parseCanvasUI defensive surface.** Open candidates: `<marker>`
+   arrowheads (needs draw API thought), `currentColor` keyword
+   resolution, `display="none"`/`visibility="hidden"` subtree skip,
+   element / id selectors in `<style>` blocks (currently only
+   `.className`).
 
 ---
 

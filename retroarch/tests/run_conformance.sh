@@ -1012,6 +1012,11 @@ run_case      "1126 canvas ui fill stroke opacity" "retroarch/conformance/1126-c
 # documented in source and cart.
 run_case      "1127 canvas ui display visibility" "retroarch/conformance/1127-canvas-ui-display-visibility.js" "785c7643a03e3daa"
 
+# 1128 parseCanvasUI currentColor keyword: fill="currentColor" /
+# stroke="currentColor" resolves to the nearest ancestor's color
+# attribute via a closure-level push/pop in renderNode.
+run_case      "1128 canvas ui currentcolor" "retroarch/conformance/1128-canvas-ui-currentcolor.js" "5679fa2a521b597d"
+
 # 291 overlay autoclear regression: locks down the default
 # auto-clearing of the 2D HUD overlay between frames. Without
 # auto-clear, the F-Zero title screen vignette stayed under the

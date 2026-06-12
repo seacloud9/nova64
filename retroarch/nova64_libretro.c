@@ -33283,7 +33283,10 @@ static bool install_nova64_api(JSContext *ctx)
             multiplicatively with global opacity. display="none" and
             visibility="hidden" both skip the entire subtree at the
             renderNode top — parseCanvasUI flattens SVG's visibility
-            inheritance into a subtree skip for simplicity. */
+            inheritance into a subtree skip for simplicity. fill or
+            stroke = "currentColor" resolves to the nearest ancestor's
+            color attribute via a push/pop closure-level currentColor
+            tracker on the renderNode recursion. */
          "(function(){"
            "var W=640,H=360;"
            "var fontFamilies={};"
@@ -33296,6 +33299,7 @@ static bool install_nova64_api(JSContext *ctx)
            "var currentStyleRules=null;"
            "var useDepth=0;"
            "var coordSx=1,coordSy=1;"
+           "var currentColor=null;"
            "function parseViewBox(s){"
              "if(s==null)return null;"
              "var p=String(s).replace(/^\\s+|\\s+$/g,'').split(/[,\\s]+/);"
@@ -33373,6 +33377,10 @@ static bool install_nova64_api(JSContext *ctx)
              "if(val==null)return -1;"
              "var s=bind(String(val),data).replace(/^\\s+|\\s+$/g,'');"
              "if(s==='none'||s==='')return -1;"
+             "if(s==='currentColor'){"
+               "if(currentColor==null)return -1;"
+               "s=String(currentColor);"
+             "}"
              "if(s.charAt(0)==='#'){"
                "var h=s.substring(1);"
                "if(h.length===3){"
@@ -34339,6 +34347,9 @@ static bool install_nova64_api(JSContext *ctx)
              "if(tag==='defs'||tag==='linearGradient'||tag==='radialGradient'||tag==='stop'||tag==='animate'||tag==='animateTransform'||tag==='animateMotion'||tag==='filter'||tag==='feGaussianBlur'||tag==='feDropShadow'||tag==='feOffset'||tag==='feColorMatrix'||tag==='symbol'||tag==='tspan'||tag==='textPath'||tag==='pattern'||tag==='clipPath'||tag==='mask'||tag==='style')return;"
              "var a=applyAnimations(node,node.attrs,data);"
              "if(a.display==='none'||a.visibility==='hidden')return;"
+             "var savedColor=currentColor;"
+             "if(a.color!=null&&a.color!=='currentColor')currentColor=a.color;"
+             "try{"
              "if(tag==='ui'){"
                "for(var i=0;i<node.children.length;i++)"
                  "renderNode(node.children[i],data,handlers,0,0,W,H);"
@@ -34874,6 +34885,7 @@ static bool install_nova64_api(JSContext *ctx)
              "}"
              "if(maskPushed)nova64.draw.popClip();"
              "if(clipPushed)nova64.draw.popClip();"
+             "}finally{currentColor=savedColor;}"
            "}"
            "nova64.ui.parseCanvasUI=function(xml){"
              "var root=parseXml(xml);"
@@ -34908,8 +34920,9 @@ static bool install_nova64_api(JSContext *ctx)
              "currentStyleRules=ui.styleRules||null;"
              "useDepth=0;"
              "coordSx=1;coordSy=1;"
+             "currentColor=null;"
              "try{renderNode(ui.root,d,handlers||{},0,0,W,H);}"
-             "finally{currentGradients=null;currentFilters=null;currentSymbols=null;currentPatterns=null;currentClipPaths=null;currentMasks=null;currentStyleRules=null;coordSx=1;coordSy=1;}"
+             "finally{currentGradients=null;currentFilters=null;currentSymbols=null;currentPatterns=null;currentClipPaths=null;currentMasks=null;currentStyleRules=null;currentColor=null;coordSx=1;coordSy=1;}"
            "};"
          "})();"
 

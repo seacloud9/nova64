@@ -170,6 +170,7 @@ export const NAMESPACE_MAP = {
     'createPointLight',
     'setPointLightPosition',
     'setPointLightColor',
+    'setLightVisible',
     'removeLight',
     // Fog
     'setFog',

@@ -239,6 +239,7 @@ export function applyBabylonMaterialCompatibility(material) {
 
   if (material[MATERIAL_COMPAT]) {
     ensureBabylonMaterialRenderMethods(material);
+    ensureBabylonMaterialLightBudget(material);
     if (colorKey) applyBabylonColorCompatibility(material[colorKey]);
     if (textureKey) applyBabylonTextureCompatibility(material[textureKey]);
     return material;
@@ -247,6 +248,7 @@ export function applyBabylonMaterialCompatibility(material) {
   material[MATERIAL_COMPAT] = true;
 
   ensureBabylonMaterialRenderMethods(material);
+  ensureBabylonMaterialLightBudget(material);
 
   if (colorKey) {
     applyBabylonColorCompatibility(material[colorKey]);
@@ -348,6 +350,13 @@ function ensureBabylonMaterialRenderMethods(material) {
     material.isReadyForSubMesh = function () {
       return true;
     };
+  }
+}
+
+function ensureBabylonMaterialLightBudget(material) {
+  if (!material || !('maxSimultaneousLights' in material)) return;
+  if (!Number.isFinite(material.maxSimultaneousLights) || material.maxSimultaneousLights < 8) {
+    material.maxSimultaneousLights = 8;
   }
 }
 

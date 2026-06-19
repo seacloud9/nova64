@@ -79,6 +79,60 @@ Useful shapes absent from the API:
 - `createCone(radius, height, color, position, opts)` — projectiles, trees, hat shapes
 - `createCapsule(radius, height, color, position, opts)` — humanoid character bodies
 
+### 13. Reusable hero-cart loader as a public API
+
+**Where it exists today:** the home screen at `http://localhost:3000/` shows a hero cart loader (boot animation + asset progress) that's currently hand-wired in the homepage shell.
+**Why it matters:** every cart that loads GLBs, textures, or audio has to either ship its own loader UI or pop into gameplay with a half-loaded scene (see `examples/indie-odyssey` combat enemy GLBs racing the autoplay timer). A first-class loader is a portable solution.
+**Proposed shape:**
+
+```js
+nova64.loader.show({ title: 'INDIE ODYSSEY', subtitle: 'Loading shardgrid…' });
+nova64.loader.track(['models/dataImp.glb', 'images/spritesheet/dataImp.png']);
+nova64.loader.onReady(() => startGame());
+nova64.loader.hide();
+```
+
+Engine handles the visual + progress wiring; cart just tells it what to wait on.
+**Effort:** Medium — needs progress hooks into `scene.loadModel` / `loadTexture` / image preload paths, plus a default themable overlay.
+
+### 14. Story-mode helper with slides
+
+**Where it exists today:** `examples/indie-odyssey/code.js` has a multi-slide intro with image + text + transitions (`drawStory`, `drawStoryFrameImage`, `drawStoryTransitionFrame`, `storyFrameCanvas`, `storyPixelCanvas`). It's ~300 lines of cart-local code.
+**Why it matters:** every narrative game wants intro / cutscene / chapter-break slides with pixel transitions. Re-implementing this each time is wasteful and discourages story sequences.
+**Proposed shape:**
+
+```js
+nova64.story.play([
+  { image: 'assets/intro_01.png', text: 'The shardgrid awakens…' },
+  { image: 'assets/intro_02.png', text: 'A new operator boots up.' },
+  { image: 'assets/intro_03.png', text: 'Welcome to the network.' },
+], {
+  onAdvance: () => beep(),
+  onFinish: () => setScreen('game'),
+  transition: 'pixel-melt', // or 'fade', 'crt-cut', etc.
+});
+```
+
+Engine owns the slide canvas, transition timing, "Press Enter to continue" prompt, image preload, and pixel-grid effect — same patterns indie-odyssey already has, but shared.
+**Effort:** Medium — port indie-odyssey's helpers up into `runtime/api-story.js` (new file) and expose as `nova64.story`.
+
+### 15. MP4 / video playback support
+
+**Why it matters:** cutscenes, animated logos, in-world TV screens, FMV-style sequences. There's currently no engine-supported path — carts would have to manually create a `<video>` element, manage z-index against the WebGL canvas, and worry about the same `canvas { background: #000 }` CSS trap that bit indie-odyssey combat overlays.
+**Proposed shape:**
+
+```js
+// Full-screen video (cutscene / intro)
+nova64.video.play('assets/intro.mp4', { onFinish: () => setScreen('game') });
+
+// In-world video texture (TV screen, billboard, monitor mesh)
+const tex = nova64.video.loadTexture('assets/news_loop.mp4', { loop: true });
+nova64.scene.setMeshTexture(tvMeshId, tex);
+```
+
+Both paths use the same underlying `HTMLVideoElement` — the engine wires it into the framebuffer overlay or as a `THREE.VideoTexture` depending on call site. Background must be set to `transparent` (see lesson from indie-odyssey skybox session).
+**Effort:** Medium-High — `THREE.VideoTexture` for in-world is straightforward; full-screen cutscene needs to slot into the cart framebuffer overlay z-stack and handle autoplay-policy unlocks (audio requires user gesture in some browsers).
+
 ---
 
 ## 🟢 Quality-of-Life Improvements
@@ -115,6 +169,9 @@ Several FPS and space-shooter demos manually draw a crosshair using `line()` or 
 | 6   | More skybox types                       | 🟡 Missing | High   |
 | 7   | `removeMesh` alias                      | 🟡 Missing | Low    |
 | 8   | Cone + Capsule primitives               | 🟡 Missing | Medium |
+| 13  | Hero-cart loader API (`nova64.loader`)  | 🟡 Missing | Medium |
+| 14  | Story-mode helper (`nova64.story`)      | 🟡 Missing | Medium |
+| 15  | MP4 / video playback (`nova64.video`)   | 🟡 Missing | Med-High |
 | 9   | Improve `printCentered` discoverability | 🟢 QoL     | Low    |
 | 10  | Document `createPointLight` signature   | 🟢 QoL     | Low    |
 | 11  | `print()` size shorthand                | 🟢 QoL     | Low    |

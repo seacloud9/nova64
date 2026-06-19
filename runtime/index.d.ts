@@ -399,6 +399,7 @@ export interface ThreeDApiInstance {
   ): LightId;
   setPointLightPosition(lightId: LightId, x: number, y: number, z: number): void;
   setPointLightColor(lightId: LightId, color: Color): void;
+  setLightVisible(lightId: LightId, visible: boolean): void;
   removeLight(lightId: LightId): void;
 
   // GPU instancing

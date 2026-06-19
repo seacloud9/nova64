@@ -578,6 +578,7 @@ let state;
 let meshes = [];
 let specialMeshes = [];
 let enemyMeshes = [];
+let levelLights = [];
 let combatLights = [];
 let hiddenLevelMeshes = []; // IDs of dungeon meshes hidden during combat
 let map = [];
@@ -865,12 +866,17 @@ function styleCombatSceneModel(id, enemy) {
 }
 
 function createCubeMesh(width, height, depth, color, position, options = {}) {
-  return createMesh('cube', width, height, depth, color, position, options);
+  const materialOptions =
+    isBabylonBackend() && options.emissive !== undefined
+      ? { ...options, emissiveIntensity: options.emissiveIntensity ?? 0.85 }
+      : options;
+  return createMesh('cube', width, height, depth, color, position, materialOptions);
 }
 
 function addGridLine(width, height, depth, color, position) {
   createCubeMesh(width, height, depth, color, position, {
     emissive: color,
+    emissiveIntensity: isBabylonBackend() ? 2.1 : undefined,
     roughness: 0.35,
     metalness: 0.05,
   });
@@ -884,8 +890,7 @@ function setupScene() {
   call('light.setFog', null, 0x071225, 10, 42);
   call('camera.setCameraFOV', null, 110);
   if (ns('fx.enableFXAA')) call('fx.enableFXAA', null);
-  if (ns('fx.enableBloom'))
-    call('fx.enableBloom', null, { strength: 0.28, radius: 0.5, threshold: 0.35 });
+  if (ns('fx.enableBloom')) call('fx.enableBloom', null, 0.28, 0.5, 0.35);
 }
 
 function setupCombatLighting() {
@@ -922,6 +927,10 @@ function destroyCombatLights() {
   combatLights = [];
 }
 
+function setLevelLightsVisible(visible) {
+  for (const id of levelLights) call('light.setLightVisible', null, id, visible);
+}
+
 // ─── Battle scene swap ───────────────────────────────────────────────────
 // Mirrors the reference game's SkyboxBattleSceneManager: when combat starts
 // we hide the dungeon meshes (otherwise walls/ceiling occlude the camera
@@ -937,11 +946,13 @@ function hideDungeonForCombat() {
     call('scene.setMeshVisible', null, id, false);
     hiddenLevelMeshes.push(id);
   }
+  setLevelLightsVisible(false);
 }
 
 function restoreDungeonAfterCombat() {
   for (const id of hiddenLevelMeshes) call('scene.setMeshVisible', null, id, true);
   hiddenLevelMeshes = [];
+  setLevelLightsVisible(true);
 }
 
 function enterBattleScene() {
@@ -1012,6 +1023,8 @@ function buildLevel() {
   destroyMeshes(meshes);
   destroyMeshes(specialMeshes);
   destroyMeshes(enemyMeshes);
+  for (const id of levelLights) call('light.removeLight', null, id);
+  levelLights = [];
   map = getCurrentMap();
   setupScene();
 
@@ -1054,7 +1067,7 @@ function buildLevel() {
           'level'
         );
       }
-      call(
+      const lightId = call(
         'light.createPointLight',
         null,
         loc.type === 'portal'
@@ -1067,6 +1080,7 @@ function buildLevel() {
         1.6,
         p.z
       );
+      if (lightId !== null && lightId !== undefined && lightId !== false) levelLights.push(lightId);
     }
   }
 
@@ -2550,7 +2564,9 @@ function wrapText(text, x, y, maxWidth, color, size) {
 function drawHUD() {
   const W = width();
   const H = height();
-  if (isBabylonBackend()) drawFallbackDungeonView(W, H);
+  if (isBabylonBackend() && globalThis.__INDIE_ODYSSEY_2D_FALLBACK === true) {
+    drawFallbackDungeonView(W, H);
+  }
   drawBar(10, 10, 150, 18, state.avatar.health, state.avatar.maxHealth, COLORS.red, 'HP');
   drawBar(10, 32, 150, 18, state.avatar.mana, state.avatar.maxMana, COLORS.blue, 'MP');
   drawText(

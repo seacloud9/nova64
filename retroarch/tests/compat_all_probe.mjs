@@ -9,6 +9,12 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '.
 const outDir = process.env.NOVA64_COMPAT_OUT || '/tmp/compat-all';
 const frames = Number(process.env.NOVA64_COMPAT_FRAMES || 30);
 const failOnWarn = process.env.NOVA64_COMPAT_FAIL_ON_WARN === '1';
+const cartFilter = new Set(
+  (process.env.NOVA64_COMPAT_CART || '')
+    .split(',')
+    .map(name => name.trim())
+    .filter(Boolean)
+);
 fs.mkdirSync(outDir, { recursive: true });
 
 const carts = fs
@@ -16,6 +22,7 @@ const carts = fs
   .filter(entry => entry.isDirectory())
   .map(entry => entry.name)
   .filter(name => fs.existsSync(path.join(root, 'examples', name, 'code.js')))
+  .filter(name => cartFilter.size === 0 || cartFilter.has(name))
   .sort();
 
 function crc32(buffer) {
@@ -117,9 +124,34 @@ function makeZip(files) {
   ]);
 }
 
+function safePackagePath(name) {
+  if (typeof name !== 'string' || !name.trim()) throw new Error('invalid asset path');
+  const normalized = name.replace(/\\/g, '/');
+  if (
+    normalized.startsWith('/') ||
+    normalized.includes('\0') ||
+    normalized
+      .split('/')
+      .some(part => part === '..' || part === '')
+  ) {
+    throw new Error(`unsafe asset path: ${name}`);
+  }
+  return normalized;
+}
+
 function packageCart(cart) {
   const dir = path.join(root, 'examples', cart);
   const files = [{ name: 'code.js', data: fs.readFileSync(path.join(dir, 'code.js')) }];
+  const manifest = path.join(dir, 'manifest.json');
+  if (fs.existsSync(manifest)) {
+    const manifestData = fs.readFileSync(manifest);
+    const manifestJSON = JSON.parse(manifestData.toString('utf8'));
+    files.push({ name: 'manifest.json', data: manifestData });
+    for (const asset of manifestJSON.assets || []) {
+      const assetName = safePackagePath(asset);
+      files.push({ name: assetName, data: fs.readFileSync(path.join(dir, assetName)) });
+    }
+  }
   const meta = path.join(dir, 'meta.json');
   if (fs.existsSync(meta)) files.push({ name: 'meta.json', data: fs.readFileSync(meta) });
   const nova = path.join(outDir, cart + '.nova');

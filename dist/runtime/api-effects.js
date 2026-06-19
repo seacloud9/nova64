@@ -868,7 +868,22 @@ export function effectsApi(gpu) {
   }
 
   // === RENDERING ===
+  let _renderEffectsLogCount = 0;
   function renderEffects() {
+    // First-frame diagnostic so we can see which path the user's browser
+    // actually takes. Logs once per ~120 frames (2s @ 60fps) until cleared.
+    if (_renderEffectsLogCount++ % 120 === 0) {
+      console.log(
+        '[api-fx] renderEffects: effectsEnabled=' +
+          effectsEnabled +
+          ' composer=' +
+          !!composer +
+          ' bypassed=' +
+          !!globalThis[BYPASS_KEY] +
+          ' → using ' +
+          (effectsEnabled && composer && !globalThis[BYPASS_KEY] ? 'COMPOSER' : 'DIRECT')
+      );
+    }
     if (effectsEnabled && composer && !globalThis[BYPASS_KEY]) {
       composer.render();
     } else {
@@ -900,6 +915,14 @@ export function effectsApi(gpu) {
   // bypassed phase to resume normal post-processing.
   function setEffectsBypass(bypass) {
     globalThis[BYPASS_KEY] = !!bypass;
+    console.log(
+      '[api-fx] setEffectsBypass(' +
+        !!bypass +
+        ') — globalThis[' +
+        BYPASS_KEY +
+        '] = ' +
+        globalThis[BYPASS_KEY]
+    );
   }
   function isEffectsBypassed() {
     return !!globalThis[BYPASS_KEY];

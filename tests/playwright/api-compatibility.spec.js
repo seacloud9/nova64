@@ -112,6 +112,8 @@ test.describe('Backend Surface Parity', () => {
           lightId,
           moved: setPointLightPosition(lightId, 1, 2, 3),
           recolored: setPointLightColor(lightId, 0xff44aa, 1.5),
+          hidden: setLightVisible(lightId, false),
+          shown: setLightVisible(lightId, true),
           removed: removeLight(lightId),
         };
       });
@@ -119,6 +121,8 @@ test.describe('Backend Surface Parity', () => {
       expect(result.lightId).toBeTruthy();
       expect(result.moved, `setPointLightPosition should work in ${backend}`).toBe(true);
       expect(result.recolored, `setPointLightColor should work in ${backend}`).toBe(true);
+      expect(result.hidden, `setLightVisible(false) should work in ${backend}`).toBe(true);
+      expect(result.shown, `setLightVisible(true) should work in ${backend}`).toBe(true);
       expect(result.removed, `removeLight should work in ${backend}`).toBe(true);
     }
   });

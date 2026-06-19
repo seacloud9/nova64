@@ -29,6 +29,14 @@ for (const backend of ['threejs', 'babylon']) {
 
       await loadCart(page, 'indie-odyssey', backend);
 
+      const getBadLogs = () =>
+        logs.filter(log => {
+          if (log.type === 'error') return true;
+          return /Unable to compile effect|shader compilation|program link|fragment shader|vertex shader/i.test(
+            log.text
+          );
+        });
+
       const boot = await page.evaluate(() => ({
         hasManifest: !!globalThis.__INDIE_ODYSSEY_ASSETS,
         assetBase: globalThis.__INDIE_ODYSSEY_ASSETS?.base,
@@ -45,8 +53,7 @@ for (const backend of ['threejs', 'babylon']) {
       expect(boot.enemyAssetCount).toBeGreaterThanOrEqual(10);
       expect(boot.backend).toBe(backend);
 
-      const errorLogs = logs.filter(log => log.type === 'error');
-      expect(errorLogs, 'cart should not emit console errors while booting').toEqual([]);
+      expect(getBadLogs(), 'cart should not emit console or shader errors while booting').toEqual([]);
 
       await page.locator('#screen').click({ force: true });
       await pressKey(page, 'Space', 100);
@@ -107,6 +114,7 @@ for (const backend of ['threejs', 'babylon']) {
       // working backend; an 'error' here is a regression (e.g. the babylon
       // material compat shims got dropped, or the GLTFLoader import broke).
       expect(combatAssets.map(asset => asset.modelStatus)).toEqual(['ready', 'ready']);
+      expect(getBadLogs(), 'combat should not emit console or shader errors').toEqual([]);
 
       const combatEnemies = await page.evaluate(() => {
         const enemies = globalThis.__INDIE_ODYSSEY_DEBUG?.getCombatEnemies?.() || [];

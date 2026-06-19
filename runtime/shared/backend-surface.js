@@ -42,6 +42,7 @@ const REQUIRED_BACKEND_SURFACE_GROUPS = Object.freeze({
     'createPointLight',
     'setPointLightPosition',
     'setPointLightColor',
+    'setLightVisible',
     'removeLight',
   ]),
   scene: Object.freeze([

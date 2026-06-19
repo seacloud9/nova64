@@ -275,6 +275,37 @@ Axes apply a shaped deadzone (0.18) and power curve (exponent 1.35).
 
 ---
 
+### Video (proposed — not yet implemented in the host)
+
+This section defines the host-side commands `nova64.video` will use on
+Godot once the Godot adapter ships. The JS API is already stable in
+`runtime/api-video.js`; it currently falls through to a stub on Godot
+hosts. When the bridge below is in place, `videoApi(gpu)`'s backend
+detector will recognise Godot and route real calls through.
+
+| Method | Key payload fields | Returns |
+|--------|--------------------|---------|
+| `video.load` | `path` (Godot resource path, must resolve to a `VideoStream`-compatible file, typically `.ogv` or `.webm`), `loop` (bool), `autoplay` (bool), `muted` (bool) | `{ handle, ready }` |
+| `video.applyToMesh` | `videoHandle`, `meshHandle`, `slot` (`'albedo'` (default) / `'emission'`) | `{ ok }` — host binds a `VideoStreamPlayback`'s texture as the mesh material's `albedo_texture` / `emission_texture` |
+| `video.play` | `handle` | `{ ok }` |
+| `video.pause` | `handle` | `{ ok }` |
+| `video.seek` | `handle`, `time` (seconds) | `{ ok }` |
+| `video.setVolume` | `handle`, `volume` (0–1) | `{ ok }` |
+| `video.playFullscreen` | `path`, `loop` (bool), `muted` (bool), `skipKey` (string, default `'ui_cancel'`) | `{ handle }` — host spawns a fullscreen `VideoStreamPlayer` on the viewport; emits `video.finished` event when playback ends or skip-key is pressed |
+| `video.destroy` | `handle` | `{ ok }` |
+
+**Asset format**: Godot's `VideoStream` core supports `.ogv` (Theora) out
+of the box and `.webm` (VP8/9) via the `webm` plugin. `.mp4` (H.264) is
+not natively supported in Godot 4 and would require a third-party
+plugin or transcoding to one of the above. The browser path uses `.mp4`
+freely, so carts that want cross-host compatibility should ship both an
+`.mp4` and a transcoded `.ogv` / `.webm` and let the engine pick by
+backend.
+
+**Events**: the host MUST emit `video.finished` with payload
+`{ handle, skipped: bool }` when a fullscreen video ends or is skipped,
+so the `playFullscreen` promise resolves.
+
 ### Voxel
 
 | Method | Key payload fields | Returns |
@@ -361,6 +392,8 @@ the Three.js browser backend.
 | Mouse look / pointer lock | ✅ | ✅ | ⚠️ partial (no browser pointer-lock API) |
 | Audio | ✅ | ✅ | ✅ |
 | Post-processing (bloom, SSAO) | ✅ | ✅ | ✅ (via `env.set`) |
+| Video texture on mesh (`nova64.video`) | ✅ | ✅ | 🟡 contract defined, host impl pending |
+| Full-screen video playback | ✅ | ✅ | 🟡 contract defined, host impl pending |
 | TSL / custom shaders | ✅ Three-only | ❌ | ❌ |
 | WebXR / VR / AR | ✅ | ✅ | ❌ (Godot XR is separate and not yet bridged) |
 | canvas2D textures (HTMLCanvas) | ✅ | ✅ | ❌ (no DOM; use `texture.createFromImage` instead) |

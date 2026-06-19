@@ -31,6 +31,51 @@ follow-up should promote the common patterns into Nova64 APIs that work across
 Three.js, Babylon.js, Godot, and RetroArch without each cart reimplementing
 shader-style overlays.
 
+## 🟡 nova64.video host coverage (RetroArch + Godot)
+
+`runtime/api-video.js` ships in commit `e2794ea`. Three.js and Babylon.js have
+real `THREE.VideoTexture` / `BABYLON.VideoTexture` backends today; RetroArch
+and Godot hosts get a stub handle that logs a warning when the cart calls
+`.applyToMesh(meshId)`. Concrete follow-up:
+
+**Godot host** — contract is documented in
+`docs/GODOT_HOST_CONTRACT.md` (`Video` section). Bridge commands needed:
+`video.load`, `video.applyToMesh`, `video.play / pause / seek / setVolume`,
+`video.playFullscreen`, `video.destroy`. Asset format constraint: Godot 4 ships
+`.ogv` natively, `.webm` via plugin, no `.mp4`. Carts targeting both web and
+Godot should ship both encodings and let the engine pick.
+
+**RetroArch / libretro core** — no native video texture path exists. Options:
+
+1. Add an MJPEG / FFmpeg decode hook to the libretro core, exposing a callback
+   that lands decoded RGBA frames in either the cart framebuffer or a backing
+   GLES texture. Requires C work on the core + a JS-side handle exposing
+   per-frame readiness.
+2. Pre-decode video to an image sequence at build time and ship the sequence as
+   a sprite atlas; the cart blits frames through the existing framebuffer path.
+   No core change required, but no audio.
+
+Until either lands, the stub keeps the JS API stable so cart code written
+against `nova64.video` doesn't have to branch by backend at the call site.
+
+## 🟡 indie-odyssey on Godot host
+
+Initial port landed at `nova64-godot/tests/carts/indie-odyssey/` on 2026-06-19.
+Cart code runs against the QuickJS bridge unchanged (uses the `nova64.*`
+namespaced API throughout). DOM-dependent surfaces need follow-up:
+
+- **Story-mode intro slides** — currently use `document.createElement('canvas')`.
+  Replace with the cross-backend `nova64.story` API (already in main) once the
+  Godot host wires the matching backend for it.
+- **Combat sprite overlay** — same DOM-canvas dependency. Either route through
+  the cart framebuffer or add an HTMLCanvas-equivalent host shim.
+- **Combat skybox** — the `THREE.MeshBasicMaterial` direct path is feature-checked
+  and no-ops cleanly on Godot; `nova64.light.createSolidSkybox` is the cross-
+  backend route that does work.
+
+After the above land, add `indie-odyssey` to `nova64-godot/scripts/run-cart-smoke.sh`
+default list and run `pnpm godot:visual indie-odyssey` to capture a parity baseline.
+
 ## 🟡 Babylon Runtime Parity
 
 Continue closing Babylon parity gaps against the shared Nova64 runtime contract:

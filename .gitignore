@@ -46,6 +46,9 @@ COMMIT_MESSAGE.txt
 # old patch scripts
 scripts/old-patches/
 
+# Local reference projects used for ports and analysis
+/refrence/
+
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*

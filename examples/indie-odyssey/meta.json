@@ -1,0 +1,8 @@
+{
+  "title": "Indie Odyssey: Book One",
+  "description": "Cross-backend Nova64 port of Echoes of the Shardgrid, preserving the reference game's maps, combat data, assets, and shader definitions.",
+  "author": "Nova64",
+  "version": "0.1.0",
+  "category": "RPG",
+  "tags": ["3d", "dungeon", "rpg", "cyberpunk", "babylon-parity", "retroarch"]
+}

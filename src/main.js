@@ -612,6 +612,7 @@ const demoMap = {
   'game-of-life-3d': '/examples/game-of-life-3d/code.js',
   'nature-explorer-3d': '/examples/nature-explorer-3d/code.js',
   'dungeon-crawler-3d': '/examples/dungeon-crawler-3d/code.js',
+  'indie-odyssey': '/examples/indie-odyssey/code.js',
   'wizardry-3d': '/examples/wizardry-3d/code.js',
   'voxel-terrain': '/examples/voxel-terrain/code.js',
   'voxel-creative': '/examples/voxel-creative/code.js',

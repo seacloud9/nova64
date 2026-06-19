@@ -208,6 +208,8 @@ export const NAMESPACE_MAP = {
     'enableRetroEffects',
     'disableRetroEffects',
     'isEffectsEnabled',
+    'setEffectsBypass',
+    'isEffectsBypassed',
     'renderEffects',
     // Pixelation/dithering (api-3d.js)
     'enablePixelation',

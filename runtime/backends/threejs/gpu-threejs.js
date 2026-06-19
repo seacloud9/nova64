@@ -13,9 +13,34 @@ export class GpuThreeJS {
     this.h = h;
     this.backendName = 'threejs';
 
-    // Initialize Three.js renderer with maximum quality settings
+    // Pre-acquire the WebGL2 context with alpha:false locked in BEFORE
+    // handing the canvas to THREE.WebGLRenderer. Once a canvas has a
+    // context, subsequent getContext() calls return that same context
+    // regardless of the attributes the caller asks for — so anything
+    // calling getContext() on this canvas (e.g. a cart's diagnostic
+    // probe) can't downgrade us to alpha:true.
+    const preCtx = canvas.getContext('webgl2', {
+      antialias: true,
+      alpha: false,
+      premultipliedAlpha: false,
+      powerPreference: 'high-performance',
+      stencil: true,
+      preserveDrawingBuffer: false,
+    });
+    if (preCtx?.getContextAttributes) {
+      const a = preCtx.getContextAttributes();
+      console.log('[gpu-threejs] WebGL2 ctx attrs locked:', {
+        alpha: a.alpha,
+        premultiplied: a.premultipliedAlpha,
+        preserveDB: a.preserveDrawingBuffer,
+      });
+    }
+
+    // Initialize Three.js renderer — it will see the pre-acquired context
+    // via canvas.getContext('webgl2') and honor its existing alpha:false.
     this.renderer = new THREE.WebGLRenderer({
       canvas,
+      context: preCtx, // pass the locked context explicitly
       antialias: true, // Enable for smoother graphics
       alpha: false,
       premultipliedAlpha: false,

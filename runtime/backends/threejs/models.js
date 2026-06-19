@@ -29,6 +29,12 @@ export function modelsModule({ scene, gpu, meshes, mixers, modelAnimations, coun
                 });
                 if (materialOptions.fog === false) mat.fog = false;
                 child.material = mat;
+              } else if (child.material) {
+                const materials = Array.isArray(child.material) ? child.material : [child.material];
+                for (const mat of materials) {
+                  mat.side = THREE.DoubleSide;
+                  mat.needsUpdate = true;
+                }
               }
             }
           });

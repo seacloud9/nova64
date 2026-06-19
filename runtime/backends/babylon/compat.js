@@ -238,6 +238,7 @@ export function applyBabylonMaterialCompatibility(material) {
   const textureKey = getMaterialTextureKey(material);
 
   if (material[MATERIAL_COMPAT]) {
+    ensureBabylonMaterialRenderMethods(material);
     if (colorKey) applyBabylonColorCompatibility(material[colorKey]);
     if (textureKey) applyBabylonTextureCompatibility(material[textureKey]);
     return material;
@@ -245,19 +246,7 @@ export function applyBabylonMaterialCompatibility(material) {
 
   material[MATERIAL_COMPAT] = true;
 
-  // Ensure needAlphaBlendingForMesh exists - Babylon.js rendering requires this method
-  // This is a safeguard for materials that may have been cloned or created without
-  // proper prototype chain (e.g., plain objects mistakenly used as materials)
-  if (typeof material.needAlphaBlendingForMesh !== 'function') {
-    material.needAlphaBlendingForMesh = function () {
-      return (this.alpha ?? 1) < 1 || !!this.opacityTexture || this.alphaMode > 0;
-    };
-  }
-  if (typeof material.needAlphaTesting !== 'function') {
-    material.needAlphaTesting = function () {
-      return this.alphaMode === Constants.MATERIAL_ALPHATEST;
-    };
-  }
+  ensureBabylonMaterialRenderMethods(material);
 
   if (colorKey) {
     applyBabylonColorCompatibility(material[colorKey]);
@@ -329,6 +318,37 @@ export function applyBabylonMaterialCompatibility(material) {
   }
 
   return material;
+}
+
+function ensureBabylonMaterialRenderMethods(material) {
+  // Babylon.js rendering requires these methods. Keep this guard active even
+  // for already-marked compatibility materials because older/proxy materials
+  // may have been tagged before all render methods were present.
+  if (typeof material.needAlphaBlendingForMesh !== 'function') {
+    material.needAlphaBlendingForMesh = function () {
+      return (this.alpha ?? 1) < 1 || !!this.opacityTexture || this.alphaMode > 0;
+    };
+  }
+  if (typeof material.needAlphaTesting !== 'function') {
+    material.needAlphaTesting = function () {
+      return this.alphaMode === Constants.MATERIAL_ALPHATEST;
+    };
+  }
+  if (typeof material.needAlphaTestingForMesh !== 'function') {
+    material.needAlphaTestingForMesh = function () {
+      return this.needAlphaTesting();
+    };
+  }
+  if (typeof material.isReady !== 'function') {
+    material.isReady = function () {
+      return true;
+    };
+  }
+  if (typeof material.isReadyForSubMesh !== 'function') {
+    material.isReadyForSubMesh = function () {
+      return true;
+    };
+  }
 }
 
 export function applyBabylonNodeCompatibility(node) {

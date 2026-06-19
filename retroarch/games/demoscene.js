@@ -77,27 +77,27 @@ function clearScene3D() {
 
 // ── Scene 0: GRID AWAKENING ───────────────────────────────────────────────────
 function buildScene0() {
-   /* Brighter pink top + lighter vignette so the dark navy corners that
-      previously pulled the colour distribution away from the web's pink
-      wash fill in. Bottom stays a hint dark to keep the foreground city
-      readable. */
-   nova64.post.setBloom(2.45);
+   /* Browser Three.js now preserves vivid fantasy-console colours instead of
+      washing the scene through ACES/PBR defaults. Keep this scene darker and
+      cyan-forward so the terrain/grid geometry remains readable. */
+   nova64.post.setBloom(0.9);
    nova64.post.setChromatic(0.003);
    nova64.post.setCRT(true);
-   nova64.post.setVignette(0.12, 0.76);
-   setSkyColor(rgba8(244, 86, 200, 255), rgba8(218, 24, 150, 255));
-   setAmbientLight(rgba8(225, 86, 180, 255), 1.32);
+   nova64.post.setVignette(0.24, 0.78);
+   setSkyColor(rgba8(78, 82, 94, 255), rgba8(48, 66, 72, 255));
+   setAmbientLight(rgba8(62, 76, 84, 255), 1.05);
    setLightDirection(0, -1, -0.2);
-   setFog(rgba8(232, 80, 196, 255), 12, 70);
+   setFog(rgba8(54, 74, 78, 255), 60, 170);
    setCameraFOV(70);
 
    // skyPanel cube removed — setSkyColor() above now renders a real fullscreen
    // gradient quad behind the 3D pass.
 
-   horizonGlow = createSphere(25, rgba8(220, 255, 255, 255));
-   setMeshEmissive(horizonGlow, rgba8(240, 255, 255, 255), 3.25);
-   setScale(horizonGlow, 92, 27, 23);
-   setPosition(horizonGlow, 34, 2, -8);
+   horizonGlow = createSphere(12, rgba8(0, 220, 255, 255));
+   setMeshEmissive(horizonGlow, rgba8(0, 220, 255, 255), 0.8);
+   setMeshOpacity(horizonGlow, 0.25);
+   setScale(horizonGlow, 42, 10, 16);
+   setPosition(horizonGlow, 20, -1, -16);
 
    const terrainCols = [
       rgba8(255, 20, 210, 255),
@@ -191,17 +191,16 @@ function buildScene0() {
 
 // ── Scene 1: DATA TUNNEL ──────────────────────────────────────────────────────
 function buildScene1() {
-   /* Cyan-leaning sky + cyan-tinted fog to match the web reference's
-      flat cyan bloom wash. The magenta torus rings still pop because
-      they're emissive and their colour is far from cyan. */
-   nova64.post.setBloom(2.4);
+   /* Corrected browser reference is a darker teal tunnel with compact neon
+      rings/streams, not the old flat cyan wash. */
+   nova64.post.setBloom(0.75);
    nova64.post.setChromatic(0.005);
    nova64.post.setCRT(true);
-   nova64.post.setVignette(0.1, 0.72);
-   setSkyColor(rgba8(28, 238, 248, 255), rgba8(14, 170, 205, 255));
-   setAmbientLight(rgba8(130, 232, 238, 255), 1.95);
+   nova64.post.setVignette(0.28, 0.78);
+   setSkyColor(rgba8(8, 70, 74, 255), rgba8(2, 44, 50, 255));
+   setAmbientLight(rgba8(22, 70, 78, 255), 1.15);
    setLightDirection(0, -1, -0.2);
-   setFog(rgba8(48, 214, 228, 255), 18, 100);
+   setFog(rgba8(7, 56, 70, 255), 75, 190);
    setCameraFOV(78);
 
    rings = [];
@@ -214,8 +213,8 @@ function buildScene1() {
          ? rgba8(255, Math.floor(40 + hue*180), 220, 255)
          : rgba8(Math.floor(255 - (hue-0.5)*360), 40, 255, 255);
       const m = createTorus(outer, tube, col);
-      setMeshEmissive(m, col, 0.2);
-      setMeshOpacity(m, 0.42);
+      setMeshEmissive(m, col, 0.9);
+      setMeshOpacity(m, 0.62);
       setPosition(m, 0, 0, z);
       rings.push({ mesh: m, z, rot: (i % 2 === 0) ? 1 : -0.7, phase: rng() * 6.28 });
    }
@@ -247,37 +246,46 @@ function buildScene1() {
 
 // ── Scene 2: DIGITAL CITY ─────────────────────────────────────────────────────
 function buildScene2() {
-   /* Second-pass tuning: bright pink sky + softer vignette, and brighter
-      pink fog so the city silhouettes wash toward the web reference
-      while individual tower colours still differentiate. */
-   nova64.post.setBloom(2.45);
+   /* Match the corrected browser reference: deep magenta-black sky
+      (clearColor 0x120010), purple fog (0x351033), taller variable-width
+      towers, brighter per-tower emissive. The pre-fix retune over-warmed
+      the sky to brown which dominated the parity diff. */
+   nova64.post.setBloom(1.05);
    nova64.post.setChromatic(0.003);
    nova64.post.setCRT(true);
-   nova64.post.setVignette(0.16, 0.76);
-   setSkyColor(rgba8(255, 205, 248, 255), rgba8(214, 70, 190, 255));
-   setAmbientLight(rgba8(240, 155, 225, 255), 1.95);
+   nova64.post.setVignette(0.28, 0.78);
+   setSkyColor(rgba8(24, 4, 32, 255), rgba8(10, 0, 16, 255));
+   setAmbientLight(rgba8(40, 24, 40, 255), 0.95);
    setLightDirection(-0.6, -1, -0.4);
-   setFog(rgba8(224, 82, 204, 255), 20, 112);
+   setFog(rgba8(53, 16, 51, 255), 75, 210);
    setCameraFOV(62);
 
-   groundMesh = createCube(56, 0.2, 56, rgba8(10, 10, 26, 255));
+   groundMesh = createCube(58, 0.2, 58, rgba8(10, 10, 26, 255));
    setMeshEmissive(groundMesh, rgba8(40, 60, 150, 255), 0.18);
    setPosition(groundMesh, 0, -0.1, 0);
 
    const COLS = 7, ROWS = 7;
    cityMesh = createInstancedMesh('cube', COLS * ROWS);
-   /* Pink-tinted emissive shared across the city. Per-instance colours
-      still differentiate individual towers (cyan / yellow / magenta), but
-      the unified glow biases the overall hue toward the web's wash. */
-   setMeshEmissive(cityMesh, rgba8(240, 130, 220, 255), 0.92);
+   /* Bias the shared emissive toward the browser's purple-pink wash; per-
+      instance colours still differentiate cyan/yellow/magenta towers. */
+   setMeshEmissive(cityMesh, rgba8(180, 60, 200, 255), 0.85);
    towers = [];
    let idx = 0;
    for (let r = 0; r < ROWS; r++) {
       for (let c = 0; c < COLS; c++) {
          const x = (c - COLS/2 + 0.5) * 7;
          const z = (r - ROWS/2 + 0.5) * 7;
-         const h = 1.5 + rng() * 9;
-         setInstanceTransform(cityMesh, idx, mat4(2.6, h, 2.6, x, h/2, z));
+         // Browser uses height 5..23 and width 1.8..4.0 — match it so the
+         // skyline silhouette + tower densities line up. Skip the centre
+         // 4-unit square so the beacon (added below) stands alone.
+         if (Math.abs(x) < 4 && Math.abs(z) < 4) {
+            setInstanceTransform(cityMesh, idx, mat4(0.001, 0.001, 0.001, 1000, -1000, 1000));
+            idx++;
+            continue;
+         }
+         const w = 1.8 + rng() * 2.2;
+         const h = 5 + rng() * 18;
+         setInstanceTransform(cityMesh, idx, mat4(w, h, w, x, h/2, z));
          const hue3 = rng();
          const col = hue3 < 0.33
             ? rgba8(0,  210, 255, 255)
@@ -328,28 +336,28 @@ function buildScene2() {
 
 // ── Scene 3: ENERGY CORE ──────────────────────────────────────────────────────
 function buildScene3() {
-   /* Brighter pink sky + softened vignette so the overall wash leans
-      toward the web reference's saturated magenta bloom field. The
-      orbiting core meshes are emissive enough to read through it. */
-   nova64.post.setBloom(3.4);
+   /* Match the corrected browser reference: deep purple sky (0x130013),
+      purple fog (0x3a1238), one large neonPink core, four orbit rings,
+      and a halo of orbs. The pre-fix retune had a warm-green sky/fog
+      that fought the magenta core and inflated an extra yellow vertical
+      glow column that isn't in the browser version at all. */
+   nova64.post.setBloom(1.05);
    nova64.post.setChromatic(0.005);
-   nova64.post.setVignette(0.28, 0.68);
+   nova64.post.setVignette(0.32, 0.76);
    nova64.post.setCRT(true);
-   setSkyColor(rgba8(255, 210, 250, 255), rgba8(204, 76, 184, 255));
-   setAmbientLight(rgba8(255, 205, 245, 255), 2.4);
+   setSkyColor(rgba8(28, 4, 32, 255), rgba8(12, 0, 14, 255));
+   setAmbientLight(rgba8(42, 24, 44, 255), 1.0);
    setLightDirection(0, -0.5, -1);
-   setFog(rgba8(238, 124, 220, 255), 18, 75);
+   setFog(rgba8(58, 18, 56, 255), 60, 170);
    setCameraFOV(75);
 
-   // skyPanel cube removed — setSkyColor() above renders the gradient now.
+   // Browser scene 3 has no vertical horizonGlow column — the central core
+   // is the sole bright object. Set horizonGlow = null so the per-frame
+   // update path skips it cleanly.
+   horizonGlow = null;
 
-   horizonGlow = createSphere(2.4, rgba8(255, 236, 80, 255));
-   setMeshEmissive(horizonGlow, rgba8(255, 236, 80, 255), 3.4);
-   setScale(horizonGlow, 1.4, 10.0, 1.4);
-   setPosition(horizonGlow, 0, 0, 0);
-
-   centralSphere = createSphere(1.4, rgba8(255, 60, 200, 255));
-   setMeshEmissive(centralSphere, rgba8(255, 60, 200, 255), 3.6);
+   centralSphere = createSphere(2.6, rgba8(255, 60, 200, 255));
+   setMeshEmissive(centralSphere, rgba8(255, 60, 200, 255), 1.7);
    setPosition(centralSphere, 0, 0, 0);
 
    rings = [];
@@ -361,7 +369,7 @@ function buildScene3() {
    ];
    for (let i = 0; i < 4; i++) {
       const m = createTorus(3.5 + i * 1.4, 0.42, RING_COLS[i]);
-      setMeshEmissive(m, RING_COLS[i], 2.2);
+      setMeshEmissive(m, RING_COLS[i], 1.15);
       rings.push({ mesh: m, phase: i * Math.PI / 4, speed: 0.8 + i * 0.2 });
    }
 
@@ -387,18 +395,18 @@ function buildScene3() {
 
 // ── Scene 4: THE VOID ─────────────────────────────────────────────────────────
 function buildScene4() {
-   /* Second-pass tuning: the web reference is essentially a bright
-      pink wash with subtle structure inside; we approximate by bumping
-      sky/ambient/fog all toward saturated magenta and dropping vignette
-      further. Orbiting spheres still pop because they're emissive. */
-   nova64.post.setBloom(2.55);
+   /* Match the corrected browser reference: near-black sky (clearColor
+      0x05000a), darker fog (0x020006), discrete neon orbs. The prior
+      retune's sky was too bright (38,20,48) which left a visible purple
+      backdrop where the browser shows near-black. */
+   nova64.post.setBloom(0.85);
    nova64.post.setChromatic(0.007);
-   nova64.post.setVignette(0.12, 0.68);
+   nova64.post.setVignette(0.28, 0.76);
    nova64.post.setCRT(true);
-   setSkyColor(rgba8(245, 145, 230, 255), rgba8(210, 45, 184, 255));
-   setAmbientLight(rgba8(228, 130, 220, 255), 1.55);
+   setSkyColor(rgba8(10, 0, 18, 255), rgba8(2, 0, 8, 255));
+   setAmbientLight(rgba8(24, 16, 32, 255), 0.95);
    setLightDirection(0.2, -1, 0.4);
-   setFog(rgba8(238, 110, 218, 255), 8, 56);
+   setFog(rgba8(4, 0, 8, 255), 35, 120);
    setCameraFOV(58);
 
    horizonGlow = createSphere(3.2, rgba8(0, 210, 255, 255));
@@ -487,16 +495,16 @@ export function init() {
 function cam0(dt) {   // GRID AWAKENING — web-style rising terrain flyover
    const prog = Math.min(1, sceneT / SCENES[0].dur);
    const py = 15 + prog * 8;
-   const pz = 42 - prog * 12;
+   const pz = 35 - prog * 15;
    setCameraPosition(Math.sin(sceneT * 0.15) * 4, py, pz);
-   setCameraTarget(0, 2.5, -48);
+   setCameraTarget(0, 0, 0);
 }
 function cam1(dt) {   // DATA TUNNEL — fly through rings
-   const pz = -sceneT * 3 + 8;
+   const pz = 20 - sceneT * 1.25;
    const sx = Math.sin(sceneT * 0.35) * 1.2;
    const sy = Math.cos(sceneT * 0.22) * 0.6;
    setCameraPosition(sx, sy, pz);
-   setCameraTarget(sx * 0.3, 0, pz - 6);
+   setCameraTarget(sx * 0.3, 0, 0);
 }
 function cam2(dt) {   // DIGITAL CITY — orbit at two heights
    const angle = sceneT * 0.24;

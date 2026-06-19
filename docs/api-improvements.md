@@ -79,7 +79,7 @@ Useful shapes absent from the API:
 - `createCone(radius, height, color, position, opts)` — projectiles, trees, hat shapes
 - `createCapsule(radius, height, color, position, opts)` — humanoid character bodies
 
-### 13. Reusable hero-cart loader as a public API
+### 13. Reusable hero-cart loader as a public API ✅ LANDED (`nova64.loader`)
 
 **Where it exists today:** the home screen at `http://localhost:3000/` shows a hero cart loader (boot animation + asset progress) that's currently hand-wired in the homepage shell.
 **Why it matters:** every cart that loads GLBs, textures, or audio has to either ship its own loader UI or pop into gameplay with a half-loaded scene (see `examples/indie-odyssey` combat enemy GLBs racing the autoplay timer). A first-class loader is a portable solution.
@@ -95,7 +95,7 @@ nova64.loader.hide();
 Engine handles the visual + progress wiring; cart just tells it what to wait on.
 **Effort:** Medium — needs progress hooks into `scene.loadModel` / `loadTexture` / image preload paths, plus a default themable overlay.
 
-### 14. Story-mode helper with slides
+### 14. Story-mode helper with slides ✅ LANDED (`nova64.story`)
 
 **Where it exists today:** `examples/indie-odyssey/code.js` has a multi-slide intro with image + text + transitions (`drawStory`, `drawStoryFrameImage`, `drawStoryTransitionFrame`, `storyFrameCanvas`, `storyPixelCanvas`). It's ~300 lines of cart-local code.
 **Why it matters:** every narrative game wants intro / cutscene / chapter-break slides with pixel transitions. Re-implementing this each time is wasteful and discourages story sequences.
@@ -116,7 +116,7 @@ nova64.story.play([
 Engine owns the slide canvas, transition timing, "Press Enter to continue" prompt, image preload, and pixel-grid effect — same patterns indie-odyssey already has, but shared.
 **Effort:** Medium — port indie-odyssey's helpers up into `runtime/api-story.js` (new file) and expose as `nova64.story`.
 
-### 15. MP4 / video playback support
+### 15. MP4 / video playback support ✅ PARTIAL (`nova64.video`)
 
 **Why it matters:** cutscenes, animated logos, in-world TV screens, FMV-style sequences. There's currently no engine-supported path — carts would have to manually create a `<video>` element, manage z-index against the WebGL canvas, and worry about the same `canvas { background: #000 }` CSS trap that bit indie-odyssey combat overlays.
 **Proposed shape:**
@@ -132,6 +132,66 @@ nova64.scene.setMeshTexture(tvMeshId, tex);
 
 Both paths use the same underlying `HTMLVideoElement` — the engine wires it into the framebuffer overlay or as a `THREE.VideoTexture` depending on call site. Background must be set to `transparent` (see lesson from indie-odyssey skybox session).
 **Effort:** Medium-High — `THREE.VideoTexture` for in-world is straightforward; full-screen cutscene needs to slot into the cart framebuffer overlay z-stack and handle autoplay-policy unlocks (audio requires user gesture in some browsers).
+
+**Landed status:** `runtime/api-video.js` ships `loadTexture(url, opts)` and
+`playFullscreen(url, opts)`. The texture handle exposes
+`applyToMesh(meshId)` which wires `THREE.VideoTexture` into the mesh's
+`material.map` on Three.js, and `BABYLON.VideoTexture` into
+`material.diffuseTexture` / `albedoTexture` on Babylon.js. RetroArch and
+Godot hosts fall through to a graceful no-op stub (see item #17 below for
+the follow-up).
+
+### 16. Grid-driven level/dungeon builder ✅ LANDED (`nova64.level`)
+
+**Why it matters:** every dungeon-crawler, top-down RPG, or grid puzzle
+cart re-implements the same pattern — a 2D grid + a tile spec map + a
+list of "special" locations that gets a placeholder mesh, an optional
+GLB model, and an optional point light. Indie Odyssey's `buildLevel`
+was ~150 lines of this; future carts shouldn't have to write it again.
+
+**Landed shape:**
+
+```js
+const level = nova64.level.fromGrid({
+  grid: [[1,1,1,1,1], [1,0,0,0,1], [1,0,0,0,1], [1,0,0,0,1], [1,1,1,1,1]],
+  tileSize: 1,
+  origin: [0, 0, 0],
+  tiles: {
+    1: { type: 'wall', color: 0x10051c, height: 2, emissive: 0x00aaff, emissiveIntensity: 0.3 },
+    0: { type: 'open', floorColor: 0x07010d, ceilingColor: 0x1f4f9a },
+  },
+  specials: [
+    { x: 2, z: 2, type: 'portal', color: 0xff00cc, model: 'portal.glb',
+      light: { color: 0xff00cc, intensity: 1.2 } },
+  ],
+});
+
+level.isWall(x, z);     // grid lookup
+level.cellToWorld(x, z); // → { x, y, z }
+level.specialAt(x, z);  // → spec or null
+level.destroy();         // cleanup all meshes + lights at once
+```
+
+Tile types beyond `wall`/`open` can supply a `spawn(p, x, z, tile)`
+function for custom geometry. The returned handle owns the mesh ids so
+cart cleanup is a one-liner.
+
+### 17. Video on RetroArch + Godot hosts (follow-up to #15)
+
+`nova64.video.loadTexture` returns a stub handle on RetroArch and Godot
+hosts because neither has a path from `HTMLVideoElement` → backend
+texture. Concrete options:
+
+- **RetroArch**: the libretro core could expose a software MJPEG / FFmpeg
+  decode hook that lands frames in the cart framebuffer or in a backing
+  texture. Likely needs a new core entry point + bindings on the JS side.
+- **Godot**: `VideoStreamPlayer` for full-screen and `VideoStreamTexture`
+  for in-world. Needs the Godot host bridge to expose a video-load
+  RPC the cart can call via the engine adapter.
+
+Until those land, the stub logs a warning when `applyToMesh` is called
+on an unsupported backend, so cart authors get clear failure feedback
+rather than a silent no-op.
 
 ---
 
@@ -169,9 +229,11 @@ Several FPS and space-shooter demos manually draw a crosshair using `line()` or 
 | 6   | More skybox types                       | 🟡 Missing | High   |
 | 7   | `removeMesh` alias                      | 🟡 Missing | Low    |
 | 8   | Cone + Capsule primitives               | 🟡 Missing | Medium |
-| 13  | Hero-cart loader API (`nova64.loader`)  | 🟡 Missing | Medium |
-| 14  | Story-mode helper (`nova64.story`)      | 🟡 Missing | Medium |
-| 15  | MP4 / video playback (`nova64.video`)   | 🟡 Missing | Med-High |
+| 13  | Hero-cart loader API (`nova64.loader`)  | ✅ Landed   | —      |
+| 14  | Story-mode helper (`nova64.story`)      | ✅ Landed   | —      |
+| 15  | MP4 / video playback (`nova64.video`)   | ✅ Partial  | (#17)  |
+| 16  | Grid-driven level (`nova64.level`)      | ✅ Landed   | —      |
+| 17  | Video on RetroArch + Godot hosts        | 🟡 Missing | Med-High |
 | 9   | Improve `printCentered` discoverability | 🟢 QoL     | Low    |
 | 10  | Document `createPointLight` signature   | 🟢 QoL     | Low    |
 | 11  | `print()` size shorthand                | 🟢 QoL     | Low    |

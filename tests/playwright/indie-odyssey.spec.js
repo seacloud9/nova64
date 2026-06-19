@@ -88,14 +88,25 @@ for (const backend of ['threejs', 'babylon']) {
 
       await page.evaluate(() => globalThis.__INDIE_ODYSSEY_DEBUG.forceCombat(['data_imp', 'glitch_rat']));
       await page.waitForFunction(() => globalThis.__INDIE_ODYSSEY_STATE?.transition?.type === 'combat');
+      // Wait for both sprites and GLB models to fully resolve. Both data_imp
+      // and glitch_rat ship .glb models — modelStatus should land on 'ready'
+      // (a successful 3D load) or 'error' (graceful sprite-fallback path),
+      // never stay at 'loading' indefinitely.
       await page.waitForFunction(() => {
         const assets = globalThis.__INDIE_ODYSSEY_STATE?.combatEnemyAssets || [];
-        return assets.length >= 2 && assets.every(asset => asset.spriteStatus === 'ready');
-      });
+        return (
+          assets.length >= 2 &&
+          assets.every(a => a.spriteStatus === 'ready') &&
+          assets.every(a => ['ready', 'error'].includes(a.modelStatus))
+        );
+      }, { timeout: 30000 });
 
       const combatAssets = await page.evaluate(() => globalThis.__INDIE_ODYSSEY_STATE?.combatEnemyAssets || []);
       expect(combatAssets.map(asset => asset.spriteStatus)).toEqual(['ready', 'ready']);
-      expect(combatAssets.map(asset => asset.modelStatus)).toEqual(['none', 'none']);
+      // Both enemies ship .glb models — they MUST load successfully on a
+      // working backend; an 'error' here is a regression (e.g. the babylon
+      // material compat shims got dropped, or the GLTFLoader import broke).
+      expect(combatAssets.map(asset => asset.modelStatus)).toEqual(['ready', 'ready']);
 
       const combatEnemies = await page.evaluate(() => {
         const enemies = globalThis.__INDIE_ODYSSEY_DEBUG?.getCombatEnemies?.() || [];

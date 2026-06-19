@@ -1,7 +1,7 @@
 # Nova64 RetroArch Core
 
 This is the canonical README for the `retroarch/` directory. Session handoff
-notes live in `HANDOFF_HWGL.md`, queued work lives in `BACKLOG.md`, and
+notes live in `HANDOFF_HWGL.md`, queued work lives in [`../BACKLOG.md`](../BACKLOG.md), and
 MemPalace-mined session memory lives in `MEMPALACE_DIARY.md`.
 
 This directory contains the native Nova64 libretro core. It does not embed a browser,

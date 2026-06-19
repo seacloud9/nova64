@@ -7,8 +7,8 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { FXAAShader } from 'three/examples/jsm/shaders/FXAAShader.js';
-// OutputPass handles the renderer's tone mapping (ACES) + sRGB output
-// encoding. Required since THREE r152 — without it, post-processed colours
+// OutputPass handles the renderer's configured tone mapping + sRGB output
+// encoding. Required since THREE r152 — without it, post-processed colors
 // don't reach the canvas the way carts expect. Notably: it also keeps the
 // renderer's clear color path intact when bloom is enabled or removed, so
 // nova64.scene.setClearColor(...) reaches the screen even with bloom on.

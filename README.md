@@ -41,13 +41,11 @@ progress so future sessions can recover the latest parity context quickly.
 ## RetroArch Native Core
 
 The native libretro core lives in [`retroarch/README.md`](retroarch/README.md).
-That folder also carries the active RetroArch handoff, backlog, smoke matrix, and
-MemPalace diary:
+That folder also carries the active RetroArch handoff, smoke matrix, and
+MemPalace diary. Project-wide queued work lives in [`BACKLOG.md`](BACKLOG.md):
 
 - [`retroarch/HANDOFF_HWGL.md`](retroarch/HANDOFF_HWGL.md) - current hardware-GL
   implementation state and validation numbers.
-- [`retroarch/BACKLOG.md`](retroarch/BACKLOG.md) - queued RetroArch parity and
-  cleanup work.
 - [`retroarch/GLES_SMOKE_MATRIX.md`](retroarch/GLES_SMOKE_MATRIX.md) - manual
   real-driver smoke coverage.
 

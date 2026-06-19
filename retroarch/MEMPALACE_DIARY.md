@@ -53,14 +53,14 @@ canonical repository instructions in `../AGENTS.md`.
 - Renamed `retroarch/README_RETROARCH.md` to `retroarch/README.md` so the
   RetroArch folder has a normal local README.
 - Replaced the stale long `retroarch/HANDOFF.md` body with a short index that
-  points to `HANDOFF_HWGL.md`, `BACKLOG.md`, `MEMPALACE_DIARY.md`, `README.md`,
+  points to `HANDOFF_HWGL.md`, `../BACKLOG.md`, `MEMPALACE_DIARY.md`, `README.md`,
   and `GLES_SMOKE_MATRIX.md`.
 - Removed tracked stale backup/capture files:
   - `retroarch/nova64_libretro_nohw.c`
   - `retroarch/nova64_libretro_hw.c.bak`
   - `retroarch/nova64_libretro.c.bak`
   - `retroarch/torus_capture.ppm`
-- Updated root `README.md`, `retroarch/BACKLOG.md`, and
+- Updated root `README.md`, `../BACKLOG.md`, and
   `retroarch/GLES_SMOKE_MATRIX.md` to reflect the cleaned doc structure and the
   new HDR/multi-mip bloom status.
 - Removed ignored root backup instruction files (`CLAUDE.md.bak`,
@@ -72,13 +72,13 @@ canonical repository instructions in `../AGENTS.md`.
 - Keep generated binaries and captures out of commits.
 - Keep `HANDOFF.md` short. Put current implementation state in
   `HANDOFF_HWGL.md`, stable usage docs in `README.md`, queued tasks in
-  `BACKLOG.md`, and session memory here for MemPalace mining.
+  `../BACKLOG.md`, and session memory here for MemPalace mining.
 
 ## 2026-05-21 - HDR post target and multi-mip bloom pass
 
 ### What landed
 
-- Implemented the selected visual feature from `retroarch/BACKLOG.md`:
+- Implemented the selected visual feature from `../BACKLOG.md`:
   guarded HDR post target plus multi-mip bloom.
 - `gles_init_post_resources()` now tries `RGBA16F` first and falls back to the
   old `RGBA8` post target if framebuffer completeness fails.
@@ -115,13 +115,13 @@ canonical repository instructions in `../AGENTS.md`.
 ### Current request
 
 - User wants the next visual parity feature to be **HDR backbuffer
-  (`RGBA16F`) + multi-mip bloom** from `retroarch/BACKLOG.md`.
+  (`RGBA16F`) + multi-mip bloom** from `../BACKLOG.md`.
 - User also asked to document the state clearly for a model switch and to keep
   MemPalace updated before continuing.
 
 ### Working tree before checkpoint commit
 
-- `retroarch/BACKLOG.md` added with deferred Windows perf diagnosis, queued
+- `../BACKLOG.md` added with deferred Windows perf diagnosis, queued
   visual features, code-anchored TODO notes, stale-file cleanup, and recently
   shipped context.
 - `retroarch/nova64_libretro.c` modified with the lightweight perf overlay
@@ -719,7 +719,7 @@ AAAK:
   brightpass ramp, lightened final CRT scanline/grille strength, and fixed the
   active CRT-path AA bug by moving edge smoothing after CRT barrel-warp UV
   selection.
-- **Artifacts:** Updated `HANDOFF.md`, `HANDOFF_HWGL.md`, `BACKLOG.md`, and this
+- **Artifacts:** Updated `HANDOFF.md`, `HANDOFF_HWGL.md`, `../BACKLOG.md`, and this
   diary with the new baseline and the reasoning for keeping the AA fix even
   though a bloom-only tuning run scored slightly higher.
 - **Knowledge:** Comparator score improved from the scaled-text baseline
@@ -747,7 +747,7 @@ AAAK:
   `drawLightning(x1, y1, x2, y2, segs, color)` path now uses the original
   deterministic line-jitter algorithm so conformance cart 344 remains stable.
   Documented the new state in `HANDOFF.md`, `HANDOFF_HWGL.md`, `README.md`, and
-  `BACKLOG.md`.
+  `../BACKLOG.md`.
 - **Artifacts:** `retroarch/games/demoscene.js` carries scene-by-scene sky,
   fog, ambient, vignette, bloom, and emissive tuning. `nova64_libretro.c` carries
   tight text effect variants and lightning compatibility. `run_conformance.sh`
@@ -778,7 +778,7 @@ AAAK:
   closer fog, stronger ambient, and higher emissive core/ring/orb values.
 - **Artifacts:** Full comparator report in
   `retroarch/build/demoscene-parity/report.json` from the validation run. Docs
-  updated in `HANDOFF.md`, `HANDOFF_HWGL.md`, and `BACKLOG.md`.
+  updated in `HANDOFF.md`, `HANDOFF_HWGL.md`, and `../BACKLOG.md`.
 - **Knowledge:** Focused s3 improved from `59.7` to about `89.1`; full
   demoscene visual parity is now `average=74.1`, `strictAverage=70.9` with
   s0 `77.0`, s1 `71.2`, s2 `66.3`, s3 `89.3`, s4 `66.4`. Keep
@@ -805,7 +805,7 @@ AAAK:
   magenta while keeping a right-side white horizon glow.
 - **Artifacts:** Full comparator report in
   `retroarch/build/demoscene-parity/report.json`. Updated `HANDOFF.md`,
-  `HANDOFF_HWGL.md`, and `BACKLOG.md`.
+  `HANDOFF_HWGL.md`, and `../BACKLOG.md`.
 - **Knowledge:** Current verified demoscene visual comparator is
   `average=89.4`, `strictAverage=87.6` with s0 `87.6`, s1 `91.1`, s2 `90.0`,
   s3 `89.1`, s4 `89.3`. Keep `drawWebBloomWash()` disabled. A durable final
@@ -829,7 +829,7 @@ AAAK:
   focused scenes; lowering scene-4 object opacity regressed; over-expanding
   scene-0 horizon glow regressed.
 - **Artifacts:** `retroarch/games/demoscene.js` carries the accepted scene/HUD
-  tweaks. `HANDOFF.md`, `HANDOFF_HWGL.md`, and `BACKLOG.md` are updated.
+  tweaks. `HANDOFF.md`, `HANDOFF_HWGL.md`, and `../BACKLOG.md` are updated.
 - **Knowledge:** Current verified full comparator is `average=89.8`,
   `strictAverage=88.1` with s0 `87.8`, s1 `91.3`, s2 `90.3`, s3 `90.4`,
   s4 `89.4`. Scene 0 is now the main blocker; focused and full browser captures

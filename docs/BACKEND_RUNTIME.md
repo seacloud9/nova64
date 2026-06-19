@@ -235,14 +235,11 @@ Use the WAD-specific visual and regression slices first when touching Babylon WA
 Use the XR/AR slice first when touching `runtime/xr.js`, `runtime/mediapipe.js`, or demos that call WebXR/MediaPipe APIs.
 Use the TSL Galaxy slice first when touching Babylon post-processing, procedural shader materials, particle glow, or the `tsl-showcase` cart.
 
-## Remaining Babylon Backlog
+## Remaining Babylon Work
 
-- fuller particle-system parity
-- broader model-loading parity beyond VOX coverage
-- voxel visual parity against Three.js beyond “boots and runs”
-- voxel support for more advanced custom/entity mesh cases if carts move beyond simple box entities
-- post-processing parity beyond safe capability-gated warnings
-- continued removal of façade-only glue as shared contracts mature
+Remaining Babylon parity work is tracked in [`../BACKLOG.md`](../BACKLOG.md).
+Keep this document focused on backend architecture, runtime contracts, and
+validation guidance rather than a second backlog.
 
 ## Extending The Runtime
 

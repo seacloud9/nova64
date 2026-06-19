@@ -1,9 +1,46 @@
-# Nova64 RetroArch — Backlog
+# Nova64 Project Backlog
 
-Anything that's a known issue, a deferred investigation, or a queued feature
-lives here. Update this file as items are picked up or completed.
+This is the single source of truth for known issues, deferred investigations,
+and queued feature work across Nova64 web, Babylon, Three.js, Godot, and
+RetroArch. Do not create per-area backlog files; add items here and link back
+to area-specific docs when context is needed.
 
-Last updated: 2026-06-12
+Last updated: 2026-06-19
+
+## 🟡 Three.js Renderer Vibrancy Regression
+
+Status: fixed in the Three.js runtime path on 2026-06-19. The root causes were
+global ACES filmic tone mapping / exposure and default `MeshStandardMaterial`
+environment response washing out simple cart colors. The fix restores
+fantasy-console defaults with `NoToneMapping`, no fake exposure bloom, and
+diffuse default material shading for non-PBR geometry. Regression coverage:
+`tests/playwright/visual-regression.spec.js` checks that Hello World retains
+saturated cyan/blue pixels in Three.js.
+
+Follow-up: RetroArch demoscene visual parity needs a retune against the corrected
+vivid browser reference. The old RetroArch demoscene tuning targeted a washed-out
+web reference, so `retroarch/tests/demoscene_visual_parity.mjs` now reports lower
+numeric similarity even though the browser output is healthier and more vivid.
+
+## 🟡 Cross-Cart Transition / Effect Helpers
+
+Add a reusable cart-facing transition/effect helper layer for pixel wipes,
+combat-entry glitches, damage-hit glitches, story/card transitions, and screen
+fades. Indie Odyssey currently implements these locally to preserve parity; the
+follow-up should promote the common patterns into Nova64 APIs that work across
+Three.js, Babylon.js, Godot, and RetroArch without each cart reimplementing
+shader-style overlays.
+
+## 🟡 Babylon Runtime Parity
+
+Continue closing Babylon parity gaps against the shared Nova64 runtime contract:
+
+- fuller particle-system parity
+- broader model-loading parity beyond VOX coverage
+- voxel visual parity against Three.js beyond "boots and runs"
+- voxel support for more advanced custom/entity mesh cases if carts move beyond simple box entities
+- post-processing parity beyond safe capability-gated warnings
+- continued removal of facade-only glue as shared contracts mature
 
 **Post-v0.5.2 features shipped:**
 
@@ -13,7 +50,7 @@ Last updated: 2026-06-12
    rasterize via scanline `rectfill`; 2-stop radials reuse the native
    `fillRadialGradient`, multi-stop radials fall back to concentric-ring
    fills. Coverage:
-   [retroarch/conformance/1105-canvas-ui-gradient.js](conformance/1105-canvas-ui-gradient.js).
+   [retroarch/conformance/1105-canvas-ui-gradient.js](retroarch/conformance/1105-canvas-ui-gradient.js).
 2. **Animations** — `<animate>` and `<animateTransform>` child tags drive
    per-frame attribute keyframing off `nova64.time()`. `<animate>` works
    on numeric attrs (x/y/width/height/r/opacity/font-size) and color
@@ -22,7 +59,7 @@ Last updated: 2026-06-12
    delay, and `repeatCount` (numeric or `indefinite`).
    `<animateTransform>` supports `translate`/`rotate`/`scale` flowing
    into x/y, rotation, w/h. Coverage:
-   [retroarch/conformance/1106-canvas-ui-animate.js](conformance/1106-canvas-ui-animate.js).
+   [retroarch/conformance/1106-canvas-ui-animate.js](retroarch/conformance/1106-canvas-ui-animate.js).
 3. **Filters** — `<filter>` defs with `<feDropShadow>` (dx/dy/stdDeviation/
    flood-color/flood-opacity) and `<feGaussianBlur>` (stdDeviation) are
    referenced via `filter="url(#id)"` on `<rect>`, `<panel>`, and
@@ -31,7 +68,7 @@ Last updated: 2026-06-12
    blur fakes Gaussian with jittered shape repaints at half-opacity.
    Framebuffer is non-blending so flood-opacity attenuates RGB rather
    than producing true transparency. Coverage:
-   [retroarch/conformance/1107-canvas-ui-filter.js](conformance/1107-canvas-ui-filter.js).
+   [retroarch/conformance/1107-canvas-ui-filter.js](retroarch/conformance/1107-canvas-ui-filter.js).
 4. **Text gradients** — `<text>` now accepts gradient fills via
    `color="url(#id)"`. Each character samples the gradient at its
    center mapped to the 0..1 axis on the gradient bbox, so linear and
@@ -39,7 +76,7 @@ Last updated: 2026-06-12
    paths and the existing shadow/outline passes remain solid (gradient
    only triggers when `color` resolves to 0, i.e. the `url()` fallback
    case, so `shadow-color` and `outline-color` are unaffected). Coverage:
-   [retroarch/conformance/1108-canvas-ui-text-gradient.js](conformance/1108-canvas-ui-text-gradient.js).
+   [retroarch/conformance/1108-canvas-ui-text-gradient.js](retroarch/conformance/1108-canvas-ui-text-gradient.js).
 5. **Symbol + use instancing** — `<symbol id>` in `<defs>` can be
    instanced many times via `<use href="#id" x y>`. The symbol's
    children render with the use's `(x,y)` as their origin, and
@@ -47,7 +84,7 @@ Last updated: 2026-06-12
    resolve correctly inside symbol bodies. Recursion is capped at
    depth 8 so a self-referencing symbol cannot lock the renderer.
    Coverage:
-   [retroarch/conformance/1109-canvas-ui-symbol-use.js](conformance/1109-canvas-ui-symbol-use.js).
+   [retroarch/conformance/1109-canvas-ui-symbol-use.js](retroarch/conformance/1109-canvas-ui-symbol-use.js).
 6. **`<tspan>` inline text styling** — `<text>` with `<tspan>` children
    renders each tspan as a styled segment laid out left-to-right from
    the text's `x`. Tspan attrs merge over the parent `<text>` attrs
@@ -57,7 +94,7 @@ Last updated: 2026-06-12
    pulled into a `renderTextSegment` helper so both leaf-text and
    tspan paths share it (cart 294 text-effects checksum unchanged
    confirms the refactor is a no-op for non-tspan callers). Coverage:
-   [retroarch/conformance/1110-canvas-ui-tspan.js](conformance/1110-canvas-ui-tspan.js).
+   [retroarch/conformance/1110-canvas-ui-tspan.js](retroarch/conformance/1110-canvas-ui-tspan.js).
 7. **`<feColorMatrix>` in filter chain** — extends `<filter>` with
    color-transform primitives: `type="matrix"` (explicit 4×5 row-major),
    `saturate` (scalar 0..1+), `hueRotate` (degrees), and
@@ -67,7 +104,7 @@ Last updated: 2026-06-12
    the shape's fill (solid color or gradient stops) and stroke before
    rendering; drop-shadow flood colors stay untransformed so shadow
    and tinted fill compose correctly. Coverage:
-   [retroarch/conformance/1111-canvas-ui-fecolormatrix.js](conformance/1111-canvas-ui-fecolormatrix.js).
+   [retroarch/conformance/1111-canvas-ui-fecolormatrix.js](retroarch/conformance/1111-canvas-ui-fecolormatrix.js).
 8. **`<pattern>` tiled fills** — `<pattern id w h>` in `<defs>` hosts
    arbitrary child shapes that render repeatedly across the bounds of
    any shape filled with `fill="url(#id)"`. Tile size comes from
@@ -75,7 +112,7 @@ Last updated: 2026-06-12
    existing draw clip stack so they do not bleed outside the shape's
    bbox. Pattern resolution takes precedence over gradient when both
    share the `url(#id)` namespace. Coverage:
-   [retroarch/conformance/1112-canvas-ui-pattern.js](conformance/1112-canvas-ui-pattern.js).
+   [retroarch/conformance/1112-canvas-ui-pattern.js](retroarch/conformance/1112-canvas-ui-pattern.js).
 
 **Latest feature shipped:** Web-cart compatibility layer. `examples/*/code.js`
 files now load on the RA runtime **unmodified** — no manual port needed. Compat
@@ -93,7 +130,7 @@ smokes every `examples/*/code.js` cart through the GLES harness. Current result:
 **70 PASS, 1 WARN, 0 FAIL** across 71 carts. The only warning is
 `ar-hand-demo` (`AR hand tracking unavailable`), which remains intentionally
 out of scope for RetroArch. Probe implementation:
-[retroarch/tests/compat_all_probe.mjs](tests/compat_all_probe.mjs). The command
+[retroarch/tests/compat_all_probe.mjs](retroarch/tests/compat_all_probe.mjs). The command
 exits nonzero on hard failures; set `NOVA64_COMPAT_FAIL_ON_WARN=1` when a strict
 no-warning probe is needed.
 

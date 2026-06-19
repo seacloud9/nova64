@@ -54,14 +54,11 @@ That means the repo is ready for phased backend work instead of one large rewrit
 
 ## Roadmap Overview
 
-### Cross-Cart Effect Backlog
+### Cross-Cart Effect Work
 
-- [ ] Add a reusable cart-facing transition/effect helper layer for pixel wipes,
-  combat-entry glitches, damage-hit glitches, story/card transitions, and
-  screen fades. Indie Odyssey currently implements these locally to preserve
-  parity; the follow-up should promote the common patterns into Nova64 APIs
-  that work across Three.js, Babylon.js, Godot, and RetroArch without each cart
-  reimplementing shader-style overlays.
+Queued cross-cart transition/effect helper work is tracked in
+[`BACKLOG.md`](BACKLOG.md). Keep this roadmap focused on phases and direction,
+not as a second backlog.
 
 ### Phase 1: Stabilize the Backend Contract — **Effectively complete (v0.5.0)** ✅
 

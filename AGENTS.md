@@ -440,5 +440,8 @@ Guidelines:
 
 - Treat `AGENTS.md` as the shared source of truth for cross-agent repo instructions.
 - Keep `CLAUDE.md`, `CODEX.md`, `COPILOT.md`, and `GEMINI.md` as short pointers to `AGENTS.md`.
+- Treat root `BACKLOG.md` as the single source of truth for queued work across
+  the whole project. Do not create per-area backlog files; add project,
+  runtime, cart, Babylon, Godot, and RetroArch backlog items there.
 - Keep lengthy tutorials, exhaustive API references, and speculative roadmaps in separate docs.
 - If README or another non-agent doc diverges from the current repo, verify against live source files before carrying its content forward.

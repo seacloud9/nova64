@@ -701,7 +701,7 @@ retroarch/build/harness retroarch/nova64_libretro.so \
   troubleshooting, and verification.
 - [`README.md`](../README.md) — pre-built cores section with
   per-platform download table, cross-linking RELEASING.md.
-- [`retroarch/BACKLOG.md`](BACKLOG.md) — closed 4 stale items, expanded
+- [`../BACKLOG.md`](../BACKLOG.md) — closed 4 stale items, expanded
   parseCanvasUI status with the full element list.
 - Six mempalace diary entries under topics
   `nova64-retroarch-bloom-hdr-knee`,
@@ -3049,7 +3049,7 @@ decf293 feat(runtime): web-cart compat round 3 — 54/71 -> 67/71 PASS
 - ✅ Latest shipped work: web-cart compatibility layer. `examples/*/code.js`
   carts can now be loaded directly by the RA runtime without manual ports.
 - ✅ First compat probe is `9 PASS`, `4 WARN`, `5 FAIL` across 19 web carts.
-  Details and remaining API gaps are tracked in `BACKLOG.md`.
+  Details and remaining API gaps are tracked in `../BACKLOG.md`.
 - ✅ `examples/space-harrier-3d/code.js` now loads unmodified on RA. Treat web
   carts as source of truth; make RA runtime/compat changes to reach parity.
 - ✅ Hardware OpenGL (Core 3.3 / GLES 3) rendering works on Windows RetroArch
@@ -3067,7 +3067,7 @@ decf293 feat(runtime): web-cart compat round 3 — 54/71 -> 67/71 PASS
 - ✅ Full 519-case conformance sweep has been re-baselined and passes with the current screenshot set.
 - ✅ Tight text effect variants are wired globally and under `nova64.draw`.
 - ✅ `drawLightning` now keeps the legacy Batch 25 six-argument shape while also supporting a newer glow/branch options shape.
-- ✅ New `retroarch/BACKLOG.md` captures deferred Windows perf work, queued visual features, stale-file cleanup, and code-anchored TODOs
+- ✅ New `../BACKLOG.md` captures deferred Windows perf work, queued visual features, stale-file cleanup, and code-anchored TODOs
 - ✅ Implemented the selected visual feature: **HDR post target (`RGBA16F`) + multi-mip bloom**, with `RGBA8` fallback if float render targets are not supported and old single-pass bloom kept as fallback
 - ✅ Recent C changes include the Shift+F perf overlay diagnostics plus the new HDR/multi-mip bloom post-processing path
 
@@ -3102,7 +3102,7 @@ Validation / probe notes:
 - Working unmodified web carts include `hello-world`, `hello-namespaced`,
   `filter-glitch`, `hud-demo`, `space-harrier-3d`, `particle-fireworks`,
   `screen-demo`, `input-showcase`, and `boids-flocking`.
-- Remaining gaps are listed in `BACKLOG.md` under "push web-cart compat from
+- Remaining gaps are listed in `../BACKLOG.md` under "push web-cart compat from
   9/19 -> all-green".
 
 Next target:
@@ -3111,7 +3111,7 @@ Next target:
    `3d-advanced`, `camera-platformer`, and `demoscene`.
 2. Keep web carts as the source of truth. Prefer RA runtime compatibility
    shims over changing `examples/*/code.js`.
-3. After each compat improvement, rerun the small probe and update `BACKLOG.md`
+3. After each compat improvement, rerun the small probe and update `../BACKLOG.md`
    with the changed pass/warn/fail counts.
 
 ---
@@ -3317,7 +3317,7 @@ What's in this delta:
   screenshot set, including font/glyph fixes, post-chain changes, and the
   scene-tuned captures. Updated `screenshots/retroarch/*.png` files are part
   of this baseline.
-- `BACKLOG.md` records the shipped work and leaves future parity work focused
+- `../BACKLOG.md` records the shipped work and leaves future parity work focused
   on scene timing, camera composition, particle density, and HUD/font metrics.
 
 Validation from this pass:
@@ -3469,7 +3469,7 @@ New `nova64_libretro.c` implementation points:
 
 ```
 M  retroarch/nova64_libretro.c
-M  retroarch/BACKLOG.md
+M  ../BACKLOG.md
 M  retroarch/HANDOFF_HWGL.md
 M  retroarch/MEMPALACE_DIARY.md
 ```

@@ -56,9 +56,11 @@ export class GpuThreeJS {
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // Enhanced pixel density
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
 
-    // Dramatically enhanced visual rendering setup
-    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.25;
+    // Preserve fantasy-console palette colors by default. ACES filmic tone
+    // mapping is useful for HDR/PBR scenes, but as a global default it compresses
+    // saturated cart colors (notably cyan/blue) into a muted, washed-out range.
+    this.renderer.toneMapping = THREE.NoToneMapping;
+    this.renderer.toneMappingExposure = 1.0;
     this.renderer.shadowMap.enabled = true;
     // Note: PCFSoftShadowMap is deprecated in r182, PCFShadowMap now provides soft shadows
     this.renderer.shadowMap.type = THREE.PCFShadowMap;
@@ -401,7 +403,6 @@ export class GpuThreeJS {
       roughnessMap = null,
       aoMap = null,
       metallic = false,
-      metalness = metallic ? 0.9 : 0.0,
       emissive = 0x000000,
       emissiveIntensity = 0,
       roughness = 0.6,
@@ -440,15 +441,14 @@ export class GpuThreeJS {
         fog: true,
       });
     } else {
-      // MeshStandardMaterial for ALL default geometry so scene.environment
-      // and PBR metalness/roughness work correctly (MeshPhongMaterial ignores both).
-      material = new THREE.MeshStandardMaterial({
+      // Default cart geometry should preserve authored palette colors. A global
+      // MeshStandardMaterial path adds white environment/specular response to
+      // simple cubes and makes examples like hello-world look pale instead of
+      // vivid. PBR/metallic cases stay on the branches above.
+      material = new THREE.MeshLambertMaterial({
         color: color,
         emissive: emissive !== 0x000000 ? new THREE.Color(emissive) : new THREE.Color(0),
         emissiveIntensity: emissive !== 0x000000 ? Math.max(emissiveIntensity, 0.3) : 0,
-        metalness: metalness,
-        roughness: roughness,
-        envMapIntensity: 0.6,
         transparent: transparent,
         opacity,
         alphaTest: alphaTest,
@@ -599,12 +599,10 @@ export class GpuThreeJS {
   }
 
   enableBloom(enabled = true) {
-    // For now, just increase exposure for bloom-like effect
-    if (enabled) {
-      this.renderer.toneMappingExposure = 1.2;
-    } else {
-      this.renderer.toneMappingExposure = 1.0;
-    }
+    void enabled;
+    // Real bloom is provided by runtime/api-effects.js. Do not fake bloom by
+    // raising global exposure, because that desaturates simple cart palettes.
+    this.renderer.toneMappingExposure = 1.0;
   }
 
   enableMotionBlur(factor = 0.5) {

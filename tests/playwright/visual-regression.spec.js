@@ -29,9 +29,12 @@ if (!fs.existsSync(DIFF_DIR)) {
  */
 function compareImages(img1Path, img2Path, diffPath, threshold = 0.1) {
   const img1 = PNG.sync.read(fs.readFileSync(img1Path));
-  const img2 = PNG.sync.read(fs.readFileSync(img2Path));
+  let img2 = PNG.sync.read(fs.readFileSync(img2Path));
 
   const { width, height } = img1;
+  if (img2.width !== width || img2.height !== height) {
+    img2 = resizeNearest(img2, width, height);
+  }
   const diff = new PNG({ width, height });
 
   const numDiffPixels = pixelmatch(img1.data, img2.data, diff.data, width, height, { threshold });
@@ -43,6 +46,23 @@ function compareImages(img1Path, img2Path, diffPath, threshold = 0.1) {
     totalPixels: width * height,
     percentDiff: (numDiffPixels / (width * height)) * 100,
   };
+}
+
+function resizeNearest(src, width, height) {
+  const out = new PNG({ width, height });
+  for (let y = 0; y < height; y++) {
+    const sy = Math.min(src.height - 1, Math.floor((y / height) * src.height));
+    for (let x = 0; x < width; x++) {
+      const sx = Math.min(src.width - 1, Math.floor((x / width) * src.width));
+      const si = (sy * src.width + sx) * 4;
+      const di = (y * width + x) * 4;
+      out.data[di] = src.data[si];
+      out.data[di + 1] = src.data[si + 1];
+      out.data[di + 2] = src.data[si + 2];
+      out.data[di + 3] = src.data[si + 3];
+    }
+  }
+  return out;
 }
 
 function countImagePixels(imgPath, predicate, region = { x: 0, y: 0, w: 1, h: 1 }, step = 1) {
@@ -115,6 +135,25 @@ async function startWadDemo(page) {
 }
 
 test.describe('Visual Regression - Basic 3D', () => {
+  test('hello-world Three.js should keep vibrant blue cube color', async ({ page }) => {
+    await loadCart(page, 'hello-world', 'threejs');
+    await page.waitForTimeout(1500);
+
+    const threejsPath = path.join(SCREENSHOTS_DIR, 'hello-world-threejs-vibrancy.png');
+    await screenshotCanvas(page, 'threejs', { path: threejsPath });
+
+    const bluePixels = countImagePixels(
+      threejsPath,
+      (r, g, b, a) => a > 0 && b > 145 && g > 85 && r < 120 && b - r > 70,
+      { x: 0.24, y: 0.18, w: 0.52, h: 0.64 },
+      2
+    );
+
+    expect(bluePixels, 'Hello World cube should retain saturated blue/cyan pixels').toBeGreaterThan(
+      250
+    );
+  });
+
   test('hello-3d should look similar', async ({ page }) => {
     const result = await compareBackends(page, 'hello-3d', {
       waitTime: 2000,

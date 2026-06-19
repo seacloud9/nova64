@@ -9,7 +9,7 @@ Read these in order:
 
 1. `HANDOFF_HWGL.md` - current hardware-GL status, latest validation, parity
    numbers, and next implementation target.
-2. `BACKLOG.md` - queued feature work, deferred Windows performance notes, and
+2. `../BACKLOG.md` - queued feature work, deferred Windows performance notes, and
    cleanup items.
 3. `MEMPALACE_DIARY.md` - chronological session memory for MemPalace mining.
 4. `README.md` - stable RetroArch core usage, build, harness, and API docs.
@@ -26,7 +26,7 @@ As of 2026-05-24, the latest shipped work is the web-cart compatibility layer:
 - Newly loading unmodified through the RA runtime: `hello-world`,
   `hello-namespaced`, `filter-glitch`, `hud-demo`, `space-harrier-3d`,
   `particle-fireworks`, `screen-demo`, `input-showcase`, and `boids-flocking`.
-- The next target is in `BACKLOG.md`: push web-cart compat from `9/19` toward
+- The next target is in `../BACKLOG.md`: push web-cart compat from `9/19` toward
   all-green by filling missing `nova64.scene`, UI, tween, voxel, and material
   compatibility gaps.
 
@@ -76,4 +76,4 @@ As of 2026-05-22 after the all-scene luminous-volume parity pass:
 - Use `pnpm run mempalace:mine:retroarch` after meaningful RetroArch progress.
 - Keep this file short. Put durable workflow and build details in `README.md`,
   current implementation notes in `HANDOFF_HWGL.md`, and queued work in
-  `BACKLOG.md`.
+  `../BACKLOG.md`.

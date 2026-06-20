@@ -3797,7 +3797,7 @@ Dictionary Nova64Host::_cmd_overlay_text(const Dictionary &p) {
     if (font.is_null()) {
         Dictionary out; out["ok"] = false; out["error"] = "no_font"; return out;
     }
-    int base_size = 12;
+    int base_size = 8;
     int font_size = static_cast<int>(Math::round(base_size * scale * Math::max(s.x, s.y)));
     if (font_size < 8) font_size = 8;
     // Cart text origin is top-left; Font::draw_string uses baseline. Add
@@ -3965,7 +3965,7 @@ void Nova64Host::_overlay_op_text(const Array &op) {
     float scale = static_cast<float>(static_cast<double>(op[5]));
     Ref<Font> font = _overlay->get_theme_default_font();
     if (font.is_null()) return;
-    int base_size = 12;
+    int base_size = 8;
     int font_size = static_cast<int>(Math::round(base_size * scale * Math::max(s.x, s.y)));
     if (font_size < 8) font_size = 8;
     float ascent = font->get_ascent(font_size);

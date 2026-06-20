@@ -300,11 +300,32 @@
     return meshHandle ? makeMeshHandle(meshHandle, pos) : 0;
   }
 
-  function createCube(size, color, pos, opts) {
+  function createCube(size, color, pos, opts, maybePos, maybeOpts) {
     ensureInit();
-    const s = typeof size === 'number' ? size : 1;
-    const geom = call('geometry.createBox', { size: [s, s, s] });
-    return geom ? spawnMesh(geom.handle, color, pos, opts) : 0;
+    let sx, sy, sz, cubeColor, cubePos, cubeOpts;
+    if (
+      arguments.length >= 5 &&
+      typeof size === 'number' &&
+      typeof color === 'number' &&
+      typeof pos === 'number'
+    ) {
+      sx = size;
+      sy = color;
+      sz = pos;
+      cubeColor = opts == null ? 0xffffff : opts;
+      cubePos = maybePos || [0, 0, 0];
+      cubeOpts = maybeOpts || {};
+    } else {
+      const s = typeof size === 'number' ? size : 1;
+      sx = s;
+      sy = s;
+      sz = s;
+      cubeColor = color == null ? 0xffffff : color;
+      cubePos = pos || [0, 0, 0];
+      cubeOpts = opts || {};
+    }
+    const geom = call('geometry.createBox', { size: [sx, sy, sz] });
+    return geom ? spawnMesh(geom.handle, cubeColor, cubePos, cubeOpts) : 0;
   }
 
   function createSphere(radius, color, pos, _segments, opts) {
@@ -497,6 +518,12 @@
     applyCameraLookAt();
   }
 
+  function setClearColor(hexColor) {
+    ensureInit();
+    const c = colorFromHex(typeof hexColor === 'number' ? hexColor : 0x0a0a0f);
+    call('env.set', { background: c });
+  }
+
   // ---------------- light -----------------------------------------------
   function setLightDirection(x, y, z) {
     ensureInit();
@@ -533,21 +560,28 @@
     ensureInit();
     call('env.set', { fog: false });
   }
-  function createPointLight(color, energy, rangeOrPos, maybePos) {
+  function createPointLight(color, energy, a, b, c, d) {
     ensureInit();
-    // Three.js-style call sites use (color, energy, range, pos). The shim's
-    // host bridge currently doesn't take a range, but we still accept the
-    // 4-arg form so the third arg is treated as range (and ignored on the
-    // host) instead of being mistaken for the position vector.
-    let pos = maybePos;
-    if (Array.isArray(rangeOrPos)) {
-      pos = rangeOrPos;
+    let range = null;
+    let pos = null;
+    if (Array.isArray(a)) {
+      pos = a;
+    } else if (Array.isArray(b)) {
+      range = a;
+      pos = b;
+    } else if (typeof d === 'number') {
+      range = a;
+      pos = [b, c, d];
+    } else if (typeof a === 'number' && typeof b === 'number' && typeof c === 'number') {
+      pos = [a, b, c];
     }
-    const r = call('light.createPoint', {
+    const payload = {
       color: colorFromHex(typeof color === 'number' ? color : 0xffffff),
       energy: typeof energy === 'number' ? energy : 1.0,
       position: ensureArray3(pos && pos[0], pos && pos[1], pos && pos[2]),
-    });
+    };
+    if (typeof range === 'number') payload.range = range;
+    const r = call('light.createPoint', payload);
     return r ? r.handle : 0;
   }
   function createSpotLight(color, energy, pos, angle) {
@@ -977,6 +1011,29 @@
     __ops.push(['line', a[0] | 0, a[1] | 0, b[0] | 0, b[1] | 0,
       colorFromHex(color == null ? 0xffffff : color)]);
   }
+  function image(texture, x, y, w, h, color) {
+    const handle = unwrapHandle(texture);
+    if (!handle) return;
+    const p = __tx(x, y);
+    const ms = __mtxScale();
+    __ops.push(['image', handle, p[0] | 0, p[1] | 0,
+      Math.max(0, (w * ms) | 0), Math.max(0, (h * ms) | 0),
+      colorFromHex(color == null ? 0xffffffff : color)]);
+  }
+  const drawImage = image;
+  function imageRegion(texture, x, y, w, h, sx, sy, sw, sh, color) {
+    const handle = unwrapHandle(texture);
+    if (!handle) return;
+    const p = __tx(x, y);
+    const ms = __mtxScale();
+    __ops.push(['imageRegion', handle, p[0] | 0, p[1] | 0,
+      Math.max(0, (w * ms) | 0), Math.max(0, (h * ms) | 0),
+      Math.max(0, Math.min(1, +sx || 0)),
+      Math.max(0, Math.min(1, +sy || 0)),
+      Math.max(0, Math.min(1, +sw || 0)),
+      Math.max(0, Math.min(1, +sh || 0)),
+      colorFromHex(color == null ? 0xffffffff : color)]);
+  }
   function pixel(x, y, color) {
     const p = __tx(x, y);
     __ops.push(['pset', p[0] | 0, p[1] | 0,
@@ -1325,10 +1382,13 @@
     effectsEnabled = effectsEnabled || enabled;
     call('env.set', {
       glow: enabled,
-      glowIntensity: strength * 0.45,
-      glowStrength: typeof radius === 'number' ? Math.max(0.1, radius * 0.9) : 0.55,
-      glowBloom: typeof radius === 'number' ? Math.max(0.02, Math.min(0.18, radius * 0.18)) : 0.08,
-      glowThreshold: typeof threshold === 'number' ? Math.max(0.85, threshold * 2.5) : 1.0,
+      glowIntensity: Math.max(0.85, strength * 2.4),
+      glowStrength: typeof radius === 'number' ? Math.max(1.1, radius * 2.2) : 1.2,
+      glowBloom: typeof radius === 'number' ? Math.max(0.28, Math.min(0.82, radius * 0.95)) : 0.38,
+      glowThreshold: typeof threshold === 'number' ? Math.max(0.12, Math.min(0.8, threshold * 0.6)) : 0.28,
+      glowBleedScale: 2.1,
+      glowLuminanceCap: 18.0,
+      glowBlend: 'screen',
     });
     return enabled;
   }
@@ -1336,7 +1396,16 @@
     ensureInit();
     effectsEnabled = true;
     const strength = typeof v === 'number' ? v : 1.0;
-    call('env.set', { glow: true, glowIntensity: strength, glowStrength: Math.max(0.4, strength) });
+    call('env.set', {
+      glow: true,
+      glowIntensity: Math.max(0.65, strength * 2.0),
+      glowStrength: Math.max(1.0, strength * 3.0),
+      glowBloom: Math.max(0.26, Math.min(0.7, strength * 1.8)),
+      glowThreshold: 0.18,
+      glowBleedScale: 2.1,
+      glowLuminanceCap: 18.0,
+      glowBlend: 'screen',
+    });
     return true;
   }
   function enableFXAA(_b) { effectsEnabled = true; return true; }
@@ -3646,12 +3715,17 @@
 
     let resPath = path;
     if (typeof path === 'string'
-        && !path.startsWith('res://')
-        && !path.startsWith('user://')
-        && !path.startsWith('/')) {
+        && typeof globalThis.__nova64_cart_path === 'string'
+        && path.startsWith('/indie-odyssey/')) {
+      resPath = 'assets/' + path.slice('/indie-odyssey/'.length);
+    }
+    if (typeof resPath === 'string'
+        && !resPath.startsWith('res://')
+        && !resPath.startsWith('user://')
+        && !resPath.startsWith('/')) {
       const cart = (typeof globalThis.__nova64_cart_path === 'string')
           ? globalThis.__nova64_cart_path : 'res://carts/current';
-      resPath = cart.replace(/\/?$/, '/') + path.replace(/^\.?\//, '');
+      resPath = cart.replace(/\/?$/, '/') + resPath.replace(/^\.?\//, '');
     }
 
     const payload = { path: resPath };
@@ -3659,6 +3733,12 @@
     if (sc != null) payload.scale = sc;
 
     const r = call('model.load', payload);
+    if (r && r.error) {
+      if (legacyCb) {
+        try { legacyCb(0); } catch (_e) { /* swallow */ }
+      }
+      return Promise.reject(new Error(r.message || r.method || r.error));
+    }
     const handle = (r && r.handle) ? r.handle : 0;
 
     if (legacyCb) {
@@ -3733,10 +3813,13 @@
     if (typeof path !== 'string') return 0;
     // Cart paths are typically relative to the cart dir; normalize to res://carts/<cart>/...
     let resPath = path;
-    if (!path.startsWith('res://') && !path.startsWith('user://')) {
+    if (typeof globalThis.__nova64_cart_path === 'string' && path.startsWith('/indie-odyssey/')) {
+      resPath = 'assets/' + path.slice('/indie-odyssey/'.length);
+    }
+    if (!resPath.startsWith('res://') && !resPath.startsWith('user://')) {
       const cart = (typeof globalThis.__nova64_cart_path === 'string')
           ? globalThis.__nova64_cart_path : 'res://carts/current';
-      resPath = cart.replace(/\/?$/, '/') + path.replace(/^\.?\//, '');
+      resPath = cart.replace(/\/?$/, '/') + resPath.replace(/^\.?\//, '');
     }
     const r = call('texture.createFromImage', { path: resPath });
     const handle = r && r.handle ? r.handle : 0;
@@ -6148,7 +6231,7 @@
     return { x: cameraPos[0], y: cameraPos[1], z: cameraPos[2] };
   };
 
-  const sceneNs = { createCube, createSphere, createPlane, createCylinder, createCone, createTorus, createAdvancedCube, createAdvancedSphere, createCapsule, removeMesh, destroyMesh: removeMesh, setPosition, setRotation, rotateMesh, moveMesh, setScale, getPosition, getMesh, createInstancedMesh, setInstanceTransform, setInstancePosition, setInstanceColor, finalizeInstances, setMeshVisible, setMeshOpacity: function(h, o) { setMeshVisible(h, o > 0); }, setCastShadow: function() {}, setReceiveShadow: function() {}, setFlatShading: function() {}, setPBRProperties, createLODMesh: function() { return null; }, removeLODMesh: function() {}, updateLODs: function() {}, removeInstancedMesh: removeMesh, raycastFromCamera: function() { return null; }, get3DStats: function() { return {}; }, getRenderer: function() { return null; }, getScene: function() { return null; }, getRotation: function() { return [0, 0, 0]; }, clearScene, loadModel, loadVoxModel, loadTexture, playAnimation: function() {}, updateAnimations: function() {}, engine: global.engine };
+  const sceneNs = { createCube, createSphere, createPlane, createCylinder, createCone, createTorus, createAdvancedCube, createAdvancedSphere, createCapsule, removeMesh, destroyMesh: removeMesh, setPosition, setRotation, rotateMesh, moveMesh, setScale, getPosition, getMesh, createInstancedMesh, setInstanceTransform, setInstancePosition, setInstanceColor, finalizeInstances, setMeshVisible, setMeshOpacity: function(h, o) { setMeshVisible(h, o > 0); }, setCastShadow: function() {}, setReceiveShadow: function() {}, setFlatShading: function() {}, setPBRProperties, createLODMesh: function() { return null; }, removeLODMesh: function() {}, updateLODs: function() {}, removeInstancedMesh: removeMesh, raycastFromCamera: function() { return null; }, get3DStats: function() { return {}; }, getRenderer: function() { return null; }, getScene: function() { return null; }, getRotation: function() { return [0, 0, 0]; }, setClearColor, clearScene, loadModel, loadVoxModel, loadTexture, playAnimation: function() {}, updateAnimations: function() {}, engine: global.engine };
   // getCamera() — returns a camera-like object with a .position property so
   // billboard code like `const cam = getCamera(); cam.position.x` works the
   // same as the Three.js path.
@@ -6157,7 +6240,7 @@
   }
   const cameraNs = { setCameraPosition, setCameraTarget, setCameraFOV, setCameraLookAt, getCamera };
   const lightNs = { setLightDirection, setDirectionalLight, setFog, clearFog, createPointLight, removeLight, setPointLightPosition, createSpotLight, createAmbientLight, setAmbientLight, setLightColor, setLightEnergy, createGradientSkybox, createImageSkybox };
-  const drawNs = { cls, print: novaPrint, printCentered, printRight, rect, rectfill, line, pixel, pset, circle, circfill, ellipse, ellipsefill, arc, bezier, drawRect, drawPanel, drawGlowText, drawGlowTextCentered, drawRadialGradient, drawGradient, drawProgressBar, drawHealthBar, drawPixelBorder, drawCrosshair, drawScanlines, drawNoise, drawTriangle, drawDiamond, drawStarburst, poly, rgba8, screenWidth, screenHeight, colorLerp, colorMix, hslColor, hexColor: function(hex, alpha) { return colorFromHex(hex, alpha); }, n64Palette, measureText, scrollingText, drawWave, drawPulsingText, drawCheckerboard, drawFloatingTexts, drawFloatingTexts3D, createMinimap, drawMinimap, drawSkyGradient };
+  const drawNs = { cls, print: novaPrint, printCentered, printRight, rect, rectfill, line, image, drawImage, imageRegion, pixel, pset, circle, circfill, ellipse, ellipsefill, arc, bezier, drawRect, drawPanel, drawGlowText, drawGlowTextCentered, drawRadialGradient, drawGradient, drawProgressBar, drawHealthBar, drawPixelBorder, drawCrosshair, drawScanlines, drawNoise, drawTriangle, drawDiamond, drawStarburst, poly, rgba8, screenWidth, screenHeight, colorLerp, colorMix, hslColor, hexColor: function(hex, alpha) { return colorFromHex(hex, alpha); }, n64Palette, measureText, scrollingText, drawWave, drawPulsingText, drawCheckerboard, drawFloatingTexts, drawFloatingTexts3D, createMinimap, drawMinimap, drawSkyGradient };
   const inputNs = {
     // raw key code surface (web-style codes)
     key, keyp, isKeyDown, isKeyPressed,
@@ -6368,11 +6451,7 @@
 
   // Minecraft-demo (and similar) call `globalThis.setClearColor?.(hexColor)` to
   // synchronise the clear colour with the day-time sky.  Wire that to env.set.
-  global.setClearColor = function (hexColor) {
-    ensureInit();
-    const c = colorFromHex(typeof hexColor === 'number' ? hexColor : 0x87ceeb);
-    call('env.set', { background: c });
-  };
+  global.setClearColor = setClearColor;
 
   // `console` polyfill for carts that use console.log
   if (!global.console) {

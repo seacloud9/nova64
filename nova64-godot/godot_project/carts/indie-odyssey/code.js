@@ -8,6 +8,9 @@ const WEB_ASSET_BASE = '/indie-odyssey/';
 const PACKAGED_ASSET_BASE = 'assets/';
 
 function resolveAssetBase() {
+  if (typeof globalThis.__nova64_cart_path === 'string') {
+    return PACKAGED_ASSET_BASE;
+  }
   try {
     const assets = globalThis.nova64 && globalThis.nova64.assets;
     if (
@@ -609,6 +612,8 @@ let storyFrameCanvas = null;
 let storyFrameCtx = null;
 let storyFrameCache = new Map();
 let storyFrameLoading = new Set();
+let hostTextureCache = new Map();
+let hostTextureStatus = new Map();
 let storyTransition = null;
 let storyPixelCanvas = null;
 let storyPixelCtx = null;
@@ -631,6 +636,45 @@ function call(path, fallback, ...args) {
   const fn = ns(path);
   if (typeof fn !== 'function') return fallback;
   return fn(...args);
+}
+
+function backendName() {
+  try {
+    const caps = ns('scene.getBackendCapabilities')?.();
+    if (caps?.backend) return String(caps.backend);
+  } catch {}
+  if (typeof globalThis.__nova64_cart_path === 'string') return 'godot';
+  return 'unknown';
+}
+
+function isNativeHost() {
+  const backend = backendName();
+  return backend.includes('godot') || backend.includes('retroarch');
+}
+
+function canUseBrowserCanvasOverlay() {
+  return (
+    !isNativeHost() &&
+    typeof HTMLCanvasElement === 'function' &&
+    typeof document !== 'undefined' &&
+    typeof document.createElement === 'function' &&
+    typeof document.getElementById === 'function' &&
+    typeof globalThis.getComputedStyle === 'function'
+  );
+}
+
+function ensureOverlayParentPositioned(parent) {
+  const getStyle = globalThis.getComputedStyle;
+  if (parent && typeof getStyle === 'function' && getStyle(parent).position === 'static') {
+    parent.style.position = 'relative';
+  }
+}
+
+function canUseHostTextureOverlay() {
+  return (
+    typeof ns('draw.image') === 'function' &&
+    typeof ns('scene.loadTexture') === 'function'
+  );
 }
 
 function clone(value) {
@@ -840,6 +884,7 @@ function styleCombatSceneModel(id, enemy) {
   const getMesh = ns('scene.getMesh');
   const mesh = typeof getMesh === 'function' ? getMesh(id) : null;
   const THREE = globalThis.THREE;
+  if (!THREE?.Color || !THREE?.DoubleSide) return;
   if (!mesh?.traverse) return;
   const color = new THREE.Color(enemy.color || 0x00ffff);
   // Preserve the GLB's original PBR materials (albedo maps, normal maps,
@@ -867,8 +912,8 @@ function styleCombatSceneModel(id, enemy) {
 
 function createCubeMesh(width, height, depth, color, position, options = {}) {
   const materialOptions =
-    isBabylonBackend() && options.emissive !== undefined
-      ? { ...options, emissiveIntensity: options.emissiveIntensity ?? 0.85 }
+    (isBabylonBackend() || isNativeHost()) && options.emissive !== undefined
+      ? { ...options, emissiveIntensity: options.emissiveIntensity ?? 0.95 }
       : options;
   return createMesh('cube', width, height, depth, color, position, materialOptions);
 }
@@ -876,7 +921,7 @@ function createCubeMesh(width, height, depth, color, position, options = {}) {
 function addGridLine(width, height, depth, color, position) {
   createCubeMesh(width, height, depth, color, position, {
     emissive: color,
-    emissiveIntensity: isBabylonBackend() ? 2.1 : undefined,
+    emissiveIntensity: isBabylonBackend() || isNativeHost() ? 2.25 : undefined,
     roughness: 0.35,
     metalness: 0.05,
   });
@@ -890,7 +935,13 @@ function setupScene() {
   call('light.setFog', null, 0x071225, 10, 42);
   call('camera.setCameraFOV', null, 110);
   if (ns('fx.enableFXAA')) call('fx.enableFXAA', null);
-  if (ns('fx.enableBloom')) call('fx.enableBloom', null, 0.28, 0.5, 0.35);
+  if (ns('fx.enableBloom')) {
+    if (isNativeHost()) call('fx.enableBloom', null, 0.72, 0.85, 0.18);
+    else call('fx.enableBloom', null, 0.28, 0.5, 0.35);
+  }
+  if (isNativeHost() && ns('fx.setColorAdjustment')) {
+    call('fx.setColorAdjustment', null, 1.04, 1.14, 1.26);
+  }
 }
 
 function setupCombatLighting() {
@@ -1450,14 +1501,11 @@ function startCombat(enemyIds) {
   updateCombatCamera();
   destroyMeshes(enemyMeshes);
   // Combat enemy rendering policy (recipe for other carts):
-  //   1. Always blit a 2D pixel-art sprite per enemy in the cart's
-  //      framebuffer — see drawCombatSpriteFallbacks. This is the
-  //      cross-backend (threejs / babylon / retroarch) visible layer.
-  //   2. If the enemy ships a `model` URL, also load it into the main scene
-  //      via nova64.scene.loadModel. Backends that render the GLB will
-  //      composite it under the sprite (sprite is the reliable layer; the
-  //      GLB enriches when the backend can render newly-added meshes
-  //      through its post-processing pipeline).
+  //   1. If the enemy ships a `model` URL, always load it into the main scene
+  //      via nova64.scene.loadModel. The combat overlay stays transparent in
+  //      the enemy stage area so the GLB is the primary visible layer.
+  //   2. Blit the 2D pixel-art sprite only while the GLB is loading, failed,
+  //      or absent. This keeps Godot/browser parity without hiding models.
   //   3. Do NOT stand up a second THREE.WebGLRenderer for combat — the
   //      extra WebGL context conflicts with the main scene render on some
   //      browsers and produces no output on babylon (see git history for
@@ -1732,7 +1780,9 @@ function handleInput() {
       const live = livingEnemies();
       if (live.length) combat.selectedEnemy = (combat.selectedEnemy + 1) % live.length;
     }
-    if (pressed(keyp, 'KeyA')) state.autoplayEnabled = !state.autoplayEnabled;
+    if (pressed(keyp, 'KeyA')) toggleAutoplay();
+    if (pressed(keyp, 'KeyT')) toggleAutoplay();
+    handlePointerButtons();
     return;
   }
 
@@ -1744,6 +1794,7 @@ function handleInput() {
   if (pressed(keyp, 'KeyE', 'ArrowRight')) enqueueAction('turnRight');
   if (pressed(keyp, 'KeyI')) setScreen('inventory');
   if (pressed(keyp, 'F5')) saveGame('Quick Save');
+  if (pressed(keyp, 'KeyT')) toggleAutoplay();
   handlePointerButtons();
 }
 
@@ -1766,11 +1817,49 @@ function handlePointerButtons() {
     if (hit(x, y, 82, H - 150, 52, 52)) enqueueAction('moveForward');
     if (hit(x, y, 82, H - 42, 52, 52)) enqueueAction('moveBackward');
     if (hit(x, y, W - 106, H - 60, 82, 36)) setScreen('inventory');
+    if (hitRect(x, y, autoButtonRect(W, H))) toggleAutoplay();
+  } else if (screen === 'combat') {
+    const actions = ['attack', 'cast', 'item', 'defend', 'run'];
+    const buttons = combatActionButtonRects(W, H);
+    for (let i = 0; i < buttons.length; i++) {
+      if (hitRect(x, y, buttons[i])) {
+        executeCombatAction(actions[i]);
+        return;
+      }
+    }
+    if (hitRect(x, y, combatAutoButtonRect(W, H))) toggleAutoplay();
   }
 }
 
 function hit(x, y, bx, by, bw, bh) {
   return x >= bx && x <= bx + bw && y >= by && y <= by + bh;
+}
+
+function hitRect(x, y, r) {
+  return r && hit(x, y, r.x, r.y, r.w, r.h);
+}
+
+function toggleAutoplay() {
+  state.autoplayEnabled = !state.autoplayEnabled;
+  addMessage(`Auto combat ${state.autoplayEnabled ? 'enabled' : 'disabled'}.`, COLORS.cyan);
+  syncDebugState();
+}
+
+function autoButtonRect(W, H) {
+  return { x: W - 106, y: H - 104, w: 82, h: 36 };
+}
+
+function combatActionButtonRects(W, H) {
+  return ['attack', 'cast', 'item', 'defend', 'run'].map((_action, i) => ({
+    x: W * 0.13 + i * 96,
+    y: H * 0.68,
+    w: 86,
+    h: 32,
+  }));
+}
+
+function combatAutoButtonRect(W, H) {
+  return { x: W * 0.72, y: H * 0.68, w: 100, h: 32 };
 }
 
 function cycleDifficulty(delta) {
@@ -1831,7 +1920,7 @@ function beginStoryTransition(story, nextIndex) {
 function updateStoryTransition(dt) {
   if (!storyTransition) return;
   preloadStoryImage(storyTransition.to?.image);
-  if (!storyFrameCache.has(storyTransition.to?.image)) return;
+  if (canUseBrowserCanvasOverlay() && !storyFrameCache.has(storyTransition.to?.image)) return;
   storyTransition.t += dt;
   if (storyTransition.t >= storyTransition.duration) completeStoryTransition();
 }
@@ -1908,7 +1997,7 @@ function drawCombatPanelChrome(W, H) {
 }
 
 function drawButton(x, y, w, h, text, active = false) {
-  fill(x, y, w, h, active ? 0x00ffff66 : 0x001a33aa);
+  fill(x, y, w, h, active ? overlayColor(0x00ffff, 102) : overlayColor(0x001a33, 170));
   rect(x, y, w, h, active ? COLORS.green : COLORS.cyan);
   drawCenteredIn(text, x, y, w, h, active ? COLORS.bg : COLORS.white, 11);
 }
@@ -1939,6 +2028,21 @@ function uiColor(color) {
     return rgba8((color >>> 24) & 255, (color >>> 16) & 255, (color >>> 8) & 255, color & 255);
   }
   return rgba8((color >>> 16) & 255, (color >>> 8) & 255, color & 255, 255);
+}
+
+function overlayColor(rgb, alpha = 255) {
+  const r = ((rgb >>> 16) & 255) / 255;
+  const g = ((rgb >>> 8) & 255) / 255;
+  const b = (rgb & 255) / 255;
+  const a = Math.max(0, Math.min(255, alpha)) / 255;
+  if (isNativeHost()) return [r, g, b, a];
+  return ((rgb & 0xffffff) << 8) + Math.round(a * 255);
+}
+
+function imageTint(alpha = 1) {
+  const rgba8 = ns('draw.rgba8');
+  const a = Math.max(0, Math.min(255, Math.round(alpha * 255)));
+  return typeof rgba8 === 'function' ? rgba8(255, 255, 255, a) : 0xffffffff;
 }
 
 function drawStart() {
@@ -1983,6 +2087,10 @@ function drawStoryFrameImage(frame, W, H) {
   const src = frame?.image;
   const frameH = H * 0.58;
   fill(0, 0, W, frameH, 0x062340ff);
+  if (!canUseBrowserCanvasOverlay()) {
+    drawStoryHostFrame(frame, W, H, 1);
+    return true;
+  }
   ensureStoryFrameImage(src);
   const cachedImage = storyFrameCache.get(src);
   if (cachedImage && storyFrameImage.src === src && storyFrameImage.status === 'ready') {
@@ -2011,6 +2119,9 @@ function drawStoryFrameImage(frame, W, H) {
 }
 
 function drawStoryTransitionFrame(activeTransition, W, H) {
+  if (!canUseBrowserCanvasOverlay()) {
+    return drawStoryHostTransitionFrame(activeTransition, W, H);
+  }
   const fromImage = storyFrameCache.get(activeTransition.from?.image);
   const toImage = storyFrameCache.get(activeTransition.to?.image);
   const ctx = getStoryFrameContext(W, H);
@@ -2042,6 +2153,196 @@ function drawStoryTransitionFrame(activeTransition, W, H) {
     H
   );
   return true;
+}
+
+function drawStoryHostTransitionFrame(activeTransition, W, H) {
+  const progress = Math.max(0, Math.min(1, activeTransition.t / activeTransition.duration));
+  const eased = progress * progress * (3 - 2 * progress);
+  const fromTexture = ensureHostTexture(activeTransition.from?.image);
+  const toTexture = ensureHostTexture(activeTransition.to?.image);
+  if (!fromTexture && !toTexture) {
+    drawStoryHostFrame(progress < 0.5 ? activeTransition.from : activeTransition.to, W, H, progress);
+    return true;
+  }
+
+  if (fromTexture) call('draw.image', null, fromTexture, 0, 0, W, H, imageTint(1));
+  if (toTexture) {
+    const alpha = fromTexture ? eased : 1;
+    call('draw.image', null, toTexture, 0, 0, W, H, imageTint(alpha));
+    drawStoryHostPixelatedOverlay(toTexture, W, H, eased);
+  }
+
+  drawStoryFramebufferOverlay(
+    eased < 0.45 ? activeTransition.from?.text || '' : activeTransition.to?.text || '',
+    W,
+    H,
+    progress
+  );
+  return true;
+}
+
+function drawStoryHostPixelatedOverlay(texture, W, H, progress) {
+  const imageRegion = ns('draw.imageRegion');
+  if (typeof imageRegion !== 'function' || progress <= 0.02 || progress >= 0.96) return;
+  const block = 8 + Math.floor((1 - progress) * 28);
+  const alpha = Math.min(0.55, Math.max(0, (1 - progress) * 0.55));
+  if (alpha <= 0) return;
+  const tint = imageTint(alpha);
+  const sampleW = 1 / Math.max(1, W);
+  const sampleH = 1 / Math.max(1, H);
+  for (let y = 0; y < H; y += block) {
+    const h = Math.min(block, H - y);
+    for (let x = 0; x < W; x += block) {
+      const w = Math.min(block, W - x);
+      const sx = Math.max(0, Math.min(1 - sampleW, (x + w * 0.5) / W));
+      const sy = Math.max(0, Math.min(1 - sampleH, (y + h * 0.5) / H));
+      imageRegion(texture, x, y, w, h, sx, sy, sampleW, sampleH, tint);
+    }
+  }
+}
+
+function drawStoryHostFrame(frame, W, H, progress = 1) {
+  const src = frame?.image;
+  const texture = ensureHostTexture(src);
+  if (texture) {
+    call('draw.image', null, texture, 0, 0, W, H, imageTint(1));
+    drawStoryFramebufferOverlay(frame?.text || '', W, H, progress);
+    return true;
+  }
+  drawStoryHostFallback(frame, W, H, progress);
+  return false;
+}
+
+function drawStoryFramebufferOverlay(text, W, H, progress = 1) {
+  const panelY = H * 0.68;
+  const panelH = H * 0.24;
+  drawPanel(28, panelY, W - 56, panelH, '');
+  fill(42, panelY + 12, W - 84, panelH - 24, 0x000000aa);
+  wrapTextBox(text || '', 56, panelY + 24, W - 112, panelH - 52, COLORS.yellow, 14);
+  const hint = progress < 1 ? 'syncing datastream...' : 'Enter/Space to continue';
+  drawCentered(hint, H - 28, progress < 1 ? COLORS.cyan : COLORS.muted, 10);
+}
+
+function drawStoryHostFallback(frame, W, H, progress = 1) {
+  const frameName = (frame?.image || '').split('/').pop() || 'story-frame';
+  const top = 18;
+  const storyH = H * 0.58;
+  const margin = 30;
+  const panelY = H * 0.66;
+  const pulse = Math.sin(time * 3.2 + storyIndex) * 0.5 + 0.5;
+  fill(0, 0, W, H, 0x030711ff);
+  for (let y = 0; y < storyH; y += 16) {
+    const alpha = 34 + Math.floor(26 * Math.sin(time * 1.7 + y * 0.04));
+    fill(0, y, W, 1, overlayColor(0x00ffff, Math.max(8, alpha)));
+  }
+  for (let i = 0; i < 18; i++) {
+    const x = (i * 71 + Math.floor(time * 18)) % W;
+    const y = top + ((i * 37 + storyIndex * 19) % Math.max(1, storyH - 38));
+    fill(x, y, 28 + (i % 3) * 16, 2, i % 2 ? overlayColor(0xff00cc, 119) : overlayColor(0x00ffff, 119));
+  }
+
+  const cardX = margin;
+  const cardY = top;
+  const cardW = W - margin * 2;
+  const cardH = storyH - top - 8;
+  fill(cardX, cardY, cardW, cardH, 0x061323e8);
+  rect(cardX, cardY, cardW, cardH, COLORS.cyan);
+  rect(cardX + 6, cardY + 6, cardW - 12, cardH - 12, 0xff00cc);
+
+  const inset = 18;
+  const artX = cardX + inset;
+  const artY = cardY + inset;
+  const artW = cardW - inset * 2;
+  const artH = cardH - inset * 2;
+  fill(artX, artY, artW, artH, 0x020812ff);
+  for (let i = 0; i < 9; i++) {
+    const t = (i + 1) / 10;
+    const x = artX + artW * t;
+    line2d(x, artY, W / 2 + Math.sin(time + i) * 36, artY + artH, i % 2 ? COLORS.magenta : COLORS.floorGrid);
+  }
+  for (let i = 0; i < 6; i++) {
+    const y = artY + artH * ((i + 1) / 7);
+    line2d(artX, y, artX + artW, y + Math.sin(time * 1.4 + i) * 8, i % 2 ? COLORS.blue : COLORS.green);
+  }
+  const shardW = artW * (0.16 + pulse * 0.03);
+  const shardX = artX + artW * 0.5;
+  const shardY = artY + artH * 0.48;
+  drawWallPanel(
+    shardX - shardW,
+    shardY,
+    shardX,
+    shardY - artH * 0.23,
+    shardY + artH * 0.24,
+    shardY + artH * 0.08,
+    0x03283fff
+  );
+  drawWallPanel(
+    shardX,
+    shardY - artH * 0.23,
+    shardX + shardW,
+    shardY,
+    shardY + artH * 0.08,
+    shardY + artH * 0.24,
+    0x240333ff
+  );
+  drawCentered(`STORY FRAME ${storyIndex + 1}`, cardY + 10, COLORS.green, 11);
+  drawCentered(frameName, cardY + cardH - 20, COLORS.muted, 10);
+
+  drawPanel(28, panelY, W - 56, H * 0.24, '');
+  wrapTextBox(frame?.text || '', 42, panelY + 22, W - 84, H * 0.24 - 48, COLORS.white, 12);
+  const hint = progress < 1 ? 'syncing datastream...' : 'Enter/Space to continue';
+  drawCentered(hint, H - 28, progress < 1 ? COLORS.cyan : COLORS.muted, 10);
+}
+
+function ensureHostTexture(src) {
+  if (!src || !canUseHostTextureOverlay()) return null;
+  if (hostTextureCache.has(src)) return hostTextureCache.get(src);
+  const status = hostTextureStatus.get(src);
+  if (status === 'loading' || status === 'error') return null;
+  const loadTexture = ns('scene.loadTexture');
+  try {
+    hostTextureStatus.set(src, 'loading');
+    const result = loadTexture(src);
+    if (result && typeof result.then === 'function') {
+      result
+        .then(texture => {
+          const handle = textureHandle(texture);
+          if (handle) {
+            hostTextureCache.set(src, handle);
+            hostTextureStatus.set(src, 'ready');
+          } else {
+            hostTextureStatus.set(src, 'error');
+          }
+          syncDebugState();
+        })
+        .catch(() => {
+          hostTextureStatus.set(src, 'error');
+          syncDebugState();
+        });
+      syncDebugState();
+      return null;
+    }
+    const handle = textureHandle(result);
+    if (!handle) {
+      hostTextureStatus.set(src, 'error');
+      syncDebugState();
+      return null;
+    }
+    hostTextureCache.set(src, handle);
+    hostTextureStatus.set(src, 'ready');
+    syncDebugState();
+    return handle;
+  } catch {
+    hostTextureStatus.set(src, 'error');
+    syncDebugState();
+    return null;
+  }
+}
+
+function textureHandle(texture) {
+  if (typeof texture === 'number') return texture;
+  if (texture && typeof texture.handle === 'number') return texture.handle;
+  return 0;
 }
 
 function drawStoryStillFrame(ctx, image, text, W, H) {
@@ -2166,7 +2467,7 @@ function preloadStoryImage(src) {
 }
 
 function getStoryFrameContext(W, H) {
-  if (typeof document === 'undefined') return null;
+  if (!canUseBrowserCanvasOverlay()) return null;
   if (!storyFrameCanvas) {
     storyFrameCanvas = document.createElement('canvas');
     storyFrameCanvas.setAttribute('aria-hidden', 'true');
@@ -2183,9 +2484,7 @@ function getStoryFrameContext(W, H) {
     storyFrameCanvas.style.background = 'transparent';
     const screen = document.getElementById('screen');
     const parent = screen?.parentElement || document.body;
-    if (parent && getComputedStyle(parent).position === 'static') {
-      parent.style.position = 'relative';
-    }
+    ensureOverlayParentPositioned(parent);
     parent.appendChild(storyFrameCanvas);
     storyFrameCtx = storyFrameCanvas.getContext('2d');
   }
@@ -2216,7 +2515,7 @@ function hideStoryFrameCanvas() {
 }
 
 function getCombatSpriteContext(W, H) {
-  if (typeof document === 'undefined') return null;
+  if (!canUseBrowserCanvasOverlay()) return null;
   if (!combatSpriteCanvas) {
     combatSpriteCanvas = document.createElement('canvas');
     combatSpriteCanvas.setAttribute('aria-hidden', 'true');
@@ -2237,9 +2536,7 @@ function getCombatSpriteContext(W, H) {
     combatSpriteCanvas.style.background = 'transparent';
     const screen = document.getElementById('screen');
     const parent = screen?.parentElement || document.body;
-    if (parent && getComputedStyle(parent).position === 'static') {
-      parent.style.position = 'relative';
-    }
+    ensureOverlayParentPositioned(parent);
     parent.appendChild(combatSpriteCanvas);
     combatSpriteCtx = combatSpriteCanvas.getContext('2d');
   }
@@ -2267,9 +2564,8 @@ function hideCombatSpriteCanvas() {
 // the main scene and once into a private WebGL overlay) doubled the
 // WebGL-context count and led to the second model being invisible on
 // threejs and a flood of Babylon material errors. The portable, reliable
-// pattern across threejs + babylon + retroarch is to project enemies as
-// sprites in the 2D framebuffer; GLB rendering through
-// `nova64.scene.loadModel` stays reserved for overworld props/portals.
+// pattern across threejs + babylon + retroarch is to use sprites as fallback
+// overlays while the main scene owns any available GLB enemy model.
 //
 // To replicate in your own cart:
 //   1. Ship a spritesheet PNG per enemy and reference it from your enemy
@@ -2308,6 +2604,11 @@ function ensureCombatSpriteImage(src) {
   return null;
 }
 
+function shouldDrawCombatSprite(enemy) {
+  if (!enemy) return false;
+  return !enemy.model || enemy.modelStatus === 'error' || enemy.modelStatus === 'none';
+}
+
 function drawCombatSpriteFallbacks(W, H) {
   if (!combat) {
     hideCombatSpriteCanvas();
@@ -2317,12 +2618,9 @@ function drawCombatSpriteFallbacks(W, H) {
   if (!ctx) return false;
   ctx.clearRect(0, 0, W, H);
   drawCombatOverlayBackground(ctx, W, H);
-  let drewAny = false;
   const live = livingEnemies();
   live.forEach((enemy, i) => {
-    // GLB is preferred when available. The 2D sprite is the fallback
-    // for enemies with no `model` URL or whose GLB load failed.
-    if (enemy.model && enemy.modelStatus === 'ready') return;
+    if (!shouldDrawCombatSprite(enemy)) return;
     const image = ensureCombatSpriteImage(enemy.sprite);
     const size = Math.max(76, Math.min(112, W * 0.16));
     const x = W * 0.34 + (i - (live.length - 1) / 2) * Math.min(150, W * 0.22);
@@ -2350,11 +2648,94 @@ function drawCombatSpriteFallbacks(W, H) {
       );
     }
     ctx.restore();
-    drewAny = true;
   });
   drawCombatOverlayForeground(ctx, W, H);
   combatSpriteCanvas.style.display = 'block';
-  return drewAny;
+  return true;
+}
+
+function drawCombatFramebufferFallback(W, H) {
+  if (!combat) return;
+  drawCombatPanelChrome(W, H);
+  drawBar(10, 10, 150, 18, state.avatar.health, state.avatar.maxHealth, COLORS.red, 'HP');
+  drawBar(10, 32, 150, 18, state.avatar.mana, state.avatar.maxMana, COLORS.blue, 'MP');
+  drawText(
+    `LV ${state.avatar.level}  XP ${state.avatar.experience}/${state.avatar.experienceToNextLevel}`,
+    172,
+    14,
+    COLORS.yellow,
+    11
+  );
+  drawText(
+    `${state.currentLevel.toUpperCase()}  (${state.position.x},${state.position.z}) ${DIRS[state.direction].name}`,
+    172,
+    32,
+    COLORS.cyan,
+    11
+  );
+  const live = livingEnemies();
+  live.forEach((enemy, i) => {
+    if (!shouldDrawCombatSprite(enemy)) return;
+    drawCombatEnemyCard(enemy, i, live.length, W, H);
+  });
+
+  let y = H * 0.42;
+  for (const entry of combat.log.slice(0, 5)) {
+    drawText(entry, W * 0.14, y, COLORS.white, 10);
+    y += 14;
+  }
+
+  const actions = ['1 Attack', '2 Spell', '3 Item', '4 Defend', '5 Run'];
+  const buttons = combatActionButtonRects(W, H);
+  actions.forEach((label, i) => {
+    const button = buttons[i];
+    drawButton(button.x, button.y, button.w, button.h, label, false);
+  });
+  const auto = combatAutoButtonRect(W, H);
+  drawButton(auto.x, auto.y, auto.w, auto.h, state.autoplayEnabled ? 'AUTO ON' : 'AUTO OFF', state.autoplayEnabled);
+}
+
+function drawCombatBackdrop(W, H) {
+  const horizon = H * 0.5;
+  fill(0, 0, W, horizon, 0x1c0642ff);
+  fill(0, horizon, W, H - horizon, 0x020914ff);
+  for (let i = 0; i < 16; i++) {
+    const x = W * 0.5 + Math.sin(i * 1.9 + time * 0.8) * W * 0.46;
+    line2d(W * 0.5, horizon, x, H, i % 2 ? COLORS.magenta : COLORS.floorGrid);
+  }
+  for (let y = horizon; y < H; y += 18) {
+    const spread = (y - horizon) / Math.max(1, H - horizon);
+    line2d(W * (0.5 - spread), y, W * (0.5 + spread), y, COLORS.blue);
+  }
+  for (let i = 0; i < 20; i++) {
+    const x = (i * 83 + Math.floor(time * 24)) % W;
+    const y = 68 + ((i * 31) % Math.max(1, horizon - 88));
+    fill(x, y, 20 + (i % 4) * 10, 2, i % 2 ? overlayColor(0xff00cc, 136) : overlayColor(0x00ffff, 136));
+  }
+}
+
+function drawCombatEnemyCard(enemy, index, count, W, H) {
+  const spacing = Math.min(150, W * 0.22);
+  const x = W * 0.5 + (index - (count - 1) / 2) * spacing;
+  const y = H * 0.34;
+  const size = Math.max(72, Math.min(116, W * 0.15));
+  const color = enemy.color || COLORS.cyan;
+  const active = index === combat.selectedEnemy;
+  fill(x - size * 0.42, y - size * 0.08, size * 0.84, size * 0.72, 0x020812dd);
+  rect(x - size * 0.42, y - size * 0.08, size * 0.84, size * 0.72, active ? COLORS.yellow : color);
+  const texture = ensureHostTexture(enemy.sprite);
+  if (texture) {
+    call('draw.image', null, texture, x - size * 0.44, y - size * 0.36, size * 0.88, size * 0.88, 0xffffffff);
+  } else {
+    fill(x - size * 0.18, y - size * 0.32, size * 0.36, size * 0.28, color);
+    fill(x - size * 0.3, y - size * 0.04, size * 0.6, size * 0.5, color);
+    fill(x - size * 0.2, y + size * 0.08, size * 0.4, size * 0.2, 0x00000088);
+  }
+  line2d(x - size * 0.42, y + size * 0.64, x + size * 0.42, y + size * 0.64, COLORS.floorGrid);
+  line2d(x - size * 0.28, y + size * 0.75, x + size * 0.28, y + size * 0.75, COLORS.magenta);
+  drawCenteredIn(enemy.name, x - 62, y + size * 0.76, 124, 18, active ? COLORS.yellow : COLORS.cyan, 10);
+  drawBar(x - 58, y + size * 0.94, 116, 12, enemy.hp, enemy.maxHp, COLORS.red, '');
+  if (enemy.modelStatus === 'loading') drawCenteredIn('LOADING GLB', x - 54, y + size * 1.08, 108, 14, COLORS.muted, 9);
 }
 
 function getMaskedCombatSprite(src, image) {
@@ -2437,15 +2818,18 @@ function drawCombatOverlayForeground(ctx, W, H) {
   }
 
   const actions = ['1 Attack', '2 Spell', '3 Item', '4 Defend', '5 Run'];
+  const buttons = combatActionButtonRects(W, H);
   actions.forEach((label, i) => {
-    drawCanvasButton(ctx, W * 0.13 + i * 96, H * 0.68, 86, 32, label, false);
+    const button = buttons[i];
+    drawCanvasButton(ctx, button.x, button.y, button.w, button.h, label, false);
   });
+  const auto = combatAutoButtonRect(W, H);
   drawCanvasButton(
     ctx,
-    W * 0.72,
-    H * 0.68,
-    100,
-    32,
+    auto.x,
+    auto.y,
+    auto.w,
+    auto.h,
     state.autoplayEnabled ? 'AUTO ON' : 'AUTO OFF',
     state.autoplayEnabled
   );
@@ -2561,6 +2945,35 @@ function wrapText(text, x, y, maxWidth, color, size) {
   if (line) drawText(line, x, yy, color, size);
 }
 
+function wrapTextBox(text, x, y, maxWidth, maxHeight, color, size) {
+  const words = String(text || '').split(/\s+/).filter(Boolean);
+  const lineHeight = size + 4;
+  const maxLines = Math.max(1, Math.floor(maxHeight / lineHeight));
+  const maxChars = Math.max(12, Math.floor(maxWidth / (size * 0.55)));
+  const lines = [];
+  let line = '';
+  let truncated = false;
+  for (const word of words) {
+    const next = line ? `${line} ${word}` : word;
+    if (next.length > maxChars && line) {
+      lines.push(line);
+      line = word;
+      if (lines.length >= maxLines) {
+        truncated = true;
+        break;
+      }
+    } else {
+      line = next;
+    }
+  }
+  if (line && lines.length < maxLines) lines.push(line);
+  if (truncated && lines.length) {
+    const last = lines[lines.length - 1].replace(/\s+$/, '');
+    lines[lines.length - 1] = last.length > 3 ? `${last.slice(0, Math.max(0, maxChars - 3))}...` : last;
+  }
+  lines.forEach((item, index) => drawText(item, x, y + index * lineHeight, color, size));
+}
+
 function drawHUD() {
   const W = width();
   const H = height();
@@ -2589,7 +3002,7 @@ function drawHUD() {
 }
 
 function isBabylonBackend() {
-  return ns('scene.getBackendCapabilities')?.().backend === 'babylon';
+  return backendName() === 'babylon';
 }
 
 function drawFallbackDungeonView(W, H) {
@@ -2688,6 +3101,8 @@ function drawTouchControls(W, H) {
   drawButton(140, H - 96, 52, 52, '>');
   drawButton(82, H - 150, 52, 52, '^');
   drawButton(82, H - 42, 52, 52, 'v');
+  const auto = autoButtonRect(W, H);
+  drawButton(auto.x, auto.y, auto.w, auto.h, state.autoplayEnabled ? 'AUTO' : 'MANUAL', state.autoplayEnabled);
   drawButton(W - 106, H - 60, 82, 36, 'INV');
 }
 
@@ -2747,7 +3162,7 @@ function drawCombat() {
   // panel viewport. Keep this as the single source of HUD truth — duplicate
   // drawing here would cause visible ghosting since the overlay canvas is
   // transparent.
-  drawCombatSpriteFallbacks(W, H);
+  if (!drawCombatSpriteFallbacks(W, H)) drawCombatFramebufferFallback(W, H);
 }
 
 function drawInventory() {
@@ -2819,14 +3234,14 @@ function drawOverlayEffects() {
         const cell =
           ((x / block + y / block + Math.floor(time * 18)) | 0) % (combatTransition ? 2 : 3);
         if (cell === 0)
-          fill(x, y, block - 1, block - 1, combatTransition ? 0x001a33aa : 0x00000099);
+          fill(x, y, block - 1, block - 1, combatTransition ? overlayColor(0x001a33, 170) : overlayColor(0x000000, 153));
       }
     }
     if (combatTransition) {
       const cap = Math.max(2, H * (1 - p) * 0.08);
-      for (let y = 0; y < H; y += Math.max(5, 12 - Math.floor(p * 7))) fill(0, y, W, 1, 0x00ffff66);
-      fill(0, 0, W, cap, 0xff00cc88);
-      fill(0, H - cap, W, cap, 0x00ffff88);
+      for (let y = 0; y < H; y += Math.max(5, 12 - Math.floor(p * 7))) fill(0, y, W, 1, overlayColor(0x00ffff, 102));
+      fill(0, 0, W, cap, overlayColor(0xff00cc, 136));
+      fill(0, H - cap, W, cap, overlayColor(0x00ffff, 136));
     }
     drawCentered(transition.label, H * 0.48, COLORS.cyan, 14);
   }
@@ -2837,7 +3252,7 @@ function drawOverlayEffects() {
       const y = Math.floor((Math.sin(time * 19 + i * 3.1) + 1) * 0.5 * H);
       const h = 2 + Math.floor(strength * 9);
       const offset = Math.floor(Math.sin(time * 31 + i) * strength * 18);
-      fill(Math.min(0, offset), y, W + Math.abs(offset), h, i % 2 ? 0xff00cc55 : 0x00ffff55);
+      fill(Math.min(0, offset), y, W + Math.abs(offset), h, i % 2 ? overlayColor(0xff00cc, 85) : overlayColor(0x00ffff, 85));
     }
   }
 }

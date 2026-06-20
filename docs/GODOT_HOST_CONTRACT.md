@@ -346,10 +346,12 @@ Coordinates are in the cart's 640×360 virtual canvas space.
 | `overlay.line` | `x1`, `y1`, `x2`, `y2`, `color`, `width` | `{ ok }` |
 | `overlay.circle` | `x`, `y`, `r`, `color`, `fill` | `{ ok }` |
 | `overlay.text` | `x`, `y`, `text`, `color`, `size` (font size px) | `{ ok }` |
+| `overlay.image` | `texture`/`handle` (texture handle), `x`, `y`, `w`, `h`, `color` ({r,g,b,a}, optional modulate) | `{ ok }` |
 | `overlay.batch` | `ops: Array` of individual overlay command objects (each has `type` + fields above) | `{ ok }` |
 
 `overlay.batch` is the preferred path for HUD-heavy carts; it amortises
-the JS→C++ call overhead to a single round-trip per frame.
+the JS→C++ call overhead to a single round-trip per frame. Image ops use
+the compact array form `['image', textureHandle, x, y, w, h, color]`.
 
 ---
 
@@ -387,7 +389,7 @@ the Three.js browser backend.
 | VOX model loading | ✅ | ✅ | ✅ |
 | WAD loading | ✅ | ✅ | ✅ |
 | Voxel chunk meshing | ✅ | ✅ | ✅ (native C++ greedy mesher) |
-| 2D overlay (HUD) | ✅ | ✅ | ✅ |
+| 2D overlay (HUD + image blits) | ✅ | ✅ | ✅ |
 | Gamepad input | ✅ | ✅ | ✅ |
 | Mouse look / pointer lock | ✅ | ✅ | ⚠️ partial (no browser pointer-lock API) |
 | Audio | ✅ | ✅ | ✅ |

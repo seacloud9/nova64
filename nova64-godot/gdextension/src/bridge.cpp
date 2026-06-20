@@ -53,6 +53,7 @@
 #include <godot_cpp/classes/shader.hpp>
 #include <godot_cpp/classes/shader_material.hpp>
 #include <godot_cpp/classes/standard_material3d.hpp>
+#include <godot_cpp/classes/texture2d.hpp>
 #include <godot_cpp/classes/torus_mesh.hpp>
 #include <godot_cpp/classes/world_environment.hpp>
 #include <godot_cpp/core/class_db.hpp>
@@ -1024,6 +1025,7 @@ Dictionary Nova64Host::get_capabilities() const {
     features.append("overlay.line");
     features.append("overlay.circle");
     features.append("overlay.text");
+    features.append("overlay.image");
     features.append("overlay.batch");
     features.append("model.load");
     features.append("vox.load");
@@ -1087,6 +1089,7 @@ Dictionary Nova64Host::call_bridge(const String &p_method, const Dictionary &p_p
     if (p_method == "overlay.line")               return _cmd_overlay_line(p_payload);
     if (p_method == "overlay.circle")             return _cmd_overlay_circle(p_payload);
     if (p_method == "overlay.text")               return _cmd_overlay_text(p_payload);
+    if (p_method == "overlay.image")              return _cmd_overlay_image(p_payload);
     if (p_method == "overlay.batch")              return _cmd_overlay_batch(p_payload);
     if (p_method == "model.load")                 return _cmd_model_load(p_payload);
     if (p_method == "vox.load")                   return _cmd_vox_load(p_payload);
@@ -2087,6 +2090,8 @@ Environment *Nova64Host::_ensure_environment() {
     env->set_glow_intensity(0.8f);
     env->set_glow_strength(1.0f);
     env->set_glow_bloom(0.1f);
+    env->set_glow_blend_mode(Environment::GLOW_BLEND_MODE_SCREEN);
+    env->set_glow_hdr_bleed_scale(1.4f);
     env->set_glow_hdr_bleed_threshold(1.0f);
     env->set_glow_hdr_luminance_cap(16.0f);
 
@@ -2141,6 +2146,18 @@ Dictionary Nova64Host::_cmd_env_set(const Dictionary &p) {
             static_cast<float>(static_cast<double>(p["glowBloom"])));
     if (p.has("glowThreshold")) env->set_glow_hdr_bleed_threshold(
             static_cast<float>(static_cast<double>(p["glowThreshold"])));
+    if (p.has("glowBleedScale")) env->set_glow_hdr_bleed_scale(
+            static_cast<float>(static_cast<double>(p["glowBleedScale"])));
+    if (p.has("glowLuminanceCap")) env->set_glow_hdr_luminance_cap(
+            static_cast<float>(static_cast<double>(p["glowLuminanceCap"])));
+    if (p.has("glowBlend")) {
+        String mode = String(p["glowBlend"]).to_lower();
+        if (mode == "additive") env->set_glow_blend_mode(Environment::GLOW_BLEND_MODE_ADDITIVE);
+        else if (mode == "softlight") env->set_glow_blend_mode(Environment::GLOW_BLEND_MODE_SOFTLIGHT);
+        else if (mode == "replace") env->set_glow_blend_mode(Environment::GLOW_BLEND_MODE_REPLACE);
+        else if (mode == "mix") env->set_glow_blend_mode(Environment::GLOW_BLEND_MODE_MIX);
+        else env->set_glow_blend_mode(Environment::GLOW_BLEND_MODE_SCREEN);
+    }
 
     if (p.has("fog")) env->set_fog_enabled(static_cast<bool>(p["fog"]));
     if (p.has("fogColor")) {
@@ -3335,6 +3352,12 @@ bool Nova64Host::load_cart(const String &p_res_path) {
         CharString cart_name_utf8 = cart_folder_name.utf8();
         JSValue cart_name_val = JS_NewStringLen(_context, cart_name_utf8.get_data(), cart_name_utf8.length());
         JS_SetPropertyStr(_context, global, "__nova64_cart_name", cart_name_val);
+        CharString resource_cart_path_utf8 = base_dir.utf8();
+        JSValue resource_cart_path_val = JS_NewStringLen(
+                _context,
+                resource_cart_path_utf8.get_data(),
+                resource_cart_path_utf8.length());
+        JS_SetPropertyStr(_context, global, "__nova64_cart_path", resource_cart_path_val);
         String web_cart_path = String("/examples/") + cart_folder_name + String("/code.js");
         CharString cart_path_utf8 = web_cart_path.utf8();
         JSValue cart_path_val = JS_NewStringLen(_context, cart_path_utf8.get_data(), cart_path_utf8.length());
@@ -3786,6 +3809,32 @@ Dictionary Nova64Host::_cmd_overlay_text(const Dictionary &p) {
     Dictionary out; out["ok"] = true; return out;
 }
 
+Dictionary Nova64Host::_cmd_overlay_image(const Dictionary &p) {
+    _ensure_overlay();
+    Variant tex_v = p.has("texture") ? p["texture"] : p.get("handle", 0);
+    uint32_t tex_id = static_cast<uint32_t>(static_cast<int64_t>(tex_v));
+    Ref<RefCounted> tex_ref = _handles->get_resource(tex_id, HandleKind::TEXTURE);
+    Ref<Texture2D> tex = tex_ref;
+    if (tex.is_null()) {
+        Dictionary out; out["ok"] = false; out["error"] = "invalid_texture_handle"; return out;
+    }
+
+    Vector2 s = overlay_scale(_overlay);
+    float x = static_cast<float>(p.get("x", 0.0));
+    float y = static_cast<float>(p.get("y", 0.0));
+    float w = static_cast<float>(p.get("w", 0.0));
+    float h = static_cast<float>(p.get("h", 0.0));
+    Color modulate = color_from_payload(p, "color", Color(1, 1, 1, 1));
+
+    RenderingServer::get_singleton()->canvas_item_add_texture_rect(
+            _overlay->get_canvas_item(),
+            Rect2(Vector2(x * s.x, y * s.y), Vector2(w * s.x, h * s.y)),
+            tex->get_rid(),
+            false,
+            modulate);
+    Dictionary out; out["ok"] = true; return out;
+}
+
 // ---- overlay batch dispatch ---------------------------------------------
 // Op format (small Array; index 0 is the op tag string):
 //   ['cls',   color]
@@ -3794,6 +3843,8 @@ Dictionary Nova64Host::_cmd_overlay_text(const Dictionary &p) {
 //   ['line',  x0, y0, x1, y1, color]
 //   ['circle',x, y, r, color, filled]
 //   ['text',  x, y, text, color, scale]
+//   ['image', textureHandle, x, y, w, h, modulateColor]
+//   ['imageRegion', textureHandle, x, y, w, h, sx, sy, sw, sh, modulateColor]
 //
 // `color` is a 4-element [r,g,b,a] float array (already normalized 0..1)
 // because the shim's colorFromHex returns it that way.
@@ -3923,6 +3974,57 @@ void Nova64Host::_overlay_op_text(const Array &op) {
             HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, c);
 }
 
+void Nova64Host::_overlay_op_image(const Array &op) {
+    if (op.size() < 6 || _overlay == nullptr) return;
+    uint32_t tex_id = static_cast<uint32_t>(static_cast<int64_t>(op[1]));
+    Ref<RefCounted> tex_ref = _handles->get_resource(tex_id, HandleKind::TEXTURE);
+    Ref<Texture2D> tex = tex_ref;
+    if (tex.is_null()) return;
+
+    Vector2 s = overlay_scale(_overlay);
+    float x = static_cast<float>(static_cast<double>(op[2]));
+    float y = static_cast<float>(static_cast<double>(op[3]));
+    float w = static_cast<float>(static_cast<double>(op[4]));
+    float h = static_cast<float>(static_cast<double>(op[5]));
+    Color modulate = op.size() > 6 ? color_from_array(op[6], Color(1, 1, 1, 1)) : Color(1, 1, 1, 1);
+
+    RenderingServer::get_singleton()->canvas_item_add_texture_rect(
+            _overlay->get_canvas_item(),
+            Rect2(Vector2(x * s.x, y * s.y), Vector2(w * s.x, h * s.y)),
+            tex->get_rid(),
+            false,
+            modulate);
+}
+
+void Nova64Host::_overlay_op_image_region(const Array &op) {
+    if (op.size() < 10 || _overlay == nullptr) return;
+    uint32_t tex_id = static_cast<uint32_t>(static_cast<int64_t>(op[1]));
+    Ref<RefCounted> tex_ref = _handles->get_resource(tex_id, HandleKind::TEXTURE);
+    Ref<Texture2D> tex = tex_ref;
+    if (tex.is_null()) return;
+
+    Vector2 s = overlay_scale(_overlay);
+    Vector2 tex_size = tex->get_size();
+    if (tex_size.x <= 0 || tex_size.y <= 0) return;
+
+    float x = static_cast<float>(static_cast<double>(op[2]));
+    float y = static_cast<float>(static_cast<double>(op[3]));
+    float w = static_cast<float>(static_cast<double>(op[4]));
+    float h = static_cast<float>(static_cast<double>(op[5]));
+    float sx = static_cast<float>(static_cast<double>(op[6]));
+    float sy = static_cast<float>(static_cast<double>(op[7]));
+    float sw = static_cast<float>(static_cast<double>(op[8]));
+    float sh = static_cast<float>(static_cast<double>(op[9]));
+    Color modulate = op.size() > 10 ? color_from_array(op[10], Color(1, 1, 1, 1)) : Color(1, 1, 1, 1);
+
+    RenderingServer::get_singleton()->canvas_item_add_texture_rect_region(
+            _overlay->get_canvas_item(),
+            Rect2(Vector2(x * s.x, y * s.y), Vector2(w * s.x, h * s.y)),
+            tex->get_rid(),
+            Rect2(Vector2(sx * tex_size.x, sy * tex_size.y), Vector2(sw * tex_size.x, sh * tex_size.y)),
+            modulate);
+}
+
 Dictionary Nova64Host::_cmd_overlay_batch(const Dictionary &p) {
     _ensure_overlay();
     Variant v = p.get("ops", Variant());
@@ -3940,6 +4042,8 @@ Dictionary Nova64Host::_cmd_overlay_batch(const Dictionary &p) {
         else if (tag == "line")      _overlay_op_line(op);
         else if (tag == "circle")    _overlay_op_circle(op);
         else if (tag == "text")      _overlay_op_text(op);
+        else if (tag == "image")     _overlay_op_image(op);
+        else if (tag == "imageRegion") _overlay_op_image_region(op);
         else if (tag == "pset")      _overlay_op_pset(op);
         else if (tag == "cls")       _overlay_op_cls(op);
         else if (tag == "gradient")  _overlay_op_gradient(op);

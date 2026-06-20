@@ -329,6 +329,7 @@ struct nova64_texture {
    GLuint gl_name; /* 0 = not uploaded / software mode */
    int width;
    int height;
+   char source_path[256];
 };
 
 #define NOVA64_MAX_RENDER_TARGETS 8
@@ -2226,6 +2227,7 @@ static int allocate_texture(void)
          textures[i].gl_name = 0;
          textures[i].width = 0;
          textures[i].height = 0;
+         textures[i].source_path[0] = '\0';
          return i + 1;
       }
    }
@@ -5774,6 +5776,107 @@ static int sorted_sprite_z_cmp(const void *a, const void *b) {
           ((const struct nova64_sorted_sprite *)b)->z;
 }
 
+static bool load_rgba_asset_pixels(const char *path, const uint8_t **pixels,
+      uint8_t **owned_pixels, int *img_w, int *img_h)
+{
+   if (!path || !pixels || !owned_pixels || !img_w || !img_h)
+      return false;
+
+   const struct nova64_package_asset *asset = find_package_asset(path);
+   if (!asset || !asset->data || asset->size < 4)
+      return false;
+
+   *owned_pixels = NULL;
+   *pixels = (const uint8_t *)asset->data;
+   *img_w = 0;
+   *img_h = 0;
+
+   if (path_is_png(path)) {
+      int pw = 0, ph = 0;
+      *owned_pixels = decode_png_asset(asset->data, asset->size, &pw, &ph);
+      if (!*owned_pixels)
+         return false;
+      *pixels = *owned_pixels;
+      *img_w = pw;
+      *img_h = ph;
+      return true;
+   }
+
+   int side = (int)sqrt((double)(asset->size / 4));
+   *img_w = side > 0 ? side : 1;
+   *img_h = (int)((asset->size / 4) / (size_t)*img_w);
+   if (*img_h <= 0)
+      *img_h = *img_w;
+   return *img_w > 0 && *img_h > 0;
+}
+
+static bool draw_texture_path_from_js(JSContext *ctx, JSValueConst value,
+      char *out, size_t out_size)
+{
+   if (!out || out_size == 0)
+      return false;
+   out[0] = '\0';
+
+   if (JS_IsNumber(value)) {
+      int handle = int_from_js(ctx, value, 0);
+      struct nova64_texture *tex = texture_from_handle(handle);
+      if (tex && tex->source_path[0]) {
+         snprintf(out, out_size, "%s", tex->source_path);
+         return true;
+      }
+   }
+
+   const char *path = JS_ToCString(ctx, value);
+   if (!path)
+      return false;
+   snprintf(out, out_size, "%s", path);
+   JS_FreeCString(ctx, path);
+   return out[0] != '\0';
+}
+
+static void blit_rgba_scaled_tinted(const uint8_t *pixels, int img_w, int img_h,
+      int dx, int dy, int dw, int dh, int src_x, int src_y, int src_w, int src_h,
+      uint32_t tint)
+{
+   if (!pixels || img_w <= 0 || img_h <= 0 || dw <= 0 || dh <= 0 ||
+         src_w <= 0 || src_h <= 0)
+      return;
+
+   if (src_x < 0) src_x = 0;
+   if (src_y < 0) src_y = 0;
+   if (src_x >= img_w || src_y >= img_h)
+      return;
+   if (src_x + src_w > img_w) src_w = img_w - src_x;
+   if (src_y + src_h > img_h) src_h = img_h - src_y;
+   if (src_w <= 0 || src_h <= 0)
+      return;
+
+   uint8_t tr = (uint8_t)((tint >> 24) & 0xffU);
+   uint8_t tg = (uint8_t)((tint >> 16) & 0xffU);
+   uint8_t tb = (uint8_t)((tint >> 8) & 0xffU);
+   uint8_t ta = (uint8_t)(tint & 0xffU);
+
+   for (int row = 0; row < dh; row++) {
+      int sy2 = src_y + (int)(((int64_t)row * src_h) / dh);
+      if (sy2 < 0 || sy2 >= img_h)
+         continue;
+      for (int col = 0; col < dw; col++) {
+         int sx2 = src_x + (int)(((int64_t)col * src_w) / dw);
+         if (sx2 < 0 || sx2 >= img_w)
+            continue;
+
+         size_t si = ((size_t)sy2 * (size_t)img_w + (size_t)sx2) * 4;
+         uint8_t sa = (uint8_t)(((uint32_t)pixels[si + 3] * (uint32_t)ta) / 255U);
+         if (sa == 0)
+            continue;
+         uint8_t sr = (uint8_t)(((uint32_t)pixels[si + 0] * (uint32_t)tr) / 255U);
+         uint8_t sg = (uint8_t)(((uint32_t)pixels[si + 1] * (uint32_t)tg) / 255U);
+         uint8_t sb = (uint8_t)(((uint32_t)pixels[si + 2] * (uint32_t)tb) / 255U);
+         blend_pixel_normal(dx + col, dy + row, rgba8(sr, sg, sb, sa));
+      }
+   }
+}
+
 static void spr_sorted_flush(void)
 {
    if (sorted_sprite_count <= 0) return;
@@ -5847,6 +5950,75 @@ static JSValue js_spr(JSContext *ctx, JSValueConst this_val, int argc, JSValueCo
       blit_rgba(pixels, img_w, img_h, dx, dy, sx, sy, bw, bh);
    free(png_pixels);
    return JS_NewBool(ctx, bw > 0 && bh > 0);
+}
+
+/* image(textureOrPath, x, y, w, h [, tint]) — host-neutral scaled image blit. */
+static JSValue js_draw_image(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 5)
+      return JS_NewBool(ctx, false);
+
+   char path[256];
+   if (!draw_texture_path_from_js(ctx, argv[0], path, sizeof(path)))
+      return JS_NewBool(ctx, false);
+
+   const uint8_t *pixels = NULL;
+   uint8_t *owned_pixels = NULL;
+   int img_w = 0, img_h = 0;
+   if (!load_rgba_asset_pixels(path, &pixels, &owned_pixels, &img_w, &img_h))
+      return JS_NewBool(ctx, false);
+
+   int dx = int_from_js(ctx, argv[1], 0) - cam2d_x;
+   int dy = int_from_js(ctx, argv[2], 0) - cam2d_y;
+   int dw = int_from_js(ctx, argv[3], img_w);
+   int dh = int_from_js(ctx, argv[4], img_h);
+   uint32_t tint = color_from_js(ctx, argc > 5 ? argv[5] : JS_UNDEFINED,
+         rgba8(255, 255, 255, 255));
+
+   blit_rgba_scaled_tinted(pixels, img_w, img_h, dx, dy, dw, dh,
+         0, 0, img_w, img_h, tint);
+   free(owned_pixels);
+   return JS_NewBool(ctx, dw > 0 && dh > 0);
+}
+
+/* imageRegion(textureOrPath, x, y, w, h, sx, sy, sw, sh [, tint]).
+   Source coordinates are normalized, matching the Godot host shim. */
+static JSValue js_draw_image_region(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 9)
+      return JS_NewBool(ctx, false);
+
+   char path[256];
+   if (!draw_texture_path_from_js(ctx, argv[0], path, sizeof(path)))
+      return JS_NewBool(ctx, false);
+
+   const uint8_t *pixels = NULL;
+   uint8_t *owned_pixels = NULL;
+   int img_w = 0, img_h = 0;
+   if (!load_rgba_asset_pixels(path, &pixels, &owned_pixels, &img_w, &img_h))
+      return JS_NewBool(ctx, false);
+
+   int dx = int_from_js(ctx, argv[1], 0) - cam2d_x;
+   int dy = int_from_js(ctx, argv[2], 0) - cam2d_y;
+   int dw = int_from_js(ctx, argv[3], img_w);
+   int dh = int_from_js(ctx, argv[4], img_h);
+   double sx = clamp_double(double_from_js(ctx, argv[5], 0.0), 0.0, 1.0);
+   double sy = clamp_double(double_from_js(ctx, argv[6], 0.0), 0.0, 1.0);
+   double sw = clamp_double(double_from_js(ctx, argv[7], 1.0), 0.0, 1.0);
+   double sh = clamp_double(double_from_js(ctx, argv[8], 1.0), 0.0, 1.0);
+   int src_x = (int)(sx * img_w);
+   int src_y = (int)(sy * img_h);
+   int src_w = (int)ceil(sw * img_w);
+   int src_h = (int)ceil(sh * img_h);
+   uint32_t tint = color_from_js(ctx, argc > 9 ? argv[9] : JS_UNDEFINED,
+         rgba8(255, 255, 255, 255));
+
+   blit_rgba_scaled_tinted(pixels, img_w, img_h, dx, dy, dw, dh,
+         src_x, src_y, src_w, src_h, tint);
+   free(owned_pixels);
+   return JS_NewBool(ctx, dw > 0 && dh > 0);
 }
 
 static void atlas_path_for_image(const char *path, char *out, size_t out_size)
@@ -28108,6 +28280,8 @@ static JSValue js_create_texture(JSContext *ctx, JSValueConst this_val, int argc
       return JS_NewInt32(ctx, 0);
    const struct nova64_package_asset *asset = find_package_asset(path);
    bool tex_is_png = path_is_png(path);
+   char source_path[256];
+   snprintf(source_path, sizeof(source_path), "%s", path);
    JS_FreeCString(ctx, path);
    if (!asset || !asset->data || asset->size < 4)
       return JS_NewInt32(ctx, 0);
@@ -28139,6 +28313,7 @@ static JSValue js_create_texture(JSContext *ctx, JSValueConst this_val, int argc
    }
    tex->width = w;
    tex->height = h;
+   snprintf(tex->source_path, sizeof(tex->source_path), "%s", source_path);
 
    if (gles.active && gles.GenTextures && gles.BindTexture && gles.TexImage2D) {
       gles.GenTextures(1, &tex->gl_name);
@@ -30082,6 +30257,9 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, draw, "printShakeTight",    js_print_shake_tight,    6);
    set_function(ctx, draw, "printRainbowTight",  js_print_rainbow_tight,  4);
    set_function(ctx, draw, "printGradientTight", js_print_gradient_tight, 5);
+   set_function(ctx, draw, "image", js_draw_image, 6);
+   set_function(ctx, draw, "drawImage", js_draw_image, 6);
+   set_function(ctx, draw, "imageRegion", js_draw_image_region, 10);
    set_function(ctx, draw, "spr", js_spr, 10);
    set_function(ctx, draw, "createSpriteSheet", js_create_spritesheet, 3);
    set_function(ctx, draw, "sprFrame", js_spr_frame, 4);
@@ -30189,6 +30367,7 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, scene, "clearScene", js_clear_scene, 0);
    set_function(ctx, scene, "draw3d", js_draw3d, 1);
    set_function(ctx, scene, "createTexture", js_create_texture, 3);
+   set_function(ctx, scene, "loadTexture", js_create_texture, 3);
    set_function(ctx, scene, "createDataTexture", js_create_data_texture, 4);
    set_function(ctx, scene, "setMeshTexture", js_set_mesh_texture, 2);
    set_function(ctx, scene, "setMeshFaceUVs", js_set_mesh_face_uvs, 2);
@@ -31325,6 +31504,9 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, global, "printShakeTight",    js_print_shake_tight,    6);
    set_function(ctx, global, "printRainbowTight",  js_print_rainbow_tight,  4);
    set_function(ctx, global, "printGradientTight", js_print_gradient_tight, 5);
+   set_function(ctx, global, "image", js_draw_image, 6);
+   set_function(ctx, global, "drawImage", js_draw_image, 6);
+   set_function(ctx, global, "imageRegion", js_draw_image_region, 10);
    set_function(ctx, global, "spr", js_spr, 10);
    set_function(ctx, global, "createSpriteSheet", js_create_spritesheet, 3);
    set_function(ctx, global, "sprFrame", js_spr_frame, 4);
@@ -31407,6 +31589,7 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, global, "setMeshAlpha", js_set_mesh_alpha, 2);
    set_function(ctx, global, "draw3d", js_draw3d, 1);
    set_function(ctx, global, "createTexture", js_create_texture, 3);
+   set_function(ctx, global, "loadTexture", js_create_texture, 3);
    set_function(ctx, global, "setMeshTexture", js_set_mesh_texture, 2);
    set_function(ctx, global, "setMeshNormalMap", js_set_mesh_normal_map, 2);
    set_function(ctx, global, "destroyTexture", js_destroy_texture, 1);

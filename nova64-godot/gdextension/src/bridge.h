@@ -181,6 +181,7 @@ private:
     Dictionary _cmd_overlay_line(const Dictionary &p_payload);
     Dictionary _cmd_overlay_circle(const Dictionary &p_payload);
     Dictionary _cmd_overlay_text(const Dictionary &p_payload);
+    Dictionary _cmd_overlay_image(const Dictionary &p_payload);
     Dictionary _cmd_overlay_batch(const Dictionary &p_payload);
     Dictionary _cmd_model_load(const Dictionary &p_payload);
     Dictionary _cmd_vox_load(const Dictionary &p_payload);
@@ -206,6 +207,8 @@ private:
     void _overlay_op_line(const Array &op);
     void _overlay_op_circle(const Array &op);
     void _overlay_op_text(const Array &op);
+    void _overlay_op_image(const Array &op);
+    void _overlay_op_image_region(const Array &op);
     void _overlay_op_gradient(const Array &op);
     void _overlay_op_triangle(const Array &op);
     void _overlay_op_polygon(const Array &op);

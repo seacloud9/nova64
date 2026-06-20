@@ -37,6 +37,29 @@
 #if defined(__GNUC__) || defined(__clang__)
 #pragma GCC diagnostic pop
 #endif
+/* stb_vorbis leaks single-letter channel-mapping macros (L/C/R) that collide
+ * with local variables in stb_image's JPEG decoder. They are only used inside
+ * stb_vorbis.c, so undef them before pulling in the next header. */
+#undef L
+#undef C
+#undef R
+
+/* stb_image: single-header PNG + baseline JPEG decoder.
+ * STBI_NO_STDIO: we only decode from memory. Limit to the two formats carts
+ * actually ship to keep the core small. Default malloc/free allocator, so
+ * buffers returned by stbi_load_from_memory are freed with plain free(). */
+#define STB_IMAGE_IMPLEMENTATION
+#define STBI_NO_STDIO
+#define STBI_ONLY_PNG
+#define STBI_ONLY_JPEG
+#if defined(__GNUC__) || defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
+#endif
+#include "stb_image.h"
+#if defined(__GNUC__) || defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
 
 
 #define NOVA64_WIDTH 640
@@ -5668,107 +5691,122 @@ static JSValue js_trifill(JSContext *ctx, JSValueConst this_val, int argc, JSVal
    return JS_UNDEFINED;
 }
 
-/* ---- PNG decode (8F) — supports RGB/RGBA 8-bit non-interlaced via zlib ---- */
-static bool path_is_png(const char *path)
+/* ---- Image decode (8F): PNG + baseline JPEG via stb_image ---- */
+static bool ext_ieq(const char *path, const char *ext)
 {
-   if (!path) return false;
-   size_t len = strlen(path);
-   if (len < 4) return false;
-   const char *ext = path + len - 4;
-   return ext[0] == '.' &&
-          (ext[1] == 'p' || ext[1] == 'P') &&
-          (ext[2] == 'n' || ext[2] == 'N') &&
-          (ext[3] == 'g' || ext[3] == 'G');
+   size_t lp = strlen(path), le = strlen(ext);
+   if (lp < le) return false;
+   const char *s = path + lp - le;
+   for (size_t i = 0; i < le; i++) {
+      char a = s[i], b = ext[i];
+      if (a >= 'A' && a <= 'Z') a += 32;
+      if (b >= 'A' && b <= 'Z') b += 32;
+      if (a != b) return false;
+   }
+   return true;
 }
 
-/* Returns malloc'd RGBA buffer (4 bytes/pixel); caller must free(). */
-static uint8_t *decode_png_asset(const uint8_t *png, size_t png_size, int *out_w, int *out_h)
+static bool path_is_image(const char *path)
 {
-   static const uint8_t SIG[8] = {0x89,0x50,0x4E,0x47,0x0D,0x0A,0x1A,0x0A};
-   if (!png || png_size < 33 || memcmp(png, SIG, 8) != 0) return NULL;
+   if (!path) return false;
+   return ext_ieq(path, ".png") ||
+          ext_ieq(path, ".jpg") ||
+          ext_ieq(path, ".jpeg");
+}
 
-   int w = 0, h = 0, depth = 0, ctype = 0;
-   size_t idat_total = 0;
-
-   /* First pass: parse IHDR and count IDAT bytes */
-   const uint8_t *p = png + 8;
-   const uint8_t *end = png + png_size;
-   while (p + 12 <= end) {
-      uint32_t len = ((uint32_t)p[0]<<24)|((uint32_t)p[1]<<16)|((uint32_t)p[2]<<8)|p[3];
-      if (p + 12 + len > end) break;
-      if (memcmp(p+4, "IHDR", 4) == 0 && len >= 13) {
-         const uint8_t *d = p + 8;
-         w = (int)(((uint32_t)d[0]<<24)|((uint32_t)d[1]<<16)|((uint32_t)d[2]<<8)|d[3]);
-         h = (int)(((uint32_t)d[4]<<24)|((uint32_t)d[5]<<16)|((uint32_t)d[6]<<8)|d[7]);
-         depth = d[8]; ctype = d[9];
-         if (d[12] != 0) return NULL; /* no interlace support */
-      } else if (memcmp(p+4, "IDAT", 4) == 0) {
-         idat_total += len;
-      }
-      p += 12 + len;
-   }
-   if (w <= 0 || h <= 0 || depth != 8 || idat_total == 0) return NULL;
-   if (ctype != 2 && ctype != 6) return NULL; /* RGB or RGBA only */
-   int src_bpp = (ctype == 6) ? 4 : 3;
-
-   /* Collect IDAT chunks */
-   uint8_t *idat = (uint8_t *)malloc(idat_total);
-   if (!idat) return NULL;
-   size_t idat_off = 0;
-   p = png + 8;
-   while (p + 12 <= end) {
-      uint32_t len = ((uint32_t)p[0]<<24)|((uint32_t)p[1]<<16)|((uint32_t)p[2]<<8)|p[3];
-      if (memcmp(p+4, "IDAT", 4) == 0 && p + 12 + len <= end) {
-         memcpy(idat + idat_off, p + 8, len);
-         idat_off += len;
-      }
-      p += 12 + len;
-   }
-
-   /* Decompress zlib */
-   uLong raw_cap = (uLong)(h * (1 + w * src_bpp));
-   uint8_t *raw = (uint8_t *)malloc(raw_cap);
-   if (!raw) { free(idat); return NULL; }
-   uLong raw_size = raw_cap;
-   if (uncompress(raw, &raw_size, idat, (uLong)idat_total) != Z_OK) {
-      free(idat); free(raw); return NULL;
-   }
-   free(idat);
-
-   /* Decode scanline filters + convert to RGBA */
-   uint8_t *rgba = (uint8_t *)malloc((size_t)w * h * 4);
-   if (!rgba) { free(raw); return NULL; }
-   int stride = w * src_bpp;
-   const uint8_t *src = raw;
-   uint8_t *dst = rgba;
-   uint8_t *prev = NULL;
-   for (int y = 0; y < h; y++) {
-      uint8_t filter = *src++;
-      uint8_t *row = (uint8_t *)src;
-      for (int x = 0; x < stride; x++) {
-         int a = x >= src_bpp ? (int)row[x - src_bpp] : 0;
-         int b = prev ? (int)prev[x] : 0;
-         int c = (x >= src_bpp && prev) ? (int)prev[x - src_bpp] : 0;
-         switch (filter) {
-            case 1: row[x] = (uint8_t)(row[x] + a); break;
-            case 2: row[x] = (uint8_t)(row[x] + b); break;
-            case 3: row[x] = (uint8_t)(row[x] + ((a + b) >> 1)); break;
-            case 4: { int pa=abs(a+b-c-a),pb=abs(a+b-c-b),pc=abs(a+b-c-c);
-                      int pr=pa<=pb&&pa<=pc?a:pb<=pc?b:c;
-                      row[x]=(uint8_t)(row[x]+pr); break; }
-            default: break;
-         }
-      }
-      for (int x = 0; x < w; x++, dst += 4) {
-         dst[0] = row[x*src_bpp];   dst[1] = row[x*src_bpp+1];
-         dst[2] = row[x*src_bpp+2]; dst[3] = src_bpp==4 ? row[x*src_bpp+3] : 255;
-      }
-      prev = row;
-      src += stride;
-   }
-   free(raw);
-   *out_w = w; *out_h = h;
+/* Decodes PNG or baseline JPEG to a malloc'd RGBA buffer (4 bytes/pixel).
+ * stb_image uses the default allocator, so the caller frees with plain free(). */
+static uint8_t *decode_image_asset(const uint8_t *data, size_t size, int *out_w, int *out_h)
+{
+   if (!data || size == 0) return NULL;
+   int w = 0, h = 0, comp = 0;
+   uint8_t *rgba = stbi_load_from_memory(data, (int)size, &w, &h, &comp, 4);
+   if (!rgba) return NULL;
+   *out_w = w;
+   *out_h = h;
    return rgba;
+}
+
+/* ---- Decoded-image cache ----
+ * drawImage()/imageRegion() previously re-decoded the PNG/JPEG on every call.
+ * The story pixel-melt overlay alone issues thousands of imageRegion() calls
+ * per frame against one multi-megapixel image, so re-decoding each time made
+ * transitions/filters 20-40x slower than the web (decode-bound, near a freeze).
+ * Cache decoded RGBA keyed by path; repeat blits become cheap memory reads.
+ * Returned pixels are borrowed (owned by the cache) — callers must not free.
+ * Cleared by clear_package_assets() when a cart unloads, since entries point
+ * back at the package asset they were decoded from. */
+#define NOVA64_IMG_CACHE_SLOTS 32
+#define NOVA64_IMG_CACHE_BUDGET ((size_t)96 * 1024 * 1024)
+
+struct decoded_image_entry {
+   char path[256];
+   const void *asset_data;  /* guards against a path being reused by a new cart */
+   uint8_t *rgba;
+   int w, h;
+   uint64_t last_used;
+};
+
+static struct decoded_image_entry g_img_cache[NOVA64_IMG_CACHE_SLOTS];
+static uint64_t g_img_cache_tick = 0;
+
+static void image_cache_reset(void)
+{
+   for (int i = 0; i < NOVA64_IMG_CACHE_SLOTS; i++) {
+      free(g_img_cache[i].rgba);
+      memset(&g_img_cache[i], 0, sizeof(g_img_cache[i]));
+   }
+   g_img_cache_tick = 0;
+}
+
+/* Returns borrowed RGBA pixels for an image asset (do not free), NULL on failure. */
+static const uint8_t *image_cache_get(const char *path,
+      const struct nova64_package_asset *asset, int *out_w, int *out_h)
+{
+   for (int i = 0; i < NOVA64_IMG_CACHE_SLOTS; i++) {
+      struct decoded_image_entry *e = &g_img_cache[i];
+      if (e->rgba && e->asset_data == asset->data && !strcmp(e->path, path)) {
+         e->last_used = ++g_img_cache_tick;
+         *out_w = e->w;
+         *out_h = e->h;
+         return e->rgba;
+      }
+   }
+
+   int w = 0, h = 0;
+   uint8_t *rgba = decode_image_asset(asset->data, asset->size, &w, &h);
+   if (!rgba)
+      return NULL;
+   size_t bytes = (size_t)w * h * 4;
+
+   /* Evict least-recently-used entries until a slot is free and the new image
+    * fits the budget. An image larger than the whole budget still gets stored. */
+   for (;;) {
+      int free_slot = -1, lru = -1;
+      uint64_t lru_tick = UINT64_MAX;
+      size_t total = 0;
+      for (int i = 0; i < NOVA64_IMG_CACHE_SLOTS; i++) {
+         struct decoded_image_entry *e = &g_img_cache[i];
+         if (!e->rgba) { if (free_slot < 0) free_slot = i; continue; }
+         total += (size_t)e->w * e->h * 4;
+         if (e->last_used < lru_tick) { lru_tick = e->last_used; lru = i; }
+      }
+      if (free_slot >= 0 && (total + bytes <= NOVA64_IMG_CACHE_BUDGET || lru < 0)) {
+         struct decoded_image_entry *e = &g_img_cache[free_slot];
+         snprintf(e->path, sizeof(e->path), "%s", path);
+         e->asset_data = asset->data;
+         e->rgba = rgba;
+         e->w = w;
+         e->h = h;
+         e->last_used = ++g_img_cache_tick;
+         *out_w = w;
+         *out_h = h;
+         return rgba;
+      }
+      /* No free slot, or over budget: drop the LRU entry and retry. */
+      free(g_img_cache[lru].rgba);
+      memset(&g_img_cache[lru], 0, sizeof(g_img_cache[lru]));
+   }
 }
 
 static int sorted_sprite_z_cmp(const void *a, const void *b) {
@@ -5791,12 +5829,14 @@ static bool load_rgba_asset_pixels(const char *path, const uint8_t **pixels,
    *img_w = 0;
    *img_h = 0;
 
-   if (path_is_png(path)) {
+   if (path_is_image(path)) {
       int pw = 0, ph = 0;
-      *owned_pixels = decode_png_asset(asset->data, asset->size, &pw, &ph);
-      if (!*owned_pixels)
+      const uint8_t *cached = image_cache_get(path, asset, &pw, &ph);
+      if (!cached)
          return false;
-      *pixels = *owned_pixels;
+      /* Borrowed from the decode cache — caller must not free (owned stays NULL). */
+      *owned_pixels = NULL;
+      *pixels = cached;
       *img_w = pw;
       *img_h = ph;
       return true;
@@ -5900,7 +5940,7 @@ static JSValue js_spr(JSContext *ctx, JSValueConst this_val, int argc, JSValueCo
    const char *path = JS_ToCString(ctx, argv[0]);
    if (!path) return JS_NewBool(ctx, false);
    const struct nova64_package_asset *asset = find_package_asset(path);
-   bool is_png = path_is_png(path);
+   bool is_png = path_is_image(path);
    JS_FreeCString(ctx, path);
    if (!asset || !asset->data || asset->size < 4)
       return JS_NewBool(ctx, false);
@@ -5916,7 +5956,7 @@ static JSValue js_spr(JSContext *ctx, JSValueConst this_val, int argc, JSValueCo
 
    if (is_png) {
       int pw = 0, ph = 0;
-      png_pixels = decode_png_asset(asset->data, asset->size, &pw, &ph);
+      png_pixels = decode_image_asset(asset->data, asset->size, &pw, &ph);
       if (!png_pixels) return JS_NewBool(ctx, false);
       pixels = png_pixels;
       if (img_w <= 0) img_w = pw;
@@ -6867,7 +6907,7 @@ static JSValue js_spr_transform(JSContext *ctx, JSValueConst this_val, int argc,
    const char *path = JS_ToCString(ctx, argv[0]);
    if (!path) return JS_NewBool(ctx, false);
    const struct nova64_package_asset *asset = find_package_asset(path);
-   bool is_png = path_is_png(path);
+   bool is_png = path_is_image(path);
    JS_FreeCString(ctx, path);
    if (!asset || !asset->data || asset->size < 4)
       return JS_NewBool(ctx, false);
@@ -6887,7 +6927,7 @@ static JSValue js_spr_transform(JSContext *ctx, JSValueConst this_val, int argc,
 
    if (is_png) {
       int pw = 0, ph = 0;
-      png_pixels = decode_png_asset(asset->data, asset->size, &pw, &ph);
+      png_pixels = decode_image_asset(asset->data, asset->size, &pw, &ph);
       if (!png_pixels) return JS_NewBool(ctx, false);
       pixels = png_pixels;
       if (img_w <= 0) img_w = pw;
@@ -7098,13 +7138,13 @@ static JSValue js_draw_anim(JSContext *ctx, JSValueConst this_val, int argc, JSV
    struct nova64_anim *a = &g_anims[idx];
    const struct nova64_package_asset *asset = find_package_asset(a->path);
    if (!asset || !asset->data) return JS_UNDEFINED;
-   bool is_png = path_is_png(a->path);
+   bool is_png = path_is_image(a->path);
    uint8_t *png_pixels = NULL;
    const uint8_t *pixels = (const uint8_t *)asset->data;
    int iw = a->img_w, ih = a->img_h;
    if (is_png) {
       int pw = 0, ph = 0;
-      png_pixels = decode_png_asset(asset->data, asset->size, &pw, &ph);
+      png_pixels = decode_image_asset(asset->data, asset->size, &pw, &ph);
       if (!png_pixels) return JS_UNDEFINED;
       pixels = png_pixels;
       if (iw <= 0) iw = pw;
@@ -24356,7 +24396,7 @@ static JSValue js_spr_scale(JSContext *ctx, JSValueConst this_val, int argc, JSV
    const char *path = JS_ToCString(ctx, argv[0]);
    if (!path) return JS_NewBool(ctx, false);
    const struct nova64_package_asset *asset = find_package_asset(path);
-   bool is_png = path_is_png(path);
+   bool is_png = path_is_image(path);
    JS_FreeCString(ctx, path);
    if (!asset || !asset->data || asset->size < 4) return JS_NewBool(ctx, false);
    int dx = int_from_js(ctx, argv[1], 0) - cam2d_x;
@@ -24368,7 +24408,7 @@ static JSValue js_spr_scale(JSContext *ctx, JSValueConst this_val, int argc, JSV
    int img_h = argc > 5 ? int_from_js(ctx, argv[5], 0) : 0;
    if (is_png) {
       int pw = 0, ph = 0;
-      png_pixels = decode_png_asset(asset->data, asset->size, &pw, &ph);
+      png_pixels = decode_image_asset(asset->data, asset->size, &pw, &ph);
       if (!png_pixels) return JS_NewBool(ctx, false);
       pixels = png_pixels;
       if (img_w <= 0) img_w = pw;
@@ -25000,7 +25040,7 @@ static JSValue js_spr_flip_x(JSContext *ctx, JSValueConst this_val, int argc, JS
    const char *path = JS_ToCString(ctx, argv[0]);
    if (!path) return JS_NewBool(ctx, false);
    const struct nova64_package_asset *asset = find_package_asset(path);
-   bool is_png = path_is_png(path);
+   bool is_png = path_is_image(path);
    JS_FreeCString(ctx, path);
    if (!asset || !asset->data || asset->size < 4) return JS_NewBool(ctx, false);
    int dx = int_from_js(ctx, argv[1], 0) - cam2d_x;
@@ -25011,7 +25051,7 @@ static JSValue js_spr_flip_x(JSContext *ctx, JSValueConst this_val, int argc, JS
    int img_h = argc > 4 ? int_from_js(ctx, argv[4], 0) : 0;
    if (is_png) {
       int pw = 0, ph = 0;
-      png_pixels = decode_png_asset(asset->data, asset->size, &pw, &ph);
+      png_pixels = decode_image_asset(asset->data, asset->size, &pw, &ph);
       if (!png_pixels) return JS_NewBool(ctx, false);
       pixels = png_pixels;
       if (img_w <= 0) img_w = pw;
@@ -25049,7 +25089,7 @@ static JSValue js_spr_flip_y(JSContext *ctx, JSValueConst this_val, int argc, JS
    const char *path = JS_ToCString(ctx, argv[0]);
    if (!path) return JS_NewBool(ctx, false);
    const struct nova64_package_asset *asset = find_package_asset(path);
-   bool is_png = path_is_png(path);
+   bool is_png = path_is_image(path);
    JS_FreeCString(ctx, path);
    if (!asset || !asset->data || asset->size < 4) return JS_NewBool(ctx, false);
    int dx = int_from_js(ctx, argv[1], 0) - cam2d_x;
@@ -25060,7 +25100,7 @@ static JSValue js_spr_flip_y(JSContext *ctx, JSValueConst this_val, int argc, JS
    int img_h = argc > 4 ? int_from_js(ctx, argv[4], 0) : 0;
    if (is_png) {
       int pw = 0, ph = 0;
-      png_pixels = decode_png_asset(asset->data, asset->size, &pw, &ph);
+      png_pixels = decode_image_asset(asset->data, asset->size, &pw, &ph);
       if (!png_pixels) return JS_NewBool(ctx, false);
       pixels = png_pixels;
       if (img_w <= 0) img_w = pw;
@@ -25320,7 +25360,7 @@ static JSValue js_draw_nine_slice(JSContext *ctx, JSValueConst this_val, int arg
    const char *path = JS_ToCString(ctx, argv[0]);
    if (!path) return JS_UNDEFINED;
    const struct nova64_package_asset *asset = find_package_asset(path);
-   bool is_png = path_is_png(path);
+   bool is_png = path_is_image(path);
    JS_FreeCString(ctx, path);
    if (!asset || !asset->data || asset->size < 4) return JS_UNDEFINED;
 
@@ -25337,7 +25377,7 @@ static JSValue js_draw_nine_slice(JSContext *ctx, JSValueConst this_val, int arg
    int img_h = argc > 7 ? int_from_js(ctx, argv[7], 0) : 0;
    if (is_png) {
       int pw = 0, ph = 0;
-      png_pixels = decode_png_asset(asset->data, asset->size, &pw, &ph);
+      png_pixels = decode_image_asset(asset->data, asset->size, &pw, &ph);
       if (!png_pixels) return JS_UNDEFINED;
       pixels = png_pixels;
       if (img_w <= 0) img_w = pw;
@@ -28454,7 +28494,7 @@ static JSValue js_create_texture(JSContext *ctx, JSValueConst this_val, int argc
    if (!path)
       return JS_NewInt32(ctx, 0);
    const struct nova64_package_asset *asset = find_package_asset(path);
-   bool tex_is_png = path_is_png(path);
+   bool tex_is_png = path_is_image(path);
    char source_path[256];
    snprintf(source_path, sizeof(source_path), "%s", path);
    JS_FreeCString(ctx, path);
@@ -28475,7 +28515,7 @@ static JSValue js_create_texture(JSContext *ctx, JSValueConst this_val, int argc
 
    if (tex_is_png) {
       int pw = 0, ph = 0;
-      png_pixels = decode_png_asset(asset->data, asset->size, &pw, &ph);
+      png_pixels = decode_image_asset(asset->data, asset->size, &pw, &ph);
       if (!png_pixels) return JS_NewInt32(ctx, 0);
       pixels = png_pixels;
       if (w <= 0) w = pw;
@@ -29921,7 +29961,7 @@ static JSValue js_load_font(JSContext *ctx, JSValueConst this_val, int argc, JSV
    if (glyph_h < 1) glyph_h = 1;
 
    const struct nova64_package_asset *asset = find_package_asset(path);
-   bool is_png = path_is_png(path);
+   bool is_png = path_is_image(path);
    JS_FreeCString(ctx, path);
    if (!asset || !asset->data || asset->size < 4)
       return JS_NewInt32(ctx, 0);
@@ -29929,7 +29969,7 @@ static JSValue js_load_font(JSContext *ctx, JSValueConst this_val, int argc, JSV
    int pw = 0, ph = 0;
    uint8_t *pixels = NULL;
    if (is_png) {
-      pixels = decode_png_asset(asset->data, asset->size, &pw, &ph);
+      pixels = decode_image_asset(asset->data, asset->size, &pw, &ph);
    } else {
       int side = (int)sqrt((double)(asset->size / 4));
       pw = side > 0 ? side : 1;
@@ -40196,6 +40236,8 @@ static bool is_safe_package_path(const char *path)
 
 static void clear_package_assets(void)
 {
+   /* Decoded-image cache entries borrow these asset buffers — drop them first. */
+   image_cache_reset();
    for (int i = 0; i < NOVA64_MAX_PACKAGE_ASSETS; i++) {
       free(package_assets[i].data);
       memset(&package_assets[i], 0, sizeof(package_assets[i]));

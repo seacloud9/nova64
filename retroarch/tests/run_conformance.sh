@@ -1047,6 +1047,11 @@ run_case      "1132 canvas ui text dx dy" "retroarch/conformance/1132-canvas-ui-
 # only the first reference registers.
 run_case      "1133 canvas ui image data uri" "retroarch/conformance/1133-canvas-ui-image-data-uri.js" "5744e7812c94f3a7"
 
+# 1134 nova64.draw.textBox / drawTextBox: bounded text layout for
+# cross-host story panels and compact buttons. Covers wrap, fit,
+# ellipsis, returned layout metadata, and the drawTextBox alias.
+run_case      "1134 draw text box" "retroarch/conformance/1134-draw-text-box.js" "b7d335f09cfb00ab"
+
 # 291 overlay autoclear regression: locks down the default
 # auto-clearing of the 2D HUD overlay between frames. Without
 # auto-clear, the F-Zero title screen vignette stayed under the

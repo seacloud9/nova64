@@ -144,3 +144,159 @@ a layer you've already proven reaches pixels.
 No outstanding rebases or merge conflicts were pending when this note was
 last updated. Use `git log --oneline -5` and `git status --short` for the
 current local state.
+
+---
+
+# 2026-06-19 PM — Godot port issues, hand-off to Codex
+
+Commits since the previous handoff:
+
+```
+14ce383 feat(godot): port indie-odyssey + document video host contract
+e2794ea feat(runtime): nova64.{loader,story,level,video} cart-helper APIs
+0e2b591 fix(retroarch): tune demoscene scenes 2/3/4 toward corrected browser reference
+dbefb02 fix(runtime): restore threejs color vibrancy
+729ec66 fix(indie-odyssey): restore Babylon level glow parity
+6c0a5f0 feat(indie-odyssey): port Echoes of the Shardgrid + cross-backend combat skybox
+```
+
+User tested the Godot port immediately after `14ce383` landed. Three
+problems surfaced.
+
+## Issue 1 — `ReferenceError: getComputedStyle is not defined`
+
+User reported: `[nova64] cart draw: ReferenceError: getComputedStyle is
+not defined` (twice — `cart draw` hook). Godot's QuickJS host doesn't
+expose the browser DOM globals. Every DOM-overlay code path the cart or
+the new helper APIs use will throw here.
+
+**Concrete sites:**
+
+- `examples/indie-odyssey/code.js:2186` — `combatSpriteCanvas` setup
+- `examples/indie-odyssey/code.js:2240` — `storyFrameCanvas` setup
+- `runtime/api-story.js:74` — `nova64.story` overlay canvas
+- `runtime/api-video.js:311` — `nova64.video.playFullscreen` overlay
+- All four `runtime/api-*.js` overlay APIs also call
+  `document.createElement`, `document.body.appendChild`,
+  `window.addEventListener` etc. — same root cause.
+
+**Fix shape (no work done yet):**
+
+Guard every DOM-API touch with `typeof document !== 'undefined'` /
+`typeof window !== 'undefined'` / `typeof getComputedStyle === 'function'`
+checks. On Godot they all evaluate falsy and the overlay path becomes a
+no-op (or, ideally, an alternate Godot-native rendering path lights up).
+
+Pattern to follow throughout:
+
+```js
+function ensureCanvas() {
+  if (typeof document === 'undefined') return null;
+  // ...
+  const parent = document.getElementById('screen')?.parentElement || document.body;
+  if (
+    parent &&
+    typeof getComputedStyle === 'function' &&
+    getComputedStyle(parent).position === 'static'
+  ) {
+    parent.style.position = 'relative';
+  }
+}
+```
+
+## Issue 2 — Story mode doesn't advance / images don't load in place
+
+User reported: "storymode in godot does not work it requires user input
+to progress the images do not load in place".
+
+Two distinct problems:
+
+**a) Advance-key listener never fires.** Story uses
+`window.addEventListener('keydown', state.keyListener)` and listens for
+`Enter` / `Space` / `Escape`. Godot's QuickJS has no `window` and no DOM
+event bus. Equivalent path on Godot: poll `nova64.input.keyp('Enter')`
+inside `update(dt)`. Suggested replacement: have `nova64.story` not
+register a `window` listener at all; instead expose a `_tick(dt)` hook
+(already there!) that polls `nova64.input` for advance keys. Then it
+works identically on web and Godot.
+
+**b) Slide images never appear.** `nova64.story` uses
+`new Image(); img.src = url; img.onload = …` — also DOM-only. On Godot
+the cart needs to call `nova64.scene.loadTexture(url)` (or the host's
+equivalent) to land the bytes in a backend texture, then either:
+- composite the texture into the cart framebuffer per frame, or
+- have the Godot host expose a `nova64.story.loadSlideImage(url)`
+  command that mirrors `texture.createFromImage` and returns a handle
+  the cart can render with.
+
+Either way the current `img.src = url; img.onload` path is browser-only
+and needs a backend-aware abstraction.
+
+## Issue 3 — Visual fidelity gap vs the web version
+
+User: "The game itself looks nothing like its web counterpart in short
+it needs to be much better than this lets improve it".
+
+This is the broader work. Concrete causes (in priority order):
+
+1. **Lighting / clear color**. `setupScene()` in the cart calls
+   `scene.setClearColor(0x1f4f9a)` + ambient + directional + fog. The
+   Godot host's interpretation of those values likely differs from
+   threejs's post-#dbefb02 corrected-vibrancy pipeline. Capture a
+   Godot screenshot of `level1` and a web screenshot of the same
+   level, then walk the diff: clear color, ambient intensity,
+   directional light vector, fog near/far, bloom strength.
+
+2. **Combat skybox / GLB enemies**. Combat depends on `nova64.light.createSolidSkybox` (purple sky) + GLB enemy models. Both should work on Godot — `scene.background` is bridged and GLB loading goes through `model.load`. But validate by checking `__INDIE_ODYSSEY_STATE.combatEnemyAssets[*].modelStatus` after `forceCombat`. Anything other than `'ready'` is a real bug.
+
+3. **Story slides + combat sprite overlay missing entirely** (per Issues 1 + 2). On the Godot host these were always going to need the cart-framebuffer fallback path; the web path is too DOM-dependent. Two options:
+   - **Quick**: have indie-odyssey detect Godot (e.g. via `nova64.scene.getBackendCapabilities().backend`) and use the cart framebuffer (`fill` + `drawText` + `drawImage` if exposed) for story slides + combat sprites instead of the DOM canvases. Loses the pixel-melt transition but preserves gameplay.
+   - **Right**: extend the Godot host bridge with a `canvas2D` overlay command (mirrors the engine's existing `getStageCtx` 2D overlay on the web side). Then the existing canvas paths "just work" via a thin shim.
+
+4. **Bloom**. `setupScene` enables bloom at strength 0.28 (post-tuning). On Godot the bloom command surface is `env.set`; check it's actually being driven by the cart's `fx.enableBloom` call and that the strength translates 1:1.
+
+## Suggested order of attack
+
+The first two are mechanical fixes that should be done together:
+
+1. **Make all four `runtime/api-*.js` helpers DOM-safe.** Guard every `document` / `window` / `getComputedStyle` touch with a `typeof` check; return an inert no-op handle on hosts without DOM. Same edit to indie-odyssey's `getCombatSpriteContext` / `getStoryFrameContext`. This unblocks the cart from crashing on Godot — even if story/combat UI are blank, gameplay should not throw.
+
+2. **Migrate `nova64.story` off `window.addEventListener` and `new Image()`.** Poll `nova64.input` in `_tick`; load images via `nova64.scene.loadTexture(url)` (which already runs cross-backend). Once this is done, story slides become genuinely cross-backend instead of web-only.
+
+3. **Capture a screenshot diff of `level1`** (web vs Godot, same player position) and triage the visual gap. The biggest tells will be lighting/fog/clear-color — if those are off, everything looks wrong. Use `nova64-godot/scripts/visual_parity.mjs` or equivalent if available.
+
+4. **Decide the story/combat-UI path** (cart-fb fallback vs Godot host canvas2D bridge). Cart-fb is faster; host canvas2D is more general and benefits every future cart that needs HUD overlays.
+
+5. **Audit the cart's DOM touches one final time** — there are probably a few more outside the spots listed above (look for `document.` / `window.` / `Image()` in `code.js`).
+
+## Files / commits relevant to this hand-off
+
+- Cart code with DOM hot-spots: `examples/indie-odyssey/code.js` lines
+  ~2059, 2171, 2185–2186, 2221, 2239–2240, 2367 (and probably more —
+  audit).
+- Helper APIs that need DOM guards:
+  - `runtime/api-loader.js` (entire overlay is DOM)
+  - `runtime/api-story.js:74, 390` (getComputedStyle, window listener)
+  - `runtime/api-video.js:311, 349` (getComputedStyle, window listener)
+  - `runtime/api-level.js` — should be DOM-free already, double-check.
+- Godot port location:
+  `nova64-godot/tests/carts/indie-odyssey/` (canonical) →
+  `nova64-godot/godot_project/carts/indie-odyssey/` (synced).
+- Godot host contract: `docs/GODOT_HOST_CONTRACT.md`. Add a
+  `canvas2D.create / blit / clear / destroy` section if going the host-
+  canvas route.
+- Backlog entries to mark progress against:
+  `BACKLOG.md` → `nova64.video host coverage (RetroArch + Godot)`
+  and `indie-odyssey on Godot host`.
+
+## Branch state at hand-off
+
+```
+* 14ce383 feat(godot): port indie-odyssey + document video host contract
+* e2794ea feat(runtime): nova64.{loader,story,level,video} cart-helper APIs
+* 0e2b591 fix(retroarch): tune demoscene scenes 2/3/4 toward corrected browser reference
+* dbefb02 fix(runtime): restore threejs color vibrancy
+```
+
+Working tree clean except `.claude/settings.json` (local IDE) and
+`tmp/` (gitignored). No outstanding rebases.

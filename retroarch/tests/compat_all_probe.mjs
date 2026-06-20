@@ -3,7 +3,6 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import zlib from 'node:zlib';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const outDir = process.env.NOVA64_COMPAT_OUT || '/tmp/compat-all';
@@ -25,137 +24,24 @@ const carts = fs
   .filter(name => cartFilter.size === 0 || cartFilter.has(name))
   .sort();
 
-function crc32(buffer) {
-  let crc = ~0;
-  for (const byte of buffer) {
-    crc ^= byte;
-    for (let i = 0; i < 8; i++) crc = (crc >>> 1) ^ (0xedb88320 & -(crc & 1));
-  }
-  return ~crc >>> 0;
-}
-
-function dosDateTime(date = new Date()) {
-  const year = Math.max(1980, date.getFullYear());
-  return {
-    dosTime: (date.getHours() << 11) | (date.getMinutes() << 5) | Math.floor(date.getSeconds() / 2),
-    dosDate: ((year - 1980) << 9) | ((date.getMonth() + 1) << 5) | date.getDate(),
-  };
-}
-
-function u16(value) {
-  const buffer = Buffer.alloc(2);
-  buffer.writeUInt16LE(value);
-  return buffer;
-}
-
-function u32(value) {
-  const buffer = Buffer.alloc(4);
-  buffer.writeUInt32LE(value >>> 0);
-  return buffer;
-}
-
-function makeZip(files) {
-  const localParts = [];
-  const centralParts = [];
-  let offset = 0;
-  const { dosTime, dosDate } = dosDateTime(new Date('2026-01-01T00:00:00Z'));
-
-  for (const file of files) {
-    const name = Buffer.from(file.name);
-    const data = Buffer.isBuffer(file.data) ? file.data : Buffer.from(file.data);
-    const compressed = zlib.deflateRawSync(data);
-    const crc = crc32(data);
-    const local = Buffer.concat([
-      u32(0x04034b50),
-      u16(20),
-      u16(0),
-      u16(8),
-      u16(dosTime),
-      u16(dosDate),
-      u32(crc),
-      u32(compressed.length),
-      u32(data.length),
-      u16(name.length),
-      u16(0),
-      name,
-      compressed,
-    ]);
-    localParts.push(local);
-
-    centralParts.push(
-      Buffer.concat([
-        u32(0x02014b50),
-        u16(20),
-        u16(20),
-        u16(0),
-        u16(8),
-        u16(dosTime),
-        u16(dosDate),
-        u32(crc),
-        u32(compressed.length),
-        u32(data.length),
-        u16(name.length),
-        u16(0),
-        u16(0),
-        u16(0),
-        u16(0),
-        u32(0),
-        u32(offset),
-        name,
-      ])
-    );
-    offset += local.length;
-  }
-
-  const central = Buffer.concat(centralParts);
-  return Buffer.concat([
-    ...localParts,
-    central,
-    Buffer.concat([
-      u32(0x06054b50),
-      u16(0),
-      u16(0),
-      u16(files.length),
-      u16(files.length),
-      u32(central.length),
-      u32(offset),
-      u16(0),
-    ]),
-  ]);
-}
-
-function safePackagePath(name) {
-  if (typeof name !== 'string' || !name.trim()) throw new Error('invalid asset path');
-  const normalized = name.replace(/\\/g, '/');
-  if (
-    normalized.startsWith('/') ||
-    normalized.includes('\0') ||
-    normalized
-      .split('/')
-      .some(part => part === '..' || part === '')
-  ) {
-    throw new Error(`unsafe asset path: ${name}`);
-  }
-  return normalized;
-}
-
 function packageCart(cart) {
-  const dir = path.join(root, 'examples', cart);
-  const files = [{ name: 'code.js', data: fs.readFileSync(path.join(dir, 'code.js')) }];
-  const manifest = path.join(dir, 'manifest.json');
-  if (fs.existsSync(manifest)) {
-    const manifestData = fs.readFileSync(manifest);
-    const manifestJSON = JSON.parse(manifestData.toString('utf8'));
-    files.push({ name: 'manifest.json', data: manifestData });
-    for (const asset of manifestJSON.assets || []) {
-      const assetName = safePackagePath(asset);
-      files.push({ name: assetName, data: fs.readFileSync(path.join(dir, assetName)) });
-    }
-  }
-  const meta = path.join(dir, 'meta.json');
-  if (fs.existsSync(meta)) files.push({ name: 'meta.json', data: fs.readFileSync(meta) });
   const nova = path.join(outDir, cart + '.nova');
-  fs.writeFileSync(nova, makeZip(files));
+  const result = spawnSync(
+    'python3',
+    [
+      path.join(root, 'retroarch', 'tools', 'package_example_cart.py'),
+      '--repo-root',
+      root,
+      '--out-dir',
+      outDir,
+      cart,
+    ],
+    { cwd: root, encoding: 'utf8' }
+  );
+  if (result.status !== 0) {
+    const output = ((result.stdout || '') + (result.stderr || '')).trim();
+    throw new Error(output || `failed to package ${cart}`);
+  }
   return nova;
 }
 

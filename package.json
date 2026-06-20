@@ -76,6 +76,7 @@
     "retroarch:visual:demoscene": "node retroarch/tests/demoscene_visual_parity.mjs",
     "retroarch:visual:space-harrier": "node retroarch/tests/space_harrier_visual_parity.mjs",
     "retroarch:compat:examples": "node retroarch/tests/compat_all_probe.mjs",
+    "retroarch:package:example": "python3 retroarch/tools/package_example_cart.py",
     "retroarch:perf:framerate": "node retroarch/tests/frame_rate_probe.mjs",
     "retroarch:refresh:windows": "python3 retroarch/tools/refresh_windows_imports.py",
     "retroarch:refresh:windows:dry": "python3 retroarch/tools/refresh_windows_imports.py --dry-run",

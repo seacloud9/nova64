@@ -2,7 +2,7 @@
 
 Tracking which carts from `examples/` have been ported to `retroarch/games/` for cross-platform parity testing. Each ported cart should produce visually comparable output to its web sibling when run through the parity harness.
 
-Last updated: 2026-06-01
+Last updated: 2026-06-20
 
 ## Legend
 
@@ -42,6 +42,15 @@ These ship in RetroArch first; we may back-port to `examples/` later.
 | `retroarch/games/space-shooter.js`        | Existing |
 | `retroarch/games/stealth-runner.js`       | Existing |
 | `retroarch/games/wave-survival.js`        | Existing |
+
+## Packaged Web Carts
+
+These are original `examples/` carts bundled directly as `.nova` packages with
+their manifest assets, rather than hand-written `retroarch/games/*.js` ports.
+
+| Web cart         | RA package                              | Notes |
+| ---------------- | ---------------------------------------- | ----- |
+| `indie-odyssey`  | `retroarch/games/indie-odyssey.nova`     | Full example cart packaged with story images, sprites, and GLBs. Harness smoke passes in software and GLES modes; real RetroArch visual parity still needs live review. |
 
 ## Queued for port — easy/medium (🟢)
 

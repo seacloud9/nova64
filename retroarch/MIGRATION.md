@@ -83,6 +83,16 @@ with ZipFile("my-cart.nova", "w", ZIP_DEFLATED) as z:
     z.writestr("manifest.json", open("manifest.json").read())
 ```
 
+For a cart that already lives under `examples/<name>/` with a manifest asset
+list, use the repo helper:
+
+```bash
+pnpm run retroarch:package:example -- indie-odyssey
+```
+
+This writes `retroarch/games/indie-odyssey.nova` with `code.js`,
+`manifest.json`, optional `meta.json`, and every asset listed in the manifest.
+
 ---
 
 ## Step 4 — Replace asset formats

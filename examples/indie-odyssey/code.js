@@ -2000,6 +2000,16 @@ function drawButton(x, y, w, h, text, active = false) {
 }
 
 function drawCenteredIn(text, x, y, w, h, color, size) {
+  if (
+    drawSharedTextBox(text, x, y, w, h, color, size, {
+      align: 'center',
+      valign: 'middle',
+      overflow: 'fit',
+      minSize: 7,
+    })
+  ) {
+    return;
+  }
   drawText(
     text,
     x + Math.max(4, w / 2 - measureApprox(text, size) / 2),
@@ -2015,6 +2025,22 @@ function textScale(size) {
 
 function measureApprox(text, size) {
   return text.length * 6 * textScale(size);
+}
+
+function drawSharedTextBox(text, x, y, w, h, color, size, options = {}) {
+  const textBox = ns('draw.textBox') || ns('draw.drawTextBox');
+  if (typeof textBox !== 'function') return false;
+  const minSize = Math.max(6, Math.min(size, options.minSize || size));
+  textBox(text || '', x, y, w, h, {
+    color: uiColor(color),
+    scale: textScale(size),
+    minScale: textScale(minSize),
+    align: options.align || 'left',
+    valign: options.valign || 'top',
+    overflow:
+      options.overflow || (options.fit ? 'fit' : options.ellipsis === false ? 'wrap' : 'ellipsis'),
+  });
+  return true;
 }
 
 function uiColor(color) {
@@ -2220,11 +2246,19 @@ function drawStoryFramebufferOverlay(text, W, H, progress = 1) {
   const panelH = H * 0.24;
   drawPanel(28, panelY, W - 56, panelH, '');
   fill(42, panelY + 12, W - 84, panelH - 24, 0x000000aa);
-  wrapTextBox(text || '', 56, panelY + 24, W - 112, panelH - 52, COLORS.yellow, 14, {
-    ellipsis: false,
-    fit: true,
-    minSize: 9,
-  });
+  if (
+    !drawSharedTextBox(text || '', 56, panelY + 24, W - 112, panelH - 52, COLORS.yellow, 14, {
+      ellipsis: false,
+      fit: true,
+      minSize: 9,
+    })
+  ) {
+    wrapTextBox(text || '', 56, panelY + 24, W - 112, panelH - 52, COLORS.yellow, 14, {
+      ellipsis: false,
+      fit: true,
+      minSize: 9,
+    });
+  }
   const hint = progress < 1 ? 'syncing datastream...' : 'Enter/Space to continue';
   drawCentered(hint, H - 28, progress < 1 ? COLORS.cyan : COLORS.muted, 10);
 }
@@ -2313,11 +2347,28 @@ function drawStoryHostFallback(frame, W, H, progress = 1) {
   drawCentered(frameName, cardY + cardH - 20, COLORS.muted, 10);
 
   drawPanel(28, panelY, W - 56, H * 0.24, '');
-  wrapTextBox(frame?.text || '', 42, panelY + 22, W - 84, H * 0.24 - 48, COLORS.white, 12, {
-    ellipsis: false,
-    fit: true,
-    minSize: 9,
-  });
+  if (
+    !drawSharedTextBox(
+      frame?.text || '',
+      42,
+      panelY + 22,
+      W - 84,
+      H * 0.24 - 48,
+      COLORS.white,
+      12,
+      {
+        ellipsis: false,
+        fit: true,
+        minSize: 9,
+      }
+    )
+  ) {
+    wrapTextBox(frame?.text || '', 42, panelY + 22, W - 84, H * 0.24 - 48, COLORS.white, 12, {
+      ellipsis: false,
+      fit: true,
+      minSize: 9,
+    });
+  }
   const hint = progress < 1 ? 'syncing datastream...' : 'Enter/Space to continue';
   drawCentered(hint, H - 28, progress < 1 ? COLORS.cyan : COLORS.muted, 10);
 }

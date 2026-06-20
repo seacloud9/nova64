@@ -19583,7 +19583,7 @@ static JSValue js_color_fade(JSContext *ctx, JSValueConst this_val, int argc, JS
 }
 
 /* drawTextBox(x,y,w,h,text,color,bgColor) */
-static JSValue js_draw_text_box(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+static JSValue js_draw_text_box_border(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
    (void)this_val;
    int xv=int_from_js(ctx,argv[0],0), yv=int_from_js(ctx,argv[1],0);
@@ -25544,6 +25544,181 @@ static JSValue js_measure_text(JSContext *ctx, JSValueConst this_val, int argc, 
    JS_FreeCString(ctx, text);
    return obj;
 }
+
+static bool js_get_string_prop(JSContext *ctx, JSValueConst obj, const char *name,
+      char *out, size_t out_size)
+{
+   if (!out || out_size == 0 || JS_IsUndefined(obj) || JS_IsNull(obj))
+      return false;
+   JSValue value = JS_GetPropertyStr(ctx, obj, name);
+   if (JS_IsUndefined(value) || JS_IsNull(value)) {
+      JS_FreeValue(ctx, value);
+      return false;
+   }
+   const char *s = JS_ToCString(ctx, value);
+   if (!s) {
+      JS_FreeValue(ctx, value);
+      return false;
+   }
+   snprintf(out, out_size, "%s", s);
+   JS_FreeCString(ctx, s);
+   JS_FreeValue(ctx, value);
+   return true;
+}
+
+static int js_get_int_prop(JSContext *ctx, JSValueConst obj, const char *name, int fallback)
+{
+   if (JS_IsUndefined(obj) || JS_IsNull(obj))
+      return fallback;
+   JSValue value = JS_GetPropertyStr(ctx, obj, name);
+   int out = int_from_js(ctx, value, fallback);
+   JS_FreeValue(ctx, value);
+   return out;
+}
+
+static bool js_get_bool_prop(JSContext *ctx, JSValueConst obj, const char *name, bool fallback)
+{
+   if (JS_IsUndefined(obj) || JS_IsNull(obj))
+      return fallback;
+   JSValue value = JS_GetPropertyStr(ctx, obj, name);
+   bool out = (JS_IsUndefined(value) || JS_IsNull(value)) ? fallback : JS_ToBool(ctx, value);
+   JS_FreeValue(ctx, value);
+   return out;
+}
+
+static uint32_t js_get_color_prop(JSContext *ctx, JSValueConst obj, const char *name, uint32_t fallback)
+{
+   if (JS_IsUndefined(obj) || JS_IsNull(obj))
+      return fallback;
+   JSValue value = JS_GetPropertyStr(ctx, obj, name);
+   uint32_t out = color_from_js(ctx, value, fallback);
+   JS_FreeValue(ctx, value);
+   return out;
+}
+
+/* drawTextBox/textBox(text, x, y, w, h, opts)
+   opts: { color, scale, minScale, align, valign, overflow, fit, ellipsis, lineHeight } */
+static JSValue js_draw_text_box_layout(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 5)
+      return JS_UNDEFINED;
+
+   const char *text = JS_ToCString(ctx, argv[0]);
+   if (!text)
+      return JS_UNDEFINED;
+
+   int x = 0, y = 0;
+   transform_2d_point(int_from_js(ctx, argv[1], 0), int_from_js(ctx, argv[2], 0), &x, &y);
+   int box_w = transform_2d_size(int_from_js(ctx, argv[3], 0));
+   int box_h = transform_2d_size(int_from_js(ctx, argv[4], 0));
+   JSValueConst opts = argc > 5 ? argv[5] : JS_UNDEFINED;
+
+   uint32_t color = js_get_color_prop(ctx, opts, "color", rgba8(255, 255, 255, 255));
+   int start_scale = clamp_text_scale(js_get_int_prop(ctx, opts, "scale", 1));
+   int min_scale = clamp_text_scale(js_get_int_prop(ctx, opts, "minScale", start_scale));
+   if (min_scale > start_scale) min_scale = start_scale;
+   int line_height_opt = js_get_int_prop(ctx, opts, "lineHeight", 0);
+   char overflow[16] = "ellipsis";
+   js_get_string_prop(ctx, opts, "overflow", overflow, sizeof(overflow));
+   char align_name[16] = "left";
+   js_get_string_prop(ctx, opts, "align", align_name, sizeof(align_name));
+   char valign_name[16] = "top";
+   js_get_string_prop(ctx, opts, "valign", valign_name, sizeof(valign_name));
+   bool fit = js_get_bool_prop(ctx, opts, "fit", false) || !strcmp(overflow, "fit");
+   bool ellipsis = js_get_bool_prop(ctx, opts, "ellipsis", true) && strcmp(overflow, "wrap");
+
+   enum { MAX_LINES = 64, MAX_LINE_CHARS = 256 };
+   char lines[MAX_LINES][MAX_LINE_CHARS];
+   int line_count = 0;
+   int truncated = 0;
+   int scale = start_scale;
+   int line_height = 0;
+   int max_chars = 1;
+
+   for (;;) {
+      memset(lines, 0, sizeof(lines));
+      line_count = 0;
+      truncated = 0;
+      line_height = line_height_opt > 0 ? line_height_opt : (7 * scale + 4);
+      int max_lines = box_h > 0 ? box_h / line_height : 1;
+      if (max_lines < 1) max_lines = 1;
+      if (max_lines > MAX_LINES) max_lines = MAX_LINES;
+      max_chars = box_w > 0 ? box_w / (6 * scale) : 1;
+      if (max_chars < 1) max_chars = 1;
+      if (max_chars >= MAX_LINE_CHARS) max_chars = MAX_LINE_CHARS - 1;
+
+      char *copy = (char *)malloc(strlen(text) + 1);
+      if (!copy) break;
+      strcpy(copy, text);
+      char current[MAX_LINE_CHARS] = {0};
+      char *save = NULL;
+      char *word = strtok_r(copy, " \t\r\n", &save);
+      while (word) {
+         char next[MAX_LINE_CHARS];
+         if (current[0])
+            snprintf(next, sizeof(next), "%s %s", current, word);
+         else
+            snprintf(next, sizeof(next), "%s", word);
+         if ((int)strlen(next) > max_chars && current[0]) {
+            snprintf(lines[line_count++], MAX_LINE_CHARS, "%s", current);
+            snprintf(current, sizeof(current), "%s", word);
+            if (line_count >= max_lines) {
+               truncated = 1;
+               break;
+            }
+         } else {
+            snprintf(current, sizeof(current), "%s", next);
+         }
+         word = strtok_r(NULL, " \t\r\n", &save);
+      }
+      if (current[0] && line_count < max_lines)
+         snprintf(lines[line_count++], MAX_LINE_CHARS, "%s", current);
+      free(copy);
+
+      if (!fit || !truncated || scale <= min_scale)
+         break;
+      scale--;
+   }
+
+   if (truncated && ellipsis && line_count > 0) {
+      char *last = lines[line_count - 1];
+      int keep = max_chars - 3;
+      if (keep < 0) keep = 0;
+      if ((int)strlen(last) > keep)
+         last[keep] = '\0';
+      strncat(last, "...", MAX_LINE_CHARS - strlen(last) - 1);
+   }
+
+   int total_h = line_count * line_height;
+   int draw_y = y;
+   if (!strcmp(valign_name, "middle") || !strcmp(valign_name, "center"))
+      draw_y += (box_h - total_h) > 0 ? (box_h - total_h) / 2 : 0;
+   else if (!strcmp(valign_name, "bottom"))
+      draw_y += (box_h - total_h) > 0 ? (box_h - total_h) : 0;
+
+   for (int i = 0; i < line_count; i++) {
+      int draw_x = x;
+      int line_w = text_pixel_width_scaled(lines[i], scale);
+      if (!strcmp(align_name, "center"))
+         draw_x += (box_w - line_w) / 2;
+      else if (!strcmp(align_name, "right"))
+         draw_x += box_w - line_w;
+      draw_text_scaled_aligned(lines[i], draw_x, draw_y + i * line_height, color, scale, 0);
+   }
+
+   JSValue obj = JS_NewObject(ctx);
+   JS_SetPropertyStr(ctx, obj, "truncated", JS_NewBool(ctx, truncated));
+   JS_SetPropertyStr(ctx, obj, "scale", JS_NewInt32(ctx, scale));
+   JS_SetPropertyStr(ctx, obj, "lineHeight", JS_NewInt32(ctx, line_height));
+   JSValue arr = JS_NewArray(ctx);
+   for (int i = 0; i < line_count; i++)
+      JS_SetPropertyUint32(ctx, arr, (uint32_t)i, JS_NewString(ctx, lines[i]));
+   JS_SetPropertyStr(ctx, obj, "lines", arr);
+   JS_FreeCString(ctx, text);
+   return obj;
+}
+
 static JSValue js_print_centered(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
    (void)this_val;
@@ -30244,6 +30419,8 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, draw, "textHeight", js_text_height, 1);
    set_function(ctx, draw, "textSize", js_text_size, 1);
    set_function(ctx, draw, "measureText", js_measure_text, 2);
+   set_function(ctx, draw, "drawTextBox", js_draw_text_box_layout, 6);
+   set_function(ctx, draw, "textBox", js_draw_text_box_layout, 6);
    set_function(ctx, draw, "printCentered", js_print_centered, 5);
    set_function(ctx, draw, "printRight", js_print_right, 5);
    set_function(ctx, draw, "printShadow", js_print_shadow, 8);
@@ -32370,7 +32547,7 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, global, "screenFlipH",       js_screen_flip_h,      0);
    set_function(ctx, global, "screenFlipV",       js_screen_flip_v,      0);
    set_function(ctx, global, "colorFade",         js_color_fade,         2);
-   set_function(ctx, global, "drawTextBox",       js_draw_text_box,      7);
+   set_function(ctx, global, "drawTextBox",       js_draw_text_box_border, 7);
    set_function(ctx, global, "screenThermal",     js_screen_thermal,     0);
    set_function(ctx, global, "drawArrowCurved",   js_draw_arrow_curved,  6);
 

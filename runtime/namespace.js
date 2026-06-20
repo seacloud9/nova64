@@ -44,6 +44,8 @@ export const NAMESPACE_MAP = {
     'drawSpiral',
     'drawCheckerboard',
     'measureText',
+    'drawTextBox',
+    'textBox',
     'printCentered',
     'printRight',
     'drawGlowText',

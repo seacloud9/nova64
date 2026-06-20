@@ -826,8 +826,7 @@
   };
   function measureText(text, scale) {
     scale = typeof scale === 'number' ? scale : 1;
-    // Approximate: 8 pixels per character at scale 1
-    return { width: (text ? text.length : 0) * 8 * scale };
+    return { width: (text ? text.length : 0) * 6 * scale, height: 7 * scale };
   }
   function scrollingText(text, y, speed, time, color, scale, width) {
     scale = typeof scale === 'number' ? scale : 1;
@@ -990,6 +989,79 @@
     const sc = typeof scale === 'number' ? scale : 1;
     const w = s.length * 6 * sc;
     novaPrint(s, (rx | 0) - w | 0, y | 0, color, sc);
+  }
+  function layoutTextBox(text, maxWidth, maxHeight, opts) {
+    opts = opts || {};
+    const words = String(text == null ? '' : text).split(/\s+/).filter(Boolean);
+    const overflow = opts.overflow || (opts.ellipsis === false ? 'wrap' : 'ellipsis');
+    const fit = opts.fit === true || overflow === 'fit';
+    const startScale = Math.max(1, Math.round(opts.scale == null ? 1 : opts.scale));
+    const minScale = Math.max(1, Math.min(startScale, Math.round(opts.minScale == null ? startScale : opts.minScale)));
+
+    function layout(scale) {
+      const metrics = measureText('M', scale);
+      const charWidth = Math.max(1, metrics.width);
+      const lineHeight = Math.max(1, Math.round(opts.lineHeight == null ? metrics.height + 4 : opts.lineHeight));
+      const maxLines = Math.max(1, Math.floor(maxHeight / lineHeight));
+      const maxChars = Math.max(1, Math.floor(maxWidth / charWidth));
+      const lines = [];
+      let line = '';
+      let truncated = false;
+      for (let i = 0; i < words.length; i++) {
+        const word = words[i];
+        const next = line ? line + ' ' + word : word;
+        if (next.length > maxChars && line) {
+          lines.push(line);
+          line = word;
+          if (lines.length >= maxLines) {
+            truncated = true;
+            break;
+          }
+        } else {
+          line = next;
+        }
+      }
+      if (line && lines.length < maxLines) lines.push(line);
+      return { lines, lineHeight, maxChars, truncated, scale };
+    }
+
+    let result = layout(startScale);
+    while (fit && result.truncated && result.scale > minScale) {
+      result = layout(result.scale - 1);
+    }
+    if (result.truncated && overflow === 'ellipsis' && result.lines.length) {
+      const last = result.lines[result.lines.length - 1].replace(/\s+$/, '');
+      result.lines[result.lines.length - 1] =
+        last.length > 3 ? last.slice(0, Math.max(0, result.maxChars - 3)) + '...' : last;
+    }
+    return result;
+  }
+  function drawTextBox(text, x, y, w, h, opts) {
+    opts = opts || {};
+    const result = layoutTextBox(text, w, h, opts);
+    const color = opts.color == null ? rgba8(255, 255, 255, 255) : opts.color;
+    const align = opts.align || 'left';
+    const valign = opts.valign || 'top';
+    const totalHeight = result.lines.length * result.lineHeight;
+    let yy = y;
+    if (valign === 'middle' || valign === 'center') yy += Math.max(0, (h - totalHeight) / 2);
+    else if (valign === 'bottom') yy += Math.max(0, h - totalHeight);
+
+    for (let i = 0; i < result.lines.length; i++) {
+      const lineText = result.lines[i];
+      let xx = x;
+      if (align === 'center') xx += (w - measureText(lineText, result.scale).width) / 2;
+      else if (align === 'right') xx += w - measureText(lineText, result.scale).width;
+      novaPrint(lineText, xx | 0, yy | 0, color, result.scale);
+      yy += result.lineHeight;
+    }
+
+    return {
+      lines: result.lines.slice(),
+      truncated: result.truncated,
+      scale: result.scale,
+      lineHeight: result.lineHeight,
+    };
   }
   function rect(x, y, w, h, color, filled) {
     const p = __tx(x, y);
@@ -6240,7 +6312,7 @@
   }
   const cameraNs = { setCameraPosition, setCameraTarget, setCameraFOV, setCameraLookAt, getCamera };
   const lightNs = { setLightDirection, setDirectionalLight, setFog, clearFog, createPointLight, removeLight, setPointLightPosition, createSpotLight, createAmbientLight, setAmbientLight, setLightColor, setLightEnergy, createGradientSkybox, createImageSkybox };
-  const drawNs = { cls, print: novaPrint, printCentered, printRight, rect, rectfill, line, image, drawImage, imageRegion, pixel, pset, circle, circfill, ellipse, ellipsefill, arc, bezier, drawRect, drawPanel, drawGlowText, drawGlowTextCentered, drawRadialGradient, drawGradient, drawProgressBar, drawHealthBar, drawPixelBorder, drawCrosshair, drawScanlines, drawNoise, drawTriangle, drawDiamond, drawStarburst, poly, rgba8, screenWidth, screenHeight, colorLerp, colorMix, hslColor, hexColor: function(hex, alpha) { return colorFromHex(hex, alpha); }, n64Palette, measureText, scrollingText, drawWave, drawPulsingText, drawCheckerboard, drawFloatingTexts, drawFloatingTexts3D, createMinimap, drawMinimap, drawSkyGradient };
+  const drawNs = { cls, print: novaPrint, printCentered, printRight, drawTextBox, textBox: drawTextBox, rect, rectfill, line, image, drawImage, imageRegion, pixel, pset, circle, circfill, ellipse, ellipsefill, arc, bezier, drawRect, drawPanel, drawGlowText, drawGlowTextCentered, drawRadialGradient, drawGradient, drawProgressBar, drawHealthBar, drawPixelBorder, drawCrosshair, drawScanlines, drawNoise, drawTriangle, drawDiamond, drawStarburst, poly, rgba8, screenWidth, screenHeight, colorLerp, colorMix, hslColor, hexColor: function(hex, alpha) { return colorFromHex(hex, alpha); }, n64Palette, measureText, scrollingText, drawWave, drawPulsingText, drawCheckerboard, drawFloatingTexts, drawFloatingTexts3D, createMinimap, drawMinimap, drawSkyGradient };
   const inputNs = {
     // raw key code surface (web-style codes)
     key, keyp, isKeyDown, isKeyPressed,

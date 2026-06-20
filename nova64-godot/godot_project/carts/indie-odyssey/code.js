@@ -671,10 +671,7 @@ function ensureOverlayParentPositioned(parent) {
 }
 
 function canUseHostTextureOverlay() {
-  return (
-    typeof ns('draw.image') === 'function' &&
-    typeof ns('scene.loadTexture') === 'function'
-  );
+  return typeof ns('draw.image') === 'function' && typeof ns('scene.loadTexture') === 'function';
 }
 
 function clone(value) {
@@ -2161,7 +2158,12 @@ function drawStoryHostTransitionFrame(activeTransition, W, H) {
   const fromTexture = ensureHostTexture(activeTransition.from?.image);
   const toTexture = ensureHostTexture(activeTransition.to?.image);
   if (!fromTexture && !toTexture) {
-    drawStoryHostFrame(progress < 0.5 ? activeTransition.from : activeTransition.to, W, H, progress);
+    drawStoryHostFrame(
+      progress < 0.5 ? activeTransition.from : activeTransition.to,
+      W,
+      H,
+      progress
+    );
     return true;
   }
 
@@ -2218,7 +2220,11 @@ function drawStoryFramebufferOverlay(text, W, H, progress = 1) {
   const panelH = H * 0.24;
   drawPanel(28, panelY, W - 56, panelH, '');
   fill(42, panelY + 12, W - 84, panelH - 24, 0x000000aa);
-  wrapTextBox(text || '', 56, panelY + 24, W - 112, panelH - 52, COLORS.yellow, 14);
+  wrapTextBox(text || '', 56, panelY + 24, W - 112, panelH - 52, COLORS.yellow, 14, {
+    ellipsis: false,
+    fit: true,
+    minSize: 9,
+  });
   const hint = progress < 1 ? 'syncing datastream...' : 'Enter/Space to continue';
   drawCentered(hint, H - 28, progress < 1 ? COLORS.cyan : COLORS.muted, 10);
 }
@@ -2238,7 +2244,13 @@ function drawStoryHostFallback(frame, W, H, progress = 1) {
   for (let i = 0; i < 18; i++) {
     const x = (i * 71 + Math.floor(time * 18)) % W;
     const y = top + ((i * 37 + storyIndex * 19) % Math.max(1, storyH - 38));
-    fill(x, y, 28 + (i % 3) * 16, 2, i % 2 ? overlayColor(0xff00cc, 119) : overlayColor(0x00ffff, 119));
+    fill(
+      x,
+      y,
+      28 + (i % 3) * 16,
+      2,
+      i % 2 ? overlayColor(0xff00cc, 119) : overlayColor(0x00ffff, 119)
+    );
   }
 
   const cardX = margin;
@@ -2258,11 +2270,23 @@ function drawStoryHostFallback(frame, W, H, progress = 1) {
   for (let i = 0; i < 9; i++) {
     const t = (i + 1) / 10;
     const x = artX + artW * t;
-    line2d(x, artY, W / 2 + Math.sin(time + i) * 36, artY + artH, i % 2 ? COLORS.magenta : COLORS.floorGrid);
+    line2d(
+      x,
+      artY,
+      W / 2 + Math.sin(time + i) * 36,
+      artY + artH,
+      i % 2 ? COLORS.magenta : COLORS.floorGrid
+    );
   }
   for (let i = 0; i < 6; i++) {
     const y = artY + artH * ((i + 1) / 7);
-    line2d(artX, y, artX + artW, y + Math.sin(time * 1.4 + i) * 8, i % 2 ? COLORS.blue : COLORS.green);
+    line2d(
+      artX,
+      y,
+      artX + artW,
+      y + Math.sin(time * 1.4 + i) * 8,
+      i % 2 ? COLORS.blue : COLORS.green
+    );
   }
   const shardW = artW * (0.16 + pulse * 0.03);
   const shardX = artX + artW * 0.5;
@@ -2289,7 +2313,11 @@ function drawStoryHostFallback(frame, W, H, progress = 1) {
   drawCentered(frameName, cardY + cardH - 20, COLORS.muted, 10);
 
   drawPanel(28, panelY, W - 56, H * 0.24, '');
-  wrapTextBox(frame?.text || '', 42, panelY + 22, W - 84, H * 0.24 - 48, COLORS.white, 12);
+  wrapTextBox(frame?.text || '', 42, panelY + 22, W - 84, H * 0.24 - 48, COLORS.white, 12, {
+    ellipsis: false,
+    fit: true,
+    minSize: 9,
+  });
   const hint = progress < 1 ? 'syncing datastream...' : 'Enter/Space to continue';
   drawCentered(hint, H - 28, progress < 1 ? COLORS.cyan : COLORS.muted, 10);
 }
@@ -2692,7 +2720,14 @@ function drawCombatFramebufferFallback(W, H) {
     drawButton(button.x, button.y, button.w, button.h, label, false);
   });
   const auto = combatAutoButtonRect(W, H);
-  drawButton(auto.x, auto.y, auto.w, auto.h, state.autoplayEnabled ? 'AUTO ON' : 'AUTO OFF', state.autoplayEnabled);
+  drawButton(
+    auto.x,
+    auto.y,
+    auto.w,
+    auto.h,
+    state.autoplayEnabled ? 'AUTO ON' : 'AUTO OFF',
+    state.autoplayEnabled
+  );
 }
 
 function drawCombatBackdrop(W, H) {
@@ -2710,7 +2745,13 @@ function drawCombatBackdrop(W, H) {
   for (let i = 0; i < 20; i++) {
     const x = (i * 83 + Math.floor(time * 24)) % W;
     const y = 68 + ((i * 31) % Math.max(1, horizon - 88));
-    fill(x, y, 20 + (i % 4) * 10, 2, i % 2 ? overlayColor(0xff00cc, 136) : overlayColor(0x00ffff, 136));
+    fill(
+      x,
+      y,
+      20 + (i % 4) * 10,
+      2,
+      i % 2 ? overlayColor(0xff00cc, 136) : overlayColor(0x00ffff, 136)
+    );
   }
 }
 
@@ -2725,7 +2766,16 @@ function drawCombatEnemyCard(enemy, index, count, W, H) {
   rect(x - size * 0.42, y - size * 0.08, size * 0.84, size * 0.72, active ? COLORS.yellow : color);
   const texture = ensureHostTexture(enemy.sprite);
   if (texture) {
-    call('draw.image', null, texture, x - size * 0.44, y - size * 0.36, size * 0.88, size * 0.88, 0xffffffff);
+    call(
+      'draw.image',
+      null,
+      texture,
+      x - size * 0.44,
+      y - size * 0.36,
+      size * 0.88,
+      size * 0.88,
+      0xffffffff
+    );
   } else {
     fill(x - size * 0.18, y - size * 0.32, size * 0.36, size * 0.28, color);
     fill(x - size * 0.3, y - size * 0.04, size * 0.6, size * 0.5, color);
@@ -2733,9 +2783,18 @@ function drawCombatEnemyCard(enemy, index, count, W, H) {
   }
   line2d(x - size * 0.42, y + size * 0.64, x + size * 0.42, y + size * 0.64, COLORS.floorGrid);
   line2d(x - size * 0.28, y + size * 0.75, x + size * 0.28, y + size * 0.75, COLORS.magenta);
-  drawCenteredIn(enemy.name, x - 62, y + size * 0.76, 124, 18, active ? COLORS.yellow : COLORS.cyan, 10);
+  drawCenteredIn(
+    enemy.name,
+    x - 62,
+    y + size * 0.76,
+    124,
+    18,
+    active ? COLORS.yellow : COLORS.cyan,
+    10
+  );
   drawBar(x - 58, y + size * 0.94, 116, 12, enemy.hp, enemy.maxHp, COLORS.red, '');
-  if (enemy.modelStatus === 'loading') drawCenteredIn('LOADING GLB', x - 54, y + size * 1.08, 108, 14, COLORS.muted, 9);
+  if (enemy.modelStatus === 'loading')
+    drawCenteredIn('LOADING GLB', x - 54, y + size * 1.08, 108, 14, COLORS.muted, 9);
 }
 
 function getMaskedCombatSprite(src, image) {
@@ -2945,33 +3004,53 @@ function wrapText(text, x, y, maxWidth, color, size) {
   if (line) drawText(line, x, yy, color, size);
 }
 
-function wrapTextBox(text, x, y, maxWidth, maxHeight, color, size) {
-  const words = String(text || '').split(/\s+/).filter(Boolean);
-  const lineHeight = size + 4;
-  const maxLines = Math.max(1, Math.floor(maxHeight / lineHeight));
-  const maxChars = Math.max(12, Math.floor(maxWidth / (size * 0.55)));
-  const lines = [];
-  let line = '';
-  let truncated = false;
-  for (const word of words) {
-    const next = line ? `${line} ${word}` : word;
-    if (next.length > maxChars && line) {
-      lines.push(line);
-      line = word;
-      if (lines.length >= maxLines) {
-        truncated = true;
-        break;
+function wrapTextBox(text, x, y, maxWidth, maxHeight, color, size, options = {}) {
+  const words = String(text || '')
+    .split(/\s+/)
+    .filter(Boolean);
+  const ellipsis = options.ellipsis !== false;
+  const fit = options.fit === true;
+  const minSize = Math.max(6, Math.min(size, options.minSize || size));
+
+  function layout(currentSize) {
+    const lineHeight = currentSize + 4;
+    const maxLines = Math.max(1, Math.floor(maxHeight / lineHeight));
+    const maxChars = Math.max(12, Math.floor(maxWidth / (currentSize * 0.55)));
+    const lines = [];
+    let line = '';
+    let truncated = false;
+    for (const word of words) {
+      const next = line ? `${line} ${word}` : word;
+      if (next.length > maxChars && line) {
+        lines.push(line);
+        line = word;
+        if (lines.length >= maxLines) {
+          truncated = true;
+          break;
+        }
+      } else {
+        line = next;
       }
-    } else {
-      line = next;
     }
+    if (line && lines.length < maxLines) lines.push(line);
+    return { lines, lineHeight, maxChars, truncated };
   }
-  if (line && lines.length < maxLines) lines.push(line);
-  if (truncated && lines.length) {
-    const last = lines[lines.length - 1].replace(/\s+$/, '');
-    lines[lines.length - 1] = last.length > 3 ? `${last.slice(0, Math.max(0, maxChars - 3))}...` : last;
+
+  let currentSize = size;
+  let result = layout(currentSize);
+  while (fit && result.truncated && currentSize > minSize) {
+    currentSize -= 1;
+    result = layout(currentSize);
   }
-  lines.forEach((item, index) => drawText(item, x, y + index * lineHeight, color, size));
+
+  if (result.truncated && ellipsis && result.lines.length) {
+    const last = result.lines[result.lines.length - 1].replace(/\s+$/, '');
+    result.lines[result.lines.length - 1] =
+      last.length > 3 ? `${last.slice(0, Math.max(0, result.maxChars - 3))}...` : last;
+  }
+  result.lines.forEach((item, index) =>
+    drawText(item, x, y + index * result.lineHeight, color, currentSize)
+  );
 }
 
 function drawHUD() {
@@ -3102,7 +3181,14 @@ function drawTouchControls(W, H) {
   drawButton(82, H - 150, 52, 52, '^');
   drawButton(82, H - 42, 52, 52, 'v');
   const auto = autoButtonRect(W, H);
-  drawButton(auto.x, auto.y, auto.w, auto.h, state.autoplayEnabled ? 'AUTO' : 'MANUAL', state.autoplayEnabled);
+  drawButton(
+    auto.x,
+    auto.y,
+    auto.w,
+    auto.h,
+    state.autoplayEnabled ? 'AUTO' : 'MANUAL',
+    state.autoplayEnabled
+  );
   drawButton(W - 106, H - 60, 82, 36, 'INV');
 }
 
@@ -3234,12 +3320,19 @@ function drawOverlayEffects() {
         const cell =
           ((x / block + y / block + Math.floor(time * 18)) | 0) % (combatTransition ? 2 : 3);
         if (cell === 0)
-          fill(x, y, block - 1, block - 1, combatTransition ? overlayColor(0x001a33, 170) : overlayColor(0x000000, 153));
+          fill(
+            x,
+            y,
+            block - 1,
+            block - 1,
+            combatTransition ? overlayColor(0x001a33, 170) : overlayColor(0x000000, 153)
+          );
       }
     }
     if (combatTransition) {
       const cap = Math.max(2, H * (1 - p) * 0.08);
-      for (let y = 0; y < H; y += Math.max(5, 12 - Math.floor(p * 7))) fill(0, y, W, 1, overlayColor(0x00ffff, 102));
+      for (let y = 0; y < H; y += Math.max(5, 12 - Math.floor(p * 7)))
+        fill(0, y, W, 1, overlayColor(0x00ffff, 102));
       fill(0, 0, W, cap, overlayColor(0xff00cc, 136));
       fill(0, H - cap, W, cap, overlayColor(0x00ffff, 136));
     }
@@ -3252,7 +3345,13 @@ function drawOverlayEffects() {
       const y = Math.floor((Math.sin(time * 19 + i * 3.1) + 1) * 0.5 * H);
       const h = 2 + Math.floor(strength * 9);
       const offset = Math.floor(Math.sin(time * 31 + i) * strength * 18);
-      fill(Math.min(0, offset), y, W + Math.abs(offset), h, i % 2 ? overlayColor(0xff00cc, 85) : overlayColor(0x00ffff, 85));
+      fill(
+        Math.min(0, offset),
+        y,
+        W + Math.abs(offset),
+        h,
+        i % 2 ? overlayColor(0xff00cc, 85) : overlayColor(0x00ffff, 85)
+      );
     }
   }
 }

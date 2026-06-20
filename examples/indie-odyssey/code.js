@@ -2220,7 +2220,11 @@ function drawStoryFramebufferOverlay(text, W, H, progress = 1) {
   const panelH = H * 0.24;
   drawPanel(28, panelY, W - 56, panelH, '');
   fill(42, panelY + 12, W - 84, panelH - 24, 0x000000aa);
-  wrapTextBox(text || '', 56, panelY + 24, W - 112, panelH - 52, COLORS.yellow, 14);
+  wrapTextBox(text || '', 56, panelY + 24, W - 112, panelH - 52, COLORS.yellow, 14, {
+    ellipsis: false,
+    fit: true,
+    minSize: 9,
+  });
   const hint = progress < 1 ? 'syncing datastream...' : 'Enter/Space to continue';
   drawCentered(hint, H - 28, progress < 1 ? COLORS.cyan : COLORS.muted, 10);
 }
@@ -2309,7 +2313,11 @@ function drawStoryHostFallback(frame, W, H, progress = 1) {
   drawCentered(frameName, cardY + cardH - 20, COLORS.muted, 10);
 
   drawPanel(28, panelY, W - 56, H * 0.24, '');
-  wrapTextBox(frame?.text || '', 42, panelY + 22, W - 84, H * 0.24 - 48, COLORS.white, 12);
+  wrapTextBox(frame?.text || '', 42, panelY + 22, W - 84, H * 0.24 - 48, COLORS.white, 12, {
+    ellipsis: false,
+    fit: true,
+    minSize: 9,
+  });
   const hint = progress < 1 ? 'syncing datastream...' : 'Enter/Space to continue';
   drawCentered(hint, H - 28, progress < 1 ? COLORS.cyan : COLORS.muted, 10);
 }
@@ -2996,36 +3004,53 @@ function wrapText(text, x, y, maxWidth, color, size) {
   if (line) drawText(line, x, yy, color, size);
 }
 
-function wrapTextBox(text, x, y, maxWidth, maxHeight, color, size) {
+function wrapTextBox(text, x, y, maxWidth, maxHeight, color, size, options = {}) {
   const words = String(text || '')
     .split(/\s+/)
     .filter(Boolean);
-  const lineHeight = size + 4;
-  const maxLines = Math.max(1, Math.floor(maxHeight / lineHeight));
-  const maxChars = Math.max(12, Math.floor(maxWidth / (size * 0.55)));
-  const lines = [];
-  let line = '';
-  let truncated = false;
-  for (const word of words) {
-    const next = line ? `${line} ${word}` : word;
-    if (next.length > maxChars && line) {
-      lines.push(line);
-      line = word;
-      if (lines.length >= maxLines) {
-        truncated = true;
-        break;
+  const ellipsis = options.ellipsis !== false;
+  const fit = options.fit === true;
+  const minSize = Math.max(6, Math.min(size, options.minSize || size));
+
+  function layout(currentSize) {
+    const lineHeight = currentSize + 4;
+    const maxLines = Math.max(1, Math.floor(maxHeight / lineHeight));
+    const maxChars = Math.max(12, Math.floor(maxWidth / (currentSize * 0.55)));
+    const lines = [];
+    let line = '';
+    let truncated = false;
+    for (const word of words) {
+      const next = line ? `${line} ${word}` : word;
+      if (next.length > maxChars && line) {
+        lines.push(line);
+        line = word;
+        if (lines.length >= maxLines) {
+          truncated = true;
+          break;
+        }
+      } else {
+        line = next;
       }
-    } else {
-      line = next;
     }
+    if (line && lines.length < maxLines) lines.push(line);
+    return { lines, lineHeight, maxChars, truncated };
   }
-  if (line && lines.length < maxLines) lines.push(line);
-  if (truncated && lines.length) {
-    const last = lines[lines.length - 1].replace(/\s+$/, '');
-    lines[lines.length - 1] =
-      last.length > 3 ? `${last.slice(0, Math.max(0, maxChars - 3))}...` : last;
+
+  let currentSize = size;
+  let result = layout(currentSize);
+  while (fit && result.truncated && currentSize > minSize) {
+    currentSize -= 1;
+    result = layout(currentSize);
   }
-  lines.forEach((item, index) => drawText(item, x, y + index * lineHeight, color, size));
+
+  if (result.truncated && ellipsis && result.lines.length) {
+    const last = result.lines[result.lines.length - 1].replace(/\s+$/, '');
+    result.lines[result.lines.length - 1] =
+      last.length > 3 ? `${last.slice(0, Math.max(0, result.maxChars - 3))}...` : last;
+  }
+  result.lines.forEach((item, index) =>
+    drawText(item, x, y + index * result.lineHeight, color, currentSize)
+  );
 }
 
 function drawHUD() {

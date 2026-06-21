@@ -300,3 +300,137 @@ The first two are mechanical fixes that should be done together:
 
 Working tree clean except `.claude/settings.json` (local IDE) and
 `tmp/` (gitignored). No outstanding rebases.
+
+---
+
+# 2026-06-20 — RetroArch core: textured GLB, combat unfreeze, UI colors, video demo → hand-off to Codex
+
+This session worked almost entirely in the **RetroArch libretro core**
+(`retroarch/nova64_libretro.c`) plus the indie-odyssey cart, driven by the
+user testing indie-odyssey in RetroArch (GLES). Reference notes for all of this
+are filed in **mempalace** (wings `nova64_retroarch`, `nova64`, `nova64_runtime`)
+— query those first.
+
+## Committed this session
+
+- **`0f965a6`** feat(retroarch): decode PNG/JPEG via stb_image + cache decodes.
+  Vendored `retroarch/stb_image.h`; `path_is_png`→`path_is_image`,
+  `decode_png_asset`→`decode_image_asset` (handles .png/.jpg/.jpeg). Added an
+  LRU **decoded-image cache** (32 slots / 96 MB) in `load_rgba_asset_pixels` —
+  fixed the story pixel-melt transition that re-decoded a multi-MB image ~3600×
+  per frame (25 s/frame ≈ frozen → 255 fps). `#undef L/C/R` between the
+  stb_vorbis and stb_image includes (macro clash).
+
+- **`2ab9e92`** feat(retroarch): textured glTF/GLB models + per-frame jobs + UI
+  color fixes. Three things:
+  1. **Per-frame job draining** — `js_host_call_frame` now drains the QuickJS
+     job queue after `update()` and `draw()`. Before, Promise `.then()`
+     scheduled during gameplay never ran, so `loadSceneModel`'s `onLoaded`
+     never set `modelStatus='ready'` → autoplay's `allModelsResolved` gate
+     never opened → **combat froze**. Guard: `retroarch/conformance/1135-promise-jobs.js`.
+     (Also fixed `loadVoxModel` async — re-locked conformance 692/703.)
+  2. **Textured glTF/GLB loader** — `nova64.scene.loadModel` (sync JS shim,
+     ~line 31643) now parses the GLB, builds a real mesh via `createMesh`
+     (uint32 indices for >64k-vert models like glitchRat; optional 8-float
+     pos+normal+uv stride), and decodes/uploads the embedded base-color JPEG
+     (`decodeImageBytes` → `createDataTexture` → `setMeshTexture`). Cube shader
+     gained `a_texcoord` + `u_use_vertex_uv`; data textures lazy-upload
+     (`gles_ensure_texture_uploaded`) so init-time loads still texture.
+     `getBackendCapabilities().models` is now `true`. **Verified: glitchRat and
+     portal render fully textured in GLES.**
+  3. **indie-odyssey 2D UI colors** — `uiColor()` returns a **BigInt** on the
+     native core so the 24-bit `0xRRGGBB→RGBA` promotion heuristic (which
+     false-positives on `rgba8(0,…)` → white/pink) is skipped; `rect()` passes
+     the explicit unfilled flag (`draw.rect` fills by default). Fixed the
+     white panels / pink text.
+
+## Uncommitted (working tree) — needs a decision
+
+- **Video demo** (NOT committed; user OK pending on the binary):
+  - `examples/story-video-demo/` (code.js + meta.json) — `nova64.story.play(…,
+    {autoAdvance:3})` → `nova64.video.playFullscreen('/assets/sample.mp4')` →
+    "THE END". User confirmed it "looked wonderful on the web".
+  - `public/assets/sample.mp4` — public-domain Big Buck Bunny (991 KB). Also
+    makes hello-helpers' existing video demo work.
+  - `console.html` — added the "🎬 Story → Video Demo" dropdown option.
+  - **Decide:** commit the ~1 MB mp4 into the repo, or keep the asset external.
+- **Godot cart copies** (`nova64-godot/.../carts/indie-odyssey/code.js`) are
+  diverged and were **NOT synced** with this session's cart changes (combat
+  revert, uiColor BigInt, rect). The uiColor/rect fixes are RetroArch-specific
+  (gated on the native core) and safe no-ops elsewhere, but sync before
+  shipping Godot.
+- `.claude/settings.json` (local IDE) — leave uncommitted.
+
+## Video status (answering "have we finished video?")
+
+Video is implemented **web-only** (`runtime/api-video.js`: HTML5 `<video>`
+overlay + THREE/BABYLON VideoTexture). The **RetroArch core has no mp4 decoder**
+— `playFullscreen` is a no-op there. Godot has a host-contract path
+(`docs/GODOT_HOST_CONTRACT.md`). Before this session there was no real mp4 in
+the repo, so video had never been demoed; now there is (`sample.mp4` + the demo
+cart). KEY: a cart must call `nova64.story._tick(dt)` in `update()` — the engine
+does not auto-drive helper ticks.
+
+## Visual verification tooling — use Chrome (powerful; Codex needs this too)
+
+This session verified the **web backend** live by driving a **real Chrome** via
+the `chrome-devtools` MCP — not just the headless RetroArch harness. This is the
+only way to validate the actual threejs/babylon rendering, DOM overlays, HTML5
+`<video>`, and UI colors (the libretro harness only renders the core's
+software-2D/GLES output, never the web backend). It is powerful and **Codex
+should be able to do the same** — it needs the `chrome-devtools` MCP server
+configured plus this launch recipe:
+
+```
+# 1) dev server under WSL (Windows node fails on pnpm/esbuild)
+wsl bash -lc 'export NVM_DIR=$HOME/.nvm; . $NVM_DIR/nvm.sh; nvm use 20; \
+  cd /mnt/c/Users/brend/exp/nova64; pnpm exec vite --port 3000 --host'
+# 2) Chrome with remote debugging + isolated profile (PowerShell)
+Start-Process chrome.exe -ArgumentList '--remote-debugging-port=9222',\
+  '--user-data-dir=C:\tmp\chrome-devtools-profile','--no-first-run',\
+  '--no-default-browser-check','http://localhost:3000/console.html?demo=<cart>'
+# verify: GET http://127.0.0.1:9222/json/version -> 200
+```
+
+Then `mcp__chrome-devtools__*` (new_page / navigate_page / take_screenshot /
+wait_for / list_console_messages / evaluate_script) connect to 127.0.0.1:9222.
+Without this, an agent can only validate the RetroArch core headlessly, not the
+web backend. (Full recipe also in mempalace `nova64/build`.)
+
+## Suggested next steps for Codex
+
+1. **Verify combat in RetroArch end-to-end** (live, with GLES/glcore video
+   driver). Enemies should load textured GLB models per the rule (model when it
+   loads, sprite on `'error'`); no white squares. Watch the `[nova64][glb]` log
+   lines (enable RetroArch Settings → Logging → Info).
+2. **Commit the video demo** (or externalise the mp4) once the user decides.
+3. **Sync the Godot cart copies** and validate combat/UI on the Godot host.
+4. **Textured-model follow-ups** (loader is geometry + one base-color texture
+   only): no skinning/animation, no PBR metalness/roughness/normal maps, ignores
+   glTF node transforms (a model may sit at an odd offset/scale). If enemies
+   look mis-placed, node-transform support is the likely cause.
+5. **Optional**: promote the per-frame `story._tick` requirement into the engine
+   loop so carts don't have to drive it (and audit other helper APIs:
+   `loader`, `level`, `video`).
+
+## Build / test / deploy (all WSL — see mempalace `nova64_retroarch/build`)
+
+```
+# Linux .so + harness (conformance / headless GLES capture)
+cd /mnt/c/Users/brend/exp/nova64/retroarch
+make platform=unix clean && make platform=unix -j4 && make harness
+# Windows DLL for RetroArch (ALWAYS clean when switching platforms)
+make platform=win-cross clean && make platform=win-cross -j4
+cp nova64_libretro.dll /mnt/c/RetroArch-Win64/cores/nova64_libretro.dll
+# Repackage the cart the playlist loads
+python3 retroarch/tools/package_example_cart.py indie-odyssey --out-dir retroarch/games
+# Headless GLES render check (Mesa EGL in WSL)
+NOVA64_GLES_TESTS=1 build/harness ./nova64_libretro.so <cart.nova> --gles --frames 4 --capture out.ppm
+python3 retroarch/tests/ppm_to_png.py out.ppm out.png
+# Conformance (batched): bash retroarch/tests/run_conformance.sh --skip-build --from N --to M
+```
+
+Software conformance 0–1135 is green; GLES primitives + textured models verified
+by headless capture. The deployed DLL (`C:\RetroArch-Win64\cores\`) and
+`retroarch/games/indie-odyssey.nova` are current as of the `2ab9e92` core + the
+latest cart repackage.

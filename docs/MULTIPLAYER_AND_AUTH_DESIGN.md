@@ -280,7 +280,24 @@ decision; don't block the main line.
 
 ---
 
-## 9. Open decisions (Phase 0 — needed before Phase 1 code)
+## 9. Decisions (Phase 0)
+
+**Locked (2026-06-21):**
+- **Hosting:** self-host locally via Docker for dev (`ws://localhost:2567`).
+- **Auth issuer:** **Supabase Auth** for social/OAuth/JWT (self-hostable, issues
+  a standard JWT that Colyseus `onAuth` verifies directly — no separate
+  session-minting service needed for OAuth). Wallet/SIWE is a thin custom step
+  that mints a Supabase-compatible session. `nova64.auth` keeps Supabase behind
+  the provider interface so it stays swappable.
+- **First social provider:** **Google** (via Supabase).
+- **Wallet scope:** EVM-only first (SIWE), Solana later behind the same seam.
+- **Repo layout:** monorepo (`/server`).
+- **v1 room model:** generic `StateRoom` (presence + position + relay).
+
+Still open (revisit before public deploy): production hosting, refresh-token
+rotation specifics, account-linking across providers.
+
+### Original option analysis
 
 1. **Server hosting**: self-host (Docker on a VPS) vs **Colyseus Cloud**.
    *Recommendation: self-host a single small instance for dev; revisit for prod.*

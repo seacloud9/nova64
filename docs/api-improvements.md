@@ -116,7 +116,14 @@ nova64.story.play([
 Engine owns the slide canvas, transition timing, "Press Enter to continue" prompt, image preload, and pixel-grid effect — same patterns indie-odyssey already has, but shared.
 **Effort:** Medium — port indie-odyssey's helpers up into `runtime/api-story.js` (new file) and expose as `nova64.story`.
 
-### 15. MP4 / video playback support ✅ PARTIAL (`nova64.video`)
+### 15. MP4 / video playback support ✅ LANDED (`nova64.video`)
+
+> **Now cross-backend.** Web, Godot, and RetroArch all play real video from one
+> `nova64.video.playFullscreen` call (RetroArch decodes MPEG1 in-core via
+> `pl_mpeg`, with MP2 audio mixing). See [VIDEO_GUIDE.md](VIDEO_GUIDE.md) and
+> [`examples/story-video-demo`](../examples/story-video-demo/code.js). Item #17
+> below (RetroArch/Godot hosts) is now landed, not a stub.
+
 
 **Why it matters:** cutscenes, animated logos, in-world TV screens, FMV-style sequences. There's currently no engine-supported path — carts would have to manually create a `<video>` element, manage z-index against the WebGL canvas, and worry about the same `canvas { background: #000 }` CSS trap that bit indie-odyssey combat overlays.
 **Proposed shape:**
@@ -176,22 +183,23 @@ Tile types beyond `wall`/`open` can supply a `spawn(p, x, z, tile)`
 function for custom geometry. The returned handle owns the mesh ids so
 cart cleanup is a one-liner.
 
-### 17. Video on RetroArch + Godot hosts (follow-up to #15)
+### 17. Video on RetroArch + Godot hosts (follow-up to #15) ✅ LANDED
 
-`nova64.video.loadTexture` returns a stub handle on RetroArch and Godot
-hosts because neither has a path from `HTMLVideoElement` → backend
-texture. Concrete options:
+Both native hosts now play **real fullscreen video**, not a stub — full guide in
+[VIDEO_GUIDE.md](VIDEO_GUIDE.md), demo in
+[`examples/story-video-demo`](../examples/story-video-demo/code.js).
 
-- **RetroArch**: the libretro core could expose a software MJPEG / FFmpeg
-  decode hook that lands frames in the cart framebuffer or in a backing
-  texture. Likely needs a new core entry point + bindings on the JS side.
-- **Godot**: `VideoStreamPlayer` for full-screen and `VideoStreamTexture`
-  for in-world. Needs the Godot host bridge to expose a video-load
-  RPC the cart can call via the engine adapter.
+- **RetroArch**: the libretro core decodes MPEG1 (`.mpg`) in-core via the
+  vendored single-header [`retroarch/pl_mpeg.h`](../retroarch/pl_mpeg.h)
+  (`__novaVideoOpen/Advance/Blit/Close`). Decoded frames blit into the 2D
+  framebuffer — shown directly in software mode, composited over 3D in GLES.
+  MP2 audio is mixed into the core's audio output (gated on `plm_probe`).
+- **Godot**: the gdextension bridge drives a native `VideoStreamPlayer`
+  (`video.playFullscreen/stop/poll`), playing Theora `.ogv`.
 
-Until those land, the stub logs a warning when `applyToMesh` is called
-on an unsupported backend, so cart authors get clear failure feedback
-rather than a silent no-op.
+`nova64.video.loadTexture` (in-world texture) remains web-only for now; native
+in-world video textures are the remaining follow-up. Generate per-backend assets
+with [`scripts/transcode-video.py`](../scripts/transcode-video.py).
 
 ---
 
@@ -231,9 +239,9 @@ Several FPS and space-shooter demos manually draw a crosshair using `line()` or 
 | 8   | Cone + Capsule primitives               | 🟡 Missing | Medium |
 | 13  | Hero-cart loader API (`nova64.loader`)  | ✅ Landed   | —      |
 | 14  | Story-mode helper (`nova64.story`)      | ✅ Landed   | —      |
-| 15  | MP4 / video playback (`nova64.video`)   | ✅ Partial  | (#17)  |
+| 15  | MP4 / video playback (`nova64.video`)   | ✅ Landed   | —      |
 | 16  | Grid-driven level (`nova64.level`)      | ✅ Landed   | —      |
-| 17  | Video on RetroArch + Godot hosts        | 🟡 Missing | Med-High |
+| 17  | Video on RetroArch + Godot hosts        | ✅ Landed   | —      |
 | 9   | Improve `printCentered` discoverability | 🟢 QoL     | Low    |
 | 10  | Document `createPointLight` signature   | 🟢 QoL     | Low    |
 | 11  | `print()` size shorthand                | 🟢 QoL     | Low    |

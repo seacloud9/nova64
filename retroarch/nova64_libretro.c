@@ -124,6 +124,7 @@ typedef unsigned char GLubyte;
 #define GL_TRUE 1
 #define GL_TRIANGLES 0x0004
 #define GL_UNSIGNED_SHORT 0x1403
+#define GL_UNSIGNED_INT 0x1405
 #define GL_TEXTURE_2D 0x0DE1
 #define GL_TEXTURE0 0x84C0
 #define GL_TEXTURE1 0x84C1
@@ -282,9 +283,10 @@ struct nova64_mesh {
    enum nova64_mesh_blend mesh_blend;
    int parent_handle;       /* 0 = no parent (8A scene hierarchy) */
    /* Custom mesh geometry (NOVA64_MESH_CUSTOM) */
-   float *custom_verts;       /* interleaved pos[3]+normal[3] per vertex, malloced */
+   float *custom_verts;       /* interleaved pos[3]+normal[3](+uv[2]) per vertex, malloced */
    unsigned custom_vert_count;
-   uint16_t *custom_indices;  /* triangle indices, malloced */
+   unsigned custom_vert_stride;  /* floats per vertex: 6 (pos+normal) or 8 (+uv) */
+   uint32_t *custom_indices;  /* triangle indices, malloced (uint32 for >64k-vert glTF) */
    unsigned custom_index_count;
    unsigned gl_custom_vbo;    /* GPU buffer handles, 0 = not uploaded */
    unsigned gl_custom_ibo;
@@ -352,6 +354,11 @@ struct nova64_texture {
    GLuint gl_name; /* 0 = not uploaded / software mode */
    int width;
    int height;
+   uint8_t *pending_pixels; /* RGBA kept for lazy GL upload when the GL context
+                             * wasn't ready at create time (e.g. data textures
+                             * built during cart init() before context_reset). */
+   bool pending_linear;
+   bool pending_clamp;
    char source_path[256];
 };
 
@@ -591,6 +598,8 @@ struct nova64_gles_backend {
    GLuint overlay_program;
    GLint cube_position_attrib;
    GLint cube_normal_attrib;
+   GLint cube_texcoord_attrib;
+   GLint cube_use_vertex_uv_uniform;
    GLint cube_instance_model_attrib;
    GLint cube_instance_color_attrib;
    GLint cube_mvp_uniform;
@@ -2269,8 +2278,13 @@ static void free_texture_gl(struct nova64_texture *tex)
 {
    if (tex && tex->gl_name && !tex->borrowed && gles.active && gles.DeleteTextures)
       gles.DeleteTextures(1, &tex->gl_name);
-   if (tex)
+   if (tex) {
       tex->gl_name = 0;
+      if (tex->pending_pixels) {
+         free(tex->pending_pixels);
+         tex->pending_pixels = NULL;
+      }
+   }
 }
 
 static void clear_textures(void)
@@ -13328,12 +13342,14 @@ static JSValue js_clone_mesh(JSContext *ctx, JSValueConst this_val, int argc, JS
    dst->gl_custom_vbo = 0;
    dst->gl_custom_ibo = 0;
    if (src->type == NOVA64_MESH_CUSTOM && src->custom_vert_count > 0) {
-      size_t vs = src->custom_vert_count * 6 * sizeof(float);
+      unsigned st = src->custom_vert_stride ? src->custom_vert_stride : 6;
+      dst->custom_vert_stride = st;
+      size_t vs = (size_t)src->custom_vert_count * st * sizeof(float);
       dst->custom_verts = (float *)malloc(vs);
       if (dst->custom_verts) memcpy(dst->custom_verts, src->custom_verts, vs);
       if (src->custom_index_count > 0) {
-         size_t is = src->custom_index_count * sizeof(uint16_t);
-         dst->custom_indices = (uint16_t *)malloc(is);
+         size_t is = (size_t)src->custom_index_count * sizeof(uint32_t);
+         dst->custom_indices = (uint32_t *)malloc(is);
          if (dst->custom_indices) memcpy(dst->custom_indices, src->custom_indices, is);
       }
    } else if (src->type == NOVA64_MESH_INSTANCED && src->instance_count > 0) {
@@ -27257,6 +27273,11 @@ static JSValue js_get_backend_capabilities(JSContext *ctx, JSValueConst this_val
    JS_SetPropertyStr(ctx, object, "hardwareGLES", JS_NewBool(ctx, gles.active));
    JS_SetPropertyStr(ctx, object, "softwareFallback", JS_NewBool(ctx, !gles.active));
    JS_SetPropertyStr(ctx, object, "primitives", JS_NewBool(ctx, true));
+   /* The core has a static glTF/GLB loader (loadModel parses
+    * positions/normals/indices into a lit custom mesh). No textures, skinning,
+    * or animation yet, but geometry + vertex colors render, so carts can load
+    * real models instead of placeholder cubes. */
+   JS_SetPropertyStr(ctx, object, "models", JS_NewBool(ctx, true));
    JS_SetPropertyStr(ctx, object, "meshOpacity", JS_NewBool(ctx, true));
    JS_SetPropertyStr(ctx, object, "meshTransparency", JS_NewBool(ctx, true));
    JS_SetPropertyStr(ctx, object, "meshShadowFlags", JS_NewBool(ctx, true));
@@ -28592,6 +28613,46 @@ static JSValue js_set_mesh_alpha_test(JSContext *ctx, JSValueConst this_val, int
    correctly along their length when paired with setMeshUVScale.
    opts.filter: 'nearest' (default) or 'linear'
    opts.wrap: 'repeat' (default) or 'clamp' */
+/* decodeImageBytes(bytes) -> { width, height, rgba(ArrayBuffer) } | null.
+ * Decodes a PNG/JPEG blob (e.g. a glTF GLB embedded baseColorTexture) to RGBA
+ * so a cart can upload it via createDataTexture. JS has no image decoder, so
+ * this exposes the core's stb_image path to the loader shim. */
+static JSValue js_decode_image_bytes(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   if (argc < 1)
+      return JS_NULL;
+   uint8_t *base = NULL;
+   size_t base_size = 0, off = 0, len = 0;
+   JSValue underlying = JS_UNDEFINED;
+   int ta = JS_GetTypedArrayType(argv[0]);
+   if (ta >= 0) {
+      underlying = JS_GetTypedArrayBuffer(ctx, argv[0], &off, &len, NULL);
+      if (JS_IsException(underlying))
+         return JS_NULL;
+      base = JS_GetArrayBuffer(ctx, &base_size, underlying);
+   } else {
+      base = JS_GetArrayBuffer(ctx, &base_size, argv[0]);
+      off = 0;
+      len = base_size;
+   }
+   if (!base || len == 0) {
+      if (!JS_IsUndefined(underlying)) JS_FreeValue(ctx, underlying);
+      return JS_NULL;
+   }
+   int w = 0, h = 0;
+   uint8_t *rgba = decode_image_asset(base + off, len, &w, &h);
+   if (!JS_IsUndefined(underlying)) JS_FreeValue(ctx, underlying);
+   if (!rgba)
+      return JS_NULL;
+   JSValue obj = JS_NewObject(ctx);
+   JS_SetPropertyStr(ctx, obj, "width", JS_NewInt32(ctx, w));
+   JS_SetPropertyStr(ctx, obj, "height", JS_NewInt32(ctx, h));
+   JS_SetPropertyStr(ctx, obj, "rgba", JS_NewArrayBufferCopy(ctx, rgba, (size_t)w * h * 4));
+   free(rgba);
+   return obj;
+}
+
 static JSValue js_create_data_texture(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
    (void)this_val;
@@ -28673,10 +28734,44 @@ static JSValue js_create_data_texture(JSContext *ctx, JSValueConst this_val, int
       gles.TexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, (GLsizei)w, (GLsizei)h, 0,
          GL_RGBA, GL_UNSIGNED_BYTE, base + pix_offset);
       gles.BindTexture(GL_TEXTURE_2D, 0);
+   } else {
+      /* GL context not ready yet (e.g. created in cart init()). Keep a CPU copy
+       * and upload lazily on the first render once the context exists. */
+      size_t bytes = (size_t)w * h * 4;
+      tex->pending_pixels = (uint8_t *)malloc(bytes);
+      if (tex->pending_pixels) {
+         memcpy(tex->pending_pixels, base + pix_offset, bytes);
+         tex->pending_linear = linear;
+         tex->pending_clamp = clamp;
+      }
    }
 
    if (!JS_IsUndefined(underlying)) JS_FreeValue(ctx, underlying);
    return JS_NewInt32(ctx, handle);
+}
+
+/* Upload a data texture's retained CPU pixels to GL on first use, for textures
+ * created before the GL context existed. No-op once uploaded or if not pending. */
+static void gles_ensure_texture_uploaded(struct nova64_texture *tex)
+{
+   if (!tex || tex->gl_name || !tex->pending_pixels)
+      return;
+   if (!gles.active || !gles.GenTextures || !gles.BindTexture || !gles.TexImage2D)
+      return;
+   gles.GenTextures(1, &tex->gl_name);
+   gles.ActiveTexture(GL_TEXTURE0);
+   gles.BindTexture(GL_TEXTURE_2D, tex->gl_name);
+   GLint f = tex->pending_linear ? GL_LINEAR : GL_NEAREST;
+   GLint wrap = tex->pending_clamp ? GL_CLAMP_TO_EDGE : GL_REPEAT;
+   gles.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, f);
+   gles.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, f);
+   gles.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, wrap);
+   gles.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, wrap);
+   gles.TexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, (GLsizei)tex->width, (GLsizei)tex->height, 0,
+      GL_RGBA, GL_UNSIGNED_BYTE, tex->pending_pixels);
+   gles.BindTexture(GL_TEXTURE_2D, 0);
+   free(tex->pending_pixels);
+   tex->pending_pixels = NULL;
 }
 
 static JSValue js_set_mesh_normal_map(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
@@ -30258,30 +30353,49 @@ static JSValue js_create_mesh(JSContext *ctx, JSValueConst this_val, int argc, J
    JS_ToUint32(ctx, &idx_len, idx_len_val);
    JS_FreeValue(ctx, idx_len_val);
    if (idx_len == 0 || idx_len % 3 != 0) return JS_NewInt32(ctx, 0);
+
+   /* Optional UV array (argv[3]): a vec2 per vertex. When present the mesh is
+    * stored with an 8-float (pos+normal+uv) stride and can be textured. */
+   bool has_uv = false;
+   if (argc > 3 && JS_IsObject(argv[3])) {
+      JSValue uvl = JS_GetPropertyStr(ctx, argv[3], "length");
+      uint32_t uv_len = 0;
+      JS_ToUint32(ctx, &uv_len, uvl);
+      JS_FreeValue(ctx, uvl);
+      if (uv_len == vert_count * 2) has_uv = true;
+   }
+   unsigned stride = has_uv ? 8 : 6;
+
    int handle = allocate_mesh(NOVA64_MESH_CUSTOM);
    if (!handle) return JS_NewInt32(ctx, 0);
    struct nova64_mesh *mesh = mesh_from_handle(handle);
-   float *verts = (float *)malloc(vert_count * 6 * sizeof(float));
+   float *verts = (float *)malloc((size_t)vert_count * stride * sizeof(float));
    if (!verts) { mesh->used = false; return JS_NewInt32(ctx, 0); }
    for (unsigned vi = 0; vi < vert_count; vi++) {
-      verts[vi*6+0] = read_float_from_js_arr(ctx, argv[0], vi*3+0);
-      verts[vi*6+1] = read_float_from_js_arr(ctx, argv[0], vi*3+1);
-      verts[vi*6+2] = read_float_from_js_arr(ctx, argv[0], vi*3+2);
-      verts[vi*6+3] = read_float_from_js_arr(ctx, argv[1], vi*3+0);
-      verts[vi*6+4] = read_float_from_js_arr(ctx, argv[1], vi*3+1);
-      verts[vi*6+5] = read_float_from_js_arr(ctx, argv[1], vi*3+2);
+      float *v = verts + (size_t)vi * stride;
+      v[0] = read_float_from_js_arr(ctx, argv[0], vi*3+0);
+      v[1] = read_float_from_js_arr(ctx, argv[0], vi*3+1);
+      v[2] = read_float_from_js_arr(ctx, argv[0], vi*3+2);
+      v[3] = read_float_from_js_arr(ctx, argv[1], vi*3+0);
+      v[4] = read_float_from_js_arr(ctx, argv[1], vi*3+1);
+      v[5] = read_float_from_js_arr(ctx, argv[1], vi*3+2);
+      if (has_uv) {
+         v[6] = read_float_from_js_arr(ctx, argv[3], vi*2+0);
+         v[7] = read_float_from_js_arr(ctx, argv[3], vi*2+1);
+      }
    }
-   uint16_t *indices = (uint16_t *)malloc(idx_len * sizeof(uint16_t));
+   uint32_t *indices = (uint32_t *)malloc((size_t)idx_len * sizeof(uint32_t));
    if (!indices) { free(verts); mesh->used = false; return JS_NewInt32(ctx, 0); }
    for (uint32_t ii = 0; ii < idx_len; ii++) {
       JSValue iv = JS_GetPropertyUint32(ctx, argv[2], ii);
       uint32_t iu = 0;
       JS_ToUint32(ctx, &iu, iv);
       JS_FreeValue(ctx, iv);
-      indices[ii] = (uint16_t)iu;
+      indices[ii] = iu;
    }
    mesh->custom_verts       = verts;
    mesh->custom_vert_count  = vert_count;
+   mesh->custom_vert_stride = stride;
    mesh->custom_indices     = indices;
    mesh->custom_index_count = idx_len;
    return JS_NewInt32(ctx, handle);
@@ -30586,6 +30700,7 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, scene, "createTexture", js_create_texture, 3);
    set_function(ctx, scene, "loadTexture", js_create_texture, 3);
    set_function(ctx, scene, "createDataTexture", js_create_data_texture, 4);
+   set_function(ctx, scene, "decodeImageBytes", js_decode_image_bytes, 1);
    set_function(ctx, scene, "setMeshTexture", js_set_mesh_texture, 2);
    set_function(ctx, scene, "setMeshFaceUVs", js_set_mesh_face_uvs, 2);
    set_function(ctx, scene, "setMeshAlphaTest", js_set_mesh_alpha_test, 2);
@@ -31561,7 +31676,85 @@ static bool install_nova64_api(JSContext *ctx)
              "return{position:{x:p[0]||0,y:p[1]||0,z:p[2]||0},target:{x:t[0]||0,y:t[1]||0,z:t[2]||0},quaternion:{x:0,y:0,z:0,w:1},rotation:{x:0,y:0,z:0},getWorldDirection:function(out){if(out){out.x=t[0]-p[0];out.y=t[1]-p[1];out.z=t[2]-p[2];}return out||{x:t[0]-p[0],y:t[1]-p[1],z:t[2]-p[2]};}};"
            "};"
          "}"
-         "nova64.scene.loadModel=function(path,pos,scale){var m=nova64.scene.createCube?nova64.scene.createCube(scale||1,0xffffff,pos||[0,0,0]):0;return m;};"
+         /* loadModel(url,pos,scale): synchronous glTF/GLB loader.
+            Reads the packaged .glb, parses JSON + BIN chunks, merges all mesh
+            primitives into one custom triangle mesh via createMesh (uint32
+            indices + per-vertex UVs), and decodes/uploads the embedded
+            base-color texture so the model renders with its real surface.
+            Falls back to a tinted placeholder cube (logging the reason via
+            console.log -> [nova64] log) when the asset is missing, not a GLB,
+            or has no geometry. Kept SYNCHRONOUS so the getMesh/createCube wrap()
+            below still wraps a numeric handle and the cart's
+            Promise.resolve(loadModel()).then() path is satisfied. */
+         "nova64.scene.loadModel=function(path,pos,scale){"
+           "scale=scale||1;"
+           "function glog(m){try{if(typeof console!=='undefined'&&console.log)console.log('[nova64][glb] '+m);}catch(e){}}"
+           "function placeholder(r){glog('placeholder ('+r+') for '+path);var m=createCube(scale,rgba8(150,90,200,255));if(pos)setPosition(m,pos[0]||0,pos[1]||0,pos[2]||0);if(typeof setMeshEmissive==='function')setMeshEmissive(m,rgba8(150,90,200,255),0.12);return m;}"
+           "if(typeof readAssetBytes!=='function'||typeof createMesh!=='function')return placeholder('no-loader-api');"
+           "var buf=null;try{buf=readAssetBytes(path);}catch(e){}"
+           "if(!buf)return placeholder('asset-not-found');"
+           "try{"
+             "var dv=new DataView(buf),u8=new Uint8Array(buf);"
+             "if(buf.byteLength<12||dv.getUint32(0,true)!==0x46546C67)return placeholder('not-glb');"
+             "var total=dv.getUint32(8,true),off=12,json=null,binOff=0,binLen=0;"
+             "while(off+8<=total){"
+               "var clen=dv.getUint32(off,true),ctype=dv.getUint32(off+4,true),cstart=off+8;"
+               "if(ctype===0x4E4F534A){var s='';for(var i=0;i<clen;i++)s+=String.fromCharCode(u8[cstart+i]);json=JSON.parse(s);}"
+               "else if(ctype===0x004E4942){binOff=cstart;binLen=clen;}"
+               "off=cstart+clen;"
+             "}"
+             "if(!json||!binLen)return placeholder('missing-chunk');"
+             "var bin=new DataView(buf,binOff,binLen);"
+             "function acc(idx){var a=json.accessors[idx];var bv=json.bufferViews[a.bufferView];return{a:a,base:(bv.byteOffset||0)+(a.byteOffset||0),stride:bv.byteStride||0};}"
+             "var positions=[],normals=[],uvs=[],indices=[],vbase=0,haveUV=true;"
+             "var ms=json.meshes||[];"
+             "for(var mi=0;mi<ms.length;mi++){var prims=ms[mi].primitives||[];"
+               "for(var pi=0;pi<prims.length;pi++){var prim=prims[pi];"
+                 "if(!prim.attributes||prim.attributes.POSITION==null||prim.indices==null)continue;"
+                 "var pa=acc(prim.attributes.POSITION),cnt=pa.a.count,pst=pa.stride||12;"
+                 "for(var v=0;v<cnt;v++){var p=pa.base+v*pst;positions.push(bin.getFloat32(p,true),bin.getFloat32(p+4,true),bin.getFloat32(p+8,true));}"
+                 "if(prim.attributes.NORMAL!=null){var na=acc(prim.attributes.NORMAL),nst=na.stride||12;for(var w=0;w<cnt;w++){var np=na.base+w*nst;normals.push(bin.getFloat32(np,true),bin.getFloat32(np+4,true),bin.getFloat32(np+8,true));}}"
+                 "else{for(var w2=0;w2<cnt;w2++)normals.push(0,1,0);}"
+                 "if(prim.attributes.TEXCOORD_0!=null){var ta=acc(prim.attributes.TEXCOORD_0),tst=ta.stride||8;for(var u=0;u<cnt;u++){var tp=ta.base+u*tst;uvs.push(bin.getFloat32(tp,true),bin.getFloat32(tp+4,true));}}"
+                 "else{haveUV=false;for(var u2=0;u2<cnt;u2++)uvs.push(0,0);}"
+                 "var ia=acc(prim.indices),icnt=ia.a.count,ct=ia.a.componentType;"
+                 "for(var k=0;k<icnt;k++){var iv;if(ct===5125)iv=bin.getUint32(ia.base+k*4,true);else if(ct===5123)iv=bin.getUint16(ia.base+k*2,true);else iv=bin.getUint8(ia.base+k);indices.push(iv+vbase);}"
+                 "vbase+=cnt;"
+               "}"
+             "}"
+             "if(vbase===0||indices.length===0)return placeholder('no-geometry');"
+             "if(vbase>2000000)return placeholder('too-many-verts:'+vbase);"
+             "var mh=haveUV?createMesh(positions,normals,indices,uvs):createMesh(positions,normals,indices);"
+             "if(!mh)return placeholder('createMesh-failed');"
+             "var col=rgba8(255,255,255,255);"
+             "try{var m0=json.materials&&json.materials[0];var bcf=m0&&m0.pbrMetallicRoughness&&m0.pbrMetallicRoughness.baseColorFactor;if(bcf)col=rgba8((bcf[0]*255)|0,(bcf[1]*255)|0,(bcf[2]*255)|0,((bcf[3]==null?1:bcf[3])*255)|0);}catch(e){}"
+             "if(typeof setMeshColor==='function')setMeshColor(mh,col);"
+             /* Decode + upload the embedded base-color texture so the model
+                renders with its real surface instead of a flat white/grey. */
+             "var textured=false;"
+             "try{"
+               "var mat0b=json.materials&&json.materials[0];"
+               "var bct=mat0b&&mat0b.pbrMetallicRoughness&&mat0b.pbrMetallicRoughness.baseColorTexture;"
+               "if(haveUV&&bct&&json.textures&&json.images&&typeof decodeImageBytes==='function'&&typeof createDataTexture==='function'&&typeof setMeshTexture==='function'){"
+                 "var texd=json.textures[bct.index];var img=texd&&json.images[texd.source];"
+                 "if(img&&img.bufferView!=null){"
+                   "var ibv=json.bufferViews[img.bufferView];"
+                   "var islice=new Uint8Array(buf,binOff+(ibv.byteOffset||0),ibv.byteLength);"
+                   "var dec=decodeImageBytes(islice);"
+                   "if(dec&&dec.rgba){"
+                     "var th=createDataTexture(new Uint8Array(dec.rgba),dec.width,dec.height,{filter:'linear'});"
+                     "if(th){setMeshTexture(mh,th);textured=true;glog('texture '+dec.width+'x'+dec.height+' for '+path);}"
+                   "}"
+                 "}"
+               "}"
+             "}catch(e){glog('texture failed for '+path+': '+(e&&e.message?e.message:e));}"
+             "if(typeof setFlatShading==='function')setFlatShading(mh,!textured);"
+             "if(pos)setPosition(mh,pos[0]||0,pos[1]||0,pos[2]||0);"
+             "if(scale&&scale!==1&&typeof setScale==='function')setScale(mh,scale,scale,scale);"
+             "glog('loaded '+path+' verts='+vbase+' tris='+((indices.length/3)|0)+(textured?' textured':' untextured'));"
+             "return mh;"
+           "}catch(e){return placeholder('parse-error:'+(e&&e.message?e.message:e));}"
+         "};"
          /* getMesh: returns a Three-ish proxy with a live `visible` setter
             that calls nova64.scene.setMeshVisible(id, value) in C. Web carts
             (wad-demo, fps-demo-3d) use `mesh.visible = false` to hide a
@@ -31807,6 +32000,8 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, global, "draw3d", js_draw3d, 1);
    set_function(ctx, global, "createTexture", js_create_texture, 3);
    set_function(ctx, global, "loadTexture", js_create_texture, 3);
+   set_function(ctx, global, "createDataTexture", js_create_data_texture, 4);
+   set_function(ctx, global, "decodeImageBytes", js_decode_image_bytes, 1);
    set_function(ctx, global, "setMeshTexture", js_set_mesh_texture, 2);
    set_function(ctx, global, "setMeshNormalMap", js_set_mesh_normal_map, 2);
    set_function(ctx, global, "destroyTexture", js_destroy_texture, 1);
@@ -32065,7 +32260,7 @@ static bool install_nova64_api(JSContext *ctx)
    }
 
    /* Custom mesh (M8) */
-   set_function(ctx, global, "createMesh", js_create_mesh, 3);
+   set_function(ctx, global, "createMesh", js_create_mesh, 4);
    set_function(ctx, global, "createInstancedMesh", js_create_instanced_mesh, 2);
    set_function(ctx, global, "setInstanceTransform", js_set_instance_transform, 3);
    set_function(ctx, global, "setInstanceTransforms", js_set_instance_transforms, 3);
@@ -32073,7 +32268,7 @@ static bool install_nova64_api(JSContext *ctx)
    {
       JSValue sc = JS_GetPropertyStr(ctx, nova64, "scene");
       if (!JS_IsUndefined(sc)) {
-         set_function(ctx, sc, "createMesh", js_create_mesh, 3);
+         set_function(ctx, sc, "createMesh", js_create_mesh, 4);
          set_function(ctx, sc, "createInstancedMesh", js_create_instanced_mesh, 2);
          set_function(ctx, sc, "setInstanceTransform", js_set_instance_transform, 3);
          set_function(ctx, sc, "setInstanceTransforms", js_set_instance_transforms, 3);
@@ -36232,6 +36427,13 @@ static void js_host_call_frame(double dt)
       }
    }
 
+   /* Drain microtasks scheduled during update() before draw() runs, so promise
+    * continuations resolve the same frame. Without this the QuickJS job queue
+    * only ran at load/init, so any Promise.then() created in gameplay (e.g. a
+    * cart awaiting an async model/asset load) never fired — the cart sat
+    * forever in a "loading" state. */
+   js_host_drain_jobs("update jobs");
+
    if (!JS_IsUndefined(js_host.draw)) {
       JSValue result = JS_Call(ctx, js_host.draw, JS_UNDEFINED, 0, NULL);
       if (JS_IsException(result)) {
@@ -36240,6 +36442,7 @@ static void js_host_call_frame(double dt)
          JS_FreeValue(ctx, result);
       }
    }
+   js_host_drain_jobs("draw jobs");
    spr_sorted_flush();
 }
 
@@ -36441,9 +36644,11 @@ static bool gles_create_cube_program(void)
       "#version 300 es\nprecision highp float;\nprecision highp int;\n"
       "in vec3 a_position;\n"
       "in vec3 a_normal;\n"
+      "in vec2 a_texcoord;\n"
       "in mat4 a_instance_model;\n"
       "in vec4 a_instance_color;\n"
       "uniform mat4 u_mvp;\n"
+      "uniform int u_use_vertex_uv;\n"
       "uniform mat4 u_model;\n"
       "uniform mat4 u_view;\n"
       "uniform mat3 u_normal_matrix;\n"
@@ -36487,7 +36692,7 @@ static bool gles_create_cube_program(void)
       "    else if (an.y > an.z) uv_planar = a_position.xz + 0.5;\n"
       "    else uv_planar = a_position.xy + 0.5;\n"
       "  }\n"
-      "  v_uv = uv_planar * u_uv_scale + u_uv_offset;\n"
+      "  v_uv = (u_use_vertex_uv != 0) ? a_texcoord : (uv_planar * u_uv_scale + u_uv_offset);\n"
       "  v_shadow_coord = (u_use_instancing != 0) ? u_shadow_mvp * world_pos : u_shadow_mvp * local_pos;\n"
       "}\n";
    static const char *fragment_source =
@@ -36699,6 +36904,8 @@ static bool gles_create_cube_program(void)
    gles.cube_program = program;
    gles.cube_position_attrib = gles.GetAttribLocation(program, "a_position");
    gles.cube_normal_attrib = gles.GetAttribLocation(program, "a_normal");
+   gles.cube_texcoord_attrib = gles.GetAttribLocation(program, "a_texcoord");
+   gles.cube_use_vertex_uv_uniform = gles.GetUniformLocation(program, "u_use_vertex_uv");
    gles.cube_instance_model_attrib = gles.GetAttribLocation(program, "a_instance_model");
    gles.cube_instance_color_attrib = gles.GetAttribLocation(program, "a_instance_color");
    gles.cube_mvp_uniform = gles.GetUniformLocation(program, "u_mvp");
@@ -37357,7 +37564,33 @@ static void gles_ensure_custom_mesh_vao(struct nova64_mesh *mesh)
 {
    if (!mesh || mesh->gl_custom_vao || !mesh->gl_custom_vbo || !mesh->gl_custom_ibo)
       return;
-   gles_create_static_mesh_vao(&mesh->gl_custom_vao, mesh->gl_custom_vbo, mesh->gl_custom_ibo);
+   if (!gles.GenVertexArrays || !gles.BindVertexArray || !gles.BindBuffer ||
+       !gles.EnableVertexAttribArray || !gles.VertexAttribPointer ||
+       gles.cube_position_attrib < 0 || gles.cube_normal_attrib < 0)
+      return;
+   /* Generated primitives (torus/capsule/cylinder) leave stride 0 -> 6 floats
+    * (pos+normal). createMesh meshes with UVs use 8 (pos+normal+uv). */
+   unsigned st = mesh->custom_vert_stride ? mesh->custom_vert_stride : 6;
+   GLsizei stride_bytes = (GLsizei)(sizeof(GLfloat) * st);
+
+   gles.GenVertexArrays(1, &mesh->gl_custom_vao);
+   if (!mesh->gl_custom_vao)
+      return;
+   gles.BindVertexArray(mesh->gl_custom_vao);
+   gles.BindBuffer(GL_ARRAY_BUFFER, mesh->gl_custom_vbo);
+   gles.BindBuffer(GL_ELEMENT_ARRAY_BUFFER, mesh->gl_custom_ibo);
+   gles.EnableVertexAttribArray((GLuint)gles.cube_position_attrib);
+   gles.VertexAttribPointer((GLuint)gles.cube_position_attrib, 3, GL_FLOAT, GL_FALSE,
+      stride_bytes, NULL);
+   gles.EnableVertexAttribArray((GLuint)gles.cube_normal_attrib);
+   gles.VertexAttribPointer((GLuint)gles.cube_normal_attrib, 3, GL_FLOAT, GL_FALSE,
+      stride_bytes, (const void *)(uintptr_t)(sizeof(GLfloat) * 3));
+   if (st >= 8 && gles.cube_texcoord_attrib >= 0) {
+      gles.EnableVertexAttribArray((GLuint)gles.cube_texcoord_attrib);
+      gles.VertexAttribPointer((GLuint)gles.cube_texcoord_attrib, 2, GL_FLOAT, GL_FALSE,
+         stride_bytes, (const void *)(uintptr_t)(sizeof(GLfloat) * 6));
+   }
+   gles.BindVertexArray(gles.default_vao);
 }
 
 static bool gles_init_resources(void)
@@ -37736,6 +37969,12 @@ static void render_gles_primitive(const struct nova64_mesh *mesh, const float vi
    gles.Uniform4f(gles.cube_color_uniform, r, g, b, a);
    if (gles.cube_use_instancing_uniform >= 0)
       gles.Uniform1i(gles.cube_use_instancing_uniform, 0);
+   /* Loaded glTF meshes carry per-vertex UVs (8-float stride); use them so the
+    * embedded base-color texture maps correctly instead of the procedural
+    * position-planar UVs the primitives rely on. */
+   if (gles.cube_use_vertex_uv_uniform >= 0)
+      gles.Uniform1i(gles.cube_use_vertex_uv_uniform,
+         (mesh->type == NOVA64_MESH_CUSTOM && mesh->custom_vert_stride >= 8) ? 1 : 0);
    if (gles.cube_output_srgb_uniform >= 0)
       gles.Uniform1i(gles.cube_output_srgb_uniform, gles_scene_post_active ? 0 : 1);
    uint32_t ambient = color_with_intensity(light_state.ambient, light_state.ambient_intensity);
@@ -37778,6 +38017,7 @@ static void render_gles_primitive(const struct nova64_mesh *mesh, const float vi
    GLuint mesh_gl_tex = 0;
    if (mesh->texture_handle > 0) {
       struct nova64_texture *tex = texture_from_handle(mesh->texture_handle);
+      gles_ensure_texture_uploaded(tex);
       if (tex && tex->gl_name)
          mesh_gl_tex = tex->gl_name;
    }
@@ -37897,7 +38137,10 @@ static void render_gles_primitive(const struct nova64_mesh *mesh, const float vi
          (GLsizei)(sizeof(GLfloat) * 6), (const void *)(uintptr_t)(sizeof(GLfloat) * 3));
    }
    core_perf_frame_draw_calls++;
-   gles.DrawElements(GL_TRIANGLES, index_count, GL_UNSIGNED_SHORT, NULL);
+   /* createMesh meshes (NOVA64_MESH_CUSTOM) store uint32 indices so glTF models
+    * over 64k vertices load; primitives + generated meshes stay uint16. */
+   gles.DrawElements(GL_TRIANGLES, index_count,
+      (mesh->type == NOVA64_MESH_CUSTOM) ? GL_UNSIGNED_INT : GL_UNSIGNED_SHORT, NULL);
    if (vao && gles.BindVertexArray) {
       gles.BindVertexArray(gles.default_vao);
    } else {
@@ -38406,15 +38649,16 @@ static void render_gles_custom_mesh(struct nova64_mesh *mesh, const float view_p
       return;
    /* Lazy GPU upload on first draw */
    if (!mesh->gl_custom_vbo && gles.GenBuffers && gles.BindBuffer && gles.BufferData) {
+      unsigned st = mesh->custom_vert_stride ? mesh->custom_vert_stride : 6;
       gles.GenBuffers(1, &mesh->gl_custom_vbo);
       gles.BindBuffer(GL_ARRAY_BUFFER, mesh->gl_custom_vbo);
       gles.BufferData(GL_ARRAY_BUFFER,
-         (GLsizeiptr)(mesh->custom_vert_count * 6 * sizeof(float)),
+         (GLsizeiptr)((size_t)mesh->custom_vert_count * st * sizeof(float)),
          mesh->custom_verts, GL_STATIC_DRAW);
       gles.GenBuffers(1, &mesh->gl_custom_ibo);
       gles.BindBuffer(GL_ELEMENT_ARRAY_BUFFER, mesh->gl_custom_ibo);
       gles.BufferData(GL_ELEMENT_ARRAY_BUFFER,
-         (GLsizeiptr)(mesh->custom_index_count * sizeof(uint16_t)),
+         (GLsizeiptr)((size_t)mesh->custom_index_count * sizeof(uint32_t)),
          mesh->custom_indices, GL_STATIC_DRAW);
       gles.BindBuffer(GL_ARRAY_BUFFER, 0);
       gles.BindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);

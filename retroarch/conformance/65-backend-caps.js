@@ -29,6 +29,9 @@ export function init() {
       errors.push('textures-expected-false-in-software: ' + caps.textures);
    if (caps.postProcessing !== false)
       errors.push('postProcessing-expected-false-in-software: ' + caps.postProcessing);
+   // The core has a static glTF/GLB loader (geometry + base-color texture).
+   if (caps.models !== true)
+      errors.push('models-expected-true: ' + caps.models);
 
    // Always-on capabilities
    const alwaysOn = [

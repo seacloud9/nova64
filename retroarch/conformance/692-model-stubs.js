@@ -1,6 +1,5 @@
-// Conformance cart 692: loadModel, loadVoxModel, playAnimation, stopAnimation,
-// updateAnimations, getAnimationNames, setAnimationSpeed, isAnimationPlaying,
-// animationProgress (all stubs — verify they exist and don't crash)
+// Conformance cart 692: loadModel + animation APIs are stubs; loadVoxModel is a
+// real async .vox loader (returns a Promise). Verify they exist and don't crash.
 
 let errors = [];
 
@@ -16,8 +15,10 @@ export function init() {
    const h = loadModel('nonexistent.glb');
    if (h !== 0) errors.push('model-nonzero:' + h);
 
+   // loadVoxModel is a real async loader: returns a Promise resolving to a mesh
+   // (or a placeholder cube on a missing/invalid asset), not a 0 stub.
    const v = loadVoxModel('nonexistent.vox');
-   if (v !== 0) errors.push('vox-nonzero:' + v);
+   if (!v || typeof v.then !== 'function') errors.push('vox-not-promise:' + v);
 
    playAnimation(0, 'walk');
    stopAnimation(0);

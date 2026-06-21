@@ -1052,6 +1052,12 @@ run_case      "1133 canvas ui image data uri" "retroarch/conformance/1133-canvas
 # ellipsis, returned layout metadata, and the drawTextBox alias.
 run_case      "1134 draw text box" "retroarch/conformance/1134-draw-text-box.js" "b7d335f09cfb00ab"
 
+# 1135 per-frame microtask draining: a Promise.then() scheduled in update()
+# must resolve before a later draw(). Regression guard for the combat freeze
+# where promise continuations created during gameplay never ran because the
+# QuickJS job queue was only drained at load/init.
+run_visual_case "1135 promise jobs" "1135-promise-jobs" "retroarch/conformance/1135-promise-jobs.js" "ba17d9f13946b732"
+
 # 291 overlay autoclear regression: locks down the default
 # auto-clearing of the 2D HUD overlay between frames. Without
 # auto-clear, the F-Zero title screen vignette stayed under the
@@ -1194,9 +1200,9 @@ run_visual_case "679 batch52 showcase"      "679-batch52-showcase"     "retroarc
 run_visual_case "680 instance extended"     "680-instance-extended"    "retroarch/conformance/680-instance-extended.js"    "880d55ff127a716d"
 run_visual_case "681 lod stubs"             "681-lod-stubs"            "retroarch/conformance/681-lod-stubs.js"            "c10d990731cb67c7"
 run_visual_case "691 batch53 showcase"      "691-batch53-showcase"     "retroarch/conformance/691-batch53-showcase.js"     "3d958a9b97867400"
-run_visual_case "692 model stubs"           "692-model-stubs"          "retroarch/conformance/692-model-stubs.js"          "cc5edec7fff156b1"
+run_visual_case "692 model stubs"           "692-model-stubs"          "retroarch/conformance/692-model-stubs.js"          "e485de74835769c5"
 run_visual_case "693 material stubs"        "693-material-stubs"       "retroarch/conformance/693-material-stubs.js"       "8d2ab48875561ead"
-run_visual_case "703 batch54 showcase"      "703-batch54-showcase"     "retroarch/conformance/703-batch54-showcase.js"     "3604d0d93bd5de8f"
+run_visual_case "703 batch54 showcase"      "703-batch54-showcase"     "retroarch/conformance/703-batch54-showcase.js"     "da3c109f947bb3cc"
 run_visual_case "704 ps3d basic"            "704-ps3d-basic"           "retroarch/conformance/704-ps3d-basic.js"           "9ac1b2692b19f394"
 run_visual_case "705 debug3d"               "705-debug3d"              "retroarch/conformance/705-debug3d.js"              "58d3f68c8852823f"
 run_visual_case "715 batch55 showcase"      "715-batch55-showcase"     "retroarch/conformance/715-batch55-showcase.js"     "3fe5dabc03fecf5b"

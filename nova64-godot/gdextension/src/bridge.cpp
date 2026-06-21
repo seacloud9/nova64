@@ -1091,6 +1091,7 @@ Dictionary Nova64Host::call_bridge(const String &p_method, const Dictionary &p_p
     if (p_method == "audio.play")                return _cmd_audio_play(p_payload);
     if (p_method == "audio.stop")                return _cmd_audio_stop(p_payload);
     if (p_method == "video.playFullscreen")      return _cmd_video_play_fullscreen(p_payload);
+    if (p_method == "video.createTexture")       return _cmd_video_create_texture(p_payload);
     if (p_method == "video.stop")                return _cmd_video_stop(p_payload);
     if (p_method == "video.poll")                return _cmd_video_poll(p_payload);
     if (p_method == "mesh.createInstanced")      return _cmd_mesh_create_instanced(p_payload);
@@ -2799,6 +2800,46 @@ Dictionary Nova64Host::_cmd_video_poll(const Dictionary &p) {
     out["playing"] = playing;
     out["finished"] = !playing && !player->has_loop();
     out["position"] = player->get_stream_position();
+    out["length"] = player->get_stream_length();
+    return out;
+}
+
+// In-world video texture (the "TV"): play a VideoStream offscreen and hand back
+// its live get_video_texture() so a cart can bind it onto a mesh material. The
+// player stays in the tree (required to decode) but hidden, so only the texture
+// is sampled. Stop it later via video.stop with the returned player handle.
+Dictionary Nova64Host::_cmd_video_create_texture(const Dictionary &p) {
+    if (!p.has("path")) return make_error("video_bad_payload", "path required");
+
+    String path = normalize_resource_path(p["path"]);
+    Ref<Resource> res = ResourceLoader::get_singleton()->load(path);
+    Ref<VideoStream> stream = res;
+    if (stream.is_null()) return make_error("video_load_failed", path);
+
+    if (_video_layer == nullptr) {
+        _video_layer = memnew(CanvasLayer);
+        _video_layer->set_layer(80);
+        add_child(_video_layer);
+    }
+
+    VideoStreamPlayer *player = memnew(VideoStreamPlayer);
+    player->set_stream(stream);
+    player->set_loop(!p.has("loop") || static_cast<bool>(p["loop"]));
+    if (p.has("muted") && static_cast<bool>(p["muted"])) {
+        player->set_volume_db(-80.0f);
+    }
+    player->set_visible(false); // decode without rendering the player itself
+    _video_layer->add_child(player);
+    player->play();
+
+    Ref<Texture2D> tex = player->get_video_texture();
+    uint32_t player_id = _handles->put_node(HandleKind::VIDEO_PLAYER, player);
+
+    Dictionary out;
+    out["ok"] = true;
+    out["player"] = player_id;
+    out["texture"] = tex.is_valid()
+        ? _handles->put_resource(HandleKind::TEXTURE, tex) : 0;
     out["length"] = player->get_stream_length();
     return out;
 }

@@ -6404,8 +6404,56 @@
       finish({ played: true, skipped: true });
     }
 
+    // In-world video texture (the "TV"): an offscreen VideoStreamPlayer whose
+    // live texture is bound to a mesh material. Godot decodes on its own, so
+    // update(dt) is a no-op (kept for cross-backend parity with RetroArch).
+    function loadTexture(url, opts) {
+      opts = opts || {};
+      const path = resolvePath(url, opts);
+      const r = call('video.createTexture', {
+        path: path,
+        loop: opts.loop !== false,
+        muted: !!opts.muted,
+      });
+      if (!r || r.error || !r.texture) {
+        return {
+          backend: 'godot', url: url, ok: false,
+          error: (r && r.error) || 'video_texture_failed',
+          isReady: function () { return false; },
+          update: function () {},
+          applyToMesh: function () { return false; },
+          play: function () { return Promise.resolve(); },
+          pause: function () {}, setVolume: function () {}, seek: function () {},
+          dispose: function () {},
+        };
+      }
+      let player = r.player | 0;
+      let tex = r.texture | 0;
+      let material = 0;
+      return {
+        backend: 'godot', url: url, ok: true, texture: tex,
+        isReady: function () { return tex > 0; },
+        update: function () {},
+        applyToMesh: function (meshId) {
+          const m = call('material.create', { albedoTexture: tex });
+          if (!m || !m.handle) return false;
+          material = m.handle | 0;
+          call('mesh.setMaterial', { mesh: meshId, material: material });
+          return true;
+        },
+        play: function () { return Promise.resolve(); },
+        pause: function () {}, setVolume: function () {}, seek: function () {},
+        dispose: function () {
+          if (player) call('video.stop', { handle: player });
+          if (material) call('material.destroy', { handle: material });
+          player = 0; material = 0; tex = 0;
+        },
+      };
+    }
+
     return {
       playFullscreen: playFullscreen,
+      loadTexture: loadTexture,
       stop: stop,
       _tick: tick,
       _draw: function () { return !!active; },

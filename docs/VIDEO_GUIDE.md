@@ -113,7 +113,9 @@ handle exposes `.applyToMesh(meshId)` (binds the video as the mesh's texture),
 - **Web** wires a THREE/BABYLON `VideoTexture` that refreshes itself.
 - **RetroArch** decodes MPEG1 to a GLES texture and re-uploads it each frame —
   call `.update(dt)` in your `update()` to advance it.
-- **Godot** in-world video is the remaining follow-up (handle falls back cleanly).
+- **Godot** plays an offscreen `VideoStreamPlayer` and binds its live
+  `get_video_texture()` onto the mesh material (decodes on its own; `.update()`
+  is a no-op).
 
 Working example: [`examples/tv-demo`](../examples/tv-demo/code.js) — a 3D
 television with the video playing on its screen mesh.

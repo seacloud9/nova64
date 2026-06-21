@@ -1092,6 +1092,7 @@ Dictionary Nova64Host::call_bridge(const String &p_method, const Dictionary &p_p
     if (p_method == "audio.stop")                return _cmd_audio_stop(p_payload);
     if (p_method == "video.playFullscreen")      return _cmd_video_play_fullscreen(p_payload);
     if (p_method == "video.createTexture")       return _cmd_video_create_texture(p_payload);
+    if (p_method == "video.getTexture")          return _cmd_video_get_texture(p_payload);
     if (p_method == "video.stop")                return _cmd_video_stop(p_payload);
     if (p_method == "video.poll")                return _cmd_video_poll(p_payload);
     if (p_method == "mesh.createInstanced")      return _cmd_mesh_create_instanced(p_payload);
@@ -2832,15 +2833,31 @@ Dictionary Nova64Host::_cmd_video_create_texture(const Dictionary &p) {
     _video_layer->add_child(player);
     player->play();
 
-    Ref<Texture2D> tex = player->get_video_texture();
+    // get_video_texture() is usually null until the first frame decodes, so the
+    // cart fetches it lazily via video.getTexture once playback has started.
     uint32_t player_id = _handles->put_node(HandleKind::VIDEO_PLAYER, player);
 
     Dictionary out;
     out["ok"] = true;
     out["player"] = player_id;
+    out["length"] = player->get_stream_length();
+    return out;
+}
+
+// Fetch the player's live video texture once it exists (returns texture 0 until
+// the first frame has decoded). Registers a stable handle the cart binds to a
+// mesh material; safe to call repeatedly — only the first valid result matters.
+Dictionary Nova64Host::_cmd_video_get_texture(const Dictionary &p) {
+    uint32_t id = handle_id_from_payload(p, "handle");
+    Object *obj = _handles->get_node(id, HandleKind::VIDEO_PLAYER);
+    VideoStreamPlayer *player = Object::cast_to<VideoStreamPlayer>(obj);
+    if (!player) return make_error("video_invalid_handle", "video.getTexture");
+
+    Ref<Texture2D> tex = player->get_video_texture();
+    Dictionary out;
+    out["ok"] = true;
     out["texture"] = tex.is_valid()
         ? _handles->put_resource(HandleKind::TEXTURE, tex) : 0;
-    out["length"] = player->get_stream_length();
     return out;
 }
 

@@ -171,6 +171,7 @@ private:
     Dictionary _cmd_audio_stop(const Dictionary &p_payload);
     Dictionary _cmd_video_play_fullscreen(const Dictionary &p_payload);
     Dictionary _cmd_video_create_texture(const Dictionary &p_payload);
+    Dictionary _cmd_video_get_texture(const Dictionary &p_payload);
     Dictionary _cmd_video_stop(const Dictionary &p_payload);
     Dictionary _cmd_video_poll(const Dictionary &p_payload);
     Dictionary _cmd_mesh_create_instanced(const Dictionary &p_payload);

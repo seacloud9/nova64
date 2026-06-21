@@ -6415,7 +6415,7 @@
         loop: opts.loop !== false,
         muted: !!opts.muted,
       });
-      if (!r || r.error || !r.texture) {
+      if (!r || r.error || !r.player) {
         return {
           backend: 'godot', url: url, ok: false,
           error: (r && r.error) || 'video_texture_failed',
@@ -6428,17 +6428,37 @@
         };
       }
       let player = r.player | 0;
-      let tex = r.texture | 0;
+      let tex = 0;
       let material = 0;
-      return {
-        backend: 'godot', url: url, ok: true, texture: tex,
-        isReady: function () { return tex > 0; },
-        update: function () {},
-        applyToMesh: function (meshId) {
-          const m = call('material.create', { albedoTexture: tex });
-          if (!m || !m.handle) return false;
+      let meshId = 0;
+      let bound = false;
+
+      // get_video_texture() is null until the first frame decodes, so keep
+      // retrying from update() (driven by the cart) until it resolves, then
+      // build the material and bind it to the mesh exactly once.
+      function tryBind() {
+        if (bound || !meshId) return;
+        if (!tex) {
+          const g = call('video.getTexture', { handle: player });
+          tex = (g && g.texture) | 0;
+        }
+        if (!tex) return;
+        const m = call('material.create', { albedoTexture: tex });
+        if (m && m.handle) {
           material = m.handle | 0;
           call('mesh.setMaterial', { mesh: meshId, material: material });
+          bound = true;
+        }
+      }
+
+      return {
+        backend: 'godot', url: url, ok: true,
+        texture: function () { return tex; },
+        isReady: function () { return bound; },
+        update: function () { tryBind(); },
+        applyToMesh: function (mesh) {
+          meshId = mesh | 0;
+          tryBind(); // binds now if the texture is already up, else on update()
           return true;
         },
         play: function () { return Promise.resolve(); },
@@ -6446,7 +6466,7 @@
         dispose: function () {
           if (player) call('video.stop', { handle: player });
           if (material) call('material.destroy', { handle: material });
-          player = 0; material = 0; tex = 0;
+          player = 0; material = 0; tex = 0; bound = false;
         },
       };
     }

@@ -197,9 +197,12 @@ Both native hosts now play **real fullscreen video**, not a stub — full guide 
 - **Godot**: the gdextension bridge drives a native `VideoStreamPlayer`
   (`video.playFullscreen/stop/poll`), playing Theora `.ogv`.
 
-`nova64.video.loadTexture` (in-world texture) remains web-only for now; native
-in-world video textures are the remaining follow-up. Generate per-backend assets
-with [`scripts/transcode-video.py`](../scripts/transcode-video.py).
+`nova64.video.loadTexture` (in-world "TV" texture) now works on **web and
+RetroArch** — RetroArch decodes MPEG1 into a GLES texture and re-uploads it each
+frame, bound to a mesh via `applyToMesh`. Demo:
+[`examples/tv-demo`](../examples/tv-demo/code.js). Native in-world video on
+**Godot** is the remaining follow-up. Generate per-backend assets with
+[`scripts/transcode-video.py`](../scripts/transcode-video.py).
 
 ---
 

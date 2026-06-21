@@ -107,11 +107,25 @@ a static build). The `.mpg` is MPEG1/MP2 at 44.1 kHz to match the core's mixer.
 - Resolves on end/skip with `{ played, skipped }`, or `{ error, message }` on
   failure. Skips on Escape/Enter/Space (or button 0 on native).
 
-`nova64.video.loadTexture(url, opts)` → in-world video texture handle (web:
-THREE/BABYLON `VideoTexture` with `.applyToMesh`; native: an inert stub).
+`nova64.video.loadTexture(url, opts)` → **in-world video texture** (a "TV"). The
+handle exposes `.applyToMesh(meshId)` (binds the video as the mesh's texture),
+`.update(dt)`, `.isReady()`, and `.dispose()`.
+- **Web** wires a THREE/BABYLON `VideoTexture` that refreshes itself.
+- **RetroArch** decodes MPEG1 to a GLES texture and re-uploads it each frame —
+  call `.update(dt)` in your `update()` to advance it.
+- **Godot** in-world video is the remaining follow-up (handle falls back cleanly).
 
-`nova64.video._tick(dt)` / `._draw()` — per-frame pump/paint for native hosts
-(call from `update`/`draw`).
+Working example: [`examples/tv-demo`](../examples/tv-demo/code.js) — a 3D
+television with the video playing on its screen mesh.
+
+```js
+const tv = nova64.video.loadTexture('/assets/clip.mp4', { mpgUrl: 'assets/video/clip.mpg' });
+tv.applyToMesh(screenMeshId);
+// update(dt): if (tv.update) tv.update(dt);   // no-op on web, decodes on native
+```
+
+`nova64.video._tick(dt)` / `._draw()` — per-frame pump/paint for **fullscreen**
+video on native hosts (call from `update`/`draw`).
 
 The companion [`nova64.story`](api-improvements.md) helper (slide intros) follows
 the identical `_tick`/`_draw` contract and is used together with video in the

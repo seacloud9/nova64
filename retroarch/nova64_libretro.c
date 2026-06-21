@@ -763,6 +763,10 @@ typedef struct {
    int      has_frame;
    int      ended;
    int      active;
+   /* in-world "TV" mode: decode into a data texture instead of blitting
+    * fullscreen, so a cart can map it onto a mesh via setMeshTexture. */
+   int      to_texture;
+   int      tex_handle;
    /* audio: interleaved stereo float FIFO at NOVA64_SAMPLE_RATE */
    int      audio_enabled;
    float   *aq;          /* ring buffer, aq_cap stereo frames */
@@ -6095,11 +6099,18 @@ static JSValue js_draw_image(JSContext *ctx, JSValueConst this_val, int argc, JS
  * blit path covers both renderers. Audio (MP2) is mixed in audio_mix_frame.
  * Only one fullscreen video plays at a time. (State type + g_video are
  * declared earlier, before audio_mix_frame, which drains the audio FIFO.) */
+static void nova64_video_upload_texture(void); /* defined below */
+
 static void nova64_video_close_internal(void)
 {
    if (g_video.plm) plm_destroy(g_video.plm); /* frees the byte copy too */
    if (g_video.rgba) free(g_video.rgba);
    if (g_video.aq) free(g_video.aq);
+   /* Release the in-world data texture so its handle/GL name can be reused. */
+   if (g_video.tex_handle) {
+      struct nova64_texture *tex = texture_from_handle(g_video.tex_handle);
+      if (tex) { free_texture_gl(tex); tex->used = false; }
+   }
    memset(&g_video, 0, sizeof(g_video));
 }
 
@@ -6160,12 +6171,22 @@ static JSValue js_video_open(JSContext *ctx, JSValueConst this_val, int argc, JS
    g_video.has_frame  = 0;
    g_video.ended      = 0;
    g_video.active     = 1;
+   g_video.to_texture = (argc > 2) && JS_ToBool(ctx, argv[2]);
+   g_video.tex_handle = 0;
    /* plm_frame_to_rgba only writes R,G,B (the alpha byte is left untouched), so
     * prime alpha to opaque once — every later decode keeps it 255. Without this
     * the alpha-blending blit treats the frame as fully transparent (black). */
    if (g_video.rgba) {
       size_t px = (size_t)g_video.width * g_video.height;
       for (size_t i = 0; i < px; i++) g_video.rgba[i * 4 + 3] = 255;
+   }
+
+   /* In-world mode: reserve a data texture the cart can bind to a mesh. It is
+    * (re)uploaded from the decoded frame each advance by nova64_video_upload_texture(). */
+   if (g_video.to_texture && g_video.rgba) {
+      g_video.tex_handle = allocate_texture();
+      struct nova64_texture *tex = texture_from_handle(g_video.tex_handle);
+      if (tex) { tex->width = g_video.width; tex->height = g_video.height; }
    }
 
    /* Audio: enable only if not muted AND the file actually has an audio stream
@@ -6248,6 +6269,9 @@ static JSValue js_video_advance(JSContext *ctx, JSValueConst this_val, int argc,
       if (plm_has_ended(g_video.plm)) g_video.ended = 1;
    }
 
+   if (g_video.to_texture)
+      nova64_video_upload_texture();
+
    JS_SetPropertyStr(ctx, out, "finished", JS_NewBool(ctx, g_video.ended ? true : false));
    JS_SetPropertyStr(ctx, out, "position", JS_NewFloat64(ctx, g_video.elapsed));
    JS_SetPropertyStr(ctx, out, "duration", JS_NewFloat64(ctx, g_video.duration));
@@ -6259,6 +6283,9 @@ static JSValue js_video_advance(JSContext *ctx, JSValueConst this_val, int argc,
 static JSValue js_video_blit(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
    (void)this_val; (void)argc; (void)argv;
+   /* In-world mode paints onto a mesh, not the fullscreen framebuffer. */
+   if (g_video.to_texture)
+      return JS_NewBool(ctx, false);
    if (!g_video.active || !g_video.has_frame || !g_video.rgba)
       return JS_NewBool(ctx, false);
 
@@ -6280,6 +6307,58 @@ static JSValue js_video_blit(JSContext *ctx, JSValueConst this_val, int argc, JS
          dx, dy, dw, dh, 0, 0, g_video.width, g_video.height,
          rgba8(255, 255, 255, 255));
    return JS_NewBool(ctx, true);
+}
+
+/* Push the current decoded frame into the in-world data texture. Uses
+ * TexSubImage2D when the GL texture exists; lazily (re)creates it otherwise, and
+ * keeps a CPU copy when the GL context isn't ready yet (cart init before reset). */
+static void nova64_video_upload_texture(void)
+{
+   if (!g_video.to_texture || !g_video.has_frame || !g_video.rgba)
+      return;
+   struct nova64_texture *tex = texture_from_handle(g_video.tex_handle);
+   if (!tex)
+      return;
+
+   if (gles.active && gles.BindTexture && gles.TexImage2D) {
+      gles.ActiveTexture(GL_TEXTURE0);
+      if (!tex->gl_name && gles.GenTextures) {
+         gles.GenTextures(1, &tex->gl_name);
+         gles.BindTexture(GL_TEXTURE_2D, tex->gl_name);
+         gles.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+         gles.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+         gles.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+         gles.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+         gles.TexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, (GLsizei)tex->width,
+            (GLsizei)tex->height, 0, GL_RGBA, GL_UNSIGNED_BYTE, g_video.rgba);
+         if (tex->pending_pixels) { free(tex->pending_pixels); tex->pending_pixels = NULL; }
+      } else if (tex->gl_name) {
+         gles.BindTexture(GL_TEXTURE_2D, tex->gl_name);
+         if (gles.TexSubImage2D)
+            gles.TexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, (GLsizei)tex->width,
+               (GLsizei)tex->height, GL_RGBA, GL_UNSIGNED_BYTE, g_video.rgba);
+         else
+            gles.TexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, (GLsizei)tex->width,
+               (GLsizei)tex->height, 0, GL_RGBA, GL_UNSIGNED_BYTE, g_video.rgba);
+      }
+      gles.BindTexture(GL_TEXTURE_2D, 0);
+   } else {
+      /* No GL context yet — retain the latest frame so the first render uploads it. */
+      size_t bytes = (size_t)tex->width * tex->height * 4u;
+      if (!tex->pending_pixels) tex->pending_pixels = (uint8_t *)malloc(bytes);
+      if (tex->pending_pixels) {
+         memcpy(tex->pending_pixels, g_video.rgba, bytes);
+         tex->pending_linear = true;
+         tex->pending_clamp = true;
+      }
+   }
+}
+
+/* __novaVideoTexture() -> texture handle for the in-world frame (0 if none). */
+static JSValue js_video_texture(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val; (void)argc; (void)argv;
+   return JS_NewInt32(ctx, g_video.to_texture ? g_video.tex_handle : 0);
 }
 
 /* __novaVideoClose() -> bool */
@@ -32124,7 +32203,17 @@ static bool install_nova64_api(JSContext *ctx)
              "if(r&&r.finished&&st.ticks>1)finish({played:true,skipped:false});"
            "}"
            "function drawFrame(){if(!st.active)return false;try{return !!__novaVideoBlit();}catch(e){return false;}}"
-           "return{playFullscreen:playFullscreen,loadTexture:function(url){return{backend:'retroarch',url:url,isReady:function(){return false;},play:function(){return Promise.resolve();},pause:function(){},setVolume:function(){},seek:function(){},applyToMesh:function(){return false;},dispose:function(){}};},_tick:tick,_draw:drawFrame,stop:function(){finish({played:true,skipped:true});},isPlaying:function(){return st.active;},backend:function(){return 'retroarch';},isSupported:function(){return true;}};"
+           /* In-world video texture (the 'TV'). Decodes into a data texture the
+              cart binds to a mesh; call handle.update(dt) each frame to advance. */
+           "function loadTexture(url,opts){opts=opts||{};var path=resolvePath(url,opts);var r;try{r=__novaVideoOpen(path,!!opts.muted,1);}catch(e){r=null;}"
+             "var ok=!!(r&&r.ok);"
+             "return{backend:'retroarch',url:url,ok:ok,error:ok?null:((r&&r.error)||'video_open_failed'),"
+               "isReady:function(){return ok&&__novaVideoTexture()>0;},"
+               "texture:function(){return ok?__novaVideoTexture():0;},"
+               "update:function(dt){if(ok){try{__novaVideoAdvance(dt||0);}catch(e){}}},"
+               "applyToMesh:function(meshId){if(!ok)return false;var t=__novaVideoTexture();if(t>0&&nova64.scene&&nova64.scene.setMeshTexture){nova64.scene.setMeshTexture(meshId,t);return true;}return false;},"
+               "play:function(){return Promise.resolve();},pause:function(){},setVolume:function(){},seek:function(){},dispose:function(){if(ok){try{__novaVideoClose();}catch(e){}ok=false;}}};}"
+           "return{playFullscreen:playFullscreen,loadTexture:loadTexture,_tick:tick,_draw:drawFrame,stop:function(){finish({played:true,skipped:true});},isPlaying:function(){return st.active;},backend:function(){return 'retroarch';},isSupported:function(){return true;}};"
          "})();"
          "nova64.xr={enableVR:function(){return false;},disableVR:function(){},isXRActive:function(){return false;},getXRControllers:function(){return[];},getXRHands:function(){return[];}};"
 
@@ -32289,6 +32378,7 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, global, "__novaVideoOpen", js_video_open, 1);
    set_function(ctx, global, "__novaVideoAdvance", js_video_advance, 1);
    set_function(ctx, global, "__novaVideoBlit", js_video_blit, 0);
+   set_function(ctx, global, "__novaVideoTexture", js_video_texture, 0);
    set_function(ctx, global, "__novaVideoClose", js_video_close, 0);
    set_function(ctx, global, "setMeshNormalMap", js_set_mesh_normal_map, 2);
    set_function(ctx, global, "destroyTexture", js_destroy_texture, 1);

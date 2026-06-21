@@ -299,29 +299,29 @@ const CONFIG = {
     levels: {
       level1: [
         {
-          image: `${ASSET_BASE}images/story/scene1_1.jpeg`,
+          image: `${ASSET_BASE}images/story/scene1_1.png`,
           text: 'IO wakes in a trailer patched with solar scraps and rainwater lines.',
         },
         {
-          image: `${ASSET_BASE}images/story/scene1_2.jpeg`,
+          image: `${ASSET_BASE}images/story/scene1_2.png`,
           text: 'The Shardgrid still pays for dangerous work, if you can survive the old code.',
         },
         {
-          image: `${ASSET_BASE}images/story/scene1_3.jpeg`,
+          image: `${ASSET_BASE}images/story/scene1_3.png`,
           text: 'Dungeoncore Delta-7 opens like a wound in forgotten cyberspace.',
         },
         {
-          image: `${ASSET_BASE}images/story/scene1_4.jpeg`,
+          image: `${ASSET_BASE}images/story/scene1_4.png`,
           text: 'The Codestone of Verdancy waits below the voxel catacombs.',
         },
         {
-          image: `${ASSET_BASE}images/story/scene1_5.jpeg`,
+          image: `${ASSET_BASE}images/story/scene1_5.png`,
           text: 'You jack in. The terminal whispers back.',
         },
       ],
       level2: [
         {
-          image: `${ASSET_BASE}images/story/scene1_2.jpeg`,
+          image: `${ASSET_BASE}images/story/scene1_2.png`,
           text: 'Level 2 begins as the grid recompiles around you.',
         },
       ],
@@ -1952,7 +1952,9 @@ function drawCentered(text, y, color = COLORS.white, size = 14) {
 }
 
 function rect(x, y, w, h, color) {
-  call('draw.rect', null, x, y, w, h, uiColor(color));
+  // Outline only — draw.rect fills by default on the native host, so pass the
+  // explicit unfilled flag (rectfill/fill() is used where a solid box is wanted).
+  call('draw.rect', null, x, y, w, h, uiColor(color), false);
 }
 
 function fill(x, y, w, h, color) {
@@ -2047,10 +2049,28 @@ function uiColor(color) {
   if (typeof color === 'bigint') return color;
   const rgba8 = ns('draw.rgba8');
   if (typeof rgba8 !== 'function' || typeof color !== 'number') return color;
-  if (color > 0xffffff) {
-    return rgba8((color >>> 24) & 255, (color >>> 16) & 255, (color >>> 8) & 255, color & 255);
+  const packed =
+    color > 0xffffff
+      ? rgba8((color >>> 24) & 255, (color >>> 16) & 255, (color >>> 8) & 255, color & 255)
+      : rgba8((color >>> 16) & 255, (color >>> 8) & 255, color & 255, 255);
+  // On the native core, return packed RGBA as a BigInt: it promotes bare
+  // 0xRRGGBB literals (used for 3D mesh colors) to 0xRRGGBBFF, but that
+  // heuristic false-positives on rgba8() outputs whose red byte is 0 (cyan,
+  // green, the navy panel fill) and turns them white/pink. The core skips
+  // promotion for BigInt colors, keeping 2D UI colors exact. Web/Three keep the
+  // plain Number (their draw layer does Number bitwise ops on it).
+  return uiColorWantsBigInt() && typeof packed === 'number' ? BigInt(packed >>> 0) : packed;
+}
+
+// True only on the native core (it exposes getBackendCapabilities); the web
+// backend has no such API and must receive plain Number colors.
+let __uiColorBigInt = null;
+function uiColorWantsBigInt() {
+  if (__uiColorBigInt === null) {
+    __uiColorBigInt =
+      typeof BigInt === 'function' && typeof ns('scene.getBackendCapabilities') === 'function';
   }
-  return rgba8((color >>> 16) & 255, (color >>> 8) & 255, color & 255, 255);
+  return __uiColorBigInt;
 }
 
 function overlayColor(rgb, alpha = 255) {

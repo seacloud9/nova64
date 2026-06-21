@@ -55,6 +55,8 @@
 #include <godot_cpp/classes/standard_material3d.hpp>
 #include <godot_cpp/classes/texture2d.hpp>
 #include <godot_cpp/classes/torus_mesh.hpp>
+#include <godot_cpp/classes/video_stream.hpp>
+#include <godot_cpp/classes/video_stream_player.hpp>
 #include <godot_cpp/classes/world_environment.hpp>
 #include <godot_cpp/core/class_db.hpp>
 #include <godot_cpp/variant/array.hpp>
@@ -106,6 +108,10 @@ void detach_node_resources(Node *p_node) {
     if (AudioStreamPlayer *player = Object::cast_to<AudioStreamPlayer>(p_node)) {
         player->stop();
         player->set_stream(Ref<AudioStream>());
+    }
+    if (VideoStreamPlayer *player = Object::cast_to<VideoStreamPlayer>(p_node)) {
+        player->stop();
+        player->set_stream(Ref<VideoStream>());
     }
 
     for (int i = 0; i < p_node->get_child_count(); ++i) {
@@ -913,6 +919,9 @@ void Nova64Host::_shutdown_runtime() {
         _overlay_layer = nullptr;
         _overlay = nullptr;
     }
+    if (_video_layer) {
+        _video_layer = nullptr;
+    }
     if (_context) {
         JS_FreeContext(_context);
         _context = nullptr;
@@ -1012,6 +1021,9 @@ Dictionary Nova64Host::get_capabilities() const {
     features.append("audio.loadStream");
     features.append("audio.play");
     features.append("audio.stop");
+    features.append("video.playFullscreen");
+    features.append("video.stop");
+    features.append("video.poll");
     features.append("mesh.createInstanced");
     features.append("instance.setTransform");
     features.append("particles.create");
@@ -1078,6 +1090,9 @@ Dictionary Nova64Host::call_bridge(const String &p_method, const Dictionary &p_p
     if (p_method == "audio.loadStream")          return _cmd_audio_load_stream(p_payload);
     if (p_method == "audio.play")                return _cmd_audio_play(p_payload);
     if (p_method == "audio.stop")                return _cmd_audio_stop(p_payload);
+    if (p_method == "video.playFullscreen")      return _cmd_video_play_fullscreen(p_payload);
+    if (p_method == "video.stop")                return _cmd_video_stop(p_payload);
+    if (p_method == "video.poll")                return _cmd_video_poll(p_payload);
     if (p_method == "mesh.createInstanced")      return _cmd_mesh_create_instanced(p_payload);
     if (p_method == "instance.setTransform")     return _cmd_instance_set_transform(p_payload);
     if (p_method == "particles.create")           return _cmd_particles_create(p_payload);
@@ -2715,6 +2730,77 @@ Dictionary Nova64Host::_cmd_audio_stop(const Dictionary &p) {
     if (player) player->stop();
     bool ok = _handles->destroy(id, true);
     Dictionary out; out["ok"] = ok; return out;
+}
+
+// ---- Video ---------------------------------------------------------------
+
+Dictionary Nova64Host::_cmd_video_play_fullscreen(const Dictionary &p) {
+    if (!p.has("path")) return make_error("video_bad_payload", "path required");
+
+    String path = normalize_resource_path(p["path"]);
+    Ref<Resource> res = ResourceLoader::get_singleton()->load(path);
+    Ref<VideoStream> stream = res;
+    if (stream.is_null()) return make_error("video_load_failed", path);
+
+    if (_video_layer == nullptr) {
+        _video_layer = memnew(CanvasLayer);
+        _video_layer->set_layer(80);
+        add_child(_video_layer);
+    }
+
+    VideoStreamPlayer *player = memnew(VideoStreamPlayer);
+    player->set_anchors_and_offsets_preset(Control::PRESET_FULL_RECT);
+    player->set_mouse_filter(Control::MOUSE_FILTER_IGNORE);
+    player->set_expand(true);
+    player->set_stream(stream);
+    player->set_loop(p.has("loop") && static_cast<bool>(p["loop"]));
+    if (p.has("muted") && static_cast<bool>(p["muted"])) {
+        player->set_volume_db(-80.0f);
+    } else if (p.has("volumeDb")) {
+        player->set_volume_db(static_cast<float>(static_cast<double>(p["volumeDb"])));
+    } else if (p.has("volume")) {
+        double v = static_cast<double>(p["volume"]);
+        if (v <= 0.0) player->set_volume_db(-80.0f);
+        else player->set_volume(static_cast<float>(v));
+    }
+
+    _video_layer->add_child(player);
+    player->play();
+
+    uint32_t id = _handles->put_node(HandleKind::VIDEO_PLAYER, player);
+    Dictionary out = make_handle_result(id);
+    out["ok"] = true;
+    out["path"] = path;
+    out["length"] = player->get_stream_length();
+    return out;
+}
+
+Dictionary Nova64Host::_cmd_video_stop(const Dictionary &p) {
+    uint32_t id = handle_id_from_payload(p, "handle");
+    Object *obj = _handles->get_node(id, HandleKind::VIDEO_PLAYER);
+    VideoStreamPlayer *player = Object::cast_to<VideoStreamPlayer>(obj);
+    if (player) {
+        player->stop();
+        player->set_stream(Ref<VideoStream>());
+    }
+    bool ok = _handles->destroy(id, true);
+    Dictionary out; out["ok"] = ok; return out;
+}
+
+Dictionary Nova64Host::_cmd_video_poll(const Dictionary &p) {
+    uint32_t id = handle_id_from_payload(p, "handle");
+    Object *obj = _handles->get_node(id, HandleKind::VIDEO_PLAYER);
+    VideoStreamPlayer *player = Object::cast_to<VideoStreamPlayer>(obj);
+    if (!player) return make_error("video_invalid_handle", "");
+
+    const bool playing = player->is_playing();
+    Dictionary out;
+    out["ok"] = true;
+    out["playing"] = playing;
+    out["finished"] = !playing && !player->has_loop();
+    out["position"] = player->get_stream_position();
+    out["length"] = player->get_stream_length();
+    return out;
 }
 
 // ---- Instancing ----------------------------------------------------------

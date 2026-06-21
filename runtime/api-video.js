@@ -24,6 +24,15 @@
 
 const FULLSCREEN_OVERLAY_ID = '__nova64_video_overlay__';
 
+function hasDocument() {
+  return (
+    typeof document !== 'undefined' &&
+    typeof document.createElement === 'function' &&
+    typeof document.getElementById === 'function' &&
+    document.body
+  );
+}
+
 function detectBackend(gpu) {
   // Heuristic: threejs gpu exposes `.renderer.outputColorSpace` (Three),
   // babylon gpu exposes `.scene` and an engine field. RetroArch / Godot
@@ -42,7 +51,7 @@ export function videoApi(gpu) {
   // ── In-world texture ────────────────────────────────────────────────────
 
   function loadTexture(url, opts = {}) {
-    if (typeof document === 'undefined') return makeStubHandle(url, opts);
+    if (!hasDocument()) return makeStubHandle(url, opts);
     const video = document.createElement('video');
     video.src = url;
     video.crossOrigin = opts.crossOrigin || 'anonymous';
@@ -281,9 +290,9 @@ export function videoApi(gpu) {
   // ── Full-screen playback ────────────────────────────────────────────────
 
   function playFullscreen(url, opts = {}) {
-    if (typeof document === 'undefined') return Promise.resolve({ played: false });
+    if (!hasDocument()) return Promise.resolve({ played: false });
     const existing = document.getElementById(FULLSCREEN_OVERLAY_ID);
-    if (existing) existing.remove();
+    if (existing && typeof existing.remove === 'function') existing.remove();
 
     const overlay = document.createElement('div');
     overlay.id = FULLSCREEN_OVERLAY_ID;
@@ -308,7 +317,11 @@ export function videoApi(gpu) {
     overlay.appendChild(video);
 
     const parent = document.getElementById('screen')?.parentElement || document.body;
-    if (parent && getComputedStyle(parent).position === 'static')
+    if (
+      parent &&
+      typeof getComputedStyle === 'function' &&
+      getComputedStyle(parent).position === 'static'
+    )
       parent.style.position = 'relative';
     parent.appendChild(overlay);
 
@@ -342,11 +355,15 @@ export function videoApi(gpu) {
         const skipKey = opts.skipKey || 'Escape';
         const onKey = e => {
           if (e.key === skipKey || e.key === 'Enter' || e.key === ' ') {
-            window.removeEventListener('keydown', onKey);
+            if (typeof window !== 'undefined' && typeof window.removeEventListener === 'function') {
+              window.removeEventListener('keydown', onKey);
+            }
             cleanup({ played: true, skipped: true });
           }
         };
-        if (typeof window !== 'undefined') window.addEventListener('keydown', onKey);
+        if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+          window.addEventListener('keydown', onKey);
+        }
       }
       const p = video.play();
       if (p && typeof p.catch === 'function') {

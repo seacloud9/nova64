@@ -6336,6 +6336,84 @@
   const particlesNs = { createParticleSystem, setParticleEmitter, emitParticle, burstParticles, updateParticles, removeParticleSystem, getParticleStats, createEmitter2D, updateEmitter2D, drawEmitter2D, burstEmitter2D, clearEmitter2D, createParticles };
   const skyboxNs = { createSpaceSkybox, createGalaxySkybox, createSunsetSkybox, createDawnSkybox, createNightSkybox, createFoggySkybox, createDuskSkybox, createStormSkybox, createAlienSkybox, createUnderwaterSkybox, createGradientSkybox, createImageSkybox, setSkybox, createSkybox };
   const modelsNs = { loadModel, loadVoxModel, createTexture, loadTexture, createInstancedMesh, createTSLMaterial, createTSLShaderMaterial, createShaderMaterial, createHologramMaterial, createVortexMaterial, createPBRMaterial, createLavaMaterial, createPlasmaMaterial, createWaterMaterial, createShockwaveMaterial, createAdvancedCube };
+  const videoNs = (function () {
+    let active = null;
+
+    function resolvePath(url, opts) {
+      const nativeUrl = opts && typeof opts.nativeUrl === 'string' ? opts.nativeUrl : url;
+      if (typeof nativeUrl !== 'string' || nativeUrl.length === 0) return '';
+      if (nativeUrl.startsWith('res://') || nativeUrl.startsWith('user://')) return nativeUrl;
+      if (nativeUrl[0] === '/') return 'res://' + nativeUrl.slice(1);
+      const cart = (typeof globalThis.__nova64_cart_path === 'string')
+          ? globalThis.__nova64_cart_path : 'res://carts/current';
+      return cart.replace(/\/?$/, '/') + nativeUrl.replace(/^\.?\//, '');
+    }
+
+    function finish(info) {
+      if (!active) return;
+      const current = active;
+      active = null;
+      if (current.handle) call('video.stop', { handle: current.handle });
+      if (typeof current.onFinish === 'function') {
+        try { current.onFinish(info); } catch (_e) {}
+      }
+      if (typeof current.resolve === 'function') current.resolve(info);
+    }
+
+    function playFullscreen(url, opts) {
+      opts = opts || {};
+      if (active) finish({ played: false, superseded: true });
+      const path = resolvePath(url, opts);
+      const r = call('video.playFullscreen', {
+        path: path,
+        loop: !!opts.loop,
+        muted: !!opts.muted,
+        volume: opts.volume,
+        volumeDb: opts.volumeDb,
+      });
+      if (!r || r.error) {
+        return Promise.resolve({
+          played: false,
+          error: true,
+          message: r && r.error ? r.error : 'video_play_failed',
+          path: path,
+        });
+      }
+      return new Promise(function (resolve) {
+        active = {
+          handle: r.handle | 0,
+          onFinish: typeof opts.onFinish === 'function' ? opts.onFinish : null,
+          resolve: resolve,
+          ticks: 0,
+        };
+      });
+    }
+
+    function tick() {
+      if (!active || !active.handle) return;
+      active.ticks += 1;
+      const r = call('video.poll', { handle: active.handle });
+      if (!r || r.error) {
+        finish({ played: false, error: true, message: r && r.error ? r.error : 'video_poll_failed' });
+        return;
+      }
+      if (r.finished && active.ticks > 2) finish({ played: true, skipped: false });
+    }
+
+    function stop() {
+      finish({ played: true, skipped: true });
+    }
+
+    return {
+      playFullscreen: playFullscreen,
+      stop: stop,
+      _tick: tick,
+      _draw: function () { return !!active; },
+      isPlaying: function () { return !!active; },
+      backend: function () { return 'godot'; },
+      isSupported: function () { return true; },
+    };
+  }());
   const voxelNs = {
     configureVoxelWorld, enableVoxelTextures, getVoxelConfig, getVoxelBiome,
     getVoxelHighestBlock, getVoxelBlock, setVoxelBlock, loadVoxelWorld,
@@ -6451,6 +6529,7 @@
   const particlesNsP = wrapNamespace('particles', particlesNs);
   const skyboxNsP = wrapNamespace('skybox', skyboxNs);
   const modelsNsP = wrapNamespace('models', modelsNs);
+  const videoNsP = wrapNamespace('video', videoNs);
   const voxelNsP = wrapNamespace('voxel', voxelNs);
   const shaderNsP = wrapNamespace('shader', shaderBacking);
   const physicsNsP = wrapNamespace('physics', physicsBacking);
@@ -6476,6 +6555,7 @@
     particles: particlesNsP,
     skybox: skyboxNsP,
     models: modelsNsP,
+    video: videoNsP,
     voxel: voxelNsP,
     shader: shaderNsP,
     physics: physicsNsP,

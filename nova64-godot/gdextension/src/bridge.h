@@ -138,6 +138,7 @@ private:
     void _overlay_clear();
     class CanvasLayer *_overlay_layer = nullptr;
     class Control *_overlay = nullptr;
+    class CanvasLayer *_video_layer = nullptr;
 
     // ---- Command handlers (one per adapter namespace) -------------------
     Dictionary _cmd_material_create(const Dictionary &p_payload);
@@ -168,6 +169,9 @@ private:
     Dictionary _cmd_audio_load_stream(const Dictionary &p_payload);
     Dictionary _cmd_audio_play(const Dictionary &p_payload);
     Dictionary _cmd_audio_stop(const Dictionary &p_payload);
+    Dictionary _cmd_video_play_fullscreen(const Dictionary &p_payload);
+    Dictionary _cmd_video_stop(const Dictionary &p_payload);
+    Dictionary _cmd_video_poll(const Dictionary &p_payload);
     Dictionary _cmd_mesh_create_instanced(const Dictionary &p_payload);
     Dictionary _cmd_instance_set_transform(const Dictionary &p_payload);
     Dictionary _cmd_particles_create(const Dictionary &p_payload);

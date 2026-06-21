@@ -34,6 +34,7 @@ enum class HandleKind : uint8_t {
     AUDIO_PLAYER = 8, // godot::AudioStreamPlayer (Node in scene tree)
     MULTI_MESH = 9,   // godot::MultiMeshInstance3D (Node3D in scene tree)
     PARTICLES = 10,   // godot::GPUParticles3D (Node3D in scene tree)
+    VIDEO_PLAYER = 11, // godot::VideoStreamPlayer (Control in scene tree)
 };
 
 struct HandleEntry {

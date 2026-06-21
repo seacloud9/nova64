@@ -28,6 +28,15 @@
 const OVERLAY_ID = '__nova64_story_overlay__';
 const TRANSITIONS = new Set(['pixel-melt', 'fade', 'crt-cut', 'none']);
 
+function hasDocument() {
+  return (
+    typeof document !== 'undefined' &&
+    typeof document.createElement === 'function' &&
+    typeof document.getElementById === 'function' &&
+    document.body
+  );
+}
+
 export function storyApi() {
   // Singleton state. Multiple play() calls are allowed but the new one
   // replaces the old (the old promise resolves with `superseded: true`).
@@ -55,7 +64,7 @@ export function storyApi() {
 
   function ensureCanvas() {
     if (state.canvas) return state.canvas;
-    if (typeof document === 'undefined') return null;
+    if (!hasDocument()) return null;
     const canvas = document.createElement('canvas');
     canvas.id = OVERLAY_ID;
     canvas.setAttribute('aria-hidden', 'true');
@@ -71,7 +80,11 @@ export function storyApi() {
       'image-rendering:pixelated',
     ].join(';');
     const parent = document.getElementById('screen')?.parentElement || document.body;
-    if (parent && getComputedStyle(parent).position === 'static') {
+    if (
+      parent &&
+      typeof getComputedStyle === 'function' &&
+      getComputedStyle(parent).position === 'static'
+    ) {
       parent.style.position = 'relative';
     }
     parent.appendChild(canvas);
@@ -94,6 +107,7 @@ export function storyApi() {
     if (typeof globalThis.width === 'function' && typeof globalThis.height === 'function') {
       return { W: globalThis.width(), H: globalThis.height() };
     }
+    if (!hasDocument()) return { W: 640, H: 360 };
     const screen = document.getElementById('screen');
     return {
       W: screen?.width || 640,
@@ -105,7 +119,12 @@ export function storyApi() {
     if (!src || state.images.has(src)) return state.images.get(src);
     const entry = { img: null, status: 'loading' };
     state.images.set(src, entry);
-    const img = new Image();
+    const ImageCtor = globalThis.Image;
+    if (typeof ImageCtor !== 'function') {
+      entry.status = 'unavailable';
+      return entry;
+    }
+    const img = new ImageCtor();
     img.decoding = 'async';
     img.onload = () => {
       entry.img = img;
@@ -259,7 +278,18 @@ export function storyApi() {
   // ── Per-frame tick ──────────────────────────────────────────────────────
 
   function tick(dt) {
-    if (!state.visible || !state.ctx) return;
+    if (!state.visible) return;
+    pollInput();
+    if (!state.ctx) {
+      if (state.activeTransition) {
+        state.transitionT += dt;
+        if (state.transitionT >= state.transitionDur) finishActiveTransition();
+      } else if (state.autoAdvance > 0) {
+        state.autoTimer += dt;
+        if (state.autoTimer >= state.autoAdvance) next();
+      }
+      return;
+    }
     const { W, H } = getCartViewport();
     ensureSize(W, H);
     const ctx = state.ctx;
@@ -268,17 +298,7 @@ export function storyApi() {
       const t = Math.min(1, state.transitionT / state.transitionDur);
       drawTransition(ctx, state.activeTransition.from, state.activeTransition.to, t, W, H);
       if (t >= 1) {
-        state.index = state.activeTransition.toIndex;
-        state.activeTransition = null;
-        state.transitionT = 0;
-        state.autoTimer = 0;
-        if (state.onAdvance) {
-          try {
-            state.onAdvance(state.index, state.slides[state.index]);
-          } catch (_) {
-            /* swallow */
-          }
-        }
+        finishActiveTransition();
       }
     } else {
       ctx.clearRect(0, 0, W, H);
@@ -287,6 +307,39 @@ export function storyApi() {
         state.autoTimer += dt;
         if (state.autoTimer >= state.autoAdvance) next();
       }
+    }
+  }
+
+  function finishActiveTransition() {
+    if (!state.activeTransition) return;
+    state.index = state.activeTransition.toIndex;
+    state.activeTransition = null;
+    state.transitionT = 0;
+    state.autoTimer = 0;
+    if (state.onAdvance) {
+      try {
+        state.onAdvance(state.index, state.slides[state.index]);
+      } catch (_) {
+        /* swallow */
+      }
+    }
+  }
+
+  function pollInput() {
+    const input = globalThis.nova64?.input;
+    const keyp = input?.keyp;
+    const btnp = input?.btnp;
+    if (typeof keyp !== 'function' && typeof btnp !== 'function') return;
+    const pressed = (...keys) => typeof keyp === 'function' && keys.some(k => keyp(k));
+    if (pressed('Escape')) {
+      skip();
+      return;
+    }
+    if (
+      pressed(state.advanceKey, 'Space', ' ', 'Enter') ||
+      (typeof btnp === 'function' && btnp(0))
+    ) {
+      next();
     }
   }
 
@@ -324,7 +377,11 @@ export function storyApi() {
     state.visible = false;
     state.activeTransition = null;
     if (state.canvas) state.canvas.style.display = 'none';
-    if (typeof window !== 'undefined' && state.keyListener) {
+    if (
+      typeof window !== 'undefined' &&
+      typeof window.removeEventListener === 'function' &&
+      state.keyListener
+    ) {
       window.removeEventListener('keydown', state.keyListener);
       state.keyListener = null;
     }
@@ -386,7 +443,7 @@ export function storyApi() {
 
     if (state.canvas) state.canvas.style.display = 'block';
 
-    if (typeof window !== 'undefined') {
+    if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
       state.keyListener = e => {
         const k = e.key;
         if (k === state.advanceKey || k === 'Space' || k === ' ' || k === 'Enter') {
@@ -427,6 +484,7 @@ export function storyApi() {
       isPlaying,
       currentIndex,
       totalSlides,
+      _tick: tick,
     };
   }
 

@@ -1,28 +1,22 @@
 // story-video-demo — a short slide story that ends with a fullscreen video.
 //
-// Web plays the MP4 through HTML5 <video>. Godot plays the native OGV asset.
-// RetroArch uses the frame-sequence fallback supplied in the `frames` option.
+// Real video on every backend: Web plays the MP4 via HTML5 <video>, Godot plays
+// the native OGV (Theora) asset, and RetroArch decodes the MPEG1 .mpg in-core
+// via pl_mpeg. All three are driven through nova64.video.playFullscreen.
 //
 // Open: http://localhost:3000/console.html?demo=story-video-demo
 //
 // The story auto-advances hands-free; then the outro video plays fullscreen
-// (public-domain "Big Buck Bunny" clip at public/assets/sample.mp4), and the
-// cart shows "THE END". Press Enter to advance slides manually, Escape/Enter
-// to skip the video.
+// (public-domain "Big Buck Bunny" clip), and the cart shows "THE END". Press
+// Enter to advance slides manually, Escape/Enter to skip the video.
 
 let screen = 'story';
 let outroStarted = false;
 let storyIndex = 0;
 let storyTimer = 0;
 let videoElapsed = 0;
-let videoIndex = 0;
 let videoError = '';
 const textureHandles = new Map();
-
-const VIDEO_FRAMES = Array.from(
-  { length: 36 },
-  (_, i) => `assets/video/frames/frame_${String(i).padStart(3, '0')}.png`
-);
 
 const SLIDES = [
   {
@@ -73,15 +67,17 @@ function playOutro() {
   outroStarted = true;
   screen = 'video';
   videoElapsed = 0;
-  videoIndex = 0;
   videoError = '';
-  if (!hasVideoHelper()) return;
+  if (!hasVideoHelper()) {
+    videoError = 'no video support on this host';
+    screen = 'video-error';
+    return;
+  }
   nova64.video
     .playFullscreen('/assets/sample.mp4', {
-      nativeUrl: 'assets/video/sample.ogv',
-      muted: true,
-      frames: VIDEO_FRAMES,
-      fps: 12,
+      nativeUrl: 'assets/video/sample.ogv', // Godot: native Theora
+      mpgUrl: 'assets/video/sample.mpg', // RetroArch: MPEG1 decoded by pl_mpeg
+      muted: false,
       onFinish: () => {
         screen = 'done';
       },
@@ -172,17 +168,15 @@ function advanceLocalStory() {
   else storyIndex += 1;
 }
 
+// Fallback for a host with no nova64.video helper at all. Shows a short notice
+// instead of the outro, then moves on — no frame-sequence animation.
 function updateLocalVideo(dt) {
   if (pressed('Escape', 'Enter', 'Space') || pressedButton(0)) {
     screen = 'done';
     return;
   }
   videoElapsed += dt;
-  videoIndex = Math.floor(videoElapsed * 12);
-  if (videoIndex >= VIDEO_FRAMES.length) {
-    screen = 'done';
-    videoIndex = VIDEO_FRAMES.length - 1;
-  }
+  if (videoElapsed >= 3) screen = 'done';
 }
 
 function drawLocalStory() {
@@ -217,27 +211,20 @@ function drawSlideImage(slide, W, H) {
 function drawLocalVideo() {
   const W = nova64.draw.screenWidth();
   const H = nova64.draw.screenHeight();
-  const frame = VIDEO_FRAMES[Math.max(0, Math.min(VIDEO_FRAMES.length - 1, videoIndex))];
   nova64.draw.rectfill(0, 0, W, H, 0x000000ff);
-  const handle = loadTexture(frame);
-  if (handle && typeof nova64.draw.image === 'function') {
-    nova64.draw.image(handle, 0, 0, W, H, 0xffffffff);
-  }
+  nova64.draw.print('VIDEO NOT SUPPORTED ON THIS HOST', 32, H / 2 - 8, 0x888888, 1);
 }
 
+// Shown whenever playback can't start (no codec, missing/corrupt asset, no
+// host video support). Never leaves the user on a blank screen.
 function drawVideoError() {
   const W = nova64.draw.screenWidth();
   const H = nova64.draw.screenHeight();
   nova64.draw.rectfill(0, 0, W, H, 0x200808ff);
-  nova64.draw.print('VIDEO ERROR', 32, H / 2 - 24, 0xffdddd, 2);
-  nova64.draw.print(videoError, 32, H / 2 + 4, 0xffffff, 1);
-  nova64.draw.print(
-    'Expected assets/video/sample.ogv on native hosts.',
-    32,
-    H / 2 + 20,
-    0xffaaaa,
-    1
-  );
+  nova64.draw.print('VIDEO UNAVAILABLE', 32, H / 2 - 24, 0xffdddd, 2);
+  nova64.draw.print(videoError || 'playback failed', 32, H / 2 + 4, 0xffffff, 1);
+  nova64.draw.print('Press Enter to continue', 32, H / 2 + 22, 0xffaaaa, 1);
+  if (pressed('Escape', 'Enter', 'Space') || pressedButton(0)) screen = 'done';
 }
 
 function loadTexture(path) {

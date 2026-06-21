@@ -61,6 +61,20 @@
 #pragma GCC diagnostic pop
 #endif
 
+/* pl_mpeg: single-header MPEG1 video + MP2 audio decoder (public domain).
+ * Used for nova64.video.playFullscreen on the native core, which has no other
+ * video codec. Source must be MPEG1 in an MPEG-PS container (.mpg). */
+#define PL_MPEG_IMPLEMENTATION
+#if defined(__GNUC__) || defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
+#pragma GCC diagnostic ignored "-Wunused-function"
+#endif
+#include "pl_mpeg.h"
+#if defined(__GNUC__) || defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
+
 
 #define NOVA64_WIDTH 640
 #define NOVA64_HEIGHT 360
@@ -734,6 +748,29 @@ static void channel_set_pitch(const char *name, float pitch) {
 static uint32_t *framebuffer;
 static uint16_t *rgb565_framebuffer;
 static uint8_t *overlay_rgba_framebuffer;
+
+/* Fullscreen video (pl_mpeg) playback state. Declared here because
+ * audio_mix_frame() (above the decoder functions) drains the audio FIFO.
+ * Implementation + JS bridge live near js_draw_image. */
+typedef struct {
+   plm_t   *plm;
+   int      width, height;
+   uint8_t *rgba;        /* width*height*4, most-recently-decoded frame */
+   double   elapsed;     /* playback clock in seconds */
+   double   cur_time;    /* PTS of the frame currently in rgba */
+   double   duration;
+   double   framerate;
+   int      has_frame;
+   int      ended;
+   int      active;
+   /* audio: interleaved stereo float FIFO at NOVA64_SAMPLE_RATE */
+   int      audio_enabled;
+   float   *aq;          /* ring buffer, aq_cap stereo frames */
+   size_t   aq_cap;
+   size_t   aq_head;     /* read index (stereo frame) */
+   size_t   aq_count;    /* queued stereo frames */
+} nova64_video_state;
+static nova64_video_state g_video;
 static uint32_t framebuffer_clear_color;
 static char *cart_content;
 static size_t cart_size;
@@ -2686,10 +2723,16 @@ static double audio_sample_voice(struct nova64_audio_voice *voice)
    return value * voice->vol * channel_volume(voice->channel);
 }
 
+/* Defined after the video state below; keeps the audio FIFO topped up. */
+static void nova64_video_pump_audio(void);
+
 static void audio_mix_frame(void)
 {
    if (!audio_batch_cb)
       return;
+
+   /* Refill the fullscreen-video audio FIFO before draining it this frame. */
+   nova64_video_pump_audio();
 
    for (size_t i = 0; i < NOVA64_AUDIO_FRAME_SAMPLES; i++) {
       double mixed_l = 0.0, mixed_r = 0.0;
@@ -2721,6 +2764,15 @@ static void audio_mix_frame(void)
          music_state.pcm_pos += music_state.pcm_rate / NOVA64_SAMPLE_RATE;
          if ((size_t)music_state.pcm_pos >= music_state.pcm_frames)
             music_state.pcm_pos = 0.0;
+      }
+
+      /* Mix fullscreen-video audio (already at NOVA64_SAMPLE_RATE, stereo). */
+      if (g_video.active && g_video.audio_enabled && g_video.aq && g_video.aq_count > 0) {
+         size_t r = g_video.aq_head;
+         mixed_l += (double)g_video.aq[r * 2 + 0];
+         mixed_r += (double)g_video.aq[r * 2 + 1];
+         g_video.aq_head = (g_video.aq_head + 1) % g_video.aq_cap;
+         g_video.aq_count--;
       }
 
       mixed_l = clamp_double(mixed_l * audio_master_volume, -1.0, 1.0);
@@ -6034,6 +6086,208 @@ static JSValue js_draw_image(JSContext *ctx, JSValueConst this_val, int argc, JS
          0, 0, img_w, img_h, tint);
    free(owned_pixels);
    return JS_NewBool(ctx, dw > 0 && dh > 0);
+}
+
+/* ===================== Fullscreen video (pl_mpeg) =====================
+ * Real MPEG1 video playback for nova64.video.playFullscreen. The decoded
+ * frame is blitted into the 2D framebuffer, which is presented directly in
+ * software mode and composited on top of the 3D scene in GLES mode — so one
+ * blit path covers both renderers. Audio (MP2) is mixed in audio_mix_frame.
+ * Only one fullscreen video plays at a time. (State type + g_video are
+ * declared earlier, before audio_mix_frame, which drains the audio FIFO.) */
+static void nova64_video_close_internal(void)
+{
+   if (g_video.plm) plm_destroy(g_video.plm); /* frees the byte copy too */
+   if (g_video.rgba) free(g_video.rgba);
+   if (g_video.aq) free(g_video.aq);
+   memset(&g_video, 0, sizeof(g_video));
+}
+
+/* __novaVideoOpen(path) -> { ok, width, height, duration } | { ok:false, error } */
+static JSValue js_video_open(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   JSValue out = JS_NewObject(ctx);
+   if (argc < 1) { JS_SetPropertyStr(ctx, out, "ok", JS_NewBool(ctx, false)); JS_SetPropertyStr(ctx, out, "error", JS_NewString(ctx, "video_bad_args")); return out; }
+   const char *path = JS_ToCString(ctx, argv[0]);
+   if (!path) { JS_SetPropertyStr(ctx, out, "ok", JS_NewBool(ctx, false)); JS_SetPropertyStr(ctx, out, "error", JS_NewString(ctx, "video_bad_path")); return out; }
+
+   const struct nova64_package_asset *asset = find_package_asset(path);
+   if (!asset || !asset->data || asset->size < 16) {
+      JS_FreeCString(ctx, path);
+      JS_SetPropertyStr(ctx, out, "ok", JS_NewBool(ctx, false));
+      JS_SetPropertyStr(ctx, out, "error", JS_NewString(ctx, "video_asset_not_found"));
+      return out;
+   }
+
+   nova64_video_close_internal();
+
+   /* pl_mpeg needs the bytes to outlive the decoder; hand it a private copy
+    * that it frees on destroy (free_when_done = 1). */
+   uint8_t *copy = (uint8_t *)malloc(asset->size);
+   if (!copy) {
+      JS_FreeCString(ctx, path);
+      JS_SetPropertyStr(ctx, out, "ok", JS_NewBool(ctx, false));
+      JS_SetPropertyStr(ctx, out, "error", JS_NewString(ctx, "video_oom"));
+      return out;
+   }
+   memcpy(copy, asset->data, asset->size);
+
+   plm_t *plm = plm_create_with_memory(copy, asset->size, 1);
+   /* Probe up-front so stream counts are accurate. Without this pl_mpeg reports
+    * 0 audio streams until packets are demuxed, and the audio pump would then
+    * call plm_decode_audio on a video-only file — scanning to EOF and killing
+    * video playback partway through. */
+   if (plm) plm_probe(plm, asset->size);
+   if (!plm || plm_get_width(plm) <= 0 || plm_get_height(plm) <= 0) {
+      if (plm) plm_destroy(plm); else free(copy);
+      JS_FreeCString(ctx, path);
+      JS_SetPropertyStr(ctx, out, "ok", JS_NewBool(ctx, false));
+      JS_SetPropertyStr(ctx, out, "error", JS_NewString(ctx, "video_decode_init_failed"));
+      return out;
+   }
+   JS_FreeCString(ctx, path);
+
+   g_video.plm        = plm;
+   g_video.width      = plm_get_width(plm);
+   g_video.height     = plm_get_height(plm);
+   g_video.duration   = plm_get_duration(plm);
+   g_video.framerate  = plm_get_framerate(plm);
+   if (g_video.framerate <= 0.0) g_video.framerate = 24.0;
+   g_video.rgba       = (uint8_t *)calloc((size_t)g_video.width * g_video.height * 4u, 1);
+   g_video.elapsed    = 0.0;
+   g_video.cur_time   = -1.0; /* force the first frame to decode immediately */
+   g_video.has_frame  = 0;
+   g_video.ended      = 0;
+   g_video.active     = 1;
+   /* plm_frame_to_rgba only writes R,G,B (the alpha byte is left untouched), so
+    * prime alpha to opaque once — every later decode keeps it 255. Without this
+    * the alpha-blending blit treats the frame as fully transparent (black). */
+   if (g_video.rgba) {
+      size_t px = (size_t)g_video.width * g_video.height;
+      for (size_t i = 0; i < px; i++) g_video.rgba[i * 4 + 3] = 255;
+   }
+
+   /* Audio: enable only if not muted AND the file actually has an audio stream
+    * (probed above) at 44100 == NOVA64_SAMPLE_RATE, so mixing is 1:1. */
+   int muted = (argc > 1) && JS_ToBool(ctx, argv[1]);
+   g_video.audio_enabled = 0;
+   if (!muted && plm_get_num_audio_streams(plm) > 0
+         && plm_get_samplerate(plm) == (int)NOVA64_SAMPLE_RATE) {
+      plm_set_audio_enabled(plm, 1);
+      plm_set_audio_stream(plm, 0);
+      g_video.aq_cap   = (size_t)NOVA64_SAMPLE_RATE; /* ~1s of stereo float */
+      g_video.aq       = (float *)calloc(g_video.aq_cap * 2u, sizeof(float));
+      g_video.aq_head  = 0;
+      g_video.aq_count = 0;
+      g_video.audio_enabled = (g_video.aq != NULL);
+   } else {
+      plm_set_audio_enabled(plm, 0);
+   }
+   if (!g_video.rgba) {
+      nova64_video_close_internal();
+      JS_SetPropertyStr(ctx, out, "ok", JS_NewBool(ctx, false));
+      JS_SetPropertyStr(ctx, out, "error", JS_NewString(ctx, "video_oom"));
+      return out;
+   }
+
+   JS_SetPropertyStr(ctx, out, "ok", JS_NewBool(ctx, true));
+   JS_SetPropertyStr(ctx, out, "width", JS_NewInt32(ctx, g_video.width));
+   JS_SetPropertyStr(ctx, out, "height", JS_NewInt32(ctx, g_video.height));
+   JS_SetPropertyStr(ctx, out, "duration", JS_NewFloat64(ctx, g_video.duration));
+   JS_SetPropertyStr(ctx, out, "audio", JS_NewBool(ctx, g_video.audio_enabled ? true : false));
+   return out;
+}
+
+/* Pull decoded MP2 samples into the FIFO until it is comfortably full. Called
+ * from the audio mixer (same thread as retro_run). */
+static void nova64_video_pump_audio(void)
+{
+   if (!g_video.active || !g_video.plm || !g_video.audio_enabled || !g_video.aq)
+      return;
+   while (g_video.aq_count + PLM_AUDIO_SAMPLES_PER_FRAME <= g_video.aq_cap) {
+      plm_samples_t *s = plm_decode_audio(g_video.plm);
+      if (!s) break;
+      for (unsigned int i = 0; i < s->count; i++) {
+         size_t w = (g_video.aq_head + g_video.aq_count) % g_video.aq_cap;
+         g_video.aq[w * 2 + 0] = s->interleaved[i * 2 + 0];
+         g_video.aq[w * 2 + 1] = s->interleaved[i * 2 + 1];
+         g_video.aq_count++;
+         if (g_video.aq_count >= g_video.aq_cap) break;
+      }
+   }
+}
+
+/* __novaVideoAdvance(dt) -> { finished, position, duration } */
+static JSValue js_video_advance(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   JSValue out = JS_NewObject(ctx);
+   if (!g_video.active || !g_video.plm) {
+      JS_SetPropertyStr(ctx, out, "finished", JS_NewBool(ctx, true));
+      return out;
+   }
+
+   double dt = argc > 0 ? double_from_js(ctx, argv[0], 0.0) : 0.0;
+   if (dt < 0.0) dt = 0.0;
+   if (dt > 0.25) dt = 0.25; /* clamp pauses / huge stalls */
+   g_video.elapsed += dt;
+
+   if (!g_video.ended) {
+      /* Decode forward only while the frame on screen is older than the clock,
+       * so playback runs at the video's own rate (not the host frame rate).
+       * The guard caps catch-up work after a long stall. */
+      int guard = 0;
+      while (g_video.cur_time < g_video.elapsed && guard++ < 240) {
+         plm_frame_t *f = plm_decode_video(g_video.plm);
+         if (!f) { g_video.ended = 1; break; }
+         plm_frame_to_rgba(f, g_video.rgba, g_video.width * 4);
+         g_video.has_frame = 1;
+         g_video.cur_time = f->time;
+      }
+      if (plm_has_ended(g_video.plm)) g_video.ended = 1;
+   }
+
+   JS_SetPropertyStr(ctx, out, "finished", JS_NewBool(ctx, g_video.ended ? true : false));
+   JS_SetPropertyStr(ctx, out, "position", JS_NewFloat64(ctx, g_video.elapsed));
+   JS_SetPropertyStr(ctx, out, "duration", JS_NewFloat64(ctx, g_video.duration));
+   return out;
+}
+
+/* __novaVideoBlit() -> bool; paints the current frame (letterboxed) into the
+ * 2D framebuffer. Call from draw() so cls() doesn't wipe it. */
+static JSValue js_video_blit(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val; (void)argc; (void)argv;
+   if (!g_video.active || !g_video.has_frame || !g_video.rgba)
+      return JS_NewBool(ctx, false);
+
+   double src_aspect = (double)g_video.width / (double)g_video.height;
+   double dst_aspect = (double)NOVA64_WIDTH / (double)NOVA64_HEIGHT;
+   int dw, dh;
+   if (src_aspect > dst_aspect) {
+      dw = NOVA64_WIDTH;
+      dh = (int)((double)NOVA64_WIDTH / src_aspect + 0.5);
+   } else {
+      dh = NOVA64_HEIGHT;
+      dw = (int)((double)NOVA64_HEIGHT * src_aspect + 0.5);
+   }
+   int dx = (NOVA64_WIDTH - dw) / 2;
+   int dy = (NOVA64_HEIGHT - dh) / 2;
+
+   clear_framebuffer(rgba8(0, 0, 0, 255)); /* letterbox bars */
+   blit_rgba_scaled_tinted(g_video.rgba, g_video.width, g_video.height,
+         dx, dy, dw, dh, 0, 0, g_video.width, g_video.height,
+         rgba8(255, 255, 255, 255));
+   return JS_NewBool(ctx, true);
+}
+
+/* __novaVideoClose() -> bool */
+static JSValue js_video_close(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val; (void)argc; (void)argv;
+   nova64_video_close_internal();
+   return JS_NewBool(ctx, true);
 }
 
 /* imageRegion(textureOrPath, x, y, w, h, sx, sy, sw, sh [, tint]).
@@ -31854,19 +32108,22 @@ static bool install_nova64_api(JSContext *ctx)
            "return{play:play,next:next,stop:finish,skip:finish,_tick:tick,_draw:drawSlide,isPlaying:function(){return st.active;},currentIndex:function(){return st.index;},totalSlides:function(){return st.slides.length;}};"
          "})();"
          "nova64.video=(function(){"
-           "var st={active:false,frames:[],fps:12,index:0,elapsed:0,loop:false,onFinish:null,resolve:null};"
-           "function finish(info){if(!st.active)return;st.active=false;var cb=st.onFinish;st.onFinish=null;var r=st.resolve;st.resolve=null;info=info||{played:true,skipped:false};if(typeof cb==='function'){try{cb(info);}catch(e){}}if(typeof r==='function')r(info);}"
-           "function playFullscreen(url,opts){opts=opts||{};var frames=Array.isArray(opts.frames)?opts.frames.filter(function(f){return !!f;}):[];"
-             "if(!frames.length)return Promise.resolve({played:false,error:true,message:'no native video frames'});"
-             "st.frames=frames.slice();st.fps=Math.max(1,+opts.fps||12);st.index=0;st.elapsed=0;st.loop=!!opts.loop;st.onFinish=typeof opts.onFinish==='function'?opts.onFinish:null;st.active=true;"
+           "var st={active:false,onFinish:null,resolve:null,ticks:0};"
+           "function finish(info){if(!st.active)return;st.active=false;var cb=st.onFinish;st.onFinish=null;var r=st.resolve;st.resolve=null;try{__novaVideoClose();}catch(e){}info=info||{played:true,skipped:false};if(typeof cb==='function'){try{cb(info);}catch(e){}}if(typeof r==='function')r(info);}"
+           /* RetroArch decodes MPEG1 (.mpg) via pl_mpeg. Accept opts.mpgUrl, else
+              swap a web/godot container extension for .mpg. */
+           "function resolvePath(url,opts){var u=(opts&&typeof opts.mpgUrl==='string'&&opts.mpgUrl)?opts.mpgUrl:url;if(typeof u!=='string')return'';if(/\\.(mp4|ogv|webm|mov|m4v)$/i.test(u))u=u.replace(/\\.[^.]+$/,'.mpg');return u;}"
+           "function playFullscreen(url,opts){opts=opts||{};if(st.active)finish({played:false,superseded:true});var path=resolvePath(url,opts);var r;try{r=__novaVideoOpen(path,!!opts.muted);}catch(e){r=null;}"
+             "if(!r||!r.ok){return Promise.resolve({played:false,error:true,message:(r&&r.error)?r.error:'video_open_failed',path:path});}"
+             "st.active=true;st.ticks=0;st.onFinish=typeof opts.onFinish==='function'?opts.onFinish:null;"
              "return new Promise(function(resolve){st.resolve=resolve;});"
            "}"
-           "function tick(dt){if(!st.active)return;"
+           "function tick(dt){if(!st.active)return;st.ticks++;"
              "if((nova64.input&&nova64.input.keyp&&(nova64.input.keyp('Escape')||nova64.input.keyp('Enter')||nova64.input.keyp('Space')))||(nova64.input&&nova64.input.btnp&&nova64.input.btnp(0))){finish({played:true,skipped:true});return;}"
-             "st.elapsed+=Math.max(0,dt||0);var ni=Math.floor(st.elapsed*st.fps);"
-             "if(ni>=st.frames.length){if(st.loop){st.elapsed=0;st.index=0;}else{st.index=st.frames.length-1;finish({played:true,skipped:false});}}else st.index=ni;"
+             "var r;try{r=__novaVideoAdvance(dt||0);}catch(e){finish({played:true,error:true,message:'video_advance_failed'});return;}"
+             "if(r&&r.finished&&st.ticks>1)finish({played:true,skipped:false});"
            "}"
-           "function drawFrame(){if(!st.active||!st.frames.length)return false;var W=nova64.draw.screenWidth(),H=nova64.draw.screenHeight();nova64.draw.cls(0x000000);nova64.draw.image(st.frames[st.index],0,0,W,H,0xffffffff);return true;}"
+           "function drawFrame(){if(!st.active)return false;try{return !!__novaVideoBlit();}catch(e){return false;}}"
            "return{playFullscreen:playFullscreen,loadTexture:function(url){return{backend:'retroarch',url:url,isReady:function(){return false;},play:function(){return Promise.resolve();},pause:function(){},setVolume:function(){},seek:function(){},applyToMesh:function(){return false;},dispose:function(){}};},_tick:tick,_draw:drawFrame,stop:function(){finish({played:true,skipped:true});},isPlaying:function(){return st.active;},backend:function(){return 'retroarch';},isSupported:function(){return true;}};"
          "})();"
          "nova64.xr={enableVR:function(){return false;},disableVR:function(){},isXRActive:function(){return false;},getXRControllers:function(){return[];},getXRHands:function(){return[];}};"
@@ -32028,6 +32285,11 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, global, "createDataTexture", js_create_data_texture, 4);
    set_function(ctx, global, "decodeImageBytes", js_decode_image_bytes, 1);
    set_function(ctx, global, "setMeshTexture", js_set_mesh_texture, 2);
+   /* Fullscreen video (pl_mpeg) bridge — consumed by the nova64.video shim. */
+   set_function(ctx, global, "__novaVideoOpen", js_video_open, 1);
+   set_function(ctx, global, "__novaVideoAdvance", js_video_advance, 1);
+   set_function(ctx, global, "__novaVideoBlit", js_video_blit, 0);
+   set_function(ctx, global, "__novaVideoClose", js_video_close, 0);
    set_function(ctx, global, "setMeshNormalMap", js_set_mesh_normal_map, 2);
    set_function(ctx, global, "destroyTexture", js_destroy_texture, 1);
    set_function(ctx, global, "createRenderTarget", js_create_render_target, 2);

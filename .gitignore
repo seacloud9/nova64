@@ -67,3 +67,7 @@ entities.json
 
 # Local RetroArch cart save data (storage + highscore JSON written by the core)
 /nova64/
+
+# Video source binaries — the web demo's sample .mp4 is a large external asset,
+# not tracked. Fetch/transcode locally; native carts ship their own .mpg/.ogv.
+*.mp4

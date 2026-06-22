@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://b0nova64colytest1"]
+
+[ext_resource type="Script" path="res://test_colyseus_net.gd" id="1_colytest"]
+
+[node name="ColyseusTest" type="Node"]
+script = ExtResource("1_colytest")

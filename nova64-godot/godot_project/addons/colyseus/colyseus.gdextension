@@ -1,0 +1,13 @@
+[configuration]
+entry_symbol = "colyseus_sdk_init"
+compatibility_minimum = "4.1"
+
+[libraries]
+; Trimmed to windows x86_64 (the platform we test on). To support other
+; platforms, copy the matching binaries from the official release
+; (github.com/colyseus/native-sdk releases, godot-v0.17.11) into bin/ and add
+; the lines here. Full set: macos/ios/linux/android/web.
+; Both point at the release build (4.6MB) so we only commit one binary; the
+; 16MB debug build works too but isn't needed for in-editor testing.
+windows.debug.x86_64 = "bin/colyseus_godot.windows.x86_64.release.dll"
+windows.release.x86_64 = "bin/colyseus_godot.windows.x86_64.release.dll"

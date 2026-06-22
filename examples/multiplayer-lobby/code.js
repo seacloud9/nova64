@@ -22,6 +22,21 @@ function netReady() {
   return !!(nova64.net && nova64.net.isSupported && nova64.net.isSupported());
 }
 
+// Default to the SAME host the page was served from (port 2567), so loading the
+// console from localhost vs a LAN/WSL IP both reach the matching server without
+// a localhost-forwarding mismatch. Override with globalThis.__NOVA64_NET_URL.
+function defaultNetUrl() {
+  try {
+    if (typeof location !== 'undefined' && location.hostname) {
+      const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+      return proto + '://' + location.hostname + ':2567';
+    }
+  } catch (_) {
+    /* ignore */
+  }
+  return 'ws://localhost:2567';
+}
+
 // init() is intentionally NOT async and never blocks on the network — the cart
 // must render and accept input on the very first frame. The connection runs in
 // the background and just adds the other players once it's ready.
@@ -50,7 +65,7 @@ async function connectAsync() {
     }
 
     status = 'connecting…';
-    const url = globalThis.__NOVA64_NET_URL || 'ws://localhost:2567';
+    const url = globalThis.__NOVA64_NET_URL || defaultNetUrl();
     await nova64.net.connect({ url });
     room = await nova64.net.joinOrCreate('state', { name: (me && me.displayName) || 'Player' });
     status = 'connected';

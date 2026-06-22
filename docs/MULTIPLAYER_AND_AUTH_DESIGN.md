@@ -82,10 +82,28 @@ The only backend-specific piece is the **WebSocket transport**:
   in a `WebSocket`-shaped object and **pumps `net.poll` every frame** via
   `nova64.net._tick(dt)` (the same per-frame-pump contract as `nova64.video`).
 
-This keeps the room protocol and schema decoding in **one** codebase. (Fallback
-if QuickJS integration proves costly: use the GDScript `colyseus-godot` client
-on Godot and bridge its events — rejected as the default because it forks the
-protocol into two implementations to keep in sync.)
+This keeps the room protocol and schema decoding in **one** codebase **on web**
+(verified — the web lobby works end to end).
+
+> **Phase 2 Godot — revised (2026-06-22).** The "run colyseus.js in QuickJS"
+> idea proved **costly**: the published colyseus.js bundles (node and the
+> `colyseus-cocos-creator` engine build) drag in `ws`/`Buffer`/`process`
+> internals (`isUtf8`, etc.) that don't run in a bare QuickJS sandbox (verified
+> via a sandbox test). Making it work needs a **custom browser-clean rollup of
+> colyseus.js's browser entry + Buffer/TextEncoder/process polyfills** — a real
+> bundling effort.
+>
+> **The cleaner path (recommended) is the official Colyseus Godot SDK**
+> (https://docs.colyseus.io/getting-started/godot) — a native GDExtension addon
+> (GDScript, beta) that already speaks the protocol + schema over WebSockets.
+> Integration shape for Nova64: the Godot host drives the native client and the
+> bridge exposes the same `nova64.net` surface to the JS cart — `net.join`,
+> per-frame `net.poll` returning state diffs (player add/change/remove) +
+> inbound messages, and `net.send`. The cart code stays identical to web; only
+> the Godot host's net implementation differs (native client instead of a JS
+> WebSocket). Trade-off: a C++/GDScript ↔ QuickJS marshaling layer for state
+> callbacks, vs. the colyseus.js-bundling effort. **Decision pending a green
+> light** (this needs Godot-side testing, which can't be done headlessly here).
 
 ---
 

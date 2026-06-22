@@ -233,7 +233,7 @@ globalThis.nova64 = buildNamespace(nova64api, NAMESPACE_MAP);
 // (loader, story, level, video). exposeTo wrote `nova64api.loader = {...}`
 // which buildNamespace would otherwise stash in `_unmapped`. Lift them
 // onto the final `nova64` so carts can call `nova64.loader.show(...)` etc.
-for (const subns of ['loader', 'story', 'level', 'video']) {
+for (const subns of ['loader', 'story', 'level', 'video', 'net', 'auth']) {
   if (nova64api[subns]) globalThis.nova64[subns] = nova64api[subns];
 }
 

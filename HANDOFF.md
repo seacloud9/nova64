@@ -103,24 +103,38 @@ EVM wallet via SIWE later); auth mints a JWT that `nova64.net` hands to Colyseus
   - **`pnpm test` PASSES** headlessly: 2 colyseus.js clients join, see each
     other, a move replicates, names sync, relay delivers.
 
-### Next for Codex (Phase 1 finish → Phase 2)
-1. **`runtime/api-net.js`** — the web `nova64.net` facade over `colyseus.js`
-   (`connect/joinOrCreate/leave`, `room.state.*.onAdd/onChange/onRemove`,
-   `room.send/onMessage`, `isSupported`, `_tick` no-op on web). Wire it in
-   **`src/main.js`** next to video/story: it imports `videoApi`/`storyApi` (~line
-   40) and instantiates them (~line 162: `const storyInst = storyApi();`,
-   `videoInst = videoApi(gpu)`) — add `netApi()` the same way, attach as
-   `nova64.net`. Add `colyseus.js` to the **root** package.json deps.
-2. **`runtime/api-auth.js`** — provider registry + `registerProvider`,
-   `signIn/signOut/identity/token/onChange`; first provider = Supabase Google
-   (web redirect/popup → access-token JWT). Needs the user's Supabase project +
-   Google OAuth creds for a live test; until then the server's guest path works.
-3. **`examples/multiplayer-lobby`** — sign in (or guest) → join `state` → render
-   other players' avatars/cursors moving in realtime. The Phase 1 demo.
-4. **Phase 2 (Godot):** bridge `net.connect/poll/send/close` over
+### Done & VERIFIED — Phase 1 web (`nova64.net` + `nova64.auth`)
+- **`runtime/api-net.js`** — web `nova64.net` facade over `colyseus.js`
+  (`connect/joinOrCreate/join/create/joinById/leave`, `isSupported`, `_tick`
+  no-op; room facade with `onPlayerAdd/Change/Remove` derived by diffing the
+  players map — version-agnostic — plus `send/onMessage/onStateChange/state`).
+  Wired in `src/main.js` (`netApi()` → `nova64.net`). `colyseus.js` added to the
+  **root** package.json.
+- **`runtime/api-auth.js`** — provider registry + `registerProvider`,
+  `signIn/signOut/identity/token/onChange/restore`. Built-ins: `guest` (works
+  with no backend) and Supabase OAuth (`google`/`discord`/`github`/`oauth`) —
+  the app injects the client via `nova64.auth.configure({ client })`. Wired as
+  `nova64.auth`.
+- **`examples/multiplayer-lobby`** — guest sign-in → join `state` → arrow/WASD
+  moves a dot, positions sync; registered in console.html.
+- **Tests (`server/test/`, run with `pnpm test`):** `sync` (raw room), `facade`
+  (the actual `nova64.net` API: joinOrCreate + onPlayerAdd/Remove + pos sync),
+  `auth` (guest, errors, registerProvider, token, onChange, signOut). All PASS.
+  The web bundle builds (vite) with `colyseus.js`.
+- **Still needs a live check:** open 2 browser tabs on the lobby with the server
+  running (`cd server && pnpm start`) to eyeball realtime sync. Real Google OAuth
+  needs the user's Supabase project + creds (guest path works without).
+
+### Next for Codex (Phase 2+)
+1. **Phase 2 (Godot):** bridge `net.connect/poll/send/close` over
    `WebSocketPeer`; shim WS object + `nova64.net._tick(dt)` pump; run colyseus.js
    in QuickJS. Godot OAuth via `OS.shell_open` + loopback `TCPServer`.
-5. **RetroArch (later):** no in-core sockets — research the libretro
+2. **Auth depth:** Supabase Google end-to-end on web (configure + redirect
+   handling), then EVM wallet (SIWE) provider + a thin verify/mint service.
+3. **Phase 4 hardening:** reconnection/resume, interpolation helper,
+   server-side movement validation, rate limits; optional typed authoritative
+   rooms.
+4. **RetroArch (later):** no in-core sockets — research the libretro
    `netpacket` interface (P2P/lockstep, not client-server). Separate spike;
    don't block web/Godot.
 

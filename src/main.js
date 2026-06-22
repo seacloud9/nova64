@@ -40,6 +40,8 @@ import { loaderApi } from '../runtime/api-loader.js';
 import { storyApi } from '../runtime/api-story.js';
 import { levelApi } from '../runtime/api-level.js';
 import { videoApi } from '../runtime/api-video.js';
+import { netApi } from '../runtime/api-net.js';
+import { authApi } from '../runtime/api-auth.js';
 import { movieClipApi } from '../runtime/movie-clip.js';
 import { filtersApi } from '../runtime/api-filters.js';
 import { camera2DApi } from '../runtime/camera-2d.js';
@@ -162,6 +164,8 @@ const loaderInst = loaderApi();
 const storyInst = storyApi();
 const levelInst = levelApi(gpu);
 const videoInst = videoApi(gpu);
+const netInst = netApi();
+const authInst = authApi();
 
 // Create UI API - needs to be created after api is fully initialized
 let uiApiInstance;
@@ -187,6 +191,8 @@ loaderInst.exposeTo(nova64api);
 storyInst.exposeTo(nova64api);
 levelInst.exposeTo(nova64api);
 videoInst.exposeTo(nova64api);
+netInst.exposeTo(nova64api);
+authInst.exposeTo(nova64api);
 vxApi.exposeTo(nova64api);
 storeApiInst.exposeTo(nova64api);
 api2dInst.exposeTo(nova64api);

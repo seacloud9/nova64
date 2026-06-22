@@ -15,7 +15,16 @@
 //
 // The token comes from nova64.auth (optional — the dev server allows guests).
 
-import { Client } from 'colyseus.js';
+// colyseus.js is imported LAZILY (inside connect) rather than at module top so a
+// dependency-resolution hiccup (e.g. a stale vite dep-optimize cache) can never
+// crash engine init — nova64.net just reports unsupported and carts degrade.
+let _Client = null;
+async function loadClient() {
+  if (_Client) return _Client;
+  const mod = await import('colyseus.js');
+  _Client = mod.Client || (mod.default && mod.default.Client);
+  return _Client;
+}
 
 const DEFAULT_URL = 'ws://localhost:2567';
 
@@ -111,11 +120,18 @@ export function netApi() {
   let current = null; // facade for the active room
 
   function isSupported() {
-    return typeof Client === 'function';
+    // Any host that wires nova64.net (web, Node, later Godot) can network. The
+    // colyseus client loads lazily in connect(), which fails gracefully if it
+    // can't. RetroArch never exposes nova64.net, so carts guard with `nova64.net &&`.
+    return true;
   }
 
   async function connect(opts = {}) {
     const url = opts.url || DEFAULT_URL;
+    const Client = await loadClient();
+    if (typeof Client !== 'function') {
+      return { ok: false, error: 'colyseus_client_unavailable' };
+    }
     client = new Client(url);
     return { ok: true, url };
   }
@@ -127,7 +143,10 @@ export function netApi() {
   }
 
   async function _enter(method, roomName, options, token) {
-    if (!client) await connect(options);
+    if (!client) {
+      const r = await connect(options);
+      if (!r.ok || !client) throw new Error(r.error || 'connect_failed');
+    }
     const room = await client[method](roomName, joinOptions(options, token));
     current = makeRoomFacade(room);
     return current;

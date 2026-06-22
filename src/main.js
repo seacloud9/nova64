@@ -613,6 +613,9 @@ const gameMap = {
 const demoMap = {
   'hello-world': '/examples/hello-world/code.js',
   'hello-helpers': '/examples/hello-helpers/code.js',
+  'multiplayer-lobby': '/examples/multiplayer-lobby/code.js',
+  'story-video-demo': '/examples/story-video-demo/code.js',
+  'tv-demo': '/examples/tv-demo/code.js',
   'crystal-cathedral-3d': '/examples/crystal-cathedral-3d/code.js',
   'f-zero-nova-3d': '/examples/f-zero-nova-3d/code.js',
   'star-fox-nova-3d': '/examples/star-fox-nova-3d/code.js',

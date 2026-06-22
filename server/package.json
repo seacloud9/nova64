@@ -6,10 +6,11 @@
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
-    "test": "node test/sync.test.js && node test/facade.test.mjs && node test/auth.test.mjs",
+    "test": "node test/sync.test.js && node test/facade.test.mjs && node test/auth.test.mjs && node test/lobby.test.mjs",
     "test:sync": "node test/sync.test.js",
     "test:facade": "node test/facade.test.mjs",
-    "test:auth": "node test/auth.test.mjs"
+    "test:auth": "node test/auth.test.mjs",
+    "test:lobby": "node test/lobby.test.mjs"
   },
   "dependencies": {
     "@colyseus/ws-transport": "^0.15.0",

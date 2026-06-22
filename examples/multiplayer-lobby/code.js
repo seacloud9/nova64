@@ -22,16 +22,24 @@ function netReady() {
   return !!(nova64.net && nova64.net.isSupported && nova64.net.isSupported());
 }
 
-export async function init() {
-  status = 'connecting';
+// init() is intentionally NOT async and never blocks on the network — the cart
+// must render and accept input on the very first frame. The connection runs in
+// the background and just adds the other players once it's ready.
+export function init() {
+  status = 'starting';
   others.clear();
   room = null;
+  me = null;
+  myX = 320;
+  myY = 200;
+  connectAsync();
+}
 
+async function connectAsync() {
   if (!netReady()) {
-    status = 'multiplayer not supported on this host';
+    status = 'offline (no net on this host)';
     return;
   }
-
   try {
     // Guest identity by default. Swap for nova64.auth.signIn('google') once a
     // Supabase client is configured via nova64.auth.configure({ client }).
@@ -41,6 +49,7 @@ export async function init() {
       });
     }
 
+    status = 'connecting…';
     const url = globalThis.__NOVA64_NET_URL || 'ws://localhost:2567';
     await nova64.net.connect({ url });
     room = await nova64.net.joinOrCreate('state', { name: (me && me.displayName) || 'Player' });
@@ -55,12 +64,16 @@ export async function init() {
     room.onPlayerRemove(id => others.delete(id));
     room.onLeave(() => {
       status = 'disconnected';
+      room = null;
     });
-    room.onError((code, msg) => {
-      status = 'error ' + code + ' ' + (msg || '');
+    room.onError(code => {
+      status = 'error ' + code;
     });
+    // announce our starting position so others see us immediately
+    room.send('pos', { x: Math.round(myX), y: Math.round(myY) });
   } catch (e) {
-    status = 'connect failed: ' + (e && e.message ? e.message : e);
+    room = null;
+    status = 'offline (server not reachable)';
   }
 }
 
@@ -72,8 +85,8 @@ function down(...codes) {
 
 export function update(dt) {
   if (nova64.net && nova64.net._tick) nova64.net._tick(dt); // no-op on web, pumps native transports
-  if (!room) return;
 
+  // Move the local dot regardless of connection state — input must always work.
   let dx = 0;
   let dy = 0;
   if (down('ArrowLeft', 'KeyA')) dx -= SPEED * dt;
@@ -83,8 +96,8 @@ export function update(dt) {
 
   if (dx || dy) {
     myX = Math.max(10, Math.min(630, myX + dx));
-    myY = Math.max(30, Math.min(350, myY + dy));
-    room.send('pos', { x: Math.round(myX), y: Math.round(myY) });
+    myY = Math.max(40, Math.min(350, myY + dy));
+    if (room) room.send('pos', { x: Math.round(myX), y: Math.round(myY) }); // sync only when connected
   }
 }
 

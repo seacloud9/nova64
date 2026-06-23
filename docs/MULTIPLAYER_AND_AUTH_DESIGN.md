@@ -102,8 +102,11 @@ This keeps the room protocol and schema decoding in **one** codebase **on web**
 > inbound messages, and `net.send`. The cart code stays identical to web; only
 > the Godot host's net implementation differs (native client instead of a JS
 > WebSocket). Trade-off: a C++/GDScript ↔ QuickJS marshaling layer for state
-> callbacks, vs. the colyseus.js-bundling effort. **Decision pending a green
-> light** (this needs Godot-side testing, which can't be done headlessly here).
+> callbacks, vs. the colyseus.js-bundling effort.
+>
+> **Resolved — this is exactly what shipped.** See *Phase 2 — DONE* below; the
+> integration was built and verified headlessly (Godot 4.5, cross-play with a
+> Node client). The marshaling layer is `_forward_net` (C++) → `NovaNet.gd`.
 
 ---
 
@@ -358,14 +361,45 @@ Each phase ends with a runnable demo + verification.
   players' cursors/avatars move in realtime (web). 
 - **Verify:** two browser tabs sync; bad/no token is rejected per config.
 
-### Phase 2 — `nova64.net` + auth on Godot
-- Bridge `net.connect/poll/send/close` over Godot `WebSocketPeer`; shim
-  `WebSocket` shim + `nova64.net._tick(dt)` pump. colyseus.js runs in QuickJS.
-- Godot OAuth: `OS.shell_open` + loopback `TCPServer` capture → bridge → token;
-  `user://` token storage.
-- **Demo:** the **same** `multiplayer-lobby` cart runs cross-play web ↔ Godot.
-- **Verify:** a Godot client and a browser client share a room (manual run on
-  Godot; web verified as in Phase 1).
+### Phase 2 — `nova64.net` on Godot ✅ DONE (2026-06-22)
+**Net shipped; Godot OAuth deferred to Phase 3.** The "colyseus.js in QuickJS"
+plan was abandoned (no WebSocket/XHR/Buffer in Godot's QuickJS). Final shape —
+the official **native Colyseus Godot SDK** drives the socket; the cart's
+`nova64.net` calls are bridged to it:
+
+```
+cart JS → nova64.net (shim, nova64-compat.js)
+        → engine.call("net.*")  →  Nova64Host::_forward_net (C++)
+        → NovaNet.call_net (GDScript)  →  Colyseus.Client / Room (native SDK)
+```
+- **C++** ([gdextension/src/bridge.cpp]): `set_net_delegate()` + `_forward_net`
+  route every `net.*` to the GDScript delegate (SDK is GDScript-only).
+- **NovaNet** ([godot_project/scripts/nova_net.gd]): owns the client; a frame-
+  drained event queue (`net.poll`); player add/change/remove derived by diffing
+  `get_state().players` — the **same** version-agnostic approach as
+  [runtime/api-net.js]. Honors a `NOVA64_NET_URL` / `-- ws://…` override
+  because native Godot sockets can't use WSL's localhost forwarding.
+- **Shim** ([godot_project/shim/nova64-compat.js]): `nova64.net` mirroring the
+  web API; `__nova64_netPump` (in `__nova64_preUpdate`) resolves join promises +
+  fires room callbacks.
+
+**Stack alignment (required):** the Godot SDK speaks colyseus **0.17**, so the
+server moved 0.15→0.17 (ESM-only) and web moved colyseus.js 0.15→**0.16.22**
+(its latest; no 0.17 client exists). 0.17 returns a *flat* seat reservation that
+the 0.16 client can't parse, so `api-net.js` re-nests it (`patchSeatReservation`).
+- **Verified (headless, Godot 4.5):** the unchanged `multiplayer-lobby` cart
+  joins `ws://<wsl-ip>:2567` and sees a Node `web-bot` player appear with
+  `{id,name,x,y,data}` — cross-play web ↔ Godot confirmed. Server tests (sync/
+  facade/auth/lobby) pass against 0.17. Commits: `2402504`, `34d8b24`.
+
+**Recipe for local Godot multiplayer:** server `cd server && pnpm start`; deps
+install on ext4 + symlink (pnpm EACCES on /mnt/c — see [server/.npmrc]); run
+Godot with `-- ws://<wsl-ip>:2567 multiplayer-lobby` (native sockets need the
+real WSL IP, not localhost). Colyseus plugin enabled in `project.godot`.
+
+**Still TODO (Phase 2 tail):** Godot OAuth (`OS.shell_open` + loopback
+`TCPServer` → token; `user://` storage) + a Godot `nova64.auth` shim — deferred
+to land with Phase 3 providers.
 
 ### Phase 3 — Wallet + provider extensibility
 - `wallet` provider: web `window.ethereum` SIWE; `nova64-auth` nonce/verify →

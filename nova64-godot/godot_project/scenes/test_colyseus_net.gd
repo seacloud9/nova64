@@ -10,11 +10,34 @@ var room
 
 func _ready() -> void:
 	print("[colyseus-test] starting…")
+	# Auto-quit after a few seconds so headless/CLI runs exit on their own:
+	#   Godot_console.exe --headless --path <project> res://scenes/test_colyseus_net.tscn
+	get_tree().create_timer(12.0).timeout.connect(func():
+		print("[colyseus-test] done (auto-quit)")
+		get_tree().quit())
+	# Periodic status so we can see whether the connection ever completes.
+	var t := Timer.new()
+	t.wait_time = 1.5
+	t.autostart = true
+	add_child(t)
+	t.timeout.connect(func():
+		var sid := ""
+		if room != null and is_instance_valid(room):
+			sid = room.get_session_id()
+		print("[colyseus-test] tick connected=", (room.connected if room != null else "?"), " sessionId='", sid, "'"))
 	if not ClassDB.class_exists("_ColyseusClient"):
 		push_error("[colyseus-test] _ColyseusClient class missing — enable the Colyseus SDK plugin (Project Settings > Plugins) and restart the editor.")
 		return
 
-	client = Colyseus.Client.new("ws://localhost:2567")
+	# URL from: `-- <url>` cmdline arg, else NOVA64_NET_URL env, else localhost.
+	var url := "ws://localhost:2567"
+	var args := OS.get_cmdline_user_args()
+	if args.size() > 0 and String(args[0]).begins_with("ws"):
+		url = String(args[0])
+	elif OS.get_environment("NOVA64_NET_URL") != "":
+		url = OS.get_environment("NOVA64_NET_URL")
+	print("[colyseus-test] connecting to ", url)
+	client = Colyseus.Client.new(url)
 	print("[colyseus-test] client created; joining room 'state'…")
 	room = client.join_or_create("state", { "name": "godot-test" })
 	if room == null:

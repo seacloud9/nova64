@@ -8,9 +8,9 @@
 //
 // Plain-JS schema via defineTypes (no TS/decorators needed).
 
-const { Room } = require('colyseus');
-const { Schema, MapSchema, defineTypes } = require('@colyseus/schema');
-const { verifyToken } = require('../auth');
+import { Room } from '@colyseus/core';
+import { Schema, MapSchema, defineTypes } from '@colyseus/schema';
+import { verifyToken } from '../auth.js';
 
 class Player extends Schema {}
 defineTypes(Player, {
@@ -32,9 +32,12 @@ defineTypes(StateRoomState, { players: { map: Player } });
 const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
 const BOUND = 100000;
 
-class StateRoom extends Room {
+export class StateRoom extends Room {
   onCreate() {
     this.maxClients = 64;
+    // Native clients (Godot) can be slow between the matchmaking HTTP reservation
+    // and opening the room WebSocket; give the reservation room to breathe.
+    this.setSeatReservationTime(30);
     this.setState(new StateRoomState());
 
     // Relative movement intent.
@@ -70,10 +73,12 @@ class StateRoom extends Room {
 
   // Verify the session token (Supabase JWT) or allow a guest in dev.
   async onAuth(client, options) {
+    console.log('[StateRoom] onAuth sessionId=%s options=%j', client.sessionId, options);
     return await verifyToken(options && options.token, options);
   }
 
   onJoin(client, options) {
+    console.log('[StateRoom] onJoin sessionId=%s', client.sessionId);
     const p = new Player();
     p.id = client.sessionId;
     p.name = (client.auth && client.auth.name) || (options && options.name) || 'player';
@@ -88,4 +93,4 @@ class StateRoom extends Room {
   }
 }
 
-module.exports = { StateRoom, Player, StateRoomState };
+export { Player, StateRoomState };

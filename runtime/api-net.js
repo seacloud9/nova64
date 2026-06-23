@@ -23,7 +23,32 @@ async function loadClient() {
   if (_Client) return _Client;
   const mod = await import('colyseus.js');
   _Client = mod.Client || (mod.default && mod.default.Client);
+  patchSeatReservation(_Client);
   return _Client;
+}
+
+// colyseus.js tops out at 0.16.x (no 0.17 client exists), but our server runs
+// colyseus 0.17 so it can serve the native Godot SDK on one backend. 0.17 changed
+// the matchmaking seat-reservation response from nested `{ room: {...}, sessionId }`
+// to flat `{ name, roomId, processId, sessionId }`. The 0.16 client reads
+// `response.room.*`, so we re-nest the flat shape before it parses. publicAddress
+// is intentionally omitted — buildEndpoint then falls back to the connection host.
+function patchSeatReservation(Client) {
+  const proto = Client && Client.prototype;
+  if (!proto || proto.__nova64SeatPatched) return;
+  const orig = proto.consumeSeatReservation;
+  proto.consumeSeatReservation = function (response, rootSchema, reuse) {
+    if (response && !response.room && response.name) {
+      response.room = {
+        name: response.name,
+        roomId: response.roomId,
+        processId: response.processId,
+        publicAddress: response.publicAddress,
+      };
+    }
+    return orig.call(this, response, rootSchema, reuse);
+  };
+  proto.__nova64SeatPatched = true;
 }
 
 const DEFAULT_URL = 'ws://localhost:2567';

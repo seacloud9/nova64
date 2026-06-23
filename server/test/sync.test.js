@@ -1,10 +1,34 @@
 // Headless proof that the StateRoom syncs state across clients — no browser.
 // Boots the server, joins two colyseus.js clients, and asserts that a move by
 // one client is reflected in the other client's replicated state.
+//
+// ESM (the server is colyseus 0.17, ESM-only). This exercises the RAW
+// colyseus.js client (not the nova64.net facade) to prove the room itself, so
+// it re-applies the same 0.17 seat-reservation shim that api-net.js installs.
 
-const assert = require('assert');
-const { createServer } = require('../src/index');
-const { Client } = require('colyseus.js');
+import assert from 'assert';
+import { createServer } from '../src/index.js';
+import { Client } from 'colyseus.js';
+
+// 0.17 returns a flat seat reservation; the 0.16 client expects nested room.*.
+// (Mirror of patchSeatReservation in runtime/api-net.js — see the note there.)
+(function patchSeatReservation() {
+  const proto = Client.prototype;
+  if (proto.__nova64SeatPatched) return;
+  const orig = proto.consumeSeatReservation;
+  proto.consumeSeatReservation = function (response, rootSchema, reuse) {
+    if (response && !response.room && response.name) {
+      response.room = {
+        name: response.name,
+        roomId: response.roomId,
+        processId: response.processId,
+        publicAddress: response.publicAddress,
+      };
+    }
+    return orig.call(this, response, rootSchema, reuse);
+  };
+  proto.__nova64SeatPatched = true;
+})();
 
 function waitFor(predicate, timeoutMs, label) {
   return new Promise((resolve, reject) => {
@@ -42,6 +66,10 @@ function waitFor(predicate, timeoutMs, label) {
   }, 3000, 'bob sees alice move');
 
   // alice's name (from join options) propagated to bob.
+  await waitFor(() => {
+    const a = r2.state.players.get(r1.sessionId);
+    return a && a.name === 'alice';
+  }, 3000, 'name synced');
   const aliceOnBob = r2.state.players.get(r1.sessionId);
   assert.strictEqual(aliceOnBob.name, 'alice', 'name synced');
 
@@ -58,6 +86,6 @@ function waitFor(predicate, timeoutMs, label) {
   await server.gracefullyShutdown(false);
   process.exit(0);
 })().catch((e) => {
-  console.error('FAIL:', e && e.message ? e.message : e);
+  console.error('FAIL:', e && e.stack ? e.stack : e);
   process.exit(1);
 });

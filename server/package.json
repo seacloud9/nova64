@@ -2,6 +2,7 @@
   "name": "nova64-server",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "description": "Nova64 multiplayer server (Colyseus) — generic StateRoom backing nova64.net. See docs/MULTIPLAYER_AND_AUTH_DESIGN.md.",
   "main": "src/index.js",
   "scripts": {
@@ -13,9 +14,11 @@
     "test:lobby": "node test/lobby.test.mjs"
   },
   "dependencies": {
-    "@colyseus/ws-transport": "^0.15.0",
-    "colyseus": "^0.15.0",
-    "colyseus.js": "^0.15.0",
+    "@colyseus/core": "^0.17.0",
+    "@colyseus/schema": "^3.0.0",
+    "@colyseus/ws-transport": "^0.17.0",
+    "colyseus.js": "^0.16.22",
+    "express": "^4.21.0",
     "jsonwebtoken": "^9.0.2"
   }
 }

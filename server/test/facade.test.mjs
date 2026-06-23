@@ -2,12 +2,10 @@
 // StateRoom — proves the cart-facing API (connect/joinOrCreate, onPlayerAdd/
 // Change, send, players()) works, not just the raw colyseus protocol.
 //
-// colyseus.js resolves from the repo-root node_modules (api-net.js imports it);
-// the server resolves colyseus from server/node_modules.
+// colyseus.js (the web client) resolves from server/node_modules here, so this
+// also verifies web-client compatibility with the server's colyseus version.
 
-import { createRequire } from 'module';
-const require = createRequire(import.meta.url);
-const { createServer } = require('../src/index.js');
+import { createServer } from '../src/index.js';
 const { netApi } = await import('../../runtime/api-net.js');
 
 function waitFor(fn, ms, label) {
@@ -61,6 +59,6 @@ function waitFor(fn, ms, label) {
   await server.gracefullyShutdown(false);
   process.exit(0);
 })().catch((e) => {
-  console.error('FAIL facade:', e && e.message ? e.message : e);
+  console.error('FAIL facade:', e && e.stack ? e.stack : e);
   process.exit(1);
 });

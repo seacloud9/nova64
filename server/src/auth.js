@@ -1,4 +1,4 @@
-// Session-token verification for Colyseus onAuth.
+// Session-token verification for Colyseus onAuth (ESM; colyseus 0.17 is ESM-only).
 //
 // Phase 1 verifies a Supabase (or any HS256-compatible) JWT. The decisions doc
 // uses Supabase Auth, which issues a standard JWT signed with the project JWT
@@ -10,9 +10,9 @@
 //   NOVA64_ALLOW_GUEST=0        require a token (default: guests allowed, dev).
 //   NOVA64_REQUIRE_VERIFIED=1   refuse to run unverified (no secret) — prod guard.
 
-const jwt = require('jsonwebtoken');
+import jwt from 'jsonwebtoken';
 
-async function verifyToken(token, options) {
+export async function verifyToken(token, options) {
   if (!token) {
     if (process.env.NOVA64_ALLOW_GUEST === '0') {
       throw new Error('auth_required');
@@ -47,5 +47,3 @@ async function verifyToken(token, options) {
     claims,
   };
 }
-
-module.exports = { verifyToken };

@@ -7,6 +7,10 @@ git s https://help.github.com/articles/ignoring-files/ for more about ignoring f
 /node_modules
 /os9-shell/node_modules
 /os9-shellMobile/node_modules
+# server deps live on ext4 (WSL home) + are symlinked in; never commit the link.
+# colyseus 0.17 is ESM-only and pnpm's atomic renames fail on /mnt/c — see
+# server/.npmrc and the install workaround in docs/MULTIPLAYER_AND_AUTH_DESIGN.md.
+server/node_modules
 /dist
 /.pnp
 .pnp.js

@@ -1,11 +1,15 @@
 // controls.js — movement + look input, desktop and mobile.
 //
-// Desktop: WASD/arrows move, Q/E or arrows turn, mouse (pointer-lock) looks,
-//          C toggles camera.
+// Desktop: WASD/arrows move, Q/E or arrows turn, hold-and-drag mouse on the 3D
+//          view to look, C toggles camera.
 // Mobile:  left-half drag = virtual joystick (move), right-half drag = look,
 //          plus a tappable Camera button. Reads nova64.input.touches() so move +
 //          look work at once. Touches already consumed by UI (buttons) are
 //          skipped so a button hold never doubles as a joystick.
+//
+// No pointer-lock: it hides the cursor and steals focus from the chat bar / UI.
+// Drag-look keeps the cursor free so the always-present chat input stays usable.
+// While the chat bar is focused (ctx.typing) movement/look is suppressed.
 //
 // Writes movement intents through the app context (ctx.setMove/addYaw/addPitch/
 // toggleCamera) — never touches the backend or net directly.
@@ -13,7 +17,8 @@
 import { Panel, Button } from '../core/ui.js';
 
 const JOY_RADIUS = 48;
-const LOOK_SENS = 0.008;
+const LOOK_SENS_TOUCH = 0.008;
+const LOOK_SENS_MOUSE = 0.012;
 const TURN_KEY = 2.2;
 
 export function controlsPlugin() {
@@ -24,33 +29,19 @@ export function controlsPlugin() {
   let lookId = null;
   let lookLast = { x: 0, y: 0 };
   let hasTouched = false;
-  const pendingLook = { yaw: 0, pitch: 0 };
-  let mouseWired = false;
-
-  function wireMouseLook() {
-    if (mouseWired || typeof document === 'undefined') return;
-    mouseWired = true;
-    document.addEventListener('mousedown', () => {
-      if (!document.pointerLockElement && document.body && document.body.requestPointerLock) {
-        document.body.requestPointerLock().catch(() => {});
-      }
-    });
-    document.addEventListener('mousemove', e => {
-      if (document.pointerLockElement) {
-        pendingLook.yaw -= e.movementX * 0.0025;
-        pendingLook.pitch -= e.movementY * 0.0022;
-      }
-    });
-  }
+  let dragging = false;
+  let lastMouse = { x: 0, y: 0 };
 
   return {
     id: 'controls',
 
-    init() {
-      wireMouseLook();
-    },
-
     update(dt, ctx) {
+      // Suppress all control input while the chat bar has focus.
+      if (ctx.typing) {
+        ctx.setMove(0, 0);
+        return;
+      }
+
       // Camera toggle (edge).
       const cNow = ctx.input.key('KeyC');
       if (cNow && !prevC) ctx.toggleCamera();
@@ -66,12 +57,17 @@ export function controlsPlugin() {
       if (ctx.input.key('KeyD')) strafe -= 1;
       if (ctx.input.key('KeyA')) strafe += 1;
 
-      // Apply accumulated mouse-look (desktop pointer lock).
-      if (pendingLook.yaw || pendingLook.pitch) {
-        ctx.addYaw(pendingLook.yaw);
-        ctx.addPitch(pendingLook.pitch);
-        pendingLook.yaw = 0;
-        pendingLook.pitch = 0;
+      // Desktop drag-look: hold the mouse on the 3D view (not over UI) and move.
+      const mp = (ctx.pointers || []).find(p => p.id === 'mouse');
+      if (mp && mp.down && !ctx.input.isConsumed('mouse')) {
+        if (dragging) {
+          ctx.addYaw(-(mp.x - lastMouse.x) * LOOK_SENS_MOUSE);
+          ctx.addPitch(-(mp.y - lastMouse.y) * LOOK_SENS_MOUSE);
+        }
+        lastMouse = { x: mp.x, y: mp.y };
+        dragging = true;
+      } else {
+        dragging = false;
       }
 
       // Touch: partition into joystick (left) + look (right), skipping UI.
@@ -111,8 +107,8 @@ export function controlsPlugin() {
       if (lookId != null) {
         const t = touches.find(p => p.id === lookId);
         if (t) {
-          ctx.addYaw(-(t.x - lookLast.x) * LOOK_SENS);
-          ctx.addPitch(-(t.y - lookLast.y) * LOOK_SENS);
+          ctx.addYaw(-(t.x - lookLast.x) * LOOK_SENS_TOUCH);
+          ctx.addPitch(-(t.y - lookLast.y) * LOOK_SENS_TOUCH);
           lookLast = { x: t.x, y: t.y };
         }
       }
@@ -122,9 +118,9 @@ export function controlsPlugin() {
 
     renderUI(ctx) {
       const nodes = [];
-      // Camera toggle button (bottom-left).
+      // Camera toggle button (top-right, clear of the bottom chat bar).
       nodes.push(
-        Panel({ x: 8, y: 8, anchor: 'bl', bg: 0x00000000 }, [
+        Panel({ x: 8, y: 8, anchor: 'tr', bg: 0x00000000 }, [
           Button({
             id: 'cam',
             label: ctx.local.mode === 'first' ? 'CAM:1st' : 'CAM:3rd',
@@ -134,11 +130,11 @@ export function controlsPlugin() {
       );
       // Mobile joystick visual (only once touch has been used).
       if (hasTouched) {
-        const base = joyId != null ? joyOrigin : { x: 70, y: 290 };
+        const base = joyId != null ? joyOrigin : { x: 70, y: 250 };
         const knob = joyId != null ? joyCur : base;
         nodes.push({
           measure: () => ({ w: 0, h: 0 }),
-          paint: (c2, _x, _y, _hits) => {
+          paint: c2 => {
             c2.backend.drawCircle(base.x, base.y, JOY_RADIUS, 0x44ffffff, false);
             c2.backend.drawCircle(knob.x, knob.y, 16, 0x99ffffff, true);
           },

@@ -1,19 +1,22 @@
 // chat.js — chat as a plugin, over a swappable transport provider.
 //
-// Default provider = the colyseus `event` relay (room.send('chat',…) → server
-// broadcasts to everyone else → onNetMessage). Swap it by passing
-// chatPlugin({ provider }) with { send(text, ctx), receive(evt) -> {from,text} }
-// (relay-style) or a provider that calls a deliver() callback from its own
-// socket. Commands register via ctx.registerCommand.
+// Web input is an ALWAYS-PRESENT, full-width bar docked to the bottom of the
+// cart screen (a real DOM <input> = native mobile keyboard). Click/tap it to
+// type, Enter to send. While it has focus, keystrokes are kept out of the game
+// (stopPropagation) so typing never moves your avatar or restarts the cart.
 //
-// Input uses nova64.startTextInput (DOM input = native mobile keyboard) with
-// onSubmit/onCancel, so typing works on phones. A Chat button opens it on touch.
+// Default transport = the colyseus `event` relay (room.send('chat',…) → server
+// broadcasts to everyone else → onNetMessage). Swap via chatPlugin({ provider })
+// with { send(text, ctx), receive(evt) -> {from,text} }. Commands register via
+// ctx.registerCommand. On non-DOM backends (Godot) the bar is skipped — a native
+// input is wired there separately; receive/log still work.
 
-import { Panel, List, Button, Text } from '../core/ui.js';
+import { Panel, List, Text } from '../core/ui.js';
 
-const MAX_LOG = 6;
+const MAX_LOG = 7;
+const BAR_ID = 'nova64-metaverse-chatbar';
+const BAR_H = 30;
 
-// Built-in transport: the colyseus relay already wired into nova64.net.
 function colyseusProvider() {
   return {
     id: 'colyseus',
@@ -32,46 +35,21 @@ function colyseusProvider() {
 export function chatPlugin(opts = {}) {
   const provider = opts.provider || colyseusProvider();
   const log = [];
-  let inputOpen = false;
+  let bar = null;
+  let focused = false;
 
   function push(name, text) {
     log.push({ name, text });
     while (log.length > MAX_LOG) log.shift();
   }
   function nameFor(id, ctx) {
-    if (ctx.room() && id === ctx.room().sessionId) {
-      const me = ctx.me();
-      return (me && me.displayName) || 'me';
-    }
+    if (ctx.room() && id === ctx.room().sessionId) return myName(ctx);
     const o = ctx.others.get(id);
     return (o && o.name) || (id || '').slice(0, 4);
   }
   function myName(ctx) {
     const me = ctx.me();
     return (me && me.displayName) || 'me';
-  }
-
-  function open(ctx) {
-    if (inputOpen || typeof nova64.startTextInput !== 'function') return;
-    if (
-      typeof document !== 'undefined' &&
-      document.exitPointerLock &&
-      document.pointerLockElement
-    ) {
-      document.exitPointerLock();
-    }
-    inputOpen = true;
-    nova64.startTextInput({
-      placeholder: 'say something… (Enter to send, Esc to cancel)',
-      maxLen: 120,
-      onSubmit: text => {
-        inputOpen = false;
-        submit(ctx, text);
-      },
-      onCancel: () => {
-        inputOpen = false;
-      },
-    });
   }
 
   function submit(ctx, raw) {
@@ -89,23 +67,87 @@ export function chatPlugin(opts = {}) {
     push(myName(ctx), text); // local echo (relay excludes the sender)
   }
 
+  // Build the persistent, full-width bottom chat bar (web only).
+  function ensureBar(ctx) {
+    if (bar || typeof document === 'undefined') return;
+    const old = document.getElementById(BAR_ID);
+    if (old) old.remove();
+    const el = document.createElement('input');
+    el.id = BAR_ID;
+    el.type = 'text';
+    el.autocomplete = 'off';
+    el.spellcheck = false;
+    el.placeholder = 'Press Enter to chat…  (/me, /help)';
+    el.maxLength = 160;
+    Object.assign(el.style, {
+      position: 'fixed',
+      left: '0px',
+      bottom: '0px',
+      width: '320px',
+      height: BAR_H + 'px',
+      boxSizing: 'border-box',
+      zIndex: '99999',
+      padding: '4px 10px',
+      border: 'none',
+      borderTop: '1px solid #2a3550',
+      background: 'rgba(11,16,32,0.82)',
+      color: '#dfe4ff',
+      font: '13px monospace',
+      outline: 'none',
+    });
+    // Keep all key events out of the game/console while typing.
+    el.addEventListener('keydown', e => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        const v = el.value;
+        el.value = '';
+        submit(ctx, v);
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        el.blur(); // drop back into movement
+      }
+      e.stopPropagation();
+    });
+    el.addEventListener('keyup', e => e.stopPropagation());
+    el.addEventListener('focus', () => (focused = true));
+    el.addEventListener('blur', () => (focused = false));
+    document.body.appendChild(el);
+    bar = el;
+  }
+
+  // Dock the bar to the bottom edge of the cart canvas, full width.
+  function positionBar() {
+    if (!bar) return;
+    const canvas = document.getElementById('screen') || document.querySelector('canvas');
+    if (!canvas) return;
+    const r = canvas.getBoundingClientRect();
+    bar.style.left = r.left + 'px';
+    bar.style.width = r.width + 'px';
+    bar.style.top = r.bottom - BAR_H + 'px';
+    bar.style.bottom = 'auto';
+  }
+
   return {
     id: 'chat',
+    isTyping: () => focused,
 
     init(ctx) {
+      ensureBar(ctx);
       ctx.registerCommand('help', () => push('*', 'commands: /me <action>, /help'));
       ctx.registerCommand('me', (args, c) => {
         const action = (args || '').trim();
         if (!action) return;
         const line = myName(c) + ' ' + action;
-        c.sendRelay('chat', { text: line, emote: true });
+        c.sendRelay('chat', { text: line });
         push('*', line);
       });
     },
 
     update(_dt, ctx) {
-      // Open on Enter / T when not already typing (desktop). Mobile uses the button.
-      if (!inputOpen && (ctx.input.key('Enter') || ctx.input.key('KeyT'))) open(ctx);
+      ensureBar(ctx);
+      positionBar();
+      // Expose typing state so controls can ignore movement while the bar is focused.
+      ctx.typing = focused;
     },
 
     onNetMessage(evt, ctx) {
@@ -115,18 +157,11 @@ export function chatPlugin(opts = {}) {
 
     renderUI(ctx) {
       const lines = log.map(e => e.name + ': ' + e.text);
-      if (inputOpen) lines.push('typing…');
-      const nodes = [
-        Panel({ x: 8, y: 44, anchor: 'bl', bg: 0xaa0b1020 }, [
-          Text({ value: 'CHAT', color: ctx.theme.accent }),
-          List({ items: lines.length ? lines : ['(no messages yet)'], color: ctx.theme.dim }),
-        ]),
-        // Chat button (bottom-right) — primary entry on touch.
-        Panel({ x: 8, y: 8, anchor: 'br', bg: 0x00000000 }, [
-          Button({ id: 'chat', label: 'CHAT', active: inputOpen, onTap: () => open(ctx) }),
-        ]),
-      ];
-      return nodes;
+      // Chat log sits just above the docked input bar (bottom-left).
+      return Panel({ x: 6, y: BAR_H + 6, anchor: 'bl', bg: 0xaa0b1020 }, [
+        Text({ value: 'CHAT', color: ctx.theme.accent }),
+        List({ items: lines.length ? lines : ['(no messages yet)'], color: ctx.theme.dim }),
+      ]);
     },
   };
 }

@@ -54,6 +54,8 @@ const RenderBackend = {
   // Avatars (remote + local third-person)
   addAvatar(id, { color, name })
   updateAvatar(id, { x, y, z, ry })
+  setAvatarStyle(id, { color })   // recolor in place (appearance customization)
+  setAvatarVisible(id, visible)   // e.g. hide own body in first-person
   removeAvatar(id)
   // Camera
   setCamera({ x, y, z, yaw, pitch, mode })   // mode: 'first' | 'third'
@@ -161,7 +163,11 @@ context + backend (no nova64/net access, so it runs on any backend):
 
 `StateRoom` Player carries 3D pose: `x, y, z, ry` (+ `name`, `data`). Movement
 intent is `pos3 { x, y, z, ry }`. Chat rides the generic relay (no schema
-change). Avatar appearance/customization lives in the `data` blob (Phase 4).
+change). **Avatar appearance** lives in the `data` blob: the cart sends
+`set { data: '{"color":<0xAARRGGBB>}' }`; peers parse it on spawn/change and the
+backend recolors the avatar in place (`setAvatarStyle`). The choice persists in
+`localStorage` and is re-broadcast on connect, so it survives reloads and reaches
+players who join later.
 
 ## 7. Phased roadmap
 
@@ -170,8 +176,8 @@ change). Avatar appearance/customization lives in the `data` blob (Phase 4).
   system; controls plugin (mobile joystick/look); chat plugin (typed, native
   keyboard); interpolated remote avatars; HUD roster.
 - **P3 — presence & polish** (current): name tags (world→screen) ✅, join/leave
-  toasts ✅; remaining — avatar customization via `data`, wire `nova64.auth`
-  identities (display names/avatars from the signed-in identity).
+  toasts ✅, avatar color customization via `data` ✅; remaining — wire
+  `nova64.auth` identities (display names/avatars from the signed-in identity).
 - **P4 — Godot backend:** register a GodotRenderBackend; touch parity; cross-play
   the metaverse cart unchanged.
 - **P5 — XR backend:** stereo camera rig + world-space UI panels; controller/hand

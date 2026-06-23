@@ -28,6 +28,7 @@ global.nova64 = {
     setScale: () => {},
     setPosition: () => {},
     destroyMesh: () => {},
+    engine: { setMeshMaterial: (...a) => draws.push(['material', ...a]) },
   },
   camera: { setCameraPosition: () => {}, setCameraTarget: () => {}, setCameraFOV: () => {} },
   light: { setAmbientLight: () => {}, setDirectionalLight: () => {} },
@@ -99,9 +100,22 @@ assert(
   'presence name tag rendered (world->screen projection)'
 );
 
+// Appearance: our own color was broadcast on connect via a `set` blob.
+assert(
+  sends.some(s => s.type === 'set' && Number.isFinite((JSON.parse(s.msg.data) || {}).color)),
+  'local appearance broadcast on connect (set data)'
+);
+
 // Position update from the remote is interpolated toward (no throw, avatar moves).
 roomCbs.change({ x: 6, z: -4, ry: 1.5, name: 'web-bot' }, 'remote1');
 for (let i = 0; i < 30; i++) cart.update(0.016);
+
+// A remote appearance change recolors that avatar in place.
+roomCbs.change({ x: 6, z: -4, ry: 1.5, name: 'web-bot', data: '{"color":4294923366}' }, 'remote1');
+assert(
+  draws.some(d => d[0] === 'material'),
+  'remote appearance change recolors avatar (setMeshMaterial)'
+);
 
 // Local movement (KeyW held) sends pos3.
 keyState = true; // every key() returns true → forward+turn; good enough to move

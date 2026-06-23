@@ -12,6 +12,23 @@ import { renderUI, defaultTheme } from './ui.js';
 const SEND_HZ = 15;
 const LERP = 12; // remote-avatar smoothing rate
 
+// Avatar appearance palette (customization via the per-player `data` blob).
+const PALETTE = [
+  0xffff5566, 0xffffaa33, 0xffffe14d, 0xff66dd66, 0xff44ccff, 0xff9b6bff, 0xffff77cc, 0xffffffff,
+];
+const APPEARANCE_KEY = 'nova64.metaverse.appearance';
+
+// Read a color out of a player's `data` blob ({"color":<0xAARRGGBB>}); null if absent/bad.
+function parseColor(data) {
+  if (!data) return null;
+  try {
+    const o = JSON.parse(data);
+    return Number.isFinite(o.color) ? o.color >>> 0 : null;
+  } catch (_) {
+    return null;
+  }
+}
+
 function now() {
   return (typeof performance !== 'undefined' ? performance.now() : Date.now()) / 1000;
 }
@@ -64,6 +81,24 @@ export function createApp(opts = {}) {
   const world = opts.world || {};
   const LOCAL_ID = '__me__'; // handle for the local player's own avatar
   const local = { x: 0, z: 6, yaw: Math.PI, pitch: 0, mode: 'first' };
+
+  // Local avatar appearance. Start from a saved choice, else a palette slot
+  // seeded by the name so two unconfigured visitors usually differ.
+  let colorIndex = (() => {
+    const s = String(opts.name || 'me');
+    let h = 0;
+    for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+    return h % PALETTE.length;
+  })();
+  try {
+    if (typeof localStorage !== 'undefined') {
+      const saved = parseInt(localStorage.getItem(APPEARANCE_KEY), 10);
+      if (Number.isFinite(saved) && saved >= 0 && saved < PALETTE.length) colorIndex = saved;
+    }
+  } catch (_) {
+    /* ignore */
+  }
+  const appearance = { color: PALETTE[colorIndex] };
   const others = new Map(); // id -> { x, z, yaw, name, tx, tz, tyaw } (t* = targets)
   const commands = new Map();
   let room = null;
@@ -109,6 +144,9 @@ export function createApp(opts = {}) {
     toggleCamera: () => {
       local.mode = local.mode === 'first' ? 'third' : 'first';
     },
+    // appearance (read current color; cycle through the palette)
+    appearance,
+    cycleColor: () => setLocalColor((colorIndex + 1) % PALETTE.length),
     // chat / relay
     registerCommand: (name, fn) => commands.set(name, fn),
     runCommand: (name, args) => {
@@ -137,8 +175,28 @@ export function createApp(opts = {}) {
     });
   }
 
+  // Broadcast our appearance so others recolor our avatar. The server stores it
+  // in our `data` blob, so players who join later pick it up on spawn too.
+  function sendAppearance() {
+    if (room) room.send('set', { data: JSON.stringify({ color: appearance.color }) });
+  }
+  // Apply a palette choice locally (own avatar), persist it, and broadcast.
+  function setLocalColor(index) {
+    colorIndex = ((index % PALETTE.length) + PALETTE.length) % PALETTE.length;
+    appearance.color = PALETTE[colorIndex];
+    if (backend.setAvatarStyle) backend.setAvatarStyle(LOCAL_ID, { color: appearance.color });
+    try {
+      if (typeof localStorage !== 'undefined')
+        localStorage.setItem(APPEARANCE_KEY, String(colorIndex));
+    } catch (_) {
+      /* ignore */
+    }
+    sendAppearance();
+  }
+
   function spawn(id, p) {
     const name = (p && p.name) || id.slice(0, 4);
+    const data = (p && p.data) || '';
     others.set(id, {
       x: p.x || 0,
       z: p.z || 0,
@@ -147,8 +205,10 @@ export function createApp(opts = {}) {
       tz: p.z || 0,
       tyaw: p.ry || 0,
       name,
+      data,
     });
-    backend.addAvatar(id, { color: colorFor(id), name });
+    const color = parseColor(data);
+    backend.addAvatar(id, { color: color != null ? color : colorFor(id), name });
     notifyPeer('onPeerJoin', id, { name });
   }
   function despawn(id) {
@@ -196,6 +256,12 @@ export function createApp(opts = {}) {
           o.tz = p.z;
           o.tyaw = p.ry;
           if (p.name) o.name = p.name;
+          // Appearance changed → recolor their avatar in place.
+          if (p.data != null && p.data !== o.data) {
+            o.data = p.data;
+            const c = parseColor(p.data);
+            if (c != null && backend.setAvatarStyle) backend.setAvatarStyle(id, { color: c });
+          }
         } else spawn(id, p);
       });
       room.onPlayerRemove(id => despawn(id));
@@ -218,6 +284,7 @@ export function createApp(opts = {}) {
         });
       });
       sendPos(true);
+      sendAppearance(); // tell everyone our chosen color
     } catch (e) {
       room = null;
       // Tear down any half-open connection so the SDK stops polling/retrying.
@@ -268,7 +335,7 @@ export function createApp(opts = {}) {
       backend.init(world);
       // Your own avatar — shown only in third-person (in first-person the camera
       // sits inside it). Lets you actually see yourself move when you press C.
-      backend.addAvatar(LOCAL_ID, { color: colorFor('me'), name: opts.name || 'me' });
+      backend.addAvatar(LOCAL_ID, { color: appearance.color, name: opts.name || 'me' });
       if (backend.setAvatarVisible) backend.setAvatarVisible(LOCAL_ID, false);
       plugins.all().forEach(pl => {
         if (typeof pl.init === 'function') pl.init(ctx);

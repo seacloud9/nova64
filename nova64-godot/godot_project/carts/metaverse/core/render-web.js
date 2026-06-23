@@ -107,6 +107,20 @@ export function createWebBackend() {
       const a = avatars.get(id);
       if (a && nova64.scene.setMeshVisible) nova64.scene.setMeshVisible(a.body, !!visible);
     },
+    // Recolor an existing avatar in place (appearance customization). Guarded so
+    // it no-ops cleanly on hosts whose scene shim lacks the engine material call.
+    setAvatarStyle(id, style) {
+      const a = avatars.get(id);
+      if (!a || !style || style.color == null) return;
+      const eng = nova64.scene.engine;
+      if (eng && typeof eng.setMeshMaterial === 'function') {
+        eng.setMeshMaterial(a.body, {
+          material: 'standard',
+          color: hex(style.color),
+          roughness: 0.7,
+        });
+      }
+    },
 
     setCamera(cam) {
       const eyeY = 1.6;

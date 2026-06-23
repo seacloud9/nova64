@@ -19,7 +19,7 @@ import { createApp } from './core/app.js';
 import { controlsPlugin } from './plugins/controls.js';
 import { chatPlugin } from './plugins/chat.js';
 import { presencePlugin } from './plugins/presence.js';
-import { Panel, Text, List } from './core/ui.js';
+import { Panel, Text, List, Row, Button } from './core/ui.js';
 
 // Status + live player roster HUD (top-left).
 const hudPlugin = {
@@ -28,10 +28,17 @@ const hudPlugin = {
     const me = ctx.me();
     const roster = [(me && me.displayName ? me.displayName : 'you') + '  (you)'];
     ctx.others.forEach(o => roster.push(o.name || '????'));
+    // A small filled swatch showing your current avatar color, next to a button
+    // that cycles it (synced to everyone via the player data blob).
+    const swatch = {
+      measure: () => ({ w: 14, h: 14 }),
+      paint: (c2, x, y) => c2.backend.drawRect(x, y + 1, 12, 12, ctx.appearance.color),
+    };
     return Panel({ x: 8, y: 8, anchor: 'tl' }, [
       Text({ value: 'NOVA64 METAVERSE  [' + ctx.status() + ']', color: ctx.theme.accent }),
       Text({ value: 'players (' + roster.length + ')', color: ctx.theme.dim }),
       List({ items: roster, color: ctx.theme.fg }),
+      Row({}, [swatch, Button({ id: 'skin', label: 'SKIN', onTap: () => ctx.cycleColor() })]),
       Text({ value: 'move · look · C cam · CHAT/Enter to talk', color: ctx.theme.dim }),
     ]);
   },

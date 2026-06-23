@@ -155,9 +155,14 @@ export function createApp(opts = {}) {
       status = 'connecting…';
       const url = globalThis.__NOVA64_NET_URL || opts.netUrl || defaultNetUrl();
       await nova64.net.connect({ url });
-      room = await nova64.net.joinOrCreate('state', {
-        name: (me && me.displayName) || opts.name || 'Visitor',
-      });
+      // Fail fast instead of hanging forever if the host is unreachable (e.g.
+      // native Godot socket can't reach a WSL server over localhost). Without
+      // this the join promise never settles and the SDK keeps polling.
+      const timeoutMs = opts.connectTimeoutMs || 8000;
+      room = await Promise.race([
+        nova64.net.joinOrCreate('state', { name: (me && me.displayName) || opts.name || 'Visitor' }),
+        new Promise((_, rej) => setTimeout(() => rej(new Error('connect_timeout')), timeoutMs)),
+      ]);
       status = 'connected';
 
       room.onPlayerAdd((p, id) => {
@@ -196,7 +201,13 @@ export function createApp(opts = {}) {
       sendPos(true);
     } catch (e) {
       room = null;
-      status = 'offline (server not reachable)';
+      // Tear down any half-open connection so the SDK stops polling/retrying.
+      try {
+        nova64.net.leave();
+      } catch (_) {
+        /* ignore */
+      }
+      status = e && e.message === 'connect_timeout' ? 'offline (connect timed out)' : 'offline (server not reachable)';
     }
   }
 

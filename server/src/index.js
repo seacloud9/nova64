@@ -19,10 +19,16 @@ export function createServer() {
 // `node src/index.js` entry point (ESM-safe main check).
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const port = Number(process.env.PORT) || 2567;
+  // Bind dual-stack (IPv6 `::`, which also accepts IPv4) so BOTH `localhost`
+  // (which Windows resolves to ::1) and `127.0.0.1` reach the server. With WSL
+  // mirrored networking this is what lets a native Windows client (e.g. the
+  // Godot metaverse) connect over ws://localhost — IPv4-only binds time out on
+  // the ::1 lookup. Override with HOST if needed.
+  const host = process.env.HOST || '::';
   const gameServer = createServer();
   gameServer
-    .listen(port)
-    .then(() => console.log(`[nova64-server] StateRoom on ws://localhost:${port}`))
+    .listen(port, host)
+    .then(() => console.log(`[nova64-server] StateRoom on ws://localhost:${port} (host ${host})`))
     .catch((e) => {
       console.error('[nova64-server] failed to start:', e);
       process.exit(1);

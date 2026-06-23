@@ -26,6 +26,8 @@ static var _selected_cart_path: String = ""
 
 @onready var host: Nova64Host = $Nova64Host
 
+const NovaNetScript = preload("res://scripts/nova_net.gd")
+
 var _cart_list: PackedStringArray = PackedStringArray()
 var _cart_index: int = 0
 var _overlay: CanvasLayer
@@ -36,6 +38,16 @@ var _overlay_visible: bool = true
 var _suppress_picker_signal: bool = false
 
 func _resolve_cart_path() -> String:
+	# Headless/CLI override:  Godot ... res://scenes/Main.tscn -- <cart-name>
+	# (a non-ws user arg naming a cart under res://carts/). Lets automated runs
+	# boot a specific cart without the picker. The net URL arg (ws://…) is
+	# consumed separately by NovaNet, so skip it here.
+	for arg in OS.get_cmdline_user_args():
+		var a := String(arg)
+		if a.begins_with("ws"):
+			continue
+		if DirAccess.dir_exists_absolute("res://carts/" + a):
+			return "res://carts/" + a
 	if _selected_cart_path != "":
 		return _selected_cart_path
 	if cart_resource != null and cart_resource.has_method("get") and cart_resource.get("folder_path") != null:
@@ -77,6 +89,15 @@ func _ready() -> void:
 
 	_build_overlay()
 	_refresh_overlay()
+
+	# Wire nova64.net: a NovaNet node owns the Colyseus client SDK, and the C++
+	# host forwards every `net.*` bridge method to it (see scripts/nova_net.gd).
+	# preload (not the class_name) so headless/CLI runs work without the editor
+	# having populated the global class cache.
+	var nova_net = NovaNetScript.new()
+	nova_net.name = "NovaNet"
+	add_child(nova_net)
+	host.set_net_delegate(nova_net)
 
 	var caps: Dictionary = host.get_capabilities()
 	print("[nova64] booted host: ", caps)

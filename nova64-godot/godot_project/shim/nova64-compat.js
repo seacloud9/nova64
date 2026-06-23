@@ -778,6 +778,9 @@
     _tickTimers(dt);
     updateTweens(dt);
     novaStore.setState(function (s) { return { time: s.time + dt }; });
+    // Drain queued network events from the NovaNet delegate and dispatch to the
+    // cart's room callbacks (nova64.net). No-op until the cart has connected.
+    if (global.__nova64_netPump) global.__nova64_netPump();
   };
 
   function rgba8(r, g, b, a) {
@@ -6606,6 +6609,134 @@
   const i18nNsP = wrapNamespace('i18n', i18nNs);
   const wadNsP = wrapNamespace('wad', wadNs);
 
+  // nova64.net — realtime multiplayer, mirroring runtime/api-net.js so carts run
+  // unchanged on Godot. The Colyseus client lives in the GDScript NovaNet
+  // delegate; here we issue `net.*` bridge calls and drain queued events each
+  // frame (__nova64_netPump) to fire the cart's room callbacks and resolve its
+  // pending connect/join promises. Player objects arrive as plain {id,name,x,y,
+  // data} dicts (snapshotted host-side), matching the web schema shape.
+  const netNs = (function () {
+    let connected = false;
+    let current = null;          // active room facade
+    let pendingJoin = null;      // { resolve, reject } for an in-flight join
+
+    function makeRoomFacade(roomName) {
+      const addCbs = [], changeCbs = [], removeCbs = [], leaveCbs = [], errorCbs = [];
+      const msgCbs = {};         // type -> [cb]
+      const players = {};        // id -> latest player dict
+      const facade = {
+        _roomName: roomName,
+        sessionId: '',
+        get name() { return roomName; },
+        players() { return players; },
+        send: (type, message) => call('net.send', { type: type, data: message == null ? {} : message }),
+        leave: () => { call('net.leave', {}); current = null; },
+        onMessage: (type, cb) => { (msgCbs[type] = msgCbs[type] || []).push(cb); return () => {}; },
+        onPlayerAdd: cb => { addCbs.push(cb); return () => {}; },
+        onPlayerChange: cb => { changeCbs.push(cb); return () => {}; },
+        onPlayerRemove: cb => { removeCbs.push(cb); return () => {}; },
+        onLeave: cb => { leaveCbs.push(cb); return () => {}; },
+        onError: cb => { errorCbs.push(cb); return () => {}; },
+        onStateChange: () => () => {},
+        _dispatch(ev) {
+          const t = ev && ev.t;
+          if (t === 'add') {
+            players[ev.id] = ev.player;
+            addCbs.forEach(cb => { try { cb(ev.player, ev.id); } catch (_) {} });
+          } else if (t === 'change') {
+            players[ev.id] = ev.player;
+            changeCbs.forEach(cb => { try { cb(ev.player, ev.id); } catch (_) {} });
+          } else if (t === 'remove') {
+            delete players[ev.id];
+            removeCbs.forEach(cb => { try { cb(ev.id); } catch (_) {} });
+          } else if (t === 'message') {
+            (msgCbs[ev.type] || []).forEach(cb => { try { cb(ev.data); } catch (_) {} });
+          } else if (t === 'left') {
+            leaveCbs.forEach(cb => { try { cb(ev.code); } catch (_) {} });
+          } else if (t === 'error') {
+            errorCbs.forEach(cb => { try { cb(ev); } catch (_) {} });
+          }
+        },
+      };
+      return facade;
+    }
+
+    // Host-invoked each frame via __nova64_preUpdate. Drains the NovaNet event
+    // queue: resolves a pending join on "joined" and forwards the rest to the
+    // active room facade.
+    global.__nova64_netPump = function () {
+      const r = engine.call('net.poll', {});
+      const events = (r && r.events) || [];
+      for (let i = 0; i < events.length; i++) {
+        const ev = events[i];
+        if (!ev) continue;
+        if (ev.t === 'open') { connected = true; continue; }
+        if (ev.t === 'joined') {
+          if (current) current.sessionId = ev.sessionId;
+          if (pendingJoin) { pendingJoin.resolve(current); pendingJoin = null; }
+          continue;
+        }
+        if (ev.t === 'error' && pendingJoin) {
+          pendingJoin.reject(new Error(ev.message || 'net_error'));
+          pendingJoin = null;
+        }
+        if (current) current._dispatch(ev);
+      }
+    };
+
+    function isSupported() {
+      const r = engine.call('net.isSupported', {});
+      return !!(r && r.supported);
+    }
+
+    function connect(opts) {
+      opts = opts || {};
+      const r = call('net.connect', { url: opts.url || '', token: opts.token || '' });
+      connected = !!(r && r.ok);
+      return Promise.resolve(connected ? { ok: true, url: r.url } : { ok: false, error: (r && r.error) || 'connect_failed' });
+    }
+
+    function tokenFrom(options) {
+      if (options && options.token) return options.token;
+      const auth = global.nova64 && global.nova64.auth;
+      return auth && typeof auth.token === 'function' ? auth.token() : undefined;
+    }
+
+    function _enter(method, roomName, options) {
+      options = options || {};
+      const token = tokenFrom(options);
+      const facade = makeRoomFacade(roomName);
+      current = facade;
+      const r = call(method, { room: roomName, options: options, token: token || '' });
+      if (r && r.error) {
+        current = null;
+        return Promise.reject(new Error(r.error));
+      }
+      // Resolves when __nova64_netPump sees the "joined" event.
+      return new Promise((resolve, reject) => { pendingJoin = { resolve: resolve, reject: reject }; });
+    }
+
+    const joinOrCreate = (name, options) => _enter('net.joinOrCreate', name, options);
+    const join = (name, options) => _enter('net.join', name, options);
+
+    function leave() {
+      if (current) { try { current.leave(); } catch (_) {} current = null; }
+    }
+
+    return {
+      connect: connect,
+      joinOrCreate: joinOrCreate,
+      join: join,
+      create: joinOrCreate,
+      leave: leave,
+      room: () => current,
+      isSupported: isSupported,
+      backend: () => 'godot',
+      _tick: () => {},
+    };
+  })();
+  const netNsP = wrapNamespace('net', netNs);
+
   global.nova64 = {
     __compatLoaded: true,
     scene: sceneNsP,
@@ -6631,6 +6762,7 @@
     storage: storageNsP,
     i18n: i18nNsP,
     wad: wadNsP,
+    net: netNsP,
   };
 
   // Flat-global aliases so older carts that don't destructure still work.

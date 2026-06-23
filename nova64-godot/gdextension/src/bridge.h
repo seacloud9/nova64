@@ -52,6 +52,11 @@ public:
     // methods return { error: "unsupported_method" }.
     Dictionary call_bridge(const String &p_method, const Dictionary &p_payload);
 
+    // Registers a GDScript node (NovaNet) that handles every `net.*` method.
+    // The Colyseus client SDK is GDScript-only, so all networking lives in that
+    // delegate; call_bridge forwards `net.*` to its `call_net(method, payload)`.
+    void set_net_delegate(Object *p_delegate);
+
     // Loads a cart as an ES module from a Godot resource path
     // (e.g. "res://carts/01-cube.js"), evaluates it, and caches the
     // init/update/draw exports from the module namespace object.
@@ -219,6 +224,10 @@ private:
     void _overlay_op_triangle(const Array &op);
     void _overlay_op_polygon(const Array &op);
     void _overlay_op_ellipse(const Array &op);
+
+    // net.* delegate (GDScript NovaNet node). Forwarded to via call_net.
+    Object *_net_delegate = nullptr;
+    Dictionary _forward_net(const String &p_method, const Dictionary &p_payload);
 
     // Helpers
     Node3D *_resolve_node3d(uint32_t p_handle_id) const;

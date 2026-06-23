@@ -75,7 +75,19 @@ func _on_submitted(t: String) -> void:
 	if s != "":
 		_lines.append(s)
 	if _edit != null:
-		_edit.text = "" # keep focus so the player can keep chatting
+		_edit.text = ""
+		# Release focus so the player returns to movement. Unlike a web page, a
+		# click on the 3D view does NOT blur a Godot LineEdit, so without this the
+		# input keeps focus and movement stays suppressed (looks like it hangs).
+		_edit.release_focus()
+
+# Escape also returns focus to the game.
+func _input(event: InputEvent) -> void:
+	if _edit != null and _edit.has_focus() and event is InputEventKey:
+		var k := event as InputEventKey
+		if k.pressed and k.keycode == KEY_ESCAPE:
+			_edit.release_focus()
+			get_viewport().set_input_as_handled()
 
 func _poll() -> Dictionary:
 	if _lines.is_empty():

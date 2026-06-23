@@ -95,6 +95,10 @@ export function createWebBackend() {
       }
       avatars.delete(id);
     },
+    setAvatarVisible(id, visible) {
+      const a = avatars.get(id);
+      if (a && nova64.scene.setMeshVisible) nova64.scene.setMeshVisible(a.body, !!visible);
+    },
 
     setCamera(cam) {
       const eyeY = 1.6;

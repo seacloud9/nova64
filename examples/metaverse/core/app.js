@@ -62,6 +62,7 @@ export function createApp(opts = {}) {
   (opts.plugins || []).forEach(p => plugins.use(p));
 
   const world = opts.world || {};
+  const LOCAL_ID = '__me__'; // handle for the local player's own avatar
   const local = { x: 0, z: 6, yaw: Math.PI, pitch: 0, mode: 'first' };
   const others = new Map(); // id -> { x, z, yaw, name, tx, tz, tyaw } (t* = targets)
   const commands = new Map();
@@ -249,6 +250,10 @@ export function createApp(opts = {}) {
     status: () => status,
     async start() {
       backend.init(world);
+      // Your own avatar — shown only in third-person (in first-person the camera
+      // sits inside it). Lets you actually see yourself move when you press C.
+      backend.addAvatar(LOCAL_ID, { color: colorFor('me'), name: opts.name || 'me' });
+      if (backend.setAvatarVisible) backend.setAvatarVisible(LOCAL_ID, false);
       plugins.all().forEach(pl => {
         if (typeof pl.init === 'function') pl.init(ctx);
       });
@@ -295,6 +300,10 @@ export function createApp(opts = {}) {
         o.yaw += dyaw * k;
         backend.updateAvatar(id, { x: o.x, z: o.z, ry: o.yaw });
       });
+
+      // Your own avatar follows you; visible only in third-person.
+      backend.updateAvatar(LOCAL_ID, { x: local.x, z: local.z, ry: local.yaw });
+      if (backend.setAvatarVisible) backend.setAvatarVisible(LOCAL_ID, local.mode === 'third');
 
       backend.setCamera({
         x: local.x,

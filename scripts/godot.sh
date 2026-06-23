@@ -23,14 +23,32 @@ if [ -f "$ROOT/.env" ]; then
 fi
 DEFAULT_URL="${NOVA64_NET_URL:-ws://127.0.0.1:2567}"
 
+# The metaverse cart's source of truth is examples/metaverse; the Godot project
+# needs the files under res://carts/metaverse (the module loader reads them), so
+# sync from source before launching rather than maintaining a second copy.
+sync_metaverse() {
+  local src="$ROOT/examples/metaverse"
+  local dst="$ROOT/nova64-godot/godot_project/carts/metaverse"
+  [ -d "$src" ] || return 0
+  mkdir -p "$dst/core" "$dst/plugins"
+  cp "$src/code.js" "$dst/code.js"
+  cp "$src/core/"*.js "$dst/core/"
+  cp "$src/plugins/"*.js "$dst/plugins/"
+}
+
 mode="${1:-metaverse}"
 case "$mode" in
+  sync)
+    sync_metaverse; echo "synced examples/metaverse -> carts/metaverse"; exit 0 ;;
   editor)
+    sync_metaverse
     exec "$GUI" -e --path "$PROJ" ;;
   metaverse)
+    sync_metaverse
     exec "$GUI" --path "$PROJ" -- "${2:-$DEFAULT_URL}" metaverse ;;
   run)
     cart="${2:-metaverse}"
+    [ "$cart" = "metaverse" ] && sync_metaverse
     exec "$GUI" --path "$PROJ" -- "${3:-$DEFAULT_URL}" "$cart" ;;
   *)
     echo "usage: scripts/godot.sh [editor|metaverse|run <cart> [url]]" >&2

@@ -160,7 +160,9 @@ export function createApp(opts = {}) {
       // this the join promise never settles and the SDK keeps polling.
       const timeoutMs = opts.connectTimeoutMs || 8000;
       room = await Promise.race([
-        nova64.net.joinOrCreate('state', { name: (me && me.displayName) || opts.name || 'Visitor' }),
+        nova64.net.joinOrCreate('state', {
+          name: (me && me.displayName) || opts.name || 'Visitor',
+        }),
         new Promise((_, rej) => setTimeout(() => rej(new Error('connect_timeout')), timeoutMs)),
       ]);
       status = 'connected';
@@ -207,7 +209,10 @@ export function createApp(opts = {}) {
       } catch (_) {
         /* ignore */
       }
-      status = e && e.message === 'connect_timeout' ? 'offline (connect timed out)' : 'offline (server not reachable)';
+      status =
+        e && e.message === 'connect_timeout'
+          ? 'offline (connect timed out)'
+          : 'offline (server not reachable)';
     }
   }
 

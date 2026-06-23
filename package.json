@@ -111,6 +111,7 @@
     "godot:editor": "bash scripts/godot.sh editor",
     "godot:metaverse": "bash scripts/godot.sh metaverse",
     "godot:run": "bash scripts/godot.sh run",
+    "metaverse:sync": "bash scripts/godot.sh sync",
     "bench": "node tests/bench.js",
     "bench:material": "node tests/bench.js --suite=material",
     "bench:instancing": "node tests/bench.js --suite=instancing",

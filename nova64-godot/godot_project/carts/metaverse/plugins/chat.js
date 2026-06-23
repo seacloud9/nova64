@@ -150,7 +150,12 @@ export function chatPlugin(opts = {}) {
     init(ctx) {
       ensureBar(ctx);
       // No DOM bar (e.g. Godot) but a native text input is available → mount it.
-      if (!bar && typeof nova64 !== 'undefined' && nova64.gdtext && typeof nova64.gdtext.mount === 'function') {
+      if (
+        !bar &&
+        typeof nova64 !== 'undefined' &&
+        nova64.gdtext &&
+        typeof nova64.gdtext.mount === 'function'
+      ) {
         nova64.gdtext.mount('Tap / Enter to chat…  (/me, /help)');
         gdtext = true;
       }

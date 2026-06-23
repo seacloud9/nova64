@@ -124,6 +124,19 @@ export function createApp(opts = {}) {
     },
   };
 
+  // Fire a presence lifecycle hook (onPeerJoin/onPeerLeave) across plugins.
+  function notifyPeer(hook, id, info) {
+    plugins.all().forEach(pl => {
+      if (typeof pl[hook] === 'function') {
+        try {
+          pl[hook](id, info, ctx);
+        } catch (_) {
+          /* ignore */
+        }
+      }
+    });
+  }
+
   function spawn(id, p) {
     const name = (p && p.name) || id.slice(0, 4);
     others.set(id, {
@@ -136,10 +149,13 @@ export function createApp(opts = {}) {
       name,
     });
     backend.addAvatar(id, { color: colorFor(id), name });
+    notifyPeer('onPeerJoin', id, { name });
   }
   function despawn(id) {
+    const o = others.get(id);
     backend.removeAvatar(id);
     others.delete(id);
+    notifyPeer('onPeerLeave', id, { name: (o && o.name) || id.slice(0, 4) });
   }
 
   async function connect() {

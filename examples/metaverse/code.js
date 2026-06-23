@@ -18,6 +18,7 @@ import { createWebBackend } from './core/render-web.js';
 import { createApp } from './core/app.js';
 import { controlsPlugin } from './plugins/controls.js';
 import { chatPlugin } from './plugins/chat.js';
+import { presencePlugin } from './plugins/presence.js';
 import { Panel, Text, List } from './core/ui.js';
 
 // Status + live player roster HUD (top-left).
@@ -46,7 +47,7 @@ export function init() {
   app = createApp({
     backend: 'web',
     world: { size: 80, pillars: 8, ringRadius: 14 },
-    plugins: [controlsPlugin(), chatPlugin(), hudPlugin],
+    plugins: [controlsPlugin(), chatPlugin(), presencePlugin(), hudPlugin],
     name: 'Visitor-' + Math.floor(Math.random() * 1000),
     moveSpeed: 6,
   });

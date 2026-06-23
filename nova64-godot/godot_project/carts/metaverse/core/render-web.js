@@ -23,14 +23,22 @@ function hex(color) {
   return (c.r << 16) | (c.g << 8) | c.b;
 }
 
+const FOV_Y = 75; // vertical FOV in degrees (matches nova64's default perspective camera)
+const DESIGN_W = 640;
+const DESIGN_H = 360;
+const ASPECT = DESIGN_W / DESIGN_H;
+
 export function createWebBackend() {
   const avatars = new Map(); // id -> { body }
+  let lastCam = null; // { eye:{x,y,z}, target:{x,y,z} } — kept for worldToScreen
   return {
     id: 'web',
 
     init(world) {
       if (nova64.light.setAmbientLight) nova64.light.setAmbientLight(0x334455, 0.6);
       nova64.light.setDirectionalLight([-1, -2, -1], 0xfff0dd, 0.9);
+      // Pin the FOV so worldToScreen's projection matches what's rendered.
+      if (nova64.camera.setCameraFOV) nova64.camera.setCameraFOV(FOV_Y);
 
       const floor = nova64.scene.createPlane(
         world.size || 80,
@@ -105,14 +113,65 @@ export function createWebBackend() {
       const lookX = Math.sin(cam.yaw) * Math.cos(cam.pitch);
       const lookY = Math.sin(cam.pitch);
       const lookZ = Math.cos(cam.yaw) * Math.cos(cam.pitch);
+      let eye, target;
       if (cam.mode === 'third') {
         const back = 6;
-        nova64.camera.setCameraPosition(cam.x - lookX * back, eyeY + 2.5, cam.z - lookZ * back);
-        nova64.camera.setCameraTarget(cam.x, eyeY, cam.z);
+        eye = { x: cam.x - lookX * back, y: eyeY + 2.5, z: cam.z - lookZ * back };
+        target = { x: cam.x, y: eyeY, z: cam.z };
       } else {
-        nova64.camera.setCameraPosition(cam.x, eyeY, cam.z);
-        nova64.camera.setCameraTarget(cam.x + lookX, eyeY + lookY, cam.z + lookZ);
+        eye = { x: cam.x, y: eyeY, z: cam.z };
+        target = { x: cam.x + lookX, y: eyeY + lookY, z: cam.z + lookZ };
       }
+      lastCam = { eye, target };
+      nova64.camera.setCameraPosition(eye.x, eye.y, eye.z);
+      nova64.camera.setCameraTarget(target.x, target.y, target.z);
+    },
+
+    // Project a world point into 2D design space (640x360), so plugins can pin
+    // labels/UI to things in the 3D scene (name tags, markers). Pure math from
+    // the camera we set above — no engine call — so it's identical on any host
+    // that drives this backend (web or Godot). Returns { x, y, visible, dist };
+    // visible is false when the point is behind the camera or well off-screen.
+    worldToScreen(wx, wy, wz) {
+      const cam = lastCam;
+      if (!cam) return { x: 0, y: 0, visible: false, dist: 0 };
+      const ex = cam.eye.x;
+      const ey = cam.eye.y;
+      const ez = cam.eye.z;
+      // Forward (camera looks down -Z in view space).
+      let fx = cam.target.x - ex;
+      let fy = cam.target.y - ey;
+      let fz = cam.target.z - ez;
+      const fl = Math.hypot(fx, fy, fz) || 1;
+      fx /= fl;
+      fy /= fl;
+      fz /= fl;
+      // Right = normalize(cross(forward, up)), up = (0,1,0).
+      let sx = -fz;
+      let sy = 0;
+      let sz = fx;
+      const sl = Math.hypot(sx, sy, sz) || 1;
+      sx /= sl;
+      sy /= sl;
+      sz /= sl;
+      // Recomputed up = cross(right, forward).
+      const ux = sy * fz - sz * fy;
+      const uy = sz * fx - sx * fz;
+      const uz = sx * fy - sy * fx;
+      const dx = wx - ex;
+      const dy = wy - ey;
+      const dz = wz - ez;
+      const vX = dx * sx + dy * sy + dz * sz;
+      const vY = dx * ux + dy * uy + dz * uz;
+      const vZ = -(dx * fx + dy * fy + dz * fz); // < 0 when in front of the camera
+      if (vZ > -0.05) return { x: 0, y: 0, visible: false, dist: 0 };
+      const t = Math.tan((FOV_Y * Math.PI) / 180 / 2);
+      const ndcX = vX / (-vZ * t * ASPECT);
+      const ndcY = vY / (-vZ * t);
+      const px = (ndcX * 0.5 + 0.5) * DESIGN_W;
+      const py = (0.5 - ndcY * 0.5) * DESIGN_H;
+      const visible = px >= -40 && px <= DESIGN_W + 40 && py >= -40 && py <= DESIGN_H + 40;
+      return { x: px, y: py, visible, dist: -vZ };
     },
 
     // 2D UI ops (design space 640x360).

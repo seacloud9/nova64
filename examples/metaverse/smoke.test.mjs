@@ -81,8 +81,23 @@ assert(typeof roomCbs.add === 'function', 'room callbacks registered after conne
 roomCbs.add({ x: 3, z: -2, ry: 1, name: 'web-bot' }, 'remote1');
 cart.update(0.016);
 cart.draw();
-assert(draws.some(d => d[0] === 'print'), 'UI text rendered');
-assert(draws.some(d => d[0] === 'rectfill'), 'UI panels rendered');
+assert(
+  draws.some(d => d[0] === 'print'),
+  'UI text rendered'
+);
+assert(
+  draws.some(d => d[0] === 'rectfill'),
+  'UI panels rendered'
+);
+// Presence: a join toast + a floating name tag for the new peer were drawn.
+assert(
+  draws.some(d => d[0] === 'print' && String(d[1]).includes('joined')),
+  'presence join toast rendered'
+);
+assert(
+  draws.some(d => d[0] === 'print' && String(d[1]) === 'web-bot'),
+  'presence name tag rendered (world->screen projection)'
+);
 
 // Position update from the remote is interpolated toward (no throw, avatar moves).
 roomCbs.change({ x: 6, z: -4, ry: 1.5, name: 'web-bot' }, 'remote1');
@@ -92,14 +107,23 @@ for (let i = 0; i < 30; i++) cart.update(0.016);
 keyState = true; // every key() returns true → forward+turn; good enough to move
 cart.update(0.05);
 keyState = false;
-assert(sends.some(s => s.type === 'pos3'), 'local movement sent pos3');
+assert(
+  sends.some(s => s.type === 'pos3'),
+  'local movement sent pos3'
+);
 
 // Inbound chat is captured and shown.
 assert(typeof roomCbs['msg:event'] === 'function', 'event relay subscribed');
 roomCbs['msg:event']({ from: 'remote1', type: 'chat', msg: { text: 'hello world' } });
 draws.length = 0;
 cart.draw();
-assert(draws.some(d => d[0] === 'print' && String(d[1]).includes('hello world')), 'chat message rendered');
+assert(
+  draws.some(d => d[0] === 'print' && String(d[1]).includes('hello world')),
+  'chat message rendered'
+);
 
-console.log('PASS metaverse: world+net+roster+movement(pos3)+chat wired; %d draw ops', draws.length);
+console.log(
+  'PASS metaverse: world+net+roster+movement(pos3)+chat wired; %d draw ops',
+  draws.length
+);
 process.exit(0);

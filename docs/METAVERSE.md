@@ -63,8 +63,17 @@ const RenderBackend = {
   drawCircle(x, y, r, color, filled)
   measureText(text) -> width
   viewport() -> { w, h }                      // design units (web: 640x360)
+  // Project a 3D world point to 2D design space (name tags, world markers):
+  worldToScreen(x, y, z) -> { x, y, visible, dist }
 };
 ```
+
+`worldToScreen` is backend-owned because only the backend knows its camera/
+projection: the web backend computes it from the camera it set (pure math, so it
+also works when a Godot host drives this same backend); a native Godot backend
+would use `Camera3D.unproject_position`; XR returns a per-eye projection. Plugins
+that pin UI to the world (e.g. presence name tags) call it and skip drawing when
+`visible` is false.
 
 Registering a backend: `metaverse.registerBackend(backend)`. The cart picks one
 (`backend: 'web'`); unknown → falls back to web. **XR** is just another backend
@@ -103,9 +112,11 @@ const Plugin = {
   init(ctx)              // ctx: { app, net, ui, backend, theme, registerCommand }
   update(dt, ctx)        // per-frame
   onNetMessage(evt, ctx) // inbound relayed events ({ from, type, msg })
+  onPeerJoin(id, info, ctx)  // a remote avatar spawned ({ name })
+  onPeerLeave(id, info, ctx) // a remote avatar despawned ({ name })
   renderUI(ui, ctx)      // contribute UI nodes
 };
-metaverse.use(chatPlugin); metaverse.use(controlsPlugin);
+metaverse.use(chatPlugin); metaverse.use(controlsPlugin); metaverse.use(presencePlugin);
 ```
 
 The app drives every plugin's lifecycle and merges their `renderUI` output.
@@ -125,6 +136,15 @@ Default provider = the colyseus relay (`room.send('chat', {text})` →
 server broadcasts `event` → `onNetMessage`). A different backend (matrix,
 websocket, p2p) implements the same two methods. Commands (`/me`, `/nick`,
 `/help`) register through `ctx.registerCommand(name, handler)`.
+
+### Presence plugin
+The `presence` plugin makes "who's here" visible in the world, using only the
+context + backend (no nova64/net access, so it runs on any backend):
+- **Name tags** float above every avatar — projected each frame via
+  `backend.worldToScreen`; your own tag shows only in third-person. Backends
+  without `worldToScreen` simply skip tags.
+- **Join/left toasts** fade in near the top, driven by the `onPeerJoin`/
+  `onPeerLeave` hooks the app fires from avatar spawn/despawn.
 
 ## 5. Input & mobile
 
@@ -146,11 +166,12 @@ change). Avatar appearance/customization lives in the `data` blob (Phase 4).
 ## 7. Phased roadmap
 
 - **P1 — shared 3D world** ✅ avatars move + sync; first/third-person. (`8c8d6ef`)
-- **P2 — framework + mobile + chat** (current): extract render-backend + UI
-  components + plugin system; controls plugin (mobile joystick/look); chat plugin
-  (typed, native keyboard). Interpolated remote avatars; HUD roster.
-- **P3 — presence & polish:** name tags (world→screen), join/leave toasts, avatar
-  customization via `data`, wire `nova64.auth` identities.
+- **P2 — framework + mobile + chat** ✅ render-backend + UI components + plugin
+  system; controls plugin (mobile joystick/look); chat plugin (typed, native
+  keyboard); interpolated remote avatars; HUD roster.
+- **P3 — presence & polish** (current): name tags (world→screen) ✅, join/leave
+  toasts ✅; remaining — avatar customization via `data`, wire `nova64.auth`
+  identities (display names/avatars from the signed-in identity).
 - **P4 — Godot backend:** register a GodotRenderBackend; touch parity; cross-play
   the metaverse cart unchanged.
 - **P5 — XR backend:** stereo camera rig + world-space UI panels; controller/hand

@@ -1,0 +1,157 @@
+# Nova64 Metaverse — extensible shared-world framework
+
+A shared 3D space where players see each other move in realtime, with chat. Built
+on `nova64.net` (Colyseus 0.17, cross-play web ↔ Godot — see
+[MULTIPLAYER_AND_AUTH_DESIGN.md](./MULTIPLAYER_AND_AUTH_DESIGN.md)).
+
+This is **groundwork for a platform**, not a one-off cart. Everything that could
+plausibly be swapped is behind a seam:
+
+- **Render backend** — how the world/avatars/camera and 2D UI are drawn. Web
+  (Three.js) is the reference; **Godot** (native) and a future **XR** build are
+  alternate backends that register against the same interface.
+- **UI components** — a small, composable, Radix-inspired primitive set
+  (Panel/Text/Button/List/Input) rendered through the active backend, with
+  pointer hit-testing for **mouse and touch**.
+- **Plugins** — chat, presence, etc. are plugins with a shared lifecycle. Chat
+  itself has a swappable **transport provider** (default: the colyseus `event`
+  relay).
+
+Mobile is a first-class target on every backend ([touch from the start](#5-input--mobile)).
+
+---
+
+## 1. Module layout
+
+```
+examples/metaverse/
+  code.js                 # the cart — wires a backend + plugins + world, runs the loop
+  core/
+    registry.js           # backend / plugin / chat-provider registries
+    app.js                # MetaverseApp: net + world state + loop + plugin dispatch
+    ui.js                 # UI component primitives + layout + pointer hit-test
+    render-web.js         # WebRenderBackend (nova64.scene/camera + nova64.draw)
+  plugins/
+    controls.js           # keyboard + mobile touch (joystick / drag-look) -> intents
+    chat.js               # chat plugin (UI panel + commands) over a chat provider
+```
+
+The framework is plain ES modules the cart imports with relative paths (vite
+serves them on web). A Godot/XR port either bundles these into the host shim or
+re-implements the backend behind the same interface — the cart and plugins don't
+change.
+
+## 2. Render backend interface
+
+A backend turns abstract world/UI intent into backend-specific draw calls. The
+metaverse never touches `nova64.scene`/`nova64.draw` directly — only the backend.
+
+```js
+// All ids are opaque handles owned by the backend.
+const RenderBackend = {
+  id: 'web' | 'godot' | 'xr',
+  init(world)            // build floor/props/lighting; return when ready
+  // Avatars (remote + local third-person)
+  addAvatar(id, { color, name })
+  updateAvatar(id, { x, y, z, ry })
+  removeAvatar(id)
+  // Camera
+  setCamera({ x, y, z, yaw, pitch, mode })   // mode: 'first' | 'third'
+  // 2D UI — the UI component tree rasterizes through these:
+  drawRect(x, y, w, h, color)
+  drawText(text, x, y, color)
+  drawCircle(x, y, r, color, filled)
+  measureText(text) -> width
+  viewport() -> { w, h }                      // design units (web: 640x360)
+};
+```
+
+Registering a backend: `metaverse.registerBackend(backend)`. The cart picks one
+(`backend: 'web'`); unknown → falls back to web. **XR** is just another backend
+whose `setCamera` drives a stereo rig and whose UI draws to a world-space quad.
+
+## 3. UI component system (Radix-inspired)
+
+Small composable primitives, not a monolith. A component is a plain function
+returning a node `{ type, props, children }`; a layout pass assigns rects; the
+backend rasterizes; pointer events hit-test against rects.
+
+```js
+import { Panel, Row, Col, Text, Button, List, TextField } from './core/ui.js';
+
+Panel({ x: 8, y: 8, pad: 6, bg: 0x000000aa }, [
+  Text({ value: 'NOVA64 METAVERSE' }),
+  Button({ id: 'cam', label: 'Camera', onTap: () => app.toggleCamera() }),
+]);
+```
+
+- **Primitives:** `Panel, Row, Col, Text, Button, List, TextField, Spacer`.
+- **Interaction:** the UI runtime is fed the pointer set each frame (mouse +
+  `nova64.input.touches()`), so buttons work identically on desktop and mobile.
+- **Theming:** a `theme` object (colors, spacing, font) passed at mount — the
+  Radix-ish "tokens" seam. Backends may override how tokens rasterize.
+
+This layer is intentionally backend-agnostic: it emits draw ops via the backend
+interface, so the same HUD/chat UI renders on web, Godot, and (as a world-space
+panel) XR.
+
+## 4. Plugins
+
+```js
+const Plugin = {
+  id: 'chat',
+  init(ctx)              // ctx: { app, net, ui, backend, theme, registerCommand }
+  update(dt, ctx)        // per-frame
+  onNetMessage(evt, ctx) // inbound relayed events ({ from, type, msg })
+  renderUI(ui, ctx)      // contribute UI nodes
+};
+metaverse.use(chatPlugin); metaverse.use(controlsPlugin);
+```
+
+The app drives every plugin's lifecycle and merges their `renderUI` output.
+Plugins are isolated — adding voice or a minimap later means writing one module
+and `use()`-ing it; nothing else changes.
+
+### Chat plugin + transport providers
+Chat is a plugin whose transport is itself swappable:
+
+```js
+const ChatProvider = {
+  send(text)                    // push a message
+  onMessage(cb)                 // cb({ from, name, text, ts })
+};
+```
+Default provider = the colyseus relay (`room.send('chat', {text})` →
+server broadcasts `event` → `onNetMessage`). A different backend (matrix,
+websocket, p2p) implements the same two methods. Commands (`/me`, `/nick`,
+`/help`) register through `ctx.registerCommand(name, handler)`.
+
+## 5. Input & mobile
+
+- **Desktop:** WASD/arrows move, mouse (pointer-lock) or Q/E turn, C toggles cam.
+- **Mobile:** the `controls` plugin draws a left **virtual joystick** (move) and a
+  right **drag-look** zone, plus tappable Camera/Chat buttons — all via
+  `nova64.input.touches()` (multi-touch, 640×360 design space) so you can move and
+  look at once. Text entry uses the DOM `<input>` (native keyboard) via
+  `nova64.startTextInput({ onSubmit, onCancel })`.
+- **Godot mobile:** the same controls plugin runs; the Godot input bridge must
+  expose `touches()` equivalently (tracked task).
+
+## 6. Server state
+
+`StateRoom` Player carries 3D pose: `x, y, z, ry` (+ `name`, `data`). Movement
+intent is `pos3 { x, y, z, ry }`. Chat rides the generic relay (no schema
+change). Avatar appearance/customization lives in the `data` blob (Phase 4).
+
+## 7. Phased roadmap
+
+- **P1 — shared 3D world** ✅ avatars move + sync; first/third-person. (`8c8d6ef`)
+- **P2 — framework + mobile + chat** (current): extract render-backend + UI
+  components + plugin system; controls plugin (mobile joystick/look); chat plugin
+  (typed, native keyboard). Interpolated remote avatars; HUD roster.
+- **P3 — presence & polish:** name tags (world→screen), join/leave toasts, avatar
+  customization via `data`, wire `nova64.auth` identities.
+- **P4 — Godot backend:** register a GodotRenderBackend; touch parity; cross-play
+  the metaverse cart unchanged.
+- **P5 — XR backend:** stereo camera rig + world-space UI panels; controller/hand
+  ray as the pointer feeding the same UI hit-test.

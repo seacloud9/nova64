@@ -18,6 +18,8 @@ defineTypes(Player, {
   name: 'string',
   x: 'number',
   y: 'number',
+  z: 'number', // 3D depth (0 for 2D carts; lobby uses x/y only)
+  ry: 'number', // yaw / facing angle in radians (avatar heading)
   data: 'string', // small cart-defined blob (skin, state, etc.)
 });
 
@@ -37,7 +39,7 @@ export class StateRoom extends Room {
     this.maxClients = 64;
     // Native clients (Godot) can be slow between the matchmaking HTTP reservation
     // and opening the room WebSocket; give the reservation room to breathe.
-    this.setSeatReservationTime(30);
+    this.seatReservationTimeout = 30;
     this.setState(new StateRoomState());
 
     // Relative movement intent.
@@ -55,6 +57,17 @@ export class StateRoom extends Room {
       if (!p || !msg) return;
       if (Number.isFinite(msg.x)) p.x = clamp(Number(msg.x), -BOUND, BOUND);
       if (Number.isFinite(msg.y)) p.y = clamp(Number(msg.y), -BOUND, BOUND);
+    });
+
+    // Absolute 3D position + heading (metaverse carts). x/y/z are clamped; ry
+    // is a free angle. 2D carts keep using 'pos' (x/y) above — both coexist.
+    this.onMessage('pos3', (client, msg) => {
+      const p = this.state.players.get(client.sessionId);
+      if (!p || !msg) return;
+      if (Number.isFinite(msg.x)) p.x = clamp(Number(msg.x), -BOUND, BOUND);
+      if (Number.isFinite(msg.y)) p.y = clamp(Number(msg.y), -BOUND, BOUND);
+      if (Number.isFinite(msg.z)) p.z = clamp(Number(msg.z), -BOUND, BOUND);
+      if (Number.isFinite(msg.ry)) p.ry = Number(msg.ry);
     });
 
     // Per-player data blob (bounded).
@@ -84,6 +97,8 @@ export class StateRoom extends Room {
     p.name = (client.auth && client.auth.name) || (options && options.name) || 'player';
     p.x = 0;
     p.y = 0;
+    p.z = 0;
+    p.ry = 0;
     p.data = '';
     this.state.players.set(client.sessionId, p);
   }

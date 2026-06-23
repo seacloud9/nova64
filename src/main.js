@@ -614,6 +614,7 @@ const demoMap = {
   'hello-world': '/examples/hello-world/code.js',
   'hello-helpers': '/examples/hello-helpers/code.js',
   'multiplayer-lobby': '/examples/multiplayer-lobby/code.js',
+  metaverse: '/examples/metaverse/code.js',
   'story-video-demo': '/examples/story-video-demo/code.js',
   'tv-demo': '/examples/tv-demo/code.js',
   'crystal-cathedral-3d': '/examples/crystal-cathedral-3d/code.js',

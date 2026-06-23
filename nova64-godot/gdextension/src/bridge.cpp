@@ -870,10 +870,60 @@ void Nova64Host::_bind_methods() {
     ClassDB::bind_method(D_METHOD("get_perf_stats"), &Nova64Host::get_perf_stats);
 }
 
+// ---- ES module loader ----------------------------------------------------
+// QuickJS has no built-in module resolution, so a cart that `import`s sibling
+// files (the metaverse framework: ./core/*, ./plugins/*) won't link without
+// this. We resolve relative specifiers against the importer's res:// path and
+// load each module's source via Godot FileAccess — so multi-file carts run on
+// Godot with no bundle step, matching the web runtime's native imports.
+static char *nova64_module_normalize(JSContext *ctx, const char *module_base_name,
+        const char *module_name, void *) {
+    String spec = String::utf8(module_name);
+    String resolved;
+    if (spec.begins_with(".")) {
+        // Relative to the importing module's directory; simplify_path collapses
+        // ./ and ../ segments (works on res:// paths).
+        String base = String::utf8(module_base_name);
+        resolved = base.get_base_dir().path_join(spec).simplify_path();
+    } else {
+        resolved = normalize_resource_path(spec);
+    }
+    CharString cs = resolved.utf8();
+    size_t len = (size_t)cs.length();
+    char *out = static_cast<char *>(js_malloc(ctx, len + 1));
+    if (!out) return nullptr;
+    memcpy(out, cs.get_data(), len);
+    out[len] = '\0';
+    return out;
+}
+
+static JSModuleDef *nova64_module_loader(JSContext *ctx, const char *module_name, void *) {
+    String path = String::utf8(module_name);
+    if (!FileAccess::file_exists(path)) {
+        JS_ThrowReferenceError(ctx, "module not found: %s", module_name);
+        return nullptr;
+    }
+    Ref<FileAccess> f = FileAccess::open(path, FileAccess::READ);
+    if (f.is_null()) {
+        JS_ThrowReferenceError(ctx, "could not open module: %s", module_name);
+        return nullptr;
+    }
+    String src = f->get_as_text();
+    CharString src_utf8 = src.utf8();
+    JSValue func_val = JS_Eval(ctx, src_utf8.get_data(), src_utf8.length(),
+            module_name, JS_EVAL_TYPE_MODULE | JS_EVAL_FLAG_COMPILE_ONLY);
+    if (JS_IsException(func_val)) return nullptr;
+    // The runtime keeps a reference to the compiled module; free our handle.
+    JSModuleDef *m = static_cast<JSModuleDef *>(JS_VALUE_GET_PTR(func_val));
+    JS_FreeValue(ctx, func_val);
+    return m;
+}
+
 void Nova64Host::_ensure_runtime() {
     if (_runtime) return;
     _runtime = JS_NewRuntime();
     _context = JS_NewContext(_runtime);
+    JS_SetModuleLoaderFunc(_runtime, nova64_module_normalize, nova64_module_loader, nullptr);
     _install_host_globals();
 }
 
@@ -3675,8 +3725,17 @@ void Nova64Host::_call_cart_fn(JSValue p_fn, double p_arg, bool p_pass_arg, cons
     if (JS_IsException(ret)) {
         JSValue exc = JS_GetException(_context);
         const char *msg = JS_ToCString(_context, exc);
-        UtilityFunctions::printerr("[nova64] cart ", String::utf8(p_name),
-                ": ", msg ? String::utf8(msg) : String("(unknown error)"));
+        String line = String("[nova64] cart ") + String::utf8(p_name) + ": " +
+                (msg ? String::utf8(msg) : String("(unknown error)"));
+        // Include the JS stack (file:line) so multi-file cart errors are debuggable.
+        JSValue stack = JS_GetPropertyStr(_context, exc, "stack");
+        if (!JS_IsUndefined(stack) && !JS_IsException(stack)) {
+            const char *stk = JS_ToCString(_context, stack);
+            if (stk && stk[0]) line += String("\n") + String::utf8(stk);
+            if (stk) JS_FreeCString(_context, stk);
+        }
+        JS_FreeValue(_context, stack);
+        UtilityFunctions::printerr(line);
         if (msg) JS_FreeCString(_context, msg);
         JS_FreeValue(_context, exc);
     }

@@ -18,16 +18,19 @@ import { createWebBackend } from './core/render-web.js';
 import { createApp } from './core/app.js';
 import { controlsPlugin } from './plugins/controls.js';
 import { chatPlugin } from './plugins/chat.js';
-import { Panel, Text } from './core/ui.js';
+import { Panel, Text, List } from './core/ui.js';
 
-// Status + player-count HUD as a tiny inline plugin (top-left).
+// Status + live player roster HUD (top-left).
 const hudPlugin = {
   id: 'hud',
   renderUI(ctx) {
-    const count = ctx.others.size + (ctx.room() ? 1 : 0);
+    const me = ctx.me();
+    const roster = [(me && me.displayName ? me.displayName : 'you') + '  (you)'];
+    ctx.others.forEach(o => roster.push(o.name || '????'));
     return Panel({ x: 8, y: 8, anchor: 'tl' }, [
       Text({ value: 'NOVA64 METAVERSE  [' + ctx.status() + ']', color: ctx.theme.accent }),
-      Text({ value: 'players here: ' + count, color: ctx.theme.dim }),
+      Text({ value: 'players (' + roster.length + ')', color: ctx.theme.dim }),
+      List({ items: roster, color: ctx.theme.fg }),
       Text({ value: 'move · look · C cam · CHAT/Enter to talk', color: ctx.theme.dim }),
     ]);
   },

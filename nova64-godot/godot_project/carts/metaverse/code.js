@@ -26,8 +26,11 @@ const hudPlugin = {
   id: 'hud',
   renderUI(ctx) {
     const me = ctx.me();
-    const roster = [(me && me.displayName ? me.displayName : 'you') + '  (you)'];
-    ctx.others.forEach(o => roster.push(o.name || '????'));
+    const badge = p => (p && p !== 'guest' ? ' \xb7' + p : ''); // " ·google" for real logins
+    const roster = [
+      (me && me.displayName ? me.displayName : 'you') + '  (you' + badge(me && me.provider) + ')',
+    ];
+    ctx.others.forEach(o => roster.push((o.name || '????') + badge(o.provider)));
     // A small filled swatch showing your current avatar color, next to a button
     // that cycles it (synced to everyone via the player data blob).
     const swatch = {

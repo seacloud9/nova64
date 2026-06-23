@@ -164,10 +164,18 @@ context + backend (no nova64/net access, so it runs on any backend):
 `StateRoom` Player carries 3D pose: `x, y, z, ry` (+ `name`, `data`). Movement
 intent is `pos3 { x, y, z, ry }`. Chat rides the generic relay (no schema
 change). **Avatar appearance** lives in the `data` blob: the cart sends
-`set { data: '{"color":<0xAARRGGBB>}' }`; peers parse it on spawn/change and the
-backend recolors the avatar in place (`setAvatarStyle`). The choice persists in
-`localStorage` and is re-broadcast on connect, so it survives reloads and reaches
-players who join later.
+`set { data: '{"color":<0xAARRGGBB>,"provider":"<id>"}' }`; peers parse it on
+spawn/change and the backend recolors the avatar in place (`setAvatarStyle`). The
+color persists in `localStorage` and is re-broadcast on connect, so it survives
+reloads and reaches players who join later.
+
+**Identity (`nova64.auth`):** on connect the app calls `restore()` and adopts any
+real signed-in identity (Supabase/OAuth, or a stored session), else signs in as a
+guest. The identity's `displayName` becomes the room name (shown on tags + the
+roster) and `provider` rides the `data` blob as a roster badge; a logged-in user
+gets a stable avatar color seeded from their identity id (unless they've picked
+one). `onChange` re-adopts a mid-session sign-in and re-broadcasts. The net facade
+attaches `nova64.auth.token()` on join so the server can verify real identities.
 
 ## 7. Phased roadmap
 
@@ -175,9 +183,12 @@ players who join later.
 - **P2 — framework + mobile + chat** ✅ render-backend + UI components + plugin
   system; controls plugin (mobile joystick/look); chat plugin (typed, native
   keyboard); interpolated remote avatars; HUD roster.
-- **P3 — presence & polish** (current): name tags (world→screen) ✅, join/leave
-  toasts ✅, avatar color customization via `data` ✅; remaining — wire
-  `nova64.auth` identities (display names/avatars from the signed-in identity).
+- **P3 — presence & polish** ✅ name tags (world→screen), join/leave toasts,
+  avatar color customization via `data`, and `nova64.auth` identity wiring
+  (display name + provider badge + stable per-identity color; guest fallback).
+  Deferred: rendering a profile **avatar image** on the cube — remote avatar URLs
+  are cross-origin (CORS-tainted in WebGL), absent for guests, and host-specific,
+  so it's a later texture-pipeline task, not a quick win.
 - **P4 — Godot backend:** register a GodotRenderBackend; touch parity; cross-play
   the metaverse cart unchanged.
 - **P5 — XR backend:** stereo camera rig + world-space UI panels; controller/hand

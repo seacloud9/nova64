@@ -18,15 +18,18 @@ const PALETTE = [
 ];
 const APPEARANCE_KEY = 'nova64.metaverse.appearance';
 
-// Read a color out of a player's `data` blob ({"color":<0xAARRGGBB>}); null if absent/bad.
-function parseColor(data) {
-  if (!data) return null;
+// Decode a player's `data` blob ({"color":<0xAARRGGBB>,"provider":"google"}) into
+// an object; {} on missing/bad data.
+function parseData(data) {
+  if (!data) return {};
   try {
-    const o = JSON.parse(data);
-    return Number.isFinite(o.color) ? o.color >>> 0 : null;
+    return JSON.parse(data) || {};
   } catch (_) {
-    return null;
+    return {};
   }
+}
+function colorOf(meta) {
+  return Number.isFinite(meta.color) ? meta.color >>> 0 : null;
 }
 
 function now() {
@@ -84,16 +87,21 @@ export function createApp(opts = {}) {
 
   // Local avatar appearance. Start from a saved choice, else a palette slot
   // seeded by the name so two unconfigured visitors usually differ.
-  let colorIndex = (() => {
-    const s = String(opts.name || 'me');
+  const hashIndex = s => {
     let h = 0;
-    for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+    const str = String(s || 'me');
+    for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) >>> 0;
     return h % PALETTE.length;
-  })();
+  };
+  let colorIndex = hashIndex(opts.name);
+  let colorCustomized = false; // true once the user explicitly picks (or had a saved choice)
   try {
     if (typeof localStorage !== 'undefined') {
       const saved = parseInt(localStorage.getItem(APPEARANCE_KEY), 10);
-      if (Number.isFinite(saved) && saved >= 0 && saved < PALETTE.length) colorIndex = saved;
+      if (Number.isFinite(saved) && saved >= 0 && saved < PALETTE.length) {
+        colorIndex = saved;
+        colorCustomized = true;
+      }
     }
   } catch (_) {
     /* ignore */
@@ -120,6 +128,7 @@ export function createApp(opts = {}) {
     status: () => status,
     room: () => room,
     me: () => me,
+    identity: () => me,
     input: {
       key: (...c) => {
         const k = nova64.input && (nova64.input.key || nova64.input.isKeyPressed);
@@ -175,14 +184,48 @@ export function createApp(opts = {}) {
     });
   }
 
-  // Broadcast our appearance so others recolor our avatar. The server stores it
-  // in our `data` blob, so players who join later pick it up on spawn too.
+  // Resolve who we are: prefer a real signed-in identity (Supabase after an
+  // OAuth redirect, or a stored session), else fall back to a guest. The net
+  // facade attaches nova64.auth.token() on join, so the server can verify a real
+  // identity while still letting guests in (dev).
+  async function resolveIdentity() {
+    if (!(nova64.auth && nova64.auth.signIn)) return null;
+    try {
+      if (nova64.auth.restore) {
+        const restored = await nova64.auth.restore();
+        if (restored && !restored.error && restored.provider && restored.provider !== 'guest') {
+          return restored;
+        }
+      }
+    } catch (_) {
+      /* ignore */
+    }
+    return await nova64.auth.signIn('guest', {
+      name: opts.name || 'Visitor-' + Math.floor(Math.random() * 1000),
+    });
+  }
+
+  // A signed-in user gets a stable avatar color seeded from their identity (so
+  // it's the same every session) — unless they've explicitly picked one.
+  function applyIdentityColor() {
+    if (colorCustomized || !me || !me.id || me.provider === 'guest') return;
+    colorIndex = hashIndex(me.id);
+    appearance.color = PALETTE[colorIndex];
+    if (backend.setAvatarStyle) backend.setAvatarStyle(LOCAL_ID, { color: appearance.color });
+  }
+
+  // Broadcast our appearance + provider so others recolor our avatar and can show
+  // an identity badge. The server stores it in our `data` blob, so players who
+  // join later pick it up on spawn too.
   function sendAppearance() {
-    if (room) room.send('set', { data: JSON.stringify({ color: appearance.color }) });
+    if (!room) return;
+    const provider = (me && me.provider) || 'guest';
+    room.send('set', { data: JSON.stringify({ color: appearance.color, provider }) });
   }
   // Apply a palette choice locally (own avatar), persist it, and broadcast.
   function setLocalColor(index) {
     colorIndex = ((index % PALETTE.length) + PALETTE.length) % PALETTE.length;
+    colorCustomized = true;
     appearance.color = PALETTE[colorIndex];
     if (backend.setAvatarStyle) backend.setAvatarStyle(LOCAL_ID, { color: appearance.color });
     try {
@@ -197,6 +240,7 @@ export function createApp(opts = {}) {
   function spawn(id, p) {
     const name = (p && p.name) || id.slice(0, 4);
     const data = (p && p.data) || '';
+    const meta = parseData(data);
     others.set(id, {
       x: p.x || 0,
       z: p.z || 0,
@@ -206,8 +250,9 @@ export function createApp(opts = {}) {
       tyaw: p.ry || 0,
       name,
       data,
+      provider: meta.provider || null,
     });
-    const color = parseColor(data);
+    const color = colorOf(meta);
     backend.addAvatar(id, { color: color != null ? color : colorFor(id), name });
     notifyPeer('onPeerJoin', id, { name });
   }
@@ -224,11 +269,8 @@ export function createApp(opts = {}) {
       return;
     }
     try {
-      if (nova64.auth && nova64.auth.signIn) {
-        me = await nova64.auth.signIn('guest', {
-          name: opts.name || 'Visitor-' + Math.floor(Math.random() * 1000),
-        });
-      }
+      me = await resolveIdentity();
+      applyIdentityColor();
       status = 'connecting…';
       const url = globalThis.__NOVA64_NET_URL || opts.netUrl || defaultNetUrl();
       await nova64.net.connect({ url });
@@ -256,10 +298,12 @@ export function createApp(opts = {}) {
           o.tz = p.z;
           o.tyaw = p.ry;
           if (p.name) o.name = p.name;
-          // Appearance changed → recolor their avatar in place.
+          // Appearance/identity changed → recolor their avatar + note provider.
           if (p.data != null && p.data !== o.data) {
             o.data = p.data;
-            const c = parseColor(p.data);
+            const meta = parseData(p.data);
+            if (meta.provider) o.provider = meta.provider;
+            const c = colorOf(meta);
             if (c != null && backend.setAvatarStyle) backend.setAvatarStyle(id, { color: c });
           }
         } else spawn(id, p);
@@ -340,6 +384,17 @@ export function createApp(opts = {}) {
       plugins.all().forEach(pl => {
         if (typeof pl.init === 'function') pl.init(ctx);
       });
+      // React to identity changes (e.g. an OAuth sign-in completing): adopt the
+      // new identity, reseed the color, and re-broadcast. The display name others
+      // see is set at join, so a name change there needs a reconnect.
+      if (nova64.auth && nova64.auth.onChange) {
+        nova64.auth.onChange(id => {
+          if (!id || id.error) return;
+          me = id;
+          applyIdentityColor();
+          sendAppearance();
+        });
+      }
       connect(); // non-blocking; world renders immediately
     },
 

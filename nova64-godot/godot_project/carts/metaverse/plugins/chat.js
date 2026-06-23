@@ -37,6 +37,7 @@ export function chatPlugin(opts = {}) {
   const log = [];
   let bar = null;
   let barTried = false; // one-shot: don't retry DOM creation every frame
+  let gdtext = false; // using the native Godot text input (no DOM)
   let focused = false;
 
   function push(name, text) {
@@ -148,6 +149,11 @@ export function chatPlugin(opts = {}) {
 
     init(ctx) {
       ensureBar(ctx);
+      // No DOM bar (e.g. Godot) but a native text input is available → mount it.
+      if (!bar && typeof nova64 !== 'undefined' && nova64.gdtext && typeof nova64.gdtext.mount === 'function') {
+        nova64.gdtext.mount('Tap / Enter to chat…  (/me, /help)');
+        gdtext = true;
+      }
       ctx.registerCommand('help', () => push('*', 'commands: /me <action>, /help'));
       ctx.registerCommand('me', (args, c) => {
         const action = (args || '').trim();
@@ -161,7 +167,16 @@ export function chatPlugin(opts = {}) {
     update(_dt, ctx) {
       ensureBar(ctx);
       positionBar();
-      // Expose typing state so controls can ignore movement while the bar is focused.
+      // Godot native input: drain submitted lines + track focus.
+      if (gdtext && nova64.gdtext) {
+        const r = nova64.gdtext.poll();
+        if (r) {
+          focused = !!r.focused;
+          const lines = r.lines || [];
+          for (let i = 0; i < lines.length; i++) submit(ctx, lines[i]);
+        }
+      }
+      // Expose typing state so controls can ignore movement while typing.
       ctx.typing = focused;
     },
 

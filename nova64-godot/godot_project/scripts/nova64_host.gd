@@ -27,6 +27,7 @@ static var _selected_cart_path: String = ""
 @onready var host: Nova64Host = $Nova64Host
 
 const NovaNetScript = preload("res://scripts/nova_net.gd")
+const NovaTextScript = preload("res://scripts/nova_text.gd")
 
 var _cart_list: PackedStringArray = PackedStringArray()
 var _cart_index: int = 0
@@ -98,6 +99,12 @@ func _ready() -> void:
 	nova_net.name = "NovaNet"
 	add_child(nova_net)
 	host.set_net_delegate(nova_net)
+
+	# Native on-screen text input (nova64.gdtext) for cart chat/typing on Godot.
+	var nova_text = NovaTextScript.new()
+	nova_text.name = "NovaText"
+	add_child(nova_text)
+	host.set_text_delegate(nova_text)
 
 	var caps: Dictionary = host.get_capabilities()
 	print("[nova64] booted host: ", caps)

@@ -6737,6 +6737,16 @@
   })();
   const netNsP = wrapNamespace('net', netNs);
 
+  // nova64.gdtext — native on-screen text input (LineEdit) backed by the
+  // NovaText delegate. Carts feature-detect this (it's Godot-only) to do chat /
+  // typing where there is no DOM. mount() docks a full-width bar to the bottom;
+  // poll() drains submitted lines + reports focus (so movement can pause).
+  const gdtextNs = {
+    mount: placeholder => call('text.mount', { placeholder: placeholder || '', maxLen: 160 }),
+    poll: () => call('text.poll', {}),
+    focus: () => call('text.focus', {}),
+  };
+
   global.nova64 = {
     __compatLoaded: true,
     scene: sceneNsP,
@@ -6763,6 +6773,7 @@
     i18n: i18nNsP,
     wad: wadNsP,
     net: netNsP,
+    gdtext: gdtextNs,
   };
 
   // Flat-global aliases so older carts that don't destructure still work.

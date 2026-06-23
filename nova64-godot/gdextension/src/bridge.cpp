@@ -861,6 +861,7 @@ void Nova64Host::_bind_methods() {
     ClassDB::bind_method(D_METHOD("get_capabilities"), &Nova64Host::get_capabilities);
     ClassDB::bind_method(D_METHOD("call_bridge", "method", "payload"), &Nova64Host::call_bridge);
     ClassDB::bind_method(D_METHOD("set_net_delegate", "delegate"), &Nova64Host::set_net_delegate);
+    ClassDB::bind_method(D_METHOD("set_text_delegate", "delegate"), &Nova64Host::set_text_delegate);
     ClassDB::bind_method(D_METHOD("load_cart", "res_path"), &Nova64Host::load_cart);
     ClassDB::bind_method(D_METHOD("cart_init"), &Nova64Host::cart_init);
     ClassDB::bind_method(D_METHOD("cart_update", "delta"), &Nova64Host::cart_update);
@@ -1168,6 +1169,8 @@ Dictionary Nova64Host::call_bridge(const String &p_method, const Dictionary &p_p
     // Networking (nova64.net) is handled by the GDScript NovaNet delegate,
     // which owns the Colyseus client SDK (GDScript-only).
     if (p_method.begins_with("net."))             return _forward_net(p_method, p_payload);
+    // Native text input (nova64 chat/typing) handled by the NovaText delegate.
+    if (p_method.begins_with("text."))            return _forward_text(p_method, p_payload);
 
     return make_error("unsupported_method", p_method);
 }
@@ -1181,6 +1184,21 @@ Dictionary Nova64Host::_forward_net(const String &p_method, const Dictionary &p_
         return make_error("net_unavailable", "no NovaNet delegate registered");
     }
     Variant r = _net_delegate->call("call_net", p_method, p_payload);
+    if (r.get_type() == Variant::DICTIONARY) {
+        return (Dictionary)r;
+    }
+    return Dictionary();
+}
+
+void Nova64Host::set_text_delegate(Object *p_delegate) {
+    _text_delegate = p_delegate;
+}
+
+Dictionary Nova64Host::_forward_text(const String &p_method, const Dictionary &p_payload) {
+    if (_text_delegate == nullptr) {
+        return make_error("text_unavailable", "no NovaText delegate registered");
+    }
+    Variant r = _text_delegate->call("call_text", p_method, p_payload);
     if (r.get_type() == Variant::DICTIONARY) {
         return (Dictionary)r;
     }

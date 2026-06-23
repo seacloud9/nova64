@@ -57,6 +57,11 @@ public:
     // delegate; call_bridge forwards `net.*` to its `call_net(method, payload)`.
     void set_net_delegate(Object *p_delegate);
 
+    // Registers a GDScript node (NovaText) that handles every `text.*` method —
+    // a native on-screen text input (LineEdit) so carts can do chat/typing on
+    // Godot where there is no DOM. Forwarded to via call_text(method, payload).
+    void set_text_delegate(Object *p_delegate);
+
     // Loads a cart as an ES module from a Godot resource path
     // (e.g. "res://carts/01-cube.js"), evaluates it, and caches the
     // init/update/draw exports from the module namespace object.
@@ -228,6 +233,10 @@ private:
     // net.* delegate (GDScript NovaNet node). Forwarded to via call_net.
     Object *_net_delegate = nullptr;
     Dictionary _forward_net(const String &p_method, const Dictionary &p_payload);
+
+    // text.* delegate (GDScript NovaText node). Forwarded to via call_text.
+    Object *_text_delegate = nullptr;
+    Dictionary _forward_text(const String &p_method, const Dictionary &p_payload);
 
     // Helpers
     Node3D *_resolve_node3d(uint32_t p_handle_id) const;

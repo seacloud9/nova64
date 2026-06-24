@@ -92,16 +92,20 @@ export class StateRoom extends Room {
     });
 
     // Relay any other message type to everyone else as an "event" — guarded
-    // against oversized payloads and floods (chat/emote spam).
+    // against oversized payloads and floods (chat/emote spam). Voice signaling
+    // (WebRTC offer/answer/ICE) is targeted control traffic that legitimately
+    // bursts during connection setup, so it's size-capped but not rate-limited.
     this.onMessage('*', (client, type, msg) => {
-      if (!this._relayAllowed(client.sessionId, msg)) return;
+      const isControl = type === 'voice';
+      if (!this._relayAllowed(client.sessionId, msg, isControl)) return;
       this.broadcast('event', { from: client.sessionId, type, msg }, { except: client });
     });
   }
 
-  // True if this client may relay now: payload within size budget and under the
-  // per-second rate. Keeps one rude client from spamming everyone else.
-  _relayAllowed(sessionId, msg) {
+  // True if this client may relay now: payload within size budget and (unless
+  // it's exempt control traffic) under the per-second rate. Keeps one rude
+  // client from spamming everyone else.
+  _relayAllowed(sessionId, msg, skipRate) {
     let size = 0;
     try {
       size = JSON.stringify(msg == null ? '' : msg).length;
@@ -109,6 +113,7 @@ export class StateRoom extends Room {
       return false; // non-serializable payload
     }
     if (size > MAX_RELAY_BYTES) return false;
+    if (skipRate) return true;
     const now = Date.now();
     const recent = (this._relayTimes.get(sessionId) || []).filter(t => now - t < 1000);
     if (recent.length >= MAX_RELAY_PER_SEC) {

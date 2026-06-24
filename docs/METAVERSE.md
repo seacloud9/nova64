@@ -36,7 +36,7 @@ examples/metaverse/
     chat.js               # chat plugin (UI panel + commands) over a chat provider
     presence.js           # floating name tags (world->screen) + join/left toasts
     minimap.js            # top-down radar of all avatars (you + others)
-    emotes.js             # tappable quick-reactions -> relay + world-pinned bubbles
+    voice.js              # proximity-free WebRTC voice chat (push-to-talk, web)
 ```
 
 Each piece has a headless `*.test.mjs` beside it (mock `nova64`, no browser);
@@ -134,7 +134,7 @@ metaverse.use(chatPlugin); metaverse.use(controlsPlugin); metaverse.use(presence
 The app drives every plugin's lifecycle and merges their `renderUI` output.
 Plugins are isolated — the `minimap` plugin (a top-down radar of all avatars) is
 exactly this: one module, `use()`-d in, touching only the context + backend.
-Adding voice, an inventory, or emotes later is the same shape; nothing else
+Adding an inventory or world objects later is the same shape; nothing else
 changes.
 
 ### Chat plugin + transport providers
@@ -152,6 +152,18 @@ websocket, p2p) implements the same two methods. Commands register through
 `ctx.registerCommand(name, handler)`: `/me <action>`, `/help`, and `/nick <name>`
 (a live rename — sends `setName` to the room; the server updates `player.name` and
 state-sync propagates it to everyone's tags + roster).
+
+### Voice plugin
+`voice` is WebRTC voice chat as a plugin: a peer-to-peer mesh where each
+participant opens an `RTCPeerConnection` to every other and exchanges mic audio.
+Signaling (SDP offer/answer + ICE) rides the **existing relay** — `sendRelay('voice', …)`
+out, `onNetMessage('voice')` in — so no extra server endpoint is needed (the
+StateRoom exempts `voice` from the chat rate-limit since ICE bursts during setup).
+Pairs are glare-free (smaller `sessionId` offers, the other answers), and the mic
+is gated by **push-to-talk** (hold `V`) or an unmute toggle — default muted, no hot
+mic. It's browser-only (`RTCPeerConnection`/`getUserMedia`); on Godot/QuickJS it
+shows `MIC n/a` and no-ops. Deps are injectable, so the signaling state machine is
+tested headlessly (`voice.test.mjs`) without a real browser.
 
 ### Presence plugin
 The `presence` plugin makes "who's here" visible in the world, using only the

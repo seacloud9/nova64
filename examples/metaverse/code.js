@@ -10,8 +10,8 @@
 // Open a second tab (or a Godot client) to see avatars + chat sync.
 //
 // Controls — Desktop: WASD/arrows move · mouse or Q/E look · C camera ·
-//            Enter/T chat.   Mobile: left joystick move · right drag look ·
-//            CAM / CHAT buttons.
+//            Enter/T chat · hold V to talk (after MIC: on).   Mobile: left
+//            joystick move · right drag look · CAM / CHAT / MIC buttons.
 
 import { registerBackend } from './core/registry.js';
 import { createWebBackend } from './core/render-web.js';
@@ -20,7 +20,7 @@ import { controlsPlugin } from './plugins/controls.js';
 import { chatPlugin } from './plugins/chat.js';
 import { presencePlugin } from './plugins/presence.js';
 import { minimapPlugin } from './plugins/minimap.js';
-import { emotesPlugin } from './plugins/emotes.js';
+import { voicePlugin } from './plugins/voice.js';
 import { Panel, Text, List, Row, Button } from './core/ui.js';
 
 // Status + live player roster HUD (top-left).
@@ -62,7 +62,7 @@ export function init() {
       chatPlugin(),
       presencePlugin(),
       minimapPlugin({ range: 40 }),
-      emotesPlugin(),
+      voicePlugin({ pttKey: 'KeyV' }),
       hudPlugin,
     ],
     name: 'Visitor-' + Math.floor(Math.random() * 1000),

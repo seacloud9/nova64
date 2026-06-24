@@ -39,6 +39,9 @@ examples/metaverse/
     emotes.js             # tappable quick-reactions -> relay + world-pinned bubbles
 ```
 
+Each piece has a headless `*.test.mjs` beside it (mock `nova64`, no browser);
+`pnpm test:metaverse` runs them all via `run-tests.mjs` and prints a summary.
+
 The framework is plain ES modules the cart imports with relative paths (vite
 serves them on web). A Godot/XR port either bundles these into the host shim or
 re-implements the backend behind the same interface — the cart and plugins don't

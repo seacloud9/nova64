@@ -66,6 +66,7 @@
     "test:resize": "node tests/test-cli.js resize",
     "test:cli": "node tests/test-cli.js cli",
     "test:namespace": "node tests/test-namespace.js",
+    "test:metaverse": "node examples/metaverse/run-tests.mjs",
     "retroarch:clean": "make -C retroarch clean",
     "retroarch:build": "make -C retroarch clean all",
     "retroarch:build:debug": "make -C retroarch clean all DEBUG=1",

@@ -36,6 +36,7 @@ examples/metaverse/
     chat.js               # chat plugin (UI panel + commands) over a chat provider
     presence.js           # floating name tags (world->screen) + join/left toasts
     minimap.js            # top-down radar of all avatars (you + others)
+    emotes.js             # tappable quick-reactions -> relay + world-pinned bubbles
 ```
 
 The framework is plain ES modules the cart imports with relative paths (vite
@@ -77,7 +78,11 @@ projection: the web backend computes it from the camera it set (pure math, so it
 also works when a Godot host drives this same backend); a native Godot backend
 would use `Camera3D.unproject_position`; XR returns a per-eye projection. Plugins
 that pin UI to the world (e.g. presence name tags) call it and skip drawing when
-`visible` is false.
+`visible` is false. The web backend assumes a **75° vertical FOV at 16:9** — it
+pins `setCameraFOV(75)` in `init`, and Godot honors that as a vertical FOV
+(`keep_aspect = KEEP_HEIGHT`), so tags align on both. A non-16:9 Godot window
+introduces minor horizontal drift only (vertical is always exact); a native
+GodotRenderBackend would use `unproject_position` to be pixel-perfect.
 
 Registering a backend: `metaverse.registerBackend(backend)`. The cart picks one
 (`backend: 'web'`); unknown → falls back to web. **XR** is just another backend

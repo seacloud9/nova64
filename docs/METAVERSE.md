@@ -190,6 +190,9 @@ roster) and `provider` rides the `data` blob as a roster badge; a logged-in user
 gets a stable avatar color seeded from their identity id (unless they've picked
 one). `onChange` re-adopts a mid-session sign-in and re-broadcasts. The net facade
 attaches `nova64.auth.token()` on join so the server can verify real identities.
+A `/nick` chosen by the user persists in `localStorage` and wins over both the
+random visitor name and the identity name on the next load (same "explicit choice
+beats default" rule as the avatar color).
 
 ## 7. Phased roadmap
 

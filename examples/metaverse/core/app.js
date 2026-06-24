@@ -17,6 +17,23 @@ const PALETTE = [
   0xffff5566, 0xffffaa33, 0xffffe14d, 0xff66dd66, 0xff44ccff, 0xff9b6bff, 0xffff77cc, 0xffffffff,
 ];
 const APPEARANCE_KEY = 'nova64.metaverse.appearance';
+const NICK_KEY = 'nova64.metaverse.nick';
+
+// localStorage helpers, guarded for non-DOM hosts (Godot/QuickJS).
+function lsGet(key) {
+  try {
+    return typeof localStorage !== 'undefined' ? localStorage.getItem(key) : null;
+  } catch (_) {
+    return null;
+  }
+}
+function lsSet(key, val) {
+  try {
+    if (typeof localStorage !== 'undefined') localStorage.setItem(key, val);
+  } catch (_) {
+    /* ignore */
+  }
+}
 
 // Decode a player's `data` blob ({"color":<0xAARRGGBB>,"provider":"google"}) into
 // an object; {} on missing/bad data.
@@ -95,23 +112,20 @@ export function createApp(opts = {}) {
   };
   let colorIndex = hashIndex(opts.name);
   let colorCustomized = false; // true once the user explicitly picks (or had a saved choice)
-  try {
-    if (typeof localStorage !== 'undefined') {
-      const saved = parseInt(localStorage.getItem(APPEARANCE_KEY), 10);
-      if (Number.isFinite(saved) && saved >= 0 && saved < PALETTE.length) {
-        colorIndex = saved;
-        colorCustomized = true;
-      }
-    }
-  } catch (_) {
-    /* ignore */
+  const savedColor = parseInt(lsGet(APPEARANCE_KEY), 10);
+  if (Number.isFinite(savedColor) && savedColor >= 0 && savedColor < PALETTE.length) {
+    colorIndex = savedColor;
+    colorCustomized = true;
   }
   const appearance = { color: PALETTE[colorIndex] };
   const others = new Map(); // id -> { x, z, yaw, name, tx, tz, tyaw } (t* = targets)
   const commands = new Map();
   let room = null;
   let me = null;
-  let displayName = opts.name || 'Visitor'; // shown name; updated from identity + /nick
+  // A saved /nick survives reloads and wins over both the random visitor name and
+  // the identity name (it's a deliberate choice, like a customized color).
+  const nickOverride = lsGet(NICK_KEY) || null;
+  let displayName = nickOverride || opts.name || 'Visitor';
   let status = 'starting';
   let lastSent = 0;
   let prevTouchIds = new Set();
@@ -165,6 +179,7 @@ export function createApp(opts = {}) {
         .slice(0, 24);
       if (!name) return;
       displayName = name;
+      lsSet(NICK_KEY, name); // remember across reloads
       if (room) room.send('setName', { name });
     },
     // chat / relay
@@ -239,12 +254,7 @@ export function createApp(opts = {}) {
     colorCustomized = true;
     appearance.color = PALETTE[colorIndex];
     if (backend.setAvatarStyle) backend.setAvatarStyle(LOCAL_ID, { color: appearance.color });
-    try {
-      if (typeof localStorage !== 'undefined')
-        localStorage.setItem(APPEARANCE_KEY, String(colorIndex));
-    } catch (_) {
-      /* ignore */
-    }
+    lsSet(APPEARANCE_KEY, String(colorIndex));
     sendAppearance();
   }
 
@@ -281,7 +291,8 @@ export function createApp(opts = {}) {
     }
     try {
       me = await resolveIdentity();
-      if (me && me.displayName) displayName = me.displayName;
+      // Identity name applies unless the user has a saved nick (their choice wins).
+      if (me && me.displayName && !nickOverride) displayName = me.displayName;
       applyIdentityColor();
       status = 'connecting…';
       const url = globalThis.__NOVA64_NET_URL || opts.netUrl || defaultNetUrl();

@@ -34,6 +34,8 @@ examples/metaverse/
   plugins/
     controls.js           # keyboard + mobile touch (joystick / drag-look) -> intents
     chat.js               # chat plugin (UI panel + commands) over a chat provider
+    presence.js           # floating name tags (world->screen) + join/left toasts
+    minimap.js            # top-down radar of all avatars (you + others)
 ```
 
 The framework is plain ES modules the cart imports with relative paths (vite
@@ -122,8 +124,10 @@ metaverse.use(chatPlugin); metaverse.use(controlsPlugin); metaverse.use(presence
 ```
 
 The app drives every plugin's lifecycle and merges their `renderUI` output.
-Plugins are isolated — adding voice or a minimap later means writing one module
-and `use()`-ing it; nothing else changes.
+Plugins are isolated — the `minimap` plugin (a top-down radar of all avatars) is
+exactly this: one module, `use()`-d in, touching only the context + backend.
+Adding voice, an inventory, or emotes later is the same shape; nothing else
+changes.
 
 ### Chat plugin + transport providers
 Chat is a plugin whose transport is itself swappable:

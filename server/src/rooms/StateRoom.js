@@ -78,6 +78,14 @@ export class StateRoom extends Room {
       }
     });
 
+    // Live display-name change (/nick). Bounded; ignored if blank.
+    this.onMessage('setName', (client, msg) => {
+      const p = this.state.players.get(client.sessionId);
+      if (!p || !msg || typeof msg.name !== 'string') return;
+      const name = msg.name.trim().slice(0, 24);
+      if (name) p.name = name;
+    });
+
     // Relay any other message type to everyone else as an "event".
     this.onMessage('*', (client, type, msg) => {
       this.broadcast('event', { from: client.sessionId, type, msg }, { except: client });

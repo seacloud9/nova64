@@ -50,6 +50,7 @@ export function chatPlugin(opts = {}) {
     return (o && o.name) || (id || '').slice(0, 4);
   }
   function myName(ctx) {
+    if (typeof ctx.displayName === 'function') return ctx.displayName();
     const me = ctx.me();
     return (me && me.displayName) || 'me';
   }
@@ -159,7 +160,16 @@ export function chatPlugin(opts = {}) {
         nova64.gdtext.mount('Tap / Enter to chat…  (/me, /help)');
         gdtext = true;
       }
-      ctx.registerCommand('help', () => push('*', 'commands: /me <action>, /help'));
+      ctx.registerCommand('help', () => push('*', 'commands: /me <action>, /nick <name>, /help'));
+      ctx.registerCommand('nick', (args, c) => {
+        const name = (args || '').trim().slice(0, 24);
+        if (!name) {
+          push('*', 'usage: /nick <name>');
+          return;
+        }
+        if (typeof c.setName === 'function') c.setName(name);
+        push('*', 'you are now ' + name);
+      });
       ctx.registerCommand('me', (args, c) => {
         const action = (args || '').trim();
         if (!action) return;

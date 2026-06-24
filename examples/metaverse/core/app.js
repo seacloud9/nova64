@@ -111,6 +111,7 @@ export function createApp(opts = {}) {
   const commands = new Map();
   let room = null;
   let me = null;
+  let displayName = opts.name || 'Visitor'; // shown name; updated from identity + /nick
   let status = 'starting';
   let lastSent = 0;
   let prevTouchIds = new Set();
@@ -156,6 +157,16 @@ export function createApp(opts = {}) {
     // appearance (read current color; cycle through the palette)
     appearance,
     cycleColor: () => setLocalColor((colorIndex + 1) % PALETTE.length),
+    // display name (read; change live via /nick)
+    displayName: () => displayName,
+    setName: n => {
+      const name = String(n == null ? '' : n)
+        .trim()
+        .slice(0, 24);
+      if (!name) return;
+      displayName = name;
+      if (room) room.send('setName', { name });
+    },
     // chat / relay
     registerCommand: (name, fn) => commands.set(name, fn),
     runCommand: (name, args) => {
@@ -270,6 +281,7 @@ export function createApp(opts = {}) {
     }
     try {
       me = await resolveIdentity();
+      if (me && me.displayName) displayName = me.displayName;
       applyIdentityColor();
       status = 'connecting…';
       const url = globalThis.__NOVA64_NET_URL || opts.netUrl || defaultNetUrl();
@@ -279,9 +291,7 @@ export function createApp(opts = {}) {
       // this the join promise never settles and the SDK keeps polling.
       const timeoutMs = opts.connectTimeoutMs || 8000;
       room = await Promise.race([
-        nova64.net.joinOrCreate('state', {
-          name: (me && me.displayName) || opts.name || 'Visitor',
-        }),
+        nova64.net.joinOrCreate('state', { name: displayName }),
         new Promise((_, rej) => setTimeout(() => rej(new Error('connect_timeout')), timeoutMs)),
       ]);
       status = 'connected';

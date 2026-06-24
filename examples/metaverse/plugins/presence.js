@@ -63,8 +63,7 @@ export function presencePlugin() {
             ctx.others.forEach(o => drawTag(b, theme, o.x, o.z, o.name));
             // …and over yourself when the camera is pulled back.
             if (ctx.local.mode === 'third') {
-              const me = ctx.me();
-              const myName = (me && me.displayName) || 'you';
+              const myName = typeof ctx.displayName === 'function' ? ctx.displayName() : 'you';
               drawTag(b, theme, ctx.local.x, ctx.local.z, myName);
             }
             // Join/left toasts, centered near the top, newest at the bottom of

@@ -145,8 +145,10 @@ const ChatProvider = {
 ```
 Default provider = the colyseus relay (`room.send('chat', {text})` →
 server broadcasts `event` → `onNetMessage`). A different backend (matrix,
-websocket, p2p) implements the same two methods. Commands (`/me`, `/nick`,
-`/help`) register through `ctx.registerCommand(name, handler)`.
+websocket, p2p) implements the same two methods. Commands register through
+`ctx.registerCommand(name, handler)`: `/me <action>`, `/help`, and `/nick <name>`
+(a live rename — sends `setName` to the room; the server updates `player.name` and
+state-sync propagates it to everyone's tags + roster).
 
 ### Presence plugin
 The `presence` plugin makes "who's here" visible in the world, using only the

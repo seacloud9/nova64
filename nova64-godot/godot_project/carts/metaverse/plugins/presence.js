@@ -14,6 +14,22 @@
 const TAG_Y = 2.0; // world height of the tag, just above the ~0.9 avatar cube
 const TOAST_LIFE = 4.0; // seconds a toast stays up
 const MAX_TOASTS = 4;
+// Distance fade so a crowd doesn't turn into a wall of labels: full opacity up
+// close, fading to a floor by FAR, hidden past CULL.
+const NEAR = 8;
+const FAR = 42;
+const CULL = 60;
+const MIN_FADE = 0.18;
+
+function clamp01(v) {
+  return v < 0 ? 0 : v > 1 ? 1 : v;
+}
+// Replace the alpha byte of an 0xAARRGGBB color, scaled by `mul`.
+function fadeColor(color, mul) {
+  const base = (color >>> 24) & 0xff;
+  const a = Math.max(0, Math.min(255, Math.round(base * mul)));
+  return ((a << 24) | (color & 0xffffff)) >>> 0;
+}
 
 export function presencePlugin() {
   const toasts = []; // [{ text, t }]
@@ -26,13 +42,15 @@ export function presencePlugin() {
   function drawTag(b, theme, wx, wz, name) {
     if (!b.worldToScreen) return;
     const p = b.worldToScreen(wx, TAG_Y, wz);
-    if (!p.visible) return;
+    if (!p.visible || p.dist > CULL) return;
+    // 1 near, easing to MIN_FADE by FAR.
+    const fade = MIN_FADE + (1 - MIN_FADE) * clamp01((FAR - p.dist) / (FAR - NEAR));
     const label = String(name || '????');
     const w = b.measureText ? b.measureText(label) : label.length * 6;
     const x = Math.round(p.x - w / 2);
     const y = Math.round(p.y);
-    b.drawRect(x - 3, y - 2, w + 6, theme.lineH + 4, 0xcc0b1020);
-    b.drawText(label, x, y, theme.fg);
+    b.drawRect(x - 3, y - 2, w + 6, theme.lineH + 4, fadeColor(0xcc0b1020, fade));
+    b.drawText(label, x, y, fadeColor(theme.fg, fade));
   }
 
   return {

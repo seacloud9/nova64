@@ -33,6 +33,9 @@ defineTypes(StateRoomState, { players: { map: Player } });
 
 const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
 const BOUND = 100000;
+// Relay abuse guards: cap broadcast size and per-client rate (sliding 1s window).
+const MAX_RELAY_BYTES = 2048;
+const MAX_RELAY_PER_SEC = 20;
 
 export class StateRoom extends Room {
   onCreate() {
@@ -41,6 +44,8 @@ export class StateRoom extends Room {
     // and opening the room WebSocket; give the reservation room to breathe.
     this.seatReservationTimeout = 30;
     this.setState(new StateRoomState());
+    // Per-client relay timestamps (sessionId -> number[]) for rate limiting.
+    this._relayTimes = new Map();
 
     // Relative movement intent.
     this.onMessage('move', (client, msg) => {
@@ -86,10 +91,33 @@ export class StateRoom extends Room {
       if (name) p.name = name;
     });
 
-    // Relay any other message type to everyone else as an "event".
+    // Relay any other message type to everyone else as an "event" — guarded
+    // against oversized payloads and floods (chat/emote spam).
     this.onMessage('*', (client, type, msg) => {
+      if (!this._relayAllowed(client.sessionId, msg)) return;
       this.broadcast('event', { from: client.sessionId, type, msg }, { except: client });
     });
+  }
+
+  // True if this client may relay now: payload within size budget and under the
+  // per-second rate. Keeps one rude client from spamming everyone else.
+  _relayAllowed(sessionId, msg) {
+    let size = 0;
+    try {
+      size = JSON.stringify(msg == null ? '' : msg).length;
+    } catch (_) {
+      return false; // non-serializable payload
+    }
+    if (size > MAX_RELAY_BYTES) return false;
+    const now = Date.now();
+    const recent = (this._relayTimes.get(sessionId) || []).filter(t => now - t < 1000);
+    if (recent.length >= MAX_RELAY_PER_SEC) {
+      this._relayTimes.set(sessionId, recent);
+      return false;
+    }
+    recent.push(now);
+    this._relayTimes.set(sessionId, recent);
+    return true;
   }
 
   // Verify the session token (Supabase JWT) or allow a guest in dev.
@@ -113,6 +141,7 @@ export class StateRoom extends Room {
 
   onLeave(client) {
     this.state.players.delete(client.sessionId);
+    this._relayTimes.delete(client.sessionId);
   }
 }
 

@@ -10,7 +10,10 @@ import { StateRoom } from './rooms/StateRoom.js';
 
 export function createServer() {
   const gameServer = new Server({
-    transport: new WebSocketTransport({ server: http.createServer() }),
+    // 64 KB frame cap: comfortably above any legitimate message (pos/chat/state
+    // blobs) while bounding what a single client can push in one frame. The
+    // StateRoom adds finer per-message size + rate guards on the relay.
+    transport: new WebSocketTransport({ server: http.createServer(), maxPayload: 64 * 1024 }),
   });
   gameServer.define('state', StateRoom);
   return gameServer;
@@ -29,7 +32,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   gameServer
     .listen(port, host)
     .then(() => console.log(`[nova64-server] StateRoom on ws://localhost:${port} (host ${host})`))
-    .catch((e) => {
+    .catch(e => {
       console.error('[nova64-server] failed to start:', e);
       process.exit(1);
     });

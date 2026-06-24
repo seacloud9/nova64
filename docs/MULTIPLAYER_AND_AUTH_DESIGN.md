@@ -402,12 +402,17 @@ real WSL IP, not localhost). Colyseus plugin enabled in `project.godot`.
 to land with Phase 3 providers.
 
 ### Phase 3 — Wallet + provider extensibility
-- `wallet` provider: web `window.ethereum` SIWE; `nova64-auth` nonce/verify →
-  JWT; `id = wallet:0x…`. Godot wallet via WalletConnect (QR).
-- Finalize `registerProvider` extensibility + docs + a custom-provider example.
-- More social presets (Google/GitHub) on the `oauth` base.
-- **Demo:** wallet sign-in joins the lobby; a third-party provider registered by
-  a cart works.
+- ✅ `wallet` provider (web): built-in EVM **SIWE** (EIP-4361). The server exposes
+  `POST /auth/wallet/nonce` + `POST /auth/wallet/verify` (`server/src/wallet/`),
+  verifies the signature with ethers, and mints an HS256 session JWT
+  (`id = wallet:0x…`, `provider: "wallet"`) that the `onAuth` gate accepts. Client
+  flow: `nova64.auth.signIn('wallet')` (deps injectable → tested in
+  `server/test/siwe.test.mjs` end-to-end + `auth.test.mjs` client unit). Rate-limit
+  exempts the `voice` relay, not auth (auth is HTTP).
+- ✅ `registerProvider` extensibility (custom-provider unit test in `auth.test.mjs`).
+- Remaining: Godot wallet via WalletConnect (QR); RS256 + refresh tokens (currently
+  HS256, 15-min expiry); more social presets on the `oauth` base.
+- **Demo:** wallet sign-in joins the metaverse as `wallet:0x…`.
 
 ### Phase 4 — Hardening & authoritative rooms
 - Reconnection + resume tokens, interpolation helper, server-side movement/hit

@@ -4,16 +4,26 @@
 
 import http from 'http';
 import { fileURLToPath } from 'url';
+import express from 'express';
 import { Server } from '@colyseus/core';
 import { WebSocketTransport } from '@colyseus/ws-transport';
 import { StateRoom } from './rooms/StateRoom.js';
+import { registerWalletAuth } from './wallet/routes.js';
 
 export function createServer() {
+  // An express app handles HTTP (wallet/SIWE auth endpoints); Colyseus shares the
+  // same http server for its WebSocket upgrades (matchmaking is over WS here, so
+  // the express routes don't collide with it).
+  const app = express();
+  app.use(express.json({ limit: '64kb' }));
+  registerWalletAuth(app);
+  const httpServer = http.createServer(app);
+
   const gameServer = new Server({
     // 64 KB frame cap: comfortably above any legitimate message (pos/chat/state
     // blobs) while bounding what a single client can push in one frame. The
     // StateRoom adds finer per-message size + rate guards on the relay.
-    transport: new WebSocketTransport({ server: http.createServer(), maxPayload: 64 * 1024 }),
+    transport: new WebSocketTransport({ server: httpServer, maxPayload: 64 * 1024 }),
   });
   gameServer.define('state', StateRoom);
   return gameServer;

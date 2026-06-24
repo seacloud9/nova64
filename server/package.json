@@ -7,11 +7,12 @@
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
-    "test": "node test/sync.test.js && node test/facade.test.mjs && node test/auth.test.mjs && node test/verify-token.test.mjs && node test/lobby.test.mjs && node test/relay-limits.test.mjs",
+    "test": "node test/sync.test.js && node test/facade.test.mjs && node test/auth.test.mjs && node test/verify-token.test.mjs && node test/siwe.test.mjs && node test/lobby.test.mjs && node test/relay-limits.test.mjs",
     "test:sync": "node test/sync.test.js",
     "test:facade": "node test/facade.test.mjs",
     "test:auth": "node test/auth.test.mjs",
     "test:verify-token": "node test/verify-token.test.mjs",
+    "test:siwe": "node test/siwe.test.mjs",
     "test:lobby": "node test/lobby.test.mjs",
     "test:relay-limits": "node test/relay-limits.test.mjs"
   },
@@ -20,6 +21,7 @@
     "@colyseus/schema": "^3.0.0",
     "@colyseus/ws-transport": "^0.17.0",
     "colyseus.js": "^0.16.22",
+    "ethers": "^6.17.0",
     "express": "^4.21.0",
     "jsonwebtoken": "^9.0.2"
   }

@@ -1,7 +1,7 @@
 // nova64.auth — extensible identity. A pluggable provider registry behind a
-// single API. Built-ins: `guest` (works with no backend), and Supabase-backed
-// OAuth/social (`google`/`discord`/`github`/`oauth`). Wallet (EVM SIWE) and
-// others register via nova64.auth.registerProvider(name, impl).
+// single API. Built-ins: `guest` (works with no backend), Supabase-backed
+// OAuth/social (`google`/`discord`/`github`/`oauth`), and `wallet` (EVM
+// Sign-In-With-Ethereum, EIP-4361). New methods register via registerProvider.
 //
 // Auth yields a session JWT that nova64.net hands to the Colyseus server.
 // See docs/MULTIPLAYER_AND_AUTH_DESIGN.md.
@@ -9,8 +9,9 @@
 //   await nova64.auth.signIn('guest', { name: 'IO' });          // no backend
 //   nova64.auth.configure({ client: supabaseClient });          // app provides it
 //   await nova64.auth.signIn('google');                         // Supabase OAuth
+//   await nova64.auth.signIn('wallet');                         // window.ethereum SIWE
 //   nova64.auth.identity();  nova64.auth.token();  nova64.auth.onChange(cb);
-//   nova64.auth.registerProvider('wallet', myWalletProvider);
+//   nova64.auth.registerProvider('solana', mySolanaProvider);
 
 const STORAGE_KEY = 'nova64.auth.session';
 
@@ -31,11 +32,32 @@ function safeSet(v) {
   }
 }
 
+// Short 0x1234…abcd label for a wallet address.
+function shortAddr(a) {
+  return a.slice(0, 6) + '…' + a.slice(-4);
+}
+// EIP-4361 message — must match the server's buildSiweMessage (server/src/wallet/siwe.js).
+function buildSiweMessage({ domain, address, uri, nonce, chainId = 1 }) {
+  return [
+    `${domain} wants you to sign in with your Ethereum account:`,
+    address,
+    '',
+    'Sign in to the Nova64 metaverse.',
+    '',
+    `URI: ${uri}`,
+    'Version: 1',
+    `Chain ID: ${chainId}`,
+    `Nonce: ${nonce}`,
+    `Issued At: ${new Date().toISOString()}`,
+  ].join('\n');
+}
+
 export function authApi() {
   const providers = new Map();
   const changeCbs = [];
   let session = null; // current Identity | null
   let supabase = null; // app-provided Supabase client (optional)
+  let authUrl = null; // base URL of the wallet auth endpoints (optional)
 
   function emit() {
     changeCbs.forEach(cb => {
@@ -106,13 +128,79 @@ export function authApi() {
   }
   ['google', 'discord', 'github', 'oauth'].forEach(n => providers.set(n, makeOAuthProvider(n)));
 
+  // ---- built-in: wallet (EVM Sign-In-With-Ethereum, EIP-4361) ------------
+  // window.ethereum signs a server-issued nonce; the server verifies the
+  // signature and mints a session JWT (id = "wallet:<address>"). Deps are
+  // injectable (ethereum/fetch/authUrl) so the flow is testable without a wallet.
+  function resolveAuthUrl(opts) {
+    if (opts && opts.authUrl) return opts.authUrl;
+    if (authUrl) return authUrl;
+    if (typeof location !== 'undefined' && location.hostname) {
+      const proto = location.protocol === 'https:' ? 'https' : 'http';
+      return `${proto}://${location.hostname}:2567`;
+    }
+    return 'http://localhost:2567';
+  }
+  providers.set('wallet', {
+    name: 'wallet',
+    async signIn(opts = {}) {
+      const eth = opts.ethereum || (typeof window !== 'undefined' ? window.ethereum : null);
+      const doFetch = opts.fetch || (typeof fetch !== 'undefined' ? fetch : null);
+      if (!eth || typeof eth.request !== 'function') {
+        return { error: 'no_wallet', message: 'no EIP-1193 wallet (window.ethereum) found' };
+      }
+      if (!doFetch) return { error: 'no_fetch', message: 'fetch unavailable' };
+      const base = resolveAuthUrl(opts).replace(/\/$/, '');
+      try {
+        const accounts = await eth.request({ method: 'eth_requestAccounts' });
+        const address = accounts && accounts[0];
+        if (!address) return { error: 'no_account' };
+        const nres = await doFetch(base + '/auth/wallet/nonce', { method: 'POST' });
+        const { nonce } = await nres.json();
+        if (!nonce) return { error: 'no_nonce' };
+        const domain = (typeof location !== 'undefined' && location.host) || 'nova64';
+        const uri = (typeof location !== 'undefined' && location.origin) || 'https://nova64';
+        const message = buildSiweMessage({ domain, address, uri, nonce });
+        const signature = await eth.request({
+          method: 'personal_sign',
+          params: [message, address],
+        });
+        const vres = await doFetch(base + '/auth/wallet/verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message, signature }),
+        });
+        if (!vres.ok) {
+          const e = await vres.json().catch(() => ({}));
+          return { error: e.error || 'verify_failed' };
+        }
+        const data = await vres.json();
+        return {
+          id: data.id || 'wallet:' + String(address).toLowerCase(),
+          provider: 'wallet',
+          displayName: data.name || shortAddr(address),
+          address: String(address).toLowerCase(),
+          claims: {},
+          token: data.token,
+        };
+      } catch (e) {
+        return { error: 'wallet_signin_failed', message: e && e.message };
+      }
+    },
+  });
+
   // ---- public API --------------------------------------------------------
   function configure(opts = {}) {
+    let ok = false;
     if (opts && opts.client) {
       supabase = opts.client;
-      return true;
+      ok = true;
     }
-    return false;
+    if (opts && opts.authUrl) {
+      authUrl = opts.authUrl;
+      ok = true;
+    }
+    return ok;
   }
 
   async function signIn(providerName = 'guest', opts = {}) {

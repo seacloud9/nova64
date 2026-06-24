@@ -971,6 +971,26 @@ function cleanupScene() {
 
   energyFields.forEach(f => destroyMesh(f.mesh));
   energyFields = [];
+
+  // These arrays were NOT being cleaned — their meshes leaked across scene
+  // transitions, so each new scene rendered on top of the old geometry (the
+  // "scenes don't clear" bug). Destroy every tracked array (mirrors web cleanup).
+  tunnelSegments.forEach(t => destroyMesh(t.mesh));
+  tunnelSegments = [];
+
+  digitalTowers.forEach(t => destroyMesh(t.mesh));
+  digitalTowers = [];
+
+  particleSystems.forEach(p => destroyMesh(p.mesh));
+  particleSystems = [];
+
+  terrainBlocks.forEach(t => destroyMesh(t.mesh));
+  terrainBlocks = [];
+
+  if (gridFloor) {
+    destroyMesh(gridFloor);
+    gridFloor = null;
+  }
 }
 
 function setupScene(_sceneIndex) {
@@ -982,7 +1002,19 @@ function setupScene(_sceneIndex) {
 
   // Set theme lighting based on scene - balanced darkness
   setFog(0x000020, 30, 150);
-  setBloomStrength(1.2); // Balanced bloom setting
+  // Per-scene bloom matching the web demoscene. The Godot shim exposes no
+  // setBloomThreshold, and setBloomStrength() pins a low (0.18) threshold →
+  // washed-out, over-bright glow. enableBloom(strength, radius, threshold) sets
+  // all three at once, so use the web's gentler values directly instead.
+  const BLOOM = [
+    [0.55, 0.22, 0.86],
+    [0.5, 0.2, 0.88],
+    [0.55, 0.22, 0.86],
+    [0.45, 0.18, 0.9],
+    [0.45, 0.2, 0.88],
+  ];
+  const b = BLOOM[_sceneIndex] || [0.6, 0.25, 0.8];
+  enableBloom(b[0], b[1], b[2]);
 
   // Reset camera for new scene
   camera.roll = 0;

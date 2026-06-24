@@ -156,8 +156,11 @@ context + backend (no nova64/net access, so it runs on any backend):
   `nova64.input.touches()` (multi-touch, 640×360 design space) so you can move and
   look at once. Text entry uses the DOM `<input>` (native keyboard) via
   `nova64.startTextInput({ onSubmit, onCancel })`.
-- **Godot mobile:** the same controls plugin runs; the Godot input bridge must
-  expose `touches()` equivalently (tracked task).
+- **Godot mobile:** the same controls plugin runs unchanged. The GDScript host
+  captures `InputEventScreenTouch`/`Drag`, maps them to the 640×360 logical space,
+  and pushes them to the native host each frame (`set_touches` → `input.poll`), so
+  `nova64.input.touches()` behaves identically to web. (On desktop Godot, enable
+  `input_devices/pointing/emulate_touch_from_mouse` to test with a mouse.)
 
 ## 6. Server state
 
@@ -189,7 +192,10 @@ attaches `nova64.auth.token()` on join so the server can verify real identities.
   Deferred: rendering a profile **avatar image** on the cube — remote avatar URLs
   are cross-origin (CORS-tainted in WebGL), absent for guests, and host-specific,
   so it's a later texture-pipeline task, not a quick win.
-- **P4 — Godot backend:** register a GodotRenderBackend; touch parity; cross-play
-  the metaverse cart unchanged.
+- **P4 — Godot parity** (in progress): **touch parity** ✅ — the cart cross-plays
+  unchanged and mobile joystick/drag-look now work on Godot via the native
+  touch bridge (`nova64.input.touches()`). Remaining: an optional first-class
+  `GodotRenderBackend` (today the cart drives `render-web.js` over the Godot shim,
+  which already maps to native scene/camera/draw).
 - **P5 — XR backend:** stereo camera rig + world-space UI panels; controller/hand
   ray as the pointer feeding the same UI hit-test.

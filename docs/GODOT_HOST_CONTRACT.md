@@ -213,9 +213,15 @@ day/night cycles. It is separate from individually tracked light handles.
   "down": false,
   "action": false,
   "buttons": [false, false, ...],    // 14-element gamepad button array
-  "axis": { "lx": 0.0, "ly": 0.0, "rx": 0.0, "ry": 0.0, "lt": 0.0, "rt": 0.0 }
+  "axis": { "lx": 0.0, "ly": 0.0, "rx": 0.0, "ry": 0.0, "lt": 0.0, "rt": 0.0 },
+  "touches": [{ "id": 0, "x": 100, "y": 280 }]  // active touches, 640x360 logical
 }
 ```
+
+**Touches** echo whatever the GDScript host last pushed via `set_touches`
+(`Nova64Host` can't enumerate active touches from the `Input` singleton, so the
+host captures `InputEventScreenTouch`/`Drag` and pushes the live set each frame).
+They surface to carts as `nova64.input.touches()` / `touchCount()`.
 
 **Key codes** use web `KeyboardEvent.code` names (`"KeyW"`, `"ArrowLeft"`,
 `"Space"`, `"Enter"`, `"ShiftLeft"`, etc.). The full mapped set is defined

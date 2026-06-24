@@ -14,6 +14,7 @@
 
 #include <godot_cpp/classes/node.hpp>
 #include <godot_cpp/classes/node3d.hpp>
+#include <godot_cpp/variant/array.hpp>
 #include <godot_cpp/variant/dictionary.hpp>
 #include <godot_cpp/variant/packed_byte_array.hpp>
 #include <godot_cpp/variant/string.hpp>
@@ -61,6 +62,13 @@ public:
     // a native on-screen text input (LineEdit) so carts can do chat/typing on
     // Godot where there is no DOM. Forwarded to via call_text(method, payload).
     void set_text_delegate(Object *p_delegate);
+
+    // Multi-touch parity. Godot's Input singleton can't enumerate active touches
+    // (they arrive as events), so the GDScript host captures InputEventScreenTouch
+    // /Drag and pushes the current set here each frame as [{ id, x, y }, ...] in
+    // 640x360 logical space. input.poll echoes it so nova64.input.touches() works
+    // identically to the web backend (mobile joystick/look). See nova64_host.gd.
+    void set_touches(const Array &p_touches);
 
     // Loads a cart as an ES module from a Godot resource path
     // (e.g. "res://carts/01-cube.js"), evaluates it, and caches the
@@ -237,6 +245,9 @@ private:
     // text.* delegate (GDScript NovaText node). Forwarded to via call_text.
     Object *_text_delegate = nullptr;
     Dictionary _forward_text(const String &p_method, const Dictionary &p_payload);
+
+    // Current touch set, pushed each frame by the GDScript host (see set_touches).
+    Array _touches_snapshot;
 
     // Helpers
     Node3D *_resolve_node3d(uint32_t p_handle_id) const;

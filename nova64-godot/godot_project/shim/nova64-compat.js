@@ -1430,6 +1430,18 @@
     pollInput();
     return mousePressedFlag || (!!inputState.mouseDown && !mouseDownPrev);
   }
+  // Multi-touch parity with the web backend. The GDScript host captures screen
+  // touch/drag events and input.poll echoes them as [{ id, x, y }] in 640x360
+  // logical space; carts read them via nova64.input.touches()/touchCount().
+  function touches() {
+    pollInput();
+    const t = inputState.touches;
+    if (!Array.isArray(t)) return [];
+    return t.map(p => ({ id: p.id | 0, x: +p.x || 0, y: +p.y || 0 }));
+  }
+  function touchCount() {
+    return touches().length;
+  }
   function gamepadAxis(name) {
     pollInput();
     switch (name) {
@@ -6323,6 +6335,8 @@
     btn, btnp,
     // mouse
     mouseX, mouseY, mouseDown, mousePressed,
+    // multi-touch (mobile joystick / drag-look parity with web)
+    touches, touchCount,
     // gamepad
     gamepadAxis, gamepadConnected,
     leftStickX, leftStickY, rightStickX, rightStickY,

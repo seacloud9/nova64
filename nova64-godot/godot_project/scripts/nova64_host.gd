@@ -38,6 +38,12 @@ var _overlay_visible: bool = true
 # Suppress reload when we set the OptionButton index programmatically.
 var _suppress_picker_signal: bool = false
 
+# Active touches captured from screen-touch events, keyed by touch index →
+# Vector2 in 640x360 logical space. Pushed to the host each frame so
+# nova64.input.touches() matches the web backend (mobile joystick / drag-look).
+# (On desktop, enable input_devices/pointing/emulate_touch_from_mouse to test.)
+var _touches: Dictionary = {}
+
 func _resolve_cart_path() -> String:
 	# Headless/CLI override:  Godot ... res://scenes/Main.tscn -- <cart-name>
 	# (a non-ws user arg naming a cart under res://carts/). Lets automated runs
@@ -119,10 +125,43 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	if host == null:
 		return
+	# Push the current touch set so nova64.input.touches() works on Godot too.
+	host.set_touches(_touches_as_array())
 	# Phase 4: Animate default lighting (matches Three.js atmospheric movement)
 	host.update_dynamic_lighting(delta)
 	host.cart_update(delta)
 	host.cart_draw()
+
+# Capture multi-touch. Godot's Input singleton can't enumerate active touches, so
+# we track screen-touch/drag events here and hand the live set to the host each
+# frame (see _process → host.set_touches). Coordinates are mapped to the 640x360
+# logical space the carts/UI use.
+func _input(event: InputEvent) -> void:
+	if event is InputEventScreenTouch:
+		var t := event as InputEventScreenTouch
+		if t.pressed:
+			_touches[t.index] = _to_logical(t.position)
+		else:
+			_touches.erase(t.index)
+	elif event is InputEventScreenDrag:
+		var d := event as InputEventScreenDrag
+		_touches[d.index] = _to_logical(d.position)
+
+func _to_logical(p: Vector2) -> Vector2:
+	var vp := get_viewport()
+	if vp == null:
+		return Vector2.ZERO
+	var sz := vp.get_visible_rect().size
+	var lx := (p.x / sz.x) * 640.0 if sz.x > 0.0 else 0.0
+	var ly := (p.y / sz.y) * 360.0 if sz.y > 0.0 else 0.0
+	return Vector2(lx, ly)
+
+func _touches_as_array() -> Array:
+	var out: Array = []
+	for idx in _touches:
+		var pos: Vector2 = _touches[idx]
+		out.append({ "id": idx, "x": pos.x, "y": pos.y })
+	return out
 
 func _unhandled_input(event: InputEvent) -> void:
 	if not (event is InputEventKey) or not event.pressed or event.echo:

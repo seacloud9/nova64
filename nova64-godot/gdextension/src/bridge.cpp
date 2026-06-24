@@ -862,6 +862,7 @@ void Nova64Host::_bind_methods() {
     ClassDB::bind_method(D_METHOD("call_bridge", "method", "payload"), &Nova64Host::call_bridge);
     ClassDB::bind_method(D_METHOD("set_net_delegate", "delegate"), &Nova64Host::set_net_delegate);
     ClassDB::bind_method(D_METHOD("set_text_delegate", "delegate"), &Nova64Host::set_text_delegate);
+    ClassDB::bind_method(D_METHOD("set_touches", "touches"), &Nova64Host::set_touches);
     ClassDB::bind_method(D_METHOD("load_cart", "res_path"), &Nova64Host::load_cart);
     ClassDB::bind_method(D_METHOD("cart_init"), &Nova64Host::cart_init);
     ClassDB::bind_method(D_METHOD("cart_update", "delta"), &Nova64Host::cart_update);
@@ -1192,6 +1193,10 @@ Dictionary Nova64Host::_forward_net(const String &p_method, const Dictionary &p_
 
 void Nova64Host::set_text_delegate(Object *p_delegate) {
     _text_delegate = p_delegate;
+}
+
+void Nova64Host::set_touches(const Array &p_touches) {
+    _touches_snapshot = p_touches;
 }
 
 Dictionary Nova64Host::_forward_text(const String &p_method, const Dictionary &p_payload) {
@@ -2725,6 +2730,7 @@ Dictionary Nova64Host::_cmd_input_poll(const Dictionary &) {
     out["gpRightX"]    = gp_rx;
     out["gpRightY"]    = gp_ry;
     out["gpButtons"]   = gp_buttons;
+    out["touches"]     = _touches_snapshot; // [{ id, x, y }] in 640x360 logical space
     return out;
 }
 

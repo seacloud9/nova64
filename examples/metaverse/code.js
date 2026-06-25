@@ -49,13 +49,35 @@ const hudPlugin = {
 
 let app = null;
 
+function selectBackendId() {
+  const meta = (globalThis.nova64 && globalThis.nova64.metaverse) || {};
+  const candidates = [
+    globalThis.__NOVA64_METAVERSE_BACKEND,
+    meta.backend,
+    globalThis.nova64 && globalThis.nova64.metaverseBackend,
+  ];
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    const backend = typeof candidate === 'function' ? candidate() : candidate;
+    if (typeof backend === 'string') return backend;
+    if (backend && backend.id) return registerBackend(backend).id;
+  }
+  return (
+    globalThis.__NOVA64_METAVERSE_BACKEND_ID ||
+    meta.backendId ||
+    (globalThis.nova64 && globalThis.nova64.metaverseBackendId) ||
+    'web'
+  );
+}
+
 export function init() {
   // Register the reference web backend fresh each load (Godot/XR register their
   // own elsewhere). createApp resolves it by id.
   registerBackend(createWebBackend());
+  const backendId = selectBackendId();
 
   app = createApp({
-    backend: 'web',
+    backend: backendId,
     world: { size: 80, pillars: 8, ringRadius: 14 },
     plugins: [
       controlsPlugin(),

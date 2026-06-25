@@ -101,6 +101,19 @@ Registering a backend: `metaverse.registerBackend(backend)`. The cart picks one
 (`backend: 'web'`); unknown → falls back to web. **XR** is just another backend
 whose `setCamera` drives a stereo rig and whose UI draws to a world-space quad.
 
+Host backends can now be injected without editing the cart. At startup the cart
+registers the web backend as a fallback, then looks for a host-provided backend
+in this order:
+
+- `globalThis.__NOVA64_METAVERSE_BACKEND`
+- `nova64.metaverse.backend`
+- `nova64.metaverseBackend`
+
+Each value may be a backend object, a factory returning one, or a string id for a
+backend already registered by the host. If only an id is needed, hosts may set
+`globalThis.__NOVA64_METAVERSE_BACKEND_ID`, `nova64.metaverse.backendId`, or
+`nova64.metaverseBackendId`.
+
 ## 3. UI component system (Radix-inspired)
 
 Small composable primitives, not a monolith. A component is a plain function
@@ -231,10 +244,11 @@ beats default" rule as the avatar color).
   Deferred: rendering a profile **avatar image** on the cube — remote avatar URLs
   are cross-origin (CORS-tainted in WebGL), absent for guests, and host-specific,
   so it's a later texture-pipeline task, not a quick win.
-- **P4 — Godot parity** (in progress): **touch parity** ✅ — the cart cross-plays
-  unchanged and mobile joystick/drag-look now work on Godot via the native
-  touch bridge (`nova64.input.touches()`). Remaining: an optional first-class
-  `GodotRenderBackend` (today the cart drives `render-web.js` over the Godot shim,
-  which already maps to native scene/camera/draw).
+- **P4 — Godot parity** (in progress): **touch parity** ✅ and host backend
+  selection ✅ — the cart cross-plays unchanged, mobile joystick/drag-look work
+  on Godot via the native touch bridge (`nova64.input.touches()`), and a host can
+  inject a first-class backend without editing `code.js`. Remaining: an optional
+  native `GodotRenderBackend` (today the cart drives `render-web.js` over the
+  Godot shim, which already maps to native scene/camera/draw).
 - **P5 — XR backend:** stereo camera rig + world-space UI panels; controller/hand
   ray as the pointer feeding the same UI hit-test.

@@ -2181,14 +2181,15 @@ Environment *Nova64Host::_ensure_environment() {
     sky.instantiate();
     Ref<ProceduralSkyMaterial> sky_mat;
     sky_mat.instantiate();
-    sky_mat->set_sky_top_color(Color(0.35f, 0.46f, 0.71f, 1.0f));
-    sky_mat->set_sky_horizon_color(Color(0.55f, 0.69f, 0.81f, 1.0f));
-    sky_mat->set_ground_horizon_color(Color(0.42f, 0.44f, 0.49f, 1.0f));
-    sky_mat->set_ground_bottom_color(Color(0.12f, 0.12f, 0.13f, 1.0f));
+    sky_mat->set_sky_top_color(Color(0.039f, 0.039f, 0.059f, 1.0f));
+    sky_mat->set_sky_horizon_color(Color(0.039f, 0.039f, 0.059f, 1.0f));
+    sky_mat->set_ground_horizon_color(Color(0.039f, 0.039f, 0.059f, 1.0f));
+    sky_mat->set_ground_bottom_color(Color(0.039f, 0.039f, 0.059f, 1.0f));
     sky_mat->set_sun_angle_max(30.0f);
     sky->set_material(sky_mat);
     env->set_sky(sky);
     env->set_reflection_source(Environment::REFLECTION_SOURCE_SKY);
+    env->set_fog_sky_affect(0.0f);
 
     // Tonemap — ACES with balanced exposure
     env->set_tonemapper(Environment::TONE_MAPPER_ACES);
@@ -2279,6 +2280,8 @@ Dictionary Nova64Host::_cmd_env_set(const Dictionary &p) {
     }
     if (p.has("fogDensity")) env->set_fog_density(
             static_cast<float>(static_cast<double>(p["fogDensity"])));
+    if (p.has("fogSkyAffect")) env->set_fog_sky_affect(
+            static_cast<float>(static_cast<double>(p["fogSkyAffect"])));
     if (p.has("fogNear") || p.has("fogFar")) {
         // Match Three.js linear fog semantics by driving Godot depth fog.
         env->set_fog_mode(Environment::FOG_MODE_DEPTH);
@@ -2307,6 +2310,9 @@ Dictionary Nova64Host::_cmd_env_set(const Dictionary &p) {
     if (p.has("exposure")) env->set_tonemap_exposure(
             static_cast<float>(static_cast<double>(p["exposure"])));
 
+    if (p.has("brightness") || p.has("contrast") || p.has("saturation")) {
+        env->set_adjustment_enabled(true);
+    }
     if (p.has("brightness")) env->set_adjustment_brightness(
             static_cast<float>(static_cast<double>(p["brightness"])));
     if (p.has("contrast")) env->set_adjustment_contrast(
@@ -4274,6 +4280,9 @@ void Nova64Host::_overlay_op_image_region(const Array &op) {
 
 Dictionary Nova64Host::_cmd_overlay_batch(const Dictionary &p) {
     _ensure_overlay();
+    if (_overlay != nullptr) {
+        RenderingServer::get_singleton()->canvas_item_clear(_overlay->get_canvas_item());
+    }
     Variant v = p.get("ops", Variant());
     if (v.get_type() != Variant::ARRAY) {
         Dictionary out; out["ok"] = false; out["error"] = "no_ops"; return out;

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Nova64 WAD runtime tests
 
+import { readFileSync } from 'node:fs';
 import { wadApi } from '../runtime/wad.js';
 
 class TestRunner {
@@ -97,6 +98,39 @@ function createWadRuntime() {
 
 export async function runWadTests() {
   const runner = new TestRunner();
+
+  runner.test('WAD cart binds printCentered from nova64.draw', () => {
+    const sources = [
+      readFileSync(new URL('../examples/wad-demo/code.js', import.meta.url), 'utf8'),
+      readFileSync(
+        new URL('../nova64-godot/godot_project/carts/wad-demo/code.js', import.meta.url),
+        'utf8'
+      ),
+      readFileSync(new URL('../nova64-godot/tests/carts/wad-demo/code.js', import.meta.url), 'utf8'),
+    ];
+    for (const source of sources) {
+      assert(
+        source.includes('printCentered') && !source.includes('prinprintCentered'),
+        'wad-demo must destructure printCentered without typo'
+      );
+      assert(
+        source.includes('drawProgressBar, print, printCentered'),
+        'wad-demo must bind nova64.draw.print so browser window.print is never called'
+      );
+      assert(
+        source.includes('canUseEventTarget(window)') &&
+          source.includes("keyTarget.addEventListener('keydown'") &&
+          source.includes('}, true);'),
+        'wad-demo must guard browser keydown capture before using window.addEventListener'
+      );
+      assert(source.includes("e.code === 'Enter' && !e.repeat"), 'wad-demo must ignore repeated Enter');
+      assert(
+        source.includes("'res://carts/wad-demo/freedoom1.wad'") &&
+          source.includes("'/examples/wad-demo/freedoom1.wad'"),
+        'wad-demo must look for bundled freedoom1.wad in the cart folder first'
+      );
+    }
+  });
 
   runner.test('WAD - convertWADMap exposes getFloorHeight', () => {
     const api = createWadRuntime();

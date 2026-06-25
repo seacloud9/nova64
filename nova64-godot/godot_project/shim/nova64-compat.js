@@ -75,6 +75,9 @@
     if (typeof hex === 'object' && hex !== null) {
       return [hex.r || 0, hex.g || 0, hex.b || 0, hex.a == null ? 1 : hex.a];
     }
+    // Carts may compute colors as BigInt (e.g. uiColor expressions); QuickJS
+    // can't mix BigInt with the bitwise ops below, so coerce to Number first.
+    if (typeof hex === 'bigint') hex = Number(hex);
     const n = (hex | 0) >>> 0;
     let r, g, b, a;
     if (n > 0xffffff) {
@@ -91,10 +94,20 @@
     return [r, g, b, a];
   }
 
+  function normalizeMaterialName(name) {
+    if (typeof name !== 'string') return '';
+    const n = name.toLowerCase();
+    return n === 'holographic' ? 'hologram' : n;
+  }
+
   function ensureArray3(x, y, z, fallback) {
     if (Array.isArray(x)) return [x[0] || 0, x[1] || 0, x[2] || 0];
     if (x == null && fallback) return fallback.slice();
     return [x || 0, y || 0, z || 0];
+  }
+  function godotAmbientEnergy(energy) {
+    const e = typeof energy === 'number' ? energy : 1.0;
+    return Math.max(0, e * 0.24);
   }
 
   // Per-handle Euler rotation cache so rotateMesh can advance without a
@@ -118,6 +131,11 @@
     if (initialized) return;
     initialized = true;
     call('engine.init', {});
+    call('env.set', {
+      background: colorFromHex(0x0a0a0f),
+      tonemap: 'linear',
+      exposure: 1.0,
+    });
     cameraHandle = (call('camera.create', {}) || {}).handle || 0;
     if (cameraHandle) {
       call('transform.set', { handle: cameraHandle, position: cameraPos });
@@ -125,7 +143,7 @@
     }
     dirLightHandle = (call('light.createDirectional', {
       color: [1, 1, 1, 1],
-      energy: 1.0,
+      energy: 0.55,
     }) || {}).handle || 0;
   }
 
@@ -238,6 +256,21 @@
 
   function materialPayload(color, opts) {
     opts = opts || {};
+    const materialName = normalizeMaterialName(opts.material || opts.kind || opts.type);
+    if (materialName === 'hologram') {
+      opts = Object.assign({
+        emissive: 0x00ccff,
+        emissionEnergy: 2.5,
+        blend: 'add',
+        metallic: 0.8,
+        roughness: 0.2,
+        transparent: true,
+        opacity: 0.88,
+        unshaded: true,
+        rim: 0.8,
+        rimTint: 0.5,
+      }, opts);
+    }
     const baseColor = opts.color != null ? opts.color : (opts.albedo != null ? opts.albedo : (color == null ? 0xffffff : color));
     const alpha = opts.opacity != null ? opts.opacity : opts.alpha;
     const payload = {
@@ -553,8 +586,10 @@
       fogNear: n,
       fogFar: f,
       fogCurve: 1.0,
+      fogSkyAffect: 0.0,
       fogDensity: 0.08 / span,
     });
+    call('env.set', { background: colorFromHex(0x0a0a0f) });
   }
   function clearFog() {
     ensureInit();
@@ -598,7 +633,7 @@
     ensureInit();
     call('env.set', {
       ambient: colorFromHex(typeof color === 'number' ? color : 0x404040),
-      ambientEnergy: typeof energy === 'number' ? energy : 1.0,
+      ambientEnergy: godotAmbientEnergy(energy),
     });
     return 0;
   }
@@ -606,7 +641,7 @@
     ensureInit();
     call('env.set', {
       ambient: colorFromHex(typeof color === 'number' ? color : 0x404040),
-      ambientEnergy: typeof energy === 'number' ? energy : 1.0,
+      ambientEnergy: godotAmbientEnergy(energy),
     });
   }
   function setLightColor(handle, color) {
@@ -722,6 +757,14 @@
   // rotate/scale produce visually correct output.
 
   const __ops = [];
+  const __crt = {
+    vignette: false,
+    vignetteAlpha: 118,
+    vignetteWidth: 72,
+    scanlines: false,
+    scanAlpha: 36,
+    scanSpacing: 2,
+  };
   // Affine matrix [a, b, c, d, e, f]:
   //   x' = a*x + c*y + e
   //   y' = b*x + d*y + f
@@ -758,9 +801,43 @@
     __mtx[2] *= sy; __mtx[3] *= sy;
   }
 
+  function __alphaByte(v, fallback) {
+    const n = typeof v === 'number' ? v : fallback;
+    if (n <= 1) return Math.max(0, Math.min(255, Math.round(n * 255)));
+    return Math.max(0, Math.min(255, Math.round(n)));
+  }
+
+  function __appendCrtOverlayOps() {
+    const W = 640, H = 360;
+    if (__crt.scanlines) {
+      const step = Math.max(1, __crt.scanSpacing | 0);
+      const c = colorFromHex(rgba8(0, 0, 0, __crt.scanAlpha));
+      for (let y = 0; y < H; y += step) {
+        __ops.push(['rect', 0, y | 0, W, 1, c, true]);
+      }
+    }
+
+    if (__crt.vignette) {
+      const bands = 12;
+      const maxA = Math.max(0, Math.min(220, __crt.vignetteAlpha | 0));
+      const bandW = Math.max(4, Math.round(__crt.vignetteWidth / bands));
+      for (let i = 0; i < bands; i++) {
+        const edge = 1 - i / bands;
+        const a = Math.round(maxA * edge * edge);
+        if (a <= 0) continue;
+        const c = colorFromHex(rgba8(0, 0, 0, a));
+        const inset = i * bandW;
+        __ops.push(['rect', 0, inset, W, bandW, c, true]);
+        __ops.push(['rect', 0, H - inset - bandW, W, bandW, c, true]);
+        __ops.push(['rect', inset, 0, bandW, H, c, true]);
+        __ops.push(['rect', W - inset - bandW, 0, bandW, H, c, true]);
+      }
+    }
+  }
+
   // Host-invoked at end of cart_draw(). One engine.call drains the queue.
   global.__nova64_overlayFlush = function () {
-    if (__ops.length === 0) return;
+    __appendCrtOverlayOps();
     call('overlay.batch', { ops: __ops });
     __ops.length = 0;
     // Transform stack should be balanced by the cart but reset defensively
@@ -785,10 +862,27 @@
 
   function rgba8(r, g, b, a) {
     a = a == null ? 255 : a;
+    if ((a & 0xff) === 0) {
+      return {
+        __rgba8: true,
+        r: (r & 0xff) / 255,
+        g: (g & 0xff) / 255,
+        b: (b & 0xff) / 255,
+        a: 0,
+      };
+    }
     return ((a & 0xff) << 24) | ((r & 0xff) << 16) | ((g & 0xff) << 8) | (b & 0xff);
   }
   // Unpack rgba8 int → { r, g, b, a } 0-255
   function _unpackColor(c) {
+    if (c && typeof c === 'object') {
+      return {
+        r: Math.round((c.r || 0) * 255),
+        g: Math.round((c.g || 0) * 255),
+        b: Math.round((c.b || 0) * 255),
+        a: Math.round((c.a == null ? 1 : c.a) * 255),
+      };
+    }
     const n = (c | 0) >>> 0;
     if (n > 0xffffff) {
       return { a: (n >>> 24) & 0xff, r: (n >>> 16) & 0xff, g: (n >>> 8) & 0xff, b: n & 0xff };
@@ -1244,8 +1338,31 @@
     line(x - s, y, x + s, y, c);
     line(x, y - s, x, y + s, c);
   }
-  function drawScanlines(_alpha, _spacing) { /* host postFX handles this */ }
-  function drawNoise(_alpha) { /* expensive in shim; skip */ }
+  function drawScanlines(alpha, spacing) {
+    __crt.scanlines = alpha !== false && alpha !== 0;
+    __crt.scanAlpha = __alphaByte(alpha, 42);
+    __crt.scanSpacing = Math.max(1, Math.min(8, (spacing | 0) || 2));
+    return true;
+  }
+  function drawNoise(x, y, w, h, alpha, seed) {
+    const a = __alphaByte(alpha, 24);
+    if (a <= 0) return false;
+    const px = x == null ? 0 : x | 0;
+    const py = y == null ? 0 : y | 0;
+    const pw = w == null ? 640 : w | 0;
+    const ph = h == null ? 360 : h | 0;
+    let s = (seed == null ? 1 : seed | 0) || 1;
+    const count = Math.max(24, Math.min(160, Math.round((pw * ph) / 1800)));
+    const c = colorFromHex(rgba8(255, 255, 255, Math.max(4, Math.round(a * 0.45))));
+    for (let i = 0; i < count; i++) {
+      s = (s * 1664525 + 1013904223) | 0;
+      const nx = px + ((((s >>> 8) & 0xffff) / 0xffff) * pw) | 0;
+      s = (s * 1664525 + 1013904223) | 0;
+      const ny = py + ((((s >>> 8) & 0xffff) / 0xffff) * ph) | 0;
+      __ops.push(['rect', nx, ny, 1, 1, c, true]);
+    }
+    return true;
+  }
   function drawTriangle(x0, y0, x1, y1, x2, y2, color, filled) {
     // Use native triangle op for filled triangles
     const p0 = __tx(x0, y0), p1 = __tx(x1, y1), p2 = __tx(x2, y2);
@@ -1460,39 +1577,66 @@
 
   // ---------------- effects (mapped to Godot WorldEnvironment) ---------
   let effectsEnabled = false;
+  const bloomState = {
+    strength: 0.8,
+    radius: 0.5,
+    threshold: 0.6,
+  };
+
+  function bloomPayload(enabled) {
+    const strength = bloomState.strength;
+    const bloomRadius = bloomState.radius;
+    const bloomThreshold = bloomState.threshold;
+    return {
+      glow: enabled,
+      glowIntensity: Math.max(0.12, Math.min(1.65, strength * 1.18)),
+      glowStrength: Math.max(0.88, Math.min(1.55, 0.92 + bloomRadius * 0.72)),
+      glowBloom: Math.max(0.07, Math.min(0.24, 0.075 + bloomRadius * 0.32)),
+      glowThreshold: Math.max(0.48, Math.min(0.9, 0.26 + bloomThreshold * 0.36)),
+      glowBleedScale: 1.85,
+      glowLuminanceCap: 22.0,
+      glowBlend: 'screen',
+      brightness: 1.02,
+      contrast: 1.1,
+      saturation: 1.15,
+    };
+  }
+
+  function applyBloomSettings(enabled) {
+    call('env.set', bloomPayload(enabled));
+  }
+
   function enablePixelation(_n) { warnOnce('enablePixelation'); /* TODO: SubViewport */ }
   function enableDithering(_b) { warnOnce('enableDithering'); }
   function enableBloom(strengthOrEnabled, radius, threshold) {
     ensureInit();
     const enabled = strengthOrEnabled !== false;
-    const strength = typeof strengthOrEnabled === 'number' ? strengthOrEnabled : 0.8;
+    bloomState.strength = typeof strengthOrEnabled === 'number' ? strengthOrEnabled : 0.8;
+    bloomState.radius = typeof radius === 'number' ? radius : 0.5;
+    bloomState.threshold = typeof threshold === 'number' ? threshold : 0.6;
     effectsEnabled = effectsEnabled || enabled;
-    call('env.set', {
-      glow: enabled,
-      glowIntensity: Math.max(0.85, strength * 2.4),
-      glowStrength: typeof radius === 'number' ? Math.max(1.1, radius * 2.2) : 1.2,
-      glowBloom: typeof radius === 'number' ? Math.max(0.28, Math.min(0.82, radius * 0.95)) : 0.38,
-      glowThreshold: typeof threshold === 'number' ? Math.max(0.12, Math.min(0.8, threshold * 0.6)) : 0.28,
-      glowBleedScale: 2.1,
-      glowLuminanceCap: 18.0,
-      glowBlend: 'screen',
-    });
+    applyBloomSettings(enabled);
     return enabled;
   }
   function setBloomStrength(v) {
     ensureInit();
     effectsEnabled = true;
-    const strength = typeof v === 'number' ? v : 1.0;
-    call('env.set', {
-      glow: true,
-      glowIntensity: Math.max(0.65, strength * 2.0),
-      glowStrength: Math.max(1.0, strength * 3.0),
-      glowBloom: Math.max(0.26, Math.min(0.7, strength * 1.8)),
-      glowThreshold: 0.18,
-      glowBleedScale: 2.1,
-      glowLuminanceCap: 18.0,
-      glowBlend: 'screen',
-    });
+    bloomState.strength = typeof v === 'number' ? v : 1.0;
+    applyBloomSettings(true);
+    return true;
+  }
+  function setBloomRadius(v) {
+    ensureInit();
+    effectsEnabled = true;
+    bloomState.radius = typeof v === 'number' ? v : bloomState.radius;
+    applyBloomSettings(true);
+    return true;
+  }
+  function setBloomThreshold(v) {
+    ensureInit();
+    effectsEnabled = true;
+    bloomState.threshold = typeof v === 'number' ? v : bloomState.threshold;
+    applyBloomSettings(true);
     return true;
   }
   function enableFXAA(_b) { effectsEnabled = true; return true; }
@@ -1505,11 +1649,20 @@
   }
   function enableVignette(amount, _hardness) {
     ensureInit();
-    // Vignette via adjustment darkening — not a real radial vignette but a
-    // close enough cheap stand-in.
     const a = typeof amount === 'number' ? Math.max(0, Math.min(1, amount)) : 0.3;
+    const h = typeof _hardness === 'number' ? Math.max(0.5, Math.min(1, _hardness)) : 0.85;
     effectsEnabled = true;
-    call('env.set', { brightness: 1.0 - a * 0.4, contrast: 1.0 + a * 0.2 });
+    __crt.vignette = a > 0;
+    __crt.vignetteAlpha = Math.round(88 + a * 92);
+    __crt.vignetteWidth = Math.round(52 + (1 - h) * 142 + a * 38);
+    __crt.scanlines = a > 0;
+    __crt.scanAlpha = Math.round(44 + a * 16);
+    __crt.scanSpacing = 2;
+    call('env.set', {
+      brightness: 0.99 - a * 0.05,
+      contrast: 1.12 + a * 0.16,
+      saturation: 1.07 + a * 0.12,
+    });
     return true;
   }
   function setN64Mode(b) {
@@ -4287,7 +4440,7 @@
       kind = opts.kind || opts.type || 'plasma';
     }
     opts = opts || {};
-    const name = typeof kind === 'string' ? kind.toLowerCase() : 'plasma';
+    const name = normalizeMaterialName(kind) || 'plasma';
 
     // Extended preset library matching runtime/backends/threejs/tsl.js
     const presets = {
@@ -6345,7 +6498,7 @@
     // host hooks
     pollInput,
   };
-  const fxNs = { enablePixelation, enableDithering, enableBloom, setBloomStrength, enableFXAA, enableChromaticAberration, enableVignette, setN64Mode, setPSXMode, enableRetroEffects, isEffectsEnabled, enableSSR, enableSSAO, enableVolumetricFog, enableDOF, setExposure, setTonemap, setColorAdjustment, createParticleSystem, setParticleEmitter, emitParticle, burstParticles, updateParticles, removeParticleSystem, getParticleStats, createEmitter2D, updateEmitter2D, drawEmitter2D, burstEmitter2D, clearEmitter2D };
+  const fxNs = { enablePixelation, enableDithering, enableBloom, setBloomStrength, setBloomRadius, setBloomThreshold, enableFXAA, enableChromaticAberration, enableVignette, setN64Mode, setPSXMode, enableRetroEffects, isEffectsEnabled, enableSSR, enableSSAO, enableVolumetricFog, enableDOF, setExposure, setTonemap, setColorAdjustment, createParticleSystem, setParticleEmitter, emitParticle, burstParticles, updateParticles, removeParticleSystem, getParticleStats, createEmitter2D, updateEmitter2D, drawEmitter2D, burstEmitter2D, clearEmitter2D };
   const uiNs = { createButton, createLabel, createPanel, createSlider, createCheckbox, createDialog, clearButtons, updateAllButtons, drawAllButtons, drawGradientRect, drawPanel, drawText, drawTextShadow, drawTextOutline, setFont, setTextAlign, setTextBaseline, grid, parseCanvasUI, renderCanvasUI, updateCanvasUI, createContainer, addChild, createGraphicsNode, createTextNode, drawStage, uiColors: global.uiColors, centerX: function (w) { return Math.floor((640 - (w || 0)) / 2); }, centerY: function (h) { return Math.floor((360 - (h || 0)) / 2); }, Screen: (function() { function Screen() { this.data = {}; } Screen.prototype.enter = function(d) { this.data = Object.assign({}, this.data, d || {}); }; Screen.prototype.exit = function() {}; Screen.prototype.update = function() {}; Screen.prototype.draw = function() {}; return Screen; }()), getFont: function() { return 'default'; }, uiProgressBar: drawProgressBar };
   const stageNs = { createContainer, addChild, createGraphicsNode, createTextNode, drawStage, createMovieClip, createStage, createScreen, pushScreen, popScreen,
     createShake, triggerShake, updateShake, getShakeOffset,
@@ -6895,6 +7048,12 @@
   }
   if (typeof global.window === 'undefined') {
     global.window = global;
+  }
+  if (typeof global.window.addEventListener !== 'function') {
+    global.window.addEventListener = function () {};
+  }
+  if (typeof global.window.removeEventListener !== 'function') {
+    global.window.removeEventListener = function () {};
   }
   // Some carts read `mouseX`/`mouseY` as bare names; some call them as
   // functions (`mouseX()`). Use numeric-coercible callables so both shapes work.

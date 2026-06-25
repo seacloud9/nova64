@@ -2,10 +2,14 @@
 // FREEDOOM WAD EXPLORER — Browse & play through classic DOOM levels via FreeDoom
 // Godot-adapted version: auto-loads res://assets/freedoom1.wad, guards DOM APIs
 
-const DEFAULT_WAD_PATH = 'res://assets/freedoom1.wad';
+const DEFAULT_GODOT_WAD_PATHS = [
+  'res://carts/wad-demo/freedoom1.wad',
+  'res://assets/freedoom1.wad',
+];
+const DEFAULT_WEB_WAD_PATHS = ['/examples/wad-demo/freedoom1.wad', '/assets/freedoom1.wad'];
 
 // ── State ──
-const { drawProgressBar, prinprintCentered, rectfill, rgba8 } = nova64.draw;
+const { drawProgressBar, print, printCentered, rectfill, rgba8 } = nova64.draw;
 const { createCube, createPlane, destroyMesh, getMesh, setPosition, setRotation, setScale } =
   nova64.scene;
 const engine = nova64.scene.engine ?? globalThis.engine;
@@ -58,6 +62,10 @@ let ceilingMesh = null;
 
 let mouseInit = false;
 let shake = null;
+
+function canUseEventTarget(target) {
+  return !!target && typeof target.addEventListener === 'function';
+}
 let wadMapTitles = {};
 let damageFlash = 0;
 let killFlash = 0;
@@ -119,7 +127,8 @@ export function init() {
   });
   setRotation(ceilingMesh, Math.PI / 2, 0, 0);
 
-  if (typeof document !== 'undefined' && !mouseInit) {
+  const canUseDocumentEvents = typeof document !== 'undefined' && canUseEventTarget(document);
+  if (canUseDocumentEvents && !mouseInit) {
     mouseInit = true;
     document.addEventListener('mousedown', () => {
       if (!document.pointerLockElement && gameState === 'playing') {
@@ -148,16 +157,22 @@ export function init() {
       if (file && file.name.toLowerCase().endsWith('.wad')) await loadWADFromFile(file);
     });
 
-    // Keyboard handling
-    document.addEventListener('keydown', e => {
+    // Keyboard handling. Capture on window so WAD menu keys are consumed before
+    // the console-level Enter handler can treat them as START/reload.
+    const keyTarget =
+      typeof window !== 'undefined' && canUseEventTarget(window) ? window : document;
+    keyTarget.addEventListener('keydown', e => {
       // Prevent Enter/Space/Arrows from triggering browser defaults in menu
       // Stop Enter/Space from reaching Nova64 console's START handler (which reloads the cart)
       if (gameState === 'menu' && ['Enter', 'Space', 'ArrowUp', 'ArrowDown'].includes(e.code)) {
         e.preventDefault();
         e.stopPropagation();
+        e.stopImmediatePropagation?.();
       }
       if (gameState === 'playing' && e.code === 'Enter') {
+        e.preventDefault();
         e.stopPropagation();
+        e.stopImmediatePropagation?.();
       }
 
       // Direct menu input handling via DOM events (more reliable than keyp)
@@ -168,7 +183,7 @@ export function init() {
         if (e.code === 'ArrowDown' && currentMapIdx < mapNames.length - 1) {
           currentMapIdx++;
         }
-        if (e.code === 'Enter') {
+        if (e.code === 'Enter' && !e.repeat) {
           startLevel();
         }
       }
@@ -182,7 +197,7 @@ export function init() {
         };
         inp.click();
       }
-    });
+    }, true);
   }
 
   // Load WAD (try Godot path first, fall back to browser fetch)
@@ -191,14 +206,14 @@ export function init() {
 
 function tryAutoLoadDefaultWAD() {
   if (typeof nova64?.wad?.load !== 'function') return false;
-  try {
-    const buf = nova64.wad.load(DEFAULT_WAD_PATH);
-    if (!buf || !buf.byteLength) return false;
-    initializeWAD(buf);
-    return true;
-  } catch {
-    return false;
+  for (const path of DEFAULT_GODOT_WAD_PATHS) {
+    try {
+      if (initializeWAD(nova64.wad.load(path))) return true;
+    } catch {
+      // Try the next known Godot cart asset location.
+    }
   }
+  return false;
 }
 
 async function loadWAD() {
@@ -210,7 +225,11 @@ async function loadWAD() {
       gameState = 'missing';
       return;
     }
-    const resp = await fetch('/assets/freedoom1.wad', { cache: 'no-store' });
+    let resp = null;
+    for (const path of DEFAULT_WEB_WAD_PATHS) {
+      resp = await fetch(path, { cache: 'no-store' });
+      if (resp.ok) break;
+    }
     if (!resp.ok) {
       gameState = 'missing';
       return;
@@ -250,9 +269,15 @@ async function loadWADFromFile(file) {
   }
 }
 
-function initializeWAD(buf) {
-  wadLoader = new WADLoader();
-  wadLoader.load(buf);
+function initializeWAD(source) {
+  if (!source) return false;
+  if (source && typeof source.getMapNames === 'function') {
+    wadLoader = source;
+  } else {
+    if (!source.byteLength) return false;
+    wadLoader = new WADLoader();
+    wadLoader.load(source);
+  }
   mapNames = wadLoader.getMapNames();
   wadMapTitles = wadLoader.getMapTitles ? wadLoader.getMapTitles() : {};
 

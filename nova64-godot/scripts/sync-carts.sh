@@ -23,6 +23,7 @@ mkdir -p "$dst"
 # Carts are folders containing code.js + meta.json. Mirror cart sources from
 # $src into $dst while preserving Godot-generated *.import sidecars (which
 # are tracked in git and would otherwise churn on every sync).
+dst_real="$(cd "$dst" && pwd -P)"
 
 # 1. Drop any cart subdir in $dst whose name no longer exists in $src.
 for existing in "$dst"/*/; do
@@ -39,6 +40,14 @@ for cart in "$src"/*/; do
   name="$(basename "$cart")"
   target="$dst/$name"
   mkdir -p "$target"
+  target_real="$(cd "$target" && pwd -P)"
+  case "$target_real" in
+    "$dst_real"/*) ;;
+    *)
+      echo "skip linked cart target $name -> $target_real"
+      continue
+      ;;
+  esac
   # Remove only non-.import files so .import sidecars survive.
   find "$target" -mindepth 1 -maxdepth 1 ! -name '*.import' -exec rm -rf {} +
   # Copy fresh source contents in.

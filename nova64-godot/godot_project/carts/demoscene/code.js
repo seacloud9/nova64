@@ -5,29 +5,24 @@
 /* eslint-disable no-undef */
 // Nova64 runtime provides these globals: enableBloom, enableFXAA, setBloomStrength, etc.
 
-const { drawPanel, print, rect, rgba8 } = nova64.draw;
+const { cls, drawPanel, print, rect, rgba8 } = nova64.draw;
 const {
   createAdvancedCube,
+  clearScene,
   createCube,
   createSphere,
+  createTorus,
   destroyMesh,
   engine,
   rotateMesh,
-  setClearColor,
   setPosition,
   setRotation,
   setScale,
 } = nova64.scene;
 const { setCameraFOV, setCameraPosition, setCameraTarget } = nova64.camera;
 const { setAmbientLight, setFog, setLightDirection } = nova64.light;
-const {
-  enableBloom,
-  enableChromaticAberration,
-  enableFXAA,
-  enableVignette,
-  isEffectsEnabled,
-  setBloomStrength,
-} = nova64.fx;
+const { enableBloom, enableChromaticAberration, enableFXAA, enableVignette, isEffectsEnabled } =
+  nova64.fx;
 const { createTSLMaterial } = nova64.shader;
 const { isKeyDown } = nova64.input;
 const { simplexNoise2D, simplexNoise3D } = nova64.voxel;
@@ -80,6 +75,60 @@ let camera = {
 // State management
 let gameState = 'start';
 let startScreenTime = 0;
+let rngState = 0x64d00d;
+let debugFreeze = false;
+let sceneGeometryReady = -1;
+
+function exposeDebugState() {
+  globalThis.__nova64DemosceneState = {
+	gameState,
+	currentScene,
+	sceneName: SCENES[currentScene]?.name || '',
+	sceneTime,
+	gameTime,
+	transitioning,
+	transitionProgress,
+	debugFreeze,
+  };
+}
+
+function cumulativeSceneTime(sceneIndex, atTime) {
+  let total = Math.max(0, Number(atTime) || 0);
+  const last = Math.max(0, Math.min(SCENES.length - 1, Number(sceneIndex) || 0));
+  for (let i = 0; i < last; i++) total += SCENES[i].duration;
+  return total;
+}
+
+function installDebugControls() {
+  globalThis.__nova64DemosceneJumpTo = (sceneIndex, atTime = 0, freeze = true) => {
+	const next = Math.max(0, Math.min(SCENES.length - 1, Number(sceneIndex) || 0));
+	cleanupScene({ preserveIntroScene: next === 0 });
+	resetRandom();
+	gameState = 'playing';
+	currentScene = next;
+	sceneTime = Math.max(0, Number(atTime) || 0);
+	gameTime = cumulativeSceneTime(next, sceneTime);
+	startScreenTime = 0;
+	transitioning = false;
+	transitionProgress = 0;
+	debugFreeze = !!freeze;
+	nova64.ui.clearButtons();
+	_local_setupScene(currentScene);
+	updateCurrentScene(0);
+	updateCamera(0);
+	exposeDebugState();
+  };
+  exposeDebugState();
+}
+
+function resetRandom(seed = 0x64d00d) {
+  rngState = seed >>> 0;
+}
+
+function random() {
+  rngState = (Math.imul(rngState, 1664525) + 1013904223) >>> 0;
+  return rngState / 0x100000000;
+}
 
 // Scene definitions
 const SCENES = [
@@ -107,34 +156,36 @@ export async function init() {
   console.log('🎬 NOVA64 DEMOSCENE - TRON ODYSSEY INIT');
   console.log('========================================');
   console.log('Initial gameState:', gameState);
+  resetRandom();
+  installDebugControls();
 
   // Initial camera setup
-  setCameraPosition(camera.x, camera.y, camera.z);
-  setCameraTarget(0, 0, 0);
-  setCameraFOV(camera.fov);
+  nova64.camera.setCameraPosition(camera.x, camera.y, camera.z);
+  nova64.camera.setCameraTarget(0, 0, 0);
+  nova64.camera.setCameraFOV(camera.fov);
 
   // Enable post-processing effects with BALANCED settings
   console.log('🎨 Enabling post-processing effects...');
-  const bloomEnabled = enableBloom(1.2, 0.6, 0.3); // Balanced bloom: visible glow without washing out
+  const bloomEnabled = nova64.fx.enableBloom(1.2, 0.6, 0.3); // Balanced bloom: visible glow without washing out
   console.log('✨ Bloom enabled:', bloomEnabled);
-  enableFXAA(); // Smooth edges
+  nova64.fx.enableFXAA(); // Smooth edges
   console.log('✨ FXAA enabled');
 
   // Verify effects are enabled
   if (typeof isEffectsEnabled === 'function') {
-	console.log('✅ Effects system active:', isEffectsEnabled());
+	console.log('✅ Effects system active:', nova64.fx.isEffectsEnabled());
   }
 
   // Additional effects
-  enableChromaticAberration(0.003);
-  enableVignette(1.5, 0.85);
+  nova64.fx.enableChromaticAberration(0.003);
+  nova64.fx.enableVignette(1.5, 0.85);
 
   // Scene lighting - Balanced for visibility with neon contrast
-  setLightDirection(-0.5, -0.8, -0.3);
-  setAmbientLight(0x1a1a2a); // Darker but not pitch black - you can see objects
+  nova64.light.setLightDirection(-0.5, -0.8, -0.3);
+  nova64.light.setAmbientLight(0x1a1a2a); // Darker but not pitch black - you can see objects
 
   // Dark fog for TRON aesthetic
-  setFog(0x000020, 30, 150);
+  nova64.light.setFog(0x000020, 30, 150);
 
   // Build initial scene
   await buildStartScene();
@@ -147,33 +198,39 @@ export async function init() {
 
 function initStartScreen() {
   // Clear any existing buttons first
-  clearButtons();
+  nova64.ui.clearButtons();
 
   console.log('🎬 Initializing start screen buttons...');
 
   // Main start button - extra large and flashy
-  const startBtn = createButton(
-	centerX(280),
+  const startBtn = nova64.ui.createButton(
+	_local_centerX(280),
 	180,
 	280,
 	70,
 	'▶ BEGIN ODYSSEY ▶',
 	() => {
-	  console.log('🚀 START BUTTON CLICKED — beginning odyssey');
-	  startDemo();
+	  console.log('🚀🚀🚀 START BUTTON CLICKED! 🚀🚀🚀');
+	  console.log('Setting gameState from', gameState, 'to playing');
+	  cleanupScene();
+	  gameState = 'playing';
+	  currentScene = 0;
+	  sceneTime = 0;
+	  _local_setupScene(currentScene);
+	  console.log('gameState is now:', gameState);
 	},
 	{
-	  normalColor: rgba8(0, 255, 255, 255),
-	  hoverColor: rgba8(100, 255, 255, 255),
-	  pressedColor: rgba8(0, 200, 200, 255),
+	  normalColor: nova64.draw.rgba8(0, 255, 255, 255),
+	  hoverColor: nova64.draw.rgba8(100, 255, 255, 255),
+	  pressedColor: nova64.draw.rgba8(0, 200, 200, 255),
 	}
   );
 
   console.log('✅ Start button created:', startBtn);
 
   // Info button
-  const infoBtn = createButton(
-	centerX(240),
+  const infoBtn = nova64.ui.createButton(
+	_local_centerX(240),
 	270,
 	240,
 	50,
@@ -184,9 +241,9 @@ function initStartScreen() {
 	  console.log('Features: Bloom, Particles, Shaders, Dynamic Scenes');
 	},
 	{
-	  normalColor: rgba8(255, 0, 255, 255),
-	  hoverColor: rgba8(255, 100, 255, 255),
-	  pressedColor: rgba8(200, 0, 200, 255),
+	  normalColor: nova64.draw.rgba8(255, 0, 255, 255),
+	  hoverColor: nova64.draw.rgba8(255, 100, 255, 255),
+	  pressedColor: nova64.draw.rgba8(200, 0, 200, 255),
 	}
   );
 
@@ -200,7 +257,7 @@ async function buildStartScene() {
   for (let x = -60; x <= 60; x += 3) {
 	for (let z = -60; z <= 60; z += 3) {
 	  // Procedural height mapping using simplex noise
-	  const height = simplexNoise2D(x, z, 3, 0.5, 2.0, 0.04) * 8 + 4;
+	  const height = nova64.voxel.simplexNoise2D(x, z, 3, 0.5, 2.0, 0.04) * 8 + 4;
 
 	  // Vaporwave grid palette mapping based on height
 	  let tColor = COLORS.neonCyan;
@@ -208,7 +265,7 @@ async function buildStartScene() {
 	  else if (height > 6) tColor = COLORS.electric;
 	  else if (height > 4) tColor = COLORS.neonPink;
 
-	  const tBlock = createAdvancedCube(
+	  const tBlock = nova64.scene.createAdvancedCube(
 		3,
 		{
 		  color: tColor,
@@ -218,7 +275,7 @@ async function buildStartScene() {
 		},
 		[x, height / 2 - 5, z]
 	  );
-	  setScale(tBlock, 1, height, 1);
+	  nova64.scene.setScale(tBlock, 1, height, 1);
 
 	  // Store in terrainBlocks to be animated/moved if needed, or simply leave them static
 	  terrainBlocks.push({ mesh: tBlock, isTerrain: true, origY: height / 2 - 5 });
@@ -228,31 +285,31 @@ async function buildStartScene() {
   // 2. The Vaporwave Sun (TSL)
   // Use 'plasma' or 'lava' for a fiery vaporwave sun
   const sunMat = createTSLMaterial('plasma', { speed: 0.2, opacity: 0.95 });
-  const sun = createSphere(25, 0xffffff, [0, 15, -120], 32);
+  const sun = nova64.scene.createSphere(25, 0xffffff, [0, 15, -120], 32);
   sun.material = sunMat;
   // Keep track of the sun to animate later
   digitalTowers.push({ mesh: sun, isSun: true, rotSpeed: 0.2 });
 
   // 3. Noise-based Procedural Clouds (TSL)
-  const cloudMat = createTSLMaterial('void', { speed: 0.1, opacity: 0.7 });
-  for (let i = 0; i < 30; i++) {
-	const cx = (Math.random() - 0.5) * 150;
-	const cy = 25 + Math.random() * 15;
-	const cz = -20 - Math.random() * 80;
-	const cloudSize = 5 + Math.random() * 10;
+  const cloudMat = createTSLMaterial('void', { speed: 0.1, opacity: 0.35 });
+  for (let i = 0; i < 8; i++) {
+	const cx = (random() - 0.5) * 150;
+	const cy = 25 + random() * 15;
+	const cz = -20 - random() * 80;
+	const cloudSize = 3 + random() * 5;
 
 	// Use simplex volume to shape the cloud a bit
-	const density = simplexNoise3D(cx, cy, cz, 2, 0.5, 2.0, 0.1);
+	const density = nova64.voxel.simplexNoise3D(cx, cy, cz, 2, 0.5, 2.0, 0.1);
 	if (density > -0.2) {
-	  const cloud = createCube(cloudSize, 0xffffff, [cx, cy, cz]);
-	  setScale(cloud, 2, 0.5, 1);
+	  const cloud = nova64.scene.createCube(cloudSize, 0xffffff, [cx, cy, cz]);
+	  nova64.scene.setScale(cloud, 2, 0.5, 1);
 	  cloud.material = cloudMat;
 	  digitalTowers.push({
 		mesh: cloud,
 		isCloud: true,
 		rotSpeed: 0.05,
 		origX: cx,
-		speedX: 1 + Math.random() * 2,
+		speedX: 1 + random() * 2,
 	  });
 	}
   }
@@ -263,12 +320,12 @@ async function buildStartScene() {
 	const radius = 25;
 	const x = Math.cos(angle) * radius;
 	const z = Math.sin(angle) * radius;
-	const size = 2 + Math.random() * 3;
+	const size = 2 + random() * 3;
 
 	// Rainbow of colors for crystals
 	const crystalColor = COLORS.neonYellow;
 
-	const crystal = createAdvancedCube(
+	const crystal = nova64.scene.createAdvancedCube(
 	  size,
 	  {
 		color: crystalColor,
@@ -278,13 +335,13 @@ async function buildStartScene() {
 	  },
 	  [x, size, z]
 	);
-	setRotation(crystal, Math.PI / 4, angle, Math.PI / 6);
+	nova64.scene.setRotation(crystal, Math.PI / 4, angle, Math.PI / 6);
 	digitalTowers.push({
 	  mesh: crystal,
 	  x,
 	  z,
 	  angle,
-	  rotSpeed: 0.5 + Math.random(),
+	  rotSpeed: 0.5 + random(),
 	  isCrystal: true,
 	});
   }
@@ -297,9 +354,9 @@ async function createParticleField() {
   // Ambient floating particles - BRIGHT and GLOWING
   for (let i = 0; i < 150; i++) {
 	// More particles!
-	const x = (Math.random() - 0.5) * 100;
-	const y = Math.random() * 30;
-	const z = (Math.random() - 0.5) * 100;
+	const x = (random() - 0.5) * 100;
+	const y = random() * 30;
+	const z = (random() - 0.5) * 100;
 
 	const colors = [
 	  COLORS.neonCyan,
@@ -309,9 +366,9 @@ async function createParticleField() {
 	  COLORS.neonGreen,
 	  COLORS.neonOrange,
 	];
-	const color = colors[Math.floor(Math.random() * colors.length)];
+	const color = colors[Math.floor(random() * colors.length)];
 
-	const particle = createSphere(0.3, color, [x, y, z], 6, {
+	const particle = nova64.scene.createSphere(0.3, color, [x, y, z], 6, {
 	  emissive: color,
 	  emissiveIntensity: 0.7, // Reduced from 2.0 - visible sparkle without blinding
 	});
@@ -321,9 +378,9 @@ async function createParticleField() {
 	  x,
 	  y,
 	  z,
-	  vx: (Math.random() - 0.5) * 2,
-	  vy: Math.random() * 0.5,
-	  vz: (Math.random() - 0.5) * 2,
+	  vx: (random() - 0.5) * 2,
+	  vy: random() * 0.5,
+	  vz: (random() - 0.5) * 2,
 	  life: 100,
 	  color,
 	});
@@ -331,6 +388,11 @@ async function createParticleField() {
 }
 
 export function update(dt) {
+  if (debugFreeze) {
+	exposeDebugState();
+	return;
+  }
+
   gameTime += dt;
 
   // Start screen state
@@ -338,36 +400,44 @@ export function update(dt) {
 	startScreenTime += dt;
 
 	// Update buttons - this handles mouse clicks
-	const clicked = updateAllButtons();
+	const clicked = nova64.ui.updateAllButtons();
 	if (clicked) {
 	  console.log('🖱️ A button was clicked!');
 	  // Extra safety: force state change if button was clicked but callback didn't fire
 	  if (gameState === 'start') {
 		console.log('💡 Button clicked but state not changed, forcing...');
-		startDemo();
-	  }
-	}
+		gameState = 'playing';
+        currentScene = 0;
+        sceneTime = 0;
+      }
+    }
 
-	// KEYBOARD SUPPORT: Press SPACE or ENTER to start (use isKeyDown for continuous detection)
-	if (isKeyDown('Space') || isKeyDown('Enter')) {
+    // KEYBOARD SUPPORT: Press SPACE or ENTER to start (use isKeyDown for continuous detection)
+	if (nova64.input.isKeyDown('Space') || nova64.input.isKeyDown('Enter')) {
 	  console.log('⌨️ Keyboard pressed! Starting demoscene journey...');
-	  startDemo();
-	}
+      cleanupScene();
+	  gameState = 'playing';
+      currentScene = 0;
+      sceneTime = 0;
+      _local_setupScene(currentScene);
+      nova64.ui.clearButtons(); // Clear buttons when starting
+    }
 
-	// Animated camera orbit on start screen
-	const radius = 40;
-	camera.x = Math.cos(startScreenTime * 0.3) * radius;
-	camera.z = Math.sin(startScreenTime * 0.3) * radius;
-	camera.y = 20 + Math.sin(startScreenTime * 0.5) * 5;
+    // Animated camera orbit on start screen
+    const radius = 40;
+    camera.x = Math.cos(startScreenTime * 0.3) * radius;
+    camera.z = Math.sin(startScreenTime * 0.3) * radius;
+    camera.y = 20 + Math.sin(startScreenTime * 0.5) * 5;
 
-	setCameraPosition(camera.x, camera.y, camera.z);
-	setCameraTarget(0, 5, 0);
+    nova64.camera.setCameraPosition(camera.x, camera.y, camera.z);
+    nova64.camera.setCameraTarget(0, 5, 0);
 
-	// Animate start scene objects
-	updateStartSceneAnimation(dt);
-	updateParticles(dt);
+    // Animate start scene objects
+    updateStartSceneAnimation(dt);
+    _local_updateParticles(dt);
+    exposeDebugState();
 
-	return;
+    return;
   }
 
   // Main demo progression
@@ -375,76 +445,89 @@ export function update(dt) {
 
   // Check for scene transition
   if (sceneTime >= SCENES[currentScene].duration && !transitioning) {
-	if (currentScene < SCENES.length - 1) {
-	  startSceneTransition();
-	} else {
-	  // End of demo - loop back
-	  currentScene = 0;
-	  sceneTime = 0;
-	  transitionToNextScene();
-	}
+    if (currentScene < SCENES.length - 1) {
+      startSceneTransition();
+    } else {
+      startSceneTransition();
+    }
   }
 
   // Handle transitions
   if (transitioning) {
-	transitionProgress += dt * 0.5; // 2 second transitions
-	if (transitionProgress >= 1.0) {
-	  transitioning = false;
-	  transitionProgress = 0;
-	  transitionToNextScene();
-	}
+    transitionProgress += dt * 0.5; // 2 second transitions
+    if (transitionProgress >= 1.0) {
+      transitioning = false;
+      transitionProgress = 0;
+      transitionToNextScene();
+    }
   }
 
   // Global Vaporwave Animation for Background Elements
   digitalTowers.forEach(obj => {
-	if (obj.isCloud) {
-	  obj.mesh.position.x += obj.speedX * dt;
-	  if (obj.mesh.position.x > 80) obj.mesh.position.x = -80;
-	  rotateMesh(obj.mesh, 0, obj.rotSpeed * dt, 0);
-	} else if (obj.isSun) {
-	  rotateMesh(obj.mesh, 0, obj.rotSpeed * dt, 0);
-	}
+    if (obj.isCloud) {
+      obj.mesh.position.x += obj.speedX * dt;
+      if (obj.mesh.position.x > 80) obj.mesh.position.x = -80;
+      nova64.scene.rotateMesh(obj.mesh, 0, obj.rotSpeed * dt, 0);
+    } else if (obj.isSun) {
+      nova64.scene.rotateMesh(obj.mesh, 0, obj.rotSpeed * dt, 0);
+    }
   });
   terrainBlocks.forEach(seg => {
-	if (seg.isTerrain) {
-	  const hOffset =
-		Math.sin(seg.mesh.position.x * 0.1 + gameTime) *
-		Math.cos(seg.mesh.position.z * 0.1 + gameTime) *
-		1.5;
-	  setPosition(seg.mesh, seg.mesh.position.x, seg.origY + hOffset, seg.mesh.position.z);
-	}
+    if (seg.isTerrain) {
+      const hOffset =
+        Math.sin(seg.mesh.position.x * 0.1 + gameTime) *
+        Math.cos(seg.mesh.position.z * 0.1 + gameTime) *
+        1.5;
+      nova64.scene.setPosition(
+        seg.mesh,
+        seg.mesh.position.x,
+        seg.origY + hOffset,
+        seg.mesh.position.z
+      );
+    }
   });
 
   // Update current scene
   updateCurrentScene(dt);
   updateCamera(dt);
-  updateParticles(dt);
+  _local_updateParticles(dt);
+  exposeDebugState();
 }
 
 function updateStartSceneAnimation(dt) {
   // Animate elements based on their type
   digitalTowers.forEach(obj => {
-	if (obj.isCrystal) {
-	  obj.angle += obj.rotSpeed * dt;
-	  setRotation(obj.mesh, Math.PI / 4 + Math.sin(gameTime * 2) * 0.2, obj.angle, Math.PI / 6);
-	} else if (obj.isSun) {
-	  rotateMesh(obj.mesh, 0, obj.rotSpeed * dt, 0); // Sun rotating
-	} else if (obj.isCloud) {
-	  obj.mesh.position.x += obj.speedX * dt;
-	  if (obj.mesh.position.x > 80) obj.mesh.position.x = -80; // Wrap clouds
-	  rotateMesh(obj.mesh, 0, obj.rotSpeed * dt, 0); // Cloud drift
-	}
+    if (obj.isCrystal) {
+      obj.angle += obj.rotSpeed * dt;
+      nova64.scene.setRotation(
+        obj.mesh,
+        Math.PI / 4 + Math.sin(gameTime * 2) * 0.2,
+        obj.angle,
+        Math.PI / 6
+      );
+    } else if (obj.isSun) {
+      nova64.scene.rotateMesh(obj.mesh, 0, obj.rotSpeed * dt, 0); // Sun rotating
+    } else if (obj.isCloud) {
+      obj.mesh.position.x += obj.speedX * dt;
+      if (obj.mesh.position.x > 80) obj.mesh.position.x = -80; // Wrap clouds
+      nova64.scene.rotateMesh(obj.mesh, 0, obj.rotSpeed * dt, 0); // Cloud drift
+    }
   });
 
   // Terrain wave effect
   terrainBlocks.forEach(seg => {
-	if (seg.isTerrain) {
+    if (seg.isTerrain) {
 	  // Simulate moving forward by undulating the terrain's y position based on time
 	  const hOffset =
 		Math.sin(seg.mesh.position.x * 0.1 + gameTime) *
 		Math.cos(seg.mesh.position.z * 0.1 + gameTime) *
 		1.5;
-	  setPosition(seg.mesh, seg.mesh.position.x, seg.origY + hOffset, seg.mesh.position.z);
+	  nova64.scene.setPosition(
+		seg.mesh,
+		seg.mesh.position.x,
+		seg.origY + hOffset,
+		seg.mesh.position.z
+	  );
 	}
   });
 }
@@ -480,8 +563,8 @@ function updateGridAwakening(dt, progress) {
 	  const rotSpeed = 1 + Math.sin(gameTime + i) * 0.5;
 	  obj.angle += rotSpeed * dt;
 
-	  setPosition(obj.mesh, obj.x, 4 + heightOffset, obj.z);
-	  setRotation(obj.mesh, gameTime * 0.5, obj.angle, gameTime * 0.3);
+	  nova64.scene.setPosition(obj.mesh, obj.x, 4 + heightOffset, obj.z);
+	  nova64.scene.setRotation(obj.mesh, gameTime * 0.5, obj.angle, gameTime * 0.3);
 	}
   });
 
@@ -501,7 +584,7 @@ function updateGridAwakening(dt, progress) {
 // Scene 1: DATA TUNNEL
 function updateDataTunnel(dt, progress) {
   // Create tunnel segments on the fly
-  if (tunnelSegments.length < 50 && Math.random() < 0.3) {
+  if (tunnelSegments.length < 50 && random() < 0.3) {
 	createTunnelSegment();
   }
 
@@ -510,18 +593,18 @@ function updateDataTunnel(dt, progress) {
 	const seg = tunnelSegments[i];
 	if (seg.z) {
 	  seg.z += 20 * dt;
-	  setPosition(seg.mesh, seg.x || 0, seg.y || 0, seg.z);
+	  nova64.scene.setPosition(seg.mesh, seg.x || 0, seg.y || 0, seg.z);
 
 	  // Remove if behind camera
 	  if (seg.z > 50) {
-		destroyMesh(seg.mesh);
+		nova64.scene.destroyMesh(seg.mesh);
 		tunnelSegments.splice(i, 1);
 	  }
 	}
   }
 
   // Create data streams
-  if (dataStreams.length < 30 && Math.random() < 0.2) {
+  if (dataStreams.length < 30 && random() < 0.2) {
 	createDataStream();
   }
 
@@ -537,7 +620,7 @@ function updateDataTunnel(dt, progress) {
 // Scene 2: DIGITAL CITY
 function updateDigitalCity(dt, progress) {
   // Build city towers as we go
-  if (digitalTowers.length < 40 && Math.random() < 0.1) {
+  if (digitalTowers.length < 40 && random() < 0.1) {
 	createDigitalTower();
   }
 
@@ -548,12 +631,12 @@ function updateDigitalCity(dt, progress) {
 	  const scale = 1 + Math.sin(tower.pulsePhase) * 0.15;
 	  const width = tower.width || 3;
 	  const height = tower.height || 15;
-	  setScale(tower.mesh, width * scale, height * scale, width * scale);
+	  nova64.scene.setScale(tower.mesh, width * scale, height * scale, width * scale);
 	}
   });
 
   // Spawn light cycles
-  if (lightCycles.length < 6 && Math.random() < 0.1) {
+  if (lightCycles.length < 6 && random() < 0.1) {
 	createLightCycle();
   }
 
@@ -571,7 +654,7 @@ function updateDigitalCity(dt, progress) {
 // Scene 3: ENERGY CORE
 function updateEnergyCore(dt, progress) {
   // Create energy fields
-  if (energyFields.length < 20 && Math.random() < 0.15) {
+  if (energyFields.length < 20 && random() < 0.15) {
 	createEnergyField();
   }
 
@@ -581,8 +664,13 @@ function updateEnergyCore(dt, progress) {
 	field.pulsePhase += dt * 4;
 
 	const scale = 1 + Math.sin(field.pulsePhase) * 0.3;
-	setScale(field.mesh, scale, scale, scale);
-	setRotation(field.mesh, field.rotation, field.rotation * 1.5, field.rotation * 0.5);
+	nova64.scene.setScale(field.mesh, scale, scale, scale);
+	nova64.scene.setRotation(
+	  field.mesh,
+	  field.rotation,
+	  field.rotation * 1.5,
+	  field.rotation * 0.5
+	);
   });
 
   // Camera - spiraling into the core
@@ -595,17 +683,17 @@ function updateEnergyCore(dt, progress) {
   camera.y = spiralHeight;
 
   // Increase bloom intensity for energy core climax
-  setBloomStrength(1.2 + progress * 1.0); // Goes from 1.2 to 2.2 - dramatic but visible
+  nova64.fx.setBloomStrength(1.2 + progress * 1.0); // Goes from 1.2 to 2.2 - dramatic but visible
 }
 
 // Scene 4: THE VOID
 function updateTheVoid(dt, progress) {
   // Fade to darkness
   const fogFar = 120 - progress * 100;
-  setFog(0x000000, 10, Math.max(20, fogFar));
+  nova64.light.setFog(0x000000, 10, Math.max(20, fogFar));
 
   // Create final particle explosion
-  if (progress > 0.5 && Math.random() < 0.5) {
+  if (progress > 0.5 && random() < 0.5) {
 	createExplosionParticle();
   }
 
@@ -614,15 +702,15 @@ function updateTheVoid(dt, progress) {
   camera.y = 5 + progress * 30;
 
   // Gradually reduce bloom as we fade to void
-  setBloomStrength(1.2 - progress * 1.0); // Fades from 1.2 to 0.2
+  nova64.fx.setBloomStrength(1.2 - progress * 1.0); // Fades from 1.2 to 0.2
 }
 
 // Helper functions for creating scene elements
 function createPulseRing() {
   const ringColors = [COLORS.neonCyan, COLORS.neonMagenta, COLORS.neonYellow];
-  const color = ringColors[Math.floor(Math.random() * ringColors.length)];
+  const color = ringColors[Math.floor(random() * ringColors.length)];
 
-  const ring = createSphere(1, color, [0, 0.2, 0], 8, {
+  const ring = nova64.scene.createSphere(1, color, [0, 0.2, 0], 8, {
 	emissive: color,
 	emissiveIntensity: 1.0, // Reduced from 2.5 - noticeable pulse without washing out
   });
@@ -641,17 +729,17 @@ function updatePulseRings(dt) {
 	ring.life -= dt;
 	ring.scale += dt * 15;
 
-	setScale(ring.mesh, ring.scale, 0.1, ring.scale);
+	nova64.scene.setScale(ring.mesh, ring.scale, 0.1, ring.scale);
 
 	if (ring.life <= 0) {
-	  destroyMesh(ring.mesh);
+	  nova64.scene.destroyMesh(ring.mesh);
 	  pulseRings.splice(i, 1);
 	}
   }
 }
 
 function createTunnelSegment() {
-  const z = -50 - Math.random() * 20;
+  const z = -50 - random() * 20;
   const segments = 8;
   const tunnelColors = [COLORS.neonCyan, COLORS.neonMagenta, COLORS.neonYellow, COLORS.neonPink];
 
@@ -662,7 +750,7 @@ function createTunnelSegment() {
 	const y = Math.sin(angle) * radius;
 
 	const color = tunnelColors[i % tunnelColors.length];
-	const seg = createAdvancedCube(
+	const seg = nova64.scene.createAdvancedCube(
 	  1,
 	  {
 		color: color,
@@ -672,7 +760,7 @@ function createTunnelSegment() {
 	  },
 	  [x, y, z]
 	);
-	setScale(seg, 1, 1, 2);
+	nova64.scene.setScale(seg, 1, 1, 2);
 
 	tunnelSegments.push({
 	  mesh: seg,
@@ -684,8 +772,8 @@ function createTunnelSegment() {
 }
 
 function createDataStream() {
-  const angle = Math.random() * Math.PI * 2;
-  const radius = 10 + Math.random() * 5;
+  const angle = random() * Math.PI * 2;
+  const radius = 10 + random() * 5;
   const x = Math.cos(angle) * radius;
   const y = Math.sin(angle) * radius;
 
@@ -696,9 +784,9 @@ function createDataStream() {
 	COLORS.neonGreen,
 	COLORS.neonOrange,
   ];
-  const color = colors[Math.floor(Math.random() * colors.length)];
+  const color = colors[Math.floor(random() * colors.length)];
 
-  const stream = createAdvancedCube(
+  const stream = nova64.scene.createAdvancedCube(
 	1,
 	{
 	  color: color,
@@ -708,14 +796,14 @@ function createDataStream() {
 	},
 	[x, y, -60]
   );
-  setScale(stream, 0.4, 0.4, 4);
+  nova64.scene.setScale(stream, 0.4, 0.4, 4);
 
   dataStreams.push({
 	mesh: stream,
 	x,
 	y,
 	z: -60,
-	speed: 30 + Math.random() * 20,
+	speed: 30 + random() * 20,
 	color,
   });
 }
@@ -724,24 +812,24 @@ function updateDataStreams(dt) {
   for (let i = dataStreams.length - 1; i >= 0; i--) {
 	const stream = dataStreams[i];
 	stream.z += stream.speed * dt;
-	setPosition(stream.mesh, stream.x, stream.y, stream.z);
+	nova64.scene.setPosition(stream.mesh, stream.x, stream.y, stream.z);
 
 	if (stream.z > 50) {
-	  destroyMesh(stream.mesh);
+	  nova64.scene.destroyMesh(stream.mesh);
 	  dataStreams.splice(i, 1);
 	}
   }
 }
 
 function createDigitalTower() {
-  const x = (Math.random() - 0.5) * 80;
-  const z = (Math.random() - 0.5) * 80;
+  const x = (random() - 0.5) * 80;
+  const z = (random() - 0.5) * 80;
 
   // Avoid center
   if (Math.abs(x) < 15 && Math.abs(z) < 15) return;
 
-  const width = 2 + Math.random() * 3;
-  const height = 10 + Math.random() * 20;
+  const width = 2 + random() * 3;
+  const height = 10 + random() * 20;
 
   const colors = [
 	COLORS.neonCyan,
@@ -751,9 +839,9 @@ function createDigitalTower() {
 	COLORS.neonGreen,
 	COLORS.neonOrange,
   ];
-  const color = colors[Math.floor(Math.random() * colors.length)];
+  const color = colors[Math.floor(random() * colors.length)];
 
-  const tower = createAdvancedCube(
+  const tower = nova64.scene.createAdvancedCube(
 	1,
 	{
 	  color: color,
@@ -763,7 +851,7 @@ function createDigitalTower() {
 	},
 	[x, height / 2, z]
   );
-  setScale(tower, width, height, width);
+  nova64.scene.setScale(tower, width, height, width);
 
   digitalTowers.push({
 	mesh: tower,
@@ -772,22 +860,22 @@ function createDigitalTower() {
 	height,
 	width,
 	baseScale: 1,
-	pulsePhase: Math.random() * Math.PI * 2,
+	pulsePhase: random() * Math.PI * 2,
 	color,
   });
 }
 
 function createLightCycle() {
-  const angle = Math.random() * Math.PI * 2;
+  const angle = random() * Math.PI * 2;
   const radius = 30;
   const x = Math.cos(angle) * radius;
   const z = Math.sin(angle) * radius;
 
   const cycleColors = [COLORS.neonCyan, COLORS.neonMagenta, COLORS.neonYellow, COLORS.neonOrange];
-  const bodyColor = cycleColors[Math.floor(Math.random() * cycleColors.length)];
+  const bodyColor = cycleColors[Math.floor(random() * cycleColors.length)];
   const trailColor = bodyColor; // Matching trail
 
-  const body = createAdvancedCube(
+  const body = nova64.scene.createAdvancedCube(
 	1,
 	{
 	  color: bodyColor,
@@ -797,9 +885,9 @@ function createLightCycle() {
 	},
 	[x, 1, z]
   );
-  setScale(body, 2, 0.5, 1);
+  nova64.scene.setScale(body, 2, 0.5, 1);
 
-  const trail = createAdvancedCube(
+  const trail = nova64.scene.createAdvancedCube(
 	1,
 	{
 	  color: trailColor,
@@ -809,7 +897,7 @@ function createLightCycle() {
 	},
 	[x, 1, z]
   );
-  setScale(trail, 0.5, 0.5, 8);
+  nova64.scene.setScale(trail, 0.5, 0.5, 8);
 
   lightCycles.push({
 	body,
@@ -817,7 +905,7 @@ function createLightCycle() {
 	x,
 	z,
 	angle,
-	speed: 2 + Math.random(),
+	speed: 2 + random(),
 	color: bodyColor,
   });
 }
@@ -830,22 +918,22 @@ function updateLightCycles(dt) {
 	cycle.x = Math.cos(cycle.angle) * radius;
 	cycle.z = Math.sin(cycle.angle) * radius;
 
-	setPosition(cycle.body, cycle.x, 1, cycle.z);
-	setRotation(cycle.body, 0, cycle.angle + Math.PI / 2, 0);
+	nova64.scene.setPosition(cycle.body, cycle.x, 1, cycle.z);
+	nova64.scene.setRotation(cycle.body, 0, cycle.angle + Math.PI / 2, 0);
 
 	const trailX = cycle.x - Math.cos(cycle.angle + Math.PI / 2) * 4;
 	const trailZ = cycle.z - Math.sin(cycle.angle + Math.PI / 2) * 4;
-	setPosition(cycle.trail, trailX, 1, trailZ);
-	setRotation(cycle.trail, 0, cycle.angle + Math.PI / 2, 0);
+	nova64.scene.setPosition(cycle.trail, trailX, 1, trailZ);
+	nova64.scene.setRotation(cycle.trail, 0, cycle.angle + Math.PI / 2, 0);
   });
 }
 
 function createEnergyField() {
-  const x = (Math.random() - 0.5) * 20;
-  const y = (Math.random() - 0.5) * 20;
-  const z = (Math.random() - 0.5) * 20;
+  const x = (random() - 0.5) * 20;
+  const y = (random() - 0.5) * 20;
+  const z = (random() - 0.5) * 20;
 
-  const size = 1 + Math.random() * 2;
+  const size = 1 + random() * 2;
   const colors = [
 	COLORS.neonMagenta,
 	COLORS.neonYellow,
@@ -853,9 +941,9 @@ function createEnergyField() {
 	COLORS.neonCyan,
 	COLORS.neonGreen,
   ];
-  const color = colors[Math.floor(Math.random() * colors.length)];
+  const color = colors[Math.floor(random() * colors.length)];
 
-  const field = createSphere(size, color, [x, y, z], 10, {
+  const field = nova64.scene.createSphere(size, color, [x, y, z], 10, {
 	emissive: color,
 	emissiveIntensity: 1.0, // Reduced from 2.0 - bright but not blinding
   });
@@ -863,21 +951,21 @@ function createEnergyField() {
   energyFields.push({
 	mesh: field,
 	rotation: 0,
-	rotSpeed: 0.5 + Math.random(),
-	pulsePhase: Math.random() * Math.PI * 2,
+	rotSpeed: 0.5 + random(),
+	pulsePhase: random() * Math.PI * 2,
 	color,
   });
 }
 
 function createExplosionParticle() {
-  const x = (Math.random() - 0.5) * 40;
-  const y = (Math.random() - 0.5) * 40;
-  const z = (Math.random() - 0.5) * 40;
+  const x = (random() - 0.5) * 40;
+  const y = (random() - 0.5) * 40;
+  const z = (random() - 0.5) * 40;
 
   const colors = Object.values(COLORS);
-  const color = colors[Math.floor(Math.random() * colors.length)];
+  const color = colors[Math.floor(random() * colors.length)];
 
-  const particle = createSphere(0.5, color, [x, y, z], 6, {
+  const particle = nova64.scene.createSphere(0.5, color, [x, y, z], 6, {
 	emissive: color,
 	emissiveIntensity: 1.2, // Reduced from 2.5 - bright explosion without washing out
   });
@@ -887,15 +975,15 @@ function createExplosionParticle() {
 	x,
 	y,
 	z,
-	vx: (Math.random() - 0.5) * 20,
-	vy: (Math.random() - 0.5) * 20,
-	vz: (Math.random() - 0.5) * 20,
+	vx: (random() - 0.5) * 20,
+	vy: (random() - 0.5) * 20,
+	vz: (random() - 0.5) * 20,
 	life: 3,
 	color,
   });
 }
 
-function updateParticles(dt) {
+function _local_updateParticles(dt) {
   for (let i = particleSystems.length - 1; i >= 0; i--) {
 	const particle = particleSystems[i];
 
@@ -908,22 +996,22 @@ function updateParticles(dt) {
 
 	particle.life -= dt;
 
-	setPosition(particle.mesh, particle.x, particle.y, particle.z);
+	nova64.scene.setPosition(particle.mesh, particle.x, particle.y, particle.z);
 
 	// Fade out
 	const scale = Math.max(0, particle.life / 3);
-	setScale(particle.mesh, scale, scale, scale);
+	nova64.scene.setScale(particle.mesh, scale, scale, scale);
 
 	if (particle.life <= 0 || scale <= 0) {
-	  destroyMesh(particle.mesh);
+	  nova64.scene.destroyMesh(particle.mesh);
 	  particleSystems.splice(i, 1);
 	}
   }
 }
 
 function updateCamera(_dt) {
-  setCameraPosition(camera.x, camera.y, camera.z);
-  setCameraTarget(camera.targetX, camera.targetY, camera.targetZ);
+  nova64.camera.setCameraPosition(camera.x, camera.y, camera.z);
+  nova64.camera.setCameraTarget(camera.targetX, camera.targetY, camera.targetZ);
 
   // Apply camera roll if needed
   if (Math.abs(camera.roll) > 0.01) {
@@ -950,87 +1038,354 @@ function transitionToNextScene() {
   sceneTime = 0;
 
   // Setup new scene
-  setupScene(currentScene);
+  _local_setupScene(currentScene);
 
   console.log(`✨ Now showing: ${SCENES[currentScene].name}`);
 }
 
+function destroyTrackedMesh(mesh) {
+  if (mesh) nova64.scene.destroyMesh(mesh);
+}
+
 function cleanupScene() {
-  // Remove all dynamic objects (keep start scene for now)
-  dataStreams.forEach(s => destroyMesh(s.mesh));
+  // Remove all web scene geometry so each scene starts from a clean render state.
+  dataStreams.forEach(s => destroyTrackedMesh(s.mesh));
   dataStreams = [];
 
-  pulseRings.forEach(r => destroyMesh(r.mesh));
+  pulseRings.forEach(r => destroyTrackedMesh(r.mesh));
   pulseRings = [];
 
   lightCycles.forEach(c => {
-	destroyMesh(c.body);
-	destroyMesh(c.trail);
+	destroyTrackedMesh(c.body);
+	destroyTrackedMesh(c.trail);
   });
   lightCycles = [];
 
-  energyFields.forEach(f => destroyMesh(f.mesh));
+  energyFields.forEach(f => destroyTrackedMesh(f.mesh));
   energyFields = [];
 
-  // These arrays were NOT being cleaned — their meshes leaked across scene
-  // transitions, so each new scene rendered on top of the old geometry (the
-  // "scenes don't clear" bug). Destroy every tracked array (mirrors web cleanup).
-  tunnelSegments.forEach(t => destroyMesh(t.mesh));
+  tunnelSegments.forEach(t => destroyTrackedMesh(t.mesh));
   tunnelSegments = [];
 
-  digitalTowers.forEach(t => destroyMesh(t.mesh));
+  digitalTowers.forEach(t => destroyTrackedMesh(t.mesh));
   digitalTowers = [];
 
-  particleSystems.forEach(p => destroyMesh(p.mesh));
+  particleSystems.forEach(p => destroyTrackedMesh(p.mesh));
   particleSystems = [];
 
-  terrainBlocks.forEach(t => destroyMesh(t.mesh));
+  if (gridFloor) {
+	destroyTrackedMesh(gridFloor);
+	gridFloor = null;
+  }
+  terrainBlocks.forEach(t => destroyTrackedMesh(t.mesh));
   terrainBlocks = [];
 
-  if (gridFloor) {
-    destroyMesh(gridFloor);
-    gridFloor = null;
+  if (typeof clearScene === 'function') clearScene();
+  sceneGeometryReady = -1;
+  nova64.scene.setClearColor?.(0x000010);
+  nova64.light.setFog(0x000020, 30, 150);
+  configureBloom(0.6, 0.25, 0.8);
+}
+
+function configureBloom(strength, radius = 0.3, threshold = 0.75) {
+  nova64.fx.enableBloom?.(strength, radius, threshold);
+  nova64.fx.setBloomStrength?.(strength);
+  nova64.fx.setBloomRadius?.(radius);
+  nova64.fx.setBloomThreshold?.(threshold);
+}
+
+function createNeonCube(x, y, z, sx, sy, sz, color, emissiveIntensity = 0.8) {
+  const mesh = createAdvancedCube(
+	1,
+	{
+	  color,
+	  emissive: color,
+	  emissiveIntensity,
+	  flatShading: true,
+	},
+	[x, y, z]
+  );
+  setScale(mesh, sx, sy, sz);
+  return mesh;
+}
+
+function createNeonSphere(x, y, z, radius, color, emissiveIntensity = 1.0, segments = 12) {
+  return createSphere(radius, color, [x, y, z], segments, {
+	emissive: color,
+	emissiveIntensity,
+  });
+}
+
+function createNeonTorus(x, y, z, radius, tube, color, emissiveIntensity = 1.0) {
+  const mesh = createTorus(radius, tube, color, [x, y, z], {
+	emissive: color,
+	emissiveIntensity,
+  });
+  return mesh;
+}
+
+function buildGridAwakeningScene() {
+  nova64.scene.setClearColor?.(0x180018);
+  setAmbientLight(0x2a1830);
+  setLightDirection(0, -1, -0.2);
+  setFog(0x361038, 70, 190);
+  configureBloom(0.72, 0.32, 0.72);
+  camera.fov = 70;
+  setCameraFOV(camera.fov);
+
+  const terrainColors = [COLORS.neonMagenta, COLORS.neonCyan, COLORS.electric];
+  for (let x = -60; x <= 60; x += 4) {
+	for (let z = -76; z <= 36; z += 4) {
+	  const wave = Math.sin(x * 0.12) * Math.cos(z * 0.13);
+	  const height = 0.8 + (wave * 0.5 + 0.5) * 6.2 + random() * 1.2;
+	  const color = terrainColors[(((x + z + 200) / 4) % terrainColors.length) | 0];
+	  const block = createNeonCube(x, height / 2 - 3, z, 2.9, height, 2.9, color, 0.62);
+	  terrainBlocks.push({ mesh: block, isTerrain: true, origY: height / 2 - 3 });
+	}
+  }
+
+  gridFloor = createNeonCube(0, -2.98, -20, 72, 0.1, 72, 0x060018, 0.08);
+
+  const pillar = createNeonCube(0, 0, 0, 0.8, 6, 0.8, COLORS.neonCyan, 1.2);
+  digitalTowers.push({ mesh: pillar, isSun: true, rotSpeed: 0.4 });
+
+  for (let i = 0; i < 8; i++) {
+	const angle = (i / 8) * Math.PI * 2;
+	const radius = 22;
+	const color =
+	  i % 3 === 0 ? COLORS.neonYellow : i % 3 === 1 ? COLORS.neonCyan : COLORS.neonMagenta;
+	const crystal = createNeonCube(
+	  Math.cos(angle) * radius,
+	  3.5,
+	  Math.sin(angle) * radius,
+	  1.2,
+	  3.8 + random() * 1.6,
+	  1.2,
+	  color,
+	  0.85
+	);
+	setRotation(crystal, Math.PI / 4, angle, Math.PI / 6);
+	digitalTowers.push({
+	  mesh: crystal,
+	  x: Math.cos(angle) * radius,
+	  z: Math.sin(angle) * radius,
+	  angle,
+	  rotSpeed: 0.5 + random(),
+	  isCrystal: true,
+	});
   }
 }
 
-function setupScene(_sceneIndex) {
-  // Per-scene background / clear color. Without this the Godot environment
-  // background isn't reset between scenes (the bug the web demoscene fixed by
-  // calling setClearColor in each scene). Colors mirror the web build*Scene fns.
-  const CLEAR = [0x180018, 0x001018, 0x120010, 0x130013, 0x05000a];
-  setClearColor(CLEAR[_sceneIndex] != null ? CLEAR[_sceneIndex] : 0x000010);
+function buildDataTunnelScene() {
+  nova64.scene.setClearColor?.(0x001018);
+  setAmbientLight(0x143038);
+  setFog(0x073846, 85, 220);
+  configureBloom(0.5, 0.2, 0.88);
+  camera.fov = 78;
+  setCameraFOV(camera.fov);
 
+  const colors = [COLORS.neonCyan, COLORS.neonMagenta, COLORS.neonYellow, COLORS.neonGreen];
+
+  for (let ring = 0; ring < 16; ring++) {
+	const z = -10 - ring * 5.5;
+	const radius = 12 + Math.sin(ring * 0.45) * 2;
+	const twist = ring * 0.28;
+	const torusColor = ring % 2 === 0 ? COLORS.neonMagenta : COLORS.neonCyan;
+	const torus = createNeonTorus(0, 0, z, radius * 0.34, 0.35, torusColor, 1.1);
+	setScale(torus, 1.5, 1.5, 0.16);
+	setRotation(torus, Math.PI / 2, 0, twist);
+	tunnelSegments.push({ mesh: torus, x: 0, y: 0, z, isRing: true });
+
+	for (let i = 0; i < 10; i++) {
+	  const angle = (i / 10) * Math.PI * 2 + twist;
+	  const color = colors[(ring + i) % colors.length];
+	  const mesh = createNeonCube(
+		Math.cos(angle) * radius,
+		Math.sin(angle) * radius,
+		z,
+		0.55,
+		0.55,
+		2.4,
+		color,
+		1.0
+	  );
+	  setRotation(mesh, 0, 0, angle);
+	  tunnelSegments.push({ mesh, x: Math.cos(angle) * radius, y: Math.sin(angle) * radius, z });
+	}
+  }
+
+  for (let i = 0; i < 30; i++) {
+	const angle = random() * Math.PI * 2;
+	const radius = 5.5 + random() * 7.5;
+	const color = colors[i % colors.length];
+	const x = Math.cos(angle) * radius;
+	const y = Math.sin(angle) * radius;
+	const z = -14 - random() * 95;
+	const stream = createNeonCube(x, y, z, 0.35, 0.35, 7 + random() * 5, color, 1.35);
+	setRotation(stream, 0, 0, angle);
+	dataStreams.push({
+	  mesh: stream,
+	  x,
+	  y,
+	  z,
+	  speed: 34 + random() * 26,
+	  color,
+	});
+  }
+}
+
+function buildDigitalCityScene() {
+  nova64.scene.setClearColor?.(0x120010);
+  setAmbientLight(0x281828);
+  setLightDirection(-0.6, -1, -0.4);
+  setFog(0x351033, 75, 210);
+  configureBloom(0.55, 0.22, 0.86);
+  camera.fov = 62;
+  setCameraFOV(camera.fov);
+
+  gridFloor = createNeonCube(0, -0.1, 0, 58, 0.2, 58, 0x0a0a1a, 0.25);
+
+  const cityColors = [COLORS.neonCyan, COLORS.neonMagenta, COLORS.neonYellow, COLORS.electric];
+
+  for (let row = -3; row <= 3; row++) {
+	for (let col = -3; col <= 3; col++) {
+	  const x = col * 7;
+	  const z = row * 7;
+	  if (Math.abs(x) < 4 && Math.abs(z) < 4) continue;
+	  const width = 1.8 + random() * 2.2;
+	  const height = 5 + random() * 18;
+	  const color = cityColors[(row + col + 16) % cityColors.length];
+	  const tower = createNeonCube(x, height / 2, z, width, height, width, color, 0.95);
+	  digitalTowers.push({
+		mesh: tower,
+		x,
+		z,
+		height,
+		width,
+		pulsePhase: random() * Math.PI * 2,
+		color,
+	  });
+	}
+  }
+
+  const beacon = createSphere(6, COLORS.neonYellow, [0, 6, 0], 16, {
+	emissive: COLORS.neonYellow,
+	emissiveIntensity: 1.8,
+  });
+  setScale(beacon, 0.45, 3.4, 0.45);
+  digitalTowers.push({ mesh: beacon, isSun: true, rotSpeed: 0.8 });
+
+  for (let i = 0; i < 6; i++) createLightCycle();
+}
+
+function buildEnergyCoreScene() {
+  nova64.scene.setClearColor?.(0x130013);
+  setAmbientLight(0x2a182c);
+  setLightDirection(0, -0.5, -1);
+  setFog(0x3a1238, 60, 170);
+  configureBloom(0.45, 0.18, 0.9);
+  camera.fov = 75;
+  setCameraFOV(camera.fov);
+
+  const core = createNeonSphere(0, 0, 0, 2.6, COLORS.neonPink, 1.35, 24);
+  energyFields.push({
+	mesh: core,
+	rotation: 0,
+	rotSpeed: 0.7,
+	pulsePhase: 0,
+	color: COLORS.neonPink,
+  });
+
+  const orbitColors = [COLORS.neonMagenta, COLORS.neonYellow, COLORS.neonCyan, COLORS.neonOrange];
+  for (let i = 0; i < 4; i++) {
+	const ring = createNeonTorus(0, 0, 0, 3.5 + i * 1.4, 0.32, orbitColors[i], 1.25);
+	energyFields.push({
+	  mesh: ring,
+	  rotation: i * Math.PI * 0.25,
+	  rotSpeed: 0.5 + i * 0.2,
+	  pulsePhase: i,
+	  color: orbitColors[i],
+	});
+  }
+
+  for (let i = 0; i < 28; i++) createEnergyField();
+}
+
+function buildVoidScene() {
+  nova64.scene.setClearColor?.(0x05000a);
+  setAmbientLight(0x181020);
+  setLightDirection(0.2, -1, 0.4);
+  setFog(0x020006, 35, 120);
+  configureBloom(0.45, 0.2, 0.88);
+  camera.fov = 58;
+  setCameraFOV(camera.fov);
+
+  const anchor = createNeonSphere(0, 0, -2, 3.2, COLORS.electric, 2.0, 18);
+  energyFields.push({
+	mesh: anchor,
+	rotation: 0,
+	rotSpeed: 0.25,
+	pulsePhase: 0,
+	color: COLORS.electric,
+  });
+
+  for (let i = 0; i < 34; i++) {
+	const angle = (i / 34) * Math.PI * 2;
+	const radius = 3 + random() * 14;
+	const color = Object.values(COLORS)[i % Object.values(COLORS).length];
+	const field = createNeonSphere(
+	  Math.cos(angle) * radius,
+	  (random() - 0.5) * 10,
+	  Math.sin(angle) * radius,
+	  0.35 + random() * 0.8,
+	  color,
+	  1.3,
+	  8
+	);
+	energyFields.push({
+	  mesh: field,
+	  rotation: angle,
+	  rotSpeed: 0.15 + random() * 0.5,
+	  pulsePhase: random() * Math.PI * 2,
+	  color,
+	});
+  }
+}
+
+function _local_setupScene(sceneIndex, options = {}) {
   // Set theme lighting based on scene - balanced darkness
-  setFog(0x000020, 30, 150);
-  // Per-scene bloom matching the web demoscene. The Godot shim exposes no
-  // setBloomThreshold, and setBloomStrength() pins a low (0.18) threshold →
-  // washed-out, over-bright glow. enableBloom(strength, radius, threshold) sets
-  // all three at once, so use the web's gentler values directly instead.
-  const BLOOM = [
-    [0.55, 0.22, 0.86],
-    [0.5, 0.2, 0.88],
-    [0.55, 0.22, 0.86],
-    [0.45, 0.18, 0.9],
-    [0.45, 0.2, 0.88],
-  ];
-  const b = BLOOM[_sceneIndex] || [0.6, 0.25, 0.8];
-  enableBloom(b[0], b[1], b[2]);
+  nova64.scene.setClearColor?.(0x000010);
+  nova64.light.setLightDirection(-0.5, -0.8, -0.3);
+  nova64.light.setAmbientLight(0x1a1a2a);
+  nova64.light.setFog(0x000020, 30, 150);
+  configureBloom(0.6, 0.25, 0.8);
 
   // Reset camera for new scene
   camera.roll = 0;
   camera.fov = 75;
-  setCameraFOV(camera.fov);
-}
+  nova64.camera.setCameraFOV(camera.fov);
 
-// Enter the demo from the start screen. Centralized so every entry path (BEGIN
-// button, click fallback, keyboard) runs setupScene(0) — otherwise the first
-// scene never got its clear color / fog / bloom set (only transitions did).
-function startDemo() {
-  gameState = 'playing';
-  currentScene = 0;
-  sceneTime = 0;
-  clearButtons();
-  setupScene(currentScene);
+  if (sceneGeometryReady === sceneIndex && options.reuseExistingIntro) return;
+
+  switch (sceneIndex) {
+	case 0:
+	  buildGridAwakeningScene();
+	  break;
+	case 1:
+	  buildDataTunnelScene();
+	  break;
+	case 2:
+	  buildDigitalCityScene();
+	  break;
+	case 3:
+	  buildEnergyCoreScene();
+	  break;
+	case 4:
+	  buildVoidScene();
+	  break;
+  }
+
+  sceneGeometryReady = sceneIndex;
 }
 
 let drawCallCount = 0;
@@ -1038,14 +1393,14 @@ let drawCallCount = 0;
 export function draw() {
   // Log first few draw calls to verify it's working
   if (drawCallCount < 3) {
-	console.log(`✏️ draw() called, gameState: ${gameState}, drawCallCount: ${drawCallCount}`);
-	drawCallCount++;
+    console.log(`✏️ draw() called, gameState: ${gameState}, drawCallCount: ${drawCallCount}`);
+    drawCallCount++;
   }
 
   // Start screen
   if (gameState === 'start') {
-	drawStartScreen();
-	return;
+    drawStartScreen();
+    return;
   }
 
   // Demo HUD
@@ -1054,153 +1409,199 @@ export function draw() {
 
 function drawStartScreen() {
   // Dark gradient overlay
-  drawGradientRect(0, 0, 640, 360, rgba8(0, 10, 20, 220), rgba8(20, 0, 40, 240), true);
+  nova64.ui.drawGradientRect(
+    0,
+    0,
+    640,
+    360,
+    nova64.draw.rgba8(0, 10, 20, 220),
+    nova64.draw.rgba8(20, 0, 40, 240),
+    true
+  );
 
   // Animated title
   const pulse = Math.sin(startScreenTime * 3) * 0.3 + 0.7;
   const bounce = Math.sin(startScreenTime * 2) * 8;
 
-  setFont('huge');
-  setTextAlign('center');
+  nova64.ui.setFont('huge');
+  nova64.ui.setTextAlign('center');
 
   // Title with color shift
   const r = Math.floor(128 + Math.sin(startScreenTime * 2) * 127);
   const g = Math.floor(128 + Math.sin(startScreenTime * 2 + 2) * 127);
   const b = Math.floor(128 + Math.sin(startScreenTime * 2 + 4) * 127);
 
-  drawTextShadow('NOVA64', 320, 50 + bounce, rgba8(r, g, b, 255), rgba8(0, 0, 0, 255), 6, 1);
+  nova64.ui.drawTextShadow(
+	'NOVA64',
+    320,
+    50 + bounce,
+    nova64.draw.rgba8(r, g, b, 255),
+    nova64.draw.rgba8(0, 0, 0, 255),
+    6,
+    1
+  );
 
-  setFont('large');
-  const cyan = rgba8(0, 255, 255, Math.floor(pulse * 255));
-  drawTextOutline('DEMOSCENE', 320, 110, cyan, rgba8(0, 0, 0, 255), 2);
+  nova64.ui.setFont('large');
+  const cyan = nova64.draw.rgba8(0, 255, 255, Math.floor(pulse * 255));
+  nova64.ui.drawTextOutline('DEMOSCENE', 320, 110, cyan, nova64.draw.rgba8(0, 0, 0, 255), 2);
 
   // Subtitle
-  setFont('normal');
-  const magenta = rgba8(255, 0, 255, 255);
-  drawText('▶ TRON ODYSSEY ◀', 320, 145, magenta, 1);
+  nova64.ui.setFont('normal');
+  const magenta = nova64.draw.rgba8(255, 0, 255, 255);
+  nova64.ui.drawText('▶ TRON ODYSSEY ◀', 320, 145, magenta, 1);
 
   // Info panel
-  const panel = createPanel(centerX(500), 210, 500, 200, {
-	bgColor: rgba8(10, 0, 20, 200),
-	borderColor: rgba8(0, 255, 255, 255),
-	borderWidth: 3,
-	shadow: true,
-	gradient: true,
-	gradientColor: rgba8(20, 0, 40, 200),
+  const panel = nova64.ui.createPanel(_local_centerX(500), 210, 500, 200, {
+    bgColor: nova64.draw.rgba8(10, 0, 20, 200),
+    borderColor: nova64.draw.rgba8(0, 255, 255, 255),
+    borderWidth: 3,
+    shadow: true,
+    gradient: true,
+    gradientColor: nova64.draw.rgba8(20, 0, 40, 200),
   });
-  drawPanel(panel);
+  nova64.draw.drawPanel(panel);
 
-  setFont('small');
-  setTextAlign('center');
-  drawText('A VISUAL SHOWCASE OF NOVA64 CAPABILITIES', 320, 225, uiColors.warning, 1);
-  drawText('', 320, 240, uiColors.light, 1);
-  drawText('✨ BLOOM & POST-PROCESSING EFFECTS', 320, 255, uiColors.light, 1);
-  drawText('🎨 DYNAMIC SHADER MATERIALS', 320, 270, uiColors.light, 1);
-  drawText('💫 GPU-ACCELERATED PARTICLES', 320, 285, uiColors.light, 1);
-  drawText('🎬 CINEMATIC CAMERA CHOREOGRAPHY', 320, 300, uiColors.light, 1);
-  drawText('🌈 PROCEDURAL NEON GEOMETRY', 320, 315, uiColors.light, 1);
+  nova64.ui.setFont('small');
+  nova64.ui.setTextAlign('center');
+  nova64.ui.drawText('A VISUAL SHOWCASE OF NOVA64 CAPABILITIES', 320, 225, uiColors.warning, 1);
+  nova64.ui.drawText('', 320, 240, uiColors.light, 1);
+  nova64.ui.drawText('✨ BLOOM & POST-PROCESSING EFFECTS', 320, 255, uiColors.light, 1);
+  nova64.ui.drawText('🎨 DYNAMIC SHADER MATERIALS', 320, 270, uiColors.light, 1);
+  nova64.ui.drawText('💫 GPU-ACCELERATED PARTICLES', 320, 285, uiColors.light, 1);
+  nova64.ui.drawText('🎬 CINEMATIC CAMERA CHOREOGRAPHY', 320, 300, uiColors.light, 1);
+  nova64.ui.drawText('🌈 PROCEDURAL NEON GEOMETRY', 320, 315, uiColors.light, 1);
 
-  setFont('tiny');
-  drawText(
+  nova64.ui.setFont('tiny');
+  nova64.ui.drawText(
 	'Journey through 5 unique scenes showcasing the engine',
-	320,
-	335,
-	uiColors.secondary,
-	1
+    320,
+    335,
+    uiColors.secondary,
+    1
   );
 
   // Draw buttons
-  drawAllButtons();
+  nova64.ui.drawAllButtons();
 
   // Pulsing prompt
   const alpha = Math.floor((Math.sin(startScreenTime * 5) * 0.5 + 0.5) * 255);
-  setFont('normal');
-  drawText('▶ PRESS BEGIN OR SPACEBAR TO START ◀', 320, 375, rgba8(0, 255, 255, alpha), 1);
+  nova64.ui.setFont('normal');
+  nova64.ui.drawText(
+	'▶ PRESS BEGIN OR SPACEBAR TO START ◀',
+    320,
+    375,
+    nova64.draw.rgba8(0, 255, 255, alpha),
+    1
+  );
 
   // Credits
-  setFont('tiny');
-  drawText('CONTROLS: CLICK BUTTON OR PRESS SPACE/ENTER', 320, 395, rgba8(150, 150, 200, 200), 1);
-  drawText('NOVA64 - THE ULTIMATE FANTASY CONSOLE', 320, 410, rgba8(100, 100, 150, 180), 1);
+  nova64.ui.setFont('tiny');
+  nova64.ui.drawText(
+	'CONTROLS: CLICK BUTTON OR PRESS SPACE/ENTER',
+    320,
+    395,
+    nova64.draw.rgba8(150, 150, 200, 200),
+    1
+  );
+  nova64.ui.drawText(
+	'NOVA64 - THE ULTIMATE FANTASY CONSOLE',
+    320,
+    410,
+    nova64.draw.rgba8(100, 100, 150, 180),
+    1
+  );
 }
 
 function drawDemoHUD() {
+  cls(rgba8(0, 0, 0, 0));
+
   // Minimal HUD during demo
   const scene = SCENES[currentScene];
   const progress = (sceneTime / scene.duration) * 100;
 
   // Scene info panel - top left
   const panelWidth = 280;
-  rect(16, 16, panelWidth, 90, rgba8(0, 0, 20, 200), true);
-  rect(16, 16, panelWidth, 90, scene.color, false);
+  nova64.draw.rect(16, 16, panelWidth, 90, nova64.draw.rgba8(0, 0, 20, 200), true);
+  nova64.draw.rect(16, 16, panelWidth, 90, scene.color, false);
 
-  setFont('normal');
-  setTextAlign('left');
-  print('🎬 DEMOSCENE', 24, 24, rgba8(255, 255, 255, 255));
+  nova64.ui.setFont('normal');
+  nova64.ui.setTextAlign('left');
+  nova64.draw.print('🎬 DEMOSCENE', 24, 24, nova64.draw.rgba8(255, 255, 255, 255));
 
-  setFont('small');
-  print(
-	`Scene ${currentScene + 1}/${SCENES.length}: ${scene.name}`,
-	24,
-	45,
-	rgba8(200, 200, 255, 255)
+  nova64.ui.setFont('small');
+  nova64.draw.print(
+    `Scene ${currentScene + 1}/${SCENES.length}: ${scene.name}`,
+    24,
+    45,
+    nova64.draw.rgba8(200, 200, 255, 255)
   );
 
   // Progress bar
   const barWidth = panelWidth - 16;
   const barFill = (progress / 100) * barWidth;
 
-  rect(24, 62, barWidth, 8, rgba8(40, 40, 60, 200), true);
-  rect(24, 62, barFill, 8, scene.color, true);
-  rect(24, 62, barWidth, 8, rgba8(255, 255, 255, 100), false);
+  nova64.draw.rect(24, 62, barWidth, 8, nova64.draw.rgba8(40, 40, 60, 200), true);
+  nova64.draw.rect(24, 62, barFill, 8, scene.color, true);
+  nova64.draw.rect(24, 62, barWidth, 8, nova64.draw.rgba8(255, 255, 255, 100), false);
 
-  setFont('tiny');
-  print(`${progress.toFixed(1)}%`, 24, 78, rgba8(150, 150, 200, 255));
-  print(`Time: ${sceneTime.toFixed(1)}s / ${scene.duration}s`, 24, 90, rgba8(150, 150, 200, 255));
+  nova64.ui.setFont('tiny');
+  nova64.draw.print(`${progress.toFixed(1)}%`, 24, 78, nova64.draw.rgba8(150, 150, 200, 255));
+  nova64.draw.print(
+    `Time: ${sceneTime.toFixed(1)}s / ${scene.duration}s`,
+    24,
+    90,
+    nova64.draw.rgba8(150, 150, 200, 255)
+  );
 
   // Effect status - top right
   const statsX = 640 - 200;
-  rect(statsX - 16, 16, 200, 65, rgba8(0, 0, 20, 200), true);
-  rect(statsX - 16, 16, 200, 65, rgba8(255, 0, 255, 255), false);
+  nova64.draw.rect(statsX - 16, 16, 200, 65, nova64.draw.rgba8(0, 0, 20, 200), true);
+  nova64.draw.rect(statsX - 16, 16, 200, 65, nova64.draw.rgba8(255, 0, 255, 255), false);
 
-  setFont('tiny');
-  setTextAlign('left');
-  print('EFFECTS ACTIVE:', statsX - 8, 24, rgba8(255, 255, 255, 255));
-  print('✓ BLOOM', statsX - 8, 37, rgba8(0, 255, 0, 255));
-  print('✓ FXAA', statsX - 8, 48, rgba8(0, 255, 0, 255));
-  print('✓ PARTICLES', statsX - 8, 59, rgba8(0, 255, 0, 255));
-  print('✓ FOG', statsX - 8, 70, rgba8(0, 255, 0, 255));
+  nova64.ui.setFont('tiny');
+  nova64.ui.setTextAlign('left');
+  nova64.draw.print('EFFECTS ACTIVE:', statsX - 8, 24, nova64.draw.rgba8(255, 255, 255, 255));
+  nova64.draw.print('✓ BLOOM', statsX - 8, 37, nova64.draw.rgba8(0, 255, 0, 255));
+  nova64.draw.print('✓ FXAA', statsX - 8, 48, nova64.draw.rgba8(0, 255, 0, 255));
+  nova64.draw.print('✓ PARTICLES', statsX - 8, 59, nova64.draw.rgba8(0, 255, 0, 255));
+  nova64.draw.print('✓ FOG', statsX - 8, 70, nova64.draw.rgba8(0, 255, 0, 255));
 
   // Scene description - bottom
-  rect(16, 360 - 45, 640 - 32, 30, rgba8(0, 0, 20, 220), true);
+  nova64.draw.rect(16, 360 - 45, 640 - 32, 30, nova64.draw.rgba8(0, 0, 20, 220), true);
 
-  setFont('small');
-  setTextAlign('center');
+  nova64.ui.setFont('small');
+  nova64.ui.setTextAlign('center');
   const desc = getSceneDescription(currentScene);
-  print(desc, 320, 360 - 35, rgba8(255, 255, 100, 255));
+  nova64.draw.print(desc, 320, 360 - 35, nova64.draw.rgba8(255, 255, 100, 255));
 
   // Nova64 watermark
-  setFont('tiny');
-  print('NOVA64 - POWERED BY THREE.JS', 320, 360 - 20, rgba8(100, 100, 150, 200));
+  nova64.ui.setFont('tiny');
+  nova64.draw.print(
+	'NOVA64 - POWERED BY THREE.JS',
+    320,
+    360 - 20,
+    nova64.draw.rgba8(100, 100, 150, 200)
+  );
 
   // Transition overlay
   if (transitioning) {
-	const alpha = Math.floor(Math.sin(transitionProgress * Math.PI) * 200);
-	rect(0, 0, 640, 360, rgba8(0, 0, 0, alpha), true);
+    const alpha = Math.floor(Math.sin(transitionProgress * Math.PI) * 200);
+    nova64.draw.rect(0, 0, 640, 360, nova64.draw.rgba8(0, 0, 0, alpha), true);
 
-	if (transitionProgress > 0.4 && transitionProgress < 0.6) {
-	  setFont('large');
-	  setTextAlign('center');
-	  const nextScene = SCENES[currentScene + 1] || SCENES[0];
-	  drawTextShadow(
-		nextScene.name,
-		320,
-		180,
-		rgba8(255, 255, 255, 255),
-		rgba8(0, 0, 0, 255),
-		4,
-		1
-	  );
-	}
+    if (transitionProgress > 0.4 && transitionProgress < 0.6) {
+	  nova64.ui.setFont('large');
+	  nova64.ui.setTextAlign('center');
+      const nextScene = SCENES[currentScene + 1] || SCENES[0];
+      nova64.ui.drawTextShadow(
+        nextScene.name,
+        320,
+        180,
+        nova64.draw.rgba8(255, 255, 255, 255),
+        nova64.draw.rgba8(0, 0, 0, 255),
+        4,
+        1
+      );
+    }
   }
 }
 
@@ -1216,6 +1617,6 @@ function getSceneDescription(sceneIndex) {
 }
 
 // Utility functions
-function centerX(width) {
+function _local_centerX(width) {
   return (640 - width) / 2;
 }

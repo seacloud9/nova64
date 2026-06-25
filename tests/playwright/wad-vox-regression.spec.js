@@ -126,6 +126,12 @@ test.describe('WAD Regression', () => {
       page,
     }) => {
       const logs = collectConsole(page);
+      await page.addInitScript(() => {
+        globalThis.__nova64WindowPrintCalls = 0;
+        globalThis.print = () => {
+          globalThis.__nova64WindowPrintCalls++;
+        };
+      });
 
       await loadCart(page, 'wad-demo', backend);
 
@@ -141,6 +147,7 @@ test.describe('WAD Regression', () => {
       expect(menuState?.mapCount ?? 0).toBeGreaterThan(0);
       expect(menuState?.currentMap).toBeTruthy();
 
+      await pressKey(page, 'ArrowDown', 50);
       await pressKey(page, 'Enter', 100);
 
       await expect
@@ -156,6 +163,7 @@ test.describe('WAD Regression', () => {
       expect(playingState?.texturedFloorCount ?? 0).toBeGreaterThan(0);
 
       await page.waitForTimeout(1000);
+      await expect(page.evaluate(() => globalThis.__nova64WindowPrintCalls ?? 0)).resolves.toBe(0);
 
       const hiddenMeshCount = await getHiddenSceneMeshCount(page);
       expect(hiddenMeshCount).toBeGreaterThan(0);

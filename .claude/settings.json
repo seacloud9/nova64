@@ -1,5 +1,52 @@
 {
   "permissions": {
-    "allow": []
+    "allow": [
+      "Bash(git status *)",
+      "Bash(awk -F'\"' '/1113|1114|1115|1116/{print NR-1\": \"$2}')",
+      "Bash(awk -F'-' '{print $1}')",
+      "Bash(awk 'BEGIN{prev=-1} {if\\($1!=prev+1 && prev!=-1\\) print \"gap \"prev\"→\"$1; prev=$1} END{print \"total numeric carts=\"NR\" highest=\"$1}')",
+      "Bash(awk -F'-' '{n=$1; if\\(n>=135 && n<=1098\\) print}')",
+      "Bash(sort -t- -k1 -n)",
+      "Bash(awk -F'-' '{n=$1; if\\(n>=135 && n<=1098 && n!=294\\) print}')",
+      "Bash(awk -F'.js' '{f=$1; gsub\\(/-/,\" \",f\\); sub\\(/^\\([0-9]+\\) /, \"& - \", f\\); printf \"| `%s.js` | %s |\\\\n\", $1, f}')",
+      "Bash(awk -F'.js' '{name=$1; desc=name; sub\\(/^[0-9]+-/, \"\", desc\\); gsub\\(/-/, \" \", desc\\); printf \"| `%s.js` | %s |\\\\n\", name, desc}')",
+      "Bash(cp /tmp/readme-rows.txt /mnt/c/tmp/readme-rows.txt && wc -l /mnt/c/tmp/readme-rows.txt)",
+      "Bash(python3 -c \"import sys, json; p=json.loads\\(sys.stdin.read\\(\\)\\); print\\('name:', p.get\\('name'\\)\\); print\\('scripts:', p.get\\('scripts'\\)\\)\")",
+      "Bash(xargs -I {} sh -c 'echo \"{}:\"; head -20 examples/{}/code.js 2>/dev/null | grep -E \"init|update|draw|fill\\\\\\(\" | head -3')",
+      "Bash(chmod +x /c/Users/brend/exp/nova64/tmp/run_babylon_shader_check.sh)",
+      "Bash(wsl -- bash /mnt/c/Users/brend/exp/nova64/tmp/run_babylon_shader_check.sh)",
+      "PowerShell(wsl -e bash -lc \"source ~/.nvm/nvm.sh; nvm use 20 >/dev/null; cd /mnt/c/Users/brend/exp/nova64 && bash tmp/run_babylon_shader_check.sh 2>&1 | tail -80\")",
+      "Bash(node --check runtime/api-loader.js)",
+      "Bash(node --check runtime/api-story.js)",
+      "Bash(node --check runtime/api-level.js)",
+      "Bash(node --check runtime/api-video.js)",
+      "Bash(node --check src/main.js)",
+      "Bash(node --check examples/hello-helpers/code.js)",
+      "Bash(bash scripts/sync-carts.sh)",
+      "Bash(cd /c/Users/brend/exp/nova64 && grep -n \"indie-odyssey\\\\|wizardry\" nova64-godot/README.md 2>/dev/null | head -5)",
+      "Read(//c/c/Users/brend/exp/nova64/nova64-godot/**)",
+      "Bash(git check-ignore *)",
+      "mcp__mempalace__mempalace_list_drawers",
+      "mcp__mempalace__mempalace_update_drawer",
+      "Bash(powershell.exe -NoProfile -Command \"Get-Process retroarch -ErrorAction SilentlyContinue | Select-Object -First 1 ProcessName,Id\")",
+      "Bash(awk '{print $5}')",
+      "PowerShell(Start-Process chrome.exe -ArgumentList '--remote-debugging-port=9222','--user-data-dir=C:\\\\tmp\\\\chrome-net-debug','--no-first-run','--no-default-browser-check','http://localhost:3001/console.html?demo=multiplayer-lobby'; Start-Sleep -Seconds 4; \\(Invoke-WebRequest -Uri 'http://127.0.0.1:9222/json/version' -UseBasicParsing\\).StatusCode)",
+      "mcp__chrome-devtools__navigate_page",
+      "mcp__chrome-devtools__list_console_messages",
+      "mcp__chrome-devtools__evaluate_script",
+      "mcp__chrome-devtools__take_snapshot",
+      "WebFetch(domain:docs.colyseus.io)",
+      "WebFetch(domain:github.com)",
+      "Bash(gh auth *)",
+      "Bash(gh api *)",
+      "Bash(wsl hostname *)",
+      "PowerShell(cd \"C:\\\\Users\\\\brend\\\\exp\\\\nova64\"; git push origin main 2>&1 | Select-Object -Last 8; \"exit:$LASTEXITCODE\")",
+      "PowerShell(wsl --shutdown)",
+      "PowerShell(\"shutdown done\")"
+    ],
+    "additionalDirectories": [
+      "\\tmp",
+      "C:\\Users\\brend"
+    ]
   }
 }

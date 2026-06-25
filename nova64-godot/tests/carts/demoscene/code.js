@@ -5,9 +5,10 @@
 /* eslint-disable no-undef */
 // Nova64 runtime provides these globals: enableBloom, enableFXAA, setBloomStrength, etc.
 
-const { drawPanel, print, rect, rgba8 } = nova64.draw;
+const { cls, drawPanel, print, rect, rgba8 } = nova64.draw;
 const {
   createAdvancedCube,
+  clearScene,
   createCube,
   createSphere,
   destroyMesh,
@@ -200,8 +201,8 @@ function initStartScreen() {
 async function buildStartScene() {
   // === VAPORWAVE DEMOSCENE INTRO ===
   // 1. Procedural Noise Terrain
-  for (let x = -60; x <= 60; x += 3) {
-    for (let z = -60; z <= 60; z += 3) {
+  for (let x = -60; x <= 60; x += 2.5) {
+    for (let z = -72; z <= 48; z += 2.5) {
       // Procedural height mapping using simplex noise
       const height = simplexNoise2D(x, z, 3, 0.5, 2.0, 0.04) * 8 + 4;
 
@@ -216,12 +217,12 @@ async function buildStartScene() {
         {
           color: tColor,
           emissive: tColor,
-          emissiveIntensity: (height / 12) * 0.5, // Brighter peaks
+          emissiveIntensity: 0.35 + (height / 12) * 0.55, // Brighter peaks
           flatShading: true,
         },
         [x, height / 2 - 5, z]
       );
-      setScale(tBlock, 1, height, 1);
+      setScale(tBlock, 1.08, height, 1.08);
 
       // Store in terrainBlocks to be animated/moved if needed, or simply leave them static
       terrainBlocks.push({ mesh: tBlock, isTerrain: true, origY: height / 2 - 5 });
@@ -963,22 +964,44 @@ function transitionToNextScene() {
   console.log(`✨ Now showing: ${SCENES[currentScene].name}`);
 }
 
+function destroyTrackedMesh(mesh) {
+  if (mesh) destroyMesh(mesh);
+}
+
 function cleanupScene() {
-  // Remove all dynamic objects (keep start scene for now)
-  dataStreams.forEach(s => destroyMesh(s.mesh));
+  // Remove all scene-owned geometry so each scene starts from a clean render state.
+  dataStreams.forEach(s => destroyTrackedMesh(s.mesh));
   dataStreams = [];
 
-  pulseRings.forEach(r => destroyMesh(r.mesh));
+  pulseRings.forEach(r => destroyTrackedMesh(r.mesh));
   pulseRings = [];
 
   lightCycles.forEach(c => {
-    destroyMesh(c.body);
-    destroyMesh(c.trail);
+    destroyTrackedMesh(c.body);
+    destroyTrackedMesh(c.trail);
   });
   lightCycles = [];
 
-  energyFields.forEach(f => destroyMesh(f.mesh));
+  energyFields.forEach(f => destroyTrackedMesh(f.mesh));
   energyFields = [];
+
+  tunnelSegments.forEach(t => destroyTrackedMesh(t.mesh));
+  tunnelSegments = [];
+
+  digitalTowers.forEach(t => destroyTrackedMesh(t.mesh));
+  digitalTowers = [];
+
+  particleSystems.forEach(p => destroyTrackedMesh(p.mesh));
+  particleSystems = [];
+
+  if (gridFloor) {
+    destroyTrackedMesh(gridFloor);
+    gridFloor = null;
+  }
+  terrainBlocks.forEach(t => destroyTrackedMesh(t.mesh));
+  terrainBlocks = [];
+
+  if (typeof clearScene === 'function') clearScene();
 }
 
 function setupScene(_sceneIndex) {
@@ -1083,6 +1106,8 @@ function drawStartScreen() {
 }
 
 function drawDemoHUD() {
+  cls(rgba8(0, 0, 0, 0));
+
   // Minimal HUD during demo
   const scene = SCENES[currentScene];
   const progress = (sceneTime / scene.duration) * 100;

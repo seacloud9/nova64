@@ -4,8 +4,17 @@
 prove parity by pointing Godot + RetroArch at the web carts, keeping the old
 versions as `_old` backups until parity is verified, then deleting them.
 
-**Status:** in progress, **NOTHING COMMITTED** (per user: don't commit until done).
-Everything below is in the working tree / local config only.
+**Status:** historical handoff. The consolidation and parity fixes were committed
+as `b9b9995` (`Consolidate carts and fix Nova64 parity regressions`). This file
+is kept as background context; see the current source tree for the authoritative
+state.
+
+Current follow-up from the metaverse pass:
+- `examples/metaverse` has been restored as the source of truth for the
+  metaverse framework and its headless tests.
+- `scripts/godot.sh sync` tolerates the local Windows junction state where
+  `nova64-godot/godot_project/carts/metaverse` already points at
+  `examples/metaverse`.
 
 ---
 
@@ -72,21 +81,15 @@ Everything below is in the working tree / local config only.
 User reviewed Godot: **most non-`_old` (web) carts "just work."** Exceptions found:
 
 1. **indie-odyssey** — BigInt color error → **FIXED** (shim, above).
-2. **space-harrier-3d — renders BLACK on "start the game" (NOT fixed, diagnosed):**
+2. **space-harrier-3d — transparent-clear black screen (resolved later):**
    - `draw()` calls `nova64.draw.cls(rgba8(0,0,0,0))` — a **transparent** clear so the
      3D shows through. On Godot, `rgba8(0,0,0,0)===0`, and `colorFromHex(0)` (since
      `0` is not `> 0xffffff`) returns **opaque** black (alpha defaults to 1) → the 2D
      overlay fills opaque black over the 3D → black screen. (Start screen uses an
      opaque `cls`, so it shows — matches "start screen ok, game black".)
-   - **Complication:** web has multiple `cls` impls. `runtime/api.js:63` `cls` ignores
-     a non-BigInt color and fills opaque black too — so the 3D web carts must use a
-     *different* overlay-clear path. **The correct fix needs identifying which web
-     `cls`/overlay-clear 3D carts use and matching its transparent-clear semantics on
-     Godot** (likely: make the Godot overlay `cls` treat a fully-transparent / `0`
-     color as "clear overlay to transparent" rather than fill). Be careful not to
-     break carts that intend `cls(0x000000)` = opaque black.
-   - Secondary: space-harrier uses `material: 'holographic'` but the Godot shim only
-     recognizes `'hologram'` — unsupported material → wrong/black 3D surfaces.
+   - Later work aligned Godot transparent overlay clears with the web behavior
+     and added the material alias needed by the cart. Keep this note as the
+     original diagnosis, not an active blocker.
 
 ---
 
@@ -98,12 +101,13 @@ User reviewed Godot: **most non-`_old` (web) carts "just work."** Exceptions fou
 - Deploy/playlist scripts that referenced `retroarch/games` need repointing to
   `examples` (or regenerate via `build:nova`) — `games_old` is the backup.
 
-## Before any commit
-- Add `examples/**/*.import` to `.gitignore` (Godot writes `.import` into web folders
-  through the junctions when the editor opens them; saw `examples/wad-demo/meta.json.import`).
-- Decide the committable Godot end-state (junctions don't commit — see above).
-- The `.nova` (esp. 44 MB indie-odyssey) — decide if they belong in git or are built
-  artifacts (gitignore + `build:nova` on demand).
+## Post-commit notes
+- Generated `.import` sidecars and `.nova` bundles were committed as part of the
+  consolidation snapshot where needed.
+- Local-only backups/scratch are ignored: `retroarch/games_old/`, `tmp/`, and
+  `.playwright-mcp/`.
+- Godot cart junctions are still local-only. The committed source of truth is
+  `examples/`; scripts must either copy from there or tolerate the junction.
 
 ## Backups (safe to delete only after parity verified)
 - Godot: `carts/<cart>_old` (78), and the originals are intact.

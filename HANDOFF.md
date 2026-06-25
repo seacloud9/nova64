@@ -195,10 +195,14 @@ a041943 feat(retroarch): real MPEG1 video via pl_mpeg (replaces frame slideshow)
 ```
 
 ## 5. Open items
-- Godot **TV** + Godot **fullscreen** video: implemented, **need a live editor
-  run** to confirm (no headless Godot here). White-square already fixed; watch
-  for a *frozen* frame → SubViewport fallback.
-- Multiplayer: `api-net.js` / `api-auth.js` / `multiplayer-lobby` not yet
-  written (next). Supabase + Google creds needed for a real auth test.
+- Godot **TV** is implemented and has been confirmed in-editor; fullscreen video
+  is still worth an occasional live spot-check. If a video texture ever freezes
+  on the first frame, use the documented SubViewport fallback.
+- Multiplayer core has moved past the Phase 1 placeholder: `runtime/api-net.js`,
+  `runtime/api-auth.js`, `examples/multiplayer-lobby`, and the metaverse
+  framework exist. Remaining auth work is real Supabase Google credentials,
+  Godot OAuth (`OS.shell_open` + loopback `TCPServer`), and wallet UX outside web.
+- Metaverse source is `examples/metaverse`; `pnpm test:metaverse` is the focused
+  cart-side regression suite.
 - RetroArch in-world video model dirties one frame of white before first decode
   (acceptable). RetroArch multiplayer is unsolved by design (no sockets).

@@ -30,6 +30,9 @@ sync_metaverse() {
   local src="$ROOT/examples/metaverse"
   local dst="$ROOT/nova64-godot/godot_project/carts/metaverse"
   [ -d "$src" ] || return 0
+  if [ -e "$dst" ] && [ "$(realpath "$src")" = "$(realpath "$dst")" ]; then
+    return 0
+  fi
   mkdir -p "$dst/core" "$dst/plugins"
   cp "$src/code.js" "$dst/code.js"
   cp "$src/core/"*.js "$dst/core/"

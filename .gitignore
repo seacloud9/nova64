@@ -20,6 +20,9 @@ os9-shellMobile/node_modules
 /coverage
 /.nyc_output
 /playwright-report
+/tmp/
+/.playwright-mcp/
+/.claude/scheduled_tasks.lock
 /test-results
 /testout.txt
 /c8out.txt
@@ -27,6 +30,7 @@ os9-shellMobile/node_modules
 # production
 /build
 /retroarch/build/
+/retroarch/games_old/
 /retroarch/*.a
 /retroarch/*.dll
 /retroarch/*.dylib
@@ -36,6 +40,10 @@ os9-shellMobile/node_modules
 /.sconsign.dblite
 /nova64-godot/gdextension/third_party/quickjs/*.o
 /nova64-godot/gdextension/third_party/quickjs/*.os
+/nova64-godot/gdextension/third_party/quickjs/
+/nova64-godot/godot_project/carts/metaverse/
+/nova64-godot/godot_project/addons/colyseus/bin/~*
+/nova64-godot/godot_project/addons/colyseus/bin/*.TMP
 
 # misc
 .DS_Store

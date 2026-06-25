@@ -19,6 +19,16 @@ plausibly be swapped is behind a seam:
 
 Mobile is a first-class target on every backend ([touch from the start](#5-input--mobile)).
 
+## Current Status
+
+- Source of truth: `examples/metaverse`.
+- Tests: `pnpm test:metaverse` runs the headless cart/plugin suite.
+- Godot: `scripts/godot.sh sync` copies from `examples/metaverse` when needed
+  and no-ops when the local Godot cart folder is already a Windows junction to
+  the source tree.
+- RetroArch: realtime networking is still out of scope until the libretro
+  netpacket research spike.
+
 ---
 
 ## 1. Module layout

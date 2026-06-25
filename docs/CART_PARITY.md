@@ -2,6 +2,13 @@
 
 **Status:** audit / assessment — generated 2026-06-24. **Web is the source of truth.**
 
+**Post-consolidation note:** `b9b9995` moved the active cart set toward
+`examples/` and removed the duplicated tracked payloads from `retroarch/games`.
+Treat the detailed inventory below as historical context for the drift that was
+found during the audit, not as a current file-count report. `retroarch/games_old/`
+is a local ignored backup, and rebuilt `.nova` bundles now live beside their
+`examples/<cart>/code.js` sources.
+
 The goal of the Nova64 runtime is that **one cart `code.js` runs unchanged on all
 three backends.** This document inventories every cart across the backends,
 compares the shared ones against the web version, and lists the discrepancies to

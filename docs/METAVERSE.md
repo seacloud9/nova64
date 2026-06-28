@@ -47,6 +47,7 @@ examples/metaverse/
     presence.js           # floating name tags (world->screen) + join/left toasts
     minimap.js            # top-down radar of all avatars (you + others)
     voice.js              # proximity-free WebRTC voice chat (push-to-talk, web)
+    auth.js               # Google/wallet sign-in controls over nova64.auth
 ```
 
 Each piece has a headless `*.test.mjs` beside it (mock `nova64`, no browser);
@@ -232,6 +233,11 @@ A `/nick` chosen by the user persists in `localStorage` and wins over both the
 random visitor name and the identity name on the next load (same "explicit choice
 beats default" rule as the avatar color).
 
+The `auth` plugin renders a compact identity panel with Google, wallet, and
+sign-out controls. Google uses the Supabase client configured by the web runtime
+from `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY`; wallet uses the
+server's SIWE endpoints and returns in-place.
+
 ## 7. Phased roadmap
 
 - **P1 — shared 3D world** ✅ avatars move + sync; first/third-person. (`8c8d6ef`)
@@ -240,7 +246,8 @@ beats default" rule as the avatar color).
   keyboard); interpolated remote avatars; HUD roster.
 - **P3 — presence & polish** ✅ name tags (world→screen), join/leave toasts,
   avatar color customization via `data`, and `nova64.auth` identity wiring
-  (display name + provider badge + stable per-identity color; guest fallback).
+  (display name + provider badge + stable per-identity color; guest fallback),
+  plus user-facing Google/wallet sign-in controls.
   Deferred: rendering a profile **avatar image** on the cube — remote avatar URLs
   are cross-origin (CORS-tainted in WebGL), absent for guests, and host-specific,
   so it's a later texture-pipeline task, not a quick win.

@@ -105,6 +105,13 @@ export function authApi() {
   }
 
   function makeOAuthProvider(providerName) {
+    function oauthOptions(opts) {
+      const options = Object.assign({}, (opts && opts.options) || {});
+      if (!options.redirectTo && typeof location !== 'undefined' && location && location.href) {
+        options.redirectTo = location.href;
+      }
+      return options;
+    }
     return {
       name: providerName,
       async signIn(opts = {}) {
@@ -115,7 +122,10 @@ export function authApi() {
           };
         }
         const provider = providerName === 'oauth' ? opts.provider || 'google' : providerName;
-        const { error } = await supabase.auth.signInWithOAuth({ provider, options: opts.options });
+        const { error } = await supabase.auth.signInWithOAuth({
+          provider,
+          options: oauthOptions(opts),
+        });
         if (error) return { error: 'oauth_failed', message: error.message };
         // The OAuth redirect navigates away; on return, restore() reads the session.
         return await readSupabaseSession();

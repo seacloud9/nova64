@@ -127,6 +127,8 @@ export function createApp(opts = {}) {
   const nickOverride = lsGet(NICK_KEY) || null;
   let displayName = nickOverride || opts.name || 'Visitor';
   let status = 'starting';
+  let authBusy = false;
+  let authMessage = '';
   let lastSent = 0;
   let prevTouchIds = new Set();
   let consumedPrev = new Set();
@@ -144,6 +146,14 @@ export function createApp(opts = {}) {
     room: () => room,
     me: () => me,
     identity: () => me,
+    auth: {
+      busy: () => authBusy,
+      message: () => authMessage,
+      providers: () =>
+        nova64.auth && typeof nova64.auth.providers === 'function' ? nova64.auth.providers() : [],
+      signIn: provider => signInProvider(provider),
+      signOut: () => signOutIdentity(),
+    },
     input: {
       key: (...c) => {
         const k = nova64.input && (nova64.input.key || nova64.input.isKeyPressed);
@@ -231,6 +241,64 @@ export function createApp(opts = {}) {
     });
   }
 
+  function adoptIdentity(id) {
+    if (!id || id.error) return;
+    me = id;
+    if (id.displayName && !nickOverride) {
+      displayName = id.displayName;
+      if (room) room.send('setName', { name: displayName });
+    }
+    applyIdentityColor();
+    sendAppearance();
+  }
+
+  function currentUrl() {
+    try {
+      return typeof location !== 'undefined' && location.href ? location.href : undefined;
+    } catch (_) {
+      return undefined;
+    }
+  }
+
+  async function signInProvider(provider = 'google') {
+    if (!(nova64.auth && nova64.auth.signIn)) {
+      authMessage = 'auth unavailable';
+      return { error: 'auth_unavailable' };
+    }
+    authBusy = true;
+    authMessage = 'signing in...';
+    try {
+      const res = await nova64.auth.signIn(provider, {
+        options: { redirectTo: currentUrl() },
+      });
+      if (res && res.error) {
+        authMessage = res.message || res.error;
+        return res;
+      }
+      if (res) {
+        adoptIdentity(res);
+        authMessage = 'signed in';
+      } else {
+        authMessage = 'complete sign-in in browser';
+      }
+      return res;
+    } catch (e) {
+      authMessage = (e && e.message) || 'sign-in failed';
+      return { error: 'sign_in_failed', message: authMessage };
+    } finally {
+      authBusy = false;
+    }
+  }
+
+  function signOutIdentity() {
+    if (nova64.auth && nova64.auth.signOut) nova64.auth.signOut();
+    me = null;
+    if (!nickOverride) displayName = opts.name || 'Visitor';
+    if (room) room.send('setName', { name: displayName });
+    sendAppearance();
+    authMessage = 'signed out';
+  }
+
   // A signed-in user gets a stable avatar color seeded from their identity (so
   // it's the same every session) — unless they've explicitly picked one.
   function applyIdentityColor() {
@@ -290,10 +358,7 @@ export function createApp(opts = {}) {
       return;
     }
     try {
-      me = await resolveIdentity();
-      // Identity name applies unless the user has a saved nick (their choice wins).
-      if (me && me.displayName && !nickOverride) displayName = me.displayName;
-      applyIdentityColor();
+      adoptIdentity(await resolveIdentity());
       status = 'connecting…';
       const url = globalThis.__NOVA64_NET_URL || opts.netUrl || defaultNetUrl();
       await nova64.net.connect({ url });
@@ -410,10 +475,12 @@ export function createApp(opts = {}) {
       // see is set at join, so a name change there needs a reconnect.
       if (nova64.auth && nova64.auth.onChange) {
         nova64.auth.onChange(id => {
-          if (!id || id.error) return;
-          me = id;
-          applyIdentityColor();
-          sendAppearance();
+          if (!id || id.error) {
+            me = null;
+            sendAppearance();
+            return;
+          }
+          adoptIdentity(id);
         });
       }
       connect(); // non-blocking; world renders immediately

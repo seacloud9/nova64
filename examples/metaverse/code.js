@@ -21,6 +21,7 @@ import { chatPlugin } from './plugins/chat.js';
 import { presencePlugin } from './plugins/presence.js';
 import { minimapPlugin } from './plugins/minimap.js';
 import { voicePlugin } from './plugins/voice.js';
+import { authPlugin } from './plugins/auth.js';
 import { Panel, Text, List, Row, Button } from './core/ui.js';
 
 // Status + live player roster HUD (top-left).
@@ -85,6 +86,7 @@ export function init() {
       presencePlugin(),
       minimapPlugin({ range: 40 }),
       voicePlugin({ pttKey: 'KeyV' }),
+      authPlugin(),
       hudPlugin,
     ],
     name: 'Visitor-' + Math.floor(Math.random() * 1000),

@@ -833,6 +833,68 @@
         __ops.push(['rect', W - inset - bandW, 0, bandW, H, c, true]);
       }
     }
+
+    const __gi = __currentGlitch();
+    if (__gi > 0.01) __appendGlitchOps(__gi);
+  }
+
+  // ── Glitch (Godot parity for nova64.fx.enableGlitch / glitchBurst) ─────────
+  // The Godot host has no GPU glitch pass like the web backend, so we approximate
+  // the channel-split + tear + static look with 2D overlay ops drawn each frame
+  // while active. Pure JS shim — works without rebuilding the GDExtension.
+  let __glitchSteady = 0;
+  let __glitchBurstPeak = 0;
+  let __glitchBurstDur = 0;
+  let __glitchBurstStart = 0;
+  function __currentGlitch() {
+    let gi = __glitchSteady;
+    if (__glitchBurstStart) {
+      const t = (Date.now() - __glitchBurstStart) / __glitchBurstDur;
+      if (t >= 1) __glitchBurstStart = 0;
+      else gi = Math.max(gi, __glitchBurstPeak * (1 - t));
+    }
+    return gi;
+  }
+  function __appendGlitchOps(amt) {
+    const W = 640;
+    const H = 360;
+    const t = Date.now();
+    const off = 2 + Math.round(amt * 5);
+    // chromatic edge ghost (cheap channel-split feel)
+    __ops.push(['rect', off, 0, W, H, [1, 0.12, 0.2, 0.1 + amt * 0.22], false]);
+    __ops.push(['rect', -off, 2, W, H, [0.2, 0.5, 1, 0.1 + amt * 0.2], false]);
+    // torn, displaced bright bars
+    const bars = 2 + Math.round(amt * 4);
+    for (let i = 0; i < bars; i++) {
+      const y = ((t * (0.3 + i * 0.13) + i * 97) % H) | 0;
+      const h = 2 + ((i * 7 + (t >> 5)) % 9);
+      const dx = (Math.sin(t * 0.01 + i) * 18 * amt) | 0;
+      __ops.push(['rect', dx, y, W, h, [0.95, 0.3, 0.85, 0.18 + amt * 0.3], true]);
+      __ops.push(['rect', -dx, (y + h + 2) % H, W, 1, [0.2, 0.9, 1, 0.18 + amt * 0.25], true]);
+    }
+    // static speckle
+    const dots = (amt * 60) | 0;
+    for (let i = 0; i < dots; i++) {
+      const x = ((t * 13 + i * 131) % W) | 0;
+      const y = ((t * 7 + i * 311) % H) | 0;
+      __ops.push(['rect', x, y, 2, 2, [1, 1, 1, 0.2 + amt * 0.3], true]);
+    }
+  }
+  function enableGlitch(intensity) {
+    __glitchSteady = Math.max(0, Math.min(1, intensity == null ? 0.5 : intensity));
+    return true;
+  }
+  function setGlitchIntensity(intensity) {
+    __glitchSteady = Math.max(0, Math.min(1, intensity || 0));
+  }
+  function disableGlitch() {
+    __glitchSteady = 0;
+  }
+  function glitchBurst(intensity, duration) {
+    __glitchBurstPeak = Math.max(0, Math.min(1, intensity == null ? 0.6 : intensity));
+    __glitchBurstDur = Math.max(1, (duration == null ? 0.3 : duration) * 1000);
+    __glitchBurstStart = Date.now();
+    return true;
   }
 
   // Host-invoked at end of cart_draw(). One engine.call drains the queue.
@@ -1065,6 +1127,11 @@
   }
   function cls(color) {
     __ops.push(['cls', colorFromHex(color == null ? 0x000000 : color)]);
+  }
+  // Transparent clear for 3D carts — wipes the 2D overlay to fully transparent
+  // so the rendered 3D scene shows through (matches the web runtime's cls3D).
+  function cls3D() {
+    __ops.push(['cls', [0, 0, 0, 0]]);
   }
   function novaPrint(text, x, y, color, scale) {
     const p = __tx(x, y);
@@ -6480,7 +6547,7 @@
   }
   const cameraNs = { setCameraPosition, setCameraTarget, setCameraFOV, setCameraLookAt, getCamera };
   const lightNs = { setLightDirection, setDirectionalLight, setFog, clearFog, createPointLight, removeLight, setPointLightPosition, createSpotLight, createAmbientLight, setAmbientLight, setLightColor, setLightEnergy, createGradientSkybox, createImageSkybox };
-  const drawNs = { cls, print: novaPrint, printCentered, printRight, drawTextBox, textBox: drawTextBox, rect, rectfill, line, image, drawImage, imageRegion, pixel, pset, circle, circfill, ellipse, ellipsefill, arc, bezier, drawRect, drawPanel, drawGlowText, drawGlowTextCentered, drawRadialGradient, drawGradient, drawProgressBar, drawHealthBar, drawPixelBorder, drawCrosshair, drawScanlines, drawNoise, drawTriangle, drawDiamond, drawStarburst, poly, rgba8, screenWidth, screenHeight, colorLerp, colorMix, hslColor, hexColor: function(hex, alpha) { return colorFromHex(hex, alpha); }, n64Palette, measureText, scrollingText, drawWave, drawPulsingText, drawCheckerboard, drawFloatingTexts, drawFloatingTexts3D, createMinimap, drawMinimap, drawSkyGradient };
+  const drawNs = { cls, cls3D, print: novaPrint, printCentered, printRight, drawTextBox, textBox: drawTextBox, rect, rectfill, line, image, drawImage, imageRegion, pixel, pset, circle, circfill, ellipse, ellipsefill, arc, bezier, drawRect, drawPanel, drawGlowText, drawGlowTextCentered, drawRadialGradient, drawGradient, drawProgressBar, drawHealthBar, drawPixelBorder, drawCrosshair, drawScanlines, drawNoise, drawTriangle, drawDiamond, drawStarburst, poly, rgba8, screenWidth, screenHeight, colorLerp, colorMix, hslColor, hexColor: function(hex, alpha) { return colorFromHex(hex, alpha); }, n64Palette, measureText, scrollingText, drawWave, drawPulsingText, drawCheckerboard, drawFloatingTexts, drawFloatingTexts3D, createMinimap, drawMinimap, drawSkyGradient };
   const inputNs = {
     // raw key code surface (web-style codes)
     key, keyp, isKeyDown, isKeyPressed,
@@ -6498,7 +6565,7 @@
     // host hooks
     pollInput,
   };
-  const fxNs = { enablePixelation, enableDithering, enableBloom, setBloomStrength, setBloomRadius, setBloomThreshold, enableFXAA, enableChromaticAberration, enableVignette, setN64Mode, setPSXMode, enableRetroEffects, isEffectsEnabled, enableSSR, enableSSAO, enableVolumetricFog, enableDOF, setExposure, setTonemap, setColorAdjustment, createParticleSystem, setParticleEmitter, emitParticle, burstParticles, updateParticles, removeParticleSystem, getParticleStats, createEmitter2D, updateEmitter2D, drawEmitter2D, burstEmitter2D, clearEmitter2D };
+  const fxNs = { enablePixelation, enableDithering, enableBloom, setBloomStrength, setBloomRadius, setBloomThreshold, enableFXAA, enableChromaticAberration, enableVignette, enableGlitch, disableGlitch, setGlitchIntensity, glitchBurst, setN64Mode, setPSXMode, enableRetroEffects, isEffectsEnabled, enableSSR, enableSSAO, enableVolumetricFog, enableDOF, setExposure, setTonemap, setColorAdjustment, createParticleSystem, setParticleEmitter, emitParticle, burstParticles, updateParticles, removeParticleSystem, getParticleStats, createEmitter2D, updateEmitter2D, drawEmitter2D, burstEmitter2D, clearEmitter2D };
   const uiNs = { createButton, createLabel, createPanel, createSlider, createCheckbox, createDialog, clearButtons, updateAllButtons, drawAllButtons, drawGradientRect, drawPanel, drawText, drawTextShadow, drawTextOutline, setFont, setTextAlign, setTextBaseline, grid, parseCanvasUI, renderCanvasUI, updateCanvasUI, createContainer, addChild, createGraphicsNode, createTextNode, drawStage, uiColors: global.uiColors, centerX: function (w) { return Math.floor((640 - (w || 0)) / 2); }, centerY: function (h) { return Math.floor((360 - (h || 0)) / 2); }, Screen: (function() { function Screen() { this.data = {}; } Screen.prototype.enter = function(d) { this.data = Object.assign({}, this.data, d || {}); }; Screen.prototype.exit = function() {}; Screen.prototype.update = function() {}; Screen.prototype.draw = function() {}; return Screen; }()), getFont: function() { return 'default'; }, uiProgressBar: drawProgressBar };
   const stageNs = { createContainer, addChild, createGraphicsNode, createTextNode, drawStage, createMovieClip, createStage, createScreen, pushScreen, popScreen,
     createShake, triggerShake, updateShake, getShakeOffset,

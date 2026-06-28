@@ -835,7 +835,15 @@
     }
 
     const __gi = __currentGlitch();
-    if (__gi > 0.01) __appendGlitchOps(__gi);
+    if (__hostHasGlitch()) {
+      // Drive the real GPU screen-shader; only call when active or just-ended.
+      if (__gi > 0.001 || __glitchLastSent > 0.001) {
+        call('fx.glitch', { intensity: __gi });
+        __glitchLastSent = __gi;
+      }
+    } else if (__gi > 0.01) {
+      __appendGlitchOps(__gi);
+    }
   }
 
   // ── Glitch (Godot parity for nova64.fx.enableGlitch / glitchBurst) ─────────
@@ -846,6 +854,23 @@
   let __glitchBurstPeak = 0;
   let __glitchBurstDur = 0;
   let __glitchBurstStart = 0;
+  // Prefer the host's real screen-shader glitch (`fx.glitch`) when available;
+  // fall back to the 2D-overlay approximation on hosts that lack it.
+  let __glitchHostSupported = null;
+  let __glitchLastSent = -1;
+  function __hostHasGlitch() {
+    if (__glitchHostSupported === null) {
+      let feats = null;
+      try {
+        const caps = call('host.getCapabilities', {});
+        feats = caps && caps.capabilities && caps.capabilities.features;
+      } catch (_e) {
+        feats = null;
+      }
+      __glitchHostSupported = !!(feats && feats.indexOf && feats.indexOf('fx.glitch') >= 0);
+    }
+    return __glitchHostSupported;
+  }
   function __currentGlitch() {
     let gi = __glitchSteady;
     if (__glitchBurstStart) {

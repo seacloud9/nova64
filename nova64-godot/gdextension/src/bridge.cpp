@@ -19,6 +19,9 @@
 #include <godot_cpp/classes/camera3d.hpp>
 #include <godot_cpp/classes/canvas_layer.hpp>
 #include <godot_cpp/classes/control.hpp>
+#include <godot_cpp/classes/color_rect.hpp>
+#include <godot_cpp/classes/shader.hpp>
+#include <godot_cpp/classes/shader_material.hpp>
 #include <godot_cpp/classes/cylinder_mesh.hpp>
 #include <godot_cpp/classes/directional_light3d.hpp>
 #include <godot_cpp/classes/environment.hpp>
@@ -1092,6 +1095,7 @@ Dictionary Nova64Host::get_capabilities() const {
     features.append("overlay.text");
     features.append("overlay.image");
     features.append("overlay.batch");
+    features.append("fx.glitch");
     features.append("model.load");
     features.append("vox.load");
     features.append("wad.load");
@@ -1161,6 +1165,7 @@ Dictionary Nova64Host::call_bridge(const String &p_method, const Dictionary &p_p
     if (p_method == "overlay.text")               return _cmd_overlay_text(p_payload);
     if (p_method == "overlay.image")              return _cmd_overlay_image(p_payload);
     if (p_method == "overlay.batch")              return _cmd_overlay_batch(p_payload);
+    if (p_method == "fx.glitch")                  return _cmd_fx_glitch(p_payload);
     if (p_method == "model.load")                 return _cmd_model_load(p_payload);
     if (p_method == "vox.load")                   return _cmd_vox_load(p_payload);
     if (p_method == "wad.load")                   return _cmd_wad_load(p_payload);
@@ -3918,6 +3923,74 @@ void Nova64Host::_ensure_overlay() {
     _overlay->set_anchors_and_offsets_preset(Control::PRESET_FULL_RECT);
     _overlay->set_mouse_filter(Control::MOUSE_FILTER_IGNORE);
     _overlay_layer->add_child(_overlay);
+}
+
+// Screen-space glitch post-process: a full-screen ColorRect whose shader reads
+// the composited screen and applies RGB-split + horizontal block tear +
+// scanlines + static, scaled by `intensity`. At intensity 0 it's a pass-through
+// (and we hide it anyway). Sits above the 2D overlay so the whole frame glitches.
+static const char *NOVA64_GLITCH_SHADER = R"(shader_type canvas_item;
+uniform sampler2D screen_tex : hint_screen_texture, filter_linear;
+uniform float intensity = 0.0;
+float rnd(vec2 c) { return fract(sin(dot(c, vec2(12.9898, 78.233))) * 43758.5453); }
+void fragment() {
+    float amt = intensity;
+    vec2 uv = SCREEN_UV;
+    float row = floor(uv.y * 28.0);
+    float seed = floor(TIME * 18.0);
+    float jump = step(0.72, rnd(vec2(row, seed)));
+    float shift = (rnd(vec2(row, seed + 4.0)) - 0.5) * 0.08 * amt * jump;
+    uv.x = fract(uv.x + shift);
+    float ca = (0.004 + 0.004 * amt) * amt;
+    float r = texture(screen_tex, uv + vec2(ca, 0.0)).r;
+    float g = texture(screen_tex, uv).g;
+    float b = texture(screen_tex, uv - vec2(ca, 0.0)).b;
+    vec3 col = vec3(r, g, b);
+    col *= 1.0 - 0.12 * amt * step(0.5, fract(uv.y * 200.0));
+    float tear = step(0.991, rnd(vec2(row, floor(TIME * 40.0))));
+    col += tear * amt * vec3(0.5, 0.1, 0.6);
+    col += (rnd(uv + vec2(TIME)) - 0.5) * 0.10 * amt;
+    COLOR = vec4(col, 1.0);
+}
+)";
+
+void Nova64Host::_ensure_glitch() {
+    if (_glitch_layer != nullptr) return;
+    _glitch_layer = memnew(CanvasLayer);
+    _glitch_layer->set_layer(60); // above the 2D overlay (50)
+    add_child(_glitch_layer);
+
+    _glitch_rect = memnew(ColorRect);
+    _glitch_rect->set_anchors_and_offsets_preset(Control::PRESET_FULL_RECT);
+    _glitch_rect->set_mouse_filter(Control::MOUSE_FILTER_IGNORE);
+    _glitch_rect->set_visible(false);
+
+    Ref<Shader> sh;
+    sh.instantiate();
+    sh->set_code(NOVA64_GLITCH_SHADER);
+    Ref<ShaderMaterial> mat;
+    mat.instantiate();
+    mat->set_shader(sh);
+    _glitch_rect->set_material(mat);
+
+    _glitch_layer->add_child(_glitch_rect);
+}
+
+Dictionary Nova64Host::_cmd_fx_glitch(const Dictionary &p) {
+    double intensity = p.has("intensity") ? static_cast<double>(p["intensity"]) : 0.0;
+    if (intensity < 0.0) intensity = 0.0;
+    if (intensity > 1.0) intensity = 1.0;
+    _ensure_glitch();
+    if (_glitch_rect != nullptr) {
+        Ref<ShaderMaterial> mat = _glitch_rect->get_material();
+        if (mat.is_valid()) {
+            mat->set_shader_parameter("intensity", static_cast<float>(intensity));
+        }
+        _glitch_rect->set_visible(intensity > 0.001);
+    }
+    Dictionary r;
+    r["ok"] = true;
+    return r;
 }
 
 void Nova64Host::_overlay_clear() {

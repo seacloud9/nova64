@@ -158,6 +158,14 @@ private:
     class Control *_overlay = nullptr;
     class CanvasLayer *_video_layer = nullptr;
 
+    // Screen-space glitch post-process (nova64.fx.enableGlitch / glitchBurst).
+    // A full-screen ColorRect on a high CanvasLayer running a shader that reads
+    // the composited screen and applies RGB-split + block tear + scanlines,
+    // scaled by an `intensity` uniform (0 = hidden).
+    void _ensure_glitch();
+    class CanvasLayer *_glitch_layer = nullptr;
+    class ColorRect *_glitch_rect = nullptr;
+
     // ---- Command handlers (one per adapter namespace) -------------------
     Dictionary _cmd_material_create(const Dictionary &p_payload);
     Dictionary _cmd_material_destroy(const Dictionary &p_payload);
@@ -207,6 +215,7 @@ private:
     Dictionary _cmd_overlay_text(const Dictionary &p_payload);
     Dictionary _cmd_overlay_image(const Dictionary &p_payload);
     Dictionary _cmd_overlay_batch(const Dictionary &p_payload);
+    Dictionary _cmd_fx_glitch(const Dictionary &p_payload);
     Dictionary _cmd_model_load(const Dictionary &p_payload);
     Dictionary _cmd_vox_load(const Dictionary &p_payload);
     Dictionary _cmd_wad_load(const Dictionary &p_payload);

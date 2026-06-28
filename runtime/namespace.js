@@ -13,6 +13,7 @@ export const NAMESPACE_MAP = {
   draw: [
     // api.js (2D primitives)
     'cls',
+    'cls3D',
     'pset',
     'line',
     'rect',
@@ -205,6 +206,7 @@ export const NAMESPACE_MAP = {
     'enableGlitch',
     'disableGlitch',
     'setGlitchIntensity',
+    'glitchBurst',
     // Babylon-specific bonus (graceful no-op on Three.js)
     'enableGlow',
     'disableGlow',

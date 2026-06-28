@@ -41,7 +41,12 @@ os9-shellMobile/node_modules
 /nova64-godot/gdextension/third_party/quickjs/*.o
 /nova64-godot/gdextension/third_party/quickjs/*.os
 /nova64-godot/gdextension/third_party/quickjs/
-/nova64-godot/godot_project/carts/metaverse/
+# Godot carts are local Windows junctions into examples/ (created by
+# `pnpm godot <cart>` / scripts/godot-play.mjs). The cart content is tracked in
+# examples/, so the junctions themselves must NOT be tracked — git can't stash
+# "beyond" them, which breaks the lint-staged pre-commit hook.
+/nova64-godot/godot_project/carts/*
+!/nova64-godot/godot_project/carts/.gitkeep
 /nova64-godot/godot_project/addons/colyseus/bin/~*
 /nova64-godot/godot_project/addons/colyseus/bin/*.TMP
 

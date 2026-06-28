@@ -2,5 +2,9 @@
 # Ensure Node 20 / pnpm are on PATH regardless of shell environment
 export PATH="$HOME/.nvm/versions/node/v20.18.1/bin:$PATH"
 
-pnpm exec lint-staged
+# --no-stash: lint-staged's default `git stash` cannot traverse the symlinked
+# nova64-godot/godot_project/carts path ("beyond a symbolic link"), which fails
+# any commit while that tree has uncommitted changes. We still lint/format the
+# staged files; we just skip the stash isolation step.
+pnpm exec lint-staged --no-stash
 

@@ -42,6 +42,7 @@ import { levelApi } from '../runtime/api-level.js';
 import { videoApi } from '../runtime/api-video.js';
 import { netApi } from '../runtime/api-net.js';
 import { authApi } from '../runtime/api-auth.js';
+import { configureSupabaseAuth } from '../runtime/supabase-auth.js';
 import { movieClipApi } from '../runtime/movie-clip.js';
 import { filtersApi } from '../runtime/api-filters.js';
 import { camera2DApi } from '../runtime/camera-2d.js';
@@ -237,6 +238,9 @@ for (const subns of ['loader', 'story', 'level', 'video', 'net', 'auth']) {
   if (nova64api[subns]) globalThis.nova64[subns] = nova64api[subns];
 }
 
+const supabaseClient = configureSupabaseAuth(globalThis.nova64.auth, import.meta.env);
+if (supabaseClient) globalThis.nova64.auth.supabase = supabaseClient;
+
 // inject camera ref into sprite system
 if (nova64api.getCamera) sApi.setCameraRef(nova64api.getCamera());
 
@@ -355,6 +359,13 @@ nova.onCartDidLoad = path => {
 
 let paused = false;
 let stepOnce = false;
+
+// External pause control — lets an embedder (e.g. demo-embed.html pausing the
+// cart while the phone is held in portrait) freeze the loop. Toggles the same
+// flag the in-console Pause button uses.
+globalThis.__nova64SetPaused = v => {
+  paused = !!v;
+};
 let statsEl = document.getElementById('stats');
 let _currentCartPath = '';
 

@@ -155,6 +155,49 @@ Additional guidance:
 - Use the narrowest relevant script first when making targeted changes.
 - Expand to broader validation when a change affects shared runtime behavior, rendering, or cross-backend compatibility.
 
+## Selling / Distribution (Lemon Squeezy)
+
+Nova64 sells prebuilt binaries (standalone desktop apps + RetroArch cores + Godot
+source bundle) as **one product, one price** on Lemon Squeezy. Source stays public
+(MIT) — buyers pay for ready-to-run convenience. **Honor system: no DRM, no license
+keys, no webhook.** Lemon Squeezy hosts the download file; delivery is via its email
++ receipt page. Site deploys on Vercel (static).
+
+One command builds and packages everything for upload:
+
+```bash
+pnpm release:lemon                # build desktop + cores + Godot → dist-lemon/nova64-<version>.zip
+pnpm release:lemon --all-cores    # pull ALL platform cores (desktop+Android+Apple) from the latest GitHub Release
+pnpm release:lemon --skip-build   # package existing artifacts only (no compilers)
+```
+
+Then upload `dist-lemon/nova64-<version>.zip` to Lemon Squeezy → Products → Nova64 →
+replace the download file → Save. That is the entire recurring release job.
+
+- Packager: `scripts/package-lemon-release.mjs`. Output: `dist-lemon/unified_export_build/`
+  (`1-Run-Standalone/`, `2-RetroArch-Cores/{Desktop,Android,Apple}/`, `3-Godot-Source/`)
+  + `START-HERE.txt`, `README.txt`, `SHA256SUMS.txt`, `LICENSE`. The Godot tier copies
+  only **git-tracked** files (excludes the large third-party `godot_project/{assets,data}`).
+- Standalone desktop `.exe`/Linux: `scripts/export-desktop.sh` + the `Windows Desktop` /
+  `Linux/X11` presets (in `export_presets.cfg.example`; the live `.cfg` is gitignored).
+  Needs Godot 4.5 export templates: `GODOT_VERSION=4.5 bash nova64-godot/scripts/install-godot-templates.sh`.
+  One WSL/Linux host cross-exports BOTH Windows and Linux. macOS `.app` is a planned
+  stretch (needs a Mac/CI runner + notarization).
+- All RetroArch cores (incl. iOS/iPadOS arm64 + tvOS) build in
+  `.github/workflows/release-cores.yml`; `--all-cores` pulls them into the bundle.
+- Homepage Buy button lives in `index.html` `#cta` (`lemonsqueezy-button` + `?embed=1`)
+  with lemon.js loaded before `</body>`.
+- Full private runbook: `docs/LEMONSQUEEZY_SELLING.md` (**gitignored** — business ops doc).
+  `dist-lemon/` and the desktop export output are gitignored too.
+
+## Secure commits
+
+A `PreToolUse(Bash)` hook in `.claude/settings.json` runs `scripts/check-secure-commit.mjs`
+before any `git commit` (including WSL-wrapped commits) and **blocks** the commit if staged
+changes contain likely secrets (private keys, cloud/API tokens, hardcoded credentials, a real
+`.env`). Placeholders like `YOUR_KEY`, `<redacted>`, and `*.env.example` are allowed. Never
+commit with `--no-verify` to bypass it. Scan manually with `node scripts/check-secure-commit.mjs --scan`.
+
 ## MemPalace / MCP Memory
 
 Nova64 uses MemPalace as the project memory layer. On Windows, launch MemPalace

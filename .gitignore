@@ -88,3 +88,12 @@ entities.json
 # Video source binaries — the web demo's sample .mp4 is a large external asset,
 # not tracked. Fetch/transcode locally; native carts ship their own .mpg/.ogv.
 *.mp4
+
+# Lemon Squeezy release packaging (built locally, uploaded to LS — never committed)
+dist-lemon/
+
+# Private Lemon Squeezy selling/ops doc (business runbook, keep out of public repo)
+docs/LEMONSQUEEZY_SELLING.md
+
+# Godot desktop export output (standalone .exe/Linux binaries produced locally)
+nova64-godot/godot_project/bin/export/desktop/

@@ -105,6 +105,26 @@ jobs:
             built_name: nova64_libretro_android.so
             asset_name: nova64_libretro_android_x86_64.so
 
+          # ── Apple mobile / TV (Xcode SDKs on macos-latest) ─────────────
+          # iOS arm64 covers iPhone AND iPad (same architecture/core).
+          - target: apple-ios-arm64
+            runner: macos-latest
+            kind: apple
+            apple_platform: ios9
+            apple_sdk: iphoneos
+            apple_sdk_var: IOSSDK
+            built_name: nova64_libretro_ios9.dylib
+            asset_name: nova64_libretro_ios_arm64.dylib
+
+          - target: apple-tvos-arm64
+            runner: macos-latest
+            kind: apple
+            apple_platform: tvos-arm64
+            apple_sdk: appletvos
+            apple_sdk_var: TVOSSDK
+            built_name: nova64_libretro_tvos.dylib
+            asset_name: nova64_libretro_tvos_arm64.dylib
+
     steps:
       - name: Checkout (with submodules)
         uses: actions/checkout@v4
@@ -192,6 +212,16 @@ jobs:
           # The Makefile's `android` platform sets CFLAGS += -DANDROID and
           # SHARED := -shared but doesn't pin CC — pass the NDK clang via env.
           make -C retroarch platform=android CC="$CC" clean all
+
+      # ── Apple iOS / tvOS via Xcode SDKs on macos-latest ───────────────
+      - name: Build (Apple ${{ matrix.apple_platform }})
+        if: matrix.kind == 'apple'
+        run: |
+          SDK_PATH="$(xcrun --sdk ${{ matrix.apple_sdk }} --show-sdk-path)"
+          echo "Using ${{ matrix.apple_sdk }} SDK: $SDK_PATH"
+          # The Makefile's ios9/tvos-arm64 platforms pin CC to `cc -arch arm64
+          # -isysroot $(IOSSDK|TVOSSDK)`; supply the SDK path via the make var.
+          make -C retroarch platform=${{ matrix.apple_platform }} ${{ matrix.apple_sdk_var }}="$SDK_PATH" clean all
 
       - name: Stage artifact under platform-named filename
         run: |

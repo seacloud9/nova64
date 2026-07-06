@@ -130,3 +130,65 @@ permissions/access_checkin_properties=false
 permissions/access_network_state=true
 permissions/internet=true
 
+; ── Desktop standalone exports (used by scripts/export-desktop.sh) ──────────────
+; Copied into export_presets.cfg (gitignored) so buyers get run-without-build
+; .exe / Linux binaries. assets/ and data/ are excluded (large, third-party).
+
+[preset.2]
+
+name="Windows Desktop"
+platform="Windows Desktop"
+runnable=true
+advanced_options=false
+dedicated_server=false
+custom_features=""
+export_filter="all_resources"
+include_filter=""
+exclude_filter="assets/*, data/*"
+export_path="../bin/export/desktop/Nova64-Windows.exe"
+encryption_include_filters=""
+encryption_exclude_filters=""
+seed=0
+encrypt_pck=false
+encrypt_directory=false
+script_export_mode=2
+
+[preset.2.options]
+
+custom_template/debug=""
+custom_template/release=""
+debug/export_console_wrapper=1
+binary_format/embed_pck=false
+binary_format/architecture="x86_64"
+application/company_name="Nova64"
+application/product_name="Nova64"
+application/file_description="Nova64 Fantasy Console"
+ssh_remote_deploy/enabled=false
+
+[preset.3]
+
+name="Linux/X11"
+platform="Linux/X11"
+runnable=true
+advanced_options=false
+dedicated_server=false
+custom_features=""
+export_filter="all_resources"
+include_filter=""
+exclude_filter="assets/*, data/*"
+export_path="../bin/export/desktop/Nova64-Linux.x86_64"
+encryption_include_filters=""
+encryption_exclude_filters=""
+seed=0
+encrypt_pck=false
+encrypt_directory=false
+script_export_mode=2
+
+[preset.3.options]
+
+custom_template/debug=""
+custom_template/release=""
+debug/export_console_wrapper=1
+binary_format/embed_pck=false
+binary_format/architecture="x86_64"
+ssh_remote_deploy/enabled=false

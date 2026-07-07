@@ -56,7 +56,19 @@ echo "[+] Downloading ${TPZ_NAME} (~700 MB)..."
 curl -fL --progress-bar "$TPZ_URL" -o "${WORK_DIR}/templates.tpz"
 
 echo "[+] Extracting..."
-unzip -q "${WORK_DIR}/templates.tpz" -d "$WORK_DIR"
+# .tpz is a plain zip. Prefer unzip; fall back to python3 or bsdtar so this
+# works on minimal WSL images that lack `unzip`.
+if command -v unzip >/dev/null 2>&1; then
+  unzip -q "${WORK_DIR}/templates.tpz" -d "$WORK_DIR"
+elif command -v python3 >/dev/null 2>&1; then
+  python3 -m zipfile -e "${WORK_DIR}/templates.tpz" "$WORK_DIR"
+elif command -v bsdtar >/dev/null 2>&1; then
+  bsdtar -xf "${WORK_DIR}/templates.tpz" -C "$WORK_DIR"
+else
+  echo "[!] No extractor found. Install one: sudo apt-get install -y unzip" >&2
+  echo "    (or run the PowerShell path in docs/LEMONSQUEEZY_SELLING.md)" >&2
+  exit 1
+fi
 
 # tpz extracts a 'templates/' folder. Move its contents (not the folder).
 if [ ! -d "${WORK_DIR}/templates" ]; then

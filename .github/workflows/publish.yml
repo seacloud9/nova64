@@ -1,13 +1,18 @@
-name: Publish to npm
+name: Publish to npm (manual fallback)
 
+# NOTE: The AUTOMATIC npm publish now lives in release-cores.yml as the
+# `npm-publish` job, which is gated on ALL platform cores + tests building green
+# (needs: build). That is the safe path — npm ships only when everything is green.
+#
+# This workflow is a MANUAL, DELIBERATE fallback (workflow_dispatch only). It is
+# NOT gated on the core builds, so use it only for an emergency/hotfix npm
+# publish when you knowingly want to ship the package without the full release.
 on:
-  push:
-    tags:
-      - 'v*.*.*'   # Triggers on version tags like v0.2.0, v1.0.0
+  workflow_dispatch:
 
 jobs:
   publish:
-    name: Publish Package
+    name: Publish Package (manual, ungated)
     runs-on: ubuntu-latest
     permissions:
       contents: write   # needed to create GitHub release

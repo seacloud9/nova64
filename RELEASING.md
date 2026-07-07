@@ -28,8 +28,19 @@ Within ~8–10 minutes, a new GitHub Release will appear with `.so`, `.dll`,
 and `.dylib` cores attached, a `SHA256SUMS.txt`, and a drop-in install
 README.
 
-The same `v*.*.*` tag also triggers the **Publish to npm** workflow
-(`.github/workflows/publish.yml`), so npm and binary cores ship together.
+The same `v*.*.*` tag also publishes the `nova64` package to **npm** — but
+**only after every platform core has built green**. The `npm-publish` job lives
+in `release-cores.yml` and is gated with `needs: build`, so if any core (even
+iOS/tvOS) fails, the npm publish is skipped. This errs on safety: npm and the
+binary cores ship together, or not at all.
+
+Before tagging, run `pnpm ci:check --release` locally — it validates the npm
+publish path (lint, `test:all`, version-not-already-published, `npm publish
+--dry-run`) and compiles the host core, so you don't burn the expensive CI
+matrix on an avoidable failure. (`publish.yml` is now a manual-only,
+`workflow_dispatch` fallback for a deliberate ungated hotfix publish.)
+
+Requires the `NPM_TOKEN` repo secret (Settings → Secrets → Actions).
 
 ---
 

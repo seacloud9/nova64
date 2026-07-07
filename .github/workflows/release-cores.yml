@@ -335,3 +335,50 @@ jobs:
           fail_on_unmatched_files: true
           files: |
             dist-cores/*
+
+  # ── npm publish — SAFETY-GATED ────────────────────────────────────────────
+  # Publishes the `nova64` package to npmjs ONLY after every platform core has
+  # built green (needs: build). `build` fans out across all targets with
+  # fail-fast:false, so a downstream `needs: build` job runs only when the WHOLE
+  # matrix succeeded — one failed core (even iOS/tvOS) skips the npm publish.
+  # Runs on real v*.*.* tag pushes only (not manual cores-only dispatch).
+  # Requires the NPM_TOKEN repo secret. The automatic npm path lives here; the
+  # publish.yml workflow is a manual-only fallback.
+  npm-publish:
+    name: Publish to npm (gated on all cores + tests green)
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.event_name == 'push'
+    permissions:
+      contents: read
+      id-token: write   # npm provenance
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run tests
+        run: pnpm test
+
+      - name: Build
+        run: pnpm run build
+
+      - name: Publish to npm
+        run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

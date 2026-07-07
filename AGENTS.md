@@ -201,9 +201,13 @@ trigger a red CI.
 - `pnpm ci:check` mirrors **ci.yml** blocking gates: `pnpm install --frozen-lockfile`, `pnpm test`,
   `pnpm build` (lint/format are reported but warn-only, matching `continue-on-error`).
 - Pushing a **version tag** auto-runs `pnpm ci:check --release`, which adds the **npm publish**
-  gates from `publish.yml`: lint becomes **blocking** (npm runs `prepublishOnly = lint && test:all
-  && build`), runs `test:all`, checks the version isn't already on npm, and `npm publish --dry-run`.
-- `pnpm ci:check --cores` also builds the host RetroArch core + conformance smoke.
+  gates: lint becomes **blocking** (npm runs `prepublishOnly = lint && test:all && build`), runs
+  `test:all`, checks the version isn't already on npm, `npm publish --dry-run`, and compiles the host
+  RetroArch core (one C file — a strong signal it builds on every platform).
+- **npm publish is safety-gated:** the automatic `nova64` npm publish is the `npm-publish` job in
+  `release-cores.yml` with `needs: build`, so it ships **only after every platform core builds green**
+  (one failed core — even iOS/tvOS — skips it). `publish.yml` is now a manual-only fallback. Needs the
+  `NPM_TOKEN` repo secret.
 - **Cannot be verified locally:** `release-cores.yml`'s macOS/iOS/tvOS jobs need a Mac + Xcode —
   they only go green on GitHub's `macos-latest` runner. The preflight says so explicitly rather than
   pretending. Bypass the hook for WIP with `git push --no-verify`.

@@ -23,9 +23,18 @@
 //   2. Upload dist-lemon/nova64-<version>.zip to the Nova64 product in Lemon Squeezy.
 //
 // Flags:
+// By default it builds the desktop (host + Windows) cores locally and DOWNLOADS
+// the cross-compiled platforms (Android, Raspberry Pi aarch64/armhf, macOS,
+// Apple) from this version's public GitHub Release — no cross-toolchains needed.
+//
 //   --skip-build     Package existing artifacts only; run no compilers/exporters.
-//   --all-cores      Fetch the full 8-platform core set from the latest GitHub
-//                    Release (gh CLI) instead of only building host + Windows.
+//   --all-cores      Download EVERY platform core from the GitHub Release
+//                    (skip the local build entirely).
+//   --no-fetch       Don't touch the network; use locally built cores only.
+//   --repo=owner/nm  Override the GitHub repo to fetch cores from.
+//   --core-tag=T     Release tag to fetch cores from (default v<version>).
+//                    Use --core-tag=latest to grab the newest release — e.g.
+//                    the first one that ships the iOS/iPadOS + tvOS cores.
 //   --no-godot       Skip the Godot GDExtension source bundle.
 //   --no-cores       Skip the RetroArch cores.
 //   --no-desktop     Skip the standalone desktop (.exe / Linux) export.
@@ -51,9 +60,17 @@ const has = (f) => args.includes(f);
 const opt = (name) => { const h = args.find((a) => a.startsWith(`--${name}=`)); return h ? h.split('=')[1] : undefined; };
 const SKIP_BUILD = has('--skip-build');
 const ALL_CORES = has('--all-cores');
+const NO_FETCH = has('--no-fetch');
 const DO_GODOT = !has('--no-godot');
 const DO_CORES = !has('--no-cores');
 const DO_DESKTOP = !has('--no-desktop');
+
+// Cores that can't cross-compile locally (Android, RPi, macOS, Apple) are pulled
+// from the published GitHub Release. Public assets — no auth. By default we look
+// for this version's tag (v<version>); pass --core-tag=latest (or a specific tag)
+// to pull from a newer release — e.g. the one that first ships the iOS/tvOS cores.
+const REPO = opt('repo') || 'seacloud9/nova64';
+const CORE_TAG = opt('core-tag'); // undefined → v<version>; 'latest' → newest release
 
 const OUT_DIR = path.join(ROOT, 'dist-lemon');
 const STAGE = path.join(OUT_DIR, 'unified_export_build');
@@ -132,6 +149,7 @@ function exportAndCollectDesktop(destDir) {
 function coreGroup(name) {
   if (/_android_/i.test(name)) return 'Android';
   if (/_ios_|_ipados_|_tvos_/i.test(name)) return 'Apple';
+  if (/_aarch64|_armhf|_arm64/i.test(name)) return 'Raspberry-Pi';
   return 'Desktop';
 }
 function organizeCores(coresDir) {
@@ -146,27 +164,63 @@ function organizeCores(coresDir) {
   }
   return n;
 }
-function buildAndCollectCores(coresDir) {
-  mkdirp(coresDir);
-  if (ALL_CORES) {
-    step('Fetching ALL-platform cores from latest GitHub Release (desktop + Android + Apple)');
+// Pull cores from the published GitHub Release. Android, Raspberry Pi
+// (aarch64/armhf), macOS and Apple cores need cross-toolchains this machine
+// doesn't have — CI already builds them, so we just download the public assets.
+// wantAll=true fetches every platform; otherwise only assets not already present
+// locally (i.e. the ones we couldn't build here).
+async function fetchCoresFromRelease(coresDir, wantAll) {
+  const ua = { 'User-Agent': 'nova64-packager' };
+  const tag = CORE_TAG && CORE_TAG !== 'latest' ? CORE_TAG : `v${VERSION}`;
+  const useLatest = CORE_TAG === 'latest';
+  step(`Fetching cores from GitHub Release (${REPO} ${useLatest ? 'latest' : tag})`);
+  let rel;
+  try {
+    const url = useLatest
+      ? `https://api.github.com/repos/${REPO}/releases/latest`
+      : `https://api.github.com/repos/${REPO}/releases/tags/${tag}`;
+    let r = await fetch(url, { headers: ua });
+    if (!r.ok && !useLatest) { info(`no ${tag} release; trying latest`); r = await fetch(`https://api.github.com/repos/${REPO}/releases/latest`, { headers: ua }); }
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    rel = await r.json();
+  } catch (e) { warn(`release fetch failed (${e.message}); Android/RPi/Apple cores skipped.`); return; }
+
+  // Descriptive, platform-suffixed core assets only (skip the canonical unprefixed ones).
+  const assets = (rel.assets || []).filter((a) => /^nova64_libretro_.+\.(so|dll|dylib)$/.test(a.name));
+  let got = 0;
+  for (const a of assets) {
+    const dest = path.join(coresDir, a.name);
+    if (!wantAll && fs.existsSync(dest)) continue; // already built locally
     try {
-      execSync(`gh release download --clobber -D "${coresDir}" -p "*.so" -p "*.dll" -p "*.dylib" -p "SHA256SUMS.txt"`, { cwd: ROOT, stdio: 'inherit' });
-      const n = organizeCores(coresDir);
-      ok(`Downloaded + organized ${n} core(s)`); return n;
-    } catch { warn('gh release download failed (gh not logged in / no release yet?); falling back to local build.'); }
+      const r = await fetch(a.browser_download_url, { headers: ua, redirect: 'follow' });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      fs.writeFileSync(dest, Buffer.from(await r.arrayBuffer()));
+      got++; info(`↓ ${a.name}`);
+    } catch (e) { warn(`  failed ${a.name}: ${e.message}`); }
   }
-  if (SKIP_BUILD) info('--skip-build: collecting any pre-built cores from retroarch/');
-  else {
-    sh('Build RetroArch core (host)', 'make -C retroarch clean all');
-    sh('Build RetroArch core (Windows, mingw)', 'make -C retroarch platform=win-cross clean all');
+  if (got) ok(`Downloaded ${got} core(s) from the release`);
+  else info('nothing to download (all present or none matched)');
+}
+
+async function buildAndCollectCores(coresDir) {
+  mkdirp(coresDir);
+  // Local desktop build (host + Windows cross), unless we're pulling everything.
+  if (!ALL_CORES) {
+    if (SKIP_BUILD) info('--skip-build: collecting any pre-built cores from retroarch/');
+    else {
+      sh('Build RetroArch core (host)', 'make -C retroarch clean all');
+      sh('Build RetroArch core (Windows, mingw)', 'make -C retroarch platform=win-cross clean all');
+    }
+    const rc = path.join(ROOT, 'retroarch');
+    for (const [built, asset] of [
+      ['nova64_libretro.so', 'nova64_libretro_linux_x86_64.so'],
+      ['nova64_libretro.dll', 'nova64_libretro_windows_x86_64.dll'],
+      ['nova64_libretro.dylib', 'nova64_libretro_macos_universal.dylib'],
+    ]) copyIfExists(path.join(rc, built), path.join(coresDir, asset));
   }
-  const rc = path.join(ROOT, 'retroarch');
-  for (const [built, asset] of [
-    ['nova64_libretro.so', 'nova64_libretro_linux_x86_64.so'],
-    ['nova64_libretro.dll', 'nova64_libretro_windows_x86_64.dll'],
-    ['nova64_libretro.dylib', 'nova64_libretro_macos_universal.dylib'],
-  ]) copyIfExists(path.join(rc, built), path.join(coresDir, asset));
+  // Fill in Android / RPi / macOS / Apple (and everything, with --all-cores) from CI.
+  if (NO_FETCH) info('--no-fetch: skipping GitHub Release download (local cores only)');
+  else await fetchCoresFromRelease(coresDir, ALL_CORES);
   return organizeCores(coresDir);
 }
 
@@ -272,15 +326,16 @@ SHA256SUMS.txt      Integrity checksums.  LICENSE  MIT.
   Linux   : chmod +x Nova64-Linux.x86_64 && ./Nova64-Linux.x86_64
   macOS   : coming soon — use the RetroArch core or Godot source for now.
 
-② RETROARCH  (cores grouped in Desktop/ Android/ Apple/)
--------------------------------------------------------
+② RETROARCH  (cores grouped by platform)
+----------------------------------------
 Copy the core matching your device into RetroArch's "cores" folder.
   Desktop/
     Windows : nova64_libretro_windows_x86_64.dll   -> nova64_libretro.dll
     Linux   : nova64_libretro_linux_x86_64.so      -> nova64_libretro.so
-              (+ aarch64 / armhf builds for Raspberry Pi & ARM SBCs)
     macOS   : nova64_libretro_macos_universal.dylib -> nova64_libretro.dylib
               (xattr -dr com.apple.quarantine nova64_libretro.dylib)
+  Raspberry-Pi/  aarch64 (Pi 4/5, 64-bit OS) / armhf (Pi 2/3/Zero 2, 32-bit).
+                 Rename to nova64_libretro.so in ~/.config/retroarch/cores/.
   Android/  arm64-v8a / armeabi-v7a / x86_64 — place under your RetroArch
             cores path, rename to nova64_libretro_android.so
   Apple/    iOS/iPadOS (ios_arm64) and Apple TV (tvos_arm64) .dylib cores
@@ -344,11 +399,12 @@ function zipStage(stageDir, zipPath) {
 console.log(`${c.cyn}Nova64 → Lemon Squeezy unified export build${c.rst}  v${VERSION}`);
 info(`runner: ${RUNNER ? RUNNER.kind : '(skip-build)'}   out: dist-lemon/unified_export_build → nova64-${VERSION}.zip`);
 
+async function main() {
 rmrf(STAGE); mkdirp(STAGE);
 
 let desktop = 0, cores = 0, godotLibs = 0;
 if (DO_DESKTOP) desktop = exportAndCollectDesktop(path.join(STAGE, DIR_DESKTOP)); else warn('--no-desktop: skipping standalone apps');
-if (DO_CORES) cores = buildAndCollectCores(path.join(STAGE, DIR_CORES)); else warn('--no-cores: skipping RetroArch cores');
+if (DO_CORES) cores = await buildAndCollectCores(path.join(STAGE, DIR_CORES)); else warn('--no-cores: skipping RetroArch cores');
 if (DO_GODOT) godotLibs = buildAndCollectGodot(path.join(STAGE, DIR_GODOT)); else warn('--no-godot: skipping Godot source');
 
 copyIfExists(path.join(ROOT, 'LICENSE'), path.join(STAGE, 'LICENSE'));
@@ -367,9 +423,12 @@ console.log(`  Godot libs      : ${godotLibs}  (+ godot_project/)`);
 console.log(`  Folder          : ${c.cyn}${path.relative(ROOT, STAGE)}${c.rst}`);
 if (archive) console.log(`  Archive         : ${c.cyn}${path.relative(ROOT, archive)}${c.rst}`);
 if (desktop === 0 && cores === 0 && godotLibs === 0) {
-  warn('No binaries collected. Install toolchains (WSL: scons + mingw + make; Godot 4.5 + export templates),');
-  warn('or use --all-cores to pull cores from the latest GitHub Release, or --skip-build to package existing files.');
+  warn('No binaries collected. For cores, ensure a GitHub Release exists (or pass --core-tag=latest);');
+  warn('for desktop apps install Godot 4.5 + export templates; for the Godot source install scons+mingw.');
   warn('See docs/LEMONSQUEEZY_SELLING.md.');
 }
 console.log(`\n${c.cyn}Next:${c.rst} upload ${archive ? path.relative(ROOT, archive) : 'the bundle'} to Lemon Squeezy`);
 console.log(`${c.dim}  Lemon Squeezy → Products → Nova64 → replace the download file → Save.${c.rst}`);
+}
+
+main().catch((e) => { console.error(e); process.exit(1); });

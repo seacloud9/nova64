@@ -88,8 +88,11 @@ if (RELEASE) {
   run('npm publish --dry-run (packaging valid)', 'npm publish --dry-run --ignore-scripts');
 }
 
-// 5. Optional: RetroArch host core + smoke (mirrors release-cores.yml linux-x86_64).
-if (has('--cores')) {
+// 5. RetroArch host core + smoke (mirrors release-cores.yml linux-x86_64). Run
+//    on --cores or --release: the core is one C file, so compiling it on the host
+//    is a strong signal it compiles on every platform — catch C errors before
+//    burning the expensive CI core matrix. (macOS/iOS/tvOS still GitHub-only.)
+if (has('--cores') || RELEASE) {
   if (run('Build RetroArch core (make -C retroarch clean all)', 'make -C retroarch clean all')) {
     run('Core harness + smoke', 'make -C retroarch harness && for cart in retroarch/conformance/00-boot.js retroarch/conformance/01-framebuffer.js retroarch/conformance/110-storage-compressed.js; do retroarch/build/harness retroarch/nova64_libretro.so "$cart" --frames 3 | grep -q "ok=1" || exit 1; done');
   }

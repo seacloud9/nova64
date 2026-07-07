@@ -190,6 +190,24 @@ replace the download file → Save. That is the entire recurring release job.
 - Full private runbook: `docs/LEMONSQUEEZY_SELLING.md` (**gitignored** — business ops doc).
   `dist-lemon/` and the desktop export output are gitignored too.
 
+## CI preflight (know it's green before you push)
+
+CI never runs on a local commit — it fires when you **push** (`ci.yml` on branch push;
+`publish.yml` + `release-cores.yml` on a `v*.*.*` tag). So a **git pre-push hook**
+(`.husky/pre-push`) runs `pnpm ci:check` ([`scripts/ci-preflight.mjs`](scripts/ci-preflight.mjs))
+and only lets the push through if the gates are green — a red preflight blocks the push so you never
+trigger a red CI.
+
+- `pnpm ci:check` mirrors **ci.yml** blocking gates: `pnpm install --frozen-lockfile`, `pnpm test`,
+  `pnpm build` (lint/format are reported but warn-only, matching `continue-on-error`).
+- Pushing a **version tag** auto-runs `pnpm ci:check --release`, which adds the **npm publish**
+  gates from `publish.yml`: lint becomes **blocking** (npm runs `prepublishOnly = lint && test:all
+  && build`), runs `test:all`, checks the version isn't already on npm, and `npm publish --dry-run`.
+- `pnpm ci:check --cores` also builds the host RetroArch core + conformance smoke.
+- **Cannot be verified locally:** `release-cores.yml`'s macOS/iOS/tvOS jobs need a Mac + Xcode —
+  they only go green on GitHub's `macos-latest` runner. The preflight says so explicitly rather than
+  pretending. Bypass the hook for WIP with `git push --no-verify`.
+
 ## Secure commits
 
 A `PreToolUse(Bash)` hook in `.claude/settings.json` runs `scripts/check-secure-commit.mjs`

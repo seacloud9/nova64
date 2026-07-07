@@ -51,6 +51,7 @@
     "godot": "node scripts/godot-play.mjs",
     "godot:link": "node scripts/godot-play.mjs --link",
     "release:lemon": "node scripts/package-lemon-release.mjs",
+    "ci:check": "node scripts/ci-preflight.mjs",
     "build": "vite build && node scripts/postbuild.js",
     "preview": "vite preview",
     "osBuild": "cd os9-shell && pnpm install && pnpm build && rm -rf ../public/os9-shell/* && mkdir -p ../public/os9-shell && cp -r dist/* ../public/os9-shell/",

@@ -36,10 +36,16 @@ const onNpm = (v) => out(`npm view ${meta.name}@${v} version`) === v;
 
 console.log(`${c.cyn}Nova64 release${c.rst}  ${c.dim}(${kind} bump${DRY ? ', dry-run' : ''})${c.rst}`);
 
-// Guard 1: clean tree — the release commit must be only the version bump.
+// Guard 1: the release commit must contain ONLY the version bump. We only ever
+// `git add package.json`, so unrelated *unstaged* changes (dist/, examples/, …)
+// are fine and stay out of the commit. But refuse if package.json is already
+// dirty (we must own it) or if anything else is already staged (would be swept in).
 if (!DRY) {
-  const dirty = out('git status --porcelain');
-  if (dirty) die('Working tree is dirty — commit or stash first so the release commit is just the version bump.\n' + dirty);
+  const staged = out('git diff --cached --name-only');
+  if (staged) die(`You have staged changes — unstage or commit them first (the release commit must be only the version bump):\n${staged}`);
+  if (out('git status --porcelain -- package.json')) die('package.json has uncommitted changes — commit or discard them first.');
+  const otherDirty = out('git status --porcelain').split('\n').filter(Boolean).length;
+  if (otherDirty) console.log(`${c.yel}! Note: ${otherDirty} other file(s) are modified in your working tree; they will NOT be included in the release commit.${c.rst}`);
 }
 
 // Compute next version; skip anything already on npm; refuse an existing tag.

@@ -1,4 +1,5 @@
 {
+  "terminal.integrated.scrollback": 1000000,
   "files.associations": {
     "examples/**/code.js": "javascript"
   },

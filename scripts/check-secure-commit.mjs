@@ -23,17 +23,23 @@ function readStdin() {
 // Decide whether we should run. For the Claude hook, only guard real commits.
 function shouldScan() {
   if (process.argv.includes('--scan')) return true;
+  // Deliberate, out-of-your-way escape hatch for false positives. NOT the casual
+  // `git --no-verify` (which only skips husky hooks; this scanner still runs so
+  // secrets are never skipped by accident). You must explicitly set the env var.
+  if (process.env.NOVA64_ALLOW_SECRET_COMMIT === '1') {
+    console.error('⚠ Secret guard bypassed via NOVA64_ALLOW_SECRET_COMMIT=1 (you asked for it).');
+    return false;
+  }
   let raw = '';
   try { raw = readStdin(); } catch { /* no stdin */ }
   if (!raw.trim()) return true; // git-hook / manual context → scan
   try {
     const evt = JSON.parse(raw);
     const cmd = evt?.tool_input?.command || '';
-    if (!/\bgit\b[^\n]*\bcommit\b/.test(cmd)) return false; // not a commit → skip
-    if (/--no-verify|-n\b/.test(cmd)) {
-      console.error('⛔ Secret guard: refusing `git commit --no-verify` (bypasses checks).');
-      process.exit(2);
-    }
+    // Only act on real commit invocations. (Note: as a PreToolUse hook this runs
+    // regardless of git's --no-verify, which only skips husky git hooks — so we
+    // don't police that flag here; matching it against message text false-fires.)
+    if (!/\bgit\b\S*\s+(?:[^\n]*\s)?commit\b/.test(cmd)) return false;
     return true;
   } catch { return true; }
 }

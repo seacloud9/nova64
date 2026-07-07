@@ -198,6 +198,12 @@ CI never runs on a local commit — it fires when you **push** (`ci.yml` on bran
 and only lets the push through if the gates are green — a red preflight blocks the push so you never
 trigger a red CI.
 
+- **Cut a release with one command: `pnpm release`** (`patch`|`minor`|`major`; default patch). It
+  runs the full local validation (`ci:check --release`), then bumps + commits + tags `vX.Y.Z` — and
+  **only** that (it never pushes). If validation fails the bump is reverted, so no junk tag. Then you
+  `git push && git push --tags`: the pre-push hook re-runs the checks, and on GitHub the tag builds
+  every core and publishes npm once all are green. Checks therefore run **locally, on push, and on
+  CI**. `pnpm release --dry-run` previews the version without changing anything.
 - `pnpm ci:check` mirrors **ci.yml** blocking gates: `pnpm install --frozen-lockfile`, `pnpm test`,
   `pnpm build` (lint/format are reported but warn-only, matching `continue-on-error`).
 - Pushing a **version tag** auto-runs `pnpm ci:check --release`, which adds the **npm publish**

@@ -80,10 +80,10 @@ if (RELEASE) {
   // A version already on npm cannot be re-published — publish.yml would fail.
   const probe = spawnSync(`npm view ${pkg.name}@${pkg.version} version`, { cwd: ROOT, shell: true, encoding: 'utf8' });
   const already = (probe.stdout || '').trim() === pkg.version;
-  results.push({ label: `npm version ${pkg.name}@${pkg.version} is unpublished`, ok: !already, blocking: true });
+  results.push({ label: `npm ${pkg.name}@${pkg.version} is publishable (new version)`, ok: !already, blocking: true });
   console.log(already
-    ? `${c.red}✗ ${pkg.name}@${pkg.version} is ALREADY on npm — bump the version before tagging (npm publish would fail).${c.rst}`
-    : `${c.grn}✓ ${pkg.name}@${pkg.version} not yet on npm (publishable)${c.rst}`);
+    ? `${c.red}✗ ${pkg.name}@${pkg.version} is ALREADY published on npm — bump the version in package.json before tagging (npm rejects re-publishing a version).${c.rst}`
+    : `${c.grn}✓ ${pkg.name}@${pkg.version} is a new version (publishable)${c.rst}`);
   // Dry-run pack: validates files/.npmignore/package.json without uploading.
   run('npm publish --dry-run (packaging valid)', 'npm publish --dry-run --ignore-scripts');
 }

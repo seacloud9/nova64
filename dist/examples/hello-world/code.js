@@ -2,25 +2,64 @@
 // Orbiting geometry in a star field with post-processing. Z · Space = next preset.
 
 const { printCentered, rgba8 } = nova64.draw;
-const { createCube, createSphere, createTorus, rotateMesh, setPosition, setScale, removeMesh, setMeshEmissive } = nova64.scene;
+const {
+  createCube,
+  createSphere,
+  createTorus,
+  rotateMesh,
+  setPosition,
+  setScale,
+  removeMesh,
+  setMeshEmissive,
+} = nova64.scene;
 const { setCameraPosition, setCameraTarget, setCameraFOV } = nova64.camera;
-const { setAmbientLight, setLightDirection, setFog } = nova64.light;
+const { setAmbientLight, setLightDirection, setFog, clearSkybox, createSpaceSkybox, enableSkyboxAutoAnimate } = nova64.light;
+const { enableBloom, enableChromaticAberration, enableVignette } = nova64.fx;
 const { btnp, keyp } = nova64.input;
 
 const PRESETS = [
-  { nebula: 0x2244ff, core: rgba8(0, 170, 255, 255), ring: rgba8(80, 60, 220, 255), orb: rgba8(255, 220, 80, 255), fog: rgba8(0, 2, 18, 255), name: 'COSMIC BLUE' },
-  { nebula: 0xff2244, core: rgba8(255, 80, 40, 255), ring: rgba8(220, 60, 120, 255), orb: rgba8(255, 200, 40, 255), fog: rgba8(12, 2, 6, 255), name: 'NEBULA RED' },
-  { nebula: 0x44ff88, core: rgba8(40, 220, 120, 255), ring: rgba8(60, 180, 80, 255), orb: rgba8(200, 255, 120, 255), fog: rgba8(0, 8, 4, 255), name: 'AURORA GREEN' },
+  {
+    nebula: 0x2244ff,
+    core: rgba8(0, 170, 255, 255),
+    ring: rgba8(80, 60, 220, 255),
+    orb: rgba8(255, 220, 80, 255),
+    fog: rgba8(0, 2, 18, 255),
+    name: 'COSMIC BLUE',
+  },
+  {
+    nebula: 0xff2244,
+    core: rgba8(255, 80, 40, 255),
+    ring: rgba8(220, 60, 120, 255),
+    orb: rgba8(255, 200, 40, 255),
+    fog: rgba8(12, 2, 6, 255),
+    name: 'NEBULA RED',
+  },
+  {
+    nebula: 0x44ff88,
+    core: rgba8(40, 220, 120, 255),
+    ring: rgba8(60, 180, 80, 255),
+    orb: rgba8(200, 255, 120, 255),
+    fog: rgba8(0, 8, 4, 255),
+    name: 'AURORA GREEN',
+  },
 ];
 
-let preset = 0, t = 0;
-let core, ring1, ring2, orbs = [];
+let preset = 0,
+  t = 0;
+let core,
+  ring1,
+  ring2,
+  orbs = [];
 const ORB_COUNT = 6;
 const ORBIT_R = 2.8;
 
 function buildScene() {
   clearSkybox();
-  if (core) { removeMesh(core); removeMesh(ring1); removeMesh(ring2); }
+  if (core) {
+    removeMesh(core);
+    removeMesh(ring1);
+    removeMesh(ring2);
+  }
   for (const o of orbs) removeMesh(o);
   orbs = [];
 
@@ -47,13 +86,14 @@ function buildScene() {
 }
 
 export function init() {
-  preset = 0; t = 0;
+  preset = 0;
+  t = 0;
   setCameraFOV(60);
   setAmbientLight(0x112233, 0.4);
   setLightDirection(-0.5, -1, -0.3);
-  nova64.post.setBloom(2.2);
-  nova64.post.setChromatic(0.003);
-  nova64.post.setVignette(0.15, 0.82);
+  enableBloom(2.2);
+  enableChromaticAberration(0.003);
+  enableVignette(0.15, 0.82);
   buildScene();
 }
 
@@ -73,7 +113,8 @@ export function update(dt) {
     setPosition(orbs[i], Math.cos(a) * ORBIT_R, bob, Math.sin(a) * ORBIT_R);
     setScale(orbs[i], s, s, s);
   }
-  const ca = t * 0.18, cy = 3.5 + Math.sin(t * 0.25) * 1.5;
+  const ca = t * 0.18,
+    cy = 3.5 + Math.sin(t * 0.25) * 1.5;
   setCameraPosition(Math.cos(ca) * 8, cy, Math.sin(ca) * 8);
   setCameraTarget(0, 0, 0);
 }

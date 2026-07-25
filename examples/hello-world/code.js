@@ -13,7 +13,15 @@ const {
   setMeshEmissive,
 } = nova64.scene;
 const { setCameraPosition, setCameraTarget, setCameraFOV } = nova64.camera;
-const { setAmbientLight, setLightDirection, setFog } = nova64.light;
+const {
+  setAmbientLight,
+  setLightDirection,
+  setFog,
+  clearSkybox,
+  createSpaceSkybox,
+  enableSkyboxAutoAnimate,
+} = nova64.light;
+const { enableBloom, enableChromaticAberration, enableVignette } = nova64.fx;
 const { btnp, keyp } = nova64.input;
 
 const PRESETS = [
@@ -90,9 +98,9 @@ export function init() {
   setCameraFOV(60);
   setAmbientLight(0x112233, 0.4);
   setLightDirection(-0.5, -1, -0.3);
-  nova64.post.setBloom(2.2);
-  nova64.post.setChromatic(0.003);
-  nova64.post.setVignette(0.15, 0.82);
+  enableBloom(2.2);
+  enableChromaticAberration(0.003);
+  enableVignette(0.15, 0.82);
   buildScene();
 }
 

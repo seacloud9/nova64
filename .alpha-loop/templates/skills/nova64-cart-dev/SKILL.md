@@ -141,12 +141,22 @@ setCameraFOV(degrees)   // default 75
 
 ## Post-Processing
 
+`nova64.post` is a convenience shim (added 2026-07) that delegates to `nova64.fx`. Both work:
+
 ```js
+// Preferred short form (nova64.post shim):
 nova64.post.setBloom(strength)              // 1.5–2.5 for neon; 0.6 = default
 nova64.post.setBloom(strength, radius, threshold)  // lower threshold = saturated colors glow
 nova64.post.setChromatic(intensity)         // 0.001–0.008
 nova64.post.setVignette(darkness, offset)   // e.g. 0.5, 0.5
-nova64.post.setCRT(true)                    // retro scanline overlay
+nova64.post.setGlitch(intensity)
+nova64.post.disable()                       // turn off all post-processing
+
+// Canonical long form (nova64.fx — same capability, explicit names):
+const { enableBloom, enableChromaticAberration, enableVignette } = nova64.fx;
+enableBloom(2.2);
+enableChromaticAberration(0.003);
+enableVignette(0.15, 0.82);
 ```
 
 For saturated neon that doesn't glow at default threshold: `nova64.post.setBloom(2.1, 0.85, 0.18)`.
@@ -189,6 +199,9 @@ const {x, y} = project3DToScreen(wx, wy, wz)
 - **Destroy old meshes before reinit** — call `destroyMesh(handle)` before `init()` recreates the scene.
 - **`setCamera` vs `setCameraPosition`** — both work; `setCamera([pos],[target])` is one call.
 - **`btnp` not `btn` for single-action triggers** — `btn` fires every frame; `btnp` fires once per press.
+- **No bare globals — always destructure from `nova64.*` namespaces.** Cart modules are ES modules loaded via dynamic `import()`. The ONLY thing on `globalThis` is `nova64`. Calling `clearSkybox()`, `createSpaceSkybox()`, or any other function as a bare name throws `ReferenceError`. Always destructure: `const { clearSkybox, createSpaceSkybox, enableSkyboxAutoAnimate } = nova64.light;`
+- **`nova64.post` shim covers the common post-processing API** — `setBloom`, `setChromatic`, `setVignette`, `setGlitch`, `disable`. If you need a function not in the shim, use `nova64.fx.*` directly. Calling `nova64.post.xyz` where xyz is not in the shim returns `undefined` — don't call `undefined` as a function.
+- **When `init()` throws, `update()` still runs.** The cart runner catches `init()` errors and keeps calling `update()`/`draw()`. This causes "mesh with id undefined" floods when init never created the meshes. **Always look for the `❌ Cart init() threw:` line FIRST** in the browser console — it reveals the real crash upstream.
 - **`rgba8()` returns a JavaScript BigInt, not a Number.** This is fine inside cart code, but be aware: (1) BigInt colors passed directly to `printCentered` 4-arg form will crash (`Cannot mix BigInt and other types`) — use the 3-arg form `printCentered(text, y, color)` for centered text; (2) BigInt colors passed to 3D mesh create functions (`createSphere`, `createCube`, etc.) are safe — the runtime normalizes them at the material boundary. If you see `JSON.stringify BigInt` or `mesh id undefined` errors, a BigInt color has leaked past the normalization boundary — file a runtime bug.
 
 Read `references/api-extras.md` for instancing, 2D particle emitters, and the wave system.

@@ -5,6 +5,7 @@ import { PMREMGenerator } from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { Framebuffer64 } from '../../framebuffer.js';
 import { THREEJS_BACKEND_CAPABILITIES } from './capabilities.js';
+import { normalizeColorToHex } from './materials.js';
 
 export class GpuThreeJS {
   constructor(canvas, w, h) {
@@ -370,7 +371,7 @@ export class GpuThreeJS {
   }
 
   setFog(color, near = 10, far = 50) {
-    this.scene.fog = new THREE.Fog(color, near, far);
+    this.scene.fog = new THREE.Fog(normalizeColorToHex(color), near, far);
   }
 
   setLightDirection(x, y, z) {

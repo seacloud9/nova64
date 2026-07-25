@@ -530,8 +530,17 @@ export function api2d(gpu) {
     };
   }
 
-  /** printCentered(text, cx, y, color, scale=1) — centre on x */
+  /**
+   * printCentered(text, y, color, scale=1)           — centre on screen width
+   * printCentered(text, cx, y, color, scale=1)        — centre on explicit cx
+   */
   function printCentered(text, cx, y, color, scale = 1) {
+    if (color === undefined) {
+      // 3-arg form: printCentered(text, y, color)
+      color = y;
+      y = cx;
+      cx = (globalThis.nova64?.draw?.screenWidth?.() ?? 640) / 2;
+    }
     const w = measureText(text, scale).width;
     _print(text, (cx - w / 2) | 0, y, color, scale);
   }

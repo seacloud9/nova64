@@ -3,7 +3,7 @@ name: reviewer
 description: Reviews code changes, fixes issues found, and produces a review summary. Runs after implementation.
 tools: Read, Write, Edit, Glob, Grep, Bash
 
-skills: code-review, security-analysis, testing-patterns, test-robustness, api-patterns, docs-sync
+skills: code-review, security-analysis, testing-patterns, test-robustness, api-patterns, docs-sync, nova64-cart-dev
 ---
 
 # Reviewer Agent
@@ -19,6 +19,22 @@ You review code changes for a completed GitHub issue. You have full edit permiss
 5. **Run tests** after fixes to verify nothing broke
 6. **Commit** fixes with: `fix: address review findings for #{issue}`
 7. **Report** a brief summary of what you found and fixed
+
+## Nova64 Cart Review (apply when the diff touches `examples/`)
+
+Before running the standard checklist, run these Nova64-specific checks for any PR that modifies files under `examples/`:
+
+1. **Dist sync** — run `pnpm sync:dist:check` (or `node scripts/sync-dist.mjs --check`). If it exits non-zero, run `pnpm sync:dist` and commit the result. This is the most common agent mistake.
+
+2. **3D clear** — scan changed `code.js` files for `cls(0x` or `cls(0x000000)`. If found in a cart that creates 3D meshes, replace with `cls3D()` and fix.
+
+3. **Mesh leak in draw()** — grep the changed `draw()` function body for `create` calls (`createCube`, `createSphere`, `createTorus`, etc.). These must only appear in `init()`. If found in `draw()`, move them to `init()`.
+
+4. **init() cleanup** — if the cart calls `init()` on restart, verify old mesh handles are destroyed before new ones are created. Look for `destroyMesh(handle)` calls at the top of `init()`.
+
+5. **sfx feedback** — for games, verify at least `sfx('coin')` or `sfx('select')` are called on key events. Silent games feel broken. If missing, add appropriate sfx calls.
+
+6. **Persistent storage prefix** — if `saveData` / `loadData` are used, verify the key has a 2–4 character cart-specific prefix (e.g., `'ns_best'`, `'pj_best'`) to avoid key collisions between carts.
 
 ## What to Fix Directly
 

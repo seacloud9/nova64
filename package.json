@@ -138,7 +138,11 @@
     "release": "node scripts/release.mjs",
     "release:patch": "node scripts/release.mjs patch",
     "release:minor": "node scripts/release.mjs minor",
-    "release:major": "node scripts/release.mjs major"
+    "release:major": "node scripts/release.mjs major",
+    "autoloop": "alpha-loop run",
+    "autoloop:dry": "alpha-loop run --dry-run",
+    "autoloop:one": "alpha-loop run --once",
+    "autoloop:issue": "alpha-loop run --issue"
   },
   "dependencies": {
     "@babylonjs/core": "^9.4.1",

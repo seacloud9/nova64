@@ -57,6 +57,13 @@ os9-shellMobile/node_modules
 .env.test.local
 .env.production.local
 
+# Alpha Loop ephemeral data (sessions, auth, worktrees)
+.alpha-loop/sessions/
+.alpha-loop/auth/
+.alpha-loop/templates/*.bak
+.worktrees/
+plugins/
+
 # commit messages
 COMMIT_MESSAGE.txt
 
@@ -97,3 +104,9 @@ docs/LEMONSQUEEZY_SELLING.md
 
 # Godot desktop export output (standalone .exe/Linux binaries produced locally)
 nova64-godot/godot_project/bin/export/desktop/
+# Alpha-loop ephemeral data (not shared)
+.alpha-loop/sessions/
+.alpha-loop/auth/
+.alpha-loop/templates/*.bak
+.worktrees/
+plugins/

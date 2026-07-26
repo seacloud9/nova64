@@ -4,7 +4,7 @@
 // uses shared Nova64 APIs so the cart can run under Three.js, Babylon.js, Godot,
 // and RetroArch hosts.
 
-const WEB_ASSET_BASE = '/indie-odyssey/';
+const WEB_ASSET_BASE = '/examples/indie-odyssey/assets/';
 const PACKAGED_ASSET_BASE = 'assets/';
 
 function resolveAssetBase() {

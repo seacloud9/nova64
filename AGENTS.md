@@ -68,7 +68,7 @@ When changing agent workflow, commands, architecture notes, or repository rules:
 - Do not copy large instruction blocks into tool-specific files.
 - If another instruction file disagrees with `AGENTS.md`, verify against live source files and then reconcile the rule back here.
 
-Current package version: `0.5.2`.
+Current package version: `0.5.3`.
 
 ## 🖥️ **Windows Development Environment**
 
@@ -465,9 +465,10 @@ Guidelines:
 ### Typical Workflow
 
 1. Create or edit a cart under `examples/`.
-2. Update the import path in `src/main.js` if you need to load a different cart locally.
-3. Run the narrowest relevant test script first.
-4. Expand to broader CLI, Playwright, or Babylon validation if the change affects shared behavior.
+2. **Sync to `dist/` immediately** — every cart change must be mirrored: `cp examples/<cart>/code.js dist/examples/<cart>/code.js`. The browser console loads from `dist/`; if you skip this step the cart runs stale code. There is no build step that does this automatically.
+3. Update the import path in `src/main.js` if you need to load a different cart locally.
+4. Run the narrowest relevant test script first.
+5. Expand to broader CLI, Playwright, or Babylon validation if the change affects shared behavior.
 
 ### Practical Validation Guidance
 
@@ -539,6 +540,14 @@ Issues must carry the `ready` label to be picked up. Use the GitHub issue templa
 ### Test gate
 
 `alpha-loop` runs `pnpm test` (demoscene regression + CLI tests) to gate each PR. This is intentionally the *fast* gate (~30s, no GPU). RetroArch conformance (`pnpm retroarch:test`) is **not** wired into the loop — run that manually in batches of ~30 after merging, as usual.
+
+### Cart issues
+
+Issues that involve creating or editing carts under `examples/` must:
+
+- Load the `nova64-cart-dev` skill before writing any cart code.
+- Sync every edited `examples/<cart>/code.js` to `dist/examples/<cart>/code.js` (the console loads from `dist/`).
+- Use `nova64-new-cart` skill when scaffolding a brand-new cart.
 
 ### Safety rails
 

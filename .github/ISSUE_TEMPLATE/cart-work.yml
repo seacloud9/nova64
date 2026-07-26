@@ -1,0 +1,99 @@
+name: Cart Work
+description: Create or improve a Nova64 cart / demo (game, demo, experiment)
+title: "cart(<cart-name>): "
+labels: ["ready", "cart"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template for any work involving `examples/<cart>/code.js`.
+        The agent will use these fields to implement, test, and open a PR.
+        **Be specific** — the more concrete the acceptance criteria, the better the output.
+
+  - type: input
+    id: cart-name
+    attributes:
+      label: Cart Name
+      description: Directory name under examples/ (hyphenated, lowercase). Use an existing name to improve, or a new name to create.
+      placeholder: neon-snake
+    validations:
+      required: true
+
+  - type: dropdown
+    id: cart-type
+    attributes:
+      label: Cart Type
+      options:
+        - Improve existing cart
+        - Create new cart
+        - Bug fix in existing cart
+    validations:
+      required: true
+
+  - type: dropdown
+    id: render-mode
+    attributes:
+      label: Render Mode
+      description: Does this cart use 3D meshes?
+      options:
+        - "3D (uses createCube, createSphere, etc.)"
+        - "2D only (HUD/canvas, no 3D meshes)"
+        - "Mixed / unsure"
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: What should change?
+      description: Describe the gameplay, visual, or technical change
+      placeholder: |
+        Add a speed boost power-up that appears every 5 coins. Player picks it up
+        by collision. Active for 5 seconds. Shows a timer bar in the HUD.
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance-criteria
+    attributes:
+      label: Acceptance Criteria
+      description: Specific, testable criteria. The dist-sync checkbox is required for all cart work.
+      value: |
+        - [ ] `examples/<cart>/code.js` implements the described change
+        - [ ] `dist/examples/<cart>/code.js` is byte-identical (run `pnpm sync:dist:check`)
+        - [ ] `pnpm test` passes
+        - [ ] (add more specific criteria here)
+    validations:
+      required: true
+
+  - type: textarea
+    id: api-hints
+    attributes:
+      label: API / Pattern Hints
+      description: Nova64 API functions or patterns the agent should use. Leave blank if unsure — the agent will check nova64-cart-dev skill.
+      placeholder: |
+        - Use nova64.post.setBloom(2.1, 0.85, 0.18) for neon glow
+        - sfx('powerup') on pickup
+        - drawProgressBar for the timer display
+        - saveData('ns_best', best) for high score
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional Context
+      description: Background info, constraints, references to existing carts to model after
+      placeholder: |
+        Similar to the bonus food mechanic in neon-snake. See examples/space-shooter
+        for how power-ups drift downward and are collected on overlap.
+
+  - type: dropdown
+    id: complexity
+    attributes:
+      label: Complexity
+      options:
+        - trivial (< 30 min)
+        - small (1-2 hours)
+        - medium (half day)
+        - large (full day)
+    validations:
+      required: true

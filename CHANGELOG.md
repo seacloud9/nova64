@@ -1,8 +1,34 @@
 # Changelog
 
-All notable changes to Nova64 are documented here.
+All notable changes to Nova64 are documented here. Per-tag, publish-ready notes
+live in [`docs/releases/`](docs/releases/).
 
-## v0.5.2 (Current) — _Hippie Sunshine_
+## v0.5.3 (Current)
+
+Metaverse (shared 3D world with multiplayer, auth, and voice chat that cross-plays
+web ↔ Godot) + the distribution/release pipeline.
+
+- **Metaverse**: Phase 1 shared world on `nova64.net`; extensible framework
+  (pluggable render backend, UI components, plugins, chat); ES module loader +
+  native Godot text chat (`nova64.gdtext`) for web ↔ Godot cross-play.
+- **Auth**: Supabase auth, wallet sign-in (EVM SIWE / EIP-4361), `nova64.auth`
+  identity wiring; `verifyToken` onAuth gate unit-tested.
+- **Multiplayer**: presence (name tags, join/left toasts, distance fade), live
+  roster, `/nick` live rename + persistence, avatar color sync, hardened relay
+  (payload cap + per-client rate limit); WebRTC push-to-talk voice chat.
+- **Lemon Squeezy distribution**: one-command unified export build
+  (`pnpm release:lemon`) — desktop apps + RetroArch cores + Godot source in a
+  single upload zip; standalone `.exe`/Linux exports; homepage checkout CTA.
+- **Platform cores**: iOS/iPadOS (arm64) + tvOS RetroArch cores build in CI.
+- **CI/release safety**: `pnpm release` one-shot (validate → bump → commit →
+  tag, never pushes); pre-push preflight so CI is green before GitHub; npm
+  publish only after every platform core builds green; secure-commit hook blocks
+  staged secrets; Node heap raised to 8 GB.
+- **Carts/mobile**: cinematic `the-last-save-file` + `cls3D`/`glitchBurst`
+  helpers; real screen-shader glitch (`fx.glitch`); portrait rotate gate;
+  mobile-tappable boot prompts; Godot multi-touch (`nova64.input.touches()`).
+
+## v0.5.2 — _Hippie Sunshine_
 
 RetroArch core parity push + cross-platform release-cores expansion +
 publish-pipeline hardening.
@@ -38,6 +64,15 @@ publish-pipeline hardening.
 
 ## v0.5.1
 
+- **Godot visual parity push**: native `voxel.uploadChunk` face-culled chunk
+  mesher + greedy meshing, atlas UV texturing, biome heights + world seed,
+  dynamic chunk streaming; WAD Phase 3 (wall textures, `uvOffset`, `getCamera`,
+  sector lighting) + sprite-billboard fixes; tonemap/fog/background color parity.
+- **Godot shim runtime parity**: real tween engine, full gameutils,
+  `createGameStore`/`novaStore`, `nova64.ui` text APIs, instanced-mesh API on
+  `nova64.scene`; `wizardry-3d` playable; F-Zero camera fix.
+- **Godot editor**: JS syntax highlighting + ESLint for cart `code.js`.
+- **Loader**: accept `?cart=` as an alias for `?demo=`.
 - Package metadata refresh and post-namespace-migration polish.
 
 ## v0.5.0 — _The Great Namespace Push_
@@ -156,6 +191,11 @@ publish-pipeline hardening.
 - **WAD Rendering**: Full DOOM WAD texture/flat/sprite rendering in Model Viewer
 - **GLB Draco**: DRACOLoader support for compressed 3D models
 - **API Bug Fixes**: Identifier conflicts, scene cleanup, API injection robustness
+
+## v0.2.1
+
+- **Formatting/lint hardening**: full Prettier pass; lint scoped to `runtime/`
+  and `src/` so example carts don't fail CI on style.
 
 ## v0.2.0
 

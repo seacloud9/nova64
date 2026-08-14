@@ -210,6 +210,7 @@ const {
   noiseMap,
   noiseSeed,
   popMatrix,
+  pulse,
   pushMatrix,
   quadCurve,
   rad2deg,

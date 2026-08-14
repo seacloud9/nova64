@@ -68,7 +68,7 @@ When changing agent workflow, commands, architecture notes, or repository rules:
 - Do not copy large instruction blocks into tool-specific files.
 - If another instruction file disagrees with `AGENTS.md`, verify against live source files and then reconcile the rule back here.
 
-Current package version: `0.5.2`.
+Current package version: `0.5.3`.
 
 ## 🖥️ **Windows Development Environment**
 
@@ -173,6 +173,13 @@ pnpm release:lemon --skip-build   # package existing artifacts only (no compiler
 
 Then upload `dist-lemon/nova64-<version>.zip` to Lemon Squeezy → Products → Nova64 →
 replace the download file → Save. That is the entire recurring release job.
+
+To build every platform locally **and** stage the finished bundle into a per-tag
+folder, use `pnpm build:all` ([`scripts/build-all-platforms.mjs`](scripts/build-all-platforms.mjs)).
+It runs the packager above, then copies the zip + `unified_export_build/` into
+`nova-release/nova-release-<tag>/` (tag defaults to `v<version>`; override with
+`--tag=<x>`). All packager flags (`--all-cores`, `--skip-build`, `--no-fetch`, …)
+pass straight through. The `nova-release/` folder is gitignored (upload staging only).
 
 - Packager: `scripts/package-lemon-release.mjs`. Output: `dist-lemon/unified_export_build/`
   (`1-Run-Standalone/`, `2-RetroArch-Cores/{Desktop,Android,Apple}/`, `3-Godot-Source/`)
@@ -465,9 +472,10 @@ Guidelines:
 ### Typical Workflow
 
 1. Create or edit a cart under `examples/`.
-2. Update the import path in `src/main.js` if you need to load a different cart locally.
-3. Run the narrowest relevant test script first.
-4. Expand to broader CLI, Playwright, or Babylon validation if the change affects shared behavior.
+2. **Sync to `dist/` immediately** — every cart change must be mirrored: `cp examples/<cart>/code.js dist/examples/<cart>/code.js`. The browser console loads from `dist/`; if you skip this step the cart runs stale code. There is no build step that does this automatically.
+3. Update the import path in `src/main.js` if you need to load a different cart locally.
+4. Run the narrowest relevant test script first.
+5. Expand to broader CLI, Playwright, or Babylon validation if the change affects shared behavior.
 
 ### Practical Validation Guidance
 
@@ -516,3 +524,41 @@ Guidelines:
   runtime, cart, Babylon, Godot, and RetroArch backlog items there.
 - Keep lengthy tutorials, exhaustive API references, and speculative roadmaps in separate docs.
 - If README or another non-agent doc diverges from the current repo, verify against live source files before carrying its content forward.
+
+## Alpha Loop (Automated Issue Processing)
+
+Nova64 uses [Alpha Loop](https://github.com/bradtaylorsf/alpha-loop) to automate the plan → implement → test → review → PR cycle for GitHub issues.
+
+### How to run
+
+```bash
+# From WSL with nvm use 20
+alpha-loop run --once --dry-run   # preview one issue without changes
+alpha-loop run --issue <N>        # process a specific issue
+alpha-loop run                    # process all `ready`-labeled issues
+```
+
+### Issue requirements
+
+Issues must carry the `ready` label to be picked up. Use the GitHub issue template ("Agent-Ready Task") which includes the required acceptance-criteria format. Do NOT add `ready` to:
+- Anything touching `retroarch/**` or `dist/**` — label it `native` or `do-not-automate` instead.
+- Dependency upgrades, auth, billing, or migrations — these require human review first.
+
+### Test gate
+
+`alpha-loop` runs `pnpm test` (demoscene regression + CLI tests) to gate each PR. This is intentionally the *fast* gate (~30s, no GPU). RetroArch conformance (`pnpm retroarch:test`) is **not** wired into the loop — run that manually in batches of ~30 after merging, as usual.
+
+### Cart issues
+
+Issues that involve creating or editing carts under `examples/` must:
+
+- Load the `nova64-cart-dev` skill before writing any cart code.
+- Sync every edited `examples/<cart>/code.js` to `dist/examples/<cart>/code.js` (the console loads from `dist/`).
+- Use `nova64-new-cart` skill when scaffolding a brand-new cart.
+
+### Safety rails
+
+- `auto_merge: false` — the loop opens PRs on `agent/issue-N` branches; **you merge manually**.
+- `protected_paths` in `.alpha-loop.yaml` blocks the agent from touching `dist/`, `retroarch/`, `pnpm-lock.yaml`, `package.json`, `AGENTS.md`, `CLAUDE.md`, and CI workflows.
+- PRs that fail tests are retried up to 3×, then the issue is marked `failed` — no bad PR is opened.
+- The full config is in `.alpha-loop.yaml` at the repo root.

@@ -238,6 +238,23 @@ for (const subns of ['loader', 'story', 'level', 'video', 'net', 'auth']) {
   if (nova64api[subns]) globalThis.nova64[subns] = nova64api[subns];
 }
 
+// nova64.post — ergonomic post-processing sugar namespace that delegates to nova64.fx.
+// Carts that write `nova64.post.setBloom(2.2)` will work; the canonical API is nova64.fx.*.
+globalThis.nova64.post = {
+  setBloom: (strength, radius, threshold) =>
+    globalThis.nova64.fx.enableBloom(strength, radius, threshold),
+  setChromatic: amount => globalThis.nova64.fx.enableChromaticAberration(amount),
+  setVignette: (darkness, offset) => globalThis.nova64.fx.enableVignette(darkness, offset),
+  setFXAA: () => globalThis.nova64.fx.enableFXAA(),
+  setGlitch: intensity => globalThis.nova64.fx.enableGlitch(intensity),
+  disable: () => {
+    globalThis.nova64.fx.disableBloom?.();
+    globalThis.nova64.fx.disableChromaticAberration?.();
+    globalThis.nova64.fx.disableVignette?.();
+    globalThis.nova64.fx.disableGlitch?.();
+  },
+};
+
 const supabaseClient = configureSupabaseAuth(globalThis.nova64.auth, import.meta.env);
 if (supabaseClient) globalThis.nova64.auth.supabase = supabaseClient;
 

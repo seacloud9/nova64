@@ -452,6 +452,38 @@ export function effectsApi(gpu) {
     }
   }
 
+  // Convenience: fire a one-shot glitch BURST that starts at `intensity` and
+  // decays to zero over `duration` seconds, then removes the pass. Self-driven
+  // via rAF so carts get juicy damage/signal glitches in a single call:
+  // `nova64.fx.glitchBurst(0.7, 0.3)`. Great for hits, scene stings, interference.
+  let glitchBurstRAF = null;
+  function glitchBurst(intensity = 0.6, duration = 0.3) {
+    const peak = Math.max(0, Math.min(1, intensity));
+    if (!enableGlitch(peak)) return false;
+    const nowFn = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
+    const raf = cb =>
+      typeof requestAnimationFrame === 'function'
+        ? requestAnimationFrame(cb)
+        : setTimeout(() => cb(nowFn()), 16);
+    const ms = Math.max(1, duration * 1000);
+    const start = nowFn();
+    if (glitchBurstRAF != null && typeof cancelAnimationFrame === 'function') {
+      cancelAnimationFrame(glitchBurstRAF);
+    }
+    const tick = () => {
+      const t = (nowFn() - start) / ms;
+      if (t >= 1) {
+        disableGlitch();
+        glitchBurstRAF = null;
+        return;
+      }
+      setGlitchIntensity(peak * (1 - t));
+      glitchBurstRAF = raf(tick);
+    };
+    glitchBurstRAF = raf(tick);
+    return true;
+  }
+
   // === CUSTOM SHADERS ===
 
   // Holographic shader
@@ -957,6 +989,7 @@ export function effectsApi(gpu) {
         enableGlitch: enableGlitch,
         disableGlitch: disableGlitch,
         setGlitchIntensity: setGlitchIntensity,
+        glitchBurst: glitchBurst,
 
         // Glow layer — Babylon-specific. On Three.js, UnrealBloom already
         // handles emissive glow well, so this is a graceful no-op that returns

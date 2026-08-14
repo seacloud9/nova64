@@ -190,6 +190,18 @@ export interface ProgressBarOptions {
   radius?: number;
 }
 
+export interface TextBoxOptions {
+  color?: Color;
+  scale?: number;
+  minScale?: number;
+  align?: 'left' | 'center' | 'right';
+  valign?: 'top' | 'middle' | 'center' | 'bottom';
+  overflow?: 'ellipsis' | 'fit' | 'wrap';
+  ellipsis?: boolean;
+  fit?: boolean;
+  lineHeight?: number;
+}
+
 // ---------------------------------------------------------------------------
 // Stats
 // ---------------------------------------------------------------------------
@@ -1015,6 +1027,22 @@ export interface Nova64CartGlobals {
   cls(color?: Color): void;
   print(text: string, x: number, y: number, color?: Color, scale?: number): void;
   printCentered(text: string, y: number, color?: Color, scale?: number): void;
+  drawTextBox(
+    text: string,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    options?: TextBoxOptions
+  ): { lines: string[]; truncated: boolean; scale: number; lineHeight: number };
+  textBox(
+    text: string,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    options?: TextBoxOptions
+  ): { lines: string[]; truncated: boolean; scale: number; lineHeight: number };
   line(x1: number, y1: number, x2: number, y2: number, color?: Color): void;
   circle(x: number, y: number, r: number, color?: Color, filled?: boolean): void;
   drawRect(x: number, y: number, w: number, h: number, color?: Color): void;

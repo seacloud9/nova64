@@ -61,6 +61,8 @@ const CAPABILITY_GATED_BACKEND_SURFACE_GROUPS = Object.freeze({
   models: Object.freeze(['loadModel', 'playAnimation', 'updateAnimations', 'loadTexture']),
   meshOptions: Object.freeze([
     'setFlatShading',
+    'setMeshEmissive',
+    'setMeshColor',
     'setMeshOpacity',
     'setCastShadow',
     'setReceiveShadow',

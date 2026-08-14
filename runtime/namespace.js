@@ -113,6 +113,8 @@ export const NAMESPACE_MAP = {
     'rotateMesh',
     'moveMesh',
     'setFlatShading',
+    'setMeshEmissive',
+    'setMeshColor',
     'setMeshVisible',
     'setMeshOpacity',
     'setCastShadow',

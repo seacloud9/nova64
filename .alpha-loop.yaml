@@ -1,0 +1,94 @@
+# Alpha Loop — Nova64 configuration
+# ----------------------------------------------------------------------------
+# Docs: https://github.com/bradtaylorsf/alpha-loop#configuration
+#
+# Key safety decisions for Nova64:
+#   - auto_merge: false  — you review every PR before merging
+#   - test_command uses pnpm test (demoscene + CLI gate), NOT the full
+#     retroarch conformance suite (that runs in batches of ~30; see AGENTS.md)
+#   - protected_paths guards dist/, retroarch/, workflows, and lockfiles so
+#     the agent can never churn built artifacts or the native core
+# ----------------------------------------------------------------------------
+
+# === Project ================================================================
+repo: seacloud9/nova64
+# project: 0           # Set to your GitHub Project board number once created
+
+# === Agent ==================================================================
+agent: claude
+# model: ""            # Defaults to whatever the claude CLI is set to
+# agent_timeout: 1800
+
+# === Workflow ===============================================================
+base_branch: main
+label: ready
+auto_merge: false        # NEVER auto-merge — you review and merge manually
+
+# === Testing ================================================================
+# pnpm test = node tests/test-demoscene-regression.js && node tests/test-cli.js
+# Fast (~30s), no GPU required, safe for the loop's test-retry cycle.
+# Do NOT use retroarch:test here — that requires --skip-build and batching.
+test_command: pnpm test
+dev_command: pnpm dev
+setup_command: pnpm install --frozen-lockfile
+max_test_retries: 3
+
+# === Safety limits ==========================================================
+max_issues: 5
+max_session_duration: 3600
+
+# === Automation policy ======================================================
+automation_policy:
+  block_labels: [do-not-automate, needs-human-input, retroarch, native]
+  protected_paths:
+    - dist/**                    # built artifacts — never let agent touch these
+    - retroarch/**               # native C core — agent cannot build or modify
+    - pnpm-lock.yaml
+    - package.json
+    - .github/workflows/**
+    - AGENTS.md                  # single source of truth — change manually only
+    - CLAUDE.md
+  allowed_paths:
+    - src/**
+    - runtime/**
+    - examples/**
+    - tests/**
+    - docs/**
+    - os9-shell/src/**
+  require_human_for:
+    - auth
+    - billing
+    - production-deploy
+    - dependency-upgrade
+    - migrations
+    - secrets
+    - destructive-content
+    - ambiguous
+
+# === Harnesses ==============================================================
+# Instructs alpha-loop to sync skills/agents to Claude Code only.
+# IMPORTANT: instructions_file points to AGENTS.md (not CLAUDE.md) to
+# preserve Nova64's convention: CLAUDE.md is a thin pointer, AGENTS.md is
+# the single source of truth.
+harnesses:
+  - claude-code
+
+# === Pipeline overrides (optional — uncomment to tune) =====================
+# pipeline:
+#   plan:
+#     model: claude-opus-4-8
+#   implement:
+#     model: claude-sonnet-4-6
+#   review:
+#     model: claude-opus-4-8
+#   learn:
+#     model: claude-haiku-4-5
+
+# === Batch mode =============================================================
+# Off by default — start one issue per call so each step is legible.
+# batch: false
+# batch_size: 1
+
+# === Logging ================================================================
+# verbose: false
+# dry_run: false

@@ -99,6 +99,10 @@ entities.json
 # Lemon Squeezy release packaging (built locally, uploaded to LS — never committed)
 dist-lemon/
 
+# Local all-platform release bundles (one nova-release-<tag>/ folder per build,
+# staged for Lemon Squeezy upload — built locally, never committed)
+nova-release/
+
 # Private Lemon Squeezy selling/ops doc (business runbook, keep out of public repo)
 docs/LEMONSQUEEZY_SELLING.md
 

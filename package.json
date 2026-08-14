@@ -51,6 +51,7 @@
     "godot": "node scripts/godot-play.mjs",
     "godot:link": "node scripts/godot-play.mjs --link",
     "release:lemon": "node scripts/package-lemon-release.mjs",
+    "build:all": "node scripts/build-all-platforms.mjs",
     "ci:check": "node scripts/ci-preflight.mjs",
     "build": "NODE_OPTIONS=--max-old-space-size=8192 vite build && node scripts/postbuild.js",
     "preview": "vite preview",

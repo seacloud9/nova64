@@ -174,6 +174,13 @@ pnpm release:lemon --skip-build   # package existing artifacts only (no compiler
 Then upload `dist-lemon/nova64-<version>.zip` to Lemon Squeezy → Products → Nova64 →
 replace the download file → Save. That is the entire recurring release job.
 
+To build every platform locally **and** stage the finished bundle into a per-tag
+folder, use `pnpm build:all` ([`scripts/build-all-platforms.mjs`](scripts/build-all-platforms.mjs)).
+It runs the packager above, then copies the zip + `unified_export_build/` into
+`nova-release/nova-release-<tag>/` (tag defaults to `v<version>`; override with
+`--tag=<x>`). All packager flags (`--all-cores`, `--skip-build`, `--no-fetch`, …)
+pass straight through. The `nova-release/` folder is gitignored (upload staging only).
+
 - Packager: `scripts/package-lemon-release.mjs`. Output: `dist-lemon/unified_export_build/`
   (`1-Run-Standalone/`, `2-RetroArch-Cores/{Desktop,Android,Apple}/`, `3-Godot-Source/`)
   + `START-HERE.txt`, `README.txt`, `SHA256SUMS.txt`, `LICENSE`. The Godot tier copies

@@ -56,6 +56,7 @@
     "build": "NODE_OPTIONS=--max-old-space-size=8192 vite build && node scripts/postbuild.js",
     "preview": "vite preview",
     "osBuild": "cd os9-shell && pnpm install && pnpm build && rm -rf ../public/os9-shell/* && mkdir -p ../public/os9-shell && cp -r dist/* ../public/os9-shell/",
+    "osBuildServe": "bash scripts/os-build-serve.sh",
     "osMobileDev": "cd os9-shell && pnpm dev",
     "osMobileBuild": "cd os9-shell && pnpm install && pnpm build && rm -rf ../public/os9-shell/* && mkdir -p ../public/os9-shell && cp -r dist/* ../public/os9-shell/",
     "deployToStarcade9": "bash scripts/deploy-starcade9.sh",

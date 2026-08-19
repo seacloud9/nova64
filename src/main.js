@@ -51,6 +51,7 @@ import { tweenApi } from '../runtime/tween.js';
 import { DebugPanel } from '../runtime/debug-panel.js';
 import { registerCartResetHook } from '../runtime/cart-reset.js';
 import { createStudioCartFunction } from '../runtime/studio-executor.js';
+import { acceptExecuteCode, StudioMessageType } from '../runtime/studio-protocol.js';
 import * as THREE from 'three';
 
 const canvas = document.getElementById('screen');
@@ -726,7 +727,10 @@ const demoMap = {
     // onLoad handler fires first, avoiding any timing race.
     const sendReady = () => {
       if (window.parent && window.parent !== window) {
-        window.parent.postMessage({ type: 'EXECUTE_READY' }, '*');
+        // Target the embedding Studio's origin instead of '*' so the readiness
+        // signal is not broadcast to arbitrary cross-origin ancestors. Falls back
+        // to same-origin, then '*' only when the embedder origin is unknowable.
+        window.parent.postMessage({ type: StudioMessageType.READY }, studioParentOrigin());
       }
     };
     if (document.readyState === 'complete') {
@@ -756,14 +760,54 @@ const demoMap = {
   startLoop();
 })();
 
-// Listen for messages from Game Studio to execute code
+// Origin of the page that embedded this runtime (the Game Studio host). Derived
+// from the referrer so the dev cross-origin case (Studio :3000 → runtime :5173)
+// is trusted without hardcoding ports. Empty when unknowable.
+function studioParentOrigin() {
+  try {
+    if (document.referrer) return new URL(document.referrer).origin;
+  } catch {
+    /* malformed referrer */
+  }
+  return window.location.origin;
+}
+
+// Origins allowed to send EXECUTE_CODE, beyond same-origin (handled separately).
+function studioAllowedOrigins() {
+  const origins = [];
+  try {
+    if (document.referrer) origins.push(new URL(document.referrer).origin);
+  } catch {
+    /* ignore */
+  }
+  return origins;
+}
+
+// Listen for messages from Game Studio to execute code.
+// SECURITY: the handler runs user code via `new Function`, so every inbound
+// message is validated first — it must come from this runtime's embedding parent
+// window, from a trusted origin, and pass schema + size checks. Forged messages
+// from other windows, opener tabs, extensions, or untrusted origins are dropped.
 let _studioGen = 0;
 window.addEventListener('message', async event => {
-  if (event.data && event.data.type === 'EXECUTE_CODE') {
+  if (!event.data || event.data.type !== StudioMessageType.CODE) return;
+
+  const verdict = acceptExecuteCode(event, {
+    expectedSource: window.parent,
+    selfOrigin: window.location.origin,
+    allowedOrigins: studioAllowedOrigins(),
+  });
+  if (!verdict.ok) {
+    console.warn(`🚫 Rejected EXECUTE_CODE: ${verdict.error}`);
+    return;
+  }
+
+  {
     // Bump generation — any earlier in-flight execution will bail out
     const gen = ++_studioGen;
     const postLog = msg => {
-      if (event.source) event.source.postMessage({ type: 'CART_LOG', message: msg }, event.origin);
+      if (event.source)
+        event.source.postMessage({ type: StudioMessageType.LOG, message: msg }, event.origin);
     };
     console.log('🎮 Game Studio: Executing code...');
 
@@ -793,8 +837,8 @@ window.addEventListener('message', async event => {
       // Race-condition guard: if a newer execution arrived, bail out
       if (gen !== _studioGen) return;
 
-      // Execute the new code
-      const userCode = event.data.code;
+      // Execute the new code (validated + size-bounded by acceptExecuteCode)
+      const userCode = verdict.code;
 
       const gameFunction = createStudioCartFunction(userCode);
       const gameFunctions = gameFunction();

@@ -186,7 +186,21 @@ export function GameStudio() {
 
   // ── Nova64 iframe message handler ─────────────────────────────────────
   useEffect(() => {
+    // Origin the Nova64 runtime iframe is served from (same-origin in prod,
+    // localhost:5173 in dev). Used to reject forged/cross-origin messages.
+    let novaOrigin = '';
+    try {
+      novaOrigin = new URL(getNovaBaseUrl(), window.location.href).origin;
+    } catch {
+      novaOrigin = window.location.origin;
+    }
     const handler = (e: MessageEvent) => {
+      // Trust only messages from OUR runtime iframe on the expected origin.
+      const expectedWin = iframeRef.current?.contentWindow;
+      if (!expectedWin || e.source !== expectedWin) return;
+      if (e.origin !== novaOrigin) return;
+      if (typeof e.data?.type !== 'string') return;
+
       if (e.data?.type === 'EXECUTE_READY') {
         iframeReadyRef.current = true;
         if (pendingCodeRef.current !== null && iframeRef.current?.contentWindow) {
@@ -200,9 +214,12 @@ export function GameStudio() {
       } else if (e.data?.type === 'EXECUTE_SUCCESS') {
         setOutput(prev => [...prev, '\u2705 Game is running!']);
       } else if (e.data?.type === 'CART_LOG') {
-        setOutput(prev => [...prev, e.data.message]);
+        if (typeof e.data.message === 'string' && e.data.message.length <= 65536) {
+          setOutput(prev => [...prev, e.data.message]);
+        }
       } else if (e.data?.type === 'EXECUTE_ERROR') {
-        setOutput(prev => [...prev, `\u274C Runtime error: ${e.data.error}`]);
+        const err = typeof e.data.error === 'string' ? e.data.error.slice(0, 4096) : 'unknown error';
+        setOutput(prev => [...prev, `\u274C Runtime error: ${err}`]);
       }
     };
     window.addEventListener('message', handler);

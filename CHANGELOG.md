@@ -27,6 +27,20 @@ web ↔ Godot) + the distribution/release pipeline.
 - **Carts/mobile**: cinematic `the-last-save-file` + `cls3D`/`glitchBurst`
   helpers; real screen-shader glitch (`fx.glitch`); portrait rotate gate;
   mobile-tappable boot prompts; Godot multi-touch (`nova64.input.touches()`).
+- **os9-shell — maximized window fill fix** (`os9-shell/src/components/Window.tsx`):
+  a maximized window now fills its stage with `top:0/height:100%` instead of
+  re-subtracting the menu-bar/control-strip heights. Windows are parented to
+  `.workspace-stage` (`position:fixed; top:28px; bottom:30px`), which is already
+  inset below the menu bar and above the control strip; the old offset math
+  double-counted the chrome, leaving a 28px gap above the window and overflow
+  past the control strip (visible on apps that open maximized, e.g. the Nova HD
+  demoscene cart). Verified via Playwright: maximized rect is now flush at
+  `top:28,bottom:780` on an 810px viewport.
+- **os9-shell — one-command build+serve** (`pnpm osBuildServe`,
+  `scripts/os-build-serve.sh`): builds the shell once and syncs the fresh `dist/`
+  into every served copy (`public/os9-shell` and, when present,
+  `../starcade9/starcade9.github.io/os9-shell`), prints the deployed bundle hash,
+  then serves it — so a source fix can't silently land in only one copy.
 
 ## v0.5.2 — _Hippie Sunshine_
 

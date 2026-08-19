@@ -79,10 +79,14 @@ export function Window({
   const { updateWindow, toggleMaximize, minimizeWindow } = useWindowStore();
 
   // Calculate actual position and size
+  // Windows live inside .workspace-stage, which is already fixed-positioned
+  // between the menu bar (top: 28px) and the control strip (bottom: 30px).
+  // So a maximized window just fills that stage — do NOT re-subtract the
+  // chrome heights or it double-offsets (gap above, overflow below).
   const actualX = isMaximized ? 0 : x;
-  const actualY = isMaximized ? 20 : y; // Below menu bar
-  const actualWidth = isMaximized ? window.innerWidth : width;
-  const actualHeight = isMaximized ? window.innerHeight - 50 : height; // Account for menu + control strip
+  const actualY = isMaximized ? 0 : y;
+  const actualWidth = isMaximized ? '100%' : width;
+  const actualHeight = isMaximized ? '100%' : height;
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {

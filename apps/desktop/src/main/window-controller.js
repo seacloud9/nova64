@@ -15,7 +15,7 @@ function urlFor(surface) {
   if (surface === VIEW.OS) {
     return DEV_SERVER_URL
       ? `${DEV_SERVER_URL.replace(/\/$/, '')}/os9-shell/index.html`
-      : `${APP_PROTOCOL}://os/index.html`;
+      : `${APP_PROTOCOL}://os/os9-shell/index.html`;
   }
   if (surface === VIEW.DEV) return `${APP_PROTOCOL}://dev/index.html`;
   throw new Error(`unknown surface: ${surface}`);

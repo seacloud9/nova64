@@ -31,12 +31,6 @@ function handleAppProtocol() {
     if (!root) return new Response('Unknown surface', { status: 404 });
 
     let rel = decodeURIComponent(url.pathname);
-    // The os9-shell web build hardcodes an absolute base of `/os9-shell/`, so its
-    // assets resolve to nova64-app://os/os9-shell/... — collapse that prefix onto
-    // the staged root until a desktop-mode OS build (relative base) exists.
-    if (url.hostname === 'os' && rel.startsWith('/os9-shell/')) {
-      rel = rel.slice('/os9-shell'.length);
-    }
     if (!rel || rel === '/') rel = '/index.html';
     const abs = path.join(root, rel);
 

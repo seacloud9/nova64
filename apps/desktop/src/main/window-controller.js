@@ -91,15 +91,15 @@ class WindowController {
       isRailVisible: () => this.railVisible,
     });
 
-    // Option/Alt+B toggles the icon rail, caught from any surface.
-    const onKey = (_e, input) => {
+    // Command/Ctrl+B toggles the icon rail, caught from any surface.
+    const onKey = (event, input) => {
       if (
         input.type === 'keyDown' &&
-        input.alt &&
-        !input.control &&
-        !input.meta &&
+        (input.meta || input.control) &&
+        !input.alt &&
         input.key.toLowerCase() === 'b'
       ) {
+        event.preventDefault();
         this.toggleRail();
       }
     };

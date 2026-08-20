@@ -110,6 +110,7 @@ pnpm preview
 
 # Core CLI-driven test suite
 pnpm test
+pnpm test:quick   # fast everyday smoke (~2.5s): color + demoscene + core CLI path + dist-sync check. Use `pnpm test` (full ~17s) and the suites below for release.
 pnpm test:api
 pnpm test:input
 pnpm test:starfox

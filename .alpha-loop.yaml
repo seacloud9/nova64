@@ -45,9 +45,13 @@ automation_policy:
     - retroarch/**               # native C core — agent cannot build or modify
     - pnpm-lock.yaml
     - package.json
+    - pnpm-workspace.yaml        # workspace topology — change manually only
     - .github/workflows/**
     - AGENTS.md                  # single source of truth — change manually only
     - CLAUDE.md
+    - apps/desktop/electron-builder.yml  # packaging config — human/CI only
+    - '**/*.entitlements'        # signing entitlements — human/CI only
+    - '**/.env*'                 # secrets — never
   allowed_paths:
     - src/**
     - runtime/**
@@ -55,6 +59,9 @@ automation_policy:
     - tests/**
     - docs/**
     - os9-shell/src/**
+    - packages/**                # shared headless core (app-contracts, etc.)
+    - apps/desktop/src/**         # Electron renderer/main source
+    - extensions/vscode/src/**    # VS Code extension source
   require_human_for:
     - auth
     - billing

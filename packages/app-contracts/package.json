@@ -1,0 +1,23 @@
+{
+  "name": "@nova64/app-contracts",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Host-neutral shared contracts for the Nova64 desktop/VS Code platform: message protocols, command ids, events. No React/Electron/VS Code dependencies.",
+  "license": "MIT",
+  "main": "./index.js",
+  "types": "./index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.js"
+    }
+  },
+  "files": [
+    "index.js",
+    "index.d.ts"
+  ],
+  "scripts": {
+    "test": "node test/protocol.test.js"
+  }
+}

@@ -80,6 +80,8 @@ importers:
         specifier: ^0.33.0
         version: 0.33.0(@babylonjs/core@9.4.1)
 
+  packages/app-contracts: {}
+
 packages:
 
   '@babylonjs/core@9.4.1':

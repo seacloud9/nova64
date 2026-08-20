@@ -1,0 +1,16 @@
+# Nova64 pnpm workspace.
+#
+# Scopes the new shared/host trees for the desktop + VS Code platform program
+# (see plans/NOVA64_DESKTOP_VSCODE_PLAN.md §4). Deliberately does NOT include
+# `os9-shell` — it keeps its own independent install/build (`cd os9-shell && pnpm
+# install && pnpm build`) so this change stays surgical. The root `nova64` package
+# remains publishable; these workspace packages are internal (not npm-published).
+packages:
+  - 'packages/*'
+  - 'apps/*'
+  - 'extensions/*'
+
+# Allow Electron's postinstall (downloads the platform binary). pnpm v10 blocks
+# build scripts by default; the desktop app cannot launch without this.
+onlyBuiltDependencies:
+  - electron

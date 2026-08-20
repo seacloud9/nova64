@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Nova64 Dev</title>
+    <link rel="stylesheet" href="dev.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <span class="brand">Nova64 Dev</span>
+      <span id="project" class="project">No folder open</span>
+      <span class="spacer"></span>
+      <button id="open-btn" type="button">Open folder…</button>
+      <button id="save-btn" type="button" disabled>Save</button>
+    </header>
+
+    <main class="workbench">
+      <aside class="explorer" aria-label="Project files">
+        <div class="explorer-head">Explorer</div>
+        <ul id="tree" class="tree"></ul>
+        <p id="explorer-empty" class="empty">Open a folder to browse its files.</p>
+      </aside>
+
+      <section class="editor-pane">
+        <div id="tabs" class="tabs" role="tablist"></div>
+        <div id="editor-host" class="editor-host"></div>
+        <div id="editor-empty" class="editor-empty">
+          <div class="logo" aria-hidden="true">⌨️</div>
+          <p>Open a folder, then pick a file to edit.</p>
+        </div>
+      </section>
+    </main>
+
+    <footer class="statusbar">
+      <span id="status-path"></span>
+      <span class="spacer"></span>
+      <span id="status-dirty"></span>
+    </footer>
+
+    <script type="module" src="dev.js"></script>
+  </body>
+</html>

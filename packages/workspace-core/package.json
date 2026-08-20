@@ -1,0 +1,24 @@
+{
+  "name": "@nova64/workspace-core",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Host-neutral Nova64 workspace model: file tree, editor tabs + dirty tracking, path safety, and the NovaFileSystem contract. No React/Electron/VS Code deps.",
+  "license": "MIT",
+  "main": "./index.js",
+  "types": "./index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.js"
+    }
+  },
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "src"
+  ],
+  "scripts": {
+    "test": "node test/workspace.test.js"
+  }
+}

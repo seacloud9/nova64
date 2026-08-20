@@ -462,6 +462,8 @@ second runtime or agent implementation.
 - [x] GitHub epic **#9** created; Phase 0 issues created (**#7** `ready`, **#8** `needs-human-input`)
 - [x] MemPalace: diary entry recorded in `nova64`/`plan` (baseline `b453b8c` + phase map). NB: write tools require `agent_name` — omitting it returns a fake `-32000` error, not corruption.
 - [x] `MEMORY.md` pointer added so cold sessions find this program
-- [x] Phase 0 **#7 implemented by hand** on branch `harden/issue-7-studio-messaging` (loop was blocked on API credits). 390/390 green; #7 → `in-review`. See [`HANDOFF_2026-08-19.md`](./HANDOFF_2026-08-19.md).
-- [ ] **NEXT: #8** (pnpm workspace + `app-contracts` + widen `allowed_paths`) — human-scaffold; migrate `runtime/studio-protocol.js` into `packages/app-contracts`
-- [ ] Resume `alpha-loop run --issue <N>` for future loop-safe issues once API credits are restored
+- [x] Phase 0 **#7 MERGED** to `main` via PR #10 (implemented by hand; loop was credit-blocked). 390/390 green.
+- [x] Phase 0 **#8 done** on branch `scaffold/issue-8-workspace`: pnpm workspace + `packages/app-contracts` (re-exports `runtime/studio-protocol.js`, adds §8 `RuntimeCommand`/`RuntimeEvent` types) + widened `allowed_paths`. app-contracts smoke + root 390/390 + os9-shell 208/208 green. Awaiting your push + PR.
+- [x] **Phase 1 done** (#11) on branch `feat/phase-1-electron-shell` (stacked on #8): `apps/desktop` secure Electron shell — activity rail + isolated OS/Dev `WebContentsView`s, `nova64-app://` serverless protocol, `nova64 desktop dev|build --dir` CLI. Headless smoke boot green (Electron v33).
+- [x] **Phase 2 done** (#12) on branch `feat/phase-2-workspace-monaco` (stacked on #11): `@nova64/workspace-core` (model + path safety, 13 tests) + Electron `WorkspaceService` (disk I/O, containment guard, watch) + Dev surface (explorer, tabs, dirty tracking, save, session restore) via an `EditorAdapter` seam. Smoke: OS + Dev load clean, exit 0. **Monaco itself is the documented drop-in follow-up (`MonacoEditorAdapter`).**
+- [ ] **NEXT: `MonacoEditorAdapter`** (Nova64 typings/completions/diagnostics from `runtime/index.d.ts`) → then **Phase 3** (sandboxed runtime Preview). Also pending: `@nova64/app-contracts` consumer rewire (from #8); top up alpha-loop API credits. See [`HANDOFF_2026-08-19.md`](./HANDOFF_2026-08-19.md).

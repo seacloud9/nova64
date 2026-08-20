@@ -16,6 +16,8 @@ function parseFlags(args) {
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
     if (arg === '--no-open') opts.open = false;
+    else if (arg === '--dir') opts.dir = true;
+    else if (arg === '--devtools') opts.devtools = true;
     else if (arg === '--port' || arg === '-p') {
       const port = parseInt(args[++i], 10);
       if (Number.isFinite(port) && port > 0 && port < 65536) opts.port = port;
@@ -40,12 +42,15 @@ function printHelp() {
     nova64 init [name]           Create a new Nova64 project
     nova64 template [name]       Create a project from an example template
     nova64 dev                   Start dev server for current project
+    nova64 desktop dev           Launch the standalone desktop app (Electron)
     nova64 --start-demo          Launch the console with demos
 
   \x1b[1mCommands:\x1b[0m
     init [name]      Scaffold a new project (prompts for name if omitted)
     template [name]  Pick from 60+ example games/demos to use as a starter
     dev              Start a Vite dev server for the current project
+    desktop dev      Launch the Electron desktop app against a local server
+    desktop build    Stage assets so the desktop app runs serverless (--dir)
 
   \x1b[1mOptions:\x1b[0m
     --start-demo     Start local server and open the full console
@@ -110,6 +115,9 @@ if (command === 'init') {
 } else if (command === 'dev') {
   const { devCommand } = await import('./commands/dev.js');
   await devCommand(opts);
+} else if (command === 'desktop') {
+  const { desktopCommand } = await import('./commands/desktop.js');
+  await desktopCommand(commandArg, opts);
 } else if (args.includes('--start-demo')) {
   // Legacy flag — keep for backward compatibility
   try {

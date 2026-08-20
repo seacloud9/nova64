@@ -44,8 +44,8 @@ From the repo root (WSL, `nvm use 20`):
 pnpm install            # installs Electron into apps/desktop
 pnpm osBuild            # build the OS 9 shell into public/os9-shell (once / when it changes)
 
-# Dev — local server + Electron:
-nova64 desktop dev      # or: node bin/nova64.js desktop dev
+# Dev — local server + Electron (recommended for review, --devtools opens the inspector):
+nova64 desktop dev --devtools    # or: node bin/nova64.js desktop dev --devtools
 
 # Serverless — stage assets, then launch with no server:
 nova64 desktop build --dir
@@ -54,6 +54,32 @@ pnpm --filter @nova64/desktop start
 
 > On Windows, launch the GUI from the native Windows shell so Electron uses the
 > Windows binary. Under WSL without an X server the window cannot display.
+
+### Dev mode vs serverless
+
+- **Dev mode** (`nova64 desktop dev`) serves the *entire* Nova64 root (OS shell **and** the
+  runtime — `console.html`, `cart-runner.html`, assets) from one origin, so the OS apps that
+  embed the runtime (Nova64 Console, Game Studio) work end to end. Use this for review.
+- **Serverless** (`build --dir` + `start`) currently stages only the OS shell, so OS apps that
+  iframe the runtime won't fully resolve. The protocol maps os9-shell's hardcoded `/os9-shell/`
+  base onto the staged root; a full desktop-mode OS/runtime build (relative base, runtime
+  staged) is the follow-up — see plan §6.3.
+
+### Reviewing under WSL (WSLg)
+
+Windows 11 WSLg renders the Linux Electron window on your Windows desktop. Notes:
+
+- Pass `--no-sandbox` (or `ELECTRON_DISABLE_SANDBOX=1`) — the pnpm-store Electron's SUID
+  sandbox isn't configured under WSL. `--disable-gpu` avoids a benign GPU-init warning.
+- **Emoji icons need a color-emoji font.** The OS shell uses emoji app icons; a stock WSL has
+  no emoji font, so they render as empty boxes. Install one (no sudo needed):
+  ```bash
+  mkdir -p ~/.local/share/fonts
+  curl -fsSL -o ~/.local/share/fonts/NotoColorEmoji.ttf \
+    https://github.com/googlefonts/noto-emoji/raw/main/fonts/NotoColorEmoji.ttf
+  fc-cache -f ~/.local/share/fonts
+  ```
+  This is a WSL-only display gap — on native Windows the emoji render via Segoe UI Emoji.
 
 ## Not yet (later phases)
 

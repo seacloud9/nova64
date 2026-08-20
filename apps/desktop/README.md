@@ -99,8 +99,17 @@ Windows 11 WSLg renders the Linux Electron window on your Windows desktop. Notes
 - **Settings surface** (`src/settings/`) is the control center: live theme picker (with swatches)
   + an About panel. Backed by the narrow `novaSettings` preload bridge.
 
+## Dev editor (Monaco)
+
+The Dev surface uses **Monaco** behind the `EditorAdapter` seam (`src/dev/monaco-adapter.js`),
+with a **textarea fallback** if it fails to load. Monaco's AMD build is served over the
+`nova64-app://monaco` protocol host (resolved from `node_modules`, no bundler); its language
+workers run from a same-origin blob that `importScripts` the cross-origin worker, so the strict
+CSP is preserved (no `unsafe-eval`). The editor theme follows the app theme.
+
 ## Not yet (later phases)
 
+- Nova64 typings/completions in Monaco (`addExtraLib` from `runtime/index.d.ts`).
 - Installer packaging (electron-builder: deb / AppImage / nsis / dmg) — plan §11, Phase 8–9.
-- Monaco editor in the Dev surface (behind the `EditorAdapter` seam) + runtime preview — Phase 2–3.
+- Sandboxed runtime preview in the Dev surface — Phase 3.
 - Provider/agent AI in the host process — Phase 4–5.

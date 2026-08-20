@@ -105,9 +105,27 @@ if (!app.requestSingleInstanceLock()) {
             if (name === 'dev') {
               try {
                 const kind = await controller.content.dev.webContents.executeJavaScript(
-                  'window.__novaDev && (window.__novaDev.setSample(), window.__novaDev.editorKind)'
+                  `window.__novaDev && (window.__novaDev.setSample(), window.__novaDev.editorKind + "|libs=" +
+                    (window.monaco ? Object.keys(window.monaco.languages.typescript.javascriptDefaults.getExtraLibs()).join(";") : "no-monaco"))`
                 );
                 console.log(`nova64-desktop: dev editor = ${kind}`);
+                try {
+                  const comps = await controller.content.dev.webContents.executeJavaScript(
+                    `(async () => {
+                       const m = window.monaco;
+                       const uri = m.Uri.parse('nova64-workspace:/__completion_test.js');
+                       const model = m.editor.createModel('nova64.', 'javascript', uri);
+                       const worker = await m.languages.typescript.getJavaScriptWorker();
+                       const client = await worker(uri);
+                       const info = await client.getCompletionsAtPosition(uri.toString(), 7);
+                       model.dispose();
+                       return info ? info.entries.slice(0, 10).map(e => e.name).join(',') : 'none';
+                     })()`
+                  );
+                  console.log(`nova64-desktop: nova64. completions = ${comps}`);
+                } catch (e) {
+                  console.error(`nova64-desktop: completions test failed: ${e.message}`);
+                }
                 if (process.env.NOVA64_DESKTOP_TEST_FOLDER) {
                   const rows = await controller.content.dev.webContents.executeJavaScript(
                     `(async () => {

@@ -1,7 +1,7 @@
 import { resolve, join } from 'path';
 import { fileURLToPath } from 'url';
 import { createRequire } from 'module';
-import { spawn } from 'child_process';
+import { spawn, execFileSync } from 'child_process';
 import { stat, cp, rm, mkdir } from 'fs/promises';
 import { createServer } from 'vite';
 
@@ -24,6 +24,17 @@ async function dirExists(p) {
     return (await stat(p)).isDirectory();
   } catch {
     return false;
+  }
+}
+
+/** Regenerate the Monaco Nova64 typings from runtime/namespace.js (best-effort). */
+function regenNova64Types() {
+  try {
+    execFileSync('node', [resolve(NOVA64_ROOT, 'scripts', 'gen-nova64-dts.mjs')], {
+      stdio: 'ignore',
+    });
+  } catch {
+    /* non-fatal — the committed typings are used as-is */
   }
 }
 
@@ -54,6 +65,7 @@ async function desktopDev(opts = {}) {
     console.error(`  Build the OS shell first: ${c.bold('pnpm osBuild')}\n`);
     process.exit(1);
   }
+  regenNova64Types();
 
   const port = opts.port && opts.port !== 3000 ? opts.port : 4173;
   const server = await createServer({
@@ -103,6 +115,7 @@ async function desktopBuild(opts = {}) {
     console.error(`  Build it first: ${c.bold('pnpm build')} (and ${c.bold('pnpm osBuild')} for the OS shell).\n`);
     process.exit(1);
   }
+  regenNova64Types();
 
   if (opts.dir) {
     await rm(OS_STAGE_DIR, { recursive: true, force: true });

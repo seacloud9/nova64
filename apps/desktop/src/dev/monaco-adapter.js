@@ -6,9 +6,25 @@
  */
 
 // Host serves monaco's `min/` dir, so `vs/` lives at `${MONACO_BASE}/vs/`.
+import { NOVA64_DTS } from './nova64-types.js';
+
 const MONACO_BASE = 'nova64-app://monaco';
 const MONACO_VS = `${MONACO_BASE}/vs`;
 let monacoPromise = null;
+let typesConfigured = false;
+
+/** Feed Nova64's cart API declarations to Monaco so nova64.* + globals autocomplete. */
+function configureNova64Types(monaco) {
+  if (typesConfigured) return;
+  typesConfigured = true;
+  const ts = monaco.languages.typescript;
+  // Completions on, error squiggles off (cart globals are loosely typed).
+  ts.javascriptDefaults.setDiagnosticsOptions({
+    noSemanticValidation: true,
+    noSyntaxValidation: false,
+  });
+  ts.javascriptDefaults.addExtraLib(NOVA64_DTS, 'ts:nova64-global.d.ts');
+}
 
 function loadMonaco() {
   if (monacoPromise) return monacoPromise;
@@ -51,6 +67,7 @@ export function monacoThemeFor(themeId) {
 export class MonacoEditorAdapter {
   static async create() {
     const monaco = await loadMonaco();
+    configureNova64Types(monaco);
     return new MonacoEditorAdapter(monaco);
   }
 

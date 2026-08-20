@@ -78,8 +78,12 @@ function applyContentSecurityPolicy(session) {
     `font-src ${self}${dev} data:`,
     `connect-src ${self}${dev} data: blob:`,
     `worker-src ${self}${dev} blob:`,
+    // The OS shell embeds its apps (Console/cart-runner, HyperNova) in same-origin
+    // iframes, so allow same-origin framing while still denying external ancestors.
+    `frame-src ${self}${dev} blob:`,
+    `child-src ${self}${dev} blob:`,
     `object-src 'none'`,
-    `frame-ancestors 'none'`,
+    `frame-ancestors 'self' ${APP_PROTOCOL}:${dev}`,
   ].join('; ');
 
   session.webRequest.onHeadersReceived((details, callback) => {

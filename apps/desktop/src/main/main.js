@@ -35,6 +35,14 @@ if (!app.requestSingleInstanceLock()) {
     controller = new WindowController();
     const win = controller.create();
 
+    // Open DevTools for both content surfaces when requested (review/debugging).
+    // `nova64 desktop dev --devtools` or NOVA64_DESKTOP_DEVTOOLS=1.
+    if (process.env.NOVA64_DESKTOP_DEVTOOLS) {
+      for (const key of ['os', 'dev']) {
+        controller.content[key].webContents.openDevTools({ mode: 'detach' });
+      }
+    }
+
     // Smoke mode (CI / verification): confirm the shell + both surfaces load
     // without renderer errors, then exit non-zero if anything failed.
     if (process.env.NOVA64_DESKTOP_SMOKE) {

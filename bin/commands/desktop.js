@@ -70,10 +70,9 @@ async function desktopDev(opts = {}) {
   ${c.dim('Launching Electron… close the window to stop.')}
 `);
 
-  const child = spawn(electronPath, [DESKTOP_DIR], {
-    stdio: 'inherit',
-    env: { ...process.env, NOVA64_DESKTOP_DEV_URL: url },
-  });
+  const env = { ...process.env, NOVA64_DESKTOP_DEV_URL: url };
+  if (opts.devtools) env.NOVA64_DESKTOP_DEVTOOLS = '1';
+  const child = spawn(electronPath, [DESKTOP_DIR], { stdio: 'inherit', env });
 
   const shutdown = async () => {
     try {

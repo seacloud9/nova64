@@ -17,6 +17,7 @@ function parseFlags(args) {
     const arg = args[i];
     if (arg === '--no-open') opts.open = false;
     else if (arg === '--dir') opts.dir = true;
+    else if (arg === '--devtools') opts.devtools = true;
     else if (arg === '--port' || arg === '-p') {
       const port = parseInt(args[++i], 10);
       if (Number.isFinite(port) && port > 0 && port < 65536) opts.port = port;

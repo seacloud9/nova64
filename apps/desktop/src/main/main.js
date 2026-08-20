@@ -92,11 +92,15 @@ if (!app.requestSingleInstanceLock()) {
                 console.log(`nova64-desktop: dev editor = ${kind}`);
                 if (process.env.NOVA64_DESKTOP_TEST_FOLDER) {
                   const rows = await controller.content.dev.webContents.executeJavaScript(
-                    `window.__novaDev.openPath(${JSON.stringify(
-                      process.env.NOVA64_DESKTOP_TEST_FOLDER
-                    )}).then(() => document.querySelectorAll('#tree .tree-row').length).catch(e => 'ERR:' + e.message)`
+                    `(async () => {
+                       const inp = document.getElementById('path-input');
+                       inp.value = ${JSON.stringify(process.env.NOVA64_DESKTOP_TEST_FOLDER)};
+                       document.getElementById('open-path-btn').click();
+                       await new Promise(r => setTimeout(r, 1800));
+                       return document.querySelectorAll('#tree .tree-row').length;
+                     })()`
                   );
-                  console.log(`nova64-desktop: explorer tree rows = ${rows}`);
+                  console.log(`nova64-desktop: explorer tree rows (button click) = ${rows}`);
                 }
                 await new Promise(r => setTimeout(r, 800));
               } catch (e) {

@@ -220,13 +220,27 @@ const wireEditorChange = () =>
     updateStatus();
   });
 
-async function openByPath(p) {
-  if (!fsapi || !p || !p.trim()) return;
+let suggestedPath = '';
+
+async function openByPath(rawPath) {
+  const target = (rawPath && rawPath.trim()) || suggestedPath;
+  if (!fsapi || !target) {
+    el.pathInput.focus();
+    el.statusPath.textContent = 'Enter a folder path to open.';
+    return;
+  }
+  el.statusPath.textContent = `Opening ${target}…`;
   try {
-    const info = await fsapi.openPath(p.trim());
-    if (info) await loadWorkspace(info);
+    const info = await fsapi.openPath(target);
+    if (info) {
+      el.pathInput.value = info.root;
+      await loadWorkspace(info);
+      el.statusPath.textContent = `Opened ${info.root} (${info.entries.length} entries)`;
+    }
   } catch (err) {
-    el.statusPath.textContent = `Could not open: ${err.message || err}`;
+    const msg = `Could not open "${target}": ${err.message || err}`;
+    el.statusPath.textContent = msg;
+    el.project.textContent = 'Open failed — see status bar';
   }
 }
 el.openPathBtn.addEventListener('click', () => openByPath(el.pathInput.value));
@@ -239,17 +253,34 @@ el.openBtn.addEventListener('click', async () => {
     el.project.textContent = 'Workspace bridge unavailable (run in the desktop app)';
     return;
   }
-  // The native GTK picker can hang under WSLg, so on Linux use the path input.
+  // The native GTK picker hangs under WSLg, so on Linux drive the path input.
   if (fsapi.platform === 'linux') {
     el.pathInput.focus();
+    el.pathInput.select();
     el.statusPath.textContent =
-      'Type a folder path and press Enter (the native picker is unreliable under WSLg/Linux).';
+      'Edit the folder path and press Enter (native picker is unreliable under WSLg/Linux).';
     return;
   }
   const info = await fsapi.open();
-  if (info) await loadWorkspace(info);
+  if (info) {
+    el.pathInput.value = info.root;
+    await loadWorkspace(info);
+  }
 });
 el.saveBtn.addEventListener('click', saveActive);
+
+// Prefill a sensible default folder so "Open" works with one click.
+if (fsapi && typeof fsapi.suggestPath === 'function') {
+  fsapi
+    .suggestPath()
+    .then(p => {
+      if (p) {
+        suggestedPath = p;
+        if (!el.pathInput.value) el.pathInput.value = p;
+      }
+    })
+    .catch(() => {});
+}
 
 window.addEventListener('keydown', e => {
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {

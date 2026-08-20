@@ -2,6 +2,7 @@
 
 const { ipcMain, dialog } = require('electron');
 const path = require('node:path');
+const os = require('node:os');
 const fsp = require('node:fs/promises');
 const fs = require('node:fs');
 
@@ -94,9 +95,45 @@ class WorkspaceService {
     return this.#setRoot(result.filePaths[0]);
   }
 
-  /** Open a folder by absolute path (no native dialog — WSLg-safe). */
+  /**
+   * Normalize a user-typed path: strip quotes, expand `~`, and (when running as
+   * the Linux binary, e.g. under WSLg) map Windows paths `C:\x` → `/mnt/c/x` so
+   * a Windows user's natural input works.
+   */
+  #normalizeInputPath(input) {
+    let s = String(input == null ? '' : input)
+      .trim()
+      .replace(/^["']+|["']+$/g, '');
+    if (!s) return s;
+    if (s === '~' || s.startsWith('~/') || s.startsWith('~\\')) {
+      s = path.join(os.homedir(), s.slice(1));
+    }
+    if (process.platform !== 'win32') {
+      const drive = s.match(/^([a-zA-Z]):[\\/]?(.*)$/);
+      if (drive) s = `/mnt/${drive[1].toLowerCase()}/${drive[2]}`;
+      s = s.replace(/\\/g, '/');
+    }
+    return s;
+  }
+
+  /** A sensible default folder to prefill (the repo examples, else home). */
+  suggestPath() {
+    const candidates = [path.resolve(__dirname, '..', '..', '..', '..', 'examples'), os.homedir()];
+    for (const c of candidates) {
+      try {
+        if (fs.statSync(c).isDirectory()) return c;
+      } catch {
+        /* try next */
+      }
+    }
+    return os.homedir();
+  }
+
+  /** Open a folder by path (no native dialog — WSLg-safe). */
   async openPath(inputPath) {
-    const resolved = path.resolve(String(inputPath || '').trim());
+    const normalized = this.#normalizeInputPath(inputPath);
+    if (!normalized) throw new Error('no path provided');
+    const resolved = path.resolve(normalized);
     const stat = await fsp.stat(resolved); // throws if it doesn't exist
     if (!stat.isDirectory()) throw new Error(`not a directory: ${resolved}`);
     return this.#setRoot(resolved);
@@ -119,6 +156,7 @@ class WorkspaceService {
     for (const ch of [
       'workspace:open',
       'workspace:open-path',
+      'workspace:suggest-path',
       'workspace:list',
       'workspace:read',
       'workspace:write',
@@ -139,6 +177,10 @@ class WorkspaceService {
     ipcMain.handle('workspace:open-path', (event, inputPath) => {
       guard(event);
       return this.openPath(inputPath);
+    });
+    ipcMain.handle('workspace:suggest-path', event => {
+      guard(event);
+      return this.suggestPath();
     });
     ipcMain.handle('workspace:list', event => {
       guard(event);

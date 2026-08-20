@@ -11,6 +11,8 @@ contextBridge.exposeInMainWorld('novaWorkspace', {
   open: () => ipcRenderer.invoke('workspace:open'),
   /** Open a project folder by absolute path (no dialog). Resolves summary. */
   openPath: p => ipcRenderer.invoke('workspace:open-path', p),
+  /** A sensible default folder path to prefill the input. */
+  suggestPath: () => ipcRenderer.invoke('workspace:suggest-path'),
   /** Re-list the current workspace entries. */
   list: () => ipcRenderer.invoke('workspace:list'),
   read: relPath => ipcRenderer.invoke('workspace:read', relPath),

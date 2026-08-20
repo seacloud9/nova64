@@ -464,5 +464,5 @@ second runtime or agent implementation.
 - [x] `MEMORY.md` pointer added so cold sessions find this program
 - [x] Phase 0 **#7 MERGED** to `main` via PR #10 (implemented by hand; loop was credit-blocked). 390/390 green.
 - [x] Phase 0 **#8 done** on branch `scaffold/issue-8-workspace`: pnpm workspace + `packages/app-contracts` (re-exports `runtime/studio-protocol.js`, adds §8 `RuntimeCommand`/`RuntimeEvent` types) + widened `allowed_paths`. app-contracts smoke + root 390/390 + os9-shell 208/208 green. Awaiting your push + PR.
-- [ ] **NEXT: Phase 1** (minimal secure Electron shell — all `needs-human-input`); optional follow-up: rewire `src/main.js` + os9-shell to import the protocol from `@nova64/app-contracts` (deferred in #8 to protect the npm publish topology). See [`HANDOFF_2026-08-19.md`](./HANDOFF_2026-08-19.md).
-- [ ] Resume `alpha-loop run --issue <N>` for future loop-safe issues once API credits are restored
+- [x] **Phase 1 done** (#11) on branch `feat/phase-1-electron-shell` (stacked on #8): `apps/desktop` secure Electron shell — activity rail + isolated OS/Dev `WebContentsView`s, `nova64-app://` serverless protocol, `nova64 desktop dev|build --dir` CLI. Headless smoke boot green (Electron v33). Awaiting your push + PR.
+- [ ] **NEXT: Phase 2** (workspace-core + Monaco Dev surface — mixes human-scaffold + loop-safe). Also pending: rewire consumers to `@nova64/app-contracts` (deferred from #8); top up alpha-loop API credits. See [`HANDOFF_2026-08-19.md`](./HANDOFF_2026-08-19.md).

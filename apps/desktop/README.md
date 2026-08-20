@@ -19,12 +19,14 @@ scroll, editor, and layout state.
 
 | Module | Responsibility |
 | --- | --- |
-| `main.js` | App entry; single-instance lock; registers protocol; creates the window. |
-| `window-controller.js` | Creates the `WebContentsView`s (rail + OS + Dev), switches the active surface, and owns the `nav:*` IPC. |
-| `view-layout.js` | Computes/applies bounds on resize (fixed rail + shared content area). |
-| `protocol.js` | `nova64-app://` scheme — serves app chrome (`nav`/`dev`) from source and staged `os` assets, with path-traversal containment. |
+| `main.js` | App entry; single-instance lock; registers protocol; creates the window; smoke/devtools hooks. |
+| `window-controller.js` | Frameless window; creates the chrome frame + OS/Dev/Settings `WebContentsView`s; switches surfaces; owns `nav:*` + `window:action` IPC. |
+| `view-layout.js` | Bounds on resize: chrome fills the window; content is inset below the titlebar / right of the rail. |
+| `protocol.js` | `nova64-app://` scheme — serves chrome (`nav`), `dev`, `settings`, `shared`, `lib` from source and the `os` surface from the built web app, with path-traversal containment. |
 | `security.js` | Shared secure `webPreferences`, per-`webContents` hardening (deny popups/navigation/webviews/permissions), and a strict CSP. |
-| `preload/nav-preload.js` | Sandboxed CommonJS preload exposing a tiny `novaDesktop` bridge (`switchView`, `getActiveView`, `onActiveViewChanged`) — never `ipcRenderer`, Node, or fs. |
+| `settings-service.js` | Persists app settings (theme) to `userData/settings.json`; broadcasts `settings:changed`; owns `settings:*` IPC. |
+| `workspace-service.js` | Disk I/O for the Dev surface with a workspace-containment guard; `workspace:*` IPC. |
+| `preload/{chrome,dev,settings}-preload.js` | Sandboxed CommonJS bridges — `novaShell` (nav + window controls), `novaWorkspace`, `novaSettings`, and the shared `novaTheme`. Never expose `ipcRenderer`, Node, or fs. |
 
 ## Security posture
 
@@ -81,8 +83,24 @@ Windows 11 WSLg renders the Linux Electron window on your Windows desktop. Notes
   ```
   This is a WSL-only display gap — on native Windows the emoji render via Segoe UI Emoji.
 
+## Shell, theming & settings
+
+- **Edge-to-edge frameless window** (`frame: false`): the chrome view renders a custom
+  draggable titlebar with min/max/close controls (`window:action` IPC); content is inset below
+  the titlebar and right of the activity rail. No native OS chrome.
+- **Activity rail:** OS · Dev · ⚙️ Settings (gear, bottom).
+- **Theming** is centralized in `src/shared/theme.css` as CSS-variable tokens, with built-in
+  themes `dark` · `midnight` · `light` · `high-contrast`. `SettingsService` persists the choice
+  to `userData/settings.json` and broadcasts `settings:changed`; the shared `theme-apply.js`
+  (loaded by every surface) sets `<html data-theme>`, so the whole app restyles **live**.
+  - **Add a theme:** copy a `[data-theme='…']` block in `theme.css`, then add its id to `THEMES`
+    in `src/main/settings-service.js`. Surfaces consume the tokens automatically.
+  - The OS shell keeps its own retro OS 9 look (not themed).
+- **Settings surface** (`src/settings/`) is the control center: live theme picker (with swatches)
+  + an About panel. Backed by the narrow `novaSettings` preload bridge.
+
 ## Not yet (later phases)
 
 - Installer packaging (electron-builder: deb / AppImage / nsis / dmg) — plan §11, Phase 8–9.
-- Real Dev surface (Monaco, workspace, runtime preview) — Phase 2–3.
+- Monaco editor in the Dev surface (behind the `EditorAdapter` seam) + runtime preview — Phase 2–3.
 - Provider/agent AI in the host process — Phase 4–5.

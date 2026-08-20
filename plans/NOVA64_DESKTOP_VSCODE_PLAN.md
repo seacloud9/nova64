@@ -462,4 +462,6 @@ second runtime or agent implementation.
 - [x] GitHub epic **#9** created; Phase 0 issues created (**#7** `ready`, **#8** `needs-human-input`)
 - [x] MemPalace: diary entry recorded in `nova64`/`plan` (baseline `b453b8c` + phase map). NB: write tools require `agent_name` — omitting it returns a fake `-32000` error, not corruption.
 - [x] `MEMORY.md` pointer added so cold sessions find this program
-- [ ] Run Phase 0 loop-safe issue: `alpha-loop run --issue 7` (user reviews PR)
+- [x] Phase 0 **#7 implemented by hand** on branch `harden/issue-7-studio-messaging` (loop was blocked on API credits). 390/390 green; #7 → `in-review`. See [`HANDOFF_2026-08-19.md`](./HANDOFF_2026-08-19.md).
+- [ ] **NEXT: #8** (pnpm workspace + `app-contracts` + widen `allowed_paths`) — human-scaffold; migrate `runtime/studio-protocol.js` into `packages/app-contracts`
+- [ ] Resume `alpha-loop run --issue <N>` for future loop-safe issues once API credits are restored

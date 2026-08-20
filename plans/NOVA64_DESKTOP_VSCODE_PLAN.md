@@ -462,6 +462,7 @@ second runtime or agent implementation.
 - [x] GitHub epic **#9** created; Phase 0 issues created (**#7** `ready`, **#8** `needs-human-input`)
 - [x] MemPalace: diary entry recorded in `nova64`/`plan` (baseline `b453b8c` + phase map). NB: write tools require `agent_name` — omitting it returns a fake `-32000` error, not corruption.
 - [x] `MEMORY.md` pointer added so cold sessions find this program
-- [x] Phase 0 **#7 implemented by hand** on branch `harden/issue-7-studio-messaging` (loop was blocked on API credits). 390/390 green; #7 → `in-review`. See [`HANDOFF_2026-08-19.md`](./HANDOFF_2026-08-19.md).
-- [ ] **NEXT: #8** (pnpm workspace + `app-contracts` + widen `allowed_paths`) — human-scaffold; migrate `runtime/studio-protocol.js` into `packages/app-contracts`
+- [x] Phase 0 **#7 MERGED** to `main` via PR #10 (implemented by hand; loop was credit-blocked). 390/390 green.
+- [x] Phase 0 **#8 done** on branch `scaffold/issue-8-workspace`: pnpm workspace + `packages/app-contracts` (re-exports `runtime/studio-protocol.js`, adds §8 `RuntimeCommand`/`RuntimeEvent` types) + widened `allowed_paths`. app-contracts smoke + root 390/390 + os9-shell 208/208 green. Awaiting your push + PR.
+- [ ] **NEXT: Phase 1** (minimal secure Electron shell — all `needs-human-input`); optional follow-up: rewire `src/main.js` + os9-shell to import the protocol from `@nova64/app-contracts` (deferred in #8 to protect the npm publish topology). See [`HANDOFF_2026-08-19.md`](./HANDOFF_2026-08-19.md).
 - [ ] Resume `alpha-loop run --issue <N>` for future loop-safe issues once API credits are restored

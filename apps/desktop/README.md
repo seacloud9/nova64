@@ -107,9 +107,19 @@ with a **textarea fallback** if it fails to load. Monaco's AMD build is served o
 workers run from a same-origin blob that `importScripts` the cross-origin worker, so the strict
 CSP is preserved (no `unsafe-eval`). The editor theme follows the app theme.
 
+**Nova64 completions:** `scripts/gen-nova64-dts.mjs` generates cart-facing `.d.ts` from the
+canonical `runtime/namespace.js` `NAMESPACE_MAP` (into `src/dev/nova64-types.js`), which Monaco
+loads via `addExtraLib` — so `nova64.*` and the flat cart globals autocomplete. `nova64 desktop
+dev|build` regenerate it to stay in sync. Names are accurate; signatures are loose (`any`).
+
+## Run a cart
+
+The Dev surface has a **▶ Run** (Ctrl/Cmd+Enter) that executes the active cart in an embedded
+Nova64 runtime iframe (`console.html?studio=1`) via the hardened studio protocol, streaming
+`CART_LOG`/errors to a run console. The runtime surface gets `'unsafe-eval'` (it runs carts via
+`new Function`) via a per-surface CSP; the Dev/Settings tooling stays strict.
+
 ## Not yet (later phases)
 
-- Nova64 typings/completions in Monaco (`addExtraLib` from `runtime/index.d.ts`).
 - Installer packaging (electron-builder: deb / AppImage / nsis / dmg) — plan §11, Phase 8–9.
-- Sandboxed runtime preview in the Dev surface — Phase 3.
 - Provider/agent AI in the host process — Phase 4–5.

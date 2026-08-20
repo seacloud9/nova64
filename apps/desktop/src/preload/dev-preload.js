@@ -1,0 +1,24 @@
+'use strict';
+
+// Sandboxed preload for the Dev surface. Exposes a narrow workspace API backed
+// by the main-process WorkspaceService. No raw ipcRenderer / Node / fs handles.
+const { contextBridge, ipcRenderer } = require('electron');
+
+contextBridge.exposeInMainWorld('novaWorkspace', {
+  /** Prompt to open a project folder. Resolves { root, name, entries } | null. */
+  open: () => ipcRenderer.invoke('workspace:open'),
+  /** Re-list the current workspace entries. */
+  list: () => ipcRenderer.invoke('workspace:list'),
+  read: relPath => ipcRenderer.invoke('workspace:read', relPath),
+  write: (relPath, data) => ipcRenderer.invoke('workspace:write', relPath, data),
+  mkdir: relPath => ipcRenderer.invoke('workspace:mkdir', relPath),
+  remove: relPath => ipcRenderer.invoke('workspace:remove', relPath),
+  move: (from, to) => ipcRenderer.invoke('workspace:move', from, to),
+  exists: relPath => ipcRenderer.invoke('workspace:exists', relPath),
+  /** Subscribe to on-disk change notifications. Returns an unsubscribe fn. */
+  onChanged: callback => {
+    const listener = () => callback();
+    ipcRenderer.on('workspace:changed', listener);
+    return () => ipcRenderer.removeListener('workspace:changed', listener);
+  },
+});

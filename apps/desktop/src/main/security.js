@@ -66,7 +66,9 @@ function hardenWebContents(contents) {
  * wasm-unsafe-eval) but denies remote script/object and frame ancestors.
  */
 function applyContentSecurityPolicy(session) {
-  const self = `'self' ${APP_PROTOCOL}://os ${APP_PROTOCOL}://dev`;
+  // Allow the whole custom scheme (nav/dev/os/lib are distinct origins that
+  // import each other via import maps), plus the dev server in dev mode.
+  const self = `'self' ${APP_PROTOCOL}:`;
   const dev = DEV_SERVER_URL ? ` ${new URL(DEV_SERVER_URL).origin}` : '';
   const csp = [
     `default-src ${self}${dev}`,

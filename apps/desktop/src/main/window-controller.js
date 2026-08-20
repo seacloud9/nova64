@@ -5,8 +5,10 @@ const { BrowserWindow, WebContentsView, ipcMain } = require('electron');
 const { APP_PROTOCOL, VIEW, DEV_SERVER_URL } = require('./constants');
 const { layout } = require('./view-layout');
 const { secureWebPreferences, hardenWebContents, applyContentSecurityPolicy } = require('./security');
+const { WorkspaceService } = require('./workspace-service');
 
 const NAV_PRELOAD = path.join(__dirname, '..', 'preload', 'nav-preload.js');
+const DEV_PRELOAD = path.join(__dirname, '..', 'preload', 'dev-preload.js');
 
 /** Resolve the URL for a surface, dev-server-aware. */
 function urlFor(surface) {
@@ -49,13 +51,20 @@ class WindowController {
     hardenWebContents(this.rail.webContents);
     this.rail.webContents.loadURL(`${APP_PROTOCOL}://nav/index.html`);
 
-    // Isolated content surfaces. No privileged preload; sandboxed.
+    // Isolated content surfaces. OS has no privileged preload; Dev gets the
+    // narrow workspace bridge. Both sandboxed.
     for (const surface of [VIEW.OS, VIEW.DEV]) {
-      const view = new WebContentsView({ webPreferences: secureWebPreferences() });
+      const prefs =
+        surface === VIEW.DEV ? secureWebPreferences({ preload: DEV_PRELOAD }) : secureWebPreferences();
+      const view = new WebContentsView({ webPreferences: prefs });
       hardenWebContents(view.webContents);
       view.webContents.loadURL(urlFor(surface));
       this.content[surface] = view;
     }
+
+    // Disk-backed workspace for the Dev surface — only trusts the Dev view.
+    this.workspace = new WorkspaceService(wc => wc === this.content[VIEW.DEV].webContents);
+    this.workspace.registerIpc(() => this.content[VIEW.DEV].webContents);
 
     this.win.contentView.addChildView(this.rail);
     this.win.contentView.addChildView(this.content[VIEW.DEV]);
@@ -83,6 +92,7 @@ class WindowController {
     setTimeout(reveal, 4000);
 
     this.win.on('closed', () => {
+      if (this.workspace) this.workspace.dispose();
       this.win = null;
     });
     return this.win;
@@ -108,6 +118,8 @@ class WindowController {
   }
 
   registerIpc() {
+    ipcMain.removeHandler('nav:switch-view');
+    ipcMain.removeHandler('nav:get-active-view');
     ipcMain.handle('nav:switch-view', (event, target) => {
       // Only accept from our own rail webContents.
       if (!this.rail || event.sender !== this.rail.webContents) return this.active;

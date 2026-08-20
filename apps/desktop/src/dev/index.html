@@ -7,14 +7,37 @@
     <link rel="stylesheet" href="dev.css" />
   </head>
   <body>
-    <main class="placeholder">
-      <div class="logo" aria-hidden="true">⌨️</div>
-      <h1>Dev workspace</h1>
-      <p>
-        The Monaco editor, project explorer, runtime preview, console, and AI agent land here in
-        <strong>Phase 2+</strong>. This is an isolated renderer surface — switching to OS and back
-        preserves its state.
-      </p>
+    <header class="topbar">
+      <span class="brand">Nova64 Dev</span>
+      <span id="project" class="project">No folder open</span>
+      <span class="spacer"></span>
+      <button id="open-btn" type="button">Open folder…</button>
+      <button id="save-btn" type="button" disabled>Save</button>
+    </header>
+
+    <main class="workbench">
+      <aside class="explorer" aria-label="Project files">
+        <div class="explorer-head">Explorer</div>
+        <ul id="tree" class="tree"></ul>
+        <p id="explorer-empty" class="empty">Open a folder to browse its files.</p>
+      </aside>
+
+      <section class="editor-pane">
+        <div id="tabs" class="tabs" role="tablist"></div>
+        <div id="editor-host" class="editor-host"></div>
+        <div id="editor-empty" class="editor-empty">
+          <div class="logo" aria-hidden="true">⌨️</div>
+          <p>Open a folder, then pick a file to edit.</p>
+        </div>
+      </section>
     </main>
+
+    <footer class="statusbar">
+      <span id="status-path"></span>
+      <span class="spacer"></span>
+      <span id="status-dirty"></span>
+    </footer>
+
+    <script type="module" src="dev.js"></script>
   </body>
 </html>

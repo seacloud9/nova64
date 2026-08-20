@@ -36,6 +36,8 @@ const APP_ROOTS = Object.freeze({
   nav: path.join(SRC_DIR, 'navigation'),
   dev: path.join(SRC_DIR, 'dev'),
   os: path.join(BUILD_DIR, 'os'),
+  // Shared host-neutral packages consumed by the Dev renderer as native ESM.
+  lib: path.resolve(SRC_DIR, '..', '..', '..', 'packages', 'workspace-core'),
 });
 
 module.exports = { APP_PROTOCOL, VIEW, RAIL_WIDTH, DEV_SERVER_URL, SRC_DIR, BUILD_DIR, APP_ROOTS };

@@ -35,11 +35,35 @@ if (!app.requestSingleInstanceLock()) {
     controller = new WindowController();
     const win = controller.create();
 
-    // Smoke mode (CI / verification): confirm the shell boots, then exit.
+    // Smoke mode (CI / verification): confirm the shell + both surfaces load
+    // without renderer errors, then exit non-zero if anything failed.
     if (process.env.NOVA64_DESKTOP_SMOKE) {
+      let failed = false;
+      for (const key of ['os', 'dev']) {
+        const wc = controller.content[key].webContents;
+        // Document navigation failure counts for both surfaces.
+        wc.on('did-fail-load', (_e, code, desc, url, isMainFrame) => {
+          if (code === -3 || !isMainFrame) return; // ERR_ABORTED / subresource
+          failed = true;
+          console.error(`nova64-desktop: ${key} load failed ${code} ${desc} ${url}`);
+        });
+        // Console errors fail only for the Dev surface we own. The OS surface is
+        // a web build whose remote analytics/fonts are intentionally CSP-blocked.
+        if (key === 'dev') {
+          wc.on('console-message', (_e, level, message) => {
+            if (level >= 3) {
+              failed = true;
+              console.error(`nova64-desktop: dev console error: ${message}`);
+            }
+          });
+        }
+      }
       win.once('show', () => {
         console.log('nova64-desktop: shell ready (smoke ok)');
-        setTimeout(() => app.quit(), 300);
+        setTimeout(() => {
+          console.log(`nova64-desktop: smoke ${failed ? 'FAILED' : 'passed'}`);
+          app.exit(failed ? 1 : 0);
+        }, 800);
       });
     }
 

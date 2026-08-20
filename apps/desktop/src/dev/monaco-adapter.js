@@ -5,28 +5,31 @@
  * worker. Falls back is handled by the caller (dev.js) if `create()` rejects.
  */
 
+// Host serves monaco's `min/` dir, so `vs/` lives at `${MONACO_BASE}/vs/`.
 const MONACO_BASE = 'nova64-app://monaco';
+const MONACO_VS = `${MONACO_BASE}/vs`;
 let monacoPromise = null;
 
 function loadMonaco() {
   if (monacoPromise) return monacoPromise;
   monacoPromise = new Promise((resolve, reject) => {
     // Workers: a same-origin blob (allowed by worker-src blob:) that pulls in the
-    // real worker from the monaco host (corsEnabled custom scheme).
+    // real worker from the monaco host (corsEnabled custom scheme). baseUrl points
+    // at the dir containing `vs/` so nested language workers resolve correctly.
     self.MonacoEnvironment = {
       getWorkerUrl() {
         const code =
           `self.MonacoEnvironment={baseUrl:'${MONACO_BASE}/'};` +
-          `importScripts('${MONACO_BASE}/base/worker/workerMain.js');`;
+          `importScripts('${MONACO_VS}/base/worker/workerMain.js');`;
         return URL.createObjectURL(new Blob([code], { type: 'text/javascript' }));
       },
     };
     const script = document.createElement('script');
-    script.src = `${MONACO_BASE}/loader.js`;
+    script.src = `${MONACO_VS}/loader.js`;
     script.onload = () => {
       try {
         const amdRequire = window.require;
-        amdRequire.config({ paths: { vs: MONACO_BASE } });
+        amdRequire.config({ paths: { vs: MONACO_VS } });
         amdRequire(['vs/editor/editor.main'], () => resolve(window.monaco), reject);
       } catch (err) {
         reject(err);

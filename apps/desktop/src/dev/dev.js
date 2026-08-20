@@ -11,6 +11,8 @@ const fsapi = window.novaWorkspace || null;
 const el = {
   project: document.getElementById('project'),
   openBtn: document.getElementById('open-btn'),
+  openPathBtn: document.getElementById('open-path-btn'),
+  pathInput: document.getElementById('path-input'),
   saveBtn: document.getElementById('save-btn'),
   tree: document.getElementById('tree'),
   explorerEmpty: document.getElementById('explorer-empty'),
@@ -218,9 +220,30 @@ const wireEditorChange = () =>
     updateStatus();
   });
 
+async function openByPath(p) {
+  if (!fsapi || !p || !p.trim()) return;
+  try {
+    const info = await fsapi.openPath(p.trim());
+    if (info) await loadWorkspace(info);
+  } catch (err) {
+    el.statusPath.textContent = `Could not open: ${err.message || err}`;
+  }
+}
+el.openPathBtn.addEventListener('click', () => openByPath(el.pathInput.value));
+el.pathInput.addEventListener('keydown', e => {
+  if (e.key === 'Enter') openByPath(el.pathInput.value);
+});
+
 el.openBtn.addEventListener('click', async () => {
   if (!fsapi) {
     el.project.textContent = 'Workspace bridge unavailable (run in the desktop app)';
+    return;
+  }
+  // The native GTK picker can hang under WSLg, so on Linux use the path input.
+  if (fsapi.platform === 'linux') {
+    el.pathInput.focus();
+    el.statusPath.textContent =
+      'Type a folder path and press Enter (the native picker is unreliable under WSLg/Linux).';
     return;
   }
   const info = await fsapi.open();
@@ -250,6 +273,7 @@ if (fsapi && typeof fsapi.onChanged === 'function') fsapi.onChanged(refreshEntri
   // Verification hook (headless smoke): load a sample file into the editor.
   window.__novaDev = {
     editorKind: editor.constructor.name,
+    openPath: p => openByPath(p),
     setSample() {
       editor.setModel(
         'sample.js',

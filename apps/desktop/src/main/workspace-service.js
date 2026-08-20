@@ -91,7 +91,19 @@ class WorkspaceService {
       properties: ['openDirectory'],
     });
     if (result.canceled || !result.filePaths.length) return null;
-    this.root = result.filePaths[0];
+    return this.#setRoot(result.filePaths[0]);
+  }
+
+  /** Open a folder by absolute path (no native dialog — WSLg-safe). */
+  async openPath(inputPath) {
+    const resolved = path.resolve(String(inputPath || '').trim());
+    const stat = await fsp.stat(resolved); // throws if it doesn't exist
+    if (!stat.isDirectory()) throw new Error(`not a directory: ${resolved}`);
+    return this.#setRoot(resolved);
+  }
+
+  async #setRoot(absRoot) {
+    this.root = absRoot;
     const entries = await this.#listRecursive();
     this.#startWatch();
     return { root: this.root, name: path.basename(this.root), entries };
@@ -106,6 +118,7 @@ class WorkspaceService {
     // Idempotent: clear any prior handlers so re-creating the window is safe.
     for (const ch of [
       'workspace:open',
+      'workspace:open-path',
       'workspace:list',
       'workspace:read',
       'workspace:write',
@@ -120,7 +133,12 @@ class WorkspaceService {
     ipcMain.handle('workspace:open', event => {
       guard(event);
       const { BrowserWindow } = require('electron');
-      return this.openFolder(BrowserWindow.fromWebContents(event.sender));
+      const win = BrowserWindow.fromWebContents(event.sender) || BrowserWindow.getAllWindows()[0];
+      return this.openFolder(win);
+    });
+    ipcMain.handle('workspace:open-path', (event, inputPath) => {
+      guard(event);
+      return this.openPath(inputPath);
     });
     ipcMain.handle('workspace:list', event => {
       guard(event);

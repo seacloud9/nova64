@@ -30,13 +30,17 @@ const SRC_DIR = path.resolve(__dirname, '..');
 /** Repo root (used to fall back to the built web app during dev/review). */
 const REPO_ROOT = path.resolve(SRC_DIR, '..', '..', '..');
 
-/** Monaco editor AMD distribution (min/vs), resolved from node_modules. */
-let MONACO_VS = '';
+/**
+ * Monaco editor AMD distribution root (the `min/` dir that CONTAINS `vs/`).
+ * Serving the parent of `vs/` keeps the `vs/` prefix consistent for the main
+ * loader and the nested language workers (which resolve `<baseUrl>vs/...`).
+ */
+let MONACO_MIN = '';
 try {
   const pkg = require.resolve('monaco-editor/package.json', {
     paths: [path.join(REPO_ROOT, 'apps', 'desktop'), REPO_ROOT],
   });
-  MONACO_VS = path.join(path.dirname(pkg), 'min', 'vs');
+  MONACO_MIN = path.join(path.dirname(pkg), 'min');
 } catch {
   /* monaco not installed — Dev falls back to the textarea editor */
 }
@@ -67,7 +71,7 @@ const APP_ROOTS = Object.freeze({
   shared: path.join(SRC_DIR, 'shared'),
   os: OS_ROOT,
   lib: path.join(REPO_ROOT, 'packages', 'workspace-core'),
-  monaco: MONACO_VS,
+  monaco: MONACO_MIN,
 });
 
 module.exports = {

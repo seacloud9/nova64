@@ -90,6 +90,14 @@ if (!app.requestSingleInstanceLock()) {
                   'window.__novaDev && (window.__novaDev.setSample(), window.__novaDev.editorKind)'
                 );
                 console.log(`nova64-desktop: dev editor = ${kind}`);
+                if (process.env.NOVA64_DESKTOP_TEST_FOLDER) {
+                  const rows = await controller.content.dev.webContents.executeJavaScript(
+                    `window.__novaDev.openPath(${JSON.stringify(
+                      process.env.NOVA64_DESKTOP_TEST_FOLDER
+                    )}).then(() => document.querySelectorAll('#tree .tree-row').length).catch(e => 'ERR:' + e.message)`
+                  );
+                  console.log(`nova64-desktop: explorer tree rows = ${rows}`);
+                }
                 await new Promise(r => setTimeout(r, 800));
               } catch (e) {
                 console.error(`nova64-desktop: dev hook failed: ${e.message}`);

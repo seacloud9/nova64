@@ -1,0 +1,14 @@
+{
+  "name": "@nova64/desktop",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Nova64 standalone desktop app (Electron): isolated OS 9 shell + Dev surfaces on one secure shell.",
+  "license": "MIT",
+  "main": "src/main/main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "devDependencies": {
+    "electron": "^33.0.0"
+  }
+}

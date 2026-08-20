@@ -9,3 +9,8 @@ packages:
   - 'packages/*'
   - 'apps/*'
   - 'extensions/*'
+
+# Allow Electron's postinstall (downloads the platform binary). pnpm v10 blocks
+# build scripts by default; the desktop app cannot launch without this.
+onlyBuiltDependencies:
+  - electron

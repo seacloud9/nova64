@@ -1,5 +1,6 @@
 'use strict';
 
+const fs = require('node:fs');
 const { app } = require('electron');
 const { registerAppProtocolScheme, handleAppProtocol } = require('./protocol');
 const { WindowController } = require('./window-controller');
@@ -58,6 +59,12 @@ if (!app.requestSingleInstanceLock()) {
           console.error(`nova64-desktop: ${key} load failed ${code} ${desc} ${url}`);
         });
         if (key !== 'os') owned[key] = wc;
+        // Diagnostic: log OS console errors (do not fail — OS is a web build).
+        else if (process.env.NOVA64_DESKTOP_LOG_OS) {
+          wc.on('console-message', (_e, level, message) => {
+            if (level >= 2) console.error(`nova64-desktop: os console: ${message}`);
+          });
+        }
       }
       for (const [key, wc] of Object.entries(owned)) {
         wc.on('console-message', (_e, level, message) => {
@@ -67,12 +74,28 @@ if (!app.requestSingleInstanceLock()) {
           }
         });
       }
-      win.once('show', () => {
+      win.once('show', async () => {
         console.log('nova64-desktop: shell ready (smoke ok)');
+        // Optional visual verification: capture each surface to <shot>-<name>.png.
+        const shot = process.env.NOVA64_DESKTOP_SHOT;
+        if (shot) {
+          for (const name of ['os', 'dev', 'settings']) {
+            controller.setActive(name);
+            await new Promise(r => setTimeout(r, 1400));
+            try {
+              const img = await controller.content[name].webContents.capturePage();
+              const buf = img.toPNG();
+              fs.writeFileSync(shot.replace(/\.png$/, `-${name}.png`), buf);
+              console.log(`nova64-desktop: captured ${name} (${buf.length} bytes)`);
+            } catch (e) {
+              console.error(`nova64-desktop: capture ${name} failed: ${e.message}`);
+            }
+          }
+        }
         setTimeout(() => {
           console.log(`nova64-desktop: smoke ${failed ? 'FAILED' : 'passed'}`);
           app.exit(failed ? 1 : 0);
-        }, 800);
+        }, 400);
       });
     }
 

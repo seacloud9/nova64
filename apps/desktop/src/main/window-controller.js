@@ -121,8 +121,10 @@ class WindowController {
     if (!CONTENT_SURFACES.includes(surface)) return;
     this.active = surface;
     for (const key of CONTENT_SURFACES) this.content[key].setVisible(key === surface);
+    // Raise the active surface above its siblings. The chrome frame stays at the
+    // bottom — it is full-window but only visible in the titlebar/rail gutters the
+    // inset content doesn't cover, so it must never be raised over the content.
     this.win.contentView.addChildView(this.content[surface]);
-    if (this.chrome) this.win.contentView.addChildView(this.chrome);
     this.broadcastActive();
   }
 

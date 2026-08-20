@@ -12,39 +12,79 @@ body {
   user-select: none;
 }
 
-/* ── custom titlebar (frameless, draggable) ─────────────────────────────── */
+/* ── custom titlebar with a top menu bar (frameless, draggable) ──────────── */
 .titlebar {
   position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
+  inset: 0 0 auto 0;
   height: var(--titlebar-h);
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  align-items: stretch;
   background: var(--titlebar);
   border-bottom: 1px solid var(--line);
-  -webkit-app-region: drag;
 }
-.title-drag {
+
+.menubar {
   display: flex;
-  align-items: center;
-  gap: 8px;
-  padding-left: 14px;
-  height: 100%;
-}
-.brand-dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: var(--accent);
-  box-shadow: 0 0 8px var(--accent);
+  align-items: stretch;
+  -webkit-app-region: no-drag;
 }
 .brand {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 14px 0 14px;
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.04em;
   color: var(--text-strong);
+}
+.brand-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 8px var(--accent);
+}
+
+.menu-item {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12px;
+  padding: 0 14px;
+  height: 100%;
+  position: relative;
+  transition: color 0.12s, background 0.12s;
+}
+.menu-item:hover {
+  color: var(--text);
+  background: var(--hover);
+}
+.menu-item.is-active {
+  color: var(--accent-text);
+}
+.menu-item.is-active::after {
+  content: '';
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: 0;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--accent);
+}
+.menu-item:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* draggable spacer fills the middle of the titlebar */
+.titlebar-drag {
+  flex: 1;
+  height: 100%;
+  -webkit-app-region: drag;
 }
 
 .window-controls {
@@ -62,10 +102,6 @@ body {
   display: grid;
   place-items: center;
 }
-.win-btn svg path,
-.win-btn svg rect {
-  stroke-width: 1;
-}
 .win-btn:hover {
   background: var(--hover);
   color: var(--text);
@@ -73,68 +109,4 @@ body {
 .win-btn.danger:hover {
   background: var(--danger);
   color: #fff;
-}
-
-/* ── activity rail (left) ───────────────────────────────────────────────── */
-.rail {
-  position: fixed;
-  top: var(--titlebar-h);
-  left: 0;
-  bottom: 0;
-  width: var(--rail-w);
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  padding: 8px 0;
-  background: var(--rail);
-  border-right: 1px solid var(--line);
-}
-.rail-top,
-.rail-bottom {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.rail-btn {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-  width: 100%;
-  padding: 8px 2px;
-  border: 0;
-  background: transparent;
-  color: var(--muted);
-  cursor: pointer;
-  transition: color 0.12s;
-}
-.rail-btn:hover {
-  color: var(--text);
-}
-.rail-btn.is-active {
-  color: var(--accent-text);
-}
-.rail-btn.is-active::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 6px;
-  bottom: 6px;
-  width: 2px;
-  border-radius: 2px;
-  background: var(--accent);
-}
-.rail-btn:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: -2px;
-}
-.glyph {
-  font-size: 20px;
-  line-height: 1;
-}
-.label {
-  font-size: 9px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
 }

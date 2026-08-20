@@ -6,8 +6,8 @@
   const shell = window.novaShell;
   if (!shell) return;
 
-  // ── activity rail ──
-  const buttons = Array.from(document.querySelectorAll('.rail-btn'));
+  // ── top menu bar (window switching) ──
+  const buttons = Array.from(document.querySelectorAll('.menu-item'));
   function reflect(activeView) {
     for (const btn of buttons) {
       const isActive = btn.dataset.view === activeView;

@@ -9,10 +9,15 @@
   </head>
   <body>
     <header class="titlebar">
-      <div class="title-drag">
-        <span class="brand-dot" aria-hidden="true"></span>
-        <span class="brand">Nova64</span>
-      </div>
+      <nav class="menubar" aria-label="Nova64 windows">
+        <span class="brand"><span class="brand-dot" aria-hidden="true"></span>Nova64</span>
+        <button class="menu-item is-active" data-view="os" type="button" aria-pressed="true">Nova OS</button>
+        <button class="menu-item" data-view="dev" type="button" aria-pressed="false">Dev</button>
+        <button class="menu-item" data-view="settings" type="button" aria-pressed="false">Settings</button>
+      </nav>
+
+      <div class="titlebar-drag"></div>
+
       <div class="window-controls">
         <button id="win-min" class="win-btn" type="button" aria-label="Minimize" title="Minimize">
           <svg width="10" height="10" viewBox="0 0 10 10"><rect x="0" y="4.5" width="10" height="1" fill="currentColor"/></svg>
@@ -25,25 +30,6 @@
         </button>
       </div>
     </header>
-
-    <nav class="rail" aria-label="Nova64 surfaces">
-      <div class="rail-top">
-        <button class="rail-btn is-active" data-view="os" type="button" aria-pressed="true" title="Nova OS">
-          <span class="glyph" aria-hidden="true">🖥️</span>
-          <span class="label">OS</span>
-        </button>
-        <button class="rail-btn" data-view="dev" type="button" aria-pressed="false" title="Dev workspace">
-          <span class="glyph" aria-hidden="true">⌨️</span>
-          <span class="label">Dev</span>
-        </button>
-      </div>
-      <div class="rail-bottom">
-        <button class="rail-btn" data-view="settings" type="button" aria-pressed="false" title="Settings">
-          <span class="glyph" aria-hidden="true">⚙️</span>
-          <span class="label">Set</span>
-        </button>
-      </div>
-    </nav>
 
     <script defer src="nova64-app://shared/theme-apply.js"></script>
     <script defer src="navigation.js"></script>

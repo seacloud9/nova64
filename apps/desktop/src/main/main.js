@@ -87,6 +87,14 @@ if (!app.requestSingleInstanceLock()) {
         // Optional visual verification: capture each surface to <shot>-<name>.png.
         const shot = process.env.NOVA64_DESKTOP_SHOT;
         if (shot) {
+          try {
+            const menu = await controller.chrome.webContents.executeJavaScript(
+              'Array.from(document.querySelectorAll(".menu-item")).map(b => b.dataset.view + (b.classList.contains("is-active") ? "*" : "")).join(",")'
+            );
+            console.log(`nova64-desktop: menu items = ${menu}`);
+          } catch (e) {
+            console.error(`nova64-desktop: chrome menu query failed: ${e.message}`);
+          }
           for (const name of ['os', 'dev', 'settings']) {
             controller.setActive(name);
             await new Promise(r => setTimeout(r, name === 'dev' ? 5000 : 1400));

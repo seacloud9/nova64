@@ -60,38 +60,56 @@ function hardenWebContents(contents) {
   }
 }
 
-/**
- * Apply a strict Content-Security-Policy to responses in the given session.
- * Kept permissive enough for the Three.js runtime (blob/data for workers,
- * wasm-unsafe-eval) but denies remote script/object and frame ancestors.
- */
-function applyContentSecurityPolicy(session) {
-  // Allow the whole custom scheme (nav/dev/os/lib are distinct origins that
-  // import each other via import maps), plus the dev server in dev mode.
+function buildCsp({ allowEval }) {
   const self = `'self' ${APP_PROTOCOL}:`;
   const dev = DEV_SERVER_URL ? ` ${new URL(DEV_SERVER_URL).origin}` : '';
-  const csp = [
+  // The runtime executes cart code via `new Function`, so the runtime surface
+  // (os + dev server) needs 'unsafe-eval'. The Dev/Settings tooling surfaces do
+  // NOT — they stay strict.
+  const evalSrc = allowEval ? " 'unsafe-eval'" : '';
+  return [
     `default-src ${self}${dev}`,
-    `script-src ${self}${dev} 'wasm-unsafe-eval'`,
+    `script-src ${self}${dev} 'wasm-unsafe-eval'${evalSrc}`,
     `style-src ${self}${dev} 'unsafe-inline'`,
     `img-src ${self}${dev} data: blob:`,
     `font-src ${self}${dev} data:`,
     `connect-src ${self}${dev} data: blob:`,
     `worker-src ${self}${dev} blob:`,
-    // The OS shell embeds its apps (Console/cart-runner, HyperNova) in same-origin
-    // iframes, so allow same-origin framing while still denying external ancestors.
+    // The OS shell + Dev preview embed same-origin/app-scheme iframes (Console/
+    // cart-runner, runtime preview); allow that while denying external ancestors.
     `frame-src ${self}${dev} blob:`,
     `child-src ${self}${dev} blob:`,
     `object-src 'none'`,
     `frame-ancestors 'self' ${APP_PROTOCOL}:${dev}`,
   ].join('; ');
+}
 
+/** True for the runtime surface (the OS/runtime web app), which may eval carts. */
+function isRuntimeUrl(url) {
+  if (typeof url !== 'string') return false;
+  if (url.startsWith(`${APP_PROTOCOL}://os`)) return true;
+  if (DEV_SERVER_URL) {
+    try {
+      if (url.startsWith(new URL(DEV_SERVER_URL).origin)) return true;
+    } catch {
+      /* ignore */
+    }
+  }
+  return false;
+}
+
+/**
+ * Apply a per-surface CSP: strict everywhere, plus 'unsafe-eval' only for the
+ * runtime surface (which must run cart code). Denies remote script/object and
+ * external frame ancestors on every surface.
+ */
+function applyContentSecurityPolicy(session) {
+  const strict = buildCsp({ allowEval: false });
+  const runtime = buildCsp({ allowEval: true });
   session.webRequest.onHeadersReceived((details, callback) => {
+    const csp = isRuntimeUrl(details.url) ? runtime : strict;
     callback({
-      responseHeaders: {
-        ...details.responseHeaders,
-        'Content-Security-Policy': [csp],
-      },
+      responseHeaders: { ...details.responseHeaders, 'Content-Security-Policy': [csp] },
     });
   });
 }

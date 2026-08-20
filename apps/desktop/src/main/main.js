@@ -2,6 +2,7 @@
 
 const fs = require('node:fs');
 const { app } = require('electron');
+const { APP_PROTOCOL } = require('./constants');
 const { registerAppProtocolScheme, handleAppProtocol } = require('./protocol');
 const { WindowController } = require('./window-controller');
 
@@ -66,9 +67,14 @@ if (!app.requestSingleInstanceLock()) {
           });
         }
       }
+      // Benign, well-known browser noise reported at error level.
+      const BENIGN = /ResizeObserver loop/i;
       for (const [key, wc] of Object.entries(owned)) {
-        wc.on('console-message', (_e, level, message) => {
-          if (level >= 3) {
+        wc.on('console-message', (_e, level, message, _line, sourceId) => {
+          // Ignore messages from an embedded runtime iframe (the os surface),
+          // whose remote analytics/fonts are intentionally CSP-blocked.
+          const fromRuntimeFrame = typeof sourceId === 'string' && sourceId.startsWith(`${APP_PROTOCOL}://os`);
+          if (level >= 3 && !BENIGN.test(message) && !fromRuntimeFrame) {
             failed = true;
             console.error(`nova64-desktop: ${key} console error: ${message}`);
           } else if (process.env.NOVA64_DESKTOP_LOG_OS && level >= 1) {
@@ -101,6 +107,17 @@ if (!app.requestSingleInstanceLock()) {
                      })()`
                   );
                   console.log(`nova64-desktop: explorer tree rows (button click) = ${rows}`);
+                }
+                if (process.env.NOVA64_DESKTOP_TEST_RUN) {
+                  const out = await controller.content.dev.webContents.executeJavaScript(
+                    `(async () => {
+                       await window.__novaDev.openFile('code.js');
+                       window.__novaDev.run();
+                       await new Promise(r => setTimeout(r, 7000));
+                       return window.__novaDev.runConsoleText().slice(0, 300);
+                     })()`
+                  );
+                  console.log(`nova64-desktop: run console = ${JSON.stringify(out)}`);
                 }
                 await new Promise(r => setTimeout(r, 800));
               } catch (e) {

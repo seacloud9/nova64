@@ -3,6 +3,7 @@
 import { Workspace } from 'nova64-app://lib/index.js';
 import { TextareaEditorAdapter, languageForPath } from './editor-adapter.js';
 import { MonacoEditorAdapter } from './monaco-adapter.js';
+import { RuntimePreview } from './preview.js';
 
 const ws = new Workspace();
 let editor = new TextareaEditorAdapter();
@@ -21,7 +22,30 @@ const el = {
   editorEmpty: document.getElementById('editor-empty'),
   statusPath: document.getElementById('status-path'),
   statusDirty: document.getElementById('status-dirty'),
+  runBtn: document.getElementById('run-btn'),
+  workbench: document.getElementById('workbench'),
+  previewPane: document.getElementById('preview-pane'),
+  previewHost: document.getElementById('preview-host'),
+  runConsole: document.getElementById('run-console'),
+  previewReload: document.getElementById('preview-reload'),
+  previewClose: document.getElementById('preview-close'),
 };
+
+let preview = null;
+function ensurePreview() {
+  if (!preview) preview = new RuntimePreview({ host: el.previewHost, consoleEl: el.runConsole });
+  return preview;
+}
+function showPreview(show) {
+  el.previewPane.hidden = !show;
+  el.workbench.classList.toggle('with-preview', show);
+}
+function runActiveCart() {
+  const p = ws.activePath;
+  if (!p) return;
+  showPreview(true);
+  ensurePreview().run(editor.getValue());
+}
 
 // ── session persistence (per opened root) ───────────────────────────────────
 const sessionKey = root => `nova64.dev.session:${root}`;
@@ -119,6 +143,7 @@ function updateStatus() {
   el.statusPath.textContent = p || '';
   el.statusDirty.textContent = p && ws.isDirty(p) ? 'unsaved' : '';
   el.saveBtn.disabled = !(p && ws.isDirty(p));
+  el.runBtn.disabled = !p;
 }
 
 function showActive() {
@@ -268,6 +293,9 @@ el.openBtn.addEventListener('click', async () => {
   }
 });
 el.saveBtn.addEventListener('click', saveActive);
+el.runBtn.addEventListener('click', runActiveCart);
+el.previewReload.addEventListener('click', () => preview && preview.reload());
+el.previewClose.addEventListener('click', () => showPreview(false));
 
 // Prefill a sensible default folder so "Open" works with one click.
 if (fsapi && typeof fsapi.suggestPath === 'function') {
@@ -286,6 +314,9 @@ window.addEventListener('keydown', e => {
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
     e.preventDefault();
     saveActive();
+  } else if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+    e.preventDefault();
+    runActiveCart();
   }
 });
 
@@ -305,6 +336,9 @@ if (fsapi && typeof fsapi.onChanged === 'function') fsapi.onChanged(refreshEntri
   window.__novaDev = {
     editorKind: editor.constructor.name,
     openPath: p => openByPath(p),
+    openFile: p => openFile(p),
+    run: () => runActiveCart(),
+    runConsoleText: () => (el.runConsole ? el.runConsole.textContent : ''),
     setSample() {
       editor.setModel(
         'sample.js',

@@ -23,9 +23,10 @@
       <button id="open-path-btn" type="button">Open</button>
       <button id="open-btn" type="button">Browse…</button>
       <button id="save-btn" type="button" disabled>Save</button>
+      <button id="run-btn" class="run-btn" type="button" disabled>▶ Run</button>
     </header>
 
-    <main class="workbench">
+    <main class="workbench" id="workbench">
       <aside class="explorer" aria-label="Project files">
         <div class="explorer-head">Explorer</div>
         <ul id="tree" class="tree"></ul>
@@ -39,6 +40,17 @@
           <div class="logo" aria-hidden="true">⌨️</div>
           <p>Open a folder, then pick a file to edit.</p>
         </div>
+      </section>
+
+      <section class="preview-pane" id="preview-pane" hidden>
+        <div class="preview-head">
+          <span>Preview</span>
+          <span class="spacer"></span>
+          <button id="preview-reload" type="button" title="Restart runtime">↻</button>
+          <button id="preview-close" type="button" title="Close preview">×</button>
+        </div>
+        <div id="preview-host" class="preview-host"></div>
+        <div class="run-console" id="run-console" aria-label="Cart output"></div>
       </section>
     </main>
 

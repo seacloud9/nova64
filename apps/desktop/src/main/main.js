@@ -88,12 +88,16 @@ if (!app.requestSingleInstanceLock()) {
         const shot = process.env.NOVA64_DESKTOP_SHOT;
         if (shot) {
           try {
-            const menu = await controller.chrome.webContents.executeJavaScript(
-              'Array.from(document.querySelectorAll(".menu-item")).map(b => b.dataset.view + (b.classList.contains("is-active") ? "*" : "")).join(",")'
+            const nav = await controller.chrome.webContents.executeJavaScript(
+              'JSON.stringify({menu: document.querySelectorAll(".menu-item").length, rail: document.querySelectorAll(".rail-btn").length})'
             );
-            console.log(`nova64-desktop: menu items = ${menu}`);
+            const before = controller.content.dev.getBounds().x;
+            controller.toggleRail();
+            const after = controller.content.dev.getBounds().x;
+            controller.toggleRail();
+            console.log(`nova64-desktop: nav = ${nav}; rail toggle x ${before} -> ${after}`);
           } catch (e) {
-            console.error(`nova64-desktop: chrome menu query failed: ${e.message}`);
+            console.error(`nova64-desktop: chrome nav query failed: ${e.message}`);
           }
           for (const name of ['os', 'dev', 'settings']) {
             controller.setActive(name);

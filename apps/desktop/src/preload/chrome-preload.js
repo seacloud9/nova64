@@ -20,6 +20,11 @@ contextBridge.exposeInMainWorld('novaShell', {
     ipcRenderer.on('nav:active-view-changed', listener);
     return () => ipcRenderer.removeListener('nav:active-view-changed', listener);
   },
+  onRailVisibleChanged(callback) {
+    const listener = (_e, visible) => callback(visible);
+    ipcRenderer.on('nav:rail-visible', listener);
+    return () => ipcRenderer.removeListener('nav:rail-visible', listener);
+  },
   windowAction(action) {
     if (!ACTIONS.has(action)) return Promise.resolve(null);
     return ipcRenderer.invoke('window:action', action);

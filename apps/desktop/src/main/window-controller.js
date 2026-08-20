@@ -83,11 +83,28 @@ class WindowController {
     this.win.contentView.addChildView(this.chrome);
     for (const surface of CONTENT_SURFACES) this.win.contentView.addChildView(this.content[surface]);
 
-    layout({
+    this.railVisible = true;
+    this.relayout = layout({
       win: this.win,
       chrome: this.chrome,
       contentViews: CONTENT_SURFACES.map(s => this.content[s]),
+      isRailVisible: () => this.railVisible,
     });
+
+    // Option/Alt+B toggles the icon rail, caught from any surface.
+    const onKey = (_e, input) => {
+      if (
+        input.type === 'keyDown' &&
+        input.alt &&
+        !input.control &&
+        !input.meta &&
+        input.key.toLowerCase() === 'b'
+      ) {
+        this.toggleRail();
+      }
+    };
+    this.chrome.webContents.on('before-input-event', onKey);
+    for (const s of CONTENT_SURFACES) this.content[s].webContents.on('before-input-event', onKey);
 
     // Disk-backed workspace for the Dev surface — only trusts the Dev view.
     this.workspace = new WorkspaceService(wc => wc === this.content[VIEW.DEV].webContents);
@@ -131,6 +148,14 @@ class WindowController {
   broadcastActive() {
     if (this.chrome && !this.chrome.webContents.isDestroyed()) {
       this.chrome.webContents.send('nav:active-view-changed', this.active);
+    }
+  }
+
+  toggleRail() {
+    this.railVisible = !this.railVisible;
+    if (this.relayout) this.relayout();
+    if (this.chrome && !this.chrome.webContents.isDestroyed()) {
+      this.chrome.webContents.send('nav:rail-visible', this.railVisible);
     }
   }
 

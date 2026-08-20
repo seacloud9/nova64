@@ -31,6 +31,21 @@
       </div>
     </header>
 
+    <nav class="rail" id="rail" aria-label="Nova64 windows (toggle with Alt+B)">
+      <button class="rail-btn is-active" data-view="os" type="button" aria-pressed="true" title="Nova OS">
+        <span class="glyph" aria-hidden="true">🖥️</span>
+        <span class="label">OS</span>
+      </button>
+      <button class="rail-btn" data-view="dev" type="button" aria-pressed="false" title="Dev workspace">
+        <span class="glyph" aria-hidden="true">⌨️</span>
+        <span class="label">Dev</span>
+      </button>
+      <button class="rail-btn" data-view="settings" type="button" aria-pressed="false" title="Settings">
+        <span class="glyph" aria-hidden="true">⚙️</span>
+        <span class="label">Set</span>
+      </button>
+    </nav>
+
     <script defer src="nova64-app://shared/theme-apply.js"></script>
     <script defer src="navigation.js"></script>
   </body>

@@ -6,8 +6,8 @@
   const shell = window.novaShell;
   if (!shell) return;
 
-  // ── top menu bar (window switching) ──
-  const buttons = Array.from(document.querySelectorAll('.menu-item'));
+  // ── window switching (top menu bar + left icon rail) ──
+  const buttons = Array.from(document.querySelectorAll('.menu-item, .rail-btn'));
   function reflect(activeView) {
     for (const btn of buttons) {
       const isActive = btn.dataset.view === activeView;
@@ -23,6 +23,14 @@
   }
   shell.onActiveViewChanged(reflect);
   shell.getActiveView().then(v => v && reflect(v));
+
+  // ── rail visibility (Alt+B) ──
+  const rail = document.getElementById('rail');
+  if (shell.onRailVisibleChanged) {
+    shell.onRailVisibleChanged(visible => {
+      if (rail) rail.classList.toggle('is-hidden', !visible);
+    });
+  }
 
   // ── frameless window controls ──
   const wire = (id, action) => {

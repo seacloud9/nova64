@@ -29,6 +29,20 @@ contextBridge.exposeInMainWorld('novaWorkspace', {
   },
 });
 
+// AI bridge — the Dev surface drives the host-side AI service.
+contextBridge.exposeInMainWorld('novaAi', {
+  state: () => ipcRenderer.invoke('ai:state'),
+  setConfig: config => ipcRenderer.invoke('ai:set-config', config),
+  setKey: key => ipcRenderer.invoke('ai:set-key', key),
+  chat: messages => ipcRenderer.invoke('ai:chat', messages),
+  cancel: () => ipcRenderer.invoke('ai:cancel'),
+  onEvent: callback => {
+    const listener = (_e, ev) => callback(ev);
+    ipcRenderer.on('ai:event', listener);
+    return () => ipcRenderer.removeListener('ai:event', listener);
+  },
+});
+
 // Theme bridge (shared shape across every surface).
 contextBridge.exposeInMainWorld('novaTheme', {
   get: () => ipcRenderer.invoke('settings:get'),

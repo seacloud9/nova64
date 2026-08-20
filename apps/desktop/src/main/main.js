@@ -138,6 +138,21 @@ if (!app.requestSingleInstanceLock()) {
                   );
                   console.log(`nova64-desktop: explorer tree rows (button click) = ${rows}`);
                 }
+                if (process.env.NOVA64_DESKTOP_TEST_AI) {
+                  const out = await controller.content.dev.webContents.executeJavaScript(
+                    `(async () => {
+                       await window.__novaDev.sendAi('ping');
+                       await new Promise(r => setTimeout(r, 1500));
+                       const pane = document.getElementById('ai-pane');
+                       return JSON.stringify({
+                         msgs: window.__novaDev.aiMessagesText().slice(0, 60),
+                         paneHidden: pane.hidden,
+                         paneDisplay: getComputedStyle(pane).display,
+                       });
+                     })()`
+                  );
+                  console.log(`nova64-desktop: ai = ${out}`);
+                }
                 if (process.env.NOVA64_DESKTOP_TEST_RUN) {
                   const out = await controller.content.dev.webContents.executeJavaScript(
                     `(async () => {

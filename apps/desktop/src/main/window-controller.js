@@ -7,6 +7,8 @@ const { layout } = require('./view-layout');
 const { secureWebPreferences, hardenWebContents, applyContentSecurityPolicy } = require('./security');
 const { WorkspaceService } = require('./workspace-service');
 const { SettingsService } = require('./settings-service');
+const { SecretService } = require('./secret-service');
+const { AiService } = require('./ai-service');
 
 const CHROME_PRELOAD = path.join(__dirname, '..', 'preload', 'chrome-preload.js');
 const DEV_PRELOAD = path.join(__dirname, '..', 'preload', 'dev-preload.js');
@@ -107,8 +109,14 @@ class WindowController {
     for (const s of CONTENT_SURFACES) this.content[s].webContents.on('before-input-event', onKey);
 
     // Disk-backed workspace for the Dev surface — only trusts the Dev view.
-    this.workspace = new WorkspaceService(wc => wc === this.content[VIEW.DEV].webContents);
+    const trustsDev = wc => wc === this.content[VIEW.DEV].webContents;
+    this.workspace = new WorkspaceService(trustsDev);
     this.workspace.registerIpc(() => this.content[VIEW.DEV].webContents);
+
+    // AI runs entirely in the host; only the Dev view may drive it.
+    this.secrets = new SecretService();
+    this.ai = new AiService({ secrets: this.secrets, isTrustedSender: trustsDev });
+    this.ai.registerIpc();
 
     // Live theming: chrome + our content surfaces receive settings updates.
     this.settings.subscribe(this.chrome.webContents);
@@ -129,6 +137,7 @@ class WindowController {
 
     this.win.on('closed', () => {
       if (this.workspace) this.workspace.dispose();
+      if (this.ai) this.ai.dispose();
       this.win = null;
     });
     return this.win;

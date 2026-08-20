@@ -29,7 +29,94 @@ const el = {
   runConsole: document.getElementById('run-console'),
   previewReload: document.getElementById('preview-reload'),
   previewClose: document.getElementById('preview-close'),
+  aiBtn: document.getElementById('ai-btn'),
+  aiPane: document.getElementById('ai-pane'),
+  aiProvider: document.getElementById('ai-provider'),
+  aiSettings: document.getElementById('ai-settings'),
+  aiClose: document.getElementById('ai-close'),
+  aiConfig: document.getElementById('ai-config'),
+  aiBaseurl: document.getElementById('ai-baseurl'),
+  aiModel: document.getElementById('ai-model'),
+  aiKey: document.getElementById('ai-key'),
+  aiSaveConfig: document.getElementById('ai-save-config'),
+  aiMessages: document.getElementById('ai-messages'),
+  aiInput: document.getElementById('ai-input'),
+  aiSend: document.getElementById('ai-send'),
 };
+
+// ── AI chat (host-side providers via novaAi bridge) ─────────────────────────
+const aiapi = window.novaAi || null;
+let aiHistory = [];
+let aiStreaming = false;
+let aiAssistantEl = null;
+
+function showAi(show) {
+  el.aiPane.hidden = !show;
+  el.workbench.classList.toggle('with-ai', show);
+  if (show) {
+    loadAiState();
+    el.aiInput.focus();
+  }
+}
+
+async function loadAiState() {
+  if (!aiapi) return;
+  const st = await aiapi.state();
+  el.aiProvider.innerHTML = '';
+  for (const p of st.providers) {
+    const opt = document.createElement('option');
+    opt.value = p.id;
+    opt.textContent = p.displayName;
+    if (p.id === st.config.providerId) opt.selected = true;
+    el.aiProvider.appendChild(opt);
+  }
+  el.aiBaseurl.value = st.config.baseUrl || '';
+  el.aiModel.value = st.config.model || '';
+  el.aiKey.placeholder = st.hasKey ? '•••• saved' : '(optional for local)';
+}
+
+function addAiMessage(role, content) {
+  aiHistory.push({ role, content });
+  const div = document.createElement('div');
+  div.className = `ai-msg ai-${role}`;
+  div.textContent = content;
+  el.aiMessages.appendChild(div);
+  el.aiMessages.scrollTop = el.aiMessages.scrollHeight;
+  return div;
+}
+
+async function sendAiMessage() {
+  if (!aiapi || aiStreaming) return;
+  const text = el.aiInput.value.trim();
+  if (!text) return;
+  addAiMessage('user', text);
+  el.aiInput.value = '';
+  aiAssistantEl = addAiMessage('assistant', '');
+  aiStreaming = true;
+  el.aiSend.textContent = 'Stop';
+  await aiapi.chat(aiHistory.slice(0, -1)); // history without the empty assistant
+}
+
+if (aiapi) {
+  aiapi.onEvent(ev => {
+    const last = aiHistory[aiHistory.length - 1];
+    if (ev.type === 'delta') {
+      if (aiAssistantEl) {
+        aiAssistantEl.textContent += ev.text;
+        el.aiMessages.scrollTop = el.aiMessages.scrollHeight;
+      }
+      if (last) last.content += ev.text;
+    } else if (ev.type === 'error' && aiAssistantEl) {
+      aiAssistantEl.textContent += `\n⚠ ${ev.error || 'error'}`;
+      aiAssistantEl.classList.add('ai-error');
+    }
+    if (ev.type === 'done' || ev.type === 'cancelled' || ev.type === 'error') {
+      aiStreaming = false;
+      el.aiSend.textContent = 'Send';
+      aiAssistantEl = null;
+    }
+  });
+}
 
 let preview = null;
 function ensurePreview() {
@@ -297,6 +384,39 @@ el.runBtn.addEventListener('click', runActiveCart);
 el.previewReload.addEventListener('click', () => preview && preview.reload());
 el.previewClose.addEventListener('click', () => showPreview(false));
 
+el.aiBtn.addEventListener('click', () => showAi(el.aiPane.hidden));
+el.aiClose.addEventListener('click', () => showAi(false));
+el.aiSettings.addEventListener('click', () => {
+  el.aiConfig.hidden = !el.aiConfig.hidden;
+});
+el.aiSend.addEventListener('click', () => {
+  if (aiStreaming) aiapi && aiapi.cancel();
+  else sendAiMessage();
+});
+el.aiInput.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    sendAiMessage();
+  }
+});
+el.aiProvider.addEventListener('change', () => {
+  if (aiapi) aiapi.setConfig({ providerId: el.aiProvider.value }).then(loadAiState);
+});
+el.aiSaveConfig.addEventListener('click', async () => {
+  if (!aiapi) return;
+  await aiapi.setConfig({
+    providerId: el.aiProvider.value,
+    baseUrl: el.aiBaseurl.value.trim(),
+    model: el.aiModel.value.trim(),
+  });
+  if (el.aiKey.value) {
+    await aiapi.setKey(el.aiKey.value);
+    el.aiKey.value = '';
+  }
+  el.aiConfig.hidden = true;
+  loadAiState();
+});
+
 // Prefill a sensible default folder so "Open" works with one click.
 if (fsapi && typeof fsapi.suggestPath === 'function') {
   fsapi
@@ -339,6 +459,12 @@ if (fsapi && typeof fsapi.onChanged === 'function') fsapi.onChanged(refreshEntri
     openFile: p => openFile(p),
     run: () => runActiveCart(),
     runConsoleText: () => (el.runConsole ? el.runConsole.textContent : ''),
+    sendAi: text => {
+      showAi(true);
+      el.aiInput.value = text;
+      return sendAiMessage();
+    },
+    aiMessagesText: () => (el.aiMessages ? el.aiMessages.textContent : ''),
     setSample() {
       editor.setModel(
         'sample.js',

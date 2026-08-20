@@ -30,6 +30,17 @@ const SRC_DIR = path.resolve(__dirname, '..');
 /** Repo root (used to fall back to the built web app during dev/review). */
 const REPO_ROOT = path.resolve(SRC_DIR, '..', '..', '..');
 
+/** Monaco editor AMD distribution (min/vs), resolved from node_modules. */
+let MONACO_VS = '';
+try {
+  const pkg = require.resolve('monaco-editor/package.json', {
+    paths: [path.join(REPO_ROOT, 'apps', 'desktop'), REPO_ROOT],
+  });
+  MONACO_VS = path.join(path.dirname(pkg), 'min', 'vs');
+} catch {
+  /* monaco not installed — Dev falls back to the textarea editor */
+}
+
 /** Where `nova64 desktop build --dir` stages the full web build for packaging. */
 const BUILD_DIR = path.resolve(__dirname, '..', '..', 'build');
 
@@ -56,6 +67,7 @@ const APP_ROOTS = Object.freeze({
   shared: path.join(SRC_DIR, 'shared'),
   os: OS_ROOT,
   lib: path.join(REPO_ROOT, 'packages', 'workspace-core'),
+  monaco: MONACO_VS,
 });
 
 module.exports = {

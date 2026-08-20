@@ -2,9 +2,10 @@
 // the strict CSP would block). The `lib` host maps to packages/workspace-core.
 import { Workspace } from 'nova64-app://lib/index.js';
 import { TextareaEditorAdapter, languageForPath } from './editor-adapter.js';
+import { MonacoEditorAdapter } from './monaco-adapter.js';
 
 const ws = new Workspace();
-const editor = new TextareaEditorAdapter();
+let editor = new TextareaEditorAdapter();
 const fsapi = window.novaWorkspace || null;
 
 const el = {
@@ -121,8 +122,9 @@ function updateStatus() {
 function showActive() {
   const p = ws.activePath;
   const hasActive = Boolean(p);
+  // Keep the editor host mounted/visible (Monaco needs a sized container); the
+  // empty-state overlay simply sits on top when nothing is open.
   el.editorEmpty.style.display = hasActive ? 'none' : '';
-  el.editorHost.style.display = hasActive ? '' : 'none';
   if (hasActive) {
     editor.setModel(p, ws.tabs.get(p).content, languageForPath(p));
     editor.focus();
@@ -207,14 +209,14 @@ async function refreshEntries() {
 }
 
 // ── wire-up ─────────────────────────────────────────────────────────────────
-editor.mount(el.editorHost);
-editor.onChange(value => {
-  const p = ws.activePath;
-  if (!p) return;
-  ws.setContent(p, value);
-  renderTabs();
-  updateStatus();
-});
+const wireEditorChange = () =>
+  editor.onChange(value => {
+    const p = ws.activePath;
+    if (!p) return;
+    ws.setContent(p, value);
+    renderTabs();
+    updateStatus();
+  });
 
 el.openBtn.addEventListener('click', async () => {
   if (!fsapi) {
@@ -235,4 +237,36 @@ window.addEventListener('keydown', e => {
 
 if (fsapi && typeof fsapi.onChanged === 'function') fsapi.onChanged(refreshEntries);
 
-showActive();
+// Select the editor implementation (Monaco, with a textarea fallback), then boot.
+(async () => {
+  try {
+    editor = await MonacoEditorAdapter.create();
+  } catch (err) {
+    console.warn('Monaco unavailable, using textarea editor:', err?.message || err);
+    editor = new TextareaEditorAdapter();
+  }
+  editor.mount(el.editorHost);
+  wireEditorChange();
+  // Verification hook (headless smoke): load a sample file into the editor.
+  window.__novaDev = {
+    editorKind: editor.constructor.name,
+    setSample() {
+      editor.setModel(
+        'sample.js',
+        'function init() {\n  // Nova64 cart\n  print("hello, nova64");\n}\n\nfunction update(dt) {}\n',
+        'javascript'
+      );
+      el.editorEmpty.style.display = 'none';
+    },
+  };
+  if (window.novaTheme && editor.setEditorTheme) {
+    try {
+      const s = await window.novaTheme.get();
+      editor.setEditorTheme(s.theme);
+    } catch {
+      /* ignore */
+    }
+    window.novaTheme.onChanged(s => editor.setEditorTheme && editor.setEditorTheme(s.theme));
+  }
+  showActive();
+})();

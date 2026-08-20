@@ -71,6 +71,8 @@ if (!app.requestSingleInstanceLock()) {
           if (level >= 3) {
             failed = true;
             console.error(`nova64-desktop: ${key} console error: ${message}`);
+          } else if (process.env.NOVA64_DESKTOP_LOG_OS && level >= 1) {
+            console.error(`nova64-desktop: ${key} console: ${message}`);
           }
         });
       }
@@ -81,7 +83,18 @@ if (!app.requestSingleInstanceLock()) {
         if (shot) {
           for (const name of ['os', 'dev', 'settings']) {
             controller.setActive(name);
-            await new Promise(r => setTimeout(r, 1400));
+            await new Promise(r => setTimeout(r, name === 'dev' ? 5000 : 1400));
+            if (name === 'dev') {
+              try {
+                const kind = await controller.content.dev.webContents.executeJavaScript(
+                  'window.__novaDev && (window.__novaDev.setSample(), window.__novaDev.editorKind)'
+                );
+                console.log(`nova64-desktop: dev editor = ${kind}`);
+                await new Promise(r => setTimeout(r, 800));
+              } catch (e) {
+                console.error(`nova64-desktop: dev hook failed: ${e.message}`);
+              }
+            }
             try {
               const img = await controller.content[name].webContents.capturePage();
               const buf = img.toPNG();

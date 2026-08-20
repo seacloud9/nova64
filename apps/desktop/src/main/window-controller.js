@@ -6,11 +6,14 @@ const { APP_PROTOCOL, VIEW, DEV_SERVER_URL } = require('./constants');
 const { layout } = require('./view-layout');
 const { secureWebPreferences, hardenWebContents, applyContentSecurityPolicy } = require('./security');
 const { WorkspaceService } = require('./workspace-service');
+const { SettingsService } = require('./settings-service');
 
-const NAV_PRELOAD = path.join(__dirname, '..', 'preload', 'nav-preload.js');
+const CHROME_PRELOAD = path.join(__dirname, '..', 'preload', 'chrome-preload.js');
 const DEV_PRELOAD = path.join(__dirname, '..', 'preload', 'dev-preload.js');
+const SETTINGS_PRELOAD = path.join(__dirname, '..', 'preload', 'settings-preload.js');
 
-/** Resolve the URL for a surface, dev-server-aware. */
+const CONTENT_SURFACES = [VIEW.OS, VIEW.DEV, VIEW.SETTINGS];
+
 function urlFor(surface) {
   if (surface === VIEW.OS) {
     return DEV_SERVER_URL
@@ -18,24 +21,34 @@ function urlFor(surface) {
       : `${APP_PROTOCOL}://os/os9-shell/index.html`;
   }
   if (surface === VIEW.DEV) return `${APP_PROTOCOL}://dev/index.html`;
+  if (surface === VIEW.SETTINGS) return `${APP_PROTOCOL}://settings/index.html`;
   throw new Error(`unknown surface: ${surface}`);
+}
+
+function preloadFor(surface) {
+  if (surface === VIEW.DEV) return DEV_PRELOAD;
+  if (surface === VIEW.SETTINGS) return SETTINGS_PRELOAD;
+  return undefined; // OS (os9-shell) gets no privileged preload
 }
 
 class WindowController {
   constructor() {
     this.win = null;
-    this.rail = null;
+    this.chrome = null;
     /** @type {Record<string, import('electron').WebContentsView>} */
     this.content = {};
     this.active = VIEW.OS;
+    this.settings = null;
+    this.workspace = null;
   }
 
   create() {
     this.win = new BrowserWindow({
-      width: 1280,
-      height: 800,
-      minWidth: 900,
+      width: 1360,
+      height: 860,
+      minWidth: 920,
       minHeight: 600,
+      frame: false, // edge-to-edge; we render a custom titlebar + controls
       backgroundColor: '#0b0b12',
       title: 'Nova64',
       show: false,
@@ -44,44 +57,50 @@ class WindowController {
 
     applyContentSecurityPolicy(this.win.webContents.session);
 
-    // Activity rail (app chrome) — the only view with a preload/IPC bridge.
-    this.rail = new WebContentsView({
-      webPreferences: secureWebPreferences({ preload: NAV_PRELOAD }),
-    });
-    hardenWebContents(this.rail.webContents);
-    this.rail.webContents.loadURL(`${APP_PROTOCOL}://nav/index.html`);
+    this.settings = new SettingsService();
+    this.settings.registerIpc();
 
-    // Isolated content surfaces. OS has no privileged preload; Dev gets the
-    // narrow workspace bridge. Both sandboxed.
-    for (const surface of [VIEW.OS, VIEW.DEV]) {
-      const prefs =
-        surface === VIEW.DEV ? secureWebPreferences({ preload: DEV_PRELOAD }) : secureWebPreferences();
-      const view = new WebContentsView({ webPreferences: prefs });
+    // Chrome frame: custom titlebar + activity rail. The only view with the
+    // window-control + navigation bridge.
+    this.chrome = new WebContentsView({
+      webPreferences: secureWebPreferences({ preload: CHROME_PRELOAD }),
+    });
+    hardenWebContents(this.chrome.webContents);
+    this.chrome.webContents.loadURL(`${APP_PROTOCOL}://nav/index.html`);
+
+    // Isolated content surfaces.
+    for (const surface of CONTENT_SURFACES) {
+      const preload = preloadFor(surface);
+      const view = new WebContentsView({
+        webPreferences: preload ? secureWebPreferences({ preload }) : secureWebPreferences(),
+      });
       hardenWebContents(view.webContents);
       view.webContents.loadURL(urlFor(surface));
       this.content[surface] = view;
     }
 
+    // z-order: chrome frame at the bottom, content surfaces above it.
+    this.win.contentView.addChildView(this.chrome);
+    for (const surface of CONTENT_SURFACES) this.win.contentView.addChildView(this.content[surface]);
+
+    layout({
+      win: this.win,
+      chrome: this.chrome,
+      contentViews: CONTENT_SURFACES.map(s => this.content[s]),
+    });
+
     // Disk-backed workspace for the Dev surface — only trusts the Dev view.
     this.workspace = new WorkspaceService(wc => wc === this.content[VIEW.DEV].webContents);
     this.workspace.registerIpc(() => this.content[VIEW.DEV].webContents);
 
-    this.win.contentView.addChildView(this.rail);
-    this.win.contentView.addChildView(this.content[VIEW.DEV]);
-    this.win.contentView.addChildView(this.content[VIEW.OS]);
-
-    layout({
-      win: this.win,
-      rail: this.rail,
-      contentViews: [this.content[VIEW.OS], this.content[VIEW.DEV]],
-    });
+    // Live theming: chrome + our content surfaces receive settings updates.
+    this.settings.subscribe(this.chrome.webContents);
+    this.settings.subscribe(this.content[VIEW.DEV].webContents);
+    this.settings.subscribe(this.content[VIEW.SETTINGS].webContents);
 
     this.setActive(VIEW.OS);
     this.registerIpc();
 
-    // The window itself hosts no web document (only child views), so its
-    // 'ready-to-show' never fires. Reveal it once the OS surface paints, with a
-    // fallback so a slow/failed load can't leave the window hidden forever.
     let shown = false;
     const reveal = () => {
       if (shown || !this.win) return;
@@ -98,38 +117,42 @@ class WindowController {
     return this.win;
   }
 
-  /** Show one content surface, hide the other. Neither reloads. */
   setActive(surface) {
-    if (surface !== VIEW.OS && surface !== VIEW.DEV) return;
+    if (!CONTENT_SURFACES.includes(surface)) return;
     this.active = surface;
-    for (const key of [VIEW.OS, VIEW.DEV]) {
-      this.content[key].setVisible(key === surface);
-    }
-    // Raise the active surface above its sibling.
+    for (const key of CONTENT_SURFACES) this.content[key].setVisible(key === surface);
     this.win.contentView.addChildView(this.content[surface]);
-    if (this.rail) this.win.contentView.addChildView(this.rail);
+    if (this.chrome) this.win.contentView.addChildView(this.chrome);
     this.broadcastActive();
   }
 
   broadcastActive() {
-    if (this.rail && !this.rail.webContents.isDestroyed()) {
-      this.rail.webContents.send('nav:active-view-changed', this.active);
+    if (this.chrome && !this.chrome.webContents.isDestroyed()) {
+      this.chrome.webContents.send('nav:active-view-changed', this.active);
     }
   }
 
   registerIpc() {
+    const fromChrome = event => this.chrome && event.sender === this.chrome.webContents;
+
     ipcMain.removeHandler('nav:switch-view');
     ipcMain.removeHandler('nav:get-active-view');
     ipcMain.handle('nav:switch-view', (event, target) => {
-      // Only accept from our own rail webContents.
-      if (!this.rail || event.sender !== this.rail.webContents) return this.active;
-      if (target !== VIEW.OS && target !== VIEW.DEV) return this.active;
+      if (!fromChrome(event) || !CONTENT_SURFACES.includes(target)) return this.active;
       this.setActive(target);
       return this.active;
     });
-    ipcMain.handle('nav:get-active-view', event => {
-      if (!this.rail || event.sender !== this.rail.webContents) return null;
-      return this.active;
+    ipcMain.handle('nav:get-active-view', event => (fromChrome(event) ? this.active : null));
+
+    // Window controls for the frameless window.
+    ipcMain.removeHandler('window:action');
+    ipcMain.handle('window:action', (event, action) => {
+      if (!fromChrome(event) || !this.win) return null;
+      if (action === 'minimize') this.win.minimize();
+      else if (action === 'toggle-maximize')
+        this.win.isMaximized() ? this.win.unmaximize() : this.win.maximize();
+      else if (action === 'close') this.win.close();
+      return this.win ? this.win.isMaximized() : false;
     });
   }
 }

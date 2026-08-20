@@ -6,14 +6,17 @@ const fs = require('node:fs');
 /** Custom scheme used to serve packaged app assets (serverless production). */
 const APP_PROTOCOL = 'nova64-app';
 
-/** Logical surfaces. OS and Dev are isolated renderer contexts that keep state. */
+/** Logical surfaces. Each is an isolated renderer context that keeps its state. */
 const VIEW = Object.freeze({
   OS: 'os',
   DEV: 'dev',
+  SETTINGS: 'settings',
 });
 
-/** Width of the persistent activity rail (navigation) in CSS px. */
-const RAIL_WIDTH = 64;
+/** Width of the persistent activity rail (VS Code-style) in CSS px. */
+const RAIL_WIDTH = 52;
+/** Height of the custom (frameless) title bar in CSS px. */
+const TITLEBAR_HEIGHT = 36;
 
 /**
  * In `nova64 desktop dev` the CLI starts a local server and passes its URL here,
@@ -49,8 +52,19 @@ const OS_ROOT = fs.existsSync(STAGED_OS) ? STAGED_OS : REPO_DIST;
 const APP_ROOTS = Object.freeze({
   nav: path.join(SRC_DIR, 'navigation'),
   dev: path.join(SRC_DIR, 'dev'),
+  settings: path.join(SRC_DIR, 'settings'),
+  shared: path.join(SRC_DIR, 'shared'),
   os: OS_ROOT,
   lib: path.join(REPO_ROOT, 'packages', 'workspace-core'),
 });
 
-module.exports = { APP_PROTOCOL, VIEW, RAIL_WIDTH, DEV_SERVER_URL, SRC_DIR, BUILD_DIR, APP_ROOTS };
+module.exports = {
+  APP_PROTOCOL,
+  VIEW,
+  RAIL_WIDTH,
+  TITLEBAR_HEIGHT,
+  DEV_SERVER_URL,
+  SRC_DIR,
+  BUILD_DIR,
+  APP_ROOTS,
+};

@@ -22,3 +22,13 @@ contextBridge.exposeInMainWorld('novaWorkspace', {
     return () => ipcRenderer.removeListener('workspace:changed', listener);
   },
 });
+
+// Theme bridge (shared shape across every surface).
+contextBridge.exposeInMainWorld('novaTheme', {
+  get: () => ipcRenderer.invoke('settings:get'),
+  onChanged(callback) {
+    const listener = (_e, settings) => callback(settings);
+    ipcRenderer.on('settings:changed', listener);
+    return () => ipcRenderer.removeListener('settings:changed', listener);
+  },
+});

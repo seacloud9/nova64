@@ -35,36 +35,37 @@ if (!app.requestSingleInstanceLock()) {
     controller = new WindowController();
     const win = controller.create();
 
-    // Open DevTools for both content surfaces when requested (review/debugging).
+    // Open DevTools for content surfaces when requested (review/debugging).
     // `nova64 desktop dev --devtools` or NOVA64_DESKTOP_DEVTOOLS=1.
     if (process.env.NOVA64_DESKTOP_DEVTOOLS) {
-      for (const key of ['os', 'dev']) {
+      for (const key of ['os', 'dev', 'settings']) {
         controller.content[key].webContents.openDevTools({ mode: 'detach' });
       }
     }
 
-    // Smoke mode (CI / verification): confirm the shell + both surfaces load
-    // without renderer errors, then exit non-zero if anything failed.
+    // Smoke mode (CI / verification): confirm the shell + surfaces load without
+    // renderer errors, then exit non-zero if anything failed. Console errors fail
+    // only for surfaces we own (chrome/dev/settings); the OS surface is a web
+    // build whose remote analytics/fonts are intentionally CSP-blocked.
     if (process.env.NOVA64_DESKTOP_SMOKE) {
       let failed = false;
-      for (const key of ['os', 'dev']) {
+      const owned = { chrome: controller.chrome.webContents };
+      for (const key of ['os', 'dev', 'settings']) {
         const wc = controller.content[key].webContents;
-        // Document navigation failure counts for both surfaces.
         wc.on('did-fail-load', (_e, code, desc, url, isMainFrame) => {
           if (code === -3 || !isMainFrame) return; // ERR_ABORTED / subresource
           failed = true;
           console.error(`nova64-desktop: ${key} load failed ${code} ${desc} ${url}`);
         });
-        // Console errors fail only for the Dev surface we own. The OS surface is
-        // a web build whose remote analytics/fonts are intentionally CSP-blocked.
-        if (key === 'dev') {
-          wc.on('console-message', (_e, level, message) => {
-            if (level >= 3) {
-              failed = true;
-              console.error(`nova64-desktop: dev console error: ${message}`);
-            }
-          });
-        }
+        if (key !== 'os') owned[key] = wc;
+      }
+      for (const [key, wc] of Object.entries(owned)) {
+        wc.on('console-message', (_e, level, message) => {
+          if (level >= 3) {
+            failed = true;
+            console.error(`nova64-desktop: ${key} console error: ${message}`);
+          }
+        });
       }
       win.once('show', () => {
         console.log('nova64-desktop: shell ready (smoke ok)');

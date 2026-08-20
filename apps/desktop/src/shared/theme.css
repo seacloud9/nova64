@@ -1,0 +1,91 @@
+/*
+ * Nova64 desktop theme tokens. Every surface (chrome, Dev, Settings) links this
+ * file and sets <html data-theme="…"> via theme-apply.js. To add a theme: copy a
+ * block below, change the id, and add the id to THEMES in main/settings-service.js.
+ */
+
+:root {
+  /* geometry (kept in sync with main/constants.js) */
+  --titlebar-h: 36px;
+  --rail-w: 52px;
+  --radius: 8px;
+  --font-ui: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'Cascadia Code', 'Fira Code', ui-monospace, 'SFMono-Regular', Menlo, monospace;
+}
+
+/* ── Dark (default) ─────────────────────────────────────────────────────── */
+:root,
+[data-theme='dark'] {
+  color-scheme: dark;
+  --bg: #0f0f17;
+  --panel: #16161f;
+  --panel-2: #1c1c28;
+  --titlebar: #12121b;
+  --rail: #12121b;
+  --line: #262636;
+  --text: #d8d8ea;
+  --text-strong: #f0eeff;
+  --muted: #8686a0;
+  --accent: #7c5cff;
+  --accent-weak: rgba(124, 92, 255, 0.18);
+  --accent-text: #d6ccff;
+  --danger: #ff5c7c;
+  --hover: rgba(255, 255, 255, 0.06);
+}
+
+/* ── Midnight (deeper, higher contrast) ─────────────────────────────────── */
+[data-theme='midnight'] {
+  color-scheme: dark;
+  --bg: #05060d;
+  --panel: #0a0c16;
+  --panel-2: #10131f;
+  --titlebar: #070812;
+  --rail: #070812;
+  --line: #1a1e2e;
+  --text: #cdd6f4;
+  --text-strong: #eef1ff;
+  --muted: #7a83a8;
+  --accent: #4dd0ff;
+  --accent-weak: rgba(77, 208, 255, 0.16);
+  --accent-text: #bfeeffff;
+  --danger: #ff6b8b;
+  --hover: rgba(255, 255, 255, 0.05);
+}
+
+/* ── Light ──────────────────────────────────────────────────────────────── */
+[data-theme='light'] {
+  color-scheme: light;
+  --bg: #f6f6fb;
+  --panel: #ffffff;
+  --panel-2: #eef0f6;
+  --titlebar: #ffffff;
+  --rail: #f0f1f7;
+  --line: #dcdfea;
+  --text: #2a2b3a;
+  --text-strong: #14151f;
+  --muted: #6b6f80;
+  --accent: #6b46ff;
+  --accent-weak: rgba(107, 70, 255, 0.12);
+  --accent-text: #4a2fd0;
+  --danger: #d6335a;
+  --hover: rgba(0, 0, 0, 0.05);
+}
+
+/* ── High contrast ──────────────────────────────────────────────────────── */
+[data-theme='high-contrast'] {
+  color-scheme: dark;
+  --bg: #000000;
+  --panel: #000000;
+  --panel-2: #0a0a0a;
+  --titlebar: #000000;
+  --rail: #000000;
+  --line: #ffffff;
+  --text: #ffffff;
+  --text-strong: #ffffff;
+  --muted: #cfcfcf;
+  --accent: #ffd400;
+  --accent-weak: rgba(255, 212, 0, 0.22);
+  --accent-text: #ffe873;
+  --danger: #ff5050;
+  --hover: rgba(255, 255, 255, 0.14);
+}

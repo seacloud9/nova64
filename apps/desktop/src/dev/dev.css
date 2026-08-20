@@ -1,13 +1,4 @@
-:root {
-  color-scheme: dark;
-  --bg: #0b0b12;
-  --panel: #12121e;
-  --line: #23233a;
-  --text: #c9c9e0;
-  --muted: #7a7a95;
-  --accent: #7c5cff;
-}
-
+/* Colors come from the shared theme tokens (nova64-app://shared/theme.css). */
 * {
   box-sizing: border-box;
 }

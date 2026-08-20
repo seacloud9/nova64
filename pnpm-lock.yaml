@@ -88,6 +88,8 @@ importers:
 
   packages/app-contracts: {}
 
+  packages/workspace-core: {}
+
 packages:
 
   '@babylonjs/core@9.4.1':

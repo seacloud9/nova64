@@ -2,14 +2,18 @@
 // the strict CSP would block). The `lib` host maps to packages/workspace-core.
 import { Workspace } from 'nova64-app://lib/index.js';
 import { TextareaEditorAdapter, languageForPath } from './editor-adapter.js';
+import { MonacoEditorAdapter } from './monaco-adapter.js';
+import { RuntimePreview } from './preview.js';
 
 const ws = new Workspace();
-const editor = new TextareaEditorAdapter();
+let editor = new TextareaEditorAdapter();
 const fsapi = window.novaWorkspace || null;
 
 const el = {
   project: document.getElementById('project'),
   openBtn: document.getElementById('open-btn'),
+  openPathBtn: document.getElementById('open-path-btn'),
+  pathInput: document.getElementById('path-input'),
   saveBtn: document.getElementById('save-btn'),
   tree: document.getElementById('tree'),
   explorerEmpty: document.getElementById('explorer-empty'),
@@ -18,7 +22,30 @@ const el = {
   editorEmpty: document.getElementById('editor-empty'),
   statusPath: document.getElementById('status-path'),
   statusDirty: document.getElementById('status-dirty'),
+  runBtn: document.getElementById('run-btn'),
+  workbench: document.getElementById('workbench'),
+  previewPane: document.getElementById('preview-pane'),
+  previewHost: document.getElementById('preview-host'),
+  runConsole: document.getElementById('run-console'),
+  previewReload: document.getElementById('preview-reload'),
+  previewClose: document.getElementById('preview-close'),
 };
+
+let preview = null;
+function ensurePreview() {
+  if (!preview) preview = new RuntimePreview({ host: el.previewHost, consoleEl: el.runConsole });
+  return preview;
+}
+function showPreview(show) {
+  el.previewPane.hidden = !show;
+  el.workbench.classList.toggle('with-preview', show);
+}
+function runActiveCart() {
+  const p = ws.activePath;
+  if (!p) return;
+  showPreview(true);
+  ensurePreview().run(editor.getValue());
+}
 
 // ── session persistence (per opened root) ───────────────────────────────────
 const sessionKey = root => `nova64.dev.session:${root}`;
@@ -116,13 +143,15 @@ function updateStatus() {
   el.statusPath.textContent = p || '';
   el.statusDirty.textContent = p && ws.isDirty(p) ? 'unsaved' : '';
   el.saveBtn.disabled = !(p && ws.isDirty(p));
+  el.runBtn.disabled = !p;
 }
 
 function showActive() {
   const p = ws.activePath;
   const hasActive = Boolean(p);
+  // Keep the editor host mounted/visible (Monaco needs a sized container); the
+  // empty-state overlay simply sits on top when nothing is open.
   el.editorEmpty.style.display = hasActive ? 'none' : '';
-  el.editorHost.style.display = hasActive ? '' : 'none';
   if (hasActive) {
     editor.setModel(p, ws.tabs.get(p).content, languageForPath(p));
     editor.focus();
@@ -207,13 +236,41 @@ async function refreshEntries() {
 }
 
 // ── wire-up ─────────────────────────────────────────────────────────────────
-editor.mount(el.editorHost);
-editor.onChange(value => {
-  const p = ws.activePath;
-  if (!p) return;
-  ws.setContent(p, value);
-  renderTabs();
-  updateStatus();
+const wireEditorChange = () =>
+  editor.onChange(value => {
+    const p = ws.activePath;
+    if (!p) return;
+    ws.setContent(p, value);
+    renderTabs();
+    updateStatus();
+  });
+
+let suggestedPath = '';
+
+async function openByPath(rawPath) {
+  const target = (rawPath && rawPath.trim()) || suggestedPath;
+  if (!fsapi || !target) {
+    el.pathInput.focus();
+    el.statusPath.textContent = 'Enter a folder path to open.';
+    return;
+  }
+  el.statusPath.textContent = `Opening ${target}…`;
+  try {
+    const info = await fsapi.openPath(target);
+    if (info) {
+      el.pathInput.value = info.root;
+      await loadWorkspace(info);
+      el.statusPath.textContent = `Opened ${info.root} (${info.entries.length} entries)`;
+    }
+  } catch (err) {
+    const msg = `Could not open "${target}": ${err.message || err}`;
+    el.statusPath.textContent = msg;
+    el.project.textContent = 'Open failed — see status bar';
+  }
+}
+el.openPathBtn.addEventListener('click', () => openByPath(el.pathInput.value));
+el.pathInput.addEventListener('keydown', e => {
+  if (e.key === 'Enter') openByPath(el.pathInput.value);
 });
 
 el.openBtn.addEventListener('click', async () => {
@@ -221,18 +278,84 @@ el.openBtn.addEventListener('click', async () => {
     el.project.textContent = 'Workspace bridge unavailable (run in the desktop app)';
     return;
   }
+  // The native GTK picker hangs under WSLg, so on Linux drive the path input.
+  if (fsapi.platform === 'linux') {
+    el.pathInput.focus();
+    el.pathInput.select();
+    el.statusPath.textContent =
+      'Edit the folder path and press Enter (native picker is unreliable under WSLg/Linux).';
+    return;
+  }
   const info = await fsapi.open();
-  if (info) await loadWorkspace(info);
+  if (info) {
+    el.pathInput.value = info.root;
+    await loadWorkspace(info);
+  }
 });
 el.saveBtn.addEventListener('click', saveActive);
+el.runBtn.addEventListener('click', runActiveCart);
+el.previewReload.addEventListener('click', () => preview && preview.reload());
+el.previewClose.addEventListener('click', () => showPreview(false));
+
+// Prefill a sensible default folder so "Open" works with one click.
+if (fsapi && typeof fsapi.suggestPath === 'function') {
+  fsapi
+    .suggestPath()
+    .then(p => {
+      if (p) {
+        suggestedPath = p;
+        if (!el.pathInput.value) el.pathInput.value = p;
+      }
+    })
+    .catch(() => {});
+}
 
 window.addEventListener('keydown', e => {
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
     e.preventDefault();
     saveActive();
+  } else if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+    e.preventDefault();
+    runActiveCart();
   }
 });
 
 if (fsapi && typeof fsapi.onChanged === 'function') fsapi.onChanged(refreshEntries);
 
-showActive();
+// Select the editor implementation (Monaco, with a textarea fallback), then boot.
+(async () => {
+  try {
+    editor = await MonacoEditorAdapter.create();
+  } catch (err) {
+    console.warn('Monaco unavailable, using textarea editor:', err?.message || err);
+    editor = new TextareaEditorAdapter();
+  }
+  editor.mount(el.editorHost);
+  wireEditorChange();
+  // Verification hook (headless smoke): load a sample file into the editor.
+  window.__novaDev = {
+    editorKind: editor.constructor.name,
+    openPath: p => openByPath(p),
+    openFile: p => openFile(p),
+    run: () => runActiveCart(),
+    runConsoleText: () => (el.runConsole ? el.runConsole.textContent : ''),
+    setSample() {
+      editor.setModel(
+        'sample.js',
+        'function init() {\n  // Nova64 cart\n  print("hello, nova64");\n}\n\nfunction update(dt) {}\n',
+        'javascript'
+      );
+      el.editorEmpty.style.display = 'none';
+    },
+  };
+  if (window.novaTheme && editor.setEditorTheme) {
+    try {
+      const s = await window.novaTheme.get();
+      editor.setEditorTheme(s.theme);
+    } catch {
+      /* ignore */
+    }
+    window.novaTheme.onChanged(s => editor.setEditorTheme && editor.setEditorTheme(s.theme));
+  }
+  showActive();
+})();

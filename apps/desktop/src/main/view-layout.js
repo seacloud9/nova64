@@ -1,22 +1,24 @@
 'use strict';
 
-const { RAIL_WIDTH } = require('./constants');
+const { TITLEBAR_HEIGHT, RAIL_WIDTH } = require('./constants');
 
 /**
- * Computes and applies bounds for the navigation rail and the content views.
- * The rail is a fixed-width column on the left; OS and Dev share the remaining
- * content area. Both content views are always laid out (so neither reloads on
- * switch) — visibility is what changes, handled by the window controller.
+ * Lays out the frameless window: the chrome view (titlebar menu + left icon
+ * rail) fills the whole window as the background frame; the content surfaces are
+ * inset below the titlebar and right of the rail. When the rail is hidden the
+ * content expands left to cover it. All content views share the same bounds and
+ * are always laid out — only visibility changes on switch, so nothing reloads.
  */
-function layout({ win, rail, contentViews }) {
+function layout({ win, chrome, contentViews, isRailVisible }) {
   const apply = () => {
     const [width, height] = win.getContentSize();
-    rail.setBounds({ x: 0, y: 0, width: RAIL_WIDTH, height });
+    chrome.setBounds({ x: 0, y: 0, width, height });
+    const railW = isRailVisible() ? RAIL_WIDTH : 0;
     const contentBounds = {
-      x: RAIL_WIDTH,
-      y: 0,
-      width: Math.max(0, width - RAIL_WIDTH),
-      height,
+      x: railW,
+      y: TITLEBAR_HEIGHT,
+      width: Math.max(0, width - railW),
+      height: Math.max(0, height - TITLEBAR_HEIGHT),
     };
     for (const view of contentViews) view.setBounds(contentBounds);
   };

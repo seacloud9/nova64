@@ -5,8 +5,14 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('novaWorkspace', {
-  /** Prompt to open a project folder. Resolves { root, name, entries } | null. */
+  /** Host platform (used to route around the WSLg-unsafe native dialog). */
+  platform: (typeof process !== 'undefined' && process.platform) || 'unknown',
+  /** Prompt to open a project folder (native dialog). Resolves summary | null. */
   open: () => ipcRenderer.invoke('workspace:open'),
+  /** Open a project folder by absolute path (no dialog). Resolves summary. */
+  openPath: p => ipcRenderer.invoke('workspace:open-path', p),
+  /** A sensible default folder path to prefill the input. */
+  suggestPath: () => ipcRenderer.invoke('workspace:suggest-path'),
   /** Re-list the current workspace entries. */
   list: () => ipcRenderer.invoke('workspace:list'),
   read: relPath => ipcRenderer.invoke('workspace:read', relPath),
@@ -20,5 +26,15 @@ contextBridge.exposeInMainWorld('novaWorkspace', {
     const listener = () => callback();
     ipcRenderer.on('workspace:changed', listener);
     return () => ipcRenderer.removeListener('workspace:changed', listener);
+  },
+});
+
+// Theme bridge (shared shape across every surface).
+contextBridge.exposeInMainWorld('novaTheme', {
+  get: () => ipcRenderer.invoke('settings:get'),
+  onChanged(callback) {
+    const listener = (_e, settings) => callback(settings);
+    ipcRenderer.on('settings:changed', listener);
+    return () => ipcRenderer.removeListener('settings:changed', listener);
   },
 });

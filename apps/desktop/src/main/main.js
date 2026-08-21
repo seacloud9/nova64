@@ -1,6 +1,8 @@
 'use strict';
 
+const fs = require('node:fs');
 const { app } = require('electron');
+const { APP_PROTOCOL } = require('./constants');
 const { registerAppProtocolScheme, handleAppProtocol } = require('./protocol');
 const { WindowController } = require('./window-controller');
 
@@ -35,43 +37,137 @@ if (!app.requestSingleInstanceLock()) {
     controller = new WindowController();
     const win = controller.create();
 
-    // Open DevTools for both content surfaces when requested (review/debugging).
+    // Open DevTools for content surfaces when requested (review/debugging).
     // `nova64 desktop dev --devtools` or NOVA64_DESKTOP_DEVTOOLS=1.
     if (process.env.NOVA64_DESKTOP_DEVTOOLS) {
-      for (const key of ['os', 'dev']) {
+      for (const key of ['os', 'dev', 'settings']) {
         controller.content[key].webContents.openDevTools({ mode: 'detach' });
       }
     }
 
-    // Smoke mode (CI / verification): confirm the shell + both surfaces load
-    // without renderer errors, then exit non-zero if anything failed.
+    // Smoke mode (CI / verification): confirm the shell + surfaces load without
+    // renderer errors, then exit non-zero if anything failed. Console errors fail
+    // only for surfaces we own (chrome/dev/settings); the OS surface is a web
+    // build whose remote analytics/fonts are intentionally CSP-blocked.
     if (process.env.NOVA64_DESKTOP_SMOKE) {
       let failed = false;
-      for (const key of ['os', 'dev']) {
+      const owned = { chrome: controller.chrome.webContents };
+      for (const key of ['os', 'dev', 'settings']) {
         const wc = controller.content[key].webContents;
-        // Document navigation failure counts for both surfaces.
         wc.on('did-fail-load', (_e, code, desc, url, isMainFrame) => {
           if (code === -3 || !isMainFrame) return; // ERR_ABORTED / subresource
           failed = true;
           console.error(`nova64-desktop: ${key} load failed ${code} ${desc} ${url}`);
         });
-        // Console errors fail only for the Dev surface we own. The OS surface is
-        // a web build whose remote analytics/fonts are intentionally CSP-blocked.
-        if (key === 'dev') {
+        if (key !== 'os') owned[key] = wc;
+        // Diagnostic: log OS console errors (do not fail — OS is a web build).
+        else if (process.env.NOVA64_DESKTOP_LOG_OS) {
           wc.on('console-message', (_e, level, message) => {
-            if (level >= 3) {
-              failed = true;
-              console.error(`nova64-desktop: dev console error: ${message}`);
-            }
+            if (level >= 2) console.error(`nova64-desktop: os console: ${message}`);
           });
         }
       }
-      win.once('show', () => {
+      // Benign, well-known browser noise reported at error level.
+      const BENIGN = /ResizeObserver loop/i;
+      for (const [key, wc] of Object.entries(owned)) {
+        wc.on('console-message', (_e, level, message, _line, sourceId) => {
+          // Ignore messages from an embedded runtime iframe (the os surface),
+          // whose remote analytics/fonts are intentionally CSP-blocked.
+          const fromRuntimeFrame = typeof sourceId === 'string' && sourceId.startsWith(`${APP_PROTOCOL}://os`);
+          if (level >= 3 && !BENIGN.test(message) && !fromRuntimeFrame) {
+            failed = true;
+            console.error(`nova64-desktop: ${key} console error: ${message}`);
+          } else if (process.env.NOVA64_DESKTOP_LOG_OS && level >= 1) {
+            console.error(`nova64-desktop: ${key} console: ${message}`);
+          }
+        });
+      }
+      win.once('show', async () => {
         console.log('nova64-desktop: shell ready (smoke ok)');
+        // Optional visual verification: capture each surface to <shot>-<name>.png.
+        const shot = process.env.NOVA64_DESKTOP_SHOT;
+        if (shot) {
+          try {
+            const nav = await controller.chrome.webContents.executeJavaScript(
+              'JSON.stringify({menu: document.querySelectorAll(".menu-item").length, rail: document.querySelectorAll(".rail-btn").length})'
+            );
+            const before = controller.content.dev.getBounds().x;
+            controller.toggleRail();
+            const after = controller.content.dev.getBounds().x;
+            controller.toggleRail();
+            console.log(`nova64-desktop: nav = ${nav}; rail toggle x ${before} -> ${after}`);
+          } catch (e) {
+            console.error(`nova64-desktop: chrome nav query failed: ${e.message}`);
+          }
+          for (const name of ['os', 'dev', 'settings']) {
+            controller.setActive(name);
+            await new Promise(r => setTimeout(r, name === 'dev' ? 5000 : 1400));
+            if (name === 'dev') {
+              try {
+                const kind = await controller.content.dev.webContents.executeJavaScript(
+                  `window.__novaDev && (window.__novaDev.setSample(), window.__novaDev.editorKind + "|libs=" +
+                    (window.monaco ? Object.keys(window.monaco.languages.typescript.javascriptDefaults.getExtraLibs()).join(";") : "no-monaco"))`
+                );
+                console.log(`nova64-desktop: dev editor = ${kind}`);
+                try {
+                  const comps = await controller.content.dev.webContents.executeJavaScript(
+                    `(async () => {
+                       const m = window.monaco;
+                       const uri = m.Uri.parse('nova64-workspace:/__completion_test.js');
+                       const model = m.editor.createModel('nova64.', 'javascript', uri);
+                       const worker = await m.languages.typescript.getJavaScriptWorker();
+                       const client = await worker(uri);
+                       const info = await client.getCompletionsAtPosition(uri.toString(), 7);
+                       model.dispose();
+                       return info ? info.entries.slice(0, 10).map(e => e.name).join(',') : 'none';
+                     })()`
+                  );
+                  console.log(`nova64-desktop: nova64. completions = ${comps}`);
+                } catch (e) {
+                  console.error(`nova64-desktop: completions test failed: ${e.message}`);
+                }
+                if (process.env.NOVA64_DESKTOP_TEST_FOLDER) {
+                  const rows = await controller.content.dev.webContents.executeJavaScript(
+                    `(async () => {
+                       const inp = document.getElementById('path-input');
+                       inp.value = ${JSON.stringify(process.env.NOVA64_DESKTOP_TEST_FOLDER)};
+                       document.getElementById('open-path-btn').click();
+                       await new Promise(r => setTimeout(r, 1800));
+                       return document.querySelectorAll('#tree .tree-row').length;
+                     })()`
+                  );
+                  console.log(`nova64-desktop: explorer tree rows (button click) = ${rows}`);
+                }
+                if (process.env.NOVA64_DESKTOP_TEST_RUN) {
+                  const out = await controller.content.dev.webContents.executeJavaScript(
+                    `(async () => {
+                       await window.__novaDev.openFile('code.js');
+                       window.__novaDev.run();
+                       await new Promise(r => setTimeout(r, 7000));
+                       return window.__novaDev.runConsoleText().slice(0, 300);
+                     })()`
+                  );
+                  console.log(`nova64-desktop: run console = ${JSON.stringify(out)}`);
+                }
+                await new Promise(r => setTimeout(r, 800));
+              } catch (e) {
+                console.error(`nova64-desktop: dev hook failed: ${e.message}`);
+              }
+            }
+            try {
+              const img = await controller.content[name].webContents.capturePage();
+              const buf = img.toPNG();
+              fs.writeFileSync(shot.replace(/\.png$/, `-${name}.png`), buf);
+              console.log(`nova64-desktop: captured ${name} (${buf.length} bytes)`);
+            } catch (e) {
+              console.error(`nova64-desktop: capture ${name} failed: ${e.message}`);
+            }
+          }
+        }
         setTimeout(() => {
           console.log(`nova64-desktop: smoke ${failed ? 'FAILED' : 'passed'}`);
           app.exit(failed ? 1 : 0);
-        }, 800);
+        }, 400);
       });
     }
 

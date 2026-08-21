@@ -9,11 +9,50 @@
   </head>
   <body>
     <header class="titlebar">
-      <nav class="menubar" aria-label="Nova64 windows">
+      <nav class="menubar" id="menubar" aria-label="Application menu">
         <span class="brand"><span class="brand-dot" aria-hidden="true"></span>Nova64</span>
-        <button class="menu-item is-active" data-view="os" type="button" aria-pressed="true">Nova OS</button>
-        <button class="menu-item" data-view="dev" type="button" aria-pressed="false">Dev</button>
-        <button class="menu-item" data-view="settings" type="button" aria-pressed="false">Settings</button>
+
+        <div class="menu" data-menu="file">
+          <button class="menu-top" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="menu-file">File</button>
+          <ul class="menu-dropdown" id="menu-file" role="menu" hidden>
+            <li class="menu-row" role="menuitem" tabindex="-1" data-cmd="dev:open">
+              <span class="menu-label">Open Folder…</span><span class="menu-accel">Ctrl+O</span>
+            </li>
+            <li class="menu-row" role="menuitem" tabindex="-1" data-cmd="dev:run">
+              <span class="menu-label">Run Cart</span><span class="menu-accel">F5</span>
+            </li>
+            <li class="menu-row" role="menuitem" tabindex="-1" data-cmd="dev:save">
+              <span class="menu-label">Save</span><span class="menu-accel">Ctrl+S</span>
+            </li>
+            <li class="menu-sep" role="separator"></li>
+            <li class="menu-row" role="menuitem" tabindex="-1" data-cmd="view:settings">
+              <span class="menu-label">Settings</span><span class="menu-accel">Ctrl+,</span>
+            </li>
+            <li class="menu-sep" role="separator"></li>
+            <li class="menu-row" role="menuitem" tabindex="-1" data-cmd="window:close">
+              <span class="menu-label">Quit</span><span class="menu-accel">Ctrl+Q</span>
+            </li>
+          </ul>
+        </div>
+
+        <div class="menu" data-menu="window">
+          <button class="menu-top" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="menu-window">Window</button>
+          <ul class="menu-dropdown" id="menu-window" role="menu" hidden>
+            <li class="menu-row" role="menuitemradio" tabindex="-1" data-cmd="view:os" data-view="os" aria-checked="true">
+              <span class="menu-check" aria-hidden="true">●</span><span class="menu-label">Nova OS</span>
+            </li>
+            <li class="menu-row" role="menuitemradio" tabindex="-1" data-cmd="view:dev" data-view="dev" aria-checked="false">
+              <span class="menu-check" aria-hidden="true">●</span><span class="menu-label">Dev Workspace</span>
+            </li>
+            <li class="menu-row" role="menuitemradio" tabindex="-1" data-cmd="view:settings" data-view="settings" aria-checked="false">
+              <span class="menu-check" aria-hidden="true">●</span><span class="menu-label">Settings</span>
+            </li>
+            <li class="menu-sep" role="separator"></li>
+            <li class="menu-row" role="menuitem" tabindex="-1" data-cmd="toggle-rail">
+              <span class="menu-label">Toggle Sidebar</span><span class="menu-accel">Ctrl+B</span>
+            </li>
+          </ul>
+        </div>
       </nav>
 
       <div class="titlebar-drag"></div>
@@ -31,7 +70,9 @@
       </div>
     </header>
 
-    <nav class="rail" id="rail" aria-label="Nova64 windows (toggle with Alt+B)">
+    <div id="menu-scrim" class="menu-scrim" hidden></div>
+
+    <nav class="rail" id="rail" aria-label="Nova64 windows (toggle with Cmd/Ctrl+B)">
       <button class="rail-btn is-active" data-view="os" type="button" aria-pressed="true" title="Nova OS">
         <span class="glyph" aria-hidden="true">🖥️</span>
         <span class="label">OS</span>

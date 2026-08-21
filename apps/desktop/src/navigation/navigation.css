@@ -7,9 +7,27 @@ body {
   margin: 0;
   height: 100%;
   overflow: hidden;
-  background: var(--bg);
+  /* Transparent: the chrome frame is raised over the content surfaces to show
+     dropdown menus, so its empty areas must let the content behind show through.
+     The titlebar and rail paint their own opaque backgrounds. */
+  background: transparent;
   font-family: var(--font-ui);
   user-select: none;
+}
+
+/* Dim backdrop shown while a dropdown menu is open (chrome is raised over
+   content). Clicking it bubbles to the document handler, which closes the menu. */
+.menu-scrim {
+  position: fixed;
+  top: var(--titlebar-h);
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.38);
+  z-index: 20;
+}
+.menu-scrim[hidden] {
+  display: none;
 }
 
 /* ── custom titlebar with a top menu bar (frameless, draggable) ──────────── */
@@ -21,6 +39,7 @@ body {
   align-items: stretch;
   background: var(--titlebar);
   border-bottom: 1px solid var(--line);
+  z-index: 40; /* titlebar + its dropdowns sit above the menu scrim */
 }
 
 .menubar {
@@ -46,38 +65,92 @@ body {
   box-shadow: 0 0 8px var(--accent);
 }
 
-.menu-item {
+/* ── dropdown menu bar (File / Window …) ─────────────────────────────────── */
+.menu {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+}
+.menu-top {
   border: 0;
   background: transparent;
-  color: var(--muted);
-  cursor: pointer;
+  color: var(--text);
+  cursor: default;
   font-family: inherit;
   font-size: 12px;
-  padding: 0 14px;
+  padding: 0 11px;
   height: 100%;
-  position: relative;
   transition: color 0.12s, background 0.12s;
 }
-.menu-item:hover {
-  color: var(--text);
+.menu-top:hover,
+.menu.is-open .menu-top {
   background: var(--hover);
+  color: var(--text-strong);
 }
-.menu-item.is-active {
-  color: var(--accent-text);
-}
-.menu-item.is-active::after {
-  content: '';
-  position: absolute;
-  left: 10px;
-  right: 10px;
-  bottom: 0;
-  height: 2px;
-  border-radius: 2px;
-  background: var(--accent);
-}
-.menu-item:focus-visible {
+.menu-top:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: -2px;
+}
+
+.menu-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  min-width: 220px;
+  margin: 0;
+  padding: 5px;
+  list-style: none;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+  z-index: 50;
+}
+.menu-dropdown[hidden] {
+  display: none;
+}
+
+.menu-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  border-radius: 5px;
+  color: var(--text);
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.menu-row:hover,
+.menu-row.is-focused {
+  background: var(--accent-weak);
+  color: var(--text-strong);
+}
+.menu-row:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.menu-label {
+  flex: 1;
+}
+.menu-accel {
+  color: var(--muted);
+  font-size: 11px;
+  letter-spacing: 0.02em;
+}
+.menu-check {
+  width: 12px;
+  font-size: 10px;
+  color: var(--accent);
+  opacity: 0;
+}
+.menu-row[aria-checked='true'] .menu-check {
+  opacity: 1;
+}
+.menu-sep {
+  height: 1px;
+  margin: 5px 6px;
+  background: var(--line);
 }
 
 /* draggable spacer fills the middle of the titlebar */
@@ -124,6 +197,7 @@ body {
   padding: 8px 0;
   background: var(--rail);
   border-right: 1px solid var(--line);
+  z-index: 30; /* rail stays visible (not dimmed) above the menu scrim */
 }
 .rail.is-hidden {
   display: none;

@@ -13,8 +13,10 @@ contextBridge.exposeInMainWorld('novaWorkspace', {
   openPath: p => ipcRenderer.invoke('workspace:open-path', p),
   /** A sensible default folder path to prefill the input. */
   suggestPath: () => ipcRenderer.invoke('workspace:suggest-path'),
-  /** Re-list the current workspace entries. */
-  list: () => ipcRenderer.invoke('workspace:list'),
+  /** List one directory level (immediate children). '' or omitted = workspace root. */
+  listDir: rel => ipcRenderer.invoke('workspace:list-dir', rel || ''),
+  /** Recursively count files + folders under the root. Resolves { files, dirs, truncated }. */
+  count: () => ipcRenderer.invoke('workspace:count'),
   read: relPath => ipcRenderer.invoke('workspace:read', relPath),
   write: (relPath, data) => ipcRenderer.invoke('workspace:write', relPath, data),
   mkdir: relPath => ipcRenderer.invoke('workspace:mkdir', relPath),
@@ -26,6 +28,29 @@ contextBridge.exposeInMainWorld('novaWorkspace', {
     const listener = () => callback();
     ipcRenderer.on('workspace:changed', listener);
     return () => ipcRenderer.removeListener('workspace:changed', listener);
+  },
+});
+
+// Menu bridge — File-menu commands (open/run/save) dispatched from the chrome frame.
+contextBridge.exposeInMainWorld('novaDev', {
+  onCommand: callback => {
+    const listener = (_e, cmd) => callback(cmd);
+    ipcRenderer.on('dev:command', listener);
+    return () => ipcRenderer.removeListener('dev:command', listener);
+  },
+});
+
+// AI bridge — the Dev surface drives the host-side AI service.
+contextBridge.exposeInMainWorld('novaAi', {
+  state: () => ipcRenderer.invoke('ai:state'),
+  setConfig: config => ipcRenderer.invoke('ai:set-config', config),
+  setKey: key => ipcRenderer.invoke('ai:set-key', key),
+  chat: messages => ipcRenderer.invoke('ai:chat', messages),
+  cancel: () => ipcRenderer.invoke('ai:cancel'),
+  onEvent: callback => {
+    const listener = (_e, ev) => callback(ev);
+    ipcRenderer.on('ai:event', listener);
+    return () => ipcRenderer.removeListener('ai:event', listener);
   },
 });
 

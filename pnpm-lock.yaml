@@ -81,6 +81,10 @@ importers:
         version: 0.33.0(@babylonjs/core@9.4.1)
 
   apps/desktop:
+    dependencies:
+      '@nova64/ai-providers':
+        specifier: workspace:*
+        version: link:../../packages/ai-providers
     devDependencies:
       electron:
         specifier: ^33.0.0
@@ -88,6 +92,8 @@ importers:
       monaco-editor:
         specifier: ^0.52.0
         version: 0.52.2
+
+  packages/ai-providers: {}
 
   packages/app-contracts: {}
 

@@ -6,7 +6,15 @@ const os = require('node:os');
 const fsp = require('node:fs/promises');
 const fs = require('node:fs');
 
-const SKIP_DIRS = new Set(['node_modules', '.git', 'dist', '.worktrees', 'coverage']);
+const SKIP_DIRS = new Set([
+  'node_modules',
+  '.git',
+  'dist',
+  '.worktrees',
+  'coverage',
+  '.godot', // Godot import cache — regenerated, huge, never edited
+  '.cache',
+]);
 const MAX_FILE_BYTES = 8 * 1024 * 1024; // refuse to open huge/binary blobs as text
 
 /**
@@ -40,33 +48,79 @@ class WorkspaceService {
     return abs;
   }
 
-  async #listRecursive() {
-    const entries = [];
+  /**
+   * List the immediate children of one directory (dirs first, then files, both
+   * alphabetical). This is the lazy building block for the Dev explorer: opening
+   * a folder and expanding a node each cost a single readdir, so browsing a huge
+   * tree (e.g. the whole repo, ~10k files over WSL's slow 9p mount) stays instant
+   * instead of blocking on a full recursive walk.
+   */
+  async listChildren(rel) {
+    const absDir = rel ? this.#resolveInside(rel) : this.root;
+    let dirents;
+    try {
+      dirents = await fsp.readdir(absDir, { withFileTypes: true });
+    } catch {
+      return []; // unreadable dir (perms/races) — treat as empty
+    }
+    const out = [];
+    for (const d of dirents) {
+      const isDir = d.isDirectory();
+      if (isDir && SKIP_DIRS.has(d.name)) continue;
+      if (!isDir && !d.isFile()) continue; // skip sockets/fifos/symlink-to-missing
+      out.push({ name: d.name, path: rel ? `${rel}/${d.name}` : d.name, type: isDir ? 'dir' : 'file' });
+    }
+    out.sort((a, b) => (a.type === b.type ? a.name.localeCompare(b.name) : a.type === 'dir' ? -1 : 1));
+    return out;
+  }
+
+  /**
+   * Recursively count files + folders under the workspace root (honouring the
+   * skip-list). This IS a full walk, so callers run it in the background after a
+   * folder is already open — it must never gate the initial open. Capped so a
+   * pathological tree can't run unbounded.
+   */
+  async countTree(cap = 500000) {
+    let files = 0;
+    let dirs = 0;
+    let truncated = false;
     const walk = async absDir => {
-      const dirents = await fsp.readdir(absDir, { withFileTypes: true });
+      if (truncated) return;
+      let dirents;
+      try {
+        dirents = await fsp.readdir(absDir, { withFileTypes: true });
+      } catch {
+        return;
+      }
       for (const d of dirents) {
         if (d.isDirectory() && SKIP_DIRS.has(d.name)) continue;
-        const abs = path.join(absDir, d.name);
-        const rel = path.relative(this.root, abs).split(path.sep).join('/');
+        if (files + dirs >= cap) {
+          truncated = true;
+          return;
+        }
         if (d.isDirectory()) {
-          entries.push({ path: rel, type: 'dir' });
-          await walk(abs);
+          dirs++;
+          await walk(path.join(absDir, d.name));
         } else if (d.isFile()) {
-          entries.push({ path: rel, type: 'file' });
+          files++;
         }
       }
     };
-    await walk(this.root);
-    return entries;
+    if (this.root) await walk(this.root);
+    return { files, dirs, truncated };
   }
 
   #startWatch() {
     this.#stopWatch();
     try {
-      // recursive watch is supported on Windows + macOS; on Linux we still get
-      // top-level events, which is acceptable for the Dev surface.
+      // NEVER use a recursive watch on Linux: Node 20's recursive fs.watch walks
+      // the whole tree to install watches, and over WSL's 9p mount that call
+      // HANGS indefinitely — which is what froze "open folder". Recursive watch
+      // is only safe/fast on Windows + macOS; on Linux we watch the root
+      // non-recursively (top-level events only, which is fine for the explorer).
+      const recursive = process.platform !== 'linux';
       let timer = null;
-      this.watcher = fs.watch(this.root, { recursive: true }, () => {
+      this.watcher = fs.watch(this.root, { recursive }, () => {
         clearTimeout(timer);
         timer = setTimeout(() => {
           if (this.notify && !this.notify.isDestroyed()) {
@@ -87,6 +141,12 @@ class WorkspaceService {
   }
 
   async openFolder(browserWindow) {
+    // The native GTK directory picker deadlocks the whole app under WSLg (nested
+    // GLib loop, no desktop portal). Never invoke it on Linux — the Dev surface
+    // routes Linux users to openPath() instead.
+    if (process.platform === 'linux') {
+      throw new Error('Native folder picker is disabled on Linux/WSLg — open by path instead.');
+    }
     const result = await dialog.showOpenDialog(browserWindow, {
       title: 'Open Nova64 project folder',
       properties: ['openDirectory'],
@@ -141,9 +201,9 @@ class WorkspaceService {
 
   async #setRoot(absRoot) {
     this.root = absRoot;
-    const entries = await this.#listRecursive();
+    const children = await this.listChildren(''); // top level only — fast for any repo size
     this.#startWatch();
-    return { root: this.root, name: path.basename(this.root), entries };
+    return { root: this.root, name: path.basename(this.root), children };
   }
 
   registerIpc(getNotifyTarget) {
@@ -157,7 +217,8 @@ class WorkspaceService {
       'workspace:open',
       'workspace:open-path',
       'workspace:suggest-path',
-      'workspace:list',
+      'workspace:list-dir',
+      'workspace:count',
       'workspace:read',
       'workspace:write',
       'workspace:mkdir',
@@ -182,9 +243,13 @@ class WorkspaceService {
       guard(event);
       return this.suggestPath();
     });
-    ipcMain.handle('workspace:list', event => {
+    ipcMain.handle('workspace:list-dir', (event, rel) => {
       guard(event);
-      return this.root ? this.#listRecursive() : [];
+      return this.root ? this.listChildren(rel || '') : [];
+    });
+    ipcMain.handle('workspace:count', event => {
+      guard(event);
+      return this.root ? this.countTree() : { files: 0, dirs: 0, truncated: false };
     });
     ipcMain.handle('workspace:read', async (event, rel) => {
       guard(event);

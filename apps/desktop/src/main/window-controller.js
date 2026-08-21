@@ -67,6 +67,9 @@ class WindowController {
     this.chrome = new WebContentsView({
       webPreferences: secureWebPreferences({ preload: CHROME_PRELOAD }),
     });
+    // Transparent so that when we raise the chrome frame above the content views
+    // to show a dropdown menu, the content still shows through the empty areas.
+    this.chrome.setBackgroundColor('#00000000');
     hardenWebContents(this.chrome.webContents);
     this.chrome.webContents.loadURL(`${APP_PROTOCOL}://nav/index.html`);
 
@@ -160,6 +163,19 @@ class WindowController {
     }
   }
 
+  /**
+   * Raise/lower the chrome frame relative to the content surfaces. Dropdown menus
+   * are painted by the chrome view, but it normally sits *below* the content
+   * views — so an open menu would be hidden behind the active surface. While a
+   * menu is open we raise chrome to the top (it's transparent, so content still
+   * shows through); when it closes we drop the active content back on top.
+   */
+  setChromeOverlay(on) {
+    if (!this.win) return;
+    if (on) this.win.contentView.addChildView(this.chrome);
+    else this.win.contentView.addChildView(this.content[this.active]);
+  }
+
   toggleRail() {
     this.railVisible = !this.railVisible;
     if (this.relayout) this.relayout();
@@ -179,6 +195,33 @@ class WindowController {
       return this.active;
     });
     ipcMain.handle('nav:get-active-view', event => (fromChrome(event) ? this.active : null));
+
+    // Raise/lower the chrome frame so open dropdown menus aren't hidden behind
+    // the content surfaces.
+    ipcMain.removeHandler('nav:overlay');
+    ipcMain.handle('nav:overlay', (event, on) => {
+      if (!fromChrome(event)) return false;
+      this.setChromeOverlay(Boolean(on));
+      return true;
+    });
+
+    // Menu-bar commands (File / Window dropdowns in the chrome frame).
+    ipcMain.removeHandler('menu:command');
+    ipcMain.handle('menu:command', (event, cmd) => {
+      if (!fromChrome(event)) return false;
+      if (cmd === 'toggle-rail') {
+        this.toggleRail();
+        return true;
+      }
+      // File → Open / Run / Save: focus the Dev surface, then hand the action to it.
+      if (cmd === 'dev:open' || cmd === 'dev:run' || cmd === 'dev:save') {
+        this.setActive(VIEW.DEV);
+        const dev = this.content[VIEW.DEV] && this.content[VIEW.DEV].webContents;
+        if (dev && !dev.isDestroyed()) dev.send('dev:command', cmd.slice(4)); // open|run|save
+        return true;
+      }
+      return false;
+    });
 
     // Window controls for the frameless window.
     ipcMain.removeHandler('window:action');

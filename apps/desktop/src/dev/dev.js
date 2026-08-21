@@ -9,6 +9,21 @@ const ws = new Workspace();
 let editor = new TextareaEditorAdapter();
 const fsapi = window.novaWorkspace || null;
 
+// Safety net so a stalled filesystem call (dead network mount, permission hang)
+// can never freeze the Dev surface — the open/expand fails gracefully instead.
+const OPEN_TIMEOUT_MS = 10000; // opening a workspace folder
+const LISTDIR_TIMEOUT_MS = 8000; // expanding a single folder
+const COUNT_TIMEOUT_MS = 60000; // background recursive file count (a full walk is slow over 9p)
+
+/** Reject if `promise` doesn't settle within `ms`. Clears its timer either way. */
+function withTimeout(promise, ms, label) {
+  let timer;
+  const timeout = new Promise((_resolve, reject) => {
+    timer = setTimeout(() => reject(new Error(`${label} timed out after ${Math.round(ms / 1000)}s`)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
 const el = {
   project: document.getElementById('project'),
   openBtn: document.getElementById('open-btn'),
@@ -21,6 +36,7 @@ const el = {
   editorHost: document.getElementById('editor-host'),
   editorEmpty: document.getElementById('editor-empty'),
   statusPath: document.getElementById('status-path'),
+  statusCount: document.getElementById('status-count'),
   statusDirty: document.getElementById('status-dirty'),
   runBtn: document.getElementById('run-btn'),
   workbench: document.getElementById('workbench'),
@@ -152,22 +168,101 @@ function readSession(root) {
   }
 }
 
-// ── rendering ───────────────────────────────────────────────────────────────
+// ── lazy file tree ───────────────────────────────────────────────────────────
+// The explorer loads ONE directory level at a time: opening a folder lists only
+// its top level, and each folder fetches its children the first time it's
+// expanded. Browsing a huge tree (the whole repo is ~10k files over WSL's slow
+// 9p mount) stays instant — we never do an upfront recursive walk.
+//
+// Node shape: dirs = { name, path, type:'dir', children:null, loaded:false };
+// files = { name, path, type:'file' }. `children` is null until first expand.
+let treeRoots = [];
+const expandedDirs = new Set(); // dir paths currently expanded
+
+function toNode(entry) {
+  return entry.type === 'dir'
+    ? { name: entry.name, path: entry.path, type: 'dir', children: null, loaded: false }
+    : { name: entry.name, path: entry.path, type: 'file' };
+}
+
+/** Fetch and cache a directory's immediate children (times out gracefully). */
+async function loadDir(node) {
+  if (!fsapi) return;
+  try {
+    const kids = await withTimeout(fsapi.listDir(node.path), LISTDIR_TIMEOUT_MS, `Reading ${node.name}`);
+    node.children = kids.map(toNode);
+  } catch (err) {
+    node.children = []; // render as empty rather than hanging the tree
+    el.statusPath.textContent = `Could not read ${node.path}: ${err.message || err}`;
+  }
+  node.loaded = true; // mark loaded either way so we don't retry-storm a bad dir
+}
+
+/** Walk `dirPath`, loading + expanding every directory along it (inclusive). */
+async function ensureExpanded(dirPath) {
+  if (!dirPath) return;
+  let nodes = treeRoots;
+  let acc = '';
+  for (const seg of dirPath.split('/')) {
+    acc = acc ? `${acc}/${seg}` : seg;
+    const dir = nodes.find(n => n.type === 'dir' && n.name === seg);
+    if (!dir) return; // segment not present (e.g. a skipped dir)
+    if (!dir.loaded) await loadDir(dir);
+    expandedDirs.add(dir.path);
+    nodes = dir.children || [];
+  }
+}
+
+/** Reveal a file in the tree by expanding its ancestor folders. */
+async function revealInTree(relPath) {
+  const segs = String(relPath).split('/');
+  segs.pop(); // drop the file segment
+  if (segs.length) await ensureExpanded(segs.join('/'));
+}
+
+async function toggleDir(node) {
+  if (expandedDirs.has(node.path)) {
+    expandedDirs.delete(node.path);
+  } else {
+    if (!node.loaded) await loadDir(node); // lazy fetch on first open
+    expandedDirs.add(node.path);
+  }
+  renderTree();
+}
+
 function renderTree() {
   el.tree.textContent = '';
-  const hasFiles = ws.tree.children && ws.tree.children.length > 0;
+  const hasFiles = treeRoots.length > 0;
   el.explorerEmpty.style.display = hasFiles ? 'none' : '';
   if (!hasFiles) return;
 
-  const build = (node, depth) => {
+  const buildNode = (node, depth) => {
     const li = document.createElement('li');
     const row = document.createElement('div');
     row.className = `tree-row ${node.type}`;
     row.style.paddingLeft = `${8 + depth * 12}px`;
-    row.textContent = `${node.type === 'dir' ? '📁' : '📄'} ${node.name}`;
-    if (node.type === 'file') {
-      row.tabIndex = 0;
-      row.dataset.path = node.path;
+    row.tabIndex = 0;
+    row.dataset.path = node.path;
+
+    if (node.type === 'dir') {
+      const isOpen = expandedDirs.has(node.path);
+      row.textContent = `${isOpen ? '▾' : '▸'} 📁 ${node.name}`;
+      row.addEventListener('click', () => toggleDir(node));
+      row.addEventListener('keydown', e => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          toggleDir(node);
+        }
+      });
+      li.appendChild(row);
+      if (isOpen && node.children && node.children.length) {
+        const ul = document.createElement('ul');
+        ul.className = 'tree';
+        for (const child of node.children) ul.appendChild(buildNode(child, depth + 1));
+        li.appendChild(ul);
+      }
+    } else {
+      row.textContent = `📄 ${node.name}`;
       if (node.path === ws.activePath) row.classList.add('is-active');
       row.addEventListener('click', () => openFile(node.path));
       row.addEventListener('keydown', e => {
@@ -176,17 +271,12 @@ function renderTree() {
           openFile(node.path);
         }
       });
-    }
-    li.appendChild(row);
-    if (node.children && node.children.length) {
-      const ul = document.createElement('ul');
-      ul.className = 'tree';
-      for (const child of node.children) ul.appendChild(build(child, depth + 1));
-      li.appendChild(ul);
+      li.appendChild(row);
     }
     return li;
   };
-  for (const child of ws.tree.children) el.tree.appendChild(build(child, 0));
+
+  for (const child of treeRoots) el.tree.appendChild(buildNode(child, 0));
 }
 
 function renderTabs() {
@@ -264,6 +354,7 @@ async function openFile(path) {
   } else {
     ws.setActive(path);
   }
+  await revealInTree(path); // lazily expand ancestor folders so the file is visible
   showActive();
   persistSession();
 }
@@ -290,11 +381,13 @@ async function saveActive() {
 }
 
 async function loadWorkspace(info) {
-  const { root, name, entries } = info;
+  const { root, name, children } = info;
   ws.root = root;
   ws.name = name;
-  ws.setEntries(entries);
   el.project.textContent = name || root;
+  // Reset the lazy tree to just this folder's top level (collapsed).
+  treeRoots = (children || []).map(toNode);
+  expandedDirs.clear();
 
   // Restore previously-open tabs for this folder (best-effort).
   const session = readSession(root);
@@ -303,6 +396,7 @@ async function loadWorkspace(info) {
       try {
         const content = await fsapi.read(relPath);
         ws.openTab(relPath, content);
+        await revealInTree(relPath); // expand ancestors so restored tabs are visible
       } catch {
         /* file gone — skip */
       }
@@ -310,12 +404,35 @@ async function loadWorkspace(info) {
     if (session.active && ws.tabs.has(session.active)) ws.setActive(session.active);
   }
   showActive();
+  countWorkspaceFiles(); // background total-file count — never blocks the open
+}
+
+let countToken = 0;
+/** Recursively count files in the open folder in the background, then show the total. */
+async function countWorkspaceFiles() {
+  if (!fsapi || !fsapi.count || !el.statusCount) return;
+  const token = ++countToken; // a newer open supersedes this count
+  el.statusCount.textContent = 'Counting files…';
+  try {
+    const res = await withTimeout(fsapi.count(), COUNT_TIMEOUT_MS, 'Counting files');
+    if (token !== countToken) return; // stale — another folder was opened
+    const files = res.files.toLocaleString();
+    const dirs = res.dirs.toLocaleString();
+    el.statusCount.textContent = `${files} files · ${dirs} folders${res.truncated ? ' (capped)' : ''}`;
+  } catch {
+    if (token === countToken) el.statusCount.textContent = 'File count unavailable';
+  }
 }
 
 async function refreshEntries() {
   if (!fsapi || !ws.root) return;
   try {
-    ws.setEntries(await fsapi.list());
+    // Re-list the root, then reload the folders the user had expanded so their
+    // contents reflect on-disk changes. Collapsed folders stay untouched (lazy).
+    const wasExpanded = [...expandedDirs].sort(); // shallow → deep, so parents load first
+    treeRoots = (await fsapi.listDir('')).map(toNode);
+    expandedDirs.clear();
+    for (const dirPath of wasExpanded) await ensureExpanded(dirPath);
     renderTree();
   } catch {
     /* ignore */
@@ -333,6 +450,7 @@ const wireEditorChange = () =>
   });
 
 let suggestedPath = '';
+let openInFlight = false;
 
 async function openByPath(rawPath) {
   const target = (rawPath && rawPath.trim()) || suggestedPath;
@@ -341,18 +459,26 @@ async function openByPath(rawPath) {
     el.statusPath.textContent = 'Enter a folder path to open.';
     return;
   }
+  if (openInFlight) return; // ignore double-clicks while a folder is opening
+  openInFlight = true;
+  el.openPathBtn.disabled = true;
+  el.openBtn.disabled = true;
   el.statusPath.textContent = `Opening ${target}…`;
   try {
-    const info = await fsapi.openPath(target);
+    const info = await withTimeout(fsapi.openPath(target), OPEN_TIMEOUT_MS, 'Opening folder');
     if (info) {
       el.pathInput.value = info.root;
       await loadWorkspace(info);
-      el.statusPath.textContent = `Opened ${info.root} (${info.entries.length} entries)`;
+      el.statusPath.textContent = `Opened ${info.root} (${(info.children || []).length} top-level items)`;
     }
   } catch (err) {
     const msg = `Could not open "${target}": ${err.message || err}`;
     el.statusPath.textContent = msg;
     el.project.textContent = 'Open failed — see status bar';
+  } finally {
+    openInFlight = false;
+    el.openPathBtn.disabled = false;
+    el.openBtn.disabled = false;
   }
 }
 el.openPathBtn.addEventListener('click', () => openByPath(el.pathInput.value));
@@ -360,7 +486,7 @@ el.pathInput.addEventListener('keydown', e => {
   if (e.key === 'Enter') openByPath(el.pathInput.value);
 });
 
-el.openBtn.addEventListener('click', async () => {
+async function requestOpenFolder() {
   if (!fsapi) {
     el.project.textContent = 'Workspace bridge unavailable (run in the desktop app)';
     return;
@@ -378,7 +504,17 @@ el.openBtn.addEventListener('click', async () => {
     el.pathInput.value = info.root;
     await loadWorkspace(info);
   }
-});
+}
+el.openBtn.addEventListener('click', requestOpenFolder);
+
+// File-menu commands routed from the chrome frame's menu bar.
+if (window.novaDev && typeof window.novaDev.onCommand === 'function') {
+  window.novaDev.onCommand(cmd => {
+    if (cmd === 'open') requestOpenFolder();
+    else if (cmd === 'run') runActiveCart();
+    else if (cmd === 'save') saveActive();
+  });
+}
 el.saveBtn.addEventListener('click', saveActive);
 el.runBtn.addEventListener('click', runActiveCart);
 el.previewReload.addEventListener('click', () => preview && preview.reload());

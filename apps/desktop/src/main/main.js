@@ -89,7 +89,7 @@ if (!app.requestSingleInstanceLock()) {
         if (shot) {
           try {
             const nav = await controller.chrome.webContents.executeJavaScript(
-              'JSON.stringify({menu: document.querySelectorAll(".menu-item").length, rail: document.querySelectorAll(".rail-btn").length})'
+              'JSON.stringify({menus: document.querySelectorAll(".menu-top").length, rows: document.querySelectorAll(".menu-row").length, rail: document.querySelectorAll(".rail-btn").length})'
             );
             const before = controller.content.dev.getBounds().x;
             controller.toggleRail();

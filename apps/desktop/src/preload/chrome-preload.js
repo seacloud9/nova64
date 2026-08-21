@@ -6,6 +6,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 const SURFACES = new Set(['os', 'dev', 'settings']);
 const ACTIONS = new Set(['minimize', 'toggle-maximize', 'close']);
+const MENU_COMMANDS = new Set(['toggle-rail', 'dev:open', 'dev:run', 'dev:save']);
 
 contextBridge.exposeInMainWorld('novaShell', {
   switchView(target) {
@@ -28,6 +29,13 @@ contextBridge.exposeInMainWorld('novaShell', {
   windowAction(action) {
     if (!ACTIONS.has(action)) return Promise.resolve(null);
     return ipcRenderer.invoke('window:action', action);
+  },
+  menuCommand(cmd) {
+    if (!MENU_COMMANDS.has(cmd)) return Promise.resolve(false);
+    return ipcRenderer.invoke('menu:command', cmd);
+  },
+  setOverlay(on) {
+    return ipcRenderer.invoke('nav:overlay', Boolean(on));
   },
 });
 

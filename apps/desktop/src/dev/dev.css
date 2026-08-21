@@ -328,10 +328,16 @@ body {
   text-overflow: ellipsis;
   border-radius: 5px;
 }
-.tree-row.file {
+.tree-row.file,
+.tree-row.dir {
   cursor: pointer;
 }
-.tree-row.file:hover {
+.tree-row.dir {
+  color: var(--text-strong, #f0eeff);
+  user-select: none;
+}
+.tree-row.file:hover,
+.tree-row.dir:hover {
   background: rgba(255, 255, 255, 0.05);
 }
 .tree-row.is-active {
@@ -439,4 +445,8 @@ body {
 }
 #status-dirty {
   color: var(--accent);
+}
+.status-count {
+  color: var(--muted, #8686a0);
+  font-variant-numeric: tabular-nums;
 }

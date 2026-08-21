@@ -181,13 +181,18 @@ body {
   text-transform: uppercase;
   color: var(--muted);
 }
-.ai-provider {
+.ai-provider,
+.ai-mode {
   background: var(--bg);
   color: var(--text);
   border: 1px solid var(--line);
   border-radius: 6px;
   padding: 2px 6px;
   font-size: 11px;
+}
+.ai-mode {
+  font-weight: 600;
+  color: var(--accent-text, var(--text));
 }
 .ai-head button {
   background: transparent;
@@ -226,6 +231,54 @@ body {
   font-family: var(--font-mono);
   font-size: 12px;
 }
+.ai-config select,
+.ai-config textarea {
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 5px 8px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+.ai-config textarea {
+  resize: vertical;
+}
+.ai-config fieldset {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 8px;
+  margin: 2px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.ai-config legend {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  padding: 0 4px;
+}
+.ai-controls {
+  flex-direction: row;
+  flex-wrap: wrap;
+}
+.ai-num {
+  flex: 1;
+  min-width: 74px;
+}
+.ai-num input {
+  width: 100%;
+}
+.ai-prompt-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.ai-prompt-row select {
+  flex: 1;
+}
 .ai-config button {
   align-self: flex-start;
   background: var(--accent-weak);
@@ -234,6 +287,10 @@ body {
   border-radius: 6px;
   padding: 4px 12px;
   cursor: pointer;
+}
+.ai-prompt-row button {
+  padding: 3px 8px;
+  align-self: auto;
 }
 .ai-messages {
   flex: 1 1 0;

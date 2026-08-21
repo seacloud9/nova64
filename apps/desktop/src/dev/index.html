@@ -57,15 +57,49 @@
       <section class="ai-pane" id="ai-pane" hidden>
         <div class="ai-head">
           <span>AI</span>
+          <select id="ai-mode" class="ai-mode" title="Agent mode">
+            <option value="ask">Ask</option>
+            <option value="plan">Plan</option>
+            <option value="edit">Edit</option>
+            <option value="agent">Agent</option>
+          </select>
           <select id="ai-provider" class="ai-provider" title="Provider"></select>
           <span class="spacer"></span>
           <button id="ai-settings" type="button" title="Provider settings">⚙</button>
           <button id="ai-close" type="button" title="Close">×</button>
         </div>
         <div class="ai-config" id="ai-config" hidden>
+          <label>Preset
+            <select id="ai-preset"><option value="">Custom…</option></select>
+          </label>
           <label>Base URL<input id="ai-baseurl" type="text" spellcheck="false" placeholder="http://localhost:11434" /></label>
           <label>Model<input id="ai-model" type="text" spellcheck="false" placeholder="e.g. llama3.1" /></label>
-          <label>API key<input id="ai-key" type="password" spellcheck="false" placeholder="(optional for local)" /></label>
+          <label>API key<input id="ai-key" type="password" spellcheck="false" placeholder="(optional — added when you have one)" /></label>
+
+          <fieldset class="ai-controls">
+            <legend>Generation</legend>
+            <label class="ai-num" id="ai-temp-row">Temperature
+              <input id="ai-temp" type="number" min="0" max="2" step="0.1" />
+            </label>
+            <label class="ai-num" id="ai-topp-row">Top-p
+              <input id="ai-topp" type="number" min="0" max="1" step="0.05" />
+            </label>
+            <label class="ai-num">Max tokens
+              <input id="ai-maxtokens" type="number" min="1" max="200000" step="256" />
+            </label>
+          </fieldset>
+
+          <fieldset class="ai-prompts">
+            <legend>System prompt</legend>
+            <div class="ai-prompt-row">
+              <select id="ai-prompt-select"><option value="">None (mode default only)</option></select>
+              <button id="ai-prompt-new" type="button" title="New prompt">＋</button>
+              <button id="ai-prompt-del" type="button" title="Delete prompt">🗑</button>
+            </div>
+            <input id="ai-prompt-name" type="text" spellcheck="false" placeholder="Prompt name" />
+            <textarea id="ai-prompt-text" rows="3" spellcheck="false" placeholder="Custom system prompt — combined with the selected agent mode…"></textarea>
+          </fieldset>
+
           <button id="ai-save-config" type="button">Save</button>
         </div>
         <div class="ai-messages" id="ai-messages"></div>

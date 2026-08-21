@@ -82,6 +82,9 @@ importers:
 
   apps/desktop:
     dependencies:
+      '@nova64/agent-core':
+        specifier: workspace:*
+        version: link:../../packages/agent-core
       '@nova64/ai-providers':
         specifier: workspace:*
         version: link:../../packages/ai-providers
@@ -92,6 +95,8 @@ importers:
       monaco-editor:
         specifier: ^0.52.0
         version: 0.52.2
+
+  packages/agent-core: {}
 
   packages/ai-providers: {}
 

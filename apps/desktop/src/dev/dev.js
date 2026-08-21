@@ -47,13 +47,25 @@ const el = {
   previewClose: document.getElementById('preview-close'),
   aiBtn: document.getElementById('ai-btn'),
   aiPane: document.getElementById('ai-pane'),
+  aiMode: document.getElementById('ai-mode'),
   aiProvider: document.getElementById('ai-provider'),
   aiSettings: document.getElementById('ai-settings'),
   aiClose: document.getElementById('ai-close'),
   aiConfig: document.getElementById('ai-config'),
+  aiPreset: document.getElementById('ai-preset'),
   aiBaseurl: document.getElementById('ai-baseurl'),
   aiModel: document.getElementById('ai-model'),
   aiKey: document.getElementById('ai-key'),
+  aiTemp: document.getElementById('ai-temp'),
+  aiTempRow: document.getElementById('ai-temp-row'),
+  aiTopp: document.getElementById('ai-topp'),
+  aiToppRow: document.getElementById('ai-topp-row'),
+  aiMaxtokens: document.getElementById('ai-maxtokens'),
+  aiPromptSelect: document.getElementById('ai-prompt-select'),
+  aiPromptNew: document.getElementById('ai-prompt-new'),
+  aiPromptDel: document.getElementById('ai-prompt-del'),
+  aiPromptName: document.getElementById('ai-prompt-name'),
+  aiPromptText: document.getElementById('ai-prompt-text'),
   aiSaveConfig: document.getElementById('ai-save-config'),
   aiMessages: document.getElementById('ai-messages'),
   aiInput: document.getElementById('ai-input'),
@@ -66,6 +78,34 @@ let aiHistory = [];
 let aiStreaming = false;
 let aiAssistantEl = null;
 
+// Agent mode (Phase 5): ask | plan | edit | agent. Persisted per machine; sent
+// with each chat so the host injects the matching system prompt.
+const AI_MODES = ['ask', 'plan', 'edit', 'agent'];
+const MODE_HINTS = {
+  ask: 'Ask a question…  (Enter to send, Shift+Enter for newline)',
+  plan: 'Describe a task to plan…  (read-only: proposes steps, no edits)',
+  edit: 'Describe an edit…  (proposes changes to review before applying)',
+  agent: 'Give the agent a task…  (reads, edits & runs tools with approval)',
+};
+let aiMode = (() => {
+  try {
+    const saved = localStorage.getItem('nova64.dev.aiMode');
+    return AI_MODES.includes(saved) ? saved : 'ask';
+  } catch {
+    return 'ask';
+  }
+})();
+function applyAiMode(mode) {
+  aiMode = AI_MODES.includes(mode) ? mode : 'ask';
+  if (el.aiMode) el.aiMode.value = aiMode;
+  if (el.aiInput) el.aiInput.placeholder = MODE_HINTS[aiMode];
+  try {
+    localStorage.setItem('nova64.dev.aiMode', aiMode);
+  } catch {
+    /* ignore quota */
+  }
+}
+
 function showAi(show) {
   el.aiPane.hidden = !show;
   el.workbench.classList.toggle('with-ai', show);
@@ -75,20 +115,115 @@ function showAi(show) {
   }
 }
 
+let aiPresets = []; // provider presets from the host
+let aiPrompts = []; // system-prompt library (local mirror of config.systemPrompts)
+let aiActivePromptId = '';
+
+function fillSelect(select, items, value, toOption) {
+  select.innerHTML = '';
+  for (const it of items) {
+    const opt = document.createElement('option');
+    const { v, label } = toOption(it);
+    opt.value = v;
+    opt.textContent = label;
+    if (v === value) opt.selected = true;
+    select.appendChild(opt);
+  }
+}
+
+// Hide temperature/top-p when the active preset's models reject them (e.g. Claude).
+function reflectSamplingSupport() {
+  const preset = aiPresets.find(p => p.id === el.aiPreset.value);
+  const sampling = preset ? preset.sampling !== false : true;
+  if (el.aiTempRow) el.aiTempRow.style.display = sampling ? '' : 'none';
+  if (el.aiToppRow) el.aiToppRow.style.display = sampling ? '' : 'none';
+}
+
+function loadPromptIntoEditor(id) {
+  aiActivePromptId = id || '';
+  const p = aiPrompts.find(x => x.id === aiActivePromptId);
+  el.aiPromptName.value = p ? p.name : '';
+  el.aiPromptText.value = p ? p.text : '';
+}
+
 async function loadAiState() {
   if (!aiapi) return;
   const st = await aiapi.state();
-  el.aiProvider.innerHTML = '';
-  for (const p of st.providers) {
-    const opt = document.createElement('option');
-    opt.value = p.id;
-    opt.textContent = p.displayName;
-    if (p.id === st.config.providerId) opt.selected = true;
-    el.aiProvider.appendChild(opt);
+  aiPresets = st.presets || [];
+  aiPrompts = (st.config.systemPrompts || []).slice();
+  aiActivePromptId = st.config.activeSystemPromptId || '';
+
+  // Provider dropdown (in the header).
+  fillSelect(el.aiProvider, st.providers, st.config.providerId, p => ({ v: p.id, label: p.displayName }));
+
+  // Preset dropdown: match the current config to a preset by provider+baseUrl.
+  if (el.aiPreset) {
+    const match = aiPresets.find(p => p.providerId === st.config.providerId && p.baseUrl === st.config.baseUrl);
+    el.aiPreset.innerHTML = '<option value="">Custom…</option>';
+    for (const p of aiPresets) {
+      const opt = document.createElement('option');
+      opt.value = p.id;
+      opt.textContent = p.label + (p.needsKey ? '' : ' · no key');
+      if (match && p.id === match.id) opt.selected = true;
+      el.aiPreset.appendChild(opt);
+    }
   }
+
   el.aiBaseurl.value = st.config.baseUrl || '';
   el.aiModel.value = st.config.model || '';
-  el.aiKey.placeholder = st.hasKey ? '•••• saved' : '(optional for local)';
+  el.aiKey.placeholder = st.hasKey ? '•••• saved' : '(optional — added when you have one)';
+  if (el.aiTemp) el.aiTemp.value = st.config.temperature ?? 0.7;
+  if (el.aiTopp) el.aiTopp.value = st.config.topP ?? 1;
+  if (el.aiMaxtokens) el.aiMaxtokens.value = st.config.maxOutputTokens ?? 4096;
+
+  // System-prompt library.
+  if (el.aiPromptSelect) {
+    el.aiPromptSelect.innerHTML = '<option value="">None (mode default only)</option>';
+    for (const p of aiPrompts) {
+      const opt = document.createElement('option');
+      opt.value = p.id;
+      opt.textContent = p.name;
+      if (p.id === aiActivePromptId) opt.selected = true;
+      el.aiPromptSelect.appendChild(opt);
+    }
+    loadPromptIntoEditor(aiActivePromptId);
+  }
+
+  reflectSamplingSupport();
+}
+
+// Gather the whole config panel and persist it via the host.
+async function saveAiConfig() {
+  if (!aiapi) return;
+  // Capture the current editor into the active prompt (or as a new one).
+  const name = el.aiPromptName.value.trim();
+  const text = el.aiPromptText.value;
+  if (text.trim() || name) {
+    let p = aiPrompts.find(x => x.id === aiActivePromptId);
+    if (!p) {
+      p = { id: `sp_${Math.random().toString(36).slice(2, 9)}`, name: name || 'Untitled', text };
+      aiPrompts.push(p);
+      aiActivePromptId = p.id;
+    } else {
+      p.name = name || p.name;
+      p.text = text;
+    }
+  }
+  const st = await aiapi.setConfig({
+    providerId: el.aiProvider.value,
+    baseUrl: el.aiBaseurl.value.trim(),
+    model: el.aiModel.value.trim(),
+    temperature: parseFloat(el.aiTemp.value),
+    topP: parseFloat(el.aiTopp.value),
+    maxOutputTokens: parseInt(el.aiMaxtokens.value, 10),
+    systemPrompts: aiPrompts,
+    activeSystemPromptId: aiActivePromptId,
+  });
+  if (el.aiKey.value) {
+    await aiapi.setKey(el.aiKey.value);
+    el.aiKey.value = '';
+  }
+  return st;
 }
 
 function addAiMessage(role, content) {
@@ -110,7 +245,7 @@ async function sendAiMessage() {
   aiAssistantEl = addAiMessage('assistant', '');
   aiStreaming = true;
   el.aiSend.textContent = 'Stop';
-  await aiapi.chat(aiHistory.slice(0, -1)); // history without the empty assistant
+  await aiapi.chat(aiHistory.slice(0, -1), { mode: aiMode }); // history without the empty assistant
 }
 
 if (aiapi) {
@@ -538,17 +673,49 @@ el.aiInput.addEventListener('keydown', e => {
 el.aiProvider.addEventListener('change', () => {
   if (aiapi) aiapi.setConfig({ providerId: el.aiProvider.value }).then(loadAiState);
 });
-el.aiSaveConfig.addEventListener('click', async () => {
-  if (!aiapi) return;
-  await aiapi.setConfig({
-    providerId: el.aiProvider.value,
-    baseUrl: el.aiBaseurl.value.trim(),
-    model: el.aiModel.value.trim(),
+if (el.aiMode) {
+  applyAiMode(aiMode); // reflect the saved mode into the selector + input hint
+  el.aiMode.addEventListener('change', () => applyAiMode(el.aiMode.value));
+}
+
+// Selecting a preset prefills provider + endpoint + default model (key stays optional).
+if (el.aiPreset) {
+  el.aiPreset.addEventListener('change', () => {
+    const preset = aiPresets.find(p => p.id === el.aiPreset.value);
+    if (preset) {
+      el.aiProvider.value = preset.providerId;
+      el.aiBaseurl.value = preset.baseUrl;
+      el.aiModel.value = preset.defaultModel;
+      el.aiKey.placeholder = preset.needsKey ? 'API key required for this provider' : '(no key needed)';
+    }
+    reflectSamplingSupport();
   });
-  if (el.aiKey.value) {
-    await aiapi.setKey(el.aiKey.value);
-    el.aiKey.value = '';
-  }
+}
+
+// System-prompt library controls.
+if (el.aiPromptSelect) {
+  el.aiPromptSelect.addEventListener('change', () => loadPromptIntoEditor(el.aiPromptSelect.value));
+}
+if (el.aiPromptNew) {
+  el.aiPromptNew.addEventListener('click', () => {
+    aiActivePromptId = ''; // clearing the id makes the next save create a new prompt
+    el.aiPromptName.value = '';
+    el.aiPromptText.value = '';
+    el.aiPromptName.focus();
+  });
+}
+if (el.aiPromptDel) {
+  el.aiPromptDel.addEventListener('click', async () => {
+    if (!aiapi || !aiActivePromptId) return;
+    aiPrompts = aiPrompts.filter(p => p.id !== aiActivePromptId);
+    aiActivePromptId = '';
+    await aiapi.setConfig({ systemPrompts: aiPrompts, activeSystemPromptId: '' });
+    loadAiState();
+  });
+}
+
+el.aiSaveConfig.addEventListener('click', async () => {
+  await saveAiConfig();
   el.aiConfig.hidden = true;
   loadAiState();
 });

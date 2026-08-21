@@ -9,6 +9,7 @@
     "start": "electron ."
   },
   "dependencies": {
+    "@nova64/agent-core": "workspace:*",
     "@nova64/ai-providers": "workspace:*"
   },
   "devDependencies": {

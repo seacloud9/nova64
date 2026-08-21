@@ -45,7 +45,7 @@ contextBridge.exposeInMainWorld('novaAi', {
   state: () => ipcRenderer.invoke('ai:state'),
   setConfig: config => ipcRenderer.invoke('ai:set-config', config),
   setKey: key => ipcRenderer.invoke('ai:set-key', key),
-  chat: messages => ipcRenderer.invoke('ai:chat', messages),
+  chat: (messages, options) => ipcRenderer.invoke('ai:chat', messages, options),
   cancel: () => ipcRenderer.invoke('ai:cancel'),
   onEvent: callback => {
     const listener = (_e, ev) => callback(ev);

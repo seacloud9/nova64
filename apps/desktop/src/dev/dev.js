@@ -1,6 +1,7 @@
 // Absolute custom-scheme specifier avoids needing an inline import map (which
 // the strict CSP would block). The `lib` host maps to packages/workspace-core.
 import { Workspace } from 'nova64-app://lib/index.js';
+import { parseToolCalls, formatToolResult } from 'nova64-app://agent/index.js';
 import { TextareaEditorAdapter, languageForPath } from './editor-adapter.js';
 import { MonacoEditorAdapter } from './monaco-adapter.js';
 import { RuntimePreview } from './preview.js';
@@ -8,6 +9,7 @@ import { RuntimePreview } from './preview.js';
 const ws = new Workspace();
 let editor = new TextareaEditorAdapter();
 const fsapi = window.novaWorkspace || null;
+const agentapi = window.novaAgent || null;
 
 // Safety net so a stalled filesystem call (dead network mount, permission hang)
 // can never freeze the Dev surface — the open/expand fails gracefully instead.
@@ -240,6 +242,7 @@ async function sendAiMessage() {
   if (!aiapi || aiStreaming) return;
   const text = el.aiInput.value.trim();
   if (!text) return;
+  agentIterations = 0; // fresh tool-loop budget per user message
   addAiMessage('user', text);
   el.aiInput.value = '';
   aiAssistantEl = addAiMessage('assistant', '');
@@ -265,8 +268,138 @@ if (aiapi) {
       aiStreaming = false;
       el.aiSend.textContent = 'Send';
       aiAssistantEl = null;
+      if (ev.type === 'done') maybeRunAgentTools();
     }
   });
+}
+
+// ── agent tool loop (Phase 5) ───────────────────────────────────────────────
+// In edit/agent mode, the model requests tools via fenced ```tool blocks. We
+// run each against the workspace (via the host ToolRunner), surface an approval
+// card for mutating tools, feed the results back as the next turn, and continue
+// until the model replies without a tool call (or we hit the per-message cap).
+const MAX_AGENT_ITERATIONS = 8;
+let agentIterations = 0;
+
+function uiBubble(cls, content) {
+  const div = document.createElement('div');
+  div.className = `ai-msg ${cls}`;
+  div.textContent = content;
+  el.aiMessages.appendChild(div);
+  el.aiMessages.scrollTop = el.aiMessages.scrollHeight;
+  return div;
+}
+
+function summarizeResult(r) {
+  if (r == null) return 'done';
+  if (typeof r === 'string') return r.slice(0, 140);
+  if (Array.isArray(r.entries)) return `${r.entries.length} entries`;
+  if (Array.isArray(r.matches)) return `${r.matches.length} matches`;
+  if (r.content != null) return `${String(r.content).length} chars read`;
+  if (r.written) return `wrote ${r.path}`;
+  try {
+    return JSON.stringify(r).slice(0, 140);
+  } catch {
+    return 'done';
+  }
+}
+
+function renderToolResult(call, res) {
+  const icon = res.status === 'ok' ? '✓' : res.status === 'denied' ? '⛔' : '⚠';
+  const detail = res.status === 'ok' ? summarizeResult(res.result) : res.reason || res.error || res.status;
+  uiBubble('ai-tool', `${icon} ${call.tool} — ${detail}`);
+}
+
+function approvalDetail(call) {
+  if (call.tool === 'write_file') {
+    return `write ${call.args.path} (${String(call.args.content ?? '').length} chars)`;
+  }
+  try {
+    return JSON.stringify(call.args).slice(0, 120);
+  } catch {
+    return '';
+  }
+}
+
+// Render an approval card and resolve with the run result (approve → run;
+// deny → a denied result). Mutating tools go through here.
+function requestApproval(call, res) {
+  return new Promise(resolve => {
+    const card = document.createElement('div');
+    card.className = 'ai-approval';
+    const desc = document.createElement('div');
+    desc.className = 'ai-approval-desc';
+    desc.textContent = `Approve ${res.title || call.tool}? ${approvalDetail(call)}`;
+    const row = document.createElement('div');
+    row.className = 'ai-approval-actions';
+    const approve = document.createElement('button');
+    approve.className = 'ai-approve';
+    approve.type = 'button';
+    approve.textContent = 'Approve';
+    const deny = document.createElement('button');
+    deny.className = 'ai-deny';
+    deny.type = 'button';
+    deny.textContent = 'Deny';
+    row.append(approve, deny);
+    card.append(desc, row);
+    el.aiMessages.appendChild(card);
+    el.aiMessages.scrollTop = el.aiMessages.scrollHeight;
+
+    const finish = result => {
+      approve.disabled = true;
+      deny.disabled = true;
+      resolve(result);
+    };
+    approve.addEventListener('click', async () => {
+      desc.textContent = `Running ${call.tool}…`;
+      let r;
+      try {
+        r = await agentapi.runTool({ tool: call.tool, args: call.args, mode: aiMode, approved: true });
+      } catch (err) {
+        r = { status: 'error', error: err.message || String(err) };
+      }
+      card.classList.add('approved');
+      finish(r);
+    });
+    deny.addEventListener('click', () => {
+      card.classList.add('denied');
+      finish({ status: 'denied', reason: 'user denied' });
+    });
+  });
+}
+
+async function maybeRunAgentTools() {
+  if (!agentapi || aiStreaming) return;
+  if (aiMode !== 'edit' && aiMode !== 'agent') return;
+  const last = aiHistory[aiHistory.length - 1];
+  if (!last || last.role !== 'assistant') return;
+  const calls = parseToolCalls(last.content);
+  if (!calls.length) return;
+  if (agentIterations >= MAX_AGENT_ITERATIONS) {
+    uiBubble('ai-tool', '⚠ Reached the tool-call limit for this turn — stopping.');
+    return;
+  }
+  agentIterations++;
+
+  for (const call of calls) {
+    let res;
+    try {
+      res = await agentapi.runTool({ tool: call.tool, args: call.args, mode: aiMode });
+    } catch (err) {
+      res = { status: 'error', error: err.message || String(err) };
+    }
+    if (res.status === 'needs-approval') res = await requestApproval(call, res);
+    renderToolResult(call, res);
+    const payload =
+      res.status === 'ok' ? res.result : { status: res.status, error: res.error, reason: res.reason };
+    aiHistory.push({ role: 'user', content: formatToolResult(call.tool, payload) });
+  }
+
+  // Continue the conversation with the tool results now in context.
+  aiAssistantEl = addAiMessage('assistant', '');
+  aiStreaming = true;
+  el.aiSend.textContent = 'Stop';
+  await aiapi.chat(aiHistory.slice(0, -1), { mode: aiMode });
 }
 
 let preview = null;

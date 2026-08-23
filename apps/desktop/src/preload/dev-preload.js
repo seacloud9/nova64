@@ -31,6 +31,12 @@ contextBridge.exposeInMainWorld('novaWorkspace', {
   },
 });
 
+// Agent tools bridge — run one agent-core tool against the workspace (Phase 5).
+// req: { tool, args, mode, approved? } → ToolRunResult (may be 'needs-approval').
+contextBridge.exposeInMainWorld('novaAgent', {
+  runTool: req => ipcRenderer.invoke('agent:run-tool', req),
+});
+
 // Menu bridge — File-menu commands (open/run/save) dispatched from the chrome frame.
 contextBridge.exposeInMainWorld('novaDev', {
   onCommand: callback => {

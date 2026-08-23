@@ -110,6 +110,75 @@ class WorkspaceService {
     return { files, dirs, truncated };
   }
 
+  /** Read a workspace file as UTF-8 text (containment-guarded, size-capped). */
+  async readFile(rel) {
+    const abs = this.#resolveInside(rel);
+    const stat = await fsp.stat(abs);
+    if (stat.size > MAX_FILE_BYTES) throw new Error('file too large to open as text');
+    return fsp.readFile(abs, 'utf8');
+  }
+
+  /** Write UTF-8 text to a workspace file (creates parent dirs). */
+  async writeFile(rel, data) {
+    const abs = this.#resolveInside(rel);
+    await fsp.mkdir(path.dirname(abs), { recursive: true });
+    await fsp.writeFile(abs, String(data), 'utf8');
+    return true;
+  }
+
+  /**
+   * Recursively search text files under the root for a literal query string.
+   * Skips the same heavy dirs as the explorer, skips binary/oversized files, and
+   * caps the number of matches. Returns { query, matches:[{path,line,text}], truncated }.
+   */
+  async searchText(query, { max = 200 } = {}) {
+    const q = String(query || '');
+    if (!q || !this.root) return { query: q, matches: [], truncated: false };
+    const matches = [];
+    let truncated = false;
+    const walk = async absDir => {
+      if (truncated) return;
+      let dirents;
+      try {
+        dirents = await fsp.readdir(absDir, { withFileTypes: true });
+      } catch {
+        return;
+      }
+      for (const d of dirents) {
+        if (truncated) return;
+        if (d.isDirectory() && SKIP_DIRS.has(d.name)) continue;
+        const abs = path.join(absDir, d.name);
+        if (d.isDirectory()) {
+          await walk(abs);
+          continue;
+        }
+        if (!d.isFile()) continue;
+        let content;
+        try {
+          const stat = await fsp.stat(abs);
+          if (stat.size > MAX_FILE_BYTES) continue;
+          content = await fsp.readFile(abs, 'utf8');
+        } catch {
+          continue;
+        }
+        if (content.indexOf(String.fromCharCode(0)) !== -1) continue; // skip binary (NUL byte)
+        const rel = path.relative(this.root, abs).split(path.sep).join('/');
+        const lines = content.split('\n');
+        for (let i = 0; i < lines.length; i++) {
+          if (lines[i].includes(q)) {
+            matches.push({ path: rel, line: i + 1, text: lines[i].slice(0, 240) });
+            if (matches.length >= max) {
+              truncated = true;
+              break;
+            }
+          }
+        }
+      }
+    };
+    await walk(this.root);
+    return { query: q, matches, truncated };
+  }
+
   #startWatch() {
     this.#stopWatch();
     try {
@@ -251,19 +320,13 @@ class WorkspaceService {
       guard(event);
       return this.root ? this.countTree() : { files: 0, dirs: 0, truncated: false };
     });
-    ipcMain.handle('workspace:read', async (event, rel) => {
+    ipcMain.handle('workspace:read', (event, rel) => {
       guard(event);
-      const abs = this.#resolveInside(rel);
-      const stat = await fsp.stat(abs);
-      if (stat.size > MAX_FILE_BYTES) throw new Error('file too large to open as text');
-      return fsp.readFile(abs, 'utf8');
+      return this.readFile(rel);
     });
-    ipcMain.handle('workspace:write', async (event, rel, data) => {
+    ipcMain.handle('workspace:write', (event, rel, data) => {
       guard(event);
-      const abs = this.#resolveInside(rel);
-      await fsp.mkdir(path.dirname(abs), { recursive: true });
-      await fsp.writeFile(abs, String(data), 'utf8');
-      return true;
+      return this.writeFile(rel, data);
     });
     ipcMain.handle('workspace:mkdir', async (event, rel) => {
       guard(event);

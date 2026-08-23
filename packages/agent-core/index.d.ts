@@ -49,3 +49,14 @@ export class ToolRunner {
     opts?: { approved?: boolean; signal?: AbortSignal }
   ): Promise<ToolRunResult>;
 }
+
+export interface ToolCall {
+  tool: string;
+  args: Record<string, unknown>;
+}
+
+export function parseToolCalls(text: string): ToolCall[];
+export function stripToolCalls(text: string): string;
+export function hasToolCall(text: string): boolean;
+export function toolInstructions(mode: string): string;
+export function formatToolResult(name: string, result: unknown): string;

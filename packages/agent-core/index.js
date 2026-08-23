@@ -25,3 +25,11 @@ export {
 } from './src/tools.js';
 
 export { ToolRunner } from './src/runner.js';
+
+export {
+  parseToolCalls,
+  stripToolCalls,
+  hasToolCall,
+  toolInstructions,
+  formatToolResult,
+} from './src/protocol.js';

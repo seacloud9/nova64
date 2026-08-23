@@ -12,6 +12,11 @@ import {
   toolAllowedInMode,
   approvalRequired,
   ToolRunner,
+  parseToolCalls,
+  stripToolCalls,
+  hasToolCall,
+  toolInstructions,
+  formatToolResult,
 } from '../index.js';
 
 let n = 0;
@@ -147,6 +152,60 @@ await t('runner: aborted signal is reported as an error, not a hang', async () =
   const res = await runner.run('read_file', { path: 'a.js' }, { signal: ac.signal });
   assert.equal(res.status, 'error');
   assert.match(res.error, /abort/i);
+});
+
+// ── tool-call protocol ─────────────────────────────────────────────────────────
+await t('protocol: parses fenced tool-call blocks', () => {
+  const text = [
+    'Let me read that file.',
+    '```tool',
+    '{"tool": "read_file", "args": {"path": "src/main.js"}}',
+    '```',
+  ].join('\n');
+  const calls = parseToolCalls(text);
+  assert.equal(calls.length, 1);
+  assert.deepEqual(calls[0], { tool: 'read_file', args: { path: 'src/main.js' } });
+  assert.ok(hasToolCall(text));
+});
+
+await t('protocol: multiple blocks, alt keys, and malformed are handled', () => {
+  const text = [
+    '```tool',
+    '{"name": "list_dir", "arguments": {"path": "."}}', // name/arguments aliases
+    '```',
+    '```tool',
+    'not json',
+    '```',
+    '```tool',
+    '{"tool": "search_text", "args": {"query": "TODO"}}',
+    '```',
+  ].join('\n');
+  const calls = parseToolCalls(text);
+  assert.deepEqual(calls, [
+    { tool: 'list_dir', args: { path: '.' } },
+    { tool: 'search_text', args: { query: 'TODO' } },
+  ]);
+});
+
+await t('protocol: stripToolCalls leaves prose; no calls => empty', () => {
+  const text = 'Here is the plan.\n```tool\n{"tool":"read_file","args":{}}\n```\nDone.';
+  assert.equal(stripToolCalls(text), 'Here is the plan.\n\nDone.');
+  assert.equal(hasToolCall('just prose'), false);
+  assert.deepEqual(parseToolCalls('just prose'), []);
+});
+
+await t('protocol: toolInstructions gates by mode + marks approvals', () => {
+  assert.equal(toolInstructions('ask'), ''); // ask has no tools
+  const plan = toolInstructions('plan');
+  assert.match(plan, /read_file/);
+  assert.doesNotMatch(plan, /write_file/); // not available in plan
+  const agent = toolInstructions('agent');
+  assert.match(agent, /write_file.*\[requires approval\]/);
+});
+
+await t('protocol: formatToolResult renders string + object results', () => {
+  assert.match(formatToolResult('read_file', 'file contents'), /read_file.*\nfile contents/s);
+  assert.match(formatToolResult('list_dir', { entries: ['a', 'b'] }), /entries/);
 });
 
 console.log(`\n${n} agent-core tests passed`);

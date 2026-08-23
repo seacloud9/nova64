@@ -9,6 +9,7 @@ const { WorkspaceService } = require('./workspace-service');
 const { SettingsService } = require('./settings-service');
 const { SecretService } = require('./secret-service');
 const { AiService } = require('./ai-service');
+const { AgentToolService } = require('./agent-tool-service');
 
 const CHROME_PRELOAD = path.join(__dirname, '..', 'preload', 'chrome-preload.js');
 const DEV_PRELOAD = path.join(__dirname, '..', 'preload', 'dev-preload.js');
@@ -127,6 +128,11 @@ class WindowController {
     this.ai = new AiService({ secrets: this.secrets, isTrustedSender: trustsDev });
     this.ai.registerIpc();
 
+    // Agent tools (Phase 5): the ToolRunner executes read/search/write against
+    // the opened workspace, gated by agent-core's per-mode + approval policy.
+    this.agentTools = new AgentToolService({ workspace: this.workspace, isTrustedSender: trustsDev });
+    this.agentTools.registerIpc();
+
     // Live theming: chrome + our content surfaces receive settings updates.
     this.settings.subscribe(this.chrome.webContents);
     this.settings.subscribe(this.content[VIEW.DEV].webContents);
@@ -147,6 +153,7 @@ class WindowController {
     this.win.on('closed', () => {
       if (this.workspace) this.workspace.dispose();
       if (this.ai) this.ai.dispose();
+      if (this.agentTools) this.agentTools.dispose();
       this.win = null;
     });
     return this.win;

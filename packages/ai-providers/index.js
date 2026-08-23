@@ -9,5 +9,8 @@
  */
 export { parseSse } from './src/sse.js';
 export { createOpenAICompatibleProvider } from './src/openai-compatible.js';
+export { createAnthropicProvider } from './src/anthropic.js';
+export { createOpenCodeProvider } from './src/opencode.js';
 export { createEchoProvider } from './src/echo.js';
 export { ProviderRegistry } from './src/registry.js';
+export { PROVIDER_PRESETS, getPreset } from './src/presets.js';

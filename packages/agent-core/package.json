@@ -1,0 +1,24 @@
+{
+  "name": "@nova64/agent-core",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Host-neutral agent seam for Nova64: interaction modes (ask/plan/edit/agent), tool catalogue with per-mode gating + approval policy, and a ToolRunner. No React/Electron/VS Code deps.",
+  "license": "MIT",
+  "main": "./index.js",
+  "types": "./index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.js"
+    }
+  },
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "src"
+  ],
+  "scripts": {
+    "test": "node test/agent-core.test.js"
+  }
+}

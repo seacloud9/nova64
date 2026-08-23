@@ -49,7 +49,7 @@ export function createOpenAICompatibleProvider({
      * Throws on transport/HTTP error.
      */
     async *chat(config, messages, { signal } = {}) {
-      const { baseUrl, apiKey, model, temperature, maxOutputTokens } = config || {};
+      const { baseUrl, apiKey, model, temperature, topP, maxOutputTokens } = config || {};
       const res = await fetchImpl(`${endpoint(baseUrl)}/chat/completions`, {
         method: 'POST',
         headers: { 'content-type': 'application/json', ...authHeaders(apiKey) },
@@ -58,6 +58,7 @@ export function createOpenAICompatibleProvider({
           messages,
           stream: true,
           ...(temperature != null ? { temperature } : {}),
+          ...(topP != null ? { top_p: topP } : {}),
           ...(maxOutputTokens != null ? { max_tokens: maxOutputTokens } : {}),
         }),
         signal,

@@ -84,7 +84,6 @@ body {
   min-height: 0;
 }
 .editor-pane,
-.preview-pane,
 .ai-pane {
   flex: 1 1 0;
   min-width: 0;
@@ -100,13 +99,40 @@ body {
   opacity: 0.4;
 }
 
-/* preview pane */
-.preview-pane {
+/* preview modal — overlays the whole window, stays within the viewport so the
+   embedded runtime can never stretch the layout beyond the window edges. */
+.preview-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+.preview-modal[hidden] {
+  display: none;
+}
+.preview-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+}
+.preview-dialog {
+  position: relative;
+  /* Kept < 768px so the embedded cart-runner uses its edge-to-edge fill layout
+     (no CRT bezel) instead of the cramped desktop shell. */
+  width: min(720px, 92vw);
+  height: min(760px, 88vh);
+  max-width: 92vw;
+  max-height: 88vh;
   display: grid;
-  grid-template-rows: 30px 1fr 150px;
-  min-width: 0;
-  border-left: 1px solid var(--line);
+  grid-template-rows: 34px minmax(0, 1fr) 200px;
   background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.6);
+  overflow: hidden;
 }
 .preview-head {
   display: flex;
@@ -135,6 +161,7 @@ body {
 }
 .preview-host {
   min-height: 0;
+  overflow: hidden;
   background: #000;
 }
 .preview-frame {
@@ -181,13 +208,18 @@ body {
   text-transform: uppercase;
   color: var(--muted);
 }
-.ai-provider {
+.ai-provider,
+.ai-mode {
   background: var(--bg);
   color: var(--text);
   border: 1px solid var(--line);
   border-radius: 6px;
   padding: 2px 6px;
   font-size: 11px;
+}
+.ai-mode {
+  font-weight: 600;
+  color: var(--accent-text, var(--text));
 }
 .ai-head button {
   background: transparent;
@@ -226,6 +258,54 @@ body {
   font-family: var(--font-mono);
   font-size: 12px;
 }
+.ai-config select,
+.ai-config textarea {
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 5px 8px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+.ai-config textarea {
+  resize: vertical;
+}
+.ai-config fieldset {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 8px;
+  margin: 2px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.ai-config legend {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  padding: 0 4px;
+}
+.ai-controls {
+  flex-direction: row;
+  flex-wrap: wrap;
+}
+.ai-num {
+  flex: 1;
+  min-width: 74px;
+}
+.ai-num input {
+  width: 100%;
+}
+.ai-prompt-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.ai-prompt-row select {
+  flex: 1;
+}
 .ai-config button {
   align-self: flex-start;
   background: var(--accent-weak);
@@ -234,6 +314,10 @@ body {
   border-radius: 6px;
   padding: 4px 12px;
   cursor: pointer;
+}
+.ai-prompt-row button {
+  padding: 3px 8px;
+  align-self: auto;
 }
 .ai-messages {
   flex: 1 1 0;

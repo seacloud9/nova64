@@ -1,7 +1,7 @@
 'use strict';
 
 const path = require('node:path');
-const { BrowserWindow, WebContentsView, ipcMain } = require('electron');
+const { BrowserWindow, WebContentsView, ipcMain, screen } = require('electron');
 const { APP_PROTOCOL, VIEW, DEV_SERVER_URL } = require('./constants');
 const { layout } = require('./view-layout');
 const { secureWebPreferences, hardenWebContents, applyContentSecurityPolicy } = require('./security');
@@ -45,11 +45,17 @@ class WindowController {
   }
 
   create() {
+    // Never open larger than the visible work area (WSLg/small screens), and
+    // keep the minimum small enough to fit tight viewports.
+    const wa = screen.getPrimaryDisplay().workAreaSize;
+    const width = Math.max(640, Math.min(1360, wa.width - 40));
+    const height = Math.max(480, Math.min(860, wa.height - 40));
     this.win = new BrowserWindow({
-      width: 1360,
-      height: 860,
-      minWidth: 920,
-      minHeight: 600,
+      width,
+      height,
+      minWidth: Math.min(760, width),
+      minHeight: Math.min(520, height),
+      center: true,
       frame: false, // edge-to-edge; we render a custom titlebar + controls
       backgroundColor: '#0b0b12',
       title: 'Nova64',

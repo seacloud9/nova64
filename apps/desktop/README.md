@@ -73,6 +73,11 @@ Windows 11 WSLg renders the Linux Electron window on your Windows desktop. Notes
 
 - Pass `--no-sandbox` (or `ELECTRON_DISABLE_SANDBOX=1`) — the pnpm-store Electron's SUID
   sandbox isn't configured under WSL. `--disable-gpu` avoids a benign GPU-init warning.
+- On Linux the app auto-applies two WSLg fixes (`src/main/main.js`): `--force-device-scale-factor=1`
+  (WSLg reports a fractional scale that otherwise blows the window past the viewport) and
+  `--enable-unsafe-swiftshader` (WSLg has no hardware GPU, and Chromium's software-WebGL fallback
+  — required by the 3D cart preview — is now gated behind this flag). The window also opens capped
+  to the screen work area and centered, so it never exceeds the visible viewport.
 - **Emoji icons need a color-emoji font.** The OS shell uses emoji app icons; a stock WSL has
   no emoji font, so they render as empty boxes. Install one (no sudo needed):
   ```bash
@@ -114,10 +119,48 @@ dev|build` regenerate it to stay in sync. Names are accurate; signatures are loo
 
 ## Run a cart
 
-The Dev surface has a **▶ Run** (Ctrl/Cmd+Enter) that executes the active cart in an embedded
-Nova64 runtime iframe (`console.html?studio=1`) via the hardened studio protocol, streaming
-`CART_LOG`/errors to a run console. The runtime surface gets `'unsafe-eval'` (it runs carts via
-`new Function`) via a per-surface CSP; the Dev/Settings tooling stays strict.
+The Dev surface's **▶ Run** (Ctrl/Cmd+Enter, or File → Run Cart) executes the *current editor
+contents* of the active cart in an embedded Nova64 runtime, shown in a **preview modal** —
+a centered, viewport-bounded overlay (never stretches past the window) with the cart canvas on
+top and a **run console** beneath it, closable via **×**, the backdrop, or **Esc**
+(`src/dev/preview.js` + the `.preview-modal` styles).
+
+The modal iframe loads the **lean cart-runner page** (`cart-runner.html?studio=1`, a bare CRT
+screen) rather than the full console shell (`console.html`), so it isn't cramped by the hardware
+bezel / side panel. At the modal's width the cart-runner strips its bezel and fills the canvas
+edge-to-edge. Code is delivered via the hardened studio protocol (`runtime/studio-protocol.js`);
+the runtime surface gets `'unsafe-eval'` (it runs carts via `new Function`) through a per-surface
+CSP, while the Dev/Settings tooling stays strict.
+
+### G1 (`engine.call`) carts in the web/desktop preview
+
+Most carts use the web `nova64.*` API (a global), but the low-numbered conformance carts
+(`00-boot`, `01-cube`, …) use the **G1 host API** (`engine.call('geometry.createBox', …)`) —
+native to the Godot host, absent in the browser, so they used to throw *"engine is not defined"*.
+[`runtime/g1-web-bridge.js`](../../runtime/g1-web-bridge.js) installs a `globalThis.engine` that
+maps the G1 command set (light / material / geometry / mesh / instanced / transform / camera /
+texture / particles / input) onto Three.js objects in the runtime scene, giving parity so G1
+carts render in the preview. It's wired in `src/main.js` (Three.js backend only; Babylon installs
+its own `self.engine`) and `reset()` between runs.
+
+### Studio-embedding gotchas under `nova64-app://` (for maintainers)
+
+The preview embeds the runtime **cross-surface** (Dev `nova64-app://dev` → runtime
+`nova64-app://os`). Three non-obvious things that all had to be right for a cart to run:
+
+1. **Custom schemes don't set `document.referrer`.** The runtime can't derive its embedder's
+   origin from the referrer, so the preview **declares it** via `?host=<location.origin>`; the
+   runtime uses that for READY targeting **and** the EXECUTE_CODE allow-list. Still safe:
+   `acceptExecuteCode` also requires `event.source === window.parent`. (Don't re-parse the host
+   with `new URL(h).origin` — WHATWG URL returns `"null"` for non-special custom schemes.)
+2. **Bare `print(...)` is `window.print()`.** G1 carts call `print()` as a log; in a browser the
+   global `print` opens a **blocking print dialog** that hangs `init()`. Studio mode redirects
+   `globalThis.print` to a console log (Nova64's own text API is namespaced, `nova64.draw.print`,
+   so drawing is unaffected).
+3. **Post status/logs via `window.parent`, not `MessageEvent.source`.** Under the custom scheme
+   the cross-origin `WindowProxy` from `event.source` silently drops `postMessage`; `window.parent`
+   works. Runtime `console.log`/`warn`/`error` are also forwarded to the preview console in studio
+   mode (internal `[main.js]` debug lines filtered out).
 
 ## Not yet (later phases)
 

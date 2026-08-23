@@ -2,8 +2,12 @@ import assert from 'node:assert/strict';
 import {
   parseSse,
   createOpenAICompatibleProvider,
+  createAnthropicProvider,
+  createOpenCodeProvider,
   createEchoProvider,
   ProviderRegistry,
+  PROVIDER_PRESETS,
+  getPreset,
 } from '../index.js';
 
 let n = 0;
@@ -112,6 +116,74 @@ await t('echo provider stops on abort', async () => {
     provider.chat({}, [{ role: 'user', content: 'a b c' }], { signal: ac.signal })
   );
   assert.equal(events.length, 0);
+});
+
+await t('anthropic chat: system param split out, text_delta streamed', async () => {
+  let captured;
+  const mockFetch = async (url, opts) => {
+    captured = { url, opts };
+    return {
+      ok: true,
+      body: streamFrom([
+        'event: content_block_delta\ndata: {"type":"content_block_delta","delta":{"type":"text_delta","text":"Hi"}}\n\n',
+        'event: content_block_delta\ndata: {"type":"content_block_delta","delta":{"type":"text_delta","text":" there"}}\n\n',
+        'event: message_stop\ndata: {"type":"message_stop"}\n\n',
+      ]),
+    };
+  };
+  const provider = createAnthropicProvider({ fetchImpl: mockFetch });
+  const events = await collect(
+    provider.chat({ apiKey: 'k', model: 'claude-opus-4-8' }, [
+      { role: 'system', content: 'be terse' },
+      { role: 'user', content: 'hi' },
+    ])
+  );
+  assert.equal(captured.url, 'https://api.anthropic.com/v1/messages');
+  assert.equal(captured.opts.headers['x-api-key'], 'k');
+  assert.equal(captured.opts.headers['anthropic-version'], '2023-06-01');
+  const body = JSON.parse(captured.opts.body);
+  assert.equal(body.system, 'be terse'); // system pulled out of messages
+  assert.deepEqual(body.messages, [{ role: 'user', content: 'hi' }]);
+  assert.equal(body.max_tokens > 0, true);
+  assert.equal('temperature' in body, false); // never sent (400s on current Claude)
+  assert.deepEqual(events, [
+    { type: 'delta', text: 'Hi' },
+    { type: 'delta', text: ' there' },
+    { type: 'done' },
+  ]);
+});
+
+await t('opencode chat: creates a session then posts the message', async () => {
+  const calls = [];
+  const mockFetch = async (url, opts) => {
+    calls.push({ url, method: opts?.method });
+    if (url.endsWith('/session') && opts?.method === 'POST') {
+      return { ok: true, json: async () => ({ id: 'ses_1' }) };
+    }
+    if (url.includes('/session/ses_1/message')) {
+      return { ok: true, json: async () => ({ parts: [{ type: 'text', text: 'done: built cube' }] }) };
+    }
+    throw new Error(`unexpected ${url}`);
+  };
+  const provider = createOpenCodeProvider({ fetchImpl: mockFetch });
+  const events = await collect(
+    provider.chat({ baseUrl: 'http://127.0.0.1:4096' }, [{ role: 'user', content: 'build a cube' }])
+  );
+  assert.deepEqual(events, [{ type: 'delta', text: 'done: built cube' }, { type: 'done' }]);
+  assert.equal(calls[0].url, 'http://127.0.0.1:4096/session');
+  assert.ok(calls[1].url.endsWith('/session/ses_1/message'));
+});
+
+await t('presets: prefilled endpoints, key-optional flags', () => {
+  const ids = PROVIDER_PRESETS.map(p => p.id);
+  for (const need of ['openai', 'togetherai', 'anthropic', 'opencode']) {
+    assert.ok(ids.includes(need), `preset ${need} present`);
+  }
+  assert.equal(getPreset('anthropic').baseUrl, 'https://api.anthropic.com');
+  assert.equal(getPreset('anthropic').sampling, false); // Claude hides temp/top-p
+  assert.equal(getPreset('openai').sampling, true);
+  assert.equal(getPreset('opencode').needsKey, false);
+  assert.equal(getPreset('openai').needsKey, true);
 });
 
 await t('registry registers/gets/lists providers', () => {

@@ -1,7 +1,25 @@
 'use strict';
 
 const fs = require('node:fs');
-const { app } = require('electron');
+const { app, Menu } = require('electron');
+
+// We ship our own in-chrome menu bar (File/Window), so suppress Electron's
+// default native application menu — otherwise the native frame on Linux would
+// render a second, redundant menu bar above it.
+Menu.setApplicationMenu(null);
+
+// On Linux/WSLg there is no hardware GPU, and Chromium's software-WebGL fallback
+// is now gated behind this switch. The 3D cart preview (Three.js) requires WebGL,
+// so opt in — our runtime is first-party + same-origin (nova64-app://), so the
+// relaxed guarantee is acceptable. Without this, cart preview loses WebGL.
+if (process.platform === 'linux') {
+  app.commandLine.appendSwitch('enable-unsafe-swiftshader');
+  // WSLg often reports a fractional/high display scale factor, which blows the
+  // window up past the visible viewport and makes it unusable. Pin device scale
+  // to 1:1 so logical pixels match the screen.
+  app.commandLine.appendSwitch('force-device-scale-factor', '1');
+  app.commandLine.appendSwitch('high-dpi-support', '1');
+}
 const { APP_PROTOCOL } = require('./constants');
 const { registerAppProtocolScheme, handleAppProtocol } = require('./protocol');
 const { WindowController } = require('./window-controller');

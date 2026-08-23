@@ -10,7 +10,18 @@
  */
 
 const RUNTIME_ORIGIN = 'nova64-app://os';
-const RUNTIME_URL = `${RUNTIME_ORIGIN}/console.html?studio=1`;
+// Use the lean cart-runner page (bare CRT screen), not the full console shell
+// (hardware bezel + side panel + mobile controls) — the latter is built for a
+// full window and looks cramped/broken in the preview modal. At the modal's
+// width the cart-runner strips its bezel and fills the canvas edge-to-edge.
+//
+// `host` declares this Dev surface's origin to the runtime: custom schemes
+// (nova64-app://) don't set document.referrer, so without it the runtime targets
+// its READY signal at the wrong origin and rejects our EXECUTE_CODE (the two live
+// on different surfaces: dev vs os). The runtime still verifies event.source.
+const RUNTIME_URL = `${RUNTIME_ORIGIN}/cart-runner.html?studio=1&host=${encodeURIComponent(
+  window.location.origin
+)}`;
 const MAX_SOURCE_BYTES = 2 * 1024 * 1024;
 
 /** Strip ES module `export` syntax so the code runs in the runtime's function scope. */

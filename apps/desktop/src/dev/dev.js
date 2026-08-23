@@ -2,6 +2,7 @@
 // the strict CSP would block). The `lib` host maps to packages/workspace-core.
 import { Workspace } from 'nova64-app://lib/index.js';
 import { parseToolCalls, formatToolResult } from 'nova64-app://agent/index.js';
+import { lineDiff, diffStat } from './diff.js';
 import { TextareaEditorAdapter, languageForPath } from './editor-adapter.js';
 import { MonacoEditorAdapter } from './monaco-adapter.js';
 import { RuntimePreview } from './preview.js';
@@ -345,6 +346,11 @@ function requestApproval(call, res) {
     el.aiMessages.appendChild(card);
     el.aiMessages.scrollTop = el.aiMessages.scrollHeight;
 
+    // For write_file, show a diff of the proposed change so it's reviewable.
+    if (call.tool === 'write_file' && fsapi && call.args && call.args.path) {
+      renderWriteDiff(card, row, call);
+    }
+
     const finish = result => {
       approve.disabled = true;
       deny.disabled = true;
@@ -366,6 +372,46 @@ function requestApproval(call, res) {
       finish({ status: 'denied', reason: 'user denied' });
     });
   });
+}
+
+function appendDiffLine(box, type, text) {
+  const line = document.createElement('div');
+  line.className = `diff-line diff-${type}`;
+  line.textContent = (type === 'add' ? '+ ' : type === 'del' ? '- ' : '  ') + text;
+  box.appendChild(line);
+}
+
+// Render a diff of the proposed write into the approval card (header + lines).
+async function renderWriteDiff(card, beforeEl, call) {
+  const box = document.createElement('div');
+  box.className = 'ai-diff';
+  box.textContent = 'Loading diff…';
+  card.insertBefore(box, beforeEl);
+
+  let oldText = null; // null = file does not exist yet (new file)
+  try {
+    oldText = await fsapi.read(call.args.path);
+  } catch {
+    oldText = null;
+  }
+  const newText = String(call.args.content ?? '');
+  box.textContent = '';
+
+  const header = document.createElement('div');
+  header.className = 'ai-diff-head';
+  if (oldText === null) {
+    const lines = newText === '' ? [] : newText.split('\n');
+    header.textContent = `${call.args.path}  (new file, +${lines.length})`;
+    for (const text of lines) appendDiffLine(box, 'add', text);
+  } else {
+    const diff = lineDiff(oldText, newText);
+    const { add, del } = diffStat(diff);
+    header.textContent = `${call.args.path}  (+${add} −${del})`;
+    const MAX = 400;
+    for (const d of diff.slice(0, MAX)) appendDiffLine(box, d.type, d.text);
+    if (diff.length > MAX) appendDiffLine(box, 'ctx', `… ${diff.length - MAX} more lines`);
+  }
+  card.insertBefore(header, box);
 }
 
 async function maybeRunAgentTools() {

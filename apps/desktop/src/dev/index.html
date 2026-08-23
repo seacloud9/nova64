@@ -43,16 +43,19 @@
         </div>
       </section>
 
-      <section class="preview-pane" id="preview-pane" hidden>
-        <div class="preview-head">
-          <span>Preview</span>
-          <span class="spacer"></span>
-          <button id="preview-reload" type="button" title="Restart runtime">↻</button>
-          <button id="preview-close" type="button" title="Close preview">×</button>
+      <div class="preview-modal" id="preview-pane" hidden>
+        <div class="preview-backdrop" id="preview-backdrop"></div>
+        <div class="preview-dialog" role="dialog" aria-modal="true" aria-label="Cart preview">
+          <div class="preview-head">
+            <span>Preview</span>
+            <span class="spacer"></span>
+            <button id="preview-reload" type="button" title="Restart runtime">↻</button>
+            <button id="preview-close" type="button" title="Close preview (Esc)">×</button>
+          </div>
+          <div id="preview-host" class="preview-host"></div>
+          <div class="run-console" id="run-console" aria-label="Cart output"></div>
         </div>
-        <div id="preview-host" class="preview-host"></div>
-        <div class="run-console" id="run-console" aria-label="Cart output"></div>
-      </section>
+      </div>
 
       <section class="ai-pane" id="ai-pane" hidden>
         <div class="ai-head">

@@ -160,6 +160,7 @@ body {
   -webkit-app-region: drag;
 }
 
+
 .window-controls {
   display: flex;
   height: 100%;

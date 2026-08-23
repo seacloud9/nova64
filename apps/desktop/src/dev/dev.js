@@ -275,8 +275,7 @@ function ensurePreview() {
   return preview;
 }
 function showPreview(show) {
-  el.previewPane.hidden = !show;
-  el.workbench.classList.toggle('with-preview', show);
+  el.previewPane.hidden = !show; // modal overlay — no workbench resize
 }
 function runActiveCart() {
   const p = ws.activePath;
@@ -654,6 +653,12 @@ el.saveBtn.addEventListener('click', saveActive);
 el.runBtn.addEventListener('click', runActiveCart);
 el.previewReload.addEventListener('click', () => preview && preview.reload());
 el.previewClose.addEventListener('click', () => showPreview(false));
+// Dismiss the preview modal by clicking the backdrop or pressing Escape.
+const previewBackdrop = document.getElementById('preview-backdrop');
+if (previewBackdrop) previewBackdrop.addEventListener('click', () => showPreview(false));
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && el.previewPane && !el.previewPane.hidden) showPreview(false);
+});
 
 el.aiBtn.addEventListener('click', () => showAi(el.aiPane.hidden));
 el.aiClose.addEventListener('click', () => showAi(false));

@@ -9,6 +9,9 @@ const ACTIONS = new Set(['minimize', 'toggle-maximize', 'close']);
 const MENU_COMMANDS = new Set(['toggle-rail', 'dev:open', 'dev:run', 'dev:save']);
 
 contextBridge.exposeInMainWorld('novaShell', {
+  // Host platform — the renderer hides the custom window controls on Linux,
+  // where a native OS frame provides minimize/maximize/close.
+  platform: (typeof process !== 'undefined' && process.platform) || 'unknown',
   switchView(target) {
     if (!SURFACES.has(target)) return Promise.resolve(null);
     return ipcRenderer.invoke('nav:switch-view', target);

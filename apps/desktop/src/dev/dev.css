@@ -84,7 +84,6 @@ body {
   min-height: 0;
 }
 .editor-pane,
-.preview-pane,
 .ai-pane {
   flex: 1 1 0;
   min-width: 0;
@@ -100,13 +99,40 @@ body {
   opacity: 0.4;
 }
 
-/* preview pane */
-.preview-pane {
+/* preview modal — overlays the whole window, stays within the viewport so the
+   embedded runtime can never stretch the layout beyond the window edges. */
+.preview-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+.preview-modal[hidden] {
+  display: none;
+}
+.preview-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+}
+.preview-dialog {
+  position: relative;
+  /* Kept < 768px so the embedded cart-runner uses its edge-to-edge fill layout
+     (no CRT bezel) instead of the cramped desktop shell. */
+  width: min(720px, 92vw);
+  height: min(760px, 88vh);
+  max-width: 92vw;
+  max-height: 88vh;
   display: grid;
-  grid-template-rows: 30px 1fr 150px;
-  min-width: 0;
-  border-left: 1px solid var(--line);
+  grid-template-rows: 34px minmax(0, 1fr) 200px;
   background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.6);
+  overflow: hidden;
 }
 .preview-head {
   display: flex;
@@ -135,6 +161,7 @@ body {
 }
 .preview-host {
   min-height: 0;
+  overflow: hidden;
   background: #000;
 }
 .preview-frame {

@@ -51,6 +51,7 @@ import { tweenApi } from '../runtime/tween.js';
 import { DebugPanel } from '../runtime/debug-panel.js';
 import { registerCartResetHook } from '../runtime/cart-reset.js';
 import { createStudioCartFunction } from '../runtime/studio-executor.js';
+import { createG1WebBridge } from '../runtime/g1-web-bridge.js';
 import { acceptExecuteCode, StudioMessageType } from '../runtime/studio-protocol.js';
 import * as THREE from 'three';
 
@@ -105,6 +106,13 @@ try {
 } catch (e) {
   console.error(`❌ ${_useBabylon ? 'Babylon.js' : 'Three.js'} renderer failed to initialize:`, e);
   throw new Error('Fantasy console requires 3D GPU support');
+}
+
+// G1 web bridge: expose `engine.call(method, payload)` so G1-adapter carts run
+// in the web/desktop runtime with parity to the Godot host. Babylon installs its
+// own `self.engine`, so only wire this for the default Three.js backend.
+if (!_useBabylon) {
+  globalThis.engine = createG1WebBridge({ gpu, THREE });
 }
 
 // Bake in responsive resize when no fixed ?w= param is provided.
@@ -613,6 +621,75 @@ const gamePathParam = urlParams.get('path'); // Allow direct path parameter
 const demoParam = urlParams.get('demo') || urlParams.get('cart');
 const studioMode = urlParams.get('studio') === '1'; // Game Studio embeds console.html?studio=1
 
+// Embedding host origin, declared by the embedder via `?host=<origin>`. Custom
+// schemes (nova64-app://) don't populate document.referrer, so a cross-surface
+// desktop embed (Dev nova64-app://dev → runtime nova64-app://os) can't derive the
+// parent origin from the referrer. The embedder declares it explicitly; the
+// EXECUTE_CODE handler still requires event.source === window.parent, so a forged
+// host can't inject code.
+const studioHostOrigin = (() => {
+  // The embedder passes its own `location.origin` (e.g. "nova64-app://dev").
+  // Do NOT re-parse via `new URL(h).origin`: the WHATWG URL API returns "null"
+  // for non-special custom schemes, even though Chromium treats registered
+  // standard schemes as real origins. Accept a well-formed origin string as-is.
+  const h = urlParams.get('host') || '';
+  return /^[a-z][a-z0-9+.-]*:\/\/[^/]+$/i.test(h) ? h : '';
+})();
+
+// In Studio mode, forward console output (cart logs + runtime errors) to the
+// embedding host so they're visible in the Dev preview's log console. Internal
+// per-frame debug lines (prefixed "[main.js]") are filtered out to avoid spam.
+if (studioMode) {
+  const stringify = a => {
+    if (typeof a === 'string') return a;
+    if (a instanceof Error) return a.message;
+    try {
+      return JSON.stringify(a);
+    } catch {
+      return String(a);
+    }
+  };
+  const forward = (prefix, args) => {
+    if (!(window.parent && window.parent !== window)) return;
+    const text = args.map(stringify).join(' ');
+    if (!text || text.startsWith('[main.js]')) return; // skip internal debug noise
+    try {
+      window.parent.postMessage(
+        { type: StudioMessageType.LOG, message: (prefix + text).slice(0, 8192) },
+        studioParentOrigin()
+      );
+    } catch {
+      /* parent gone / cross-origin */
+    }
+  };
+  for (const [name, prefix] of [
+    ['log', ''],
+    ['info', ''],
+    ['warn', '⚠ '],
+    ['error', '❌ '],
+  ]) {
+    const orig = console[name].bind(console);
+    console[name] = (...args) => {
+      orig(...args);
+      forward(prefix, args);
+    };
+  }
+
+  // Carts (notably the G1 conformance carts: 01-cube, 02-input, …) call bare
+  // `print(...)` as a log statement. In a browser the global `print` is
+  // window.print(), which opens a BLOCKING print dialog and hangs the cart's
+  // init(). Redirect it to a console log so those carts run (and their output
+  // shows in the preview console). Nova64's own 2D text API is namespaced
+  // (nova64.draw.print), so this doesn't affect drawing.
+  globalThis.print = (...args) => {
+    try {
+      console.log('[cart]', ...args);
+    } catch {
+      /* ignore */
+    }
+  };
+}
+
 // Map game IDs to their paths
 const gameMap = {
   'space-harrier': '/examples/space-harrier-3d/code.js',
@@ -769,6 +846,7 @@ function studioParentOrigin() {
   } catch {
     /* malformed referrer */
   }
+  if (studioHostOrigin) return studioHostOrigin; // declared by the embedder (custom scheme)
   return window.location.origin;
 }
 
@@ -780,6 +858,7 @@ function studioAllowedOrigins() {
   } catch {
     /* ignore */
   }
+  if (studioHostOrigin) origins.push(studioHostOrigin); // declared embedder origin
   return origins;
 }
 
@@ -805,9 +884,15 @@ window.addEventListener('message', async event => {
   {
     // Bump generation — any earlier in-flight execution will bail out
     const gen = ++_studioGen;
+    // Send status/logs back via window.parent (not event.source): under the
+    // nova64-app:// custom scheme, the cross-origin WindowProxy from
+    // MessageEvent.source silently drops postMessage, while window.parent works.
     const postLog = msg => {
-      if (event.source)
-        event.source.postMessage({ type: StudioMessageType.LOG, message: msg }, event.origin);
+      if (window.parent && window.parent !== window)
+        window.parent.postMessage(
+          { type: StudioMessageType.LOG, message: msg },
+          studioParentOrigin()
+        );
     };
     console.log('🎮 Game Studio: Executing code...');
 
@@ -832,6 +917,9 @@ window.addEventListener('message', async event => {
       // Clean up XR and MediaPipe tracking between cart loads
       if (typeof nova64api.disableXR === 'function') nova64api.disableXR();
       mpInst._cleanup();
+      // Tear down any G1-bridge scene objects from a previous cart run.
+      if (globalThis.engine && typeof globalThis.engine.reset === 'function')
+        globalThis.engine.reset();
       postLog('🧹 Scene reset for new cart');
 
       // Race-condition guard: if a newer execution arrived, bail out
@@ -867,21 +955,18 @@ window.addEventListener('message', async event => {
       paused = false;
       postLog('✅ Cart loaded and running!');
 
-      // Send success message back
-      if (event.source) {
-        event.source.postMessage({ type: 'EXECUTE_SUCCESS' }, event.origin);
+      // Send success message back (via window.parent — see postLog note above).
+      if (window.parent && window.parent !== window) {
+        window.parent.postMessage({ type: 'EXECUTE_SUCCESS' }, studioParentOrigin());
       }
     } catch (error) {
       console.error('❌ Game Studio: Error executing code:', error);
       // Always resume so the next Run attempt isn't permanently frozen
       paused = false;
-      if (event.source) {
-        event.source.postMessage(
-          {
-            type: 'EXECUTE_ERROR',
-            error: error.message,
-          },
-          event.origin
+      if (window.parent && window.parent !== window) {
+        window.parent.postMessage(
+          { type: 'EXECUTE_ERROR', error: error.message },
+          studioParentOrigin()
         );
       }
     }

@@ -126,6 +126,12 @@ class WorkspaceService {
     return true;
   }
 
+  /** Delete a workspace file or directory (recursive, containment-guarded). */
+  async remove(rel) {
+    await fsp.rm(this.#resolveInside(rel), { recursive: true, force: true });
+    return true;
+  }
+
   /**
    * Recursively search text files under the root for a literal query string.
    * Skips the same heavy dirs as the explorer, skips binary/oversized files, and
@@ -333,10 +339,9 @@ class WorkspaceService {
       await fsp.mkdir(this.#resolveInside(rel), { recursive: true });
       return true;
     });
-    ipcMain.handle('workspace:remove', async (event, rel) => {
+    ipcMain.handle('workspace:remove', (event, rel) => {
       guard(event);
-      await fsp.rm(this.#resolveInside(rel), { recursive: true, force: true });
-      return true;
+      return this.remove(rel);
     });
     ipcMain.handle('workspace:move', async (event, from, to) => {
       guard(event);

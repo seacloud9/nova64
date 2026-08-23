@@ -315,6 +315,7 @@ function approvalDetail(call) {
   if (call.tool === 'write_file') {
     return `write ${call.args.path} (${String(call.args.content ?? '').length} chars)`;
   }
+  if (call.tool === 'delete_path') return `delete ${call.args.path}`;
   try {
     return JSON.stringify(call.args).slice(0, 120);
   } catch {
@@ -414,6 +415,42 @@ async function renderWriteDiff(card, beforeEl, call) {
   card.insertBefore(header, box);
 }
 
+// After the agent writes a file, reflect it in the Dev surface: reload an open
+// tab from disk (unless it has unsaved edits — don't clobber the user) and
+// refresh the explorer so new files appear.
+async function syncFileFromDisk(relPath) {
+  if (!fsapi || !relPath) return;
+  if (ws.tabs.has(relPath)) {
+    if (ws.isDirty(relPath)) {
+      uiBubble(
+        'ai-tool',
+        `⚠ ${relPath} was written by the agent but has unsaved edits open — not reloaded.`
+      );
+    } else {
+      try {
+        const content = await fsapi.read(relPath);
+        ws.markSaved(relPath, content); // content + baseline = on-disk truth (not dirty)
+        if (ws.activePath === relPath) editor.setModel(relPath, content, languageForPath(relPath));
+        renderTabs();
+        updateStatus();
+      } catch {
+        /* file vanished — ignore */
+      }
+    }
+  }
+  await refreshEntries();
+}
+
+// After the agent deletes a path, close its tab if open and refresh the tree.
+async function syncDeletedFromDisk(relPath) {
+  if (!relPath) return;
+  if (ws.tabs.has(relPath)) {
+    ws.closeTab(relPath, { force: true });
+    showActive();
+  }
+  await refreshEntries();
+}
+
 async function maybeRunAgentTools() {
   if (!agentapi || aiStreaming) return;
   if (aiMode !== 'edit' && aiMode !== 'agent') return;
@@ -439,6 +476,9 @@ async function maybeRunAgentTools() {
     const payload =
       res.status === 'ok' ? res.result : { status: res.status, error: res.error, reason: res.reason };
     aiHistory.push({ role: 'user', content: formatToolResult(call.tool, payload) });
+    // Reflect a successful agent mutation into the editor/tree.
+    if (call.tool === 'write_file' && res.status === 'ok') await syncFileFromDisk(call.args.path);
+    else if (call.tool === 'delete_path' && res.status === 'ok') await syncDeletedFromDisk(call.args.path);
   }
 
   // Continue the conversation with the tool results now in context.

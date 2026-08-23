@@ -41,6 +41,10 @@ class AgentToolService {
         await ws.writeFile(String(args.path || ''), String(args.content ?? ''));
         return { path: args.path, written: true };
       },
+      async deletePath(args) {
+        await ws.remove(String(args.path || ''));
+        return { path: args.path, deleted: true };
+      },
     };
   }
 

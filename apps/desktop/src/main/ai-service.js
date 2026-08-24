@@ -51,9 +51,13 @@ class AiService {
       .register(createAnthropicProvider())
       .register(createOpenCodeProvider());
     this.presets = PROVIDER_PRESETS;
-    // Agent seam (Phase 5): mode-specific system prompts + mode coercion.
+    // Agent seam (Phase 5): mode-specific system prompts + tool instructions.
     const agent = await import('@nova64/agent-core');
-    this.agent = { systemPromptFor: agent.systemPromptFor, coerceMode: agent.coerceMode };
+    this.agent = {
+      systemPromptFor: agent.systemPromptFor,
+      coerceMode: agent.coerceMode,
+      toolInstructions: agent.toolInstructions,
+    };
   }
 
   #readConfig() {
@@ -157,7 +161,11 @@ class AiService {
       // The renderer never sets system roles itself.
       const mode = this.agent ? this.agent.coerceMode(options && options.mode) : 'ask';
       const parts = [];
-      if (this.agent) parts.push(this.agent.systemPromptFor(mode));
+      if (this.agent) {
+        parts.push(this.agent.systemPromptFor(mode));
+        const tools = this.agent.toolInstructions(mode); // empty for ask
+        if (tools) parts.push(tools);
+      }
       const active = (this.config.systemPrompts || []).find(p => p.id === this.config.activeSystemPromptId);
       if (active && active.text.trim()) parts.push(active.text.trim());
       if (parts.length) safeMessages.unshift({ role: 'system', content: parts.join('\n\n') });

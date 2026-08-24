@@ -1,6 +1,8 @@
 // Absolute custom-scheme specifier avoids needing an inline import map (which
 // the strict CSP would block). The `lib` host maps to packages/workspace-core.
 import { Workspace } from 'nova64-app://lib/index.js';
+import { parseToolCalls, formatToolResult, toolAllowedInMode } from 'nova64-app://agent/index.js';
+import { lineDiff, diffStat } from './diff.js';
 import { TextareaEditorAdapter, languageForPath } from './editor-adapter.js';
 import { MonacoEditorAdapter } from './monaco-adapter.js';
 import { RuntimePreview } from './preview.js';
@@ -8,6 +10,7 @@ import { RuntimePreview } from './preview.js';
 const ws = new Workspace();
 let editor = new TextareaEditorAdapter();
 const fsapi = window.novaWorkspace || null;
+const agentapi = window.novaAgent || null;
 
 // Safety net so a stalled filesystem call (dead network mount, permission hang)
 // can never freeze the Dev surface — the open/expand fails gracefully instead.
@@ -240,6 +243,7 @@ async function sendAiMessage() {
   if (!aiapi || aiStreaming) return;
   const text = el.aiInput.value.trim();
   if (!text) return;
+  agentIterations = 0; // fresh tool-loop budget per user message
   addAiMessage('user', text);
   el.aiInput.value = '';
   aiAssistantEl = addAiMessage('assistant', '');
@@ -265,8 +269,260 @@ if (aiapi) {
       aiStreaming = false;
       el.aiSend.textContent = 'Send';
       aiAssistantEl = null;
+      if (ev.type === 'done') maybeRunAgentTools();
     }
   });
+}
+
+// ── agent tool loop (Phase 5) ───────────────────────────────────────────────
+// In edit/agent mode, the model requests tools via fenced ```tool blocks. We
+// run each against the workspace (via the host ToolRunner), surface an approval
+// card for mutating tools, feed the results back as the next turn, and continue
+// until the model replies without a tool call (or we hit the per-message cap).
+const MAX_AGENT_ITERATIONS = 8;
+let agentIterations = 0;
+
+function uiBubble(cls, content) {
+  const div = document.createElement('div');
+  div.className = `ai-msg ${cls}`;
+  div.textContent = content;
+  el.aiMessages.appendChild(div);
+  el.aiMessages.scrollTop = el.aiMessages.scrollHeight;
+  return div;
+}
+
+function summarizeResult(r) {
+  if (r == null) return 'done';
+  if (typeof r === 'string') return r.slice(0, 140);
+  if (Array.isArray(r.entries)) return `${r.entries.length} entries`;
+  if (Array.isArray(r.matches)) return `${r.matches.length} matches`;
+  if (r.content != null) return `${String(r.content).length} chars read`;
+  if (r.written) return `wrote ${r.path}`;
+  if (r.deleted) return `deleted ${r.path}`;
+  if (r.ran) return 'ran cart';
+  try {
+    return JSON.stringify(r).slice(0, 140);
+  } catch {
+    return 'done';
+  }
+}
+
+function renderToolResult(call, res) {
+  const icon = res.status === 'ok' ? '✓' : res.status === 'denied' ? '⛔' : '⚠';
+  const detail = res.status === 'ok' ? summarizeResult(res.result) : res.reason || res.error || res.status;
+  uiBubble('ai-tool', `${icon} ${call.tool} — ${detail}`);
+}
+
+function approvalDetail(call) {
+  if (call.tool === 'write_file') {
+    return `write ${call.args.path} (${String(call.args.content ?? '').length} chars)`;
+  }
+  if (call.tool === 'delete_path') return `delete ${call.args.path}`;
+  try {
+    return JSON.stringify(call.args).slice(0, 120);
+  } catch {
+    return '';
+  }
+}
+
+// Render an approval card and resolve with the run result (approve → run;
+// deny → a denied result). Mutating tools go through here.
+function requestApproval(call, res) {
+  return new Promise(resolve => {
+    const card = document.createElement('div');
+    card.className = 'ai-approval';
+    const desc = document.createElement('div');
+    desc.className = 'ai-approval-desc';
+    desc.textContent = `Approve ${res.title || call.tool}? ${approvalDetail(call)}`;
+    const row = document.createElement('div');
+    row.className = 'ai-approval-actions';
+    const approve = document.createElement('button');
+    approve.className = 'ai-approve';
+    approve.type = 'button';
+    approve.textContent = 'Approve';
+    const deny = document.createElement('button');
+    deny.className = 'ai-deny';
+    deny.type = 'button';
+    deny.textContent = 'Deny';
+    row.append(approve, deny);
+    card.append(desc, row);
+    el.aiMessages.appendChild(card);
+    el.aiMessages.scrollTop = el.aiMessages.scrollHeight;
+
+    // For write_file, show a diff of the proposed change so it's reviewable.
+    if (call.tool === 'write_file' && fsapi && call.args && call.args.path) {
+      renderWriteDiff(card, row, call);
+    }
+
+    const finish = result => {
+      approve.disabled = true;
+      deny.disabled = true;
+      resolve(result);
+    };
+    approve.addEventListener('click', async () => {
+      desc.textContent = `Running ${call.tool}…`;
+      let r;
+      try {
+        r = await agentapi.runTool({ tool: call.tool, args: call.args, mode: aiMode, approved: true });
+      } catch (err) {
+        r = { status: 'error', error: err.message || String(err) };
+      }
+      card.classList.add('approved');
+      finish(r);
+    });
+    deny.addEventListener('click', () => {
+      card.classList.add('denied');
+      finish({ status: 'denied', reason: 'user denied' });
+    });
+  });
+}
+
+function appendDiffLine(box, type, text) {
+  const line = document.createElement('div');
+  line.className = `diff-line diff-${type}`;
+  line.textContent = (type === 'add' ? '+ ' : type === 'del' ? '- ' : '  ') + text;
+  box.appendChild(line);
+}
+
+// Render a diff of the proposed write into the approval card (header + lines).
+async function renderWriteDiff(card, beforeEl, call) {
+  const box = document.createElement('div');
+  box.className = 'ai-diff';
+  box.textContent = 'Loading diff…';
+  card.insertBefore(box, beforeEl);
+
+  let oldText = null; // null = file does not exist yet (new file)
+  try {
+    oldText = await fsapi.read(call.args.path);
+  } catch {
+    oldText = null;
+  }
+  const newText = String(call.args.content ?? '');
+  box.textContent = '';
+
+  const header = document.createElement('div');
+  header.className = 'ai-diff-head';
+  if (oldText === null) {
+    const lines = newText === '' ? [] : newText.split('\n');
+    header.textContent = `${call.args.path}  (new file, +${lines.length})`;
+    for (const text of lines) appendDiffLine(box, 'add', text);
+  } else {
+    const diff = lineDiff(oldText, newText);
+    const { add, del } = diffStat(diff);
+    header.textContent = `${call.args.path}  (+${add} −${del})`;
+    const MAX = 400;
+    for (const d of diff.slice(0, MAX)) appendDiffLine(box, d.type, d.text);
+    if (diff.length > MAX) appendDiffLine(box, 'ctx', `… ${diff.length - MAX} more lines`);
+  }
+  card.insertBefore(header, box);
+}
+
+// After the agent writes a file, reflect it in the Dev surface: reload an open
+// tab from disk (unless it has unsaved edits — don't clobber the user) and
+// refresh the explorer so new files appear.
+async function syncFileFromDisk(relPath) {
+  if (!fsapi || !relPath) return;
+  if (ws.tabs.has(relPath)) {
+    if (ws.isDirty(relPath)) {
+      uiBubble(
+        'ai-tool',
+        `⚠ ${relPath} was written by the agent but has unsaved edits open — not reloaded.`
+      );
+    } else {
+      try {
+        const content = await fsapi.read(relPath);
+        ws.markSaved(relPath, content); // content + baseline = on-disk truth (not dirty)
+        if (ws.activePath === relPath) editor.setModel(relPath, content, languageForPath(relPath));
+        renderTabs();
+        updateStatus();
+      } catch {
+        /* file vanished — ignore */
+      }
+    }
+  }
+  await refreshEntries();
+}
+
+// After the agent deletes a path, close its tab if open and refresh the tree.
+async function syncDeletedFromDisk(relPath) {
+  if (!relPath) return;
+  if (ws.tabs.has(relPath)) {
+    ws.closeTab(relPath, { force: true });
+    showActive();
+  }
+  await refreshEntries();
+}
+
+// run_cart is executed renderer-side (the runtime preview lives here, not the
+// host): run the given/active cart in the sandboxed preview, capture its console
+// output for a short window, and return it so the agent can inspect + iterate.
+async function runCartTool(call) {
+  if (!toolAllowedInMode('run_cart', aiMode)) {
+    return { status: 'denied', reason: `run_cart is not allowed in ${aiMode} mode` };
+  }
+  let source;
+  if (call.args && call.args.path) {
+    try {
+      source = await fsapi.read(call.args.path);
+    } catch (err) {
+      return { status: 'error', error: `cannot read ${call.args.path}: ${err.message || err}` };
+    }
+  } else {
+    source = editor.getValue();
+  }
+  if (!source || !source.trim()) return { status: 'error', error: 'no cart source to run' };
+
+  showPreview(true);
+  const pv = ensurePreview();
+  const logs = [];
+  const off = pv.onLog((line, isError) => logs.push((isError ? '❌ ' : '') + line));
+  pv.run(source);
+  await new Promise(r => setTimeout(r, 5000)); // let it boot + emit output
+  off();
+  const out = logs.slice(-40).join('\n');
+  return { status: 'ok', result: { ran: true, console: out || '(no console output within 5s)' } };
+}
+
+async function maybeRunAgentTools() {
+  if (!agentapi || aiStreaming) return;
+  if (aiMode !== 'edit' && aiMode !== 'agent') return;
+  const last = aiHistory[aiHistory.length - 1];
+  if (!last || last.role !== 'assistant') return;
+  const calls = parseToolCalls(last.content);
+  if (!calls.length) return;
+  if (agentIterations >= MAX_AGENT_ITERATIONS) {
+    uiBubble('ai-tool', '⚠ Reached the tool-call limit for this turn — stopping.');
+    return;
+  }
+  agentIterations++;
+
+  for (const call of calls) {
+    let res;
+    if (call.tool === 'run_cart') {
+      // Renderer-side tool (runs in the preview iframe, not the host).
+      res = await runCartTool(call);
+    } else {
+      try {
+        res = await agentapi.runTool({ tool: call.tool, args: call.args, mode: aiMode });
+      } catch (err) {
+        res = { status: 'error', error: err.message || String(err) };
+      }
+      if (res.status === 'needs-approval') res = await requestApproval(call, res);
+    }
+    renderToolResult(call, res);
+    const payload =
+      res.status === 'ok' ? res.result : { status: res.status, error: res.error, reason: res.reason };
+    aiHistory.push({ role: 'user', content: formatToolResult(call.tool, payload) });
+    // Reflect a successful agent mutation into the editor/tree.
+    if (call.tool === 'write_file' && res.status === 'ok') await syncFileFromDisk(call.args.path);
+    else if (call.tool === 'delete_path' && res.status === 'ok') await syncDeletedFromDisk(call.args.path);
+  }
+
+  // Continue the conversation with the tool results now in context.
+  aiAssistantEl = addAiMessage('assistant', '');
+  aiStreaming = true;
+  el.aiSend.textContent = 'Stop';
+  await aiapi.chat(aiHistory.slice(0, -1), { mode: aiMode });
 }
 
 let preview = null;

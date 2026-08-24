@@ -71,6 +71,7 @@ const APP_ROOTS = Object.freeze({
   shared: path.join(SRC_DIR, 'shared'),
   os: OS_ROOT,
   lib: path.join(REPO_ROOT, 'packages', 'workspace-core'),
+  agent: path.join(REPO_ROOT, 'packages', 'agent-core'),
   monaco: MONACO_MIN,
 });
 

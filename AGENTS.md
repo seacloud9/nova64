@@ -515,6 +515,14 @@ Guidelines:
 - `docs/` - architecture and reference documentation
 - `public/` - public assets and shell payloads
 - `bin/` - CLI entry and command implementations
+- `packages/` - host-neutral shared packages for the desktop/VS Code platform (pnpm workspace):
+  `agent-core` (agent modes/tools/approval/ToolRunner + tool-call protocol),
+  `ai-providers` (multi-provider LLM streaming), `workspace-core` (file-tree + tab model),
+  `app-contracts` (studio protocol types). No React/Electron/VS Code deps; each has tests.
+- `apps/desktop/` - standalone Electron app (OS shell + Dev workspace with Monaco, cart preview,
+  and the AI agent). See `apps/desktop/README.md`.
+- `extensions/vscode/` - VS Code extension (AI chat now; agent parity next), reusing the same
+  `packages/` seam. See `extensions/vscode/README.md`.
 
 ### Documentation Expectations
 
@@ -525,6 +533,35 @@ Guidelines:
   runtime, cart, Babylon, Godot, and RetroArch backlog items there.
 - Keep lengthy tutorials, exhaustive API references, and speculative roadmaps in separate docs.
 - If README or another non-agent doc diverges from the current repo, verify against live source files before carrying its content forward.
+
+## Desktop & VS Code platform
+
+A pnpm-workspace program (plan: `plans/NOVA64_DESKTOP_VSCODE_PLAN.md`) delivering a
+standalone **Electron desktop app** and a **VS Code extension** that share
+**host-neutral packages** (`packages/agent-core`, `packages/ai-providers`,
+`packages/workspace-core`) — the AI/agent logic lives once and both hosts wire it.
+
+Run / build (WSL, `nvm use 20`):
+
+```bash
+node bin/nova64.js desktop dev        # Electron app (Dev workspace + OS shell + AI agent)
+cd extensions/vscode && pnpm build    # VS Code extension -> dist/extension.js (then F5 in VS Code)
+```
+
+Non-obvious rules (details in `apps/desktop/README.md` + package READMEs):
+
+- **`dist/assets/main-*.js` is gitignored** (build artifact). Commit *source*
+  (`src/`, `runtime/`, `apps/desktop/src/`, `packages/`) + docs; do **not** commit the
+  rebuilt `dist/*.html`. Runtime changes need `pnpm build` for the desktop cart preview.
+- **Studio-embed under `nova64-app://`** (desktop cart preview): custom schemes don't set
+  `document.referrer`, so the embedder declares its origin via `?host=`; carts' bare `print()`
+  is `window.print()` (a blocking dialog — redirected to a log in studio mode); runtime→host
+  messages post via `window.parent`, not `MessageEvent.source`.
+- **Agent tools:** per-mode gating + the approval policy live in `agent-core` and are
+  **host-enforced** (desktop: `agent:run-tool` IPC, Dev-view-trusted only). Mutations are
+  approval-gated + diff-previewed; `run_cart` runs renderer-side in the preview.
+- **WSLg:** the desktop auto-applies `--force-device-scale-factor=1` +
+  `--enable-unsafe-swiftshader` on Linux (viewport scale + software WebGL for the 3D preview).
 
 ## Alpha Loop (Automated Issue Processing)
 

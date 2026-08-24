@@ -73,6 +73,11 @@ const el = {
   aiMessages: document.getElementById('ai-messages'),
   aiInput: document.getElementById('ai-input'),
   aiSend: document.getElementById('ai-send'),
+  aiHistoryBtn: document.getElementById('ai-history-btn'),
+  aiHistory: document.getElementById('ai-history'),
+  aiHistoryList: document.getElementById('ai-history-list'),
+  aiHistoryClear: document.getElementById('ai-history-clear'),
+  aiAutoApprove: document.getElementById('ai-autoapprove'),
 };
 
 // ── AI chat (host-side providers via novaAi bridge) ─────────────────────────
@@ -240,15 +245,16 @@ function addAiMessage(role, content) {
 }
 
 async function sendAiMessage() {
-  if (!aiapi || aiStreaming) return;
+  if (!aiapi || aiStreaming || agentRunning) return;
   const text = el.aiInput.value.trim();
   if (!text) return;
   agentIterations = 0; // fresh tool-loop budget per user message
+  agentCancelled = false;
   addAiMessage('user', text);
   el.aiInput.value = '';
   aiAssistantEl = addAiMessage('assistant', '');
   aiStreaming = true;
-  el.aiSend.textContent = 'Stop';
+  updateAiSendButton();
   await aiapi.chat(aiHistory.slice(0, -1), { mode: aiMode }); // history without the empty assistant
 }
 
@@ -267,9 +273,10 @@ if (aiapi) {
     }
     if (ev.type === 'done' || ev.type === 'cancelled' || ev.type === 'error') {
       aiStreaming = false;
-      el.aiSend.textContent = 'Send';
       aiAssistantEl = null;
-      if (ev.type === 'done') maybeRunAgentTools();
+      updateAiSendButton();
+      // Only continue the tool loop after a clean completion (not cancel/error).
+      if (ev.type === 'done' && !agentCancelled) maybeRunAgentTools();
     }
   });
 }
@@ -281,6 +288,47 @@ if (aiapi) {
 // until the model replies without a tool call (or we hit the per-message cap).
 const MAX_AGENT_ITERATIONS = 8;
 let agentIterations = 0;
+let agentRunning = false; // true while the tool loop is executing tools / looping
+let agentCancelled = false; // set by Stop; bails the loop at the next checkpoint
+let activeApproval = null; // resolver of the currently-shown approval card, if any
+const agentHistoryLog = []; // session audit of tool calls (for the 📜 history panel)
+
+// Auto-approve: opt-in, agent-mode only — skip the approval card and run mutating
+// tools directly (like an "accept edits" mode). Persisted per machine.
+let autoApprove = (() => {
+  try {
+    return localStorage.getItem('nova64.dev.autoApprove') === '1';
+  } catch {
+    return false;
+  }
+})();
+function applyAutoApprove(on) {
+  autoApprove = Boolean(on);
+  if (el.aiAutoApprove) {
+    el.aiAutoApprove.classList.toggle('on', autoApprove);
+    el.aiAutoApprove.title = `Auto-approve agent edits (${autoApprove ? 'ON' : 'off'})`;
+  }
+  try {
+    localStorage.setItem('nova64.dev.autoApprove', autoApprove ? '1' : '0');
+  } catch {
+    /* ignore quota */
+  }
+}
+
+// The Send button doubles as Stop while the model is streaming OR the tool loop
+// is running (between streams). Keep its label in sync.
+function updateAiSendButton() {
+  el.aiSend.textContent = aiStreaming || agentRunning ? 'Stop' : 'Send';
+}
+
+// Stop everything: abort the current stream and bail the tool loop.
+function stopAgent() {
+  agentCancelled = true;
+  if (aiStreaming && aiapi) aiapi.cancel();
+  if (activeApproval) activeApproval({ status: 'denied', reason: 'cancelled' }); // unblock a pending card
+  agentRunning = false;
+  updateAiSendButton();
+}
 
 function uiBubble(cls, content) {
   const div = document.createElement('div');
@@ -298,6 +346,8 @@ function summarizeResult(r) {
   if (Array.isArray(r.matches)) return `${r.matches.length} matches`;
   if (r.content != null) return `${String(r.content).length} chars read`;
   if (r.written) return `wrote ${r.path}`;
+  if (r.created) return `created ${r.path}`;
+  if (r.moved) return `moved ${r.from} → ${r.to}`;
   if (r.deleted) return `deleted ${r.path}`;
   if (r.ran) return 'ran cart';
   try {
@@ -313,11 +363,56 @@ function renderToolResult(call, res) {
   uiBubble('ai-tool', `${icon} ${call.tool} — ${detail}`);
 }
 
+// A short arg label for the history row (path / query / from→to).
+function argSummary(args) {
+  if (!args) return '';
+  if (args.path) return String(args.path);
+  if (args.query) return String(args.query);
+  if (args.from) return `${args.from}→${args.to || ''}`;
+  return '';
+}
+
+// Session tool-call audit (the 📜 history panel).
+function recordHistory(call, res) {
+  const detail = res.status === 'ok' ? summarizeResult(res.result) : res.reason || res.error || res.status;
+  agentHistoryLog.push({
+    at: new Date(),
+    tool: call.tool,
+    arg: argSummary(call.args),
+    status: res.status,
+    detail: String(detail).slice(0, 120),
+  });
+  if (el.aiHistory && !el.aiHistory.hidden) renderAgentHistory();
+}
+
+function renderAgentHistory() {
+  if (!el.aiHistoryList) return;
+  el.aiHistoryList.textContent = '';
+  if (!agentHistoryLog.length) {
+    const empty = document.createElement('div');
+    empty.className = 'ai-history-empty';
+    empty.textContent = 'No tool calls yet.';
+    el.aiHistoryList.appendChild(empty);
+    return;
+  }
+  for (const h of agentHistoryLog) {
+    const row = document.createElement('div');
+    row.className = `ai-history-row status-${h.status}`;
+    const time = h.at.toLocaleTimeString();
+    const icon = h.status === 'ok' ? '✓' : h.status === 'denied' ? '⛔' : '⚠';
+    row.textContent = `${time}  ${icon} ${h.tool}${h.arg ? ` ${h.arg}` : ''} — ${h.detail}`;
+    el.aiHistoryList.appendChild(row);
+  }
+  el.aiHistoryList.scrollTop = el.aiHistoryList.scrollHeight;
+}
+
 function approvalDetail(call) {
   if (call.tool === 'write_file') {
     return `write ${call.args.path} (${String(call.args.content ?? '').length} chars)`;
   }
   if (call.tool === 'delete_path') return `delete ${call.args.path}`;
+  if (call.tool === 'create_dir') return `create dir ${call.args.path}`;
+  if (call.tool === 'move_path') return `move ${call.args.from} → ${call.args.to}`;
   try {
     return JSON.stringify(call.args).slice(0, 120);
   } catch {
@@ -355,10 +450,13 @@ function requestApproval(call, res) {
     }
 
     const finish = result => {
+      if (activeApproval !== finish) return; // already resolved (e.g. by Stop)
+      activeApproval = null;
       approve.disabled = true;
       deny.disabled = true;
       resolve(result);
     };
+    activeApproval = finish; // let Stop unblock this card
     approve.addEventListener('click', async () => {
       desc.textContent = `Running ${call.tool}…`;
       let r;
@@ -453,6 +551,15 @@ async function syncDeletedFromDisk(relPath) {
   await refreshEntries();
 }
 
+// After the agent moves/renames a path, close the old tab if open and refresh.
+async function syncMovedFromDisk(from) {
+  if (from && ws.tabs.has(from)) {
+    ws.closeTab(from, { force: true });
+    showActive();
+  }
+  await refreshEntries();
+}
+
 // run_cart is executed renderer-side (the runtime preview lives here, not the
 // host): run the given/active cart in the sandboxed preview, capture its console
 // output for a short window, and return it so the agent can inspect + iterate.
@@ -484,7 +591,7 @@ async function runCartTool(call) {
 }
 
 async function maybeRunAgentTools() {
-  if (!agentapi || aiStreaming) return;
+  if (!agentapi || aiStreaming || agentCancelled) return;
   if (aiMode !== 'edit' && aiMode !== 'agent') return;
   const last = aiHistory[aiHistory.length - 1];
   if (!last || last.role !== 'assistant') return;
@@ -495,8 +602,11 @@ async function maybeRunAgentTools() {
     return;
   }
   agentIterations++;
+  agentRunning = true;
+  updateAiSendButton();
 
   for (const call of calls) {
+    if (agentCancelled) break;
     let res;
     if (call.tool === 'run_cart') {
       // Renderer-side tool (runs in the preview iframe, not the host).
@@ -507,21 +617,44 @@ async function maybeRunAgentTools() {
       } catch (err) {
         res = { status: 'error', error: err.message || String(err) };
       }
-      if (res.status === 'needs-approval') res = await requestApproval(call, res);
+      if (res.status === 'needs-approval') {
+        if (autoApprove && aiMode === 'agent') {
+          // Accept-edits mode: run without a card, but note it in the transcript.
+          uiBubble('ai-tool', `⚡ auto-approved ${call.tool} ${approvalDetail(call)}`);
+          try {
+            res = await agentapi.runTool({ tool: call.tool, args: call.args, mode: aiMode, approved: true });
+          } catch (err) {
+            res = { status: 'error', error: err.message || String(err) };
+          }
+        } else {
+          res = await requestApproval(call, res);
+        }
+      }
     }
+    if (agentCancelled) break;
     renderToolResult(call, res);
+    recordHistory(call, res);
     const payload =
       res.status === 'ok' ? res.result : { status: res.status, error: res.error, reason: res.reason };
     aiHistory.push({ role: 'user', content: formatToolResult(call.tool, payload) });
     // Reflect a successful agent mutation into the editor/tree.
     if (call.tool === 'write_file' && res.status === 'ok') await syncFileFromDisk(call.args.path);
     else if (call.tool === 'delete_path' && res.status === 'ok') await syncDeletedFromDisk(call.args.path);
+    else if (call.tool === 'move_path' && res.status === 'ok') await syncMovedFromDisk(call.args.from);
+    else if (call.tool === 'create_dir' && res.status === 'ok') await refreshEntries();
+  }
+
+  agentRunning = false;
+  if (agentCancelled) {
+    uiBubble('ai-tool', '⏹ Stopped.');
+    updateAiSendButton();
+    return;
   }
 
   // Continue the conversation with the tool results now in context.
   aiAssistantEl = addAiMessage('assistant', '');
   aiStreaming = true;
-  el.aiSend.textContent = 'Stop';
+  updateAiSendButton();
   await aiapi.chat(aiHistory.slice(0, -1), { mode: aiMode });
 }
 
@@ -921,8 +1054,24 @@ el.aiClose.addEventListener('click', () => showAi(false));
 el.aiSettings.addEventListener('click', () => {
   el.aiConfig.hidden = !el.aiConfig.hidden;
 });
+if (el.aiHistoryBtn) {
+  el.aiHistoryBtn.addEventListener('click', () => {
+    el.aiHistory.hidden = !el.aiHistory.hidden;
+    if (!el.aiHistory.hidden) renderAgentHistory();
+  });
+}
+if (el.aiHistoryClear) {
+  el.aiHistoryClear.addEventListener('click', () => {
+    agentHistoryLog.length = 0;
+    renderAgentHistory();
+  });
+}
+if (el.aiAutoApprove) {
+  applyAutoApprove(autoApprove); // reflect the saved state into the button
+  el.aiAutoApprove.addEventListener('click', () => applyAutoApprove(!autoApprove));
+}
 el.aiSend.addEventListener('click', () => {
-  if (aiStreaming) aiapi && aiapi.cancel();
+  if (aiStreaming || agentRunning) stopAgent();
   else sendAiMessage();
 });
 el.aiInput.addEventListener('keydown', e => {

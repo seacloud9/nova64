@@ -68,8 +68,14 @@
           </select>
           <select id="ai-provider" class="ai-provider" title="Provider"></select>
           <span class="spacer"></span>
+          <button id="ai-autoapprove" type="button" title="Auto-approve agent edits (off)">⚡</button>
+          <button id="ai-history-btn" type="button" title="Tool history">📜</button>
           <button id="ai-settings" type="button" title="Provider settings">⚙</button>
           <button id="ai-close" type="button" title="Close">×</button>
+        </div>
+        <div class="ai-history" id="ai-history" hidden>
+          <div class="ai-history-head">Tool history<button id="ai-history-clear" type="button" title="Clear">Clear</button></div>
+          <div class="ai-history-list" id="ai-history-list"></div>
         </div>
         <div class="ai-config" id="ai-config" hidden>
           <label>Preset

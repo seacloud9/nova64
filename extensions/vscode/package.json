@@ -1,11 +1,15 @@
 {
-  "name": "@nova64/vscode",
+  "name": "nova64",
   "displayName": "Nova64",
   "description": "Nova64 fantasy console — AI chat + agent for VS Code, reusing the host-neutral @nova64/ai-providers + @nova64/agent-core packages.",
   "version": "0.0.0",
   "private": true,
   "publisher": "nova64",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/seacloud9/nova64"
+  },
   "engines": {
     "vscode": "^1.90.0"
   },

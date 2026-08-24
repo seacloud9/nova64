@@ -73,6 +73,10 @@ const el = {
   aiMessages: document.getElementById('ai-messages'),
   aiInput: document.getElementById('ai-input'),
   aiSend: document.getElementById('ai-send'),
+  aiHistoryBtn: document.getElementById('ai-history-btn'),
+  aiHistory: document.getElementById('ai-history'),
+  aiHistoryList: document.getElementById('ai-history-list'),
+  aiHistoryClear: document.getElementById('ai-history-clear'),
 };
 
 // ── AI chat (host-side providers via novaAi bridge) ─────────────────────────
@@ -286,6 +290,7 @@ let agentIterations = 0;
 let agentRunning = false; // true while the tool loop is executing tools / looping
 let agentCancelled = false; // set by Stop; bails the loop at the next checkpoint
 let activeApproval = null; // resolver of the currently-shown approval card, if any
+const agentHistoryLog = []; // session audit of tool calls (for the 📜 history panel)
 
 // The Send button doubles as Stop while the model is streaming OR the tool loop
 // is running (between streams). Keep its label in sync.
@@ -331,6 +336,40 @@ function renderToolResult(call, res) {
   const icon = res.status === 'ok' ? '✓' : res.status === 'denied' ? '⛔' : '⚠';
   const detail = res.status === 'ok' ? summarizeResult(res.result) : res.reason || res.error || res.status;
   uiBubble('ai-tool', `${icon} ${call.tool} — ${detail}`);
+}
+
+// Session tool-call audit (the 📜 history panel).
+function recordHistory(call, res) {
+  const detail = res.status === 'ok' ? summarizeResult(res.result) : res.reason || res.error || res.status;
+  agentHistoryLog.push({
+    at: new Date(),
+    tool: call.tool,
+    arg: call.args && (call.args.path || call.args.query) ? String(call.args.path || call.args.query) : '',
+    status: res.status,
+    detail: String(detail).slice(0, 120),
+  });
+  if (el.aiHistory && !el.aiHistory.hidden) renderAgentHistory();
+}
+
+function renderAgentHistory() {
+  if (!el.aiHistoryList) return;
+  el.aiHistoryList.textContent = '';
+  if (!agentHistoryLog.length) {
+    const empty = document.createElement('div');
+    empty.className = 'ai-history-empty';
+    empty.textContent = 'No tool calls yet.';
+    el.aiHistoryList.appendChild(empty);
+    return;
+  }
+  for (const h of agentHistoryLog) {
+    const row = document.createElement('div');
+    row.className = `ai-history-row status-${h.status}`;
+    const time = h.at.toLocaleTimeString();
+    const icon = h.status === 'ok' ? '✓' : h.status === 'denied' ? '⛔' : '⚠';
+    row.textContent = `${time}  ${icon} ${h.tool}${h.arg ? ` ${h.arg}` : ''} — ${h.detail}`;
+    el.aiHistoryList.appendChild(row);
+  }
+  el.aiHistoryList.scrollTop = el.aiHistoryList.scrollHeight;
 }
 
 function approvalDetail(call) {
@@ -537,6 +576,7 @@ async function maybeRunAgentTools() {
     }
     if (agentCancelled) break;
     renderToolResult(call, res);
+    recordHistory(call, res);
     const payload =
       res.status === 'ok' ? res.result : { status: res.status, error: res.error, reason: res.reason };
     aiHistory.push({ role: 'user', content: formatToolResult(call.tool, payload) });
@@ -955,6 +995,18 @@ el.aiClose.addEventListener('click', () => showAi(false));
 el.aiSettings.addEventListener('click', () => {
   el.aiConfig.hidden = !el.aiConfig.hidden;
 });
+if (el.aiHistoryBtn) {
+  el.aiHistoryBtn.addEventListener('click', () => {
+    el.aiHistory.hidden = !el.aiHistory.hidden;
+    if (!el.aiHistory.hidden) renderAgentHistory();
+  });
+}
+if (el.aiHistoryClear) {
+  el.aiHistoryClear.addEventListener('click', () => {
+    agentHistoryLog.length = 0;
+    renderAgentHistory();
+  });
+}
 el.aiSend.addEventListener('click', () => {
   if (aiStreaming || agentRunning) stopAgent();
   else sendAiMessage();

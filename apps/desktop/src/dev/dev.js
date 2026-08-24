@@ -240,15 +240,16 @@ function addAiMessage(role, content) {
 }
 
 async function sendAiMessage() {
-  if (!aiapi || aiStreaming) return;
+  if (!aiapi || aiStreaming || agentRunning) return;
   const text = el.aiInput.value.trim();
   if (!text) return;
   agentIterations = 0; // fresh tool-loop budget per user message
+  agentCancelled = false;
   addAiMessage('user', text);
   el.aiInput.value = '';
   aiAssistantEl = addAiMessage('assistant', '');
   aiStreaming = true;
-  el.aiSend.textContent = 'Stop';
+  updateAiSendButton();
   await aiapi.chat(aiHistory.slice(0, -1), { mode: aiMode }); // history without the empty assistant
 }
 
@@ -267,9 +268,10 @@ if (aiapi) {
     }
     if (ev.type === 'done' || ev.type === 'cancelled' || ev.type === 'error') {
       aiStreaming = false;
-      el.aiSend.textContent = 'Send';
       aiAssistantEl = null;
-      if (ev.type === 'done') maybeRunAgentTools();
+      updateAiSendButton();
+      // Only continue the tool loop after a clean completion (not cancel/error).
+      if (ev.type === 'done' && !agentCancelled) maybeRunAgentTools();
     }
   });
 }
@@ -281,6 +283,24 @@ if (aiapi) {
 // until the model replies without a tool call (or we hit the per-message cap).
 const MAX_AGENT_ITERATIONS = 8;
 let agentIterations = 0;
+let agentRunning = false; // true while the tool loop is executing tools / looping
+let agentCancelled = false; // set by Stop; bails the loop at the next checkpoint
+let activeApproval = null; // resolver of the currently-shown approval card, if any
+
+// The Send button doubles as Stop while the model is streaming OR the tool loop
+// is running (between streams). Keep its label in sync.
+function updateAiSendButton() {
+  el.aiSend.textContent = aiStreaming || agentRunning ? 'Stop' : 'Send';
+}
+
+// Stop everything: abort the current stream and bail the tool loop.
+function stopAgent() {
+  agentCancelled = true;
+  if (aiStreaming && aiapi) aiapi.cancel();
+  if (activeApproval) activeApproval({ status: 'denied', reason: 'cancelled' }); // unblock a pending card
+  agentRunning = false;
+  updateAiSendButton();
+}
 
 function uiBubble(cls, content) {
   const div = document.createElement('div');
@@ -355,10 +375,13 @@ function requestApproval(call, res) {
     }
 
     const finish = result => {
+      if (activeApproval !== finish) return; // already resolved (e.g. by Stop)
+      activeApproval = null;
       approve.disabled = true;
       deny.disabled = true;
       resolve(result);
     };
+    activeApproval = finish; // let Stop unblock this card
     approve.addEventListener('click', async () => {
       desc.textContent = `Running ${call.tool}…`;
       let r;
@@ -484,7 +507,7 @@ async function runCartTool(call) {
 }
 
 async function maybeRunAgentTools() {
-  if (!agentapi || aiStreaming) return;
+  if (!agentapi || aiStreaming || agentCancelled) return;
   if (aiMode !== 'edit' && aiMode !== 'agent') return;
   const last = aiHistory[aiHistory.length - 1];
   if (!last || last.role !== 'assistant') return;
@@ -495,8 +518,11 @@ async function maybeRunAgentTools() {
     return;
   }
   agentIterations++;
+  agentRunning = true;
+  updateAiSendButton();
 
   for (const call of calls) {
+    if (agentCancelled) break;
     let res;
     if (call.tool === 'run_cart') {
       // Renderer-side tool (runs in the preview iframe, not the host).
@@ -509,6 +535,7 @@ async function maybeRunAgentTools() {
       }
       if (res.status === 'needs-approval') res = await requestApproval(call, res);
     }
+    if (agentCancelled) break;
     renderToolResult(call, res);
     const payload =
       res.status === 'ok' ? res.result : { status: res.status, error: res.error, reason: res.reason };
@@ -518,10 +545,17 @@ async function maybeRunAgentTools() {
     else if (call.tool === 'delete_path' && res.status === 'ok') await syncDeletedFromDisk(call.args.path);
   }
 
+  agentRunning = false;
+  if (agentCancelled) {
+    uiBubble('ai-tool', '⏹ Stopped.');
+    updateAiSendButton();
+    return;
+  }
+
   // Continue the conversation with the tool results now in context.
   aiAssistantEl = addAiMessage('assistant', '');
   aiStreaming = true;
-  el.aiSend.textContent = 'Stop';
+  updateAiSendButton();
   await aiapi.chat(aiHistory.slice(0, -1), { mode: aiMode });
 }
 
@@ -922,7 +956,7 @@ el.aiSettings.addEventListener('click', () => {
   el.aiConfig.hidden = !el.aiConfig.hidden;
 });
 el.aiSend.addEventListener('click', () => {
-  if (aiStreaming) aiapi && aiapi.cancel();
+  if (aiStreaming || agentRunning) stopAgent();
   else sendAiMessage();
 });
 el.aiInput.addEventListener('keydown', e => {

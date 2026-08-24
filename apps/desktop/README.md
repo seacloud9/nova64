@@ -22,11 +22,14 @@ scroll, editor, and layout state.
 | `main.js` | App entry; single-instance lock; registers protocol; creates the window; smoke/devtools hooks. |
 | `window-controller.js` | Frameless window; creates the chrome frame + OS/Dev/Settings `WebContentsView`s; switches surfaces; owns `nav:*` + `window:action` IPC. |
 | `view-layout.js` | Bounds on resize: chrome fills the window; content is inset below the titlebar / right of the rail. |
-| `protocol.js` | `nova64-app://` scheme — serves chrome (`nav`), `dev`, `settings`, `shared`, `lib` from source and the `os` surface from the built web app, with path-traversal containment. |
+| `protocol.js` | `nova64-app://` scheme — serves chrome (`nav`), `dev`, `settings`, `shared`, `lib`, `agent` from source and the `os` surface from the built web app, with path-traversal containment. |
 | `security.js` | Shared secure `webPreferences`, per-`webContents` hardening (deny popups/navigation/webviews/permissions), and a strict CSP. |
 | `settings-service.js` | Persists app settings (theme) to `userData/settings.json`; broadcasts `settings:changed`; owns `settings:*` IPC. |
-| `workspace-service.js` | Disk I/O for the Dev surface with a workspace-containment guard; `workspace:*` IPC. |
-| `preload/{chrome,dev,settings}-preload.js` | Sandboxed CommonJS bridges — `novaShell` (nav + window controls), `novaWorkspace`, `novaSettings`, and the shared `novaTheme`. Never expose `ipcRenderer`, Node, or fs. |
+| `workspace-service.js` | Disk I/O for the Dev surface (read/write/list/search/remove) with a workspace-containment guard; `workspace:*` IPC. |
+| `secret-service.js` | Encrypted secret storage (API keys) at `userData`. |
+| `ai-service.js` | Host-side LLM providers (`@nova64/ai-providers`); streams normalized chat events to Dev; injects the mode + tool system prompt (`@nova64/agent-core`); `ai:*` IPC. |
+| `agent-tool-service.js` | Backs `@nova64/agent-core`'s ToolRunner with the workspace (read/list/search/write/delete), gated by mode + approval; `agent:run-tool` IPC, Dev-trusted only. |
+| `preload/{chrome,dev,settings}-preload.js` | Sandboxed CommonJS bridges — `novaShell` (nav + window controls), `novaWorkspace`, `novaAi`, `novaAgent`, `novaSettings`, and the shared `novaTheme`. Never expose `ipcRenderer`, Node, or fs. |
 
 ## Security posture
 
@@ -162,7 +165,51 @@ The preview embeds the runtime **cross-surface** (Dev `nova64-app://dev` → run
    works. Runtime `console.log`/`warn`/`error` are also forwarded to the preview console in studio
    mode (internal `[main.js]` debug lines filtered out).
 
+## AI agent (Phase 4–5)
+
+The Dev surface has an **🤖 AI panel** with an interaction-mode selector —
+**Ask · Plan · Edit · Agent** — backed by the host-neutral
+[`@nova64/agent-core`](../../packages/agent-core/README.md) seam. AI runs
+**entirely in the host process** (`src/main/ai-service.js`) via the multi-provider
+[`@nova64/ai-providers`](../../packages/ai-providers) package; the renderer only
+sees normalized streaming events. API keys live in `SecretService` (encrypted at
+`userData`); non-secret config in `userData/ai-config.json`.
+
+- **Providers & presets:** OpenAI · Together AI · Claude (Anthropic) · OpenCode
+  (local agent) · Ollama · Echo. A preset prefills the endpoint + default model,
+  and the **key is optional** (added later). Detailed controls — temperature /
+  top-p / max-tokens — show when the provider accepts them (hidden for Claude,
+  whose current models reject sampling params).
+- **System-prompt library:** create/select/edit named prompts; the active one is
+  combined with the mode prompt.
+
+### Tools + approvals
+
+In **Edit/Agent** mode the model can act on the workspace. It requests a tool by
+emitting a fenced ```` ```tool ```` JSON block (agent-core's text protocol); the
+Dev panel parses it, runs it, and feeds the result back, looping until the model
+stops (capped per message).
+
+| Tool | What | Gate |
+| --- | --- | --- |
+| `read_file` · `list_dir` · `search_text` | inspect the workspace | free (plan+) |
+| `write_file` | edit a file | **approval card with a diff preview** |
+| `delete_path` | remove a file/dir | **agent-only + approval** |
+| `run_cart` | run the cart in the preview, return console output | free (edit/agent) |
+
+- **Reviewable mutations:** `write_file` shows a color-coded line **diff** before
+  you Approve/Deny; `delete_path` shows the target.
+- **Editor sync:** after an approved write, an open tab reloads from disk (or
+  warns instead of clobbering unsaved edits); the explorer refreshes. A delete
+  closes the tab.
+- **Enforcement:** per-mode gating + the approval policy live in `agent-core` and
+  are enforced **host-side** (`src/main/agent-tool-service.js`, `agent:run-tool`
+  IPC, trusted to the Dev view only). `run_cart` executes renderer-side (the
+  preview runs there). `agent-core` is served to the renderer over the
+  `nova64-app://agent` protocol host.
+
 ## Not yet (later phases)
 
 - Installer packaging (electron-builder: deb / AppImage / nsis / dmg) — plan §11, Phase 8–9.
-- Provider/agent AI in the host process — Phase 4–5.
+- Cancel mid-loop; a run-history panel; `run_tests`.
+- VS Code parity (Phase 6–7) — reuses `agent-core` / `ai-providers` unchanged.

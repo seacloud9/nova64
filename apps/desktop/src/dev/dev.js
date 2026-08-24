@@ -346,6 +346,8 @@ function summarizeResult(r) {
   if (Array.isArray(r.matches)) return `${r.matches.length} matches`;
   if (r.content != null) return `${String(r.content).length} chars read`;
   if (r.written) return `wrote ${r.path}`;
+  if (r.created) return `created ${r.path}`;
+  if (r.moved) return `moved ${r.from} → ${r.to}`;
   if (r.deleted) return `deleted ${r.path}`;
   if (r.ran) return 'ran cart';
   try {
@@ -361,13 +363,22 @@ function renderToolResult(call, res) {
   uiBubble('ai-tool', `${icon} ${call.tool} — ${detail}`);
 }
 
+// A short arg label for the history row (path / query / from→to).
+function argSummary(args) {
+  if (!args) return '';
+  if (args.path) return String(args.path);
+  if (args.query) return String(args.query);
+  if (args.from) return `${args.from}→${args.to || ''}`;
+  return '';
+}
+
 // Session tool-call audit (the 📜 history panel).
 function recordHistory(call, res) {
   const detail = res.status === 'ok' ? summarizeResult(res.result) : res.reason || res.error || res.status;
   agentHistoryLog.push({
     at: new Date(),
     tool: call.tool,
-    arg: call.args && (call.args.path || call.args.query) ? String(call.args.path || call.args.query) : '',
+    arg: argSummary(call.args),
     status: res.status,
     detail: String(detail).slice(0, 120),
   });
@@ -400,6 +411,8 @@ function approvalDetail(call) {
     return `write ${call.args.path} (${String(call.args.content ?? '').length} chars)`;
   }
   if (call.tool === 'delete_path') return `delete ${call.args.path}`;
+  if (call.tool === 'create_dir') return `create dir ${call.args.path}`;
+  if (call.tool === 'move_path') return `move ${call.args.from} → ${call.args.to}`;
   try {
     return JSON.stringify(call.args).slice(0, 120);
   } catch {
@@ -538,6 +551,15 @@ async function syncDeletedFromDisk(relPath) {
   await refreshEntries();
 }
 
+// After the agent moves/renames a path, close the old tab if open and refresh.
+async function syncMovedFromDisk(from) {
+  if (from && ws.tabs.has(from)) {
+    ws.closeTab(from, { force: true });
+    showActive();
+  }
+  await refreshEntries();
+}
+
 // run_cart is executed renderer-side (the runtime preview lives here, not the
 // host): run the given/active cart in the sandboxed preview, capture its console
 // output for a short window, and return it so the agent can inspect + iterate.
@@ -618,6 +640,8 @@ async function maybeRunAgentTools() {
     // Reflect a successful agent mutation into the editor/tree.
     if (call.tool === 'write_file' && res.status === 'ok') await syncFileFromDisk(call.args.path);
     else if (call.tool === 'delete_path' && res.status === 'ok') await syncDeletedFromDisk(call.args.path);
+    else if (call.tool === 'move_path' && res.status === 'ok') await syncMovedFromDisk(call.args.from);
+    else if (call.tool === 'create_dir' && res.status === 'ok') await refreshEntries();
   }
 
   agentRunning = false;

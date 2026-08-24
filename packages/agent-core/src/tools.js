@@ -18,6 +18,8 @@ export const TOOL_SPECS = Object.freeze([
   { name: 'list_dir', title: 'List directory', handler: 'listDir', mutating: false, external: false, modes: ['plan', 'edit', 'agent'] },
   { name: 'search_text', title: 'Search workspace', handler: 'searchText', mutating: false, external: false, modes: ['plan', 'edit', 'agent'] },
   { name: 'write_file', title: 'Write file', handler: 'writeFile', mutating: true, external: false, modes: ['edit', 'agent'] },
+  { name: 'create_dir', title: 'Create directory', handler: 'createDir', mutating: true, external: false, modes: ['edit', 'agent'] },
+  { name: 'move_path', title: 'Move / rename path', handler: 'movePath', mutating: true, external: false, modes: ['edit', 'agent'] },
   { name: 'delete_path', title: 'Delete path', handler: 'deletePath', mutating: true, external: true, modes: ['agent'] },
   { name: 'run_tests', title: 'Run tests', handler: 'runTests', mutating: true, external: true, modes: ['agent'] },
   // Runs a cart in the sandboxed preview and returns its console output. Executed

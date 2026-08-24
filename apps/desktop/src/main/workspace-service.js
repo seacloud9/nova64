@@ -132,6 +132,21 @@ class WorkspaceService {
     return true;
   }
 
+  /** Create a directory (recursive, containment-guarded). */
+  async mkdir(rel) {
+    await fsp.mkdir(this.#resolveInside(rel), { recursive: true });
+    return true;
+  }
+
+  /** Move/rename a path within the workspace (both ends containment-guarded). */
+  async move(from, to) {
+    const absFrom = this.#resolveInside(from);
+    const absTo = this.#resolveInside(to);
+    await fsp.mkdir(path.dirname(absTo), { recursive: true });
+    await fsp.rename(absFrom, absTo);
+    return true;
+  }
+
   /**
    * Recursively search text files under the root for a literal query string.
    * Skips the same heavy dirs as the explorer, skips binary/oversized files, and
@@ -334,22 +349,17 @@ class WorkspaceService {
       guard(event);
       return this.writeFile(rel, data);
     });
-    ipcMain.handle('workspace:mkdir', async (event, rel) => {
+    ipcMain.handle('workspace:mkdir', (event, rel) => {
       guard(event);
-      await fsp.mkdir(this.#resolveInside(rel), { recursive: true });
-      return true;
+      return this.mkdir(rel);
     });
     ipcMain.handle('workspace:remove', (event, rel) => {
       guard(event);
       return this.remove(rel);
     });
-    ipcMain.handle('workspace:move', async (event, from, to) => {
+    ipcMain.handle('workspace:move', (event, from, to) => {
       guard(event);
-      const absFrom = this.#resolveInside(from);
-      const absTo = this.#resolveInside(to);
-      await fsp.mkdir(path.dirname(absTo), { recursive: true });
-      await fsp.rename(absFrom, absTo);
-      return true;
+      return this.move(from, to);
     });
     ipcMain.handle('workspace:exists', async (event, rel) => {
       guard(event);

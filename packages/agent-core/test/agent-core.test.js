@@ -87,6 +87,15 @@ await t('tools: run_cart available in edit/agent, not plan', () => {
   assert.ok(!toolAllowedInMode('run_cart', 'plan'));
 });
 
+await t('tools: create_dir/move_path are edit+agent, mutating, approval-gated', () => {
+  for (const name of ['create_dir', 'move_path']) {
+    assert.ok(toolAllowedInMode(name, 'edit'), `${name} in edit`);
+    assert.ok(toolAllowedInMode(name, 'agent'), `${name} in agent`);
+    assert.ok(!toolAllowedInMode(name, 'plan'), `${name} not in plan`);
+    assert.equal(approvalRequired(name, 'agent'), true, `${name} needs approval`);
+  }
+});
+
 // ── runner ───────────────────────────────────────────────────────────────────
 function mockHost() {
   const calls = [];

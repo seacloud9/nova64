@@ -96,6 +96,28 @@ importers:
         specifier: ^0.52.0
         version: 0.52.2
 
+  extensions/vscode:
+    dependencies:
+      '@nova64/agent-core':
+        specifier: workspace:*
+        version: link:../../packages/agent-core
+      '@nova64/ai-providers':
+        specifier: workspace:*
+        version: link:../../packages/ai-providers
+    devDependencies:
+      '@types/node':
+        specifier: ^20.11.0
+        version: 20.19.43
+      '@types/vscode':
+        specifier: ^1.90.0
+        version: 1.134.0
+      esbuild:
+        specifier: ^0.21.5
+        version: 0.21.5
+      typescript:
+        specifier: ^5.4.0
+        version: 5.9.3
+
   packages/agent-core: {}
 
   packages/ai-providers: {}
@@ -700,6 +722,9 @@ packages:
 
   '@types/responselike@1.0.3':
     resolution: {integrity: sha512-H/+L+UkTV33uf49PH5pCAUBVPNj2nDBXTN+qS1dOwyyg24l3CcicicCA7ca+HMvJBZcFgl5r8e+RR6elsb4Lyw==}
+
+  '@types/vscode@1.134.0':
+    resolution: {integrity: sha512-NDEu0hg4sF7+vvFsADsktqUJ6f80LHSZvVK2Ovo1XiQ0/VHck1O3zst+ZZyVA/uvz6vo6LcuoqU2q48YMqOwWw==}
 
   '@types/yauzl@2.10.3':
     resolution: {integrity: sha512-oJoftv0LSuaDZE3Le4DbKX+KS9G36NzOeSap90UIK0yMA/NhKJhqlSGtNDORNRaIbQfzjXDrQa0ytJ6mNRGz/Q==}
@@ -1730,6 +1755,11 @@ packages:
     resolution: {integrity: sha512-Ne+eE4r0/iWnpAxD852z3A+N0Bt5RN//NjJwRd2VFHEmrywxf5vsZlh4R6lixl6B+wz/8d+maTSAkN1FIkI3LQ==}
     engines: {node: '>=10'}
 
+  typescript@5.9.3:
+    resolution: {integrity: sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw==}
+    engines: {node: '>=14.17'}
+    hasBin: true
+
   undefsafe@2.0.5:
     resolution: {integrity: sha512-WxONCrssBM8TSPRqN5EmsjVrsv4A8X12J4ArBiiayv3DyyG3ZlIg6yysuuSYdZsVz3TKcTg2fd//Ujd4CHV1iA==}
 
@@ -2333,6 +2363,8 @@ snapshots:
   '@types/responselike@1.0.3':
     dependencies:
       '@types/node': 20.19.43
+
+  '@types/vscode@1.134.0': {}
 
   '@types/yauzl@2.10.3':
     dependencies:
@@ -3434,6 +3466,8 @@ snapshots:
     optional: true
 
   type-fest@0.20.2: {}
+
+  typescript@5.9.3: {}
 
   undefsafe@2.0.5: {}
 

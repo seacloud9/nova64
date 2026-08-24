@@ -1,0 +1,63 @@
+{
+  "name": "@nova64/vscode",
+  "displayName": "Nova64",
+  "description": "Nova64 fantasy console — AI chat + agent for VS Code, reusing the host-neutral @nova64/ai-providers + @nova64/agent-core packages.",
+  "version": "0.0.0",
+  "private": true,
+  "publisher": "nova64",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": ["Other", "Machine Learning"],
+  "main": "./dist/extension.js",
+  "activationEvents": [],
+  "contributes": {
+    "commands": [
+      { "command": "nova64.openChat", "title": "Nova64: Open AI Chat" },
+      { "command": "nova64.setApiKey", "title": "Nova64: Set AI API Key" }
+    ],
+    "configuration": {
+      "title": "Nova64",
+      "properties": {
+        "nova64.ai.provider": {
+          "type": "string",
+          "default": "echo",
+          "enum": ["echo", "openai-compatible", "anthropic", "opencode"],
+          "description": "AI provider. openai-compatible covers OpenAI / Together / Ollama / LM Studio."
+        },
+        "nova64.ai.baseUrl": {
+          "type": "string",
+          "default": "",
+          "description": "Provider base URL (e.g. https://api.openai.com, http://localhost:11434, https://api.anthropic.com)."
+        },
+        "nova64.ai.model": {
+          "type": "string",
+          "default": "",
+          "description": "Model id (e.g. gpt-4o-mini, claude-opus-4-8, llama3.1)."
+        },
+        "nova64.ai.mode": {
+          "type": "string",
+          "default": "ask",
+          "enum": ["ask", "plan", "edit", "agent"],
+          "description": "Agent interaction mode (from @nova64/agent-core)."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "esbuild src/extension.ts --bundle --platform=node --format=cjs --external:vscode --outfile=dist/extension.js",
+    "vscode:prepublish": "pnpm build"
+  },
+  "dependencies": {
+    "@nova64/agent-core": "workspace:*",
+    "@nova64/ai-providers": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/vscode": "^1.90.0",
+    "esbuild": "^0.21.5",
+    "typescript": "^5.4.0"
+  }
+}

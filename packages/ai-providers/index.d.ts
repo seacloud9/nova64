@@ -11,7 +11,10 @@ export interface ModelConfiguration {
   apiKey?: string;
   model?: string;
   temperature?: number;
+  topP?: number;
   maxOutputTokens?: number;
+  anthropicVersion?: string;
+  agent?: string;
 }
 
 export type ChatStreamEvent = { type: 'delta'; text: string } | { type: 'done' };
@@ -43,6 +46,18 @@ export function createOpenAICompatibleProvider(opts?: {
   fetchImpl?: typeof fetch;
 }): Provider;
 
+export function createAnthropicProvider(opts?: {
+  id?: string;
+  displayName?: string;
+  fetchImpl?: typeof fetch;
+}): Provider;
+
+export function createOpenCodeProvider(opts?: {
+  id?: string;
+  displayName?: string;
+  fetchImpl?: typeof fetch;
+}): Provider;
+
 export function createEchoProvider(): Provider;
 
 export class ProviderRegistry {
@@ -52,3 +67,16 @@ export class ProviderRegistry {
   has(id: string): boolean;
   list(): ProviderDescriptor[];
 }
+
+export interface ProviderPreset {
+  id: string;
+  label: string;
+  providerId: string;
+  baseUrl: string;
+  defaultModel: string;
+  needsKey: boolean;
+  sampling: boolean;
+}
+
+export const PROVIDER_PRESETS: readonly ProviderPreset[];
+export function getPreset(id: string): ProviderPreset | undefined;

@@ -20,6 +20,9 @@ export const TOOL_SPECS = Object.freeze([
   { name: 'write_file', title: 'Write file', handler: 'writeFile', mutating: true, external: false, modes: ['edit', 'agent'] },
   { name: 'delete_path', title: 'Delete path', handler: 'deletePath', mutating: true, external: true, modes: ['agent'] },
   { name: 'run_tests', title: 'Run tests', handler: 'runTests', mutating: true, external: true, modes: ['agent'] },
+  // Runs a cart in the sandboxed preview and returns its console output. Executed
+  // renderer-side (not host), sandboxed, so no approval — like clicking Run.
+  { name: 'run_cart', title: 'Run cart in preview', handler: 'runCart', mutating: false, external: false, modes: ['edit', 'agent'] },
 ]);
 
 const BY_NAME = new Map(TOOL_SPECS.map(t => [t.name, t]));

@@ -1,7 +1,7 @@
 // Absolute custom-scheme specifier avoids needing an inline import map (which
 // the strict CSP would block). The `lib` host maps to packages/workspace-core.
 import { Workspace } from 'nova64-app://lib/index.js';
-import { parseToolCalls, formatToolResult } from 'nova64-app://agent/index.js';
+import { parseToolCalls, formatToolResult, toolAllowedInMode } from 'nova64-app://agent/index.js';
 import { lineDiff, diffStat } from './diff.js';
 import { TextareaEditorAdapter, languageForPath } from './editor-adapter.js';
 import { MonacoEditorAdapter } from './monaco-adapter.js';
@@ -298,6 +298,8 @@ function summarizeResult(r) {
   if (Array.isArray(r.matches)) return `${r.matches.length} matches`;
   if (r.content != null) return `${String(r.content).length} chars read`;
   if (r.written) return `wrote ${r.path}`;
+  if (r.deleted) return `deleted ${r.path}`;
+  if (r.ran) return 'ran cart';
   try {
     return JSON.stringify(r).slice(0, 140);
   } catch {
@@ -451,6 +453,36 @@ async function syncDeletedFromDisk(relPath) {
   await refreshEntries();
 }
 
+// run_cart is executed renderer-side (the runtime preview lives here, not the
+// host): run the given/active cart in the sandboxed preview, capture its console
+// output for a short window, and return it so the agent can inspect + iterate.
+async function runCartTool(call) {
+  if (!toolAllowedInMode('run_cart', aiMode)) {
+    return { status: 'denied', reason: `run_cart is not allowed in ${aiMode} mode` };
+  }
+  let source;
+  if (call.args && call.args.path) {
+    try {
+      source = await fsapi.read(call.args.path);
+    } catch (err) {
+      return { status: 'error', error: `cannot read ${call.args.path}: ${err.message || err}` };
+    }
+  } else {
+    source = editor.getValue();
+  }
+  if (!source || !source.trim()) return { status: 'error', error: 'no cart source to run' };
+
+  showPreview(true);
+  const pv = ensurePreview();
+  const logs = [];
+  const off = pv.onLog((line, isError) => logs.push((isError ? '❌ ' : '') + line));
+  pv.run(source);
+  await new Promise(r => setTimeout(r, 5000)); // let it boot + emit output
+  off();
+  const out = logs.slice(-40).join('\n');
+  return { status: 'ok', result: { ran: true, console: out || '(no console output within 5s)' } };
+}
+
 async function maybeRunAgentTools() {
   if (!agentapi || aiStreaming) return;
   if (aiMode !== 'edit' && aiMode !== 'agent') return;
@@ -466,12 +498,17 @@ async function maybeRunAgentTools() {
 
   for (const call of calls) {
     let res;
-    try {
-      res = await agentapi.runTool({ tool: call.tool, args: call.args, mode: aiMode });
-    } catch (err) {
-      res = { status: 'error', error: err.message || String(err) };
+    if (call.tool === 'run_cart') {
+      // Renderer-side tool (runs in the preview iframe, not the host).
+      res = await runCartTool(call);
+    } else {
+      try {
+        res = await agentapi.runTool({ tool: call.tool, args: call.args, mode: aiMode });
+      } catch (err) {
+        res = { status: 'error', error: err.message || String(err) };
+      }
+      if (res.status === 'needs-approval') res = await requestApproval(call, res);
     }
-    if (res.status === 'needs-approval') res = await requestApproval(call, res);
     renderToolResult(call, res);
     const payload =
       res.status === 'ok' ? res.result : { status: res.status, error: res.error, reason: res.reason };

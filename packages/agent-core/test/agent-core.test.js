@@ -77,7 +77,14 @@ await t('tools: approval policy — reads free, mutations/external gated', () =>
   assert.equal(approvalRequired('write_file', 'edit'), true);
   assert.equal(approvalRequired('delete_path', 'agent'), true);
   assert.equal(approvalRequired('run_tests', 'agent'), true);
+  assert.equal(approvalRequired('run_cart', 'agent'), false); // sandboxed preview, no approval
   assert.equal(approvalRequired('unknown', 'agent'), true); // unknown → safe default
+});
+
+await t('tools: run_cart available in edit/agent, not plan', () => {
+  assert.ok(toolAllowedInMode('run_cart', 'edit'));
+  assert.ok(toolAllowedInMode('run_cart', 'agent'));
+  assert.ok(!toolAllowedInMode('run_cart', 'plan'));
 });
 
 // ── runner ───────────────────────────────────────────────────────────────────

@@ -44,6 +44,8 @@ export class RuntimePreview {
     this.iframe = null;
     this.ready = false;
     this.pending = null;
+    /** @type {Set<(line: string, isError: boolean) => void>} */
+    this.logListeners = new Set();
     this.runId = 0;
     window.addEventListener('message', this.#onMessage);
   }
@@ -90,12 +92,26 @@ export class RuntimePreview {
   }
 
   #log(message, isError = false) {
+    for (const cb of this.logListeners) {
+      try {
+        cb(message, isError);
+      } catch {
+        /* listener errors must not break logging */
+      }
+    }
     if (!this.consoleEl) return;
     const line = document.createElement('div');
     line.className = `run-line${isError ? ' error' : ''}`;
     line.textContent = message;
     this.consoleEl.appendChild(line);
     this.consoleEl.scrollTop = this.consoleEl.scrollHeight;
+  }
+
+  /** Subscribe to run-console lines (used by the agent to capture cart output).
+   *  Returns an unsubscribe function. */
+  onLog(cb) {
+    this.logListeners.add(cb);
+    return () => this.logListeners.delete(cb);
   }
 
   /** Run cart source. Boots the iframe on first use and queues until ready. */

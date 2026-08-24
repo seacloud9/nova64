@@ -234,6 +234,10 @@ body {
   background: var(--hover);
   color: var(--text);
 }
+.ai-head button.on {
+  color: var(--accent);
+  background: var(--accent-weak);
+}
 .ai-config {
   display: flex;
   flex-direction: column;

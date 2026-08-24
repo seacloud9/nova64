@@ -77,6 +77,7 @@ const el = {
   aiHistory: document.getElementById('ai-history'),
   aiHistoryList: document.getElementById('ai-history-list'),
   aiHistoryClear: document.getElementById('ai-history-clear'),
+  aiAutoApprove: document.getElementById('ai-autoapprove'),
 };
 
 // ── AI chat (host-side providers via novaAi bridge) ─────────────────────────
@@ -291,6 +292,28 @@ let agentRunning = false; // true while the tool loop is executing tools / loopi
 let agentCancelled = false; // set by Stop; bails the loop at the next checkpoint
 let activeApproval = null; // resolver of the currently-shown approval card, if any
 const agentHistoryLog = []; // session audit of tool calls (for the 📜 history panel)
+
+// Auto-approve: opt-in, agent-mode only — skip the approval card and run mutating
+// tools directly (like an "accept edits" mode). Persisted per machine.
+let autoApprove = (() => {
+  try {
+    return localStorage.getItem('nova64.dev.autoApprove') === '1';
+  } catch {
+    return false;
+  }
+})();
+function applyAutoApprove(on) {
+  autoApprove = Boolean(on);
+  if (el.aiAutoApprove) {
+    el.aiAutoApprove.classList.toggle('on', autoApprove);
+    el.aiAutoApprove.title = `Auto-approve agent edits (${autoApprove ? 'ON' : 'off'})`;
+  }
+  try {
+    localStorage.setItem('nova64.dev.autoApprove', autoApprove ? '1' : '0');
+  } catch {
+    /* ignore quota */
+  }
+}
 
 // The Send button doubles as Stop while the model is streaming OR the tool loop
 // is running (between streams). Keep its label in sync.
@@ -572,7 +595,19 @@ async function maybeRunAgentTools() {
       } catch (err) {
         res = { status: 'error', error: err.message || String(err) };
       }
-      if (res.status === 'needs-approval') res = await requestApproval(call, res);
+      if (res.status === 'needs-approval') {
+        if (autoApprove && aiMode === 'agent') {
+          // Accept-edits mode: run without a card, but note it in the transcript.
+          uiBubble('ai-tool', `⚡ auto-approved ${call.tool} ${approvalDetail(call)}`);
+          try {
+            res = await agentapi.runTool({ tool: call.tool, args: call.args, mode: aiMode, approved: true });
+          } catch (err) {
+            res = { status: 'error', error: err.message || String(err) };
+          }
+        } else {
+          res = await requestApproval(call, res);
+        }
+      }
     }
     if (agentCancelled) break;
     renderToolResult(call, res);
@@ -1006,6 +1041,10 @@ if (el.aiHistoryClear) {
     agentHistoryLog.length = 0;
     renderAgentHistory();
   });
+}
+if (el.aiAutoApprove) {
+  applyAutoApprove(autoApprove); // reflect the saved state into the button
+  el.aiAutoApprove.addEventListener('click', () => applyAutoApprove(!autoApprove));
 }
 el.aiSend.addEventListener('click', () => {
   if (aiStreaming || agentRunning) stopAgent();

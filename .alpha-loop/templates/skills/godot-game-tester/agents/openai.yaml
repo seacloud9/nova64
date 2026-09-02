@@ -1,0 +1,4 @@
+interface:
+  display_name: "Godot Game Tester"
+  short_description: "Play, capture, and validate Godot games"
+  default_prompt: "Use $godot-game-tester to launch this Godot game, play a short test route, and report evidence-backed results."

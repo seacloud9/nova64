@@ -43,7 +43,13 @@ const IMPORT_MAP_SKIP = [
   'os9-shellMobile/index.html',
   'os9-shellMobile/dist/index.html',
   'public/os9-shellMobile/index.html',
+  'apps/desktop/src/dev/index.html',
 ];
+
+// Generated trees that mirror pages validated at their source. The Electron
+// packaging output copies the whole desktop app and the os9 shell into itself,
+// so walking it re-reports every source page once per unpacked platform.
+const GENERATED_DIRS = new Set(['apps/desktop/build', 'apps/desktop/dist-electron']);
 
 function findHtmlFiles(dir) {
   const results = [];
@@ -60,8 +66,10 @@ function findHtmlFiles(dir) {
       continue;
     }
     const stat = statSync(full);
-    if (stat.isDirectory()) results.push(...findHtmlFiles(full));
-    else if (entry.endsWith('.html')) results.push(full);
+    if (stat.isDirectory()) {
+      if (GENERATED_DIRS.has(relative(root, full).replace(/\\/g, '/'))) continue;
+      results.push(...findHtmlFiles(full));
+    } else if (entry.endsWith('.html')) results.push(full);
   }
   return results;
 }

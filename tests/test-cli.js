@@ -993,6 +993,13 @@ async function main() {
         } catch (error) {
           console.log('⚠️  WAD tests not available:', error.message);
         }
+        console.log('🧱 Running WAD Physics Tests...');
+        try {
+          const { runWadPhysicsTests } = await import('./test-wad-physics.js');
+          results.push(await runWadPhysicsTests());
+        } catch (error) {
+          console.log('⚠️  WAD physics tests not available:', error.message);
+        }
         break;
 
       case 'cli':
@@ -1109,6 +1116,14 @@ async function main() {
           results.push(await runWadTests());
         } catch (error) {
           console.log('⚠️  WAD tests not available:', error.message);
+        }
+
+        console.log('\n🧱 WAD Physics Tests:');
+        try {
+          const { runWadPhysicsTests } = await import('./test-wad-physics.js');
+          results.push(await runWadPhysicsTests());
+        } catch (error) {
+          console.log('⚠️  WAD physics tests not available:', error.message);
         }
 
         console.log('\n🔟 Manifest System Tests:');

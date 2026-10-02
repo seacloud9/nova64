@@ -11,7 +11,7 @@
 // Works whether invoked from Windows node or from WSL (it creates a Windows
 // junction via cmd.exe and launches the Windows Godot binary either way).
 
-import { existsSync, symlinkSync } from 'node:fs';
+import { existsSync, readFileSync, symlinkSync } from 'node:fs';
 import { execSync, spawn } from 'node:child_process';
 import path from 'node:path';
 
@@ -41,12 +41,30 @@ const toWin = (p) =>
     ? p.replace(/^\/mnt\/([a-z])\//, (_, d) => `${d.toUpperCase()}:\\`).replace(/\//g, '\\')
     : p;
 
+// Only WSL needs the cmd.exe detour: there the Godot that opens the project is a
+// *Windows* binary, which does not follow Linux symlinks. On macOS and native
+// Linux the engine is native and an ordinary symlink is both enough and the only
+// thing available — `cmd.exe` does not exist there, so assuming "not win32 means
+// WSL" made `pnpm godot <cart>` fail outright on those platforms.
+const isWsl =
+  process.platform === 'linux' &&
+  (!!process.env.WSL_DISTRO_NAME ||
+    (() => {
+      try {
+        return /microsoft/i.test(readFileSync('/proc/version', 'utf8'));
+      } catch {
+        return false;
+      }
+    })());
+
 if (!existsSync(link)) {
   if (process.platform === 'win32') {
     symlinkSync(cartSrc, link, 'junction');
-  } else {
-    // WSL: make a *Windows* junction so the Windows Godot can follow it.
+  } else if (isWsl) {
+    // Make a *Windows* junction so the Windows Godot can follow it.
     execSync(`cmd.exe /c mklink /J "${toWin(link)}" "${toWin(cartSrc)}"`, { stdio: 'inherit' });
+  } else {
+    symlinkSync(cartSrc, link);
   }
   console.log(`✓ linked carts/${cart} → examples/${cart}`);
 } else {

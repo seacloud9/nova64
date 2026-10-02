@@ -6,7 +6,7 @@
 
 🌐 **Live Site:** [starcade9.github.io](https://starcade9.github.io/)
 
-[![Version](https://img.shields.io/badge/version-0.5.2-blue.svg)](https://github.com/seacloud9/nova64)
+[![Version](https://img.shields.io/badge/version-0.5.3-blue.svg)](https://github.com/seacloud9/nova64)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Tests](https://img.shields.io/badge/tests-passing-brightgreen.svg)](tests/)
 [![Build](https://img.shields.io/badge/build-passing-brightgreen.svg)](#)
@@ -119,6 +119,18 @@ sub-plans.
   plus `setInstanceTransform` / `setInstancePosition` for instanced
   meshes — HUDs in f-zero / star-fox / space-harrier render correctly
   under Godot.
+- **Shim parity gated in CI**: the cart-facing shim
+  (`nova64-godot/godot_project/shim/nova64-compat.js`) is a
+  hand-maintained second copy of the runtime, so it drifts silently.
+  `pnpm test:godot:parity` converts real FreeDoom maps through both
+  implementations and fails on any difference in walls, collider,
+  floor heights or reachability, plus the light and material
+  mappings. It runs inside `pnpm test` and needs no Godot install.
+  The semantics that are easy to invert — directional lights take a
+  *position*, `createMaterial(kind)` names a Three.js material class,
+  and WAD collision comes from the segment collider rather than
+  `colSegs` — are written up in
+  [docs/GODOT_PARITY.md](docs/GODOT_PARITY.md).
 - **Build**: run
   `cd nova64-godot/gdextension && scons platform=linux target=template_debug`
   (and the matching Windows MinGW invocation).
@@ -127,6 +139,17 @@ sub-plans.
   `powershell -File nova64-godot/scripts/run-cart-smoke.ps1 <cart-name>`
   for each cart for 300 frames against the conformance
   harness.
+- **Cross-host spot-check**: `pnpm visual:check` screenshots every
+  mirrored cart on both hosts into a side-by-side contact sheet at
+  `tmp/visual-check/index.html`, and reports `NOT-STARTED` rather than
+  handing back a picture of a cart that never began. Engine discovery
+  for every Godot tool goes through `scripts/lib/godot-binary.mjs`
+  (`--godot=`, then `$GODOT`, then known 4.5/4.4.1 installs, then
+  `PATH`).
+- **Playtesting and footage**: the `godot-game-tester` and
+  `godot-trailer-maker` skills drive a native build, record a
+  scripted pass, and cut review-ready MP4s — see
+  [docs/GODOT_PLAYTEST_AND_TRAILER_WORKFLOW.md](docs/GODOT_PLAYTEST_AND_TRAILER_WORKFLOW.md).
 
 ### Improving Godot WAD rendering (without regressing voxels)
 
@@ -145,7 +168,17 @@ items:
   tables) to match the browser renderer.
 - Make the start-screen map picker scroll past its current 7-entry
   window and surface `MAPINFO` / `UMAPINFO` map names when available.
-- Add a Godot `wad-demo` capture to `pnpm godot:visual`.
+- Add a Godot `wad-demo` capture to `pnpm godot:visual` (`wad-demo` is
+  already covered by `pnpm visual:check`, which is a spot-check rather
+  than a thresholded gate).
+
+Already landed: level **physics** are at parity — the segment collider,
+per-frame `getFloorHeight()`/`getCeilingHeight()` lookups and
+`buildReachability()` are ported into the shim verbatim and pinned by
+`pnpm test:godot:parity`. Lighting and material-kind mapping were fixed
+with it, lifting mean E1M1 scene luminance from 0.24× to 0.79× of the web
+reference; the remaining gap is a Three.js/Godot lighting-model
+difference rather than a shim defect.
 
 > ⚠️ **Non-regression rule**: any shared adapter, atlas, sampler, or
 > fog/frustum change made to improve WAD rendering **must not degrade
@@ -155,6 +188,37 @@ items:
 > change, run `pnpm godot:visual minecraft-demo` and a
 > `voxel-creative` / `voxel-terrain` smoke and confirm no parity
 > drift.
+
+## Desktop App & VS Code Extension
+
+Nova64 ships a standalone **Electron desktop app** and a **VS Code
+extension**. Both are thin hosts over the same host-neutral packages, so the
+AI/agent logic lives once:
+
+```bash
+node bin/nova64.js desktop dev        # Electron app (Dev workspace + OS shell + AI agent)
+cd extensions/vscode && pnpm build    # VS Code extension -> dist/extension.js (then F5 in VS Code)
+```
+
+- **`apps/desktop/`** — the OS9 shell plus a Dev workspace: Monaco editor with
+  generated Nova64 API completions, sandboxed cart preview, dropdown menu bar,
+  and an AI agent with approval cards, diff previews, run history, mid-run
+  cancel and an accept-edits mode. See
+  [apps/desktop/README.md](apps/desktop/README.md).
+- **`extensions/vscode/`** — AI chat on the shared seam, with an agent tool loop
+  over `vscode.workspace.fs`; packageable as a `.vsix`. See
+  [extensions/vscode/README.md](extensions/vscode/README.md).
+- **`packages/`** — host-neutral and dependency-free of React/Electron/VS Code:
+  `agent-core` (modes, tools, approval, `ToolRunner`, tool-call protocol —
+  [README](packages/agent-core/README.md)), `ai-providers` (multi-provider LLM
+  streaming), `workspace-core` (file-tree + tab model), `app-contracts` (studio
+  protocol types). Each carries its own tests.
+
+These trees are a pnpm workspace (`pnpm-workspace.yaml`); `os9-shell/` is
+deliberately excluded and keeps its own independent install/build. The program
+plan is [plans/NOVA64_DESKTOP_VSCODE_PLAN.md](plans/NOVA64_DESKTOP_VSCODE_PLAN.md).
+
+---
 
 ## Babylon.js WAD Visual Parity
 
@@ -174,6 +238,67 @@ items:
 - **Deterministic Galaxy Showcase**: The first `tsl-showcase` scene now uses seeded star placement so Babylon.js and Three.js screenshots compare the same galaxy layout
 - **High-Strength Bloom Mapping**: Babylon bloom parameters now better match Three.js for high-glow shader carts without forcing low-strength PBR scenes into the same over-bright path
 - **Focused Guardrail**: `tests/playwright/visual-regression.spec.js` includes a `tsl-showcase` Galaxy scene comparison so future shader/post-processing changes have a narrow parity check
+
+---
+
+## 🌟 **Recent Updates (v0.5.3)**
+
+### 🌐 **Metaverse — Shared 3D World**
+
+- Phase 1 shared world on `nova64.net`: pluggable render backend, UI components,
+  plugins, and chat, with an ES module loader plus native Godot text chat
+  (`nova64.gdtext`) so web ↔ Godot players share a room
+- **Auth**: Supabase auth, wallet sign-in (EVM SIWE / EIP-4361), and
+  `nova64.auth` identity wiring behind a unit-tested `verifyToken` gate
+- **Multiplayer**: presence with name tags, join/leave toasts and distance fade;
+  live roster; `/nick` rename with persistence; avatar colour sync; a hardened
+  relay (payload cap + per-client rate limit); WebRTC push-to-talk voice
+
+### 📦 **Distribution & Release Pipeline**
+
+- **Lemon Squeezy**: one-command unified export (`pnpm release:lemon`) bundling
+  desktop apps, RetroArch cores and Godot source into a single upload zip
+- iOS/iPadOS (arm64) and tvOS RetroArch cores now build in CI
+- `pnpm release` is a one-shot validate → bump → commit → tag that never pushes;
+  a pre-push preflight gets CI green before GitHub, npm publish waits on every
+  platform core, and a secure-commit hook blocks staged secrets
+
+### 🖥️ **Desktop & VS Code Platform**
+
+- Electron desktop app and VS Code extension over shared host-neutral
+  `packages/` — see [Desktop App & VS Code Extension](#desktop-app--vs-code-extension)
+
+### 📱 **Mobile & Touch**
+
+- **On-screen touch gamepad** for phones and tablets, automatic on touch devices
+  and invisible to cart code ([docs/TOUCH_CONTROLS.md](docs/TOUCH_CONTROLS.md))
+- Godot multi-touch (`nova64.input.touches()`), portrait rotate gate, and
+  mobile-tappable boot prompts
+- Cinematic `the-last-save-file` cart with `cls3D` / `glitchBurst` helpers and a
+  real screen-shader glitch (`fx.glitch`)
+
+### 🦖 **Godot Host Parity**
+
+- WAD level physics, directional-light orientation and material-kind mapping
+  brought to parity with the web runtime and pinned by `pnpm test:godot:parity`
+  inside `pnpm test` ([docs/GODOT_PARITY.md](docs/GODOT_PARITY.md))
+- `pnpm visual:check` contact sheet across both hosts; shared Godot engine
+  resolver; `godot-game-tester` / `godot-trailer-maker` skills
+
+### ⚛️ **WAD Level Physics**
+
+- Collision now comes from the exact linedef segments instead of a rasterised
+  point cloud, which had inflated every wall to ~3.6 units and sealed standard
+  64-unit DOOM doorways shut — on E1M1 only 1 of 53 enemies was reachable
+- Per-frame `getFloorHeight()` / `getCeilingHeight()` sector lookups, so stairs,
+  ledges and pits work, plus `buildReachability()` to flood-fill from the spawn
+
+### 🖱️ **OS9 Shell**
+
+- Maximized windows fill their stage instead of double-offsetting the menu-bar
+  and control-strip chrome
+- `pnpm osBuildServe` builds the shell once and syncs the fresh bundle into
+  every served copy, so a fix cannot land in only one of them
 
 ---
 
@@ -417,6 +542,8 @@ pnpm dev
 nova64 init [name]               # Scaffold a new project (prompts if name omitted)
 nova64 template [name]           # Pick from 60+ example templates
 nova64 dev                       # Start dev server for the current project
+nova64 desktop dev               # Launch the standalone desktop app (Electron)
+nova64 desktop build             # Stage assets so the desktop app runs serverless (--dir)
 nova64 --start-demo              # Launch console with all demos (requires build)
 nova64 --help                    # Show all options
 ```
@@ -457,7 +584,7 @@ pnpm run retroarch:validate      # Conformance + Make + debug + SCons checks
 pnpm run retroarch:clean         # Remove generated RetroArch build outputs
 ```
 
-See [retroarch/README_RETROARCH.md](retroarch/README_RETROARCH.md) and
+See [retroarch/README.md](retroarch/README.md) and
 [retroarch/RETROARCH_CORE_PLAN.md](retroarch/RETROARCH_CORE_PLAN.md) for the
 current milestone plan.
 
@@ -493,6 +620,7 @@ nova64/
 │   ├── api-generative.js    # Generative art utilities
 │   ├── api-presets.js       # Preset configurations
 │   ├── input.js             # Input system (WASD, gamepad, mouse, touch)
+│   ├── touch-controls.js    # On-screen gamepad for phones/tablets (drives input.setKeyState)
 │   ├── audio.js             # Spatial 3D audio system
 │   ├── physics.js           # Physics with AABB collision and gravity
 │   ├── collision.js         # Raycasting and spatial partitioning
@@ -513,7 +641,19 @@ nova64/
 │       ├── i18n.ts          # Internationalization (EN/ES/JA)
 │       ├── os/              # OS-level services and state
 │       └── theme/           # Retro Mac OS 9 styling
-├── examples/                # 47 Demo Carts
+├── packages/                # Host-neutral shared packages (pnpm workspace)
+│   ├── agent-core/          # Agent modes, tools, approval, ToolRunner, tool-call protocol
+│   ├── ai-providers/        # Multi-provider LLM streaming
+│   ├── workspace-core/      # File-tree + tab model
+│   └── app-contracts/       # Studio protocol types
+├── apps/desktop/            # Standalone Electron app (OS shell + Dev workspace + AI agent)
+├── extensions/vscode/       # VS Code extension on the same shared seam
+├── nova64-godot/            # Godot 4.x native host (GDExtension + QuickJS) and its harnesses
+├── retroarch/               # Native libretro core (QuickJS, no browser engine)
+├── server/                  # Metaverse relay / auth server
+├── scripts/                 # Build, release, sync, and parity tooling
+│   └── lib/godot-binary.mjs # Shared Godot engine resolver used by every Godot script
+├── examples/                # 85 Demo Carts
 │   ├── minecraft-demo/      # Voxel world with mining and building
 │   ├── star-fox-nova-3d/    # Space combat with squadron battles
 │   ├── f-zero-nova-3d/      # High-speed futuristic racing
@@ -522,8 +662,9 @@ nova64/
 │   ├── wizardry-3d/         # Classic RPG dungeon crawler
 │   ├── wing-commander-space/# Space flight sim
 │   ├── super-plumber-64/    # 3D platformer
-│   └── ...                  # 39 more demos
+│   └── ...                  # 77 more demos
 ├── docs/                    # API documentation (HTML & Markdown)
+├── plans/                   # Active program plans and handoffs
 └── tests/                   # Test suites
 ```
 
@@ -632,6 +773,28 @@ btnp(index); // Gamepad button just pressed
 mouseButton(index); // Mouse button state
 ```
 
+**On-screen touch gamepad** — phones and tablets get a d-pad and action buttons
+automatically, with **no cart changes required**. The controls drive the same
+`input.setKeyState()` path the keyboard listeners use, so a touch press is
+indistinguishable from a key press to cart code: `key()` reports it held,
+`keyp()` sees the edge, and diagonals hold two directions at once.
+
+```javascript
+// Config: a single global, read before the runtime boots.
+window.NOVA64_TOUCH_CONTROLS = 'auto'; // default — touch devices only
+window.NOVA64_TOUCH_CONTROLS = true; //  force on, even on desktop
+window.NOVA64_TOUCH_CONTROLS = false; // never mount
+
+// Or at runtime:
+nova64.touch.setTouchControlsEnabled(true);
+nova64.touch.isTouchDevice(); // coarse pointer + touch points
+nova64.touch.getTouchControls(); // live handle (show/hide/toggle/destroy), or null
+```
+
+Full reference — key map, device detection, safe-area layout, the HIDE/SHOW
+toggle — in [docs/TOUCH_CONTROLS.md](docs/TOUCH_CONTROLS.md). Covered by
+`pnpm test:touch`.
+
 ### 🎨 **2D Overlay**
 
 ```javascript
@@ -716,7 +879,7 @@ setCollisionMap(fn);
 
 ---
 
-## 🎪 **Demo Gallery** (71 Carts)
+## 🎪 **Demo Gallery** (85 carts, 71 pictured)
 
 <div align="center">
   <a href="https://starcade9.github.io/console.html?demo=3d-advanced" title="3d Advanced">
@@ -939,12 +1102,30 @@ setCollisionMap(fn);
 ## 🧪 **Testing**
 
 ```bash
-pnpm test                # Run all tests
+pnpm test                # Full gate: color, studio protocol, demoscene, CLI,
+                         # Godot shim parity, dist-sync check (~17s)
+pnpm test:quick          # Fast everyday smoke (~2.5s)
 pnpm test:api            # 3D API functions
 pnpm test:input          # Input system
+pnpm test:touch          # On-screen touch gamepad (Playwright)
 pnpm test:starfox        # Star Fox demo validation
 pnpm test:integration    # Integration tests
+pnpm test:wad            # WAD runtime + level physics
+pnpm test:wad:physics    # Just the WAD physics regressions
+pnpm test:godot:parity   # Godot shim vs. web runtime (no Godot install needed)
 pnpm run retroarch:test  # RetroArch native conformance harness
+```
+
+**Cross-host spot-check.** `pnpm visual:check` screenshots every mirrored cart on
+*both* the web runtime and the Godot host and writes a side-by-side contact sheet
+to `tmp/visual-check/index.html`. It is not a pass/fail gate — the two hosts do
+not render identically — but it refuses to hand back a screenshot of a cart that
+never started. See [docs/GODOT_PARITY.md](docs/GODOT_PARITY.md).
+
+```bash
+pnpm visual:check                  # both hosts, every mirrored cart
+pnpm visual:check --cart=wad-demo  # one cart (repeatable)
+pnpm visual:check --list           # print the cart list and exit
 ```
 
 ---
@@ -965,7 +1146,19 @@ MIT — see `LICENSE` for details.
 
 ## Version History
 
-### v0.5.2 (Current) — _Hippie Sunshine_
+### v0.5.3 (Current)
+
+- **Metaverse**: Phase 1 shared world on `nova64.net` — extensible framework, ES module loader, native Godot text chat (`nova64.gdtext`) for web ↔ Godot cross-play
+- **Auth & multiplayer**: Supabase auth, EVM wallet sign-in (SIWE / EIP-4361), presence + live roster + `/nick`, hardened relay, WebRTC push-to-talk voice
+- **Lemon Squeezy distribution**: `pnpm release:lemon` unified export (desktop apps + RetroArch cores + Godot source); iOS/iPadOS and tvOS cores in CI
+- **Desktop & VS Code platform**: Electron app and VS Code extension over host-neutral `packages/` (`agent-core`, `ai-providers`, `workspace-core`, `app-contracts`)
+- **Touch controls**: automatic on-screen gamepad for phones/tablets via `runtime/touch-controls.js`, driving the same key-state path as the keyboard
+- **WAD level physics**: segment collider + per-frame floor/ceiling heights + `buildReachability()`, replacing the point cloud that sealed DOOM doorways
+- **Godot shim parity**: light orientation, material kinds and WAD geometry re-ported and gated by `pnpm test:godot:parity`; `pnpm visual:check` cross-host contact sheet
+- **Release safety**: one-shot `pnpm release`, pre-push preflight, secret-blocking commit hook
+- **os9-shell**: maximized-window fill fix and `pnpm osBuildServe` single-source build+serve
+
+### v0.5.2 — _Hippie Sunshine_
 
 - **RetroArch `parseCanvasUI` extensions**: `<image>` tags, text effects, quadratic / smooth cubic paths, SVG arcs, group clipping, advanced cube transparency, font families
 - **Controller face-key bridge**: RetroPad face buttons → DOM-style `KeyZ`/`KeyX`/`KeyC`/`KeyV`, SELECT → `KeyI`/`Tab`

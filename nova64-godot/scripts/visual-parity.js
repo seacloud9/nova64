@@ -11,6 +11,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
+import {
+  checkGodot,
+  resolveGodotBinary,
+  toGodotHostPath as toHostPath,
+} from '../../scripts/lib/godot-binary.mjs';
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const GODOT_ROOT = path.resolve(SCRIPT_DIR, '..');
@@ -22,74 +27,6 @@ const RESULTS = path.join(GODOT_ROOT, 'test-results', 'visual-parity');
 const BROWSER_DIR = path.join(RESULTS, 'browser');
 const GODOT_DIR = path.join(RESULTS, 'godot');
 const DIFF_DIR = path.join(RESULTS, 'diff');
-
-// Locate a Godot 4.4+ binary across Linux / WSL / Windows. The smoke runner
-// hard-codes the Windows install path; mirror that here and translate to
-// /mnt/c/... when we're running inside WSL so `pnpm godot:visual` works
-// without the caller setting GODOT manually.
-function isWsl() {
-  if (process.platform !== 'linux') return false;
-  try {
-    const release = fs.readFileSync('/proc/version', 'utf8');
-    return /microsoft/i.test(release);
-  } catch {
-    return false;
-  }
-}
-
-function existsExecutable(p) {
-  try {
-    fs.accessSync(p, fs.constants.X_OK);
-    return true;
-  } catch {
-    try {
-      fs.accessSync(p, fs.constants.F_OK);
-      return true;
-    } catch {
-      return false;
-    }
-  }
-}
-
-function resolveGodotBinary() {
-  // 1. Honor anything already on PATH.
-  const which = spawnSync(process.platform === 'win32' ? 'where' : 'which', ['godot'], {
-    encoding: 'utf8',
-  });
-  if (which.status === 0) {
-    const first = (which.stdout || '').split(/\r?\n/).find(Boolean);
-    if (first) return first.trim();
-  }
-  const which4 = spawnSync(process.platform === 'win32' ? 'where' : 'which', ['godot4'], {
-    encoding: 'utf8',
-  });
-  if (which4.status === 0) {
-    const first = (which4.stdout || '').split(/\r?\n/).find(Boolean);
-    if (first) return first.trim();
-  }
-
-  // 2. Standard Windows install used by run-cart-smoke.ps1.
-  const winCandidates = [
-    'C:\\Program Files\\Godot_v4.4.1-stable_win64.exe\\Godot_v4.4.1-stable_win64_console.exe',
-    'C:\\Program Files\\Godot_v4.4.1-stable_win64.exe\\Godot_v4.4.1-stable_win64.exe',
-    'C:\\Program Files\\Godot\\Godot_v4.4.1-stable_win64_console.exe',
-    'C:\\Program Files\\Godot\\Godot_v4.4.1-stable_win64.exe',
-  ];
-
-  if (process.platform === 'win32') {
-    for (const c of winCandidates) {
-      if (existsExecutable(c)) return c;
-    }
-  } else if (isWsl()) {
-    for (const c of winCandidates) {
-      const wsl = '/mnt/' + c[0].toLowerCase() + c.slice(2).replace(/\\/g, '/');
-      if (existsExecutable(wsl)) return wsl;
-    }
-  }
-
-  // 3. Last-resort fallback — let checkGodot() produce a clear error.
-  return 'godot';
-}
 
 function parseArgs(argv) {
   const out = {
@@ -244,32 +181,6 @@ function syncCarts() {
   }
 }
 
-function checkGodot(godotBin) {
-  const result = spawnSync(godotBin, ['--version'], { encoding: 'utf8' });
-  if (result.error?.code === 'ENOENT') {
-    throw new Error(
-      `Godot executable not found: ${godotBin}\nSet GODOT=/path/to/Godot_4.4+ or pass --godot=/path/to/godot.`
-    );
-  }
-  if (result.status !== 0) {
-    throw new Error(`Godot probe failed:\n${result.stdout}\n${result.stderr}`);
-  }
-  return (result.stdout || result.stderr || '').trim();
-}
-
-function isWindowsExecutableFromWsl(exePath) {
-  return process.platform === 'linux' && exePath.toLowerCase().endsWith('.exe');
-}
-
-function toGodotHostPath(filePath, opts) {
-  if (!isWindowsExecutableFromWsl(opts.godot)) return filePath;
-  const result = spawnSync('wslpath', ['-w', filePath], { encoding: 'utf8' });
-  if (result.status !== 0) {
-    throw new Error(`wslpath failed for ${filePath}:\n${result.stderr}`);
-  }
-  return result.stdout.trim();
-}
-
 async function captureBrowserCart(browser, cart, opts) {
   const context = await browser.newContext({
     deviceScaleFactor: 1,
@@ -317,8 +228,8 @@ async function captureBrowserCart(browser, cart, opts) {
 
 function captureGodotCart(cart, opts) {
   const outPath = path.join(GODOT_DIR, `${cart}.png`);
-  const godotProjectPath = toGodotHostPath(GODOT_PROJECT, opts);
-  const godotOutPath = toGodotHostPath(outPath, opts);
+  const godotProjectPath = toHostPath(GODOT_PROJECT, opts.godot);
+  const godotOutPath = toHostPath(outPath, opts.godot);
   const args = [
     ...(opts.godotHeadless ? ['--headless'] : []),
     '--path',

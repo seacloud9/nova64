@@ -117,10 +117,12 @@ export async function runWadTests() {
         source.includes('drawProgressBar, print, printCentered'),
         'wad-demo must bind nova64.draw.print so browser window.print is never called'
       );
+      // Matched with a regex rather than exact substrings: Prettier reflows the
+      // listener's arguments onto separate lines as the handler body grows, so a
+      // literal '}, true);' check breaks on a pure reformat.
       assert(
         source.includes('canUseEventTarget(window)') &&
-          source.includes("keyTarget.addEventListener('keydown'") &&
-          source.includes('}, true);'),
+          /keyTarget\.addEventListener\(\s*'keydown'[\s\S]*?,\s*true\s*\)/.test(source),
         'wad-demo must guard browser keydown capture before using window.addEventListener'
       );
       assert(source.includes("e.code === 'Enter' && !e.repeat"), 'wad-demo must ignore repeated Enter');

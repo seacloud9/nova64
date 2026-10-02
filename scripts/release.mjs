@@ -21,6 +21,17 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PKG = path.join(ROOT, 'package.json');
+
+// Every file that states the version. package.json is the source of truth; the
+// rest are human-facing badges that silently went stale because nothing stamped
+// them — docs/index.html still said v0.4.9 four releases after v0.4.9.
+// `required: false` means a badge that has been reworded is skipped with a
+// warning rather than failing the release.
+const VERSION_FILES = [
+  { file: 'package.json', re: /("version":\s*")[^"]+(")/, required: true },
+  { file: 'README.md', re: /(\[!\[Version\]\(https:\/\/img\.shields\.io\/badge\/version-)[^-]+(-blue\.svg\)\])/, required: false },
+  { file: 'docs/index.html', re: /(<span class="version">v)[^<]+(<\/span>)/, required: false },
+];
 const argv = process.argv.slice(2);
 const DRY = argv.includes('--dry-run');
 const kind = argv.find((a) => ['patch', 'minor', 'major'].includes(a)) || 'patch';
@@ -30,20 +41,36 @@ const die = (m) => { console.error(`${c.red}✗ ${m}${c.rst}`); process.exit(1);
 const out = (cmd) => { try { return execSync(cmd, { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(); } catch { return ''; } };
 
 const meta = JSON.parse(fs.readFileSync(PKG, 'utf8'));
-const writeVersion = (v) => fs.writeFileSync(PKG, fs.readFileSync(PKG, 'utf8').replace(/("version":\s*")[^"]+(")/, `$1${v}$2`));
+const writeVersion = (v) => {
+  for (const { file, re, required } of VERSION_FILES) {
+    const abs = path.join(ROOT, file);
+    const before = fs.readFileSync(abs, 'utf8');
+    const after = before.replace(re, `$1${v}$2`);
+    if (after === before) {
+      if (required) die(`Could not stamp the version into ${file} — its version pattern changed.`);
+      console.log(`${c.yel}! ${file}: no version badge matched — skipping (update VERSION_FILES in scripts/release.mjs).${c.rst}`);
+      continue;
+    }
+    fs.writeFileSync(abs, after);
+  }
+};
+const revertVersion = () => execSync(`git checkout -- ${VERSION_FILES.map((f) => f.file).join(' ')}`, { cwd: ROOT });
 const bump = (v, k) => { const [a, b, d] = v.split('.').map(Number); return k === 'major' ? `${a + 1}.0.0` : k === 'minor' ? `${a}.${b + 1}.0` : `${a}.${b}.${d + 1}`; };
 const onNpm = (v) => out(`npm view ${meta.name}@${v} version`) === v;
 
 console.log(`${c.cyn}Nova64 release${c.rst}  ${c.dim}(${kind} bump${DRY ? ', dry-run' : ''})${c.rst}`);
 
 // Guard 1: the release commit must contain ONLY the version bump. We only ever
-// `git add package.json`, so unrelated *unstaged* changes (dist/, examples/, …)
+// `git add` the VERSION_FILES, so unrelated *unstaged* changes (dist/, examples/, …)
 // are fine and stay out of the commit. But refuse if package.json is already
 // dirty (we must own it) or if anything else is already staged (would be swept in).
 if (!DRY) {
   const staged = out('git diff --cached --name-only');
   if (staged) die(`You have staged changes — unstage or commit them first (the release commit must be only the version bump):\n${staged}`);
-  if (out('git status --porcelain -- package.json')) die('package.json has uncommitted changes — commit or discard them first.');
+  for (const { file } of VERSION_FILES) {
+    if (out(`git status --porcelain -- ${file}`))
+      die(`${file} has uncommitted changes — commit or discard them first (the release stamps the version into it).`);
+  }
   const otherDirty = out('git status --porcelain').split('\n').filter(Boolean).length;
   if (otherDirty) console.log(`${c.yel}! Note: ${otherDirty} other file(s) are modified in your working tree; they will NOT be included in the release commit.${c.rst}`);
 }
@@ -65,14 +92,14 @@ if (DRY) {
 writeVersion(next);
 console.log(`\n${c.cyn}▶ Validating the full release locally (pnpm ci:check --release)…${c.rst}`);
 if (spawnSync('node', ['scripts/ci-preflight.mjs', '--release'], { cwd: ROOT, stdio: 'inherit' }).status !== 0) {
-  execSync('git checkout -- package.json', { cwd: ROOT });
+  revertVersion();
   die('Local release validation failed — reverted the version bump. Fix the above and re-run `pnpm release`.');
 }
 
 // 2. Commit + tag (still no push).
-execSync('git add package.json', { cwd: ROOT });
+execSync(`git add ${VERSION_FILES.map((f) => f.file).join(' ')}`, { cwd: ROOT });
 if (spawnSync('git', ['commit', '-m', `chore(release): v${next}`], { cwd: ROOT, stdio: 'inherit' }).status !== 0) {
-  execSync('git checkout -- package.json', { cwd: ROOT });
+  revertVersion();
   die('Commit failed — reverted the version bump.');
 }
 execSync(`git tag v${next}`, { cwd: ROOT });

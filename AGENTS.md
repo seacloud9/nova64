@@ -116,7 +116,8 @@ pnpm test:input
 pnpm test:starfox
 pnpm test:integration
 pnpm test:voxel
-pnpm test:wad
+pnpm test:wad          # WAD runtime + physics (collider, floor heights, map traversability)
+pnpm test:wad:physics  # just the physics regressions
 pnpm test:resize
 pnpm test:cli
 pnpm test:all
@@ -367,6 +368,13 @@ Core runtime:
 - `runtime/editor.js`
 - `runtime/font.js`
 - `runtime/input.js`
+- `runtime/touch-controls.js` — on-screen gamepad for phones/tablets. Drives
+  `input.setKeyState()`, the same entry point the keyboard listeners use, so a
+  touch press is indistinguishable from a key press (holding, simultaneous
+  presses and `keyp()` edges all work) and carts need no touch code. Enabled by
+  the single global `NOVA64_TOUCH_CONTROLS` (`'auto'` by default = touch devices
+  only; `true`/`false` force it). Full reference, including the key map and the
+  visibility toggle, in `docs/TOUCH_CONTROLS.md`; `pnpm test:touch` covers it.
 - `runtime/logger.js`
 - `runtime/manifest.js`
 - `runtime/namespace.js`
@@ -390,7 +398,46 @@ Media and assets:
 
 - `runtime/assets.js`
 - `runtime/asset-loader.js`
-- `runtime/wad.js`
+- `runtime/wad.js` — WAD parsing plus level physics. Carts must take collision from
+  `convertWADMap(...).collider` (or `.explorerCollider`) and read floor heights from
+  `getFloorHeight(x, z)` **every frame**; the legacy `colSegs` point cloud is kept only
+  for back-compat and seals DOOM doorways shut if used for collision. Call
+  `buildReachability(collider, playerStart)` before requiring the player to reach
+  anything — doors, switches and teleporters are not simulated, so parts of a real map
+  are unreachable and a "kill everything" win condition would deadlock there.
+
+  **This file is dual-copied.** `nova64-godot/godot_project/shim/nova64-compat.js`
+  carries its own copy of the WAD geometry for the Godot/QuickJS host, so a change
+  here that is not re-ported there makes the same cart render a different level —
+  or crash — under Godot. `pnpm test:godot:parity` converts real FreeDoom maps
+  through both implementations and fails on any difference in walls, collider,
+  floor heights or reachability. It runs as part of `pnpm test`, so CI blocks the
+  drift; if it fails, re-port the geometry into the shim rather than relaxing the
+  test. Note the shim answers unknown `nova64.*` members with silent no-op stubs,
+  so a missing function reads as "present but useless" — never trust a `typeof
+  x === 'function'` check there.
+
+  **Directional lights take a POSITION, not a direction.** The web backend
+  (`runtime/backends/threejs/camera.js`) stores the vector from
+  `setDirectionalLight(v, …)` / `setLightDirection(x, y, z)` as the
+  `THREE.DirectionalLight`'s *position* and aims it at the origin, so the light
+  travels along `-v`. Any backend that reads the vector as a direction of travel
+  inverts every light: exteriors get brighter and interiors go black. The Godot
+  shim had this inverted, which is why `examples/wad-demo`'s DOOM levels rendered
+  almost black there. `pnpm test:godot:parity` pins the behaviour by recovering
+  the light's travel direction from the Euler angles the shim sends.
+
+  **`createMaterial(kind, …)` names a three.js material class.** `'basic'` is
+  MeshBasicMaterial (unshaded), `'phong'`/`'lambert'` are plain diffuse, and only
+  `'standard'`/`'physical'` are PBR. A backend that runs them all through PBR
+  defaults (metallic 0.05 / roughness 0.6) renders the non-PBR ones far too dark;
+  in the Godot shim this put `examples/wad-demo` at a quarter of the web's
+  brightness. `'basic'` maps to unshaded and `'phong'`/`'lambert'` to
+  metallic 0 / roughness 1, and an explicit `metallic`/`roughness` in the options
+  always wins. Changing these defaults is only safe because `'phong'`/`'basic'`
+  are rare (wad-demo, fps-demo-3d, particles-demo) while `'standard'`/`'emissive'`
+  — used by nearly every other cart — are deliberately left alone; the parity
+  suite asserts that.
 
 Advanced systems:
 

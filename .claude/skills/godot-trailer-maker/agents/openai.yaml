@@ -1,0 +1,4 @@
+interface:
+  display_name: "Godot Trailer Maker"
+  short_description: "Create and validate Godot gameplay trailers"
+  default_prompt: "Use $godot-trailer-maker to turn these gameplay recordings into a concise, verified trailer."

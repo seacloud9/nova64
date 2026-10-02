@@ -10,7 +10,16 @@ packages:
   - 'apps/*'
   - 'extensions/*'
 
-# Allow Electron's postinstall (downloads the platform binary). pnpm v10 blocks
-# build scripts by default; the desktop app cannot launch without this.
-onlyBuiltDependencies:
-  - electron
+# Dependencies allowed to run install scripts. pnpm blocks these by default.
+# The field is `allowBuilds` as of pnpm 11; it replaced `onlyBuiltDependencies`,
+# which pnpm 11 no longer honours here. Leaving the old key meant a fresh
+# `pnpm install` failed with ERR_PNPM_IGNORED_BUILDS and took `pnpm test` down
+# with it, because the deps-status check runs install first.
+#   electron         — postinstall downloads the platform binary; the desktop
+#                      app cannot launch without it.
+#   esbuild          — postinstall installs the platform binary Vite builds on.
+#   msgpackr-extract — optional native accelerator for the Colyseus client.
+allowBuilds:
+  electron: true
+  esbuild: true
+  msgpackr-extract: true

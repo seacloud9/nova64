@@ -14,6 +14,7 @@ import { textInputApi } from '../runtime/textinput.js';
 import { aabb, circle as circleCollision, raycastTilemap } from '../runtime/collision.js';
 import { audioApi } from '../runtime/audio.js';
 import { inputApi } from '../runtime/input.js';
+import { initTouchControls, touchApi } from '../runtime/touch-controls.js';
 import { storageApi } from '../runtime/storage.js';
 import { screenApi } from '../runtime/screens.js';
 import { skyboxApi } from '../runtime/api-skybox.js';
@@ -193,6 +194,7 @@ tApi.exposeTo(nova64api);
 Object.assign(nova64api, { aabb, circleCollision, raycastTilemap });
 aApi.exposeTo(nova64api);
 iApi.exposeTo(nova64api);
+touchApi().exposeTo(nova64api);
 stApi.exposeTo(nova64api);
 scrApi.exposeTo(nova64api);
 skyApi.exposeTo(nova64api);
@@ -273,6 +275,11 @@ if (nova64api.getCamera) sApi.setCameraRef(nova64api.getCamera());
 const nova = new Nova64(gpu, manifestInst);
 globalThis.NOVA64_VERSION = NOVA64_VERSION;
 globalThis.__nova64Runtime = nova;
+
+// On-screen gamepad for phones and tablets. Mounts only when
+// NOVA64_TOUCH_CONTROLS says so — 'auto' (the default) means touch devices
+// only, so desktop is untouched. See docs/TOUCH_CONTROLS.md.
+globalThis.__nova64TouchControls = initTouchControls();
 globalThis.__nova64CartLoadState = {
   path: '',
   count: 0,

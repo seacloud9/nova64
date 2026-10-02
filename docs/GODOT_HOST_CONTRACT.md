@@ -411,6 +411,14 @@ the Three.js browser backend.
 
 ## Known Divergences from Browser Backends
 
+The cart-facing shim is a hand-maintained second copy of `runtime/`, so it can also
+diverge by accident. The semantics that are easy to invert — directional-light
+orientation, `createMaterial(kind)` shading models, and WAD collision geometry — and
+the `pnpm test:godot:parity` gate that pins them are documented in
+[GODOT_PARITY.md](GODOT_PARITY.md).
+
+The deliberate divergences:
+
 - **Pointer lock / mouse look** — Godot captures the cursor via
   `Input.mouse_mode = MOUSE_MODE_CAPTURED`. The shim translates this but
   raw mouse delta comes from Godot `InputEventMouseMotion`, not browser
@@ -456,6 +464,7 @@ Common error codes:
 
 | File | Purpose |
 |------|---------|
+| `nova64-godot/godot_project/shim/nova64-compat.js` | Cart-facing `nova64.*` API for the QuickJS host (hand-ported from `runtime/`) |
 | `nova64-godot/gdextension/src/bridge.cpp` | `call_bridge` dispatch and all `_cmd_*` implementations |
 | `nova64-godot/gdextension/src/bridge.h` | `Nova64Host` class declaration, lifecycle method signatures |
 | `nova64-godot/gdextension/src/handles.cpp` | `HandleTable` — allocates and type-checks all opaque handles |

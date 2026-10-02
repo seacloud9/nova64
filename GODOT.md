@@ -414,6 +414,9 @@ Explicitly **not** part of the bridge MVP:
 
 ## Cross-References
 
+- `docs/GODOT_HOST_CONTRACT.md` — the implemented bridge command surface and capability matrix
+- `docs/GODOT_PARITY.md` — keeping the hand-maintained cart shim in step with `runtime/`, and the parity/spot-check commands
+- `docs/GODOT_PLAYTEST_AND_TRAILER_WORKFLOW.md` — recording and editing native gameplay footage
 - `ROADMAP.md` — Phase 3 (Godot) and Phase 4 (Unity) high-level plan
 - `docs/UNITY_BRIDGE_ARCHITECTURE.md` — boundary principles shared with this plan
 - `docs/ADAPTER_CONTRACT.md` — adapter surface every backend must implement

@@ -6,9 +6,20 @@ Nova64 for VS Code (Phase 6). Reuses the host-neutral
 seam** the [Electron desktop app](../../apps/desktop/README.md) uses — so provider
 profiles and agent modes behave identically across both hosts.
 
-This first cut delivers a **streaming AI chat panel**. The agent tool loop
-(read / edit / run over `vscode.workspace.fs`, driving `agent-core`'s `ToolRunner`
-with the same approval policy) is the documented follow-up.
+A **streaming AI chat panel** with the full **agent tool loop**. In **Edit/Agent**
+mode the model reads, searches, and edits your workspace via `agent-core`'s
+`ToolRunner` over `vscode.workspace.fs` — the **same tools + per-mode gating +
+approval policy** as the desktop:
+
+| Tool | Modes | Approval |
+| --- | --- | --- |
+| `read_file` · `list_dir` · `search_text` | plan · edit · agent | free |
+| `write_file` · `create_dir` · `move_path` | edit · agent | native modal |
+| `delete_path` | agent | native modal (moves to Trash) |
+
+The whole loop runs in the **extension host** (which bundles `agent-core`), so the
+webview is just chat display + input; mutating tools prompt a native VS Code
+approval modal. Paths are containment-guarded to the first workspace folder.
 
 ## Commands
 

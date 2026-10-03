@@ -3,7 +3,7 @@
  * can serve a fully self-contained console experience.
  * Also validates that all HTML files with <script type="module"> have proper import maps.
  */
-import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync } from 'fs';
+import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync } from 'fs';
 import { resolve, dirname, relative } from 'path';
 import { fileURLToPath } from 'url';
 
@@ -19,7 +19,11 @@ function copyDir(src, destName) {
     return;
   }
   mkdirSync(destPath, { recursive: true });
-  cpSync(srcPath, destPath, { recursive: true });
+  cpSync(srcPath, destPath, {
+    recursive: true,
+    filter: source =>
+      !/^docs\/LEMONSQUEEZY_SELLING\.(md|html)$/.test(relative(root, source).replace(/\\/g, '/')),
+  });
   console.log(`  ✓ ${src}/ → dist/${destName}/`);
 }
 
@@ -27,6 +31,10 @@ console.log('📦 Nova64 post-build: copying assets into dist/');
 copyDir('runtime', 'runtime');
 copyDir('examples', 'examples');
 copyDir('docs', 'docs');
+// Also remove stale copies when postbuild runs without Vite cleaning dist first.
+for (const extension of ['md', 'html']) {
+  rmSync(resolve(dist, `docs/LEMONSQUEEZY_SELLING.${extension}`), { force: true });
+}
 console.log('  ✓ Done\n');
 
 // ---------------------------------------------------------------------------

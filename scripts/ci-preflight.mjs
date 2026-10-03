@@ -94,7 +94,8 @@ if (RELEASE) {
 //    burning the expensive CI core matrix. (macOS/iOS/tvOS still GitHub-only.)
 if (has('--cores') || RELEASE) {
   if (run('Build RetroArch core (make -C retroarch clean all)', 'make -C retroarch clean all')) {
-    run('Core harness + smoke', 'make -C retroarch harness && for cart in retroarch/conformance/00-boot.js retroarch/conformance/01-framebuffer.js retroarch/conformance/110-storage-compressed.js; do retroarch/build/harness retroarch/nova64_libretro.so "$cart" --frames 3 | grep -q "ok=1" || exit 1; done');
+    const coreExtension = process.platform === 'darwin' ? 'dylib' : 'so';
+    run('Core harness + smoke', `make -C retroarch harness && for cart in retroarch/conformance/00-boot.js retroarch/conformance/01-framebuffer.js retroarch/conformance/110-storage-compressed.js; do retroarch/build/harness retroarch/nova64_libretro.${coreExtension} "$cart" --frames 3 | grep -q "ok=1" || exit 1; done`);
   }
 }
 

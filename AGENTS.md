@@ -303,6 +303,18 @@ my-game/
 
 Agents working on the CLI should keep `bin/`, `package.json`, and any related docs in sync.
 
+Npm packaging contracts:
+
+- Include the source `cart-runner.html` in the package; `nova64 dev` redirects to it
+  with a `path` query parameter that the browser runtime reads.
+- Scaffold dependencies use the installed package version (or `NOVA64_VERSION`).
+  Starter carts use the `nova64.*` namespaces. Installed template discovery falls
+  back to `dist/examples/` when the source `examples/` directory is absent.
+- `tests/test-cli-package.js` runs in `pnpm test`. Set `NOVA64_PACKAGE_ROOT` to an
+  installed package directory to run the same regression against a release tarball.
+- Postbuild must exclude `docs/LEMONSQUEEZY_SELLING.md` and its generated HTML
+  from `dist/`; neither belongs in a public npm or website artifact.
+
 ## Debug Panel (`runtime/debug-panel.js`)
 
 Nova64 includes an in-browser debug overlay for inspecting runtime state and scene behavior.

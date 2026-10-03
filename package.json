@@ -42,6 +42,7 @@
     "src/",
     "public/",
     "index.html",
+    "cart-runner.html",
     "vite.config.js",
     "README.md",
     "LICENSE"
@@ -61,7 +62,7 @@
     "osMobileBuild": "cd os9-shell && pnpm install && pnpm build && rm -rf ../public/os9-shell/* && mkdir -p ../public/os9-shell && cp -r dist/* ../public/os9-shell/",
     "deployToStarcade9": "bash scripts/deploy-starcade9.sh",
     "serveStarcade9": "npx serve ../starcade9/starcade9.github.io",
-    "test": "node tests/test-color-compat.js && node tests/test-studio-protocol.js && node tests/test-demoscene-regression.js && node tests/test-cli.js && node tests/test-godot-shim-parity.js && node scripts/sync-dist.mjs --check",
+    "test": "node tests/test-color-compat.js && node tests/test-studio-protocol.js && node tests/test-demoscene-regression.js && node tests/test-cli.js && node --test tests/test-cli-package.js && node tests/test-godot-shim-parity.js && node scripts/sync-dist.mjs --check",
     "test:quick": "node tests/test-color-compat.js && node tests/test-studio-protocol.js && node tests/test-demoscene-regression.js && node tests/test-cli.js cli && node scripts/sync-dist.mjs --check",
     "sync:dist": "node scripts/sync-dist.mjs",
     "sync:dist:check": "node scripts/sync-dist.mjs --check",
@@ -167,9 +168,6 @@
     "three": "^0.182.0",
     "vite": "^5.4.0",
     "zustand": "^5.0.11"
-  },
-  "optionalDependencies": {
-    "noa-engine": "^0.33.0"
   },
   "peerDependencies": {
     "noa-engine": ">=0.33.0"

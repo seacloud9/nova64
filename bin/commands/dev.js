@@ -47,9 +47,13 @@ export async function devCommand(opts = {}) {
         name: 'nova64-dev-cart',
         configureServer(server) {
           // Redirect / to cart-runner.html with the user's cart path
-          server.middlewares.use((req, _res, next) => {
+          server.middlewares.use((req, res, next) => {
             if (req.url === '/' || req.url === '/index.html') {
-              req.url = `/cart-runner.html?path=${encodeURIComponent(cartUrl)}`;
+              res.writeHead(302, {
+                Location: `/cart-runner.html?path=${encodeURIComponent(cartUrl)}`,
+              });
+              res.end();
+              return;
             }
             next();
           });

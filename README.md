@@ -515,6 +515,10 @@ cd my-game && nova64 dev
 
 Your browser opens to a spinning cube starter at `http://localhost:5173` — edit `code.js` and see changes instantly.
 
+New projects use the installed Nova64 package version (override with
+`NOVA64_VERSION`). The npm package includes the development runner and bundled
+templates, so scaffolding does not require a repository checkout.
+
 ### 🎨 **Start from a Template**
 
 ```bash

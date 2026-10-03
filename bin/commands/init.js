@@ -1,9 +1,18 @@
-import { mkdir, writeFile, stat } from 'fs/promises';
+import { mkdir, writeFile, stat, readFile } from 'fs/promises';
 import { resolve, basename } from 'path';
 import { input } from '@inquirer/prompts';
 
+const { version } = JSON.parse(
+  await readFile(new URL('../../package.json', import.meta.url), 'utf8')
+);
+
 const STARTER_CART = `// My Nova64 Game
 // A spinning cube — edit this to build your game!
+
+const { createCube, rotateMesh } = nova64.scene;
+const { setAmbientLight, setFog } = nova64.light;
+const { setCameraPosition, setCameraTarget } = nova64.camera;
+const { printCentered, print } = nova64.draw;
 
 let cube;
 
@@ -39,7 +48,7 @@ const PACKAGE_JSON_TEMPLATE = name =>
         dev: 'nova64 dev',
       },
       dependencies: {
-        nova64: `^${process.env.NOVA64_VERSION || '0.4.8'}`,
+        nova64: `^${process.env.NOVA64_VERSION || version}`,
       },
     },
     null,

@@ -5,6 +5,21 @@ live in [`docs/releases/`](docs/releases/).
 
 ## v0.5.3 (Current)
 
+### npm release preparation — 2026-10-03
+
+- Fixed installed CLI scaffolding and development: ship the source cart runner,
+  discover bundled templates, use the installed package version, redirect with
+  the selected cart path, and use namespaced APIs in the starter.
+- Delisted Hello 3D, Mystical Realm, and FPS Action Mode from console menus.
+- Excluded private operations documents from public build output; made the
+  experimental NOA integration an optional peer rather than an automatic install.
+- Fixed the macOS native-core smoke-check filename and added a CLI package
+  regression to the core test suite.
+- Built and tested an unpublished npm tarball. See the
+  [release review](docs/releases/v0.5.3-npm-review.md) for evidence and limits.
+
+### Tagged release highlights
+
 Metaverse (shared 3D world with multiplayer, auth, and voice chat that cross-plays
 web ↔ Godot) + the distribution/release pipeline.
 

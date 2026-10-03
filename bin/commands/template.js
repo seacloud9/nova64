@@ -2,10 +2,14 @@ import { mkdir, readdir, readFile, writeFile, cp, stat } from 'fs/promises';
 import { resolve, basename, join } from 'path';
 import { fileURLToPath } from 'url';
 import { select, input } from '@inquirer/prompts';
+import { existsSync } from 'fs';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 const NOVA64_ROOT = resolve(__dirname, '..', '..');
-const EXAMPLES_DIR = resolve(NOVA64_ROOT, 'examples');
+const EXAMPLES_DIR = existsSync(resolve(NOVA64_ROOT, 'examples'))
+  ? resolve(NOVA64_ROOT, 'examples')
+  : resolve(NOVA64_ROOT, 'dist/examples');
+const { version } = JSON.parse(await readFile(resolve(NOVA64_ROOT, 'package.json'), 'utf8'));
 
 // Curated example metadata for the interactive picker
 const CATEGORIES = {
@@ -171,7 +175,7 @@ export async function templateCommand(templateArg) {
             dev: 'nova64 dev',
           },
           dependencies: {
-            nova64: `^${process.env.NOVA64_VERSION || '0.4.8'}`,
+            nova64: `^${process.env.NOVA64_VERSION || version}`,
           },
         },
         null,

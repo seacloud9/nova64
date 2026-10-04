@@ -101,7 +101,9 @@ if (spawnSync('node', ['scripts/ci-preflight.mjs', '--release'], { cwd: ROOT, st
 }
 
 // 2. Commit + tag (still no push).
-execSync(`git add ${VERSION_FILES.map((f) => f.file).join(' ')}`, { cwd: ROOT });
+// -f because dist/ matches a .gitignore rule even though the file is tracked;
+// without it `git add` exits non-zero and aborts the release.
+execSync(`git add -f ${VERSION_FILES.map((f) => f.file).join(' ')}`, { cwd: ROOT });
 if (spawnSync('git', ['commit', '-m', `chore(release): v${next}`], { cwd: ROOT, stdio: 'inherit' }).status !== 0) {
   revertVersion();
   die('Commit failed — reverted the version bump.');

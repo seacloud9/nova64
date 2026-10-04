@@ -1181,7 +1181,16 @@ MIT — see `LICENSE` for details.
 
 ## Version History
 
-### v0.5.3 (Current)
+### v0.5.4 (Current) — _Cracktro_
+
+- **Studio accepts the module cart shape**: `export function init()` now runs instead of failing on `Unexpected token 'export'`; `import` still errors with an explanation
+- **README's first cart runs**: bare `print()` was `window.print` and opened the browser print dialog mid-frame
+- **566 call sites namespaced** across 18 docs, resolved against `NAMESPACE_MAP`; `circ` → `nova64.draw.circle`, `mouseButton` → `nova64.input.mouseDown`
+- **Guard tests** walk `docs/` so a retired bare global cannot be reintroduced, with browser coverage of the real embedding path
+- **`sync-dist.mjs` verifies the 108 runtime files mirrored into `dist/`** — the copy npm ships
+- **`pnpm release` stamps the version** into the README badge and both docs copies
+
+### v0.5.3
 
 - **Metaverse**: Phase 1 shared world on `nova64.net` — extensible framework, ES module loader, native Godot text chat (`nova64.gdtext`) for web ↔ Godot cross-play
 - **Auth & multiplayer**: Supabase auth, EVM wallet sign-in (SIWE / EIP-4361), presence + live roster + `/nick`, hardened relay, WebRTC push-to-talk voice

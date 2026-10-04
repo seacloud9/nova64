@@ -3,7 +3,41 @@
 All notable changes to Nova64 are documented here. Per-tag, publish-ready notes
 live in [`docs/releases/`](docs/releases/).
 
-## v0.5.3 (Current)
+## v0.5.4 (Current) — _Cracktro_
+
+Named for the demoscene intro bolted onto software to make it run — which is
+what this release does for every cart that used to fail on `export`.
+
+Studio carts that were documented but never ran, plus a documentation sweep so
+the same class of bug cannot be reintroduced.
+
+- **Studio accepts the module cart shape.** `export function init()` -- the form
+  the README documented for years, and the one assistants trained on it still
+  emit -- was a syntax error under the studio executor, so those carts failed
+  before a line of them ran. `createStudioCartFunction` now strips top-level
+  `export` and retries. The strip only runs after a parse failure (a cart that
+  works today is never rewritten), and is string-, template-, comment- and
+  regex-aware, so a cart that merely mentions the word is not corrupted.
+  `import` still fails fast with an explanatory error: dropping it would leave
+  the cart referencing bindings that were never created.
+- **The first cart example runs again.** It used bare `createCube(...)` and
+  `print(...)`; the latter is `window.print`, so it opened the browser print
+  dialog mid-frame on a cart that otherwise looked fine.
+- **Every reference and guide is namespaced.** 566 call sites across 18 docs
+  moved to `nova64.<group>.<name>`, resolved against `NAMESPACE_MAP` rather than
+  by hand. Two documented functions turned out not to exist: `circ` is
+  `nova64.draw.circle`, `mouseButton` is `nova64.input.mouseDown`. Bug reports
+  and `❌ Before` migration blocks keep their original code on purpose.
+- **Guards so it stays fixed.** Tests walk `docs/` and fail on any bare retired
+  global or any documented `nova64.x.y` that does not resolve; browser coverage
+  drives the real embedding path. `sync-dist.mjs` now verifies the 108 runtime
+  files mirrored into `dist/` -- that mirror is what npm ships, and a fix that
+  missed it never reached users.
+- **Release stamping.** `pnpm release` now writes the version into the README
+  badge and both docs copies, not just `package.json`. The docs site had read
+  v0.4.9 since that release.
+
+## v0.5.3
 
 ### npm release preparation — 2026-10-03
 

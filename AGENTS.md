@@ -522,6 +522,13 @@ Nova64 carts are ES modules built around three lifecycle hooks:
 - `update(dt)` for game logic, input handling, and animation
 - `draw()` for overlay and HUD rendering
 
+File-based carts export these hooks. Studio `EXECUTE_CODE` payloads are plain
+scripts with unexported hook declarations, evaluated by `runtime/studio-executor.js`.
+Both forms use the grouped `nova64.*` API; HUD text uses `nova64.draw.print`,
+not the browser's bare `print`. The README's first cart is exercised by the
+studio executor regression suite; browser embedding coverage is in
+`tests/playwright/studio-embedding.spec.js`.
+
 Guidelines:
 
 - Create long-lived 3D objects in `init()`, not in `draw()`.

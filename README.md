@@ -694,38 +694,61 @@ That document also covers the shared cart-reset lifecycle used to clear runtime 
 
 ## 🎨 **Creating Your First 3D Cart**
 
-Nova64 carts are **ES modules** with three lifecycle functions:
+For **Game Studio or an embedding host sending `EXECUTE_CODE`**, paste a plain
+script with three lifecycle functions. Use the grouped `nova64.*` API; do not
+include `import` or `export` declarations in studio code.
 
 ```javascript
 let player, ground;
 let score = 0;
 
-export function init() {
+function init() {
   // Create ALL 3D objects here — never inside draw()
-  ground = createPlane(50, 50, 0x2a4d3a, [0, 0, 0]);
-  rotateMesh(ground, -Math.PI / 2, 0, 0);
-  player = createCube(1, 0x0088ff, [0, 1, 0], { material: 'metallic' });
+  ground = nova64.scene.createPlane(50, 50, 0x2a4d3a, [0, 0, 0]);
+  nova64.scene.rotateMesh(ground, -Math.PI / 2, 0, 0);
+  player = nova64.scene.createCube(1, 0x0088ff, [0, 1, 0], { material: 'metallic' });
 
-  setFog(0x1a1a2e, 10, 30);
-  setAmbientLight(0x334466, 1.0);
+  nova64.light.setFog(0x1a1a2e, 10, 30);
+  nova64.light.setAmbientLight(0x334466, 1.0);
 }
 
-export function update(dt) {
+function update(dt) {
   // Handle input and game logic
-  if (key('KeyW')) setPosition(player, 0, 1, -5 * dt);
-  if (key('KeyS')) setPosition(player, 0, 1, 5 * dt);
+  if (nova64.input.key('KeyW')) nova64.scene.setPosition(player, 0, 1, -5 * dt);
+  if (nova64.input.key('KeyS')) nova64.scene.setPosition(player, 0, 1, 5 * dt);
 
-  setCameraPosition(0, 5, 10);
-  setCameraTarget(0, 1, 0);
+  nova64.camera.setCameraPosition(0, 5, 10);
+  nova64.camera.setCameraTarget(0, 1, 0);
 }
 
-export function draw() {
+function draw() {
   // 2D HUD overlay — 3D renders automatically
-  print(`Score: ${score}`, 10, 10, 0xffffff);
+  nova64.draw.print(`Score: ${score}`, 10, 10, nova64.draw.rgba8(255, 255, 255, 255));
 }
 ```
 
-Load your cart by changing the import path in `src/main.js`.
+Always use `nova64.draw.print` for HUD text. Bare `print()` is the browser's
+print-dialog function outside studio mode; studio mode redirects it to logging,
+not HUD rendering.
+
+### CLI / file-based carts
+
+For a `code.js` loaded by `nova64 dev` or a runner's `?path=` parameter, use the
+same namespaced example above and add this line at the end:
+
+```javascript
+export { init, update, draw };
+```
+
+File-based carts are ES modules. `export function init()` (and the equivalent for
+`update` and `draw`) is also valid there. Studio mode is selected with `?studio=1`;
+the runner page itself does not determine whether the cart is a script or a module.
+
+Embedding hosts must send code from the parent window on a trusted origin.
+Opaque origins such as `file://` or sandboxed frames without a same-origin
+identity remain rejected. Check the runtime frame's developer console for
+`Rejected EXECUTE_CODE: untrusted origin: null`; use an HTTP(S) host or the
+documented desktop host-origin setup rather than disabling origin checks.
 
 ---
 

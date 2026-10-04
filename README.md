@@ -6,7 +6,7 @@
 
 🌐 **Live Site:** [starcade9.github.io](https://starcade9.github.io/)
 
-[![Version](https://img.shields.io/badge/version-0.5.5-blue.svg)](https://github.com/seacloud9/nova64)
+[![Version](https://img.shields.io/badge/version-0.5.6-blue.svg)](https://github.com/seacloud9/nova64)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Tests](https://img.shields.io/badge/tests-passing-brightgreen.svg)](tests/)
 [![Build](https://img.shields.io/badge/build-passing-brightgreen.svg)](#)

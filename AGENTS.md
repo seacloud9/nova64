@@ -314,6 +314,9 @@ Npm packaging contracts:
   installed package directory to run the same regression against a release tarball.
 - Postbuild must exclude `docs/LEMONSQUEEZY_SELLING.md` and its generated HTML
   from `dist/`; neither belongs in a public npm or website artifact.
+- Npm ships public assets once in `dist/`; installed CLI development uses that
+  directory when `public/` is absent. Exclude prebuilt `.nova` exports and source
+  maps from npm packaging to avoid the registry's upload-size rejection.
 
 ## Debug Panel (`runtime/debug-panel.js`)
 

@@ -85,6 +85,9 @@ test('installed CLI scaffolds the current version and serves the selected cart',
     const source = await fetch(new URL(cart, origin));
     assert.equal(source.status, 200);
     assert.match(await source.text(), /My Nova64 Game/);
+    const shell = await fetch(new URL('/os9-shell/index.html', origin));
+    assert.equal(shell.status, 200, 'bundled public assets must remain available');
+    assert.match(await shell.text(), /<html/);
   } finally {
     if (child && child.exitCode === null) {
       child.kill();

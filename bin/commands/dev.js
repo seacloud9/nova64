@@ -2,6 +2,7 @@ import { resolve } from 'path';
 import { stat, readdir } from 'fs/promises';
 import { fileURLToPath } from 'url';
 import { createServer } from 'vite';
+import { existsSync } from 'fs';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 const NOVA64_ROOT = resolve(__dirname, '..', '..');
@@ -33,6 +34,9 @@ export async function devCommand(opts = {}) {
 
   const server = await createServer({
     root: NOVA64_ROOT,
+    publicDir: existsSync(resolve(NOVA64_ROOT, 'public'))
+      ? resolve(NOVA64_ROOT, 'public')
+      : resolve(NOVA64_ROOT, 'dist'),
     server: {
       port,
       strictPort: true,

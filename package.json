@@ -38,9 +38,10 @@
   "files": [
     "bin/",
     "dist/",
+    "!dist/**/*.nova",
+    "!dist/**/*.map",
     "runtime/",
     "src/",
-    "public/",
     "index.html",
     "cart-runner.html",
     "vite.config.js",

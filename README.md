@@ -518,6 +518,8 @@ Your browser opens to a spinning cube starter at `http://localhost:5173` — edi
 New projects use the installed Nova64 package version (override with
 `NOVA64_VERSION`). The npm package includes the development runner and bundled
 templates, so scaffolding does not require a repository checkout.
+Public assets ship once under `dist/`, which the installed development server
+also serves. Prebuilt `.nova` exports and source maps stay out of the npm archive.
 
 ### 🎨 **Start from a Template**
 

@@ -15,6 +15,9 @@ live in [`docs/releases/`](docs/releases/).
   experimental NOA integration an optional peer rather than an automatic install.
 - Fixed the macOS native-core smoke-check filename and added a CLI package
   regression to the core test suite.
+- Reduced the npm upload after a registry size rejection: ship public assets
+  once under `dist/` and exclude `.nova` exports and source maps, retaining the
+  browser demos and their assets.
 - Built and tested an unpublished npm tarball. See the
   [release review](docs/releases/v0.5.3-npm-review.md) for evidence and limits.
 

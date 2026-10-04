@@ -40,6 +40,16 @@ function filesDiffer(a, b) {
   return readFileSync(a, 'utf8') !== readFileSync(b, 'utf8')
 }
 
+// --check only: a MISSING dist counterpart means "not built here", not "drifted".
+// dist/ is gitignored with a subset force-added, so a fresh checkout legitimately
+// lacks most dist/examples/ copies and every build artifact. Treating absence as
+// drift made `pnpm test` fail on every clean clone. Real drift -- both files
+// present, contents differ -- still fails.
+function contentDiffers(a, b) {
+  if (!existsSync(b)) return false
+  return readFileSync(a, 'utf8') !== readFileSync(b, 'utf8')
+}
+
 /**
  * Every runtime/*.js that already has a dist/runtime/ counterpart must match it.
  * Only existing counterparts are compared, so adding a new runtime file does not
@@ -95,8 +105,9 @@ for (const cart of carts) {
   const metaSrc = join(srcDir, 'meta.json')
   const metaDst = join(dstDir, 'meta.json')
 
-  const codesDiffer = filesDiffer(codeSrc, codeDst)
-  const metaDiffers = existsSync(metaSrc) && filesDiffer(metaSrc, metaDst)
+  const compare = checkOnly ? contentDiffers : filesDiffer
+  const codesDiffer = compare(codeSrc, codeDst)
+  const metaDiffers = existsSync(metaSrc) && compare(metaSrc, metaDst)
   const hasDrift = codesDiffer || metaDiffers
 
   if (!hasDrift) continue
@@ -125,7 +136,10 @@ if (checkOnly) {
       )
     process.exit(1)
   }
-  console.log(`Dist in sync (${carts.length} carts, ${runtimeFileCount()} runtime files verified)`)
+  const built = carts.filter(c => existsSync(join(distDir, c, 'code.js'))).length
+  console.log(
+    `Dist in sync (${built}/${carts.length} carts mirrored, ${runtimeFileCount()} runtime files verified)`
+  )
 } else {
   const skipped = carts.length - synced
   console.log(`\n${synced} synced, ${skipped} already current`)

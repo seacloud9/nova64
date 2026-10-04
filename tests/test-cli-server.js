@@ -133,13 +133,26 @@ export async function runCLIServerTests() {
     );
   });
 
-  runner.test('dist/assets/ contains bundled JS', () => {
-    const assetsDir = resolve(distDir, 'assets');
-    Assert.isTrue(existsSync(assetsDir), 'dist/assets/ missing');
-    const files = readdirSync(assetsDir);
-    const hasMainJS = files.some(f => f.startsWith('main-') && f.endsWith('.js'));
-    Assert.isTrue(hasMainJS, 'dist/assets/ must contain main-*.js bundle');
-  });
+  // dist/assets/ is tracked (glb/, novaOS/, a stale .map) but the main-*.js bundle
+  // inside it is gitignored, so a fresh checkout has the directory and not the
+  // bundle. Asserting on the bundle unconditionally made `pnpm test` fail on every
+  // clean clone -- which is why CI had been red since August and why the gated npm
+  // publish could never fire. Gate on the bundle itself, not on the directory.
+  const builtBundle = () => {
+    const dir = resolve(distDir, 'assets');
+    if (!existsSync(dir)) return null;
+    return readdirSync(dir).find(f => f.startsWith('main-') && f.endsWith('.js')) || null;
+  };
+  const hasBuild = builtBundle() !== null;
+  if (!hasBuild) {
+    console.log('   ⏭  skipping main-*.js bundle checks — not built (run pnpm build)');
+  }
+
+  if (hasBuild) {
+    runner.test('dist/assets/ contains bundled JS', () => {
+      Assert.isTrue(builtBundle() !== null, 'dist/assets/ must contain main-*.js bundle');
+    });
+  }
 
   runner.test('dist/examples/hello-world/code.js exists', () => {
     Assert.isTrue(
@@ -208,20 +221,18 @@ export async function runCLIServerTests() {
     Assert.isTrue(res.body.includes('export function'), 'Cart code should contain export function');
   });
 
-  runner.test('GET /assets/main-*.js → 200 (bundled JS)', async () => {
-    // Find the actual main-*.js filename
-    const assetsDir = resolve(distDir, 'assets');
-    const files = readdirSync(assetsDir);
-    const mainFile = files.find(f => f.startsWith('main-') && f.endsWith('.js'));
-    Assert.isTrue(!!mainFile, 'main-*.js bundle must exist');
+  if (hasBuild)
+    runner.test('GET /assets/main-*.js → 200 (bundled JS)', async () => {
+      const mainFile = builtBundle();
+      Assert.isTrue(!!mainFile, 'main-*.js bundle must exist');
 
-    const res = await httpGet(port, `/assets/${mainFile}`);
-    Assert.equals(res.status, 200, 'Bundled JS should return 200');
-    Assert.isTrue(
-      res.headers['content-type'].includes('javascript'),
-      'Content-Type should be javascript'
-    );
-  });
+      const res = await httpGet(port, `/assets/${mainFile}`);
+      Assert.equals(res.status, 200, 'Bundled JS should return 200');
+      Assert.isTrue(
+        res.headers['content-type'].includes('javascript'),
+        'Content-Type should be javascript'
+      );
+    });
 
   runner.test('GET /nonexistent → 404', async () => {
     const res = await httpGet(port, '/nonexistent-path-that-does-not-exist');

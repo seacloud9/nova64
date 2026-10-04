@@ -372,11 +372,14 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Run tests
-        run: pnpm test
-
+      # Build BEFORE testing: part of the suite asserts on build output
+      # (dist/assets/main-*.js), and publishing ships dist/, so the tests should
+      # run against exactly what is about to be published.
       - name: Build
         run: pnpm run build
+
+      - name: Run tests
+        run: pnpm test
 
       - name: Publish to npm
         run: npm publish --provenance --access public

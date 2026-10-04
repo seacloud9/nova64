@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Nova64 WAD runtime tests
 
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { wadApi } from '../runtime/wad.js';
 
 class TestRunner {
@@ -100,14 +100,17 @@ export async function runWadTests() {
   const runner = new TestRunner();
 
   runner.test('WAD cart binds printCentered from nova64.draw', () => {
-    const sources = [
-      readFileSync(new URL('../examples/wad-demo/code.js', import.meta.url), 'utf8'),
-      readFileSync(
-        new URL('../nova64-godot/godot_project/carts/wad-demo/code.js', import.meta.url),
-        'utf8'
-      ),
-      readFileSync(new URL('../nova64-godot/tests/carts/wad-demo/code.js', import.meta.url), 'utf8'),
+    // godot_project/carts/ holds local junctions into examples/ and is gitignored,
+    // so it is simply absent in a fresh checkout (and in CI). Read it when it is
+    // there -- it catches a stale local mirror -- but never require it: the two
+    // tracked copies below already pin the behaviour.
+    const candidates = [
+      new URL('../examples/wad-demo/code.js', import.meta.url),
+      new URL('../nova64-godot/godot_project/carts/wad-demo/code.js', import.meta.url),
+      new URL('../nova64-godot/tests/carts/wad-demo/code.js', import.meta.url),
     ];
+    const sources = candidates.filter(existsSync).map(url => readFileSync(url, 'utf8'));
+    assert(sources.length >= 2, 'the tracked wad-demo copies must both be readable');
     for (const source of sources) {
       assert(
         source.includes('printCentered') && !source.includes('prinprintCentered'),

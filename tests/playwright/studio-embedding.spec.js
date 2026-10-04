@@ -58,12 +58,38 @@ test('the README cart runs through the studio host and draws HUD text without br
   expect(errors).toEqual([]);
 });
 
-test('module syntax is returned to the host with an actionable studio error', async ({ page }) => {
+test('the module shape the old README documented runs instead of failing', async ({ page }) => {
+  // nova64@0.5.3 documented `export function init()`, so this form is already
+  // widespread in copied snippets and in assistant-generated carts. It has to
+  // run end to end through the real embedding path, not merely error politely.
   await page.evaluate(() => {
+    window.statuses.length = 0;
     document.querySelector('iframe').contentWindow.postMessage(
       {
         type: 'EXECUTE_CODE',
-        code: 'export function init() {}',
+        code: [
+          'export function init() { globalThis.__moduleShapeRan = true; }',
+          'export function update(dt) {}',
+          'export function draw() {}',
+        ].join('\n'),
+      },
+      location.origin
+    );
+  });
+  await page.waitForFunction(() => window.statuses.some(s => s.type === 'EXECUTE_SUCCESS'));
+  const frame = page.frames().find(f => f.url().includes('cart-runner.html'));
+  expect(await frame.evaluate(() => window.__moduleShapeRan)).toBe(true);
+});
+
+test('import syntax is returned to the host with an actionable studio error', async ({ page }) => {
+  // Unlike `export`, an import cannot be dropped — the cart would reference
+  // bindings that were never created — so it must still fail, and say why.
+  await page.evaluate(() => {
+    window.statuses.length = 0;
+    document.querySelector('iframe').contentWindow.postMessage(
+      {
+        type: 'EXECUTE_CODE',
+        code: "import cart from './cart.js'; function init() {}",
       },
       location.origin
     );

@@ -695,8 +695,12 @@ That document also covers the shared cart-reset lifecycle used to clear runtime 
 ## 🎨 **Creating Your First 3D Cart**
 
 For **Game Studio or an embedding host sending `EXECUTE_CODE`**, paste a plain
-script with three lifecycle functions. Use the grouped `nova64.*` API; do not
-include `import` or `export` declarations in studio code.
+script with three lifecycle functions, using the grouped `nova64.*` API.
+
+Studio code is evaluated as a *script*, not a module, so this shape is the one
+to write. A top-level `export` is accepted anyway — it is stripped before
+evaluation, so the module form below also runs unchanged — but `import` cannot
+work in a script and is reported as an error.
 
 ```javascript
 let player, ground;
@@ -740,9 +744,11 @@ same namespaced example above and add this line at the end:
 export { init, update, draw };
 ```
 
-File-based carts are ES modules. `export function init()` (and the equivalent for
-`update` and `draw`) is also valid there. Studio mode is selected with `?studio=1`;
-the runner page itself does not determine whether the cart is a script or a module.
+File-based carts are ES modules, so `export function init()` (and the equivalent
+for `update` and `draw`) is the natural form there. Studio mode is selected with
+`?studio=1`; the runner page itself does not determine whether the cart is a
+script or a module — and since studio mode tolerates `export`, the same cart
+source runs on both paths.
 
 Embedding hosts must send code from the parent window on a trusted origin.
 Opaque origins such as `file://` or sandboxed frames without a same-origin

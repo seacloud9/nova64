@@ -1,7 +1,7 @@
 import { TestRunner, Assert } from './test-runner.js';
 import { executeStudioCartCode } from '../runtime/studio-executor.js';
 import { createStudioCartFunction, stripTopLevelExports } from '../runtime/studio-executor.js';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import assert from 'node:assert/strict';
 import { NAMESPACE_MAP } from '../runtime/namespace.js';
@@ -75,6 +75,49 @@ export async function runStudioExecutorTests() {
       if (!names || !names.includes(name)) unknown.push(`nova64.${group}.${name}`);
     }
     assert.deepEqual([...new Set(unknown)], [], 'README documents calls that do not exist');
+  });
+
+  runner.test('no doc teaches the flat API that v0.5.0 retired', () => {
+    // The README was not the only page doing this: every reference and guide under
+    // docs/ listed calls bare, which is what a reader (or a model) copies. This
+    // walks docs/ automatically so a NEW doc is covered without touching the test.
+    const docsDir = new URL('../docs/', import.meta.url);
+    const exempt = new Set([
+      // Bug reports quote the broken code on purpose — rewriting them would
+      // destroy the report.
+      'NOVA64_UPSTREAM_ISSUES.md',
+      'nova64-issue-studio-cart-contract.md',
+    ]);
+    const lookup = new Map();
+    for (const [group, names] of Object.entries(NAMESPACE_MAP)) {
+      for (const name of names) if (!lookup.has(name)) lookup.set(name, group);
+    }
+    const keywords = new Set([
+      'if','for','while','function','return','switch','catch','typeof','new','await',
+      'const','let','var','else','do','try','class','import','export',
+    ]);
+    // A block deliberately showing the OLD way (migration guides, "don't do this").
+    const isLegacy = block =>
+      /❌|\b(before|old way|deprecated|legacy|wrong|avoid|don'?t)\b/i.test(
+        block.split('\n').slice(0, 3).join('\n')
+      );
+
+    const offenders = [];
+    for (const file of readdirSync(docsDir).filter(f => f.endsWith('.md'))) {
+      if (exempt.has(file)) continue;
+      const src = readFileSync(new URL(file, docsDir), 'utf8');
+      for (const match of src.matchAll(/```(?:javascript|js)\n(.*?)```/gs)) {
+        const block = match[1];
+        if (isLegacy(block)) continue;
+        for (const call of block.matchAll(/^\s*([a-z][A-Za-z0-9_]*)\s*\(/gm)) {
+          const name = call[1];
+          if (!keywords.has(name) && lookup.has(name)) {
+            offenders.push(`${file}: ${name}() should be nova64.${lookup.get(name)}.${name}()`);
+          }
+        }
+      }
+    }
+    assert.deepEqual([...new Set(offenders)], [], 'docs still teach retired bare globals');
   });
 
   runner.test('Studio accepts the module shape the old README documented', () => {

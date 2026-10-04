@@ -1181,7 +1181,12 @@ MIT — see `LICENSE` for details.
 
 ## Version History
 
-### v0.5.4 (Current) — _Cracktro_
+### v0.5.5 (Current) — _Cracktro_
+
+- Same contents as v0.5.4, re-cut so the npm package could ship: `pnpm test` had failed on any clean checkout since 2026-08-19, which blocked the gated npm publish and kept CI red
+- **Three clean-checkout failures fixed**: a gitignored `main-*.js` bundle asserted before the build ran, a gitignored Godot carts junction read unconditionally, and `sync-dist --check` counting a missing `dist/` copy as drift
+
+### v0.5.4 — _Cracktro_ (cores + GitHub Release only; not on npm)
 
 - **Studio accepts the module cart shape**: `export function init()` now runs instead of failing on `Unexpected token 'export'`; `import` still errors with an explanation
 - **README's first cart runs**: bare `print()` was `window.print` and opened the browser print dialog mid-frame

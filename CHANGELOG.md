@@ -3,7 +3,29 @@
 All notable changes to Nova64 are documented here. Per-tag, publish-ready notes
 live in [`docs/releases/`](docs/releases/).
 
-## v0.5.4 (Current) — _Cracktro_
+## v0.5.5 (Current) — _Cracktro_
+
+Same contents as v0.5.4, re-cut so the npm package could actually ship.
+
+v0.5.4 built all ten platform cores green and published its GitHub Release, but
+the gated npm job failed on `pnpm test` and the package never reached the
+registry -- the binaries-and-npm divergence RELEASING.md warns about. The cause
+was not the release: `pnpm test` had been failing on any clean checkout since
+2026-08-19, which is why CI had been red that whole time and why the gate could
+never open. Three assertions depended on build output or local-only paths that a
+fresh clone does not have:
+
+- `dist/assets/main-*.js` -- a gitignored bundle, asserted before any build ran
+  (and the publish job tested *before* it built; it now builds first).
+- `nova64-godot/godot_project/carts/wad-demo/code.js` -- a gitignored local
+  junction into `examples/`, absent in CI since b9b9995a.
+- `sync-dist.mjs --check` counted a *missing* `dist/` counterpart as drift; only
+  69 of 96 carts have one tracked, so a clean clone reported 41 false drifts.
+
+Each now distinguishes "not built here" from "actually wrong", verified by
+cloning the tag into a clean directory and running the suite the way CI does.
+
+## v0.5.4 — _Cracktro_ (cores + GitHub Release only; not on npm)
 
 Named for the demoscene intro bolted onto software to make it run — which is
 what this release does for every cart that used to fail on `export`.

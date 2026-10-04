@@ -46,6 +46,20 @@ jobs:
       - name: Build
         run: pnpm run build
 
+      # Non-fatal auth probe. `npm publish` answers an auth/permission problem with
+      # a bare `E404 PUT /nova64` -- npm hides 401/403 so the registry cannot be
+      # used to enumerate private packages -- which reads like "the package does
+      # not exist" and sends you looking in the wrong place. This says plainly
+      # whether the token authenticates and who it authenticates as.
+      - name: Verify npm auth (diagnostic, non-fatal)
+        continue-on-error: true
+        run: |
+          echo "whoami: $(npm whoami 2>&1 || echo '<token did not authenticate>')"
+          echo "--- write access to nova64 ---"
+          npm access list collaborators nova64 2>&1 | head -20 || true
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
       - name: Publish to npm
         run: npm publish --provenance --access public
         env:

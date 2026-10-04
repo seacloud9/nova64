@@ -26,6 +26,13 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      # prepublishOnly runs `pnpm lint && test:all && build`, so the dry-run step
+      # needs pnpm on PATH or it dies with code 127 before reaching the registry.
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:

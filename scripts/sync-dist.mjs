@@ -1,6 +1,12 @@
 #!/usr/bin/env node
 /**
  * Syncs examples/<cart>/ → dist/examples/<cart>/
+ * and verifies  runtime/*.js  → dist/runtime/*.js
+ *
+ * dist/ is tracked and is what the npm tarball ships, so a runtime fix that is
+ * not mirrored into dist/runtime/ never reaches anyone who installs the package.
+ * That is not hypothetical: the studio-executor fix had to be re-shipped for
+ * exactly this reason. Nothing used to check it, so the check lives here.
  *
  * Usage:
  *   node scripts/sync-dist.mjs           # sync all carts
@@ -15,6 +21,8 @@ import { fileURLToPath } from 'url'
 const root = dirname(dirname(fileURLToPath(import.meta.url)))
 const examplesDir = join(root, 'examples')
 const distDir = join(root, 'dist', 'examples')
+const runtimeDir = join(root, 'runtime')
+const distRuntimeDir = join(root, 'dist', 'runtime')
 
 const args = process.argv.slice(2)
 const checkOnly = args.includes('--check')
@@ -30,6 +38,43 @@ function getCartsWithCode() {
 function filesDiffer(a, b) {
   if (!existsSync(b)) return true
   return readFileSync(a, 'utf8') !== readFileSync(b, 'utf8')
+}
+
+/**
+ * Every runtime/*.js that already has a dist/runtime/ counterpart must match it.
+ * Only existing counterparts are compared, so adding a new runtime file does not
+ * fail the check before a build has had a chance to copy it.
+ * @returns {string[]} relative paths that drifted
+ */
+function runtimeDrift() {
+  if (!existsSync(distRuntimeDir)) return []
+  const drift = []
+  const walk = rel => {
+    for (const entry of readdirSync(join(runtimeDir, rel), { withFileTypes: true })) {
+      const next = rel ? `${rel}/${entry.name}` : entry.name
+      if (entry.isDirectory()) walk(next)
+      else if (entry.name.endsWith('.js')) {
+        const dst = join(distRuntimeDir, next)
+        if (existsSync(dst) && filesDiffer(join(runtimeDir, next), dst)) drift.push(next)
+      }
+    }
+  }
+  walk('')
+  return drift
+}
+
+function runtimeFileCount() {
+  if (!existsSync(distRuntimeDir)) return 0
+  let n = 0
+  const walk = rel => {
+    for (const entry of readdirSync(join(runtimeDir, rel), { withFileTypes: true })) {
+      const next = rel ? `${rel}/${entry.name}` : entry.name
+      if (entry.isDirectory()) walk(next)
+      else if (entry.name.endsWith('.js') && existsSync(join(distRuntimeDir, next))) n++
+    }
+  }
+  walk('')
+  return n
 }
 
 const carts = targetCart ? [targetCart] : getCartsWithCode()
@@ -69,11 +114,18 @@ for (const cart of carts) {
 }
 
 if (checkOnly) {
-  if (drifted > 0) {
-    console.error(`\n${drifted} cart(s) out of sync — run: pnpm sync:dist`)
+  const rtDrift = runtimeDrift()
+  for (const rel of rtDrift) console.error(`DRIFT  runtime/${rel} → dist/runtime/${rel}`)
+  if (drifted > 0 || rtDrift.length > 0) {
+    if (drifted > 0) console.error(`\n${drifted} cart(s) out of sync — run: pnpm sync:dist`)
+    if (rtDrift.length > 0)
+      console.error(
+        `\n${rtDrift.length} runtime file(s) not mirrored into dist/ — run: pnpm build` +
+          ` (dist/ ships in the npm package, so this would not reach users)`
+      )
     process.exit(1)
   }
-  console.log(`Dist in sync (${carts.length} carts verified)`)
+  console.log(`Dist in sync (${carts.length} carts, ${runtimeFileCount()} runtime files verified)`)
 } else {
   const skipped = carts.length - synced
   console.log(`\n${synced} synced, ${skipped} already current`)

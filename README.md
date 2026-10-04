@@ -764,48 +764,48 @@ documented desktop host-origin setup rather than disabling origin checks.
 
 ```javascript
 // Camera
-setCameraPosition(x, y, z);
-setCameraTarget(x, y, z);
-setCameraFOV(degrees);
+nova64.camera.setCameraPosition(x, y, z);
+nova64.camera.setCameraTarget(x, y, z);
+nova64.camera.setCameraFOV(degrees);
 
 // Atmospheric
-setFog(color, near, far);
-clearFog();
-setAmbientLight(color, intensity);
-createPointLight(color, intensity, distance, [x, y, z]);
+nova64.light.setFog(color, near, far);
+nova64.light.clearFog();
+nova64.light.setAmbientLight(color, intensity);
+nova64.light.createPointLight(color, intensity, distance, [x, y, z]);
 ```
 
 ### 📦 **3D Objects**
 
 ```javascript
 // Primitives — createX(size/args, color, [x,y,z], options?)
-createCube(size, color, [x,y,z], { material, metalness, roughness, emissive, ... })
-createCube(width, height, depth, color, [x,y,z], options)
-createSphere(radius, color, [x,y,z], options)
-createPlane(w, h, color, [x,y,z], options)
-createCylinder(radiusTop, radiusBottom, height, color, [x,y,z], options)
-createCone(radius, height, color, [x,y,z], options)
-createCapsule(radius, length, color, [x,y,z], options)
-createTorus(radius, tube, color, [x,y,z], options)
+nova64.scene.createCube(size, color, [x,y,z], { material, metalness, roughness, emissive, ... })
+nova64.scene.createCube(width, height, depth, color, [x,y,z], options)
+nova64.scene.createSphere(radius, color, [x,y,z], options)
+nova64.scene.createPlane(w, h, color, [x,y,z], options)
+nova64.scene.createCylinder(radiusTop, radiusBottom, height, color, [x,y,z], options)
+nova64.scene.createCone(radius, height, color, [x,y,z], options)
+nova64.scene.createCapsule(radius, length, color, [x,y,z], options)
+nova64.scene.createTorus(radius, tube, color, [x,y,z], options)
 
 // Material types: 'standard', 'metallic', 'holographic', 'emissive'
 
 // Transforms
-rotateMesh(mesh, x, y, z)
-setPosition(mesh, x, y, z)
-setScale(mesh, x, y, z)
-removeMesh(mesh)          // also: destroyMesh(mesh)
+nova64.scene.rotateMesh(mesh, x, y, z)
+nova64.scene.setPosition(mesh, x, y, z)
+nova64.scene.setScale(mesh, x, y, z)
+nova64.scene.removeMesh(mesh)          // also: destroyMesh(mesh)
 ```
 
 ### 🎮 **Input**
 
 ```javascript
-key(keyCode); // Keyboard key held
-keyp(keyCode); // Key just pressed
-btn(index); // Gamepad button held
-btnp(index); // Gamepad button just pressed
-(mouseX(), mouseY()); // Mouse position
-mouseButton(index); // Mouse button state
+nova64.input.key(keyCode); // Keyboard key held
+nova64.input.keyp(keyCode); // Key just pressed
+nova64.input.btn(index); // Gamepad button held
+nova64.input.btnp(index); // Gamepad button just pressed
+nova64.input.mouseX(), nova64.input.mouseY(); // Mouse position
+nova64.input.mouseDown(); // Mouse button state
 ```
 
 **On-screen touch gamepad** — phones and tablets get a d-pad and action buttons
@@ -833,83 +833,83 @@ toggle — in [docs/TOUCH_CONTROLS.md](docs/TOUCH_CONTROLS.md). Covered by
 ### 🎨 **2D Overlay**
 
 ```javascript
-cls(color?)               // Clear screen
-pset(x, y, color)         // Set pixel
-line(x0, y0, x1, y1, color)
-rect(x, y, w, h, color, fill?)
-circ(cx, cy, r, color, fill?)
-print(text, x, y, color)
-printCentered(text, y, color)
-drawGlowText(text, x, y, color)
-drawCrosshair(x, y, size, color)
-drawProgressBar(x, y, w, h, pct, fgColor, bgColor)
+nova64.draw.cls(color?)               // Clear screen
+nova64.draw.pset(x, y, color)         // Set pixel
+nova64.draw.line(x0, y0, x1, y1, color)
+nova64.draw.rect(x, y, w, h, color, fill?)
+nova64.draw.circle(cx, cy, r, color, fill?)
+nova64.draw.print(text, x, y, color)
+nova64.draw.printCentered(text, y, color)
+nova64.draw.drawGlowText(text, x, y, color)
+nova64.draw.drawCrosshair(x, y, size, color)
+nova64.draw.drawProgressBar(x, y, w, h, pct, fgColor, bgColor)
 ```
 
 ### 🌌 **Skybox & Effects**
 
 ```javascript
-createSpaceSkybox();
-createGradientSkybox(topColor, bottomColor);
-createSolidSkybox(color);
-enableSkyboxAutoAnimate(speed);
+nova64.light.createSpaceSkybox();
+nova64.light.createGradientSkybox(topColor, bottomColor);
+nova64.light.createSolidSkybox(color);
+nova64.light.enableSkyboxAutoAnimate(speed);
 
-enableBloom(strength, radius, threshold);
-enableVignette(darkness, offset);
-enableGlitch(amount);
-enableChromaticAberration(offset);
-enableN64Mode();
-enablePSXMode();
-enableLowPolyMode();
+nova64.fx.enableBloom(strength, radius, threshold);
+nova64.fx.enableVignette(darkness, offset);
+nova64.fx.enableGlitch(amount);
+nova64.fx.enableChromaticAberration(offset);
+nova64.fx.enableN64Mode();
+nova64.fx.enablePSXMode();
+nova64.fx.enableLowPolyMode();
 ```
 
 ### 🔊 **Audio**
 
 ```javascript
-sfx(preset); // Named presets: 'jump', 'coin', 'explosion', ...
-sfx({ wave, freq, dur }); // Custom sound
-setVolume(level); // Master volume 0.0–1.0
+nova64.audio.sfx(preset); // Named presets: 'jump', 'coin', 'explosion', ...
+nova64.audio.sfx({ wave, freq, dur }); // Custom sound
+nova64.audio.setVolume(level); // Master volume 0.0–1.0
 ```
 
 ### 💾 **Storage**
 
 ```javascript
-saveData(key, value)
-loadData(key, fallback?)
-deleteData(key)
+nova64.data.saveData(key, value)
+nova64.data.loadData(key, fallback?)
+nova64.data.deleteData(key)
 ```
 
 ### 🧊 **Voxel Engine** (selection)
 
 ```javascript
-updateVoxelWorld(playerX, playerY, playerZ);
-setVoxelBlock(x, y, z, blockType);
-getVoxelBlock(x, y, z);
-raycastVoxelBlock(origin, direction, maxDist);
-checkVoxelCollision(x, y, z, w, h, d);
-spawnVoxelEntity(type, x, y, z, components);
-configureVoxelWorld(options);
-saveVoxelWorld(name);
-loadVoxelWorld(name);
+nova64.voxel.updateVoxelWorld(playerX, playerY, playerZ);
+nova64.voxel.setVoxelBlock(x, y, z, blockType);
+nova64.voxel.getVoxelBlock(x, y, z);
+nova64.voxel.raycastVoxelBlock(origin, direction, maxDist);
+nova64.voxel.checkVoxelCollision(x, y, z, w, h, d);
+nova64.voxel.spawnVoxelEntity(type, x, y, z, components);
+nova64.voxel.configureVoxelWorld(options);
+nova64.voxel.saveVoxelWorld(name);
+nova64.voxel.loadVoxelWorld(name);
 ```
 
 ### 🎮 **Game Utilities**
 
 ```javascript
-createShake() / triggerShake() / updateShake();
-createCooldown() / useCooldown() / updateCooldowns();
-createPool() / createSpawner() / updateSpawner();
-createStateMachine() / createTimer();
-createFloatingTextSystem() / drawFloatingTexts();
-createMinimap(opts) / drawMinimap(mm, time);
+nova64.util.createShake() / triggerShake() / updateShake();
+nova64.util.createCooldown() / useCooldown() / updateCooldowns();
+nova64.util.createPool() / createSpawner() / updateSpawner();
+nova64.util.createStateMachine() / createTimer();
+nova64.util.createFloatingTextSystem() / drawFloatingTexts();
+nova64.draw.createMinimap(opts) / drawMinimap(mm, time);
 ```
 
 ### ⚛️ **Physics**
 
 ```javascript
-createBody(options);
-stepPhysics(dt);
-setGravity(x, y, z);
-setCollisionMap(fn);
+nova64.physics.createBody(options);
+nova64.physics.stepPhysics(dt);
+nova64.physics.setGravity(x, y, z);
+nova64.physics.setCollisionMap(fn);
 ```
 
 ---

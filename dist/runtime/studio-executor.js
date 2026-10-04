@@ -15,6 +15,14 @@
 // Characters after which a `export` keyword can legally begin a statement.
 const STATEMENT_BOUNDARY = new Set([';', '}', '{']);
 
+// A `/` is division (not a regex literal) when it follows a value. Anything else
+// -- an operator, a comma, an open bracket, or one of these keywords -- means a
+// regex can start there. Without this, a regex containing a quote or a brace
+// (`/["']/`, `/\{/`) desynchronises the string and brace tracking below.
+const VALUE_END = /[A-Za-z0-9_$)\]]/;
+const REGEX_KEYWORDS =
+  /\b(return|typeof|instanceof|case|in|of|delete|void|new|do|else|yield|await)$/;
+
 /**
  * Remove top-level `export` syntax from cart source.
  *
@@ -60,6 +68,36 @@ export function stripTopLevelExports(src) {
       out += src.slice(i, stop);
       i = stop;
       continue;
+    }
+
+    // ── regex literals: copied through so their contents never affect state ──
+    if (ch === '/' && (!VALUE_END.test(prevSignificant) || REGEX_KEYWORDS.test(out))) {
+      let j = i + 1;
+      let inClass = false;
+      let closed = false;
+      while (j < src.length) {
+        const c = src[j];
+        if (c === '\\') {
+          j += 2;
+          continue;
+        }
+        if (c === '\n') break; // unterminated — fall through and treat as division
+        if (c === '[') inClass = true;
+        else if (c === ']') inClass = false;
+        else if (c === '/' && !inClass) {
+          closed = true;
+          break;
+        }
+        j += 1;
+      }
+      if (closed) {
+        while (j + 1 < src.length && /[a-z]/.test(src[j + 1])) j += 1; // flags
+        out += src.slice(i, j + 1);
+        i = j + 1;
+        prevSignificant = '/';
+        sawNewline = false;
+        continue;
+      }
     }
 
     // ── quoted strings: copied through, escapes respected ──

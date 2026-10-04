@@ -1,0 +1,78 @@
+name: npm auth check (diagnostic only)
+
+# Answers one question: can NPM_TOKEN actually publish `nova64`?
+#
+# `npm publish` reports both authentication and permission failures as a bare
+# `E404 PUT https://registry.npmjs.org/nova64 - Not found`. npm does that on
+# purpose -- distinguishing 401 from 403 from 404 would let the registry be used
+# to enumerate private packages -- but it means a perfectly valid-looking token
+# with the wrong *type* or *scope* is indistinguishable from "package missing".
+#
+# This workflow publishes NOTHING and creates NO release. It is safe to run at
+# any time, and exists so a token question never costs a version number again.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  check:
+    name: Can NPM_TOKEN publish nova64?
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # mirrors the real publish job, so provenance/OIDC matches
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+
+      - name: Does the token authenticate at all?
+        continue-on-error: true
+        run: |
+          echo "::group::npm whoami"
+          npm whoami || echo "FAIL — the token did not authenticate (bad, revoked, or malformed)"
+          echo "::endgroup::"
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Does it have write access to nova64?
+        continue-on-error: true
+        run: |
+          echo "::group::collaborators"
+          npm access list collaborators nova64 || echo "FAIL — cannot read collaborators (token lacks access to this package)"
+          echo "::endgroup::"
+          echo "::group::granted packages for this token"
+          npm access list packages || echo "(classic automation tokens do not scope packages — this failing is normal for them)"
+          echo "::endgroup::"
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Dry-run the real publish (uploads nothing)
+        continue-on-error: true
+        run: |
+          echo "::group::npm publish --dry-run"
+          npm publish --dry-run --access public 2>&1 | tail -25
+          echo "::endgroup::"
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: How to read this
+        run: |
+          echo "whoami FAILED            -> the token is invalid/revoked. Create a new one."
+          echo "whoami OK, access FAILED -> the token authenticates but cannot write this"
+          echo "                            package. If it is a GRANULAR token it needs"
+          echo "                            'Read and write' AND nova64 listed under"
+          echo "                            'Select packages'. Prefer a classic"
+          echo "                            AUTOMATION token: it bypasses 2FA, which a"
+          echo "                            'Publish' token does not."
+          echo "both OK, real publish 404 -> the package requires a TRUSTED PUBLISHER."
+          echo "                            No token will work; configure GitHub Actions"
+          echo "                            as a trusted publisher for seacloud9/nova64"
+          echo "                            (npmjs.com -> package -> Settings ->"
+          echo "                            Publishing access) and drop NODE_AUTH_TOKEN."

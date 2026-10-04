@@ -31,6 +31,10 @@ const VERSION_FILES = [
   { file: 'package.json', re: /("version":\s*")[^"]+(")/, required: true },
   { file: 'README.md', re: /(\[!\[Version\]\(https:\/\/img\.shields\.io\/badge\/version-)[^-]+(-blue\.svg\)\])/, required: false },
   { file: 'docs/index.html', re: /(<span class="version">v)[^<]+(<\/span>)/, required: false },
+  // dist/ is tracked and ships in the npm tarball, so the docs copy has to carry
+  // the same version -- otherwise the published package's own docs advertise the
+  // previous release. (dist/docs/index.html sat at v0.4.9 for four releases.)
+  { file: 'dist/docs/index.html', re: /(<span class="version">v)[^<]+(<\/span>)/, required: false },
 ];
 const argv = process.argv.slice(2);
 const DRY = argv.includes('--dry-run');

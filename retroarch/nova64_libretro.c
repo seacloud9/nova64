@@ -40691,16 +40691,27 @@ static void renderer_request_hardware_context(retro_environment_t cb)
    if (gles.requested)
       return;
 
-   nova64_log_line(RETRO_LOG_INFO, "[nova64] requesting OpenGL 3.3 Core Profile context");
    memset(&hw_render, 0, sizeof(hw_render));
+#ifdef EMSCRIPTEN
+   /* RetroArch web exposes WebGL2, which is OpenGL ES 3.0. All core shaders
+      are already "#version 300 es", so only the context type changes. */
+   nova64_log_line(RETRO_LOG_INFO, "[nova64] requesting OpenGL ES 3.0 (WebGL2) context");
+   hw_render.context_type = RETRO_HW_CONTEXT_OPENGLES3;
+#else
+   nova64_log_line(RETRO_LOG_INFO, "[nova64] requesting OpenGL 3.3 Core Profile context");
    hw_render.context_type = RETRO_HW_CONTEXT_OPENGL_CORE;
+#endif
    hw_render.context_reset = renderer_context_reset;
    hw_render.context_destroy = renderer_context_destroy;
    hw_render.depth = true;
    hw_render.stencil = false;
    hw_render.bottom_left_origin = true;
    hw_render.version_major = 3;
+#ifdef EMSCRIPTEN
+   hw_render.version_minor = 0;
+#else
    hw_render.version_minor = 3;
+#endif
    hw_render.cache_context = false;
    gles.requested = cb(RETRO_ENVIRONMENT_SET_HW_RENDER, &hw_render);
    if (gles.requested)

@@ -302,7 +302,7 @@ Exit criteria:
 - input mapping, framebuffer output, and save-state versioning have deterministic smoke tests
 - the core builds on WSL/Linux and launches a sample cart through RetroArch
 
-### Phase 4b: WASM libretro Core for RetroArch Web — **Planned**
+### Phase 4b: WASM libretro Core for RetroArch Web — **In progress** (build + CI landed; see `retroarch/WASM_CORE.md`)
 
 Goal: compile the same `nova64_libretro.c` + QuickJS core to WebAssembly
 (Emscripten) so it runs inside the RetroArch web player
@@ -326,11 +326,11 @@ Feasibility (from code audit, 2026-11-05):
 
 Work items:
 
-- [ ] **`platform=emscripten` Makefile target** — emit a static
+- [x] **`platform=emscripten` Makefile target** — emit a static
       `nova64_libretro_emscripten.bc`/`.a` per libretro convention
       (`STATIC_LINKING=1`, `-DEMSCRIPTEN`), linked into RetroArch's
       `Makefile.emscripten`. Build in CI via `emscripten/emsdk` container.
-- [ ] **HW context selection** — on Emscripten request
+- [x] **HW context selection** — on Emscripten request
       `RETRO_HW_CONTEXT_OPENGLES3` (3.0) instead of `OPENGL_CORE 3.3`;
       keep current path for desktop.
 - [ ] **WebGL2 feature gaps** — `RGBA16F` render targets need

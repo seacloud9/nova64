@@ -135,6 +135,14 @@ else ifeq ($(platform), ctr)
    CXXFLAGS = $(CFLAGS) -fno-rtti -fno-exceptions -std=gnu++11
    CFLAGS += -std=gnu99
    STATIC_LINKING = 1
+else ifeq ($(platform), emscripten)
+   # WebAssembly static core for RetroArch web (link into RetroArch's
+   # Makefile.emscripten). Build with: emmake make platform=emscripten
+   TARGET := $(TARGET_NAME)_emscripten.a
+   CC = emcc
+   AR = emar
+   CFLAGS += -DEMSCRIPTEN -DHAVE_OPENGLES -DHAVE_OPENGLES3 -sUSE_ZLIB=1
+   STATIC_LINKING = 1
 else ifeq ($(platform), vita)
    TARGET := $(TARGET_NAME)_vita.a
    CC = arm-vita-eabi-gcc$(EXE_EXT)

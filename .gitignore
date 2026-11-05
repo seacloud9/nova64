@@ -30,6 +30,7 @@ os9-shellMobile/node_modules
 # production
 /build
 /retroarch/build/
+/retroarch/build-emscripten/
 /retroarch/games_old/
 /retroarch/*.a
 /retroarch/*.dll

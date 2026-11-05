@@ -34,12 +34,12 @@ or `.nova` cart. Select the `webgl2` video driver.
 
 ## How the web build differs
 
-| Area | Native | Web (`EMSCRIPTEN`) |
-| --- | --- | --- |
-| GL context | OpenGL 3.3 Core | OpenGL ES 3.0 (WebGL2) |
-| Shaders | `#version 300 es` | unchanged |
-| zlib | system `-lz` | `-sUSE_ZLIB=1` port |
-| Threads | none | none (no SharedArrayBuffer / COOP-COEP needed) |
+| Area       | Native            | Web (`EMSCRIPTEN`)                             |
+| ---------- | ----------------- | ---------------------------------------------- |
+| GL context | OpenGL 3.3 Core   | OpenGL ES 3.0 (WebGL2)                         |
+| Shaders    | `#version 300 es` | unchanged                                      |
+| zlib       | system `-lz`      | `-sUSE_ZLIB=1` port                            |
+| Threads    | none              | none (no SharedArrayBuffer / COOP-COEP needed) |
 
 HDR bloom renders into `RGBA16F` targets. Browsers without
 `EXT_color_buffer_float` fail the framebuffer completeness check, and the core

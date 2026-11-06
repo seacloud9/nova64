@@ -2,6 +2,30 @@
 // Vertical space shooter. Arrow keys move. Z shoots (hold). X start / retry.
 // Enemy fire, boss every 3rd wave, power-up drops, persistent high score.
 
+const { sfx } = nova64.audio;
+const { setCameraPosition, setCameraTarget } = nova64.camera;
+const { loadData, saveData } = nova64.data;
+const { cls, drawProgressBar, glowCircle, glowRect, rectfill, rgba8 } = nova64.draw;
+const { btn, btnp } = nova64.input;
+const {
+  clearSkybox,
+  createSpaceSkybox,
+  enableSkyboxAutoAnimate,
+  setAmbientLight,
+  setFog,
+  setLightDirection,
+} = nova64.light;
+const {
+  createCone,
+  createSphere,
+  createTorus,
+  destroyMesh,
+  setMeshEmissive,
+  setPosition,
+  setRotation,
+  setScale,
+} = nova64.scene;
+
 const FIELD_W = 12,
   FIELD_H = 7;
 const BULLET_SPEED = 20;

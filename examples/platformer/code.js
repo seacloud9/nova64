@@ -2,6 +2,31 @@
 // 3D platformer. Arrows move/rotate camera, Z jumps (double-jump!).
 // 3 lives, collect coins, reach the golden star. Persistent best score.
 
+const { sfx } = nova64.audio;
+const { loadData, saveData } = nova64.data;
+const { cls, glowCircle, glowRect, line, rectfill, rgba8, setCamera } = nova64.draw;
+const { btn, btnp } = nova64.input;
+const { clearSkybox, createGradientSkybox, setAmbientLight, setFog, setLightDirection } =
+  nova64.light;
+const {
+  createCube,
+  createSphere,
+  createTorus,
+  destroyMesh,
+  setMeshEmissive,
+  setMeshVisible,
+  setPosition,
+  setRotation,
+  setScale,
+} = nova64.scene;
+// Button indices (PICO-8 order) used by btn()/btnp() on every Nova64 host.
+const BUTTON_LEFT = 0,
+  BUTTON_RIGHT = 1,
+  BUTTON_UP = 2,
+  BUTTON_DOWN = 3,
+  BUTTON_Z = 4,
+  BUTTON_X = 5;
+
 const GRAVITY = -16;
 const JUMP_SPEED = 7;
 const MOVE_SPEED = 5;

@@ -3,6 +3,8 @@
 // G1 evaluates carts as ES modules and resolves init/update/draw from the
 // module namespace, so this cart uses standard `export function` syntax.
 
+const { print } = nova64.draw;
+
 export function init() {
   const result = engine.call('engine.init', {});
   if (!result || !result.capabilities) {

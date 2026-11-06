@@ -3,6 +3,25 @@
 // Arrows turn, Z starts / restarts, X pauses.
 // Speed increases as snake grows. Bonus orbs appear for 3x points. High score saved.
 
+const { sfx } = nova64.audio;
+const { setCameraFOV, setCameraPosition, setCameraTarget } = nova64.camera;
+const { loadData, saveData } = nova64.data;
+const { cls, glowRect, rectfill, rgba8 } = nova64.draw;
+const { btnp } = nova64.input;
+const { setAmbientLight, setFog, setLightDirection } = nova64.light;
+const {
+  createCube,
+  createInstancedMesh,
+  createSphere,
+  destroyMesh,
+  setInstanceColor,
+  setMeshColor,
+  setMeshEmissive,
+  setMeshVisible,
+  setPosition,
+  setScale,
+} = nova64.scene;
+
 const COLS = 22;
 const ROWS = 14;
 const CELL = 1.6;

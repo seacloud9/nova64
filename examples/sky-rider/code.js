@@ -4,6 +4,24 @@
 // Showcases: instanced ground tiles for the scrolling checkerboard, real-time
 // enemy spawns, projectile pool, bloom + CRT post.
 
+const { setCameraFOV, setCameraPosition, setCameraTarget } = nova64.camera;
+const { cls, glowRect, rectfill, rgba8 } = nova64.draw;
+const { btn, btnp } = nova64.input;
+const { setAmbientLight, setFog, setLightDirection } = nova64.light;
+const {
+  createCube,
+  createInstancedMesh,
+  createPlane,
+  createSphere,
+  destroyMesh,
+  rotateMesh,
+  setInstanceColor,
+  setMeshColor,
+  setMeshEmissive,
+  setPosition,
+  setRotation,
+} = nova64.scene;
+
 const FLOOR_Y = -2;
 const TILE = 6;
 const TILE_ROWS = 18;

@@ -2,6 +2,11 @@
 // Z = left flipper / hold Z while serving to charge plunger, release to launch.
 // X = right flipper.  Chain bumper hits for combos.  One drain guard per game.
 
+const { sfx } = nova64.audio;
+const { loadData, saveData } = nova64.data;
+const { cls, glowCircle, glowLine, glowRect, rect, rectfill, rgba8 } = nova64.draw;
+const { btn, btnp } = nova64.input;
+
 const BALL_R = 6;
 const GRAVITY = 280;
 const TX = 60,

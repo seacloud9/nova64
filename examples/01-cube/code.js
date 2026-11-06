@@ -4,6 +4,8 @@
 // box geometry, mesh instance, transform, camera. The cube rotates on its
 // Y axis so the renderer is visibly active.
 
+const { print } = nova64.draw;
+
 let cubeHandle = 0;
 let cameraHandle = 0;
 let elapsed = 0;

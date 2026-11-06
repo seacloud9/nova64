@@ -7,6 +7,23 @@
 //             setInstanceVisible, project3DToScreen, getMeshPos, setMeshPos,
 //             setMeshColor, setCamera, getViewDirection
 
+const { setCameraPosition, setCameraTarget } = nova64.camera;
+const { cls, print, rect, rgba8 } = nova64.draw;
+const { btn, btnp } = nova64.input;
+const {
+  createCube,
+  createCylinder,
+  createInstancedMesh,
+  createSphere,
+  createTorus,
+  setInstanceColor,
+  setInstanceTransform,
+  setMeshColor,
+  setMeshVisible,
+  setPosition,
+  setRotation,
+} = nova64.scene;
+
 const CELL = 2; // world units per tile
 const ROOM_W = 9;
 const ROOM_H = 7;

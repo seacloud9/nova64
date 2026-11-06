@@ -3,6 +3,8 @@
 // Exercises the G2 input slice. WASD / arrows / left stick translate the
 // cube on the X/Z plane; Space/Z/A jumps. Esc/X resets the position.
 
+const { print } = nova64.draw;
+
 let cube = 0;
 let camera = 0;
 const pos = [0, 0.5, 0];

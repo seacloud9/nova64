@@ -2,6 +2,11 @@
 // Arrow keys to move, Z to shoot. 3 lives, player HP, power-up drops, enemy variety.
 // High score saved between sessions.
 
+const { sfx } = nova64.audio;
+const { loadData, saveData } = nova64.data;
+const { cls, glowCircle, glowLine, glowRect, print, rectfill, rgba8 } = nova64.draw;
+const { btn, btnp } = nova64.input;
+
 let t = 0;
 let px = 320,
   py = 280;

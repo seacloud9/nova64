@@ -1,5 +1,7 @@
 // 05-particles/code.js — pretty additive-glow fountain over a dark plane.
 
+const { print } = nova64.draw;
+
 let elapsed = 0;
 let cam;
 

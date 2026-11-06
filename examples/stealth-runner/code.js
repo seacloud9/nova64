@@ -2,6 +2,39 @@
 // Move through spotlight-lit corridors without being caught.
 // Arrow keys/WASD to move. Reach the exit (green) without touching a spotlight.
 
+const { cls, print, rectfill, rgba8 } = nova64.draw;
+const { btn, btnp } = nova64.input;
+
+// Spotlight overlay. Implemented in the cart (same scanline algorithm the
+// RetroArch core's createSpotlight/drawSpotlight use) so it runs on every
+// host. The web runtime has no spotlight API.
+function createSpotlight(cx, cy, r) {
+  return { cx: cx, cy: cy, r: r, color: rgba8(0, 0, 0, 200) };
+}
+function setSpotlightPos(s, cx, cy) {
+  s.cx = cx | 0;
+  s.cy = cy | 0;
+}
+function setSpotlightColor(s, color) {
+  s.color = color;
+}
+function destroySpotlight(s) {}
+function drawSpotlight(s) {
+  const W = 640,
+    H = 360,
+    r2 = s.r * s.r;
+  for (let row = 0; row < H; row++) {
+    const dy = row - s.cy;
+    if (dy < -s.r || dy > s.r) {
+      rectfill(0, row, W, 1, s.color);
+      continue;
+    }
+    const hw = Math.sqrt(r2 - dy * dy) | 0;
+    if (s.cx - hw > 0) rectfill(0, row, s.cx - hw, 1, s.color);
+    if (s.cx + hw < W) rectfill(s.cx + hw, row, W - (s.cx + hw), 1, s.color);
+  }
+}
+
 let t = 0;
 let px = 80,
   py = 180;
@@ -15,7 +48,7 @@ const EXIT_X = 540,
   EXIT_Y = 160;
 
 function buildLevel(lv) {
-  for (let i = 0; i < spots.length; i++) destroySpotlight(spots[i]);
+  for (let i = 0; i < spots.length; i++) destroySpotlight(spots[i].handle);
   spots = [];
   caught = false;
   win = false;

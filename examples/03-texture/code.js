@@ -2,6 +2,8 @@
 // applies it as the cube's albedo. Exercises texture.createFromImage with
 // the {width,height,pixels} variant.
 
+const { print } = nova64.draw;
+
 let cube = 0;
 let elapsed = 0;
 

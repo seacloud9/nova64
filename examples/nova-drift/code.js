@@ -3,6 +3,23 @@
 // Z/Up=Thrust  X/Down=Brake  Left/Right=Yaw  C/V=Pitch  B=BOOST (B key or joypad)
 // Boost rams destroy drones. Radar shows crystal/drone positions.
 
+const { sfx } = nova64.audio;
+const { setCameraFOV, setCameraPosition, setCameraTarget } = nova64.camera;
+const { loadData, saveData } = nova64.data;
+const { drawProgressBar, glowCircle, glowRect, printCentered, pset, rectfill, rgba8 } = nova64.draw;
+const { btn, btnp, key } = nova64.input;
+const { setAmbientLight, setFog, setLightDirection } = nova64.light;
+const {
+  createCube,
+  createInstancedMesh,
+  createSphere,
+  destroyMesh,
+  rotateMesh,
+  setMeshColor,
+  setMeshEmissive,
+  setPosition,
+} = nova64.scene;
+
 const TOTAL = 15;
 const THRUST = 0.32;
 const TURN_SPD = 0.95;

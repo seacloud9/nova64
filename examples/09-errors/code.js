@@ -2,6 +2,8 @@
 // Cart accumulates pass/fail into globalThis.__nova64_assert which the
 // conformance harness scrapes after N frames.
 
+const { print } = nova64.draw;
+
 const results = [];
 function expect(name, fn) {
   try {

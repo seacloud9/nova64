@@ -2,8 +2,12 @@
 // Z = launch firework  |  X = next show  |  Automatic shows cycle every 15s
 // Three themed shows: Grand Finale, Aurora Borealis, Gold Rush.
 
-const { BM, cls, print, pset, rectfill, line, screenHeight, screenWidth } = nova64.draw;
+const { BM, cls, glowCircle, glowLine, line, print, pset, rectfill, screenHeight, screenWidth } =
+  nova64.draw;
 const { burstEmitter2D, createEmitter2D, drawEmitter2D, updateEmitter2D } = nova64.fx;
+const { sfx } = nova64.audio;
+const { rgba8 } = nova64.draw;
+const { btnp } = nova64.input;
 
 let W = 640,
   H = 360;

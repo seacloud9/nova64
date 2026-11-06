@@ -31116,6 +31116,13 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, draw, "clearDrawState", js_clear_draw_state, 0);
    set_function(ctx, draw, "drawTriangle", js_draw_triangle, 8);
    set_function(ctx, draw, "drawGlowText", js_draw_glow_text, 6);
+   /* Glow primitives were bare globals only; expose them on nova64.draw too so
+      namespaced carts (const { glowRect } = nova64.draw) work on both hosts. */
+   set_function(ctx, draw, "glowRect",     js_glow_rect,      6);
+   set_function(ctx, draw, "glowRectFill", js_glow_rect_fill, 6);
+   set_function(ctx, draw, "glowCircle",   js_glow_circle,    5);
+   set_function(ctx, draw, "glowLine",     js_glow_line,      6);
+   set_function(ctx, draw, "glowPset",     js_glow_pset,      4);
    set_function(ctx, draw, "drawGlowTextCentered", js_draw_glow_text_centered, 6);
    set_function(ctx, draw, "drawPulsingText", js_draw_pulsing_text, 7);
    set_function(ctx, draw, "tristrip", js_tristrip, 2);

@@ -2,6 +2,8 @@
 // number of materials/meshes via batched flush to exercise the handle table
 // and ensure no IDs are recycled and destroy() returns ok for all.
 
+const { print } = nova64.draw;
+
 const N = 256;
 const results = [];
 function expect(name, fn) {

@@ -70,6 +70,12 @@ export const NAMESPACE_MAP = {
     'resetBlendMode',
     'withBlend',
     'withAlpha',
+    // Glow primitives (parity with the libretro core)
+    'glowRect',
+    'glowRectFill',
+    'glowCircle',
+    'glowLine',
+    'glowPset',
   ],
 
   sprite: [

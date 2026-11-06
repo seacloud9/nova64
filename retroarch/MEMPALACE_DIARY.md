@@ -860,3 +860,50 @@ AAAK:
   opacity on non-instanced scene-0 props, lower scene-4 object opacity, and a
   larger cyan scene-4 horizon. Next 90% push should target scene-0 composition
   now that the reference is stable.
+
+---
+
+## 2026-11-05 - RetroArch web player (WASM core in the browser + web OS app)
+
+Topic seed for MemPalace: `nova64-retroarch-wasm-web-player-20261105`
+
+AAAK:
+
+- **Anchor:** Follow-on to Phase 4b (WASM libretro core, commits `b2718b20`,
+  `64f93101`). Goal: run Nova64 carts on the native libretro core compiled to
+  WebAssembly inside RetroArch's own web player, and launch it from the web OS.
+- **Actions:** Added `scripts/build-retroarch-web.sh` (`pnpm build:retroarch-web`):
+  Docker `emscripten/emsdk:3.1.74` builds `nova64_libretro_emscripten.a`, then
+  links it into RetroArch `v1.21.0` via
+  `make -f Makefile.emscripten LIBRETRO=nova64 HAVE_OPENGLES3=1`. Output goes to
+  `public/retroarch-web/` (served at `/retroarch-web/index.html?cart=<path>`).
+  Added the `retroarch-web` app in `os9-shell/src/apps/retroarch-web-app.tsx`
+  (iframe + cart picker from `GAMES`), registered in `DesktopApp.tsx`, the
+  launcher, and the Apple menu. Added a `player` job to
+  `.github/workflows/wasm-core.yml` that builds the player and runs
+  `scripts/retroarch-web-smoke.mjs`.
+- **Artifacts:** `scripts/build-retroarch-web.sh`,
+  `scripts/retroarch-web-smoke.mjs`, `public/retroarch-web/`,
+  `os9-shell/src/apps/retroarch-web-app.tsx`, the wasm-core workflow, and
+  `.gitignore` entries for `retroarch/build-web/` and `retroarch/obj-emscripten/`.
+- **Knowledge:**
+  - The page exposes `window.nova64RetroArch = { state, error, log }`. State
+    goes `loading` → `running`, and the log includes `[nova64] loaded` once the
+    cart is in. Tests should wait on that, not on fixed sleeps.
+  - space-harrier-3d reaches `running` in ~5s under headless Chromium with
+    `--use-angle=swiftshader --enable-unsafe-swiftshader`. The post FBO is
+    640x360 RGBA32F with 5 bloom mips, and the canvas is 1280x720.
+  - **Gotcha:** `page.evaluate(() => window.nova64RetroArch)` (returning the
+    whole object) hangs forever, and Playwright's own timeouts don't fire. Return
+    only plain fields (`state`, `error`, a `loaded` boolean). Reading just
+    `.state` is fine. `browser.close()` can also block, so race it against a timer.
+  - The smoke script is bounded: `SMOKE_TIMEOUT_MS` (180s Node watchdog),
+    `SMOKE_ATTEMPTS` (2, fresh browser each), and a 30s cap per step. It passes
+    in ~16s locally.
+  - Harmless console noise: "Could not get screen dimensions", "Cannot push NULL
+    or empty core path into the playlist", AudioContext autoplay warnings, and
+    "GPU stall due to ReadPixels".
+  - Cosmetic gap: the core's bitmap font has no `■` (U+25A0), so cart bullets
+    render as boxes. A fix would be a glyph fallback in the core's text path.
+  - The `pnpm mempalace:*` scripts assume WSL (`~/ai-tools`,
+    `/mnt/c/Users/brend/...`) and fail on macOS. Mine from the Windows machine.

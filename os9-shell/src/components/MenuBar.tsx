@@ -74,6 +74,7 @@ export function MenuBar({ appMenus = [], onCommand }: MenuBarProps) {
         { label: 'Game Studio', id: 'studio', click: () => novaContext.launchApp('studio') },
         { label: 'Game Launcher', id: 'game-launcher', click: () => novaContext.launchApp('game-launcher') },
         { label: '🕹️ eMU', id: 'emu', click: () => novaContext.launchApp('emu') },
+        { label: '👾 RetroArch Web', id: 'retroarch-web', click: () => novaContext.launchApp('retroarch-web', { width: 900, height: 720 }) },
         { type: 'separator', label: '' },
         { label: t('menu.games'), type: 'submenu', submenu: [
           { label: '⭐ Hello World', click: () => novaContext.launchApp('cart-runner', { path: '/examples/hello-world/code.js', width: 900, height: 700 }) },

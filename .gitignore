@@ -31,6 +31,8 @@ os9-shellMobile/node_modules
 /build
 /retroarch/build/
 /retroarch/build-emscripten/
+/retroarch/build-web/
+/retroarch/obj-emscripten/
 /retroarch/games_old/
 /retroarch/*.a
 /retroarch/*.dll
@@ -115,3 +117,4 @@ nova64-godot/godot_project/bin/export/desktop/
 .alpha-loop/templates/*.bak
 .worktrees/
 plugins/
+/retroarch-web-smoke.png

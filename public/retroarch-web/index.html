@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Nova64 RetroArch Web</title>
+    <style>
+      :root {
+        --bg: #000;
+        --fg: #9fb4ff;
+      }
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: var(--bg);
+        color: var(--fg);
+        font: 13px/1.4 ui-monospace, Menlo, monospace;
+        overflow: hidden;
+      }
+      #canvas {
+        display: block;
+        width: 100%;
+        height: 100%;
+        outline: none;
+        image-rendering: pixelated;
+      }
+      #status {
+        position: absolute;
+        left: 12px;
+        bottom: 10px;
+        pointer-events: none;
+        white-space: pre;
+      }
+      #status.hidden {
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="canvas" tabindex="0"></canvas>
+    <div id="status">Loading Nova64 core…</div>
+    <script type="module">
+      // Boots RetroArch web with the Nova64 libretro core and runs one cart.
+      //   ?cart=/examples/hello-world/code.js   (same-origin path or URL)
+      // Exposes window.nova64RetroArch.state for tests: loading | running | error.
+      const status = document.getElementById('status');
+      const canvas = document.getElementById('canvas');
+      const api = (window.nova64RetroArch = { state: 'loading', log: [] });
+      const params = new URLSearchParams(location.search);
+      const cartUrl = params.get('cart') || '/examples/hello-world/code.js';
+
+      function fail(message) {
+        api.state = 'error';
+        api.error = message;
+        status.textContent = 'Error: ' + message;
+        status.classList.remove('hidden');
+      }
+
+      function record(text) {
+        api.log.push(text);
+        if (api.log.length > 500) api.log.shift();
+        console.log('[retroarch]', text);
+      }
+
+      async function boot() {
+        status.textContent = 'Fetching cart ' + cartUrl + '…';
+        const res = await fetch(cartUrl);
+        if (!res.ok) throw new Error('cart fetch failed: ' + res.status + ' ' + cartUrl);
+        const cart = new Uint8Array(await res.arrayBuffer());
+
+        status.textContent = 'Loading Nova64 core…';
+        const { default: createModule } = await import('./nova64_libretro.js');
+        const mod = await createModule({
+          noInitialRun: true,
+          canvas,
+          print: record,
+          printErr: record,
+          locateFile: (path) => new URL(path, import.meta.url).href,
+        });
+
+        const home = '/home/web_user/retroarch/userdata';
+        mod.FS.mkdirTree(home + '/content');
+        mod.FS.writeFile(
+          home + '/retroarch.cfg',
+          [
+            'video_driver = "gl"',
+            'audio_driver = "openal"',
+            'menu_driver = "rgui"',
+            'pause_nonactive = "false"',
+            'video_font_enable = "false"',
+            'input_menu_toggle = "f1"',
+            '',
+          ].join('\n')
+        );
+        const name = cartUrl.split('/').filter(Boolean).slice(-2).join('-') || 'cart.js';
+        const cartPath = home + '/content/' + (name.endsWith('.js') || name.endsWith('.nova') ? name : name + '.js');
+        mod.FS.writeFile(cartPath, cart);
+
+        // RetroArch reads the canvas backing size at boot ("Could not get
+        // screen dimensions" otherwise) — match it to the window.
+        const fit = () => {
+          const dpr = window.devicePixelRatio || 1;
+          const w = Math.max(1, Math.round(canvas.clientWidth * dpr));
+          const h = Math.max(1, Math.round(canvas.clientHeight * dpr));
+          if (canvas.width !== w || canvas.height !== h) {
+            if (mod.setCanvasSize) mod.setCanvasSize(w, h);
+            else {
+              canvas.width = w;
+              canvas.height = h;
+            }
+          }
+        };
+        fit();
+        window.addEventListener('resize', fit);
+
+        api.module = mod;
+        mod.callMain(['-v', '-c', home + '/retroarch.cfg', cartPath]);
+        api.state = 'running';
+        status.classList.add('hidden');
+        canvas.focus();
+        canvas.addEventListener('pointerdown', () => canvas.focus());
+      }
+
+      boot().catch((err) => fail(err && err.message ? err.message : String(err)));
+    </script>
+  </body>
+</html>

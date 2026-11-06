@@ -1,0 +1,482 @@
+[
+  {
+    "cart": "00-boot",
+    "status": "load-fail",
+    "detail": "[nova64] JS exception in init: TypeError: not a function"
+  },
+  {
+    "cart": "01-cube",
+    "status": "load-fail",
+    "detail": "[nova64] JS exception in init: TypeError: not a function"
+  },
+  {
+    "cart": "02-input",
+    "status": "load-fail",
+    "detail": "[nova64] JS exception in init: TypeError: not a function"
+  },
+  {
+    "cart": "03-texture",
+    "status": "load-fail",
+    "detail": "[nova64] JS exception in init: TypeError: not a function"
+  },
+  {
+    "cart": "04-instances",
+    "status": "load-fail",
+    "detail": "[nova64] JS exception in init: TypeError: not a function"
+  },
+  {
+    "cart": "05-particles",
+    "status": "load-fail",
+    "detail": "[nova64] JS exception in init: TypeError: not a function"
+  },
+  {
+    "cart": "08-capabilities",
+    "status": "load-fail",
+    "detail": "[nova64] JS exception in init: TypeError: not a function"
+  },
+  {
+    "cart": "09-errors",
+    "status": "load-fail",
+    "detail": "[nova64] JS exception in init: TypeError: not a function"
+  },
+  {
+    "cart": "10-stress",
+    "status": "load-fail",
+    "detail": "[nova64] JS exception in init: TypeError: not a function"
+  },
+  {
+    "cart": "3d-advanced",
+    "status": "ok",
+    "detail": ""
+  },
+  {
+    "cart": "adventure-comic-3d",
+    "status": "ok",
+    "detail": ""
+  },
+  {
+    "cart": "ar-hand-demo",
+    "status": "ok",
+    "detail": ""
+  },
+  {
+    "cart": "audio-lab",
+    "status": "ok",
+    "detail": ""
+  },
+  {
+    "cart": "babylon-demo",
+    "status": "ok",
+    "detail": ""
+  },
+  {
+    "cart": "blend-aurora",
+    "status": "ok",
+    "detail": ""
+  },
+  {
+    "cart": "boids-flocking",
+    "status": "ok",
+    "detail": ""
+  },
+  {
+    "cart": "camera-platformer",
+    "status": "ok",
+    "detail": ""
+  },
+  {
+    "cart": "canvas-ui-showcase",
+    "status": "ok",
+    "detail": ""
+  },
+  {
+    "cart": "creative-coding",
+    "status": "ok",
+    "detail": ""
+  },
+  {
+    "cart": "crystal-cathedral-3d",
+    "status": "ok",
+    "detail": ""
+  },
+  {
+    "cart": "cyberpunk-city-3d",
+    "status": "ok",
+    "detail": ""
+  },
+  {
+    "cart": "demoscene",
+    "status": "ok",
+    "detail": ""
+  },
+  {
+    "cart": "dungeon-crawler",
+    "status": "ok",
+    "detail": ""
+  },
+  {
+    "cart": "dungeon-crawler-3d",
+    "status": "ok",
+    "detail": ""
+  },
+  {
+    "cart": "f-zero-nova-3d",
+    "status": "ok",
+    "detail": ""
+  },
+  {
+    "cart": "filter-glitch",
+    "status": "ok",
+    "detail": ""
+  },
+  {
+    "cart": "flash-demo",
+    "status": "ok",
+    "detail": ""
+  },
+  {
+    "cart": "fps-demo-3d",
+    "status": "ok",
+    "detail": ""
+  },
+  {
+    "cart": "game-of-life-3d",
+    "status": "ok",
+    "detail": ""
+  },
+  {
+    "cart": "generative-art",
+    "status": "ok",
+    "detail": ""
+  },
+  {
+    "cart": "hello-3d",
+    "status": "load-fail",
+    "detail": "[nova64] JS exception in init: ReferenceError: enablePixelation is not defined"
+  },
+  {
+    "cart": "hello-helpers",
+    "status": "blank",
+    "detail": "frame is a single colour"
+  },
+  {
+    "cart": "hello-namespaced",
+    "status": "ok",
+    "detail": ""
+  },
+  {
+    "cart": "hello-skybox",
+    "status": "ok",
+    "detail": ""
+  },
+  {
+    "cart": "hello-world",
+    "status": "blank",
+    "detail": "frame is a single colour"
+  },
+  {
+    "cart": "hero-demo",
+    "status": "blank",
+    "detail": "frame is a single colour"
+  },
+  {
+    "cart": "hud-demo",
+    "status": "ok",
+    "detail": ""
+  },
+  {
+    "cart": "hype-demo",
+    "status": "ok",
+    "detail": ""
+  },
+  {
+    "cart": "indie-odyssey",
+    "status": "ok",
+    "detail": ""
+  },
+  {
+    "cart": "input-showcase",
+    "status": "ok",
+    "detail": ""
+  },
+  {
+    "cart": "instancing-demo",
+    "status": "ok",
+    "detail": ""
+  },
+  {
+    "cart": "metaverse",
+    "status": "load-fail",
+    "detail": "[nova64] JS exception in compile: ReferenceError: module not found 'examples/metaverse/core/registry.js'"
+  },
+  {
+    "cart": "minecraft-demo",
+    "status": "ok",
+    "detail": ""
+  },
+  {
+    "cart": "model-viewer-3d",
+    "status": "ok",
+    "detail": ""
+  },
+  {
+    "cart": "movie-clock",
+    "status": "ok",
+    "detail": ""
+  },
+  {
+    "cart": "multiplayer-lobby",
+    "status": "ok",
+    "detail": ""
+  },
+  {
+    "cart": "mystical-realm-3d",
+    "status": "load-fail",
+    "detail": "[nova64] JS exception in init: ReferenceError: centerX is not defined"
+  },
+  {
+    "cart": "nature-explorer-3d",
+    "status": "ok",
+    "detail": ""
+  },
+  {
+    "cart": "neon-pinball",
+    "status": "ok",
+    "detail": ""
+  },
+  {
+    "cart": "neon-snake",
+    "status": "ok",
+    "detail": ""
+  },
+  {
+    "cart": "nft-art-generator",
+    "status": "ok",
+    "detail": ""
+  },
+  {
+    "cart": "nft-worlds",
+    "status": "ok",
+    "detail": ""
+  },
+  {
+    "cart": "nova-drift",
+    "status": "ok",
+    "detail": ""
+  },
+  {
+    "cart": "particle-fireworks",
+    "status": "ok",
+    "detail": ""
+  },
+  {
+    "cart": "particle-trail",
+    "status": "ok",
+    "detail": ""
+  },
+  {
+    "cart": "particles-demo",
+    "status": "ok",
+    "detail": ""
+  },
+  {
+    "cart": "pbr-showcase",
+    "status": "ok",
+    "detail": ""
+  },
+  {
+    "cart": "physics-demo-3d",
+    "status": "ok",
+    "detail": ""
+  },
+  {
+    "cart": "platformer",
+    "status": "throws",
+    "detail": "JS exception in update: ReferenceError: BUTTON_UP is not defined"
+  },
+  {
+    "cart": "screen-demo",
+    "status": "ok",
+    "detail": ""
+  },
+  {
+    "cart": "shader-showcase",
+    "status": "ok",
+    "detail": ""
+  },
+  {
+    "cart": "shooter-demo-3d",
+    "status": "ok",
+    "detail": ""
+  },
+  {
+    "cart": "sky-rider",
+    "status": "ok",
+    "detail": ""
+  },
+  {
+    "cart": "skybox-showcase",
+    "status": "ok",
+    "detail": ""
+  },
+  {
+    "cart": "space-combat-3d",
+    "status": "ok",
+    "detail": ""
+  },
+  {
+    "cart": "space-harrier-3d",
+    "status": "ok",
+    "detail": ""
+  },
+  {
+    "cart": "space-shooter",
+    "status": "load-fail",
+    "detail": "[nova64] JS exception in init: ReferenceError: enableSkyboxAutoAnimate is not defined"
+  },
+  {
+    "cart": "stage-cards",
+    "status": "ok",
+    "detail": ""
+  },
+  {
+    "cart": "stage-menu",
+    "status": "ok",
+    "detail": ""
+  },
+  {
+    "cart": "star-fox-nova-3d",
+    "status": "ok",
+    "detail": ""
+  },
+  {
+    "cart": "startscreen-demo",
+    "status": "ok",
+    "detail": ""
+  },
+  {
+    "cart": "stealth-runner",
+    "status": "ok",
+    "detail": ""
+  },
+  {
+    "cart": "storage-quest",
+    "status": "ok",
+    "detail": ""
+  },
+  {
+    "cart": "story-video-demo",
+    "status": "ok",
+    "detail": ""
+  },
+  {
+    "cart": "strider-demo-3d",
+    "status": "ok",
+    "detail": ""
+  },
+  {
+    "cart": "super-plumber-64",
+    "status": "ok",
+    "detail": ""
+  },
+  {
+    "cart": "test-2d-overlay",
+    "status": "ok",
+    "detail": ""
+  },
+  {
+    "cart": "test-font",
+    "status": "ok",
+    "detail": ""
+  },
+  {
+    "cart": "test-minimal",
+    "status": "ok",
+    "detail": ""
+  },
+  {
+    "cart": "the-last-save-file",
+    "status": "ok",
+    "detail": ""
+  },
+  {
+    "cart": "tsl-showcase",
+    "status": "ok",
+    "detail": ""
+  },
+  {
+    "cart": "tv-demo",
+    "status": "ok",
+    "detail": ""
+  },
+  {
+    "cart": "tween-bounce",
+    "status": "ok",
+    "detail": ""
+  },
+  {
+    "cart": "tween-logo",
+    "status": "ok",
+    "detail": ""
+  },
+  {
+    "cart": "tween-typewriter",
+    "status": "ok",
+    "detail": ""
+  },
+  {
+    "cart": "ui-demo",
+    "status": "ok",
+    "detail": ""
+  },
+  {
+    "cart": "vox-viewer",
+    "status": "ok",
+    "detail": ""
+  },
+  {
+    "cart": "voxel-creative",
+    "status": "ok",
+    "detail": ""
+  },
+  {
+    "cart": "voxel-creatures",
+    "status": "ok",
+    "detail": ""
+  },
+  {
+    "cart": "voxel-terrain",
+    "status": "ok",
+    "detail": ""
+  },
+  {
+    "cart": "vr-demo",
+    "status": "ok",
+    "detail": ""
+  },
+  {
+    "cart": "vr-sword-combat",
+    "status": "ok",
+    "detail": ""
+  },
+  {
+    "cart": "wad-demo",
+    "status": "ok",
+    "detail": ""
+  },
+  {
+    "cart": "wave-survival",
+    "status": "ok",
+    "detail": ""
+  },
+  {
+    "cart": "wing-commander-space",
+    "status": "ok",
+    "detail": ""
+  },
+  {
+    "cart": "wizardry-3d",
+    "status": "ok",
+    "detail": ""
+  }
+]

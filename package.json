@@ -54,6 +54,7 @@
   "scripts": {
     "dev": "vite",
     "build:retroarch-web": "bash scripts/build-retroarch-web.sh",
+    "sweep:retroarch-native": "node scripts/retroarch-native-sweep.mjs --baseline retroarch/tests/native-sweep-baseline.json",
     "sweep:retroarch-web": "node scripts/retroarch-web-sweep.mjs",
     "godot": "node scripts/godot-play.mjs",
     "godot:link": "node scripts/godot-play.mjs --link",

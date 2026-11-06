@@ -1,0 +1,69 @@
+# Native libretro core: the same core desktop RetroArch loads. Runs the full
+# conformance suite (checksums are locked on Linux) and a sweep of every
+# example cart through the headless harness, failing only on regressions
+# against retroarch/tests/native-sweep-baseline.json.
+#
+# The WASM player has its own workflow (wasm-core.yml); this keeps the native
+# core held to the same standard on every PR.
+name: Native core
+
+on:
+  pull_request:
+    paths:
+      - 'retroarch/**'
+      - 'examples/**'
+      - 'nova64-godot/gdextension/third_party/quickjs/**'
+      - 'scripts/retroarch-native-sweep.mjs'
+      - '.github/workflows/native-core.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'retroarch/**'
+      - 'examples/**'
+      - 'nova64-godot/gdextension/third_party/quickjs/**'
+      - 'scripts/retroarch-native-sweep.mjs'
+      - '.github/workflows/native-core.yml'
+  workflow_dispatch:
+
+jobs:
+  native:
+    name: Conformance + example sweep (linux-x86_64)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # QuickJS (nova64-godot/gdextension/third_party/quickjs) is a submodule.
+          submodules: recursive
+
+      - name: Install build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential zlib1g-dev
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Build core + harness
+        run: |
+          make -C retroarch -j"$(nproc)" clean all
+          make -C retroarch harness
+
+      - name: Conformance suite
+        # --keep-going lists every failing case instead of stopping at the first.
+        run: bash retroarch/tests/run_conformance.sh --skip-build --keep-going
+
+      - name: Example cart sweep (regressions vs baseline)
+        if: always()
+        run: |
+          node scripts/retroarch-native-sweep.mjs \
+            --baseline retroarch/tests/native-sweep-baseline.json \
+            --out retroarch-native-sweep.json
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-sweep
+          path: retroarch-native-sweep.json
+          retention-days: 30

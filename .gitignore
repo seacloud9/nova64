@@ -118,4 +118,5 @@ nova64-godot/godot_project/bin/export/desktop/
 .worktrees/
 plugins/
 /retroarch-web-smoke.png
+/retroarch-native-sweep.json
 /retroarch-web-sweep.json

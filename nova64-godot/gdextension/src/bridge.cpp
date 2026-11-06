@@ -856,8 +856,32 @@ Nova64Host::Nova64Host() {
     _ensure_runtime();
 }
 
+// Teardown order matters. For a GDExtension class, this destructor runs from
+// the base Object::~Object() -- *after* Node::~Node() has already freed the
+// child nodes. _shutdown_runtime() walks those children (detach_node_resources)
+// and reads _world_env, so calling it here dereferenced freed nodes and
+// crashed Godot on exit (SIGABRT / KERN_INVALID_ADDRESS, every run on macOS).
+// The real teardown now happens on NOTIFICATION_PREDELETE, while the node is
+// intact. The destructor only frees JS state left over if PREDELETE never ran,
+// and touches no Godot objects.
+void Nova64Host::_notification(int p_what) {
+    if (p_what == NOTIFICATION_PREDELETE) {
+        _shutdown_runtime();
+    }
+}
+
 Nova64Host::~Nova64Host() {
-    _shutdown_runtime();
+    if (_context) {
+        JS_FreeValue(_context, _cart_init_fn);
+        JS_FreeValue(_context, _cart_update_fn);
+        JS_FreeValue(_context, _cart_draw_fn);
+        JS_FreeContext(_context);
+        _context = nullptr;
+    }
+    if (_runtime) {
+        JS_FreeRuntime(_runtime);
+        _runtime = nullptr;
+    }
 }
 
 void Nova64Host::_bind_methods() {

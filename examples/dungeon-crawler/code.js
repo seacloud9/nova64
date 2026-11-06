@@ -10,6 +10,9 @@
 const { setCameraPosition, setCameraTarget } = nova64.camera;
 const { cls, print, rect, rgba8 } = nova64.draw;
 const { btn, btnp } = nova64.input;
+// Libretro-core parity helpers
+const { circfill, printBold } = nova64.draw;
+const { project3DToScreen } = nova64.camera;
 const {
   createCube,
   createCylinder,

@@ -9,6 +9,10 @@ const { loadData, saveData } = nova64.data;
 const { cls, glowRect, rectfill, rgba8 } = nova64.draw;
 const { btnp } = nova64.input;
 const { setAmbientLight, setFog, setLightDirection } = nova64.light;
+// Libretro-core parity helpers
+const { printBold, printFlash, printOutlineTight, printTight } = nova64.draw;
+const { setInstanceTransforms } = nova64.scene;
+const { setSkyColor } = nova64.light;
 const {
   createCube,
   createInstancedMesh,

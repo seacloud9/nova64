@@ -8,6 +8,10 @@ const { setCameraFOV, setCameraPosition, setCameraTarget } = nova64.camera;
 const { cls, glowRect, rectfill, rgba8 } = nova64.draw;
 const { btn, btnp } = nova64.input;
 const { setAmbientLight, setFog, setLightDirection } = nova64.light;
+// Libretro-core parity helpers
+const { printBold, printFlash, printOutlineTight, printTight } = nova64.draw;
+const { setInstanceTransforms } = nova64.scene;
+const { setSkyColor } = nova64.light;
 const {
   createCube,
   createInstancedMesh,

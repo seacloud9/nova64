@@ -6,6 +6,23 @@ const { sfx } = nova64.audio;
 const { loadData, saveData } = nova64.data;
 const { cls, glowCircle, glowLine, glowRect, print, rectfill, rgba8 } = nova64.draw;
 const { btn, btnp } = nova64.input;
+// Libretro-core parity helpers
+const { circfill, hline, printBold, printFlash, printTight, vline } = nova64.draw;
+const {
+  createBurst,
+  createWaveManager,
+  destroyBurst,
+  drawBurst,
+  enemyDefeated,
+  getRemainingEnemies,
+  getWaveNumber,
+  isBurstDone,
+  isWaveActive,
+  rngRandom,
+  setBurstColors,
+  startWave,
+  updateBurst,
+} = nova64.util;
 
 let t = 0;
 let px = 320,

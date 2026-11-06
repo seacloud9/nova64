@@ -7,6 +7,9 @@ const { setCameraPosition, setCameraTarget } = nova64.camera;
 const { loadData, saveData } = nova64.data;
 const { cls, drawProgressBar, glowCircle, glowRect, rectfill, rgba8 } = nova64.draw;
 const { btn, btnp } = nova64.input;
+// Libretro-core parity helpers
+const { printBold, printFlash, printTight } = nova64.draw;
+const { project3DToScreen } = nova64.camera;
 const {
   clearSkybox,
   createSpaceSkybox,

@@ -488,8 +488,21 @@ Vector2i atlas_tile_pixel_origin(int tile_idx) {
             (tile_idx / VOXEL_ATLAS_COLS) * VOXEL_TILE_PX);
 }
 
+// Cached voxel GPU resources. These must be released before Godot tears down
+// the RenderingServer (see release_voxel_resources), so they live at file
+// scope rather than as function statics that die after it, which leaked RIDs.
+static Ref<ImageTexture> g_voxel_atlas_tex;
+static Ref<Shader> g_voxel_chunk_shader;
+static Ref<Shader> g_voxel_transparent_shader;
+
+void release_voxel_resources() {
+    g_voxel_atlas_tex.unref();
+    g_voxel_chunk_shader.unref();
+    g_voxel_transparent_shader.unref();
+}
+
 Ref<Texture2D> get_voxel_atlas_texture() {
-    static Ref<ImageTexture> atlas_tex;
+    Ref<ImageTexture> &atlas_tex = g_voxel_atlas_tex;
     if (atlas_tex.is_valid()) return atlas_tex;
 
     Ref<Image> img = Image::create_empty(
@@ -781,7 +794,7 @@ Vector2 voxel_tile_origin_uv(int tile_idx) {
 }
 
 Ref<Shader> get_voxel_chunk_shader() {
-    static Ref<Shader> voxel_shader;
+    Ref<Shader> &voxel_shader = g_voxel_chunk_shader;
     if (voxel_shader.is_valid()) return voxel_shader;
 
     voxel_shader.instantiate();
@@ -802,13 +815,13 @@ void fragment() {
 }
 
 Ref<Shader> get_voxel_transparent_chunk_shader() {
-    static Ref<Shader> voxel_shader;
+    Ref<Shader> &voxel_shader = g_voxel_transparent_shader;
     if (voxel_shader.is_valid()) return voxel_shader;
 
     voxel_shader.instantiate();
     voxel_shader->set_code(R"(
 shader_type spatial;
-render_mode cull_disabled, unshaded, specular_disabled, blend_mix, depth_draw_alpha_prepass;
+render_mode cull_disabled, unshaded, specular_disabled, blend_mix, depth_prepass_alpha;
 
 uniform sampler2D atlas_tex : source_color, filter_nearest, repeat_enable;
 uniform vec2 tile_size = vec2(0.125, 0.25);
@@ -977,6 +990,9 @@ void Nova64Host::_shutdown_runtime() {
     // Drop any host-owned WAD blobs so reloading a cart doesn't leak the
     // 28-50MB of byte data they each hold.
     _wads.clear();
+    // Cached voxel atlas/shaders are recreated lazily; drop them while the
+    // RenderingServer still exists so their RIDs are freed, not leaked.
+    release_voxel_resources();
     // Detach the WorldEnvironment we may have spawned so its Sky /
     // ProceduralSkyMaterial Refs aren't dropped from inside the JS
     // runtime teardown — that ordering trips a SIGSEGV on shutdown for

@@ -639,6 +639,9 @@
       position: ensureArray3(pos && pos[0], pos && pos[1], pos && pos[2]),
     };
     if (typeof range === 'number') payload.range = range;
+    // Three.js PointLight decays inverse-square (decay = 2); Godot's default
+    // attenuation of 1 made the same intensity flood the scene.
+    payload.attenuation = 2;
     const r = call('light.createPoint', payload);
     return r ? r.handle : 0;
   }
@@ -4035,6 +4038,61 @@
     call('env.set', payload);
     return 1;
   }
+  // PBR environments (web: runtime/api-skybox.js). Same preset colours as the
+  // web ENV_PRESETS; Godot's procedural sky also drives reflections.
+  const ENV_SKY_PRESETS = {
+    neon: [0x12063a, 0xc2188f, 0x05020d],
+    sunset: [0x1b2a6b, 0xff8a3d, 0x2b160d],
+    aurora: [0x02122a, 0x0fd9a6, 0x020409],
+    studio: [0x3a3f4a, 0x8a909c, 0x1c1e22],
+  };
+  function createEnvironmentSkybox(preset, opts) {
+    ensureInit();
+    if (preset && typeof preset === 'object') { opts = preset; preset = opts.preset; }
+    opts = opts || {};
+    const base = ENV_SKY_PRESETS[preset] || ENV_SKY_PRESETS.neon;
+    const c = [
+      typeof opts.top === 'number' ? opts.top : base[0],
+      typeof opts.horizon === 'number' ? opts.horizon : base[1],
+      typeof opts.bottom === 'number' ? opts.bottom : base[2],
+    ];
+    call('env.set', {
+      sky: true,
+      skyPanorama: '',
+      skyTopColor: colorFromHex(c[0]),
+      skyHorizonColor: colorFromHex(c[1]),
+      groundHorizonColor: colorFromHex(c[1]),
+      groundBottomColor: colorFromHex(c[2]),
+    });
+    return 1;
+  }
+  // createHDRSkybox(url, { intensity, rotation, blur }) -> Promise. '/assets/..'
+  // resolves to res://assets/.. (godot_project/assets/sky links public/assets/sky).
+  function createHDRSkybox(url, opts) {
+    ensureInit();
+    opts = opts || {};
+    let path = typeof url === 'string' ? url : '';
+    if (path[0] === '/') path = 'res://' + path.slice(1);
+    else if (path && path.indexOf('://') < 0) {
+      const cart = typeof globalThis.__nova64_cart_path === 'string' ? globalThis.__nova64_cart_path : 'res://carts/current';
+      path = cart.replace(/\/?$/, '/') + path.replace(/^\.?\//, '');
+    }
+    const payload = { skyPanorama: path };
+    if (typeof opts.intensity === 'number') payload.skyEnergy = opts.intensity;
+    if (typeof opts.rotation === 'number') payload.skyRotation = opts.rotation;
+    const r = engine.call('env.set', payload);
+    if (r && r.error) return Promise.reject(new Error('createHDRSkybox: ' + (r.error.message || r.error.code || r.error)));
+    return Promise.resolve(1);
+  }
+  // Web setToneMapping(mode, exposure): aces | agx | neutral | reinhard | cineon | linear | none.
+  function setToneMapping(mode, exposure) {
+    ensureInit();
+    call('env.set', {
+      tonemap: String(mode == null ? 'aces' : mode).toLowerCase(),
+      exposure: typeof exposure === 'number' && exposure > 0 ? exposure : 1,
+    });
+    return true;
+  }
   async function createImageSkybox(_urls) {
     // Image-based skybox (cubemap) not supported yet — reject so carts use their fallback.
     ensureInit();
@@ -7122,7 +7180,7 @@
     return { position: { x: cameraPos[0], y: cameraPos[1], z: cameraPos[2] } };
   }
   const cameraNs = { setCameraPosition, setCameraTarget, setCameraFOV, setCameraLookAt, getCamera };
-  const lightNs = { setLightDirection, setDirectionalLight, setFog, clearFog, createPointLight, removeLight, setPointLightPosition, createSpotLight, createAmbientLight, setAmbientLight, setLightColor, setLightEnergy, createGradientSkybox, createImageSkybox };
+  const lightNs = { createEnvironmentSkybox, createHDRSkybox, setLightDirection, setDirectionalLight, setFog, clearFog, createPointLight, removeLight, setPointLightPosition, createSpotLight, createAmbientLight, setAmbientLight, setLightColor, setLightEnergy, createGradientSkybox, createImageSkybox };
   const drawNs = { cls, cls3D, print: novaPrint, printCentered, printRight, drawTextBox, textBox: drawTextBox, rect, rectfill, line, image, drawImage, imageRegion, pixel, pset, circle, circfill, ellipse, ellipsefill, arc, bezier, drawRect, drawPanel, drawGlowText, drawGlowTextCentered, drawRadialGradient, drawGradient, drawProgressBar, drawHealthBar, drawPixelBorder, drawCrosshair, drawScanlines, drawNoise, drawTriangle, drawDiamond, drawStarburst, poly, rgba8, screenWidth, screenHeight, colorLerp, colorMix, hslColor, hexColor: function(hex, alpha) { return colorFromHex(hex, alpha); }, n64Palette, measureText, scrollingText, drawWave, drawPulsingText, drawCheckerboard, drawFloatingTexts, drawFloatingTexts3D, createMinimap, drawMinimap, drawSkyGradient };
   const inputNs = {
     // raw key code surface (web-style codes)
@@ -7141,13 +7199,13 @@
     // host hooks
     pollInput,
   };
-  const fxNs = { enablePixelation, enableDithering, enableBloom, setBloomStrength, setBloomRadius, setBloomThreshold, enableFXAA, enableChromaticAberration, enableVignette, enableGlitch, disableGlitch, setGlitchIntensity, glitchBurst, setN64Mode, setPSXMode, enableRetroEffects, isEffectsEnabled, enableSSR, enableSSAO, enableVolumetricFog, enableDOF, setExposure, setTonemap, setColorAdjustment, createParticleSystem, setParticleEmitter, emitParticle, burstParticles, updateParticles, removeParticleSystem, getParticleStats, createEmitter2D, updateEmitter2D, drawEmitter2D, burstEmitter2D, clearEmitter2D };
+  const fxNs = { createEnvironmentSkybox, createHDRSkybox, setToneMapping, enablePixelation, enableDithering, enableBloom, setBloomStrength, setBloomRadius, setBloomThreshold, enableFXAA, enableChromaticAberration, enableVignette, enableGlitch, disableGlitch, setGlitchIntensity, glitchBurst, setN64Mode, setPSXMode, enableRetroEffects, isEffectsEnabled, enableSSR, enableSSAO, enableVolumetricFog, enableDOF, setExposure, setTonemap, setColorAdjustment, createParticleSystem, setParticleEmitter, emitParticle, burstParticles, updateParticles, removeParticleSystem, getParticleStats, createEmitter2D, updateEmitter2D, drawEmitter2D, burstEmitter2D, clearEmitter2D };
   const uiNs = { createButton, createLabel, createPanel, createSlider, createCheckbox, createDialog, clearButtons, updateAllButtons, drawAllButtons, drawGradientRect, drawPanel, drawText, drawTextShadow, drawTextOutline, setFont, setTextAlign, setTextBaseline, grid, parseCanvasUI, renderCanvasUI, updateCanvasUI, createContainer, addChild, createGraphicsNode, createTextNode, drawStage, uiColors: global.uiColors, centerX: function (w) { return Math.floor((640 - (w || 0)) / 2); }, centerY: function (h) { return Math.floor((360 - (h || 0)) / 2); }, Screen: (function() { function Screen() { this.data = {}; } Screen.prototype.enter = function(d) { this.data = Object.assign({}, this.data, d || {}); }; Screen.prototype.exit = function() {}; Screen.prototype.update = function() {}; Screen.prototype.draw = function() {}; return Screen; }()), getFont: function() { return 'default'; }, uiProgressBar: drawProgressBar };
   const stageNs = { createContainer, addChild, createGraphicsNode, createTextNode, drawStage, createMovieClip, createStage, createScreen, pushScreen, popScreen,
     createShake, triggerShake, updateShake, getShakeOffset,
     createCard, createMenu, createStartScreen };
   const particlesNs = { createParticleSystem, setParticleEmitter, emitParticle, burstParticles, updateParticles, removeParticleSystem, getParticleStats, createEmitter2D, updateEmitter2D, drawEmitter2D, burstEmitter2D, clearEmitter2D, createParticles };
-  const skyboxNs = { createSpaceSkybox, createGalaxySkybox, createSunsetSkybox, createDawnSkybox, createNightSkybox, createFoggySkybox, createDuskSkybox, createStormSkybox, createAlienSkybox, createUnderwaterSkybox, createGradientSkybox, createImageSkybox, setSkybox, createSkybox };
+  const skyboxNs = { createEnvironmentSkybox, createHDRSkybox, createSpaceSkybox, createGalaxySkybox, createSunsetSkybox, createDawnSkybox, createNightSkybox, createFoggySkybox, createDuskSkybox, createStormSkybox, createAlienSkybox, createUnderwaterSkybox, createGradientSkybox, createImageSkybox, setSkybox, createSkybox };
   const modelsNs = { loadModel, loadVoxModel, createTexture, loadTexture, createInstancedMesh, createTSLMaterial, createTSLShaderMaterial, createShaderMaterial, createHologramMaterial, createVortexMaterial, createPBRMaterial, createLavaMaterial, createPlasmaMaterial, createWaterMaterial, createShockwaveMaterial, createAdvancedCube };
   const videoNs = (function () {
     let active = null;

@@ -40,6 +40,8 @@
 #include <godot_cpp/classes/multi_mesh.hpp>
 #include <godot_cpp/classes/multi_mesh_instance3d.hpp>
 #include <godot_cpp/classes/procedural_sky_material.hpp>
+#include <godot_cpp/classes/panorama_sky_material.hpp>
+#include <godot_cpp/classes/project_settings.hpp>
 #include <godot_cpp/classes/rendering_server.hpp>
 #include <godot_cpp/classes/file_access.hpp>
 #include <godot_cpp/classes/resource_loader.hpp>
@@ -2351,6 +2353,11 @@ Dictionary Nova64Host::_cmd_env_set(const Dictionary &p) {
         else if (t == "reinhard") env->set_tonemapper(Environment::TONE_MAPPER_REINHARDT);
         else if (t == "filmic") env->set_tonemapper(Environment::TONE_MAPPER_FILMIC);
         else if (t == "aces")  env->set_tonemapper(Environment::TONE_MAPPER_ACES);
+        // Web setToneMapping names. AgX is Godot 4.4+ (value 4); these
+        // godot-cpp bindings predate the enum name.
+        else if (t == "agx" || t == "neutral") env->set_tonemapper(static_cast<Environment::ToneMapper>(4));
+        else if (t == "cineon") env->set_tonemapper(Environment::TONE_MAPPER_FILMIC);
+        else if (t == "none")  env->set_tonemapper(Environment::TONE_MAPPER_LINEAR);
     }
     if (p.has("exposure")) env->set_tonemap_exposure(
             static_cast<float>(static_cast<double>(p["exposure"])));
@@ -2378,10 +2385,55 @@ Dictionary Nova64Host::_cmd_env_set(const Dictionary &p) {
     if (p.has("volumetricFogDensity")) env->set_volumetric_fog_density(
             static_cast<float>(static_cast<double>(p["volumetricFogDensity"])));
 
+    // Equirectangular image / HDR sky (web createHDRSkybox). The file is read
+    // with Image::load_from_file so .hdr/.exr work without a Godot import.
+    // skyPanorama: "" switches back to the procedural sky.
+    if (p.has("skyPanorama")) {
+        String path = p["skyPanorama"];
+        Ref<Sky> psky = env->get_sky();
+        if (psky.is_null()) { psky.instantiate(); env->set_sky(psky); }
+        if (path.is_empty()) {
+            if (Object::cast_to<PanoramaSkyMaterial>(psky->get_material().ptr())) {
+                Ref<ProceduralSkyMaterial> proc;
+                proc.instantiate();
+                psky->set_material(proc);
+            }
+            env->set_sky_rotation(Vector3());
+        } else {
+            Ref<Texture2D> tex;
+            if (ResourceLoader::get_singleton()->exists(path)) tex = ResourceLoader::get_singleton()->load(path);
+            if (tex.is_null()) {
+                Ref<Image> img = Image::load_from_file(ProjectSettings::get_singleton()->globalize_path(path));
+                if (img.is_valid() && !img->is_empty()) tex = ImageTexture::create_from_image(img);
+            }
+            if (tex.is_null()) return make_error("sky_load_failed", path);
+            Ref<PanoramaSkyMaterial> pano;
+            pano.instantiate();
+            pano->set_panorama(tex);
+            pano->set_filtering_enabled(true);
+            if (p.has("skyEnergy")) pano->set_energy_multiplier(
+                    static_cast<float>(static_cast<double>(p["skyEnergy"])));
+            psky->set_material(pano);
+            env->set_background(Environment::BG_SKY);
+            env->set_reflection_source(Environment::REFLECTION_SOURCE_SKY);
+            // Ambient stays as the cart set it (setAmbientLight); like the web
+            // environment map, the panorama drives reflections only.
+        }
+    }
+    if (p.has("skyRotation")) env->set_sky_rotation(
+            Vector3(0, static_cast<float>(static_cast<double>(p["skyRotation"])), 0));
+
     // Procedural sky tweaks.
     Ref<Sky> sky = env->get_sky();
     Ref<ProceduralSkyMaterial> sky_mat;
     if (sky.is_valid()) sky_mat = sky->get_material();
+    // A colour or preset request after an HDR sky brings the procedural sky back.
+    if (sky.is_valid() && sky_mat.is_null() && (p.has("skyTopColor") || p.has("skyPreset") ||
+            p.has("skyHorizonColor") || p.has("groundBottomColor"))) {
+        sky_mat.instantiate();
+        sky->set_material(sky_mat);
+        env->set_sky_rotation(Vector3());
+    }
 
     if (sky_mat.is_valid()) {
         if (p.has("skyTopColor")) sky_mat->set_sky_top_color(

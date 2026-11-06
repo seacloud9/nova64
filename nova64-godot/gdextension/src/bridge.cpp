@@ -3584,6 +3584,7 @@ Dictionary Nova64Host::_cmd_voxel_upload_chunk(const Dictionary &p) {
 // ---- Cart loading (module mode) -----------------------------------------
 
 bool Nova64Host::load_cart(const String &p_res_path) {
+    _cart_error_counts.clear();
     _ensure_runtime();
 
     // Accept three flavors:
@@ -3784,17 +3785,27 @@ void Nova64Host::_call_cart_fn(JSValue p_fn, double p_arg, bool p_pass_arg, cons
     if (JS_IsException(ret)) {
         JSValue exc = JS_GetException(_context);
         const char *msg = JS_ToCString(_context, exc);
-        String line = String("[nova64] cart ") + String::utf8(p_name) + ": " +
-                (msg ? String::utf8(msg) : String("(unknown error)"));
-        // Include the JS stack (file:line) so multi-file cart errors are debuggable.
-        JSValue stack = JS_GetPropertyStr(_context, exc, "stack");
-        if (!JS_IsUndefined(stack) && !JS_IsException(stack)) {
-            const char *stk = JS_ToCString(_context, stack);
-            if (stk && stk[0]) line += String("\n") + String::utf8(stk);
-            if (stk) JS_FreeCString(_context, stk);
+        // A broken update()/draw() throws every frame. Log each distinct error
+        // once with its JS stack, then only a repeat count at 60, 600, 6000...
+        std::string key = std::string(p_name) + ":" + (msg ? msg : "(unknown error)");
+        uint64_t seen = ++_cart_error_counts[key];
+        if (seen == 1) {
+            String line = String("[nova64] cart ") + String::utf8(p_name) + ": " +
+                    (msg ? String::utf8(msg) : String("(unknown error)"));
+            // Include the JS stack (file:line) so multi-file cart errors are debuggable.
+            JSValue stack = JS_GetPropertyStr(_context, exc, "stack");
+            if (!JS_IsUndefined(stack) && !JS_IsException(stack)) {
+                const char *stk = JS_ToCString(_context, stack);
+                if (stk && stk[0]) line += String("\n") + String::utf8(stk);
+                if (stk) JS_FreeCString(_context, stk);
+            }
+            JS_FreeValue(_context, stack);
+            UtilityFunctions::printerr(line);
+        } else if (seen == 60 || seen == 600 || (seen % 6000) == 0) {
+            UtilityFunctions::printerr(String("[nova64] cart ") + String::utf8(p_name) +
+                    ": (same error repeated " + String::num_uint64(seen) + "x) " +
+                    (msg ? String::utf8(msg) : String("")));
         }
-        JS_FreeValue(_context, stack);
-        UtilityFunctions::printerr(line);
         if (msg) JS_FreeCString(_context, msg);
         JS_FreeValue(_context, exc);
     }

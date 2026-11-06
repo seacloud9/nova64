@@ -322,6 +322,11 @@ registerCartResetHook('scene', () => {
   nova64api.clearSkybox?.();
 });
 
+registerCartResetHook('tone-mapping', () => {
+  // setToneMapping is opt-in per cart; the default stays NoToneMapping.
+  nova64api.setToneMapping?.('none', 1);
+});
+
 registerCartResetHook('camera', () => {
   nova64api.setCameraPosition?.(0, 5, 10);
   nova64api.setCameraTarget?.(0, 0, 0);

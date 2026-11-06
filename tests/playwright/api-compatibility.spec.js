@@ -15,11 +15,25 @@ async function openApiSandbox(page, backend, extraQuery = '') {
   await page.goto(url);
   await page.waitForFunction(
     () =>
-      typeof globalThis.createCube === 'function' &&
+      // The API lives on the nova64.* namespaces; bare globals were removed
+      // in 6267ecb3, so waiting for globalThis.createCube never resolves.
+      typeof globalThis.nova64?.scene?.createCube === 'function' &&
       typeof globalThis.nova64?.scene?.engine !== 'undefined' &&
       typeof globalThis.nova64?.camera?.getCamera === 'function',
     { timeout: 30000 }
   );
+  // Test-only: these specs call the API by bare name inside page.evaluate
+  // (createCube(), clearScene(), ...). The runtime is namespace-only since
+  // 6267ecb3, so mirror the nova64.* functions onto the page's globalThis for
+  // the test. Carts still have to destructure; the runtime is not changed.
+  await page.evaluate(() => {
+    for (const ns of Object.values(globalThis.nova64 || {})) {
+      if (!ns || typeof ns !== 'object') continue;
+      for (const [name, value] of Object.entries(ns)) {
+        if (typeof value === 'function' && !(name in globalThis)) globalThis[name] = value;
+      }
+    }
+  });
   await page.waitForTimeout(500);
 }
 

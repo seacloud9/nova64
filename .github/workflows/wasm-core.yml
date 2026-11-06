@@ -12,12 +12,18 @@ on:
       - 'retroarch/**'
       - 'nova64-godot/gdextension/third_party/quickjs/**'
       - '.github/workflows/wasm-core.yml'
+      - 'scripts/build-retroarch-web.sh'
+      - 'scripts/retroarch-web-smoke.mjs'
+      - 'public/retroarch-web/**'
   push:
     branches: [main]
     paths:
       - 'retroarch/**'
       - 'nova64-godot/gdextension/third_party/quickjs/**'
       - '.github/workflows/wasm-core.yml'
+      - 'scripts/build-retroarch-web.sh'
+      - 'scripts/retroarch-web-smoke.mjs'
+      - 'public/retroarch-web/**'
     tags: ['v*.*.*']
   workflow_dispatch:
 
@@ -28,6 +34,9 @@ jobs:
     container: emscripten/emsdk:3.1.74
     steps:
       - uses: actions/checkout@v4
+        with:
+          # QuickJS (nova64-godot/gdextension/third_party/quickjs) is a submodule.
+          submodules: recursive
 
       - name: Build static WASM core
         working-directory: retroarch
@@ -72,6 +81,9 @@ jobs:
     needs: build
     steps:
       - uses: actions/checkout@v4
+        with:
+          # QuickJS (nova64-godot/gdextension/third_party/quickjs) is a submodule.
+          submodules: recursive
 
       - name: Build player
         run: bash scripts/build-retroarch-web.sh

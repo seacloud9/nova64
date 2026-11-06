@@ -855,10 +855,16 @@ export function update(dt) {
       }
       // Start triggers — use real key codes / integer btn indices.
       // btn(4) = KeyZ (action A), btn(12) = Enter, btn(13) = Space.
-      if (!pickerConsumed && (
-        mouseDown() || key('Space') || key('Enter') || key('Return') ||
-        btn(4) || btn(12) || btn(13)
-      )) {
+      if (
+        !pickerConsumed &&
+        (mouseDown() ||
+          key('Space') ||
+          key('Enter') ||
+          key('Return') ||
+          btn(4) ||
+          btn(12) ||
+          btn(13))
+      ) {
         startGame(1);
       }
     }

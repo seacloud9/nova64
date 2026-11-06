@@ -12,8 +12,21 @@ const { cls, drawPanel, line, print, rgba8 } = nova64.draw;
 const { enableDithering, enablePixelation } = nova64.fx;
 const { isKeyPressed, mouseX, mouseY } = nova64.input;
 const { setFog, setLightDirection } = nova64.light;
-const { createCube, createPlane, createSphere, get3DStats, rotateMesh, setPosition, setRotation } = nova64.scene;
-const { centerX, createButton, createPanel, drawAllButtons, drawGradientRect, drawText, drawTextOutline, drawTextShadow, setFont, setTextAlign, updateAllButtons } = nova64.ui;
+const { createCube, createPlane, createSphere, get3DStats, rotateMesh, setPosition, setRotation } =
+  nova64.scene;
+const {
+  centerX,
+  createButton,
+  createPanel,
+  drawAllButtons,
+  drawGradientRect,
+  drawText,
+  drawTextOutline,
+  drawTextShadow,
+  setFont,
+  setTextAlign,
+  updateAllButtons,
+} = nova64.ui;
 
 let cubes = [];
 let spheres = [];

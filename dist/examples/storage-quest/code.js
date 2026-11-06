@@ -4,7 +4,8 @@
 // persist across full page reloads via saveData/loadData.
 
 const { print, printCentered, rect, rgba8 } = nova64.draw;
-const { createCube, createPlane, createSphere, getPosition, removeMesh, rotateMesh, setPosition } = nova64.scene;
+const { createCube, createPlane, createSphere, getPosition, removeMesh, rotateMesh, setPosition } =
+  nova64.scene;
 const { setCameraPosition, setCameraTarget } = nova64.camera;
 const { setAmbientLight, setFog } = nova64.light;
 const { key, keyp } = nova64.input;

@@ -1,9 +1,10 @@
-// eMUI — Mobile retro emulator powered by EmulatorJS
-// Glass-themed, touch-optimised TVApp for the Nova64 mobile shell.
+// eMUI — Mobile retro emulator powered by EmulatorJS, plus Nova64 carts on our
+// WASM libretro core. Glass-themed, touch-optimised TVApp for the mobile shell.
 import { createRoot } from 'react-dom/client';
 import type { Root } from 'react-dom/client';
 import { useState, useRef, useCallback } from 'react';
 import type { TVApp } from '../../types';
+import { NovaLibrary, NovaPlayer, QwenShelf, titleForPath, type NovaCart } from '../../../apps/nova64-library';
 
 const EJS_CDN = 'https://cdn.emulatorjs.org/stable/data/';
 
@@ -19,6 +20,7 @@ interface SystemInfo {
 }
 
 const SYSTEMS: Record<string, SystemInfo> = {
+  nova64:      { label: 'Nova64 (WASM core)',    short: 'NOVA64',  core: 'nova64',    extensions: ['.js','.nova'], icon: '🌌', color: '#a78bfa' },
   nes:         { label: 'Nintendo NES',         short: 'NES',     core: 'nes',       extensions: ['.nes','.zip'], icon: '🎮', color: '#E4252C' },
   snes:        { label: 'Super Nintendo',        short: 'SNES',    core: 'snes',      extensions: ['.sfc','.smc','.zip'], icon: '🕹️', color: '#7033A2' },
   gb:          { label: 'Game Boy',              short: 'GB',      core: 'gb',        extensions: ['.gb','.zip'], icon: '🟢', color: '#5B7A35' },
@@ -40,16 +42,23 @@ const SYSTEMS: Record<string, SystemInfo> = {
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-function EMUIApp() {
-  const [selectedSystem, setSelectedSystem] = useState<string>('nes');
+function EMUIApp({ initialCart }: { initialCart?: NovaCart }) {
+  const [selectedSystem, setSelectedSystem] = useState<string>('nova64');
   const [romUrl, setRomUrl]   = useState('');
-  const [isPlaying, setIsPlaying] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(!!initialCart);
+  const [novaCart, setNovaCart] = useState<NovaCart | null>(initialCart ?? null);
   const [error, setError]     = useState('');
   const [tab, setTab]         = useState<'file' | 'url'>('file');
   const playerRef             = useRef<HTMLDivElement>(null);
   const fileInputRef          = useRef<HTMLInputElement>(null);
 
   // ── Launch ──────────────────────────────────────────────────────────────────
+
+  const playNova = useCallback((cart: NovaCart) => {
+    setError('');
+    setNovaCart(cart);
+    setIsPlaying(true);
+  }, []);
 
   const launchGame = useCallback((gameUrl: string, core: string) => {
     if (!playerRef.current) return;
@@ -84,6 +93,7 @@ function EMUIApp() {
 
   const handleBack = useCallback(() => {
     setIsPlaying(false);
+    setNovaCart(null);
     setRomUrl('');
     const w = window as unknown as Record<string, unknown>;
     ['EJS_player','EJS_gameUrl','EJS_core','EJS_pathToData','EJS_startOnLoaded','EJS_color','EJS_backgroundColor'].forEach(k => delete w[k]);
@@ -92,6 +102,10 @@ function EMUIApp() {
   const handleUrlLaunch = () => {
     const url = romUrl.trim();
     if (!url) { setError('Please enter a ROM URL'); return; }
+    if (selectedSystem === 'nova64') {
+      playNova({ kind: 'path', path: url, title: titleForPath(url) });
+      return;
+    }
     launchGame(url, SYSTEMS[selectedSystem].core);
   };
 
@@ -99,12 +113,14 @@ function EMUIApp() {
     e.preventDefault();
     const file = e.dataTransfer.files[0];
     if (!file) return;
+    if (selectedSystem === 'nova64') { playNova({ kind: 'file', file, title: file.name }); return; }
     launchGame(URL.createObjectURL(file), SYSTEMS[selectedSystem].core);
-  }, [selectedSystem, launchGame]);
+  }, [selectedSystem, launchGame, playNova]);
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (selectedSystem === 'nova64') { playNova({ kind: 'file', file, title: file.name }); return; }
     launchGame(URL.createObjectURL(file), SYSTEMS[selectedSystem].core);
   };
 
@@ -143,13 +159,19 @@ function EMUIApp() {
           >
             ← Library
           </button>
-          <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.4)', flex: 1 }}>
-            {sys.icon} {sys.label}
+          <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.4)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {novaCart ? `🌌 ${novaCart.title}` : `${sys.icon} ${sys.label}`}
           </span>
         </div>
 
         {/* Player fills remaining space */}
-        <div ref={playerRef} style={{ flex: 1, overflow: 'hidden', background: '#000' }} />
+        {novaCart ? (
+          <div style={{ flex: 1, overflow: 'hidden', background: '#000' }}>
+            <NovaPlayer cart={novaCart} />
+          </div>
+        ) : (
+          <div ref={playerRef} style={{ flex: 1, overflow: 'hidden', background: '#000' }} />
+        )}
       </div>
     );
   }
@@ -188,12 +210,20 @@ function EMUIApp() {
             eMUI
           </div>
           <div style={{ fontSize: 11, color: 'var(--glass-muted, rgba(255,255,255,0.4))', marginTop: 1 }}>
-            Retro Console Emulator · Powered by EmulatorJS
+            Retro Console Emulator · EmulatorJS + Nova64 WASM core
           </div>
         </div>
       </div>
 
       <div style={{ flex: 1, overflowY: 'auto', padding: '16px 16px 32px' }}>
+
+        {/* Nova64 is the default system, so its games come first. */}
+        {selectedSystem === 'nova64' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 20, marginBottom: 24 }}>
+            <QwenShelf onPlay={(path, title) => playNova({ kind: 'path', path, title })} />
+            <NovaLibrary onPlay={(g) => playNova({ kind: 'path', path: g.path, title: g.name })} />
+          </div>
+        )}
 
         {/* ── System Selector ── */}
         <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.1em', color: 'var(--glass-muted, rgba(255,255,255,0.4))', marginBottom: 10, textTransform: 'uppercase' }}>
@@ -318,7 +348,7 @@ function EMUIApp() {
               value={romUrl}
               onChange={(e) => setRomUrl(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleUrlLaunch()}
-              placeholder="https://example.com/game.nes"
+              placeholder={selectedSystem === 'nova64' ? '/examples/hello-world/code.js' : 'https://example.com/game.nes'}
               style={{
                 padding: '12px 16px',
                 borderRadius: 12,
@@ -383,7 +413,9 @@ function EMUIApp() {
           <div style={{ fontSize: 12, color: 'var(--glass-muted, rgba(255,255,255,0.4))', lineHeight: 1.6 }}>
             eMUI runs retro games directly in your browser via{' '}
             <strong style={{ color: 'var(--glass-muted, rgba(255,255,255,0.6))' }}>EmulatorJS</strong>.
-            Supports {Object.keys(SYSTEMS).length} systems. You must provide your own ROM files.
+            Supports {Object.keys(SYSTEMS).length} systems. You must provide your own ROM files. Pick{' '}
+            <strong style={{ color: 'var(--glass-muted, rgba(255,255,255,0.6))' }}>Nova64</strong> to play Nova64 carts on
+            our libretro core compiled to WebAssembly, with on-screen touch controls.
           </div>
         </div>
       </div>
@@ -400,11 +432,17 @@ export const emuiApp: TVApp = {
   name: 'eMUI',
   icon: '🕹️',
   category: 'Entertainment',
-  description: 'Retro console emulator · 17 systems · EmulatorJS',
+  description: 'Retro console emulator · Nova64 WASM core + EmulatorJS',
 
-  mount(el) {
+  mount(el, _ctx, args) {
+    // launchApp('emui', { path: '/examples/x/code.js' }) opens straight into a cart.
+    const a = args && typeof args === 'object' ? (args as Record<string, unknown>) : {};
+    const path = typeof a.path === 'string' && a.path ? a.path : undefined;
+    const initialCart: NovaCart | undefined = path
+      ? { kind: 'path', path, title: titleForPath(path) }
+      : undefined;
     reactRoot = createRoot(el);
-    reactRoot.render(<EMUIApp />);
+    reactRoot.render(<EMUIApp initialCart={initialCart} />);
   },
 
   unmount() {

@@ -191,6 +191,8 @@ export const NAMESPACE_MAP = {
     'createGradientSkybox',
     'createSolidSkybox',
     'createImageSkybox',
+    'createEnvironmentSkybox',
+    'createHDRSkybox',
     'animateSkybox',
     'setSkyboxSpeed',
     'enableSkyboxAutoAnimate',
@@ -200,6 +202,7 @@ export const NAMESPACE_MAP = {
 
   fx: [
     // Post-processing (api-effects.js)
+    'setToneMapping',
     'enableBloom',
     'disableBloom',
     'setBloomStrength',

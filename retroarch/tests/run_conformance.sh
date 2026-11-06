@@ -1,4 +1,12 @@
 #!/usr/bin/env bash
+# Nova64 libretro conformance suite.
+#
+#   bash retroarch/tests/run_conformance.sh [--skip-build] [--from N] [--to N]
+#                                           [--recent N] [--keep-going|-k]
+#
+#   --keep-going  run every case, then list all failures (exit 1 if any)
+#   CORE=path     core to test (default: nova64_libretro.dylib on macOS, .so elsewhere)
+#   NOVA64_GLES_TESTS=1  also run the hardware-GL checksum cases
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -15,6 +23,8 @@ RECENT_COUNT=0
 RANGE_FROM=0
 RANGE_TO=9999
 SKIP_BUILD=0
+KEEP_GOING=0
+FAILURES=()
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -34,6 +44,9 @@ while [[ $# -gt 0 ]]; do
       RANGE_TO="$2"; shift 2 ;;
     --skip-build)
       SKIP_BUILD=1; shift ;;
+    --keep-going|-k)
+      # Record failing cases and keep running instead of stopping at the first.
+      KEEP_GOING=1; shift ;;
     *)
       echo "unknown argument: $1" >&2
       exit 2
@@ -259,6 +272,21 @@ with ZipFile(package_dir / "tilemap.nova", "w", ZIP_DEFLATED) as package:
     )
 PY
 
+# Every case invokes the harness through here. By default a failure aborts the
+# run (set -e); with --keep-going it is recorded under the caller's ${label}
+# and the suite continues, then the full list is reported at the end.
+run_harness() {
+  if [[ "${KEEP_GOING}" -eq 0 ]]; then
+    "${HARNESS}" "$@"
+    return
+  fi
+  if ! "${HARNESS}" "$@"; then
+    FAILURES+=("${label:-unknown case}")
+    echo "   ✗ FAILED: ${label:-unknown case}"
+  fi
+  return 0
+}
+
 # run_gles_case: like run_visual_case but uses --gles for hardware-rendered pixel checksums.
 # Skipped silently when NOVA64_GLES_TESTS is unset.
 run_gles_case() {
@@ -271,7 +299,7 @@ run_gles_case() {
   should_run_label "${label}" || return 0
   echo "== ${label} (gles)"
   local frames_arg=(); [[ -n "${frames}" ]] && frames_arg=(--frames "${frames}")
-  "${HARNESS}" "${CORE}" "${cart}" --gles ${frames_arg[@]+"${frames_arg[@]}"} --expect "${checksum}"
+  run_harness "${CORE}" "${cart}" --gles ${frames_arg[@]+"${frames_arg[@]}"} --expect "${checksum}"
 }
 
 run_case() {
@@ -282,7 +310,7 @@ run_case() {
   should_run_label "${label}" || return 0
   echo "== ${label}"
   local frames_arg=(); [[ -n "${frames}" ]] && frames_arg=(--frames "${frames}")
-  "${HARNESS}" "${CORE}" "${cart}" ${frames_arg[@]+"${frames_arg[@]}"} --expect "${checksum}"
+  run_harness "${CORE}" "${cart}" ${frames_arg[@]+"${frames_arg[@]}"} --expect "${checksum}"
 }
 
 should_run_label() {
@@ -305,9 +333,9 @@ run_command_log_case() {
   should_run_label "${label}" || return 0
   echo "== ${label} command log"
   if [[ -n "${renderer}" ]]; then
-    "${HARNESS}" "${CORE}" "${cart}" --renderer "${renderer}" --command-log "${log_path}" >/dev/null
+    run_harness "${CORE}" "${cart}" --renderer "${renderer}" --command-log "${log_path}" >/dev/null
   else
-    "${HARNESS}" "${CORE}" "${cart}" --command-log "${log_path}" >/dev/null
+    run_harness "${CORE}" "${cart}" --command-log "${log_path}" >/dev/null
   fi
   local actual_sha
   actual_sha="$(sha256sum "${log_path}" | awk '{print $1}')"
@@ -326,7 +354,7 @@ run_audio_case() {
   should_run_label "${label}" || return 0
   echo "== ${label}"
   local frames_arg=(); [[ -n "${frames}" ]] && frames_arg=(--frames "${frames}")
-  "${HARNESS}" "${CORE}" "${cart}" ${frames_arg[@]+"${frames_arg[@]}"} --expect "${checksum}" --expect-audio "${audio_checksum}"
+  run_harness "${CORE}" "${cart}" ${frames_arg[@]+"${frames_arg[@]}"} --expect "${checksum}" --expect-audio "${audio_checksum}"
 }
 
 run_visual_case() {
@@ -340,7 +368,7 @@ run_visual_case() {
   should_run_label "${label}" || return 0
   echo "== ${label}"
   local frames_arg=(); [[ -n "${frames}" ]] && frames_arg=(--frames "${frames}")
-  "${HARNESS}" "${CORE}" "${cart}" ${frames_arg[@]+"${frames_arg[@]}"} --expect "${checksum}" --capture "${ppm}"
+  run_harness "${CORE}" "${cart}" ${frames_arg[@]+"${frames_arg[@]}"} --expect "${checksum}" --capture "${ppm}"
   python3 retroarch/tests/ppm_to_png.py "${ppm}" "${png}"
   rm -f "${ppm}"
 }
@@ -366,7 +394,7 @@ run_seed_visual_case() {
   local png="${SCREENSHOT_DIR}/${name}.png"
   should_run_label "${label}" || return 0
   echo "== ${label}"
-  "${HARNESS}" "${CORE}" "${cart}" --seed "${seed}" --expect "${checksum}" --capture "${ppm}"
+  run_harness "${CORE}" "${cart}" --seed "${seed}" --expect "${checksum}" --capture "${ppm}"
   python3 retroarch/tests/ppm_to_png.py "${ppm}" "${png}"
   rm -f "${ppm}"
 }
@@ -378,7 +406,7 @@ run_key_case() {
   local checksum="$4"
   should_run_label "${label}" || return 0
   echo "== ${label}"
-  "${HARNESS}" "${CORE}" "${cart}" --key "${key}" --expect "${checksum}"
+  run_harness "${CORE}" "${cart}" --key "${key}" --expect "${checksum}"
 }
 
 # run_btn_case: like run_key_case but drives a libretro joypad button
@@ -390,7 +418,7 @@ run_btn_case() {
   local checksum="$4"
   should_run_label "${label}" || return 0
   echo "== ${label}"
-  "${HARNESS}" "${CORE}" "${cart}" --btn "${btn}" --expect "${checksum}"
+  run_harness "${CORE}" "${cart}" --btn "${btn}" --expect "${checksum}"
 }
 
 run_case "00 boot" "retroarch/conformance/00-boot.js" "eed98c91acf88bfb"
@@ -419,7 +447,7 @@ run_mouse_case() {
   local checksum="$3"
   should_run_label "${label}" || return 0
   echo "== ${label}"
-  "${HARNESS}" "${CORE}" "${cart}" --mouse-x 5 --mouse-y -3 --mouse-btn left --expect "${checksum}"
+  run_harness "${CORE}" "${cart}" --mouse-x 5 --mouse-y -3 --mouse-btn left --expect "${checksum}"
 }
 
 run_mouse_case "25 mouse" "retroarch/conformance/25-mouse.js" "bb6374732d548979"
@@ -438,7 +466,7 @@ run_showcase_case() {
   local png="${SCREENSHOT_DIR}/${name}.png"
   should_run_label "${label}" || return 0
   echo "== ${label}"
-  NOVA64_SAVE_DIR="${SAVE_DIR}" "${HARNESS}" "${CORE}" "${cart}" \
+  NOVA64_SAVE_DIR="${SAVE_DIR}" run_harness "${CORE}" "${cart}" \
     --key space --expect "${checksum}" --expect-audio "${audio_checksum}" --capture "${ppm}"
   python3 retroarch/tests/ppm_to_png.py "${ppm}" "${png}"
   rm -f "${ppm}"
@@ -452,7 +480,7 @@ run_analog_case() {
   local checksum="$3"
   should_run_label "${label}" || return 0
   echo "== ${label}"
-  "${HARNESS}" "${CORE}" "${cart}" \
+  run_harness "${CORE}" "${cart}" \
     --analog-lx 16383 --analog-ly -8192 --trigger-l 16383 --expect "${checksum}"
 }
 
@@ -476,7 +504,7 @@ run_touch_case() {
   local png="${SCREENSHOT_DIR}/${name}.png"
   should_run_label "${label}" || return 0
   echo "== ${label}"
-  "${HARNESS}" "${CORE}" "${cart}" \
+  run_harness "${CORE}" "${cart}" \
     --touch-x 123 --touch-y -45 --touch-count 1 --expect "${checksum}" --capture "${ppm}"
   python3 retroarch/tests/ppm_to_png.py "${ppm}" "${png}"
   rm -f "${ppm}"
@@ -674,7 +702,7 @@ run_visual_case "139 chromatic aberration" "139-chromatic-aberration" "retroarch
 run_visual_case "140 dashed lines"         "140-dashed-lines"         "retroarch/conformance/140-dashed-lines.js"         "8ed2322b4b4f33d3"
 run_visual_case "141 screen wave"          "141-screen-wave"          "retroarch/conformance/141-screen-wave.js"          "2a3f59cca114b42f"
 run_visual_case "142 frame utils"          "142-frame-utils"          "retroarch/conformance/142-frame-utils.js"          "6515cebd82ccf218"
-run_visual_case "143 color utils"          "143-color-utils"          "retroarch/conformance/143-color-utils.js"          "733815c0acc2624f"
+run_visual_case "143 color utils"          "143-color-utils"          "retroarch/conformance/143-color-utils.js"          "07a648c717f00a58"
 run_visual_case "144 screen dissolve"      "144-screen-dissolve"      "retroarch/conformance/144-screen-dissolve.js"      "eb210f6050311203"
 run_visual_case "145 number format"        "145-number-format"        "retroarch/conformance/145-number-format.js"        "f69fc25f87ad48a7"
 run_visual_case "146 spr flip"             "146-spr-flip"             "retroarch/conformance/146-spr-flip.js"             "c8a8aafe9941cd01"
@@ -1292,4 +1320,10 @@ run_visual_case "1096 retro effects bloom" "1096-retro-effects-bloom" "retroarch
 run_visual_case "1097 point light shadow" "1097-point-light-shadow" "retroarch/conformance/1097-point-light-shadow.js" "f9e7cfc6d4a05719"
 run_visual_case "1098 minimap web compat" "1098-minimap-web-compat" "retroarch/conformance/1098-minimap-web-compat.js" "9b062af59e261c85"
 
+if [[ ${#FAILURES[@]} -gt 0 ]]; then
+  echo
+  echo "Conformance FAILED: ${#FAILURES[@]} case(s)"
+  for f in "${FAILURES[@]}"; do echo "  - ${f}"; done
+  exit 1
+fi
 echo "Conformance passed."

@@ -936,12 +936,18 @@ AAAK:
   - ASCII-only text returns the same pointer (no copy), and folded output is
     always ASCII, so nested draw/measure calls re-fold for free. An 8-slot ring
     buffer is plenty.
-  - Regression check: all 536 conformance carts produced identical checksums
-    before and after, compared directly old-vs-new.
+  - Regression check (old core vs new, all 537 carts): only carts that draw
+    non-ASCII text changed: `1136` (new) and `143 color utils` (`→` was three
+    blocks, now an arrow). 143 was re-locked to `07a648c717f00a58`. A first
+    comparison wrongly showed "no diffs" because the copied "new" dylib was
+    still the old build. Check `md5` on both cores before trusting a diff.
   - New glyphs: add a `case` in `glyph_fold_codepoint()` and a row bitmap in the
     `sym[]` table at the top of `glyph_row()`. Avoid `0x09/0x0a/0x0d`.
   - `run_conformance.sh` now works on macOS: `CORE` can be overridden and
     defaults to `.dylib` on Darwin, and empty `frames_arg` arrays no longer trip
     bash 3.2 `set -u`. Even so, `21-post-effects` mismatches on macOS with the
     *unmodified* core (platform float drift), and the runner stops at the first
-    failure. Compare old vs new builds instead of relying on a full run on a Mac.
+    failure unless you pass `--keep-going` (`-k`), which records every failing
+    case and lists them at the end. On macOS, 47 cases fail identically with the
+    unmodified core (software-path float drift in gradients/3D). Judge a change
+    by diffing the `--keep-going` failure lists from the old and new cores.

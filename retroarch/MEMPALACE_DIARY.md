@@ -946,7 +946,7 @@ AAAK:
   - `run_conformance.sh` now works on macOS: `CORE` can be overridden and
     defaults to `.dylib` on Darwin, and empty `frames_arg` arrays no longer trip
     bash 3.2 `set -u`. Even so, `21-post-effects` mismatches on macOS with the
-    *unmodified* core (platform float drift), and the runner stops at the first
+    _unmodified_ core (platform float drift), and the runner stops at the first
     failure unless you pass `--keep-going` (`-k`), which records every failing
     case and lists them at the end. On macOS, 47 cases fail identically with the
     unmodified core (software-path float drift in gradients/3D). Judge a change

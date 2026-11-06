@@ -52,6 +52,9 @@ const IMPORT_MAP_SKIP = [
   'os9-shellMobile/dist/index.html',
   'public/os9-shellMobile/index.html',
   'apps/desktop/src/dev/index.html',
+  // RetroArch web player: only imports its own emscripten module.
+  'public/retroarch-web/index.html',
+  'retroarch-web/index.html', // its dist/ copy
 ];
 
 // Generated trees that mirror pages validated at their source. The Electron

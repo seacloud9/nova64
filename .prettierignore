@@ -7,3 +7,6 @@ pnpm-lock.yaml
 nova64-godot/gdextension/third_party/
 nova64-godot/godot_project/bin/
 nova64-godot/godot_project/.godot/
+
+# Generated emscripten output (pnpm build:retroarch-web)
+public/retroarch-web/nova64_libretro.js

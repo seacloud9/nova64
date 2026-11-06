@@ -5,7 +5,51 @@ and queued feature work across Nova64 web, Babylon, Three.js, Godot, and
 RetroArch. Do not create per-area backlog files; add items here and link back
 to area-specific docs when context is needed.
 
-Last updated: 2026-06-19
+Last updated: 2026-11-06
+
+## 🔁 Recurring — Dependency sweep (monthly, and before every release)
+
+Requested 2026-11-06: keep every library current instead of letting it drift.
+Each sweep:
+
+1. `pnpm outdated -r` across the workspace (root, os9-shell, apps/desktop,
+   nova64-godot tooling) plus GitHub Actions versions in `.github/workflows/`.
+2. Patch/minor updates: take them, then run `pnpm ci:check`, the Playwright
+   suite, `bash retroarch/tests/run_conformance.sh -k`, and the native/web
+   sweeps (`pnpm sweep:retroarch-native`, `pnpm sweep:retroarch-web`).
+3. Majors: one PR per library with a short migration note.
+4. Record what moved in `docs/MEMPALACE_DIARY.md` and bump the date here.
+
+Still to set up: `.github/dependabot.yml` (npm + github-actions, weekly,
+grouped minor/patch) so this also happens without anyone remembering.
+
+Last sweep: 2026-11-06. Babylon.js 9.4.1 -> 9.34.0 queued (same major) with
+the Babylon restore below; Node 20 -> 24 LTS landed in #28.
+
+## 🟡 Queued after the next npm release (2026-11)
+
+- **Babylon.js restore (priority).** Root cause found and fixed on
+  `fix/babylon-backend`: meshOptions (setMeshEmissive/Color/Opacity/...) were
+  never implemented for Babylon, rgba8() BigInt colours were decoded wrong,
+  and bloom was over-tuned. Then upgrade @babylonjs/* to 9.34.x and re-run the
+  Babylon Playwright specs (backend-parity, api-compatibility, xr-ar-babylon).
+- **Three.js api-compatibility failures** (pre-existing on main):
+  raycastFromCamera miss, setPBRProperties, scene.traverse shim. Ties into the
+  PBR item below.
+- **PBR test + demo needs a big upgrade** (user request): improve it, or
+  write the plan here.
+- **Core-only APIs in web carts:** about 10 carts moved from retroarch/games in
+  b9b9995a (neon-snake, nova-drift, sky-rider, space-shooter, wave-survival,
+  particle-fireworks, platformer, stealth-runner, dungeon-crawler,
+  neon-pinball) call ~25 functions only the libretro core has (printBold/
+  Tight/Flash, hline/vline/circ/circfill, setSkyColor, project3DToScreen,
+  createWaveManager, createBurst, ...). Port them to the web runtime.
+- **Windows:** native harness needs LoadLibrary, a windows-latest CI job and a
+  known-failures-windows.txt (checklist in PR #29).
+- **pnpm versions:** CI pins pnpm 9; local installs run 10 (Node 24
+  corepack) or 11 (Node 22 global). Pick one and pin `packageManager`.
+- **Playwright suite isn't in CI.** It went stale for months (bare-global
+  waits). Add it (or a fast subset) to ci.yml.
 
 ## 🟡 Three.js Renderer Vibrancy Regression
 

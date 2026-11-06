@@ -7,6 +7,8 @@
 #   --keep-going  run every case, then list all failures (exit 1 if any)
 #   CORE=path     core to test (default: nova64_libretro.dylib on macOS, .so elsewhere)
 #   NOVA64_GLES_TESTS=1  also run the hardware-GL checksum cases
+#   With --keep-going, cases in tests/known-failures-<os>.txt (e.g. darwin) are
+#   reported but don't fail the run; NOVA64_STRICT_CONFORMANCE=1 disables that.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -1320,10 +1322,51 @@ run_visual_case "1096 retro effects bloom" "1096-retro-effects-bloom" "retroarch
 run_visual_case "1097 point light shadow" "1097-point-light-shadow" "retroarch/conformance/1097-point-light-shadow.js" "f9e7cfc6d4a05719"
 run_visual_case "1098 minimap web compat" "1098-minimap-web-compat" "retroarch/conformance/1098-minimap-web-compat.js" "9b062af59e261c85"
 
-if [[ ${#FAILURES[@]} -gt 0 ]]; then
+# On macOS, cases listed in tests/known-failures-darwin.txt mismatch even with
+# an unmodified core (Linux-locked checksums vs. platform float drift). Report
+# them separately so only *new* failures fail the run. Set
+# NOVA64_STRICT_CONFORMANCE=1 to treat every mismatch as a failure.
+KNOWN_FILE="retroarch/tests/known-failures-$(uname -s | tr '[:upper:]' '[:lower:]').txt"
+KNOWN=()
+if [[ "${KEEP_GOING}" -eq 1 && -z "${NOVA64_STRICT_CONFORMANCE:-}" && -f "${KNOWN_FILE}" ]]; then
+  while IFS= read -r line; do
+    [[ -z "${line}" || "${line}" == \#* ]] && continue
+    KNOWN+=("${line}")
+  done < "${KNOWN_FILE}"
+fi
+is_known() {
+  local needle="$1" k
+  for k in ${KNOWN[@]+"${KNOWN[@]}"}; do [[ "${k}" == "${needle}" ]] && return 0; done
+  return 1
+}
+is_failed() {
+  local needle="$1" f
+  for f in ${FAILURES[@]+"${FAILURES[@]}"}; do [[ "${f}" == "${needle}" ]] && return 0; done
+  return 1
+}
+
+NEW_FAILURES=(); KNOWN_HITS=0; NOW_PASSING=()
+for f in ${FAILURES[@]+"${FAILURES[@]}"}; do
+  if is_known "${f}"; then KNOWN_HITS=$((KNOWN_HITS + 1)); else NEW_FAILURES+=("${f}"); fi
+done
+# Only flag fixed known cases when the whole suite ran (a range skips cases).
+if [[ "${RANGE_FROM}" -eq 0 && "${RANGE_TO}" -eq 9999 ]]; then
+  for k in ${KNOWN[@]+"${KNOWN[@]}"}; do is_failed "${k}" || NOW_PASSING+=("${k}"); done
+fi
+
+if [[ "${KNOWN_HITS}" -gt 0 ]]; then
   echo
-  echo "Conformance FAILED: ${#FAILURES[@]} case(s)"
-  for f in "${FAILURES[@]}"; do echo "  - ${f}"; done
+  echo "Known platform mismatches (${KNOWN_FILE}): ${KNOWN_HITS} case(s), not counted"
+fi
+if [[ ${#NOW_PASSING[@]} -gt 0 ]]; then
+  echo
+  echo "Listed as known but now passing; remove from ${KNOWN_FILE}:"
+  for f in "${NOW_PASSING[@]}"; do echo "  - ${f}"; done
+fi
+if [[ ${#NEW_FAILURES[@]} -gt 0 ]]; then
+  echo
+  echo "Conformance FAILED: ${#NEW_FAILURES[@]} case(s)"
+  for f in "${NEW_FAILURES[@]}"; do echo "  - ${f}"; done
   exit 1
 fi
 echo "Conformance passed."

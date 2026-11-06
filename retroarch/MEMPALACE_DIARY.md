@@ -951,3 +951,9 @@ AAAK:
     case and lists them at the end. On macOS, 47 cases fail identically with the
     unmodified core (software-path float drift in gradients/3D). Judge a change
     by diffing the `--keep-going` failure lists from the old and new cores.
+  - Those 47 now live in `retroarch/tests/known-failures-darwin.txt`. With
+    `--keep-going` on macOS they're reported as "known platform mismatches",
+    not failures, so `bash retroarch/tests/run_conformance.sh -k --skip-build`
+    passes on a Mac. Only new mismatches fail, and listed cases that start
+    passing are flagged for removal. `NOVA64_STRICT_CONFORMANCE=1` turns it
+    off. Verified: the original core fails exactly `143` and `1136`.

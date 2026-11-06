@@ -6,6 +6,7 @@ import type { Nova64App } from '../types';
 import { novaContext } from '../os/context';
 import { GAMES, type Game } from './gameCatalog';
 import { getRetroArchWebUrl, getRetroArchWebMessageUrl } from './retroarch-web-app';
+import { getNovaBaseUrl } from '../utils/cartCode';
 
 const EJS_CDN = 'https://cdn.emulatorjs.org/stable/data/';
 
@@ -42,6 +43,86 @@ function NovaPlayer({ cart }: { cart: NovaCart }) {
       style={{ width: '100%', height: '100%', border: 'none', display: 'block', background: '#000' }}
       onLoad={() => frameRef.current?.focus()}
     />
+  );
+}
+
+interface QwenGame {
+  id: string;
+  title: string;
+  blurb: string;
+  description: string;
+  path: string;
+  cover: string | null;
+}
+
+/** QWEN Arcade: games written by a local Qwen model (examples/QWEN/arcade.json). */
+function useQwenArcade(): { games: QwenGame[]; article: string | null } {
+  const [state, setState] = useState<{ games: QwenGame[]; article: string | null }>({ games: [], article: null });
+  useEffect(() => {
+    let alive = true;
+    fetch(new URL('/examples/QWEN/arcade.json', getNovaBaseUrl()).toString())
+      .then((r) => (r.ok ? r.json() : null))
+      .then((m) => {
+        if (alive && m && Array.isArray(m.games)) setState({ games: m.games, article: m.article || null });
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
+  return state;
+}
+
+function QwenShelf({ onPlay }: { onPlay: (path: string, title: string) => void }) {
+  const { games, article } = useQwenArcade();
+  if (!games.length) return null;
+  const base = getNovaBaseUrl();
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 8 }}>
+        <span style={{ fontSize: 13, fontWeight: 'bold', letterSpacing: 2, color: '#c4b5fd' }}>✦ QWEN ARCADE</span>
+        <span style={{ fontSize: 11, color: '#888' }}>made by a local Qwen model</span>
+        {article && (
+          <a href={new URL(article, base).toString()} target="_blank" rel="noopener noreferrer" style={{ marginLeft: 'auto', fontSize: 11, color: '#38bdf8' }}>
+            How it was made →
+          </a>
+        )}
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))', gap: 10 }}>
+        {games.map((g) => (
+          <button
+            key={g.id}
+            onClick={() => onPlay(g.path, g.title)}
+            title={g.description}
+            style={{
+              padding: 0,
+              background: '#151826',
+              border: '2px solid rgba(167,139,250,0.35)',
+              borderRadius: 10,
+              color: '#fff',
+              cursor: 'pointer',
+              textAlign: 'left',
+              overflow: 'hidden',
+              boxShadow: '0 4px 14px rgba(0,0,0,0.35)',
+            }}
+          >
+            <div
+              style={{
+                aspectRatio: '16 / 9',
+                background: g.cover ? `#0b0d14 center / cover url("${new URL(g.cover, base).toString()}")` : '#0b0d14',
+                position: 'relative',
+              }}
+            >
+              <span style={{ position: 'absolute', top: 6, right: 6, fontSize: 9, fontWeight: 800, padding: '2px 5px', borderRadius: 3, background: 'rgba(124,58,237,0.9)' }}>AI</span>
+            </div>
+            <div style={{ padding: '8px 10px 10px' }}>
+              <div style={{ fontWeight: 'bold', fontSize: 12 }}>{g.title}</div>
+              <div style={{ fontSize: 10.5, opacity: 0.7, marginTop: 2 }}>{g.blurb}</div>
+            </div>
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -251,6 +332,9 @@ function EMULauncher({ initialCart }: { initialCart?: NovaCart }) {
 
       <div style={{ flex: 1, overflow: 'auto', padding: 24, display: 'flex', flexDirection: 'column', gap: 20 }}>
         {/* Nova64 is the default system, so its game library comes first. */}
+        {selectedSystem === 'nova64' && (
+          <QwenShelf onPlay={(path, title) => playNova({ kind: 'path', path, title })} />
+        )}
         {selectedSystem === 'nova64' && (
           <NovaLibrary onPlay={(g) => playNova({ kind: 'path', path: g.path, title: g.name })} />
         )}

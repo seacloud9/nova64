@@ -559,6 +559,17 @@
     @media (max-width: 480px)  { .demo-grid { grid-template-columns: 1fr; } }
     .demo-featured { grid-column: span 2; }
     @media (max-width: 768px) { .demo-featured { grid-column: span 1; } }
+    /* QWEN Arcade section (cards reuse .demo-card; cover art is the visual) */
+    #qwen-arcade { padding: 80px 0 40px; }
+    #qwen-arcade[hidden] { display: none; }
+    .qwen-visual { background-size: cover; background-position: center; background-color: #0b0d14; }
+    .qwen-badge {
+      position: absolute; top: 10px; right: 12px; z-index: 1;
+      font-family: 'Press Start 2P', monospace; font-size: 7px; letter-spacing: 0.06em;
+      color: #fff; background: rgba(124,58,237,0.9); padding: 4px 6px; border-radius: 3px;
+    }
+    .qwen-model { color: var(--muted, #94a3b8); font-size: 12px; margin-top: 10px; }
+    .qwen-actions { display: flex; gap: 12px; flex-wrap: wrap; }
     .demo-card {
       position: relative; border-radius: var(--radius); border: 1px solid var(--border);
       background: var(--bg-mid); overflow: hidden; cursor: pointer; transition: var(--trans);
@@ -1080,6 +1091,25 @@
 </section>
 
 <!-- ── WHAT IS ── -->
+<!-- QWEN Arcade: games written by a local Qwen model (examples/QWEN/arcade.json) -->
+<section id="qwen-arcade" hidden>
+  <div class="container">
+    <div class="demos-header">
+      <div class="demos-header-left">
+        <span class="stamp">QWEN ARCADE ✦ AI-MADE</span>
+        <h2 class="section-title">A local Qwen made these games.</h2>
+        <p class="demos-sub" id="qwen-sub">Every cartridge here was written end to end by a Qwen model running on one laptop, inside Nova64 Studio. Pick one and play.</p>
+        <p class="qwen-model" id="qwen-model"></p>
+      </div>
+      <div class="qwen-actions">
+        <a href="./console.html" class="btn-outline" id="qwen-play-all">Play in the Console &rarr;</a>
+        <a href="#" class="btn-outline" id="qwen-article" target="_blank" rel="noopener">How it was made &rarr;</a>
+      </div>
+    </div>
+    <div class="demo-grid" id="qwen-grid"></div>
+  </div>
+</section>
+
 <section id="what">
   <div class="container">
     <div class="what-inner">
@@ -1720,5 +1750,43 @@ window.addEventListener('load', () => {
      links. No config needed. Docs: docs/LEMONSQUEEZY_SELLING.md -->
 <script src="https://assets.lemonsqueezy.com/lemon.js" defer></script>
 
+<script>
+// QWEN Arcade cards, built from the manifest (scripts/build-qwen-arcade.mjs).
+(async () => {
+  let m;
+  try {
+    const res = await fetch('./examples/QWEN/arcade.json');
+    if (!res.ok) return;
+    m = await res.json();
+  } catch (e) { return; }
+  const games = (m && m.games) || [];
+  if (!games.length) return;
+  const grid = document.getElementById('qwen-grid');
+  const art = document.getElementById('qwen-article');
+  if (m.article) art.href = '.' + m.article; else art.remove();
+  document.getElementById('qwen-play-all').href = './console.html?qwen=' + encodeURIComponent(games[0].id);
+  const model = games.map((g) => g.model).find(Boolean);
+  if (model) document.getElementById('qwen-model').textContent = 'Model: ' + model.split('/').pop() + ' · ' + games.length + ' games';
+  for (const g of games) {
+    const card = document.createElement('a');
+    card.className = 'demo-card';
+    card.href = './console.html?qwen=' + encodeURIComponent(g.id);
+    card.style.textDecoration = 'none';
+    card.title = g.description || g.title;
+    const visual = document.createElement('div');
+    visual.className = 'demo-visual qwen-visual';
+    if (g.cover) visual.style.backgroundImage = 'url(".' + g.cover + '")';
+    visual.innerHTML = '<span class="qwen-badge">AI</span><div class="demo-play-btn">&#9654;</div>';
+    const info = document.createElement('div');
+    info.className = 'demo-info';
+    const name = document.createElement('div'); name.className = 'demo-name'; name.textContent = g.title;
+    const desc = document.createElement('div'); desc.className = 'demo-desc'; desc.textContent = g.blurb || '';
+    info.append(name, desc);
+    card.append(visual, info);
+    grid.appendChild(card);
+  }
+  document.getElementById('qwen-arcade').hidden = false;
+})();
+</script>
 </body>
 </html>

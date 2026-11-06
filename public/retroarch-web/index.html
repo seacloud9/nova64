@@ -43,6 +43,8 @@
     <script type="module">
       // Boots RetroArch web with the Nova64 libretro core and runs one cart.
       //   ?cart=/examples/hello-world/code.js   (same-origin path or URL)
+      //   ?cart=message                         (cart bytes sent via postMessage)
+      //   &name=my-game.nova                    (optional file name; keeps .nova)
       // Exposes window.nova64RetroArch.state for tests: loading | running | error.
       const status = document.getElementById('status');
       const canvas = document.getElementById('canvas');
@@ -63,11 +65,40 @@
         console.log('[retroarch]', text);
       }
 
-      async function boot() {
+      // Cart file name inside the core's filesystem. Keeps .js / .nova so the
+      // core picks the right loader; anything else becomes <name>.js.
+      function cartFileName(raw) {
+        const base = String(raw || 'cart.js').replace(/[^A-Za-z0-9._-]/g, '-').slice(-80) || 'cart.js';
+        return base.endsWith('.js') || base.endsWith('.nova') ? base : base + '.js';
+      }
+
+      // ?cart=message: the embedding page sends the cart bytes instead of a
+      // URL (used for files dropped into the OS shell, which a cross-origin
+      // iframe can't fetch). Handshake: we post {type:'nova64:ready'} to the
+      // parent; it replies {type:'nova64:cart', name, bytes: ArrayBuffer}.
+      function receiveCart() {
+        status.textContent = 'Waiting for cart…';
+        return new Promise((resolve) => {
+          window.addEventListener('message', function onMessage(e) {
+            if (e.source !== window.parent || !e.data || e.data.type !== 'nova64:cart') return;
+            window.removeEventListener('message', onMessage);
+            resolve({ bytes: new Uint8Array(e.data.bytes), name: cartFileName(e.data.name) });
+          });
+          window.parent.postMessage({ type: 'nova64:ready' }, '*');
+        });
+      }
+
+      async function loadCart() {
+        if (cartUrl === 'message') return receiveCart();
         status.textContent = 'Fetching cart ' + cartUrl + '…';
         const res = await fetch(cartUrl);
         if (!res.ok) throw new Error('cart fetch failed: ' + res.status + ' ' + cartUrl);
-        const cart = new Uint8Array(await res.arrayBuffer());
+        const derived = cartUrl.split('?')[0].split('/').filter(Boolean).slice(-2).join('-');
+        return { bytes: new Uint8Array(await res.arrayBuffer()), name: cartFileName(params.get('name') || derived) };
+      }
+
+      async function boot() {
+        const { bytes: cart, name } = await loadCart();
 
         status.textContent = 'Loading Nova64 core…';
         const { default: createModule } = await import('./nova64_libretro.js');
@@ -93,8 +124,7 @@
             '',
           ].join('\n')
         );
-        const name = cartUrl.split('/').filter(Boolean).slice(-2).join('-') || 'cart.js';
-        const cartPath = home + '/content/' + (name.endsWith('.js') || name.endsWith('.nova') ? name : name + '.js');
+        const cartPath = home + '/content/' + name;
         mod.FS.writeFile(cartPath, cart);
 
         // RetroArch reads the canvas backing size at boot ("Could not get

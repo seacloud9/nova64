@@ -13,6 +13,14 @@ export function getRetroArchWebUrl(path: string): string {
   return url.toString();
 }
 
+/** Player URL that waits for the cart bytes over postMessage (see index.html). */
+export function getRetroArchWebMessageUrl(fileName: string): string {
+  const url = new URL('/retroarch-web/index.html', getNovaBaseUrl());
+  url.searchParams.set('cart', 'message');
+  url.searchParams.set('name', fileName);
+  return url.toString();
+}
+
 function RetroArchWeb({ initialPath }: { initialPath: string }) {
   const [path, setPath] = useState(initialPath);
   const options = GAMES.some((g) => g.path === path)

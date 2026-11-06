@@ -31701,6 +31701,38 @@ static bool install_nova64_api(JSContext *ctx)
          "nova64.ui.centerY=function(h){return Math.floor((360-(h||0))/2);};"
          "nova64.ui.__screenUpdate=function(dt){var s=this.getCurrentScreen();if(s&&typeof s.update==='function')s.update(dt);};"
          "nova64.ui.__screenDraw=function(){var s=this.getCurrentScreen();if(s&&typeof s.draw==='function')s.draw();};"
+         /* Carts destructure these (const { addScreen } = nova64.ui), which
+            drops `this`; bind them so bare calls reach nova64.ui. */
+         "['addScreen','switchToScreen','startScreens','getCurrentScreen','__screenUpdate','__screenDraw'].forEach(function(k){nova64.ui[k]=nova64.ui[k].bind(nova64.ui);});"
+         "nova64.ui.switchScreen=nova64.ui.switchToScreen;"
+         /* nova64.loader: same tracking/ready semantics as runtime/api-loader.js.
+            The web version also draws a DOM overlay; here it is logic-only so
+            carts that gate startup on whenReady()/onReady() still proceed. */
+         "if(!nova64.loader)(function(){var st={visible:false,pending:{},n:0,total:0,status:'',cbs:[]};"
+           "function drain(){var c=st.cbs.slice();st.cbs.length=0;c.forEach(function(f){try{f();}catch(e){console.log('[nova64.loader] onReady callback threw: '+e);}});}"
+           "function maybe(){if(st.n===0&&st.total>0)drain();}"
+           "nova64.loader={"
+             "show:function(o){st.pending={};st.n=0;st.total=0;st.visible=true;if(o&&o.status!=null)st.status=String(o.status);},"
+             "hide:function(){st.visible=false;},"
+             "track:function(u){if(!u)return;(Array.isArray(u)?u:[u]).forEach(function(x){if(typeof x!=='string'||!x||st.pending[x])return;st.pending[x]=1;st.n++;st.total++;});},"
+             "resolve:function(u){if(typeof u==='string'&&st.pending[u]){delete st.pending[u];st.n--;if(st.visible)maybe();}},"
+             "setStatus:function(t){st.status=String(t==null?'':t);},"
+             "onReady:function(cb){if(typeof cb!=='function')return function(){};st.cbs.push(cb);"
+               "if(st.n===0&&st.total>0)Promise.resolve().then(function(){var i=st.cbs.indexOf(cb);if(i>=0){st.cbs.splice(i,1);try{cb();}catch(e){}}});"
+               "return function(){var i=st.cbs.indexOf(cb);if(i>=0)st.cbs.splice(i,1);};},"
+             "whenReady:function(){return new Promise(function(r){nova64.loader.onReady(r);});},"
+             "isVisible:function(){return st.visible;},"
+             "progress:function(){return st.total===0?0:Math.max(0,Math.min(1,(st.total-st.n)/st.total));}"
+           "};})();"
+         /* MediaPipe body tracking needs a webcam + the browser vision runtime.
+            The core has neither, so report "no camera": init* resolve false and
+            the getters return empty results, like the web API before any frame. */
+         "(function(){var I=nova64.input=nova64.input||{};function def(k,f){if(typeof I[k]!=='function')I[k]=f;}"
+           "['initHandTracking','initFaceTracking','initPoseTracking','startCamera'].forEach(function(k){def(k,function(){return Promise.resolve(false);});});"
+           "['getHandLandmarks','getHandGesture','getFaceLandmarks','getFaceBlendShapes','getPoseLandmarks'].forEach(function(k){def(k,function(){return [];});});"
+           "def('getCameraTexture',function(){return null;});"
+           "['stopCamera','showCameraBackground','hideCameraBackground','stopTracking'].forEach(function(k){def(k,function(){});});"
+         "})();"
          "(function(){function base(t){var n={_type:t,x:0,y:0,scaleX:1,scaleY:1,rotation:0,alpha:1,visible:true,blendMode:'source-over',children:[]};"
            "n.tweenTo=function(props,dur,opts){var tw={play:function(){if(props)for(var k in props)n[k]=props[k];return tw;},pause:function(){return tw;},stop:function(){return tw;},tick:function(){return tw;}};tw.play();return tw;};n.killTweens=function(){};return n;}"
            "function addChild(p,c){if(p&&p.children)p.children.push(c);return c;}"
@@ -36934,6 +36966,29 @@ static bool js_host_load_cart(const char *source, size_t source_size, const char
    return true;
 }
 
+/* Run nova64.ui's screen manager after the cart's own update/draw, matching
+   the web loop (src/main.js: cart.update -> screens.update, cart.draw ->
+   screens.draw). Carts using nova64.ui.addScreen/startScreens leave their own
+   update()/draw() empty and rely on this. No-op when no screen is active. */
+static void js_host_run_screen_hook(JSContext *ctx, const char *hook, int argc, JSValueConst *argv)
+{
+   JSValue global = JS_GetGlobalObject(ctx);
+   JSValue nova = JS_GetPropertyStr(ctx, global, "nova64");
+   JSValue ui = JS_IsObject(nova) ? JS_GetPropertyStr(ctx, nova, "ui") : JS_UNDEFINED;
+   JSValue fn = JS_IsObject(ui) ? JS_GetPropertyStr(ctx, ui, hook) : JS_UNDEFINED;
+   if (JS_IsFunction(ctx, fn)) {
+      JSValue r = JS_Call(ctx, fn, ui, argc, argv);
+      if (JS_IsException(r))
+         js_log_exception(ctx, hook);
+      else
+         JS_FreeValue(ctx, r);
+   }
+   JS_FreeValue(ctx, fn);
+   JS_FreeValue(ctx, ui);
+   JS_FreeValue(ctx, nova);
+   JS_FreeValue(ctx, global);
+}
+
 static void js_host_call_frame(double dt)
 {
    if (!js_host.loaded || !js_host.context)
@@ -36962,6 +37017,11 @@ static void js_host_call_frame(double dt)
          JS_FreeValue(ctx, result);
       }
    }
+   {
+      JSValue dtv = JS_NewFloat64(ctx, dt);
+      js_host_run_screen_hook(ctx, "__screenUpdate", 1, &dtv);
+      JS_FreeValue(ctx, dtv);
+   }
 
    /* Drain microtasks scheduled during update() before draw() runs, so promise
     * continuations resolve the same frame. Without this the QuickJS job queue
@@ -36978,6 +37038,7 @@ static void js_host_call_frame(double dt)
          JS_FreeValue(ctx, result);
       }
    }
+   js_host_run_screen_hook(ctx, "__screenDraw", 0, NULL);
    js_host_drain_jobs("draw jobs");
    spr_sorted_flush();
 }

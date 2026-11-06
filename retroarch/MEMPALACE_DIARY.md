@@ -894,9 +894,14 @@ AAAK:
     `--use-angle=swiftshader --enable-unsafe-swiftshader`. The post FBO is
     640x360 RGBA32F with 5 bloom mips, and the canvas is 1280x720.
   - **Gotcha:** `page.evaluate(() => window.nova64RetroArch)` (returning the
-    whole object) hangs forever, and Playwright's own timeouts don't fire. Return
-    only plain fields (`state`, `error`, a `loaded` boolean). Reading just
-    `.state` is fine. `browser.close()` can also block, so race it against a timer.
+    whole object) hangs forever, and Playwright's own timeouts don't fire. The
+    cause is that `public/retroarch-web/index.html` stores the emscripten
+    Module on `api.module`, so Playwright tries to serialize the whole WASM
+    heap. Return only plain fields (`state`, `error`, a `loaded` boolean).
+    `browser.close()` can also block, so race it against a timer.
+  - `state` becomes `running` as soon as `callMain` returns, even if the cart
+    throws. Detect cart failures from `[nova64] JS exception in <where>:` lines
+    in `log`.
   - The smoke script is bounded: `SMOKE_TIMEOUT_MS` (180s Node watchdog),
     `SMOKE_ATTEMPTS` (2, fresh browser each), and a 30s cap per step. It passes
     in ~16s locally.
@@ -957,3 +962,41 @@ AAAK:
     passes on a Mac. Only new mismatches fail, and listed cases that start
     passing are flagged for removal. `NOVA64_STRICT_CONFORMANCE=1` turns it
     off. Verified: the original core fails exactly `143` and `1136`.
+
+---
+
+## 2026-11-05 - WASM player compatibility sweep + core compat fixes
+
+Topic seed for MemPalace: `nova64-retroarch-web-sweep-20261105`
+
+AAAK:
+
+- **Anchor:** Booted all 96 `examples/` carts on the WASM player with the new
+  `pnpm sweep:retroarch-web` (`scripts/retroarch-web-sweep.mjs`), then ran the
+  non-ok ones through the web runtime (`/cart-runner.html?path=`) to separate
+  core gaps from cart bugs.
+- **Core-only failures fixed** (compat prelude in `nova64_libretro.c`):
+  - `nova64.ui.addScreen`/`switchToScreen`/... used `this`, which carts lose
+    by destructuring (`const { addScreen } = nova64.ui`). They're now bound to
+    `nova64.ui`.
+  - The core never ran the `nova64.ui` screen manager. The web loop calls
+    `screens.update(dt)` after `cart.update` and `screens.draw()` after
+    `cart.draw`, and the core now does the same via
+    `js_host_run_screen_hook()`. Fixes screen-demo and shooter-demo-3d
+    (previously blank). The legacy C bare-global screen manager
+    (`js_add_screen`) is unchanged.
+  - Added a logic-only `nova64.loader` (track/resolve/progress/onReady/
+    whenReady, same semantics as `runtime/api-loader.js`, no overlay).
+  - Added MediaPipe stubs on `nova64.input` that report "no camera":
+    `init*` resolve false, the getters return [].
+- **Known, not fixed here:**
+  - Carts `00`-`10` drive the renderer via `engine.call` (G1 host contract).
+    The web runtime has `runtime/g1-web-bridge.js`; the core has no `engine`.
+  - hello-helpers / story / video draw via web DOM overlays, so the core shows
+    an empty framebuffer (no crash).
+  - About 15 carts fail in the WEB runtime itself with `rgba8`/`btnp`/`cls`/
+    `ellipsefill is not defined`. Bare globals were removed from the web in
+    `6267ecb3` and those carts still call them. The core still installs bare
+    globals, so some of them only work on RetroArch.
+  - The sweep's "blank" (<20KB screenshot) mostly flags simple or dark scenes,
+    so treat it as "look at this", not a failure.

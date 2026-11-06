@@ -43,6 +43,9 @@ protected:
 public:
     Nova64Host();
     ~Nova64Host() override;
+    // Full teardown (scene nodes, resources, JS) runs on NOTIFICATION_PREDELETE,
+    // while the node is still intact. See bridge.cpp.
+    void _notification(int p_what);
 
     // Returns the host capability descriptor in the same shape produced by
     // buildCapabilities() in runtime/engine-adapter.js.

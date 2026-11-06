@@ -400,6 +400,61 @@ Exit criteria:
 - bridge latency and frame cost are measured on a mobile target and compared against the Godot host
 - Unity host contract is documented and versioned, with explicit notes on differences from the Godot host
 
+### Phase 6: Godot as the Nova64 Editor & Publisher (+ VS Code) — **Planned** (direction set 2026-11-06)
+
+Goal: Godot becomes the main place to **build, test and publish** Nova64 games,
+customized for every Nova64 target (web, native, RetroArch, AI prompting). A
+solid VS Code experience is the second front door, for developers and engineers
+who live in an editor.
+
+Why Godot: it already hosts Nova64 natively (Phase 3: GDExtension + QuickJS +
+cart shim + conformance runner), it's open source and MIT-licensed, so it can be
+forked and rebranded, and it ships a single export pipeline for desktop and
+mobile.
+
+Architecture direction:
+
+- **Nova64 editor plugin first, fork later.** Start as a Godot editor plugin
+  (`addons/nova64_editor/`): cart browser, live cart preview, API docs and
+  inspector. Fork Godot into a branded "Nova64 Studio" build only once the
+  plugin hits limits that require engine changes.
+- **One cart, every target.** The editor publishes the same `examples/<cart>/`
+  source to: web (Three.js / Babylon), Godot native (desktop + mobile exports),
+  the RetroArch core (native `.so/.dll/.dylib` + the WASM web player), and the
+  `.nova` package format.
+- **Parity built in.** Run the existing checks from the editor:
+  `nova64-godot/scripts/visual-parity.js`, `pnpm sweep:retroarch-native`,
+  `pnpm sweep:retroarch-web`, and the Godot conformance runner. Show
+  side-by-side web / Godot / RetroArch frames.
+- **Prompting.** An AI panel in the editor that writes and edits carts against
+  the Nova64 API, reusing the Nova64 Studio protocol (`tests/test-studio-protocol.js`)
+  and the cart-dev conventions (namespaced `nova64.*` API, dual-directory sync).
+- **VS Code.** A first-class extension (see `plans/NOVA64_DESKTOP_VSCODE_PLAN.md`):
+  API IntelliSense from `runtime/index.d.ts`, cart run/preview, sweep and
+  parity commands, and "open in Godot editor" handoff.
+
+Phase 6 Todo:
+
+- [ ] Godot editor plugin MVP: cart browser + run selected cart in the editor viewport
+- [ ] Publish panel: export one cart to web, Godot desktop, RetroArch core and `.nova`
+- [ ] Parity panel: web vs Godot vs RetroArch screenshots + diff, using the existing scripts
+- [ ] AI prompting panel wired to the Nova64 Studio protocol
+- [ ] VS Code extension: IntelliSense, run/preview, sweeps, and handoff to the Godot editor
+- [ ] Decide plugin vs fork (branded "Nova64 Studio" Godot build) with a written trade-off
+- [ ] macOS/Linux dev ergonomics: `scripts/godot.sh` is Windows/WSL-only, so make
+      launch/link scripts cross-platform (cart symlinks, Godot binary discovery)
+
+Prerequisites found while verifying Godot (2026-11-06):
+
+- [ ] Godot exits with SIGABRT (code 134) in `libnova64` QuickJS teardown after a
+      successful run on macOS. Fix the shutdown path.
+- [ ] `colyseus` addon has no macOS arm64 library (non-fatal load error on every run)
+- [ ] Godot host lacks the new PBR features: `createHDRSkybox`,
+      `createEnvironmentSkybox`, `setToneMapping`, and physical material options
+      (transmission/ior/clearcoat/sheen/iridescence), so metals reflect black
+- [ ] `nova64-godot/godot_project/carts/` should be symlinks into `examples/`; on
+      macOS they had become stale copies (27 of 76 out of date)
+
 ## Realtime Follow-Up Plan
 
 After the backend foundation is stable, the next strategic layer is realtime multiplayer and communication.

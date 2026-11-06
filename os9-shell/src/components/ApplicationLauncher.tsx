@@ -88,6 +88,13 @@ const APPS: AppItem[] = [
     category: 'Entertainment',
   },
   {
+    id: 'retroarch-web',
+    name: 'RetroArch Web',
+    icon: '👾',
+    description: 'Nova64 carts on the libretro core (WebAssembly)',
+    category: 'Entertainment',
+  },
+  {
     id: 'com.nova64.profiler',
     name: 'System Profiler',
     icon: '💻',

@@ -1,0 +1,115 @@
+# Builds the Nova64 libretro core as a WebAssembly static library for
+# RetroArch web (Emscripten). Kept separate from release-cores.yml so an
+# experimental web target can never block native core or npm releases.
+#
+# Output: nova64_libretro_emscripten.a — link into RetroArch's
+# Makefile.emscripten (see retroarch/WASM_CORE.md).
+name: WASM core
+
+on:
+  pull_request:
+    paths:
+      - 'retroarch/**'
+      - 'nova64-godot/gdextension/third_party/quickjs/**'
+      - '.github/workflows/wasm-core.yml'
+      - 'scripts/build-retroarch-web.sh'
+      - 'scripts/retroarch-web-smoke.mjs'
+      - 'public/retroarch-web/**'
+  push:
+    branches: [main]
+    paths:
+      - 'retroarch/**'
+      - 'nova64-godot/gdextension/third_party/quickjs/**'
+      - '.github/workflows/wasm-core.yml'
+      - 'scripts/build-retroarch-web.sh'
+      - 'scripts/retroarch-web-smoke.mjs'
+      - 'public/retroarch-web/**'
+    tags: ['v*.*.*']
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build core (emscripten)
+    runs-on: ubuntu-latest
+    container: emscripten/emsdk:3.1.74
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # QuickJS (nova64-godot/gdextension/third_party/quickjs) is a submodule.
+          submodules: recursive
+
+      - name: Build static WASM core
+        working-directory: retroarch
+        run: emmake make platform=emscripten OBJDIR=build-emscripten -j"$(nproc)"
+
+      - name: Verify archive exports the libretro API
+        working-directory: retroarch
+        run: |
+          ls -lh nova64_libretro_emscripten.a
+          for sym in retro_init retro_run retro_load_game retro_set_environment; do
+            emnm nova64_libretro_emscripten.a | grep -q " T $sym$" \
+              || { echo "missing symbol: $sym"; exit 1; }
+          done
+
+      - name: Stage artifact
+        run: |
+          mkdir -p staging
+          cp retroarch/nova64_libretro_emscripten.a staging/
+          cp retroarch/nova64_libretro.info staging/
+          (cd staging && sha256sum * > SHA256SUMS-wasm.txt)
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: core-emscripten
+          path: staging/
+          retention-days: 30
+
+      - name: Attach core to release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          files: |
+            staging/nova64_libretro_emscripten.a
+            staging/SHA256SUMS-wasm.txt
+
+  player:
+    # Links the core into RetroArch's web player (same script developers run:
+    # pnpm build:retroarch-web) and boots a cart in headless Chromium.
+    name: Build RetroArch web player + smoke test
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # QuickJS (nova64-godot/gdextension/third_party/quickjs) is a submodule.
+          submodules: recursive
+
+      - name: Build player
+        run: bash scripts/build-retroarch-web.sh
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
+
+      - name: Boot a cart in the browser
+        run: |
+          pnpm exec vite --port 5173 --strictPort &
+          for i in $(seq 1 60); do curl -sf -o /dev/null http://localhost:5173/retroarch-web/index.html && break; sleep 1; done
+          node scripts/retroarch-web-smoke.mjs
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: retroarch-web-player
+          path: |
+            public/retroarch-web/nova64_libretro.js
+            public/retroarch-web/nova64_libretro.wasm
+            retroarch-web-smoke.png
+          retention-days: 30

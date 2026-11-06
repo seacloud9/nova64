@@ -1,11 +1,22 @@
 #!/usr/bin/env bash
+# Nova64 libretro conformance suite.
+#
+#   bash retroarch/tests/run_conformance.sh [--skip-build] [--from N] [--to N]
+#                                           [--recent N] [--keep-going|-k]
+#
+#   --keep-going  run every case, then list all failures (exit 1 if any)
+#   CORE=path     core to test (default: nova64_libretro.dylib on macOS, .so elsewhere)
+#   NOVA64_GLES_TESTS=1  also run the hardware-GL checksum cases
+#   With --keep-going, cases in tests/known-failures-<os>.txt (e.g. darwin) are
+#   reported but don't fail the run; NOVA64_STRICT_CONFORMANCE=1 disables that.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 cd "${REPO_ROOT}"
 
-CORE="retroarch/nova64_libretro.so"
+if [[ "$(uname -s)" == "Darwin" ]]; then _core_ext=dylib; else _core_ext=so; fi
+CORE="${CORE:-retroarch/nova64_libretro.${_core_ext}}"
 HARNESS="retroarch/build/harness"
 PACKAGE_DIR="retroarch/build/conformance-packages"
 SAVE_DIR="retroarch/build/conformance-saves"
@@ -14,6 +25,8 @@ RECENT_COUNT=0
 RANGE_FROM=0
 RANGE_TO=9999
 SKIP_BUILD=0
+KEEP_GOING=0
+FAILURES=()
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -33,6 +46,9 @@ while [[ $# -gt 0 ]]; do
       RANGE_TO="$2"; shift 2 ;;
     --skip-build)
       SKIP_BUILD=1; shift ;;
+    --keep-going|-k)
+      # Record failing cases and keep running instead of stopping at the first.
+      KEEP_GOING=1; shift ;;
     *)
       echo "unknown argument: $1" >&2
       exit 2
@@ -258,6 +274,21 @@ with ZipFile(package_dir / "tilemap.nova", "w", ZIP_DEFLATED) as package:
     )
 PY
 
+# Every case invokes the harness through here. By default a failure aborts the
+# run (set -e); with --keep-going it is recorded under the caller's ${label}
+# and the suite continues, then the full list is reported at the end.
+run_harness() {
+  if [[ "${KEEP_GOING}" -eq 0 ]]; then
+    "${HARNESS}" "$@"
+    return
+  fi
+  if ! "${HARNESS}" "$@"; then
+    FAILURES+=("${label:-unknown case}")
+    echo "   ✗ FAILED: ${label:-unknown case}"
+  fi
+  return 0
+}
+
 # run_gles_case: like run_visual_case but uses --gles for hardware-rendered pixel checksums.
 # Skipped silently when NOVA64_GLES_TESTS is unset.
 run_gles_case() {
@@ -270,7 +301,7 @@ run_gles_case() {
   should_run_label "${label}" || return 0
   echo "== ${label} (gles)"
   local frames_arg=(); [[ -n "${frames}" ]] && frames_arg=(--frames "${frames}")
-  "${HARNESS}" "${CORE}" "${cart}" --gles "${frames_arg[@]}" --expect "${checksum}"
+  run_harness "${CORE}" "${cart}" --gles ${frames_arg[@]+"${frames_arg[@]}"} --expect "${checksum}"
 }
 
 run_case() {
@@ -281,7 +312,7 @@ run_case() {
   should_run_label "${label}" || return 0
   echo "== ${label}"
   local frames_arg=(); [[ -n "${frames}" ]] && frames_arg=(--frames "${frames}")
-  "${HARNESS}" "${CORE}" "${cart}" "${frames_arg[@]}" --expect "${checksum}"
+  run_harness "${CORE}" "${cart}" ${frames_arg[@]+"${frames_arg[@]}"} --expect "${checksum}"
 }
 
 should_run_label() {
@@ -304,9 +335,9 @@ run_command_log_case() {
   should_run_label "${label}" || return 0
   echo "== ${label} command log"
   if [[ -n "${renderer}" ]]; then
-    "${HARNESS}" "${CORE}" "${cart}" --renderer "${renderer}" --command-log "${log_path}" >/dev/null
+    run_harness "${CORE}" "${cart}" --renderer "${renderer}" --command-log "${log_path}" >/dev/null
   else
-    "${HARNESS}" "${CORE}" "${cart}" --command-log "${log_path}" >/dev/null
+    run_harness "${CORE}" "${cart}" --command-log "${log_path}" >/dev/null
   fi
   local actual_sha
   actual_sha="$(sha256sum "${log_path}" | awk '{print $1}')"
@@ -325,7 +356,7 @@ run_audio_case() {
   should_run_label "${label}" || return 0
   echo "== ${label}"
   local frames_arg=(); [[ -n "${frames}" ]] && frames_arg=(--frames "${frames}")
-  "${HARNESS}" "${CORE}" "${cart}" "${frames_arg[@]}" --expect "${checksum}" --expect-audio "${audio_checksum}"
+  run_harness "${CORE}" "${cart}" ${frames_arg[@]+"${frames_arg[@]}"} --expect "${checksum}" --expect-audio "${audio_checksum}"
 }
 
 run_visual_case() {
@@ -339,7 +370,7 @@ run_visual_case() {
   should_run_label "${label}" || return 0
   echo "== ${label}"
   local frames_arg=(); [[ -n "${frames}" ]] && frames_arg=(--frames "${frames}")
-  "${HARNESS}" "${CORE}" "${cart}" "${frames_arg[@]}" --expect "${checksum}" --capture "${ppm}"
+  run_harness "${CORE}" "${cart}" ${frames_arg[@]+"${frames_arg[@]}"} --expect "${checksum}" --capture "${ppm}"
   python3 retroarch/tests/ppm_to_png.py "${ppm}" "${png}"
   rm -f "${ppm}"
 }
@@ -365,7 +396,7 @@ run_seed_visual_case() {
   local png="${SCREENSHOT_DIR}/${name}.png"
   should_run_label "${label}" || return 0
   echo "== ${label}"
-  "${HARNESS}" "${CORE}" "${cart}" --seed "${seed}" --expect "${checksum}" --capture "${ppm}"
+  run_harness "${CORE}" "${cart}" --seed "${seed}" --expect "${checksum}" --capture "${ppm}"
   python3 retroarch/tests/ppm_to_png.py "${ppm}" "${png}"
   rm -f "${ppm}"
 }
@@ -377,7 +408,7 @@ run_key_case() {
   local checksum="$4"
   should_run_label "${label}" || return 0
   echo "== ${label}"
-  "${HARNESS}" "${CORE}" "${cart}" --key "${key}" --expect "${checksum}"
+  run_harness "${CORE}" "${cart}" --key "${key}" --expect "${checksum}"
 }
 
 # run_btn_case: like run_key_case but drives a libretro joypad button
@@ -389,7 +420,7 @@ run_btn_case() {
   local checksum="$4"
   should_run_label "${label}" || return 0
   echo "== ${label}"
-  "${HARNESS}" "${CORE}" "${cart}" --btn "${btn}" --expect "${checksum}"
+  run_harness "${CORE}" "${cart}" --btn "${btn}" --expect "${checksum}"
 }
 
 run_case "00 boot" "retroarch/conformance/00-boot.js" "eed98c91acf88bfb"
@@ -418,7 +449,7 @@ run_mouse_case() {
   local checksum="$3"
   should_run_label "${label}" || return 0
   echo "== ${label}"
-  "${HARNESS}" "${CORE}" "${cart}" --mouse-x 5 --mouse-y -3 --mouse-btn left --expect "${checksum}"
+  run_harness "${CORE}" "${cart}" --mouse-x 5 --mouse-y -3 --mouse-btn left --expect "${checksum}"
 }
 
 run_mouse_case "25 mouse" "retroarch/conformance/25-mouse.js" "bb6374732d548979"
@@ -437,7 +468,7 @@ run_showcase_case() {
   local png="${SCREENSHOT_DIR}/${name}.png"
   should_run_label "${label}" || return 0
   echo "== ${label}"
-  NOVA64_SAVE_DIR="${SAVE_DIR}" "${HARNESS}" "${CORE}" "${cart}" \
+  NOVA64_SAVE_DIR="${SAVE_DIR}" run_harness "${CORE}" "${cart}" \
     --key space --expect "${checksum}" --expect-audio "${audio_checksum}" --capture "${ppm}"
   python3 retroarch/tests/ppm_to_png.py "${ppm}" "${png}"
   rm -f "${ppm}"
@@ -451,7 +482,7 @@ run_analog_case() {
   local checksum="$3"
   should_run_label "${label}" || return 0
   echo "== ${label}"
-  "${HARNESS}" "${CORE}" "${cart}" \
+  run_harness "${CORE}" "${cart}" \
     --analog-lx 16383 --analog-ly -8192 --trigger-l 16383 --expect "${checksum}"
 }
 
@@ -475,7 +506,7 @@ run_touch_case() {
   local png="${SCREENSHOT_DIR}/${name}.png"
   should_run_label "${label}" || return 0
   echo "== ${label}"
-  "${HARNESS}" "${CORE}" "${cart}" \
+  run_harness "${CORE}" "${cart}" \
     --touch-x 123 --touch-y -45 --touch-count 1 --expect "${checksum}" --capture "${ppm}"
   python3 retroarch/tests/ppm_to_png.py "${ppm}" "${png}"
   rm -f "${ppm}"
@@ -673,7 +704,7 @@ run_visual_case "139 chromatic aberration" "139-chromatic-aberration" "retroarch
 run_visual_case "140 dashed lines"         "140-dashed-lines"         "retroarch/conformance/140-dashed-lines.js"         "8ed2322b4b4f33d3"
 run_visual_case "141 screen wave"          "141-screen-wave"          "retroarch/conformance/141-screen-wave.js"          "2a3f59cca114b42f"
 run_visual_case "142 frame utils"          "142-frame-utils"          "retroarch/conformance/142-frame-utils.js"          "6515cebd82ccf218"
-run_visual_case "143 color utils"          "143-color-utils"          "retroarch/conformance/143-color-utils.js"          "733815c0acc2624f"
+run_visual_case "143 color utils"          "143-color-utils"          "retroarch/conformance/143-color-utils.js"          "07a648c717f00a58"
 run_visual_case "144 screen dissolve"      "144-screen-dissolve"      "retroarch/conformance/144-screen-dissolve.js"      "eb210f6050311203"
 run_visual_case "145 number format"        "145-number-format"        "retroarch/conformance/145-number-format.js"        "f69fc25f87ad48a7"
 run_visual_case "146 spr flip"             "146-spr-flip"             "retroarch/conformance/146-spr-flip.js"             "c8a8aafe9941cd01"
@@ -1058,6 +1089,11 @@ run_case      "1134 draw text box" "retroarch/conformance/1134-draw-text-box.js"
 # QuickJS job queue was only drained at load/init.
 run_visual_case "1135 promise jobs" "1135-promise-jobs" "retroarch/conformance/1135-promise-jobs.js" "ba17d9f13946b732"
 
+# 1136 UTF-8 text: each codepoint folds to one glyph (symbols like ▶ ◆ • → ★,
+# ASCII look-alikes for dashes/box lines/ellipsis, tofu for emoji) so carts'
+# bullets render and measureText/centering count one cell per character.
+run_visual_case "1136 utf8 glyphs" "1136-utf8-glyphs" "retroarch/conformance/1136-utf8-glyphs.js" "aa9ef579eb82470b"
+
 # 291 overlay autoclear regression: locks down the default
 # auto-clearing of the 2D HUD overlay between frames. Without
 # auto-clear, the F-Zero title screen vignette stayed under the
@@ -1286,4 +1322,51 @@ run_visual_case "1096 retro effects bloom" "1096-retro-effects-bloom" "retroarch
 run_visual_case "1097 point light shadow" "1097-point-light-shadow" "retroarch/conformance/1097-point-light-shadow.js" "f9e7cfc6d4a05719"
 run_visual_case "1098 minimap web compat" "1098-minimap-web-compat" "retroarch/conformance/1098-minimap-web-compat.js" "9b062af59e261c85"
 
+# On macOS, cases listed in tests/known-failures-darwin.txt mismatch even with
+# an unmodified core (Linux-locked checksums vs. platform float drift). Report
+# them separately so only *new* failures fail the run. Set
+# NOVA64_STRICT_CONFORMANCE=1 to treat every mismatch as a failure.
+KNOWN_FILE="retroarch/tests/known-failures-$(uname -s | tr '[:upper:]' '[:lower:]').txt"
+KNOWN=()
+if [[ "${KEEP_GOING}" -eq 1 && -z "${NOVA64_STRICT_CONFORMANCE:-}" && -f "${KNOWN_FILE}" ]]; then
+  while IFS= read -r line; do
+    [[ -z "${line}" || "${line}" == \#* ]] && continue
+    KNOWN+=("${line}")
+  done < "${KNOWN_FILE}"
+fi
+is_known() {
+  local needle="$1" k
+  for k in ${KNOWN[@]+"${KNOWN[@]}"}; do [[ "${k}" == "${needle}" ]] && return 0; done
+  return 1
+}
+is_failed() {
+  local needle="$1" f
+  for f in ${FAILURES[@]+"${FAILURES[@]}"}; do [[ "${f}" == "${needle}" ]] && return 0; done
+  return 1
+}
+
+NEW_FAILURES=(); KNOWN_HITS=0; NOW_PASSING=()
+for f in ${FAILURES[@]+"${FAILURES[@]}"}; do
+  if is_known "${f}"; then KNOWN_HITS=$((KNOWN_HITS + 1)); else NEW_FAILURES+=("${f}"); fi
+done
+# Only flag fixed known cases when the whole suite ran (a range skips cases).
+if [[ "${RANGE_FROM}" -eq 0 && "${RANGE_TO}" -eq 9999 ]]; then
+  for k in ${KNOWN[@]+"${KNOWN[@]}"}; do is_failed "${k}" || NOW_PASSING+=("${k}"); done
+fi
+
+if [[ "${KNOWN_HITS}" -gt 0 ]]; then
+  echo
+  echo "Known platform mismatches (${KNOWN_FILE}): ${KNOWN_HITS} case(s), not counted"
+fi
+if [[ ${#NOW_PASSING[@]} -gt 0 ]]; then
+  echo
+  echo "Listed as known but now passing; remove from ${KNOWN_FILE}:"
+  for f in "${NOW_PASSING[@]}"; do echo "  - ${f}"; done
+fi
+if [[ ${#NEW_FAILURES[@]} -gt 0 ]]; then
+  echo
+  echo "Conformance FAILED: ${#NEW_FAILURES[@]} case(s)"
+  for f in "${NEW_FAILURES[@]}"; do echo "  - ${f}"; done
+  exit 1
+fi
 echo "Conformance passed."

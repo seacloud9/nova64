@@ -1,0 +1,51 @@
+# Conformance cases whose locked checksums (recorded on Linux) differ on macOS
+# with an unmodified core: float drift in the software render path.
+# run_conformance.sh --keep-going treats these as known on Darwin.
+# One label per line, exactly as the runner prints it after "== ".
+21 post-effects
+57 destroy mesh
+74 screen effects
+94 create mesh
+103 shadow map
+104 normal map
+151 circle gradient
+157 draw arrow
+209 fill capsule
+235 fill tri gradient
+238 batch15 showcase
+263 radial gradient
+275 bubble connector
+283 batch19 showcase
+298 concentric checker
+307 batch21 showcase
+320 lerp2d color utils
+321 comet
+332 dna vortex
+333 mandala halftone
+356 star2 rosette
+391 batch28 showcase
+416 snowflake venn
+427 batch31 showcase
+443 radar sunburst
+466 curve ellipse hsb
+478 gradient hexcolor
+487 batch36 showcase
+499 batch37 showcase
+548 rand delta minimap
+559 batch42 showcase
+561 shuffle vec2
+572 camera2d
+583 batch44 showcase
+597 reflect trigger color
+679 batch52 showcase
+703 batch54 showcase
+739 batch58 showcase
+742 mesh tags
+750 batch59 showcase
+761 batch60 showcase
+772 batch61 showcase
+827 batch66 showcase
+838 batch67 showcase
+849 batch68 showcase
+871 batch70 showcase
+808 textfx

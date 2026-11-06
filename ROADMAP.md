@@ -302,6 +302,68 @@ Exit criteria:
 - input mapping, framebuffer output, and save-state versioning have deterministic smoke tests
 - the core builds on WSL/Linux and launches a sample cart through RetroArch
 
+### Phase 4b: WASM libretro Core for RetroArch Web — **In progress** (build + CI landed; see `retroarch/WASM_CORE.md`)
+
+Goal: compile the same `nova64_libretro.c` + QuickJS core to WebAssembly
+(Emscripten) so it runs inside the RetroArch web player
+(`web.libretro.com` / self-hosted RetroArch Emscripten builds, and
+EmulatorJS-style frontends). One C codebase, one more target, no fork.
+
+This is distinct from the existing browser runtime (Three.js/Babylon):
+the web core runs the _native_ renderer inside RetroArch's frontend,
+giving web users RetroArch features (shaders, save states, netplay,
+input remapping) and giving us a browser-hosted parity check for the
+native core.
+
+Feasibility (from code audit, 2026-11-05):
+
+- Shaders are already `#version 300 es` (15 programs) — WebGL2 is GLES 3.0,
+  so no shader rewrite. No compute, SSBO, or buffer-mapping calls found.
+- No pthreads in the core; QuickJS builds cleanly under Emscripten
+  (it is used that way in many projects). Avoids SharedArrayBuffer /
+  COOP-COEP requirements.
+- Software 2D fallback already exists if a GL context is refused.
+
+Work items:
+
+- [x] **`platform=emscripten` Makefile target** — emit a static
+      `nova64_libretro_emscripten.bc`/`.a` per libretro convention
+      (`STATIC_LINKING=1`, `-DEMSCRIPTEN`), linked into RetroArch's
+      `Makefile.emscripten`. Build in CI via `emscripten/emsdk` container.
+- [x] **HW context selection** — on Emscripten request
+      `RETRO_HW_CONTEXT_OPENGLES3` (3.0) instead of `OPENGL_CORE 3.3`;
+      keep current path for desktop.
+- [ ] **WebGL2 feature gaps** — `RGBA16F` render targets need
+      `EXT_color_buffer_float`; reuse the existing "disable post effects
+      if FBO incomplete" path and verify it. Audit `GL_DEPTH_COMPONENT16`
+      shadow FBO, `glGetString` parsing, and any desktop-only enums.
+- [ ] **Filesystem/content** — carts arrive via RetroArch's MEMFS/IDBFS
+      content path; confirm `.js` and `.nova` loading with `need_fullpath`
+      settings and that the ~20 `fopen`/`getenv` call sites behave under MEMFS.
+- [ ] **Performance budget** — QuickJS is an interpreter (no JIT in WASM);
+      benchmark heavy carts (`minecraft-demo`, `fps-demo-3d`) and publish a
+      supported-cart list. Consider `-O3`, `-flto`, and WASM SIMD.
+- [ ] **Audio** — validate RetroArch web audio driver latency with the
+      core's sample rate; `stb_vorbis` / `pl_mpeg` work unchanged.
+- [ ] **Distribution** — ship `nova64_libretro.wasm` + `.js` in
+      `release-cores.yml`; provide a self-hosted demo page and a recipe for
+      EmulatorJS; pursue upstream inclusion in libretro buildbot web cores.
+- [ ] **Conformance** — run `retroarch/conformance` carts in headless
+      Chromium (Playwright) against the WASM core and diff against Mesa
+      golden images.
+
+Risks: QuickJS interpreter speed in WASM for 3D-heavy carts; WebGL2
+float-target availability on mobile Safari; RetroArch web build is
+less maintained than native frontends (pin a known-good RetroArch tag).
+
+Exit criteria:
+
+- core builds with `emmake make platform=emscripten` in CI
+- a 2D cart and a GLES 3D conformance cart (`06-cube.js`) run in
+  RetroArch web in Chrome, Firefox, and Safari
+- conformance image diffs match native within tolerance
+- WASM core artifacts attached to a release
+
 ### Phase 5: Unity Support
 
 Goal:
@@ -498,6 +560,7 @@ Recommended order:
 2. add Babylon renderer backend
 3. complete Godot host MVP (desktop + mobile proof)
 4. complete RetroArch core MVP with `.nova` packaging and QuickJS lifecycle
+   - 4b. compile the same core to WASM for RetroArch web (Phase 4b)
 5. complete Unity host MVP, reusing the host contract validated by Godot
 6. add Colyseus multiplayer foundation
 7. add RTC voice/media layer

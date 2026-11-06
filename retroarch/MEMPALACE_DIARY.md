@@ -860,3 +860,100 @@ AAAK:
   opacity on non-instanced scene-0 props, lower scene-4 object opacity, and a
   larger cyan scene-4 horizon. Next 90% push should target scene-0 composition
   now that the reference is stable.
+
+---
+
+## 2026-11-05 - RetroArch web player (WASM core in the browser + web OS app)
+
+Topic seed for MemPalace: `nova64-retroarch-wasm-web-player-20261105`
+
+AAAK:
+
+- **Anchor:** Follow-on to Phase 4b (WASM libretro core, commits `b2718b20`,
+  `64f93101`). Goal: run Nova64 carts on the native libretro core compiled to
+  WebAssembly inside RetroArch's own web player, and launch it from the web OS.
+- **Actions:** Added `scripts/build-retroarch-web.sh` (`pnpm build:retroarch-web`):
+  Docker `emscripten/emsdk:3.1.74` builds `nova64_libretro_emscripten.a`, then
+  links it into RetroArch `v1.21.0` via
+  `make -f Makefile.emscripten LIBRETRO=nova64 HAVE_OPENGLES3=1`. Output goes to
+  `public/retroarch-web/` (served at `/retroarch-web/index.html?cart=<path>`).
+  Added the `retroarch-web` app in `os9-shell/src/apps/retroarch-web-app.tsx`
+  (iframe + cart picker from `GAMES`), registered in `DesktopApp.tsx`, the
+  launcher, and the Apple menu. Added a `player` job to
+  `.github/workflows/wasm-core.yml` that builds the player and runs
+  `scripts/retroarch-web-smoke.mjs`.
+- **Artifacts:** `scripts/build-retroarch-web.sh`,
+  `scripts/retroarch-web-smoke.mjs`, `public/retroarch-web/`,
+  `os9-shell/src/apps/retroarch-web-app.tsx`, the wasm-core workflow, and
+  `.gitignore` entries for `retroarch/build-web/` and `retroarch/obj-emscripten/`.
+- **Knowledge:**
+  - The page exposes `window.nova64RetroArch = { state, error, log }`. State
+    goes `loading` → `running`, and the log includes `[nova64] loaded` once the
+    cart is in. Tests should wait on that, not on fixed sleeps.
+  - space-harrier-3d reaches `running` in ~5s under headless Chromium with
+    `--use-angle=swiftshader --enable-unsafe-swiftshader`. The post FBO is
+    640x360 RGBA32F with 5 bloom mips, and the canvas is 1280x720.
+  - **Gotcha:** `page.evaluate(() => window.nova64RetroArch)` (returning the
+    whole object) hangs forever, and Playwright's own timeouts don't fire. Return
+    only plain fields (`state`, `error`, a `loaded` boolean). Reading just
+    `.state` is fine. `browser.close()` can also block, so race it against a timer.
+  - The smoke script is bounded: `SMOKE_TIMEOUT_MS` (180s Node watchdog),
+    `SMOKE_ATTEMPTS` (2, fresh browser each), and a 30s cap per step. It passes
+    in ~16s locally.
+  - Harmless console noise: "Could not get screen dimensions", "Cannot push NULL
+    or empty core path into the playlist", AudioContext autoplay warnings, and
+    "GPU stall due to ReadPixels".
+  - Cosmetic gap: the core's bitmap font has no `■` (U+25A0), so cart bullets
+    render as boxes. A fix would be a glyph fallback in the core's text path.
+  - The `pnpm mempalace:*` scripts assume WSL (`~/ai-tools`,
+    `/mnt/c/Users/brend/...`) and fail on macOS. Mine from the Windows machine.
+
+---
+
+## 2026-11-05 - UTF-8 glyph folding in the core font
+
+Topic seed for MemPalace: `nova64-retroarch-utf8-glyph-fold-20261105`
+
+AAAK:
+
+- **Anchor:** In the WASM player, space-harrier-3d's `▶` / `◆` bullets drew as
+  rows of solid blocks. The 5×7 font walks text byte by byte, so each UTF-8
+  byte became a separate unknown glyph (unknown means a solid `0x1f` block),
+  and measureText/centering counted 3 cells per symbol.
+- **Actions:** Added `glyph_text()` + `glyph_fold_codepoint()` just above
+  `glyph_row()` in `nova64_libretro.c`. They fold each codepoint to exactly one
+  byte: an ASCII look-alike (dashes and box lines to `-|+`, `…` to `...`,
+  `×` to `x`), a `NOVA64_G_*` symbol glyph in the control-byte range (bullet,
+  dot, diamond, square, triangles, arrows, star, check, heart, circle, ring,
+  shade, block), or a hollow tofu box. ZWJ, variation selectors and skin tones
+  are dropped. Called once at the top of every text draw/measure function, and
+  inside the `for` loop of the `js_print_*` effect bindings so the pointer
+  QuickJS frees isn't replaced.
+- **Artifacts:** `retroarch/nova64_libretro.c`,
+  `retroarch/conformance/1136-utf8-glyphs.js` (checksum `aa9ef579eb82470b`),
+  `retroarch/tests/run_conformance.sh`.
+- **Knowledge:**
+  - ASCII-only text returns the same pointer (no copy), and folded output is
+    always ASCII, so nested draw/measure calls re-fold for free. An 8-slot ring
+    buffer is plenty.
+  - Regression check (old core vs new, all 537 carts): only carts that draw
+    non-ASCII text changed: `1136` (new) and `143 color utils` (`→` was three
+    blocks, now an arrow). 143 was re-locked to `07a648c717f00a58`. A first
+    comparison wrongly showed "no diffs" because the copied "new" dylib was
+    still the old build. Check `md5` on both cores before trusting a diff.
+  - New glyphs: add a `case` in `glyph_fold_codepoint()` and a row bitmap in the
+    `sym[]` table at the top of `glyph_row()`. Avoid `0x09/0x0a/0x0d`.
+  - `run_conformance.sh` now works on macOS: `CORE` can be overridden and
+    defaults to `.dylib` on Darwin, and empty `frames_arg` arrays no longer trip
+    bash 3.2 `set -u`. Even so, `21-post-effects` mismatches on macOS with the
+    _unmodified_ core (platform float drift), and the runner stops at the first
+    failure unless you pass `--keep-going` (`-k`), which records every failing
+    case and lists them at the end. On macOS, 47 cases fail identically with the
+    unmodified core (software-path float drift in gradients/3D). Judge a change
+    by diffing the `--keep-going` failure lists from the old and new cores.
+  - Those 47 now live in `retroarch/tests/known-failures-darwin.txt`. With
+    `--keep-going` on macOS they're reported as "known platform mismatches",
+    not failures, so `bash retroarch/tests/run_conformance.sh -k --skip-build`
+    passes on a Mac. Only new mismatches fail, and listed cases that start
+    passing are flagged for removal. `NOVA64_STRICT_CONFORMANCE=1` turns it
+    off. Verified: the original core fails exactly `143` and `1136`.

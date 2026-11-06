@@ -62,10 +62,11 @@ export default defineConfig({
         // but we also need a pre-middleware to prevent Vite from redirecting
         // /os9-shell/index.html → /os9-shell (which then hits SPA fallback).
         server.middlewares.use((req, res, next) => {
-          const url = req.url?.split('?')[0];
+          const [url, query] = (req.url || '').split(/\?(.*)/s);
           if (url === '/os9-shell' || url === '/os9-shell/' || url === '/os9-shell/index') {
             res.writeHead(302, {
-              Location: '/os9-shell/index.html',
+              // Keep the query: ?app=emu&cart=... deep links must survive the hop.
+              Location: '/os9-shell/index.html' + (query ? `?${query}` : ''),
               'Cache-Control': 'no-store',
             });
             res.end();

@@ -155,6 +155,40 @@ The suite builds the core, compiles the harness, generates `.nova` package
 fixtures, then checks framebuffer checksums, audio checksums, renderer command
 logs, and visual screenshot captures for the conformance carts.
 
+Useful flags:
+
+- `--keep-going` (`-k`) runs every case and lists all failures at the end.
+- `--skip-build` reuses the core and harness that are already built.
+- `CORE=path/to/core` tests a different build. It defaults to `.dylib` on macOS
+  and `.so` elsewhere.
+
+Checksums are locked on Linux. On macOS, 47 cases differ even with an
+unmodified core (float drift in the software path). They are listed in
+`tests/known-failures-darwin.txt`, and with `--keep-going` they are reported
+separately, so only new failures fail the run. `NOVA64_STRICT_CONFORMANCE=1`
+turns that off.
+
+### Example cart sweep
+
+Conformance carts cover the API one feature at a time. The sweep runs every
+real cart under `examples/` through the harness and reports whether each one
+loads, throws, or renders an empty frame:
+
+```bash
+make -C retroarch && make -C retroarch harness
+pnpm sweep:retroarch-native          # compares with tests/native-sweep-baseline.json
+node scripts/retroarch-native-sweep.mjs --only platformer,neon-snake
+```
+
+It exits 1 only when a cart does worse than in
+`tests/native-sweep-baseline.json`. When carts improve, it says so; regenerate
+the baseline with `--out retroarch/tests/native-sweep-baseline.json`. Without `--gles` the harness draws only the
+software 2D layer, so 3D-only carts can show as `blank`. Treat that as "look at
+this", not as a failure.
+
+CI (`.github/workflows/native-core.yml`) runs the conformance suite and the
+sweep on every PR that touches `retroarch/` or `examples/`.
+
 ## Renderer Selection
 
 The core exposes a `nova64_renderer` option with `opengles3` (default) and

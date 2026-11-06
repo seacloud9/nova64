@@ -2849,7 +2849,9 @@ Dictionary Nova64Host::_cmd_audio_play(const Dictionary &p) {
     player->set_stream(stream);
     if (p.has("volumeDb")) player->set_volume_db(static_cast<float>(static_cast<double>(p["volumeDb"])));
     if (p.has("pitch"))    player->set_pitch_scale(static_cast<float>(static_cast<double>(p["pitch"])));
-    player->play();
+    // Carts can start playback from init(), before the host is in the tree;
+    // play() then errors, so let the player start itself on entering it.
+    if (player->is_inside_tree()) player->play(); else player->set_autoplay(true);
     uint32_t id = _handles->put_node(HandleKind::AUDIO_PLAYER, player);
     return make_handle_result(id);
 }
@@ -2896,7 +2898,9 @@ Dictionary Nova64Host::_cmd_video_play_fullscreen(const Dictionary &p) {
     }
 
     _video_layer->add_child(player);
-    player->play();
+    // Carts can start playback from init(), before the host is in the tree;
+    // play() then errors, so let the player start itself on entering it.
+    if (player->is_inside_tree()) player->play(); else player->set_autoplay(true);
 
     uint32_t id = _handles->put_node(HandleKind::VIDEO_PLAYER, player);
     Dictionary out = make_handle_result(id);
@@ -2960,7 +2964,9 @@ Dictionary Nova64Host::_cmd_video_create_texture(const Dictionary &p) {
     }
     player->set_visible(false); // decode without rendering the player itself
     _video_layer->add_child(player);
-    player->play();
+    // Carts can start playback from init(), before the host is in the tree;
+    // play() then errors, so let the player start itself on entering it.
+    if (player->is_inside_tree()) player->play(); else player->set_autoplay(true);
 
     // get_video_texture() is usually null until the first frame decodes, so the
     // cart fetches it lazily via video.getTexture once playback has started.

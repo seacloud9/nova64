@@ -200,6 +200,7 @@
     const obj = {
       handle: rawHandle | 0,
       isMesh: true,
+      userData: {}, // Three.js Object3D field carts tag meshes with
     };
     // Three.js carts assign `mesh.visible = false` to hide a node. The plain
     // JS field would never reach the host, so cubes stayed rendered (e.g.
@@ -3718,6 +3719,8 @@
         this._path = [[x, y], [x + w, y], [x + w, y + h], [x, y + h], [x, y]];
       },
       closePath() {},
+      // Pixel-scale corners aren't worth a curve here; draw the box.
+      roundRect(x, y, w, h) { this.rect(x, y, w, h); },
       fill() {
         if (!this._path || this._path.length < 3) return;
         const pts = [];

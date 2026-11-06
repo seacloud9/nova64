@@ -34,7 +34,12 @@ export function init() {
   });
 
   expect('flush with non-array throws', () => {
-    try { engine.flush('nope'); return false; } catch (_) { return true; }
+    try {
+      engine.flush('nope');
+      return false;
+    } catch (_) {
+      return true;
+    }
   });
 
   expect('flush dispatches batched commands', () => {
@@ -48,7 +53,7 @@ export function init() {
   // Expose to harness.
   globalThis.__nova64_assert = {
     total: results.length,
-    passed: results.filter((r) => r.ok).length,
+    passed: results.filter(r => r.ok).length,
     results,
   };
 }

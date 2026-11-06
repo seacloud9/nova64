@@ -17,9 +17,9 @@ function buildCheckerboard(size, tile) {
     for (let x = 0; x < size; x++) {
       const cell = ((Math.floor(x / tile) + Math.floor(y / tile)) & 1) === 0;
       const o = (y * size + x) * 4;
-      px[o    ] = cell ? 230 : 40;
-      px[o + 1] = cell ? 80  : 200;
-      px[o + 2] = cell ? 60  : 110;
+      px[o] = cell ? 230 : 40;
+      px[o + 1] = cell ? 80 : 200;
+      px[o + 2] = cell ? 60 : 110;
       px[o + 3] = 255;
     }
   }

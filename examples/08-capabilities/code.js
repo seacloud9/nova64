@@ -42,7 +42,7 @@ export function init() {
 
   globalThis.__nova64_assert = {
     total: results.length,
-    passed: results.filter((r) => r.ok).length,
+    passed: results.filter(r => r.ok).length,
     results,
   };
 }

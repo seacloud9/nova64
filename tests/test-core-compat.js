@@ -27,7 +27,7 @@ function host() {
   };
 }
 
-test('Godot shim carries an identical copy of createCoreCompat', () => {
+test('Godot shim carries an identical copy of createCoreCompat (fix: node scripts/sync-core-compat.mjs)', () => {
   assert.equal(
     block('../nova64-godot/godot_project/shim/nova64-compat.js'),
     block('../runtime/core-compat.js')

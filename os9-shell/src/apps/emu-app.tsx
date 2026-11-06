@@ -1,10 +1,82 @@
-// eMU App — Retro game emulator powered by EmulatorJS
+// eMU App — Retro game emulator powered by EmulatorJS, plus Nova64 carts on
+// our own WASM libretro core (the RetroArch web player in /retroarch-web/).
 import { createRoot } from 'react-dom/client';
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import type { Nova64App } from '../types';
 import { novaContext } from '../os/context';
+import { GAMES, type Game } from './gameCatalog';
+import { getRetroArchWebUrl, getRetroArchWebMessageUrl } from './retroarch-web-app';
 
 const EJS_CDN = 'https://cdn.emulatorjs.org/stable/data/';
+
+/** What the Nova64 player is running: a cart path/URL, or a dropped file. */
+type NovaCart = { kind: 'path'; path: string; title: string } | { kind: 'file'; file: File; title: string };
+
+/**
+ * Nova64 carts run on the libretro core compiled to WebAssembly, inside
+ * RetroArch's web player. Paths load by URL; dropped files are sent to the
+ * player over postMessage, because a cross-origin iframe can't fetch the
+ * shell's blob: URLs.
+ */
+function NovaPlayer({ cart }: { cart: NovaCart }) {
+  const frameRef = useRef<HTMLIFrameElement>(null);
+  const src = cart.kind === 'path' ? getRetroArchWebUrl(cart.path) : getRetroArchWebMessageUrl(cart.file.name);
+
+  useEffect(() => {
+    if (cart.kind !== 'file') return;
+    const onMessage = async (e: MessageEvent) => {
+      if (e.source !== frameRef.current?.contentWindow || e.data?.type !== 'nova64:ready') return;
+      const bytes = await cart.file.arrayBuffer();
+      frameRef.current?.contentWindow?.postMessage({ type: 'nova64:cart', name: cart.file.name, bytes }, '*', [bytes]);
+    };
+    window.addEventListener('message', onMessage);
+    return () => window.removeEventListener('message', onMessage);
+  }, [cart]);
+
+  return (
+    <iframe
+      ref={frameRef}
+      src={src}
+      title={`Nova64 — ${cart.title}`}
+      allow="fullscreen; gamepad; autoplay"
+      style={{ width: '100%', height: '100%', border: 'none', display: 'block', background: '#000' }}
+      onLoad={() => frameRef.current?.focus()}
+    />
+  );
+}
+
+function NovaLibrary({ onPlay }: { onPlay: (game: Game) => void }) {
+  return (
+    <div>
+      <label style={{ fontSize: 13, fontWeight: 'bold', color: '#aaa', marginBottom: 8, display: 'block' }}>
+        NOVA64 LIBRARY · click a game to play it on the WASM libretro core
+      </label>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))', gap: 10 }}>
+        {GAMES.map((g) => (
+          <button
+            key={g.id}
+            onClick={() => onPlay(g)}
+            title={g.description}
+            style={{
+              padding: '14px 12px',
+              background: `linear-gradient(135deg, ${g.color1}, ${g.color2})`,
+              border: '2px solid rgba(255,255,255,0.15)',
+              borderRadius: 10,
+              color: '#fff',
+              cursor: 'pointer',
+              textAlign: 'left',
+              boxShadow: '0 4px 14px rgba(0,0,0,0.35)',
+            }}
+          >
+            <div style={{ fontSize: 26 }}>{g.emoji}</div>
+            <div style={{ fontWeight: 'bold', fontSize: 13, marginTop: 6, letterSpacing: 1 }}>{g.name}</div>
+            <div style={{ fontSize: 11, opacity: 0.85, marginTop: 2 }}>{g.description}</div>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 interface SystemInfo {
   label: string;
@@ -14,7 +86,8 @@ interface SystemInfo {
 }
 
 const SYSTEMS: Record<string, SystemInfo> = {
-  nes: { label: 'Nintendo (NES)', core: 'nes', extensions: ['.nes', '.zip'], icon: '🎮' },
+  nova64: { label: 'Nova64 (WASM core)', core: 'nova64', extensions: ['.js', '.nova'], icon: '🌌' },
+  nes:{ label: 'Nintendo (NES)', core: 'nes', extensions: ['.nes', '.zip'], icon: '🎮' },
   snes: { label: 'Super Nintendo (SNES)', core: 'snes', extensions: ['.sfc', '.smc', '.zip'], icon: '🕹️' },
   gb: { label: 'Game Boy', core: 'gb', extensions: ['.gb', '.zip'], icon: '🟢' },
   gba: { label: 'Game Boy Advance', core: 'gba', extensions: ['.gba', '.zip'], icon: '🟣' },
@@ -37,13 +110,20 @@ const SYSTEMS: Record<string, SystemInfo> = {
   arcade: { label: 'Arcade (MAME)', core: 'mame2003', extensions: ['.zip'], icon: '🕹️' },
 };
 
-function EMULauncher() {
-  const [selectedSystem, setSelectedSystem] = useState<string>('nes');
+function EMULauncher({ initialCart }: { initialCart?: NovaCart }) {
+  const [selectedSystem, setSelectedSystem] = useState<string>('nova64');
   const [romUrl, setRomUrl] = useState('');
-  const [isPlaying, setIsPlaying] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(!!initialCart);
+  const [novaCart, setNovaCart] = useState<NovaCart | null>(initialCart ?? null);
   const [error, setError] = useState('');
   const playerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const playNova = useCallback((cart: NovaCart) => {
+    setError('');
+    setNovaCart(cart);
+    setIsPlaying(true);
+  }, []);
 
   const launchGame = useCallback((gameUrl: string, core: string) => {
     if (!playerRef.current) return;
@@ -83,6 +163,11 @@ function EMULauncher() {
       setError('Please enter a ROM URL');
       return;
     }
+    if (selectedSystem === 'nova64') {
+      const path = romUrl.trim();
+      playNova({ kind: 'path', path, title: path.split('/').filter(Boolean).slice(-2, -1)[0] || path });
+      return;
+    }
     const sys = SYSTEMS[selectedSystem];
     launchGame(romUrl.trim(), sys.core);
   };
@@ -91,14 +176,22 @@ function EMULauncher() {
     e.preventDefault();
     const file = e.dataTransfer.files[0];
     if (!file) return;
+    if (selectedSystem === 'nova64') {
+      playNova({ kind: 'file', file, title: file.name });
+      return;
+    }
     const url = URL.createObjectURL(file);
     const sys = SYSTEMS[selectedSystem];
     launchGame(url, sys.core);
-  }, [selectedSystem, launchGame]);
+  }, [selectedSystem, launchGame, playNova]);
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (selectedSystem === 'nova64') {
+      playNova({ kind: 'file', file, title: file.name });
+      return;
+    }
     const url = URL.createObjectURL(file);
     const sys = SYSTEMS[selectedSystem];
     launchGame(url, sys.core);
@@ -106,6 +199,7 @@ function EMULauncher() {
 
   const handleBack = () => {
     setIsPlaying(false);
+    setNovaCart(null);
     setRomUrl('');
     // Clean up EJS globals
     const w = window as unknown as Record<string, unknown>;
@@ -128,10 +222,18 @@ function EMULauncher() {
             ← Back
           </button>
           <span style={{ color: '#888', fontSize: 12 }}>
-            {SYSTEMS[selectedSystem]?.icon} {SYSTEMS[selectedSystem]?.label}
+            {novaCart
+              ? `🌌 ${novaCart.title} · Nova64 on the WASM libretro core`
+              : `${SYSTEMS[selectedSystem]?.icon} ${SYSTEMS[selectedSystem]?.label}`}
           </span>
         </div>
-        <div ref={playerRef} style={{ flex: 1, position: 'relative' }} />
+        {novaCart ? (
+          <div style={{ flex: 1, position: 'relative' }}>
+            <NovaPlayer cart={novaCart} />
+          </div>
+        ) : (
+          <div ref={playerRef} style={{ flex: 1, position: 'relative' }} />
+        )}
       </div>
     );
   }
@@ -143,11 +245,16 @@ function EMULauncher() {
         <span style={{ fontSize: 32 }}>🕹️</span>
         <div>
           <div style={{ fontSize: 20, fontWeight: 'bold', letterSpacing: 2 }}>eMU</div>
-          <div style={{ fontSize: 11, color: '#888', marginTop: 2 }}>Retro Console Emulator · Powered by EmulatorJS</div>
+          <div style={{ fontSize: 11, color: '#888', marginTop: 2 }}>Retro Console Emulator · EmulatorJS + Nova64 WASM core</div>
         </div>
       </div>
 
       <div style={{ flex: 1, overflow: 'auto', padding: 24, display: 'flex', flexDirection: 'column', gap: 20 }}>
+        {/* Nova64 is the default system, so its game library comes first. */}
+        {selectedSystem === 'nova64' && (
+          <NovaLibrary onPlay={(g) => playNova({ kind: 'path', path: g.path, title: g.name })} />
+        )}
+
         {/* System Selector */}
         <div>
           <label style={{ fontSize: 13, fontWeight: 'bold', color: '#aaa', marginBottom: 8, display: 'block' }}>SELECT SYSTEM</label>
@@ -186,7 +293,7 @@ function EMULauncher() {
                 value={romUrl}
                 onChange={(e) => setRomUrl(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleUrlLaunch()}
-                placeholder="https://example.com/game.nes"
+                placeholder={selectedSystem === 'nova64' ? '/examples/hello-world/code.js' : 'https://example.com/game.nes'}
                 style={{
                   flex: 1,
                   padding: '10px 14px',
@@ -262,7 +369,8 @@ function EMULauncher() {
             eMU uses <strong>EmulatorJS</strong> to emulate retro consoles directly in your browser.
             Supports 20+ systems including NES, SNES, Game Boy, N64, PlayStation, Sega Genesis, and more.
             Load ROMs from a URL or drag &amp; drop a local file to start playing.
-            You must provide your own ROM files.
+            You must provide your own ROM files. Pick <strong>Nova64</strong> to play Nova64 carts on our own
+            libretro core compiled to WebAssembly. That's the same core desktop RetroArch loads.
           </div>
         </div>
       </div>
@@ -275,9 +383,15 @@ export const emuApp: Nova64App = {
   name: 'eMU',
   icon: '🕹️',
 
-  mount(container) {
+  mount(container, _ctx, args) {
+    // launchApp('emu', { path: '/examples/x/code.js' }) opens straight into a Nova64 cart.
+    const a = args && typeof args === 'object' ? (args as Record<string, unknown>) : {};
+    const path = typeof a.path === 'string' && a.path ? a.path : undefined;
+    const initialCart: NovaCart | undefined = path
+      ? { kind: 'path', path, title: GAMES.find((g) => g.path === path)?.name || path }
+      : undefined;
     const root = createRoot(container);
-    root.render(<EMULauncher />);
+    root.render(<EMULauncher initialCart={initialCart} />);
     (container as HTMLElement & { _novaRoot?: ReturnType<typeof createRoot> })._novaRoot = root;
   },
 
@@ -287,7 +401,7 @@ export const emuApp: Nova64App = {
     return {
       name: 'eMU',
       version: '1.0',
-      description: 'Retro console emulator powered by EmulatorJS',
+      description: 'Retro console emulator (EmulatorJS) + Nova64 carts on the WASM libretro core',
       author: 'Nova64 OS',
       icon: '🕹️',
     };

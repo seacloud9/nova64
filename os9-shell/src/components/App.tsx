@@ -98,7 +98,10 @@ export function App() {
       
       setTimeout(() => {
         try {
-          novaContext.launchApp(appParam);
+          // ?app=emu&cart=/examples/x/code.js (or &path=) opens the app on a cart,
+          // so games can be shared as links.
+          const cartParam = params.get('cart') || params.get('path');
+          novaContext.launchApp(appParam, cartParam ? { path: cartParam } : undefined);
           console.log('✅ App launched successfully');
         } catch (error) {
           console.error('❌ Failed to launch app:', error);

@@ -317,6 +317,43 @@ registerCartResetHook('voxel', ({ modulePath }) => {
   nova64api.resetVoxelWorld?.({ restoreDefaults: true, cartPath: modulePath });
 });
 
+// ── Cart error reporting ─────────────────────────────────────────────────────
+// update()/draw() errors are caught so one bad frame doesn't stop the loop, but
+// a broken cart throws the same error every frame (60+ identical console lines
+// a second). Log each distinct error once with its stack, then only a repeat
+// count every few seconds. globalThis.__nova64CartErrors() lists them all for
+// tooling and tests.
+const cartErrors = new Map(); // key -> { phase, message, stack, count, firstAt, lastReport }
+const CART_ERROR_REPEAT_MS = 5000;
+function reportCartError(phase, e) {
+  const message = e && e.message ? e.message : String(e);
+  const key = `${phase}:${message}`;
+  const now = performance.now();
+  const seen = cartErrors.get(key);
+  if (!seen) {
+    cartErrors.set(key, {
+      phase,
+      message,
+      stack: e?.stack || '',
+      count: 1,
+      firstAt: now,
+      lastReport: now,
+    });
+    console.error(`❌ Cart ${phase}() error:`, message, e?.stack || '');
+    return;
+  }
+  seen.count++;
+  if (now - seen.lastReport >= CART_ERROR_REPEAT_MS) {
+    seen.lastReport = now;
+    console.error(`❌ Cart ${phase}() error (repeated ${seen.count}x so far):`, message);
+  }
+}
+globalThis.__nova64CartErrors = () => [...cartErrors.values()].map(x => ({ ...x }));
+
+registerCartResetHook('cart-errors', () => {
+  cartErrors.clear();
+});
+
 registerCartResetHook('scene', () => {
   nova64api.clearScene?.();
   nova64api.clearSkybox?.();
@@ -531,7 +568,7 @@ function loop() {
         }
         nova.cart.update(dt);
       } catch (e) {
-        console.error('❌ Cart update() error:', e.message);
+        reportCartError('update', e);
       }
     }
 
@@ -550,7 +587,7 @@ function loop() {
       try {
         nova.cart.draw();
       } catch (e) {
-        console.error('❌ Cart draw() error:', e.message, e.stack);
+        reportCartError('draw', e);
       }
     }
 

@@ -20,6 +20,7 @@
 #include <godot_cpp/variant/string.hpp>
 
 #include <memory>
+#include <string>
 #include <unordered_map>
 #include <cstdint>
 
@@ -124,6 +125,9 @@ private:
 
     void _ensure_runtime();
     void _shutdown_runtime();
+    // Distinct cart error -> times seen, so a broken update()/draw() logs once
+    // (with stack) instead of every frame. Cleared when a cart loads.
+    std::unordered_map<std::string, uint64_t> _cart_error_counts;
     void _install_host_globals();
     void _load_compat_shim();
     bool _shim_loaded = false;

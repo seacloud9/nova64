@@ -9,6 +9,11 @@ const { loadData, saveData } = nova64.data;
 const { drawProgressBar, glowCircle, glowRect, printCentered, pset, rectfill, rgba8 } = nova64.draw;
 const { btn, btnp, key } = nova64.input;
 const { setAmbientLight, setFog, setLightDirection } = nova64.light;
+// Libretro-core parity helpers
+const { circ, circfill, hline, printBold, printFlash, printTight, vline } = nova64.draw;
+const { rngRandom } = nova64.util;
+const { setInstanceTransforms } = nova64.scene;
+const { setSkyColor } = nova64.light;
 const {
   createCube,
   createInstancedMesh,

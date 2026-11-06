@@ -250,6 +250,7 @@ function setupRoom() {
 
   if (nova64.video && typeof nova64.video.loadTexture === 'function') {
     tv = nova64.video.loadTexture('/assets/sample.mp4', {
+      nativeUrl: 'assets/video/sample.ogv', // Godot (same clip as tv-demo)
       muted: true,
       loop: true,
     });

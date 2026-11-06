@@ -8,6 +8,8 @@ const { cls, glowCircle, glowRect, line, rectfill, rgba8, setCamera } = nova64.d
 const { btn, btnp } = nova64.input;
 const { clearSkybox, createGradientSkybox, setAmbientLight, setFog, setLightDirection } =
   nova64.light;
+// Libretro-core parity helpers
+const { printBold, printFlash, printTight } = nova64.draw;
 const {
   createCube,
   createSphere,

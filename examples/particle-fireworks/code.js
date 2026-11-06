@@ -8,6 +8,8 @@ const { burstEmitter2D, createEmitter2D, drawEmitter2D, updateEmitter2D } = nova
 const { sfx } = nova64.audio;
 const { rgba8 } = nova64.draw;
 const { btnp } = nova64.input;
+// Libretro-core parity helpers
+const { printBold, printTight } = nova64.draw;
 
 let W = 640,
   H = 360;

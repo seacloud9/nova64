@@ -40,6 +40,8 @@
 #include <godot_cpp/classes/multi_mesh.hpp>
 #include <godot_cpp/classes/multi_mesh_instance3d.hpp>
 #include <godot_cpp/classes/procedural_sky_material.hpp>
+#include <godot_cpp/classes/panorama_sky_material.hpp>
+#include <godot_cpp/classes/project_settings.hpp>
 #include <godot_cpp/classes/rendering_server.hpp>
 #include <godot_cpp/classes/file_access.hpp>
 #include <godot_cpp/classes/resource_loader.hpp>
@@ -488,8 +490,21 @@ Vector2i atlas_tile_pixel_origin(int tile_idx) {
             (tile_idx / VOXEL_ATLAS_COLS) * VOXEL_TILE_PX);
 }
 
+// Cached voxel GPU resources. These must be released before Godot tears down
+// the RenderingServer (see release_voxel_resources), so they live at file
+// scope rather than as function statics that die after it, which leaked RIDs.
+static Ref<ImageTexture> g_voxel_atlas_tex;
+static Ref<Shader> g_voxel_chunk_shader;
+static Ref<Shader> g_voxel_transparent_shader;
+
+void release_voxel_resources() {
+    g_voxel_atlas_tex.unref();
+    g_voxel_chunk_shader.unref();
+    g_voxel_transparent_shader.unref();
+}
+
 Ref<Texture2D> get_voxel_atlas_texture() {
-    static Ref<ImageTexture> atlas_tex;
+    Ref<ImageTexture> &atlas_tex = g_voxel_atlas_tex;
     if (atlas_tex.is_valid()) return atlas_tex;
 
     Ref<Image> img = Image::create_empty(
@@ -781,7 +796,7 @@ Vector2 voxel_tile_origin_uv(int tile_idx) {
 }
 
 Ref<Shader> get_voxel_chunk_shader() {
-    static Ref<Shader> voxel_shader;
+    Ref<Shader> &voxel_shader = g_voxel_chunk_shader;
     if (voxel_shader.is_valid()) return voxel_shader;
 
     voxel_shader.instantiate();
@@ -802,13 +817,13 @@ void fragment() {
 }
 
 Ref<Shader> get_voxel_transparent_chunk_shader() {
-    static Ref<Shader> voxel_shader;
+    Ref<Shader> &voxel_shader = g_voxel_transparent_shader;
     if (voxel_shader.is_valid()) return voxel_shader;
 
     voxel_shader.instantiate();
     voxel_shader->set_code(R"(
 shader_type spatial;
-render_mode cull_disabled, unshaded, specular_disabled, blend_mix, depth_draw_alpha_prepass;
+render_mode cull_disabled, unshaded, specular_disabled, blend_mix, depth_prepass_alpha;
 
 uniform sampler2D atlas_tex : source_color, filter_nearest, repeat_enable;
 uniform vec2 tile_size = vec2(0.125, 0.25);
@@ -977,6 +992,9 @@ void Nova64Host::_shutdown_runtime() {
     // Drop any host-owned WAD blobs so reloading a cart doesn't leak the
     // 28-50MB of byte data they each hold.
     _wads.clear();
+    // Cached voxel atlas/shaders are recreated lazily; drop them while the
+    // RenderingServer still exists so their RIDs are freed, not leaked.
+    release_voxel_resources();
     // Detach the WorldEnvironment we may have spawned so its Sky /
     // ProceduralSkyMaterial Refs aren't dropped from inside the JS
     // runtime teardown — that ordering trips a SIGSEGV on shutdown for
@@ -2335,6 +2353,11 @@ Dictionary Nova64Host::_cmd_env_set(const Dictionary &p) {
         else if (t == "reinhard") env->set_tonemapper(Environment::TONE_MAPPER_REINHARDT);
         else if (t == "filmic") env->set_tonemapper(Environment::TONE_MAPPER_FILMIC);
         else if (t == "aces")  env->set_tonemapper(Environment::TONE_MAPPER_ACES);
+        // Web setToneMapping names. AgX is Godot 4.4+ (value 4); these
+        // godot-cpp bindings predate the enum name.
+        else if (t == "agx" || t == "neutral") env->set_tonemapper(static_cast<Environment::ToneMapper>(4));
+        else if (t == "cineon") env->set_tonemapper(Environment::TONE_MAPPER_FILMIC);
+        else if (t == "none")  env->set_tonemapper(Environment::TONE_MAPPER_LINEAR);
     }
     if (p.has("exposure")) env->set_tonemap_exposure(
             static_cast<float>(static_cast<double>(p["exposure"])));
@@ -2362,10 +2385,55 @@ Dictionary Nova64Host::_cmd_env_set(const Dictionary &p) {
     if (p.has("volumetricFogDensity")) env->set_volumetric_fog_density(
             static_cast<float>(static_cast<double>(p["volumetricFogDensity"])));
 
+    // Equirectangular image / HDR sky (web createHDRSkybox). The file is read
+    // with Image::load_from_file so .hdr/.exr work without a Godot import.
+    // skyPanorama: "" switches back to the procedural sky.
+    if (p.has("skyPanorama")) {
+        String path = p["skyPanorama"];
+        Ref<Sky> psky = env->get_sky();
+        if (psky.is_null()) { psky.instantiate(); env->set_sky(psky); }
+        if (path.is_empty()) {
+            if (Object::cast_to<PanoramaSkyMaterial>(psky->get_material().ptr())) {
+                Ref<ProceduralSkyMaterial> proc;
+                proc.instantiate();
+                psky->set_material(proc);
+            }
+            env->set_sky_rotation(Vector3());
+        } else {
+            Ref<Texture2D> tex;
+            if (ResourceLoader::get_singleton()->exists(path)) tex = ResourceLoader::get_singleton()->load(path);
+            if (tex.is_null()) {
+                Ref<Image> img = Image::load_from_file(ProjectSettings::get_singleton()->globalize_path(path));
+                if (img.is_valid() && !img->is_empty()) tex = ImageTexture::create_from_image(img);
+            }
+            if (tex.is_null()) return make_error("sky_load_failed", path);
+            Ref<PanoramaSkyMaterial> pano;
+            pano.instantiate();
+            pano->set_panorama(tex);
+            pano->set_filtering_enabled(true);
+            if (p.has("skyEnergy")) pano->set_energy_multiplier(
+                    static_cast<float>(static_cast<double>(p["skyEnergy"])));
+            psky->set_material(pano);
+            env->set_background(Environment::BG_SKY);
+            env->set_reflection_source(Environment::REFLECTION_SOURCE_SKY);
+            // Ambient stays as the cart set it (setAmbientLight); like the web
+            // environment map, the panorama drives reflections only.
+        }
+    }
+    if (p.has("skyRotation")) env->set_sky_rotation(
+            Vector3(0, static_cast<float>(static_cast<double>(p["skyRotation"])), 0));
+
     // Procedural sky tweaks.
     Ref<Sky> sky = env->get_sky();
     Ref<ProceduralSkyMaterial> sky_mat;
     if (sky.is_valid()) sky_mat = sky->get_material();
+    // A colour or preset request after an HDR sky brings the procedural sky back.
+    if (sky.is_valid() && sky_mat.is_null() && (p.has("skyTopColor") || p.has("skyPreset") ||
+            p.has("skyHorizonColor") || p.has("groundBottomColor"))) {
+        sky_mat.instantiate();
+        sky->set_material(sky_mat);
+        env->set_sky_rotation(Vector3());
+    }
 
     if (sky_mat.is_valid()) {
         if (p.has("skyTopColor")) sky_mat->set_sky_top_color(
@@ -2849,7 +2917,9 @@ Dictionary Nova64Host::_cmd_audio_play(const Dictionary &p) {
     player->set_stream(stream);
     if (p.has("volumeDb")) player->set_volume_db(static_cast<float>(static_cast<double>(p["volumeDb"])));
     if (p.has("pitch"))    player->set_pitch_scale(static_cast<float>(static_cast<double>(p["pitch"])));
-    player->play();
+    // Carts can start playback from init(), before the host is in the tree;
+    // play() then errors, so let the player start itself on entering it.
+    if (player->is_inside_tree()) player->play(); else player->set_autoplay(true);
     uint32_t id = _handles->put_node(HandleKind::AUDIO_PLAYER, player);
     return make_handle_result(id);
 }
@@ -2896,7 +2966,9 @@ Dictionary Nova64Host::_cmd_video_play_fullscreen(const Dictionary &p) {
     }
 
     _video_layer->add_child(player);
-    player->play();
+    // Carts can start playback from init(), before the host is in the tree;
+    // play() then errors, so let the player start itself on entering it.
+    if (player->is_inside_tree()) player->play(); else player->set_autoplay(true);
 
     uint32_t id = _handles->put_node(HandleKind::VIDEO_PLAYER, player);
     Dictionary out = make_handle_result(id);
@@ -2960,7 +3032,9 @@ Dictionary Nova64Host::_cmd_video_create_texture(const Dictionary &p) {
     }
     player->set_visible(false); // decode without rendering the player itself
     _video_layer->add_child(player);
-    player->play();
+    // Carts can start playback from init(), before the host is in the tree;
+    // play() then errors, so let the player start itself on entering it.
+    if (player->is_inside_tree()) player->play(); else player->set_autoplay(true);
 
     // get_video_texture() is usually null until the first frame decodes, so the
     // cart fetches it lazily via video.getTexture once playback has started.

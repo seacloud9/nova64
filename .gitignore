@@ -120,3 +120,8 @@ plugins/
 /retroarch-web-smoke.png
 /retroarch-native-sweep.json
 /retroarch-web-sweep.json
+
+# Godot import sidecars written next to cart assets (carts/ links into examples/).
+# Regenerate locally with: godot --headless --path nova64-godot/godot_project --import
+examples/**/*.import
+public/assets/sky/**/*.import

@@ -43,7 +43,10 @@ the Babylon restore below; Node 20 -> 24 LTS landed in #28.
   particle-fireworks, platformer, stealth-runner, dungeon-crawler,
   neon-pinball) call ~25 functions only the libretro core has (printBold/
   Tight/Flash, hline/vline/circ/circfill, setSkyColor, project3DToScreen,
-  createWaveManager, createBurst, ...). Port them to the web runtime.
+  createWaveManager, createBurst, ...). **Done 2026-11-06:** shared
+  runtime/core-compat.js now serves web and the Godot shim, and those carts
+  destructure the helpers. Still open: a real CRT pass behind
+  `nova64.post.setCRT` (currently a no-op on web and Godot).
 - **Windows:** native harness needs LoadLibrary, a windows-latest CI job and a
   known-failures-windows.txt (checklist in PR #29).
 - **pnpm versions:** CI pins pnpm 9; local installs run 10 (Node 24

@@ -4,6 +4,8 @@
 
 const { cls, print, rectfill, rgba8 } = nova64.draw;
 const { btn, btnp } = nova64.input;
+// Libretro-core parity helpers
+const { printBold } = nova64.draw;
 
 // Spotlight overlay. Implemented in the cart (same scanline algorithm the
 // RetroArch core's createSpotlight/drawSpotlight use) so it runs on every

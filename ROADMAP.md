@@ -446,14 +446,17 @@ Phase 6 Todo:
 
 Prerequisites found while verifying Godot (2026-11-06):
 
-- [ ] Godot exits with SIGABRT (code 134) in `libnova64` QuickJS teardown after a
-      successful run on macOS. Fix the shutdown path.
+- [x] Godot exits with SIGABRT (code 134) in `libnova64` QuickJS teardown after a
+      successful run on macOS. Fixed: cleanup moved to `NOTIFICATION_PREDELETE`.
 - [ ] `colyseus` addon has no macOS arm64 library (non-fatal load error on every run)
-- [ ] Godot host lacks the new PBR features: `createHDRSkybox`,
-      `createEnvironmentSkybox`, `setToneMapping`, and physical material options
-      (transmission/ior/clearcoat/sheen/iridescence), so metals reflect black
-- [ ] `nova64-godot/godot_project/carts/` should be symlinks into `examples/`; on
-      macOS they had become stale copies (27 of 76 out of date)
+- [x] Godot host lacks `createHDRSkybox`, `createEnvironmentSkybox`, `setToneMapping`.
+      Done: panorama/HDR sky via `env.set`, shared `public/assets/sky`.
+- [ ] Physical material options (transmission/ior/clearcoat/sheen/iridescence) in
+      Godot; rough dielectrics still over-bright under bright HDRs vs three.js
+- [x] `nova64-godot/godot_project/carts/` should be symlinks into `examples/`
+- [x] Every example + QWEN cart runs in headless Godot with no errors
+      (104/104, 2026-11-06; was 81/104)
+- [ ] A real CRT pass behind `nova64.post.setCRT` (no-op on web and Godot)
 
 ## Realtime Follow-Up Plan
 

@@ -6,6 +6,17 @@ const { sfx } = nova64.audio;
 const { loadData, saveData } = nova64.data;
 const { cls, glowCircle, glowLine, glowRect, rect, rectfill, rgba8 } = nova64.draw;
 const { btn, btnp } = nova64.input;
+// Libretro-core parity helpers
+const { circ, circfill, hline, printBold, printFlash, printTight, vline } = nova64.draw;
+const {
+  createBurst,
+  destroyBurst,
+  drawBurst,
+  isBurstDone,
+  rngRandom,
+  setBurstColors,
+  updateBurst,
+} = nova64.util;
 
 const BALL_R = 6;
 const GRAVITY = 280;

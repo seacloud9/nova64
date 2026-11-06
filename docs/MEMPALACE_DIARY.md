@@ -77,3 +77,26 @@ AAAK:
   - **Auto mode** blocks `gh pr merge`, force-push, repo settings changes
     and glob `rm -rf`. Merges into main are the user's call. For stale tracked
     bundles, `git rm` an explicit list instead.
+
+- **2026-11-06 — Godot: 104/104 carts clean (PRs #35, #36, #37)**
+  - **GDExtension teardown:** `Object::~Object` runs *after* `Node::~Node`, so a
+    destructor that touches children reads freed memory (SIGABRT at exit).
+    Do cleanup in `NOTIFICATION_PREDELETE`. Function-static `Ref<Shader>` /
+    `Ref<ImageTexture>` outlive the RenderingServer and leak RIDs. Keep them
+    at file scope and release them in `_shutdown_runtime()`.
+  - **Core-only APIs:** carts ported from retroarch/games call libretro-core
+    functions (printBold, hline, setSkyColor, bursts, wave manager...).
+    `runtime/core-compat.js` implements them once on host primitives. The
+    Godot shim can't import modules, so it holds a marker-delimited copy:
+    run `node scripts/sync-core-compat.mjs` after editing (prettier reformats
+    the module on commit, so re-sync then too). `tests/test-core-compat.js`
+    fails on drift. The shared code never inspects colours, because rgba8 is a
+    BigInt on web and an object/number in Godot.
+  - **Godot lighting parity:** Three.js PointLight decays inverse-square
+    (decay 2); Godot's OmniLight default attenuation is 1. Pass
+    `attenuation: 2` or high intensities wash surfaces white.
+  - **Godot media:** `VideoStreamPlayer.play()` errors when the host isn't in
+    the tree yet (carts start media in init()); use `set_autoplay(true)`.
+  - **HDR skies in Godot:** `Image::load_from_file` reads .hdr directly, with
+    no import step. `godot_project/assets/sky` links `public/assets/sky`.
+    Godot writes `.import` sidecars next to assets, which are now gitignored.

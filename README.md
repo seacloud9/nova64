@@ -577,10 +577,10 @@ through QuickJS and native Nova64 host APIs; it does not embed a browser,
 Three.js, or Babylon.js. The current native renderer path targets OpenGL ES 3.1,
 with Vulkan 1.2 staged behind the backend-neutral renderer interface.
 
-On Windows, run these from WSL after selecting Node 20:
+On Windows, run these from WSL after selecting the repo's Node (24, from `.nvmrc`):
 
 ```bash
-nvm use 20
+nvm use
 
 pnpm run retroarch:test          # Native conformance harness
 pnpm run retroarch:build         # Clean release Make build

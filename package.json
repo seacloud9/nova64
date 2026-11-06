@@ -21,6 +21,9 @@
     "url": "https://github.com/seacloud9/nova64/issues"
   },
   "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
   "bin": {
     "nova64": "./bin/nova64.js"
   },

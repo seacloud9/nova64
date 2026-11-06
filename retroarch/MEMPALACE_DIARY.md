@@ -907,3 +907,41 @@ AAAK:
     render as boxes. A fix would be a glyph fallback in the core's text path.
   - The `pnpm mempalace:*` scripts assume WSL (`~/ai-tools`,
     `/mnt/c/Users/brend/...`) and fail on macOS. Mine from the Windows machine.
+
+---
+
+## 2026-11-05 - UTF-8 glyph folding in the core font
+
+Topic seed for MemPalace: `nova64-retroarch-utf8-glyph-fold-20261105`
+
+AAAK:
+
+- **Anchor:** In the WASM player, space-harrier-3d's `▶` / `◆` bullets drew as
+  rows of solid blocks. The 5×7 font walks text byte by byte, so each UTF-8
+  byte became a separate unknown glyph (unknown means a solid `0x1f` block),
+  and measureText/centering counted 3 cells per symbol.
+- **Actions:** Added `glyph_text()` + `glyph_fold_codepoint()` just above
+  `glyph_row()` in `nova64_libretro.c`. They fold each codepoint to exactly one
+  byte: an ASCII look-alike (dashes and box lines to `-|+`, `…` to `...`,
+  `×` to `x`), a `NOVA64_G_*` symbol glyph in the control-byte range (bullet,
+  dot, diamond, square, triangles, arrows, star, check, heart, circle, ring,
+  shade, block), or a hollow tofu box. ZWJ, variation selectors and skin tones
+  are dropped. Called once at the top of every text draw/measure function, and
+  inside the `for` loop of the `js_print_*` effect bindings so the pointer
+  QuickJS frees isn't replaced.
+- **Artifacts:** `retroarch/nova64_libretro.c`,
+  `retroarch/conformance/1136-utf8-glyphs.js` (checksum `aa9ef579eb82470b`),
+  `retroarch/tests/run_conformance.sh`.
+- **Knowledge:**
+  - ASCII-only text returns the same pointer (no copy), and folded output is
+    always ASCII, so nested draw/measure calls re-fold for free. An 8-slot ring
+    buffer is plenty.
+  - Regression check: all 536 conformance carts produced identical checksums
+    before and after, compared directly old-vs-new.
+  - New glyphs: add a `case` in `glyph_fold_codepoint()` and a row bitmap in the
+    `sym[]` table at the top of `glyph_row()`. Avoid `0x09/0x0a/0x0d`.
+  - `run_conformance.sh` now works on macOS: `CORE` can be overridden and
+    defaults to `.dylib` on Darwin, and empty `frames_arg` arrays no longer trip
+    bash 3.2 `set -u`. Even so, `21-post-effects` mismatches on macOS with the
+    *unmodified* core (platform float drift), and the runner stops at the first
+    failure. Compare old vs new builds instead of relying on a full run on a Mac.

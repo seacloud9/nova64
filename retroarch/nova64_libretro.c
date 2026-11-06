@@ -3330,6 +3330,129 @@ static void draw_round_rect_outline_pixels(int x, int y, int w, int h, int r, ui
    draw_ellipse_pixels(x + w - r - 1, y + h - r - 1, r, r, color, false);
 }
 
+/* ── UTF-8 → glyph codes ────────────────────────────────────────────────
+   The 5×7 font is indexed by single bytes, so a multi-byte UTF-8 character
+   such as '▶' (E2 96 B6) used to draw as three solid blocks. glyph_text()
+   folds each codepoint to exactly one byte: an ASCII look-alike, one of the
+   NOVA64_G_* symbol glyphs below (control-range bytes never used in text),
+   or a hollow "tofu" box. Zero-width joiners/variation selectors vanish.
+   ASCII-only input is returned untouched; otherwise the result lives in a
+   small ring of buffers that stays valid for the current draw call. */
+enum {
+   NOVA64_G_BULLET = 0x01, NOVA64_G_DOT = 0x02, NOVA64_G_DIAMOND = 0x03,
+   NOVA64_G_SQUARE = 0x04, NOVA64_G_TRI_R = 0x05, NOVA64_G_TRI_L = 0x06,
+   NOVA64_G_TRI_U = 0x0b, NOVA64_G_TRI_D = 0x0c, NOVA64_G_STAR = 0x0e,
+   NOVA64_G_CHECK = 0x0f, NOVA64_G_HEART = 0x10, NOVA64_G_CIRCLE = 0x11,
+   NOVA64_G_RING = 0x12, NOVA64_G_TOFU = 0x13, NOVA64_G_ARROW_R = 0x14,
+   NOVA64_G_ARROW_L = 0x15, NOVA64_G_ARROW_U = 0x16, NOVA64_G_ARROW_D = 0x17,
+   NOVA64_G_SHADE = 0x18, NOVA64_G_BLOCK = 0x7f
+};
+
+/* Returns the replacement for one codepoint: up to 3 bytes in out, or 0 to drop it. */
+static int glyph_fold_codepoint(uint32_t cp, char *out)
+{
+   const char *ascii = NULL;
+   int g = 0;
+   switch (cp) {
+   case 0x00A0: ascii = " "; break;                       /* nbsp */
+   case 0x2013: case 0x2014: case 0x2012: case 0x2015:
+   case 0x2500: case 0x2501: case 0x2550: case 0x2212: ascii = "-"; break;
+   case 0x2502: case 0x2503: case 0x2551: ascii = "|"; break;
+   case 0x250C: case 0x2510: case 0x2514: case 0x2518: case 0x251C: case 0x2524:
+   case 0x252C: case 0x2534: case 0x253C: case 0x2554: case 0x2557: case 0x255A:
+   case 0x255D: case 0x2560: case 0x2563: case 0x2566: case 0x2569: case 0x256C:
+      ascii = "+"; break;
+   case 0x2018: case 0x2019: case 0x2032: ascii = "'"; break;
+   case 0x201C: case 0x201D: case 0x2033: ascii = "\""; break;
+   case 0x00D7: case 0x2715: case 0x2716: case 0x274C: ascii = "x"; break;
+   case 0x00F7: ascii = "/"; break;
+   case 0x2026: ascii = "..."; break;
+   case 0x00B0: ascii = "o"; break;
+   case 0x2022: case 0x2219: g = NOVA64_G_BULLET; break;
+   case 0x00B7: case 0x22C5: g = NOVA64_G_DOT; break;
+   case 0x25C6: case 0x25C7: case 0x2666: case 0x1F537: case 0x1F536: g = NOVA64_G_DIAMOND; break;
+   case 0x25A0: case 0x25AA: case 0x25FC: case 0x25FE: case 0x25A1: g = NOVA64_G_SQUARE; break;
+   case 0x25B6: case 0x25BA: case 0x25B8: case 0x23F5: g = NOVA64_G_TRI_R; break;
+   case 0x25C0: case 0x25C4: case 0x25C2: case 0x23F4: g = NOVA64_G_TRI_L; break;
+   case 0x25B2: case 0x25B4: case 0x23F6: g = NOVA64_G_TRI_U; break;
+   case 0x25BC: case 0x25BE: case 0x23F7: g = NOVA64_G_TRI_D; break;
+   case 0x2605: case 0x2606: case 0x2B50: case 0x2728: case 0x1F31F: g = NOVA64_G_STAR; break;
+   case 0x2713: case 0x2714: case 0x2705: case 0x2611: g = NOVA64_G_CHECK; break;
+   case 0x2665: case 0x2764: case 0x2661: g = NOVA64_G_HEART; break;
+   case 0x25CF: case 0x26AB: case 0x26AA: case 0x2B24: g = NOVA64_G_CIRCLE; break;
+   case 0x25CB: case 0x25EF: g = NOVA64_G_RING; break;
+   case 0x2192: case 0x27A1: case 0x2794: case 0x279C: g = NOVA64_G_ARROW_R; break;
+   case 0x2190: case 0x2B05: g = NOVA64_G_ARROW_L; break;
+   case 0x2191: case 0x2B06: g = NOVA64_G_ARROW_U; break;
+   case 0x2193: case 0x2B07: g = NOVA64_G_ARROW_D; break;
+   case 0x2591: case 0x2592: case 0x2593: g = NOVA64_G_SHADE; break;
+   case 0x2588: g = NOVA64_G_BLOCK; break;
+   default: break;
+   }
+   if (ascii) {
+      int n = (int)strlen(ascii);
+      memcpy(out, ascii, (size_t)n);
+      return n;
+   }
+   if (g) { out[0] = (char)g; return 1; }
+   /* Invisible modifiers: variation selectors, ZWJ/ZWNJ/ZWSP, BOM, skin tones, tags. */
+   if ((cp >= 0xFE00 && cp <= 0xFE0F) || (cp >= 0x200B && cp <= 0x200F) || cp == 0xFEFF ||
+       (cp >= 0x1F3FB && cp <= 0x1F3FF) || (cp >= 0xE0020 && cp <= 0xE007F) || cp == 0x20E3)
+      return 0;
+   out[0] = (char)NOVA64_G_TOFU;
+   return 1;
+}
+
+static const char *glyph_text(const char *text)
+{
+   enum { RING = 8 };
+   static char *ring[RING];
+   static size_t ring_cap[RING];
+   static int ring_next;
+
+   if (!text)
+      return text;
+   const unsigned char *u = (const unsigned char *)text;
+   size_t len = 0;
+   bool ascii = true;
+   for (; u[len]; len++)
+      if (u[len] >= 0x80) ascii = false;
+   if (ascii)
+      return text;
+
+   /* Every codepoint takes >= 1 input byte and emits <= 3 bytes. */
+   size_t need = len * 3 + 1;
+   int slot = ring_next;
+   ring_next = (ring_next + 1) % RING;
+   if (ring_cap[slot] < need) {
+      char *grown = (char *)realloc(ring[slot], need);
+      if (!grown)
+         return text;
+      ring[slot] = grown;
+      ring_cap[slot] = need;
+   }
+   char *out = ring[slot];
+   size_t o = 0;
+   for (size_t i = 0; i < len;) {
+      unsigned char c = u[i];
+      if (c < 0x80) { out[o++] = (char)c; i++; continue; }
+      uint32_t cp;
+      int n;
+      if ((c & 0xE0) == 0xC0)      { cp = c & 0x1F; n = 2; }
+      else if ((c & 0xF0) == 0xE0) { cp = c & 0x0F; n = 3; }
+      else if ((c & 0xF8) == 0xF0) { cp = c & 0x07; n = 4; }
+      else { out[o++] = (char)NOVA64_G_TOFU; i++; continue; }   /* stray byte */
+      int k = 1;
+      for (; k < n && i + k < len && (u[i + k] & 0xC0) == 0x80; k++)
+         cp = (cp << 6) | (u[i + k] & 0x3F);
+      i += k;
+      if (k < n) { out[o++] = (char)NOVA64_G_TOFU; continue; }  /* truncated */
+      o += (size_t)glyph_fold_codepoint(cp, out + o);
+   }
+   out[o] = '\0';
+   return out;
+}
+
 static uint8_t glyph_row(char ch, int row)
 {
    static const uint8_t digits[10][7] = {
@@ -3406,6 +3529,34 @@ static uint8_t glyph_row(char ch, int row)
 
    if (row < 0 || row >= 7)
       return 0;
+   if ((unsigned char)ch < 0x20 || ch == (char)NOVA64_G_BLOCK) {
+      static const struct { char code; uint8_t rows[7]; } sym[] = {
+         {NOVA64_G_BULLET,  {0x00, 0x00, 0x0e, 0x0e, 0x0e, 0x00, 0x00}},
+         {NOVA64_G_DOT,     {0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00}},
+         {NOVA64_G_DIAMOND, {0x00, 0x04, 0x0e, 0x1f, 0x0e, 0x04, 0x00}},
+         {NOVA64_G_SQUARE,  {0x00, 0x1f, 0x1f, 0x1f, 0x1f, 0x1f, 0x00}},
+         {NOVA64_G_TRI_R,   {0x10, 0x18, 0x1c, 0x1e, 0x1c, 0x18, 0x10}},
+         {NOVA64_G_TRI_L,   {0x01, 0x03, 0x07, 0x0f, 0x07, 0x03, 0x01}},
+         {NOVA64_G_TRI_U,   {0x00, 0x04, 0x04, 0x0e, 0x0e, 0x1f, 0x00}},
+         {NOVA64_G_TRI_D,   {0x00, 0x1f, 0x0e, 0x0e, 0x04, 0x04, 0x00}},
+         {NOVA64_G_STAR,    {0x04, 0x04, 0x1f, 0x0e, 0x0e, 0x1b, 0x11}},
+         {NOVA64_G_CHECK,   {0x00, 0x01, 0x01, 0x02, 0x14, 0x08, 0x00}},
+         {NOVA64_G_HEART,   {0x00, 0x0a, 0x1f, 0x1f, 0x0e, 0x04, 0x00}},
+         {NOVA64_G_CIRCLE,  {0x00, 0x0e, 0x1f, 0x1f, 0x1f, 0x0e, 0x00}},
+         {NOVA64_G_RING,    {0x00, 0x0e, 0x11, 0x11, 0x11, 0x0e, 0x00}},
+         {NOVA64_G_TOFU,    {0x1f, 0x11, 0x11, 0x11, 0x11, 0x11, 0x1f}},
+         {NOVA64_G_ARROW_R, {0x00, 0x04, 0x02, 0x1f, 0x02, 0x04, 0x00}},
+         {NOVA64_G_ARROW_L, {0x00, 0x04, 0x08, 0x1f, 0x08, 0x04, 0x00}},
+         {NOVA64_G_ARROW_U, {0x04, 0x0e, 0x15, 0x04, 0x04, 0x04, 0x00}},
+         {NOVA64_G_ARROW_D, {0x00, 0x04, 0x04, 0x04, 0x15, 0x0e, 0x04}},
+         {NOVA64_G_SHADE,   {0x15, 0x0a, 0x15, 0x0a, 0x15, 0x0a, 0x15}},
+         {NOVA64_G_BLOCK,   {0x1f, 0x1f, 0x1f, 0x1f, 0x1f, 0x1f, 0x1f}},
+      };
+      for (size_t i = 0; i < sizeof(sym) / sizeof(sym[0]); i++)
+         if (sym[i].code == ch)
+            return sym[i].rows[row];
+      return 0x00;   /* other control bytes draw nothing */
+   }
    if (ch >= '0' && ch <= '9')
       return digits[ch - '0'][row];
    if (ch >= 'a' && ch <= 'z')
@@ -3538,6 +3689,7 @@ static uint8_t glyph_row(char ch, int row)
 
 static void draw_text_pixels(const char *text, int x, int y, uint32_t color)
 {
+   text = glyph_text(text);
    if (!text)
       return;
    int cursor = x;
@@ -3560,6 +3712,7 @@ static void draw_text_pixels(const char *text, int x, int y, uint32_t color)
 
 static void draw_text_scaled_pixels(const char *text, int x, int y, uint32_t color, int scale)
 {
+   text = glyph_text(text);
    if (!text)
       return;
    if (scale <= 1) {
@@ -3599,6 +3752,7 @@ static int clamp_text_scale(int scale)
 
 static int text_pixel_width(const char *text)
 {
+   text = glyph_text(text);
    if (!text || !text[0])
       return 0;
    int max_w = 0, cur_w = 0;
@@ -3703,6 +3857,7 @@ static int glyph_tight_advance(char ch)
 
 static void draw_text_tight_pixels(const char *text, int x, int y, uint32_t color)
 {
+   text = glyph_text(text);
    if (!text)
       return;
    int cursor = x;
@@ -3728,6 +3883,7 @@ static void draw_text_tight_pixels(const char *text, int x, int y, uint32_t colo
 
 static void draw_text_tight_scaled_pixels(const char *text, int x, int y, uint32_t color, int scale)
 {
+   text = glyph_text(text);
    if (!text)
       return;
    scale = clamp_text_scale(scale);
@@ -3760,6 +3916,7 @@ static void draw_text_tight_scaled_pixels(const char *text, int x, int y, uint32
 
 static int tight_text_pixel_width(const char *text)
 {
+   text = glyph_text(text);
    if (!text || !text[0])
       return 0;
    int max_w = 0, cur_w = 0;
@@ -5441,7 +5598,7 @@ static JSValue js_text_width(JSContext *ctx, JSValueConst this_val, int argc, JS
    int fhandle = argc > 1 ? int_from_js(ctx, argv[1], 0) : 0;
    if (fhandle >= 1 && fhandle <= NOVA64_MAX_FONTS && g_fonts[fhandle-1].active) {
       /* measure using custom font glyph width */
-      size_t len = text ? strlen(text) : 0;
+      size_t len = text ? strlen(glyph_text(text)) : 0;
       w = (int)(len * (size_t)g_fonts[fhandle-1].glyph_w);
    } else {
       w = text_pixel_width(text);
@@ -11418,6 +11575,7 @@ static JSValue js_destroy_burst(JSContext *ctx, JSValueConst this_val, int argc,
 
 static void draw_text_gradient(const char *text, int x, int y, uint32_t ctop, uint32_t cbot)
 {
+   text = glyph_text(text);
    if (!text) return;
    int cursor = x;
    for (const char *p = text; *p; p++) {
@@ -11440,6 +11598,7 @@ static void draw_text_gradient(const char *text, int x, int y, uint32_t ctop, ui
 
 static void draw_text_gradient_tight(const char *text, int x, int y, uint32_t ctop, uint32_t cbot)
 {
+   text = glyph_text(text);
    if (!text) return;
    int cursor = x;
    for (const char *p = text; *p; p++) {
@@ -11489,7 +11648,7 @@ static JSValue js_print_wave(JSContext *ctx, JSValueConst this_val, int argc, JS
    if (text) {
       int cursor = x;
       int ci = 0;
-      for (const char *p = text; *p; p++, ci++) {
+      for (const char *p = glyph_text(text); *p; p++, ci++) {
          if (*p == '\n') { cursor = x; y += 9; ci = 0; continue; }
          int dy = (int)(amp * sinf(ci * freq + t2));
          for (int row = 0; row < 7; row++) {
@@ -11516,7 +11675,7 @@ static JSValue js_print_flash(JSContext *ctx, JSValueConst this_val, int argc, J
    float hz  = (float)double_from_js(ctx, argc > 5 ? argv[5] : JS_UNDEFINED, 2.0);
    if (text && ((int)(t2 * hz * 2.0f) & 1) == 0) {
       int cursor = x;
-      for (const char *p = text; *p; p++) {
+      for (const char *p = glyph_text(text); *p; p++) {
          if (*p == '\n') { cursor = x; y += 9; continue; }
          for (int row = 0; row < 7; row++) {
             uint8_t bits = glyph_row(*p, row);
@@ -11543,7 +11702,7 @@ static JSValue js_print_shake(JSContext *ctx, JSValueConst this_val, int argc, J
    if (text) {
       int cursor = x;
       int ci = 0;
-      for (const char *p = text; *p; p++, ci++) {
+      for (const char *p = glyph_text(text); *p; p++, ci++) {
          if (*p == '\n') { cursor = x; y += 9; ci = 0; continue; }
          int ox = (int)(sinf((float)(ci * 7) + t2 * 20.0f) * amount);
          int oy = (int)(cosf((float)(ci * 5) + t2 * 17.0f) * amount);
@@ -11587,7 +11746,7 @@ static JSValue js_print_rainbow(JSContext *ctx, JSValueConst this_val, int argc,
    if (text) {
       int cursor = x;
       int ci = 0;
-      for (const char *p = text; *p; p++, ci++) {
+      for (const char *p = glyph_text(text); *p; p++, ci++) {
          if (*p == '\n') { cursor = x; y += 9; ci = 0; continue; }
          float hue   = fmodf((float)ci * 30.0f + t2 * 100.0f, 360.0f);
          uint32_t col = hsv_to_rgba8(hue, 1.0f, 1.0f, 255);
@@ -11623,7 +11782,7 @@ static JSValue js_print_wave_tight(JSContext *ctx, JSValueConst this_val, int ar
    if (text) {
       int cursor = x;
       int ci = 0;
-      for (const char *p = text; *p; p++, ci++) {
+      for (const char *p = glyph_text(text); *p; p++, ci++) {
          if (*p == '\n') { cursor = x; y += 9; ci = 0; continue; }
          int dy = (int)(amp * sinf(ci * freq + t2));
          int minc = 0, maxc = 0;
@@ -11670,7 +11829,7 @@ static JSValue js_print_shake_tight(JSContext *ctx, JSValueConst this_val, int a
    if (text) {
       int cursor = x;
       int ci = 0;
-      for (const char *p = text; *p; p++, ci++) {
+      for (const char *p = glyph_text(text); *p; p++, ci++) {
          if (*p == '\n') { cursor = x; y += 9; ci = 0; continue; }
          int ox = (int)(sinf((float)(ci * 7) + t2 * 20.0f) * amount);
          int oy = (int)(cosf((float)(ci * 5) + t2 * 17.0f) * amount);
@@ -11700,7 +11859,7 @@ static JSValue js_print_rainbow_tight(JSContext *ctx, JSValueConst this_val, int
    if (text) {
       int cursor = x;
       int ci = 0;
-      for (const char *p = text; *p; p++, ci++) {
+      for (const char *p = glyph_text(text); *p; p++, ci++) {
          if (*p == '\n') { cursor = x; y += 9; ci = 0; continue; }
          float hue   = fmodf((float)ci * 30.0f + t2 * 100.0f, 360.0f);
          uint32_t col = hsv_to_rgba8(hue, 1.0f, 1.0f, 255);
@@ -15755,7 +15914,7 @@ static JSValue js_draw_glow_text_centered(JSContext *ctx, JSValueConst this_val,
    int scale = argc > 5 ? int_from_js(ctx, argv[5], 1) : 1;
    if (scale < 1) scale = 1;
    if (scale > 8) scale = 8;
-   int w = (int)strlen(text) * 6 * scale;
+   int w = (int)strlen(glyph_text(text)) * 6 * scale;
    int x = cx - w / 2;
    static const int gcen_off[8][2] = {{-1,-1},{0,-1},{1,-1},{-1,0},{1,0},{-1,1},{0,1},{1,1}};
    for (int i = 0; i < 8; i++)
@@ -15821,7 +15980,7 @@ static JSValue js_draw_pulsing_text(JSContext *ctx, JSValueConst this_val, int a
    uint32_t b = (color >>  8) & 0xFF;
    uint32_t pulsed = (r << 24) | (g << 16) | (b << 8) | (uint32_t)alpha;
 
-   int w = (int)strlen(text) * 6 * scale;
+   int w = (int)strlen(glyph_text(text)) * 6 * scale;
    int x = cx - w / 2;
    if (has_glow) {
       static const int glow_off[8][2] = {{-1,-1},{0,-1},{1,-1},{-1,0},{1,0},{-1,1},{0,1},{1,1}};
@@ -16232,7 +16391,7 @@ static JSValue js_scrolling_text(JSContext *ctx, JSValueConst this_val, int argc
    }
    if (scale < 1) scale = 1;
    int cw = 6 * scale;
-   int textPx = (int)strlen(text) * cw;
+   int textPx = (int)strlen(glyph_text(text)) * cw;
    int total  = textPx + width;
    int offset = (int)(speed * time);
    if (total > 0) offset = ((offset % total) + total) % total;
@@ -16243,7 +16402,7 @@ static JSValue js_scrolling_text(JSContext *ctx, JSValueConst this_val, int argc
    if (scale == 1) {
       draw_text_pixels(text, startX, sty, color);
    } else {
-      for (const char *p = text; *p; p++) {
+      for (const char *p = glyph_text(text); *p; p++) {
          int cx2 = startX + (int)(p - text) * cw;
          for (int row = 0; row < 7; row++) {
             uint8_t bits = glyph_row(*p, row);
@@ -30450,7 +30609,7 @@ static JSValue js_print_font(JSContext *ctx, JSValueConst this_val, int argc, JS
    int total_glyphs = cols * rows;
 
    int cx_pos = screen_x;
-   for (const char *p = text; *p; p++) {
+   for (const char *p = glyph_text(text); *p; p++) {
       int ch = (unsigned char)*p - 32;
       if (ch < 0 || ch >= total_glyphs) { cx_pos += fnt->glyph_w; continue; }
       int gc = ch % cols;

@@ -5,7 +5,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 cd "${REPO_ROOT}"
 
-CORE="retroarch/nova64_libretro.so"
+if [[ "$(uname -s)" == "Darwin" ]]; then _core_ext=dylib; else _core_ext=so; fi
+CORE="${CORE:-retroarch/nova64_libretro.${_core_ext}}"
 HARNESS="retroarch/build/harness"
 PACKAGE_DIR="retroarch/build/conformance-packages"
 SAVE_DIR="retroarch/build/conformance-saves"
@@ -270,7 +271,7 @@ run_gles_case() {
   should_run_label "${label}" || return 0
   echo "== ${label} (gles)"
   local frames_arg=(); [[ -n "${frames}" ]] && frames_arg=(--frames "${frames}")
-  "${HARNESS}" "${CORE}" "${cart}" --gles "${frames_arg[@]}" --expect "${checksum}"
+  "${HARNESS}" "${CORE}" "${cart}" --gles ${frames_arg[@]+"${frames_arg[@]}"} --expect "${checksum}"
 }
 
 run_case() {
@@ -281,7 +282,7 @@ run_case() {
   should_run_label "${label}" || return 0
   echo "== ${label}"
   local frames_arg=(); [[ -n "${frames}" ]] && frames_arg=(--frames "${frames}")
-  "${HARNESS}" "${CORE}" "${cart}" "${frames_arg[@]}" --expect "${checksum}"
+  "${HARNESS}" "${CORE}" "${cart}" ${frames_arg[@]+"${frames_arg[@]}"} --expect "${checksum}"
 }
 
 should_run_label() {
@@ -325,7 +326,7 @@ run_audio_case() {
   should_run_label "${label}" || return 0
   echo "== ${label}"
   local frames_arg=(); [[ -n "${frames}" ]] && frames_arg=(--frames "${frames}")
-  "${HARNESS}" "${CORE}" "${cart}" "${frames_arg[@]}" --expect "${checksum}" --expect-audio "${audio_checksum}"
+  "${HARNESS}" "${CORE}" "${cart}" ${frames_arg[@]+"${frames_arg[@]}"} --expect "${checksum}" --expect-audio "${audio_checksum}"
 }
 
 run_visual_case() {
@@ -339,7 +340,7 @@ run_visual_case() {
   should_run_label "${label}" || return 0
   echo "== ${label}"
   local frames_arg=(); [[ -n "${frames}" ]] && frames_arg=(--frames "${frames}")
-  "${HARNESS}" "${CORE}" "${cart}" "${frames_arg[@]}" --expect "${checksum}" --capture "${ppm}"
+  "${HARNESS}" "${CORE}" "${cart}" ${frames_arg[@]+"${frames_arg[@]}"} --expect "${checksum}" --capture "${ppm}"
   python3 retroarch/tests/ppm_to_png.py "${ppm}" "${png}"
   rm -f "${ppm}"
 }
@@ -1057,6 +1058,11 @@ run_case      "1134 draw text box" "retroarch/conformance/1134-draw-text-box.js"
 # where promise continuations created during gameplay never ran because the
 # QuickJS job queue was only drained at load/init.
 run_visual_case "1135 promise jobs" "1135-promise-jobs" "retroarch/conformance/1135-promise-jobs.js" "ba17d9f13946b732"
+
+# 1136 UTF-8 text: each codepoint folds to one glyph (symbols like ▶ ◆ • → ★,
+# ASCII look-alikes for dashes/box lines/ellipsis, tofu for emoji) so carts'
+# bullets render and measureText/centering count one cell per character.
+run_visual_case "1136 utf8 glyphs" "1136-utf8-glyphs" "retroarch/conformance/1136-utf8-glyphs.js" "aa9ef579eb82470b"
 
 # 291 overlay autoclear regression: locks down the default
 # auto-clearing of the 2D HUD overlay between frames. Without

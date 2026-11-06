@@ -18,6 +18,25 @@ export function TVShell() {
     document.documentElement.setAttribute('data-theme', theme);
   }, [theme]);
 
+  // Deep links: ?app=<id>&cart=/examples/<cart>/code.js opens an app on a cart,
+  // the same links the desktop shell takes. Desktop app ids that differ on
+  // mobile are mapped (eMU is "emu" on desktop, "emui" here).
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const requested = params.get('app');
+    if (!requested) return;
+    const appId = ({ emu: 'emui' } as Record<string, string>)[requested] || requested;
+    const cart = params.get('cart') || params.get('path');
+    const timer = setTimeout(() => {
+      try {
+        tvContext.launchApp(appId, cart ? { path: cart } : undefined);
+      } catch (err) {
+        console.error('[TVShell] deep link failed:', err);
+      }
+    }, 300);
+    return () => clearTimeout(timer);
+  }, []);
+
   const handleLaunch = useCallback(
     (appId: string) => {
       tvContext.launchApp(appId);

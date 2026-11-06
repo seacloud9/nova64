@@ -35,10 +35,89 @@
       #status.hidden {
         display: none;
       }
+      /* On-screen gamepad for touch devices (phones/tablets have no keyboard).
+         Shown on coarse pointers or with ?touch=1; ?touch=0 hides it. */
+      #touchpad {
+        position: fixed;
+        inset: auto 0 0 0;
+        display: none;
+        justify-content: space-between;
+        align-items: flex-end;
+        padding: 0 max(14px, env(safe-area-inset-left)) max(14px, env(safe-area-inset-bottom));
+        pointer-events: none;
+        user-select: none;
+        -webkit-user-select: none;
+        touch-action: none;
+        z-index: 5;
+      }
+      #touchpad.on {
+        display: flex;
+      }
+      .tp-btn {
+        pointer-events: auto;
+        touch-action: none;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: rgba(255, 255, 255, 0.85);
+        font: 700 13px system-ui, sans-serif;
+        background: rgba(255, 255, 255, 0.12);
+        border: 1.5px solid rgba(255, 255, 255, 0.28);
+        backdrop-filter: blur(6px);
+        -webkit-tap-highlight-color: transparent;
+      }
+      .tp-btn.down {
+        background: rgba(167, 139, 250, 0.55);
+        border-color: rgba(255, 255, 255, 0.6);
+      }
+      .tp-dpad {
+        display: grid;
+        grid-template-columns: repeat(3, 52px);
+        grid-template-rows: repeat(3, 52px);
+        gap: 4px;
+      }
+      .tp-dpad .tp-btn {
+        border-radius: 10px;
+        font-size: 18px;
+      }
+      .tp-actions {
+        display: grid;
+        grid-template-columns: repeat(2, 60px);
+        gap: 10px;
+        align-items: end;
+      }
+      .tp-actions .tp-btn {
+        width: 60px;
+        height: 60px;
+        border-radius: 50%;
+        font-size: 16px;
+      }
+      .tp-actions .tp-start {
+        grid-column: span 2;
+        width: auto;
+        height: 34px;
+        border-radius: 17px;
+        font-size: 11px;
+        letter-spacing: 1px;
+      }
     </style>
   </head>
   <body>
     <canvas id="canvas" tabindex="0"></canvas>
+    <div id="touchpad" aria-hidden="true">
+      <div class="tp-dpad">
+        <span></span><div class="tp-btn" data-key="ArrowUp">▲</div><span></span>
+        <div class="tp-btn" data-key="ArrowLeft">◀</div><span></span><div class="tp-btn" data-key="ArrowRight">▶</div>
+        <span></span><div class="tp-btn" data-key="ArrowDown">▼</div><span></span>
+      </div>
+      <div class="tp-actions">
+        <div class="tp-btn" data-key="KeyX">X</div>
+        <div class="tp-btn" data-key="Space">A</div>
+        <div class="tp-btn" data-key="KeyZ">B</div>
+        <span></span>
+        <div class="tp-btn tp-start" data-key="Enter">START</div>
+      </div>
+    </div>
     <div id="status">Loading Nova64 core…</div>
     <script type="module">
       // Boots RetroArch web with the Nova64 libretro core and runs one cart.
@@ -153,6 +232,69 @@
       }
 
       boot().catch((err) => fail(err && err.message ? err.message : String(err)));
+
+      // ── Touch gamepad ─────────────────────────────────────────────────────
+      // Each button sends the keyboard key RetroArch already maps (arrows →
+      // d-pad, X/Z → A/B, Enter → Start); carts also read Space/Enter directly.
+      // Multi-touch: every pointer tracks its own button, so a d-pad direction
+      // and an action can be held together.
+      (function setupTouchpad() {
+        const pad = document.getElementById('touchpad');
+        const pref = params.get('touch');
+        const coarse = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+        if (pref === '0' || (pref !== '1' && !coarse)) return;
+        pad.classList.add('on');
+        const KEY_INFO = {
+          ArrowUp: ['ArrowUp', 38], ArrowDown: ['ArrowDown', 40], ArrowLeft: ['ArrowLeft', 37],
+          ArrowRight: ['ArrowRight', 39], KeyX: ['x', 88], KeyZ: ['z', 90], Space: [' ', 32], Enter: ['Enter', 13],
+        };
+        const held = new Map(); // pointerId -> code
+        function send(type, code) {
+          const [key, keyCode] = KEY_INFO[code];
+          const ev = new KeyboardEvent(type, { key, code, bubbles: true, cancelable: true });
+          // Emscripten's handlers read the legacy keyCode/which fields.
+          Object.defineProperty(ev, 'keyCode', { get: () => keyCode });
+          Object.defineProperty(ev, 'which', { get: () => keyCode });
+          (document.activeElement || document).dispatchEvent(ev);
+        }
+        function press(id, btn) {
+          const code = btn.dataset.key;
+          if (held.get(id) === code) return;
+          release(id);
+          held.set(id, code);
+          btn.classList.add('down');
+          send('keydown', code);
+        }
+        function release(id) {
+          const code = held.get(id);
+          if (!code) return;
+          held.delete(id);
+          if (![...held.values()].includes(code)) {
+            pad.querySelectorAll(`[data-key="${code}"]`).forEach((b) => b.classList.remove('down'));
+            send('keyup', code);
+          }
+        }
+        const btnAt = (x, y) => {
+          const el = document.elementFromPoint(x, y);
+          return el && el.closest ? el.closest('#touchpad .tp-btn') : null;
+        };
+        pad.addEventListener('pointerdown', (e) => {
+          const btn = e.target.closest('.tp-btn');
+          if (!btn) return;
+          e.preventDefault();
+          canvas.focus();
+          press(e.pointerId, btn);
+        });
+        // Sliding a thumb across the d-pad switches direction without lifting.
+        window.addEventListener('pointermove', (e) => {
+          if (!held.has(e.pointerId)) return;
+          const btn = btnAt(e.clientX, e.clientY);
+          if (btn) press(e.pointerId, btn);
+          else release(e.pointerId);
+        });
+        for (const t of ['pointerup', 'pointercancel']) window.addEventListener(t, (e) => release(e.pointerId));
+        api.touchpad = true;
+      })();
     </script>
   </body>
 </html>

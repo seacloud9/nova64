@@ -4,22 +4,11 @@ import { createRoot } from 'react-dom/client';
 import { useState } from 'react';
 import type { Nova64App } from '../types';
 import { novaContext } from '../os/context';
-import { getNovaBaseUrl, normalizeCartPath } from '../utils/cartCode';
+import { normalizeCartPath } from '../utils/cartCode';
 import { GAMES } from './gameCatalog';
 
-export function getRetroArchWebUrl(path: string): string {
-  const url = new URL('/retroarch-web/index.html', getNovaBaseUrl());
-  url.searchParams.set('cart', normalizeCartPath(path));
-  return url.toString();
-}
-
-/** Player URL that waits for the cart bytes over postMessage (see index.html). */
-export function getRetroArchWebMessageUrl(fileName: string): string {
-  const url = new URL('/retroarch-web/index.html', getNovaBaseUrl());
-  url.searchParams.set('cart', 'message');
-  url.searchParams.set('name', fileName);
-  return url.toString();
-}
+export { getRetroArchWebUrl, getRetroArchWebMessageUrl } from '../utils/retroarchWeb';
+import { getRetroArchWebUrl } from '../utils/retroarchWeb';
 
 function RetroArchWeb({ initialPath }: { initialPath: string }) {
   const [path, setPath] = useState(initialPath);

@@ -51,6 +51,7 @@
   "scripts": {
     "dev": "vite",
     "build:retroarch-web": "bash scripts/build-retroarch-web.sh",
+    "sweep:retroarch-web": "node scripts/retroarch-web-sweep.mjs",
     "godot": "node scripts/godot-play.mjs",
     "godot:link": "node scripts/godot-play.mjs --link",
     "release:lemon": "node scripts/package-lemon-release.mjs",

@@ -75,8 +75,8 @@ Current package version: `0.5.3`.
 On Windows, always prefer WSL for repository work. Use WSL as the default shell for normal development, file inspection, search, `pnpm`, build, lint, format, and test commands.
 
 ```bash
-# First, open WSL, then select Node 20
-nvm use 20
+# First, open WSL, then select the repo's Node (24, from .nvmrc)
+nvm use
 
 # Now you can run pnpm commands
 pnpm dev
@@ -86,7 +86,7 @@ Key points:
 
 - Always use WSL for primary repo development on Windows.
 - Prefer WSL even when a command could also run in PowerShell.
-- Run `nvm use 20` before `pnpm` commands when working in WSL.
+- Run `nvm use` before `pnpm` commands when working in WSL.
 - Use native Windows tools only when the workflow specifically requires them, such as Godot `.exe` launches, Windows-only PowerShell scripts, or inspecting Windows-specific paths.
 - Keep command guidance aligned with the scripts defined in `package.json`.
 - Do not rewrite repository instructions around `npm` or `yarn` unless the repo itself changes.
@@ -616,7 +616,7 @@ standalone **Electron desktop app** and a **VS Code extension** that share
 **host-neutral packages** (`packages/agent-core`, `packages/ai-providers`,
 `packages/workspace-core`) — the AI/agent logic lives once and both hosts wire it.
 
-Run / build (WSL, `nvm use 20`):
+Run / build (WSL, `nvm use`):
 
 ```bash
 node bin/nova64.js desktop dev        # Electron app (Dev workspace + OS shell + AI agent)
@@ -645,7 +645,7 @@ Nova64 uses [Alpha Loop](https://github.com/bradtaylorsf/alpha-loop) to automate
 ### How to run
 
 ```bash
-# From WSL with nvm use 20
+# From WSL with nvm use
 alpha-loop run --once --dry-run   # preview one issue without changes
 alpha-loop run --issue <N>        # process a specific issue
 alpha-loop run                    # process all `ready`-labeled issues

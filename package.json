@@ -25,7 +25,7 @@
     "node": ">=22"
   },
   "bin": {
-    "nova64": "./bin/nova64.js"
+    "nova64": "bin/nova64.js"
   },
   "main": "./runtime/index.js",
   "types": "./runtime/index.d.ts",

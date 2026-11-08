@@ -342,7 +342,7 @@ jobs:
   # fail-fast:false, so a downstream `needs: build` job runs only when the WHOLE
   # matrix succeeded — one failed core (even iOS/tvOS) skips the npm publish.
   # Runs on real v*.*.* tag pushes only (not manual cores-only dispatch).
-  # Requires the NPM_TOKEN2 repo secret. The automatic npm path lives here; the
+  # Requires the NOVA64IO repo secret. The automatic npm path lives here; the
   # publish.yml workflow is a manual-only fallback.
   npm-publish:
     name: Publish to npm (gated on all cores + tests green)
@@ -393,9 +393,9 @@ jobs:
           echo "--- write access to nova64 ---"
           npm access list collaborators nova64 2>&1 | head -20 || true
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN2 }}
+          NODE_AUTH_TOKEN: ${{ secrets.NOVA64IO }}
 
       - name: Publish to npm
         run: npm publish --provenance --access public
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN2 }}
+          NODE_AUTH_TOKEN: ${{ secrets.NOVA64IO }}

@@ -40,7 +40,7 @@ publish path (lint, `test:all`, version-not-already-published, `npm publish
 matrix on an avoidable failure. (`publish.yml` is now a manual-only,
 `workflow_dispatch` fallback for a deliberate ungated hotfix publish.)
 
-Requires the `NPM_TOKEN2` repo secret (Settings → Secrets → Actions).
+Requires the `NOVA64IO` repo secret (Settings → Secrets → Actions).
 
 ---
 

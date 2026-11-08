@@ -1,6 +1,6 @@
 name: npm auth check (diagnostic only)
 
-# Answers one question: can NPM_TOKEN2 actually publish `nova64`?
+# Answers one question: can NOVA64IO actually publish `nova64`?
 #
 # `npm publish` reports both authentication and permission failures as a bare
 # `E404 PUT https://registry.npmjs.org/nova64 - Not found`. npm does that on
@@ -16,7 +16,7 @@ on:
 
 jobs:
   check:
-    name: Can NPM_TOKEN2 publish nova64?
+    name: Can NOVA64IO publish nova64?
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -46,7 +46,7 @@ jobs:
           npm whoami || echo "FAIL — the token did not authenticate (bad, revoked, or malformed)"
           echo "::endgroup::"
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN2 }}
+          NODE_AUTH_TOKEN: ${{ secrets.NOVA64IO }}
 
       - name: Does it have write access to nova64?
         continue-on-error: true
@@ -58,7 +58,7 @@ jobs:
           npm access list packages || echo "(classic automation tokens do not scope packages — this failing is normal for them)"
           echo "::endgroup::"
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN2 }}
+          NODE_AUTH_TOKEN: ${{ secrets.NOVA64IO }}
 
       - name: Dry-run the real publish (uploads nothing)
         continue-on-error: true
@@ -67,7 +67,7 @@ jobs:
           npm publish --dry-run --access public 2>&1 | tail -25
           echo "::endgroup::"
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN2 }}
+          NODE_AUTH_TOKEN: ${{ secrets.NOVA64IO }}
 
       - name: How to read this
         run: |

@@ -58,12 +58,12 @@ jobs:
           echo "--- write access to nova64 ---"
           npm access list collaborators nova64 2>&1 | head -20 || true
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN2 }}
 
       - name: Publish to npm
         run: npm publish --provenance --access public
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN2 }}
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2

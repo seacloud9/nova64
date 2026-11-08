@@ -3,7 +3,14 @@
 All notable changes to Nova64 are documented here. Per-tag, publish-ready notes
 live in [`docs/releases/`](docs/releases/).
 
-## v0.5.7 (Unreleased)
+## v0.5.8 (Unreleased)
+
+- Use the replacement npm publishing credential, `NPM_TOKEN2`, in release and
+  authentication-check workflows. v0.5.7 core downloads shipped, but npm
+  publication failed because the previous token did not authenticate.
+- Same runtime changes as v0.5.7.
+
+## v0.5.7 (cores only; npm publication failed)
 
 - Added a WebAssembly libretro core, RetroArch web player, and OS shell integration;
   fixed core loading when the player is opened from a nested page URL.

@@ -60,11 +60,19 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NOVA64IO }}
 
+      - name: Check release visibility from the publishing account
+        run: |
+          version=$(node -p "require('./package.json').version")
+          npm view nova64 dist-tags --json --prefer-online
+          npm view "nova64@$version" version dist.tarball --json --prefer-online
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NOVA64IO }}
+
       - name: Dry-run the real publish (uploads nothing)
         continue-on-error: true
         run: |
           echo "::group::npm publish --dry-run"
-          npm publish --dry-run --access public 2>&1 | tail -25
+          npm publish --dry-run --ignore-scripts --access public 2>&1 | tail -25
           echo "::endgroup::"
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NOVA64IO }}

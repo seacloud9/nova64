@@ -222,7 +222,8 @@ trigger a red CI.
 - **npm publish is safety-gated:** the automatic `nova64` npm publish is the `npm-publish` job in
   `release-cores.yml` with `needs: build`, so it ships **only after every platform core builds green**
   (one failed core — even iOS/tvOS — skips it). `publish.yml` is now a manual-only fallback. Needs the
-  `NOVA64IO` repo secret.
+  `NOVA64IO` repo secret. After upload, the workflow verifies the version is publicly available
+  from the npm registry; upload success alone does not complete the release.
 - **Cannot be verified locally:** `release-cores.yml`'s macOS/iOS/tvOS jobs need a Mac + Xcode —
   they only go green on GitHub's `macos-latest` runner. The preflight says so explicitly rather than
   pretending. Bypass the hook for WIP with `git push --no-verify`.

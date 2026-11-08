@@ -399,3 +399,15 @@ jobs:
         run: npm publish --provenance --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NOVA64IO }}
+
+      - name: Verify published version is publicly available
+        run: |
+          version=$(node -p "require('./package.json').version")
+          for attempt in 1 2 3 4 5; do
+            if [ "$(npm view "nova64@$version" version --prefer-online)" = "$version" ]; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 5 ]; then sleep 15; fi
+          done
+          echo "::error::npm publish succeeded, but nova64@$version is unavailable in the public registry."
+          exit 1

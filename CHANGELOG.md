@@ -3,7 +3,28 @@
 All notable changes to Nova64 are documented here. Per-tag, publish-ready notes
 live in [`docs/releases/`](docs/releases/).
 
-## v0.5.5 (Current) — _Cracktro_
+## v0.5.7 (Unreleased)
+
+- Added a WebAssembly libretro core, RetroArch web player, and OS shell integration;
+  fixed core loading when the player is opened from a nested page URL.
+- Added QWEN Arcade games and mobile shell access with touch controls.
+- Added PBR reflections and refraction, HDR skyboxes, and POV-Ray 1995 mode.
+- Expanded Godot lighting and environment support, including tone mapping and
+  physical point lights; fixed media playback and renderer teardown crashes.
+- Restored Babylon mesh options, colours, and bloom; removed duplicate mesh
+  setters that overrode the restored implementations.
+- Repaired example carts after the namespace migration and logged repeated cart
+  errors once instead of every frame.
+- Fixed UTF-8 glyph drawing in the native core, moved the toolchain to Node 24,
+  and added native core checks on pull requests.
+- Normalized the npm CLI executable path.
+
+## v0.5.6
+
+- Improved npm authentication diagnostics in CI and named GitHub Releases after
+  their tags. No runtime changes from v0.5.5.
+
+## v0.5.5 — _Cracktro_
 
 Same contents as v0.5.4, re-cut so the npm package could actually ship.
 

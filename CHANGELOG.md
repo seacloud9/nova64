@@ -3,7 +3,13 @@
 All notable changes to Nova64 are documented here. Per-tag, publish-ready notes
 live in [`docs/releases/`](docs/releases/).
 
-## v0.5.8 (Unreleased)
+## v0.5.9 (Unreleased)
+
+- Publish using the verified `NOVA64IO` credential. No runtime changes from
+  v0.5.7; the v0.5.8 release attempt was canceled after its credential failed
+  authentication.
+
+## v0.5.8 (release attempt canceled)
 
 - Use the replacement npm publishing credential, `NPM_TOKEN2`, in release and
   authentication-check workflows. v0.5.7 core downloads shipped, but npm

@@ -97,12 +97,22 @@ export function createBabylonPrimitivesApi(self) {
         opts.material === 'holographic' || opts.material === 'emissive'
           ? 'standard'
           : (opts.material ?? 'standard');
+      // Match the Three.js backend: `emissive: true` (and `material: 'emissive'`
+      // without a colour) glow in the mesh's own colour, and the legacy
+      // `intensity` alias sets the glow strength when emissiveIntensity is absent.
+      const color = opts.color ?? 0xffffff;
+      const emissive =
+        opts.emissive === true
+          ? color
+          : (opts.emissive ?? (opts.material === 'emissive' ? color : 0));
+      const emissiveIntensity =
+        opts.emissiveIntensity === undefined ? opts.intensity : opts.emissiveIntensity;
       return self._adapter.createMaterial(type, {
-        color: opts.color ?? 0xffffff,
+        color,
         roughness: opts.roughness ?? 0.7,
         metalness: opts.metalness ?? 0,
-        emissive: opts.emissive ?? 0,
-        emissiveIntensity: opts.emissiveIntensity,
+        emissive,
+        emissiveIntensity,
         transparent: opts.transparent ?? false,
         opacity: opts.opacity ?? 1,
         wireframe: opts.wireframe ?? false,

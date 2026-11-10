@@ -1369,20 +1369,31 @@
   // accept both shapes. Also handles panel objects from createPanel().
   function drawPanel(panelOrX, y, w, h, optsOrFill, border) {
     // If first arg is a panel object (from createPanel or ui.createPanel)
-    if (typeof panelOrX === 'object' && panelOrX !== null && 'x' in panelOrX && 'w' in panelOrX) {
+    if (typeof panelOrX === 'object' && panelOrX !== null && 'x' in panelOrX &&
+        ('w' in panelOrX || 'width' in panelOrX)) {
+      // Parity with runtime/ui/panels.js drawPanel.
       const p = panelOrX;
-      // Shadow (offset dark rect behind)
+      if (p.visible === false) return;
+      const pw = p.width != null ? p.width : p.w;
+      const ph = p.height != null ? p.height : p.h;
+      // Shadow: TRANSLUCENT black at the panel's shadowOffset. It used to be a
+      // solid 0x000000 rect, which made every alpha panel look near-opaque.
       if (p.shadow) {
-        rectfill(p.x + 4, p.y + 4, p.w, p.h, 0x000000);
+        const so = typeof p.shadowOffset === 'number' ? p.shadowOffset : 4;
+        rectfill(p.x + so, p.y + so, pw, ph, rgba8(0, 0, 0, 100));
       }
       // Fill (gradient or solid)
       if (p.gradient && p.gradientColor != null) {
-        drawGradient(p.x, p.y, p.w, p.h, p.bgColor, p.gradientColor);
+        drawGradient(p.x, p.y, pw, ph, p.bgColor, p.gradientColor);
       } else {
-        rectfill(p.x, p.y, p.w, p.h, p.bgColor != null ? p.bgColor : 0x101822);
+        rectfill(p.x, p.y, pw, ph, p.bgColor != null ? p.bgColor : 0x101822);
       }
-      // Border
-      rect(p.x, p.y, p.w, p.h, p.borderColor != null ? p.borderColor : 0x6699cc, false);
+      // Border: borderWidth concentric outlines, like the web.
+      const bc = p.borderColor != null ? p.borderColor : 0x6699cc;
+      const bw = typeof p.borderWidth === 'number' ? p.borderWidth : 1;
+      for (let i = 0; i < Math.max(1, bw); i++) {
+        rect(p.x + i, p.y + i, pw - i * 2, ph - i * 2, bc, false);
+      }
       return;
     }
     // Simple signature: drawPanel(x, y, w, h, fill, border) or drawPanel(x, y, w, h, opts)
@@ -2802,6 +2813,8 @@
       borderColor: opts.borderColor != null ? opts.borderColor : 0x6699cc,
       borderWidth: opts.borderWidth || 1,
       shadow: !!opts.shadow,
+      shadowOffset: typeof opts.shadowOffset === 'number' ? opts.shadowOffset : 4,
+      visible: opts.visible !== false,
       gradient: !!opts.gradient,
       gradientColor: opts.gradientColor != null ? opts.gradientColor : opts.bgColor,
     };

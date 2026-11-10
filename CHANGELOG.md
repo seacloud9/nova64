@@ -3,7 +3,16 @@
 All notable changes to Nova64 are documented here. Per-tag, publish-ready notes
 live in [`docs/releases/`](docs/releases/).
 
-## Unreleased
+## v0.5.10
+
+- The installed CLI demo now opens the new Nova64 marketing homepage with
+  working Disc Vault links, bundled demo player and refreshed cart thumbnails.
+- Added Breakwater Circuit: an original antigravity racer with Quick Race,
+  Time Trial, five AI rivals, Slip Charge and keyboard/controller/touch input.
+- Overhauled F-Zero Nova with vivid orbital scenery, a ringed planet, animated
+  violet sky, UnrealBloom and boost/impact distortion while preserving gameplay.
+- Fixed gamepad button aliases so unpressed Start/Select cannot overwrite
+  pressed A/B face buttons.
 
 - Procedural skies: `nova64.light.createSkyPreset(name, overrides)` and
   `getSkyPresets()` (deepspace, cosmos, sunset, ocean, meadow, highlands,
@@ -31,7 +40,7 @@ live in [`docs/releases/`](docs/releases/).
 - Super Plumber 64: rebuilt the player character (cap with badge, face,
   mustache, overalls, gloves, boots) with run, idle and jump animation.
 
-## v0.5.9 (Unreleased)
+## v0.5.9
 
 - Publish using the verified `NOVA64IO` credential. No runtime changes from
   v0.5.7; the v0.5.8 release attempt was canceled after its credential failed

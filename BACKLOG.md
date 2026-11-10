@@ -28,6 +28,13 @@ the Babylon restore below; Node 20 -> 24 LTS landed in #28.
 
 ## 🟡 Queued after the next npm release (2026-11)
 
+- **Authored emissive glow (after v0.5.10, requested 2026-11-09).** Honor explicit
+  Three.js `intensity`, preserve mesh colors for `emissive: true`, and distinguish
+  intensities in the material cache. Keep global bloom defaults and the approved
+  F-Zero presentation. Verify QWEN and affected carts on Metal hardware, with
+  regression coverage for alias precedence and cache reuse. Owner explicitly
+  deferred this fix until after npm publication; do not include it in v0.5.10.
+
 - **Babylon.js restore (priority).** Root cause found and fixed on
   `fix/babylon-backend`: meshOptions (setMeshEmissive/Color/Opacity/...) were
   never implemented for Babylon, rgba8() BigInt colours were decoded wrong,

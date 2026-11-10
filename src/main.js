@@ -810,6 +810,7 @@ const demoMap = {
   'tv-demo': '/examples/tv-demo/code.js',
   'crystal-cathedral-3d': '/examples/crystal-cathedral-3d/code.js',
   'f-zero-nova-3d': '/examples/f-zero-nova-3d/code.js',
+  'breakwater-circuit': '/examples/breakwater-circuit/code.js',
   'star-fox-nova-3d': '/examples/star-fox-nova-3d/code.js',
   'minecraft-demo': '/examples/minecraft-demo/code.js',
   'super-plumber-64': '/examples/super-plumber-64/code.js',

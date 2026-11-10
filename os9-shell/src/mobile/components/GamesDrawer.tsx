@@ -10,6 +10,7 @@ interface Game {
 
 const GAMES: Game[] = [
   // Racing
+  { name: 'BREAKWATER CIRCUIT', emoji: '🌊', path: '/examples/breakwater-circuit/code.js',     category: 'Racing'      },
   { name: 'F-ZERO RACING',     emoji: '🏎️', path: '/examples/f-zero-nova-3d/code.js',       category: 'Racing'      },
   { name: 'SPACE HARRIER',     emoji: '🛸', path: '/examples/space-harrier-3d/code.js',      category: 'Racing'      },
   // Shooter

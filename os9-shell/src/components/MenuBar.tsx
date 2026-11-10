@@ -80,6 +80,7 @@ export function MenuBar({ appMenus = [], onCommand }: MenuBarProps) {
           { label: '⭐ Hello World', click: () => novaContext.launchApp('cart-runner', { path: '/examples/hello-world/code.js', width: 900, height: 700 }) },
           { label: '👋 Hello 3D World', click: () => novaContext.launchApp('cart-runner', { path: '/examples/hello-3d/code.js', width: 900, height: 700 }) },
           { label: '🛸 Space Harrier', click: () => novaContext.launchApp('cart-runner', { path: '/examples/space-harrier-3d/code.js', width: 900, height: 700 }) },
+          { label: '🌊 Breakwater Circuit', click: () => novaContext.launchApp('cart-runner', { path: '/examples/breakwater-circuit/code.js', width: 900, height: 700 }) },
           { label: '🏎️ F-ZERO Racing', click: () => novaContext.launchApp('cart-runner', { path: '/examples/f-zero-nova-3d/code.js', width: 900, height: 700 }) },
           { label: '🚀 Star Fox Nova', click: () => novaContext.launchApp('cart-runner', { path: '/examples/star-fox-nova-3d/code.js', width: 900, height: 700 }) },
           { label: '🌆 Cyberpunk City', click: () => novaContext.launchApp('cart-runner', { path: '/examples/cyberpunk-city-3d/code.js', width: 900, height: 700 }) },

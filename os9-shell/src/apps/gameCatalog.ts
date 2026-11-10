@@ -11,6 +11,16 @@ export interface Game {
 
 export const GAMES: Game[] = [
   {
+    id: 'breakwater',
+    name: 'BREAKWATER CIRCUIT',
+    description: 'Midnight antigravity racing',
+    emoji: '🌊',
+    path: '/examples/breakwater-circuit/code.js',
+    category: 'racing',
+    color1: '#00E5FF',
+    color2: '#7B2FFF',
+  },
+  {
     id: 'fzero',
     name: 'F-ZERO RACING',
     description: 'Hyper-speed quantum racing',

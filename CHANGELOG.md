@@ -14,6 +14,11 @@ live in [`docs/releases/`](docs/releases/).
   Space Combat and Wing Commander (nebula space with faint haze).
 - Space Harrier and Super Plumber 64: raised the bloom threshold so bright
   skies no longer wash the screen out to white.
+- More game skies: Cyberpunk City (night smog), Mystical Realm (sky follows the
+  day/night cycle), Crystal Cathedral (aurora), Star Combat 64 and Nova Drift
+  (deep-space nebula), 3D Advanced and Game of Life 3D (cosmos nebula).
+- Breakwater Circuit is now listed in the hero-embed `?demo=` map, the Babylon
+  console, and the OS shell desktop, menu bar and mobile launchers.
 - Super Plumber 64: rebuilt the player character (cap with badge, face,
   mustache, overalls, gloves, boots) with run, idle and jump animation.
 

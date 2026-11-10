@@ -19,6 +19,7 @@ interface Game {
 
 const GAMES: Game[] = [
   // Racing
+  { id: 'breakwater',   name: 'BREAKWATER CIRCUIT', description: 'Midnight antigravity racing',      emoji: '🌊', path: '/examples/breakwater-circuit/code.js',    category: 'Racing',    color: '#00E5FF' },
   { id: 'fzero',        name: 'F-ZERO RACING',     description: 'Hyper-speed quantum racing',       emoji: '🏎️', path: '/examples/f-zero-nova-3d/code.js',        category: 'Racing',    color: '#FF006E' },
   { id: 'harrier',      name: 'SPACE HARRIER',      description: 'Retro rail shooter',               emoji: '🛸', path: '/examples/space-harrier-3d/code.js',      category: 'Racing',    color: '#FF6B9D' },
   // Shooter

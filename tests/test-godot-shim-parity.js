@@ -488,6 +488,37 @@ async function main() {
     assertEqual(mat.roughness, 0.2, 'explicit roughness');
   });
 
+  // Parity with the web runtime 0.5.11 emissive fix (QWEN carts glow).
+  runner.test("godot shim - material:'emissive' + intensity glows in the mesh colour", () => {
+    const calls = [];
+    const sb = loadShim(calls);
+    sb.nova64.scene.createCube(1, 0xcc33ff, [0, 0, 0], { material: 'emissive', intensity: 2.5 });
+    const mat = lastMaterial(calls);
+    assert(mat.emission, 'an emissive cube must carry an emission colour');
+    assertEqual(mat.emissionEnergy, 2.5, 'the intensity alias sets emission energy');
+  });
+
+  runner.test('godot shim - emissive:true uses the mesh colour, not white', () => {
+    const calls = [];
+    const sb = loadShim(calls);
+    sb.nova64.scene.createCube(1, 0x00ffe0, [0, 0, 0], { emissive: true });
+    const mat = lastMaterial(calls);
+    assertEqual(JSON.stringify(mat.emission), JSON.stringify(mat.albedo), 'emission matches albedo');
+  });
+
+  runner.test('godot shim - sky presets exist and map to the procedural sky', () => {
+    const calls = [];
+    const sb = loadShim(calls);
+    const light = sb.nova64.light;
+    for (const fn of ['createSkyPreset', 'getSkyPresets', 'createSpaceSkybox', 'enableSkyboxAutoAnimate', 'clearSkybox']) {
+      assert(typeof light[fn] === 'function', `nova64.light.${fn} is missing on Godot`);
+    }
+    assert(light.getSkyPresets().includes('aurora'), 'getSkyPresets lists the web presets');
+    light.createSkyPreset('sunset', { horizonColor: 0x4a3a6a });
+    const env = calls.filter(c => c.method === 'env.set').pop();
+    assert(env && env.payload.skyHorizonColor, 'a gradient preset sets the horizon colour');
+  });
+
   runner.test('godot shim - E1M1 is completable under the Godot host too', () => {
     const loader = loadFreeDoom(runtime);
     if (!loader) return console.log('   (skipped: freedoom1.wad not present)');

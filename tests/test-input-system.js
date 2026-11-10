@@ -1,8 +1,46 @@
 // Enhanced Input System Tests for Nova64
 import { TestRunner, Assert, Performance } from './test-runner.js';
+import { input as realInput } from '../runtime/input.js';
 
 export async function runInputSystemTests() {
   const runner = new TestRunner();
+
+  runner.test('Input - Gamepad aliases preserve face buttons and press edges', () => {
+    const previous = Object.getOwnPropertyDescriptor(navigator, 'getGamepads');
+    const pad = {
+      axes: [0, 0, 0, 0],
+      buttons: Array.from({ length: 16 }, () => ({ pressed: false })),
+    };
+    Object.defineProperty(navigator, 'getGamepads', { configurable: true, value: () => [pad] });
+    try {
+      realInput.reset();
+      pad.buttons[0].pressed = true; // A and Start both map to virtual 12.
+      pad.buttons[1].pressed = true; // B and Select both map to virtual 13.
+      realInput.step();
+      Assert.isTrue(realInput.btn(12), 'Unpressed Start must not overwrite A');
+      Assert.isTrue(realInput.btn(13), 'Unpressed Select must not overwrite B');
+      Assert.isTrue(realInput.btnp(12), 'A produces a press edge');
+      realInput.step();
+      Assert.isFalse(realInput.btnp(12), 'Holding A does not repeat its edge');
+      pad.buttons[9].pressed = true;
+      pad.buttons[0].pressed = false;
+      realInput.step();
+      Assert.isTrue(realInput.btn(12), 'Start can keep the shared virtual button held');
+      Assert.isFalse(realInput.btnp(12), 'Changing aliases while held is not a new press');
+      pad.buttons[9].pressed = false;
+      pad.buttons[1].pressed = false;
+      realInput.step();
+      Assert.isFalse(realInput.btn(12), 'Releasing both aliases releases the button');
+      Assert.isFalse(realInput.btn(13), 'B releases normally');
+      pad.buttons[8].pressed = true;
+      realInput.step();
+      Assert.isTrue(realInput.btnp(13), 'Select still works independently');
+    } finally {
+      realInput.reset();
+      if (previous) Object.defineProperty(navigator, 'getGamepads', previous);
+      else delete navigator.getGamepads;
+    }
+  });
 
   // Mock Input class for testing
   class MockInput {

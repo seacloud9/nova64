@@ -1,0 +1,27 @@
+{
+  "homepage": true,
+  "babylon": [
+    {
+      "cart": "breakwater-circuit",
+      "state": {
+        "path": "/examples/breakwater-circuit/code.js",
+        "count": 1,
+        "loading": false,
+        "ready": true,
+        "error": ""
+      },
+      "errors": []
+    },
+    {
+      "cart": "f-zero-nova-3d",
+      "state": {
+        "path": "/examples/f-zero-nova-3d/code.js",
+        "count": 1,
+        "loading": false,
+        "ready": true,
+        "error": ""
+      },
+      "errors": []
+    }
+  ]
+}

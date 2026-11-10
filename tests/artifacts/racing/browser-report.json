@@ -1,0 +1,125 @@
+{
+  "browser": "147.0.7727.15",
+  "baseline": "f12a86626c2ce3809e9a76dcaf99549256a38f04",
+  "checks": [
+    {
+      "test": "F-Zero before presentation",
+      "objects": 64,
+      "triangles": 5032,
+      "updateMs": 0.019999998807907104,
+      "health": 75,
+      "distance": 3222.637222222204
+    },
+    {
+      "test": "F-Zero before full race",
+      "state": "finished",
+      "dist": 30002.455555555884,
+      "health": 100,
+      "rank": 1
+    },
+    {
+      "test": "F-Zero after presentation",
+      "objects": 102,
+      "triangles": 10780,
+      "updateMs": 0.0700000007947286,
+      "health": 75,
+      "distance": 3222.637222222204
+    },
+    {
+      "test": "F-Zero after full race",
+      "state": "finished",
+      "dist": 30002.455555555884,
+      "health": 100,
+      "rank": 1
+    },
+    {
+      "test": "Breakwater race full race",
+      "state": "results",
+      "s": 4374.110730183071,
+      "lap": 3,
+      "time": 60.07499999999723,
+      "penalty": 0
+    },
+    {
+      "test": "Breakwater race persistence and retry",
+      "pass": true
+    },
+    {
+      "test": "Breakwater trial full race",
+      "state": "results",
+      "s": 4374.110730183071,
+      "lap": 3,
+      "time": 60.07499999999723,
+      "penalty": 0
+    },
+    {
+      "test": "Breakwater trial persistence and retry",
+      "pass": true
+    },
+    {
+      "test": "breakwater-circuit 4x3 launch/input",
+      "pass": true
+    },
+    {
+      "test": "f-zero-nova-3d 4x3 launch/input",
+      "pass": true
+    },
+    {
+      "test": "breakwater-circuit wide launch/input",
+      "pass": true
+    },
+    {
+      "test": "f-zero-nova-3d wide launch/input",
+      "pass": true
+    },
+    {
+      "test": "breakwater-circuit landscape-touch launch/input",
+      "pass": true
+    },
+    {
+      "test": "f-zero-nova-3d landscape-touch launch/input",
+      "pass": true
+    },
+    {
+      "test": "Breakwater emulated gamepad A start / X throttle / analog steering",
+      "pass": true
+    }
+  ],
+  "errors": [],
+  "profiles": [
+    {
+      "name": "4x3",
+      "viewport": {
+        "width": 960,
+        "height": 720
+      },
+      "hasTouch": false
+    },
+    {
+      "name": "wide",
+      "viewport": {
+        "width": 1440,
+        "height": 810
+      },
+      "hasTouch": false
+    },
+    {
+      "name": "landscape-touch",
+      "viewport": {
+        "width": 844,
+        "height": 390
+      },
+      "hasTouch": true
+    }
+  ],
+  "framebuffer": {
+    "width": 640,
+    "height": 360
+  },
+  "inputMethods": [
+    "DOM keyboard",
+    "DOM pointer/touch emulation",
+    "navigator.getGamepads emulation",
+    "test-only scripted full-race inputs"
+  ]
+}

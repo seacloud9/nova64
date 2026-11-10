@@ -1,0 +1,23 @@
+{
+  "browser": "147.0.7727.15",
+  "checks": [
+    {
+      "test": "installed marketing homepage and Disc Vault links",
+      "count": 22,
+      "pass": true
+    },
+    {
+      "test": "vault link loads Super Plumber in Three.js with engine switch",
+      "pass": true
+    },
+    {
+      "test": "installed Space Harrier uses Babylon renderer",
+      "pass": true
+    }
+  ],
+  "errors": [],
+  "known404s": [
+    "http://127.0.0.1:4300/_vercel/insights/script.js",
+    "http://127.0.0.1:4300/%7B%7B%20heroSrc%20%7D%7D"
+  ]
+}

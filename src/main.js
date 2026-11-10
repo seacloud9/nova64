@@ -88,7 +88,12 @@ try {
     backendLabel = 'Babylon.js';
     console.log(`✅ Using Babylon.js renderer (${_paramW}x${_paramH}) - experimental backend`);
   } else {
-    gpu = new GpuThreeJS(canvas, _paramW, _paramH);
+    // The canvas/renderer use the requested ?w=&h= pixel size, but the 2D
+    // framebuffer stays at the logical 640x360 that carts draw their HUD in;
+    // the overlay quad scales it across the full viewport (same contract as
+    // responsive mode). Passing ?w=/?h= here made the HUD a 640x360 corner of
+    // a 1280x720 frame in every fixed-size embed (hero-embed, m{ai}geXR).
+    gpu = new GpuThreeJS(canvas, 640, 360);
     if (_paramClearColor) {
       gpu.renderer.setClearColor(parseInt(_paramClearColor, 16), 1.0);
     }

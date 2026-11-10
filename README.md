@@ -8,7 +8,7 @@ console and editor.
 [Play on nova64.io](https://nova64.io/) ·
 [Get the npm package](https://www.npmjs.com/package/nova64) ·
 [Download native cores](https://github.com/seacloud9/nova64/releases) ·
-[Documentation](https://github.com/seacloud9/nova64/tree/main/docs)
+[Documentation](https://nova64.io/docs)
 
 [![Version](https://img.shields.io/badge/version-0.5.10-blue.svg)](https://www.npmjs.com/package/nova64)
 [![CI](https://github.com/seacloud9/nova64/actions/workflows/ci.yml/badge.svg)](https://github.com/seacloud9/nova64/actions/workflows/ci.yml)
@@ -37,8 +37,10 @@ Open `http://localhost:4300/`. Use `--no-open` to start without opening a browse
 The npm package includes the built console, development runner, templates and
 assets; no source checkout or local production build is needed to play.
 
-## What's in v0.5.10
+## Recent additions
 
+- **Authored neon glow:** Three.js honors explicit emission intensity and mesh
+  colors, so neon effects render as the cart author intended.
 - **A new homepage and Disc Vault:** direct game links, refreshed thumbnails
   and a bundled demo player, also available through the installed CLI.
 - **Breakwater Circuit:** an original antigravity racer with three-lap Quick
@@ -52,10 +54,10 @@ assets; no source checkout or local production build is needed to play.
 - **Input improvements:** controller face-button presses survive overlapping
   Start/Select mappings; touch controls share the keyboard/gamepad input path.
 
-See the [release notes](https://github.com/seacloud9/nova64/blob/main/docs/releases/v0.5.10.md)
+See the [release notes](https://github.com/seacloud9/nova64/blob/main/docs/releases/v0.5.11.md)
 and [changelog](https://github.com/seacloud9/nova64/blob/main/CHANGELOG.md).
-The `main` branch can contain changes that are not yet in the npm package,
-including the subsequent authored-emission fix.
+The `main` branch can contain changes that are not yet in the npm package;
+the changelog distinguishes released and unreleased work.
 
 ## What you can build
 
@@ -163,10 +165,17 @@ nova64.light.setAmbientLight(0xffffff, 1);
 nova64.fx.enableBloom(1.2, 0.7, 0.85);
 ```
 
-Start with the [API cheatsheet](https://github.com/seacloud9/nova64/blob/main/docs/CHEATSHEET.md),
-[effects guide](https://github.com/seacloud9/nova64/blob/main/docs/EFFECTS_API_GUIDE.md),
-[touch controls](https://github.com/seacloud9/nova64/blob/main/docs/TOUCH_CONTROLS.md)
-and [backend reference](https://github.com/seacloud9/nova64/blob/main/docs/BACKEND_RUNTIME.md).
+Browse the [live documentation on nova64.io](https://nova64.io/docs):
+
+- [API cheatsheet](https://nova64.io/docs/CHEATSHEET)
+- [3D graphics API](https://nova64.io/docs/api-3d)
+- [Visual effects and bloom](https://nova64.io/docs/api-effects)
+- [Skybox API](https://nova64.io/docs/api-skybox)
+- [Keyboard, controller and mouse input](https://nova64.io/docs/input)
+- [Touch controls](https://nova64.io/docs/TOUCH_CONTROLS)
+- [NovaOS shell](https://nova64.io/docs/os)
+
+For implementation details, see the [backend reference in the repository](https://github.com/seacloud9/nova64/blob/main/docs/BACKEND_RUNTIME.md).
 
 ## 🎪 Demo gallery
 
@@ -240,7 +249,8 @@ pnpm lint
 
 Use `F9` for the debug panel, `?debug=1` to open it on load, and `Shift+X` for the
 developer console. Architecture and host-specific workflows live in the
-[documentation](https://github.com/seacloud9/nova64/tree/main/docs);
+[live documentation](https://nova64.io/docs) and
+[source guides](https://github.com/seacloud9/nova64/tree/main/docs);
 queued work is tracked in [BACKLOG.md](https://github.com/seacloud9/nova64/blob/main/BACKLOG.md).
 
 ## Releases and license

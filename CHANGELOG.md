@@ -3,12 +3,15 @@
 All notable changes to Nova64 are documented here. Per-tag, publish-ready notes
 live in [`docs/releases/`](docs/releases/).
 
-## Unreleased
+## v0.5.11
 
 - Three.js materials honor explicit glow `intensity` and preserve mesh colors for
   `emissive: true`. The material cache distinguishes emission intensities.
-  Legacy shading, opacity and global bloom defaults remain unchanged. This fix
-  was completed after npm v0.5.10 and is not included in that published package.
+  Legacy shading, opacity and global bloom defaults remain unchanged.
+- Replaced the dated README overview with current installation instructions,
+  demos, host support and prominent nova64.io documentation links.
+- Release verification now waits for npm's asynchronous processing, and the
+  diagnostic workflow can inspect the accepted package's lifecycle status.
 
 ## v0.5.10
 

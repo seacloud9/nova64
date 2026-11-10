@@ -10,7 +10,7 @@ console and editor.
 [Download native cores](https://github.com/seacloud9/nova64/releases) ·
 [Documentation](https://nova64.io/docs)
 
-[![Version](https://img.shields.io/badge/version-0.5.10-blue.svg)](https://www.npmjs.com/package/nova64)
+[![Version](https://img.shields.io/badge/version-0.5.11-blue.svg)](https://www.npmjs.com/package/nova64)
 [![CI](https://github.com/seacloud9/nova64/actions/workflows/ci.yml/badge.svg)](https://github.com/seacloud9/nova64/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](https://github.com/seacloud9/nova64/blob/main/LICENSE)
 

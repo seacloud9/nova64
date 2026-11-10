@@ -4129,11 +4129,7 @@
     ensureInit();
     opts = opts || {};
     let path = typeof url === 'string' ? url : '';
-    if (path[0] === '/') path = 'res://' + path.slice(1);
-    else if (path && path.indexOf('://') < 0) {
-      const cart = typeof globalThis.__nova64_cart_path === 'string' ? globalThis.__nova64_cart_path : 'res://carts/current';
-      path = cart.replace(/\/?$/, '/') + path.replace(/^\.?\//, '');
-    }
+    if (path && path.indexOf('://') < 0) path = _webPathToRes(path);
     const payload = { skyPanorama: path };
     if (typeof opts.intensity === 'number') payload.skyEnergy = opts.intensity;
     if (typeof opts.rotation === 'number') payload.skyRotation = opts.rotation;
@@ -4280,6 +4276,22 @@
     }
     return 0;
   }
+  // Map a web asset URL onto the Godot project, matching the web server layout:
+  //   /examples/<cart>/x.png -> res://carts/<cart>/x.png  (carts/ links to examples/)
+  //   /assets/x.png          -> res://assets/x.png        (assets/ mirrors public/assets/)
+  //   other /x               -> res://x
+  //   relative x.png         -> <current cart dir>/x.png
+  // Before this, absolute web paths got the cart dir glued on the front
+  // (res://carts/<cart>/assets/sky/...), so images and image skies never loaded.
+  function _webPathToRes(path) {
+    if (path.startsWith('/examples/')) return 'res://carts/' + path.slice('/examples/'.length);
+    if (path[0] === '/') return 'res://' + path.slice(1);
+    const cart = (typeof globalThis.__nova64_cart_path === 'string')
+        ? globalThis.__nova64_cart_path : 'res://carts/current';
+    return cart.replace(/\/?$/, '/') + path.replace(/^\.?\//, '');
+  }
+  globalThis.__nova64_webPathToRes = _webPathToRes;
+
   function loadTexture(path, cb) {
     ensureInit();
     if (typeof path !== 'string') return 0;
@@ -4289,9 +4301,7 @@
       resPath = 'assets/' + path.slice('/indie-odyssey/'.length);
     }
     if (!resPath.startsWith('res://') && !resPath.startsWith('user://')) {
-      const cart = (typeof globalThis.__nova64_cart_path === 'string')
-          ? globalThis.__nova64_cart_path : 'res://carts/current';
-      resPath = cart.replace(/\/?$/, '/') + resPath.replace(/^\.?\//, '');
+      resPath = _webPathToRes(resPath);
     }
     const r = call('texture.createFromImage', { path: resPath });
     const handle = r && r.handle ? r.handle : 0;

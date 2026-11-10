@@ -17,7 +17,8 @@
 // heights and the reachability flood. If you change runtime/wad.js, re-port the
 // shim until this passes again.
 
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
 import vm from 'node:vm';
 import { fileURLToPath } from 'node:url';
 import { wadApi } from '../runtime/wad.js';
@@ -517,6 +518,62 @@ async function main() {
     light.createSkyPreset('sunset', { horizonColor: 0x4a3a6a });
     const env = calls.filter(c => c.method === 'env.set').pop();
     assert(env && env.payload.skyHorizonColor, 'a gradient preset sets the horizon colour');
+  });
+
+  // ── Images & skyboxes: web asset URLs must resolve inside the Godot project ──
+  runner.test('godot shim - loadTexture maps web absolute paths onto res://', () => {
+    const calls = [];
+    const sb = loadShim(calls);
+    const paths = p => calls.filter(c => c.method === 'texture.createFromImage').map(c => c.payload.path);
+    sb.nova64.scene.loadTexture('/assets/sky/studio/px.png');
+    sb.nova64.scene.loadTexture('/examples/skybox-showcase/thumb.png');
+    const got = paths();
+    assertEqual(got[0], 'res://assets/sky/studio/px.png', '/assets/... resolves to res://assets/...');
+    assertEqual(got[1], 'res://carts/skybox-showcase/thumb.png', '/examples/<cart>/... resolves to res://carts/<cart>/...');
+  });
+
+  runner.test('godot shim - createHDRSkybox maps web paths onto res://', async () => {
+    const calls = [];
+    const sb = loadShim(calls);
+    await sb.nova64.light.createHDRSkybox('/assets/sky/hdr/venice_sunset_1k.hdr').catch(() => {});
+    const env = calls.filter(c => c.method === 'env.set' && c.payload.skyPanorama).pop();
+    assert(env, 'createHDRSkybox must set a sky panorama');
+    assertEqual(env.payload.skyPanorama, 'res://assets/sky/hdr/venice_sunset_1k.hdr', 'HDR path');
+  });
+
+  runner.test('godot project - every image/HDR a cart references exists for Godot', () => {
+    // Scan every cart for literal web asset URLs, map them exactly like the shim
+    // does, and require the file to exist under godot_project/. Catches missing
+    // asset links (e.g. assets/novaOS) that silently render as blank textures.
+    const sb = loadShim([]);
+    const toRes = sb.__nova64_webPathToRes;
+    assert(typeof toRes === 'function', 'shim exposes its web->res path resolver');
+    const examples = fileURLToPath(new URL('../examples/', import.meta.url));
+    const project = fileURLToPath(new URL('../nova64-godot/godot_project/', import.meta.url));
+    const missing = [];
+    let checked = 0;
+    for (const cart of readdirSync(examples)) {
+      const code = join(examples, cart, 'code.js');
+      if (!existsSync(code)) continue;
+      const src = readFileSync(code, 'utf8');
+      for (const m of src.matchAll(/['"`](\/(?:assets|examples)\/[^'"`$]+\.(?:png|jpe?g|webp|hdr|exr))['"`]/g)) {
+        const res = toRes(m[1]);
+        if (!res.startsWith('res://')) continue;
+        checked++;
+        if (!existsSync(join(project, res.slice('res://'.length)))) missing.push(`${cart}: ${m[1]}`);
+      }
+    }
+    assert(checked > 0, 'found cart asset references to check');
+    assert(!missing.length, `${missing.length} asset(s) missing for Godot:\n      ${missing.join('\n      ')}`);
+  });
+
+  runner.test('godot shim - createImageSkybox rejects so carts use their fallback sky', async () => {
+    // Six-face cube skies need a Cubemap path in the GDExtension bridge (not yet
+    // implemented). Until then the promise must reject, never hang or throw sync.
+    const sb = loadShim([]);
+    let rejected = false;
+    await sb.nova64.light.createImageSkybox(['a', 'b', 'c', 'd', 'e', 'f']).catch(() => { rejected = true; });
+    assert(rejected, 'createImageSkybox must reject on Godot for now');
   });
 
   runner.test('godot shim - E1M1 is completable under the Godot host too', () => {

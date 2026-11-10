@@ -1,706 +1,108 @@
-# 🎮 Nova64 — Ultimate 3D Fantasy Console
+# Nova64 — JavaScript 3D fantasy console
 
-**Nova64** is a revolutionary fantasy console that brings the magic of Nintendo 64 and PlayStation era 3D graphics to the modern web. Experience the perfect fusion of retro aesthetics with cutting-edge technology, featuring full GPU acceleration, advanced lighting systems, and spectacular visual effects that rival modern games while maintaining that nostalgic charm.
+Build small 3D games, explore playable demos, and experiment with neon worlds,
+procedural skies and retro graphics. Nova64 combines an N64/PlayStation-inspired
+look with modern GPU rendering, a JavaScript cartridge API and a browser-based
+console and editor.
 
-> ✨ **Pure 3D Gaming Experience** — Advanced Three.js integration with Nintendo 64/PlayStation-style rendering, holographic materials, dynamic lighting, and cinematic post-processing effects!
+[Play on nova64.io](https://nova64.io/) ·
+[Get the npm package](https://www.npmjs.com/package/nova64) ·
+[Download native cores](https://github.com/seacloud9/nova64/releases) ·
+[Documentation](https://github.com/seacloud9/nova64/tree/main/docs)
 
-🌐 **Live Site:** [starcade9.github.io](https://starcade9.github.io/)
+[![Version](https://img.shields.io/badge/version-0.5.10-blue.svg)](https://www.npmjs.com/package/nova64)
+[![CI](https://github.com/seacloud9/nova64/actions/workflows/ci.yml/badge.svg)](https://github.com/seacloud9/nova64/actions/workflows/ci.yml)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](https://github.com/seacloud9/nova64/blob/main/LICENSE)
 
-[![Version](https://img.shields.io/badge/version-0.5.10-blue.svg)](https://github.com/seacloud9/nova64)
-[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-passing-brightgreen.svg)](tests/)
-[![Build](https://img.shields.io/badge/build-passing-brightgreen.svg)](#)
+## Play locally
 
----
+Use Node.js 22 or newer; Node 24 is used for repository development and releases.
+With pnpm installed:
 
-## Project Memory / MCP
-
-Nova64 is wired for MemPalace-backed project memory through `.vscode/mcp.json`.
-On Windows, the MCP server starts through WSL and uses the shared `~/ai-tools`
-Pipenv environment:
-
-```bash
-cd ~/ai-tools
-pipenv run mempalace-mcp
+```sh
+pnpm dlx nova64@latest --start-demo
 ```
 
-For day-to-day work, use the repo shortcuts:
+This downloads the published package, starts its local server and opens the
+Nova64 homepage. The Disc Vault launches games; the console lets you choose a
+cart and switch between Three.js and Babylon.js.
 
-```bash
-pnpm run mempalace:wake
-pnpm run mempalace:status
-pnpm run mempalace:repair-status
-pnpm run mempalace:mine:retroarch
+If port 3000 is occupied:
+
+```sh
+pnpm dlx nova64@latest --start-demo --port 4300
 ```
 
-Use `mempalace:mine:retroarch` after meaningful RetroArch renderer or cart
-progress so future sessions can recover the latest parity context quickly.
-
----
-
-## RetroArch Native Core
-
-The native libretro core lives in [`retroarch/README.md`](retroarch/README.md).
-That folder also carries the active RetroArch handoff, smoke matrix, and
-MemPalace diary. Project-wide queued work lives in [`BACKLOG.md`](BACKLOG.md):
-
-- [`retroarch/HANDOFF_HWGL.md`](retroarch/HANDOFF_HWGL.md) - current hardware-GL
-  implementation state and validation numbers.
-- [`retroarch/GLES_SMOKE_MATRIX.md`](retroarch/GLES_SMOKE_MATRIX.md) - manual
-  real-driver smoke coverage.
-
-### Pre-built cores
-
-You don't have to build from source. Pre-built RetroArch cores for every
-major platform are published on the
-[**GitHub Releases**](https://github.com/seacloud9/nova64/releases) page.
-Each release ships:
-
-**Desktop**
-
-- `nova64_libretro.dll` — Windows x86_64
-- `nova64_libretro.so` — Linux x86_64
-- `nova64_libretro.dylib` — macOS universal (x86_64 + arm64)
-
-**ARM single-board computers**
-
-- `nova64_libretro_linux_aarch64.so` — Linux ARM64, Pi 4/5 with a 64-bit OS
-- `nova64_libretro_linux_armhf.so` — Linux ARMHF, Pi 2/3/Zero 2 with a 32-bit OS
-
-**Android** (rename the matching file to `nova64_libretro_android.so` and drop
-into your RetroArch core path)
-
-- `nova64_libretro_android_arm64-v8a.so` — modern phones
-- `nova64_libretro_android_armeabi-v7a.so` — older 32-bit phones
-- `nova64_libretro_android_x86_64.so` — emulators, Chromebooks
-
-Plus `SHA256SUMS.txt` for verification.
-
-Drop the file matching your platform into your RetroArch `cores/` directory,
-then load any `.nova` cart from your Nova64 playlist.
-
-Builds are produced by the
-[`Release RetroArch cores`](.github/workflows/release-cores.yml) GitHub Action
-on every `v*.*.*` tag, and can also be triggered manually from the Actions tab
-for one-off releases. See [`RELEASING.md`](RELEASING.md) for the publisher's
-guide — what gets built, how to cut a release, how to add a new target
-platform, and troubleshooting.
-
-Generated RetroArch binaries, build outputs, and capture artifacts should stay
-out of commits.
-
----
-
-## Godot Native Host — **Now in trunk** 🎉
-
-Nova64 carts run end-to-end through a native **Godot 4.x** host via a
-GDExtension that embeds QuickJS. The host, the cart shim, the
-conformance harness, and the visual-parity tooling are all part of the
-main build. See [ROADMAP.md](ROADMAP.md) Phase 3 and
-[docs/GODOT_VOXEL_PLAN.md](docs/GODOT_VOXEL_PLAN.md) for the in-flight
-sub-plans.
-
-- **Carts running natively**: `minecraft-demo`, `f-zero-nova-3d`,
-  `star-fox-nova-3d`, `space-harrier-3d`, `fps-demo-3d` (with WAD map
-  picker), plus the full 00–10 conformance series and the standard
-  3D/UI/particle demos.
-- **WAD pipeline online**: `fps-demo-3d` loads `freedoom1.wad` through
-  `nova64.wad.load()` and presents a start-screen map picker (Up/Down
-  to select, Enter to start, Esc returns from gameplay). Rendering
-  fidelity for WAD walls/flats/sprites is still being lifted to
-  Three.js/Babylon parity — see the **Improving Godot WAD rendering**
-  notes below.
-- **Voxel demo parity push**: `minecraft-demo` boots end-to-end with
-  full HUD, hotbar, biome label, and rolling biome-tinted terrain
-  rendered via Godot MultiMesh. 64×64 column render distance with fog
-  falloff. All voxel carts pass the smoke harness.
-- **Cart-facing UI APIs filled in**: `drawText`, `drawTextShadow`,
-  `drawTextOutline`, `setFont`, `setTextAlign`, `setTextBaseline`,
-  plus `setInstanceTransform` / `setInstancePosition` for instanced
-  meshes — HUDs in f-zero / star-fox / space-harrier render correctly
-  under Godot.
-- **Shim parity gated in CI**: the cart-facing shim
-  (`nova64-godot/godot_project/shim/nova64-compat.js`) is a
-  hand-maintained second copy of the runtime, so it drifts silently.
-  `pnpm test:godot:parity` converts real FreeDoom maps through both
-  implementations and fails on any difference in walls, collider,
-  floor heights or reachability, plus the light and material
-  mappings. It runs inside `pnpm test` and needs no Godot install.
-  The semantics that are easy to invert — directional lights take a
-  *position*, `createMaterial(kind)` names a Three.js material class,
-  and WAD collision comes from the segment collider rather than
-  `colSegs` — are written up in
-  [docs/GODOT_PARITY.md](docs/GODOT_PARITY.md).
-- **Build**: run
-  `cd nova64-godot/gdextension && scons platform=linux target=template_debug`
-  (and the matching Windows MinGW invocation).
-  See [nova64-godot/README.md](nova64-godot/README.md).
-- **Smoke**: run
-  `powershell -File nova64-godot/scripts/run-cart-smoke.ps1 <cart-name>`
-  for each cart for 300 frames against the conformance
-  harness.
-- **Cross-host spot-check**: `pnpm visual:check` screenshots every
-  mirrored cart on both hosts into a side-by-side contact sheet at
-  `tmp/visual-check/index.html`, and reports `NOT-STARTED` rather than
-  handing back a picture of a cart that never began. Engine discovery
-  for every Godot tool goes through `scripts/lib/godot-binary.mjs`
-  (`--godot=`, then `$GODOT`, then known 4.5/4.4.1 installs, then
-  `PATH`).
-- **Playtesting and footage**: the `godot-game-tester` and
-  `godot-trailer-maker` skills drive a native build, record a
-  scripted pass, and cut review-ready MP4s — see
-  [docs/GODOT_PLAYTEST_AND_TRAILER_WORKFLOW.md](docs/GODOT_PLAYTEST_AND_TRAILER_WORKFLOW.md).
-
-### Improving Godot WAD rendering (without regressing voxels)
-
-The Godot WAD renderer currently uses a partial flat-shaded path for
-several wall/flat cases. Bringing it to Three.js/Babylon parity is
-tracked in [ROADMAP.md](ROADMAP.md) Phase 3 → _WAD Sub-Roadmap_. Open
-items:
-
-- Route WAD wall/flat textures through the same engine-assigned
-  material proxy that Three.js and Babylon use, instead of bespoke
-  Godot-only material code in cart space.
-- Honour two-sided lines, sky flats, and animated flats.
-- Port sector-light / `COLORMAP` lookup so dark sectors read
-  correctly without baking light into texture memory.
-- Lift `THINGS` sprite billboards (transparent pixels, rotation
-  tables) to match the browser renderer.
-- Make the start-screen map picker scroll past its current 7-entry
-  window and surface `MAPINFO` / `UMAPINFO` map names when available.
-- Add a Godot `wad-demo` capture to `pnpm godot:visual` (`wad-demo` is
-  already covered by `pnpm visual:check`, which is a spot-check rather
-  than a thresholded gate).
-
-Already landed: level **physics** are at parity — the segment collider,
-per-frame `getFloorHeight()`/`getCeilingHeight()` lookups and
-`buildReachability()` are ported into the shim verbatim and pinned by
-`pnpm test:godot:parity`. Lighting and material-kind mapping were fixed
-with it, lifting mean E1M1 scene luminance from 0.24× to 0.79× of the web
-reference; the remaining gap is a Three.js/Godot lighting-model
-difference rather than a shim defect.
-
-> ⚠️ **Non-regression rule**: any shared adapter, atlas, sampler, or
-> fog/frustum change made to improve WAD rendering **must not degrade
-> voxel rendering**. The voxel path (compact columns → C++ greedy
-> mesher → split opaque/transparent atlas surfaces) is the most
-> fragile shared seam in the Godot host. Before landing a WAD-driven
-> change, run `pnpm godot:visual minecraft-demo` and a
-> `voxel-creative` / `voxel-terrain` smoke and confirm no parity
-> drift.
-
-## Desktop App & VS Code Extension
-
-Nova64 ships a standalone **Electron desktop app** and a **VS Code
-extension**. Both are thin hosts over the same host-neutral packages, so the
-AI/agent logic lives once:
-
-```bash
-node bin/nova64.js desktop dev        # Electron app (Dev workspace + OS shell + AI agent)
-cd extensions/vscode && pnpm build    # VS Code extension -> dist/extension.js (then F5 in VS Code)
-```
-
-- **`apps/desktop/`** — the OS9 shell plus a Dev workspace: Monaco editor with
-  generated Nova64 API completions, sandboxed cart preview, dropdown menu bar,
-  and an AI agent with approval cards, diff previews, run history, mid-run
-  cancel and an accept-edits mode. See
-  [apps/desktop/README.md](apps/desktop/README.md).
-- **`extensions/vscode/`** — AI chat on the shared seam, with an agent tool loop
-  over `vscode.workspace.fs`; packageable as a `.vsix`. See
-  [extensions/vscode/README.md](extensions/vscode/README.md).
-- **`packages/`** — host-neutral and dependency-free of React/Electron/VS Code:
-  `agent-core` (modes, tools, approval, `ToolRunner`, tool-call protocol —
-  [README](packages/agent-core/README.md)), `ai-providers` (multi-provider LLM
-  streaming), `workspace-core` (file-tree + tab model), `app-contracts` (studio
-  protocol types). Each carries its own tests.
-
-These trees are a pnpm workspace (`pnpm-workspace.yaml`); `os9-shell/` is
-deliberately excluded and keeps its own independent install/build. The program
-plan is [plans/NOVA64_DESKTOP_VSCODE_PLAN.md](plans/NOVA64_DESKTOP_VSCODE_PLAN.md).
-
----
-
-## Babylon.js WAD Visual Parity
-
-- **WAD Texture Parity**: Babylon WAD walls, floors, and sprite materials now receive engine-assigned textures through the same mesh proxy path used by Three.js carts
-- **Visual Regression Guardrail**: `wad-demo` gameplay-frame comparison is back in the low-single-digit diff range against Three.js
-- **Safer Post-Processing Boot**: Babylon vignette setup now falls back gracefully when image-processing pipeline internals are unavailable, preventing WAD cart boot failures
-
-## Babylon.js XR/AR Parity
-
-- **Latest Babylon.js**: The Babylon backend now targets `@babylonjs/core` 9.4.1
-- **Native Babylon WebXR**: `enableAR()` and `enableVR()` use Babylon's own WebXR experience path in Babylon mode
-- **Cardboard Fallback**: When native WebXR VR is unavailable, Babylon mode offers a Cardboard stereoscopic fallback instead of a dead-end unsupported state
-- **AR Demo Resilience**: MediaPipe camera backgrounds and the AR hand demo now degrade cleanly when camera access or hand tracking is unavailable
-
-## Babylon.js TSL Visual Parity
-
-- **Deterministic Galaxy Showcase**: The first `tsl-showcase` scene now uses seeded star placement so Babylon.js and Three.js screenshots compare the same galaxy layout
-- **High-Strength Bloom Mapping**: Babylon bloom parameters now better match Three.js for high-glow shader carts without forcing low-strength PBR scenes into the same over-bright path
-- **Focused Guardrail**: `tests/playwright/visual-regression.spec.js` includes a `tsl-showcase` Galaxy scene comparison so future shader/post-processing changes have a narrow parity check
-
----
-
-## 🌟 **Recent Updates (v0.5.3)**
-
-### 🌐 **Metaverse — Shared 3D World**
-
-- Phase 1 shared world on `nova64.net`: pluggable render backend, UI components,
-  plugins, and chat, with an ES module loader plus native Godot text chat
-  (`nova64.gdtext`) so web ↔ Godot players share a room
-- **Auth**: Supabase auth, wallet sign-in (EVM SIWE / EIP-4361), and
-  `nova64.auth` identity wiring behind a unit-tested `verifyToken` gate
-- **Multiplayer**: presence with name tags, join/leave toasts and distance fade;
-  live roster; `/nick` rename with persistence; avatar colour sync; a hardened
-  relay (payload cap + per-client rate limit); WebRTC push-to-talk voice
-
-### 📦 **Distribution & Release Pipeline**
-
-- **Lemon Squeezy**: one-command unified export (`pnpm release:lemon`) bundling
-  desktop apps, RetroArch cores and Godot source into a single upload zip
-- iOS/iPadOS (arm64) and tvOS RetroArch cores now build in CI
-- `pnpm release` is a one-shot validate → bump → commit → tag that never pushes;
-  a pre-push preflight gets CI green before GitHub, npm publish waits on every
-  platform core, and a secure-commit hook blocks staged secrets
-
-### 🖥️ **Desktop & VS Code Platform**
-
-- Electron desktop app and VS Code extension over shared host-neutral
-  `packages/` — see [Desktop App & VS Code Extension](#desktop-app--vs-code-extension)
-
-### 📱 **Mobile & Touch**
-
-- **On-screen touch gamepad** for phones and tablets, automatic on touch devices
-  and invisible to cart code ([docs/TOUCH_CONTROLS.md](docs/TOUCH_CONTROLS.md))
-- Godot multi-touch (`nova64.input.touches()`), portrait rotate gate, and
-  mobile-tappable boot prompts
-- Cinematic `the-last-save-file` cart with `cls3D` / `glitchBurst` helpers and a
-  real screen-shader glitch (`fx.glitch`)
-
-### 🦖 **Godot Host Parity**
-
-- WAD level physics, directional-light orientation and material-kind mapping
-  brought to parity with the web runtime and pinned by `pnpm test:godot:parity`
-  inside `pnpm test` ([docs/GODOT_PARITY.md](docs/GODOT_PARITY.md))
-- `pnpm visual:check` contact sheet across both hosts; shared Godot engine
-  resolver; `godot-game-tester` / `godot-trailer-maker` skills
-
-### ⚛️ **WAD Level Physics**
-
-- Collision now comes from the exact linedef segments instead of a rasterised
-  point cloud, which had inflated every wall to ~3.6 units and sealed standard
-  64-unit DOOM doorways shut — on E1M1 only 1 of 53 enemies was reachable
-- Per-frame `getFloorHeight()` / `getCeilingHeight()` sector lookups, so stairs,
-  ledges and pits work, plus `buildReachability()` to flood-fill from the spawn
-
-### 🖱️ **OS9 Shell**
-
-- Maximized windows fill their stage instead of double-offsetting the menu-bar
-  and control-strip chrome
-- `pnpm osBuildServe` builds the shell once and syncs the fresh bundle into
-  every served copy, so a fix cannot land in only one of them
-
----
-
-## 🌟 **Recent Updates (v0.5.2)** — _Hippie Sunshine_
-
-### 🕹️ **RetroArch Core — Canvas UI + Controller + Cross-Platform CI**
-
-The libretro core (`retroarch/nova64_libretro.c`) gained another wave of
-parity work and a hardened release pipeline:
-
-- **`parseCanvasUI` extensions**: `<image>` tags, text effects, quadratic
-  paths, smooth cubic paths, SVG arcs, group clipping, advanced cube
-  transparency, and font families now render through the XML UI runtime.
-- **Controller face-key bridge**: RetroPad face buttons now map to
-  DOM-style `KeyZ`/`KeyX`/`KeyC`/`KeyV`, and SELECT to `KeyI`/`Tab`, so
-  inventory/menu-style carts work on a gamepad without per-cart edits.
-- **Linux armhf release target**: `release-cores.yml` now ships
-  `nova64_libretro_linux_armhf.so` via `dockcross/linux-armv7`, joining
-  Linux x86_64, macOS universal, Windows, Linux ARM64 (Pi), and Android
-  (3 ABIs).
-- **dockcross zlib hardening**: arm64/armhf cross-builds now build zlib
-  with `-fPIC` from a pinned GitHub tag and preserve shell quoting end-to-end.
-- **Linux core smoke test** runs in CI before release to catch broken
-  cores before they ship.
-
-### 🛡️ **Release Pipeline Hardening**
-
-- `prepublishOnly` strengthened from `validate && build` to
-  `lint && test:all && build` — npm publishes now block on lint + the
-  full test:all suite.
-- CI publish workflow runs tests **before** build (matches prepublishOnly
-  ordering), so a failing suite cannot ship a stale `dist/`.
-
-### 📜 **Agent Guardrails**
-
-[AGENTS.md](AGENTS.md) is now the single source of truth for repo
-guidance across all coding agents (Claude, Codex, Gemini, Copilot).
-`CLAUDE.md` and friends are thin pointers.
-
----
-
-## 🌟 **Recent Updates (v0.5.0)** — _The Great Namespace Push_
-
-### 🎯 **NEW: Grouped `nova64.*` Namespace** ⭐
-
-Nova64 carts now run against a single, canonical, **discoverable** API surface. The
-old "100+ bare globals on `window`" surface has been retired — every cart in the
-official gallery (all 71+) and every internal runtime callsite has been migrated.
-
-- **Namespaced groups**: `nova64.draw.*`, `nova64.scene.*`, `nova64.camera.*`,
-  `nova64.light.*`, `nova64.fx.*`, `nova64.shader.*`, `nova64.input.*`,
-  `nova64.audio.*`, `nova64.physics.*`, `nova64.voxel.*`, `nova64.ui.*`,
-  `nova64.tween.*`, `nova64.sprite.*`, `nova64.data.*`, `nova64.util.*`,
-  `nova64.xr.*`, `nova64.wad.*`
-- **Single source of truth**: `runtime/namespace.js` (`NAMESPACE_MAP` +
-  `buildNamespace()`) is the canonical cart-facing contract — Three.js, Babylon,
-  and Godot all bind through the same shape.
-- **No more `Object.assign(globalThis, …)`**: The runtime no longer pollutes the
-  global scope. Carts get a clean, IDE-friendly object tree.
-- **Migration tooling**: `scripts/migrate-to-namespace.{cjs,js}` and
-  `scripts/audit-carts.mjs` shipped alongside the migration so contributors can
-  rewrite legacy carts in seconds.
-- **All 71+ demo carts migrated**: 200 files touched, every cart re-verified.
-
-### 🧊 **NEW: Noa Voxel Adapter (Babylon)** ⭐
-
-The Babylon backend now has a first-class **Noa-engine** voxel adapter sitting
-behind Nova64's shared voxel API — the same `nova64.voxel.*` calls that drive
-the Three.js Minecraft demo can now route through Babylon-native chunk meshing.
-
-- `runtime/backends/babylon/noa-adapter.js` + `noa-prototype.js` provide the
-  Babylon-side seam.
-- Identical cart code, two voxel runtimes, zero API drift.
-
-### 🦖 **Godot Native Host: Trunk-Class** ⭐
-
-The Godot 4.x native host has graduated from "experimental side branch" to a
-**fully integrated trunk citizen**. JavaScript carts execute inside QuickJS
-embedded in a GDExtension, rendered by Godot's native renderer.
-
-- **Carts running natively today**: `minecraft-demo` (full HUD, hotbar,
-  biome-tinted MultiMesh terrain at 64×64 columns), `f-zero-nova-3d`,
-  `star-fox-nova-3d`, `space-harrier-3d`, `fps-demo-3d` (with WAD map picker),
-  and the full 00–10 conformance series.
-- **WAD pipeline online**: `freedoom1.wad` loads through `nova64.wad.load()`
-  with a start-screen map picker.
-- **JS syntax highlighting + ESLint** wired into the Godot editor for cart
-  `code.js` files.
-- **Smoke + visual-parity harnesses** ship in-tree.
-
-### 🌌 **Babylon.js Visual Parity (WAD / XR / TSL)**
-
-- **WAD textures** flow through the same engine-assigned mesh proxy path
-  Three.js uses; `wad-demo` parity is back in the low-single-digit pixel diff.
-- **Native Babylon WebXR** (`@babylonjs/core` 9.4.1) for `enableAR()` /
-  `enableVR()`, with Cardboard fallback when native WebXR is unavailable.
-- **Deterministic TSL galaxy showcase** with seeded star placement so
-  Three.js / Babylon screenshots compare apples to apples; bloom mapping
-  tuned for high-strength shader carts.
-
-### 🛠️ **Runtime Hardening Side-Effects**
-
-- Cart-reset hooks moved to a registry (`runtime/cart-reset.js`) — no more
-  silent state leaks between cart loads.
-- Race-condition guard (`_loadGeneration`) in the cart loader.
-- Effects pipeline (`enableRetroEffects` / `disableRetroEffects`,
-  `updateLODs`, `isEffectsEnabled`, `renderEffects`) all resolve through the
-  namespace, so a stale binding can no longer silently no-op.
-
----
-
-## 🌟 **Recent Updates (v0.4.9)**
-
-### 🛠️ **OS9 Shell Cart Launch Reliability**
-
-- **Game Studio Demo Loading**: Demo carts now fetch through the shared Nova64 runtime URL helpers and execute without colliding with modern `nova64.*` destructuring.
-- **Game Launcher Catalog**: Launcher cards now point to their intended demo carts, with tests guarding against missing or duplicate cart paths.
-- **Nova HD Demoscene**: The Nova HD demo opens through the standard cart runner instead of a partial custom runtime.
-
-## 🌟 **Recent Updates (v0.4.8)**
-
-### 🃏 **NEW: hyperNova — HyperCard/Flash Authoring Tool** ⭐
-
-- **Card-Based Editor**: Create interactive stacks of cards — presentations, stories, mini-apps, and animations — using a WYSIWYG drag-and-drop editor
-- **NovaTalk Scripting**: A HyperTalk-inspired scripting language with full tokenizer → parser → interpreter, supporting `on handler`, `put X into Y`, `send` messages, `repeat`/`if`/`else` control flow, and HyperCard-style object references
-- **Symbol Library & MovieClips**: Flash-style reusable components with keyframe timelines, frame-by-frame animation, and GSAP-powered tweens (`fadeIn`, `slideIn`, `pulse`, `shake`, etc.)
-- **Keyframe Timeline Strip**: Per-object tween editing with easing, duration, position, rotation, scale, and skew
-- **Save/Load/Export**: Auto-save to localStorage, export as `.hcard.json` or as a Nova64 `.code.js` cart
-- **Built-in Examples**: Interactive story templates and demo stacks included
-
-### 🌐 **NEW: Internationalization (i18n)**
-
-- **3-Language Support**: Full English, Spanish (ES), and Japanese (JA) translations across the main website, console, and OS9 shell
-- **Language Picker**: Language selector in the navbar (main site & console) and OS9 shell menu bar
-- **Cart i18n API**: Runtime `t()`, `setLocale()`, `getLocale()`, `addStrings()`, `getAvailableLocales()` for translatable carts
-- **OS9 Shell Menus**: All system menus (File, Edit, View, Special, Activities) fully translated
-- **Persistent Preference**: Language choice saved to localStorage, synced across site and OS
-
-### 🖥️ **OS9 Desktop Shell**
-
-- **Mac OS 9-Style GUI**: Full desktop environment with window management, taskbar, and app launcher
-- **Crystal Desktop Experience**: NovaOS now opens onto a calm deep-blue crystal wallpaper with a modernized translucent boot/loading sequence
-- **Background Customization**: Right-click the desktop or open Appearance to choose built-in wallpapers, a solid color, a custom image URL, or a visual-only sandboxed HTML iframe URL
-- **Game Studio**: In-browser game IDE with code editor, live preview, and cart management
-- **Model Viewer**: Load and inspect GLB/GLTF models with Draco compression and DOOM WAD maps with full texture/sprite rendering
-- **Game Launcher**: Browse and launch all 60+ demo carts from a visual gallery
-- **Sprite Editor**: Pixel art editor integrated into the desktop environment
-- **eMU Emulator**: RetroArch-based retro game emulator
-- **Docs Viewer**: Browse API documentation directly in the shell
-- **Debug Panel**: F9 overlay with scene graph, camera inspector, lights editor, and performance stats
-- **Three.js DevTools Bridge**: Exposes scene/renderer/camera for the Three.js browser extension
-- **Screensaver System**: Multiple screensaver hacks selectable from the Special menu
-- **Theme Toggle**: Dark/light desktop theme switching
-
-### 🎮 **Game Studio Improvements**
-
-- **Cart Switching**: Reliable iframe lifecycle management for seamless cart switching
-- **Demo Read-Only Mode**: Demo carts open in read-only mode with localStorage persistence for user carts
-- **API Injection Fix**: Resolved identifier conflicts with cart code (`t` variable clash)
-- **Auto-Run**: Demos auto-run on selection with proper scene cleanup
-
-### 🔧 **Model Viewer Enhancements**
-
-- **GLB Draco Support**: DRACOLoader for compressed GLB/GLTF geometry
-- **WAD Rendering**: Full DOOM WAD map visualization with wall/floor/ceiling textures, flat textures, sprite billboards for monsters/items/decorations, sector-based lighting, and batched rendering
-- **Babylon WAD Parity**: Babylon.js now resolves mesh proxies for engine-level material assignment, so WAD textures and runtime-created materials render closely to the Three.js backend
-- **Complete Geometry**: Floors, ceilings, and two-sided walls properly rendered
-
-### 📱 **Planned: Unity Native Host Bridge**
-
-- **Mobile-Focused Direction**: Nova64 JS game logic can drive native Unity C# behavior for iOS/Android shipping
-- **Controlled Host API**: The bridge is designed as a whitelist-based host API, not arbitrary C# execution
-- **Safe Runtime Boundary**: Handle-based, command-buffered messaging keeps the JS↔C# boundary portable and performant
-- **Architecture Doc**: See [docs/UNITY_BRIDGE_ARCHITECTURE.md](docs/UNITY_BRIDGE_ARCHITECTURE.md) for the decision, constraints, and phased rollout
-
-### 🗺️ **Roadmap**
-
-- **Godot Native Host**: Now in trunk — see [Godot Native Host](#godot-native-host--now-in-trunk-) above and [ROADMAP.md](ROADMAP.md) Phase 3 for WAD/voxel polish work
-- **Backend Expansion**: Babylon.js, RetroArch, and Unity targets are tracked in [ROADMAP.md](ROADMAP.md)
-- **Realtime Follow-Up**: The roadmap also sketches the Colyseus + WebRTC follow-up plan for multiplayer, presence, chat, and RTC features
-
-### 🧊 **Voxel Engine**
-
-- **Minecraft-Style Worlds**: Full voxel engine with chunk-based terrain, biomes, simplex noise generation
-- **Deterministic Default Seeds**: Shared voxel carts now derive stable default world seeds so Three.js and Babylon render the same terrain unless a cart opts into a custom seed
-- **Babylon Noa Adapter (v0.5.0)**: First-class `noa-engine` adapter (`runtime/backends/babylon/noa-adapter.js`) lets Babylon back the shared `nova64.voxel.*` API with native chunk meshing — same cart, two voxel runtimes
-- **Godot MultiMesh Terrain**: Native Godot host renders 64×64-column biome-tinted terrain through MultiMesh with full HUD/hotbar parity
-- **Block System**: Extensible block types with custom shapes and bounding boxes
-- **Fluid Simulation**: Water/lava fluid dynamics with source/drain mechanics
-- **Entity System**: ECS-style entities with archetypes, pathfinding, health, and spatial queries
-- **World Persistence**: Save/load/export voxel worlds with JSON serialization
-
-### 🎨 **Effects & Post-Processing**
-
-- **TSL Shader Pack**: Custom Three.js Shading Language effects (hologram, dissolve, force field, etc.)
-- **Retro Modes**: `enableN64Mode()`, `enablePSXMode()`, `enableLowPolyMode()` for authentic retro looks
-- **Post-Processing**: Bloom, vignette, glitch, chromatic aberration, FXAA
-- **Skybox System**: Space, gradient, and solid skyboxes with auto-animation
-
----
-
-## 🚀 Quick Start
-
-### 📦 **Install & Play**
-
-```bash
-# Install globally
+Open `http://localhost:4300/`. Use `--no-open` to start without opening a browser.
+The npm package includes the built console, development runner, templates and
+assets; no source checkout or local production build is needed to play.
+
+## What's in v0.5.10
+
+- **A new homepage and Disc Vault:** direct game links, refreshed thumbnails
+  and a bundled demo player, also available through the installed CLI.
+- **Breakwater Circuit:** an original antigravity racer with three-lap Quick
+  Race against five AI rivals, Time Trial, Slip Charge and saved best times.
+- **F-Zero Nova:** a vivid orbital speedway with a ringed planet, illuminated
+  architecture, violet atmosphere, UnrealBloom and boost distortion.
+- **Procedural skies:** reusable presets, animated atmospheres and sky-driven
+  reflections, with coordinated fog across multiple games.
+- **Babylon improvements:** shared sky shaders, corrected ambient lighting,
+  production console support and an engine switch that retains the current cart.
+- **Input improvements:** controller face-button presses survive overlapping
+  Start/Select mappings; touch controls share the keyboard/gamepad input path.
+
+See the [release notes](https://github.com/seacloud9/nova64/blob/main/docs/releases/v0.5.10.md)
+and [changelog](https://github.com/seacloud9/nova64/blob/main/CHANGELOG.md).
+The `main` branch can contain changes that are not yet in the npm package,
+including the subsequent authored-emission fix.
+
+## What you can build
+
+- **Games:** racers, platformers, space combat, dungeon crawlers and voxel worlds.
+- **Visual experiments:** particles, instancing, PBR materials, procedural skies,
+  shader showcases and demoscene effects.
+- **Interactive carts:** 2D HUDs over 3D scenes, keyboard/controller/touch input,
+  sound effects, music, saved progress, tweens and game helpers.
+- **Browser experiences:** Game Studio editing and preview, an OS9-style desktop
+  shell, and experimental XR, multiplayer and media APIs.
+
+Three.js is the primary browser renderer. Babylon.js is an experimental
+alternative; effects and host behavior are not identical across every backend.
+
+## Create a game
+
+Install the CLI, scaffold a project, install its dependencies and start editing:
+
+```sh
 pnpm add -g nova64
-
-# Create a new game project
 nova64 init my-game
-cd my-game && nova64 dev
-```
-
-Your browser opens to a spinning cube starter at `http://localhost:5173` — edit `code.js` and see changes instantly.
-
-New projects use the installed Nova64 package version (override with
-`NOVA64_VERSION`). The npm package includes the development runner and bundled
-templates, so scaffolding does not require a repository checkout.
-Public assets ship once under `dist/`, which the installed development server
-also serves. Prebuilt `.nova` exports and source maps stay out of the npm archive.
-
-### 🎨 **Start from a Template**
-
-```bash
-# Browse 60+ example games and demos interactively
-nova64 template
-
-# Or clone a specific template directly
-nova64 template star-fox-nova-3d
-cd star-fox-nova-3d && nova64 dev
-```
-
-### 🏁 **Development Setup**
-
-```bash
-git clone https://github.com/seacloud9/nova64.git
-cd nova64
+cd my-game
 pnpm install
 pnpm dev
-# Visit http://localhost:5173
 ```
 
-### 🔧 **CLI Commands**
+Edit `code.js` and watch the local preview update. The generated project pins its
+Nova64 dependency to the installed CLI version range.
 
-```bash
-nova64 init [name]               # Scaffold a new project (prompts if name omitted)
-nova64 template [name]           # Pick from 60+ example templates
-nova64 dev                       # Start dev server for the current project
-nova64 desktop dev               # Launch the standalone desktop app (Electron)
-nova64 desktop build             # Stage assets so the desktop app runs serverless (--dir)
-nova64 --start-demo              # Launch console with all demos (requires build)
-nova64 --help                    # Show all options
+Start from an existing game instead:
+
+```sh
+nova64 template star-fox-nova-3d
+cd star-fox-nova-3d
+pnpm install
+pnpm dev
 ```
 
-**Options:**
-
-```bash
--p, --port NUM                   # Port to listen on (default: 3000)
---no-open                        # Don't auto-open the browser
-```
-
-### 🔍 **Debug Tools**
-
-```bash
-# In the browser while running any cart:
-F9                               # Toggle debug panel (scene graph, camera, lights, stats)
-Shift+X                          # Toggle dev console (cheats, meta.json, env, entities)
-?debug=1                         # Add to URL to auto-open debug panel on load
-```
-
-### 🕹️ **RetroArch / libretro Core**
-
-Nova64 also ships a native RetroArch core under `retroarch/`. It runs carts
-through QuickJS and native Nova64 host APIs; it does not embed a browser,
-Three.js, or Babylon.js. The current native renderer path targets OpenGL ES 3.1,
-with Vulkan 1.2 staged behind the backend-neutral renderer interface.
-
-On Windows, run these from WSL after selecting the repo's Node (24, from `.nvmrc`):
-
-```bash
-nvm use
-
-pnpm run retroarch:test          # Native conformance harness
-pnpm run retroarch:build         # Clean release Make build
-pnpm run retroarch:build:debug   # Clean debug Make build
-pnpm run retroarch:scons:debug   # Debug SCons build path
-pnpm run retroarch:validate      # Conformance + Make + debug + SCons checks
-pnpm run retroarch:clean         # Remove generated RetroArch build outputs
-```
-
-See [retroarch/README.md](retroarch/README.md) and
-[retroarch/RETROARCH_CORE_PLAN.md](retroarch/RETROARCH_CORE_PLAN.md) for the
-current milestone plan.
-
----
-
-## 🏗️ **Architecture**
-
-```
-nova64/
-├── index.html               # Main console launcher
-├── package.json             # Dependencies & scripts
-├── bin/nova64.js            # CLI entry point (init, template, dev, --start-demo)
-├── bin/commands/             # CLI subcommand implementations
-│   ├── init.js              # Project scaffolding (code.js, package.json, index.html)
-│   ├── template.js          # Interactive template picker (60+ examples)
-│   └── dev.js               # Vite dev server for user projects
-├── src/main.js              # Core engine bootstrap
-├── runtime/                 # Advanced 3D Engine runtime + public API layer
-│   ├── gpu-threejs.js       # Public Three.js backend wrapper
-│   ├── gpu-babylon.js       # Public Babylon backend wrapper
-│   ├── backends/            # Internal backend implementations (threejs/, babylon/)
-│   ├── shared/              # Cross-backend runtime contracts and helpers
-│   ├── debug-panel.js       # F9 debug panel (scene graph, camera, lights, stats)
-│   ├── env.js               # Environment config + Shift+X dev console (cheats, meta)
-│   ├── api.js               # Core 2D API (cls, pset, line, rect, print)
-│   ├── api-3d.js            # 3D API (createCube, setCameraPosition, etc.)
-│   ├── api-effects.js       # Post-processing effects (bloom, vignette, glitch)
-│   ├── api-skybox.js        # Skybox system (space, gradient, solid)
-│   ├── api-sprites.js       # 2D sprite system with GPU batching
-│   ├── api-voxel.js         # Voxel engine API (blocks, chunks, entities)
-│   ├── cart-reset.js        # Shared cart-load reset hook registry
-│   ├── api-gameutils.js     # Game utilities (shake, cooldowns, spawners, pools)
-│   ├── api-generative.js    # Generative art utilities
-│   ├── api-presets.js       # Preset configurations
-│   ├── input.js             # Input system (WASD, gamepad, mouse, touch)
-│   ├── touch-controls.js    # On-screen gamepad for phones/tablets (drives input.setKeyState)
-│   ├── audio.js             # Spatial 3D audio system
-│   ├── physics.js           # Physics with AABB collision and gravity
-│   ├── collision.js         # Raycasting and spatial partitioning
-│   ├── storage.js           # Persistent game data (localStorage)
-│   ├── screens.js           # Screen/state management system
-│   ├── ui.js                # UI components (buttons, panels, progress bars)
-│   ├── wad.js               # DOOM WAD file loader and renderer
-│   ├── console.js           # Nova64 class with ES module cart loading
-│   ├── framebuffer.js       # High-precision RGBA64 framebuffer
-│   ├── font.js              # Bitmap font rendering
-│   ├── i18n.js              # Internationalization
-│   └── ...                  # editor, store, manifest, nft-seed, logger, etc.
-├── os9-shell/               # Mac OS 9-Style Desktop Environment
-│   └── src/
-│       ├── apps/            # Desktop apps (GameStudio, ModelViewer, hyperNova, etc.)
-│       │   └── hypernova/   # HyperCard/Flash authoring tool with NovaTalk scripting
-│       ├── components/      # Window manager, taskbar, desktop UI
-│       ├── i18n.ts          # Internationalization (EN/ES/JA)
-│       ├── os/              # OS-level services and state
-│       └── theme/           # Retro Mac OS 9 styling
-├── packages/                # Host-neutral shared packages (pnpm workspace)
-│   ├── agent-core/          # Agent modes, tools, approval, ToolRunner, tool-call protocol
-│   ├── ai-providers/        # Multi-provider LLM streaming
-│   ├── workspace-core/      # File-tree + tab model
-│   └── app-contracts/       # Studio protocol types
-├── apps/desktop/            # Standalone Electron app (OS shell + Dev workspace + AI agent)
-├── extensions/vscode/       # VS Code extension on the same shared seam
-├── nova64-godot/            # Godot 4.x native host (GDExtension + QuickJS) and its harnesses
-├── retroarch/               # Native libretro core (QuickJS, no browser engine)
-├── server/                  # Metaverse relay / auth server
-├── scripts/                 # Build, release, sync, and parity tooling
-│   └── lib/godot-binary.mjs # Shared Godot engine resolver used by every Godot script
-├── examples/                # 85 Demo Carts
-│   ├── minecraft-demo/      # Voxel world with mining and building
-│   ├── star-fox-nova-3d/    # Space combat with squadron battles
-│   ├── f-zero-nova-3d/      # High-speed futuristic racing
-│   ├── cyberpunk-city-3d/   # Neon-lit metropolis
-│   ├── dungeon-crawler-3d/  # First-person dungeon exploration
-│   ├── wizardry-3d/         # Classic RPG dungeon crawler
-│   ├── wing-commander-space/# Space flight sim
-│   ├── super-plumber-64/    # 3D platformer
-│   └── ...                  # 77 more demos
-├── docs/                    # API documentation (HTML & Markdown)
-├── plans/                   # Active program plans and handoffs
-└── tests/                   # Test suites
-```
-
-`runtime/` stays the stable public layer. The public `runtime/gpu-threejs.js` and
-`runtime/gpu-babylon.js` entrypoints now delegate into `runtime/backends/{threejs,babylon}`,
-while `runtime/shared/` holds cross-backend contracts and helpers used by both renderers.
-Babylon also has a dedicated compatibility layer in `runtime/backends/babylon/compat.js`
-for cart-facing Three-style expectations such as `scene.traverse`, `mesh.visible`,
-`material.map`, color helpers, and texture repeat/offset parity.
-Engine-level Babylon material assignment now resolves both numeric mesh IDs and mesh
-proxies, which keeps WAD-generated wall/floor/sprite materials attached in the same
-cart-facing path as Three.js.
-Voxel carts now also have a backend-native Babylon path in `runtime/backends/babylon/voxel.js`,
-with `runtime/api-voxel.js` delegating chunk/entity mesh creation through backend-aware helpers
-instead of constructing raw Three.js meshes in Babylon mode.
-The backend split and parity rules are documented in
-[docs/BACKEND_RUNTIME.md](docs/BACKEND_RUNTIME.md).
-That document also covers the shared cart-reset lifecycle used to clear runtime state on cart loads and dashboard cart switches.
-
----
+Run `nova64 template` for the interactive picker or `nova64 --help` for commands.
 
 ## 🎨 **Creating Your First 3D Cart**
 
-For **Game Studio or an embedding host sending `EXECUTE_CODE`**, paste a plain
-script with three lifecycle functions, using the grouped `nova64.*` API.
+Carts have three lifecycle functions: `init()` creates long-lived objects,
+`update(dt)` handles simulation and input, and `draw()` renders the HUD. The
+runtime renders the 3D scene automatically.
 
-Studio code is evaluated as a *script*, not a module, so this shape is the one
-to write. A top-level `export` is accepted anyway — it is stripped before
-evaluation, so the module form below also runs unchanged — but `import` cannot
-work in a script and is reported as an error.
+Paste this script into Game Studio:
 
 ```javascript
 let player, ground;
@@ -731,518 +133,128 @@ function draw() {
 }
 ```
 
-Always use `nova64.draw.print` for HUD text. Bare `print()` is the browser's
-print-dialog function outside studio mode; studio mode redirects it to logging,
-not HUD rendering.
-
-### CLI / file-based carts
-
-For a `code.js` loaded by `nova64 dev` or a runner's `?path=` parameter, use the
-same namespaced example above and add this line at the end:
+For a file-based `code.js` loaded by `nova64 dev`, add:
 
 ```javascript
 export { init, update, draw };
 ```
 
-File-based carts are ES modules, so `export function init()` (and the equivalent
-for `update` and `draw`) is the natural form there. Studio mode is selected with
-`?studio=1`; the runner page itself does not determine whether the cart is a
-script or a module — and since studio mode tolerates `export`, the same cart
-source runs on both paths.
-
-Embedding hosts must send code from the parent window on a trusted origin.
-Opaque origins such as `file://` or sandboxed frames without a same-origin
-identity remain rejected. Check the runtime frame's developer console for
-`Rejected EXECUTE_CODE: untrusted origin: null`; use an HTTP(S) host or the
-documented desktop host-origin setup rather than disabling origin checks.
-
----
+Studio accepts the exported form too, but does not support module imports in
+its script payload. Always use the grouped `nova64.*` API. HUD text uses
+`nova64.draw.print`; bare `print()` is not the HUD API.
 
 ## 📚 **API Reference**
 
-### 🎯 **3D Scene**
+| Namespace                         | Purpose                                          |
+| --------------------------------- | ------------------------------------------------ |
+| `nova64.scene`                    | Meshes, materials, transforms and instancing     |
+| `nova64.camera` / `nova64.light`  | Camera, lighting, fog and skies                  |
+| `nova64.fx`                       | Bloom, anti-aliasing, vignette and other effects |
+| `nova64.draw` / `nova64.ui`       | 2D overlays, text and interface controls         |
+| `nova64.input` / `nova64.audio`   | Controls, sound effects and music                |
+| `nova64.data`                     | Saved cart data                                  |
+| `nova64.voxel` / `nova64.physics` | Voxel worlds and physics helpers                 |
+
+For example, scene and effect calls remain namespaced:
 
 ```javascript
-// Camera
-nova64.camera.setCameraPosition(x, y, z);
-nova64.camera.setCameraTarget(x, y, z);
-nova64.camera.setCameraFOV(degrees);
-
-// Atmospheric
-nova64.light.setFog(color, near, far);
-nova64.light.clearFog();
-nova64.light.setAmbientLight(color, intensity);
-nova64.light.createPointLight(color, intensity, distance, [x, y, z]);
+nova64.scene.createCube(2, 0x00aaff, [0, 1, -5]);
+nova64.light.setAmbientLight(0xffffff, 1);
+nova64.fx.enableBloom(1.2, 0.7, 0.85);
 ```
 
-### 📦 **3D Objects**
+Start with the [API cheatsheet](https://github.com/seacloud9/nova64/blob/main/docs/CHEATSHEET.md),
+[effects guide](https://github.com/seacloud9/nova64/blob/main/docs/EFFECTS_API_GUIDE.md),
+[touch controls](https://github.com/seacloud9/nova64/blob/main/docs/TOUCH_CONTROLS.md)
+and [backend reference](https://github.com/seacloud9/nova64/blob/main/docs/BACKEND_RUNTIME.md).
 
-```javascript
-// Primitives — createX(size/args, color, [x,y,z], options?)
-nova64.scene.createCube(size, color, [x,y,z], { material, metalness, roughness, emissive, ... })
-nova64.scene.createCube(width, height, depth, color, [x,y,z], options)
-nova64.scene.createSphere(radius, color, [x,y,z], options)
-nova64.scene.createPlane(w, h, color, [x,y,z], options)
-nova64.scene.createCylinder(radiusTop, radiusBottom, height, color, [x,y,z], options)
-nova64.scene.createCone(radius, height, color, [x,y,z], options)
-nova64.scene.createCapsule(radius, length, color, [x,y,z], options)
-nova64.scene.createTorus(radius, tube, color, [x,y,z], options)
+## 🎪 Demo gallery
 
-// Material types: 'standard', 'metallic', 'holographic', 'emissive'
+The installed homepage and console include the complete demo selection. These
+are a few starting points; links below open their source carts.
 
-// Transforms
-nova64.scene.rotateMesh(mesh, x, y, z)
-nova64.scene.setPosition(mesh, x, y, z)
-nova64.scene.setScale(mesh, x, y, z)
-nova64.scene.removeMesh(mesh)          // also: destroyMesh(mesh)
+| Breakwater Circuit                                                                                                                                                                                           | F-Zero Nova                                                                                                                                                                                   | Super Plumber 64                                                                                                                                                                                       |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| [![Breakwater Circuit](https://raw.githubusercontent.com/seacloud9/nova64/main/public/assets/cart-thumbs/breakwater-circuit.png)](https://github.com/seacloud9/nova64/tree/main/examples/breakwater-circuit) | [![F-Zero Nova](https://raw.githubusercontent.com/seacloud9/nova64/main/public/assets/cart-thumbs/f-zero-nova-3d.png)](https://github.com/seacloud9/nova64/tree/main/examples/f-zero-nova-3d) | [![Super Plumber 64](https://raw.githubusercontent.com/seacloud9/nova64/main/public/assets/cart-thumbs/super-plumber-64.png)](https://github.com/seacloud9/nova64/tree/main/examples/super-plumber-64) |
+
+| Space Harrier                                                                                                                                                                                       | Voxel World                                                                                                                                                                                   | Sky Showcase                                                                                                                                                                                     |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| [![Space Harrier](https://raw.githubusercontent.com/seacloud9/nova64/main/public/assets/cart-thumbs/space-harrier-3d.png)](https://github.com/seacloud9/nova64/tree/main/examples/space-harrier-3d) | [![Voxel World](https://raw.githubusercontent.com/seacloud9/nova64/main/public/assets/cart-thumbs/minecraft-demo.png)](https://github.com/seacloud9/nova64/tree/main/examples/minecraft-demo) | [![Sky Showcase](https://raw.githubusercontent.com/seacloud9/nova64/main/public/assets/cart-thumbs/skybox-showcase.png)](https://github.com/seacloud9/nova64/tree/main/examples/skybox-showcase) |
+
+Browse [all example carts](https://github.com/seacloud9/nova64/tree/main/examples),
+including the [QWEN Arcade experiments](https://github.com/seacloud9/nova64/tree/main/examples/QWEN).
+
+## Browser, desktop and native hosts
+
+| Host              | Where to start                                                                                                                                                      |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Browser / npm     | `nova64 --start-demo`; Three.js by default, Babylon via the console switch                                                                                          |
+| RetroArch         | [Prebuilt core downloads](https://github.com/seacloud9/nova64/releases) and [installation guide](https://github.com/seacloud9/nova64/blob/main/retroarch/README.md) |
+| Godot             | [Godot host source and setup](https://github.com/seacloud9/nova64/blob/main/nova64-godot/README.md)                                                                 |
+| Electron desktop  | [Source workspace](https://github.com/seacloud9/nova64/blob/main/apps/desktop/README.md)                                                                            |
+| VS Code extension | [Source workspace](https://github.com/seacloud9/nova64/blob/main/extensions/vscode/README.md)                                                                       |
+
+Native core releases cover Windows, Linux, macOS, Android, iOS and tvOS, including
+ARM Linux targets. Downloads include `SHA256SUMS.txt`. Device installation and
+available APIs depend on the host; a browser rendering feature is not a promise
+of identical native output.
+
+The Godot host embeds QuickJS through a GDExtension. The desktop app and VS Code
+extension share host-neutral packages and are developed from the repository;
+they are separate from the root npm package's browser-console distribution.
+
+## Develop from source
+
+Use Node 24 from `.nvmrc` and pnpm. On Windows, use WSL for repository development.
+
+```sh
+git clone --recurse-submodules https://github.com/seacloud9/nova64.git
+cd nova64
+nvm use
+pnpm install --frozen-lockfile
+pnpm dev --host 127.0.0.1 --port 3199
 ```
 
-### 🎮 **Input**
+Open `http://127.0.0.1:3199/`. Build and preview production assets with:
 
-```javascript
-nova64.input.key(keyCode); // Keyboard key held
-nova64.input.keyp(keyCode); // Key just pressed
-nova64.input.btn(index); // Gamepad button held
-nova64.input.btnp(index); // Gamepad button just pressed
-nova64.input.mouseX(), nova64.input.mouseY(); // Mouse position
-nova64.input.mouseDown(); // Mouse button state
+```sh
+pnpm build
+pnpm preview
 ```
 
-**On-screen touch gamepad** — phones and tablets get a d-pad and action buttons
-automatically, with **no cart changes required**. The controls drive the same
-`input.setKeyState()` path the keyboard listeners use, so a touch press is
-indistinguishable from a key press to cart code: `key()` reports it held,
-`keyp()` sees the edge, and diagonals hold two directions at once.
+When editing a cart, mirror its `code.js` from `examples/<cart>/` into
+`dist/examples/<cart>/`; see [AGENTS.md](https://github.com/seacloud9/nova64/blob/main/AGENTS.md)
+for the shared repository workflow. Runtime changes need a build to refresh
+generated distribution copies.
 
-```javascript
-// Config: a single global, read before the runtime boots.
-window.NOVA64_TOUCH_CONTROLS = 'auto'; // default — touch devices only
-window.NOVA64_TOUCH_CONTROLS = true; //  force on, even on desktop
-window.NOVA64_TOUCH_CONTROLS = false; // never mount
+Useful checks:
 
-// Or at runtime:
-nova64.touch.setTouchControlsEnabled(true);
-nova64.touch.isTouchDevice(); // coarse pointer + touch points
-nova64.touch.getTouchControls(); // live handle (show/hide/toggle/destroy), or null
+```sh
+pnpm test                 # Core runtime, cart, CLI and distribution checks
+pnpm test:quick           # Short everyday smoke suite
+pnpm test:all             # Extended CLI/API/input/integration suites
+pnpm test:playwright      # Browser coverage
+pnpm test:babylon         # Focused backend parity coverage
+pnpm lint
 ```
 
-Full reference — key map, device detection, safe-area layout, the HIDE/SHOW
-toggle — in [docs/TOUCH_CONTROLS.md](docs/TOUCH_CONTROLS.md). Covered by
-`pnpm test:touch`.
+Use `F9` for the debug panel, `?debug=1` to open it on load, and `Shift+X` for the
+developer console. Architecture and host-specific workflows live in the
+[documentation](https://github.com/seacloud9/nova64/tree/main/docs);
+queued work is tracked in [BACKLOG.md](https://github.com/seacloud9/nova64/blob/main/BACKLOG.md).
 
-### 🎨 **2D Overlay**
+## Releases and license
 
-```javascript
-nova64.draw.cls(color?)               // Clear screen
-nova64.draw.pset(x, y, color)         // Set pixel
-nova64.draw.line(x0, y0, x1, y1, color)
-nova64.draw.rect(x, y, w, h, color, fill?)
-nova64.draw.circle(cx, cy, r, color, fill?)
-nova64.draw.print(text, x, y, color)
-nova64.draw.printCentered(text, y, color)
-nova64.draw.drawGlowText(text, x, y, color)
-nova64.draw.drawCrosshair(x, y, size, color)
-nova64.draw.drawProgressBar(x, y, w, h, pct, fgColor, bgColor)
-```
+Nova64 is [MIT licensed](https://github.com/seacloud9/nova64/blob/main/LICENSE).
+Source is public; prebuilt distribution bundles are available through the
+[project site](https://nova64.io/).
 
-### 🌌 **Skybox & Effects**
+Maintainers: `pnpm release` validates, creates a version commit and tags locally.
+A pushed version tag builds all platform cores before publishing npm. npm may
+validate an accepted upload before it becomes installable; confirm the public
+registry version and test a clean install. See the
+[release guide](https://github.com/seacloud9/nova64/blob/main/RELEASING.md).
 
-```javascript
-nova64.light.createSpaceSkybox();
-nova64.light.createGradientSkybox(topColor, bottomColor);
-nova64.light.createSolidSkybox(color);
-nova64.light.enableSkyboxAutoAnimate(speed);
-
-nova64.fx.enableBloom(strength, radius, threshold);
-nova64.fx.enableVignette(darkness, offset);
-nova64.fx.enableGlitch(amount);
-nova64.fx.enableChromaticAberration(offset);
-nova64.fx.enableN64Mode();
-nova64.fx.enablePSXMode();
-nova64.fx.enableLowPolyMode();
-```
-
-### 🔊 **Audio**
-
-```javascript
-nova64.audio.sfx(preset); // Named presets: 'jump', 'coin', 'explosion', ...
-nova64.audio.sfx({ wave, freq, dur }); // Custom sound
-nova64.audio.setVolume(level); // Master volume 0.0–1.0
-```
-
-### 💾 **Storage**
-
-```javascript
-nova64.data.saveData(key, value)
-nova64.data.loadData(key, fallback?)
-nova64.data.deleteData(key)
-```
-
-### 🧊 **Voxel Engine** (selection)
-
-```javascript
-nova64.voxel.updateVoxelWorld(playerX, playerY, playerZ);
-nova64.voxel.setVoxelBlock(x, y, z, blockType);
-nova64.voxel.getVoxelBlock(x, y, z);
-nova64.voxel.raycastVoxelBlock(origin, direction, maxDist);
-nova64.voxel.checkVoxelCollision(x, y, z, w, h, d);
-nova64.voxel.spawnVoxelEntity(type, x, y, z, components);
-nova64.voxel.configureVoxelWorld(options);
-nova64.voxel.saveVoxelWorld(name);
-nova64.voxel.loadVoxelWorld(name);
-```
-
-### 🎮 **Game Utilities**
-
-```javascript
-nova64.util.createShake() / triggerShake() / updateShake();
-nova64.util.createCooldown() / useCooldown() / updateCooldowns();
-nova64.util.createPool() / createSpawner() / updateSpawner();
-nova64.util.createStateMachine() / createTimer();
-nova64.util.createFloatingTextSystem() / drawFloatingTexts();
-nova64.draw.createMinimap(opts) / drawMinimap(mm, time);
-```
-
-### ⚛️ **Physics**
-
-```javascript
-nova64.physics.createBody(options);
-nova64.physics.stepPhysics(dt);
-nova64.physics.setGravity(x, y, z);
-nova64.physics.setCollisionMap(fn);
-```
-
----
-
-## 🎪 **Demo Gallery** (85 carts, 71 pictured)
-
-<div align="center">
-  <a href="https://starcade9.github.io/console.html?demo=3d-advanced" title="3d Advanced">
-    <img src="public/assets/cart-thumbs/3d-advanced.png" width="100" height="100" alt="3d Advanced" style="margin: 2px; object-fit: cover;">
-  </a>
-  <a href="https://starcade9.github.io/console.html?demo=adventure-comic-3d" title="Adventure Comic 3d">
-    <img src="public/assets/cart-thumbs/adventure-comic-3d.png" width="100" height="100" alt="Adventure Comic 3d" style="margin: 2px; object-fit: cover;">
-  </a>
-  <a href="https://starcade9.github.io/console.html?demo=ar-hand-demo" title="Ar Hand Demo">
-    <img src="public/assets/cart-thumbs/ar-hand-demo.png" width="100" height="100" alt="Ar Hand Demo" style="margin: 2px; object-fit: cover;">
-  </a>
-  <a href="https://starcade9.github.io/console.html?demo=audio-lab" title="Audio Lab">
-    <img src="public/assets/cart-thumbs/audio-lab.png" width="100" height="100" alt="Audio Lab" style="margin: 2px; object-fit: cover;">
-  </a>
-  <a href="https://starcade9.github.io/console.html?demo=babylon-demo" title="Babylon Demo">
-    <img src="public/assets/cart-thumbs/babylon-demo.png" width="100" height="100" alt="Babylon Demo" style="margin: 2px; object-fit: cover;">
-  </a>
-  <a href="https://starcade9.github.io/console.html?demo=blend-aurora" title="Blend Aurora">
-    <img src="public/assets/cart-thumbs/blend-aurora.png" width="100" height="100" alt="Blend Aurora" style="margin: 2px; object-fit: cover;">
-  </a>
-  <a href="https://starcade9.github.io/console.html?demo=boids-flocking" title="Boids Flocking">
-    <img src="public/assets/cart-thumbs/boids-flocking.png" width="100" height="100" alt="Boids Flocking" style="margin: 2px; object-fit: cover;">
-  </a>
-  <a href="https://starcade9.github.io/console.html?demo=camera-platformer" title="Camera Platformer">
-    <img src="public/assets/cart-thumbs/camera-platformer.png" width="100" height="100" alt="Camera Platformer" style="margin: 2px; object-fit: cover;">
-  </a>
-  <a href="https://starcade9.github.io/console.html?demo=canvas-ui-showcase" title="Canvas Ui Showcase">
-    <img src="public/assets/cart-thumbs/canvas-ui-showcase.png" width="100" height="100" alt="Canvas Ui Showcase" style="margin: 2px; object-fit: cover;">
-  </a>
-  <a href="https://starcade9.github.io/console.html?demo=creative-coding" title="Creative Coding">
-    <img src="public/assets/cart-thumbs/creative-coding.png" width="100" height="100" alt="Creative Coding" style="margin: 2px; object-fit: cover;">
-  </a>
-  <a href="https://starcade9.github.io/console.html?demo=crystal-cathedral-3d" title="Crystal Cathedral 3d">
-    <img src="public/assets/cart-thumbs/crystal-cathedral-3d.png" width="100" height="100" alt="Crystal Cathedral 3d" style="margin: 2px; object-fit: cover;">
-  </a>
-  <a href="https://starcade9.github.io/console.html?demo=cyberpunk-city-3d" title="Cyberpunk City 3d">
-    <img src="public/assets/cart-thumbs/cyberpunk-city-3d.png" width="100" height="100" alt="Cyberpunk City 3d" style="margin: 2px; object-fit: cover;">
-  </a>
-  <a href="https://starcade9.github.io/console.html?demo=demoscene" title="Demoscene">
-    <img src="public/assets/cart-thumbs/demoscene.png" width="100" height="100" alt="Demoscene" style="margin: 2px; object-fit: cover;">
-  </a>
-  <a href="https://starcade9.github.io/console.html?demo=dungeon-crawler-3d" title="Dungeon Crawler 3d">
-    <img src="public/assets/cart-thumbs/dungeon-crawler-3d.png" width="100" height="100" alt="Dungeon Crawler 3d" style="margin: 2px; object-fit: cover;">
-  </a>
-  <a href="https://starcade9.github.io/console.html?demo=f-zero-nova-3d" title="F Zero Nova 3d">
-    <img src="public/assets/cart-thumbs/f-zero-nova-3d.png" width="100" height="100" alt="F Zero Nova 3d" style="margin: 2px; object-fit: cover;">
-  </a>
-  <a href="https://starcade9.github.io/console.html?demo=filter-glitch" title="Filter Glitch">
-    <img src="public/assets/cart-thumbs/filter-glitch.png" width="100" height="100" alt="Filter Glitch" style="margin: 2px; object-fit: cover;">
-  </a>
-  <a href="https://starcade9.github.io/console.html?demo=flash-demo" title="Flash Demo">
-    <img src="public/assets/cart-thumbs/flash-demo.png" width="100" height="100" alt="Flash Demo" style="margin: 2px; object-fit: cover;">
-  </a>
-  <a href="https://starcade9.github.io/console.html?demo=fps-demo-3d" title="Fps Demo 3d">
-    <img src="public/assets/cart-thumbs/fps-demo-3d.png" width="100" height="100" alt="Fps Demo 3d" style="margin: 2px; object-fit: cover;">
-  </a>
-  <a href="https://starcade9.github.io/console.html?demo=game-of-life-3d" title="Game Of Life 3d">
-    <img src="public/assets/cart-thumbs/game-of-life-3d.png" width="100" height="100" alt="Game Of Life 3d" style="margin: 2px; object-fit: cover;">
-  </a>
-  <a href="https://starcade9.github.io/console.html?demo=generative-art" title="Generative Art">
-    <img src="public/assets/cart-thumbs/generative-art.png" width="100" height="100" alt="Generative Art" style="margin: 2px; object-fit: cover;">
-  </a>
-  <a href="https://starcade9.github.io/console.html?demo=hello-3d" title="Hello 3d">
-    <img src="public/assets/cart-thumbs/hello-3d.png" width="100" height="100" alt="Hello 3d" style="margin: 2px; object-fit: cover;">
-  </a>
-  <a href="https://starcade9.github.io/console.html?demo=hello-namespaced" title="Hello Namespaced">
-    <img src="public/assets/cart-thumbs/hello-namespaced.png" width="100" height="100" alt="Hello Namespaced" style="margin: 2px; object-fit: cover;">
-  </a>
-  <a href="https://starcade9.github.io/console.html?demo=hello-skybox" title="Hello Skybox">
-    <img src="public/assets/cart-thumbs/hello-skybox.png" width="100" height="100" alt="Hello Skybox" style="margin: 2px; object-fit: cover;">
-  </a>
-  <a href="https://starcade9.github.io/console.html?demo=hello-world" title="Hello World">
-    <img src="public/assets/cart-thumbs/hello-world.png" width="100" height="100" alt="Hello World" style="margin: 2px; object-fit: cover;">
-  </a>
-  <a href="https://starcade9.github.io/console.html?demo=hero-demo" title="Hero Demo">
-    <img src="public/assets/cart-thumbs/hero-demo.png" width="100" height="100" alt="Hero Demo" style="margin: 2px; object-fit: cover;">
-  </a>
-  <a href="https://starcade9.github.io/console.html?demo=hud-demo" title="Hud Demo">
-    <img src="public/assets/cart-thumbs/hud-demo.png" width="100" height="100" alt="Hud Demo" style="margin: 2px; object-fit: cover;">
-  </a>
-  <a href="https://starcade9.github.io/console.html?demo=hype-demo" title="Hype Demo">
-    <img src="public/assets/cart-thumbs/hype-demo.png" width="100" height="100" alt="Hype Demo" style="margin: 2px; object-fit: cover;">
-  </a>
-  <a href="https://starcade9.github.io/console.html?demo=input-showcase" title="Input Showcase">
-    <img src="public/assets/cart-thumbs/input-showcase.png" width="100" height="100" alt="Input Showcase" style="margin: 2px; object-fit: cover;">
-  </a>
-  <a href="https://starcade9.github.io/console.html?demo=instancing-demo" title="Instancing Demo">
-    <img src="public/assets/cart-thumbs/instancing-demo.png" width="100" height="100" alt="Instancing Demo" style="margin: 2px; object-fit: cover;">
-  </a>
-  <a href="https://starcade9.github.io/console.html?demo=minecraft-demo" title="Minecraft Demo">
-    <img src="public/assets/cart-thumbs/minecraft-demo.png" width="100" height="100" alt="Minecraft Demo" style="margin: 2px; object-fit: cover;">
-  </a>
-  <a href="https://starcade9.github.io/console.html?demo=model-viewer-3d" title="Model Viewer 3d">
-    <img src="public/assets/cart-thumbs/model-viewer-3d.png" width="100" height="100" alt="Model Viewer 3d" style="margin: 2px; object-fit: cover;">
-  </a>
-  <a href="https://starcade9.github.io/console.html?demo=movie-clock" title="Movie Clock">
-    <img src="public/assets/cart-thumbs/movie-clock.png" width="100" height="100" alt="Movie Clock" style="margin: 2px; object-fit: cover;">
-  </a>
-  <a href="https://starcade9.github.io/console.html?demo=mystical-realm-3d" title="Mystical Realm 3d">
-    <img src="public/assets/cart-thumbs/mystical-realm-3d.png" width="100" height="100" alt="Mystical Realm 3d" style="margin: 2px; object-fit: cover;">
-  </a>
-  <a href="https://starcade9.github.io/console.html?demo=nature-explorer-3d" title="Nature Explorer 3d">
-    <img src="public/assets/cart-thumbs/nature-explorer-3d.png" width="100" height="100" alt="Nature Explorer 3d" style="margin: 2px; object-fit: cover;">
-  </a>
-  <a href="https://starcade9.github.io/console.html?demo=nft-art-generator" title="Nft Art Generator">
-    <img src="public/assets/cart-thumbs/nft-art-generator.png" width="100" height="100" alt="Nft Art Generator" style="margin: 2px; object-fit: cover;">
-  </a>
-  <a href="https://starcade9.github.io/console.html?demo=nft-worlds" title="Nft Worlds">
-    <img src="public/assets/cart-thumbs/nft-worlds.png" width="100" height="100" alt="Nft Worlds" style="margin: 2px; object-fit: cover;">
-  </a>
-  <a href="https://starcade9.github.io/console.html?demo=particle-fireworks" title="Particle Fireworks">
-    <img src="public/assets/cart-thumbs/particle-fireworks.png" width="100" height="100" alt="Particle Fireworks" style="margin: 2px; object-fit: cover;">
-  </a>
-  <a href="https://starcade9.github.io/console.html?demo=particle-trail" title="Particle Trail">
-    <img src="public/assets/cart-thumbs/particle-trail.png" width="100" height="100" alt="Particle Trail" style="margin: 2px; object-fit: cover;">
-  </a>
-  <a href="https://starcade9.github.io/console.html?demo=particles-demo" title="Particles Demo">
-    <img src="public/assets/cart-thumbs/particles-demo.png" width="100" height="100" alt="Particles Demo" style="margin: 2px; object-fit: cover;">
-  </a>
-  <a href="https://starcade9.github.io/console.html?demo=pbr-showcase" title="Pbr Showcase">
-    <img src="public/assets/cart-thumbs/pbr-showcase.png" width="100" height="100" alt="Pbr Showcase" style="margin: 2px; object-fit: cover;">
-  </a>
-  <a href="https://starcade9.github.io/console.html?demo=physics-demo-3d" title="Physics Demo 3d">
-    <img src="public/assets/cart-thumbs/physics-demo-3d.png" width="100" height="100" alt="Physics Demo 3d" style="margin: 2px; object-fit: cover;">
-  </a>
-  <a href="https://starcade9.github.io/console.html?demo=screen-demo" title="Screen Demo">
-    <img src="public/assets/cart-thumbs/screen-demo.png" width="100" height="100" alt="Screen Demo" style="margin: 2px; object-fit: cover;">
-  </a>
-  <a href="https://starcade9.github.io/console.html?demo=shader-showcase" title="Shader Showcase">
-    <img src="public/assets/cart-thumbs/shader-showcase.png" width="100" height="100" alt="Shader Showcase" style="margin: 2px; object-fit: cover;">
-  </a>
-  <a href="https://starcade9.github.io/console.html?demo=shooter-demo-3d" title="Shooter Demo 3d">
-    <img src="public/assets/cart-thumbs/shooter-demo-3d.png" width="100" height="100" alt="Shooter Demo 3d" style="margin: 2px; object-fit: cover;">
-  </a>
-  <a href="https://starcade9.github.io/console.html?demo=skybox-showcase" title="Skybox Showcase">
-    <img src="public/assets/cart-thumbs/skybox-showcase.png" width="100" height="100" alt="Skybox Showcase" style="margin: 2px; object-fit: cover;">
-  </a>
-  <a href="https://starcade9.github.io/console.html?demo=space-combat-3d" title="Space Combat 3d">
-    <img src="public/assets/cart-thumbs/space-combat-3d.png" width="100" height="100" alt="Space Combat 3d" style="margin: 2px; object-fit: cover;">
-  </a>
-  <a href="https://starcade9.github.io/console.html?demo=space-harrier-3d" title="Space Harrier 3d">
-    <img src="public/assets/cart-thumbs/space-harrier-3d.png" width="100" height="100" alt="Space Harrier 3d" style="margin: 2px; object-fit: cover;">
-  </a>
-  <a href="https://starcade9.github.io/console.html?demo=stage-cards" title="Stage Cards">
-    <img src="public/assets/cart-thumbs/stage-cards.png" width="100" height="100" alt="Stage Cards" style="margin: 2px; object-fit: cover;">
-  </a>
-  <a href="https://starcade9.github.io/console.html?demo=stage-menu" title="Stage Menu">
-    <img src="public/assets/cart-thumbs/stage-menu.png" width="100" height="100" alt="Stage Menu" style="margin: 2px; object-fit: cover;">
-  </a>
-  <a href="https://starcade9.github.io/console.html?demo=star-fox-nova-3d" title="Star Fox Nova 3d">
-    <img src="public/assets/cart-thumbs/star-fox-nova-3d.png" width="100" height="100" alt="Star Fox Nova 3d" style="margin: 2px; object-fit: cover;">
-  </a>
-  <a href="https://starcade9.github.io/console.html?demo=startscreen-demo" title="Startscreen Demo">
-    <img src="public/assets/cart-thumbs/startscreen-demo.png" width="100" height="100" alt="Startscreen Demo" style="margin: 2px; object-fit: cover;">
-  </a>
-  <a href="https://starcade9.github.io/console.html?demo=storage-quest" title="Storage Quest">
-    <img src="public/assets/cart-thumbs/storage-quest.png" width="100" height="100" alt="Storage Quest" style="margin: 2px; object-fit: cover;">
-  </a>
-  <a href="https://starcade9.github.io/console.html?demo=strider-demo-3d" title="Strider Demo 3d">
-    <img src="public/assets/cart-thumbs/strider-demo-3d.png" width="100" height="100" alt="Strider Demo 3d" style="margin: 2px; object-fit: cover;">
-  </a>
-  <a href="https://starcade9.github.io/console.html?demo=super-plumber-64" title="Super Plumber 64">
-    <img src="public/assets/cart-thumbs/super-plumber-64.png" width="100" height="100" alt="Super Plumber 64" style="margin: 2px; object-fit: cover;">
-  </a>
-  <a href="https://starcade9.github.io/console.html?demo=test-2d-overlay" title="Test 2d Overlay">
-    <img src="public/assets/cart-thumbs/test-2d-overlay.png" width="100" height="100" alt="Test 2d Overlay" style="margin: 2px; object-fit: cover;">
-  </a>
-  <a href="https://starcade9.github.io/console.html?demo=test-font" title="Test Font">
-    <img src="public/assets/cart-thumbs/test-font.png" width="100" height="100" alt="Test Font" style="margin: 2px; object-fit: cover;">
-  </a>
-  <a href="https://starcade9.github.io/console.html?demo=test-minimal" title="Test Minimal">
-    <img src="public/assets/cart-thumbs/test-minimal.png" width="100" height="100" alt="Test Minimal" style="margin: 2px; object-fit: cover;">
-  </a>
-  <a href="https://starcade9.github.io/console.html?demo=tsl-showcase" title="Tsl Showcase">
-    <img src="public/assets/cart-thumbs/tsl-showcase.png" width="100" height="100" alt="Tsl Showcase" style="margin: 2px; object-fit: cover;">
-  </a>
-  <a href="https://starcade9.github.io/console.html?demo=tween-bounce" title="Tween Bounce">
-    <img src="public/assets/cart-thumbs/tween-bounce.png" width="100" height="100" alt="Tween Bounce" style="margin: 2px; object-fit: cover;">
-  </a>
-  <a href="https://starcade9.github.io/console.html?demo=tween-logo" title="Tween Logo">
-    <img src="public/assets/cart-thumbs/tween-logo.png" width="100" height="100" alt="Tween Logo" style="margin: 2px; object-fit: cover;">
-  </a>
-  <a href="https://starcade9.github.io/console.html?demo=tween-typewriter" title="Tween Typewriter">
-    <img src="public/assets/cart-thumbs/tween-typewriter.png" width="100" height="100" alt="Tween Typewriter" style="margin: 2px; object-fit: cover;">
-  </a>
-  <a href="https://starcade9.github.io/console.html?demo=ui-demo" title="Ui Demo">
-    <img src="public/assets/cart-thumbs/ui-demo.png" width="100" height="100" alt="Ui Demo" style="margin: 2px; object-fit: cover;">
-  </a>
-  <a href="https://starcade9.github.io/console.html?demo=vox-viewer" title="Vox Viewer">
-    <img src="public/assets/cart-thumbs/vox-viewer.png" width="100" height="100" alt="Vox Viewer" style="margin: 2px; object-fit: cover;">
-  </a>
-  <a href="https://starcade9.github.io/console.html?demo=voxel-creative" title="Voxel Creative">
-    <img src="public/assets/cart-thumbs/voxel-creative.png" width="100" height="100" alt="Voxel Creative" style="margin: 2px; object-fit: cover;">
-  </a>
-  <a href="https://starcade9.github.io/console.html?demo=voxel-creatures" title="Voxel Creatures">
-    <img src="public/assets/cart-thumbs/voxel-creatures.png" width="100" height="100" alt="Voxel Creatures" style="margin: 2px; object-fit: cover;">
-  </a>
-  <a href="https://starcade9.github.io/console.html?demo=voxel-terrain" title="Voxel Terrain">
-    <img src="public/assets/cart-thumbs/voxel-terrain.png" width="100" height="100" alt="Voxel Terrain" style="margin: 2px; object-fit: cover;">
-  </a>
-  <a href="https://starcade9.github.io/console.html?demo=vr-demo" title="Vr Demo">
-    <img src="public/assets/cart-thumbs/vr-demo.png" width="100" height="100" alt="Vr Demo" style="margin: 2px; object-fit: cover;">
-  </a>
-  <a href="https://starcade9.github.io/console.html?demo=vr-sword-combat" title="Vr Sword Combat">
-    <img src="public/assets/cart-thumbs/vr-sword-combat.png" width="100" height="100" alt="Vr Sword Combat" style="margin: 2px; object-fit: cover;">
-  </a>
-  <a href="https://starcade9.github.io/console.html?demo=wad-demo" title="Wad Demo">
-    <img src="public/assets/cart-thumbs/wad-demo.png" width="100" height="100" alt="Wad Demo" style="margin: 2px; object-fit: cover;">
-  </a>
-  <a href="https://starcade9.github.io/console.html?demo=wing-commander-space" title="Wing Commander Space">
-    <img src="public/assets/cart-thumbs/wing-commander-space.png" width="100" height="100" alt="Wing Commander Space" style="margin: 2px; object-fit: cover;">
-  </a>
-  <a href="https://starcade9.github.io/console.html?demo=wizardry-3d" title="Wizardry 3d">
-    <img src="public/assets/cart-thumbs/wizardry-3d.png" width="100" height="100" alt="Wizardry 3d" style="margin: 2px; object-fit: cover;">
-  </a>
-</div>
-
----
-
-## 🧪 **Testing**
-
-```bash
-pnpm test                # Full gate: color, studio protocol, demoscene, CLI,
-                         # Godot shim parity, dist-sync check (~17s)
-pnpm test:quick          # Fast everyday smoke (~2.5s)
-pnpm test:api            # 3D API functions
-pnpm test:input          # Input system
-pnpm test:touch          # On-screen touch gamepad (Playwright)
-pnpm test:starfox        # Star Fox demo validation
-pnpm test:integration    # Integration tests
-pnpm test:wad            # WAD runtime + level physics
-pnpm test:wad:physics    # Just the WAD physics regressions
-pnpm test:godot:parity   # Godot shim vs. web runtime (no Godot install needed)
-pnpm run retroarch:test  # RetroArch native conformance harness
-```
-
-**Cross-host spot-check.** `pnpm visual:check` screenshots every mirrored cart on
-*both* the web runtime and the Godot host and writes a side-by-side contact sheet
-to `tmp/visual-check/index.html`. It is not a pass/fail gate — the two hosts do
-not render identically — but it refuses to hand back a screenshot of a cart that
-never started. See [docs/GODOT_PARITY.md](docs/GODOT_PARITY.md).
-
-```bash
-pnpm visual:check                  # both hosts, every mirrored cart
-pnpm visual:check --cart=wad-demo  # one cart (repeatable)
-pnpm visual:check --list           # print the cart list and exit
-```
-
----
-
-## 🔧 **Renderer Architecture**
-
-Nova64 uses progressive enhancement with automatic fallback:
-
-1. **Three.js** (default) — Full 3D with advanced materials, lighting, shadows, post-processing
-2. **WebGL2** (fallback) — RGBA16F framebuffer, GPU sprite batching, ACES tone mapping
-3. **Canvas2D** (compatibility) — CPU rendering with ordered dithering for maximum compatibility
-
----
-
-## 📄 **License**
-
-MIT — see `LICENSE` for details.
-
-## Version History
-
-### v0.5.5 (Current) — _Cracktro_
-
-- Same contents as v0.5.4, re-cut so the npm package could ship: `pnpm test` had failed on any clean checkout since 2026-08-19, which blocked the gated npm publish and kept CI red
-- **Three clean-checkout failures fixed**: a gitignored `main-*.js` bundle asserted before the build ran, a gitignored Godot carts junction read unconditionally, and `sync-dist --check` counting a missing `dist/` copy as drift
-
-### v0.5.4 — _Cracktro_ (cores + GitHub Release only; not on npm)
-
-- **Studio accepts the module cart shape**: `export function init()` now runs instead of failing on `Unexpected token 'export'`; `import` still errors with an explanation
-- **README's first cart runs**: bare `print()` was `window.print` and opened the browser print dialog mid-frame
-- **566 call sites namespaced** across 18 docs, resolved against `NAMESPACE_MAP`; `circ` → `nova64.draw.circle`, `mouseButton` → `nova64.input.mouseDown`
-- **Guard tests** walk `docs/` so a retired bare global cannot be reintroduced, with browser coverage of the real embedding path
-- **`sync-dist.mjs` verifies the 108 runtime files mirrored into `dist/`** — the copy npm ships
-- **`pnpm release` stamps the version** into the README badge and both docs copies
-
-### v0.5.3
-
-- **Metaverse**: Phase 1 shared world on `nova64.net` — extensible framework, ES module loader, native Godot text chat (`nova64.gdtext`) for web ↔ Godot cross-play
-- **Auth & multiplayer**: Supabase auth, EVM wallet sign-in (SIWE / EIP-4361), presence + live roster + `/nick`, hardened relay, WebRTC push-to-talk voice
-- **Lemon Squeezy distribution**: `pnpm release:lemon` unified export (desktop apps + RetroArch cores + Godot source); iOS/iPadOS and tvOS cores in CI
-- **Desktop & VS Code platform**: Electron app and VS Code extension over host-neutral `packages/` (`agent-core`, `ai-providers`, `workspace-core`, `app-contracts`)
-- **Touch controls**: automatic on-screen gamepad for phones/tablets via `runtime/touch-controls.js`, driving the same key-state path as the keyboard
-- **WAD level physics**: segment collider + per-frame floor/ceiling heights + `buildReachability()`, replacing the point cloud that sealed DOOM doorways
-- **Godot shim parity**: light orientation, material kinds and WAD geometry re-ported and gated by `pnpm test:godot:parity`; `pnpm visual:check` cross-host contact sheet
-- **Release safety**: one-shot `pnpm release`, pre-push preflight, secret-blocking commit hook
-- **os9-shell**: maximized-window fill fix and `pnpm osBuildServe` single-source build+serve
-
-### v0.5.2 — _Hippie Sunshine_
-
-- **RetroArch `parseCanvasUI` extensions**: `<image>` tags, text effects, quadratic / smooth cubic paths, SVG arcs, group clipping, advanced cube transparency, font families
-- **Controller face-key bridge**: RetroPad face buttons → DOM-style `KeyZ`/`KeyX`/`KeyC`/`KeyV`, SELECT → `KeyI`/`Tab`
-- **Linux armhf release target** added to `release-cores.yml` via `dockcross/linux-armv7`
-- **dockcross zlib hardening**: `-fPIC` zlib from pinned GitHub tag, preserved shell quoting
-- **Linux core CI smoke test** before release
-- **`prepublishOnly` hardened** from `validate && build` to `lint && test:all && build`
-- **Publish workflow reordered** so tests run before build, matching `prepublishOnly`
-- **[AGENTS.md](AGENTS.md)** as single source of truth for agent repo guidance
-
-### v0.5.1
-
-- Package metadata refresh and post-namespace-migration polish
-
-### v0.5.0 — _The Great Namespace Push_
-
-- **Grouped `nova64.*` namespace**: 100+ bare globals retired; all 71+ demo carts and every runtime callsite migrated to `nova64.draw.*`, `nova64.scene.*`, `nova64.fx.*`, `nova64.voxel.*`, etc. Single canonical contract in `runtime/namespace.js`
-- **Babylon Noa voxel adapter**: `runtime/backends/babylon/noa-adapter.js` lets Babylon back the shared voxel API with native chunk meshing
-- **Godot native host trunk-class**: `minecraft-demo`, `f-zero-nova-3d`, `star-fox-nova-3d`, `space-harrier-3d`, `fps-demo-3d` (with WAD map picker) running natively via GDExtension+QuickJS; JS syntax highlighting + ESLint in the Godot editor
-- **Babylon WAD/XR/TSL parity**: WAD texture proxy path, native Babylon WebXR (`@babylonjs/core` 9.4.1) with Cardboard fallback, deterministic TSL galaxy guardrail
-- **Runtime hardening**: cart-reset hook registry, load-generation race guard, namespace-aware effects pipeline
-- **Migration tooling**: `scripts/migrate-to-namespace.{cjs,js}`, `scripts/audit-carts.mjs`, `scripts/walk-carts.mjs`
-
-### v0.4.9
-
-- Fixed OS9 Shell Game Studio, Game Launcher, and Nova HD cart launch regressions
-- Added regression tests for cart URL helpers, Game Launcher catalog paths, and Game Studio cart execution
-
-### v0.4.8
-
-- **hyperNova**: HyperCard/Flash-inspired authoring tool with card stacks, NovaTalk scripting, symbol library, keyframe timelines, and GSAP tweens
-- **Internationalization (i18n)**: Full EN/ES/JA support across main site, console, and OS9 shell with runtime `t()` API for carts
-- **Debug Panel**: F9 overlay with scene graph, camera inspector, lights editor, and Three.js DevTools bridge
-- **TSL Shader Pack**: Custom Three.js Shading Language effects
-- **60+ Demo Carts**: Expanded gallery including shader showcase, blend modes, camera platformer, VR/AR demos
-- **OS9 Shell Enhancements**: Screensaver system, theme/background customization, locale-aware menus, eMU emulator
-
-See [CHANGELOG.md](CHANGELOG.md) for full version history.
+A README change on GitHub appears on npm when it is included in a newly published
+package. Historical release details are in the
+[changelog](https://github.com/seacloud9/nova64/blob/main/CHANGELOG.md).

@@ -5,6 +5,8 @@
 # Output: nova64_libretro_emscripten.a — link into RetroArch's
 # Makefile.emscripten (see retroarch/WASM_CORE.md).
 name: WASM core
+# PR / main CI for the WebAssembly core. Releases are built, smoke-tested and
+# attached by release-cores.yml (job `wasm`), which also gates npm publish.
 
 on:
   pull_request:
@@ -24,7 +26,6 @@ on:
       - 'scripts/build-retroarch-web.sh'
       - 'scripts/retroarch-web-smoke.mjs'
       - 'public/retroarch-web/**'
-    tags: ['v*.*.*']
   workflow_dispatch:
 
 jobs:
@@ -64,14 +65,6 @@ jobs:
           path: staging/
           retention-days: 30
 
-      - name: Attach core to release
-        if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ github.ref_name }}
-          files: |
-            staging/nova64_libretro_emscripten.a
-            staging/SHA256SUMS-wasm.txt
 
   player:
     # Links the core into RetroArch's web player (same script developers run:

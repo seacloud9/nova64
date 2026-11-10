@@ -9,6 +9,9 @@ name: Release RetroArch cores
 #   - Android arm64-v8a   (.so, NDK clang from ubuntu-latest)
 #   - Android armeabi-v7a (.so, NDK clang from ubuntu-latest)
 #   - Android x86_64      (.so, NDK clang from ubuntu-latest, for emulators)
+#   - WebAssembly (RetroArch web player .js/.wasm + emscripten static lib),
+#     smoke-tested in headless Chromium. The release and npm publish both
+#     wait for it, so every release ships a working WASM core.
 #
 # Triggered automatically when a v*.*.* tag is pushed, or manually via the
 # Actions tab so you can cut a one-off pre-release without retagging.
@@ -245,10 +248,60 @@ jobs:
           path: staging/
           retention-days: 30
 
+  wasm:
+    name: Build WASM core + RetroArch web player (smoke-tested)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # QuickJS (nova64-godot/gdextension/third_party/quickjs) is a submodule.
+          submodules: recursive
+      # Same script developers run (pnpm build:retroarch-web): builds the
+      # emscripten static core, then links it into RetroArch's web player.
+      - name: Build WASM core and web player
+        run: bash scripts/build-retroarch-web.sh
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
+      - name: Smoke test — boot a cart on the WASM core
+        run: |
+          pnpm exec vite --port 5173 --strictPort &
+          for i in $(seq 1 60); do curl -sf -o /dev/null http://localhost:5173/retroarch-web/index.html && break; sleep 1; done
+          node scripts/retroarch-web-smoke.mjs
+      - name: Verify the static core exports the libretro API
+        run: |
+          for sym in retro_init retro_run retro_load_game retro_set_environment; do
+            docker run --rm -v "$PWD/retroarch":/c -w /c emscripten/emsdk:3.1.74 \
+              emnm nova64_libretro_emscripten.a | grep -q " T $sym$" \
+              || { echo "missing symbol: $sym"; exit 1; }
+          done
+      - name: Stage WASM artifact
+        run: |
+          mkdir -p staging
+          cp public/retroarch-web/nova64_libretro.js public/retroarch-web/nova64_libretro.wasm staging/
+          cp retroarch/nova64_libretro_emscripten.a staging/
+          ls -lh staging
+      - uses: actions/upload-artifact@v4
+        with:
+          name: core-wasm
+          path: staging/
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: retroarch-web-smoke
+          path: retroarch-web-smoke.png
+          if-no-files-found: ignore
+
   release:
     name: Publish GitHub Release
     runs-on: ubuntu-latest
-    needs: build
+    needs: [build, wasm]
     permissions:
       contents: write
 
@@ -263,6 +316,12 @@ jobs:
           mkdir -p dist-cores
           find artifacts -type f \( -name '*.so' -o -name '*.dll' -o -name '*.dylib' \) \
             -exec cp -v {} dist-cores/ \;
+          # WebAssembly core: the RetroArch web player (.js + .wasm) and the
+          # emscripten static lib for embedding in your own RetroArch web build.
+          test -f artifacts/core-wasm/nova64_libretro.wasm || { echo "missing WASM core"; exit 1; }
+          cp -v artifacts/core-wasm/nova64_libretro.js \
+                artifacts/core-wasm/nova64_libretro.wasm \
+                artifacts/core-wasm/nova64_libretro_emscripten.a dist-cores/
           cd dist-cores
           sha256sum * > SHA256SUMS.txt
           cat > README.md <<'EOF'
@@ -306,6 +365,15 @@ jobs:
           Rename to `nova64_libretro_android.so` and place under
           `/storage/emulated/0/RetroArch/cores/` (or your RetroArch core path).
 
+          ## Web (WebAssembly)
+
+          | File | Use |
+          |------|-----|
+          | `nova64_libretro.js` + `nova64_libretro.wasm` | RetroArch web player build of the core (keep both together) |
+          | `nova64_libretro_emscripten.a` | static core for linking into your own RetroArch emscripten build |
+
+          Play it in the browser at https://nova64.io/retroarch-web/
+
           `SHA256SUMS.txt` lets you verify any download.
 
           Source: https://github.com/seacloud9/nova64
@@ -345,9 +413,9 @@ jobs:
   # Requires the NOVA64IO repo secret. The automatic npm path lives here; the
   # publish.yml workflow is a manual-only fallback.
   npm-publish:
-    name: Publish to npm (gated on all cores + tests green)
+    name: Publish to npm (gated on all cores + WASM + tests green)
     runs-on: ubuntu-latest
-    needs: build
+    needs: [build, wasm]
     if: github.event_name == 'push'
     permissions:
       contents: read
@@ -371,6 +439,18 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      # Ship the WASM core built (and smoke-tested) for THIS release, not
+      # whatever copy happens to be committed under public/retroarch-web/.
+      - name: Download WASM core
+        uses: actions/download-artifact@v4
+        with:
+          name: core-wasm
+          path: wasm-core
+      - name: Install fresh WASM player into the package
+        run: |
+          cp -v wasm-core/nova64_libretro.js wasm-core/nova64_libretro.wasm public/retroarch-web/
+          sha256sum public/retroarch-web/nova64_libretro.*
 
       # Build BEFORE testing: part of the suite asserts on build output
       # (dist/assets/main-*.js), and publishing ships dist/, so the tests should

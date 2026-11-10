@@ -75,7 +75,8 @@ canvas.width = _paramW;
 canvas.height = _paramH;
 
 const _requestedBackend = (_qs.get('backend') || '').toLowerCase();
-const _isBabylonPage = window.location.pathname.endsWith('/babylon_console.html');
+// Match both /babylon_console.html and the clean URL /babylon_console (Vercel).
+const _isBabylonPage = /\/babylon_console(\.html)?$/.test(window.location.pathname);
 const _useBabylon = _requestedBackend === 'babylon' || _isBabylonPage;
 
 // Select renderer backend (default: Three.js)

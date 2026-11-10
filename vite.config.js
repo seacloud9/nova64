@@ -31,6 +31,7 @@ export default defineConfig({
         console: resolve(__dirname, 'console.html'),
         'cart-runner': resolve(__dirname, 'cart-runner.html'),
         'hero-embed': resolve(__dirname, 'hero-embed.html'),
+        'babylon-console': resolve(__dirname, 'babylon_console.html'),
       },
     },
   },

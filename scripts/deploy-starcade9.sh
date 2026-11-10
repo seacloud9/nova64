@@ -40,7 +40,7 @@ echo "📄 Copying root files..."
 cp "$NOVA64_DIR/dist/console.html" "$DEPLOY_DIR/console.html"
 cp "$NOVA64_DIR/dist/cart-runner.html" "$DEPLOY_DIR/cart-runner.html"
 cp "$NOVA64_DIR/dist/hero-embed.html" "$DEPLOY_DIR/hero-embed.html"
-cp "$NOVA64_DIR/babylon_console.html" "$DEPLOY_DIR/babylon_console.html"
+cp "$NOVA64_DIR/dist/babylon_console.html" "$DEPLOY_DIR/babylon_console.html"
 cp "$NOVA64_DIR/tweaks-panel.jsx" "$DEPLOY_DIR/tweaks-panel.jsx"
 cp "$NOVA64_DIR/cart-grid.jsx" "$DEPLOY_DIR/cart-grid.jsx"
 

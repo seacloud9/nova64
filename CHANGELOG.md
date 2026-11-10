@@ -17,6 +17,15 @@ live in [`docs/releases/`](docs/releases/).
 - More game skies: Cyberpunk City (night smog), Mystical Realm (sky follows the
   day/night cycle), Crystal Cathedral (aurora), Star Combat 64 and Nova Drift
   (deep-space nebula), 3D Advanced and Game of Life 3D (cosmos nebula).
+- Babylon.js backend parity: procedural skies (gradient, space, presets) now
+  render on Babylon using the same shaders as Three.js (shared
+  `runtime/sky-shaders.js`), bake into PBR reflections, and animate. Fixed
+  Babylon double-lighting (`setAmbientLight` no longer overrides the
+  hemisphere fill), which washed colours out.
+- Console: Three.js / Babylon.js switch that reopens the current cart in the
+  other engine; any cart folder name works in `?demo=`.
+- Babylon console now works in production builds (bundled by Vite) and on
+  clean URLs (`/babylon_console`).
 - Breakwater Circuit is now listed in the hero-embed `?demo=` map, the Babylon
   console, and the OS shell desktop, menu bar and mobile launchers.
 - Super Plumber 64: rebuilt the player character (cap with badge, face,

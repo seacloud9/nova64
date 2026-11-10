@@ -32,6 +32,7 @@ export default defineConfig({
         'cart-runner': resolve(__dirname, 'cart-runner.html'),
         'hero-embed': resolve(__dirname, 'hero-embed.html'),
         'babylon-console': resolve(__dirname, 'babylon_console.html'),
+        'demo-embed': resolve(__dirname, 'demo-embed.html'),
       },
     },
   },

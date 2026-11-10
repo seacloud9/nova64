@@ -41,11 +41,12 @@ cp "$NOVA64_DIR/dist/console.html" "$DEPLOY_DIR/console.html"
 cp "$NOVA64_DIR/dist/cart-runner.html" "$DEPLOY_DIR/cart-runner.html"
 cp "$NOVA64_DIR/dist/hero-embed.html" "$DEPLOY_DIR/hero-embed.html"
 cp "$NOVA64_DIR/dist/babylon_console.html" "$DEPLOY_DIR/babylon_console.html"
+cp "$NOVA64_DIR/dist/demo-embed.html" "$DEPLOY_DIR/demo-embed.html"
 cp "$NOVA64_DIR/tweaks-panel.jsx" "$DEPLOY_DIR/tweaks-panel.jsx"
 cp "$NOVA64_DIR/cart-grid.jsx" "$DEPLOY_DIR/cart-grid.jsx"
 
 # Re-add Vercel Web Analytics to the copied pages (nova64's copies don't have it).
-for page in console.html cart-runner.html hero-embed.html babylon_console.html; do
+for page in console.html cart-runner.html hero-embed.html babylon_console.html demo-embed.html; do
   f="$DEPLOY_DIR/$page"
   if [ -f "$f" ] && ! grep -q 'vercel-insights' "$f"; then
     perl -0pi -e 's|</head>|  <!-- Vercel Web Analytics -->\n  <script defer src="https://cdn.vercel-insights.com/v1/script.js"></script>\n</head>|' "$f"

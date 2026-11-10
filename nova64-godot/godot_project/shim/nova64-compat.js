@@ -4040,7 +4040,18 @@
   }
 
   // Skybox — wired to env.set sky presets.
-  function createSpaceSkybox(_opts)   { ensureInit(); call('env.set', { skyPreset: 'space',     sky: true }); return 1; }
+  // Baked panoramas of the web runtime's procedural skies (scripts/bake-sky-presets.mjs),
+  // shown through Godot's PanoramaSkyMaterial so nebulae, stars and clouds match the web.
+  const BAKED_SKY_DIR = 'res://assets/sky/presets/';
+  function _bakedSky(name) {
+    const r = call('env.set', { skyPanorama: BAKED_SKY_DIR + name + '.jpg' });
+    return !(r && r.error);
+  }
+  function createSpaceSkybox(_opts) {
+    ensureInit();
+    if (!_bakedSky('space')) call('env.set', { skyPreset: 'space', sky: true });
+    return 1;
+  }
   function createGalaxySkybox(_opts)  { ensureInit(); call('env.set', { skyPreset: 'space',     sky: true, glow: true, glowIntensity: 1.6 }); return 1; }
   function createSunsetSkybox(_opts)  { ensureInit(); call('env.set', { skyPreset: 'sunset',    sky: true }); return 1; }
   function createDawnSkybox(_opts)    { ensureInit(); call('env.set', { skyPreset: 'dawn',      sky: true }); return 1; }
@@ -4088,9 +4099,18 @@
     highlands: { top: 0x2f6fc8, bottom: 0x8cc8ee, horizonColor: 0xffd29a },
     aurora: { top: 0x020818, bottom: 0x0b2a3a, horizonColor: 0x1c5a5a },
   };
+  // Overrides that change the sky's colours can't use the baked image.
+  const SKY_COLOUR_KEYS = ['top', 'bottom', 'horizonColor', 'sun', 'oceanColor', 'inkColor', 'auroraColors', 'nebulaColor'];
   function createSkyPreset(name, overrides) {
-    const p = SKY_PRESETS[name] || SKY_PRESETS.meadow;
-    const cfg = Object.assign({}, p, overrides || {});
+    const key = SKY_PRESETS[name] ? name : 'meadow';
+    const p = SKY_PRESETS[key];
+    const o = overrides || {};
+    const recoloured = SKY_COLOUR_KEYS.some(k => o[k] !== undefined);
+    if (p.kind === 'space' || !recoloured) {
+      ensureInit();
+      if (_bakedSky(key)) return 1;
+    }
+    const cfg = Object.assign({}, p, o);
     if (cfg.kind === 'space') return createSpaceSkybox(cfg);
     return createGradientSkybox(cfg.top, cfg.bottom, cfg);
   }

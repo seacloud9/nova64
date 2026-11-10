@@ -567,6 +567,26 @@ async function main() {
     assert(!missing.length, `${missing.length} asset(s) missing for Godot:\n      ${missing.join('\n      ')}`);
   });
 
+  runner.test('godot shim - presets and space skies use the baked web panoramas', () => {
+    const calls = [];
+    const sb = loadShim(calls);
+    const light = sb.nova64.light;
+    const panos = () => calls.filter(c => c.method === 'env.set' && c.payload.skyPanorama).map(c => c.payload.skyPanorama);
+    light.createSkyPreset('meadow');
+    light.createSkyPreset('cosmos', { seed: 3 });
+    light.createSpaceSkybox({ starCount: 800 });
+    assertEqual(JSON.stringify(panos()), JSON.stringify([
+      'res://assets/sky/presets/meadow.jpg',
+      'res://assets/sky/presets/cosmos.jpg',
+      'res://assets/sky/presets/space.jpg',
+    ]), 'baked panorama paths');
+    const project = fileURLToPath(new URL('../nova64-godot/godot_project/', import.meta.url));
+    for (const name of [...light.getSkyPresets(), 'space']) {
+      const f = join(project, 'assets/sky/presets', `${name}.jpg`);
+      assert(existsSync(f), `baked sky missing for Godot: ${name} (run scripts/bake-sky-presets.mjs)`);
+    }
+  });
+
   runner.test('godot shim - createImageSkybox rejects so carts use their fallback sky', async () => {
     // Six-face cube skies need a Cubemap path in the GDExtension bridge (not yet
     // implemented). Until then the promise must reject, never hang or throw sync.

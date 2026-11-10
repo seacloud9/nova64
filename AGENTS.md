@@ -258,6 +258,12 @@ pnpm run mempalace:mine:retroarch
 pnpm run mempalace:sync:retroarch
 ```
 
+macOS note: the shared MemPalace scripts currently expect `~/ai-tools` and
+Windows/WSL repository paths. On this Mac, `~/ai-tools` is absent, so
+`mempalace:wake` cannot run. Preserve the working Windows/WSL configuration;
+inspect current source and Git history locally and record the unavailable memory
+service in the task handoff. Do not treat this Mac limitation as a Windows failure.
+
 Memory workflow:
 
 - Start coding sessions by checking `pnpm run mempalace:wake` when project history matters.

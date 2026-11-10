@@ -60,6 +60,23 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NOVA64IO }}
 
+      - name: Inspect npm package processing status
+        continue-on-error: true
+        run: |
+          node --input-type=module <<'JS'
+          import { readFileSync } from 'node:fs';
+          const { version } = JSON.parse(readFileSync('package.json', 'utf8'));
+          const response = await fetch(
+            `https://registry.npmjs.org/-/package/nova64/version/${version}/status`,
+            { headers: { Authorization: `Bearer ${process.env.NODE_AUTH_TOKEN}` } }
+          );
+          const result = await response.json();
+          console.log(JSON.stringify({ httpStatus: response.status, ...result }));
+          if (!response.ok) process.exitCode = 1;
+          JS
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NOVA64IO }}
+
       - name: Check release visibility from the publishing account
         run: |
           version=$(node -p "require('./package.json').version")

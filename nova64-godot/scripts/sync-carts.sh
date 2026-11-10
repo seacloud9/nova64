@@ -26,11 +26,16 @@ mkdir -p "$dst"
 dst_real="$(cd "$dst" && pwd -P)"
 
 # 1. Drop any cart subdir in $dst whose name no longer exists in $src.
+#    NEVER touch symlinked carts: most entries are links into ../examples/, and
+#    `rm -rf link/` (trailing slash) deletes the link TARGET's contents. That
+#    wiped 112 tracked files from examples/ on 2026-11-10.
 for existing in "$dst"/*/; do
-  [ -d "$existing" ] || continue
-  name="$(basename "$existing")"
+  entry="${existing%/}"
+  [ -L "$entry" ] && continue
+  [ -d "$entry" ] || continue
+  name="$(basename "$entry")"
   if [ ! -d "$src/$name" ]; then
-    rm -rf "$existing"
+    rm -rf -- "$entry"
   fi
 done
 

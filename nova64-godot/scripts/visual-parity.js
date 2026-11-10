@@ -170,6 +170,26 @@ async function ensureServer(opts) {
   return child;
 }
 
+// Safety net: Godot validation must never delete tracked repo files. On
+// 2026-11-10 sync-carts.sh followed carts/ symlinks into ../examples/ and
+// wiped 112 tracked files. Fail loudly if anything new goes missing.
+function deletedTrackedFiles() {
+  const r = spawnSync('git', ['ls-files', '-d'], { cwd: path.join(GODOT_ROOT, '..'), encoding: 'utf8' });
+  if (r.status !== 0) return null; // not a git checkout: skip the check
+  return new Set(r.stdout.split('\n').filter(Boolean));
+}
+function assertNoNewDeletions(before, stage) {
+  if (!before) return;
+  const after = deletedTrackedFiles();
+  const lost = [...after].filter(f => !before.has(f));
+  if (lost.length) {
+    throw new Error(
+      `${stage} deleted ${lost.length} tracked file(s), e.g. ${lost.slice(0, 5).join(', ')}.\n` +
+        'Stopping. Restore them with: git ls-files -d -z | xargs -0 git checkout --'
+    );
+  }
+}
+
 function syncCarts() {
   const script = path.join(GODOT_ROOT, 'scripts', 'sync-carts.sh');
   const result = spawnSync('bash', [script], {
@@ -385,7 +405,9 @@ async function main() {
   }
 
   ensureDirs();
+  const deletedBefore = deletedTrackedFiles();
   syncCarts();
+  assertNoNewDeletions(deletedBefore, 'sync-carts.sh');
   const godotVersion = checkGodot(opts.godot);
   console.log(`Godot: ${godotVersion}`);
 
@@ -438,6 +460,7 @@ async function main() {
     await browser.close();
     if (server) server.kill('SIGTERM');
   }
+  assertNoNewDeletions(deletedBefore, 'Godot visual parity');
 
   writeReports(results, opts);
   printSummary(results, opts);

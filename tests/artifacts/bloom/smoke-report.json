@@ -1,0 +1,89 @@
+{
+  "browser": "147.0.7727.15",
+  "checks": [
+    {
+      "cart": "QWEN/neon-orbit-dodger",
+      "before": true,
+      "renderer": "ANGLE (Apple, ANGLE Metal Renderer: Apple M4 Pro, Unspecified Version)",
+      "errors": []
+    },
+    {
+      "cart": "QWEN/crystal-cave-styled",
+      "before": true,
+      "renderer": "ANGLE (Apple, ANGLE Metal Renderer: Apple M4 Pro, Unspecified Version)",
+      "errors": []
+    },
+    {
+      "cart": "f-zero-nova-3d",
+      "before": true,
+      "renderer": "ANGLE (Apple, ANGLE Metal Renderer: Apple M4 Pro, Unspecified Version)",
+      "errors": []
+    },
+    {
+      "cart": "cyberpunk-city-3d",
+      "before": true,
+      "renderer": "ANGLE (Apple, ANGLE Metal Renderer: Apple M4 Pro, Unspecified Version)",
+      "errors": []
+    },
+    {
+      "cart": "fps-demo-3d",
+      "before": true,
+      "renderer": "ANGLE (Apple, ANGLE Metal Renderer: Apple M4 Pro, Unspecified Version)",
+      "errors": []
+    },
+    {
+      "cart": "wad-demo",
+      "before": true,
+      "renderer": "ANGLE (Apple, ANGLE Metal Renderer: Apple M4 Pro, Unspecified Version)",
+      "errors": []
+    },
+    {
+      "cart": "space-combat-3d",
+      "before": true,
+      "renderer": "ANGLE (Apple, ANGLE Metal Renderer: Apple M4 Pro, Unspecified Version)",
+      "errors": []
+    },
+    {
+      "cart": "QWEN/neon-orbit-dodger",
+      "before": false,
+      "renderer": "ANGLE (Apple, ANGLE Metal Renderer: Apple M4 Pro, Unspecified Version)",
+      "errors": []
+    },
+    {
+      "cart": "QWEN/crystal-cave-styled",
+      "before": false,
+      "renderer": "ANGLE (Apple, ANGLE Metal Renderer: Apple M4 Pro, Unspecified Version)",
+      "errors": []
+    },
+    {
+      "cart": "f-zero-nova-3d",
+      "before": false,
+      "renderer": "ANGLE (Apple, ANGLE Metal Renderer: Apple M4 Pro, Unspecified Version)",
+      "errors": []
+    },
+    {
+      "cart": "cyberpunk-city-3d",
+      "before": false,
+      "renderer": "ANGLE (Apple, ANGLE Metal Renderer: Apple M4 Pro, Unspecified Version)",
+      "errors": []
+    },
+    {
+      "cart": "fps-demo-3d",
+      "before": false,
+      "renderer": "ANGLE (Apple, ANGLE Metal Renderer: Apple M4 Pro, Unspecified Version)",
+      "errors": []
+    },
+    {
+      "cart": "wad-demo",
+      "before": false,
+      "renderer": "ANGLE (Apple, ANGLE Metal Renderer: Apple M4 Pro, Unspecified Version)",
+      "errors": []
+    },
+    {
+      "cart": "space-combat-3d",
+      "before": false,
+      "renderer": "ANGLE (Apple, ANGLE Metal Renderer: Apple M4 Pro, Unspecified Version)",
+      "errors": []
+    }
+  ]
+}

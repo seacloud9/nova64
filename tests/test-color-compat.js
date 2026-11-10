@@ -4,7 +4,8 @@
 // normalizeColorToHex must convert it before those calls.
 
 import assert from 'assert';
-import { normalizeColorToHex } from '../runtime/backends/threejs/materials.js';
+import { GpuThreeJS } from '../runtime/backends/threejs/gpu-threejs.js';
+import { normalizeColorToHex, materialsModule } from '../runtime/backends/threejs/materials.js';
 
 // Inline rgba8 / packRGBA64 so we can test the full roundtrip without loading
 // the GPU layer (which depends on Three.js and browser globals).
@@ -80,6 +81,59 @@ test('normalizeColorToHex result can be JSON.stringify-ed without throwing', () 
 test('normalizeColorToHex result is a Number (not BigInt)', () => {
   const c = rgba8(100, 200, 50, 255);
   assert.strictEqual(typeof normalizeColorToHex(c), 'number');
+});
+
+const makeMaterial = options => GpuThreeJS.prototype.createN64Material(options);
+
+test('explicit glow intensity is honored without changing the shading model', () => {
+  const material = makeMaterial({ color: 0x00aaff, emissive: 0x00aaff, intensity: 2 });
+  assert.equal(material.emissiveIntensity, 2);
+  assert.equal(material.type, 'MeshLambertMaterial');
+  assert.equal(material.transparent, false);
+});
+
+test('emissive true uses the mesh color through the cache', () => {
+  const cache = materialsModule({
+    gpu: { createN64Material: makeMaterial },
+    materialCache: new Map(),
+  });
+  const material = cache.getCachedMaterial({
+    color: rgba8(0, 170, 255),
+    emissive: true,
+    intensity: 1.5,
+  });
+  assert.equal(material.emissive.getHex(), 0x00aaff);
+  assert.equal(material.emissiveIntensity, 1.5);
+});
+
+test('emissive material without an emission color uses its authored palette', () => {
+  const material = makeMaterial({ color: 0x00ff75, material: 'emissive', intensity: 2 });
+  assert.equal(material.emissive.getHex(), 0x00ff75);
+  assert.equal(material.emissiveIntensity, 2);
+});
+
+test('canonical emissiveIntensity takes precedence over intensity', () => {
+  const material = makeMaterial({ emissive: 0x00aaff, emissiveIntensity: 0.4, intensity: 2 });
+  assert.equal(material.emissiveIntensity, 0.4);
+});
+
+test('explicit alias zero disables glow and unspecified glow preserves legacy defaults', () => {
+  assert.equal(makeMaterial({ emissive: 0x00aaff, intensity: 0 }).emissiveIntensity, 0);
+  assert.equal(makeMaterial({ emissive: 0x00aaff }).emissiveIntensity, 0.3);
+  assert.equal(makeMaterial({ color: 0x00aaff }).emissiveIntensity, 0);
+});
+
+test('material cache separates both intensity spellings and still reuses identical options', () => {
+  const cache = materialsModule({
+    gpu: { createN64Material: makeMaterial },
+    materialCache: new Map(),
+  });
+  for (const field of ['intensity', 'emissiveIntensity']) {
+    const low = { color: 0x00aaff, emissive: 0x00aaff, [field]: 0.4 };
+    const high = { ...low, [field]: 2 };
+    assert.notEqual(cache.getCachedMaterial(low), cache.getCachedMaterial(high));
+    assert.equal(cache.getCachedMaterial(low), cache.getCachedMaterial(low));
+  }
 });
 
 const status = failed === 0 ? 'PASS' : 'FAIL';

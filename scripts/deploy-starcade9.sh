@@ -18,7 +18,7 @@ echo ""
 
 # Build os9-shell first to ensure fresh assets in public/os9-shell/
 echo "🏗️  Building os9-shell..."
-(cd "$NOVA64_DIR/os9-shell" && pnpm install && pnpm build)
+(cd "$NOVA64_DIR/os9-shell" && CI=true pnpm install && pnpm build)
 rm -rf "$NOVA64_DIR/public/os9-shell/"*
 mkdir -p "$NOVA64_DIR/public/os9-shell"
 cp -r "$NOVA64_DIR/os9-shell/dist/"* "$NOVA64_DIR/public/os9-shell/"
@@ -49,29 +49,37 @@ echo "📦 Copying src/main.js..."
 mkdir -p "$DEPLOY_DIR/src"
 cp "$NOVA64_DIR/src/main.js" "$DEPLOY_DIR/src/main.js"
 
+# rsync --delete must never remove deploy-only files: large demo media is kept
+# out of nova64's git, and some doc pages / build stamps only exist here.
+# "P" (protect) filters keep matching files on the receiver.
+PROTECT=(
+  --filter='P *.mp4' --filter='P *.mpg' --filter='P *.ogv' --filter='P *.ogv.uid'
+  --filter='P *.webm' --filter='P *.mov' --filter='P build-stamp.json'
+)
+
 # Runtime (sync all .js, .d.ts, subdirs)
 echo "⚙️  Syncing runtime/..."
 rsync -a --delete --exclude='.DS_Store' "$NOVA64_DIR/runtime/" "$DEPLOY_DIR/runtime/"
 
 # Examples (sync all)
 echo "🎮 Syncing examples/..."
-rsync -a --delete --exclude='.DS_Store' "$NOVA64_DIR/examples/" "$DEPLOY_DIR/examples/"
+rsync -a --delete "${PROTECT[@]}" --exclude='.DS_Store' "$NOVA64_DIR/examples/" "$DEPLOY_DIR/examples/"
 
-# Docs
+# Docs (no --delete: some published pages are not in nova64's tree)
 echo "📚 Syncing docs/..."
-rsync -a --delete --exclude='.DS_Store' "$NOVA64_DIR/docs/" "$DEPLOY_DIR/docs/"
+rsync -a --exclude='.DS_Store' "$NOVA64_DIR/docs/" "$DEPLOY_DIR/docs/"
 
 # Public assets (sky textures etc) → assets/
 echo "🎨 Syncing assets/..."
 mkdir -p "$DEPLOY_DIR/assets"
-rsync -a --delete --exclude='.DS_Store' "$NOVA64_DIR/public/assets/" "$DEPLOY_DIR/assets/"
+rsync -a --delete "${PROTECT[@]}" --exclude='.DS_Store' "$NOVA64_DIR/public/assets/" "$DEPLOY_DIR/assets/"
 # Bundled JS from dist/assets/ (Three.js + runtime — no CDN dependency)
 # Added AFTER the --delete sync so these bundles are not removed.
 rsync -a --exclude='.DS_Store' "$NOVA64_DIR/dist/assets/" "$DEPLOY_DIR/assets/"
 # Also mirror under public/assets/ so pages that reference that path (e.g. Redesign.html) work
 echo "🎨 Syncing public/assets/..."
 mkdir -p "$DEPLOY_DIR/public/assets"
-rsync -a --delete --exclude='.DS_Store' "$NOVA64_DIR/public/assets/" "$DEPLOY_DIR/public/assets/"
+rsync -a --delete "${PROTECT[@]}" --exclude='.DS_Store' "$NOVA64_DIR/public/assets/" "$DEPLOY_DIR/public/assets/"
 
 # i18n locale files (es.json, ja.json)
 echo "🌐 Syncing i18n/..."
@@ -81,7 +89,7 @@ rsync -a --delete --exclude='.DS_Store' "$NOVA64_DIR/dist/i18n/" "$DEPLOY_DIR/i1
 # OS9 shell (pre-built)
 echo "🖥️  Syncing os9-shell/..."
 mkdir -p "$DEPLOY_DIR/os9-shell"
-rsync -a --delete --exclude='.DS_Store' "$NOVA64_DIR/public/os9-shell/" "$DEPLOY_DIR/os9-shell/"
+rsync -a --delete "${PROTECT[@]}" --exclude='.DS_Store' "$NOVA64_DIR/public/os9-shell/" "$DEPLOY_DIR/os9-shell/"
 
 echo ""
 echo "✅ Deploy complete!"

@@ -39,6 +39,7 @@ function parseArgs(argv) {
     godotHeadless: process.env.GODOT_HEADLESS === '1',
     list: false,
     maxDiff: 70,
+    maxColorDiff: 0.12,
     noStartServer: false,
     port: 3000,
     press: '',
@@ -72,6 +73,8 @@ function parseArgs(argv) {
     else if (arg.startsWith('--load-timeout-ms='))
       out.loadTimeoutMs = Number(arg.slice('--load-timeout-ms='.length));
     else if (arg.startsWith('--max-diff=')) out.maxDiff = Number(arg.slice('--max-diff='.length));
+    else if (arg.startsWith('--max-color-diff='))
+      out.maxColorDiff = Number(arg.slice('--max-color-diff='.length));
     else if (arg.startsWith('--port=')) out.port = Number(arg.slice('--port='.length));
     else if (arg.startsWith('--press=')) out.press = arg.slice('--press='.length);
     else if (arg.startsWith('--press-count='))
@@ -318,7 +321,44 @@ function compareImages(browserPath, godotPath, diffPath, opts) {
     numDiffPixels,
     totalPixels,
     percentDiff: (numDiffPixels / totalPixels) * 100,
+    colorDiff: blockColorDiff(browser, godot),
   };
+}
+
+// Primary parity metric. Per-pixel matching is dominated by animation phase,
+// anti-aliasing and scanlines (a near-identical frame can score 97% "different"
+// at a strict tolerance, and pixelmatch at threshold 0.7 passes a black sky
+// against a nebula). Instead average each frame into a 64x36 block grid and
+// take the mean RGB distance (0 = identical, 1 = black vs white). Calibrated
+// 2026-11-10: a close match (super-plumber-64) ~0.10, visibly wrong HUD/sky
+// 0.17-0.25.
+function blockColorDiff(a, b, bw = 64, bh = 36) {
+  const avg = png => {
+    const sum = new Float64Array(bw * bh * 3);
+    const cnt = new Uint32Array(bw * bh);
+    for (let y = 0; y < png.height; y++) {
+      const row = Math.floor((y * bh) / png.height) * bw;
+      for (let x = 0; x < png.width; x++) {
+        const i = (y * png.width + x) * 4;
+        const k = row + Math.floor((x * bw) / png.width);
+        sum[k * 3] += png.data[i];
+        sum[k * 3 + 1] += png.data[i + 1];
+        sum[k * 3 + 2] += png.data[i + 2];
+        cnt[k]++;
+      }
+    }
+    for (let k = 0; k < bw * bh; k++) for (let c = 0; c < 3; c++) sum[k * 3 + c] /= cnt[k] * 255;
+    return sum;
+  };
+  const A = avg(a);
+  const B = avg(b);
+  let total = 0;
+  for (let k = 0; k < bw * bh; k++) {
+    total +=
+      Math.hypot(A[k * 3] - B[k * 3], A[k * 3 + 1] - B[k * 3 + 1], A[k * 3 + 2] - B[k * 3 + 2]) /
+      Math.sqrt(3);
+  }
+  return total / (bw * bh);
 }
 
 function writeReports(results, opts) {
@@ -328,6 +368,7 @@ function writeReports(results, opts) {
       browserBackend: opts.browserBackend,
       frames: opts.frames,
       maxDiff: opts.maxDiff,
+      maxColorDiff: opts.maxColorDiff,
       threshold: opts.threshold,
       press: opts.press,
       pressCount: opts.pressCount,
@@ -350,15 +391,18 @@ function writeReports(results, opts) {
     '',
     `Reference backend: ${opts.browserBackend}`,
     '',
-    '| Cart | Status | Diff | Notes |',
-    '| --- | --- | ---: | --- |',
+    `Pass when colour diff <= ${opts.maxColorDiff} (64x36 block mean RGB distance)`,
+    '',
+    '| Cart | Status | Colour diff | Pixel diff | Notes |',
+    '| --- | --- | ---: | ---: | --- |',
   ];
   for (const result of results) {
     const diff = typeof result.percentDiff === 'number' ? `${result.percentDiff.toFixed(2)}%` : '-';
+    const color = typeof result.colorDiff === 'number' ? result.colorDiff.toFixed(3) : '-';
     const notes = result.error
       ? result.error.replace(/\n/g, '<br>')
       : result.notes?.join('<br>') || '';
-    lines.push(`| ${result.cart} | ${result.status} | ${diff} | ${notes} |`);
+    lines.push(`| ${result.cart} | ${result.status} | ${color} | ${diff} | ${notes} |`);
   }
   fs.writeFileSync(path.join(RESULTS, 'report.md'), `${lines.join('\n')}\n`);
 }
@@ -369,8 +413,8 @@ function printSummary(results, opts) {
     return acc;
   }, {});
   const diffed = results
-    .filter(result => typeof result.percentDiff === 'number')
-    .sort((a, b) => b.percentDiff - a.percentDiff);
+    .filter(result => typeof result.colorDiff === 'number')
+    .sort((a, b) => b.colorDiff - a.colorDiff);
   const worst = diffed.slice(0, 10);
 
   console.log('\nGodot visual parity summary');
@@ -382,7 +426,7 @@ function printSummary(results, opts) {
   if (worst.length) {
     console.log('\nWorst visual diffs:');
     for (const result of worst) {
-      console.log(`  ${result.cart.padEnd(28)} ${result.percentDiff.toFixed(2)}%`);
+      console.log(`  ${result.cart.padEnd(28)} colour ${result.colorDiff.toFixed(3)}  pixels ${result.percentDiff.toFixed(2)}%`);
     }
   }
   console.log(`\nReport: ${path.join(RESULTS, 'report.md')}`);
@@ -445,8 +489,10 @@ async function main() {
           console.log(`FAIL (${comparison.error})`);
         } else {
           Object.assign(result, comparison);
-          result.status = comparison.percentDiff <= opts.maxDiff ? 'pass' : 'diff';
-          console.log(`${result.status.toUpperCase()} ${comparison.percentDiff.toFixed(2)}%`);
+          result.status = comparison.colorDiff <= opts.maxColorDiff ? 'pass' : 'diff';
+          console.log(
+            `${result.status.toUpperCase()} colour ${comparison.colorDiff.toFixed(3)} (pixels ${comparison.percentDiff.toFixed(2)}%)`
+          );
         }
       } catch (err) {
         result.status = 'failed';

@@ -35,14 +35,22 @@ touch "$DEPLOY_DIR/.nojekyll"
 
 # Root HTML files — use Vite-built versions so Three.js is bundled, not CDN-fetched
 echo "📄 Copying root files..."
-cp "$NOVA64_DIR/index.html" "$DEPLOY_DIR/index.html"
+# NOTE: index.html and Redesign.html are NOT copied — nova64.io's homepage
+# (Starcade9 branding, Patreon/social links) is maintained in the deploy repo.
 cp "$NOVA64_DIR/dist/console.html" "$DEPLOY_DIR/console.html"
 cp "$NOVA64_DIR/dist/cart-runner.html" "$DEPLOY_DIR/cart-runner.html"
 cp "$NOVA64_DIR/dist/hero-embed.html" "$DEPLOY_DIR/hero-embed.html"
 cp "$NOVA64_DIR/babylon_console.html" "$DEPLOY_DIR/babylon_console.html"
-cp "$NOVA64_DIR/Redesign.html" "$DEPLOY_DIR/Redesign.html"
 cp "$NOVA64_DIR/tweaks-panel.jsx" "$DEPLOY_DIR/tweaks-panel.jsx"
 cp "$NOVA64_DIR/cart-grid.jsx" "$DEPLOY_DIR/cart-grid.jsx"
+
+# Re-add Vercel Web Analytics to the copied pages (nova64's copies don't have it).
+for page in console.html cart-runner.html hero-embed.html babylon_console.html; do
+  f="$DEPLOY_DIR/$page"
+  if [ -f "$f" ] && ! grep -q 'vercel-insights' "$f"; then
+    perl -0pi -e 's|</head>|  <!-- Vercel Web Analytics -->\n  <script defer src="https://cdn.vercel-insights.com/v1/script.js"></script>\n</head>|' "$f"
+  fi
+done
 
 # src/main.js (entry point)
 echo "📦 Copying src/main.js..."

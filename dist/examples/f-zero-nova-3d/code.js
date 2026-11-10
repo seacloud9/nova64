@@ -44,9 +44,9 @@ const C = {
   rivalBody: 0xee0033,
   rivalEngine: 0xff4422,
 
-  bgFog: 0x739ee5, // High orbital haze
-  trackR1: 0xe0e6f0,
-  trackR2: 0xb5c4dd,
+  bgFog: 0x283b92, // Cobalt atmosphere below the orbital course
+  trackR1: 0x2758bd,
+  trackR2: 0x183b91,
   neonWall: 0x240055, // Violet safety barriers
   neonWallAlt: 0x00ff75,
   boostPad: 0x24efb5,
@@ -100,28 +100,32 @@ let g = {
 export async function init() {
   console.log('🏁 F-ZERO NOVA 3D (Ultimate) — Initializing Engine...');
 
-  // Super wide FOV for speed illusion. Position/target match the steady-state
-  // values used by updatePlaying() (z=12, camY=8 at pitch=0) so the camera
-  // does not jump forward at the start->countdown->playing transition.
+  // Consistent start/chase framing; the sky carries the scale, not an extreme FOV.
   setCameraFOV(72);
   setCameraPosition(0, 7, 13);
   setCameraTarget(0, 0, -40);
-
-  // Sunlit concrete, cool violet fill and a restrained bloom on engines only.
-  setAmbientLight(0x9780ed, 1.0);
+  setAmbientLight(0xa0b7ff, 1.15);
   setLightDirection(-0.4, 1, 0.7);
-  setLightColor(0xecf4ff);
-  setFog(C.bgFog, 160, 650);
-  createGradientSkybox(0x053cb2, C.bgFog, {
+  setLightColor(0xe6f7ff);
+  setFog(C.bgFog, 260, 1100);
+  createGradientSkybox(0x09052e, 0x2346aa, {
     horizonColor: C.bgFog,
-    clouds: 0.15,
-    stars: 0,
-    sun: { dir: [-0.7, 0.35, -1], color: 0xecf4ff, size: 0.7 },
+    clouds: 0.12,
+    cloudsLow: 0.3,
+    cloudScale: 1.7,
+    stars: 0.7,
+    aurora: 0.48,
+    auroraColors: [0x125dff, 0x8a23ff],
+    wind: 0.4,
+    sun: { dir: [0.6, 0.4, -1], color: 0xbdeaff, size: 0.35 },
   });
-  enableBloom(0.4, 0.4, 0.85);
+  nova64.light.enableSkyboxAutoAnimate(0.2);
+  enableBloom(1.35, 0.85, 0.68);
   if (typeof enableFXAA === 'function') enableFXAA();
-  nova64.post.setVignette(0.18, 0.95);
-  nova64.post.setChromatic(0.0004);
+  nova64.post.setVignette(0.32, 0.92);
+  nova64.post.setChromatic(0.0008);
+  nova64.post.setGlitch(0);
+  buildOrbitalSky();
 
   buildPlayerShip();
   playerHit = createHitState({ invulnDuration: 0.5, blinkRate: 40 });
@@ -146,6 +150,92 @@ export async function init() {
   }
 
   initStartScreen();
+}
+
+// Distant bodies remain fixed while the road moves: true scale separation from near-field parallax.
+let orbitalMeshes = [];
+let stationRings = [];
+let glitchRemaining = 0;
+let previousBoost = false;
+let previousHealth = 100;
+let visualBoost = 0;
+function buildOrbitalSky() {
+  orbitalMeshes.forEach(destroyMesh);
+  orbitalMeshes = [];
+  stationRings = [];
+  const sphere = (radius, color, pos, opts = {}) => {
+    const id = nova64.scene.createSphere(radius, color, pos, { segments: 32, ...opts });
+    orbitalMeshes.push(id);
+    return id;
+  };
+  const ring = (radius, tube, color, pos, rotation, opts = {}) => {
+    const id = nova64.scene.createTorus(radius, tube, color, pos, {
+      radialSegments: 8,
+      tubularSegments: 80,
+      ...opts,
+    });
+    setRotation(id, ...rotation);
+    orbitalMeshes.push(id);
+    return id;
+  };
+  const center = [-100, 135, -530];
+  sphere(125, 0x1142bc, center, { roughness: 0.9, emissive: 0x061d70, emissiveIntensity: 0.22 });
+  sphere(128, 0x00baff, center, {
+    transparent: true,
+    opacity: 0.09,
+    emissive: 0x00baff,
+    emissiveIntensity: 0.4,
+  });
+  for (let i = 0; i < 9; i++)
+    ring(155 + i * 3.2, 0.8, i % 3 ? 0x598dff : 0x00ffbc, center, [1.15, -0.25, -0.35], {
+      emissive: i % 3 ? 0x315dff : 0x00ffbc,
+      emissiveIntensity: 0.4,
+    });
+  // Sculpted latitudinal bands read as cloud belts rather than a featureless ball.
+  for (let i = -3; i <= 3; i++) {
+    const y = i * 26,
+      r = Math.sqrt(125 * 125 - y * y);
+    ring(
+      r,
+      2.5,
+      i % 2 ? 0x1744d2 : 0x16b4cf,
+      [center[0], center[1] + y, center[2]],
+      [Math.PI / 2, 0, 0]
+    );
+  }
+  sphere(30, 0x9bc2f2, [210, 115, -600], { emissive: 0x301291, emissiveIntensity: 0.25 });
+  // A rotating orbital station high above the racing corridor.
+  for (let i = 0; i < 3; i++) {
+    const id = ring(
+      34 + i * 11,
+      0.8,
+      i === 1 ? 0x00ff9c : 0x4b40ff,
+      [105, 61, -260],
+      [0.3 + i * 0.35, 0.4, i * 0.5],
+      { emissive: i === 1 ? 0x00ff9c : 0x3131ff, emissiveIntensity: 0.45 }
+    );
+    stationRings.push(id);
+  }
+  sphere(7, 0x08cfff, [105, 61, -260], { emissive: 0x08cfff, emissiveIntensity: 0.45 });
+}
+function updateVisualEffects(dt) {
+  const boosting = g.p.isBoosting && gameState === 'playing';
+  if ((boosting && !previousBoost) || g.health < previousHealth) glitchRemaining = 0.22;
+  previousBoost = boosting;
+  previousHealth = g.health;
+  glitchRemaining = Math.max(0, glitchRemaining - dt);
+  visualBoost += (Number(boosting) - visualBoost) * (1 - Math.exp(-dt * 9));
+  nova64.fx.setGlitchIntensity(glitchRemaining > 0 ? 0.12 * (glitchRemaining / 0.22) : 0);
+  nova64.fx.setBloomStrength(1.35 + visualBoost * 0.65);
+  nova64.post.setChromatic(0.0008 + visualBoost * 0.002);
+  stationRings.forEach((id, i) =>
+    setRotation(
+      id,
+      0.3 + i * 0.35 + Math.sin(t * 0.16) * 0.12,
+      0.4 + t * (i % 2 ? 0.07 : -0.05),
+      i * 0.5 + t * 0.025
+    )
+  );
 }
 
 // ── Entity Construction ────────────────────────────────────
@@ -185,8 +275,8 @@ function buildPlayerShip() {
     material: 'emissive',
     emissive: C.shipEngine,
   });
-  p.meshes.nose = createCube(1, C.shipTrim, [0, 0, 0]);
-  setScale(p.meshes.nose, 0.55, 0.2, 3.2);
+  p.meshes.nose = nova64.scene.createCone(0.95, 3.2, C.shipBody, [0, 0, 0], { segments: 4 });
+  setScale(p.meshes.nose, 1, 1, 0.35);
   p.meshes.finL = createCube(1, C.shipBody, [0, 0, 0]);
   p.meshes.finR = createCube(1, C.shipBody, [0, 0, 0]);
   setScale(p.meshes.finL, 0.16, 1.0, 1.8);
@@ -261,17 +351,46 @@ function buildRoadDetails(index, z) {
     add(44, 23, 0, 25, 2, 16, 0xe8f1ff);
     add(44, 28, 0, 1, 9, 1, 0x0055ff);
   }
-  const mesh = createInstancedMesh('cube', details.length, 0xffffff, {
-    size: 1,
-    material: 'standard',
-    roughness: 0.8,
+  for (const side of [-1, 1]) {
+    for (let j = -15; j <= 15; j += 10) {
+      add(side * 19.5, -0.7, j, 0.35, 0.12, 6, 0x00eaff);
+      add(side * 16, -0.8, j, 3, 0.1, 0.4, 0x00ff75);
+    }
+    // Leaning buttresses, suspended balconies and holographic facade strips.
+    add(side * 36, 13, 0, 2, 28, 3, 0x132263, side * 0.25);
+    add(side * 40, 26, 0, 18, 1.1, 13, 0x00bbff);
+    add(side * 50, 24, 0, 9, 48, 9, index % 2 ? 0x1b1976 : 0x073e8f);
+    for (let y = 5; y < 47; y += 5)
+      add(side * 45.3, y, 0, 0.25, 0.8, 8, index % 2 ? 0x00ff75 : 0x008bff);
+  }
+  if (index % 3 === 0) {
+    // Faceted gateway, always outside the unchanged collision corridor.
+    for (const side of [-1, 1]) {
+      add(side * 24, 10, 0, 1, 22, 1.2, 0x00aaff, side * 0.22);
+      add(side * 12, 22, 0, 25, 0.6, 1.2, 0x00ff75, side * 0.12);
+      add(side * 27, 10, 2, 1, 22, 1, 0x6240ff, side * 0.22);
+    }
+  }
+  // Small white arrows remain legible on the blue running surface.
+  for (const x of [-10, 10]) add(x, -0.77, -8, 3, 0.1, 0.7, 0xeaffff);
+  const luminous = new Set([0x00ff75, 0x00eaff, 0x00aaff, 0x00bbff, 0x008bff, 0x6240ff, 0x7ddef4]);
+  const batches = [false, true].map(glow => {
+    const items = details.filter(d => luminous.has(d.color) === glow);
+    const mesh = createInstancedMesh('cube', items.length, 0xffffff, {
+      size: 1,
+      roughness: 0.7,
+      emissive: glow ? 0x0077b8 : 0,
+      emissiveIntensity: glow ? 0.4 : 0,
+    });
+    if (glow) nova64.scene.setMeshEmissive(mesh, 0x0077b8, 1.4);
+    items.forEach((d, i) => {
+      setInstanceColor(mesh, i, d.color);
+      setInstanceTransform(mesh, i, d.x, d.y, z + d.dz, 0, 0, d.rz, d.w, d.h, d.d);
+    });
+    finalizeInstances(mesh);
+    return { mesh, items };
   });
-  details.forEach((d, i) => {
-    setInstanceColor(mesh, i, d.color);
-    setInstanceTransform(mesh, i, d.x, d.y, z + d.dz, 0, 0, d.rz, d.w, d.h, d.d);
-  });
-  finalizeInstances(mesh);
-  return { mesh, items: details };
+  return { batches };
 }
 
 function spawnRival(isFar = false) {
@@ -381,6 +500,7 @@ function createSparks(cx, cy, cz, count) {
 // ── Game Loop Update ───────────────────────────────────────
 export function update(dt) {
   t += dt;
+  updateVisualEffects(dt);
 
   if (gameState !== 'playing' && gameState !== 'countdown') {
     if (inputLock > 0) inputLock -= dt;
@@ -536,8 +656,8 @@ function updatePlayerTransforms() {
   setPosition(p.meshes.cockpit, ...applyR(0, 0.5, -0.5));
   setRotation(p.meshes.cockpit, p.pitch, 0, r);
 
-  setPosition(p.meshes.nose, ...applyR(0, 0.25, -1.3));
-  setRotation(p.meshes.nose, p.pitch, 0, r);
+  setPosition(p.meshes.nose, ...applyR(0, 0, -2.6));
+  setRotation(p.meshes.nose, p.pitch - Math.PI / 2, 0, r);
   for (const [name, x] of [
     ['finL', -1.8],
     ['finR', 1.8],
@@ -564,10 +684,12 @@ function updateRoad(distMovement) {
     if (r.z > 30) r.z -= g.roadSegments.length * r.len;
     // Emphasize speed by flattening road pitch based on Z
     setPosition(r.mesh, 0, -1, r.z);
-    r.details.items.forEach((d, i) =>
-      setInstanceTransform(r.details.mesh, i, d.x, d.y, r.z + d.dz, 0, 0, d.rz, d.w, d.h, d.d)
-    );
-    finalizeInstances(r.details.mesh);
+    r.details.batches.forEach(batch => {
+      batch.items.forEach((d, i) =>
+        setInstanceTransform(batch.mesh, i, d.x, d.y, r.z + d.dz, 0, 0, d.rz, d.w, d.h, d.d)
+      );
+      finalizeInstances(batch.mesh);
+    });
   });
 
   g.borders.forEach(b => {

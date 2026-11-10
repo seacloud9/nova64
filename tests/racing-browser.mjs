@@ -44,7 +44,7 @@ async function openCart(
         'let cartSeed=42; const cartRandom=()=>((cartSeed=(1664525*cartSeed+1013904223)>>>0)/4294967296);\n' +
         src.replaceAll('Math.random()', 'cartRandom()');
       src +=
-        '\nglobalThis.raceProbe={tick,startGame,g,get state(){return gameState;},resetClock(){t=0;},retry(){gameState="start";initStartScreen();}};';
+        '\nglobalThis.raceProbe={tick,startGame,g,get state(){return gameState;},get inputReady(){return inputLock<=0;},resetClock(){t=0;},retry(){gameState="start";initStartScreen();}};';
     } else
       src +=
         '\nglobalThis.raceProbe={tick,resetRace,aiInput,get player(){return player;},get rivals(){return rivals;},get state(){return state;},get mode(){return mode;},setMode(m){mode=m;resetRace();},get best(){return best;},get muted(){return muted;},get auto(){return auto;}};';
@@ -240,11 +240,16 @@ try {
         globalThis.__raceFreeze = false;
       });
       await snap(page, `${cart}-${profile.name}-title`);
+      // F-Zero deliberately locks menu input briefly after initialization.
+      if (cart === 'f-zero-nova-3d') await page.waitForFunction(() => raceProbe.inputReady);
       if (profile.touch) {
         const x = cart === 'breakwater-circuit' ? 160 : 320,
           y = cart === 'breakwater-circuit' ? 230 : 330;
         await page.touchscreen.tap((x * profile.width) / 640, (y * profile.height) / 360);
-      } else await page.keyboard.press(cart === 'breakwater-circuit' ? 'Enter' : 'Space');
+      } else
+        await page.keyboard.press(cart === 'breakwater-circuit' ? 'Enter' : 'Space', {
+          delay: 150,
+        });
       await page.waitForFunction(() => ['racing', 'playing'].includes(raceProbe.state), {
         timeout: 20000,
       });

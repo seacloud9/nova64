@@ -6,7 +6,7 @@
       "test": "F-Zero before presentation",
       "objects": 64,
       "triangles": 5032,
-      "updateMs": 0.019999998807907104,
+      "updateMs": 0.014999999602635702,
       "health": 75,
       "distance": 3222.637222222204
     },
@@ -19,9 +19,9 @@
     },
     {
       "test": "F-Zero after presentation",
-      "objects": 102,
-      "triangles": 10780,
-      "updateMs": 0.0700000007947286,
+      "objects": 140,
+      "triangles": 43464,
+      "updateMs": 0.1200000007947286,
       "health": 75,
       "distance": 3222.637222222204
     },
@@ -85,41 +85,5 @@
       "pass": true
     }
   ],
-  "errors": [],
-  "profiles": [
-    {
-      "name": "4x3",
-      "viewport": {
-        "width": 960,
-        "height": 720
-      },
-      "hasTouch": false
-    },
-    {
-      "name": "wide",
-      "viewport": {
-        "width": 1440,
-        "height": 810
-      },
-      "hasTouch": false
-    },
-    {
-      "name": "landscape-touch",
-      "viewport": {
-        "width": 844,
-        "height": 390
-      },
-      "hasTouch": true
-    }
-  ],
-  "framebuffer": {
-    "width": 640,
-    "height": 360
-  },
-  "inputMethods": [
-    "DOM keyboard",
-    "DOM pointer/touch emulation",
-    "navigator.getGamepads emulation",
-    "test-only scripted full-race inputs"
-  ]
+  "errors": []
 }

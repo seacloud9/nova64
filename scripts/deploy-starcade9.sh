@@ -36,7 +36,7 @@ touch "$DEPLOY_DIR/.nojekyll"
 # Root HTML files — use Vite-built versions so Three.js is bundled, not CDN-fetched
 echo "📄 Copying root files..."
 # NOTE: index.html and Redesign.html are NOT copied — nova64.io's homepage
-# (Starcade9 branding, Patreon/social links) is maintained in the deploy repo.
+# (stArcade9 branding, Patreon/social links) is maintained in the deploy repo.
 cp "$NOVA64_DIR/dist/console.html" "$DEPLOY_DIR/console.html"
 cp "$NOVA64_DIR/dist/cart-runner.html" "$DEPLOY_DIR/cart-runner.html"
 cp "$NOVA64_DIR/dist/hero-embed.html" "$DEPLOY_DIR/hero-embed.html"

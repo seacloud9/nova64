@@ -3,6 +3,20 @@
 All notable changes to Nova64 are documented here. Per-tag, publish-ready notes
 live in [`docs/releases/`](docs/releases/).
 
+## Unreleased
+
+- Procedural skies: `nova64.light.createSkyPreset(name, overrides)` and
+  `getSkyPresets()` (deepspace, cosmos, sunset, ocean, meadow, highlands,
+  aurora). Skies follow the camera and drive PBR reflections.
+- Games now use skies with fog that matches the horizon colour, so distant
+  geometry fades into the sky: Minecraft (toon sky), Space Harrier (violet
+  twilight), Super Plumber 64 (one sky per zone), Sky Rider (synthwave dusk),
+  Space Combat and Wing Commander (nebula space with faint haze).
+- Space Harrier and Super Plumber 64: raised the bloom threshold so bright
+  skies no longer wash the screen out to white.
+- Super Plumber 64: rebuilt the player character (cap with badge, face,
+  mustache, overalls, gloves, boots) with run, idle and jump animation.
+
 ## v0.5.9 (Unreleased)
 
 - Publish using the verified `NOVA64IO` credential. No runtime changes from

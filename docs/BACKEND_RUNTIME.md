@@ -216,6 +216,40 @@ Current visual status:
 - `particles-demo` now has a focused visual regression pass again after the cylinder signature fix and Babylon particle bloom/material tuning; the demo is still not pixel-identical, but the fire scene should no longer show the old center-pillar artifact.
 - `particles-demo` also has a waterfall-specific visual regression check, and `instancing-demo` now uses deterministic scene layouts plus its own visual parity guardrail.
 
+## Babylon ↔ Three.js render parity (2026-11)
+
+Three.js is the visual reference. The Babylon backend now reproduces it as follows:
+
+- **Bloom** — `runtime/backends/babylon/unreal-bloom.js` ports three's
+  UnrealBloomPass (smoothstep high-pass, 5 halved Gaussian mips with kernels
+  6/10/14/18/22, `3·strength·mix(f, 1.2−f, radius)` composite). It is attached
+  at the front of the camera's post-process chain, before the
+  DefaultRenderingPipeline's image processing (three: before OutputPass).
+  Babylon's built-in bloom and the old GlowLayer coupling are no longer used.
+- **Colour space** — nova64 meshes are `PBRMaterial` (linear). Albedo/emissive
+  hex colours go through `linearColor3()` (`common.js`) like three's
+  ColorManagement; emissive intensity is applied in linear space.
+  StandardMaterial (gamma space) uses `gammaEmissiveColor3()`. `rgba8()` BigInt
+  colours are normalised in the adapter's `toColor3`.
+- **Procedural skies** — sky shader uniforms are linearised exactly like
+  `new THREE.Color(hex)` (`skybox.js` `hexToColor3`).
+- **HDR skies** — `createHDRSkybox` loads the `.hdr` with `HDRCubeTexture`
+  (prefiltered), sets it as `scene.environmentTexture` with the web's
+  `intensity`, and shows it via `createDefaultSkybox` with the web's `blur`,
+  rotated a quarter turn to three's equirect orientation.
+- **Voxel lighting** — Babylon chunks are unlit, so `voxel.js` bakes
+  three's per-face lighting into vertex colours:
+  `linearToSrgb(colour × F(face))`, where F is the default rig (ambient 0.3,
+  hemisphere 0.5, directional 1.5 from (5, 8, 3)) plus an environment term
+  measured from three (RoomEnvironment, or ~0.8× the sky horizon colour when a
+  procedural sky is baked). Chunks are re-lit when the sky changes.
+- `__BABYLON_SCENE__` is exposed (like `__THREE_SCENE__`) for DevTools and
+  parity probes.
+
+Known gaps: Babylon metal highlights/bloom run slightly hot; glass
+`transmission` does not refract yet; voxel lighting assumes the default light
+rig (`setAmbientLight`/`setLightDirection` are not folded in).
+
 ## Focused Validation
 
 These are the most useful narrow checks for the current Babylon parity surface:

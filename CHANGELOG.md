@@ -10,6 +10,8 @@ live in [`docs/releases/`](docs/releases/).
   emissive intensity are converted to linear like Three, `rgba8()` colours no
   longer render white, procedural skies match Three, and voxel chunks get
   Three-equivalent per-face lighting (Minecraft demo no longer too bright).
+  `createHDRSkybox` now loads real HDR panoramas on Babylon (background blur,
+  intensity and prefiltered PBR reflections) instead of a gradient fallback.
 - Three.js: per-mesh `setMeshEmissive/Color/Opacity/setFlatShading` no longer
   change every mesh that shares the cached material.
 - Godot: desktop renders with Forward+ (mobile stays on Compatibility). Bloom,

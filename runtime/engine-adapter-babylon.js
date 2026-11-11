@@ -24,6 +24,11 @@ import {
   applyBabylonMeshCompatibility,
   applyBabylonTextureCompatibility,
 } from './backends/babylon/compat.js';
+import {
+  gammaEmissiveColor3,
+  linearColor3,
+  normalizeColorValue,
+} from './backends/babylon/common.js';
 
 // ---------------------------------------------------------------------------
 // Internal helpers
@@ -35,11 +40,14 @@ function makeNameGen(prefix) {
 }
 
 /**
- * Convert a Nova64 color option (hex number OR { r, g, b } object) to a
- * BABYLON.Color3.  Returns null if nothing usable is provided.
+ * Convert a Nova64 color option (hex number, rgba8() BigInt, or { r, g, b }
+ * object) to a BABYLON.Color3.  Returns null if nothing usable is provided.
  */
 function toColor3(BABYLON, colorOpt) {
   if (colorOpt === undefined || colorOpt === null) return null;
+  // rgba8() returns a BigInt; without this every rgba8-coloured mesh came out
+  // white on Babylon (and bloomed far harder than on Three).
+  if (typeof colorOpt === 'bigint') colorOpt = normalizeColorValue(colorOpt);
   if (typeof colorOpt === 'number') {
     return new BABYLON.Color3(
       ((colorOpt >> 16) & 0xff) / 255,
@@ -51,12 +59,6 @@ function toColor3(BABYLON, colorOpt) {
     return new BABYLON.Color3(colorOpt.r ?? 0, colorOpt.g ?? 0, colorOpt.b ?? 0);
   }
   return null;
-}
-
-function scaleColor3(BABYLON, color, scale = 1) {
-  if (!color) return null;
-  if (typeof color.scale === 'function') return color.scale(scale);
-  return new BABYLON.Color3((color.r ?? 0) * scale, (color.g ?? 0) * scale, (color.b ?? 0) * scale);
 }
 
 function applyBabylonTextureColorSpace(texture) {
@@ -180,8 +182,10 @@ export function createBabylonEngineAdapter(BABYLON, scene, opts = {}) {
         if (matOpts.metalness !== undefined) mat.metallic = matOpts.metalness;
         if (matOpts.flatShading !== undefined) mat.forceIrradianceInFragment = matOpts.flatShading;
 
+        // PBRMaterial colours are linear; cart colours are sRGB hex (as on
+        // Three, which converts them the same way).
         const diffuse = toColor3(BABYLON, matOpts.color);
-        if (diffuse) mat.albedoColor = diffuse;
+        if (diffuse) mat.albedoColor = linearColor3(diffuse);
         if (mat.ambientColor?.copyFromFloats) mat.ambientColor.copyFromFloats(1, 1, 1);
         if (matOpts.map) {
           const map = applyBabylonTextureColorSpace(matOpts.map);
@@ -193,7 +197,7 @@ export function createBabylonEngineAdapter(BABYLON, scene, opts = {}) {
         if (matOpts.emissive !== undefined) {
           const emissive = toColor3(BABYLON, matOpts.emissive);
           const intensity = Math.max(Number(matOpts.emissiveIntensity) || 0, 0.3);
-          mat.emissiveColor = scaleColor3(BABYLON, emissive, intensity) ?? mat.emissiveColor;
+          if (emissive) mat.emissiveColor = linearColor3(emissive, intensity);
         }
       } else {
         // 'basic' and 'phong'
@@ -246,7 +250,7 @@ export function createBabylonEngineAdapter(BABYLON, scene, opts = {}) {
         if (matOpts.emissive !== undefined) {
           const emissive = toColor3(BABYLON, matOpts.emissive);
           const intensity = Math.max(Number(matOpts.emissiveIntensity) || 0, 0.3);
-          mat.emissiveColor = scaleColor3(BABYLON, emissive, intensity) ?? mat.emissiveColor;
+          if (emissive) mat.emissiveColor = gammaEmissiveColor3(emissive, intensity);
         }
       }
 

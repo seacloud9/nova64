@@ -4,6 +4,21 @@
 import { logger } from '../../logger.js';
 import { normalizeColorToHex } from './materials.js';
 
+// Meshes created with the same options share one cached material (see
+// materials.js getCachedMaterial). Per-mesh material setters must clone it
+// first, or setMeshEmissive/Color/Opacity on one mesh changes every mesh of
+// that colour. Mirrors ownMaterial() in backends/babylon/transforms.js.
+function ownMaterials(mesh) {
+  if (!mesh || !mesh.material) return [];
+  if (!mesh.__nova64OwnMaterial) {
+    mesh.material = Array.isArray(mesh.material)
+      ? mesh.material.map(m => m?.clone?.() ?? m)
+      : (mesh.material.clone?.() ?? mesh.material);
+    mesh.__nova64OwnMaterial = true;
+  }
+  return Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+}
+
 export function transformsModule({ getMesh }) {
   function normalizeVectorArgs(x, y, z) {
     if (Array.isArray(x)) return [x[0] ?? 0, x[1] ?? 0, x[2] ?? 0];
@@ -124,9 +139,10 @@ export function transformsModule({ getMesh }) {
   function setFlatShading(meshId, enabled = true) {
     const mesh = getMesh(meshId);
     if (!mesh) return false;
-    if (mesh.material) {
-      mesh.material.flatShading = enabled;
-      mesh.material.needsUpdate = true;
+    for (const m of ownMaterials(mesh)) {
+      if (!m) continue;
+      m.flatShading = enabled;
+      m.needsUpdate = true;
     }
     return true;
   }
@@ -135,8 +151,7 @@ export function transformsModule({ getMesh }) {
     const mesh = getMesh(meshId);
     if (!mesh) return false;
     const hex = normalizeColorToHex(color);
-    const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-    for (const m of mats) {
+    for (const m of ownMaterials(mesh)) {
       if (!m) continue;
       if (m.emissive) m.emissive.setHex(hex);
       m.emissiveIntensity = typeof intensity === 'number' ? intensity : 1;
@@ -149,8 +164,7 @@ export function transformsModule({ getMesh }) {
     const mesh = getMesh(meshId);
     if (!mesh) return false;
     const hex = normalizeColorToHex(color);
-    const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-    for (const m of mats) {
+    for (const m of ownMaterials(mesh)) {
       if (!m) continue;
       if (m.color) m.color.setHex(hex);
       m.needsUpdate = true;
@@ -168,10 +182,11 @@ export function transformsModule({ getMesh }) {
   function setMeshOpacity(meshId, opacity) {
     const mesh = getMesh(meshId);
     if (!mesh) return false;
-    if (mesh.material) {
-      mesh.material.transparent = opacity < 1;
-      mesh.material.opacity = opacity;
-      mesh.material.needsUpdate = true;
+    for (const m of ownMaterials(mesh)) {
+      if (!m) continue;
+      m.transparent = opacity < 1;
+      m.opacity = opacity;
+      m.needsUpdate = true;
     }
     return true;
   }

@@ -13,6 +13,7 @@ import {
 } from '@babylonjs/core';
 
 import { applyBabylonMaterialCompatibility } from './compat.js';
+import { createUnrealBloom } from './unreal-bloom.js';
 
 // Register custom shaders for Babylon.js post-processing
 
@@ -208,69 +209,50 @@ export function createBabylonEffectsApi(self) {
   }
 
   // === BLOOM ===
-  // Three.js bloom strength -> Babylon DefaultRenderingPipeline bloomWeight.
-  function bloomWeightFor(strength) {
-    return Math.max(0, Number(strength) || 0) * 0.35;
-  }
-
-  function normalizeBloomArgs(strengthOrOptions = 1.0, radius = 0.5, threshold = 0.6) {
-    if (strengthOrOptions && typeof strengthOrOptions === 'object') {
-      return {
-        strength: Number(strengthOrOptions.strength ?? 1.0) || 1.0,
-        radius: Number(strengthOrOptions.radius ?? radius) || radius,
-        threshold: Number(strengthOrOptions.threshold ?? threshold) || threshold,
-      };
-    }
-    return {
-      strength: Number(strengthOrOptions) || 1.0,
-      radius: Number(radius) || 0.5,
-      threshold: Number(threshold) || 0.6,
-    };
-  }
+  // Same algorithm and argument semantics as the Three.js backend's
+  // UnrealBloomPass (see unreal-bloom.js), so strength/radius/threshold mean
+  // exactly the same thing on both backends. Babylon's GlowLayer is NOT
+  // coupled to bloom any more — it stays available via enableGlow().
+  let bloom = null;
 
   function enableBloom(strengthOrOptions = 1.0, radius = 0.5, threshold = 0.6) {
-    const {
-      strength,
-      radius: bloomRadius,
-      threshold: bloomThreshold,
-    } = normalizeBloomArgs(strengthOrOptions, radius, threshold);
-    const p = initPipeline();
-    const needsLargeGlow = strength >= 1.0;
-    p.bloomEnabled = true;
-    // Calibrated against the Three.js backend (UnrealBloomPass strength) on
-    // hello-world: the old x5 weight + 0.3x threshold were tuned while
-    // setMeshEmissive didn't exist on Babylon, and once emissive surfaces
-    // rendered they blew the frame out to white.
-    p.bloomWeight = bloomWeightFor(strength);
-    p.bloomKernel = Math.max(32, Math.round(bloomRadius * (needsLargeGlow ? 768 : 384)));
-    p.bloomThreshold = Math.max(bloomThreshold, 0.7);
-    p.bloomScale = needsLargeGlow ? 0.25 : 0.5;
-    enableGlow(Math.min(0.5, strength * 0.2), Math.max(24, Math.round(bloomRadius * 96)));
+    let strength = strengthOrOptions;
+    if (strengthOrOptions && typeof strengthOrOptions === 'object') {
+      strength = strengthOrOptions.strength ?? 1.0;
+      radius = strengthOrOptions.radius ?? radius;
+      threshold = strengthOrOptions.threshold ?? threshold;
+    } else if (typeof strengthOrOptions !== 'number') {
+      strength = 1.0;
+    }
+    if (!self.scene || !self.camera) return false;
+
+    // Create the pipeline first so the bloom chain is inserted in front of
+    // its FXAA/vignette/image-processing passes.
+    initPipeline();
+    trySetPipelineValue('bloomEnabled', false);
+
+    if (bloom) bloom.dispose();
+    bloom = createUnrealBloom(self.scene, self.camera, { strength, radius, threshold });
     return true;
   }
 
   function disableBloom() {
-    if (pipeline) {
-      pipeline.bloomEnabled = false;
+    if (bloom) {
+      bloom.dispose();
+      bloom = null;
     }
   }
 
   function setBloomStrength(strength) {
-    if (pipeline) {
-      pipeline.bloomWeight = bloomWeightFor(strength);
-    }
+    if (bloom) bloom.strength = strength;
   }
 
   function setBloomRadius(radius) {
-    if (pipeline) {
-      pipeline.bloomKernel = Math.max(16, Math.round(radius * 768));
-    }
+    if (bloom) bloom.radius = radius;
   }
 
   function setBloomThreshold(threshold) {
-    if (pipeline) {
-      pipeline.bloomThreshold = threshold;
-    }
+    if (bloom) bloom.threshold = threshold;
   }
 
   // === FXAA ===
@@ -456,9 +438,9 @@ export function createBabylonEffectsApi(self) {
     }
 
     // Bloom
-    const bloom = opts.bloom !== undefined ? opts.bloom : {};
-    if (bloom !== false) {
-      const b = typeof bloom === 'object' ? bloom : {};
+    const bloomOpts = opts.bloom !== undefined ? opts.bloom : {};
+    if (bloomOpts !== false) {
+      const b = typeof bloomOpts === 'object' ? bloomOpts : {};
       enableBloom(b.strength ?? 1.0, b.radius ?? 0.4, b.threshold ?? 0.6);
     }
 
@@ -531,6 +513,7 @@ export function createBabylonEffectsApi(self) {
 
   // === CLEANUP ===
   function disposeEffects() {
+    disableBloom();
     if (chromaticAberrationPost) {
       chromaticAberrationPost.dispose();
       chromaticAberrationPost = null;

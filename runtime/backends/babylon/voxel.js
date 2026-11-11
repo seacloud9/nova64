@@ -18,8 +18,80 @@ import {
   applyBabylonMeshCompatibility,
   applyBabylonTextureCompatibility,
 } from './compat.js';
+import { linearToSrgb, srgbToLinear } from './common.js';
 
 const VOXEL_SHADER_NAME = 'nova64VoxelChunk';
+
+// ── Three.js voxel lighting parity ─────────────────────────────────────────
+// On Three.js, voxel chunks are a lit MeshStandardMaterial (roughness 0.8,
+// metalness 0.1) under the default rig plus an environment map, and the
+// result is sRGB-encoded. Babylon draws chunks unlit, so the baked vertex
+// colours used to show raw — flat, and brighter/greener than on Three.
+// Voxel faces are axis-aligned, so Three's lighting is one RGB factor per
+// face direction; we bake linearToSrgb(colour * F(face)) into the vertex
+// colours. Values below were measured from the Three.js backend
+// (white cube, same material, rendered to a float target per face).
+const SRGB = hex =>
+  [(hex >> 16) & 0xff, (hex >> 8) & 0xff, hex & 0xff].map(v => srgbToLinear(v / 255));
+const THREE_RIG = {
+  diffuse: 0.9 / Math.PI, // (1 - metalness) * BRDF_Lambert
+  ambient: 0.3,
+  hemiSky: SRGB(0xc8d8ff),
+  hemiGround: SRGB(0x383838),
+  hemiIntensity: 0.5,
+  dir: [5, 8, 3].map(v => v / Math.hypot(5, 8, 3)),
+  dirIntensity: 1.5,
+};
+// Environment term per face [+x, -x, +y, -y, +z, -z]:
+// default RoomEnvironment (grey), measured on Three.
+const ROOM_ENV = [0.87, 0.734, 1.429, 0.697, 1.454, 0.638];
+// Procedural sky dome env ~ horizon colour scaled per face (fitted on Three).
+const SKY_ENV_SCALE = [0.82, 0.82, 0.92, 0.52, 0.82, 0.82];
+const FACE_NORMALS = [
+  [1, 0, 0],
+  [-1, 0, 0],
+  [0, 1, 0],
+  [0, -1, 0],
+  [0, 0, 1],
+  [0, 0, -1],
+];
+
+/** RGB light factors per face, for the current sky (linear Color3 horizon or null). */
+export function voxelFaceLight(skyHorizon = null) {
+  const R = THREE_RIG;
+  return FACE_NORMALS.map((n, f) => {
+    const t = 0.5 * n[1] + 0.5;
+    const ndl = Math.max(0, n[0] * R.dir[0] + n[1] * R.dir[1] + n[2] * R.dir[2]);
+    const horizon = skyHorizon ? [skyHorizon.r, skyHorizon.g, skyHorizon.b] : null;
+    return [0, 1, 2].map(i => {
+      const hemi = R.hemiGround[i] + (R.hemiSky[i] - R.hemiGround[i]) * t;
+      const direct = R.diffuse * (R.ambient + R.hemiIntensity * hemi + R.dirIntensity * ndl);
+      const env = horizon ? horizon[i] * SKY_ENV_SCALE[f] : ROOM_ENV[f];
+      return direct + env;
+    });
+  });
+}
+
+function faceIndex(nx, ny, nz) {
+  const ax = Math.abs(nx);
+  const ay = Math.abs(ny);
+  const az = Math.abs(nz);
+  if (ay >= ax && ay >= az) return ny >= 0 ? 2 : 3;
+  if (ax >= az) return nx >= 0 ? 0 : 1;
+  return nz >= 0 ? 4 : 5;
+}
+
+/** Bake Three-equivalent lighting into RGBA vertex colours (returns a new array). */
+export function lightVoxelColors(colors, normals, faceLight) {
+  const out = new Float32Array(colors.length);
+  const vertexCount = colors.length / 4;
+  for (let v = 0; v < vertexCount; v++) {
+    const F = faceLight[faceIndex(normals[v * 3], normals[v * 3 + 1], normals[v * 3 + 2])];
+    for (let i = 0; i < 3; i++) out[v * 4 + i] = linearToSrgb(colors[v * 4 + i] * F[i]);
+    out[v * 4 + 3] = colors[v * 4 + 3];
+  }
+  return out;
+}
 
 function ensureVoxelShaderRegistered() {
   if (Effect.ShadersStore[`${VOXEL_SHADER_NAME}VertexShader`]) return;
@@ -220,6 +292,25 @@ function createLitChunkMaterial(self, opts = {}) {
 }
 
 export function createBabylonVoxelApi(self) {
+  // Chunk meshes keep their unlit colours so they can be re-lit when the sky
+  // (and so the environment lighting) changes.
+  const litChunks = new Set();
+  let faceLight = voxelFaceLight(null);
+
+  // Called by the skybox module: linear horizon Color3 of a baked procedural
+  // sky, or null when the default environment applies.
+  self._setVoxelSkyLight = skyHorizon => {
+    faceLight = voxelFaceLight(skyHorizon);
+    for (const mesh of litChunks) {
+      if (mesh.isDisposed?.()) {
+        litChunks.delete(mesh);
+        continue;
+      }
+      const src = mesh._nova64VoxelSrc;
+      mesh.setVerticesData('color', lightVoxelColors(src.colors, src.normals, faceLight), true);
+    }
+  };
+
   return {
     createVoxelTextureFromCanvas(canvas) {
       if (!canvas) return null;
@@ -257,7 +348,10 @@ export function createBabylonVoxelApi(self) {
 
       vertexData.positions = cloneFloatArray(meshData.positions, opts.translate, 3);
       vertexData.normals = cloneFloatArray(meshData.normals);
-      vertexData.colors = expandColors(meshData.colors);
+      const baseColors = expandColors(meshData.colors);
+      vertexData.colors = baseColors.length
+        ? lightVoxelColors(baseColors, vertexData.normals, faceLight)
+        : baseColors;
       vertexData.uvs = cloneFloatArray(meshData.uvs);
       vertexData.uvs2 = cloneFloatArray(meshData.uv2s);
       vertexData.indices = cloneIndexArray(meshData.indices);
@@ -269,6 +363,12 @@ export function createBabylonVoxelApi(self) {
       mesh.castShadow = !!opts.castShadow;
       mesh.renderingGroupId = opts.renderOrder && opts.renderOrder > 0 ? 1 : 0;
       mesh.alphaIndex = opts.renderOrder ?? 0;
+
+      if (baseColors.length) {
+        mesh._nova64VoxelSrc = { colors: baseColors, normals: vertexData.normals };
+        litChunks.add(mesh);
+        mesh.onDisposeObservable?.add(() => litChunks.delete(mesh));
+      }
 
       applyBabylonMeshCompatibility(mesh);
       return mesh;

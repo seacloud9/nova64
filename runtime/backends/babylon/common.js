@@ -29,6 +29,47 @@ export function hexToColor3(hex) {
   );
 }
 
+export const srgbToLinear = c =>
+  c <= 0.04045 ? Math.max(0, c) / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+export const linearToSrgb = c =>
+  c <= 0.0031308 ? Math.max(0, c) * 12.92 : 1.055 * Math.pow(c, 1 / 2.4) - 0.055;
+
+/**
+ * sRGB hex colour -> linear Color3, which is what PBRMaterial expects for
+ * albedo/emissive. Three.js does the same conversion (ColorManagement) when a
+ * hex is assigned to a material colour; passing raw sRGB values made Babylon
+ * meshes brighter and more washed out than Three, and pushed emissive
+ * surfaces over the bloom threshold that stay under it on Three.
+ */
+export function linearColor3(color, intensity = 1) {
+  const k = Math.max(0, Number(intensity) || 0);
+  return new Color3(
+    srgbToLinear(color.r) * k,
+    srgbToLinear(color.g) * k,
+    srgbToLinear(color.b) * k
+  );
+}
+
+/**
+ * For gamma-space StandardMaterial: apply an emissive intensity in linear
+ * space like Three does, then re-encode, so the on-screen colour matches.
+ */
+export function gammaEmissiveColor3(color, intensity = 1) {
+  const k = Math.max(0, Number(intensity) || 0);
+  return new Color3(
+    linearToSrgb(srgbToLinear(color.r) * k),
+    linearToSrgb(srgbToLinear(color.g) * k),
+    linearToSrgb(srgbToLinear(color.b) * k)
+  );
+}
+
+/** Emissive colour for any Babylon material, matching Three's result. */
+export function emissiveColor3For(material, color, intensity = 1) {
+  return material?.getClassName?.() === 'PBRMaterial'
+    ? linearColor3(color, intensity)
+    : gammaEmissiveColor3(color, intensity);
+}
+
 export function normalizePosition(pos) {
   if (Array.isArray(pos) && pos.length >= 3) return new Vector3(pos[0], pos[1], pos[2]);
   if (pos && typeof pos === 'object' && pos.x !== undefined) {

@@ -13,6 +13,8 @@
 
 #include "bridge.h"
 
+#include <cmath>
+
 #include "handles.h"
 
 #include <godot_cpp/classes/box_mesh.hpp>
@@ -1868,12 +1870,24 @@ Dictionary Nova64Host::_cmd_material_create(const Dictionary &p) {
         mat->set_uv1_offset(uo);
     }
 
-    // Enhanced defaults for better visual quality (Phase 2: Visual Parity)
-    // Add subtle rim lighting by default if not explicitly disabled
-    if (!p.has("rim") && !p.has("disableRim")) {
-        mat->set_feature(BaseMaterial3D::FEATURE_RIM, true);
-        mat->set_rim(0.15f);        // Subtle rim for edge definition
-        mat->set_rim_tint(0.5f);    // Balanced tint
+    // No default rim light: MeshStandardMaterial has none, and the old 0.15
+    // rim brightened every silhouette on Godot only. Carts opt in with `rim`.
+
+    // Physical transmission (three.js MeshPhysicalMaterial.transmission/ior):
+    // Godot's screen-space refraction shows the frame behind through
+    // (1 - albedo.a) of the surface, offset by the refraction scale.
+    if (p.has("transmission")) {
+        float tr = static_cast<float>(static_cast<double>(p["transmission"]));
+        if (tr > 0.0f) {
+            float ior = p.has("ior") ? static_cast<float>(static_cast<double>(p["ior"])) : 1.5f;
+            mat->set_feature(BaseMaterial3D::FEATURE_REFRACTION, true);
+            float scale = (ior - 1.0f) * 0.12f;
+            mat->set_refraction(scale < 0.0f ? 0.0f : (scale > 0.25f ? 0.25f : scale));
+            Color a = mat->get_albedo();
+            a.a = 1.0f - (tr > 1.0f ? 1.0f : tr);
+            mat->set_albedo(a);
+            mat->set_transparency(BaseMaterial3D::TRANSPARENCY_DISABLED);
+        }
     }
 
     // Note: Godot's PBR workflow automatically handles metallic specular reflections
@@ -1930,9 +1944,13 @@ Dictionary Nova64Host::_cmd_geometry_create_plane(const Dictionary &p) {
     uvs.append(Vector2(1.0f, 0.0f));
     uvs.append(Vector2(0.0f, 0.0f));
 
+    // Godot's front face is clockwise (Three.js: counter-clockwise), so wind
+    // the quad clockwise as seen from +Z. The old CCW order made the +Z side a
+    // back face: double-sided planes rendered with the normal flipped, so a
+    // floor rotated to face up was lit (and reflected) as if facing down.
     PackedInt32Array indices;
-    indices.append(0); indices.append(1); indices.append(2);
-    indices.append(0); indices.append(2); indices.append(3);
+    indices.append(0); indices.append(2); indices.append(1);
+    indices.append(0); indices.append(3); indices.append(2);
 
     Array arrays;
     arrays.resize(Mesh::ARRAY_MAX);
@@ -2271,6 +2289,46 @@ Environment *Nova64Host::_ensure_environment() {
     return env.ptr();
 }
 
+// Equirectangular panorama sky whose visible background can be blurred
+// (Three.js scene.backgroundBlurriness) while the radiance/reflection pass
+// (AT_CUBEMAP_PASS) always samples the sharp image.
+static Ref<ShaderMaterial> _make_panorama_sky(const Ref<Texture2D> &tex, float energy, float blur, int mip_count, float u_offset) {
+    Ref<Shader> shader;
+    shader.instantiate();
+    // SKY_COORDS is Godot's equirect UV, valid in both the background and
+    // the radiance (AT_CUBEMAP_PASS) passes. Godot's u is atan(x, -z); three.js
+    // reads equirect HDRs with u = atan(z, x), a quarter turn apart, so web
+    // HDRs pass u_offset = -0.25 (skyWebEquirect) to face the same way as on
+    // the web. Panoramas baked for Godot (scripts/bake-sky-presets.mjs) use 0.
+    shader->set_code(R"(
+shader_type sky;
+uniform sampler2D panorama : source_color, filter_linear_mipmap, hint_default_black;
+uniform float energy = 1.0;
+uniform float blur_lod = 0.0;
+uniform float u_offset = 0.0;
+void sky() {
+    vec2 uv = vec2(fract(SKY_COORDS.x + u_offset), SKY_COORDS.y);
+    if (AT_CUBEMAP_PASS || blur_lod <= 0.0) {
+        COLOR = texture(panorama, uv).rgb * energy;
+    } else {
+        COLOR = textureLod(panorama, uv, blur_lod).rgb * energy;
+    }
+}
+)");
+    Ref<ShaderMaterial> mat;
+    mat.instantiate();
+    mat->set_shader(shader);
+    mat->set_shader_parameter("panorama", tex);
+    mat->set_shader_parameter("energy", energy);
+    // blur 0..1 -> LOD (three's PMREM blur is already near-uniform at 0.3).
+    float b = blur < 0.0f ? 0.0f : (blur > 1.0f ? 1.0f : blur);
+    float lod = mip_count > 0 ? std::sqrt(b) * 1.15f * mip_count : 0.0f;
+    if (mip_count > 0 && lod > mip_count - 1) lod = static_cast<float>(mip_count - 1);
+    mat->set_shader_parameter("blur_lod", lod);
+    mat->set_shader_parameter("u_offset", u_offset);
+    return mat;
+}
+
 Dictionary Nova64Host::_cmd_env_set(const Dictionary &p) {
     Environment *env = _ensure_environment();
     if (!env) return make_error("env_unavailable", "env.set");
@@ -2308,6 +2366,15 @@ Dictionary Nova64Host::_cmd_env_set(const Dictionary &p) {
             static_cast<float>(static_cast<double>(p["glowBleedScale"])));
     if (p.has("glowLuminanceCap")) env->set_glow_hdr_luminance_cap(
             static_cast<float>(static_cast<double>(p["glowLuminanceCap"])));
+    // Per-level glow weights (index 0 = half resolution). The web's
+    // UnrealBloomPass blends 5 blurred mips; the shim maps its weights here.
+    if (p.has("glowLevels")) {
+        Array levels = p["glowLevels"];
+        for (int i = 0; i < 7; ++i) {
+            float w = i < levels.size() ? static_cast<float>(static_cast<double>(levels[i])) : 0.0f;
+            env->set_glow_level(i, w);
+        }
+    }
     if (p.has("glowBlend")) {
         String mode = String(p["glowBlend"]).to_lower();
         if (mode == "additive") env->set_glow_blend_mode(Environment::GLOW_BLEND_MODE_ADDITIVE);
@@ -2359,6 +2426,9 @@ Dictionary Nova64Host::_cmd_env_set(const Dictionary &p) {
         else if (t == "cineon") env->set_tonemapper(Environment::TONE_MAPPER_FILMIC);
         else if (t == "none")  env->set_tonemapper(Environment::TONE_MAPPER_LINEAR);
     }
+    // ACES/filmic divide by the tone-mapped white point; Three.js does not.
+    if (p.has("tonemapWhite")) env->set_tonemap_white(
+            static_cast<float>(static_cast<double>(p["tonemapWhite"])));
     if (p.has("exposure")) env->set_tonemap_exposure(
             static_cast<float>(static_cast<double>(p["exposure"])));
 
@@ -2393,7 +2463,8 @@ Dictionary Nova64Host::_cmd_env_set(const Dictionary &p) {
         Ref<Sky> psky = env->get_sky();
         if (psky.is_null()) { psky.instantiate(); env->set_sky(psky); }
         if (path.is_empty()) {
-            if (Object::cast_to<PanoramaSkyMaterial>(psky->get_material().ptr())) {
+            if (Object::cast_to<PanoramaSkyMaterial>(psky->get_material().ptr()) ||
+                    Object::cast_to<ShaderMaterial>(psky->get_material().ptr())) {
                 Ref<ProceduralSkyMaterial> proc;
                 proc.instantiate();
                 psky->set_material(proc);
@@ -2402,22 +2473,32 @@ Dictionary Nova64Host::_cmd_env_set(const Dictionary &p) {
         } else {
             Ref<Texture2D> tex;
             if (ResourceLoader::get_singleton()->exists(path)) tex = ResourceLoader::get_singleton()->load(path);
+            int mip_count = 0;
             if (tex.is_null()) {
                 Ref<Image> img = Image::load_from_file(ProjectSettings::get_singleton()->globalize_path(path));
-                if (img.is_valid() && !img->is_empty()) tex = ImageTexture::create_from_image(img);
+                if (img.is_valid() && !img->is_empty()) {
+                    // Mipmaps let the background blur like Three's
+                    // scene.backgroundBlurriness (sampled by LOD below).
+                    if (img->get_format() == Image::FORMAT_RGBE9995) img->convert(Image::FORMAT_RGBH);
+                    img->generate_mipmaps();
+                    mip_count = img->get_mipmap_count();
+                    tex = ImageTexture::create_from_image(img);
+                }
             }
             if (tex.is_null()) return make_error("sky_load_failed", path);
-            Ref<PanoramaSkyMaterial> pano;
-            pano.instantiate();
-            pano->set_panorama(tex);
-            pano->set_filtering_enabled(true);
-            if (p.has("skyEnergy")) pano->set_energy_multiplier(
-                    static_cast<float>(static_cast<double>(p["skyEnergy"])));
-            psky->set_material(pano);
+            float energy = p.has("skyEnergy") ? static_cast<float>(static_cast<double>(p["skyEnergy"])) : 1.0f;
+            float blur = p.has("skyBlur") ? static_cast<float>(static_cast<double>(p["skyBlur"])) : 0.0f;
+            float u_offset = (p.has("skyWebEquirect") && static_cast<bool>(p["skyWebEquirect"])) ? -0.25f : 0.0f;
+            psky->set_material(_make_panorama_sky(tex, energy, blur, mip_count, u_offset));
             env->set_background(Environment::BG_SKY);
             env->set_reflection_source(Environment::REFLECTION_SOURCE_SKY);
-            // Ambient stays as the cart set it (setAmbientLight); like the web
-            // environment map, the panorama drives reflections only.
+            // Three's scene.environment lights PBR surfaces diffusely as well
+            // as through reflections; skyAmbient asks for the same here.
+            if (p.has("skyAmbient") && static_cast<bool>(p["skyAmbient"])) {
+                env->set_ambient_source(Environment::AMBIENT_SOURCE_SKY);
+                env->set_ambient_light_sky_contribution(1.0f);
+                env->set_ambient_light_energy(1.0f);
+            }
         }
     }
     if (p.has("skyRotation")) env->set_sky_rotation(
@@ -2563,85 +2644,11 @@ void Nova64Host::_setup_default_lighting() {
         add_child(_main_light);
     }
 
-    // Fill Light 1 - Blue tone (matches Three.js fillLight1: 0x4080ff, intensity 0.8)
-    if (!_fill_light_1) {
-        _fill_light_1 = memnew(DirectionalLight3D);
-        _fill_light_1->set_name("Nova64_FillLight1_Blue");
-        _fill_light_1->set_color(Color(0.25f, 0.50f, 1.0f)); // 0x4080ff
-        _fill_light_1->set_param(Light3D::PARAM_ENERGY, 0.35f);
-        _fill_light_1->set_shadow(false); // Fill lights don't cast shadows
-
-        _fill_light_1->look_at_from_position(
-                Vector3(-8.0f, 4.0f, -5.0f),
-                Vector3(0, 0, 0),
-                Vector3(0, 1, 0));
-        add_child(_fill_light_1);
-    }
-
-    // Fill Light 2 - Pink tone (matches Three.js fillLight2: 0xff4080, intensity 0.6)
-    if (!_fill_light_2) {
-        _fill_light_2 = memnew(DirectionalLight3D);
-        _fill_light_2->set_name("Nova64_FillLight2_Pink");
-        _fill_light_2->set_color(Color(1.0f, 0.25f, 0.50f)); // 0xff4080
-        _fill_light_2->set_param(Light3D::PARAM_ENERGY, 0.25f);
-        _fill_light_2->set_shadow(false);
-
-        _fill_light_2->look_at_from_position(
-                Vector3(5.0f, -3.0f, 8.0f),
-                Vector3(0, 0, 0),
-                Vector3(0, 1, 0));
-        add_child(_fill_light_2);
-    }
-
-    // Fill Light 3 - Green tone (matches Three.js fillLight3: 0x80ff40, intensity 0.4)
-    if (!_fill_light_3) {
-        _fill_light_3 = memnew(DirectionalLight3D);
-        _fill_light_3->set_name("Nova64_FillLight3_Green");
-        _fill_light_3->set_color(Color(0.50f, 1.0f, 0.25f)); // 0x80ff40
-        _fill_light_3->set_param(Light3D::PARAM_ENERGY, 0.18f);
-        _fill_light_3->set_shadow(false);
-
-        _fill_light_3->look_at_from_position(
-                Vector3(-3.0f, 6.0f, -2.0f),
-                Vector3(0, 0, 0),
-                Vector3(0, 1, 0));
-        add_child(_fill_light_3);
-    }
-
-    // Point Light 1 - Warm tone (matches Three.js pointLight1: 0xffaa00, intensity 2, range 30)
-    if (!_point_light_1) {
-        _point_light_1 = memnew(OmniLight3D);
-        _point_light_1->set_name("Nova64_PointLight1_Warm");
-        _point_light_1->set_color(Color(1.0f, 0.67f, 0.0f)); // 0xffaa00
-        _point_light_1->set_param(Light3D::PARAM_ENERGY, 1.2f);
-        _point_light_1->set_param(Light3D::PARAM_RANGE, 30.0f);
-        _point_light_1->set_param(Light3D::PARAM_ATTENUATION, 1.0f);
-
-        // Shadows for point lights (Three.js uses 1024x1024)
-        _point_light_1->set_shadow(true);
-        _point_light_1->set_param(Light3D::PARAM_SHADOW_BIAS, 0.02f);
-
-        _point_light_1->set_position(Vector3(10.0f, 15.0f, 10.0f));
-
-        add_child(_point_light_1);
-    }
-
-    // Point Light 2 - Cool tone (matches Three.js pointLight2: 0x00aaff, intensity 1.5, range 25)
-    if (!_point_light_2) {
-        _point_light_2 = memnew(OmniLight3D);
-        _point_light_2->set_name("Nova64_PointLight2_Cool");
-        _point_light_2->set_color(Color(0.0f, 0.67f, 1.0f)); // 0x00aaff
-        _point_light_2->set_param(Light3D::PARAM_ENERGY, 0.9f);
-        _point_light_2->set_param(Light3D::PARAM_RANGE, 25.0f);
-        _point_light_2->set_param(Light3D::PARAM_ATTENUATION, 1.0f);
-
-        _point_light_2->set_shadow(true);
-        _point_light_2->set_param(Light3D::PARAM_SHADOW_BIAS, 0.02f);
-
-        _point_light_2->set_position(Vector3(-10.0f, 10.0f, -10.0f));
-
-        add_child(_point_light_2);
-    }
+    // The web rig (runtime/backends/threejs/gpu-threejs.js setupN64Lighting)
+    // is ambient + hemisphere + one directional light. The coloured fill and
+    // point lights that used to be created here were dropped from Three.js
+    // (19ea1e5f) but lingered on Godot, tinting every PBR surface
+    // blue/pink/green/orange. _fill_light_* / _point_light_* stay null.
 }
 
 // ---- Dynamic Lighting Animation (Phase 4: Visual Parity) ----------------

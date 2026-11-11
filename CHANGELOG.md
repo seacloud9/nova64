@@ -20,6 +20,11 @@ live in [`docs/releases/`](docs/releases/).
   lights and default rim light are gone; planes face the right way; `setFog`
   no longer hides skyboxes; `disableBloom/disableVignette/disableFXAA` exist.
   See nova64-godot/docs/VISUAL_PARITY.md.
+- RetroArch: native builds compile the core's GLSL ES 3.00 shaders as
+  `#version 330 core`, so 3D renders on macOS (OpenGL 4.1 Core rejects ES
+  shaders; every 3D cart was black). The harness creates a CGL context on
+  macOS and gains `--hold`, `--capture-seq` and `--capture-every` for scripted
+  gameplay videos.
 
 ## v0.5.11
 

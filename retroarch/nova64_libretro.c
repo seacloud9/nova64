@@ -37222,8 +37222,26 @@ static GLuint gles_compile_shader(GLenum type, const char *source)
    GLuint shader = gles.CreateShader(type);
    if (!shader)
       return 0;
-   const GLchar *sources[] = {source};
-   gles.ShaderSource(shader, 1, sources, NULL);
+   /* Shaders are written as GLSL ES 3.00 so WebGL2 runs them unchanged.
+      Native builds get a desktop OpenGL 3.3 Core context, which only accepts
+      "#version 300 es" when the driver has ARB_ES3_compatibility (Mesa,
+      NVIDIA, AMD do; macOS does not, so every 3D shader failed there).
+      GLSL 3.30 core accepts the same source, precision qualifiers included,
+      so swap just the version line. */
+   const GLchar *sources[2] = {source, NULL};
+   GLsizei source_count = 1;
+#ifndef EMSCRIPTEN
+   static const char es_version[] = "#version 300 es";
+   const char *body = source;
+   while (*body == ' ' || *body == '\t' || *body == '\n' || *body == '\r')
+      body++;
+   if (!strncmp(body, es_version, sizeof(es_version) - 1)) {
+      sources[0] = "#version 330 core\n";
+      sources[1] = body + sizeof(es_version) - 1;
+      source_count = 2;
+   }
+#endif
+   gles.ShaderSource(shader, source_count, sources, NULL);
    gles.CompileShader(shader);
 
    GLint status = 0;

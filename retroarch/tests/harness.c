@@ -11,6 +11,20 @@
 
 #include "../libretro.h"
 
+#ifdef __APPLE__
+/* macOS has no EGL. Create an offscreen CGL OpenGL 4.1 Core context instead
+ * (it runs the core's GL 3.3 Core shaders); GL and CGL symbols come from the
+ * OpenGL framework via dlsym so the harness link line stays the same. */
+#include <OpenGL/OpenGL.h>
+static void *g_gl_framework = NULL;
+static CGLContextObj g_cgl_ctx = NULL;
+typedef CGLError (*pfn_CGLChoosePixelFormat)(const CGLPixelFormatAttribute *, CGLPixelFormatObj *, GLint *);
+typedef CGLError (*pfn_CGLCreateContext)(CGLPixelFormatObj, CGLContextObj, CGLContextObj *);
+typedef CGLError (*pfn_CGLSetCurrentContext)(CGLContextObj);
+typedef CGLError (*pfn_CGLDestroyPixelFormat)(CGLPixelFormatObj);
+typedef CGLError (*pfn_CGLDestroyContext)(CGLContextObj);
+#endif
+
 /* ── EGL/GLES3 headless context ─────────────────────────────────────────────
  * All EGL types and functions are loaded dynamically via dlopen so that
  * no EGL dev headers are required. libEGL.so.1 ships with libegl-mesa0.
@@ -118,9 +132,18 @@ static uint8_t *g_hw_pixels = NULL;   /* readback buffer for GLES frames */
 static bool g_hw_last_frame = false;  /* last frame was a HW readback */
 static struct retro_hw_render_callback g_hw_render;
 
+static void *harness_gl_sym(const char *sym)
+{
+#ifdef __APPLE__
+   return g_gl_framework ? dlsym(g_gl_framework, sym) : NULL;
+#else
+   return (void *)(uintptr_t)g_eglGetProcAddress(sym);
+#endif
+}
+
 static retro_proc_address_t harness_get_proc_address(const char *sym)
 {
-   return (retro_proc_address_t)(uintptr_t)g_eglGetProcAddress(sym);
+   return (retro_proc_address_t)(uintptr_t)harness_gl_sym(sym);
 }
 
 static uintptr_t harness_get_current_framebuffer(void)
@@ -151,7 +174,7 @@ static bool harness_load_egl(void)
 
 static void harness_load_gl(void)
 {
-#define LGL(fn) g_##fn = (pfn_##fn)((uintptr_t)g_eglGetProcAddress(#fn));
+#define LGL(fn) g_##fn = (pfn_##fn)((uintptr_t)harness_gl_sym(#fn));
    LGL(glGenFramebuffers)
    LGL(glBindFramebuffer)
    LGL(glGenTextures)
@@ -172,7 +195,47 @@ static void harness_load_gl(void)
 #undef LGL
 }
 
-static bool harness_setup_gles3(void)
+#ifdef __APPLE__
+static bool harness_create_context(void)
+{
+   g_gl_framework = dlopen("/System/Library/Frameworks/OpenGL.framework/OpenGL", RTLD_NOW | RTLD_GLOBAL);
+   if (!g_gl_framework) {
+      fprintf(stderr, "[harness] dlopen OpenGL.framework failed: %s\n", dlerror());
+      return false;
+   }
+   pfn_CGLChoosePixelFormat choose = (pfn_CGLChoosePixelFormat)dlsym(g_gl_framework, "CGLChoosePixelFormat");
+   pfn_CGLCreateContext create = (pfn_CGLCreateContext)dlsym(g_gl_framework, "CGLCreateContext");
+   pfn_CGLSetCurrentContext make_current = (pfn_CGLSetCurrentContext)dlsym(g_gl_framework, "CGLSetCurrentContext");
+   pfn_CGLDestroyPixelFormat destroy_pf = (pfn_CGLDestroyPixelFormat)dlsym(g_gl_framework, "CGLDestroyPixelFormat");
+   if (!choose || !create || !make_current || !destroy_pf) {
+      fprintf(stderr, "[harness] missing CGL symbols\n");
+      return false;
+   }
+   CGLPixelFormatAttribute attrs[] = {
+      kCGLPFAOpenGLProfile, (CGLPixelFormatAttribute)kCGLOGLPVersion_3_2_Core,
+      kCGLPFAAccelerated,
+      kCGLPFAColorSize, (CGLPixelFormatAttribute)24,
+      kCGLPFAAlphaSize, (CGLPixelFormatAttribute)8,
+      kCGLPFADepthSize, (CGLPixelFormatAttribute)24,
+      (CGLPixelFormatAttribute)0
+   };
+   CGLPixelFormatObj pf = NULL;
+   GLint npix = 0;
+   if (choose(attrs, &pf, &npix) != kCGLNoError || !pf) {
+      fprintf(stderr, "[harness] CGLChoosePixelFormat failed\n");
+      return false;
+   }
+   CGLError err = create(pf, NULL, &g_cgl_ctx);
+   destroy_pf(pf);
+   if (err != kCGLNoError || !g_cgl_ctx || make_current(g_cgl_ctx) != kCGLNoError) {
+      fprintf(stderr, "[harness] CGL context creation failed\n");
+      return false;
+   }
+   fprintf(stderr, "[harness] CGL OpenGL Core context (macOS)\n");
+   return true;
+}
+#else
+static bool harness_create_context(void)
 {
    if (!harness_load_egl())
       return false;
@@ -204,11 +267,19 @@ static bool harness_setup_gles3(void)
       fprintf(stderr, "[harness] eglMakeCurrent surfaceless failed: %x\n", g_eglGetError());
       return false;
    }
+   return true;
+}
+#endif
+
+static bool harness_setup_gles3(void)
+{
+   if (!harness_create_context())
+      return false;
 
    harness_load_gl();
 
    if (!g_glGenFramebuffers) {
-      fprintf(stderr, "[harness] GL functions unavailable via eglGetProcAddress\n");
+      fprintf(stderr, "[harness] GL functions unavailable\n");
       return false;
    }
 
@@ -247,6 +318,18 @@ static bool harness_setup_gles3(void)
 
 static void harness_teardown_gles3(void)
 {
+#ifdef __APPLE__
+   if (g_cgl_ctx) {
+      if (g_fbo)       { g_glDeleteFramebuffers(1, &g_fbo);       g_fbo = 0; }
+      if (g_fbo_tex)   { g_glDeleteTextures(1, &g_fbo_tex);       g_fbo_tex = 0; }
+      if (g_fbo_depth) { g_glDeleteRenderbuffers(1, &g_fbo_depth); g_fbo_depth = 0; }
+      pfn_CGLSetCurrentContext make_current = (pfn_CGLSetCurrentContext)dlsym(g_gl_framework, "CGLSetCurrentContext");
+      pfn_CGLDestroyContext destroy = (pfn_CGLDestroyContext)dlsym(g_gl_framework, "CGLDestroyContext");
+      if (make_current) make_current(NULL);
+      if (destroy) destroy(g_cgl_ctx);
+      g_cgl_ctx = NULL;
+   }
+#endif
    if (g_egl_ctx && g_egl_dpy) {
       g_eglMakeCurrent(g_egl_dpy, HARNESS_EGL_NO_SURFACE, HARNESS_EGL_NO_SURFACE, HARNESS_EGL_NO_CONTEXT);
       if (g_fbo)       { g_glDeleteFramebuffers(1, &g_fbo);       g_fbo = 0; }
@@ -612,6 +695,13 @@ int main(int argc, char **argv)
    }
 
    const char *capture_path = NULL;
+   /* --capture-seq DIR: write DIR/frame_NNNNN.ppm every --capture-every
+    * frames (default 1) — used to make gameplay videos with ffmpeg. */
+   const char *capture_seq_dir = NULL;
+   unsigned capture_every = 1;
+   /* --hold A-B=KEY: hold KEY from frame A through frame B (inclusive). */
+   struct hold_event { unsigned from, to; int code; } hold_events[64];
+   unsigned hold_count = 0;
    const char *command_log_path = NULL;
    bool has_expected_checksum = false;
    uint64_t expected_checksum = 0;
@@ -702,6 +792,28 @@ int main(int argc, char **argv)
             return 2;
          }
          g_keyboard[code] = true;
+      } else if (!strcmp(argv[i], "--capture-seq")) {
+         if (++i >= argc) { fprintf(stderr, "--capture-seq requires a directory\n"); return 2; }
+         capture_seq_dir = argv[i];
+      } else if (!strcmp(argv[i], "--capture-every")) {
+         if (++i >= argc) { fprintf(stderr, "--capture-every requires N\n"); return 2; }
+         capture_every = (unsigned)strtoul(argv[i], NULL, 10);
+         if (!capture_every) capture_every = 1;
+      } else if (!strcmp(argv[i], "--hold")) {
+         if (++i >= argc) { fprintf(stderr, "--hold requires A-B=KEY\n"); return 2; }
+         char *eq = strchr(argv[i], '=');
+         char *dash = strchr(argv[i], '-');
+         if (!eq || !dash || dash > eq) { fprintf(stderr, "--hold needs A-B=KEY\n"); return 2; }
+         *eq = '\0';
+         *dash = '\0';
+         int code = harness_key_code(eq + 1);
+         if (code < 0 || code >= 512) { fprintf(stderr, "--hold: unknown key '%s'\n", eq + 1); return 2; }
+         if (hold_count < 64) {
+            hold_events[hold_count].from = (unsigned)strtoul(argv[i], NULL, 10);
+            hold_events[hold_count].to = (unsigned)strtoul(dash + 1, NULL, 10);
+            hold_events[hold_count].code = code;
+            hold_count++;
+         }
       } else if (!strcmp(argv[i], "--press")) {
          if (++i >= argc) {
             fprintf(stderr, "--press requires FRAME=KEY\n");
@@ -870,7 +982,19 @@ int main(int argc, char **argv)
                g_keyboard[press_events[p].code] = false;
             }
          }
+         for (unsigned h = 0; h < hold_count; h++) {
+            if (hold_events[h].from == frame) g_keyboard[hold_events[h].code] = true;
+            if (hold_events[h].to + 1 == frame) g_keyboard[hold_events[h].code] = false;
+         }
          run();
+         if (capture_seq_dir && frame >= warmup_frames &&
+               (frame - warmup_frames) % capture_every == 0) {
+            char seq_path[1024];
+            snprintf(seq_path, sizeof(seq_path), "%s/frame_%05u.ppm", capture_seq_dir,
+                  (frame - warmup_frames) / capture_every);
+            if (!write_ppm(seq_path))
+               fprintf(stderr, "failed to write sequence frame: %s\n", seq_path);
+         }
       }
       uint64_t run_end_ns = measure_fps ? harness_now_ns() : 0;
       if (measure_fps && run_end_ns > run_start_ns) {

@@ -123,7 +123,26 @@ Harness flags:
 | `--mouse-btn left\|right\|middle` | Inject held mouse button                        |
 | `--touch-x <n>` / `--touch-y <n>` | Inject pointer/touch coordinates                |
 | `--touch-count <n>`               | Inject active pointer/touch count               |
-| `--gles`                          | Request GLES hardware context (Mesa headless)   |
+| `--gles`                          | Request a GL hardware context: EGL (Mesa headless) on Linux, CGL OpenGL 4.1 Core on macOS |
+| `--press <frame>=<key>`           | Tap a key for one frame                         |
+| `--hold <a>-<b>=<key>`            | Hold a key from frame a through frame b         |
+| `--capture-seq <dir>`             | Write `<dir>/frame_NNNNN.ppm` every frame (gameplay videos) |
+| `--capture-every <n>`             | With `--capture-seq`, keep every Nth frame      |
+
+Gameplay video from the native GL renderer (30 fps from a 60 fps run):
+
+```bash
+retroarch/build/harness retroarch/nova64_libretro.dylib examples/space-harrier-3d/code.js \
+  --gles --frames 1800 --capture-seq /tmp/sh --capture-every 2 \
+  --press 90=space --hold 140-1800=space --hold 160-330=left --hold 430-680=right
+ffmpeg -framerate 30 -i /tmp/sh/frame_%05d.ppm -vf scale=1280:720:flags=neighbor \
+  -c:v libx264 -crf 18 space-harrier.mp4
+```
+
+Shaders are GLSL ES 3.00 (so WebGL2 runs them unchanged). On native builds the
+core gets a desktop OpenGL 3.3 Core context and compiles them as
+`#version 330 core`; macOS rejects `#version 300 es` on desktop GL, which used
+to leave every 3D cart black there.
 
 `NOVA64_SAVE_DIR=<path>` sets the cart storage directory for harness runs.
 `NOVA64_RENDER_COMMAND_LOG=<path>` enables command logging outside the harness.

@@ -5,7 +5,17 @@ and queued feature work across Nova64 web, Babylon, Three.js, Godot, and
 RetroArch. Do not create per-area backlog files; add items here and link back
 to area-specific docs when context is needed.
 
-Last updated: 2026-11-06
+Last updated: 2026-11-12
+
+## Roblox host and unchanged-cart export
+
+- **Planned research:** preserve existing JavaScript cart source through a
+  compilation pipeline using roblox-ts and a Nova64 Roblox runtime. Start with
+  offline language/API inventory and a compiler spike; validate in Studio and a
+  published experience when expected account and device access becomes available.
+  Gates, compatibility risks, and effort estimates are in
+  [the Roblox implementation plan](plans/NOVA64_ROBLOX_PLAN.md). No implementation
+  or unchanged-cart compatibility has been validated yet.
 
 ## 🔁 Recurring — Dependency sweep (monthly, and before every release)
 

@@ -235,8 +235,15 @@ async function buildAndCollectCores(coresDir) {
   if (!ALL_CORES) {
     if (SKIP_BUILD) info('--skip-build: collecting any pre-built cores from retroarch/');
     else {
-      sh('Build RetroArch core (host)', 'make -C retroarch clean all');
-      sh('Build RetroArch core (Windows, mingw)', 'make -C retroarch platform=win-cross clean all');
+      // macOS: universal x86_64 + arm64, matching CI's macos-universal asset name.
+      const hostArgs = process.platform === 'darwin' ? ` CC='cc -arch x86_64 -arch arm64'` : '';
+      sh('Build RetroArch core (host)', `make -C retroarch clean all${hostArgs}`);
+      if (process.platform === 'darwin') {
+        // No mingw zlib or GNU toolchain on macOS: Linux + Windows cores in Docker.
+        sh('Build RetroArch cores (Linux + Windows, Docker)', 'bash scripts/build-retroarch-docker.sh linux windows');
+      } else {
+        sh('Build RetroArch core (Windows, mingw)', 'make -C retroarch platform=win-cross clean all');
+      }
     }
     const rc = path.join(ROOT, 'retroarch');
     for (const [built, asset] of [

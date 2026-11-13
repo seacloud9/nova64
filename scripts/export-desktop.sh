@@ -43,6 +43,13 @@ if [ -z "$GODOT" ]; then
 fi
 echo "▶ Using Godot: $GODOT"
 
+# export_presets.cfg is gitignored (may hold signing keys); seed it from the
+# committed, secret-free template on a fresh checkout. Never overwrite.
+if [ ! -f "$PROJ/export_presets.cfg" ] && [ -f "$PROJ/export_presets.template.cfg" ]; then
+  cp "$PROJ/export_presets.template.cfg" "$PROJ/export_presets.cfg"
+  echo "▶ Seeded export_presets.cfg from export_presets.template.cfg"
+fi
+
 # When driving the Windows Godot binary from WSL, paths must be Windows-form.
 to_path() { if [[ "$GODOT" == /mnt/* ]] && command -v wslpath >/dev/null 2>&1; then wslpath -w "$1"; else echo "$1"; fi; }
 PROJ_P="$(to_path "$PROJ")"
@@ -51,13 +58,21 @@ export_one() {
   local preset="$1" outfile="$2"
   local out_p; out_p="$(to_path "$OUT/$outfile")"
   echo "▶ Exporting '$preset' → $outfile"
+  local marker; marker="$(mktemp)"
   if "$GODOT" --headless --path "$PROJ_P" --export-release "$preset" "$out_p"; then
     echo "✓ $outfile"
+  elif [ "$OUT/$outfile" -nt "$marker" ] && [ "$(tail -c 4 "$OUT/$outfile")" = "GDPC" ]; then
+    # Godot 4.5 headless on macOS can segfault in Main::cleanup *after* a
+    # finished export. The embedded-PCK trailer (GDPC) is written last, so a
+    # fresh file ending in it is a complete export.
+    echo "✓ $outfile (Godot crashed on exit after a complete export)"
   else
     echo "! Export of '$preset' failed — are the 4.5 export templates installed?" >&2
     echo "  Run: GODOT_VERSION=4.5 bash nova64-godot/scripts/install-godot-templates.sh" >&2
+    rm -f "$marker"
     return 1
   fi
+  rm -f "$marker"
 }
 
 rc=0

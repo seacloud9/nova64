@@ -130,3 +130,7 @@ public/assets/sky/**/*.import
 experiments/gaussian-splatting/assets/*.sog
 experiments/gaussian-splatting/assets/*.splat
 experiments/gaussian-splatting/assets/*.ply
+/retroarch/build-docker-linux/
+/retroarch/build-docker-win/
+# Godot import metadata for assets linked into godot_project/assets
+/public/assets/**/*.import

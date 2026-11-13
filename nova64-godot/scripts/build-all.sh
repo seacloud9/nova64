@@ -18,6 +18,7 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$(dirname "$0")/../gdextension"
 
 if [ ! -d "third_party/godot-cpp" ]; then
@@ -58,10 +59,13 @@ build_one() {
   local extra=()
   case "$platform" in
     windows)
-      # On Linux/WSL, prefer MinGW cross-compile (matches CI)
-      if [ "$(uname)" != "Darwin" ] && [[ "$(uname)" != MINGW* ]]; then
+      # Off Windows (Linux/WSL/macOS), MinGW cross-compile (matches CI).
+      # macOS: brew install mingw-w64
+      if [[ "$(uname)" != MINGW* ]]; then
         extra+=("use_mingw=yes")
       fi
+      # godot-cpp defaults arch to the host (arm64 on Apple Silicon); ship x86_64.
+      extra+=("arch=x86_64")
       ;;
     ios)
       extra+=("arch=arm64")
@@ -71,8 +75,9 @@ build_one() {
       extra+=("arch=arm64")
       ;;
   esac
-  echo ">>> scons platform=$platform target=$target ${extra[*]}"
-  scons platform="$platform" target="$target" "${extra[@]}" \
+  # ${arr[@]+...}: macOS bash 3.2 treats an empty array as unbound under set -u.
+  echo ">>> scons platform=$platform target=$target ${extra[*]+${extra[*]}}"
+  scons platform="$platform" target="$target" ${extra[@]+"${extra[@]}"} \
     -j"$(nproc 2>/dev/null || sysctl -n hw.ncpu)"
   if [ "$platform" = "android" ]; then
     echo ">>> scons platform=android target=$target arch=x86_64 (emulator)"
@@ -82,6 +87,12 @@ build_one() {
 }
 
 for platform in "${PLATFORMS[@]}"; do
+  if [ "$platform" = "linux" ] && [ "$(uname)" = "Darwin" ]; then
+    # Linux .so needs GNU toolchain flags (-fno-gnu-unique); build in Docker.
+    echo ">>> linux on macOS: delegating to scripts/build-linux-docker.sh"
+    bash "$SCRIPT_DIR/build-linux-docker.sh"
+    continue
+  fi
   if [ "$platform" = "ios" ] && [ "$(uname)" != "Darwin" ]; then
     echo "!!! Skipping ios: not running on macOS (use scripts/bootstrap-ios-toolchain.sh on a Mac)" >&2
     continue

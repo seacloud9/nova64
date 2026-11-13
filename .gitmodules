@@ -5,3 +5,4 @@
 [submodule "nova64-godot/gdextension/third_party/quickjs"]
 	path = nova64-godot/gdextension/third_party/quickjs
 	url = https://github.com/quickjs-ng/quickjs.git
+	ignore = untracked

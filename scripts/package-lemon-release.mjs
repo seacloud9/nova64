@@ -13,6 +13,8 @@
 //       nova64_libretro_*.{dll,so,dylib}
 //     3-Godot-Source/                       ← dev bundle: GDExtension libs + project
 //       libnova64.*   godot_project/
+//     4-RetroArch-Web/                      ← WASM core + linked RetroArch web player
+//       nova64_libretro_emscripten.a  web-player/{index.html,nova64_libretro.js,.wasm}
 //   dist-lemon/nova64-<version>.zip         ← the single file you upload to LS
 //
 // Honor-system delivery (source is public) — no DRM, no webhook. Buyers pay for
@@ -38,6 +40,8 @@
 //   --no-godot       Skip the Godot GDExtension source bundle.
 //   --no-cores       Skip the RetroArch cores.
 //   --no-desktop     Skip the standalone desktop (.exe / Linux) export.
+//   --no-wasm        Skip the WASM core / RetroArch web player (needs Docker).
+//   --require-wasm   Fail the whole build if the WASM core does not build.
 //   --runner=wsl|bash  Force the shell used for builds (default: auto, WSL-first).
 //
 // Every step is guarded: a missing toolchain warns and continues, so the command
@@ -64,6 +68,8 @@ const NO_FETCH = has('--no-fetch');
 const DO_GODOT = !has('--no-godot');
 const DO_CORES = !has('--no-cores');
 const DO_DESKTOP = !has('--no-desktop');
+const DO_WASM = !has('--no-wasm');
+const REQUIRE_WASM = has('--require-wasm');
 
 // Cores that can't cross-compile locally (Android, RPi, macOS, Apple) are pulled
 // from the published GitHub Release. Public assets — no auth. By default we look
@@ -79,6 +85,7 @@ const ZIP = path.join(OUT_DIR, `nova64-${VERSION}.zip`);
 const DIR_DESKTOP = '1-Run-Standalone';
 const DIR_CORES = '2-RetroArch-Cores';
 const DIR_GODOT = '3-Godot-Source';
+const DIR_WASM = '4-RetroArch-Web';
 
 // ── logging ──────────────────────────────────────────────────────────────────
 const c = { dim: '\x1b[2m', grn: '\x1b[32m', yel: '\x1b[33m', cyn: '\x1b[36m', rst: '\x1b[0m' };
@@ -124,7 +131,27 @@ function sh(label, cmd) {
 const rmrf = (p) => fs.rmSync(p, { recursive: true, force: true });
 const mkdirp = (p) => fs.mkdirSync(p, { recursive: true });
 function copyIfExists(src, dest) { if (!fs.existsSync(src)) return false; mkdirp(path.dirname(dest)); fs.copyFileSync(src, dest); return true; }
-function copyDir(src, dest, skip = () => false) { if (!fs.existsSync(src)) return false; fs.cpSync(src, dest, { recursive: true, filter: (s) => !skip(s) }); return true; }
+// Follows symlinks (godot_project/assets/{novaOS,sky,vox} link into public/assets,
+// and the bundle must carry real files). Node's cpSync mis-copies directory links
+// on macOS (ENOTSUP), so walk the tree ourselves. Sockets/FIFOs are skipped.
+function copyDir(src, dest, skip = () => false) {
+  if (!fs.existsSync(src)) return false;
+  const walk = (from, to, seen) => {
+    if (skip(from)) return;
+    const st = fs.statSync(from, { throwIfNoEntry: false });
+    if (!st) return; // dangling link
+    if (st.isDirectory()) {
+      const real = fs.realpathSync(from);
+      if (seen.has(real)) return; // link cycle
+      mkdirp(to);
+      for (const name of fs.readdirSync(from)) walk(path.join(from, name), path.join(to, name), new Set(seen).add(real));
+    } else if (st.isFile()) {
+      fs.copyFileSync(from, to);
+    }
+  };
+  walk(src, dest, new Set());
+  return true;
+}
 
 // ── 1. standalone desktop apps (run without building) ────────────────────────
 function exportAndCollectDesktop(destDir) {
@@ -227,7 +254,7 @@ async function buildAndCollectCores(coresDir) {
 // ── 3. Godot source bundle (GDExtension libs + runnable project) ─────────────
 function buildAndCollectGodot(godotDir) {
   mkdirp(godotDir);
-  if (!SKIP_BUILD) sh('Build Godot GDExtension (linux + windows)', 'cd nova64-godot && ./scripts/build-all.sh linux windows');
+  if (!SKIP_BUILD) sh('Build Godot GDExtension (linux + windows)', 'cd nova64-godot && bash scripts/build-all.sh linux windows');
   const bin = path.join(ROOT, 'nova64-godot', 'godot_project', 'bin');
   let libs = 0;
   if (fs.existsSync(bin)) for (const f of fs.readdirSync(bin))
@@ -247,6 +274,19 @@ function buildAndCollectGodot(godotDir) {
       if (!fs.existsSync(src)) continue; // tracked-but-deleted
       const dst = path.join(projDst, path.relative(projRel, rel));
       mkdirp(path.dirname(dst));
+      // Tracked symlinks (assets/{novaOS,sky,vox} → public/assets) would dangle
+      // in the zip; materialize them, still copying only git-tracked targets.
+      if (fs.lstatSync(src).isSymbolicLink() && fs.statSync(src).isDirectory()) {
+        const targetRel = path.relative(ROOT, fs.realpathSync(src));
+        const files = execFileSync('git', ['ls-files', targetRel], { cwd: ROOT }).toString().split('\n').filter(Boolean);
+        for (const f of files) {
+          const out = path.join(dst, path.relative(targetRel, f));
+          mkdirp(path.dirname(out));
+          fs.copyFileSync(path.join(ROOT, f), out);
+        }
+        info(`+ ${path.relative(projRel, rel)}/ (${files.length} linked file(s) from ${targetRel})`);
+        continue;
+      }
       fs.copyFileSync(src, dst);
     }
   } else {
@@ -268,7 +308,7 @@ function buildAndCollectGodot(godotDir) {
 }
 
 // ── manifests ────────────────────────────────────────────────────────────────
-function writeStartHere(dest, { desktop, cores, godotLibs }) {
+function writeStartHere(dest, { desktop, cores, godotLibs, wasm }) {
   const line = (cond, s) => (cond ? s : `${s}  (not included in this build)`);
   const body = `
    ███╗   ██╗ ██████╗ ██╗   ██╗ █████╗  ██████╗ ██╗  ██╗
@@ -297,6 +337,9 @@ function writeStartHere(dest, { desktop, cores, godotLibs }) {
   ${line(godotLibs > 0, '③ WANT TO TINKER?     →  open  3-Godot-Source/')}
         The GDExtension libs + full Godot project. Open in Godot 4.5, press Play.
 
+  ${line(wasm > 0, '④ IN A BROWSER?       →  open  4-RetroArch-Web/')}
+        Serve web-player/ over HTTP and open it in a WebGL2 browser.
+
   ─────────────────────────────────────────────────────────────────────
   Full instructions:  README.txt
   Verify downloads:   SHA256SUMS.txt   (sha256sum -c SHA256SUMS.txt)
@@ -307,7 +350,7 @@ function writeStartHere(dest, { desktop, cores, godotLibs }) {
   fs.writeFileSync(dest, body.replace(/^\n/, '').replace(/\n/g, os.EOL));
 }
 
-function writeReadme(dest, { desktop, cores, godotLibs }) {
+function writeReadme(dest, { desktop, cores, godotLibs, wasm }) {
   const body = `Nova64 — v${VERSION}
 =====================================================================
 Open source (MIT): https://github.com/seacloud9/nova64
@@ -318,6 +361,7 @@ WHAT'S INSIDE
 1-Run-Standalone/   Standalone desktop apps (${desktop} file(s)) — run, no build.
 2-RetroArch-Cores/  RetroArch libretro cores (${cores} file(s)).
 3-Godot-Source/     Godot GDExtension libs (${godotLibs}) + runnable godot_project/.
+4-RetroArch-Web/    WASM core + RetroArch web player (${wasm ? 'included' : 'not built'}).
 SHA256SUMS.txt      Integrity checksums.  LICENSE  MIT.
 
 ① STANDALONE DESKTOP
@@ -395,6 +439,57 @@ function zipStage(stageDir, zipPath) {
   return null;
 }
 
+// ── 4. WASM core + RetroArch web player ──────────────────────────────────────
+// Pinned Emscripten + RetroArch via Docker (scripts/build-retroarch-web.sh).
+// Only artifacts newer than this run's start count when we built them, so a
+// failed build can never silently ship a stale .wasm.
+function buildAndCollectWasm(destDir) {
+  mkdirp(destDir);
+  const started = Date.now();
+  let built = false;
+  if (!SKIP_BUILD) built = sh('Build WASM core + RetroArch web player (Docker)', 'bash scripts/build-retroarch-web.sh');
+  const lib = path.join(ROOT, 'retroarch', 'nova64_libretro_emscripten.a');
+  const web = path.join(ROOT, 'public', 'retroarch-web');
+  const files = [
+    [lib, path.join(destDir, 'nova64_libretro_emscripten.a')],
+    ...['index.html', 'nova64_libretro.js', 'nova64_libretro.wasm'].map((f) => [path.join(web, f), path.join(destDir, 'web-player', f)]),
+  ];
+  const missing = files.filter(([src]) => !fs.existsSync(src)).map(([src]) => path.relative(ROOT, src));
+  // The .a is an incremental make target: current if newer than every core
+  // source. The player .js/.wasm are deleted and relinked each run, so they
+  // must come from this run.
+  const srcDir = path.join(ROOT, 'retroarch');
+  const newestSource = Math.max(0, ...fs.readdirSync(srcDir)
+    .filter((f) => /\.(c|h)$/.test(f) || f === 'Makefile')
+    .map((f) => fs.statSync(path.join(srcDir, f)).mtimeMs));
+  const stale = SKIP_BUILD ? [] : files.filter(([src]) => {
+    if (!fs.existsSync(src) || src.endsWith('index.html')) return false;
+    const m = fs.statSync(src).mtimeMs;
+    return src === lib ? m < newestSource : m < started;
+  }).map(([src]) => path.relative(ROOT, src));
+  if (!SKIP_BUILD && (!built || stale.length)) {
+    const why = !built ? 'build failed (is Docker running?)' : `not rebuilt: ${stale.join(', ')}`;
+    if (REQUIRE_WASM) throw new Error(`WASM core ${why}`);
+    warn(`WASM core ${why}; skipping 4-RetroArch-Web.`); rmrf(destDir); return 0;
+  }
+  if (missing.length) { warn(`WASM artifacts missing: ${missing.join(', ')}`); if (REQUIRE_WASM) throw new Error('WASM artifacts missing'); rmrf(destDir); return 0; }
+  // Sanity: a real wasm module starts with \0asm.
+  const magic = fs.readFileSync(path.join(web, 'nova64_libretro.wasm')).subarray(0, 4).toString('latin1');
+  if (magic !== '\0asm') throw new Error('nova64_libretro.wasm is not a WebAssembly module');
+  for (const [src, dest] of files) { copyIfExists(src, dest); info(`+ ${path.relative(destDir, dest)} (${(fs.statSync(src).size / 1048576).toFixed(1)} MB)`); }
+  fs.writeFileSync(path.join(destDir, 'README.txt'), [
+    'Nova64 WASM core (RetroArch web)',
+    '',
+    'web-player/  Serve this folder over HTTP (e.g. `npx serve web-player`) and open it;',
+    '             pick a .js or .nova cart. Needs a WebGL2 browser.',
+    'nova64_libretro_emscripten.a  Static core for linking your own RetroArch web',
+    '             build (RetroArch v1.21.0, Makefile.emscripten LIBRETRO=nova64).',
+    '',
+  ].join(os.EOL));
+  ok('WASM core + web player collected');
+  return 1;
+}
+
 // ── main ─────────────────────────────────────────────────────────────────────
 console.log(`${c.cyn}Nova64 → Lemon Squeezy unified export build${c.rst}  v${VERSION}`);
 info(`runner: ${RUNNER ? RUNNER.kind : '(skip-build)'}   out: dist-lemon/unified_export_build → nova64-${VERSION}.zip`);
@@ -402,14 +497,15 @@ info(`runner: ${RUNNER ? RUNNER.kind : '(skip-build)'}   out: dist-lemon/unified
 async function main() {
 rmrf(STAGE); mkdirp(STAGE);
 
-let desktop = 0, cores = 0, godotLibs = 0;
+let desktop = 0, cores = 0, godotLibs = 0, wasm = 0;
 if (DO_DESKTOP) desktop = exportAndCollectDesktop(path.join(STAGE, DIR_DESKTOP)); else warn('--no-desktop: skipping standalone apps');
 if (DO_CORES) cores = await buildAndCollectCores(path.join(STAGE, DIR_CORES)); else warn('--no-cores: skipping RetroArch cores');
 if (DO_GODOT) godotLibs = buildAndCollectGodot(path.join(STAGE, DIR_GODOT)); else warn('--no-godot: skipping Godot source');
+if (DO_WASM) wasm = buildAndCollectWasm(path.join(STAGE, DIR_WASM)); else warn('--no-wasm: skipping WASM core');
 
 copyIfExists(path.join(ROOT, 'LICENSE'), path.join(STAGE, 'LICENSE'));
-writeStartHere(path.join(STAGE, 'START-HERE.txt'), { desktop, cores, godotLibs });
-writeReadme(path.join(STAGE, 'README.txt'), { desktop, cores, godotLibs });
+writeStartHere(path.join(STAGE, 'START-HERE.txt'), { desktop, cores, godotLibs, wasm });
+writeReadme(path.join(STAGE, 'README.txt'), { desktop, cores, godotLibs, wasm });
 step('Writing SHA256SUMS.txt');
 const n = writeChecksums(STAGE, path.join(STAGE, 'SHA256SUMS.txt'));
 ok(`${n} file(s) checksummed`);
@@ -420,6 +516,7 @@ console.log(`\n${c.grn}━━━ Unified export build ready ━━━${c.rst}`);
 console.log(`  Standalone apps : ${desktop}`);
 console.log(`  RetroArch cores : ${cores}`);
 console.log(`  Godot libs      : ${godotLibs}  (+ godot_project/)`);
+console.log(`  WASM core       : ${wasm ? 'yes (4-RetroArch-Web/)' : 'no'}`);
 console.log(`  Folder          : ${c.cyn}${path.relative(ROOT, STAGE)}${c.rst}`);
 if (archive) console.log(`  Archive         : ${c.cyn}${path.relative(ROOT, archive)}${c.rst}`);
 if (desktop === 0 && cores === 0 && godotLibs === 0) {

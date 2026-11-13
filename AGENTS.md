@@ -521,6 +521,18 @@ Change-management expectations:
 - If you change Babylon compatibility behavior, update `docs/BACKEND_RUNTIME.md` and the focused Playwright parity coverage alongside the code.
 - If another instruction file disagrees with live code, verify against source files before copying it forward.
 
+## RetroArch sky and bloom development
+
+- Native sky shaders and constructors are generated from the web source with
+  `node scripts/gen-retroarch-sky.mjs`; commit `retroarch/generated/sky.h` too.
+- Run `pnpm retroarch:test:sky` after a native build to check generation, API
+  defaults and native software/GL behavior. A hardware fallback is a test failure.
+- `pnpm retroarch:visual:sky -- --base=http://127.0.0.1:5191 --seconds=30` records
+  web/native comparisons against a separately running Vite server. Its artifacts
+  identify offscreen core harness footage separately from RetroArch frontend footage.
+- Image/HDR sky carts must bundle their shared `public/assets/sky` assets;
+  source-checkout file loading is not evidence that a portable `.nova` works.
+
 ## Cart System
 
 Nova64 carts are ES modules built around three lifecycle hooks:

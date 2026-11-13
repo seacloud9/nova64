@@ -322,6 +322,8 @@
     if (opts.clearcoat != null) payload.clearcoat = opts.clearcoat;
     if (opts.clearcoatRoughness != null) payload.clearcoatRoughness = opts.clearcoatRoughness;
     if (opts.envMapIntensity != null) payload.envMapIntensity = opts.envMapIntensity;
+    if (opts.transmission != null) payload.transmission = opts.transmission;
+    if (opts.ior != null) payload.ior = opts.ior;
     const map = opts.albedoTexture || opts.diffuseMap || opts.map || opts.texture;
     if (map) payload.albedoTexture = unwrapHandle(map);
     const emissionMap = opts.emissionMap || opts.emissiveMap;
@@ -619,7 +621,9 @@
       fogSkyAffect: 0.0,
       fogDensity: 0.08 / span,
     });
-    call('env.set', { background: colorFromHex(0x0a0a0f) });
+    // No background change: three.js fog never touches scene.background or a
+    // skybox. Forcing a flat 0x0a0a0f background here hid every sky on the
+    // Forward+ renderer (the default sky is already that colour).
   }
   function clearFog() {
     ensureInit();
@@ -1720,22 +1724,33 @@
     threshold: 0.6,
   };
 
+  // Mirrors the web's three.js UnrealBloomPass (see runtime/api-effects.js and
+  // runtime/backends/babylon/unreal-bloom.js): a soft luminance threshold
+  // (smoothWidth 0.01), then 5 progressively halved blur mips added on top of
+  // the scene with weight 3 * strength * mix(f, 1.2 - f, radius) for
+  // f = [1, .8, .6, .4, .2]. Godot glow levels 0-4 are the same half, quarter…
+  // resolution chain, blended additively. No glowBloom (that glows the whole
+  // frame) and no colour adjustments — bloom must not re-grade the scene.
+  const BLOOM_FACTORS = [1.0, 0.8, 0.6, 0.4, 0.2];
   function bloomPayload(enabled) {
-    const strength = bloomState.strength;
-    const bloomRadius = bloomState.radius;
-    const bloomThreshold = bloomState.threshold;
+    const strength = Math.max(0, Number(bloomState.strength) || 0);
+    const radius = Math.max(0, Math.min(1, Number(bloomState.radius) || 0));
+    const threshold = Math.max(0, Number(bloomState.threshold) || 0);
+    const levels = BLOOM_FACTORS.map(f => 3 * strength * (f + (1.2 - 2 * f) * radius));
     return {
-      glow: enabled,
-      glowIntensity: Math.max(0.12, Math.min(1.65, strength * 1.18)),
-      glowStrength: Math.max(0.88, Math.min(1.55, 0.92 + bloomRadius * 0.72)),
-      glowBloom: Math.max(0.07, Math.min(0.24, 0.075 + bloomRadius * 0.32)),
-      glowThreshold: Math.max(0.48, Math.min(0.9, 0.26 + bloomThreshold * 0.36)),
-      glowBleedScale: 1.85,
-      glowLuminanceCap: 22.0,
-      glowBlend: 'screen',
-      brightness: 1.02,
-      contrast: 1.1,
-      saturation: 1.15,
+      glow: enabled && strength > 0,
+      glowIntensity: 1.0,
+      glowStrength: 1.0,
+      glowBloom: 0.0,
+      // Godot thresholds the brightest channel; three.js thresholds luma.
+      // Luma is ~0.75x max-channel for sky, foliage and neon colours, so
+      // scale the threshold to bloom the same surfaces (HDR emissives still
+      // clear it easily).
+      glowThreshold: threshold / 0.75,
+      glowBleedScale: 0.01,
+      glowLuminanceCap: 64.0,
+      glowBlend: 'additive',
+      glowLevels: levels.concat([0, 0]),
     };
   }
 
@@ -1754,6 +1769,11 @@
     effectsEnabled = effectsEnabled || enabled;
     applyBloomSettings(enabled);
     return enabled;
+  }
+  function disableBloom() {
+    ensureInit();
+    call('env.set', { glow: false });
+    return true;
   }
   function setBloomStrength(v) {
     ensureInit();
@@ -1795,13 +1815,15 @@
     __crt.scanlines = a > 0;
     __crt.scanAlpha = Math.round(44 + a * 16);
     __crt.scanSpacing = 2;
-    call('env.set', {
-      brightness: 0.99 - a * 0.05,
-      contrast: 1.12 + a * 0.16,
-      saturation: 1.07 + a * 0.12,
-    });
+    // The web vignette only darkens the edges; it must not regrade the frame
+    // (the old brightness/contrast/saturation boost here oversaturated PBR).
     return true;
   }
+  function disableVignette() {
+    __crt.vignette = false;
+    return true;
+  }
+  function disableFXAA() { return true; }
   function setN64Mode(b) {
     // Punchy color, low-saturation glow for that warm CRT look.
     ensureInit();
@@ -4163,20 +4185,34 @@
     opts = opts || {};
     let path = typeof url === 'string' ? url : '';
     if (path && path.indexOf('://') < 0) path = _webPathToRes(path);
-    const payload = { skyPanorama: path };
+    // Like three.js: the HDR is the background (blurred by opts.blur) and the
+    // environment that lights PBR surfaces, both scaled by opts.intensity.
+    const payload = { skyPanorama: path, skyAmbient: true, skyWebEquirect: true };
     if (typeof opts.intensity === 'number') payload.skyEnergy = opts.intensity;
+    if (typeof opts.blur === 'number') payload.skyBlur = opts.blur;
     if (typeof opts.rotation === 'number') payload.skyRotation = opts.rotation;
     const r = engine.call('env.set', payload);
     if (r && r.error) return Promise.reject(new Error('createHDRSkybox: ' + (r.error.message || r.error.code || r.error)));
     return Promise.resolve(1);
   }
   // Web setToneMapping(mode, exposure): aces | agx | neutral | reinhard | cineon | linear | none.
+  // Three's ACESFilmicToneMapping is RRT/ODT(fit(exposure / 0.6 * c)) with no
+  // white-point division. Godot's ACES uses the same fit with a built-in 1.8
+  // bias and divides by fit(1.8 * white); white = 14.26 makes that divisor
+  // exactly 1, and exposure * (1 / 0.6) / 1.8 matches the bias.
+  const ACES_THREE_WHITE = 14.26;
+  const ACES_EXPOSURE_SCALE = 1 / 0.6 / 1.8;
   function setToneMapping(mode, exposure) {
     ensureInit();
-    call('env.set', {
-      tonemap: String(mode == null ? 'aces' : mode).toLowerCase(),
-      exposure: typeof exposure === 'number' && exposure > 0 ? exposure : 1,
-    });
+    const tonemap = String(mode == null ? 'aces' : mode).toLowerCase();
+    let e = typeof exposure === 'number' && exposure > 0 ? exposure : 1;
+    const payload = { tonemap };
+    if (tonemap === 'aces') {
+      e *= ACES_EXPOSURE_SCALE;
+      payload.tonemapWhite = ACES_THREE_WHITE;
+    }
+    payload.exposure = e;
+    call('env.set', payload);
     return true;
   }
   async function createImageSkybox(_urls) {
@@ -7299,7 +7335,7 @@
     // host hooks
     pollInput,
   };
-  const fxNs = { createEnvironmentSkybox, createHDRSkybox, setToneMapping, enablePixelation, enableDithering, enableBloom, setBloomStrength, setBloomRadius, setBloomThreshold, enableFXAA, enableChromaticAberration, enableVignette, enableGlitch, disableGlitch, setGlitchIntensity, glitchBurst, setN64Mode, setPSXMode, enableRetroEffects, isEffectsEnabled, enableSSR, enableSSAO, enableVolumetricFog, enableDOF, setExposure, setTonemap, setColorAdjustment, createParticleSystem, setParticleEmitter, emitParticle, burstParticles, updateParticles, removeParticleSystem, getParticleStats, createEmitter2D, updateEmitter2D, drawEmitter2D, burstEmitter2D, clearEmitter2D };
+  const fxNs = { createEnvironmentSkybox, createHDRSkybox, setToneMapping, enablePixelation, enableDithering, enableBloom, disableBloom, setBloomStrength, setBloomRadius, setBloomThreshold, enableFXAA, disableFXAA, enableChromaticAberration, enableVignette, disableVignette, enableGlitch, disableGlitch, setGlitchIntensity, glitchBurst, setN64Mode, setPSXMode, enableRetroEffects, isEffectsEnabled, enableSSR, enableSSAO, enableVolumetricFog, enableDOF, setExposure, setTonemap, setColorAdjustment, createParticleSystem, setParticleEmitter, emitParticle, burstParticles, updateParticles, removeParticleSystem, getParticleStats, createEmitter2D, updateEmitter2D, drawEmitter2D, burstEmitter2D, clearEmitter2D };
   const uiNs = { createButton, createLabel, createPanel, createSlider, createCheckbox, createDialog, clearButtons, updateAllButtons, drawAllButtons, drawGradientRect, drawPanel, drawText, drawTextShadow, drawTextOutline, setFont, setTextAlign, setTextBaseline, grid, parseCanvasUI, renderCanvasUI, updateCanvasUI, createContainer, addChild, createGraphicsNode, createTextNode, drawStage, uiColors: global.uiColors, centerX: function (w) { return Math.floor((640 - (w || 0)) / 2); }, centerY: function (h) { return Math.floor((360 - (h || 0)) / 2); }, Screen: (function() { function Screen() { this.data = {}; } Screen.prototype.enter = function(d) { this.data = Object.assign({}, this.data, d || {}); }; Screen.prototype.exit = function() {}; Screen.prototype.update = function() {}; Screen.prototype.draw = function() {}; return Screen; }()), getFont: function() { return 'default'; }, uiProgressBar: drawProgressBar };
   const stageNs = { createContainer, addChild, createGraphicsNode, createTextNode, drawStage, createMovieClip, createStage, createScreen, pushScreen, popScreen,
     createShake, triggerShake, updateShake, getShakeOffset,

@@ -87,6 +87,8 @@ try {
     gpu = new GpuBabylon(canvas, _paramW, _paramH);
     backendLabel = 'Babylon.js';
     console.log(`✅ Using Babylon.js renderer (${_paramW}x${_paramH}) - experimental backend`);
+    // Counterpart of __THREE_SCENE__ below, for DevTools and parity probes.
+    globalThis.__BABYLON_SCENE__ = gpu.scene;
   } else {
     // The canvas/renderer use the requested ?w=&h= pixel size, but the 2D
     // framebuffer stays at the logical 640x360 that carts draw their HUD in;
@@ -316,6 +318,10 @@ if (nova64api.getCamera) sApi.setCameraRef(nova64api.getCamera());
 
 const nova = new Nova64(gpu, manifestInst);
 globalThis.NOVA64_VERSION = NOVA64_VERSION;
+const runtimePackageLink = document.getElementById('runtime-package');
+if (runtimePackageLink) {
+  runtimePackageLink.textContent = `Nova64 runtime v${NOVA64_VERSION} · npm ↗`;
+}
 globalThis.__nova64Runtime = nova;
 
 // On-screen gamepad for phones and tablets. Mounts only when

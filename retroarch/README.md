@@ -105,6 +105,64 @@ cc -Iretroarch -o retroarch/build/harness retroarch/tests/harness.c -ldl
 retroarch/build/harness retroarch/nova64_libretro.so retroarch/conformance/00-boot.js
 ```
 
+### Current web skies and bloom on the native core
+
+Native GL draws the shared procedural shaders from `runtime/sky-shaders.js`,
+including animated presets, nebulae, stars, clouds, aurora and ocean skies. HDR
+panoramas, six-face image skies and environment presets feed filtered reflections
+and diffuse sky lighting. The current web bloom path preserves authored settings
+and uses the web threshold/blur behavior and neutral output defaults. Legacy
+native post-processing remains available for older carts.
+
+Generate and validate after changing shared sky source:
+
+```bash
+node scripts/gen-retroarch-sky.mjs
+make -C retroarch all harness
+pnpm retroarch:test:sky
+```
+
+The generated header is checked by `pnpm test`. Image/HDR carts packaged with
+`pnpm build:nova` include shared sky assets and attribution. Native smoke tests
+load a package outside the source directory to verify this delivery path.
+
+For labeled, fixed-step comparisons (requires Playwright Chromium and ffmpeg):
+
+```bash
+pnpm exec vite --host 127.0.0.1 --port 5191
+# In another terminal:
+pnpm retroarch:visual:sky -- --base=http://127.0.0.1:5191 --seconds=30
+```
+
+Results are in `retroarch/build/sky-bloom-parity/`: per-demo comparison videos,
+PNGs, native logs and `report.json`. Add `--keep-frames` to retain raw frames.
+macOS captures use Metal for the web reference. Videos identify the offscreen
+native-core GL harness; RetroArch frontend presentation needs its own smoke test.
+Randomized demos can diverge because each host's internal constructors consume
+random numbers differently. The explicitly seeded sky fixture isolates shader
+parity; demo-wide RGB error is descriptive, not a compatibility percentage.
+
+Native PBR uses GGX-filtered environment mips and cosine-weighted diffuse lighting,
+not Three.js PMREM's exact filtering implementation. Refraction is an environment
+approximation. `setPBRProperties` supports `clearcoat` and `clearcoatRoughness`
+for a separate dielectric environment-reflection layer, including attenuation
+of the base material. Direct-light clearcoat highlights, the exact environment
+BRDF, iridescence, sheen and full physical glass parity remain follow-up work.
+`pnpm retroarch:test:sky` checks actual GL readback for zero-coat preservation,
+coat strength and roughness. A controlled web/native coating comparison runs with
+`pnpm retroarch:visual:sky --carts=pbr-coating-fixture --seconds=1 --stills-only`.
+See [the parity plan](../plans/RETROARCH_WEB_SKY_BLOOM_PARITY_PLAN.md).
+
+For three-column sky and coating stills, start Vite on port 5191 and run
+`pnpm visual:three-way:sky`. Pass `--godot=/path/to/godot` if needed; macOS also
+checks `/Applications/Godot.app`. The gallery and still-image reel are written
+to `retroarch/build/three-way-sky/`. Columns are Three.js web, Godot Forward+ and
+the offscreen native core. The report preserves shader/runtime identities,
+Godot warnings and RGB errors. All hosts receive 60 fixed updates, but Godot's
+extra render-only frames and wall-clock effects prevent exact time alignment.
+Godot space can use a baked panorama. This does not capture RetroArch WASM/web;
+that target still needs a runnable frontend and Emscripten build.
+
 Harness flags:
 
 | Flag                              | Effect                                          |
@@ -123,7 +181,26 @@ Harness flags:
 | `--mouse-btn left\|right\|middle` | Inject held mouse button                        |
 | `--touch-x <n>` / `--touch-y <n>` | Inject pointer/touch coordinates                |
 | `--touch-count <n>`               | Inject active pointer/touch count               |
-| `--gles`                          | Request GLES hardware context (Mesa headless)   |
+| `--gles`                          | Request a GL hardware context: EGL (Mesa headless) on Linux, CGL OpenGL 4.1 Core on macOS |
+| `--press <frame>=<key>`           | Tap a key for one frame                         |
+| `--hold <a>-<b>=<key>`            | Hold a key from frame a through frame b         |
+| `--capture-seq <dir>`             | Write `<dir>/frame_NNNNN.ppm` every frame (gameplay videos) |
+| `--capture-every <n>`             | With `--capture-seq`, keep every Nth frame      |
+
+Gameplay video from the native GL renderer (30 fps from a 60 fps run):
+
+```bash
+retroarch/build/harness retroarch/nova64_libretro.dylib examples/space-harrier-3d/code.js \
+  --gles --frames 1800 --capture-seq /tmp/sh --capture-every 2 \
+  --press 90=space --hold 140-1800=space --hold 160-330=left --hold 430-680=right
+ffmpeg -framerate 30 -i /tmp/sh/frame_%05d.ppm -vf scale=1280:720:flags=neighbor \
+  -c:v libx264 -crf 18 space-harrier.mp4
+```
+
+Shaders are GLSL ES 3.00 (so WebGL2 runs them unchanged). On native builds the
+core gets a desktop OpenGL 3.3 Core context and compiles them as
+`#version 330 core`; macOS rejects `#version 300 es` on desktop GL, which used
+to leave every 3D cart black there.
 
 `NOVA64_SAVE_DIR=<path>` sets the cart storage directory for harness runs.
 `NOVA64_RENDER_COMMAND_LOG=<path>` enables command logging outside the harness.

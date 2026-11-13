@@ -1,7 +1,7 @@
 // runtime/backends/babylon/transforms.js
 // Mesh and light transforms for the Babylon backend.
 
-import { hexToColor3, normalizeVectorArgs } from './common.js';
+import { emissiveColor3For, hexToColor3, linearColor3, normalizeVectorArgs } from './common.js';
 
 // Helper to extract numeric ID from either a number or a mesh proxy
 function getMeshId(idOrProxy) {
@@ -63,7 +63,7 @@ export function createBabylonTransformsApi(self) {
       const mat = ownMaterial(resolveMesh(idOrProxy));
       if (!mat) return false;
       const c = hexToColor3(color);
-      if ('albedoColor' in mat) mat.albedoColor = c;
+      if ('albedoColor' in mat) mat.albedoColor = linearColor3(c);
       else if ('diffuseColor' in mat) mat.diffuseColor = c;
       return true;
     },
@@ -72,7 +72,7 @@ export function createBabylonTransformsApi(self) {
       const mat = ownMaterial(resolveMesh(idOrProxy));
       if (!mat || !('emissiveColor' in mat)) return false;
       const scale = typeof intensity === 'number' ? intensity : 1;
-      mat.emissiveColor = hexToColor3(color).scale(scale);
+      mat.emissiveColor = emissiveColor3For(mat, hexToColor3(color), scale);
       return true;
     },
 

@@ -3,6 +3,29 @@
 All notable changes to Nova64 are documented here. Per-tag, publish-ready notes
 live in [`docs/releases/`](docs/releases/).
 
+## Unreleased
+
+- Babylon.js: `enableBloom` is a port of three.js UnrealBloomPass, so strength,
+  radius and threshold look the same on both web backends. PBR colours and
+  emissive intensity are converted to linear like Three, `rgba8()` colours no
+  longer render white, procedural skies match Three, and voxel chunks get
+  Three-equivalent per-face lighting (Minecraft demo no longer too bright).
+  `createHDRSkybox` now loads real HDR panoramas on Babylon (background blur,
+  intensity and prefiltered PBR reflections) instead of a gradient fallback.
+- Three.js: per-mesh `setMeshEmissive/Color/Opacity/setFlatShading` no longer
+  change every mesh that shares the cached material.
+- Godot: desktop renders with Forward+ (mobile stays on Compatibility). Bloom,
+  ACES tone mapping and HDR skies (blur, orientation, sky lighting) follow the
+  web; glass `transmission`/`ior` refracts; the stale coloured fill/point
+  lights and default rim light are gone; planes face the right way; `setFog`
+  no longer hides skyboxes; `disableBloom/disableVignette/disableFXAA` exist.
+  See nova64-godot/docs/VISUAL_PARITY.md.
+- RetroArch: native builds compile the core's GLSL ES 3.00 shaders as
+  `#version 330 core`, so 3D renders on macOS (OpenGL 4.1 Core rejects ES
+  shaders; every 3D cart was black). The harness creates a CGL context on
+  macOS and gains `--hold`, `--capture-seq` and `--capture-every` for scripted
+  gameplay videos.
+
 ## v0.5.11
 
 - Three.js materials honor explicit glow `intensity` and preserve mesh colors for

@@ -6,6 +6,7 @@ import {
   Constants,
   CubeTexture,
   Effect,
+  HDRCubeTexture,
   Mesh,
   MeshBuilder,
   ReflectionProbe,
@@ -17,9 +18,13 @@ import {
   VertexData,
 } from '@babylonjs/core';
 import '@babylonjs/core/Helpers/sceneHelpers.js';
+// HDRCubeTexture prefiltering loads these with dynamic import(), which Vite's
+// dep optimizer can't serve; importing them up front registers the shaders.
+import '@babylonjs/core/Shaders/hdrFiltering.vertex.js';
+import '@babylonjs/core/Shaders/hdrFiltering.fragment.js';
 
 import { GRADIENT_FRAG, NOISE_GLSL, SPACE_FRAG, STAR_FRAG } from '../../sky-shaders.js';
-import { normalizeColorValue } from './common.js';
+import { linearColor3, normalizeColorValue } from './common.js';
 import { applyBabylonMaterialCompatibility, applyBabylonMeshCompatibility } from './compat.js';
 
 function toColor4(hex, alpha = 1) {
@@ -141,9 +146,16 @@ function registerSkyShaders() {
   store.nova64SkyStarsFragmentShader = 'precision highp float;\n' + STAR_FRAG;
 }
 
+// Sky shader uniforms, converted sRGB -> linear exactly like `new THREE.Color(hex)`
+// does on the Three.js backend. The shared sky shaders write gl_FragColor without
+// re-encoding on either backend, so passing raw sRGB here made every Babylon sky
+// paler and brighter than the Three.js sky carts are tuned against. The HSL
+// nebula helpers below also run on linear values, as THREE.Color's do.
 function hexToColor3(hex) {
   const v = normalizeColorValue(hex);
-  return new Color3(((v >> 16) & 0xff) / 255, ((v >> 8) & 0xff) / 255, (v & 0xff) / 255);
+  return linearColor3(
+    new Color3(((v >> 16) & 0xff) / 255, ((v >> 8) & 0xff) / 255, (v & 0xff) / 255)
+  );
 }
 
 // HSL helpers matching THREE.Color.getHSL/setHSL/offsetHSL (used for nebula tints).
@@ -195,6 +207,7 @@ export function createBabylonSkyboxApi(self) {
   const defaultClearColor = self.scene.clearColor?.clone?.() ?? new Color4(0.04, 0.04, 0.06, 1);
 
   function clearSkyboxState() {
+    self._setVoxelSkyLight?.(null);
     if (skyProbe) {
       if (self.scene.environmentTexture === skyProbe.cubeTexture) {
         self.scene.environmentTexture = envBeforeSky;
@@ -329,7 +342,11 @@ export function createBabylonSkyboxApi(self) {
     material._novaTime = 0;
 
     skyboxMesh = mesh;
-    if (opts.reflect !== false) bakeEnvironment(mesh, opts.reflectIntensity ?? 1);
+    if (opts.reflect !== false) {
+      bakeEnvironment(mesh, opts.reflectIntensity ?? 1);
+      // Three lights voxel chunks with this baked sky; mirror it (voxel.js).
+      self._setVoxelSkyLight?.(horizon);
+    }
     return skyboxMesh;
   }
 
@@ -530,7 +547,57 @@ export function createBabylonSkyboxApi(self) {
     if (starMesh?.material) starMesh.material.setFloat('uScale', pixelScale());
   }
 
+  // Equirectangular .hdr sky, matching the Three.js createHDRSkybox(): the
+  // panorama is both the background (blurred by opts.blur) and the PBR
+  // environment, both scaled by opts.intensity. HDRCubeTexture prefilters it
+  // so roughness blurs reflections like three's PMREM.
+  function createHDRSkybox(url, opts = {}) {
+    clearSkyboxState();
+    const intensity = typeof opts.intensity === 'number' ? opts.intensity : 1;
+    const blur = Math.max(0, Math.min(1, opts.blur || 0));
+    return new Promise((resolve, reject) => {
+      let hdr = null;
+      const onLoad = () => {
+        // three.js equirect u = atan(z, x); Babylon's equirect cube starts a
+        // quarter turn later, so rotate to face the same way as the web.
+        hdr.rotationY = Math.PI / 2 + (typeof opts.rotation === 'number' ? opts.rotation : 0);
+        self.scene.environmentTexture = hdr;
+        environmentTexture = hdr;
+        if ('environmentIntensity' in self.scene) self.scene.environmentIntensity = intensity;
+        const mesh = self.scene.createDefaultSkybox?.(hdr, true, 900, blur, false);
+        if (mesh) {
+          if (mesh.material) {
+            mesh.material.fogEnabled = false;
+            if (mesh.material.reflectionTexture) {
+              mesh.material.reflectionTexture.level = intensity;
+              mesh.material.reflectionTexture.rotationY = hdr.rotationY;
+            }
+          }
+          prepareSkyMesh(mesh);
+          skyboxMesh = mesh;
+        }
+        resolve(hdr);
+      };
+      try {
+        hdr = new HDRCubeTexture(
+          url,
+          self.scene,
+          256,
+          false,
+          true,
+          false,
+          true,
+          onLoad,
+          (msg, err) => reject(err ?? new Error(msg ?? 'Failed to load HDR sky'))
+        );
+      } catch (err) {
+        reject(err);
+      }
+    });
+  }
+
   return {
+    createHDRSkybox,
     createSpaceSkybox,
     createGradientSkybox,
     createSolidSkybox,

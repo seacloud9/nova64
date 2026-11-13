@@ -15,6 +15,49 @@ native-shutdown flakes. All unrelated to rendering or gameplay logic.
 Both Linux (`platform=linux`) and Windows (`platform=windows use_mingw=yes`)
 gdextension builds are clean.
 
+## Latest checkpoint — PBR, bloom and sky parity (2026-11-10)
+
+Measured against the web (Three.js) with `scripts/visual-parity.js`
+(colour diff, lower is better): pbr-showcase 0.501 → 0.396 (pixels 30% → 3%),
+super-plumber-64 0.101 → 0.077, hello-world 0.206 → 0.185; other carts
+unchanged (±0.003). Conformance and `tests/test-godot-shim-parity.js` pass.
+
+- **Renderer:** `project.godot` uses Forward+ on desktop
+  (`rendering_method.mobile` stays `gl_compatibility`). Compatibility has no
+  roughness-filtered sky reflections or screen refraction, so PBR can't match.
+- **Bloom** (`shim bloomPayload`): same model as three's UnrealBloomPass —
+  glow levels 0-4 weighted `3·strength·mix(f, 1.2−f, radius)`, additive blend,
+  no `glowBloom`, no brightness/contrast/saturation side effects. Godot
+  thresholds the brightest channel (three: luma), so the threshold is divided
+  by 0.75. `env.set` gained `glowLevels`.
+- **Tone mapping:** `setToneMapping('aces', e)` sends `tonemapWhite: 14.26`
+  and `exposure: e / 0.6 / 1.8`, which reproduces three's ACES exactly (Godot
+  divides by fit(1.8·white); three applies exposure/0.6 and never divides).
+- **HDR skies** (`skyPanorama`): a mipmapped panorama sky shader. `skyBlur`
+  blurs only the visible background (three `backgroundBlurriness`); the
+  reflection pass stays sharp. `skyWebEquirect` turns web HDRs a quarter turn
+  (three's u = atan(z, x) vs Godot's atan(x, −z)); baked presets from
+  `scripts/bake-sky-presets.mjs` are already in Godot's convention.
+  `skyAmbient` lights PBR surfaces from the sky like three's environment map.
+- **Lights:** the blue/pink/green fill and warm/cool point lights (dropped from
+  three.js in `19ea1e5f`) and the default 0.15 rim on every material are gone.
+- **Materials:** `transmission`/`ior` map to screen-space refraction.
+- **Geometry:** `geometry.createPlane` winds clockwise (Godot front faces);
+  floors were lit and reflected as if facing down.
+- **Shim:** `setFog` no longer forces a flat background (it hid every skybox
+  on Forward+); added `disableBloom`, `disableVignette`, `disableFXAA`;
+  `enableVignette` no longer regrades the frame.
+
+Known gaps: near-black metals reflect ~4x less at grazing angles (engine
+fresnel difference); no sheen/iridescence; image cube-map skyboxes
+(`createImageSkybox`, skybox-showcase "Studio IBL") are unsupported; Godot's
+default directional light renders ~1.4x brighter than three's.
+
+Local build note (macOS): after `scons platform=macos target=template_debug
+arch=universal`, replace — don't overwrite — the framework binary
+(`rm` then `cp`), or new Godot processes are SIGKILLed while an editor/game
+window still maps the old one.
+
 ## Latest checkpoint — Shader Showcase TSL fallbacks
 
 The Godot `shader-showcase` cart now reads much closer to the Three.js version

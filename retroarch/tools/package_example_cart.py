@@ -51,6 +51,15 @@ def package_cart(repo_root: Path, cart_name: str, out_dir: Path) -> Path:
     manifest = json.loads(manifest_path.read_text(encoding="utf-8-sig"))
     assets = [safe_package_path(asset) for asset in manifest.get("assets", [])]
 
+    shared_assets = []
+    if any(token in code.read_text(encoding="utf-8-sig") for token in
+           ("createHDRSkybox", "createImageSkybox", "assets/sky/")):
+        shared_assets = [shared for shared in sorted((repo_root / "public/assets/sky").rglob("*"))
+                         if shared.is_file() and not shared.name.endswith(".import")
+                         and shared.relative_to(repo_root / "public").as_posix() not in assets]
+    manifest["assets"] = assets + [shared.relative_to(repo_root / "public").as_posix()
+                                   for shared in shared_assets]
+
     out_dir.mkdir(parents=True, exist_ok=True)
     package_path = out_dir / f"{cart_name}.nova"
     total_bytes = 0
@@ -59,10 +68,18 @@ def package_cart(repo_root: Path, cart_name: str, out_dir: Path) -> Path:
     with ZipFile(package_path, "w", ZIP_DEFLATED) as package:
         total_bytes += write_file(package, code, "code.js")
         file_count += 1
-        total_bytes += write_file(package, manifest_path, "manifest.json")
+        manifest_data = json.dumps(manifest, indent=2).encode("utf-8")
+        manifest_info = ZipInfo("manifest.json", ZIP_DATE)
+        manifest_info.compress_type = ZIP_DEFLATED
+        package.writestr(manifest_info, manifest_data)
+        total_bytes += len(manifest_data)
         file_count += 1
         if meta_path.exists():
             total_bytes += write_file(package, meta_path, "meta.json")
+            file_count += 1
+
+        for shared in shared_assets:
+            total_bytes += write_file(package, shared, shared.relative_to(repo_root / "public").as_posix())
             file_count += 1
 
         for asset in assets:

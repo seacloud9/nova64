@@ -17,6 +17,26 @@ Last updated: 2026-11-12
   [the Roblox implementation plan](plans/NOVA64_ROBLOX_PLAN.md). No implementation
   or unchanged-cart compatibility has been validated yet.
 
+## RetroArch native: current web sky and bloom parity
+
+- **Initial implementation 2026-11-12 (local):** native skies, presets, HDR/image environments,
+  sky-driven reflections, authored emission and bloom to match current web demos
+  without editing cart source. Deliver synchronized web/native comparison videos
+  and reviewed conformance/sweep results. See the
+  [implementation and validation plan](plans/RETROARCH_WEB_SKY_BLOOM_PARITY_PLAN.md).
+  Shared procedural shaders now replace option-recording stubs; HDR/image assets
+  are bundled and tested outside the source checkout. Native environment clearcoat
+  now supports strength and roughness with GL pixel-readback regression coverage;
+  direct-light coat highlights and the exact environment BRDF are still pending.
+  **Next PBR priority (user review):** improve native glass refraction; compare
+  transmission, IOR and thickness against web Glass & Gems and the POV-Ray tribute.
+  Current native glass samples only the environment and misses scene geometry.
+  The existing Emscripten target needs a WASM build and browser validation
+  (`emcc` is unavailable on the current Mac). Remaining work includes
+  exact PBR/PMREM/clearcoat matching, F-Zero track props and RGBA/hex HUD color
+  disambiguation, and real RetroArch frontend plus Windows/Linux
+  verification. See the plan checkpoint for measured results.
+
 ## 🔁 Recurring — Dependency sweep (monthly, and before every release)
 
 Requested 2026-11-06: keep every library current instead of letting it drift.

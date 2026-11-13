@@ -289,7 +289,10 @@ struct nova64_mesh {
    uint32_t emissive_color; /* 0 = none, else RGBA8 */
    float emissive_intensity; /* 0 = off */
    bool pbr_material;
-   float environment_intensity, transmission, ior;
+   float environment_intensity, transmission, ior, thickness;
+   float attenuation_distance;
+   uint32_t attenuation_color;
+   float geometry_scale[3];
    float clearcoat, clearcoat_roughness;
    float roughness;         /* 0 = smooth, 1 = rough */
    float metalness;         /* 0 = non-metal, 1 = metal */
@@ -4938,6 +4941,10 @@ static int allocate_mesh(enum nova64_mesh_type type)
          meshes[i].environment_intensity = 1;
          meshes[i].transmission = 0;
          meshes[i].ior = 1.5f;
+         meshes[i].thickness = 0;
+         meshes[i].attenuation_distance = INFINITY;
+         meshes[i].attenuation_color = rgba8(255,255,255,255);
+         for (int axis=0;axis<3;axis++) meshes[i].geometry_scale[axis]=1;
          meshes[i].clearcoat = 0;
          meshes[i].clearcoat_roughness = 0;
          meshes[i].roughness = 0.5f;
@@ -27335,6 +27342,8 @@ static void apply_mesh_options(JSContext *ctx, struct nova64_mesh *mesh, JSValue
  * Web-cart pattern: createCube(size, color, [x,y,z], {emissive: 0xff8833}). */
 static void apply_trailing_options(JSContext *ctx, struct nova64_mesh *mesh, int argc, JSValueConst *argv)
 {
+   /* Primitive dimensions are geometry in Three.js, not object scaling. */
+   memcpy(mesh->geometry_scale, mesh->scale, sizeof(mesh->geometry_scale));
    for (int i = argc - 1; i >= 0; i--) {
       if (JS_IsObject(argv[i]) && !JS_IsArray(argv[i]) && !JS_IsFunction(ctx, argv[i])) {
          apply_mesh_options(ctx, mesh, argv[i]);
@@ -27730,6 +27739,11 @@ static JSValue js_get_mesh(JSContext *ctx, JSValueConst this_val, int argc, JSVa
    JS_SetPropertyStr(ctx, object, "scale", js_vec3_array(ctx, mesh->scale));
    JS_SetPropertyStr(ctx, object, "roughness", JS_NewFloat64(ctx, mesh->roughness));
    JS_SetPropertyStr(ctx, object, "metalness", JS_NewFloat64(ctx, mesh->metalness));
+   JS_SetPropertyStr(ctx, object, "transmission", JS_NewFloat64(ctx, mesh->transmission));
+   JS_SetPropertyStr(ctx, object, "ior", JS_NewFloat64(ctx, mesh->ior));
+   JS_SetPropertyStr(ctx, object, "thickness", JS_NewFloat64(ctx, mesh->thickness));
+   JS_SetPropertyStr(ctx, object, "attenuationColor", JS_NewUint32(ctx, mesh->attenuation_color));
+   JS_SetPropertyStr(ctx, object, "attenuationDistance", JS_NewFloat64(ctx, mesh->attenuation_distance));
    JS_SetPropertyStr(ctx, object, "clearcoat", JS_NewFloat64(ctx, mesh->clearcoat));
    JS_SetPropertyStr(ctx, object, "clearcoatRoughness", JS_NewFloat64(ctx, mesh->clearcoat_roughness));
    JS_SetPropertyStr(ctx, object, "shadeContrast", JS_NewFloat64(ctx, mesh->shade_contrast));
@@ -27976,6 +27990,7 @@ static JSValue js_set_pbr_properties(JSContext *ctx, JSValueConst this_val, int 
    struct nova64_mesh *mesh = mesh_from_handle(int_from_js(ctx, argc ? argv[0] : JS_UNDEFINED, 0));
    if (!mesh || argc < 2 || !JS_IsObject(argv[1])) return JS_UNDEFINED;
    native_web_pipeline = true;
+   bool was_physical = mesh->pbr_material;
    mesh->pbr_material = true;
    JSValue color = JS_GetPropertyStr(ctx, argv[1], "color");
    if (!JS_IsUndefined(color)) mesh->color = color_from_js(ctx, color, mesh->color);
@@ -27984,13 +27999,22 @@ static JSValue js_set_pbr_properties(JSContext *ctx, JSValueConst this_val, int 
       mesh->color = rgba8(0, 0, 0, 255);
    JS_FreeValue(ctx, color);
    apply_mesh_options(ctx, mesh, argv[1]);
-   const char *names[] = {"envMapIntensity", "transmission", "ior", "clearcoat", "clearcoatRoughness"};
-   float *targets[] = {&mesh->environment_intensity, &mesh->transmission, &mesh->ior, &mesh->clearcoat, &mesh->clearcoat_roughness};
-   for (int i=0;i<5;i++) {
+   const char *names[] = {"envMapIntensity", "transmission", "ior", "clearcoat", "clearcoatRoughness", "thickness", "attenuationDistance"};
+   float *targets[] = {&mesh->environment_intensity, &mesh->transmission, &mesh->ior, &mesh->clearcoat, &mesh->clearcoat_roughness, &mesh->thickness, &mesh->attenuation_distance};
+   for (int i=0;i<7;i++) {
       JSValue value = JS_GetPropertyStr(ctx, argv[1], names[i]);
       if (JS_IsNumber(value)) *targets[i] = (float)double_from_js(ctx,value,*targets[i]);
       JS_FreeValue(ctx,value);
    }
+   JSValue thickness = JS_GetPropertyStr(ctx, argv[1], "thickness");
+   if (!was_physical && mesh->transmission > 0 && JS_IsUndefined(thickness)) mesh->thickness = 1;
+   JS_FreeValue(ctx, thickness);
+   JSValue attenuation = JS_GetPropertyStr(ctx, argv[1], "attenuationColor");
+   if (!JS_IsUndefined(attenuation)) mesh->attenuation_color = color_from_js(ctx, attenuation, mesh->attenuation_color);
+   JS_FreeValue(ctx, attenuation);
+   mesh->transmission = (float)clamp_double(mesh->transmission, 0, 1);
+   mesh->thickness = fmaxf(mesh->thickness, 0);
+   mesh->ior = (float)clamp_double(mesh->ior, 1, 2.333);
    mesh->clearcoat = (float)clamp_double(mesh->clearcoat, 0, 1);
    mesh->clearcoat_roughness = (float)clamp_double(mesh->clearcoat_roughness, 0, 1);
    return JS_DupValue(ctx, argv[0]);
@@ -37306,6 +37330,8 @@ static GLuint gles_compile_shader(GLenum type, const char *source)
    return shader;
 }
 
+#include "transmission-render.h"
+
 static bool gles_create_cube_program(void)
 {
    static const char *vertex_source =
@@ -37333,6 +37359,7 @@ static bool gles_create_cube_program(void)
       "out vec4 v_shadow_coord;\n"
       "out vec3 v_normal;\n"
       "out vec3 v_world_pos;\n"
+      "out vec3 v_model_scale;uniform vec3 u_geometry_scale;\n"
       "out vec4 v_instance_color;\n"
       "void main() {\n"
       "  vec4 local_pos = vec4(a_position, 1.0);\n"
@@ -37343,6 +37370,8 @@ static bool gles_create_cube_program(void)
       "  v_light = diffuse;\n"
       "  v_normal = n;\n"
       "  v_world_pos = world_pos.xyz;\n"
+      "  mat4 model=(u_use_instancing!=0)?a_instance_model:u_model;\n"
+      "  v_model_scale=vec3(length(model[0].xyz),length(model[1].xyz),length(model[2].xyz))/max(abs(u_geometry_scale),vec3(0.0001));\n"
       "  v_instance_color = a_instance_color;\n"
       "  gl_Position = (u_use_instancing != 0) ? u_mvp * world_pos : u_mvp * local_pos;\n"
       "  vec4 view_pos = u_view * world_pos;\n"
@@ -37371,7 +37400,7 @@ static bool gles_create_cube_program(void)
       "in vec2 v_uv;\n"
       "in vec4 v_shadow_coord;\n"
       "in vec3 v_normal;\n"
-      "in vec3 v_world_pos;\n"
+      "in vec3 v_world_pos;in vec3 v_model_scale;\n"
       "in vec4 v_instance_color;\n"
       /* Point lights: up to 8 active uploaded per draw. xyz=world pos,
          w=intensity; rgb=color (sRGB), w=range. Count=0 -> empty loop. */
@@ -37402,6 +37431,9 @@ static bool gles_create_cube_program(void)
       "uniform int u_has_environment;uniform sampler2D u_environment;uniform sampler2D u_irradiance;\n"
       "uniform int u_pbr_material;uniform float u_env_gain;uniform float u_transmission;uniform float u_ior;\n"
       "uniform float u_clearcoat;uniform float u_clearcoat_roughness;\n"
+      "uniform vec3 u_attenuation_color;uniform float u_attenuation_distance;\n"
+      "uniform int u_has_transmission_buffer;uniform int u_transmission_linear;uniform sampler2D u_transmission_buffer;\n"
+      "uniform mat4 u_transmission_vp;uniform float u_thickness;\n"
       "uniform float u_environment_intensity;uniform float u_environment_rotation;\n"
       "vec3 environment(vec3 d,float rough){\n"
       "  vec2 uv=vec2(atan(d.z,d.x)/6.28318530718+0.5+u_environment_rotation/6.28318530718,asin(clamp(d.y,-1.0,1.0))/3.14159265359+0.5);\n"
@@ -37445,11 +37477,24 @@ static bool gles_create_cube_program(void)
       "  color = ACESOutputMat * color;\n"
       "  return clamp(color, 0.0, 1.0);\n"
       "}\n"
+      "vec3 ggx(vec3 n,vec3 v,vec3 l,vec3 f0,float rough){\n"
+      "  vec3 h=normalize(v+l);float nl=max(dot(n,l),0.0),nv=max(dot(n,v),0.0),nh=max(dot(n,h),0.0),vh=max(dot(v,h),0.0);\n"
+      "  float a=pow(max(rough,0.0525),2.0),a2=a*a;\n"
+      "  float d=nh*nh*(a2-1.0)+1.0;float D=a2/(3.141592654*d*d);\n"
+      "  float V=0.5/max(nl*sqrt(nv*nv*(1.0-a2)+a2)+nv*sqrt(nl*nl*(1.0-a2)+a2),0.000001);\n"
+      "  vec3 F=f0+(1.0-f0)*exp2((-5.55473*vh-6.98316)*vh);return F*(D*V);\n"
+      "}\n"
+      "vec3 physicalLight(vec3 n,vec3 v,vec3 l,vec3 base,vec3 radiance,inout vec3 specular,inout vec3 coat){\n"
+      "  vec3 irradiance=radiance*max(dot(n,l),0.0);float f0=pow((u_ior-1.0)/(u_ior+1.0),2.0);\n"
+      "  vec3 spec=irradiance*ggx(n,v,l,mix(vec3(f0),base,u_metalness),u_roughness);specular+=spec;\n"
+      "  if(u_clearcoat>0.0)coat+=irradiance*ggx(n,v,l,vec3(0.04),u_clearcoat_roughness);\n"
+      "  return irradiance*base*(1.0-u_metalness)*0.318309886+spec;\n"
+      "}\n"
       "float shadow_tap(vec2 uv, float depth) {\n"
       "  return depth - 0.005 > texture(u_shadow_map, uv).r ? 0.0 : 1.0;\n"
       "}\n"
       "void main() {\n"
-      "  float shadow_factor = 1.0;\n"
+      "  float shadow_factor = 1.0;vec3 directSpecular=vec3(0.0),coatDirect=vec3(0.0);\n"
       "  vec3 ambient = srgb_to_linear(u_ambient_color.rgb) * 0.35;\n"
       "  vec4 draw_color = (u_use_instancing != 0) ? v_instance_color : u_color;\n"
       "  vec4 texel = (u_has_texture != 0) ? texture(u_texture, v_uv) : vec4(1.0);\n"
@@ -37493,7 +37538,12 @@ static bool gles_create_cube_program(void)
       "  if (u_web_lighting != 0) {\n"
       "    vec3 hemi=mix(srgb_to_linear(vec3(0.22,0.22,0.24)),srgb_to_linear(vec3(0.78,0.85,1.0)),clamp(v_normal.y*0.5+0.5,0.0,1.0))*0.35;\n"
       "    lit=base.rgb*(srgb_to_linear(u_light_color.rgb)*u_light_intensity*diffuse+srgb_to_linear(u_ambient_color.rgb)+hemi);\n"
-      "    if(u_pbr_material!=0)lit*=0.318309886;\n"
+      "    if(u_pbr_material!=0){\n"
+      "      vec3 n=normalize(v_normal),v=normalize(u_camera_pos-v_world_pos),l=normalize(u_light_direction.xyz);\n"
+      "      lit=base.rgb*(srgb_to_linear(u_ambient_color.rgb)+hemi)*(1.0-u_metalness)*0.318309886;\n"
+      "      lit+=physicalLight(n,v,l,base.rgb,srgb_to_linear(u_light_color.rgb)*u_light_intensity,directSpecular,coatDirect);\n"
+      "    }\n"
+
       "  }\n"
       "  if (u_shadow_enabled != 0) {\n"
       "    vec3 sc = v_shadow_coord.xyz / v_shadow_coord.w;\n"
@@ -37511,8 +37561,7 @@ static bool gles_create_cube_program(void)
       "              + shadow_tap(sc.xy+vec2(0.0, ts),sc.z)\n"
       "              + shadow_tap(sc.xy+vec2( ts, ts),sc.z);\n"
       "      shadow_factor = 0.35 + 0.65 * (s / 9.0);\n"
-      "      if (u_shadow_point_light_index < 0)\n"
-      "        lit *= shadow_factor;\n"
+      "      if (u_shadow_point_light_index < 0){lit*=shadow_factor;directSpecular*=shadow_factor;coatDirect*=shadow_factor;}\n"
       "    }\n"
       "  }\n"
       /* Point-light accumulation: distance-attenuated diffuse plus a modest
@@ -37536,6 +37585,10 @@ static bool gles_create_cube_program(void)
       "    if(u_web_lighting!=0){float cutoff=pow(clamp(1.0-pow(dist/range,4.0),0.0,1.0),2.0);f=cutoff/max(dist*dist,0.01);if(u_pbr_material!=0)f*=0.318309886;}\n"
       "    vec3 pcol = srgb_to_linear(u_point_lights_color[i].rgb);\n"
       "    float light_shadow = (i == u_shadow_point_light_index) ? shadow_factor : 1.0;\n"
+      "    if(u_pbr_material!=0 && u_web_lighting!=0){\n"
+      "      lit+=physicalLight(normalize(v_normal),normalize(u_camera_pos-v_world_pos),ldir,base.rgb,pcol*intensity*f*light_shadow*3.141592654,directSpecular,coatDirect);\n"
+      "      continue;\n"
+      "    }\n"
       "    lit += base.rgb * pcol * intensity * ndotl * f * light_shadow;\n"
       "    vec3 view_dir = normalize(u_camera_pos - v_world_pos);\n"
       "    vec3 half_dir = normalize(ldir + view_dir);\n"
@@ -37551,22 +37604,35 @@ static bool gles_create_cube_program(void)
       "    vec3 reflected=environment(reflect(-v,n),u_roughness);\n"
       "    vec2 iuv=vec2(atan(n.z,n.x)/6.28318530718+0.5+u_environment_rotation/6.28318530718,asin(clamp(n.y,-1.0,1.0))/3.14159265359+0.5);\n"
       "    vec3 diffuseEnv=texture(u_irradiance,iuv).rgb*u_environment_intensity;\n"
-      "    vec3 f0=mix(vec3(0.04),base.rgb,u_metalness);\n"
+      "    vec3 f0=mix(vec3(pow((u_ior-1.0)/(u_ior+1.0),2.0)),base.rgb,u_metalness);\n"
       "    vec3 fresnel=f0+(1.0-f0)*pow(1.0-max(dot(n,v),0.0),5.0);\n"
-      "    lit=lit*(1.0-u_metalness)+diffuseEnv*base.rgb*(1.0-u_metalness);\n"
+      "    lit+=diffuseEnv*base.rgb*(1.0-u_metalness);\n"
       "    lit+=reflected*fresnel*u_env_gain;\n"
-      "    if (u_transmission > 0.0) {\n"
-      "      vec3 transmitted=environment(refract(-v,n,1.0/max(u_ior,1.0)),u_roughness)*base.rgb;\n"
-      "      lit=mix(lit,transmitted*(1.0-fresnel)+reflected*fresnel,clamp(u_transmission,0.0,1.0));\n"
-      "    }\n"
+      "  }\n"
+      "  if(u_pbr_material!=0 && u_transmission>0.0){\n"
+      "    vec3 n=normalize(v_normal),v=normalize(u_camera_pos-v_world_pos);\n"
+      "    vec3 ray=normalize(refract(-v,n,1.0/u_ior))*u_thickness*v_model_scale;\n"
+      "    vec3 transmitted=vec3(0.0);\n"
+      "    if(u_has_transmission_buffer!=0){\n"
+      "      vec4 exitClip=u_transmission_vp*vec4(v_world_pos+ray,1.0);\n"
+      "      vec2 uv=exitClip.xy/exitClip.w*0.5+0.5;\n"
+      "      float lod=log2(float(textureSize(u_transmission_buffer,0).x))*u_roughness*clamp(2.0*u_ior-2.0,0.0,1.0);\n"
+      "      transmitted=textureLod(u_transmission_buffer,clamp(uv,vec2(0.0),vec2(1.0)),lod).rgb;\n"
+      "      if(u_transmission_linear==0)transmitted=srgb_to_linear(transmitted);\n"
+      "    }else if(u_has_environment!=0)transmitted=environment(refract(-v,n,1.0/u_ior),u_roughness);\n"
+      "    if(!isinf(u_attenuation_distance))transmitted*=pow(max(srgb_to_linear(u_attenuation_color),vec3(0.000001)),vec3(length(ray)/max(u_attenuation_distance,0.000001)));\n"
+      "    float f0=pow((u_ior-1.0)/(u_ior+1.0),2.0);\n"
+      "    float fresnel=f0+(1.0-f0)*pow(1.0-max(dot(n,v),0.0),5.0);\n"
+      "    vec3 reflection=(u_has_environment!=0)?environment(reflect(-v,n),u_roughness)*fresnel*u_env_gain:vec3(0.0);\n"
+      "    lit=mix(lit,transmitted*base.rgb*(1.0-fresnel)+reflection+directSpecular,u_transmission);\n"
       "  }\n"
       /* Clearcoat is a dielectric layer above the base, including its emission.
          Three uses the same F0/energy attenuation; our environment BRDF is Schlick. */
-      "  vec3 coat=vec3(0.0);float coatF=0.0;\n"
+      "  vec3 coat=u_clearcoat*coatDirect;float coatF=0.0;\n"
       "  if(u_pbr_material!=0 && u_clearcoat>0.0){\n"
       "    vec3 n=normalize(v_normal),v=normalize(u_camera_pos-v_world_pos);\n"
       "    coatF=u_clearcoat*(0.04+0.96*pow(1.0-max(dot(n,v),0.0),5.0));\n"
-      "    if(u_has_environment!=0)coat=environment(reflect(-v,n),max(u_clearcoat_roughness,0.0525))*coatF*u_env_gain;\n"
+      "    if(u_has_environment!=0)coat+=environment(reflect(-v,n),max(u_clearcoat_roughness,0.0525))*coatF*u_env_gain;\n"
       "  }\n"
       "  lit=lit*(1.0-coatF)+coat;\n"
       "  if (u_fog_enabled != 0) {\n"
@@ -38011,6 +38077,7 @@ static bool gles_create_overlay_program(void)
 
 static void gles_destroy_resources(void)
 {
+   destroy_transmission_resources();
    if (gles.cube_vbo && gles.DeleteBuffers)
       gles.DeleteBuffers(1, &gles.cube_vbo);
    if (gles.cube_ibo && gles.DeleteBuffers)
@@ -38672,6 +38739,7 @@ static void render_gles_primitive(const struct nova64_mesh *mesh, const float vi
 
    gles.UseProgram(gles.cube_program);
    bind_sky_environment(gles.cube_program);
+   bind_transmission_buffer(gles.cube_program, mesh, view_projection);
    gles.Uniform1i(gles.GetUniformLocation(gles.cube_program,"u_web_lighting"),native_web_pipeline?1:0);
    gles.Uniform1i(gles.GetUniformLocation(gles.cube_program,"u_pbr_material"),mesh->pbr_material ? 1 : 0);
    gles.Uniform1f(gles.GetUniformLocation(gles.cube_program,"u_env_gain"),mesh->environment_intensity);
@@ -38967,12 +39035,17 @@ static void render_gles_meshes_sorted(const float view_projection[16])
 {
    struct nova64_gles_sort_item transparent[NOVA64_MAX_MESHES];
    int transparent_count = 0;
+   struct nova64_gles_sort_item transmissive[NOVA64_MAX_MESHES];
+   int transmissive_count = 0;
+   transmission_gl.ready = false;
 
    for (int i = 0; i < NOVA64_MAX_MESHES; i++) {
       struct nova64_mesh *mesh = &meshes[i];
       if (!mesh->used || !mesh->visible || mesh->opacity <= 0.0f)
          continue;
-      if (gles_mesh_uses_blend(mesh)) {
+      if (mesh->pbr_material && mesh->transmission > 0) {
+         transmissive[transmissive_count++] = (struct nova64_gles_sort_item){i, gles_mesh_depth_key(mesh), mesh->sort_order};
+      } else if (gles_mesh_uses_blend(mesh)) {
          transparent[transparent_count].mesh_index = i;
          transparent[transparent_count].depth = gles_mesh_depth_key(mesh);
          transparent[transparent_count].sort_order = mesh->sort_order;
@@ -38980,6 +39053,13 @@ static void render_gles_meshes_sorted(const float view_projection[16])
       } else {
          render_gles_mesh_by_type(mesh, view_projection);
       }
+   }
+
+   if (transmissive_count > 0) {
+      capture_transmission_background();
+      qsort(transmissive, (size_t)transmissive_count, sizeof(transmissive[0]), gles_transparent_mesh_cmp);
+      for (int i=0;i<transmissive_count;i++)
+         render_gles_mesh_by_type(&meshes[transmissive[i].mesh_index], view_projection);
    }
 
    if (transparent_count <= 0)
@@ -39408,6 +39488,7 @@ static void render_gles_instanced_mesh(const struct nova64_mesh *mesh, const flo
 
    gles.UseProgram(gles.cube_program);
    bind_sky_environment(gles.cube_program);
+   bind_transmission_buffer(gles.cube_program, mesh, view_projection);
    gles.Uniform1i(gles.GetUniformLocation(gles.cube_program,"u_web_lighting"),native_web_pipeline?1:0);
    gles.Uniform1i(gles.GetUniformLocation(gles.cube_program,"u_pbr_material"),mesh->pbr_material ? 1 : 0);
    gles.Uniform1f(gles.GetUniformLocation(gles.cube_program,"u_env_gain"),mesh->environment_intensity);

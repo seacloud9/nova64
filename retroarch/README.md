@@ -143,11 +143,18 @@ random numbers differently. The explicitly seeded sky fixture isolates shader
 parity; demo-wide RGB error is descriptive, not a compatibility percentage.
 
 Native PBR uses GGX-filtered environment mips and cosine-weighted diffuse lighting,
-not Three.js PMREM's exact filtering implementation. Refraction is an environment
-approximation. `setPBRProperties` supports `clearcoat` and `clearcoatRoughness`
+not Three.js PMREM's exact filtering implementation. Refraction is a
+screen-space approximation: opaque geometry is captured before transmissive
+meshes and sampled using thickness, IOR, roughness and object scale. Other
+transmissive objects and offscreen geometry are not available to that snapshot.
+`setPBRProperties` supports `clearcoat` and `clearcoatRoughness`
 for a separate dielectric environment-reflection layer, including attenuation
-of the base material. Direct-light clearcoat highlights, the exact environment
-BRDF, iridescence, sheen and full physical glass parity remain follow-up work.
+of the base material.
+The shared core now uses GGX direct specular for PBR materials and clearcoat;
+legacy materials keep their previous lighting path. Glass supports
+`attenuationColor` and `attenuationDistance` with distance-based absorption,
+and retains direct highlights during transmission. Default room-environment
+matching, exact indirect BRDF, iridescence and sheen remain incomplete.
 `pnpm retroarch:test:sky` checks actual GL readback for zero-coat preservation,
 coat strength and roughness. A controlled web/native coating comparison runs with
 `pnpm retroarch:visual:sky --carts=pbr-coating-fixture --seconds=1 --stills-only`.
@@ -160,8 +167,26 @@ to `retroarch/build/three-way-sky/`. Columns are Three.js web, Godot Forward+ an
 the offscreen native core. The report preserves shader/runtime identities,
 Godot warnings and RGB errors. All hosts receive 60 fixed updates, but Godot's
 extra render-only frames and wall-clock effects prevent exact time alignment.
-Godot space can use a baked panorama. This does not capture RetroArch WASM/web;
-that target still needs a runnable frontend and Emscripten build.
+Godot space can use a baked panorama. This three-column command omits
+RetroArch WASM/web; use the four-target command below to include it.
+
+The four-target capture is `pnpm visual:four-way:sky --base=http://127.0.0.1:5193`.
+It requires the built WASM player (`pnpm build:retroarch-web`, Docker required)
+and a separately running Vite server. Pass `--godot-project=/path/to/godot_project`
+to use an existing Godot extension build. The 2x2 layout is Three.js/Godot above
+native core/WASM core. Eight fixtures cover six skies, coating and glass.
+Results are in `retroarch/build/four-way-sky/`: gallery, labeled stills, a
+still-image slideshow and runtime identities. Audio is disabled in the WASM
+capture only; all hosts receive 60 updates. WebGL errors and WASM/native fixture
+RGB error above 5/255 fail the capture. Godot differences remain report-only.
+The default eight-case reel runs 48 seconds (six seconds per still); it is a
+slideshow, not animation footage. The material panel now includes directional
+lighting, metalness, roughness and clearcoat under the shared studio environment.
+`pnpm retroarch:test:glass` checks actual native GL refraction pixels, including
+thickness, IOR, roughness, creation order and a non-transmissive control.
+`pnpm retroarch:test:pbr` adds direct-light metallic/clearcoat pixel checks and
+glass absorption coverage. The proposed terrain material work is described in
+[the splat mapping proposal](../plans/SPLAT_MAPPING_PROPOSAL.md).
 
 Harness flags:
 

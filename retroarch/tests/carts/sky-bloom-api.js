@@ -62,6 +62,33 @@ export async function init() {
     'clearcoat values were not clamped'
   );
   setPBRProperties(id, { clearcoat: 0 });
+  setPBRProperties(id, { transmission: 0.9, thickness: 2, ior: 1.4 });
+  setPBRProperties(id, { roughness: 0.2 });
+  assert(
+    near(getMesh(id).transmission, 0.9) &&
+      near(getMesh(id).thickness, 2) &&
+      near(getMesh(id).ior, 1.4),
+    'partial PBR update lost glass settings'
+  );
+  setPBRProperties(id, { transmission: 5, thickness: -1, ior: 0 });
+  assert(
+    near(getMesh(id).transmission, 1) && near(getMesh(id).thickness, 0) && near(getMesh(id).ior, 1),
+    'glass settings were not clamped'
+  );
+  setPBRProperties(id, { transmission: 0 });
+  const defaultGlass = createCube(1, 0xffffff, [4, 0, 0]);
+  setPBRProperties(defaultGlass, { transmission: 1 });
+  assert(
+    near(getMesh(defaultGlass).thickness, 1),
+    'first physical glass upgrade lost web default thickness'
+  );
+  setPBRProperties(defaultGlass, { attenuationColor: 0x22ff44, attenuationDistance: 2 });
+  setPBRProperties(defaultGlass, { roughness: 0.3 });
+  assert(
+    getMesh(defaultGlass).attenuationColor === rgba8(0x22, 0xff, 0x44, 255) &&
+      near(getMesh(defaultGlass).attenuationDistance, 2),
+    'partial update lost glass absorption'
+  );
   assert(
     near(mesh.emissiveIntensity, 1.7) && near(mesh.roughness, 0.2) && near(mesh.metalness, 0.8),
     'PBR settings dropped'

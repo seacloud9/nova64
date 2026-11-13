@@ -157,6 +157,12 @@ static void update_sky_environment(GLuint program)
          gles.TexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_LINEAR);
          gles.TexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,diffuse?GL_LINEAR:0x2703);
          gles.TexImage2D(GL_TEXTURE_2D,diffuse?0:level,GL_RGBA16F,w,h,0,GL_RGBA,GL_FLOAT,NULL);
+      }
+      /* WebGL2 requires the mip chain to be complete before rendering into
+         nonzero mip attachments. Allocate every level before the first draw. */
+      for (int level=0;level<11;level++) {
+         bool diffuse=level==10;GLuint target=diffuse?sky_gl.irradiance_texture:sky_gl.environment_texture;
+         int w=diffuse?64:(512>>level),h=diffuse?32:(256>>level);if(w<1)w=1;if(h<1)h=1;
          gles.FramebufferTexture2D(GL_FRAMEBUFFER,GL_COLOR_ATTACHMENT0,GL_TEXTURE_2D,target,diffuse?0:level);
          if (gles.CheckFramebufferStatus(GL_FRAMEBUFFER)!=GL_FRAMEBUFFER_COMPLETE) {
             procedural_sky.reflection_intensity=0;

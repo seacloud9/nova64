@@ -50,6 +50,7 @@ then turns post effects off, the same as it does on native drivers.
 - [x] Builds with `platform=emscripten`; exports the libretro entry points
 - [x] Requests a GLES 3.0 context when built for the web
 - [x] Built in CI and attached to releases
-- [ ] Linked into a RetroArch web build and tested in a browser
+- [x] Linked into the bundled RetroArch web player and exercised in Chromium
+- [x] Docker build path works on macOS (`pnpm build:retroarch-web`)
 - [ ] Conformance carts diffed against native output in headless Chromium
 - [ ] Performance check on heavy carts (QuickJS has no JIT in WASM)

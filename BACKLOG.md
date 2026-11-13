@@ -27,12 +27,16 @@ Last updated: 2026-11-12
   Shared procedural shaders now replace option-recording stubs; HDR/image assets
   are bundled and tested outside the source checkout. Native environment clearcoat
   now supports strength and roughness with GL pixel-readback regression coverage;
-  direct-light coat highlights and the exact environment BRDF are still pending.
+  local follow-up adds GGX direct specular, direct coat highlights and metallic
+  direct-light response. Exact indirect BRDF and default room reflections remain.
   **Next PBR priority (user review):** improve native glass refraction; compare
   transmission, IOR and thickness against web Glass & Gems and the POV-Ray tribute.
-  Current native glass samples only the environment and misses scene geometry.
-  The existing Emscripten target needs a WASM build and browser validation
-  (`emcc` is unavailable on the current Mac). Remaining work includes
+  Local continuation adds an opaque-scene refraction snapshot with thickness,
+  IOR and roughness, plus distance-based absorption. Exact glass lighting and
+  dispersion remain incomplete, along with sheen and iridescence.
+  Docker supplies Emscripten on this Mac; the local WASM player now rebuilds.
+  Four-view fixtures cover Three.js, Godot, Native Core and actual WASM Core.
+  Remaining work includes
   exact PBR/PMREM/clearcoat matching, F-Zero track props and RGBA/hex HUD color
   disambiguation, and real RetroArch frontend plus Windows/Linux
   verification. See the plan checkpoint for measured results.

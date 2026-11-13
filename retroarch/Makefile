@@ -184,7 +184,7 @@ endif
 $(OBJDIR):
 	mkdir -p $(OBJDIR)
 
-$(OBJDIR)/nova64_libretro.o: $(CORE_DIR)/nova64_libretro.c $(CORE_DIR)/generated/sky.h $(CORE_DIR)/skybox-bindings.h $(CORE_DIR)/skybox-render.h | $(OBJDIR)
+$(OBJDIR)/nova64_libretro.o: $(CORE_DIR)/nova64_libretro.c $(CORE_DIR)/generated/sky.h $(CORE_DIR)/skybox-bindings.h $(CORE_DIR)/skybox-render.h $(CORE_DIR)/transmission-render.h | $(OBJDIR)
 	$(CC) $(CFLAGS) $(fpic) -c -o $@ $<
 
 $(OBJDIR)/%.o: $(QUICKJS_DIR)/%.c | $(OBJDIR)

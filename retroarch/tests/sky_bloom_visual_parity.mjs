@@ -100,7 +100,10 @@ try {
       for (const file of fs.readdirSync(framesDir))
         if (/^frame_\d+\.(png|ppm)$/.test(file)) fs.unlinkSync(path.join(framesDir, file));
     const source = fs.readFileSync(
-      cart === 'sky-bloom-fixture' || cart === 'pbr-coating-fixture'
+      cart === 'sky-bloom-fixture' ||
+        cart === 'pbr-coating-fixture' ||
+        cart === 'pbr-glass-fixture' ||
+        cart === 'pbr-lighting-fixture'
         ? path.join(root, 'retroarch/tests/carts', `${cart}.js`)
         : path.join(root, 'examples', cart, 'code.js'),
       'utf8'

@@ -21,9 +21,19 @@ const godot = option(
     (process.platform === 'darwin' ? '/Applications/Godot.app/Contents/MacOS/Godot' : '')
 );
 const godotVersion = checkGodot(godot);
-const project = path.join(root, 'nova64-godot/godot_project');
+const project = path.resolve(root, option('godot-project', 'nova64-godot/godot_project'));
 const modes = option('modes', 'gradient,aurora,space,hdr,image,environment,pbr').split(',');
-const validModes = new Set(['gradient', 'aurora', 'space', 'hdr', 'image', 'environment', 'pbr']);
+const validModes = new Set([
+  'gradient',
+  'aurora',
+  'space',
+  'hdr',
+  'image',
+  'environment',
+  'pbr',
+  'glass',
+  'lighting',
+]);
 if (modes.some(mode => !validModes.has(mode))) throw new Error('Unknown comparison mode');
 fs.mkdirSync(out, { recursive: true });
 const run = (command, args, logPath) => {
@@ -44,7 +54,7 @@ const report = {
   revision: run('git', ['rev-parse', 'HEAD']).trim(),
   workingTreeDirty: Boolean(run('git', ['status', '--porcelain']).trim()),
   godotVersion,
-  godotBridgeSourceSha256: hash(path.join(root, 'nova64-godot/gdextension/src/bridge.cpp')),
+  godotBridgeSourceSha256: hash(path.resolve(project, '../gdextension/src/bridge.cpp')),
   godotShimSha256: hash(path.join(project, 'shim/nova64-compat.js')),
   godotRunnerSha256: hash(path.join(project, 'scripts/conformance_runner.gd')),
   execution:
@@ -64,7 +74,14 @@ try {
     console.log(`Three-way capture: ${mode}`);
     const directory = path.join(out, mode);
     fs.mkdirSync(directory, { recursive: true });
-    const cart = mode === 'pbr' ? 'pbr-coating-fixture' : 'sky-bloom-fixture';
+    const cart =
+      mode === 'lighting'
+        ? 'pbr-lighting-fixture'
+        : mode === 'pbr'
+          ? 'pbr-coating-fixture'
+          : mode === 'glass'
+            ? 'pbr-glass-fixture'
+            : 'sky-bloom-fixture';
     run(
       process.execPath,
       [

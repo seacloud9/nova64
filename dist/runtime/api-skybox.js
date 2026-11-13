@@ -490,7 +490,9 @@ export function skyboxApi(gpu) {
    */
   function createHDRSkybox(url, opts = {}) {
     if (backendSkybox) {
-      // Babylon: keep a pleasant fallback until it gets an HDR path.
+      if (typeof backendSkybox.createHDRSkybox === 'function') {
+        return backendSkybox.createHDRSkybox(url, opts);
+      }
       return Promise.resolve(backendSkybox.createGradientSkybox(0x1a6aa8, 0xf48c60));
     }
     if (!_supportsSkybox() || !gpu.renderer) {

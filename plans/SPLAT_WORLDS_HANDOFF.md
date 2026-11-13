@@ -93,10 +93,15 @@ to its console viewport.
   World Labs world-generation service integration yet.
 - Godot/native/WASM Gaussian rendering and secondary-view portal paths are pending.
   Preserve the older four-view material/sky results as separate evidence.
-- Babylon's SOG loader uses WebP object URLs internally. Long-session memory
-  accounting across repeated real asset reloads still needs measurement; do not
-  claim zero growth from the structural disposal check alone.
-- Verify practical device frame time and peak CPU/GPU memory, including two
-  simultaneous worlds, before setting supported scene sizes/performance claims.
+- Memory/perf: `pnpm perf:splat:worlds` (real rAF, both worlds live, scripted
+  portal walk, N reset+init cycles, whole-Chromium RSS by process type, gated).
+  Babylon 9.4.1 leaked ~23 MB/reload: SOG WebP + worker `blob:` URLs never
+  revoked, and disposed splat meshes stay referenced with their buffers. The
+  host now revokes its own blob URLs and frees the meshes' typed arrays.
+  M4 Pro / headless ANGLE Metal, 640x360: p50 7 ms, p95 14 ms, peak RSS ~1.0 GB,
+  steady slope Three ~1.6 / Babylon ~3.9 MB/reload, JS heap +~0.13 MB/reload.
+  The residue is a still-referenced disposed object graph (not root-caused).
+  Single-machine numbers; not device/performance claims. GPU memory itself is
+  not observable from the page (GPU-process RSS is reported as a proxy).
 - MemPalace is unavailable on this Mac because ~/ai-tools is absent. Existing
   WSL configuration was preserved.

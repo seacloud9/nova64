@@ -40,9 +40,46 @@ class WorldEffects extends MaterialPluginBase {
     return null;
   }
 }
+// Babylon 9.4 creates blob: URLs for SOG WebP planes and the sort-worker script
+// and never revokes them, so every reload leaks the blobs. Record only those
+// blob types while our own load runs; nothing else is touched.
+const OWNED_BLOB_TYPES = new Set(['image/webp', 'application/javascript']);
+async function withOwnedBlobUrls(urls, task) {
+  const original = URL.createObjectURL;
+  URL.createObjectURL = function (object) {
+    const url = original.call(URL, object);
+    if (object instanceof Blob && OWNED_BLOB_TYPES.has(object.type))
+      urls.push({ url, type: object.type });
+    return url;
+  };
+  try {
+    return await task();
+  } finally {
+    URL.createObjectURL = original;
+  }
+}
+function releaseBuffers(object) {
+  for (const key of Object.keys(object)) {
+    const value = object[key];
+    if (
+      value instanceof ArrayBuffer ||
+      ArrayBuffer.isView(value) ||
+      (Array.isArray(value) && value.length && ArrayBuffer.isView(value[0]))
+    )
+      object[key] = null;
+  }
+}
+function revokeUrls(urls, type) {
+  for (let i = urls.length - 1; i >= 0; i--)
+    if (!type || urls[i].type === type) {
+      URL.revokeObjectURL(urls[i].url);
+      urls.splice(i, 1);
+    }
+}
 export async function createBabylonHost(scene, engine, camera, specs) {
   const state = { time: 0, mode: 0 },
-    worlds = [];
+    worlds = [],
+    blobUrls = [];
   let active = 0;
   let disposed = false;
   const originalMask = camera.layerMask,
@@ -88,7 +125,12 @@ export async function createBabylonHost(scene, engine, camera, specs) {
       const response = await fetch(spec.url);
       if (!response.ok) throw new Error(`Splat download failed (${response.status}): ${spec.url}`);
       const loader = new SPLATFileLoader({ flipY: false, fflate, disableAutoCameraLimits: true });
-      const result = await loader.importMeshAsync(null, scene, await response.arrayBuffer(), '');
+      const bytes = await response.arrayBuffer();
+      const result = await withOwnedBlobUrls(blobUrls, () =>
+        loader.importMeshAsync(null, scene, bytes, '')
+      );
+      // Images are decoded by now; the worker URL stays until dispose.
+      revokeUrls(blobUrls, 'image/webp');
       const splat = result.meshes.find(m => m.getClassName() === 'GaussianSplattingMesh');
       if (!splat) throw new Error('Expected a Gaussian asset');
       meshes.push(...result.meshes);
@@ -219,6 +261,11 @@ export async function createBabylonHost(scene, engine, camera, specs) {
         if (mesh.material && mesh.material !== portalMaterial) materials.add(mesh.material);
         mesh.dispose();
       }
+    // Babylon keeps splat buffers on disposed meshes (for compound meshes, which we
+    // never build) and something in the scene still references the mesh, so the
+    // decoded payload leaks per reload. Drop every typed array / buffer it owns.
+    for (const world of worlds) if (world.splat) releaseBuffers(world.splat);
+    revokeUrls(blobUrls);
     for (const material of materials) material.dispose();
     portalMaterial.dispose();
     target.dispose();

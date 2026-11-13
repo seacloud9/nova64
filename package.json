@@ -109,6 +109,7 @@
     "test:gaussian:prototype": "node --test tests/test-gaussian-feasibility.mjs && node scripts/gaussian-feasibility.mjs --checks-only",
     "gaussian:prototype:capture": "node scripts/gaussian-feasibility.mjs",
     "splat:assets": "node scripts/fetch-splat-assets.mjs",
+    "perf:splat:worlds": "node scripts/fetch-splat-assets.mjs && node scripts/splat-worlds-perf.mjs",
     "test:splat:worlds": "node scripts/fetch-splat-assets.mjs && node --test tests/test-splat-portals.mjs && node scripts/splat-worlds-check.mjs",
     "retroarch:visual:demoscene": "node retroarch/tests/demoscene_visual_parity.mjs",
     "retroarch:visual:space-harrier": "node retroarch/tests/space_harrier_visual_parity.mjs",

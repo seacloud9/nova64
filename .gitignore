@@ -125,3 +125,8 @@ plugins/
 # Regenerate locally with: godot --headless --path nova64-godot/godot_project --import
 examples/**/*.import
 public/assets/sky/**/*.import
+
+# Gaussian scan binaries: fetch with `pnpm splat:assets` (pinned URL + SHA-256)
+experiments/gaussian-splatting/assets/*.sog
+experiments/gaussian-splatting/assets/*.splat
+experiments/gaussian-splatting/assets/*.ply

@@ -41,6 +41,25 @@ Last updated: 2026-11-12
   disambiguation, and real RetroArch frontend plus Windows/Linux
   verification. See the plan checkpoint for measured results.
 
+## Gaussian splatting: PlayCanvas-style capabilities
+
+- User clarified the target with the PlayCanvas Gaussian Splatting manual:
+  scanned-scene loading/rendering, scene composition, authoring interoperability
+  and a roadmap for compressed delivery, streaming and interaction across
+  Three.js, Godot, Native Core and WASM Core. The revised
+  [Gaussian splatting proposal](plans/SPLAT_MAPPING_PROPOSAL.md) replaces the
+  earlier terrain-first interpretation. Begin with a bounded four-target MVP;
+  a bounded Three.js feasibility renderer now exists under
+  `experiments/gaussian-splatting/`, with PLY decoding, global ordering, projected
+  ellipses and pixel-checked mesh occlusion/reset. The public loader, worker
+  sorting and other three hosts remain unimplemented in that bounded prototype.
+  The newer `experiments/splat-worlds/` uses Spark and Babylon for licensed scans,
+  splat shader effects and a linked live portal pair. Validate per-view sorting,
+  clipping, crossing and reset with `pnpm test:splat:worlds`. Next: authored
+  collision proxies, portable `.nova` packaging, then Godot/native/WASM rendering.
+  The current experiment has a flat floor proxy only; USDZ conversion and world
+  generation integrations remain unimplemented.
+
 ## 🔁 Recurring — Dependency sweep (monthly, and before every release)
 
 Requested 2026-11-06: keep every library current instead of letting it drift.

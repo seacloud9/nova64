@@ -314,3 +314,16 @@ performance benchmark. See [smoke results](../tests/artifacts/bloom/smoke-report
 [QWEN after](../tests/artifacts/bloom/QWEN-neon-orbit-dodger-after.png),
 [F-Zero before](../tests/artifacts/bloom/f-zero-nova-3d-before.png) and
 [F-Zero after](../tests/artifacts/bloom/f-zero-nova-3d-after.png).
+
+## Experimental Gaussian worlds and portals
+
+`experiments/splat-worlds/` exercises actual licensed scan assets through both
+browser hosts in the existing console. Three.js uses Spark, Babylon uses its
+Gaussian mesh and a material plugin for matching shader effect semantics.
+Babylon portal rendering uses a separate camera/render target, camera layer
+masks and destination clip plane; the main camera and scene state are restored
+after rendering. Both worlds have independent splat sorting resources.
+
+This does not add a public Gaussian or portal API. Run `pnpm test:splat:worlds`
+against Vite on port 5193 for focused math and browser pixel/lifecycle coverage.
+See the experiment README for controls, licenses and current host/collision limits.

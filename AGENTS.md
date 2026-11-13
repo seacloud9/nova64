@@ -533,6 +533,25 @@ Change-management expectations:
 - Image/HDR sky carts must bundle their shared `public/assets/sky` assets;
   source-checkout file loading is not evidence that a portable `.nova` works.
 
+## Gaussian splatting feasibility
+
+- `experiments/gaussian-splatting/` is a bounded Three.js reference prototype,
+  not a production cart API or a claim of Godot/native/WASM support.
+- `pnpm test:gaussian:prototype` checks PLY parsing, covariance/order/lifecycle
+  and actual browser pixels; start Vite separately before browser checks.
+- `pnpm gaussian:prototype:capture` records fixed-step motion and preserves
+  test results and renderer identity. Do not present capture throughput as FPS.
+
+## Experimental splat worlds and portals
+
+- `experiments/splat-worlds/` integrates Spark with Three.js and Babylon's
+  Gaussian renderer in the console; it is not yet a shared production API.
+- `pnpm test:splat:worlds` runs portal math and two-browser pixel/lifecycle
+  checks against a separately running Vite server (default port 5193).
+- Scan attribution and pinned hashes live beside the experiment assets.
+  Preserve their CC BY terms when packaging. The demo has a flat floor proxy;
+  do not claim collision against scanned furniture or native/WASM support.
+
 ## Cart System
 
 Nova64 carts are ES modules built around three lifecycle hooks:

@@ -138,6 +138,35 @@ repository's ESLint parser and avoids fetching a separate package.json at runtim
 
 ## Remaining limitations
 
+### Three-way sky comparison requested after the commit
+
+The completed native implementation was committed as `3e4ac033` on
+`feat/babylon-parity-bloom-voxel`; no push. The user then requested three-way
+Three.js/Godot/RetroArch comparison, native plus web, explicitly including skies.
+Working assumption: three columns now, RetroArch WASM/web as an additional
+target when runnable. Do not represent the native GL harness as WASM footage.
+
+Added `scripts/capture-three-way-sky.mjs` and `pnpm visual:three-way:sky`.
+It reuses the existing web/native fixture capture and the current Godot
+conformance runner (does not edit the unrelated Godot changes). Godot 4.5 is
+installed at `/Applications/Godot.app/Contents/MacOS/Godot` despite not being on
+PATH. The current extension and working-tree shim are used; their identities
+and runner/source hashes are recorded. Godot logs report an unavailable optional
+Colyseus macOS extension, while Nova64Host loads and writes all seven snapshots.
+
+Gallery: `retroarch/build/three-way-sky/index.html`. Six sky cases (highlands,
+aurora, space, HDR studio panorama, six-face image studio, procedural studio
+environment) plus the PBR coating fixture. Each has a 1920x396 three-column
+still; `still-comparison-reel.mp4` is a 21-second slideshow, NOT motion footage.
+All hosts get 60 fixed updates and the same fixture/RNG prelude. Godot gets
+extra render-only frames to read the viewport; wall-clock shader animation is
+not guaranteed synchronized. Space in Godot uses a baked panorama.
+
+Native whole-frame errors remain under the 5/255 fixture gate. Godot differences
+are report-only: gradient 36.51, aurora 47.13, space 41.09, HDR 3.00,
+image 0.002, environment 49.23 and coating 40.33 (0–255 RGB scale).
+These expose current differences, not claims of three-way visual parity.
+
 ### Continued native PBR implementation
 
 After the user reset usage and asked to continue, added native environment

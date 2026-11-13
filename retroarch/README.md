@@ -153,6 +153,16 @@ coat strength and roughness. A controlled web/native coating comparison runs wit
 `pnpm retroarch:visual:sky --carts=pbr-coating-fixture --seconds=1 --stills-only`.
 See [the parity plan](../plans/RETROARCH_WEB_SKY_BLOOM_PARITY_PLAN.md).
 
+For three-column sky and coating stills, start Vite on port 5191 and run
+`pnpm visual:three-way:sky`. Pass `--godot=/path/to/godot` if needed; macOS also
+checks `/Applications/Godot.app`. The gallery and still-image reel are written
+to `retroarch/build/three-way-sky/`. Columns are Three.js web, Godot Forward+ and
+the offscreen native core. The report preserves shader/runtime identities,
+Godot warnings and RGB errors. All hosts receive 60 fixed updates, but Godot's
+extra render-only frames and wall-clock effects prevent exact time alignment.
+Godot space can use a baked panorama. This does not capture RetroArch WASM/web;
+that target still needs a runnable frontend and Emscripten build.
+
 Harness flags:
 
 | Flag                              | Effect                                          |

@@ -25,7 +25,11 @@ export async function init() {
     nova64.fx.enableBloom(1.2, 0.5, 0.2);
     return;
   }
-  if (globalThis.__skyFixtureMode === 'hdr') {
+  if (globalThis.__skyFixtureMode === 'space') {
+    nova64.light.createSpaceSkybox({ seed: 42 });
+  } else if (globalThis.__skyFixtureMode === 'aurora') {
+    nova64.light.createSkyPreset('aurora', { seed: 42, reflect: false });
+  } else if (globalThis.__skyFixtureMode === 'hdr') {
     await nova64.light.createHDRSkybox('/assets/sky/hdr/studio_small_09_1k.hdr', { rotation: 0.7 });
   } else if (globalThis.__skyFixtureMode === 'image') {
     await nova64.light.createImageSkybox(

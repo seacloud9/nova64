@@ -38,6 +38,7 @@ export async function createThreeHost(scene, renderer, camera, specs) {
       }`,
   });
   let active = 0;
+  let disposed = false;
   try {
     for (const spec of specs) {
       const world = new T.Scene();
@@ -140,6 +141,8 @@ export async function createThreeHost(scene, renderer, camera, specs) {
     }
   }
   function dispose() {
+    if (disposed) return;
+    disposed = true;
     for (const w of worlds) {
       w.scene.removeFromParent();
       w.splat.dispose();

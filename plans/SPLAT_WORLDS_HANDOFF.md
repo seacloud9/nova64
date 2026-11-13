@@ -30,6 +30,15 @@ unrelated dirty Godot/release/dist work and must not be reset or overwritten.
   `test:splat:worlds` command. Existing unrelated script additions are preserved.
 - AGENTS, BACKLOG, docs/BACKEND_RUNTIME and proposal updated.
 
+## Robustness (2026-11-12, commit after da9dd569)
+
+- Committed: `261d13f9` native glass/PBR, `da9dd569` splat worlds.
+- Scan binaries are gitignored; `pnpm splat:assets` fetches + verifies SHA-256.
+  The cart preflights assets and fails with that instruction if missing.
+- dt clamped to 1/20 s; NaN-safe movement; re-init disposes the old host;
+  host `dispose()` is idempotent (also safe on partial-load failure).
+- 8 math/collision tests; both browser backends pass `pnpm test:splat:worlds`.
+
 ## Run and inspect
 
 Vite is running on 127.0.0.1:5193 from the active worktree.
@@ -72,8 +81,10 @@ to its console viewport.
 
 ## Limits and next steps
 
-- Flat-floor proxy and movement bounds only. Scanned furniture/walls have no
-  collision proxy. Author and validate actual navigable collision geometry next.
+- Collision: `collision.js` resolves a swept circle (r=0.25) against each
+  world's authored `walk` region (bounds + solid boxes) with sliding and no
+  tunnelling; door posts are solid. Furniture boxes for the two scans are not
+  yet authored (`blockers: []`) — measure them against the scans and add them.
 - One visible destination view, one bounce; equal-scale upright doors. No recursive
   portals or progressive world loading. Both assets load before cart readiness.
 - Assets/code currently load through Vite from the checkout. Portable `.nova`

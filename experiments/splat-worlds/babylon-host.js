@@ -44,6 +44,7 @@ export async function createBabylonHost(scene, engine, camera, specs) {
   const state = { time: 0, mode: 0 },
     worlds = [];
   let active = 0;
+  let disposed = false;
   const originalMask = camera.layerMask,
     originalClear = scene.clearColor.clone();
   const portalCamera = new FreeCamera('splat-portal-camera', Vector3.Zero(), scene);
@@ -85,7 +86,7 @@ export async function createBabylonHost(scene, engine, camera, specs) {
       const record = { spec, mask, meshes };
       worlds.push(record);
       const response = await fetch(spec.url);
-      if (!response.ok) throw new Error('Splat download failed: ' + response.status);
+      if (!response.ok) throw new Error(`Splat download failed (${response.status}): ${spec.url}`);
       const loader = new SPLATFileLoader({ flipY: false, fflate, disableAutoCameraLimits: true });
       const result = await loader.importMeshAsync(null, scene, await response.arrayBuffer(), '');
       const splat = result.meshes.find(m => m.getClassName() === 'GaussianSplattingMesh');
@@ -208,6 +209,8 @@ export async function createBabylonHost(scene, engine, camera, specs) {
     for (const world of worlds) world.marker.rotation.y = time * 0.5;
   }
   function dispose() {
+    if (disposed) return;
+    disposed = true;
     camera.layerMask = originalMask;
     scene.clearColor = originalClear;
     const materials = new Set();

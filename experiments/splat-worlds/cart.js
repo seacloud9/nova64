@@ -1,5 +1,6 @@
 import { Matrix4, Vector3 } from 'three';
 import { crossing, portalTransform } from './portal-math.js';
+import { doorBlockers, resolveMove } from './collision.js';
 import { registerCartResetHook } from '/runtime/cart-reset.js';
 
 const asset = '/experiments/gaussian-splatting/assets/';
@@ -14,6 +15,8 @@ const specs = [
     background: 0x171c29,
     accent: 0x50ddff,
     floor: 0x292c34,
+    // Walkable XZ footprint and solid furniture boxes [minX, minZ, maxX, maxZ].
+    walk: { bounds: [-10, -10, 10, 10], blockers: [] },
   },
   {
     name: 'THE RELIC GALLERY',
@@ -25,8 +28,14 @@ const specs = [
     background: 0x12112b,
     accent: 0xffbd74,
     floor: 0x242337,
+    walk: { bounds: [-10, -10, 10, 10], blockers: [] },
   },
 ];
+for (const spec of specs)
+  spec.walk.blockers = [...spec.walk.blockers, ...doorBlockers(spec.door)];
+const MAX_DT = 1 / 20,
+  EYE = 1.6,
+  RADIUS = 0.25;
 let host,
   camera,
   world = 0,
@@ -45,7 +54,29 @@ function setPose(position, angle) {
     position[2] - Math.cos(yaw)
   );
 }
+async function preflight() {
+  const missing = [];
+  await Promise.all(
+    specs.map(async spec => {
+      const res = await fetch(spec.url, { method: 'HEAD' }).catch(() => null);
+      const type = res?.headers.get('content-type') ?? '';
+      // Vite answers unknown paths with index.html, so a 200 text/html is also missing.
+      if (!res?.ok || type.includes('text/html')) missing.push(spec.url);
+    })
+  );
+  if (missing.length)
+    throw new Error(
+      'Splat assets missing: ' + missing.join(', ') + ' (run `pnpm splat:assets`)'
+    );
+}
 export async function init() {
+  // A re-init without a reset (hot reload) must not leak the previous worlds.
+  if (host) {
+    unregister?.();
+    host.dispose();
+    host = null;
+  }
+  await preflight();
   nova64.fx.disableRetroEffects();
   nova64.camera.setCameraFOV(65);
   camera = nova64.camera.getCamera();
@@ -60,10 +91,11 @@ export async function init() {
   effect = 0;
   setPose([0, 1.6, 2], 0);
   unregister = registerCartResetHook('splat-worlds', () => {
-    host.dispose();
+    host?.dispose();
     host = null;
     delete globalThis.__splatWorlds;
     unregister();
+    unregister = null;
   });
   globalThis.__splatWorlds = {
     host,
@@ -92,8 +124,10 @@ export async function init() {
 function position() {
   return new Vector3(camera.position.x, camera.position.y, camera.position.z);
 }
-function moveTo(next) {
+function moveTo(target) {
   previous.copy(position());
+  // Collide first in the current world; then the resolved path may cross its door.
+  const next = resolveMove(previous, target.setY(EYE), specs[world].walk, RADIUS);
   if (crossing(previous, next, specs[world].door, 2.2, 3.2)) {
     const transform = portalTransform(specs[world].door, specs[1 - world].door);
     next.applyMatrix4(transform);
@@ -104,14 +138,13 @@ function moveTo(next) {
     world = 1 - world;
     host.setWorld(world);
   }
-  // Authored flat-floor proxy: eye height and bounded gallery footprint.
-  next.y = 1.6;
-  next.x = Math.max(-10, Math.min(10, next.x));
-  next.z = Math.max(-10, Math.min(10, next.z));
+  next.y = EYE;
   setPose(next.toArray(), yaw);
 }
-export function update(dt) {
+export function update(rawDt) {
   if (!host) return;
+  // Background tabs and loading hitches deliver huge dt; never move that far at once.
+  const dt = Number.isFinite(rawDt) ? Math.min(Math.max(rawDt, 0), MAX_DT) : 0;
   time += dt;
   const { key, keyp } = nova64.input;
   if (keyp('Digit0')) effect = 0;

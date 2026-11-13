@@ -59,3 +59,32 @@ test('oblique clipping keeps the destination side and rejects geometry behind it
   assert.equal(projection.elements[0], base.elements[0]);
   assert.equal(projection.elements[5], base.elements[5]);
 });
+
+import { resolveMove, doorBlockers } from '../experiments/splat-worlds/collision.js';
+const room = { bounds: [-5, -5, 5, 5], blockers: [[-1, -1, 1, 1]] };
+test('collision proxy keeps the player inside bounds and outside blockers', () => {
+  const out = resolveMove(new Vector3(0, 1.6, 3), new Vector3(0, 1.6, 0), room, 0.25);
+  assert.ok(out.z >= 1.25 - 1e-9, 'stopped at blocker face');
+  const edge = resolveMove(new Vector3(0, 1.6, 3), new Vector3(40, 1.6, 3), room, 0.25);
+  assert.ok(Math.abs(edge.x - 4.75) < 1e-9 && Math.abs(edge.z - 3) < 1e-9, 'slides along wall');
+});
+test('collision proxy does not tunnel through thin blockers on huge steps', () => {
+  const wall = { bounds: [-50, -50, 50, 50], blockers: [[-10, -0.05, 10, 0.05]] };
+  const out = resolveMove(new Vector3(0, 1.6, 5), new Vector3(0, 1.6, -40), wall, 0.25);
+  assert.ok(out.z > 0, 'still on the starting side');
+});
+test('collision proxy recovers from a start inside a blocker and rejects NaN', () => {
+  const out = resolveMove(new Vector3(0.9, 1.6, 0), new Vector3(0.9, 1.6, 0), room, 0.25);
+  assert.ok(out.x >= 1.25 - 1e-9);
+  const nan = resolveMove(new Vector3(3, 1.6, 3), new Vector3(NaN, 1.6, 3), room, 0.25);
+  assert.ok(Number.isFinite(nan.x) && Number.isFinite(nan.z));
+});
+test('door posts block the frame but leave the usable opening crossable', () => {
+  const door = new Matrix4().makeTranslation(0, 1.6, -2);
+  const region = { bounds: [-10, -10, 10, 10], blockers: doorBlockers(door) };
+  const through = resolveMove(new Vector3(0.8, 1.6, -1), new Vector3(0.8, 1.6, -3), region);
+  assert.ok(Math.abs(through.z + 3) < 1e-9, 'opening is free');
+  assert.ok(crossing(new Vector3(0.8, 1.6, -1), through, door, 2.2, 3.2));
+  const post = resolveMove(new Vector3(1.17, 1.6, -1), new Vector3(1.17, 1.6, -3), region);
+  assert.ok(post.z > -2, 'post is solid');
+});

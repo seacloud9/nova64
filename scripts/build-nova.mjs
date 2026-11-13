@@ -155,7 +155,32 @@ function buildCart(name) {
     return false;
   }
   let files = collect(dir); // code.js, meta.json, (existing) manifest.json, assets/**
+  // Image/HDR sky URLs are shared public assets, not inside the cart folder.
+  // Include them in portable bundles instead of relying on a source checkout.
+  const needsSkyAssets = files.some(
+    f =>
+      f.name.endsWith('.js') &&
+      /createHDRSkybox|createImageSkybox|assets\/sky\//.test(f.data.toString('utf8'))
+  );
+  const sharedSky = needsSkyAssets
+    ? collect(join(ROOT, 'public/assets/sky')).map(f => ({
+        ...f,
+        name: `assets/sky/${f.name}`,
+      }))
+    : [];
+  for (const asset of sharedSky) if (!files.some(f => f.name === asset.name)) files.push(asset);
+  if (needsSkyAssets) {
+    const credit = 'assets/sky/hdr/CREDITS.md';
+    files.push({ name: credit, data: readFileSync(join(ROOT, 'public', credit)) });
+  }
   const manifest = ensureManifest(dir, name, files);
+  manifest.assets = [
+    ...new Set([
+      ...(manifest.assets || []),
+      ...sharedSky.map(f => f.name),
+      ...(needsSkyAssets ? ['assets/sky/hdr/CREDITS.md'] : []),
+    ]),
+  ];
   // Always (re)write the manifest entry from `manifest`, so it's guaranteed present.
   files = files.filter(f => f.name !== 'manifest.json');
   files.push({ name: 'manifest.json', data: Buffer.from(JSON.stringify(manifest, null, 2)) });

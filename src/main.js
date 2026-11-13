@@ -318,6 +318,10 @@ if (nova64api.getCamera) sApi.setCameraRef(nova64api.getCamera());
 
 const nova = new Nova64(gpu, manifestInst);
 globalThis.NOVA64_VERSION = NOVA64_VERSION;
+const runtimePackageLink = document.getElementById('runtime-package');
+if (runtimePackageLink) {
+  runtimePackageLink.textContent = `Nova64 runtime v${NOVA64_VERSION} · npm ↗`;
+}
 globalThis.__nova64Runtime = nova;
 
 // On-screen gamepad for phones and tablets. Mounts only when

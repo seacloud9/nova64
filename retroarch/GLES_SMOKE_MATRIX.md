@@ -240,3 +240,19 @@ real-driver integration notes only.
   - Wizardry GLES smoke: `retroarch/build/harness retroarch/nova64_libretro.so retroarch/games/wizardry-3d.js --gles --frames 5`
 - Remaining Wizardry visual parity gap: true cubemap/omni point-light shadows.
   The GLES path now supports a single projected point-light shadow source.
+
+
+## 2026-11-12 — macOS sky/bloom checkpoint
+
+Native desktop GL Core and web ANGLE Metal comparisons now cover current
+procedural presets, HDR panoramas, six-face image skies and environment panels.
+Controlled mean RGB error was below 0.5/255 for each background fixture. The native
+core also renders foreground star sprites and sky-driven material reflections.
+
+`pnpm retroarch:test:sky` passes, including a portable `.nova` loaded outside the
+source checkout. Legacy software conformance passes with recorded macOS exclusions;
+full GL mismatch hashes match a separately built pre-change core. The new labeled
+videos use the offscreen core harness. Windows/Linux and real RetroArch frontend
+presentation still need verification; exact PBR/PMREM and physical glass parity
+remain open. Details and artifact paths are in the
+[implementation checkpoint](../plans/RETROARCH_WEB_SKY_BLOOM_PARITY_PLAN.md).

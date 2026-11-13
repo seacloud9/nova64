@@ -1,8 +1,9 @@
 // runtime/console.js
 import { logger } from './logger.js';
 import { listCartResetHooks, runCartResetHooks } from './cart-reset.js';
-
-export const NOVA64_VERSION = '0.4.9';
+/* global __NOVA64_VERSION__ */
+export const NOVA64_VERSION =
+  typeof __NOVA64_VERSION__ === 'string' ? __NOVA64_VERSION__ : 'development';
 
 export class Nova64 {
   constructor(gpu, manifestInst) {

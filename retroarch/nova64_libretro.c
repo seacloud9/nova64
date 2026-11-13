@@ -52,6 +52,7 @@
 #define STBI_NO_STDIO
 #define STBI_ONLY_PNG
 #define STBI_ONLY_JPEG
+#define STBI_ONLY_HDR
 #if defined(__GNUC__) || defined(__clang__)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
@@ -287,6 +288,9 @@ struct nova64_mesh {
    int normal_map_handle;   /* 0 = no normal map */
    uint32_t emissive_color; /* 0 = none, else RGBA8 */
    float emissive_intensity; /* 0 = off */
+   bool pbr_material;
+   float environment_intensity, transmission, ior;
+   float clearcoat, clearcoat_roughness;
    float roughness;         /* 0 = smooth, 1 = rough */
    float metalness;         /* 0 = non-metal, 1 = metal */
    float shade_contrast;    /* 1 = neutral, >1 deepens normal lighting */
@@ -885,6 +889,21 @@ static uint32_t sky_top_color    = 0x000000FFU;
 static uint32_t sky_bottom_color = 0x000000FFU;
 /* Equirectangular skybox texture handle; 0 = disabled (GLES only) */
 static int g_skybox_tex_handle = 0;
+static bool native_web_pipeline = false, native_web_composer = false;
+#include "generated/sky.h"
+static void bind_sky_environment(GLuint program);
+static struct {
+   int kind;
+   float values[NOVA_SKY_UNIFORM_COUNT][3];
+   float time, rotation, star_size, reflection_intensity;
+   float *stars, *pixels;
+   int width, height;
+   float intensity, blur;
+   bool environment_dirty;
+   int star_count;
+   bool stars_dirty;
+} procedural_sky;
+
 /* True while the GLES scene is rendering into the linear HDR post target. */
 static bool gles_scene_post_active = false;
 
@@ -1923,7 +1942,7 @@ static void reset_post_state(void)
 
 static bool post_is_active(void)
 {
-   return post_state.crt_enabled || post_state.vignette > 0.0f || post_state.pixelate > 0
+   return native_web_composer || post_state.crt_enabled || post_state.vignette > 0.0f || post_state.pixelate > 0
       || post_state.bloom > 0.0f || post_state.chromatic > 0.0f || post_state.posterize > 0
       || post_state.color_grade[0] != 1.0f || post_state.color_grade[1] != 1.0f
       || post_state.color_grade[2] != 1.0f || post_state.exposure != 1.0f
@@ -2471,6 +2490,12 @@ static void reset_scene_state(void)
    camera_state.is_ortho = false;
    camera_state.ortho_width = 10.0f;
    camera_state.ortho_height = 5.625f; /* 16:9 at ortho_width=10 */
+   native_web_pipeline = native_web_composer = false;
+   procedural_sky.kind = 0;
+   free(procedural_sky.stars);
+   free(procedural_sky.pixels);
+   memset(&procedural_sky, 0, sizeof(procedural_sky));
+   g_skybox_tex_handle = 0;
    sky_color_enabled = false;
    sky_top_color    = 0x000000FFU;
    sky_bottom_color = 0x000000FFU;
@@ -4909,6 +4934,12 @@ static int allocate_mesh(enum nova64_mesh_type type)
          meshes[i].color = rgba8(255, 255, 255, 255);
          meshes[i].emissive_color = 0;
          meshes[i].emissive_intensity = 0.0f;
+         meshes[i].pbr_material = false;
+         meshes[i].environment_intensity = 1;
+         meshes[i].transmission = 0;
+         meshes[i].ior = 1.5f;
+         meshes[i].clearcoat = 0;
+         meshes[i].clearcoat_roughness = 0;
          meshes[i].roughness = 0.5f;
          meshes[i].metalness = 0.0f;
          meshes[i].shade_contrast = 1.0f;
@@ -27233,7 +27264,7 @@ static void apply_mesh_options(JSContext *ctx, struct nova64_mesh *mesh, JSValue
 
    v = JS_GetPropertyStr(ctx, opts, "emissive");
    if (!JS_IsUndefined(v) && !JS_IsNull(v)) {
-      mesh->emissive_color = color_from_js(ctx, v, mesh->emissive_color);
+      mesh->emissive_color = JS_IsBool(v) ? (JS_ToBool(ctx, v) ? mesh->color : 0) : color_from_js(ctx, v, mesh->emissive_color);
       if (mesh->emissive_intensity <= 0.0f) mesh->emissive_intensity = 1.0f;
    }
    JS_FreeValue(ctx, v);
@@ -27244,7 +27275,8 @@ static void apply_mesh_options(JSContext *ctx, struct nova64_mesh *mesh, JSValue
    JS_FreeValue(ctx, v);
 
    v = JS_GetPropertyStr(ctx, opts, "emissiveIntensity");
-   if (JS_IsNumber(v))
+   bool explicit_intensity = JS_IsNumber(v);
+   if (explicit_intensity)
       mesh->emissive_intensity = (float)clamp_double(double_from_js(ctx, v, mesh->emissive_intensity), 0.0, 4.0);
    JS_FreeValue(ctx, v);
 
@@ -27252,7 +27284,8 @@ static void apply_mesh_options(JSContext *ctx, struct nova64_mesh *mesh, JSValue
     * (wizardry-3d torches, portals). Accept it as emissive intensity when
     * the material is emissive or when no explicit emissiveIntensity was set. */
    v = JS_GetPropertyStr(ctx, opts, "intensity");
-   if (JS_IsNumber(v))
+   bool alias_intensity = JS_IsNumber(v);
+   if (!explicit_intensity && alias_intensity)
       mesh->emissive_intensity = (float)clamp_double(double_from_js(ctx, v, mesh->emissive_intensity), 0.0, 4.0);
    JS_FreeValue(ctx, v);
 
@@ -27260,8 +27293,13 @@ static void apply_mesh_options(JSContext *ctx, struct nova64_mesh *mesh, JSValue
    if (JS_IsString(v)) {
       const char *m = JS_ToCString(ctx, v);
       if (m) {
-         if (!strcmp(m, "emissive") && mesh->emissive_intensity <= 0.0f)
-            mesh->emissive_intensity = 1.0f;
+         if (!strcmp(m, "emissive")) {
+            JSValue authored_color = JS_GetPropertyStr(ctx, opts, "emissive");
+            if (JS_IsUndefined(authored_color)) mesh->emissive_color = mesh->color;
+            JS_FreeValue(ctx, authored_color);
+            if (!explicit_intensity && !alias_intensity && mesh->emissive_intensity <= 0.0f)
+               mesh->emissive_intensity = 0.3f;
+         }
          JS_FreeCString(ctx, m);
       }
    }
@@ -27692,6 +27730,8 @@ static JSValue js_get_mesh(JSContext *ctx, JSValueConst this_val, int argc, JSVa
    JS_SetPropertyStr(ctx, object, "scale", js_vec3_array(ctx, mesh->scale));
    JS_SetPropertyStr(ctx, object, "roughness", JS_NewFloat64(ctx, mesh->roughness));
    JS_SetPropertyStr(ctx, object, "metalness", JS_NewFloat64(ctx, mesh->metalness));
+   JS_SetPropertyStr(ctx, object, "clearcoat", JS_NewFloat64(ctx, mesh->clearcoat));
+   JS_SetPropertyStr(ctx, object, "clearcoatRoughness", JS_NewFloat64(ctx, mesh->clearcoat_roughness));
    JS_SetPropertyStr(ctx, object, "shadeContrast", JS_NewFloat64(ctx, mesh->shade_contrast));
    JS_SetPropertyStr(ctx, object, "emissiveColor", JS_NewUint32(ctx, mesh->emissive_color));
    JS_SetPropertyStr(ctx, object, "emissiveIntensity", JS_NewFloat64(ctx, mesh->emissive_intensity));
@@ -27924,7 +27964,36 @@ static JSValue js_clear_skybox(JSContext *ctx, JSValueConst this_val, int argc, 
 {
    (void)ctx; (void)this_val; (void)argc; (void)argv;
    g_skybox_tex_handle = 0;
+   procedural_sky.kind = 0;
    return JS_UNDEFINED;
+}
+
+#include "skybox-bindings.h"
+
+static JSValue js_set_pbr_properties(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+   (void)this_val;
+   struct nova64_mesh *mesh = mesh_from_handle(int_from_js(ctx, argc ? argv[0] : JS_UNDEFINED, 0));
+   if (!mesh || argc < 2 || !JS_IsObject(argv[1])) return JS_UNDEFINED;
+   native_web_pipeline = true;
+   mesh->pbr_material = true;
+   JSValue color = JS_GetPropertyStr(ctx, argv[1], "color");
+   if (!JS_IsUndefined(color)) mesh->color = color_from_js(ctx, color, mesh->color);
+   /* PBR color is RGB; opacity is a separate property, so black is opaque. */
+   if (JS_IsNumber(color) && double_from_js(ctx, color, -1) == 0)
+      mesh->color = rgba8(0, 0, 0, 255);
+   JS_FreeValue(ctx, color);
+   apply_mesh_options(ctx, mesh, argv[1]);
+   const char *names[] = {"envMapIntensity", "transmission", "ior", "clearcoat", "clearcoatRoughness"};
+   float *targets[] = {&mesh->environment_intensity, &mesh->transmission, &mesh->ior, &mesh->clearcoat, &mesh->clearcoat_roughness};
+   for (int i=0;i<5;i++) {
+      JSValue value = JS_GetPropertyStr(ctx, argv[1], names[i]);
+      if (JS_IsNumber(value)) *targets[i] = (float)double_from_js(ctx,value,*targets[i]);
+      JS_FreeValue(ctx,value);
+   }
+   mesh->clearcoat = (float)clamp_double(mesh->clearcoat, 0, 1);
+   mesh->clearcoat_roughness = (float)clamp_double(mesh->clearcoat_roughness, 0, 1);
+   return JS_DupValue(ctx, argv[0]);
 }
 
 /* setMeshRoughness(handle, value) */
@@ -31379,62 +31448,14 @@ static bool install_nova64_api(JSContext *ctx)
            "var p=nova64.post;"
            "var _glitchT=0;"
            "return{"
-             /* enableBloom forwards the cart's strength/radius/threshold to
-                setBloom with light sanity caps only. The bright-pass shader
-                now has an HDR knee (smoothstep over luma ~0.85..2.85), so
-                LDR scene content (sky, lit geometry) contributes only ~5%
-                while genuinely emissive surfaces (intensity > 1) bloom at
-                full strength. This replaces the old global strength-crush
-                (ss = min(0.06, s*0.06)) that was the F-Zero overbloom
-                workaround — it killed Wizardry torch glow as collateral.
-                Exposure bump to Three's 1.25 default, 24-bit color
-                promotion, RGBA32F HDR mode, and Three-style bloom composite
-                are still applied since they're shared parity levers. */
+             /* Match current web defaults; keep authored bloom values intact. */
              "enableBloom:function(s,r,t){"
-               "var ss=Math.min(1.5,s==null?0.6:s);"
-               "var rr=Math.min(0.85,r==null?0.4:r);"
-               "var tt=t==null?0.85:t;"
-               "p.setBloom(ss,rr,tt);"
-               "if(p.setExposure)p.setExposure(1.05);"
-               "if(p.use24BitColors)p.use24BitColors(true);"
-               "if(p.setHDRMode)p.setHDRMode('32f');"
-               /* Web reference renders with Three's UnrealBloomPass; web carts
-                  calling enableBloom expect that look, not RA's classic
-                  normalized-mip average. The Three composite is verbatim in
-                  the post fragment shader. */
-               "if(p.setBloomStyle)p.setBloomStyle('three');"
-               /* CAS-spirit sharpening — only sharpens where there's local
-                  contrast, so flat sky/HUD stays clean while edges go
-                  crisper than the classic uniform unsharp at the same amount.
-                  This is the crispness path web compat opts into; combined
-                  with the higher sharpness amount below it should outpace
-                  the web reference renderer. */
-               "if(p.setSharpStyle)p.setSharpStyle('cas');"
-               /* Three-style GLES material ramp: opens the compressed diffuse
-                  curve and adds a cool sky / neutral ground fill similar to
-                  the web renderer's AmbientLight + HemisphereLight stack. */
-               "if(nova64.light&&nova64.light.setShadingStyle)nova64.light.setShadingStyle('three');"
-               /* Saturation lift kept neutral — 1.10 visibly tinted HUD
-                  primitives (user-reported: 'health bar no longer green').
-                  Per-cart palette lands correctly via 24-bit promotion.
-                  Vibrance is intentionally NOT enabled here: a per-cart
-                  setVibrance(0.20-0.40) is the right tool when a scene
-                  is undersaturated vs the web reference, but defaulting it
-                  on regressed Space Harrier gameplay parity (the play scene
-                  is already slightly more saturated than web). */
-               "if(p.setSaturation)p.setSaturation(1.0);"
-               "if(p.setColorGrade)p.setColorGrade(1.12,0.98,1.08);"
-               /* Sharpness amount with CAS gating engaged. Higher than the
-                  previous 0.95 ceiling: CAS only sharpens where there is
-                  actual local contrast, so flat sky/HUD does not pick up
-                  grain at 1.45. The goal here is visibly crisper edges than
-                  the web reference, which uses Three.js's uniform sharpen. */
-               "if(p.setSharpness)p.setSharpness(1.90);"
-               /* Default near Three's dark clear color when the web cart has
-                  not explicitly set a sky. This middle value compensates for
-                  RA's post exposure without the old bright gray/cyan cast. */
-               "if(typeof setSkyColor==='function'&&!nova64._skySet)"
-                 "setSkyColor(rgba8(55,56,68,255),rgba8(34,36,45,255));},"
+               "r=r==null?0.5:r;t=t==null?0.6:t;"
+               "if(s&&typeof s==='object'){t=s.threshold==null?t:s.threshold;r=s.radius==null?r:s.radius;s=s.strength==null?1:s.strength;}"
+               "__novaUseWebPipeline();p.setBloom(typeof s==='number'?s:1,r,t);"
+               "p.use24BitColors(true);p.setExposure(1);p.setBloomStyle('three');"
+               "p.setColorGrade(1,1,1);p.setSharpness(0);p.setSaturation(1);"
+               "return true;},"
              "disableBloom:function(){p.setBloom(0);},"
              "setBloomStrength:function(s){p.setBloom(s);},"
              "setBloomRadius:function(r){p.setBloomRadius(r);},"
@@ -32605,6 +32626,12 @@ static bool install_nova64_api(JSContext *ctx)
    set_function(ctx, global, "setSkyColor", js_set_sky_color, 2);
    set_function(ctx, global, "clearSkyColor", js_clear_sky_color, 0);
    set_function(ctx, global, "getSkyColor", js_get_sky_color, 0);
+   set_function(ctx, global, "__novaUseWebPipeline", js_use_web_pipeline, 0);
+   set_function(ctx, global, "__novaSetImageSky", js_set_image_sky, 4);
+   set_function(ctx, global, "__novaSetSkyPixels", js_set_sky_pixels, 4);
+   set_function(ctx, global, "__novaSetProceduralSky", js_set_procedural_sky, 4);
+   set_function(ctx, global, "__novaProceduralSkyTime", js_procedural_sky_time, 2);
+   set_function(ctx, global, "setPBRProperties", js_set_pbr_properties, 2);
    set_function(ctx, global, "setSkybox", js_set_skybox, 1);
    set_function(ctx, global, "clearSkybox", js_clear_skybox, 0);
    set_function(ctx, global, "setCameraOrthographic", js_set_camera_orthographic, 2);
@@ -34269,7 +34296,7 @@ static bool install_nova64_api(JSContext *ctx)
            "'createCone','createCylinder','createTorus','createCapsule','clearScene',"
            "'getMesh','setMeshColor','setMeshEmissive','setMeshAlpha','setMeshOpacity','setMeshTransparent',"
            "'createInstancedMesh','setInstanceTransform','setInstanceColor','finalizeInstances','removeInstancedMesh',"
-           "'createLODMesh','removeLODMesh','updateLODs','destroyAllMeshes','meshCount'];"
+           "'setPBRProperties','createLODMesh','removeLODMesh','updateLODs','destroyAllMeshes','meshCount'];"
            "for(var i=0;i<fns.length;i++){var n=fns[i];"
              "if(typeof globalThis[n]==='function'&&s&&typeof s[n]==='undefined')"
                "s[n]=globalThis[n];}})();"
@@ -36740,6 +36767,13 @@ static bool install_nova64_api(JSContext *ctx)
       JS_FreeValue(ctx, r2);
    }
 
+   const char post_alias_js[] = "nova64.post.setGlitch=nova64.fx.setGlitchIntensity;";
+   JSValue post_alias = JS_Eval(ctx, post_alias_js, sizeof(post_alias_js)-1, "<post-alias>", JS_EVAL_TYPE_GLOBAL);
+   JS_FreeValue(ctx, post_alias);
+   JSValue sky_result = JS_Eval(ctx, nova_sky_compat_js, sizeof(nova_sky_compat_js)-1,
+      "<nova64-skybox>", JS_EVAL_TYPE_GLOBAL);
+   if (JS_IsException(sky_result)) js_log_exception(ctx, "skybox setup");
+   JS_FreeValue(ctx, sky_result);
    JS_FreeValue(ctx, global);
    return true;
 }
@@ -37030,6 +37064,18 @@ static void js_host_call_frame(double dt)
       JS_FreeValue(ctx, dtv);
    }
 
+   {
+      JSValue global = JS_GetGlobalObject(ctx);
+      JSValue tick = JS_GetPropertyStr(ctx, global, "__nova64TickSky");
+      JSValue arg = JS_NewFloat64(ctx, dt);
+      JSValue result = JS_Call(ctx, tick, JS_UNDEFINED, 1, &arg);
+      if (JS_IsException(result)) js_log_exception(ctx, "skybox tick");
+      JS_FreeValue(ctx, result);
+      JS_FreeValue(ctx, arg);
+      JS_FreeValue(ctx, tick);
+      JS_FreeValue(ctx, global);
+   }
+
    /* Drain microtasks scheduled during update() before draw() runs, so promise
     * continuations resolve the same frame. Without this the QuickJS job queue
     * only ran at load/init, so any Promise.then() created in gameplay (e.g. a
@@ -37275,6 +37321,7 @@ static bool gles_create_cube_program(void)
       "uniform mat4 u_view;\n"
       "uniform mat3 u_normal_matrix;\n"
       "uniform vec4 u_light_direction;\n"
+      "uniform int u_web_lighting;\n"
       "uniform vec2 u_uv_offset;\n"
       "uniform vec2 u_uv_scale;\n"
       "uniform int u_face_uvs;\n"
@@ -37291,7 +37338,7 @@ static bool gles_create_cube_program(void)
       "  vec4 local_pos = vec4(a_position, 1.0);\n"
       "  vec4 world_pos = (u_use_instancing != 0) ? a_instance_model * local_pos : u_model * local_pos;\n"
       "  vec3 n = (u_use_instancing != 0) ? normalize(mat3(a_instance_model) * a_normal) : normalize(u_normal_matrix * a_normal);\n"
-      "  vec3 l = normalize(-u_light_direction.xyz);\n"
+      "  vec3 l = normalize(u_light_direction.xyz * (u_web_lighting != 0 ? 1.0 : -1.0));\n"
       "  float diffuse = max(dot(n, l), 0.0);\n"
       "  v_light = diffuse;\n"
       "  v_normal = n;\n"
@@ -37334,6 +37381,7 @@ static bool gles_create_cube_program(void)
       "uniform vec4 u_color;\n"
       "uniform vec4 u_ambient_color;\n"
       "uniform vec4 u_light_direction;\n"
+      "uniform int u_web_lighting;\n"
       "uniform vec4 u_light_color;\n"
       "uniform float u_light_intensity;\n"
       "uniform vec3 u_camera_pos;\n"
@@ -37351,6 +37399,14 @@ static bool gles_create_cube_program(void)
       "uniform float u_emissive_intensity;\n"
       "uniform float u_roughness;\n"
       "uniform float u_metalness;\n"
+      "uniform int u_has_environment;uniform sampler2D u_environment;uniform sampler2D u_irradiance;\n"
+      "uniform int u_pbr_material;uniform float u_env_gain;uniform float u_transmission;uniform float u_ior;\n"
+      "uniform float u_clearcoat;uniform float u_clearcoat_roughness;\n"
+      "uniform float u_environment_intensity;uniform float u_environment_rotation;\n"
+      "vec3 environment(vec3 d,float rough){\n"
+      "  vec2 uv=vec2(atan(d.z,d.x)/6.28318530718+0.5+u_environment_rotation/6.28318530718,asin(clamp(d.y,-1.0,1.0))/3.14159265359+0.5);\n"
+      "  return textureLod(u_environment,uv,rough*8.0).rgb*u_environment_intensity;\n"
+      "}\n"
       "uniform float u_shade_contrast;\n"
       "uniform int u_output_srgb;\n"
       "uniform sampler2D u_shadow_map;\n"
@@ -37378,7 +37434,9 @@ static bool gles_create_cube_program(void)
       "  vec3 b = v * (0.983729 * v + 0.4329510) + 0.238081;\n"
       "  return a / b;\n"
       "}\n"
+      "uniform int u_web_pipeline;\n"
       "vec3 aces_filmic(vec3 color) {\n"
+      "  if (u_web_pipeline != 0) return color;\n"
       "  const mat3 ACESInputMat = mat3(vec3(0.59719, 0.07600, 0.02840), vec3(0.35458, 0.90834, 0.13383), vec3(0.04823, 0.01566, 0.83777));\n"
       "  const mat3 ACESOutputMat = mat3(vec3(1.60475, -0.10208, -0.00327), vec3(-0.53108, 1.10813, -0.07276), vec3(-0.07367, -0.00605, 1.07602));\n"
       "  color *= 1.25 / 0.6;\n"
@@ -37407,7 +37465,7 @@ static bool gles_create_cube_program(void)
       "  if (u_has_normal_map != 0) {\n"
       "    vec3 nm = texture(u_normal_map, v_uv).rgb * 2.0 - 1.0;\n"
       "    vec3 perturbed = normalize(v_normal + nm * 0.6);\n"
-      "    vec3 l = normalize(-u_light_direction.xyz);\n"
+      "    vec3 l = normalize(u_light_direction.xyz * (u_web_lighting != 0 ? 1.0 : -1.0));\n"
       "    diffuse = max(dot(perturbed, l), 0.0);\n"
       "  } else {\n"
       "    diffuse = v_light;\n"
@@ -37431,6 +37489,11 @@ static bool gles_create_cube_program(void)
       "    vec3 direct = base.rgb * shaped * light_color * 1.12;\n"
       "    vec3 sheen = base.rgb * pow(max(diffuse, 0.0), 10.0) * (1.0 - clamp(u_roughness, 0.0, 1.0)) * 0.10;\n"
       "    lit = max(direct + fill + sheen + metal_ambient * u_metalness * 0.35, vec3(0.0));\n"
+      "  }\n"
+      "  if (u_web_lighting != 0) {\n"
+      "    vec3 hemi=mix(srgb_to_linear(vec3(0.22,0.22,0.24)),srgb_to_linear(vec3(0.78,0.85,1.0)),clamp(v_normal.y*0.5+0.5,0.0,1.0))*0.35;\n"
+      "    lit=base.rgb*(srgb_to_linear(u_light_color.rgb)*u_light_intensity*diffuse+srgb_to_linear(u_ambient_color.rgb)+hemi);\n"
+      "    if(u_pbr_material!=0)lit*=0.318309886;\n"
       "  }\n"
       "  if (u_shadow_enabled != 0) {\n"
       "    vec3 sc = v_shadow_coord.xyz / v_shadow_coord.w;\n"
@@ -37470,6 +37533,7 @@ static bool gles_create_cube_program(void)
       "    float ndotl = max(dot(v_normal, ldir), 0.0);\n"
       "    float f = 1.0 - dist / range;\n"
       "    f *= f;\n"
+      "    if(u_web_lighting!=0){float cutoff=pow(clamp(1.0-pow(dist/range,4.0),0.0,1.0),2.0);f=cutoff/max(dist*dist,0.01);if(u_pbr_material!=0)f*=0.318309886;}\n"
       "    vec3 pcol = srgb_to_linear(u_point_lights_color[i].rgb);\n"
       "    float light_shadow = (i == u_shadow_point_light_index) ? shadow_factor : 1.0;\n"
       "    lit += base.rgb * pcol * intensity * ndotl * f * light_shadow;\n"
@@ -37482,11 +37546,34 @@ static bool gles_create_cube_program(void)
       "    spec *= (1.0 - rough) * mix(0.16, 0.52, metal);\n"
       "    lit += pcol * intensity * spec * f * light_shadow;\n"
       "  }\n"
+      "  if (u_has_environment != 0 && u_pbr_material != 0) {\n"
+      "    vec3 n=normalize(v_normal), v=normalize(u_camera_pos-v_world_pos);\n"
+      "    vec3 reflected=environment(reflect(-v,n),u_roughness);\n"
+      "    vec2 iuv=vec2(atan(n.z,n.x)/6.28318530718+0.5+u_environment_rotation/6.28318530718,asin(clamp(n.y,-1.0,1.0))/3.14159265359+0.5);\n"
+      "    vec3 diffuseEnv=texture(u_irradiance,iuv).rgb*u_environment_intensity;\n"
+      "    vec3 f0=mix(vec3(0.04),base.rgb,u_metalness);\n"
+      "    vec3 fresnel=f0+(1.0-f0)*pow(1.0-max(dot(n,v),0.0),5.0);\n"
+      "    lit=lit*(1.0-u_metalness)+diffuseEnv*base.rgb*(1.0-u_metalness);\n"
+      "    lit+=reflected*fresnel*u_env_gain;\n"
+      "    if (u_transmission > 0.0) {\n"
+      "      vec3 transmitted=environment(refract(-v,n,1.0/max(u_ior,1.0)),u_roughness)*base.rgb;\n"
+      "      lit=mix(lit,transmitted*(1.0-fresnel)+reflected*fresnel,clamp(u_transmission,0.0,1.0));\n"
+      "    }\n"
+      "  }\n"
+      /* Clearcoat is a dielectric layer above the base, including its emission.
+         Three uses the same F0/energy attenuation; our environment BRDF is Schlick. */
+      "  vec3 coat=vec3(0.0);float coatF=0.0;\n"
+      "  if(u_pbr_material!=0 && u_clearcoat>0.0){\n"
+      "    vec3 n=normalize(v_normal),v=normalize(u_camera_pos-v_world_pos);\n"
+      "    coatF=u_clearcoat*(0.04+0.96*pow(1.0-max(dot(n,v),0.0),5.0));\n"
+      "    if(u_has_environment!=0)coat=environment(reflect(-v,n),max(u_clearcoat_roughness,0.0525))*coatF*u_env_gain;\n"
+      "  }\n"
+      "  lit=lit*(1.0-coatF)+coat;\n"
       "  if (u_fog_enabled != 0) {\n"
       "    float fog_t = clamp((v_fog_depth - u_fog_near) / max(u_fog_far - u_fog_near, 0.001), 0.0, 1.0);\n"
       "    lit = mix(lit, srgb_to_linear(u_fog_color.rgb), fog_t);\n"
       "  }\n"
-      "  lit = max(lit + srgb_to_linear(u_emissive_color.rgb) * u_emissive_intensity, vec3(0.0));\n"
+      "  lit = max(lit + srgb_to_linear(u_emissive_color.rgb) * u_emissive_intensity*(1.0-coatF), vec3(0.0));\n"
       "  if (u_output_srgb != 0)\n"
       "    lit = linear_to_srgb(aces_filmic(lit));\n"
       "  fragColor = vec4(lit, base.a);\n"
@@ -38584,6 +38671,15 @@ static void render_gles_primitive(const struct nova64_mesh *mesh, const float vi
    float a = ((float)(color & 0xffU) / 255.0f) * clamp_float(mesh->opacity, 0.0f, 1.0f);
 
    gles.UseProgram(gles.cube_program);
+   bind_sky_environment(gles.cube_program);
+   gles.Uniform1i(gles.GetUniformLocation(gles.cube_program,"u_web_lighting"),native_web_pipeline?1:0);
+   gles.Uniform1i(gles.GetUniformLocation(gles.cube_program,"u_pbr_material"),mesh->pbr_material ? 1 : 0);
+   gles.Uniform1f(gles.GetUniformLocation(gles.cube_program,"u_env_gain"),mesh->environment_intensity);
+   gles.Uniform1f(gles.GetUniformLocation(gles.cube_program,"u_transmission"),mesh->transmission);
+   gles.Uniform1f(gles.GetUniformLocation(gles.cube_program,"u_ior"),mesh->ior);
+   gles.Uniform1f(gles.GetUniformLocation(gles.cube_program,"u_clearcoat"),mesh->clearcoat);
+   gles.Uniform1f(gles.GetUniformLocation(gles.cube_program,"u_clearcoat_roughness"),mesh->clearcoat_roughness);
+   gles.Uniform1i(gles.GetUniformLocation(gles.cube_program, "u_web_pipeline"), native_web_pipeline ? 1 : 0);
    gles.UniformMatrix4fv(gles.cube_mvp_uniform, 1, GL_FALSE, mvp);
    gles.UniformMatrix4fv(gles.cube_model_uniform, 1, GL_FALSE, model);
    gles.UniformMatrix4fv(gles.cube_view_uniform, 1, GL_FALSE, g_last_view);
@@ -39311,6 +39407,15 @@ static void render_gles_instanced_mesh(const struct nova64_mesh *mesh, const flo
    }
 
    gles.UseProgram(gles.cube_program);
+   bind_sky_environment(gles.cube_program);
+   gles.Uniform1i(gles.GetUniformLocation(gles.cube_program,"u_web_lighting"),native_web_pipeline?1:0);
+   gles.Uniform1i(gles.GetUniformLocation(gles.cube_program,"u_pbr_material"),mesh->pbr_material ? 1 : 0);
+   gles.Uniform1f(gles.GetUniformLocation(gles.cube_program,"u_env_gain"),mesh->environment_intensity);
+   gles.Uniform1f(gles.GetUniformLocation(gles.cube_program,"u_transmission"),mesh->transmission);
+   gles.Uniform1f(gles.GetUniformLocation(gles.cube_program,"u_ior"),mesh->ior);
+   gles.Uniform1f(gles.GetUniformLocation(gles.cube_program,"u_clearcoat"),mesh->clearcoat);
+   gles.Uniform1f(gles.GetUniformLocation(gles.cube_program,"u_clearcoat_roughness"),mesh->clearcoat_roughness);
+   gles.Uniform1i(gles.GetUniformLocation(gles.cube_program, "u_web_pipeline"), native_web_pipeline ? 1 : 0);
    {
       float identity[16];
       mat4_identity(identity);
@@ -39512,6 +39617,8 @@ static void render_gles_instanced_mesh(const struct nova64_mesh *mesh, const flo
 
 /* ---- Equirectangular skybox ------------------------------------------------ */
 
+#include "skybox-render.h"
+
 static bool gles_create_sky_gradient_program(void)
 {
    static const char *vertex_source =
@@ -39548,7 +39655,9 @@ static bool gles_create_sky_gradient_program(void)
       "  vec3 b = v * (0.983729 * v + 0.4329510) + 0.238081;\n"
       "  return a / b;\n"
       "}\n"
+      "uniform int u_web_pipeline;\n"
       "vec3 aces_filmic(vec3 color) {\n"
+      "  if (u_web_pipeline != 0) return color;\n"
       "  const mat3 ACESInputMat = mat3(vec3(0.59719, 0.07600, 0.02840), vec3(0.35458, 0.90834, 0.13383), vec3(0.04823, 0.01566, 0.83777));\n"
       "  const mat3 ACESOutputMat = mat3(vec3(1.60475, -0.10208, -0.00327), vec3(-0.53108, 1.10813, -0.07276), vec3(-0.07367, -0.00605, 1.07602));\n"
       "  color *= 1.25 / 0.6;\n"
@@ -39616,6 +39725,7 @@ static void render_gles_sky_gradient(void)
    gles.Disable(GL_DEPTH_TEST);
    gles.DepthMask(GL_FALSE);
    gles.UseProgram(gles.sky_gradient_program);
+   gles.Uniform1i(gles.GetUniformLocation(gles.sky_gradient_program, "u_web_pipeline"), native_web_pipeline ? 1 : 0);
    gles.Uniform4f(gles.sky_gradient_top_uniform,    tr, tg, tb, 1.0f);
    gles.Uniform4f(gles.sky_gradient_bottom_uniform, br, bg, bb, 1.0f);
    if (gles.sky_gradient_output_srgb_uniform >= 0)
@@ -39670,7 +39780,9 @@ static bool gles_create_skybox_program(void)
       "  vec3 b = v * (0.983729 * v + 0.4329510) + 0.238081;\n"
       "  return a / b;\n"
       "}\n"
+      "uniform int u_web_pipeline;\n"
       "vec3 aces_filmic(vec3 color) {\n"
+      "  if (u_web_pipeline != 0) return color;\n"
       "  const mat3 ACESInputMat = mat3(vec3(0.59719, 0.07600, 0.02840), vec3(0.35458, 0.90834, 0.13383), vec3(0.04823, 0.01566, 0.83777));\n"
       "  const mat3 ACESOutputMat = mat3(vec3(1.60475, -0.10208, -0.00327), vec3(-0.53108, 1.10813, -0.07276), vec3(-0.07367, -0.00605, 1.07602));\n"
       "  color *= 1.25 / 0.6;\n"
@@ -39722,6 +39834,7 @@ static bool gles_create_skybox_program(void)
 
 static void gles_destroy_skybox_resources(void)
 {
+   destroy_procedural_sky_resources();
    if (gles.skybox_program && gles.DeleteProgram)
       gles.DeleteProgram(gles.skybox_program);
    gles.skybox_program = 0;
@@ -39737,6 +39850,10 @@ static void gles_destroy_skybox_resources(void)
    geometry so depth writes overwrite the background pixels. */
 static void render_gles_skybox(const float view[16], const float projection[16])
 {
+   if (procedural_sky.kind) {
+      render_procedural_sky(view, projection);
+      return;
+   }
    /* No equirectangular texture? Fall back to the two-colour gradient if the
       cart has set one. The gradient runs *before* the textured skybox path
       so a texture, when present, overrides it. */
@@ -39762,6 +39879,7 @@ static void render_gles_skybox(const float view[16], const float projection[16])
 
    gles.Disable(GL_DEPTH_TEST);
    gles.UseProgram(gles.skybox_program);
+   gles.Uniform1i(gles.GetUniformLocation(gles.skybox_program, "u_web_pipeline"), native_web_pipeline ? 1 : 0);
 
    gles.ActiveTexture(GL_TEXTURE0);
    gles.BindTexture(GL_TEXTURE_2D, tex->gl_name);
@@ -39949,7 +40067,9 @@ static bool gles_create_post_program(void)
       "  vec3 b = v * (0.983729 * v + 0.4329510) + 0.238081;\n"
       "  return a / b;\n"
       "}\n"
+      "uniform int u_web_pipeline;\n"
       "vec3 aces_filmic(vec3 color) {\n"
+      "  if (u_web_pipeline != 0) return color;\n"
       "  const mat3 ACESInputMat = mat3(vec3(0.59719, 0.07600, 0.02840), vec3(0.35458, 0.90834, 0.13383), vec3(0.04823, 0.01566, 0.83777));\n"
       "  const mat3 ACESOutputMat = mat3(vec3(1.60475, -0.10208, -0.00327), vec3(-0.53108, 1.10813, -0.07276), vec3(-0.07367, -0.00605, 1.07602));\n"
       "  color *= 1.25 / 0.6;\n"
@@ -40263,6 +40383,7 @@ static bool gles_create_bloom_programs(void)
       "uniform sampler2D u_scene;\n"
       "uniform vec2 u_resolution;\n"
       "uniform float u_threshold;\n"
+      "uniform int u_web_pipeline;\n"
       "out vec4 fragColor;\n"
       "float luma(vec3 c) { return dot(c, vec3(0.299, 0.587, 0.114)); }\n"
       /* HDR knee. The scene FBO is RGBA16F with linear-HDR mesh output, so
@@ -40274,7 +40395,9 @@ static bool gles_create_bloom_programs(void)
          ramp: LDR pixels at luma ~1.0 contribute ~5%, true HDR emissives at
          luma 4.0 contribute 100%. Lets the strength clamp go away. */
       "vec3 bright(vec3 c) {\n"
-      "  if (u_threshold <= 0.0) return c;\n"
+      "  if (u_threshold < 0.0) return c;\n"
+      "  if (u_web_pipeline != 0) return c * smoothstep(u_threshold, u_threshold + 0.01, luma(c));\n"
+      "  if (u_threshold == 0.0) return c;\n"
       "  return c * smoothstep(u_threshold, u_threshold + 2.0, luma(c));\n"
       "}\n"
       "void main() {\n"
@@ -40291,9 +40414,23 @@ static bool gles_create_bloom_programs(void)
       "uniform sampler2D u_scene;\n"
       "uniform vec2 u_resolution;\n"
       "uniform vec2 u_direction;\n"
+      "uniform int u_web_pipeline;\n"
+      "uniform int u_kernel_radius;\n"
       "out vec4 fragColor;\n"
       "void main() {\n"
       "  vec2 texel = u_direction / u_resolution;\n"
+      "  if (u_web_pipeline != 0) {\n"
+      "    float sigma = float(u_kernel_radius) / 3.0;\n"
+      "    float w0 = 0.39894 / sigma;\n"
+      "    vec3 sum = texture(u_scene, v_uv).rgb * w0;\n"
+      "    for (int i=1; i<22; i++) {\n"
+      "      if (i >= u_kernel_radius) break;\n"
+      "      float x = float(i);\n"
+      "      float w = 0.39894 * exp(-0.5*x*x/(sigma*sigma)) / sigma;\n"
+      "      sum += (texture(u_scene,v_uv+texel*x).rgb + texture(u_scene,v_uv-texel*x).rgb)*w;\n"
+      "    }\n"
+      "    fragColor = vec4(sum,1.0);return;\n"
+      "  }\n"
       "  vec3 c = texture(u_scene, v_uv).rgb * 0.227027;\n"
       "  c += texture(u_scene, v_uv + texel * 1.384615).rgb * 0.316216;\n"
       "  c += texture(u_scene, v_uv - texel * 1.384615).rgb * 0.316216;\n"
@@ -40652,6 +40789,7 @@ static bool render_gles_bloom_chain(void)
       gles.ClearColor(0.0f, 0.0f, 0.0f, 1.0f);
       gles.Clear(GL_COLOR_BUFFER_BIT);
       gles.UseProgram(gles.bloom_downsample_program);
+      gles.Uniform1i(gles.GetUniformLocation(gles.bloom_downsample_program, "u_web_pipeline"), native_web_pipeline ? 1 : 0);
       gles.ActiveTexture(GL_TEXTURE0);
       gles.BindTexture(GL_TEXTURE_2D, source_texture);
       if (gles.bloom_downsample_scene_uniform >= 0)
@@ -40660,11 +40798,13 @@ static bool render_gles_bloom_chain(void)
          gles.Uniform2f(gles.bloom_downsample_resolution_uniform,
             (float)source_width, (float)source_height);
       if (gles.bloom_downsample_threshold_uniform >= 0)
-         gles.Uniform1f(gles.bloom_downsample_threshold_uniform, i == 0 ? post_state.bloom_threshold : 0.0f);
+         gles.Uniform1f(gles.bloom_downsample_threshold_uniform, i == 0 ? post_state.bloom_threshold : -1.0f);
       gles_draw_fullscreen_quad(gles.bloom_downsample_position_attrib,
          gles.bloom_downsample_uv_attrib);
 
       gles.UseProgram(gles.bloom_blur_program);
+      gles.Uniform1i(gles.GetUniformLocation(gles.bloom_blur_program, "u_web_pipeline"), native_web_pipeline ? 1 : 0);
+      gles.Uniform1i(gles.GetUniformLocation(gles.bloom_blur_program, "u_kernel_radius"), 6 + i * 4);
       if (gles.bloom_blur_scene_uniform >= 0)
          gles.Uniform1i(gles.bloom_blur_scene_uniform, 0);
       if (gles.bloom_blur_resolution_uniform >= 0)
@@ -40713,6 +40853,7 @@ static void render_gles_post_pass(GLuint hw_fbo)
    gles.Clear(GL_COLOR_BUFFER_BIT);
 
    gles.UseProgram(gles.post_program);
+   gles.Uniform1i(gles.GetUniformLocation(gles.post_program, "u_web_pipeline"), native_web_pipeline ? 1 : 0);
    gles.ActiveTexture(GL_TEXTURE0);
    gles.BindTexture(GL_TEXTURE_2D, gles.post_color_texture);
    if (gles.post_scene_uniform >= 0)

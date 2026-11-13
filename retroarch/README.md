@@ -105,6 +105,54 @@ cc -Iretroarch -o retroarch/build/harness retroarch/tests/harness.c -ldl
 retroarch/build/harness retroarch/nova64_libretro.so retroarch/conformance/00-boot.js
 ```
 
+### Current web skies and bloom on the native core
+
+Native GL draws the shared procedural shaders from `runtime/sky-shaders.js`,
+including animated presets, nebulae, stars, clouds, aurora and ocean skies. HDR
+panoramas, six-face image skies and environment presets feed filtered reflections
+and diffuse sky lighting. The current web bloom path preserves authored settings
+and uses the web threshold/blur behavior and neutral output defaults. Legacy
+native post-processing remains available for older carts.
+
+Generate and validate after changing shared sky source:
+
+```bash
+node scripts/gen-retroarch-sky.mjs
+make -C retroarch all harness
+pnpm retroarch:test:sky
+```
+
+The generated header is checked by `pnpm test`. Image/HDR carts packaged with
+`pnpm build:nova` include shared sky assets and attribution. Native smoke tests
+load a package outside the source directory to verify this delivery path.
+
+For labeled, fixed-step comparisons (requires Playwright Chromium and ffmpeg):
+
+```bash
+pnpm exec vite --host 127.0.0.1 --port 5191
+# In another terminal:
+pnpm retroarch:visual:sky -- --base=http://127.0.0.1:5191 --seconds=30
+```
+
+Results are in `retroarch/build/sky-bloom-parity/`: per-demo comparison videos,
+PNGs, native logs and `report.json`. Add `--keep-frames` to retain raw frames.
+macOS captures use Metal for the web reference. Videos identify the offscreen
+native-core GL harness; RetroArch frontend presentation needs its own smoke test.
+Randomized demos can diverge because each host's internal constructors consume
+random numbers differently. The explicitly seeded sky fixture isolates shader
+parity; demo-wide RGB error is descriptive, not a compatibility percentage.
+
+Native PBR uses GGX-filtered environment mips and cosine-weighted diffuse lighting,
+not Three.js PMREM's exact filtering implementation. Refraction is an environment
+approximation. `setPBRProperties` supports `clearcoat` and `clearcoatRoughness`
+for a separate dielectric environment-reflection layer, including attenuation
+of the base material. Direct-light clearcoat highlights, the exact environment
+BRDF, iridescence, sheen and full physical glass parity remain follow-up work.
+`pnpm retroarch:test:sky` checks actual GL readback for zero-coat preservation,
+coat strength and roughness. A controlled web/native coating comparison runs with
+`pnpm retroarch:visual:sky --carts=pbr-coating-fixture --seconds=1 --stills-only`.
+See [the parity plan](../plans/RETROARCH_WEB_SKY_BLOOM_PARITY_PLAN.md).
+
 Harness flags:
 
 | Flag                              | Effect                                          |

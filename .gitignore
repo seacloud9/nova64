@@ -134,3 +134,5 @@ experiments/gaussian-splatting/assets/*.ply
 /retroarch/build-docker-win/
 # Godot import metadata for assets linked into godot_project/assets
 /public/assets/**/*.import
+/retroarch/dist-cores/
+/retroarch/build-*/

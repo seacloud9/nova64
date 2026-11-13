@@ -233,24 +233,33 @@ async function buildAndCollectCores(coresDir) {
   mkdirp(coresDir);
   // Local desktop build (host + Windows cross), unless we're pulling everything.
   if (!ALL_CORES) {
+    const coresStarted = Date.now();
     if (SKIP_BUILD) info('--skip-build: collecting any pre-built cores from retroarch/');
-    else {
-      // macOS: universal x86_64 + arm64, matching CI's macos-universal asset name.
-      const hostArgs = process.platform === 'darwin' ? ` CC='cc -arch x86_64 -arch arm64'` : '';
-      sh('Build RetroArch core (host)', `make -C retroarch clean all${hostArgs}`);
-      if (process.platform === 'darwin') {
-        // No mingw zlib or GNU toolchain on macOS: Linux + Windows cores in Docker.
-        sh('Build RetroArch cores (Linux + Windows, Docker)', 'bash scripts/build-retroarch-docker.sh linux windows');
-      } else {
-        sh('Build RetroArch core (Windows, mingw)', 'make -C retroarch platform=win-cross clean all');
-      }
+    else if (process.platform === 'darwin') {
+      // macOS can build every target (Xcode, NDK, Docker/dockcross), so the
+      // bundle carries this checkout's cores instead of an older release's.
+      sh('Build all RetroArch cores locally (macOS)', 'bash scripts/build-cores-local.sh');
+    } else {
+      sh('Build RetroArch core (host)', 'make -C retroarch clean all');
+      sh('Build RetroArch core (Windows, mingw)', 'make -C retroarch platform=win-cross clean all');
     }
     const rc = path.join(ROOT, 'retroarch');
+    const staged = path.join(rc, 'dist-cores');
+    let local = 0;
+    if (fs.existsSync(staged))
+      for (const f of fs.readdirSync(staged))
+        if (/^nova64_libretro_.*\.(so|dll|dylib)$/.test(f)) {
+          // Only cores this run produced: a target that failed now must not
+          // ship a leftover from an earlier run (it falls back to the release).
+          if (!SKIP_BUILD && fs.statSync(path.join(staged, f)).mtimeMs < coresStarted) { warn(`stale local core ignored: ${f}`); continue; }
+          fs.copyFileSync(path.join(staged, f), path.join(coresDir, f)); local++;
+        }
+    if (local) ok(`${local} core(s) built locally`);
     for (const [built, asset] of [
       ['nova64_libretro.so', 'nova64_libretro_linux_x86_64.so'],
       ['nova64_libretro.dll', 'nova64_libretro_windows_x86_64.dll'],
       ['nova64_libretro.dylib', 'nova64_libretro_macos_universal.dylib'],
-    ]) copyIfExists(path.join(rc, built), path.join(coresDir, asset));
+    ]) if (!fs.existsSync(path.join(coresDir, asset))) copyIfExists(path.join(rc, built), path.join(coresDir, asset));
   }
   // Fill in Android / RPi / macOS / Apple (and everything, with --all-cores) from CI.
   if (NO_FETCH) info('--no-fetch: skipping GitHub Release download (local cores only)');

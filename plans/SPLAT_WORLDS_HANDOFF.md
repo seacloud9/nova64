@@ -82,9 +82,19 @@ to its console viewport.
 ## Limits and next steps
 
 - Collision: `collision.js` resolves a swept circle (r=0.25) against each
-  world's authored `walk` region (bounds + solid boxes) with sliding and no
-  tunnelling; door posts are solid. Furniture boxes for the two scans are not
-  yet authored (`blockers: []`) — measure them against the scans and add them.
+  world's `walk` region (bounds + solid boxes) with sliding and no tunnelling;
+  door posts are solid. Furniture/wall boxes are scan-derived: `pnpm splat:nav`
+  bins opaque compact splats in the 0.3–1.8 m band on a 0.2 m grid, merges
+  dense cells into rectangles and writes committed `nav.json` (161 / 22 boxes);
+  `test:splat:worlds` fails if it is stale and checks the relic blocks walking.
+  Authored walkways (spawn, door approaches) are carved free and the count is
+  recorded: the apartment door overlaps a scanned pillar (48 cells carved).
+  Re-author the apartment door/spawn placement so nothing needs carving.
+  Thin/low objects below 0.3 m and glass are not detected.
+- Fixed a Babylon backend bug (runtime/backends/babylon/camera.js): moving the
+  camera exactly onto its stored target zeroed Babylon's internal reference
+  vector, leaving every later frame blank. Regression test in
+  `tests/test-babylon-camera-target.mjs` (now in `pnpm test`).
 - One visible destination view, one bounce; equal-scale upright doors. No recursive
   portals or progressive world loading. Both assets load before cart readiness.
 - Assets/code currently load through Vite from the checkout. Portable `.nova`

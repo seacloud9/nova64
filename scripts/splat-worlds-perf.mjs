@@ -35,7 +35,7 @@ const browser = await chromium.launch({
 const browserCdp = await browser.newBrowserCDPSession();
 async function treeRssMB() {
   const { processInfo } = await browserCdp.send('SystemInfo.getProcessInfo');
-    const rows = execFileSync('ps', ['-A', '-o', 'pid=,rss=']).toString().trim().split('\n');
+  const rows = execFileSync('ps', ['-A', '-o', 'pid=,rss=']).toString().trim().split('\n');
   const rssByPid = new Map(rows.map(r => r.trim().split(/\s+/).map(Number)));
   const byType = {};
   let kb = 0;
@@ -60,7 +60,10 @@ try {
       `${base}/console.html?${backend === 'babylon' ? 'backend=babylon&' : ''}path=/experiments/splat-worlds/cart.js&w=640&h=360`
     );
     const t0 = Date.now();
-    await page.waitForFunction(() => !!window.__splatWorlds, null, { polling: 100, timeout: 120000 });
+    await page.waitForFunction(() => !!window.__splatWorlds, null, {
+      polling: 100,
+      timeout: 120000,
+    });
     const loadMs = Date.now() - t0;
     report.userAgent ??= await page.evaluate(() => navigator.userAgent);
     const gpuInfo = await page.evaluate(() => {
@@ -115,7 +118,14 @@ try {
     const mean = sorted.reduce((a, b) => a + b, 0) / sorted.length;
 
     // Repeated reloads through the real reset + init path.
-    const memory = [{ cycle: 0, heapMB: await heap(), ...(await treeRssMB().then(r => ({ rssMB: r.total, rss: r.byType }))), ...(await resources()) }];
+    const memory = [
+      {
+        cycle: 0,
+        heapMB: await heap(),
+        ...(await treeRssMB().then(r => ({ rssMB: r.total, rss: r.byType }))),
+        ...(await resources()),
+      },
+    ];
     for (let c = 1; c <= cycles; c++) {
       await page.evaluate(async () => {
         const { runCartResetHooks } = await import('/runtime/cart-reset.js');
@@ -124,7 +134,12 @@ try {
         await cart.init();
       });
       await page.waitForTimeout(500);
-      memory.push({ cycle: c, heapMB: await heap(), ...(await treeRssMB().then(r => ({ rssMB: r.total, rss: r.byType }))), ...(await resources()) });
+      memory.push({
+        cycle: c,
+        heapMB: await heap(),
+        ...(await treeRssMB().then(r => ({ rssMB: r.total, rss: r.byType }))),
+        ...(await resources()),
+      });
       console.log(backend, 'reload', c, JSON.stringify(memory.at(-1)));
     }
     const growth = memory.at(-1).heapMB - memory[1].heapMB;
@@ -165,8 +180,11 @@ for (const [name, b] of Object.entries(report.backends)) {
   if (b.errors.length) failures.push(`${name}: page errors ${b.errors.join('; ')}`);
   if (b.crossings < 1) failures.push(`${name}: scripted walk never crossed a portal`);
   if (b.steadyRssSlopeMBPerReload > MAX_SLOPE_MB)
-    failures.push(`${name}: RSS grows ${b.steadyRssSlopeMBPerReload} MB/reload (> ${MAX_SLOPE_MB})`);
-  if (b.frameMs.p95 > MAX_P95_MS) failures.push(`${name}: p95 frame ${b.frameMs.p95} ms (> ${MAX_P95_MS})`);
+    failures.push(
+      `${name}: RSS grows ${b.steadyRssSlopeMBPerReload} MB/reload (> ${MAX_SLOPE_MB})`
+    );
+  if (b.frameMs.p95 > MAX_P95_MS)
+    failures.push(`${name}: p95 frame ${b.frameMs.p95} ms (> ${MAX_P95_MS})`);
 }
 if (failures.length) {
   console.error('FAIL\n' + failures.join('\n'));

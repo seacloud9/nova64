@@ -31,8 +31,27 @@ const specs = [
     walk: { bounds: [-10, -10, 10, 10], blockers: [] },
   },
 ];
-for (const spec of specs)
-  spec.walk.blockers = [...spec.walk.blockers, ...doorBlockers(spec.door)];
+for (const spec of specs) spec.posts = doorBlockers(spec.door);
+const isRect = r =>
+  Array.isArray(r) && r.length === 4 && r.every(Number.isFinite) && r[0] < r[2] && r[1] < r[3];
+// Scan-derived furniture/wall boxes from scripts/splat-worlds-nav.mjs. Optional:
+// without it the worlds still work with bounds + door posts only.
+async function loadNav() {
+  let nav = null;
+  try {
+    const res = await fetch(new URL('./nav.json', import.meta.url));
+    if (res.ok) nav = await res.json();
+  } catch {
+    nav = null;
+  }
+  specs.forEach((spec, i) => {
+    const blockers = nav?.worlds?.[i]?.blockers;
+    const valid = Array.isArray(blockers) && blockers.every(isRect);
+    if (!valid)
+      console.warn('splat-worlds: nav.json missing/invalid for', spec.name, '- door posts only');
+    spec.walk.blockers = [...(valid ? blockers : []), ...spec.posts];
+  });
+}
 const MAX_DT = 1 / 20,
   EYE = 1.6,
   RADIUS = 0.25;
@@ -65,9 +84,7 @@ async function preflight() {
     })
   );
   if (missing.length)
-    throw new Error(
-      'Splat assets missing: ' + missing.join(', ') + ' (run `pnpm splat:assets`)'
-    );
+    throw new Error('Splat assets missing: ' + missing.join(', ') + ' (run `pnpm splat:assets`)');
 }
 export async function init() {
   // A re-init without a reset (hot reload) must not leak the previous worlds.
@@ -76,7 +93,7 @@ export async function init() {
     host.dispose();
     host = null;
   }
-  await preflight();
+  await Promise.all([preflight(), loadNav()]);
   nova64.fx.disableRetroEffects();
   nova64.camera.setCameraFOV(65);
   camera = nova64.camera.getCamera();

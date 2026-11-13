@@ -204,6 +204,29 @@ try {
     assert.ok(Math.abs(crossing.arrival.position[2] - 0.3) < 1e-6);
     assert.equal(crossing.returned.world, 0);
     assert.equal(crossing.outside, 0);
+    // Scan-derived collision: walking at the relic stops short of its footprint,
+    // and the nav proxy actually loaded (more than the 2 door posts per world).
+    const collision = await page.evaluate(() => {
+      const p = window.__splatWorlds;
+      p.pose([0, 1.6, 1], 0);
+      p.move(0, 1.6, -2.3); // into the gallery, facing +Z after the turn
+      const world = p.world;
+      for (let i = 0; i < 40; i++) p.move(0, 1.6, p.position[2] + 0.25);
+      const stopped = p.position[2];
+      const blockers = p.specs.map(s => s.walk.blockers.length);
+      return { world, stopped, blockers };
+    });
+    assert.equal(collision.world, 1);
+    assert.ok(collision.stopped > 1.5 && collision.stopped < 3.8, JSON.stringify(collision));
+    assert.ok(collision.blockers.every(n => n > 2), JSON.stringify(collision));
+    // Return to the apartment for the remaining checks.
+    await page.evaluate(() => {
+      const p = window.__splatWorlds;
+      p.pose([0, 1.6, 1], Math.PI);
+      p.move(0, 1.6, -0.3);
+      p.pose([0, 1.6, 2], 0);
+    });
+    assert.equal(await page.evaluate(() => window.__splatWorlds.world), 0);
     await page.keyboard.down('KeyW');
     await steps(15);
     await page.keyboard.up('KeyW');
@@ -345,6 +368,7 @@ try {
       backend,
       counts,
       crossing,
+      collision,
       clipping: center,
       occlusion: blue,
       parallaxPixels: displacement,

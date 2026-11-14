@@ -100,3 +100,18 @@ a different running server.
 
 Guided motion waits at its initial pose while Babylon prepares the first splat
 sort, preventing a continuously moving camera from delaying the first scan draw.
+
+## Ten-demo collection
+
+Three further presentations reuse the same licensed scans:
+
+- **Nocturne — A Room After Dark** (`splatDemo=nocturne`): a wandering amber
+  pool reveals room details against a cool, dark surface treatment.
+- **Porcelain — The Drawn Relic** (`splatDemo=porcelain`): a full relic orbit
+  with quantized ivory tones and animated world-space ink hatching.
+- **Tide — Memories Underwater** (`splatDemo=tide`): a slow apartment view
+  with two intersecting waves producing turquoise caustic patterns.
+
+Bracket keys now cycle all **ten** demos. These are stylized surface effects;
+Nocturne does not add physical lighting, and Tide does not simulate water.
+The showcase browser check covers all ten on both Three.js and Babylon.

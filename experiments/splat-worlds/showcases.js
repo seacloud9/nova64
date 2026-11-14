@@ -30,6 +30,21 @@ export const showcases = {
     caption: 'A molten scan front sweeps upward across the relic.',
     duration: 26,
   },
+  nocturne: {
+    title: 'NOCTURNE / A ROOM AFTER DARK',
+    caption: 'A wandering amber pool picks captured details out of the darkness.',
+    duration: 30,
+  },
+  porcelain: {
+    title: 'PORCELAIN / THE DRAWN RELIC',
+    caption: 'The scanned surface becomes an animated ink and ivory study.',
+    duration: 28,
+  },
+  tide: {
+    title: 'TIDE / MEMORIES UNDERWATER',
+    caption: 'Turquoise caustic patterns drift across the captured apartment.',
+    duration: 30,
+  },
   portal: {
     title: 'THRESHOLD / TWO PLACES, ONE DOOR',
     caption: 'Travel from a captured apartment into the relic gallery.',
@@ -86,6 +101,28 @@ export function showcaseFrame(name, elapsed) {
       position,
       yaw: lookAt(position, [0, 1.6, 5]),
       effect: name === 'spectrum' ? 6 : 8,
+      time: t,
+    };
+  }
+  if (name === 'nocturne' || name === 'tide') {
+    const phase = (t * Math.PI * 2) / 30;
+    const position = [0.45 * Math.sin(phase), 1.6, 1.8 + 0.25 * Math.cos(phase)];
+    return {
+      world: 0,
+      position,
+      yaw: lookAt(position, [-2, 1.6, -3]),
+      effect: name === 'nocturne' ? 9 : 11,
+      time: t,
+    };
+  }
+  if (name === 'porcelain') {
+    const angle = (t * Math.PI * 2) / 28;
+    const position = [3.2 * Math.sin(angle), 1.6, 5 - 3.2 * Math.cos(angle)];
+    return {
+      world: 1,
+      position,
+      yaw: lookAt(position, [0, 1.6, 5]),
+      effect: 10,
       time: t,
     };
   }

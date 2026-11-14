@@ -248,7 +248,12 @@ export function draw() {
   if (showcase) {
     rectfill(0, 300, 640, 360, rgba8(7, 10, 20, 235));
     print(showcases[showcase].caption, 10, 307, rgba8(224, 237, 255, 255));
-    print('[ / ] ALL 7 DEMOS / 6-8 CLASSICS / 9 EXPLORE', 10, 340, rgba8(130, 220, 255, 255));
+    print(
+      '[ / ] ALL ' + Object.keys(showcases).length + ' DEMOS / 6-8 CLASSICS / 9 EXPLORE',
+      10,
+      340,
+      rgba8(130, 220, 255, 255)
+    );
     return;
   }
   print('WASD MOVE / ARROWS TURN / WALK THROUGH THE LIGHT', 10, 322, rgba8(224, 237, 255, 255));

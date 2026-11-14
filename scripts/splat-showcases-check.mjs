@@ -41,6 +41,9 @@ try {
         spectrum: [1, 6],
         echo: [0, 7],
         ember: [1, 8],
+        nocturne: [0, 9],
+        porcelain: [1, 10],
+        tide: [0, 11],
         portal: [0, 0],
       }[name];
       assert.deepEqual([state.world, state.effect], expected);
@@ -71,7 +74,7 @@ try {
     assert.equal(await page.evaluate(() => window.__splatWorlds.world), 0);
     assert.deepEqual(errors, []);
     console.log(
-      `${backend}: all seven demos, visible scene detail, cycle controls and explore reset PASS`
+      `${backend}: all ${Object.keys(showcases).length} demos, visible scene detail, cycle controls and explore reset PASS`
     );
     await page.close();
   }

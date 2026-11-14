@@ -60,7 +60,8 @@ const IMPORT_MAP_SKIP = [
 // Generated trees that mirror pages validated at their source. The Electron
 // packaging output copies the whole desktop app and the os9 shell into itself,
 // so walking it re-reports every source page once per unpacked platform.
-const GENERATED_DIRS = new Set(['apps/desktop/build', 'apps/desktop/dist-electron']);
+// The paid release bundle likewise mirrors validated source pages.
+const GENERATED_DIRS = new Set(['apps/desktop/build', 'apps/desktop/dist-electron', 'dist-lemon']);
 
 function findHtmlFiles(dir) {
   const results = [];

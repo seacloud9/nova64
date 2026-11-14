@@ -1,11 +1,12 @@
 import { Matrix4, Vector3 } from 'three';
 import { crossing, portalTransform } from './portal-math.js';
 import { showcases, showcaseFrame } from './showcases.js';
+import { storybookWorlds } from './storybook.js';
 import { doorBlockers, resolveMove } from './collision.js';
 import { registerCartResetHook } from '/runtime/cart-reset.js';
 
 const asset = '/experiments/gaussian-splatting/assets/';
-const specs = [
+const capturedSpecs = [
   {
     name: 'CAPTURED APARTMENT',
     url: asset + 'apartment.sog',
@@ -32,12 +33,31 @@ const specs = [
     walk: { bounds: [-10, -10, 10, 10], blockers: [] },
   },
 ];
+const params = new URLSearchParams(location.search);
+const storybook = params.get('worldSet') === 'storybook';
+const startWorld = storybook && params.get('startWorld') === 'zen-garden' ? 1 : 0;
+const specs = storybook
+  ? storybookWorlds.map(spec => ({
+      ...spec,
+      url: asset + spec.file,
+      scale: 1,
+      offset: [0, 0, 0],
+      door: new Matrix4().makeTranslation(...spec.door),
+      marker: [0, -10, 0],
+      walk: { bounds: [...spec.walk.bounds], blockers: spec.walk.blockers.map(box => [...box]) },
+    }))
+  : capturedSpecs;
 for (const spec of specs) spec.posts = doorBlockers(spec.door);
 const isRect = r =>
   Array.isArray(r) && r.length === 4 && r.every(Number.isFinite) && r[0] < r[2] && r[1] < r[3];
 // Scan-derived furniture/wall boxes from scripts/splat-worlds-nav.mjs. Optional:
 // without it the worlds still work with bounds + door posts only.
 async function loadNav() {
+  if (storybook) {
+    for (let i = 0; i < specs.length; i++)
+      specs[i].walk.blockers = [...storybookWorlds[i].walk.blockers, ...specs[i].posts];
+    return;
+  }
   let nav = null;
   try {
     const res = await fetch(new URL('./nav.json', import.meta.url));
@@ -98,7 +118,7 @@ export async function init() {
   }
   await Promise.all([preflight(), loadNav()]);
   nova64.fx.disableRetroEffects();
-  nova64.camera.setCameraFOV(65);
+  nova64.camera.setCameraFOV(storybook ? 75 : 65);
   camera = nova64.camera.getCamera();
   const scene = nova64.scene.getScene(),
     renderer = nova64.scene.getRenderer();
@@ -106,13 +126,14 @@ export async function init() {
     ? await import('./three-host.js')
     : await import('./babylon-host.js');
   host = await (module.createThreeHost ?? module.createBabylonHost)(scene, renderer, camera, specs);
-  world = 0;
+  world = startWorld;
+  host.setWorld(world);
   time = 0;
   effect = 0;
   const requested = new URLSearchParams(location.search).get('splatDemo');
-  showcase = Object.hasOwn(showcases, requested) ? requested : null;
+  showcase = !storybook && Object.hasOwn(showcases, requested) ? requested : null;
   showcaseTime = 0;
-  setPose([0, 1.6, 2], 0);
+  setPose(startWorld ? [0, 1.6, 0.7] : [0, 1.6, 2], startWorld ? Math.PI : 0);
   unregister = registerCartResetHook('splat-worlds', () => {
     host?.dispose();
     host = null;
@@ -178,7 +199,7 @@ export function update(rawDt) {
     ['Digit7', 'relic'],
     ['Digit8', 'portal'],
   ]) {
-    if (keyp(keyCode)) {
+    if (!storybook && keyp(keyCode)) {
       showcase = name;
       showcaseTime = 0;
     }
@@ -187,7 +208,7 @@ export function update(rawDt) {
     ['BracketLeft', -1],
     ['BracketRight', 1],
   ]) {
-    if (keyp(code)) {
+    if (!storybook && keyp(code)) {
       const names = Object.keys(showcases);
       const index = names.indexOf(showcase);
       showcase = names[(index + direction + names.length) % names.length];
@@ -203,8 +224,8 @@ export function update(rawDt) {
     effect = 0;
   }
   for (const record of host.worlds) {
-    if (record.marker.setEnabled) record.marker.setEnabled(!showcase);
-    else record.marker.visible = !showcase;
+    if (record.marker.setEnabled) record.marker.setEnabled(!showcase && !storybook);
+    else record.marker.visible = !showcase && !storybook;
   }
   if (showcase) {
     const frame = showcaseFrame(showcase, showcaseTime);
@@ -257,5 +278,12 @@ export function draw() {
     return;
   }
   print('WASD MOVE / ARROWS TURN / WALK THROUGH THE LIGHT', 10, 322, rgba8(224, 237, 255, 255));
-  print('0-4 EFFECTS / [ / ] GUIDED DEMOS / 9 EXPLORE', 10, 340, rgba8(224, 237, 255, 255));
+  print(
+    storybook
+      ? '0-4 EFFECTS / 9 RETURN TO GROVE / ORIGINAL GAUSSIAN WORLDS'
+      : '0-4 EFFECTS / [ / ] GUIDED DEMOS / 9 EXPLORE',
+    10,
+    340,
+    rgba8(224, 237, 255, 255)
+  );
 }

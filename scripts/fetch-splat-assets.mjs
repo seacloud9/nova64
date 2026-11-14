@@ -5,10 +5,19 @@ import { createHash } from 'node:crypto';
 import { readdir, readFile, writeFile, stat } from 'node:fs/promises';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { generateStorybookWorld, storybookWorlds } from '../experiments/splat-worlds/storybook.js';
 
 const dir = join(dirname(fileURLToPath(import.meta.url)), '..', 'experiments/gaussian-splatting/assets');
 const sha = buf => createHash('sha256').update(buf).digest('hex');
 const exists = p => stat(p).then(() => true, () => false);
+
+for (const world of storybookWorlds) {
+  const bytes = generateStorybookWorld(world.id);
+  const target = join(dir, world.file);
+  if (!(await exists(target)) || sha(await readFile(target)) !== sha(bytes))
+    await writeFile(target, bytes);
+  console.log(`generated ${world.file} (${bytes.length / 32} splats, sha256 ${sha(bytes)})`);
+}
 
 let failed = false;
 for (const name of (await readdir(dir)).filter(f => f.endsWith('.source.json'))) {

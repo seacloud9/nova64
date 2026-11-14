@@ -548,6 +548,11 @@ Change-management expectations:
   Gaussian renderer in the console; it is not yet a shared production API.
 - `pnpm test:splat:worlds` runs portal math and two-browser pixel/lifecycle
   checks against a separately running Vite server (default port 5193).
+- `pnpm splat:assets` also regenerates the original MIT storybook worlds
+  (voxel fantasy grove and zen garden). Open the splat cart with
+  `worldSet=storybook` to explore this linked pair; authored obstacles and
+  level bounds provide flat-ground walking collision. These are synthetic
+  Gaussian scenes, not captured scans or editable voxel terrain.
 - Scan attribution and pinned hashes live beside the experiment assets.
   Preserve their CC BY terms when packaging. The demo has a flat floor proxy;
   do not claim collision against scanned furniture or native/WASM support.

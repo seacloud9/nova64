@@ -115,3 +115,44 @@ Three further presentations reuse the same licensed scans:
 Bracket keys now cycle all **ten** demos. These are stylized surface effects;
 Nocturne does not add physical lighting, and Tide does not simulate water.
 The showcase browser check covers all ten on both Three.js and Babylon.
+
+## New explorable worlds: Moonbloom and Stillwater
+
+Run `pnpm splat:assets` to generate two original MIT Gaussian scenes, then open:
+
+- [Moonbloom — Voxel Fantasy Grove](http://127.0.0.1:5193/console.html?path=/experiments/splat-worlds/cart.js&worldSet=storybook&w=640&h=360)
+- [Stillwater — Zen Garden](http://127.0.0.1:5193/console.html?path=/experiments/splat-worlds/cart.js&worldSet=storybook&startWorld=zen-garden&w=640&h=360)
+
+Append `&backend=babylon` for Babylon. Both worlds are loaded as a linked pair:
+walk through the violet/amber doorway to travel between them. WASD moves,
+arrows turn, Shift accelerates, 0–4 select effects and 9 returns to the grove.
+Enter resets the cart to the world selected by its launch URL. The original
+scan presentations remain at the original URL without `worldSet=storybook`.
+
+Moonbloom has tiered block trees, flowers, ruined towers, a central arch and
+crystal altar. Stillwater has raked sand rings around mossy rocks, stepping
+stones, flowering trees, stone lanterns, bamboo, a pond and a torii gate.
+Walking stays on flat ground; authored collision protects trees, rocks, gate
+posts, pond and world edges. There is no jumping, water simulation, editable
+voxel terrain or native/Godot/WASM support for these experimental worlds.
+
+These are deterministic, original procedural Gaussian environments, not new
+photogrammetry scans or recolors of the apartment. `storybook.js` authors their
+geometry and the existing asset command emits `.splat` binaries with SHA-256
+output. The source and artwork use the repository MIT license. The existing
+CC BY scan attribution still applies to the apartment and relic separately.
+
+Checks (Vite on port 5193, or pass `--base=URL` to the browser script):
+
+```sh
+node --test tests/test-storybook-worlds.mjs tests/test-splat-showcases.mjs tests/test-splat-portals.mjs
+node scripts/storybook-worlds-check.mjs
+```
+
+The browser check covers visible geometry on both backends, real WASD input,
+a portal round trip, authored tree/pond collision and reset without accumulating
+obstacles. PNG previews and a JSON report go to `retroarch/build/storybook-worlds/`.
+
+For a future captured-garden option, [English Garden by nebulousflynn](https://superspl.at/scene/99a16e0b)
+is listed as downloadable under CC BY 4.0 (8.8M splats, 117.36 MB when checked).
+It is not bundled or claimed as supported by this compact scene pair.

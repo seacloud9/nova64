@@ -1,5 +1,6 @@
 import { Matrix4, Vector3 } from 'three';
 import { crossing, portalTransform } from './portal-math.js';
+import { showcases, showcaseFrame } from './showcases.js';
 import { doorBlockers, resolveMove } from './collision.js';
 import { registerCartResetHook } from '/runtime/cart-reset.js';
 
@@ -61,7 +62,9 @@ let host,
   time = 0,
   effect = 0,
   yaw = 0,
-  unregister;
+  unregister,
+  showcase = null,
+  showcaseTime = 0;
 const velocity = new Vector3(),
   previous = new Vector3();
 function setPose(position, angle) {
@@ -106,6 +109,9 @@ export async function init() {
   world = 0;
   time = 0;
   effect = 0;
+  const requested = new URLSearchParams(location.search).get('splatDemo');
+  showcase = Object.hasOwn(showcases, requested) ? requested : null;
+  showcaseTime = 0;
   setPose([0, 1.6, 2], 0);
   unregister = registerCartResetHook('splat-worlds', () => {
     host?.dispose();
@@ -164,6 +170,38 @@ export function update(rawDt) {
   const dt = Number.isFinite(rawDt) ? Math.min(Math.max(rawDt, 0), MAX_DT) : 0;
   time += dt;
   const { key, keyp } = nova64.input;
+  for (const [keyCode, name] of [
+    ['Digit6', 'apartment'],
+    ['Digit7', 'relic'],
+    ['Digit8', 'portal'],
+  ]) {
+    if (keyp(keyCode)) {
+      showcase = name;
+      showcaseTime = 0;
+    }
+  }
+  // Hand control back at a known walkable pose, outside any scan collision boxes.
+  if (keyp('Digit9')) {
+    showcase = null;
+    world = 0;
+    host.setWorld(world);
+    setPose([0, EYE, 2], 0);
+    effect = 0;
+  }
+  for (const record of host.worlds) {
+    if (record.marker.setEnabled) record.marker.setEnabled(!showcase);
+    else record.marker.visible = !showcase;
+  }
+  if (showcase) {
+    showcaseTime += dt;
+    const frame = showcaseFrame(showcase, showcaseTime);
+    world = frame.world;
+    host.setWorld(world);
+    setPose(frame.position, frame.yaw);
+    effect = frame.effect;
+    host.render(frame.time, effect);
+    return;
+  }
   if (keyp('Digit0')) effect = 0;
   for (let i = 1; i <= 4; i++) if (keyp('Digit' + i)) effect = i;
   if (key('ArrowLeft')) yaw += dt * 1.5;
@@ -184,7 +222,18 @@ export function draw() {
   if (!host) return;
   const { print, rectfill, rgba8 } = nova64.draw;
   rectfill(0, 0, 640, 25, rgba8(7, 10, 20, 235));
-  print('NOVA64 / ' + specs[world].name, 10, 8, rgba8(224, 237, 255, 255));
+  print(
+    showcase ? showcases[showcase].title : 'NOVA64 / ' + specs[world].name,
+    10,
+    8,
+    rgba8(224, 237, 255, 255)
+  );
+  if (showcase) {
+    rectfill(0, 300, 640, 360, rgba8(7, 10, 20, 235));
+    print(showcases[showcase].caption, 10, 307, rgba8(224, 237, 255, 255));
+    print('6 AFTERIMAGE / 7 RELIC / 8 THRESHOLD / 9 EXPLORE', 10, 340, rgba8(130, 220, 255, 255));
+    return;
+  }
   print('WASD MOVE / ARROWS TURN / WALK THROUGH THE LIGHT', 10, 322, rgba8(224, 237, 255, 255));
-  print('0 ORIGINAL  1 REVEAL  2 DISSOLVE  3 PULSE  4 TINT', 10, 340, rgba8(224, 237, 255, 255));
+  print('0-4 EFFECTS / 6-8 GUIDED DEMOS / 9 EXPLORE', 10, 340, rgba8(224, 237, 255, 255));
 }

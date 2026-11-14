@@ -52,3 +52,26 @@ USDZ/NeRF import, World Labs generation service, Godot, native or WASM Gaussian
 path is implemented. Shader effects are inspired by PlayCanvas; engine shader
 chunks are not interchangeable. The old synthetic renderer remains an independent
 small correctness fixture.
+
+## Guided demos
+
+Three looping presentations use the same licensed scans on both backends:
+
+- **Afterimage — The Room Remembers:** a slow apartment camera move, cyan
+  reconstruction wave, original scan colors and a scanning pulse.
+  [Open Afterimage](http://127.0.0.1:5193/console.html?path=/experiments/splat-worlds/cart.js&splatDemo=apartment&w=640&h=360).
+- **Relic — Matter into Signal:** a full orbit around the scanned sculpture,
+  transitioning from its original surface into dissolve and scan effects.
+  [Open Relic](http://127.0.0.1:5193/console.html?path=/experiments/splat-worlds/cart.js&splatDemo=relic&w=640&h=360).
+- **Threshold — Two Places, One Door:** a continuous camera move through the
+  apartment portal into the gallery, followed by a cut back to the start.
+  [Open Threshold](http://127.0.0.1:5193/console.html?path=/experiments/splat-worlds/cart.js&splatDemo=portal&w=640&h=360).
+
+Press **6 / 7 / 8** to switch presentations and **9** to explore with WASD.
+Append `&backend=babylon` to any link for Babylon. Guided cameras follow authored
+paths (the relic orbit bypasses walking collision); interactive exploration uses
+scan-derived collision. These are new presentations of the existing two scans,
+not additional scanned locations. Lighting remains baked into the source scans.
+
+Camera-loop and portal-continuity regressions:
+`node --test tests/test-splat-showcases.mjs tests/test-splat-portals.mjs`.

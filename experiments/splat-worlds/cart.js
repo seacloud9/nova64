@@ -126,6 +126,9 @@ export async function init() {
     get world() {
       return world;
     },
+    get showcase() {
+      return showcase;
+    },
     get effect() {
       return effect;
     },
@@ -180,6 +183,17 @@ export function update(rawDt) {
       showcaseTime = 0;
     }
   }
+  for (const [code, direction] of [
+    ['BracketLeft', -1],
+    ['BracketRight', 1],
+  ]) {
+    if (keyp(code)) {
+      const names = Object.keys(showcases);
+      const index = names.indexOf(showcase);
+      showcase = names[(index + direction + names.length) % names.length];
+      showcaseTime = 0;
+    }
+  }
   // Hand control back at a known walkable pose, outside any scan collision boxes.
   if (keyp('Digit9')) {
     showcase = null;
@@ -193,13 +207,16 @@ export function update(rawDt) {
     else record.marker.visible = !showcase;
   }
   if (showcase) {
-    showcaseTime += dt;
     const frame = showcaseFrame(showcase, showcaseTime);
     world = frame.world;
     host.setWorld(world);
     setPose(frame.position, frame.yaw);
     effect = frame.effect;
     host.render(frame.time, effect);
+    // Babylon requires an initial sort for a stationary camera before its first
+    // draw. Hold this pose until ready; otherwise an orbit can starve that sort.
+    const splat = host.worlds[world].splat;
+    if (typeof splat.isReady !== 'function' || splat.isReady()) showcaseTime += dt;
     return;
   }
   if (keyp('Digit0')) effect = 0;
@@ -231,9 +248,9 @@ export function draw() {
   if (showcase) {
     rectfill(0, 300, 640, 360, rgba8(7, 10, 20, 235));
     print(showcases[showcase].caption, 10, 307, rgba8(224, 237, 255, 255));
-    print('6 AFTERIMAGE / 7 RELIC / 8 THRESHOLD / 9 EXPLORE', 10, 340, rgba8(130, 220, 255, 255));
+    print('[ / ] ALL 7 DEMOS / 6-8 CLASSICS / 9 EXPLORE', 10, 340, rgba8(130, 220, 255, 255));
     return;
   }
   print('WASD MOVE / ARROWS TURN / WALK THROUGH THE LIGHT', 10, 322, rgba8(224, 237, 255, 255));
-  print('0-4 EFFECTS / 6-8 GUIDED DEMOS / 9 EXPLORE', 10, 340, rgba8(224, 237, 255, 255));
+  print('0-4 EFFECTS / [ / ] GUIDED DEMOS / 9 EXPLORE', 10, 340, rgba8(224, 237, 255, 255));
 }

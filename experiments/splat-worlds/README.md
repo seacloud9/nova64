@@ -75,3 +75,28 @@ not additional scanned locations. Lighting remains baked into the source scans.
 
 Camera-loop and portal-continuity regressions:
 `node --test tests/test-splat-showcases.mjs tests/test-splat-portals.mjs`.
+
+Four additional presentations (same scans, new shared GPU effects):
+
+- **Blueprint — Architecture in Light:** a moving horizontal section and cyan
+  height contours reveal the apartment's structure (`splatDemo=blueprint`).
+- **Spectrum — A Chromatic Relic:** an orbit with animated height-based spectral
+  color, retaining the scan's luminance (`splatDemo=spectrum`).
+- **Echo — Signals Through Matter:** a lateral portal view with traveling cyan
+  and violet interference bands (`splatDemo=echo`).
+- **Ember — An Artifact Reforged:** a breathing orbit and moving molten scan
+  front across the relic (`splatDemo=ember`).
+
+Use **[ / ]** to cycle all seven presentations, including the original three.
+The `splatDemo` parameter accepts any of the seven names above; use the same
+console URLs and optional `backend=babylon`. These effects recolor the captured
+surface; they do not change its baked illumination or implement physical relighting.
+
+With Vite running, `node scripts/splat-showcases-check.mjs` checks all seven
+presentations on both backends, visible scene detail, cycle controls and return
+to exploration, saving PNG previews and a report under
+`retroarch/build/splat-showcases/`. Use `--base=http://127.0.0.1:PORT` to select
+a different running server.
+
+Guided motion waits at its initial pose while Babylon prepares the first splat
+sort, preventing a continuously moving camera from delaying the first scan draw.

@@ -10,7 +10,7 @@ test('guided cameras remain finite and loop to the same pose', () => {
       const frame = showcaseFrame(name, t);
       assert.ok([...frame.position, frame.yaw, frame.time].every(Number.isFinite));
       assert.ok(frame.world === 0 || frame.world === 1);
-      assert.ok(frame.effect >= 0 && frame.effect <= 4);
+      assert.ok(frame.effect >= 0 && frame.effect <= 8);
     }
     assert.deepEqual(showcaseFrame(name, 0), showcaseFrame(name, spec.duration));
   }

@@ -25,6 +25,9 @@
 
 #include "libretro.h"
 #include "quickjs.h"
+#include "../runtime/shared/gaussian-worlds.h"
+
+static n64gs_scene gaussian_worlds;
 
 /* stb_vorbis: single-header OGG Vorbis decoder */
 #define STB_VORBIS_NO_PUSHDATA_API
@@ -2300,6 +2303,7 @@ static bool set_position_from_js(JSContext *ctx, JSValueConst value, float targe
 
 static void clear_scene_objects(void)
 {
+   n64gs_destroy(&gaussian_worlds);
    for (int i = 0; i < NOVA64_MAX_MESHES; i++) {
       if (meshes[i].custom_verts)  { free(meshes[i].custom_verts);  meshes[i].custom_verts = NULL; }
       if (meshes[i].custom_indices){ free(meshes[i].custom_indices); meshes[i].custom_indices = NULL; }
@@ -29717,6 +29721,52 @@ static JSValue js_assets_read_json(JSContext *ctx, JSValueConst this_val, int ar
    return parsed;
 }
 
+/* Experimental storybook renderer: image compositing through the existing
+   software/HW overlay, with no dependence on GLES or a hidden mesh fallback. */
+static JSValue js_splat_worlds_configure(JSContext *ctx, JSValueConst self, int argc, JSValueConst *argv)
+{
+   (void)self;
+   if(argc<2) return JS_ThrowTypeError(ctx,"Two .splat asset paths required");
+   const char *a=JS_ToCString(ctx,argv[0]),*b=JS_ToCString(ctx,argv[1]);
+   if(!a || !b) { if(a) JS_FreeCString(ctx,a); if(b) JS_FreeCString(ctx,b); return JS_EXCEPTION; }
+   const struct nova64_package_asset *aa=find_package_asset(a),*bb=find_package_asset(b);
+   JS_FreeCString(ctx,a);JS_FreeCString(ctx,b);
+   if(!aa || !bb || !n64gs_load(&gaussian_worlds,(const uint8_t *)aa->data,aa->size,
+           (const uint8_t *)bb->data,bb->size))
+      return JS_ThrowTypeError(ctx,"Missing, invalid or oversized Gaussian world assets (max 250000 splats/world)");
+   JSValue out=JS_NewObject(ctx),counts=JS_NewArray(ctx);
+   for(int i=0;i<2;i++) JS_SetPropertyUint32(ctx,counts,i,JS_NewInt32(ctx,(int)gaussian_worlds.cloud[i].count));
+   JS_SetPropertyStr(ctx,out,"counts",counts);return out;
+}
+static JSValue js_splat_worlds_render(JSContext *ctx, JSValueConst self, int argc, JSValueConst *argv)
+{
+   (void)self;
+   if(argc<5) return JS_ThrowTypeError(ctx,"Gaussian render requires world, eye, yaw, FOV and portals");
+   int world; double yaw,fov;float eye[3];
+   if(JS_ToInt32(ctx,&world,argv[0])<0 || JS_ToFloat64(ctx,&yaw,argv[2])<0 || JS_ToFloat64(ctx,&fov,argv[3])<0) return JS_EXCEPTION;
+   for(int i=0;i<3;i++) {
+      JSValue value=JS_GetPropertyUint32(ctx,argv[1],i); double number;
+      int result=JS_ToFloat64(ctx,&number,value);JS_FreeValue(ctx,value);
+      if(result<0) return JS_EXCEPTION;
+      eye[i]=(float)number;
+   }
+   uint64_t start=core_perf_now_us();
+   if(!n64gs_render(&gaussian_worlds,world,eye,(float)yaw,(float)fov,
+           NOVA64_WIDTH,NOVA64_HEIGHT,JS_ToBool(ctx,argv[4])))
+      return JS_ThrowTypeError(ctx,"Invalid Gaussian render state or allocation failure");
+   for(size_t i=0;i<(size_t)NOVA64_WIDTH*NOVA64_HEIGHT;i++) {
+      const uint8_t *p=gaussian_worlds.rgba+i*4;
+      framebuffer[i]=((uint32_t)p[0]<<24)|((uint32_t)p[1]<<16)|((uint32_t)p[2]<<8)|255;
+   }
+   JSValue out=JS_NewObject(ctx);
+   JS_SetPropertyStr(ctx,out,"milliseconds",JS_NewFloat64(ctx,(core_perf_now_us()-start)/1000.0));
+   return out;
+}
+static JSValue js_splat_worlds_destroy(JSContext *ctx, JSValueConst self, int argc, JSValueConst *argv)
+{
+   (void)ctx;(void)self;(void)argc;(void)argv;n64gs_destroy(&gaussian_worlds);return JS_UNDEFINED;
+}
+
 static JSValue js_assets_read_bytes(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
    (void)this_val;
@@ -31461,6 +31511,13 @@ static bool install_nova64_api(JSContext *ctx)
 
    set_function(ctx, nova64, "frame", js_get_frame, 0);
    set_function(ctx, nova64, "time", js_get_time, 0);
+
+   JSValue splat_worlds=JS_NewObject(ctx);
+   JS_SetPropertyStr(ctx,splat_worlds,"version",JS_NewInt32(ctx,1));
+   set_function(ctx,splat_worlds,"configure",js_splat_worlds_configure,2);
+   set_function(ctx,splat_worlds,"render",js_splat_worlds_render,5);
+   set_function(ctx,splat_worlds,"destroy",js_splat_worlds_destroy,0);
+   JS_SetPropertyStr(ctx,nova64,"splatWorlds",splat_worlds);
 
    JS_SetPropertyStr(ctx, global, "nova64", nova64);
 

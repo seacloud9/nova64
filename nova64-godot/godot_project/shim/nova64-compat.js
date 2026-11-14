@@ -755,6 +755,7 @@
 
   // ---------------- scene management -----------------------------------
   function clearScene() {
+    if (splatWorldsActive) splatWorlds.destroy();
     // Clear all user-created meshes but preserve lighting and environment
     ensureInit();
 
@@ -8107,8 +8108,25 @@
     setCameraRigPosition: () => {},
   };
 
+  // Explicit version gate: this experimental renderer is never a no-op namespace.
+  let splatWorldsActive = false;
+  const splatWorlds = {
+    version: 1,
+    configure(a, b) {
+      const base = global.__nova64_cart_path;
+      const result = call('splatWorlds.configure', { a: base + '/' + a, b: base + '/' + b });
+      splatWorldsActive = !!result && !result.error;
+      return result;
+    },
+    render(world, eye, yaw, fov, portals) {
+      return call('splatWorlds.render', { world, eye, yaw, fov, portals });
+    },
+    destroy() { splatWorldsActive = false; return call('splatWorlds.destroy', {}); },
+  };
+
   global.nova64 = {
     __compatLoaded: true,
+    splatWorlds,
     post: wrapNamespace('post', postNs),
     loader: wrapNamespace('loader', loaderNs),
     xr: wrapNamespace('xr', xrNs),

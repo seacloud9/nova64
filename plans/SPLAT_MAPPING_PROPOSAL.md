@@ -17,8 +17,18 @@ licensed apartment/sculpture assets, Spark and Babylon rendering, four splat
 shader effects and live linked portals with player crossing. The focused checks
 verify clipping, opaque occlusion, parallax, crossing/return and reset. This is
 still an experimental console cart with a flat floor proxy; production APIs,
-portable packaging, Apple conversion and Godot/native/WASM splats remain pending.
+portable packaging for those licensed scans, Apple conversion and general
+Godot/native/WASM GPU splats remain pending.
 See [the implementation handoff](SPLAT_WORLDS_HANDOFF.md).
+
+A 2026-11-13 checkpoint adds two original authored Gaussian worlds (Moonbloom and
+Stillwater) and a self-contained portable `.nova`. The Godot and native-core
+bindings share a bounded CPU covariance/ellipse renderer, independent view
+sorting, clipped live portal, collision and crossing logic. Actual Godot and
+native GL/software captures, keyboard crossing/return and reset pass. This path
+owns its world image through the existing 2D layers; arbitrary host mesh
+composition, GPU acceleration, the larger scans and WASM validation remain
+queued. See the [portable guide](../experiments/splat-worlds/README.md).
 
 ## Product target
 

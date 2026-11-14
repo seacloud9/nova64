@@ -888,6 +888,7 @@ void Nova64Host::_notification(int p_what) {
 }
 
 Nova64Host::~Nova64Host() {
+    n64gs_destroy(&_splat_worlds);
     if (_context) {
         JS_FreeValue(_context, _cart_init_fn);
         JS_FreeValue(_context, _cart_update_fn);
@@ -981,6 +982,8 @@ void Nova64Host::_release_cart_exports() {
 }
 
 void Nova64Host::_shutdown_runtime() {
+    _splat_world_texture.unref();
+    n64gs_destroy(&_splat_worlds);
     _release_cart_exports();
     // Detach render/audio refs before the scene tree frees child nodes.
     // SurfaceTool-built ArrayMesh, MultiMesh, particles, and audio resources
@@ -1151,7 +1154,44 @@ Dictionary Nova64Host::get_capabilities() const {
     return caps;
 }
 
+Dictionary Nova64Host::_cmd_splat_worlds(const String &method, const Dictionary &p) {
+    if (method == "splatWorlds.destroy") {
+        _overlay_clear(); _splat_world_texture.unref(); n64gs_destroy(&_splat_worlds);
+        return Dictionary();
+    }
+    if (method == "splatWorlds.configure") {
+        String a = p.get("a", String()), b = p.get("b", String());
+        if (!FileAccess::file_exists(a) || !FileAccess::file_exists(b))
+            return make_error("missing_splat_asset", "Gaussian world assets not found");
+        PackedByteArray aa = FileAccess::get_file_as_bytes(a), bb = FileAccess::get_file_as_bytes(b);
+        if (!n64gs_load(&_splat_worlds, aa.ptr(), aa.size(), bb.ptr(), bb.size()))
+            return make_error("invalid_splat_asset", "Invalid .splat or more than 250000 Gaussians per world");
+        Dictionary out; Array counts;
+        counts.push_back((int64_t)_splat_worlds.cloud[0].count);
+        counts.push_back((int64_t)_splat_worlds.cloud[1].count);
+        out["counts"] = counts; return out;
+    }
+    if (method != "splatWorlds.render") return make_error("unsupported_method", method);
+    Array eye_values = p.get("eye", Array());
+    if (eye_values.size() != 3) return make_error("invalid_splat_camera", "Expected three eye coordinates");
+    float eye[3]; for (int i=0;i<3;i++) eye[i]=(double)eye_values[i];
+    auto start=std::chrono::steady_clock::now();
+    if (!n64gs_render(&_splat_worlds, (int)p.get("world", -1), eye,
+            (double)p.get("yaw", 0.0), (double)p.get("fov", 75.0), 640, 360, (bool)p.get("portals", true)))
+        return make_error("invalid_splat_frame", "Gaussian scene not configured or camera invalid");
+    PackedByteArray rgba; rgba.resize(640*360*4);
+    memcpy(rgba.ptrw(), _splat_worlds.rgba, 640*360*4);
+    Ref<Image> image = Image::create_from_data(640,360,false,Image::FORMAT_RGBA8,rgba);
+    if (_splat_world_texture.is_null()) _splat_world_texture = ImageTexture::create_from_image(image);
+    else _splat_world_texture->update(image);
+    _ensure_overlay();
+    Dictionary out;
+    out["milliseconds"] = std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-start).count();
+    return out;
+}
+
 Dictionary Nova64Host::call_bridge(const String &p_method, const Dictionary &p_payload) {
+    if (p_method.begins_with("splatWorlds.")) return _cmd_splat_worlds(p_method, p_payload);
     if (p_method == "host.getCapabilities") {
         Dictionary out; out["capabilities"] = get_capabilities(); return out;
     }
@@ -3666,6 +3706,8 @@ Dictionary Nova64Host::_cmd_voxel_upload_chunk(const Dictionary &p) {
 
 bool Nova64Host::load_cart(const String &p_res_path) {
     _cart_error_counts.clear();
+    _splat_world_texture.unref();
+    n64gs_destroy(&_splat_worlds);
     _ensure_runtime();
 
     // Accept three flavors:
@@ -4471,6 +4513,13 @@ Dictionary Nova64Host::_cmd_overlay_batch(const Dictionary &p) {
     _ensure_overlay();
     if (_overlay != nullptr) {
         RenderingServer::get_singleton()->canvas_item_clear(_overlay->get_canvas_item());
+    }
+    // The Gaussian image is the base layer; HUD ops are appended above it.
+    if (_splat_world_texture.is_valid()) {
+        Vector2 size = _overlay->get_size();
+        if (size.x <= 0 || size.y <= 0) size = Vector2(640,360);
+        RenderingServer::get_singleton()->canvas_item_add_texture_rect(_overlay->get_canvas_item(),
+            Rect2(Vector2(), size), _splat_world_texture->get_rid());
     }
     Variant v = p.get("ops", Variant());
     if (v.get_type() != Variant::ARRAY) {

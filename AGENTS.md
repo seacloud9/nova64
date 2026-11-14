@@ -553,6 +553,15 @@ Change-management expectations:
   `worldSet=storybook` to explore this linked pair; authored obstacles and
   level bounds provide flat-ground walking collision. These are synthetic
   Gaussian scenes, not captured scans or editable voxel terrain.
+- The experimental Godot/RetroArch storybook path uses the shared CPU Gaussian
+  renderer in `runtime/shared/gaussian-worlds.h`, with per-view sorting and a
+  live clipped portal. Keep the native and Godot bindings on this shared math.
+  It is a bounded standard `.splat` reference, not the Spark GPU backend or
+  a general SOG/PLY loader; measure its frame cost before claiming performance.
+- `pnpm splat:package:portable` stages the Godot cart and self-contained `.nova`
+  under `retroarch/build/storybook-portable/`. After building the local native
+  core and Godot extension, `pnpm test:splat:portable` runs shared C pixel tests,
+  both-host captures and movement/reset checks. Godot must be installed.
 - Scan attribution and pinned hashes live beside the experiment assets.
   Preserve their CC BY terms when packaging. The demo has a flat floor proxy;
   do not claim collision against scanned furniture or native/WASM support.

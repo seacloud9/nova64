@@ -92,3 +92,18 @@ git submodule update --init --recursive
 ## Roadmap
 
 See [`../GODOT.md`](../GODOT.md) for the full milestone list (G0–G6) and exit criteria.
+
+### Experimental Gaussian storybook worlds
+
+`pnpm splat:package:portable` stages Moonbloom and Stillwater as the
+`storybook-worlds` cart. After rebuilding the extension, launch it with
+`godot --path nova64-godot/godot_project -- storybook-worlds` from the repository
+root. The shared CPU Gaussian renderer supports walking, authored collision and
+a live portal between the two original scenes. Keys 1/2 select a world; WASD and
+arrows explore; controller left/right sticks move/turn.
+
+The experimental `nova64.splatWorlds` API is version 1 and renders its own world
+image under the HUD. It does not mix with ordinary Godot 3D meshes or implement
+the browser shader effects. See the [portable cart guide](../experiments/splat-worlds/README.md)
+for packaging, limits and `pnpm test:splat:portable` checks. It uses the shared
+`runtime/shared/gaussian-worlds.h` renderer; keep both native hosts on that math.

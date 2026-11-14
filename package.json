@@ -109,6 +109,8 @@
     "test:gaussian:prototype": "node --test tests/test-gaussian-feasibility.mjs && node scripts/gaussian-feasibility.mjs --checks-only",
     "gaussian:prototype:capture": "node scripts/gaussian-feasibility.mjs",
     "splat:assets": "node scripts/fetch-splat-assets.mjs",
+    "splat:package:portable": "node scripts/package-storybook-worlds.mjs",
+    "test:splat:portable": "node --test tests/test-gaussian-worlds.mjs tests/test-storybook-worlds.mjs tests/test-splat-portals.mjs && node scripts/check-storybook-hosts.mjs",
     "perf:splat:worlds": "node scripts/fetch-splat-assets.mjs && node scripts/splat-worlds-perf.mjs",
     "splat:nav": "node scripts/splat-worlds-nav.mjs",
     "test:splat:worlds": "node scripts/fetch-splat-assets.mjs && node --test tests/test-splat-portals.mjs && node scripts/splat-worlds-check.mjs && node scripts/splat-worlds-nav.mjs --check",

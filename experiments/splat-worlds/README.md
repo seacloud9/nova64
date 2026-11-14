@@ -156,3 +156,59 @@ obstacles. PNG previews and a JSON report go to `retroarch/build/storybook-world
 For a future captured-garden option, [English Garden by nebulousflynn](https://superspl.at/scene/99a16e0b)
 is listed as downloadable under CC BY 4.0 (8.8M splats, 117.36 MB when checked).
 It is not bundled or claimed as supported by this compact scene pair.
+
+## Godot and RetroArch: portable storybook cart
+
+Moonbloom and Stillwater also have an experimental **CPU Gaussian renderer**.
+It decodes the same standard `.splat` assets, projects their full covariance into
+ellipses, sorts each camera view independently, blends in linear color and
+renders the live destination through a clipped, depth-tested doorway. Crossing
+and walking use the same collision source as the browser cart.
+
+```sh
+pnpm splat:package:portable
+make -C retroarch -j8
+make -C retroarch harness
+# Build the Godot extension for your host; macOS example:
+(cd nova64-godot/gdextension && scons platform=macos target=template_debug arch=universal -j8)
+pnpm test:splat:portable
+```
+
+The packager generates both assets from source, stages
+`nova64-godot/godot_project/carts/storybook-worlds/` for Godot and creates the
+self-contained `retroarch/build/storybook-portable/storybook-worlds.nova`.
+The `.nova` contains its JavaScript, both assets and the MIT license; loading it
+does not depend on the source checkout. In RetroArch, load the newly built
+Nova64 core, then open that `.nova` as content.
+
+Launch Godot's existing cart picker directly into this cart:
+
+```sh
+godot --path nova64-godot/godot_project --resolution 1280x720 -- storybook-worlds
+```
+
+WASD moves, arrows turn (up/down also move), Shift accelerates, **1** selects the
+grove and **2** the garden. A paired controller's left stick moves and right
+stick turns. Walk through the colored doorway to cross naturally in either
+direction. The portable cart currently uses original colors; the ten browser
+shader presentations remain browser experiments.
+
+This is a bounded reference renderer, not a GPU splat implementation. It owns
+the full world image and presents through each host's existing 2D layer;
+it does **not** compose with arbitrary host 3D meshes, lights or post effects.
+It accepts at most 250,000 Gaussians per world and a viewport up to 1280x720.
+Only the two authored storybook worlds are validated here, not the much larger
+apartment, SOG/PLY, SH lighting or native/WASM platform parity. CPU frame time is
+recorded in the test report and must not be described as GPU time or gameplay
+FPS. The renderer's resources are released on cart load/reset/scene clear.
+
+`pnpm test:splat:portable` uses C address/undefined-behavior sanitizers for
+projection, malformed assets, clipping, source foreground occlusion, parallax,
+frustum bounds and lifecycle. It then captures both worlds and changed portal
+views through the native GL harness, native software output and actual Godot,
+checks image agreement and exercises real host keyboard movement across and
+back through the portal. Software captures are compared using the harness's
+RGB565 quantization rule. Reports, logs and images are in
+`retroarch/build/storybook-hosts/`. Set `GODOT`, `GODOT_PROJECT` or `CORE` to
+select local tools/builds. These checks require a working graphical Godot
+renderer and a built local native core/harness.

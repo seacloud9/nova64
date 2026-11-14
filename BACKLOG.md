@@ -55,10 +55,12 @@ Last updated: 2026-11-12
   sorting and other three hosts remain unimplemented in that bounded prototype.
   The newer `experiments/splat-worlds/` uses Spark and Babylon for licensed scans,
   splat shader effects and a linked live portal pair. Validate per-view sorting,
-  clipping, crossing and reset with `pnpm test:splat:worlds`. Next: authored
-  collision proxies, portable `.nova` packaging, then Godot/native/WASM rendering.
-  The current experiment has a flat floor proxy only; USDZ conversion and world
-  generation integrations remain unimplemented.
+  clipping, crossing and reset with `pnpm test:splat:worlds`. The original
+  Moonbloom/Stillwater pair now packages as a portable `.nova` and runs through
+  a shared CPU Gaussian renderer on Godot and the native core, including live
+  portals, walking and authored collision (`pnpm test:splat:portable`).
+  Next: GPU acceleration, host-mesh composition, larger licensed scans and WASM
+  validation. USDZ conversion and world generation services remain unimplemented.
 
 ## 🔁 Recurring — Dependency sweep (monthly, and before every release)
 

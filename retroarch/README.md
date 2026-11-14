@@ -1608,3 +1608,20 @@ Canvas UI / parseCanvasUI cluster:
 | `1131-canvas-ui-marker-orient.js`          | `<marker orient="auto">` rotation on polygon/polyline/line/circle              |
 | `1132-canvas-ui-text-dxdy.js`              | per-character `dx` / `dy` offsets on `<text>`                                  |
 | `1133-canvas-ui-image-data-uri.js`         | `<image href="data:image/png;base64,...">` via `nova64.assets.registerBytes`   |
+
+## Experimental Gaussian storybook worlds
+
+`pnpm splat:package:portable` creates
+`retroarch/build/storybook-portable/storybook-worlds.nova` with the original
+Moonbloom voxel-style grove and Stillwater zen garden. Build the local core,
+load it in RetroArch, and open this `.nova` as content. WASD/arrows explore,
+keys 1/2 select a world, and controller left/right sticks move/turn. Walking
+through the colored doorway changes worlds with a live destination view.
+
+This is the bounded CPU Gaussian reference shared with Godot, presented through
+the existing 2D output; it runs with software presentation or the GL frontend.
+It is not a mesh replacement or a GPU Gaussian backend, and does not compose
+with arbitrary native 3D meshes or include the browser shader effects. The same
+cart contains both assets and needs no source-tree asset lookup. See the
+[portable cart guide](../experiments/splat-worlds/README.md) for limits, builds
+and the `pnpm test:splat:portable` image/input checks.

@@ -28,6 +28,8 @@
 // depending on build flags, so a clean forward declaration isn't portable.
 // Include it directly here; it's a self-contained C header.
 #include "quickjs.h"
+#include "../../../runtime/shared/gaussian-worlds.h"
+#include <godot_cpp/classes/image_texture.hpp>
 
 namespace nova64 {
 class HandleTable;
@@ -122,6 +124,10 @@ private:
     JSValue _cart_draw_fn;
 
     std::unique_ptr<nova64::HandleTable> _handles;
+
+    n64gs_scene _splat_worlds = {};
+    Ref<ImageTexture> _splat_world_texture;
+    Dictionary _cmd_splat_worlds(const String &method, const Dictionary &payload);
 
     void _ensure_runtime();
     void _shutdown_runtime();
